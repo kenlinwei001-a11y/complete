@@ -25,9 +25,38 @@
  *    可能不重写内容未变的产物，用单个文件会把「没变所以没重写」误判成「没构建」。
  *    max over dist/ 回答的正是要问的那句话：**这个包最后一次构建，是不是发生在最后一次改源码之后。**
  *
- * ⛔ 守卫失败时**只许报「dist 过期，请先 build」，不许给出任何内容结论**——
+ * ⛔ 守卫失败时**只许报「dist 没准备好，请先 build」，不许给出任何内容结论**——
  *    这正是本守卫的全部意义：过期时门必须**闭嘴**，而不是拿旧产物讲源码的话。
- *    故 assertDistFresh() 在 import dist 之前就 exit(1)。
+ *    故 assertDistFresh() 在 import dist 之前就退出。
+ *
+ * ⛔⛔ 退出码 = **2**，不是 1（WO-R9-DISTFRESH-RC2 · 2026-08-13 · 闭 §8 G-ENVFAIL-AS-CODEFAIL）
+ *
+ *    本仓门的退出码是**三分**约定（docs/SOP-reviewer-claim-discipline.md §3）：
+ *      0 = 干净 · 1 = **被扫的代码真有问题**（先修代码）· 2 = **门自己没准备好**（本次什么都没度量）。
+ *
+ *    本守卫首版写的是 `process.exit(1)`。于是 **20 道读 dist 的门**在「没 build」这一种
+ *    纯环境状态下一律吐 RC=1 —— 而 1 在本仓读作「代码违规、先修代码」。实测佐证（同一个提交）：
+ *      · 已 build 的 worktree 里 `check-gate-ledger` **RC=0**
+ *      · 未 build 的干净 worktree 里 **RC=1 / 27 条**（报各 app 的 dist 类 guardedPaths「指向空气」）
+ *    **同一份代码两个结论 ⇒ 它度量的不是代码。**
+ *
+ *    形态（CLAUDE.md 铁律 0.6 句式）：
+ *      **「我用『门红了』当作『代码有问题』的证据，而前者并不度量后者。」**
+ *    与 `check-gate-exit-discipline.mjs` 治的是**同一个病**（那里治的是「未捕获异常 ⇒ node 恒退 1」，
+ *    这里治的是「共享守卫**主动**退 1」）。**同族第三例，故落到共享实现里一次改完，
+ *    不许再由每道门各自在调用点上翻译**（那正是本单要删掉的 check-chain-scan-honesty.mjs 局部翻译器）。
+ *
+ *    ⚠️ 反向判据同样是硬的：**只有守卫自己这条路径退 2**，各门主判据明确判负的那个 exit(1)
+ *    一个都不许被吞成 2 —— 否则是拿一个更糟的假绿换掉一个假红。故本守卫**只在自己失败时**
+ *    调 `process.exit(2)` 并立即终止进程，不注册任何长期存活的退出码翻译钩子。
+ *
+ * ⛔ 文案纪律：失败输出里**不许**出现「不得并线 / 违规 / 未通过」这类**判决词** ——
+ *    判决词是给 RC=1 用的。RC=2 只许说一句话：**本次未度量任何代码，结论作废。**
+ *
+ * ✅ 自证（成功路径也必须说话）：守卫通过时打印**被检查的包 + 两侧时间戳**，
+ *    数据直接取自 `checkDistFreshness` 的 `checked`（与主判据**共用同一份实现**，不另抄比较逻辑）。
+ *    没有这一行，「守卫接了但从没真跑」与「守卫真跑了且新鲜」在屏上长得一模一样 ——
+ *    那正是本仓「只有 test 引用 = 已排练不是已实现」的同族坑。
  *
  * 用法（门里，务必在 **任何** `import(".../dist/...")` 之前调用）：
  *    import { assertDistFresh } from "./dist-freshness.mjs";
@@ -39,7 +68,8 @@
  * 覆盖审计（哪些门读 dist 却没接守卫）：
  *    node scripts/dist-freshness.mjs --audit
  *
- * 本体登记：docs/SYSTEM-ONTOLOGY.md §7 门 dist-freshness:check · §8 G-DIST-STALE-READ。
+ * 本体登记：docs/SYSTEM-ONTOLOGY.md §7 门 dist-freshness:check · §8 G-DIST-STALE-READ ·
+ *          §8 G-ENVFAIL-AS-CODEFAIL（本次新增：环境问题冒充代码违规）。
  */
 import { readdirSync, statSync, existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, utimesSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
@@ -152,6 +182,22 @@ export function checkDistFreshness(entries, { root = process.cwd() } = {}) {
   return { ok: problems.length === 0, problems, checked };
 }
 
+/**
+ * 成功路径的**自证**一行：被检查的包 + 两侧时间戳 + 领先量。
+ *
+ * ⛔ 为什么成功也必须打印：没有这一行时，「守卫 import 了但那次根本没被调用」与
+ *    「守卫真跑了且 dist 新鲜」在屏上**一模一样**（都是安静的）。本仓已知的同族坑是
+ *    「只有 test 引用 = 已排练，不是已实现」——接了线看不出来在不在跑，等于没接。
+ *    数据全部取自 checkDistFreshness 的 checked，**不另算一遍**（不许出现装饰品）。
+ */
+function attest(c) {
+  const t = (ms) => (ms >= 0 ? new Date(ms).toISOString().replace("T", " ").slice(0, 19) : "—");
+  if (c.srcMs < 0) return `· dist 新鲜度已核：${c.pkg}  产物 ${t(c.buildMs)}（${c.note || "无 src/"}）`;
+  const lead = (c.buildMs - c.srcMs) / 1000;
+  const leadTxt = lead >= 60 ? `${(lead / 60).toFixed(1)} 分钟` : `${lead.toFixed(1)} 秒`;
+  return `· dist 新鲜度已核：${c.pkg}  产物 ${t(c.buildMs)} ≥ 源码 ${t(c.srcMs)}（领先 ${leadTxt}）`;
+}
+
 /** 人读的一行说明。 */
 function describe(p) {
   if (p.kind === "BAD_ENTRY") return `用法错误：「${p.entry}」不含 dist/ 路径段，守卫无法定位包根`;
@@ -165,12 +211,82 @@ function describe(p) {
 }
 
 /**
- * 门的入口：不新鲜就**立刻退出**，绝不让调用方走到 import dist 那一步。
- * 失败信息里**只讲 dist 过期，不讲任何内容结论**（本守卫的全部意义）。
+ * 「**这条路径不存在，是没 build 造成的吗？**」——给那些不 import dist、却对 dist 路径做
+ * 存在性断言的门用（本仓实例：`check-gate-ledger.mjs` 的 ④ 责任边界判据核 guardedPaths）。
+ *
+ * ⛔ 为什么必须有这一支：`assertDistFresh` 只治「**读** dist 的门」。而 WO-R9-DISTFRESH-RC2
+ *    的头号佐证恰恰不是这一族 —— `check-gate-ledger.mjs` 一次 dist 都不读，它只是核门账里
+ *    `guardedPaths` 的每条路径「是不是真的存在」。没 build 时那些 dist 产物条目全部落空，
+ *    于是它报 **28 条「责任边界指向空气」+ RC=1**，读起来是门账写错了，实际门账一个字都没错。
+ *    **同一个形态、两套机制**：光改 assertDistFresh 的退出码，这一半一条都修不到
+ *    （本单实跑复核：改完 assertDistFresh 之后 check-gate-ledger 仍然 RC=1 / 28 条）。
+ *
+ * 判据（刻意收紧，宁可漏判成 1 也不许把真错账放过）：
+ *    ① 路径含 `dist/` 段，能定位到包根；
+ *    ② 该包根**真的是一个包**（有 package.json）——否则是门账把包名拼错了，那是真错，仍归 1；
+ *    ③ 该包的 `dist/` 目录里**一个文件都没有**（整包未构建）。
+ * 只有三条同时成立才判「环境」。包已构建、单个文件却缺 ⇒ 门账写的是过期路径，**仍归 1**。
+ *
+ * 计数用的是 `newestMtime`（与 `checkDistFreshness` 判「整包未构建」时**同一个函数、同一个
+ * `count === 0` 判据**），不另抄一份目录遍历 —— 抄了就是装饰品。
  */
-export function assertDistFresh(entries, { gate = "（未具名门）", root = process.cwd() } = {}) {
+export function isUnbuiltArtifactPath(p, { root = process.cwd() } = {}) {
+  const pkg = packageOf(p, root);
+  if (pkg === null || pkg === "") return false;            // ① 不含 dist/ 段
+  if (!existsSync(join(root, pkg, "package.json"))) return false; // ② 包根不是包 ⇒ 真写错了
+  return newestMtime(join(root, pkg, "dist")).count === 0;  // ③ 整包未构建
+}
+
+/**
+ * 三分退出码里「**门自己没准备好**」那一个（docs/SOP-reviewer-claim-discipline.md §3）。
+ * 单独导出成常量而不是散在各处写字面量 2：`check-gate-exit-discipline.mjs` 的
+ * 「共享守卫不许退 1」判据要认这个符号，写死数字就没有可机械核的锚点。
+ */
+export const RC_TOOL_NOT_READY = 2;
+
+/**
+ * 共享的「门自己没准备好」出口。**任何**共享守卫（今天只有 dist 新鲜度这一族，
+ * 明天再加别的环境前置——node 版本 / 只读 FS / 缺基线——都往这里接）失败时都走这一个函数。
+ *
+ * 为什么必须是**共享的一个函数**而不是各门在调用点上自己翻译：
+ * 上一版 `check-chain-scan-honesty.mjs` 用 `process.once("exit", …)` 把守卫的 1 就地改写成 2，
+ * 只有那**一道门**享受到；另外 19 道门照旧报 1。而且两层翻译一旦叠加，行为无法推理。
+ * 本函数直接 `process.exit(2)` 并立即终止进程 —— **不留任何长期存活的钩子**，
+ * 故绝无可能把某道门主判据自己的 `exit(1)` 顺手吞掉（本单反证 ② 就是钉这一条的）。
+ *
+ * ⛔ 文案纪律：headline / lines / hint 里**不许**出现「不得并线 / 违规 / 未通过」这类判决词。
+ */
+export function exitToolNotReady({ gate = "（未具名门）", headline, lines = [], hint = "" }) {
+  console.error(`\n⚠ ${gate}：**门自己没准备好，本次未度量任何代码，结论作废**（RC=${RC_TOOL_NOT_READY}）。`);
+  if (headline) console.error(`  ${headline}`);
+  for (const l of lines) console.error(`  - ${l}`);
+  if (hint) console.error(hint);
+  console.error(
+    `  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：\n` +
+      `  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷\n` +
+      `  （欠账 #155 即此：dist 过期被错报成源码缺陷）。\n`,
+  );
+  process.exit(RC_TOOL_NOT_READY);
+}
+
+/**
+ * 门的入口：不新鲜就**立刻退出**，绝不让调用方走到 import dist 那一步。
+ * 失败信息里**只讲 dist 没准备好，不讲任何内容结论**（本守卫的全部意义），退出码 **2**。
+ *
+ * 成功路径也说话：打印被检查的包与两侧时间戳（自证「我这次真的检查了 dist 新鲜度」）。
+ * `quiet: true` 只给自检/单测用；门里**不要**开，开了就回到「守卫在不在跑看不出来」的老态。
+ */
+export function assertDistFresh(entries, { gate = "（未具名门）", root = process.cwd(), quiet = false } = {}) {
   const r = checkDistFreshness(entries, { root });
-  if (r.ok) return r;
+  if (r.ok) {
+    if (!quiet) {
+      // 「0 个包被检查」也必须说出来：调用方传了空清单时守卫**什么都没核**，
+      // 而这一态与「核过且全新鲜」在屏上原本长得一样 —— 又一次「我没找到 ≠ 它不存在」。
+      if (!r.checked.length) console.log(`  · dist 新鲜度守卫：**本次 0 个包被检查**（调用方传入空清单）   [${gate}]`);
+      for (const c of r.checked) console.log(`  ${attest(c)}   [${gate}]`);
+    }
+    return r;
+  }
 
   // 构建命令里必须用 **package.json 的 name**，不是目录名：`packages/contracts` 的包名是
   // `@platform/contracts`，照目录名拼出的 `pnpm --filter contracts build` 是跑不通的
@@ -184,16 +300,17 @@ export function assertDistFresh(entries, { gate = "（未具名门）", root = p
     ? pkgs.map((p) => `pnpm --filter ${nameOf(p)} build`).join(" && ")
     : "pnpm -r build";
 
-  console.error(`\n✗ ${gate}：**dist 过期或未构建，本门拒绝给出任何结论**。`);
-  for (const p of r.problems) console.error(`  - ${describe(p)}`);
-  console.error(
-    `\n  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，\n` +
-      `  它会说出与源码恰好相反的话，而且是绿的（欠账 #161；#155 即因此把非缺陷误判为缺陷）。\n` +
-      `  「dist 在不在」度量的是构建过没有，不是构建得够不够新——过期时本门必须闭嘴。\n\n` +
+  exitToolNotReady({
+    gate,
+    headline: "原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。",
+    lines: r.problems.map(describe),
+    hint:
+      `\n  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，\n` +
+      `  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。\n` +
+      `  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。\n\n` +
       `  请先构建再重跑：  ${buildCmd}\n` +
       `  （或直接 pnpm -r build）\n`,
-  );
-  process.exit(1);
+  });
 }
 
 /* ══════════════════════ 金丝雀 · 与主逻辑共用 checkDistFreshness ══════════════════════
@@ -399,7 +516,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (argv.includes("--self-test")) {
     console.log("dist-freshness 金丝雀（与主逻辑共用 checkDistFreshness）：");
     const r = selfTest();
-    process.exit(r.ok ? 0 : 1);
+    // 金丝雀不中 = **守卫自己坏了**，同样属「门没准备好」⇒ RC=2，不是 1。
+    // （1 会被读成「被扫代码有问题」，而这里根本还没开始扫任何代码。）
+    process.exit(r.ok ? 0 : RC_TOOL_NOT_READY);
   } else if (argv.includes("--audit")) {
     const rows = auditCoverage();
     for (const r of rows) console.log(`${r.guarded ? "✓ 已接守卫" : "✗ 未接守卫"}  ${r.file}  （读 dist ${r.sites.length} 处，首处 L${r.sites[0].line}）`);

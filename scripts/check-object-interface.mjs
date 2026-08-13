@@ -59,9 +59,14 @@ const need = [
   ["datacore/ontology-signature", "apps/datacore/dist/solvers/ontology-signature.js"],
   ["datacore/battery-extended", "apps/datacore/dist/synthetic/battery-extended.js"],
 ];
-for (const [label, rel] of need) {
-  if (!existsSync(abs(rel))) fail(`：${label} dist 未构建（${rel}）——先 pnpm -r build`);
-}
+// ⚠️ 2026-08-13 · WO-R9-DISTFRESH-RC2：这里原先是
+//    `for (…need…) if (!existsSync(abs(rel))) fail(…)`，而 `fail()` 是 `exit(1)`。
+//    它排在文件下方那句 `assertDistFresh(...)` **之前**，于是「没 build」这一纯环境状态
+//    永远走不到共享守卫，本门恒报 RC=1（= 被扫代码有问题）——**同一份代码，建过与没建过两个结论**。
+//    **grep 到 `assertDistFresh(` 并不等于那行会被执行**（铁律 0.5：再追一层；本单靠实跑 RC 抖出）。
+//    现改为把 need 的逐个产物路径交给共享守卫：它逐条查存在性（kind=MISSING）**并**查新鲜度，
+//    判据是原循环的超集，退出码是 2（门自己没准备好）。下方原有的 assertDistFresh 调用已并入此处。
+assertDistFresh(need.map(([, rel]) => rel), { gate: "object-interface:check" });
 
 const problems = [];
 
@@ -107,8 +112,9 @@ for (const rel of [
 // ⛔ 守卫必须在 import dist **之前**（dist-freshness:check 的判据②）：
 //    本门读 dist 里的种子接口声明与求解器注册表；dist 过期 ⇒ 拿旧产物断言新源码，
 //    「接口漏声明」这类结论会凭空出现或凭空消失。
-assertDistFresh(["apps/datacore/dist", "packages/contracts/dist"], { gate: "object-interface:check" });
-
+// ⚠️ 调用点已上提到 L69（need 覆盖 packages/contracts + apps/datacore 两个包，与这里原来那句
+//    ["apps/datacore/dist","packages/contracts/dist"] 是同一组包，且逐文件更严）。这里不再重复调用：
+//    重复调用会重复打印守卫的自证行，让人误以为核了两组不同的东西。
 const { BATTERY_OBJECT_INTERFACES, BATTERY_TYPE_INTERFACE_BINDINGS, BATTERY_ACTION_TYPES, batteryObjectTypes } =
   await import(abs("apps/datacore/dist/synthetic/battery.js").href);
 const { extendedObjectTypes } = await import(abs("apps/datacore/dist/synthetic/battery-extended.js").href);

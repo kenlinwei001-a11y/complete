@@ -127,22 +127,15 @@ const BASELINE = join(ROOT, "scripts/chain-scan-honesty-baseline.json");
 /** 规则真值源的**派生函数**所在包（`parityRuleExpression` 等），本门经 dist 调用它们求真值。 */
 const CONTRACTS_DIST = "packages/contracts/dist/index.js";
 
-/* ── dist 新鲜度守卫 · 但退 **2** 而不是共享守卫的 1 ────────────────────────────
- * 判据**共用**共享实现（`assertDistFresh` 内部就是 `checkDistFreshness`，一行比较逻辑都不另抄，
- * 其金丝雀见 `node scripts/dist-freshness.mjs --self-test`）。唯一的差别是**退出码**：
- * 共享守卫 `process.exit(1)`，而 1 在本仓三分约定里 = 「**被扫代码**有问题」；
- * dist 没构建是**环境**问题，处置完全相反（前者改代码，后者跑 build）⇒ 本门必须退 2。
- * 故只在这一次调用的**作用域内**挂一个退出码翻译器，调用返回后立刻摘掉 ——
- * 绝不能让它长期挂着把后面主判据明确判负的那个 exit(1) 也吞成 2（那是拿更糟的假绿换假红）。 */
-const distStaleIsToolBroken = (code) => {
-  if (code !== 1) return;
-  console.error("\n⛔ 以上是**环境/工具**问题（dist 未构建或过期），**不是被扫代码的问题**。");
-  console.error("   本次结论作废：本门什么都没证明 —— 三分退出码里这是 2（门自己坏了），不是 1（真违规）。");
-  process.exitCode = 2;
-};
-process.once("exit", distStaleIsToolBroken);
+/* ── dist 新鲜度守卫（退 **2**：环境问题，不是被扫代码的问题）────────────────────
+ * ⚠️ 2026-08-13 · WO-R9-DISTFRESH-RC2：这里原先挂着一个**作用域内的退出码翻译器**
+ * （`process.once("exit", …)` 把守卫的 1 改写成 2，调用返回后立刻 `off`）。**已删。**
+ * 原因：那个修法只让**这一道门**说对了话，另外 19 道读 dist 的门照旧吐 1；
+ * 而 1 在本仓三分约定里 = 「被扫代码有问题」，于是「没 build」被 22 道门齐声报成「代码违规」。
+ * 现在退 2 由**共享实现**负责（`assertDistFresh` → `exitToolNotReady`，见 dist-freshness.mjs），
+ * 一次改完、处处生效；本门这里只留一行普通调用，**不许**再叠第二层翻译
+ * （两层翻译叠加行为无法推理，且长期存活的 exit 钩子有吞掉主判据 exit(1) 的风险）。 */
 assertDistFresh([CONTRACTS_DIST], { gate: "chain-scan-honesty:check" });
-process.off("exit", distStaleIsToolBroken);
 
 /** 规则真值源模块（**唯一**的规则内容出处；本门不抄任何一条规则）。 */
 const CONTRACTS = await import(pathToFileURL(join(ROOT, CONTRACTS_DIST)).href);
