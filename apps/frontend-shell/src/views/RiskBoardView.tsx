@@ -28,6 +28,7 @@ import { CapacityRampEnvelope } from "./capacity/CapacityRampEnvelope";
 import { CapacityFactorOntology } from "./capacity/CapacityFactorOntology";
 import { CapacityLiveDialog } from "./capacity/CapacityLiveDialog";
 import { Provenance } from "@/components/Provenance";
+import { InfoPopover } from "@/components/InfoPopover";
 import { ProvenanceDag, gapAttributionToBaseRootCause, type GapAttrOutput, type DagData } from "@/components/ProvenanceDag";
 import { matchRiskFactorToRootCause } from "@/config/riskFactorTaxonomy";
 // WO-FACTOR-SCOPE-SINGLESOURCE：因子作用域的**值**类型走契约品牌类型（裸 string 赋不进来 → 词表错配编译期红）。
@@ -193,8 +194,12 @@ export default function RiskBoardView(_props: ViewRendererProps) {
       <div className={styles.rkTop}>
         <div>
           <h3>产能推演</h3>
+          {/* 规范 §1：第一层只留窗口与阈值这两个**数值**；「这一页在回答什么」属解释 → `?` 浮层。 */}
           <div className={styles.rkSub}>
-            计划-执行之桥：监测执行偏离月度计划的风险 · 未来 {horizon} 天内预测越线（紧张度 ≥ {threshold}）· 偏离 → 处置 Action 或反提月度差异（C21）
+            未来 {horizon} 天 · 阈值 {threshold}
+            <InfoPopover topic={zh.risk.info.bridge} testId="risk-bridge">
+              <p>{zh.risk.info.bridgeBody}</p>
+            </InfoPopover>
           </div>
         </div>
         <div className={styles.rkHsel}>
@@ -304,12 +309,20 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                         return (
                           // WO-UNIT-MEANING：原渲染「设备OEE 76」——76 紧贴 OEE 会被读成 OEE=76%，
                           // 实为该因素的**张力 76/100**（误导性最强的一处）。经 formatTightness 单源带量纲。
+                          //
+                          // WO-UI-DECLUTTER-TOP3：原生 `title=` 承载的口径说明搬进 `?` 浮层（规范 §2 明令禁止
+                          // 用 `title` 当浮层：OS 绘制、不可控样式、移动端不可达、移开会滞留）。
+                          // 量纲仍留在**第一层**（`formatTightness` 带 `/100`），浮层只解释「凭什么这么算」。
+                          // `aria-label` 保留 —— 读屏用户不靠 hover。
                           <span key={ch.factor} className={styles.rkFchip} style={{ borderColor: `${col}66`, color: col }}
-                            title={`${ch.factor} 的紧张度（${TIGHTNESS_METRIC.scaleMin}–${TIGHTNESS_METRIC.scaleMax}·${TIGHTNESS_METRIC.hint}）·非该指标本身的值`}>
+                            aria-label={`${ch.factor} 的紧张度（${TIGHTNESS_METRIC.scaleMin}–${TIGHTNESS_METRIC.scaleMax}·${TIGHTNESS_METRIC.hint}）·非该指标本身的值`}>
                             {ch.factor} {formatTightness(ch.value)}
                           </span>
                         );
                       })}
+                      <InfoPopover topic={zh.risk.info.tightness} testId={`tightness-${card.base}`}>
+                        <p>{zh.risk.info.tightnessBody(TIGHTNESS_METRIC.scaleMin, TIGHTNESS_METRIC.scaleMax, TIGHTNESS_METRIC.hint)}</p>
+                      </InfoPopover>
                     </div>
                   )}
                   <div className={styles.rkCF}>
@@ -343,12 +356,20 @@ export default function RiskBoardView(_props: ViewRendererProps) {
           {(planRows.length ?? 0) > 0 && (
             <div className={styles.rkDet} style={{ marginTop: 14 }} data-testid="risk-plan-panel">
               <div className={styles.rkDetH}>
-                <b>📋 {zh.risk.planTitle}</b>
+                <b>
+                  📋 {zh.risk.planTitle}
+                  <InfoPopover topic={zh.risk.info.planRow} testId="plan-howto">
+                    <p>{zh.risk.info.planRowBody}</p>
+                    <p>{zh.risk.plan.regenHint}</p>
+                  </InfoPopover>
+                </b>
                 <span>
                   {zh.risk.planSub(planRows.length)}
                   {"　"}
+                  {/* WO-UI-DECLUTTER-TOP3：`title=` → `aria-label`（规范 §2 禁用原生 tooltip 充当浮层）；
+                      口径本身由下方「这张表怎么读」`?` 浮层统一承载，不再每个控件各挂一条。 */}
                   <span className={styles.tierChip} data-testid="risk-plan-regen" role="button" tabIndex={0}
-                    title={zh.risk.plan.regenHint}
+                    aria-label={zh.risk.plan.regenHint}
                     style={{ display: "inline-block" }}
                     onClick={() => regen.mutate(boardLive.apply)}
                     onKeyDown={(e) => e.key === "Enter" && regen.mutate(boardLive.apply)}>
@@ -392,8 +413,10 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                 </thead>
                 <tbody>
                   {planRows.map((r, i) => (
+                    // WO-UI-DECLUTTER-TOP3：逐行 `title=` → `aria-label`；「点任意行看推导过程」这句
+                    // 说一次就够，已收进表头的 `?` 浮层（规范 §2：`title` 不是浮层）。
                     <tr key={i} data-testid={`risk-plan-row-${i}`} role="button" tabIndex={0}
-                      title={zh.risk.plan.rowHint}
+                      aria-label={zh.risk.plan.rowHint}
                       style={{ cursor: "pointer", background: openPlanRow === i ? "var(--panel2, rgba(120,160,200,.10))" : undefined }}
                       onClick={() => setOpenPlanRow(openPlanRow === i ? null : i)}
                       onKeyDown={(e) => e.key === "Enter" && setOpenPlanRow(openPlanRow === i ? null : i)}>
@@ -440,6 +463,25 @@ function OverlayEffectNote({ rows }: { rows: PlanRow[] }) {
   if (byBase.size === 0) return null;
   const landed = [...byBase.entries()].filter(([, v]) => v.capRatio !== 1);
   const withGap = landed.filter(([, v]) => v.shortfall > 0);
+  /*
+   * ═══ 规范 §4 豁免声明（docs/CONVENTION-ui-information-layering.md §4「豁免要在代码注释里写明理由」）═══
+   *
+   * **豁免对象**：本回执整块（`risk-plan-overlay-note`）留在第一层，不降浮层、不折叠。
+   *
+   * **理由一（它是结论，不是解释）**：本块回答的是「我拖完杠杆点了重算，为什么表格一个字没变」。
+   *   按规范 §1 的三层准入，这属于**状态**（好/警/危里的"警"）——第一层的正当住户。
+   *   它的前身正是 WO-CAPACITY-PAGE-100PCT ⑪ 记的那次**静默降级**事故：契约里 `planRows[].overlay`
+   *   一直有值、前端从来没渲染过，用户只看见"杠杆像是假的"。把它降回一次点击之后 = 复现那个事故。
+   *
+   * **理由二（`×` 在这里是量纲不是公式）**：门的 R-UI-3 判据用 `[×÷]` 作口径/公式的代理指标，
+   *   而本块里的 `×0.980` 是**比值本身**（capRatio 的记法），不是 `A × B ÷ C` 那种算法口径。
+   *   代理指标在这里过匹配了 —— 按规范 §1「数值本身」的原文，它该留第一层。
+   *   `apps/frontend-shell/test/capacity-page-100pct.test.tsx:135` 正是断言 `hefei ×0.980`
+   *   出现在这个节点上：这条断言守的就是"引擎回执必须亮出来"。
+   *
+   * **不豁免的部分**：本块**没有**任何口径说明或推导过程；真需要解释"杠杆怎么算的"时，
+   *   那句解释归上方杠杆面板的 `?` 浮层，不归这里。豁免只覆盖这一个回执节点。
+   */
   return (
     <span data-testid="risk-plan-overlay-note" style={{ fontSize: 10, color: "var(--muted2)" }}>
       {landed.length === 0
@@ -537,7 +579,13 @@ function OrderAggView({ horizon }: { horizon: number }) {
       {/* 经营数据聚合表 + 分类维度切换。 */}
       <div className={styles.rkDet} style={{ marginTop: 4 }}>
         <div className={styles.rkDetH}>
-          <b>受影响订单 · 经营数据看板</b>
+          <b>
+            受影响订单 · 经营数据看板
+            {/* WO-UI-DECLUTTER-TOP3：表下那段「取数怎么勾稽 / 为什么有列是 —」的成段说明降进这里（规范 §1 浮层放「凭什么」）。 */}
+            <InfoPopover topic={zh.risk.info.econSource} testId="order-agg-source">
+              <p>{zh.risk.info.econSourceBody}</p>
+            </InfoPopover>
+          </b>
           <span>这些订单牵动的产能与财务（{seg === "app" ? "按应用细分" : "按基地"}）· 金额单位 亿元</span>
         </div>
         {/*
@@ -546,8 +594,16 @@ function OrderAggView({ horizon }: { horizon: number }) {
           顶部 KPI「受影响订单(批)」= 上方看板**展示的那几张风险卡**的并集，覆盖面更窄，故可能略少。
           （修前本表窗口写死 180 天，30/60/90 chip 拖了不动、且与 KPI 差一大截——已修，见 risk.ts affectedOrdersAggregate。）
         */}
+        {/*
+          WO-UI-DECLUTTER-TOP3（规范 §2 R-UI-3「口径不在第一层」）：
+          第一层只留**范围本身**（窗口天数 + 覆盖面），「与顶部 KPI 为何对不上」这条口径差降进 `?` 浮层。
+          `?` 触发器即规范 §1 要求的「可见记号」——降层不是删除。
+        */}
         <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }} data-testid="risk-order-agg-caliber">
-          口径：未来 {horizon} 天内交期 · 覆盖全部基地（顶部 KPI「受影响订单」只统计上方展示的风险卡，覆盖面更窄，数值可能略少）
+          未来 {horizon} 天内交期 · 全部基地
+          <InfoPopover topic={zh.risk.info.caliber} testId="order-agg-caliber">
+            <p>{zh.risk.info.caliberBody}</p>
+          </InfoPopover>
         </div>
         <div style={{ fontSize: 11, color: "var(--muted)", margin: "4px 0 12px", display: "flex", alignItems: "center", gap: 7 }}>
           分类维度：
@@ -568,8 +624,11 @@ function OrderAggView({ horizon }: { horizon: number }) {
               {econRows.map((r) => (
                 <tr key={r.name} data-testid={`risk-econ-row-${r.name}`}>
                   <td className="zh"><b>{r.name}</b> <span style={{ color: "var(--muted2)", fontSize: 10 }}>({r.orderCount})</span></td>
-                  <td className="mono" style={{ color: "var(--muted2)" }} title="平台暂无该维度受影响产能真源">—</td>
-                  <td className="mono" style={{ color: "var(--muted2)" }} title="平台暂无成品库存真源">—</td>
+                  {/* WO-UI-DECLUTTER-TOP3：逐格 `title=`（原生 tooltip·规范 §2 禁用）撤掉，
+                      「为什么是 —」由列头旁的「经营数据取数来源」`?` 浮层一次说清；
+                      `aria-label` 保留，读屏用户不靠 hover 也拿得到这条诚实位。 */}
+                  <td className="mono" style={{ color: "var(--muted2)" }} aria-label={zh.risk.info.econNoSource}>—</td>
+                  <td className="mono" style={{ color: "var(--muted2)" }} aria-label={zh.risk.info.econNoSource}>—</td>
                   <td className="mono" style={{ color: "var(--muted2)" }}>—</td>
                   <td className="mono" style={{ color: "var(--muted2)" }}>—</td>
                   <td className="mono" style={{ color: "var(--c-forecast)", fontWeight: 700 }}>
@@ -622,9 +681,8 @@ function OrderAggView({ horizon }: { horizon: number }) {
             </tbody>
           </table>
         )}
-        <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }}>
-          未结订单金额/毛利额/毛利率经 affected_orders 真订单 × SEG_REGISTRY 单价勾稽真聚合（R13 可溯·R6 单一真相源）；产能/库存列平台暂无该维度真数据源 → 诚实"—"（不伪造·G-DM-1）。
-        </div>
+        {/* 这段原在表下第一层铺开（口径 + 公式 + 诚实位三合一，>60 字）——
+            已整段降进上方「经营数据取数来源」`?` 浮层，内容一字未删（规范 §1：允许降层，绝不允许删除）。 */}
       </div>
 
       {/* 基地筛选 + 订单明细表。 */}
@@ -648,7 +706,14 @@ function OrderAggView({ horizon }: { horizon: number }) {
         </div>
         {rows.length === 0 ? (
           <div className="empty-state" data-testid="risk-order-empty" style={{ fontSize: 12 }}>
-            {fail ? failLine : "affected_orders 返回 0 行：当前范围（窗口 + 基地筛选）内无受影响订单。"}
+            {/* 第一层留**状态**（"无受影响订单"）；求解器名与筛选条件是诊断信息 → 浮层（规范 §1）。 */}
+            {fail ? failLine : "当前范围内无受影响订单"}
+            {!fail && (
+              <InfoPopover topic={zh.risk.info.caliber} testId="order-empty-why">
+                <p>affected_orders 返回 0 行：当前范围（窗口 + 基地筛选）内无受影响订单。</p>
+                <p>{zh.risk.info.caliberBody}</p>
+              </InfoPopover>
+            )}
           </div>
         ) : (
           <table className="cmp" data-testid="risk-order-detail-table">
@@ -972,8 +1037,13 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, rc
   return (
     <div className={styles.rkDet} style={{ marginTop: 12 }} data-testid={`rootcause-panel-${base}`}>
       <div className={styles.rkDetH}>
-        <b>🌳 {base} · 根因推演树</b>
-        <span>为什么越线：结构反向归因（设备/物料/订单）→ caused_by 溯终点根因 · 每节点下钻真对象（R13）</span>
+        <b>
+          🌳 {base} · 根因推演树
+          {/* WO-UI-DECLUTTER-TOP3：「归因怎么算出来的」整段降进 `?` 浮层（规范 §1：浮层回答「凭什么」）。 */}
+          <InfoPopover topic={zh.risk.info.rootcause} testId={`rootcause-how-${base}`}>
+            <p>{zh.risk.info.rootcauseBody}</p>
+          </InfoPopover>
+        </b>
       </div>
       {/* WO-FACTOR-SCOPE-SINGLESOURCE · 因子作用域切换：chip 的**值 = CausalFactor.factorId**（引擎认的键），
           **显示 = label**（用户认得的因子名）；候选集来自引擎回执 `scope.availableFactors`，前端零拼装。
@@ -1044,7 +1114,12 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, rc
         /* 加载态**独立**：请求还在飞，什么结论都还没有 → 只说"在取"，绝不出现"暂不可用"。 */
         <div className="empty-state" data-testid={`rootcause-loading-${base}`} style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)" }}>
           <b style={{ color: "var(--muted2)" }}>正在取「{base}」的根因归因…</b>
-          <div style={{ marginTop: 6 }}>请求：<span className="mono">{reqLine}</span></div>
+          {/* 请求串是**调试信息**（规范 §1 第一层明确不许放）→ 降进折叠区；
+              `<summary>` 本身就是规范 §1 要求的「可见记号」，一次点击即见，未删一字。 */}
+          <details className={styles.rkDiag}>
+            <summary className={styles.rkDiagSum}>{zh.risk.info.rootcauseDiag}</summary>
+            <div style={{ marginTop: 6 }}>请求：<span className="mono">{reqLine}</span></div>
+          </details>
         </div>
       ) : dag && nodeCount > 0 ? (
         <>
@@ -1059,16 +1134,33 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, rc
               {zh.risk.live.rootcause.refined(scope?.factorLabel ?? String(rcFactor))}
             </div>
           ) : (
+            /* WO-UI-DECLUTTER-TOP3：诚实位的**状态**（「未按因子细分」）留第一层；
+               「怎么才能细分 / 数据源怎么算」这段口径降进 `?` 浮层。规范 §1：静默降层等于删除 ——
+               故第一层仍看得见「未按因子细分」这个记号，浮层只承接解释。 */
             <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
-              {zh.risk.live.rootcause.baseAggregated(factor)}
+{zh.risk.live.rootcause.baseAggregatedShort}
+              <InfoPopover topic={zh.risk.info.rootcause} testId={`rootcause-scope-${base}`}>
+                <p>{zh.risk.info.rootcauseBody}</p>
+                {/* canonical 原本把这整段口径直接渲染在第一层；本单把它降进浮层，
+                    **不删**（D4 守恒）——仍走同一个 i18n 函数，不内联、不丢参数。 */}
+                <p>{zh.risk.live.rootcause.baseAggregated(factor)}</p>
+              </InfoPopover>
             </div>
           )}
         </>
       ) : (
         <div className="empty-state" data-testid={`rootcause-gap-${base}`} style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)" }}>
           <b style={{ color: "var(--muted2)" }}>根因推演树无数据（诚实灰·未伪造过程）</b>
-          <div style={{ marginTop: 6 }}>请求：<span className="mono">{reqLine}</span></div>
-          {error ? (
+          {/*
+            WO-UI-DECLUTTER-TOP3（规范 §1：第一层不许放「诊断信息 · 调试信息」）：
+            诚实位的**结论**（上面那句「无数据·未伪造过程」）留在第一层；
+            请求串 / HTTP 状态码 / 错误码 / requestId / 响应字段路径 / 排查下一步 —— 这些是**诊断**，
+            整块降进折叠区。`<summary>` 即规范 §1 要求的「可见记号」，**一字未删**（§1 红线：允许降层，绝不允许删除）。
+          */}
+          <details className={styles.rkDiag} data-testid={`rootcause-diag-${base}`}>
+            <summary className={styles.rkDiagSum}>{zh.risk.info.rootcauseDiag}</summary>
+            <div style={{ marginTop: 6 }}>请求：<span className="mono">{reqLine}</span></div>
+            {error ? (
             /* 失败态：只报响应里读得出的东西——HTTP 状态码、错误码、requestId、后端 message。不猜原因。 */
             (() => {
               const f = observedFailure(error);
@@ -1108,7 +1200,8 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, rc
                 若确实不在该集合内，则本窗口下该基地无结构归因份额可展开。
               </div>
             </>
-          )}
+            )}
+          </details>
         </div>
       )}
     </div>
@@ -1329,6 +1422,28 @@ function FactorRow({ label, sub, color, values, threshold, onDay, affectedByDay 
                 display: "flex",
                 alignItems: "flex-end",
               }}
+              /*
+               * ═══ 规范 §4 豁免声明（§4「豁免要在代码注释里写明理由」）═══
+               *
+               * **豁免对象**：逐日张力条上**每个日格**的原生 `title=`（全页仅此一处保留）。
+               *
+               * **理由（换成真浮层会更糟，不是不想换）**：本条是 30 / 60 / 90 个日格的密集时序带，
+               *   每格宽约 6px。规范 §2 要的 `?` 触发器在这里落不下 —— 真要落，就是一屏 90 个 `?`，
+               *   那恰好是规范 §0 反对的「第一层堆料」，比原生 tooltip 更违规范。
+               *   本页其余 5 处原生 `title=` 已全部换成 `InfoPopover` / `aria-label`（见上方各处注释），
+               *   只有这一处的**几何**不允许。
+               *
+               * **不适用规范 §2 点名的那次事故**：那次是 `ChainLineMapView.tsx` 的 **SVG `<title>`**
+               *   在环形图上滞留并遮挡图形本身。本处是 HTML `<div>` 的 `title` 属性，不进 SVG 绘制层、
+               *   不参与图形合成，无遮挡路径。
+               *
+               * **诚实位不丢**：`aria-label` 同值并存 —— 读屏与键盘用户不靠 hover 也拿得到这个数。
+               *
+               * **有测试咬住**：`risk-honest-gray-and-daily.test.tsx:201`、
+               *   `risk-order-delivery-icon.test.tsx:61`、`f23.order-chain.test.tsx:82`
+               *   三处断言这个 `title` 的内容 —— 它承载的是**数值**（当日张力 / 受影响单数），
+               *   按规范 §1 本就属第一层，只是借 tooltip 做了逐格投递。
+               */
               title={title}
               aria-label={title}
               data-testid={onDay ? `risk-dot-${i}` : undefined}
@@ -1392,7 +1507,19 @@ function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors 
 
   return (
     <div>
-      <div className={styles.wfT} style={{ color: "var(--ok)" }}>💡 对症方案 · 比对推演 · {factor}（{plans.length} 个）</div>
+      {/*
+        WO-UI-DECLUTTER-TOP3 · 本页第一层最刺眼的一条（普查点名）：
+        「为什么推荐？综合评分 = 见效 × 紧迫度 ÷（投入档 × 周期）」——**口径公式**摆在第一层，
+        正是规范 §2 R-UI-3 原文点名的 `A × B ÷ C` 形态。连同「④ 采纳经 adopt_mitigation…」
+        这条流程说明一起降进本 `?` 浮层；第一层只留结论（谁分最高）与那张比对矩阵的数字。
+      */}
+      <div className={styles.wfT} style={{ color: "var(--ok)" }}>
+        💡 对症方案 · 比对推演 · {factor}（{plans.length} 个）
+        <InfoPopover topic={zh.risk.info.score} testId="mitigation-score-calc">
+          <p>{zh.risk.info.scoreBody}</p>
+          <p>{zh.risk.info.adoptGateBody}</p>
+        </InfoPopover>
+      </div>
       {isLoading ? (
         <div style={{ color: "var(--muted2)", fontSize: 11 }}>{zh.common.loading}</div>
       ) : mitFail ? (
@@ -1407,8 +1534,9 @@ function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors 
         <div className="empty-state" style={{ fontSize: 11 }} data-testid="mitigation-empty">{zh.common.none}</div>
       ) : (
         <>
-          {/* ② score 拆解 = 跨方案比对矩阵（非单一数字·真出处 mitigation_select.plans[]）：一眼见谁综合分最高·为何。 */}
-          <div style={{ fontSize: 10.5, color: "var(--muted)", margin: "2px 0 5px" }}>为什么推荐？综合评分 = 见效 × 紧迫度 ÷（投入档 × 周期）——比对如下（评分降序）：</div>
+          {/* ② score 拆解 = 跨方案比对矩阵（非单一数字·真出处 mitigation_select.plans[]）：一眼见谁综合分最高·为何。
+              评分公式已降进上方「综合评分口径」`?` 浮层（规范 R-UI-3），此处只留排序事实。 */}
+          <div style={{ fontSize: 10.5, color: "var(--muted)", margin: "2px 0 5px" }}>评分降序</div>
           <table className="cmp" data-testid="mitigation-matrix" style={{ fontSize: 11, marginBottom: 10 }}>
             <thead>
               <tr><th>方案</th><th>见效(pp)</th><th>周期(周)</th><th>投入</th><th>风险</th><th>综合评分</th></tr>
@@ -1455,14 +1583,18 @@ function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors 
                   <span>② 评分构成：见效 {p.eff}pp · 周期 {p.tn}周 · 投入 {p.cost} · 风险 {p.risk ?? "—"} → 综合 <b>{p.score}</b>（{p.key === recommended ? "全案最高·故推荐" : `第 ${rankOf(p.key)} 名`}）</span>
                   <span data-testid={`mitigation-block-${p.key}`}>
                     ③ 预期堵口：峰值张力 {Math.round(tightness)} − 见效 {p.eff}pp → <b style={{ color: clears ? "var(--ok)" : "var(--danger)" }}>{after}</b>
-                    {clears ? `（预计消解越线·<阈值 ${threshold}）` : `（仍越线·需叠加方案）`} <span style={{ color: "var(--muted2)" }}>· 源 mitigation_select.eff</span>
+                    {/* 数据来源（`mitigation_select.eff`）按规范 §1 属浮层「凭什么」那一层，已收进
+                        上方「综合评分口径」浮层；第一层只留堵口后的**数值**与是否消解的**状态**。 */}
+                    {clears ? `（预计消解越线·<阈值 ${threshold}）` : `（仍越线·需叠加方案）`}
                   </span>
                 </div>
               </div>
             );
           })}
+          {/* 「采纳之后会发生什么」这段流程说明已降进上方「综合评分口径」浮层；
+              第一层保留链路名本身（adopt_mitigation → Action 审批）——那是**名字**，属第一层。 */}
           <div style={{ fontSize: 10, color: "var(--muted2)", marginTop: 6 }} data-testid="mitigation-gate-note">
-            ④ 采纳经 <b>adopt_mitigation</b> 生成 Action 草稿 → 审批后下发工单（C5 门不绕·前端不直改计划）。
+            ④ 采纳经 <b>adopt_mitigation</b> → Action 审批（C5）
           </div>
         </>
       )}
@@ -1510,7 +1642,14 @@ function QaPanel({ card, threshold }: { card: RiskCard; threshold: number }) {
         />
         <button data-testid="risk-qa-ask" onClick={() => { if (input.trim()) { setAns(answer(input)); setInput(""); } }}>{zh.risk.qa.ask}</button>
       </div>
-      <div data-testid="risk-qa-disclosure" style={{ marginTop: 6, fontSize: 10, color: "var(--muted2)", lineHeight: 1.5 }}>{zh.risk.qa.disclosure}</div>
+      {/* WO-UI-DECLUTTER-TOP3：诚实位「这不是智能问答」降进 `?` 浮层，
+          第一层留 `?` 记号（规范 §1：静默降层等于删除 —— 记号不能省）。 */}
+      <div data-testid="risk-qa-disclosure" style={{ marginTop: 6, fontSize: 10, color: "var(--muted2)", lineHeight: 1.5 }}>
+        <InfoPopover topic={zh.risk.info.qa} testId="risk-qa-disclosure-info">
+          <p>{zh.risk.qa.disclosure}</p>
+          <p>{zh.risk.qa.intro}</p>
+        </InfoPopover>
+      </div>
     </div>
   );
 }
@@ -1526,8 +1665,15 @@ function HistoricalCasesSection() {
   if (cases.length === 0) return null;
   return (
     <div style={{ marginTop: 20 }}>
-      <div className="section-title">历史处置案例（{cases.length} 例 · 越线 → 采纳 → 消解）</div>
-      <table className="cmp" data-testid="risk-cases-table">
+      {/*
+        WO-UI-DECLUTTER-TOP3（规范 §1：**逐项明细属第二层**，第一层只放结论/数值/名字）：
+        历史案例表是 7 列 × N 行的**明细**，本页的问题是「未来会不会越线」，历史是佐证不是结论。
+        故整表降到一次点击之后；第一层留「N 例 · 越线 → 采纳 → 消解」这个**数值 + 名字**，
+        `<summary>` 即规范 §1 要求的可见记号。表内容一行未删（§1 红线）。
+      */}
+      <details className={styles.rkCases} data-testid="risk-cases-disclosure">
+        <summary className="section-title">历史处置案例（{cases.length} 例 · 越线 → 采纳 → 消解）</summary>
+        <table className="cmp" data-testid="risk-cases-table">
         <thead>
           {/* 末列此前只出一个裸数「3」——列名「受影响订单」不足以说明是**批数**还是套数，故列头带单位（与 §7.3 台账「N 批」同口径）。 */}
           <tr><th>编号</th><th>案例</th><th>因子</th><th>越线日</th><th>采纳处置</th><th>消解日</th><th>受影响订单(批)</th></tr>
@@ -1545,7 +1691,8 @@ function HistoricalCasesSection() {
             </tr>
           ))}
         </tbody>
-      </table>
+        </table>
+      </details>
       {replay && <CaseReplayModal kase={replay} onClose={() => setReplay(null)} />}
     </div>
   );
