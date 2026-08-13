@@ -1,5 +1,5 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
-import type { PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport } from "@platform/contracts";
+import type { BuildPipeline, BuildPipelineKind, PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition } from "@platform/contracts";
 // WO-UNBLOCK-SKILL-FE · 编译 mock 复用**契约里那份**纯函数实现（Parser/图派生住在 contracts，
 // 见 packages/contracts/src/skill-compile.ts）——绝不在此另抄一套 AST/图推导，抄了就是"同一概念两套词表"。
@@ -52,6 +52,7 @@ import {
   type MockAccount,
 } from "./fixtures";
 import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
+import { BUILD_PIPELINE_KINDS, factoryPipeline, pipelineOrder, resolvePipeline } from "./pipelineFixtures";
 // WO-WAITING-STATES-FE · 流程等待态 fixture（过契约 schema 的真种子子集，见该文件头三重防漂移机制）
 import { PROCESS_DEFINITIONS_RESPONSE } from "./processWaitFixtures";
 import { historyBundleFor, LIVED_WATERMARK } from "./livedInFixtures";
@@ -960,6 +961,29 @@ export function clearMockTimers(): void {
   }
 }
 
+/**
+ * WO-FE-WIRE-2 件一：原 intake 写死响应拆成**两段具名产物**，让 pipeline 的节点开关能逐段生效
+ * （intake_parse 产 INTAKE_PARSE_RESULT · intake_reconcile 产 INTAKE_RECONCILE_RESULT）。
+ * 值与拆分前逐字一致 —— 出厂默认（四节点全开）下 intake 响应的 intake/reconcile 两段与改造前相同。
+ */
+const INTAKE_PARSE_RESULT = {
+  dataSources: [
+    { name: "BASE_DATA", columns: ["baseId", "name", "util", "gwh"], sampleRows: [{ baseId: "changzhou", name: "常州", util: 88, gwh: 35 }, { baseId: "xiamen", name: "厦门", util: 85, gwh: 28 }] },
+    { name: "ORDER_DATA", columns: ["so", "cust", "model", "qty", "baseRef"], sampleRows: [{ so: "SO-001", cust: "星辰汽车", model: "4680-NCM", qty: 1200, baseRef: "changzhou" }] },
+  ],
+  links: [{ src: "ORDER_DATA", tgt: "BASE_DATA", rel: "produced_at" }],
+  unparsed: [{ name: "CHART_CONFIG", reason: "非数据表（图表配置对象，已诚实跳过不静默丢）" }],
+};
+const INTAKE_RECONCILE_RESULT = {
+  autoMapped: [
+    { datasetName: "BASE_DATA", column: "name", targetType: "Base", targetField: "name" },
+    { datasetName: "BASE_DATA", column: "util", targetType: "Base", targetField: "util" },
+  ],
+  candidates: [
+    { datasetName: "ORDER_DATA", column: "cust", candidates: [{ targetType: "Order", targetField: "cust", score: 0.82 }, { targetType: "Customer", targetField: "name", score: 0.61 }] },
+  ],
+};
+
 export const handlers = [
   // ======================== A · DataCore ========================
 
@@ -997,29 +1021,63 @@ export const handlers = [
   // DF.12 边界册治理：影响图 + 版本（直接派生 contracts 单一来源，与真后端同源）。
   http.get("*/a/v1/boundary/impact", () => HttpResponse.json({ impact: BOUNDARY_IMPACT, registries: BOUNDARY_IMPACT.map((b) => b.registry) })),
   http.get("*/a/v1/boundary/version", () => HttpResponse.json(boundaryVersion())),
-  // DF.13c 原型 intake（mock：返回确定性示例解析 + 对账；真后端 parsePrototypeHtml 确定性解析上传 HTML）。
-  http.post("*/a/v1/databuilder/intake", () =>
-    HttpResponse.json({
-      intake: {
-        dataSources: [
-          { name: "BASE_DATA", columns: ["baseId", "name", "util", "gwh"], sampleRows: [{ baseId: "changzhou", name: "常州", util: 88, gwh: 35 }, { baseId: "xiamen", name: "厦门", util: 85, gwh: 28 }] },
-          { name: "ORDER_DATA", columns: ["so", "cust", "model", "qty", "baseRef"], sampleRows: [{ so: "SO-001", cust: "星辰汽车", model: "4680-NCM", qty: 1200, baseRef: "changzhou" }] },
-        ],
-        links: [{ src: "ORDER_DATA", tgt: "BASE_DATA", rel: "produced_at" }],
-        unparsed: [{ name: "CHART_CONFIG", reason: "非数据表（图表配置对象，已诚实跳过不静默丢）" }],
-      },
-      reconcile: {
-        autoMapped: [
-          { datasetName: "BASE_DATA", column: "name", targetType: "Base", targetField: "name" },
-          { datasetName: "BASE_DATA", column: "util", targetType: "Base", targetField: "util" },
-        ],
-        candidates: [
-          { datasetName: "ORDER_DATA", column: "cust", candidates: [{ targetType: "Order", targetField: "cust", score: 0.82 }, { targetType: "Customer", targetField: "name", score: 0.61 }] },
-        ],
-      },
-    }),
+  // ── WO-FE-WIRE-2 件一 · pipeline 配置面（后端已开五条·此前前端零调用方）──
+  http.get("*/a/v1/databuilder/pipelines", () =>
+    HttpResponse.json({ items: BUILD_PIPELINE_KINDS.map((k) => resolvePipeline(k)) }),
   ),
-
+  http.get("*/a/v1/databuilder/pipelines/:kind", ({ params }) =>
+    HttpResponse.json(resolvePipeline(params.kind as BuildPipelineKind)),
+  ),
+  // 覆盖（幂等）：落一条即 factory:false —— 下次 intake 执行**立刻按新定义跑**。
+  http.put("*/a/v1/databuilder/pipelines/:kind", async ({ params, request }) => {
+    const kind = params.kind as BuildPipelineKind;
+    const body = (await request.json()) as { name: string; nodes: BuildPipeline["nodes"]; edges: BuildPipeline["edges"] };
+    const saved: BuildPipeline = {
+      id: `bpp_${kind}`, tenantId: "demo", kind,
+      name: body.name, nodes: body.nodes ?? [], edges: body.edges ?? [],
+      factory: false, updatedAt: "2026-08-11T00:00:00Z",
+    };
+    db.buildPipelines[kind] = saved;
+    return HttpResponse.json(saved);
+  }),
+  // 撤销覆盖 → 回出厂默认。
+  http.delete("*/a/v1/databuilder/pipelines/:kind", ({ params }) => {
+    const kind = params.kind as BuildPipelineKind;
+    delete db.buildPipelines[kind];
+    return HttpResponse.json(factoryPipeline(kind));
+  }),
+  // 节点 SOP「人要不要介入」的放行：PAUSED 的 run 放行该步并续跑（没人能放行 = 死锁）。
+  http.post("*/a/v1/databuilder/workflow-runs/:id/approve", async ({ params, request }) => {
+    const body = (await request.json()) as { stepKey: string };
+    const wf = MOCK_WORKFLOW_RUNS.find((x) => x.id === (params as { id: string }).id);
+    if (!wf) return new HttpResponse(null, { status: 404 });
+    // 放行该步 → 续跑（与真后端 approveWorkflowStep 同语义：放行 + resume，不是把整条 run 直接判成功）。
+    const step = wf.steps.find((s) => s.stepKey === body.stepKey);
+    if (step) step.status = "SUCCEEDED";
+    wf.status = wf.steps.every((s) => s.status === "SUCCEEDED") ? "SUCCEEDED" : "RUNNING";
+    return HttpResponse.json(wf);
+  }),
+  // DF.13c 原型 intake（mock：返回确定性示例解析 + 对账；真后端 parsePrototypeHtml 确定性解析上传 HTML）。
+  // ★ WO-FE-WIRE-2：**按生效 pipeline 跑**——节点关掉 → 该段产物真的不出现；标「要人放行」→ 停 PAUSED。
+  // 这样「在界面上改 pipeline ⇒ intake 处理行为跟着变」是真的接缝，而不是只测 CRUD 存取。
+  http.post("*/a/v1/databuilder/intake", () => {
+    const pipeline = resolvePipeline("intake");
+    const ran: string[] = [];
+    const out: Record<string, unknown> = {};
+    for (const n of pipelineOrder(pipeline)) {
+      if (!n.enabled) continue; // 关掉 = 不执行（保留在画布上）
+      if (n.sop.requiresHumanApproval) {
+        // 执行到该节点**前**置 PAUSED 等人批准（approve 后 resume 续跑）。
+        return HttpResponse.json({ ...out, status: "PAUSED", pausedAt: n.stepKey, ranSteps: ran, pipeline: { kind: pipeline.kind, factory: pipeline.factory } });
+      }
+      ran.push(n.stepKey);
+      if (n.stepKey === "intake_parse") out.intake = structuredClone(INTAKE_PARSE_RESULT);
+      if (n.stepKey === "intake_reconcile") out.reconcile = structuredClone(INTAKE_RECONCILE_RESULT);
+      if (n.stepKey === "intake_persist_candidates") out.persistedCandidates = INTAKE_RECONCILE_RESULT.candidates.length;
+      if (n.stepKey === "intake_emit") out.emitted = "prototype.intake_recorded";
+    }
+    return HttpResponse.json({ ...out, status: "SUCCEEDED", ranSteps: ran, pipeline: { kind: pipeline.kind, factory: pipeline.factory } });
+  }),
   // P3 导入正门（mock）：HTML 物化进库 → 返回落库连接 + RawDataset 概要（值与原型一致）。
   http.post("*/a/v1/databuilder/intake/import", () =>
     HttpResponse.json({

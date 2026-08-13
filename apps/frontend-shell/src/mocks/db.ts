@@ -1,4 +1,4 @@
-import type { ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, PurposeBinding, RuleEntry, Scenario, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
+import type { BuildPipeline, BuildPipelineKind, ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, PurposeBinding, RuleEntry, Scenario, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
 import type { SimClockVM, SopVersionVM, TickReportVM } from "@/api/types";
 import { seedSopVersions } from "./simSolvers";
 import type { RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
@@ -80,6 +80,13 @@ interface MockDb {
     apply: { objectType: string; objectId: string; prop: string; value: number }[];
     kpis: { capGain: number; affected: number }; createdAt: string;
   }[];
+  /**
+   * WO-FE-WIRE-2 件一：databuilder pipeline 的**租户覆盖**（缺 = 出厂默认 factory:true）。
+   * 与真后端同语义：PUT 落一条即覆盖、DELETE 抹掉即回出厂；`intake` 处理链**按此表跑**
+   * （见 handlers.ts 的 intake 处理器）——这样"改 pipeline ⇒ 处理行为跟着变"在 mock 态也是真的，
+   * 而不是只测了 CRUD 存取。
+   */
+  buildPipelines: Partial<Record<BuildPipelineKind, BuildPipeline>>;
 }
 
 function freshDb(): MockDb {
@@ -126,6 +133,7 @@ function freshDb(): MockDb {
     adminViews: structuredClone(ADMIN_VIEWS),
     opsSchedule: null,
     liveScenarios: [],
+    buildPipelines: {}, // 缺省空 = 三 kind 全走出厂默认（与真后端 factory:true 同语义）
   };
 }
 
