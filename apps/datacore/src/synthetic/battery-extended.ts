@@ -1,7 +1,7 @@
 import type { ObjectTypeDef, PropertyDef } from "../domain.js";
 import { WAVE1_SCALE_FACTOR } from "@platform/contracts";
 import { mulberry32, round, hashString } from "../prng.js";
-import { withPropDisplayNames } from "./battery.js";
+import { withPropDisplayNames, ORDER_CUST_TO_CUSTOMER } from "./battery.js";
 
 /**
  * 20 场景目录 §7 GenSpec 扩展（成熟度 E6b）：为 13 个新求解器确定性生成所需对象数据，
@@ -145,7 +145,26 @@ export function extendedObjectTypes(): TypeDef[] {
       p("action", "string"), p("actionDetail", "string"), p("cfgRuleKey", "string"),
     ]),
     def("MaterialBatch", "物料批次", "supply", [p("batchId", "string", true), p("matId", "string"), p("qty"), p("ageDays"), p("idleDays")]),
-    def("Customer", "客户", "commercial", [p("custId", "string", true), p("custName", "string"), p("creditLimit"), p("termDays"), p("receivables"), p("wipUnbilled"), p("maxOverdueDays")]),
+    // WO-QUOTE-MARGIN-CUSTOMER：+`orderCustNames`（本客户在订单上使用的下单品牌名集合·`Order.cust` 口径）——
+    // 客户主数据与订单两套命名之间的**唯一桥**。缺这一列时 `order_of_customer` 只能轮转瞎绑（欠账 #118）。
+    def("Customer", "客户", "commercial", [
+      p("custId", "string", true),
+      p("custName", "string"),
+      {
+        propKey: "orderCustNames",
+        dataType: "json",
+        isPrimaryKey: false,
+        description:
+          "本客户在订单上使用的下单品牌名集合（`Order.cust` 口径）——客户主数据的匿名化名册与订单侧品牌名之间的唯一桥。" +
+          "由归属册 `ORDER_CUST_TO_CUSTOMER` 反查派生（排序确定性 R6）；`order_of_customer` 边据此绑定，" +
+          "空集 = 该客户不在归属册内（不认领任何订单，诚实缺席，不参与轮转）。",
+      },
+      p("creditLimit"),
+      p("termDays"),
+      p("receivables"),
+      p("wipUnbilled"),
+      p("maxOverdueDays"),
+    ]),
     // WO-WAREHOUSE-CUSTLOC：客户交付地点（交付/物流/在途/跨基地调拨的地理基础）。省市/经纬度 R14 确定性配置表派生。
     def("CustomerLocation", "客户地点", "commercial", [
       p("locId", "string", true),
@@ -620,10 +639,19 @@ export function generateExtended(
 
   // Customer：PRD-IND-order-aggregate HTML 8 客户（与订单 cust 对齐，order_of_customer 可连）+ extraCustomers 工业级补充。
   const custNames = ["整车厂A", "整车厂B", "整车厂C", "海外车企E", "商用车集团G", "储能集成商D", "储能集成商H", "电网公司F"];
+  // WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）：把「本客户在订单上用哪些品牌名下单」**物化成客户主数据的一列**
+  // （`orderCustNames`，由 ORDER_CUST_TO_CUSTOMER 反查·排序后确定性）。此前这层关系**根本不存在**，
+  // `order_of_customer` 只能靠轮转瞎绑；有了这一列，边=归属、求解器=可溯源，三处读同一份册（R14）。
+  const orderCustNamesOf = (custName: string) =>
+    Object.entries(ORDER_CUST_TO_CUSTOMER)
+      .filter(([, target]) => target === custName)
+      .map(([oc]) => oc)
+      .sort();
   const customers = [
     ...custNames.map((name, ci) => ({
       custId: `cust_${ci}`, // ascii pk（避免中文名 sanitize 后 id 碰撞）
       custName: name,
+      orderCustNames: orderCustNamesOf(name),
       creditLimit: round((2000 + rng() * 8000) * WAVE1_SCALE_FACTOR, 0),
       termDays: 60,
       receivables: round(rng() * 3000 * WAVE1_SCALE_FACTOR, 0),
@@ -633,6 +661,7 @@ export function generateExtended(
     ...Array.from({ length: extraCustomers }, (_, k) => ({
       custId: `cust_x${k}`,
       custName: `客户${String(k + 1).padStart(3, "0")}`,
+      orderCustNames: [] as string[], // 规模补足客户不在归属册内 → 无下单品牌名（诚实空，不轮转认领）
       creditLimit: round((1000 + rng() * 9000) * WAVE1_SCALE_FACTOR, 0),
       termDays: 60,
       receivables: round(rng() * 3000 * WAVE1_SCALE_FACTOR, 0),
