@@ -4000,7 +4000,11 @@ export const handlers = [
       if (!pauseAt) return wf;
       const i = wf.steps.findIndex((s) => s.stepKey === pauseAt);
       if (i < 0) return wf;
-      for (const [j, s] of wf.steps.entries()) if (j >= i) { s.status = "PENDING"; delete (s as Record<string, unknown>)["error"]; }
+      // 停在放行闸前 ⇒ 闸前的步都已跑完（归一 SUCCEEDED，清掉演示性 FAILED），闸起往后才是现场。
+      for (const [j, s] of wf.steps.entries()) {
+        if (j < i) { s.status = "SUCCEEDED"; delete (s as Record<string, unknown>)["error"]; }
+        else { s.status = "PENDING"; delete (s as Record<string, unknown>)["error"]; }
+      }
       wf.status = "PAUSED";
       wf.storyRunId = undefined;
       return wf;

@@ -104,7 +104,7 @@ export default function BuildPipelinesPage() {
               key={p.kind}
               className="card"
               data-testid={`bp-kind-${p.kind}`}
-              style={{ padding: 12, minWidth: 240, cursor: "pointer", border: selected === p.kind ? "1px solid var(--accent, var(--border))" : undefined }}
+              style={{ padding: 12, minWidth: 240, cursor: "pointer", border: selected === p.kind ? "1px solid var(--accent)" : undefined }}
               onClick={() => openEditor(p)}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
