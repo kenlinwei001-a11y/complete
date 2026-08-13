@@ -1,0 +1,10 @@
+{
+  "note": "lever-landing-exists 棘轮基线：存量「落点指向不存在属性」的具名豁免，只许降不许升。每条必须写 why。",
+  "generatedBy": "node scripts/check-lever-landing-exists.mjs --update",
+  "exempt": {
+    "MaterialBalance.coverage": {
+      "verdict": "PROP_MISSING",
+      "why": "2026-08-13 本门首次运行现算的唯一存量违规。MaterialBalance 的真实属性是 matBalId/material/unit/netDemandTon/ltaPct/gapTon/etaDate（apps/datacore/dist/synthetic/battery.js 现读），没有 coverage。追一层确认不是误报：coverage 是求解器 lta_gap 的**输出字段**（apps/datacore/src/solvers/extended.ts:260 现算 ltaAvailable/netDemand，登记在 SOLVER_OUTPUT_SHAPES.lta_gap，solvers/service.ts:340），而 ontology-signature.ts:187 声明 mrp_netting 读的是 etaDate/gapTon/ltaPct/material/netDemandTon —— 求解器算得出的中间量不等于对象上存得住的属性。修法不属本单（要么把落点改指 MaterialBalance.ltaPct 这类真属性，要么在本体上真补出一条齐套覆盖率属性并让合成种子产值），故先具名挂账。同一条键在 lever-binding-drift:check 的 ORPHAN_ALLOW 里也有一条豁免，但那条治的是另一半（落点在不在 20 因子绑定表里），两者不可互相替代。"
+    }
+  }
+}
