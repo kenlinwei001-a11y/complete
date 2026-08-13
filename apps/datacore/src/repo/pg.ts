@@ -826,6 +826,11 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     orgAuthorities: new PgStore(pool, "org_authorities"),
     orgApprovalLimits: new PgStore(pool, "org_approval_limits"),
     orgDelegations: new PgStore(pool, "org_delegations"),
+    // WO-PROCESS-INSTANCE · 流程运行时层（R9 三处同改之三 · migrations/033_process_instances.sql）。
+    // 同上：表名写错不编译报错、memory 单测也测不到 —— process-instance.test.ts 复用同一条
+    // 「migration 抽表名 ↔ 本文件字面量」对账断言把这两行也纳入。
+    processInstances: new PgStore(pool, "process_instances"),
+    processTasks: new PgStore(pool, "process_tasks"),
     sim: new PgSimRepo(pool),
     async ping() {
       await pool.query("SELECT 1");

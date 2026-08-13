@@ -511,6 +511,9 @@ export function createMemoryRepos(): Repos {
     orgAuthorities: new MemStore(),
     orgApprovalLimits: new MemStore(),
     orgDelegations: new MemStore(),
+    // WO-PROCESS-INSTANCE · 流程运行时层（R9 三处同改之二 —— 与 repo.ts 接口 + pg.ts 同表语义）
+    processInstances: new MemStore(),
+    processTasks: new MemStore(),
     sim: new MemSimRepo(),
     async ping() {
       /* always ready */

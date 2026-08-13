@@ -1,4 +1,4 @@
-import type { ApprovalLimit, Authority, BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Delegation, EnterpriseState, OrgPrincipal, Perturbation, ProcessDefinition, ProcessDomain, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { ApprovalLimit, Authority, BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Delegation, EnterpriseState, OrgPrincipal, Perturbation, ProcessDefinition, ProcessDomain, ProcessInstance, ProcessTask, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -358,6 +358,12 @@ export interface Repos {
   orgApprovalLimits: Store<ApprovalLimit>;
   /** 代理关系（被代理人不在岗时权力落到谁身上）。 */
   orgDelegations: Store<Delegation>;
+  // ── WO-PROCESS-INSTANCE · 流程**运行时**层（migrations/033_process_instances.sql · PRD-enterprise-decision-twin §4.5）──
+  // 与 processDomains/processDefinitions 是**两层**不是两半：029 = 模板（这类流程通常怎么走），
+  // 033 = 现场（这一单此刻卡在哪）。同样走通用 Store（表结构 id/tenant_id/doc/created_at/updated_at）；
+  // R9 三处同改的另两处见 memory.ts / pg.ts。
+  processInstances: Store<ProcessInstance>;
+  processTasks: Store<ProcessTask>;
   // 推演沙盘（migration026·SPEC-sandbox-propagation-and-session §2.3；行业无关 jsonb）
   sim: SimRepo;
   /** Liveness for /readyz. */
