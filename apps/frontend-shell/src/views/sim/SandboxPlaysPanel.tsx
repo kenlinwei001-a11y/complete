@@ -25,8 +25,14 @@ import styles from "./SimViews.module.css";
  *  · 平行世界      = `POST …/sim/sessions/:id/checkpoint` + `POST …/:id/branch`（真端点）
  *  · 世界里的差异  = `POST …/sim/sessions/:child/perturbations`（真端点·契约唯一施加实现）
  *  · 并排比对      = `GET /a/v1/sim/compare?a=&b=`（真端点）
- *  · 采纳          = `POST /a/v1/action-drafts`（R4 正门·实测回 `PENDING_APPROVAL`）
+ *  · 采纳          = `POST /a/v1/action-drafts`（R4 正门）
  * 本文件**不新增任何真值源、不新增任何端点、不新增任何事件**。
+ *
+ * 上面六条**逐条连真后端跑过**（2026-08-13 · `SEED_DEMO=1` 内存态 · 非 `VITE_MOCK` 桩）：
+ * `decision_play` 回 3 个 option（根因 `seg_attain_ess` 缺口 27.8%）；三次 `branch` 各出一个子会话；
+ * `compare` 两列在落点上差 0.6098；`POST /a/v1/action-drafts` 回 `status: "PENDING_APPROVAL"`
+ * （**不是** EXECUTED）。复验：起 `node apps/datacore/dist/server.js`（`SEED_DEMO=1`）后按上列端点顺打，
+ * 或跑 `pnpm --filter frontend-shell exec vitest run test/sandbox-plays.seam.test.tsx`。
  *
  * ── ⛔ R4 红线（本块最容易被写错的一处）────────────────────────────────────────
  * 采纳**只**创建 `ActionDraft` 并进审批流。沙盘改的是 `SimSession` 的世界态，**不是本体真值**；
@@ -421,11 +427,22 @@ export default function SandboxPlaysPanel({ sessionId, curTick, anchor }: Sandbo
               <b>{o.label}</b>
               {recommended.has(o.optionId) ? <span data-testid={`sandbox-play-rec-${o.optionId}`}> ★{zh.sim.sandbox.plays.recommended}</span> : null}
               <br />
-              {dimKeys.map((k) => (
-                <span key={k} data-testid={`sandbox-play-dim-${o.optionId}-${k}`} style={{ marginRight: 8 }}>
-                  {DIM_META[k]?.label ?? k} <b className="mono">{fmt((o as unknown as Record<string, number>)[k] ?? 0)}</b>
-                </span>
-              ))}
+              {dimKeys.map((k) => {
+                // 「这一维上最优的是谁」全部由回包真值算出（方向语义见 `DIM_META`）——
+                // 未知维不判最优（`data-best="0"`），绝不悄悄按某个默认方向猜一个。
+                const best = bestByDim[k] === o.optionId;
+                return (
+                  <span
+                    key={k}
+                    data-testid={`sandbox-play-dim-${o.optionId}-${k}`}
+                    data-best={best ? "1" : "0"}
+                    style={{ marginRight: 8, color: best ? "var(--ok)" : undefined }}
+                  >
+                    {DIM_META[k]?.label ?? k} <b className="mono">{fmt((o as unknown as Record<string, number>)[k] ?? 0)}</b>
+                    {best ? "✓" : ""}
+                  </span>
+                );
+              })}
               <br />
               <span className={styles.sub} data-testid={`sandbox-play-prov-${o.optionId}`}>
                 {zh.sim.sandbox.plays.basis}

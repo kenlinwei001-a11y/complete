@@ -834,7 +834,7 @@ export const zh = {
         kpiOriginDerived:
           "**合成·占位**：屏上这批数由前端按 `hash01(对象id|变量名)×100` 确定性派生，还没取到后端世界态。它是可复现的占位（R6），不是任何实测值 —— 全对象取均值必然收敛到 50，那是大数定律，不是各项压力恰好都在中位。推进一个 tick、施加一条扰动，或世界态事件触发重取之后，这个记号会换成「实测」。",
         kpiOriginMeasured:
-          "**实测**：屏上这批数取自后端世界态（`GET /a/v1/sim/sessions/:id/world` 回包，或 tick / 扰动回包），不再是前端哈希占位。口径仍是 0–100 指数（见「读数量纲」）；它描述的是**这个推演会话里的模拟世界**，不是本体真值。",
+          "**实测**：屏上这批数取自后端世界态（`GET /a/v1/sim/sessions/:id/world` 回包，或 tick / 扰动回包），不再是前端哈希占位。口径仍是 0–100 指数（见「读数量纲」）；它描述的是**这个推演会话里的模拟世界**，不是本体真值。（本条口径实测于 2026-08-13；复验：`pnpm --filter frontend-shell exec vitest run test/sandbox-world-origin.seam.test.tsx`）",
         /** WO-V4-PLAYS · 方案环里那点差异的口径（诚实位，常驻第一层 + `?` 出全文）。 */
         playCaliber: "平行世界之间的差异是怎么造出来的",
         playCaliberBody:

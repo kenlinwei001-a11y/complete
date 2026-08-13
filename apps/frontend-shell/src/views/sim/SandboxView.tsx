@@ -1365,10 +1365,12 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
               {/**
                * WO-V4-HONEST-ORIGIN（PRD-sandbox-v4 §2.1 / §4.3）· **顶栏读数的出处徽标**。
                *
-               * 病历（仓主截图）：顶栏 16 个读数全落在 49.5–50.4 —— 那是
+               * 病历（仓主截图 · 2026-08-13）：顶栏 16 个读数全落在 49.5–50.4 —— 那是
                * `hash01(对象id|变量名)×100` 全对象取均值的**必然**结果（大数定律），
                * 不是"企业各项压力恰好都在中位"。同屏阻滞点行**有**「合成数据」徽标，顶栏一个都没有；
                * 两者并排，读者只会把没记号的那批读成实测。
+               * 复验：`apps/frontend-shell/test/sandbox-world-origin.seam.test.tsx` 第 ① 条
+               * 把屏上每个读数与 `deriveBaseSnapshot(cfg)` 的均值逐个对等。
                *
                * ⛔ 修的是**记号**不是数值：`hash01` 的派生本身一行不动（它是 R6 合规的确定性占位）。
                *    把占位值改得"不像 50"只会得到一屏更像真的假数据，比现在更坏。
