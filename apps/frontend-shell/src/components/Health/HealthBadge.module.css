@@ -40,11 +40,13 @@
   top: calc(100% + 8px);
   z-index: 40;
   width: 330px;
-  background: linear-gradient(165deg, rgba(30, 38, 49, 0.97), rgba(14, 19, 26, 0.96));
+  /* WO-HOVER-LAYER：同一串硬编码深色渐变的第 4 份拷贝。这是 position:absolute 的下拉浮层，
+     浅色两套皮下 --txt 对比 1.06:1 / 1.00:1（暖砂下亮度完全相同＝纯粹消失）。 */
+  background: var(--popover-surface);
   border: 1px solid var(--line2);
   border-radius: 11px;
   padding: 10px 12px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--popover-shadow);
 }
 
 .row {

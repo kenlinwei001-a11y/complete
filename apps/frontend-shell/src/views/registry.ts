@@ -96,6 +96,11 @@ registerRenderer("node-inspector", () => import("./sim/InspectorNodePanel"));
 // G-SKILL-REFGRAPH-DEAD-EXTRACTOR：实现有、SEAM 全绿、却没有任何路由渲染得到。宿主视图
 // `TransitFlowView`（同文件默认导出）不造 nodes/sources，批次真值由图层自取 /a/v1/objects；本行是其唯一生产调用方。
 registerRenderer("transit-flow", () => import("./sim/TransitFlowLayer"));
+// WO-PROCUREMENT-FRONTEND 采购四段腿分解（「该找谁」页·闭 G-PROCUREMENT-OPAQUE 前端半）。
+// WO-SANDBOX-D2 让引擎能答"晚在哪一段、该找谁"（kit_readiness 每个缺料项带 procurement 四段 /
+// ownerDays / criticalLeg），但那之后这些字段**零前端消费方** —— 能力在后端跑着、界面上看不见。
+// 本行是这页唯一的生产调用方（registry 是手工登记的字符串键表、无自动扫描）。
+registerRenderer("procurement-legs", () => import("./sim/ProcurementLegsView"));
 registerRenderer("annual-scenario", () => import("./plan/AnnualScenarioView"));
 registerRenderer("quarterly-rolling", () => import("./plan/QuarterlyRollingView"));
 registerRenderer("order-chain", () => import("./plan/OrderChainView"));

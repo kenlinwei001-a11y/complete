@@ -1,0 +1,314 @@
+/*
+ * 采购四段面板样式。
+ * ⚠ 三态的可分辨性**不靠颜色**：形状/纹理（实心条 / 零宽塌陷 / 斜纹洞）+ 文案 + data-status
+ *   三重编码，去掉颜色仍一眼可分（色觉障碍用户也读得出，测试也咬得住）。
+ */
+
+.wrap {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel2);
+  padding: 10px 12px;
+  margin: 8px 0;
+  font-size: 12px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.title {
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+/* ---- 三态自陈 ---- */
+.tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px dashed var(--line2);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.tallyItem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 11.5px;
+}
+
+.tallyMeaning {
+  color: var(--muted2);
+  font-style: normal;
+  font-size: 11px;
+}
+
+.swatch {
+  display: inline-block;
+  width: 16px;
+  height: 8px;
+  border: 1px solid var(--line2);
+  border-radius: 2px;
+}
+.swatch[data-status="MEASURED"] {
+  background: var(--accent, #4a90d9);
+}
+.swatch[data-status="NOT_APPLICABLE"] {
+  background: transparent;
+  border-style: dashed;
+}
+.swatch[data-status="EMPTY"] {
+  background: repeating-linear-gradient(45deg, var(--muted2) 0 2px, transparent 2px 5px);
+  border-style: dotted;
+}
+
+/* ---- 该找谁 ---- */
+.section {
+  margin-bottom: 10px;
+}
+
+.sectionTitle {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.callList {
+  margin: 0;
+  padding-left: 18px;
+}
+.callList li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  line-height: 1.8;
+}
+
+.callName {
+  font-weight: 600;
+}
+.callRole,
+.callMats {
+  color: var(--muted);
+  font-size: 11px;
+}
+.callTag {
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 10.5px;
+  color: var(--muted2);
+}
+
+/* ---- 逐单 ---- */
+.order {
+  border-top: 1px solid var(--line2);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.orderHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.orderKpi {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.summary {
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+/* ---- 逐缺料项 ---- */
+.item {
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+
+.itemHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.unitNote {
+  color: var(--muted2);
+  font-style: normal;
+  font-size: 10.5px;
+  margin-left: 3px;
+}
+
+.critical {
+  margin: 4px 0 8px;
+  padding: 5px 8px;
+  border-left: 3px solid var(--accent, #4a90d9);
+  background: rgba(74, 144, 217, 0.06);
+  line-height: 1.7;
+}
+
+/* ---- 四段瀑布 ---- */
+.legs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.leg {
+  display: grid;
+  grid-template-columns: 88px minmax(60px, 1fr) 72px 52px auto;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 0;
+  border-bottom: 1px dotted var(--line2);
+}
+.leg[data-critical="1"] {
+  font-weight: 600;
+}
+
+.legLabel {
+  font-size: 11.5px;
+}
+
+.valueAdd {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--muted2);
+  margin-left: 4px;
+  border: 1px solid var(--line2);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+.barTrack {
+  display: block;
+  height: 9px;
+  background: var(--panel, rgba(127, 127, 127, 0.08));
+  border: 1px solid var(--line2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+/* ③ 形状纹理：三态即使全部去色也互不相同 */
+.bar {
+  display: block;
+  height: 100%;
+}
+.bar[data-status="MEASURED"] {
+  background: var(--accent, #4a90d9);
+}
+.bar[data-status="NOT_APPLICABLE"] {
+  /* 真值 0 天 ⇒ 宽度本就是 0；再补一条虚线基线表明"这段结构上不存在" */
+  background: transparent;
+  border-left: 1px dashed var(--muted2);
+}
+.bar[data-status="EMPTY"] {
+  /* 天数未知 ⇒ 宽度恒 0，不画任何柱子；纹理只出现在图例与状态标上 */
+  background: repeating-linear-gradient(45deg, var(--muted2) 0 2px, transparent 2px 5px);
+}
+
+.legDays {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-align: right;
+}
+
+.legStatus {
+  font-size: 10.5px;
+  text-align: center;
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+.legStatus[data-status="NOT_APPLICABLE"] {
+  border-style: dashed;
+}
+.legStatus[data-status="EMPTY"] {
+  border-style: dotted;
+  color: var(--muted2);
+}
+
+.legOwner {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.legOwnerRef {
+  margin-left: 4px;
+  color: var(--fg, inherit);
+}
+
+.legReason,
+.legSource {
+  grid-column: 1 / -1;
+  font-size: 10.5px;
+  color: var(--muted2);
+  line-height: 1.6;
+}
+
+/* ---- 合计 / 责任方 / MOQ ---- */
+.total,
+.owners,
+.moq,
+.kitDays {
+  margin: 5px 0 0;
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+
+.total[data-complete="0"] {
+  border-left: 3px dotted var(--amber, #e8b54a);
+  padding-left: 6px;
+}
+
+.unknown {
+  font-style: normal;
+  color: var(--amber, #e8b54a);
+}
+
+.absence {
+  margin: 4px 0;
+  padding: 4px 8px;
+  border-left: 3px dotted var(--amber, #e8b54a);
+  background: rgba(232, 181, 74, 0.05);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.absenceInline {
+  display: block;
+  color: var(--muted2);
+  font-size: 11px;
+}
+
+.mismatch {
+  margin: 6px 0 0;
+  padding: 5px 8px;
+  border: 1px solid var(--danger, #e0626c);
+  border-radius: 6px;
+  background: rgba(224, 98, 108, 0.07);
+  font-size: 11.5px;
+  line-height: 1.7;
+}

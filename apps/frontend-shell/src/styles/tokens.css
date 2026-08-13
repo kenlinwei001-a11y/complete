@@ -34,6 +34,11 @@
   --warn: #e8b54a;
   --amber: #e8b54a;
   --danger: #e0626c;
+  /* WO-HOVER-LAYER：危险行底纹。原为幽灵令牌 `var(--danger-bg, #fdecec)` —— 兜底是**浅粉**，
+     而 --danger-bg 全仓无定义 ⇒ 暗色皮下渲染成浅粉行 + 近白字，读不了。
+     半透红纹叠在**已不透明**的表格行上，故半透在此无害；与其它语义色一样只定义在 :root
+     （本仓铁则：语义域色 theme-invariant，风险红在任何皮下都读作风险红）。 */
+  --danger-soft: rgba(224, 98, 108, 0.14);
 
   /* WO-THEME-SWITCH-U8：chrome 表面/交互 token（原为组件内硬编码 rgba/hex，收口至此以便主题翻转）。
      暗色值 == 收口前的渲染字面（逐值等价·保证黑曜石视觉不变·C3 additive）。 */
@@ -59,6 +64,10 @@
                      与本表面无关——它在任何白面卡上都是这个数，见交付报告） */
   --popover-surface: #1c2942;                     /* 不透明悬浮层表面（暗色：深青蓝·自成一层） */
   --popover-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);  /* 悬浮层投影（表面已不透明，投影只负责"浮起来"的层级感） */
+  /* WO-HOVER-LAYER · 模态遮罩（scrim）。它**本就该半透** —— 职责是压暗底下的页面表明"底下不可交互"，
+     与 --popover-surface 的职责正相反（后者必须不透明）。故它逐主题定义：暗色用深墨，
+     浅色两套用较淡的墨（浅底上压 65% 黑会突兀到像断电）。 */
+  --modal-scrim: rgba(5, 8, 12, 0.65);
 }
 
 /* WO-THEME-SWITCH-U8 · 浅色主题（[data-theme=light]）——加性覆盖：暗色（黑曜石）为默认（无 data-theme 即现有外观逐值不变）。
@@ -96,6 +105,7 @@
   /* 悬浮层表面（冷蓝）：浅底下不透明白卡即最高可读面（txt 16.19 / muted 8.02 / muted2 5.88 / accent 5.67）。 */
   --popover-surface: #ffffff;
   --popover-shadow: 0 12px 32px rgba(20, 28, 44, 0.16);
+  --modal-scrim: rgba(20, 28, 44, 0.42);
 }
 
 /* WO-THEME-WARM · 第三套颜色版本「亮橙金融」（[data-theme=warm]）——纯加性，与暗色/冷蓝两套完全正交：
@@ -136,4 +146,5 @@
      浮层走不透明白面，卡片继续吃玻璃（.panel 一字不改·质感不变）。 */
   --popover-surface: #ffffff;
   --popover-shadow: 0 12px 32px rgba(17, 17, 26, 0.14);
+  --modal-scrim: rgba(17, 17, 26, 0.38);
 }

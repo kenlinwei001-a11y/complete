@@ -1,4 +1,4 @@
-import { IndustryTemplateSchema, type GenSpec, type IndustryTemplate, type ModelingSuggestion, type PermissionPolicy, type PlantSpec } from "@platform/contracts";
+import { IndustryTemplateSchema, type GenSpec, type GraphViewDesc, type IndustryTemplate, type ModelingSuggestion, type PermissionPolicy, type PlantSpec } from "@platform/contracts";
 import { sampleValueDomain, applyPlantCrossings, derivePlantFromRule } from "./value-domains.js";
 import type { AuthCtx, Connection, ObjectInstance, RawDataset, SyntheticJob, SyntheticReport, User, ViewConfig } from "../domain.js";
 import { profileRows } from "../connectors/profiler.js";
@@ -1576,11 +1576,16 @@ export class SyntheticService {
         { key: "status", label: "状态", filterable: true },
       ],
     };
-    const graphView = (title: string, graphOptions: Record<string, unknown>, layout: Record<string, unknown> = {}) => ({
+    // G-GRAPH-DESC-CONTRACT-SPLIT（已闭）：描述卡曾经写进第 3 形参 `layout`，字段名 `description`/`descriptionLink`，
+    // 而前端 OntologyGraphView 从 `options` 读 `desc`/`descLink` ⇒ 生产态八视角描述卡一张都不渲染（MSW mock 恰好
+    // 走对的形状，把生产的错位盖成全绿 —— 铁律 0.5 判据 #6）。裁定见 contracts `GraphViewDescSchema` 注释：
+    // 容器归 `options`（与同特性的 `graphOptions` 同源；`layout` 是 DF.6 拉取靶的机器消费位）。
+    // 第 3 形参**受契约类型约束**，再写错字段名即 tsc 报错，不再靠人眼发现。
+    const graphView = (title: string, graphOptions: Record<string, unknown>, desc: GraphViewDesc = {}) => ({
       title,
       renderer: "ontology-graph",
-      layout,
-      options: { graphOptions },
+      layout: {},
+      options: { graphOptions, ...desc },
     });
     // 去电池锁死 8a（R14）：把推演视图的结构（字段组/目标字段/DAG 驱动因子/问题分类）真下发到 ViewConfig.layout，
     // 使前端不再走写死兜底而是后端配置驱动（换租户/行业改这里即可，界面跟着变）。
@@ -1668,18 +1673,26 @@ export class SyntheticService {
       review: { title: "运营复盘", renderer: "review", layout: { apiTag: "history" } },
       // §7.18 图谱八视角（零新代码视角：renderer=ontology-graph + graphOptions 配置）。
       // PRD-IND-map 缺口④：每视角叙事描述（逐字录自 HTML，ViewDef 配置下发，前端 descCard 渲染，非写死）。
-      "graph-all": graphView("图谱·全景", { colorBy: "domain", layoutSeed: 42 }, { description: "全域对象与关系全景：14 业务域对象类型 + 求解器 + 智能体一张图，按域着色；可切数据来源着色、主干分级、各推演网络与学习闭环视角。" }),
-      "graph-backbone": graphView("图谱·主干分级", { colorBy: "domain", nodeFilter: { tiers: [0, 1] }, dimOthers: true, layoutSeed: 42 }, { description: "按层级看节点：一级=推演主干（产能预测←工序产能→产线产能→工厂产能→基地）；二级=按业务推演链切片（产能/产销/采购/财务现金）；三级=明细（OEE历史/停机/操作员/不良/供应商/物流）。" }),
-      "graph-flow": graphView("图谱·产能推演网络", { colorBy: "domain", linkKinds: ["flow", "agg"], layoutSeed: 42 }, { description: "产能金字塔自下而上派生：节拍×OEE→设备产能→×良率×人力→工序产能→min瓶颈→产线产能→Σ→工厂产能。工序有串行（按瓶颈 min）与并行（化成/老化多通道）之分；物流时长经物料齐套约束可投产能；最后与预测场景、需求、瓶颈汇入产能预测。" }),
-      "graph-source": graphView("图谱·数据来源", { colorBy: "source", layoutSeed: 42 }, { description: "只聚焦真正来自源系统的原始数据节点，按源系统重新着色，回答『每个数据从哪来』：ERP/SAP 物料主数据、MES 工艺与制造执行、EAM/CMMS 设备资产、IoT/SCADA 节拍OEE、QMS/LIMS 质量、HR/排班 人员工时、PLM 产品BOM、WMS 物料齐套。产能域(派生)、求解器、智能体不是源数据，已淡出。" }),
-      "graph-solver": graphView("图谱·求解器", { colorBy: "domain", nodeFilter: { domains: ["solver"] }, linkKinds: ["calc"], dimOthers: true, layoutSeed: 42 }, { description: "求解器以智能辅助决策中台形式注册，绑定到对应对象类型：聚合求解器（产能金字塔）、瓶颈求解器（工艺链最小割）、场景求解器（假设情景重算）、精度校准器（预测↔实际偏差学习）。读业务对象、写回派生对象，由管线/Agent 触发。" }),
-      "graph-mvp": graphView("图谱·MVP", { colorBy: "domain", mvpOverlay: true, layoutSeed: 42 }, { description: "实色高亮的是 MVP 必备的核心闭环：工艺路线(节拍)+设备(OEE)+良率+产能聚合/瓶颈+需求→产能预测。⊕ 虚线节点是当前缺口，需从源系统补采——其中实际产出、OEE历史、生产工单MO 是离散组装制造与自学习闭环最关键的三项，缺它们系统就『算不准、学不会』。" }),
-      "graph-agent": graphView("图谱·智能体网络", { colorBy: "domain", nodeFilter: { domains: ["agent", "solver"] }, linkKinds: ["orch"], dimOthers: true, layoutSeed: 42 }, { description: "产能预测不是『一个 Agent 跑一个模型』，而是编排Agent 指挥一支专职智能体团队：意图解析/检索/建模求解/瓶颈诊断/解释校验/学习/行动，外加经验记忆库（越用越聪明）与约束规则（安全边界）。每个 Agent 把求解器与业务建模当工具调用——AI 的价值在于可自主规划、可解释、可成长的协同。" }),
+      "graph-all": graphView("图谱·全景", { colorBy: "domain", layoutSeed: 42 }, { desc: "全域对象与关系全景：14 业务域对象类型 + 求解器 + 智能体一张图，按域着色；可切数据来源着色、主干分级、各推演网络与学习闭环视角。" }),
+      "graph-backbone": graphView("图谱·主干分级", { colorBy: "domain", nodeFilter: { tiers: [0, 1] }, dimOthers: true, layoutSeed: 42 }, { desc: "按层级看节点：一级=推演主干（产能预测←工序产能→产线产能→工厂产能→基地）；二级=按业务推演链切片（产能/产销/采购/财务现金）；三级=明细（OEE历史/停机/操作员/不良/供应商/物流）。" }),
+      "graph-flow": graphView("图谱·产能推演网络", { colorBy: "domain", linkKinds: ["flow", "agg"], layoutSeed: 42 }, { desc: "产能金字塔自下而上派生：节拍×OEE→设备产能→×良率×人力→工序产能→min瓶颈→产线产能→Σ→工厂产能。工序有串行（按瓶颈 min）与并行（化成/老化多通道）之分；物流时长经物料齐套约束可投产能；最后与预测场景、需求、瓶颈汇入产能预测。" }),
+      "graph-source": graphView("图谱·数据来源", { colorBy: "source", layoutSeed: 42 }, { desc: "只聚焦真正来自源系统的原始数据节点，按源系统重新着色，回答『每个数据从哪来』：ERP/SAP 物料主数据、MES 工艺与制造执行、EAM/CMMS 设备资产、IoT/SCADA 节拍OEE、QMS/LIMS 质量、HR/排班 人员工时、PLM 产品BOM、WMS 物料齐套。产能域(派生)、求解器、智能体不是源数据，已淡出。" }),
+      "graph-solver": graphView("图谱·求解器", { colorBy: "domain", nodeFilter: { domains: ["solver"] }, linkKinds: ["calc"], dimOthers: true, layoutSeed: 42 }, { desc: "求解器以智能辅助决策中台形式注册，绑定到对应对象类型：聚合求解器（产能金字塔）、瓶颈求解器（工艺链最小割）、场景求解器（假设情景重算）、精度校准器（预测↔实际偏差学习）。读业务对象、写回派生对象，由管线/Agent 触发。" }),
+      "graph-mvp": graphView("图谱·MVP", { colorBy: "domain", mvpOverlay: true, layoutSeed: 42 }, { desc: "实色高亮的是 MVP 必备的核心闭环：工艺路线(节拍)+设备(OEE)+良率+产能聚合/瓶颈+需求→产能预测。⊕ 虚线节点是当前缺口，需从源系统补采——其中实际产出、OEE历史、生产工单MO 是离散组装制造与自学习闭环最关键的三项，缺它们系统就『算不准、学不会』。" }),
+      "graph-agent": graphView("图谱·智能体网络", { colorBy: "domain", nodeFilter: { domains: ["agent", "solver"] }, linkKinds: ["orch"], dimOthers: true, layoutSeed: 42 }, { desc: "产能预测不是『一个 Agent 跑一个模型』，而是编排Agent 指挥一支专职智能体团队：意图解析/检索/建模求解/瓶颈诊断/解释校验/学习/行动，外加经验记忆库（越用越聪明）与约束规则（安全边界）。每个 Agent 把求解器与业务建模当工具调用——AI 的价值在于可自主规划、可解释、可成长的协同。" }),
       "graph-loop": graphView(
         "图谱·学习闭环",
         { colorBy: "domain", nodeFilter: { ids: LOOP_NODE_IDS }, linkKinds: ["fb", "orch"], dimOthers: true, layoutSeed: 42 },
-        // 视角描述卡链接校准报告页（真数据 MAPE 趋势；原型假动画明确不复刻）
-        { descriptionLink: "/admin/calibration", description: "查看精度趋势与校准历史" },
+        // 视角描述卡链接校准报告页（真数据 MAPE 趋势；原型假动画明确不复刻）。
+        // 修 G-GRAPH-DESC-CONTRACT-SPLIT 时的第三处发现：本视角原先**没有叙事正文** —— 唯一那句
+        // "查看精度趋势与校准历史" 语义上是**链接文字**，却占着 `description` 位；而前端 `descLink`
+        // 需要 `{to,label}` 才渲染得出可点文字，裸字符串 `descriptionLink` 连 label 都没有。
+        // 故此处补齐两者：正文取仓内既有同视角文案（`frontend-shell/src/mocks/fixtures.ts` 学习闭环视角），
+        // label 保留原字符串，一字未改。
+        {
+          desc: "预测 ↔ 实际偏差 → 精度校准器 → 参数写回 → 越用越准（真实数据 MAPE 趋势见校准报告页，不做假动画）。",
+          descLink: { to: "/admin/calibration", label: "查看精度趋势与校准历史" },
+        },
       ),
     };
     // fail-fast（WO-MEMORY-VIEW-RESILIENCE §4.3）：种子路径断言每个 seeded 内置视图接线完整——featureKey 已注册 +

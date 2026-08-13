@@ -32,13 +32,13 @@ export function RiskPopover({ data, anchor }: { data: RiskPopoverData; anchor: {
   const top = Math.min(anchor.bottom + 6, (typeof window !== "undefined" ? window.innerHeight : 800) - 180);
   const left = Math.min(anchor.left, (typeof window !== "undefined" ? window.innerWidth : 1200) - 280);
   return createPortal(
-    <div className={styles.pop} style={{ top, left }} role="tooltip" data-testid="risk-popover">
+    <div className={`popover-surface ${styles.pop}`} style={{ top, left }} role="tooltip" data-testid="risk-popover">
       <div className={styles.head}>
         <strong>{data.base}</strong>
         <span className="badge">{data.factor}</span>
       </div>
       <div className={styles.metrics}>
-        <span title={`${TIGHTNESS_METRIC.scaleMin}–${TIGHTNESS_METRIC.scaleMax} 紧张度指数（${TIGHTNESS_METRIC.hint}）·非该因素本身的值`}>
+        <span>
           {zh.risk.peak}
           <b className="mono" data-testid="risk-popover-peak" style={{ color: data.peak >= threshold ? "var(--danger)" : "var(--txt)" }}>
             {formatTightness(data.peak)}
@@ -49,11 +49,17 @@ export function RiskPopover({ data, anchor }: { data: RiskPopoverData; anchor: {
           <b className="mono">{data.crossDay != null ? `D+${data.crossDay}` : zh.risk.noCross}</b>
         </span>
       </div>
+      {/* 峰值口径：**可见文字**，不是 `title=` 属性（见 locales/zh.ts risk.peakCaliber 的说明）。 */}
+      <div className={styles.caliber} data-testid="risk-popover-peak-caliber">
+        {zh.risk.peakCaliber(TIGHTNESS_METRIC.scaleMin, TIGHTNESS_METRIC.scaleMax, TIGHTNESS_METRIC.hint)}
+      </div>
       {data.series && data.series.length > 0 && (
         <>
           <div className={styles.strip} data-testid="risk-popover-strip">
             {data.series.map((v, i) => (
-              <span key={i} title={`D+${i} · ${formatTightness(v)}`} style={{ background: heatColor(v, threshold) }} />
+              // 逐格值走 `aria-label`（可访问名·读屏念得到），不走 `title=`：
+              // 30 个格子不可能各挂一个浮层，而量程/阈值已由下面那行图例承载。
+              <span key={i} aria-label={zh.risk.dayCellAria(i, formatTightness(v))} style={{ background: heatColor(v, threshold) }} />
             ))}
           </div>
           {/* 每格一天的色块本身也是"裸数字"（只有颜色没有口径）→ 补一行图例说明量纲与越线阈值。 */}

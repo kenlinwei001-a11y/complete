@@ -81,9 +81,12 @@ describe("F23 · 订单全链聚合（order-chain）", () => {
     const stripLegend = within(pop).getByTestId("risk-popover-strip-legend");
     expect(stripLegend.textContent ?? "").toContain(`${TIGHTNESS_METRIC.scaleMin}–${TIGHTNESS_METRIC.scaleMax}`);
     expect(stripLegend.textContent ?? "").toMatch(new RegExp(`越线阈值 ${TIGHTNESS_METRIC.label}\\d+/${TIGHTNESS_METRIC.scaleMax}`));
-    // 逐日格 tooltip 同口径（D+n · 张力N/100）。
+    // 逐日格同口径（D+n · 张力N/100）。
+    // WO-HOVER-LAYER：判据从 `title` 属性改为 **`aria-label` 可访问名** —— 原生 `title` 触屏不出、
+    // 读屏行为不定、延迟约 1 秒；`aria-label` 是可访问性树里的正式名字，读屏当场念得到。
     const cells = within(pop).getByTestId("risk-popover-strip").querySelectorAll("span");
-    expect(cells[0]?.getAttribute("title") ?? "").toMatch(new RegExp(`D\\+0 · ${TIGHTNESS_METRIC.label}\\d+/${TIGHTNESS_METRIC.scaleMax}`));
+    expect(cells[0]?.getAttribute("title"), "逐日格不得再退回原生 title tooltip").toBeNull();
+    expect(cells[0]?.getAttribute("aria-label") ?? "").toMatch(new RegExp(`D\\+0 · ${TIGHTNESS_METRIC.label}\\d+/${TIGHTNESS_METRIC.scaleMax}`));
     await user.unhover(chip);
     await waitFor(() => expect(screen.queryByTestId("risk-popover")).not.toBeInTheDocument());
 
