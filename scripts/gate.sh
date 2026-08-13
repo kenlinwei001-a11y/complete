@@ -15,6 +15,47 @@
 #      bash scripts/gate.sh --no-test    # 只跑 build + 静态门（快检）
 set -uo pipefail
 
+# ⛔ 前置自证（RC=2「门自己坏了」，与 RC=1「代码真违规」分开）—— 这是 CLAUDE.md 铁律 0.6
+#    三级处置的第 3 级落地：同一个错第 3 次了，必须由**机器**先说话。
+#
+#    来历（三次，形态完全相同）：
+#      ① 2026-08-09 多个 dev 在**没装 node_modules** 的 worktree 上开工，
+#         报 `Failed to resolve entry for package "@platform/contracts"` —— 被读成「契约包坏了」。
+#      ② 同期另一族：`@platform/llm-adapters` 未 build，datacore vitest 直接 `Tests no tests`。
+#         处置是往**派单模板**里加两句话。**文档不是机制**（本仓自己的第 11 条错账原话）。
+#      ③ 2026-08-13 审核方自己在新建的 verify worktree 上跑本脚本：`vitest: not found`、
+#         `node_modules missing`，脚本照样打出「❌ 未通过：BUILD … TEST … —— **不得并线**」。
+#         那句话是**说谎**：它度量的不是代码，而是「这台机器上没装依赖」。
+#
+#    形态（铁律 0.6 句式）：**「我用『门红了』当作『代码有问题』的证据，而前者并不度量后者。」**
+#
+#    判据：跑门所需的**工具本身**必须先自证在位。缺 ⇒ RC=2 + 明确说「本次结论作废」，
+#    **不许**落进 FAILED 数组、不许打印「不得并线」——那是给真违规留的话。
+preflight() {
+  local missing=() root; root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  [ -d "$root/node_modules" ] || missing+=("根 node_modules")
+  # 正金丝雀：vitest 是 TEST 段真正要调的那个二进制，缺了整段测试恒假红。
+  [ -x "$root/node_modules/.bin/vitest" ] || missing+=("node_modules/.bin/vitest")
+  for p in packages/contracts packages/llm-adapters apps/datacore apps/agentcore apps/frontend-shell; do
+    [ -d "$root/$p/node_modules" ] || missing+=("$p/node_modules")
+  done
+  # 负金丝雀：一个**必然存在**的路径若也报缺，说明判据本身坏了（如 root 解析错），
+  # 那时同样报 RC=2 —— 「我没找到」与「它不存在」是两个命题。
+  if [ ! -f "$root/package.json" ]; then
+    echo "⛔ 前置自证失败：连 package.json 都找不到（root=$root）⇒ **本脚本的路径解析坏了**，不是仓库缺东西。"
+    echo "   本次结论作废。RC=2"
+    exit 2
+  fi
+  if [ ${#missing[@]} -ne 0 ]; then
+    echo "⛔ 门自己没装好，**未度量任何代码**：缺 ${missing[*]}"
+    echo "   先跑：pnpm install --prefer-offline && pnpm --filter @platform/contracts build && pnpm --filter @platform/llm-adapters build"
+    echo "   ⚠️ 这**不是**「不得并线」——本次什么都没验，结论作废。RC=2"
+    exit 2
+  fi
+  echo "✓ 前置自证：node_modules ×6 + vitest 二进制均在位（缺任一即 RC=2「门坏了」而非 RC=1「代码坏了」）"
+}
+preflight
+
 FAILED=()
 run() {
   local name="$1"; shift
