@@ -735,6 +735,53 @@ export const zh = {
         financeGapBody:
           "本带给的是**世界态指数**（0–100，随扰动沿本体传导链变化），不是金额。平台今天唯一的金额科目表求解器 `finance_pnl` 读的是本体真值（FinancePlan + DemandSegment），其实现签名不吃 worldId / sessionId ⇒ **同一个租户下，施加任何扰动它都返回同一组数**。把它摆在这里会得到一块「看起来是财务、实际永远不动」的面板，那比留空更坏。带单位的金额型指标要随扰动动，唯一已接线的出处是上面那块「逐节点指标影响」的 KPI 维（`Metric` 对象的 target/actual/unit 在被隔离的世界里重算）。",
       },
+      /**
+       * WO-V4-PLAYS · 方案环（PRD-sandbox-v4 §3.3）的文案。
+       *
+       * ⚠ `caliber` / `r4` 是**诚实位**，与上面的 `financeGap` 同族：
+       *   前者写明「平行世界之间那点差异是怎么造出来的」（它是推演投影，不是实测），
+       *   后者写明「采纳只落审批草稿，沙盘绝不写本体真值」（R4 红线）。
+       *   两者常驻第一层 —— 降层可以，删除不行。
+       *
+       * ⚠ 本节**不含任何方案名 / 指标名 / 行业实体名**：那些一律来自 `decision_play` 回包
+       *   与契约 `GOAL_REGISTRY`（R14 去电池锁死）。这里只有结构性措辞。
+       */
+      plays: {
+        title: "方案环 · 扰动 → 方案 → 平行世界 → 比对 → 采纳",
+        intro:
+          "左边拨一条扰动让指标动起来，这里向决策推演求解器要 N 个对症方案；每个方案开一个平行世界（从同一个检查点分支），并排比出差异，再把选中的那个送进 Action 审批。",
+        metricLabel: "指标",
+        metricAuto: "引擎自选（缺口最大的越线指标）",
+        solve: "求方案",
+        solving: "求方案中…",
+        solveFailed: "求方案失败 —— 下面是后端原话，本页不替它编一个解释：",
+        rootPrefix: "根因 ",
+        gapWord: "缺口",
+        narrowing: (pct: number, n: number) => `推荐组合 ${n} 项 · 收窄 ${pct}%`,
+        recommended: "在推荐组合内",
+        basis: "依据：",
+        needPerturbation:
+          "还没有施加扰动 ⇒ 平行世界没有可回补的落点。先在上面拨一条扰动，方案世界才会互不相同（不给一个点了只会开出 N 个一模一样的世界的按钮）。",
+        zeroEffect: (objectId: string, stateVar: string) =>
+          `本次扰动在 ${objectId}.${stateVar} 上的实测效应为 0（引擎规整或落点未变）⇒ 按比例回补出来的差异也必然是 0。这里如实说没有可比的差异，不去换一个"看着有差异"的算法把它糊过去。`,
+        branch: (n: number) => `为 ${n} 个方案各开一个平行世界`,
+        branching: "开世界中…",
+        caliber: (objectId: string, stateVar: string, effect: number) =>
+          `口径（这一段数字是推演值，不是实测值）：回补比例 = 该方案 closesGap ÷ 根因缺口；本次扰动在 ${objectId}.${stateVar} 上的实测效应 Δ = ${Math.round(effect * 1000) / 1000}；方案世界 = 分支世界 + 一条 delta = −Δ×回补比例 的扰动。`,
+        worldsTitle: "平行世界（各方案各一个）",
+        recovered: (pct: string) => `回补 ${pct}%`,
+        adopt: "采纳（走审批）",
+        adopting: "采纳中…",
+        compareLabel: "并排比对",
+        pickA: "比对世界 A",
+        pickB: "比对世界 B",
+        compare: "比对",
+        comparing: "比对中…",
+        compareEmpty: "两个世界里读不到该落点的值 —— 如实说读不到，不用 0 冒充。",
+        diff: (d: string) => `差异 B − A = ${d}`,
+        r4:
+          "R4 红线：沙盘改的是推演会话的世界态，**不写本体真值**。「采纳」只创建 Action 草稿并进审批流（实测回 PENDING_APPROVAL），审批通过才由 Action 正门写真值。",
+      },
       info: {
         /** `?` 触发器：hover / focus 出浮层，移开或 Esc 即消失。 */
         trigger: "?",
@@ -779,6 +826,19 @@ export const zh = {
           "订单锚点：今天不是壳级控件——它由线路图按 so 自取（chain_loss_attribution 唯一认的入参），壳里没有第二个订单选择器，硬造一个就是各模式各用各的假旋钮。",
         shellContextWindow:
           "时窗：chain_loss_attribution 只认 so、chain_impediments 只认 scope，两者都没有时间窗入参，故控制台顶栏那个 30D/60D/90D 是禁用的（挂「时窗无 ARGS」徽标），壳里不再造第二个。",
+        /**
+         * WO-V4-HONEST-ORIGIN · 顶栏读数**出处**（PRD-sandbox-v4 §2.1 / §4.3）。
+         * 两条正文互斥出现：占位期一条、实测期另一条 —— 记号必须真的换掉，不是加一句免责。
+         */
+        kpiOrigin: "这批读数是哪来的",
+        kpiOriginDerived:
+          "**合成·占位**：屏上这批数由前端按 `hash01(对象id|变量名)×100` 确定性派生，还没取到后端世界态。它是可复现的占位（R6），不是任何实测值 —— 全对象取均值必然收敛到 50，那是大数定律，不是各项压力恰好都在中位。推进一个 tick、施加一条扰动，或世界态事件触发重取之后，这个记号会换成「实测」。",
+        kpiOriginMeasured:
+          "**实测**：屏上这批数取自后端世界态（`GET /a/v1/sim/sessions/:id/world` 回包，或 tick / 扰动回包），不再是前端哈希占位。口径仍是 0–100 指数（见「读数量纲」）；它描述的是**这个推演会话里的模拟世界**，不是本体真值。",
+        /** WO-V4-PLAYS · 方案环里那点差异的口径（诚实位，常驻第一层 + `?` 出全文）。 */
+        playCaliber: "平行世界之间的差异是怎么造出来的",
+        playCaliberBody:
+          "从同一个检查点分支出来的子世界**逐字节相同**，不给它们各自一处差异，比对面板就永远是两列一样的数。差异来自一处**显式的确定性投影**（不是新真值源）：回补比例 = 该方案 `closesGap` ÷ 根因缺口（两者同量纲，比值无量纲，取自 `decision_play` 回包）；本次扰动在该状态变量上的实测效应 Δ = 扰动后值 − 扰动前值（两头都取后端回包）；方案世界 = 分支世界 + 一条 `delta = −Δ × 回补比例` 的扰动，经真端点施加、由引擎照常规整与传导。读作「这个方案按引擎自己给的 closesGap 能补掉缺口的这么多，于是在沙盘里把本次扰动的效应回补这么多」。它是**推演值**，不是实测值。",
         kpiUnit: "读数量纲 · 0–100 指数",
         kpiUnitGlobal: "全局态是**全对象、全状态变量**的均值，量纲为 0–100 指数（非百分比、非任何单一变量的原值）；越高越好。",
         kpiUnitVar: "每个状态变量的读数是该变量在**全部已物化对象**上的均值，量纲为 0–100 指数（非百分比）。",
