@@ -1681,11 +1681,47 @@ export const zh = {
      */
     honesty: {
       title: "本页答得了什么、答不了什么",
-      canAnswer: "答得了：卡在哪一类等待（四态）· 等谁（责任职能）· 标准要等多久（工期基线）。",
+      canAnswer:
+        "答得了：卡在哪一类等待（四态）· 等谁（责任职能）· 标准要等多久（工期基线）。" +
+        "点开任一条流程还能看到**实例粒度**：哪一条单据卡着 · 卡在谁那里 · 卡了多久 · 站间流转多久。",
       cannotAnswer:
-        "答不了：**此刻这条流程已经卡了多久**。那需要运行态 ProcessTask.enteredAt，" +
-        "而 ProcessInstance / ProcessTask 尚未实现（PRD-enterprise-decision-twin §5 的 E2）。",
+        "答不了（诚实边界，一条都没放宽）：① 实例时刻是从**既有带时间戳单据反推**的（推导值，不是流程引擎直采的实测值）；" +
+        "② 65 条流程里只有 9 条反推得出，其余 56 条会明说「缺哪种单据」并给复验探针，**不会返回 0 冒充「没有卡顿」**。",
       notMeasured: "下方「标准工期」是流程定义里的**基线工期**，不是实测滞留天数 —— 不要当作「已卡 N 天」读。",
+    },
+    /** WO-FLOWTIME · 实例下钻面板（点某条流程 → 看它的实例与站间流转时长）。 */
+    instances: {
+      open: "看实例",
+      close: "收起",
+      loading: "反推流程实例中…",
+      titleFor: (key: string) => `${key} · 流程实例与站间流转时长`,
+      asOf: (d: string, src: string) => `分析截止时刻 ${d}（来源 ${src}）`,
+      asOfHint:
+        "「分析截止时刻」缺省取**数据里观测到的最晚时刻**（不是 wall-clock，也不是预测窗起点）——" +
+        "流转时长是回溯分析，它的「现在」应当是数据的最后一刻。",
+      originNote:
+        "⚠ 下列天数**全部由既有带时间戳单据反推**（推导值，可逐条溯回单据 id + 字段名 + 该字段原值），" +
+        "不是流程引擎直采的实测值，更不是标准工期。",
+      stdCompare: (d: number) => `对照：标准工期 ${d} 天（定义值，非实测）`,
+      counts: (n: number, stuck: number) => `${n} 条实例，其中 ${stuck} 条到截止时刻仍卡着`,
+      table: {
+        instance: "实例",
+        carrier: "承载单据",
+        entered: "入站",
+        exited: "出站",
+        dwell: "站内停留(天)",
+        gap: "到下一站(天)",
+        owner: "卡在谁那里",
+        wait: "等待类型",
+        source: "溯源",
+      },
+      stillIn: "仍卡着",
+      done: "已出站",
+      noGap: "—",
+      /** 反推不出：明说缺什么 + 怎么复验，不是空表也不是 0。 */
+      absentTitle: "这条流程反推不出流转时长",
+      absentKind: (kind: string) => `缺席类型：${kind}`,
+      absentProbe: (probe: string) => `复验探针：${probe}`,
     },
     state: {
       loading: "加载流程等待态…",

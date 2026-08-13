@@ -1,4 +1,13 @@
-import { PROCESS_WAIT_KINDS, type ProcessDefinition, type ProcessDomain, type ProcessWaitKind } from "@platform/contracts";
+import {
+  PROCESS_WAIT_KINDS,
+  type ProcessDefinition,
+  type ProcessDomain,
+  type ProcessWaitKind,
+  // WO-FLOWTIME · 流程实例层类型**全部复用契约**，前端一个都不重定义（R1 contracts-only-shared）
+  type ProcessFlowAbsence,
+  type ProcessInstance,
+  type ProcessStationDwell,
+} from "@platform/contracts";
 import { zh } from "@/locales/zh";
 
 /**
@@ -39,13 +48,24 @@ import { zh } from "@/locales/zh";
  * 文案表类型是 `Record<ProcessWaitKind, …>` ⇒ 契约哪天真加了第五态，**编译期就红**，
  * 不会出现「后端多一态、前端静默漏画」这种本仓栽过的漂移。
  *
- * ══ 诚实边界：本页**答不出**「此刻已经卡了多久」════════════════════════════════
+ * ══ 诚实边界（**2026-08-13 已部分闭合，照实回写**）══════════════════════════════
  *
- * 那需要 `ProcessTask.enteredAt`，而 `ProcessTask` / `ProcessInstance` **全仓不存在**
- * （2026-08-10 实测：`grep -rn 'ProcessTask\|ProcessInstance' apps packages --include=*.ts` 零命中；
- *  `docs/PRD-enterprise-decision-twin.md §5` 的 E2 从未落地。复验照此命令重跑）。
- * 所以本页只给 `stdDurationDays`（**标准工期**）并逐处如实标注口径，
- * **绝不拿标准工期冒充「已卡 N 天」** —— 那正是本仓「拿一个看起来相关的数字冒充读数」的老病。
+ * 原文（截至 2026-08-10 属实，现已过期，保留以备对照）：
+ *   「本页答不出『此刻已经卡了多久』。那需要 `ProcessTask.enteredAt`，而
+ *     `ProcessTask` / `ProcessInstance` **全仓不存在**（实测 `grep -rn 'ProcessTask\|ProcessInstance'
+ *     apps packages --include=*.ts` 零命中）。」
+ *
+ * **现状（WO-FLOWTIME）**：`ProcessInstance` 承载物已落地（契约 `process-instance.ts` +
+ * `migrations/033_process_instances.sql`），本页可经 `GET /a/v1/process-definitions/:key/instances`
+ * 下钻到**实例粒度**：卡了多久 · 卡在谁那里 · 站间流转多久（见 §5）。
+ *
+ * ⚠ **但两条诚实边界一条都没放宽**：
+ *  ① 实例时刻是**从既有带时间戳单据反推**的（`origin=DERIVED_FROM_DOCUMENT`），
+ *    **不是**流程引擎直采（那一档叫 `MEASURED`，今天 0 条）。每条带 `sourceDocuments[]` 可当场溯源。
+ *  ② 65 条流程里**只有 9 条反推得出**，其余 56 条返回 `available:false` + 缺席理由 + 复验探针
+ *    （逐条清单见 `docs/WO-FLOWTIME-feasibility.md`）。
+ * 且 `stdDurationDays`（**标准工期**）在本页**永远只是对照列** ——
+ * **绝不拿标准工期冒充「已卡 N 天」**，那正是本仓「拿一个看起来相关的数字冒充读数」的老病。
  */
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -213,5 +233,126 @@ export function buildProcessWaitModel(res: ProcessDefinitionsResponse): ProcessW
       missingInResponse: [...contractSet].filter((k) => !responseSet.has(k)),
       unknownInResponse: [...responseSet].filter((k) => !contractSet.has(k)),
     },
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 5 · WO-FLOWTIME · 流程**实例**层响应形状（`GET /a/v1/process-definitions/:key/instances`）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ⚠ 与 §2 同一条纪律：本形状逐字段对应 `apps/datacore/src/app.ts` 的
+ * `GET /a/v1/process-definitions/:key/instances` 返回体，**类型全部复用契约**
+ * （`ProcessInstance` / `ProcessFlowAbsence` / `ProcessStationDwell` 直接从
+ *  `@platform/contracts` import），前端一个字段都不重定义（R1 contracts-only-shared）。
+ *
+ * 这一段补上了本页此前那句「答不了『此刻已经卡了多久』」——
+ * 承载物（`ProcessInstance`）现在有了，时刻由**既有带时间戳单据反推**而来
+ * （`origin=DERIVED_FROM_DOCUMENT`，每条带 `sourceDocuments[]` 可当场溯源）。
+ * ⛔ `definition.stdDurationDays` 仍然只是**对照列**：它是标准工期，不是实测滞留。
+ */
+export interface ProcessInstancesResponse {
+  definition: ProcessDefinition;
+  /** 分析截止时刻，与它是怎么定的（R13：不让读的人去猜这个「现在」哪来的）。 */
+  asOf: string;
+  asOfSource: "ARG" | "DATA_LATEST" | "FORECAST_START";
+  /** 反推得出 ⇒ true；反推不出 ⇒ false + `absence`（**不是空数组冒充「没有卡顿」**）。 */
+  available: boolean;
+  absence: ProcessFlowAbsence | null;
+  /** 全量基数（不受 limit 截断影响）。 */
+  instanceCount: number;
+  instances: ProcessInstance[];
+  instancesShown: number;
+  flowTime: {
+    flowKey: string;
+    totalDays: number;
+    bottleneckProcessKey: string;
+    bottleneckDwellDays: number;
+    stuckProcessKey: string | null;
+    stuckDays: number | null;
+    thisStation: ProcessStationDwell | null;
+    stations: ProcessStationDwell[];
+  }[];
+  waitKinds: readonly string[];
+  origins: readonly string[];
+}
+
+/** 本流程实例的**屏幕模型**：把「卡了多久 / 卡在谁那里 / 站间流转多久」三问各摊成一行。 */
+export interface ProcessInstanceRowVM {
+  instanceKey: string;
+  carrierObjectId: string;
+  enteredAt: string;
+  exitedAt: string | null;
+  /** 站内停留天数（未出站时 = asOf − enteredAt）。 */
+  dwellDays: number;
+  /** 到分析截止时刻仍未出站 ⇒ **正卡在这一站**。 */
+  stillIn: boolean;
+  /** 「卡在谁那里」：职能 + 具体责任方（单据字段名=值，可下钻）。 */
+  ownerFunctionKey: string;
+  partyField: string | null;
+  partyValue: string | null;
+  waitKind: ProcessWaitKind | null;
+  /** 到下一站的流转间隔；本站未出站或已是末站 ⇒ null（**不是 0**）。 */
+  gapDaysToNext: number | null;
+  /** 溯源：这条实例的进/出站时刻各来自哪张单据的哪个字段、原值是多少（R13）。 */
+  sources: { field: string; rawValue: string | number; unit: string; resolvedAt: string; role: string }[];
+}
+
+export interface ProcessInstancesModel {
+  processKey: string;
+  available: boolean;
+  asOf: string;
+  asOfSource: string;
+  instanceCount: number;
+  /** 停留最久的排前面（全序：平手按 instanceKey 字典序，**平手返回 0**）。 */
+  rows: ProcessInstanceRowVM[];
+  stuckCount: number;
+  /** 反推不出时的诚实缺席（缺哪种单据 / 哪个字段 / 怎么复验）。 */
+  absence: ProcessFlowAbsence | null;
+  /** 标准工期 —— **对照列**，绝不当作实测滞留读。 */
+  stdDurationDays: number;
+}
+
+/**
+ * 把端点响应摊成屏幕模型。纯函数（无 IO / 无时钟），故可被单测直喂 fixture。
+ *
+ * ⚠ 排序比较器**全序**：`dwellDays` 降序，平手按 `instanceKey` 字典序 tie-break，
+ * **平手返回 0** —— 写成 `a > b ? -1 : 1` 会让平手时的结果依赖初始序（同数据两跑不同序）。
+ */
+export function buildProcessInstancesModel(res: ProcessInstancesResponse): ProcessInstancesModel {
+  const dwellByKey = new Map<string, { dwellDays: number; stillIn: boolean; gapDaysToNext: number | null }>();
+  for (const f of res.flowTime) {
+    for (const s of f.stations) {
+      dwellByKey.set(s.instanceKey, { dwellDays: s.dwellDays, stillIn: s.stillIn, gapDaysToNext: s.gapDaysToNext });
+    }
+  }
+  const rows: ProcessInstanceRowVM[] = res.instances.map((i) => {
+    const d = dwellByKey.get(i.key);
+    return {
+      instanceKey: i.key,
+      carrierObjectId: i.carrierObjectId,
+      enteredAt: i.enteredAt,
+      exitedAt: i.exitedAt,
+      dwellDays: d?.dwellDays ?? 0,
+      stillIn: d?.stillIn ?? i.exitedAt === null,
+      ownerFunctionKey: i.ownerRef.functionKey,
+      partyField: i.ownerRef.partyField,
+      partyValue: i.ownerRef.partyValue,
+      waitKind: i.waitState,
+      gapDaysToNext: d?.gapDaysToNext ?? null,
+      sources: i.sourceDocuments.map((s) => ({ field: s.field, rawValue: s.rawValue, unit: s.unit, resolvedAt: s.resolvedAt, role: s.role })),
+    };
+  });
+  rows.sort((a, b) => b.dwellDays - a.dwellDays || a.instanceKey.localeCompare(b.instanceKey));
+  return {
+    processKey: res.definition.key,
+    available: res.available,
+    asOf: res.asOf,
+    asOfSource: res.asOfSource,
+    instanceCount: res.instanceCount,
+    rows,
+    stuckCount: rows.filter((r) => r.stillIn).length,
+    absence: res.absence,
+    stdDurationDays: res.definition.stdDurationDays,
   };
 }

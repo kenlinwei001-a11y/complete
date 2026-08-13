@@ -57,7 +57,7 @@ import { newPlanBuilderCanvas } from "./planBuilderFixtures";
 import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
 import { BUILD_PIPELINE_KINDS, factoryPipeline, pipelineOrder, resolvePipeline } from "./pipelineFixtures";
 // WO-WAITING-STATES-FE · 流程等待态 fixture（过契约 schema 的真种子子集，见该文件头三重防漂移机制）
-import { PROCESS_DEFINITIONS_RESPONSE } from "./processWaitFixtures";
+import { PROCESS_DEFINITIONS_RESPONSE, processInstancesFixture } from "./processWaitFixtures";
 import { historyBundleFor, LIVED_WATERMARK } from "./livedInFixtures";
 
 /**
@@ -1758,6 +1758,13 @@ export const handlers = [
   // WO-WAITING-STATES-FE · 业务流程层等待态（需求 §20）。
   // fixture 走 `processWaitFixtures.ts`：逐条过契约 zod schema（与后端播种同一份），
   // 数据是 `apps/datacore/src/seed.ts` 的逐字子集 —— 防「mock 与真后端分家、测试咬 mock 恒绿」。
+  // ⚠ 顺序要紧：`:key/instances` 必须排在裸 `/a/v1/process-definitions` **前面**，
+  // 否则前者永远匹不到（msw 按注册序取第一个命中的 handler）。
+  // WO-FLOWTIME · 流程实例与站间流转时长。fixture 两向都给（反推得出 / 反推不出），
+  // 值逐字取自真后端真跑响应 —— 只 mock 成功那一路，`available:false` 的渲染分支就永远没跑过。
+  http.get("*/a/v1/process-definitions/:key/instances", ({ params }) =>
+    HttpResponse.json(processInstancesFixture(String(params.key))),
+  ),
   http.get("*/a/v1/process-definitions", () => HttpResponse.json(PROCESS_DEFINITIONS_RESPONSE)),
   http.get("*/a/v1/ontology/object-types", () =>
     // 图谱体系：与真后端 SEED_DEMO 一致的推演图谱（推演读这些类型），非只 Base。

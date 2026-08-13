@@ -80,7 +80,7 @@ import type {
 } from "./types";
 import { WorkspaceSchema } from "./types";
 // WO-WAITING-STATES-FE · 业务流程等待态响应形状（与真后端 GET /a/v1/process-definitions 对账的单一定义）。
-import type { ProcessDefinitionsResponse } from "@/views/process/processWait";
+import type { ProcessDefinitionsResponse, ProcessInstancesResponse } from "@/views/process/processWait";
 
 // ---------------- A · DataCore ----------------
 
@@ -212,6 +212,22 @@ export const fetchBusinessDomains = () => api.a<{ domains: { key: string; displa
  */
 export const fetchProcessDefinitions = () =>
   api.a<ProcessDefinitionsResponse>("/a/v1/process-definitions");
+
+/**
+ * WO-FLOWTIME · 单条流程的**实例**与站间流转时长。
+ *
+ * 补上一条上面那个端点自己写着答不了的问题：**「此刻这条流程已经卡了多久 / 卡在谁那里」**。
+ * 时刻由后端从**既有带时间戳单据反推**（`origin=DERIVED_FROM_DOCUMENT`，逐条带溯源单据），
+ * ⛔ 不是 `stdDurationDays`（标准工期）—— 后者在响应里作为 `definition.stdDurationDays`
+ * 原样透出，**是对照列**，与实测天数分属两个字段，前端不可能拿错。
+ *
+ * 反推不出时后端返回 `available:false` + `absence{kind,reason,probe}`（200 不是 500）——
+ * 「我不知道」是合法答案，把它变成错误会让调用方以为是服务故障。
+ */
+export const fetchProcessInstances = (processKey: string, limit = 50) =>
+  api.a<ProcessInstancesResponse>(
+    `/a/v1/process-definitions/${encodeURIComponent(processKey)}/instances?limit=${limit}`,
+  );
 
 export const fetchDomains = () =>
   api.a<{ domainKey: string; displayName: string; color?: string }[]>("/a/v1/ontology/domains");

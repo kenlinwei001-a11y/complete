@@ -241,7 +241,14 @@
   2. **id 确定性**：`estate_<tenantId>_<worldId>_t<tick>`（契约 `enterpriseStateId`）。同一逻辑时刻重复捕获 = 幂等覆盖同一行且**逐字节一致**（R6）；换成随机 id 会堆出一堆内容相同的行，"重复取快照字节级一致"这句话就无从验证。**id 必须带 tenantId** —— 本表主键是 `id` 单列（`ON CONFLICT (id)`），不带就会跨租户互相覆盖（R1/R2 串数据），而 memory 模式按 `(tenantId,id)` 建键**测不出来**。
   3. **两世界物理隔离**（PRD §4.1）：`worldId`（`REAL` 或推演会话 id）+ `isSimulated` + `forkedFromStateId` 三件套；fork **必产生新行**，仿真世界永远碰不到真实世界那一行。fork 出的快照每条指标 `source.kind` 翻成 `FORKED` —— 不翻的话仿真快照会声称自己的数是"从对象库现场数出来的"，而世界隔离的头号风险不是数据串是**出处串**。
   口径全部来自租户本体（R14 零业务常数）：KPI 组 ← SPINE 指标库对象 `Metric`（§2.E / `packages/contracts/src/spine.ts`），分组键取该指标的 `category`；其余组 ← 逐 ACTIVE 对象类型的对象数与数值属性合计，分组键取该类型在本体里的 `domain`。「产能 / 库存 / 订单」这三组不是代码里点名的，是各自类型归在哪个域就落在哪个组。**捕获核 `captureEnterpriseState` 是纯函数且 datacore 与前端 mock 共用同一份**（`apps/frontend-shell/src/mocks/handlers.ts` import 契约本尊）——形状分家在结构上就不可能发生，这是"mock 与引擎口径分家、测试咬 mock 恒绿"那次事故的结构性对策。诚实空：数不出来一律 `value:null` + `reason`，**不写 0 冒充**（0 = 真数出来是 0）。前端只读落点 `apps/frontend-shell/src/views/sim/EnterpriseStatePanel.tsx`（挂沙盘右栏 rail，见 §3 企业状态快照链）。SEAM `apps/datacore/test/enterprise-state.seam.test.ts` + `apps/frontend-shell/test/enterprise-state.seam.test.tsx`。
-- **StateDelta / ProcessInstance（**尚无承载体** · 另有 WO）**：PRD §3 闭环链 `扰动 → StateDelta → 受影响闭包 → Decision → Action(R4 正门) → EnterpriseState'` 今天只有首尾两端有对象（`Perturbation` §2.I / `EnterpriseState` 本节）与 `Decision`（§2.D），中间两跳登记为缺席。**不许**因为本节写了这条链就当作它已通 —— 判据见 §8 的 `G-TWIN-STATE-NO-CARRIER` 条目。
+- **ProcessInstance（业务流程**实例** · WO-FLOWTIME 2026-08-13 落）**：回答 `ProcessDefinition` 答不出的三问 ——「**哪一条**流程实例被卡住、卡在**谁**那里、卡了**多久**」（`sim/impact-analysis.ts` 的 `instanceLevel.reason` 逐字写着平台此前答不出）。契约 `packages/contracts/src/process-instance.ts` · 行业规则表 `apps/datacore/src/process/flow-rules.ts` · IO 适配 `apps/datacore/src/process/reconstruct.ts` · 本体登记 `apps/datacore/src/process/ontology.ts` · 表 `process_instances`（`apps/datacore/migrations/033_process_instances.sql`，doc-jsonb，**R9 四处同改** migration + `repo/repo.ts` + `repo/memory.ts` + `repo/pg.ts`）· 求解器 `process_flow_time`（`solvers/process-flow.ts`）· 路由 `GET /a/v1/process-definitions/:key/instances` · 前端 `views/process/ProcessWaitView.tsx` 的 `InstancePanel`。五条设计判据，改之前必须先读：
+  1. **时刻是「从既有带时间戳单据**反推**」的，不是合成也不是流程引擎直采**。`origin` 词表只有两档 `DERIVED_FROM_DOCUMENT`（今天全部）/ `MEASURED`（真 MES 接进来那天，今天 **0 条**），且**刻意没有「标准工期」那一档** —— 想拿 `stdDurationDays` 填坑的人会发现这里没有格子可以放它，**词表本身就是那道门**。每条实例带 `sourceDocuments[]`（单据 objectId + 字段名 + **该字段原值**（原单位不换算） + 换算后的 ISO + ENTERED/EXITED），R13 可当场溯源。
+  2. **⛔ 不拿标准工期冒充实测卡顿**：`app.ts` 的 `/a/v1/process-definitions` 路由早就立了这条规矩，本条是它的**正面兑现不是例外**。机器判据：契约与规则表**一次都不出现 `stdDurationDays`**；端点里它只作为 `definition.stdDurationDays` 对照列原样透出，与实测天数分属两个字段。
+  3. **诚实两向**：65 条流程**只有 9 条反推得出**（1058 实例 / 767 链，battery/S/seed=42 实测），其余 56 条返回 `available:false` + `absence{kind,reason,probe}`，**不是 0 也不是编的数**。缺席四档 `NO_CARRIER_OBJECT`/`NO_RECONSTRUCTION_RULE`/`FIELD_MISSING_ON_OBJECT`/`NOT_APPLICABLE`——**四种修法完全不同，不许混为一谈**。逐条清单 `docs/WO-FLOWTIME-feasibility.md`。
+  4. **R6 无时钟**：「现在」由 `asOf` 显式传入，缺省取**数据里观测到的最晚时刻**（`asOfSource=DATA_LATEST`，随响应回传让人知道这个「现在」怎么定的），**不是 `Date.now()`**，也不是 `forecastStart`（那是预测窗**起点**，拿它当"现在"会把绝大多数单据判成「尚未入站」——报告里每行都写"还没开始"等于什么都没说）。日偏移换算锚点单一来源 `BATTERY_SOLVER_PARAMS.forecastStart`。同输入两跑逐字节一致（实测 len 63442 == 63442）。
+  5. **R4 只读投影**：本表是对既有真值的重排，不是新真值 ⇒ 不经 Action 审批，**一个 `objects` 行都不碰**。id 确定性（`pinst_<tenant>_<processKey>_<carrierObjectId>`）⇒ 重跑幂等覆盖不堆行。
+  **与 `chain_loss_attribution` 分层（不是第二真相源）**：那个在**链路节拍层**答「哪一段慢」（一条代表性全链 × 环节损失占比），这个在**流程实例层**答「哪一张单卡着」（全量实例 × 天数 + 责任方 + 溯源）。两者都读 `PurchaseOrder.shipDay→arriveDay` 这类日戳，合并它们 = 把「平均值」与「个体」混为一谈。
+- **StateDelta（**尚无承载体** · 另有 WO）**：PRD §3 闭环链 `扰动 → StateDelta → 受影响闭包 → Decision → Action(R4 正门) → EnterpriseState'` 今天首尾两端有对象（`Perturbation` §2.I / `EnterpriseState` 本节）、`Decision`（§2.D）与 `ProcessInstance`（本节，WO-FLOWTIME 已落）都在，**只剩 `StateDelta` 一跳登记为缺席**。**不许**因为本节写了这条链就当作它已通 —— 判据见 §8 的 `G-TWIN-STATE-NO-CARRIER` 条目。
 
 
 ---
@@ -918,6 +925,14 @@ POST /a/v1/simulation/impact-analysis {worldId, change{objectType,objectId,prop,
     · 每维 available 判别联合；可用时**必带 universe**（全域基数）⇒ 「台账为空」≠「查过了没中」
     · 流程维 definition 粒度可用，**instanceLevel 恒 available:false**
       （ProcessInstance/ProcessTask 无承载物 · 节点无 owner/assignee · 五种 WAITING 全缺）
+      ⚠ **2026-08-13 WO-FLOWTIME 起，这句话的前半截已过期**：`ProcessInstance` 承载物**已落地**
+        （§2.K · `migrations/033` · 契约 `process-instance.ts`），实例粒度的「哪一条 / 卡在谁那里 /
+        卡了多久」可经 `process_flow_time` 求解器与 `GET /a/v1/process-definitions/:key/instances` 取到。
+        **但本链自己的 `instanceLevel` 尚未接上那条线**（`impact-analysis.ts:240` 的
+        `instanceLevel` 仍硬写 `available:false`）—— 即当下是「接了线没数据」的**反面**：
+        承载物有了、本链没读。这是本条**登记在案的缺口**，不是已通；接线是另一张单。
+        判据（不许拿 grep 直接命中数下结论）：`grep -n "instanceLevel" apps/datacore/src/sim/impact-analysis.ts`
+        看它是否 import `process/reconstruct.js`；今日实测**没有** ⇒ 缺口成立。
     · KPI breach 三态（BREACHED/SAFE/**UNKNOWN**）——floorVal 或 actual 取不到必报 UNKNOWN，禁当 SAFE
     · basis.worldOverlayApplied=0 / derivationSpecCount=0 / 变更起点不存在 → 各出 warning 说明「算不了」而非「没影响」
   ⚠ 实测（2026-08-10 亲手真跑 SEED_DEMO=1）：**demo 租户 derivationSpecs 恒 0**
@@ -1044,6 +1059,8 @@ toType 是 Order」一句**字面为假**，实有 3 条；但其限定句「Ord
 | L17 | `decision.committed` | WO-C1 决策 commit（COMMITTED·派 ActionDraft 走 S2·带 decisionId/actionDraftIds）→ 失效决策页 + 审批收件箱 | IN_SESSION | decisions, decision-page, notifications | — |
 | L17 | `decision.realized` | WO-LEARNING-LOOP-FEEDBACK 成效回写（COMMITTED→REALIZED·外部实测 realizedGapClose vs 预言 Σclosesgap → effectivenessPct·带 decisionId/metricKey/effectivenessPct）→ 失效决策页 + 学习权重归集（DecisionOutcomeStat） | IN_SESSION | decisions, decision-page | — |
 | L16 | `entity.out_of_domain` | 感知层·槽位实体经 A 侧解析正门（`POST /a/v1/ontology/resolve-ref`）在候选类型里都解析不到（`router/slots.ts fillSlots`）→ orchestrator 发任务事件 + `perception-metrics.ts` 记误触发率（域外/尝试）+ 取最近邻候选供澄清。**WO-SLOT-ENTITY-RESOLVE 增补**：事件与 `OutOfDomainSignal` 现带 `resolution`（试了哪些类型 / 归一后用什么键 / 比对了哪些属性 / 扫了几行 / 为什么不匹；歧义时 `ambiguous`+候选），且澄清内容同步落 `QueryTask.pendingClarification`（轮询型客户端可见，不必吃 SSE） | NOTIFY | perception-metrics | — |
+| **L19** | `process.instance_entered` | **WO-FLOWTIME** 流程实例反推产出（`process/reconstruct.ts reconstructAndPersist()`，由求解器 `process_flow_time` 与端点 `GET /a/v1/process-definitions/:key/instances` 两处调用；负载带 `instanceCount/processKeys/asOf/asOfSource/origin`）→ 失效实例下钻面板 | IN_SESSION | process-instances | — |
+| **L19** | `process.instance_stuck` | **WO-FLOWTIME** 检出到 `asOf` 仍未出站的实例（负载带 `stuckFlowCount/worstFlowKey/worstProcessKey/worstStuckDays`）。**走 NOTIFY 不是 IN_SESSION**：一条业务流程卡住是要人去处理的（卡在谁那里就在负载里），不只是"刷新一下页面" | NOTIFY | process-instances, notifications | — |
 | L-sim | `sim.session_created` | 推演沙盘 init 建会话（增量 1，设计待落）→ 失效沙盘会话列表 | IN_SESSION | sim-sessions | — |
 | L-sim | `sim.tick_completed` | 沙盘推进 1+ tick（`propagateTick` 传导落 SimTickState，增量 1/3）→ 失效沙盘态/轨迹可视化 | IN_SESSION | sim-session-view, propagation-timeline | — |
 | L-sim | `sim.checkpoint_saved` | 沙盘命名存档（增量 1）→ 失效检查点列表/分支基点 | IN_SESSION | sim-checkpoints | — |

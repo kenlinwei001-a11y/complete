@@ -1,10 +1,12 @@
 import {
   PROCESS_OWNER_FUNCTIONS,
   PROCESS_WAIT_KINDS,
+  PROCESS_INSTANCE_ORIGINS,
   ProcessDefinitionSchema,
   ProcessDomainSchema,
+  ProcessInstanceSchema,
 } from "@platform/contracts";
-import type { ProcessDefinitionsResponse } from "@/views/process/processWait";
+import type { ProcessDefinitionsResponse, ProcessInstancesResponse } from "@/views/process/processWait";
 
 /**
  * WO-WAITING-STATES-FE · `GET /a/v1/process-definitions` 的 mock fixture。
@@ -77,4 +79,146 @@ export const PROCESS_DEFINITIONS_RESPONSE: ProcessDefinitionsResponse = {
   // 词表与登记册直接给契约的那一份 —— 与后端路由 `app.ts` 下发的是同一个常量。
   waitKinds: PROCESS_WAIT_KINDS,
   ownerFunctions: PROCESS_OWNER_FUNCTIONS,
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-FLOWTIME · `GET /a/v1/process-definitions/:key/instances` 的 mock fixture
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ══ 🔴 同一条防分家纪律，外加一条本单专有的 ═════════════════════════════════
+ *
+ * ① 走同一份 zod schema（`ProcessInstanceSchema.parse`，`strictObject`，多写一个字段即炸）。
+ * ② **值是真后端真跑出来的，不是编的**。下面两条 fixture 逐字取自本单在真后端
+ *    （`seedDemo` + 合成 `battery-manufacturing/S/seed=42` + `seedDemoProcessLayer`）
+ *    上跑 `GET /a/v1/process-definitions/P34|P01/instances` 的实际响应：
+ *      · P34 进口清关：`cc_po_12` 的 `declaredDay=2 / clearedDay=5`
+ *        （锚点 forecastStart=2026-06-10 ⇒ 2026-06-12 → 2026-06-15，停留 3 天，
+ *         责任方 `brokerName=洋山报关行`）—— 30 张采购单里只有这 1 张是进口，
+ *         **这个 1 是真值不是数据缺失**（境内直供结构上没有清关环节）。
+ *      · P01 年度经营目标分解：`available:false` + `NO_RECONSTRUCTION_RULE`，
+ *        承载物 `PlanTarget` 真有 17 条对象，缺的是反推规则不是数据。
+ * ③ **两向都给**：mock 必须同时覆盖「反推得出」与「反推不出」两条分支。
+ *    只 mock 成功那一路，`available:false` 的渲染分支就永远没被跑过，
+ *    等真后端返回它的时候才第一次执行 —— 那正是「绿测试 ≠ 能用」。
+ */
+const RAW_INSTANCES_P34 = [
+  {
+    id: `pinst_${TENANT_ID}_P34_obj_customsclearance_cc_po_12`,
+    tenantId: TENANT_ID,
+    key: "P34::obj_customsclearance_cc_po_12",
+    processKey: "P34",
+    carrierObjectId: "obj_customsclearance_cc_po_12",
+    carrierTypeKey: "CustomsClearance",
+    flowKey: "procure_to_release::po_12",
+    stationIndex: 1,
+    enteredAt: "2026-06-12",
+    exitedAt: "2026-06-15",
+    waitState: null,
+    ownerRef: { functionKey: "supply_chain", partyField: "brokerName", partyValue: "洋山报关行" },
+    origin: "DERIVED_FROM_DOCUMENT",
+    sourceDocuments: [
+      { objectId: "obj_customsclearance_cc_po_12", typeKey: "CustomsClearance", field: "declaredDay", rawValue: 2, unit: "DAY_OFFSET", resolvedAt: "2026-06-12", role: "ENTERED" },
+      { objectId: "obj_customsclearance_cc_po_12", typeKey: "CustomsClearance", field: "clearedDay", rawValue: 5, unit: "DAY_OFFSET", resolvedAt: "2026-06-15", role: "EXITED" },
+    ],
+    scopeObjectTypes: ["CustomsClearance"],
+  },
+] as const;
+
+/** 反推得出的那一路（P34 进口清关）。 */
+export const PROCESS_INSTANCES_P34: ProcessInstancesResponse = {
+  definition: ProcessDefinitionSchema.parse({
+    ...RAW_DEFINITIONS.find((d) => d.key === "P34")!,
+    id: `pdef_${TENANT_ID}_P34`,
+    tenantId: TENANT_ID,
+  }),
+  asOf: "2026-07-06",
+  asOfSource: "DATA_LATEST",
+  available: true,
+  absence: null,
+  instanceCount: 1,
+  instances: RAW_INSTANCES_P34.map((i) => ProcessInstanceSchema.parse(i)),
+  instancesShown: 1,
+  flowTime: [
+    {
+      flowKey: "procure_to_release::po_12",
+      totalDays: 30,
+      bottleneckProcessKey: "P33",
+      bottleneckDwellDays: 30,
+      stuckProcessKey: null,
+      stuckDays: null,
+      thisStation: {
+        processKey: "P34",
+        stationIndex: 1,
+        instanceKey: "P34::obj_customsclearance_cc_po_12",
+        carrierObjectId: "obj_customsclearance_cc_po_12",
+        enteredAt: "2026-06-12",
+        exitedAt: "2026-06-15",
+        dwellDays: 3,
+        stillIn: false,
+        waitState: null,
+        ownerRef: { functionKey: "supply_chain", partyField: "brokerName", partyValue: "洋山报关行" },
+        gapDaysToNext: 0,
+      },
+      stations: [
+        {
+          processKey: "P34",
+          stationIndex: 1,
+          instanceKey: "P34::obj_customsclearance_cc_po_12",
+          carrierObjectId: "obj_customsclearance_cc_po_12",
+          enteredAt: "2026-06-12",
+          exitedAt: "2026-06-15",
+          dwellDays: 3,
+          stillIn: false,
+          waitState: null,
+          ownerRef: { functionKey: "supply_chain", partyField: "brokerName", partyValue: "洋山报关行" },
+          gapDaysToNext: 0,
+        },
+      ],
+    },
+  ],
+  waitKinds: PROCESS_WAIT_KINDS,
+  origins: PROCESS_INSTANCE_ORIGINS,
+};
+
+/** 反推**不出**的那一路（P01）—— 缺席理由与探针逐字取自真后端响应。 */
+export const PROCESS_INSTANCES_P01: ProcessInstancesResponse = {
+  definition: ProcessDefinitionSchema.parse({
+    ...RAW_DEFINITIONS.find((d) => d.key === "P01")!,
+    id: `pdef_${TENANT_ID}_P01`,
+    tenantId: TENANT_ID,
+  }),
+  asOf: "2026-07-06",
+  asOfSource: "DATA_LATEST",
+  available: false,
+  absence: {
+    processKey: "P01",
+    name: "年度经营目标分解",
+    carrierTypeKey: "PlanTarget",
+    kind: "NO_RECONSTRUCTION_RULE",
+    reason:
+      "承载物 PlanTarget 有 17 条实例，但**没有任何一条反推规则**声明本流程的进/出站字段落在哪两个属性上。这是「有单据、没规则」不是「没数据」—— 修法是补规则表一行，不是补数据。",
+    probe: 'listByType("PlanTarget") 数出 17 条；再在 flow-rules.ts 里搜 processKey:"P01" 命中 0 条。',
+  },
+  instanceCount: 0,
+  instances: [],
+  instancesShown: 0,
+  flowTime: [],
+  waitKinds: PROCESS_WAIT_KINDS,
+  origins: PROCESS_INSTANCE_ORIGINS,
+};
+
+/**
+ * 按 processKey 分发。**没有兜底的"编一条"**：未登记的 key 走 `NO_RECONSTRUCTION_RULE`
+ * 缺席分支（与真后端对 56 条反推不出的流程的行为一致），而不是返回一条假实例。
+ */
+export const processInstancesFixture = (key: string): ProcessInstancesResponse => {
+  if (key === "P34") return PROCESS_INSTANCES_P34;
+  const def = RAW_DEFINITIONS.find((d) => d.key === key);
+  if (key === "P01" || def === undefined) return PROCESS_INSTANCES_P01;
+  return {
+    ...PROCESS_INSTANCES_P01,
+    definition: ProcessDefinitionSchema.parse({ ...def, id: `pdef_${TENANT_ID}_${key}`, tenantId: TENANT_ID }),
+    absence: { ...PROCESS_INSTANCES_P01.absence!, processKey: key, name: def.name, carrierTypeKey: def.carrierTypeKey },
+  };
 };
