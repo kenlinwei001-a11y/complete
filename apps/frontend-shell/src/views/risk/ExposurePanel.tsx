@@ -1,5 +1,6 @@
 import type { Exposure } from "@platform/contracts";
 import { Provenance } from "@/components/Provenance";
+import { InfoPopover } from "@/components/InfoPopover";
 import { AbsentNote, SubSection } from "./decisionInfoShared";
 import styles from "../RiskBoardView.module.css";
 
@@ -152,8 +153,15 @@ export function ExposurePanel({ exposure, baseName }: { exposure?: Exposure; bas
           ))}
         </tbody>
       </table>
+      {/* WO-R5 收编时降层：原为第一层的一整段口径，被 `check-ui-first-layer` 按
+          规范 §2 R-UI-3「口径/公式进 `?` 浮层」点名。降层**不是删除** ——
+          `?` 触发器永远可见，就是规范 §1 要求的那个「可见记号」。
+          顺手修掉 `**同一份**` 的字面 ** 泄漏到界面（本仓 order-chain 刚踩过同一个坑）。 */}
       <div style={{ fontSize: 10, color: "var(--muted2)", marginTop: 6 }} data-testid={`exposure-caliber-${baseName}`}>
-        口径：订单/客户/数量取自与本卡 affectedOrders **同一份**窗内订单（不重算）；金额按细分参考单价折算（估算口径·非实际成交价）。
+        <InfoPopover topic="影响面口径" testId={`exposure-caliber-${baseName}`}>
+          订单 / 客户 / 数量取自与本卡 affectedOrders <b>同一份</b>窗内订单（不重算）；
+          金额按细分参考单价折算（估算口径 · 非实际成交价）。
+        </InfoPopover>
       </div>
     </SubSection>
   );

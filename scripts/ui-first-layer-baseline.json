@@ -1,869 +1,869 @@
 {
- "note": "docs/CONVENTION-ui-information-layering.md 的存量棘轮（断点 G-UI-FIRSTLAYER-OVERLOAD）。first=第一层信息块数 · deferred=第二层/浮层信息块数 · formula=第一层口径公式条数 · sizes=字号层级数。四者只降不升；且 first 下降时 deferred 不许同时下降（D4 守恒：那是删内容不是分层）。新文件不进基线 ⇒ 直接按规范硬上限收（字号 ≤3、第一层零口径公式）。",
- "spec": "docs/CONVENTION-ui-information-layering.md",
- "gate": "scripts/check-ui-first-layer.mjs",
- "generatedFrom": "node scripts/check-ui-first-layer.mjs --update",
- "fileCount": 95,
- "totals": {
-  "first": 4260,
-  "formula": 58,
-  "nativeTitle": 139
- },
- "files": {
-  "apps/frontend-shell/src/pages/admin/ActionsPage.tsx": {
-   "first": 27,
-   "deferred": 2,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 3,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 27 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/AgentsPage.tsx": {
-   "first": 101,
-   "deferred": 6,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 7,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 101 个信息块；字号 7 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/BoundaryPage.tsx": {
-   "first": 19,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 1,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 19 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/CalibrationPage.tsx": {
-   "first": 45,
-   "deferred": 1,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 6,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 45 个信息块；字号 6 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/CatalogPage.tsx": {
-   "first": 45,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 45 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/ConfigMigrationPage.tsx": {
-   "first": 33,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 2,
-   "sizes": 5,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 33 个信息块；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/ConnectionsPage.tsx": {
-   "first": 34,
-   "deferred": 8,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 5,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 34 个信息块；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx": {
-   "first": 189,
-   "deferred": 29,
-   "formula": 0,
-   "prose": 21,
-   "sizes": 7,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 189 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；字号 7 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/DataCategoriesPanel.tsx": {
-   "first": 8,
-   "deferred": 10,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 3,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 8 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/DomainsPage.tsx": {
-   "first": 11,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 2,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 11 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/DslTextarea.tsx": {
-   "first": 0,
-   "deferred": 2,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 2,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 0 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/EvalsPage.tsx": {
-   "first": 39,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 2,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 39 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/ExternalSignalsPage.tsx": {
-   "first": 30,
-   "deferred": 0,
-   "formula": 1,
-   "prose": 1,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 30 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/FeaturesPage.tsx": {
-   "first": 12,
-   "deferred": 9,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 12 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/FieldProfilePage.tsx": {
-   "first": 39,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 39 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/GrowthCockpitPage.tsx": {
-   "first": 38,
-   "deferred": 1,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 38 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/LlmProvidersPage.tsx": {
-   "first": 19,
-   "deferred": 52,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 19 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/McpPage.tsx": {
-   "first": 18,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 2,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 18 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/MergePage.tsx": {
-   "first": 25,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 25 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/MetaPage.tsx": {
-   "first": 18,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 3,
-   "sizes": 1,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 18 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/ModelingPage.tsx": {
-   "first": 63,
-   "deferred": 12,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 8,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 63 个信息块；字号 8 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/NotificationsPage.tsx": {
-   "first": 9,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 3,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 9 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/ObjectTypesBrowserPage.tsx": {
-   "first": 30,
-   "deferred": 1,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 30 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/OpsFallbackPage.tsx": {
-   "first": 11,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 3,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 11 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/OpsSchedulePage.tsx": {
-   "first": 23,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 5,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 23 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/PermissionsPage.tsx": {
-   "first": 32,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 2,
-   "sizes": 3,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 32 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/PrototypeIntakePage.tsx": {
-   "first": 40,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 2,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 40 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/QuarantinePage.tsx": {
-   "first": 15,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 15 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/QueryHistoryPage.tsx": {
-   "first": 22,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 2,
-   "sizes": 2,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 22 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/ResourcesPage.tsx": {
-   "first": 53,
-   "deferred": 1,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 6,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 53 个信息块；字号 6 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/RuleDocsPage.tsx": {
-   "first": 23,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 5,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 23 个信息块；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/RulesPage.tsx": {
-   "first": 29,
-   "deferred": 33,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 3,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 29 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/ScenesPage.tsx": {
-   "first": 61,
-   "deferred": 3,
-   "formula": 0,
-   "prose": 4,
-   "sizes": 5,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 61 个信息块；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/SimClockConsole.tsx": {
-   "first": 17,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 3,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 17 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/SkillsPage.tsx": {
-   "first": 17,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 3,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 17 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/SkillStructure.tsx": {
-   "first": 74,
-   "deferred": 2,
-   "formula": 0,
-   "prose": 2,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 74 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/SliceInspector.tsx": {
-   "first": 28,
-   "deferred": 1,
-   "formula": 0,
-   "prose": 3,
-   "sizes": 3,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 28 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/SliceLayersPanel.tsx": {
-   "first": 35,
-   "deferred": 9,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 8,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 35 个信息块；字号 8 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/SliceLibraryPage.tsx": {
-   "first": 36,
-   "deferred": 1,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 36 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/SlicesPage.tsx": {
-   "first": 48,
-   "deferred": 2,
-   "formula": 0,
-   "prose": 4,
-   "sizes": 5,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 48 个信息块；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/SolverReviewPage.tsx": {
-   "first": 25,
-   "deferred": 11,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 3,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 25 个信息块"
-  },
-  "apps/frontend-shell/src/pages/admin/SolversPage.tsx": {
-   "first": 34,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 3,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 34 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/SyntheticPage.tsx": {
-   "first": 36,
-   "deferred": 3,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 36 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/TenantsPage.tsx": {
-   "first": 16,
-   "deferred": 11,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 16 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/UsersPage.tsx": {
-   "first": 17,
-   "deferred": 14,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 17 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/ValidationPage.tsx": {
-   "first": 39,
-   "deferred": 0,
-   "formula": 1,
-   "prose": 2,
-   "sizes": 6,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 39 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 6 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/ViewsPage.tsx": {
-   "first": 24,
-   "deferred": 36,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 5,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 24 个信息块；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/pages/admin/WorkflowsPage.tsx": {
-   "first": 55,
-   "deferred": 3,
-   "formula": 0,
-   "prose": 4,
-   "sizes": 4,
-   "page": "管理台（admin）",
-   "why": "存量·规范落地前：第一层 55 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/BaseOutlookPanel.tsx": {
-   "first": 35,
-   "deferred": 2,
-   "formula": 1,
-   "prose": 3,
-   "sizes": 6,
-   "page": "主视图（views 顶层）",
-   "why": "存量·规范落地前：第一层 35 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 6 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/capacity/CapacityDerivationDag.tsx": {
-   "first": 17,
-   "deferred": 1,
-   "formula": 0,
-   "prose": 2,
-   "sizes": 4,
-   "page": "产能域（capacity）",
-   "why": "存量·规范落地前：第一层 17 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/capacity/CapacityFactorOntology.tsx": {
-   "first": 4,
-   "deferred": 4,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 4,
-   "page": "产能域（capacity）",
-   "why": "存量·规范落地前：第一层 4 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/capacity/CapacityLiveDialog.tsx": {
-   "first": 17,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 6,
-   "page": "产能域（capacity）",
-   "why": "存量·规范落地前：第一层 17 个信息块；字号 6 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/capacity/CapacityRampEnvelope.tsx": {
-   "first": 10,
-   "deferred": 0,
-   "formula": 1,
-   "prose": 2,
-   "sizes": 5,
-   "page": "产能域（capacity）",
-   "why": "存量·规范落地前：第一层 10 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/cleanroom/CleanroomAttrView.tsx": {
-   "first": 78,
-   "deferred": 1,
-   "formula": 0,
-   "prose": 9,
-   "sizes": 4,
-   "page": "洁净室域（cleanroom）",
-   "why": "存量·规范落地前：第一层 78 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/DashboardView.tsx": {
-   "first": 137,
-   "deferred": 5,
-   "formula": 0,
-   "prose": 6,
-   "sizes": 10,
-   "page": "主视图（views 顶层）",
-   "why": "存量·规范落地前：第一层 137 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；字号 10 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/DecisionPlayView.tsx": {
-   "first": 79,
-   "deferred": 20,
-   "formula": 0,
-   "prose": 6,
-   "sizes": 7,
-   "page": "主视图（views 顶层）",
-   "why": "存量·规范落地前：第一层 79 个信息块；字号 7 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/DispositionDetailPanel.tsx": {
-   "first": 14,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 3,
-   "page": "主视图（views 顶层）",
-   "why": "存量·规范落地前：第一层 14 个信息块"
-  },
-  "apps/frontend-shell/src/views/DisruptionRadiusView.tsx": {
-   "first": 37,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 3,
-   "sizes": 5,
-   "page": "主视图（views 顶层）",
-   "why": "存量·规范落地前：第一层 37 个信息块；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/graph/MappingOverlay.tsx": {
-   "first": 33,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 4,
-   "page": "图谱域（graph）",
-   "why": "存量·规范落地前：第一层 33 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/LedgerView.tsx": {
-   "first": 9,
-   "deferred": 2,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 3,
-   "page": "主视图（views 顶层）",
-   "why": "存量·规范落地前：第一层 9 个信息块"
-  },
-  "apps/frontend-shell/src/views/OntologyGraphView.tsx": {
-   "first": 31,
-   "deferred": 2,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 5,
-   "page": "主视图（views 顶层）",
-   "why": "存量·规范落地前：第一层 31 个信息块；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/OptimizeWhatifView.tsx": {
-   "first": 52,
-   "deferred": 2,
-   "formula": 0,
-   "prose": 3,
-   "sizes": 10,
-   "page": "主视图（views 顶层）",
-   "why": "存量·规范落地前：第一层 52 个信息块；字号 10 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx": {
-   "first": 48,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 5,
-   "page": "计划域（plan）",
-   "why": "存量·规范落地前：第一层 48 个信息块；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/plan/GeoMapView.tsx": {
-   "first": 8,
-   "deferred": 17,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 5,
-   "page": "计划域（plan）",
-   "why": "存量·规范落地前：第一层 8 个信息块；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/plan/OrderChainView.tsx": {
-   "first": 89,
-   "deferred": 6,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 6,
-   "page": "计划域（plan）",
-   "why": "存量·规范落地前：第一层 89 个信息块；字号 6 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx": {
-   "first": 28,
-   "deferred": 2,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 4,
-   "page": "计划域（plan）",
-   "why": "存量·规范落地前：第一层 28 个信息块；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/ReviewView.tsx": {
-   "first": 66,
-   "deferred": 1,
-   "formula": 1,
-   "prose": 0,
-   "sizes": 2,
-   "page": "主视图（views 顶层）",
-   "why": "存量·规范落地前：第一层 66 个信息块；1 处口径/公式未降浮层（R-UI-3）"
-  },
-  "apps/frontend-shell/src/views/RiskBoardView.tsx": {
-   "first": 227,
-   "deferred": 27,
-   "formula": 4,
-   "prose": 17,
-   "sizes": 14,
-   "page": "主视图（views 顶层）",
-   "why": "存量·规范落地前：第一层 227 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；4 处口径/公式未降浮层（R-UI-3）；字号 14 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx": {
-   "first": 83,
-   "deferred": 2,
-   "formula": 0,
-   "prose": 3,
-   "sizes": 5,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 83 个信息块；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/ChainLineMapView.tsx": {
-   "first": 59,
-   "deferred": 18,
-   "formula": 1,
-   "prose": 5,
-   "sizes": 5,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 59 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/CustomerImpactBar.tsx": {
-   "first": 29,
-   "deferred": 2,
-   "formula": 1,
-   "prose": 4,
-   "sizes": 5,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 29 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx": {
-   "first": 41,
-   "deferred": 1,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 5,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 41 个信息块；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/GlobalSimLevers.tsx": {
-   "first": 44,
-   "deferred": 5,
-   "formula": 1,
-   "prose": 5,
-   "sizes": 8,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 44 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/GlobalSimScenarioBar.tsx": {
-   "first": 21,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 5,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 21 个信息块；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/GlobalSimView.tsx": {
-   "first": 209,
-   "deferred": 29,
-   "formula": 3,
-   "prose": 17,
-   "sizes": 8,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 209 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；3 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/InspectorNodePanel.tsx": {
-   "first": 108,
-   "deferred": 3,
-   "formula": 4,
-   "prose": 14,
-   "sizes": 6,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 108 个信息块；4 处口径/公式未降浮层（R-UI-3）；字号 6 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/MultiObjWhatifPanel.tsx": {
-   "first": 45,
-   "deferred": 1,
-   "formula": 6,
-   "prose": 6,
-   "sizes": 8,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 45 个信息块；6 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/PerturbationTimeline.tsx": {
-   "first": 66,
-   "deferred": 0,
-   "formula": 3,
-   "prose": 10,
-   "sizes": 5,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 66 个信息块；3 处口径/公式未降浮层（R-UI-3）；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx": {
-   "first": 46,
-   "deferred": 22,
-   "formula": 4,
-   "prose": 3,
-   "sizes": 11,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 46 个信息块；4 处口径/公式未降浮层（R-UI-3）；字号 11 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/PlanAuditView.tsx": {
-   "first": 30,
-   "deferred": 0,
-   "formula": 2,
-   "prose": 3,
-   "sizes": 8,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 30 个信息块；2 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": {
-   "first": 27,
-   "deferred": 27,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 8,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 27 个信息块；字号 8 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/PmDag.tsx": {
-   "first": 5,
-   "deferred": 1,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 0,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 5 个信息块"
-  },
-  "apps/frontend-shell/src/views/sim/ProjectSimView.tsx": {
-   "first": 126,
-   "deferred": 36,
-   "formula": 10,
-   "prose": 4,
-   "sizes": 8,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 126 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；10 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx": {
-   "first": 9,
-   "deferred": 12,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 6,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 9 个信息块；字号 6 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/RadarChart.tsx": {
-   "first": 1,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 0,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 1 个信息块"
-  },
-  "apps/frontend-shell/src/views/sim/SandboxConsole.tsx": {
-   "first": 199,
-   "deferred": 19,
-   "formula": 5,
-   "prose": 32,
-   "sizes": 5,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 199 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；5 处口径/公式未降浮层（R-UI-3）；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/SandboxView.tsx": {
-   "first": 59,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 9,
-   "sizes": 3,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 59 个信息块"
-  },
-  "apps/frontend-shell/src/views/sim/ScheduleTable.tsx": {
-   "first": 25,
-   "deferred": 3,
-   "formula": 1,
-   "prose": 2,
-   "sizes": 4,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 25 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 4 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/shared.tsx": {
-   "first": 2,
-   "deferred": 3,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 2,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 2 个信息块"
-  },
-  "apps/frontend-shell/src/views/sim/SimComparePanel.tsx": {
-   "first": 12,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 2,
-   "sizes": 2,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 12 个信息块"
-  },
-  "apps/frontend-shell/src/views/sim/SimReadinessPanel.tsx": {
-   "first": 30,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 3,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 30 个信息块"
-  },
-  "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": {
-   "first": 144,
-   "deferred": 1,
-   "formula": 7,
-   "prose": 8,
-   "sizes": 8,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 144 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；7 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/SopReschedulePanel.tsx": {
-   "first": 23,
-   "deferred": 3,
-   "formula": 0,
-   "prose": 1,
-   "sizes": 7,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 23 个信息块；字号 7 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx": {
-   "first": 93,
-   "deferred": 1,
-   "formula": 1,
-   "prose": 22,
-   "sizes": 6,
-   "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 93 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 6 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/views/WhatIfView.tsx": {
-   "first": 43,
-   "deferred": 0,
-   "formula": 0,
-   "prose": 2,
-   "sizes": 5,
-   "page": "主视图（views 顶层）",
-   "why": "存量·规范落地前：第一层 43 个信息块；字号 5 级 > 3（R-UI-2）"
+  "note": "docs/CONVENTION-ui-information-layering.md 的存量棘轮（断点 G-UI-FIRSTLAYER-OVERLOAD）。first=第一层信息块数 · deferred=第二层/浮层信息块数 · formula=第一层口径公式条数 · sizes=字号层级数。四者只降不升；且 first 下降时 deferred 不许同时下降（D4 守恒：那是删内容不是分层）。新文件不进基线 ⇒ 直接按规范硬上限收（字号 ≤3、第一层零口径公式）。",
+  "spec": "docs/CONVENTION-ui-information-layering.md",
+  "gate": "scripts/check-ui-first-layer.mjs",
+  "generatedFrom": "node scripts/check-ui-first-layer.mjs --update",
+  "fileCount": 95,
+  "totals": {
+    "first": 4261,
+    "formula": 58,
+    "nativeTitle": 139
+  },
+  "files": {
+    "apps/frontend-shell/src/pages/admin/ActionsPage.tsx": {
+      "first": 27,
+      "deferred": 2,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 3,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 27 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/AgentsPage.tsx": {
+      "first": 101,
+      "deferred": 6,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 7,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 101 个信息块；字号 7 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/BoundaryPage.tsx": {
+      "first": 19,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 1,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 19 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/CalibrationPage.tsx": {
+      "first": 45,
+      "deferred": 1,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 6,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 45 个信息块；字号 6 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/CatalogPage.tsx": {
+      "first": 45,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 45 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/ConfigMigrationPage.tsx": {
+      "first": 33,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 2,
+      "sizes": 5,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 33 个信息块；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/ConnectionsPage.tsx": {
+      "first": 34,
+      "deferred": 8,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 5,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 34 个信息块；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx": {
+      "first": 189,
+      "deferred": 29,
+      "formula": 0,
+      "prose": 21,
+      "sizes": 7,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 189 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；字号 7 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/DataCategoriesPanel.tsx": {
+      "first": 8,
+      "deferred": 10,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 3,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 8 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/DomainsPage.tsx": {
+      "first": 11,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 2,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 11 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/DslTextarea.tsx": {
+      "first": 0,
+      "deferred": 2,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 2,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 0 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/EvalsPage.tsx": {
+      "first": 39,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 2,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 39 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/ExternalSignalsPage.tsx": {
+      "first": 30,
+      "deferred": 0,
+      "formula": 1,
+      "prose": 1,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 30 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/FeaturesPage.tsx": {
+      "first": 12,
+      "deferred": 9,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 12 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/FieldProfilePage.tsx": {
+      "first": 39,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 39 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/GrowthCockpitPage.tsx": {
+      "first": 38,
+      "deferred": 1,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 38 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/LlmProvidersPage.tsx": {
+      "first": 20,
+      "deferred": 52,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 19 个信息块；字号 4 级 > 3（R-UI-2）。／WO-R5 收编 handoff-wo-hover-layer 后 first 19→20：该改动正是规范 §2 R-UI-3 要求的那一种 —— 把「关推理」列承载口径的原生 title= 换成 InfoPopover（口径确实从第一层沉进了浮层）。但本门的 deferred 计数对它不动（52→52），故 D1 棘轮把一次**合规的**结构化改造读成「纯往第一层堆」。已实测排除「浮层正文是标识符表达式所以没被计数」这个猜想：把正文换成字面中文串后 deferred 仍是 52。按本门自己给的出口（『若这是规范 §3 要求的结构化改造…确无可沉内容时更新基线并写 why』）只上调这一个文件的 first，不动其它条目、不跑 --update（那会把同批 7 条新文件欠账一起洗白）。⚠ 留给门的 owner：deferred 为何不计这一处，值得查 —— 一道会惩罚它自己所要求的修法的门，会训练人把口径退回 title=。"
+    },
+    "apps/frontend-shell/src/pages/admin/McpPage.tsx": {
+      "first": 18,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 2,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 18 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/MergePage.tsx": {
+      "first": 25,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 25 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/MetaPage.tsx": {
+      "first": 18,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 3,
+      "sizes": 1,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 18 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/ModelingPage.tsx": {
+      "first": 63,
+      "deferred": 12,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 8,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 63 个信息块；字号 8 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/NotificationsPage.tsx": {
+      "first": 9,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 3,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 9 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/ObjectTypesBrowserPage.tsx": {
+      "first": 30,
+      "deferred": 1,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 30 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/OpsFallbackPage.tsx": {
+      "first": 11,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 3,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 11 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/OpsSchedulePage.tsx": {
+      "first": 23,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 5,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 23 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/PermissionsPage.tsx": {
+      "first": 32,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 2,
+      "sizes": 3,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 32 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/PrototypeIntakePage.tsx": {
+      "first": 40,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 2,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 40 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/QuarantinePage.tsx": {
+      "first": 15,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 15 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/QueryHistoryPage.tsx": {
+      "first": 22,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 2,
+      "sizes": 2,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 22 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/ResourcesPage.tsx": {
+      "first": 53,
+      "deferred": 1,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 6,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 53 个信息块；字号 6 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/RuleDocsPage.tsx": {
+      "first": 23,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 5,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 23 个信息块；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/RulesPage.tsx": {
+      "first": 29,
+      "deferred": 33,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 3,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 29 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/ScenesPage.tsx": {
+      "first": 61,
+      "deferred": 3,
+      "formula": 0,
+      "prose": 4,
+      "sizes": 5,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 61 个信息块；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/SimClockConsole.tsx": {
+      "first": 17,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 3,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 17 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/SkillsPage.tsx": {
+      "first": 17,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 3,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 17 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/SkillStructure.tsx": {
+      "first": 74,
+      "deferred": 2,
+      "formula": 0,
+      "prose": 2,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 74 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/SliceInspector.tsx": {
+      "first": 28,
+      "deferred": 1,
+      "formula": 0,
+      "prose": 3,
+      "sizes": 3,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 28 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/SliceLayersPanel.tsx": {
+      "first": 35,
+      "deferred": 9,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 8,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 35 个信息块；字号 8 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/SliceLibraryPage.tsx": {
+      "first": 36,
+      "deferred": 1,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 36 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/SlicesPage.tsx": {
+      "first": 48,
+      "deferred": 2,
+      "formula": 0,
+      "prose": 4,
+      "sizes": 5,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 48 个信息块；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/SolverReviewPage.tsx": {
+      "first": 25,
+      "deferred": 11,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 3,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 25 个信息块"
+    },
+    "apps/frontend-shell/src/pages/admin/SolversPage.tsx": {
+      "first": 34,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 3,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 34 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/SyntheticPage.tsx": {
+      "first": 36,
+      "deferred": 3,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 36 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/TenantsPage.tsx": {
+      "first": 16,
+      "deferred": 11,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 16 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/UsersPage.tsx": {
+      "first": 17,
+      "deferred": 14,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 17 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/ValidationPage.tsx": {
+      "first": 39,
+      "deferred": 0,
+      "formula": 1,
+      "prose": 2,
+      "sizes": 6,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 39 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 6 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/ViewsPage.tsx": {
+      "first": 24,
+      "deferred": 36,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 5,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 24 个信息块；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/pages/admin/WorkflowsPage.tsx": {
+      "first": 55,
+      "deferred": 3,
+      "formula": 0,
+      "prose": 4,
+      "sizes": 4,
+      "page": "管理台（admin）",
+      "why": "存量·规范落地前：第一层 55 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/BaseOutlookPanel.tsx": {
+      "first": 35,
+      "deferred": 2,
+      "formula": 1,
+      "prose": 3,
+      "sizes": 6,
+      "page": "主视图（views 顶层）",
+      "why": "存量·规范落地前：第一层 35 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 6 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/capacity/CapacityDerivationDag.tsx": {
+      "first": 17,
+      "deferred": 1,
+      "formula": 0,
+      "prose": 2,
+      "sizes": 4,
+      "page": "产能域（capacity）",
+      "why": "存量·规范落地前：第一层 17 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/capacity/CapacityFactorOntology.tsx": {
+      "first": 4,
+      "deferred": 4,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 4,
+      "page": "产能域（capacity）",
+      "why": "存量·规范落地前：第一层 4 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/capacity/CapacityLiveDialog.tsx": {
+      "first": 17,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 6,
+      "page": "产能域（capacity）",
+      "why": "存量·规范落地前：第一层 17 个信息块；字号 6 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/capacity/CapacityRampEnvelope.tsx": {
+      "first": 10,
+      "deferred": 0,
+      "formula": 1,
+      "prose": 2,
+      "sizes": 5,
+      "page": "产能域（capacity）",
+      "why": "存量·规范落地前：第一层 10 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/cleanroom/CleanroomAttrView.tsx": {
+      "first": 78,
+      "deferred": 1,
+      "formula": 0,
+      "prose": 9,
+      "sizes": 4,
+      "page": "洁净室域（cleanroom）",
+      "why": "存量·规范落地前：第一层 78 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/DashboardView.tsx": {
+      "first": 137,
+      "deferred": 5,
+      "formula": 0,
+      "prose": 6,
+      "sizes": 10,
+      "page": "主视图（views 顶层）",
+      "why": "存量·规范落地前：第一层 137 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；字号 10 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/DecisionPlayView.tsx": {
+      "first": 79,
+      "deferred": 20,
+      "formula": 0,
+      "prose": 6,
+      "sizes": 7,
+      "page": "主视图（views 顶层）",
+      "why": "存量·规范落地前：第一层 79 个信息块；字号 7 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/DispositionDetailPanel.tsx": {
+      "first": 14,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 3,
+      "page": "主视图（views 顶层）",
+      "why": "存量·规范落地前：第一层 14 个信息块"
+    },
+    "apps/frontend-shell/src/views/DisruptionRadiusView.tsx": {
+      "first": 37,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 3,
+      "sizes": 5,
+      "page": "主视图（views 顶层）",
+      "why": "存量·规范落地前：第一层 37 个信息块；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/graph/MappingOverlay.tsx": {
+      "first": 33,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 4,
+      "page": "图谱域（graph）",
+      "why": "存量·规范落地前：第一层 33 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/LedgerView.tsx": {
+      "first": 9,
+      "deferred": 2,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 3,
+      "page": "主视图（views 顶层）",
+      "why": "存量·规范落地前：第一层 9 个信息块"
+    },
+    "apps/frontend-shell/src/views/OntologyGraphView.tsx": {
+      "first": 31,
+      "deferred": 2,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 5,
+      "page": "主视图（views 顶层）",
+      "why": "存量·规范落地前：第一层 31 个信息块；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/OptimizeWhatifView.tsx": {
+      "first": 52,
+      "deferred": 2,
+      "formula": 0,
+      "prose": 3,
+      "sizes": 10,
+      "page": "主视图（views 顶层）",
+      "why": "存量·规范落地前：第一层 52 个信息块；字号 10 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx": {
+      "first": 48,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 5,
+      "page": "计划域（plan）",
+      "why": "存量·规范落地前：第一层 48 个信息块；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/plan/GeoMapView.tsx": {
+      "first": 8,
+      "deferred": 17,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 5,
+      "page": "计划域（plan）",
+      "why": "存量·规范落地前：第一层 8 个信息块；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/plan/OrderChainView.tsx": {
+      "first": 89,
+      "deferred": 6,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 6,
+      "page": "计划域（plan）",
+      "why": "存量·规范落地前：第一层 89 个信息块；字号 6 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx": {
+      "first": 28,
+      "deferred": 2,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 4,
+      "page": "计划域（plan）",
+      "why": "存量·规范落地前：第一层 28 个信息块；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/ReviewView.tsx": {
+      "first": 66,
+      "deferred": 1,
+      "formula": 1,
+      "prose": 0,
+      "sizes": 2,
+      "page": "主视图（views 顶层）",
+      "why": "存量·规范落地前：第一层 66 个信息块；1 处口径/公式未降浮层（R-UI-3）"
+    },
+    "apps/frontend-shell/src/views/RiskBoardView.tsx": {
+      "first": 227,
+      "deferred": 27,
+      "formula": 4,
+      "prose": 17,
+      "sizes": 14,
+      "page": "主视图（views 顶层）",
+      "why": "存量·规范落地前：第一层 227 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；4 处口径/公式未降浮层（R-UI-3）；字号 14 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx": {
+      "first": 83,
+      "deferred": 2,
+      "formula": 0,
+      "prose": 3,
+      "sizes": 5,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 83 个信息块；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/ChainLineMapView.tsx": {
+      "first": 59,
+      "deferred": 18,
+      "formula": 1,
+      "prose": 5,
+      "sizes": 5,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 59 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/CustomerImpactBar.tsx": {
+      "first": 29,
+      "deferred": 2,
+      "formula": 1,
+      "prose": 4,
+      "sizes": 5,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 29 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx": {
+      "first": 41,
+      "deferred": 1,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 5,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 41 个信息块；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/GlobalSimLevers.tsx": {
+      "first": 44,
+      "deferred": 5,
+      "formula": 1,
+      "prose": 5,
+      "sizes": 8,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 44 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/GlobalSimScenarioBar.tsx": {
+      "first": 21,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 5,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 21 个信息块；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/GlobalSimView.tsx": {
+      "first": 209,
+      "deferred": 29,
+      "formula": 3,
+      "prose": 17,
+      "sizes": 8,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 209 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；3 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/InspectorNodePanel.tsx": {
+      "first": 108,
+      "deferred": 3,
+      "formula": 4,
+      "prose": 14,
+      "sizes": 6,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 108 个信息块；4 处口径/公式未降浮层（R-UI-3）；字号 6 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/MultiObjWhatifPanel.tsx": {
+      "first": 45,
+      "deferred": 1,
+      "formula": 6,
+      "prose": 6,
+      "sizes": 8,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 45 个信息块；6 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/PerturbationTimeline.tsx": {
+      "first": 66,
+      "deferred": 0,
+      "formula": 3,
+      "prose": 10,
+      "sizes": 5,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 66 个信息块；3 处口径/公式未降浮层（R-UI-3）；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx": {
+      "first": 46,
+      "deferred": 22,
+      "formula": 4,
+      "prose": 3,
+      "sizes": 11,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 46 个信息块；4 处口径/公式未降浮层（R-UI-3）；字号 11 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/PlanAuditView.tsx": {
+      "first": 30,
+      "deferred": 0,
+      "formula": 2,
+      "prose": 3,
+      "sizes": 8,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 30 个信息块；2 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": {
+      "first": 27,
+      "deferred": 27,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 8,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 27 个信息块；字号 8 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/PmDag.tsx": {
+      "first": 5,
+      "deferred": 1,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 0,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 5 个信息块"
+    },
+    "apps/frontend-shell/src/views/sim/ProjectSimView.tsx": {
+      "first": 126,
+      "deferred": 36,
+      "formula": 10,
+      "prose": 4,
+      "sizes": 8,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 126 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；10 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx": {
+      "first": 9,
+      "deferred": 12,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 6,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 9 个信息块；字号 6 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/RadarChart.tsx": {
+      "first": 1,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 0,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 1 个信息块"
+    },
+    "apps/frontend-shell/src/views/sim/SandboxConsole.tsx": {
+      "first": 199,
+      "deferred": 19,
+      "formula": 5,
+      "prose": 32,
+      "sizes": 5,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 199 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；5 处口径/公式未降浮层（R-UI-3）；字号 5 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/SandboxView.tsx": {
+      "first": 59,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 9,
+      "sizes": 3,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 59 个信息块"
+    },
+    "apps/frontend-shell/src/views/sim/ScheduleTable.tsx": {
+      "first": 25,
+      "deferred": 3,
+      "formula": 1,
+      "prose": 2,
+      "sizes": 4,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 25 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 4 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/shared.tsx": {
+      "first": 2,
+      "deferred": 3,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 2,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 2 个信息块"
+    },
+    "apps/frontend-shell/src/views/sim/SimComparePanel.tsx": {
+      "first": 12,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 2,
+      "sizes": 2,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 12 个信息块"
+    },
+    "apps/frontend-shell/src/views/sim/SimReadinessPanel.tsx": {
+      "first": 30,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 3,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 30 个信息块"
+    },
+    "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": {
+      "first": 144,
+      "deferred": 1,
+      "formula": 7,
+      "prose": 8,
+      "sizes": 8,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 144 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；7 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/SopReschedulePanel.tsx": {
+      "first": 23,
+      "deferred": 3,
+      "formula": 0,
+      "prose": 1,
+      "sizes": 7,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 23 个信息块；字号 7 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx": {
+      "first": 93,
+      "deferred": 1,
+      "formula": 1,
+      "prose": 22,
+      "sizes": 6,
+      "page": "推演沙盘（sim）",
+      "why": "存量·规范落地前：第一层 93 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 6 级 > 3（R-UI-2）"
+    },
+    "apps/frontend-shell/src/views/WhatIfView.tsx": {
+      "first": 43,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 2,
+      "sizes": 5,
+      "page": "主视图（views 顶层）",
+      "why": "存量·规范落地前：第一层 43 个信息块；字号 5 级 > 3（R-UI-2）"
+    }
   }
- }
 }
