@@ -515,6 +515,24 @@
       },
       "notes": "闭 G-LEVER-BINDING-DRIFT：产能拨杆候选由两包各自维护的两张表 join 得出（service.ts LEVER_FACTOR_PROPS × contracts CAPACITY_FACTOR_BINDINGS），交集空则该瓶颈层永远拨不出候选且**全程无报错**（后端 200 + levers:[]，前端只渲染空面板）。实测交付前「设备OEE」层候选恒 0——它指向 Equipment.oee_current，而绑定表把 OEE 建模成 oeeA/oeeP/oeeQ 三原子、无 oee_current。交叉校验函数 factorPropKeys() 早已存在于契约包却零调用方（假绿第 9 形态：实现有、零生产消费方），本门是它的第一个真消费方。"
     },
+    "check-carrier-has-instances.mjs": {
+      "alias": "carrier-has-instances:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/seed.ts",
+        "apps/datacore/src/synthetic/service.ts",
+        "apps/datacore/src/synthetic/battery.ts"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "2026-08-13 现跑九组变异反证，逐条 out=$(cmd 2>&1); rc=$? 显式捕获退出码（非管道尾 $?）",
+        "note": "M1 摘掉基线豁免 P61|ShiftPlan → RC=1，点名「B1 没接线：物化清单里没有该类型的 putAll」并给出补 putAll 的修法；M2 真在 service.ts 补 putAll(\"ShiftPlan\", g.shiftPlans, \"shiftId\") + 重建 dist（读回源码与 dist 新鲜度确认落地）→ RC=0 转绿，没接线数 7→6、有实例 57→58；M3 撤销该 putAll + 重建 → RC=1 重新转红；M4 把 battery.ts 的 maintPlans 生成结果改成 []（读回 dist 确认 generateBattery(42,'S').maintPlans.length===0）→ RC=1 且判定为 **ZERO_ROWS 而非 NOT_MATERIALIZED**，修法文案随之切换成「补种子数据——物化点已经在了，改物化点没有用」（三种「不工作」在门里是分开的两档，不是一句话）；M5 注入新流程 P66→WIPQualityCheckpoint（生成器产 390 行、物化清单从没列过）+ 重建 → RC=1，棘轮咬新增。",
+        "note2": "退出码三态均现跑取证：S1 基线写成非法 JSON → RC=2；S2 门自变异令 resolveRows 恒返 undefined → 5 条必中金丝雀同时开火 RC=2（**不是** RC=1 报「全部承载物都零实例」）；S3 令 parsePutAll 恒返一张含 __NoSuchCarrier_G4__ 的假表 → 规模下界 + 2 条必不中金丝雀开火 RC=2；S4 模拟「generateExtended 的 ctx 传错」这个真实踩过的坑（审核方据此把缺口从 8 误报成 28）→ RC=2。另有一条金丝雀设计缺陷由变异当场逼出并已修：原写死「必须恰好 65 条流程」，M5 注入第 66 条时门报 RC=2「工具坏了」而不是判定它 —— 那正好吞掉本门要咬的场景，已改为下界 60 + 流程号唯一性（恰好 65 是 process-layer.test.ts 的金值，不在这里再抄一份）。"
+      },
+      "notes": "已有的 process-layer.test.ts 断言① 只守类型层（承载物在本体里查得到），实例层此前零门。第三种空壳 = 类型在、一条实例都没有：下钻拿到空列表 + 后端 200 + total:0，与「业务上恰好没有」长得一模一样。判据 B1 承载物必须出现在 synthetic/service.ts 的 putAll 物化清单里（没接线）· B2 该 putAll 的行源现读 ≥1 行（接了线没数据）· B3 棘轮反向。行源现读四臂：generateBattery(42,'S') / generateExtended(42, ctx, 'S') / generatePlanDomain / cadenceObjectRows(deriveChainCadences(g)) / MOCK_EXTERNAL_DATA —— 漏掉 generatePlanDomain 会把 PlanTarget/AnnualScenario/ScenarioTrigger 三条误报成零实例（它们的实例出自 service.ts:1098-1101 那一臂）。现算存量 7 条（P37/P40 ProductionSchedule · P44 WIPMove · P53 SparePartConsumption · P61 ShiftPlan · P62 OperatorSkillCert · P65 AdoptedMitigation），前六条是 service.ts:821 明写的「高量低值执行类保持模型态不物化」的代价，第七条性质不同（运行期由 adopt_mitigation Action 写台账，种子期空是设计如此）；另有 1 条未判定（P49 ExceptionEvent 行源是局部变量拼接，如实列出、不进红）。"
+    },
     "check-lever-landing-exists.mjs": {
       "alias": "lever-landing-exists:check",
       "binding": "GATES_CHAIN",
