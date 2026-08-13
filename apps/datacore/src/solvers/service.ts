@@ -1651,10 +1651,12 @@ export class SolverService {
         id: `base:${e.base}`, factor: `基地 ${displayNameOf(e.base)}`, baseId: e.base, displayName: displayNameOf(e.base), contribution, unit,
         share: round(e.driver / totalBaseDriver, 4),
         path: [str(m.metricId), `base:${e.base}`], causalPath: [] as string[],
-        // drillValue = Σ`Order.value`（元·与 drillField 同口径）。⚠ 遗留未修：drillId 是**基地键**不是 Order 主键(so)，
-        // 该节点其实是「按基地聚合」（契约 GapProvenanceSchema 备有 `drillId:"*"` 聚合约定）——属 drillId 语义缺陷，
-        // 本单范围只修 drillField/drillValue 口径，已在交接里显式上报。
-        provenance: { kind: "派生" as const, drillType: "Order", drillId: e.base, drillField: "value", drillValue: e.valueYuan },
+        // drillValue = Σ`Order.value`（元·与 drillField 同口径）。drillId **必须** `"*"`（契约 GapProvenanceSchema
+        // 备的「按类型聚合」约定）—— 这是**聚合节点**，不是某一张订单：旧写法填基地键（`hefei`）会让下钻路径读成
+        // `Order.hefei.value`，而 `Order` 主键是 `so`（SO-3391…），仓储里根本没有 id=hefei 的订单 ⇒ 悬空下钻路径，
+        // 与 #96 同族（标签指向一个不存在的出处 · WO-R13-DRILLFIELD 取证：全局路 6 个基地节点全中）。
+        // 基地上下文不丢：本节点自带 `baseId`/`displayName`，前端照旧能显示是哪个基地。
+        provenance: { kind: "派生" as const, drillType: "Order", drillId: "*", drillField: "value", drillValue: e.valueYuan },
       };
     });
     const l1sum = round(l1nodes.reduce((a, n) => a + n.contribution, 0), 4);
@@ -1682,8 +1684,12 @@ export class SolverService {
           // driver 走万元权重；drillValue 回 `Order.value` 元真值（标签所指字段 == 回的值·R13）。
           prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderValueYuan(o) }, businessType: str(o.businessType) });
       }
+      // 设备瓶颈叶：`1 - oeeDeficit` = 该基地设备 `oee_current` 的**均值**（oeeDeficit = mean(1−oee)），是聚合不是单台，
+      // 故 drillId 走 `"*"`（同上·旧写法填基地键 → `Equipment.hefei.oee_current`，而 Equipment 主键是 `equipId`
+      // （`LINE-WS-changzhou-slurry-coating-E1` 这种），仓储里查无此设备 ⇒ 悬空下钻路径·#96 同族）。
+      // 基地上下文在节点 `id`(`equip:<base>`)/`factor` 里，前端不丢。
       if (oeeDeficit > 0) childDrivers.push({ id: `equip:${e.base}`, factor: `${e.base} 设备瓶颈（OEE 缺口）`, driver: round(oeeDeficit * e.driver, 2),
-        prov: { kind: "实测", drillType: "Equipment", drillId: e.base, drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
+        prov: { kind: "实测", drillType: "Equipment", drillId: "*", drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
       const matHere = e === baseEntries[0] && matDriver > 0; // 物料瓶颈挂首基地（正极全局·避免重复计）
       if (matHere) childDrivers.push({ id: `material:cathode`, factor: `正极物料短缺`, driver: round(matDriver * e.driver, 2),
         prov: { kind: "派生", drillType: "MaterialBalance", drillId: "mbal-2", drillField: "gapTon", drillValue: num(matBal.find((mb) => str(mb.matBalId) === "mbal-2")?.gapTon) } });
@@ -1774,8 +1780,9 @@ export class SolverService {
             // 同全局路：driver 万元权重 ⊥ drillValue 回 `Order.value` 元真值（R13）。
             prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderValueYuan(o) }, businessType: str(o.businessType) });
         }
+        // 同全局路：均值即聚合 → drillId `"*"`（旧写法填基地键即悬空下钻路径·#96 同族）。
         if (oeeDeficit > 0) expDrivers.push({ id: `equip:${scopedBaseId}`, factor: `${scopedBaseId} 设备瓶颈（OEE 缺口）`, driver: round(oeeDeficit * expDriver, 2),
-          prov: { kind: "实测", drillType: "Equipment", drillId: scopedBaseId, drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
+          prov: { kind: "实测", drillType: "Equipment", drillId: "*", drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
         const expTot = expDrivers.reduce((a, d) => a + d.driver, 0) || 1;
         const expLeaves = expDrivers
           .sort((a, b) => b.driver - a.driver || a.id.localeCompare(b.id))
@@ -1792,7 +1799,7 @@ export class SolverService {
           scope: { ...scopeBase, exposure: true, ...capScope, ...(unsupportedFactor ?? {}) },
           globalGap: G, totalGap: pgExp,
           levels: [
-            { depth: 1, label: "基地", residual: 0, nodes: [{ id: `base:${scopedBaseId}`, factor: `基地 ${dName}（可产订单敞口）`, baseId: scopedBaseId, displayName: dName, contribution: pgExp, unit, share: 1, path: [str(m.metricId), `base:${scopedBaseId}`], causalPath: [] as string[], provenance: { kind: "派生" as const, drillType: "Order", drillId: scopedBaseId, drillField: "value", drillValue: expValueYuan } }] },
+            { depth: 1, label: "基地", residual: 0, nodes: [{ id: `base:${scopedBaseId}`, factor: `基地 ${dName}（可产订单敞口）`, baseId: scopedBaseId, displayName: dName, contribution: pgExp, unit, share: 1, path: [str(m.metricId), `base:${scopedBaseId}`], causalPath: [] as string[], provenance: { kind: "派生" as const, drillType: "Order", drillId: "*", drillField: "value", drillValue: expValueYuan } }] },
             { depth: 2, label: "订单/瓶颈", nodes: expLeaves, residual: expResidual },
             ...capLevel,
           ],
