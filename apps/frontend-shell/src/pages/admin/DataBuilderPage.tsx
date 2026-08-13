@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, BuildWorkflowRun, ClosureReport, DataBuilderAgent, GapAnalysis, ProducedArtifact, ScaffoldManifestRecord, StoryBuildRun, StoryCoverageSentence } from "@platform/contracts";
 import type { BackfillReport } from "@platform/contracts";
 import { buildModuleSyncMatrix } from "@platform/contracts";
-import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun, fetchFdeGraph, verifyStoryRun, promoteStoryDomain } from "@/api/endpoints";
+import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun, approveWorkflowStep, fetchFdeGraph, verifyStoryRun, promoteStoryDomain } from "@/api/endpoints";
 import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
 import { ValidationTracePanel } from "@/components/Answer/ValidationTracePanel";
 import { toastError, toast } from "@/store/toastStore";
@@ -856,6 +856,25 @@ function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number 
     },
     onError: (e) => toastError(e as Error),
   });
+  /**
+   * WO-87 · 节点 SOP「人要不要介入」的放行入口（PAUSED 的运行没人放得了行 = 死锁）。
+   *
+   * 为什么它不能用旁边那颗「重入续跑」代替 —— 实测真后端而非猜的：
+   * `resumeStoryWorkflow`（`datacore/databuilder/service.ts:625`）重建同一批步后走
+   * `engine.resume` → `drive`，第一件事仍是 `def.requiresApproval && !isStepApproved(...)`
+   * （`workflow-engine.ts:192`）⇒ **原地再停一次 PAUSED，只把 resumedCount 加 1**。
+   * 放行名单只有 `approveWorkflowStep`（`service.ts:640`）写得进去。
+   * 故此处按状态分流：PAUSED → 放行（approve），FAILED → 重入（resume）。
+   */
+  const approveM = useMutation({
+    mutationFn: ({ id, stepKey }: { id: string; stepKey: string }) => approveWorkflowStep(id, stepKey),
+    onSuccess: (wf) => {
+      toast(wf.status === "SUCCEEDED" ? "已放行，工作流已跑完" : wf.status === "PAUSED" ? "已放行，停在下一个要人放行的节点" : "已放行，续跑中", wf.status === "FAILED" ? "error" : "success");
+      void qc.invalidateQueries({ queryKey: ["a", "workflow-runs"] });
+      void qc.invalidateQueries({ queryKey: ["a", "story-runs"] });
+    },
+    onError: (e) => toastError(e as Error),
+  });
 
   const runs = runsQ.data ?? [];
   return (
@@ -901,7 +920,23 @@ function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number 
               <code style={{ fontSize: 12 }}>{wf.id}</code>
               <span className="muted" style={{ fontSize: 12 }}>{done + skipped}/{wf.steps.length} 步完成{wf.resumedCount > 0 ? ` · 重入 ${wf.resumedCount} 次` : ""}</span>
               {failedStep && <span className="badge" style={{ background: WF_STATUS_COLOR.FAILED, color: "#fff" }}>断在 {failedStep.stepKey}</span>}
-              {(wf.status === "FAILED" || wf.status === "PAUSED") && (
+              {/* PAUSED：停在配了「人工放行」的节点前等人批 → 给**放行**入口（resume 在这治不了，见 approveM 注释）。 */}
+              {wf.status === "PAUSED" && (() => {
+                const awaiting = wf.steps.find((s) => s.status === "PENDING");
+                return awaiting ? (
+                  <button
+                    className="btn primary sm"
+                    data-testid={`wf-approve-${wf.id}`}
+                    style={{ marginLeft: "auto" }}
+                    disabled={approveM.isPending}
+                    onClick={(e) => { e.stopPropagation(); approveM.mutate({ id: wf.id, stepKey: awaiting.stepKey }); }}
+                    aria-label={`该节点的 SOP 要求人工放行：${awaiting.title}。放行后从该步继续跑后续节点。`}
+                  >
+                    {approveM.isPending ? "放行中…" : `✋ 放行 ${awaiting.stepKey}`}
+                  </button>
+                ) : null;
+              })()}
+              {wf.status === "FAILED" && (
                 <button
                   className="btn sm"
                   data-testid={`wf-resume-${wf.id}`}
