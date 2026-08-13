@@ -1662,10 +1662,32 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // `listCheckpoints`，但 24 条 `/a/v1/sim/*` 路由里从没有人开这个口 —— 病根在 route 层，不在前端。
   // 后果：`sim.checkpoint_saved` 事件没有可失效的缓存（前端无列表可读），回滚/分支只能靠调用方自己记
   // checkpointId。开此路由后该事件才具备真接线条件（前端 useQuery 属 WO-1/WO-4 边界，不在本单）。
+  // ⚠️ R9 双实现一致性：排序**必须**落在本层，不能指望两个仓储各自 ORDER BY —— 它们今天就不一致：
+  // `repo/pg.ts:103` 是 `ORDER BY tick`（且 tick 相同时次序由 DB 任意决定，非全序），
+  // 而 `repo/memory.ts:70` **一个 sort 都没有**（Map 插入序）。沙盘的常规动作正好会踩中这个分叉：
+  // 存档 → 回滚 → 在更早的 tick 再存一次 ⇒ 插入序与 tick 序相反。
+  // 实测（2026-08-13 收编本单时在 canonical 上真跑，非转述）：去掉下面这行 `.sort(...)`，
+  // memory 按插入序吐 `[2, 8, 2]`，`sim-checkpoint-list.seam.test.ts` ② 当场红：
+  //   `AssertionError: expected [ 2, 8, 2 ] to deeply equal [ 2, 2, 8 ]`
+  // 顺序在这里是**语义**而非美观：用户按它挑回滚点/分支点，顺序错 = 挑错档。
+  // 全序键取 `(tick, createdAt, id)`，与 `listPerturbations` 同款纪律 —— **不以随机 id 作首键**，
+  // id 只做最后的去歧义键，于是 memory 与 pg 返回逐字节一致（R6 确定性 ∧ R9 双实现同构）。
+  //
+  // ⚠️ **诚实边界：次键 `createdAt`/`id` 今天没有测试在驱动它（存活变异，2026-08-13 实测）。**
+  // 变异 M1「把 `.sort` 砍成只剩 `a.tick - b.tick`」⇒ `sim-checkpoint-list.seam.test.ts`
+  // **8/8 依旧全绿（RC=0）**，包括那条自称在验次键的 `expect(...).toEqual(["锚@2","回@2"])`。
+  // 病因不是断言写错，是 **`Array.prototype.sort` 自 ES2019 起是稳定排序**，而 memory 仓储
+  // 返回的正是插入序 ⇒ 同 tick 的并列项靠"稳定性"就已经落在 createdAt 序上，次键从未被真正调用。
+  // ⇒ 次键真正的守备对象是 **pg**（`ORDER BY tick` 对并列项不定序），而 pg 路径**本测试完全没覆盖**
+  //   （全仓 datacore 测试跑 memory 仓储）。**保留次键**（它对 pg 是必需的、且零成本），
+  //   但**不许**据本测试全绿宣称"双实现顺序已一致"—— 那是 R9 上一个仍然张着的口子，
+  //   要闭得靠一条真连 pg 的测试，属另开工单。这一条按"接了线没数据/没覆盖"记账，非"已验通过"。
   app.get("/a/v1/sim/sessions/:id/checkpoints", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.checkpoint");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
-    return { items: await repos.sim.listCheckpoints(c.tenantId, s.id) };
+    const items = (await repos.sim.listCheckpoints(c.tenantId, s.id))
+      .sort((a, b) => a.tick - b.tick || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    return { items };
   });
   app.post("/a/v1/sim/sessions/:id/rollback", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.checkpoint");
