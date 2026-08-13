@@ -70,10 +70,20 @@ describe("WO-LEVER-BINDING-DRIFT · 设备层拨杆在生产实参下必须反�
    *   ⑩ 瓶颈工序 → `Line.utilization`      产能链从不读 Line.utilization —— `capacity.ts:112` 读的是
    *                                        **`proc.props.utilization`（Process.utilization，= 绑定 ⑧）**。
    *                                        落点挂在了错误的对象类型上（"接了线接错地方"）。
-   *   ⑤ 换型损失 → `ChangeoverMatrix.changeoverMin`
-   *                                        双重死：① `capacity.ts` 全文不出现 ChangeoverMatrix；
-   *                                        ② `patchCapacityContext` 的 switch 只认 Process/Equipment/Line/Material，
-   *                                        `default: return {...c}` ⇒ 该 override **被静默丢弃**，克隆世界与基线逐字节相同。
+   *   ⑤ 换型损失 → `ChangeoverMatrix.minutes`（WO-ENGINE-2 改名前写的是 `changeoverMin`）
+   *                                        **三重死**（原注释漏记了最上游那一环，WO-ENGINE-2 补上并逐重实测）：
+   *                                        ⓪〔已修〕**键名写错**：真属性是 `minutes`，旧写法 `changeoverMin` 在对象上恒不存在
+   *                                          ⇒ `discoverCapacityLevers` 的 `typeof o.props[b.prop] === "number"` 把候选**整批剔除**
+   *                                          （失效机制是**过滤**不是 `?? 0` 兜底算 0 —— 两者修法不同，别混）。
+   *                                        ②〔已修〕`patchCapacityContext` 的 switch 只认 Process/Equipment/Line/Material，
+   *                                          `default: return {...c}` ⇒ 该 override **被静默丢弃**，克隆世界与基线逐字节相同。
+   *                                        ①〔**仍未修·真正的拦路虎**〕`capacity.ts` 全文不出现 ChangeoverMatrix：
+   *                                          `p50 = processCap × certFactor × yieldRebase × matFactor` **不含换型项**，
+   *                                          故即便 ⓪② 都修好，∂Σp50/∂minutes **仍恒 0** ⇒ ⑤ 照旧被
+   *                                          「无下游影响 → 非有效杠杆」丢弃。**实测**见 `engine2-changeover-lever.seam.test.ts`
+   *                                          （把每条 ChangeoverMatrix.minutes 放大 100× → Σp50 逐字节不变）。
+   *                                          修它要**动产能链数学**（让 p50 消费换型），且数据侧 `ChangeoverMatrix.lineId`
+   *                                          全库恒 null（`extended.ts` 实测）⇒ 落不到 `grain:"process"` 的工序颗粒 —— 两者都超出改名单的范围。
    *
    * 修它们要动产能链数学 / patch 白名单，**不在本单范围边界内**（见 `docs/PRD-lever-binding-drift.md` §6 遗留）。
    * 故此处按"具名允许清单 + 只降不升"记账：清单里的层允许空，**清单外任何一层变空即红**，

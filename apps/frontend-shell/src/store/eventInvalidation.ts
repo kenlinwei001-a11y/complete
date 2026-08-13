@@ -87,14 +87,17 @@ export const SIM_CONSUMER_KEYS = {
  */
 export const SIM_EVENT_GAPS: Record<string, string> = { // hardcoded-data-allow —— 缺口台账（散文），非业务数据：值是「今天为什么不接线」的说明文字，探测器 B 数到的数字全部来自其中的 file:line 引用。
   "sim.checkpoint_saved":
-    "缺的是**后端读端**不是前端订阅（2026-08-09 复核）：datacore 只有 POST /a/v1/sim/sessions/:id/checkpoint" +
-    "（app.ts:1488），**没有任何列出检查点的路由**。仓储层三处都写好了（接口 repo/repo.ts:352 · " +
-    "repo/memory.ts:67 · repo/pg.ts:103），但 route 层从不调用它。" +
-    "复验命令：`grep -rn listCheckpoints apps/datacore/src | grep -v '/repo/'` —— 期望只剩 repo.ts 接口那一行，" +
-    "app.ts 一行都没有；对照组（证明该检索不是工具坏了）：把符号换成 createCheckpoint 跑同一条命令，" +
-    "会命中 app.ts:1493。即「实现有、没开路由」。前端因此无列表可缓存，硬接 = 假接线。" +
-    "解法（需动 datacore，超出 WO-L4B 范围边界）：开 GET /a/v1/sim/sessions/:id/checkpoints → " +
-    "前端加 checkpoints useQuery（存档列表 / 从任意检查点回滚·分支）→ 本事件即可接 ['sim-checkpoints']。",
+    "【2026-08-13 · WO-ENGINE-2 件二更新：后端读端已开，缺口从「后端没路由」转为「前端没接」】" +
+    "旧账（2026-08-09）记的是**后端读端缺失**：仓储三处写好了 listCheckpoints（接口 repo/repo.ts · " +
+    "repo/memory.ts · repo/pg.ts），但 route 层从不调用它。**该半边已修**：WO-ENGINE-2 开了 " +
+    "GET /a/v1/sim/sessions/:id/checkpoints（datacore app.ts·requireSim 'sim.checkpoint' 门 + 会话 404 校验）。" +
+    "⚠️ 旧账的复验命令（`grep -rn listCheckpoints apps/datacore/src | grep -v '/repo/'` 期望 app.ts 零命中）" +
+    "**自开路由那一刻起即失效**——这正是「开路由与改台账必须同一个人一起做」的原因：" +
+    "拆两个人做，第二个人会读到一条与代码矛盾的病历。" +
+    "今日仍是缺口的**唯一**原因：前端没有 checkpoints useQuery，故没有可失效的缓存，硬接 = 假接线。" +
+    "出台账条件（沿用前任定的、不放软）：前端把该路由接成真 useQuery（存档列表 / 从任意检查点回滚·分支）" +
+    "并在 agentcore event-subscriptions 同步登记后，把本条挪进 EVENT_INVALIDATES 接 ['sim-checkpoints']。" +
+    "该前端接线属 WO-1/WO-4 边界，不在 WO-ENGINE-2 内。",
   // WO-P0 合入：sim.branched 已被 WO-L4B 真接线（见 EVENT_INVALIDATES），故不再是缺口，此处不重列。
   // ── WO-SIM-PERTURB-TIMELINE（2026-08-10）：`sim.perturbation_created` 已出台账 ──────────
   // 前任（WO-SIM-ACT-CLOSE）在这里写的缺口理由是**准确**的：读端零调用方 ⇒ 没有缓存可失效 ⇒
