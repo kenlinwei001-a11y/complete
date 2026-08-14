@@ -326,7 +326,28 @@ describe("WO-SLICE-DEFAULT-ARGS · 首屏默认那 4 条多跳切片不许再是
     expect(screen.getByTestId(`slice-layers-headline-${key}`).textContent).toContain("暂未判定");
 
     // 内联子图同样分得开：缺参数算不出来 ≠ 算了确实为空
-    expect((await screen.findByTestId(`slice-graph-empty-${key}`)).textContent).toContain("需要 root 实参");
+    const graphEmpty = await screen.findByTestId(`slice-graph-empty-${key}`);
+    expect(graphEmpty.textContent).toContain("需要 root 实参");
+    /*
+     * WO-UI-BURNDOWN-21 · **降层 ≠ 删除**（`docs/CONVENTION-ui-information-layering.md` §1）
+     *
+     * 上面那句只咬「短结论在不在第一层」，它证明不了长因由还在 —— 整段删掉照样绿。
+     * 这里补三判据 + 一条反向断言。⚠ `InfoPopover` 在 `open===false` 时**不渲染**，
+     * 故「默认不可见」写 `toBeNull()`；写 `not.toBeVisible()` 是**测试自己抛错**，不是判据成立。
+     *
+     * 「不是『查了确实为空』」这半句**刻意仍在第一层**（规范 §4.2）——
+     * 不看它，这一格会被读成「查了，确实没有」，结论正好反过来。故不对它做反向断言。
+     */
+    expect(graphEmpty.textContent, "两种「空」必须在第一层就分得开").toContain("不是「查了确实为空」");
+    const graphWhy = screen.getByTestId(`info-slice-graph-empty-why-${key}`);
+    expect(graphWhy).toBeVisible();
+    expect(screen.queryByTestId(`slice-graph-empty-why-body-${key}`)).toBeNull();
+    expect(graphEmpty.textContent, "补救指引还留在第一层 ⇒ 没降层").not.toContain("请在上方十六层结构里选一个真实值");
+    await user.hover(graphWhy);
+    const graphWhyBody = await screen.findByTestId(`slice-graph-empty-why-body-${key}`);
+    expect(graphWhyBody.textContent).toContain("未给出前算不出子图");
+    expect(graphWhyBody.textContent).toContain("请在上方十六层结构里选一个真实值");
+    await user.unhover(graphWhy);
 
     // 自填一个真值 → 立刻解出（说明诚实态不是死路，是有出口的）
     await user.type(screen.getByTestId(`slice-layers-arginput-${key}-so`), "SO-3391");

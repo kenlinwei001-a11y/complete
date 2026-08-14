@@ -9,6 +9,7 @@ import {
   type SliceSpecFull,
 } from "@/api/endpoints";
 import { LayeredDag, type DagEdgeDef, type DagNodeDef } from "@/components/Dag/LayeredDag";
+import { InfoPopover } from "@/components/InfoPopover";
 import { toast, toastError } from "@/store/toastStore";
 import SliceLayersPanel from "./SliceLayersPanel";
 import zh from "@/locales/zh";
@@ -149,9 +150,33 @@ function InlineGraph({
         <div className="badge red" data-testid={`slice-graph-error-${sliceKey}`}>子图解析失败</div>
       ) : !dag || dag.total === 0 ? (
         <div className="empty-state" data-testid={`slice-graph-empty-${sliceKey}`}>
-          {missingArgs.length > 0
-            ? `需要 root 实参：${missingArgs.join("、")} —— 未给出前算不出子图（不是「查了确实为空」）。请在上方十六层结构里选一个真实值。`
-            : "空子图（root selector 已带全参数，但确实无匹配对象）"}
+          {/*
+           * 分层（规范 §1 + §4.2 各用一次）：
+           *  · **两种「空」必须在第一层就分得出来** —— 「算不出」与「确实为空」是两件事，
+           *    §4.2 判据「这条诚实位若为真，用户会不会重新解读第一层的结论？」会（读反方向），
+           *    所以「不是『查了确实为空』」/「确实无匹配对象」这两句短的**留第一层**。
+           *  · **怎么补救、凭什么这么判**（去哪儿选值 / root selector 已带全参数）是口径，降浮层。
+           * 原文一字未删。
+           */}
+          {missingArgs.length > 0 ? (
+            <>
+              需要 root 实参：{missingArgs.join("、")}（不是「查了确实为空」）
+              <InfoPopover topic={zh.admin.sliceInspector.info.missingArgs} testId={`slice-graph-empty-why-${sliceKey}`}>
+                <span data-testid={`slice-graph-empty-why-body-${sliceKey}`}>
+                  未给出前算不出子图（不是「查了确实为空」）。请在上方十六层结构里选一个真实值。
+                </span>
+              </InfoPopover>
+            </>
+          ) : (
+            <>
+              空子图（确实无匹配对象）
+              <InfoPopover topic={zh.admin.sliceInspector.info.emptyGraph} testId={`slice-graph-empty-why-${sliceKey}`}>
+                <span data-testid={`slice-graph-empty-why-body-${sliceKey}`}>
+                  空子图（root selector 已带全参数，但确实无匹配对象）
+                </span>
+              </InfoPopover>
+            </>
+          )}
         </div>
       ) : (
         <>
@@ -180,7 +205,13 @@ function ReadOnlySpec({ spec }: { spec: SliceSpecFull }) {
   const fixtures = spec.spec.contractFixtures ?? [];
   return (
     <div data-testid={`slice-readonly-${spec.sliceKey}`}>
-      <div className="section-title">切片规格（只读 · 需 admin 角色可编辑）</div>
+      {/* 标题只留**名字** + 一个**状态**徽标（「只读」）；「谁才能改」是权限口径，降浮层（规范 §1）。 */}
+      <div className="section-title">
+        切片规格<span className="badge" style={{ marginLeft: 6 }}>只读</span>
+        <InfoPopover topic={zh.admin.sliceInspector.info.readOnly} testId={`slice-readonly-why-${spec.sliceKey}`}>
+          <span data-testid={`slice-readonly-why-body-${spec.sliceKey}`}>只读 · 需 admin 角色可编辑</span>
+        </InfoPopover>
+      </div>
       <div className="muted" style={{ fontSize: 12 }}>
         {/* WO-UNIT-MEANING：maxNodes / fixtures 此前皆裸数。maxNodes 是**节点数上限**（个），fixtures 是**契约夹具条数**（条）。 */}
         root <span className="mono">{spec.spec.root.typeKey}</span> · maxNodes（节点数上限）{" "}
@@ -252,7 +283,17 @@ function SliceEditor({ spec, onSaved }: { spec: SliceSpecFull; onSaved: () => vo
 
   return (
     <div data-testid={`slice-editor-${spec.sliceKey}`} style={{ display: "grid", gap: 10 }}>
-      <div className="section-title">编辑切片规格（admin · 保存走 putSliceSpec）</div>
+      {/* 同上：标题留名字，权限与「保存会发生什么」降浮层。
+          顺带把 `putSliceSpec`（后端函数名）从屏上撤下来 —— 用户读了它做不了任何决定，
+          浮层里改说「保存后立即对全部使用方生效」，那才是他要判断的事。 */}
+      <div className="section-title">
+        编辑切片规格
+        <InfoPopover topic={zh.admin.sliceInspector.info.editSpec} testId={`slice-editor-why-${spec.sliceKey}`}>
+          <span data-testid={`slice-editor-why-body-${spec.sliceKey}`}>
+            仅 admin 角色可编辑；保存后立即对全部使用这条切片的地方生效。
+          </span>
+        </InfoPopover>
+      </div>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
         <label style={{ fontSize: 12 }}>
           root 类型

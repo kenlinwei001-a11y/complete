@@ -2006,6 +2006,19 @@ export const zh = {
       unreachable: (list: string) => `不可达目标：${list}`,
     },
     // WO-SLICE-16-LAYERS · 本体切片十六层结构（层名/状态/说明文案单一来源，R14 不内联业务常数）。
+    /**
+     * 切片检视面板的 `?` 浮层标题（走 R14）。
+     * 对应 `pages/admin/SliceInspector.tsx` 里降进浮层的四段：两种「空」各自的因由 ·
+     * 只读态的权限口径 · 编辑态的权限与生效范围。标题一律写成用户会问的那句话。
+     */
+    sliceInspector: {
+      info: {
+        missingArgs: "为什么算不出这张子图",
+        emptyGraph: "为什么这张子图是空的",
+        readOnly: "谁能改这条切片规格",
+        editSpec: "谁能改、保存后影响谁",
+      },
+    },
     sliceLayers: {
       title: "十六层结构",
       // 第一层只放结论（CONVENTION-ui-information-layering §1）：一句话说清"这条切片覆盖了几层"。
