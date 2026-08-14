@@ -1689,7 +1689,88 @@ function planBuilderById(id: string): PlanBuilderCanvas | undefined {
   return db.planBuilders.find((c) => c.id === id);
 }
 
+/**
+ * WO-BEFE-E · `facility_location` 真暴力最优（min 总成本 = Σ开设 + Σ就近指派；
+ * 容量判据：开设总容量 ≥ 总需求即可行 —— 就近指派近似）。
+ *
+ * 从 `solvers/:key/invoke` 的 `optimize_whatif` 分支**提到模块顶层**：
+ * `POST /a/v1/opt/solve` 的桩要用同一份。抄第二份就是第二套真相源 ——
+ * 两边一旦漂移，「基线求解」与「推演的基线那一半」会给出不同的数，而屏上看不出来。
+ * ⚠ 这是 mock 态的**形状回放**，非可证最优；真 CP-SAT 仍须打 sidecar（services/optimizer·DEPLOY.md）。
+ */
+function mockSolveFacilityLocation(a: Record<string, unknown>) {
+  const facilities = (a.facilities as { id: string; openCost: number; capacity?: number }[]) ?? [];
+  const clients = (a.clients as { id: string; demand?: number }[]) ?? [];
+  const assign = (a.assignCosts as { client: string; facility: string; cost: number }[]) ?? [];
+  const n = facilities.length;
+  if (!n || !clients.length) return null;
+  const costOf = (c: string, f: string) => assign.find((x) => x.client === c && x.facility === f)?.cost;
+  const totalDemand = clients.reduce((s, c) => s + (c.demand ?? 0), 0);
+  let best: { openFacilities: string[]; assignments: { client: string; facility: string }[]; objective: number } | null = null;
+  for (let mask = 1; mask < 1 << n; mask++) {
+    const open = facilities.filter((_, i) => (mask & (1 << i)) !== 0);
+    const cap = open.reduce((s, f) => s + (f.capacity ?? Number.POSITIVE_INFINITY), 0);
+    if (cap < totalDemand) continue; // 容量不足 → 该组合不可行
+    let obj = open.reduce((s, f) => s + f.openCost, 0);
+    const assignments: { client: string; facility: string }[] = [];
+    let ok = true;
+    for (const c of clients) {
+      let bf: string | null = null;
+      let bc = Number.POSITIVE_INFINITY;
+      for (const f of open) {
+        const cc = costOf(c.id, f.id);
+        if (typeof cc === "number" && cc < bc) { bc = cc; bf = f.id; }
+      }
+      if (bf == null) { ok = false; break; }
+      obj += bc;
+      assignments.push({ client: c.id, facility: bf });
+    }
+    if (!ok) continue;
+    if (!best || obj < best.objective) best = { openFacilities: open.map((f) => f.id), assignments, objective: obj };
+  }
+  return best;
+}
+
+/**
+ * WO-BEFE-E · 优化模板池 `/a/v1/opt/*` 的 mock 数据源。
+ *
+ * ⚠ **五个 key 与 `apps/datacore/src/app.ts:3660` 的 `OPT_FAMILIES` 逐字一致**。
+ * 桩自己再编一份就把本单要治的病（同一概念两套词表）原样搬进 mock 层。
+ */
+const MOCK_OPT_FAMILIES = ["facility_location", "min_cost_flow", "set_cover", "independent_set", "combinatorial_auction"] as const;
+
 export const handlers = [
+  // ── WO-BEFE-E · 优化模板池三条（datacore app.ts:3682 / :3689 / :3664）────────────
+  // ⚠ 语义照抄后端，**不放宽**：`opt.embedding-retrieval` 是 defaultOn:false 的暗发门，
+  // 故 retrieve 回的是 `mode:"comprehend"` 关键词回退档（后端 app.ts:3700 的那一支）。
+  // 桩若一律回 `embedding`，"这次是哪一档算的"这个诚实位在测试里就永远验不到。
+  http.get("*/a/v1/opt/templates", () => HttpResponse.json({ families: [...MOCK_OPT_FAMILIES] })),
+  http.get("*/a/v1/opt/retrieve", ({ request }) => {
+    const need = (new URL(request.url).searchParams.get("need") ?? "").trim();
+    if (!need) return err(400, "VALIDATION_ERROR", "opt retrieve 需 ?need=<需求文本>");
+    const q = need.toLowerCase();
+    const matched = MOCK_OPT_FAMILIES.filter((f) => q.includes(f) || q.includes(f.replace(/_/g, " ")));
+    return HttpResponse.json({
+      mode: "comprehend",
+      embeddingEnabled: false,
+      candidates: (matched.length ? matched : MOCK_OPT_FAMILIES).map((key) => ({ key })),
+      note: "opt.embedding-retrieval 未开 → 退回 comprehend 关键词列表（不静默）",
+    });
+  }),
+  http.post("*/a/v1/opt/solve", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { family?: string; args?: Record<string, unknown> };
+    if (!MOCK_OPT_FAMILIES.includes(body.family as (typeof MOCK_OPT_FAMILIES)[number])) {
+      return err(400, "VALIDATION_ERROR", `family 必须是 ${MOCK_OPT_FAMILIES.join("|")} 之一`);
+    }
+    if (body.family === "facility_location") {
+      const sol = mockSolveFacilityLocation(body.args ?? {});
+      if (!sol) return err(400, "VALIDATION_ERROR", "facility_location 需 facilities + clients + assignCosts");
+      return HttpResponse.json({ ...sol, optimal: true, status: "OPTIMAL" });
+    }
+    // 其余 family：mock 态无真解引擎 —— **诚实说没接入**，不编一个目标值出来
+    // （本仓纪律：画出来的假线路图比空白更危险）。真解须打 sidecar（services/optimizer）。
+    return err(501, "OPTIMIZER_NOT_CONFIGURED", `${body.family} 未接入最优化引擎（mock 态只回放 facility_location；真解需 OPTIMIZER_BASE_URL sidecar）`);
+  }),
   // ======================== A · DataCore ========================
 
   http.post("*/a/v1/auth/login", async ({ request }) => {
@@ -2702,39 +2783,9 @@ export const handlers = [
         return a;
       };
 
-      // facility_location 真暴力最优：min 总成本 = Σ开设 + Σ就近指派；容量：开设总容量 ≥ 总需求即可行（就近指派近似）。
-      const solveFL = (a: Record<string, unknown>) => {
-        const facilities = (a.facilities as { id: string; openCost: number; capacity?: number }[]) ?? [];
-        const clients = (a.clients as { id: string; demand?: number }[]) ?? [];
-        const assign = (a.assignCosts as { client: string; facility: string; cost: number }[]) ?? [];
-        const n = facilities.length;
-        if (!n || !clients.length) return null;
-        const costOf = (c: string, f: string) => assign.find((x) => x.client === c && x.facility === f)?.cost;
-        const totalDemand = clients.reduce((s, c) => s + (c.demand ?? 0), 0);
-        let best: { openFacilities: string[]; assignments: { client: string; facility: string }[]; objective: number } | null = null;
-        for (let mask = 1; mask < 1 << n; mask++) {
-          const open = facilities.filter((_, i) => (mask & (1 << i)) !== 0);
-          const cap = open.reduce((s, f) => s + (f.capacity ?? Number.POSITIVE_INFINITY), 0);
-          if (cap < totalDemand) continue; // 容量不足 → 该组合不可行
-          let obj = open.reduce((s, f) => s + f.openCost, 0);
-          const assignments: { client: string; facility: string }[] = [];
-          let ok = true;
-          for (const c of clients) {
-            let bf: string | null = null;
-            let bc = Number.POSITIVE_INFINITY;
-            for (const f of open) {
-              const cc = costOf(c.id, f.id);
-              if (typeof cc === "number" && cc < bc) { bc = cc; bf = f.id; }
-            }
-            if (bf == null) { ok = false; break; }
-            obj += bc;
-            assignments.push({ client: c.id, facility: bf });
-          }
-          if (!ok) continue;
-          if (!best || obj < best.objective) best = { openFacilities: open.map((f) => f.id), assignments, objective: obj };
-        }
-        return best;
-      };
+      // WO-BEFE-E：这段暴力最优**提到了模块顶层**（`mockSolveFacilityLocation`），
+      // 因为 `POST /a/v1/opt/solve` 的桩要用同一份 —— 抄第二份就是第二套真相源。
+      const solveFL = mockSolveFacilityLocation;
 
       if (family === "facility_location" && ow.args) {
         const base = solveFL(ow.args);

@@ -694,6 +694,46 @@ export const simRollback = (sessionId: string, checkpointId: string) =>
     { body: { checkpointId } },
   );
 
+// ── WO-BEFE-E · 优化模板池 `/a/v1/opt/*`（三条此前前端零调用）─────────────────────
+//   `GET  /a/v1/opt/templates`  （datacore app.ts:3682）
+//   `GET  /a/v1/opt/retrieve`   （datacore app.ts:3689）
+//   `POST /a/v1/opt/solve`      （datacore app.ts:3664）
+// 全部经 entitlement `apiTags:"opt"`（feature `opt.solver-pool`·**defaultOn:false 暗发**）；
+// 关 = 404 `FEATURE_NOT_FOUND`（R3 先于 authz）。调用方**必须**把 404 当「本租户没开通」处理，
+// 不许当「后端坏了」，更不许静默回退成一份前端自造的清单（那就成了第二套真相源）。
+//
+// 病灶（沿链路追出来的，非按端点名猜）：`views/OptimizeWhatifView.tsx:19` 手抄了一份
+// **5 个 family 的字面量清单**，注释还写着「= app.ts OPT_FAMILIES」——那正是「同一概念两套词表」：
+// 后端加/减一个 family，界面不会知道，两边都能跑、谁也不报错。本组把**权威**交还给后端。
+//
+// R4：三条都不写业务真值 —— `opt/solve` 走 `ontology.invokeSolver`（纯求解返回结果），
+//     `opt/whatif` 后端注释亦明写「扰动克隆（不落真值 R4）」。故无需经 Action 审批链。
+/** 列后端真正提供的优化模板族（**权威清单**，前端不再自带一份）。 */
+export const fetchOptTemplates = () => api.a<{ families: string[] }>("/a/v1/opt/templates");
+/**
+ * 按需求文本检索模板（advisory·FUS2 不入确定性求解路径）。
+ * 后端诚实分档：`opt.embedding-retrieval` 关 → `mode:"comprehend"` 关键词回退（显式标注，不静默）；
+ * 开 → `mode:"embedding"` + `coverageGap`。`mode` 必须原样显示 —— 用户有权知道这次是哪一档算的。
+ */
+export const retrieveOptTemplates = (need: string) =>
+  api.a<{
+    mode: "comprehend" | "embedding";
+    embeddingEnabled: boolean;
+    candidates: { key: string; score?: number }[];
+    coverageGap?: unknown;
+    note?: string;
+  }>(`/a/v1/opt/retrieve?need=${encodeURIComponent(need)}`);
+/**
+ * 基线求解（不带扰动）——回答「现在的最优方案是什么」。
+ *
+ * ⚠ 这条不是 `opt/whatif` 的重复：优化推演页此前**必须先加一条扰动才肯求解**
+ * （`OptimizeWhatifView` 的「推演」按钮 `disabled={perturbs.length === 0}`，
+ * 空扰动时屏上写「至少加一条推演（改一个参数）才能求解」）⇒ 用户想问「就现在，最优怎么排」
+ * 在界面上**问不出来**。这条端点就是那个问法。
+ */
+export const solveOptTemplate = (family: string, args: Record<string, unknown>, seed = 42) =>
+  api.a<Record<string, unknown>>("/a/v1/opt/solve", { body: { family, args, seed } });
+
 /** 就绪认证（L0-L4 + 三维 + canEnter + 诚实 gaps）。 */
 export const fetchSimCertification = (sessionId: string, scope: "GLOBAL" | "LOCAL" = "GLOBAL", target?: string) =>
   api.a<SimCertification>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/certification?scope=${scope}${target ? `&target=${encodeURIComponent(target)}` : ""}`);
