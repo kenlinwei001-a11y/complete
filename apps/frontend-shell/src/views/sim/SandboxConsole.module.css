@@ -1552,3 +1552,72 @@
 .popNote {
   color: var(--ok) !important;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   WO-SANDBOX-PROCESS-MODE · 主画布第五档「业务流程」
+
+   ⚠ 零硬编码颜色：全部走 `styles/tokens.css` 的 token（三套皮自动跟随）。
+     等待类型的四种色不在本文件里 —— 它们由 `views/process/processWait.ts` 的
+     `WAIT_KIND_STYLE` 以 CSS 变量名下发（`--c-people` / `--c-forecast` / `--c-equip`
+     / `--c-capacity`），组件用内联 `background: var(<那个变量>)` 取。
+     在这里再写一遍四种颜色 = 第二份词表，改一处忘一处即两处飘。
+   ⚠ 泳道 / 卡片**复用**本文件既有的 `.stageBoard` `.lane` `.nodeCard` 系列
+     （同一块画布上读法一致），本节只补第五档独有的那几个记号。
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.processCanvas {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+/* 下发条数 ≠ 铺开条数 —— 这不是提示，是"本档漏画了"的报警，故用告警色且加粗 */
+.processMismatch {
+  display: block;
+  color: var(--danger);
+}
+.processKindBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 9px;
+}
+.processKindChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font: 10px var(--font-mono);
+  color: var(--muted);
+}
+.processKindChip i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.processKindChip b {
+  color: var(--txt);
+  font-variant-numeric: tabular-nums;
+}
+/* 流程键（P01…）—— 与节拍层卡片上那个百分比占同一个位置，但含义完全不同，故另起一个类：
+   共用 `.nodeCardPct` 会让"占比"和"流程键"在样式上被当成一回事。 */
+.processKeyChip {
+  font: 700 10px var(--font-mono);
+  color: var(--muted2);
+  letter-spacing: 0.08em;
+}
+.processWaitMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  margin-right: 4px;
+  color: var(--bg);
+  font: 700 9px var(--font-sans);
+  font-style: normal;
+  vertical-align: -2px;
+}
