@@ -1687,7 +1687,7 @@ export class SyntheticService {
         layout: { endpoint: "/a/v1/plan/quarterly", n: 6, gapTiers: { red: 4, yellow: 0 }, ltaEscalatePct: 5 },
       },
       "order-chain": {
-        title: "订单全链聚合",
+        title: "订单进展与卡因",
         renderer: "order-chain",
         layout: { solverKey: "affected_orders", window: { before: 7, after: 14 }, problemCategories: ["DELIVERY", "MARGIN", "KIT", "CREDIT"], categoryLabels: ORDER_CHAIN_LABELS, segColors: SEG_COLORS, outputFields: ["rows", "problems", "summary", "columns"] },
       },

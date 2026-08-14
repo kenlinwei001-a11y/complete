@@ -604,51 +604,6 @@
       "sample": "reason: \"已经查过了，本租户采购段一条都没有 —— 代码链路是通的，缺的是数据。\","
     },
     {
-      "key": "apps/agentcore/src/features/registry.ts#7a08f2bfa7798892",
-      "code": "STALE-7",
-      "file": "apps/agentcore/src/features/registry.ts",
-      "line": 57,
-      "verdict": "CONFIRMED-STALE",
-      "why": "【2026-08-14 复核确认：一个概念两份真相源】`apps/frontend-shell/src/locales/zh.ts:360` 已声明「§7.16 订单进展与卡因（WO-ORDER-JOURNEY 前名「订单全链聚合」）」，且该注释自己就写着「改了会连坐后端 VIEW_DEFS / features / mock 三处」—— **写在注释里的纪律不是机制，所以它一处都没拦住**。部署态由后端下发 `view.title` / feature `name` 时，用户看到的仍是旧名。改这几处字面量归后续单（本单 🚦 边界禁改 apps/**；且改名要连坐前端 mock 断言，属另一条工作线）。",
-      "sample": "{ key: \"view.order-chain\", name: \"订单全链聚合\", level: \"VIEW\", defaultOn: true },"
-    },
-    {
-      "key": "apps/datacore/src/features.ts#7a08f2bfa7798892",
-      "code": "STALE-7",
-      "file": "apps/datacore/src/features.ts",
-      "line": 23,
-      "verdict": "CONFIRMED-STALE",
-      "why": "【2026-08-14 复核确认：一个概念两份真相源】`apps/frontend-shell/src/locales/zh.ts:360` 已声明「§7.16 订单进展与卡因（WO-ORDER-JOURNEY 前名「订单全链聚合」）」，且该注释自己就写着「改了会连坐后端 VIEW_DEFS / features / mock 三处」—— **写在注释里的纪律不是机制，所以它一处都没拦住**。部署态由后端下发 `view.title` / feature `name` 时，用户看到的仍是旧名。改这几处字面量归后续单（本单 🚦 边界禁改 apps/**；且改名要连坐前端 mock 断言，属另一条工作线）。",
-      "sample": "{ key: \"view.order-chain\", name: \"订单全链聚合\", level: \"VIEW\", defaultOn: true },"
-    },
-    {
-      "key": "apps/datacore/src/synthetic/service.ts#9018f7b6287ac4da",
-      "code": "STALE-7",
-      "file": "apps/datacore/src/synthetic/service.ts",
-      "line": 1690,
-      "verdict": "CONFIRMED-STALE",
-      "why": "【2026-08-14 复核确认：一个概念两份真相源】`apps/frontend-shell/src/locales/zh.ts:360` 已声明「§7.16 订单进展与卡因（WO-ORDER-JOURNEY 前名「订单全链聚合」）」，且该注释自己就写着「改了会连坐后端 VIEW_DEFS / features / mock 三处」—— **写在注释里的纪律不是机制，所以它一处都没拦住**。部署态由后端下发 `view.title` / feature `name` 时，用户看到的仍是旧名。改这几处字面量归后续单（本单 🚦 边界禁改 apps/**；且改名要连坐前端 mock 断言，属另一条工作线）。",
-      "sample": "title: \"订单全链聚合\","
-    },
-    {
-      "key": "apps/frontend-shell/src/mocks/fixtures.ts#6d6c6016265db67b",
-      "code": "STALE-7",
-      "file": "apps/frontend-shell/src/mocks/fixtures.ts",
-      "line": 173,
-      "verdict": "CONFIRMED-STALE",
-      "why": "【2026-08-14 复核确认：一个概念两份真相源】`apps/frontend-shell/src/locales/zh.ts:360` 已声明「§7.16 订单进展与卡因（WO-ORDER-JOURNEY 前名「订单全链聚合」）」，且该注释自己就写着「改了会连坐后端 VIEW_DEFS / features / mock 三处」—— **写在注释里的纪律不是机制，所以它一处都没拦住**。部署态由后端下发 `view.title` / feature `name` 时，用户看到的仍是旧名。改这几处字面量归后续单（本单 🚦 边界禁改 apps/**；且改名要连坐前端 mock 断言，属另一条工作线）。",
-      "sample": "{ key: \"view.order-chain\", name: \"订单全链聚合\", level: \"VIEW\", defaultOn: true, bindings: { solverKeys: [\"affected_orders\"] }"
-    },
-    {
-      "key": "apps/frontend-shell/src/mocks/fixtures.ts#9018f7b6287ac4da",
-      "code": "STALE-7",
-      "file": "apps/frontend-shell/src/mocks/fixtures.ts",
-      "line": 605,
-      "verdict": "CONFIRMED-STALE",
-      "why": "【2026-08-14 复核确认：一个概念两份真相源】`apps/frontend-shell/src/locales/zh.ts:360` 已声明「§7.16 订单进展与卡因（WO-ORDER-JOURNEY 前名「订单全链聚合」）」，且该注释自己就写着「改了会连坐后端 VIEW_DEFS / features / mock 三处」—— **写在注释里的纪律不是机制，所以它一处都没拦住**。部署态由后端下发 `view.title` / feature `name` 时，用户看到的仍是旧名。改这几处字面量归后续单（本单 🚦 边界禁改 apps/**；且改名要连坐前端 mock 断言，属另一条工作线）。",
-      "sample": "title: \"订单全链聚合\","
-    },
-    {
       "key": "apps/agentcore/src/features/registry.ts#dcef81122f3afe47",
       "code": "STALE-8",
       "file": "apps/agentcore/src/features/registry.ts",
@@ -692,17 +647,8 @@
       "verdict": "CONFIRMED-STALE",
       "why": "【2026-08-14 复核确认】视图 `plan-generate` 的**标题**在两份真相源上分叉：后端 view-manifest 写「方案生成」，前端 mock fixtures 写「规划建议」。屏上显示哪个取决于走真后端还是 mock ⇒ 同一页在两种模式下标题不同。收敛归后续单。",
       "sample": "view-title:plan-generate 方案生成 ≠ 规划建议"
-    },
-    {
-      "key": "apps/frontend-shell/src/locales/zh.ts#1e540f8d62064c5a",
-      "code": "STALE-8",
-      "file": "apps/frontend-shell/src/locales/zh.ts",
-      "line": 368,
-      "verdict": "CONFIRMED-STALE",
-      "why": "【2026-08-14 复核确认：一个概念两份真相源】`apps/frontend-shell/src/locales/zh.ts:360` 已声明「§7.16 订单进展与卡因（WO-ORDER-JOURNEY 前名「订单全链聚合」）」，且该注释自己就写着「改了会连坐后端 VIEW_DEFS / features / mock 三处」—— **写在注释里的纪律不是机制，所以它一处都没拦住**。部署态由后端下发 `view.title` / feature `name` 时，用户看到的仍是旧名。改这几处字面量归后续单（本单 🚦 边界禁改 apps/**；且改名要连坐前端 mock 断言，属另一条工作线）。",
-      "sample": "zh.orderChain.title=\"订单进展与卡因\" ≠ 订单全链聚合"
     }
   ],
-  "onscreenMax": 24,
+  "onscreenMax": 18,
   "onscreenRatchetHigh": 24
 }

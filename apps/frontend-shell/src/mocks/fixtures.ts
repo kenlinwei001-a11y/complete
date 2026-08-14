@@ -170,7 +170,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 剩余视图增量（§7.14–7.17 / §7.19）
   { key: "view.annual-scenario", name: "年度规划", level: "VIEW", defaultOn: true },
   { key: "view.quarterly-rolling", name: "季度规划", level: "VIEW", defaultOn: true },
-  { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["affected_orders"] } },
+  { key: "view.order-chain", name: "订单进展与卡因", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["affected_orders"] } },
   { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
   // 运营态出厂配置增量 §2/§4：运营复盘（只读历史证据链页面，消费 GET /a/v1/history/bundle）
   { key: "view.review", name: "运营复盘", level: "VIEW", defaultOn: true, bindings: { apiTags: ["history"] } },
@@ -602,7 +602,7 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "quarterly-rolling", title: "季度规划", renderer: "quarterly-rolling", layout: {} },
     {
       key: "order-chain",
-      title: "订单全链聚合",
+      title: "订单进展与卡因",
       renderer: "order-chain",
       // 去电池锁死 8a（R14）：问题分类标签/产品段配色由 ViewConfig.layout 声明（DELIVERY 标签独有"·配置X"以证明）
       layout: {
