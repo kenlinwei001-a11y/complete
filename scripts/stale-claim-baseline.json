@@ -620,35 +620,8 @@
       "verdict": "CONFIRMED-STALE",
       "why": "【2026-08-14 复核确认：同一个概念在多份注册表里各写一个名字】功能 `view.risk-board` 的名字：「风险看板」≠「风险推演看板」≠「推演看板」，三份三个名。 三份注册表（agentcore FEATURE_REGISTRY / datacore view-manifest / 前端 mock fixtures）本该是同一份册的三个副本，今天各说各话。屏上显示哪一个取决于走的是哪条下发路径 ⇒ 同一功能在不同页面上叫不同名字。收敛到单一出处归后续单（本单 🚦 边界禁改 apps/**）。",
       "sample": "feature-name:risk-board 风险看板 ≠ 风险推演看板 ≠ 推演看板"
-    },
-    {
-      "key": "apps/agentcore/src/features/registry.ts#9df2b178c9dee651",
-      "code": "STALE-8",
-      "file": "apps/agentcore/src/features/registry.ts",
-      "line": 32,
-      "verdict": "CONFIRMED-STALE",
-      "why": "【2026-08-14 复核确认：同一个概念在多份注册表里各写一个名字】功能 `view.plan-generate` 的名字：「规划建议」≠「方案生成」。 三份注册表（agentcore FEATURE_REGISTRY / datacore view-manifest / 前端 mock fixtures）本该是同一份册的三个副本，今天各说各话。屏上显示哪一个取决于走的是哪条下发路径 ⇒ 同一功能在不同页面上叫不同名字。收敛到单一出处归后续单（本单 🚦 边界禁改 apps/**）。",
-      "sample": "feature-name:plan-generate 规划建议 ≠ 方案生成"
-    },
-    {
-      "key": "apps/agentcore/src/features/registry.ts#11b8955e1c923e7e",
-      "code": "STALE-8",
-      "file": "apps/agentcore/src/features/registry.ts",
-      "line": 59,
-      "verdict": "CONFIRMED-STALE",
-      "why": "【2026-08-14 复核确认：同一个概念在多份注册表里各写一个名字】功能 `view.task-dag` 的名字：「任务详情·编排 DAG」≠「任务编排 DAG」。 三份注册表（agentcore FEATURE_REGISTRY / datacore view-manifest / 前端 mock fixtures）本该是同一份册的三个副本，今天各说各话。屏上显示哪一个取决于走的是哪条下发路径 ⇒ 同一功能在不同页面上叫不同名字。收敛到单一出处归后续单（本单 🚦 边界禁改 apps/**）。",
-      "sample": "feature-name:task-dag 任务详情·编排 DAG ≠ 任务编排 DAG"
-    },
-    {
-      "key": "apps/datacore/src/synthetic/view-manifest.ts#5bbe506d73213c30",
-      "code": "STALE-8",
-      "file": "apps/datacore/src/synthetic/view-manifest.ts",
-      "line": 107,
-      "verdict": "CONFIRMED-STALE",
-      "why": "【2026-08-14 复核确认】视图 `plan-generate` 的**标题**在两份真相源上分叉：后端 view-manifest 写「方案生成」，前端 mock fixtures 写「规划建议」。屏上显示哪个取决于走真后端还是 mock ⇒ 同一页在两种模式下标题不同。收敛归后续单。",
-      "sample": "view-title:plan-generate 方案生成 ≠ 规划建议"
     }
   ],
-  "onscreenMax": 18,
+  "onscreenMax": 15,
   "onscreenRatchetHigh": 24
 }

@@ -159,7 +159,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.risk-board", name: "推演看板", level: "VIEW", defaultOn: true, bindings: { intents: ["affected_orders", "risk_root_cause"], solverKeys: ["risk_timeline"] } },
   { key: "view.ledger", name: "订单台账", level: "VIEW", defaultOn: true, bindings: { intents: ["affected_orders"] } },
   { key: "view.plan-audit", name: "规划体检", level: "VIEW", defaultOn: true, bindings: { intents: ["plan_audit_run"], solverKeys: ["plan_audit"], apiTags: ["plan-audit"] } },
-  { key: "view.plan-generate", name: "方案生成", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["plan_generate"] } },
+  { key: "view.plan-generate", name: "规划建议", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["plan_generate"] } },
   { key: "view.sop-balance", name: "月度规划", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["sop_balance"] } },
   { key: "view.project-sim", name: "项目推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["capacity_forecast"] } },
   { key: "view.global-sim", name: "全局项目推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["portfolio"] } },
@@ -174,7 +174,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
   // 运营态出厂配置增量 §2/§4：运营复盘（只读历史证据链页面，消费 GET /a/v1/history/bundle）
   { key: "view.review", name: "运营复盘", level: "VIEW", defaultOn: true, bindings: { apiTags: ["history"] } },
-  { key: "view.task-dag", name: "任务编排 DAG", level: "BLOCK", defaultOn: true },
+  { key: "view.task-dag", name: "任务详情·编排 DAG", level: "BLOCK", defaultOn: true },
   // ── 推演沙盘四子视图（WO-NAV-GATE · mock 对齐后端真实下发）─────────────────────
   //
   // 为什么此前 mock 里一条都没有 —— 而这正是 G-NAV-FALLBACK-BUCKET 的机械门写不出来的原因：
@@ -592,7 +592,7 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "order", title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
     // 推演类业务视图（增量 PRD 由原型 docs/demo-推演系统.html 反推；renderer 已注册）
     { key: "plan-audit", title: "规划体检", renderer: "plan-audit", layout: PLAN_AUDIT_LAYOUT },
-    { key: "plan-generate", title: "规划建议", renderer: "plan-generate", layout: PLAN_GENERATE_LAYOUT },
+    { key: "plan-generate", title: "方案生成", renderer: "plan-generate", layout: PLAN_GENERATE_LAYOUT },
     { key: "project-sim", title: "项目推演", renderer: "project-sim", layout: PROJECT_SIM_LAYOUT },
     // WO-PORTFOLIO-OPTIMAL 全局项目推演（全订单×全基地×时间联合最优组合·共享产能守恒·冻结子集·多方案）
     { key: "global-sim", title: "全局项目推演", renderer: "global-sim", layout: {} },
