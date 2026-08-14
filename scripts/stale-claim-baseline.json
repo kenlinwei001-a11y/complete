@@ -417,59 +417,6 @@
       "sample": "\"运行记录（AgentRunRecord）现在带 agentId / agentKey / agentVersion / 归属形态，由引擎在 Agent 循环收尾时与运行数据同一次写入 —— 所以「谁跑的」和「跑出了什么」不会各说各话。归属"
     },
     {
-      "key": "apps/frontend-shell/src/locales/zh.ts#d9e35b657b55a223",
-      "code": "STALE-5",
-      "file": "apps/frontend-shell/src/locales/zh.ts",
-      "line": 2163,
-      "verdict": "CONFIRMED-STALE",
-      "why": "【2026-08-14 WO-ONSCREEN-STALE-FACTS 亲手复核，确认这句话今天是假的，两处都错且**错法不同**】① 「locus 只有 MaterialBalance/MaterialBatch/Line 三类」——`apps/datacore/src/solvers/chain-impediment.ts` 的判据绑定里 `CONTENTION_LOCUS_TYPE = \"Base\"` 已经长出**第四类**（C34 跨业务线产能争用），属「上游新长出一类、文案没跟」⇒ 改文案即可。② 「带 drillType=MaterialBatch 或 Line 的因子一条都没有」——`apps/datacore/src/synthetic/battery-extended.ts` 里 `drillType: \"Line\"` 有 1 条（`cf-cap-bottleneck-process`）、`drillType: \"MaterialBatch\"` 有 1 条（`cf-batch-idle`）。**这一句不是「上游补齐了」，是判据本身写错了**：那条 Line 因子的 `drillId` 是 `*` 通配，真正缺的是「`*` 怎么算对上」这条 join 判据，不是缺种子 —— 当「缺数据」去补，补了也白补。修文案 + 修 join 判据归后续单（本单只交付机制，🚦 边界禁改 apps/**）。factChecks 已把今天的真相登记在案：上游再变一次，本门当场红并点到这一行。",
-      "sample": "\"MaterialBalance / MaterialBatch / Line 三类，而合成种子里带 drillType=MaterialBatch 或 Line 的因子一条都没有。\",",
-      "factChecks": [
-        {
-          "file": "apps/datacore/src/solvers/chain-impediment.ts",
-          "pattern": "locusObjectType: (?:\"|CONTENTION_LOCUS_TYPE)",
-          "op": "==",
-          "n": 7,
-          "means": "chain_impediments 判据绑定里的 locus 类型共 7 种（屏上写「只有三类」）："
-        },
-        {
-          "file": "apps/datacore/src/solvers/chain-impediment.ts",
-          "pattern": "CONTENTION_LOCUS_TYPE = \"Base\"",
-          "op": "==",
-          "n": 1,
-          "means": "第四类 locus `Base`（跨业务线争用，WO-A6-CONTENTION 之后新长出来的）确实存在："
-        },
-        {
-          "file": "apps/datacore/src/synthetic/battery-extended.ts",
-          "pattern": "drillType: \"Line\"",
-          "op": "==",
-          "n": 1,
-          "means": "带 drillType=Line 的因子 `cf-cap-bottleneck-process` 确实存在（屏上写「一条都没有」）："
-        },
-        {
-          "file": "apps/datacore/src/synthetic/battery-extended.ts",
-          "pattern": "drillType: \"MaterialBatch\"",
-          "op": "==",
-          "n": 1,
-          "means": "带 drillType=MaterialBatch 的因子 `cf-batch-idle` 确实存在（屏上写「一条都没有」）："
-        },
-        {
-          "file": "apps/datacore/src/synthetic/battery-extended.ts",
-          "pattern": "drillType: \"Base\"",
-          "op": "==",
-          "n": 1,
-          "means": "带 drillType=Base 的因子 `cf-base-capacity-contention` 确实存在："
-        },
-        {
-          "file": "apps/datacore/src/synthetic/battery-extended.ts",
-          "pattern": "factorId: \"",
-          "op": "==",
-          "n": 37,
-          "means": "CAUSAL_FACTORS 现有 37 条（sandboxConsoleModel.ts 头注写「共 18 种 drillType」的那批已经翻了一倍）："
-        }
-      ]
-    },
-    {
       "key": "apps/frontend-shell/src/locales/zh.ts#5760b48e306f4456",
       "code": "STALE-5",
       "file": "apps/frontend-shell/src/locales/zh.ts",
@@ -542,59 +489,6 @@
       "sample": "gap: \"未接：Process 对象只有 涂布/卷绕/装配/化成/老化 五类，且属 Process 层，与本图 Workshop 层十列不同口径\", // debattery-allow：这是**诚实缺口说明文案**，不是驱动逻辑的业务常"
     },
     {
-      "key": "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts#f9048c10a92c1f46",
-      "code": "STALE-5",
-      "file": "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts",
-      "line": 773,
-      "verdict": "CONFIRMED-STALE",
-      "why": "【2026-08-14 WO-ONSCREEN-STALE-FACTS 亲手复核，确认这句话今天是假的，两处都错且**错法不同**】① 「locus 只有 MaterialBalance/MaterialBatch/Line 三类」——`apps/datacore/src/solvers/chain-impediment.ts` 的判据绑定里 `CONTENTION_LOCUS_TYPE = \"Base\"` 已经长出**第四类**（C34 跨业务线产能争用），属「上游新长出一类、文案没跟」⇒ 改文案即可。② 「带 drillType=MaterialBatch 或 Line 的因子一条都没有」——`apps/datacore/src/synthetic/battery-extended.ts` 里 `drillType: \"Line\"` 有 1 条（`cf-cap-bottleneck-process`）、`drillType: \"MaterialBatch\"` 有 1 条（`cf-batch-idle`）。**这一句不是「上游补齐了」，是判据本身写错了**：那条 Line 因子的 `drillId` 是 `*` 通配，真正缺的是「`*` 怎么算对上」这条 join 判据，不是缺种子 —— 当「缺数据」去补，补了也白补。修文案 + 修 join 判据归后续单（本单只交付机制，🚦 边界禁改 apps/**）。factChecks 已把今天的真相登记在案：上游再变一次，本门当场红并点到这一行。",
-      "sample": "\"demo 的 locus 只有 MaterialBalance / MaterialBatch / Line 三类，而合成种子里带 drillType=MaterialBatch 或 Line 的因子一条都没有；\" +",
-      "factChecks": [
-        {
-          "file": "apps/datacore/src/solvers/chain-impediment.ts",
-          "pattern": "locusObjectType: (?:\"|CONTENTION_LOCUS_TYPE)",
-          "op": "==",
-          "n": 7,
-          "means": "chain_impediments 判据绑定里的 locus 类型共 7 种（屏上写「只有三类」）："
-        },
-        {
-          "file": "apps/datacore/src/solvers/chain-impediment.ts",
-          "pattern": "CONTENTION_LOCUS_TYPE = \"Base\"",
-          "op": "==",
-          "n": 1,
-          "means": "第四类 locus `Base`（跨业务线争用，WO-A6-CONTENTION 之后新长出来的）确实存在："
-        },
-        {
-          "file": "apps/datacore/src/synthetic/battery-extended.ts",
-          "pattern": "drillType: \"Line\"",
-          "op": "==",
-          "n": 1,
-          "means": "带 drillType=Line 的因子 `cf-cap-bottleneck-process` 确实存在（屏上写「一条都没有」）："
-        },
-        {
-          "file": "apps/datacore/src/synthetic/battery-extended.ts",
-          "pattern": "drillType: \"MaterialBatch\"",
-          "op": "==",
-          "n": 1,
-          "means": "带 drillType=MaterialBatch 的因子 `cf-batch-idle` 确实存在（屏上写「一条都没有」）："
-        },
-        {
-          "file": "apps/datacore/src/synthetic/battery-extended.ts",
-          "pattern": "drillType: \"Base\"",
-          "op": "==",
-          "n": 1,
-          "means": "带 drillType=Base 的因子 `cf-base-capacity-contention` 确实存在："
-        },
-        {
-          "file": "apps/datacore/src/synthetic/battery-extended.ts",
-          "pattern": "factorId: \"",
-          "op": "==",
-          "n": 37,
-          "means": "CAUSAL_FACTORS 现有 37 条（sandboxConsoleModel.ts 头注写「共 18 种 drillType」的那批已经翻了一倍）："
-        }
-      ]
-    },
-    {
       "key": "apps/frontend-shell/src/views/sim/transitFlow.ts#afdf58f82d6097f2",
       "code": "STALE-5",
       "file": "apps/frontend-shell/src/views/sim/transitFlow.ts",
@@ -622,6 +516,6 @@
       "sample": "feature-name:risk-board 风险看板 ≠ 风险推演看板 ≠ 推演看板"
     }
   ],
-  "onscreenMax": 15,
-  "onscreenRatchetHigh": 24
+  "onscreenMax": 13,
+  "onscreenRatchetHigh": 13
 }
