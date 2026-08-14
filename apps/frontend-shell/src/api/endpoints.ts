@@ -739,6 +739,10 @@ export const simCheckpoint = (sessionId: string, label?: string) =>
 //   那一个（SandboxView.tsx:799 先 `simCheckpoint` 再 `simBranch`），历史存档一个都用不上。
 // 后端 app.ts:1808 那段长注释里白纸黑字写着「前端 useQuery 属 WO-1/WO-4 边界，不在本单」——
 // 那张单从没落地，于是读端在后端躺了整整一程。本单接的就是这一跳。
+// 📅 复验（2026-08-14 实测，数字有保质期）：后端两条读端存在
+//    `grep -n "sim/sessions/:id/checkpoints\\|rollback" apps/datacore/src/app.ts`；
+//    前端调用方 `grep -n "simCheckpoint\\|simRollback" apps/frontend-shell/src`；
+//    接缝门 `node scripts/check-backend-frontend-seam.mjs`（这两条不再在零调用清单里）。
 //
 // ⚠ 排序是**语义**不是美观（后端 app.ts:1826 同款纪律）：用户按这张表挑回滚点/分支点，
 //   顺序错 = 挑错档。前端**不再排一遍** —— 后端已按 `(tick, createdAt, id)` 全序排好，
@@ -1062,7 +1066,11 @@ export const promoteSolverArtifact = (key: string) =>
  * ── R4 判定 ──────────────────────────────────────────────────────────────────
  * 生成**不写业务真值**：产物是 `status:PROVISIONAL` + `trustLevel:UNVERIFIED` 的冻结代码。
  * 用它写真值另受两道已在前端接好的闸：`/solvers/:key/write-truth-check`（仅创建人）与
- * `/solvers/:key/promote`（人工审批 → GOVERNED）。**R4 的闸在下游且已接，故本条无需经 Action 审批链。**
+ * `/solvers/:key/promote`（人工审批 → GOVERNED）。**R4 的闸在下游且已接，故本条无需经
+ *
+ * 📅 复验（2026-08-14 实测，数字有保质期）：`grep -rn "registerProvisionalSolver\\|generateProvisionalSolver" apps/datacore/src`
+ *    （唯一写者 → 唯一调用方 → 唯一端点这条链是否还是唯一的）；
+ *    `grep -c "solverArtifacts" apps/datacore/src/seed.ts`（种子是否仍为 0）。 Action 审批链。**
  */
 export const generateProvisionalSolver = (key: string, intent: string) =>
   api.a<SolverArtifact>("/a/v1/solvers/generate", { body: { key, intent } });

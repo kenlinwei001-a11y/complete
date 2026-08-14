@@ -6492,6 +6492,10 @@ export const handlers = [
   //      · 差值算法只有一份，mock 与真后端不可能在算术上漂移；
   //      · 而"关掉这条边世界会长什么样"这件事，mock 老老实实承认是 fixture，不假装是算出来的。
   //    反面教材就在本文件不远处：mock 复制引擎语义 ⇒ 第二套真相源 ⇒ 前端测试全绿而真链路早断。
+  //
+  // 📅 复验（2026-08-14 实测）：`grep -n "diffTickStates" apps/frontend-shell/src/mocks/handlers.ts`
+  //    应只见 import 与调用点各一处 —— mock 与真后端命中**同一个**契约函数；
+  //    哪天这里出现自算差值的代码，就是第二套真相源。
   // （原此处有第 2 个 `GET /a/v1/sim/propagation-rules` handler，与 :5819 撞车、先匹配先赢导致它永不触发 ⇒ 已删，单一 handler 见上方。）
   http.patch("*/a/v1/sim/sessions/:id/disabled-rules", async ({ params, request }) => {
     const id = String((params as { id: string }).id);

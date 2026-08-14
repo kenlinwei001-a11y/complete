@@ -276,6 +276,10 @@ export default function SolversPage() {
  * · `count:0` 与「查不出来」必须分得开：前者是真的没人引用（可以放心改），
  *   后者是这次没查到（不能据此说"随便改"）。塌成一个 0 就是把风险藏起来。
  *   这条诚实位现在由 `<ReferencesPanel>` 统一守，全族一处实现。
+ *
+ * 📅 复验（2026-08-14 实测，数字有保质期）：
+ *   `grep -rn "SOLVER_FIELD_ROLES" apps/datacore/src`（几个求解器声明了角色）；
+ *   `node scripts/check-backend-frontend-seam.mjs`（这两条端点不再在零调用清单里）。
  */
 function SolverImpactPanel({ solverKey }: { solverKey: string }) {
   const roles = useQuery({

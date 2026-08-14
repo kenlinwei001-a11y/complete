@@ -220,6 +220,11 @@ const fmt = (n: number): string => (Number.isFinite(n) ? String(Math.round(n * 1
  *   ④ 有歧义（候选 ≥2）或对不上 ⇒ **拒绝合并，宁可分两行**。
  * 且 ②③ 是**约定不是引擎保证** —— 这句话必须进浮层写在脸上（`zh.decisionPlay.actions.join`），
  * 不许静默合并了事。
+ *
+ * 📅 复验（2026-08-14 实测，数字有保质期）：
+ *   `grep -n "恒为 3 条\\|options" apps/datacore/src/decision/kernel.ts`（后端是否仍写死三条）；
+ *   `grep -n "TRIGGER_RULES" apps/datacore/src/synthetic/battery-extended.ts`（区④那一侧的种子源）。
+ *   后端改成动态方案后本表**不用改** —— 列数/档位/筛选项全部现算，这正是不写死的理由。
  * ══════════════════════════════════════════════════════════════════════════════ */
 
 /** 三态**互不相同**：有规则且越阈 / 有规则但没到线 / 根本没有规则在盯它。 */

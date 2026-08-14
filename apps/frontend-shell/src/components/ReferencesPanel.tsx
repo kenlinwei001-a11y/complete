@@ -36,7 +36,10 @@ export interface ReferencesPanelProps {
  *  ① 做成 `title="…"` 传进来，各页就能各写各的措辞 —— 「同一份实现」当场破功；
  *  ② `scripts/check-ui-first-layer.mjs` 把**文案型属性**（`title`/`label`/`desc`…）计作
  *     一条第一层信息块。实测：8 个挂载点各传一个 `title` ⇒ 5 个页面的 `first` 各 +1，
- *     棘轮当场变红。措辞收在这里，挂载处只剩 `kind`/`id` 两个机器参数，页面不长信息块。
+ *     棘轮当场变红。措辞收在这里，挂载处只剩 `kind`/`id` 两个机器参数，页面不长
+ *
+ * 📅 复验（2026-08-14 实测）：`node scripts/check-ui-first-layer.mjs --explain`（看 8 个挂载页的 first 有没有涨）；
+ *    把任一处改回 `title="…"` prop 即可复现那 5 页各 +1。信息块。
  */
 export const REFERENCES_COPY = {
   countSuffix: "处引用",

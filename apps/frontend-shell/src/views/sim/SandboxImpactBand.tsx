@@ -182,6 +182,10 @@ const dirOf = (v: number): "up" | "down" | "flat" => (v > EPS ? "up" : v < -EPS 
  *    属性标，不靠颜色标 —— 靠颜色标的信息，色觉障碍与浅色皮用户本来就收不到。
  *
  * 字号一律 ≥12px（CJK 小字在 11px + 4.5:1 下不可读，"过了 WCAG 数值"不等于"看得清"）。
+ *
+ * 📅 复验（2026-08-14 亲手算的，随主题令牌改动会变）：
+ *   `node scripts/check-text-legibility.mjs`（三套皮下逐对令牌算对比度，本文件应 0 违规）；
+ *   上表任一格存疑时，把前景/底色两个 hex 代进 WCAG 2.x 相对亮度公式重算一遍即可。
  * ══════════════════════════════════════════════════════════════════════════════ */
 const PROV_TEXT: CSSProperties = { font: "400 12px/1.5 var(--font-ui, inherit)", color: "var(--txt)" };
 const PROV_ROW: CSSProperties = {

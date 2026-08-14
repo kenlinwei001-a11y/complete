@@ -352,6 +352,15 @@ export function DynamicLeverPanel({
                       屏上 15 行里其实只有 5 个不同的数（每条产线的三个型号 before/after 完全相同，
                       即型号维度不参与本次计算）。**不说出来，读的人会把 15 行当成 15 个独立结论。**
                   ⛔ 刻意**不**报「缺口 X→Y」：本面板拿不到 gap（不在 props 里），编一个就是造假；
+
+                  📅 复验（2026-08-14 仓主实测点名，数字会随种子/参数变）：
+                    · 「15 行里只有 5 个不同的数」不是写死的 —— 屏上那个数由本组件现算
+                      （`new Set(out.rows.map(r => `${r.prop}|${r.before}|${r.after}`)).size`），
+                      换一次求解它就跟着变；这里写 15/5 只是当天的现场，不是断言。
+                    · 命令复验：`grep -n "deltaDistinct" apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx`
+                      —— 屏上那个数只有这一处产地，没有第二份算法。
+                    · 亲手复验：沙盘上调一次杠杆 → 展开明细表 → 数「不同结果数」那一行，
+                      与表里逐行 before/after 去重后的条数应逐字节一致。
                      要报它须由父页传入，另立单。 */}
               {(() => {
                 const nums = out.rows.map((r) => ({ d: Number(r.after) - Number(r.before), ok: Number.isFinite(Number(r.after)) && Number.isFinite(Number(r.before)) })).filter((x) => x.ok);
