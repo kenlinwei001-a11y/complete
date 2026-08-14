@@ -210,7 +210,11 @@ function WaitKindGroup({ g, selectedKey, onSelect }: { g: WaitKindGroupVM; selec
   const style = WAIT_KIND_STYLE[g.kind];
   const t = zh.processWait;
   // WO-FLOWTIME：展开哪一条流程的实例明细（null = 都没展开）。一次只开一条 ——
-  // 每条都自动拉一次实例会把 65 条流程变成 65 次反推，实测每次要扫全部承载类型。
+  // 每条都自动拉一次实例会把 65 条流程变成 65 次反推，而**每次反推都要扫规则表点名的全部承载类型**
+  // （2026-08-14 实测：`reconstructAndPersist` 一次产出 >500 条实例，见
+  //  `apps/datacore/test/process-flow-time.seam.test.ts` ① 的基数断言；
+  //  复验：`pnpm --filter datacore exec vitest run test/process-flow-time.seam.test.ts`，
+  //  或读落点 `apps/datacore/src/process/reconstruct.ts` 的 `neededTypes` 循环）。
   const [openKey, setOpenKey] = useState<string | null>(null);
   return (
     <section

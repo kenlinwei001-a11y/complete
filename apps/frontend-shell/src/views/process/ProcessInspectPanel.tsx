@@ -18,7 +18,19 @@ import styles from "./ProcessInspectPanel.module.css";
  *   **绝不臆造中文名** —— 编错比不编危险，业务专家会照着错的理解。
  *   界面骨架文案（表头、区块标题）走 `locales/zh.ts`，与业务词表严格分开。
  *
- * · **不拿标准工期冒充实测卡顿**：`runtime.available` 恒 `false`，
+ * · **不拿标准工期冒充实测卡顿**：`runtime.available` 恒 `false`
+ *   （**2026-08-14 实测**；复验：`curl -s -H 'X-Debug-User: demo:admin:admin' \
+ *   'http://127.0.0.1:4001/a/v1/process-definitions/P32/inspect' | jq .runtime`
+ *   —— 65/65 条流程全量扫过，`runtime.available` 无一为 true）。
+ *   ⚠️ **这条原本挂着的保质期已到期，本次照它自己的指示「改口径而不是加豁免」**：
+ *   原注释写「`ProcessInstance` 承载物一旦接上……此处即过期」——
+ *   承载物**已于 2026-08-14 接上**（WO-R9-PROCESS-MERGE 合并 WO-FLOWTIME ⊕ WO-PROCESS-INSTANCE，
+ *   见本体 §2.K 与 `apps/datacore/migrations/033_process_instances.sql`）。
+ *   但 `available` **仍然是 `false`，且这不是过期未改**：本面板是**定义层**投影，
+ *   运行态本就不由它下发 —— 缺席理由已同步改成「本投影不答，去
+ *   `GET /a/v1/process-definitions/{key}/instances` 或求解器 `process_flow_time` 答」
+ *   （落点 `apps/datacore/src/process/inspect.ts` 的 `runtime.reason`）。
+ *   ⚠️ 新的保质期：哪天本面板自己开始下发运行态，这段必须再改一次。
  *   页面把 `runtime.reason` 与 `runtime.unanswerable` **当面列出来**，
  *   工期数字旁边贴 `runtime.stdDurationCaption`（口径也是后端下发的，
  *   免得前端写一句将来会过期的说明 —— `G-FRONTEND-HARDCODED-ABSENCE` 记的就是这个病）。

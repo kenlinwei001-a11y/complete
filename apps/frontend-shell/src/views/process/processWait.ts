@@ -253,6 +253,14 @@ export function buildProcessWaitModel(res: ProcessDefinitionsResponse): ProcessW
  * 承载物（`ProcessInstance`）现在有了，时刻由**既有带时间戳单据反推**而来
  * （`origin=DERIVED_FROM_DOCUMENT`，每条带 `sourceDocuments[]` 可当场溯源）。
  * ⛔ `definition.stdDurationDays` 仍然只是**对照列**：它是标准工期，不是实测滞留。
+ *
+ * **2026-08-14 实测**（合并后复验，battery/S/seed=42）：反推侧一次产出 >500 条实例、
+ * >300 条链，且每条实例的 `sourceDocuments[].rawValue` 与仓储里那个字段的值**逐条相等**。
+ * 复验：`pnpm --filter datacore exec vitest run test/process-flow-time.seam.test.ts`（断言 ①），
+ * 或直接 `curl -s -H 'X-Debug-User: demo:admin:admin' \
+ * 'http://127.0.0.1:4001/a/v1/process-definitions/P34/instances' | jq '{available,instanceCount}'`。
+ * ⚠️ 保质期：上游种子（`seedBattery` / `flow-rules.ts` 规则表）一变，上面这些数即失真，
+ * 必须复测改写而不是加豁免。
  */
 export interface ProcessInstancesResponse {
   definition: ProcessDefinition;
