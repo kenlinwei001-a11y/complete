@@ -893,6 +893,29 @@ const MOCK_MATERIALS = [
 
 let idSeq = 1000;
 const newId = (prefix: string) => `${prefix}-${++idSeq}`;
+
+/**
+ * WO-BEFE-F · OC7 配额状态派生 —— 与真后端 `budgetStatus()`
+ * （`apps/datacore/src/app.ts:1269-1274`）逐行同构，**mock 里不存派生值**：
+ * hard=0 ⇒ 恒 OK（0 的语义是「不限」，不是「上限为零」）。
+ */
+const mockBudgetStatus = () => {
+  const b = db.llmBudget;
+  const soft = Math.floor(b.hardLimitTokens * b.softLimitPct);
+  const state =
+    b.hardLimitTokens > 0 && b.usedTokens >= b.hardLimitTokens
+      ? "HARD_EXCEEDED"
+      : b.hardLimitTokens > 0 && b.usedTokens >= soft
+        ? "SOFT_EXCEEDED"
+        : "OK";
+  return {
+    usedTokens: b.usedTokens,
+    hardLimitTokens: b.hardLimitTokens,
+    softLimitTokens: soft,
+    state,
+    degrade: state !== "OK",
+  };
+};
 const mockCategoryMode: Record<string, "SYSTEM_INTEGRATION" | "FILE_UPLOAD"> = {};
 const mockCategoryTpl: Record<string, string[] | null> = {};
 
@@ -3220,6 +3243,77 @@ export const handlers = [
     }
     db.llmBindings = bindings as typeof db.llmBindings;
     return HttpResponse.json({ bindings, warnings });
+  }),
+
+  // ---- WO-BEFE-F · OC7 LLM 成本配额（GET/PUT /a/v1/llm-budgets）--------------------------------
+  // `budgetStatus()` 与 `apps/datacore/src/app.ts:1269-1274` 逐行同构：hard=0 ⇒ 恒 OK（不限）。
+  // ⚠ `POST /a/v1/llm-budgets/record` **故意不建 mock**：它是 AgentCore 的服务间记账入口，
+  //   前端不该有调用方；建了 mock 就等于给一条不该存在的路铺了砖（见本单分诊表 (2) 类）。
+  http.get("*/a/v1/llm-budgets", () => HttpResponse.json(mockBudgetStatus())),
+  http.put("*/a/v1/llm-budgets", async ({ request }) => {
+    const body = (await request.json()) as { hardLimitTokens?: number; softLimitPct?: number };
+    if (typeof body.hardLimitTokens !== "number" || body.hardLimitTokens < 0 || !Number.isInteger(body.hardLimitTokens)) {
+      return err(400, "VALIDATION_ERROR", "hardLimitTokens 须为 ≥0 整数");
+    }
+    db.llmBudget.hardLimitTokens = body.hardLimitTokens;
+    if (typeof body.softLimitPct === "number") db.llmBudget.softLimitPct = body.softLimitPct;
+    return HttpResponse.json(mockBudgetStatus());
+  }),
+
+  // ---- WO-BEFE-F · S4 知识库（POST /a/v1/kb/search · /a/v1/kb/:connId/docs · /a/v1/kb/:connId/sync）----
+  // 检索用**确定性**词元重合打分（非随机、非嵌入）：同 query 同库必得同序，符合本仓「确定性种子」纪律。
+  http.post("*/a/v1/kb/search", async ({ request }) => {
+    const body = (await request.json()) as { query?: string; topK?: number; connId?: string };
+    const q = (body.query ?? "").trim();
+    if (!q) return err(400, "VALIDATION_ERROR", "query required");
+    const topK = Math.min(10, Math.max(1, body.topK ?? 5));
+    const terms = [...q];
+    const hits = db.kbDocs
+      .filter((d) => !body.connId || d.connId === body.connId)
+      .map((d) => {
+        const overlap = terms.filter((t) => t.trim() && d.text.includes(t)).length;
+        return {
+          text: d.text.slice(0, 160),
+          score: terms.length ? Number((overlap / terms.length).toFixed(4)) : 0,
+          docId: d.id,
+          span: { start: 0, end: Math.min(160, d.text.length) },
+          source: "KB_CHUNK" as const,
+          connId: d.connId,
+        };
+      })
+      .filter((h) => h.score > 0)
+      .sort((a, b) => (b.score === a.score ? a.docId.localeCompare(b.docId) : b.score - a.score))
+      .slice(0, topK);
+    return HttpResponse.json({ hits });
+  }),
+  http.post("*/a/v1/kb/:connId/docs", async ({ params, request }) => {
+    const connId = String(params.connId);
+    const conn = db.connections.find((c) => c.id === connId);
+    if (!conn) return err(404, "NOT_FOUND", "connection not found");
+    if (conn.connectorTypeKey !== "knowledge_base") {
+      return err(400, "VALIDATION_ERROR", `connection ${connId} is not a knowledge_base connector`);
+    }
+    const body = (await request.json()) as { filename?: string; contentBase64?: string };
+    if (!body.filename || !body.contentBase64) return err(400, "VALIDATION_ERROR", "filename/contentBase64 required");
+    const text = atob(body.contentBase64);
+    // 真后端切块 ~512 token/块（`chunkText`）；mock 取 512 字符，只为「块数随文长变」是真的。
+    const chunkCount = Math.max(1, Math.ceil(text.length / 512));
+    const doc = { id: newId("kbdoc"), connId, filename: body.filename, chunkCount, text };
+    db.kbDocs.push(doc);
+    return HttpResponse.json({ docId: doc.id, chunkCount }, { status: 201 });
+  }),
+  http.post("*/a/v1/kb/:connId/sync", ({ params }) => {
+    const connId = String(params.connId);
+    const conn = db.connections.find((c) => c.id === connId);
+    if (!conn) return err(404, "NOT_FOUND", "connection not found");
+    if (conn.connectorTypeKey !== "knowledge_base") {
+      return err(400, "VALIDATION_ERROR", `connection ${connId} is not a knowledge_base connector`);
+    }
+    const docs = db.kbDocs.filter((d) => d.connId === connId);
+    return HttpResponse.json(
+      { docs: docs.length, chunks: docs.reduce((n, d) => n + d.chunkCount, 0) },
+      { status: 202 },
+    );
   }),
 
   http.post("*/a/v1/rules/:id/retire", ({ params }) => {

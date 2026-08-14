@@ -11,8 +11,10 @@ import {
 import {
   createLlmProvider,
   fetchLlmBindings,
+  fetchLlmBudget,
   fetchLlmProviders,
   putLlmBindings,
+  putLlmBudget,
   testLlmProvider,
   updateLlmProvider,
   type LlmProviderSaveBody,
@@ -47,7 +49,7 @@ const PURPOSE_LABEL: Record<LlmPurpose, string> = {
  */
 export default function LlmProvidersPage() {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<"providers" | "bindings">("providers");
+  const [tab, setTab] = useState<"providers" | "bindings" | "budget">("providers");
   const { data: providers } = useQuery({ queryKey: ["a", "llm-providers"], queryFn: fetchLlmProviders });
   const [editing, setEditing] = useState<LlmProviderVM | "new" | null>(null);
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["a", "llm-providers"] });
@@ -62,6 +64,11 @@ export default function LlmProvidersPage() {
           </button>
           <button className={`btn sm ${tab === "bindings" ? "primary" : ""}`} onClick={() => setTab("bindings")} data-testid="tab-bindings">
             用途绑定矩阵
+          </button>
+          {/* WO-BEFE-F · OC7 成本配额：与 provider/绑定同页，因为三者是同一件事的三面
+              （用哪个模型 / 谁在用 / 用了多少还能用多少）。不新开导航项 ⇒ 不动信息架构。 */}
+          <button className={`btn sm ${tab === "budget" ? "primary" : ""}`} onClick={() => setTab("budget")} data-testid="tab-budget">
+            成本配额
           </button>
         </div>
         {tab === "providers" && (
@@ -117,6 +124,8 @@ export default function LlmProvidersPage() {
       )}
 
       {tab === "bindings" && <BindingMatrix providers={providers ?? []} />}
+
+      {tab === "budget" && <BudgetPanel />}
 
       {editing && (
         <ProviderEditor
@@ -393,6 +402,157 @@ function ProviderEditor({
         </button>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Tab3：OC7 成本配额（WO-BEFE-F · `GET`/`PUT /a/v1/llm-budgets`）。
+ *
+ * 三态与后端 `budgetStatus()`（`apps/datacore/src/app.ts:1269-1274`）一字对齐，前端**不重算**：
+ * `state` / `softLimitTokens` / `degrade` 全部读后端回值 —— 自己再算一遍就会有第二个真值源，
+ * 软线口径一漂移，屏上说「还没超」而路径 B 已经在降级。
+ *
+ * `hardLimitTokens = 0` 在后端语义是**不限**（`hard > 0 &&` 才判超），UI 必须照说，
+ * 不能显示成「上限 0 ⇒ 全都超了」。
+ */
+function BudgetPanel() {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ["a", "llm-budget"], queryFn: fetchLlmBudget });
+  const [hardLimit, setHardLimit] = useState("");
+  const [softPct, setSoftPct] = useState("");
+
+  const save = useMutation({
+    mutationFn: () => {
+      const hard = Number(hardLimit);
+      if (!Number.isFinite(hard) || hard < 0 || !Number.isInteger(hard)) {
+        throw new Error("硬线须为 ≥0 的整数 token 数（0 = 不限）");
+      }
+      const pct = softPct.trim() === "" ? undefined : Number(softPct) / 100;
+      if (pct !== undefined && (!Number.isFinite(pct) || pct < 0 || pct > 1)) {
+        throw new Error("软线百分比须在 0–100 之间");
+      }
+      return putLlmBudget({ hardLimitTokens: hard, ...(pct !== undefined ? { softLimitPct: pct } : {}) });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["a", "llm-budget"] });
+      toast("配额已更新 · 下一次 LLM 调用即按新线判定", "success");
+    },
+    onError: (e) => toastError(e instanceof Error ? e.message : String(e)),
+  });
+
+  const unlimited = data != null && data.hardLimitTokens === 0;
+  const pctUsed =
+    data && data.hardLimitTokens > 0 ? Math.min(100, (data.usedTokens / data.hardLimitTokens) * 100) : 0;
+
+  return (
+    <div className="panel" data-testid="llm-budget-panel">
+      <div className="section-title">当前用量</div>
+      {isLoading ? (
+        <span className="muted">加载中…</span>
+      ) : !data ? (
+        <span className="muted" data-testid="llm-budget-empty">
+          账本不可用（DataCore 未返回配额状态）。
+        </span>
+      ) : (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span
+              className={`badge ${data.state === "OK" ? "green" : data.state === "SOFT_EXCEEDED" ? "amber" : "red"}`}
+              data-testid="llm-budget-state"
+            >
+              {data.state === "OK" ? "正常" : data.state === "SOFT_EXCEEDED" ? "已过软线" : "已过硬线"}
+            </span>
+            {data.degrade && (
+              <span className="muted" style={{ fontSize: 11.5 }} data-testid="llm-budget-degrade">
+                ⚠ 已触发降级：路径 A 跳过非必要 compose，路径 B 新任务前先警示；过硬线则直接拒绝。
+              </span>
+            )}
+          </div>
+          <table className="cmp" style={{ width: "100%", maxWidth: 460 }}>
+            <tbody>
+              <tr>
+                <td>已用 token</td>
+                <td className="mono" data-testid="llm-budget-used">{data.usedTokens.toLocaleString()}</td>
+              </tr>
+              <tr>
+                <td>硬线</td>
+                <td className="mono" data-testid="llm-budget-hard">
+                  {unlimited ? "不限" : data.hardLimitTokens.toLocaleString()}
+                </td>
+              </tr>
+              <tr>
+                <td>软线</td>
+                <td className="mono" data-testid="llm-budget-soft">
+                  {unlimited ? "不限" : data.softLimitTokens.toLocaleString()}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          {!unlimited && (
+            <div
+              style={{ height: 6, background: "var(--hover-tint)", borderRadius: 3, marginTop: 8, maxWidth: 460 }}
+              role="progressbar"
+              aria-valuenow={Math.round(pctUsed)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="配额用量"
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${pctUsed}%`,
+                  borderRadius: 3,
+                  background: data.state === "OK" ? "var(--green)" : data.state === "SOFT_EXCEEDED" ? "var(--amber)" : "var(--red)",
+                }}
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      <div className="section-title" style={{ marginTop: 16 }}>调整配额</div>
+      <div className="muted" style={{ fontSize: 11.5, marginBottom: 8 }}>
+        硬线 = 本周期 token 上限（<b>0 表示不限</b>）；软线 = 硬线的百分比，越线即开始降级。
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <label style={{ fontSize: 12 }}>
+          硬线（token）{" "}
+          <input
+            data-testid="llm-budget-hard-input"
+            aria-label="硬线 token 上限"
+            type="number"
+            min={0}
+            step={1000}
+            value={hardLimit}
+            placeholder={data ? String(data.hardLimitTokens) : "0"}
+            onChange={(e) => setHardLimit(e.target.value)}
+            style={{ width: 140 }}
+          />
+        </label>
+        <label style={{ fontSize: 12 }}>
+          软线（%）{" "}
+          <input
+            data-testid="llm-budget-soft-input"
+            aria-label="软线百分比"
+            type="number"
+            min={0}
+            max={100}
+            value={softPct}
+            placeholder="80"
+            onChange={(e) => setSoftPct(e.target.value)}
+            style={{ width: 90 }}
+          />
+        </label>
+        <button
+          className="btn primary sm"
+          data-testid="llm-budget-save"
+          disabled={hardLimit.trim() === "" || save.isPending}
+          onClick={() => save.mutate()}
+        >
+          保存配额
+        </button>
+      </div>
+    </div>
   );
 }
 

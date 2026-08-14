@@ -70,6 +70,18 @@ interface MockDb {
   // LLM Provider 增量 §1
   llmProviders: (LlmProvider & { usage7dTokens?: number })[];
   llmBindings: PurposeBinding[];
+  /**
+   * WO-BEFE-F · OC7 成本配额账本（真后端 `repos.llmBudgets`·`lbg_<tenant>` 单行）。
+   * 只存**原始三元组**，`state`/`softLimitTokens`/`degrade` 一律由 handler 现算 —— 与真后端
+   * `budgetStatus()`（`apps/datacore/src/app.ts:1269`）同一套口径，mock 里不许存派生值，
+   * 否则改了硬线而 state 不动，测试会绿在一个真后端上不可能出现的态。
+   */
+  llmBudget: { hardLimitTokens: number; softLimitPct: number; usedTokens: number };
+  /**
+   * WO-BEFE-F · S4 知识库（挂 `knowledge_base` 连接器）。docs 按 connId 归属；
+   * chunks 只留检索需要的文本片段。**不存任何凭据**。
+   */
+  kbDocs: { id: string; connId: string; filename: string; chunkCount: number; text: string }[];
   tenants: AdminTenant[];
   adminUsers: AdminUser[];
   adminViews: AdminViewConfig[];
@@ -131,6 +143,10 @@ function freshDb(): MockDb {
     rules: structuredClone(RULES),
     llmProviders: structuredClone(LLM_PROVIDERS),
     llmBindings: structuredClone(LLM_BINDINGS),
+    // 演示态：8,000,000 硬线 / 80% 软线 / 已用 5,120,000（=64%，故意落在 OK 区，
+    // 让「调硬线 → state 翻到 SOFT_EXCEEDED」这条真实交互在 mock 态也跑得出来）。
+    llmBudget: { hardLimitTokens: 8_000_000, softLimitPct: 0.8, usedTokens: 5_120_000 },
+    kbDocs: [],
     tenants: structuredClone(ADMIN_TENANTS),
     adminUsers: structuredClone(ADMIN_USERS),
     adminViews: structuredClone(ADMIN_VIEWS),
