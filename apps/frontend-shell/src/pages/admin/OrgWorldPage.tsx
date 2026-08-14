@@ -161,12 +161,14 @@ export default function OrgWorldPage() {
                         >
                           {p.available ? "在岗" : "不在岗"}
                         </span>
+                        {/* 规范 §2 R-UI-3：不拿原生 `title=` 承载口径（浏览器 tooltip 触屏读不到、读屏器时机不定，
+                            且 `provenance-popover-legibility` 有棘轮咬着）。「为什么按不动」写在下面
+                            `org-availability-readonly` 那行**可见文字**里。 */}
                         <button
                           className="btn sm"
                           style={{ marginLeft: 4 }}
                           data-testid={`org-availability-toggle-${p.orgKey}`}
                           disabled={!canWriteAvailability || availability.isPending}
-                          title={canWriteAvailability ? undefined : "改他人在岗状态需 admin / tenant_admin（后端同判据）"}
                           onClick={() => availability.mutate({ principalId: p.principalId, available: !p.available })}
                         >
                           {p.available ? "置为不在岗" : "置为在岗"}

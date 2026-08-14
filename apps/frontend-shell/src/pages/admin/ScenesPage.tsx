@@ -43,6 +43,11 @@ export default function ScenesPage() {
       <div className={`muted`} style={{ fontSize: 11.5, marginBottom: 10 }}>
         场景为一等主键：第一列是场景，其后选交互模式（workflow-first 为默认；agent-first 仅探索面）与 presetContext（保证一键可推演、不被反问）。
       </div>
+      {/* WO-BEFE-D：两颗新按钮的口径写在这里（可见文字），不塞进原生 title=（规范 §2 R-UI-3）。 */}
+      <div className="muted" style={{ fontSize: 10.5, marginBottom: 10 }} data-testid="scenes-actions-note">
+        「复检」只重算这一条的引用闭包并把断链条目摊在行内；「发布全链」按依赖序发 引用的计划 → 意图 → 本场景，
+        经 catalog_admin 审批角色，闭包不通过由后端 409 挡回（前端不自行放行）。
+      </div>
 
       {creating && (
         <ScenarioEditor
@@ -222,13 +227,15 @@ function ScenarioRow({
           {/* WO-BEFE-D：按依赖序发布 计划 → 意图 → 场景（scaffold 出的 DRAFT 链的终态闭环）。
               **刻意不按 `ready` 禁用**：`!ready` 正是这颗按钮的适用场景（计划/意图还没发布）。
               闭合不了由后端 409 挡（R4 不绕），不由前端猜。 */}
+          {/* 规范 §2 R-UI-3：口径不进原生 `title=`（有棘轮咬着）。
+              「发布全链」= 按依赖序发 引用的计划 → 意图 → 本场景；经 catalog_admin 审批角色，
+              闭包不通过后端直接 409。这段说明写在表头下的一行可见小字里。 */}
           {scenario.status === "DRAFT" && (
             <button
               className="btn sm"
               style={{ marginLeft: 4 }}
               data-testid={`scenario-publish-chain-${scenario.scenarioKey}`}
               disabled={publishChain.isPending}
-              title="按依赖序一次发布：引用的计划 → 意图 → 本场景（经 catalog_admin 审批角色，闭包不通过则 409）"
               onClick={() => publishChain.mutate()}
             >
               {publishChain.isPending ? "发布全链中…" : "发布全链"}

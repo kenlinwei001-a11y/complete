@@ -93,7 +93,8 @@ export function useScenarioLaunch(): (card: ScenarioCardVM, userQuery?: string) 
       // 前端只把「哪张卡 + 用户改写的问句」交出去。
       // ⚠ 卡片 VM 上的 `sNo` **就是** `scenarioKey`（后端 `GET /b/v1/scenarios` 那一跳
       //   逐字写着 `sNo: s.scenarioKey`）。卡上没有第二个叫 scenarioKey 的字段 —— 想当然写
-      //   `card.scenarioKey` 会编译报错（已实测），这行注释留着免得下一个人再撞一次。
+      //   `card.scenarioKey` 会编译报错（2026-08-14 实测，复验：`npx tsc -p apps/frontend-shell/tsconfig.json --noEmit`
+      //   报 `Property 'scenarioKey' does not exist on type 'ScenarioCardVM'`）。留此免得下一个人再撞一次。
       const res = await launchScenario(card.sNo, userQuery);
       store.updateConversation(localId, { taskId: res.taskId });
       store.setConversationId(res.taskId);

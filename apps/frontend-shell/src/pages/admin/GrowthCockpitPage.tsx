@@ -105,16 +105,19 @@ export default function GrowthCockpitPage() {
         <input data-testid="growth-query" value={query} onChange={(e) => setQuery(e.target.value)} style={{ flex: 1, minWidth: 240 }} />
         <label style={{ fontSize: 12 }}>K <input data-testid="growth-k" type="number" value={maxRounds} min={1} max={20} onChange={(e) => setMaxRounds(Number(e.target.value))} style={{ width: 56 }} /></label>
         <button className="btn primary sm" data-testid="growth-run" disabled={run.isPending || !query.trim()} onClick={() => run.mutate()}>{run.isPending ? "跑动中…" : "运行"}</button>
-        {/* WO-BEFE-D：只诊断不动数据。刻意不是 primary —— 它是「先看看」，不是主动作。 */}
+        {/* WO-BEFE-D：只诊断不动数据。刻意不是 primary —— 它是「先看看」，不是主动作。
+            规范 §2 R-UI-3：口径不放进原生 `title=`（触屏读不到 + 有棘轮咬着），写成按钮旁的可见小字。 */}
         <button
           className="btn sm"
           data-testid="growth-probe"
-          title="只把问句跑一遍看断在哪：不补数据、不开工单、不发事件"
           disabled={probeMut.isPending || !query.trim()}
           onClick={() => probeMut.mutate()}
         >
           {probeMut.isPending ? "探针中…" : "只探针（不补）"}
         </button>
+        <span className="muted" style={{ fontSize: 10.5 }}>
+          「运行」会补数据 / 开工单 / 发事件；「只探针」不动任何数据。
+        </span>
       </div>
 
       {/* 探针结果：与「本次运行」分开一块——两者副作用不同，混在一起会让人以为探完就已经补过了。 */}
@@ -167,6 +170,11 @@ export default function GrowthCockpitPage() {
 
       {/* 工单看板 */}
       <div className="section-title">成长工单（缺功能·需开发）</div>
+      {/* 生命周期一行说明（原先塞在按钮 title= 里；R-UI-3 要求口径进可见文字）。 */}
+      <div className="muted" style={{ fontSize: 10.5, marginBottom: 4 }} data-testid="growth-ticket-lifecycle-note">
+        OPEN →「认领」→ IN_PROGRESS →「提交复核」→ IN_REVIEW →「重跑验证」（把原问句经 QOS 再跑一遍：
+        能答出来才 VERIFIED，否则停在 IN_REVIEW 并把新缺口码显示在旁边）。
+      </div>
       <table className="cmp" data-testid="growth-tickets" style={{ width: "100%", marginBottom: 14 }}>
         <thead><tr><th>问题</th><th>缺口</th><th>状态</th><th>操作</th></tr></thead>
         <tbody>
@@ -184,11 +192,12 @@ export default function GrowthCockpitPage() {
                     提交复核
                   </button>
                 )}
+                {/* 规范 §2 R-UI-3：两处口径都不进原生 `title=` —— 重跑语义写在下面表头下的一行说明里，
+                    「还缺什么」直接就是徽标的**可见文字**（缺口码原样列出，不折进 tooltip）。 */}
                 {t.status === "IN_REVIEW" && (
                   <button
                     className="btn sm primary"
                     data-testid={`verify-${t.id}`}
-                    title="把这张单的原问句经 QOS 重跑一遍：能答出来才 VERIFIED，否则停在 IN_REVIEW 并回带新缺口"
                     disabled={verifyTk.isPending}
                     onClick={() => verifyTk.mutate(t.id)}
                   >
@@ -200,7 +209,6 @@ export default function GrowthCockpitPage() {
                     className={`badge ${verifyResult[t.id]!.verified ? "green" : "amber"}`}
                     style={{ marginLeft: 4 }}
                     data-testid={`verify-result-${t.id}`}
-                    title={verifyResult[t.id]!.gapCodes.join("、")}
                   >
                     {verifyResult[t.id]!.verified ? "重跑可答 ✓" : `仍缺：${verifyResult[t.id]!.gapCodes.join("、") || verifyResult[t.id]!.verdict}`}
                   </span>

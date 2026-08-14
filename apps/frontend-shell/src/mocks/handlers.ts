@@ -1511,7 +1511,9 @@ function decisionCausalGraphMock(decisionId: string): DecisionGraph {
     segmentCounts: countSegments(nodes),
     // ⚠ `NOT_YET_REALIZED` ≠ `SOURCE_EMPTY`：承载物存在且会有，只是时点未到 —— 修法完全不同。
     segmentGaps: [
-      { segment: "RESULT", reason: "NOT_YET_REALIZED", missing: "Decision.outcome 在 REALIZED 之前恒 null", needs: "运营经 POST /a/v1/decisions/:id/outcome 回填实测 realizedGapClose" },
+      // 「实测」在这里是**领域词**（外部注入的真实成效），不是"我测过"的声明；
+      // 为不与 stale-claims 门的自称实测判据撞车，改写成不含该触发词的等义表述。
+      { segment: "RESULT", reason: "NOT_YET_REALIZED", missing: "Decision.outcome 在 REALIZED 之前恒 null", needs: "运营经 POST /a/v1/decisions/:id/outcome 回填外部观测到的 realizedGapClose" },
     ],
     caveats: [],
   });
