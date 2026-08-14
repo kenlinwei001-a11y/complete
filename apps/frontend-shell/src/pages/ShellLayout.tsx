@@ -175,6 +175,8 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   //    （沙盘五模式 = 现状/归因/试一手/求最优/影响半径，见 `views/sim/sandboxModes.ts`，其中没有流程等待），
   //    所以它**不能**带 `consolidatedWhen` —— 带了就是把它唯一的入口在沙盘开时删掉，页面直接不可达。
   //    ⇒ 沙盘开时本组剩「流程等待」一项，组**不再**自动隐藏。这是正确行为，不是漏配。
+  //    ⚠ WO-R9-NAVREACH 再订正一次同一句：本组现有**四项**，`procurement-legs`（采购四段腿分解）
+  //      与 `process-wait` 同理不带 `consolidatedWhen` ⇒ 沙盘开时本组剩**两项**（不是一项）。
   {
     title: "归因与风险",
     items: [
@@ -182,6 +184,13 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       // 归此组不归「推演」：它答的是「现状为什么这样」（归因），不是「改一个假设会怎样」（推演），
       // 与同组两页同一判据。kind:"view" 而非 route —— 它经后端 BUILTIN_VIEWS 下发（租户本体数据 + R3 级联）。
       { kind: "view" as const, key: "process-wait" },
+      // WO-R9-NAVREACH：采购四段腿分解（「该找谁」页）——回答「这批料晚在哪一段、今天该打哪通电话」。
+      // 归此组不归「推演」：与同组两页同一判据 —— 它答的是「现状为什么这样」（归因），
+      // 不是「改一个假设会怎样」（推演）。kind:"view" 而非 route —— 它经后端 BUILTIN_VIEWS 下发
+      // （租户本体数据 + R3 级联 + `view.options` 只有 ViewConfig 这条路送得到，见后端该行注释）。
+      // 不带 consolidatedWhen：沙盘五模式里没有它（见 views/sim/sandboxModes.ts），
+      // 带了就是把它唯一的入口在沙盘开时删掉 —— 与 process-wait 同一条理由。
+      { kind: "view" as const, key: "procurement-legs" },
       { kind: "route" as const, key: "cleanroom-attr", label: "净室归因", consolidatedWhen: "sim.sandbox" },
       { kind: "route" as const, key: "disruption-radius", label: "断供影响半径", consolidatedWhen: "sim.sandbox" },
     ],

@@ -169,6 +169,41 @@ export const BUILTIN_VIEWS: BuiltInView[] = [
   // **不挂 requires**（与沙盘五子视图不同）：流程层是配置驱动的业务主数据，
   // 与 `sim.sandbox` 推演沙盘无从属关系；挂上去会造出「关了沙盘就看不到业务流程」的假依赖。
   { key: "process-wait", title: "流程等待态", renderer: "process-wait", featureKey: "view.process-wait", featureName: "流程等待态", seed: true },
+  // ── 采购四段腿分解「该找谁」页（WO-R9-NAVREACH · 同族病第六层的**第二例**）──────────
+  //
+  // 病灶（2026-08-14 实测坐实，非推测）：`views/registry.ts:103` 逐字写着
+  // `registerRenderer("procurement-legs", …)`，组件 `views/sim/ProcurementLegsView.tsx` 真实现、
+  // 门 `test/procurement-legs-reachable.test.tsx` 12 例全绿 —— 而**没有任何路径渲染得到它**：
+  //   · 本表（后端派单唯一真相源）无此 key ⇒ `workspace.views` 永远没有它 ⇒ ViewPage 双闸全关；
+  //   · `App.tsx` 也无专用静态 route ⇒ 手敲 `/v/procurement-legs` 只落 `v/:viewKey` 通用守卫 → 404。
+  // 三形态定性（铁律 0.5）＝ **没接线**（不是"接了线没数据"、也不是"接错地方"）：
+  // 该 view 键在后端**整个不存在**——`grep -rn procurement-legs apps/datacore/src` 零命中，
+  // 而同族已上屏的 `process-wait` 在本表命中一行（金丝雀证明 grep 是好的，不是它瞎了）。
+  // 来历：`edeb3a10`（reclaim WO-R5 3/7）收编时**只收了前端半**，派单侧那一半没跟着来 ——
+  // 本仓反复点名的「拆两半只做一半」，与 chain-impediments 是**同一个坑的第二次**。
+  //
+  // 为什么走本表（BUILTIN_VIEWS）而不是专用 route —— 判据是**语义归属**，另有一条**结构硬约束**：
+  //   ① 语义：它消费的是**租户本体数据**（`kit_readiness` 逐缺料项的 `procurement` 四段 /
+  //      `ownerDays` / `criticalLeg`，源头是租户的 Supplier/PurchaseOrder/CustomsClearance/
+  //      IncomingInspection 真对象），可被行业模板裁剪；走专用 route 那批（what-if /
+  //      cleanroom-attr / disruption-radius / optimize-whatif）全是与租户本体无关的**净室通用**页。
+  //   ② R3「功能关闭 = 不存在」：专用 route 页面侧无 Guard，手敲 URL 照样进得去。
+  //   ③ **结构硬约束（这条决定性，不是偏好）**：`ProcurementLegsView` 读 `view.options`
+  //      （`ProcurementLegsView.tsx:305/311/316` 覆盖分析窗）与 `view.title`（`:364`），而
+  //      `App.tsx` 的专用 route **直挂组件、不传任何 props**（`lazyWrap(<WhatIfView />)` 那个形态）
+  //      ⇒ `view` 恒 undefined ⇒ 该页当场崩。`options` 只有 ViewConfig 这条路送得到。
+  //
+  // **不挂 requires**（与沙盘五子视图不同）：采购分解回答的是「这批料晚在哪一段、今天该打哪通电话」，
+  // 是采购/齐套域的业务主数据页，与 `sim.sandbox` 推演沙盘无从属关系；挂上去会造出
+  // 「关了沙盘就看不到该找谁」的假依赖。也**不进** `CONSOLIDATED_INTO_SANDBOX`：
+  // 沙盘五模式（现状/归因/试一手/求最优/影响半径，见 `views/sim/sandboxModes.ts`）里没有它，
+  // 收编表要求 `where` 写出「用户在沙盘里点哪里能到」—— 写不出来就不许进那张表（那是免死金牌，不是登记）。
+  //
+  // **不挂 bindings.solverKeys: ["kit_readiness"]**（刻意·与 chain-impediments 不同）：
+  // `kit_readiness` 是**多路共用**的求解器（QOS 问答/场景解读/mock handlers 均在调，
+  // 见 `frontend-shell/src/mocks/fixtures.ts:1376` 与 `handlers.ts:2462`），把它绑到一个 VIEW 级功能上
+  // ⇒ 关掉这一页会连带把所有别的调用方一起 404。绑定该表达的是「这个功能独占这个求解器」，此处不成立。
+  { key: "procurement-legs", title: "采购四段腿分解", renderer: "procurement-legs", featureKey: "view.procurement-legs", featureName: "采购四段腿分解", seed: true },
 ];
 
 /** scenarioSeed.views 单一来源：seed:true 的内置视图键（battery.ts 引用·防第 4 处漂移）。 */

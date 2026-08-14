@@ -422,12 +422,49 @@ describe("WO-PROCUREMENT-FRONTEND · 采购四段腿分解可达（咬链路不�
     expect(args.orders, "前端不许自造 orders：那会把采购段凭证整条绕过去").toBeUndefined();
   });
 
-  it("⑧ 引擎接不通就说接不通 —— 不拿示例数据顶上（默认 mock 没有 kit_readiness ⇒ 404）", async () => {
-    // 刻意**不**调 serveKit：走仓里默认 handler 的 404 兜底
+  /**
+   * ⚠ **本例的前提在 2026-08-14（WO-R9-NAVREACH）被订正过一次 —— 订正的是前提，不是判据。**
+   *
+   * 原文断言默认 mock 走 404 `FEATURE_NOT_FOUND`，理由写着「默认 mock 没有 kit_readiness」。
+   * 那句在写下时为真，之后**悄悄过期**：`WO-R1 收编 kit_readiness mock`
+   * （`mocks/handlers.ts:29` 的注记 + `:3722` 的分支）给它加了桩 ⇒ 请求不再 404，
+   * 而是 200 + `mockKitReadiness` 的输出 —— 那份输出**只有 material/ratio/shortage，不带
+   * `procurement` 四段**，于是组件的契约解析当场失败并报 `PAYLOAD_SHAPE`。
+   *
+   * 这条**实测为红**（2026-08-14 在 `origin/claude/verify-reclaim-6` 分支基线上复现：
+   * `npx vitest run test/procurement-legs-reachable.test.tsx -t "⑧"` RC=1，
+   * `Expected FEATURE_NOT_FOUND / Received PAYLOAD_SHAPE`），与本单改动**无关** ——
+   * 先在基线上量过才敢这么说（铁律 0.5：别把别人的红算到自己头上，也别把自己的红推给别人）。
+   *
+   * 订正原则：**判据一个字不放松**（「接不通就说接不通、不拿示例数据顶上」原样保留），
+   * 只把「接不通」的**形态**改对，并把两种形态**各测一次**——
+   *   ⑧a 载荷形状不合契约（今天默认 mock 的真实形态）⇒ 报 `PAYLOAD_SHAPE`；
+   *   ⑧b 真 404（entitlement 关的那条路）⇒ 报 `FEATURE_NOT_FOUND`。
+   * 只留 ⑧a 会让原本咬住的 404 路失守，只留 ⑧b 则要靠一个已经不成立的前提。
+   */
+  it("⑧a 载荷不合契约就说不合 —— 不拿示例数据顶上（默认 mock 的 kit_readiness 不带 procurement）", async () => {
+    // 刻意**不**调 serveKit：走仓里默认 handler（200，但载荷缺 procurement 四段）
+    renderByKey();
+    const err = await screen.findByTestId("proc-error");
+    // 契约解析失败 ⇒ 当面报出来，而不是把一份缺字段的数据画成看着完整的四段瀑布
+    expect(within(err).getByTestId("proc-error-code")).toHaveTextContent("PAYLOAD_SHAPE");
+    // 不许在报错的同时又渲染出一份"看着像真的"的四段分解
+    expect(screen.queryByTestId("proc-whoboard")).toBeNull();
+    expect(screen.queryByTestId("proc-waterfall-elyte")).toBeNull();
+  });
+
+  it("⑧b 引擎接不通就说接不通 —— entitlement 关 ⇒ 404 FEATURE_NOT_FOUND（不猜、不兜底）", async () => {
+    server.use(
+      http.post("*/b/v1/solvers/kit_readiness/run", () =>
+        HttpResponse.json(
+          { error: { code: "FEATURE_NOT_FOUND", message: "not found", requestId: "req-proc-404" } },
+          { status: 404 },
+        ),
+      ),
+    );
     renderByKey();
     const err = await screen.findByTestId("proc-error");
     expect(within(err).getByTestId("proc-error-code")).toHaveTextContent("FEATURE_NOT_FOUND");
-    // 不许在报错的同时又渲染出一份"看着像真的"的四段分解
     expect(screen.queryByTestId("proc-whoboard")).toBeNull();
     expect(screen.queryByTestId("proc-waterfall-elyte")).toBeNull();
   });

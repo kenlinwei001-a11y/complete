@@ -191,6 +191,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-WAITING-STATES-FE：流程等待态（后端 BUILTIN_VIEWS 同批入册·seed:true）。
   // 不挂 requires —— 业务流程层是配置驱动的主数据，与 sim.sandbox 无从属关系（挂上去是假依赖）。
   { key: "view.process-wait", name: "流程等待态", level: "VIEW", defaultOn: true },
+  // WO-R9-NAVREACH：采购四段腿分解（后端 BUILTIN_VIEWS 同批入册·seed:true）。
+  // 不挂 requires —— 采购/齐套域业务主数据页，与 sim.sandbox 无从属关系（挂上去是假依赖）。
+  // 不挂 bindings.solverKeys ——`kit_readiness` 是多路共用求解器（见后端 view-manifest 该行注释），
+  // 绑上去会让「关这一页」连带 404 掉所有别的调用方（mock handlers.ts:3701 的 boundOff 分支同理）。
+  { key: "view.procurement-legs", name: "采购四段腿分解", level: "VIEW", defaultOn: true },
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
   // 图谱八视角（§7.18：零新代码视角，BLOCK 级逐个开关；key 与视图 key 对齐路由守卫 view.{viewKey}）
   { key: "view.graph-all", name: "图谱·业务建模全景", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
@@ -578,6 +583,8 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "chain-impediments", title: "全链阻滞点", renderer: "chain-impediments", layout: {} },
     // WO-WAITING-STATES-FE：流程等待态（key/title/renderer 逐字对齐后端 view-manifest.ts BUILTIN_VIEWS）
     { key: "process-wait", title: "流程等待态", renderer: "process-wait", layout: {} },
+    // WO-R9-NAVREACH：采购四段腿分解（同上·逐字对齐后端 BUILTIN_VIEWS，门 check-nav-group-coverage 判据② 机械对账）
+    { key: "procurement-legs", title: "采购四段腿分解", renderer: "procurement-legs", layout: {} },
     // §7.18 八视角（renderer 复用 ontology-graph，仅 options 不同）
     ...GRAPH_VIEWPOINTS.map((v) => ({ key: v.key, title: v.title, renderer: "ontology-graph", layout: {}, options: v.options })),
     // aop（旧直链入口）：renderer="aop" 未注册，演示「该视图类型暂不支持」兜底
