@@ -57,14 +57,18 @@ const need = [
   ["datacore/catalog", "apps/datacore/dist/catalog.js"],
   ["agentcore/dril-projector", "apps/agentcore/dist/dril/resource-projector.js"],
 ];
-for (const [label, rel] of need) {
-  if (!existsSync(abs(rel))) fail(`：${label} dist 未构建（${rel}）——先 pnpm -r build`);
-}
-
 // ⛔ 守卫必须在 import dist **之前**（dist-freshness:check 的判据②）：
 //    本门比对 dist 里的 SOLVER_ONTOLOGY_SIGNATURES 与 DRIL 投影；dist 过期 ⇒ 刚改的签名不在产物里，
 //    门会报「签名漂移」而源码其实是一致的——方向恰好相反。
-assertDistFresh(["apps/datacore/dist", "apps/agentcore/dist", "packages/contracts/dist"], { gate: "function-signature:check" });
+//
+// ⚠️ 2026-08-13 · WO-R9-DISTFRESH-RC2：这里原先在守卫**之前**还手写了一个
+//    `for (…need…) if (!existsSync) fail(…)` 前置存在性循环，而 `fail()` 是 `exit(1)`。
+//    于是「没 build」这一纯环境状态**永远走不到共享守卫**，本门恒报 RC=1（= 被扫代码有问题）。
+//    **grep 到 `assertDistFresh(` 并不等于那行会被执行**——本单普查时正是靠实跑 RC 才抖出这两处
+//    （另一处见 check-object-interface.mjs），一次 grep 看不见（CLAUDE.md 铁律 0.5：再追一层）。
+//    现删掉手写循环，改把 need 的**逐个产物路径**交给共享守卫：它本就逐条查存在性（kind=MISSING），
+//    额外还查新鲜度，判据是原来的**超集**，且退 2。
+assertDistFresh(need.map(([, rel]) => rel), { gate: "function-signature:check" });
 
 const { SOLVER_ONTOLOGY_SIGNATURES, serializableSignature, mergeReadSurfaces } = await import(
   abs("apps/datacore/dist/solvers/ontology-signature.js").href

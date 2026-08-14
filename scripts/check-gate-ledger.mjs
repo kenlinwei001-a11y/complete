@@ -47,6 +47,7 @@ function gateToolBroken(e) {
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { census, listGateScripts } from "./gate-census.mjs";
+import { isUnbuiltArtifactPath, exitToolNotReady } from "./dist-freshness.mjs";
 
 const ROOT = process.cwd();
 const LEDGER = join(ROOT, "scripts/gate-ledger.json");
@@ -56,6 +57,21 @@ const DISPOSITIONS = new Set(["WIRE", "MANUAL", "FOLD", "DELETE"]);
 
 const fail = [];
 const warn = [];
+/* ⚠️ 2026-08-13 · WO-R9-DISTFRESH-RC2 —— 「没核成」与「核了，不合格」必须分两个桶。
+ *
+ * 实测（同一个提交，两个 worktree）：
+ *   · 已 build 的 worktree → 本门 **RC=0**
+ *   · 干净未 build 的 worktree → 本门 **RC=1 / 28 条**，全是 ④「guardedPaths 指向空气」，
+ *     指的却是 `apps/datacore/dist/**` 这类**构建产物**路径。
+ * **同一份门账，两个结论 ⇒ 这 28 条度量的不是门账，是「跑之前建没建」。**
+ * 形态（CLAUDE.md 铁律 0.6 句式）：「我用『门红了』当作『门账写错了』的证据，而前者并不度量后者。」
+ *
+ * 本桶只改**退出码归属**，一个字都不改 ④ 的判据本身：
+ * 「路径解析不到 ⇒ 有问题」照旧成立，只是当它是**整包未构建的产物路径**时，
+ * 这条结论读作「我这次没核成」（RC=2），不读作「你门账写错了」（RC=1）。
+ * 判据见 `isUnbuiltArtifactPath`：包根必须是真包、且整包 dist 一个文件都没有，才算环境。
+ * 包已 build 而单个文件缺 ⇒ 门账写的是过期路径，**仍归 fail（RC=1）**。 */
+const envNotReady = [];
 
 /* ---------- 极简 glob：支持 `a/b/**` 与段内 `*`，不引三方依赖 ---------- */
 function globMatches(pattern) {
@@ -125,7 +141,12 @@ for (const [f, e] of Object.entries(entries)) {
   } else {
     for (const p of paths) {
       if (globMatches(p) === 0) {
-        fail.push(`④ 责任边界：${f} 的 guardedPaths 含不存在的路径「${p}」——责任边界指向空气，等于没填`);
+        // 判据不变；只按「这条路径落空是不是因为整包没 build」分桶（见上 envNotReady 注释）。
+        if (isUnbuiltArtifactPath(p, { root: ROOT })) {
+          envNotReady.push(`${f} 的 guardedPaths「${p}」—— 该包的 dist 整个没构建，本次**无法核**这一条`);
+        } else {
+          fail.push(`④ 责任边界：${f} 的 guardedPaths 含不存在的路径「${p}」——责任边界指向空气，等于没填`);
+        }
       }
     }
   }
@@ -165,9 +186,30 @@ if (lies.length) {
 }
 for (const w of warn) console.log(`· ⚠ ${w}`);
 
+// 环境桶最多列 6 条 + 同因汇总：28 条同一个原因逐条重复只会把真信息挤出屏幕（run() 只 tail 几行）。
+const envLines = envNotReady.length > 6
+  ? [...envNotReady.slice(0, 6), `…另 ${envNotReady.length - 6} 条同因（同为「所属包 dist 未构建」）`]
+  : envNotReady;
+
 if (fail.length) {
+  // 真违规存在 ⇒ RC 仍是 1（确有该修的东西），但必须同时说清「另有 N 条没核成」，
+  // 否则「28 条里只有 2 条是真的」会被读成「28 条都是真的」。
   console.error(`\n✗ gate-ledger:check 未通过（${fail.length} 条）：`);
   for (const m of fail) console.error(`  - ${m}`);
+  if (envNotReady.length) {
+    console.error(`\n  ⚠ 另有 ${envNotReady.length} 条因所属包 dist 未构建**未能核验**——不计入上面这 ${fail.length} 条，也不代表它们合格：`);
+    for (const m of envLines) console.error(`    · ${m}`);
+  }
   process.exit(1);
+}
+// 真判据全过，但有条目没核成 ⇒ **不许**报「通过」。RC=2：门自己没准备好。
+if (envNotReady.length) {
+  exitToolNotReady({
+    gate: "gate-ledger:check",
+    headline: `原因：${envNotReady.length} 条 guardedPaths 指向**尚未构建**的 dist 产物（环境状态，与门账内容无关）。`,
+    lines: envLines,
+    hint: `\n  其余判据（账无遗漏/无幽灵 · binding 与现算一致 · escalation/disposition 合法）本次均已核过且相符；\n` +
+      `  唯独上面这 ${envNotReady.length} 条无从判断。请先构建再重跑：  pnpm -r build\n`,
+  });
 }
 console.log("\n✓ gate-ledger:check 通过（账无遗漏/无幽灵 · binding 与现算一致 · 责任边界均可解析）。");
