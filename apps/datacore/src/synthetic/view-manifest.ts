@@ -71,7 +71,6 @@ export interface BuiltInView {
   renderer: string;
   /** 管控功能键（entitlement·VIEW_FEATURE_MAP 值·workspace viewAllowed 查此·关=导航消失 R3）。 */
   featureKey: string;
-  /** FEATURE_REGISTRY 内该功能的展示名（可与 title 不同·如「驾驶舱」vs 视图 title「经营驾驶舱」）。 */
   /**
    * 功能开关册里的功能名（`FeatureDef.name`·前端「功能开通配置」页渲染的就是它）。
    *
