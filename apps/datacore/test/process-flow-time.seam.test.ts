@@ -237,10 +237,36 @@ describe("WO-FLOWTIME · 流程实例反推（接缝驱动）", () => {
     // 未出站 ⇒ waitState 必须是契约四值之一（词表单源，不许另造）
     expect(PROCESS_WAIT_KINDS as readonly string[]).toContain(top.waitState);
 
-    // **站间流转时长**（本单标题那件事）：至少一条链的相邻站之间算得出间隔
+    /**
+     * **站间流转时长**（本单标题那件事）。
+     *
+     * ⚠ 原判据是「至少一条链算得出间隔」（`withGap.length > 0`）—— 那是拿 ∃ 冒充 ∀：
+     * 三条多站链里只有一条接上了，与三条全接上，**测试给同一个颜色**（假绿第 12 形态）。
+     * 现在改成两条**从规则表现算**的全称判据，条数一个都不写死（加一站自动多验一条）：
+     */
     const stations = d.stations as { processKey: string; avgGapDaysToNext: number | null }[];
     const withGap = stations.filter((s) => s.avgGapDaysToNext !== null);
     expect(withGap.length).toBeGreaterThan(0);
+
+    // ∀①：末站**一个都不许**算得出「到下一站」的间隔 —— 末站没有下一站，算得出就是把
+    // 隔壁链的数串了进来。`flow-rules.ts` 文件头记的 `P42.avgGapDaysToNext = −9.82`
+    // 正是这么炸出来的（那次把 P42 错接成 P43 的前一站）。
+    const terminalKeys = new Set(BATTERY_PROCESS_FLOW_RULES.map((r) => r.stations[r.stations.length - 1]!.processKey));
+    expect(
+      withGap.filter((s) => terminalKeys.has(s.processKey)).map((s) => s.processKey),
+      "末站居然算得出到下一站的间隔 ⇒ 链的相邻关系串味了（同 P42 那次 −9.82 的病）",
+    ).toEqual([]);
+
+    // ∀②：多站链上的**非末站**，只要它真反推出了实例，就必须算得出间隔 ——
+    // 算不出 = 相邻关系断在这一站。只验"至少一条"时，断三条里的两条也全绿。
+    const nonTerminalKeys = BATTERY_PROCESS_FLOW_RULES.flatMap((r) => r.stations.slice(0, -1).map((st) => st.processKey));
+    expect(nonTerminalKeys.length).toBeGreaterThan(1);
+    const gapByKey = new Map(stations.map((s) => [s.processKey, s.avgGapDaysToNext]));
+    const brokenAdjacency = nonTerminalKeys.filter((k) => gapByKey.has(k) && gapByKey.get(k) === null);
+    expect(
+      brokenAdjacency,
+      "非末站反推得出了实例却算不出到下一站的间隔 ⇒ 该站与下一站的相邻关系断了",
+    ).toEqual([]);
 
     // 诚实位一个都不许少（漏进形状契约 = 前端只看得见好消息）
     for (const k of ["asOf", "asOfSource", "origin", "coverage", "absences"]) {
@@ -312,13 +338,25 @@ describe("WO-FLOWTIME · 流程实例反推（接缝驱动）", () => {
   it("⑧ R9：033 migration 的表名与 repo/pg.ts 的字面量对得上", async () => {
     const sql = await readFile(join(REPO_APP, "migrations/033_process_instances.sql"), "utf8");
     const pg = await readFile(join(REPO_APP, "src/repo/pg.ts"), "utf8");
+    const mem = await readFile(join(REPO_APP, "src/repo/memory.ts"), "utf8");
     // 🐤 金丝雀：先证明抽取器工作（已知必中）
     const names = [...sql.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]!);
     expect(names).toContain("process_instances");
-    expect(pg).toContain('new PgStore(pool, "process_instances")');
-    // memory 侧也必须有（少了它测试全绿而 pg 模式启动即炸的反面：memory 少了则测试直接炸）
-    const mem = await readFile(join(REPO_APP, "src/repo/memory.ts"), "utf8");
-    expect(mem).toContain("processInstances: new MemStore()");
+    /**
+     * ⚠ 原判据只对得上 `process_instances` **这一张**，而 033 建的是**两张**
+     * （`process_instances` + `process_tasks`）—— 另一张漏掉 pg 落点，这条照绿：
+     * 「N 里对上了 1 个」与「N 个全对上」同色，正是本门守的假绿第 12 形态。
+     * 改成对全集逐条断言，且**条数不写死**：033 里加一张表就自动多验一条。
+     */
+    expect(names.length).toBeGreaterThan(1);
+    for (const table of names) {
+      const camel = table.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
+      expect(pg, `033 建了 ${table}，但 repo/pg.ts 没有它的 PgStore 落点 ⇒ pg 模式启动即炸`).toContain(
+        `new PgStore(pool, "${table}")`,
+      );
+      // memory 侧也必须有（少了它测试全绿而 pg 模式启动即炸的反面：memory 少了则测试直接炸）
+      expect(mem, `033 建了 ${table}，但 repo/memory.ts 没有它的 MemStore 落点`).toContain(`${camel}: new MemStore()`);
+    }
   });
 
   // ══════════════════════════════════════════════════════════════════════════
