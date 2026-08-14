@@ -199,7 +199,7 @@ export default function DisruptionRadiusView(_props: { view?: ViewConfigVM }) {
           </label>
         </div>
         {/* 反向扇出链（本体倒推·确定性）诚实标注。 */}
-        <div style={{ marginTop: 8, fontSize: 11.5, color: "var(--muted2)" }} data-testid="dr-chain">
+        <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted2)" }} data-testid="dr-chain">
           反向扇出链（本体 ref 倒推）：<b>{displayOf.get(rootType) ?? rootType}</b>
           {layers.map((l) => (
             <span key={l.type}>
@@ -253,7 +253,7 @@ function RadiusResult({ out, displayOf }: { out: RadiusOutput; displayOf: Map<st
   // 分层扇出 DAG：layer0=断供根，layer i+1=第 i 层聚合节点（类型 ×count·via 字段），叶层敞口高亮。
   const { nodes, edges, titles } = useMemo(() => {
     const ns: DagNodeDef[] = [
-      { id: "__root", layer: 0, label: disp(out.rootType), sub: out.rootId, color: "var(--danger)" },
+      { id: "__root", layer: 0, label: disp(out.rootType), sub: out.rootId, color: "var(--danger-txt)" },
     ];
     const es: DagEdgeDef[] = [];
     const ts: string[] = ["断供根"];
@@ -323,26 +323,26 @@ function RadiusResult({ out, displayOf }: { out: RadiusOutput; displayOf: Map<st
                   {l.count} 个
                 </span>
                 {i === leafIdx && l.count > 0 && (
-                  <span className="badge" style={{ color: "var(--danger)", borderColor: "rgba(224,98,108,.45)" }}>
+                  <span className="badge" style={{ color: "var(--danger-txt)", borderColor: "rgba(224,98,108,.45)" }}>
                     叶层敞口
                   </span>
                 )}
               </div>
               {l.count === 0 ? (
-                <div style={{ fontSize: 11.5, color: "var(--muted2)" }}>断链——此层及更深层无受冲击对象。</div>
+                <div style={{ fontSize: 12, color: "var(--muted2)" }}>断链——此层及更深层无受冲击对象。</div>
               ) : (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {l.ids.slice(0, CHIP_CAP).map((id) => (
                     <span
                       key={id}
                       className="mono"
-                      style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, background: "var(--panel2)", border: "1px solid var(--line2)" }}
+                      style={{ fontSize: 12, padding: "2px 8px", borderRadius: 6, background: "var(--panel2)", border: "1px solid var(--line2)" }}
                     >
                       {id}
                     </span>
                   ))}
                   {l.count > CHIP_CAP && (
-                    <span style={{ fontSize: 11, color: "var(--muted2)", alignSelf: "center" }}>
+                    <span style={{ fontSize: 12, color: "var(--muted2)", alignSelf: "center" }}>
                       +{l.count - CHIP_CAP} 更多
                     </span>
                   )}
@@ -365,7 +365,7 @@ function Metric({ label, value, testId, tone }: { label: string; value: string; 
   const color = tone === "danger" ? "var(--danger)" : tone === "warn" ? "var(--amber)" : "var(--muted)";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <span style={{ fontSize: 11, color: "var(--muted2)" }}>{label}</span>
+      <span style={{ fontSize: 12, color: "var(--muted2)" }}>{label}</span>
       <b className="mono" data-testid={testId} style={{ fontSize: 18, color }}>
         {value}
       </b>

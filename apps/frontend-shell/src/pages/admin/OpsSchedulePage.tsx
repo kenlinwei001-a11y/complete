@@ -53,7 +53,7 @@ export default function OpsSchedulePage() {
       {/* A 全自动：定期产能预测 */}
       <section className="panel" style={{ marginBottom: 16 }}>
         <h3 style={{ fontSize: 13 }}>A · 定期产能预测（计算类，ServiceAccount 自动执行）</h3>
-        <p style={{ fontSize: 11, color: "var(--muted2)" }}>M11 校准配对样本的正式来源；产物标记 executedAs=SERVICE_ACCOUNT。</p>
+        <p style={{ fontSize: 12, color: "var(--muted2)" }}>M11 校准配对样本的正式来源；产物标记 executedAs=SERVICE_ACCOUNT。</p>
         <table className="cmp">
           <thead>
             <tr>

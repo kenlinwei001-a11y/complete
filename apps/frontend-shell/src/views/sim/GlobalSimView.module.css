@@ -22,7 +22,7 @@
 /* 分组标签：括号 + 大写 + letter-spacing（[ 联合求解配置 ]） */
 .grpLabel {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 12px;
   letter-spacing: 2px;
   text-transform: uppercase;
   color: var(--muted);
@@ -54,7 +54,7 @@
 .badge {
   margin-left: auto;
   flex: none;
-  font-size: 10.5px;
+  font-size: 12px;
   padding: 5px 11px;
   border-radius: 99px;
   color: var(--muted);
@@ -105,7 +105,7 @@
   border: none;
   background: none;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 12px;
   padding: 6px 13px;
   cursor: pointer;
   border-right: 1px solid var(--line);
@@ -118,14 +118,14 @@
 }
 .miniConserve {
   margin-left: auto;
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--font-mono);
-  color: var(--ok);
+  color: var(--ok-txt);
   display: inline-flex;
   align-items: center;
   gap: 5px;
 }
-.miniConserve.bad { color: var(--danger); }
+.miniConserve.bad { color: var(--danger-txt); }
 
 /* 产能占用矩阵热力（基地 × 窗口） */
 .matrixWrap {
@@ -138,7 +138,7 @@
   font-variant-numeric: tabular-nums;
 }
 .heatMatrix th {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--muted);
   text-align: center;
@@ -146,7 +146,7 @@
   font-family: var(--font-mono);
 }
 .heatMatrix td.rowHead {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
   text-align: left;
@@ -158,7 +158,7 @@
   height: 30px;
   border-radius: 6px;
   text-align: center;
-  font-size: 10px;
+  font-size: 12px;
   font-family: var(--font-mono);
   color: var(--txt);
   position: relative;
@@ -173,7 +173,7 @@
   border-radius: 50%;
   background: var(--danger);
   border: 1.5px solid var(--panel);
-  font-size: 8px;
+  font-size: 12px;
   line-height: 10px;
   color: #fff;
   text-align: center;
@@ -201,7 +201,7 @@
   line-height: 1.1;
 }
 .readout span {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -243,7 +243,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
   padding: 4px 10px;
   border-radius: 8px;
@@ -256,14 +256,14 @@
 .gtable {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11.5px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 .gtable th {
   text-align: left;
   font-weight: 500;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 12px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--line2);
 }
@@ -274,8 +274,8 @@
 }
 .gtable td.mono, .gtable td.num { font-family: var(--font-mono); }
 .gtable td.num { text-align: right; }
-.ok { color: var(--ok); }
-.bad { color: var(--danger); }
+.ok { color: var(--ok-txt); }
+.bad { color: var(--danger-txt); }
 
 /* —— 订单/被挤/冻结卡 —— */
 .cardGrid {
@@ -290,7 +290,7 @@
   padding: 10px 12px;
   background: var(--hover-tint);
   border: 1px solid var(--line2);
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 .orderCard.displaced { border-color: rgba(224, 98, 108, 0.5); }
@@ -299,13 +299,13 @@
 .orderCard .amt {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  color: var(--danger);
+  color: var(--danger-txt);
 }
 .drillLink {
   display: inline-block;
   margin-top: 8px;
-  font-size: 11px;
-  color: var(--accent);
+  font-size: 12px;
+  color: var(--accent-txt);
   text-decoration: none;
   border-bottom: 1px dashed var(--accent);
   padding-bottom: 1px;
@@ -313,7 +313,7 @@
 .drillLink:hover { opacity: 0.82; }
 
 .summary {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-top: 10px;
   line-height: 1.6;
@@ -321,13 +321,13 @@
 .noteRed {
   border: 1px solid rgba(224, 98, 108, 0.5);
   background: rgba(224, 98, 108, 0.1);
-  color: var(--danger);
+  color: var(--danger-txt);
   border-radius: 9px;
   padding: 8px 12px;
-  font-size: 11.5px;
+  font-size: 12px;
   margin-top: 8px;
 }
-.empty { color: var(--muted); font-size: 11.5px; }
+.empty { color: var(--muted); font-size: 12px; }
 
 /* 迁入面板（MultiObjWhatifPanel）在主题底上的容器微调 */
 .migrated { margin-top: 4px; }
@@ -343,24 +343,24 @@
   border-radius: 12px;
   background: var(--hover-tint-strong);
   border: 1px solid var(--line2);
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 .batchScope { font-family: var(--font-mono); color: var(--muted); }
 .batchStatus {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   padding: 3px 9px;
   border-radius: 99px;
   border: 1px solid rgba(98, 190, 119, 0.45);
-  color: var(--ok);
+  color: var(--ok-txt);
   background: rgba(98, 190, 119, 0.1);
 }
-.batchStatus.bad { border-color: rgba(224, 98, 108, 0.45); color: var(--danger); background: rgba(224, 98, 108, 0.1); }
+.batchStatus.bad { border-color: rgba(224, 98, 108, 0.45); color: var(--danger-txt); background: rgba(224, 98, 108, 0.1); }
 .batchChain { display: inline-flex; gap: 5px; align-items: center; flex-wrap: wrap; }
 .batchChip {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   padding: 2px 7px;
   border-radius: 6px;
   background: var(--nav-active-bg);
@@ -369,35 +369,35 @@
 }
 
 /* —— 杠杆盘（区②） —— */
-.recalcBadge { margin-left: 8px; color: var(--warn); font-size: 10px; letter-spacing: 0; }
+.recalcBadge { margin-left: 8px; color: var(--warn-txt); font-size: 12px; letter-spacing: 0; }
 .leverGroup {
   margin-bottom: 13px;
   padding-bottom: 11px;
   border-bottom: 1px solid var(--line);
 }
 .leverGroup:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-.leverLabel { font-size: 11.5px; color: var(--muted); margin-bottom: 6px; font-weight: 550; }
-.leverHint { font-size: 10px; color: var(--muted); margin-top: 5px; line-height: 1.5; }
+.leverLabel { font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 550; }
+.leverHint { font-size: 12px; color: var(--muted); margin-top: 5px; line-height: 1.5; }
 .leverReadout { font-size: 12px; color: var(--muted); }
 .leverReadout b { font-family: var(--font-mono); font-size: 16px; color: var(--txt); }
 
 /* —— 排产安排表两段（区⑤）·电芯段/在途/Pack 段用 accent/warn/ok 语义区分（两主题皆可读） —— */
-.segCell { color: var(--accent); font-family: var(--font-mono); }
-.segTransit { color: var(--warn); font-family: var(--font-mono); white-space: nowrap; }
-.segPack { color: var(--ok); font-family: var(--font-mono); }
+.segCell { color: var(--accent-txt); font-family: var(--font-mono); }
+.segTransit { color: var(--warn-txt); font-family: var(--font-mono); white-space: nowrap; }
+.segPack { color: var(--ok-txt); font-family: var(--font-mono); }
 .xbadge {
   margin-left: 5px;
-  font-size: 9px;
+  font-size: 12px;
   padding: 1px 5px;
   border-radius: 5px;
   background: rgba(232, 181, 74, 0.12);
   border: 1px solid rgba(232, 181, 74, 0.45);
-  color: var(--warn);
+  color: var(--warn-txt);
 }
 
 /* —— 客户级影响（区⑦） —— */
 .segChip {
-  font-size: 9.5px;
+  font-size: 12px;
   padding: 1px 7px;
   border-radius: 99px;
   border: 1px solid;
@@ -405,7 +405,7 @@
 }
 .actionsPlaceholder { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 .btnPlaceholder {
-  font-size: 10px;
+  font-size: 12px;
   padding: 4px 9px;
   border-radius: 7px;
   color: var(--muted);
@@ -417,7 +417,7 @@
 /* —— 订单清单三态（区④） —— */
 .triState { display: inline-flex; gap: 3px; }
 .triBtn {
-  font-size: 11px;
+  font-size: 12px;
   width: 22px;
   height: 20px;
   border-radius: 5px;
@@ -429,12 +429,12 @@
 }
 .triBtn.triOn { color: var(--nav-active-txt); background: var(--nav-active-bg); border-color: var(--nav-active-border); }
 .triBtn.triFreeze.triOn { background: rgba(140, 155, 200, 0.28); border-color: rgba(140, 155, 200, 0.55); color: var(--txt); }
-.triBtn.triExclude.triOn { background: rgba(224, 98, 108, 0.18); border-color: rgba(224, 98, 108, 0.5); color: var(--danger); }
+.triBtn.triExclude.triOn { background: rgba(224, 98, 108, 0.18); border-color: rgba(224, 98, 108, 0.5); color: var(--danger-txt); }
 
 /* —— 方案比对权衡解释（区⑥） —— */
 .tradeoff {
   margin-top: 10px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   line-height: 1.6;
   padding: 9px 12px;
@@ -443,7 +443,7 @@
   border: 1px solid var(--line);
 }
 .tradeoff b { color: var(--txt); }
-.tradeoffRed { color: var(--danger); }
+.tradeoffRed { color: var(--danger-txt); }
 
 /* 双列布局（左列：杠杆盘+热力矩阵纵向堆叠 · 右列：联合求解配置栈）——宽屏两栏，窄屏回退单列。
    左列堆叠两卡填满高度，与右轨高栈平衡 → 消除原三栏「短左轨 vs 高右轨」的大块留白。 */

@@ -444,7 +444,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
 
       {/* 基地筛选器（下拉 + 清除 chip） */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        <label style={{ fontSize: 11.5, color: "var(--muted)" }}>
+        <label style={{ fontSize: 12, color: "var(--muted)" }}>
           {zh.orderChain.baseFilter}
           <select
             value={baseFilter}
@@ -462,7 +462,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
           </select>
         </label>
         {baseFilter && (
-          <button className={styles.chip} style={{ cursor: "pointer", color: "var(--c-capacity)", borderColor: "var(--c-capacity)" }} data-testid="oc-clear-filter" onClick={() => setBaseFilter("")}>
+          <button className={styles.chip} style={{ cursor: "pointer", color: "var(--c-capacity-txt)", borderColor: "var(--c-capacity)" }} data-testid="oc-clear-filter" onClick={() => setBaseFilter("")}>
             {zh.orderChain.clearFilter(baseFilter)}
           </button>
         )}
@@ -532,7 +532,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
           <span data-testid="oc-segsel">
             <button
               className={styles.chip}
-              style={{ cursor: "pointer", ...(segMode === "app" ? { color: "var(--c-capacity)", borderColor: "var(--c-capacity)" } : {}) }}
+              style={{ cursor: "pointer", ...(segMode === "app" ? { color: "var(--c-capacity-txt)", borderColor: "var(--c-capacity)" } : {}) }}
               data-testid="oc-segmode-app"
               onClick={() => setSegMode("app")}
             >
@@ -540,7 +540,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
             </button>
             <button
               className={styles.chip}
-              style={{ cursor: "pointer", marginLeft: 6, ...(segMode === "base" ? { color: "var(--c-capacity)", borderColor: "var(--c-capacity)" } : {}) }}
+              style={{ cursor: "pointer", marginLeft: 6, ...(segMode === "base" ? { color: "var(--c-capacity-txt)", borderColor: "var(--c-capacity)" } : {}) }}
               data-testid="oc-segmode-base"
               onClick={() => setSegMode("base")}
             >
@@ -653,7 +653,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
                             data={k}
                             className={styles.chip}
                             testId={`oc-risk-chip-${r.so}-${k.base}`}
-                            style={{ color: k.peak >= (k.threshold ?? 85) ? "var(--danger)" : "var(--amber)", borderColor: "currentcolor", cursor: "default" }}
+                            style={{ color: k.peak >= (k.threshold ?? 85) ? "var(--danger-txt)" : "var(--amber-txt)", borderColor: "currentcolor", cursor: "default" }}
                           >
                             {k.base}·{k.factor} {k.crossDay != null ? `D+${k.crossDay}` : "未越线"}
                           </RiskHoverTrigger>
@@ -665,7 +665,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
                         )}
                       </div>
                     </td>
-                    <td style={{ color: "var(--danger)", fontWeight: 700 }}>{zh.orderChain.delayDays(r.delay)}</td>
+                    <td style={{ color: "var(--danger-txt)", fontWeight: 700 }}>{zh.orderChain.delayDays(r.delay)}</td>
                     {/* ②显式入口：对话上下文的写入不再藏在整行点击里，行尾给一个说得清自己在干什么的按钮 */}
                     <td onClick={(e) => e.stopPropagation()}>
                       <button
@@ -798,9 +798,9 @@ function KitQuoteScopePanel({ baseFilter, rows }: { baseFilter: string; rows: { 
       <div style={{ marginBottom: 10 }} data-testid="oc-kit-block">
         <div style={{ fontSize: 12, marginBottom: 2 }}>{zh.orderChain.kitTitle}</div>
         {kit.isError ? (
-          <div data-testid="oc-kit-error" style={{ fontSize: 11.5, color: "#E0626C" }}>{solverErrText(kit.error)}</div>
+          <div data-testid="oc-kit-error" style={{ fontSize: 12, color: "var(--danger-txt)" }}>{solverErrText(kit.error)}</div>
         ) : kit.data === undefined ? (
-          <div style={{ fontSize: 11.5, color: "var(--muted2)" }}>{zh.common.loading}</div>
+          <div style={{ fontSize: 12, color: "var(--muted2)" }}>{zh.common.loading}</div>
         ) : (
           <>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
@@ -810,7 +810,7 @@ function KitQuoteScopePanel({ baseFilter, rows }: { baseFilter: string; rows: { 
                   「突出这个数」的收益，换成「整页字号更乱」的代价。强调靠 `<b>` + `mono`
                   等宽，与尺寸叠加，不必再多一级。真正的修法是把那 6 级压到 3 级，属独立重构单。 */}
               <b className="mono" data-testid="oc-kit-shortage" style={{ fontSize: 12.5 }}>{kit.data.shortageCount ?? "—"}</b>
-              <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{zh.orderChain.kitShortageLabel}</span>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>{zh.orderChain.kitShortageLabel}</span>
             </div>
             {/* 传**整包载荷**而不是 `kit.data.scope`：档位由 `readScopeHonesty(payload)` 判，
                 诚实位是加性键，先 pick 一次就丢一次（见 ScopeHonesty.tsx 文件头的收编裁决）。 */}
@@ -823,19 +823,19 @@ function KitQuoteScopePanel({ baseFilter, rows }: { baseFilter: string; rows: { 
       <div data-testid="oc-quote-block">
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, marginBottom: 2 }}>
           <span>{zh.orderChain.quoteTitle}</span>
-          <select data-testid="oc-quote-model" aria-label={zh.orderChain.quoteModelSel} value={modelId} onChange={(e) => setModelId(e.target.value)} style={{ fontSize: 11.5 }}>
+          <select data-testid="oc-quote-model" aria-label={zh.orderChain.quoteModelSel} value={modelId} onChange={(e) => setModelId(e.target.value)} style={{ fontSize: 12 }}>
             <option value="">{zh.orderChain.quoteModelAny}</option>
             {models.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
-          <select data-testid="oc-quote-cust" aria-label={zh.orderChain.quoteCustSel} value={custName} onChange={(e) => setCustName(e.target.value)} style={{ fontSize: 11.5 }}>
+          <select data-testid="oc-quote-cust" aria-label={zh.orderChain.quoteCustSel} value={custName} onChange={(e) => setCustName(e.target.value)} style={{ fontSize: 12 }}>
             <option value="">{zh.orderChain.quoteCustAny}</option>
             {custs.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         {quote.isError ? (
-          <div data-testid="oc-quote-error" style={{ fontSize: 11.5, color: "#E0626C" }}>{solverErrText(quote.error)}</div>
+          <div data-testid="oc-quote-error" style={{ fontSize: 12, color: "var(--danger-txt)" }}>{solverErrText(quote.error)}</div>
         ) : quote.data === undefined ? (
-          <div style={{ fontSize: 11.5, color: "var(--muted2)" }}>{zh.common.loading}</div>
+          <div style={{ fontSize: 12, color: "var(--muted2)" }}>{zh.common.loading}</div>
         ) : (
           <>
             <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
@@ -843,8 +843,8 @@ function KitQuoteScopePanel({ baseFilter, rows }: { baseFilter: string; rows: { 
               <b className="mono" data-testid="oc-quote-margin" style={{ fontSize: 12.5 }}>
                 {quote.data.margin === undefined ? "—" : `${(quote.data.margin * 100).toFixed(2)}%`}
               </b>
-              <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{zh.orderChain.quoteMarginLabel}</span>
-              <span className="mono" style={{ fontSize: 11.5 }} data-testid="oc-quote-verdict">{quote.data.verdict ?? "—"}</span>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>{zh.orderChain.quoteMarginLabel}</span>
+              <span className="mono" style={{ fontSize: 12 }} data-testid="oc-quote-verdict">{quote.data.verdict ?? "—"}</span>
             </div>
             <QuoteScopeBar scope={quote.data.scope} testId="oc-quote-scope" />
           </>
@@ -907,15 +907,15 @@ function OrderFullchainPanel() {
               ["毛利率", `${data.kpis.marginPct}%`],
               ["毛利底线", `${data.kpis.floorPct}%`],
             ].map(([k, v]) => (
-              <div key={k} className="panel" style={{ padding: 8, minWidth: 96 }}><div style={{ fontSize: 10.5, color: "var(--muted)" }}>{k}</div><b>{v}</b></div>
+              <div key={k} className="panel" style={{ padding: 8, minWidth: 96 }}><div style={{ fontSize: 12, color: "var(--muted)" }}>{k}</div><b>{v}</b></div>
             ))}
             <div className="panel" data-testid="ofc-verdict" style={{ padding: 8, minWidth: 120, borderLeft: `3px solid ${data.vc}` }}>
-              <div style={{ fontSize: 10.5, color: "var(--muted)" }}>统一结论</div>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>统一结论</div>
               <b style={{ color: data.vc }}>{data.verdict}</b>
             </div>
           </div>
           {data.conds.length > 0 && (
-            <ul style={{ fontSize: 11.5, color: "var(--muted)", margin: "2px 0 8px 16px" }} data-testid="ofc-conds">
+            <ul style={{ fontSize: 12, color: "var(--muted)", margin: "2px 0 8px 16px" }} data-testid="ofc-conds">
               {data.conds.map((c, i) => <li key={i}>{c}</li>)}
             </ul>
           )}

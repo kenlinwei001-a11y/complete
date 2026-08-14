@@ -157,7 +157,7 @@ function InlineGraph({
         <>
           {/* WO-UNIT-MEANING：「节点 12 · 边 18」此前裸数——12 是节点数还是层数？契约 SliceGraph 只有数组无 unit 字段，
               故就近点明计数单位（个/条），与下方「仅示前 N/M 节点」同口径。 */}
-          <div className="muted" style={{ fontSize: 11.5, marginBottom: 4 }}>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
             节点 <b data-testid={`slice-graph-nodes-${sliceKey}`}>{q.data!.nodes.length}</b> 个 · 边{" "}
             <b>{q.data!.edges.length}</b> 条
             {q.data!.truncated && <span className="badge amber" style={{ marginLeft: 6 }}>已截断</span>}
@@ -187,7 +187,7 @@ function ReadOnlySpec({ spec }: { spec: SliceSpecFull }) {
         <span className="mono">{spec.spec.maxNodes ?? "—"}</span> 个 · 契约 fixtures{" "}
         <b data-testid={`slice-fixtures-count-${spec.sliceKey}`}>{fixtures.length}</b> 条
       </div>
-      <pre className="mono" style={{ fontSize: 11, maxHeight: 160, overflow: "auto", marginTop: 6 }}>
+      <pre className="mono" style={{ fontSize: 12, maxHeight: 160, overflow: "auto", marginTop: 6 }}>
         {JSON.stringify(spec.spec.paths, null, 2)}
       </pre>
     </div>
@@ -302,7 +302,7 @@ function SliceEditor({ spec, onSaved }: { spec: SliceSpecFull; onSaved: () => vo
           onChange={(e) => setPathsText(e.target.value)}
           rows={5}
           className="mono"
-          style={{ width: "100%", fontSize: 11 }}
+          style={{ width: "100%", fontSize: 12 }}
         />
       </label>
       <label style={{ fontSize: 12 }}>
@@ -313,7 +313,7 @@ function SliceEditor({ spec, onSaved }: { spec: SliceSpecFull; onSaved: () => vo
           onChange={(e) => setFixturesText(e.target.value)}
           rows={5}
           className="mono"
-          style={{ width: "100%", fontSize: 11 }}
+          style={{ width: "100%", fontSize: 12 }}
         />
       </label>
 

@@ -40,7 +40,7 @@ export default function ScenesPage() {
           ＋ 新建场景
         </button>
       </div>
-      <div className={`muted`} style={{ fontSize: 11.5, marginBottom: 10 }}>
+      <div className={`muted`} style={{ fontSize: 12, marginBottom: 10 }}>
         场景为一等主键：第一列是场景，其后选交互模式（workflow-first 为默认；agent-first 仅探索面）与 presetContext（保证一键可推演、不被反问）。
       </div>
 
@@ -202,7 +202,7 @@ function ScenarioRow({
                 <div style={{ color: "var(--muted)" }}>答案预览（数据来源 = 真跑求解器输出）：{run.verification.answerPreview}</div>
               )}
               {run.gaps.length > 0 && (
-                <div data-testid={`scenario-gaps-${scenario.scenarioKey}`} style={{ color: "var(--amber)" }}>
+                <div data-testid={`scenario-gaps-${scenario.scenarioKey}`} style={{ color: "var(--amber-txt)" }}>
                   缺口（诚实，不静默）：{run.gaps.map((g) => `${g.gapCode}·${g.disposition === "AUTO_DERIVE" ? "可自动补" : "需人工/工单"}`).join("；")}
                 </div>
               )}
@@ -286,7 +286,7 @@ function ScenarioEditor({
   return (
     <div className="panel" data-testid="scenario-editor" style={{ margin: inline ? "8px 0" : "0 0 14px" }}>
       {readOnly && (
-        <div data-testid="scenario-readonly-hint" style={{ fontSize: 11, color: "var(--amber)", marginBottom: 8 }}>
+        <div data-testid="scenario-readonly-hint" style={{ fontSize: 12, color: "var(--amber-txt)", marginBottom: 8 }}>
           已发布场景为只读配置（真实存于后端 /b/v1/scenarios，非前端写死）。如需修改：点该行「退役」转为草稿后即可编辑，再「发布」生效。
         </div>
       )}
@@ -348,7 +348,7 @@ function ScenarioEditor({
             ))}
           </datalist>
           {intentKey && intentKeys.length > 0 && !intentKeys.includes(intentKey) && (
-            <span style={{ fontSize: 10, color: "var(--amber)" }} data-testid="scenario-intent-warn">
+            <span style={{ fontSize: 12, color: "var(--amber-txt)" }} data-testid="scenario-intent-warn">
               ⚠ 未命中已发布意图（前台将无反应）
             </span>
           )}
@@ -376,7 +376,7 @@ function ScenarioEditor({
           <textarea value={selectedObjects} aria-label="selectedObjects" onChange={(e) => setSelectedObjects(e.target.value)} style={taS} />
         </label>
       </div>
-      {jsonErr && <div className="empty-state" style={{ color: "var(--danger)" }} data-testid="scenario-json-err">{jsonErr}</div>}
+      {jsonErr && <div className="empty-state" style={{ color: "var(--danger-txt)" }} data-testid="scenario-json-err">{jsonErr}</div>}
       </fieldset>
 
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
@@ -393,5 +393,5 @@ function ScenarioEditor({
   );
 }
 
-const lblS: React.CSSProperties = { fontSize: 11.5, color: "var(--muted)", display: "flex", flexDirection: "column", gap: 4 };
-const taS: React.CSSProperties = { width: "100%", minHeight: 84, fontFamily: "var(--font-mono, monospace)", fontSize: 11 };
+const lblS: React.CSSProperties = { fontSize: 12, color: "var(--muted)", display: "flex", flexDirection: "column", gap: 4 };
+const taS: React.CSSProperties = { width: "100%", minHeight: 84, fontFamily: "var(--font-mono, monospace)", fontSize: 12 };

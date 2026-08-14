@@ -330,7 +330,7 @@ function MaybeCollapsed({ collapsed, label, testId, children }: { collapsed: boo
   if (!collapsed) return <>{children}</>;
   return (
     <details data-testid={testId}>
-      <summary style={{ cursor: "pointer", fontSize: 11, color: "var(--muted2)" }}>{label}</summary>
+      <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--muted2)" }}>{label}</summary>
       {children}
     </details>
   );

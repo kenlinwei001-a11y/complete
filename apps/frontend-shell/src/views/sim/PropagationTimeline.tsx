@@ -130,7 +130,7 @@ export function PropagationTimeline({ vm, testId = "ptl" }: { vm: PropagationVM;
                 className={styles.ptlM}
                 data-testid={`${testId}-est-${st.key}`}
                 title="前端估算 · 非求解器真值"
-                style={{ color: "var(--amber, #E8B54A)", fontSize: 10, marginTop: 2 }}
+                style={{ color: "var(--amber-txt, #E8B54A)", fontSize: 12, marginTop: 2 }}
               >
                 ⚠ {st.estimate}
               </div>
@@ -176,7 +176,7 @@ export function PropagationTimeline({ vm, testId = "ptl" }: { vm: PropagationVM;
                 </tr>
                 <tr>
                   <td>预计延误</td>
-                  <td style={{ color: "var(--danger)", fontWeight: 700 }}>{openOrder.delay} 天</td>
+                  <td style={{ color: "var(--danger-txt)", fontWeight: 700 }}>{openOrder.delay} 天</td>
                 </tr>
               </tbody>
             </table>

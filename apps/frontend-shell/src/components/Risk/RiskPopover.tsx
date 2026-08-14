@@ -40,7 +40,7 @@ export function RiskPopover({ data, anchor }: { data: RiskPopoverData; anchor: {
       <div className={styles.metrics}>
         <span>
           {zh.risk.peak}
-          <b className="mono" data-testid="risk-popover-peak" style={{ color: data.peak >= threshold ? "var(--danger)" : "var(--txt)" }}>
+          <b className="mono" data-testid="risk-popover-peak" style={{ color: data.peak >= threshold ? "var(--danger-txt)" : "var(--txt)" }}>
             {formatTightness(data.peak)}
           </b>
         </span>

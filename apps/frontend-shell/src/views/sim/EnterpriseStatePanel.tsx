@@ -75,7 +75,7 @@ export function EnterpriseStatePanel({ worldId = ENTERPRISE_STATE_REAL_WORLD_ID 
   if (q.isError) {
     const e = q.error as { code?: string; message?: string; requestId?: string };
     return (
-      <div className={styles.sub} data-testid="enterprise-state-error" style={{ color: "var(--warn)" }}>
+      <div className={styles.sub} data-testid="enterprise-state-error" style={{ color: "var(--warn-txt)" }}>
         企业状态快照不可用（{e?.code ?? "ERROR"}）：{e?.message ?? "请求失败"}
         {e?.requestId ? ` · requestId ${e.requestId}` : ""}
       </div>

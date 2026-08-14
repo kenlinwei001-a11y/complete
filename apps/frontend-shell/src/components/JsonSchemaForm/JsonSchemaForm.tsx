@@ -100,7 +100,7 @@ export function JsonSchemaForm({ schema, value, onChange, savedSecrets = [] }: J
           <div key={key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <label htmlFor={id} style={{ fontSize: 12, color: "var(--muted)" }}>
               {label}
-              {req && <span style={{ color: "var(--danger)" }}> *</span>}
+              {req && <span style={{ color: "var(--danger-txt)" }}> *</span>}
               {secret && (
                 <span className="badge amber" style={{ marginLeft: 6 }}>
                   secret
@@ -108,8 +108,8 @@ export function JsonSchemaForm({ schema, value, onChange, savedSecrets = [] }: J
               )}
             </label>
             {control}
-            {f.description && <span style={{ fontSize: 11, color: "var(--muted2)" }}>{f.description}</span>}
-            {secret && <span style={{ fontSize: 11, color: "var(--muted2)" }}>{zh.admin.connections.secretNoEcho}</span>}
+            {f.description && <span style={{ fontSize: 12, color: "var(--muted2)" }}>{f.description}</span>}
+            {secret && <span style={{ fontSize: 12, color: "var(--muted2)" }}>{zh.admin.connections.secretNoEcho}</span>}
           </div>
         );
       })}

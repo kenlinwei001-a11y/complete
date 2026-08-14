@@ -70,7 +70,7 @@ export function CommandPalette() {
             >
               <b className="mono" style={{ marginRight: 6 }}>{c.sNo}</b>
               {c.name}
-              <span style={{ marginLeft: 8, fontSize: 11, color: "var(--muted)" }}>{c.triggerQuestion}</span>
+              <span style={{ marginLeft: 8, fontSize: 12, color: "var(--muted)" }}>{c.triggerQuestion}</span>
             </button>
           ))}
         </div>

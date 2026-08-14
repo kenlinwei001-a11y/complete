@@ -450,9 +450,9 @@ function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
             return (
               <tr key={purpose} data-testid={`binding-row-${purpose}`}>
                 <td className="zh">
-                  <span className="mono" style={{ fontSize: 11 }}>{purpose}</span> · {PURPOSE_LABEL[purpose]}
+                  <span className="mono" style={{ fontSize: 12 }}>{purpose}</span> · {PURPOSE_LABEL[purpose]}
                 </td>
-                <td style={{ fontSize: 11, color: "var(--muted)" }}>
+                <td style={{ fontSize: 12, color: "var(--muted)" }}>
                   {[req.tools ? "tools（硬性）" : null, req.structuredOutput ? "structuredOutput（可 JSON-mode 降级）" : null]
                     .filter(Boolean)
                     .join(" + ") || "无"}
@@ -511,7 +511,7 @@ function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
                     }
                   />
                   {v.noReasoning && (provider?.models ?? []).find((m) => m.modelId === v.modelId)?.capabilities.reasoning ? (
-                    <div style={{ fontSize: 10, color: "var(--muted2)" }}>→非推理兄弟</div>
+                    <div style={{ fontSize: 12, color: "var(--muted2)" }}>→非推理兄弟</div>
                   ) : null}
                 </td>
               </tr>

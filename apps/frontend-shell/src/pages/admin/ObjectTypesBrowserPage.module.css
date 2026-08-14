@@ -25,7 +25,7 @@
 
 /* 禁用态理由：与按钮同格、紧贴其下。文案内容取自接口（displayName + count），此处只管排版。 */
 .otWhyDisabled {
-  font-size: 11px;
+  font-size: 12px;
   margin-top: 3px;
   line-height: 1.35;
   max-width: 15em;

@@ -42,7 +42,7 @@ export function ExposurePanel({ exposure, baseName }: { exposure?: Exposure; bas
         title="① 影响面 · 落在谁身上"
         sub={<>{windowNote} · 影响面排序 #{exposure.rank}（零敞口沉底）</>}
       >
-        <div className="empty-state" data-testid={`exposure-empty-${baseName}`} style={{ fontSize: 11, lineHeight: 1.7, color: "var(--muted)" }}>
+        <div className="empty-state" data-testid={`exposure-empty-${baseName}`} style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)" }}>
           <b style={{ color: "var(--muted2)" }}>本窗无订单敞口（这是结论，不是缺数据）</b>
           <div style={{ marginTop: 4 }} data-testid={`exposure-empty-reason-${baseName}`}>{exposure.emptyReason ?? "后端未给出零敞口原因"}</div>
           {nx ? (
@@ -69,11 +69,11 @@ export function ExposurePanel({ exposure, baseName }: { exposure?: Exposure; bas
     >
       <div className={styles.rkKpi} style={{ margin: "0 0 8px" }} data-testid={`exposure-kpi-${baseName}`}>
         <div className={styles.rkK} data-testid={`exposure-ordercount-${baseName}`}>
-          <b style={{ color: "var(--c-forecast)" }}>{exposure.orderCount}</b>
+          <b style={{ color: "var(--c-forecast-txt)" }}>{exposure.orderCount}</b>
           <span>波及订单（张）</span>
         </div>
         <div className={styles.rkK} data-testid={`exposure-qty-${baseName}`}>
-          <b style={{ color: "var(--c-capacity)" }}>
+          <b style={{ color: "var(--c-capacity-txt)" }}>
             <Provenance
               testId={`exposure-qty-prov-${baseName}`}
               src="risk_timeline · buildExposure（影响面）"
@@ -87,7 +87,7 @@ export function ExposurePanel({ exposure, baseName }: { exposure?: Exposure; bas
           <span>波及数量（{u.qty}）</span>
         </div>
         <div className={styles.rkK} data-testid={`exposure-revenue-${baseName}`}>
-          <b style={{ color: "var(--ok)" }}>
+          <b style={{ color: "var(--ok-txt)" }}>
             <Provenance
               testId={`exposure-revenue-prov-${baseName}`}
               src="risk_timeline · buildExposure × SEG_REGISTRY"
@@ -101,18 +101,18 @@ export function ExposurePanel({ exposure, baseName }: { exposure?: Exposure; bas
           <span>金额敞口（{u.revenue}）</span>
         </div>
         <div className={styles.rkK} data-testid={`exposure-custcount-${baseName}`}>
-          <b style={{ color: "var(--c-solver)" }}>{exposure.customerCount}</b>
+          <b style={{ color: "var(--c-solver-txt)" }}>{exposure.customerCount}</b>
           <span>波及客户（家）</span>
         </div>
         {exposure.earliest && (
           <div className={styles.rkK} data-testid={`exposure-earliest-${baseName}`}>
-            <b style={{ color: "var(--danger)" }}>D+{exposure.earliest.dueDay}</b>
+            <b style={{ color: "var(--danger-txt)" }}>D+{exposure.earliest.dueDay}</b>
             <span>最早受影响交期 · {exposure.earliest.so} · {exposure.earliest.cust}</span>
           </div>
         )}
       </div>
 
-      <table className="cmp" data-testid={`exposure-cust-table-${baseName}`} style={{ fontSize: 11, marginBottom: 8 }}>
+      <table className="cmp" data-testid={`exposure-cust-table-${baseName}`} style={{ fontSize: 12, marginBottom: 8 }}>
         <thead>
           <tr>
             <th>受影响客户</th><th>应用细分</th><th>订单(张)</th><th>数量({u.qty})</th><th>金额({u.revenue})</th><th>最早交期</th>
@@ -125,14 +125,14 @@ export function ExposurePanel({ exposure, baseName }: { exposure?: Exposure; bas
               <td className="zh">{c.seg}</td>
               <td className="mono">{c.orderCount}</td>
               <td className="mono">{c.qty}</td>
-              <td className="mono" style={{ color: "var(--ok)" }}>{c.revenueYi}</td>
+              <td className="mono" style={{ color: "var(--ok-txt)" }}>{c.revenueYi}</td>
               <td className="mono">{c.earliestDue}（D+{c.earliestDueDay}）</td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      <table className="cmp" data-testid={`exposure-order-table-${baseName}`} style={{ fontSize: 11 }}>
+      <table className="cmp" data-testid={`exposure-order-table-${baseName}`} style={{ fontSize: 12 }}>
         <thead>
           <tr>
             <th>订单</th><th>客户</th><th>型号</th><th>数量({u.qty})</th><th>交期</th><th>优先级</th><th>金额({u.revenue})</th>
@@ -148,7 +148,7 @@ export function ExposurePanel({ exposure, baseName }: { exposure?: Exposure; bas
               <td className="mono">{o.due}（D+{o.dueDay}）</td>
               {/* Order.pri 后端取不到时回传空串 —— 显式标"未标"，不默认成"中"。 */}
               <td className="zh">{o.pri === "" ? <span style={{ color: "var(--muted2)" }}>未标</span> : o.pri}</td>
-              <td className="mono" style={{ color: "var(--ok)" }}>{o.revenueYi}</td>
+              <td className="mono" style={{ color: "var(--ok-txt)" }}>{o.revenueYi}</td>
             </tr>
           ))}
         </tbody>
@@ -157,7 +157,7 @@ export function ExposurePanel({ exposure, baseName }: { exposure?: Exposure; bas
           规范 §2 R-UI-3「口径/公式进 `?` 浮层」点名。降层**不是删除** ——
           `?` 触发器永远可见，就是规范 §1 要求的那个「可见记号」。
           顺手修掉 `**同一份**` 的字面 ** 泄漏到界面（本仓 order-chain 刚踩过同一个坑）。 */}
-      <div style={{ fontSize: 10, color: "var(--muted2)", marginTop: 6 }} data-testid={`exposure-caliber-${baseName}`}>
+      <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6 }} data-testid={`exposure-caliber-${baseName}`}>
         <InfoPopover topic="影响面口径" testId={`exposure-caliber-${baseName}`}>
           订单 / 客户 / 数量取自与本卡 affectedOrders <b>同一份</b>窗内订单（不重算）；
           金额按细分参考单价折算（估算口径 · 非实际成交价）。

@@ -12,7 +12,7 @@
   margin-bottom: 3px;
 }
 .sub {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
   line-height: 1.6;
   max-width: 760px;
@@ -45,7 +45,7 @@
   line-height: 1.1;
 }
 .kpi span {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -69,11 +69,11 @@
 }
 .formRow i {
   font-style: normal;
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .grpHead {
-  font-size: 10.5px;
+  font-size: 12px;
   letter-spacing: 1.2px;
   color: var(--muted2);
   margin: 10px 0 4px;
@@ -90,7 +90,7 @@
   font-size: 17px;
 }
 .verdict .meta {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-top: 5px;
   line-height: 1.7;
@@ -126,7 +126,7 @@
   font-size: 12.5px;
 }
 .audWhy {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
   line-height: 1.7;
   margin-top: 5px;
@@ -139,8 +139,8 @@
   margin-top: 8px;
 }
 .tlToggle {
-  font-size: 10.5px;
-  color: var(--c-capacity);
+  font-size: 12px;
+  color: var(--c-capacity-txt);
   background: none;
   border: none;
   padding: 0;
@@ -199,7 +199,7 @@
 }
 .genTitle span {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .outcomeRow {
@@ -207,7 +207,7 @@
   gap: 14px;
   flex-wrap: wrap;
   margin: 8px 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .outcomeRow b {
@@ -224,22 +224,22 @@
   padding-top: 10px;
 }
 .genSec h5 {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted);
   letter-spacing: 1px;
   margin-bottom: 6px;
   font-family: var(--font-mono);
 }
 .gainGive {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.9;
 }
 .gainTag {
-  color: var(--ok);
+  color: var(--ok-txt);
   font-weight: 700;
 }
 .giveTag {
-  color: var(--amber);
+  color: var(--amber-txt);
   font-weight: 700;
 }
 .problem {
@@ -247,7 +247,7 @@
   border-radius: 8px;
   padding: 7px 10px;
   margin-top: 6px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .problem .unlock {
   color: var(--muted);
@@ -274,7 +274,7 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 7px 10px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--txt);
   line-height: 1.5;
 }
@@ -293,7 +293,7 @@
   margin-bottom: 12px;
 }
 .inputBar label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   display: inline-flex;
   align-items: center;
@@ -311,11 +311,11 @@
   color: var(--muted);
   border-radius: 99px;
   padding: 4px 12px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .chip.on {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-txt);
   background: rgba(76, 144, 240, 0.1);
 }
 .okBar {
@@ -344,19 +344,19 @@
 .noteAmber {
   border: 1px solid rgba(232, 181, 74, 0.5);
   background: rgba(232, 181, 74, 0.08);
-  color: var(--amber);
+  color: var(--amber-txt);
   border-radius: 8px;
   padding: 8px 12px;
-  font-size: 11.5px;
+  font-size: 12px;
   margin: 8px 0;
 }
 .noteRed {
   border: 1px solid rgba(224, 98, 108, 0.55);
   background: rgba(224, 98, 108, 0.08);
-  color: var(--danger);
+  color: var(--danger-txt);
   border-radius: 8px;
   padding: 8px 12px;
-  font-size: 11.5px;
+  font-size: 12px;
   margin: 8px 0;
 }
 .noteInfo {
@@ -365,7 +365,7 @@
   color: var(--muted);
   border-radius: 8px;
   padding: 8px 12px;
-  font-size: 11px;
+  font-size: 12px;
   margin: 8px 0;
 }
 .whatIfPanel {
@@ -380,7 +380,7 @@
   gap: 12px;
   flex-wrap: wrap;
   margin: 8px 0;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 .abCompare {
@@ -399,7 +399,7 @@
   display: block;
 }
 .abCompare span {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -417,7 +417,7 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px 10px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--txt);
   display: flex;
   align-items: center;
@@ -438,7 +438,7 @@
 .lockBanner {
   border: 1.5px solid rgba(176, 127, 216, 0.55);
   background: rgba(176, 127, 216, 0.08);
-  color: #b07fd8;
+  color: var(--c-equip-txt);
   border-radius: 10px;
   padding: 10px 14px;
   font-size: 12px;
@@ -449,7 +449,7 @@
   border-left: 3px solid var(--amber);
   border-radius: 8px;
   padding: 7px 10px;
-  font-size: 11.5px;
+  font-size: 12px;
   margin-bottom: 6px;
   line-height: 1.6;
 }
@@ -459,7 +459,7 @@
   gap: 8px;
   flex-wrap: wrap;
   margin: 8px 0;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 .miniForm input {
@@ -477,7 +477,7 @@
 
 /* —— 传导链时间轴（增量 §7.10-4/§7.11，PropagationTimeline 全局唯一实现） —— */
 .ptlHead {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted2);
   margin-bottom: 2px;
 }
@@ -526,24 +526,26 @@
 }
 .ptlW {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .ptlT {
   display: block;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   margin: 2px 0;
-  color: var(--ok);
+  color: var(--ok-txt);
 }
+/* WO-R9-CONTRAST：这两处原是**硬编码色**（绕过令牌，三套主题下都不跟随）——
+   #e8b54a 在浅色两套上只有 1.66:1。改走文字安全变体令牌。 */
 .ptlSt[data-sev="1"] .ptlT {
-  color: #e8b54a;
+  color: var(--warn-txt);
 }
 .ptlSt[data-sev="2"] .ptlT {
-  color: #dd7e9e;
+  color: var(--c-people-txt);
 }
 .ptlM {
-  font-size: 9.5px;
+  font-size: 12px;
   color: var(--muted);
   line-height: 1.5;
 }
@@ -556,7 +558,7 @@
 }
 .ptlO {
   font-family: var(--font-mono);
-  font-size: 8.5px;
+  font-size: 12px;
   border: 1px solid var(--line2);
   border-radius: 5px;
   padding: 1px 5px;
@@ -574,7 +576,7 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-bottom: 8px;
 }
@@ -595,11 +597,11 @@
   top: -1px;
   right: -1px;
   border-radius: 0 10px 0 10px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   padding: 3px 10px;
   background: rgba(98, 190, 119, 0.16);
-  color: var(--ok);
+  color: var(--ok-txt);
   border: 1px solid rgba(98, 190, 119, 0.4);
 }
 .genCardWrap {
@@ -610,14 +612,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12px;
   padding: 2.5px 0;
   border-bottom: 1px dashed var(--line2);
 }
 .meetRow i {
   font-style: normal;
   color: var(--muted2);
-  font-size: 10px;
+  font-size: 12px;
 }
 .hardChip {
   border: 1px solid var(--line2);
@@ -625,11 +627,11 @@
   color: var(--muted);
   border-radius: 99px;
   padding: 2px 8px;
-  font-size: 10px;
+  font-size: 12px;
 }
 .hardChip.on {
   border-color: rgba(224, 98, 108, 0.75);
-  color: var(--danger);
+  color: var(--danger-txt);
   background: rgba(224, 98, 108, 0.08);
 }
 .violBar {
@@ -639,12 +641,12 @@
   border-radius: 8px;
   padding: 7px 10px;
   margin-top: 6px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .violBar .unlock {
   color: var(--muted);
   margin-top: 2px;
-  font-size: 10.5px;
+  font-size: 12px;
 }
 
 /* —— S&OP：KPI 条 / 版本徽章 / 议程高亮 —— */
@@ -668,24 +670,24 @@
   line-height: 1.2;
 }
 .sopKpi span {
-  font-size: 9.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 .verBadge {
   border: 1px solid rgba(176, 127, 216, 0.55);
-  color: #b07fd8;
+  color: var(--c-equip-txt);
   background: rgba(176, 127, 216, 0.08);
   border-radius: 99px;
-  font-size: 10.5px;
+  font-size: 12px;
   padding: 3px 10px;
   font-weight: 700;
 }
 .c21Chip {
   border: 1px solid rgba(232, 181, 74, 0.6);
-  color: var(--amber);
+  color: var(--amber-txt);
   background: rgba(232, 181, 74, 0.08);
   border-radius: 99px;
-  font-size: 10px;
+  font-size: 12px;
   padding: 2px 8px;
   cursor: pointer;
 }
@@ -712,7 +714,7 @@
 }
 .pmStepNum {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-left: auto;
 }
@@ -720,7 +722,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
   margin: 6px 0;
 }
@@ -741,7 +743,7 @@
   align-items: center;
   justify-content: center;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   color: #0c1118;
   font-weight: 700;
 }
@@ -767,7 +769,7 @@
   border: 1px solid var(--line2);
   background: var(--panel2);
   color: var(--muted2);
-  font: 700 9px var(--font-mono);
+  font: 700 12px var(--font-mono);
   line-height: 1;
   cursor: help;
   padding: 0;
@@ -777,7 +779,7 @@
 }
 .hintBtn:hover,
 .hintBtn:focus-visible {
-  color: var(--accent);
+  color: var(--accent-txt);
   border-color: var(--accent);
   outline: none;
 }
@@ -795,7 +797,7 @@
   border-radius: 6px;
   background: var(--panel);
   box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--muted);
   text-align: left;
@@ -806,7 +808,7 @@
 }
 .hintPop code {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 /* —— 时间轴外框 —— */
@@ -825,21 +827,21 @@
   margin-bottom: 6px;
 }
 .ptlTitle {
-  font: 700 11px var(--font-mono);
+  font: 700 12px var(--font-mono);
   letter-spacing: 0.04em;
   color: var(--muted2);
 }
 .ptlCount {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--txt);
 }
 .ptlFlag {
-  font-size: 10px;
+  font-size: 12px;
   padding: 1px 6px;
   border-radius: 999px;
   border: 1px dashed var(--amber);
-  color: var(--amber);
+  color: var(--amber-txt);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -855,7 +857,7 @@
 .ptlAxisTick {
   position: absolute;
   top: 0;
-  font: 9px var(--font-mono);
+  font: 12px var(--font-mono);
   color: var(--muted2);
   transform: translateX(-50%);
 }
@@ -871,8 +873,8 @@
   position: absolute;
   top: -1px;
   transform: translateX(-50%);
-  font: 700 9px var(--font-mono);
-  color: var(--accent);
+  font: 700 12px var(--font-mono);
+  color: var(--accent-txt);
   white-space: nowrap;
 }
 
@@ -890,14 +892,14 @@
 }
 .ptlLaneName b {
   display: block;
-  font: 600 11px var(--font-mono);
+  font: 600 12px var(--font-mono);
   color: var(--txt);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .ptlLaneName span {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .ptlTrack {
@@ -920,7 +922,7 @@
   align-items: center;
   gap: 4px;
   padding: 0 5px;
-  font: 600 10px var(--font-mono);
+  font: 600 12px var(--font-mono);
   color: var(--txt);
   cursor: pointer;
   overflow: visible;
@@ -951,7 +953,7 @@
   border-right-style: dashed;
 }
 .ptlOrd {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .ptlBarLabel {
@@ -959,8 +961,8 @@
   text-overflow: ellipsis;
 }
 .ptlStack {
-  font: 9px var(--font-mono);
-  color: var(--amber);
+  font: 12px var(--font-mono);
+  color: var(--amber-txt);
   padding: 1px 0 3px;
 }
 
@@ -981,11 +983,11 @@
   margin: 0;
 }
 .ptlDetail dt {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .ptlDetail dd {
   margin: 0;
-  font: 10px var(--font-mono);
+  font: 12px var(--font-mono);
   color: var(--txt);
 }

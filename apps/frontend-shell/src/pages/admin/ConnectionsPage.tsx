@@ -75,7 +75,7 @@ export default function ConnectionsPage() {
                 {zh.health.freshness} {(s.latencyMin / 60).toFixed(1)}h / {zh.health.threshold} {(s.thresholdMin / 60).toFixed(1)}h
               </span>
               {s.degradeImpact && (
-                <div style={{ color: "var(--amber)", fontSize: 11.5 }} data-testid={`health-degrade-${s.connId}`}>
+                <div style={{ color: "var(--amber-txt)", fontSize: 12 }} data-testid={`health-degrade-${s.connId}`}>
                   ⚠ {zh.health.degradeNote((s.latencyMin / 60).toFixed(1), String(s.degradeImpact.p90From), String(s.degradeImpact.p90To))}
                   <span style={{ color: "var(--muted)", marginLeft: 8 }}>{zh.health.affectedSolvers(s.degradeImpact.affectedSolvers.join("、"))}</span>
                 </div>
@@ -135,7 +135,7 @@ export default function ConnectionsPage() {
                   {h ? (
                     <>
                       <span className={`badge ${h.status === "OK" ? "green" : h.status === "DELAYED" ? "amber" : "red"}`}>{healthStatusLabel(h.status)}</span>
-                      <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)", marginLeft: 5 }}>
+                      <span className="mono" style={{ fontSize: 12, color: "var(--muted2)", marginLeft: 5 }}>
                         {(h.latencyMin / 60).toFixed(1)}h
                       </span>
                     </>
@@ -144,7 +144,7 @@ export default function ConnectionsPage() {
                   )}
                 </td>
                 <td>{c.lastSyncAt ?? "—"}</td>
-                <td className="zh" style={{ color: "var(--danger)" }}>
+                <td className="zh" style={{ color: "var(--danger-txt)" }}>
                   {c.lastError ?? ""}
                 </td>
                 <td>
@@ -170,7 +170,7 @@ export default function ConnectionsPage() {
               {syncJob.status}
             </span>
             {syncJob.status === "RUNNING" && <span>{t.syncRunning}</span>}
-            <span className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>
+            <span className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>
               {Object.entries(syncJob.rowCounts)
                 .map(([k, v]) => `${k}:${v}`)
                 .join(" · ")}

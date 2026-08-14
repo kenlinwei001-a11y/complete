@@ -33,7 +33,7 @@
   color: var(--muted);
   border: 1px solid var(--line);
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 12px;
   padding: 2px 8px;
   cursor: pointer;
   font-family: var(--font-sans);
@@ -44,7 +44,7 @@
 
 .panel code {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   background: var(--bg2);
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -109,14 +109,14 @@
 .honesty p {
   margin: 4px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
 }
 .unanswerable {
   margin: 6px 0 0;
   padding-left: 18px;
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.8;
 }
 
@@ -141,15 +141,15 @@
 
 .caption {
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
 }
 .count {
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
 }
 .reason {
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   flex-basis: 100%;
 }
@@ -165,7 +165,7 @@
 .desc {
   margin: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
 }
 
@@ -178,13 +178,13 @@
   border-radius: 6px;
   padding: 6px 10px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
 }
 .empty {
   margin: 0;
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* ── 属性表 ─────────────────────────────────────────────────────────────── */
@@ -194,7 +194,7 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: 12px;
 }
 .table th,
 .table td {
@@ -215,7 +215,7 @@
 .badge,
 .badgeDerived,
 .badgeWarn {
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 3px;
   padding: 0 4px;
   margin-right: 4px;
@@ -227,17 +227,17 @@
 }
 .badgeDerived {
   background: var(--bg2);
-  color: var(--accent);
+  color: var(--accent-txt);
   border-color: var(--accent);
 }
 .badgeWarn {
   background: var(--bg2);
-  color: var(--danger);
+  color: var(--danger-txt);
   border-color: var(--danger);
 }
 
 .chip {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   background: var(--bg2);
   border: 1px solid var(--line);
@@ -257,7 +257,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .rels li,
 .siblings li,
@@ -286,11 +286,11 @@
 
 /* 三态各一相：颜色不同才算「三态」，否则等于合并成有/无 */
 .layers li[data-status="present"] .chip {
-  color: var(--ok);
+  color: var(--ok-txt);
   border-color: var(--ok);
 }
 .layers li[data-status="not_in_slice"] .chip {
-  color: var(--warn);
+  color: var(--warn-txt);
   border-color: var(--warn);
 }
 .layers li[data-status="absent"] .chip {

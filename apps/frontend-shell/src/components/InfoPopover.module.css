@@ -25,13 +25,13 @@
   border-radius: 50%;
   background: transparent;
   color: var(--muted2);
-  font: 700 9px/1 var(--font-mono);
+  font: 700 12px/1 var(--font-mono);
   cursor: help;
 }
 .trigger:hover,
 .trigger[aria-expanded="true"] {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-txt);
 }
 .trigger:focus-visible {
   outline: 2px solid var(--accent);
@@ -58,7 +58,7 @@
   overflow: auto;
   padding: 9px 11px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   text-align: left;
   white-space: normal;
@@ -73,14 +73,14 @@
   color: var(--txt);
 }
 .body code {
-  font: 10px var(--font-mono);
+  font: 12px var(--font-mono);
   color: var(--muted2);
   word-break: break-all;
 }
 .title {
   display: block;
   margin-bottom: 4px;
-  font: 700 10px var(--font-mono);
+  font: 700 12px var(--font-mono);
   letter-spacing: 0.08em;
   color: var(--txt);
 }

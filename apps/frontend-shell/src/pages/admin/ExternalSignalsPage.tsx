@@ -8,7 +8,7 @@ import zh from "@/locales/zh";
 function Sparkline({ signalKey }: { signalKey: string }) {
   const { data } = useQuery({ queryKey: ["a", "signal-series", signalKey], queryFn: () => fetchSignalSeries(signalKey) });
   const pts = data?.points ?? [];
-  if (pts.length === 0) return <span style={{ fontSize: 11, color: "var(--muted2)" }}>{zh.common.loading}</span>;
+  if (pts.length === 0) return <span style={{ fontSize: 12, color: "var(--muted2)" }}>{zh.common.loading}</span>;
   const vals = pts.map((p) => p.value);
   const min = Math.min(...vals);
   const max = Math.max(...vals);
@@ -22,7 +22,7 @@ function Sparkline({ signalKey }: { signalKey: string }) {
       <svg width={W} height={H} role="img" aria-label="近12月时序">
         <path d={d} fill="none" stroke="var(--c-forecast, #7C8896)" strokeWidth={1.5} />
       </svg>
-      <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }}>{pts[0]!.month}→{pts[pts.length - 1]!.month}</span>
+      <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>{pts[0]!.month}→{pts[pts.length - 1]!.month}</span>
     </span>
   );
 }
@@ -49,7 +49,7 @@ export default function ExternalSignalsPage() {
   return (
     <div data-testid="external-signals-page">
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>外部信号（环境/市场）</h2>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
         外部域一等对象（EXT_SIG）：经 EXTERNAL 连接器同步，带来源/单位/新鲜度可溯。给信号施加冲击可看对规划指标的敏感性。
       </div>
 
@@ -70,7 +70,7 @@ export default function ExternalSignalsPage() {
             <Fragment key={s.signalKey}>
               <tr data-testid={`signal-${s.signalKey}`}>
                 <td>
-                  <b>{s.name}</b> <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }}>{s.signalKey}</span>
+                  <b>{s.name}</b> <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>{s.signalKey}</span>
                   <button className="btn sm" style={{ marginLeft: 6 }} data-testid={`series-toggle-${s.signalKey}`} onClick={() => setSeriesOpen((k) => (k === s.signalKey ? null : s.signalKey))}>
                     {seriesOpen === s.signalKey ? "收起时序" : "时序"}
                   </button>
@@ -79,7 +79,7 @@ export default function ExternalSignalsPage() {
                 <td className="mono">{s.value} {s.unit}</td>
                 <td>{TREND(s.trend)}</td>
                 <td><span className="badge">{s.impact}</span></td>
-                <td style={{ fontSize: 11, color: "var(--muted)" }}>{s.source} · {s.asOf}</td>
+                <td style={{ fontSize: 12, color: "var(--muted)" }}>{s.source} · {s.asOf}</td>
                 <td>
                   <input
                     type="number" step={5} value={shocks[s.signalKey] ?? 0} aria-label={`${s.name} 冲击`}
@@ -91,7 +91,7 @@ export default function ExternalSignalsPage() {
               {seriesOpen === s.signalKey && (
                 <tr>
                   <td colSpan={7} style={{ background: "var(--panel2, rgba(255,255,255,.02))" }}>
-                    <span style={{ fontSize: 11, color: "var(--muted2)", marginRight: 8 }}>近 12 月：</span>
+                    <span style={{ fontSize: 12, color: "var(--muted2)", marginRight: 8 }}>近 12 月：</span>
                     <Sparkline signalKey={s.signalKey} />
                   </td>
                 </tr>
@@ -105,7 +105,7 @@ export default function ExternalSignalsPage() {
         <button className="btn primary sm" data-testid="run-sensitivity" disabled={run.isPending} onClick={() => run.mutate()}>
           算敏感性
         </button>
-        <span style={{ fontSize: 11, color: "var(--muted2)" }}>Δ指标(pp) = Σ Δ信号% × 弹性</span>
+        <span style={{ fontSize: 12, color: "var(--muted2)" }}>Δ指标(pp) = Σ Δ信号% × 弹性</span>
       </div>
 
       {result && (
@@ -115,10 +115,10 @@ export default function ExternalSignalsPage() {
           {result.impacts.map((im) => (
             <div key={im.metric} data-testid={`impact-${im.metric}`} style={{ marginBottom: 8 }}>
               <b>{im.metric}</b>：
-              <span style={{ color: im.deltaPct < 0 ? "var(--danger)" : "var(--ok)", fontWeight: 700 }}>
+              <span style={{ color: im.deltaPct < 0 ? "var(--danger-txt)" : "var(--ok-txt)", fontWeight: 700 }}>
                 {im.deltaPct > 0 ? "+" : ""}{im.deltaPct} pp
               </span>
-              <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 8 }}>
+              <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 8 }}>
                 {im.drivers.map((d) => `${d.signalKey} ${d.deltaPct > 0 ? "+" : ""}${d.deltaPct}%→${d.contributionPp > 0 ? "+" : ""}${d.contributionPp}pp`).join(" · ")}
               </span>
             </div>

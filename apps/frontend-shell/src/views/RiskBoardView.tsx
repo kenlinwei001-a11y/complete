@@ -303,7 +303,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
         <>
           {/* WO-DECISION-INFO-FE ④ · 展示序开关：影响面序（求解器 exposureOrder·零敞口沉底）↔ 求解器数组序。
               缺 exposureOrder（旧后端/桩）→ chip 停用并说明"后端未下发"，绝不在前端自己排一套冒充。 */}
-          <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: "var(--muted)", margin: "0 0 10px" }} data-testid="risk-order-mode">
+          <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, color: "var(--muted)", margin: "0 0 10px" }} data-testid="risk-order-mode">
             <span>看板排序：</span>
             {/* WO-R5 收编时改：两个 chip 原各挂一个承载**排序公式**的原生 `title=`，
                 被 hover-layer 那道棘轮门当场拦下（79 → 82）。按规范 §2 R-UI-3
@@ -333,7 +333,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
               onKeyDown={(e) => e.key === "Enter" && setOrderMode("solver")}>
               越线日序
             </span>
-            <span style={{ fontSize: 10, color: "var(--muted2)" }} data-testid="risk-order-mode-note">
+            <span style={{ fontSize: 12, color: "var(--muted2)" }} data-testid="risk-order-mode-note">
               {hasExposureOrder
                 ? "「影响面序」= 求解器 exposureOrder（与 exposure.rank 同一次计算的投影，前端不另排）；零敞口基地沉底。⚠ 首要风险徽章始终跟着**越线日序**第一张卡走。"
                 : "本次响应未返回 exposureOrder（契约中为 optional）→ 只能按越线日序展示，前端不自造影响面排序。"}
@@ -373,7 +373,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                   <div className={styles.rkCH}>
                     <b>
                       {card.base}
-                      {isPrimary && <span className="badge" data-testid={`risk-primary-${card.base}`} style={{ marginLeft: 6, background: "var(--danger)", color: "#fff", fontSize: 9 }}>{zh.risk.primaryTag}</span>}
+                      {isPrimary && <span className="badge" data-testid={`risk-primary-${card.base}`} style={{ marginLeft: 6, background: "var(--danger)", color: "#fff", fontSize: 12 }}>{zh.risk.primaryTag}</span>}
                     </b>
                     <RiskHoverTrigger
                       data={{ base: card.base, factor: card.factor, peak: card.peak, crossDay: card.crossDay, series: card.series, threshold }}
@@ -484,7 +484,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                     {regen.isPending ? zh.risk.plan.regenBusy : zh.risk.plan.regen}
                   </span>
                   {"　"}
-                  <span data-testid="risk-plan-live-note" style={{ fontSize: 10, color: "var(--muted2)" }}>
+                  <span data-testid="risk-plan-live-note" style={{ fontSize: 12, color: "var(--muted2)" }}>
                     {livePlan
                       ? livePlan.leverCount > 0
                         ? `（${zh.risk.plan.withLevers(livePlan.leverCount)}）`
@@ -538,11 +538,11 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                           onClick={toggle}
                           onKeyDown={(e) => e.key === "Enter" && toggle()}>
                           <td className="mono"><b>{i + 1}</b></td>
-                          <td className="zh"><b>{r.act}</b>{r.det ? <><br /><span style={{ fontSize: 9, color: "var(--muted2)" }}>{r.det}</span></> : null}</td>
+                          <td className="zh"><b>{r.act}</b>{r.det ? <><br /><span style={{ fontSize: 12, color: "var(--muted2)" }}>{r.det}</span></> : null}</td>
                           <td className="zh">{r.owner}</td>
                           <td className="mono" style={{ whiteSpace: "nowrap" }}>{r.start}</td>
                           <td className="mono" style={{ whiteSpace: "nowrap" }}>{r.done}</td>
-                          <td className="zh" style={{ color: "var(--ok)" }}>{r.eff}</td>
+                          <td className="zh" style={{ color: "var(--ok-txt)" }}>{r.eff}</td>
                           <td><span className="badge">{r.rule}</span></td>
                         </tr>
                         {rowOpen && (
@@ -604,8 +604,8 @@ function CardExposureLine({ card }: { card: RiskCard }) {
   }
   return (
     <div className={styles.rkCF} data-testid={`risk-exposure-line-${card.base}`} data-exposure="OK">
-      <span style={{ color: "var(--c-forecast)" }}>影响面 #{exp.rank} · {exp.orderCount} 张单 · {exp.customerCount} 家客户</span>
-      <span style={{ color: "var(--ok)" }}>{exp.revenueYi} {exp.units.revenue}</span>
+      <span style={{ color: "var(--c-forecast-txt)" }}>影响面 #{exp.rank} · {exp.orderCount} 张单 · {exp.customerCount} 家客户</span>
+      <span style={{ color: "var(--ok-txt)" }}>{exp.revenueYi} {exp.units.revenue}</span>
     </div>
   );
 }
@@ -647,7 +647,7 @@ function OverlayEffectNote({ rows }: { rows: PlanRow[] }) {
    *   那句解释归上方杠杆面板的 `?` 浮层，不归这里。豁免只覆盖这一个回执节点。
    */
   return (
-    <span data-testid="risk-plan-overlay-note" style={{ fontSize: 10, color: "var(--muted2)" }}>
+    <span data-testid="risk-plan-overlay-note" style={{ fontSize: 12, color: "var(--muted2)" }}>
       {landed.length === 0
         ? "（杠杆未落在任何风险基地的产能链上 → 行动项理应不变）"
         : `（杠杆落在 ${landed.map(([b, v]) => `${b} ×${v.capRatio.toFixed(3)}`).join("、")}；其中 ${withGap.length} 个基地窗内有缺口→行动项已随之重算，${landed.length - withGap.length} 个窗内无缺口→行动项理应不变）`}
@@ -763,13 +763,13 @@ function OrderAggView({ horizon }: { horizon: number }) {
           第一层只留**范围本身**（窗口天数 + 覆盖面），「与顶部 KPI 为何对不上」这条口径差降进 `?` 浮层。
           `?` 触发器即规范 §1 要求的「可见记号」——降层不是删除。
         */}
-        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }} data-testid="risk-order-agg-caliber">
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }} data-testid="risk-order-agg-caliber">
           未来 {horizon} 天内交期 · 全部基地
           <InfoPopover topic={zh.risk.info.caliber} testId="order-agg-caliber">
             <p>{zh.risk.info.caliberBody}</p>
           </InfoPopover>
         </div>
-        <div style={{ fontSize: 11, color: "var(--muted)", margin: "4px 0 12px", display: "flex", alignItems: "center", gap: 7 }}>
+        <div style={{ fontSize: 12, color: "var(--muted)", margin: "4px 0 12px", display: "flex", alignItems: "center", gap: 7 }}>
           分类维度：
           <span className={`${styles.tierChip} ${seg === "app" ? styles.tierChipOn : ""}`} data-testid="risk-seg-app" role="button" tabIndex={0} onClick={() => setSeg("app")} onKeyDown={(e) => e.key === "Enter" && setSeg("app")}>应用细分</span>
           <span className={`${styles.tierChip} ${seg === "base" ? styles.tierChipOn : ""}`} data-testid="risk-seg-base" role="button" tabIndex={0} onClick={() => setSeg("base")} onKeyDown={(e) => e.key === "Enter" && setSeg("base")}>按基地</span>
@@ -787,7 +787,7 @@ function OrderAggView({ horizon }: { horizon: number }) {
             <tbody>
               {econRows.map((r) => (
                 <tr key={r.name} data-testid={`risk-econ-row-${r.name}`}>
-                  <td className="zh"><b>{r.name}</b> <span style={{ color: "var(--muted2)", fontSize: 10 }}>({r.orderCount})</span></td>
+                  <td className="zh"><b>{r.name}</b> <span style={{ color: "var(--muted2)", fontSize: 12 }}>({r.orderCount})</span></td>
                   {/* WO-UI-DECLUTTER-TOP3：逐格 `title=`（原生 tooltip·规范 §2 禁用）撤掉，
                       「为什么是 —」由列头旁的「经营数据取数来源」`?` 浮层一次说清；
                       `aria-label` 保留，读屏用户不靠 hover 也拿得到这条诚实位。 */}
@@ -795,14 +795,14 @@ function OrderAggView({ horizon }: { horizon: number }) {
                   <td className="mono" style={{ color: "var(--muted2)" }} aria-label={zh.risk.info.econNoSource}>—</td>
                   <td className="mono" style={{ color: "var(--muted2)" }}>—</td>
                   <td className="mono" style={{ color: "var(--muted2)" }}>—</td>
-                  <td className="mono" style={{ color: "var(--c-forecast)", fontWeight: 700 }}>
+                  <td className="mono" style={{ color: "var(--c-forecast-txt)", fontWeight: 700 }}>
                     {r.revenue > 0 ? (
                       <Provenance testId={`risk-econ-rev-${r.name}`} src="affected_orders × SEG_REGISTRY" formula="营收(亿) = Σ 数量 × SEG 参考单价(万元/套) ÷ 1e4" inputs={["受影响订单数量", "SEG_REGISTRY 参考单价"]} note="估算口径 · SEG 参考单价（合约域单一来源）非逐单实际成交价">
                         {`${wanToYi(r.revenue).toFixed(1)} 亿`}
                       </Provenance>
                     ) : "—"}
                   </td>
-                  <td className="mono" style={{ color: "var(--ok)", fontWeight: 700 }}>
+                  <td className="mono" style={{ color: "var(--ok-txt)", fontWeight: 700 }}>
                     {r.gp > 0 ? (
                       <Provenance testId={`risk-econ-gp-${r.name}`} src="affected_orders × SEG_REGISTRY" formula="毛利额(亿) = 营收 × SEG 参考毛利率" inputs={["营收", "SEG_REGISTRY 参考毛利率"]} note="估算口径 · SEG 参考毛利率非财务实测值">
                         {`${wanToYi(r.gp).toFixed(1)} 亿`}
@@ -820,14 +820,14 @@ function OrderAggView({ horizon }: { horizon: number }) {
               ))}
               <tr style={{ borderTop: "1px solid var(--line2)" }}>
                 <td className="zh"><b>合计</b></td><td className="mono" style={{ color: "var(--muted2)" }}>—</td><td className="mono" style={{ color: "var(--muted2)" }}>—</td><td className="mono" style={{ color: "var(--muted2)" }}>—</td><td className="mono" style={{ color: "var(--muted2)" }}>—</td>
-                <td className="mono" style={{ color: "var(--c-forecast)", fontWeight: 700 }} data-testid="risk-econ-total-rev">
+                <td className="mono" style={{ color: "var(--c-forecast-txt)", fontWeight: 700 }} data-testid="risk-econ-total-rev">
                   {totalRev > 0 ? (
                     <Provenance testId="risk-econ-total-rev" src="affected_orders × SEG_REGISTRY" formula="合计营收(亿) = Σ 各细分营收" inputs={["各行营收（数量×SEG 参考单价）"]} note="估算口径 · SEG 参考单价非逐单实际成交价">
                       {`${wanToYi(totalRev).toFixed(1)} 亿`}
                     </Provenance>
                   ) : "—"}
                 </td>
-                <td className="mono" style={{ color: "var(--ok)", fontWeight: 700 }}>
+                <td className="mono" style={{ color: "var(--ok-txt)", fontWeight: 700 }}>
                   {totalGp > 0 ? (
                     <Provenance testId="risk-econ-total-gp" src="affected_orders × SEG_REGISTRY" formula="合计毛利额(亿) = Σ 各细分毛利额" inputs={["各行毛利额"]} note="估算口径 · SEG 参考毛利率非财务实测值">
                       {`${wanToYi(totalGp).toFixed(1)} 亿`}
@@ -859,7 +859,7 @@ function OrderAggView({ horizon }: { horizon: number }) {
         </select>
         {baseFilter !== "__all__" && (
           <span className={styles.rkFchip} data-testid="risk-order-clearbase" role="button" tabIndex={0}
-            style={{ borderColor: "var(--c-capacity)", color: "var(--c-capacity)", cursor: "pointer" }}
+            style={{ borderColor: "var(--c-capacity)", color: "var(--c-capacity-txt)", cursor: "pointer" }}
             onClick={() => setBaseFilter("__all__")} onKeyDown={(e) => e.key === "Enter" && setBaseFilter("__all__")}>✕ 清除（当前：{baseFilter}）</span>
         )}
       </div>
@@ -889,7 +889,7 @@ function OrderAggView({ horizon }: { horizon: number }) {
                 <tr key={String(r.so ?? i)} data-testid={`risk-order-row-${r.so ?? i}`}>
                   <td className="mono"><b>{r.so}</b></td>
                   <td className="zh">{r.cust}</td>
-                  <td><span className={styles.rkFchip} style={{ borderColor: "var(--c-capacity)", color: "var(--c-capacity)" }}>{r.seg}</span></td>
+                  <td><span className={styles.rkFchip} style={{ borderColor: "var(--c-capacity)", color: "var(--c-capacity-txt)" }}>{r.seg}</span></td>
                   <td className="zh">{r.model}</td>
                   <td className="mono">
                     <Provenance testId={`risk-order-qty-${r.so ?? i}`} src="affected_orders 求解器（订单域）" formula="订单数量（套）= Order.qty 原值" inputs={[`SO ${r.so}`, `型号 ${r.model}`]} note="真值 · 受影响订单逐单数量">
@@ -900,12 +900,12 @@ function OrderAggView({ horizon }: { horizon: number }) {
                   <td>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 3, maxWidth: 420 }}>
                       {(r.risks ?? []).slice(0, 4).map((k, j) => (
-                        <span key={j} className={styles.rkFchip} style={{ borderColor: "var(--danger)", color: "var(--danger)" }}>{k.base}·{k.factor}{k.crossDay != null ? ` T+${k.crossDay}` : ""}</span>
+                        <span key={j} className={styles.rkFchip} style={{ borderColor: "var(--danger)", color: "var(--danger-txt)" }}>{k.base}·{k.factor}{k.crossDay != null ? ` T+${k.crossDay}` : ""}</span>
                       ))}
                       {(r.risks ?? []).length > 4 && <span className={styles.rkFchip} style={{ borderColor: "var(--line2)", color: "var(--muted2)" }}>+{(r.risks ?? []).length - 4}</span>}
                     </div>
                   </td>
-                  <td className="mono" style={{ color: "var(--danger)", fontWeight: 700 }}>{r.delay != null ? `${r.delay} 天` : "—"}</td>
+                  <td className="mono" style={{ color: "var(--danger-txt)", fontWeight: 700 }}>{r.delay != null ? `${r.delay} 天` : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -1224,7 +1224,7 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, rc
       {/* WO-FACTOR-SCOPE-SINGLESOURCE · 因子作用域切换：chip 的**值 = CausalFactor.factorId**（引擎认的键），
           **显示 = label**（用户认得的因子名）；候选集来自引擎回执 `scope.availableFactors`，前端零拼装。
           修前显示什么就传什么（BN 中文因子名），引擎一个都不认 ⇒ 7 个按钮返回同一棵树。 */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", margin: "2px 0 8px", fontSize: 11 }} data-testid="rootcause-factor-scope">
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", margin: "2px 0 8px", fontSize: 12 }} data-testid="rootcause-factor-scope">
         <span style={{ color: "var(--muted2)" }}>{zh.risk.live.rootcause.scopeTitle}：</span>
         <span
           className={`${styles.tierChip} ${!rcFactor ? styles.tierChipOn : ""}`}
@@ -1272,7 +1272,7 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, rc
             background: "color-mix(in srgb, var(--danger) 10%, transparent)", fontSize: 12, lineHeight: 1.6,
           }}
         >
-          <b style={{ color: "var(--danger)" }}>{zh.risk.live.rootcause.notRefinedTitle}</b>
+          <b style={{ color: "var(--danger-txt)" }}>{zh.risk.live.rootcause.notRefinedTitle}</b>
           <span>{scope?.factorNote ?? zh.risk.live.rootcause.notRefinedFallback(String(rcFactor))}</span>
           <span
             className={styles.tierChip}
@@ -1305,7 +1305,7 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, rc
           {/* 向后兼容（R6·不回归）：只有引擎**显式**回执 `factorApplied:false` 时才走"未细分"诚实注解；
               旧后端/桩不带 scope 字段（undefined）→ 维持原"已按因子细分"语义，既有 SEAM 测试零回归。 */}
           {rcFactor && !factorRejected ? (
-            <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
+            <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
               {/* 引擎回执里的 factorLabel 优先（人话）；旧后端/桩不带 scope（undefined）→ 回落 id，语义不变 R6。 */}
               {zh.risk.live.rootcause.refined(scope?.factorLabel ?? String(rcFactor))}
             </div>
@@ -1313,7 +1313,7 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, rc
             /* WO-UI-DECLUTTER-TOP3：诚实位的**状态**（「未按因子细分」）留第一层；
                「怎么才能细分 / 数据源怎么算」这段口径降进 `?` 浮层。规范 §1：静默降层等于删除 ——
                故第一层仍看得见「未按因子细分」这个记号，浮层只承接解释。 */
-            <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
+            <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }} data-testid="rootcause-scope-note">
 {zh.risk.live.rootcause.baseAggregatedShort}
               <InfoPopover topic={zh.risk.info.rootcause} testId={`rootcause-scope-${base}`}>
                 <p>{zh.risk.info.rootcauseBody}</p>
@@ -1446,14 +1446,14 @@ function CapacityScenarioPanel({ baseId, live }: { baseId: string; live: LiveLev
         <button className="btn sm primary" data-testid="caplive-scenario-save" disabled={!hasLive || save.isPending} onClick={() => save.mutate(undefined)}>
           {zh.risk.live.scenario.save}
         </button>
-        {!hasLive && <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>{zh.risk.live.scenario.saveEmpty}</span>}
+        {!hasLive && <span style={{ fontSize: 12, color: "var(--muted2)" }}>{zh.risk.live.scenario.saveEmpty}</span>}
       </div>
 
       {scenarios.length === 0 ? (
         <div className="empty-state" data-testid="caplive-scenario-empty" style={{ fontSize: 12 }}>{zh.risk.live.scenario.empty}</div>
       ) : (
         <>
-          <table className="cmp" data-testid="caplive-scenario-list" style={{ fontSize: 11 }}>
+          <table className="cmp" data-testid="caplive-scenario-list" style={{ fontSize: 12 }}>
             <thead>
               <tr>
                 <th>{zh.risk.live.scenario.col.pick}</th>
@@ -1468,7 +1468,7 @@ function CapacityScenarioPanel({ baseId, live }: { baseId: string; live: LiveLev
                   <td>
                     <input type="checkbox" data-testid={`caplive-scenario-pick-${s.id}`} checked={selected.includes(s.id)} onChange={() => toggle(s.id)} />
                   </td>
-                  <td className="zh"><b>{s.name}</b>{s.parentId && <span className="badge" style={{ marginLeft: 5, fontSize: 9 }}>分支</span>}</td>
+                  <td className="zh"><b>{s.name}</b>{s.parentId && <span className="badge" style={{ marginLeft: 5, fontSize: 12 }}>分支</span>}</td>
                   <td className="mono" data-testid={`caplive-scenario-capgain-${s.id}`}>{s.kpis.capGain}</td>
                   <td>
                     <button className="btn sm" data-testid={`caplive-scenario-branch-${s.id}`} disabled={!hasLive || save.isPending} onClick={() => save.mutate(s.id)}>
@@ -1484,12 +1484,12 @@ function CapacityScenarioPanel({ baseId, live }: { baseId: string; live: LiveLev
             <button className="btn sm" data-testid="caplive-scenario-compare" disabled={selected.length < 2} onClick={() => void compareQ.refetch()}>
               {zh.risk.live.scenario.compare}
             </button>
-            <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>{zh.risk.live.scenario.pickHint}</span>
+            <span style={{ fontSize: 12, color: "var(--muted2)" }}>{zh.risk.live.scenario.pickHint}</span>
           </div>
 
           {/* 横比矩阵：各格 = 各方案 generic_inference 真算（改方案 apply → 矩阵变·KILL-MOCK）。 */}
           {matrix && matrix.rows.length > 0 && (
-            <table className="cmp" data-testid="caplive-scenario-matrix" style={{ fontSize: 11 }}>
+            <table className="cmp" data-testid="caplive-scenario-matrix" style={{ fontSize: 12 }}>
               <thead>
                 <tr>
                   <th>{zh.risk.live.scenario.col.scheme}</th>
@@ -1527,7 +1527,7 @@ function CapacityScenarioPanel({ baseId, live }: { baseId: string; live: LiveLev
               </tbody>
             </table>
           )}
-          <div style={{ fontSize: 10, color: "var(--muted2)", marginTop: 6 }} data-testid="caplive-scenario-gate-note">
+          <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6 }} data-testid="caplive-scenario-gate-note">
             {zh.risk.live.scenario.adopted}
           </div>
         </>
@@ -1638,7 +1638,7 @@ function FactorRow({ label, sub, color, values, threshold, onDay, affectedByDay 
                 <span
                   aria-hidden="true"
                   data-testid={`risk-dot-order-${i}`}
-                  style={{ position: "absolute", top: -7, left: "50%", transform: "translateX(-50%)", fontSize: 8, lineHeight: 1, color: "var(--ink, #e8b54a)", pointerEvents: "none" }}
+                  style={{ position: "absolute", top: -7, left: "50%", transform: "translateX(-50%)", fontSize: 12, lineHeight: 1, color: "var(--ink, #e8b54a)", pointerEvents: "none" }}
                 >
                   ▾
                 </span>
@@ -1689,7 +1689,7 @@ function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors 
         正是规范 §2 R-UI-3 原文点名的 `A × B ÷ C` 形态。连同「④ 采纳经 adopt_mitigation…」
         这条流程说明一起降进本 `?` 浮层；第一层只留结论（谁分最高）与那张比对矩阵的数字。
       */}
-      <div className={styles.wfT} style={{ color: "var(--ok)" }}>
+      <div className={styles.wfT} style={{ color: "var(--ok-txt)" }}>
         💡 对症方案 · 比对推演 · {factor}（{plans.length} 个）
         <InfoPopover topic={zh.risk.info.score} testId="mitigation-score-calc">
           <p>{zh.risk.info.scoreBody}</p>
@@ -1697,9 +1697,9 @@ function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors 
         </InfoPopover>
       </div>
       {isLoading ? (
-        <div style={{ color: "var(--muted2)", fontSize: 11 }}>{zh.common.loading}</div>
+        <div style={{ color: "var(--muted2)", fontSize: 12 }}>{zh.common.loading}</div>
       ) : mitFail ? (
-        <div className="empty-state" style={{ fontSize: 11 }} data-testid="mitigation-error">
+        <div className="empty-state" style={{ fontSize: 12 }} data-testid="mitigation-error">
           mitigation_select 请求失败
           {mitFail.status != null ? ` · HTTP ${mitFail.status}` : ""}
           {mitFail.code ? ` · 错误码 ${mitFail.code}` : ""}
@@ -1707,21 +1707,21 @@ function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors 
           {mitFail.message ? ` · ${mitFail.message}` : ""}
         </div>
       ) : !plans.length ? (
-        <div className="empty-state" style={{ fontSize: 11 }} data-testid="mitigation-empty">{zh.common.none}</div>
+        <div className="empty-state" style={{ fontSize: 12 }} data-testid="mitigation-empty">{zh.common.none}</div>
       ) : (
         <>
           {/* ② score 拆解 = 跨方案比对矩阵（非单一数字·真出处 mitigation_select.plans[]）：一眼见谁综合分最高·为何。
               评分公式已降进上方「综合评分口径」`?` 浮层（规范 R-UI-3），此处只留排序事实。 */}
-          <div style={{ fontSize: 10.5, color: "var(--muted)", margin: "2px 0 5px" }}>评分降序</div>
-          <table className="cmp" data-testid="mitigation-matrix" style={{ fontSize: 11, marginBottom: 10 }}>
+          <div style={{ fontSize: 12, color: "var(--muted)", margin: "2px 0 5px" }}>评分降序</div>
+          <table className="cmp" data-testid="mitigation-matrix" style={{ fontSize: 12, marginBottom: 10 }}>
             <thead>
               <tr><th>方案</th><th>见效(pp)</th><th>周期(周)</th><th>投入</th><th>风险</th><th>综合评分</th></tr>
             </thead>
             <tbody>
               {ranked.map((p) => (
                 <tr key={p.key} data-testid={`mitigation-matrix-row-${p.key}`} style={p.key === recommended ? { background: "rgba(98,190,119,.12)" } : undefined}>
-                  <td className="zh"><b>{p.name}</b>{p.key === recommended && <span className="badge" style={{ marginLeft: 5, background: "var(--ok)", color: "#0a1f12", fontSize: 9 }}>推荐</span>}</td>
-                  <td className="mono" data-testid={`mitigation-eff-${p.key}`} style={{ color: "var(--ok)" }}>{p.eff}</td>
+                  <td className="zh"><b>{p.name}</b>{p.key === recommended && <span className="badge" style={{ marginLeft: 5, background: "var(--ok)", color: "#0a1f12", fontSize: 12 }}>推荐</span>}</td>
+                  <td className="mono" data-testid={`mitigation-eff-${p.key}`} style={{ color: "var(--ok-txt)" }}>{p.eff}</td>
                   <td className="mono">{p.tn}</td>
                   <td className="zh">{p.cost}</td>
                   <td className="zh">{p.risk ?? "—"}</td>
@@ -1740,7 +1740,7 @@ function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors 
                 <div className={styles.rkSolH}>
                   <b>
                     {rankOf(p.key)}. {p.name}
-                    {p.key === recommended && <span className="badge" style={{ marginLeft: 6, background: "var(--ok)", color: "#0a1f12", fontSize: 9 }}>推荐</span>}
+                    {p.key === recommended && <span className="badge" style={{ marginLeft: 6, background: "var(--ok)", color: "#0a1f12", fontSize: 12 }}>推荐</span>}
                   </b>
                   <button
                     className={styles.fcGo}
@@ -1754,11 +1754,11 @@ function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors 
                 {/* 推演链（过程可见·非裸结论）。 */}
                 <div className={styles.rkSolM} data-testid={`mitigation-chain-${p.key}`} style={{ display: "grid", gap: 3 }}>
                   <span data-testid={`mitigation-target-${p.key}`}>
-                    ① 对症根因：{matched ? <>直指根因树「<b style={{ color: "var(--c-solver)" }}>{matched}</b>」</> : <>针对越线因子「{factor}」<span style={{ color: "var(--muted2)" }}>（根因树未见对齐的结构节点·据实）</span></>}
+                    ① 对症根因：{matched ? <>直指根因树「<b style={{ color: "var(--c-solver-txt)" }}>{matched}</b>」</> : <>针对越线因子「{factor}」<span style={{ color: "var(--muted2)" }}>（根因树未见对齐的结构节点·据实）</span></>}
                   </span>
                   <span>② 评分构成：见效 {p.eff}pp · 周期 {p.tn}周 · 投入 {p.cost} · 风险 {p.risk ?? "—"} → 综合 <b>{p.score}</b>（{p.key === recommended ? "全案最高·故推荐" : `第 ${rankOf(p.key)} 名`}）</span>
                   <span data-testid={`mitigation-block-${p.key}`}>
-                    ③ 预期堵口：峰值张力 {Math.round(tightness)} − 见效 {p.eff}pp → <b style={{ color: clears ? "var(--ok)" : "var(--danger)" }}>{after}</b>
+                    ③ 预期堵口：峰值张力 {Math.round(tightness)} − 见效 {p.eff}pp → <b style={{ color: clears ? "var(--ok-txt)" : "var(--danger-txt)" }}>{after}</b>
                     {/* 数据来源（`mitigation_select.eff`）按规范 §1 属浮层「凭什么」那一层，已收进
                         上方「综合评分口径」浮层；第一层只留堵口后的**数值**与是否消解的**状态**。 */}
                     {clears ? `（预计消解越线·<阈值 ${threshold}）` : `（仍越线·需叠加方案）`}
@@ -1769,7 +1769,7 @@ function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors 
           })}
           {/* 「采纳之后会发生什么」这段流程说明已降进上方「综合评分口径」浮层；
               第一层保留链路名本身（adopt_mitigation → Action 审批）——那是**名字**，属第一层。 */}
-          <div style={{ fontSize: 10, color: "var(--muted2)", marginTop: 6 }} data-testid="mitigation-gate-note">
+          <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6 }} data-testid="mitigation-gate-note">
             ④ 采纳经 <b>adopt_mitigation</b> → Action 审批（C5）
           </div>
         </>
@@ -1801,7 +1801,7 @@ function QaPanel({ card, threshold }: { card: RiskCard; threshold: number }) {
   return (
     <div>
       {/* 假NL 修：诚实标"预设快答·非智能问答"——入口是关键词匹配非自然语言理解/LLM；答案数字仍派生自本卡真求解器输出。 */}
-      <div className={styles.wfT} style={{ color: "var(--c-capacity)" }}>{zh.risk.qa.title}</div>
+      <div className={styles.wfT} style={{ color: "var(--c-capacity-txt)" }}>{zh.risk.qa.title}</div>
       <div className={styles.qaChips}>
         {presets.map((q) => (
           <button key={q} className={styles.qaChip} data-testid={`qa-chip-${q}`} onClick={() => setAns(answer(q))}>{q}</button>
@@ -1820,7 +1820,7 @@ function QaPanel({ card, threshold }: { card: RiskCard; threshold: number }) {
       </div>
       {/* WO-UI-DECLUTTER-TOP3：诚实位「这不是智能问答」降进 `?` 浮层，
           第一层留 `?` 记号（规范 §1：静默降层等于删除 —— 记号不能省）。 */}
-      <div data-testid="risk-qa-disclosure" style={{ marginTop: 6, fontSize: 10, color: "var(--muted2)", lineHeight: 1.5 }}>
+      <div data-testid="risk-qa-disclosure" style={{ marginTop: 6, fontSize: 12, color: "var(--muted2)", lineHeight: 1.5 }}>
         <InfoPopover topic={zh.risk.info.qa} testId="risk-qa-disclosure-info">
           <p>{zh.risk.qa.disclosure}</p>
           <p>{zh.risk.qa.intro}</p>
@@ -1894,7 +1894,7 @@ function CaseReplayModal({ kase, onClose }: { kase: HistoryRiskCase; onClose: ()
     <Modal title={`${kase.caseNo} · ${kase.title}`} onClose={onClose} width={760}>
       <div data-testid="case-replay-modal">
         <div className="section-title">当时的时序曲线（{kase.curve.from} ~ {kase.curve.to}）</div>
-        <div data-testid="case-replay-axis-caption" style={{ fontSize: 10.5, color: "var(--muted2)", marginBottom: 2 }}>
+        <div data-testid="case-replay-axis-caption" style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 2 }}>
           {yAxisCaption}
           <span style={{ marginLeft: 6 }}>（量纲随该序列定义·接口未回传 unit 字段，故只标口径不臆造单位）</span>
         </div>
@@ -1906,7 +1906,7 @@ function CaseReplayModal({ kase, onClose }: { kase: HistoryRiskCase; onClose: ()
             tooltip: { trigger: "axis" },
             xAxis: { type: "category", data: points.map((p) => p.bucket.slice(0, 10)), name: "日期", nameLocation: "end" },
             // 轴名 = 真口径（seriesKey·聚合·粒度），浏览器里贴在 y 轴顶端；jsdom 无 canvas 故同文案另以 caption 落 DOM。
-            yAxis: { type: "value", name: `${kase.curve.seriesKey}（${CURVE_GRAIN === "day" ? "日" : CURVE_GRAIN}${CURVE_AGG === "sum" ? "合计" : CURVE_AGG}）`, nameTextStyle: { fontSize: 10 }, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
+            yAxis: { type: "value", name: `${kase.curve.seriesKey}（${CURVE_GRAIN === "day" ? "日" : CURVE_GRAIN}${CURVE_AGG === "sum" ? "合计" : CURVE_AGG}）`, nameTextStyle: { fontSize: 12 }, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
             series: [{ name: kase.curve.seriesKey, type: "line", smooth: true, data: points.map((p) => p.value), itemStyle: { color: "#43B7D7" }, markLine: { data: [{ xAxis: kase.crossedAt, label: { formatter: "越线" } }, { xAxis: kase.adoptedAt, label: { formatter: "采纳" } }, { xAxis: kase.resolvedAt, label: { formatter: "消解" } }] } }],
           }}
         />

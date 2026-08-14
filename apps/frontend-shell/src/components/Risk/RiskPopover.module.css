@@ -26,7 +26,7 @@
 .metrics {
   display: flex;
   gap: 16px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-bottom: 6px;
 }
@@ -37,7 +37,7 @@
 /* 峰值口径行（原为原生 `title=`，WO-HOVER-LAYER 提到可见层）。 */
 .caliber {
   margin-bottom: 6px;
-  font-size: 9.5px;
+  font-size: 12px;
   line-height: 1.4;
   color: var(--muted2);
 }
@@ -55,7 +55,7 @@
 /* 逐日 strip 的量纲图例（WO-UNIT-MEANING：色块不裸奔，标明张力量程与越线阈值） */
 .stripLegend {
   margin-top: 5px;
-  font-size: 9.5px;
+  font-size: 12px;
   line-height: 1.4;
   color: var(--muted2);
 }

@@ -494,7 +494,7 @@ export default function SliceLayersPanel({
                   {active.items.map((it) => (
                     <tr key={it.key} data-testid={`slice-layer-item-${sliceKey}-${active.id}-${it.key}`}>
                       <td style={{ whiteSpace: "nowrap" }}>{it.label}</td>
-                      <td style={{ whiteSpace: "nowrap", color: "var(--muted2)", fontSize: 10.5 }}>{it.group ?? ""}</td>
+                      <td style={{ whiteSpace: "nowrap", color: "var(--muted2)", fontSize: 12 }}>{it.group ?? ""}</td>
                       <td className={styles.itemDetail}>{it.detail ?? ""}</td>
                     </tr>
                   ))}

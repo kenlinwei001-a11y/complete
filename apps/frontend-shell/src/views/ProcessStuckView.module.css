@@ -31,7 +31,7 @@
 .stateLine code,
 .card code {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   background: var(--bg2);
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -59,7 +59,7 @@
 .tallyCount {
   font-family: var(--font-mono);
   font-size: 14px;
-  color: var(--accent);
+  color: var(--accent-txt);
 }
 
 .tallyZero .tallyCount {
@@ -106,8 +106,8 @@
   border: 1px solid var(--line2);
   border-radius: 4px;
   padding: 1px 7px;
-  font-size: 11px;
-  color: var(--warn);
+  font-size: 12px;
+  color: var(--warn-txt);
 }
 
 /* 四问栅格：卡在哪一步 / 为什么 / 等谁 / 等多久 */
@@ -126,7 +126,7 @@
 
 .factLabel {
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .factValue {
@@ -134,7 +134,7 @@
 }
 
 .waited {
-  color: var(--amber);
+  color: var(--amber-txt);
   font-family: var(--font-mono);
 }
 
@@ -149,7 +149,7 @@
 }
 
 .error {
-  color: var(--danger);
+  color: var(--danger-txt);
   font-size: 13px;
   background: var(--panel2);
   border: 1px solid var(--line2);

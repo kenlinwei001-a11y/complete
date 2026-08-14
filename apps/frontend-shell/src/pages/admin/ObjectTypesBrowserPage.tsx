@@ -136,7 +136,7 @@ export default function ObjectTypesBrowserPage() {
                 return (
                   <Fragment key={s.key}>
                     <tr data-testid={`ot-row-${s.key}`} className={rowOpen ? styles.otRowOpen : undefined}>
-                      <td><b className="zh">{s.displayName}</b> <code style={{ fontSize: 11 }}>{s.key}</code></td>
+                      <td><b className="zh">{s.displayName}</b> <code style={{ fontSize: 12 }}>{s.key}</code></td>
                       <td>{s.propCount}/{s.derivedCount}</td>
                       <td>{s.pk ?? "—"}</td>
                       <td data-testid={`ot-count-${s.key}`}>

@@ -27,7 +27,7 @@ export function RuleRef({ code }: { code: string }) {
           className="popover-surface"
           role="tooltip"
           data-testid="ruleref-pop"
-          style={{ position: "absolute", zIndex: 70, top: "130%", left: 0, minWidth: 300, padding: 10, fontSize: 11, textAlign: "left", whiteSpace: "normal" }}
+          style={{ position: "absolute", zIndex: 70, top: "130%", left: 0, minWidth: 300, padding: 10, fontSize: 12, textAlign: "left", whiteSpace: "normal" }}
         >
           {!data ? (
             <span style={{ color: "var(--muted2)" }}>加载中…</span>
@@ -41,7 +41,7 @@ export function RuleRef({ code }: { code: string }) {
                   <span style={{ color: "var(--muted2)" }}>v{r.version}</span>
                 </div>
                 <div style={{ marginTop: 2 }}>
-                  <code style={{ fontSize: 10 }}>{r.expression}</code>
+                  <code style={{ fontSize: 12 }}>{r.expression}</code>
                 </div>
                 {r.params && Object.keys(r.params).length > 0 && (
                   <div style={{ marginTop: 2, color: "var(--muted2)" }} data-testid={`ruleref-params-${r.key}`}>

@@ -190,7 +190,7 @@ export function SkillSchemaView({
       <div className="section-title">{title}{entries.length > 0 ? `（${entries.length} 字段）` : ""}</div>
       {entries.length === 0 ? (
         // 结构不可解析：原样呈现后端真值，绝不编造一张结构表。
-        <pre className="mono" data-testid={`${testid}-raw`} style={{ fontSize: 11, margin: 0, padding: 8, overflowX: "auto", border: "1px solid var(--line2)", borderRadius: 8 }}>
+        <pre className="mono" data-testid={`${testid}-raw`} style={{ fontSize: 12, margin: 0, padding: 8, overflowX: "auto", border: "1px solid var(--line2)", borderRadius: 8 }}>
           {JSON.stringify(schema, null, 2)}
         </pre>
       ) : (
@@ -380,13 +380,13 @@ export function SkillCompileReport({
                 </span>
               </td>
               {/* note 原文照登：NOT_IMPLEMENTED 时它写着「归哪张工单」，摘要掉就没法追。 */}
-              <td style={{ fontSize: 11.5, lineHeight: 1.6 }}>{s.note}</td>
+              <td style={{ fontSize: 12, lineHeight: 1.6 }}>{s.note}</td>
             </tr>
           ))}
         </tbody>
       </table>
       {notImplemented.length > 0 && (
-        <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }} data-testid="skill-compile-not-implemented-note">
+        <div className="muted" style={{ fontSize: 12, marginTop: 6 }} data-testid="skill-compile-not-implemented-note">
           ⚠️ {notImplemented.length} 段未实现（{notImplemented.map((s) => STAGE_LABEL[s.stage] ?? s.stage).join(" / ")}）——
           本报告**不含**任何可分发运行时制品，上方推理图是未经优化的派生图。
         </div>
@@ -408,15 +408,15 @@ export function SkillCompileReport({
             <tbody>
               {result.diagnostics.map((d, i) => (
                 <tr key={`${d.code}:${d.path}:${i}`} data-testid="skill-compile-diagnostic-row" data-diag-code={d.code} data-diag-severity={d.severity}>
-                  <td className="mono" style={{ fontSize: 11 }}>{d.code}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>{d.code}</td>
                   <td><span className={`badge ${SEVERITY_BADGE[d.severity] ?? ""}`}>{SEVERITY_LABEL[d.severity] ?? d.severity}</span></td>
                   {/* JSON Pointer；根路径后端给的是空串 ⇒ 留空，不补 "/"（那会指向一个它没说过的位置）。 */}
-                  <td className="mono" style={{ fontSize: 11, wordBreak: "break-all" }}>{d.path}</td>
-                  <td style={{ fontSize: 11.5, lineHeight: 1.6 }}>
+                  <td className="mono" style={{ fontSize: 12, wordBreak: "break-all" }}>{d.path}</td>
+                  <td style={{ fontSize: 12, lineHeight: 1.6 }}>
                     {d.message}
                     {/* R13：证据原样亮出，不摘要 —— 没有它，诊断就退回成"有问题"这种没法照着修的话。 */}
                     {d.evidence !== undefined && (
-                      <div className="mono muted" style={{ fontSize: 10.5, marginTop: 4, wordBreak: "break-all" }} data-testid="skill-compile-diagnostic-evidence">
+                      <div className="mono muted" style={{ fontSize: 12, marginTop: 4, wordBreak: "break-all" }} data-testid="skill-compile-diagnostic-evidence">
                         {d.evidence}
                       </div>
                     )}
@@ -454,11 +454,11 @@ export function SkillCompileReport({
       {result.ast.tools.length > 0 && (
         <div style={{ marginTop: 12 }} data-testid="skill-compile-tools">
           <div className="section-title">派生工具（{result.ast.tools.length}）</div>
-          <div className="muted" style={{ fontSize: 11.5, marginBottom: 6 }}>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
             由引用 kind 与写模式**推导**得出（`source: derived`），不是作者声明的字段——每条标出推它的依据。
           </div>
           {result.ast.tools.map((t) => (
-            <div key={t.name} style={{ fontSize: 11.5, marginBottom: 3 }} data-testid="skill-compile-tool-row" data-tool-name={t.name}>
+            <div key={t.name} style={{ fontSize: 12, marginBottom: 3 }} data-testid="skill-compile-tool-row" data-tool-name={t.name}>
               <span className="badge mono">{t.name}</span>
               <span className="muted" style={{ marginLeft: 6 }}>← {t.impliedBy.join("、")}</span>
             </div>
@@ -468,7 +468,7 @@ export function SkillCompileReport({
 
       {/* —— execution.steps 的诚实位：恒空属「接了线没数据」，不是「这个技能没有步骤」 —— */}
       {!result.ast.execution.declared && (
-        <div className="muted" style={{ fontSize: 11.5, marginTop: 10, lineHeight: 1.6 }} data-testid="skill-compile-execution-note">
+        <div className="muted" style={{ fontSize: 12, marginTop: 10, lineHeight: 1.6 }} data-testid="skill-compile-execution-note">
           {result.ast.execution.note}
         </div>
       )}
@@ -565,18 +565,18 @@ export function SkillSeedGateStrip({
             {refreshing === true ? "重测中…" : "重新实测"}
           </button>
         )}
-        <span className="muted" style={{ fontSize: 11.5 }}>{view.hint}</span>
+        <span className="muted" style={{ fontSize: 12 }}>{view.hint}</span>
       </div>
       {/* 门不可用时的原因原文：运维照着它直接定位是哪个注册表读不出来。 */}
       {report.unavailableReason !== undefined && (
-        <div className="mono" style={{ fontSize: 11, marginTop: 6, wordBreak: "break-all" }} data-testid="skill-seed-gate-reason">
+        <div className="mono" style={{ fontSize: 12, marginTop: 6, wordBreak: "break-all" }} data-testid="skill-seed-gate-reason">
           {report.unavailableReason}
         </div>
       )}
       {report.findings.length > 0 && (
         <div style={{ marginTop: 6 }} data-testid="skill-seed-gate-findings">
           {report.findings.map((f) => (
-            <div key={f.skillId} style={{ fontSize: 11.5, marginTop: 3 }} data-testid="skill-seed-gate-finding" data-skill-key={f.skillKey}>
+            <div key={f.skillId} style={{ fontSize: 12, marginTop: 3 }} data-testid="skill-seed-gate-finding" data-skill-key={f.skillKey}>
               <span className="badge red mono">{f.skillKey}</span>
               {/* 违规原文一字不改（含 code），那是要照着去修的信息。 */}
               {f.violations.map((v, i) => (

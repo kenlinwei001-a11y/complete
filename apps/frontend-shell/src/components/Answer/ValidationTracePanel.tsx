@@ -49,25 +49,25 @@ export function ValidationTracePanel({ trace }: { trace: ValidationTrace }) {
         <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span aria-hidden>🛡</span>
           <b style={{ fontSize: 12.5 }}>验证痕迹</b>
-          <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }}>
+          <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>
             本体切片 {trace.slicesUsed.join("、")}
           </span>
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span className={`badge ${cons.cls}`} data-testid="consistency-verdict">一致性 {cons.label}</span>
           <span className={`badge ${cross.cls}`} data-testid="cross-verdict">交叉 {cross.label}</span>
-          <span style={{ fontSize: 11, color: "var(--muted2)" }}>{open ? "收起" : "展开"}</span>
+          <span style={{ fontSize: 12, color: "var(--muted2)" }}>{open ? "收起" : "展开"}</span>
         </span>
       </button>
 
       {open && (
-        <div style={{ marginTop: 8, fontSize: 11.5 }}>
-          <div className="section-title" style={{ fontSize: 11.5 }}>① 一致性验证（本体内自动）</div>
+        <div style={{ marginTop: 8, fontSize: 12 }}>
+          <div className="section-title" style={{ fontSize: 12 }}>① 一致性验证（本体内自动）</div>
           <table className="cmp" style={{ width: "100%", marginBottom: 10 }}>
             <tbody>
               {trace.consistency.checks.map((c, i) => (
                 <tr key={i} data-testid={`consistency-check-${c.kind}`}>
-                  <td style={{ width: 26, color: c.status === "FAIL" ? "var(--danger)" : c.status === "WARN" ? "var(--warn, #c90)" : "var(--ok)" }}>{CHECK_MARK[c.status]}</td>
+                  <td style={{ width: 26, color: c.status === "FAIL" ? "var(--danger-txt)" : c.status === "WARN" ? "var(--warn, #c90)" : "var(--ok-txt)" }}>{CHECK_MARK[c.status]}</td>
                   <td style={{ width: 84, color: "var(--muted2)" }}>{CONS_KIND_LABEL[c.kind]}</td>
                   <td className="mono" style={{ width: 140 }}>{c.ref}</td>
                   <td style={{ color: "var(--muted)" }}>{c.detail}</td>
@@ -76,9 +76,9 @@ export function ValidationTracePanel({ trace }: { trace: ValidationTrace }) {
             </tbody>
           </table>
 
-          <div className="section-title" style={{ fontSize: 11.5 }}>② 交叉验证（对照知识图谱已有事实）</div>
+          <div className="section-title" style={{ fontSize: 12 }}>② 交叉验证（对照知识图谱已有事实）</div>
           {trace.crossValidation.claims.length === 0 ? (
-            <div className="empty-state" style={{ fontSize: 11 }}>无可核对的对象断言（推演未引用具体对象事实）。</div>
+            <div className="empty-state" style={{ fontSize: 12 }}>无可核对的对象断言（推演未引用具体对象事实）。</div>
           ) : (
             <table className="cmp" style={{ width: "100%" }}>
               <tbody>
@@ -87,7 +87,7 @@ export function ValidationTracePanel({ trace }: { trace: ValidationTrace }) {
                   return (
                     <tr key={i} data-testid={`cross-claim-${c.status}`}>
                       <td style={{ width: 26, color: `var(--${m.cls})` }}>{m.mark}</td>
-                      <td className="mono" style={{ fontSize: 10.5 }}>{c.claim}</td>
+                      <td className="mono" style={{ fontSize: 12 }}>{c.claim}</td>
                       <td style={{ width: 64 }}><span className={`badge ${c.status === "CONFLICT" ? "red" : c.status === "CONSISTENT" ? "green" : ""}`}>{m.label}</span></td>
                       <td style={{ color: "var(--muted)" }}>
                         {c.status === "CONFLICT" && c.kgValue !== undefined ? `图谱实际值：${String(c.kgValue)}` : c.detail ?? ""}

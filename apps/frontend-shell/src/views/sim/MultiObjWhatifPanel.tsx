@@ -124,7 +124,7 @@ function MultiObjWhatifInner() {
 
       {/* 真实订单簿口径披露（KILL-MOCK-RED·接真后去掉「示意·toy fixture」假披露）：订单 id/数量/单价为真 Order 真值；
           违约金/换型为按优先级/体量派生的**推演口径系数**（真实订单簿无此字段），面板据此诚实标注、不冒充数据库金额。 */}
-      <div className={styles.noteInfo} data-testid="multiobj-input-disclosure" style={{ fontSize: 11, margin: "2px 0 6px" }}>
+      <div className={styles.noteInfo} data-testid="multiobj-input-disclosure" style={{ fontSize: 12, margin: "2px 0 6px" }}>
         ⓘ 订单簿为<b>本租户真实 Order</b>（真 so/数量/单价，与全局推演同源）；<b>营收 = 数量 × 单价</b>（真值）·
         <b>违约金 = 数量 × 优先级违约单价</b>·<b>换型成本 = 数量 × 换型单价</b>（后二者为推演口径系数，真实订单簿无此字段）。
         产线按化学体系（NCM/LFP）建占用池、合同按客户建额度；下方由<b>真 cross_object_occupancy 求解器</b>计算，改权重→最优真漂移。
@@ -134,7 +134,7 @@ function MultiObjWhatifInner() {
       {solverErr && (
         <div
           data-testid="multiobj-not-wired"
-          style={{ fontSize: 12, margin: "4px 0 8px", padding: "6px 10px", borderRadius: 6, background: "rgba(192,57,43,.08)", border: "1px solid rgba(192,57,43,.35)", color: "var(--c-danger, #c0392b)" }}
+          style={{ fontSize: 12, margin: "4px 0 8px", padding: "6px 10px", borderRadius: 6, background: "rgba(192,57,43,.08)", border: "1px solid rgba(192,57,43,.35)", color: "var(--danger-txt)" }}
         >
           {notWired ? (
             <>⚠ <b>优化器引擎（CP-SAT sidecar）未接入</b>——需设 <code>OPTIMIZER_BASE_URL</code> 并启动 <code>services/optimizer</code>。下方数值为空/0 表示<b>「尚未求解」</b>，<b>不是</b>真实推演结果。</>
@@ -152,7 +152,7 @@ function MultiObjWhatifInner() {
 
       {/* ① 各目标当前值 —— 真值口径（KILL-MOCK·带单位）：当前权重下「最优方案」的各目标值（营收 Σ获排 / 违约金 Σ被挤 /
           换型成本 Σ获排换型），随权重此消彼长。营收/违约金亿元、换型成本万元。 */}
-      <div style={{ fontSize: 11, opacity: 0.7, margin: "6px 0 2px" }} data-testid="multiobj-objvalues-caption">
+      <div style={{ fontSize: 12, opacity: 0.7, margin: "6px 0 2px" }} data-testid="multiobj-objvalues-caption">
         当前权重下<b>最优方案</b>的各目标值（<b>推演结果</b> · 带真实单位 · 随权重变）
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", margin: "4px 0 8px" }} data-testid="multiobj-objvalues">
@@ -161,7 +161,7 @@ function MultiObjWhatifInner() {
             <div style={{ fontSize: 12, opacity: 0.7 }}>{OBJ_META[k]!.name}{OBJ_META[k]!.goodWhenNeg ? "（越低越好）" : "（越高越好）"}</div>
             <div style={{ fontSize: 18, fontWeight: 600 }}>
               {typeof ov[k] === "number" ? OBJ_META[k]!.toDisplay(ov[k]!) : "—"}
-              {typeof ov[k] === "number" ? <span style={{ fontSize: 10, opacity: 0.5, fontWeight: 400, marginLeft: 3 }}>{OBJ_META[k]!.unit}</span> : null}
+              {typeof ov[k] === "number" ? <span style={{ fontSize: 12, opacity: 0.5, fontWeight: 400, marginLeft: 3 }}>{OBJ_META[k]!.unit}</span> : null}
             </div>
           </div>
         ))}
@@ -191,7 +191,7 @@ function MultiObjWhatifInner() {
               return (
                 <div key={k} className={styles.kpi} style={{ minWidth: 140, borderLeft: `3px solid ${color}` }} data-testid={`multiobj-delta-${k}`}>
                   <div style={{ fontSize: 12, opacity: 0.7 }}>{OBJ_META[k]!.name} Δ（相对权重 1×）</div>
-                  <div style={{ fontSize: 18, fontWeight: 600, color }}>{d > 0 ? "+" : ""}{OBJ_META[k]!.toDisplay(d)}<span style={{ fontSize: 10, opacity: 0.5, fontWeight: 400, marginLeft: 3 }}>{OBJ_META[k]!.unit}</span></div>
+                  <div style={{ fontSize: 18, fontWeight: 600, color }}>{d > 0 ? "+" : ""}{OBJ_META[k]!.toDisplay(d)}<span style={{ fontSize: 12, opacity: 0.5, fontWeight: 400, marginLeft: 3 }}>{OBJ_META[k]!.unit}</span></div>
                 </div>
               );
             })
@@ -216,7 +216,7 @@ function MultiObjWhatifInner() {
                   <td>{r.model}<span style={{ opacity: 0.5, marginLeft: 4 }}>{r.chem}</span></td>
                   <td>{r.pri}</td>
                   {/* 未加载完不得渲染「被挤」占位（否则 loading 态伪装成 displaced）；仅数据到手且真未排才标被挤。 */}
-                  <td>{!loaded ? "…" : on ? on.line : <span style={{ color: "var(--danger)" }} data-testid={`multiobj-displaced-${r.id}`}>被挤（未排）</span>}</td>
+                  <td>{!loaded ? "…" : on ? on.line : <span style={{ color: "var(--danger-txt)" }} data-testid={`multiobj-displaced-${r.id}`}>被挤（未排）</span>}</td>
                   <td className="num">{yi(r.revenue)}</td>
                   <td className="num">{displaced ? yi(r.penalty) : "0.00"}</td>
                 </tr>

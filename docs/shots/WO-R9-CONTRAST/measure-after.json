@@ -1,0 +1,50 @@
+{
+ "note": "由 measure.mjs 的逐元素原始数据压缩而来：只保留摘要与**违规明细**（全部 422 个元素的原始读数体积 ~28k 行，不入库）。",
+ "themes": {
+  "dark": {
+   "elements": 422,
+   "wcagFail": 0,
+   "sizedFail": 0,
+   "inactiveExempt": 1,
+   "sizeHistogram": {
+    "12": 299,
+    "13": 104,
+    "14": 7,
+    "15": 7,
+    "26": 1,
+    "12.5": 4
+   },
+   "violations": []
+  },
+  "light": {
+   "elements": 422,
+   "wcagFail": 0,
+   "sizedFail": 0,
+   "inactiveExempt": 1,
+   "sizeHistogram": {
+    "12": 299,
+    "13": 104,
+    "14": 7,
+    "15": 7,
+    "26": 1,
+    "12.5": 4
+   },
+   "violations": []
+  },
+  "warm": {
+   "elements": 422,
+   "wcagFail": 0,
+   "sizedFail": 0,
+   "inactiveExempt": 1,
+   "sizeHistogram": {
+    "12": 299,
+    "13": 104,
+    "14": 7,
+    "15": 7,
+    "26": 1,
+    "12.5": 4
+   },
+   "violations": []
+  }
+ }
+}

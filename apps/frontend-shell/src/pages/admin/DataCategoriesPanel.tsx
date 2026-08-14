@@ -72,7 +72,7 @@ export function DataCategoriesPanel() {
             <div key={cat.key} data-testid={`dc-${cat.key}`} className="card" style={{ padding: 12, border: "1px solid var(--border, #2a2a2a)", borderRadius: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <strong style={{ fontSize: 14 }}>{cat.displayName}</strong>
-                <span className="chip" style={{ marginLeft: "auto", fontSize: 11 }}>{cat.types.length} 类 · {fieldCount} 字段</span>
+                <span className="chip" style={{ marginLeft: "auto", fontSize: 12 }}>{cat.types.length} 类 · {fieldCount} 字段</span>
               </div>
               <div style={{ fontSize: 12, color: "var(--muted, #999)", margin: "4px 0 8px" }}>{cat.description}</div>
 
@@ -115,7 +115,7 @@ export function DataCategoriesPanel() {
                 )}
               </div>
               {cat.customColumns && cat.customColumns.length > 0 && (
-                <div style={{ marginTop: 6, fontSize: 11, color: "var(--accent, #4C90F0)" }}>已用自定义模版（{cat.customColumns.length} 列）</div>
+                <div style={{ marginTop: 6, fontSize: 12, color: "var(--accent-txt, #4C90F0)" }}>已用自定义模版（{cat.customColumns.length} 列）</div>
               )}
 
               {expanded && (

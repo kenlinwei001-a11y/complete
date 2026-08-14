@@ -154,7 +154,7 @@ export function EnterpriseStateTwinPanel() {
   if (statesQ.isError) {
     const e = statesQ.error as { code?: string; message?: string };
     return (
-      <div className={styles.meta} data-testid="twin-list-error" style={{ color: "var(--warn)" }}>
+      <div className={styles.meta} data-testid="twin-list-error" style={{ color: "var(--warn-txt)" }}>
         快照时间线不可用（{e?.code ?? "ERROR"}）：{e?.message ?? "请求失败"}
       </div>
     );
@@ -184,7 +184,7 @@ export function EnterpriseStateTwinPanel() {
       ) : null}
 
       {err ? (
-        <div className={styles.meta} data-testid="twin-error" style={{ color: "var(--warn)" }}>
+        <div className={styles.meta} data-testid="twin-error" style={{ color: "var(--warn-txt)" }}>
           操作失败（{err.code ?? "ERROR"}）：{err.message ?? "请求失败"}
           {err.requestId ? ` · requestId ${err.requestId}` : ""}
         </div>

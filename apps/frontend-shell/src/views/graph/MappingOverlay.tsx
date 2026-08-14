@@ -118,7 +118,7 @@ function DomainGroup({
       {rows.map((r) => (
         <tr key={r.objectKey} className={styles.row} data-testid={`mapping-row-${r.objectKey}`} onClick={() => onLocate(r.objectKey)}>
           <td className="zh">
-            <b>{r.displayName}</b> <span className="mono" style={{ color: "var(--c-capacity)" }}>{r.objectKey}</span>
+            <b>{r.displayName}</b> <span className="mono" style={{ color: "var(--c-capacity-txt)" }}>{r.objectKey}</span>
           </td>
           <td>{r.kind}</td>
           <td className="zh">{r.sourceSystem}</td>
@@ -131,7 +131,7 @@ function DomainGroup({
                   {key}
                 </button>
                 {openRule === `${r.objectKey}:${key}` && (
-                  <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }} data-testid="mapping-rule-expression">
+                  <div className="mono" style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }} data-testid="mapping-rule-expression">
                     {ruleExpression(key) ?? "—"}
                   </div>
                 )}
@@ -153,7 +153,7 @@ function RegistrySection({ testId, title, cols, rows, keyOf }: { testId: string;
       {/* WO-UNIT-MEANING：注册表段标题括号内此前是裸数「（12）」——数的是本段**表格行数**（每行 = 一条注册项）。
           该数由 rows.length 现算（无后端 unit 字段），故就近点明"条"。 */}
       <div className="section-title" style={{ fontSize: 13 }}>
-        {title} <span className="mono" style={{ color: "var(--muted2)", fontSize: 11 }}>（{rows.length} 条）</span>
+        {title} <span className="mono" style={{ color: "var(--muted2)", fontSize: 12 }}>（{rows.length} 条）</span>
       </div>
       <table className="cmp" data-testid={`mapping-${testId}-table`}>
         <thead>

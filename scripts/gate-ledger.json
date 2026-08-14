@@ -1257,6 +1257,24 @@
       },
       "notes": "守 docs/CONVENTION-ui-information-layering.md §1/§2 里能机检的部分（D1 第一层信息块数棘轮 · D2 R-UI-3 口径公式 · D2b 第一层长说明串 · D3 R-UI-2 字号层级 · D4 守恒反删除）。R-UI-1 视线距离是渲染后的几何量，静态判不了，本门明确不假装能判，仍由规范 §5 人工执行。原生 title= 存量另有专门棘轮，本门只报数不据此红，避免两份基线漂移。"
     },
+    "check-text-legibility.mjs": {
+      "alias": "text-legibility:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/frontend-shell/src/styles/tokens.css",
+        "apps/frontend-shell/src/views/sim/*.css",
+        "apps/frontend-shell/src/views/sim/*.tsx",
+        "scripts/text-legibility-baseline.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "docs/AUDIT-text-legibility.md §5（变异反证原文·逐条读回文件自证变异真生效）",
+        "note": "本门在**建它的过程中**就红过两次真的（不是造出来的变异）：① 门第一版只认 `font-size:`，`.optSub { font: 9px … }` 这类 CSS `font:` 简写（本仓 72 处）一处都扫不到 —— 真浏览器复测时那 35 个 9px 元素还红着，而门报「这些文件干净」，形态即「我用『font-size 声明数』当作『页面上有多少字号』的证据」；② 同一个病换马甲：React 内联样式键叫 `font` 不叫 `fontSize`，`SandboxView.tsx` 顶栏三处 `style={{ font: \"600 10px …\" }}` 同样扫不到。两条都补成**常驻回归金丝雀**。另有 ③ 主题解析器第一版用 `css.indexOf(\":root {\")` 找块 —— 写成 `:root{`（无空格）就返回 null，且 `indexOf(\":root\")` 会先命中 `:root[data-theme=\"light\"]` 的前缀（前缀匹配 ≠ 相等匹配）；这一条是**金丝雀在第一次运行时当场判 RC=2 逼出来的**，不是人想起来的。变异反证（4 条，见 AUDIT §5）：把 K 从 72 改成 0 / 把 FLOOR 从 12 改成 0 / 把 judgeUnit 的「取最差面」改成「取第一个面」/ 把顶层兜底改成吞掉真违规 —— 四条各自被对应金丝雀或`--selftest` 的双向退出码机验当场咬住。退出码契约**双向**机验：注入环境故障 ⇒ RC=2，注入真违规 ⇒ RC=1（只做前者的门会被兜底吞成永不红）。"
+      },
+      "notes": "守「屏上读得了」，判据同时吃**对比度与字号**：required(S,w)=max(3.0, 72/S_eff)，S_eff=S×(w≥700?24/18.66:1)。两个锚点全部来自 WCAG 2.1 SC 1.4.3 自己（16px→4.5 正文 · 24px→3.0 大字），k 由二者联立解出 ⇒ **零自由参数**，且与 WCAG 逐值相容（金丝雀复现这两点）。建它的直接理由：仓主实拍读不了的 16 个元素量出来是 **4.52:1，它「通过」WCAG AA** —— WCAG 公式里根本没有字号，而那 16 个是 9–10px 的中文。一道只查 WCAG 数值的门会把这一整类放过去。三条判据：A 站点级尺寸加权对比度（棘轮）· B 字号硬底 <12px（棘轮·FLOOR 是 A 与调色板的**交点**，不是又一个自由参数）· C 令牌矩阵（**无基线必须绿**，60 对 = 18 文字令牌 × 三主题 + 特例对）。**诚实边界**：底色靠「该主题最差面」代替真实层叠（静态源码里不存在「这段字最终落在哪块颜色上」），故彩色实心块上的反相字会被误报 —— 偏保守、登记进基线并逐条写明，不放宽判据；只判「同一声明块里同时写了 color 与 font-size」的单元，其余计入 unjudged 只报数不红；看不见文字内容故分不出中文与拉丁，按尺寸一刀切（比命题严）。"
+    },
     "check-validation.mjs": {
       "alias": null,
       "binding": "NONE",

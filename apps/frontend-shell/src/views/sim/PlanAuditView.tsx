@@ -202,7 +202,7 @@ function AuditResult({
   const section = (title: string, cls: string, items: AuditItem[], withActions: boolean) =>
     items.length > 0 && (
       <>
-        <div className={styles.secHead} style={{ color: cls === "hard" ? "var(--danger)" : cls === "med" ? "var(--amber)" : "var(--ok)" }}>
+        <div className={styles.secHead} style={{ color: cls === "hard" ? "var(--danger-txt)" : cls === "med" ? "var(--amber-txt)" : "var(--ok-txt)" }}>
           {title}（{items.length}）
         </div>
         {items.map((item) => (
@@ -224,7 +224,7 @@ function AuditResult({
       <div className={styles.verdict} style={{ borderColor: color, background: "transparent" }} data-testid="audit-verdict">
         <b style={{ color }}>{zh.sim.audit.verdict(out.verdict, out.score, out.M.length)}</b>
         <SnapshotBadge snapshotVersion={snapshotVersion} tool="plan_audit" />
-        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 5 }}>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 5 }}>
           <span data-testid="audit-counts" className="mono">
             {out.H.length} 硬矛盾 / {out.M.length} 软风险 / {out.S.length} 建议
           </span>
@@ -288,7 +288,7 @@ function AuditCard({
         <span className="badge">{item.id}</span>
       </div>
       {ruleOpen && (
-        <div className={styles.noteInfo} style={{ fontSize: 10.5 }}>
+        <div className={styles.noteInfo} style={{ fontSize: 12 }}>
           规则 <b className="mono">{item.ruleRef}</b> · 表达式见规则库（/admin/rules），点击徽章收起。
         </div>
       )}
@@ -304,7 +304,7 @@ function AuditCard({
             {zh.sim.adoptToDraft}
           </button>
         )}
-        {item.fix && <span style={{ fontSize: 10, color: "var(--muted2)" }}>{zh.sim.audit.fixFootnote}</span>}
+        {item.fix && <span style={{ fontSize: 12, color: "var(--muted2)" }}>{zh.sim.audit.fixFootnote}</span>}
         {(cls === "hard" || cls === "med") && (
           <button className={styles.tlToggle} onClick={() => setTlOpen(!tlOpen)} data-testid={`tl-toggle-${cls}-${item.id}`}>
             {tlOpen ? "▼ 收起时序推演" : zh.sim.audit.timeline}
@@ -338,10 +338,10 @@ function RiskPropagation({ itemId, kind }: { itemId: string; kind?: string }) {
   const vm = rt ? buildPropagation(rt) : null;
   return (
     <div className={styles.tlBox} data-testid={`audit-risk-timeline-${itemId}`}>
-      <div style={{ fontSize: 10.5, color: "var(--muted2)", marginBottom: 4 }}>
+      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 4 }}>
         {zh.sim.audit.timelineHint}{kind ? ` · 口径：${kind}` : ""}
       </div>
-      {isLoading && <span style={{ fontSize: 11, color: "var(--muted)" }}>{zh.common.loading}</span>}
+      {isLoading && <span style={{ fontSize: 12, color: "var(--muted)" }}>{zh.common.loading}</span>}
       {/* PRD §2②：逐日圆点轴消费按 kind 派生的 audit_timeline series（每项独立曲线） */}
       {dot.data && (
         <DailyDotAxis

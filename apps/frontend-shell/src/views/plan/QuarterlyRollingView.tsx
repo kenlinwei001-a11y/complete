@@ -59,7 +59,7 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="section-title">产能爬坡 vs 需求（万套/季）</div>
         {/* PRD-quarter-rolling §3-①：段头副标注（产能增量项目同年度基准情景，溯源同源） */}
-        <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6 }} data-testid="quarter-ramp-note">{zh.quarter.rampNote}</div>
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 6 }} data-testid="quarter-ramp-note">{zh.quarter.rampNote}</div>
         <div className={styles.qbars} data-testid="qbars">
           {data.rows.map((r) => {
             const tier = tierOf(r.gap);
@@ -88,7 +88,7 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
                             {e.ruleKey}
                           </button>
                           {openRule === `${r.q}:${e.ruleKey}` && (
-                            <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }} data-testid="qrule-expression">
+                            <div className="mono" style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }} data-testid="qrule-expression">
                               {rules?.find((x) => x.key === e.ruleKey)?.expression ?? "—"}
                             </div>
                           )}
@@ -105,7 +105,7 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
 
       <div className="panel">
         <div className="section-title">{zh.quarter.ltaSection}</div>
-        <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>{zh.quarter.ltaHint}</div>
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 8 }}>{zh.quarter.ltaHint}</div>
         <table className="cmp" data-testid="lta-table">
           <thead>
             <tr>
@@ -127,7 +127,7 @@ export default function QuarterlyRollingView({ view }: ViewRendererProps) {
                   </td>
                   <td>{r.planned.toLocaleString("zh-CN")} 吨/季</td>
                   <td>{r.actual.toLocaleString("zh-CN")}</td>
-                  <td style={{ color: breach ? "var(--danger)" : "var(--ok)", fontWeight: 700 }} data-testid={`lta-dev-${r.material}`}>
+                  <td style={{ color: breach ? "var(--danger-txt)" : "var(--ok-txt)", fontWeight: 700 }} data-testid={`lta-dev-${r.material}`}>
                     {r.deviationPct > 0 ? "+" : ""}
                     {r.deviationPct.toFixed(1)}%
                     {breach && (

@@ -19,7 +19,7 @@ import { Provenance } from "@/components/Provenance";
 /** 「后端本次未返回该字段」——optional 字段缺席分支的唯一出处（缺席 ≠ 没有影响 ≠ 0）。 */
 export function AbsentNote({ testId, field, what, hint }: { testId: string; field: string; what: string; hint?: string }) {
   return (
-    <div className="empty-state" data-testid={testId} style={{ fontSize: 11, lineHeight: 1.7, color: "var(--muted)" }}>
+    <div className="empty-state" data-testid={testId} style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)" }}>
       <b style={{ color: "var(--muted2)" }}>{what}：本次响应未返回</b>
       <div style={{ marginTop: 4 }}>
         可观测事实：risk_timeline 响应里没有 <span className="mono">{field}</span> 字段（该字段在契约中是 optional）。
@@ -37,7 +37,7 @@ export function AbsentNote({ testId, field, what, hint }: { testId: string; fiel
  */
 export function MissingEvidenceNote({ testId, title, ev }: { testId: string; title: string; ev: MissingEvidence }) {
   return (
-    <div data-testid={testId} style={{ fontSize: 10.5, lineHeight: 1.65, color: "var(--muted)" }}>
+    <div data-testid={testId} style={{ fontSize: 12, lineHeight: 1.65, color: "var(--muted)" }}>
       <div>
         <span className="badge" data-testid={`${testId}-badge`} style={{ marginRight: 6 }}>未承载</span>
         <b style={{ color: "var(--muted2)" }}>{title}</b>
@@ -52,7 +52,7 @@ export function MissingEvidenceNote({ testId, title, ev }: { testId: string; tit
         <details style={{ marginTop: 3 }} data-testid={`${testId}-checked`}>
           <summary style={{ cursor: "pointer", color: "var(--muted2)" }}>已逐条核过 {ev.checked.length} 处承载物（证明是"查过确实没有"）</summary>
           <ul style={{ margin: "3px 0 0", paddingLeft: 16 }}>
-            {ev.checked.map((k) => (<li key={k} className="mono" style={{ fontSize: 10 }}>{k}</li>))}
+            {ev.checked.map((k) => (<li key={k} className="mono" style={{ fontSize: 12 }}>{k}</li>))}
           </ul>
         </details>
       )}
@@ -100,8 +100,8 @@ export function SubSection({ testId, title, sub, children }: { testId: string; t
   return (
     <div data-testid={testId} style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed var(--line, rgba(140,170,200,.22))" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 5 }}>
-        <b style={{ fontSize: 11.5 }}>{title}</b>
-        {sub ? <span style={{ fontSize: 10, color: "var(--muted2)" }}>{sub}</span> : null}
+        <b style={{ fontSize: 12 }}>{title}</b>
+        {sub ? <span style={{ fontSize: 12, color: "var(--muted2)" }}>{sub}</span> : null}
       </div>
       {children}
     </div>

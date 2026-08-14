@@ -305,7 +305,7 @@ function NodeProv({ node, children }: { node: DagNode; children: ReactNode }): J
           className="popover-surface"
           role="tooltip"
           data-testid={`prov-tip-${node.id}`}
-          style={{ position: "absolute", zIndex: 60, top: "130%", left: 0, minWidth: 260, padding: 10, fontSize: 11, textAlign: "left", whiteSpace: "normal" }}
+          style={{ position: "absolute", zIndex: 60, top: "130%", left: 0, minWidth: 260, padding: 10, fontSize: 12, textAlign: "left", whiteSpace: "normal" }}
         >
           {/* 三态徽章（诚实标注：实测/派生/合成/明细） */}
           <div style={{ marginBottom: 5 }}>
@@ -318,7 +318,7 @@ function NodeProv({ node, children }: { node: DagNode; children: ReactNode }): J
               {node.drillType ? (
                 <div>
                   <span style={{ color: "var(--muted2)" }}>数据源：</span>
-                  <code data-testid={`prov-src-${node.id}`} style={{ fontSize: 10 }}>{path}</code>
+                  <code data-testid={`prov-src-${node.id}`} style={{ fontSize: 12 }}>{path}</code>
                 </div>
               ) : (
                 <div style={{ color: "var(--muted2)" }}>此叶无结构化下钻源（仅证据明细）</div>
@@ -338,12 +338,12 @@ function NodeProv({ node, children }: { node: DagNode; children: ReactNode }): J
               {node.kind === "kpi" && node.actual != null && node.target != null ? (
                 <div>
                   <span style={{ color: "var(--muted2)" }}>推导：</span>
-                  <code data-testid={`prov-formula-${node.id}`} style={{ fontSize: 10 }}>缺口 = 目标 {node.target}{node.unit ?? ""} − 实际 {node.actual}{node.unit ?? ""} = {node.value}{node.unit ?? ""}</code>
+                  <code data-testid={`prov-formula-${node.id}`} style={{ fontSize: 12 }}>缺口 = 目标 {node.target}{node.unit ?? ""} − 实际 {node.actual}{node.unit ?? ""} = {node.value}{node.unit ?? ""}</code>
                 </div>
               ) : (
                 <div>
                   <span style={{ color: "var(--muted2)" }}>输入链：</span>
-                  <code data-testid={`prov-chain-${node.id}`} style={{ fontSize: 10 }}>
+                  <code data-testid={`prov-chain-${node.id}`} style={{ fontSize: 12 }}>
                     {node.drillValue != null && `${node.drillField ?? "源值"} ${node.drillValue} → `}
                     {node.share != null && `占比 ${fmtPct(node.share)} → `}
                     贡献 {contribution}{node.unit ?? ""}
@@ -352,7 +352,7 @@ function NodeProv({ node, children }: { node: DagNode; children: ReactNode }): J
               )}
               {node.drillType && (
                 <div style={{ marginTop: 3, color: "var(--muted2)" }}>
-                  源对象：<code style={{ fontSize: 10 }}>{path}</code>
+                  源对象：<code style={{ fontSize: 12 }}>{path}</code>
                   {node.provKind && <span style={{ marginLeft: 4 }}>· {node.provKind}</span>}
                 </div>
               )}
@@ -360,7 +360,7 @@ function NodeProv({ node, children }: { node: DagNode; children: ReactNode }): J
             </>
           )}
           {node.basis && <div style={{ marginTop: 3, color: "var(--muted)" }} data-testid={`prov-basis-${node.id}`}>依据：{node.basis}</div>}
-          <div style={{ marginTop: 5, color: "var(--muted2)", fontSize: 10 }}>信任 = 出处 + 推导可当场亮出</div>
+          <div style={{ marginTop: 5, color: "var(--muted2)", fontSize: 12 }}>信任 = 出处 + 推导可当场亮出</div>
         </span>
       )}
     </span>
@@ -394,13 +394,13 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
           <span className="badge" style={{ background: "rgba(124,58,237,.18)", color: "#a78bfa" }}>{fmtPct(weight)}</span>
           <span>{factor.label}</span>
           {/* 贡献值 hover → 派生弹窗（非 DB 原值·输入链）。 */}
-          <span style={{ fontSize: 11, color: "var(--muted2)" }}><NodeProv node={factor}>贡献 {factor.value}</NodeProv></span>
+          <span style={{ fontSize: 12, color: "var(--muted2)" }}><NodeProv node={factor}>贡献 {factor.value}</NodeProv></span>
         </div>
         {/* 取证叶（活数据明细·下钻真证据）——hover → 下钻弹窗（数据源+当前真值·合成标灰）。 */}
         {evid.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4, paddingLeft: 12 }}>
             {evid.map(({ node: leaf }) => (
-              <span key={leaf.id} data-testid={`dag-node-${leaf.id}`} data-kind="evidence" className="badge" style={{ background: "var(--panel2,rgba(255,255,255,.04))", fontSize: 10.5 }}>
+              <span key={leaf.id} data-testid={`dag-node-${leaf.id}`} data-kind="evidence" className="badge" style={{ background: "var(--panel2,rgba(255,255,255,.04))", fontSize: 12 }}>
                 <NodeProv node={leaf}>{leaf.label} · {leaf.value}</NodeProv>
               </span>
             ))}
@@ -424,7 +424,7 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span className="badge" style={{ background: STATUS_COLOR[kpi.status ?? ""] ?? undefined, color: "#fff" }}>{kpi.status}</span>
             <b>{kpi.label}</b>
-            <span style={{ fontSize: 11, color: "var(--muted)" }}>
+            <span style={{ fontSize: 12, color: "var(--muted)" }}>
               实际 {kpi.actual}{kpi.unit} · 目标 {kpi.target}{kpi.unit} · <NodeProv node={kpi}>缺口 {kpi.value}{kpi.unit}</NodeProv>
             </span>
           </div>
@@ -436,7 +436,7 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                     <span className="badge" style={{ background: "rgba(76,144,240,.18)", color: "#4C90F0" }}>KSF</span>
                     <b>{child.node.label}</b>
-                    {child.node.sub && <span style={{ fontSize: 11, color: "var(--muted2)" }}><NodeProv node={child.node}>{child.node.sub}</NodeProv></span>}
+                    {child.node.sub && <span style={{ fontSize: 12, color: "var(--muted2)" }}><NodeProv node={child.node}>{child.node.sub}</NodeProv></span>}
                   </div>
                   <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 6 }}>
                     {childrenOf(child.node.id).map(renderFactor)}

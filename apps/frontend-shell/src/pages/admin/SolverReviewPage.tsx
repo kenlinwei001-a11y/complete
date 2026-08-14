@@ -107,7 +107,7 @@ export default function SolverReviewPage() {
             <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
               <span className={`badge ${STATUS_BADGE[detail.status]?.cls ?? ""}`}>{STATUS_BADGE[detail.status]?.label ?? detail.status}</span>
               {" · "}origin={detail.origin} · trustLevel={TRUST_LABEL[detail.trustLevel] ?? detail.trustLevel} · 创建人 {detail.createdBy}
-              {detail.rejectReason && <span style={{ color: "var(--danger)" }}> · 自检失败：{detail.rejectReason}</span>}
+              {detail.rejectReason && <span style={{ color: "var(--danger-txt)" }}> · 自检失败：{detail.rejectReason}</span>}
             </div>
             {detail.rationale && (
               <>
@@ -116,10 +116,10 @@ export default function SolverReviewPage() {
               </>
             )}
             <div className="section-title">冻结源码（沙箱执行 · 哈希 {detail.hash}）</div>
-            <pre data-testid="solver-source" style={{ maxHeight: 320, overflow: "auto", background: "var(--panel2,rgba(0,0,0,.25))", padding: 10, fontSize: 11.5, borderRadius: 6 }}>
+            <pre data-testid="solver-source" style={{ maxHeight: 320, overflow: "auto", background: "var(--panel2,rgba(0,0,0,.25))", padding: 10, fontSize: 12, borderRadius: 6 }}>
               {detail.computeSource}
             </pre>
-            <div style={{ fontSize: 11.5, color: "var(--muted2)", marginTop: 6 }}>输出形状：{detail.outputShape.join(", ") || "—"}</div>
+            <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6 }}>输出形状：{detail.outputShape.join(", ") || "—"}</div>
             {(detail.status === "PROVISIONAL" || detail.status === "ADVISORY_PASSED") && (
               <div style={{ marginTop: 12 }}>
                 <button className="btn" data-testid="solver-promote-detail" disabled={promote.isPending} onClick={() => promote.mutate(detail.key)}>

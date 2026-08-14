@@ -57,7 +57,7 @@ export default function EvalsPage() {
   return (
     <div data-testid="evals-page">
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>Agent 评测</h2>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
         评测用例（应触发/不应触发/行为增益）→ 跑套件 → 意图准确率/工具正确率/时延。是 Agent 发布门禁的度量来源。
       </div>
 
@@ -68,7 +68,7 @@ export default function EvalsPage() {
             {SUITES.map((s) => <option key={s} value={s}>{SUITE_LABEL[s]}</option>)}
           </select>
         </label>
-        <span style={{ fontSize: 11.5, color: "var(--muted)" }}>用例 {items.length} 条</span>
+        <span style={{ fontSize: 12, color: "var(--muted)" }}>用例 {items.length} 条</span>
         <button className="btn primary sm" data-testid="eval-run" disabled={run.isPending} onClick={() => run.mutate()}>
           {run.isPending ? "评测中…" : "跑评测"}
         </button>
@@ -105,7 +105,7 @@ export default function EvalsPage() {
             >
               {createMut.isPending ? "保存中…" : "保存用例"}
             </button>
-            {packageId === "" && <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>（需先有场景包）</span>}
+            {packageId === "" && <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>（需先有场景包）</span>}
           </div>
         </div>
       )}
@@ -115,7 +115,7 @@ export default function EvalsPage() {
           {items.map((c) => (
             <tr key={c.id} data-testid={`eval-case-${c.id}`}>
               <td style={{ fontSize: 12 }}>{c.input.query}</td>
-              <td className="mono" style={{ fontSize: 11 }}>{c.expect.intentKey ?? "（应判域外）"}</td>
+              <td className="mono" style={{ fontSize: 12 }}>{c.expect.intentKey ?? "（应判域外）"}</td>
               <td><span className="badge">{c.origin}</span></td>
             </tr>
           ))}
@@ -136,7 +136,7 @@ export default function EvalsPage() {
           {runItems.map((r) => (
             <tr key={r.id} data-testid={`eval-run-${r.id}`}>
               <td><span className="badge">{SUITE_LABEL[r.suite] ?? r.suite}</span></td>
-              <td className="mono"><b style={{ color: r.passRate >= 0.9 ? "var(--ok)" : "var(--warn,#c90)" }}>{Math.round(r.passRate * 100)}%</b> ({r.passed}/{r.total} 例)</td>
+              <td className="mono"><b style={{ color: r.passRate >= 0.9 ? "var(--ok-txt)" : "var(--warn,#c90)" }}>{Math.round(r.passRate * 100)}%</b> ({r.passed}/{r.total} 例)</td>
               <td className="mono">{Math.round(r.metrics.intentAccuracy * 100)}%</td>
               <td className="mono">{Math.round(r.metrics.toolCorrectness * 100)}%</td>
               <td className="mono" data-testid={`eval-parity-${r.id}`}>

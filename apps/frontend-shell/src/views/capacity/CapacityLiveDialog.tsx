@@ -67,7 +67,7 @@ export function CapacityLiveDialog({ baseId, baseName, factor }: { baseId: strin
           </div>
           {/* R13：答案数字出处（求解器 · 派生公式 · 输入因子）——非裸叙述。 */}
           {answer.provenance && (
-            <div style={{ marginTop: 6, fontSize: 11 }}>
+            <div style={{ marginTop: 6, fontSize: 12 }}>
               <Provenance
                 testId={`capacity-live-${baseId}`}
                 src={answer.provenance.src}
@@ -80,14 +80,14 @@ export function CapacityLiveDialog({ baseId, baseName, factor }: { baseId: strin
           )}
           {/* what-if 类问句带 before/after（产能少多少）——逐字投影桩输出（非写死）。 */}
           {answer.deltas && answer.deltas.length > 0 && (
-            <table className="cmp" data-testid="capacity-live-deltas" style={{ marginTop: 8, fontSize: 11 }}>
+            <table className="cmp" data-testid="capacity-live-deltas" style={{ marginTop: 8, fontSize: 12 }}>
               <thead>
                 <tr><th>对象</th><th>字段</th><th>before</th><th>after</th></tr>
               </thead>
               <tbody>
                 {answer.deltas.map((d, i) => (
                   <tr key={`${d.objectId}-${d.prop}-${i}`} data-testid={`capacity-live-delta-${d.prop}`}>
-                    <td className="mono" style={{ fontSize: 10 }}>{d.objectId}</td>
+                    <td className="mono" style={{ fontSize: 12 }}>{d.objectId}</td>
                     <td className="mono">{d.prop}</td>
                     <td className="mono">{d.before}</td>
                     <td className="mono" style={{ fontWeight: 600 }}>{d.after}</td>

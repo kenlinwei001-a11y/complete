@@ -73,7 +73,7 @@ function DataDetailPanel() {
             <thead><tr>{cols.map((c) => <th key={c}>{c}</th>)}</tr></thead>
             <tbody>
               {detail.rows.slice(0, 50).map((r, i) => (
-                <tr key={i}>{cols.map((c) => <td key={c} className="mono" style={{ fontSize: 11 }}>{String(r[c] ?? "")}</td>)}</tr>
+                <tr key={i}>{cols.map((c) => <td key={c} className="mono" style={{ fontSize: 12 }}>{String(r[c] ?? "")}</td>)}</tr>
               ))}
             </tbody>
           </table>
@@ -181,7 +181,7 @@ function Report({
         <div key={r.ruleKey} style={{ fontSize: 12, display: "flex", gap: 8, padding: "2px 0" }}>
           <span className="badge blue">{r.ruleKey}</span>
           <span className="mono">{r.evaluated} evaluated</span>
-          <span className={`mono ${r.violations > 0 ? "" : ""}`} style={{ color: r.violations > 0 ? "var(--danger)" : "var(--ok)" }}>
+          <span className={`mono ${r.violations > 0 ? "" : ""}`} style={{ color: r.violations > 0 ? "var(--danger-txt)" : "var(--ok-txt)" }}>
             {r.violations} violations
           </span>
         </div>
@@ -190,7 +190,7 @@ function Report({
         派生抽样复算
       </div>
       {report.derivationSpotChecks.map((d, i) => (
-        <div key={i} style={{ fontSize: 12, color: d.ok ? "var(--ok)" : "var(--danger)" }}>
+        <div key={i} style={{ fontSize: 12, color: d.ok ? "var(--ok-txt)" : "var(--danger-txt)" }}>
           {d.ok ? "✓" : "✕"} {d.typeKey}.{d.propKey}
         </div>
       ))}
@@ -213,8 +213,8 @@ function Report({
                 <tr key={s.seriesKey}>
                   <td>{s.seriesKey}</td>
                   <td>{s.points.toLocaleString()}</td>
-                  <td style={{ color: s.gaps > 0 ? "var(--danger)" : undefined }}>{s.gaps}</td>
-                  <td style={{ color: s.aggSpotCheckOk ? "var(--ok)" : "var(--danger)" }}>{s.aggSpotCheckOk ? "✓" : "✕"}</td>
+                  <td style={{ color: s.gaps > 0 ? "var(--danger-txt)" : undefined }}>{s.gaps}</td>
+                  <td style={{ color: s.aggSpotCheckOk ? "var(--ok-txt)" : "var(--danger-txt)" }}>{s.aggSpotCheckOk ? "✓" : "✕"}</td>
                 </tr>
               ))}
             </tbody>

@@ -22,7 +22,7 @@ export default function SliceLibraryPage() {
   return (
     <div data-testid="slice-library-page">
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>{t.title}</h2>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>{t.sub}</div>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>{t.sub}</div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
         <button
@@ -65,7 +65,7 @@ function LibraryTab() {
 
   return (
     <>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 8 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
         {canEdit ? "点切片键就地展开内联子图并可编辑规格（不跳转图谱模块）。" : "点切片键就地查看内联子图（只读·不跳转）。"}
       </div>
       <table className="cmp" data-testid="slice-library-table" style={{ width: "100%" }}>
@@ -86,7 +86,7 @@ function LibraryTab() {
                   <button
                     data-testid={`slice-library-row-${entry.sliceKey}`}
                     onClick={() => setExpanded((k) => (k === entry.sliceKey ? null : entry.sliceKey))}
-                    style={{ font: "inherit", fontFamily: "var(--mono, monospace)", background: "none", border: 0, color: "var(--accent)", cursor: "pointer", padding: 0 }}
+                    style={{ font: "inherit", fontFamily: "var(--mono, monospace)", background: "none", border: 0, color: "var(--accent-txt)", cursor: "pointer", padding: 0 }}
                     title="就地展开内联子图（不跳转图谱模块）"
                   >
                     {expanded === entry.sliceKey ? "▾ " : "▸ "}{entry.sliceKey}
@@ -144,7 +144,7 @@ function PlanTab() {
 
   return (
     <div className="panel" data-testid="slice-plan-form" style={{ display: "grid", gap: 12 }}>
-      <div className="muted" style={{ fontSize: 11.5 }}>{t.planSub}</div>
+      <div className="muted" style={{ fontSize: 12 }}>{t.planSub}</div>
 
       <label style={{ fontSize: 12 }}>
         {t.rootType}
@@ -209,7 +209,7 @@ function PlanTab() {
             {result.plan.reused && <span className="badge green">{t.reused}</span>}
             <span className="badge blue">{result.plan.sliceKey}</span>
           </div>
-          <div className="muted" style={{ fontSize: 11.5, marginBottom: 8 }}>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
             root = <span className="mono">{result.plan.rootType}</span>
             {" · "}
             {t.spannedDomains}：{result.plan.spannedDomains.join(" / ") || "—"}
@@ -226,7 +226,7 @@ function PlanTab() {
               {result.plan.paths.map((p) => (
                 <tr key={p.target} data-testid={`plan-path-${p.target}`}>
                   <td className="mono">{p.target}</td>
-                  <td style={{ fontSize: 11 }}>
+                  <td style={{ fontSize: 12 }}>
                     {p.hops.length === 0
                       ? "—"
                       : p.hops.map((h, i) => (
@@ -242,8 +242,8 @@ function PlanTab() {
 
           {result.plan.pathEvidence.length > 0 && (
             <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)" }}>pathEvidence</div>
-              <ul style={{ fontSize: 11, paddingLeft: 18, margin: "4px 0 0" }}>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>pathEvidence</div>
+              <ul style={{ fontSize: 12, paddingLeft: 18, margin: "4px 0 0" }}>
                 {result.plan.pathEvidence.map((e, i) => <li key={i} className="mono">{e}</li>)}
               </ul>
             </div>

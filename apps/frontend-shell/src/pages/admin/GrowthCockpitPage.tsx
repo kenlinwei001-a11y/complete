@@ -55,7 +55,7 @@ export default function GrowthCockpitPage() {
   return (
     <div data-testid="growth-cockpit-page" data-ready={ready ? "1" : "0"}>
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>自成长发动机驾驶舱</h2>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
         把"客户明确问题"当燃料：真跑一遍 QOS 诊断缺口 → 能自动补的补(数据真人正门) → 缺功能出工单 → 循环重跑直到收敛。
       </div>
 
@@ -71,7 +71,7 @@ export default function GrowthCockpitPage() {
         {/* WO-UNIT-MEANING：三个指标此前都是裸数——「开放工单 4」是 4 张还是 4 类？「累计运行 12」是 12 次还是 12 轮？
             契约 growth.ts 里 tickets/runs 都是数组（无 unit 字段可消费），故就近点明计数单位；
             可答率括号内补「可答/总运行」说明这是**次数比**而非百分数第二遍。 */}
-        <span data-testid="metric-answer-rate">需求可答率 <b style={{ color: "var(--ok)" }}>{ledgerQ.isSuccess ? `${answerRate}%` : DASH}</b> <span className="muted">(可答 {ledgerQ.isSuccess ? answerable : DASH} 次 / 共 {ledgerQ.isSuccess ? runs.length : DASH} 次)</span></span>
+        <span data-testid="metric-answer-rate">需求可答率 <b style={{ color: "var(--ok-txt)" }}>{ledgerQ.isSuccess ? `${answerRate}%` : DASH}</b> <span className="muted">(可答 {ledgerQ.isSuccess ? answerable : DASH} 次 / 共 {ledgerQ.isSuccess ? runs.length : DASH} 次)</span></span>
         <span>开放工单 <b className="amber" data-testid="metric-open-tickets">{ticketsQ.isSuccess ? tks.filter((t) => t.status === "OPEN").length : DASH}</b> 张</span>
         <span>累计运行 <b>{ledgerQ.isSuccess ? runs.length : DASH}</b> 次</span>
       </div>
@@ -82,10 +82,10 @@ export default function GrowthCockpitPage() {
           <div className="section-title">
             本次运行 <span className={`badge ${TERMINAL_BADGE[report.terminalState]?.cls}`} data-testid="growth-terminal">{TERMINAL_BADGE[report.terminalState]?.label}</span>
             {/* WO-UNIT-MEANING：`K=8` 此前是无解释的裸参数——K 即**最大轮数上限**（同单位：轮）。 */}
-            <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>已跑 {report.rounds.length} 轮 / 上限 K={report.maxRounds} 轮</span>
+            <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>已跑 {report.rounds.length} 轮 / 上限 K={report.maxRounds} 轮</span>
           </div>
           {report.rounds.map((rd) => (
-            <div key={rd.round} data-testid={`growth-round-${rd.round}`} style={{ fontSize: 11.5, padding: "4px 0", borderBottom: "1px solid var(--line)" }}>
+            <div key={rd.round} data-testid={`growth-round-${rd.round}`} style={{ fontSize: 12, padding: "4px 0", borderBottom: "1px solid var(--line)" }}>
               <b>第 {rd.round} 轮</b> · 缺口 <span className="badge">{rd.gapReport.verdict}</span>{" "}
               {rd.gapReport.findings.map((f, i) => <span key={i} className="mono" style={{ marginLeft: 6 }}>{f.gapCode}</span>)}
               {rd.fillApplied && <span style={{ marginLeft: 8, color: "var(--muted)" }}>→ 补：{rd.fillApplied.action}{rd.fillApplied.advanced ? " ✓推进" : ""}</span>}
@@ -101,7 +101,7 @@ export default function GrowthCockpitPage() {
         <tbody>
           {tks.map((t) => (
             <tr key={t.id} data-testid={`ticket-${t.id}`}>
-              <td style={{ fontSize: 11.5 }}>{t.fromQuestion}</td>
+              <td style={{ fontSize: 12 }}>{t.fromQuestion}</td>
               <td className="mono">{t.gapCode}</td>
               <td><span className={`badge ${TICKET_BADGE[t.status] ?? ""}`}>{t.status}</span></td>
               <td>{t.status === "OPEN" && <button className="btn sm" data-testid={`claim-${t.id}`} onClick={() => claim.mutate(t.id)}>认领</button>}</td>
@@ -119,7 +119,7 @@ export default function GrowthCockpitPage() {
         <tbody>
           {runs.map((e) => (
             <tr key={e.id} data-testid={`ledger-${e.id}`}>
-              <td style={{ fontSize: 11.5 }}>{e.report.question}</td>
+              <td style={{ fontSize: 12 }}>{e.report.question}</td>
               <td><span className={`badge ${TERMINAL_BADGE[e.report.terminalState]?.cls}`}>{e.report.terminalState}</span></td>
               <td className="mono">{e.report.rounds.length}</td>
               <td className="mono">{e.report.openTickets.length}</td>

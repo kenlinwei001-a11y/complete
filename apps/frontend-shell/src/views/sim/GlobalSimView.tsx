@@ -160,7 +160,7 @@ function DrillAffordance({ kind, id, label, testId, prov }: { kind: string; id: 
       data-testid={testId}
       data-drill-blocked="true"
       title={prov ? provTitle(prov) : note}
-      style={{ fontSize: 11, fontStyle: "italic", color: "var(--muted2, #8a94a6)", whiteSpace: "nowrap" }}
+      style={{ fontSize: 12, fontStyle: "italic", color: "var(--muted2, #8a94a6)", whiteSpace: "nowrap" }}
     >
       {note}
     </span>
@@ -454,7 +454,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       <div className={styles.glass} data-testid="global-sim-business-type">
         <span className={styles.grpLabel}>[ 业务类型（{(["passenger", "commercial", "storage"] as BusinessType[]).map((t) => BUSINESS_TYPE_LABEL[t]).join(" / ")}）· 勾选筛选后联合推演 ]</span>
         <div className={styles.scenPicks} data-testid="global-sim-bt-filter">
-          <span className={styles.textMuted} style={{ fontSize: 11 }}>勾选筛选（空 = 全类型）：</span>
+          <span className={styles.textMuted} style={{ fontSize: 12 }}>勾选筛选（空 = 全类型）：</span>
           {(["passenger", "commercial", "storage"] as BusinessType[]).map((t) => (
             <label key={t} className={styles.scenChk} data-testid={`global-sim-bt-${t}`}>
               <input type="checkbox" checked={btFilter.has(t)} onChange={() => toggleBt(t)} /> {BUSINESS_TYPE_LABEL[t]}
@@ -518,7 +518,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
           />
           <b className="mono" data-testid="global-sim-transfer-qty">{transferWan} 万套</b>
           {transferWan > 0 && transferBase && (
-            <button className={styles.btnGhost} data-testid="global-sim-transfer-reset" onClick={() => setTransferWan(0)} style={{ fontSize: 11 }}>归零（回基线）</button>
+            <button className={styles.btnGhost} data-testid="global-sim-transfer-reset" onClick={() => setTransferWan(0)} style={{ fontSize: 12 }}>归零（回基线）</button>
           )}
         </div>
 
@@ -638,7 +638,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
 
             {/* ⑥ 对比方案（目标切换 = 多方案对比） */}
             <div className={styles.scenPicks} data-testid="global-sim-scens">
-              <span className={styles.textMuted} style={{ fontSize: 11 }}>对比方案：</span>
+              <span className={styles.textMuted} style={{ fontSize: 12 }}>对比方案：</span>
               {ALL_SCENARIOS.map((k) => (
                 <label key={k} className={styles.scenChk} data-testid={`global-sim-scen-${k}`}>
                   <input type="checkbox" checked={scenSet.includes(k)} onChange={() => toggleScen(k)} /> {SCEN_LABEL[k]}

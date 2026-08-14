@@ -195,7 +195,7 @@ function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition;
     <div className="panel" data-testid="workflow-editor">
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         <strong>{workflow.name}</strong>
-        <span className="mono" style={{ fontSize: 11, color: "var(--muted2)" }}>
+        <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>
           v{workflow.version} · {workflow.status}
         </span>
         {editable && (
@@ -306,11 +306,11 @@ function StepRow({
   return (
     <div className={`${styles.stepRow} ${hasError ? styles.stepError : ""}`} data-testid={`wf-step-${step.id}`}>
       <div className={styles.stepHead}>
-        <span className="mono" style={{ fontSize: 11, color: "var(--muted2)" }}>
+        <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>
           #{index + 1}
         </span>
         <span className="badge blue">{step.type}</span>
-        <span className="mono" style={{ fontSize: 11 }}>
+        <span className="mono" style={{ fontSize: 12 }}>
           {step.id}
         </span>
         {editable && (
@@ -526,7 +526,7 @@ function RenderBlocksEditor({
 
   return (
     <div data-testid={`wf-render-blocks-${stepId}`} style={{ width: "100%" }}>
-      <div className="muted" style={{ fontSize: 11, marginBottom: 6 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
         render_answer 可视编排（增删 block · 主值绑定 {"{{steps.*}}"}）
       </div>
       {blocks.length === 0 && <div className="empty-state" style={{ marginBottom: 6 }}>暂无 block，点击下方添加</div>}
@@ -535,7 +535,7 @@ function RenderBlocksEditor({
         return (
           <div key={i} className="panel" style={{ marginBottom: 6, padding: 8 }} data-testid={`wf-block-${stepId}-${i}`}>
             <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
-              <span className="mono" style={{ fontSize: 11 }}>#{i + 1}</span>
+              <span className="mono" style={{ fontSize: 12 }}>#{i + 1}</span>
               <select
                 aria-label={`block ${i} 类型`}
                 data-testid={`wf-block-type-${stepId}-${i}`}
@@ -580,7 +580,7 @@ function DryRunResult({ result, onClose }: { result: WorkflowRunResult; onClose:
     <div className="panel" style={{ marginBottom: 10, borderColor: result.status === "COMPLETED" ? "var(--ok)" : "var(--danger)" }} data-testid="wf-dry-run-result">
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <span className={`badge ${result.status === "COMPLETED" ? "green" : "red"}`}>{result.status}</span>
-        <span className="mono" style={{ fontSize: 11, color: "var(--muted2)" }}>{result.runId}</span>
+        <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>{result.runId}</span>
         <button className="btn sm" style={{ marginLeft: "auto" }} onClick={onClose}>关闭</button>
       </div>
       {result.error && (
@@ -590,9 +590,9 @@ function DryRunResult({ result, onClose }: { result: WorkflowRunResult; onClose:
       )}
       <div className="section-title">步骤输出时间线</div>
       {steps.length === 0 ? (
-        <div className="muted" style={{ fontSize: 11 }}>（无步骤输出）</div>
+        <div className="muted" style={{ fontSize: 12 }}>（无步骤输出）</div>
       ) : (
-        <ol style={{ fontSize: 11, paddingLeft: 18 }}>
+        <ol style={{ fontSize: 12, paddingLeft: 18 }}>
           {steps.map(([sid, out]) => (
             <li key={sid} data-testid={`wf-dry-run-step-${sid}`} style={{ marginBottom: 4 }}>
               <span className="mono">{sid}</span>：
@@ -604,7 +604,7 @@ function DryRunResult({ result, onClose }: { result: WorkflowRunResult; onClose:
       {result.answer && (
         <>
           <div className="section-title">渲染结果（render_answer）</div>
-          <pre style={{ fontSize: 11, maxHeight: 200, overflow: "auto", background: "var(--panel2,#1112)", padding: 8 }} data-testid="wf-dry-run-answer">
+          <pre style={{ fontSize: 12, maxHeight: 200, overflow: "auto", background: "var(--panel2,#1112)", padding: 8 }} data-testid="wf-dry-run-answer">
             {JSON.stringify(result.answer, null, 2)}
           </pre>
         </>

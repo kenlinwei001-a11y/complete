@@ -106,7 +106,7 @@ function ScopeChip({ tone, testId, children }: { tone: "base" | "all" | "off" | 
       data-tone={tone}
       style={{
         display: "inline-flex", alignItems: "center", gap: 4, padding: "1px 8px", borderRadius: 999,
-        border: `1px solid ${color}`, color, fontSize: 11.5, lineHeight: 1.7, whiteSpace: "nowrap",
+        border: `1px solid ${color}`, color, fontSize: 12, lineHeight: 1.7, whiteSpace: "nowrap",
       }}
     >
       {children}
@@ -119,7 +119,7 @@ function ScopeRow({ title, testId, children }: { title: string; testId: string; 
   return (
     <div
       data-testid={testId}
-      style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11.5, color: "var(--muted)", margin: "4px 0" }}
+      style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, color: "var(--muted)", margin: "4px 0" }}
     >
       <span style={{ color: "var(--muted2)" }}>{title}</span>
       {children}
@@ -180,7 +180,7 @@ export function KitScopeBar({
         </InfoPopover>
       </ScopeRow>
       {/* `shortageCount` 的**读法**：分母是 sampled，不是订单池，更不是「全部缺料单」。 */}
-      <div data-testid={`${testId}-reading`} style={{ fontSize: 11.5, color: truncated ? "#E8B54A" : "var(--muted)" }}>
+      <div data-testid={`${testId}-reading`} style={{ fontSize: 12, color: truncated ? "#E8B54A" : "var(--muted)" }}>
         {T.shortageReading(shortageCount, sampled, pool)}
       </div>
     </div>

@@ -44,7 +44,7 @@ function ValidationPolicyEditor({ connId, sourceFields }: { connId: string; sour
   return (
     <div className="panel" style={{ marginBottom: 14 }} data-testid="validation-policy-editor">
       <div className="section-title">本体校验策略 · 字段映射（适配本数据源导入）</div>
-      <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
         本源导入数据按本体对象类型 schema + 值域校验;字段映射把外部字段名归一到本体属性。按租户保存。
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
@@ -146,7 +146,7 @@ function DataSourceRowsEditor({ connId }: { connId: string }) {
                   </td>
                 );
               })}
-              <td style={{ color: "var(--muted2)", fontSize: 10 }}>{row._editedAt ? "✎ 已编辑" : ""}</td>
+              <td style={{ color: "var(--muted2)", fontSize: 12 }}>{row._editedAt ? "✎ 已编辑" : ""}</td>
             </tr>
           ))}
         </tbody>
@@ -217,7 +217,7 @@ export default function FieldProfilePage() {
                           }}
                         />
                       </div>
-                      <span style={{ fontSize: 10 }}>{(f.nullRate * 100).toFixed(0)}%</span>
+                      <span style={{ fontSize: 12 }}>{(f.nullRate * 100).toFixed(0)}%</span>
                     </div>
                   </td>
                   <td>{(f.uniqueRate * 100).toFixed(0)}%</td>

@@ -217,8 +217,8 @@ export function ActionDraftBlock({ draftId, actionType, summary }: { draftId: st
     <div className={styles.draft} data-testid="action-draft">
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span className="badge amber">{zh.dock.pendingApproval}</span>
-        <span className="mono" style={{ fontSize: 11 }}>{actionType}</span>
-        <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }}>{draftId}</span>
+        <span className="mono" style={{ fontSize: 12 }}>{actionType}</span>
+        <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>{draftId}</span>
       </div>
       <p style={{ margin: "6px 0", lineHeight: 1.6 }}>{summary}</p>
       <Link to="/admin/actions" className={styles.draftLink}>

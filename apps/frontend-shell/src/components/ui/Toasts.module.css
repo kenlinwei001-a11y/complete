@@ -43,11 +43,11 @@
   border: none;
   color: var(--muted2);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 12px;
   padding: 0;
 }
 .reqId:hover {
-  color: var(--accent);
+  color: var(--accent-txt);
 }
 
 .x {
@@ -57,7 +57,7 @@
   background: none;
   border: none;
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
 }
 .x:hover {
   color: var(--txt);

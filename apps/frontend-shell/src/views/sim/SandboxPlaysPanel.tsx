@@ -386,7 +386,7 @@ export default function SandboxPlaysPanel({ sessionId, curTick, anchor }: Sandbo
       </div>
 
       {solveError !== null && (
-        <div className={styles.sub} data-testid="sandbox-plays-solve-error" style={{ lineHeight: 1.6, color: "var(--warn)" }}>
+        <div className={styles.sub} data-testid="sandbox-plays-solve-error" style={{ lineHeight: 1.6, color: "var(--warn-txt)" }}>
           {zh.sim.sandbox.plays.solveFailed}
           <br />
           <span className="mono">{solveError}</span>
@@ -436,7 +436,7 @@ export default function SandboxPlaysPanel({ sessionId, curTick, anchor }: Sandbo
                     key={k}
                     data-testid={`sandbox-play-dim-${o.optionId}-${k}`}
                     data-best={best ? "1" : "0"}
-                    style={{ marginRight: 8, color: best ? "var(--ok)" : undefined }}
+                    style={{ marginRight: 8, color: best ? "var(--ok-txt)" : undefined }}
                   >
                     {DIM_META[k]?.label ?? k} <b className="mono">{fmt((o as unknown as Record<string, number>)[k] ?? 0)}</b>
                     {best ? "✓" : ""}

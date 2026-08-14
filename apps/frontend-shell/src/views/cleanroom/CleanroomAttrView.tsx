@@ -117,7 +117,7 @@ function PrimaryPicker({
       </div>
       <div data-testid={`${testid}-args`} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
         {Object.entries(args).map(([k, v]) => (
-          <span key={k} className="badge" style={{ fontSize: 9 }} title="倒推参数（真对象结构·非写死）">
+          <span key={k} className="badge" style={{ fontSize: 12 }} title="倒推参数（真对象结构·非写死）">
             {k}=<b className="mono">{typeof v === "object" ? JSON.stringify(v) : String(v)}</b>
           </span>
         ))}
@@ -134,7 +134,7 @@ function SolverError({ testid, error }: { testid: string; error: unknown }) {
       <div style={{ fontWeight: 600, color: "var(--txt)" }}>求解器未返回结果</div>
       <div style={{ fontSize: 12, color: "var(--muted2)", maxWidth: 440, textAlign: "center", lineHeight: 1.7 }}>
         该求解器可能未开通或当前对象数据不足——诚实空态，不编造结果。
-        {msg ? <div style={{ marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 11 }}>{msg}</div> : null}
+        {msg ? <div style={{ marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 12 }}>{msg}</div> : null}
       </div>
     </div>
   );
@@ -207,15 +207,15 @@ function BottleneckResult({ cand }: { cand: BottleneckCandidate }) {
               <div key={b.resourceId} data-testid={`cr-bn-row-${b.resourceId}`} className="panel" style={{ padding: "8px 10px", borderLeft: "3px solid var(--danger)" }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: 12 }}>
                   <b className="mono">{b.resourceId}</b>
-                  <span>需求 <b className="mono" style={{ color: "var(--danger)" }}>{fmt(b.demand)}</b> / 产能 <b className="mono">{fmt(b.capacity)}</b></span>
-                  <span className="badge red" style={{ fontSize: 9 }}>超 {fmt(over)}</span>
+                  <span>需求 <b className="mono" style={{ color: "var(--danger-txt)" }}>{fmt(b.demand)}</b> / 产能 <b className="mono">{fmt(b.capacity)}</b></span>
+                  <span className="badge red" style={{ fontSize: 12 }}>超 {fmt(over)}</span>
                   <span style={{ color: "var(--muted2)" }}>{b.sharerCount} 方争用</span>
                 </div>
                 <div style={{ height: 8, borderRadius: 5, background: "var(--line2)", overflow: "hidden", marginTop: 6 }}>
                   <div style={{ height: "100%", width: `${Math.min(100, pct)}%`, background: pct > 100 ? "var(--danger)" : "var(--amber)" }} />
                 </div>
                 {dg && (
-                  <div data-testid={`cr-bn-downgraded-${b.resourceId}`} style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>
+                  <div data-testid={`cr-bn-downgraded-${b.resourceId}`} style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
                     降级：<b className="mono">{dg.objectId}</b>（{dg.sharedByType}）· {dg.reason}
                   </div>
                 )}
@@ -262,7 +262,7 @@ function ConcentrationBlock({ types }: { types: CrType[] }) {
       <div className="panel" style={{ padding: "8px 12px", fontSize: 12, color: "var(--muted)" }} data-testid="cr-cc-path">
         路径：<b className="mono">{cand.primary}</b>
         {cand.args.path.map((h, i) => (
-          <span key={i}> —<span className="mono" style={{ color: "var(--accent)" }}>{h.viaField}</span>→ <b className="mono">{h.toType}</b></span>
+          <span key={i}> —<span className="mono" style={{ color: "var(--accent-txt)" }}>{h.viaField}</span>→ <b className="mono">{h.toType}</b></span>
         ))}
         <span style={{ marginLeft: 8, color: "var(--muted2)" }}>（根 = {cand.rootLabel}）</span>
       </div>
@@ -293,10 +293,10 @@ function ConcentrationResult({ cand }: { cand: ConcentrationCandidate }) {
         <>
           <div data-testid="cr-cc-top" className="panel" style={{ padding: "10px 12px", borderLeft: "3px solid var(--danger)", marginBottom: 10 }}>
             <div style={{ fontSize: 13 }}>
-              最大敞口根 <b className="mono" style={{ color: "var(--danger)" }}>{top.rootId}</b>
+              最大敞口根 <b className="mono" style={{ color: "var(--danger-txt)" }}>{top.rootId}</b>
               {" · 被 "}<b className="mono" data-testid="cr-cc-top-count">{top.count}</b>{" 个依赖方隐性依赖"}
             </div>
-            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>依赖方：{top.dependents.join("、")}</div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>依赖方：{top.dependents.join("、")}</div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {data.concentrations.map((c) => {
@@ -403,8 +403,8 @@ function MarginResult({ cand }: { cand: MarginCandidate }) {
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: 12 }}>
                   <b className="mono">{r.id}</b>
                   <span>营收 <b className="mono">{fmt(r.revenue)}</b> − 成本 <b className="mono">{fmt(r.totalCost)}</b></span>
-                  <span>毛利 <b className="mono" style={{ color: "var(--danger)" }}>{fmt(r.margin)}</b>（{fmt(r.marginRate * 100)}%）</span>
-                  {r.topDriver && <span className="badge red" style={{ fontSize: 9 }}>主驱动 {r.topDriver.label}</span>}
+                  <span>毛利 <b className="mono" style={{ color: "var(--danger-txt)" }}>{fmt(r.margin)}</b>（{fmt(r.marginRate * 100)}%）</span>
+                  {r.topDriver && <span className="badge red" style={{ fontSize: 12 }}>主驱动 {r.topDriver.label}</span>}
                 </div>
               </div>
             ))}

@@ -29,13 +29,13 @@
 .source {
   margin: 0;
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--font-mono);
 }
 
 .root code {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   background: var(--bg2);
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -66,7 +66,7 @@
   line-height: 1.7;
 }
 .notMeasured {
-  color: var(--warn) !important;
+  color: var(--warn-txt) !important;
 }
 
 /* ── 取数失败 / 词表漂移 ──────────────────────────────────────────────────── */
@@ -81,7 +81,7 @@
 .error b,
 .drift b {
   font-size: 12px;
-  color: var(--danger);
+  color: var(--danger-txt);
 }
 .error p,
 .drift p {
@@ -109,14 +109,14 @@
 }
 .kpi small {
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
 }
 .kpi b {
   font-size: 20px;
   font-family: var(--font-mono);
 }
 .unit {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted2);
   margin-left: 3px;
   font-family: var(--font-sans);
@@ -131,7 +131,7 @@
 }
 .dist small {
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
 }
 .distBar {
   display: flex;
@@ -144,7 +144,7 @@
 .distSeg {
   background: var(--kind-color);
   color: var(--on-accent);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 22px;
   text-align: center;
   overflow: hidden;
@@ -199,7 +199,7 @@
 }
 .enum {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
   font-weight: 400;
 }
@@ -211,7 +211,7 @@
 }
 .hint {
   margin: 2px 0 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--muted2);
 }
@@ -228,7 +228,7 @@
   font-family: var(--font-mono);
 }
 .groupStats small {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted2);
 }
 
@@ -245,7 +245,7 @@
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  font-size: 11px;
+  font-size: 12px;
 }
 .ownersLabel {
   color: var(--muted2);
@@ -275,7 +275,7 @@
   text-align: left;
   color: var(--muted2);
   font-weight: 500;
-  font-size: 11px;
+  font-size: 12px;
   border-bottom: 1px solid var(--line2);
   padding: 4px 8px 4px 0;
   white-space: nowrap;
@@ -324,13 +324,13 @@
   border-radius: 4px;
   color: var(--muted);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   padding: 2px 8px;
   white-space: nowrap;
 }
 .drillBtn:hover {
   background: var(--hover-tint);
-  color: var(--fg);
+  color: var(--txt);
 }
 .instPanel {
   border-left: 2px solid var(--kind-color, var(--line2));
@@ -344,29 +344,29 @@
   margin-bottom: 6px;
 }
 .instHead b {
-  color: var(--fg);
+  color: var(--txt);
   font-size: 12px;
 }
 .instHead span,
 .instHead small {
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
 }
 /* 推导值诚实位：与 .notMeasured 同一视觉档（本文件已有该类，此处只补下钻面板专用的两个） */
 .stdCompare {
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
   margin: 2px 0 6px;
 }
 .absent {
   border: 1px dashed var(--line2);
   border-radius: 4px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   padding: 8px 10px;
 }
 .absent b {
-  color: var(--fg);
+  color: var(--txt);
   display: block;
   margin-bottom: 4px;
 }
@@ -376,7 +376,7 @@
 .src {
   color: var(--muted2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   max-width: 320px;
   overflow-wrap: anywhere;
 }

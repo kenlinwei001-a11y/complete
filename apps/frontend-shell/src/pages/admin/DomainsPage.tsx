@@ -28,7 +28,7 @@ export default function DomainsPage() {
   return (
     <div data-testid="domains-page">
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>域管理</h2>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
         域是一等治理单元——对象类型归域、按域分组图谱、域 owner 会签发布。
       </div>
       <div className="panel" style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>

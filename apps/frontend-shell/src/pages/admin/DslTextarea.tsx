@@ -155,7 +155,7 @@ export function DslTextarea({
                 onMouseDown={(e) => { e.preventDefault(); pick(s.insert); }}
               >
                 <span className="mono">{s.label}</span>
-                <span className="muted" style={{ fontSize: 10 }}>{s.kind}</span>
+                <span className="muted" style={{ fontSize: 12 }}>{s.kind}</span>
               </button>
             </li>
           ))}

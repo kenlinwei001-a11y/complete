@@ -31,7 +31,7 @@ export default function QuarantinePage() {
   return (
     <div data-testid="quarantine-page">
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>隔离区</h2>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
         接入/对象化时无法落地的异常行在此隔离（不污染主数据）。修复源后「重入」走正门，或「丢弃」。
       </div>
       <table className="cmp" data-testid="quarantine-rows" style={{ width: "100%" }}>
@@ -41,10 +41,10 @@ export default function QuarantinePage() {
         <tbody>
           {rows.map((r) => (
             <tr key={r.id} data-testid={`q-row-${r.id}`}>
-              <td className="mono" style={{ fontSize: 11 }}>{r.dataset}</td>
+              <td className="mono" style={{ fontSize: 12 }}>{r.dataset}</td>
               <td><span className="badge amber">{REASON_LABEL[r.reason] ?? r.reason}</span></td>
-              <td className="mono" style={{ fontSize: 10.5, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{JSON.stringify(r.raw)}</td>
-              <td style={{ fontSize: 11, color: "var(--muted)" }}>{r.detail}</td>
+              <td className="mono" style={{ fontSize: 12, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{JSON.stringify(r.raw)}</td>
+              <td style={{ fontSize: 12, color: "var(--muted)" }}>{r.detail}</td>
               <td style={{ whiteSpace: "nowrap" }}>
                 <button className="btn sm" data-testid={`q-reprocess-${r.id}`} disabled={reprocess.isPending} onClick={() => reprocess.mutate(r.id)}>重入</button>{" "}
                 <button className="btn sm" data-testid={`q-discard-${r.id}`} disabled={discard.isPending} onClick={() => discard.mutate(r.id)}>丢弃</button>

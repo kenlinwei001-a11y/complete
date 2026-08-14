@@ -350,7 +350,7 @@ export function CapacityDerivationDag({ baseId }: { baseId: string }) {
                     /* R-UI-3：**不用原生 `title`** —— 那是 OS 绘制的 tooltip，不受控、恒在最上层、移开滞留
                        （2026-08-10 环形图实测事故）。信息改挂 aria-label，读屏拿得到、浏览器不弹框。 */
                     aria-label={zh.capDag.factorAria(f.mark, f.name, f.layer)}
-                    style={{ background: "var(--panel)", border: `1px solid ${L.colorVar}`, color: "var(--muted)", fontSize: 10 }}
+                    style={{ background: "var(--panel)", border: `1px solid ${L.colorVar}`, color: "var(--muted)", fontSize: 12 }}
                   >
                     {f.mark} {f.name}
                   </span>

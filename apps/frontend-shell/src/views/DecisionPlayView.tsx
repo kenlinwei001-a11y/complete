@@ -194,13 +194,13 @@ function ImpedimentEntryBanner({ entry }: { entry: ImpedimentEntry }) {
       </div>
 
       {joined ? (
-        <div data-testid="dp-from-join-ok" style={{ fontSize: 12, color: "var(--ok)", marginTop: 6 }}>
+        <div data-testid="dp-from-join-ok" style={{ fontSize: 12, color: "var(--ok-txt)", marginTop: 6 }}>
           已对到因果因子 <b className="mono">{entry.factorId}</b> —— 下面 5 区就是这条阻滞点的根因推演。
         </div>
       ) : (
         <div
           data-testid="dp-from-join-gap"
-          style={{ fontSize: 12, color: "var(--amber, #d89b28)", marginTop: 6, lineHeight: 1.8 }}
+          style={{ fontSize: 12, color: "var(--amber-txt, #d89b28)", marginTop: 6, lineHeight: 1.8 }}
         >
           <b>本次未能把这个阻滞点对到具体因子。</b>
           原因：阻滞点锚在真对象 <span className="mono">locus{"{objectType,objectId}"}</span> 上，决策推演锚在{" "}
@@ -226,7 +226,7 @@ function ImpedimentEntryBanner({ entry }: { entry: ImpedimentEntry }) {
         <div
           data-testid="dp-from-caveat"
           data-mode={entry.mode}
-          style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6, lineHeight: 1.7 }}
+          style={{ fontSize: 12, color: "var(--muted)", marginTop: 6, lineHeight: 1.7 }}
         >
           <b>这条阻滞点的诚实位随行：</b>
           {ENTRY_MODE_NOTE[entry.mode] ?? `引擎标了 ${entry.mode}，本页不替它编一个解释。`}
@@ -268,7 +268,7 @@ export default function DecisionPlayView({ view }: { view?: ViewConfigVM }) {
         <div style={{ fontWeight: 600, color: "var(--txt)" }}>暂无可推演的根因</div>
         <div style={{ fontSize: 12, color: "var(--muted2)", maxWidth: 460, textAlign: "center", lineHeight: 1.7 }}>
           决策推演需先有 gap_attribution 根因（越线 Metric + 因果链）。当前无可行动根因或该指标未越线——诚实空态，不编造方案。
-          {reason ? <div style={{ marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 11 }}>{reason}</div> : null}
+          {reason ? <div style={{ marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 12 }}>{reason}</div> : null}
         </div>
         </div>
       </div>
@@ -342,9 +342,9 @@ function DecisionPlay({
       <div className="panel" data-testid="dp-root-cause" style={{ borderLeft: "3px solid var(--danger)" }}>
         <div className="section-title">① 根因</div>
         <div style={{ fontSize: 15, fontWeight: 600, color: "var(--txt)" }}>
-          根因「<span style={{ color: "var(--danger)" }}>{rc.label}</span>」· 越线{" "}
+          根因「<span style={{ color: "var(--danger-txt)" }}>{rc.label}</span>」· 越线{" "}
           <span className="mono">{rc.metricKey}</span> 缺口{" "}
-          <b className="mono" data-testid="dp-root-gap" style={{ color: "var(--danger)" }}>{fmt(rc.gap)}{rc.unit}</b>
+          <b className="mono" data-testid="dp-root-gap" style={{ color: "var(--danger-txt)" }}>{fmt(rc.gap)}{rc.unit}</b>
         </div>
         <div data-testid="dp-summary" style={{ fontSize: 12, color: "var(--muted)", marginTop: 6, lineHeight: 1.7 }}>{summary}</div>
       </div>
@@ -381,7 +381,7 @@ function DecisionPlay({
                 <tr key={row.optionId} data-testid={`dp-matrix-row-${row.optionId}`} style={recSet.has(row.optionId) ? { background: "rgba(76,144,240,.08)" } : undefined}>
                   <td className="zh">
                     <b>{row.label}</b>
-                    {recSet.has(row.optionId) && <span className="badge blue" style={{ marginLeft: 6, fontSize: 9 }}>推荐</span>}
+                    {recSet.has(row.optionId) && <span className="badge blue" style={{ marginLeft: 6, fontSize: 12 }}>推荐</span>}
                   </td>
                   {DIMS.map((d) => {
                     const isBest = bestByDim[d.key] === row.optionId;
@@ -390,7 +390,7 @@ function DecisionPlay({
                         key={d.key}
                         data-testid={`dp-matrix-${row.optionId}-${d.key}`}
                         data-best={isBest ? "1" : undefined}
-                        style={isBest ? { background: "rgba(98,190,119,.16)", color: "var(--ok)", fontWeight: 600 } : undefined}
+                        style={isBest ? { background: "rgba(98,190,119,.16)", color: "var(--ok-txt)", fontWeight: 600 } : undefined}
                       >
                         {dimValueLabel(d.key, row.dims[d.key], rc.unit)}
                       </td>
@@ -432,12 +432,12 @@ function DecisionPlay({
                     className="badge"
                     data-testid={`dp-trigger-src-${t.triggerId}`}
                     title="触发阈值来源"
-                    style={t.thresholdSource === "rule.params" ? { color: "var(--accent)", borderColor: "rgba(76,144,240,.45)" } : undefined}
+                    style={t.thresholdSource === "rule.params" ? { color: "var(--accent-txt)", borderColor: "rgba(76,144,240,.45)" } : undefined}
                   >
                     {t.thresholdSource === "rule.params" ? "已被规则覆盖" : "默认阈值"}
                   </span>
                 </div>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>触发动作：{t.action}</div>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>触发动作：{t.action}</div>
               </div>
             ))}
           </div>
@@ -452,13 +452,13 @@ function DecisionPlay({
             const steps = recommendedPlan.steps.filter((s) => s.phase === phase);
             return (
               <div key={phase} data-testid={`dp-phase-${phase}`} className="panel" style={{ padding: 10, background: "var(--panel2)" }}>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6, fontFamily: "var(--font-mono)" }}>{phase}</div>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6, fontFamily: "var(--font-mono)" }}>{phase}</div>
                 {steps.length === 0 ? (
-                  <div style={{ fontSize: 11, color: "var(--muted2)" }}>—</div>
+                  <div style={{ fontSize: 12, color: "var(--muted2)" }}>—</div>
                 ) : (
                   steps.map((s) => (
                     <div key={s.optionRef} data-testid={`dp-step-${s.optionRef}`} style={{ fontSize: 12, marginBottom: 5, display: "flex", gap: 6, alignItems: "baseline" }}>
-                      <span style={{ color: "var(--accent)" }}>▸</span>
+                      <span style={{ color: "var(--accent-txt)" }}>▸</span>
                       <span>{s.action}</span>
                     </div>
                   ))
@@ -469,18 +469,18 @@ function DecisionPlay({
         </div>
 
         <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
-          组合补缺口 <b className="mono" style={{ color: "var(--ok)" }}>{fmt(recommendedPlan.totalClosesGap)}{rc.unit}</b>
+          组合补缺口 <b className="mono" style={{ color: "var(--ok-txt)" }}>{fmt(recommendedPlan.totalClosesGap)}{rc.unit}</b>
           {" · "}总代价 <b className="mono">{fmt(recommendedPlan.totalCost)}</b>
         </div>
 
         {/* 差距收窄试算：缺口 before→after · 收窄% 进度条 */}
         <div data-testid="dp-narrowing">
           <div style={{ fontSize: 12, marginBottom: 6 }}>
-            缺口 <b className="mono" style={{ color: "var(--danger)" }}>{fmt(sandboxNarrowing.beforeGap)}{rc.unit}</b>
+            缺口 <b className="mono" style={{ color: "var(--danger-txt)" }}>{fmt(sandboxNarrowing.beforeGap)}{rc.unit}</b>
             <span style={{ color: "var(--muted2)" }}> → </span>
-            <b className="mono" style={{ color: "var(--ok)" }}>{fmt(sandboxNarrowing.afterGap)}{rc.unit}</b>
+            <b className="mono" style={{ color: "var(--ok-txt)" }}>{fmt(sandboxNarrowing.afterGap)}{rc.unit}</b>
             {" · 收窄 "}
-            <b className="mono" data-testid="dp-narrowed-pct" style={{ color: "var(--accent)" }}>{fmt(sandboxNarrowing.narrowedPct)}%</b>
+            <b className="mono" data-testid="dp-narrowed-pct" style={{ color: "var(--accent-txt)" }}>{fmt(sandboxNarrowing.narrowedPct)}%</b>
           </div>
           <div style={{ height: 10, borderRadius: 6, background: "var(--line2)", overflow: "hidden" }}>
             <div
@@ -525,8 +525,8 @@ function OptionCard({ o, gap, unit, recommended }: { o: DPOption; gap: number; u
       >
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <b style={{ fontSize: 13 }}>{o.label}</b>
-          {recommended && <span className="badge blue" style={{ fontSize: 9 }}>推荐</span>}
-          <span style={{ marginLeft: "auto", color: "var(--muted2)", fontSize: 11 }}>{open ? "收起 ▲" : "展开 ▼"}</span>
+          {recommended && <span className="badge blue" style={{ fontSize: 12 }}>推荐</span>}
+          <span style={{ marginLeft: "auto", color: "var(--muted2)", fontSize: 12 }}>{open ? "收起 ▲" : "展开 ▼"}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {/* 诚实徽标（三态之二）：solver=确定性求解（绿）/ agent=策略推理·确定性生成（灰·datacore 确定性策略·非真 LLM）——绝不标"数据库事实"。 */}
@@ -538,7 +538,7 @@ function OptionCard({ o, gap, unit, recommended }: { o: DPOption; gap: number; u
             {isSolver ? "确定性求解" : "策略推理·确定性生成"}
           </span>
           <span style={{ fontSize: 12 }}>
-            补缺口 <b className="mono" data-testid={`dp-option-cg-${o.optionId}`} style={{ color: "var(--ok)" }}>{fmt(o.closesGap)}{unit}</b>
+            补缺口 <b className="mono" data-testid={`dp-option-cg-${o.optionId}`} style={{ color: "var(--ok-txt)" }}>{fmt(o.closesGap)}{unit}</b>
           </span>
         </div>
       </button>
@@ -547,14 +547,14 @@ function OptionCard({ o, gap, unit, recommended }: { o: DPOption; gap: number; u
         <div data-testid={`dp-option-detail-${o.optionId}`} style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
           {/* 为何做 */}
           <div style={{ fontSize: 12, lineHeight: 1.7 }}>
-            <b style={{ color: "var(--accent)" }}>为何做：</b>
-            针对根因 —— 预计补缺口 <b className="mono" style={{ color: "var(--ok)" }}>{fmt(o.closesGap)}{unit}</b>
+            <b style={{ color: "var(--accent-txt)" }}>为何做：</b>
+            针对根因 —— 预计补缺口 <b className="mono" style={{ color: "var(--ok-txt)" }}>{fmt(o.closesGap)}{unit}</b>
             （占总缺口 {fmt(gap)}{unit} 的 <b className="mono">{gapPct}%</b>）。
           </div>
 
           {/* 何用：六维条 */}
           <div>
-            <b style={{ color: "var(--accent)", fontSize: 12 }}>做了何用（六维）：</b>
+            <b style={{ color: "var(--accent-txt)", fontSize: 12 }}>做了何用（六维）：</b>
             <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 6 }}>
               {DIMS.map((d) => (
                 <DimBar key={d.key} optionId={o.optionId} dimKey={d.key} label={d.label} value={o[d.key]} unit={unit} better={d.better} />
@@ -564,8 +564,8 @@ function OptionCard({ o, gap, unit, recommended }: { o: DPOption; gap: number; u
 
           {/* 为何有用：provenance 下钻真对象 */}
           <div style={{ fontSize: 12, lineHeight: 1.7 }}>
-            <b style={{ color: "var(--accent)" }}>为何有用：</b>
-            依据 <span className="badge" style={{ fontSize: 9 }}>{o.provenance.kind}</span> · {o.provenance.basis}
+            <b style={{ color: "var(--accent-txt)" }}>为何有用：</b>
+            依据 <span className="badge" style={{ fontSize: 12 }}>{o.provenance.kind}</span> · {o.provenance.basis}
             <div style={{ marginTop: 5 }}>
               <button
                 className="btn sm"
@@ -581,7 +581,7 @@ function OptionCard({ o, gap, unit, recommended }: { o: DPOption; gap: number; u
                   /* WO-HOVER-LAYER：表面收口到全局 .popover-surface（不透明·三套主题各自定义·已验过
                      遮蔽性与 AA 对比度），不再自写 background —— 自写一份就是给那张验过的表面开分身。 */
                   className="popover-surface"
-                  style={{ marginTop: 6, padding: "8px 10px", fontSize: 11.5, lineHeight: 1.6 }}
+                  style={{ marginTop: 6, padding: "8px 10px", fontSize: 12, lineHeight: 1.6 }}
                 >
                   来自 <b>{o.provenance.drillType}</b>.<b>{o.provenance.drillId}</b> · {o.provenance.basis} = <b className="mono">{fmt(o.provenance.drillValue)}</b>
                   <div style={{ color: "var(--muted2)", marginTop: 4 }}>
@@ -605,7 +605,7 @@ function DimBar({ optionId, dimKey, label, value, unit, better }: { optionId: st
     : Math.max(0, Math.min(1, Math.abs(value) / Math.max(Math.abs(value), 1)));
   const color = better === "high" ? "var(--ok)" : "var(--amber)";
   return (
-    <div data-testid={`dp-dim-${optionId}-${dimKey}`} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5 }}>
+    <div data-testid={`dp-dim-${optionId}-${dimKey}`} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
       <span style={{ width: 52, color: "var(--muted)", flexShrink: 0 }}>{label}</span>
       <div style={{ flex: 1, height: 7, borderRadius: 4, background: "var(--line2)", overflow: "hidden" }}>
         <div style={{ height: "100%", width: `${Math.round(norm * 100)}%`, background: color, opacity: 0.7 }} />
@@ -648,7 +648,7 @@ function CommitBar({ metricKey, factorId, optionIds }: { metricKey: string; fact
         {committedId ? "已提交决策" : busy ? "提交中…" : "提交决策 → 审批链"}
       </button>
       {committedId && (
-        <span data-testid="dp-commit-result" style={{ fontSize: 12, color: "var(--ok)" }}>
+        <span data-testid="dp-commit-result" style={{ fontSize: 12, color: "var(--ok-txt)" }}>
           已提交 <span className="mono">{committedId}</span> → 派 ActionDraft，走 S2 审批链（门不绕·前端不直改计划）。
         </span>
       )}

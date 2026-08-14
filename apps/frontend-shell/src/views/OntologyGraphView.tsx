@@ -532,7 +532,7 @@ function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }
           <span className={`badge ${cov.fully ? "green" : "amber"}`} data-testid="graph-coverage-badge">
             {cov.fully ? `字段全建模 ✓ ${cov.total} 字段` : `${cov.manual} 字段未映射 / 共 ${cov.total}`}
           </span>
-          <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>
+          <span style={{ fontSize: 12, color: "var(--muted2)" }}>
             源 {cov.mapped} · 派生 {cov.derived} · 手工 {cov.manual}
           </span>
           {cov.templateCols.length > 0 && (
@@ -559,7 +559,7 @@ function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }
                   {p.dataType}
                 </td>
                 {/* 该字段建模来源：源字段 / 派生 / 手工（去死路：每字段可溯到来源） */}
-                <td className="mono" style={{ fontSize: 10.5, color: src ? "var(--ok)" : derived ? "var(--c-forecast)" : "var(--amber)" }}>
+                <td className="mono" style={{ fontSize: 12, color: src ? "var(--ok-txt)" : derived ? "var(--c-forecast-txt)" : "var(--amber-txt)" }}>
                   {src ? `← ${src}` : derived ? "派生" : "手工"}
                 </td>
               </tr>
@@ -572,13 +572,13 @@ function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }
         {zh.graph.inspectorSources}
       </div>
       {(node.sourceBindings ?? []).map((s, i) => (
-        <div key={i} className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>
+        <div key={i} className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>
           {s.connId} · {s.dataset}
           {s.fieldMappings && ` · ${Object.keys(s.fieldMappings).length} 字段映射`}
         </div>
       ))}
       {isObject && (node.sourceBindings ?? []).length === 0 && (
-        <div style={{ fontSize: 11, color: "var(--muted2)" }}>纯派生/无外部数据源</div>
+        <div style={{ fontSize: 12, color: "var(--muted2)" }}>纯派生/无外部数据源</div>
       )}
 
       <div className="section-title" style={{ marginTop: 12 }}>
@@ -590,7 +590,7 @@ function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }
             {r.key} · {r.name}
           </button>
           {openRule === r.key && (
-            <div className="mono" style={{ fontSize: 11, color: "var(--muted)", padding: "4px 8px", background: "var(--bg2)", borderRadius: 6, marginTop: 4 }}>
+            <div className="mono" style={{ fontSize: 12, color: "var(--muted)", padding: "4px 8px", background: "var(--bg2)", borderRadius: 6, marginTop: 4 }}>
               {r.expression}
             </div>
           )}
@@ -601,7 +601,7 @@ function Inspector({ node, onClose }: { node: GraphNodeVM; onClose: () => void }
         {zh.graph.inspectorDerived}
       </div>
       {(node.derivations ?? []).map((d) => (
-        <div key={d.propKey} className="mono" style={{ fontSize: 11, color: "var(--muted)", marginBottom: 3 }}>
+        <div key={d.propKey} className="mono" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 3 }}>
           {d.propKey} = {d.formula}
         </div>
       ))}

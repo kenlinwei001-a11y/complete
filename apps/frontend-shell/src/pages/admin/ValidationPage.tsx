@@ -16,9 +16,9 @@ const fmt = (v: unknown) => (v === undefined ? "—" : typeof v === "object" ? J
 /** 段级红绿矩阵 + 失败下钻（V11）：逐断言 段/point/oracle/pass/expected/actual/diff。 */
 function SegmentMatrix({ runId, onRerun }: { runId: string; onRerun: (seed: number) => void }) {
   const { data, isLoading } = useQuery({ queryKey: ["a", "validation-run", runId], queryFn: () => fetchValidationRun(runId) });
-  if (isLoading) return <div className="muted" style={{ fontSize: 11, padding: 8 }}>载入断言矩阵…</div>;
+  if (isLoading) return <div className="muted" style={{ fontSize: 12, padding: 8 }}>载入断言矩阵…</div>;
   const report = data?.report;
-  if (!report) return <div className="muted" style={{ fontSize: 11, padding: 8 }}>该运行无报告（运行中或失败）。</div>;
+  if (!report) return <div className="muted" style={{ fontSize: 12, padding: 8 }}>该运行无报告（运行中或失败）。</div>;
   const assertions = report.assertions ?? [];
   // 按段聚合（保序）。
   const segments = [...new Set(assertions.map((a) => a.segment))];
@@ -28,7 +28,7 @@ function SegmentMatrix({ runId, onRerun }: { runId: string; onRerun: (seed: numb
     <div data-testid={`vle-detail-${runId}`} style={{ padding: "6px 8px", background: "var(--panel2)", borderRadius: 6 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
         <b style={{ fontSize: 12 }}>段级红绿矩阵</b>
-        <span className="mono" style={{ fontSize: 11 }}>工程验证度 {pct(report.engineeringVerificationScore)}</span>
+        <span className="mono" style={{ fontSize: 12 }}>工程验证度 {pct(report.engineeringVerificationScore)}</span>
         <button className="btn sm" data-testid={`vle-rerun-${runId}`} onClick={() => onRerun(report.seed)}>同 seed({report.seed}) 复跑</button>
       </div>
       {segments.map((seg) => {
@@ -36,10 +36,10 @@ function SegmentMatrix({ runId, onRerun }: { runId: string; onRerun: (seed: numb
         const segGreen = rows.every((r) => r.pass);
         return (
           <div key={seg} data-testid={`vle-seg-${seg}`} style={{ marginBottom: 6 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 600, color: segGreen ? "var(--ok)" : "var(--danger)" }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: segGreen ? "var(--ok-txt)" : "var(--danger-txt)" }}>
               {segGreen ? "● " : "○ "}{seg}
             </div>
-            <table className="cmp" style={{ width: "100%", fontSize: 10.5 }}>
+            <table className="cmp" style={{ width: "100%", fontSize: 12 }}>
               <thead>
                 <tr><th>断言点</th><th>预言机</th><th>结果</th><th>期望</th><th>实际</th><th>diff</th></tr>
               </thead>
@@ -48,10 +48,10 @@ function SegmentMatrix({ runId, onRerun }: { runId: string; onRerun: (seed: numb
                   <tr key={i} data-testid={`vle-assert-${a.pass ? "ok" : "fail"}`} style={{ background: a.pass ? undefined : "var(--danger-soft)" }}>
                     <td>{a.point}</td>
                     <td><span className="badge">{a.oracle}</span></td>
-                    <td style={{ color: a.pass ? "var(--ok)" : "var(--danger)", fontWeight: 600 }}>{a.pass ? "PASS" : "FAIL"}</td>
+                    <td style={{ color: a.pass ? "var(--ok-txt)" : "var(--danger-txt)", fontWeight: 600 }}>{a.pass ? "PASS" : "FAIL"}</td>
                     <td className="mono">{fmt(a.expected)}</td>
                     <td className="mono">{fmt(a.actual)}</td>
-                    <td className="mono" style={{ color: "var(--danger)" }}>{a.diff ?? ""}</td>
+                    <td className="mono" style={{ color: "var(--danger-txt)" }}>{a.diff ?? ""}</td>
                   </tr>
                 ))}
               </tbody>
@@ -83,7 +83,7 @@ export default function ValidationPage() {
   return (
     <div data-testid="validation-page">
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>闭环验证引擎（VLE）</h2>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
         模拟数据 → 七段全链流转 → 独立真值预言机比对。工程验证度 = 0.5×模块 + 0.3×断言 + 0.2×闭环。点行展开段级红绿矩阵 + 失败 diff 下钻。
       </div>
 
@@ -116,16 +116,16 @@ export default function ValidationPage() {
                 style={{ cursor: r.report ? "pointer" : "default" }}
                 onClick={() => r.report && setOpenId(openId === r.id ? null : r.id)}
               >
-                <td><span className="badge">{r.profile}</span>{r.report ? <span style={{ fontSize: 10, marginLeft: 4 }}>{openId === r.id ? "▾" : "▸"}</span> : null}</td>
+                <td><span className="badge">{r.profile}</span>{r.report ? <span style={{ fontSize: 12, marginLeft: 4 }}>{openId === r.id ? "▾" : "▸"}</span> : null}</td>
                 <td className="mono">{r.seed}</td>
-                <td style={{ fontSize: 11 }}>{r.startedAt?.slice(0, 19).replace("T", " ")}</td>
+                <td style={{ fontSize: 12 }}>{r.startedAt?.slice(0, 19).replace("T", " ")}</td>
                 <td>
                   {r.report
-                    ? <b style={{ color: r.report.pass ? "var(--ok)" : "var(--danger)" }}>{r.report.pass ? "通过 ✓" : "未通过 ✗"}</b>
+                    ? <b style={{ color: r.report.pass ? "var(--ok-txt)" : "var(--danger-txt)" }}>{r.report.pass ? "通过 ✓" : "未通过 ✗"}</b>
                     : <span className="muted">{r.finishedAt ? "—" : "运行中…"}</span>}
                 </td>
                 <td className="mono">{r.report ? pct(r.report.engineeringVerificationScore) : "—"}</td>
-                <td className="mono" style={{ fontSize: 11 }}>
+                <td className="mono" style={{ fontSize: 12 }}>
                   {r.report ? `${pct(r.report.coverage.module)} / ${pct(r.report.coverage.assertion)} / ${pct(r.report.coverage.loop)}` : "—"}
                 </td>
               </tr>

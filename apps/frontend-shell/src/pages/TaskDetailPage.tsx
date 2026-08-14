@@ -42,7 +42,7 @@ export default function TaskDetailPage() {
         <button className="btn sm" onClick={() => navigate(-1)} aria-label="回退">← 回退</button>
         <h2 style={{ fontSize: 16, margin: 0 }}>{zh.task.title}</h2>
       </div>
-      <div className="mono" style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 14 }}>
+      <div className="mono" style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 14 }}>
         {taskId}
       </div>
 
@@ -63,7 +63,7 @@ export default function TaskDetailPage() {
           <p style={{ marginTop: 10, color: "var(--muted)" }}>「{task.query}」</p>
           {/* 引用模式增量 §2.2：执行时解析到的实际版本留痕（重放/争议追溯口径） */}
           {task.resolvedRefs && task.resolvedRefs.length > 0 && (
-            <div className="mono" style={{ marginTop: 6, fontSize: 11, color: "var(--muted2)" }} data-testid="resolved-refs">
+            <div className="mono" style={{ marginTop: 6, fontSize: 12, color: "var(--muted2)" }} data-testid="resolved-refs">
               当时生效：{task.resolvedRefs.map((r) => `${r.kind} ${r.key} v${r.version}`).join(" / ")}
             </div>
           )}
@@ -76,7 +76,7 @@ export default function TaskDetailPage() {
           <div className="panel" style={{ marginBottom: 14 }} data-testid="task-dag-section">
             <div className="section-title">{zh.taskDag.section}</div>
             <LayeredDag nodes={dag.nodes} edges={dag.edges} testId="task-dag" onNodeClick={(n) => focusRow(n.id)} />
-            <div style={{ fontSize: 10.5, color: "var(--muted2)" }}>{zh.taskDag.clickHint}</div>
+            <div style={{ fontSize: 12, color: "var(--muted2)" }}>{zh.taskDag.clickHint}</div>
           </div>
         )}
       </Feature>

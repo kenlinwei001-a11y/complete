@@ -27,7 +27,7 @@ export default function ScenarioLauncherPage() {
     <div data-testid="scenario-launcher">
       <div style={{ marginBottom: 14 }}>
         <h2 style={{ fontSize: 16 }}>{zh.launcher.title}</h2>
-        <div className="muted" style={{ fontSize: 11.5 }}>
+        <div className="muted" style={{ fontSize: 12 }}>
           点一张场景卡即注入预置上下文、一键直达推演（不被反问槽位）。按 <kbd>⌘K</kbd> / <kbd>Ctrl K</kbd> 可命令面板快搜。
         </div>
       </div>
@@ -54,7 +54,7 @@ export default function ScenarioLauncherPage() {
                   data-testid={`launcher-query-${c.sNo}`}
                   style={{ fontSize: 12, padding: "4px 6px" }}
                 />
-                <div style={{ fontSize: 10.5, color: "var(--muted2)" }}>
+                <div style={{ fontSize: 12, color: "var(--muted2)" }}>
                   {c.summary}
                   {c.solver && <span className="mono"> · {c.solver}</span>}
                 </div>

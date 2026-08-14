@@ -233,7 +233,7 @@ export default function PlanBuilderPage() {
                   onClick={() => setSelectedId(c.id)}
                 >
                   <div>{c.name}</div>
-                  <div className="mono" style={{ fontSize: 11, color: "var(--muted2)" }}>
+                  <div className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>
                     {t.version(c.version, c.status)}
                   </div>
                 </button>
@@ -376,8 +376,8 @@ function CanvasEditor({
       <div className={styles.toolbar}>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span className="mono" style={{ fontSize: 12 }}>{local.name}</span>
-          <span className="badge" style={{ fontSize: 11 }}>{`v${local.version} · ${local.status}`}</span>
-          {dirty && <span className="badge amber" style={{ fontSize: 11 }}>{t.unsaved}</span>}
+          <span className="badge" style={{ fontSize: 12 }}>{`v${local.version} · ${local.status}`}</span>
+          {dirty && <span className="badge amber" style={{ fontSize: 12 }}>{t.unsaved}</span>}
         </div>
         <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
           {local.status === "DRAFT" && (
@@ -424,7 +424,7 @@ function CanvasEditor({
         <div className="panel" style={{ borderColor: runResult.status === "COMPLETED" ? "var(--ok)" : "var(--danger)", marginBottom: 8 }} data-testid="pb-run-result">
           <div className="section-title">{t.runResult}</div>
           {runResult.error && <div className="badge red">{runResult.error.code}: {runResult.error.message}</div>}
-          {runResult.answer && <pre style={{ fontSize: 11 }}>{JSON.stringify(runResult.answer, null, 2)}</pre>}
+          {runResult.answer && <pre style={{ fontSize: 12 }}>{JSON.stringify(runResult.answer, null, 2)}</pre>}
         </div>
       )}
 
@@ -442,7 +442,7 @@ function CanvasEditor({
           <>
             <div className={styles.canvasWrap}>
               <div className={styles.nodeToolbar}>
-                <span className="section-title" style={{ fontSize: 11 }}>{t.addNode}</span>
+                <span className="section-title" style={{ fontSize: 12 }}>{t.addNode}</span>
                 {NODE_TYPES.map((type) => (
                   <button key={type} className="btn xs" onClick={() => addNode(type)} data-testid={`pb-add-${type}`}>
                     {t.nodeTypes[type]}
@@ -540,7 +540,7 @@ function CanvasEditor({
           </>
         ) : (
           <div className={styles.dslPanel} data-testid="pb-dsl-panel">
-            <p className="muted" style={{ fontSize: 11, marginBottom: 8 }}>{t.dslHint}</p>
+            <p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>{t.dslHint}</p>
             {dslError && <div className="badge red" style={{ marginBottom: 8 }}>{dslError}</div>}
             <textarea
               className={styles.dslTextarea}
@@ -822,7 +822,7 @@ function RenderBlocksEditor({
         return (
           <div key={i} className="panel" style={{ padding: 8 }}>
             <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
-              <span className="mono" style={{ fontSize: 11 }}>#{i + 1}</span>
+              <span className="mono" style={{ fontSize: 12 }}>#{i + 1}</span>
               <select value={String(b.type)} onChange={(e) => setBlock(i, { type: e.target.value })}>
                 {BLOCK_TYPES.map((bt) => (
                   <option key={bt} value={bt}>{bt}</option>

@@ -24,8 +24,9 @@
 
 /* —— 主按钮 .btn.primary：蓝渐变(global.css) → 纯深橙实心 —— */
 :root[data-theme="warm"] .btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  /* WO-R9-CONTRAST：--accent(#E8590C) 上白字仅 3.58:1 ⇒ 换同色相压深的 --accent-solid（6.05）。 */
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
   color: #ffffff;
 }
 :root[data-theme="warm"] .btn.primary:hover {

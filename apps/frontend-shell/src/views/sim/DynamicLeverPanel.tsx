@@ -76,7 +76,7 @@ function deltaDir(before: unknown, after: unknown): { arrow: string; diff: strin
   if (typeof before !== "number" || typeof after !== "number" || !Number.isFinite(before) || !Number.isFinite(after)) return null;
   const d = Math.round((after - before) * 1e6) / 1e6;
   if (d === 0) return { arrow: "＝", diff: "0", color: "var(--muted2)" };
-  return d > 0 ? { arrow: "▲", diff: `+${d}`, color: "var(--ok)" } : { arrow: "▼", diff: String(d), color: "var(--danger)" };
+  return d > 0 ? { arrow: "▲", diff: `+${d}`, color: "var(--ok-txt)" } : { arrow: "▼", diff: String(d), color: "var(--danger-txt)" };
 }
 
 /**
@@ -250,14 +250,14 @@ export function DynamicLeverPanel({
         <>
           {/* ② tornado 条（敏感度降序·排序=真敏感度） */}
           <div data-testid="lever-tornado" style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 4 }}>{zh.sim.proj.lever.tornadoTitle}</div>
+            <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 4 }}>{zh.sim.proj.lever.tornadoTitle}</div>
             {levers.map((l) => (
               <div key={leverKey(l)} data-testid={`tornado-bar-${l.prop}`} style={{ display: "flex", alignItems: "center", gap: 6, margin: "2px 0" }}>
-                <span style={{ width: 128, fontSize: 11 }} className="zh">{leverLabel(l)}</span>
+                <span style={{ width: 128, fontSize: 12 }} className="zh">{leverLabel(l)}</span>
                 <span className={styles.tightBar} style={{ flex: 1 }}>
                   <i style={{ width: `${Math.min(100, (Math.abs(l.sensitivity) / maxSens) * 100)}%`, background: "var(--c-capacity)" }} />
                 </span>
-                <span className="mono" data-testid={`tornado-sens-${l.prop}`} style={{ fontSize: 11, width: 64, textAlign: "right" }}>{fmt(l.sensitivity, 3)}</span>
+                <span className="mono" data-testid={`tornado-sens-${l.prop}`} style={{ fontSize: 12, width: 64, textAlign: "right" }}>{fmt(l.sensitivity, 3)}</span>
               </div>
             ))}
           </div>
@@ -271,7 +271,7 @@ export function DynamicLeverPanel({
               <div className={styles.sliderRow} key={leverKey(l)}>
                 <span className="zh">
                   {leverLabel(l)}
-                  <span style={{ color: "var(--muted2)", fontSize: 10 }}> · {zh.sim.proj.lever.current} {fmtLeverValue(l.currentValue, l.valueKind, l.unit, b.pct)}</span>
+                  <span style={{ color: "var(--muted2)", fontSize: 12 }}> · {zh.sim.proj.lever.current} {fmtLeverValue(l.currentValue, l.valueKind, l.unit, b.pct)}</span>
                 </span>
                 <input
                   type="range"
@@ -287,7 +287,7 @@ export function DynamicLeverPanel({
                 />
                 <b className="mono" data-testid={`lever-value-${l.prop}`}>{fmtLeverValue(v, l.valueKind, l.unit, b.pct)}</b>
                 {hitBound && b.gated && (
-                  <span className={styles.noteAmber} data-testid={`lever-bound-${l.prop}`} style={{ marginLeft: 6, fontSize: 10 }}>
+                  <span className={styles.noteAmber} data-testid={`lever-bound-${l.prop}`} style={{ marginLeft: 6, fontSize: 12 }}>
                     {zh.sim.proj.lever.ruleGate(`${Math.round(c08Ratio * 100)}%`)}
                   </span>
                 )}
@@ -321,7 +321,7 @@ export function DynamicLeverPanel({
 
           {out && out.count > 0 && (
             <div style={{ marginTop: 8 }} data-testid="lever-deltas">
-              <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 4 }}>{zh.sim.proj.lever.deltaTitle(out.rows.length)}</div>
+              <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 4 }}>{zh.sim.proj.lever.deltaTitle(out.rows.length)}</div>
               <table className="cmp">
                 <thead>
                   <tr><th>对象</th><th>派生字段</th><th>before</th><th>after</th><th>变化</th></tr>
@@ -331,7 +331,7 @@ export function DynamicLeverPanel({
                     const dir = deltaDir(r.before, r.after);
                     return (
                       <tr key={`${r.objectId}-${r.prop}-${i}`} data-testid={`lever-delta-row-${r.objectId}-${r.prop}`}>
-                        <td className="mono" style={{ fontSize: 10 }}>{r.objectId}</td>
+                        <td className="mono" style={{ fontSize: 12 }}>{r.objectId}</td>
                         <td className="mono">{r.prop}</td>
                         <td className="mono" data-testid={`lever-before-${r.objectId}-${r.prop}`}>{fmt(Number(r.before), 3)}</td>
                         <td className="mono" data-testid={`lever-after-${r.objectId}-${r.prop}`} style={{ fontWeight: 600 }}>

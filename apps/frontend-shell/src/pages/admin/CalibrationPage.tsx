@@ -88,7 +88,7 @@ export default function CalibrationPage() {
       </div>
 
       {/* 三级下钻筛选 */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 12, fontSize: 11.5, color: "var(--muted)" }}>
+      <div style={{ display: "flex", gap: 12, marginBottom: 12, fontSize: 12, color: "var(--muted)" }}>
         <label>
           {t.filterObjectType}{" "}
           <select value={objectType} aria-label={t.filterObjectType} data-testid="calib-filter-objectType" onChange={(e) => setObjectType(e.target.value)}>
@@ -221,16 +221,16 @@ export default function CalibrationPage() {
         <div data-testid="calib-history">
           {(history ?? []).map((h, i) => (
             <div key={i} style={{ borderLeft: "2px solid var(--line2)", padding: "6px 0 6px 14px", marginLeft: 6, position: "relative" }} data-testid={`calib-history-${i}`}>
-              <span className="mono" style={{ fontSize: 11, color: "var(--muted2)" }}>
+              <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>
                 {h.at.slice(0, 16).replace("T", " ")}
               </span>
               <div style={{ fontSize: 12 }}>
                 <span className={`badge ${h.trigger === "C12" ? "amber" : ""}`}>{h.trigger}</span>{" "}
                 {h.method && <span className="badge">{METHOD_LABEL[h.method]}</span>} {t.historyLine(h.trigger, h.changedParams.join("、"))}
               </div>
-              <div className="mono" style={{ fontSize: 11.5, color: "var(--ok)" }}>{t.mapeChange(h.mapeBefore, h.mapeAfter)}</div>
+              <div className="mono" style={{ fontSize: 12, color: "var(--ok-txt)" }}>{t.mapeChange(h.mapeBefore, h.mapeAfter)}</div>
               {h.simulatedMapeAfter !== undefined && (
-                <div className="mono" style={{ fontSize: 11, color: "var(--muted)" }} data-testid={`calib-history-meta-${i}`}>
+                <div className="mono" style={{ fontSize: 12, color: "var(--muted)" }} data-testid={`calib-history-meta-${i}`}>
                   预言 {h.simulatedMapeAfter.toFixed(1)}%（回测） vs 实现{" "}
                   {h.realizedMape !== undefined ? `${h.realizedMape.toFixed(1)}%（生效后 14 日实测）` : "待元闭环回写"}
                 </div>
@@ -251,12 +251,12 @@ function ProposalRow({ proposal: p, onDecide, pending }: { proposal: Calibration
       <td className="zh">
         <b>{p.parameter}</b>
         {p.objectRef && (
-          <span className="mono" style={{ color: "var(--muted2)", marginLeft: 6, fontSize: 10.5 }}>
+          <span className="mono" style={{ color: "var(--muted2)", marginLeft: 6, fontSize: 12 }}>
             {p.objectRef}
           </span>
         )}
         {p.paramRef && (
-          <span className="mono" style={{ color: "var(--muted2)", marginLeft: 6, fontSize: 10 }}>
+          <span className="mono" style={{ color: "var(--muted2)", marginLeft: 6, fontSize: 12 }}>
             {p.paramRef.scope === "SOLVER_PARAMS" ? "参数" : "本体"}:{p.paramRef.path}
           </span>
         )}
@@ -269,14 +269,14 @@ function ProposalRow({ proposal: p, onDecide, pending }: { proposal: Calibration
         )}
       </td>
       <td>
-        {p.currentValue} → <b style={{ color: "var(--c-capacity)" }}>{p.proposedValue}</b>
+        {p.currentValue} → <b style={{ color: "var(--c-capacity-txt)" }}>{p.proposedValue}</b>
       </td>
       <td className="zh">
         <button className="badge" data-testid={`calib-basis-${p.id}`} onClick={() => setBasisOpen(!basisOpen)}>
           {t.basisText(p.basis.windowFrom, p.basis.windowTo, p.basis.samples)}
         </button>
         {basisOpen && (
-          <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3 }} data-testid={`calib-basis-detail-${p.id}`}>
+          <div className="mono" style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }} data-testid={`calib-basis-detail-${p.id}`}>
             窗口 {p.basis.windowFrom} ~ {p.basis.windowTo} · {p.basis.samples} 对配对样本（预测 vs ts_agg_runs 实际，A8）
             {ev && (
               <div data-testid={`calib-evidence-${p.id}`}>

@@ -480,7 +480,7 @@ export function ImpactAnalysisPanel({
       ) : null}
 
       {err ? (
-        <div className={styles.meta} data-testid="impact-error" style={{ color: "var(--warn)" }}>
+        <div className={styles.meta} data-testid="impact-error" style={{ color: "var(--warn-txt)" }}>
           影响传播分析失败（{err.code ?? "ERROR"}）：{err.message ?? "请求失败"}
           {err.requestId ? ` · requestId ${err.requestId}` : ""}
         </div>

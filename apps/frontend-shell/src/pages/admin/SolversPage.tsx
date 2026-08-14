@@ -64,7 +64,7 @@ export default function SolversPage() {
   return (
     <div data-testid="solvers-page">
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>求解器目录</h2>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 10 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
         求解器由平台代码注册（非用户创建），此页只读发现：key / 名称 / 描述 / 参数提示 / 输出形状。
         工作流步骤 invoke_solver 的 solverKey 引用此目录。<b>如需新增求解器，请联系实施。</b>
       </div>
@@ -78,7 +78,7 @@ export default function SolversPage() {
           style={{ flex: 1 }}
         />
         {/* WO-UNIT-MEANING：「命中 3」此前是裸数——命中几个求解器？几条参数？看不出。计数无 unit 契约可消费，就近点明"个求解器"。 */}
-        <span style={{ fontSize: 11.5, color: "var(--muted)" }} data-testid="solver-count-meta">
+        <span style={{ fontSize: 12, color: "var(--muted)" }} data-testid="solver-count-meta">
           共 {solvers.length} 个求解器 · 当前筛选命中 {filtered.length} 个
         </span>
       </div>
@@ -86,7 +86,7 @@ export default function SolversPage() {
       {/* WO-RULES-CLASSIFY：求解器分类筛选 chip（domain 真元数据去重，多选，选中即过滤）。 */}
       {domainOptions.length > 0 && (
         <div className="panel" style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }} data-testid="solver-domain-filter">
-          <span style={{ fontSize: 11.5, color: "var(--muted)" }}>按类别筛选：</span>
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>按类别筛选：</span>
           {domainOptions.map(([d, n]) => (
             <button
               key={d}
@@ -112,7 +112,7 @@ export default function SolversPage() {
       {categoryReg && nonEmptyCategories.length > 0 && (
         <div className="panel" style={{ marginBottom: 12 }} data-testid="solver-category-registry">
           <div className="section-title">按决策问题找求解器（{nonEmptyCategories.length} 类 · 共 {categoryReg.total} 个求解器）</div>
-          <div className="muted" style={{ fontSize: 11.5, marginBottom: 8 }}>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
             归类判据是「它回答的是不是这句问话」，不是「它用了哪种算法」——故同一句问话下可能既有 CP-SAT 也有启发式。
           </div>
           <table className="cmp" style={{ width: "100%" }}>
@@ -129,9 +129,9 @@ export default function SolversPage() {
                   <td>
                     <span className="badge blue">{c.label}</span>
                     {/* count 点明所数何物（本仓 WO-UNIT-MEANING：裸数看不出数的是什么） */}
-                    <div className="muted" style={{ fontSize: 10.5, marginTop: 3 }}>{c.count} 个求解器</div>
+                    <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>{c.count} 个求解器</div>
                   </td>
-                  <td style={{ fontSize: 11.5, lineHeight: 1.6 }} data-testid="solver-category-question">{c.decisionQuestion}</td>
+                  <td style={{ fontSize: 12, lineHeight: 1.6 }} data-testid="solver-category-question">{c.decisionQuestion}</td>
                   <td>
                     {c.solverKeys.map((k) => (
                       <button
@@ -153,7 +153,7 @@ export default function SolversPage() {
           </table>
           {/* 未归类：**空数组 = 无漏网**，后端诚实亮出，前端照样亮出，不藏 */}
           {categoryReg.uncategorized.length > 0 && (
-            <div style={{ fontSize: 11.5, marginTop: 8 }} data-testid="solver-category-uncategorized">
+            <div style={{ fontSize: 12, marginTop: 8 }} data-testid="solver-category-uncategorized">
               <span className="badge amber">未归类 {categoryReg.uncategorized.length} 个</span>
               <span className="mono muted" style={{ marginLeft: 6 }}>{categoryReg.uncategorized.join("、")}</span>
             </div>
@@ -174,10 +174,10 @@ export default function SolversPage() {
             <tbody>
               {items.map((s) => (
                 <tr key={s.key} data-testid={`solver-row-${s.key}`}>
-                  <td className="mono" style={{ fontSize: 11 }}>{s.key}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>{s.key}</td>
                   <td>{s.name}</td>
-                  <td style={{ fontSize: 11.5, color: "var(--muted)" }}>{s.description}</td>
-                  <td style={{ fontSize: 11 }}>
+                  <td style={{ fontSize: 12, color: "var(--muted)" }}>{s.description}</td>
+                  <td style={{ fontSize: 12 }}>
                     {Object.keys(s.argHints).length === 0
                       ? <span className="muted">（无参数）</span>
                       : Object.entries(s.argHints).map(([k, v]) => (

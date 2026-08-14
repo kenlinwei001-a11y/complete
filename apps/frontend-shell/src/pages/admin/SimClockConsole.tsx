@@ -79,7 +79,7 @@ export function SimClockConsole() {
       <div className="section-title">{t.clock.title}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 11, color: "var(--muted)" }}>{t.clock.current}</div>
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>{t.clock.current}</div>
           <div className="mono" style={{ fontSize: 22, fontWeight: 600 }} data-testid="sim-date">
             {clock.simDate}
           </div>
@@ -116,14 +116,14 @@ export function SimClockConsole() {
           <div key={r.tick} className={styles.tickCard} data-testid={`tick-report-${r.tick}`}>
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
               <span className="badge blue">tick #{r.tick}</span>
-              <span className="mono" style={{ fontSize: 11 }}>{r.simDate}</span>
-              <span className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>+{r.newPoints.toLocaleString()} pts</span>
+              <span className="mono" style={{ fontSize: 12 }}>{r.simDate}</span>
+              <span className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>+{r.newPoints.toLocaleString()} pts</span>
               {r.forecastDeviation != null && (
                 <span className="badge amber">偏差 {(r.forecastDeviation * 100).toFixed(1)}%</span>
               )}
             </div>
             {r.changedProps.slice(0, 5).map((c, i) => (
-              <div key={i} className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>
+              <div key={i} className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>
                 {c.object}.{c.prop}: {c.from} → {c.to}
               </div>
             ))}

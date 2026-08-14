@@ -85,7 +85,7 @@ export default function ConfigMigrationPage() {
   return (
     <div data-testid="config-migration-page">
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>配置迁移工作台</h2>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
         导出本租户配置 bundle → 另一环境导入：先干跑看 diff/冲突，再应用跑跨系统 Saga（A 段 DataCore 功能开通 → B 段 AgentCore；B 失败自动补偿回滚 A）。
       </div>
 
@@ -98,7 +98,7 @@ export default function ConfigMigrationPage() {
         <button className="btn sm" data-testid="cfg-download" disabled={!bundleText} onClick={downloadBundle}>
           下载 bundle.json
         </button>
-        <span className="muted" style={{ fontSize: 11 }}>
+        <span className="muted" style={{ fontSize: 12 }}>
           {parsedBundle ? `schema ${parsedBundle.platformSchemaVersion} · 源租户 ${parsedBundle.sourceTenantId} · ${Object.keys(parsedBundle.featureOverrides ?? {}).length} 项功能开通` : "（先导出或粘贴 bundle）"}
         </span>
       </div>
@@ -111,7 +111,7 @@ export default function ConfigMigrationPage() {
           value={bundleText}
           onChange={(e) => setBundleText(e.target.value)}
           placeholder="粘贴配置 bundle JSON，或上方导出 / 下方上传文件"
-          style={{ width: "100%", minHeight: 140, fontFamily: "monospace", fontSize: 11 }}
+          style={{ width: "100%", minHeight: 140, fontFamily: "monospace", fontSize: 12 }}
         />
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <label className="btn sm" style={{ cursor: "pointer" }}>
@@ -141,7 +141,7 @@ export default function ConfigMigrationPage() {
         <div className="panel" data-testid="cfg-job-result" style={{ marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             <span className={`badge ${STATE_BADGE[job.state]}`} data-testid="cfg-job-state">{job.state}</span>
-            <span className="mono" style={{ fontSize: 11, color: "var(--muted2)" }}>{job.id} · {job.dryRun ? "干跑" : "应用"} · {job.conflictPolicy}</span>
+            <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>{job.id} · {job.dryRun ? "干跑" : "应用"} · {job.conflictPolicy}</span>
           </div>
 
           {/* Saga 阶段进度（应用模式才显完整链；干跑止于 DRY_RUN_OK） */}
@@ -153,13 +153,13 @@ export default function ConfigMigrationPage() {
                 const reached = TERMINAL.includes(job.state) ? job.state === "COMMITTED" || idx <= 1 : idx <= cur;
                 const done = job.state === "COMMITTED" || (cur > idx && cur >= 0);
                 return (
-                  <span key={s.state} className={`badge ${done ? "green" : reached ? "blue" : ""}`} style={{ fontSize: 10 }}>
+                  <span key={s.state} className={`badge ${done ? "green" : reached ? "blue" : ""}`} style={{ fontSize: 12 }}>
                     {done ? "✓ " : ""}{s.label}
                   </span>
                 );
               })}
               {(job.state === "COMPENSATING" || job.state === "COMPENSATED") && (
-                <span className="badge amber" style={{ fontSize: 10 }} data-testid="cfg-compensated">↩ 补偿回滚 A 段</span>
+                <span className="badge amber" style={{ fontSize: 12 }} data-testid="cfg-compensated">↩ 补偿回滚 A 段</span>
               )}
             </div>
           )}
@@ -173,16 +173,16 @@ export default function ConfigMigrationPage() {
                   「N 项功能开通」同口径）。契约 config-bundle.ts 的 added/changed/same 是 key 数组（无 unit），故就近点明"项功能开关"。 */}
               <div style={{ display: "flex", gap: 16, fontSize: 12, marginBottom: 6 }}>
                 <span>新增功能开关 <b data-testid="cfg-diff-added">{diff.featureOverrides.added.length}</b> 项</span>
-                <span>变更/冲突 <b data-testid="cfg-diff-changed" style={{ color: diff.conflicts.length > 0 ? "var(--amber)" : undefined }}>{diff.featureOverrides.changed.length}</b> 项</span>
+                <span>变更/冲突 <b data-testid="cfg-diff-changed" style={{ color: diff.conflicts.length > 0 ? "var(--amber-txt)" : undefined }}>{diff.featureOverrides.changed.length}</b> 项</span>
                 <span>不变 <b>{diff.featureOverrides.same.length}</b> 项</span>
               </div>
               {diff.featureOverrides.added.length > 0 && (
-                <div style={{ fontSize: 11, marginBottom: 4 }}>
+                <div style={{ fontSize: 12, marginBottom: 4 }}>
                   <span className="badge green">新增</span> {diff.featureOverrides.added.map((k) => <span key={k} className="mono" style={{ marginRight: 6 }}>{k}</span>)}
                 </div>
               )}
               {diff.featureOverrides.changed.length > 0 && (
-                <div style={{ fontSize: 11 }}>
+                <div style={{ fontSize: 12 }}>
                   <span className="badge amber">冲突</span>{" "}
                   {diff.featureOverrides.changed.map((c) => (
                     <span key={c.key} className="mono" style={{ marginRight: 8 }}>{c.key}：{String(c.from)}→{String(c.to)}</span>
