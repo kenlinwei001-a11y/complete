@@ -39,8 +39,11 @@
  * 本门开扫之前先拿**内嵌样例**过一遍检测器（N 条必咬 + M 条必不咬）+ **规则抽取器金丝雀 R1–R7**
  * + 规模下界自证。任一不成立 ⇒ 打印「⛔ 门自己瞎了」并 **RC=2**（不是 1 —— 见下"三分退出码"），
  * **而不是安静报「代码干净」**。理由是本会话实测过的四个陷阱
- * （见 `docs/VERIFY-batch-2026-08-08.md`）：`git grep -- "apps/<星>/src"` 的 pathspec 通配符不跨 `/`
- * 恒 0 命中、import 图解析器不认 ESM `./x.js`、正则窗口截断符号名 —— 三者都会让扫描器
+ * （见 `docs/VERIFY-batch-2026-08-08.md`）：`git grep -- "apps/<星>/src"` 恒 0 命中
+ * （⚠️ 病因**不是**「pathspec 通配符不跨 `/`」——那是 2026-08-11 已被实测推翻的错病因，
+ *  `*` 确实跨 `/`；真因是**含通配的 pathspec 不当目录前缀用**，须补一段成 `apps/<星>/src/<星>`。
+ *  详见 CLAUDE.md 铁律 0.5 判据 #5 的订正段）、
+ * import 图解析器不认 ESM `./x.js`、正则窗口截断符号名 —— 三者都会让扫描器
  * **报 0 命中**，而 0 命中在门里恰好长得跟"代码干净"一模一样。失败方向不安全的门必须自证工具是对的。
  *
  * ══ 规则库抽取器（H6/H7/H8 的 oracle · WO-R9-SCAN-EXTRACTOR 重写）══════════════
@@ -118,6 +121,7 @@ function gateToolBroken(e) {
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { assertDistFresh } from "./dist-freshness.mjs";
@@ -1014,8 +1018,13 @@ const sha = (s) => createHash("sha256").update(s).digest("hex").slice(0, 16);
 const keyOf = (h) => `${h.file}#${sha(h.text)}`;
 const MIN_REASON = 10;
 
-const baseline = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : { maxExemptions: 0, exemptions: {} };
+const baselineExists = existsSync(BASELINE);
+const baseline = baselineExists ? JSON.parse(readFileSync(BASELINE, "utf8")) : { maxExemptions: 0, exemptions: {} };
 if (isUpdate) {
+  // 基线写入器四向金丝雀（与 buildBaselineDoc 共用同一份实现，不另抄）——
+  // 本基线有 **两个**归人手的散文键（note / noteLiteral），原实现两个都无条件落常量。
+  const bc = baselineDocCanary();
+  if (!bc.ok) gateToolBroken(`基线写入器金丝雀不过（${bc.got}）；期望：${bc.want}`);
   const exemptions = {};
   for (const h of hits) {
     const k = keyOf(h);
@@ -1024,20 +1033,25 @@ if (isUpdate) {
   writeFileSync(
     BASELINE,
     JSON.stringify(
-      {
-        note:
-          "chain-scan-honesty:check 的 H5 业务名棘轮。key = 文件 + 声明原文 sha256 前 16 位（不是行号——行号会漂）；" +
-          "文案一改哈希即变 ⇒ 豁免当场失效、门重新红。maxExemptions 必须恒等于条数（加一条 = 一处显眼 diff）；只降不升。",
-        // ⚠ 计的是**命中条数**不是 key 数：同一行出现两个业务名（`化成柜位/老化库位`）时
-        //   两条命中共用一个 key（key = 原文哈希），若按 key 数记基线，复跑时 4 > 3 会假红。
-        maxExemptions: hits.length,
-        exemptions,
-        noteLiteral:
-          "H8 字面量阈值棘轮：阈值源 source==='literal' 的判据条数，只降不升。literal 不是罪 —— 它在规则表达式里、" +
-          "可审计、改规则即改判定；但它比 param 僵（要改表达式而非旋钮），故存量记账、新增被挡。迁往 params 即可收窄。",
-        maxLiteralThresholds: literalRows.length,
-        literalThresholds: literalRows,
-      },
+      buildBaselineDoc({
+        prev: baselineExists ? baseline : null,
+        prose: {
+          note:
+            "chain-scan-honesty:check 的 H5 业务名棘轮。key = 文件 + 声明原文 sha256 前 16 位（不是行号——行号会漂）；" +
+            "文案一改哈希即变 ⇒ 豁免当场失效、门重新红。maxExemptions 必须恒等于条数（加一条 = 一处显眼 diff）；只降不升。",
+          noteLiteral:
+            "H8 字面量阈值棘轮：阈值源 source==='literal' 的判据条数，只降不升。literal 不是罪 —— 它在规则表达式里、" +
+            "可审计、改规则即改判定；但它比 param 僵（要改表达式而非旋钮），故存量记账、新增被挡。迁往 params 即可收窄。",
+        },
+        computed: {
+          // ⚠ 计的是**命中条数**不是 key 数：同一行出现两个业务名（`化成柜位/老化库位`）时
+          //   两条命中共用一个 key（key = 原文哈希），若按 key 数记基线，复跑时 4 > 3 会假红。
+          maxExemptions: hits.length,
+          exemptions,
+          maxLiteralThresholds: literalRows.length,
+          literalThresholds: literalRows,
+        },
+      }),
       null,
       2,
     ) + "\n",

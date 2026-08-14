@@ -83,6 +83,7 @@ function gateToolBroken(e) {
 
 import { readFileSync, readdirSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
 
 const DOCS = "docs";
 const LEDGER = join(DOCS, "REQ-LEDGER-sandbox.md");
@@ -199,16 +200,27 @@ if (process.argv.includes("--update")) {
     );
     process.exit(1);
   }
+  // 基线写入器四向金丝雀（与 buildBaselineDoc 共用同一份实现，不另抄）——
+  // 本处原有**两个**病：① _comment/_meaning 无条件落常量，人手挂账会被吞；
+  // ② `updatedAt` 是写死的字面量 "2026-08-09"，**永远不更新** —— 屏上写着一个假日期，
+  //    正是 stale-claims 门在治的「没有保质期的自称」。现改为现算。
+  const bc = baselineDocCanary();
+  if (!bc.ok) gateToolBroken(`基线写入器金丝雀不过（${bc.got}）；期望：${bc.want}`);
   writeFileSync(
     BASELINE,
     JSON.stringify(
-      {
-        _comment:
-          "check-req-coverage 棘轮基线。具名 ID 清单，不是数字 —— 拿数字当基线会让「漏一条补一条」照样绿（铁律 0.6）。",
-        _meaning: "在此清单里 = 该需求今天没有带编号的落点。不等于「不用做」，只等于「不是本次新欠的」。",
-        updatedAt: "2026-08-09",
-        unlanded: unlanded.map((i) => i.id).sort(),
-      },
+      buildBaselineDoc({
+        prev: firstTime ? null : prev,
+        prose: {
+          _comment:
+            "check-req-coverage 棘轮基线。具名 ID 清单，不是数字 —— 拿数字当基线会让「漏一条补一条」照样绿（铁律 0.6）。",
+          _meaning: "在此清单里 = 该需求今天没有带编号的落点。不等于「不用做」，只等于「不是本次新欠的」。",
+        },
+        computed: {
+          updatedAt: new Date().toISOString().slice(0, 10),
+          unlanded: unlanded.map((i) => i.id).sort(),
+        },
+      }),
       null,
       2,
     ) + "\n",

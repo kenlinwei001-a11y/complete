@@ -86,9 +86,21 @@ function git(args, { allowFail = false } = {}) {
  */
 function symbolExistsOnBranch(symbol, branchRef) {
   // ⚠️ pathspec 用**目录**（`packages` / `apps`），不许写 `packages/*/src`：
-  //    CLAUDE.md 铁律 0.5 判据 #5 —— pathspec 里的 `*` **不跨 `/`**，`apps/*/src` 恒匹配 0 个文件，
-  //    于是每个符号都读作「零命中」，整份清单会得出「全是死代码」这个恰好相反的结论。
+  //    `apps/*/src` 恒匹配 0 个文件，于是每个符号都读作「零命中」，
+  //    整份清单会得出「全是死代码」这个恰好相反的结论。
   //    本门第一次跑就踩了这个坑，被金丝雀当场抓住（正是它存在的理由）。
+  //
+  //    ⚠️ **病因订正（CLAUDE.md 铁律 0.5 判据 #5 · 2026-08-11 实测订正 · 2026-08-14 本单复测）**：
+  //    本注释原写「pathspec 里的 `*` **不跨 `/`**」——**那个病因是错的，照它修会修错方向**
+  //    （会去把 `*` 换成 `**`，而 `**` 恰恰是第二个坑）。实测 `git ls-files -- 'apps/*/src/*.ts'`
+  //    命中 **341** 个文件且含 `apps/datacore/src/synthetic/service.ts` ⇒ **`*` 确实跨 `/`**。
+  //    真机制是两条：
+  //      (a) **含通配的 pathspec 不当目录前缀用** —— 字面前缀 `apps/datacore/src` 命中 172，
+  //          含通配的 `apps/*/src` 命中 **0**，补一段成 `apps/*/src/*` 命中 **567**；
+  //      (b) `X/**/*.ext` **要求至少一个中间目录段** —— 本仓 `apps/*/test/` 下只有 `fixtures/`
+  //          且其中零个 `.test.ts` ⇒ `apps/*/test/**/*.test.ts` 恒 0，而 `apps/*/test/*.test.ts` 命中 461。
+  //    （以上四个数为 2026-08-14 在本分支实跑 `git ls-files -- <pathspec> | wc -l`；有保质期，
+  //      随文件增删而动，复验以现跑为准 —— 要断言的是**机制**不是**数字**。）
   const out = git(["grep", "-l", "-w", "-e", symbol, branchRef, "--", "packages", "apps"], {
     allowFail: true,
   });

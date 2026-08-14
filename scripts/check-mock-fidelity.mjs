@@ -57,6 +57,7 @@
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
+import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
 
 /* ── 顶层兜底必须**最先**注册：它要覆盖的正是「后面任何一行崩了」──────────────
  *
@@ -421,9 +422,20 @@ const fresh = current.filter((v) => !(v.id in exempt));
 const fixed = Object.keys(exempt).filter((id) => !currentIds.includes(id));
 
 function writeBaseline(entries, how) {
+  // ⚠ 本函数被 --seed 与 --update **共用**，正是 befe 那个 bug 的同款形态：
+  //   note 无条件落常量 ⇒ --update 会把人手挂账连同理由一起静默吞掉。
+  //   现走 scripts/lib/baseline-doc.mjs 的唯一实现（四向判据见该文件）。
+  const bc = baselineDocCanary();
+  if (!bc.ok) toolBroken(`基线写入器金丝雀不过（${bc.got}）`, `期望：${bc.want}`);
+  const prev = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : null;
   writeFileSync(
     BASELINE,
-    JSON.stringify({ version: 1, note: BASELINE_NOTE, generatedBy: `node scripts/check-mock-fidelity.mjs ${how}`, exemptions: entries }, null, 2) + "\n",
+    JSON.stringify(buildBaselineDoc({
+      prev,
+      generatedBy: `node scripts/check-mock-fidelity.mjs ${how}`,
+      prose: { note: BASELINE_NOTE },
+      computed: { version: 1, exemptions: entries },
+    }), null, 2) + "\n",
   );
 }
 

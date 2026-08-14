@@ -62,6 +62,7 @@ function gateToolBroken(what, hint) {
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { assertDistFresh } from "./dist-freshness.mjs";
+import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
 
 const ROOT = process.cwd();
 const SEED_SRC = join(ROOT, "apps/datacore/src/seed.ts");
@@ -229,17 +230,22 @@ if (argv.includes("--list")) {
   process.exit(0);
 }
 if (argv.includes("--update")) {
-  const prev = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : { exempt: {} };
+  // 基线写入器四向金丝雀（与 buildBaselineDoc 共用同一份实现，不另抄）——
+  // 治「--update 静默吞掉人手挂账」那一族病，来历见 scripts/lib/baseline-doc.mjs。
+  const bc = baselineDocCanary();
+  if (!bc.ok) gateToolBroken(`基线写入器金丝雀不过（${bc.got}）`, `期望：${bc.want}`);
+  const prev = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : null;
   const exempt = {};
   for (const v of violations) {
     const k = `${v.key}|${v.carrier}`;
-    exempt[k] = prev.exempt?.[k] || { verdict: v.verdict, why: "TODO：写清楚为什么这条流程的承载物今天一条实例都没有（空 why 会被门判红）" };
+    exempt[k] = prev?.exempt?.[k] || { verdict: v.verdict, why: "TODO：写清楚为什么这条流程的承载物今天一条实例都没有（空 why 会被门判红）" };
   }
-  writeFileSync(BASELINE, JSON.stringify({
-    note: "carrier-has-instances 棘轮基线：存量「流程承载物零实例」的具名豁免，只许降不许升。每条必须写 why。键 = `<流程号>|<承载物类型>`。",
+  writeFileSync(BASELINE, JSON.stringify(buildBaselineDoc({
+    prev,
     generatedBy: "node scripts/check-carrier-has-instances.mjs --update",
-    exempt,
-  }, null, 2) + "\n");
+    prose: { note: "carrier-has-instances 棘轮基线：存量「流程承载物零实例」的具名豁免，只许降不许升。每条必须写 why。键 = `<流程号>|<承载物类型>`。" },
+    computed: { exempt },
+  }), null, 2) + "\n");
   console.log(`已写基线：豁免 ${Object.keys(exempt).length} 条（${BASELINE}）`);
   process.exit(0);
 }

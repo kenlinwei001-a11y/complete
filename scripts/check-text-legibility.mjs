@@ -134,6 +134,7 @@ function gateToolBroken(e) {
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -937,24 +938,36 @@ function main() {
       const old = prev?.files?.[file];
       files[file] = { site: e.site, floor: e.floor, why: old?.why || whyFor(file, e) };
     }
+    // 基线写入器四向金丝雀（与 buildBaselineDoc 共用同一份实现，不另抄）——
+    // 原实现 note 无条件落常量、且不摊开 prev ⇒ 人手挂账与人手新增顶层键都会被 --update 吞掉。
+    // ⚠ criterion 是**算出来的**（K / FLOOR_PX / BOLD_GAIN 随门参数走），故进 computed 不进 prose：
+    //   放错边会把「改了阈值但基线不更新」变成隐身缺口。
+    const bc = baselineDocCanary();
+    if (!bc.ok) toolBroken(`基线写入器金丝雀不过（${bc.got}）`, `期望：${bc.want}`);
     writeFileSync(
       BASELINE,
-      JSON.stringify({
-        note:
-          `WO-R9-CONTRAST 的存量棘轮（断点 G-TEXT-ILLEGIBLE-SMALL-CJK）。` +
-          `site = 判据 A（尺寸加权对比度 required=max(3, ${K}/S_eff)）不达标的声明数；` +
-          `floor = 判据 B（字号硬底 <${FLOOR_PX}px）的声明数。两者只降不升；零违规的文件不进基线（新增即红）。` +
-          `判据 C（令牌矩阵）无基线，必须绿。`,
-        gate: "scripts/check-text-legibility.mjs",
-        generatedFrom: "node scripts/check-text-legibility.mjs --update",
-        criterion: { k: K, floorPx: FLOOR_PX, boldGain: +BOLD_GAIN.toFixed(4), wcagAnchors: { bodyPx: WCAG_BODY_PX, bodyRatio: WCAG_BODY_RATIO, largePx: WCAG_LARGE_PX, largeRatio: WCAG_LARGE_RATIO, largeBoldPx: WCAG_LARGE_BOLD_PX } },
-        fileCount: Object.keys(files).length,
-        totals: {
-          site: Object.values(files).reduce((a, f) => a + f.site, 0),
-          floor: Object.values(files).reduce((a, f) => a + f.floor, 0),
+      JSON.stringify(buildBaselineDoc({
+        prev,
+        generatedBy: undefined, // 本基线用 generatedFrom 记来源（历史字段名），不引入第二个同义键
+        prose: {
+          note:
+            `WO-R9-CONTRAST 的存量棘轮（断点 G-TEXT-ILLEGIBLE-SMALL-CJK）。` +
+            `site = 判据 A（尺寸加权对比度 required=max(3, ${K}/S_eff)）不达标的声明数；` +
+            `floor = 判据 B（字号硬底 <${FLOOR_PX}px）的声明数。两者只降不升；零违规的文件不进基线（新增即红）。` +
+            `判据 C（令牌矩阵）无基线，必须绿。`,
         },
-        files,
-      }, null, 1) + "\n"
+        computed: {
+          gate: "scripts/check-text-legibility.mjs",
+          generatedFrom: "node scripts/check-text-legibility.mjs --update",
+          criterion: { k: K, floorPx: FLOOR_PX, boldGain: +BOLD_GAIN.toFixed(4), wcagAnchors: { bodyPx: WCAG_BODY_PX, bodyRatio: WCAG_BODY_RATIO, largePx: WCAG_LARGE_PX, largeRatio: WCAG_LARGE_RATIO, largeBoldPx: WCAG_LARGE_BOLD_PX } },
+          fileCount: Object.keys(files).length,
+          totals: {
+            site: Object.values(files).reduce((a, f) => a + f.site, 0),
+            floor: Object.values(files).reduce((a, f) => a + f.floor, 0),
+          },
+          files,
+        },
+      }), null, 1) + "\n"
     );
     console.log(`✅ 基线已写：${Object.keys(files).length} 条 → ${relative(ROOT, BASELINE)}`);
     process.exit(0);

@@ -78,7 +78,29 @@ export function analyze(src) {
 // —— 这正是"金丝雀必须与主逻辑共用同一份实现"那条纪律的落点。若不守卫，一次 import 就会
 // 跑完整个门并可能 `process.exit(1)`，**把跑测试的那个进程一起带走**（表现为一条与本用例
 // 无关的诡异失败）。守卫之后：命令行跑门、测试只借判据，互不干扰。
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main();
+/* ── 退出码纪律 · 顶层兜底（WO-GATE-LEDGER-FIX 补 · `gate-exit-discipline:check` 当场报红逼出来的）──
+ * 本门原有 RC=2 出口（金丝雀不符那条），**但缺顶层兜底**：任何未预期异常（只读 FS / 权限 /
+ * OOM / node 版本差异 / 某个源码文件被删）都会走 node 默认的退 **1** —— 恰好撞上「真有页没挂」
+ * 那个码，于是「我没扫成」被读成「你的页面漏挂了」，方向正好相反。
+ *
+ * ⚠ 这里刻意用**形态 (a) 顶层 try/catch**，而**不是** `process.on("uncaughtException")`：
+ *   本文件的 `analyze` 被 `test/edge-active.seam.test.tsx` import（金丝雀与主逻辑共用同一份实现
+ *   那条纪律的落点）。顶层无条件注册全局 handler 会**装进跑测试的那个进程**，
+ *   一旦测试里别处抛未捕获异常就会被本门的 handler 抢走并 `exit(2)`，把整个测试进程带走。
+ *   try/catch 只包住「被直接执行时才跑的那一句」，import 时是彻底的 no-op。
+ * ───────────────────────────────────────────────────────────────────────────── */
+function toolBroken(what, hint) {
+  console.error(`⛔ check-edge-active-mounts.mjs：${what} ⇒ **工具坏了，不是代码坏了**。`);
+  console.error("   本次结论作废：**不许**读作「推演页都挂对了 / 代码干净 / 通过」——本门这次没跑完，它什么都没证明。");
+  if (hint) console.error("   " + hint);
+  process.exit(2); // 2 = 工具自己坏了（1 = 真有页没挂或挂错层），两者处置相反，不许合并
+}
+
+try {
+  if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main();
+} catch (e) {
+  toolBroken(`未预期异常（${e?.message || e}）`, String(e?.stack || "").split("\n").slice(1, 4).join("\n   "));
+}
 
 function main() {
 // ── 金丝雀：两个已知答案的合成样例，跑的是上面那个 analyze，不是另抄的正则 ────────────
