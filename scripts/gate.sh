@@ -15,7 +15,18 @@
 #      bash scripts/gate.sh --no-test    # 只跑 build + 静态门（快检）
 set -uo pipefail
 
+# ── 三分退出码（docs/SOP-reviewer-claim-discipline.md §3 · WO-R9-DISTFRESH-RC2）────────
+#   0 = 干净 · 1 = **被扫的代码真有问题**（去改代码）· 2 = **门自己没准备好**（去补环境）
+#
+# ⛔ 为什么本脚本必须分开这两个桶：1 和 2 的**处置方向相反**。把 2 混进 1，就会拿着
+#    「不得并线」的判决去修一个根本不存在的缺陷（欠账 #155 即此）；反过来把 1 吞成 2，
+#    则是拿更糟的假绿换掉一个假红。故：
+#      · RC=2 **不进** FAILED（它不是「未通过」，它是「没测成」）
+#      · 有 RC=1 ⇒ 整体退 1（确有该修的东西，即使同时有门没跑成）
+#      · 无 RC=1、有 RC=2 ⇒ 整体退 **2**，且**不许**打印「✅ 全绿（可并线）」——
+#        本次有门没跑成，「没红」不等于「验过了」。
 FAILED=()
+NOTREADY=()
 run() {
   local name="$1"; shift
   echo "───── ${name} ─────"
@@ -24,6 +35,12 @@ run() {
   if [ $rc -eq 0 ]; then
     echo "$out" | tail -3
     echo "✅ ${name} RC=0"
+  elif [ $rc -eq 2 ]; then
+    # 门自己没准备好：**不是**判负。原样打印它的说明（里面写着缺什么、怎么补），
+    # 且**不加**任何判决词——判决词是给 RC=1 用的。
+    echo "$out" | tail -25
+    echo "⚠️ ${name} RC=2 —— 门自己没准备好，本次未度量任何代码，**该门结论作废**（非判负）"
+    NOTREADY+=("${name}")
   else
     # 失败时打印足量上下文（含 TS 错误行），而不是只 tail 几行把错误挤掉。
     # ⛔ 本过滤器自己出过事（真实踩过）：原模式只有 `error TS|FAIL|✗|AssertionError|ERR_`，
@@ -105,6 +122,9 @@ run_test() {
   local out rc roll cnt
   # datacore 勿并发多 vitest（CLAUDE.md LOOP 纪律）→ workspace-concurrency=1
   out="$(pnpm -r --workspace-concurrency=1 test 2>&1)"; rc=$?   # ★ 先捕获退出码，绝不经管道
+  # ⚠ TEST 段**没有** RC=2 这一档：vitest 的非 0 一律是「用例真红/进程真崩」，
+  #   与静态门的「门自己没准备好」不同源。此处刻意不套 run() 的三分逻辑，
+  #   免得把一次真的测试失败误分到「没测成」桶里（那是拿更糟的假绿换假红）。
   # ⚠ 匹配前必须剥 ANSI 转义码。GitHub Actions 设 CI=true，vitest 因此**强开彩色输出**，
   #   汇总行实际形如 `Tests \e[22m \e[1m\e[31m16 failed`——"Tests" 与数字之间夹着转义序列，
   #   而原正则要求二者之间只有空格，于是 CI 上恒匹配 0 行、点名判 0/5 而误报"有包被静默跳过"。
@@ -143,10 +163,30 @@ fi
 
 echo
 echo "═════════ GATE 结果 ═════════"
-if [ ${#FAILED[@]} -eq 0 ]; then
+
+# ⚠ 三个终态，三条路，不许合并（合并即回到 WO-R9-DISTFRESH-RC2 治的那个病）。
+if [ ${#FAILED[@]} -eq 0 ] && [ ${#NOTREADY[@]} -eq 0 ]; then
   echo "✅ 全绿（可并线）"
   exit 0
 fi
-echo "❌ 未通过：${FAILED[*]}"
-echo "   —— 不得并线。修完重跑本脚本。"
-exit 1
+
+if [ ${#NOTREADY[@]} -ne 0 ]; then
+  echo "⚠️ 没跑成（门自己没准备好，本次未度量）：${NOTREADY[*]}"
+  echo "   —— 这些门这次什么都没证明。**不许**读作「它们通过了」，也**不许**读作「代码违规」。"
+  echo "   常见原因：dist 未构建或过期（先 pnpm -r build）· 缺 node_modules（先 pnpm install）· 金丝雀不中（门坏了）。"
+fi
+
+if [ ${#FAILED[@]} -ne 0 ]; then
+  echo "❌ 未通过：${FAILED[*]}"
+  echo "   —— 不得并线。修完重跑本脚本。"
+  if [ ${#NOTREADY[@]} -ne 0 ]; then
+    echo "   ⚠ 注意：上面那 ${#NOTREADY[@]} 道「没跑成」的门不在这份未通过名单里，补齐环境后必须重跑，"
+    echo "     否则修完这批红也只是「已知的那部分」通过了。"
+  fi
+  exit 1
+fi
+
+# 无真判负、但有门没跑成 ⇒ 退 2。**刻意不打印「全绿/可并线」**：
+# 本次的覆盖面是残缺的，「没红」不等于「验过了」。
+echo "   —— 补齐环境后重跑本脚本；在那之前本次结果不构成并线依据。"
+exit 2
