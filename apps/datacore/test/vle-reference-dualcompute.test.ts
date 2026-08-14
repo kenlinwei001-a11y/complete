@@ -59,7 +59,9 @@ describe("VLE · V5 参照实现双算（增量2 · VL2 真有效）", { timeout
     expect(report.pass).toBe(false);
     // diff 精确（含期望/实际/Δ）——不是空占位。
     expect(ref!.diff).toBeTruthy();
-    expect(ref!.diff!).toMatch(/capWanP50 期望 .* 实际 .*Δ/);
+    // 注意：diff 是**给人看的散文**（"P50 期望 …"），P50 在这里是**分位数的通俗名**不是字段名，
+    // 故不随字段改名而改。（本行曾被整批改名误伤成 /capWanP50 期望/，由全量跑当场报红逼回来。）
+    expect(ref!.diff!).toMatch(/P50 期望 .* 实际 .*Δ/);
     const exp = ref!.expected as { capWanP50: number };
     const act = ref!.actual as { capWanP50: number };
     expect(act.capWanP50).toBeLessThan(exp.capWanP50); // 被测被改小，参照仍是正确值 → 实际 < 期望

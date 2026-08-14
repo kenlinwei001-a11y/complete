@@ -73,8 +73,10 @@ describe("WO-CAPLIVE-1-ATOM · 产能原子因子深化（byProcessModel + capac
       expect(r.provenance.formula).toContain("cellsPerDayP50 =");
       // WO-UNIT-MEANING SEAM：cellsPerDayP50 量纲**后端单源下发**（用户曾问"每一行是天/周/月/年"）——
       // cellsPerDayP50 = 工序**日**产能 → unit 恒 "电芯/日"；formula 亦带量纲（R13 溯源即见意义·前端只格式化不内联）。
-      expect(r.unit).toBe("套/天");
-      expect(r.provenance.formula).toContain("套/天");
+      // WO-P50-RENAME 实测订正：本值一路上溯到 baseDailyCellsWeekly（packs × packCellCount），
+      // 量纲是**电芯/日**不是「套/天」，两者差 packCellCount=96 倍。旧断言钉的是错量纲。
+      expect(r.unit).toBe("电芯/日");
+      expect(r.provenance.formula).toContain("电芯/日");
     }
     // 逐格真下钻：至少两个不同工序 + 不止一种主瓶颈（宽而浅 → 深而真）
     expect(new Set(rows.map((r) => r.process)).size).toBeGreaterThan(3);
