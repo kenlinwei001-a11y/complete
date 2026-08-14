@@ -178,7 +178,12 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
                         data-wait-kind={c.waitKind}
                         aria-pressed={selectedProcessKey === c.key}
                         data-testid={`spc-card-${c.key}`}
-                        title={`${c.name}（${c.key}）· ${zh.processWait.waitKind[c.waitKind].label}`}
+                        /* ⚠ **没有 `title=`**：`docs/CONVENTION-ui-information-layering.md` §2 R-UI-3
+                           明令禁止用原生 tooltip 充当浮层（不受控 · 永远画在最上层 · 移开滞留；
+                           本仓 2026-08-10 真出过遮挡事故），且 `sandbox-ui-integrate.seam` 有一条
+                           **全屏棘轮**盯着 `[title]` 的总数。卡上要说的三件事（名字 / 流程键 /
+                           等待类型）本来就都画在卡上了，再挂一个 tooltip 只是把同一句话说两遍。 */
+                        aria-label={`${c.name}（${c.key}）· ${zh.processWait.waitKind[c.waitKind].label}`}
                         onClick={() => onPick(c.key)}
                       >
                         <span className={styles.nodeCardTop}>
@@ -193,7 +198,8 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
                         </span>
                         <span className={styles.nodeCardFoot}>
                           <span>{t.stdDays(c.stdDurationDays)}</span>
-                          <span title={c.carrierTypeKey}>
+                          {/* 承载物类型键：卡上直接写出来（同上，不挂原生 tooltip） */}
+                          <span>
                             <code>{c.carrierTypeKey}</code>
                           </span>
                         </span>

@@ -337,6 +337,31 @@ describe("§D 诚实位（在**切到第五档之后**咬，否则等于没咬�
     expect(within(panel).getByTestId("pi-runtime-reason").textContent ?? "").not.toHaveLength(0);
     expect(within(panel).getAllByRole("listitem").length).toBeGreaterThan(0);
   }, 120000);
+
+  /**
+   * D3 · **原生 tooltip 棘轮的补漏**（`docs/CONVENTION-ui-information-layering.md` §2 R-UI-3）。
+   *
+   * `sandbox-ui-integrate.seam` 的全屏棘轮数的是**当前 DOM 里**的 `[title]` 总数，
+   * 而画布各档是**懒挂载**的 —— 那道门从没切到第五档，于是第五档里新增多少个原生 tooltip
+   * 它都数不到，照样绿。**这正是本仓铁律 0.6 那句「我用 X 当作 Y 的证据，而 X 并不度量 Y」**：
+   * 用「棘轮绿」当作「没新增原生 tooltip」的证据，而前者在懒挂载的档位上并不度量后者。
+   * 故本条在**第五档真的挂出来之后**再数一次，把这个洞补上。
+   */
+  it("D3 · 第五档挂出来之后，本档**零原生 tooltip**（懒挂载会让全屏棘轮数不到这一档）", async () => {
+    const user = userEvent.setup();
+    await enterSandbox();
+    const board = await openProcessMode(user);
+    // 先自证判据咬得住：全屏范围内确实存在带 title 的元素（否则下面是在对空集恒真）
+    expect(
+      screen.getByTestId("sandbox-view").querySelectorAll("[title]").length,
+      "全屏一个 [title] 都没有 ⇒ 这条断言没咬到东西（工具坏了，不是本档干净）",
+    ).toBeGreaterThan(0);
+    expect(
+      board.querySelectorAll("[title]").length,
+      "第五档里出现了原生 tooltip —— 规范 §2 R-UI-3 明令禁止（不受控 · 永远画在最上层 · 移开滞留）。要说明就用 InfoPopover。",
+    ).toBe(0);
+    expect(board.querySelectorAll("svg title").length, "SVG <title> 是 2026-08-10 那次遮挡事故的直接成因").toBe(0);
+  }, 90000);
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
