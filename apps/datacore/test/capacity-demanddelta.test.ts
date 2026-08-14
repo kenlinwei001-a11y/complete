@@ -7,7 +7,7 @@ import type { SolverContext, SolverParamsShape } from "../src/solvers/types.js";
 import type { ObjectInstance } from "../src/domain.js";
 
 // PRD-CAP-DEMANDDELTA 回归：demandDelta 真实驱动 effectiveDemand，
-// 单位 GWh→万套，且 p50===0 时诚实降级为 EMPTY（不伪造成果）。
+// 单位 GWh→万套，且 capWanP50===0 时诚实降级为 EMPTY（不伪造成果）。
 
 async function forecast(t: TestApp, args: Record<string, unknown>) {
   const res = await invokeSolver(t, "capacity_forecast", args);
@@ -38,10 +38,10 @@ describe("PRD-CAP-DEMANDDELTA · capacity_forecast demandDelta + EMPTY guard", (
     expect(effective).toBe(round(baseline * (1 + demandDelta), 4));
     expect(out.demandDelta).toBe(demandDelta);
 
-    const p90 = out.p90 as number;
-    // gap 是**带符号**（capacity.ts:497 `effectiveDemand - p90`·富余为负·与下方 gapPct 的 Math.max(0,gap) 一致）；
+    const capWanP90 = out.capWanP90 as number;
+    // gap 是**带符号**（capacity.ts:497 `effectiveDemand - capWanP90`·富余为负·与下方 gapPct 的 Math.max(0,gap) 一致）；
     // 当前 canonical 产能 > 订单簿×1.2 时 4680-NCM 为富余（gap<0）——原断言误裹 Math.max(0,…) 会假失败。
-    expect(gap).toBe(round(effective - p90, 4));
+    expect(gap).toBe(round(effective - capWanP90, 4));
     if (effective > 0) {
       expect(gapPct).toBe(round(Math.max(0, gap) / effective, 4));
     }
@@ -57,10 +57,10 @@ describe("PRD-CAP-DEMANDDELTA · capacity_forecast demandDelta + EMPTY guard", (
     const effective = out.effectiveDemand as number;
     expect(effective).toBe(round(qty * (1 + demandDelta), 4));
     expect(out.baselineDemand).toBeGreaterThan(0); // 仍然回显，但不参与
-    expect(out.gap).toBe(round(Math.max(0, effective - (out.p90 as number)), 4));
+    expect(out.gap).toBe(round(Math.max(0, effective - (out.capWanP90 as number)), 4));
   });
 
-  it("p50 === 0 时返回 dataMode=EMPTY，mainBottleneck 为空，feasibilityNote 说明数据缺口", () => {
+  it("capWanP50 === 0 时返回 dataMode=EMPTY，mainBottleneck 为空，feasibilityNote 说明数据缺口", () => {
     const params = BATTERY_SOLVER_PARAMS as unknown as SolverParamsShape;
     const modelId = "m_empty";
     const base = mk("Base", "obj_b_empty", { baseId: "b_empty", name: "空基地", formationCapDaily: 1e9, agingCapDaily: 1e9 });
@@ -85,8 +85,8 @@ describe("PRD-CAP-DEMANDDELTA · capacity_forecast demandDelta + EMPTY guard", (
 
     const out = capacityForecast(ctx, { modelId, weeks: 6 });
     expect(out.dataMode).toBe("EMPTY");
-    expect(out.p50).toBe(0);
-    expect(out.p90).toBe(0);
+    expect(out.capWanP50).toBe(0);
+    expect(out.capWanP90).toBe(0);
     expect(out.ok).toBe(false);
     expect(out.mainBottleneck).toBe("");
     expect(out.mainBn).toBe("");
@@ -100,7 +100,7 @@ describe("PRD-CAP-DEMANDDELTA · capacity_forecast demandDelta + EMPTY guard", (
     const out = await forecast(t, { modelId: "4680-NCM", demandDelta: 0.1, weeks: 6 });
     const prov = out.provenance as Record<string, { formula: string; valueLabel: string }> | undefined;
     expect(prov).toBeTruthy();
-    expect(prov!.p50.formula).toContain("weeklyCap");
+    expect(prov!.capWanP50.formula).toContain("weeklyCap");
     expect(prov!.effectiveDemand.valueLabel).toContain("有效需求");
     expect(prov!.gap.valueLabel).toContain("缺口比例");
   });

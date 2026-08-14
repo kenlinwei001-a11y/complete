@@ -63,7 +63,7 @@ describe("WO-CAPLIVE-TRUECHAIN · 产能活台拨杆走真产能链（generic_in
     expect(out.rows.length).toBe(out.deltas.length);
     expect(out.affectedObjects).toBe(out.deltas.length);
     expect(out.deltas[0]!.type).toBe("ProcessModel");
-    expect(out.deltas[0]!.prop).toBe("p50");
+    expect(out.deltas[0]!.prop).toBe("cellsPerDayP50");
     expect(out.rootTypes).toContain("Process");
     // 该常州工序在多型号聚合（4680-NCM/4680-LFP/方形-NCM 认证于常州·无 modelId→全型号）→ 受影响格皆在常州基地
     expect(out.deltas.every((d) => d.objId.startsWith("changzhou|"))).toBe(true);

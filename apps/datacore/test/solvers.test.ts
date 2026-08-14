@@ -169,7 +169,7 @@ describe("S1 solvers", () => {
     expect(rows[2]!.cumDemand).toBe(118);
     // the tight batch must fail in 1 effective week; gap = max shortfall
     expect(rows[0]!.ok).toBe(false);
-    const worst = Math.max(...rows.filter((r) => !r.ok).map((r) => round(r.cumDemand - r.cumP90, 4)), 0);
+    const worst = Math.max(...rows.filter((r) => !r.ok).map((r) => round(r.cumDemand - r.cumCapWanP90, 4)), 0);
     expect(out.gap).toBe(round(worst, 4));
     expect(out.ok).toBe(false);
   });
@@ -185,7 +185,7 @@ describe("S1 solvers", () => {
     });
     const wi = out.whatIf as Record<string, number | boolean>;
     expect(wi.rejected).toBe(false);
-    const raw = (out.p50 as number) * (1 + 0.06 * 2 + 0.05 * 4) + 40 * 0.1;
+    const raw = (out.capWanP50 as number) * (1 + 0.06 * 2 + 0.05 * 4) + 40 * 0.1;
     const expected = round(Math.min(raw, wi.physicalCap as number), 4);
     expect(wi.adjustedP50).toBe(expected);
     expect(wi.capped).toBe(raw > (wi.physicalCap as number));

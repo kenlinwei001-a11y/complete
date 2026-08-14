@@ -78,11 +78,11 @@ describe("WO-LEVER-BINDING-DRIFT · 设备层拨杆在生产实参下必须反�
    *                                        ②〔已修〕`patchCapacityContext` 的 switch 只认 Process/Equipment/Line/Material，
    *                                          `default: return {...c}` ⇒ 该 override **被静默丢弃**，克隆世界与基线逐字节相同。
    *                                        ①〔**仍未修·真正的拦路虎**〕`capacity.ts` 全文不出现 ChangeoverMatrix：
-   *                                          `p50 = processCap × certFactor × yieldRebase × matFactor` **不含换型项**，
+   *                                          `cellsPerDayP50 = processCap × certFactor × yieldRebase × matFactor` **不含换型项**，
    *                                          故即便 ⓪② 都修好，∂Σp50/∂minutes **仍恒 0** ⇒ ⑤ 照旧被
    *                                          「无下游影响 → 非有效杠杆」丢弃。**实测**见 `engine2-changeover-lever.seam.test.ts`
    *                                          （把每条 ChangeoverMatrix.minutes 放大 100× → Σp50 逐字节不变）。
-   *                                          修它要**动产能链数学**（让 p50 消费换型），且数据侧 `ChangeoverMatrix.lineId`
+   *                                          修它要**动产能链数学**（让 cellsPerDayP50 消费换型），且数据侧 `ChangeoverMatrix.lineId`
    *                                          全库恒 null（`extended.ts` 实测）⇒ 落不到 `grain:"process"` 的工序颗粒 —— 两者都超出改名单的范围。
    *
    * 修它们要动产能链数学 / patch 白名单，**不在本单范围边界内**（见 `docs/PRD-lever-binding-drift.md` §6 遗留）。
@@ -131,7 +131,7 @@ describe("WO-LEVER-BINDING-DRIFT · 设备层拨杆在生产实参下必须反�
       segments: [], dataHealth: [], certByModel: new Map([["m1", new Map([["b1", "量产"]])]]), materials: [],
     } as unknown as SolverContext;
 
-    const sum = (ctx: SolverContext): number => computeByProcessModel(ctx, "m1").reduce((a, r) => a + r.p50, 0);
+    const sum = (ctx: SolverContext): number => computeByProcessModel(ctx, "m1").reduce((a, r) => a + r.cellsPerDayP50, 0);
     const baseline = sum(c);
     expect(baseline).toBeGreaterThan(0);
 

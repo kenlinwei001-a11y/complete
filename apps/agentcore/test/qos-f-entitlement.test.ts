@@ -44,7 +44,7 @@ describe("Feature entitlement enforcement (entitlement PRD §4/§5)", () => {
       payload: { args: { modelId: "4680-NCM", weeks: 6 } },
     });
     expect(ok.statusCode).toBe(200);
-    expect((ok.json() as { data: { p50: number } }).data.p50).toBeGreaterThan(0);
+    expect((ok.json() as { data: { capWanP50: number } }).data.capWanP50).toBeGreaterThan(0);
   });
 
   it("E3: qos.agent-fallback off → would-be path B returns WORKFLOW_ONLY behavior (请换个问法 + intents), no agent run", async () => {

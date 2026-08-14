@@ -14,7 +14,7 @@ import type { ObjectInstance } from "../src/domain.js";
 
 const MODEL = "2170-NCM"; // 多基地可产型号（武汉/厦门/自贡·certByModel 非空）
 
-interface Bpm { baseId: string; base: string; process: string; model: string; material?: string; p50: number; unit?: string; bottleneck: string; bottleneckMark?: string; tightness: number; gap: number; provenance: { objectType: string; objectId: string; prop: string; formula: string } }
+interface Bpm { baseId: string; base: string; process: string; model: string; material?: string; cellsPerDayP50: number; unit?: string; bottleneck: string; bottleneckMark?: string; tightness: number; cellsPerDayGap: number; provenance: { objectType: string; objectId: string; prop: string; formula: string } }
 
 async function byProcessModel(t: TestApp, modelId = MODEL): Promise<Bpm[]> {
   const res = await invokeSolver(t, "capacity_forecast", { modelId, granularity: "process-model" });
@@ -68,11 +68,11 @@ describe("WO-CAPLIVE-1-ATOM · 产能原子因子深化（byProcessModel + capac
     for (const r of rows.slice(0, 20)) {
       expect(r.process).toBeTruthy();
       expect(r.model).toBe(MODEL);
-      expect(typeof r.p50).toBe("number");
+      expect(typeof r.cellsPerDayP50).toBe("number");
       expect(["良率波动", "设备OEE", "物料齐套"]).toContain(r.bottleneck);
-      expect(r.provenance.formula).toContain("p50 =");
-      // WO-UNIT-MEANING SEAM：p50 量纲**后端单源下发**（用户曾问"每一行是天/周/月/年"）——
-      // p50 = 工序**日**产能 → unit 恒 "套/天"；formula 亦带量纲（R13 溯源即见意义·前端只格式化不内联）。
+      expect(r.provenance.formula).toContain("cellsPerDayP50 =");
+      // WO-UNIT-MEANING SEAM：cellsPerDayP50 量纲**后端单源下发**（用户曾问"每一行是天/周/月/年"）——
+      // cellsPerDayP50 = 工序**日**产能 → unit 恒 "电芯/日"；formula 亦带量纲（R13 溯源即见意义·前端只格式化不内联）。
       expect(r.unit).toBe("套/天");
       expect(r.provenance.formula).toContain("套/天");
     }
@@ -81,7 +81,7 @@ describe("WO-CAPLIVE-1-ATOM · 产能原子因子深化（byProcessModel + capac
     expect(new Set(rows.map((r) => r.bottleneck)).size).toBeGreaterThan(1);
   });
 
-  it("SEAM 红咬①：改一个 Process.yield_baseline → 该格 byProcessModel.p50 真变 + discoverLevers 反推出该 Process.yield_baseline 敏感度非零", async () => {
+  it("SEAM 红咬①：改一个 Process.yield_baseline → 该格 byProcessModel.cellsPerDayP50 真变 + discoverLevers 反推出该 Process.yield_baseline 敏感度非零", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const before = await byProcessModel(t);
@@ -97,9 +97,9 @@ describe("WO-CAPLIVE-1-ATOM · 产能原子因子深化（byProcessModel + capac
     const after = await byProcessModel(t);
     const afterCell = after.find((r) => r.process === target.process && r.baseId === target.baseId)!;
     expect(afterCell).toBeTruthy();
-    // 红咬：该格 p50 真变（良率基线再基下降 → 产能降）
-    expect(afterCell.p50).not.toBe(target.p50);
-    expect(afterCell.p50).toBeLessThan(target.p50);
+    // 红咬：该格 cellsPerDayP50 真变（良率基线再基下降 → 产能降）
+    expect(afterCell.cellsPerDayP50).not.toBe(target.cellsPerDayP50);
+    expect(afterCell.cellsPerDayP50).toBeLessThan(target.cellsPerDayP50);
 
     // 引擎半同一原子因子：discoverLevers（grain·该工序·良率波动）反推出 Process.yield_baseline 且敏感度非零
     const lv = await levers(t, { grain: "process-model", modelId: MODEL, processKey: target.process, factors: ["良率波动"] });
@@ -114,11 +114,11 @@ describe("WO-CAPLIVE-1-ATOM · 产能原子因子深化（byProcessModel + capac
     expect(yl!.valueKind).toBe("ratio");
   });
 
-  it("SEAM 红咬②：改一个 Material.onHand（层4 ∩ 物料齐套）→ byProcessModel Σp50 真变", async () => {
+  it("SEAM 红咬②：改一个 Material.onHand（层4 ∩ 物料齐套）→ byProcessModel ΣcellsPerDayP50 真变", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const before = await byProcessModel(t);
-    const total0 = before.reduce((s, r) => s + r.p50, 0);
+    const total0 = before.reduce((s, r) => s + r.cellsPerDayP50, 0);
     // 取 byProcessModel 绑定的关键物料（provenance 里 objectType=Material 的那个 → material 名）
     const matName = before.find((r) => r.material)?.material;
     expect(matName).toBeTruthy();
@@ -129,7 +129,7 @@ describe("WO-CAPLIVE-1-ATOM · 产能原子因子深化（byProcessModel + capac
     await t.repos.objects.put(mat);
 
     const after = await byProcessModel(t);
-    const total1 = after.reduce((s, r) => s + r.p50, 0);
+    const total1 = after.reduce((s, r) => s + r.cellsPerDayP50, 0);
     expect(total1).not.toBe(total0);
     expect(total1).toBeLessThan(total0); // 物料齐套收紧 → ∩ 产能降
   });
@@ -138,14 +138,14 @@ describe("WO-CAPLIVE-1-ATOM · 产能原子因子深化（byProcessModel + capac
     const c = miniCtx();
     const correct = computeByProcessModel(c, "m1");
     expect(correct.length).toBe(2);
-    // 改坏 ⑥ 绑定（Process.yield_baseline → 不存在的属性）→ 良率基线再基退化 + 良率张力口径变 → 逐格 p50/bottleneck 变
+    // 改坏 ⑥ 绑定（Process.yield_baseline → 不存在的属性）→ 良率基线再基退化 + 良率张力口径变 → 逐格 cellsPerDayP50/bottleneck 变
     const corrupted = CAPACITY_FACTOR_BINDINGS.map((b) => (b.mark === "⑥" ? { ...b, prop: "__corrupt_no_such_prop" } : b));
     const broken = computeByProcessModel(c, "m1", corrupted);
     expect(JSON.stringify(broken)).not.toBe(JSON.stringify(correct));
-    // 具体：读不到 yield_baseline → 回落到运算良率 → yieldRebase=1 → p50 上抬（对良率<运算良率的工序）
+    // 具体：读不到 yield_baseline → 回落到运算良率 → yieldRebase=1 → cellsPerDayP50 上抬（对良率<运算良率的工序）
     const p1c = correct.find((r) => r.process === "p1")!;
     const p1b = broken.find((r) => r.process === "p1")!;
-    expect(p1b.p50).not.toBe(p1c.p50);
+    expect(p1b.cellsPerDayP50).not.toBe(p1c.cellsPerDayP50);
   });
 
   it("R6 确定性：byProcessModel 同输入两跑字节一致；levers 亦然", async () => {

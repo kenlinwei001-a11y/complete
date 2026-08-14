@@ -101,15 +101,15 @@ describe("WO-SILENT-WRONG-ANSWER-3 §0 · 入参键名归一是**一份**实现�
 // ---------------------------------------------------------------------------
 
 describe("WO-SILENT-WRONG-ANSWER-3 §① · capacity_forecast 的基地维不因键名而失效", () => {
-  it("★ 命门差分：只改基地这一维，p50 必须跟着变（baseId=常州 ≠ baseId=成都 ≠ 全网）", async () => {
+  it("★ 命门差分：只改基地这一维，capWanP50 必须跟着变（baseId=常州 ≠ baseId=成都 ≠ 全网）", async () => {
     const base = { modelId: MODEL, qty: 100, weeks: 6 };
     const all = data(await invokeSolver(t, "capacity_forecast", base, ADMIN));
     const cz = data(await invokeSolver(t, "capacity_forecast", { ...base, baseId: "changzhou" }, ADMIN));
     const cd = data(await invokeSolver(t, "capacity_forecast", { ...base, baseId: "chengdu" }, ADMIN));
 
-    // ← 修前这一条是红的：`baseId` 被静默吞掉，两者与全网**逐字节相同**（实测 p50 全是 12.3016）。
-    expect(cz.p50, "baseId=常州 与全网 p50 相同 = base 维被静默丢（症① 复发）").not.toEqual(all.p50);
-    expect(cz.p50, "换个基地 p50 不变 = 这一维没真进算法（只是回显）").not.toEqual(cd.p50);
+    // ← 修前这一条是红的：`baseId` 被静默吞掉，两者与全网**逐字节相同**（实测 capWanP50 全是 12.3016）。
+    expect(cz.capWanP50, "baseId=常州 与全网 capWanP50 相同 = base 维被静默丢（症① 复发）").not.toEqual(all.capWanP50);
+    expect(cz.capWanP50, "换个基地 capWanP50 不变 = 这一维没真进算法（只是回显）").not.toEqual(cd.capWanP50);
     expect(cz.scope).toBe("BASE");
     expect(cz.scopeBaseId).toBe("changzhou");
     expect(cd.scopeBaseId).toBe("chengdu");
@@ -121,15 +121,15 @@ describe("WO-SILENT-WRONG-ANSWER-3 §① · capacity_forecast 的基地维不因
     const a = await invokeSolver(t, "capacity_forecast", { ...base, base: "changzhou" }, ADMIN);
     const b = await invokeSolver(t, "capacity_forecast", { ...base, baseId: "changzhou" }, ADMIN);
     const c = await invokeSolver(t, "capacity_forecast", { ...base, baseName: "常州" }, ADMIN);
-    expect(data(b).p50).toEqual(data(a).p50);
-    expect(data(c).p50).toEqual(data(a).p50);
+    expect(data(b).capWanP50).toEqual(data(a).capWanP50);
+    expect(data(c).capWanP50).toEqual(data(a).capWanP50);
     expect(data(b).scopeBaseId).toBe("changzhou");
   });
 
-  it("加性（不给基地 → 与修前逐字节同解）：scope:ALL · 4 个认证基地 · p50 金值 12.3016", async () => {
+  it("加性（不给基地 → 与修前逐字节同解）：scope:ALL · 4 个认证基地 · capWanP50 金值 12.3016", async () => {
     const out = data(await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 100, weeks: 6 }, ADMIN));
     // 金值取自**修前**实测（同 seed 42 同入参）——归一层对"没给别名"的路必须零影响。
-    expect(out.p50).toBe(12.3016);
+    expect(out.capWanP50).toBe(12.3016);
     expect(out.scope).toBe("ALL");
     expect((out.perBaseRows as unknown[]).length).toBe(4);
   });

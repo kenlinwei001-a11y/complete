@@ -57,7 +57,7 @@ describe("Path A (QOS-PRD §12 A1–A6)", () => {
       expect(task.answer?.provenance.some((p) => p.id === kpi.provId)).toBe(true);
     }
     // PRD-CAP-DEMANDDELTA：invoke_solver 的 provenance 应携带 formula/valueLabel
-    const p50Prov = task.answer?.provenance.find((p) => p.outputPath === "$.data.p50");
+    const p50Prov = task.answer?.provenance.find((p) => p.outputPath === "$.data.capWanP50");
     expect(p50Prov?.formula).toContain("weeklyCap");
     expect(p50Prov?.valueLabel).toContain("P50");
     const edProv = task.answer?.provenance.find((p) => p.outputPath === "$.data.effectiveDemand");

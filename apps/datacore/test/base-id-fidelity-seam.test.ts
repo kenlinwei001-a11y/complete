@@ -15,7 +15,7 @@ import type { AuthCtx } from "../src/domain.js";
  */
 
 const CTX: AuthCtx = { tenantId: "demo", userId: "u", roles: ["admin"], attributes: {} };
-type Cap = { p50: number; scope?: string; scopeBaseId?: string; scopeNote?: string; perBaseRows?: unknown[] };
+type Cap = { capWanP50: number; scope?: string; scopeBaseId?: string; scopeNote?: string; perBaseRows?: unknown[] };
 
 describe("WO-BASE-ID-FIDELITY · 症② affected_orders 跨 synthetic 图 id × solver 规范化（obj_base_/中文名/baseId 三形态同基地·不再 400）", () => {
   it("SEAM 头号：affected_orders 传 base:'obj_base_<id>'（图节点 id）→ 不再 400 · 真过滤到该基地 · 三形态命中同一基地同订单集", async () => {
@@ -52,7 +52,7 @@ describe("WO-BASE-ID-FIDELITY · 症② affected_orders 跨 synthetic 图 id × 
 });
 
 describe("WO-BASE-ID-FIDELITY · 症① capacity_forecast 带基地 vs 全网真区分（数据种 certByModel × 引擎 base 作用域·相同即红）", () => {
-  it("SEAM 头号：base=常州 只算常州产能（scope:BASE·perBaseRows=1）·与全网（scope:ALL·多基地）数值不同；三形态同 p50；无 base 诚实标全网", async () => {
+  it("SEAM 头号：base=常州 只算常州产能（scope:BASE·perBaseRows=1）·与全网（scope:ALL·多基地）数值不同；三形态同 capWanP50；无 base 诚实标全网", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const models = await t.repos.objects.listByType("demo", "Model");
@@ -66,7 +66,7 @@ describe("WO-BASE-ID-FIDELITY · 症① capacity_forecast 带基地 vs 全网真
       const mid = String(m.props.modelId);
       const net = (await t.services.solvers.invoke(CTX, "capacity_forecast", { modelId: mid, demandDelta: 0.2 })) as Cap;
       const rows = (net.perBaseRows ?? []) as { baseId: string; base: string }[];
-      if (rows.length >= 2 && (net.p50 ?? 0) > 0) { modelId = mid; netRows = rows; netP50 = net.p50; break; }
+      if (rows.length >= 2 && (net.capWanP50 ?? 0) > 0) { modelId = mid; netRows = rows; netP50 = net.capWanP50; break; }
     }
     expect(modelId, "需一个认证≥2基地的型号做全网 vs 单基地对比").not.toBe("");
 
@@ -76,7 +76,7 @@ describe("WO-BASE-ID-FIDELITY · 症① capacity_forecast 带基地 vs 全网真
     expect(String(net.scopeNote)).toContain("全网");
     expect((net.perBaseRows ?? []).length).toBeGreaterThanOrEqual(2);
 
-    // 单基地（取全网认证基地之一）→ scope:BASE·perBaseRows=1·p50 只含该基地。
+    // 单基地（取全网认证基地之一）→ scope:BASE·perBaseRows=1·capWanP50 只含该基地。
     const targetBaseId = netRows[0]!.baseId;
     const targetBase = bases.find((b) => String(b.props.baseId) === targetBaseId)!;
     const cnName = String(targetBase.props.name);
@@ -85,14 +85,14 @@ describe("WO-BASE-ID-FIDELITY · 症① capacity_forecast 带基地 vs 全网真
     expect(scoped.scopeBaseId).toBe(targetBaseId);
     expect((scoped.perBaseRows ?? []).length).toBe(1);
     // ★ 命门：带基地 ≠ 全网（此前静默丢 base → 恒相等 → 用户被冒充）。单基地 < 全网合计（多基地 sum）。
-    expect(scoped.p50).not.toBe(netP50);
-    expect(scoped.p50).toBeLessThan(netP50);
+    expect(scoped.capWanP50).not.toBe(netP50);
+    expect(scoped.capWanP50).toBeLessThan(netP50);
 
-    // 三形态（中文名 / baseId / obj_base_<id>）→ 同一基地同 p50（规范化单一出处）。
+    // 三形态（中文名 / baseId / obj_base_<id>）→ 同一基地同 capWanP50（规范化单一出处）。
     const byId = (await t.services.solvers.invoke(CTX, "capacity_forecast", { modelId, demandDelta: 0.2, base: targetBaseId })) as Cap;
     const byObj = (await t.services.solvers.invoke(CTX, "capacity_forecast", { modelId, demandDelta: 0.2, base: `obj_base_${targetBaseId}` })) as Cap;
-    expect(byId.p50).toBe(scoped.p50);
-    expect(byObj.p50).toBe(scoped.p50);
+    expect(byId.capWanP50).toBe(scoped.capWanP50);
+    expect(byObj.capWanP50).toBe(scoped.capWanP50);
     expect(byObj.scopeBaseId).toBe(targetBaseId);
 
     // 未认证该基地的型号+基地组合 → 诚实报错（非静默空/冒充）。

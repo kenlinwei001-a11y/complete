@@ -117,11 +117,11 @@ describe("WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演", () =>
   });
 
   // ===== WO-CAPACITY-DEEPEN-ADDITIVE 块D · byModel SEAM（数据 capacity_forecast × 展示按产品·跨半驱动接缝·非各半绿）=====
-  type ByModel = { model: string; modelName: string; p50At30: number; p50At60: number; p50At90: number; mainBn: string; gap: number; provenance: { kind: string; source: string; drillType: string; drillField: string } };
+  type ByModel = { model: string; modelName: string; packsP50At30: number; packsP50At60: number; packsP50At90: number; mainBn: string; packsGap: number; unit?: string; provenance: { kind: string; source: string; drillType: string; drillField: string } };
   type OutlookD = Outlook & { byModel?: ByModel[] };
   const runD = async (t: TestApp, args: Record<string, unknown>): Promise<OutlookD> =>
     (await t.services.solvers.invoke(ADMIN, "base_capacity_outlook", args)) as unknown as OutlookD;
-  type Forecast = { p50: number; mainBn: string; perBaseRows: { base: string; baseId: string; cumTotal: number }[] };
+  type Forecast = { capWanP50: number; mainBn: string; perBaseRows: { base: string; baseId: string; cumTotal: number }[] };
   const runFc = async (t: TestApp, args: Record<string, unknown>): Promise<Forecast> =>
     (await t.services.solvers.invoke(ADMIN, "capacity_forecast", args)) as unknown as Forecast;
 
@@ -134,14 +134,14 @@ describe("WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演", () =>
     expect(g.byModel!.length).toBeGreaterThan(0); // changzhou 至少一可产型号（4680-NCM/4680-LFP/方形-NCM）
     const row = g.byModel!.find((r) => r.model === "4680-NCM")!;
     expect(row).toBeTruthy();
-    expect(row.p50At30).toBeLessThan(row.p50At90); // 窗口越长累计可承接越多（前瞻单调·非写死）
+    expect(row.packsP50At30).toBeLessThan(row.packsP50At90); // 窗口越长累计可承接越多（前瞻单调·非写死）
 
     // 同源勾稽：byModel p50@H === capacity_forecast(该 model, weeks=ceil(H/7)) 该基地 perBaseRows.cumTotal × 1e4。
-    for (const [H, p50] of [[30, row.p50At30], [60, row.p50At60], [90, row.p50At90]] as const) {
+    for (const [H, packsP50] of [[30, row.packsP50At30], [60, row.packsP50At60], [90, row.packsP50At90]] as const) {
       const fc = await runFc(t, { modelId: "4680-NCM", weeks: Math.ceil(H / 7) });
       const pb = fc.perBaseRows.find((r) => r.baseId === "changzhou")!;
       expect(pb).toBeTruthy();
-      expect(p50).toBeCloseTo(pb.cumTotal * 1e4, 1); // 同源·跨求解器勾稽（非独立写死）
+      expect(packsP50).toBeCloseTo(pb.cumTotal * 1e4, 1); // 同源·跨求解器勾稽（非独立写死）
     }
     // mainBn 跨求解器一致（= capacity_forecast 该 model 主瓶颈）。
     const fc90 = await runFc(t, { modelId: "4680-NCM", weeks: Math.ceil(90 / 7) });
@@ -165,11 +165,11 @@ describe("WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演", () =>
     await t.repos.objects.put(proc!);
 
     const after = (await runD(t, { baseId: "changzhou" })).byModel!.find((r) => r.model === "4680-NCM")!;
-    expect(after.p50At90).toBeLessThan(before.p50At90); // 改 capacity_forecast 输入 → byModel 真变（接缝咬合·非写死）
+    expect(after.packsP50At90).toBeLessThan(before.packsP50At90); // 改 capacity_forecast 输入 → byModel 真变（接缝咬合·非写死）
     // 且仍与 capacity_forecast 同源（改后再勾稽）。
     const fc90 = await runFc(t, { modelId: "4680-NCM", weeks: Math.ceil(90 / 7) });
     const pb = fc90.perBaseRows.find((r) => r.baseId === "changzhou")!;
-    expect(after.p50At90).toBeCloseTo(pb.cumTotal * 1e4, 1);
+    expect(after.packsP50At90).toBeCloseTo(pb.cumTotal * 1e4, 1);
   });
 
   it("块D 向后兼容 + R6：byModel 为纯加字段（per-base 四线/dayPlan 零改）·同输入 byModel 字节级一致", async () => {
@@ -183,9 +183,9 @@ describe("WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演", () =>
     // 每 byModel 行结构齐（model/p50@30/60/90/mainBn/gap）。
     for (const r of a.byModel!) {
       expect(typeof r.model).toBe("string");
-      expect(typeof r.p50At30).toBe("number");
-      expect(typeof r.p50At60).toBe("number");
-      expect(typeof r.p50At90).toBe("number");
+      expect(typeof r.packsP50At30).toBe("number");
+      expect(typeof r.packsP50At60).toBe("number");
+      expect(typeof r.packsP50At90).toBe("number");
       expect(r.mainBn.length).toBeGreaterThan(0);
     }
   });

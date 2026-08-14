@@ -303,7 +303,7 @@ describe("R10 · 工具并行执行（增量 §5）", () => {
       return v;
     };
     t.dataCore.ontology.queryObjects = async () => track(async () => ({ data: { items: [] }, snapshotVersion: "s" }));
-    t.dataCore.solver.invoke = async () => track(async () => ({ data: { p50: 1 }, snapshotVersion: "s" }));
+    t.dataCore.solver.invoke = async () => track(async () => ({ data: { capWanP50: 1 }, snapshotVersion: "s" }));
 
     t.llm.queueAgentTurn(
       {
