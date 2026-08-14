@@ -11,6 +11,18 @@ import REAL from "./fixtures/process-inspect-real.json";
 /**
  * WO-V4-INSPECT · 流程节点检视面板（PRD-sandbox-v4-backward-derivation §4.2）。
  *
+ * ⚠ **2026-08-14 已知过期点（WO-R9-PROCESS-MERGE 登记，刻意不手改）**：
+ * 本文件的录制 fixture 里 `runtime.reason` 仍是那句
+ * 「`ProcessTask` / `ProcessInstance` 两个承载物**全仓不存在**」。
+ * 那句话**在服务端已经被改掉了**（`apps/datacore/src/process/inspect.ts` —— 承载物已落地，
+ * 缺席理由改成「本投影是定义层，运行态去哪儿答」）。这里没有跟着改，是因为：
+ *  · 它是**录制**不是编造的样本，手改一行就不再是录制，而"看起来像录制的手写件"比过期更危险；
+ *  · 它**没有接进 mock 模式的 UI**（实测：`grep -rn process-inspect-real apps/frontend-shell/src`
+ *    零命中；金丝雀 —— 同命令对 `processWaitFixtures` 命中 `src/mocks/handlers.ts`，
+ *    证明是真没接线不是 grep 坏了），故不会让任何用户看到那句过期的话。
+ * ⇒ 处置是**重新录制**（起 `SEED_DEMO=1` 真后端重跑那三条），列为交回报告里的遗留项，不在本单夹带。
+ * 下方两条断言只咬 `toContain("ProcessTask")` 与清单条数，故新旧文案都过 —— 它们没有在替过期文案背书。
+ *
  * ══ fixture 是**真后端录制**，不是编的 ═══════════════════════════════════════
  * `test/fixtures/process-inspect-real.json` 三条录制全部来自 `SEED_DEMO=1` 的真 datacore
  * （`GET /a/v1/process-definitions/{key}/inspect`，`X-Debug-User: demo:admin:admin`）：
