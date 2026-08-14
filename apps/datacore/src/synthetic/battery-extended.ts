@@ -1012,15 +1012,19 @@ export function generateExtended(
   ];
 
   // WO-CEO-DATA-2：动态绑定 demand_attain 产能/物料短缺下钻到真实对象（不消耗 rng·R6 稳定）。
+  // WO-ORDER-DEPENDENT-PICK · A 类：「最差的那个」有语义，但**并列时靠数组顺序**——同 OEE 的两台设备
+  // 谁排前面全看 `ctx.equipment` 的生成顺序，换一次装机批次屏上的"瓶颈设备"就换人，且 R6 的
+  // 「同 seed 字节级一致」在并列出现的那一天当场破。补稳定裁决键（同族样例 `chain-loss.ts` 的
+  // 「leadTime 最长·同值按 matId 字典序」）：极值同分 → 按主键字典序，判据显式、可复算。
+  // 实测（seed=42·S·`Equipment` 780 条）今天最小 OEE 0.710781 **只有 1 台**、`MaterialBalance` 9 条
+  // 最大 gapTon 1858 **只有 1 张** ⇒ 本次改动对现有金值是恒等的（并列裁决键只在并列时生效）。
+  const equipOee = (e: { oeeA?: number; oeeP?: number; oeeQ?: number; oee_current?: number }) =>
+    e.oee_current ?? (e.oeeA ?? 1) * (e.oeeP ?? 1) * (e.oeeQ ?? 1);
   const worstEquip = ctx.equipment.length
-    ? ctx.equipment.slice().sort((a, b) => {
-        const ao = a.oee_current ?? (a.oeeA ?? 1) * (a.oeeP ?? 1) * (a.oeeQ ?? 1);
-        const bo = b.oee_current ?? (b.oeeA ?? 1) * (b.oeeP ?? 1) * (b.oeeQ ?? 1);
-        return ao - bo;
-      })[0]
+    ? ctx.equipment.slice().sort((a, b) => equipOee(a) - equipOee(b) || a.equipId.localeCompare(b.equipId))[0]
     : undefined;
   const worstMbal = ctx.materialBalances.length
-    ? ctx.materialBalances.slice().sort((a, b) => (b.gapTon ?? 0) - (a.gapTon ?? 0))[0]
+    ? ctx.materialBalances.slice().sort((a, b) => (b.gapTon ?? 0) - (a.gapTon ?? 0) || a.matBalId.localeCompare(b.matBalId))[0]
     : undefined;
   const causalFactors = CAUSAL_FACTORS.map((cf) => {
     if (cf.factorId === "cf-capacity-short" && worstEquip) return { ...cf, drillId: worstEquip.equipId };

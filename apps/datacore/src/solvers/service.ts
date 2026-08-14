@@ -3591,25 +3591,56 @@ export class SolverService {
     anchors: { byKey: Map<string, GapAnchor>; byType: Map<string, GapAnchor> },
     ltas: Record<string, unknown>[],
   ): { lta: Record<string, unknown> | null; ltaId: string; source: "TREE_ANCHOR" | "NO_TREE_ANCHOR"; path: string } {
-    const ltaAnchor = [...anchors.byKey.values(), ...anchors.byType.values()]
-      .filter((a) => a.drillType === "LongTermAgreement" && !isWildcardDrillId(a.drillId))
+    const r = this.resolveTreeAnchoredEvidence(anchors, ltas, "LongTermAgreement", "ltaId");
+    return { lta: r.row, ltaId: r.id, source: r.source, path: r.path };
+  }
+
+  /**
+   * WO-ORDER-DEPENDENT-PICK · C1 · 「本次推演里，**哪一个某类型的对象**是证据」的**单一实现**。
+   *
+   * 由 `resolveEvidenceLta` 提取而来（原先只服务长协一种类型）。提取的理由不是"复用好看"，而是
+   * `decisionPlay` 里**同函数同写法**还有第二处：
+   * ```
+   * const cathodePool = pools.find((p) => str(p.materialType) === "正极");   // ← 取数组第一条
+   * ```
+   * 它与修前的 `ltas.find((l) => l.materialType === "正极")` 是**同一个病**，只因种子里正极备份池
+   * 恰好只有一个（实测 `BackupSupplierPool` 2 条：`pool-cathode`(正极) / `pool-anode`(负极)）
+   * 才没有在屏上炸出来 —— 也就是说，这段代码今天的正确性**不由代码保证，由数据碰巧保证**。
+   * 一旦企业真的有两个正极备份池（完全正常的业务形态），`opt-backup-cert` 的 `certWeeks`、成本、
+   * 周期、`drillId` 会整条换到另一个池上，而**没有任何一条测试会红**。
+   *
+   * 判据与长协那条同源、也同样是"数据自己有的"：**归因树上贡献最大的该类型落点**
+   * （并列再比 nodeId，稳定且可复算）。实测（seed=42·demo·`decision_play({})`）树上
+   * `BackupSupplierPool` 落点两个：`cf-cert-cycle`(贡献 0.4772·certWeeks) 与
+   * `cf-backup-thin`(0.4652·memberCount)，都下钻 `pool-cathode` ⇒ 树锚 = `pool-cathode`，
+   * 与今天 `pools.find(正极)` 的结果**逐字节相同**（故本条是行为等价的加固，不改金值）。
+   *
+   * 树上没有该类型落点时 ⇒ `NO_TREE_ANCHOR`：仍按主键字典序给一个代表**仅为 R6 确定性**，
+   * 并在 `path` 里明说它不是证据；调用侧的依据门（`optionsEvidence`）本就会把这条方案整条剔除。
+   */
+  private resolveTreeAnchoredEvidence(
+    anchors: { byKey: Map<string, GapAnchor>; byType: Map<string, GapAnchor> },
+    rows: Record<string, unknown>[],
+    drillType: string,
+    pkField: string,
+  ): { row: Record<string, unknown> | null; id: string; source: "TREE_ANCHOR" | "NO_TREE_ANCHOR"; path: string } {
+    const anchor = [...anchors.byKey.values(), ...anchors.byType.values()]
+      .filter((a) => a.drillType === drillType && !isWildcardDrillId(a.drillId))
       .sort((a, b) => b.contribution - a.contribution || a.nodeId.localeCompare(b.nodeId))[0];
-    if (ltaAnchor) {
-      const hit = ltas.find((l) => str(l.ltaId) === ltaAnchor.drillId) ?? null;
+    if (anchor) {
       return {
-        lta: hit,
-        ltaId: ltaAnchor.drillId,
+        row: rows.find((l) => str(l[pkField]) === anchor.drillId) ?? null,
+        id: anchor.drillId,
         source: "TREE_ANCHOR",
-        path: `归因树节点 ${ltaAnchor.nodeId}（${ltaAnchor.factor}·贡献 ${ltaAnchor.contribution}${ltaAnchor.unit}）下钻 ${ltaAnchor.drillType}/${ltaAnchor.drillId}`,
+        path: `归因树节点 ${anchor.nodeId}（${anchor.factor}·贡献 ${anchor.contribution}${anchor.unit}）下钻 ${anchor.drillType}/${anchor.drillId}`,
       };
     }
-    // 树上没有长协落点 —— 只为 R6 取字典序代表，且**不得**被当成证据（见方法头「诚实边界」）。
-    const rep = [...ltas].sort((a, b) => str(a.ltaId).localeCompare(str(b.ltaId)))[0] ?? null;
+    const rep = [...rows].sort((a, b) => str(a[pkField]).localeCompare(str(b[pkField])))[0] ?? null;
     return {
-      lta: rep,
-      ltaId: str(rep?.ltaId ?? ""),
+      row: rep,
+      id: str(rep?.[pkField] ?? ""),
       source: "NO_TREE_ANCHOR",
-      path: "本次归因树上无 LongTermAgreement 落点 ⇒ 无树锚（按 ltaId 字典序取代表仅为 R6 确定性，不作证据）",
+      path: `本次归因树上无 ${drillType} 落点 ⇒ 无树锚（按 ${pkField} 字典序取代表仅为 R6 确定性，不作证据）`,
     };
   }
 
@@ -3646,14 +3677,18 @@ export class SolverService {
     const ltas = (await this.repos.objects.listByType(ctx.tenantId, "LongTermAgreement")).map((o) => o.props);
     const pools = (await this.repos.objects.listByType(ctx.tenantId, "BackupSupplierPool")).map((o) => o.props);
     const ltaShortfall = round(ltas.filter((l) => str(l.materialType) === "正极").reduce((a, l) => a + Math.max(0, num(l.contractedQtyTon) - num(l.actualDeliveredTon)), 0), 0);
-    const cathodePool = pools.find((p) => str(p.materialType) === "正极");
-    const certWeeks = num(cathodePool?.certWeeks, 16);
     // WO-LTA-EVIDENCE-CONFLICT · 长协证据解析 —— 锚在**归因树指定的那一份**上（原为 `ltas.find(正极)`
     // ＝「数组里第一条」，解析成 lta-lfp-rbkj，与树上的 cf-lta-breach/lta-lfp-cylk 打架）。判据与
     // 「为什么是 cylk 不是 rbkj」的三条独立证据写在 `resolveEvidenceLta` 方法头，不在这里重抄一遍。
     // `anchors` 因此必须**在方案构造之前**算好（原在方案之后，只用于事后过滤）。
     const anchors = this.collectGapAnchors(ga);
     const evidenceLta = this.resolveEvidenceLta(anchors, ltas);
+    // WO-ORDER-DEPENDENT-PICK · C1 · 备份池证据同样锚到树上（原为 `pools.find(materialType==="正极")`
+    // ＝**同函数同写法**的第二处「取数组第一条」，只因种子里正极池恰好只有一个才没炸）。
+    // 判据/实测/等价性论证见 `resolveTreeAnchoredEvidence` 方法头。
+    const evidencePool = this.resolveTreeAnchoredEvidence(anchors, pools, "BackupSupplierPool", "poolId");
+    const cathodePool = evidencePool.row;
+    const certWeeks = num(cathodePool?.certWeeks, 16);
     const priceLinked = Boolean(evidenceLta.lta?.priceLinked);
     // 该证据长协自己的欠交量（与 `ltaShortfall` 的**正极全体合计**不是一个量：id 指一份、值就得是那一份的，
     // 否则又是一次「对象与读数张冠李戴」）。全体合计仍留给 shortfallFrac→closesGap 用，那里本就该按面算。
@@ -3670,7 +3705,7 @@ export class SolverService {
     const allOptions = [
       { optionId: "opt-backup-cert", factorId: rootFactorId, label: "缩短备份供应商认证周期", sourceKind: "solver" as const,
         closesGap: cg(effBackup), cost: round(120 + certWeeks * 8, 0), cycleDays: round(certWeeks * 7, 0), risk: 0.25, exposure: round(0.6 * (1 - effBackup), 3), reversibility: 0.8,
-        provenance: { kind: "求解器" as const, basis: "BackupSupplierPool.certWeeks", drillType: "BackupSupplierPool", drillId: str(cathodePool?.poolId ?? "pool-cathode"), drillValue: certWeeks } },
+        provenance: { kind: "求解器" as const, basis: `BackupSupplierPool.certWeeks（证据备份池 ${evidencePool.id} ← ${evidencePool.path}）`, drillType: "BackupSupplierPool", drillId: evidencePool.id, drillValue: certWeeks } },
       { optionId: "opt-lta-clause", factorId: rootFactorId, label: priceLinked ? "长协条款优化" : "长协加价格联动条款", sourceKind: "agent" as const,
         closesGap: cg(effClause), cost: round(num(evidenceLta.lta?.breachPenaltyWan, 180) * 0.5, 0), cycleDays: 30, risk: 0.2, exposure: round(0.5 * (priceLinked ? 0.4 : 0.15), 3), reversibility: 0.9,
         provenance: { kind: "策略推理" as const, basis: `LongTermAgreement.priceLinked（证据长协 ${evidenceLta.ltaId} ← ${evidenceLta.path}）`, drillType: "LongTermAgreement", drillId: evidenceLta.ltaId, drillValue: priceLinked ? 1 : 0 } },
@@ -4261,8 +4296,11 @@ export class SolverService {
     const deliveryJudge = { p50, p90, demand: qty, verdict: deliveryOk ? "可达" : "紧张", ruleRefs: ["C02", "C03"] };
 
     // ② 齐套判（C06/C16）：该型号细分对应物料缺口（取最大 gapTon）。
+    // WO-ORDER-DEPENDENT-PICK · A 类并列裁决键：gapTon 同分时原先靠 `listByType` 的返回顺序定胜负
+    //   ⇒ 屏上「缺哪种料」会随仓储实现/插入顺序悄悄换人，R6 也守不住。同分按 `matBalId` 字典序
+    //   （同族样例 `chain-loss.ts` 的「leadTime 最长·同值按 matId 字典序」）。
     const mbals = await this.repos.objects.listByType(ctx.tenantId, "MaterialBalance");
-    const worstMat = [...mbals].sort((a, b) => num(b.props.gapTon) - num(a.props.gapTon))[0];
+    const worstMat = [...mbals].sort((a, b) => num(b.props.gapTon) - num(a.props.gapTon) || str(a.props.matBalId).localeCompare(str(b.props.matBalId)))[0];
     const kitGap = worstMat ? num(worstMat.props.gapTon) : 0;
     const kitOk = kitGap <= 0;
     const kitJudge = { material: str(worstMat?.props.material), gapTon: kitGap, eta: str(worstMat?.props.etaDate), verdict: kitOk ? "齐套" : "缺料", ruleRefs: ["C06", "C16"] };
@@ -5633,9 +5671,11 @@ export class SolverService {
     const base: Record<string, unknown> = { ...args, ...out };
     if (solverKey === "capacity_forecast") {
       base.Order = { demandDelta: num(args.demandDelta) };
+      // WO-ORDER-DEPENDENT-PICK · A 类并列裁决键：lagHours 同分时原先靠 `c.dataHealth` 的数组顺序，
+      //   而 C09 的 BLOCK/WARN 就吊在这个读数上 ⇒ 同分那天规则结论不确定。同分按 `sourceId` 字典序。
       const worstStale = c.dataHealth
         .filter((h) => h.props.critical === true)
-        .sort((a, b) => num(b.props.lagHours) - num(a.props.lagHours))[0];
+        .sort((a, b) => num(b.props.lagHours) - num(a.props.lagHours) || str(a.props.sourceId).localeCompare(str(b.props.sourceId)))[0];
       base.DataSourceHealth = worstStale
         ? { critical: true, lagHours: num(worstStale.props.lagHours) }
         : { critical: false, lagHours: 0 };
