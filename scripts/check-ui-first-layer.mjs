@@ -781,6 +781,15 @@ function loadBaseline() {
 }
 
 const HARD_SIZE_CAP = 3; // 规范 §2 R-UI-2 原文
+/**
+ * 存量榜默认长度（`--top N` 可改）。**纯展示量，不进判据、不进 RC。**
+ * 证伪法：改这个数、或整条 `printBacklog` 删掉，门的退出码一个都不变。
+ */
+const BACKLOG_TOP_N = (() => {
+  const i = process.argv.indexOf("--top");
+  const n = i >= 0 ? Number(process.argv[i + 1]) : NaN;
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 12;
+})();
 
 /**
  * **判据本体** —— 拿一个文件的实测读数 `r` 与它的基线 `b` 比，返回红条目（空数组 = 绿）。
@@ -964,6 +973,76 @@ function runJudgeCanaries() {
   return fails;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * 存量榜（burn-down board）· **可见性改造，不进判据**（WO-UI-LAYERING-BURNDOWN §3.1）
+ *
+ * ⚠ 这一段守的命题与门本体**不是同一个**，必须分清，否则又是「拿 X 当 Y 的证据」：
+ *   · 门本体（`judge`）是**棘轮**：只度量「相对基线**变差了没有**」。
+ *   · 本榜是**存量**：度量「现在**有多差**」。
+ * 两者的差就是本单的来历 —— `DecisionPlayView` 在门的输出里 **0 命中**（它没变差），
+ * 而它基线里躺着 `first:79`。仓主看到的正是那 79 块，门却一个字都没说。
+ * 形态（铁律 0.6 句式）：**「我用『门没报这页』当作『这页没问题』的证据，
+ * 而棘轮只度量有没有变差，不度量现在有多差。」**
+ *
+ * 硬约束（派单原文，逐条对着写的）：
+ *  · **不改判据、不改 RC 语义** —— 本函数**只 console.log，不返回任何值**，
+ *    调用点也不读它。要证伪这句话：把它删掉，门的 RC 一个都不变。
+ *  · **从基线现算，不许写死** —— 写死的榜会过期，而过期的榜比没有更糟。
+ *  · 总数答不了「有多少页从没降过层」⇒ 必须单独报 `deferred=0` 的文件数。
+ * ═══════════════════════════════════════════════════════════════════════════ */
+function printBacklog(base, rows, topN) {
+  const cur = new Map(rows.map((r) => [r.file, r]));
+  // 榜单基座 = 基线条目（存量的单一出处）；基线里有、现在扫不到的（删了/改名）不上榜。
+  const entries = Object.entries(base.files)
+    .filter(([f]) => cur.has(f))
+    .map(([file, b]) => ({
+      file,
+      first: b.first,
+      deferred: b.deferred,
+      formula: b.formula ?? 0,
+      prose: b.prose ?? 0,
+      sizes: b.sizes ?? 0,
+      now: cur.get(file),
+    }));
+  if (entries.length === 0) return;
+
+  const sum = (k) => entries.reduce((a, e) => a + e[k], 0);
+  const bFirst = sum("first");
+  const bDefer = sum("deferred");
+  const rate = (f, d) => (f + d === 0 ? "—" : ((d / (f + d)) * 100).toFixed(1) + "%");
+  const zeroDeferred = entries.filter((e) => e.deferred === 0);
+  // 未进基线的新文件：它们不在棘轮里，按规范硬上限收（见 judge），这里只报数以免被读成"全仓已登记"
+  const unlisted = rows.filter((r) => !base.files[r.file]).length;
+
+  console.log("");
+  console.log(`── 存量榜 · 第一层最重的 ${Math.min(topN, entries.length)} 页（${SPEC}）────────────────`);
+  console.log("   ⚠ 本榜**不进判据**：门是棘轮（只报变差），本榜报的是**现在有多差**——两者不是一个命题。");
+  console.log("   第一层  降层  降层率  口径  长说明  字号   文件");
+  entries
+    .slice()
+    .sort((a, b) => b.first - a.first || b.formula - a.formula)
+    .slice(0, topN)
+    .forEach((e) => {
+      // 与工作目录实测不一致时把当前值贴出来 —— 基线是"登记值"，不是"现在的值"，
+      // 只印基线会让人把一个已经改好（或已经变差）的页面读成没动过。
+      const moved = e.now && e.now.first !== e.first ? ` （现 ${e.now.first}）` : "";
+      console.log(
+        `   ${String(e.first).padStart(6)}${String(e.deferred).padStart(6)}${rate(e.first, e.deferred).padStart(8)}` +
+          `${String(e.formula).padStart(6)}${String(e.prose).padStart(8)}${String(e.sizes).padStart(6)}   ` +
+          e.file.replace("apps/frontend-shell/src/", "") +
+          moved
+      );
+    });
+  console.log(
+    `   全仓（基线 ${entries.length} 页）：第一层 ${bFirst} · 降层 ${bDefer} ⇒ **降层率 ${rate(bFirst, bDefer)}**`
+  );
+  console.log(
+    `   **${zeroDeferred.length} 页 deferred=0（从没降过层）** —— 一个总数答不了这件事，故单列。` +
+      (unlisted ? `　另有 ${unlisted} 个新文件未进基线（按规范硬上限收，不在本榜）。` : "")
+  );
+  console.log(`   优先级：formula（违规 R-UI-3）> sizes>3（违规 R-UI-2）> prose > first 纯数量。`);
+}
+
 function gate() {
   const rows = analyzeAll(null);
   if (rows.length < MIN_FILES) {
@@ -997,6 +1076,8 @@ function gate() {
     console.error(`\n判据出处：${SPEC} §2（R-UI-2 / R-UI-3）与 §1（三层准入 · 不许删除）。`);
     console.error("修法：把明细降到第二层、把口径/公式降到 `?` 浮层（`@/components/InfoPopover`），");
     console.error("     **第一层必须留可见记号** —— 静默降层等于删除。");
+    // 红了也要印榜：变差的那几条与"现在有多差"是两件事，红的时候尤其容易只盯着变差那几条。
+    printBacklog(base, rows, BACKLOG_TOP_N);
     return 1;
   }
 
@@ -1004,6 +1085,8 @@ function gate() {
   console.log(`   （棘轮基线 ${Object.keys(base.files).length} 条${gone.length ? `，${gone.length} 条已随文件移除` : ""}）`);
   const tot = rows.reduce((a, r) => a + r.first, 0);
   console.log(`   存量总量：第一层信息块 ${tot} · 口径公式 ${rows.reduce((a, r) => a + r.formula, 0)} · 原生 title ${rows.reduce((a, r) => a + r.nativeTitle, 0)}（后者由另一道门守）`);
+  console.log("   ⚠ **「通过」只等于「没变差」**，不等于「达标」—— 存量见下榜。");
+  printBacklog(base, rows, BACKLOG_TOP_N);
   return 0;
 }
 
