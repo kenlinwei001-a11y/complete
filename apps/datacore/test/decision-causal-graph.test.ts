@@ -561,9 +561,10 @@ describe("WO-DECISION-CAUSAL-GRAPH · B 台账源（Decision → 五段全覆盖
     expect(after.nodes.find((n) => n.nodeId === `result:${dec.id}:effectivenessPct`)!.value).toBe(realized.outcome!.effectivenessPct);
     // ACTION → RESULT 边存在，且**不带数值**（实测是全体选定方案的合计，按预言比例摊出来的归属是假的）。
     const ar = after.edges.filter((e) => e.kind === "ACTION_TO_RESULT");
-    // 咬死条数而不是 `> 0`：选定几个方案就该有几条 ACTION→RESULT 边。
-    // 只写 `> 0` 时「只连了第一个选定方案」与「全连上了」同色 —— 而漏连正是这条边最可能的错法。
-    expect(ar.length).toBe(dec.chosenOptionIds.length);
+    // 咬死条数而不是 `> 0`：每个选定方案 × 每个 RESULT 节点各一条边（实测 1 × 2 = 2）。
+    // 只写 `> 0` 时「只连了第一个选定方案 / 只连到第一个结果节点」与「全连上了」同色 ——
+    // 而漏连正是这条边最可能的错法。
+    expect(ar.length).toBe(dec.chosenOptionIds.length * after.segmentCounts.RESULT);
     for (const e of ar) {
       expect(e.amount).toBeNull();
     }

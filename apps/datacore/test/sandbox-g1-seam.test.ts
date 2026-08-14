@@ -62,6 +62,15 @@ import { IMPEDIMENT_RULE_BINDINGS } from "../src/solvers/chain-impediment.js";
 import { cadenceGate, nextGateTick } from "../src/sim/propagation.js";
 
 const TENANT = "demo";
+
+/**
+ * `chain_impediments` 全域扫描里「判不出来（UNKNOWN）」的条数金值。
+ * 这不是"应该有几条"的规定，是**实跑测出来的今天的事实**（seed 42 · scale S）。
+ * 之所以要有这么个数：G1-6 那条用例用 `for (const u of out.unresolved)` 逐条验"缺席也要给原因"，
+ * 而没有基数下限时，`unresolved` 空掉那天循环一圈不跑、用例照绿 ——
+ * 「诚实缺席」这条纪律就会在没人察觉的情况下失效。数变了要当场解释，不许顺手改。
+ */
+const UNRESOLVED_GOLDEN = 2;
 /** 收口态唯一的世界：一次 `makeApp` + 一次 `seedBattery`，四段全在它上面跑（合并态判据）。 */
 let t: TestApp;
 
@@ -501,6 +510,12 @@ describe("G1-6 · 卡点/堵点/断点三类互斥可判，裁决线来自规则
     expect(new Set(loci).size, "同一个 locus 出了两条阻滞点 —— 三类不互斥").toBe(loci.length);
 
     // 判不出来的必须说清"为什么"（诚实缺席，不是不提）
+    // ⚠ 这个循环今天跑几圈**必须是台面上的一个数**：`unresolved` 空掉时它一圈不跑而本条恒绿，
+    //   于是"诚实缺席"这条纪律在扫描不再产出 UNKNOWN 的那天会静悄悄失效。
+    //   下面这个数由实跑测出（不是我按"应该有几条"写的），它变了就该有人当场解释。
+    expect(out.unresolved.length, "unresolved 条数变了：要么扫描面变了，要么诚实缺席这条纪律被绕过了").toBe(
+      UNRESOLVED_GOLDEN,
+    );
     for (const u of out.unresolved) {
       expect(u.status).toBe("UNKNOWN");
       expect(u.reason.length, `${u.bindingId} 判不出来却没给原因`).toBeGreaterThan(10);

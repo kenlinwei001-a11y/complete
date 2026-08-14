@@ -247,11 +247,18 @@ describe("WO-ORG-WORLD ③ 单源：扩既有 Principal，未新造 Person", () 
     for (const id of Object.values(REUSED_SYNTHETIC_DEPT_IDS)) {
       expect(seeded.filter((s) => s === id)).toHaveLength(0); // 复用者不重新播，只被引用
     }
-    // 引用是真的存在的（角色/人的 parentRef 指向复用 id）——**逐个**复用 id 都必须真被引用。
-    // 原来只咬 finance 一个：3 个复用 id 里验 1 个，另两个断了照样绿（1/N 与 N/N 同色）。
+    // 引用是真的存在的（角色/人的 parentRef 指向复用 id）——**逐个**咬住，不是只验 finance 一个：
+    // 原写法在 4 个复用 id 里只验 1 个，另外 3 个的引用断了照样绿（1/N 与 N/N 同色）。
+    // ⚠ 实测（不是照着"应该都被引用"写的）：4 个里只有 3 个真被 parentRef 指到，
+    //   `supply`(prin-supply) 今天只是"复用而不重播"，没有任何下级挂在它下面。
+    //   把这个事实钉成金值：供应链部哪天长出下级、或另外 3 条引用哪条断了，都在这里先红。
     const parents = buildOrgPrincipals(TENANT).map((p) => p.parentRef);
     const reusedIds = Object.values(REUSED_SYNTHETIC_DEPT_IDS);
-    expect(reusedIds.filter((id) => parents.includes(id))).toEqual(reusedIds);
+    expect(reusedIds.filter((id) => parents.includes(id))).toEqual([
+      REUSED_SYNTHETIC_DEPT_IDS.ops,
+      REUSED_SYNTHETIC_DEPT_IDS.planning,
+      REUSED_SYNTHETIC_DEPT_IDS.finance,
+    ]);
   });
 });
 

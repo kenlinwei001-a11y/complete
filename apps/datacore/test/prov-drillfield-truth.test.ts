@@ -500,10 +500,16 @@ describe("WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 →
     // 金丝雀（与主判据共用同一个字段读法）：`"*"` 确实也进了 levels —— 证明上面在扫的是有货的集合。
     const aggInLevels = ga.levels.flatMap((L) => L.nodes).filter((n) => n.provenance?.drillId === AGG);
     expect(aggInLevels.length, "levels 里应真有聚合节点（0 = 上面几条断言无从证明自己在扫）").toBeGreaterThan(0);
-    // 而且这批聚合节点**逐个**都不落在会被拼 id 的 Order 上 —— 与 ③ 同一条不变量，
-    // 在 levels 这一侧再全称验一遍（原来这里只数了个数，一个都没逐条看过）。
+    // 原来这里只 `.length` 数了个数，一个节点都没逐条看过。补上与 ③ **同一条**不变量的全称验证：
+    // 带 `"*"` 的节点无论落在 atomicLeaves 还是 levels，拼出来的 `obj_<type>_*` 都必须解析不开。
+    // ⚠ 实测订正过一次：这里**不能**断言「levels 的聚合节点不落在 Order 上」—— 它是假的
+    //   （L1 基地节点的 drillType 就是 Order，本文件开头那段注释说的正是这件事）。
+    //   救②的从来不是"聚合叶不在 Order 上"，而是消费方按 drillType 过滤 + 废 id 解析不开。
     for (const n of aggInLevels) {
-      expect(n.provenance!.drillType, `levels 里的聚合节点落在 Order 上 = 掉进②那条会拼 id 的消费路`).not.toBe("Order");
+      const dt = String(n.provenance!.drillType ?? "");
+      expect(dt, `levels 聚合节点没有 drillType ⇒ 下游无从判断该不该给它拼 id`).not.toBe("");
+      const bogus = await t.repos.objects.get(ADMIN.tenantId, `obj_${dt.toLowerCase()}_${AGG}`);
+      expect(bogus, `obj_${dt.toLowerCase()}_* 居然取到了对象 ⇒ levels 侧的聚合节点也能被拼成可解析的废 id`).toBeFalsy();
     }
   }, 300_000);
 
