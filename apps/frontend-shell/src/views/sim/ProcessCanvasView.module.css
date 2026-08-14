@@ -183,3 +183,49 @@
   font-size: 12px;
   letter-spacing: 0.5px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   WO-PROCESS-CANVAS-LIVE · 节拍维
+   ⚠ 零硬编码颜色：全部走 tokens.css 的语义变量；**做文字的一律用 `-txt` 变体**
+     （`--ok`/`--muted2` 这类填充色当文字在浅色皮上只有 1.8–2.1:1，实测等于看不见）。
+   ⚠ 字号一律 12px：本文件此前只用一级字号（R-UI-2「一屏最多三级」的余量全留给别人），
+     新增三个类**不引入第四级**。
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* 站上的第三行 —— 随节拍变的那批：读数 + 增量。 */
+.stationLive {
+  fill: var(--ok-txt);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+/* 站上的第三行 —— 不随节拍变 / 无承载对象的那批。
+   ⚠ **不是"灰掉"**：用的是与正文同族的 `--muted` 而不是把整座站降透明度，
+   且它带着**文字**（不是留白）。灰掉读作"被禁用/坏了"，而事实是"它本来就不随节拍变"。 */
+.stationStatic {
+  fill: var(--muted);
+  font-size: 12px;
+}
+/* 不随节拍变的站：虚线外环（形状编码 —— 色觉差异者与黑白打印稿上也分得出）。 */
+.staticRing {
+  fill: none;
+  stroke: var(--muted2);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.85;
+}
+/* 这一拍真的动了：实线脉冲环。与上面那个**虚线** static 环形成对照 ——
+   两者的差别是"实 vs 虚"，不是"深 vs 浅"。 */
+.movedRing {
+  fill: none;
+  stroke: var(--ok-txt);
+  stroke-width: 2;
+  opacity: 0.95;
+}
+/* 说明段里那句总结。两态各一色：接上了 / 判据源缺席。 */
+.liveOk {
+  color: var(--ok-txt);
+}
+.liveGap {
+  color: var(--warn-txt);
+}

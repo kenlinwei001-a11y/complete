@@ -791,6 +791,9 @@ export const zh = {
         legendDashed: "虚线 = 同一条线上按展示序排列，**不是流向**",
         legendFold: "折返 = 一条线太长换到下一行，线没有断",
         legendWaitKind: "站圈颜色 = 卡在哪一类等待（四态词表来自契约）",
+        /** WO-PROCESS-CANVAS-LIVE 新增的两个图元。两者是**实线 vs 虚线**的对照，不是深浅之别。 */
+        legendMoved: "实线脉冲环 = 这一拍该站的读数真的变了",
+        legendStatic: "虚线外环 = 本层不随节拍变（或这个世界里没有它的承载对象）——不是没画、也不是坏了",
         zoomIn: "放大",
         zoomOut: "缩小",
         fit: "适应画布",
@@ -801,6 +804,108 @@ export const zh = {
         /** 右栏：本档的检视面板标题与未选中提示。 */
         inspectTitle: "流程检视 · 完整本体关系",
         inspectHint: "点画布里任一条业务流程 → 这里出它的完整本体关系：承载类型 / 属性 / 派生 / 一跳关系 / 同承载物流程 / 打到它的杠杆 / 十六层三态。",
+
+        /* ══════════════════════════════════════════════════════════════════════
+           WO-PROCESS-CANVAS-LIVE · 节拍维文案
+           ⚠ 本块同样**一个业务词都没有**：条数、域名、流程名全部由现算填入。
+           ⚠ 第一层那两句（`liveSummary` / `liveConfigMissing`）刻意**不含**
+             「口径」「公式」「×」「÷」这些 R-UI-3 点名的形态 —— 判据与公式一律进浮层；
+             这不是为了过门，是规范 §2 的原文要求（第一层只放数值/状态/名字）。
+           ══════════════════════════════════════════════════════════════════════ */
+
+        /** 三档的**全称**（浮层与读屏用）。屏上那句「本层不随节拍变」就出自这里。 */
+        driveLabel: {
+          TICK_DRIVEN: "随节拍变",
+          NO_CARRIER_OBJECTS: "无承载对象",
+          NOT_TICK_DRIVEN: "本层不随节拍变",
+        } as Record<"TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "NOT_TICK_DRIVEN", string>,
+        /**
+         * 站上第三行的**短标**（65 座站每座都要印，全称会把地铁图淹掉）。
+         *
+         * ⛔ 两档**必须是两句不同的话**（派单的变异反证就咬这一条）：
+         *   「不随节拍」= 传导图里没有这类承载物 ⇒ 结构上不会动；
+         *   「无承载对象」= 传导图够得着，但这个世界里一个该类对象都没有 ⇒ 补数据即动。
+         * 合成一句 = 把两个定性不同、修法不同的事实盖成一个，正是本仓「一个数盖住两个事实」的形态。
+         * ⚠ 两者都**不是**留白、也不是灰掉：留白读作"加载中/坏了"，灰掉读作"被禁用"。
+         */
+        driveMark: {
+          TICK_DRIVEN: "",
+          NO_CARRIER_OBJECTS: "无承载对象",
+          NOT_TICK_DRIVEN: "不随节拍",
+        } as Record<"TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "NOT_TICK_DRIVEN", string>,
+        /** 站上读数后面那一小截增量。没有上一拍就**根本不印**，不印一个假的 `+0`。 */
+        deltaSuffix: (d: number) => (d > 0 ? ` ▲${d}` : d < 0 ? ` ▼${Math.abs(d)}` : " ＝0"),
+        /** 随节拍变、但这一拍拿不到读数（世界态里还没有这些对象的条目）。 */
+        liveNoReading: "本拍无读数",
+        /** 站的读屏补充（`aria-label` 尾巴）。读屏用户拿不到颜色与形状，这里必须把话说全。 */
+        stationLiveAria: (drive: "TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "NOT_TICK_DRIVEN", reading: number | null, delta: number | null, objects: number) => {
+          const head =
+            drive === "TICK_DRIVEN"
+              ? "随节拍变"
+              : drive === "NO_CARRIER_OBJECTS"
+                ? "无承载对象：传导图够得着这类承载物，但这个世界里一个该类对象都没有，所以这一拍不会动"
+                : "本层不随节拍变：传导图里没有这类承载物，节拍引擎写不到它";
+          const r = reading === null ? "本拍无读数" : `本拍读数 ${reading}`;
+          const d = delta === null ? "没有可比的上一拍" : delta === 0 ? "与上一拍相同" : `相比上一拍 ${delta > 0 ? "增加" : "减少"} ${Math.abs(delta)}`;
+          return ` · ${head} · 承载对象 ${objects} 个 · ${r} · ${d}`;
+        },
+
+        /**
+         * 第一层那一句总结 = 仓主要的「基于某个时间 screenshot，有个总结」。
+         *
+         * 四件事一句话里说清，缺一件就会把某个事实伪装成另一个：
+         *  ① **哪一拍、哪个世界**（"动了"是相对谁说的，不写出来没法核对）；
+         *  ② **随节拍变几条 / 这一拍真动了几条**（两个数不是一回事：能动 ≠ 动了）；
+         *  ③ **不随节拍变几条**，并明说那是「本层不随节拍变」不是「没数据」；
+         *  ④ 没有上一拍可比时**明说没得比**，不印一个会被读成"什么都没动"的 0。
+         */
+        liveSummary: (a: {
+          sessionId: string | null;
+          tick: number | null;
+          prevTick: number | null;
+          origin: "MEASURED" | "DERIVED" | null;
+          comparable: boolean;
+          driven: number;
+          noData: number;
+          staticCount: number;
+          moved: number;
+          netDelta: number | null;
+          movedByWaitKind: readonly { label: string; drivable: number; moved: number }[];
+        }): string => {
+          const where =
+            a.sessionId === null || a.tick === null
+              ? "推演沙盘还没有世界（左边控制条上先建一个，这里才有节拍可读）"
+              : `世界 ${a.sessionId} · 第 ${a.tick} 拍${a.origin === "DERIVED" ? "（建会话时的占位态，不是引擎算的）" : "（引擎回包）"}`;
+          const scale = `随节拍变 ${a.driven} 条 · 无承载对象 ${a.noData} 条 · 本层不随节拍变 ${a.staticCount} 条`;
+          if (a.sessionId === null || a.tick === null) return `${where}；${scale}。`;
+          if (!a.comparable) {
+            return `${where}；${scale}。这是第一张快照，没有可比的上一拍 —— 推一拍再回来看，动了的站会亮出脉冲环。`;
+          }
+          if (a.moved === 0) {
+            return `${where}；${scale}。相比第 ${a.prevTick} 拍：一条都没动（是「比过了、都没动」，不是「没比」）。`;
+          }
+          const detail = a.movedByWaitKind
+            .filter((g) => g.moved > 0)
+            .map((g) => `${g.label} ${g.moved}/${g.drivable}`)
+            .join(" · ");
+          const net = a.netDelta === null ? "" : ` 读数合计 ${a.netDelta > 0 ? "+" : ""}${a.netDelta}。`;
+          return `${where}；${scale}。相比第 ${a.prevTick} 拍：${a.moved} 条真的动了（${detail}）。${net}`;
+        },
+        /** 判据源取不到（沙盘能力未开通 / 传导规则端点 404）——**不许**默认判成"全都不随节拍变"。 */
+        liveConfigMissing:
+          "拿不到判据源（推演视图配置与传导规则清单），所以这一档**算不出来**哪些流程随节拍变 —— 这是「没查着」，不是「查了都不动」。两者在屏上必须分得开：后者会让人以为这个平台的流程全是静态的。",
+
+        /* ── 以下四条一律在 `?` 浮层里（第一层只留上面那一句结论 + 这个 `?` 记号）── */
+        liveBasis:
+          "判据（三档，全部现算，前端不写死任何类型名单）：① 随节拍变 = 该流程的承载类型出现在已发布传导规则的 source 或 target 一端（GET /a/v1/sim/propagation-rules），且这个世界里该类型真有物化对象（GET /a/v1/sim/view-config 的 nodeObjectIds）；② 无承载对象 = 承载类型在传导规则两端里，但该类型 0 个物化对象 —— 补数据即会动；③ 本层不随节拍变 = 承载类型不在传导规则两端集合里。第三档是**结构性**的，不是「今天恰好没变」：传导引擎 propagateTick 唯一的写法是写到规则 target 那一端的对象上，够不着的类型怎么推都不会动。站上的读数 = 该承载类型全部对象、全部状态变量的平均值（取平均而不是求和，是因为不同类型的对象数差两个数量级，求和会让「圈更大」只反映「对象更多」）。〔实测日期 2026-08-14 · 当日真后端种子下这三档是 9 / 0 / 56（65 条流程、64 种承载物、13 条传导规则、规则两端 11 种类型）。复验命令：`node -e \"const s=require('fs').readFileSync('apps/datacore/src/seed.ts','utf8');const b=s.slice(s.indexOf('const DEMO_PROCESS_DEFINITIONS'),s.indexOf('export async function seedDemoProcessLayer'));const d=[...b.matchAll(/carrierTypeKey: \\\"([A-Za-z0-9_]+)\\\"/g)].map(m=>m[1]);const r=s.slice(s.indexOf('const DEMO_PROPAGATION_RULES'),s.indexOf('export async function seedDemoPropagationRules'));const t=new Set([...r.matchAll(/^\\\\s*(?:source|target)TypeKey: \\\"([A-Za-z0-9_]+)\\\"/gm)].map(m=>m[1]));console.log(d.length, t.size, d.filter(x=>t.has(x)).length)\"` ⇒ 当日现跑 `65 11 9`。⚠ 有保质期：种子里增删任一条传导规则或流程定义即作废，须重跑不许照抄；缺口登记在 docs/SYSTEM-ONTOLOGY.md §8 `G-PROCESS-TICK-COVERAGE`。〕",
+        liveLimit:
+          "⚠ 这个判据**测不出**的那件事，必须当面说：「本层不随节拍变」只说明**今天的传导图够不着它**，**不说明它本质上不该随节拍变**。举例：「年度情景测算」「关键成功要素梳理」确实不随日节拍变，而「物料平衡运行」「工单下达」**该随节拍变、只是还没有人给它建传导规则** —— 这两类今天落在同一档里。要把它们分开需要**建模判断**，而端点下发的字段里没有任何一位承载这个判断（ProcessDefinition 是 strictObject，字段就那九个；PropagationRule 里也没有）。所以这里如实报「够不着」，不拿一个算得出的数去冒充一个算不出的结论。",
+        liveWaitKindStatic:
+          "⚠ 上面那条四态计数条（等人 / 等数据 / 等排期 / 等外部方）数的是 ProcessDefinition.waitKind —— **模板层**的分类，来自流程台账端点。推 tick 改的是世界态，改不到流程台账，所以那四个数一个都不会随节拍变。真正随节拍变的是「每一态里有几条这一拍动了」，写在上面那句总结的括号里。把这两族数混着读，会得出「等外部方 +3」这种今天永远为假的结论。",
+        liveObserver:
+          "本档是**观察者**：会话由沙盘控制条创建、tick 也由它推进，本图只订阅同一份世界态缓存后重算。它不建会话、不发 tick、不写任何缓存 —— 否则屏上会出现两个世界，你在控制条上推的那一拍打不到这张图，而图照样在动（那是最难查的一类假象）。上面写出世界 id 与拍号，就是让你能当场核对看的是不是控制条上那个世界。",
+        liveMovedKeys: (keys: string) => `这一拍动了的流程：${keys}`,
+        liveDriveMismatch: "⚠ 三档条数之和 ≠ 端点下发条数 —— 分档漏了人或有人被数了两遍，这是分档实现的 bug，不是数据的事实。",
       },
       /**
        * WO-SANDBOX-V3 · 下区影响带（PRD §1③）的文案。
@@ -966,6 +1071,10 @@ export const zh = {
         processLayers: "业务流程档 · 两层为何能同屏、又为何不合并",
         /** WO-R9-METRO-UX：线路图的连线**为什么是虚线**（诚实位，不是免责声明）。 */
         processOrderBasis: "业务流程线路图 · 线怎么连、为什么是虚线",
+        /** WO-PROCESS-CANVAS-LIVE：哪些流程随节拍变、判据是什么、这个判据**测不出**什么。 */
+        processTickDrive: "业务流程 · 哪些随节拍变、判据是什么",
+        /** WO-PROCESS-CANVAS-LIVE：图例从第一层降到浮层（R-UI-3「这个符号什么意思」属浮层）。 */
+        processLegend: "业务流程线路图 · 图例（每个符号是什么意思）",
         paretoRate: "影响率怎么算 · 分母是什么",
         inspectorEvidence: "下钻证据为何是空的",
         stepTable: "逐环节表的口径",
