@@ -5,7 +5,7 @@
  "generatedFrom": "node scripts/check-ui-first-layer.mjs --tighten",
  "fileCount": 122,
  "totals": {
-  "first": 5763,
+  "first": 5761,
   "formula": 49,
   "nativeTitle": 124
  },
@@ -634,13 +634,14 @@
    "why": "存量·规范落地前：第一层 83 个信息块；字号 5 级 > 3（R-UI-2）"
   },
   "apps/frontend-shell/src/views/sim/ChainLineMapView.tsx": {
-   "first": 59,
+   "first": 58,
    "deferred": 18,
    "formula": 1,
    "prose": 5,
    "sizes": 3,
    "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 59 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 5 级 > 3（R-UI-2）"
+   "why": "存量·规范落地前：第一层 59 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 5 级 > 3（R-UI-2）",
+   "totalFloor": 77
   },
   "apps/frontend-shell/src/views/sim/CustomerImpactBar.tsx": {
    "first": 29,
@@ -1119,7 +1120,7 @@
   }
  },
  "conserve": {
-  "total": 6812,
+  "total": 6813,
   "files": 122,
   "why": "D5 全局守恒下界 = 建账当时扫描面全体 Σ(first+deferred)，**含未登记文件**。度量对象是内容集合不是单个文件：搬家总量不变 ⇒ 不红；删除总量下降 ⇒ 红。"
  }

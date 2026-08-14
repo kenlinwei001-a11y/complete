@@ -1078,6 +1078,11 @@ export const zh = {
         paretoRate: "影响率怎么算 · 分母是什么",
         inspectorEvidence: "下钻证据为何是空的",
         stepTable: "逐环节表的口径",
+        /**
+         * WO-UI-BURNDOWN-21 · 全链线路图页头的**读图法**（站是什么、圈为什么有大有小、数哪来的）。
+         * 与上面 `processLegend` 同族：「这个符号什么意思」属浮层，第一层只留标题与范围值。
+         */
+        chainMapLegend: "怎么读这张图 · 站和圈分别是什么",
         // ── WO-BEFE-WIRE-3 · 影响传播 / 快照分叉比对（口径与公式一律进浮层，第一层只留数值与状态）──
         impactBasis: "影响面怎么算 · 引擎与口径",
         impactDimension: (label: string) => `${label} · 这一维的连接键与全域`,

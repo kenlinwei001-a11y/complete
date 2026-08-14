@@ -882,6 +882,43 @@ describe("件二 · 换布局不许弄丢的八项", () => {
     expect(domRadius(TOP.stepId)).toBeGreaterThan(domRadius(BOTTOM.stepId));
   });
 
+  /**
+   * ①b WO-UI-BURNDOWN-21 · **读图法降浮层，但一个字都没少**
+   * （`docs/CONVENTION-ui-information-layering.md` §1 / R-UI-3）
+   *
+   * 「站 = 环节 · 站圈大小 ∝ 损失占比」是**图例**，属浮层；「范围」是**值**，留第一层。
+   * 上面 ① 咬的是半径这个**编码**在不在，它证明不了**图例文字**还在 ——
+   * 图例整段删掉，① 照样绿（半径函数没动）。故这里三判据 + 反向断言配一对。
+   * ⚠ `InfoPopover` 在 `open===false` 时**不渲染**，故写 `toBeNull()`；
+   *   写 `not.toBeVisible()` 是**测试自己抛错**，不是判据成立。
+   */
+  it("①b 读图法在 `?` 浮层里（默认不在 DOM · hover 后原文一字不少），而「范围」这个值仍在第一层", async () => {
+    const user = userEvent.setup();
+    await mount();
+    await screen.findByTestId("clm-canvas");
+    const head = screen.getByTestId("clm-root").querySelector("header")!;
+
+    // 「范围」是值 ⇒ 留第一层（不许跟着图例一起被藏起来）
+    expect(head.textContent).toContain("范围");
+    expect(screen.getByTestId("clm-scope")).toBeVisible();
+
+    // ① 记号可见 ② 正文默认不在 DOM ④ 反向：图例不许还摆在第一层
+    const trigger = screen.getByTestId("info-clm-legend");
+    expect(trigger).toBeVisible();
+    expect(screen.queryByTestId("clm-legend-body")).toBeNull();
+    expect(head.textContent, "图例还留在第一层 ⇒ 没降层").not.toContain("站圈大小");
+
+    // ③ hover 后原文一字不少
+    await user.hover(trigger);
+    const body = await screen.findByTestId("clm-legend-body");
+    expect(body).toBeVisible();
+    expect(body.textContent).toContain("站 = 环节");
+    expect(body.textContent).toContain("站圈大小 ∝ 该环节吃掉的");
+    expect(body.textContent).toContain("全链损失占比");
+    // 求解器 key 是**可复验的抓手**，撤掉契约类型名时它必须留着
+    expect(body.textContent).toContain(CHAIN_LOSS_SOLVER_KEY);
+  });
+
   it("② 停运站画成**虚线方框 + ✕**（不是一个小一点的圆）", async () => {
     await mount();
     await screen.findByTestId("clm-canvas");
