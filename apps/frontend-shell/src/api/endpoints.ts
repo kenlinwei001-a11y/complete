@@ -832,6 +832,8 @@ import {
   type MappingRow,
   type MappingRegistries,
   type SolverArtifact,
+  // WO-BEFE-A · 因果边（传导规则）契约类型：前端**不重定义**（R1 contracts-only-shared）。
+  type PropagationRule,
 } from "@platform/contracts";
 
 export const fetchAop = async (year: number): Promise<AopResponse> =>
@@ -1678,4 +1680,145 @@ export const advanceProcessInstance = (id: string, body: AdvanceProcessInstanceR
   api.a<ProcessInstanceDetail>(`/a/v1/process-instances/${encodeURIComponent(id)}/advance`, {
     method: "POST",
     body,
+  });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WO-BEFE-A · 本体关系编辑（`/admin/ontology-relations`）
+//
+// 补的是仓主点名的那个洞：**「人工如何创建每个域的本体关系？」**
+// 后端写端一直都在（`POST /a/v1/ontology/link-types` 建于 `apps/datacore/src/app.ts:2918`），
+// 前端**零调用方** —— 于是 13 条传导规则只能写死在 `apps/datacore/src/seed.ts` 里，
+// 而 `GET /a/v1/sim/view-config` 的注释白纸黑字承诺「换行业 = 换本体内容不改代码」。
+// 没有编辑界面，那句承诺兑现不了。
+//
+// ⚠ 三条**实测订正**（照铁律 0.5「grep 不是结论，再追一层」查出来的，与派单原文不符）：
+//  ① `PropagationRule` **没有 `active` 字段**。启停语义落在 `status: DRAFT|PUBLISHED|RETIRED`
+//     （契约 `packages/contracts/src/sim.ts:82`），仓储侧第二个参数叫 `publishedOnly` 不叫
+//     `activeOnly`（`apps/datacore/src/repo/repo.ts:394`），过滤判据是 `status === "PUBLISHED"`
+//     （`repo/memory.ts:76` · `repo/pg.ts:114`）。故本层一律用 `status`，不造 `active` 这个不存在的字段。
+//  ② `POST /a/v1/sim/propagation-rules` 的路由把 `id: newId("simpr")` 写在 body 展开**之后**
+//     （`app.ts:1867`）⇒ 传进去的 id 恒被覆盖 ⇒ **该端点只能新建、改不了既有规则**。
+//     所以本层只给 `createPropagationRule`，**不给** `togglePropagationRule` ——
+//     写一个只会 POST 出一条同 key 的重复规则，把 `propagationCount` 数成两条。
+//     真·启停（改既有规则的 status）**需要后端补 PUT/PATCH**，界面上以诚实位如实写明。
+//  ③ 结构边（LinkType）的**工作集态**没有任何只读下发口（`ontologyLinks.list` 的 9 处读取方
+//     全都把 `deprecation` 投影掉了）。唯一带 `deprecation` 的读是**已发布快照**
+//     `GET /a/v1/ontology/versions` 的 `snapshot.linkTypes`（`ontology.ts:352`）。
+//     故状态列的口径 = 快照态 ⊕ 本次会话的写回包，两者在界面上分别标注，不合成一个数字。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 弃用状态机（治理增量 §2.2）。字段缺省 = 从未弃用（ACTIVE）。 */
+export interface DeprecationMetaVM {
+  status: "DEPRECATED" | "RETIRED";
+  supersededBy?: string;
+  deprecatedAt?: string;
+  graceUntil?: string;
+  retiredAt?: string;
+}
+
+/**
+ * 已发布本体版本列表（`GET /a/v1/ontology/versions`）。
+ * `snapshot.linkTypes` 是**唯一**带 `deprecation` 的只读口（见本节 ③）。
+ * 形状取自 `apps/datacore/src/domain.ts:303 (LinkTypeDef)` —— 该类型**不在 contracts 里**，
+ * 故此处按 R1 就地声明最小消费形状，不跨包 import 源码。
+ */
+export interface OntologyVersionVM {
+  id: string;
+  version: number;
+  createdAt: string;
+  snapshot: {
+    linkTypes: {
+      key: string;
+      fromTypeKey: string;
+      toTypeKey: string;
+      cardinality: string;
+      published?: boolean;
+      deprecation?: DeprecationMetaVM;
+    }[];
+  };
+}
+
+export const fetchOntologyVersions = () => api.a<OntologyVersionVM[]>("/a/v1/ontology/versions");
+
+/** 建一条结构边（关系类型）。201 回包即新版本的 `LinkTypeDef`。 */
+export const createLinkType = (body: {
+  key: string;
+  fromTypeKey: string;
+  toTypeKey: string;
+  cardinality: "1:1" | "1:N" | "N:1" | "N:N";
+}) =>
+  api.a<{ key: string; fromTypeKey: string; toTypeKey: string; cardinality: string; version: number }>(
+    "/a/v1/ontology/link-types",
+    { method: "POST", body },
+  );
+
+/** 停用（ACTIVE → DEPRECATED）。`kind` 二选一，后端是同一个 `governance.deprecate`。 */
+export const deprecateOntologyElement = (kind: "link" | "type", key: string, supersededBy?: string) =>
+  api.a<{ key: string; deprecation: DeprecationMetaVM }>(
+    `/a/v1/ontology/${kind === "link" ? "links" : "types"}/${encodeURIComponent(key)}/deprecate`,
+    { method: "POST", body: supersededBy ? { supersededBy } : {} },
+  );
+
+/**
+ * 下线（DEPRECATED → RETIRED）。
+ * ⚠ 后端 `ontology-governance.ts:203` 在 `references.total > 0` 时抛 409 并逐条列出引用方 ——
+ * 这不是异常，是设计：**还有人在引用就不许下线**。界面必须把那句话原样显示出来。
+ */
+export const retireOntologyElement = (kind: "link" | "type", key: string) =>
+  api.a<{ key: string; status: "RETIRED" }>(
+    `/a/v1/ontology/${kind === "link" ? "links" : "types"}/${encodeURIComponent(key)}/retire`,
+    { method: "POST", body: {} },
+  );
+
+/** 引用反查（治理增量 §7.4）：这条边今天被谁引用着。下线前的前置检查。 */
+export interface ElementReferenceVM {
+  refKind: string;
+  key: string;
+  version: number | "latest";
+  where: string;
+}
+export const fetchElementReferences = (elementKind: "link" | "type", key: string) =>
+  api.a<{ refs: ElementReferenceVM[]; total: number }>(
+    `/a/v1/ontology/references?elementKind=${encodeURIComponent(elementKind)}&key=${encodeURIComponent(key)}`,
+  );
+
+// ── 因果边（传导规则）：`sourceStateVar --coefficient--> targetStateVar` ──────
+/** 契约类型直接复用 `@platform/contracts` 的 `PropagationRule`（R1，前端不重定义）。 */
+export const fetchPropagationRules = (published = false) =>
+  api.a<{ items: PropagationRule[] }>(`/a/v1/sim/propagation-rules?published=${published ? "true" : "false"}`);
+
+/**
+ * 建一条因果边。`status` 即启停位：`PUBLISHED` = 启用（进推演）· `DRAFT` = 停用（在册不生效）。
+ * 判据不是我说的 —— `GET /a/v1/sim/view-config` 只读 `listPropagationRules(tenantId, true)`
+ * （`apps/datacore/src/app.ts:1877`），而那个 `true` 的过滤条件就是 `status === "PUBLISHED"`。
+ */
+export const createPropagationRule = (body: {
+  key: string;
+  sourceTypeKey: string;
+  sourceStateVar: string;
+  viaLinkKey: string;
+  targetTypeKey: string;
+  targetStateVar: string;
+  coefficient: number;
+  delayTicks: number;
+  status: "DRAFT" | "PUBLISHED";
+}) => api.a<PropagationRule>("/a/v1/sim/propagation-rules", { method: "POST", body });
+
+// ── 发布会签（R4：本体真值变更经审批链，前端不直发）────────────────────────
+export interface PublishRequestVM {
+  id: string;
+  ontologyVersion: number;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  touchedDomains: string[];
+  signoffs?: { domainKey: string; decision: string; by?: string; comment?: string; at?: string }[];
+  createdAt?: string;
+}
+export const fetchPublishRequests = (status?: string) =>
+  api.a<PublishRequestVM[]>(`/a/v1/ontology/publish-requests${status ? `?status=${encodeURIComponent(status)}` : ""}`);
+export const createPublishRequest = (body: { ontologyVersion?: number; force?: boolean } = {}) =>
+  api.a<PublishRequestVM>("/a/v1/ontology/publish-requests", { method: "POST", body });
+export const signoffPublishRequest = (id: string, decision: "APPROVE" | "REJECT", comment?: string) =>
+  api.a<PublishRequestVM>(`/a/v1/ontology/publish-requests/${encodeURIComponent(id)}/signoff`, {
+    method: "POST",
+    body: { decision, ...(comment ? { comment } : {}) },
   });
