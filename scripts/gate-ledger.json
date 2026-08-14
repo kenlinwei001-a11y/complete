@@ -1430,7 +1430,7 @@
     },
     "check-baseline-writer-honesty.mjs": {
       "alias": "baseline-writer-honesty:check",
-      "binding": "MANUAL",
+      "binding": "GATES_CHAIN",
       "guardedPaths": [
         "scripts/lib/baseline-doc.mjs",
         "scripts/check-*.mjs",
@@ -1444,8 +1444,7 @@
         "note": "M1 新增一个手搓基线写入的合成门 scripts/check-mutant-writer-probe.mjs（自证：git status 报 ?? 新文件）→ RC=1，点名「L7 手搓写入 scripts/mutant-writer-probe-baseline.json（实参里没有共享写入器 buildBaselineDoc()）」；M1' 删除该文件 → RC=0 复绿且 git status --porcelain 为空；M2 把**已合规**的 check-req-coverage.mjs 写入点从 buildBaselineDoc({ 改成 ({（自证：git show HEAD: 该串 1 次 → 变异后 0 次，替换不发生则脚本 exit 9 作废反证）→ RC=1 点名它；M2' git checkout 撤回 → RC=0；M3 摘掉基线里 check-ui-first-layer.mjs 的豁免（8→7 条）→ RC=1 点名它，证明存量豁免是真在起作用、不是摆设；M4 把 check-debattery.mjs 的 why 清空（319 字 → 0）→ RC=1「豁免必须说清理由，否则等于永久居留权」；M5 反向棘轮：把已合规的 check-req-coverage.mjs 塞进豁免 → RC=1「已经走共享写入器却仍挂名，棘轮只许降不许升」。",
         "note2": "退出码三态均现跑取证：S1 豁免基线写成非法 JSON → RC=2（不是 RC=1）；S2 门自变异令 isWriter 恒 false（读回文件确认含变异串）→ 必中金丝雀当场开火 RC=2 报「门自己瞎了」，**不是** RC=0 报「全仓基线写入都诚实」；P1 注入「缺 typescript」→ RC=2；P2 注入未预期异常 → 顶层 try/catch 归 RC=2 而非 node 默认的 1；P3 注入真违规 → 仍是 RC=1（**没有**被兜底吞成 2，那是比假红更糟的假绿）；P0 无注入 → RC=0。另有一条正向自证：把 8 条 why 手写进基线后再跑一次 --update，产物**字节级不变**（git status 为空）—— 本门自己的基线就是用共享写入器写的，人话不会被自己的 --update 吞掉。"
       },
-      "notes": "MANUAL（有 pnpm 别名，未进 gates 串）：守「凡会写 *-baseline.json 的 scripts/*.mjs，每一处写入都必须经由 scripts/lib/baseline-doc.mjs 的 buildBaselineDoc()，且开写前跑过 baselineDocCanary()」。病根是 --update 静默吞掉人手挂账（check-backend-frontend-seam.mjs 曾吞掉 978 字两笔挂账，0e19f2c4 修好）——共享写入器只是一份实现，没有任何东西拦住新门再手搓一份，绕开一次就没人会发现。识别「会写基线」要两路证据同时成立（写入目标解析到 *-baseline.json + 存在 --update/--seed/--write 入口），单路必然误判：只看路 A 会把读基线比对的门算成写入方，只看路 B 会把任何带 --write 的脚本算进来。全程走 AST，注释与字符串里的 writeFileSync 不算数。同名局部 buildBaselineDoc 判为 SHADOWED（第二份实现：共享写入器补新判据时它不会跟着变）。现算 19 个基线写入方 · 11 走共享写入器 · 8 条存量逐条挂账带 why（check-backend-frontend-seam / check-cli-parity / check-coverage-blind / check-debattery / check-dev-jargon-onscreen / check-ontology-anchors / check-ontology-descriptions / check-ui-first-layer）。⚠ check-ui-first-layer.mjs 是本单派单时就点名的禁改文件，故**显式挂豁免而不是放宽判据** —— 放宽是隐形的，豁免是看得见的。诚实边界：只认命名形如 *-baseline.json 的写入目标（gate-ledger.json / feature-rollout.json 这类账本在射程外）· 只认结构不认语义（把人手 note 塞进 computed 照样判合规，那归 baselineDocCanary 的四向判据）· 目标路径运行期拼出来的解析不到 ⇒ 落射程外而非判绿。disposition=WIRE：判据纯静态、零依赖、单次 <1s，接进 gates 链无成本；本单范围边界不含扩 gates 串，故只加 pnpm 别名（binding=MANUAL），接链由审核方裁。",
-      "disposition": "WIRE"
+      "notes": "MANUAL（有 pnpm 别名，未进 gates 串）：守「凡会写 *-baseline.json 的 scripts/*.mjs，每一处写入都必须经由 scripts/lib/baseline-doc.mjs 的 buildBaselineDoc()，且开写前跑过 baselineDocCanary()」。病根是 --update 静默吞掉人手挂账（check-backend-frontend-seam.mjs 曾吞掉 978 字两笔挂账，0e19f2c4 修好）——共享写入器只是一份实现，没有任何东西拦住新门再手搓一份，绕开一次就没人会发现。识别「会写基线」要两路证据同时成立（写入目标解析到 *-baseline.json + 存在 --update/--seed/--write 入口），单路必然误判：只看路 A 会把读基线比对的门算成写入方，只看路 B 会把任何带 --write 的脚本算进来。全程走 AST，注释与字符串里的 writeFileSync 不算数。同名局部 buildBaselineDoc 判为 SHADOWED（第二份实现：共享写入器补新判据时它不会跟着变）。现算 19 个基线写入方 · 11 走共享写入器 · 8 条存量逐条挂账带 why（check-backend-frontend-seam / check-cli-parity / check-coverage-blind / check-debattery / check-dev-jargon-onscreen / check-ontology-anchors / check-ontology-descriptions / check-ui-first-layer）。⚠ check-ui-first-layer.mjs 是本单派单时就点名的禁改文件，故**显式挂豁免而不是放宽判据** —— 放宽是隐形的，豁免是看得见的。诚实边界：只认命名形如 *-baseline.json 的写入目标（gate-ledger.json / feature-rollout.json 这类账本在射程外）· 只认结构不认语义（把人手 note 塞进 computed 照样判合规，那归 baselineDocCanary 的四向判据）· 目标路径运行期拼出来的解析不到 ⇒ 落射程外而非判绿。disposition=WIRE：判据纯静态、零依赖、单次 <1s，接进 gates 链无成本；本单范围边界不含扩 gates 串，故只加 pnpm 别名（binding=MANUAL），接链由审核方裁。"
     }
   }
 }
