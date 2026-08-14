@@ -83,7 +83,7 @@ function CapexWindowCurve({ scenario: s }: { scenario: AnnualScenario }) {
     tooltip: { trigger: "axis" },
     legend: { data: [zh.aop.wcDemand, zh.aop.wcSupply, zh.aop.wcGap], top: 0, textStyle: { color: "#9AA8B6" } },
     xAxis: { type: "category", data: cs.quarters, axisLine: { lineStyle: { color: "#3A4655" } } },
-    yAxis: { type: "value", name: yAxisName, nameTextStyle: { fontSize: 10 }, splitLine: { lineStyle: { color: "rgba(58,70,85,.4)" } } },
+    yAxis: { type: "value", name: yAxisName, nameTextStyle: { fontSize: 12 }, splitLine: { lineStyle: { color: "rgba(58,70,85,.4)" } } },
     series: [
       { name: zh.aop.wcDemand, type: "line", smooth: true, data: cs.demand, lineStyle: { color: "#E8B54A" }, itemStyle: { color: "#E8B54A" },
         markArea: markAreas.length > 0 ? { silent: true, data: markAreas } : undefined },
@@ -95,10 +95,10 @@ function CapexWindowCurve({ scenario: s }: { scenario: AnnualScenario }) {
     <div className="panel" style={{ marginBottom: 14 }} data-testid="aop-window-curve">
       <div className="section-title">{zh.aop.windowSection}</div>
       {/* jsdom 无 canvas（EChart 静默降级），轴名同文案另以 caption 落 DOM——可测 + 浏览器里也是有用的图注。 */}
-      <div data-testid="aop-window-axis-caption" style={{ fontSize: 10.5, color: "var(--muted2)", marginBottom: 2 }}>
+      <div data-testid="aop-window-axis-caption" style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 2 }}>
         {zh.aop.wcAxisCaption(yAxisName)}
       </div>
-      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6 }}>
+      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 6 }}>
         {zh.aop.windowHint(s.name)}
         {cs.windows.map((w) => (
           <span key={`${w.kind}-${w.fromQ}`} className={`badge ${w.kind === "gap" ? "amber" : "green"}`} data-testid={`aop-window-${w.kind}-${w.fromQ}`} style={{ marginLeft: 6 }}>
@@ -181,7 +181,7 @@ function ScenarioCard({ scenario: s }: { scenario: AnnualScenario }) {
           <span>{zh.aop.projectFinance}</span>
           <div data-testid={`scen-projects-${s.key}`}>
             {s.capexScenario.projects.map((p) => (
-              <div key={p.id} className="mono" data-testid={`scen-project-${s.key}-${p.id}`} style={{ fontSize: 11 }}>
+              <div key={p.id} className="mono" data-testid={`scen-project-${s.key}-${p.id}`} style={{ fontSize: 12 }}>
                 {p.name}：IRR {p.irr.toFixed(1)}% · 24月利用率 {(p.util24 * 100).toFixed(1)}%{" "}
                 <span className={`badge ${p.c23pass ? "green" : "amber"}`}>{p.c23pass ? "C23 ✓" : "C23 ⚠"}</span>
               </div>
@@ -204,7 +204,7 @@ function ScenarioCard({ scenario: s }: { scenario: AnnualScenario }) {
             </span>
           ))}
           {openRule && (
-            <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5, background: "var(--bg2)", borderRadius: 6, padding: "5px 8px" }} data-testid={`scen-rule-detail-${s.key}`}>
+            <div className="mono" style={{ fontSize: 12, color: "var(--muted)", marginTop: 5, background: "var(--bg2)", borderRadius: 6, padding: "5px 8px" }} data-testid={`scen-rule-detail-${s.key}`}>
               {s.ruleChecks.find((rc) => rc.ruleKey === openRule)?.explanation}
             </div>
           )}
@@ -219,7 +219,7 @@ function TriggerBoard({ triggers }: { triggers: AopResponse["triggers"] }) {
   return (
     <div className="panel" style={{ marginBottom: 14 }}>
       <div className="section-title">{zh.aop.triggerSection}</div>
-      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>{zh.aop.triggerHint}</div>
+      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 8 }}>{zh.aop.triggerHint}</div>
       <table className="cmp" data-testid="aop-trigger-table">
         <thead>
           <tr>
@@ -246,7 +246,7 @@ function TriggerBoard({ triggers }: { triggers: AopResponse["triggers"] }) {
                 ) : (
                   <>
                     <span className="badge green">{zh.aop.triggered}</span>
-                    <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3 }}>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
                       {t.triggeredAt && <span className="mono">{zh.aop.triggeredAt(t.triggeredAt.slice(0, 16).replace("T", " "))}</span>}
                       {t.notifiedTo && t.notifiedTo.length > 0 && <div>{zh.aop.notified(t.notifiedTo.join("、"))}</div>}
                     </div>
@@ -326,7 +326,7 @@ function DecompositionFlow({ decomposition, baselineDemand }: { decomposition: A
           );
         })}
       </div>
-      <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 8 }} data-testid="aop-dec-footnote">
+      <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 8 }} data-testid="aop-dec-footnote">
         {zh.aop.decompFootnote}
       </div>
       {prov && (

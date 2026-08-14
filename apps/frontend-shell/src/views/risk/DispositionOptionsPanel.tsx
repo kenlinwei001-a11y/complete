@@ -45,7 +45,7 @@ export function DispositionOptionsPanel({ row }: { row: PlanRow }) {
     return (
       <div data-testid="disposition-options-panel" className={styles.rkOptPanel}>
         <SubSection testId="disposition-options-section" title="③ 方案与代价 · 能怎么办、各要付什么">
-          <div className="empty-state" data-testid="disposition-options-empty" style={{ fontSize: 11, lineHeight: 1.7, color: "var(--muted)" }}>
+          <div className="empty-state" data-testid="disposition-options-empty" style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)" }}>
             <b style={{ color: "var(--muted2)" }}>无需处置，故不出方案（这是结论，不是缺数据）</b>
             <div style={{ marginTop: 4 }} data-testid="disposition-options-empty-reason">{opts.emptyReason ?? opts.summary}</div>
           </div>
@@ -63,9 +63,9 @@ export function DispositionOptionsPanel({ row }: { row: PlanRow }) {
         title="③ 方案与代价 · 能怎么办、各要付什么"
         sub={<>触发缺口 {opts.shortfall} {opts.unit} · 触发日 D+{opts.trigDay} · {opts.options.length} 个可比方案</>}
       >
-        <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 6 }} data-testid="disposition-options-summary">{opts.summary}</div>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }} data-testid="disposition-options-summary">{opts.summary}</div>
 
-        <table className="cmp" data-testid="disposition-options-table" style={{ fontSize: 11, marginBottom: 8 }}>
+        <table className="cmp" data-testid="disposition-options-table" style={{ fontSize: 12, marginBottom: 8 }}>
           <thead>
             <tr>
               <th>方案</th><th>策略（在赌什么·放弃了什么）</th><th>收窄({opts.unit})</th><th>残留({opts.unit})</th><th>几天到位</th><th>成本</th><th>副作用</th>
@@ -75,9 +75,9 @@ export function DispositionOptionsPanel({ row }: { row: PlanRow }) {
             {opts.options.map((o) => (
               <tr key={o.optionId} data-testid={`disposition-option-row-${o.optionId}`}>
                 <td className="zh"><b>{o.optionId} · {o.label}</b></td>
-                <td className="zh" style={{ fontSize: 10, maxWidth: 320 }}>{o.strategy}</td>
-                <td className="mono" style={{ color: "var(--ok)" }}>{o.closedTotal}</td>
-                <td className="mono" style={{ color: o.residual > 0 ? "var(--danger)" : undefined }}>{o.residual}</td>
+                <td className="zh" style={{ fontSize: 12, maxWidth: 320 }}>{o.strategy}</td>
+                <td className="mono" style={{ color: "var(--ok-txt)" }}>{o.closedTotal}</td>
+                <td className="mono" style={{ color: o.residual > 0 ? "var(--danger-txt)" : undefined }}>{o.residual}</td>
                 <td className="mono" data-testid={`disposition-option-ready-${o.optionId}`}>
                   {o.readyInDays != null ? (
                     <b>{o.readyInDays} 天</b>
@@ -119,14 +119,14 @@ function CostCell({ option }: { option: DispositionOption }) {
   }
   if (c.status === "PARTIAL" && c.totalYuan != null) {
     return (
-      <span data-cost="PARTIAL" style={{ fontSize: 10 }}>
+      <span data-cost="PARTIAL" style={{ fontSize: 12 }}>
         <b className="mono">{c.totalYuan}</b> {c.unit}
         <span style={{ color: "var(--muted2)" }}>（部分：{c.missing.length} 项杠杆成本算不出，未计入）</span>
       </span>
     );
   }
   return (
-    <span data-cost="EMPTY" style={{ fontSize: 10, color: "var(--muted2)" }}>
+    <span data-cost="EMPTY" style={{ fontSize: 12, color: "var(--muted2)" }}>
       算不出（{c.missing.length} 项杠杆无成本承载）—— 不填 0
     </span>
   );
@@ -138,7 +138,7 @@ function OptionDetail({ option, unit }: { option: DispositionOption; unit: strin
     <div className={styles.rkSol} data-testid={`disposition-option-detail-${option.optionId}`}>
       <div className={styles.rkSolH}>
         <b>{option.optionId} · {option.label}</b>
-        <span style={{ fontSize: 10, color: "var(--muted2)" }}>收窄 {option.closedTotal} / 残留 {option.residual} {unit}</span>
+        <span style={{ fontSize: 12, color: "var(--muted2)" }}>收窄 {option.closedTotal} / 残留 {option.residual} {unit}</span>
       </div>
       <div className={styles.rkSolM} style={{ display: "grid", gap: 4 }}>
         {option.readyInDays == null && option.readyInDaysReason && (
@@ -157,7 +157,7 @@ function OptionDetail({ option, unit }: { option: DispositionOption; unit: strin
                 <span className="badge" style={{ marginRight: 5 }}>{i + 1}</span>
                 <b>{lv.action}</b>
                 <span style={{ marginLeft: 6, color: "var(--muted2)" }}>D+{lv.day} · {lv.date}</span>
-                <span style={{ marginLeft: 8, color: "var(--ok)" }}>收窄 <b className="mono">{lv.closesGap}</b> {unit}</span>
+                <span style={{ marginLeft: 8, color: "var(--ok-txt)" }}>收窄 <b className="mono">{lv.closesGap}</b> {unit}</span>
               </div>
               <div style={{ marginTop: 2 }}>
                 {/* R13 前置期溯源：这一步为什么落在第 N 天（OK 溯到真记录 · EMPTY 明说未叠加偏移）。 */}
@@ -199,12 +199,12 @@ function SideEffect({ se, testId }: { se: DispositionSideEffect; testId: string 
       {se.rule && (
         <div style={{ marginTop: 2 }} data-testid={`${testId}-rule`}>
           规则 <RuleRef code={se.rule.ruleKey} />：阈值 <span className="mono">{se.rule.threshold}</span> · 实际 <span className="mono">{se.rule.actual}</span> ·{" "}
-          <b style={{ color: se.rule.breached ? "var(--danger)" : "var(--ok)" }}>{se.rule.breached ? "已越线" : "未越线"}</b>
+          <b style={{ color: se.rule.breached ? "var(--danger-txt)" : "var(--ok-txt)" }}>{se.rule.breached ? "已越线" : "未越线"}</b>
           <span style={{ color: "var(--muted2)" }}>（阈值取 {se.rule.ruleKey}.params.{se.rule.paramKey}·规则口径非代码内联）</span>
         </div>
       )}
       {se.displacedOrders && se.displacedOrders.length > 0 && (
-        <table className="cmp" data-testid={`${testId}-displaced`} style={{ fontSize: 10.5, marginTop: 3 }}>
+        <table className="cmp" data-testid={`${testId}-displaced`} style={{ fontSize: 12, marginTop: 3 }}>
           <thead>
             <tr><th>被挤占订单</th><th>客户</th><th>所属基地</th><th>优先级</th><th>被挤占量</th><th>延后(天)</th></tr>
           </thead>
@@ -216,7 +216,7 @@ function SideEffect({ se, testId }: { se: DispositionSideEffect; testId: string 
                 <td className="zh">{d.baseName}</td>
                 <td className="zh">{d.pri}</td>
                 <td className="mono">{d.displacedQty} / {d.qty}</td>
-                <td className="mono" style={{ color: "var(--danger)" }}>
+                <td className="mono" style={{ color: "var(--danger-txt)" }}>
                   {d.delayDays != null ? d.delayDays : <span style={{ color: "var(--muted2)" }} title={d.delayReason ?? ""}>算不出</span>}
                 </td>
               </tr>
@@ -250,7 +250,7 @@ function StepLeadTimes({ row }: { row: PlanRow }) {
   const withLead = steps.filter((s) => s.leadTime != null);
   if (steps.length === 0) return null;
   return (
-    <div style={{ marginTop: 8, fontSize: 10.5 }} data-testid="disposition-step-leadtimes">
+    <div style={{ marginTop: 8, fontSize: 12 }} data-testid="disposition-step-leadtimes">
       <b>本行处置步骤的前置期读数（R13）</b>
       {withLead.length === 0 ? (
         <div style={{ color: "var(--muted2)", marginTop: 2 }} data-testid="disposition-step-leadtimes-absent">
@@ -276,7 +276,7 @@ function StepLeadTimes({ row }: { row: PlanRow }) {
 function Coefficients({ opts }: { opts: NonNullable<PlanRow["options"]> }) {
   if (opts.coefficients.length === 0) return null;
   return (
-    <div style={{ marginTop: 8, fontSize: 10.5 }} data-testid="disposition-coefficients">
+    <div style={{ marginTop: 8, fontSize: 12 }} data-testid="disposition-coefficients">
       <b>推演系数出处</b>
       <ul style={{ margin: "2px 0 0", paddingLeft: 16 }}>
         {opts.coefficients.map((c) => (

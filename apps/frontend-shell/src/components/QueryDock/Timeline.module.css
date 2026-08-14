@@ -35,14 +35,14 @@
 }
 
 .stepIcon {
-  color: var(--accent);
+  color: var(--accent-txt);
   width: 14px;
   text-align: center;
 }
 
 .stepType {
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 .stepRight {
@@ -50,13 +50,13 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 
 .stepDetail {
   padding: 4px 10px 8px 32px;
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted2);
 }
 
@@ -93,7 +93,7 @@
 }
 
 .roleSub {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted2);
   line-height: 1.35;
 }
@@ -104,13 +104,13 @@
   flex-shrink: 0;
   padding: 0 5px;
   border-radius: 6px;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 16px;
   white-space: nowrap;
 }
 
 .chipRole {
-  color: var(--accent);
+  color: var(--accent-txt);
   background: rgba(76, 144, 240, 0.12);
   border: 1px solid rgba(76, 144, 240, 0.3);
 }

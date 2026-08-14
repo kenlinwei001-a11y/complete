@@ -15,7 +15,7 @@
   border-radius: 999px;
   background: transparent;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 12px;
   line-height: 1.7;
   white-space: nowrap;
 }
@@ -28,11 +28,11 @@
 }
 .global {
   border-color: var(--amber);
-  color: var(--amber);
+  color: var(--amber-txt);
 }
 .unapplied {
   border-color: var(--danger);
-  color: var(--danger);
+  color: var(--danger-txt);
 }
 
 /* 浮层正文里的后端原文：与徽标短标签区分开，让人一眼看出「这句是引擎说的」。 */
@@ -43,6 +43,6 @@
 .field {
   display: block;
   margin-top: 6px;
-  font: 10px var(--font-mono);
+  font: 12px var(--font-mono);
   color: var(--muted2);
 }

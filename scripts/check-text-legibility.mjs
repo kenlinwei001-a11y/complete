@@ -415,12 +415,28 @@ export function scanCss(file, raw) {
       while ((mm = r.exec(body))) last = mm[1].trim();
       return last;
     };
+    /*
+     * ⚠ **`font:` 简写必须一起吃** —— 这一条不是想出来的，是被真数据当场抖出来的：
+     * 本门第一版只认 `font-size:`，于是 `.optSub { font: 9px var(--font-mono) }` 这类
+     * **一个字都扫不到**。真浏览器复测时那 22+13 个 9px 元素还在红着，而门报"这些文件干净"——
+     * 又一次「我用『font-size 声明数』当作『页面上有多少字号』的证据，而前者并不度量后者」。
+     * 本仓 `font:` 简写实测 72 处，全部在 CSS 里，全部带字号 ⇒ 漏掉它等于漏掉一整类。
+     */
+    const shorthand = grab("font");
+    let shSize = null, shWeight = null;
+    if (shorthand && !/^(inherit|initial|unset|caption|icon|menu|message-box|small-caption|status-bar)$/i.test(shorthand.trim())) {
+      const sm = /(^|\s)([0-9.]+px)(\s*\/\s*[^\s]+)?(\s|$)/.exec(shorthand);
+      if (sm) shSize = PX(sm[2]);
+      const wm = /(^|\s)(bold|bolder|[1-9]00)(\s|$)/i.exec(shorthand);
+      if (wm) shWeight = wm[2];
+    }
     const fsRaw = grab("font-size");
     const colorRaw = grab("color") || grab("fill");
     const line = src.slice(0, m.index).split("\n").length;
-    const size = fsRaw ? PX(fsRaw) : null;
+    const size = fsRaw ? PX(fsRaw) : shSize;
+    const weight = WEIGHT(grab("font-weight") ?? shWeight);
     if (size != null && size > 0) sizes.push({ file, line, sel, size });
-    if (size != null && size > 0 && colorRaw) units.push({ file, line, sel, size, color: colorRaw, weight: WEIGHT(grab("font-weight")) });
+    if (size != null && size > 0 && colorRaw) units.push({ file, line, sel, size, color: colorRaw, weight });
     else if ((size != null && size > 0) || colorRaw) unjudged++;
   }
   return { units, sizes, unjudged };
@@ -442,10 +458,27 @@ export function scanTsx(file, raw) {
     const fs = /fontSize\s*:\s*("([^"]+)"|'([^']+)'|([0-9.]+))/.exec(body);
     const col = /(?:^|[,{\s])color\s*:\s*("([^"]*)"|'([^']*)')/.exec(body);
     const fw = /fontWeight\s*:\s*("([^"]+)"|'([^']+)'|([0-9]+))/.exec(body);
-    const size = fs ? PX(fs[2] ?? fs[3] ?? fs[4]) : null;
+    /*
+     * ⚠ 内联 `font:` **简写**同样要吃 —— 与 CSS 那条同源，但**必须单独写一遍**，
+     * 因为 React 的内联样式键是 `font`（驼峰域里没有 `font-size` 这个写法）。
+     * 这一条也是被真数据抖出来的：`SandboxView.tsx` 顶栏那三处
+     * `style={{ font: "600 10px var(--font-mono)" }}` —— 屏上确确实实是 10px，
+     * 而门只找 `fontSize`，**一处都扫不到**，于是报"这个文件干净"。
+     * 同一个病在 CSS 侧刚犯过一次（`font: 9px …`），这是它的第二个马甲。
+     */
+    const shHand = /(?:^|[,{\s])font\s*:\s*("([^"]+)"|'([^']+)')/.exec(body);
+    const shVal = shHand ? (shHand[2] ?? shHand[3]) : null;
+    let shSize = null, shWeight = null;
+    if (shVal) {
+      const sm = /(^|\s)([0-9.]+px)(\s*\/\s*[^\s]+)?(\s|$)/.exec(shVal);
+      if (sm) shSize = PX(sm[2]);
+      const wm = /(^|\s)(bold|bolder|[1-9]00)(\s|$)/i.exec(shVal);
+      if (wm) shWeight = wm[2];
+    }
+    const size = fs ? PX(fs[2] ?? fs[3] ?? fs[4]) : shSize;
     if (size != null && size > 0) sizes.push({ file, line, sel: "style={{…}}", size });
     const color = col ? (col[2] ?? col[3]) : null;
-    if (size != null && size > 0 && color) units.push({ file, line, sel: "style={{…}}", size, color, weight: WEIGHT(fw ? (fw[2] ?? fw[3] ?? fw[4]) : null) });
+    if (size != null && size > 0 && color) units.push({ file, line, sel: "style={{…}}", size, color, weight: WEIGHT(fw ? (fw[2] ?? fw[3] ?? fw[4]) : shWeight) });
     else if ((size != null && size > 0) || color) unjudged++;
   }
   return { units, sizes, unjudged };
@@ -633,6 +666,35 @@ const CANARIES = [
     name: "必不咬-9 12px 不触 floor（交点本身在线上，不许把它也咬掉）",
     run: () => scanCss("c.css", ".a{ font-size: 12px }"),
     expect: (r) => r.sizes.length === 1 && !(r.sizes[0].size < FLOOR_PX),
+  },
+  {
+    /**
+     * ⚠ **回归金丝雀**，钉死一个真实发生过的漏扫（2026-08-14 本单，由真浏览器复测抖出）：
+     * 门第一版只认 `font-size:`，`.optSub { font: 9px var(--font-mono) }` 一个字都扫不到 ⇒
+     * 门报"这些文件干净"，而屏上那 35 个 9px 元素还红着。本仓 `font:` 简写实测 72 处。
+     * 此条锁死：简写里的**字号**与**字重**都要抽出来（字重漏了会让粗体阈值算错）。
+     */
+    name: "必咬-10 `font:` 简写里的字号与字重必须一起抽出（漏它 = 漏掉 72 处声明）",
+    run: () => [
+      scanCss("c.css", ".a{ font: 9px var(--font-mono); color: var(--muted2) }"),
+      scanCss("c.css", ".b{ font: 700 8px/1.5 var(--font-mono); color: var(--danger) }"),
+      scanCss("c.css", ".c{ font: inherit }"),
+    ],
+    expect: (r) =>
+      r[0].sizes.length === 1 && r[0].sizes[0].size === 9 && r[0].units.length === 1 && r[0].units[0].weight === 400 &&
+      r[1].sizes.length === 1 && r[1].sizes[0].size === 8 && r[1].units[0].weight === 700 &&
+      r[2].sizes.length === 0,
+  },
+  {
+    /**
+     * ⚠ **回归金丝雀**（同日第二次，同一个病换了个马甲）：React 内联样式的键是 `font`，
+     * 不是 `font-size` —— 门只找 `fontSize` 时，`SandboxView.tsx` 顶栏那三处
+     * `style={{ font: "600 10px var(--font-mono)" }}` **一处都扫不到**，屏上却确确实实是 10px。
+     * 「CSS 侧修好了」不蕴含「TSX 侧也修好了」：两个扫描器是两份实现，各要各的金丝雀。
+     */
+    name: "必咬-11 TSX 内联 `font:` 简写（React 键叫 font，不叫 fontSize）也要抽出字号与字重",
+    run: () => scanTsx("c.tsx", 'const x = <b style={{ display: "flex", font: "600 10px var(--font-mono)", color: "var(--muted2)" }}>x</b>;'),
+    expect: (r) => r.sizes.length === 1 && r.sizes[0].size === 10 && r.units.length === 1 && r.units[0].weight === 600,
   },
 ];
 

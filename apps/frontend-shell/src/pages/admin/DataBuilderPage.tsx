@@ -68,7 +68,7 @@ function InPlaceApprovalPanel() {
       {drafts.map((d) => (
         <div key={d.id} data-testid={`db-approval-${d.id}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
           <span className="badge">{d.actionTypeKey}</span>
-          <span style={{ flex: 1, fontSize: 11.5, color: "var(--muted)" }} className="mono">{d.id}</span>
+          <span style={{ flex: 1, fontSize: 12, color: "var(--muted)" }} className="mono">{d.id}</span>
           <button className="btn primary sm" data-testid={`db-approve-${d.id}`} disabled={decide.isPending} onClick={() => decide.mutate({ id: d.id, d: "APPROVE" })}>批准</button>
           <button className="btn sm" data-testid={`db-reject-${d.id}`} disabled={decide.isPending} onClick={() => decide.mutate({ id: d.id, d: "REJECT" })}>驳回</button>
         </div>
@@ -101,7 +101,7 @@ function ManifestForm({ run, pending, onSubmit }: { run: StoryBuildRun; pending:
   return (
     <div data-testid={`sbr-form-${run.id}`} style={{ marginTop: 8, paddingLeft: 22, display: "grid", gap: 8 }}>
       {/* WO-UI-DECLUTTER-TOP3：表单已经在屏上，「这张表是干嘛的」属解释 → 折叠（规范 §1）。 */}
-      <details style={{ fontSize: 11.5, ...FOLD, marginTop: 0 }}>
+      <details style={{ fontSize: 12, ...FOLD, marginTop: 0 }}>
         <summary style={FOLD_SUM}>为什么要我补这些？</summary>
         <div>发动机倒推：脚本没说清、构建必需的信息——补录后建域。</div>
       </details>
@@ -112,7 +112,7 @@ function ManifestForm({ run, pending, onSubmit }: { run: StoryBuildRun; pending:
       )}
       {ask.map((f) => (
         <label key={f.key} style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ minWidth: 220 }}>{f.label}{f.required && <span style={{ color: "var(--danger,#E5484D)" }}> *</span>}</span>
+          <span style={{ minWidth: 220 }}>{f.label}{f.required && <span style={{ color: "var(--danger-txt,#E5484D)" }}> *</span>}</span>
           <input
             data-testid={`sbr-field-${f.key}`}
             type={f.dataType === "number" ? "number" : "text"}
@@ -166,7 +166,7 @@ function BuildPlanComprehension({ plan }: { plan: BuildPlan }) {
     <div data-testid="sbr-comprehension" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8, marginTop: 4 }}>
       {shown.map((g) => (
         <div key={g.key} data-testid={`comprehend-${g.key}`} style={{ border: "1px solid var(--line)", borderRadius: 6, padding: "6px 8px" }}>
-          <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 4 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
             {/* WO-UNIT-MEANING：徽章此前是裸数——「规则 5」既可读成 5 条规则也可读成规则编号 5。
                 这里 g.label 是**品类名**（数据源/对象类型/规则…）而非被数之物的量词，故必须显式带"项"。 */}
             {g.label} <span className="badge" data-testid={`comprehend-count-${g.key}`}>{g.items.length} 项</span>
@@ -174,7 +174,7 @@ function BuildPlanComprehension({ plan }: { plan: BuildPlan }) {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {g.items.map((it, i) => (
               // §4 豁免 EXEMPTION-TRUNCATION ①：chip 被 ellipsis 截断，title 只复原同一个值的全文
-              <span key={`${it.k}-${i}`} className="badge" title={it.hint || it.k} style={{ fontSize: 10.5, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span key={`${it.k}-${i}`} className="badge" title={it.hint || it.k} style={{ fontSize: 12, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {it.k || "—"}
               </span>
             ))}
@@ -198,18 +198,18 @@ function ArtifactDiffCard({ a }: { a: ProducedArtifact }) {
   const color = draft ? "var(--amber,#DD9551)" : "var(--c-capacity,#36BFA5)";
   return (
     <div data-testid={`artifact-${a.kind}-${a.key}`} style={{ border: `1px solid ${color}`, borderRadius: 6, padding: "5px 8px", marginBottom: 4 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
         <span className="badge" style={{ color, borderColor: color }}>{a.action}</span>
         <b>{a.kind}:{a.key}</b>
         <span className="badge" style={{ marginLeft: "auto", color, borderColor: color }}>{draft ? "草稿（未生效）" : "已发布"}</span>
       </div>
       {/* diff 预览：before → after（红/绿） */}
-      <div data-testid={`artifact-diff-${a.kind}-${a.key}`} style={{ fontSize: 11, marginTop: 3, fontFamily: "monospace" }}>
-        <div style={{ color: "var(--danger,#E5484D)" }}>- {before}</div>
-        <div style={{ color: "var(--c-capacity,#36BFA5)" }}>+ {after}</div>
+      <div data-testid={`artifact-diff-${a.kind}-${a.key}`} style={{ fontSize: 12, marginTop: 3, fontFamily: "monospace" }}>
+        <div style={{ color: "var(--danger-txt,#E5484D)" }}>- {before}</div>
+        <div style={{ color: "var(--c-capacity-txt,#36BFA5)" }}>+ {after}</div>
       </div>
       {draft && (
-        <div style={{ fontSize: 10.5, color: "var(--amber,#DD9551)", marginTop: 2 }}>
+        <div style={{ fontSize: 12, color: "var(--amber-txt,#DD9551)", marginTop: 2 }}>
           ⏳ 逐产物 HITL：待页顶「待审批补齐」就地批复后该模块生效（R4 真值经 Action）。
         </div>
       )}
@@ -221,7 +221,7 @@ function ModuleSyncMatrixView({ artifacts }: { artifacts: ProducedArtifact[] }) 
   const [expanded, setExpanded] = useState<string | null>(null);
   const matrix = buildModuleSyncMatrix(artifacts).filter((row) => row.status !== "NONE");
   if (matrix.length === 0) {
-    return <div data-testid="sbr-syncmatrix" style={{ fontSize: 11.5, color: "var(--muted)" }}>模块同步矩阵：本次未新增下游制品。</div>;
+    return <div data-testid="sbr-syncmatrix" style={{ fontSize: 12, color: "var(--muted)" }}>模块同步矩阵：本次未新增下游制品。</div>;
   }
   return (
     <div data-testid="sbr-syncmatrix">
@@ -233,7 +233,7 @@ function ModuleSyncMatrixView({ artifacts }: { artifacts: ProducedArtifact[] }) 
           <div>点模块展开逐产物卡片 + diff；深链去核对。</div>
         </details>
       </div>
-      <table className="cmp" style={{ fontSize: 11.5 }}>
+      <table className="cmp" style={{ fontSize: 12 }}>
         <thead>
           <tr><th></th><th>模块</th><th>新增</th><th>更新</th><th>复用</th><th>状态</th><th>制品</th><th>核对</th></tr>
         </thead>
@@ -253,7 +253,7 @@ function ModuleSyncMatrixView({ artifacts }: { artifacts: ProducedArtifact[] }) 
                   <td><span className="badge" style={{ color, borderColor: color }}>{row.status === "PUBLISHED" ? "已发布" : "草稿（未生效）"}</span></td>
                   {/* §4 豁免 EXEMPTION-TRUNCATION ②：窄列 ellipsis 截断，title 复原全量 refs */}
                   <td title={row.artifactRefs.join(", ")} style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.artifactRefs.join(", ") || "—"}</td>
-                  <td><a href={row.deepLink} style={{ fontSize: 11 }} onClick={(e) => e.stopPropagation()}>去核对 →</a></td>
+                  <td><a href={row.deepLink} style={{ fontSize: 12 }} onClick={(e) => e.stopPropagation()}>去核对 →</a></td>
                 </tr>
                 {open && (
                   <tr>
@@ -292,7 +292,7 @@ function ClosureVizView({ closure }: { closure: ClosureReport }) {
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: broken.length ? 4 : 0 }}>
         {badges.map((b) => (
           <span key={b.k} className="badge" data-testid={`r12-${b.ok ? "ok" : "missing"}`}
-            style={{ fontSize: 10.5, color: b.ok ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)", borderColor: b.ok ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)" }}
+            style={{ fontSize: 12, color: b.ok ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)", borderColor: b.ok ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)" }}
             /* §4 豁免 EXEMPTION-TRUNCATION ③：徽章墙密集重复容器，逐个挂 `?` 反而堆料 */
             title={b.note}>
             {b.ok ? "✓" : "✗"} {b.k}{b.hard ? "(HARD)" : "(SOFT)"}
@@ -300,7 +300,7 @@ function ClosureVizView({ closure }: { closure: ClosureReport }) {
         ))}
       </div>
       {broken.length > 0 && (
-        <ul style={{ margin: "2px 0 0", color: "var(--danger,#E5484D)", fontSize: 11 }}>
+        <ul style={{ margin: "2px 0 0", color: "var(--danger-txt,#E5484D)", fontSize: 12 }}>
           {broken.map((f, i) => <li key={i}>[{f.kind}] {f.ref} — {f.detail ?? f.status}</li>)}
         </ul>
       )}
@@ -325,17 +325,17 @@ export function StoryCoverageView({ coverage }: { coverage: StoryCoverageSentenc
       <div style={{ marginBottom: 2, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span>故事覆盖度：</span>
         <b data-testid="sbr-coverage-pct" style={{ color: pctColor }}>{pct}%</b>
-        <span style={{ color: "var(--muted)", fontSize: 11.5 }}>（{total - unmapped}/{total} 句已建模）</span>
+        <span style={{ color: "var(--muted)", fontSize: 12 }}>（{total - unmapped}/{total} 句已建模）</span>
         {unmapped === 0
-          ? <span style={{ color: "var(--c-capacity,#36BFA5)" }}>逐句已建模 ✓（没遗漏）</span>
-          : <span style={{ color: "var(--amber,#DD9551)" }}>{unmapped} 句未映射（未理解/未建模）</span>}
+          ? <span style={{ color: "var(--c-capacity-txt,#36BFA5)" }}>逐句已建模 ✓（没遗漏）</span>
+          : <span style={{ color: "var(--amber-txt,#DD9551)" }}>{unmapped} 句未映射（未理解/未建模）</span>}
       </div>
       {/* 理解确认门·横幅：有读不懂句 → 诚实劝阻在未理解上建域（可拒·补充故事后重建）；下方「理解确认门」把推演/晋升真锁住（守 KILL-MOCK-RED「空壳冒充真派生」用户侧闸）。 */}
       {/* WO-UI-DECLUTTER-TOP3：**警告本身**（几句读不懂 + 建议拒绝）留第一层 —— 它是规范 §1 的「状态」，
           降层等于把红灯藏起来。跟在后面的**理由**（为什么不能在未理解上建域、下游锁了哪些动作）
           属解释 → 折叠。一字未删（§1 红线）。 */}
       {unmapped > 0 && (
-        <div data-testid="sbr-coverage-reject-gate" style={{ fontSize: 11.5, color: "var(--danger,#E5484D)", marginBottom: 4 }}>
+        <div data-testid="sbr-coverage-reject-gate" style={{ fontSize: 12, color: "var(--danger-txt,#E5484D)", marginBottom: 4 }}>
           ⚠ 有 {unmapped} 句系统读不懂 —— 建议**拒绝**建域
           <details style={FOLD_SUM_WRAP}>
             <summary style={FOLD_SUM}>为什么？</summary>
@@ -345,7 +345,7 @@ export function StoryCoverageView({ coverage }: { coverage: StoryCoverageSentenc
       )}
       {coverage.map((c, i) => (
         <div key={i} data-testid={`coverage-${c.mapped ? "mapped" : "unmapped"}`}
-          style={{ fontSize: 11, padding: "2px 6px", marginBottom: 2, borderLeft: `3px solid ${c.mapped ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)"}`, background: c.mapped ? "transparent" : "var(--danger,#E5484D)14" }}>
+          style={{ fontSize: 12, padding: "2px 6px", marginBottom: 2, borderLeft: `3px solid ${c.mapped ? "var(--c-capacity,#36BFA5)" : "var(--danger,#E5484D)"}`, background: c.mapped ? "transparent" : "var(--danger,#E5484D)14" }}>
           {c.mapped ? "✓" : "⚠ 未理解"} {c.text}
           {c.refs.length > 0 && <span style={{ color: "var(--muted)" }}> → {c.refs.join(", ")}</span>}
         </div>
@@ -372,7 +372,7 @@ export function ComprehensionGate({ run, children }: { run: StoryBuildRun; child
   if (!blocked) {
     return (
       <div data-testid={`sbr-comprehension-gate-${run.id}`}>
-        <div data-testid={`sbr-gate-confirmed-${run.id}`} style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
+        <div data-testid={`sbr-gate-confirmed-${run.id}`} style={{ fontSize: 12, color: "var(--muted)", marginBottom: 4 }}>
           ✓ 已确认理解 {unmapped} 句未覆盖项的风险（留痕）——以下动作已解锁。
         </div>
         {children}
@@ -381,7 +381,7 @@ export function ComprehensionGate({ run, children }: { run: StoryBuildRun; child
   }
   return (
     <div data-testid={`sbr-comprehension-gate-${run.id}`}>
-      <div data-testid={`sbr-act5-locked-${run.id}`} style={{ fontSize: 11.5, color: "var(--danger,#E5484D)", border: "1px solid var(--danger,#E5484D)", borderRadius: 4, padding: "6px 8px" }}>
+      <div data-testid={`sbr-act5-locked-${run.id}`} style={{ fontSize: 12, color: "var(--danger-txt,#E5484D)", border: "1px solid var(--danger,#E5484D)", borderRadius: 4, padding: "6px 8px" }}>
         {/* 锁本身（锁了几句、锁了哪三个动作）是**状态** → 第一层；
             「为什么要锁」的理据 → 折叠（规范 §1）。锁的可见性一点没减。 */}
         <div style={{ marginBottom: 4 }}>
@@ -392,7 +392,7 @@ export function ComprehensionGate({ run, children }: { run: StoryBuildRun; child
           </details>
         </div>
         {ack === "rejected" && (
-          <div data-testid={`sbr-gate-rejected-${run.id}`} style={{ color: "var(--amber,#DD9551)", marginBottom: 4 }}>
+          <div data-testid={`sbr-gate-rejected-${run.id}`} style={{ color: "var(--amber-txt,#DD9551)", marginBottom: 4 }}>
             已拒绝建域：请在上方场景脚本补充/改写未理解的句子后重建（动作保持锁定）。
           </div>
         )}
@@ -428,7 +428,7 @@ function InferenceButton({ run }: { run: StoryBuildRun }) {
       (run.closureReport && !run.closureReport.gatePassed ? "CLOSURE_GATE_FAILED" : undefined) ??
       (run.scaffoldReceipt && !run.scaffoldReceipt.fullChainOk ? "CHAIN_BROKEN" : "UNKNOWN");
     return (
-      <div data-testid={`sbr-inference-${run.id}`} style={{ fontSize: 11.5, color: "var(--danger,#E5484D)" }}>
+      <div data-testid={`sbr-inference-${run.id}`} style={{ fontSize: 12, color: "var(--danger-txt,#E5484D)" }}>
         ⛔ 推演当前不可达：断在 <b data-testid={`sbr-inference-gap-${run.id}`}>{code}</b>（先补齐缺口/工单，守"绿测试≠能用"）
       </div>
     );
@@ -443,9 +443,9 @@ function InferenceButton({ run }: { run: StoryBuildRun }) {
 }
 
 const VERIFY_STATUS: Record<string, { label: string; color: string }> = {
-  VERIFIED: { label: "已验证可答 ✓", color: "var(--c-capacity, #36BFA5)" },
-  NOT_VERIFIED: { label: "未验证（不可答）✗", color: "var(--danger, #E5484D)" },
-  BUILD_STATIC: { label: "兜底静态（未过 QOS 运行时）", color: "var(--amber, #DD9551)" },
+  VERIFIED: { label: "已验证可答 ✓", color: "var(--c-capacity-txt, #36BFA5)" },
+  NOT_VERIFIED: { label: "未验证（不可答）✗", color: "var(--danger-txt, #E5484D)" },
+  BUILD_STATIC: { label: "兜底静态（未过 QOS 运行时）", color: "var(--amber-txt, #DD9551)" },
   PENDING: { label: "待验证", color: "var(--muted, #888)" },
 };
 /**
@@ -468,7 +468,7 @@ function VerificationPanel({ run }: { run: StoryBuildRun }) {
   return (
     <div data-testid={`sbr-verify-${run.id}`} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
       {v && (
-        <span data-testid={`sbr-verify-status-${run.id}`} style={{ fontSize: 11.5, color: meta!.color, fontWeight: 600 }}>
+        <span data-testid={`sbr-verify-status-${run.id}`} style={{ fontSize: 12, color: meta!.color, fontWeight: 600 }}>
           终态验证：{meta!.label}
           {v.status === "NOT_VERIFIED" && v.gapCode ? ` · 断在 ${v.gapCode}` : ""}
         </span>
@@ -511,7 +511,7 @@ export function DomainPromotePanel({ run }: { run: StoryBuildRun }) {
         {governed ? "已治理（GOVERNED）" : "未审核·隔离（UNVERIFIED）"}
       </span>
       {governed ? (
-        <span style={{ fontSize: 11.5, color: "var(--muted)" }} data-testid={`sbr-promote-summary-${run.id}`}>
+        <span style={{ fontSize: 12, color: "var(--muted)" }} data-testid={`sbr-promote-summary-${run.id}`}>
           整域已晋升：迁入 {run.domainPromotion?.migratedObjects ?? 0} 对象 / {run.domainPromotion?.migratedDatasets ?? 0} 原始表
           {run.domainPromotion?.promotedSolvers?.length ? ` + 求解器 ${run.domainPromotion.promotedSolvers.join("、")}` : ""}
         </span>
@@ -559,7 +559,7 @@ function QuickSynthPanel() {
     <div className="panel" style={{ marginBottom: 14 }} data-testid="db-quick-synth">
       <div className="section-title">快速合成（模板驱动 · 无需故事）</div>
       {/* WO-UI-DECLUTTER-TOP3：整段是「这个入口和上面那个有什么区别」的解释 → 折叠（规范 §1）。 */}
-      <details style={{ fontSize: 11.5, ...FOLD, marginTop: 0, marginBottom: 8 }}>
+      <details style={{ fontSize: 12, ...FOLD, marginTop: 0, marginBottom: 8 }}>
         <summary style={FOLD_SUM}>和「故事建域」有什么区别？</summary>
         <div>已知行业模板直接出 demo/测试数据（无 LLM、确定性 R6）；产物统一落连接器，可在连接器页核对。与上方「故事建域」并列双入口。</div>
       </details>
@@ -593,7 +593,7 @@ function QuickSynthPanel() {
               ))}
             </tbody>
           </table>
-          <Link to="/admin/connections" data-testid="qs-connections-link" style={{ fontSize: 11 }}>→ 连接器页核对产物</Link>
+          <Link to="/admin/connections" data-testid="qs-connections-link" style={{ fontSize: 12 }}>→ 连接器页核对产物</Link>
         </div>
       )}
     </div>
@@ -615,7 +615,7 @@ function GrowthConsolePanel() {
       <div className="section-title">
         自检与成长 · 缺口工单 <span className="badge amber" data-testid="db-ticket-open">{open} 未结</span>
       </div>
-      <details style={{ fontSize: 11.5, ...FOLD, marginTop: 0, marginBottom: 6 }}>
+      <details style={{ fontSize: 12, ...FOLD, marginTop: 0, marginBottom: 6 }}>
         <summary style={FOLD_SUM}>这些工单从哪来？</summary>
         <div>
           三页归一（自成长收编）：建域/推演自检出的功能缺口在此沉淀为工单（厂商中立施工），与每条历史记录区6 的功能缺失自检贯通。
@@ -623,10 +623,10 @@ function GrowthConsolePanel() {
         </div>
       </details>
       {tickets.length === 0 ? (
-        <div style={{ fontSize: 11.5, color: "var(--muted)" }}>暂无缺口工单（建域/推演自检全通过）。</div>
+        <div style={{ fontSize: 12, color: "var(--muted)" }}>暂无缺口工单（建域/推演自检全通过）。</div>
       ) : (
         tickets.slice(0, 5).map((t) => (
-          <div key={t.id} data-testid={`db-ticket-${t.id}`} style={{ fontSize: 11.5, display: "flex", gap: 8, padding: "3px 0", borderBottom: "1px solid var(--line)" }}>
+          <div key={t.id} data-testid={`db-ticket-${t.id}`} style={{ fontSize: 12, display: "flex", gap: 8, padding: "3px 0", borderBottom: "1px solid var(--line)" }}>
             <span className="badge">{t.gapCode}</span>
             <span style={{ flex: 1, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.fromQuestion}</span>
             <span className="badge">{t.status}</span>
@@ -690,7 +690,7 @@ function FdeGraph({ runId, liveMs, running }: { runId: string; liveMs: number; r
   if (nodes.length === 0) return null;
   return (
     <div data-testid={`fde-graph-${runId}`} style={{ margin: "8px 0 4px" }}>
-      <div className="muted" style={{ fontSize: 11, marginBottom: 6 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
         FDE 编排节点图（{graphQ.data?.summary.done}/{nodes.length} 完成{graphQ.data?.summary.failedAt ? ` · 断在 ${graphQ.data.summary.failedAt}` : ""}）
       </div>
       <div style={{ display: "flex", alignItems: "stretch", gap: 4, overflowX: "auto", paddingBottom: 4 }}>
@@ -707,21 +707,21 @@ function FdeGraph({ runId, liveMs, running }: { runId: string; liveMs: number; r
                 background: n.status === "FAILED" ? "rgba(229,72,77,0.08)" : "transparent",
               }}
             >
-              <div style={{ fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
                 <span style={{ color: FDE_NODE_COLOR[n.status] }}>{FDE_NODE_ICON[n.status] ?? "•"}</span>
                 {n.label}
               </div>
-              <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>
+              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                 {typeof n.durationMs === "number" ? `${n.durationMs}ms` : "—"}
                 {typeof n.io?.out === "number" && ` · 出${n.io.out}`}
               </div>
               {n.gapCode && (
-                <div data-testid={`fde-node-gapcode-${n.key}`} style={{ fontSize: 10, color: FDE_NODE_COLOR.FAILED, marginTop: 2 }}>
+                <div data-testid={`fde-node-gapcode-${n.key}`} style={{ fontSize: 12, color: FDE_NODE_COLOR.FAILED, marginTop: 2 }}>
                   缺口 {n.gapCode}
                 </div>
               )}
             </div>
-            {i < nodes.length - 1 && <span style={{ alignSelf: "center", color: "var(--muted2, #555)", fontSize: 11 }}>→</span>}
+            {i < nodes.length - 1 && <span style={{ alignSelf: "center", color: "var(--muted2, #555)", fontSize: 12 }}>→</span>}
           </Fragment>
         ))}
       </div>
@@ -737,10 +737,10 @@ const GAP_SIDE_LABEL: Record<string, string> = { content: "内容", structure: "
 function GapAnalysisTable({ gap }: { gap: GapAnalysis }) {
   return (
     <div style={{ marginTop: 6 }} data-testid="wf-gap-analysis">
-      <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
         比对现状：需 {gap.totals.needed} · 复用 {gap.totals.existing} · 新建 {gap.totals.toCreate} · 缺 {gap.totals.missing}
       </div>
-      <table style={{ fontSize: 11, borderCollapse: "collapse", width: "100%" }}>
+      <table style={{ fontSize: 12, borderCollapse: "collapse", width: "100%" }}>
         <thead>
           <tr style={{ textAlign: "left", color: "var(--muted, #888)" }}>
             <th style={{ padding: "2px 8px 2px 0" }}>模块</th><th>类</th><th>需要</th><th>复用</th><th>新建</th><th>缺</th>
@@ -752,8 +752,8 @@ function GapAnalysisTable({ gap }: { gap: GapAnalysis }) {
               <td style={{ padding: "2px 8px 2px 0" }}><code>{e.kind}</code></td>
               <td className="muted">{GAP_SIDE_LABEL[e.side] ?? e.side}</td>
               <td>{e.needed}</td>
-              <td style={{ color: "var(--c-capacity, #36BFA5)" }}>{e.existing}</td>
-              <td style={{ color: "var(--amber, #DD9551)" }}>{e.toCreate}</td>
+              <td style={{ color: "var(--c-capacity-txt, #36BFA5)" }}>{e.existing}</td>
+              <td style={{ color: "var(--amber-txt, #DD9551)" }}>{e.toCreate}</td>
               <td style={{ color: e.missing > 0 ? "var(--danger, #E5484D)" : undefined }}>{e.missing}</td>
             </tr>
           ))}
@@ -778,11 +778,11 @@ const SCAFFOLD_STATUS_COLOR: Record<string, string> = {
 function ScaffoldManifestTable({ manifest }: { manifest: ScaffoldManifestRecord }) {
   return (
     <div style={{ marginTop: 6 }} data-testid="wf-scaffold-manifest">
-      <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
         B 栈 scaffold 清单（单机可见{manifest.pendingBstack ? " · 待 B 对账生效" : " · 已对账"}）：{manifest.items.length} 项
         {manifest.pendingBstack && <span className="badge" style={{ marginLeft: 6, background: SCAFFOLD_STATUS_COLOR.PENDING_BSTACK, color: "#fff" }}>pending-bstack</span>}
       </div>
-      <table style={{ fontSize: 11, borderCollapse: "collapse", width: "100%" }}>
+      <table style={{ fontSize: 12, borderCollapse: "collapse", width: "100%" }}>
         <thead>
           <tr style={{ textAlign: "left", color: "var(--muted, #888)" }}>
             <th style={{ padding: "2px 8px 2px 0" }}>模块</th><th>制品</th><th>状态</th><th>定义</th>
@@ -883,9 +883,9 @@ function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number 
         工作流运行时{" "}
         {/* WO-UNIT-MEANING：徽章此前只有裸数——数的是**工作流运行实例条数**（下方每行一条 run），非步骤数。 */}
         <span className="badge" data-testid="wf-count">{runs.length} 次运行</span>
-        <label className="muted" style={{ fontSize: 11, marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+        <label className="muted" style={{ fontSize: 12, marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
           实时刷新
-          <select data-testid="wf-live" value={liveMs} onChange={(e) => setLiveMs(Number(e.target.value))} style={{ fontSize: 11 }}>
+          <select data-testid="wf-live" value={liveMs} onChange={(e) => setLiveMs(Number(e.target.value))} style={{ fontSize: 12 }}>
             {WF_LIVE_OPTIONS.map((o) => <option key={o.ms} value={o.ms}>{o.label}</option>)}
           </select>
         </label>
@@ -960,14 +960,14 @@ function WorkflowTimelinePanel({ script, seed }: { script: string; seed: number 
                       <div style={{ fontSize: 13 }}>
                         <code style={{ fontSize: 12 }}>{s.stepKey}</code> · {s.title}
                       </div>
-                      <div className="muted" style={{ fontSize: 11 }}>
+                      <div className="muted" style={{ fontSize: 12 }}>
                         {s.status}
                         {s.attempts > 1 && ` · 尝试 ${s.attempts}/${s.maxAttempts}`}
                         {typeof s.durationMs === "number" && ` · ${s.durationMs}ms`}
                         {s.detail && ` · ${s.detail}`}
                       </div>
                       {s.error && (
-                        <div style={{ fontSize: 11, color: WF_STATUS_COLOR.FAILED }} data-testid={`wf-step-error-${s.stepKey}`}>
+                        <div style={{ fontSize: 12, color: WF_STATUS_COLOR.FAILED }} data-testid={`wf-step-error-${s.stepKey}`}>
                           错误 [{s.error.code}{s.error.retryable ? " · 可重试" : " · 致命"}]：{s.error.message}
                         </div>
                       )}
@@ -1086,7 +1086,7 @@ export default function DataBuilderPage() {
           </div>
         </details>
         {preset && (
-          <div data-testid="db-preset" style={{ marginTop: 8, fontSize: 11.5, color: "var(--muted)" }}>
+          <div data-testid="db-preset" style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>
             预设：<b>{preset.name}</b> v{preset.version}{" "}
             <span className="badge">{preset.status}</span> · 闭包(对象 {preset.config.closure.object.mode}/data{" "}
             {preset.config.closure.data.mode}/正向 {preset.config.closure.forward.mode}) · 确定性 seed {preset.config.determinism.seed}
@@ -1174,7 +1174,7 @@ export default function DataBuilderPage() {
               <div
                 key={p.name}
                 data-testid={`db-phase-${p.name}`}
-                style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 9px", borderRadius: 6, fontSize: 11.5, borderLeft: `3px solid ${PHASE_COLOR[p.status]}`, background: "var(--panel2,#1113)" }}
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 9px", borderRadius: 6, fontSize: 12, borderLeft: `3px solid ${PHASE_COLOR[p.status]}`, background: "var(--panel2,#1113)" }}
               >
                 <span style={{ minWidth: 110, fontWeight: 600 }}>{PHASE_LABEL[p.name]}</span>
                 <span className="badge" style={{ color: PHASE_COLOR[p.status], borderColor: PHASE_COLOR[p.status] }}>{p.status}</span>
@@ -1191,7 +1191,7 @@ export default function DataBuilderPage() {
               </b>{" "}
               · 对象绑定 {job.closure.objectsBound} · data 孤儿 {job.closure.dataOrphans} · 正向缺失 {job.closure.forwardMissing}
               {!job.closure.gatePassed && (
-                <ul style={{ margin: "6px 0 0", color: "var(--danger,#E5484D)" }}>
+                <ul style={{ margin: "6px 0 0", color: "var(--danger-txt,#E5484D)" }}>
                   {job.closure.findings
                     .filter((f) => f.status === "FAILED" || f.status === "MISSING")
                     .map((f, i) => (
@@ -1205,7 +1205,7 @@ export default function DataBuilderPage() {
           )}
           {/* dry-run 预览 */}
           {job.preview && (
-            <pre data-testid="db-preview" style={{ fontSize: 11, background: "var(--panel2,#1113)", padding: 8, borderRadius: 6, overflowX: "auto" }}>
+            <pre data-testid="db-preview" style={{ fontSize: 12, background: "var(--panel2,#1113)", padding: 8, borderRadius: 6, overflowX: "auto" }}>
               {JSON.stringify(job.preview, null, 2)}
             </pre>
           )}
@@ -1229,7 +1229,7 @@ export default function DataBuilderPage() {
         </div>
         {/* WO-UI-DECLUTTER-TOP3：这块说明 + 两个按钮原来各挂的 `title=`（规范 §2 禁用原生 tooltip）
             统一收进这一个折叠区；按钮侧只留 `aria-label`。一字未删（§1 红线）。 */}
-        <details style={{ fontSize: 11.5, ...FOLD, marginTop: 0, marginBottom: 8 }}>
+        <details style={{ fontSize: 12, ...FOLD, marginTop: 0, marginBottom: 8 }}>
           <summary style={FOLD_SUM}>这里记的是什么？两个按钮各做什么？</summary>
           <div style={{ marginTop: 4 }}>
             每条 = 一次「故事脚本 → 全栈建域 → 闭包 → 产物」的可回放记录；源数据落在数据连接器页（可下钻）。
@@ -1239,7 +1239,7 @@ export default function DataBuilderPage() {
         </details>
         {backfillReport && (
           <div data-testid="sbr-backfill-report" style={{ fontSize: 12, marginBottom: 8, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--line)" }}>
-            存量回填压测：覆盖 <b>{backfillReport.total}</b> 个推演能力 · 成功 <b style={{ color: "var(--c-capacity,#36BFA5)" }}>{backfillReport.succeeded}</b> · 失败 <b style={{ color: backfillReport.failed ? "var(--danger,#E5484D)" : "inherit" }}>{backfillReport.failed}</b>
+            存量回填压测：覆盖 <b>{backfillReport.total}</b> 个推演能力 · 成功 <b style={{ color: "var(--c-capacity-txt,#36BFA5)" }}>{backfillReport.succeeded}</b> · 失败 <b style={{ color: backfillReport.failed ? "var(--danger,#E5484D)" : "inherit" }}>{backfillReport.failed}</b>
             （覆盖率 {Math.round((backfillReport.succeeded / Math.max(1, backfillReport.total)) * 100)}%）
           </div>
         )}
@@ -1254,7 +1254,7 @@ export default function DataBuilderPage() {
             return (
               <div key={r.id} data-testid={`sbr-item-${r.id}`} style={{ borderBottom: "1px solid var(--line)", padding: "8px 0" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }} onClick={() => setExpandedRun(open ? null : r.id)}>
-                  <span style={{ fontSize: 11, color: "var(--muted)" }}>{open ? "▾" : "▸"}</span>
+                  <span style={{ fontSize: 12, color: "var(--muted)" }}>{open ? "▾" : "▸"}</span>
                   <span
                     className="badge"
                     data-testid={`sbr-status-${r.id}`}
@@ -1263,7 +1263,7 @@ export default function DataBuilderPage() {
                     {r.status === "PENDING_INPUT" ? "待补录" : r.status}
                   </span>
                   <span style={{ flex: 1, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.script}</span>
-                  <span style={{ fontSize: 11, color: "var(--muted)" }}>{r.createdAt.slice(0, 19).replace("T", " ")}</span>
+                  <span style={{ fontSize: 12, color: "var(--muted)" }}>{r.createdAt.slice(0, 19).replace("T", " ")}</span>
                 </div>
                 {open && pendingInput && (
                   <ManifestForm run={r} pending={submitM.isPending} onSubmit={(inputs) => submitM.mutate({ id: r.id, inputs })} />
@@ -1281,7 +1281,7 @@ export default function DataBuilderPage() {
                     <ModuleSyncMatrixView artifacts={r.producedArtifacts ?? []} />
                     <div>
                       产出源数据：<b>{r.producedConnections.length}</b> 连接器 · <b>{r.producedDatasets.length}</b> 数据集{" "}
-                      <Link to="/admin/connections" style={{ fontSize: 11 }}>→ 连接器页下钻</Link>
+                      <Link to="/admin/connections" style={{ fontSize: 12 }}>→ 连接器页下钻</Link>
                     </div>
                     {r.scaffoldReceipt && (
                       <div>
@@ -1294,7 +1294,7 @@ export default function DataBuilderPage() {
                       </div>
                     )}
                     {r.answer && (
-                      <div data-testid={`sbr-answer-${r.id}`} style={{ fontSize: 11.5 }}>
+                      <div data-testid={`sbr-answer-${r.id}`} style={{ fontSize: 12 }}>
                         推演答案（回填）：<span className="mono">{r.answer}</span>
                       </div>
                     )}

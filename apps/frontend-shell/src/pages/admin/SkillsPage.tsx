@@ -77,7 +77,7 @@ export default function SkillsPage() {
               {/* 写模式在列表里就要看得见（判定单一出处在契约，不在这里重写一遍）。
                   缺省不显示——「没标写模式」不等于「后端说它是只读」，只等于「它没进写模式」。 */}
               {isWriteModeSkill(s) && <span className="badge red" data-testid="skill-list-write-mode">写</span>}
-              <span className="mono" style={{ marginLeft: "auto", fontSize: 10 }}>v{s.version}</span>
+              <span className="mono" style={{ marginLeft: "auto", fontSize: 12 }}>v{s.version}</span>
             </button>
           ))}
         </div>

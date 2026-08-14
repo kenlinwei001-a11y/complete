@@ -143,7 +143,7 @@ export default function DashboardView({ view }: ViewRendererProps) {
               onClick={() => navigate(m.route)}
             >
               <b style={{ color: m.color }}>{m.title}</b>
-              <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 4 }}>{m.sub}</div>
+              <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 4 }}>{m.sub}</div>
             </button>
           ))}
         </div>
@@ -186,7 +186,7 @@ function ProblemPanel() {
   return (
     <div className="panel" style={{ marginTop: 16 }} data-testid="dash-problems">
       <div className="section-title">{zh.dash.problemsTitle(problems.length)}</div>
-      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>{zh.dash.problemsSub(orderCount, problems.length)}</div>
+      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 8 }}>{zh.dash.problemsSub(orderCount, problems.length)}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
         {problems.map((p) => (
           // 点击下钻订单全链聚合并自动展开该问题的逐单根因 DAG（PRD-cockpit §2.3 问题归并→台账逐单根因）。
@@ -201,8 +201,8 @@ function ProblemPanel() {
             onClick={() => navigate(`/v/order-chain?problem=${encodeURIComponent(p.category)}`)}
           >
             <b>{p.title}</b>
-            <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 4 }}>
-              影响 <b className="mono">{p.orderCount}</b> 单 · <b className="mono">{p.financeImpact.toFixed(0)}</b> 亿 <span style={{ color: "var(--accent)" }}>›</span>
+            <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 4 }}>
+              影响 <b className="mono">{p.orderCount}</b> 单 · <b className="mono">{p.financeImpact.toFixed(0)}</b> 亿 <span style={{ color: "var(--accent-txt)" }}>›</span>
             </div>
           </button>
         ))}
@@ -310,7 +310,7 @@ function SdgSideBlock({ title, side, kind, unit, note }: { title: string; side: 
     <div data-testid={`sdg-side-${kind}`}>
       <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
         <span style={{ color }}>{title}</span>
-        <span style={{ fontSize: 11, color: "var(--muted2)", fontWeight: 400 }}> · 占缺口 <b className="mono" data-testid={`sdg-${kind}-pct`}>{side.pct}%</b> · 贡献 <b className="mono">{side.contribution}</b>{unit}</span>
+        <span style={{ fontSize: 12, color: "var(--muted2)", fontWeight: 400 }}> · 占缺口 <b className="mono" data-testid={`sdg-${kind}-pct`}>{side.pct}%</b> · 贡献 <b className="mono">{side.contribution}</b>{unit}</span>
       </div>
       {side.drivers.length === 0 ? (
         <div className="badge" style={{ color: "var(--muted2)" }} data-testid={`sdg-${kind}-empty`}>该侧无驱动叶 · 诚实空（未编造）</div>
@@ -318,15 +318,15 @@ function SdgSideBlock({ title, side, kind, unit, note }: { title: string; side: 
         <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
           {side.drivers.map((d) => (
             <div key={d.id} className="panel" data-testid={`sdg-leaf-${d.id}`} style={{ padding: 6, borderLeft: `2px solid ${color}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontSize: 11.5 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontSize: 12 }}>
                 <span>{d.factor}</span>
                 <b className="mono" style={{ whiteSpace: "nowrap" }}>{d.contribution}{unit} · {Math.round((d.share ?? 0) * 100)}%</b>
               </div>
               {d.provenance?.drillType && (
                 // 下钻真对象（R13）：数据源 = drillType.drillId.drillField · 当前值 · 实测/派生标注。
-                <div style={{ fontSize: 10, color: "var(--muted2)", marginTop: 2 }} data-testid={`sdg-prov-${d.id}`}>
+                <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 2 }} data-testid={`sdg-prov-${d.id}`}>
                   下钻 {d.provenance.drillType}{d.provenance.drillId ? `.${d.provenance.drillId}` : ""}.{d.provenance.drillField} = <span className="mono">{d.provenance.drillValue}</span>
-                  {d.provenance.kind ? <span className="badge" style={{ marginLeft: 4, fontSize: 9.5 }}>{d.provenance.kind}</span> : null}
+                  {d.provenance.kind ? <span className="badge" style={{ marginLeft: 4, fontSize: 12 }}>{d.provenance.kind}</span> : null}
                 </div>
               )}
             </div>
@@ -389,7 +389,7 @@ function SupplyDemandAttributionPanel() {
     <div className="panel" style={{ marginTop: 16 }} data-testid="dash-supply-demand">
       <div className="section-title">供需失衡双向归因</div>
       {/* 第一层留**数值**（总缺口）；「怎么分解出来的」属口径 → 折叠（规范 §1 / §2 R-UI-3）。 */}
-      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 8 }}>
         产销总缺口 <b className="mono" data-testid="sdg-total">{view.totalGap}</b> {view.unit}
         <details className={styles.foldInline}>
           <summary className={styles.foldSum}>怎么分解的？</summary>
@@ -397,7 +397,7 @@ function SupplyDemandAttributionPanel() {
         </details>
       </div>
       {/* 双向占比条（需求端 ⊥ 供给端 + residual = 100%·勾稽可视） */}
-      <div data-testid="sdg-split" style={{ display: "flex", height: 22, borderRadius: 4, overflow: "hidden", fontSize: 10, marginBottom: 12, background: "var(--panel2)" }}>
+      <div data-testid="sdg-split" style={{ display: "flex", height: 22, borderRadius: 4, overflow: "hidden", fontSize: 12, marginBottom: 12, background: "var(--panel2)" }}>
         {demand.pct > 0 && <div style={{ width: `${demand.pct}%`, background: "#7E8BEE", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", whiteSpace: "nowrap" }}>需求端 {demand.pct}%</div>}
         {supply.pct > 0 && <div style={{ width: `${supply.pct}%`, background: "#DD7E9E", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", whiteSpace: "nowrap" }}>供给端 {supply.pct}%</div>}
         {view.residualPct > 0 && <div style={{ width: `${view.residualPct}%`, background: "rgba(103,115,127,.5)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", whiteSpace: "nowrap" }}>residual {view.residualPct}%</div>}
@@ -424,10 +424,10 @@ function SupplyDemandAttributionPanel() {
         />
       </div>
       {/* 勾稽可视：需求端贡献 + 供给端贡献 + residual = 总缺口（客户端亲验·非只信标志） */}
-      <div data-testid="sdg-recon" style={{ marginTop: 12, fontSize: 11.5, color: "var(--muted)" }}>
+      <div data-testid="sdg-recon" style={{ marginTop: 12, fontSize: 12, color: "var(--muted)" }}>
         勾稽 需求端 <b className="mono">{demand.contribution}</b> + 供给端 <b className="mono">{supply.contribution}</b> + residual <b className="mono">{view.residual}</b> = <b className="mono" data-testid="sdg-recon-sum">{view.reconSum}</b> {view.unit}
         <span style={{ margin: "0 6px" }}>vs 总缺口</span><b className="mono">{view.totalGap}</b> {view.unit}
-        <span className="badge" data-testid="sdg-reconciled" style={{ marginLeft: 8, color: view.reconciled ? "var(--ok)" : "var(--danger)" }}>{view.reconciled ? "勾稽通过 ✓" : "勾稽未通过"}</span>
+        <span className="badge" data-testid="sdg-reconciled" style={{ marginLeft: 8, color: view.reconciled ? "var(--ok-txt)" : "var(--danger-txt)" }}>{view.reconciled ? "勾稽通过 ✓" : "勾稽未通过"}</span>
       </div>
     </div>
   );
@@ -451,7 +451,7 @@ function DelayPill({ delay }: { delay: number }) {
   if (delay <= 0) return <span style={{ color: "var(--muted2)" }}>—</span>;
   const heavy = delay >= 4;
   return (
-    <span className="mono" style={{ display: "inline-block", fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 999, background: heavy ? "rgba(229,72,77,.12)" : "rgba(232,89,12,.12)", color: heavy ? "var(--danger)" : "#E8590C" }}>
+    <span className="mono" style={{ display: "inline-block", fontSize: 12, fontWeight: 600, padding: "2px 7px", borderRadius: 999, background: heavy ? "rgba(229,72,77,.12)" : "rgba(232,89,12,.12)", color: heavy ? "var(--danger-txt)" : "#E8590C" }}>
       +{delay}d
     </span>
   );
@@ -529,14 +529,14 @@ function OrderLedgerWidget() {
               <td className="mono" style={{ textAlign: "right" }}>{r.qty.toLocaleString()}</td>
               <td className="mono" style={{ textAlign: "right", color: "var(--muted2)" }}>{r.due}</td>
               <td style={{ textAlign: "right" }}><DelayPill delay={r.delay} /></td>
-              <td style={{ fontSize: 11 }}>{[...new Set(r.risks.map((k) => k.factor))].join("/") || "—"}</td>
+              <td style={{ fontSize: 12 }}>{[...new Set(r.risks.map((k) => k.factor))].join("/") || "—"}</td>
             </tr>
           ))}
         </tbody>
       </table>
       {/* 假5 披露脚注：综合毛利率为估算口径（SEG_REGISTRY 参考价派生·非 metric_rollup 财务实测）。
           诚实位随明细一起进第二层 —— 第一层的毛利率数字上仍挂着 `Provenance` 角标（可见记号未丢·规范 §1）。 */}
-      <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 6 }} data-testid="dash-ledger-gmnote">{zh.dash.ledgerGmNote}</div>
+      <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5, marginTop: 6 }} data-testid="dash-ledger-gmnote">{zh.dash.ledgerGmNote}</div>
       </details>
     </div>
   );
@@ -600,9 +600,9 @@ function PlanDrillWidget() {
               style={{ padding: 8, minWidth: 130, textAlign: "left", cursor: "pointer", borderLeft: `3px solid ${k.offTarget ? "#DD7E9E" : k.status === "AMBER" ? "#E8B54A" : "#62BE77"}` }}
               onClick={() => setOpenKpi(openKpi === k.kpiId ? null : k.kpiId)}
             >
-              <div style={{ fontSize: 11, color: "var(--muted)" }}>{k.name}</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--txt)" }}>{k.actual}<small style={{ fontSize: 10 }}>{k.unit}</small></div>
-              <div style={{ fontSize: 10, color: k.offTarget ? "#DD7E9E" : "var(--muted2)" }}>目标 {k.target}{k.unit}{k.offTarget ? " · 未达成" : ""}</div>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>{k.name}</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--txt)" }}>{k.actual}<small style={{ fontSize: 12 }}>{k.unit}</small></div>
+              <div style={{ fontSize: 12, color: k.offTarget ? "#DD7E9E" : "var(--muted2)" }}>目标 {k.target}{k.unit}{k.offTarget ? " · 未达成" : ""}</div>
             </button>
           ))}
         </div>
@@ -755,15 +755,15 @@ function MetricStrip({ metrics, selectedKey, onSelect }: { metrics: MetricRow[] 
   });
   // 综合达成健康度（真派生）：越线数 → 良好/中等/偏弱（顶部汇总头·非写死）。
   const missCount = rows.filter((m) => m.miss).length;
-  const health = missCount === 0 ? { word: "良好", color: "var(--ok)" } : missCount <= 1 ? { word: "中等", color: "var(--amber)" } : { word: "偏弱", color: "var(--danger)" };
+  const health = missCount === 0 ? { word: "良好", color: "var(--ok-txt)" } : missCount <= 1 ? { word: "中等", color: "var(--amber-txt)" } : { word: "偏弱", color: "var(--danger-txt)" };
   return (
     <BlockConversable blockId="metric-strip" blockType="metric-strip" blockTitle="经营指标条（KPI 达标）" getData={msBlockData} provenanceRef="metric_rollup">
     <div data-testid="metric-strip" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {/* 顶部「综合达成健康度」汇总头（真派生自越线数） */}
       <div data-testid="metric-health" style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 11, color: "var(--muted)" }}>综合达成健康度</span>
+        <span style={{ fontSize: 12, color: "var(--muted)" }}>综合达成健康度</span>
         <b style={{ fontSize: 22, fontWeight: 700, color: health.color, letterSpacing: "0.02em" }}>{health.word}</b>
-        <span style={{ fontSize: 11, color: "var(--muted2)" }}>{rows.length} 项指标 · {missCount} 项越线</span>
+        <span style={{ fontSize: 12, color: "var(--muted2)" }}>{rows.length} 项指标 · {missCount} 项越线</span>
       </div>
       {rows.map((m) => {
         const status = m.miss ? "var(--danger)" : "var(--ok)";
@@ -791,9 +791,9 @@ function MetricStrip({ metrics, selectedKey, onSelect }: { metrics: MetricRow[] 
               <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, color: "var(--txt)" }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: status, flex: "none" }} />
                 {m.name}
-                <span style={{ fontSize: 10, color: selected ? "var(--accent)" : "var(--muted2)" }}>{selected ? "下钻中 ›" : "下钻 ›"}</span>
+                <span style={{ fontSize: 12, color: selected ? "var(--accent-txt)" : "var(--muted2)" }}>{selected ? "下钻中 ›" : "下钻 ›"}</span>
               </span>
-              <b className="mono" style={{ fontSize: 16, fontWeight: 700, color: m.miss ? "var(--danger)" : "var(--txt)" }}>
+              <b className="mono" style={{ fontSize: 16, fontWeight: 700, color: m.miss ? "var(--danger-txt)" : "var(--txt)" }}>
                 {formatKpiValue(m.actual, m.unit)}{m.unit}
               </b>
             </div>
@@ -801,7 +801,7 @@ function MetricStrip({ metrics, selectedKey, onSelect }: { metrics: MetricRow[] 
             <div style={{ height: 5, borderRadius: 999, background: "var(--line2)", overflow: "hidden" }}>
               <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: status }} />
             </div>
-            <div style={{ fontSize: 10.5, color: m.miss ? "var(--danger)" : "var(--muted2)" }}>
+            <div style={{ fontSize: 12, color: m.miss ? "var(--danger-txt)" : "var(--muted2)" }}>
               目标 {formatKpiValue(m.target, m.unit)}{m.unit} · 差 {m.delta > 0 ? "+" : ""}{formatKpiValue(m.delta, m.unit)}{m.unit}{m.miss ? " · 越线" : ""}
             </div>
           </button>
@@ -838,7 +838,7 @@ function RootCauseDrillWidget({ selectedMetric, fallbackDag }: { selectedMetric:
       <div data-testid="cockpit-rootcause" data-metric="">
         {/* 操作提示是**指引**不是结论，但它同时是空态的唯一出路 —— 故第一层留一句短的，
             括号里的适用范围折起来（规范 §1）。 */}
-        <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }} data-testid="rootcause-hint">
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 8 }} data-testid="rootcause-hint">
           点左侧「经营指标」任一行下钻根因
           <details className={styles.foldInline}>
             <summary className={styles.foldSum}>哪些行可以点？</summary>
@@ -859,9 +859,9 @@ function RootCauseDrillWidget({ selectedMetric, fallbackDag }: { selectedMetric:
       {achieved ? (
         // 达成·无缺口：诚实正向框（不空不报错）——solver noGap（levels 空）→ 仅展示达成结构根，不编缺口子树。
         <div className="panel" data-testid="rootcause-achieved" style={{ padding: 8, marginBottom: 8, borderLeft: "3px solid var(--ok)" }}>
-          <b style={{ color: "var(--ok)" }}>✓ 「{rm.name}」已达成 · 无缺口</b>
+          <b style={{ color: "var(--ok-txt)" }}>✓ 「{rm.name}」已达成 · 无缺口</b>
           {/* 实际 / 目标两个**数值**留第一层；「为什么不给缺口树」的诚实位说明折起来（规范 §1）。 */}
-          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 3 }}>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
             实际 <b className="mono">{rm.actual}{rm.unit}</b> ≥ 目标 <b className="mono">{rm.target}{rm.unit}</b>
             <details className={styles.foldInline}>
               <summary className={styles.foldSum}>那下方画的是什么？</summary>
@@ -871,7 +871,7 @@ function RootCauseDrillWidget({ selectedMetric, fallbackDag }: { selectedMetric:
         </div>
       ) : (
         // 指标名 + 缺口值留第一层；求解器名与归因方式属数据来源 → 折叠（规范 §1「浮层回答凭什么」）。
-        <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }} data-testid="rootcause-drilled">
+        <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }} data-testid="rootcause-drilled">
           下钻指标「<b>{rm.name}</b>」根因 · 缺口 <b className="mono">{ga.totalGap ?? rm.gap}{rm.unit}</b>
           <details className={styles.foldInline}>
             <summary className={styles.foldSum}>怎么算的？</summary>
@@ -942,19 +942,19 @@ function CounterfactualWidget({ def }: { def: DashboardWidgetDef }) {
             <option key={b} value={b}>{b}</option>
           ))}
         </select>
-        <span style={{ fontSize: 11, color: "var(--muted2)" }}>切换基地看各自双轨</span>
+        <span style={{ fontSize: 12, color: "var(--muted2)" }}>切换基地看各自双轨</span>
       </div>
       {/*
         WO-UNIT-MEANING · peakCut 是**张力指数的削减量**（Δ，同 risk_timeline 的 0–100 张力空间），
         此前渲染为裸「峰值削减 12」——会被读成 12 台/12%。差值不能套 formatTightness（那是水平值「张力12/100」，
         语义相反），故用 contracts `TIGHTNESS_METRIC` 的名称+量程拼出「削减 12 点张力（0–100 指数）」，量程不内联。
       */}
-      <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 4 }}>
+      <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 4 }}>
         <b data-testid="cf-base">{data.base}</b>·{data.factor}：不解决 vs「{data.mitigation}」—— 峰值削减 <b className="mono" data-testid="cf-peakcut">{data.delta.peakCut}</b> 点{TIGHTNESS_METRIC.label}（{TIGHTNESS_METRIC.scaleMin}–{TIGHTNESS_METRIC.scaleMax} 指数） · 越线日推迟 <b className="mono">{data.delta.crossDelayDays}</b> 天 · 少越线 <b className="mono">{data.delta.ordersSaved}</b> 日
       </div>
       {/* WO-UI-DECLUTTER-TOP3：纵轴量纲与量程是**口径**（规范 §2 R-UI-3 原文点名的那一类）→ 折叠。
           第一层留「纵轴 = 什么指标」这个**名字**与越线阈值这个**数值**，量程解释收进第二层。 */}
-      <div data-testid="cf-axis-caption" style={{ fontSize: 10.5, color: "var(--muted2)", marginBottom: 2 }}>
+      <div data-testid="cf-axis-caption" style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 2 }}>
         纵轴：{TIGHTNESS_METRIC.label} · 越线阈值 {formatTightness(data.threshold)}
         <details className={styles.foldInline}>
           <summary className={styles.foldSum}>量程？</summary>
@@ -966,10 +966,10 @@ function CounterfactualWidget({ def }: { def: DashboardWidgetDef }) {
         testId="cf-chart"
         option={{
           grid: { top: 24, bottom: 24, left: 36, right: 12 },
-          legend: { top: 0, textStyle: { color: "#9FB0C3", fontSize: 10 }, data: ["不解决", "处置后"] },
+          legend: { top: 0, textStyle: { color: "#9FB0C3", fontSize: 12 }, data: ["不解决", "处置后"] },
           tooltip: { trigger: "axis" },
           xAxis: { type: "category", data: days },
-          yAxis: { type: "value", max: TIGHTNESS_METRIC.scaleMax, name: `${TIGHTNESS_METRIC.label}(${TIGHTNESS_METRIC.scaleMin}–${TIGHTNESS_METRIC.scaleMax})`, nameTextStyle: { fontSize: 10 }, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
+          yAxis: { type: "value", max: TIGHTNESS_METRIC.scaleMax, name: `${TIGHTNESS_METRIC.label}(${TIGHTNESS_METRIC.scaleMin}–${TIGHTNESS_METRIC.scaleMax})`, nameTextStyle: { fontSize: 12 }, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
           series: [
             { name: "不解决", type: "line", smooth: true, data: data.baselineSeries, itemStyle: { color: "#DD7E9E" } },
             { name: "处置后", type: "line", smooth: true, data: data.mitigatedSeries, itemStyle: { color: "#62BE77" } },
@@ -1001,8 +1001,8 @@ function VersionToggleWidget({ data }: { data: { items?: { props: Record<string,
       {cur && (
         <div style={{ marginTop: 6, fontSize: 12 }} data-testid="version-detail">
           {/* WO-UNIT-MEANING：供给原为裸数字（同行缺口已带「万套」）→ 两者同口径显式标注，避免只有一半带单位。 */}
-          供给 <b className="mono">{cur.supply}</b> 万套 · 缺口 <b className="mono" style={{ color: cur.gap > 2 ? "var(--danger)" : "var(--ok)" }}>{cur.gap}</b> 万套
-          <div style={{ fontSize: 11, color: "var(--muted)" }}>{cur.note}</div>
+          供给 <b className="mono">{cur.supply}</b> 万套 · 缺口 <b className="mono" style={{ color: cur.gap > 2 ? "var(--danger-txt)" : "var(--ok-txt)" }}>{cur.gap}</b> 万套
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>{cur.note}</div>
         </div>
       )}
     </div>
@@ -1077,7 +1077,7 @@ function DeltaPill({ delta, tone, unit, testId }: { delta: number; tone: "up" | 
   return (
     <span
       data-testid={testId}
-      style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 999, background: bg, color: TONE_COLOR[tone], fontFamily: "var(--font-mono)" }}
+      style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 12, fontWeight: 600, padding: "2px 7px", borderRadius: 999, background: bg, color: TONE_COLOR[tone], fontFamily: "var(--font-mono)" }}
     >
       {arrow} {Math.abs(delta)}{unit ?? "%"}
     </span>
@@ -1105,7 +1105,7 @@ function KpiWidget({ value, unit, decor }: { value: unknown; unit?: string; deco
           <div className={"warmKpiAccentTrack"} style={{ height: 6, borderRadius: 999, background: "var(--line2)", overflow: "hidden" }}>
             <div className={"warmKpiAccentFill"} style={{ width: `${Math.max(0, Math.min(100, accentPct))}%`, height: "100%", borderRadius: 999, background: "var(--accent)" }} />
           </div>
-          {accentNote && <div className={"warmKpiAccentNote"} style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>{accentNote}</div>}
+          {accentNote && <div className={"warmKpiAccentNote"} style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>{accentNote}</div>}
         </div>
       )}
       {/* delta 药丸 + sparkline（真序列派生·非 accent 卡时展示） */}
@@ -1169,7 +1169,7 @@ function ChartWidget({ data, kind, series, def }: { data: unknown; kind: "line" 
   const caption = chartAxisCaption(def);
   const axisName = chartAxisName(def);
   const Caption = (
-    <div data-testid={`chart-axis-caption-${def.key}`} style={{ fontSize: 10, color: "var(--muted2)", marginBottom: 2 }}>
+    <div data-testid={`chart-axis-caption-${def.key}`} style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 2 }}>
       {caption}
     </div>
   );
@@ -1194,10 +1194,10 @@ function ChartWidget({ data, kind, series, def }: { data: unknown; kind: "line" 
           height={200}
           option={{
             grid: { top: 28, bottom: 24, left: 40, right: 12 },
-            legend: { top: 0, textStyle: { color: "#9FB0C3", fontSize: 10 } },
+            legend: { top: 0, textStyle: { color: "#9FB0C3", fontSize: 12 } },
             tooltip: { trigger: "axis" },
             xAxis: { type: "category", data: buckets },
-            yAxis: { type: "value", name: axisName, nameTextStyle: { fontSize: 10 }, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
+            yAxis: { type: "value", name: axisName, nameTextStyle: { fontSize: 12 }, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
             series: [...lineSeries, { name: "偏差", type: "bar", data: dev, itemStyle: { color: "rgba(221,126,158,.35)" }, barWidth: "40%" }],
           }}
         />
@@ -1213,7 +1213,7 @@ function ChartWidget({ data, kind, series, def }: { data: unknown; kind: "line" 
         option={{
           grid: { top: 16, bottom: 24, left: 40, right: 12 },
           xAxis: { type: "category", data: points.map((p) => p.bucket) },
-          yAxis: { type: "value", name: axisName, nameTextStyle: { fontSize: 10 }, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
+          yAxis: { type: "value", name: axisName, nameTextStyle: { fontSize: 12 }, splitLine: { lineStyle: { color: "rgba(226,235,245,.07)" } } },
           series: [{ type: kind, data: points.map((p) => p.value), itemStyle: { color: "#4C90F0" }, smooth: true }],
         }}
       />
@@ -1235,7 +1235,7 @@ function SummaryWidget({ data }: { data: unknown }) {
             <span className="badge red" style={{ marginRight: 6 }}>{CAT[p.category] ?? p.category}</span>
             <b>{p.title}</b>
           </div>
-          <div style={{ fontSize: 11, color: "var(--muted)" }}>
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>
             {/* WO-UNIT-MEANING：财务影响口径为**亿**（同视图 :200 与 planFixtures「金额(亿)」同源），此处原漏标 → 补齐同口径。 */}
             {p.orderCount} 单 · 财务影响 {p.financeImpact} 亿 · <span className="zh">{p.rootCauseSummary}</span>
           </div>

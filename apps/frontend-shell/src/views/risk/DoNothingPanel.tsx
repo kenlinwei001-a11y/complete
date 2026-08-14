@@ -42,14 +42,14 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
         </>
       }
     >
-      <div style={{ fontSize: 11, lineHeight: 1.7, color: "var(--muted)", marginBottom: 8 }} data-testid={`donothing-summary-${baseName}`}>
+      <div style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)", marginBottom: 8 }} data-testid={`donothing-summary-${baseName}`}>
         {doNothing.summary}
       </div>
 
       {/* ── ②a 缺口自然消化天数 ──────────────────────────────────────────── */}
       <div style={{ marginBottom: 8 }} data-testid={`donothing-catchup-${baseName}`}>
         {catchUp.status === "OK" ? (
-          <div style={{ fontSize: 11 }}>
+          <div style={{ fontSize: 12 }}>
             <b>缺口自然消化</b>：
             <Provenance
               testId={`donothing-catchup-prov-${baseName}`}
@@ -58,7 +58,7 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
               inputs={catchUp.provenance.map((p) => `${p.objectType}#${p.objectId}.${p.field}=${p.value}`)}
               note="真派生（非估算）：缺口与空闲日产能都来自真对象"
             >
-              <b className="mono" style={{ color: "var(--danger)" }}>{catchUp.days} {catchUp.unit}</b>
+              <b className="mono" style={{ color: "var(--danger-txt)" }}>{catchUp.days} {catchUp.unit}</b>
             </Provenance>
             <span style={{ marginLeft: 8, color: "var(--muted2)" }}>
               缺口 {catchUp.shortfall} {u.qty} ÷ 空闲日产能 {catchUp.freeDaily} {u.qty}/日
@@ -73,11 +73,11 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
       <div style={{ marginBottom: 8 }} data-testid={`donothing-delay-${baseName}`}>
         {delay.status === "OK" ? (
           <>
-            <div style={{ fontSize: 11, marginBottom: 4 }}>
-              <b>逐单延误</b>：最坏 <b className="mono" style={{ color: "var(--danger)" }}>{delay.worstDays}</b> 天
+            <div style={{ fontSize: 12, marginBottom: 4 }}>
+              <b>逐单延误</b>：最坏 <b className="mono" style={{ color: "var(--danger-txt)" }}>{delay.worstDays}</b> 天
               <span className="badge" data-testid={`donothing-delay-basis-${baseName}`} style={{ marginLeft: 6 }}>估算 · 非实测</span>
             </div>
-            <table className="cmp" data-testid={`donothing-delay-table-${baseName}`} style={{ fontSize: 11 }}>
+            <table className="cmp" data-testid={`donothing-delay-table-${baseName}`} style={{ fontSize: 12 }}>
               <thead>
                 <tr><th>订单</th><th>客户</th><th>数量({u.qty})</th><th>交期</th><th>延误(天)</th><th>口径</th></tr>
               </thead>
@@ -88,7 +88,7 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
                     <td className="zh">{o.cust}</td>
                     <td className="mono">{o.qty}</td>
                     <td className="mono">{o.due}（D+{o.dueDay}）</td>
-                    <td className="mono" style={{ color: "var(--danger)" }}>{o.delayDays}</td>
+                    <td className="mono" style={{ color: "var(--danger-txt)" }}>{o.delayDays}</td>
                     <td>
                       {/* 后端 basis：DERIVED=真派生 / ESTIMATED=确定性估算。裸渲染当实测 = 本仓 KILL-MOCK-RED 红线。 */}
                       <Provenance
@@ -105,7 +105,7 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
                 ))}
               </tbody>
             </table>
-            <div style={{ fontSize: 10, color: "var(--muted2)", marginTop: 4 }} data-testid={`donothing-delay-note-${baseName}`}>
+            <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 4 }} data-testid={`donothing-delay-note-${baseName}`}>
               {delay.note}
             </div>
           </>
@@ -118,7 +118,7 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
       <div style={{ marginBottom: 8 }} data-testid={`donothing-penalty-${baseName}`}>
         {penalty.status === "OK" ? (
           // 契约允许 OK（数据侧补 Order.latePenaltyRatePerDay + 罚则规则后即点亮）；本仓当前无承载 → 此分支尚不可达。
-          <div style={{ fontSize: 11 }} data-testid={`donothing-penalty-ok-${baseName}`}>
+          <div style={{ fontSize: 12 }} data-testid={`donothing-penalty-ok-${baseName}`}>
             <b>违约金</b>：
             <Provenance
               testId={`donothing-penalty-prov-${baseName}`}
@@ -127,13 +127,13 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
               rule={penalty.ruleKey}
               inputs={penalty.provenance.map((p) => `${p.objectType}#${p.objectId}.${p.field}=${p.value}`)}
             >
-              <b className="mono" style={{ color: "var(--danger)" }}>{penalty.amountYuan} 元</b>
+              <b className="mono" style={{ color: "var(--danger-txt)" }}>{penalty.amountYuan} 元</b>
             </Provenance>
           </div>
         ) : (
           <>
             <MissingEvidenceNote testId={`donothing-penalty-empty-${baseName}`} title="违约金 / 罚则：本平台未承载违约金口径" ev={penalty} />
-            <div style={{ fontSize: 10, color: "var(--muted2)", marginTop: 3 }} data-testid={`donothing-penalty-nozero-${baseName}`}>
+            <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 3 }} data-testid={`donothing-penalty-nozero-${baseName}`}>
               此处<b>刻意不显示金额</b>（不是 0）：显示 0 等于断言「不赔钱」，而本仓没有任何规则/字段支持该断言。
             </div>
           </>
@@ -142,7 +142,7 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
 
       {/* ── ②d 受影响客户 ───────────────────────────────────────────────── */}
       {doNothing.atRiskCustomers.length > 0 ? (
-        <table className="cmp" data-testid={`donothing-cust-table-${baseName}`} style={{ fontSize: 11 }}>
+        <table className="cmp" data-testid={`donothing-cust-table-${baseName}`} style={{ fontSize: 12 }}>
           <thead>
             <tr><th>受影响客户</th><th>订单(张)</th><th>数量({u.qty})</th><th>金额({u.revenue})</th><th>最坏延误(天)</th><th>客户档案（账期/信用额度）</th></tr>
           </thead>
@@ -152,15 +152,15 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
                 <td className="zh"><b>{c.cust}</b></td>
                 <td className="mono">{c.orderCount}</td>
                 <td className="mono">{c.qty}</td>
-                <td className="mono" style={{ color: "var(--ok)" }}>{c.revenueYi}</td>
-                <td className="mono" style={{ color: "var(--danger)" }}>{c.worstDelayDays}</td>
+                <td className="mono" style={{ color: "var(--ok-txt)" }}>{c.revenueYi}</td>
+                <td className="mono" style={{ color: "var(--danger-txt)" }}>{c.worstDelayDays}</td>
                 <td>
                   {c.customerObject.status === "OK" ? (
                     <span className="mono" data-testid={`donothing-custobj-ok-${c.cust}`}>
                       {c.customerObject.custId} · 账期 {c.customerObject.termDays} 天 · 额度 {c.customerObject.creditLimit}
                     </span>
                   ) : (
-                    <span data-testid={`donothing-custobj-empty-${c.cust}`} style={{ color: "var(--muted2)", fontSize: 10 }} title={c.customerObject.reason}>
+                    <span data-testid={`donothing-custobj-empty-${c.cust}`} style={{ color: "var(--muted2)", fontSize: 12 }} title={c.customerObject.reason}>
                       连不到 Customer 对象（缺 <span className="mono">{c.customerObject.missingFields[0] ?? "?"}</span>）—— 拒绝给一个张冠李戴的账期
                     </span>
                   )}
@@ -170,7 +170,7 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
           </tbody>
         </table>
       ) : (
-        <div style={{ fontSize: 10.5, color: "var(--muted2)" }} data-testid={`donothing-cust-empty-${baseName}`}>
+        <div style={{ fontSize: 12, color: "var(--muted2)" }} data-testid={`donothing-cust-empty-${baseName}`}>
           受影响客户名单为空（与影响面同一出处：本窗无订单敞口 → 没有客户可列，不臆造）。
         </div>
       )}

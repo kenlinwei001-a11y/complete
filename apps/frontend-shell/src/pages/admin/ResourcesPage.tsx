@@ -59,14 +59,14 @@ function ResourceDetail({ resource }: { resource: IntelligenceResource }) {
       <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>
         {resource.label} <span className="badge">{KIND_LABEL[kind] ?? kind}</span>
       </div>
-      <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6 }}>{kind}/{key}</div>
+      <div className="mono" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>{kind}/{key}</div>
       <div style={{ fontSize: 12, marginBottom: 10 }}>{resource.description}</div>
 
       {/* 五级标签 */}
       {tierChips(resource.tieredTags).length > 0 && (
         <div style={{ marginBottom: 10 }} data-testid="resource-tiered-tags">
           {tierChips(resource.tieredTags).map((r) => (
-            <div key={r.layer} style={{ fontSize: 11.5, marginBottom: 2 }}>
+            <div key={r.layer} style={{ fontSize: 12, marginBottom: 2 }}>
               <span style={{ color: "var(--muted)" }}>{r.layer}：</span>
               {r.values.map((v) => (
                 <span key={v} className="badge blue" style={{ marginRight: 4 }}>{v}</span>
@@ -78,7 +78,7 @@ function ResourceDetail({ resource }: { resource: IntelligenceResource }) {
 
       {/* 运行时质量分（EWMA） */}
       <div className="section-title">质量分（运行时 EWMA）</div>
-      <div data-testid="resource-quality" style={{ fontSize: 11.5, marginBottom: 10 }}>
+      <div data-testid="resource-quality" style={{ fontSize: 12, marginBottom: 10 }}>
         {quality.isLoading ? (
           <span className="muted">加载中…</span>
         ) : q ? (
@@ -87,7 +87,7 @@ function ResourceDetail({ resource }: { resource: IntelligenceResource }) {
               <tr><td>成功率</td><td>{q.successRate !== undefined ? `${(q.successRate * 100).toFixed(1)}%` : "—"}</td></tr>
               <tr><td>调用次数</td><td>{q.usageCount ?? "—"}</td></tr>
               <tr><td>平均时延</td><td>{q.avgLatencyMs !== undefined ? `${Math.round(q.avgLatencyMs)}ms` : "—"}</td></tr>
-              <tr><td>最近探针</td><td className="mono" style={{ fontSize: 10.5 }}>{q.lastProbeAt ?? "—"}</td></tr>
+              <tr><td>最近探针</td><td className="mono" style={{ fontSize: 12 }}>{q.lastProbeAt ?? "—"}</td></tr>
             </tbody>
           </table>
         ) : (
@@ -97,7 +97,7 @@ function ResourceDetail({ resource }: { resource: IntelligenceResource }) {
 
       {/* 1-hop 关系图 */}
       <div className="section-title">关系图（1-hop）</div>
-      <div data-testid="resource-relations" style={{ fontSize: 11.5 }}>
+      <div data-testid="resource-relations" style={{ fontSize: 12 }}>
         {relations.isLoading ? (
           <span className="muted">加载中…</span>
         ) : (
@@ -165,7 +165,7 @@ export default function ResourcesPage() {
   return (
     <div data-testid="resources-page">
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>智能资源治理台（DRIL）</h2>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 10 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
         一屏发现全量智能资源（求解器/切片/规则/技能/工作流/Agent/意图/MCP/字段），派生投影自各模块真值（非新真值源）。
         支持五级标签检索、运行时质量分、1-hop 关系图 —— QOS 路由层组包的可解释视图。
       </div>
@@ -207,7 +207,7 @@ export default function ResourcesPage() {
                       onClick={() => setSelected(r.resource)}
                     >
                       <td>{KIND_LABEL[r.resource.kind] ?? r.resource.kind}</td>
-                      <td className="mono" style={{ fontSize: 11 }}>{r.resource.key}</td>
+                      <td className="mono" style={{ fontSize: 12 }}>{r.resource.key}</td>
                       <td>{r.resource.label}</td>
                       <td>{r.score.toFixed(3)}</td>
                     </tr>
@@ -215,7 +215,7 @@ export default function ResourcesPage() {
                 </tbody>
               </table>
               {search.data?.explanation && (
-                <div className="muted" style={{ fontSize: 11, marginTop: 6 }} data-testid="resource-search-explanation">
+                <div className="muted" style={{ fontSize: 12, marginTop: 6 }} data-testid="resource-search-explanation">
                   {search.data.explanation}
                 </div>
               )}
@@ -227,7 +227,7 @@ export default function ResourcesPage() {
       {/* kind 筛选 */}
       {kindOptions.length > 0 && (
         <div className="panel" style={{ marginBottom: 12, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }} data-testid="resource-kind-filter">
-          <span style={{ fontSize: 11.5, color: "var(--muted)" }}>按类别：</span>
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>按类别：</span>
           <button
             type="button"
             className={`badge ${kindFilter === "" ? "blue" : ""}`}
@@ -278,9 +278,9 @@ export default function ResourcesPage() {
                         style={{ cursor: "pointer", background: selected?.kind === r.kind && selected?.key === r.key ? "var(--hover-tint-strong)" : undefined }}
                         onClick={() => setSelected(r)}
                       >
-                        <td className="mono" style={{ fontSize: 11 }}>{r.key}</td>
+                        <td className="mono" style={{ fontSize: 12 }}>{r.key}</td>
                         <td>{r.label}</td>
-                        <td style={{ fontSize: 11.5, color: "var(--muted)" }}>{r.description}</td>
+                        <td style={{ fontSize: 12, color: "var(--muted)" }}>{r.description}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -295,7 +295,7 @@ export default function ResourcesPage() {
           {selected ? (
             <ResourceDetail resource={selected} />
           ) : (
-            <div className="panel muted" style={{ fontSize: 11.5 }} data-testid="resource-detail-empty">
+            <div className="panel muted" style={{ fontSize: 12 }} data-testid="resource-detail-empty">
               选择左侧资源查看质量分与关系图。
             </div>
           )}

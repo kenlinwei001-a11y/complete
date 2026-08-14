@@ -53,7 +53,7 @@ textarea:focus {
 }
 
 a {
-  color: var(--accent);
+  color: var(--accent-txt);
   text-decoration: none;
 }
 
@@ -89,18 +89,21 @@ a {
   opacity: 0.45;
   cursor: not-allowed;
 }
+/* WO-R9-CONTRAST：原为 #4c90f0 的半透渐变，其上的 --on-accent 白字实测 **3.20:1**（暗色）/
+   在浅色主题下渐变半透会露出白面 ⇒ 白字压白底 **1.0:1**（沙盘的「现状 / 指挥」按钮就是这样）。
+   改用不透明的 --accent-solid（逐主题定义，白字 ≥6.05）——「主按钮」本来就不该靠半透。 */
 .btn.primary {
-  background: linear-gradient(135deg, rgba(76, 144, 240, 0.85), rgba(76, 144, 240, 0.6));
-  border-color: rgba(76, 144, 240, 0.6);
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
   color: var(--on-accent);
 }
 .btn.danger {
   border-color: rgba(224, 98, 108, 0.5);
-  color: var(--danger);
+  color: var(--danger-txt);
 }
 .btn.sm {
   padding: 4px 9px;
-  font-size: 11.5px;
+  font-size: 12px;
   border-radius: 6px;
 }
 
@@ -110,29 +113,29 @@ a {
   gap: 5px;
   padding: 2px 8px;
   border-radius: 99px;
-  font-size: 10.5px;
+  font-size: 12px;
   font-family: var(--font-mono);
   border: 1px solid var(--line2);
   color: var(--muted);
   white-space: nowrap;
 }
 .badge.green {
-  color: var(--ok);
+  color: var(--ok-txt);
   border-color: rgba(98, 190, 119, 0.45);
   background: rgba(98, 190, 119, 0.1);
 }
 .badge.amber {
-  color: var(--amber);
+  color: var(--amber-txt);
   border-color: rgba(232, 181, 74, 0.45);
   background: rgba(232, 181, 74, 0.1);
 }
 .badge.red {
-  color: var(--danger);
+  color: var(--danger-txt);
   border-color: rgba(224, 98, 108, 0.45);
   background: rgba(224, 98, 108, 0.1);
 }
 .badge.blue {
-  color: var(--accent);
+  color: var(--accent-txt);
   border-color: rgba(76, 144, 240, 0.45);
   background: rgba(76, 144, 240, 0.1);
 }
@@ -188,7 +191,7 @@ table.cmp th {
   text-align: left;
   color: var(--muted);
   font-weight: 500;
-  font-size: 11px;
+  font-size: 12px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--line2);
   white-space: nowrap;
@@ -197,7 +200,7 @@ table.cmp td {
   padding: 6px 8px;
   border-bottom: 1px solid var(--line);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 table.cmp td.zh {
   font-family: var(--font-sans);

@@ -216,7 +216,7 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
 
       {/* ① 输入 · 当前局面（可编辑数值格） */}
       <div className="panel" data-testid="ow-input">
-        <div className="section-title">① 输入 · 当前局面<span style={{ fontSize: 11, color: "var(--muted2)", fontWeight: 400, marginLeft: 8 }}>数值格可直接改</span></div>
+        <div className="section-title">① 输入 · 当前局面<span style={{ fontSize: 12, color: "var(--muted2)", fontWeight: 400, marginLeft: 8 }}>数值格可直接改</span></div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12, marginTop: 8 }}>
           {Object.entries(baseline).map(([coll, arr]) =>
             Array.isArray(arr) && arr.length > 0 ? <EditableTable key={coll} coll={coll} rows={arr as Record<string, unknown>[]} onEdit={editCell} /> : null,
@@ -249,7 +249,7 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
               推演 →
             </button>
           </div>
-          {perturbs.length === 0 && <div style={{ fontSize: 11.5, color: "var(--amber)" }}>至少加一条推演（改一个参数）才能求解。</div>}
+          {perturbs.length === 0 && <div style={{ fontSize: 12, color: "var(--amber-txt)" }}>至少加一条推演（改一个参数）才能求解。</div>}
         </div>
       </div>
 
@@ -262,7 +262,7 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
           <div style={{ fontWeight: 600, color: "var(--txt)" }}>未接入最优化引擎</div>
           <div style={{ fontSize: 12, color: "var(--muted2)", maxWidth: 460, textAlign: "center", lineHeight: 1.7 }}>
             optimize_whatif 需 CP-SAT sidecar（services/optimizer）。本地内存模式请设 <span className="mono">OPTIMIZER_BASE_URL</span> 并起 sidecar（见 DEPLOY.md）；compose 态已自动接入。诚实空态·不假渲 Δ。
-            <div style={{ marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 11 }}>{errMsg}</div>
+            <div style={{ marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 12 }}>{errMsg}</div>
           </div>
         </div>
       )}
@@ -286,7 +286,7 @@ function EditableTable({ coll, rows, onEdit }: { coll: string; rows: Record<stri
       <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{collLabel(coll)}</div>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
         <thead>
-          <tr>{cols.map((c) => <th key={c} style={{ textAlign: NUMERIC_FIELDS.includes(c) ? "right" : "left", color: "var(--muted2)", fontWeight: 600, padding: "3px 6px", fontSize: 11 }}>{fieldLabel(c)}</th>)}</tr>
+          <tr>{cols.map((c) => <th key={c} style={{ textAlign: NUMERIC_FIELDS.includes(c) ? "right" : "left", color: "var(--muted2)", fontWeight: 600, padding: "3px 6px", fontSize: 12 }}>{fieldLabel(c)}</th>)}</tr>
         </thead>
         <tbody>
           {rows.map((row, idx) => (
@@ -342,7 +342,7 @@ function DecisionResult({ out, family, baseArgs, perturbs }: { out: OptWhatifOut
       >
         {switched ? (
           <>
-            <span style={{ fontSize: 14, fontWeight: 700, color: "var(--accent)" }}>决策切换</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "var(--accent-txt)" }}>决策切换</span>
             <span className="mono" style={{ fontSize: 13, fontWeight: 700, padding: "3px 10px", borderRadius: 7, background: "var(--hover-tint-strong)" }}>
               开 {baseOpen.join("/")} → 开 {pertOpen.join("/")}
             </span>
@@ -369,7 +369,7 @@ function DecisionResult({ out, family, baseArgs, perturbs }: { out: OptWhatifOut
         {!feasible && conflictConstraints.length > 0 && (
           <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
             {conflictConstraints.map((c, i) => (
-              <div key={i} data-testid={`ow-conflict-${i}`} style={{ fontSize: 11.5, fontFamily: "var(--font-mono)", color: "var(--danger)" }}>· {c}</div>
+              <div key={i} data-testid={`ow-conflict-${i}`} style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--danger-txt)" }}>· {c}</div>
             ))}
           </div>
         )}
@@ -377,7 +377,7 @@ function DecisionResult({ out, family, baseArgs, perturbs }: { out: OptWhatifOut
 
       {/* 白话解读 */}
       <div className="panel" data-testid="ow-explanation" style={{ padding: "12px 14px" }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", color: "var(--muted2)", marginBottom: 5 }}>一句话解读</div>
+        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".05em", color: "var(--muted2)", marginBottom: 5 }}>一句话解读</div>
         <div style={{ fontSize: 13, color: "var(--txt)", lineHeight: 1.75 }}>{explanation || "—"}</div>
       </div>
     </div>
@@ -398,7 +398,7 @@ function SolutionCard({
         <span className="badge" style={tagKind === "pert" ? { background: "var(--accent)", color: "var(--on-accent)" } : undefined}>{tag}</span>
       </div>
       {infeasible ? (
-        <div style={{ fontSize: 12.5, color: "var(--danger)", padding: "8px 0" }}>扰动后无可行方案（约束冲突）。</div>
+        <div style={{ fontSize: 12.5, color: "var(--danger-txt)", padding: "8px 0" }}>扰动后无可行方案（约束冲突）。</div>
       ) : family === "facility_location" ? (
         <FacilityBody args={args} solution={solution} objective={objective} />
       ) : (
@@ -426,15 +426,15 @@ function FacilityBody({ args, solution, objective }: { args: Record<string, unkn
           <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 9px", borderRadius: 8, marginBottom: 5, border: "1px solid var(--line)", background: isOpen ? "rgba(98,190,119,.1)" : "transparent", opacity: isOpen ? 1 : 0.5 }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: isOpen ? "var(--ok)" : "var(--muted2)" }} />
             <span style={{ fontWeight: 600, fontSize: 12.5 }}>{f.id}</span>
-            {isOpen && byFac(f.id).length > 0 && <span style={{ fontSize: 11.5, color: "var(--muted)" }}>← {byFac(f.id).join(", ")}</span>}
-            <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 600, color: isOpen ? "var(--ok)" : "var(--muted2)" }}>{isOpen ? "✓ 开设" : "✗ 不开"}</span>
+            {isOpen && byFac(f.id).length > 0 && <span style={{ fontSize: 12, color: "var(--muted)" }}>← {byFac(f.id).join(", ")}</span>}
+            <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: isOpen ? "var(--ok-txt)" : "var(--muted2)" }}>{isOpen ? "✓ 开设" : "✗ 不开"}</span>
           </div>
         );
       })}
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--line)", display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
         <div>
-          <div style={{ fontSize: 11, color: "var(--muted2)" }}>总成本</div>
-          <div style={{ fontSize: 10.5, color: "var(--muted2)", fontFamily: "var(--font-mono)" }}>开设 {openCostSum} + 指派 {assignSum}</div>
+          <div style={{ fontSize: 12, color: "var(--muted2)" }}>总成本</div>
+          <div style={{ fontSize: 12, color: "var(--muted2)", fontFamily: "var(--font-mono)" }}>开设 {openCostSum} + 指派 {assignSum}</div>
         </div>
         <div className="mono" style={{ fontSize: 22, fontWeight: 700 }}>{fmt(objective)}</div>
       </div>
@@ -452,13 +452,13 @@ function GenericBody({ solution, objective }: { solution?: FLSolution; objective
       ) : (
         arrays.map(([k, v]) => (
           <div key={k} style={{ marginBottom: 6 }}>
-            <span style={{ fontSize: 11, color: "var(--muted2)" }}>{fieldLabel(k)}：</span>
+            <span style={{ fontSize: 12, color: "var(--muted2)" }}>{fieldLabel(k)}：</span>
             <span className="mono" style={{ fontSize: 12 }}>{v.map((x) => (typeof x === "object" ? JSON.stringify(x) : String(x))).join(", ")}</span>
           </div>
         ))
       )}
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--line)", display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-        <div style={{ fontSize: 11, color: "var(--muted2)" }}>目标值</div>
+        <div style={{ fontSize: 12, color: "var(--muted2)" }}>目标值</div>
         <div className="mono" style={{ fontSize: 22, fontWeight: 700 }}>{fmt(objective)}</div>
       </div>
     </div>

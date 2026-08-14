@@ -36,18 +36,18 @@ export function DispositionDetailPanel({ row, onClose }: { row: PlanRow; onClose
           role="button"
           tabIndex={0}
           data-testid="disposition-detail-close"
-          style={{ fontSize: 10, color: "var(--muted2)", cursor: "pointer" }}
+          style={{ fontSize: 12, color: "var(--muted2)", cursor: "pointer" }}
           onClick={onClose}
           onKeyDown={(e) => e.key === "Enter" && onClose()}>
           {t.close}
         </span>
       </div>
-      <div style={{ fontSize: 10, color: "var(--muted2)", marginBottom: 8 }} data-testid="disposition-detail-sub">
+      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 8 }} data-testid="disposition-detail-sub">
         {t.detailSub(row.baseId ?? row.owner, shortfall, residual)}
       </div>
 
       {steps.length === 0 ? (
-        <div style={{ fontSize: 11, color: "var(--muted2)" }} data-testid="disposition-no-steps">
+        <div style={{ fontSize: 12, color: "var(--muted2)" }} data-testid="disposition-no-steps">
           {t.noSteps}
         </div>
       ) : (
@@ -55,21 +55,21 @@ export function DispositionDetailPanel({ row, onClose }: { row: PlanRow; onClose
           <ol style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
             {steps.map((s, i) => (
               <li key={i} data-testid={`disposition-step-${i}`} style={{ padding: "6px 0", borderTop: i === 0 ? undefined : "1px dashed var(--line, rgba(140,170,200,.22))" }}>
-                <div style={{ fontSize: 11 }}>
+                <div style={{ fontSize: 12 }}>
                   <span className="badge" style={{ marginRight: 6 }}>{t.stepNo(i + 1)}</span>
                   <b>{s.action}</b>
                   <span style={{ marginLeft: 8, color: "var(--muted2)" }}>D+{s.day} · {s.date}</span>
                 </div>
-                <div style={{ fontSize: 10, color: "var(--muted2)", margin: "3px 0 4px" }} data-testid={`disposition-step-rationale-${i}`}>
+                <div style={{ fontSize: 12, color: "var(--muted2)", margin: "3px 0 4px" }} data-testid={`disposition-step-rationale-${i}`}>
                   {s.rationale}
                 </div>
-                <div style={{ fontSize: 10, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 12, display: "flex", gap: 12, flexWrap: "wrap" }}>
                   <span>
                     {t.trigger}
                     {" "}
                     <b className="mono">{s.triggerValue}</b>
                   </span>
-                  <span style={{ color: "var(--ok)" }}>
+                  <span style={{ color: "var(--ok-txt)" }}>
                     {t.closes}
                     {" "}
                     <b className="mono">{s.closesGap}</b>
@@ -86,7 +86,7 @@ export function DispositionDetailPanel({ row, onClose }: { row: PlanRow; onClose
               </li>
             ))}
           </ol>
-          <div style={{ fontSize: 10, color: "var(--muted2)", marginTop: 8, borderTop: "1px solid var(--line, rgba(140,170,200,.22))", paddingTop: 6 }}
+          <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 8, borderTop: "1px solid var(--line, rgba(140,170,200,.22))", paddingTop: 6 }}
             data-testid="disposition-conserve">
             {t.conserve(closed, residual, shortfall)}
           </div>

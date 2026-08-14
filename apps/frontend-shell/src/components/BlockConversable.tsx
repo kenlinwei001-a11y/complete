@@ -68,7 +68,7 @@ export function BlockConversable({ blockId, blockType, blockTitle, getData, prov
             right: 6,
             zIndex: 5,
             cursor: "pointer",
-            fontSize: 11,
+            fontSize: 12,
             padding: "2px 8px",
             border: active ? "1px solid var(--accent)" : undefined,
           }}

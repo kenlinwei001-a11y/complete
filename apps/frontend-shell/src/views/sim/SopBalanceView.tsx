@@ -313,7 +313,7 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
       key: "gap",
       label: zh.sim.sop.kpi.gap,
       value: gap != null ? fmt(gap) : "—",
-      color: gap != null && gap > kpi.gapRed ? "var(--danger)" : "var(--ok)",
+      color: gap != null && gap > kpi.gapRed ? "var(--danger-txt)" : "var(--ok-txt)",
       formula: `缺口 = 需求P50 − 可供给（> ${kpi.gapRed} 红）`,
       source: "②/③/⑤ 联动即时重算",
       inputs: ["需求P50", "可供给"],
@@ -331,7 +331,7 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
       key: "gm",
       label: zh.sim.sop.kpi.gmVsBudget,
       value: s4?.gmRoll != null ? `${Number(s4.gmRoll).toFixed(2)}% / ${s4.gmBudget}%` : "—",
-      color: s4?.gmRoll != null && s4.gmBudget != null && s4.gmRoll < s4.gmBudget - 0.5 ? "var(--danger)" : undefined,
+      color: s4?.gmRoll != null && s4.gmBudget != null && s4.gmRoll < s4.gmBudget - 0.5 ? "var(--danger-txt)" : undefined,
       formula: "毛利率_roll = 滚动毛利Σ ÷ 滚动收入Σ vs 预算（容差 0.5pp）",
       source: "S&OP ④ 财务整合（C15 口径）",
       inputs: ["滚动毛利合计", "滚动收入合计", "预算毛利率"],
@@ -341,7 +341,7 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
       key: "cash",
       label: zh.sim.sop.kpi.cash,
       value: s4?.cashCushion != null ? `${s4.cashCushion} 亿 ${s4.cashOk ? "✓" : "✗"}` : "—",
-      color: s4?.cashOk === false ? "var(--danger)" : "var(--ok)",
+      color: s4?.cashOk === false ? "var(--danger-txt)" : "var(--ok-txt)",
       formula: `C18：现金垫(13周最低点) ≥ ${kpi.cashFloor} 亿`,
       source: "S&OP ④ 财务整合（C18 校验）",
       inputs: ["13周现金垫最低点", `现金底线 ${kpi.cashFloor} 亿`],
@@ -395,7 +395,7 @@ function Step1({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
                   {String(c.modelId)} × <span className="zh">{String(c.baseId)}</span>
                 </td>
                 <td className="zh">{String(c.kind) === "认证转量产" ? "认证中→量产" : "—"}</td>
-                <td style={{ color: Number(c.impactWanPerMonth) > 0 ? "var(--ok)" : Number(c.impactWanPerMonth) < 0 ? "var(--danger)" : undefined }}>
+                <td style={{ color: Number(c.impactWanPerMonth) > 0 ? "var(--ok-txt)" : Number(c.impactWanPerMonth) < 0 ? "var(--danger-txt)" : undefined }}>
                   {Number(c.impactWanPerMonth) > 0 ? "+" : ""}
                   {Number(c.impactWanPerMonth)}
                 </td>
@@ -502,7 +502,7 @@ function Step2({
                 <td>{fmt(r.rolling)}</td>
                 <td data-testid={`sop-p90-${r.key}`}>{p90ByName.has(r.name) ? fmt(p90ByName.get(r.name)!) : "—"}</td>
                 <td>{fmt(r.lastActual)}</td>
-                <td style={{ color: r.flagged ? "var(--danger)" : r.dv >= 0 ? "var(--ok)" : "var(--amber)", fontWeight: 700 }} data-testid={`sop-dv-${r.key}`}>
+                <td style={{ color: r.flagged ? "var(--danger-txt)" : r.dv >= 0 ? "var(--ok-txt)" : "var(--amber-txt)", fontWeight: 700 }} data-testid={`sop-dv-${r.key}`}>
                   {r.dv > 0 ? "+" : ""}
                   {(r.dv * 100).toFixed(1)}%{r.flagged ? " ⚑" : ""}
                 </td>
@@ -642,14 +642,14 @@ function Step4({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
                 <td>
                   <b>{Number(s4.gmRoll ?? 0).toFixed(2)}%</b>（预算 {s4.gmBudget}%·容差 0.5pp）
                 </td>
-                <td style={{ color: s4.gmOk ? "var(--ok)" : "var(--danger)" }}>{s4.gmOk ? "✓" : "✗"}</td>
+                <td style={{ color: s4.gmOk ? "var(--ok-txt)" : "var(--danger-txt)" }}>{s4.gmOk ? "✓" : "✗"}</td>
               </tr>
               <tr>
                 <td>现金垫 C18</td>
                 <td>
                   <b>{s4.cashCushion} 亿</b>（底线 50 亿）
                 </td>
-                <td style={{ color: s4.cashOk ? "var(--ok)" : "var(--danger)" }}>{s4.cashOk ? "✓" : "✗"}</td>
+                <td style={{ color: s4.cashOk ? "var(--ok-txt)" : "var(--danger-txt)" }}>{s4.cashOk ? "✓" : "✗"}</td>
               </tr>
             </tbody>
           </table>
@@ -726,7 +726,7 @@ function Step5({
               {zh.sim.sop.runStep("⑤")}（决议 → 版本演进）
             </button>
             {blocked && (
-              <span style={{ fontSize: 11, color: "var(--danger)" }} data-testid="sop-step5-blocked">
+              <span style={{ fontSize: 12, color: "var(--danger-txt)" }} data-testid="sop-step5-blocked">
                 {zh.sim.sop.step5Blocked}
               </span>
             )}
@@ -774,7 +774,7 @@ function MrpTable() {
               <td className="zh"><b>{m.material}</b></td>
               <td className="mono">{fmt(m.netDemand)}</td>
               <td className="mono">{m.ltaCoverPct}%</td>
-              <td className="mono" style={{ color: m.gap > 0 ? "var(--danger)" : "var(--ok)" }}>{m.gap > 0 ? m.gap : "—"}</td>
+              <td className="mono" style={{ color: m.gap > 0 ? "var(--danger-txt)" : "var(--ok-txt)" }}>{m.gap > 0 ? m.gap : "—"}</td>
               <td className="mono">{m.gap > 0 ? m.earliestComplete : "—"}</td>
             </tr>
           ))}
@@ -803,14 +803,14 @@ function PnlTable() {
               <td className="zh"><b>{p.subject}</b></td>
               <td className="mono">{fmt(p.budget)}</td>
               <td className="mono">{fmt(p.rolling)}</td>
-              <td className="mono" style={{ color: p.diff < 0 ? "var(--danger)" : "var(--ok)" }}>{p.diff > 0 ? "+" : ""}{fmt(p.diff)}</td>
+              <td className="mono" style={{ color: p.diff < 0 ? "var(--danger-txt)" : "var(--ok-txt)" }}>{p.diff > 0 ? "+" : ""}{fmt(p.diff)}</td>
             </tr>
           ))}
           <tr data-testid="sop-pnl-gm">
             <td className="zh"><b>毛利率</b></td>
             <td className="mono">{data.gmRow.budgetPct}%</td>
             <td className="mono">{data.gmRow.rollPct}%</td>
-            <td className="mono" style={{ color: data.gmRow.diffPp < 0 ? "var(--danger)" : "var(--ok)" }}>{data.gmRow.diffPp > 0 ? "+" : ""}{data.gmRow.diffPp}pp</td>
+            <td className="mono" style={{ color: data.gmRow.diffPp < 0 ? "var(--danger-txt)" : "var(--ok-txt)" }}>{data.gmRow.diffPp > 0 ? "+" : ""}{data.gmRow.diffPp}pp</td>
           </tr>
         </tbody>
       </table>
@@ -839,7 +839,7 @@ function VersionCompare() {
               <td className="mono">{r.date}</td>
               <td className="mono">{fmt(r.demand)}</td>
               <td className="mono">{fmt(r.supply)}</td>
-              <td className="mono" style={{ color: r.gap > 2 ? "var(--danger)" : "var(--ok)" }}>{fmt(r.gap)}</td>
+              <td className="mono" style={{ color: r.gap > 2 ? "var(--danger-txt)" : "var(--ok-txt)" }}>{fmt(r.gap)}</td>
               <td className="zh">{r.note}</td>
             </tr>
           ))}

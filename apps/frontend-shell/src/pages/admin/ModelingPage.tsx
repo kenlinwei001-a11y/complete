@@ -133,7 +133,7 @@ function PublishedOntologyView({ types }: { types: Awaited<ReturnType<typeof fet
               <td style={{ padding: "4px 8px" }}>{ty.properties.length}</td>
               <td style={{ padding: "4px 8px" }}>{ty.derivedProperties?.length ?? 0}</td>
               <td style={{ padding: "4px 8px" }} data-testid={`pub-type-src-${ty.key}`}>
-                {(ty.sourceBindings ?? []).map((b) => b.dataset).join(", ") || <span style={{ color: "var(--danger, #e55)" }}>无来源</span>}
+                {(ty.sourceBindings ?? []).map((b) => b.dataset).join(", ") || <span style={{ color: "var(--danger-txt, #e55)" }}>无来源</span>}
               </td>
             </tr>
           ))}
@@ -178,7 +178,7 @@ function SuggestModal({ onClose, onCreated, initialSelected = [] }: { onClose: (
             onChange={(e) => setSelected((s) => (e.target.checked ? [...s, ds.id] : s.filter((x) => x !== ds.id)))}
           />
           <span className="mono">{ds.name}</span>
-          <span style={{ color: "var(--muted2)", fontSize: 10.5 }}>{ds.id}</span>
+          <span style={{ color: "var(--muted2)", fontSize: 12 }}>{ds.id}</span>
         </label>
       ))}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
@@ -275,7 +275,7 @@ function DraftWorkbench({ draft }: { draft: ModelingDraftVM }) {
           {zh.common.publish}
         </button>
         {/* 字段全建模门（R12）：默认 HARD（勾选）；取消勾选放宽，未建模字段不阻断 */}
-        <label style={{ fontSize: 11.5, color: "var(--muted)", display: "flex", alignItems: "center", gap: 4 }} title="R12 字段全建模：默认要求每个导入字段都被建模，取消勾选可放宽">
+        <label style={{ fontSize: 12, color: "var(--muted)", display: "flex", alignItems: "center", gap: 4 }} title="R12 字段全建模：默认要求每个导入字段都被建模，取消勾选可放宽">
           <input type="checkbox" data-testid="require-full-coverage" checked={requireFullCoverage} onChange={(e) => setRequireFullCoverage(e.target.checked)} />
           字段全建模门（R12 默认）
         </label>
@@ -305,7 +305,7 @@ function DraftWorkbench({ draft }: { draft: ModelingDraftVM }) {
           <div className="section-title">{t.sourceFields}</div>
           {draft.datasets.map((ds) => (
             <div key={ds.name} style={{ marginBottom: 12 }}>
-              <div className="mono" style={{ fontSize: 11.5, marginBottom: 4 }}>
+              <div className="mono" style={{ fontSize: 12, marginBottom: 4 }}>
                 {ds.name}
               </div>
               {ds.fields.map((f) => (
@@ -327,7 +327,7 @@ function DraftWorkbench({ draft }: { draft: ModelingDraftVM }) {
               <div key={ot.typeKey} className={`panel ${styles.typeCard} ${errors.length > 0 ? styles.typeCardError : ""}`} data-testid={`type-card-${ot.typeKey}`}>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
                   <strong>{ot.displayName}</strong>
-                  <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }}>{ot.typeKey}</span>
+                  <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>{ot.typeKey}</span>
                   {ot.action === "MAP_TO_EXISTING" && <span className="badge green" data-testid="map-existing-badge">{t.mapToExisting} → {ot.existingTypeKey}</span>}
                   {/* 新类型归域（发布门）：映射既有类型沿用既有域、无需此控件 */}
                   {ot.action !== "MAP_TO_EXISTING" && (
@@ -335,19 +335,19 @@ function DraftWorkbench({ draft }: { draft: ModelingDraftVM }) {
                       data-testid={`type-domain-${ot.typeKey}`}
                       value={ot.domain && ot.domain !== "unassigned" ? ot.domain : ""}
                       onChange={(e) => patchMut.mutate({ op: "setDomain", typeKey: ot.typeKey, domain: e.target.value })}
-                      style={{ fontSize: 11, padding: "1px 4px" }}
+                      style={{ fontSize: 12, padding: "1px 4px" }}
                       title="发布前必须人工归域（A4 治理门）"
                     >
                       <option value="">{t.assignDomain}</option>
                       {domains.map((d) => <option key={d.key} value={d.key}>{d.displayName}</option>)}
                     </select>
                   )}
-                  <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--muted2)" }}>conf {(ot.confidence * 100).toFixed(0)}%</span>
+                  <span className="mono" style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted2)" }}>conf {(ot.confidence * 100).toFixed(0)}%</span>
                 </div>
                 {ot.properties.map((p) => (
                   <div key={p.propKey} className={styles.propRow} data-testid={`prop-${ot.typeKey}-${p.propKey}`}>
                     <span>
-                      {p.isPrimaryKey && <span title="主键" style={{ color: "var(--c-forecast)" }}>★ </span>}
+                      {p.isPrimaryKey && <span title="主键" style={{ color: "var(--c-forecast-txt)" }}>★ </span>}
                       {p.propKey}
                     </span>
                     <span className={styles.arrow}>←</span>
@@ -368,7 +368,7 @@ function DraftWorkbench({ draft }: { draft: ModelingDraftVM }) {
             <div className="panel" style={{ marginTop: 4 }}>
               <div className="section-title">关系建议</div>
               {draft.suggestion.linkTypes.map((lt, i) => (
-                <div key={i} className="mono" style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 3 }}>
+                <div key={i} className="mono" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 3 }}>
                   {lt.fromTypeKey} —{lt.cardinality}→ {lt.toTypeKey}
                   <span style={{ color: "var(--muted2)" }}> via {lt.viaFields.fromField}={lt.viaFields.toField}</span>
                 </div>

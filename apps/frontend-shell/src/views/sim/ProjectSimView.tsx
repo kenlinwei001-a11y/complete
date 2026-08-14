@@ -225,11 +225,11 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
           fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.6,
         }}
       >
-        <span>⚠ 当前排程受<strong style={{ color: "var(--amber)" }}>全局主计划</strong>约束——本页仅在既定框架内做单项目细排；跨订单的产能取舍以全局联合最优为准。</span>
+        <span>⚠ 当前排程受<strong style={{ color: "var(--amber-txt)" }}>全局主计划</strong>约束——本页仅在既定框架内做单项目细排；跨订单的产能取舍以全局联合最优为准。</span>
         <span style={{ marginLeft: "auto", display: "inline-flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-          {orderParam && <span data-testid="proj-from-global" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--accent)" }}>← 自全局页 {orderParam} 下钻</span>}
+          {orderParam && <span data-testid="proj-from-global" style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent-txt)" }}>← 自全局页 {orderParam} 下钻</span>}
           <Link to="/v/global-sim" data-testid="proj-goto-global-batch" style={{ color: "#6c7bf6", fontWeight: 600, textDecoration: "none", borderBottom: "1px dashed rgba(108,123,246,.55)" }}>把这批一起求全局最优 →</Link>
-          <Link to="/v/global-sim" data-testid="proj-goto-global-reraise" style={{ color: "var(--accent)", textDecoration: "none", borderBottom: "1px dashed rgba(76,144,240,.5)" }}>接不住？回全局重排 →</Link>
+          <Link to="/v/global-sim" data-testid="proj-goto-global-reraise" style={{ color: "var(--accent-txt)", textDecoration: "none", borderBottom: "1px dashed rgba(76,144,240,.5)" }}>接不住？回全局重排 →</Link>
         </span>
       </div>
       {/* WO-GLOBALSIM-DRILL-SEAM 3.2：?order= 匹配不到时的诚实提示（复用琥珀提示样式）——口径差异 UI 显式，不装 1:1。 */}
@@ -244,10 +244,10 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
           }}
         >
           <span>
-            ⚠ 未找到订单 <strong style={{ fontFamily: "var(--font-mono)", color: "var(--amber)" }}>{notFoundOrder}</strong>
+            ⚠ 未找到订单 <strong style={{ fontFamily: "var(--font-mono)", color: "var(--amber-txt)" }}>{notFoundOrder}</strong>
             ——可能是在产工单(<span className="mono">WIP:</span>)或销售预测(<span className="mono">FC:</span>)项；项目推演仅细排销售订单。
           </span>
-          <Link to="/v/global-sim" data-testid="proj-notfound-back-global" style={{ marginLeft: "auto", color: "var(--accent)", fontWeight: 600, textDecoration: "none", borderBottom: "1px dashed rgba(76,144,240,.5)" }}>
+          <Link to="/v/global-sim" data-testid="proj-notfound-back-global" style={{ marginLeft: "auto", color: "var(--accent-txt)", fontWeight: 600, textDecoration: "none", borderBottom: "1px dashed rgba(76,144,240,.5)" }}>
             返回全局项目推演 →
           </Link>
         </div>
@@ -262,14 +262,14 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
         {/* D5 · 在途可见：不止「重算中…」——补已耗时（秒级递增）+ 主动取消（用户可直接放弃，不必靠改参数间接取消）。
             本页杠杆全是连续控件（滑杆/数字框）→ 按仓主定案**不弹二次确认框**，照旧 debounce + 取消前序。 */}
         {forecast.isFetching && (
-          <span style={{ fontSize: 11, color: "var(--muted2)" }} data-testid="proj-sim-recalc">
+          <span style={{ fontSize: 12, color: "var(--muted2)" }} data-testid="proj-sim-recalc">
             重算中… 已耗时 <b className="mono" data-testid="proj-sim-elapsed">{Math.floor(forecast.elapsedMs / 1000)}</b> 秒
             <button
               type="button"
               data-testid="proj-sim-cancel-solve"
               title="放弃本次推演（服务端会真的中止底层求解）"
               onClick={forecast.cancel}
-              style={{ marginLeft: 6, fontSize: 10, padding: "0 6px", cursor: "pointer", background: "transparent", color: "inherit", border: "1px solid currentColor", borderRadius: 4 }}
+              style={{ marginLeft: 6, fontSize: 12, padding: "0 6px", cursor: "pointer", background: "transparent", color: "inherit", border: "1px solid currentColor", borderRadius: 4 }}
             >
               取消
             </button>
@@ -567,7 +567,7 @@ function StepBody({
                 </td>
                 <td>{fmt(b.cumDemand)}</td>
                 <td>{fmt(b.cumP90)}</td>
-                <td style={{ color: b.ok ? "var(--ok)" : "var(--danger)", fontWeight: 700 }} data-testid={`batch-ok-${i}`}>
+                <td style={{ color: b.ok ? "var(--ok-txt)" : "var(--danger-txt)", fontWeight: 700 }} data-testid={`batch-ok-${i}`}>
                   {b.ok ? "✓ 按期" : `✗ 缺 ${fmt(b.cumDemand - b.cumP90)}`}
                 </td>
               </tr>
@@ -666,7 +666,7 @@ function StepBody({
           ))}
           {out.totalBases != null && out.producibleCount != null && (
             <tr>
-              <td colSpan={3} style={{ color: "var(--accent)" }} data-testid="pm-step2-converge">
+              <td colSpan={3} style={{ color: "var(--accent-txt)" }} data-testid="pm-step2-converge">
                 收敛：型号 <b className="mono">{modelId}</b> 仅在 <b className="mono">{out.producibleCount}</b>/
                 <b className="mono">{out.totalBases}</b> 个基地可产（按化学体系 × 基地业态推演）
               </td>
@@ -674,7 +674,7 @@ function StepBody({
           )}
           {out.pendingCertList.length > 0 && (
             <tr>
-              <td colSpan={3} style={{ color: "var(--amber)" }} data-testid="pending-cert">
+              <td colSpan={3} style={{ color: "var(--amber-txt)" }} data-testid="pending-cert">
                 {out.pendingCertList.join("、")} {zh.sim.proj.pendingCert}
               </td>
             </tr>
@@ -784,14 +784,14 @@ function StepBody({
                       }}
                     />
                   </span>
-                  <span className="mono" style={{ color: r.tightness >= 85 ? "var(--danger)" : undefined }}>
+                  <span className="mono" style={{ color: r.tightness >= 85 ? "var(--danger-txt)" : undefined }}>
                     {r.tightness}
                   </span>
                   {/* 轨M 增量1（假2）：紧张度色块不再裸渲染当真值——逐基地诚实标实测/估算（LIVE=真 OEE/利用率/良率）。
                       WO-DATAMODE-UNIFY-PROVENANCE（两正交维·诚实灰）：合成种子物化底料（provenanceSynthetic·provenance 维）
                       优先标"合成"（灰），绝不冒充"实测"（KILL-MOCK-RED·铁律 0.4）；非合成保留 measurement 维实测/估算。 */}
                   <span data-testid={`pm-tight-mode-${r.base}`}
-                    style={{ marginLeft: 6, fontSize: 10, opacity: 0.75, color: r.provenanceSynthetic ? "var(--muted, #8a94a6)" : undefined }}>
+                    style={{ marginLeft: 6, fontSize: 12, opacity: 0.75, color: r.provenanceSynthetic ? "var(--muted, #8a94a6)" : undefined }}>
                     {r.provenanceSynthetic ? "合成" : r.live ? "实测" : "估算"}
                   </span>
                 </td>
@@ -847,7 +847,7 @@ function StepBody({
             inputs={["可产基地", "爬坡曲线", "检修窗", "认证系数"]}
             rule="C01/C02"
           >
-            <b style={{ color: "var(--c-capacity)" }}>{fmt(out.p50)}</b>
+            <b style={{ color: "var(--c-capacity-txt)" }}>{fmt(out.p50)}</b>
           </Provenance>
           <span>P50 累计产能(万套)</span>
         </div>
@@ -860,7 +860,7 @@ function StepBody({
             rule="C09"
             note="IoT 延迟时健康度系数自动下调，置信度随之削弱"
           >
-            <b style={{ color: "var(--c-forecast)" }}>{fmt(out.p90)}</b>
+            <b style={{ color: "var(--c-forecast-txt)" }}>{fmt(out.p90)}</b>
           </Provenance>
           <span>P90（× 健康度 {out.healthFactor}）</span>
         </div>
@@ -1095,7 +1095,7 @@ function DagNodeDrawer({ detail, onClose }: { detail: DagDetail; onClose: () => 
               <tr>
                 <td style={{ color: "var(--muted2)" }}>推导公式</td>
                 <td>
-                  <code style={{ fontSize: 11 }}>{detail.formula}</code>
+                  <code style={{ fontSize: 12 }}>{detail.formula}</code>
                 </td>
               </tr>
             )}
@@ -1121,7 +1121,7 @@ function DagNodeDrawer({ detail, onClose }: { detail: DagDetail; onClose: () => 
             )}
           </tbody>
         </table>
-        <div style={{ marginTop: 8, fontSize: 10, color: "var(--muted2)" }}>信任 = 出处 + 推导可当场亮出（R13）</div>
+        <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted2)" }}>信任 = 出处 + 推导可当场亮出（R13）</div>
       </div>
     </Modal>
   );

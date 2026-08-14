@@ -43,7 +43,7 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
           <strong style={{ fontSize: 14 }}>🕐 推演历史</strong>
-          <span style={{ fontSize: 11, color: "var(--muted2)" }}>最近 {items.length} 次 · 可查证据链/重放</span>
+          <span style={{ fontSize: 12, color: "var(--muted2)" }}>最近 {items.length} 次 · 可查证据链/重放</span>
           <button className="btn sm" style={{ marginLeft: "auto" }} data-testid="history-refresh" onClick={() => refetch()}>
             刷新
           </button>
@@ -61,13 +61,13 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
               <div key={it.taskId} className="panel" data-testid="history-item" style={{ padding: 8, display: "flex", flexDirection: "column", gap: 3 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontWeight: 600, flex: 1, fontSize: 12.5 }}>{it.query}</span>
-                  <span style={{ color: statusColor(it.status), fontWeight: 700, fontSize: 10.5 }}>{it.status}</span>
+                  <span style={{ color: statusColor(it.status), fontWeight: 700, fontSize: 12 }}>{it.status}</span>
                 </div>
-                <div style={{ fontSize: 10.5, color: "var(--muted2)" }}>
+                <div style={{ fontSize: 12, color: "var(--muted2)" }}>
                   {fmt(it.createdAt)} · {it.path ?? "—"}
                   {it.classification?.intentKey ? ` · ${it.classification.intentKey}` : ""}
                 </div>
-                {it.answerSummary && <div style={{ fontSize: 11, color: "var(--muted)" }}>{it.answerSummary}</div>}
+                {it.answerSummary && <div style={{ fontSize: 12, color: "var(--muted)" }}>{it.answerSummary}</div>}
                 <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
                   <button className="btn sm" data-testid="history-view" onClick={() => { onClose(); navigate(`/tasks/${it.taskId}`); }}>
                     查看证据链

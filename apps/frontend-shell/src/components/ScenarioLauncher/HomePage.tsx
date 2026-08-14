@@ -36,7 +36,7 @@ export default function HomePage() {
                   {c.name}
                   {c.willProduceDraft && <span className="badge amber" style={{ marginLeft: 6 }}>{zh.home.writebackBadge}</span>}
                 </span>
-                <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{c.triggerQuestion}</span>
+                <span style={{ fontSize: 12, color: "var(--muted)" }}>{c.triggerQuestion}</span>
               </button>
             ))}
           </div>
@@ -50,7 +50,7 @@ export default function HomePage() {
             {v.label ?? v.key}
           </NavLink>
         ))}
-        <NavLink to="/scenarios" className="panel" data-testid="home-all-scenarios" style={{ textDecoration: "none", fontWeight: 600, color: "var(--c-capacity)" }}>
+        <NavLink to="/scenarios" className="panel" data-testid="home-all-scenarios" style={{ textDecoration: "none", fontWeight: 600, color: "var(--c-capacity-txt)" }}>
           {zh.home.allScenarios}
         </NavLink>
       </div>

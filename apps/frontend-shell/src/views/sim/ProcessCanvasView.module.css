@@ -61,7 +61,7 @@
   align-items: center;
   gap: 6px;
   font-style: normal;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .spacer {
@@ -69,15 +69,15 @@
 }
 .zoomVal {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   min-width: 42px;
   text-align: right;
 }
 /* 「缩到下限仍装不下」—— 诚实位，不是错误，故用提示色不用告警色。 */
 .fitClamped {
-  font-size: 10px;
-  color: var(--amber);
+  font-size: 12px;
+  color: var(--amber-txt);
 }
 
 /* ── 轨（连线）────────────────────────────────────────────────────────────
@@ -113,7 +113,7 @@
 }
 /* 普通站：实心圈，填色 = 等待态语义色（由组件内联下发，见文件头）。 */
 .stationDot {
-  fill: var(--accent);
+  fill: var(--accent-txt);
   stroke: var(--panel);
   stroke-width: 2.5;
 }
@@ -148,17 +148,17 @@
 /* ── 文字 ─────────────────────────────────────────────────────────────────── */
 .stationName {
   fill: var(--txt);
-  font-size: 11px;
+  font-size: 12px;
 }
 .stationSub {
   fill: var(--muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
 }
 /* 线头三行：线号 / 域名 / 域 key + 统计。地铁图靠线头认线（本图刻意不给线上色，见组件头）。 */
 .lineHead {
-  fill: var(--accent);
-  font-size: 11px;
+  fill: var(--accent-txt);
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.5px;
 }
@@ -170,11 +170,11 @@
 .lineKey {
   fill: var(--muted2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
 }
 /* 域登记册里查不到 —— 告警色，不静默（诚实位 ③）。 */
 .lineUnreg {
-  fill: var(--danger);
+  fill: var(--danger-txt);
   font-weight: 700;
 }
 /* 折返：一条线太长换到下一行，线没有断。 */

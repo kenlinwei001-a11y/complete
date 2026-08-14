@@ -51,7 +51,7 @@ export default function PrototypeIntakePage() {
         <button className="btn" data-testid="intake-import" disabled={imp.isPending || html.trim().length === 0} onClick={() => imp.mutate()}>
           {imp.isPending ? zh.common.loading : zh.intake.importBtn}
         </button>
-        <span style={{ fontSize: 11, color: "var(--muted2)" }}>{zh.intake.importHint}</span>
+        <span style={{ fontSize: 12, color: "var(--muted2)" }}>{zh.intake.importHint}</span>
       </div>
 
       {ir && (
@@ -74,13 +74,13 @@ export default function PrototypeIntakePage() {
             <button className="btn" data-testid="intake-objectify" disabled={obj.isPending} onClick={() => obj.mutate(ir.connection.id)}>
               {obj.isPending ? zh.common.loading : zh.intake.objectifyBtn}
             </button>
-            <span style={{ fontSize: 11, color: "var(--muted2)" }}>{zh.intake.objectifyHint}</span>
+            <span style={{ fontSize: 12, color: "var(--muted2)" }}>{zh.intake.objectifyHint}</span>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
             <Link className="btn" data-testid="intake-model-new" to={`/admin/modeling?datasets=${ir.datasets.map((d) => d.id).join(",")}`}>
               {zh.intake.modelNewBtn}
             </Link>
-            <span style={{ fontSize: 11, color: "var(--muted2)" }}>{zh.intake.modelNewHint}</span>
+            <span style={{ fontSize: 12, color: "var(--muted2)" }}>{zh.intake.modelNewHint}</span>
           </div>
           {or && (
             <div style={{ marginTop: 8, fontSize: 12 }} data-testid="intake-objectified">

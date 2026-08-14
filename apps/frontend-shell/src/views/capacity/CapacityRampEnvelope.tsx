@@ -78,10 +78,10 @@ export function CapacityRampEnvelope({ baseId }: { baseId: string }) {
         )}
       </svg>
       {/* 图例 + 绑定因素。 */}
-      <div data-testid="cap-ramp-legend" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8, fontSize: 10.5 }}>
+      <div data-testid="cap-ramp-legend" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8, fontSize: 12 }}>
         {curves.map((c) => (
           <span key={c.mark} data-testid={`cap-ramp-leg-${c.mark}`}
-            style={{ display: "inline-flex", alignItems: "center", gap: 4, color: c.mark === binding.mark ? "var(--danger)" : "var(--muted)" }}>
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, color: c.mark === binding.mark ? "var(--danger-txt)" : "var(--muted)" }}>
             <i style={{ width: 10, height: 2, background: c.color, display: "inline-block" }} aria-hidden />
             {c.mark} {c.name}
             {c.tight != null ? (
@@ -102,10 +102,10 @@ export function CapacityRampEnvelope({ baseId }: { baseId: string }) {
           </span>
         ))}
       </div>
-      <div data-testid="cap-ramp-binding" style={{ fontSize: 11, color: "var(--danger)", marginTop: 6 }}>
+      <div data-testid="cap-ramp-binding" style={{ fontSize: 12, color: "var(--danger-txt)", marginTop: 6 }}>
         ⛔ 爬坡被 <b>{binding.mark} {binding.name}</b> 拖住（天花板最低{binding.tight != null ? ` · 溯 bottleneck_matrix.${binding.bnFactor}=${Math.round(binding.tight)}` : ""}）
       </div>
-      <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 6 }}>
+      <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5, marginTop: 6 }}>
         子曲线天花板取自真数据（bottleneck_matrix 各因素张力·R14），爬坡形状取自 RAMP_PROFILE 配置；min 包络 = 实际爬坡（R6 确定性·非写死）。crossDay 竖线复用现有阈值口径。
       </div>
     </div>

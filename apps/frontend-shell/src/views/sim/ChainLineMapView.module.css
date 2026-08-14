@@ -33,7 +33,7 @@
 .engineError code,
 .stateLine code {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   background: var(--bg2);
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -102,7 +102,7 @@
   line-height: 1.7;
 }
 .engineError b {
-  color: var(--danger);
+  color: var(--danger-txt);
 }
 .engineError p {
   margin: 6px 0 0;
@@ -123,7 +123,7 @@
   padding: 8px 2px;
 }
 .summaryBar [data-ok="0"] {
-  color: var(--danger);
+  color: var(--danger-txt);
 }
 
 /* ── 画布 ─────────────────────────────────────────────────────────────────── */
@@ -209,24 +209,24 @@
   fill: none;
 }
 .closureArrowHead {
-  fill: var(--ok);
+  fill: var(--ok-txt);
 }
 .closureLabel {
-  fill: var(--ok);
-  font-size: 11px;
+  fill: var(--ok-txt);
+  font-size: 12px;
   font-weight: 700;
   opacity: 0.9;
 }
 /* 折行转折标记：站位一行摆不下时线换到下一行 —— 没有这行字就会被读成"线断了"。 */
 .foldMark {
   fill: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.5px;
 }
 /* 阅读起点：横向线路图必须回答"从哪开始看"。 */
 .startMark {
-  fill: var(--accent);
-  font-size: 11px;
+  fill: var(--accent-txt);
+  font-size: 12px;
   font-weight: 700;
 }
 /* 共线换乘（该环节在**每一条族线**上都出现 ⇒ 共享瓶颈）。多条并排族线时同列对齐的三个光环
@@ -241,13 +241,13 @@
 
 /* ── 站图元 ───────────────────────────────────────────────────────────────── */
 .stationStop {
-  fill: var(--accent);
+  fill: var(--accent-txt);
   stroke: var(--panel);
   stroke-width: 2.5;
 }
 /* 增值站：语义色（正向）+ 不同描边，与"损失占比≈0 的普通站"在形状/配色上都分得开。 */
 .stationValueAdd {
-  fill: var(--ok);
+  fill: var(--ok-txt);
   stroke: var(--panel);
   stroke-width: 2.5;
 }
@@ -269,7 +269,7 @@
   stroke-width: 3;
 }
 .andGlyphText {
-  fill: var(--warn);
+  fill: var(--warn-txt);
   font-family: var(--font-mono);
   font-size: 13px;
   font-weight: 700;
@@ -282,8 +282,8 @@
   fill: none;
 }
 .andLabel {
-  fill: var(--warn);
-  font-size: 11px;
+  fill: var(--warn-txt);
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -302,7 +302,7 @@
 }
 .suspendedTag {
   fill: var(--muted2);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 1px;
 }
 
@@ -313,7 +313,7 @@
   fill: none;
 }
 .reworkArrowHead {
-  fill: var(--danger);
+  fill: var(--danger-txt);
 }
 
 .lineLabel {
@@ -323,12 +323,12 @@
 }
 .stationName {
   fill: var(--txt);
-  font-size: 11px;
+  font-size: 12px;
 }
 .stationPct {
   fill: var(--muted);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* ── 详情 ─────────────────────────────────────────────────────────────────── */
@@ -370,7 +370,7 @@
   margin: 6px 0 0;
   color: var(--muted2);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   word-break: break-all;
 }
 .detailIdle {

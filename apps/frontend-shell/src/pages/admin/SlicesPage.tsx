@@ -100,7 +100,7 @@ export default function SlicesPage() {
         <span style={{ fontSize: 20, fontWeight: 600, fontFamily: "var(--font-mono)" }} data-testid="slices-total">
           {allSlices.length}
         </span>
-        <span className="muted" style={{ fontSize: 11.5 }} data-testid="slices-breakdown">
+        <span className="muted" style={{ fontSize: 12 }} data-testid="slices-breakdown">
           条已注册切片 · 多跳业务切片 <b>{multiHop.length}</b> 条 · 单类型覆盖切片{" "}
           <b>{allSlices.length - multiHop.length}</b> 条
         </span>
@@ -115,7 +115,7 @@ export default function SlicesPage() {
           </button>
         )}
       </div>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 12 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
         切片是可追溯子图（root 对象 → 逐跳沿链路展开），求解器/推演按切片取数，A6 行级过滤逐跳生效。
         {canEdit ? "点切片键就地展开十六层结构 + 内联子图并可编辑规格。" : "点切片键就地查看十六层结构与内联子图（只读）。"}
       </div>
@@ -141,7 +141,7 @@ export default function SlicesPage() {
                     className="linklike"
                     data-testid={`slice-row-${s.sliceKey}`}
                     onClick={() => setExpanded((k) => (k === s.sliceKey ? null : s.sliceKey))}
-                    style={{ font: "inherit", fontFamily: "var(--mono, monospace)", background: "none", border: 0, color: "var(--accent)", cursor: "pointer", padding: 0 }}
+                    style={{ font: "inherit", fontFamily: "var(--mono, monospace)", background: "none", border: 0, color: "var(--accent-txt)", cursor: "pointer", padding: 0 }}
                     title="就地展开内联子图（不跳转图谱模块）"
                   >
                     {expanded === s.sliceKey ? "▾ " : "▸ "}{s.sliceKey}
@@ -150,7 +150,7 @@ export default function SlicesPage() {
                 <td className="mono">v{s.version}</td>
                 <td><span className="badge">{s.rootType}</span></td>
                 <td className="mono">{s.hops}</td>
-                <td style={{ fontSize: 11, color: "var(--muted)" }}>{s.linkKeys.join(" · ") || "—"}</td>
+                <td style={{ fontSize: 12, color: "var(--muted)" }}>{s.linkKeys.join(" · ") || "—"}</td>
                 <td className="mono">{s.maxNodes ?? "—"}</td>
                 <td>
                   {s.fixtures > 0 ? (
@@ -314,7 +314,7 @@ function SliceBuilder({ onSaved }: { onSaved: () => void }) {
       {plan && plan.ok && plan.plan && (
         <div className="panel" data-testid="slice-plan-result" style={{ padding: 8 }}>
           <div className="section-title">规划结果（root→hops · 跨域 {plan.plan.spannedDomains.join("/") || "—"}）</div>
-          <ul style={{ fontSize: 11, paddingLeft: 18 }}>
+          <ul style={{ fontSize: 12, paddingLeft: 18 }}>
             {plan.plan.pathEvidence.map((e, i) => <li key={i} className="mono">{e}</li>)}
           </ul>
           <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -324,7 +324,7 @@ function SliceBuilder({ onSaved }: { onSaved: () => void }) {
             <button className="btn sm" data-testid="slice-preview" disabled={previewMut.isPending || sliceKey.trim() === ""} onClick={() => previewMut.mutate()}>
               试切预览（resolve 子图）
             </button>
-            <input data-testid="slice-preview-args" value={previewArgs} onChange={(e) => setPreviewArgs(e.target.value)} style={{ width: 200, fontSize: 11 }} title="试切参数 JSON" />
+            <input data-testid="slice-preview-args" value={previewArgs} onChange={(e) => setPreviewArgs(e.target.value)} style={{ width: 200, fontSize: 12 }} title="试切参数 JSON" />
           </div>
         </div>
       )}
@@ -340,7 +340,7 @@ function SliceBuilder({ onSaved }: { onSaved: () => void }) {
             节点 <b data-testid="slice-preview-nodes">{preview.data.nodes.length}</b> 个 · 边 <b>{preview.data.edges.length}</b> 条
             {preview.data.truncated && <span className="badge amber" style={{ marginLeft: 6 }}>已截断</span>}
           </div>
-          <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+          <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
             类型分布：{[...new Set(preview.data.nodes.map((n) => n.type))].join(" · ") || "（空，调整 root selector / 试切参数）"}
           </div>
         </div>

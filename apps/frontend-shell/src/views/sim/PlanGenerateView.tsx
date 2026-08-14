@@ -145,7 +145,7 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
             输入经营目标（毛利/现金/CAPEX 可设硬约束），系统把 5 条路径骨架代入求解器+规则，收敛为 3 个方案（稳健 / 均衡 / 进取）。改动即重算，选哪个由你拍板。
           </div>
         </div>
-        {gen.isFetching && <span style={{ fontSize: 11, color: "var(--muted2)" }}>重算中…</span>}
+        {gen.isFetching && <span style={{ fontSize: 12, color: "var(--muted2)" }}>重算中…</span>}
       </div>
 
       {/* 目标面板（顶部横条，§7.11） */}
@@ -153,7 +153,7 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
         <div className="section-title">{zh.sim.gen.goals}</div>
         <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
           {goalFields.map((f) => (
-            <label key={f.key} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--muted)" }}>
+            <label key={f.key} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--muted)" }}>
               {f.label}
               <input
                 type="number"
@@ -164,7 +164,7 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
                 data-testid={`goal-${f.key}`}
                 onChange={(e) => setGoals({ ...goals, [f.key]: parseFloat(e.target.value) || 0 })}
               />
-              <i style={{ fontStyle: "normal", fontSize: 10, color: "var(--muted2)" }}>{f.unit}</i>
+              <i style={{ fontStyle: "normal", fontSize: 12, color: "var(--muted2)" }}>{f.unit}</i>
               {f.hardKey && (
                 <button
                   className={`${styles.hardChip} ${goals[f.hardKey] ? styles.on : ""}`}
@@ -276,10 +276,10 @@ function SchemeCard({
               ⛔ {zh.sim.gen.hardViol}：{s.hardViol.join("、")}
             </span>
           )}
-          <span className={styles.genScore} style={{ color: viol ? "var(--danger)" : color }} data-testid={`scheme-score-${s.no}`}>
+          <span className={styles.genScore} style={{ color: viol ? "var(--danger-txt)" : color }} data-testid={`scheme-score-${s.no}`}>
             {viol ? "⛔" : s.scores.total}
           </span>
-          <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>{open ? "▼ 收起" : "▸ 展开"}</span>
+          <span style={{ fontSize: 12, color: "var(--muted2)" }}>{open ? "▼ 收起" : "▸ 展开"}</span>
         </div>
 
         <div className={`${styles.outcomeRow} mono`}>
@@ -312,7 +312,7 @@ function SchemeCard({
                       <span>{zh.sim.gen.meetLabels[k]}</span>
                       <span className="mono">{meetValue[k]}</span>
                       <i>{meetTargetLabel[k]}</i>
-                      <b style={{ color: ok ? "var(--ok)" : "var(--danger)" }}>{ok ? "✓" : "✗"}</b>
+                      <b style={{ color: ok ? "var(--ok-txt)" : "var(--danger-txt)" }}>{ok ? "✓" : "✗"}</b>
                     </div>
                   );
                 })}
@@ -348,9 +348,9 @@ function SchemeCard({
             {/* PRD-IND §2.3-6：外部信号敏感性（s.extSensitivity 5×3） */}
             {(s.extSensitivity?.length ?? 0) > 0 && (
               <div style={{ marginTop: 8 }} data-testid={`extsens-${s.no}`}>
-                <h5 style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: 1, fontFamily: "var(--font-mono)" }}>{zh.sim.gen.extSens}</h5>
+                <h5 style={{ fontSize: 12, color: "var(--muted)", letterSpacing: 1, fontFamily: "var(--font-mono)" }}>{zh.sim.gen.extSens}</h5>
                 {s.extSensitivity!.map((e, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "baseline", fontSize: 10.5, lineHeight: 1.6, padding: "4px 0", borderBottom: "1px dotted var(--line)" }} data-testid={`extsens-${s.no}-${i}`}>
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "baseline", fontSize: 12, lineHeight: 1.6, padding: "4px 0", borderBottom: "1px dotted var(--line)" }} data-testid={`extsens-${s.no}-${i}`}>
                     <b style={{ color: e.color, flex: "none", minWidth: 150 }}>{e.signal}</b>
                     <span style={{ color: "var(--muted)" }}>{e.impact}</span>
                   </div>
@@ -362,7 +362,7 @@ function SchemeCard({
             {s.problems.length > 0 && (
               <div style={{ marginTop: 8 }}>
                 {s.focusKeys && (
-                  <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6 }} data-testid={`focus-keys-${s.no}`}>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }} data-testid={`focus-keys-${s.no}`}>
                     <b>{zh.sim.gen.focusKeys}：</b>{s.focusKeys}
                   </div>
                 )}
@@ -373,7 +373,7 @@ function SchemeCard({
                     <div className="unlock">{zh.sim.gen.unlock}：{String((p as { unlock?: string }).unlock ?? "—")}</div>
                   </div>
                 ))}
-                <h5 style={{ fontSize: 10.5, color: "var(--muted)", letterSpacing: 1, fontFamily: "var(--font-mono)", marginTop: 8 }}>{zh.sim.gen.problems(s.no)}</h5>
+                <h5 style={{ fontSize: 12, color: "var(--muted)", letterSpacing: 1, fontFamily: "var(--font-mono)", marginTop: 8 }}>{zh.sim.gen.problems(s.no)}</h5>
                 {/* 必须解决的问题（focus：n + rule + why + 风险传播链 4 节点） */}
                 {s.problems.filter((p) => (p as { n?: string }).n).map((p, i) => {
                   const fp = p as { n: string; rule?: string | null; why?: string; chain?: { label: string; object: string; color: string }[] };
@@ -381,13 +381,13 @@ function SchemeCard({
                     <div className={styles.problem} key={`p-${i}`} data-testid={`problem-${s.no}-${i}`}>
                       <b>必须解决「{fp.n}」</b>
                       {fp.rule && <span className="badge red" style={{ marginLeft: 6 }}>{fp.rule}</span>}
-                      <div style={{ marginTop: 3, fontSize: 10.5, color: "var(--muted)" }}>{zh.sim.gen.whyPrefix}{fp.why}</div>
+                      <div style={{ marginTop: 3, fontSize: 12, color: "var(--muted)" }}>{zh.sim.gen.whyPrefix}{fp.why}</div>
                       {(fp.chain?.length ?? 0) > 0 && (
                         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 6 }} data-testid={`prob-chain-${s.no}-${i}`}>
                           {fp.chain!.map((node, ci) => (
                             <span key={ci} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                               {ci > 0 && <span style={{ color: "var(--muted2)" }}>→</span>}
-                              <span style={{ borderLeft: `3px solid ${node.color}`, padding: "2px 6px", background: "var(--bg2)", borderRadius: 4, fontSize: 10 }}>
+                              <span style={{ borderLeft: `3px solid ${node.color}`, padding: "2px 6px", background: "var(--bg2)", borderRadius: 4, fontSize: 12 }}>
                                 <b>{node.label}</b><i style={{ fontStyle: "normal", color: "var(--muted2)", marginLeft: 4 }}>{node.object}</i>
                               </span>
                             </span>

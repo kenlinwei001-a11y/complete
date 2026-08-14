@@ -100,8 +100,8 @@ export function InferenceProcessDag({
             <span key={c.title} style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
               {ci > 0 && <span style={{ color: "var(--muted2)" }}>⇢</span>}
               <div className={`${styles.node} ${styles.done}`} style={{ flex: 1, padding: "8px 10px" }} data-testid={`model-net-col-${ci}`}>
-                <div style={{ fontSize: 10, color: "var(--muted2)" }}>{c.title}</div>
-                {c.nodes.map((n) => (<div key={n.label} style={{ fontSize: 11.5 }}><b>{n.label}</b> <i style={{ fontStyle: "normal", color: "var(--muted2)", fontSize: 10 }}>{n.sub}</i></div>))}
+                <div style={{ fontSize: 12, color: "var(--muted2)" }}>{c.title}</div>
+                {c.nodes.map((n) => (<div key={n.label} style={{ fontSize: 12 }}><b>{n.label}</b> <i style={{ fontStyle: "normal", color: "var(--muted2)", fontSize: 12 }}>{n.sub}</i></div>))}
               </div>
             </span>
           ))}

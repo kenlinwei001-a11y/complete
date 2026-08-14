@@ -65,7 +65,7 @@ export function Timeline({ state }: { state: TaskStreamState }) {
             */
             /* `?` 触发器是**兄弟**不是子节点：data-testid="routing-confidence" 标的是那个**数值**，
                把触发器塞进去会污染它的 textContent（实测 f2.query-flow 断言 `^置信度 \d\.\d{2}\/1$` 当场红）。 */
-            <span className="mono" style={{ fontSize: 10.5, color: "var(--muted2)" }}>
+            <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>
               <span data-testid="routing-confidence">置信度 {state.routing.confidence.toFixed(2)}/1</span>
               <InfoPopover topic={zh.sim.sandbox.info.routingConfidenceTopic} testId="routing-confidence">
                 {zh.sim.sandbox.info.routingConfidenceBody}
@@ -107,7 +107,7 @@ function RoleTrackView({ track }: { track: RoleTrack }) {
       <header className={styles.roleHead}>
         <span className={styles.roleLabel} data-testid={`role-label-${track.roleKey}`}>{track.roleLabel}</span>
         {track.agentId && (
-          <span className="mono" style={{ fontSize: 10, color: "var(--muted2)" }} data-testid={`role-agent-${track.roleKey}`} title="执行该角色的 agent">
+          <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }} data-testid={`role-agent-${track.roleKey}`} title="执行该角色的 agent">
             {track.agentId}
           </span>
         )}
@@ -192,7 +192,7 @@ function StepRowView({
         {/* 结构化标识：有才显示（老任务/老事件没有这些字段是正常的，缺就整格不出） */}
         {roleLabel && <span className={styles.chipRole} data-testid={`step-role-${stepId}`}>{roleLabel}</span>}
         {iteration != null && <span className={styles.chipIter} data-testid={`step-iteration-${stepId}`}>{zh.dock.iterationChip(iteration)}</span>}
-        <span className="mono" style={{ fontSize: 10, color: "var(--muted2)" }}>
+        <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>
           {stepId}
         </span>
         <span className={styles.stepRight}>

@@ -160,11 +160,22 @@ function aggregate(row: Record<string, number> | undefined): number {
   return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
 
-/** 聚合值 → 着色（高=暖红 警示 / 中=琥珀 / 低=青）。纯函数，无业务语义。 */
+/** 聚合值 → 着色（高=暖红 警示 / 中=琥珀 / 低=青）。纯函数，无业务语义。
+ *  ⚠ 返回值被 `PmDag` 拿去做**描边/填充**，且靠 "六位 hex + 两位透明度" 的字面拼接
+ *  （`fill={\`${n.color}14\`}`）—— 所以它**必须继续是 hex 字面量**，不能换成 var()。 */
 function heatColor(v: number): string {
   if (v >= 70) return "#E0626C";
   if (v >= 45) return "#E8B54A";
   return "#43B7D7";
+}
+
+/** 同一档位的**文字**色。WO-R9-CONTRAST：`heatColor` 那三个值当描边没问题，当文字在两套浅色主题上
+ *  只剩 1.9–2.1:1（`#E8B54A` 压白面实测 **1.89**，等于看不见）。填充与文字对颜色的要求方向相反，
+ *  故拆成两个函数 —— 与 tokens.css 里 `--X` / `--X-txt` 拆职是同一条纪律。 */
+function heatTextColor(v: number): string {
+  if (v >= 70) return "var(--danger-txt)";
+  if (v >= 45) return "var(--warn-txt)";
+  return "var(--c-capacity-txt)";
 }
 
 /** 配置 → PmDag 单层节点（节点=nodeTypes，着色 = 该类型**所有真物化对象**当前态均值）。
@@ -955,7 +966,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
             </div>
             {scopeDrifted && (
               <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span data-testid="sandbox-scope-drift" style={{ color: "var(--warn)" }}>
+                <span data-testid="sandbox-scope-drift" style={{ color: "var(--warn-txt)" }}>
                   你当前选的范围（{certScope}
                   {certScope === "LOCAL" ? `:${effectiveTarget}` : ""}）与本会话建立时的范围不一致。
                 </span>
@@ -1020,9 +1031,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                     data-testid={`sandbox-world-${s.id}`}
                     data-current={isCurrent ? "1" : "0"}
                     data-branch={isBranch ? "1" : "0"}
-                    style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", font: "600 10px var(--font-mono)" }}
+                    style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", font: "600 12px var(--font-mono)" }}
                   >
-                    <span className="mono" style={{ color: isCurrent ? "var(--accent)" : "var(--muted2)" }}>
+                    <span className="mono" style={{ color: isCurrent ? "var(--accent-txt)" : "var(--muted2)" }}>
                       {isBranch ? "↳ " : ""}
                       {s.id}
                     </span>
@@ -1064,7 +1075,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       id: "derived",
       title: "本体派生",
       node: (
-        <span data-testid="sandbox-config-summary" style={{ font: "600 10px var(--font-mono)", color: "var(--muted2)" }}>
+        <span data-testid="sandbox-config-summary" style={{ font: "600 12px var(--font-mono)", color: "var(--muted2)" }}>
           本体派生 {cfg.nodeTypes.length} 类对象 · {cfg.linkTypes.length} 类链路 · {cfg.stateVars.length} 状态变量 ·{" "}
           {cfg.propagationCount} 传导规则
         </span>
@@ -1354,11 +1365,11 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           <>
             <span
               data-testid="sandbox-kpis"
-              style={{ display: "flex", gap: 8, alignItems: "center", font: "600 10px var(--font-mono)" }}
+              style={{ display: "flex", gap: 8, alignItems: "center", font: "600 12px var(--font-mono)" }}
             >
               <span data-testid="sandbox-kpi-global">
                 全局态 · tick {curTick}{" "}
-                <b style={{ color: heatColor(globalKpi) }} data-testid="sandbox-kpi-global-val">
+                <b style={{ color: heatTextColor(globalKpi) }} data-testid="sandbox-kpi-global-val">
                   {globalKpi.toFixed(1)}
                 </b>
               </span>
@@ -1381,7 +1392,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
               <span
                 data-testid="sandbox-kpi-origin"
                 data-origin={worldOrigin}
-                style={{ color: worldOrigin === "DERIVED" ? "var(--warn)" : "var(--ok)" }}
+                style={{ color: worldOrigin === "DERIVED" ? "var(--warn-txt)" : "var(--ok-txt)" }}
               >
                 {worldOrigin === "DERIVED" ? "◐ 合成·占位" : "● 实测"}
                 <InfoPopover topic={zh.sim.sandbox.info.kpiOrigin} testId="kpi-origin">
@@ -1442,7 +1453,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                     {first.map(cell)}
                     {rest.length > 0 && (
                       <details data-testid="sandbox-kpi-rest">
-                        <summary style={{ cursor: "pointer", opacity: 0.75 }} data-testid="sandbox-kpi-rest-toggle">
+                        {/* WO-R9-CONTRAST：原带 opacity:0.75 —— 祖先/自身 opacity 会把已达标的令牌**再压暗一档**
+                            （实测该行由 6.09 掉到 6.03，且 opacity 在静态 CSS 判据里看不见）。分层靠令牌，不靠透明度。 */}
+                        <summary style={{ cursor: "pointer" }} data-testid="sandbox-kpi-rest-toggle">
                           其余 {rest.length} 项
                         </summary>
                         <span style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 4 }}>{rest.map(cell)}</span>
@@ -1575,7 +1588,7 @@ function SandboxModeSwitch({
           <span key={m} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             {/* 决策链的箭头是**结构表达**，不是装饰：五个模式是「看见 → 为什么 → 试试看 → 最优 → 波及」
                 这一条链，不是一排并列 tab（规范 §3：结构本身也要画出来）。 */}
-            {i > 0 ? <span aria-hidden style={{ color: "var(--muted2)", fontSize: 11 }}>→</span> : null}
+            {i > 0 ? <span aria-hidden style={{ color: "var(--muted2)", fontSize: 12 }}>→</span> : null}
             <button
               type="button"
               className={`btn sm${mode === m ? " primary" : ""}`}

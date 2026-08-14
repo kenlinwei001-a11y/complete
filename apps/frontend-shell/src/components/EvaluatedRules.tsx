@@ -34,7 +34,7 @@ export function EvaluatedRules({ rules, ruleSetVersion }: { rules?: EvaluatedRul
                 <td className="mono" style={{ whiteSpace: "nowrap" }}><b>{r.key}</b></td>
                 <td className="zh">{r.name}</td>
                 <td><span className={`badge ${o.cls}`} data-testid={`evalrule-outcome-${r.key}`}>{o.label}</span></td>
-                <td style={{ fontSize: 10, color: "var(--muted2)" }}>{r.evidence}</td>
+                <td style={{ fontSize: 12, color: "var(--muted2)" }}>{r.evidence}</td>
               </tr>
             );
           })}

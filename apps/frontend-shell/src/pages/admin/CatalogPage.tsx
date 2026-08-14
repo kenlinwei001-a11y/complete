@@ -81,7 +81,7 @@ export default function CatalogPage() {
             >
               <span className={`badge ${i.status === "PUBLISHED" ? "green" : i.status === "DRAFT" ? "amber" : ""}`}>{i.status}</span>
               <span className="zh">{i.name}</span>
-              <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--muted2)" }}>
+              <span className="mono" style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted2)" }}>
                 {i.key} v{i.version}
               </span>
             </button>
@@ -155,7 +155,7 @@ function IntentEditor({ intent, packageId }: { intent: IntentDefinition; package
     <div className="panel" data-testid="intent-editor">
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
         <input value={name} disabled={!editable} aria-label="意图名称" onChange={(e) => setName(e.target.value)} style={{ fontWeight: 600 }} />
-        <span className="mono" style={{ fontSize: 11, color: "var(--muted2)" }}>{intent.key} v{intent.version}</span>
+        <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>{intent.key} v{intent.version}</span>
         <span className="badge">{intent.riskLevel}</span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
           {editable && (
@@ -245,7 +245,7 @@ function IntentEditor({ intent, packageId }: { intent: IntentDefinition; package
                     ))}
                   </select>
                 ) : (
-                  <span className="muted" style={{ fontSize: 11 }}>—</span>
+                  <span className="muted" style={{ fontSize: 12 }}>—</span>
                 )}
               </td>
               <td>
@@ -324,7 +324,7 @@ function IntentEditor({ intent, packageId }: { intent: IntentDefinition; package
                 <tbody>
                   {classifyResult.matched.map((m) => (
                     <tr key={m.intentKey} data-testid={`intent-classify-row-${m.intentKey}`} style={{ fontWeight: m.intentKey === intent.key ? 600 : undefined }}>
-                      <td className="mono" style={{ fontSize: 11 }}>{m.intentKey}</td>
+                      <td className="mono" style={{ fontSize: 12 }}>{m.intentKey}</td>
                       <td>{m.name}</td>
                       <td className="mono">{m.score.toFixed(3)}</td>
                     </tr>

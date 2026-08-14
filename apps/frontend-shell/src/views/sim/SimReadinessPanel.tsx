@@ -62,7 +62,7 @@ function CertStepper({ level }: { level: SimCertification["level"] }) {
             style={{
               padding: "2px 8px",
               borderRadius: 4,
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: isCur ? 700 : 500,
               background: active ? (isCur ? "#43B7D7" : "rgba(67,183,215,.25)") : "rgba(226,235,245,.07)",
               color: active ? (isCur ? "#0b1622" : "var(--txt)") : "var(--muted2)",
@@ -88,9 +88,9 @@ function CheckBadge({ ok, label, testId }: { ok: boolean; label: string; testId:
         gap: 4,
         padding: "2px 8px",
         borderRadius: 4,
-        fontSize: 11,
+        fontSize: 12,
         background: ok ? "rgba(67,183,215,.18)" : "rgba(224,98,108,.16)",
-        color: ok ? "var(--ok)" : "var(--danger)",
+        color: ok ? "var(--ok-txt)" : "var(--danger-txt)",
       }}
     >
       {ok ? "✓" : "✗"} {label}
@@ -206,7 +206,7 @@ export function SimReadinessPanel({
               沙盘是唯一入口，且它从不 disable「推进 tick」。未认证只降级为屏上提醒，不劝退。 */}
           <div
             data-testid="sim-cert-canenter"
-            style={{ color: cert.canEnterSimulation ? "var(--ok)" : "var(--warn)", fontWeight: 700 }}
+            style={{ color: cert.canEnterSimulation ? "var(--ok-txt)" : "var(--warn-txt)", fontWeight: 700 }}
           >
             {cert.canEnterSimulation ? "✓ 可进入推演（已认证）" : "◐ 可试跑（未认证·结论仅供参考）"}
           </div>
@@ -253,7 +253,7 @@ export function SimReadinessPanel({
               label={cert.trialTick.passed ? "重算未抛异常" : "重算抛异常"}
               testId="sim-cert-trial-passed"
             />
-            <div className={styles.sub} style={{ fontSize: 11 }} data-testid="sim-cert-trial-meaning">
+            <div className={styles.sub} style={{ fontSize: 12 }} data-testid="sim-cert-trial-meaning">
               「通过」= 派生依赖图可拓扑排序（无环），**不代表这个世界已经推动过**。
             </div>
             {/* #152 拆账：Trial Tick 曾长期**只跑派生**，`rulesFired` 一个合数把「传导零触发」盖得严严实实。
@@ -263,7 +263,7 @@ export function SimReadinessPanel({
             <div className="mono" style={{ fontSize: 12 }} data-testid="sim-cert-trial-derivation-nodes">
               派生图节点 {cert.trialTick.derivationNodes ?? 0} 个
             </div>
-            <div className={styles.sub} style={{ fontSize: 11 }} data-testid="sim-cert-trial-nodes-meaning">
+            <div className={styles.sub} style={{ fontSize: 12 }} data-testid="sim-cert-trial-nodes-meaning">
               = 派生依赖图规模；本次空跑不喂变更集，实际求值 0 条。
             </div>
             {cert.trialTick.propagationCovered && (
@@ -274,7 +274,7 @@ export function SimReadinessPanel({
                 {/* 「声明了一堆、一条都没触发」是本仓最常见的病样，必须**看得见**而不是被一个 0 盖住。
                     只报分子的话，「本来就没规则」与「全哑火」在屏上长得一模一样。 */}
                 {(cert.trialTick.propagationRulesDeclared ?? 0) > 0 && (cert.trialTick.propagationRulesFired ?? 0) === 0 && (
-                  <div style={{ fontSize: 11, color: "var(--warn)" }} data-testid="sim-cert-trial-propagation-silent">
+                  <div style={{ fontSize: 12, color: "var(--warn-txt)" }} data-testid="sim-cert-trial-propagation-silent">
                     ⚠ 已发布 {cert.trialTick.propagationRulesDeclared} 条传导规则，本次一条都没触发
                     —— 规则在册，但当前世界态驱动不动传导（源态为 0 / 无匹配边 / 闸门未放行）
                   </div>
@@ -282,12 +282,12 @@ export function SimReadinessPanel({
               </>
             )}
             {!cert.trialTick.propagationCovered && (
-              <div style={{ fontSize: 11, color: "var(--warn)" }} data-testid="sim-cert-trial-propagation-uncovered">
+              <div style={{ fontSize: 12, color: "var(--warn-txt)" }} data-testid="sim-cert-trial-propagation-uncovered">
                 ⚠ 传导未纳入本次空跑 ⇒ 传导触发数不可解读
               </div>
             )}
             {cert.trialTick.error && (
-              <div style={{ fontSize: 11, color: "var(--danger)" }} data-testid="sim-cert-trial-error">{cert.trialTick.error}</div>
+              <div style={{ fontSize: 12, color: "var(--danger-txt)" }} data-testid="sim-cert-trial-error">{cert.trialTick.error}</div>
             )}
           </div>
         </Card>
@@ -295,7 +295,7 @@ export function SimReadinessPanel({
         <Card title="世界完整度（范围预检）" testId="sim-cert-completeness">
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <CompletenessGauge pct={wc.pct} />
-            <div style={{ fontSize: 11 }}>
+            <div style={{ fontSize: 12 }}>
               {wcRows.map((row) => (
                 <div key={row.label} className="mono" data-testid={`sim-cert-wc-${row.label}`}>
                   {row.label} {row.v.present}/{row.v.needed}
@@ -306,13 +306,13 @@ export function SimReadinessPanel({
           {/* ① 真正的状态变量 = 传导规则 source/target stateVar 去重集（后端 stateVarKeys，与
                  SandboxViewConfig.stateVars 同源）。是**清单不是比值**：没有任何地方声明「应有几个」，
                  编一个分母出来就是错答，所以这里只报名字与个数。 */}
-          <div className={styles.sub} style={{ fontSize: 11, marginTop: 6 }} data-testid="sim-cert-wc-statevars">
+          <div className={styles.sub} style={{ fontSize: 12, marginTop: 6 }} data-testid="sim-cert-wc-statevars">
             世界将承载的状态变量 {(wc.stateVarKeys ?? []).length} 个
             {(wc.stateVarKeys ?? []).length > 0 && <>：<span className="mono">{(wc.stateVarKeys ?? []).join(" · ")}</span></>}
           </div>
           {/* ④ 认证 vs 完整度：判据本身没问题（见 certification.ts canEnterSimulation 注释），
                  缺的是这句解释——不解释就会被读成「已认证 · 33%」自相矛盾。 */}
-          <div className={styles.sub} style={{ fontSize: 11, marginTop: 4 }} data-testid="sim-cert-completeness-note">
+          <div className={styles.sub} style={{ fontSize: 12, marginTop: 4 }} data-testid="sim-cert-completeness-note">
             完整度 ≠ 认证：认证判「<b>能不能跑</b>」（结构闭合 + L4 三元组 + 空跑未抛异常）；
             完整度判「<b>这个世界建得全不全</b>」（已建 / 应建）。两者互不蕴含 ——
             只建了一部分的世界，其已建的那部分照样可以闭合可跑。
@@ -330,7 +330,7 @@ export function SimReadinessPanel({
              产出方 `apps/datacore/src/sim/certification.ts`。 */}
       <div style={{ marginTop: 10 }} data-testid="sim-cert-entering">
         <div className={styles.sub}>将进入沙盘的要素（{wc.entering.length}）</div>
-        <div className={styles.sub} style={{ fontSize: 11 }} data-testid="sim-cert-entering-groups">
+        <div className={styles.sub} style={{ fontSize: 12 }} data-testid="sim-cert-entering-groups">
           {ENTER_KIND_ORDER.map((k) => `${ENTER_KIND_LABEL[k]} ${wc.entering.filter((e) => e.kind === k).length}`).join(" · ")}
         </div>
         {wc.entering.length > 0 ? (
@@ -338,7 +338,7 @@ export function SimReadinessPanel({
             .filter((g) => g.items.length > 0)
             .map((g) => (
               <div key={g.kind} style={{ marginTop: 4 }} data-testid={`sim-cert-entering-group-${g.kind}`}>
-                <div className={styles.sub} style={{ fontSize: 11 }}>
+                <div className={styles.sub} style={{ fontSize: 12 }}>
                   {ENTER_KIND_LABEL[g.kind]}（{g.items.length}）
                 </div>
                 <ul style={{ margin: "2px 0 0", paddingLeft: 18 }}>

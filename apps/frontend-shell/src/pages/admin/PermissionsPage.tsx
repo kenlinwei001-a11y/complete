@@ -175,14 +175,14 @@ function ExplainDebugger() {
           </div>
           <div className="section-title">{t.matchedPolicies}</div>
           {explainMut.data.matched.map((m) => (
-            <div key={m.policyId} className="mono" style={{ fontSize: 11.5, color: "var(--muted)" }}>
+            <div key={m.policyId} className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>
               {m.policyId} · {m.resource} · {m.grants}
             </div>
           ))}
           <div className="section-title" style={{ marginTop: 8 }}>
             {t.rowFilter}
           </div>
-          <div className="mono" style={{ fontSize: 11.5 }}>{explainMut.data.rowFilter ?? "—"}</div>
+          <div className="mono" style={{ fontSize: 12 }}>{explainMut.data.rowFilter ?? "—"}</div>
         </div>
       )}
     </div>

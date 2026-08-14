@@ -25,7 +25,7 @@
   color: var(--txt);
 }
 .headSub {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .headActions {
@@ -53,7 +53,7 @@
 }
 .honestBody {
   margin-top: 3px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--muted);
 }
@@ -76,7 +76,7 @@
 .kpiLabel {
   display: flex;
   align-items: center;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .kpiValue {
@@ -86,17 +86,17 @@
 }
 .kpiUnit {
   margin-left: 3px;
-  font: 400 11px var(--font-sans);
+  font: 400 12px var(--font-sans);
   color: var(--muted2);
 }
 .kpiOk .kpiValue {
-  color: var(--ok);
+  color: var(--ok-txt);
 }
 .kpiBad .kpiValue {
-  color: var(--danger);
+  color: var(--danger-txt);
 }
 .kpiWarn .kpiValue {
-  color: var(--warn);
+  color: var(--warn-txt);
 }
 
 /* ── 第一层：最近运行清单 ───────────────────────────────────────────────────── */
@@ -129,7 +129,7 @@
 }
 .runTime {
   flex: 0 0 auto;
-  font: 11px var(--font-mono);
+  font: 12px var(--font-mono);
   color: var(--muted2);
   white-space: nowrap;
 }
@@ -141,7 +141,7 @@
 }
 .runCaret {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
 }
 
@@ -150,18 +150,18 @@
   flex: 0 0 auto;
   border-radius: 3px;
   padding: 1px 6px;
-  font: 700 10px var(--font-mono);
+  font: 700 12px var(--font-mono);
   border: 1px solid currentColor;
   white-space: nowrap;
 }
 .stateDone {
-  color: var(--ok);
+  color: var(--ok-txt);
 }
 .stateBad {
-  color: var(--danger);
+  color: var(--danger-txt);
 }
 .stateRun {
-  color: var(--warn);
+  color: var(--warn-txt);
 }
 
 /* ── 第二层：明细 ───────────────────────────────────────────────────────────── */
@@ -177,7 +177,7 @@
   display: flex;
   align-items: center;
   margin: 0 0 7px;
-  font: 700 10px var(--font-mono);
+  font: 700 12px var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted2);
@@ -198,7 +198,7 @@
   border: 1px solid var(--line2);
   border-radius: 3px;
   padding: 3px 8px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted2);
   background: var(--panel2);
   opacity: 0.5;
@@ -211,7 +211,7 @@
   border-color: var(--accent);
 }
 .arrow {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--line2);
 }
 .branch {
@@ -224,7 +224,7 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11.5px;
+  font-size: 12px;
 }
 .table th {
   border-bottom: 1px solid var(--line2);
@@ -239,15 +239,15 @@
   color: var(--muted);
 }
 .table td.mono {
-  font: 11px var(--font-mono);
+  font: 12px var(--font-mono);
   color: var(--txt);
 }
 .outOk {
-  color: var(--ok);
+  color: var(--ok-txt);
   font-weight: 700;
 }
 .outBad {
-  color: var(--danger);
+  color: var(--danger-txt);
   font-weight: 700;
 }
 
@@ -266,7 +266,7 @@
 .statLabel {
   display: flex;
   align-items: center;
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .statValue {
@@ -291,15 +291,15 @@
 }
 .noteBody {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--muted);
 }
 .noteCta {
   display: inline-block;
   margin-top: 6px;
-  font-size: 11px;
-  color: var(--accent);
+  font-size: 12px;
+  color: var(--accent-txt);
 }
 
 .empty {

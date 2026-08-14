@@ -98,7 +98,7 @@ export function Provenance({
             left: 0,
             minWidth: 320,
             padding: 10,
-            fontSize: 11,
+            fontSize: 12,
             textAlign: "left",
             whiteSpace: "normal",
           }}
@@ -130,7 +130,7 @@ export function Provenance({
               {formulas.length > 0 && (
                 <div style={{ marginTop: 3 }}>
                   <span style={{ color: "var(--muted2)" }}>推导：</span>
-                  <code style={{ fontSize: 10 }}>{formulas.join(" · ")}</code>
+                  <code style={{ fontSize: 12 }}>{formulas.join(" · ")}</code>
                 </div>
               )}
               {/* ④ 输入因子 */}
@@ -150,7 +150,7 @@ export function Provenance({
               )}
               {/* ⑥ 备注 */}
               {note && <div style={{ marginTop: 3, color: "var(--muted)" }}>{note}</div>}
-              <div style={{ marginTop: 5, color: "var(--muted2)", fontSize: 10 }}>信任 = 出处 + 推导可当场亮出</div>
+              <div style={{ marginTop: 5, color: "var(--muted2)", fontSize: 12 }}>信任 = 出处 + 推导可当场亮出</div>
             </>
           )}
         </span>

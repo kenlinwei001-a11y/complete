@@ -106,7 +106,7 @@ export function QueryDock() {
             {env.mock && (
               <div
                 data-testid="dock-mock-note"
-                style={{ fontSize: 11, lineHeight: 1.5, padding: "6px 10px", margin: "0 0 8px", borderRadius: 6, background: "rgba(232,181,74,.12)", border: "1px solid rgba(232,181,74,.35)", color: "var(--amber, #E8B54A)" }}
+                style={{ fontSize: 12, lineHeight: 1.5, padding: "6px 10px", margin: "0 0 8px", borderRadius: 6, background: "rgba(232,181,74,.12)", border: "1px solid rgba(232,181,74,.35)", color: "var(--amber-txt, #E8B54A)" }}
               >
                 ⓘ 演示模式（VITE_MOCK）· 本对话回答为<b>脚本样例</b>，非真实 QOS 求解 / 真实数据（含演示用 provenance）。连真后端部署态走真 orchestrator 求解器。
               </div>

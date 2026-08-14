@@ -54,7 +54,7 @@ export default function LedgerView({ view }: ViewRendererProps) {
               }}
             />
           ))}
-        <span className="mono" style={{ marginLeft: "auto", color: "var(--muted2)", fontSize: 11 }}>
+        <span className="mono" style={{ marginLeft: "auto", color: "var(--muted2)", fontSize: 12 }}>
           {data?.total ?? 0} rows
         </span>
       </div>
@@ -123,7 +123,7 @@ export default function LedgerView({ view }: ViewRendererProps) {
         <button className="btn sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
           ←
         </button>
-        <span className="mono" style={{ fontSize: 11 }}>
+        <span className="mono" style={{ fontSize: 12 }}>
           {page} / {totalPages}
         </span>
         <button className="btn sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>

@@ -27,11 +27,11 @@
   line-height: 1.1;
 }
 .headlineSub {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 .headlineMeta {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted2);
   font-family: var(--font-mono);
   margin-left: auto;
@@ -45,7 +45,7 @@
   align-items: start;
 }
 .bandLabel {
-  font-size: 10.5px;
+  font-size: 12px;
   font-family: var(--font-mono);
   color: var(--muted2);
   letter-spacing: 0.6px;
@@ -58,7 +58,7 @@
 /* 带与带之间的方向记号：不看文字也能读出「谁推出谁」（规范 §3 判据）。 */
 .bandArrow {
   grid-column: 1 / -1;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
   text-align: left;
   padding-left: 84px;
@@ -114,7 +114,7 @@
   gap: 6px;
 }
 .ord {
-  font-size: 10px;
+  font-size: 12px;
   font-family: var(--font-mono);
   color: var(--muted2);
 }
@@ -129,15 +129,15 @@
   line-height: 1.15;
 }
 .unit {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted);
   margin-left: 3px;
 }
 .numPresent {
-  color: var(--ok);
+  color: var(--ok-txt);
 }
 .numNotInSlice {
-  color: var(--amber);
+  color: var(--amber-txt);
 }
 .numAbsent {
   color: var(--muted2);
@@ -145,7 +145,7 @@
 /* 未判定（子图未解出 ⇒ 这一层压根没被算过）：显 `—` 不显 0。
    0 是「量出来的 0」，`—` 是「没量」——WO-SLICE-DEFAULT-ARGS 要求这两件事屏上分得开。 */
 .numPending {
-  color: var(--amber);
+  color: var(--amber-txt);
 }
 
 /* 诚实位记号：降到浮层后第一层必须留可见记号（规范 §1「静默降层等于删除」）。 */
@@ -153,18 +153,18 @@
   border: none;
   background: none;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 12px;
   font-family: var(--font-mono);
   cursor: help;
   padding: 0 2px;
   line-height: 1;
 }
 .markWarn {
-  color: var(--amber);
+  color: var(--amber-txt);
 }
 
 .statusLine {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -189,13 +189,13 @@
 .itemTable {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11.5px;
+  font-size: 12px;
 }
 .itemTable th {
   text-align: left;
   color: var(--muted2);
   font-weight: 400;
-  font-size: 10.5px;
+  font-size: 12px;
   font-family: var(--font-mono);
   border-bottom: 1px solid var(--line);
   padding: 3px 6px;
@@ -209,7 +209,7 @@
 .itemDetail {
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 12px;
   word-break: break-word;
 }
 .scroll {
@@ -217,13 +217,13 @@
   overflow: auto;
 }
 .reason {
-  font-size: 11.5px;
-  color: var(--amber);
+  font-size: 12px;
+  color: var(--amber-txt);
   line-height: 1.5;
 }
 .carrier {
   display: block;
-  font-size: 10.5px;
+  font-size: 12px;
   font-family: var(--font-mono);
   color: var(--muted2);
   word-break: break-all;
@@ -245,7 +245,7 @@
   max-height: 260px;
   overflow: auto;
   padding: 10px 12px;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.55;
   color: var(--txt);
   text-align: left;
@@ -254,7 +254,7 @@
 }
 .popTitle {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 1.1px;
   text-transform: uppercase;
   font-family: var(--font-mono);
@@ -271,7 +271,7 @@
 }
 
 .honesty {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted2);
   line-height: 1.5;
 }
@@ -297,10 +297,10 @@
 .emptyTitle {
   font-size: 13px;
   font-weight: 600;
-  color: var(--amber);
+  color: var(--amber-txt);
 }
 .emptyMeta {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted);
   font-family: var(--font-mono);
 }
@@ -311,13 +311,13 @@
   flex-wrap: wrap;
 }
 .emptyPickLabel {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted2);
   font-family: var(--font-mono);
 }
 /* 候选值按钮：值本身来自真对象，点一下即试切。 */
 .candBtn {
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--font-mono);
   padding: 2px 8px;
   border-radius: 999px;
@@ -328,16 +328,16 @@
 }
 .candBtn:hover {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-txt);
 }
 /* 当前生效的那个值要看得出来 —— 不标出来，用户就不知道自己在看哪个 root（等于没显示）。 */
 .candBtn[data-active="true"] {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-txt);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .candInput {
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--font-mono);
   width: 148px;
   padding: 2px 6px;
@@ -347,7 +347,7 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted);
   font-family: var(--font-mono);
 }

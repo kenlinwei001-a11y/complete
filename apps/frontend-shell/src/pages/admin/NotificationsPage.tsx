@@ -42,7 +42,7 @@ export default function NotificationsPage() {
               <span className="badge">{KIND_LABEL[n.kind] ?? n.kind}</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12.5, fontWeight: n.readAt ? 400 : 600 }}>{n.title}</div>
-                <div style={{ fontSize: 11, color: "var(--muted)" }}>{n.body}</div>
+                <div style={{ fontSize: 12, color: "var(--muted)" }}>{n.body}</div>
               </div>
               {link && <Link to={link} className="btn sm" data-testid={`notif-goto-${n.id}`}>查看</Link>}
               {!n.readAt && <button className="btn sm" data-testid={`notif-read-${n.id}`} onClick={() => read.mutate(n.id)}>已读</button>}

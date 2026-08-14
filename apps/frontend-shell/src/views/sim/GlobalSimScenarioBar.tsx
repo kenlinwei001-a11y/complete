@@ -139,7 +139,7 @@ export function GlobalSimScenarioBar({ getSnapshot }: { getSnapshot: () => Scena
             </div>
           ))}
         </div>
-      ) : <div className={styles.textMuted} style={{ fontSize: 11, marginTop: 8 }}>{zh.gslive.noScenarios}</div>}
+      ) : <div className={styles.textMuted} style={{ fontSize: 12, marginTop: 8 }}>{zh.gslive.noScenarios}</div>}
 
       {/* 横比矩阵（七维 KPI × 方案·decision_play 范式·每格真算·可采纳） */}
       {matrix.length >= 2 ? (
@@ -184,7 +184,7 @@ export function GlobalSimScenarioBar({ getSnapshot }: { getSnapshot: () => Scena
           </table>
         </div>
       ) : scenarios.length === 1 ? (
-        <div className={styles.textMuted} style={{ fontSize: 11, marginTop: 8 }} data-testid="global-sim-scenario-needtwo">{zh.gslive.needTwo}</div>
+        <div className={styles.textMuted} style={{ fontSize: 12, marginTop: 8 }} data-testid="global-sim-scenario-needtwo">{zh.gslive.needTwo}</div>
       ) : null}
 
       {adoptStatus && (

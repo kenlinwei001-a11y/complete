@@ -516,7 +516,7 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
         </select>
         <input value={form.description} disabled={!editable} aria-label="描述" style={{ flex: 1 }} onChange={(e) => set("description", e.target.value)} />
       </div>
-      <div style={{ fontSize: 11, color: "var(--muted,#999)", marginBottom: 10 }}>留空则该 Agent 跟随「用途绑定矩阵」的 agent 用途模型（与矩阵保持一致）；选具体模型即按 Agent 覆盖。</div>
+      <div style={{ fontSize: 12, color: "var(--muted,#999)", marginBottom: 10 }}>留空则该 Agent 跟随「用途绑定矩阵」的 agent 用途模型（与矩阵保持一致）；选具体模型即按 Agent 覆盖。</div>
 
       <div className="section-title">系统提示词</div>
       <textarea className="mono" style={{ width: "100%", minHeight: 110, fontSize: 12, marginBottom: 10 }} disabled={!editable} value={form.systemPrompt} aria-label="系统提示词" onChange={(e) => set("systemPrompt", e.target.value)} />
@@ -669,7 +669,7 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
       <div className="section-title">预算</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {(["maxIterations", "maxToolCalls", "maxSolverCalls", "maxDurationMs", "maxClarifications"] as const).map((k) => (
-          <label key={k} style={{ fontSize: 11, color: "var(--muted)" }}>
+          <label key={k} style={{ fontSize: 12, color: "var(--muted)" }}>
             {k}
             <input
               type="number"

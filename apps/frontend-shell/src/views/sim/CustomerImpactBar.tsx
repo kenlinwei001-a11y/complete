@@ -117,21 +117,21 @@ export function CustomerImpactBar({ displaced, orders, lineNameOf, sessionId }: 
                     <strong data-testid={`global-sim-impact-cust-${r.orderId}`}>{r.cust}</strong>
                     <span className={styles.segChip} style={{ borderColor: r.segColor, color: r.segColor }}>{r.segLabel}</span>
                   </div>
-                  <div style={{ marginTop: 4, fontSize: 11, color: "var(--muted)" }}>
+                  <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)" }}>
                     {r.orderId} · {r.model} · <span className="amt">{fmt(r.qty, 0)}</span> 套未获排
                   </div>
-                  <div style={{ marginTop: 3, fontSize: 11 }}>
+                  <div style={{ marginTop: 3, fontSize: 12 }}>
                     {/* ② 交付基地 + 产线（真数据·非占位） */}
                     交付地 {r.deliverTo} · 产线 <span className="mono" data-testid={`global-sim-impact-line-${r.orderId}`}>{r.deliverLine}</span> · 影响额 <b className={styles.textPrimary} data-testid={`global-sim-impact-yi-${r.orderId}`}>{r.impactYi.toFixed(2)}</b> 亿
                     {!r.traceable && <span className={styles.textMuted}> · 未溯到订单</span>}
                   </div>
                   <div style={{ marginTop: 6, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 11, color: "var(--accent)", fontWeight: 600 }} data-testid={`global-sim-impact-goto-${r.orderId}`}>进 {r.cust} 项目详情 →</span>
+                    <span style={{ fontSize: 12, color: "var(--accent-txt)", fontWeight: 600 }} data-testid={`global-sim-impact-goto-${r.orderId}`}>进 {r.cust} 项目详情 →</span>
                     {/* ⑥ 死按钮改真动作：预览 → 确认 → plan_change 草稿（stopPropagation 不触发整卡跳转）。 */}
                     <button
                       className={styles.btnGhost}
                       data-testid={`global-sim-impact-coord-${r.orderId}`}
-                      style={{ fontSize: 11, padding: "2px 8px" }}
+                      style={{ fontSize: 12, padding: "2px 8px" }}
                       title="预览 → 确认 → 生成协调加产 plan_change 草稿（S2 审批·不直接写真值）"
                       onClick={(e) => { e.stopPropagation(); setPreview(r); }}
                     >

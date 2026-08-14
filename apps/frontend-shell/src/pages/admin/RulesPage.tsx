@@ -122,7 +122,7 @@ export default function RulesPage() {
           ))}
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{t.filterByCategory}</span>
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>{t.filterByCategory}</span>
           {categories.map((c) => (
             <button
               key={c}
@@ -204,7 +204,7 @@ export default function RulesPage() {
                 {open === r.id && (
                   <tr>
                     <td colSpan={9}>
-                      <div className="mono" style={{ fontSize: 11.5, padding: "6px 8px", background: "var(--bg2)", borderRadius: 6 }}>
+                      <div className="mono" style={{ fontSize: 12, padding: "6px 8px", background: "var(--bg2)", borderRadius: 6 }}>
                         {r.expression}
                       </div>
                     </td>
@@ -417,7 +417,7 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: RuleEntry | null; onClos
       <div className="section-title">命名阈值（params · 表达式可直接引用 key）</div>
       <div data-testid="rule-params">
         {paramRows.length === 0 && (
-          <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 6 }}>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
             暂无阈值——「+ 阈值」新增键值后即可在 expression 用裸标识符引用（如 <code>Order.qty &gt; maxQty</code>）。
           </div>
         )}
@@ -494,7 +494,7 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: RuleEntry | null; onClos
         </div>
       )}
       {syntaxError?.position != null && (
-        <pre className="mono" style={{ fontSize: 11.5, margin: "0 0 8px", color: "var(--danger)" }} aria-hidden>
+        <pre className="mono" style={{ fontSize: 12, margin: "0 0 8px", color: "var(--danger-txt)" }} aria-hidden>
           {expression.split("\n")[0]?.slice(0, syntaxError.position)}
           <span style={{ textDecoration: "underline wavy" }}>^</span>
         </pre>
@@ -505,7 +505,7 @@ function RuleEditor({ rule, onClose, onSaved }: { rule: RuleEntry | null; onClos
         {t.dryRunPayload}
         <textarea
           className="mono"
-          style={{ width: "100%", minHeight: 70, fontSize: 11.5 }}
+          style={{ width: "100%", minHeight: 70, fontSize: 12 }}
           value={payloadText}
           aria-label={t.dryRunPayload}
           onChange={(e) => setPayloadText(e.target.value)}

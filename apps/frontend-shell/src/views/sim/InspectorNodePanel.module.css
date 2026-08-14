@@ -43,7 +43,7 @@
 }
 .nodeId {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted2);
   background: var(--panel2);
   border: 1px solid var(--line);
@@ -53,8 +53,8 @@
 }
 .stage {
   font-style: normal;
-  font-size: 11px;
-  color: var(--accent);
+  font-size: 12px;
+  color: var(--accent-txt);
   border: 1px solid var(--line2);
   border-radius: 4px;
   padding: 1px 6px;
@@ -127,7 +127,7 @@
 }
 .sectionSub {
   font-weight: 400;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted2);
   line-height: 1.5;
 }
@@ -168,9 +168,9 @@
   color: var(--txt);
 }
 .vaBadge {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
-  color: var(--ok);
+  color: var(--ok-txt);
   border: 1px solid var(--ok);
   border-radius: 3px;
   padding: 0 3px;
@@ -226,12 +226,12 @@
 }
 .wfPct,
 .wfLoss {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .wfReason {
   grid-area: reason;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   line-height: 1.5;
 }
@@ -239,22 +239,22 @@
   grid-area: prov;
   justify-self: start;
   font-style: normal;
-  font-size: 10px;
+  font-size: 12px;
   border: 1px solid var(--line2);
   border-radius: 3px;
   padding: 0 4px;
   color: var(--muted2);
 }
 .provTag[data-prov="LIVE"] {
-  color: var(--ok);
+  color: var(--ok-txt);
   border-color: var(--ok);
 }
 .provTag[data-prov="WHATIF"] {
-  color: var(--accent);
+  color: var(--accent-txt);
   border-color: var(--accent);
 }
 .provTag[data-prov="EMPTY"] {
-  color: var(--danger);
+  color: var(--danger-txt);
   border-color: var(--danger);
 }
 
@@ -273,7 +273,7 @@
   font-family: var(--font-mono);
   font-size: 26px;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--accent-txt);
 }
 .flowFormula {
   font-size: 12px;
@@ -304,7 +304,7 @@
   color: var(--txt);
 }
 .groupMech {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted2);
   line-height: 1.5;
 }
@@ -346,32 +346,32 @@
   margin-left: auto;
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--accent);
+  color: var(--accent-txt);
 }
 .emptyValue {
   margin-left: auto;
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--danger);
+  color: var(--danger-txt);
 }
 .carrierTag {
   font-style: normal;
-  font-size: 10px;
+  font-size: 12px;
   border: 1px solid var(--line2);
   border-radius: 3px;
   padding: 0 4px;
   color: var(--muted2);
 }
 .carrierTag[data-carrier="有"] {
-  color: var(--ok);
+  color: var(--ok-txt);
   border-color: var(--ok);
 }
 .carrierTag[data-carrier="薄"] {
-  color: var(--warn);
+  color: var(--warn-txt);
   border-color: var(--warn);
 }
 .carrierTag[data-carrier="缺"] {
-  color: var(--danger);
+  color: var(--danger-txt);
   border-color: var(--danger);
 }
 
@@ -393,7 +393,7 @@
 .sliderScale {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
   font-family: var(--font-mono);
 }
@@ -413,10 +413,10 @@
 .ruleKey {
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--accent);
+  color: var(--accent-txt);
 }
 .ruleParam {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .ruleParam b {
@@ -425,13 +425,13 @@
 }
 .rulePath {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
   word-break: break-all;
 }
 .ruleNote {
   flex-basis: 100%;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
   line-height: 1.5;
 }
@@ -473,7 +473,7 @@
   font-weight: 600;
 }
 .optionNote {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
   line-height: 1.5;
 }
@@ -483,19 +483,19 @@
 .inertNote,
 .evidence {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.55;
 }
 .emptyNote {
-  color: var(--danger);
+  color: var(--danger-txt);
 }
 .inertNote {
-  color: var(--warn);
+  color: var(--warn-txt);
 }
 .evidence {
   color: var(--muted2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   word-break: break-word;
 }
 
@@ -521,14 +521,14 @@
 }
 .posTag {
   align-self: flex-start;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
   border: 1px solid var(--line2);
   border-radius: 3px;
   padding: 0 4px;
 }
 .posOrigin {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
   line-height: 1.55;
 }
@@ -564,12 +564,12 @@
   grid-area: value;
   font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--accent);
+  color: var(--accent-txt);
   white-space: nowrap;
 }
 .kpiSource {
   grid-area: source;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
   line-height: 1.55;
 }
@@ -613,14 +613,14 @@
 .evKind,
 .evEmptyKind {
   font-style: normal;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
   border: 1px solid var(--line2);
   border-radius: 3px;
   padding: 0 4px;
 }
 .evEmptyKind {
-  color: var(--danger);
+  color: var(--danger-txt);
   border-color: var(--danger);
 }
 .evDays {
@@ -632,8 +632,8 @@
 }
 .evTriple {
   font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--accent);
+  font-size: 12px;
+  color: var(--accent-txt);
   word-break: break-all;
 }
 .evValueRow {
@@ -643,7 +643,7 @@
   gap: 6px;
 }
 .evValueLabel {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .evValue {
@@ -654,7 +654,7 @@
 .evUnit {
   font-style: normal;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
   border: 1px solid var(--line2);
   border-radius: 3px;
@@ -662,7 +662,7 @@
 }
 .evConversion {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
   background: var(--bg2);
   border: 1px solid var(--line);
@@ -675,14 +675,14 @@
 .evSolver,
 .evReason,
 .evProbe {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
   line-height: 1.55;
   word-break: break-word;
 }
 .evReason {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* ⑤ 跨节点冲突 */
@@ -719,7 +719,7 @@
 }
 .cfBasisCode {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
   word-break: break-all;
 }
@@ -759,5 +759,5 @@
 }
 .hostNote {
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
 }

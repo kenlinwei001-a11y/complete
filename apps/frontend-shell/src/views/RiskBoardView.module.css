@@ -21,7 +21,7 @@
   margin: 0 0 4px;
 }
 .rkSub {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   max-width: 640px;
   line-height: 1.55;
@@ -34,7 +34,7 @@
 }
 /* tier-chip 药丸开关：等宽字体·选中态蓝底。 */
 .tierChip {
-  font-size: 11px;
+  font-size: 12px;
   padding: 6px 11px;
   border-radius: 8px;
   border: 1px solid var(--line2);
@@ -76,12 +76,12 @@
   font-variant-numeric: tabular-nums;
 }
 .rkK span {
-  font-size: 9.5px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .rkHealth {
-  font-size: 10.5px;
-  color: var(--warn);
+  font-size: 12px;
+  color: var(--warn-txt);
   border: 1px solid rgba(232, 181, 74, 0.4);
   border-radius: 8px;
   padding: 8px 12px;
@@ -124,14 +124,14 @@
   font-size: 13px;
 }
 .rkOwn {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   cursor: default;
 }
 /* provenance 诚实灰徽章（合成种子·未接实测）——绝不显"实测/LIVE"（KILL-MOCK-RED·铁律 0.4）。 */
 .rkSynth {
   display: inline-block;
-  font-size: 9px;
+  font-size: 12px;
   padding: 2px 7px;
   border-radius: 6px;
   border: 1px solid var(--line2);
@@ -153,7 +153,7 @@
   font-variant-numeric: tabular-nums;
 }
 .rkUnit {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .rkChips {
@@ -164,7 +164,7 @@
 }
 .rkFchip {
   display: inline-block;
-  font-size: 9px;
+  font-size: 12px;
   padding: 2px 7px;
   border-radius: 6px;
   border: 1px solid;
@@ -174,7 +174,7 @@
 .rkCF {
   display: flex;
   justify-content: space-between;
-  font-size: 9.5px;
+  font-size: 12px;
   color: var(--muted);
   margin-top: 5px;
 }
@@ -211,7 +211,7 @@
   font-size: 14.5px;
 }
 .rkDetH span {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .rkTl {
@@ -231,7 +231,7 @@
   flex: 1;
   min-width: 4px;
   max-width: 18px;
-  font-size: 8px;
+  font-size: 12px;
   color: var(--muted2);
   font-family: var(--font-mono);
   white-space: nowrap;
@@ -253,10 +253,10 @@
   gap: 1px;
 }
 .rkFlab b {
-  font-size: 10.5px;
+  font-size: 12px;
 }
 .rkFlab span {
-  font-size: 8.5px;
+  font-size: 12px;
   color: var(--muted2);
   font-family: var(--font-mono);
 }
@@ -284,7 +284,7 @@
 .rkLeg {
   display: flex;
   gap: 12px;
-  font-size: 9.5px;
+  font-size: 12px;
   color: var(--muted);
   margin: 8px 0 12px;
   align-items: center;
@@ -305,7 +305,7 @@
   gap: 16px;
 }
 .wfT {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   margin-bottom: 8px;
 }
@@ -324,10 +324,10 @@
   gap: 8px;
 }
 .rkSolH b {
-  font-size: 11px;
+  font-size: 12px;
 }
 .rkSolM {
-  font-size: 9.5px;
+  font-size: 12px;
   color: var(--muted);
   margin-top: 4px;
 }
@@ -337,8 +337,8 @@
   border-radius: 7px;
   border: 1px solid rgba(196, 112, 184, 0.5);
   background: rgba(196, 112, 184, 0.14);
-  color: var(--c-solver);
-  font-size: 11.5px;
+  color: var(--c-solver-txt);
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -357,7 +357,7 @@
   margin-bottom: 8px;
 }
 .qaChip {
-  font-size: 10.5px;
+  font-size: 12px;
   padding: 5px 10px;
   border-radius: 14px;
   border: 1px solid var(--line2);
@@ -374,7 +374,7 @@
   border: 1px solid var(--line2);
   border-radius: 9px;
   padding: 10px 12px;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--muted);
   background: var(--hover-tint);
@@ -390,17 +390,18 @@
   border: 1px solid var(--line2);
   border-radius: 8px;
   padding: 7px 10px;
-  font-size: 11.5px;
+  font-size: 12px;
   background: var(--panel2);
   color: var(--txt);
 }
 .rkAsk button {
   padding: 7px 14px;
   border-radius: 8px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
+  /* WO-R9-CONTRAST：白字压 --accent 仅 3.2:1 ⇒ 实心底走 --accent-solid。 */
+  border: 1px solid var(--accent-solid);
+  background: var(--accent-solid);
   color: var(--on-accent);
-  font-size: 11.5px;
+  font-size: 12px;
   cursor: pointer;
 }
 

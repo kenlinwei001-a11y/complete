@@ -1,0 +1,64 @@
+{
+ "note": "WO-R9-CONTRAST 的存量棘轮（断点 G-TEXT-ILLEGIBLE-SMALL-CJK）。site = 判据 A（尺寸加权对比度 required=max(3, 72/S_eff)）不达标的声明数；floor = 判据 B（字号硬底 <12px）的声明数。两者只降不升；零违规的文件不进基线（新增即红）。判据 C（令牌矩阵）无基线，必须绿。 每条 why 必须说明「为什么现在不修」；本单里绝大多数是本门诚实边界①的已知误报（文字压在彩色实心块上，静态判不了底色）。",
+ "gate": "scripts/check-text-legibility.mjs",
+ "generatedFrom": "node scripts/check-text-legibility.mjs --update",
+ "criterion": {
+  "k": 72,
+  "floorPx": 12,
+  "boldGain": 1.2862,
+  "wcagAnchors": {
+   "bodyPx": 16,
+   "bodyRatio": 4.5,
+   "largePx": 24,
+   "largeRatio": 3,
+   "largeBoldPx": 18.66
+  }
+ },
+ "fileCount": 8,
+ "totals": {
+  "site": 14,
+  "floor": 0
+ },
+ "files": {
+  "apps/frontend-shell/src/pages/Object360Page.tsx": {
+   "site": 1,
+   "floor": 0,
+   "why": "L44 `#fff` 12px。【本门诚实边界①的已知误报】判据 A 拿「该主题所有表面令牌里最差的那一个」当底色，而这几处文字并不落在页面表面上，是压在**彩色实心块**上（真浏览器实测该屏对应元素达标）。静态源码里不存在「这段字最终落在哪块颜色上」这个事实，所以本门只能偏保守地多报 —— 登记在此而不是把判据放宽：放宽会同时放掉真违规。（此处是彩色状态徽标上的白字。）"
+  },
+  "apps/frontend-shell/src/pages/admin/AgentsPage.module.css": {
+   "site": 1,
+   "floor": 0,
+   "why": "L200 `.arrow` 用 `var(--line2)` 当文字色（1.16–1.45:1）。它是**流程箭头字形**（→），语义上是分隔线不是文字；但源码里它确实是一个字符。真修法是改成 CSS 边框/伪元素画线，属管理台重构，超出本单（WO-R9-CONTRAST 只治推演沙盘那一屏与全局令牌）范围边界。"
+  },
+  "apps/frontend-shell/src/views/RiskBoardView.module.css": {
+   "site": 1,
+   "floor": 0,
+   "why": "L392 `.rkAsk button` 用 `var(--on-accent)`（白）12px。【本门诚实边界①的已知误报】判据 A 拿「该主题所有表面令牌里最差的那一个」当底色，而这几处文字并不落在页面表面上，是压在**彩色实心块**上（真浏览器实测该屏对应元素达标）。静态源码里不存在「这段字最终落在哪块颜色上」这个事实，所以本门只能偏保守地多报 —— 登记在此而不是把判据放宽：放宽会同时放掉真违规。（该按钮底已在本单改为 `--accent-solid`，白字实测 ≥6.05。）"
+  },
+  "apps/frontend-shell/src/views/RiskBoardView.tsx": {
+   "site": 4,
+   "floor": 0,
+   "why": "4 处：L376 彩色徽标上的白字、L1723/L1743 `--ok` 绿底上的深墨字 —— 均属【本门诚实边界①的已知误报】判据 A 拿「该主题所有表面令牌里最差的那一个」当底色，而这几处文字并不落在页面表面上，是压在**彩色实心块**上（真浏览器实测该屏对应元素达标）。静态源码里不存在「这段字最终落在哪块颜色上」这个事实，所以本门只能偏保守地多报 —— 登记在此而不是把判据放宽：放宽会同时放掉真违规。；L1641 `var(--ink, #e8b54a)` 是仪表盘指针记号（幽灵令牌 `--ink` 靠 fallback 苟活，暗色 5.65 / 浅色 1.66)，属**风险板**自己的欠账，与推演沙盘无关，留给该页的 burn-down 单。"
+  },
+  "apps/frontend-shell/src/views/process/ProcessWaitView.module.css": {
+   "site": 2,
+   "floor": 0,
+   "why": "L1473 `.processWaitMark` 用 `var(--bg)` 当文字色（1:1）—— 它是**四态记号**（人/数/外/钟），刻意用页面底色压在 `--kind-color` 实心方块上（反相字）。【本门诚实边界①的已知误报】判据 A 拿「该主题所有表面令牌里最差的那一个」当底色，而这几处文字并不落在页面表面上，是压在**彩色实心块**上（真浏览器实测该屏对应元素达标）。静态源码里不存在「这段字最终落在哪块颜色上」这个事实，所以本门只能偏保守地多报 —— 登记在此而不是把判据放宽：放宽会同时放掉真违规。"
+  },
+  "apps/frontend-shell/src/views/sim/GlobalSimView.module.css": {
+   "site": 3,
+   "floor": 0,
+   "why": "3 处：L162 `.pin`（地图别针上的白字）、L202 `.btnPrimary`（`--on-accent` 压在实心 accent 上）、L356 `.batchChip`（`--nav-active-txt` 压在活动染色 chip 上）。【本门诚实边界①的已知误报】判据 A 拿「该主题所有表面令牌里最差的那一个」当底色，而这几处文字并不落在页面表面上，是压在**彩色实心块**上（真浏览器实测该屏对应元素达标）。静态源码里不存在「这段字最终落在哪块颜色上」这个事实，所以本门只能偏保守地多报 —— 登记在此而不是把判据放宽：放宽会同时放掉真违规。"
+  },
+  "apps/frontend-shell/src/views/sim/SandboxConsole.module.css": {
+   "site": 1,
+   "floor": 0,
+   "why": "L1473 `.processWaitMark` 同族反相字（见上）。【本门诚实边界①的已知误报】判据 A 拿「该主题所有表面令牌里最差的那一个」当底色，而这几处文字并不落在页面表面上，是压在**彩色实心块**上（真浏览器实测该屏对应元素达标）。静态源码里不存在「这段字最终落在哪块颜色上」这个事实，所以本门只能偏保守地多报 —— 登记在此而不是把判据放宽：放宽会同时放掉真违规。"
+  },
+  "apps/frontend-shell/src/views/sim/SimViews.module.css": {
+   "site": 1,
+   "floor": 0,
+   "why": "L746 `.bnCell` 用近黑 `#0c1118` 12px/700 —— 它是**热力格**（34×22 实心色块）里的反相读数，底色由组件按值注入（`heatColor()` 返回的 hex）。【本门诚实边界①的已知误报】判据 A 拿「该主题所有表面令牌里最差的那一个」当底色，而这几处文字并不落在页面表面上，是压在**彩色实心块**上（真浏览器实测该屏对应元素达标）。静态源码里不存在「这段字最终落在哪块颜色上」这个事实，所以本门只能偏保守地多报 —— 登记在此而不是把判据放宽：放宽会同时放掉真违规。"
+  }
+ }
+}

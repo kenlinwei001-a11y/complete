@@ -590,7 +590,9 @@ function UserMenu({ username }: { username: string }) {
       <button className={styles.userBtn} onClick={() => setOpen(!open)} data-testid="user-menu-btn" title={username} aria-label={username}>
         <span className={styles.avatar} aria-hidden>{initial}</span>
         <span className={styles.userName}>{username}</span>
-        <span aria-hidden style={{ fontSize: 9, opacity: 0.6 }}>▾</span>
+        {/* WO-R9-CONTRAST：原带 opacity:0.6 —— 透明度是**看不见的降对比**（静态 CSS 判据里量不到，
+            真浏览器一量就现形：该记号从 6.09 掉到 5.02）。层级改由文字令牌表达，不用透明度。 */}
+        <span aria-hidden style={{ fontSize: 12, color: "var(--muted2)" }}>▾</span>
       </button>
       {open && (
         <div className={styles.menuPop}>

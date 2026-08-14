@@ -83,7 +83,7 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
             </div>
           ) : (
             <>
-              <table className="cmp" data-testid="outlook-bymodel-table" style={{ fontSize: 11.5, width: "100%" }}>
+              <table className="cmp" data-testid="outlook-bymodel-table" style={{ fontSize: 12, width: "100%" }}>
                 <thead>
                   <tr>
                     {/* WO-UNIT-MEANING：列头带量纲（单位来自后端 byModel.unit 单源·前端只拼不内联）——
@@ -104,13 +104,13 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
                       <td className="mono" data-testid={`outlook-bymodel-${m.model}-p30`} style={{ textAlign: "right" }}>{fmt(m.p50At30)}</td>
                       <td className="mono" style={{ textAlign: "right" }}>{fmt(m.p50At60)}</td>
                       <td className="mono" data-testid={`outlook-bymodel-${m.model}-p90`} style={{ textAlign: "right" }}>{fmt(m.p50At90)}</td>
-                      <td data-testid={`outlook-bymodel-${m.model}-bn`} style={{ textAlign: "left", color: "var(--c-solver)" }}>{m.mainBn}</td>
-                      <td className="mono" style={{ textAlign: "right", color: m.gap < 0 ? "var(--danger)" : "var(--ok)" }}>{fmt(m.gap)}</td>
+                      <td data-testid={`outlook-bymodel-${m.model}-bn`} style={{ textAlign: "left", color: "var(--c-solver-txt)" }}>{m.mainBn}</td>
+                      <td className="mono" style={{ textAlign: "right", color: m.gap < 0 ? "var(--danger-txt)" : "var(--ok-txt)" }}>{fmt(m.gap)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }}>
+              <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }}>
                 每产品 T+30/60/90 与主瓶颈工序均从 capacity_forecast 该基地 P50/mainBn 同源 join（跨求解器勾稽·R13），改 capacity_forecast 输入即真变（R6/R14·非写死）。
               </div>
             </>
@@ -151,7 +151,7 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
               style={{
                 background: hz.status === "缺口" ? "var(--danger)" : hz.status === "富余" ? "var(--ok)" : "var(--line2)",
                 color: hz.status === "平衡" ? "var(--txt)" : "#fff",
-                fontSize: 11,
+                fontSize: 12,
               }}
             >
               {hz.status === "缺口" ? (
@@ -161,9 +161,9 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
               ) : "供需平衡"}
             </span>
             {hz.crossDay != null && (
-              <span style={{ fontSize: 11, color: "var(--danger)" }} data-testid="outlook-crossday">累计需求 T+{hz.crossDay} 越可用产能</span>
+              <span style={{ fontSize: 12, color: "var(--danger-txt)" }} data-testid="outlook-crossday">累计需求 T+{hz.crossDay} 越可用产能</span>
             )}
-            <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>窗口 {hz.windowStart} ~ {hz.windowEnd}</span>
+            <span style={{ fontSize: 12, color: "var(--muted2)" }}>窗口 {hz.windowStart} ~ {hz.windowEnd}</span>
           </div>
 
           {/* 四线对比（归一化横条·每线 provenance 悬浮·R13）。 */}
@@ -222,15 +222,15 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
                       style={{ padding: "8px 10px", borderLeft: "3px solid var(--accent)", fontSize: 12 }}
                     >
                       <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                        <span className="mono" style={{ color: "var(--accent)" }}>D+{s.day}</span>
+                        <span className="mono" style={{ color: "var(--accent-txt)" }}>D+{s.day}</span>
                         <b>{s.action}</b>
-                        <span className="mono" style={{ color: "var(--muted2)", fontSize: 10.5 }}>{s.date}</span>
-                        <span style={{ marginLeft: "auto", color: "var(--ok)" }}>收窄 {fmt(s.closesGap)} 套</span>
+                        <span className="mono" style={{ color: "var(--muted2)", fontSize: 12 }}>{s.date}</span>
+                        <span style={{ marginLeft: "auto", color: "var(--ok-txt)" }}>收窄 {fmt(s.closesGap)} 套</span>
                       </div>
                       <div data-testid={`outlook-day-rationale-${i}`} style={{ color: "var(--muted)", marginTop: 4, lineHeight: 1.6 }}>
                         {s.rationale}
                       </div>
-                      <div style={{ color: "var(--muted2)", fontSize: 10.5, marginTop: 3 }}>
+                      <div style={{ color: "var(--muted2)", fontSize: 12, marginTop: 3 }}>
                         溯源 {s.provenance.drillType}.{s.provenance.drillField} = {fmt(s.provenance.drillValue)}（触发缺口 {fmt(s.triggerValue)} 套）
                       </div>
                     </div>
@@ -240,7 +240,7 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
             </div>
           )}
 
-          <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }}>
+          <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }}>
             四线均从真对象派生（Line.capacityDaily / WorkOrder.qtyActual / Order.due / DemandSegment.p50），改颗粒即前瞻真变；逐日过程沿产能推演触发→补缺口→收窄口径（R6/R13·非写死）。
           </div>
         </>

@@ -152,7 +152,7 @@ function PopoverSections({ prov, value, label }: { prov: ProvVM; value?: string;
         {prov.source === "TS_AGGREGATE" && prov.tsAgg ? (
           <TsAggSource prov={prov} />
         ) : (
-          <div className="mono" style={{ fontSize: 11.5 }}>
+          <div className="mono" style={{ fontSize: 12 }}>
             {prov.toolName}
             {prov.snapshotVersion && (
               <span style={{ color: "var(--muted2)" }}> · snapshot {prov.snapshotVersion}</span>
@@ -163,11 +163,11 @@ function PopoverSections({ prov, value, label }: { prov: ProvVM; value?: string;
       {/* ③ 计算 */}
       <section className={styles.sec}>
         <h5>{zh.prov.computeSection}</h5>
-        <div className="mono" style={{ fontSize: 11.5, wordBreak: "break-all" }}>
+        <div className="mono" style={{ fontSize: 12, wordBreak: "break-all" }}>
           {prov.outputPath}
         </div>
         {prov.stepId && (
-          <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
             step <span className="mono">{prov.stepId}</span>
             {prov.formula && <> · {prov.formula}</>}
           </div>
@@ -184,7 +184,7 @@ function PopoverSections({ prov, value, label }: { prov: ProvVM; value?: string;
             </div>
           ))
         ) : (
-          <span style={{ color: "var(--muted2)", fontSize: 11.5 }}>{zh.prov.noRule}</span>
+          <span style={{ color: "var(--muted2)", fontSize: 12 }}>{zh.prov.noRule}</span>
         )}
       </section>
     </div>

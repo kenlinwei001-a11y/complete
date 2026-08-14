@@ -108,7 +108,7 @@ export function GlobalSimLevers({
                 data-testid="global-sim-cancel-solve"
                 title="放弃本次推演（服务端会真的中止底层求解）——不必靠改参数间接取消"
                 onClick={onCancel}
-                style={{ marginLeft: 6, fontSize: 10, padding: "0 6px", cursor: "pointer", background: "transparent", color: "inherit", border: "1px solid currentColor", borderRadius: 4 }}
+                style={{ marginLeft: 6, fontSize: 12, padding: "0 6px", cursor: "pointer", background: "transparent", color: "inherit", border: "1px solid currentColor", borderRadius: 4 }}
               >
                 取消本次推演
               </button>
@@ -121,7 +121,7 @@ export function GlobalSimLevers({
             className={styles.recalcBadge}
             data-testid="global-sim-stale"
             title="你的改动已保留，但当前屏上的结果是用旧参数算出来的；点「重算」按新参数重新求解。"
-            style={{ color: "var(--danger)" }}
+            style={{ color: "var(--danger-txt)" }}
           >
             ⚠ {"　"}参数已改 · 当前结果对应旧参数
             {onRecompute && (
@@ -129,7 +129,7 @@ export function GlobalSimLevers({
                 type="button"
                 data-testid="global-sim-recompute"
                 onClick={onRecompute}
-                style={{ marginLeft: 6, fontSize: 10, padding: "0 6px", cursor: "pointer", background: "transparent", color: "inherit", border: "1px solid currentColor", borderRadius: 4 }}
+                style={{ marginLeft: 6, fontSize: 12, padding: "0 6px", cursor: "pointer", background: "transparent", color: "inherit", border: "1px solid currentColor", borderRadius: 4 }}
               >
                 重算
               </button>
@@ -193,7 +193,7 @@ export function GlobalSimLevers({
             >
               + {c.keyLabel}·{c.targetLabel} <span style={{ opacity: 0.6 }}>{(c.util * 100).toFixed(0)}%</span>
             </button>
-          )) : <span className={styles.textMuted} style={{ fontSize: 11 }}>{zh.gslive.noCandidates}</span>}
+          )) : <span className={styles.textMuted} style={{ fontSize: 12 }}>{zh.gslive.noCandidates}</span>}
         </div>
 
         {/* 新增自定义杠杆（任意 key/target） */}
@@ -233,7 +233,7 @@ export function GlobalSimLevers({
               </div>
             ))}
           </div>
-        ) : <div className={styles.textMuted} style={{ fontSize: 11 }}>{zh.gslive.noActive}</div>}
+        ) : <div className={styles.textMuted} style={{ fontSize: 12 }}>{zh.gslive.noActive}</div>}
 
         {/* leverDeltas before/after 七维 KPI（每值溯源 drillType=Lever·R13） */}
         <div className={styles.leverHint} style={{ marginTop: 8 }}>{zh.gslive.deltasTitle}</div>
@@ -261,7 +261,7 @@ export function GlobalSimLevers({
               </div>
             ))}
           </div>
-        ) : <div className={styles.textMuted} style={{ fontSize: 11 }}>{zh.gslive.noDeltas}</div>}
+        ) : <div className={styles.textMuted} style={{ fontSize: 12 }}>{zh.gslive.noDeltas}</div>}
       </div>
 
       {/* 需求：纳入订单子集（区④联动·只读计数） */}

@@ -33,14 +33,14 @@ export function CapacityFactorOntology({ baseId, factors }: { baseId: string; fa
       {/* 现有瓶颈/根因因素 → 本体徽标（纯附加·不动现有 ②④）。 */}
       {annotated.length > 0 && (
         <div data-testid="cap-onto-badges" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-          <span style={{ fontSize: 10.5, color: "var(--muted2)" }}>本页因素本体坐标：</span>
+          <span style={{ fontSize: 12, color: "var(--muted2)" }}>本页因素本体坐标：</span>
           {annotated.map((a) => {
             const f = a.mark ? factorByMark(a.mark) : undefined;
             const color = f ? layerOf(f.layer).colorVar : "var(--muted2)";
             return (
               <span key={a.name} data-testid={`cap-onto-badge-${a.name}`} className="badge"
                 title={f ? `本体 ${f.mark} ${f.name}（第${f.layer}层 ${layerOf(f.layer).name}）` : "未匹配本体坐标（诚实不标）"}
-                style={{ background: "var(--panel)", border: `1px solid ${color}`, color: "var(--muted)", fontSize: 10 }}>
+                style={{ background: "var(--panel)", border: `1px solid ${color}`, color: "var(--muted)", fontSize: 12 }}>
                 {a.name}{f ? ` · ${f.mark}` : ""}
               </span>
             );
@@ -51,21 +51,21 @@ export function CapacityFactorOntology({ baseId, factors }: { baseId: string; fa
       {open && (
         <div data-testid="cap-onto-legend" style={{ display: "grid", gap: 6, marginTop: 8 }}>
           {ONTO_LAYERS.map((L) => (
-            <div key={L.layer} data-testid={`cap-onto-layer-${L.layer}`} style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
+            <div key={L.layer} data-testid={`cap-onto-layer-${L.layer}`} style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: 12 }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 92 }}>
                 <i style={{ width: 12, height: 12, borderRadius: 3, background: L.colorVar, display: "inline-block" }} aria-hidden />
                 <b>{L.layer}·{L.name}</b>
               </span>
               <span style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                 {ONTO_FACTORS.filter((f) => f.layer === L.layer).map((f) => (
-                  <span key={f.mark} className="badge" style={{ background: "var(--panel)", border: `1px solid ${L.colorVar}`, color: "var(--muted)", fontSize: 10 }}>
+                  <span key={f.mark} className="badge" style={{ background: "var(--panel)", border: `1px solid ${L.colorVar}`, color: "var(--muted)", fontSize: 12 }}>
                     {f.mark} {f.name}
                   </span>
                 ))}
               </span>
             </div>
           ))}
-          <div style={{ fontSize: 10.5, color: "var(--muted2)", lineHeight: 1.5 }}>
+          <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5 }}>
             6 层色标复用产能推演看板现有配色（本体 §3 产能金字塔·factorOntology 单一来源·R14）。
           </div>
         </div>

@@ -97,7 +97,7 @@ function DraftDetail({ draft, onChanged }: { draft: ActionDraft; onChanged: () =
       </div>
 
       <div className="section-title">{t.payload}</div>
-      <pre className="mono" style={{ fontSize: 11, background: "var(--bg2)", borderRadius: 8, padding: 10, overflow: "auto" }}>
+      <pre className="mono" style={{ fontSize: 12, background: "var(--bg2)", borderRadius: 8, padding: 10, overflow: "auto" }}>
         {JSON.stringify(draft.payload, null, 2)}
       </pre>
 

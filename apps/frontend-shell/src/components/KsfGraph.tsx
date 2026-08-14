@@ -41,7 +41,7 @@ export function KsfGraph({ testId = "ksf-graph" }: { testId?: string }) {
   return (
     <div className="panel" data-testid={testId}>
       <div className="section-title">{zh.sim.ksf.title}</div>
-      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>{data.summary}</div>
+      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 8 }}>{data.summary}</div>
       <div className={styles.graph}>
         {/* 问题层 */}
         <div className={styles.col} data-testid="ksf-col-problems">
@@ -74,7 +74,7 @@ export function KsfGraph({ testId = "ksf-graph" }: { testId?: string }) {
           <div className={styles.colHead}>{zh.sim.ksf.fin}</div>
           {data.finNodes.map((f) => (
             <div key={f.id} className={`${styles.node} ${styles.fin} ${litFin.has(f.id) ? styles.lit : sel ? styles.dim : ""}`} data-testid={`ksf-fin-${f.id}`} data-status={f.status}>
-              {f.name} <span className="mono" style={{ fontSize: 10.5 }}>{f.actual}/{f.target}{f.unit}</span>
+              {f.name} <span className="mono" style={{ fontSize: 12 }}>{f.actual}/{f.target}{f.unit}</span>
             </div>
           ))}
         </div>
@@ -96,8 +96,8 @@ function ProblemTimeline({ problem }: { problem: { id: string; name: string; ksf
   });
   return (
     <div className={styles.tl} data-testid={`ksf-timeline-${problem.id}`}>
-      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 4 }}>{zh.sim.ksf.timelineHint(problem.name)}</div>
-      {isLoading && <span style={{ fontSize: 11, color: "var(--muted)" }}>{zh.common.loading}</span>}
+      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 4 }}>{zh.sim.ksf.timelineHint(problem.name)}</div>
+      {isLoading && <span style={{ fontSize: 12, color: "var(--muted)" }}>{zh.common.loading}</span>}
       {data && data.series.length > 0 && (
         <DailyDotAxis
           series={data.series}

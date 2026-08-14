@@ -68,8 +68,8 @@ function deltaDir(before: unknown, after: unknown): { arrow: string; diff: strin
   const d = Math.round((after - before) * 1e6) / 1e6;
   if (d === 0) return { arrow: "＝", diff: "0", color: "var(--muted2)" };
   return d > 0
-    ? { arrow: "▲", diff: `+${d}`, color: "var(--ok)" }
-    : { arrow: "▼", diff: String(d), color: "var(--danger)" };
+    ? { arrow: "▲", diff: `+${d}`, color: "var(--ok-txt)" }
+    : { arrow: "▼", diff: String(d), color: "var(--danger-txt)" };
 }
 
 /** 对象展示名：优先 name / 主键值，退回内部 id。 */
@@ -294,16 +294,16 @@ function WhatIfResult({ out, currentProp }: { out: GenericInferenceOutput; curre
         <div className="section-title">② 影响面</div>
         <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: "var(--accent)" }} data-testid="wi-affected-count">{out.affectedObjects}</div>
-            <div style={{ fontSize: 11, color: "var(--muted)" }}>受影响对象</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: "var(--accent-txt)" }} data-testid="wi-affected-count">{out.affectedObjects}</div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>受影响对象</div>
           </div>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: "var(--ok)" }} data-testid="wi-delta-count">{out.count}</div>
-            <div style={{ fontSize: 11, color: "var(--muted)" }}>派生字段变化</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: "var(--ok-txt)" }} data-testid="wi-delta-count">{out.count}</div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>派生字段变化</div>
           </div>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, color: "var(--txt)", paddingTop: 6 }} data-testid="wi-root-types">{(out.rootTypes ?? []).join(" / ") || "—"}</div>
-            <div style={{ fontSize: 11, color: "var(--muted)" }}>假设根类型</div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>假设根类型</div>
           </div>
         </div>
       </div>
@@ -328,11 +328,11 @@ function WhatIfResult({ out, currentProp }: { out: GenericInferenceOutput; curre
                 const dir = deltaDir(r.before, r.after);
                 return (
                   <tr key={`${r.objectId}-${r.prop}-${i}`} data-testid={`wi-delta-row-${r.objectId}-${r.prop}`}>
-                    <td className="mono" style={{ fontSize: 11 }}>{r.objectId}</td>
+                    <td className="mono" style={{ fontSize: 12 }}>{r.objectId}</td>
                     <td className="zh">{r.type}</td>
                     {/* WO-UNIT-MEANING：逐行是不同派生字段（产能/天数/比率/金额混排），
                         原先 before/after 全裸数字无从判断口径 → 带后端下发的量纲（缺则不显·不臆造）。 */}
-                    <td className="mono">{r.prop}{r.unit ? <span style={{ color: "var(--muted2)", fontSize: 10 }}> ({r.unit})</span> : null}</td>
+                    <td className="mono">{r.prop}{r.unit ? <span style={{ color: "var(--muted2)", fontSize: 12 }}> ({r.unit})</span> : null}</td>
                     <td className="mono" data-testid={`wi-before-${r.objectId}-${r.prop}`}>{fmtVal(r.before)}{r.unit ? ` ${r.unit}` : ""}</td>
                     <td className="mono" data-testid={`wi-after-${r.objectId}-${r.prop}`} style={{ fontWeight: 600 }}>{fmtVal(r.after)}{r.unit ? ` ${r.unit}` : ""}</td>
                     <td className="mono" data-testid={`wi-diff-${r.objectId}-${r.prop}`} style={dir ? { color: dir.color, fontWeight: 600 } : { color: "var(--muted2)" }}>

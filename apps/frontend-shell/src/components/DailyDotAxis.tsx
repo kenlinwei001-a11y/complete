@@ -45,11 +45,11 @@ export function DailyDotAxis({ series, threshold, crossDay = null, peak, events 
   })() : null;
 
   return (
-    <div data-testid={testId} style={{ fontSize: 11.5 }}>
+    <div data-testid={testId} style={{ fontSize: 12 }}>
       {/* 顶部摘要（每个数字都带量纲：传导度 N/100） */}
       <div data-testid={`${testId}-summary`} style={{ marginBottom: 4, color: "var(--muted)" }}>
-        当前 <b className="mono">{fmtConduction(cur)}</b> → 峰值 <b className="mono" style={{ color: max >= threshold ? "var(--danger)" : "var(--txt)" }}>{fmtConduction(max)}</b>
-        {" · "}{crossDay != null ? <b style={{ color: "var(--danger)" }}>T+{crossDay} 越线</b> : <span>未越线</span>}
+        当前 <b className="mono">{fmtConduction(cur)}</b> → 峰值 <b className="mono" style={{ color: max >= threshold ? "var(--danger-txt)" : "var(--txt)" }}>{fmtConduction(max)}</b>
+        {" · "}{crossDay != null ? <b style={{ color: "var(--danger-txt)" }}>T+{crossDay} 越线</b> : <span>未越线</span>}
         {" · "}<span>阈值 {fmtConduction(threshold)}</span>
       </div>
       {/* 逐日圆点轴 */}
@@ -65,11 +65,11 @@ export function DailyDotAxis({ series, threshold, crossDay = null, peak, events 
         ))}
       </div>
       {/* 日期刻度行（D+n，首/尾/每5日） */}
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, color: "var(--muted2)", fontSize: 9.5 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, color: "var(--muted2)", fontSize: 12 }}>
         {series.map((_, d) => (d === 0 || d === series.length - 1 || d % tickEvery === 0 ? <span key={d}>D+{d}</span> : null)).filter(Boolean)}
       </div>
       {/* 三档图例（首行标口径：分档数字是传导度指数，不是台数/百分比） */}
-      <div data-testid={`${testId}-legend`} style={{ display: "flex", gap: 10, marginTop: 6, fontSize: 10, flexWrap: "wrap" }}>
+      <div data-testid={`${testId}-legend`} style={{ display: "flex", gap: 10, marginTop: 6, fontSize: 12, flexWrap: "wrap" }}>
         <span style={{ color: "var(--muted2)" }}>
           {METRIC_LABEL}（{TIGHTNESS_METRIC.scaleMin}–{TIGHTNESS_METRIC.scaleMax} 指数·{TIGHTNESS_METRIC.hint}）
         </span>
@@ -80,18 +80,18 @@ export function DailyDotAxis({ series, threshold, crossDay = null, peak, events 
       {/* 悬停/点选日点详情 */}
       {selDetail && (
         <div data-testid={`${testId}-daytip`} className="panel" style={{ marginTop: 6, padding: 8 }}>
-          <div><b>D+{sel}</b> · <b className="mono" style={{ color: selDetail.v >= threshold ? "var(--danger)" : "var(--txt)" }}>{fmtConduction(selDetail.v)}</b></div>
+          <div><b>D+{sel}</b> · <b className="mono" style={{ color: selDetail.v >= threshold ? "var(--danger-txt)" : "var(--txt)" }}>{fmtConduction(selDetail.v)}</b></div>
           {selDetail.nearEvent && (
             <div data-testid={`${testId}-event`} style={{ color: "var(--muted)", marginTop: 2 }}>
               <span style={{ color: "var(--txt)" }}>就近事件：{selDetail.nearEvent.tag ?? EVENT_LABEL[selDetail.nearEvent.type] ?? selDetail.nearEvent.type} D+{selDetail.nearEvent.day}</span>
               {/* PRD-IND-risk §4.6 逐日 tip 可解释：事件量化文案 + 来源系统 */}
               {selDetail.nearEvent.desc && <div style={{ marginTop: 1 }}>{selDetail.nearEvent.desc}</div>}
-              {selDetail.nearEvent.src && <div style={{ fontSize: 10, color: "var(--muted2)" }} data-testid={`${testId}-event-src`}>来源：{selDetail.nearEvent.src}</div>}
+              {selDetail.nearEvent.src && <div style={{ fontSize: 12, color: "var(--muted2)" }} data-testid={`${testId}-event-src`}>来源：{selDetail.nearEvent.src}</div>}
             </div>
           )}
           {selDetail.orders.length > 0 && (
             <div style={{ marginTop: 4 }}>
-              <div style={{ color: "var(--muted2)", fontSize: 10 }}>受影响订单（越线窗口）</div>
+              <div style={{ color: "var(--muted2)", fontSize: 12 }}>受影响订单（越线窗口）</div>
               {selDetail.orders.map((o) => (
                 <span key={o.so} data-testid={`${testId}-order-${o.so}`} className="badge" style={{ marginRight: 4 }}>
                   {o.so}{o.delay ? ` +${o.delay}d` : ""}

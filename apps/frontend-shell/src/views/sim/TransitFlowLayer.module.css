@@ -37,7 +37,7 @@
 
 .hostNote {
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
 }
 
@@ -89,7 +89,7 @@
 
 .btn[data-state="playing"] {
   border-color: var(--nav-active-border);
-  color: var(--accent);
+  color: var(--accent-txt);
 }
 
 .speedGroup {
@@ -159,7 +159,7 @@
 
 .objType {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted2);
 }
 
@@ -167,38 +167,38 @@
   padding: 1px 6px;
   border-radius: 999px;
   border: 1px solid var(--line2);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 
 .badge[data-tone="empty"] {
-  color: var(--warn);
+  color: var(--warn-txt);
   border-color: var(--warn);
 }
 
 .badge[data-tone="live"] {
-  color: var(--ok);
+  color: var(--ok-txt);
   border-color: var(--ok);
 }
 
 .modeReason {
   margin: 4px 0 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
   color: var(--muted);
 }
 
 .emptyReason {
   margin: 4px 0 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
-  color: var(--warn);
+  color: var(--warn-txt);
 }
 
 .reasonList {
   margin: 4px 0 0;
   padding-left: 16px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
   color: var(--muted);
 }
@@ -214,12 +214,12 @@
 .absenceTitle {
   display: block;
   font-size: 13px;
-  color: var(--warn);
+  color: var(--warn-txt);
 }
 
 .unblock {
   margin: 6px 0 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted2);
 }
 
@@ -234,8 +234,8 @@
   padding: 3px 8px;
   border: 1px solid var(--c-forecast);
   border-radius: 999px;
-  font-size: 11px;
-  color: var(--c-forecast);
+  font-size: 12px;
+  color: var(--c-forecast-txt);
 }
 
 /* ── 环上几何（WO-TRANSIT-GEOMETRY）─────────────────────────────────────────
@@ -254,7 +254,7 @@
 
 .geomNote {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
   color: var(--muted);
 }
@@ -307,13 +307,13 @@
 
 .stationName {
   fill: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--font-sans);
 }
 
 /* ① 三角形车头（唯一落在弧上的图元） */
 .carBody {
-  fill: var(--c-capacity);
+  fill: var(--c-capacity-txt);
   stroke: var(--panel);
   stroke-width: 1;
 }
@@ -323,11 +323,11 @@
 }
 
 .car[data-state="queued"] .carBody {
-  fill: var(--warn);
+  fill: var(--warn-txt);
 }
 
 .car[data-state="released"] .carBody {
-  fill: var(--ok);
+  fill: var(--ok-txt);
 }
 
 .car[data-state="pending"] .carBody {
@@ -337,7 +337,7 @@
 .carAnnot {
   fill: var(--txt);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 /* ② 菱形到站徽标（挂在站上·环外） */
@@ -348,19 +348,19 @@
 }
 
 .glyphText {
-  fill: var(--c-forecast);
+  fill: var(--c-forecast-txt);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 /* ③ 横条堆叠（挂在站上·环内） */
 .residentBar {
-  fill: var(--c-product);
+  fill: var(--c-product-txt);
   opacity: 0.85;
 }
 
 .resident[data-state="queued"] .residentBar {
-  fill: var(--warn);
+  fill: var(--warn-txt);
 }
 
 /* 图元图例 */
@@ -368,7 +368,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -386,7 +386,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -410,7 +410,7 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel2);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .event {
@@ -426,15 +426,15 @@
 }
 
 .eventKind {
-  color: var(--c-capacity);
+  color: var(--c-capacity-txt);
 }
 
 .eventKind[data-kind="release"] {
-  color: var(--c-forecast);
+  color: var(--c-forecast-txt);
 }
 
 .eventKind[data-kind="arrive"] {
-  color: var(--ok);
+  color: var(--ok-txt);
 }
 
 .eventText {
