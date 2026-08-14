@@ -5,7 +5,7 @@
  "generatedFrom": "node scripts/check-ui-first-layer.mjs --tighten",
  "fileCount": 122,
  "totals": {
-  "first": 5751,
+  "first": 5755,
   "formula": 49,
   "nativeTitle": 124
  },
@@ -565,7 +565,7 @@
    "first": 52,
    "deferred": 2,
    "formula": 0,
-   "prose": 3,
+   "prose": 0,
    "sizes": 7,
    "page": "主视图（views 顶层）",
    "why": "存量·规范落地前：第一层 52 个信息块；字号 10 级 > 3（R-UI-2）"
@@ -1119,7 +1119,7 @@
   }
  },
  "conserve": {
-  "total": 6785,
+  "total": 6796,
   "files": 122,
   "why": "D5 全局守恒下界 = 建账当时扫描面全体 Σ(first+deferred)，**含未登记文件**。度量对象是内容集合不是单个文件：搬家总量不变 ⇒ 不红；删除总量下降 ⇒ 红。"
  }

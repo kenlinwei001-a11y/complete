@@ -4,6 +4,7 @@ import { fetchOptTemplates, invokeSolver, retrieveOptTemplates, solveOptTemplate
 import type { ViewConfigVM } from "@/api/types";
 import { toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
+import { InfoPopover } from "@/components/InfoPopover";
 import EdgeActivePanel from "./sim/EdgeActivePanel";
 
 /**
@@ -265,24 +266,53 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
             </button>
           ))}
         </div>
-        {/* WO-BEFE-E · 清单出处的诚实位：来自后端（权威）还是本页内置（回退）—— 两者绝不长得一样。 */}
+        {/* WO-BEFE-E · 清单出处的诚实位：来自后端（权威）还是本页内置（回退）—— 两者绝不长得一样。
+         *
+         * 分层（规范 §1 + §4.2，两个方向各用一次）：
+         *  · **出处这个状态留第一层** —— 按 §4.2 判据「这条诚实位若为真，用户会不会重新解读
+         *    第一层的那个结论？」会：不看它，上面那排按钮会被当成后端权威清单，
+         *    而回退态下它可能与后端不一致。所以「权威 / 回退」「未开通或取不到」留在屏上。
+         *  · **完整口径降浮层** —— 从哪个后端地址取的、哪个功能没开通、可能怎么不一致，
+         *    都是「凭什么」，属浮层；第一层留 `?` 记号（静默降层等于删除）。
+         * 原文一字未删，只是换了层。 */}
         <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6 }} data-testid="ow-family-source" data-authoritative={authoritative ? "1" : "0"}>
-          {authoritative
-            ? `模板族清单来自后端 /a/v1/opt/templates（${authoritative.length} 个 · 权威）`
-            : templatesQuery.isLoading
-              ? "正在取模板族清单…"
-              : "⚠ 取不到后端模板族清单（本租户未开通优化模板池 opt.solver-pool，或后端不可达）——下面是本页内置的回退清单，可能与后端不一致"}
+          {authoritative ? (
+            <>
+              模板清单 · 后端权威 {authoritative.length} 个
+              <InfoPopover topic={zh.opt.info.familySource} testId="ow-family-source-why">
+                <span data-testid="ow-family-source-body">模板族清单来自后端 /a/v1/opt/templates（{authoritative.length} 个 · 权威）</span>
+              </InfoPopover>
+            </>
+          ) : templatesQuery.isLoading ? (
+            "正在取模板族清单…"
+          ) : (
+            <>
+              ⚠ 模板清单 · 本页回退（未开通或取不到）
+              <InfoPopover topic={zh.opt.info.familySource} testId="ow-family-source-why">
+                <span data-testid="ow-family-source-body">
+                  取不到后端模板族清单（本租户未开通优化模板池 opt.solver-pool，或后端不可达）——下面是本页内置的回退清单，可能与后端不一致
+                </span>
+              </InfoPopover>
+            </>
+          )}
         </div>
       </div>
 
       {/* WO-BEFE-E · 按需求找模板（GET /a/v1/opt/retrieve · advisory 不入确定性求解路径 FUS2） */}
       <div className="panel" data-testid="ow-retrieve">
-        <div className="section-title">按需求找模板<span style={{ fontSize: 12, color: "var(--muted2)", fontWeight: 400, marginLeft: 8 }}>只帮你选型，不参与求解</span></div>
+        <div className="section-title">
+          按需求找模板<span style={{ fontSize: 12, color: "var(--muted2)", fontWeight: 400, marginLeft: 8 }}>只帮你选型，不参与求解</span>
+          {/* placeholder 是**文案型属性**，门与人都读作第一层的一块内容 —— 举例属于「怎么用」，
+              按规范 §1 降进浮层；输入框里只留那句提示本身。例子原文照搬，一个字没删。 */}
+          <InfoPopover topic={zh.opt.info.retrieveHow} testId="ow-retrieve-how">
+            <span data-testid="ow-retrieve-how-body">用一句话说你要解什么（例：选在哪些地方开点、成本最低）</span>
+          </InfoPopover>
+        </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
           <input
             data-testid="ow-need-input"
             value={need}
-            placeholder="用一句话说你要解什么（例：选在哪些地方开点、成本最低）"
+            placeholder="用一句话说你要解什么"
             onChange={(e) => setNeed(e.target.value)}
             style={{ flex: 1, minWidth: 260 }}
           />
@@ -292,7 +322,14 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
         </div>
         {retrieveQuery.isError && (
           <div style={{ fontSize: 12, color: "var(--amber-txt)", marginTop: 6 }} data-testid="ow-retrieve-error">
-            检索不可用（本租户未开通优化模板池，或后端不可达）——这是「没查出来」，不是「没有匹配的模板」。
+            {/* 「没查出来 ≠ 没有」这半句**留第一层**（§4.2：不看它，这一格会被读成「确实没有匹配的模板」，
+                结论当场反过来）；「为什么不可用」是口径，降浮层。 */}
+            ⚠ 检索不可用（不是「没有匹配的模板」）
+            <InfoPopover topic={zh.opt.info.retrieveError} testId="ow-retrieve-error-why">
+              <span data-testid="ow-retrieve-error-body">
+                检索不可用（本租户未开通优化模板池，或后端不可达）——这是「没查出来」，不是「没有匹配的模板」。
+              </span>
+            </InfoPopover>
           </div>
         )}
         {retrieveQuery.data && (
@@ -384,10 +421,20 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
       {unavailable && (
         <div className="empty-state" data-testid="ow-unavailable">
           <div className="code">🔌</div>
-          <div style={{ fontWeight: 600, color: "var(--txt)" }}>未接入最优化引擎</div>
+          {/* 「未接入最优化引擎」是**结论**（状态），留第一层；「怎么接上」是一整段部署口径，
+              且只对运维/管理员有用 —— 按规范 §1 降进 `?` 浮层，第一层留记号。
+              后端回的那句错误原文（errMsg）**不降层**：它是这次请求的事实，用户要靠它判断是
+              「没装引擎」还是「装了但这次挂了」。 */}
+          <div style={{ fontWeight: 600, color: "var(--txt)" }}>
+            未接入最优化引擎
+            <InfoPopover topic={zh.opt.info.unavailable} testId="ow-unavailable-how">
+              <span data-testid="ow-unavailable-body">
+                optimize_whatif 需 CP-SAT sidecar（services/optimizer）。本地内存模式请设 <span className="mono">OPTIMIZER_BASE_URL</span> 并起 sidecar（见 DEPLOY.md）；compose 态已自动接入。诚实空态·不假渲 Δ。
+              </span>
+            </InfoPopover>
+          </div>
           <div style={{ fontSize: 12, color: "var(--muted2)", maxWidth: 460, textAlign: "center", lineHeight: 1.7 }}>
-            optimize_whatif 需 CP-SAT sidecar（services/optimizer）。本地内存模式请设 <span className="mono">OPTIMIZER_BASE_URL</span> 并起 sidecar（见 DEPLOY.md）；compose 态已自动接入。诚实空态·不假渲 Δ。
-            <div style={{ marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 12 }}>{errMsg}</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>{errMsg}</div>
           </div>
         </div>
       )}
@@ -475,7 +522,11 @@ function DecisionResult({ out, family, baseArgs, perturbs }: { out: OptWhatifOut
             <span className="mono" style={{ fontSize: 13, fontWeight: 700, padding: "3px 10px", borderRadius: 7, background: "var(--hover-tint-strong)" }}>
               开 {baseOpen.join("/")} → 开 {pertOpen.join("/")}
             </span>
-            <span style={{ fontSize: 12.5, color: "var(--muted)" }}>最优方案变了：改参后原方案不再划算，求解器自动改选</span>
+            {/* 「决策切换」这个徽标 + 上面那行「开 X → 开 Y」已经把结论说全了；
+                「为什么会切换」是解释，降浮层（规范 §1）。原句一字未删。 */}
+            <InfoPopover topic={zh.opt.info.switched} testId="ow-switch-why">
+              <span data-testid="ow-switch-why-body">最优方案变了：改参后原方案不再划算，求解器自动改选</span>
+            </InfoPopover>
           </>
         ) : (
           <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--txt)" }}>{feasible ? "最优决策不变（只是成本变化）" : "扰动后不可行"}</span>

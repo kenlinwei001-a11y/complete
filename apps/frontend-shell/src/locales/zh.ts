@@ -2690,6 +2690,23 @@ export const zh = {
       unknown: (keys: string) => `后端下发了、契约里没有：${keys}（前端不会渲染它，因为词表单源在契约）`,
     },
   },
+  /**
+   * 优化推演页的 `?` 浮层标题（走 R14：浮层文案不内联在组件里）。
+   *
+   * 这四条对应 `views/OptimizeWhatifView.tsx` 里**降进浮层**的四段说明。
+   * 第一层留的是它们各自的**结论**（清单出处 / 检索不可用 / 未接入引擎 / 决策切换），
+   * 浮层回答「凭什么」——见 `docs/CONVENTION-ui-information-layering.md` §1 三层准入。
+   * 标题一律写成**用户会问的那句话**，不是内部字段名。
+   */
+  opt: {
+    info: {
+      familySource: "这份模板清单是从哪来的",
+      retrieveHow: "「按需求找模板」怎么用",
+      retrieveError: "为什么检索不可用",
+      unavailable: "怎么把最优化引擎接上",
+      switched: "「决策切换」是什么意思",
+    },
+  },
 } as const;
 
 export type Locale = typeof zh;
