@@ -1959,6 +1959,52 @@ export const zh = {
     honestyTopic: "口径与溯源（诚实位）",
     honesty:
       "6 层沿产能金字塔既有派生链路（本体 §3·不改链路，仅可视化）；锚点真值溯 base_capacity_outlook.available/gap，各层瓶颈张力溯 bottleneck_matrix（R13 每值可溯·R14 因素表单源 factorOntology）。",
+
+    /* ══ WO-UI-LAYERING-BURNDOWN 追加 · 仓主「看不懂这个 UX，你希望用户看到这个做什么？」════
+     * 诊断：**模型是对的，屏上没把它讲出来。** 这条链回答的是产能领域最值钱的一问 ——
+     * 「可用产能是怎么从设备一路算上来的、哪一层把它卡住了」，因为产能不够时人真正要知道的是
+     * **该去修哪一层**（修 OEE？修良率？还是催料？）。屏上答不了它，四个原因逐条对治如下。
+     * ════════════════════════════════════════════════════════════════════════════════ */
+
+    /**
+     * ① 每层「在算什么」——原先只有展开明细才看得到，而它正是这一层的**身份**。
+     * 单源 `views/capacity/factorOntology.ts` 的 `ONTO_LAYERS[].role`，前端**不重写一份**。
+     * ⚠ 这也是层3 与层4 在屏上唯一可分辨之处（今天两层都是「张力95/100·◆危」，长得一模一样）。
+     */
+    roleLabel: "这层在算",
+
+    /**
+     * ② **量纲**：契约 `packages/contracts/src/solvers.ts` 原文 ——
+     * 「张力是 0–100 的紧张度指数（越高越紧），**不是百分比、不是被测量本身的值**」。
+     * 不写在脸上，「张力95/100」会被读成「95%」或「OEE=95」。
+     */
+    tightUnit: "0–100 指数·越高越紧",
+    tightTopic: "张力是什么量纲",
+    tightBody:
+      "张力是 0–100 的紧张度指数（越高越紧），不是百分比，也不是被测量本身的值。" +
+      "例：「设备OEE 张力95/100」= 设备OEE 这一项的紧张度 95/100，不是 OEE=95%。",
+
+    /**
+     * ③ **绝对产能数缺在哪一环**（实测结论，不许拿张力冒充产能数）。
+     * 亲手核过：`BottleneckMatrixOutputSchema.rows[].tightness` 是 `z.record(string, number)`，
+     * 契约注释写明 0–100 —— **层1–4 今天只有张力，引擎不下发各层的绝对产能数**。
+     * 绝对数从第 5 层（`base_capacity_outlook.available`）才开始有。
+     */
+    noAbsMark: "层1–4 无绝对产能数",
+    noAbsTopic: "为什么前 4 层看不到「套」",
+    noAbsBody:
+      "前 4 层今天只有张力，没有绝对产能数：引擎 bottleneck_matrix 的输出里每个因素只有一个 0–100 的紧张度，" +
+      "不下发「这一层输出多少套」。所以这四层能告诉你「哪一层最紧」，但**还不能**告诉你「这一层掉了多少套」。" +
+      "绝对数从第 5 层（可用产能 base_capacity_outlook.available）才开始有。" +
+      "这里如实报缺 —— 拿张力当产能数显示，就是拿一个数冒充另一个数。",
+
+    /**
+     * ④ **缺口的分母**：缺口没有需求这个分母就无法核对（缺口是可用的好几倍时，用户第一反应是"这数对吗"）。
+     * `demand` 引擎其实**一直在下发**（`solvers/base-outlook.ts` HorizonOutlook.demand，gap = available − demand），
+     * 是前端的 `Horizon` 接口漏读了它。
+     */
+    gapDenom: (demand: string, available: string) => `= 可用 ${available} − 需求 ${demand}`,
+    gapDenomMissing: "引擎本次未下发需求值 —— 缺口的分母缺失，无法在屏上核对",
   },
   /**
    * WO-UI-LAYERING-BURNDOWN · 决策推演页「行动清单」——原 ④触发规则 + ⑤推荐组合合成的那一张。

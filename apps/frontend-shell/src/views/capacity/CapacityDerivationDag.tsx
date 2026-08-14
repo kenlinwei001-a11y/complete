@@ -43,7 +43,14 @@ import { formatTightness } from "@platform/contracts";
 
 interface Prov { kind: string; drillType: string; drillField: string; drillValue: number }
 interface OutlookLine { key: string; value: number; provenance: Prov }
-interface Horizon { available: number; gap: number; status: string; lines: OutlookLine[] }
+/**
+ * ⚠ `demand` 原先**不在这个接口里** —— 引擎 `solvers/base-outlook.ts` 的 `HorizonOutlook`
+ * 一直在下发它（`gap = available − demand`），是前端漏读了。
+ * 少了它，第 6 层的缺口**没有分母**：屏上「可用 12,960 / 缺口 88,434」，
+ * 缺口是可用的 6.8 倍，用户第一反应是"这数对吗"，而系统没给他核对的依据。
+ * optional 是为了向后兼容老引擎回包 —— 缺了就**如实报缺**，不推算、不留空。
+ */
+interface Horizon { available: number; gap: number; demand?: number; status: string; lines: OutlookLine[] }
 interface Outlook { baseName: string; horizons: Horizon[] }
 interface BnRow { base: string; tightness: Record<string, number>; primary: string; provenanceSynthetic?: boolean }
 interface Bn { factors: string[]; rows: BnRow[]; dataMode?: string }
@@ -149,7 +156,9 @@ export function CapacityDerivationDag({ baseId }: { baseId: string }) {
   const bnSynthetic = bnRow?.provenanceSynthetic === true;
   const bnKind = bnSynthetic ? "合成·未接实测" : bnLive ? "实测" : "估算(无实测)";
 
-  interface Anchor { label: string; value: string; field: string; kind: string; tight: number | null; status: StatusKey; color: string }
+  interface Anchor { label: string; value: string; field: string; kind: string; tight: number | null; status: StatusKey; color: string;
+    /** 第一层的分母/量纲提示（缺口 → 「= 可用 X − 需求 Y」；张力 → 「0–100 指数·越高越紧」）。 */
+    denom?: string }
   const anchorVal = (a: (typeof LAYER_SPEC)[number]["anchor"]): Anchor => {
     switch (a) {
       case "available":
@@ -158,16 +167,18 @@ export function CapacityDerivationDag({ baseId }: { baseId: string }) {
       case "gap": {
         // 缺口(gap<0) → 危；富余/平衡 → 好。状态词直接用求解器给的 `status`（缺口/富余/平衡·非前端臆造）。
         const short = hz.gap < 0;
-        return { label: hz.status, value: `${fmt(Math.abs(hz.gap))} 套`, field: "base_capacity_outlook.gap", kind: "派生", tight: null, status: short ? "crit" : "ok", color: short ? "var(--danger)" : "var(--ok)" };
+        return { label: hz.status, value: `${fmt(Math.abs(hz.gap))} 套`, field: "base_capacity_outlook.gap", kind: "派生", tight: null, status: short ? "crit" : "ok", color: short ? "var(--danger)" : "var(--ok)",
+          // 缺口必须带分母，否则无法核对（仓主原话：缺口是可用的 6.8 倍，"这数对吗"没处查）。
+          denom: typeof hz.demand === "number" && Number.isFinite(hz.demand) ? zh.capDag.gapDenom(fmt(hz.demand), fmt(hz.available)) : zh.capDag.gapDenomMissing };
       }
       // 说明：这四个 label **不带"张力"二字** —— 量纲由 `formatTightness` 放进 value（「张力59/100」，
       // WO-UNIT-MEANING 的单一来源）。卡片布局把 label 与 value 上下叠放后，原来的
       // `"设备OEE 张力" + "张力59/100"` 会连读成「设备OEE 张力 张力59/100」，同一个词在
       // 眼睛落点上重复两次。去掉 label 这一份（不是去掉 value 那一份 —— 那份才是单源）。
-      case "bnOEE": { const v = tOf("设备OEE"); return { label: "设备OEE", value: formatTightness(v), field: "bottleneck_matrix.设备OEE", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v) }; }
-      case "bnYield": { const v = tOf("良率波动"); return { label: "良率波动", value: formatTightness(v), field: "bottleneck_matrix.良率波动", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v) }; }
-      case "bnPrimary": { const v = bnRow ? tOf(bnRow.primary) : null; return { label: `主瓶颈 ${bnRow?.primary ?? "—"}`, value: formatTightness(v), field: "bottleneck_matrix.primary", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v) }; }
-      case "bnMaterial": { const v = tOf("物料齐套"); return { label: "物料齐套", value: formatTightness(v), field: "bottleneck_matrix.物料齐套", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v) }; }
+      case "bnOEE": { const v = tOf("设备OEE"); return { label: "设备OEE", value: formatTightness(v), field: "bottleneck_matrix.设备OEE", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v), denom: zh.capDag.tightUnit }; }
+      case "bnYield": { const v = tOf("良率波动"); return { label: "良率波动", value: formatTightness(v), field: "bottleneck_matrix.良率波动", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v), denom: zh.capDag.tightUnit }; }
+      case "bnPrimary": { const v = bnRow ? tOf(bnRow.primary) : null; return { label: `主瓶颈 ${bnRow?.primary ?? "—"}`, value: formatTightness(v), field: "bottleneck_matrix.primary", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v), denom: zh.capDag.tightUnit }; }
+      case "bnMaterial": { const v = tOf("物料齐套"); return { label: "物料齐套", value: formatTightness(v), field: "bottleneck_matrix.物料齐套", kind: bnKind, tight: v, status: tightStatus(v), color: tightColor(v), denom: zh.capDag.tightUnit }; }
     }
   };
 
@@ -190,6 +201,49 @@ export function CapacityDerivationDag({ baseId }: { baseId: string }) {
         </span>
         <InfoPopover topic={zh.capDag.honestyTopic} testId="cap-dag-honesty">
           {zh.capDag.honesty}
+        </InfoPopover>
+
+        {/*
+         * 诚实位**升层**（注意方向：这一条不是降层，是原先埋得太低）。
+         * 「合成·未接实测」此前只出现在第 4 层展开明细里 —— 而第 4 层正是主瓶颈那一层，
+         * 意味着**整条链的结论都建立在合成数据上**。这种话必须第一屏就说，
+         * 不能等用户点开明细才发现。D4 守恒管的是"不许降到看不见"，这里是反向修正。
+         */}
+        {/*
+         * **恒显**，不是"只在合成时才显"：用户任何时候都该知道这条链踩在什么数据上。
+         * 只在坏的时候才出标注，等于把"没标注"变成一个需要用户自己推断的信号 —— 那不是诚实位。
+         * 三种取值同源 `bnKind`（实测 / 合成·未接实测 / 估算(无实测)），与第 4 层明细里那份**同一个变量**，
+         * 所以不可能出现"第一层说一套、明细说另一套"。
+         */}
+        <span
+          className={bnSynthetic ? "badge amber" : "badge"}
+          data-testid="cap-dag-provenance-mark"
+          data-kind={bnKind}
+          data-synthetic={bnSynthetic ? "1" : "0"}
+          style={{ fontSize: CAP_TYPE_SCALE.label, color: bnSynthetic ? "var(--amber-txt)" : "var(--muted)" }}
+        >
+          {bnKind}
+        </span>
+
+        {/*
+         * 据实报缺：层1–4 今天**没有绝对产能数**（实测契约 BottleneckMatrixOutputSchema.tightness
+         * 是 0–100 的 record）。不许拿张力冒充产能数 —— 那是"一个数冒充另一个数"。
+         * 第一层留短记号 + `?`，全文在浮层。
+         */}
+        <span
+          className="badge"
+          data-testid="cap-dag-noabs-mark"
+          style={{ fontSize: CAP_TYPE_SCALE.label, color: "var(--muted)" }}
+        >
+          {zh.capDag.noAbsMark}
+        </span>
+        <InfoPopover topic={zh.capDag.noAbsTopic} testId="cap-dag-noabs">
+          {zh.capDag.noAbsBody}
+        </InfoPopover>
+
+        {/* 张力量纲（契约原文：0–100 指数，不是百分比） */}
+        <InfoPopover topic={zh.capDag.tightTopic} testId="cap-dag-tight-unit">
+          {zh.capDag.tightBody}
         </InfoPopover>
       </div>
 
@@ -266,6 +320,38 @@ export function CapacityDerivationDag({ baseId }: { baseId: string }) {
 
                 {/* 这个数是什么（R-UI-1：标签与数值同处一卡，视线不必跨屏） */}
                 <span className={styles.caption}>{anchor.label}</span>
+
+                {/*
+                 * 分母 / 量纲 —— 缺口层给「= 可用 X − 需求 Y」，张力层给「0–100 指数·越高越紧」。
+                 * 两者都是**核对这个数所必需的**：没有分母的缺口没法核对，没有量程的张力会被读成百分比。
+                 */}
+                {anchor.denom ? (
+                  <span
+                    className={styles.caption}
+                    data-testid={`cap-dag-denom-${n}`}
+                    style={{ fontSize: CAP_TYPE_SCALE.label, color: "var(--muted2)" }}
+                  >
+                    {anchor.denom}
+                  </span>
+                ) : null}
+
+                {/*
+                 * **这一层在算什么** —— 单源 `factorOntology.ts` 的 `ONTO_LAYERS[].role`，前端不重写一份。
+                 *
+                 * ⚠ 为什么它必须在第一层（而 R-UI-3 说公式该进浮层）：
+                 * 它是这一层的**身份**，不是对某个结论的解释。去掉它，第 3 层与第 4 层在屏上
+                 * **完全无法分辨**（今天两层都是「张力95/100 · ◆危」，肉眼一模一样），
+                 * 而它们在模型里差得很清楚：`min(瓶颈工序)` vs `∩ 物料齐套·到货约束`。
+                 * 规范 §1 第一层准入清单第 ③ 条原文是「**它是什么的一个名字**」——
+                 * 这一串就是这一层的名字。规范 §4 已按此判例补「结构性口径」豁免。
+                 */}
+                <span
+                  className={styles.caption}
+                  data-testid={`cap-dag-role-${n}`}
+                  style={{ fontSize: CAP_TYPE_SCALE.label, color: "var(--muted)" }}
+                >
+                  {zh.capDag.roleLabel} {L.role}
+                </span>
 
                 {/* 状态：颜色 + 形状 + 文字三通道。
                     颜色只上在**形状**上、状态词走 `--muted` —— 语义域色（`--ok` / `--c-forecast`）

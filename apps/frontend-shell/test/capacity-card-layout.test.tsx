@@ -48,23 +48,55 @@ afterEach(() => {
 });
 
 describe("WO-CAPACITY-CARD-LAYOUT · 6 层派生诊断卡片化（规范 §5 逐条）", () => {
-  it("① R-UI-3 两向：公式**不在**第一层；`?` 浮层展开后**在**（口径是解释，不是结论）", async () => {
+  /**
+   * ⚠ **本条判据于 2026-08-14 被仓主当场推翻，这里记录反转本身**（不许静默改绿）。
+   *
+   * 原判据（WO-CAPACITY-CARD-LAYOUT）：`role` 是公式 ⇒ 按 R-UI-3 **不许**在第一层。
+   * 新判据（WO-UI-LAYERING-BURNDOWN 追加）：仓主看完这一页问
+   *   「**看不懂**『产能推演』的这个 UX，你希望用户看到这个做什么？」
+   * 复核结论：**模型是对的，屏上没把它讲出来。** `role` 是这一层的**身份**，不是对某个结论的解释——
+   *   · 去掉它，第 3 层与第 4 层在屏上**完全无法分辨**（都是「张力9x/100 · ◆危」），
+   *     而模型里差得很清楚：`min(瓶颈工序)` vs `∩ 物料齐套 · 到货约束`；
+   *   · 规范 §1 第一层准入清单第 ③ 条原文就是「**它是什么的一个名字**」。
+   * ⇒ 规范 §4 已按此判例补「**结构性口径**」豁免；本条断言随之**两向都要**：
+   *   第一层**可见**（`toBeVisible()`，不是查 DOM 存在），浮层里**仍在**（同一单源，不是搬走）。
+   *
+   * ⚠ 另记一笔**门的盲区**（否则会被读成"门批准了"）：`scripts/check-ui-first-layer.mjs`
+   * 的 `formula` 判据只看**字符串字面量**，而 `role` 是经 `ONTO_LAYERS[].role` 取来的数据引用 ——
+   * 所以这次改动门测出来 `formula` 仍是 0。**那是门看不见，不是它同意。**
+   * 真正守这条的是下面这个断言。
+   */
+  it("① R-UI-3 结构性口径豁免：每层 `role` 第一层**可见**（层3/层4 唯一可分辨处），浮层里仍在", async () => {
     const user = userEvent.setup();
     await mountDag();
 
-    // ── 向一：第一层零公式。判据取 `factorOntology.ONTO_LAYERS[].role` **单一来源**，
-    //          不在测试里抄一份公式字符串（抄了就会与本体表漂开、改了本体测试照绿）。
+    // ── 向一：第一层**必须**读得到每层的 role。判据取 `factorOntology.ONTO_LAYERS[].role`
+    //          **单一来源**，不在测试里抄一份（抄了就会与本体表漂开、改了本体测试照绿）。
     const layerText = firstLayer().textContent ?? "";
     for (const L of ONTO_LAYERS) {
-      expect(layerText).not.toContain(L.role);
+      expect(layerText).toContain(L.role);
+    }
+    // 真「可见」而非仅存在于 DOM（规范 §1：静默降层等于删除；反过来静默藏起来也一样）。
+    for (const n of LAYERS) {
+      expect(screen.getByTestId(`cap-dag-role-${n}`)).toBeVisible();
     }
     // 工单点名的三段（人眼判据 —— 与上面的单源判据互为金丝雀：这三段确实是 role 的内容）
     expect(ONTO_LAYERS.map((l) => l.role).join("｜")).toContain("节拍 × OEE");
     expect(ONTO_LAYERS.map((l) => l.role).join("｜")).toContain("min(瓶颈工序)");
     expect(ONTO_LAYERS.map((l) => l.role).join("｜")).toContain("∩ 物料齐套");
     for (const frag of ["节拍 × OEE", "min(瓶颈工序)", "∩ 物料齐套"]) {
-      expect(layerText).not.toContain(frag);
+      expect(layerText).toContain(frag);
     }
+
+    // ── 反面判据：层3 与层4 在屏上**必须不一样**。
+    //    仓主原话：「层3 与层4 屏上一模一样：都张力95/100、都◆危、都写物料齐套」。
+    //    只断言"role 上屏了"是不够的 —— 要断言**这两张卡的可见文本真的不同**。
+    //    ⚠ 张力数值恰好相等时（真实数据里就是 95/95），旧屏上这两张卡逐字相同；
+    //      故这里比的是**去掉数值之后**的文本，逼出"结构性差异"而不是"数字碰巧不同"。
+    const strip = (n: number) => (face(n).textContent ?? "").replace(/[\d,./]/g, "");
+    expect(strip(3)).not.toBe(strip(4));
+    expect(face(3).textContent ?? "").toContain("min(瓶颈工序)");
+    expect(face(4).textContent ?? "").toContain("∩ 物料齐套");
 
     // ── 向二：悬停第 1 层的 `?` → 浮层里有该层公式全文。
     await user.hover(screen.getByTestId("info-wrap-cap-dag-formula-1"));
@@ -189,6 +221,44 @@ describe("WO-CAPACITY-CARD-LAYOUT · 6 层派生诊断卡片化（规范 §5 逐
     ]) {
       expect(body.textContent ?? "").toContain(frag);
     }
+  });
+
+  /**
+   * ⚠ 方向与 ④ 相反：④ 管「不许降到看不见」，本条管「**原先埋得太低，要升上来**」。
+   * 仓主原话：「『合成·未接实测』出现在**主瓶颈那一层**，意味着整条链的结论建立在合成数据上 ——
+   * 这条**该在第一层就说**，不是等用户展开明细才发现。」
+   */
+  it("④b 诚实位**升层**：合成标注 / 绝对产能数缺失 / 缺口分母，三条都在第一层可见", async () => {
+    await mountDag();
+
+    // ① 数据出身升到第一屏（原先只在第 4 层展开明细里才看得到）。
+    //    **恒显**：三种取值都得摆出来，不是"只在合成时才出标注"——
+    //    只在坏的时候才标，等于逼用户从"没标注"里自己推断，那不算诚实位。
+    const prov = screen.getByTestId("cap-dag-provenance-mark");
+    expect(prov).toBeVisible();
+    const kind = prov.getAttribute("data-kind") ?? "";
+    expect(["实测", "合成·未接实测", "估算(无实测)"]).toContain(kind);
+    expect((prov.textContent ?? "").trim()).toBe(kind);
+    // 升层 ≠ 改口径：第一层这句必须与第 4 层明细里那份**逐字相同**（同一个变量，不许各写一份）。
+    await userEvent.setup().click(face(4));
+    expect(within(screen.getByTestId("cap-dag-detail-4")).getByText(new RegExp(kind.replace(/[()]/g, "."))))
+      .toBeInTheDocument();
+
+    // ② 据实报缺：层1–4 今天**没有绝对产能数**（契约 BottleneckMatrixOutputSchema.tightness
+    //    是 0–100 的 record）。第一层必须点名，不许拿张力冒充产能数。
+    const noabs = screen.getByTestId("cap-dag-noabs-mark");
+    expect(noabs).toBeVisible();
+    expect(noabs.textContent ?? "").toContain(zh.capDag.noAbsMark);
+
+    // ③ 缺口必须带分母（`demand`）。引擎 base-outlook 一直在下发它，是前端曾漏读。
+    const denom = screen.getByTestId("cap-dag-denom-6");
+    expect(denom).toBeVisible();
+    expect(denom.textContent ?? "").toMatch(/需求/);
+    // 分母不是编的：它要么给出真需求数，要么如实说"没下发"——两者必居其一，不许留空。
+    expect(denom.textContent ?? "").not.toBe("");
+
+    // ④ 张力量纲写在脸上（契约原文：0–100 指数，不是百分比）。
+    expect(screen.getByTestId("cap-dag-denom-1").textContent ?? "").toContain(zh.capDag.tightUnit);
   });
 
   it("⑤ 浮层规格（R-UI-3）：移开即消失 · 键盘可达（focus/Esc）· **整棵子树零原生 tooltip**", async () => {
