@@ -414,11 +414,22 @@ const CASH_CAUSAL_FACTORS = [
 ];
 
 // WO-CEO-DATA-2 需求达成域因果因素（多假设：预测偏差·产能短缺·物料短缺）。
+//
+// ⚠ WO-DYNAMIC-DRILL-RESOLVE：下面两条的 `DYNAMIC-*` 是**通配占位，不在播种期解析**（见本文件
+// `generateExtended` 里 `const causalFactors = CAUSAL_FACTORS;` 处的长注释）。挑哪一张由 `drillPick`
+// 声明、`solvers/dynamic-drill.ts` 在**查询期**按当时的世界态解析：
+//   · `DYNAMIC-EQUIP` + `drillPick:"min"` ⇒ `oee_current` 最低的那台设备（OEE 越低越是瓶颈）；
+//   · `DYNAMIC-MBAL`  + `drillPick:"max"` ⇒ `gapTon` 最大的那张平衡表（缺口越大越短缺）。
+// 这两个口径与原播种期代码**逐字同义**（原 `worstEquip` 升序取首 / `worstMbal` 降序取首），
+// 搬时机不改口径 —— 这是「连坐面可控」的结构保证，不靠自觉。
+// `drillPick` 与产能域因子读的是**同一个字段名**（`resolveCapacityFactorObjects`），不另立第二套词表。
+// 这两条**不带 `baseScopeField`** ⇒ 不会被 `service.ts` 的产能域选择器
+// （`filter(c => str(c.baseScopeField) !== "")`）捞进产能归因树 —— 那个选择器根本不看 `metricKey`。
 const DEMAND_ATTAIN_CAUSAL_FACTORS = [
   { factorId: "cf-demand-attain-gap", label: "需求达成缺口", drillType: "MaterialBalance", drillId: "mbal-2", drillField: "gapTon", kind: "派生", isRoot: false, provenanceSynthetic: false, metricKey: "demand_attain" },
   { factorId: "cf-forecast-bias", label: "预测偏差(root)", drillType: "DecisionGap", drillId: "dgap-forecast", drillField: "severity", kind: "决策", isRoot: true, provenanceSynthetic: false, metricKey: "demand_attain" },
-  { factorId: "cf-capacity-short", label: "产能瓶颈(root)", drillType: "Equipment", drillId: "DYNAMIC-EQUIP", drillField: "oee_current", kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "demand_attain" },
-  { factorId: "cf-material-short", label: "物料短缺(root)", drillType: "MaterialBalance", drillId: "DYNAMIC-MBAL", drillField: "gapTon", kind: "派生", isRoot: true, provenanceSynthetic: false, metricKey: "demand_attain" },
+  { factorId: "cf-capacity-short", label: "产能瓶颈(root)", drillType: "Equipment", drillId: "DYNAMIC-EQUIP", drillField: "oee_current", kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "demand_attain", drillPick: "min" },
+  { factorId: "cf-material-short", label: "物料短缺(root)", drillType: "MaterialBalance", drillId: "DYNAMIC-MBAL", drillField: "gapTon", kind: "派生", isRoot: true, provenanceSynthetic: false, metricKey: "demand_attain", drillPick: "max" },
 ];
 
 // WO-TIER3 毛利域因果因素（专属·多假设：销量未达·价格侵蚀·成本上涨）。gap_attribution 按 metricKey=gross_profit
@@ -1011,22 +1022,29 @@ export function generateExtended(
     { overdueId: "od-sd", invoiceRef: "INV-SD-001", overdueDays: 12, customerRef: "储能集成商D", amount: 8400, ...approvalFields("od-sd") },
   ];
 
-  // WO-CEO-DATA-2：动态绑定 demand_attain 产能/物料短缺下钻到真实对象（不消耗 rng·R6 稳定）。
-  const worstEquip = ctx.equipment.length
-    ? ctx.equipment.slice().sort((a, b) => {
-        const ao = a.oee_current ?? (a.oeeA ?? 1) * (a.oeeP ?? 1) * (a.oeeQ ?? 1);
-        const bo = b.oee_current ?? (b.oeeA ?? 1) * (b.oeeP ?? 1) * (b.oeeQ ?? 1);
-        return ao - bo;
-      })[0]
-    : undefined;
-  const worstMbal = ctx.materialBalances.length
-    ? ctx.materialBalances.slice().sort((a, b) => (b.gapTon ?? 0) - (a.gapTon ?? 0))[0]
-    : undefined;
-  const causalFactors = CAUSAL_FACTORS.map((cf) => {
-    if (cf.factorId === "cf-capacity-short" && worstEquip) return { ...cf, drillId: worstEquip.equipId };
-    if (cf.factorId === "cf-material-short" && worstMbal) return { ...cf, drillId: worstMbal.matBalId };
-    return cf;
-  });
+  // ── WO-DYNAMIC-DRILL-RESOLVE · `DYNAMIC-*` 占位**原样落库**（解析搬到查询期）───────────────
+  //
+  // 修前这里做的事（WO-CEO-DATA-2 原实现）：在**播种期**把 `DYNAMIC-EQUIP` / `DYNAMIC-MBAL`
+  // 各解析成一个具体 id 再落库（`worstEquip.equipId` / `worstMbal.matBalId`）。两个后果，都实测过：
+  //
+  //  ① **通配性当场丢失** —— `cf-material-short`（物料短缺·root）本来讲的是「这一**类**落点的因」，
+  //     冻成 `mbal-1` 之后就只认那一张：`chain_impediments` 的 7 个 `MaterialBalance` 落点里
+  //     mbal-3/5/6/7/8 全部读作「无因子」（实测 12/17 → 5 条 NO_FACTOR）。
+  //     修法**不是**按物料名各立一个因子（那是把同一个「因」按实例复制 8 份，凑对上率不解释「为什么卡」），
+  //     而是把解析时机搬回查询期，让占位在**当时的上下文**里解析成当前这一张。
+  //
+  //  ② **而且它指错了对象** —— 这一条是本单实测才发现的，比 ① 更硬：
+  //     播种期 `Equipment.oee_current` **还没被时序聚合物化**（`battery.ts` 的 `oee_daily_7d@v1`
+  //     规格产出该字段，落库后 `__prov.source = TS_AGGREGATE`），所以原代码只能拿
+  //     `oeeA×oeeP×oeeQ` 顶替 ⇒ 冻下来的是「按 A×P×Q 最差」的
+  //     `LINE-WS-changzhou-formation-winding-E2`（A×P×Q=0.769233）。
+  //     而查询期按因子**自己声明的那个字段** `oee_current` 真正最差的是
+  //     `LINE-WS-jinhua-slitting-winding-E1`（0.710781）—— changzhou 那台此刻已是 0.776179，
+  //     在 780 台里排不进最差。**冻在播种期 = 拿一个尚未成形的世界态当结论**，屏上看不出来。
+  //
+  // 现在：占位原样落库，`solvers/dynamic-drill.ts` 在查询期按因子自己声明的 `drillPick` 解析
+  // （引擎里没有「哪个占位查哪张表」的 if 链 —— 口径由数据声明·R14）。
+  const causalFactors = CAUSAL_FACTORS;
 
   // WO-TIER3 毛利桥（gross_profit 专属反向归因域）：把毛利缺口拆到 量/价/成本 三杠杆。impactYi 是**数据字段**
   // （R14·非引擎叙事常数），从既有种子确定性派生（R6·不消耗 rng·无时钟·同 seed 字节一致）。既有种子入参：

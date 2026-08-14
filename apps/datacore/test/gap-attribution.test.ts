@@ -277,32 +277,86 @@ describe("WO-CEO-DATA-2 · 每指标多假设因果域", () => {
     }
   });
 
-  it("D2·每因素下钻到真实对象与字段（含动态产能/物料）", async () => {
+  /**
+   * WO-DYNAMIC-DRILL-RESOLVE · D2/D3 的**测量点**从「种子对象的 drillId」搬到「归因产物的 provenance」。
+   *
+   * 原断言（`expect(cf.props.drillId).not.toBe("DYNAMIC-EQUIP")`）咬的是**播种期已经把占位解析掉了**——
+   * 那恰恰是本单要消灭的病：占位在播种期解析 ⇒ ① 通配性丢失（7 张 MaterialBalance 落点只有 1 张能对上因子）；
+   * ② 而且指错对象（播种期 `Equipment.oee_current` 尚未被 `oee_daily_7d@v1` 时序聚合物化，
+   *    只能拿 A×P×Q 顶替 ⇒ 冻下 `changzhou-formation-winding-E2`(A×P×Q=0.769233)，
+   *    而查询期真正最差的是 `jinhua-slitting-winding-E1`(oee_current=0.710781)）。
+   *
+   * **两条断言的「本意」一个字没改**：因子最终必须落到一个真实对象、且该对象上那个字段有真值。
+   * 变的只是在哪儿量 —— 种子里现在存的是**占位**（这是对的），真身在 `gap_attribution` 的产物里。
+   */
+  it("D2·每因素下钻到真实对象与字段（占位在查询期解析·非播种期冻结）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const factors = (await t.repos.objects.listByType(ADMIN.tenantId, "CausalFactor"))
       .filter((o) => ["market_share", "revenue", "cash", "demand_attain"].includes(String(o.props.metricKey)));
+    // 归因产物里的 provenance（= 查询期解析后的真落点）·按 factorId 索引。
+    const provByFactor = new Map<string, { drillId?: string; drillType?: string; drillField?: string; drillValue?: number }>();
+    for (const key of ["market_share", "revenue", "cash", "demand_attain"]) {
+      const g = await run(t, key);
+      for (const n of [...g.atomicLeaves, ...g.levels.flatMap((L) => L.nodes as GA["atomicLeaves"])]) {
+        if (n.provenance?.drillType) provByFactor.set(String(n.id).replace(/^cf:/, ""), n.provenance);
+      }
+    }
+    // 金丝雀：产物里真的读到了 provenance —— 否则下面的 for 会静默跳过全部动态因子，断言退化成恒真。
+    expect(provByFactor.size, "一条 provenance 都没读到 ⇒ 读取器坏了，不是数据干净").toBeGreaterThan(0);
+    expect(provByFactor.has("cf-capacity-short"), "金丝雀：demand_attain 树里必须有 cf-capacity-short").toBe(true);
+
+    let dynamicChecked = 0;
     for (const cf of factors) {
       const type = String(cf.props.drillType);
-      const id = String(cf.props.drillId);
       const field = String(cf.props.drillField);
+      const declared = String(cf.props.drillId);
+      const isPlaceholder = declared === "" || declared === "*" || declared.startsWith("DYNAMIC");
+      // 占位因子：种子里必须**仍是占位**（数据半没回退到播种期解析），真 id 从归因产物取。
+      let id = declared;
+      if (isPlaceholder) {
+        const p = provByFactor.get(String(cf.props.factorId));
+        if (!p) continue; // 该因子这次没进任何归因树（如 chain_flow 域）——不在本用例射程内
+        expect(p.drillId, `占位 ${declared} 在查询期没解析出实例`).toBeTruthy();
+        expect(p.drillId).not.toBe(declared);
+        id = String(p.drillId);
+        dynamicChecked += 1;
+      }
       const candidates = await t.repos.objects.listByType(ADMIN.tenantId, type);
       const target = candidates.find((x) => x.props[type === "Equipment" ? "equipId" : primaryKeyFor(type)] === id);
-      expect(target).toBeTruthy();
+      expect(target, `${cf.props.factorId} 的落点 ${type}/${id} 在库里不存在`).toBeTruthy();
       expect(target!.props[field]).not.toBeUndefined();
     }
+    expect(dynamicChecked, "一个动态因子都没验到 ⇒ 本用例对本单的改动是瞎的").toBeGreaterThanOrEqual(2);
   });
 
-  it("D3·cf-capacity-short 动态绑定到真实 Equipment.equipId（非占位）", async () => {
+  it("D3·cf-capacity-short 的占位在**查询期**绑到真实 Equipment（且是当时 oee_current 真最差的那台）", async () => {
     const t = await makeApp();
     await seedBattery(t);
+    // ① 数据半：种子里存的必须是**占位**（播种期不解析——这是本单的结构保证，回退即红）。
     const cf = (await t.repos.objects.listByType(ADMIN.tenantId, "CausalFactor"))
       .find((o) => o.props.factorId === "cf-capacity-short")!;
-    expect(cf.props.drillId).not.toBe("DYNAMIC-EQUIP");
-    const eq = (await t.repos.objects.listByType(ADMIN.tenantId, "Equipment"))
-      .find((o) => o.props.equipId === cf.props.drillId);
-    expect(eq).toBeTruthy();
-    expect(eq!.props.oee_current).not.toBeUndefined();
+    expect(cf.props.drillId, "种子把占位解析掉了 ⇒ 通配性丢失、且会冻在一个尚未物化的世界态上").toBe("DYNAMIC-EQUIP");
+    expect(cf.props.drillPick, "占位必须自带挑选口径，否则引擎只能靠 if 链猜").toBe("min");
+
+    // ② 引擎半：归因产物里必须是一台**真设备**，且 oee_current 有真值。
+    const g = await run(t, "demand_attain");
+    const node = g.atomicLeaves.find((l) => l.id === "cf:cf-capacity-short");
+    expect(node, "demand_attain 树里没有 cf-capacity-short 叶 ⇒ 本用例空跑").toBeTruthy();
+    const p = node!.provenance as { drillId?: string; drillValue?: number; drillIdDeclared?: string };
+    expect(p.drillIdDeclared, "动态解析必须留声明原文，否则读者分不清是指名的还是现挑的").toBe("DYNAMIC-EQUIP");
+    const equipment = (await t.repos.objects.listByType(ADMIN.tenantId, "Equipment")).map((o) => o.props);
+    const eq = equipment.find((o) => o.equipId === p.drillId);
+    expect(eq, `解析出的 ${p.drillId} 不是库里真设备`).toBeTruthy();
+    expect(eq!.oee_current).not.toBeUndefined();
+
+    // ③ 口径咬死：解析出的这台必须**真的是当时 oee_current 最低的那台**（期望值现算，不写死 id）。
+    const worst = equipment
+      .filter((o) => typeof o.oee_current === "number")
+      .sort((a, b) => (a.oee_current as number) - (b.oee_current as number) || String(a.equipId).localeCompare(String(b.equipId)))[0]!;
+    expect(equipment.length, "设备为 0 ⇒ 断言退化成恒真").toBeGreaterThan(1);
+    expect(p.drillId).toBe(String(worst.equipId));
+    expect(p.drillValue).toBe(worst.oee_current);
   });
 
   it("D4·每指标 caused_by 边真实物化", async () => {
