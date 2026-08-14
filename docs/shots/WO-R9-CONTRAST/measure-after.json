@@ -2325,7 +2325,7 @@
   },
   {
    "text": "现在到底怎么样？（全链线路图 / 物理拓扑 / 阻滞点 / 节点检视）",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     206,
@@ -2440,7 +2440,7 @@
   },
   {
    "text": "已收编的原独立页（9 个 · 深链接仍可达）",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "summary",
    "fg": [
     206,
@@ -3912,7 +3912,7 @@
   },
   {
    "text": "类型",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     206,
@@ -3935,7 +3935,7 @@
   },
   {
    "text": "落点对象",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     206,
@@ -3958,7 +3958,7 @@
   },
   {
    "text": "状态变量",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     206,
@@ -3981,7 +3981,7 @@
   },
   {
    "text": "方式 / 幅度",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     206,
@@ -4004,7 +4004,7 @@
   },
   {
    "text": "持续 tick",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     206,
@@ -4050,7 +4050,7 @@
   },
   {
    "text": "扰动作用在（不推进时间）；之后每次「推进 tick」，引擎沿本体链路把它扩散到下游， 填",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     206,
@@ -4119,7 +4119,7 @@
   },
   {
    "text": "方案环 · 扰动 → 方案 → 平行世界 → 比对 → 采纳",
-   "cls": "_secHead_wdxfh_99",
+   "cls": "_secHead_1np2d_99",
    "tag": "div",
    "fg": [
     233,
@@ -4142,7 +4142,7 @@
   },
   {
    "text": "左边拨一条扰动让指标动起来，这里向决策推演求解器要 N 个对症方案；每个方案开一个平行世",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     206,
@@ -4165,7 +4165,7 @@
   },
   {
    "text": "指标",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     206,
@@ -4211,7 +4211,7 @@
   },
   {
    "text": "R4 红线：沙盘改的是推演会话的世界态，**不写本体真值**。「采纳」只创建 Actio",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     206,
@@ -4234,7 +4234,7 @@
   },
   {
    "text": "AI 指挥台 · 自然语言驱动推演",
-   "cls": "_secHead_wdxfh_99",
+   "cls": "_secHead_1np2d_99",
    "tag": "div",
    "fg": [
     233,
@@ -4257,7 +4257,7 @@
   },
   {
    "text": "用自然语言指挥本沙盘会话（如「把某基地产能推进两个 tick 看负载」）——AI 经 p",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     206,
@@ -4395,7 +4395,7 @@
   },
   {
    "text": "tick 时间轴（全局态轨迹 · 模拟态，采纳才经 Action 正门写真值 R4）",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     206,
@@ -4418,7 +4418,7 @@
   },
   {
    "text": "扰动时间轴",
-   "cls": "_ptlTitle_wdxfh_829",
+   "cls": "_ptlTitle_1np2d_829",
    "tag": "span",
    "fg": [
     187,
@@ -4441,7 +4441,7 @@
   },
   {
    "text": "共 次 · 此刻生效 条 · 现在 tick",
-   "cls": "_ptlCount_wdxfh_834",
+   "cls": "_ptlCount_1np2d_834",
    "tag": "span",
    "fg": [
     233,
@@ -4533,7 +4533,7 @@
   },
   {
    "text": "?",
-   "cls": "_hintBtn_wdxfh_765",
+   "cls": "_hintBtn_1np2d_765",
    "tag": "button",
    "fg": [
     187,
@@ -4556,7 +4556,7 @@
   },
   {
    "text": "无归因量",
-   "cls": "_ptlFlag_wdxfh_839",
+   "cls": "_ptlFlag_1np2d_839",
    "tag": "span",
    "fg": [
     234,
@@ -4579,7 +4579,7 @@
   },
   {
    "text": "这个世界还没受过任何扰动 —— 右栏「施加扰动」做一次，这里会出现第一条。",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     206,
@@ -5568,7 +5568,7 @@
   },
   {
    "text": "还没有分支。点控制条的「分支（多场景对比）」从当前 tick 派生子会话，这里出 A/B",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     206,
@@ -5614,7 +5614,7 @@
   },
   {
    "text": "AI 指挥台已提到左区（本区块上方，不再需要展开折叠块才能问）。 这一格保留为入口记号：",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     206,
@@ -5683,7 +5683,7 @@
   },
   {
    "text": "世界 REAL 尚无任何快照（POST /a/v1/twin/enterprise-st",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     206,
@@ -6028,7 +6028,7 @@
   },
   {
    "text": "站 = 环节 · 站圈大小 ∝ 该环节吃掉的（引擎 的 ）。范围：",
-   "cls": "_sub_18824_25",
+   "cls": "_sub_y2jic_25",
    "tag": "p",
    "fg": [
     206,
@@ -6235,7 +6235,7 @@
   },
   {
    "text": "1.00×",
-   "cls": "_zoomVal_18824_48",
+   "cls": "_zoomVal_y2jic_48",
    "tag": "span",
    "fg": [
     206,
@@ -6281,7 +6281,7 @@
   },
   {
    "text": "普通站 = 环节（圈 ∝ 损失占比）",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     206,
@@ -6304,7 +6304,7 @@
   },
   {
    "text": "增值站（作业）· 不进损失分母",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     206,
@@ -6327,7 +6327,7 @@
   },
   {
    "text": "换乘站 = 共用工序（共享瓶颈）",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     206,
@@ -6350,7 +6350,7 @@
   },
   {
    "text": "合流站 =",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     206,
@@ -6419,7 +6419,7 @@
   },
   {
    "text": "停运区间 = 断点（算不出来）",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     206,
@@ -6442,7 +6442,7 @@
   },
   {
    "text": "红弧 = 返工逆行",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     206,
@@ -6465,7 +6465,7 @@
   },
   {
    "text": "⚠ ：地铁并线是 （任一列车到站即可续行）； 齐套是 （上游到齐才放行，缺一样就开不了工",
-   "cls": "_metaphorWarn_18824_77",
+   "cls": "_metaphorWarn_y2jic_77",
    "tag": "p",
    "fg": [
     233,
@@ -6718,7 +6718,7 @@
   },
   {
    "text": "这条路只有一个数据源。取不到数时显示空图 + 本提示，—— 画出来的假线路图比空白更危险",
-   "cls": "_errorHint_18824_111",
+   "cls": "_errorHint_y2jic_111",
    "tag": "p",
    "fg": [
     206,
@@ -7407,7 +7407,7 @@
    "needSized": 6
   },
   {
-   "text": "sims_6hmnrf3385430qgh",
+   "text": "sims_27fpj1t5m26zch5e",
    "cls": "_meta_7khqd_8",
    "tag": "span",
    "fg": [
@@ -12033,7 +12033,7 @@
   },
   {
    "text": "现在到底怎么样？（全链线路图 / 物理拓扑 / 阻滞点 / 节点检视）",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     63,
@@ -12148,7 +12148,7 @@
   },
   {
    "text": "已收编的原独立页（9 个 · 深链接仍可达）",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "summary",
    "fg": [
     63,
@@ -13620,7 +13620,7 @@
   },
   {
    "text": "类型",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     63,
@@ -13643,7 +13643,7 @@
   },
   {
    "text": "落点对象",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     63,
@@ -13666,7 +13666,7 @@
   },
   {
    "text": "状态变量",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     63,
@@ -13689,7 +13689,7 @@
   },
   {
    "text": "方式 / 幅度",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     63,
@@ -13712,7 +13712,7 @@
   },
   {
    "text": "持续 tick",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     63,
@@ -13758,7 +13758,7 @@
   },
   {
    "text": "扰动作用在（不推进时间）；之后每次「推进 tick」，引擎沿本体链路把它扩散到下游， 填",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     63,
@@ -13827,7 +13827,7 @@
   },
   {
    "text": "方案环 · 扰动 → 方案 → 平行世界 → 比对 → 采纳",
-   "cls": "_secHead_wdxfh_99",
+   "cls": "_secHead_1np2d_99",
    "tag": "div",
    "fg": [
     20,
@@ -13850,7 +13850,7 @@
   },
   {
    "text": "左边拨一条扰动让指标动起来，这里向决策推演求解器要 N 个对症方案；每个方案开一个平行世",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     63,
@@ -13873,7 +13873,7 @@
   },
   {
    "text": "指标",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     63,
@@ -13919,7 +13919,7 @@
   },
   {
    "text": "R4 红线：沙盘改的是推演会话的世界态，**不写本体真值**。「采纳」只创建 Actio",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     63,
@@ -13942,7 +13942,7 @@
   },
   {
    "text": "AI 指挥台 · 自然语言驱动推演",
-   "cls": "_secHead_wdxfh_99",
+   "cls": "_secHead_1np2d_99",
    "tag": "div",
    "fg": [
     20,
@@ -13965,7 +13965,7 @@
   },
   {
    "text": "用自然语言指挥本沙盘会话（如「把某基地产能推进两个 tick 看负载」）——AI 经 p",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     63,
@@ -14103,7 +14103,7 @@
   },
   {
    "text": "tick 时间轴（全局态轨迹 · 模拟态，采纳才经 Action 正门写真值 R4）",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     63,
@@ -14126,7 +14126,7 @@
   },
   {
    "text": "扰动时间轴",
-   "cls": "_ptlTitle_wdxfh_829",
+   "cls": "_ptlTitle_1np2d_829",
    "tag": "span",
    "fg": [
     81,
@@ -14149,7 +14149,7 @@
   },
   {
    "text": "共 次 · 此刻生效 条 · 现在 tick",
-   "cls": "_ptlCount_wdxfh_834",
+   "cls": "_ptlCount_1np2d_834",
    "tag": "span",
    "fg": [
     20,
@@ -14241,7 +14241,7 @@
   },
   {
    "text": "?",
-   "cls": "_hintBtn_wdxfh_765",
+   "cls": "_hintBtn_1np2d_765",
    "tag": "button",
    "fg": [
     81,
@@ -14264,7 +14264,7 @@
   },
   {
    "text": "无归因量",
-   "cls": "_ptlFlag_wdxfh_839",
+   "cls": "_ptlFlag_1np2d_839",
    "tag": "span",
    "fg": [
     117,
@@ -14287,7 +14287,7 @@
   },
   {
    "text": "这个世界还没受过任何扰动 —— 右栏「施加扰动」做一次，这里会出现第一条。",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     63,
@@ -15276,7 +15276,7 @@
   },
   {
    "text": "还没有分支。点控制条的「分支（多场景对比）」从当前 tick 派生子会话，这里出 A/B",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     63,
@@ -15322,7 +15322,7 @@
   },
   {
    "text": "AI 指挥台已提到左区（本区块上方，不再需要展开折叠块才能问）。 这一格保留为入口记号：",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     63,
@@ -15391,7 +15391,7 @@
   },
   {
    "text": "世界 REAL 尚无任何快照（POST /a/v1/twin/enterprise-st",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     63,
@@ -15736,7 +15736,7 @@
   },
   {
    "text": "站 = 环节 · 站圈大小 ∝ 该环节吃掉的（引擎 的 ）。范围：",
-   "cls": "_sub_18824_25",
+   "cls": "_sub_y2jic_25",
    "tag": "p",
    "fg": [
     63,
@@ -15943,7 +15943,7 @@
   },
   {
    "text": "1.00×",
-   "cls": "_zoomVal_18824_48",
+   "cls": "_zoomVal_y2jic_48",
    "tag": "span",
    "fg": [
     63,
@@ -15989,7 +15989,7 @@
   },
   {
    "text": "普通站 = 环节（圈 ∝ 损失占比）",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     63,
@@ -16012,7 +16012,7 @@
   },
   {
    "text": "增值站（作业）· 不进损失分母",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     63,
@@ -16035,7 +16035,7 @@
   },
   {
    "text": "换乘站 = 共用工序（共享瓶颈）",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     63,
@@ -16058,7 +16058,7 @@
   },
   {
    "text": "合流站 =",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     63,
@@ -16127,7 +16127,7 @@
   },
   {
    "text": "停运区间 = 断点（算不出来）",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     63,
@@ -16150,7 +16150,7 @@
   },
   {
    "text": "红弧 = 返工逆行",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     63,
@@ -16173,7 +16173,7 @@
   },
   {
    "text": "⚠ ：地铁并线是 （任一列车到站即可续行）； 齐套是 （上游到齐才放行，缺一样就开不了工",
-   "cls": "_metaphorWarn_18824_77",
+   "cls": "_metaphorWarn_y2jic_77",
    "tag": "p",
    "fg": [
     20,
@@ -16426,7 +16426,7 @@
   },
   {
    "text": "这条路只有一个数据源。取不到数时显示空图 + 本提示，—— 画出来的假线路图比空白更危险",
-   "cls": "_errorHint_18824_111",
+   "cls": "_errorHint_y2jic_111",
    "tag": "p",
    "fg": [
     63,
@@ -17115,7 +17115,7 @@
    "needSized": 6
   },
   {
-   "text": "sims_6hmnrf3385430qgh",
+   "text": "sims_27fpj1t5m26zch5e",
    "cls": "_meta_7khqd_8",
    "tag": "span",
    "fg": [
@@ -21741,7 +21741,7 @@
   },
   {
    "text": "现在到底怎么样？（全链线路图 / 物理拓扑 / 阻滞点 / 节点检视）",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     71,
@@ -21856,7 +21856,7 @@
   },
   {
    "text": "已收编的原独立页（9 个 · 深链接仍可达）",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "summary",
    "fg": [
     71,
@@ -23328,7 +23328,7 @@
   },
   {
    "text": "类型",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     71,
@@ -23351,7 +23351,7 @@
   },
   {
    "text": "落点对象",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     71,
@@ -23374,7 +23374,7 @@
   },
   {
    "text": "状态变量",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     71,
@@ -23397,7 +23397,7 @@
   },
   {
    "text": "方式 / 幅度",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     71,
@@ -23420,7 +23420,7 @@
   },
   {
    "text": "持续 tick",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     71,
@@ -23466,7 +23466,7 @@
   },
   {
    "text": "扰动作用在（不推进时间）；之后每次「推进 tick」，引擎沿本体链路把它扩散到下游， 填",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     71,
@@ -23535,7 +23535,7 @@
   },
   {
    "text": "方案环 · 扰动 → 方案 → 平行世界 → 比对 → 采纳",
-   "cls": "_secHead_wdxfh_99",
+   "cls": "_secHead_1np2d_99",
    "tag": "div",
    "fg": [
     28,
@@ -23558,7 +23558,7 @@
   },
   {
    "text": "左边拨一条扰动让指标动起来，这里向决策推演求解器要 N 个对症方案；每个方案开一个平行世",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     71,
@@ -23581,7 +23581,7 @@
   },
   {
    "text": "指标",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "span",
    "fg": [
     71,
@@ -23627,7 +23627,7 @@
   },
   {
    "text": "R4 红线：沙盘改的是推演会话的世界态，**不写本体真值**。「采纳」只创建 Actio",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     71,
@@ -23650,7 +23650,7 @@
   },
   {
    "text": "AI 指挥台 · 自然语言驱动推演",
-   "cls": "_secHead_wdxfh_99",
+   "cls": "_secHead_1np2d_99",
    "tag": "div",
    "fg": [
     28,
@@ -23673,7 +23673,7 @@
   },
   {
    "text": "用自然语言指挥本沙盘会话（如「把某基地产能推进两个 tick 看负载」）——AI 经 p",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     71,
@@ -23811,7 +23811,7 @@
   },
   {
    "text": "tick 时间轴（全局态轨迹 · 模拟态，采纳才经 Action 正门写真值 R4）",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     71,
@@ -23834,7 +23834,7 @@
   },
   {
    "text": "扰动时间轴",
-   "cls": "_ptlTitle_wdxfh_829",
+   "cls": "_ptlTitle_1np2d_829",
    "tag": "span",
    "fg": [
     91,
@@ -23857,7 +23857,7 @@
   },
   {
    "text": "共 次 · 此刻生效 条 · 现在 tick",
-   "cls": "_ptlCount_wdxfh_834",
+   "cls": "_ptlCount_1np2d_834",
    "tag": "span",
    "fg": [
     28,
@@ -23949,7 +23949,7 @@
   },
   {
    "text": "?",
-   "cls": "_hintBtn_wdxfh_765",
+   "cls": "_hintBtn_1np2d_765",
    "tag": "button",
    "fg": [
     91,
@@ -23972,7 +23972,7 @@
   },
   {
    "text": "无归因量",
-   "cls": "_ptlFlag_wdxfh_839",
+   "cls": "_ptlFlag_1np2d_839",
    "tag": "span",
    "fg": [
     119,
@@ -23995,7 +23995,7 @@
   },
   {
    "text": "这个世界还没受过任何扰动 —— 右栏「施加扰动」做一次，这里会出现第一条。",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     71,
@@ -24984,7 +24984,7 @@
   },
   {
    "text": "还没有分支。点控制条的「分支（多场景对比）」从当前 tick 派生子会话，这里出 A/B",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     71,
@@ -25030,7 +25030,7 @@
   },
   {
    "text": "AI 指挥台已提到左区（本区块上方，不再需要展开折叠块才能问）。 这一格保留为入口记号：",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     71,
@@ -25099,7 +25099,7 @@
   },
   {
    "text": "世界 REAL 尚无任何快照（POST /a/v1/twin/enterprise-st",
-   "cls": "_sub_wdxfh_14",
+   "cls": "_sub_1np2d_14",
    "tag": "div",
    "fg": [
     71,
@@ -25444,7 +25444,7 @@
   },
   {
    "text": "站 = 环节 · 站圈大小 ∝ 该环节吃掉的（引擎 的 ）。范围：",
-   "cls": "_sub_18824_25",
+   "cls": "_sub_y2jic_25",
    "tag": "p",
    "fg": [
     71,
@@ -25651,7 +25651,7 @@
   },
   {
    "text": "1.00×",
-   "cls": "_zoomVal_18824_48",
+   "cls": "_zoomVal_y2jic_48",
    "tag": "span",
    "fg": [
     71,
@@ -25697,7 +25697,7 @@
   },
   {
    "text": "普通站 = 环节（圈 ∝ 损失占比）",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     71,
@@ -25720,7 +25720,7 @@
   },
   {
    "text": "增值站（作业）· 不进损失分母",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     71,
@@ -25743,7 +25743,7 @@
   },
   {
    "text": "换乘站 = 共用工序（共享瓶颈）",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     71,
@@ -25766,7 +25766,7 @@
   },
   {
    "text": "合流站 =",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     71,
@@ -25835,7 +25835,7 @@
   },
   {
    "text": "停运区间 = 断点（算不出来）",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     71,
@@ -25858,7 +25858,7 @@
   },
   {
    "text": "红弧 = 返工逆行",
-   "cls": "_legendChip_18824_69",
+   "cls": "_legendChip_y2jic_69",
    "tag": "i",
    "fg": [
     71,
@@ -25881,7 +25881,7 @@
   },
   {
    "text": "⚠ ：地铁并线是 （任一列车到站即可续行）； 齐套是 （上游到齐才放行，缺一样就开不了工",
-   "cls": "_metaphorWarn_18824_77",
+   "cls": "_metaphorWarn_y2jic_77",
    "tag": "p",
    "fg": [
     28,
@@ -26134,7 +26134,7 @@
   },
   {
    "text": "这条路只有一个数据源。取不到数时显示空图 + 本提示，—— 画出来的假线路图比空白更危险",
-   "cls": "_errorHint_18824_111",
+   "cls": "_errorHint_y2jic_111",
    "tag": "p",
    "fg": [
     71,
@@ -26823,7 +26823,7 @@
    "needSized": 6
   },
   {
-   "text": "sims_6hmnrf3385430qgh",
+   "text": "sims_27fpj1t5m26zch5e",
    "cls": "_meta_7khqd_8",
    "tag": "span",
    "fg": [
