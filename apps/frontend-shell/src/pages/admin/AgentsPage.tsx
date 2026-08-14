@@ -183,8 +183,12 @@ function AgentRuntimeConsole({ agent }: { agent: AgentDefinition | null }) {
   });
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
 
-  // 只留 AGENT 路径的运行 —— 这是本页唯一能诚实声称与 Agent 有关的过滤条件
-  // （没有 agentId 可用，见 `.honest` 横幅与它的 `?`）。
+  // 只留 AGENT 路径的运行 —— **这一段是租户级清单**，过滤条件只有"走没走 AGENT 路"这一个。
+  // ⚠️ 原注释写「没有 agentId 可用」，那句话在 WO-AGENTRUN-ATTRIBUTION 之后已经**不成立**
+  //    （run 记录现在带 agentId/agentKey/agentVersion，上面的 `AgentOwnRuns` 正是靠它取数）。
+  //    但**这一段**仍然是租户级的：它读的是 `GET /b/v1/queries`（任务清单），任务本身没有归属，
+  //    归属只在 run 记录上。二者是两个读端、两种聚合，别因为归属可得了就把这段也说成"本 Agent 的"。
+  //    残余的两类真归不上（探索路 / 上线前旧记录）见 `.honest` 横幅与它的 `?`。
   const runs: QueryHistoryItem[] = (data?.items ?? []).filter((x) => x.path === "AGENT");
   const done = runs.filter((r) => r.status === "COMPLETED").length;
   const bad = runs.filter((r) => r.status === "FAILED" || r.status === "CANCELLED").length;
