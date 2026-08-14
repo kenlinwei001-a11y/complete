@@ -4,7 +4,7 @@ import type { SimCounterfactualResult } from "@platform/contracts";
 import { createSimSession, fetchPropagationRules, fetchSimSessions, fetchSimViewConfig, patchSimDisabledRules, simCounterfactual } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
 import { HintDot } from "./shared";
-import { buildDiffRows, buildEdgeRows, buildVerdict, deriveBaseSnapshot, pickProbeSession, toggleEdge } from "./edgeActiveModel";
+import { buildDiffRows, buildEdgeRows, buildVerdict, deriveBaseSnapshot, pickProbeSession, PROBE_WORLD_PROVENANCE, PROBE_WORLD_PROVENANCE_DETAIL, toggleEdge } from "./edgeActiveModel";
 
 /**
  * ══ WO-ACTIVE-EDGE-UX · 推演边的 active 开关 + 关掉后的结果对照 ══
@@ -224,11 +224,12 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
           拨动任一开关时会**就地开一个探针世界**（tick0 由本体配置派生的占位值）来算差值。
         </p>
       )}
-      {/* R13 出处：拿占位世界算出来的差值只反映**边的结构影响**，不是实测量级 —— 必须标，不许含糊。 */}
+      {/* R13 出处：拿占位世界算出来的差值只反映**边的结构影响**，不是实测量级 —— 必须标，不许含糊。
+          记号文案取自 `edgeActiveModel` 的导出常量（**与产生这批数的那个函数同一个文件**），
+          免得再出现"迁了实现、记号留在原文件"那种事（本单迁 `deriveBaseSnapshot` 时被门当场抓到过）。 */}
       {probeIsSynthetic && (
         <p data-testid={tid("probe-origin")} style={{ color: MUTED, margin: "0 0 8px" }}>
-          出处：本页就地开的**探针世界**，其 tick0 世界态是由本体配置派生的<b>占位值</b>（非实测）。
-          下方差值反映的是<b>这条边的结构影响</b>（系数 × 延迟 × 链路扇出），量级不可当实测读。
+          <b>{PROBE_WORLD_PROVENANCE}</b>：{PROBE_WORLD_PROVENANCE_DETAIL}
           要在实测世界上对照，请在「推演沙盘」里建世界后再回到本页。
         </p>
       )}

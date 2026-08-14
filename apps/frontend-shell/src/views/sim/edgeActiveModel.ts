@@ -208,6 +208,24 @@ export function pickProbeSession<T extends { id: string; createdAt: string; scop
  * 在这里放一份**副本**才是错的：两份 tick0 派生 ⇒ 沙盘的世界与探针世界不是同一个世界，
  * 而用户看到的差值会因此对不上账。
  */
+/**
+ * `deriveBaseSnapshot` 产出的那批读数的**来源记号**（屏上真渲染的字符串，不是注释）。
+ *
+ * 为什么必须是导出的常量而不是各页各写一句：`hash01` 派生出的数**长得和真值一模一样**
+ * （有量纲感、有小数位、会随对象变化），用户没有任何办法分辨。记号只有一份、跟着这个函数走，
+ * 才不会出现"迁了实现、记号留在原文件"的情况 —— 本单迁移 `deriveBaseSnapshot` 时，
+ * `screen-value-provenance:check` **当场就是这么报红的**：源点跟着代码走了，记号没跟。
+ *
+ * ⚠ 不许为了让门变绿在文件里随手塞一个含"占位"二字的字符串（门只到文件级，确实拦不住）——
+ * 那是把一个可见的债换成一个看不见的谎。本常量**必须真的渲染在屏上**
+ * （消费方：`EdgeActivePanel` 的探针世界出处段）。
+ */
+export const PROBE_WORLD_PROVENANCE = "占位·未实测";
+/** 探针世界出处的完整说明（同上，屏上真渲染）。 */
+export const PROBE_WORLD_PROVENANCE_DETAIL =
+  "本页就地开的探针世界，其 tick0 世界态由本体配置结构派生（合成占位值，非实测）。" +
+  "下方差值反映的是这条边的结构影响（系数 × 延迟 × 链路扇出），量级不可当实测读。";
+
 export function hash01(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) {
