@@ -77,6 +77,7 @@ import {
   lex, splitTopLevel, splitTopLevelMembers, stripComments, lineOf, walk,
   frontendProdFiles, readProdTexts, mentionsInProd, M_CODE, M_COMMENT,
 } from "./lib/seam-lex.mjs";
+import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
 
 /* ── 退出码纪律 · 顶层兜底（WO-R1 收编时补 · `gate-exit-discipline:check` 当场报红逼出来的）──
  * 本门原有的 RC 是三分的（0 干净 / 1 真有死字段 / 2 金丝雀不中 ⇒ 门自己坏了），
@@ -737,10 +738,17 @@ if (SEED) {
     console.error("✗ --seed 拒绝执行：基线已存在。首次建账才用 --seed；日常收紧用 --update（只减不增）。");
     process.exit(1);
   }
+  const bcSeed = baselineDocCanary();
+  if (!bcSeed.ok) toolBroken(`基线写入器金丝雀不过（${bcSeed.got}）`, `期望：${bcSeed.want}`);
   const entries = dead.map(seedEntry);
   writeFileSync(
     BASELINE,
-    JSON.stringify({ note: BASELINE_NOTE, generatedBy: "node scripts/check-solver-field-seam.mjs --seed", ratchetHigh: entries.length, maxEntries: entries.length, entries: entries.sort((a, b) => (a.id < b.id ? -1 : 1)) }, null, 2) + "\n",
+    JSON.stringify(buildBaselineDoc({
+      prev: null, // --seed 只在基线不存在时可达（上面已挡），故首次建账必落常量 note
+      generatedBy: "node scripts/check-solver-field-seam.mjs --seed",
+      prose: { note: BASELINE_NOTE },
+      computed: { ratchetHigh: entries.length, maxEntries: entries.length, entries: entries.sort((a, b) => (a.id < b.id ? -1 : 1)) },
+    }), null, 2) + "\n",
   );
   console.log(`· 首次建账：死字段 ${entries.length} 条记为今天的存量基线（此后只减不增）。`);
   process.exit(0);
@@ -752,9 +760,18 @@ if (UPDATE) {
   // 棘轮水位只降不升：取「历史水位」与「现条数」的较小者。
   const nextHigh = Math.min(base.ratchetHigh ?? kept.length, Math.max(kept.length, 0)) || kept.length;
   const before = (base.entries ?? []).length;
+  // 基线写入器四向金丝雀（与 buildBaselineDoc 共用同一份实现，不另抄）——
+  // 原实现 note 无条件落常量、且不摊开 base ⇒ 人手挂账与人手新增顶层键都会被 --update 吞掉。
+  const bcUpd = baselineDocCanary();
+  if (!bcUpd.ok) toolBroken(`基线写入器金丝雀不过（${bcUpd.got}）`, `期望：${bcUpd.want}`);
   writeFileSync(
     BASELINE,
-    JSON.stringify({ note: BASELINE_NOTE, generatedBy: "node scripts/check-solver-field-seam.mjs --update", ratchetHigh: nextHigh, maxEntries: kept.length, entries: kept }, null, 2) + "\n",
+    JSON.stringify(buildBaselineDoc({
+      prev: base,
+      generatedBy: "node scripts/check-solver-field-seam.mjs --update",
+      prose: { note: BASELINE_NOTE },
+      computed: { ratchetHigh: nextHigh, maxEntries: kept.length, entries: kept },
+    }), null, 2) + "\n",
   );
   // ⚠ 把内存里的 base 同步到刚写下去的那份：否则下面的「基线自检」拿的是**收紧前**的旧对象，
   //   会对着一个已经修好的状态报「条数 > ratchetHigh」。实测发生过（注入幽灵条目跑 --update 时）。
