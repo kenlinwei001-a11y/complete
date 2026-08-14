@@ -496,26 +496,8 @@
       "verdict": "UNMARKED",
       "why": "真断言（「本租户采购段一条都没有 —— 代码链路是通的，缺的是数据」＝ CLAUDE.md 铁律 0.5 里的「接了线没数据」态），本单未复核其真伪，也未挂记号。补一条采购段种子它就失真。",
       "sample": "reason: \"已经查过了，本租户采购段一条都没有 —— 代码链路是通的，缺的是数据。\","
-    },
-    {
-      "key": "apps/agentcore/src/features/registry.ts#dcef81122f3afe47",
-      "code": "STALE-8",
-      "file": "apps/agentcore/src/features/registry.ts",
-      "line": 10,
-      "verdict": "CONFIRMED-STALE",
-      "why": "【2026-08-14 复核确认：同一个概念在多份注册表里各写一个名字】功能 `view.dash` 的名字：「经营驾驶舱」≠「驾驶舱」。 三份注册表（agentcore FEATURE_REGISTRY / datacore view-manifest / 前端 mock fixtures）本该是同一份册的三个副本，今天各说各话。屏上显示哪一个取决于走的是哪条下发路径 ⇒ 同一功能在不同页面上叫不同名字。收敛到单一出处归后续单（本单 🚦 边界禁改 apps/**）。",
-      "sample": "feature-name:dash 经营驾驶舱 ≠ 驾驶舱"
-    },
-    {
-      "key": "apps/agentcore/src/features/registry.ts#8063202b12244327",
-      "code": "STALE-8",
-      "file": "apps/agentcore/src/features/registry.ts",
-      "line": 13,
-      "verdict": "CONFIRMED-STALE",
-      "why": "【2026-08-14 复核确认：同一个概念在多份注册表里各写一个名字】功能 `view.risk-board` 的名字：「风险看板」≠「风险推演看板」≠「推演看板」，三份三个名。 三份注册表（agentcore FEATURE_REGISTRY / datacore view-manifest / 前端 mock fixtures）本该是同一份册的三个副本，今天各说各话。屏上显示哪一个取决于走的是哪条下发路径 ⇒ 同一功能在不同页面上叫不同名字。收敛到单一出处归后续单（本单 🚦 边界禁改 apps/**）。",
-      "sample": "feature-name:risk-board 风险看板 ≠ 风险推演看板 ≠ 推演看板"
     }
   ],
-  "onscreenMax": 13,
-  "onscreenRatchetHigh": 13
+  "onscreenMax": 11,
+  "onscreenRatchetHigh": 11
 }

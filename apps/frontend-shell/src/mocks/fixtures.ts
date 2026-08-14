@@ -159,10 +159,13 @@ export const ORDERS = Array.from({ length: 20 }, (_, i) => {
  * 下经 handlers.ts 的 `GET …/a/v1/features/registry` 桩喂给「功能开通配置」页 —— 与生产同一个页面、
  * 同一个字段（`FeaturesPage` 渲染 `def.name`）。mock 自起一个名字 = 演示态在对用户说谎，
  * 而且是最难发现的那个方向（两边都"看起来对"）。
- * 实测本表曾在 5 个键上与后端各写一个名（`view.risk-board` 写「推演看板」而册是
- * 「风险推演看板」…）。下面的字面量是**受检副本**，`assertSharedFeatureNames()` 在模块
- * 加载期逐条核对，不符即抛；mock 独有的键（`view.aop` / `view.graph-*` / `view.dash.widget.gwh`）
- * 不跨服务、不在册内，保持本地自治。
+ * 2026-08-14 实测：本表曾在 5 个键上与后端各写一个名（`view.risk-board` 写「推演看板」而册是
+ * 「风险推演看板」·`shell.query-dock`·`qos.agent-fallback`·`view.project-sim.whatif`·
+ * `admin.plan-builder`）。复验命令：
+ * `pnpm --filter frontend-shell exec vitest run test/feature-name-single-source.seam.test.ts`。
+ * 下面的字面量是**受检副本**，`assertSharedFeatureNames()` 在模块加载期逐条核对，不符即抛；
+ * mock 独有的键（`view.aop` / `view.graph-*` / `view.dash.widget.gwh`）不跨服务、不在册内，
+ * 保持本地自治。
  */
 export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
   { key: "view.dash", name: "驾驶舱", level: "VIEW", defaultOn: true, bindings: { intents: ["capacity_feasibility"] } },
