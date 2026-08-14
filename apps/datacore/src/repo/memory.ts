@@ -28,7 +28,14 @@ import type {
 } from "./repo.js";
 import type { Perturbation, PropagationRule, SimCheckpoint, SimSession, SimTickState } from "@platform/contracts";
 
-/** 推演沙盘内存仓储（R2 跨租户 null；R6 clone 隔离）。 */
+/**
+ * 推演沙盘内存仓储（R2 跨租户 null；R6 clone 隔离）。
+ *
+ * R9 与 `pg.ts PgSimRepo` 成对：契约上给 `SimSession` 加字段（如 WO-ACTIVE-EDGE-UX 的
+ * `disabledRuleKeys`）时，**本类整对象 `structuredClone` 自动带上，pg 侧却不会**
+ * （`sim_session` 是逐列表，列没加就整字段丢）。所以"memory 测试全绿"永远不构成
+ * "pg 也行"的证据 —— 两侧同一组断言见 `test/edge-active-counterfactual.test.ts`。
+ */
 class MemSimRepo implements SimRepo {
   private sessions = new Map<string, SimSession>();
   private ticks = new Map<string, SimTickState>(); // key = `${sessionId}|${tick}`
