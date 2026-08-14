@@ -136,5 +136,39 @@ elif [ "$QUEUE" -gt 0 ] && [ "$LOAD_INT" -lt "$CORES" ]; then
   rc=1
 fi
 
+# ── 改错副本探针（WO 无 · 2026-08-14 建 · 铁律 0.6 二级处置：同一个错第二次必须建机制）─────
+#
+# 病：审核方并行开着**主工作目录**（canonical）与**集成 worktree**，两处各有一份同名脚本。
+#     一次实测：用绝对路径 `/home/user/complete/scripts/check-solver-field-seam.mjs` 编辑，
+#     而 Bash 的 cwd 在集成 worktree ⇒ **改的是 A、跑的是 B**。
+#     于是「我改完了它还报同样的错」被读成「这个门修不好 / 判定器真的坏了」，
+#     实际是修改压根没进到被执行的那份里。同日同形态第 2 次。
+#
+# 形态（铁律 0.6 句式）：**「我用『编辑器报告改动成功』当作『我跑的那份被改了』的证据，
+#                          而前者并不度量后者。」**
+#
+# 为什么建在这里而不是写进检查清单：CLAUDE.md 自己写着「**检查清单是文档，不是机器，
+# 所以它一次都没拦住我**」。机制的判据是「下次同样的错发生时，是机器先说话，不是人先想起来」。
+# 本脚本是审核方**本来就习惯跑**的那一个（派活前、起 vitest 前都跑），
+# 把探针挂在这条既有路径上，不需要任何人记得去跑一个新脚本。
+#
+# 判据：主工作目录（canonical）**不该**有未提交改动 —— 那里只用来读与跑 gate，所有编辑都在
+# 集成 worktree 里做。它一旦有改动，最可能的解释就是刚才那一手改错了副本。
+# 这条**只警告不判负**（rc 不动）：偶尔在主目录做一次性实验是合法的，
+# 把它升成红会训练出「红了也照做」的习惯，反而拆掉威慑。
+MAIN_WT="/home/user/complete"
+if [ -d "$MAIN_WT/.git" ] || [ -f "$MAIN_WT/.git" ]; then
+  STRAY="$(git -C "$MAIN_WT" status --porcelain 2>/dev/null | grep -c . || true)"
+  STRAY_BR="$(git -C "$MAIN_WT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+  HERE="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  if [ "$STRAY" -gt 0 ] && [ "$HERE" != "$MAIN_WT" ]; then
+    echo "⚠️  **可能改错副本**：主工作目录 $MAIN_WT（分支 $STRAY_BR）有 ${STRAY} 处未提交改动，"
+    echo "    而你此刻的 cwd 在 $HERE。两处各有一份同名脚本 —— 用绝对路径编辑 + 相对路径执行时，"
+    echo "    会出现「改的是 A、跑的是 B」，表现为「我改完了它还报同样的错」。"
+    echo "    复核一句话：ls -i <主目录>/<文件> <当前目录>/<文件>，inode 不同就是两个文件。"
+    git -C "$MAIN_WT" status --porcelain 2>/dev/null | head -5 | sed 's/^/      /'
+  fi
+fi
+
 [ "$rc" -eq 0 ] && echo "✅ 调度均衡（在已评估的判据内）"
 exit "$rc"
