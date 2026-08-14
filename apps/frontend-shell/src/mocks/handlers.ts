@@ -1975,14 +1975,20 @@ export function resetMockSim(): void {
   mockCpSeq = 0;
   mockEnterpriseStates.clear();
   resetMockOntologyRelations();
+  // ⚠ 这两行必须留在 `resetMockSim()` 里。它们曾在收编 WO-BEFE-D 的那次合并中被冲突解决
+  //   错挪进下面的 `rememberTickState()`，造成两个方向都错的后果：
+  //   ① 逐用例复位失效 —— 成长工单/组织在岗态跨用例串味（gtk_1 认领后停在 IN_PROGRESS ⇒
+  //      「开放工单」下一例读成 0；张明被置为不在岗后不复位 ⇒ 下一例的 toggle 把他翻回在岗）；
+  //   ② 沙盘每 tick 反而把这两份态**清一次** —— 一边跑沙盘一边看组织/成长页会看到数据自己跳回初态。
+  //   两者都不是「测试洁癖」，是 mock 世界的真实一致性。
+  resetGrowthTickets();
+  resetOrgState();
 }
 /** 记一份逐 tick 态（tick 引擎每次落态都要经这里，回滚才有得取）。 */
 function rememberTickState(sessionId: string, tick: number, state: Record<string, unknown>): void {
   const hist = mockSimTickHistory.get(sessionId) ?? new Map<number, Record<string, unknown>>();
   hist.set(tick, state);
   mockSimTickHistory.set(sessionId, hist);
-  resetGrowthTickets();
-  resetOrgState();
 }
 
 /**
