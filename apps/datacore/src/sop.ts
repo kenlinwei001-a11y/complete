@@ -12,6 +12,14 @@ const planLocked = () =>
   new AppError("PLAN_LOCKED", "S&OP 版本已定稿（C22 锁定），任何字段变更必须走计划变更 Action", 409);
 
 /**
+ * ② 需求评审三线对照的量纲**单一真值**（后端单源下发·前端只格式化不内联）。
+ * 分母是**月**：target 来自 `PlanTarget(level=month)` × `Segment.baselineShare`
+ * （实测 seed 42：年 322.2 万套 = Σ12 月，单月 24.7/25.24/26.58 万套）。
+ * 契约形状见 `SopDemandReviewRowSchema`（`@platform/contracts`）。
+ */
+const SOP_DEMAND_UNIT = "万套/月" as const;
+
+/**
  * S1.8 sop_balance — monthly plan version object + five deterministic steps +
  * state machine DRAFT → IN_REVIEW(①–④) → EXEC_MEETING(⑤) → FINAL (C22 lock).
  */
@@ -147,12 +155,21 @@ export class SopService {
       const rolling = num(s.rolling);
       const dv = target === 0 ? 0 : round((rolling - target) / target, 4);
       // PRD-IND-sop §4.3：三线对照新增「滚动 P90」列（需求预测下分位，payload 透传或缺省派生）。
-      const p90 = s.p90 != null ? num(s.p90) : round(rolling * 0.936, 2);
-      return { key: str(s.key), name: str(s.name, str(s.key)), target, rolling, p90, lastActual: num(s.lastActual), dv, flagged: Math.abs(dv) > threshold };
+      // WO-P50-REMAINING-3：字段名自带口径（万套/**月**·= target/rolling/lastActual 同分母）。
+      // 入参键同步改名、**不留 `p90` 兼容别名**：实测全仓没有任何调用方在传它
+      //（`grep -rn "segments:" apps/*/src apps/*/test` → 两处，都只传 target/rolling/lastActual），
+      // 即透传分支属「接了线没数据、从没触发」，改名零数据影响。
+      const rollingWanPerMonthP90 =
+        s.rollingWanPerMonthP90 != null ? num(s.rollingWanPerMonthP90) : round(rolling * 0.936, 2);
+      return {
+        key: str(s.key), name: str(s.name, str(s.key)), target, rolling,
+        rollingWanPerMonthP90, lastActual: num(s.lastActual), dv, flagged: Math.abs(dv) > threshold,
+        unit: SOP_DEMAND_UNIT,
+      };
     });
     const totalTarget = rows.reduce((a, r) => a + r.target, 0);
     const totalRolling = rows.reduce((a, r) => a + r.rolling, 0);
-    const totalP90 = round(rows.reduce((a, r) => a + r.p90, 0), 2);
+    const totalP90 = round(rows.reduce((a, r) => a + r.rollingWanPerMonthP90, 0), 2);
     const totalDv = totalTarget === 0 ? 0 : round((totalRolling - totalTarget) / totalTarget, 4);
     for (const r of rows) {
       if (!r.flagged) continue;
@@ -164,7 +181,10 @@ export class SopService {
         });
       }
     }
-    v.steps.s2 = { rows, total: { target: totalTarget, rolling: totalRolling, p90: totalP90, dv: totalDv } };
+    v.steps.s2 = {
+      rows,
+      total: { target: totalTarget, rolling: totalRolling, rollingWanPerMonthP90: totalP90, dv: totalDv, unit: SOP_DEMAND_UNIT },
+    };
     v.updatedAt = new Date().toISOString();
     await this.repos.sopVersions.put(v);
     return v;

@@ -9,7 +9,7 @@ import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema, BUSINESS_TYPE_LABEL } from "@platform/contracts";
 import { num, str, dayFrom, normalizeBaseRef, type SolverContext, type SolverParamsShape } from "./types.js";
-import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
+import { SOLVER_RULE_REFS, type EvaluatedRule, type OrderDeliveryJudge } from "@platform/contracts";
 import { evaluateExpression, parseExpression, collectFieldPaths, collectParamRefs, resolveField } from "../ruledsl.js";
 import { createHash } from "node:crypto";
 import { runSolverSandbox } from "./sandbox.js";
@@ -4066,11 +4066,22 @@ export class SolverService {
     const floorPct = num(dseg?.props.floorPct);
 
     // ① 交期判（C02/C03）：可产基地数 × 周产能基线 → P50/P90 vs 周需求（qty 视为单周需求，确定性代理）。
+    // WO-P50-REMAINING-3 量纲实测（不信注释信算术·seed 42·SO-3391）：可产基地 4 × 700 = P50 2800、
+    // P90 2520，对面 `Order.qty` = 7259 **套** ⇒ 两侧同为 `套/周`，`unit` 字面量据此下发。
+    // 与 `BaseCapacityOutlookByModel.packsP50At30` 同为「套」但**分母不同**（周 vs T+N 累计窗口），
+    // 故名字里必须带 PerWeek —— 这正是上一单没做完的第⑥个量纲。
     const weeklyBase = Math.max(1, bases.length) * 700;
-    const p50 = round(weeklyBase, 0);
-    const p90 = round(weeklyBase * 0.9, 0);
-    const deliveryOk = p90 >= qty;
-    const deliveryJudge = { p50, p90, demand: qty, verdict: deliveryOk ? "可达" : "紧张", ruleRefs: ["C02", "C03"] };
+    const packsPerWeekP50 = round(weeklyBase, 0);
+    const packsPerWeekP90 = round(weeklyBase * 0.9, 0);
+    const deliveryOk = packsPerWeekP90 >= qty;
+    const deliveryJudge: OrderDeliveryJudge = {
+      packsPerWeekP50,
+      packsPerWeekP90,
+      demand: qty,
+      verdict: deliveryOk ? "可达" : "紧张",
+      ruleRefs: ["C02", "C03"],
+      unit: "套/周",
+    };
 
     // ② 齐套判（C06/C16）：该型号细分对应物料缺口（取最大 gapTon）。
     const mbals = await this.repos.objects.listByType(ctx.tenantId, "MaterialBalance");
@@ -4093,7 +4104,7 @@ export class SolverService {
     if (!creditOk) { verdict = "不建议接"; vc = "#DD7E9E"; conds.push("信用占用超限（C13），需先收款/降额"); }
     else if (!marginOk) { verdict = `提价${priceUpPct}%接`; vc = "#E8B54A"; conds.push(`毛利率 ${marginPct}% < 细分底线 ${floorPct}%（C15），提价 ${priceUpPct}% 达线`); }
     else { verdict = "可接"; vc = "#62BE77"; }
-    if (!deliveryOk) conds.push(`周供给 P90 ${p90} < 需求 ${qty}（C02），需夜班/外协对冲`);
+    if (!deliveryOk) conds.push(`周供给 P90 ${packsPerWeekP90} 套/周 < 需求 ${qty} 套/周（C02），需夜班/外协对冲`);
     if (!kitOk) conds.push(`${kitJudge.material} 缺口 ${kitGap} 吨（C06），最早齐套 ${kitJudge.eta}`);
 
     // 业务建模链 DAG：so → {net 可产网络 · bom BOM · eco 单价细分 · cred 信用} → {jcap · jkit · jfin} → vrd。
@@ -4120,7 +4131,7 @@ export class SolverService {
       so: str(op.so),
       verdict,
       vc,
-      kpis: { qty, segment: seg, marginPct, floorPct, deliveryP90: p90, kitGap },
+      kpis: { qty, segment: seg, marginPct, floorPct, deliveryPacksPerWeekP90: packsPerWeekP90, kitGap },
       judges: { cap: deliveryJudge, kit: kitJudge, fin: financeJudge },
       conds,
       dag: { nodes, edges },

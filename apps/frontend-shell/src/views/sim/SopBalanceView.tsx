@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { advanceSopVersion, createSopVersion, fetchSopVersion, fetchSopVersions, patchSopVersion, runSolver, queryObjectsPaged } from "@/api/endpoints";
 import { ApiClientError } from "@/api/apiClient";
 import type { SopVersionVM, Workspace } from "@/api/types";
+import type { SopDemandReviewRow, SopDemandReviewTotal } from "@platform/contracts";
 import { useWorkspace, workspaceQueryKey } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import { toast, toastError } from "@/store/toastStore";
@@ -24,6 +25,13 @@ const STATUS_BADGE: Record<SopVersionVM["status"], { label: string; cls: string 
 
 /** KPI 条常数（battery solverParams.sop）：缺口红线 2 / 现金底线 50 / 收入预算 248 亿 */
 const SOP_KPI_P = { gapRed: 2, cashFloor: 50, revBudget: 240 }; // debattery-allow（PRD-IND-sop §4.5-5：真预算 240，兜底；workspace.sopConfig 优先）
+
+/**
+ * ② 三线对照量纲的**前端兜底**（后端 `steps.s2.unit` 缺失时才用；正常路一律取后端单源下发的值）。
+ * 分母是**月**：target 来自 `PlanTarget(level=month)` × `Segment.baselineShare`，
+ * 与 ① 步的 `boundaryDeltaWanPerMonth` 同轴。
+ */
+const SOP_DEMAND_UNIT_FALLBACK = "万套/月";
 
 /** ② 需求评审默认三线（sopConfig.segments 缺失时的电池行业兜底；换租户经 WorkspaceConfig 下发）。 */
 const DEFAULT_SEGMENTS = [
@@ -442,13 +450,19 @@ function Step2({
   const qc = useQueryClient();
   // 去电池锁死（R14）：需求三段初值取自 WorkspaceConfig（缓存同步读），DEFAULT_SEGMENTS 仅兜底
   const [rows, setRows] = useState(() => qc.getQueryData<Workspace>(workspaceQueryKey)?.sopConfig?.segments ?? DEFAULT_SEGMENTS);
-  const s2 = v.steps.s2 as
-    | { rows?: { key: string; name: string; target: number; rolling: number; lastActual: number; dv: number; flagged: boolean }[]; total?: { target: number; rolling: number; dv: number } }
-    | undefined;
-  // SOP.1 ② 滚动 P90 列：取自需求细分 DemandSegment.p90（按细分名匹配，R-一致；缺则 —）。
-  const { data: dsegData } = useQuery({ queryKey: ["a", "objects", "DemandSegment"], queryFn: () => queryObjectsPaged("DemandSegment", 1, 20, {}) });
-  const p90ByName = new Map((dsegData?.items ?? []).map((o) => [String(o.props.segment), Number(o.props.p90)]));
-  const p90Total = [...p90ByName.values()].reduce((a, b) => a + b, 0);
+  // contracts-only-shared（WO-P50-REMAINING-3）：行形状不在前端重定义，直接用契约类型。
+  const s2 = v.steps.s2 as { rows?: SopDemandReviewRow[]; total?: SopDemandReviewTotal } | undefined;
+  // ── SOP.1 ② 「滚动 P90」列：真相源修正（WO-P50-REMAINING-3）──────────────────────────
+  // 原实现从 `DemandSegment.p90` 取数，那是**万套/年**（乘用车 199.6）；而同一行的
+  // 目标/滚动 P50/上月实际 三列是**万套/月**（乘用车 71.0 量级）—— 年、月两个分母混在一行里。
+  // 算术判据（不看注释看数）：P90 是**下**分位，恒该 ≤ 同口径的 P50；实测这一列却是 P50 的
+  // 2.8 倍（真接后端时约 13 倍）⇒ 只可能是串了轴。后端 `SopService.step2` 本来就算了同分母的
+  // `rollingWanPerMonthP90`（payload 透传或 rolling×0.936 缺省派生），前端一直没接 —— 属
+  // 「接了线接错地方」。现改接后端那一列，并把量纲写进表头。
+  const rowP90 = (r: SopDemandReviewRow): number | undefined =>
+    typeof r.rollingWanPerMonthP90 === "number" ? r.rollingWanPerMonthP90 : undefined;
+  const p90Total = typeof s2?.total?.rollingWanPerMonthP90 === "number" ? s2.total.rollingWanPerMonthP90 : 0;
+  const demandUnit = s2?.total?.unit ?? s2?.rows?.[0]?.unit ?? SOP_DEMAND_UNIT_FALLBACK;
   return (
     <div data-testid="sop-step2">
       {!locked && (
@@ -457,9 +471,9 @@ function Step2({
             <thead>
               <tr>
                 <th>应用细分</th>
-                <th>目标(年度分解)</th>
-                <th>滚动 P50</th>
-                <th>上月实际</th>
+                <th>目标(年度分解·{SOP_DEMAND_UNIT_FALLBACK})</th>
+                <th>滚动 P50({SOP_DEMAND_UNIT_FALLBACK})</th>
+                <th>上月实际({SOP_DEMAND_UNIT_FALLBACK})</th>
               </tr>
             </thead>
             <tbody>
@@ -493,11 +507,13 @@ function Step2({
         <table className="cmp" style={{ marginTop: 10 }} data-testid="sop-s2-table">
           <thead>
             <tr>
+              {/* 屏上必须分得出分母：这四列全是**月**口径，而 DemandSegment 的 P50/P90 是**年**口径。
+                  量纲取后端 `steps.s2.unit` 单源下发值，前端不内联。 */}
               <th>应用细分</th>
-              <th>目标</th>
-              <th>滚动 P50</th>
-              <th>滚动 P90</th>
-              <th>上月实际</th>
+              <th>目标({demandUnit})</th>
+              <th>滚动 P50({demandUnit})</th>
+              <th>滚动 P90({demandUnit})</th>
+              <th>上月实际({demandUnit})</th>
               <th>滚动 vs 目标</th>
               <th>规则</th>
             </tr>
@@ -510,7 +526,7 @@ function Step2({
                 </td>
                 <td>{fmt(r.target)}</td>
                 <td>{fmt(r.rolling)}</td>
-                <td data-testid={`sop-p90-${r.key}`}>{p90ByName.has(r.name) ? fmt(p90ByName.get(r.name)!) : "—"}</td>
+                <td data-testid={`sop-p90-${r.key}`}>{rowP90(r) != null ? fmt(rowP90(r)!) : "—"}</td>
                 <td>{fmt(r.lastActual)}</td>
                 <td style={{ color: r.flagged ? "var(--danger-txt)" : r.dv >= 0 ? "var(--ok-txt)" : "var(--amber-txt)", fontWeight: 700 }} data-testid={`sop-dv-${r.key}`}>
                   {r.dv > 0 ? "+" : ""}

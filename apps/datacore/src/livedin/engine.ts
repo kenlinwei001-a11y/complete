@@ -617,7 +617,14 @@ export class LivedInEngine {
       const rows = segs.map((s) => {
         const share = Number(s.props.baselineShare ?? 0);
         const target = round(demand * share, 2);
-        return { key: String(s.props.segKey), name: String(s.props.name), target, rolling: target, lastActual: round(actual * share, 2), dv: 0, flagged: false };
+        // WO-P50-REMAINING-3：历史版本此前**不发** P90，前端那一列只能落回别处取数（取成了
+        // DemandSegment 的**万套/年**，与本行 万套/月 差一个分母）。这里补上同分母的下分位，
+        // 派生公式与 `SopService.step2` 的缺省路一字不差（rolling×0.936·R6 确定性）。
+        return {
+          key: String(s.props.segKey), name: String(s.props.name), target, rolling: target,
+          rollingWanPerMonthP90: round(target * 0.936, 2),
+          lastActual: round(actual * share, 2), dv: 0, flagged: false, unit: "万套/月",
+        };
       });
       const version: SopVersion = {
         id: `sop_lh_${ctx.tenantId}_${month}`,
@@ -627,7 +634,14 @@ export class LivedInEngine {
         inputs: { livedIn: true, demTotal: demand, supTotal: supply, actualOutputWan: actual, attainmentPct: attainment },
         steps: {
           s1: { changes: [], boundaryDeltaWanPerMonth: 0 },
-          s2: { rows, total: { target: demand, rolling: demand, dv: 0 } },
+          s2: {
+            rows,
+            total: {
+              target: demand, rolling: demand,
+              rollingWanPerMonthP90: round(rows.reduce((a, r) => a + r.rollingWanPerMonthP90, 0), 2),
+              dv: 0, unit: "万套/月",
+            },
+          },
           s3: { perBase: [], increments: [], sup: supply, dem: demand, gap: round(demand - supply, 4), flagged: false },
           s4: { revSum: 0, gmSum: 0, gmBudget: 16, cashCushion: 58, gmRoll: 16, gmOk: true, cashOk: true, pass: true, violations: [] },
           s5: { agenda: agendaByIdx[m] ?? [], resolutions: resolutionsByIdx[m] ?? [], supFinal: supply, gapFinal: round(demand - supply, 4) },

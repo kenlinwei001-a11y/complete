@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import type { OrderProblemGroup } from "@platform/contracts";
+import type { OrderProblemGroup, OrderFullchainOutput } from "@platform/contracts";
 import { SEG_REGISTRY, formatTightness } from "@platform/contracts";
 import { runSolver, queryObjectsPaged } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
@@ -862,11 +862,10 @@ function KitQuoteScopePanel({ baseFilter, rows }: { baseFilter: string; rows: { 
  * ORD 订单全链推演面板（order_fullchain）：订单选择器 → 6 KPI + 统一结论（三色）+ 三判明细 + 11 节点
  * 业务建模链 DAG + 采纳→Action（C10 留痕）。三判由求解器实算，前端零写死（R14）。
  */
-type OFC = {
-  so: string; verdict: string; vc: string;
-  kpis: { qty: number; segment: string; marginPct: number; floorPct: number; deliveryP90: number; kitGap: number };
-  judges: { cap: { verdict: string; p50: number; p90: number; demand: number; ruleRefs: string[] }; kit: { verdict: string; material: string; gapTon: number; eta: string; ruleRefs: string[] }; fin: { verdict: string; marginPct: number; floorPct: number; creditUsedRatio: number; priceUpPct: number; ruleRefs: string[] } };
-  conds: string[]; dag: { nodes: { id: string; kind: string; label: string }[]; edges: { from: string; to: string }[] }; summary: string;
+// contracts-only-shared（WO-P50-REMAINING-3）：这里原来抄了一份 `order_fullchain` 的完整形状 ——
+// 后端改字段名前端不报红，正是「第二真相源」。现直接用契约类型，DAG 节点形状按本页消费面窄化。
+type OFC = Omit<OrderFullchainOutput, "dag"> & {
+  dag: { nodes: { id: string; kind: string; label: string }[]; edges: { from: string; to: string }[] };
 };
 const OFC_LAYER: Record<string, number> = { order: 0, network: 1, bom: 1, economics: 1, credit: 1, judge: 2, verdict: 3 };
 const OFC_LAYER_TITLES = ["订单", "建模链", "三关联判", "结论"];
@@ -905,8 +904,8 @@ function OrderFullchainPanel() {
           {/* 6 KPI + 统一结论 */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "6px 0" }}>
             {[
-              ["数量×细分", `${data.kpis.qty} · ${data.kpis.segment}`],
-              ["交期判", data.judges.cap.verdict],
+              ["数量(套)×细分", `${data.kpis.qty} · ${data.kpis.segment}`],
+              [`交期判(周供给 ${data.judges.cap.unit ?? "套/周"})`, `${data.judges.cap.verdict} · P90 ${data.kpis.deliveryPacksPerWeekP90}`],
               ["齐套缺口", `${data.kpis.kitGap} 吨`],
               ["毛利率", `${data.kpis.marginPct}%`],
               ["毛利底线", `${data.kpis.floorPct}%`],
@@ -929,7 +928,9 @@ function OrderFullchainPanel() {
           <table className="cmp" data-testid="ofc-judges" style={{ marginTop: 8 }}>
             <thead><tr><th>关联判</th><th>结论</th><th>关键值</th><th>规则</th></tr></thead>
             <tbody>
-              <tr><td>①交期·产能</td><td>{data.judges.cap.verdict}</td><td className="mono">P90 {data.judges.cap.p90} vs 需求 {data.judges.cap.demand}</td><td className="mono">{data.judges.cap.ruleRefs.join("/")}</td></tr>
+              {/* 量纲由后端 `unit` 单源下发（`OrderDeliveryJudgeSchema`），前端只格式化不内联口径。
+                  屏上必须写清「套/周」—— 否则用户分不出这个 P90 是周供给还是 T+N 累计还是万套。 */}
+              <tr><td>①交期·产能</td><td>{data.judges.cap.verdict}</td><td className="mono">周供给 P90 {data.judges.cap.packsPerWeekP90} vs 本周需求 {data.judges.cap.demand}（{data.judges.cap.unit ?? "套/周"}）</td><td className="mono">{data.judges.cap.ruleRefs.join("/")}</td></tr>
               <tr><td>②齐套·MRP</td><td>{data.judges.kit.verdict}</td><td className="mono">{data.judges.kit.material} 缺 {data.judges.kit.gapTon} 吨</td><td className="mono">{data.judges.kit.ruleRefs.join("/")}</td></tr>
               <tr><td>③财务·经营</td><td>{data.judges.fin.verdict}</td><td className="mono">毛利 {data.judges.fin.marginPct}% vs 底线 {data.judges.fin.floorPct}%</td><td className="mono">{data.judges.fin.ruleRefs.join("/")}</td></tr>
             </tbody>
