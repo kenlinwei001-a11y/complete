@@ -905,6 +905,21 @@ export const fetchActionDraft = (id: string) => api.a<ActionDraft>(`/a/v1/action
 export const decideActionDraft = (id: string, decision: "APPROVE" | "REJECT", comment: string) =>
   api.a<ActionDraft>(`/a/v1/action-drafts/${id}/decision`, { body: { decision, comment } });
 /**
+ * WO-BEFE-B · 提交审批：DRAFT → PENDING_APPROVAL（后端 `app.ts:3898` → `actions.ts:511 submit()`）。
+ *
+ * ⚠️ 这条一开始被我判成「已有等价入口」，**判错了**，沿调用链再追一层才看清（铁律 0.5）：
+ *   `createActionDraft` 默认 `submit !== false` ⇒ 前端自己建的草稿确实自动进审批链，
+ *   **但 DRAFT 态草稿另有来源** —— `apps/datacore/src/decision/kernel.ts:175` 的
+ *   `decisions/:id/commit` 明确以 `submit: false` 建单，而这条路前端**真的在走**
+ *   （`apps/frontend-shell/src/views/DecisionPlayView.tsx:630`）。
+ *   后端 `actions.submit()` 的**唯一**调用方就是这条 HTTP 端点（`app.ts:3898`），而它前端零调用
+ *   ⇒ 决策台落下来的草稿**卡在 DRAFT，任何界面都推不动、也列不出来**。
+ * 形态（铁律 0.6 句式）：「我用『前端建单会自动提交』当作『不存在 DRAFT 态草稿』的证据，
+ * 而前者并不度量后者 —— 别的写入方按自己的默认值建单。」
+ */
+export const submitActionDraft = (id: string) =>
+  api.a<ActionDraft>(`/a/v1/action-drafts/${encodeURIComponent(id)}/submit`, { body: {} });
+/**
  * WO-BEFE-B · R4「真值写入经 Action 审批」的**留痕读端**（后端 actions.ts:822 `audit()`）。
  * 审批链上每一步谁批的、后端发了哪些 `action.*` 事件、执行结果是什么——此前后端算了没人看。
  * 注意：这是**只读**投影，不参与状态迁移（迁移只走 decision / cancel 两条写路）。

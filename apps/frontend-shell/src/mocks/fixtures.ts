@@ -1451,6 +1451,21 @@ export const ACTION_DRAFTS: ActionDraft[] = [
     approvalSteps: [{ seq: 1, role: "planner", approverId: "usr-planner", decision: "APPROVE", comment: "同意", decidedAt: now }],
     createdAt: "2026-06-08T08:00:00Z", updatedAt: "2026-06-09T08:00:00Z",
   },
+  /**
+   * WO-BEFE-B · **DRAFT 态**草稿（此前 mock 里一条都没有，于是这个缺口在前端测不出来）。
+   * 来源与真后端一致：`decisions/:id/commit`（`apps/datacore/src/decision/kernel.ts:175`）
+   * 显式以 `submit: false` 建单 ⇒ 落地即 DRAFT，**不在**审批链上。
+   * 而前端 `DecisionPlayView.tsx:630` 真在走这条 commit 路 ⇒ 这类草稿在生产里真会出现。
+   * 没有「提交审批」入口时它们推不动，且 ActionsPage 的状态筛选里连 DRAFT 都没有 ⇒ 连列都列不出来。
+   */
+  {
+    id: "act-003", tenantId: TENANT_ID, actionTypeKey: "adopt_mitigation",
+    payload: { base: "常州", planKey: "mitigation-a", effectiveFrom: "2026-06-20" },
+    origin: { userId: "usr-planner" },
+    status: "DRAFT",
+    approvalSteps: [{ seq: 1, role: "planner" }],
+    createdAt: "2026-06-11T08:00:00Z", updatedAt: "2026-06-11T08:00:00Z",
+  },
 ];
 
 /**

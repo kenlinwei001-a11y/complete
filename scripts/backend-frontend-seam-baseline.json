@@ -87,7 +87,6 @@
     "GET /b/v1/workflows/*/references",
     "POST /a/v1/action-drafts/*/approve",
     "POST /a/v1/action-drafts/*/reject",
-    "POST /a/v1/action-drafts/*/submit",
     "POST /a/v1/action-types",
     "POST /a/v1/auth/logout",
     "POST /a/v1/bootstrap",

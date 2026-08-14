@@ -222,6 +222,74 @@ describe("WO-BEFE-B ① 撤回 POST /a/v1/action-drafts/:id/cancel", () => {
   });
 });
 
+/**
+ * ①-K～M · `POST /a/v1/action-drafts/:id/submit`
+ *
+ * **这一条是分诊翻案来的，留证于此**：初判「已有等价入口」（`createActionDraft` 默认自动提交），
+ * 沿调用链再追一层后推翻（铁律 0.5）——
+ *   `apps/datacore/src/decision/kernel.ts:175` 的 `decisions/:id/commit` 明确以 `submit:false` 建单 ⇒ DRAFT；
+ *   而前端**真在走**这条 commit 路（`apps/frontend-shell/src/views/DecisionPlayView.tsx:630`）；
+ *   后端 `actions.submit()` 的**唯一**调用方是 `app.ts:3898` 这条 HTTP 端点，它前端零调用
+ *   ⇒ 决策台落下来的草稿卡在 DRAFT，**推不动、也列不出来**（`STATUSES` 里当时连 DRAFT 都没有）。
+ */
+describe("WO-BEFE-B ① 提交审批 POST /a/v1/action-drafts/:id/submit（分诊翻案）", () => {
+  beforeEach(() => loginAs("planner"));
+  afterEach(() => cleanup());
+
+  it("①-K DRAFT 态草稿必须**列得出来**（缺席筛选 = 决策台落的单在界面上不存在）", async () => {
+    const drafts = await fetchActionDrafts("DRAFT");
+    expect(drafts.length, "没有 DRAFT 态草稿 ⇒ 这组用例证明不了什么").toBeGreaterThan(0);
+
+    renderApp("/admin/actions");
+    fireEvent.change(await screen.findByLabelText("状态筛选"), { target: { value: "DRAFT" } });
+    for (const d of drafts) {
+      expect(await screen.findByTestId(`draft-${d.id}`), `DRAFT 草稿 ${d.id} 在列表里找不到`).toBeInTheDocument();
+    }
+  });
+
+  it("①-L 接缝真驱动：DRAFT 点「提交审批」→ 后端状态真的迁到 PENDING_APPROVAL", async () => {
+    const id = (await fetchActionDrafts("DRAFT"))[0]!.id;
+    renderApp("/admin/actions");
+    fireEvent.change(await screen.findByLabelText("状态筛选"), { target: { value: "DRAFT" } });
+    fireEvent.click(await screen.findByTestId(`draft-${id}`));
+    await screen.findByTestId("draft-detail");
+
+    fireEvent.click(await screen.findByTestId("submit-btn"));
+
+    // ★ SEAM 判据：重打真 GET，后端真的进了审批链。
+    await waitFor(async () => {
+      const d = await fetchActionDraft(id);
+      expect(d.status, "点了提交后端还停在 DRAFT ⇒ 草稿仍推不动").toBe("PENDING_APPROVAL");
+    });
+  });
+
+  it("①-M 真 URL + 真方法：POST `…/<id>/submit`（不是 decision 别名——那会跳过提交期校验）", async () => {
+    const calls: { url: string; method: string }[] = [];
+    server.use(
+      http.post("*/a/v1/action-drafts/:id/submit", ({ request, params }) => {
+        calls.push({ url: request.url, method: request.method });
+        return HttpResponse.json({ id: params.id, status: "PENDING_APPROVAL", approvalSteps: [], origin: {}, payload: {} });
+      }),
+    );
+    const id = (await fetchActionDrafts("DRAFT"))[0]!.id;
+    renderApp("/admin/actions");
+    fireEvent.change(await screen.findByLabelText("状态筛选"), { target: { value: "DRAFT" } });
+    fireEvent.click(await screen.findByTestId(`draft-${id}`));
+    fireEvent.click(await screen.findByTestId("submit-btn"));
+
+    await waitFor(() => expect(calls.length, "点了提交一个请求都没发").toBe(1));
+    expect(calls[0]!.method).toBe("POST");
+    expect(decodeURIComponent(calls[0]!.url)).toContain(`/a/v1/action-drafts/${id}/submit`);
+    // ★ 提交**不许**走审批别名：那等于把"送进审批链"做成了"直接批准"，绕开 R4。
+    expect(decodeURIComponent(calls[0]!.url)).not.toContain("/decision");
+  });
+
+  it("①-N 提交按钮只在 DRAFT 出现：PENDING_APPROVAL 的草稿不给提交入口（避免重复提交）", async () => {
+    await openFirstDraft("PENDING_APPROVAL");
+    expect(screen.queryByTestId("submit-btn"), "非 DRAFT 还给提交按钮 ⇒ 状态闸没接").toBeNull();
+  });
+});
+
 describe("WO-BEFE-B ① 不是死组件 · 分诊结论可复验", () => {
   it("①-I 两条 URL 模板真在前端生产代码里；且 approve/reject 走的确实是 /decision 别名", () => {
     // 金丝雀：先抓一个已知必在的串，抓不到说明是读法坏了而不是端点没接（铁律 0.6）。
@@ -230,6 +298,7 @@ describe("WO-BEFE-B ① 不是死组件 · 分诊结论可复验", () => {
 
     expect(factHits(fe, "}/audit`"), "audit URL 模板没了 ⇒ 前端拼不出留痕请求").not.toEqual([]);
     expect(factHits(fe, "}/cancel`"), "cancel URL 模板没了").not.toEqual([]);
+    expect(factHits(fe, "}/submit`"), "submit URL 模板没了 ⇒ DRAFT 草稿又推不动了").not.toEqual([]);
     // ★ 分诊结论落成可执行断言：批准/驳回**本来就通**，走的是 /decision 别名。
     //   哪天有人把它改成直连 /approve，这条会红——那是后端别名与前端的对齐点，值得钉住。
     expect(factHits(fe, "}/decision`"), "decision 别名没了 ⇒ 批准/驳回断链").not.toEqual([]);

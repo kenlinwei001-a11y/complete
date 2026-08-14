@@ -1334,6 +1334,8 @@ export const zh = {
       cancel: "撤回",
       confirmCancel: "确认撤回该 Action 草稿？撤回后不再进入执行，且不可恢复。",
       cancelNoPermission: "仅发起人或管理员可撤回，且执行开始后不可撤",
+      submit: "提交审批",
+      submitHint: "决策台落下的草稿停在 DRAFT，需提交后才进入审批链",
     },
     catalog: {
       title: "意图目录",

@@ -2,7 +2,13 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActionDraft } from "@platform/contracts";
-import { cancelActionDraft, decideActionDraft, fetchActionDraftAudit, fetchActionDrafts } from "@/api/endpoints";
+import {
+  cancelActionDraft,
+  decideActionDraft,
+  fetchActionDraftAudit,
+  fetchActionDrafts,
+  submitActionDraft,
+} from "@/api/endpoints";
 import { ConfirmModal } from "@/components/ui/Modal";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { baseRoles } from "@/pages/adminRegistry";
@@ -10,9 +16,11 @@ import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
 const t = zh.admin.actions;
-// WO-BEFE-B：CANCELLED 此前不在筛选里 —— 撤回后的草稿在这个页面上**根本看不到**，
-// 于是"撤回成功"这件事没有任何可核查的落点。加上它，撤回才有去处。
-const STATUSES = ["PENDING_APPROVAL", "APPROVED", "REJECTED", "CANCELLED", "EXECUTED", "EXECUTION_FAILED"] as const;
+// WO-BEFE-B：DRAFT 与 CANCELLED 此前都不在筛选里。
+// · CANCELLED 缺席 ⇒ 撤回后的草稿在这个页面上**根本看不到**，"撤回成功"没有可核查落点。
+// · DRAFT 缺席更要命 ⇒ 决策台 `decisions/:id/commit`（`decision/kernel.ts:175`）以 `submit:false`
+//   落下来的草稿**列都列不出来**，于是它们卡在 DRAFT 无人知晓、也没人推得动（本单实测发现）。
+const STATUSES = ["PENDING_APPROVAL", "DRAFT", "APPROVED", "REJECTED", "CANCELLED", "EXECUTED", "EXECUTION_FAILED"] as const;
 /** 后端 `actions.ts:753`：EXECUTING 之后不可撤 —— 前端按同一集合置灰（真正的拦截仍在后端）。 */
 const CANCELLABLE = ["DRAFT", "PENDING_APPROVAL", "APPROVED"];
 
@@ -102,6 +110,21 @@ function DraftDetail({ draft, onChanged }: { draft: ActionDraft; onChanged: () =
   });
 
   /**
+   * WO-BEFE-B · 提交审批（DRAFT → PENDING_APPROVAL）。
+   * **这是 R4 的入口方向，不是绕过**：它把一份还没进审批链的草稿**送进**审批链，
+   * 后端 `submitInner` 在此处校验参数 schema、跑规则前检、要求审批链非空 —— 门只会更严不会更松。
+   */
+  const submitMut = useMutation({
+    mutationFn: () => submitActionDraft(draft.id),
+    onSuccess: () => {
+      toast("已提交审批", "success");
+      void queryClient.invalidateQueries({ queryKey: ["a", "action-drafts"] });
+      onChanged();
+    },
+    onError: toastError,
+  });
+
+  /**
    * WO-BEFE-B · 撤回。**不绕开 R4**：cancel 只把草稿移出审批链（→ CANCELLED），
    * 后端不执行 payload、不写任何真值；真值写入仍只有"审批通过 → 执行"这一条路。
    */
@@ -184,6 +207,24 @@ function DraftDetail({ draft, onChanged }: { draft: ActionDraft; onChanged: () =
               {t.reject}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* WO-BEFE-B · 提交审批：只在 DRAFT 态出现。
+          决策台 commit 落下来的草稿就停在这里；没有这个按钮，它们在任何界面上都推不动。 */}
+      {draft.status === "DRAFT" && (
+        <div style={{ marginTop: 12 }}>
+          <button
+            className="btn primary sm"
+            disabled={submitMut.isPending}
+            onClick={() => submitMut.mutate()}
+            data-testid="submit-btn"
+          >
+            {t.submit}
+          </button>
+          <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>
+            {t.submitHint}
+          </span>
         </div>
       )}
 
