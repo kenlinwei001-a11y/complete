@@ -6,6 +6,8 @@ export * from "./agentcore.js";
 export * from "./llm.js";
 export * from "./refs.js";
 export * from "./features.js";
+// WO-VIEWNAME-SINGLE-SOURCE：跨服务功能名册（同一个功能键只许有一个名字）。
+export * from "./feature-names.js";
 export * from "./timeseries.js";
 export * from "./actions.js";
 export * from "./disposition.js";

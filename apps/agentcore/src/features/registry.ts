@@ -1,17 +1,30 @@
-import type { FeatureDef } from "@platform/contracts";
+import { assertSharedFeatureNames, type FeatureDef } from "@platform/contracts";
 
 /**
  * Feature registry (entitlement PRD §2 — code registry, config references it).
  * AgentCore only needs the bindings relevant to QOS routing / solver proxying /
  * scene entries; the authoritative resolved set comes from DataCore
  * (GET /a/v1/tenants/{id}/features). battery 场景包默认全开.
+ *
+ * ⚠ **本表的 `name` 一个字都不上屏**（WO-VIEWNAME-SINGLE-SOURCE 实测坐实）：本模块的全部
+ * 消费方 —— `featureEnabled` / `intentAllowed` / `solverAllowed` / `viewAllowed` /
+ * `defaultOnKeys`，以及 `server.ts` / `orchestrator.ts` / `dril/resource-registry.ts` /
+ * `features/gate.ts` —— 只读 key/bindings/requires/defaultOn，**零处读 `.name`**；
+ * AgentCore 也从不下发功能册。用户在「功能开通配置」页看到的名字来自 DataCore 的
+ * `GET /a/v1/features/registry`。
+ *
+ * 正因为它不上屏，它才最容易悄悄漂 —— 实测本表曾在 6 个键上与 DataCore 各写一个名
+ * （`view.dash` 写「经营驾驶舱」而册是「驾驶舱」…）。故名字的单一真相源改为
+ * `@platform/contracts` 的 `SHARED_FEATURE_NAMES`；下面的字面量是**受检副本**，
+ * `assertSharedFeatureNames()` 在模块加载期逐条核对，不符即抛。
+ * 本表独有、不跨服务的键（如 `view.scenarios`）不在册内，保持本地自治。
  */
-export const FEATURE_REGISTRY: FeatureDef[] = [
-  { key: "view.dash", name: "经营驾驶舱", level: "VIEW", defaultOn: true },
+export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
+  { key: "view.dash", name: "驾驶舱", level: "VIEW", defaultOn: true },
   { key: "view.ontology-graph", name: "本体图谱", level: "VIEW", defaultOn: true },
   {
     key: "view.risk-board",
-    name: "风险看板",
+    name: "风险推演看板",
     level: "VIEW",
     defaultOn: true,
     bindings: {
@@ -66,8 +79,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.graph.persp.agent", name: "图谱·智能体网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
   { key: "view.graph.persp.loop", name: "图谱·学习闭环", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
-  { key: "shell.query-dock", name: "查询对话", level: "BLOCK", defaultOn: true },
-  { key: "qos.agent-fallback", name: "路径 B 兜底", level: "BLOCK", defaultOn: true },
+  { key: "shell.query-dock", name: "查询对话坞", level: "BLOCK", defaultOn: true },
+  { key: "qos.agent-fallback", name: "Agent 兜底（路径 B）", level: "BLOCK", defaultOn: true },
   {
     key: "view.project-sim.whatif",
     name: "What-if 调参",
@@ -115,7 +128,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 到首轮 user prompt——agent 有预置资源包 → 不再盲 discover 逐跳（round-trip ≤4·SEAM）。
   // orchestrator drilRoutingEnabled 用 enabledSet.has 直判（"ALL" 降级不触发 → 既有 path-B 逐字节不变·组包空亦不注入）。
   { key: "qos.dril-routing", name: "DRIL 智能资源路由（Path-B 组包注入）", level: "BLOCK", defaultOn: false },
-  { key: "qos.reasoning-trace", name: "QOS 推理旁白流（path-B agent 思考实时展示·建人机信任）", level: "BLOCK", defaultOn: false },
+  { key: "qos.reasoning-trace", name: "QOS 推理旁白流（path-B agent 思考实时展示）", level: "BLOCK", defaultOn: false },
   // #90（R3 暗发·defaultOn:false·双注册 feature parity·权威集来自 DataCore）：把**租户级已发布 Skill** 接到
   // **默认自由问答**（泛化 path-B `runPathB→runAgentLoop`）。病灶：`buildSkillSection` 全仓只有一个调用方
   // `engine.ts runRegisteredAgent`（注册 agent 路径·skill 绑在 `agent.skills` 上），泛化 path-B 用裸
@@ -142,11 +155,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 门前插一道，对复合/长问句让 LLM 产 solver 执行计划 → 确定性校验（solverKey 已注册 + 必填槽可从共享 slotBag/pageContext
   // 抽满 + 无 scope 冲突）→ 命中即接共享后半 runParallelRoutes（补 ②/⑤ 关键词/候选漏的意图·治 novel 措辞被 free-LLM 长度门劫持）。
   // orchestrator l2DecomposeEnabled 用 enabledSet.has 直判（"ALL" 降级不触发·字节兼容·关=free-LLM 长度门逐字节不变·零回归）。
-  { key: "qos.multi-intent-l2-decompose", name: "L2 多意图真分解（LLM 产 solver 计划·确定性校验·接共享后半）", level: "BLOCK", defaultOn: false },
+  { key: "qos.multi-intent-l2-decompose", name: "QOS L2 真分解（LLM 产 solver 计划·确定性校验·补漏意图）", level: "BLOCK", defaultOn: false },
   // PRD-multi-intent-L2L3 P2（暗发·defaultOn:false）：L3 耦合联合求解——耦合链 + 组合方案型问句 → 一次 portfolio
   // 守恒解（真传导·真残差外协·近似环诚实标）。关 → L1 独立并行 + 耦合诚实标（现状·零回归）。
   { key: "qos.multi-intent-l3-coupled", name: "QOS L3 耦合联合求解（一次 portfolio 守恒解·真传导）", level: "BLOCK", defaultOn: false },
-];
+], "agentcore/features/registry.ts FEATURE_REGISTRY");
 
 const BY_KEY = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
 
