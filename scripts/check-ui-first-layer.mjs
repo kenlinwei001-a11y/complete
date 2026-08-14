@@ -1585,7 +1585,17 @@ function main() {
 
     const g = globalSummary(rows);
     const prevConserve = prev?.conserve;
-    const doc = buildBaselineDoc({
+    // 守恒下界只升不降（升 = 更严）：--tighten 绝不把它往下调，否则删一次内容跑一下就洗白了。
+    const conserveTotal =
+      tighten && typeof prevConserve?.total === "number" ? Math.max(prevConserve.total, g.total) : g.total;
+    /*
+     * ⚠ `buildBaselineDoc(…)` **必须直接写在 `writeFileSync` 的实参里**，不许先存进变量再写。
+     * 这不是风格洁癖：`check-baseline-writer-honesty.mjs` 的判据②认的就是
+     * 「**每一处写入点的实参里**真的调了共享写入器」——「导入了」证明不了「写的时候用了」
+     * （路径开关式假绿，CLAUDE.md 铁律 0.5 判据 #6）。抽成 `const doc = …` 那道门当场判 HAND_ROLLED，
+     * 本单实测过一次。
+     */
+    writeFileSync(BASELINE, JSON.stringify(buildBaselineDoc({
       prev,
       // 散文归人手：prev 里已有就逐字节沿用（判据①），只有首次建账才落这份常量。
       prose: {
@@ -1610,8 +1620,7 @@ function main() {
         files,
         unlisted,
         conserve: {
-          // 下界只升不降（升 = 更严）：--tighten 绝不把守恒线往下调，否则一次删内容后跑一下就洗白了。
-          total: tighten && typeof prevConserve?.total === "number" ? Math.max(prevConserve.total, g.total) : g.total,
+          total: conserveTotal,
           files: g.files,
           why:
             prevConserve?.why ||
@@ -1619,12 +1628,11 @@ function main() {
               "度量对象是内容集合不是单个文件：搬家总量不变 ⇒ 不红；删除总量下降 ⇒ 红。",
         },
       },
-    });
-    writeFileSync(BASELINE, JSON.stringify(doc, null, 1) + "\n");
+    }), null, 1) + "\n");
     console.log(
       `✅ 基线已写（${tighten ? "--tighten 只收紧" : "--update 全量"}）：` +
         `files ${Object.keys(files).length} 条 · unlisted ${Object.keys(unlisted).length} 条 · ` +
-        `conserve.total ${doc.conserve.total} → ${relative(ROOT, BASELINE)}`
+        `conserve.total ${conserveTotal} → ${relative(ROOT, BASELINE)}`
     );
     if (moves.length) console.log(`   新落账 ${moves.length} 条（进 unlisted 段，从下一次起受同一套棘轮）`);
     if (dropped.length) console.log(`   摘掉死账 ${dropped.length} 条：${dropped.slice(0, 5).join(" · ")}`);

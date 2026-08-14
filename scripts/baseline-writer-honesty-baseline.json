@@ -52,13 +52,6 @@
       "sites": [
         "L84 → scripts/ontology-description-baseline.json"
       ]
-    },
-    "check-ui-first-layer.mjs": {
-      "form": "HAND_ROLLED",
-      "why": "存量·**本单派单时就已知、且是本单的禁改文件**（WO-BASELINE-WRITER-HONESTY §1 范围边界明列，故只登豁免、不动它）。实况：L1202 的 --update 整份重建顶层对象并无条件写 note 常量（顶层 note/spec/gate/generatedFrom/fileCount/totals 全归机器），逐条 entry 里的 `why: old?.why || whyFor(r)` 倒是保住了人手理由 ⇒ **人话保住了一半（条目级），顶层那半没保住**。之所以宁可显式挂账也不把判据放宽到「它也算通过」：放宽是隐形的，挂账是看得见的 —— 前者会让这道门在建成当天就变成装饰品。收口另单处理。",
-      "sites": [
-        "L1202 → scripts/ui-first-layer-baseline.json"
-      ]
     }
   }
 }
