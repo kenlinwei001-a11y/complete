@@ -150,6 +150,16 @@ describe("WO-BEFE-E ⑤②③ 求解器牵连与接地（GET /b/v1/solvers/:key/
     await screen.findByTestId(`solver-impact-${key}`);
   }
 
+  /**
+   * WO-REFERENCES-FAMILY 后：引用反查那半块换成了共享件 `<ReferencesPanel kind="solver">`，
+   * 它自己也是折叠的（第一层只留「N 处引用 ▸」记号）。要看逐条明细得再点一次。
+   * testid 由共享件按 `${kind}-${id}` 生成 —— 求解器这里就是 `solver-<key>`。
+   */
+  async function expandRefs(user: ReturnType<typeof userEvent.setup>, key: string) {
+    await user.click(screen.getByTestId(`references-toggle-solver-${key}`));
+    await screen.findByTestId(`references-body-solver-${key}`);
+  }
+
   it("⑤-D 真 URL：展开 → 两条端点各打一次，路径带 solverKey", async () => {
     const user = userEvent.setup();
     const refCalls: string[] = [];
@@ -173,8 +183,9 @@ describe("WO-BEFE-E ⑤②③ 求解器牵连与接地（GET /b/v1/solvers/:key/
     expect(roleCalls[0]!, `打错端点：${roleCalls[0]!}`).toContain("/a/v1/solvers/concentration_risk/field-roles");
 
     // ★ 屏上逐项来自响应（引用条目 + 绑定目标 + 置信度），零写死。
-    expect(screen.getByTestId("solver-refs-count-concentration_risk").textContent).toContain("1 处引用");
-    expect(screen.getByTestId("solver-ref-concentration_risk-workflow-wf_probe").textContent).toContain("wf_probe");
+    expect(screen.getByTestId("references-count-solver-concentration_risk").textContent).toContain("1 处引用");
+    await expandRefs(user, "concentration_risk");
+    expect(screen.getByTestId("references-item-solver-concentration_risk-workflow-wf_probe").textContent).toContain("wf_probe");
     expect(screen.getByTestId("solver-role-concentration_risk-rootType").textContent).toBe("ProbeType");
     expect(screen.getByTestId("solver-roles-confidence-concentration_risk").textContent).toContain("0.90");
   });
@@ -188,11 +199,12 @@ describe("WO-BEFE-E ⑤②③ 求解器牵连与接地（GET /b/v1/solvers/:key/
       ),
     );
     await openImpact(user, "concentration_risk");
+    await expandRefs(user, "concentration_risk");
 
-    const box = await screen.findByTestId("solver-refs-error-concentration_risk");
+    const box = await screen.findByTestId("references-error-solver-concentration_risk");
     expect(box.textContent).toContain("不等于");
     // ★ 反证核心：**不许**渲染出计数（渲染出来就把"没查到"塌成了 0）。
-    expect(screen.queryByTestId("solver-refs-count-concentration_risk"), "查不出来却渲染了计数 ⇒ 把风险藏起来了").toBeNull();
+    expect(screen.queryByTestId("references-count-solver-concentration_risk"), "查不出来却渲染了计数 ⇒ 把风险藏起来了").toBeNull();
   });
 
   it("⑤-F 「不吃角色」与「解析失败」分得开：无声明的求解器显式说明，不画空面板", async () => {
@@ -219,14 +231,16 @@ describe("WO-BEFE-E ⑤②③ 求解器牵连与接地（GET /b/v1/solvers/:key/
     const solvers = readRepoFile("../src/pages/admin/SolversPage.tsx");
     expect(solvers.length, "SolversPage.tsx 读到了空内容——路径漂了").toBeGreaterThan(1000);
     expect(solvers).toContain("<SolverImpactPanel solverKey=");
-    expect(solvers).toContain("fetchSolverReferences");
+    // WO-REFERENCES-FAMILY：引用反查那半块已收归共享件，本页**不许**再自持一份实现。
+    expect(solvers).toContain('<ReferencesPanel kind="solver"');
+    expect(solvers, "本页又自己写了一份引用反查客户端 ⇒ 同一概念两套实现").not.toContain("fetchSolverReferences");
     expect(solvers).toContain("fetchSolverFieldRoles");
 
     const eps = readRepoFile("../src/api/endpoints.ts");
     // 金丝雀：先抓一个**已知必在**的同族 URL；抓不到说明读法坏了，而不是端点没接。
     expect(eps, "金丝雀未中 ⇒ 读法坏了，下面的「不存在」全部不可信").toContain("/promote`");
     expect(eps).toContain('"/a/v1/solvers/generate"');
-    expect(eps).toContain("/b/v1/solvers/${encodeURIComponent(key)}/references`");
+    expect(eps).toContain("/b/v1/solvers/${encodeURIComponent(id)}/references`");
     expect(eps).toContain("/a/v1/solvers/${encodeURIComponent(key)}/field-roles`");
   });
 });

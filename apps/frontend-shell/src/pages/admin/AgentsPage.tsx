@@ -19,6 +19,7 @@ import {
 } from "@/api/endpoints";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { InfoPopover } from "@/components/InfoPopover";
+import ReferencesPanel from "@/components/ReferencesPanel";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import styles from "./AgentsPage.module.css";
@@ -756,6 +757,11 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
           {e.field}: {e.message}
         </div>
       ))}
+
+      {/* WO-REFERENCES-FAMILY（`GET /b/v1/agents/:id/references`）：退役一个 Agent 会打断哪些
+          场景入口 / 场景 / 流程。后端退役路已用同一份 `computeReferences` 拦（409 需 confirm），
+          但在**点退役之前**，屏上一直看不到这份清单 —— 人只能撞上 409 才知道。 */}
+      <ReferencesPanel kind="agent" id={agent.id} />
 
       <div className="section-title">基础 / 模型</div>
       <div style={{ display: "flex", gap: 10, marginBottom: 4 }}>
