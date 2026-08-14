@@ -197,9 +197,10 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
  *  - 沿真链路：sourceTypeKey/viaLinkKey/targetTypeKey 均为 demo 本体真有的对象类型/链路 key，
  *    且每条都经**实测**确认「链路存在 + 方向对 + 两端在 demo 真有实例」（#158 的教训）。
  *
- * WO-PROCESS-TICK-COVERAGE：在 WO-P1 的 13 条之上再补 **21 条**（档 1 六条挂既有正向边 /
- * 档 2 十五条挂新补的「影响向逆边」），共 **34 条**。目的不是把规则堆多，是把
- * §8 `G-PROCESS-TICK-COVERAGE` 的流程覆盖率从 **9/65** 抬到 **29/65** —— 判据见档 1/档 2 的段头注释。
+ * WO-PROCESS-TICK-COVERAGE：在 WO-P1 的 13 条之上再补 **22 条**（档 1 六条挂既有正向边 /
+ * 档 2 十五条挂新补的「影响向逆边」/ 档 3 一条闭掉「标着会动其实不动」），共 **35 条**。
+ * 目的不是把规则堆多，是把 §8 `G-PROCESS-TICK-COVERAGE` 的流程覆盖率从 **9/65** 抬到 **29/65**，
+ * 且让这 29 条**每一条的读数都真的会动**（档 3 之前有 1 条只是标着会动）—— 判据见各档段头注释。
  *
  * WO-P1（PRD-UPGRADE-decision-sandbox-v2 §3.1.4 · REQ143）：补齐**六个方向**，共 13 条规则。
  * 此前三条边全部指向 `Base.loadIndex`，走不到 North Star 要的「断点/卡点/时长/消耗」。
@@ -929,6 +930,55 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
     targetStateVar: "drawdownPressure",
     coefficient: 0.6,
     delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // WO-PROCESS-TICK-COVERAGE · 档 3：**闭掉「标着会动、其实不动」那一条**（1 条·零新 linkType）
+  //
+  // 档 1/档 2 交付后留下一处**诚实缺席**，原文记在 §8 与本单接缝测试 §C4：
+  // 前端 `classifyTickDrive` 的分档判据取「source **或** target 两端」，而**只当 source
+  // 的类型没有任何规则写它** ⇒ 屏上标着「随节拍变」，读数却推多少拍都是同一个数。
+  // 全世界恰好一个：`Supplier`（P28 供应商准入与评估）。
+  //
+  // ⚠ 原判「要修得改前端判据，是另一张单」**只考虑了一种修法，把路堵窄了**。修法其实有两条：
+  //   (a) 改判据区分 source-only / target ⇒ 把 P28 如实降档成「不随节拍变」（前端侧）；
+  //   (b) **给它补一条真的写它的规则** ⇒ 让那个标签变成真的（种子侧·本条）。
+  // 二者只有 (b) 让这条流程**真的能用**，且 (b) 恰好落在本单范围内。选 (b)。
+  //
+  // 业务因果是真的，不是为了让屏上多一个点在跳：**某供应商的采购单反复要加急
+  // ⇒ 触发对该供应商的绩效复评**（P28 的流程语义就是「准入与评估」）。
+  //
+  // 判据三条与档 1 同（本条全部实测通过）：
+  //   ① P28 本来就该随日节拍变 —— 供应商评估吃的正是每天的交付/加急表现，
+  //      与 D01 年度规划、D02 外部信号那种「本来就不随日节拍变」不是一回事；
+  //   ② `po_from_supplier` 在**真链路表**上真的存在且方向就是 source→target
+  //      （实测 PurchaseOrder→Supplier，30 条·`synthetic/service.ts` 的 `lnk_pos_*`）——
+  //      本档零新 linkType、零新物化，是纯粹的档 1 修法；
+  //   ③ 源 `PurchaseOrder.expeditePressure` 在既有链上真的会被写到
+  //      （`demo_material_shortage_to_po_expedite` 就写它）⇒ 不是「接了线没数据」。
+  //
+  // 🔴 **不构成回路**：`Supplier.reviewPressure` 是一个**只被写、不被任何规则读**的终端量纲；
+  //    被读的那个 `Supplier.deliveryDelay` 本条一个字节都不碰。所以
+  //    「三个纯源量纲（deliveryDelay/demandPressure/priceShock）无人写」这条前提**仍然成立**，
+  //    接缝测试 §C 赖以成立的「读数变了只可能是传导走过去的」也仍然成立。
+  //    写成同一个量纲就会变成 `deliveryDelay → … → deliveryDelay` 的正反馈，每拍自我放大 —— 故意不那么写。
+  // ══════════════════════════════════════════════════════════════════════════════════
+  {
+    id: "simpr_demo_po_expedite_to_supplier_review",
+    key: "demo_po_expedite_to_supplier_review",
+    sourceTypeKey: "PurchaseOrder",
+    sourceStateVar: "expeditePressure",
+    viaLinkKey: "po_from_supplier", // 实测 PurchaseOrder→Supplier，30 条
+    targetTypeKey: "Supplier",
+    targetStateVar: "reviewPressure",
+    coefficient: 0.4,
+    delayTicks: 1, // 绩效复评是"这一轮加急发生之后"才启动的动作，不与加急同拍
     combine: "sum",
     decay: null,
     clamp: null,

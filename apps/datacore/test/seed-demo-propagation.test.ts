@@ -31,7 +31,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const cfg = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: ADMIN })).json()) as {
       nodeTypes: string[]; stateVars: string[]; propagationCount: number;
     };
-    expect(cfg.propagationCount).toBe(34); // WO-P1 13 → WO-PROCESS-TICK-COVERAGE 档 1 +6 → 档 2 +15 = 34
+    expect(cfg.propagationCount).toBe(35); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35
     expect(cfg.stateVars.length).toBeGreaterThan(0);
     // stateVars 派生自规则 source/target stateVar。WO-P1 后覆盖六个方向的量纲：
     // 需求(demandPressure/demandLoad/loadIndex/utilPressure) · 产能(queuePressure) ·
@@ -40,14 +40,17 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     // 档 1 扩面再补 6 个量纲（换型/批次周转/清关排队/检修窗挤压/认证排队/来料催交），
     // 档 2 再补 15 个（执行层 工单/在制/质检/缺陷/异常 · 订单行/承诺/收货地点/催收 ·
     // 替代料/MRP 缺口 · 调拨 · 设备负荷/维修积压 · 成品提货）。
+    // 档 3 再补 1 个 `reviewPressure`（供应商绩效复评）——它是 `Supplier` 身上**第一个被写**的量纲，
+    // 在此之前 Supplier 只当 source ⇒ P28 屏上标着「随节拍变」而读数恒定（见 seed.ts 档 3 段头）。
     expect(cfg.stateVars).toEqual([
       "changeoverPressure", "clearanceQueueDays", "collectionPressure", "costPressure", "defectPressure",
       "deliveryDelay", "deliveryHoldRisk", "demandLoad", "demandPressure", "drawdownPressure",
       "expeditePressure", "feedPressure", "gapPressure", "handlingBacklog", "inboundExpeditePressure",
       "inspectBacklog", "loadIndex", "loadPressure", "overduePressure", "priceShock",
       "promiseRisk", "qualificationQueue", "queueDays", "queuePressure", "receivablePressure",
-      "releasePressure", "repairBacklog", "shortageRisk", "splitPressure", "supplyRisk",
-      "switchPressure", "transferPressure", "turnoverPressure", "utilPressure", "windowSqueeze",
+      "releasePressure", "repairBacklog", "reviewPressure", "shortageRisk", "splitPressure",
+      "supplyRisk", "switchPressure", "transferPressure", "turnoverPressure", "utilPressure",
+      "windowSqueeze",
     ]);
     // 节点类型派生自本体（含 demo 真类型）。
     expect(cfg.nodeTypes).toContain("Order");
@@ -62,7 +65,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const items = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json()).items as Array<{
       key: string; status: string; viaLinkKey: string; sourceTypeKey: string; targetTypeKey: string;
     }>;
-    expect(items.length).toBe(34);
+    expect(items.length).toBe(35);
     expect(items.every((r) => r.status === "PUBLISHED")).toBe(true);
     const viaKeys = items.map((r) => r.viaLinkKey).sort();
     expect(viaKeys).toEqual([
@@ -75,7 +78,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       "model_changeover", "model_demanded_by_order", "model_demanded_by_order", "model_has_cert",
       "model_producible_at", "model_stocked_as_finished_goods",
       "order_for_model", "order_has_line", "order_has_promise", "order_of_customer",
-      "po_customs_cleared_by", "po_inspected_by", "process_uses_equipment",
+      "po_customs_cleared_by", "po_from_supplier", "po_inspected_by", "process_uses_equipment",
       "supplier_supplies_material", "wip_lot_found_defect",
       "work_order_sampled_by_quality_lot", "work_order_yields_wip_lot",
     ]);
@@ -107,7 +110,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(canary.length).toBeGreaterThan(0);
 
     const rules = await t.repos.sim.listPropagationRules("demo", true);
-    expect(rules.length).toBe(34);
+    expect(rules.length).toBe(35);
     const dead: string[] = [];
     for (const r of rules) {
       const ok = links.some(
@@ -152,7 +155,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     await seedDemoPropagationRules(t.repos);
     await seedDemoPropagationRules(t.repos);
     const items = await t.repos.sim.listPropagationRules("demo", true);
-    expect(items.length).toBe(34);
+    expect(items.length).toBe(35);
   });
 
   it("live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导", async () => {
@@ -230,7 +233,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
   });
 
   // 每条边真触发（REQ143 的验收面 + 档 1 扩面）：一次扰动若干源头，逐组核 trace。
-  it("🔴 逐条真触发：34 条规则在真 tick 的 trace 里一条不缺（REQ143 + WO-PROCESS-TICK-COVERAGE 档 1/2）", async () => {
+  it("🔴 逐条真触发：35 条规则在真 tick 的 trace 里一条不缺（REQ143 + WO-PROCESS-TICK-COVERAGE 档 1/2/3）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     await seedDemoPropagationRules(t.repos);
@@ -302,10 +305,14 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_process_queue_to_equipment_load", "demo_equipment_load_to_repair_backlog",
         "demo_model_demand_to_fg_drawdown",
       ],
+      // WO-PROCESS-TICK-COVERAGE 档 3：闭掉「标着会动、其实不动」那一条。
+      // 它同样不额外造源 —— 由供应商延迟这个源头经 Material→PurchaseOrder 两跳带回 Supplier
+      // （`Supplier.deliveryDelay` 出去、`Supplier.reviewPressure` 回来，是两个量纲不是回路）。
+      扩面档3: ["demo_po_expedite_to_supplier_review"],
     };
     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys.filter((k) => !fired.has(k)).map((k) => `${dir}/${k}`));
     expect(missing).toEqual([]);
-    // 八组合计 34 条 = 全部种子规则（没有哪条规则游离在分组之外）。
+    // 九组合计 35 条 = 全部种子规则（没有哪条规则游离在分组之外）。
     expect(Object.values(DIRS).flat().sort()).toEqual(
       (await t.repos.sim.listPropagationRules("demo", true)).map((r) => r.key).sort(),
     );

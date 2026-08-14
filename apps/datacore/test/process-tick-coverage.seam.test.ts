@@ -11,7 +11,7 @@ import { seedDemoPropagationRules, seedDemoProcessLayer } from "../src/seed.js";
  * ══════════════════════════════════════════════════════════════════════════════
  * 这道门为什么不能写成「规则条数变多了」
  * ══════════════════════════════════════════════════════════════════════════════
- * 「34 条规则」度量的是**种子数量**，不度量「这些流程的读数会不会动」。
+ * 「35 条规则」度量的是**种子数量**，不度量「这些流程的读数会不会动」。
  * 本仓已经栽过一次同形态的（#158：种子写了、方向反了、恒不触发、全绿很久）。
  * 所以本门的头号判据是**效果层**：
  *
@@ -37,13 +37,15 @@ import { seedDemoPropagationRules, seedDemoProcessLayer } from "../src/seed.js";
  * `next[targetObjectId][targetStateVar] = …`，`targetObjectId` 只能来自规则的
  * `targetTypeKey` 那一端 ⇒ 不在两端集合里的类型**不可能变**，不是"今天恰好没变"。
  *
- * ── ⚠ 本门**如实亮出**的两处诚实缺席（不许被绿色盖住）─────────────────────────
+ * ── ⚠ 本门**如实亮出**的诚实缺席（不许被绿色盖住）─────────────────────────────
  * ① `NO_CARRIER_OBJECTS` 这一档在真世界里**现为 0 条**。
  *    不能因此说"这一档没用" —— 它照样必须**说得出话**，否则一个只会返回两档的
  *    实现同样能让本文件全绿。故 §A3 用构造输入逼它开口（金丝雀，不是真数据）。
  * ② 分档判据取的是「source **或** target 两端」，而**只当 source 的类型读数永远不会变**
- *    （没有任何规则写它）。本世界里这样的类型确有一个 —— 见 §C4，那里把它点名断言，
- *    并说明这是**前端判据口径**的边界，不是本单漏补规则。
+ *    （没有任何规则写它）。档 1/2 交付时本世界里确有一个（`Supplier`/P28），
+ *    **档 3 已把它闭掉**（`demo_po_expedite_to_supplier_review` 真写 `Supplier.reviewPressure`）。
+ *    §C4 因此从「登记这处缺席」翻转成**守住它不再复发**：`sourceOnly` 必须恒为空 ——
+ *    将来谁再补一条只读不写的类型进来，机器当场红，而不是等人去屏上发现"标着会动却不动"。
  */
 
 const SEED_PATH = fileURLToPath(new URL("../src/seed.ts", import.meta.url));
@@ -243,7 +245,7 @@ describe("WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（
   // ══════════════════════════════════════════════════════════════════════════
   // §C 接缝：推真拍 ⇒ 读数真的变（这一节才是本门的头号判据）
   // ══════════════════════════════════════════════════════════════════════════
-  it("§C 🔴 接缝：真 tick ⇒ 28 个新旧点亮承载物读数真变 · 36 条黑档读数**真的一动不动**", async () => {
+  it("§C 🔴 接缝：真 tick ⇒ 29 个点亮承载物读数**全部**真变 · 36 条黑档读数**真的一动不动**", async () => {
     const t = await makeApp();
     await seedBattery(t);
     await seedDemoPropagationRules(t.repos);
@@ -286,9 +288,9 @@ describe("WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（
     expect(stillZero).toEqual([]);
 
     // ── C2 三个被塞了初值的源头类型：也必须**变**（不是"起点就非 0"蒙混过去）──
-    // Order/Material 都是下游规则的 target（订单缺口/成本、物料短缺），读数会被真写；
-    // Supplier 见 C4 —— 它是本世界唯一的「只当 source」类型，单独说。
-    for (const carrier of ["Order", "Material"]) {
+    // 三个都是下游规则的 target：Order（订单缺口/成本）· Material（物料短缺）·
+    // Supplier（档 3 新增的绩效复评压力 —— 在此之前它只当 source，读数恒定，见 §C4）。
+    for (const carrier of ["Order", "Material", "Supplier"]) {
       const ids = idsOf(carrier);
       expect(reading(before, ids)).not.toBe(reading(after, ids));
     }
@@ -307,19 +309,26 @@ describe("WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（
     // 并且这两组**交集为空**（防"把所有类型都塞进 driven"这种作弊让 C1/C3 同时绿）。
     expect(drivenCarriers.filter((c) => darkCarriers.includes(c))).toEqual([]);
 
-    // ── C4 🔴 诚实缺席：分档判据取「source 或 target 两端」，而**只当 source 的类型读数永远不会变** ──
-    // 本世界里这样的类型恰好一个：Supplier（P28 供应商准入与评估）。屏上它被标成「随节拍变」，
-    // 而它的读数推多少拍都是同一个数 —— 因为没有任何规则写 Supplier。
-    // 这是**前端判据口径**的边界（`classifyTickDrive` 只问"在不在两端"），不是本单漏补规则：
-    // 要修得改判据（区分 source-only / target），那是另一张单。这里把它钉死，
-    // 免得将来有人看到"29 条都在动"就以为真的 29 条都在动。
+    // ── C4 🔴 「标着会动、其实不动」必须一条都不剩（档 3 闭掉的那处缺席的**复发闸**）──
+    // 分档判据取「source **或** target 两端」，所以**只当 source 的类型**会被标成「随节拍变」，
+    // 而它的读数推多少拍都是同一个数 —— 没有任何规则写它。档 1/2 交付时本世界确有一个：
+    // `Supplier`（P28 供应商准入与评估）。档 3 给它补了真正写它的规则
+    // （`demo_po_expedite_to_supplier_review`：采购单反复加急 ⇒ 供应商绩效复评压力）。
+    //
+    // 判据从「登记它」翻转成「守住它」：`sourceOnly` 恒为空。将来谁再补一条**只读不写**的
+    // 类型进来（哪怕规则条数涨了、屏上多一个点"亮着"），机器在这里当场红 ——
+    // 而不是等人去屏上发现「标着会动却推多少拍都不动」。
+    // 🔴 这一条与 C1 度量的**不是同一件事**：C1 问「这个类型的读数变了吗」（只覆盖 driven 名单），
+    //    C4 问「规则图上有没有只出不进的类型」（结构性，覆盖所有端点类型）。分开写，别合并。
     const rules = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json()).items as {
       sourceTypeKey: string; targetTypeKey: string;
     }[];
     const targets = new Set(rules.map((r) => r.targetTypeKey));
+    expect(tri.ruleEndpointTypes.size).toBeGreaterThan(0); // 先证明真拿到了端点集，否则空集恒过
     const sourceOnly = [...tri.ruleEndpointTypes].filter((k) => !targets.has(k)).sort();
-    expect(sourceOnly).toEqual(["Supplier"]);
-    expect(reading(before, idsOf("Supplier"))).toBe(reading(after, idsOf("Supplier"))); // 真的一动不动
+    expect(sourceOnly).toEqual([]);
+    // 并且 Supplier 这一条**真的在动**（光有规则不算数 —— 那正是"条数不度量链路通不通"）。
+    expect(reading(before, idsOf("Supplier"))).not.toBe(reading(after, idsOf("Supplier")));
   }, 180000);
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -341,7 +350,7 @@ describe("WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（
     for (const l of doomed) await t.repos.links.remove("demo", l.id);
     expect((await t.repos.links.list("demo", (l) => l.type === "line_runs_work_order")).length).toBe(0);
     // 规则条数**没变** —— 这正是"条数不度量链路通不通"的当场证据。
-    expect((await t.repos.sim.listPropagationRules("demo", true)).length).toBe(34);
+    expect((await t.repos.sim.listPropagationRules("demo", true)).length).toBe(35);
 
     const baseSnapshot: Record<string, Record<string, number>> = {};
     for (const id of idsOf("Order")) baseSnapshot[id] = { demandPressure: 10 };
