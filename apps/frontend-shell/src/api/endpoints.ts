@@ -68,6 +68,12 @@ import type {
   EnterpriseState,
   ImpactAnalysisRequest,
   ImpactAnalysisResponse,
+  // WO-BEFE-E · 执行计划编辑/发布（契约已有 ExecutionPlan，前端不重定义 —— contracts-only-shared）
+  ExecutionPlan,
+  // WO-BEFE-E · 原型 intake 对账（前端此前手写重定义了一份**字段名与后端不同**的形状，见 IntakePreview 注释）
+  IntakeResponse,
+  SchemaReconcileCandidate,
+  ReconcileAction,
 } from "@platform/contracts";
 import { ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 真实世界 worldId 单源（前端不许再写一个 "REAL" 字面量）
 import { api } from "./apiClient";
@@ -1054,11 +1060,46 @@ export const publishIntent = (intentId: string) =>
   api.b<IntentDefinition>(`/b/v1/catalog/intents/${intentId}/publish`, { body: {} });
 export const retireIntent = (intentId: string) =>
   api.b<IntentDefinition>(`/b/v1/catalog/intents/${intentId}/retire`, { body: {} });
+/**
+ * 列执行计划。类型用契约的 `ExecutionPlan`（**不再本地窄化成四字段**）——
+ * 后端 `listPlans`（catalog/service.ts:226）吐的就是完整行，窄化的直接后果是
+ * `steps` 在类型层面凭空消失，于是没人想得到"计划的步骤其实是拿得到的、可以编辑的"。
+ */
 export const fetchPlans = (packageId: string) =>
-  api.b<{ id: string; key: string; version: number; status: string }[]>(`/b/v1/catalog/packages/${packageId}/plans`);
+  api.b<ExecutionPlan[]>(`/b/v1/catalog/packages/${packageId}/plans`);
 /** G-4：消裁决#27 死路 —— 前端自助创建可绑定的执行计划（后端 createPlan 端点本就存在）。 */
 export const createPlan = (packageId: string, body: { key: string; name?: string; steps: Record<string, unknown>[] }) =>
   api.b<{ id: string; key: string; version: number; status: string }>(`/b/v1/catalog/packages/${packageId}/plans`, { body });
+
+// ── WO-BEFE-E · 执行计划「建得出、改不了、发不了」的两条补口 ───────────────────────
+// 门 `befe-seam:check` 载体② 列作「后端注册了·前端零调用」：
+//   `PUT  /api/v1/catalog/plans/:planId`          （agentcore server.ts:653 · requireRole catalog_admin）
+//   `POST /api/v1/catalog/plans/:planId/publish`  （agentcore server.ts:661 · 同上）
+//
+// ⚠ 这不是"锦上添花的编辑器"，是一条**真死路**（沿链路追出来的，非按端点名猜）：
+//   上面的 `createPlan` 造出来的是 `status:"DRAFT"`（catalog/service.ts:238 写死）+ 一份
+//   写死的两步骨架（CatalogPage.tsx:128 的 `query_objects Order` / 占位 render_answer）。
+//   意图侧照样能保存、能发布 —— 因为发布前校验走 `resolvePlanByRef(..., { forValidation: true })`
+//   （catalog/service.ts:191），该分支**允许回落到未发布的最高版本**（service.ts:76-79）。
+//   而**执行期**解析走的是同一个函数的 `forValidation` 缺省档（service.ts:82 `resolvePlanForIntent`），
+//   它只认 `status === "PUBLISHED"`（service.ts:74），拿不到就 `return undefined`。
+//   净效果：**意图发布成功、屏上一片绿、真跑起来永远解析不到计划**。
+//   两条缺口一模一样地致命 —— 骨架改不了（PUT 无前端调用方）、DRAFT 发不出去（publish 无前端调用方）。
+//
+// R4：计划发布不写业务真值（只翻 `status` + 上报出向规则引用），不经 Action 审批链；
+//     真正的 R4 闸在 solver 写真值那一侧（`/a/v1/solvers/:key/write-truth-check`，已另有前端调用方）。
+/** 改执行计划（仅 DRAFT 可改，后端 409 `INVALID_STATE` 挡非 DRAFT）。 */
+export const updatePlan = (planId: string, body: { key?: string; name?: string; steps?: Record<string, unknown>[] }) =>
+  api.b<ExecutionPlan>(`/b/v1/catalog/plans/${encodeURIComponent(planId)}`, { method: "PUT", body });
+/**
+ * 发布执行计划 DRAFT → PUBLISHED（**这一步之前，绑了它的意图在执行期解析不到计划**）。
+ *
+ * 响应附 `impact` = 引用它的意图反查（引用模式增量 §2.3：publish 响应必须附影响面），
+ * 前端必须把这个数原样显示 —— 它回答的是「我这一发，影响到谁」。
+ * 后端校验失败回 400 `PLAN_VALIDATION_ERROR`（前向引用 / 缺 render_answer 收尾），错误原文照显不吞。
+ */
+export const publishPlan = (planId: string) =>
+  api.b<ExecutionPlan & { impact: PublishImpact }>(`/b/v1/catalog/plans/${encodeURIComponent(planId)}/publish`, { body: {} });
 
 // 回放编排器 §6：真实租户运营自动化 OpsSchedule（管理台 /admin/ops-schedule）
 export const fetchOpsSchedule = () =>
@@ -1445,19 +1486,43 @@ export interface BoundaryVersionVM {
 export const fetchBoundaryImpact = () => api.a<{ impact: BoundaryImpactRow[]; registries: string[] }>("/a/v1/boundary/impact");
 export const fetchBoundaryVersion = () => api.a<BoundaryVersionVM>("/a/v1/boundary/version");
 
-// DF.13c 原型 intake：上传 HTML 原型 → 确定性解析数据表/关系 + 对账既有本体字段（文件↔表可见）。
-export interface IntakePreview {
-  intake: {
-    dataSources: { name: string; columns: string[]; sampleRows: Record<string, unknown>[] }[];
-    links: { src: string; tgt: string; rel: string }[];
-    unparsed: { name: string; reason: string }[];
-  };
-  reconcile: {
-    autoMapped: { datasetName: string; column: string; targetType: string; targetField: string }[];
-    candidates: { datasetName: string; column: string; candidates: { targetType: string; targetField: string; score: number }[] }[];
-  };
-}
+/**
+ * DF.13c 原型 intake：上传 HTML 原型 → 确定性解析数据表/关系 + 对账既有本体字段（文件↔表可见）。
+ *
+ * ⚠ **WO-BEFE-E 订正（这是一个真渲染 bug，不是类型洁癖）**：本类型原先是前端**手写重定义**的，
+ *   候选那一段写成 `{ datasetName, column, candidates }`，而后端 `reconcileIntake`
+ *   （`apps/datacore/src/databuilder/prototype-intake.ts:144`）返的字段名是 **`prototypeColumn`**
+ *   （契约 `SchemaReconcileCandidateSchema` 亦然）。于是 `PrototypeIntakePage` 那行
+ *   `{c.datasetName}.{c.column}` 在**真后端**下渲染出的是 `ORDER_DATA.undefined` —— 屏上一个
+ *   看不出错的空洞。之所以没人发现：MSW 桩当年照着这份**错的**前端类型写（`column`），
+ *   于是测试与页面互相印证、一起错（本仓治过的「mock 与引擎口径分家、测试咬 mock 恒绿」同型事故）。
+ *   现在直接用契约类型（contracts-only-shared），形状分家在结构上不再可能。
+ */
+export type IntakePreview = IntakeResponse;
 export const submitIntake = (html: string) => api.a<IntakePreview>("/a/v1/databuilder/intake", { method: "POST", body: { html } });
+
+// ── WO-BEFE-E · 对账候选 HITL 队列（两条端点此前前端零调用）───────────────────────
+//   `GET  /a/v1/databuilder/reconcile-candidates`          （datacore app.ts:4804 · requireAdmin）
+//   `POST /a/v1/databuilder/reconcile-candidates/:id/resolve`（datacore app.ts:4811 · requireAdmin）
+// 病灶：intake 那一步**已经把候选落库了**（`intake-pipeline.ts:135` 的
+// `intake_persist_candidates` 节点，逐条 `repos.reconcileCandidates.put`），而前端只把**本次响应里**
+// 那几条当纯文本列出来（`PrototypeIntakePage.tsx:138`）—— 队列看得见一行字，**一条都确认不了**，
+// 刷新即消失。落库的那批从此无人问津（形态：「接了线接错地方」—— 写端接了、读/写回端没接）。
+/** 列对账候选队列（`?status=PENDING` 只看待确认）。 */
+export const fetchReconcileCandidates = (status?: "PENDING" | "RESOLVED") =>
+  api.a<{ items: SchemaReconcileCandidate[] }>(
+    `/a/v1/databuilder/reconcile-candidates${status ? `?status=${status}` : ""}`,
+  );
+/**
+ * 人对某条候选拍板：USE/RENAME/NEW/MERGE/DISCARD（+ 目标字段）→ RESOLVED + 发
+ * `schema_reconcile.resolved` 事件（datacore app.ts:4819）。
+ * `target` 的语义随 action 变（RENAME/USE = 选中的既有字段；NEW = 新字段名），故由调用方给全。
+ */
+export const resolveReconcileCandidate = (id: string, action: ReconcileAction, target?: string) =>
+  api.a<SchemaReconcileCandidate>(
+    `/a/v1/databuilder/reconcile-candidates/${encodeURIComponent(id)}/resolve`,
+    { method: "POST", body: { action, ...(target ? { target } : {}) } },
+  );
 
 // DF.13c P3 导入正门：HTML 物化进库（经 prototype_html 连接器）→ 数据连接器可见导入文件 + 在线查看。
 export interface IntakeImportResult {

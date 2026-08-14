@@ -1047,11 +1047,27 @@ export const INTENTS: IntentDefinition[] = [
   },
 ];
 
+/**
+ * 执行计划 mock。
+ *
+ * WO-BEFE-E：补齐 `packageId` + `steps` —— 此前只有 `{id,key,version,status}` 四个字段，
+ * 而后端 `listPlans` 返的是完整 `ExecutionPlan`（`catalog/service.ts:226` 直接吐仓储行）。
+ * 少这两个字段的直接后果：计划编辑器**在 mock 态永远看不到步骤**，于是"改步骤 → 保存 → 真的变了"
+ * 这条链在测试里演不出来，断言只能咬桩。形状对齐后 mock 与真后端同形（R9 双实现同构的同款纪律）。
+ * `steps` 一律以 `render_answer` 收尾 —— 那正是后端 `validatePlanSteps(..., {requireRenderAnswer:true})`
+ * （`catalog/service.ts:276`）发布时的硬校验，mock 不能给一份"发布必红"的种子。
+ */
 export const PLANS = [
-  { id: "plan-affected", key: "affected_orders_plan", version: 3, status: "PUBLISHED" },
-  { id: "plan-cap", key: "capacity_feasibility_plan", version: 2, status: "PUBLISHED" },
-  { id: "plan-root", key: "risk_root_cause_plan", version: 1, status: "PUBLISHED" },
-  { id: "plan-adopt", key: "adopt_mitigation_plan", version: 1, status: "PUBLISHED" },
+  { id: "plan-affected", packageId: PACKAGE_ID, key: "affected_orders_plan", version: 3, status: "PUBLISHED",
+    steps: [{ id: "s1", type: "query_objects", params: { objectType: "Order", filter: {} } },
+            { id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown: "受影响订单" }] } }] },
+  { id: "plan-cap", packageId: PACKAGE_ID, key: "capacity_feasibility_plan", version: 2, status: "PUBLISHED",
+    steps: [{ id: "s1", type: "invoke_solver", params: { solverKey: "capacity_analysis", args: {} } },
+            { id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown: "产能可行性" }] } }] },
+  { id: "plan-root", packageId: PACKAGE_ID, key: "risk_root_cause_plan", version: 1, status: "PUBLISHED",
+    steps: [{ id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown: "根因" }] } }] },
+  { id: "plan-adopt", packageId: PACKAGE_ID, key: "adopt_mitigation_plan", version: 1, status: "PUBLISHED",
+    steps: [{ id: "render", type: "render_answer", params: { blocks: [{ type: "text", markdown: "采纳" }] } }] },
 ];
 
 /**

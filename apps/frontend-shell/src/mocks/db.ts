@@ -58,8 +58,12 @@ interface MockDb {
   agents: AgentDefinition[];
   workflows: WorkflowDefinition[];
   skills: SkillDefinition[];
-  /** G-4：可绑定执行计划（自助创建写入；GET plans 读此，保证测试隔离）。 */
-  plans: { id: string; key: string; version: number; status: string }[];
+  /**
+   * G-4：可绑定执行计划（自助创建写入；GET plans 读此，保证测试隔离）。
+   * WO-BEFE-E：形状对齐契约 `ExecutionPlan`（补 `packageId` + `steps`）——
+   * 后端 `listPlans` 吐的就是完整行，少字段会让计划编辑器在 mock 态永远看不到步骤。
+   */
+  plans: { id: string; packageId: string; key: string; version: number; status: string; steps: Record<string, unknown>[] }[];
   mcpConfigs: McpServerConfig[];
   scenes: SceneEntryConfig[];
   scenarios: Scenario[];

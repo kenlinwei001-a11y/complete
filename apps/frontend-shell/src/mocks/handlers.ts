@@ -1,5 +1,5 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
-import type { BuildPipeline, BuildPipelineKind, PlanBuilderCanvas, PlanBuilderCompileResult, PlanBuilderPublishResult, CreatePlanBuilderBody, UpdatePlanBuilderBody, PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport } from "@platform/contracts";
+import type { BuildPipeline, BuildPipelineKind, PlanBuilderCanvas, PlanBuilderCompileResult, PlanBuilderPublishResult, CreatePlanBuilderBody, UpdatePlanBuilderBody, PlanStep, ReconcileAction, Scenario, SchemaReconcileCandidate, SkillCompileDiagnostic, SkillCompileStageReport } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition, deriveDispositionOptions, SEG_REGISTRY } from "@platform/contracts";
 // WO-DECISION-INFO-FE · 决策三块（影响面 / 不作为后果 / 方案代价）的 mock 载荷类型，
 // 与真后端共用同一份契约 ⇒ mock 与引擎口径不可能分家。
@@ -1591,21 +1591,47 @@ export function clearMockTimers(): void {
  * （intake_parse 产 INTAKE_PARSE_RESULT · intake_reconcile 产 INTAKE_RECONCILE_RESULT）。
  * 值与拆分前逐字一致 —— 出厂默认（四节点全开）下 intake 响应的 intake/reconcile 两段与改造前相同。
  */
+/**
+ * WO-BEFE-E · 对账候选 HITL 队列的 mock store（= `GET/POST …/reconcile-candidates` 的数据源）。
+ * 形状 = 契约 `SchemaReconcileCandidate`（落库后带 `id`/`tenantId`）。
+ * 由 intake 的 `intake_persist_candidates` 节点写入 —— 与真后端同一个触发点，不另开后门。
+ */
+const mockReconcileCandidates = new Map<string, SchemaReconcileCandidate & { id: string; tenantId: string }>();
+export function resetMockReconcileCandidates(): void {
+  mockReconcileCandidates.clear();
+}
+
 const INTAKE_PARSE_RESULT = {
   dataSources: [
     { name: "BASE_DATA", columns: ["baseId", "name", "util", "gwh"], sampleRows: [{ baseId: "changzhou", name: "常州", util: 88, gwh: 35 }, { baseId: "xiamen", name: "厦门", util: 85, gwh: 28 }] },
     { name: "ORDER_DATA", columns: ["so", "cust", "model", "qty", "baseRef"], sampleRows: [{ so: "SO-001", cust: "星辰汽车", model: "4680-NCM", qty: 1200, baseRef: "changzhou" }] },
   ],
-  links: [{ src: "ORDER_DATA", tgt: "BASE_DATA", rel: "produced_at" }],
+  // ⚠ WO-BEFE-E：`{src,tgt}` → `{from,to,origin}` —— 契约 `ProtoLinkSchema` 与后端
+  // `prototype-intake.ts:104/111` 逐字如此。桩此前照前端手写的错类型写，两边一起错了一整程。
+  links: [{ from: "ORDER_DATA", to: "BASE_DATA", rel: "produced_at", origin: "ref" as const }],
   unparsed: [{ name: "CHART_CONFIG", reason: "非数据表（图表配置对象，已诚实跳过不静默丢）" }],
 };
+/**
+ * ⚠ **WO-BEFE-E 订正**：`candidates[].column` → `prototypeColumn`，并补齐 `suggestedAction`/`status`。
+ *
+ * 原字段名与后端**不一致**：真后端 `reconcileIntake`（`apps/datacore/src/databuilder/prototype-intake.ts:144`）
+ * 与契约 `SchemaReconcileCandidateSchema` 都叫 `prototypeColumn`。这份桩当年照着**前端手写的错类型**
+ * （`endpoints.ts` 里那份 `IntakePreview`）写，于是页面与桩互相印证、一起错：mock 态好好的，
+ * 真后端下 `PrototypeIntakePage` 那行渲染出的是 `ORDER_DATA.undefined`。
+ * 这正是本仓治过的「mock 与引擎口径分家 ⇒ 测试咬 mock 恒绿」。现在两边同用契约字段名。
+ * `autoMapped` 那一段后端确实叫 `column`（`prototype-intake.ts:140`），**不许顺手统一** —— 两段本就不同名。
+ */
 const INTAKE_RECONCILE_RESULT = {
   autoMapped: [
     { datasetName: "BASE_DATA", column: "name", targetType: "Base", targetField: "name" },
     { datasetName: "BASE_DATA", column: "util", targetType: "Base", targetField: "util" },
   ],
   candidates: [
-    { datasetName: "ORDER_DATA", column: "cust", candidates: [{ targetType: "Order", targetField: "cust", score: 0.82 }, { targetType: "Customer", targetField: "name", score: 0.61 }] },
+    {
+      datasetName: "ORDER_DATA", prototypeColumn: "cust",
+      candidates: [{ targetType: "Order", targetField: "cust", score: 0.82 }, { targetType: "Customer", targetField: "name", score: 0.61 }],
+      suggestedAction: "USE" as const, status: "PENDING" as const,
+    },
   ],
 };
 
@@ -1808,10 +1834,42 @@ export const handlers = [
       ran.push(n.stepKey);
       if (n.stepKey === "intake_parse") out.intake = structuredClone(INTAKE_PARSE_RESULT);
       if (n.stepKey === "intake_reconcile") out.reconcile = structuredClone(INTAKE_RECONCILE_RESULT);
-      if (n.stepKey === "intake_persist_candidates") out.persistedCandidates = INTAKE_RECONCILE_RESULT.candidates.length;
+      // WO-BEFE-E：`intake_persist_candidates` 这一节点在真后端**真的落库**
+      // （`intake-pipeline.ts:135` 逐条 `repos.reconcileCandidates.put`）。桩此前只回一个计数，
+      // 于是「落库了的那批」在 mock 态根本不存在 ⇒ HITL 队列演不出来。现在真写进 store。
+      if (n.stepKey === "intake_persist_candidates") {
+        for (const [i, c] of INTAKE_RECONCILE_RESULT.candidates.entries()) {
+          const id = `rcc_mock_${i}`;
+          if (!mockReconcileCandidates.has(id)) mockReconcileCandidates.set(id, { ...structuredClone(c), id, tenantId: "demo" });
+        }
+        out.persistedCandidates = INTAKE_RECONCILE_RESULT.candidates.length;
+      }
       if (n.stepKey === "intake_emit") out.emitted = "prototype.intake_recorded";
     }
     return HttpResponse.json({ ...out, status: "SUCCEEDED", ranSteps: ran, pipeline: { kind: pipeline.kind, factory: pipeline.factory } });
+  }),
+  // ── WO-BEFE-E · 对账候选 HITL 队列（datacore app.ts:4804 / :4811）──────────────
+  // 状态机照抄后端：`status` 过滤；resolve 写 `RESOLVED` + `resolvedAction`/`resolvedTarget`/`resolvedAt`。
+  http.get("*/a/v1/databuilder/reconcile-candidates", ({ request }) => {
+    const want = new URL(request.url).searchParams.get("status");
+    const items = [...mockReconcileCandidates.values()]
+      .filter((c) => (want ? c.status === want : true))
+      // R6 确定性：按 id 稳定排序（Map 迭代序是插入序，跨用例不可依赖）。
+      .sort((a, b) => a.id.localeCompare(b.id));
+    return HttpResponse.json({ items });
+  }),
+  http.post("*/a/v1/databuilder/reconcile-candidates/:id/resolve", async ({ params, request }) => {
+    const id = String((params as { id: string }).id);
+    const cand = mockReconcileCandidates.get(id);
+    if (!cand) return err(404, "NOT_FOUND", "对账候选不存在");
+    const body = (await request.json()) as { action?: ReconcileAction; target?: string };
+    const resolved: SchemaReconcileCandidate & { id: string; tenantId: string } = {
+      ...cand, status: "RESOLVED", resolvedAction: body.action,
+      ...(body.target ? { resolvedTarget: body.target } : {}),
+      resolvedAt: "2026-08-14T00:00:00.000Z", // 确定性时间戳（R6·无 `new Date()`）
+    };
+    mockReconcileCandidates.set(id, resolved);
+    return HttpResponse.json(resolved);
   }),
   // P3 导入正门（mock）：HTML 物化进库 → 返回落库连接 + RawDataset 概要（值与原型一致）。
   http.post("*/a/v1/databuilder/intake/import", () =>
@@ -4295,11 +4353,48 @@ export const handlers = [
   }),
   http.get("*/b/v1/catalog/packages/:packageId/plans", () => HttpResponse.json(db.plans)),
   // G-4：自助创建执行计划（消裁决#27 死路 —— 意图可绑定新建计划）
-  http.post("*/b/v1/catalog/packages/:packageId/plans", async ({ request }) => {
-    const body = (await request.json()) as { key?: string };
-    const plan = { id: `plan_${Date.now()}`, key: body.key ?? `plan_${Date.now()}`, version: 1, status: "DRAFT" };
+  http.post("*/b/v1/catalog/packages/:packageId/plans", async ({ params, request }) => {
+    const body = (await request.json()) as { key?: string; steps?: Record<string, unknown>[] };
+    const plan = {
+      id: `plan_${Date.now()}`, packageId: String((params as { packageId: string }).packageId),
+      key: body.key ?? `plan_${Date.now()}`, version: 1, status: "DRAFT",
+      steps: body.steps ?? [],
+    };
     db.plans.push(plan);
     return HttpResponse.json(plan, { status: 201 });
+  }),
+  // ── WO-BEFE-E · 执行计划改 / 发布（后端 agentcore server.ts:653 / :661）───────────
+  // 两条状态机判据照抄后端 `catalog/service.ts:243/:271`，**不放宽**：
+  //   · 非 DRAFT 改 → 409 INVALID_STATE（`service.ts:246`）
+  //   · 非 DRAFT 发 → 409 INVALID_STATE（`service.ts:274`）
+  //   · 步骤不以 `render_answer` 收尾 → 400 PLAN_VALIDATION_ERROR（`service.ts:276` requireRenderAnswer）
+  // 桩若把这三条放宽，前端"发不出去时屏上说什么"这一支就永远测不到（而那正是用户最常撞的墙）。
+  http.put("*/b/v1/catalog/plans/:planId", async ({ params, request }) => {
+    const plan = db.plans.find((p) => p.id === String((params as { planId: string }).planId));
+    if (!plan) return err(404, "PLAN_NOT_FOUND", "计划不存在");
+    if (plan.status !== "DRAFT") return err(409, "INVALID_STATE", "仅 DRAFT 状态的计划可修改");
+    const patch = (await request.json()) as { key?: string; steps?: Record<string, unknown>[] };
+    if (patch.key !== undefined) plan.key = patch.key;
+    if (patch.steps !== undefined) plan.steps = patch.steps;
+    return HttpResponse.json(plan);
+  }),
+  http.post("*/b/v1/catalog/plans/:planId/publish", ({ params }) => {
+    const plan = db.plans.find((p) => p.id === String((params as { planId: string }).planId));
+    if (!plan) return err(404, "PLAN_NOT_FOUND", "计划不存在");
+    if (plan.status !== "DRAFT") return err(409, "INVALID_STATE", "仅 DRAFT 状态的计划可发布");
+    const last = plan.steps[plan.steps.length - 1];
+    if (plan.steps.length === 0 || (last as { type?: string } | undefined)?.type !== "render_answer") {
+      return err(400, "PLAN_VALIDATION_ERROR", "计划必须以 render_answer 步骤收尾");
+    }
+    plan.status = "PUBLISHED";
+    // 影响面 = 引用本计划的意图反查（后端 `planImpact`·service.ts:252 同口径：按 planId 或 planRef.planKey）。
+    const refs = db.intents.filter(
+      (i) => i.status !== "RETIRED" && (i.planId === plan.id || (i.planRef && i.planRef.planKey === plan.key)),
+    );
+    return HttpResponse.json({
+      ...plan,
+      impact: { agents: 0, plans: 0, intents: refs.length, refs: refs.map((i) => ({ kind: "intent", key: i.key, version: i.version, name: i.name })) },
+    });
   }),
 
   // ---- 兜底运营 ----
