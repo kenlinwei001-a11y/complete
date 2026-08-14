@@ -472,6 +472,61 @@ const CAPACITY_CAUSAL_FACTORS = [
     baseScopeField: "baseId", drillPick: "min", drillNorm: "inverseRatio" },
 ];
 
+// ── WO-ORDER-JOURNEY · 链路落点域因果因子（补 `G-IMPEDIMENT-OPTION-NOJOIN` 缺口② 的**数据那一半**）──
+//
+// 为什么必须有这一组：`chain_impediments` 的阻滞点锚在 `locus{objectType,objectId}` 上，
+// 决策推演锚在 `CausalFactor{drillType,drillId}` 上 —— 两者理论共键，实测撞不上。
+// **2026-08-14 亲手重跑**（`POST /a/v1/solvers/chain_impediments/invoke` body `{"scope":{}}`,
+// 头 `X-Debug-User: demo:admin:admin`；ruleSetVersion `rsv_56823770`）：
+//   17 条阻滞点，locus 四类 —— `MaterialBalance`(7) · `MaterialBatch`(6) · `Line`(2) · `Base`(2)。
+//   同轮 35 条 CausalFactor 覆盖 22 种 drillType，其中：
+//     · `MaterialBatch` **一条都没有** ⇒ 6 条当场出局；
+//     · `Base`          **一条都没有** ⇒ 2 条当场出局（这一类是 WO-A6-CONTENTION 之后新长出来的，
+//       2026-08-08 那次取证时还不存在 —— 老结论说「locus 只有三类」，今天是四类）；
+//     · `Line`          **有一条**（`cf-cap-bottleneck-process`·drillId `*`）—— 老结论说「Line 一条都没有」
+//       这一句**是错的**：它不是缺因子，是缺「`*` 通配怎么算对上」这条判据。修法完全不同：
+//       前者要补种子，后者要 join 认通配（见 `solvers/service.ts` `resolveLocusFactor` 的 TYPE 精度）。
+//
+// 承载物全部是**实测过的真对象真字段**（seed=42 实跑 `POST /a/v1/objects/query` 核对过）：
+//   · `MaterialBatch.idleDays` —— 呆滞天数，**正是判据 C28 读的那个字段**（`chain-impediment.ts:170`
+//     `metricPath: "Batch.idleDays"` 经 `rule-scope.ts` 归一到 MaterialBatch）。因子解释的就是这条堵点
+//     「为什么卡」：批次躺在库里不动 ⇒ 在制堆积 ⇒ 流不动。不是为了对上率硬造的名目。
+//   · `Base.util` —— 基地产能利用率（实测 changzhou 88 / wuhan 84，0–100 口径）。C34 争用判据是
+//     「Σ 业务线索取 > 该地产能面」，而**产能面吃紧**正是它成立的前提：利用率越高、可让度越小、争用越硬。
+// ⚠ 被排除的候选（诚实标「无承载物」，绝不为凑数指向不存在的字段）：
+//   · `Base.claimedDailyRate` —— **不是 Base 的对象属性**，是 `readBaseContention()` 判定期现算的读数
+//     （`chain-impediment.ts:260`）。指过去 gap_attribution 下钻会读到 undefined ⇒ 与 `ChangeoverMatrix.changeoverMin`
+//     同型的「字段不存在」坑，故不指。
+//   · `MaterialBalance` 的另外 5 条（mbal-3/5/6/7/8）**不逐个造因子**：既有 `cf-material-short`
+//     （drillId `DYNAMIC-MBAL` → 运行期解析为缺口最大的那张）已经是「物料短缺」这一个因，
+//     再按物料名各立一个因子 = 把**同一个因**按实例复制 8 份，属凑数。它们经 TYPE 精度对上同一个因子，
+//     并在屏上标明「按类型对上、不是这张单据自己的因子」。
+//
+// `metricKey: "chain_flow"` 是**新域**且**故意不挂 Metric/因果边**：本组只服务「locus → 因子」这一跳，
+// 不进任何 `gap_attribution` 树 ⇒ 既有归因结论逐字节不变（可回退性由此而来，不靠自觉）。
+//
+// ⚠ **本组一律不带 `baseScopeField`（这一条是被门当场报红逼出来的，不是想起来的）**：
+// 第一版给 `cf-base-capacity-contention` 写了 `baseScopeField: "baseId"`，我当时以为
+// 「`metricKey: "chain_flow"` 是新域 ⇒ 不会进任何既有归因树」。**这个判断是错的**：
+// `solvers/service.ts:1570` 的产能域因子选择器是
+//   `allCausalFactors.filter((c) => str(c.baseScopeField) !== "")`
+// —— **它按 `baseScopeField` 挑，根本不看 `metricKey`**。于是这条因子当场混进产能归因树，
+// 而 `Base` 每个基地**只有一个对象** ⇒ `popMax` 归一后紧张度恒 1 ⇒ 因子头独吞整个基地缺口，
+// 被既有接缝门 `factor-scope-singlesource.seam.test.ts:188`（单对象归一退化门）打红，
+// 原文 `基地产能面吃紧引发跨业务线争用 的因子头独吞了整个基地缺口（紧张度恒 1 = 组内归一退化）：
+// expected 9.0076 to be less than 9.0076`。
+// 这正是本组头注里已经写着的那条排除理由（`Material.onHand` 因无 baseId 会退化成「13 张卡同一个数」）
+// 的**镜像形态**：不是没有 baseId，是**每个 base 只有一个**，同样退化。
+// 形态（铁律 0.6 句式）：**「我用『metricKey 是新域』当作『不会进既有归因树』的证据，而前者并不度量后者。」**
+// ⇒ 本组只服务「locus → 因子」这一跳，故不带 `baseScopeField`/`drillPick`/`drillNorm`
+//   （后两者没有 `baseScopeField` 时本就不被任何代码读，留着就是死字段）。
+const CHAIN_LOCUS_CAUSAL_FACTORS = [
+  { factorId: "cf-batch-idle", label: "批次呆滞占用在制", drillType: "MaterialBatch", drillId: "*", drillField: "idleDays",
+    kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "chain_flow" },
+  { factorId: "cf-base-capacity-contention", label: "基地产能面吃紧引发跨业务线争用", drillType: "Base", drillId: "*", drillField: "util",
+    kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "chain_flow" },
+];
+
 export const CAUSAL_FACTORS = [
   ...SUPPLY_CAUSAL_FACTORS,
   ...MARKET_SHARE_CAUSAL_FACTORS,
@@ -480,6 +535,7 @@ export const CAUSAL_FACTORS = [
   ...DEMAND_ATTAIN_CAUSAL_FACTORS,
   ...GROSS_PROFIT_CAUSAL_FACTORS,
   ...CAPACITY_CAUSAL_FACTORS,
+  ...CHAIN_LOCUS_CAUSAL_FACTORS,
 ];
 
 // WO-CEO-3 触发规则（信号阈值→行动·decision_play 引擎评估·阈值可被 RuleEntry.params 覆盖·C3）。

@@ -18,6 +18,10 @@ import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import zh from "@/locales/zh";
 import simStyles from "../sim/SimViews.module.css";
 import styles from "./PlanViews.module.css";
+// WO-ORDER-JOURNEY · 地铁线路图**复用**（`chrome="embedded"` 与 `view.options.so` 都是它既有的口子，
+// 本单一个字节都没改 `ChainLineMapView`）＋ 决策推演就地嵌入（与页面壳同一份实现）。
+import ChainLineMapView from "../sim/ChainLineMapView";
+import { DecisionPlayEmbed } from "../DecisionPlayPanel";
 
 // DF.3 单一来源：SEG 配色/价/利从 @platform/contracts SEG_REGISTRY 派生（与 datacore 同源）。
 const SEG_COLOR: Record<string, string> = Object.fromEntries(SEG_REGISTRY.map((s) => [s.seg, s.color]));
@@ -934,6 +938,42 @@ function OrderFullchainPanel() {
             onClick={() => adopt.mutate({ actionTypeKey: "plan_change", payload: { versionId: `order-chain:${data.so}`, reason: data.summary, so: data.so, verdict: data.verdict } })}>
             采纳结论 → 工单（C10 留痕）
           </button>
+
+          {/* ── WO-ORDER-JOURNEY ① · 这一张订单**走到哪了**：地铁线路图逐站 ────────────────
+              仓主原话：「需要类似『推演沙盘』里面的『地铁线路图』的 UX，展示这个项目的进展情况」。
+              **复用不重写**：`ChainLineMapView` 本来就以「一张真实锚点订单」为单位取数
+              （`argsFromView` 读 `view.options.so` → `chain_loss_attribution`），
+              嵌进来只需给它一个 `options.so` 与既有的 `chrome="embedded"`——
+              本单**没有改 ChainLineMapView 一个字节**（additive 的最强形态：改动量为 0）。
+              锚点是**引擎解析后的那一张**（`data.so`），不是选择器里的空串 ——
+              选「首单」时选择器 value 是 ""，拿它去驱动会画成全域，与上面三判不是同一张单。
+              默认折叠：本页在 `check-ui-first-layer` 棘轮基线里（first=89），不许往第一层堆。 */}
+          <details data-testid="oc-metro-details" style={{ marginTop: 10 }}>
+            <summary data-testid="oc-metro-summary" style={{ fontSize: 12.5, cursor: "pointer" }}>
+              这一张订单走到哪了 · 地铁线路图逐站 ▸
+              <span className="mono" style={{ marginLeft: 6, color: "var(--muted)" }} data-testid="oc-metro-so">{data.so}</span>
+            </summary>
+            <div style={{ marginTop: 8 }} data-testid="oc-metro-slot">
+              <ChainLineMapView
+                view={{ key: "order-chain-metro", title: data.so, renderer: undefined, layout: undefined, options: { so: data.so } }}
+                chrome="embedded"
+              />
+            </div>
+          </details>
+
+          {/* ── WO-ORDER-JOURNEY ② · 这一张订单**卡在什么上、拿它怎么办**：就地推演 ────────
+              ⚠ 这里**不锚 locus**，是有理由的诚实：订单站点（`chain_loss_attribution` 的 stepId）
+              与阻滞点落点（`chain_impediments` 的 `locus{objectType,objectId}`）**今天没有共同 id**
+              （本体 §8 `G-IMPEDIMENT-LOSS-NOJOIN`）。硬拿 `judges.kit.material` 的**中文物料名**
+              去撞 `MaterialBalance.label` 能撞上几条，但那是字符串名字对齐，不是 id 对齐 ——
+              撞错一次，屏上就会出现「这张单的解法」而其实是另一种物料的解法，且**界面上分辨不出**。
+              故本处给的是**指标级**方案对比，并把这句限定写在记号上，不假装是这一站自己的解法。
+              真正的落点级解法在阻滞点页（`ChainImpedimentView` 逐条已就地嵌入）。 */}
+          <DecisionPlayEmbed
+            metricKey=""
+            testId="oc-play"
+            summaryLabel="查看方案对比 ▸（指标级 · 不是这一站自己的解法，站点与阻滞点落点今天无共同 id）"
+          />
         </>
       )}
     </div>

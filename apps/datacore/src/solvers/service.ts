@@ -378,7 +378,9 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   plan_rootcause: ["kpis", "dag", "offTargetCount", "summary", "ruleRefs"],
   metric_rollup: ["metrics", "missCount", "byLevel", "summary"],
   gap_attribution: ["rootMetric", "totalGap", "noGap", "levels", "atomicLeaves", "causalEdges", "reconChecks", "reconciled", "residualPct", "severityKind", "hypotheses", "summary", "scope", "globalGap", "noBaseData"],
-  decision_play: ["rootCause", "options", "matrix", "triggers", "recommendedPlan", "sandboxNarrowing", "summary"],
+  // WO-ORDER-JOURNEY：+ locusPlay（**只在传了 locusType+locusId 时出现**的落点锚定块 —— 阻滞点/订单站点
+  // 的可执行解法 + locus→CausalFactor 的对上情况。不传 = 键不存在 = 输出逐字节同今天）。
+  decision_play: ["rootCause", "options", "matrix", "triggers", "recommendedPlan", "sandboxNarrowing", "summary", "locusPlay"],
   supply_demand_gap_attribution: ["rootMetric", "totalGap", "unit", "demandSide", "supplySide", "residual", "reconChecks", "reconciled", "residualPct", "summary"],
   // WO-ATP-PROMISE atp_check 输出形状（= AtpCheckOutput 顶层 key·净读三源承诺）。
   atp_check: ["orderRef", "requestedQty", "committableQty", "promiseDate", "atpStatus", "shortfallQty", "bottleneck", "breakdown", "summary"],
@@ -3278,10 +3280,108 @@ export class SolverService {
     const sandboxNarrowing = { beforeGap: gap, afterGap, narrowedPct, ticks: 0 };
 
     await this.outbox?.emit(ctx.tenantId, "decision.options_generated", { metricKey: rootMetric.key, factorId: rootFactorId, optionCount: options.length, firedTriggers: triggers.filter((t) => t.fired).length });
+    // ── WO-ORDER-JOURNEY · 落点锚定块（**加键，不改任何既有键**）───────────────────────────
+    const locusPlay = await this.decisionPlayLocus(ctx, args);
     return {
       rootCause: { factorId: rootFactorId, label: str(root.factor), metricKey: rootMetric.key, gap, unit },
       options, matrix, triggers, recommendedPlan: plan, sandboxNarrowing,
       summary: `根因「${str(root.factor)}」(可解决供应权重 ${addressable}${unit}) → ${options.length} 方案比对(补缺口/代价/周期/风险/敞口/可逆)·推荐组合 ${chosen.length} 项补 ${plan.totalClosesGap}${unit}(收窄 ${narrowedPct}%)·${triggers.filter((t) => t.fired).length}/${triggers.length} 触发规则 fire`,
+      ...(locusPlay === null ? {} : { locusPlay }),
+    };
+  }
+
+  /**
+   * WO-ORDER-JOURNEY · `decision_play` 的**落点挂载点** —— 闭 `G-IMPEDIMENT-OPTION-NOJOIN` 缺口②
+   * 「阻滞点锚在 `locus{objectType,objectId}`、决策推演锚在 `CausalFactor`，两者无共同 id」。
+   *
+   * ── 为什么是「加一个块」而不是「把候选塞进 options」（**本单的要害裁决·先读 decision/kernel.ts:117–143 再看这段**）──
+   * 工单原话是「让它用 `enumerateImpedimentOptions` 而不是写死三条」。我没有那么做，理由是**做不成而不编**：
+   * `DecisionOption` 是**六维**的（closesGap / cost / cycleDays / risk / exposure / reversibility），
+   * 而 `SolutionCandidate`（`chain-sim.ts:926`）身上**只有**「哪个对象哪个属性从多少拨到多少 + 各维 KPI 前后值」——
+   * `cost` / `cycleDays` / `risk` / `exposure` / `reversibility` **四维半在候选里一个真值都没有**。
+   * 要把候选塞进 `options`，就必须替这四维**编四个数**；而编出来的数会立刻被下游当真用：
+   * 比对矩阵的「最优列」逐维取最优（`DecisionPlayView.bestByDim`）、贪心组合按 `closesGap/cost` 排序
+   * （本方法 §5）、`decision/kernel.ts` 的台账把它写进 `optionsRef` 并据此派 Action。
+   * 这正是 `kernel.ts:129-131` 点名的那种病：「台账写着决策者选了 A，Action 却去执行 B —— **界面上分辨不出**」。
+   * 故：候选**原样**出现在 `locusPlay.candidates`（真对象真属性真档位，一个字段都不换算），
+   * 六维方案卡仍是那三条公司级战略并**在屏上明说两者不是一回事**。
+   * 「不许静默变空」由此天然满足：`options` 一个字节都没动。
+   *
+   * ── 可回退性（不靠自觉，靠结构）──────────────────────────────────────────────
+   * 不传 `locusType`/`locusId` ⇒ 本方法返回 `null` ⇒ 顶层连键都不加 ⇒ 输出与今天**逐字节相同**。
+   *
+   * ── 「对上」分两种精度，禁止塌成一个 ──────────────────────────────────────────
+   *  · `EXACT` —— `CausalFactor.drillId` 与 `locus.objectId` **逐字节相等**：这张单据自己的因子。
+   *  · `TYPE`  —— 因子的 `drillId` 是**通配/动态占位**（`*` 或 `DYNAMIC-*`，契约 `gap-attribution.ts:30`
+   *    原文「`"*"` 表示按类型聚合」）：因子讲的是**这一类**落点的因，不是这一张的因。屏上必须标出来，
+   *    否则读者会把「这类物料短缺」读成「这张 mbal-7 自己的归因」。
+   *  · `NONE`  —— 真没有。**不回落到贡献最大的默认因子**（那正是 `sandboxConsoleModel.ts` §8 拒绝猜 factorId 的理由）。
+   */
+  private async decisionPlayLocus(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+    const locusType = args.locusType === undefined ? "" : str(args.locusType);
+    const locusId = args.locusId === undefined ? "" : str(args.locusId);
+    if (locusType === "" || locusId === "") return null;
+
+    // ① locus → CausalFactor（两种精度·全序取第一条，同输入同结果 R6）。
+    const factors = (await this.repos.objects.listByType(ctx.tenantId, "CausalFactor")).map((o) => o.props);
+    const sameType = factors.filter((f) => str(f.drillType) === locusType).sort((a, b) => str(a.factorId).localeCompare(str(b.factorId)));
+    const exact = sameType.find((f) => str(f.drillId) === locusId);
+    const wildcard = sameType.find((f) => str(f.drillId) === "*" || str(f.drillId).startsWith("DYNAMIC-"));
+    const hit = exact ?? wildcard;
+    const precision = exact ? "EXACT" : hit ? "TYPE" : "NONE";
+    const join = {
+      status: hit ? "JOINED" : "NO_FACTOR",
+      precision,
+      factorId: hit ? str(hit.factorId) : null,
+      factorLabel: hit ? str(hit.label) : null,
+      drillField: hit ? str(hit.drillField) : null,
+      basis: hit
+        ? exact
+          ? `CausalFactor.drillId「${str(hit.drillId)}」逐字节等于 locus.objectId「${locusId}」`
+          : `CausalFactor.drillId「${str(hit.drillId)}」是按类型聚合的占位（契约 gap-attribution.ts:30「"*" 表示按类型聚合」）⇒ 只对上到类型 ${locusType}，不是这一张 ${locusId} 自己的因子`
+        : `本租户 ${sameType.length} 条 drillType=${locusType} 的 CausalFactor 里，既无 drillId 等于「${locusId}」的，也无按类型聚合的占位 ⇒ 诚实说没有，不回落到贡献最大的默认因子（回落会在屏上造出一个看着确凿、实则与这条落点无关的根因）`,
+      candidateFactorCount: sameType.length,
+    };
+
+    // ② 落点上的**可执行解法** —— 复用既有枚举器产出（判定与枚举同一次请求内完成，本方法不另起一套）。
+    const scan = await this.chainImpediments(ctx, { scope: {} });
+    const impediments = (scan.impediments as Record<string, unknown>[]) ?? [];
+    const mine = impediments.filter((im) => {
+      const l = im.locus as { objectType?: unknown; objectId?: unknown } | undefined;
+      return str(l?.objectType) === locusType && str(l?.objectId) === locusId;
+    });
+    const stats = (scan.candidateStats as Record<string, unknown>[]) ?? [];
+    const statOf = (id: string) => stats.find((s) => str(s.impedimentId) === id) ?? null;
+
+    const loci = mine.map((im) => ({
+      impedimentId: str(im.impedimentId),
+      kind: str(im.kind),
+      stage: str(im.stage),
+      severity: num(im.severity),
+      dataMode: str(im.dataMode),
+      evidence: im.evidence,
+      candidates: (im.candidates as unknown[]) ?? [],
+      ...(im.noCandidateReason === undefined ? {} : { noCandidateReason: im.noCandidateReason }),
+      ...(im.noCandidateKind === undefined ? {} : { noCandidateKind: im.noCandidateKind }),
+      stat: statOf(str(im.impedimentId)),
+    }));
+    const candidateTotal = loci.reduce((a, l) => a + l.candidates.length, 0);
+
+    return {
+      locus: { objectType: locusType, objectId: locusId },
+      join,
+      impediments: loci,
+      candidateTotal,
+      scanId: scan.scanId,
+      ...(scan.ruleSetVersion === undefined ? {} : { ruleSetVersion: scan.ruleSetVersion }),
+      // 屏上原样显示：两块东西不是一回事，合并就得编（见方法头）。
+      optionsNote:
+        `上面六维方案卡是**公司级战略**（本引擎恒 ${3} 条·任何 metricKey 都一样）；这里 ${candidateTotal} 条是**这个落点自己的可执行解法**` +
+        `（真对象真属性真档位，由 enumerateImpedimentOptions 逐候选真试算而来）。两者不合并成一张表，` +
+        `是因为候选身上没有 代价/周期/风险/敞口/可逆 这几维的真值 —— 合并就得替它们编数，而编出来的数会被比对矩阵与推荐组合当真用。`,
+      summary:
+        `落点 ${locusType}／${locusId}：${loci.length} 条阻滞点 · ${candidateTotal} 条可执行解法 · ` +
+        `因子对上 ${join.status === "JOINED" ? `${join.factorId}（${precision} 精度）` : "无（诚实空，不回落默认根因）"}`,
     };
   }
 

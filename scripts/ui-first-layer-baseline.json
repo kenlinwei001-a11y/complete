@@ -506,13 +506,13 @@
    "why": "WO-UI-LAYERING-BURNDOWN：字号 10 级→3 级（12/16/28，R-UI-2 达标；28 独占最大一级）。first 137→120·deferred 5→32。"
   },
   "apps/frontend-shell/src/views/DecisionPlayView.tsx": {
-   "first": 63,
-   "deferred": 36,
+   "first": 0,
+   "deferred": 0,
    "formula": 0,
-   "prose": 5,
-   "sizes": 3,
+   "prose": 0,
+   "sizes": 0,
    "page": "主视图（views 顶层）",
-   "why": "WO-UI-LAYERING-BURNDOWN：④触发规则+⑤推荐组合合成一张 action list（两套源在说同一批行动、措辞不一致）。第一层只留「做什么·何时·触发没有」，「凭什么」全进 ? 浮层；PRD 区号下屏。first 79→63·deferred 20→36·total 99→99（D4 一条未删）·sizes 4→3·原生 title 1→0。"
+   "why": "WO-ORDER-JOURNEY：本文件从 664 行**页**退化成几十行的**页面壳**（读 URL → 渲染面板），5 区推演的唯一实现搬去 apps/frontend-shell/src/views/DecisionPlayPanel.tsx。故 first 79→0 / deferred 20→0 **不是删除，是整体搬家**：搬去处不进本基线（门的既有约定「新文件不进基线 ⇒ 直接按规范硬上限收」），改后实测 DecisionPlayPanel first=105 · deferred=22 · formula=0 · sizes=3 —— 信息总量 99 → 127（**变多了**，因为新增了落点解法块 ⑥），一个字都没丢。搬家的动因是仓主原话「决策推演不应该在导航栏这个位置，而是嵌入到每个需要决策的点」：一份实现同时供页面壳与各宿主页就地嵌入，壳与嵌入改一处两处同时变（接缝测试两处一起断言）。复验：node scripts/check-ui-first-layer.mjs --census 取这两行相加。"
   },
   "apps/frontend-shell/src/views/DispositionDetailPanel.tsx": {
    "first": 14,
