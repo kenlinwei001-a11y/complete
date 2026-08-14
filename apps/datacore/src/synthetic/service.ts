@@ -73,6 +73,28 @@ const PLANVIEW_EXTRA_KEYS = [
   "graph-loop",
 ];
 
+/**
+ * **暗发中的增量视图**（WO-R9-STUCKVIEW·2026-08-14）—— 与上面那桶分开，因为它们**不能过种子期过滤**。
+ *
+ * ── 为什么必须单列（这是收编时实测出来的，不是照抄格式）─────────────────────
+ * 上面 `PLANVIEW_EXTRA_KEYS` 会先过 `filterByFeatures()` 再落 ViewConfig。对**暗发**功能来说
+ * 那是个死结：种子期 `process.runtime` 关着 ⇒ 该键被滤掉 ⇒ **根本没写进 ViewConfig** ⇒
+ * 租户日后开通了功能，`/a/v1/me/workspace` 也无从下发（它只能从 ViewConfig 里挑，挑不出没写进去的）。
+ * 表现是「开关打开了，页面还是没有」，而两侧代码看起来都对。
+ *
+ * ⇒ 正确分层：**ViewConfig 是目录，`/me/workspace` 是闸**。
+ *    目录**无条件**收录（本常量），闸在**请求期**按 `VIEW_FEATURE_MAP` 逐次判（app.ts `viewAllowed()`）。
+ *    R3「功能关闭 = 不存在」一点没松：关着时 `viewAllowed("process-stuck")` 为假 ⇒
+ *    `views` 与 `navigation` 两处同时被滤掉，且 `withRouteFeatureAliases` 不下发
+ *    `view.process-stuck` ⇒ 前端页面侧守卫也 404。三道闸全在请求期，比种子期那一道**更严**
+ *    （种子期那道只在"种下去的那一刻"生效，之后功能怎么变它都不知道）。
+ */
+const DARK_LAUNCH_EXTRA_KEYS = [
+  // 流程卡点面板（「为什么**这一张单**现在卡住了」·需求 §4.5）。控制键 `process.runtime`
+  // （features.ts:272 VIEW_FEATURE_MAP + INCOMPLETE_DATA_DARK_LAUNCH_FEATURES 暗发）。
+  "process-stuck",
+];
+
 /** §7.18 学习闭环视角 nodeFilter.ids —— 与图谱端点概念节点 id 一字不差。 */
 const LOOP_NODE_IDS = [
   "产能预测",
@@ -258,8 +280,13 @@ export class SyntheticService {
       }
       const views = await this.filterByFeatures(ctx, template.scenarioSeed.views);
       // 增量视图（§7.14–7.17 + 图谱八视角 + 运营复盘）：不进 report.views（保持验收快照稳定），但进 view_configs。
+      // ⚠ 两桶合流但**过滤方式不同**（见 DARK_LAUNCH_EXTRA_KEYS 的文件头说明）：
+      //   普通增量视图过种子期 feature 过滤；暗发视图**不过**，只由请求期 `/me/workspace` 那道闸判。
+      //   合成一句 `filterByFeatures([...A, ...B])` 就会把暗发那批永久滤掉 —— 那正是本条要防的病。
       const extraViews =
-        input.industry === "battery-manufacturing" ? await this.filterByFeatures(ctx, PLANVIEW_EXTRA_KEYS) : [];
+        input.industry === "battery-manufacturing"
+          ? [...(await this.filterByFeatures(ctx, PLANVIEW_EXTRA_KEYS)), ...DARK_LAUNCH_EXTRA_KEYS]
+          : [];
       await this.seedViewConfigs(ctx, views, extraViews, { livedIn: input.livedIn });
       // 管理平台增量 §3：场景包记录（admin/views 与场景包管理页的事实源；幂等 upsert）。
       const pkgId = "pkg_battery_manufacturing";
@@ -1671,6 +1698,17 @@ export class SyntheticService {
       },
       // 运营态增量 §4.2：运营复盘（只读历史证据链页面，消费 history/bundle）
       review: { title: "运营复盘", renderer: "review", layout: { apiTag: "history" } },
+      // WO-PROCESS-INSTANCE · 流程卡点面板（暗发·见 DARK_LAUNCH_EXTRA_KEYS）。
+      // 走增量视图桶而**不进** BUILTIN_VIEWS，判据是**语义归属**（同 nav 门判据⑦ 的修法说明），逐条：
+      //  ① 它的控制键是 `process.runtime`（引擎级），不是 `view.<key>`。BUILTIN_VIEWS 的
+      //     `builtInViewFeatureDefs()` 会照 featureKey **再注册一份 defaultOn:true 的 FeatureDef** ——
+      //     那会把 features.ts:112 那条 `defaultOn:false` 顶掉，**暗发当场失效**（且静默）。
+      //  ② `seed:true` 会进 `SEEDED_VIEW_KEYS` → `scenarioSeed.views` → `report.views` 验收金值；
+      //     它是**暗发**页，出现在出厂验收快照里等于宣称"已交付"，与暗发语义直接矛盾。
+      //  ③ 它不是「净室通用页」（App.tsx 专用 route 那一类）：读的是租户自己的流程实例，
+      //     且必须有页面侧 R3 守卫 —— 专用 route 给不了（手敲 URL 绕过去）。
+      // layout 留空：本页不经 solver，数据直接来自 `GET /a/v1/process-instances/stuck`。
+      "process-stuck": { title: "流程卡点", renderer: "process-stuck", layout: {} },
       // §7.18 图谱八视角（零新代码视角：renderer=ontology-graph + graphOptions 配置）。
       // PRD-IND-map 缺口④：每视角叙事描述（逐字录自 HTML，ViewDef 配置下发，前端 descCard 渲染，非写死）。
       "graph-all": graphView("图谱·全景", { colorBy: "domain", layoutSeed: 42 }, { desc: "全域对象与关系全景：14 业务域对象类型 + 求解器 + 智能体一张图，按域着色；可切数据来源着色、主干分级、各推演网络与学习闭环视角。" }),

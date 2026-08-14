@@ -191,6 +191,18 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       // 不带 consolidatedWhen：沙盘五模式里没有它（见 views/sim/sandboxModes.ts），
       // 带了就是把它唯一的入口在沙盘开时删掉 —— 与 process-wait 同一条理由。
       { kind: "view" as const, key: "procurement-legs" },
+      // WO-PROCESS-INSTANCE：流程卡点（**实例层**）——与 `process-wait` 是**两页**，不是重复入口：
+      //   · `process-wait`（模板层）答「这**类**流程通常在等哪一类东西」（65 条定义的 waitKind，平均值）；
+      //   · `process-stuck`（实例层）答「**这一张单**此刻卡在第几步、等谁、等了多久」（现场值）。
+      // 合并单 WO-R9-PROCESS-MERGE 新立的 `waitStateOrigin` 诚实位分的正是这两者
+      // （`DEFINITION_TEMPLATE` vs `TASK_GATE`），把它们并成一个入口就等于把那条诚实位在 IA 层抹掉。
+      // 同组不同项、同为归因（答「现状为什么这样」），故与 process-wait 相邻而不合并。
+      //
+      // kind:"view"（不是 route）：它经后端下发（`synthetic/service.ts` 增量视图桶），
+      // 且必须有 R3 页面侧守卫 —— `process.runtime` 是暗发键（defaultOn:false +
+      // INCOMPLETE_DATA_DARK_LAUNCH_FEATURES），挂成 route 会变成「关着也手敲得进去」。
+      // 不带 `consolidatedWhen`：沙盘五模式里没有流程卡点，带上就是把它唯一入口在沙盘开时删掉。
+      { kind: "view" as const, key: "process-stuck" },
       { kind: "route" as const, key: "cleanroom-attr", label: "净室归因", consolidatedWhen: "sim.sandbox" },
       { kind: "route" as const, key: "disruption-radius", label: "断供影响半径", consolidatedWhen: "sim.sandbox" },
     ],

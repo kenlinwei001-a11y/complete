@@ -1,0 +1,159 @@
+/* WO-PROCESS-INSTANCE · 流程卡点面板样式。
+   零硬编码颜色：全部走 styles/tokens.css 的 CSS 变量 ⇒ dark / light / warm 三套自动跟随
+   （门：process-stuck.seam.test.tsx「三色系」组 —— 出现 hex 或任何颜色函数字面量即红）。 */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--txt);
+  font-family: var(--font-sans);
+}
+
+.head h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  max-width: 88ch;
+}
+
+.stateLine {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.stateLine code,
+.card code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+/* ── 等待态计数条 ───────────────────────────────────────────────────── */
+.tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tallyItem {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.tallyCount {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.tallyZero .tallyCount {
+  color: var(--muted2);
+}
+
+/* ── 卡点卡片 ───────────────────────────────────────────────────────── */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cardHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.stepName {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.defName {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.badge {
+  background: var(--bg2);
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 1px 7px;
+  font-size: 11px;
+  color: var(--warn);
+}
+
+/* 四问栅格：卡在哪一步 / 为什么 / 等谁 / 等多久 */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.factLabel {
+  color: var(--muted2);
+  font-size: 11px;
+}
+
+.factValue {
+  font-size: 13px;
+}
+
+.waited {
+  color: var(--amber);
+  font-family: var(--font-mono);
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 13px;
+  background: var(--panel2);
+  border: 1px dashed var(--line2);
+  border-radius: 8px;
+  padding: 14px;
+  line-height: 1.7;
+}
+
+.error {
+  color: var(--danger);
+  font-size: 13px;
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 14px;
+  line-height: 1.7;
+}

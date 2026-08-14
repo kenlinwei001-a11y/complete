@@ -59,6 +59,10 @@ import type {
   SimCertification,
   SimCheckpoint,
   TickState,
+  // WO-PROCESS-INSTANCE · 流程运行时（前端不重定义，contracts-only-shared）
+  ProcessStuckResponse,
+  ProcessInstanceDetail,
+  AdvanceProcessInstanceRequest,
   SkillCompileResult,
   SolverCategory,
   EnterpriseState,
@@ -1649,3 +1653,29 @@ export const publishPlanBuilder = (id: string) =>
 
 export const runPlanBuilder = (id: string, inputs: Record<string, unknown> = {}) =>
   api.b<PlanBuilderRunResult>(`/b/v1/plan-builders/${encodeURIComponent(id)}/run`, { method: "POST", body: { inputs } });
+
+// ── WO-PROCESS-INSTANCE · 流程运行时（「为什么这个流程现在卡住了」）──────────────
+// 契约类型一律从 @platform/contracts import，**前端不重定义**（contracts-only-shared 铁律）：
+// 再写一份 ProcessStuckReason 就是第二真相源 —— 后端加一个等待态，前端不会跟着变。
+
+/**
+ * 全租户此刻卡住的流程 + 各等待态计数。
+ *
+ * ⚠ 未开通 `process.runtime`（defaultOn:false 暗发）时后端 404 `FEATURE_NOT_FOUND` ——
+ * 这是**预期行为**不是故障，调用方须区分「功能没开」与「请求失败」两种情形。
+ */
+export const fetchStuckProcesses = () => api.a<ProcessStuckResponse>("/a/v1/process-instances/stuck");
+
+/** 单条实例详情：实例 + 全部步骤（八字段）+ 当前卡点。 */
+export const fetchProcessInstance = (id: string) =>
+  api.a<ProcessInstanceDetail>(`/a/v1/process-instances/${encodeURIComponent(id)}`);
+
+/**
+ * 推进一条实例。body 里给的是**外部事实**（数据到齐 / 外部回执 / 审批结论 / 人工已办），
+ * 不是「把状态改成 X」—— 状态机在引擎里，不在前端。
+ */
+export const advanceProcessInstance = (id: string, body: AdvanceProcessInstanceRequest) =>
+  api.a<ProcessInstanceDetail>(`/a/v1/process-instances/${encodeURIComponent(id)}/advance`, {
+    method: "POST",
+    body,
+  });

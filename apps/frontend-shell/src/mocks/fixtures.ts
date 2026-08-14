@@ -196,6 +196,14 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // 不挂 bindings.solverKeys ——`kit_readiness` 是多路共用求解器（见后端 view-manifest 该行注释），
   // 绑上去会让「关这一页」连带 404 掉所有别的调用方（mock handlers.ts:3701 的 boundOff 分支同理）。
   { key: "view.procurement-legs", name: "采购四段腿分解", level: "VIEW", defaultOn: true },
+  // WO-PROCESS-INSTANCE · 流程运行时（实例·卡点）——「为什么**这一张单**现在卡住了」。
+  // ⚠ `defaultOn: false` 在这里是**照抄真相**，不是照抄 L1（与上面 sim.* 那批的处置刚好相反）：
+  //   `process.runtime` 同时进了后端的 `INCOMPLETE_DATA_DARK_LAUNCH_FEATURES`
+  //   （`apps/datacore/src/features.ts:244`），battery 模板的 L2「all on」**会跳过它** ⇒
+  //   对真实 demo 租户它就是**关着的**。mock 若写 true，演示态会比生产态多一页 ——
+  //   那是 mock 在说谎，而且是往"功能更全"的方向说谎（最难发现的那个方向）。
+  // 要在 mock 模式看这一页：`db.tenantOverrides["process.runtime"] = true`（正是租户开通的等价动作）。
+  { key: "process.runtime", name: "流程运行时（实例·卡点）", level: "VIEW", defaultOn: false },
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
   // 图谱八视角（§7.18：零新代码视角，BLOCK 级逐个开关；key 与视图 key 对齐路由守卫 view.{viewKey}）
   { key: "view.graph-all", name: "图谱·业务建模全景", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
@@ -585,13 +593,31 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "process-wait", title: "流程等待态", renderer: "process-wait", layout: {} },
     // WO-R9-NAVREACH：采购四段腿分解（同上·逐字对齐后端 BUILTIN_VIEWS，门 check-nav-group-coverage 判据② 机械对账）
     { key: "procurement-legs", title: "采购四段腿分解", renderer: "procurement-legs", layout: {} },
+    // WO-PROCESS-INSTANCE：流程卡点（**实例层**，与上一行的模板层是两页）。
+    // key/title/renderer 逐字对齐后端 `synthetic/service.ts` 的 `VIEW_DEFS["process-stuck"]` ——
+    // 它走的是**增量视图**桶（同 geo-map/review），不在 BUILTIN_VIEWS 里，故不在 nav 门判据② 的射程；
+    // 但漂了照样是「列表显示的 renderer 与注册表对不上 → 兜底卡」，所以照样必须逐字抄。
+    { key: "process-stuck", title: "流程卡点", renderer: "process-stuck", layout: {} },
     // §7.18 八视角（renderer 复用 ontology-graph，仅 options 不同）
     ...GRAPH_VIEWPOINTS.map((v) => ({ key: v.key, title: v.title, renderer: "ontology-graph", layout: {}, options: v.options })),
     // aop（旧直链入口）：renderer="aop" 未注册，演示「该视图类型暂不支持」兜底
     { key: "aop", title: "年度规划（旧）", renderer: "aop", layout: {} },
   ];
+  // ⚠ 这张表必须与后端 `VIEW_FEATURE_MAP`（apps/datacore/src/features.ts）同口径。
+  //   `process-stuck` 的控制键**不是** `view.process-stuck` 而是 `process.runtime`
+  //   （features.ts:272 有意为之：卡点面板与运行时引擎同生共死，不另立一个能各自开关的 view.* 键）。
+  //   照默认规则算成 `view.process-stuck` ⇒ 该键永不在 features 里 ⇒ 视图恒被过滤掉，
+  //   表现为「注册了、下发表里也写了，就是不出现」——最难查的那种。
   const featureKeyOf = (viewKey: string) =>
-    viewKey === "graph" ? "view.ontology-graph" : viewKey === "risk" ? "view.risk-board" : viewKey === "order" ? "view.ledger" : `view.${viewKey}`;
+    viewKey === "graph"
+      ? "view.ontology-graph"
+      : viewKey === "risk"
+        ? "view.risk-board"
+        : viewKey === "order"
+          ? "view.ledger"
+          : viewKey === "process-stuck"
+            ? "process.runtime"
+            : `view.${viewKey}`;
   // 服务端按 features 过滤后下发（前端不做解析，只消费结果）
   const views = allViews.filter((v) => features.includes(featureKeyOf(v.key)));
   // aop 不进导航（仅直链可达，演示兜底卡）；base_manager 额外隐藏图谱（含八视角）
@@ -605,6 +631,10 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     if (f === "view.risk-board") return [f, "view.risk"];
     if (f === "view.ledger") return [f, "view.order"];
     if (f === "view.dash") return [f, "view.dash"];
+    // WO-PROCESS-INSTANCE：功能键是 `process.runtime`（非 view.* 命名），而 `ViewPage` 路由守卫
+    // 写死查 `view.${viewKey}`（ViewPage.tsx:33）⇒ 必须补这条别名，否则「导航里点得到、点进去 404」。
+    // 与后端 `withRouteFeatureAliases`（app.ts:1102）同一份口径，两侧必须同增同减。
+    if (f === "process.runtime") return [f, "view.process-stuck"];
     return [f];
   });
 

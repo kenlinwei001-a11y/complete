@@ -117,3 +117,17 @@ registerRenderer("cleanroom-attr", () => import("./cleanroom/CleanroomAttrView")
 // 本行 = 这张页面唯一的生产调用方（registry 是手工登记的字符串键表、无自动扫描）——
 // 缺它就是 F2/F3/F4/阻滞点连踩四次的 G-SKILL-REFGRAPH-DEAD-EXTRACTOR：实现有、测试绿、零路由渲染得到。
 registerRenderer("process-wait", () => import("./process/ProcessWaitView"));
+// WO-PROCESS-INSTANCE 流程卡点面板（「为什么这个流程现在卡住了」·需求 §4.5·五个等待态的前端落点）。
+// ⚠ 与上一行的 `process-wait` 是**两页、两个数据源**，不是同一个东西的两种写法（收编时踩过这个路径坑）：
+//   · `process-wait`  住 `views/process/`，读 `GET /a/v1/process-definitions` —— **模板层**，
+//     答的是「这**类**流程通常在等哪一类东西」（65 条定义的 waitKind，平均值）；
+//   · `process-stuck` 住 `views/`（本行），读 `GET /a/v1/process-instances/stuck` —— **实例层**，
+//     答的是「**这一张单**此刻卡在第几步、等谁、等了多久」（现场值）。
+//   合并单 WO-R9-PROCESS-MERGE 的 `waitStateOrigin` 诚实位分的正是这两者，界面上更不能混。
+// 本行 = 这张页面唯一的生产调用方（registry 是手工登记的字符串键表、无自动扫描）——
+// 缺它就是 F2/F3/F4 连踩三次的 G-SKILL-REFGRAPH-DEAD-EXTRACTOR：实现有、测试绿、零路由渲染得到。
+// 审计 AUDIT-decision-twin-gap-2026-08-09 §3「后端已经知道答案，界面上一个字都没有」说的正是这一块。
+// ⚠ 光有本行**不够**：renderer 注册只解决"渲染得出来"，还需后端派单（synthetic/service.ts 的
+//   VIEW_DEFS + 增量视图桶）+ 导航分组（ShellLayout NAV_GROUPS）才"到得了"。
+//   `scripts/check-nav-group-coverage.mjs` 判据⑦ 咬的就是"只做了本行"这一态。
+registerRenderer("process-stuck", () => import("./ProcessStuckView"));

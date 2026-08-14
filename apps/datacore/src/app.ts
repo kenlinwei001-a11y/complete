@@ -1108,6 +1108,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     for (const p of ["all", "backbone", "flow", "source", "solver", "mvp", "agent", "loop"]) {
       if (out.has(`view.graph.persp.${p}`)) out.add(`view.graph-${p}`);
     }
+    // WO-PROCESS-INSTANCE · 流程卡点面板：功能键是 `process.runtime`（**非** view.* 命名，
+    // 见 VIEW_FEATURE_MAP 里那条「与运行时引擎同生共死」的注记），而前端 `ViewPage` 的路由守卫
+    // 写死查 `view.${viewKey}`（frontend-shell/src/pages/ViewPage.tsx:33）。
+    // ⇒ 不补这条别名，会出现**最难查的那一种**断线：workspace.views 里有它、导航里点得到，
+    //   点进去 ViewPage 第一道闸就 404 —— 后端全绿、前端全绿，只有真点一下才看得见。
+    //   （这正是本仓「绿测试 ≠ 能用·断在接缝」的教科书形态，故补在与图谱视角同一个地方、同一种机制。）
+    // 别名是**单向**的：关掉 `process.runtime` ⇒ 这里不 add ⇒ 前端两道闸一起关（R3 不被绕过）。
+    if (out.has("process.runtime")) out.add("view.process-stuck");
     return [...out].sort();
   };
   app.get("/a/v1/me/workspace", async (req) => {
