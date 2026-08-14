@@ -1393,11 +1393,26 @@ type MockPublishRequest = { id: string; ontologyVersion: number; status: "PENDIN
  * 于是只能留两份，并把「两份必须一致」交给机器：`test/ontology-relations.seam.test.tsx` §④
  * 在**运行时**跨 `mapping/registries` 与 `ontology/versions` 两个端点逐 key 对账 —— 人忘了同步，机器先说话。
  * （方向纪律见该 handler 的欠账 #160 注释，逐字适用于本种子。）
+ *
+ * 🔴 **属性顺序是 `key → cardinality → fromType → toType`，与那个 handler 里的字面量故意不同 ——
+ *    这不是笔误，改回去会弄红一道 datacore 门。**
+ * 同一份 gate 文件（`mock-linktype-direction.gate.test.ts:112`）还有一条**变异反证**用例：
+ * 它拿 `src.replace(<line_belongs_to_base 那一行的字面量原文>, <方向调换后的同一行>)`
+ * 把方向改反，再验抽取器抽到反方向。
+ * ⚠ 此处**故意不照抄那行原文** —— 照抄一遍就等于在文件里又造一个同样的字面量，
+ *   `replace` 会落在这条注释上（本单已连栽两次同形态：上一次是把抽取器的搜索串
+ *   写进注释，锚点落进注释自己）。**注释里写下工具要找的那个串 = 给工具埋假锚点。**
+ * `String.replace(string, …)` 只换**第一处**；
+ * 本常量在文件里排在那个 handler **之前**，若两处逐字节相同，变异就会落在这里、
+ * 而抽取器读的仍是 handler 那份未变异的 ⇒ 该用例失败（2026-08-14 实测过：
+ * `expected [ 'Base', 'Line' ] to deeply equal [ 'Line', 'Base' ]`）。
+ * 换个属性顺序即让那条字面量在全文件**唯一**，变异照旧命中它该命中的地方。
+ * 复验：`pnpm --filter datacore exec vitest run test/mock-linktype-direction.gate.test.ts`
  */
 const MOCK_LINK_SEED: MockLinkType[] = [
-  { key: "model_producible_at", fromType: "Model", toType: "Base", cardinality: "N:N" },
-  { key: "order_for_model", fromType: "Order", toType: "Model", cardinality: "1:1" },
-  { key: "line_belongs_to_base", fromType: "Base", toType: "Line", cardinality: "1:N" },
+  { key: "model_producible_at", cardinality: "N:N", fromType: "Model", toType: "Base" },
+  { key: "order_for_model", cardinality: "1:1", fromType: "Order", toType: "Model" },
+  { key: "line_belongs_to_base", cardinality: "1:N", fromType: "Base", toType: "Line" },
 ];
 /** 因果边种子：一条已启用（进推演）——与旧桩的 `propagationCount: 1` 逐字节等价，零回归。 */
 const MOCK_RULE_SEED: MockPropRule[] = [
