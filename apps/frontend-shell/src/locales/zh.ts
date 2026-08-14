@@ -91,6 +91,8 @@ export const zh = {
     quarantine: "隔离区",
     notifications: "通知中心",
     domains: "域管理",
+    // WO-BEFE-A · 本体关系编辑器（结构边 + 因果边 + 发布会签）。
+    ontologyRelations: "本体关系",
     evals: "Agent 评测",
     slices: "本体切片",
     sliceLibrary: "切片库",

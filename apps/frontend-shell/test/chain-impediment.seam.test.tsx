@@ -521,7 +521,13 @@ describe("fixture 与 mock 对齐后端单一来源（不许悄悄漂移）", ()
 
   it("fixture 的 UNBOUND.BREAK.LEADTIME 原因与引擎登记表逐字同源", () => {
     const row = BASE.unresolved.find((u) => u.bindingId === "UNBOUND.BREAK.LEADTIME")!;
-    for (const frag of ["在规则库 C01–C33 中无任何承载阈值的规则（逐条核过）", "本引擎拒绝自造提前期阈值"]) {
+    // ⚠ 2026-08-14：`C01–C33` → `C01–C34`（引擎 `apps/datacore/src/solvers/chain-impediment.ts:237`
+    //   早已改口径，fixture/mock 没跟）。这条门本来就是为逮这种漂移设的，之所以三方都没红，
+    //   是本文件顶部的定位器（`factHits(checkedTree("apps/datacore/src", …))`）被
+    //   `test/factlock.ts stripComments` 的缺陷弄瞎了 —— 引擎文件里一条**行注释含 `/*`**
+    //   开出假块注释吞掉 71 行、连探针一起吞 ⇒ 全树命中 0 处 ⇒ 整个 describe 收集期就抛，
+    //   **本文件 0 个用例被执行**。门在、判据也对，就是从没跑到判据那一步。
+    for (const frag of ["在规则库 C01–C34 中无任何承载阈值的规则（逐条核过）", "本引擎拒绝自造提前期阈值"]) {
       expect(engineSrc).toContain(frag);
       expect(row.reason).toContain(frag);
     }

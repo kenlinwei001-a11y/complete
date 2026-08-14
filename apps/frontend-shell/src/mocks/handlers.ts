@@ -1578,6 +1578,116 @@ const mockSimWorlds = new Map<string, { tick: number; state: Record<string, unkn
 const mockSimPerturbations = new Map<string, Record<string, unknown>[]>();
 let mockSimSeq = 0;
 let mockPertSeq = 0;
+
+/**
+ * WO-BEFE-A · **本体关系 store（有状态·接缝的承载物）**。
+ *
+ * 为什么必须有状态：本单要证的那句话是「在界面上建/停一条因果边 ⇒
+ * `GET /a/v1/sim/view-config` 的 `stateVars`/`propagationCount` 真的跟着变」。
+ * 若 `view-config` 还是原来那个**写死的桩**（`propagationCount: 1` 恒定），
+ * 那条断言就成了「表单能提交」这种各半 unit —— 恰好是 SEAM-GATE 要堵的东西。
+ *
+ * 🔴 派生口径**逐条对齐后端**，不是我另编一套（对齐点在 `apps/datacore/src/app.ts:1873-1885`）：
+ *   · `propagationCount` = `listPropagationRules(tenantId, true).length`
+ *     而 `publishedOnly` 的过滤判据是 `status === "PUBLISHED"`（`repo/memory.ts:76`·`repo/pg.ts:114`）
+ *     ⇒ **DRAFT（停用）的边不计数**；
+ *   · `stateVars` = 上述已启用规则的 `sourceStateVar ∪ targetStateVar`，去重后 `.sort()`；
+ *   · `linkTypes` = **全部**结构边的 key（`links.map(l => l.key).sort()`）——
+ *     后端这里**不看 `deprecation`**，所以停用一条结构边 `linkTypes` 不会少一个。
+ *     这不是 mock 偷懒，是后端的真实行为，测试据此断言「结构边的停用不影响推演口径」。
+ * 这三条口径由 `test/ontology-relations.seam.test.tsx` 的事实锁钉在后端源码上：
+ * 后端哪天改了过滤条件而 mock 没跟，机器当场报红。
+ *
+ * R6 确定性：id 走计数器、时间戳固定串，无随机数、无真实时钟。
+ */
+type MockLinkType = { key: string; fromType: string; toType: string; cardinality: string; deprecation?: { status: "DEPRECATED" | "RETIRED"; supersededBy?: string; deprecatedAt?: string; graceUntil?: string; retiredAt?: string } };
+type MockPropRule = {
+  id: string; tenantId: string; key: string;
+  sourceTypeKey: string; sourceStateVar: string; viaLinkKey: string;
+  targetTypeKey: string; targetStateVar: string;
+  coefficient: number; delayTicks: number; combine: "sum" | "max";
+  decay: null; clamp: null; coefficientRef: null; cadenceNodeId: null;
+  status: "DRAFT" | "PUBLISHED" | "RETIRED";
+};
+type MockPublishRequest = { id: string; ontologyVersion: number; status: "PENDING" | "APPROVED" | "REJECTED"; touchedDomains: string[]; signoffs: { domainKey: string; decision: string }[]; createdAt: string };
+
+/**
+ * 结构边种子 —— 与映射表注册表段那个 handler 里的三条字面量**同一份真值**。
+ *
+ * ⚠ 为什么这里是「两处副本 + 机器盯着」而不是「一处」：那个 handler 里的字面量**不能**换成
+ * `mockLinkTypes.map(...)` —— `apps/datacore/test/mock-linktype-direction.gate.test.ts:40`
+ * 的抽取器读的是**本文件源码文本**（`indexOf("linkTypes: [", anchor)`），换成 store 读法它会抽出 0 条、
+ * 当场报「工具坏了」。那是一道本单范围外的 datacore 门，不许碰坏。
+ * 于是只能留两份，并把「两份必须一致」交给机器：`test/ontology-relations.seam.test.tsx` §④
+ * 在**运行时**跨 `mapping/registries` 与 `ontology/versions` 两个端点逐 key 对账 —— 人忘了同步，机器先说话。
+ * （方向纪律见该 handler 的欠账 #160 注释，逐字适用于本种子。）
+ *
+ * 🔴 **属性顺序是 `key → cardinality → fromType → toType`，与那个 handler 里的字面量故意不同 ——
+ *    这不是笔误，改回去会弄红一道 datacore 门。**
+ * 同一份 gate 文件（`mock-linktype-direction.gate.test.ts:112`）还有一条**变异反证**用例：
+ * 它拿 `src.replace(<line_belongs_to_base 那一行的字面量原文>, <方向调换后的同一行>)`
+ * 把方向改反，再验抽取器抽到反方向。
+ * ⚠ 此处**故意不照抄那行原文** —— 照抄一遍就等于在文件里又造一个同样的字面量，
+ *   `replace` 会落在这条注释上（本单已连栽两次同形态：上一次是把抽取器的搜索串
+ *   写进注释，锚点落进注释自己）。**注释里写下工具要找的那个串 = 给工具埋假锚点。**
+ * `String.replace(string, …)` 只换**第一处**；
+ * 本常量在文件里排在那个 handler **之前**，若两处逐字节相同，变异就会落在这里、
+ * 而抽取器读的仍是 handler 那份未变异的 ⇒ 该用例失败（2026-08-14 实测过：
+ * `expected [ 'Base', 'Line' ] to deeply equal [ 'Line', 'Base' ]`）。
+ * 换个属性顺序即让那条字面量在全文件**唯一**，变异照旧命中它该命中的地方。
+ * 复验：`pnpm --filter datacore exec vitest run test/mock-linktype-direction.gate.test.ts`
+ */
+const MOCK_LINK_SEED: MockLinkType[] = [
+  { key: "model_producible_at", cardinality: "N:N", fromType: "Model", toType: "Base" },
+  { key: "order_for_model", cardinality: "1:1", fromType: "Order", toType: "Model" },
+  { key: "line_belongs_to_base", cardinality: "1:N", fromType: "Base", toType: "Line" },
+];
+/** 因果边种子：一条已启用（进推演）——与旧桩的 `propagationCount: 1` 逐字节等价，零回归。 */
+const MOCK_RULE_SEED: MockPropRule[] = [
+  {
+    id: "simpr_mock_seed", tenantId: "demo", key: "seed_line_to_base",
+    sourceTypeKey: "Line", sourceStateVar: "s1", viaLinkKey: "line_belongs_to_base",
+    targetTypeKey: "Base", targetStateVar: "s2",
+    coefficient: 0.85, delayTicks: 1, combine: "sum",
+    decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null, status: "PUBLISHED",
+  },
+];
+let mockLinkTypes: MockLinkType[] = MOCK_LINK_SEED.map((l) => ({ ...l }));
+let mockPropRules: MockPropRule[] = MOCK_RULE_SEED.map((r) => ({ ...r }));
+const mockPublishRequests = new Map<string, MockPublishRequest>();
+let mockOntologyVersionSeq = 1;
+let mockRelSeq = 0;
+
+/**
+ * 引用反查（后端 `ontology-governance.ts:332` 查 `element_refs` 索引）。
+ * mock 侧的**真派生**：一条结构边的引用方 = 正在经由它传导的因果边
+ * （后端把派生规格的 `deps[].via` 索引成 `elementKind:"link"` 的引用，`ontology-governance.ts:328`）。
+ * 这样「先建因果边 → 该结构边就下线不掉了」这条真实约束在 mock 模式下也成立，
+ * 而不是靠一张写死的引用表冒充。
+ */
+function mockElementRefs(key: string): { refKind: string; key: string; version: number | "latest"; where: string }[] {
+  return mockPropRules
+    .filter((r) => r.viaLinkKey === key)
+    .map((r) => ({ refKind: "propagation-rule", key: r.key, version: "latest" as const, where: "viaLinkKey" }))
+    .sort((a, b) => (a.key < b.key ? -1 : 1));
+}
+
+/** 后端 `app.ts:1877-1880` 的口径**镜像**：只数已启用的边，状态变量取自这些边的两端。 */
+function derivePublishedRules(): MockPropRule[] {
+  return mockPropRules.filter((r) => r.status === "PUBLISHED");
+}
+function deriveStateVars(): string[] {
+  return [...new Set(derivePublishedRules().flatMap((r) => [r.sourceStateVar, r.targetStateVar]))].sort();
+}
+
+export function resetMockOntologyRelations(): void {
+  mockLinkTypes = MOCK_LINK_SEED.map((l) => ({ ...l }));
+  mockPropRules = MOCK_RULE_SEED.map((r) => ({ ...r }));
+  mockPublishRequests.clear();
+  mockOntologyVersionSeq = 1;
+  mockRelSeq = 0;
+}
+
 export function resetMockSim(): void {
   mockSimSessions.clear();
   mockSimWorlds.clear();
@@ -1585,6 +1695,7 @@ export function resetMockSim(): void {
   mockSimSeq = 0;
   mockPertSeq = 0;
   mockEnterpriseStates.clear();
+  resetMockOntologyRelations();
 }
 
 /**
@@ -2644,11 +2755,21 @@ export const handlers = [
       // 已由 `apps/datacore/test/mock-linktype-direction.gate.test.ts` 钉成机械门：
       // 改坏这三行任一方向，机器当场报红，不必等人去发现。
       // （原注释写死 `battery.ts:2321`，收编时实测已漂到 2336 ⇒ 改用符号引用，免得注释自己过期。）
+      // ⚠ WO-BEFE-A：下面三行**必须留在此处、必须是对象字面量** ——
+      //   `apps/datacore/test/mock-linktype-direction.gate.test.ts:40` 的抽取器按**本文件源码文本**
+      //   在本端点路径之后找紧跟的那个数组，把它们换成 `mockLinkTypes.map(...)` 会让它抽出 0 条
+      //   → 该门当场报「工具坏了」。（2026-08-14 实测过两次：一次是换成 store 读法，抽取锚点漂到
+      //   3568 行的建模草稿夹具；一次是本注释里**照抄了抽取器的搜索串**，锚点落进注释自己 —— 两次都抽出 0 条。
+      //   后者尤其值得记：注释里写下工具要找的那个串，就等于给工具埋了个假锚点。）
+      //   那是一道本单范围外的 datacore 门，不许碰坏。故此处保持字面量，尾部 `.concat` 追加
+      //   本会话新建的边（门只对账「种子三条的方向 vs 真本体」，新建的边不在其射程）。
+      //   种子与顶部 `MOCK_LINK_SEED` 的一致性由 `test/ontology-relations.seam.test.tsx` §④
+      //   在**运行时**跨两个端点逐 key 对账 —— 人忘了同步，机器先说话。
       linkTypes: [
         { key: "model_producible_at", fromType: "Model", toType: "Base", cardinality: "N:N" },
         { key: "order_for_model", fromType: "Order", toType: "Model", cardinality: "1:1" },
         { key: "line_belongs_to_base", fromType: "Base", toType: "Line", cardinality: "1:N" },
-      ],
+      ].concat(mockLinkTypes.filter((l) => !MOCK_LINK_SEED.some((s) => s.key === l.key)).map((l) => ({ key: l.key, fromType: l.fromType, toType: l.toType, cardinality: l.cardinality }))),
       rules: [
         { key: "C03", expression: "weeklySupply.p90 >= weeklyDemand", scope: "Order、Base", severity: "阻断" },
         { key: "C06", expression: "kitCoverDays >= 5", scope: "MaterialBalance", severity: "阻断" },
@@ -5396,17 +5517,158 @@ export const handlers = [
   // `view-config` / `sessions` 沙盘控制台照用；`scope-precheck` 现**无前端调用方**
   // （`endpoints.ts fetchSimScopePrecheck` 随之只剩定义无消费），保留是因为后端端点仍在，
   // 但它已是「实现有、无生产调用方」的形态，见 PRD-sim-scope-local §遗留。
+  // ⚠ WO-BEFE-A（2026-08-14）：这条**从写死的桩改成了真派生** —— `stateVars` / `propagationCount` /
+  //   `linkTypes` 全部由 `mockPropRules` / `mockLinkTypes` 两个 store 现算，口径逐条镜像后端
+  //   `apps/datacore/src/app.ts:1873-1885`（见 store 声明处的对齐说明）。
+  //   复验：`pnpm --filter frontend-shell exec vitest run test/ontology-relations.seam.test.tsx`
+  //   桩恒回 `propagationCount: 1` 时，「建一条边 ⇒ 推演口径跟着变」根本无从断言 ——
+  //   那正是 SEAM-GATE 要堵的「表单能提交」式假绿。
+  //   零回归：种子 = 1 条已启用因果边（`s1 → s2`）⇒ `stateVars` / `propagationCount` 与旧桩逐字节相同；
+  //   `linkTypes` 由 `["linkAB"]` 变为 mapping/registries 的同三条真 key（同一份真值，不再是第二套占位名）。
   http.get("*/a/v1/sim/view-config", () =>
     HttpResponse.json({
       tenantId: "demo",
       nodeTypes: ["TypeA", "TypeB", "TypeC"],
-      linkTypes: ["linkAB"],
-      stateVars: ["s1", "s2"],
+      // 后端此处**不看 `deprecation`**（`app.ts:1888` `links.map(l => l.key)`）⇒ 停用结构边不减少这个数。
+      linkTypes: mockLinkTypes.map((l) => l.key).sort(),
+      stateVars: deriveStateVars(),
       radarDims: [{ key: "structure", label: "结构" }, { key: "knowledge", label: "知识" }, { key: "behavior", label: "行为" }],
       screens: ["pipeline", "entity", "readiness", "init", "sandbox"],
-      propagationCount: 1,
+      propagationCount: derivePublishedRules().length,
     }),
   ),
+
+  // ── WO-BEFE-A · 本体关系编辑器的后端镜像（全部对应真路由，非新造语义）──────────
+  // `GET /a/v1/sim/propagation-rules`（后端 app.ts:1860）：`published=false` 才看得到停用的边。
+  http.get("*/a/v1/sim/propagation-rules", ({ request }) => {
+    const publishedOnly = new URL(request.url).searchParams.get("published") !== "false";
+    return HttpResponse.json({ items: publishedOnly ? derivePublishedRules() : mockPropRules });
+  }),
+  // `POST /a/v1/sim/propagation-rules`（后端 app.ts:1865）：id 由服务端铸（后端把它写在 body 展开之后，
+  // 传进来的 id 恒被覆盖 —— 这里照做，否则 mock 会比后端"更能干"，把一个真缺口盖掉）。
+  http.post("*/a/v1/sim/propagation-rules", async ({ request }) => {
+    const b = (await request.json()) as Partial<MockPropRule>;
+    const rule: MockPropRule = {
+      id: `simpr_mock_${++mockRelSeq}`, tenantId: "demo",
+      key: String(b.key ?? ""),
+      sourceTypeKey: String(b.sourceTypeKey ?? ""), sourceStateVar: String(b.sourceStateVar ?? ""),
+      viaLinkKey: String(b.viaLinkKey ?? ""),
+      targetTypeKey: String(b.targetTypeKey ?? ""), targetStateVar: String(b.targetStateVar ?? ""),
+      coefficient: Number(b.coefficient ?? 0), delayTicks: Number(b.delayTicks ?? 0),
+      combine: "sum", decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null,
+      status: b.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT",
+    };
+    mockPropRules.push(rule);
+    return HttpResponse.json(rule, { status: 201 });
+  }),
+  // `POST /a/v1/ontology/link-types`（后端 app.ts:2918 · `ontology.upsertLinkType` 按 key 幂等升版）。
+  http.post("*/a/v1/ontology/link-types", async ({ request }) => {
+    const b = (await request.json()) as { key: string; fromTypeKey: string; toTypeKey: string; cardinality: string };
+    const existing = mockLinkTypes.find((l) => l.key === b.key);
+    if (existing) {
+      existing.fromType = b.fromTypeKey; existing.toType = b.toTypeKey; existing.cardinality = b.cardinality;
+    } else {
+      mockLinkTypes.push({ key: b.key, fromType: b.fromTypeKey, toType: b.toTypeKey, cardinality: b.cardinality });
+    }
+    return HttpResponse.json(
+      { key: b.key, fromTypeKey: b.fromTypeKey, toTypeKey: b.toTypeKey, cardinality: b.cardinality, version: 1 },
+      { status: 201 },
+    );
+  }),
+  // `POST /a/v1/ontology/links/:key/deprecate`（后端 app.ts:2797 → `governance.deprecate`）。
+  http.post("*/a/v1/ontology/links/:key/deprecate", async ({ params, request }) => {
+    const key = decodeURIComponent(String((params as { key: string }).key));
+    const l = mockLinkTypes.find((x) => x.key === key);
+    if (!l) return err(404, "NOT_FOUND", `link ${key}`);
+    const b = (await request.json().catch(() => ({}))) as { supersededBy?: string };
+    l.deprecation = { status: "DEPRECATED", supersededBy: b.supersededBy, deprecatedAt: "2026-08-14T00:00:00.000Z", graceUntil: "2026-11-12T00:00:00.000Z" };
+    return HttpResponse.json({ key, deprecation: l.deprecation });
+  }),
+  // `POST /a/v1/ontology/links/:key/retire`（后端 app.ts:2802 → `governance.retire`）。
+  // ⚠ 后端在 `references.total > 0` 时**抛 409 并逐条列引用方** —— 这不是异常是设计，mock 照抄，
+  //   否则前端那条「还有人引用就不许下线」的分支永远走不到，等于没接。
+  http.post("*/a/v1/ontology/links/:key/retire", ({ params }) => {
+    const key = decodeURIComponent(String((params as { key: string }).key));
+    const l = mockLinkTypes.find((x) => x.key === key);
+    if (!l) return err(404, "NOT_FOUND", `link ${key}`);
+    const refs = mockElementRefs(key);
+    if (refs.length > 0) {
+      return err(409, "INVALID_STATE", `link '${key}' 仍被 ${refs.length} 处引用，无法 RETIRE：${refs.map((r) => `${r.refKind}:${r.key}@${r.where}`).join(", ")}`);
+    }
+    l.deprecation = { ...(l.deprecation ?? { status: "DEPRECATED" }), status: "RETIRED", retiredAt: "2026-08-14T00:00:00.000Z" };
+    return HttpResponse.json({ key, status: "RETIRED" });
+  }),
+  // 对象类型的弃用流程（后端 app.ts:2788/2793 → 与 link 同一个 `governance.deprecate/retire`，只是 kind 不同）。
+  http.post("*/a/v1/ontology/types/:key/deprecate", ({ params }) => {
+    const key = decodeURIComponent(String((params as { key: string }).key));
+    return HttpResponse.json({
+      key,
+      deprecation: { status: "DEPRECATED", deprecatedAt: "2026-08-14T00:00:00.000Z", graceUntil: "2026-11-12T00:00:00.000Z" },
+    });
+  }),
+  http.post("*/a/v1/ontology/types/:key/retire", ({ params }) => {
+    const key = decodeURIComponent(String((params as { key: string }).key));
+    // 与 link 侧同口径：还有人引用就 409（后端 `ontology-governance.ts:203` 对两种 kind 是同一段代码）。
+    const refs = mockElementRefs(key);
+    if (refs.length > 0) {
+      return err(409, "INVALID_STATE", `type '${key}' 仍被 ${refs.length} 处引用，无法 RETIRE：${refs.map((r) => `${r.refKind}:${r.key}@${r.where}`).join(", ")}`);
+    }
+    return HttpResponse.json({ key, status: "RETIRED" });
+  }),
+  // `GET /a/v1/ontology/references`（后端 app.ts:2808 → `governance.references`，查 element_refs 索引）。
+  http.get("*/a/v1/ontology/references", ({ request }) => {
+    const u = new URL(request.url);
+    const key = u.searchParams.get("key") ?? "";
+    if (!u.searchParams.get("elementKind") || !key) return err(400, "VALIDATION_ERROR", "elementKind 与 key 必填");
+    const refs = mockElementRefs(key);
+    return HttpResponse.json({ refs, total: refs.length });
+  }),
+  // `GET /a/v1/ontology/versions`（后端 app.ts:2932）：**唯一**带 `deprecation` 的只读口。
+  http.get("*/a/v1/ontology/versions", () =>
+    HttpResponse.json([
+      {
+        id: "over_mock_1", version: mockOntologyVersionSeq, createdAt: "2026-08-14T00:00:00.000Z",
+        snapshot: {
+          linkTypes: mockLinkTypes.map((l) => ({
+            key: l.key, fromTypeKey: l.fromType, toTypeKey: l.toType, cardinality: l.cardinality,
+            published: true, ...(l.deprecation ? { deprecation: l.deprecation } : {}),
+          })),
+        },
+      },
+    ]),
+  ),
+  // `GET/POST /a/v1/ontology/publish-requests` + signoff（后端 app.ts:2860/2875/2879）。
+  // 全域 APPROVE → 后端自动 `publishVersion`（app.ts:2891）；mock 同样在 APPROVED 时推进版本号，
+  // 否则「会签通过了、快照没动」在屏上看不出区别。
+  http.get("*/a/v1/ontology/publish-requests", ({ request }) => {
+    const st = new URL(request.url).searchParams.get("status");
+    const all = [...mockPublishRequests.values()];
+    return HttpResponse.json(st ? all.filter((p) => p.status === st) : all);
+  }),
+  http.post("*/a/v1/ontology/publish-requests", async () => {
+    const rec: MockPublishRequest = {
+      id: `opr_mock_${++mockRelSeq}`, ontologyVersion: mockOntologyVersionSeq + 1, status: "PENDING",
+      touchedDomains: ["factory", "product"], signoffs: [], createdAt: "2026-08-14T00:00:00.000Z",
+    };
+    mockPublishRequests.set(rec.id, rec);
+    return HttpResponse.json(rec, { status: 201 });
+  }),
+  http.post("*/a/v1/ontology/publish-requests/:id/signoff", async ({ params, request }) => {
+    const id = String((params as { id: string }).id);
+    const rec = mockPublishRequests.get(id);
+    if (!rec) return err(404, "NOT_FOUND", `publish request ${id}`);
+    const b = (await request.json()) as { decision: "APPROVE" | "REJECT" };
+    if (b.decision === "REJECT") {
+      rec.status = "REJECTED";
+    } else {
+      rec.signoffs.push({ domainKey: rec.touchedDomains[rec.signoffs.length] ?? "factory", decision: "APPROVE" });
+      if (rec.signoffs.length >= rec.touchedDomains.length) {
+        rec.status = "APPROVED";
+        mockOntologyVersionSeq = rec.ontologyVersion; // 全域通过 → 快照真的固化了
+      }
+    }
+    return HttpResponse.json(rec);
+  }),
   http.post("*/a/v1/sim/sessions", async ({ request }) => {
     const body = (await request.json()) as { baseSnapshot?: Record<string, unknown>; scope?: Record<string, unknown> };
     const base = body.baseSnapshot ?? {};
