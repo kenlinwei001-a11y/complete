@@ -25,7 +25,7 @@ const SDG_REAL: SupplyDemandGapOutput = {
   demandSide: {
     contribution: 6.375, share: 0.6, pct: 51,
     drivers: [
-      { id: "seg_bias:ess", factor: "储能 预测偏差 |P50−实际|", contribution: 3.4, share: 0.5333, unit: "万套", driverValue: 3.4, provenance: { kind: "实测", drillType: "DemandSegment", drillId: "ess", drillField: "p50", drillValue: 20 } },
+      { id: "seg_bias:ess", factor: "储能 预测偏差 |P50−实际|", contribution: 3.4, share: 0.5333, unit: "万套", driverValue: 3.4, provenance: { kind: "实测", drillType: "DemandSegment", drillId: "ess", drillField: "demandWanPerYearP50", drillValue: 20 } },
       { id: "order_backlog", factor: "在手订单需求（OPEN 未交付）", contribution: 2.975, share: 0.4667, unit: "万套", driverValue: 2.975, provenance: { kind: "实测", drillType: "Order", drillId: "OPEN", drillField: "qty", drillValue: 2.975 } },
     ],
   },
@@ -48,7 +48,7 @@ const SDG_WITH_CAP: SupplyDemandGapOutput = {
   demandSide: {
     contribution: 5, share: 0.294, pct: 25,
     drivers: [
-      { id: "seg_bias:ess", factor: "储能 预测偏差 |P50−实际|", contribution: 5, share: 1, unit: "万套", driverValue: 5, provenance: { kind: "实测", drillType: "DemandSegment", drillId: "ess", drillField: "p50", drillValue: 30 } },
+      { id: "seg_bias:ess", factor: "储能 预测偏差 |P50−实际|", contribution: 5, share: 1, unit: "万套", driverValue: 5, provenance: { kind: "实测", drillType: "DemandSegment", drillId: "ess", drillField: "demandWanPerYearP50", drillValue: 30 } },
     ],
   },
   supplySide: {
@@ -130,7 +130,7 @@ describe("WO-A · 供需失衡双向归因 前端接线", () => {
     const demandSide = within(panel).getByTestId("sdg-side-demand");
     const supplySide = within(panel).getByTestId("sdg-side-supply");
     expect(within(demandSide).getByTestId("sdg-leaf-seg_bias:ess")).toBeInTheDocument();
-    expect(within(demandSide).getByTestId("sdg-prov-seg_bias:ess")).toHaveTextContent("DemandSegment.ess.p50 = 20");
+    expect(within(demandSide).getByTestId("sdg-prov-seg_bias:ess")).toHaveTextContent("DemandSegment.ess.demandWanPerYearP50 = 20");
     expect(within(demandSide).getByTestId("sdg-prov-order_backlog")).toHaveTextContent("Order");
     expect(within(supplySide).getByTestId("sdg-prov-material_gap")).toHaveTextContent("MaterialBalance");
     expect(within(supplySide).getByTestId("sdg-prov-oee_loss")).toHaveTextContent("Equipment");

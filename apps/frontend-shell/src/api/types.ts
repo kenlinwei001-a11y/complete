@@ -74,7 +74,9 @@ export const WorkspaceSchema = z.object({
       cashFloor: z.number().optional(),
       revBudget: z.number().optional(),
       segments: z
-        .array(z.object({ key: z.string(), name: z.string(), target: z.number(), rolling: z.number(), p90: z.number().optional(), lastActual: z.number() }))
+        // WO-P50-REMAINING-3：三线对照全列口径 = **万套/月**（分母是月，不是年）；
+        // 分位列名自带口径，不留裸 `p90`（那个名字在本仓背过 6 个量纲）。
+        .array(z.object({ key: z.string(), name: z.string(), target: z.number(), rolling: z.number(), rollingWanPerMonthP90: z.number().optional(), lastActual: z.number() }))
         .optional(),
       /** 决议增量默认项（去电池锁死 R14：按租户/行业下发，替代前端写死电池决议名）。 */
       defaultResolutions: z.array(z.object({ name: z.string(), delta: z.number() })).optional(),

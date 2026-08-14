@@ -391,7 +391,7 @@ export const GlobalSimBusinessTypeSummarySchema = z.object({
   label: z.string(), // 中文标签（乘用车/商用车/储能）
   orderCount: z.number(), // 该类在范围内订单数
   orderQty: z.number(), // 订单总量（套·实际订单）
-  forecastQty: z.number(), // 销售预测总量（套·DemandSegment.p50×1e4）
+  forecastQty: z.number(), // 销售预测总量（套·DemandSegment.demandWanPerYearP50 万套/年 ×1e4）
   forecastGap: z.number(), // 预测缺口 = forecastQty − orderQty（乘用车预测虚高 → 大正值）
   earlyDeliveryCount: z.number(), // 需提前交付订单数（乘用车部分客户提前交期）
   orderQtyMean: z.number(), // 订单量均值（套）

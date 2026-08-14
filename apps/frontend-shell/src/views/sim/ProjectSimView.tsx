@@ -878,7 +878,7 @@ function StepBody({
           边界自 C08 规则闸、多方案矩阵 —— 全在 DynamicLeverPanel。 */}
       <Feature flag="view.project-sim.whatif">
         <DynamicLeverPanel
-          baseP50={out.capWanP50}
+          beforeValue={out.capWanP50}
           baseGap={out.gap}
           factors={[out.mainBn, ...new Set(out.perBaseRows.map((r) => r.bottleneck).filter(Boolean))].filter(Boolean) as string[]}
           modelId={modelId}

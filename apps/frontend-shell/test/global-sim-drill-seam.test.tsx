@@ -33,11 +33,11 @@ const THREE_KIND_PORTFOLIO = {
   allocation: [
     { item: "SO-10001", kind: "order", committed: false, base: "changzhou", baseName: "常州", window: 0, qty: 100, delayDays: 0, onTime: true, provenance: PROV("Order", "SO-10001", "qty", 100) },
     { item: "WIP:WO-1", kind: "wip", committed: true, base: "changzhou", baseName: "常州", window: 0, qty: 50, delayDays: 0, onTime: true, provenance: PROV("WorkOrder", "WIP:WO-1", "qtyActual", 50) },
-    { item: "FC:SEG-1", kind: "forecast", committed: false, base: "hefei", baseName: "合肥", window: 1, qty: 80, delayDays: 0, onTime: true, provenance: PROV("DemandSegment", "FC:SEG-1", "p50", 80) },
+    { item: "FC:SEG-1", kind: "forecast", committed: false, base: "hefei", baseName: "合肥", window: 1, qty: 80, delayDays: 0, onTime: true, provenance: PROV("DemandSegment", "FC:SEG-1", "demandWanPerYearP50", 80) },
   ],
   displaced: [
     { orderId: "WIP:WO-2", kind: "wip", qty: 30, model: "4680-NCM", provenance: PROV("WorkOrder", "WIP:WO-2", "qtyActual", 30) },
-    { orderId: "FC:SEG-2", kind: "forecast", qty: 40, model: "预测", provenance: PROV("DemandSegment", "FC:SEG-2", "p50", 40) },
+    { orderId: "FC:SEG-2", kind: "forecast", qty: 40, model: "预测", provenance: PROV("DemandSegment", "FC:SEG-2", "demandWanPerYearP50", 40) },
   ],
   scenarios: [
     { key: "max_ontime", objectiveValues: { ontime: 3, delay: 0, changeover: 0, fgInventory: 40, cost: 10 }, servedCount: 3, displacedCount: 2, servedQty: 230 },

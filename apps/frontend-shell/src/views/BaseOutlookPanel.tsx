@@ -8,7 +8,7 @@ import type { BaseCapacityOutlookByModel } from "@platform/contracts";
 /**
  * WO-B / F1 · 每基地前瞻产能推演子面板（renderer 内嵌于产能推演看板基地卡详情）。
  * 三档窗口 tab（30/60/90）→ 读真求解器 base_capacity_outlook({baseId,horizon}) → 四线对比
- * （可用产能 / 在产占用 / 未来订单 / 销售预测）+ 缺口/富余标记；改窗口/后端颗粒（Order.due/DemandSegment.p50·套）
+ * （可用产能 / 在产占用 / 未来订单 / 销售预测）+ 缺口/富余标记；改窗口/后端颗粒（Order.due/DemandSegment.demandWanPerYearP50·套）
  * → 前瞻真变（非写死·KILL-MOCK）。P1：缺口窗展开「逐日推演过程」——每条日行动补 rationale（触发缺口值 +
  * 收窄量 + provenance 溯源对象·R13 每步可溯），折叠展示。
  */
@@ -36,7 +36,7 @@ const LINE_FORMULA: Record<string, string> = {
   available: "可用产能 = Σ Line.capacityDaily×(1−util%) × 窗口天",
   inProduction: "在产订单占用 = Σ 未完工 WorkOrder.qtyActual × 窗口/参照期",
   futureOrders: "未来订单 = Σ 落窗 Order.qty（首基地=本基地）",
-  salesForecast: "销售预测 = Σ DemandSegment.p50×1e4 × 基地产能占比 × 窗口/年",
+  salesForecast: "销售预测 = Σ DemandSegment.demandWanPerYearP50×1e4 × 基地产能占比 × 窗口/年（套）",
 };
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 
@@ -157,7 +157,7 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
               }}
             >
               {hz.status === "缺口" ? (
-                <>缺口 <Provenance testId="outlook-gap" src="base_capacity_outlook 求解器" formula="缺口 = 需求 − 供给 = (在产 + 未来订单) − 可用产能" inputs={[`可用产能 ${fmt(hz.available)}`, `在产 ${fmt(hz.inProduction)}`, `未来订单 ${fmt(hz.futureOrders)}`]} note="套 · 改颗粒（Line.capacityDaily/Order.due/DemandSegment.p50）即真变">{fmt(-hz.gap)}</Provenance> 套</>
+                <>缺口 <Provenance testId="outlook-gap" src="base_capacity_outlook 求解器" formula="缺口 = 需求 − 供给 = (在产 + 未来订单) − 可用产能" inputs={[`可用产能 ${fmt(hz.available)}`, `在产 ${fmt(hz.inProduction)}`, `未来订单 ${fmt(hz.futureOrders)}`]} note="套 · 改颗粒（Line.capacityDaily/Order.due/DemandSegment.demandWanPerYearP50）即真变">{fmt(-hz.gap)}</Provenance> 套</>
               ) : hz.status === "富余" ? (
                 <>富余 <Provenance testId="outlook-gap" src="base_capacity_outlook 求解器" formula="富余 = 供给 − 需求 = 可用产能 − (在产 + 未来订单)" inputs={[`可用产能 ${fmt(hz.available)}`, `在产 ${fmt(hz.inProduction)}`, `未来订单 ${fmt(hz.futureOrders)}`]} note="套 · 改颗粒即真变">{fmt(hz.gap)}</Provenance> 套</>
               ) : "供需平衡"}
@@ -243,7 +243,7 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
           )}
 
           <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5, marginTop: 8 }}>
-            四线均从真对象派生（Line.capacityDaily / WorkOrder.qtyActual / Order.due / DemandSegment.p50），改颗粒即前瞻真变；逐日过程沿产能推演触发→补缺口→收窄口径（R6/R13·非写死）。
+            四线均从真对象派生（Line.capacityDaily / WorkOrder.qtyActual / Order.due / DemandSegment.demandWanPerYearP50），改颗粒即前瞻真变；逐日过程沿产能推演触发→补缺口→收窄口径（R6/R13·非写死）。
           </div>
         </>
       )}

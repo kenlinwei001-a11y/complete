@@ -801,7 +801,7 @@ export class SyntheticService {
         if (!(await this.ontology.getType(ctx, t.key))) await this.ontology.upsertType(ctx, t);
       }
     }
-    const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string }[], equipment: g.equipment as { equipId: string; oeeA?: number; oeeP?: number; oeeQ?: number }[], materialBalances: g.materialBalances as { matBalId: string; gapTon?: number; netDemandTon?: number }[], demandSegments: g.demandSegments as { segId?: string; segment?: string; p50?: number; act?: number; priceWan?: number; marginPct?: number; floorPct?: number }[] }, scale);
+    const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string }[], equipment: g.equipment as { equipId: string; oeeA?: number; oeeP?: number; oeeQ?: number }[], materialBalances: g.materialBalances as { matBalId: string; gapTon?: number; netDemandTon?: number }[], demandSegments: g.demandSegments as { segId?: string; segment?: string; demandWanPerYearP50?: number; act?: number; priceWan?: number; marginPct?: number; floorPct?: number }[] }, scale);
     await putAll("Material", ext.materials, "matId");
     await putAll("Supplier", ext.suppliers, "supplierId");
     await putAll("MaterialBatch", ext.materialBatches, "batchId");
@@ -1146,10 +1146,10 @@ export class SyntheticService {
       rollup.bases.reduce((a, b) => a + b.weeklyWan * (baseCert.get(b.baseId) ?? 0), 0),
       4,
     );
-    // WO-SCALE-COHERENCE 断裂点D：avgUnitPrice 改需求加权 P̄ = Σ(p50×priceWan)/Σp50（≈1.8667 万元/套=18667 元/套），
+    // WO-SCALE-COHERENCE 断裂点D：avgUnitPrice 改需求加权 P̄ = Σ(demandWanPerYearP50×priceWan)/ΣdemandWanPerYearP50（≈1.8667 万元/套=18667 元/套），
     // 而非型号等权 mean → AOP.revenue = weeklyTotal×52×P̄ 收敛到 700 亿锚（收紧四方营收互核容差 ε≤12%）。
-    const dsP50 = g.demandSegments.reduce((a, d) => a + (typeof d.p50 === "number" ? d.p50 : 0), 0);
-    const dsRev = g.demandSegments.reduce((a, d) => a + (typeof d.p50 === "number" ? d.p50 : 0) * (typeof d.priceWan === "number" ? d.priceWan : 0), 0);
+    const dsP50 = g.demandSegments.reduce((a, d) => a + (typeof d.demandWanPerYearP50 === "number" ? d.demandWanPerYearP50 : 0), 0);
+    const dsRev = g.demandSegments.reduce((a, d) => a + (typeof d.demandWanPerYearP50 === "number" ? d.demandWanPerYearP50 : 0) * (typeof d.priceWan === "number" ? d.priceWan : 0), 0);
     const avgUnitPrice = Math.round((dsP50 > 0 ? dsRev / dsP50 : 0) * 1e4); // 万元/套 → 元/套
     const pd = generatePlanDomain(weeklyTotal, avgUnitPrice);
     await putAll("AnnualScenario", pd.scenarios, "scnId");
@@ -1554,9 +1554,9 @@ export class SyntheticService {
         },
         // cockpit P1 富 KPI（数字经合成 DemandSegment/FinancePlan/MaterialBalance + 派生/聚合算出，前端零写死 R14；R13 溯源）。
         {
-          key: "demand-p50", type: "kpi", title: "需求 P50 (万)", unit: "万", featureKey: "view.dash.widget.demand",
-          query: { kind: "objects-aggregate", objectType: "DemandSegment", agg: "sum", prop: "p50" },
-          provenance: { toolName: "query_objects", outputPath: "$.sum(p50)", label: "三细分需求 P50 合计" },
+          key: "demand-p50", type: "kpi", title: "需求 P50 (万套/年)", unit: "万套/年", featureKey: "view.dash.widget.demand",
+          query: { kind: "objects-aggregate", objectType: "DemandSegment", agg: "sum", prop: "demandWanPerYearP50" },
+          provenance: { toolName: "query_objects", outputPath: "$.sum(demandWanPerYearP50)", label: "三细分需求 P50 合计（万套/年）" },
         },
         {
           key: "gross-margin", type: "kpi", title: "毛利总额 (亿)", unit: "亿", featureKey: "view.dash.widget.demand",

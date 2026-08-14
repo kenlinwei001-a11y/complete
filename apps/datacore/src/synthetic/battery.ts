@@ -1146,8 +1146,10 @@ const demandSegmentProps: PropertyDef[] = [
   { propKey: "segId", dataType: "string", isPrimaryKey: true },
   { propKey: "segment", dataType: "string", isPrimaryKey: false }, // 乘用车/储能/商用车
   { propKey: "tgt", dataType: "number", isPrimaryKey: false }, // 目标(万)
-  { propKey: "p50", dataType: "number", isPrimaryKey: false }, // 需求 P50(万)
-  { propKey: "p90", dataType: "number", isPrimaryKey: false },
+  // WO-P50-REMAINING-3：名字自带口径 —— 分母是**年**（Σ=375 万套/年），与 `CapacityForecastOutput.capWanP50`
+  // 的「万套/**窗口**」是两个量。只写「万套」正是让用户在屏上分不出的那半个信息。
+  { propKey: "demandWanPerYearP50", dataType: "number", isPrimaryKey: false, unit: "万套/年", description: "需求预测中位口径 P50（万套/年）" },
+  { propKey: "demandWanPerYearP90", dataType: "number", isPrimaryKey: false, unit: "万套/年", description: "需求预测保守下分位 P90（万套/年·≤ P50）" },
   { propKey: "act", dataType: "number", isPrimaryKey: false }, // 实际(万)
   { propKey: "priceWan", dataType: "number", isPrimaryKey: false }, // 单价(万/万件)
   { propKey: "marginPct", dataType: "number", isPrimaryKey: false }, // 毛利率(%)
@@ -1155,8 +1157,8 @@ const demandSegmentProps: PropertyDef[] = [
   { propKey: "businessType", dataType: "enum", isPrimaryKey: false }, // WO-W5·业务类型（passenger|commercial|storage·= 细分名映射）
 ];
 const demandSegmentDerived: DerivedPropertyDef[] = [
-  { propKey: "revenueWan", formula: "p50 * priceWan" }, // 收入(万) = 需求×单价
-  { propKey: "marginWan", formula: "p50 * priceWan * marginPct / 100" }, // 毛利额(万)
+  { propKey: "revenueWan", formula: "demandWanPerYearP50 * priceWan" }, // 收入(万) = 需求×单价
+  { propKey: "marginWan", formula: "demandWanPerYearP50 * priceWan * marginPct / 100" }, // 毛利额(万)
 ];
 const financePlanProps: PropertyDef[] = [
   { propKey: "finId", dataType: "string", isPrimaryKey: true },
@@ -1256,12 +1258,18 @@ const principalProps: PropertyDef[] = [
   { propKey: "parentRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Principal" },
 ];
 // cockpit P5 / sop 绿地：S&OP 版本演进（V1→V7 需求/供给/缺口/备注），驱动 V5/V7 版本切换 + 版本对比表。
+//
+// WO-P50-REMAINING-3 量纲实测（不信注释信算术）：`demBase = round(totalTgt, 0)`，
+// 而 `totalTgt = Σ DemandSegment.tgt` = 201.7+139.2+34.1 = **375 万套/年**（= 700 亿 ÷ 1.8667 万元/套 规模锚）。
+// ⇒ 本表三列全是 **万套/年**，而同屏上方的 S&OP KPI 条（需求/可供给/缺口）是 **万套/月**（实测 26.58 量级）。
+// 两者相差 12 倍、同屏并列、原先**三列一个单位都没写** —— 正是「屏上分不出」的那半个信息。
+// 故此处把量纲写进属性定义（屏上表头由前端 `VersionCompare` 一并写清）。
 const sopVersionRowProps: PropertyDef[] = [
   { propKey: "verId", dataType: "string", isPrimaryKey: true },
   { propKey: "ver", dataType: "string", isPrimaryKey: false }, // V1..V7
   { propKey: "date", dataType: "string", isPrimaryKey: false },
-  { propKey: "demand", dataType: "number", isPrimaryKey: false },
-  { propKey: "supply", dataType: "number", isPrimaryKey: false },
+  { propKey: "demand", dataType: "number", isPrimaryKey: false, unit: "万套/年", description: "该版本的年度需求口径（Σ DemandSegment.tgt 派生·万套/年，非 S&OP 月度台账口径）" },
+  { propKey: "supply", dataType: "number", isPrimaryKey: false, unit: "万套/年", description: "该版本的年度可供给口径（万套/年·与 demand 同分母）" },
   { propKey: "note", dataType: "string", isPrimaryKey: false },
   { propKey: "isFinal", dataType: "boolean", isPrimaryKey: false },
 ];
@@ -2131,7 +2139,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "Segment.segKey": "细分编码", "Segment.name": "细分名称", "Segment.gmRate": "毛利率",
   "Segment.baselineShare": "基线份额",
   "DemandSegment.segId": "需求细分编号", "DemandSegment.segment": "细分名称", "DemandSegment.tgt": "目标量",
-  "DemandSegment.p50": "需求P50", "DemandSegment.p90": "需求P90", "DemandSegment.act": "实际量",
+  "DemandSegment.demandWanPerYearP50": "需求P50(万套/年)", "DemandSegment.demandWanPerYearP90": "需求P90(万套/年)", "DemandSegment.act": "实际量",
   "DemandSegment.priceWan": "单价", "DemandSegment.marginPct": "毛利率", "DemandSegment.floorPct": "毛利底线",
   "DemandSegment.businessType": "业务类型",
   "FinancePlan.finId": "财务科目编号", "FinancePlan.line": "科目", "FinancePlan.budget": "预算",
@@ -4201,23 +4209,24 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
 
   // PRD-IND-sop §4.3 / PRD-IND-dash §4.1：三线对照精确种子（SOP_SEG + SEG_PRICE/MARGIN/FLOOR），
   // P90 为保守下分位（< P50）；同 seed 字节一致（R6），前端三线/科目/台账同源（R-一致）。
-  // DF.3 单一来源：price/margin/floor 从 SEG_REGISTRY 派生（demand 三线 tgt/p50/p90/act 为 sop 专属，保留内联）。
+  // DF.3 单一来源：price/margin/floor 从 SEG_REGISTRY 派生（demand 三线 tgt/demandWanPerYearP50/demandWanPerYearP90/act 为 sop 专属，保留内联）。
   // 需求结构：乘用车201.7 / 储能139.2 / 商用车34.1（合计375万套/年），
   // 经 SEG_REGISTRY 单价推导 totalRev=700.0亿、gmRate≈17.0%（R14 从边界册派生）。
-  // WO-SCALE-COHERENCE 锚：此需求层(375万套/700亿)= scaleAnchorRevenue.S 锚（Σp50×priceWan===scaleAnchorRevenue.S），
+  // WO-SCALE-COHERENCE 锚：此需求层(375万套/700亿)= scaleAnchorRevenue.S 锚（ΣdemandWanPerYearP50×priceWan===scaleAnchorRevenue.S），
   // 是被金值锁死的事实锚（spine.test:58 硬钉 revenue.actual===700）——本单不动锚，把物理/产能/财务/订单四层往此对齐。
-  // 派生结果==既有锚值：V*=R*/P̄=700/1.8667=375万套（=Σp50），tgt/p50/p90/act 数值字节一致（下方内联即锚值本体）。
+  // 派生结果==既有锚值：V*=R*/P̄=700/1.8667=375万套（=ΣdemandWanPerYearP50），tgt/demandWanPerYearP50/demandWanPerYearP90/act 数值字节一致（下方内联即锚值本体）。
   const SEG_DEMAND = [
-    { segment: "乘用车", tgt: 201.7, p50: 201.7, p90: 199.6, act: 200.6 },
-    { segment: "储能", tgt: 139.2, p50: 139.2, p90: 108.4, act: 100.5 },
-    { segment: "商用车", tgt: 34.1, p50: 34.1, p90: 34.0, act: 39.5 },
+    { segment: "乘用车", tgt: 201.7, demandWanPerYearP50: 201.7, demandWanPerYearP90: 199.6, act: 200.6 },
+    { segment: "储能", tgt: 139.2, demandWanPerYearP50: 139.2, demandWanPerYearP90: 108.4, act: 100.5 },
+    { segment: "商用车", tgt: 34.1, demandWanPerYearP50: 34.1, demandWanPerYearP90: 34.0, act: 39.5 },
   ];
   const SEGMENTS = SEG_DEMAND.map((d) => {
     const s = SEG_REGISTRY.find((x) => x.seg === d.segment)!;
     return { ...d, price: s.priceWan, margin: s.marginPct, floor: s.floorPct };
   });
   const demandSegments = SEGMENTS.map((s, i) => ({
-    segId: `dseg-${i + 1}`, segment: s.segment, tgt: s.tgt, p50: s.p50, p90: s.p90, act: s.act,
+    segId: `dseg-${i + 1}`, segment: s.segment, tgt: s.tgt,
+    demandWanPerYearP50: s.demandWanPerYearP50, demandWanPerYearP90: s.demandWanPerYearP90, act: s.act,
     priceWan: s.price, marginPct: s.margin, floorPct: s.floor,
     // WO-W5·业务类型维度（additive·细分名 → 类型枚举·求解器按类聚合预测口径）。
     businessType: businessTypeOfSegment(s.segment),
@@ -4241,8 +4250,8 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     etaDate: m.eta,
   }));
   // 财务预算三线：收入=Σ收入细分、销售成本=收入-毛利、毛利=Σ毛利额（与 DemandSegment 交叉一致）。
-  const totalRev = demandSegments.reduce((s, d) => s + (d.p50 as number) * (d.priceWan as number), 0);
-  const totalMargin = demandSegments.reduce((s, d) => s + (d.p50 as number) * (d.priceWan as number) * (d.marginPct as number) / 100, 0);
+  const totalRev = demandSegments.reduce((s, d) => s + (d.demandWanPerYearP50 as number) * (d.priceWan as number), 0);
+  const totalMargin = demandSegments.reduce((s, d) => s + (d.demandWanPerYearP50 as number) * (d.priceWan as number) * (d.marginPct as number) / 100, 0);
   const financePlans = [
     { finId: "fin-rev", line: "收入", budget: round(totalRev * 0.98, 1), rolling: round(totalRev, 1) },
     { finId: "fin-cogs", line: "销售成本", budget: round((totalRev - totalMargin) * 0.98, 1), rolling: round(totalRev - totalMargin, 1) },

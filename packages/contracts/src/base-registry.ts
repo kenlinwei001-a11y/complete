@@ -427,7 +427,7 @@ export const BOUNDARY_IMPACT: BoundaryRegistryImpact[] = [
     downstream: [
       "order-chain 视图 econTable（量价本利）",
       "risk 求解器 affectedOrders.summary.revenue（与 econTable 同源 DF.3b）",
-      "DemandSegment 派生 revenueWan=p50×priceWan / marginWan=p50×priceWan×marginPct/100（battery.ts）",
+      "DemandSegment 派生 revenueWan=demandWanPerYearP50×priceWan / marginWan=demandWanPerYearP50×priceWan×marginPct/100（battery.ts）",
     ],
   },
   {

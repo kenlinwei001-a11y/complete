@@ -9,7 +9,7 @@ import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema, BUSINESS_TYPE_LABEL } from "@platform/contracts";
 import { num, str, dayFrom, normalizeBaseRef, type SolverContext, type SolverParamsShape } from "./types.js";
-import { SOLVER_RULE_REFS, type EvaluatedRule } from "@platform/contracts";
+import { SOLVER_RULE_REFS, type EvaluatedRule, type OrderDeliveryJudge } from "@platform/contracts";
 import { evaluateExpression, parseExpression, collectFieldPaths, collectParamRefs, resolveField } from "../ruledsl.js";
 import { createHash } from "node:crypto";
 import { runSolverSandbox } from "./sandbox.js";
@@ -352,11 +352,11 @@ export const SOLVER_KEYS = [
   // WO-SOP-RESCHEDULE 产销重排推演：目标订单+新交期→跨基地拆产/挤占同型号在手单/被挤单延期/换型加班延误代价，
   // 落到基地×订单×日执行方案（确定性 R6·勾稽 Σalloc+residual==qty·每值 provenance R13）。
   "sop_reschedule",
-  // WO-PORTFOLIO-OPTIMAL 全订单×全基地×时间 联合最优组合：全 OPEN 订单+在产 WorkOrder+DemandSegment.p50 三源归一
+  // WO-PORTFOLIO-OPTIMAL 全订单×全基地×时间 联合最优组合：全 OPEN 订单+在产 WorkOrder+DemandSegment.demandWanPerYearP50 三源归一
   // 联合需求→跨基地×窗口 CP-SAT 求最优（Σ_i qty·x[i,b,t]≤cap[b,t] 共享产能守恒·防重复占用）+ 冻结子集 + ≥2方案量化利弊。
   "portfolio",
   // WO-B / F1 每基地前瞻产能推演：per-base × horizon∈{30,60,90} 四线（可用产能 Line.capacityDaily×(1−util/100)
-  // ⊥ 在产占用 WorkOrder.qtyActual ⊥ 未来订单 Order.due 落窗 ⊥ 销售预测 DemandSegment.p50×1e4）+ 缺口/富余标记 +
+  // ⊥ 在产占用 WorkOrder.qtyActual ⊥ 未来订单 Order.due 落窗 ⊥ 销售预测 DemandSegment.demandWanPerYearP50×1e4）+ 缺口/富余标记 +
   // P1 行动计划逐日过程（触发缺口→贪心补→收窄·每步 provenance）。forecastStart 时间锚·系数 RuleEntry.params（R6/R13/R14）。
   "base_capacity_outlook",
   // WO-Phase3-B 薄层本体遍历求解器（净室通用·join≠compute）：包装现有 planSlice(rootType→targetType 最短路)
@@ -2977,12 +2977,12 @@ export class SolverService {
   /**
    * WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因（纯推演·真新·非 gap_attribution 单向结构分摊）。
    * 总缺口 G = Σ_ver max(0, demand−supply)（SopVersionRow 产销缺口）→ **双向**分摊：
-   *   需求端(预测偏差 Σ|p50−act| / 在手订单 ΣOPEN.qty / 结构漂移 Σmax(0,p50−tgt)) ⊥
+   *   需求端(预测偏差 Σ|demandWanPerYearP50−act| / 在手订单 ΣOPEN.qty / 结构漂移 Σmax(0,demandWanPerYearP50−tgt)) ⊥
    *   供给端(产能缺口 max(0,需求−Σ产能) / 物料缺口 ΣgapTon折算 / 设备OEE损失 Σ(1−oee)×产能 / 换型损失)。
    * 两侧驱动值各 Σ（真颗粒·万套等效）→ 需求端贡献=G×explained×Σd/T · 供给端贡献=G×explained×Σs/T ·
    * residual=G×(1−explained) → **需求端+供给端+residual=G（构造上硬勾稽·C2 浮点≤1e-4）**。
    * 端内二级按叶驱动占比分摊，每叶 provenance 带 drillType/drillField/drillValue（C5）。
-   * 占比由真颗粒派生：改 DemandSegment.p50 → 需求端占比变（C3）；改 Equipment.oee_current / Line 产能 → 供给端变（C4）。
+   * 占比由真颗粒派生：改 DemandSegment.demandWanPerYearP50 → 需求端占比变（C3）；改 Equipment.oee_current / Line 产能 → 供给端变（C4）。
    * KILL-MOCK-RED：无 S&OP 产销数据 → 诚实空（不编五五开·C6）。R6：排序稳定 + 无时钟/随机。
    * 归因系数 explained / matTonToWan 一等 RuleEntry.params（R14·改系数即改归因）。
    */
@@ -3016,10 +3016,10 @@ export class SolverService {
     // ── 需求端驱动（真颗粒·万套等效）──
     const demandDrv: Drv[] = [];
     for (const s of segs) {
-      const bias = round(Math.abs(num(s.p50) - num(s.act)), 4);
+      const bias = round(Math.abs(num(s.demandWanPerYearP50) - num(s.act)), 4);
       if (bias > 0) demandDrv.push({ id: `seg_bias:${str(s.segId)}`, factor: `${str(s.segment)} 预测偏差 |P50−实际|`, driver: bias,
-        prov: { kind: "实测", drillType: "DemandSegment", drillId: str(s.segId), drillField: "p50", drillValue: num(s.p50) } });
-      const drift = round(Math.max(0, num(s.p50) - num(s.tgt)), 4);
+        prov: { kind: "实测", drillType: "DemandSegment", drillId: str(s.segId), drillField: "demandWanPerYearP50", drillValue: num(s.demandWanPerYearP50) } });
+      const drift = round(Math.max(0, num(s.demandWanPerYearP50) - num(s.tgt)), 4);
       if (drift > 0) demandDrv.push({ id: `seg_drift:${str(s.segId)}`, factor: `${str(s.segment)} 需求超目标漂移`, driver: drift,
         prov: { kind: "实测", drillType: "DemandSegment", drillId: str(s.segId), drillField: "tgt", drillValue: num(s.tgt) } });
     }
@@ -3151,7 +3151,7 @@ export class SolverService {
   /**
    * WO-PORTFOLIO-OPTIMAL · portfolio 全订单×全基地×时间 联合最优组合推演（G-PORTFOLIO-LOCAL-ONLY 闭）。
    * 照 sop_reschedule/atp_check 兄弟模式：invoke if 链拦截、私有方法内 inline listByType 读三源需求
-   * （Order OPEN + 在产 WorkOrder + DemandSegment.p50×1e4）+ Base/Line/ChangeoverMatrix，forecastStart 时间锚
+   * （Order OPEN + 在产 WorkOrder + DemandSegment.demandWanPerYearP50×1e4）+ Base/Line/ChangeoverMatrix，forecastStart 时间锚
    * （禁 Date.now·R6），系数走 PUBLISHED RuleEntry `portfolio_optimize_coeffs`.params（R14·缺省诚实兜底），
    * 委派纯算法 runPortfolioOptimize（跨基地×窗口 CP-SAT 共享产能守恒·多方案量化利弊）。未接入 → 显式报错不兜底。
    */
@@ -4282,8 +4282,8 @@ export class SolverService {
     const rollPct = rev && num(rev.rolling) ? round(num(gm?.rolling) / num(rev.rolling) * 100, 1) : 0;
     // 结构归因：储能细分占比 vs 预算（拉低毛利率主因）。
     const dsegs = (await this.repos.objects.listByType(ctx.tenantId, "DemandSegment")).map((o) => o.props);
-    const totalP50 = dsegs.reduce((s, d) => s + num(d.p50), 0) || 1;
-    const essShare = round((num(dsegs.find((d) => str(d.segment) === "储能")?.p50) / totalP50) * 100, 0);
+    const totalP50 = dsegs.reduce((s, d) => s + num(d.demandWanPerYearP50), 0) || 1;
+    const essShare = round((num(dsegs.find((d) => str(d.segment) === "储能")?.demandWanPerYearP50) / totalP50) * 100, 0);
     return {
       pnl,
       gmRow: { subject: "毛利率", budgetPct, rollPct, diffPp: round(rollPct - budgetPct, 1) },
@@ -4389,11 +4389,22 @@ export class SolverService {
     const floorPct = num(dseg?.props.floorPct);
 
     // ① 交期判（C02/C03）：可产基地数 × 周产能基线 → P50/P90 vs 周需求（qty 视为单周需求，确定性代理）。
+    // WO-P50-REMAINING-3 量纲实测（不信注释信算术·seed 42·SO-3391）：可产基地 4 × 700 = P50 2800、
+    // P90 2520，对面 `Order.qty` = 7259 **套** ⇒ 两侧同为 `套/周`，`unit` 字面量据此下发。
+    // 与 `BaseCapacityOutlookByModel.packsP50At30` 同为「套」但**分母不同**（周 vs T+N 累计窗口），
+    // 故名字里必须带 PerWeek —— 这正是上一单没做完的第⑥个量纲。
     const weeklyBase = Math.max(1, bases.length) * 700;
-    const p50 = round(weeklyBase, 0);
-    const p90 = round(weeklyBase * 0.9, 0);
-    const deliveryOk = p90 >= qty;
-    const deliveryJudge = { p50, p90, demand: qty, verdict: deliveryOk ? "可达" : "紧张", ruleRefs: ["C02", "C03"] };
+    const packsPerWeekP50 = round(weeklyBase, 0);
+    const packsPerWeekP90 = round(weeklyBase * 0.9, 0);
+    const deliveryOk = packsPerWeekP90 >= qty;
+    const deliveryJudge: OrderDeliveryJudge = {
+      packsPerWeekP50,
+      packsPerWeekP90,
+      demand: qty,
+      verdict: deliveryOk ? "可达" : "紧张",
+      ruleRefs: ["C02", "C03"],
+      unit: "套/周",
+    };
 
     // ② 齐套判（C06/C16）：该型号细分对应物料缺口（取最大 gapTon）。
     // WO-ORDER-DEPENDENT-PICK · A 类并列裁决键：gapTon 同分时原先靠 `listByType` 的返回顺序定胜负
@@ -4419,7 +4430,9 @@ export class SolverService {
     if (!creditOk) { verdict = "不建议接"; vc = "#DD7E9E"; conds.push("信用占用超限（C13），需先收款/降额"); }
     else if (!marginOk) { verdict = `提价${priceUpPct}%接`; vc = "#E8B54A"; conds.push(`毛利率 ${marginPct}% < 细分底线 ${floorPct}%（C15），提价 ${priceUpPct}% 达线`); }
     else { verdict = "可接"; vc = "#62BE77"; }
-    if (!deliveryOk) conds.push(`周供给 P90 ${p90} < 需求 ${qty}（C02），需夜班/外协对冲`);
+    // WO-P50-REMAINING-3：原文写「需求 7259 套/周」，把**整单量**说成了**周需求**（见上方 deliveryJudge 注释）。
+    // 屏上照实说：左边是速率、右边是整单量按单周折算 —— 假设要写出来，不许伪装成事实。
+    if (!deliveryOk) conds.push(`周供给 P90 ${packsPerWeekP90} 套/周 < 本单需求 ${qty} 套（按整单落单周折算·C02），需夜班/外协对冲`);
     if (!kitOk) conds.push(`${kitJudge.material} 缺口 ${kitGap} 吨（C06），最早齐套 ${kitJudge.eta}`);
 
     // 业务建模链 DAG：so → {net 可产网络 · bom BOM · eco 单价细分 · cred 信用} → {jcap · jkit · jfin} → vrd。
@@ -4446,7 +4459,7 @@ export class SolverService {
       so: str(op.so),
       verdict,
       vc,
-      kpis: { qty, segment: seg, marginPct, floorPct, deliveryP90: p90, kitGap },
+      kpis: { qty, segment: seg, marginPct, floorPct, deliveryPacksPerWeekP90: packsPerWeekP90, kitGap },
       judges: { cap: deliveryJudge, kit: kitJudge, fin: financeJudge },
       conds,
       dag: { nodes, edges },

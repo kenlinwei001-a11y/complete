@@ -21,7 +21,12 @@ describe("WO-B / F1 · BaseOutlookPanel 前瞻产能推演卡", () => {
     }
     // 可用产能线 provenance 悬浮（title 溯 Line.capacityDaily·R13）。
     expect(screen.getByTestId("outlook-line-available").getAttribute("title")).toContain("Line.capacityDaily");
-    expect(screen.getByTestId("outlook-line-salesForecast").getAttribute("title")).toContain("DemandSegment.p50");
+    // WO-P50-REMAINING-3 基线红修复：`DemandSegment.p50` 已改名 `demandWanPerYearP50`（万套/年），
+    // 而本断言没跟上 —— 与 `xservice-smoke` 那次同一形态（改名漏改断言 ⇒ 自改名起一直红）。
+    // 顺带加反向断言：裸名回潮即红（溯源串里再出现 `DemandSegment.p50` 就是有人把别名加回来了）。
+    const fcTitle = screen.getByTestId("outlook-line-salesForecast").getAttribute("title") ?? "";
+    expect(fcTitle).toContain("DemandSegment.demandWanPerYearP50");
+    expect(fcTitle).not.toMatch(/DemandSegment\.p(50|90)\b/);
 
     // 缺口/富余标记（status 真判）。
     const status = screen.getByTestId("outlook-status");

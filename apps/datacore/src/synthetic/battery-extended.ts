@@ -686,8 +686,8 @@ export function generateExtended(
     lines: { lineId: string }[];
     equipment: { equipId: string; oeeA?: number; oeeP?: number; oeeQ?: number; oee_current?: number }[];
     materialBalances: { matBalId: string; gapTon?: number; netDemandTon?: number }[];
-    // WO-TIER3：毛利桥 impactYi 需 DemandSegment 真颗粒（p50/act/priceWan/marginPct/floorPct）确定性派生（R6·无 rng）。
-    demandSegments?: { segId?: string; segment?: string; p50?: number; act?: number; priceWan?: number; marginPct?: number; floorPct?: number }[];
+    // WO-TIER3：毛利桥 impactYi 需 DemandSegment 真颗粒（demandWanPerYearP50/act/priceWan/marginPct/floorPct）确定性派生（R6·无 rng）。
+    demandSegments?: { segId?: string; segment?: string; demandWanPerYearP50?: number; act?: number; priceWan?: number; marginPct?: number; floorPct?: number }[];
   },
   scale: "S" | "M" | "L" | "XL" = "L",
 ): ExtendedData {
@@ -1056,15 +1056,15 @@ export function generateExtended(
 
   // WO-TIER3 毛利桥（gross_profit 专属反向归因域）：把毛利缺口拆到 量/价/成本 三杠杆。impactYi 是**数据字段**
   // （R14·非引擎叙事常数），从既有种子确定性派生（R6·不消耗 rng·无时钟·同 seed 字节一致）。既有种子入参：
-  //   DemandSegment{p50,act,priceWan,marginPct,floorPct} × MaterialBalance{gapTon,netDemandTon}。单位：亿元。
+  //   DemandSegment{demandWanPerYearP50,act,priceWan,marginPct,floorPct} × MaterialBalance{gapTon,netDemandTon}。单位：亿元。
   const nz = (v?: number) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
   const gmSegs = ctx.demandSegments ?? [];
-  // ① 量杠杆：销量未达的毛利损失 = Σ max(0,p50−act)×priceWan×marginPct/100（细分需求缺口按计划毛利折算）。
-  const volumeYi = round(gmSegs.reduce((a, s) => a + Math.max(0, nz(s.p50) - nz(s.act)) * nz(s.priceWan) * nz(s.marginPct) / 100, 0), 4);
+  // ① 量杠杆：销量未达的毛利损失 = Σ max(0,demandWanPerYearP50−act)×priceWan×marginPct/100（细分需求缺口按计划毛利折算）。
+  const volumeYi = round(gmSegs.reduce((a, s) => a + Math.max(0, nz(s.demandWanPerYearP50) - nz(s.act)) * nz(s.priceWan) * nz(s.marginPct) / 100, 0), 4);
   // ② 价杠杆：价格侵蚀敞口 = Σ act×priceWan×(marginPct−floorPct)/100（实际销量下，毛利率下探至底线可损失的部分）。
   const priceYi = round(gmSegs.reduce((a, s) => a + nz(s.act) * nz(s.priceWan) * Math.max(0, nz(s.marginPct) - nz(s.floorPct)) / 100, 0), 4);
   // ③ 成本杠杆：物料短缺现货溢价 = 计划毛利 × 物料缺口率(ΣgapTon/ΣnetDemandTon)。
-  const planMarginYi = gmSegs.reduce((a, s) => a + nz(s.p50) * nz(s.priceWan) * nz(s.marginPct) / 100, 0);
+  const planMarginYi = gmSegs.reduce((a, s) => a + nz(s.demandWanPerYearP50) * nz(s.priceWan) * nz(s.marginPct) / 100, 0);
   const totalGapTon = ctx.materialBalances.reduce((a, m) => a + nz(m.gapTon), 0);
   const totalNetDemandTon = ctx.materialBalances.reduce((a, m) => a + nz(m.netDemandTon), 0);
   const fillShortfall = totalNetDemandTon > 0 ? totalGapTon / totalNetDemandTon : 0;

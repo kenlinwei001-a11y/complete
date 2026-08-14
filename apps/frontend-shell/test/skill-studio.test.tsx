@@ -166,8 +166,11 @@ describe("WO-FE-SKILL-STUDIO · 契约可见（结构化，不是一坨 JSON 串
     expect(within(input).queryByTestId("skill-input-schema-raw")).toBeNull();
 
     const output = within(editor).getByTestId("skill-output-schema");
-    expect(output).toHaveTextContent("p50");
-    expect(output).toHaveTextContent("p90");
+    // WO-P50-REMAINING-3 基线红修复（本族第 3 例·前两例 xservice-smoke / base-outlook-card）：
+    // `fixtures.ts` 的 skill 输出契约早已改名 `capWanP50/capWanP90`（WO-P50-RENAME），
+    // 而这两条断言还写着裸 `p50`/`p90` ⇒ **自那次改名起一直红**，红在 canonical 上而非本单引入。
+    expect(output).toHaveTextContent("capWanP50");
+    expect(output).toHaveTextContent("capWanP90");
     expect(output).toHaveTextContent("gapPct");
   });
 

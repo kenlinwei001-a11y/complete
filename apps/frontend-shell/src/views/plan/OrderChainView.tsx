@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import type { OrderProblemGroup } from "@platform/contracts";
+import type { OrderProblemGroup, OrderFullchainOutput } from "@platform/contracts";
 import { SEG_REGISTRY, formatTightness } from "@platform/contracts";
 import { runSolver, queryObjectsPaged } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
@@ -15,6 +15,7 @@ import type { ViewRendererProps } from "../registry";
 import { KitScopeBar, QuoteScopeBar, type KitScopeVM, type QuoteScopeVM } from "../ScopeHonesty";
 import { fmt, SnapshotBadge } from "../sim/shared";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
+import { InfoPopover } from "@/components/InfoPopover";
 import zh from "@/locales/zh";
 import simStyles from "../sim/SimViews.module.css";
 import styles from "./PlanViews.module.css";
@@ -862,11 +863,10 @@ function KitQuoteScopePanel({ baseFilter, rows }: { baseFilter: string; rows: { 
  * ORD 订单全链推演面板（order_fullchain）：订单选择器 → 6 KPI + 统一结论（三色）+ 三判明细 + 11 节点
  * 业务建模链 DAG + 采纳→Action（C10 留痕）。三判由求解器实算，前端零写死（R14）。
  */
-type OFC = {
-  so: string; verdict: string; vc: string;
-  kpis: { qty: number; segment: string; marginPct: number; floorPct: number; deliveryP90: number; kitGap: number };
-  judges: { cap: { verdict: string; p50: number; p90: number; demand: number; ruleRefs: string[] }; kit: { verdict: string; material: string; gapTon: number; eta: string; ruleRefs: string[] }; fin: { verdict: string; marginPct: number; floorPct: number; creditUsedRatio: number; priceUpPct: number; ruleRefs: string[] } };
-  conds: string[]; dag: { nodes: { id: string; kind: string; label: string }[]; edges: { from: string; to: string }[] }; summary: string;
+// contracts-only-shared（WO-P50-REMAINING-3）：这里原来抄了一份 `order_fullchain` 的完整形状 ——
+// 后端改字段名前端不报红，正是「第二真相源」。现直接用契约类型，DAG 节点形状按本页消费面窄化。
+type OFC = Omit<OrderFullchainOutput, "dag"> & {
+  dag: { nodes: { id: string; kind: string; label: string }[]; edges: { from: string; to: string }[] };
 };
 const OFC_LAYER: Record<string, number> = { order: 0, network: 1, bom: 1, economics: 1, credit: 1, judge: 2, verdict: 3 };
 const OFC_LAYER_TITLES = ["订单", "建模链", "三关联判", "结论"];
@@ -905,8 +905,8 @@ function OrderFullchainPanel() {
           {/* 6 KPI + 统一结论 */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "6px 0" }}>
             {[
-              ["数量×细分", `${data.kpis.qty} · ${data.kpis.segment}`],
-              ["交期判", data.judges.cap.verdict],
+              ["数量(套)×细分", `${data.kpis.qty} · ${data.kpis.segment}`],
+              [`交期判(周供给 ${data.judges.cap.unit ?? "套/周"})`, `${data.judges.cap.verdict} · P90 ${data.kpis.deliveryPacksPerWeekP90}`],
               ["齐套缺口", `${data.kpis.kitGap} 吨`],
               ["毛利率", `${data.kpis.marginPct}%`],
               ["毛利底线", `${data.kpis.floorPct}%`],
@@ -929,7 +929,21 @@ function OrderFullchainPanel() {
           <table className="cmp" data-testid="ofc-judges" style={{ marginTop: 8 }}>
             <thead><tr><th>关联判</th><th>结论</th><th>关键值</th><th>规则</th></tr></thead>
             <tbody>
-              <tr><td>①交期·产能</td><td>{data.judges.cap.verdict}</td><td className="mono">P90 {data.judges.cap.p90} vs 需求 {data.judges.cap.demand}</td><td className="mono">{data.judges.cap.ruleRefs.join("/")}</td></tr>
+              {/* 量纲由后端 `unit` 单源下发（`OrderDeliveryJudgeSchema`），前端只格式化不内联口径。
+                  屏上必须写清「套/周」—— 否则用户分不出这个 P90 是周供给还是 T+N 累计还是万套。
+
+                  ⚠ WO-P50-REMAINING-3 复核 `unit` 字面量时查出的**第二件事**（算术判据，不是读注释）：
+                  比较式左边 `packsPerWeekP90` 是真·**速率**（可产基地数 × 周产能基线 700 = 套/周），
+                  右边 `demand` 却是 `Order.qty`（**存量**·SO-3391 实测 7259 套，整单量）。
+                  引擎把整单量当作「一周内要交完」来比（`solvers/service.ts` 自称「确定性代理」），
+                  屏上原先写作「本周需求」—— 那是**把假设说成了事实**。
+                  改为「本单需求」（同样 4 字，第一层不变重）+ 浮层披露折算假设：
+                  第一层留结论，口径进浮层（`CONVENTION-ui-information-layering` §2 R-UI-3）。 */}
+              <tr><td>①交期·产能</td><td>{data.judges.cap.verdict}</td><td className="mono">周供给 P90 {data.judges.cap.packsPerWeekP90} vs 本单需求 {data.judges.cap.demand}（{data.judges.cap.unit ?? "套/周"}）<InfoPopover topic="这两个数凭什么放在一起比" testId="ofc-cap-basis">
+                左边是**速率**：可产基地数 × 周产能基线 → 套/周。
+                右边是**整单量**（Order.qty·套），引擎按「这一单要在一周内交完」折算成套/周再比 ——
+                这是 C02 的确定性代理口径，不是订单自带的周需求。跨周交付的单据此判会偏保守。
+              </InfoPopover></td><td className="mono">{data.judges.cap.ruleRefs.join("/")}</td></tr>
               <tr><td>②齐套·MRP</td><td>{data.judges.kit.verdict}</td><td className="mono">{data.judges.kit.material} 缺 {data.judges.kit.gapTon} 吨</td><td className="mono">{data.judges.kit.ruleRefs.join("/")}</td></tr>
               <tr><td>③财务·经营</td><td>{data.judges.fin.verdict}</td><td className="mono">毛利 {data.judges.fin.marginPct}% vs 底线 {data.judges.fin.floorPct}%</td><td className="mono">{data.judges.fin.ruleRefs.join("/")}</td></tr>
             </tbody>

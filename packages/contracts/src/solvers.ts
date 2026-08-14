@@ -624,6 +624,158 @@ export const BaseCapacityOutlookByModelSchema = z.object({
 export type BaseCapacityOutlookByModel = z.infer<typeof BaseCapacityOutlookByModelSchema>;
 
 // ---------------------------------------------------------------------------
+// WO-P50-REMAINING-3 · ⑤ S&OP ② 需求评审「三线对照」行 / ⑥ order_fullchain 交期判
+//
+// 这两个形状此前**只活在前端**（`SopBalanceView` 的内联 type、`OrderChainView` 的本地
+// interface），后端各写各的 —— 典型第二真相源：改后端字段名前端不报红，改前端也不报红。
+// 现收进契约，同时把两处的裸 `p50`/`p90` 换成自带口径的名字，并让 `check-quantile-field-naming`
+// 这道门真的扫得到它们（该门只扫 `packages/contracts/src`；留在 app 里 = 门看不见 = 装饰品）。
+// ---------------------------------------------------------------------------
+
+/**
+ * S&OP ② 需求评审 · 三线对照一行（`SopVersion.steps.s2.rows[]`）。
+ *
+ * 全行都是**本月**口径：`target` 取自 `PlanTarget(level=month)` × `Segment.baselineShare`，
+ * `rolling`/`lastActual` 同轴。**实测锚**（seed 42）：年 322.2 万套 = Σ12 月，
+ * 单月 24.7 / 25.24 / 26.58 万套 ⇒ 分母是**月**，不是年。
+ */
+export const SopDemandReviewRowSchema = z.object({
+  /** 细分键（Segment.segKey，如 pas/ess/com）。 */
+  key: z.string(),
+  /** 细分名（乘用车/储能/商用车）。 */
+  name: z.string(),
+  /** 本月目标（年度目标按季节权重分解到月 × 细分基线占比）。@unit 万套/月 */
+  target: z.number(),
+  /** 本月滚动预测中位口径。@unit 万套/月 */
+  rolling: z.number(),
+  /**
+   * 本月滚动预测**保守下分位** P90（`payload.segments[].p90` 透传，缺省 = rolling×0.936）。
+   * @unit 万套/月
+   * WO-P50-REMAINING-3：分母是**月** —— 与 `DemandSegment.demandWanPerYearP50`（万套/**年**）
+   * 只差一个分母，两者都写「万套」正是让用户在屏上分不出的那半个信息，故名字里必须带 PerMonth。
+   * 口径不变式：P90 是**下**分位 ⇒ 恒 ≤ `rolling`（同分母才谈得上这条；跨分母比就是本轮修的那个 bug）。
+   */
+  rollingWanPerMonthP90: z.number(),
+  /** 上月实际。@unit 万套/月 */
+  lastActual: z.number(),
+  /** 滚动 vs 目标偏差率（小数，0.12 = +12%）。 */
+  dv: z.number(),
+  /** |dv| > 阈值 → C21 差异提报，自动进⑤议程。 */
+  flagged: z.boolean(),
+  /** 本行全部量的量纲**单一真值**（后端单源下发·前端只格式化不内联·治 G-UNIT-NORMALIZE）。 */
+  unit: z.literal("万套/月").optional(),
+});
+export type SopDemandReviewRow = z.infer<typeof SopDemandReviewRowSchema>;
+
+/** S&OP ② 三线对照合计行（列与 `SopDemandReviewRowSchema` 同轴同分母）。 */
+export const SopDemandReviewTotalSchema = z.object({
+  /** @unit 万套/月 */
+  target: z.number(),
+  /** @unit 万套/月 */
+  rolling: z.number(),
+  /** 合计保守下分位。@unit 万套/月 */
+  rollingWanPerMonthP90: z.number(),
+  dv: z.number(),
+  /** 量纲单一真值（后端单源下发）。 */
+  unit: z.literal("万套/月").optional(),
+});
+export type SopDemandReviewTotal = z.infer<typeof SopDemandReviewTotalSchema>;
+
+/**
+ * `order_fullchain` ①交期判（C02/C03）：可产基地周供给 vs 本单需求。
+ *
+ * **实测锚**（seed 42·SO-3391）：可产基地 4 个 × 周产能基线 700 → P50 2800、P90 2520，
+ * 而 `Order.qty` = 7259（**套**，视为单周需求）⇒ 两侧同为**套/周**，可直接比。
+ */
+export const OrderDeliveryJudgeSchema = z.object({
+  /**
+   * 可产基地合计周供给中位口径。
+   * @unit 套/周
+   * WO-P50-REMAINING-3：与 `BaseCapacityOutlookByModel.packsP50At30`（**套**·T+N 累计）
+   * 同为「套」但**分母不同**（周 vs 累计窗口），故名字里带 PerWeek。
+   */
+  packsPerWeekP50: z.number(),
+  /**
+   * 周供给承诺口径 P90 = P50 × 0.9（保守下界·C02 判据用的就是它）。
+   * @unit 套/周
+   */
+  packsPerWeekP90: z.number(),
+  /**
+   * 本单需求。
+   * @unit 套/周
+   * ⚠ 量纲**是折算出来的、不是量出来的**：真值是 `Order.qty`（**套**·存量·SO-3391 实测 7259），
+   * 引擎按「这一单要在一周内交完」当作单周需求，才与左边真·速率的 `packsPerWeekP50/P90` 可比。
+   * 这是 C02 的确定性代理口径 —— 屏上必须说出来（`OrderChainView` 已挂浮层披露），
+   * 不许只写「本周需求」把假设讲成事实。跨周交付的单据此判会偏保守。
+   */
+  demand: z.number(),
+  /** 交期结论：可达 / 紧张。 */
+  verdict: z.string(),
+  /** 该判所依规则键（C02/C03）。 */
+  ruleRefs: z.array(z.string()),
+  /** 本判全部量的量纲单一真值（后端单源下发）。 */
+  unit: z.literal("套/周").optional(),
+});
+export type OrderDeliveryJudge = z.infer<typeof OrderDeliveryJudgeSchema>;
+
+/** `order_fullchain` ②齐套判（C06/C16）。 */
+export const OrderKitJudgeSchema = z.object({
+  material: z.string(),
+  /** 该物料现货缺口。@unit 吨 */
+  gapTon: z.number(),
+  eta: z.string(),
+  verdict: z.string(),
+  ruleRefs: z.array(z.string()),
+});
+export type OrderKitJudge = z.infer<typeof OrderKitJudgeSchema>;
+
+/** `order_fullchain` ③财务判三闸（C15 毛利 → C13 信用 → C18 现金）。 */
+export const OrderFinanceJudgeSchema = z.object({
+  marginPct: z.number(),
+  floorPct: z.number(),
+  marginOk: z.boolean(),
+  priceUpPct: z.number(),
+  creditUsedRatio: z.number(),
+  creditOk: z.boolean(),
+  verdict: z.string(),
+  ruleRefs: z.array(z.string()),
+});
+export type OrderFinanceJudge = z.infer<typeof OrderFinanceJudgeSchema>;
+
+/** `order_fullchain` 顶部 KPI 条。 */
+export const OrderFullchainKpisSchema = z.object({
+  /** 订单量。@unit 套 */
+  qty: z.number(),
+  segment: z.string(),
+  marginPct: z.number(),
+  floorPct: z.number(),
+  /**
+   * 周供给承诺口径（= `judges.cap.packsPerWeekP90`·同一真值的 KPI 投影）。
+   * @unit 套/周
+   */
+  deliveryPacksPerWeekP90: z.number(),
+  /** 最严峻物料缺口。@unit 吨 */
+  kitGap: z.number(),
+});
+export type OrderFullchainKpis = z.infer<typeof OrderFullchainKpisSchema>;
+
+/** `order_fullchain` 输出（前端 `OrderChainView` 直接消费此形状，不再本地重定义）。 */
+export const OrderFullchainOutputSchema = z.object({
+  so: z.string(),
+  verdict: z.string(),
+  vc: z.string(),
+  kpis: OrderFullchainKpisSchema,
+  judges: z.object({ cap: OrderDeliveryJudgeSchema, kit: OrderKitJudgeSchema, fin: OrderFinanceJudgeSchema }),
+  conds: z.array(z.string()),
+  dag: z.object({
+    nodes: z.array(z.record(z.string(), z.unknown())),
+    edges: z.array(z.object({ from: z.string(), to: z.string() })),
+  }),
+  summary: z.string(),
+});
+export type OrderFullchainOutput = z.infer<typeof OrderFullchainOutputSchema>;
+
+// ---------------------------------------------------------------------------
 // WO-69 P2 · Function 本体签名（OntologySignature）
 // ---------------------------------------------------------------------------
 

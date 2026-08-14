@@ -685,6 +685,8 @@ export const PLAN_VERSION_CURRENT = {
 // ---------------------------------------------------------------------------
 
 const SOP_P = { gapRed: 2, dvThreshold: 0.1, cashFloor: 50, gmTolerance: 0.5 };
+/** ② 三线对照量纲（与真后端 `SopService` 的 `SOP_DEMAND_UNIT` 同值·形状对齐）。 */
+const SOP_DEMAND_UNIT = "万套/月" as const;
 
 /** ③ 供应评审产能线（决议前基线 367.9 万套，对齐 700 亿规模需求） */
 const SOP_PER_BASE = [
@@ -741,10 +743,19 @@ export function mockSopAdvance(v: SopVersionVM, step: number, payload: Record<st
       const target = num(s.target);
       const rolling = num(s.rolling);
       const dv = target === 0 ? 0 : round((rolling - target) / target, 4);
-      return { key: str(s.key), name: str(s.name, str(s.key)), target, rolling, lastActual: num(s.lastActual), dv, flagged: Math.abs(dv) > SOP_P.dvThreshold };
+      // WO-P50-REMAINING-3：mock 此前**根本不发** P90，而真 `SopService.step2` 一直在发 ——
+      // 形状漂移（mock 有真无 / 真有 mock 无都是漂移）。派生公式与真后端缺省路一字不差。
+      const rollingWanPerMonthP90 =
+        s.rollingWanPerMonthP90 != null ? num(s.rollingWanPerMonthP90) : round(rolling * 0.936, 2);
+      return {
+        key: str(s.key), name: str(s.name, str(s.key)), target, rolling,
+        rollingWanPerMonthP90, lastActual: num(s.lastActual), dv,
+        flagged: Math.abs(dv) > SOP_P.dvThreshold, unit: SOP_DEMAND_UNIT,
+      };
     });
     const totalTarget = rows.reduce((a, r) => a + r.target, 0);
     const totalRolling = rows.reduce((a, r) => a + r.rolling, 0);
+    const totalP90 = round(rows.reduce((a, r) => a + r.rollingWanPerMonthP90, 0), 2);
     for (const r of rows) {
       if (!r.flagged) continue;
       if (!v.agenda.some((a) => a.source === "C21" && a.detail?.segment === r.key)) {
@@ -757,7 +768,11 @@ export function mockSopAdvance(v: SopVersionVM, step: number, payload: Record<st
     }
     v.steps.s2 = {
       rows,
-      total: { target: totalTarget, rolling: totalRolling, dv: totalTarget === 0 ? 0 : round((totalRolling - totalTarget) / totalTarget, 4) },
+      total: {
+        target: totalTarget, rolling: totalRolling, rollingWanPerMonthP90: totalP90,
+        dv: totalTarget === 0 ? 0 : round((totalRolling - totalTarget) / totalTarget, 4),
+        unit: SOP_DEMAND_UNIT,
+      },
     };
     touch();
     return v;
@@ -830,11 +845,11 @@ export function seedSopVersions(): SopVersionVM[] {
         s1: { changes: [{ kind: "认证转量产", modelId: "4680-NCM", baseId: "合肥", impactWanPerMonth: 5.1 }], boundaryDeltaWanPerMonth: 5.1 },
         s2: {
           rows: [
-            { key: "pas", name: "乘用车", target: 201.7, rolling: 201.7, lastActual: 200.6, dv: 0, flagged: false },
-            { key: "ess", name: "储能", target: 139.2, rolling: 139.2, lastActual: 100.5, dv: 0, flagged: false },
-            { key: "com", name: "商用车", target: 34.1, rolling: 34.1, lastActual: 39.5, dv: 0, flagged: false },
+            { key: "pas", name: "乘用车", target: 201.7, rolling: 201.7, rollingWanPerMonthP90: 188.79, lastActual: 200.6, dv: 0, flagged: false, unit: SOP_DEMAND_UNIT },
+            { key: "ess", name: "储能", target: 139.2, rolling: 139.2, rollingWanPerMonthP90: 130.29, lastActual: 100.5, dv: 0, flagged: false, unit: SOP_DEMAND_UNIT },
+            { key: "com", name: "商用车", target: 34.1, rolling: 34.1, rollingWanPerMonthP90: 31.92, lastActual: 39.5, dv: 0, flagged: false, unit: SOP_DEMAND_UNIT },
           ],
-          total: { target: 375.0, rolling: 375.0, dv: 0 },
+          total: { target: 375.0, rolling: 375.0, rollingWanPerMonthP90: 351.0, dv: 0, unit: SOP_DEMAND_UNIT },
         },
         s3: { perBase: SOP_PER_BASE, increments: [], sup: 367.9, dem: 375.0, gap: 7.1, flagged: true },
         s4: { revSum: 700.0, gmSum: 118.9, gmBudget: 17.0, cashCushion: 58, gmRoll: 17.0, gmOk: true, cashOk: true, pass: true, violations: [] },
@@ -1292,7 +1307,7 @@ export function mockPortfolio(args: Record<string, unknown>): Record<string, unk
       earlyDeliveryCount, orderQtyMean: round(mean, 2), orderQtyCv: round(cv, 4),
       capacityAnnual, demandAnnual, capacityUtil,
       allocatedQty: allocTypeQty.get(bt) ?? 0, displacedQty: dispTypeQty.get(bt) ?? 0,
-      provenance: { kind: "派生", drillType: "DemandSegment", drillId: bt, drillField: "p50", drillValue: forecastQty, mockNote: "dev 态·mock 预测/配比派生（真求解走 datacore globalSimOptimize）" },
+      provenance: { kind: "派生", drillType: "DemandSegment", drillId: bt, drillField: "demandWanPerYearP50", drillValue: forecastQty, mockNote: "dev 态·mock 预测/配比派生（真求解走 datacore globalSimOptimize）" },
     };
   });
 
@@ -1470,10 +1485,10 @@ export function mockGlobalSim(args: Record<string, unknown>): Record<string, unk
 // ---------------------------------------------------------------------------
 // WO-B / F1 · base_capacity_outlook（逐口径移植 datacore/solvers/base-outlook.ts·KILL-MOCK）
 // 四线：可用产能 Σ Line.capacityDaily×(1−util/100)×窗 ⊥ 在产 WorkOrder.qtyActual 铺窗 ⊥ 未来订单 Order.due 落窗
-// ⊥ 销售预测 ΣDemandSegment.p50×1e4 按产能占比摊窗 → 缺口/富余 + crossDay + P1 逐日 dayPlan（触发→加班/跨基地/外协→收窄·provenance）。
+// ⊥ 销售预测 ΣDemandSegment.demandWanPerYearP50×1e4 按产能占比摊窗 → 缺口/富余 + crossDay + P1 逐日 dayPlan（触发→加班/跨基地/外协→收窄·provenance）。
 // forecastStart 锚（禁 Date.now·R6）·每线/每日值 provenance（R13）。改 baseId/horizon → 前瞻真变（非写死）。
 // ---------------------------------------------------------------------------
-// 演示 DemandSegment.p50（万·= datacore seed 同量级 201.7/139.2/34.1 → Σ375）。
+// 演示 DemandSegment.demandWanPerYearP50（万套/年·= datacore seed 同量级 201.7/139.2/34.1 → Σ375）。
 const OUTLOOK_SEG_P50: number[] = [201.7, 139.2, 34.1];
 // 演示每基地在产占用总量（未完工 WorkOrder.qtyActual·代表值·确定性）。
 const OUTLOOK_INPROD: Record<string, number> = { changzhou: 35738, jinhua: 28800, chengdu: 26400, hefei: 24100 };
@@ -1508,7 +1523,7 @@ export function mockBaseOutlook(args: Record<string, unknown>): Record<string, u
       { key: "available", label: "可用产能", value: available, provenance: { kind: "派生", drillType: "Line", drillId: baseId, drillField: "capacityDaily", drillValue: freeDaily } },
       { key: "inProduction", label: "在产订单占用", value: inProduction, provenance: { kind: "实测", drillType: "WorkOrder", drillId: baseId, drillField: "qtyActual", drillValue: inProdTotal } },
       { key: "futureOrders", label: "未来订单", value: futureQty, provenance: { kind: "实测", drillType: "Order", drillId: baseId, drillField: "qty", drillValue: futureQty } },
-      { key: "salesForecast", label: "销售预测", value: salesForecast, provenance: { kind: "派生", drillType: "DemandSegment", drillId: "p50", drillField: "p50", drillValue: p50TotalWan } },
+      { key: "salesForecast", label: "销售预测", value: salesForecast, provenance: { kind: "派生", drillType: "DemandSegment", drillId: "*", drillField: "demandWanPerYearP50", drillValue: p50TotalWan } },
     ];
     // crossDay + P1 dayPlan（触发→贪心补→收窄·沿 decision_play 口径）。
     const dailyInProd = inProduction / Math.max(1, H);

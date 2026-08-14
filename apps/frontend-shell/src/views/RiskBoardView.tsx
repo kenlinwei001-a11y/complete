@@ -1131,7 +1131,7 @@ function RiskDetailPanel({
           <span>{zh.risk.live.leverHint}</span>
         </div>
         <DynamicLeverPanel
-          baseP50={card.peak}
+          beforeValue={card.peak}
           baseGap={0}
           factors={[card.factor, ...bnFactors].filter((v, i, a) => !!v && a.indexOf(v) === i)}
           // 杠杆发现按 `scope.includes(o.id)` 逐对象过滤（datacore `service.ts discoverLevers`）→ 必须是真 objectId。

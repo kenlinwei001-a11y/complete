@@ -1084,7 +1084,7 @@ function mockSupplyDemandGap(): Record<string, unknown> {
     { id: "seg_bias:ess", factor: "储能 预测偏差（rolling−实绩）", contribution: r1(demandContribution * 0.84), share: r4(0.84), unit: "万套", driverValue: 33.3,
       provenance: { kind: "派生", drillType: "DemandSegment", drillId: "ess", drillField: "rolling−lastActual", drillValue: 33.3 } },
     { id: "order_backlog", factor: "在手订单需求（OPEN 未交付折口径）", contribution: 0, share: 0, unit: "万套", driverValue: 108.4,
-      provenance: { kind: "实测", drillType: "Order", drillId: "OPEN", drillField: "p90", drillValue: 108.4 } },
+      provenance: { kind: "实测", drillType: "Order", drillId: "*", drillField: "qty", drillValue: 1084000 } },
   ];
   demandDrivers[1]!.contribution = r1(demandContribution - demandDrivers[0]!.contribution); // 取余 → Σ叶=侧
   demandDrivers[1]!.share = r4(demandDrivers[1]!.contribution / demandContribution);
@@ -1663,8 +1663,8 @@ const MOCK_SOLVER_ARTIFACTS: {
 }[] = [
   {
     id: "sart_demo_seg_share_v1", tenantId: "demo", key: "seg_share_forecast",
-    computeSource: "(ctx, args) => {\n  const segs = ctx.objectsByType.DemandSegment || [];\n  const total = segs.reduce((s, d) => s + (d.p50 || 0), 0);\n  return { rows: segs.map(d => ({ segment: d.segment, share: total ? d.p50 / total : 0 })) };\n}",
-    outputShape: ["rows"], argHints: {}, rationale: "按需求细分 P50 计算各业态占比，回答『储能占比是多少』。",
+    computeSource: "(ctx, args) => {\n  const segs = ctx.objectsByType.DemandSegment || [];\n  const total = segs.reduce((s, d) => s + (d.demandWanPerYearP50 || 0), 0);\n  return { rows: segs.map(d => ({ segment: d.segment, share: total ? d.demandWanPerYearP50 / total : 0 })) };\n}",
+    outputShape: ["rows"], argHints: {}, rationale: "按需求细分 P50（万套/年）计算各业态占比，回答『储能占比是多少』。",
     origin: "LLM", status: "PROVISIONAL", trustLevel: "UNVERIFIED", hash: "a1b2c3d4e5f60718", version: 1, createdBy: "usr_demo_admin", createdAt: "2026-06-22T02:00:00.000Z",
   },
   {
@@ -2852,9 +2852,9 @@ export const handlers = [
       rows = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"].map((m) => ({ id: `model-${m}`, props: { name: m } }));
     } else if (type === "DemandSegment") {
       rows = [
-        { segId: "dseg-1", segment: "乘用车", tgt: 201.7, p50: 201.7, p90: 199.6, act: 200.6 },
-        { segId: "dseg-2", segment: "储能", tgt: 139.2, p50: 139.2, p90: 108.4, act: 100.5 },
-        { segId: "dseg-3", segment: "商用车", tgt: 34.1, p50: 34.1, p90: 34.0, act: 39.5 },
+        { segId: "dseg-1", segment: "乘用车", tgt: 201.7, demandWanPerYearP50: 201.7, demandWanPerYearP90: 199.6, act: 200.6 },
+        { segId: "dseg-2", segment: "储能", tgt: 139.2, demandWanPerYearP50: 139.2, demandWanPerYearP90: 108.4, act: 100.5 },
+        { segId: "dseg-3", segment: "商用车", tgt: 34.1, demandWanPerYearP50: 34.1, demandWanPerYearP90: 34.0, act: 39.5 },
       ].map((r) => ({ id: r.segId, props: r }));
     } else if (type === "Workshop") {
       const workshops = filterByScope(BASES, account).flatMap((b) =>
@@ -3403,7 +3403,7 @@ export const handlers = [
         { key: "line_belongs_to_base", fromType: "Base", toType: "Line", cardinality: "1:N" },
       ].concat(mockLinkTypes.filter((l) => !MOCK_LINK_SEED.some((s) => s.key === l.key)).map((l) => ({ key: l.key, fromType: l.fromType, toType: l.toType, cardinality: l.cardinality }))),
       rules: [
-        { key: "C03", expression: "weeklySupply.p90 >= weeklyDemand", scope: "Order、Base", severity: "阻断" },
+        { key: "C03", expression: "weeklySupply.packsPerWeekP90 >= weeklyDemand", scope: "Order、Base", severity: "阻断" },
         { key: "C06", expression: "kitCoverDays >= 5", scope: "MaterialBalance", severity: "阻断" },
         { key: "C15", expression: "marginPct >= floorPct", scope: "Order", severity: "告警" },
       ],
@@ -5296,9 +5296,9 @@ export const handlers = [
       return HttpResponse.json({
         data: {
           so, verdict: "提价3%接", vc: "#E8B54A",
-          kpis: { qty: 800, segment: "储能", marginPct: 11, floorPct: 14, deliveryP90: 1400, kitGap: 654 },
+          kpis: { qty: 800, segment: "储能", marginPct: 11, floorPct: 14, deliveryPacksPerWeekP90: 1260, kitGap: 654 },
           judges: {
-            cap: { verdict: "可达", p50: 1400, p90: 1260, demand: 800, ruleRefs: ["C02", "C03"] },
+            cap: { verdict: "可达", packsPerWeekP50: 1400, packsPerWeekP90: 1260, demand: 800, ruleRefs: ["C02", "C03"], unit: "套/周" },
             kit: { verdict: "缺料", material: "三元正极", gapTon: 654, eta: "2026-06-28", ruleRefs: ["C06", "C16"] },
             fin: { verdict: "需提价3%", marginPct: 11, floorPct: 14, creditUsedRatio: 0.8, priceUpPct: 3, ruleRefs: ["C15", "C13", "C18"] },
           },

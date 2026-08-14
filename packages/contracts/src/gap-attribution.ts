@@ -330,7 +330,7 @@ export type OverdueRecord = z.infer<typeof OverdueRecordSchema>;
 /**
  * WO-TIER3-CASH-GM · 毛利桥（GrossMarginBridge）：gross_profit 专属反向归因域的 drill 真对象。
  * 把毛利缺口拆到「量/价/成本」三杠杆 —— impactYi 是**数据字段**（R14·非引擎叙事常数），
- * 由既有种子（DemandSegment p50/priceWan/marginPct/floorPct/act × MaterialBalance gapTon/netDemandTon）
+ * 由既有种子（DemandSegment demandWanPerYearP50/priceWan/marginPct/floorPct/act × MaterialBalance gapTon/netDemandTon）
  * 确定性派生（R6·无 rng/时钟）。gap_attribution 按 metricKey=gross_profit 路由到 cf-gm-gap→量/价/成本三根，
  * 每叶 drillType=GrossMarginBridge·drillField=impactYi·drillValue!==0（C5 改颗粒→归因变）。
  */
