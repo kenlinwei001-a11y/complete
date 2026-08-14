@@ -226,6 +226,23 @@ describe("WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13
  *   ② 深走整个输出收 provenance（不只 levels/atomicLeaves），新长出来的挂点自动进门；
  *   ③ 扫**全部 8 条** gap_attribution 路径（全局 / scoped / exposure / 5 个专属因果域），
  *      新增指标域只要产 provenance 就自动被咬。
+ *
+ * ═══ WO-R9-SDGA-DRILLID（本单）· 把同一副牙挂到第二个求解器 ═══
+ *   上一单把判据立住了，但它只挂在 `gap_attribution` **一个** solver 上，于是同族病在
+ *   `supply_demand_gap_attribution`（驾驶舱「供需失衡双向归因」Panel 常驻自取数）上原封不动地活着：
+ *   4 个叶把**字段名/状态枚举值**塞进 drillId 位——`Order."OPEN".qty`（主键 `so`）·
+ *   `Line."capacityDaily".capacityDaily`（主键 `lineId`）· `MaterialBalance."gapTon".gapTon`（主键 `matBalId`）·
+ *   `Equipment."oee_current".oee_current`（主键 `equipId`）。故本单把 `paths` 从「8 条 gap_attribution 路径」
+ *   改成「(求解器, 路径) 对」，判据本体一字未改（不许降级），只是**判据的作用面**扩大。
+ *
+ *   ⚠ 本单实测出的判据**局限**（写在这里，因为它决定了下一个人能不能信这道门）：
+ *     AGGREGATE 的量纲带 [min, Σ] 是**必要不充分**条件。`capacity_gap` 旧值 364.8（Σcap×300/1e4·年化万套）
+ *     恰好落在 `Line.capacityDaily` 的真值带 [48, 12160] 内 ⇒ **带内也可能是错口径**，此门看不出来。
+ *     出带的（`order_backlog` 旧值 25.32 < min=2218）才抓得住。所以「带内」只证明「量级没离谱」，
+ *     不证明「口径对」；口径对与否仍要靠 R13 正面判断（drillValue 必须真出自 drillField 那个字段）。
+ *
+ *   非空洞防线（本单加固）：计数按**求解器分桶**。只提全局总数会被 gap_attribution 的 84 个节点盖过去 ——
+ *   新挂的这个求解器一个节点都不产也照样绿，那正是「门有牙但没挂上」的翻版。
  */
 type AnyProv = { kind?: string; drillType?: string; drillId?: string; drillField?: string; drillValue?: number };
 const AGG = "*"; // 契约约定的「按类型聚合」标记
@@ -244,117 +261,259 @@ function collectProvenance(root: unknown, at = "$", out: { at: string; pv: AnyPr
   return out;
 }
 
+/** 本体类型的结构视图（只取判据用得着的三样：字段声明 / 主键 / 派生字段）。 */
+type OntTypeLike = { key: string; properties: { propKey: string; isPrimaryKey?: boolean }[]; derivedProperties?: { propKey: string }[] };
+
+/**
+ * 审计上下文。**对象缓存按 app 实例隔离** —— 改过数据的 app 必须自带一份新 env，
+ * 否则会拿改前的缓存去对拍改后的输出，那就是自己骗自己（同族坑：0.6 「拿一个看起来相关的数字当判据」）。
+ */
+interface AuditEnv {
+  t: TestApp;
+  typeByKey: Map<string, OntTypeLike>;
+  rowsOf: (tk: string) => Promise<Record<string, unknown>[]>;
+  /** 按**求解器**分桶计数（不是只记全局总数——总数会被节点多的那个求解器盖住新挂的那个）。 */
+  single: Record<string, number>;
+  aggregate: Record<string, number>;
+  typeFieldSeen: Set<string>;
+  pathsWithProv: number;
+}
+
+async function makeEnv(t: TestApp): Promise<AuditEnv> {
+  // 已发布本体 = 类型/字段/主键的单一出处（不硬编码任何映射表）。
+  const types = await t.services.ontology.listTypes(ADMIN);
+  const typeByKey = new Map<string, OntTypeLike>(types.map((x) => [x.key, x as unknown as OntTypeLike]));
+  const objCache = new Map<string, Record<string, unknown>[]>();
+  const rowsOf = async (tk: string): Promise<Record<string, unknown>[]> => {
+    if (!objCache.has(tk)) objCache.set(tk, (await t.repos.objects.listByType(ADMIN.tenantId, tk)).map((o) => o.props));
+    return objCache.get(tk)!;
+  };
+  return { t, typeByKey, rowsOf, single: {}, aggregate: {}, typeFieldSeen: new Set(), pathsWithProv: 0 };
+}
+
+/**
+ * 判据本体（**单一实现**·gap_attribution 与 supply_demand_gap_attribution 共用，
+ * 也是下面「金丝雀」用的同一份计数器——不许另抄一份，抄了就是装饰品）。
+ * 每个三元组必须落入且仅落入 SINGLE / AGGREGATE，两类都断言，**没有「跳过」这个动作**。
+ */
+async function auditRun(env: AuditEnv, solver: string, tag: string, out: Record<string, unknown>): Promise<number> {
+  const honest = out as { noGap?: boolean; noBaseData?: boolean };
+  const found = collectProvenance(out);
+  // 诚实空树（目标已达成 noGap / 该基地无可承接订单 noBaseData）本就无数可溯 —— 不是空转。
+  // 但**只有**引擎自己诚实声明了空，才准空；没声明却空 = 这条路把出处丢了，红。
+  if (found.length === 0) {
+    expect(
+      Boolean(honest.noGap ?? honest.noBaseData),
+      `${tag}：这条路一个 provenance 都没有，引擎也没声明 noGap/noBaseData = 出处在这条路上被丢了（R13）`,
+    ).toBe(true);
+    return 0;
+  }
+  env.pathsWithProv++;
+
+  for (const { at, pv } of found) {
+    const where = `${solver}·${tag} ${at}`;
+    const dt = pv.drillType;
+    const df = pv.drillField;
+    // ── 落不进两类的一律红 ──────────────────────────────────────────
+    expect(dt, `${where}：provenance 无 drillType，出处无从谈起（R13）`).toBeTruthy();
+    const ty = env.typeByKey.get(dt!);
+    expect(ty, `${where}：drillType「${dt}」不是已发布本体里的对象类型（幽灵类型·下钻必点不开）`).toBeTruthy();
+    expect(df, `${where}：${dt} 有 drillType 却无 drillField，说不出这个数来自哪个字段（R13）`).toBeTruthy();
+    const declared = new Set<string>([
+      ...ty!.properties.map((p) => p.propKey),
+      ...(ty!.derivedProperties ?? []).map((p) => p.propKey),
+    ]);
+    expect(
+      declared.has(df!),
+      `${where}：标签写着 ${dt}.${df}，但「${df}」不在 ${dt} 的本体声明里（properties ∪ derivedProperties = ${[...declared].join(",")}）` +
+        ` —— 这是「把谎话从值搬到字段名」那种修法，本门专治`,
+    ).toBe(true);
+    env.typeFieldSeen.add(`${dt}.${df}`);
+
+    const vals = (await env.rowsOf(dt!)).map((r) => r[df!]).filter((v): v is number => typeof v === "number");
+
+    if (pv.drillId === AGG) {
+      // ── ② AGGREGATE：量纲带 [min, Σ] —— #96 那种差 1e4 的口径错标必出带 ──
+      env.aggregate[solver] = (env.aggregate[solver] ?? 0) + 1;
+      expect(vals.length, `${where}：聚合标 ${dt}.*.${df}，但全类没有一条该字段的数值真值可作包络`).toBeGreaterThan(0);
+      const lo = Math.min(...vals);
+      const hi = vals.reduce((a, b) => a + b, 0);
+      expect(typeof pv.drillValue, `${where}：聚合 drillValue 必须是数`).toBe("number");
+      expect(
+        pv.drillValue! >= lo && pv.drillValue! <= hi,
+        `${where}：聚合标 ${dt}.*.${df} 回了 ${pv.drillValue}，而该字段全类真值带是 [${lo}, Σ=${hi}]` +
+          ` —— 出带 = 回的根本不是这个字段的口径（#96 就是差 1e4 掉出带）`,
+      ).toBe(true);
+      continue;
+    }
+
+    // ── ① SINGLE：对象必须真存在，drillValue 恒等该字段真值 ──
+    env.single[solver] = (env.single[solver] ?? 0) + 1;
+    const pk = ty!.properties.find((p) => p.isPrimaryKey)?.propKey;
+    expect(pk, `${where}：${dt} 本体未声明主键，下钻路径无从解析`).toBeTruthy();
+    const rows = await env.rowsOf(dt!);
+    const row = rows.find((r) => String(r[pk!]) === String(pv.drillId));
+    expect(
+      row,
+      `${where}：标签写着 ${dt}.${pv.drillId}.${df}，但 ${dt} 主键 ${pk} 里查无「${pv.drillId}」` +
+        `（现有样例 ${rows.slice(0, 3).map((r) => String(r[pk!])).join("/")}）—— 悬空下钻路径；` +
+        `若这本来就是聚合，请按契约标 drillId:"*"，不要拿别的键冒充对象主键`,
+    ).toBeTruthy();
+    const truth = row![df!];
+    // 布尔真值（如 BidRecord.win）允许按 0/1 编码回，但必须**对得上**，不许静默放行。
+    const expected = typeof truth === "boolean" ? (truth ? 1 : 0) : truth;
+    expect(
+      typeof expected,
+      `${where}：${dt}.${pv.drillId}.${df} 的真值是 ${JSON.stringify(truth)}（非数非布尔），无法与 drillValue 对拍`,
+    ).toBe("number");
+    expect(
+      pv.drillValue,
+      `${where}：标签写着 ${dt}.${pv.drillId}.${df}，那个字段的真值是 ${JSON.stringify(truth)}，溯源却回了 ${pv.drillValue}`,
+    ).toBe(expected);
+  }
+  return found.length;
+}
+
+const GA_SOLVER = "gap_attribution";
+const SDGA_SOLVER = "supply_demand_gap_attribution";
+
 describe("WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 → 回的值真出自该字段·无静默跳过）", () => {
-  it("全部 8 条 gap_attribution 路径：每个 provenance 非 SINGLE 即 AGGREGATE，两类都被断言，无第三类", async () => {
+  it("gap_attribution 全部 8 条路径 + supply_demand_gap_attribution：每个 provenance 非 SINGLE 即 AGGREGATE，两类都被断言，无第三类", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const env = await makeEnv(t);
+
+    // ── (求解器, 路径) 对 —— 判据一份，作用面按这张表扩 ──────────────────────────
+    // gap_attribution：8 条（全局 / scoped / exposure / 5 个专属因果域）。
+    // supply_demand_gap_attribution：**只有 1 条**（该私有方法签名收 args 但函数体一个 args 都不读，
+    //   metricKey/scope 全被丢弃）—— 这不是我读代码的印象，是本 describe 末尾那条用例**跑出来**的：
+    //   传 args 与不传 args 的输出逐字节相同。哪天真接了 args，那条用例会红，逼下一个人回来补路径。
+    const paths: [string, string, Record<string, unknown>][] = [
+      [GA_SOLVER, "global(seg_attain_ess)", { metricKey: "seg_attain_ess" }],
+      [GA_SOLVER, "scope:hefei(复用全局子树)", { metricKey: "seg_attain_ess", scope: { baseId: "hefei" } }],
+      [GA_SOLVER, "scope:xiamen(敞口支路)", { metricKey: "seg_attain_ess", scope: { baseId: "xiamen" } }],
+      [GA_SOLVER, "market_share(专属因果域)", { metricKey: "market_share" }],
+      [GA_SOLVER, "cash(专属因果域)", { metricKey: "cash" }],
+      [GA_SOLVER, "revenue(专属因果域)", { metricKey: "revenue" }],
+      [GA_SOLVER, "gross_profit(通用结构分摊)", { metricKey: "gross_profit" }],
+      [GA_SOLVER, "demand_attain(专属因果域)", { metricKey: "demand_attain" }],
+      // WO-R9-SDGA-DRILLID：驾驶舱「供需失衡双向归因」Panel 常驻自取的那条（DashboardView.tsx:349）。
+      [SDGA_SOLVER, "产销双向归因（驾驶舱常驻 Panel）", {}],
+    ];
+
+    for (const [solver, tag, args] of paths) {
+      const out = (await t.services.solvers.invoke(ADMIN, solver, args)) as unknown as Record<string, unknown>;
+      await auditRun(env, solver, tag, out);
+    }
+
+    // ── 非空洞（全局）：两类都必须真有货（否则"没有第三类"是靠没有节点凑出来的）──
+    const single = Object.values(env.single).reduce((a, b) => a + b, 0);
+    const aggregate = Object.values(env.aggregate).reduce((a, b) => a + b, 0);
+    // 金丝雀证据（**与主判据共用同一批计数器**·不是另抄一份统计）：报「这道门真在扫」时必须引这一行，
+    // 否则「全绿」与「一个节点都没扫到也全绿」在日志里长得一模一样（铁律 0.6）。
+    // eslint-disable-next-line no-console
+    console.log(`[PROV-CANARY] pathsWithProv=${env.pathsWithProv} single=${JSON.stringify(env.single)} aggregate=${JSON.stringify(env.aggregate)} typeFields=${env.typeFieldSeen.size}`);
+    expect(env.pathsWithProv, "出 provenance 的路径条数（太少 = 门只在一两条路上跑过）").toBeGreaterThanOrEqual(5);
+    expect(single, "SINGLE 类必须真被断言过（0 = 门空转）").toBeGreaterThanOrEqual(40);
+    expect(aggregate, "AGGREGATE 类必须真被断言过（0 = 聚合分支从没跑到）").toBeGreaterThanOrEqual(8);
+    expect(env.typeFieldSeen.size, "覆盖的 类型.字段 组合数（太少 = 只咬了一两个字段·不是通用判据）").toBeGreaterThanOrEqual(12);
+
+    // ── 非空洞（**按求解器**）：新挂的那个求解器必须真产出两类节点 ────────────────
+    //   只看全局总数是抓不住的：gap_attribution 一家 84 个节点就把上面四条全喂饱了，
+    //   supply_demand 一个节点不产也照样绿 —— 那正是本单要治的「门有牙但没挂上」的翻版。
+    expect(env.single[GA_SOLVER] ?? 0, `${GA_SOLVER} 的 SINGLE 计数`).toBeGreaterThanOrEqual(40);
+    expect(env.aggregate[GA_SOLVER] ?? 0, `${GA_SOLVER} 的 AGGREGATE 计数`).toBeGreaterThanOrEqual(8);
+    expect(env.single[SDGA_SOLVER] ?? 0, `${SDGA_SOLVER} 的 SINGLE 计数（0 = 判据没真挂到这个求解器上）`).toBeGreaterThanOrEqual(3);
+    expect(env.aggregate[SDGA_SOLVER] ?? 0, `${SDGA_SOLVER} 的 AGGREGATE 计数（4 个聚合叶：在手订单/产能/物料/设备）`).toBeGreaterThanOrEqual(4);
+
+    // ── 覆盖地板（**只是覆盖清单·不是验证逻辑**·验证逻辑一如既往现查本体）──────────
+    //   作用：某个叶悄悄消失时**点名**报出来，而不是让计数悄悄降到还够格的水位。
+    for (const tf of ["Order.qty", "Line.capacityDaily", "MaterialBalance.gapTon", "Equipment.oee_current", "DemandSegment.p50"]) {
+      expect(env.typeFieldSeen.has(tf), `供需双向归因应覆盖到 ${tf} 这一叶（不见了 = 叶消失或换了字段，需当场解释）`).toBe(true);
+    }
+  }, 300_000);
+
+  it("supply_demand_gap_attribution 结构漂移支路（seg_drift·默认种子里恒 0 → 必须造数才走得到）同样逐叶对拍", async () => {
+    // 为什么单开一个 app：默认种子 `DemandSegment.tgt === p50`（实测三段皆等）⇒ drift = max(0, p50−tgt) 恒 0
+    // ⇒ `drillField:"tgt"` 那条叶**在默认路径上一次都不出现**（"接了线没数据"）。不造数就等于没验它。
+    // 改数据的 app 必须自带一份 env（对象缓存按 app 隔离），否则读到改前的缓存 = 自己骗自己。
+    const t = await makeApp();
+    await seedBattery(t);
+    const segs = await t.repos.objects.listByType(ADMIN.tenantId, "DemandSegment");
+    expect(segs.length, "种子应有 DemandSegment").toBeGreaterThan(0);
+    for (const s of segs) await t.repos.objects.put({ ...s, props: { ...s.props, tgt: Number(s.props.tgt) / 2 } });
+
+    const env = await makeEnv(t);
+    const out = (await t.services.solvers.invoke(ADMIN, SDGA_SOLVER, {})) as unknown as Record<string, unknown>;
+    await auditRun(env, SDGA_SOLVER, "结构漂移支路（tgt 减半）", out);
+
+    // eslint-disable-next-line no-console
+    console.log(`[PROV-CANARY-DRIFT] single=${JSON.stringify(env.single)} aggregate=${JSON.stringify(env.aggregate)} typeFields=${[...env.typeFieldSeen].join(",")}`);
+    expect(env.typeFieldSeen.has("DemandSegment.tgt"), "tgt 减半后结构漂移叶必须真出现（不出现 = 这条支路没被驱动，本用例白跑）").toBe(true);
+    expect(env.single[SDGA_SOLVER] ?? 0, "漂移路的 SINGLE 计数（3 预测偏差叶 + 3 漂移叶）").toBeGreaterThanOrEqual(6);
+    expect(env.aggregate[SDGA_SOLVER] ?? 0, "漂移路的 AGGREGATE 计数（4 个聚合叶不受影响）").toBeGreaterThanOrEqual(4);
+  }, 300_000);
+
+  it("下游 id 拼装回归：真正拼 `obj_<type>_<drillId>` 的那条消费路必须逐叶解析得开", async () => {
+    // 病理：下游拿 drillId 拼 `obj_<type>_<drillId>`（gap-attribution.test.ts:107-108 与本文件
+    // 「接缝」用例 obj_order_<so> 就是这么用 atomicLeaves 的），`"*"` 会拼出 `obj_order_*` 这种废 id。
+    //
+    // ⚠ **订正上一单的一句实测**（WO-93 交接原文：「实测没漏（L1 基地节点只进 levels，不进 atomicLeaves）」）：
+    //   括号里那半是对的（L1 基地节点确实只进 levels），但**结论「没漏」是错的** —— 本单实跑：
+    //   `atomicLeaves` 里有 **6 个** `drillId:"*"` 的叶（`equip:handan/meishan/jiangmen/changzhou/yangzhou/xinyang`，
+    //   即上一单同一提交里改的设备聚合叶）。真正救了场的不是"没漏"，而是**消费方按 drillType 过滤**：
+    //   那条路只 `find(l => l.provenance.drillType === "Order")`，Equipment 叶根本轮不到被拼 id。
+    //   两句话的差别对下一个人是致命的：信"没漏"的人会以为随便加个消费方都安全，实际只要有人不按
+    //   drillType 过滤就当场拼出废 id。故本用例断言的是**真不变量**（消费路解析得开），不是那句假的。
     const t = await makeApp();
     await seedBattery(t);
 
-    // 已发布本体 = 类型/字段/主键的单一出处（不硬编码任何映射表）。
-    const types = await t.services.ontology.listTypes(ADMIN);
-    const typeByKey = new Map(types.map((x) => [x.key, x]));
-    const objCache = new Map<string, Record<string, unknown>[]>();
-    const rowsOf = async (tk: string): Promise<Record<string, unknown>[]> => {
-      if (!objCache.has(tk)) objCache.set(tk, (await t.repos.objects.listByType(ADMIN.tenantId, tk)).map((o) => o.props));
-      return objCache.get(tk)!;
-    };
+    // ① supply_demand_gap_attribution 侧：它根本没有 atomicLeaves 这个挂点（叶只挂 demandSide/supplySide.drivers），
+    //    但"我读代码觉得没有"不算证据，直接从真输出里断言。
+    const sdga = (await t.services.solvers.invoke(ADMIN, SDGA_SOLVER, {})) as unknown as Record<string, unknown>;
+    expect(sdga.atomicLeaves, `${SDGA_SOLVER} 不应有 atomicLeaves（有了就必须同步核对下游拼 id 的路）`).toBeUndefined();
 
-    const paths: [string, Record<string, unknown>][] = [
-      ["global(seg_attain_ess)", {}],
-      ["scope:hefei(复用全局子树)", { scope: { baseId: "hefei" } }],
-      ["scope:xiamen(敞口支路)", { scope: { baseId: "xiamen" } }],
-      ["market_share(专属因果域)", { metricKey: "market_share" }],
-      ["cash(专属因果域)", { metricKey: "cash" }],
-      ["revenue(专属因果域)", { metricKey: "revenue" }],
-      ["gross_profit(通用结构分摊)", { metricKey: "gross_profit" }],
-      ["demand_attain(专属因果域)", { metricKey: "demand_attain" }],
-    ];
+    const ga = (await run(t, {})) as GA;
+    expect(ga.atomicLeaves.length, "gap_attribution 应有原子叶（0 = 本回归空转）").toBeGreaterThan(0);
 
-    let single = 0;
-    let aggregate = 0;
-    let pathsWithProv = 0;
-    const typeFieldSeen = new Set<string>();
-
-    for (const [tag, args] of paths) {
-      const out = (await run(t, args)) as GA & { noGap?: boolean; noBaseData?: boolean };
-      const found = collectProvenance(out);
-      // 诚实空树（目标已达成 noGap / 该基地无可承接订单 noBaseData）本就无数可溯 —— 不是空转。
-      // 但**只有**引擎自己诚实声明了空，才准空；没声明却空 = 这条路把出处丢了，红。
-      if (found.length === 0) {
-        expect(
-          Boolean(out.noGap ?? out.noBaseData),
-          `${tag}：这条路一个 provenance 都没有，引擎也没声明 noGap/noBaseData = 出处在这条路上被丢了（R13）`,
-        ).toBe(true);
-        continue;
-      }
-      pathsWithProv++;
-
-      for (const { at, pv } of found) {
-        const where = `${tag} ${at}`;
-        const dt = pv.drillType;
-        const df = pv.drillField;
-        // ── 落不进两类的一律红 ──────────────────────────────────────────
-        expect(dt, `${where}：provenance 无 drillType，出处无从谈起（R13）`).toBeTruthy();
-        const ty = typeByKey.get(dt!);
-        expect(ty, `${where}：drillType「${dt}」不是已发布本体里的对象类型（幽灵类型·下钻必点不开）`).toBeTruthy();
-        expect(df, `${where}：${dt} 有 drillType 却无 drillField，说不出这个数来自哪个字段（R13）`).toBeTruthy();
-        const declared = new Set<string>([
-          ...ty!.properties.map((p) => p.propKey),
-          ...((ty as unknown as { derivedProperties?: { propKey: string }[] }).derivedProperties ?? []).map((p) => p.propKey),
-        ]);
-        expect(
-          declared.has(df!),
-          `${where}：标签写着 ${dt}.${df}，但「${df}」不在 ${dt} 的本体声明里（properties ∪ derivedProperties = ${[...declared].join(",")}）` +
-            ` —— 这是「把谎话从值搬到字段名」那种修法，本门专治`,
-        ).toBe(true);
-        typeFieldSeen.add(`${dt}.${df}`);
-
-        const vals = (await rowsOf(dt!)).map((r) => r[df!]).filter((v): v is number => typeof v === "number");
-
-        if (pv.drillId === AGG) {
-          // ── ② AGGREGATE：量纲带 [min, Σ] —— #96 那种差 1e4 的口径错标必出带 ──
-          aggregate++;
-          expect(vals.length, `${where}：聚合标 ${dt}.*.${df}，但全类没有一条该字段的数值真值可作包络`).toBeGreaterThan(0);
-          const lo = Math.min(...vals);
-          const hi = vals.reduce((a, b) => a + b, 0);
-          expect(typeof pv.drillValue, `${where}：聚合 drillValue 必须是数`).toBe("number");
-          expect(
-            pv.drillValue! >= lo && pv.drillValue! <= hi,
-            `${where}：聚合标 ${dt}.*.${df} 回了 ${pv.drillValue}，而该字段全类真值带是 [${lo}, Σ=${hi}]` +
-              ` —— 出带 = 回的根本不是这个字段的口径（#96 就是差 1e4 掉出带）`,
-          ).toBe(true);
-          continue;
-        }
-
-        // ── ① SINGLE：对象必须真存在，drillValue 恒等该字段真值 ──
-        single++;
-        const pk = ty!.properties.find((p) => p.isPrimaryKey)?.propKey;
-        expect(pk, `${where}：${dt} 本体未声明主键，下钻路径无从解析`).toBeTruthy();
-        const rows = await rowsOf(dt!);
-        const row = rows.find((r) => String(r[pk!]) === String(pv.drillId));
-        expect(
-          row,
-          `${where}：标签写着 ${dt}.${pv.drillId}.${df}，但 ${dt} 主键 ${pk} 里查无「${pv.drillId}」` +
-            `（现有样例 ${rows.slice(0, 3).map((r) => String(r[pk!])).join("/")}）—— 悬空下钻路径；` +
-            `若这本来就是聚合，请按契约标 drillId:"*"，不要拿别的键冒充对象主键`,
-        ).toBeTruthy();
-        const truth = row![df!];
-        // 布尔真值（如 BidRecord.win）允许按 0/1 编码回，但必须**对得上**，不许静默放行。
-        const expected = typeof truth === "boolean" ? (truth ? 1 : 0) : truth;
-        expect(
-          typeof expected,
-          `${where}：${dt}.${pv.drillId}.${df} 的真值是 ${JSON.stringify(truth)}（非数非布尔），无法与 drillValue 对拍`,
-        ).toBe("number");
-        expect(
-          pv.drillValue,
-          `${where}：标签写着 ${dt}.${pv.drillId}.${df}，那个字段的真值是 ${JSON.stringify(truth)}，溯源却回了 ${pv.drillValue}`,
-        ).toBe(expected);
-      }
+    // ② 真消费路（Order 叶 → `obj_order_<so>`）：逐叶必须在仓储里真解析得开，且一个 "*" 都不许有。
+    const orderLeaves = ga.atomicLeaves.filter((l) => l.provenance?.drillType === "Order");
+    expect(orderLeaves.length, "Order 原子叶数（0 = 本回归空转·消费路根本没数据可拼）").toBeGreaterThanOrEqual(5);
+    for (const l of orderLeaves) {
+      const id = l.provenance!.drillId;
+      expect(id, `${l.id}：Order 叶带聚合标记 "*" → 消费方会拼出 obj_order_* 废 id`).not.toBe(AGG);
+      const obj = await t.repos.objects.get(ADMIN.tenantId, `obj_order_${id}`);
+      expect(obj, `${l.id}：消费方按 obj_order_${id} 取对象取不到 —— 这就是废 id 的实锤`).toBeTruthy();
     }
 
-    // ── 非空洞：两类都必须真有货（否则"没有第三类"是靠没有节点凑出来的）──
-    expect(pathsWithProv, "出 provenance 的路径条数（太少 = 门只在一两条路上跑过）").toBeGreaterThanOrEqual(5);
-    expect(single, "SINGLE 类必须真被断言过（0 = 门空转）").toBeGreaterThanOrEqual(40);
-    expect(aggregate, "AGGREGATE 类必须真被断言过（0 = 聚合分支从没跑到）").toBeGreaterThanOrEqual(8);
-    expect(typeFieldSeen.size, "覆盖的 类型.字段 组合数（太少 = 只咬了一两个字段·不是通用判据）").toBeGreaterThanOrEqual(12);
+    // ③ 确实带 "*" 的那批叶：逐叶记录在案 + 证明「拼 id」这条路对它们**真的走不通**（所以②的过滤是必要的，
+    //    不是可有可无的巧合）。哪天有人把聚合叶挪到 Order 之类会被拼 id 的类型上，②当场红。
+    const aggLeaves = ga.atomicLeaves.filter((l) => l.provenance?.drillId === AGG);
+    expect(aggLeaves.length, "atomicLeaves 里的聚合叶数（0 = ③无从自证在扫；实测 6 个设备聚合叶）").toBeGreaterThan(0);
+    for (const l of aggLeaves) {
+      const dt = l.provenance!.drillType!;
+      expect(dt, `${l.id}：聚合叶落在 Order 上 = 直接掉进②那条会拼 id 的消费路`).not.toBe("Order");
+      const bogus = await t.repos.objects.get(ADMIN.tenantId, `obj_${dt.toLowerCase()}_${AGG}`);
+      expect(bogus, `obj_${dt.toLowerCase()}_* 居然取到了对象？那本用例的危害假设就得重写`).toBeFalsy();
+    }
+
+    // 金丝雀（与主判据共用同一个字段读法）：`"*"` 确实也进了 levels —— 证明上面在扫的是有货的集合。
+    const aggInLevels = ga.levels.flatMap((L) => L.nodes).filter((n) => n.provenance?.drillId === AGG).length;
+    expect(aggInLevels, "levels 里应真有聚合节点（0 = 上面几条断言无从证明自己在扫）").toBeGreaterThan(0);
+  }, 300_000);
+
+  it("路径表完整性锚：supply_demand_gap_attribution 今天**丢掉**全部入参 → 故上表只列 1 条；哪天接了 args 这条必红", async () => {
+    // 这条不是在给"丢参数"背书，而是把「为什么只列 1 条路径」从**我的说法**变成**机器的说法**。
+    // 实测：`supplyDemandGapAttribution(ctx, args)` 函数体内零处读 args（catalog.ts:135 却对外声明
+    // `argHints:{metricKey}`）⇒ 传什么都一样。一旦有人接上 scope/metricKey，输出不再逐字节相同 →
+    // 本用例红 → 逼着回来把新路径补进上面那张表，判据的作用面才不会悄悄落后于求解器。
+    const t = await makeApp();
+    await seedBattery(t);
+    const bare = await t.services.solvers.invoke(ADMIN, SDGA_SOLVER, {});
+    const withArgs = await t.services.solvers.invoke(ADMIN, SDGA_SOLVER, { metricKey: "cash", scope: { baseId: "hefei" } });
+    expect(
+      JSON.stringify(withArgs),
+      "传 metricKey/scope 后输出变了 ⇒ 该求解器已有第二条路径，请把它补进通用判据的 paths 表（否则新路径无人把关）",
+    ).toBe(JSON.stringify(bare));
   }, 300_000);
 });
