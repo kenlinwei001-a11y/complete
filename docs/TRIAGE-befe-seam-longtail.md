@@ -187,10 +187,57 @@ grep -rnE '`\$\{[a-zA-Z]' apps/frontend-shell/src/api/endpoints.ts              
 派单 §3 写「往基线条目加 `why` 注解说明理由」。**实测这条指令不可执行**，两层原因（见 §5.3）：
 
 1. `endpoints` 是**扁平字符串数组**，**没有 per-entry 的 `why` 槽位** —— 一条端点只能是一个字符串；
-2. 唯一能放散文的 `note` 字段，会被 `--update` **整段覆盖**（`writeBaseline` 写死 `note: BASELINE_NOTE`）。
+2. 唯一能放散文的 `note` 字段，会被 `--update` **整段覆盖**（`writeBaseline` 写死 `note: BASELINE_NOTE`）
+   —— 本单跑 `--update` 时**当场实测到**：`note` 978 → 237 字。
 
-⇒ 本单**没有动基线**（`git diff` 对 `scripts/backend-frontend-seam-baseline.json` 为空），
-全部 `why` 落在本文件里 —— 本文件是 git 里的一等文档，不会被任何脚本覆盖。
+⇒ 全部 `why` 落在**本文件**里（`docs/` 不会被任何脚本覆盖）。
+本单对基线的改动 = **恰好 1 行删除**（logout 接上了，按棘轮摘掉），`note` 已逐字节还原。
+
+---
+
+## 3.5 · 跨组结构发现：「引用反查」整族 11 条零消费，却被切进 5+ 张单
+
+分诊到 `GET /b/v1/rules/*/references` 与 `GET /b/v1/scene-entries/*/references` 时，
+往上追一层发现它们不是孤例 —— **全 196 条缺口里带 `/references` 的有 11 条**：
+
+| 侧 | 端点 | 注册点 |
+|---|---|---|
+| B | `GET /b/v1/agents/*/references` | `server.ts:905` |
+| B | `GET /b/v1/workflows/*/references` | `server.ts:1254` |
+| B | `GET /b/v1/rules/*/references` | `server.ts:1264` ← **本组** |
+| B | `GET /b/v1/solvers/*/references` | `server.ts:1270` |
+| B | `GET /b/v1/skills/*/references` | `server.ts:1595` |
+| B | `GET /b/v1/mcp-configs/*/references` | `server.ts:1964` |
+| B | `GET /b/v1/scene-entries/*/references` | `server.ts:3180` ← **本组** |
+| A | `GET /a/v1/ontology/references` | `app.ts:2808` |
+| A | `GET /a/v1/slices/*/references` | `app.ts:2838` |
+| A | `GET /a/v1/ontology/slices/*/references` | `app.ts:2842` |
+| A | `GET /a/v1/external-signals/*/references` | `app.ts:3019` ← **本组** |
+
+B 侧 7 条**全部**由同一个函数 `computeReferences(deps.repos, tenantId, kind, id)` 支撑
+（`server.ts` 里共 15 处调用，`kind` 取 `agent|workflow|rule|solver|skill|mcp-config|scene-entry`）。
+⇒ **这是一个能力整体缺前端面，不是 11 个独立缺口**。今天它被按域切进 5+ 张单
+（本组 3 条 · agents 组 · skills/workflows 组 · mcp-configs 组 · ontology/slices 组），
+每张单各接一点 = 大概率长出 5 份形态不同的「引用面板」。
+
+**建议**：收成**一张单** —— 一个共享 `<ReferencesPanel kind={…} id={…}>` +
+一个按 `kind` 拼 URL 的通用客户端。
+
+**⚠️ 先替这个建议排掉一个雷**：通用客户端会写成 `` `/b/v1/${kind}/${id}/references` ``，
+`kind` 是**变量** —— 门还认得出「前端调了」吗？**用门自己的导出函数实测（不另抄正则）**：
+
+```
+金丝雀：extractFrontendPaths 抽出已知路径 ✓
+门从通用写法里抽出的前端路径： [ '/b/v1/*/*/references' ]
+  ✓ /b/v1/rules/*/references        ✓ /b/v1/scene-entries/*/references
+  ✓ /b/v1/agents/*/references       ✓ /b/v1/skills/*/references
+  ✓ /b/v1/workflows/*/references    ✓ /b/v1/solvers/*/references
+  ✓ /b/v1/mcp-configs/*/references
+  ✓ 反向 /b/v1/rules/*/references/extra（段数不同，必须不中）
+```
+
+`pathMatches` 逐段比、两侧的 `*` 都当通配 ⇒ **`/b/v1/*/*/references` 一条就把 7 条全覆盖**，
+门会如实把它们从缺口里摘掉。**这也反证了 §5.2 第 3 条**：不必给门加「模板串拼 URL」支持。
 
 ---
 
@@ -265,7 +312,8 @@ grep -rnE '`\$\{[a-zA-Z]' apps/frontend-shell/src/api/endpoints.ts              
 | 唯一能放散文的是 `note` 一个字段 | 同上 `:3` |
 | `--update` 把 `note` **写死成罐头** | `scripts/check-backend-frontend-seam.mjs:867-876` `writeBaseline()` 里 `note: BASELINE_NOTE`（`:860-865` 的常量），**不读旧值** |
 | 当前 `note` = 罐头 **237** 字 + 手写记账 **741** 字 | 手写部分是 WO-R2（+9 条 ontology/interfaces 与 plan-builders）与 WO-R6（`actions/metrics` 挂账）两笔**可评审的显式记账** |
-| 它至今没被抹，纯属侥幸 | 文件里 `generatedBy` 已经是 `--update` —— 说明手写是在**最后一次 `--update` 之后**补的。**下一次谁跑 `--update`，741 字当场归零** |
+| 它至今没被抹，纯属侥幸 | 文件里 `generatedBy` 已经是 `--update` —— 说明手写是在**最后一次 `--update` 之后**补的 |
+| **⚠️ 这枪本单当场击发过（不是预测，是实测）** | 本单接完 logout 后按派单要求跑 `--update` 收紧基线，实测 `note` **978 → 237 字**（741 字 WO-R2/WO-R6 记账当场归零）。本单**手工逐字节还原**（还原后 `note === 快照` 为 `true`），最终 `git diff` 只剩 **1 行删除**（`POST /a/v1/auth/logout`）。**下一个跑 `--update` 的人如果不知道这件事，那 741 字就没了** |
 
 形态照铁律 0.6 句式：
 > **「我用『把理由写进基线』当作『理由被保存下来了』的证据，而前者并不度量后者 —— 那个字段是脚本的输出位，不是人的输入位。」**
@@ -276,8 +324,11 @@ grep -rnE '`\$\{[a-zA-Z]' apps/frontend-shell/src/api/endpoints.ts              
 2. 更彻底：把 `endpoints` 从 `string[]` 升成 `{ key, why? }[]`（读侧兼容旧的纯字符串），
    让 `why` 有**每条**的落点 —— 这才是派单那句话真正需要的东西。
 3. **在此之前，一切 `why` 写进 `docs/`**（本文件即是），因为 `docs/` 不会被任何脚本覆盖。
+4. **在修好之前，跑 `--update` 必须配一次「存快照 → 跑 → 还原 `note` → 核对只删不增」**
+   —— 本单就是这么做的（见上表最后一行）。
 
-**本单据此没有动 `scripts/backend-frontend-seam-baseline.json`**（`git diff` 对该文件为空）。
+**本单对该文件的改动 = 恰好 1 行删除**（`POST /a/v1/auth/logout` 接上了，按棘轮摘掉），
+`note` 与 `sseFields` 逐字节不变。
 
 复验：
 
