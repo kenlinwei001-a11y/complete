@@ -700,7 +700,14 @@ export const OrderDeliveryJudgeSchema = z.object({
    * @unit 套/周
    */
   packsPerWeekP90: z.number(),
-  /** 本单需求（`Order.qty`，视为单周需求）。@unit 套/周 */
+  /**
+   * 本单需求。
+   * @unit 套/周
+   * ⚠ 量纲**是折算出来的、不是量出来的**：真值是 `Order.qty`（**套**·存量·SO-3391 实测 7259），
+   * 引擎按「这一单要在一周内交完」当作单周需求，才与左边真·速率的 `packsPerWeekP50/P90` 可比。
+   * 这是 C02 的确定性代理口径 —— 屏上必须说出来（`OrderChainView` 已挂浮层披露），
+   * 不许只写「本周需求」把假设讲成事实。跨周交付的单据此判会偏保守。
+   */
   demand: z.number(),
   /** 交期结论：可达 / 紧张。 */
   verdict: z.string(),

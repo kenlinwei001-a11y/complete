@@ -15,6 +15,7 @@ import type { ViewRendererProps } from "../registry";
 import { KitScopeBar, QuoteScopeBar, type KitScopeVM, type QuoteScopeVM } from "../ScopeHonesty";
 import { fmt, SnapshotBadge } from "../sim/shared";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
+import { InfoPopover } from "@/components/InfoPopover";
 import zh from "@/locales/zh";
 import simStyles from "../sim/SimViews.module.css";
 import styles from "./PlanViews.module.css";
@@ -929,8 +930,20 @@ function OrderFullchainPanel() {
             <thead><tr><th>关联判</th><th>结论</th><th>关键值</th><th>规则</th></tr></thead>
             <tbody>
               {/* 量纲由后端 `unit` 单源下发（`OrderDeliveryJudgeSchema`），前端只格式化不内联口径。
-                  屏上必须写清「套/周」—— 否则用户分不出这个 P90 是周供给还是 T+N 累计还是万套。 */}
-              <tr><td>①交期·产能</td><td>{data.judges.cap.verdict}</td><td className="mono">周供给 P90 {data.judges.cap.packsPerWeekP90} vs 本周需求 {data.judges.cap.demand}（{data.judges.cap.unit ?? "套/周"}）</td><td className="mono">{data.judges.cap.ruleRefs.join("/")}</td></tr>
+                  屏上必须写清「套/周」—— 否则用户分不出这个 P90 是周供给还是 T+N 累计还是万套。
+
+                  ⚠ WO-P50-REMAINING-3 复核 `unit` 字面量时查出的**第二件事**（算术判据，不是读注释）：
+                  比较式左边 `packsPerWeekP90` 是真·**速率**（可产基地数 × 周产能基线 700 = 套/周），
+                  右边 `demand` 却是 `Order.qty`（**存量**·SO-3391 实测 7259 套，整单量）。
+                  引擎把整单量当作「一周内要交完」来比（`solvers/service.ts` 自称「确定性代理」），
+                  屏上原先写作「本周需求」—— 那是**把假设说成了事实**。
+                  改为「本单需求」（同样 4 字，第一层不变重）+ 浮层披露折算假设：
+                  第一层留结论，口径进浮层（`CONVENTION-ui-information-layering` §2 R-UI-3）。 */}
+              <tr><td>①交期·产能</td><td>{data.judges.cap.verdict}</td><td className="mono">周供给 P90 {data.judges.cap.packsPerWeekP90} vs 本单需求 {data.judges.cap.demand}（{data.judges.cap.unit ?? "套/周"}）<InfoPopover topic="这两个数凭什么放在一起比" testId="ofc-cap-basis">
+                左边是**速率**：可产基地数 × 周产能基线 → 套/周。
+                右边是**整单量**（Order.qty·套），引擎按「这一单要在一周内交完」折算成套/周再比 ——
+                这是 C02 的确定性代理口径，不是订单自带的周需求。跨周交付的单据此判会偏保守。
+              </InfoPopover></td><td className="mono">{data.judges.cap.ruleRefs.join("/")}</td></tr>
               <tr><td>②齐套·MRP</td><td>{data.judges.kit.verdict}</td><td className="mono">{data.judges.kit.material} 缺 {data.judges.kit.gapTon} 吨</td><td className="mono">{data.judges.kit.ruleRefs.join("/")}</td></tr>
               <tr><td>③财务·经营</td><td>{data.judges.fin.verdict}</td><td className="mono">毛利 {data.judges.fin.marginPct}% vs 底线 {data.judges.fin.floorPct}%</td><td className="mono">{data.judges.fin.ruleRefs.join("/")}</td></tr>
             </tbody>

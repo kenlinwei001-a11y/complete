@@ -4177,7 +4177,9 @@ export class SolverService {
     if (!creditOk) { verdict = "不建议接"; vc = "#DD7E9E"; conds.push("信用占用超限（C13），需先收款/降额"); }
     else if (!marginOk) { verdict = `提价${priceUpPct}%接`; vc = "#E8B54A"; conds.push(`毛利率 ${marginPct}% < 细分底线 ${floorPct}%（C15），提价 ${priceUpPct}% 达线`); }
     else { verdict = "可接"; vc = "#62BE77"; }
-    if (!deliveryOk) conds.push(`周供给 P90 ${packsPerWeekP90} 套/周 < 需求 ${qty} 套/周（C02），需夜班/外协对冲`);
+    // WO-P50-REMAINING-3：原文写「需求 7259 套/周」，把**整单量**说成了**周需求**（见上方 deliveryJudge 注释）。
+    // 屏上照实说：左边是速率、右边是整单量按单周折算 —— 假设要写出来，不许伪装成事实。
+    if (!deliveryOk) conds.push(`周供给 P90 ${packsPerWeekP90} 套/周 < 本单需求 ${qty} 套（按整单落单周折算·C02），需夜班/外协对冲`);
     if (!kitOk) conds.push(`${kitJudge.material} 缺口 ${kitGap} 吨（C06），最早齐套 ${kitJudge.eta}`);
 
     // 业务建模链 DAG：so → {net 可产网络 · bom BOM · eco 单价细分 · cred 信用} → {jcap · jkit · jfin} → vrd。
