@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
+// 「事实还在不在」一律走仓内既有的**剥注释后判命中**机制（自带金丝雀），不在本文件另做一套。
+import { commentOnlyCanary, factHits, srcCode } from "./factlock";
 
 /**
  * WO-P50-REMAINING-3 · **分位量纲屏上可分辨**接缝门（本体 §8 `G-QUANTILE-NAME-COLLISION`）。
@@ -151,6 +153,31 @@ describe("§2 · 契约里零裸分位名（旧名不回潮）", () => {
     expect(battery).toMatch(/propKey: "supply"[^\n]*unit: "万套\/年"/);
     // 旧裸名不回潮（`props.p50` 形态的属性定义）
     expect(battery).not.toMatch(/propKey: "p(50|90)"/);
+  });
+
+  /**
+   * 门 `check-quantile-field-naming` 只认 **zod 字段声明**，看不见 React prop ——
+   * 而 `DynamicLeverPanel` 的「调整前」参照量恰恰是同一个病长在 prop 上：
+   * 原名 `baseP50` 被两个调用方分别喂 **万套/窗口**（ProjectSimView `capWanP50`）与
+   * **张力 0–100**（RiskBoardView `card.peak`）。名字自称 P50 而其中一个根本不是分位数。
+   * 已改量纲中立的 `beforeValue`（口径由 `beforeLabel` 上屏说明）——本例咬它不回潮。
+   */
+  it("React prop 侧同样零分位裸名：DynamicLeverPanel 的「调整前」参照量是量纲中立名", () => {
+    // 判据落在**剥掉注释后的可执行代码**上（本文件的说明注释里就写着 `baseP50` 三个字；
+    // 拿原文判会把「记账」误读成「回潮」——那正是 factlock 那道机制当初要治的病）。
+    const code = srcCode("apps/frontend-shell/src");
+    // 金丝雀：只在注释里提到探针的合成样例必须**零命中**，否则 stripComments 坏了，
+    // 本次「已不存在」的结论一律作废（不许把工具坏了读成代码干净）。
+    expect(factHits(commentOnlyCanary("baseP50"), "baseP50")).toEqual([]);
+    expect(code.length).toBeGreaterThan(100); // 扫描面非空自证
+
+    expect(factHits(code, /\bbaseP50\b/)).toEqual([]);
+    // 两个调用方各传各的量纲 ⇒ 都走中立名；RiskBoardView 传的不是分位数，必须自带 beforeLabel 覆盖默认文案
+    const at = (rel: string) => code.find(([f]) => f.endsWith(rel))?.[1] ?? "";
+    expect(at("views/RiskBoardView.tsx")).toContain("beforeValue={card.peak}");
+    expect(at("views/RiskBoardView.tsx")).toContain("beforeLabel=");
+    expect(at("views/sim/ProjectSimView.tsx")).toContain("beforeValue={out.capWanP50}");
+    expect(at("views/sim/DynamicLeverPanel.tsx")).toContain("beforeValue");
   });
 });
 

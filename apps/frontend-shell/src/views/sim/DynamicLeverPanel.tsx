@@ -93,7 +93,7 @@ function parseC08Ratio(rules: { key: string; expression?: string }[] | undefined
 }
 
 export function DynamicLeverPanel({
-  baseP50,
+  beforeValue,
   baseGap,
   factors,
   scopeObjectIds,
@@ -107,7 +107,16 @@ export function DynamicLeverPanel({
   adoptActionTypeKey = "采纳产能保障方案",
   onLiveState,
 }: {
-  baseP50: number;
+  /**
+   * 「调整前」参照量的**数值**（量纲由调用方决定，故名字里**不许**带分位/口径）。
+   *
+   * WO-P50-REMAINING-3 实测：本 prop 原名 `baseP50`，而两个调用方传的是**两个不同量纲**——
+   * `ProjectSimView` 传 `out.capWanP50`（**万套/窗口**）· `RiskBoardView` 传 `card.peak`
+   * （**张力 0–100 指数**，压根不是分位数）。这正是 R18 要拦的「一个分位名背多个量纲」，
+   * 只是它长在 React prop 上、不在 zod schema 里，所以 `check-quantile-field-naming` 看不见。
+   * 改名为量纲中立的 `beforeValue`：**名字不再撒谎**，口径由必配的 `beforeLabel` 上屏说明。
+   */
+  beforeValue: number;
   baseGap: number;
   factors: string[];
   scopeObjectIds?: string[];
@@ -301,7 +310,7 @@ export function DynamicLeverPanel({
           <div className={styles.abCompare} data-testid="lever-ab">
             <div>
               <span>{beforeLabel ?? zh.sim.proj.before}</span>
-              <b data-testid="lever-before-p50">{fmt(baseP50)}</b>
+              <b data-testid="lever-before-value">{fmt(beforeValue)}</b>
             </div>
             <div>
               <span>影响面</span>
