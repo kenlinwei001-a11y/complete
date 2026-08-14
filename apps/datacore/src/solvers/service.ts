@@ -135,6 +135,120 @@ type DecisionJoinKind = keyof typeof DECISION_JOIN_RANK;
  */
 const isWildcardDrillId = isDynamicDrillId;
 
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-ORDER-DEPENDENT-PICK · 因果图（caused_by）—— **单一出处**
+// 原先 `gapAttributionMetricDomain` 内联建一次邻接表、`gapAttribution` 选入口时压根不看图
+// （只按 `factorId` 字母序取第一条）。两处对「因果图长什么样」各有一套认知，正是本单要治的病。
+// 这里提到模块级：选入口与走树用**同一份**邻接表实现，改一处两处一起变。
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** `caused_by` 邻接表：果 → 因（对端已按 id 排序 ⇒ BFS 顺序 R6 稳定）。 */
+const buildCausedByAdjacency = (links: { type: string; fromId: string; toId: string }[]): Map<string, string[]> => {
+  const oidToPk = (id: string) => id.replace(/^obj_causalfactor_/, "");
+  const adj = new Map<string, string[]>();
+  for (const l of links) {
+    if (l.type !== "caused_by") continue;
+    const from = oidToPk(l.fromId);
+    if (!adj.has(from)) adj.set(from, []);
+    adj.get(from)!.push(oidToPk(l.toId));
+  }
+  for (const [, tos] of adj) tos.sort();
+  return adj;
+};
+
+/** 从某因子沿 `caused_by` 可达的因子集合（不含自身）。 */
+const reachableFactors = (adj: Map<string, string[]>, from: string): Set<string> => {
+  const seen = new Set<string>();
+  const queue = [from];
+  while (queue.length) {
+    for (const nx of adj.get(queue.shift()!) ?? []) {
+      if (nx === from || seen.has(nx)) continue;
+      seen.add(nx);
+      queue.push(nx);
+    }
+  }
+  return seen;
+};
+
+/**
+ * WO-ORDER-DEPENDENT-PICK · 「本指标域的**入口因子**是哪一个」——判据从**因果图本身**算出来。
+ *
+ * ══ 修前是什么样（`gapAttribution` 里的 `domainEntry`）══════════════════════════════
+ * ```
+ * cfForDomain.filter((c) => c.metricKey === m.key && !c.isRoot)
+ *            .sort((a, b) => str(a.factorId).localeCompare(str(b.factorId)))[0]
+ * ```
+ * **整棵归因树从哪个节点开始长，判据只是 `factorId` 的字母顺序。** 这不是"选"，是"取数组第一条"
+ * 换了件排序的外衣：新增一个 id 排在前面的因子，该指标的根因整个换人，而**零测试变红**
+ * （今天 5 个真实指标域各自恰好只有 1 条非根因子 ⇒ 排序退化成恒等，病灶被数据形态盖住了）。
+ * 同形态的先例：`ltas.find(materialType==="正极")`（WO-LTA-EVIDENCE-CONFLICT，取数组第一条）。
+ *
+ * ══ 真判据是什么、依据在哪 ══════════════════════════════════════════════════════
+ * 入口因子 = 本域因果 DAG 的**源点**。两条判据都从数据算，都不是本函数编的：
+ *  1. **拓扑**：本域内没有任何 `caused_by` 边指向它（域内入度 0）。
+ *     `caused_by` 的方向是「果 → 因」，被指到的那个是**别人的因**，也就是链条中段，不是入口。
+ *     （实测 5 个真实域的入口 `cf-share-gap` / `cf-revenue-gap` / `cf-cash-gap` /
+ *      `cf-demand-attain-gap` / `cf-gm-gap` 域内入度全为 0。）
+ *  2. **成树**：入口必须真能沿 `caused_by` 走到本域的根因。这不是凑出来的排序键，而是引擎自己的机制——
+ *     `gapAttributionMetricDomain` 就是从入口做 BFS 的：入口若一步也走不出去，`reachedFactors` 为空
+ *     ⇒ 因果层一个节点都没有 ⇒ 整棵树退化成 L1 单节点。**"走不出去的因子不是入口，是孤点"**，
+ *     故按（够到的本域根因数 → 可达因子总数）降序排，而**不是**按 id 排。
+ *     实测反例：`capacity` 域两条非根因子中，`cf-cap-bottleneck-process` 零出边（可达 0），
+ *     `cf-cap-material-kitting` 可达 8 —— 字母序恰好选中前者，得到一棵空树。
+ *
+ * ══ 排不出唯一的时候：fail-loud，绝不"随便挑一个" ═════════════════════════════════
+ * 两条判据都并列 ⇒ 该域的因果图**真的没说**入口是谁（两个平行源点）。此时再拿 id 字典序兜底，
+ * 就是把本单要治的病原样搬个地方：屏上照样出现一个"看起来言之凿凿"的根因，用户分辨不出它是掷骰子来的。
+ * 故返回 `ambiguous`，由调用方**报错**并把并列候选原样写进错误信息——数据错就该在数据上修。
+ */
+type DomainEntryPick =
+  | { kind: "ok"; entryId: string; basis: string }
+  | { kind: "ambiguous"; tied: string[]; basis: string }
+  | { kind: "none" };
+
+const resolveDomainEntryFactor = (
+  domainFactors: Record<string, unknown>[],
+  adj: Map<string, string[]>,
+): DomainEntryPick => {
+  const idOf = (c: Record<string, unknown>) => str(c.factorId);
+  const candidates = domainFactors.filter((c) => !Boolean(c.isRoot));
+  if (candidates.length === 0) return { kind: "none" };
+  const domainIds = new Set(domainFactors.map(idOf));
+  const domainRootIds = new Set(domainFactors.filter((c) => Boolean(c.isRoot)).map(idOf));
+  // 判据 1·域内入度 0（`caused_by` 果→因：被域内某因子指到 ⇒ 它是别人的因，属链条中段）。
+  const inDegreeWithinDomain = (id: string): number => {
+    let n = 0;
+    for (const [from, tos] of adj) if (domainIds.has(from) && from !== id && tos.includes(id)) n += 1;
+    return n;
+  };
+  const sources = candidates.filter((c) => inDegreeWithinDomain(idOf(c)) === 0);
+  // 全体互指（成环）⇒ 没有源点。退回全体候选继续按判据 2 排，排不出唯一仍走 fail-loud。
+  const pool = sources.length > 0 ? sources : candidates;
+  // 判据 2·成树能力（够到的本域根因数 → 可达因子总数）。
+  const scored = pool.map((c) => {
+    const reach = reachableFactors(adj, idOf(c));
+    let rootsHit = 0;
+    for (const r of reach) if (domainRootIds.has(r)) rootsHit += 1;
+    return { id: idOf(c), rootsHit, total: reach.size };
+  });
+  const best = scored.reduce((a, b) => (b.rootsHit > a.rootsHit || (b.rootsHit === a.rootsHit && b.total > a.total) ? b : a));
+  const tied = scored.filter((s) => s.rootsHit === best.rootsHit && s.total === best.total);
+  const shape =
+    `候选 ${scored.length} 条（${scored.map((s) => `${s.id}:域内入度0=${sources.some((c) => idOf(c) === s.id)}·够到本域根因 ${s.rootsHit}·可达 ${s.total}`).join(" | ")}）`;
+  if (tied.length > 1) {
+    return {
+      kind: "ambiguous",
+      tied: tied.map((s) => s.id).sort(),
+      basis: shape,
+    };
+  }
+  return {
+    kind: "ok",
+    entryId: best.id,
+    basis: `入口因子 ${best.id} ← 域内 caused_by 入度 0 且成树能力最强（够到本域根因 ${best.rootsHit} 条·沿 caused_by 可达 ${best.total} 条）；${shape}`,
+  };
+};
+
 /** WO-OPTWHATIF-NL-WIRING · 选中决策对象引用（= AgentCore ObjectRef 结构·经 invoke args 透传）。 */
 interface SelectionRef { objectType: string; objectId: string; label?: string }
 /** WO-OPTWHATIF-NL-WIRING · role 提示（AgentCore opt-whatif-route 透传·候选承载类型·不硬编）。 */
@@ -1646,12 +1760,21 @@ export class SolverService {
     //    即从该入口沿 caused_by 归到**本域根因**（cash→cf-ar-aging·revenue→cf-pipeline-shrink·
     //    demand_attain→cf-forecast-bias），**绝不回落 cathode 供应链根**。无专属域的指标（gross_profit/
     //    seg_attain/gm_rate…）才走下方通用供应链结构反向分摊（兼容 v1）。 ──
+    // WO-ORDER-DEPENDENT-PICK：入口因子的判据从**因果图**算（判据与 fail-loud 理由见 `resolveDomainEntryFactor` 方法头）。
+    //   修前：`.sort((a,b) => a.factorId.localeCompare(b.factorId))[0]` —— 整棵树从哪长，判据只是字母序。
     const cfForDomain = (await this.repos.objects.listByType(ctx.tenantId, "CausalFactor")).map((o) => o.props);
-    const domainEntry = cfForDomain
-      .filter((c) => str(c.metricKey) === str(m.key) && !Boolean(c.isRoot))
-      .sort((a, b) => str(a.factorId).localeCompare(str(b.factorId)))[0];
-    if (domainEntry) {
-      return await this.gapAttributionMetricDomain(ctx, m, G, unit, structuralExplained, causalExplained, binding, str(domainEntry.factorId));
+    const domainFactors = cfForDomain.filter((c) => str(c.metricKey) === str(m.key));
+    const domainAdj = buildCausedByAdjacency(await this.repos.links.list(ctx.tenantId));
+    const entryPick = resolveDomainEntryFactor(domainFactors, domainAdj);
+    if (entryPick.kind === "ambiguous") {
+      throw validationError(
+        `指标「${str(m.key)}」的因果域有 ${entryPick.tied.length} 个并列入口因子（${entryPick.tied.join(" / ")}）——` +
+          `因果图本身没说该从哪一个开始归因，引擎拒绝替它挑一个（挑了屏上就会出现一个掷骰子来的根因，而用户分辨不出）。` +
+          `请在 CausalFactor 数据上定唯一入口（把其余非根因子接到入口下游，或标 isRoot）。判据实测：${entryPick.basis}`,
+      );
+    }
+    if (entryPick.kind === "ok") {
+      return await this.gapAttributionMetricDomain(ctx, m, G, unit, structuralExplained, causalExplained, binding, entryPick.entryId, domainAdj);
     }
 
     // ── 结构反向分摊：受影响订单（真 Order.value）→ 基地聚合 → 基地内瓶颈（设备 OEE / 物料 gapTon）──
@@ -2593,25 +2716,17 @@ export class SolverService {
     causalExplained: number,
     binding: { roots: string[]; weights: Record<string, number>; domainWeights: Record<string, number>; fallbackToSupplyChain: boolean } | undefined,
     entryFactorId: string,
+    /** 已建好的 `caused_by` 邻接表（入口因子就是照它选出来的 ⇒ 选入口与走树共用同一份图·省一次 links.list）。 */
+    adjPre?: Map<string, string[]>,
   ): Promise<Record<string, unknown>> {
     const levels: Record<string, unknown>[] = [];
     const reconChecks: Record<string, unknown>[] = [];
     const atomicLeaves: Record<string, unknown>[] = [];
 
-    // 因果图（caused_by）+ 因子索引。
-    const links = await this.repos.links.list(ctx.tenantId);
-    const causedBy = links.filter((l) => l.type === "caused_by");
+    // 因果图（caused_by）+ 因子索引。邻接表走模块级单一出处 `buildCausedByAdjacency`（WO-ORDER-DEPENDENT-PICK）。
     const cfObjs = (await this.repos.objects.listByType(ctx.tenantId, "CausalFactor")).map((o) => o.props);
     const cfById = new Map(cfObjs.map((c) => [str(c.factorId), c]));
-    const oidToPk = (id: string) => id.replace(/^obj_causalfactor_/, "");
-    const adj = new Map<string, string[]>();
-    for (const l of causedBy) {
-      const from = oidToPk(l.fromId);
-      const to = oidToPk(l.toId);
-      if (!adj.has(from)) adj.set(from, []);
-      adj.get(from)!.push(to);
-    }
-    for (const [, tos] of adj) tos.sort();
+    const adj = adjPre ?? buildCausedByAdjacency(await this.repos.links.list(ctx.tenantId));
 
     // drill 真值读取（pkField 映射覆盖各指标域证据对象；与 market_share 同源、补商业/财务域类型）。
     const drillCache = new Map<string, Record<string, unknown>[]>();
@@ -3531,25 +3646,56 @@ export class SolverService {
     anchors: { byKey: Map<string, GapAnchor>; byType: Map<string, GapAnchor> },
     ltas: Record<string, unknown>[],
   ): { lta: Record<string, unknown> | null; ltaId: string; source: "TREE_ANCHOR" | "NO_TREE_ANCHOR"; path: string } {
-    const ltaAnchor = [...anchors.byKey.values(), ...anchors.byType.values()]
-      .filter((a) => a.drillType === "LongTermAgreement" && !isWildcardDrillId(a.drillId))
+    const r = this.resolveTreeAnchoredEvidence(anchors, ltas, "LongTermAgreement", "ltaId");
+    return { lta: r.row, ltaId: r.id, source: r.source, path: r.path };
+  }
+
+  /**
+   * WO-ORDER-DEPENDENT-PICK · C1 · 「本次推演里，**哪一个某类型的对象**是证据」的**单一实现**。
+   *
+   * 由 `resolveEvidenceLta` 提取而来（原先只服务长协一种类型）。提取的理由不是"复用好看"，而是
+   * `decisionPlay` 里**同函数同写法**还有第二处：
+   * ```
+   * const cathodePool = pools.find((p) => str(p.materialType) === "正极");   // ← 取数组第一条
+   * ```
+   * 它与修前的 `ltas.find((l) => l.materialType === "正极")` 是**同一个病**，只因种子里正极备份池
+   * 恰好只有一个（实测 `BackupSupplierPool` 2 条：`pool-cathode`(正极) / `pool-anode`(负极)）
+   * 才没有在屏上炸出来 —— 也就是说，这段代码今天的正确性**不由代码保证，由数据碰巧保证**。
+   * 一旦企业真的有两个正极备份池（完全正常的业务形态），`opt-backup-cert` 的 `certWeeks`、成本、
+   * 周期、`drillId` 会整条换到另一个池上，而**没有任何一条测试会红**。
+   *
+   * 判据与长协那条同源、也同样是"数据自己有的"：**归因树上贡献最大的该类型落点**
+   * （并列再比 nodeId，稳定且可复算）。实测（seed=42·demo·`decision_play({})`）树上
+   * `BackupSupplierPool` 落点两个：`cf-cert-cycle`(贡献 0.4772·certWeeks) 与
+   * `cf-backup-thin`(0.4652·memberCount)，都下钻 `pool-cathode` ⇒ 树锚 = `pool-cathode`，
+   * 与今天 `pools.find(正极)` 的结果**逐字节相同**（故本条是行为等价的加固，不改金值）。
+   *
+   * 树上没有该类型落点时 ⇒ `NO_TREE_ANCHOR`：仍按主键字典序给一个代表**仅为 R6 确定性**，
+   * 并在 `path` 里明说它不是证据；调用侧的依据门（`optionsEvidence`）本就会把这条方案整条剔除。
+   */
+  private resolveTreeAnchoredEvidence(
+    anchors: { byKey: Map<string, GapAnchor>; byType: Map<string, GapAnchor> },
+    rows: Record<string, unknown>[],
+    drillType: string,
+    pkField: string,
+  ): { row: Record<string, unknown> | null; id: string; source: "TREE_ANCHOR" | "NO_TREE_ANCHOR"; path: string } {
+    const anchor = [...anchors.byKey.values(), ...anchors.byType.values()]
+      .filter((a) => a.drillType === drillType && !isWildcardDrillId(a.drillId))
       .sort((a, b) => b.contribution - a.contribution || a.nodeId.localeCompare(b.nodeId))[0];
-    if (ltaAnchor) {
-      const hit = ltas.find((l) => str(l.ltaId) === ltaAnchor.drillId) ?? null;
+    if (anchor) {
       return {
-        lta: hit,
-        ltaId: ltaAnchor.drillId,
+        row: rows.find((l) => str(l[pkField]) === anchor.drillId) ?? null,
+        id: anchor.drillId,
         source: "TREE_ANCHOR",
-        path: `归因树节点 ${ltaAnchor.nodeId}（${ltaAnchor.factor}·贡献 ${ltaAnchor.contribution}${ltaAnchor.unit}）下钻 ${ltaAnchor.drillType}/${ltaAnchor.drillId}`,
+        path: `归因树节点 ${anchor.nodeId}（${anchor.factor}·贡献 ${anchor.contribution}${anchor.unit}）下钻 ${anchor.drillType}/${anchor.drillId}`,
       };
     }
-    // 树上没有长协落点 —— 只为 R6 取字典序代表，且**不得**被当成证据（见方法头「诚实边界」）。
-    const rep = [...ltas].sort((a, b) => str(a.ltaId).localeCompare(str(b.ltaId)))[0] ?? null;
+    const rep = [...rows].sort((a, b) => str(a[pkField]).localeCompare(str(b[pkField])))[0] ?? null;
     return {
-      lta: rep,
-      ltaId: str(rep?.ltaId ?? ""),
+      row: rep,
+      id: str(rep?.[pkField] ?? ""),
       source: "NO_TREE_ANCHOR",
-      path: "本次归因树上无 LongTermAgreement 落点 ⇒ 无树锚（按 ltaId 字典序取代表仅为 R6 确定性，不作证据）",
+      path: `本次归因树上无 ${drillType} 落点 ⇒ 无树锚（按 ${pkField} 字典序取代表仅为 R6 确定性，不作证据）`,
     };
   }
 
@@ -3586,14 +3732,18 @@ export class SolverService {
     const ltas = (await this.repos.objects.listByType(ctx.tenantId, "LongTermAgreement")).map((o) => o.props);
     const pools = (await this.repos.objects.listByType(ctx.tenantId, "BackupSupplierPool")).map((o) => o.props);
     const ltaShortfall = round(ltas.filter((l) => str(l.materialType) === "正极").reduce((a, l) => a + Math.max(0, num(l.contractedQtyTon) - num(l.actualDeliveredTon)), 0), 0);
-    const cathodePool = pools.find((p) => str(p.materialType) === "正极");
-    const certWeeks = num(cathodePool?.certWeeks, 16);
     // WO-LTA-EVIDENCE-CONFLICT · 长协证据解析 —— 锚在**归因树指定的那一份**上（原为 `ltas.find(正极)`
     // ＝「数组里第一条」，解析成 lta-lfp-rbkj，与树上的 cf-lta-breach/lta-lfp-cylk 打架）。判据与
     // 「为什么是 cylk 不是 rbkj」的三条独立证据写在 `resolveEvidenceLta` 方法头，不在这里重抄一遍。
     // `anchors` 因此必须**在方案构造之前**算好（原在方案之后，只用于事后过滤）。
     const anchors = this.collectGapAnchors(ga);
     const evidenceLta = this.resolveEvidenceLta(anchors, ltas);
+    // WO-ORDER-DEPENDENT-PICK · C1 · 备份池证据同样锚到树上（原为 `pools.find(materialType==="正极")`
+    // ＝**同函数同写法**的第二处「取数组第一条」，只因种子里正极池恰好只有一个才没炸）。
+    // 判据/实测/等价性论证见 `resolveTreeAnchoredEvidence` 方法头。
+    const evidencePool = this.resolveTreeAnchoredEvidence(anchors, pools, "BackupSupplierPool", "poolId");
+    const cathodePool = evidencePool.row;
+    const certWeeks = num(cathodePool?.certWeeks, 16);
     const priceLinked = Boolean(evidenceLta.lta?.priceLinked);
     // 该证据长协自己的欠交量（与 `ltaShortfall` 的**正极全体合计**不是一个量：id 指一份、值就得是那一份的，
     // 否则又是一次「对象与读数张冠李戴」）。全体合计仍留给 shortfallFrac→closesGap 用，那里本就该按面算。
@@ -3610,7 +3760,7 @@ export class SolverService {
     const allOptions = [
       { optionId: "opt-backup-cert", factorId: rootFactorId, label: "缩短备份供应商认证周期", sourceKind: "solver" as const,
         closesGap: cg(effBackup), cost: round(120 + certWeeks * 8, 0), cycleDays: round(certWeeks * 7, 0), risk: 0.25, exposure: round(0.6 * (1 - effBackup), 3), reversibility: 0.8,
-        provenance: { kind: "求解器" as const, basis: "BackupSupplierPool.certWeeks", drillType: "BackupSupplierPool", drillId: str(cathodePool?.poolId ?? "pool-cathode"), drillValue: certWeeks } },
+        provenance: { kind: "求解器" as const, basis: `BackupSupplierPool.certWeeks（证据备份池 ${evidencePool.id} ← ${evidencePool.path}）`, drillType: "BackupSupplierPool", drillId: evidencePool.id, drillValue: certWeeks } },
       { optionId: "opt-lta-clause", factorId: rootFactorId, label: priceLinked ? "长协条款优化" : "长协加价格联动条款", sourceKind: "agent" as const,
         closesGap: cg(effClause), cost: round(num(evidenceLta.lta?.breachPenaltyWan, 180) * 0.5, 0), cycleDays: 30, risk: 0.2, exposure: round(0.5 * (priceLinked ? 0.4 : 0.15), 3), reversibility: 0.9,
         provenance: { kind: "策略推理" as const, basis: `LongTermAgreement.priceLinked（证据长协 ${evidenceLta.ltaId} ← ${evidenceLta.path}）`, drillType: "LongTermAgreement", drillId: evidenceLta.ltaId, drillValue: priceLinked ? 1 : 0 } },
@@ -4246,8 +4396,11 @@ export class SolverService {
     const deliveryJudge = { p50, p90, demand: qty, verdict: deliveryOk ? "可达" : "紧张", ruleRefs: ["C02", "C03"] };
 
     // ② 齐套判（C06/C16）：该型号细分对应物料缺口（取最大 gapTon）。
+    // WO-ORDER-DEPENDENT-PICK · A 类并列裁决键：gapTon 同分时原先靠 `listByType` 的返回顺序定胜负
+    //   ⇒ 屏上「缺哪种料」会随仓储实现/插入顺序悄悄换人，R6 也守不住。同分按 `matBalId` 字典序
+    //   （同族样例 `chain-loss.ts` 的「leadTime 最长·同值按 matId 字典序」）。
     const mbals = await this.repos.objects.listByType(ctx.tenantId, "MaterialBalance");
-    const worstMat = [...mbals].sort((a, b) => num(b.props.gapTon) - num(a.props.gapTon))[0];
+    const worstMat = [...mbals].sort((a, b) => num(b.props.gapTon) - num(a.props.gapTon) || str(a.props.matBalId).localeCompare(str(b.props.matBalId)))[0];
     const kitGap = worstMat ? num(worstMat.props.gapTon) : 0;
     const kitOk = kitGap <= 0;
     const kitJudge = { material: str(worstMat?.props.material), gapTon: kitGap, eta: str(worstMat?.props.etaDate), verdict: kitOk ? "齐套" : "缺料", ruleRefs: ["C06", "C16"] };
@@ -5618,9 +5771,11 @@ export class SolverService {
     const base: Record<string, unknown> = { ...args, ...out };
     if (solverKey === "capacity_forecast") {
       base.Order = { demandDelta: num(args.demandDelta) };
+      // WO-ORDER-DEPENDENT-PICK · A 类并列裁决键：lagHours 同分时原先靠 `c.dataHealth` 的数组顺序，
+      //   而 C09 的 BLOCK/WARN 就吊在这个读数上 ⇒ 同分那天规则结论不确定。同分按 `sourceId` 字典序。
       const worstStale = c.dataHealth
         .filter((h) => h.props.critical === true)
-        .sort((a, b) => num(b.props.lagHours) - num(a.props.lagHours))[0];
+        .sort((a, b) => num(b.props.lagHours) - num(a.props.lagHours) || str(a.props.sourceId).localeCompare(str(b.props.sourceId)))[0];
       base.DataSourceHealth = worstStale
         ? { critical: true, lagHours: num(worstStale.props.lagHours) }
         : { critical: false, lagHours: 0 };

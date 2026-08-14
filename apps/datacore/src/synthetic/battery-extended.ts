@@ -1045,6 +1045,14 @@ export function generateExtended(
   // 现在：占位原样落库，`solvers/dynamic-drill.ts` 在查询期按因子自己声明的 `drillPick` 解析
   // （引擎里没有「哪个占位查哪张表」的 if 链 —— 口径由数据声明·R14）。
   const causalFactors = CAUSAL_FACTORS;
+  //
+  // ⚠️ **合并裁决（WO-ORDER-DEPENDENT-PICK 那一侧在此已失效）**：那张单给 `worstEquip` /
+  //    `worstMbal` 补了并列裁决键（极值同分 → 主键字典序）。但本单**把这两个符号整个删掉了**
+  //    —— 占位不再在播种期解析，也就不存在「播种期挑最差的那一个」这个动作。
+  //    故那半加固在此**无对象可加固**，取本单版本。
+  //    （那张单自己也如实报了「变异 4 = RC 0，门咬不住」——因为 `MAT` 是 9 行硬编码常量表、
+  //     `gapTon` 与 seed/scale 无关 ⇒ **任何种子都不可能并列**。它属防御性加固，不是被验过的判据。）
+  //    ⚠️ 它在 `solvers/service.ts` 里对 `worstMat` / `worstStale` 的同类加固**不受影响，已保留**。
 
   // WO-TIER3 毛利桥（gross_profit 专属反向归因域）：把毛利缺口拆到 量/价/成本 三杠杆。impactYi 是**数据字段**
   // （R14·非引擎叙事常数），从既有种子确定性派生（R6·不消耗 rng·无时钟·同 seed 字节一致）。既有种子入参：
