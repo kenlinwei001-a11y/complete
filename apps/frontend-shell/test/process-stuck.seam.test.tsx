@@ -305,6 +305,12 @@ describe("WO-PROCESS-INSTANCE FE · 「为什么卡住」四问", () => {
   });
 
   it("五个等待态**各自**都能渲染出自己的人话（一个都不许漏，且不许串台）", async () => {
+    // 🔴 循环前的**基数下界**（`check-coverage-blind` 的 LOOP_NO_FLOOR 咬的就是缺这一行）。
+    // 没有它，词表若为空则循环体一次都不进 ⇒ 本例**恒绿**，而「五个态都渲染对」与
+    // 「一个态都没测」在颜色上完全一样。⚠ 这一行是被那道门**当场报红逼出来的**，不是我想起来的。
+    // 数字咬死 5 而不是 `> 0`：本页的全部意义就是五态互不串台，掉到四态必须红。
+    expect(PROCESS_TASK_WAIT_STATES, "契约词表不是五值 ⇒ 下面的逐态断言不再覆盖全集").toHaveLength(5);
+    const covered: string[] = [];
     for (const s of PROCESS_TASK_WAIT_STATES) {
       net.payload = payloadOf([approvalRow({ waitState: s, waitRef: `ref_${s}` })]);
       const { unmount } = { unmount: () => {} };
@@ -315,8 +321,11 @@ describe("WO-PROCESS-INSTANCE FE · 「为什么卡住」四问", () => {
         PROCESS_TASK_WAIT_STATE_META[s].displayName,
       );
       expect(screen.getByTestId("stuck-card").getAttribute("data-wait-state")).toBe(s);
+      covered.push(s);
       unmount();
     }
+    // 循环**后**再收一次口：中途 break/continue 或提前 return 都会在这里露馅。
+    expect(covered, "逐态断言实际只跑了一部分 ⇒ 「五态齐」是假的").toEqual([...PROCESS_TASK_WAIT_STATES]);
   });
 
   it("等待态计数条五个 key 恒在（0 是统计事实，与「缺就不显示」不冲突）", async () => {
