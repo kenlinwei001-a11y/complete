@@ -265,7 +265,28 @@ describe("§2 接缝 · 点一条阻滞点 → 真的导航到决策推演，且
     expect(net.dpCalls[0]!.factorId).toBeUndefined();
   });
 
-  it("join 缺失时病因文案正确：说清「没对到」+「为什么」+「下面 5 区是默认根因」", async () => {
+  /*
+   * ⚠ 本例的判据口径于 2026-08-14 变过一次（WO-FE-RED-7），**不许改回去**，来历如下：
+   *
+   * 旧判据咬的是**术语字面**：要求这块横幅的 textContent 直接含
+   * `CausalFactor` / `strictObject` / `MaterialBatch` 三个词。
+   * 那是错的，两条原因各自独立成立：
+   *  ① **与另一道门正面冲突**：`scripts/check-dev-jargon-onscreen.mjs` 明令
+   *     契约类型名与 zod 术语不许上屏（仓主原话：「这些都是我看不懂的功能」）。
+   *     旧判据站在被禁的那一边 —— 它是在**逼源码违规**，测试绿等于门红。
+   *  ② **咬错了层**：按 `docs/CONVENTION-ui-information-layering.md` §1，
+   *     「为什么对不上」这类**口径/机制**属浮层，不属第一层。它已被移进
+   *     `InfoPopover topic="为什么对不上"`，而 `InfoPopover` 在 `open===false` 时
+   *     **根本不渲染**（不是 hidden）⇒ 不触发就读不到，旧断言从此恒假。
+   *
+   * 新判据咬**语义**，不咬术语 —— 原来要守的那三件事一件没少，且各自钉在**它该在的那一层**：
+   *   ⓐ「没对到」  → 第一层（不许降层：降了用户会把下面的推演当成对自己问题的回答）
+   *   ⓑ「为什么」  → 浮层正文，且必须是**实证**（撞不上的实测）而**不是**「暂不支持」这种搪塞
+   *   ⓒ「下面是默认根因」→ 第一层（最要害的一句）
+   * 其中 ⓑ 的反向断言（不许出现「暂不支持」）比旧判据**更咬得住原来那个病** ——
+   * 旧判据只要源码里塞个 `strictObject` 就能骗过，新判据要求这句话真的在给证据。
+   */
+  it("join 缺失时病因文案正确：说清「没对到」+「为什么」+「下面是默认根因」", async () => {
     const user = userEvent.setup();
     mountApp();
     await screen.findByTestId("sandbox-console");
@@ -277,16 +298,30 @@ describe("§2 接缝 · 点一条阻滞点 → 真的导航到决策推演，且
     await user.click(screen.getByTestId(`sc-imp-jump-${first.im.impedimentId}`));
 
     const gap = await screen.findByTestId("dp-from-join-gap");
-    const txt = gap.textContent ?? "";
-    expect(txt).toContain("本次未能把这个阻滞点对到具体因子");
-    expect(txt).toContain("CausalFactor"); // 缺的是哪一维
-    expect(txt).toContain("strictObject"); // 为什么缺（契约层的实证，不是"暂不支持"）
-    expect(txt).toContain("MaterialBatch"); // 撞不上的实测证据
-    // 最要害的一句：别让人以为下面 5 区是这条阻滞点的根因
+    // ⓐ「没对到」在第一层，不用点开任何东西就读得到。
+    expect(gap.textContent ?? "").toContain("本次未能把这个阻滞点对到具体因子");
+    // ⓒ 最要害的一句：别让人以为下面的根因/行动清单是这条阻滞点的根因。
     expect(screen.getByTestId("dp-from-default-root").textContent).toContain("默认根因");
     expect(screen.queryByTestId("dp-from-join-ok")).toBeNull();
-    // 能带过去的粗筛维当面说
-    expect(txt).toContain(`stage=${first.im.stage}`);
+
+    // ⓑ「为什么」在浮层：**降层允许、删除不允许**，所以第一层必须留着那个可点的记号。
+    //    ⚠ 关着时 `InfoPopover` 不渲染 ⇒ 判据只能是 `toBeNull()`；
+    //      写成 `not.toBeVisible()` 会让 jest-dom 抛 "received value must be an HTMLElement"，
+    //      那是测试自己报错，不是判据成立。
+    expect(screen.queryByTestId("info-body-dp-from-why")).toBeNull();
+    await user.click(screen.getByTestId("info-dp-from-why"));
+    const why = await screen.findByTestId("info-body-dp-from-why");
+    expect(why).toBeVisible();
+    const whyTxt = why.textContent ?? "";
+    // 缺的是哪一维 + 为什么缺：说的是「引擎回包里没有承载这一维的字段」这个机制。
+    expect(whyTxt).toContain("没有任何承载因果因子的字段");
+    // 为什么缺必须是**实证**：真去撞过、撞不上，而不是一句「暂不支持」搪塞过去。
+    expect(whyTxt).toContain("撞不上");
+    expect(whyTxt).not.toContain("暂不支持");
+    // 不猜：猜一个会被引擎静默回落成一个看着确凿、实则无关的根因。
+    expect(whyTxt).toContain("没有猜");
+    // 能带过去的粗筛维当面说（这一维是真带过去的，不许含糊）。
+    expect(whyTxt).toContain(`stage=${first.im.stage}`);
   });
 
   it("③ 诚实位不许在跳转时掉：PARTIAL/SYNTHETIC 的限定跳过去后仍在屏上", async () => {
