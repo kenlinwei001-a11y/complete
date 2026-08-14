@@ -111,6 +111,9 @@ describe("SEAM · 图谱八视角描述卡：后端真下发的形状 → 真 re
   });
 
   it("契约：9 张卡的描述全部落在 options（契约 GraphViewDescSchema），layout 里一个都不剩", () => {
+    // 基数下限**必须写在本条用例里**：上一条的 toHaveLength 保护不到这一条 ——
+    // 门按用例切分，人也一样，fixture 抓空时这条会一圈不跑而照样绿（"9 张"与"0 张"同色）。
+    expect(VIEWS).toHaveLength(EXPECTED_KEYS.length);
     for (const v of VIEWS) {
       const parsed = GraphViewDescSchema.parse(v.options ?? {});
       expect(parsed.desc, `${v.key}: 后端没下发 options.desc`).toBeTruthy();

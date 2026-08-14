@@ -292,6 +292,20 @@ function esc(s) {
  * 按根标识符 `result` 判，这句会被误当成 `provenance` 的锚点 ⇒ **漏报**。
  * 「`result` 有断言」并不度量「`result.answer.provenance` 非空」——正是铁律 0.6 那句
  * 「我用 X 当作 Y 的证据，而 X 并不度量 Y」。
+ *
+ * ⚠️ **2026-08-14 WO-R9-COVBLIND 放宽：认 vitest 的双参 `expect(value, message)`**。
+ * 原版要求 `)` **紧跟** `.length` / `.size`，于是本仓大量使用的
+ * `expect(rows.length, "seedBattery 没落任何 Cadence").toBeGreaterThan(0)` **一律识别不到** ——
+ * 锚点明明在，门读不到 ⇒ **假阳性**（把合格测试判成盲，不是漏报）。
+ * 实测面：放宽前后全仓命中 303 → 269（少 34 条，其中 12 条是基线外、22 条在基线内）。
+ * 病症照铁律 0.6 的句式：**「我用『`)` 紧跟 `.length`』当作『没有基数锚点』的证据，而前者并不度量后者。」**
+ * 诊断与处方早已成文（`docs/WO-FOLLOWUP-2026-08-13.md` §3），本单只是落地它，
+ * 并**按该文要求同步下调棘轮基线**（否则棘轮会把这 22 条差额读成「有人修好了」）。
+ * 语义为何不受损：第二个实参只是失败时打印的自定义消息，
+ * `expect(xs.length, msg).toBeGreaterThan(0)` 与单参形式**在空集上同样会红** —— 装置一模一样。
+ * 放宽方向只可能**减少**命中（少报假阳性），不可能放过真盲点。
+ * 反向锁：`CANARY_CASES` 里 `d1-two-arg-floor-ok` / `d1-two-arg-tohavelength-ok` 两条
+ * 直接跑 `analyzeSource` 本体，谁把这里改回「`)` 紧跟」谁当场 RC=2。
  */
 export function hasCardinalityAnchor(body, expr) {
   if (!expr) return false;
@@ -299,17 +313,20 @@ export function hasCardinalityAnchor(body, expr) {
   if (!e) return false;
   const b = squash(body);
   const id = esc(e);
+  /** 「同一个 `expect(…)` 调用里、基数表达式之后的剩余实参 + 收尾右括号」。
+   *  懒量词 + 不跨 `;`：既能跨过 `JSON.stringify(x)` 这种带括号的消息实参，又不会串到下一条语句。 */
+  const ARGS = "(?:,[^;]*?)?\\)";
   const pats = [
     // expect(EXPR).toHaveLength(…) / .toEqual([…]) / .toMatchObject([…])
-    new RegExp(`expect\\(${id}\\)\\.(?:not\\.)?(?:toHaveLength|toEqual|toStrictEqual|toMatchObject|toMatchInlineSnapshot|toMatchSnapshot)\\b`),
+    new RegExp(`expect\\(${id}${ARGS}\\.(?:not\\.)?(?:toHaveLength|toEqual|toStrictEqual|toMatchObject|toMatchInlineSnapshot|toMatchSnapshot)\\b`),
     // expect(EXPR.length / .size) 任意 matcher —— 咬住条数这件事本身
-    new RegExp(`expect\\(${id}\\.(?:length|size)\\)`),
-    new RegExp(`expect\\(Object\\.keys\\(${id}\\)(?:\\.length)?\\)`),
-    new RegExp(`expect\\(Object\\.entries\\(${id}\\)(?:\\.length)?\\)`),
+    new RegExp(`expect\\(${id}\\.(?:length|size)[,)]`),
+    new RegExp(`expect\\(Object\\.keys\\(${id}\\)(?:\\.length)?[,)]`),
+    new RegExp(`expect\\(Object\\.entries\\(${id}\\)(?:\\.length)?[,)]`),
     // expect(EXPR.map(…)) / EXPR.filter(…).length —— 对整集的形状断言
     new RegExp(`expect\\(${id}\\.(?:map|filter|flatMap|slice|sort|every|join)\\(`),
     new RegExp(`expect\\(\\[\\.\\.\\.${id}`),
-    new RegExp(`expect\\(${id}\\.size\\)`),
+    new RegExp(`expect\\(${id}\\.size[,)]`),
   ];
   return pats.some((p) => p.test(b));
 }
@@ -687,6 +704,36 @@ const DEEP = [
 it("5 条深问 → 深路由", () => {
   for (const { q, route } of DEEP) {
     expect(resolveCeoRoute(q).route).toBe(route);
+  }
+});`,
+    expect: [],
+  },
+  {
+    // 反向锁（WO-R9-COVBLIND）：vitest 双参 `expect(value, message)` 的基数锚点必须认。
+    // 谁把 hasCardinalityAnchor 改回「`)` 紧跟 .length」，这条当场变成 ["LOOP_NO_FLOOR"] ⇒ RC=2。
+    // 这就是「机器先说话」——不靠人记得 docs/WO-FOLLOWUP-2026-08-13.md §3 写过什么。
+    name: "D1 不命中：双参 expect 的基数下限（vitest 第二实参只是失败消息）",
+    src: `
+import { it, expect } from "vitest";
+it("每个节拍都在册", async () => {
+  const rows = await repos.objects.listByType(TENANT, "Cadence");
+  expect(rows.length, "seedBattery 没落任何 Cadence —— 数据半没接进合成主流程").toBeGreaterThan(0);
+  for (const r of rows) {
+    expect(CHAIN_NODE_IDS).toContain(String(r.props.nodeId));
+  }
+});`,
+    expect: [],
+  },
+  {
+    // 同上，另一种双参形态：消息实参里**自带括号**（JSON.stringify(...)），懒量词必须跨得过去。
+    name: "D1 不命中：双参 expect + toHaveLength，且消息实参含括号",
+    src: `
+import { it, expect } from "vitest";
+it("三段齐全", () => {
+  const legs = plan.legs;
+  expect(legs, JSON.stringify(plan)).toHaveLength(4);
+  for (const leg of legs) {
+    expect(leg.days).toBeGreaterThan(0);
   }
 });`,
     expect: [],

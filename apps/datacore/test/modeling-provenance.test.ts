@@ -35,7 +35,9 @@ describe("WO-MODELING-INTERACTIVE · 对象类型 provenance 回填（合成 A �
     for (const s of materialized) {
       const ty = byKey.get(s.key)!;
       expect(ty, `类型 ${s.key} 应在已发布本体`).toBeTruthy();
-      expect((ty.sourceBindings?.length ?? 0) > 0, `${s.key} 有物化对象却"无来源"`).toBe(true);
+      // 写成 `expect(<集合>.length)` 而不是 `expect(<布尔式>).toBe(true)`：
+      // 二者语义等价，但后者把「基数下限」藏进一个布尔里，内层循环就成了"空集恒绿"的形态。
+      expect(ty.sourceBindings!.length, `${s.key} 有物化对象却"无来源"`).toBeGreaterThan(0);
       for (const b of ty.sourceBindings!) {
         expect(dsNames.has(b.dataset), `${s.key} 来源 '${b.dataset}' 必对应真实 RawDataset`).toBe(true);
       }

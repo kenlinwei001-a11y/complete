@@ -34,6 +34,9 @@ describe("WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎�
     expect(links.length).toBe(orders.length); // 24 单全部有归属，0 未绑定
 
     const custById = new Map(customers.map((c) => [String(c.props.custId), String(c.props.custName)]));
+    // 册子不许因 custId 撞号而悄悄塌掉：塌掉后下面每条 `custById.get(...)` 都会取到别人的名字，
+    // 而"归属两端业态一致"这条仍可能碰巧成立 —— 先把"册子本身是一一对应"钉住。
+    expect(custById.size).toBe(customers.length);
     const orderById = new Map(orders.map((o) => [o.id, o.props as Record<string, unknown>]));
     for (const l of links) {
       const o = orderById.get(l.fromId)!;
@@ -56,6 +59,9 @@ describe("WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎�
     const t = await makeApp();
     await seedBattery(t);
     const customers = await t.repos.objects.listByType("demo", "Customer");
+    // 反查表一个客户都没有时，下面的循环一圈不跑而本条恒绿 ——「互为反查」根本没被验过。
+    // 下限咬住归属册的目标客户数（册子加一个客户 ⇒ 这里先红，逼着确认主数据侧也长出来了）。
+    expect(customers.length).toBe(new Set(Object.values(ORDER_CUST_TO_CUSTOMER)).size);
     for (const c of customers) {
       const expected = Object.entries(ORDER_CUST_TO_CUSTOMER)
         .filter(([, target]) => target === String(c.props.custName))
@@ -113,7 +119,11 @@ describe("WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎�
     for (const custName of names) {
       const custId = String((got[custName]!.scope as { custId: string }).custId);
       const owned = new Set(links.filter((l) => String(l.props?.custId) === custId).map((l) => soById.get(l.fromId)!));
-      for (const so of got[custName]!.scope.orders as string[]) {
+      const sos = got[custName]!.scope.orders as string[];
+      // scope.orders 为空时下面一圈不跑：「每个客户的 orders 都是他自己的单」在"一张单都没有"
+      // 的客户上恒真 —— 而那恰恰是求解器算错作用域最典型的表现。
+      expect(sos.length, `${custName} 的 scope.orders 为空 ⇒ 归属校验空跑`).toBeGreaterThan(0);
+      for (const so of sos) {
         expect(owned.has(so), `${custName} 的 scope.orders 含非本客户订单 ${so}`).toBe(true);
       }
     }

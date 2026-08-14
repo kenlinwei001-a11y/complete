@@ -93,6 +93,9 @@ describe("WO-SANDBOX-CANDIDATES-FE · 阻滞点 → 候选对策上屏（真路�
     const absent = p.impediments.filter((i) => i.candidates !== undefined && i.candidates.length === 0);
     expect(withC.length, "响应里一个带候选的阻滞点都没有 ⇒ 数据源坏了，不是页面坏了").toBeGreaterThan(0);
     expect(absent.length, "响应里一个诚实缺席的阻滞点都没有 ⇒ 反向用例会恒真").toBeGreaterThan(0);
+    // 两类**穷尽**全集：谁也不许落在第三类里（`candidates: undefined` ⇒ 契约漏了缺席定性，
+    // 而它既不进正向用例也不进反向用例 —— 是本文件唯一可能悄悄漏掉的那批）。实测 3 + 5 == 8。
+    expect(withC.length + absent.length).toBe(p.impediments.length);
     // 每个阻滞点都该有一行逐点账（引擎 impediment-options.ts:800/803 对每个点都 push）
     expect(p.candidateStats.length).toBe(p.impediments.length);
     // 空候选 ⟺ 必带机器可读定性（契约 superRefine；只给散文 = 让消费方读散文猜）
@@ -114,6 +117,9 @@ describe("WO-SANDBOX-CANDIDATES-FE · 阻滞点 → 候选对策上屏（真路�
     const block = await screen.findByTestId(`sc-cand-block-${im.impedimentId}`);
     expect(block.getAttribute("data-count")).toBe(String(im.candidates!.length));
 
+    // 「不是只画了第一条」这句话要成立，本条挑中的点必须**真的不止一条候选** ——
+    // 否则 1 条与 N 条同色，下面的循环证明不了它想证明的那件事。实测每个带候选的点各 2 条。
+    expect(im.candidates!.length).toBeGreaterThan(1);
     // 每一条候选都真的在屏上（不是只画了第一条）
     for (const cand of im.candidates!) {
       expect(
@@ -176,6 +182,9 @@ describe("WO-SANDBOX-CANDIDATES-FE · 阻滞点 → 候选对策上屏（真路�
 
     // ── ④ 真试算的效果：逐维前后值，逐字节 ────────────────────────────────────
     const dims = within(card).getByTestId(`sc-cand-dims-${c.candidateId}`);
+    // 逐维断言的基数锚：三维齐备且顺序固定。少一维时下面的循环会悄悄少跑一圈而颜色不变，
+    // 「逐维前后值都对得上」就退化成「剩下那几维对得上」。多/少/改名任一发生都在这里先红。
+    expect(c.dims.map((d) => d.key)).toEqual(["breach", "severity", "capacityP50"]);
     for (const d of c.dims) {
       const row = within(dims).getByTestId(`sc-cand-dim-${c.candidateId}-${d.key}`);
       expect(row.getAttribute("data-baseline"), `${d.key} 基线与响应不逐字节相等`).toBe(
@@ -210,21 +219,27 @@ describe("WO-SANDBOX-CANDIDATES-FE · 阻滞点 → 候选对策上屏（真路�
     // `Process.attendance` 存 0–1，**两者 LEVER_PROP_META.kind 同为 ratio** ——
     // 谁无条件 ×100，谁就会把利用率画成 9589%。故这一条**单独**咬 ratio 分支，
     // 不能指望用例 B（它挑到的那条候选是 qty 类，压根不走这个分支 —— 本单实测确认过）。
-    const hit = payload()
+    // ⚠ 原写法是 `.find(...)` 取**第一条**就收工。实测这条分支上有 **4 条**候选
+    //   （changzhou-formation / xiamen-coating 各 2 条）⇒ **4 条里只验了 1 条**，
+    //   另外 3 条格式化错了照样绿 —— 覆盖率盲区门 `EXISTS_FOR_ALL` 抓的正是这个形态。
+    //   改为**逐条全验**：这才是"存储 0–100 的不许再 ×100"这句话的全称形式。
+    const ratioHits = payload()
       .impediments.flatMap((i) => i.candidates ?? [])
-      .find((c) => c.lever.valueKind === "ratio" && c.fromValue > 1);
-    expect(hit, "金丝雀不中：响应里没有「ratio 且存储值 > 1」的候选 ⇒ 本例在验一个不存在的分支").toBeDefined();
+      .filter((c) => c.lever.valueKind === "ratio" && c.fromValue > 1);
+    expect(ratioHits.length, "响应里没有「ratio 且存储值 > 1」的候选 ⇒ 本例在验一个不存在的分支").toBeGreaterThanOrEqual(4);
 
     await openSandbox();
-    const card = await screen.findByTestId(`sc-cand-${hit!.candidateId}`);
-    const shown = within(card).getByTestId(`sc-cand-from-${hit!.candidateId}`).textContent;
-    // 期望值写死成"就地取整加百分号"，**不调被测函数**（同义反复的反面）
-    expect(shown, `存储 0–100 的比率被再乘了一次 100（${hit!.fromValue} → ${shown}）`).toBe(
-      `${Math.round(hit!.fromValue)}%`,
-    );
-    expect(shown, "利用率画成了 9000+% —— 正是契约注释点名的那条坑").not.toContain(String(hit!.fromValue * 100));
-    // 原值仍逐字节可核（格式化不吞掉真值）
-    expect(card.getAttribute("data-from")).toBe(String(hit!.fromValue));
+    for (const hit of ratioHits) {
+      const card = await screen.findByTestId(`sc-cand-${hit.candidateId}`);
+      const shown = within(card).getByTestId(`sc-cand-from-${hit.candidateId}`).textContent;
+      // 期望值写死成"就地取整加百分号"，**不调被测函数**（同义反复的反面）
+      expect(shown, `存储 0–100 的比率被再乘了一次 100（${hit.fromValue} → ${shown}）`).toBe(
+        `${Math.round(hit.fromValue)}%`,
+      );
+      expect(shown, "利用率画成了 9000+% —— 正是契约注释点名的那条坑").not.toContain(String(hit.fromValue * 100));
+      // 原值仍逐字节可核（格式化不吞掉真值）
+      expect(card.getAttribute("data-from")).toBe(String(hit.fromValue));
+    }
   });
 
   it("C · 档位来源 / 作用方式 / join 溯源：短名在第一层，出处**原文**在浮层（零原生 title）", async () => {
@@ -320,6 +335,10 @@ describe("WO-SANDBOX-CANDIDATES-FE · 阻滞点 → 候选对策上屏（真路�
 
   it("E · 反向 · **每一个**空候选的阻滞点都有话说（一个都不许留空白）", async () => {
     const absent = payload().impediments.filter((i) => i.candidates !== undefined && i.candidates.length === 0);
+    // 「**每一个**」的下限：absent 为空时下面的循环一圈不跑，而末尾那条
+    // `blocks.length === absent.length` 会变成 `0 === 0` —— 整条用例在"一个缺席点都没有"
+    // 的世界里恒绿。实测 5 个。
+    expect(absent.length).toBeGreaterThanOrEqual(5);
     await openSandbox();
     for (const im of absent) {
       const none = screen.getByTestId(`sc-cand-none-${im.impedimentId}`);

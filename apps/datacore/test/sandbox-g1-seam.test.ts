@@ -62,6 +62,15 @@ import { IMPEDIMENT_RULE_BINDINGS } from "../src/solvers/chain-impediment.js";
 import { cadenceGate, nextGateTick } from "../src/sim/propagation.js";
 
 const TENANT = "demo";
+
+/**
+ * `chain_impediments` 全域扫描里「判不出来（UNKNOWN）」的条数金值。
+ * 这不是"应该有几条"的规定，是**实跑测出来的今天的事实**（seed 42 · scale S）。
+ * 之所以要有这么个数：G1-6 那条用例用 `for (const u of out.unresolved)` 逐条验"缺席也要给原因"，
+ * 而没有基数下限时，`unresolved` 空掉那天循环一圈不跑、用例照绿 ——
+ * 「诚实缺席」这条纪律就会在没人察觉的情况下失效。数变了要当场解释，不许顺手改。
+ */
+const UNRESOLVED_GOLDEN = 2;
 /** 收口态唯一的世界：一次 `makeApp` + 一次 `seedBattery`，四段全在它上面跑（合并态判据）。 */
 let t: TestApp;
 
@@ -110,8 +119,13 @@ describe("G1-1 · 数据半：seedBattery 真落 Cadence 对象，nodeId 全在 
       expect(CHAIN_NODE_IDS, `Cadence.nodeId=${String(r.props.nodeId)} 不在 CHAIN_NODE_REGISTRY 在册`).toContain(String(r.props.nodeId));
     }
     const synthetic = rows.filter((r) => r.props.dataMode === "SYNTHETIC");
+    const notSynthetic = rows.filter((r) => r.props.dataMode !== "SYNTHETIC");
     expect(synthetic.length, "一条 SYNTHETIC 节拍都没有 ⇒ 引擎永远拿不到闸门").toBeGreaterThan(0);
-    for (const e of rows.filter((r) => r.props.dataMode !== "SYNTHETIC")) {
+    // 用例标题声称「SYNTHETIC 与 EMPTY **都**在册」，但下面那个循环原本没有下限：
+    // 全部行都是 SYNTHETIC 时它一圈不跑，"EMPTY 必带机器可读原因"这半**一次都没被验过**而全绿。
+    expect(notSynthetic.length, "一条非 SYNTHETIC 的节拍都没有 ⇒ 「EMPTY 必带原因」那半是空跑").toBeGreaterThan(0);
+    expect(synthetic.length + notSynthetic.length).toBe(rows.length); // 两类穷尽，没有第三态漏在扫描面外
+    for (const e of notSynthetic) {
       expect(String(e.props.emptyReason ?? ""), `${String(e.props.nodeId)} 标空却没给原因（"查过没有" ≠ "压根没登记"）`).not.toBe("");
     }
   });
@@ -321,6 +335,9 @@ describe("G1-4 · LossAttribution 守恒（分母排除增值段 · S0 冻结口
     const vaIds = new Set(valueAdd.map((s) => s.stepId));
     expect(out.attribution.filter((r) => vaIds.has(r.stepId)).map((r) => r.stepId), "增值段进了归因分母 —— S0 口径破了").toEqual([]);
     expect(valueAdd.length, "全链一个增值段都没有 ⇒ 本判据退化成'全是非增值'，证不了排除").toBeGreaterThan(0);
+    // stepId 撞号会让上面这套"按 id 排除"整体失真（撞号的增值段被当成同一个，漏排一部分），
+    // 且下面 ④ 的 `byStep` 也会被后写的覆盖。先钉住 stepId 在增值段内唯一。
+    expect(valueAdd.map((s) => s.stepId)).toHaveLength(vaIds.size);
     expect(out.totals.valueAddDays, "增值总量为 0 ⇒ 同上退化").toBeGreaterThan(0);
 
     // ④ 逐行口径：pct == 该段天数 / 全链非增值总量 × 100（不是"看着像"）
@@ -360,6 +377,8 @@ describe("G1-5 · 作用域真收窄：给 businessTypes / baseIds ⇒ 结果真
     expect(one.rows.length, `选 ${pick} 后结果没变小 ⇒ 作用域形同虚设`).toBeLessThan(all.rows.length);
     expect(one.rows.length, "收窄到 0 ⇒ 本例证不了'只含该细分'").toBeGreaterThan(0);
     const allSos = new Set(all.rows.map((r) => r.so));
+    // 全量结果里 so 撞号 ⇒ 集合塌掉 ⇒ 下面的"子集"判据被悄悄放宽（少了的那张单也能"在册"）。
+    expect(allSos.size).toBe(all.rows.length);
     for (const r of one.rows) {
       expect(allSos, `${r.so} 不在全量结果里 —— 收窄变成了另算一份`).toContain(r.so);
       expect(btBySo.get(r.so), "跨细分泄漏（G-SEG-ATTR-CROSS-SEGMENT 同类事故）").toBe(pick);
@@ -382,6 +401,8 @@ describe("G1-5 · 作用域真收窄：给 businessTypes / baseIds ⇒ 结果真
     expect(scoped.impediments.length, `限定单基地 ${oneBase} 后条数没减少 ⇒ scope 没生效`).toBeLessThan(all.impediments.length);
     // 子集：不是"另算了一批"
     const allIds = new Set(all.impediments.map((i) => i.impedimentId));
+    // impedimentId 撞号 ⇒ 集合塌掉 ⇒ "是全域子集"这条判据被放宽（漏掉的那条也能"在册"）。
+    expect(allIds.size).toBe(all.impediments.length);
     for (const i of scoped.impediments) expect(allIds, `${i.impedimentId} 不在全域结果里 —— 收窄变成了另算一份`).toContain(i.impedimentId);
 
     // ⚠️ 2026-08-13 收编本门时**订正了这条断言的口径**（原文断言的行为已被 canonical 换掉，见下）。
@@ -489,6 +510,12 @@ describe("G1-6 · 卡点/堵点/断点三类互斥可判，裁决线来自规则
     expect(new Set(loci).size, "同一个 locus 出了两条阻滞点 —— 三类不互斥").toBe(loci.length);
 
     // 判不出来的必须说清"为什么"（诚实缺席，不是不提）
+    // ⚠ 这个循环今天跑几圈**必须是台面上的一个数**：`unresolved` 空掉时它一圈不跑而本条恒绿，
+    //   于是"诚实缺席"这条纪律在扫描不再产出 UNKNOWN 的那天会静悄悄失效。
+    //   下面这个数由实跑测出（不是我按"应该有几条"写的），它变了就该有人当场解释。
+    expect(out.unresolved.length, "unresolved 条数变了：要么扫描面变了，要么诚实缺席这条纪律被绕过了").toBe(
+      UNRESOLVED_GOLDEN,
+    );
     for (const u of out.unresolved) {
       expect(u.status).toBe("UNKNOWN");
       expect(u.reason.length, `${u.bindingId} 判不出来却没给原因`).toBeGreaterThan(10);
