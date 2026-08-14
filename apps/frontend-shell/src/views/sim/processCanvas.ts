@@ -604,6 +604,10 @@ export const PROC_LAYOUT = {
  *      console.log('基线余量',(B+G)-(B+L*2), '不改层距',(B+G)-(B+b3), '修后',(B+g)-(B+b3),
  *      '带厚', B+(T-1)*G+H, '→', B+(T-1)*g+h)"`
  *     ⇒ 当日现跑 `基线余量 2 不改层距 -11 修后 2 带厚 67 → 93`。
+ *   门（机器判据，不是这段注释）：`labelTiersFit()` ＋
+ *     `apps/frontend-shell/test/sandbox-process-live.seam.test.tsx` §G9；
+ *     复验命令：`pnpm --filter frontend-shell exec vitest run sandbox-process-live`。
+ *     变异反证已实测：把上面两个 `withLive` 分支撤掉（= 本 bug 的原始形态）⇒ §G9 当场红（RC=1）。
  *
  * ⛔ **默认参数 `false` 是 additive 契约的一部分**：不传节拍维时这三个函数的返回值
  *   与本单之前**逐字节相同**（几何一动，`canvas.h` / 每座站的 `y` 全会变，§G1 当场红）。
