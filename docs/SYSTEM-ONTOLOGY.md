@@ -194,6 +194,7 @@
 > 行业无关、配置驱动、确定性、可回退。传导核只认 `(typeKey, stateVar, linkKey, 系数, 延迟)`——喂任意租户本体即跑（R14 两行业验收）。复用 recompute 链路导航 + risk.ts 衰减 + simclock tick + slice-planner 范围 + actions 走正门 + closure 投影；真正新写只「propagateTick 合体算法 + SimSession 状态机」（接地真相见 `docs/GROUNDING-MAP-sandbox-review-baseline.md §C`）。
 
 - **SimSession（会话状态机 · 全新，全代码库零命中 simclock 是单租户全局时钟非多会话）**：一次有状态推演会话（`base_snapshot` tick0 世界态[合成/连接器/切片物化，走正门] · `scope` 范围裁剪[复用 slice-planner] · `status` DRAFT|READY|RUNNING|PAUSED|ENDED · `cur_tick` · `parent_checkpoint_id` 非空=分支）· 三张全 jsonb 表（`sim_session`/`sim_tick_state`/`sim_checkpoint`，migration 026，**R9 四处同改**，零业务列换行业不改表）。
+  **`disabled_rule_keys`（WO-ACTIVE-EDGE-UX · 2026-08-14 · migration 034 · 会话级反事实）**：这次推演**假装哪几条传导边不存在**。⛔ 与 `PropagationRule.status` **正交，两个字段都要，不许合并** —— `status` 决定"这条边在不在世界里"（全租户持久发布态，改它 = 本体真值写入 ⇒ R4 须 Action 审批，且一改"改之前"就没了、无从对照），本字段只决定"这次推演假装它不在"（单会话世界态，随时可拨回，且开/关两版能同时算出来放一起看）。写它不经审批，依据是 **R4-sim**（§5）。**⚠ `sim_session` 是逐列表不是 doc-jsonb 表** ⇒ 契约上加字段时 memory（整对象 clone）自动带上、**pg 不会**：忘了加列 = memory 测试全绿而 pg 模式功能等于不存在（R9 四处同改的典型翻车点，由 `test/edge-active-counterfactual.test.ts` ⑤ 用桩 pool 跑真 `PgSimRepo` 往返咬死）。分支（`POST …/branch`）**继承**父会话的屏蔽集 —— 不继承的话分支世界会悄悄把边打开，数对不上却查不出原因。链路详见 §3「反事实链路」。
 - **SimTickState（逐 tick 态快照）**：每 tick 的 `state`（对象→状态变量值 TickState）+ `pending`（延迟贡献队列快照，resume 确定性）+ `trace`（传导轨迹可视化）· PK `(session_id, tick)`。
 - **SimCheckpoint（命名存档）**：`(session, tick, label)` · rollback=删 tick>cp 的态；branch=以 cp 处 tick 态为 base 开新 session。
 - **Perturbation（扰动 · 一等公民 · WO-P0 2026-08-09 落 · `PRD-UPGRADE-decision-sandbox-v2.md §3.1`）**：一次「事情发生了」。此前沙盘**没有「扰动」这个概念** —— 唯一入口 `POST /a/v1/sim/sessions/:id/act` 是裸标量写入 `{objectId, stateVar, value}`：无 id、无持久化、无语义类型、无时序，做完什么都不剩，「这个世界受过哪些扰动」问不出来（断点 #150/#151·REQ060）。升格后承载 `kind`（五类语义：`demand_shift`/`supply_disruption`/`capacity_loss`/`cost_shock`/`quality_event`——**只管展示分类与默认落点，不进传导规则**：两者混起来就把「发生了什么」和「它怎么扩散」焊死了，换行业要改代码）+ `targetObjectId/targetStateVar` + **时序三件** `startTick`/`durationTicks`（`null`=永久，等价于旧 `/act`，故 additive 可回退）/`magnitude` + `mode`（`set`/`delta`/`scale`——只给 `set` 会逼前端自己算，那就是第二套真相源）+ `label` + `createdAt`。表 `sim_perturbation`（migration 028，doc-jsonb 零业务列换行业不改表，**R9 三处同改** repo.ts/memory.ts/pg.ts）· 契约 `packages/contracts/src/sim.ts`，含两个**单源判据函数**：`isPerturbationActiveAt(p,t)`（`t>=startTick ∧ (durationTicks===null ∨ t<startTick+durationTicks)`）与 `applyPerturbationToState`（纯函数 R6）——**路由与引擎共用同一份**，不许各写一套（「两个 dev 各发明一套 nodeId、交集为 0」那次事故的同族预防）。路由 `POST/GET/DELETE /a/v1/sim/sessions/:id/perturbations`（全过 `sim.sandbox` entitlement·R3 先于 authz）。⚠ **清单顺序是语义不是排版**：`delta`/`scale` 不可交换（`(10+2)×1.5=18 ≠ 10×1.5+2=17`），故 `listPerturbations` 按 `startTick → 建单先后` 定序，**禁以随机 `id` 作二级键**（`newId` 是 `randomBytes`，跨重跑会翻序 → 破 R6，本单实测栽过）。~~今天只做实体（建/列/删）+ 已在当前 tick 生效者立即施加（= 旧 `/act` 那条路）；按 `startTick`/`durationTicks` 在传导中施加与到期回退属 WO-P2（`propagateTick` 接扰动），未做。~~ **↑ 此句自 WO-P2 起过期，划掉不抹掉（留来历）。今天的真实状态（WO-SIM-ACT-CLOSE·2026-08-10 实测复核）**：① **引擎已吃扰动**（WO-P2）——`propagateTick` 第 8 参收本 tick 相关扰动，按 `producedTick = tick+1` 算生效期，「首次落地」正序施加、「本 tick 到期」逆序回退（`delta`/`scale` 不可交换，LIFO 反向解开叠加），算不出回退值（`set`/`scale(0)` 且无 `preValue`）时**诚实不动这个数**并在 trace 里亮缺，绝不留一个"看着正常、其实已永久生效"的世界；回包带 `appliedPerturbations[]` 溯源（R13）。② **用户入口已接通**（WO-SIM-ACT-CLOSE·闭 #150）——`SandboxView` 右栏「施加扰动」区 → `createSimPerturbation` → `POST …/perturbations`，落点候选取自 `SandboxViewConfig.nodeObjectIds`（= 引擎 `idsByType` 同源的**真物化对象 id**；取类型名会写到引擎取不到的键上 ⇒ 屏上变、下游不动）；回包世界态就地落屏 ⇒ **KPI 当场变**，KPI 只搬运不本地重算（本地算 = 第二套真相源，`scale`/clamp 一改就静默漂移）。③ **`/act` 至今仍是零生产调用方**：它是 `/perturbations` 的退化子集（`mode:"set"` + `durationTicks:null`），两者共用契约唯一施加实现，故留作向后兼容别名；`sim-perturbation.test.ts` 断言① 逐字节钉住二者同结果。~~④ 缺口（另立单）：**扰动清单/时间轴 UI 仍无 `useQuery`**（`fetchSimPerturbations`/`deleteSimPerturbation` 零调用方）⇒ 「这个世界受过哪些扰动」在界面上仍问不出来，`sim.perturbation_created` 事件因此仍无缓存消费方（见 §事件表 L-sim）。~~ **↑ 此句自 WO-SIM-PERTURB-TIMELINE（2026-08-10）起过期，划掉不抹掉（留来历）。** ④ **读端已接通**：`frontend-shell/src/views/sim/PerturbationTimeline.tsx` 的 `useQuery(['a','sim-perturbations', sessionId])` → `GET …/perturbations`，`deleteSimPerturbation` 也接在明细行的「删除记录」上（删记录**不回滚世界态**，回滚仍走 checkpoint/rollback）。接线前实测定性是**形态①「没接线」**（src 与 test 两侧 `fetchSimPerturbations(` 皆零命中；金丝雀换 `createSimPerturbation(` 命中 `SandboxView.tsx`），故修法是接线不是补数据。UI 依 `docs/CONVENTION-ui-information-layering.md`：第一层只放数值/状态/名字（次数·此刻生效数·落点·幅度·三态），口径/公式/字段出处/诚实位说明进 `?` 浮层（受控 DOM 节点，**禁用** HTML `title`/SVG `<title>`）；§3「结构本身也要表达」⇒ 画成与 tick heat 共享同一根时间线的甘特条 + 「现在」竖线 + **同落点归一泳道并按后端返回序编号 ①②③**（这就是「清单顺序是语义」在界面上的落点：前端原样保序、只分组不重排）。**诚实报缺**：没有任何端点返回「某条扰动造成多少 KPI 变化」（tick 响应的 `appliedPerturbations[]` 只给 id 不给归因量），故第一层留可见记号「无归因量」+ 浮层写清缺什么，不留空、不造占位。读端落地后 `sim.perturbation_created` 才**有缓存可失效** ⇒ 同单转真接线（见 §事件表 L-sim）。接缝门：`frontend-shell/test/sandbox-perturbation-timeline.seam.test.tsx`（施加 → 清单出现这一条，写读两端同一个会话 store）。
@@ -1189,6 +1190,53 @@ toType 是 Order」一句**字面为假**，实有 3 条；但其限定句「Ord
 ⚠ **收入行不在这条链上**：④ 只吃成本/回款/逾期三个压力。需求侧（`demandPressure`/`demandLoad`）与 `FinancePlan` 收入行之间**今天没有任何传导规则** ——
 这是本体上的**真实缺口**（诚实缺席），不是求解器漏算。要接它需要新增一条 `demandLoad → 收入` 的传导口径，属另一张 WO。
 
+### 反事实链路 · 会话级屏蔽传导边 → 开/关两版对照（WO-ACTIVE-EDGE-UX · 2026-08-14）
+
+需求原话（仓主）：「**所有**推演的功能，包括"推演沙盘"就需要借鉴这个设计UX」——
+指参考件里那个能力：**关系边上有 active 开关，关掉这条边，就能看到推演结果怎么变**。
+这是一条**横向**要求（8 个推演页全覆盖），不是给沙盘加个 checkbox。
+
+**⛔ 正交关系（本条是本节的重点，读错就会做出事故）**：
+
+| 字段 | 承载物 | 语义 | 改它意味着 | 作用域 |
+|---|---|---|---|---|
+| `PropagationRule.status`（`DRAFT\|PUBLISHED\|RETIRED`） | `sim_propagation_rule.doc` | **这条边在不在世界里** | **本体真值写入** ⇒ 必须经 Action 审批（**R4**） | 全租户，持久 |
+| `SimSession.disabledRuleKeys: string[]` | `sim_session.disabled_rule_keys`（migration **034**） | **这次推演假装它不在** | 仿真世界自己那一行的世界态 ⇒ **不经审批**（**R4-sim** 豁免边界原文：「仿真世界的写入不经 Action 审批 —— 因为它根本不是真值；豁免仅限写进仿真世界自己那一行」） | 单会话，可随时拨回 |
+
+**两个字段都要，不许合并。** 拿 `status` 当这个开关会同时炸三头：
+① 顶 R4（用户点一下"关掉看看"就永久改了全租户本体）；② 顶 R2 的精神（一个人的假设污染同租户所有人的推演）；
+③ **不可对照** —— `status` 一改，"改之前"就没了，而用户要的恰恰是对照。
+存 **`key`** 不存 `id`：`key` 是契约里写明的「稳定键，可被 OPERATION_CATALOG/审计引用」；`id` 是 `randomBytes`，跨重建即漂。
+
+沿链路走：
+
+```
+① 前端      EdgeActivePanel（`views/sim/EdgeActivePanel.tsx`·8 页共享一件）
+             边目录 ← GET /a/v1/sim/propagation-rules（**不过滤**：关掉的边要"可见地降级"不是消失）
+② 拨开关     POST /a/v1/sim/sessions/:id/counterfactual  { n, disabledRuleKeys }（候选集，不落库）
+③ 引擎       simAdvanceTicks(persist:false) ×2 —— 全规则一版、减去屏蔽集一版，**同一支算法**
+             ⚠ 抄成两份就会把两版的算法差异算进"关掉这条边的影响"里 = 把噪声当结论
+④ 差值       contracts `diffTickStates`（**前后端唯一实现**；缺格按引擎 `readVar` 约定读 0）
+⑤ 落库（可选）PATCH /a/v1/sim/sessions/:id/disabled-rules → 此后 POST …/tick 真按"关掉"跑
+             引擎接缝 = `app.ts` tick 路的 `sessionPropRules(c, s).active` 这一行
+```
+
+**「对照跑不写世界态」是硬约束**（不是注释保证）：③ 的两版都 `persist:false`，`putTickState`/`putSession`/`outbox.emit`
+一次都不调 —— 否则用户点一下"看看"就把真会话推进了一格。由 `apps/datacore/test/edge-active-counterfactual.test.ts` ③
+**逐字节**咬死（对照跑前后会话行 + 全部 tick 行序列化相同；变异反证：拆掉 `if (persist)` ⇒ 当场红）。
+
+**`listPropagationRules` 的 8 处调用只有 tick 路该过滤**（逐处判定见工单交回报告；一刀切必错）：
+目录路（`/sim/propagation-rules`、`/sim/view-config`）过滤 ⇒ 边从图上消失，用户不知道自己关了什么；
+就绪认证 Trial Tick 过滤 ⇒ 拨一下开关就把就绪度拉低，屏上像世界坏了而世界一个字节没变；
+因果图（`/causal-graphs/sim/:id`）过滤 ⇒ **已记录的历史**边失去规则元数据（屏蔽集是"当下"的，历史不是）。
+
+**诚实位（一个数不许盖住两个事实）**：差值为空有两个完全不同的成因，屏上长得一样 ——
+① 这条边真跑了但影响被吃掉（"关掉它确实没影响"）；② 它在基线里**压根没触发**（源态为 0 / 无匹配边 / 被节拍闸门挡）。
+回包 `suppressedRulesFiredInBaseline` 就是分开这两件事的那个字段，前端 `buildVerdict` 给出**两句不同的话**。
+
+**门**：`scripts/check-edge-active-mounts.mjs`（8 页挂载点静态可达，且必须挂在**主组件**里 ——
+挂进子组件 = 没跑出结果就看不见开关，本单初稿真踩过 3 处，是这道门当场抖出来的）。
+
 ## 4. 数据流与事件失效图（模块间数据关系的单一来源）
 
 > 来源：`apps/agentcore/src/event-subscriptions.ts`（经 `GET /b/v1/event-subscriptions` 下发前端缓存失效路由）。**D-29 铁律**：任何产出型操作（上传/发布/生成/审批/tick）完成**必须**发对应领域事件，下游消费页**必须**订阅并在 SLO（事件 60s / 配置 TTL 5min）内反映。
@@ -1319,7 +1367,7 @@ toType 是 Order」一句**字面为假**，实有 3 条；但其限定句「Ord
 | R2 | **tenant_id everywhere**：所有读写/事件/缓存键带 tenantId；跨租户 403/404 | 仓储层 |
 | R3 | **entitlement 先于 authz**：功能关 = 不存在 → 404 `FEATURE_NOT_FOUND` | `features.ts`/`gate.ts` |
 | R4 | **真值写入经 Action 审批**：对象物化/本体变更经 `domainExecutor`（Phase9B），EXECUTED 才落。**职责分离为默认策略、可配置留痕例外（SA，有意放宽）**：发起人自批默认硬阻断（STRICT=现行为）；按租户策略 `selfApprovePolicy`（env `SELF_APPROVE_POLICY` 覆盖；demo 默认 ALLOW_ADMIN）或类型 `ActionType.selfApproveAllowed` 可放行发起人自审，但**必显式留痕 `ApprovalStep.selfApproved=true`**（R13 透明可审计，杜绝悄绕）——解锁单 admin/演示租户下 provisional→governed / SOP 定稿 / gap-fill 收尾等 R4 收尾闭环。**AgentCore 侧「写回型技能须先出可审批草案」子不变量（WO-R4-FREEQA-GATE·闭 `G-R4-FREEQA-UNGATED`）**：凡 `isWriteModeSkill`（`sideEffect` 写侧 ∪ `approvalGate ≠ none`）的技能正文被下发给模型，该次运行的 `final_answer` **必须**含 `action_draft` 块（→ 经 S2 审批链，绝不直接宣告真值已改）。**判据是「两条 `loadSkill` 路径的参数集差集为空」，不是「approvalGate 字段存在」**——豁口正是「字段在、传不到」：注册 agent 路（`engine.ts` 开跑静态聚合）传治理位，free-QA 路（`orchestrator.ts`）**一个都不传** ⇒ 执行点收到 `undefined` ⇒ falsy ⇒ 整道闸在那条路上形同虚设。治理位由 `loadSkill` 回调**逐技能回报**、loop 侧**载入即升级**（只收紧不放宽；不按租户已发布集静态聚合——那会让每道自由问答都被要求交草案，闸门失去指向性）；**回报缺省一律 fail-closed**（按需批复 + 必须溯源，`SKILL_GOVERNANCE_FAILCLOSED`），「没判定 ≠ 判定为好」 | `app.ts:290` · `actions.ts`（`tenantSelfApprovePolicy`/`selfApproveAllowedFor`）· **AgentCore 子不变量**：`apps/agentcore/src/agent/loop.ts:439 (SKILL_GOVERNANCE_FAILCLOSED)`（fail-closed 缺省）· `apps/agentcore/src/agent/loop.ts:451 (skillGovernance)`（两路共用的唯一回报构造器·判定单源仍是契约 `isWriteModeSkill`）· `apps/agentcore/src/agent/loop.ts:1275 (acceptFinalAnswer)`（闸门执行点·只读 `governance` 形参不读 `opts`）· SEAM `apps/agentcore/test/r4-writeback-gate.seam.test.ts` |
-| R4-sim | **R4 在仿真世界的豁免边界（WO-ENTERPRISE-STATE 增补 · `docs/PRD-enterprise-decision-twin.md` §4.1）**：仿真世界（`EnterpriseState.isSimulated===true`，`worldId` = 推演会话 id）的写入**不经 Action 审批** —— 因为它根本不是真值。**豁免仅限"写进仿真世界自己那一行"**；⛔ 三条边界一条都不许越：① 仿真世界**不得回写真实世界**（fork 必产生新行，真实世界那一行逐字节不变）；② 仿真结论要生效**必须**生成 Action 提案走 R4 正门（"采纳"是唯一出口）；③ 仿真快照的每条指标 `source.kind` 必须标 `FORKED`，**不许自称"从对象库现场数出来的"**（世界隔离的头号风险是出处串，不是数据串）。**这条豁免不放宽 R4，它是把 R4 的边界画清楚** —— 读成"仿真可以绕过审批写真实世界"即返工 | `twin/enterprise-state.ts fork()`（拒 fork 回 REAL·400）· `apps/datacore/test/enterprise-state.seam.test.ts` ③a/③b 世界隔离反证 |
+| R4-sim | **R4 在仿真世界的豁免边界（WO-ENTERPRISE-STATE 增补 · `docs/PRD-enterprise-decision-twin.md` §4.1）**：仿真世界（`EnterpriseState.isSimulated===true`，`worldId` = 推演会话 id）的写入**不经 Action 审批** —— 因为它根本不是真值。**豁免仅限"写进仿真世界自己那一行"**；⛔ 三条边界一条都不许越：① 仿真世界**不得回写真实世界**（fork 必产生新行，真实世界那一行逐字节不变）；② 仿真结论要生效**必须**生成 Action 提案走 R4 正门（"采纳"是唯一出口）；③ 仿真快照的每条指标 `source.kind` 必须标 `FORKED`，**不许自称"从对象库现场数出来的"**（世界隔离的头号风险是出处串，不是数据串）。**这条豁免不放宽 R4，它是把 R4 的边界画清楚** —— 读成"仿真可以绕过审批写真实世界"即返工。**WO-ACTIVE-EDGE-UX 增补（2026-08-14）**：`SimSession.disabledRuleKeys`（"这次推演假装这条传导边不存在"）**落在本条豁免内** —— 它写的是 `sim_session` 自己那一行，本体里的 `PropagationRule.status` 一个字节不动、别租户别会话看不到。⚠ **反向也要说清**：要让"这条边其实该退役"**真的生效**，那是改 `status`，**必须走 R4 正门**。两件事分属两个字段（§2.I / §3「反事实链路」），把开关做在 `status` 上就是用一次 UI 点击完成一次未经审批的本体真值写入 —— 那是事故不是功能 | `twin/enterprise-state.ts fork()`（拒 fork 回 REAL·400）· `apps/datacore/test/enterprise-state.seam.test.ts` ③a/③b 世界隔离反证 · `apps/datacore/test/edge-active-counterfactual.test.ts` ①判据 d（屏蔽后 `status` 仍为 `PUBLISHED`） |
 | R5 | **no-secrets-echo**：凭据 AES-GCM 落库，响应仅 credentialRef | 连接器/LLM/MCP |
 | R6 | **确定性**：同 (industry,scale,seed) 字节级一致；求解器同输入同输出；测试不依赖网络/时钟/随机；LLM mock。**WO-ENTERPRISE-STATE 增补**：企业状态快照同 `(tenant, world, 逻辑时刻)` 重复捕获 **逐字节一致**——靠三件事结构性保证，不是靠"碰巧算出一样"：① `capturedAt` 取**逻辑时钟**（A8 模拟时钟派生），doc 里零 wall-clock；② id 确定性 ⇒ 幂等覆盖同一行而非堆新行；③ 捕获核是纯函数、指标按 key 全序、数值六位定点 | 合成/求解器/构建 freezePlan · `contracts/enterprise-state.ts captureEnterpriseState` |
 | R7 | **错误信封统一** `{error:{code,message,requestId}}` | 两系统 |
