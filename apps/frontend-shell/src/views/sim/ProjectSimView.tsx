@@ -569,9 +569,9 @@ function StepBody({
                   {b.wkEff} 周
                 </td>
                 <td>{fmt(b.cumDemand)}</td>
-                <td>{fmt(b.cumP90)}</td>
+                <td>{fmt(b.cumCapWanP90)}</td>
                 <td style={{ color: b.ok ? "var(--ok-txt)" : "var(--danger-txt)", fontWeight: 700 }} data-testid={`batch-ok-${i}`}>
-                  {b.ok ? "✓ 按期" : `✗ 缺 ${fmt(b.cumDemand - b.cumP90)}`}
+                  {b.ok ? "✓ 按期" : `✗ 缺 ${fmt(b.cumDemand - b.cumCapWanP90)}`}
                 </td>
               </tr>
             ))}
@@ -745,8 +745,8 @@ function StepBody({
                 <b>合计</b>
               </td>
               <td colSpan={2} data-testid="pm-step4-total">
-                P50 <b className="mono">{fmt(out.p50)}</b> 万套 · P90 = P50 × <b className="mono">{out.healthFactor}</b> ={" "}
-                <b className="mono">{fmt(out.p90)}</b> 万套
+                P50 <b className="mono">{fmt(out.capWanP50)}</b> 万套 · P90 = P50 × <b className="mono">{out.healthFactor}</b> ={" "}
+                <b className="mono">{fmt(out.capWanP90)}</b> 万套
               </td>
             </tr>
           </tbody>
@@ -850,7 +850,7 @@ function StepBody({
             inputs={["可产基地", "爬坡曲线", "检修窗", "认证系数"]}
             rule="C01/C02"
           >
-            <b style={{ color: "var(--c-capacity-txt)" }}>{fmt(out.p50)}</b>
+            <b style={{ color: "var(--c-capacity-txt)" }}>{fmt(out.capWanP50)}</b>
           </Provenance>
           <span>P50 累计产能(万套)</span>
         </div>
@@ -863,7 +863,7 @@ function StepBody({
             rule="C09"
             note="IoT 延迟时健康度系数自动下调，置信度随之削弱"
           >
-            <b style={{ color: "var(--c-forecast-txt)" }}>{fmt(out.p90)}</b>
+            <b style={{ color: "var(--c-forecast-txt)" }}>{fmt(out.capWanP90)}</b>
           </Provenance>
           <span>P90（× 健康度 {out.healthFactor}）</span>
         </div>
@@ -878,11 +878,11 @@ function StepBody({
           边界自 C08 规则闸、多方案矩阵 —— 全在 DynamicLeverPanel。 */}
       <Feature flag="view.project-sim.whatif">
         <DynamicLeverPanel
-          baseP50={out.p50}
+          baseP50={out.capWanP50}
           baseGap={out.gap}
           factors={[out.mainBn, ...new Set(out.perBaseRows.map((r) => r.bottleneck).filter(Boolean))].filter(Boolean) as string[]}
           modelId={modelId}
-          snapshot={{ mode, qty: totalQty, p50: out.p50, p90: out.p90, mainBn: out.mainBn }}
+          snapshot={{ mode, qty: totalQty, capWanP50: out.capWanP50, capWanP90: out.capWanP90, mainBn: out.mainBn }}
         />
       </Feature>
       {/* WO-GLOBALSIM-GLASS-REDESIGN 去重：多目标 + 跨对象占用联合 what-if 本是「全局能力」，
@@ -931,14 +931,14 @@ function buildDag(
       .concat(folded > 0 ? [{ id: "bm", label: `+${folded} 基地`, sub: "见步骤②", color: "#54B5C4", st: 2 }] : []),
     factors.map<PmDagNode>((f) => ({ id: f.id, label: f.label, sub: f.sub, color: "#9D8BF0", st: 3 })),
     [
-      { id: "agg", label: "聚合求解器", sub: `Σ基地 Σ周 → P50 ${fmt(out.p50)} 万套`, color: "#C470B8", st: 4 },
+      { id: "agg", label: "聚合求解器", sub: `Σ基地 Σ周 → P50 ${fmt(out.capWanP50)} 万套`, color: "#C470B8", st: 4 },
       { id: "bn", label: "瓶颈求解器", sub: `主瓶颈：${out.mainBn || "—"}`, color: "#C470B8", st: 5 },
     ],
     [
       {
         id: "fc",
         label: `产能预测 ${out.ok ? "✓ 可达" : `✗ 缺口 ${fmt(out.gap)} 万套`}`,
-        sub: `P50 ${fmt(out.p50)} · P90 ${fmt(out.p90)}（×${out.healthFactor}）vs 需求 ${fmt(totalQty)}`,
+        sub: `P50 ${fmt(out.capWanP50)} · P90 ${fmt(out.capWanP90)}（×${out.healthFactor}）vs 需求 ${fmt(totalQty)}`,
         color: out.ok ? "#62BE77" : "#DD7E9E",
         st: 6,
       },
@@ -1042,7 +1042,7 @@ function dagNodeDetail(
     case "agg":
       return {
         title: "聚合求解器（capacity_forecast）",
-        verdict: `P50 ${fmt(out.p50)} 万套`,
+        verdict: `P50 ${fmt(out.capWanP50)} 万套`,
         src: "求解器 · capacity_forecast",
         formula: "P50 = Σ可产基地 Σ周(周产能 × 爬坡曲线 × 检修窗 × 认证系数)",
         inputs: ["逐基地周产能", "爬坡曲线", "检修窗", "认证系数"],
@@ -1063,7 +1063,7 @@ function dagNodeDetail(
         title: "产能预测结论",
         verdict: out.ok ? "✓ 可达" : `✗ 缺口 ${fmt(out.gap)} 万套`,
         src: "聚合 + 数据健康度（C09）",
-        formula: `P90 = P50 ${fmt(out.p50)} × 健康度 ${out.healthFactor} = ${fmt(out.p90)}；缺口 = 需求 ${fmt(totalQty)} − P90`,
+        formula: `P90 = P50 ${fmt(out.capWanP50)} × 健康度 ${out.healthFactor} = ${fmt(out.capWanP90)}；缺口 = 需求 ${fmt(totalQty)} − P90`,
         inputs: ["P50", `健康度系数 ${out.healthFactor}`, "需求"],
         rule: "C09",
         note: out.degradeNote ?? "结论可采纳为 Action（参数组合 + 推演快照写回）",

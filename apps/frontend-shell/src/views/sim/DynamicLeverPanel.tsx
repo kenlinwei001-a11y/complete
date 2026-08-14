@@ -111,7 +111,8 @@ export function DynamicLeverPanel({
   factors: string[];
   scopeObjectIds?: string[];
   modelId: string;
-  snapshot: { mode: string; qty: number; p50: number; p90: number; mainBn: string };
+  /** WO-P50-RENAME：产能推演快照，量纲 **万套/窗口**（与 capacity_forecast 输出同轴）。 */
+  snapshot: { mode: string; qty: number; capWanP50: number; capWanP90: number; mainBn: string };
   /** WO-CAPLIVE-2：参数化推演目标（项目推演页默认 Base.oeeIndex；产能页传 Base.weeklyCap/Process 级）。
    *  硬编（旧 :91 targetType:"Base"/targetProp:"oeeIndex"）→ 参数，杠杆自不同产能目标反推（保 ProjectSimView 默认不回归）。 */
   targetType?: string;
@@ -223,7 +224,7 @@ export function DynamicLeverPanel({
       payload: {
         modelId,
         levers: apply, // 迁移：动态杠杆组合 [{objectType,prop,value}]（替原 whatIf 三系数）
-        snapshot: { ...snapshot, p50: snapshot.p50, baselineGap: baseGap },
+        snapshot: { ...snapshot, capWanP50: snapshot.capWanP50, baselineGap: baseGap },
       },
     });
   };
@@ -386,15 +387,15 @@ export function DynamicLeverPanel({
               <details data-testid="lever-deltas-details">
                 <summary className={styles.deltaSummaryToggle}>{zh.sim.proj.lever.deltaTitle(out.rows.length)}</summary>
                 {/* 诚实位：对象 id 与派生字段的读法。屏上给的是引擎原始键，不解释用户读不出来。
-                    ⚠ `p50` 在本仓**有两个含义两个单位**（`packages/contracts/src/solvers.ts:87` 产能格 = 电芯/日；
-                    `apps/datacore/src/synthetic/battery.ts:1149` DemandSegment = 需求 P50·万套）。
-                    本面板的对象是产能格，故此处按前者读；**根治要在契约层改名**（另立单），UI 只能标注。 */}
+                    ✅ WO-P50-RENAME 已在**契约层**根治：原先 `p50` 一个名字背 4 个量纲（需求万套/年 ·
+                    产能万套/窗口 · 工序电芯/日 · 累计套），用户在本表里分不出是哪个。现字段名自带量纲，
+                    本表的 `cellsPerDayP50` 只可能是「工序×型号日产能·电芯/日」这一个意思。 */}
                 <div className={styles.deltaLegend}>
-                  对象 = <span className="mono">基地|产线|型号</span> · 派生字段 <span className="mono">p50</span> = 该格产能 P50（电芯/日）
+                  对象 = <span className="mono">基地|产线|型号</span> · 派生字段 <span className="mono">cellsPerDayP50</span> = 该格产能 P50（<b>电芯/日</b>）
                 </div>
               <table className="cmp">
                 <thead>
-                  <tr><th>对象</th><th>派生字段</th><th>before</th><th>after</th><th>变化</th></tr>
+                  <tr><th>对象</th><th>派生字段</th><th>before（电芯/日）</th><th>after（电芯/日）</th><th>变化（电芯/日）</th></tr>
                 </thead>
                 <tbody>
                   {out.rows.map((r, i) => {

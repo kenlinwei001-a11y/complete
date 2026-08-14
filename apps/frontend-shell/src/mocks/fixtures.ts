@@ -716,7 +716,7 @@ export const GRAPH: OntologyGraphVM = {
     { id: "n-solver-risk", key: "risk_timeline", label: "风险时间线", kind: "solver", domain: "solver", sourceSystem: "求解", properties: [], sourceBindings: [], rules: [], derivations: [] },
     { id: "n-agent", key: "explore_agent", label: "探索 Agent", kind: "agent", domain: "agent", sourceSystem: "智能体", properties: [], sourceBindings: [], rules: [], derivations: [] },
     // —— §7.18 八视角增量节点（学习闭环 / 产能推演网络 / MVP 缺口）——
-    { id: "产能预测", key: "CapacityForecast", label: "产能预测", kind: "object", domain: "capacity", tier: 1, sourceSystem: "派生", properties: [{ propKey: "week", dataType: "string", isPrimaryKey: true }, { propKey: "p50", dataType: "number" }, { propKey: "p90", dataType: "number" }], sourceBindings: [], rules: [{ key: "C12", name: "预测重校", expression: "SUSTAIN(|预测−实际|/实际 > 0.08, 1)" }], derivations: [{ propKey: "p90", formula: "p50 × healthFactor" }] },
+    { id: "产能预测", key: "CapacityForecast", label: "产能预测", kind: "object", domain: "capacity", tier: 1, sourceSystem: "派生", properties: [{ propKey: "week", dataType: "string", isPrimaryKey: true }, { propKey: "capWanP50", dataType: "number" }, { propKey: "capWanP90", dataType: "number" }], sourceBindings: [], rules: [{ key: "C12", name: "预测重校", expression: "SUSTAIN(|预测−实际|/实际 > 0.08, 1)" }], derivations: [{ propKey: "capWanP90", formula: "capWanP50 × healthFactor" }] },
     { id: "工序产能", key: "ProcessCapacity", label: "工序产能", kind: "object", domain: "capacity", tier: 1, sourceSystem: "派生", properties: [{ propKey: "procKey", dataType: "string", isPrimaryKey: true }], sourceBindings: [], rules: [], derivations: [{ propKey: "weeklyCap", formula: "节拍 × OEE × 良率 × 可用工时" }] },
     { id: "实际产出", key: "ActualOutput", label: "实际产出", kind: "object", domain: "capacity", tier: 3, sourceSystem: "MES", mvpGap: true, properties: [{ propKey: "date", dataType: "date", isPrimaryKey: true }], sourceBindings: [{ connId: "conn-mes", dataset: "output_daily" }], rules: [], derivations: [] },
     { id: "良率", key: "YieldRate", label: "良率", kind: "object", domain: "quality", tier: 2, sourceSystem: "QMS", properties: [{ propKey: "procKey", dataType: "string", isPrimaryKey: true }], sourceBindings: [{ connId: "conn-qms", dataset: "yield_daily" }], rules: [], derivations: [] },
@@ -1350,7 +1350,7 @@ export const SKILLS: SkillDefinition[] = [
     outputSchema: {
       type: "object",
       properties: {
-        conclusion: { type: "string" }, p50: { type: "number" }, p90: { type: "number" }, gapPct: { type: "number" },
+        conclusion: { type: "string" }, capWanP50: { type: "number" }, capWanP90: { type: "number" }, gapPct: { type: "number" },
       },
     },
     references: [
@@ -1679,9 +1679,9 @@ export const ANSWER_A2: Answer = {
     { type: "text", markdown: "加 20% 后六周内 P90 口径存在 **1.2 GWh** 缺口⟦ref:prov-a2-3⟧，主要瓶颈为化成柜⟦ref:prov-a2-1⟧。建议评估外协或排程平移。" },
   ],
   provenance: [
-    { id: "prov-a2-1", source: "TOOL_RESULT", toolCallId: "tc-a2-1", toolName: "invoke_solver:capacity_forecast", outputPath: "$.p50", snapshotVersion: "ov-12", ...({ stepId: "s2", formula: "capacity_forecast(model=4680-NCM, delta=0.2, weeks=6)", value: "21.4 GWh", valueLabel: "P50 产能" } as Record<string, unknown>) } as Answer["provenance"][number],
-    { id: "prov-a2-2", source: "TS_AGGREGATE", toolCallId: "tc-a2-1", toolName: "query_timeseries_agg", outputPath: "$.p90", snapshotVersion: "ov-12", tsAgg: { aggRunId: "aggrun-889", specKey: "oee_daily@v2", window: { start: "2026-06-01", end: "2026-06-07" }, rowsIn: 84213 }, ...({ value: "18.9 GWh", valueLabel: "P90 产能（OEE 加权）" } as Record<string, unknown>) } as Answer["provenance"][number],
-    { id: "prov-a2-3", source: "TOOL_RESULT", toolCallId: "tc-a2-2", toolName: "invoke_solver:capacity_forecast", outputPath: "$.gap", snapshotVersion: "ov-12", ...({ stepId: "s3", formula: "gap = demand - p90", rules: [{ key: "C03", expression: "Order.demandDelta <= 0.5" }], value: "-1.2 GWh", valueLabel: "产能缺口" } as Record<string, unknown>) } as Answer["provenance"][number],
+    { id: "prov-a2-1", source: "TOOL_RESULT", toolCallId: "tc-a2-1", toolName: "invoke_solver:capacity_forecast", outputPath: "$.capWanP50", snapshotVersion: "ov-12", ...({ stepId: "s2", formula: "capacity_forecast(model=4680-NCM, delta=0.2, weeks=6)", value: "21.4 GWh", valueLabel: "P50 产能" } as Record<string, unknown>) } as Answer["provenance"][number],
+    { id: "prov-a2-2", source: "TS_AGGREGATE", toolCallId: "tc-a2-1", toolName: "query_timeseries_agg", outputPath: "$.capWanP90", snapshotVersion: "ov-12", tsAgg: { aggRunId: "aggrun-889", specKey: "oee_daily@v2", window: { start: "2026-06-01", end: "2026-06-07" }, rowsIn: 84213 }, ...({ value: "18.9 GWh", valueLabel: "P90 产能（OEE 加权）" } as Record<string, unknown>) } as Answer["provenance"][number],
+    { id: "prov-a2-3", source: "TOOL_RESULT", toolCallId: "tc-a2-2", toolName: "invoke_solver:capacity_forecast", outputPath: "$.gap", snapshotVersion: "ov-12", ...({ stepId: "s3", formula: "gap = demand - capWanP90", rules: [{ key: "C03", expression: "Order.demandDelta <= 0.5" }], value: "-1.2 GWh", valueLabel: "产能缺口" } as Record<string, unknown>) } as Answer["provenance"][number],
   ],
 };
 
