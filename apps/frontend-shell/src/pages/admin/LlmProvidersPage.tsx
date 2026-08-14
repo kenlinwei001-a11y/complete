@@ -451,7 +451,11 @@ function BudgetPanel() {
         <span className="muted">加载中…</span>
       ) : !data ? (
         <span className="muted" data-testid="llm-budget-empty">
-          账本不可用（DataCore 未返回配额状态）。
+          账本不可用
+          {/* 诚实位：「这次没查到」≠「没超」。状态留第一层，理由降 `?`（规范 §1）。 */}
+          <InfoPopover topic={zh.admin.layer.llmLedgerTopic} testId="llm-ledger-unavailable">
+            <p>{zh.admin.layer.llmLedgerBody}</p>
+          </InfoPopover>
         </span>
       ) : (
         <>
@@ -464,7 +468,12 @@ function BudgetPanel() {
             </span>
             {data.degrade && (
               <span className="muted" style={{ fontSize: 12 }} data-testid="llm-budget-degrade">
-                ⚠ 已触发降级：路径 A 跳过非必要 compose，路径 B 新任务前先警示；过硬线则直接拒绝。
+                ⚠ 已触发降级
+                {/* 「降级了」是状态，留第一层；「降级具体做什么」是口径，降 `?`。 */}
+                <InfoPopover topic={zh.admin.layer.llmDegradeTopic} testId="llm-degrade">
+                  <p>{zh.admin.layer.llmDegradeBody}</p>
+                  <p>过硬线则直接拒绝。</p>
+                </InfoPopover>
               </span>
             )}
           </div>
@@ -590,7 +599,15 @@ function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
         <thead>
           <tr>
             <th>用途</th>
-            <th>能力要求</th>
+            {/* 能力要求列：口径（tools 硬性 / structuredOutput 可降级）在表头浮层里说一次，
+                不再逐行重复挂在每个单元格上（规范 §2 R-UI-3 + §1「第一层只放名字」）。 */}
+            <th>
+              能力要求
+              <InfoPopover topic={zh.admin.layer.llmCapTopic} testId="llm-cap">
+                <p>{zh.admin.layer.llmCapBody}</p>
+                <p>tools（硬性）：供应商不支持工具调用即不可用于该用途，没有降级路径。</p>
+              </InfoPopover>
+            </th>
             <th>provider</th>
             <th>model</th>
             {/* WO-HOVER-LAYER：口径从原生 `title=` 迁到 InfoPopover（规范 §2 R-UI-3）。 */}
@@ -613,7 +630,8 @@ function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
                   <span className="mono" style={{ fontSize: 12 }}>{purpose}</span> · {PURPOSE_LABEL[purpose]}
                 </td>
                 <td style={{ fontSize: 12, color: "var(--muted)" }}>
-                  {[req.tools ? "tools（硬性）" : null, req.structuredOutput ? "structuredOutput（可 JSON-mode 降级）" : null]
+                  {/* 只留能力**名字**；「硬性 / 可 JSON-mode 降级」的口径在本列表头的 `?` 里。 */}
+                  {[req.tools ? "tools" : null, req.structuredOutput ? "structuredOutput" : null]
                     .filter(Boolean)
                     .join(" + ") || "无"}
                 </td>

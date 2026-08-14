@@ -1278,6 +1278,117 @@ export const zh = {
     downstream: "下游受影响面",
   },
   admin: {
+    /**
+     * WO-BEFE-CLEANUP · **管理台 `?` 浮层文案**（`docs/CONVENTION-ui-information-layering.md` §1/§2 R-UI-3）。
+     *
+     * 收在一处而不是各页内联，理由是规范 §6 的不变量 **R14（应用层无业务常数）**：
+     * 「浮层文案一律走 `locales/`，不内联」。
+     *
+     * ⚠ 这里放的是**「凭什么」**（口径 · 公式 · 数据来源 · 诚实位说明），
+     * **不放结论性数字** —— 规范 §1 明写「数字属于第一层，不许只藏在浮层里」。
+     * 每条的 key 前缀 = 它服务的那一页，改页时一眼看得出要改哪几条。
+     */
+    layer: {
+      // ── /admin/calendars（WO-BEFE-B）──────────────────────────────────────
+      calWeekendTopic: "周末口径",
+      calWeekendBody:
+        "决定「哪几天默认不算生产日」，是净生产天数的扣除基准：SAT_SUN_OFF = 周六与周日均不生产；SUN_OFF = 只休周日（六天工作制）；NONE = 不按周末扣，全部由下方例外日显式指定。",
+      calNetTopic: "净生产天数怎么来的",
+      calNetBody:
+        "净生产天数由**后端**按本日历重算（`netProductionDays`），前端只显示、不复算 —— 前端自己再算一遍，就会出现「屏上的数和求解器用的数不是同一个」这种最难查的偏差。口径 = 区间内自然日 − 周末（按上面的周末口径）− HOLIDAY/MAINTENANCE 例外日 + EXTRA_WORKDAY 调休补班。",
+
+      // ── /admin/ontology-relations（WO-BEFE-A）─────────────────────────────
+      relStatusTopic: "状态列口径",
+      relStatusBody:
+        "状态列口径 = **本次会话内的乐观投影**，不是后端权威快照：新建/改动在本地即时反映，而后端列表读的是发布快照（未发布的改动被投影掉了），所以刷新页面会退回快照口径 —— 这是如实标注，不是显示 bug。要让两者一致，把改动发布出去。",
+
+      // ── /admin/catalog（WO-BEFE-E）────────────────────────────────────────
+      catalogRiskTopic: "这三条红字分别在说什么",
+      catalogRiskNoTargetBody:
+        "「未选目标对象类型」：意图发布前必填（AC4）。缺它，执行期不知道该在哪个对象类型上取数。",
+      catalogRiskNoPlanBody:
+        "「未绑定执行计划」：意图发布得了，但执行期解析不到计划（QOS 路径 A 会落到兜底），等于发了一条跑不动的意图。",
+      catalogRiskDraftBody:
+        "「DRAFT 未发布」：绑定它的意图在执行期解析不到计划 —— `latest` 只认已发布版本，草稿不参与解析。",
+
+      // ── /admin/growth（WO-BEFE-D）─────────────────────────────────────────
+      growthProbeTopic: "「运行」与「只探针」的区别",
+      growthProbeBody:
+        "「运行」会补数据 / 开工单 / 发事件（真写）；「只探针」不动任何数据，只把这一轮会做什么算给你看（只读）。拿不准就先只探针。",
+      growthFuelTopic: "自成长回路怎么跑",
+      growthFuelBody:
+        "把「客户明确问题」当燃料：真跑一遍 QOS 诊断缺口 → 能自动补的补（数据真人正门导入 HARD / 合成 SOFT 二选一）、补不了的开工单，回路每轮都留证据。",
+      growthTicketTopic: "工单状态机",
+      growthTicketBody:
+        "OPEN →「认领」→ IN_PROGRESS →「提交复核」→ IN_REVIEW →「验收」→ DONE。每一步都由后端判合法性，前端只发动作不改状态。",
+
+      // ── /admin/llm-providers（WO-BEFE-F）──────────────────────────────────
+      llmLedgerTopic: "账本不可用是什么意思",
+      llmLedgerBody:
+        "账本不可用（DataCore 未返回配额状态）—— 这是「这次没查到」，不是「配额没超」。别把它读成绿灯。",
+      llmDegradeTopic: "触发降级后会发生什么",
+      llmDegradeBody:
+        "⚠ 已触发降级：路径 A 跳过非必要 compose，路径 B 新任务前先警示；已在跑的任务不中断。",
+      llmCapTopic: "structuredOutput 能力口径",
+      llmCapBody:
+        "structuredOutput（可 JSON-mode 降级）：供应商原生不支持结构化输出时，适配层退到 JSON-mode 并在响应里标注，不静默改语义。",
+
+      // ── /admin/prototype-intake（WO-BEFE-C）───────────────────────────────
+      intakeQueueTopic: "候选队列与上方预览的区别",
+      intakeQueueBody:
+        "本队列是 `intake_persist_candidates` 真落库的那一份（建模链路节点写入），与上面那块「本次解析预览」**不是同一份**：预览刷新即消失，这里的一直在。",
+      intakeUnavailTopic: "队列不可用 ≠ 没有候选",
+      intakeUnavailBody:
+        "队列不可用（需 admin 角色，或后端不可达）—— 不是「没有候选」，是**这次没查到**。角色不足时后端如实拒绝，不伪造空列表。",
+
+      // ── /admin/scenes（WO-BEFE-D）─────────────────────────────────────────
+      scenesKeyTopic: "为什么第一列是场景",
+      scenesKeyBody:
+        "场景为一等主键：第一列是场景，其后选交互模式（workflow-first 为默认），而不是先选模式再挑场景 —— 用户找的是「我要办的那件事」，不是「我要用哪种引擎」。",
+      scenesActionTopic: "「复检」与「发布全链」分别做什么",
+      scenesActionBody:
+        "「复检」只重算这一条的引用闭包并把断链条目摊在行内；「发布全链」按依赖序发引用到的全部制品，任一条断链即整体中止，不半途留下发一半的链。",
+      scenesReadonlyTopic: "已发布场景为什么改不了",
+      scenesReadonlyBody:
+        "已发布场景为只读配置（真实存于后端 `/b/v1/scenarios`，非前端写死）—— 要改就发新版本，改不动是设计，不是权限出错。",
+
+      // ── /admin/solver-review（WO-BEFE-E）──────────────────────────────────
+      solverReviewTopic: "「审核中（未认证）」是什么状态",
+      solverReviewBody:
+        "LLM 生成的临时求解器经锁死沙箱跑通自检后为「审核中（未认证）」，默认隔离、仅本会话可用；认证前不进任何生产求解路径。生成 ≠ 可用。",
+      solverProvisionalTopic: "PROVISIONAL 的三件套",
+      solverProvisionalBody:
+        "冻结代码 + PROVISIONAL 标记 + 未认证徽标 —— 三件缺一不可：缺冻结则代码还会变，缺标记则混进目录，缺徽标则用的人不知道它没过认证。",
+
+      // ── /admin/solvers（WO-BEFE-E）────────────────────────────────────────
+      solversSourceTopic: "这一页的数据从哪来",
+      solversSourceBody:
+        "求解器由平台代码注册（非用户创建），此页只读发现：key / 名称 / 描述 / 分类 / 参数版本全部读自后端注册表，前端不写死一条。",
+      solversTaxonomyTopic: "分类判据",
+      solversTaxonomyBody:
+        "归类判据是「它回答的是不是这句问话」，不是「它用了哪种算法」—— 故同一句问话下可以并列出现算法完全不同的几个求解器。",
+      solversRolesTopic: "字段角色绑定的口径",
+      solversRolesBody:
+        "「在本租户本体里绑到哪」= 后端按 A13 地板语义做的确定性解析（无 LLM 参与），同输入必同输出。候选分数并列时取确定性默认，并在下方标「真歧义」。",
+      solversAmbiguousTopic: "「真歧义」是什么意思",
+      solversAmbiguousBody:
+        "top1 与 top2 的分数咬得很紧 ⇒ 这份绑定只是**确定性默认**，不是**确定**。要定死它，得在本体里把字段语义补清楚，而不是信这条默认值。",
+      solversEmptyTopic: "为什么这里可能是空的",
+      solversEmptyBody:
+        "暂无可见求解器（求解器由平台提供，按 feature 开通显隐；如需新增请联系实施方）—— 空列表是真值，不是加载失败。",
+
+      // ── /admin/agents（WO-BEFE-C）─────────────────────────────────────────
+      agentOwnRunsTopic: "「本 Agent 的运行」的数据源",
+      agentTaskRunsTopic: "「本次任务的全部运行」的数据源",
+      agentOriginTopic: "「来源」列在说什么",
+      agentOriginBody:
+        "会诊扇出的子运行开始计入之后，**运行数的含义变了** —— 5 次里可能有 3 次是被会诊叫去的，不标出来就会被读成「这个 Agent 被直接调用了 5 次」。直接运行 = 编排层顶层发起；会诊扇出 = 多角色会诊把它叫去跑的子运行；「—」= 本列上线前的旧记录，字段缺失，**不冒充直接运行**。",
+
+      // ── /admin/resources（WO-BEFE-F）──────────────────────────────────────
+      resDetailTopic: "详情面板读的是哪个端点",
+      resDetailBody:
+        "详情读单资源端点 `GET /b/v1/resources/{kind}/{key}`（带 overlayQuality），不是列表投影 —— 两者字段不同，列表拿不到叠加质量。",
+    },
     connections: {
       title: "数据接入控制台",
       newConnection: "新建连接",

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Scenario, SceneEntryMode } from "@platform/contracts";
 import { createScenario, fetchAgents, fetchIntents, fetchScenarioClosure, fetchScenariosManage, fetchViewConfigs, growScenario, publishScenario, publishScenarioChain, retireScenario, updateScenario, type ScenarioClosure } from "@/api/endpoints";
+import { InfoPopover } from "@/components/InfoPopover";
 import { invalidateForEvent } from "@/store/eventInvalidation";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toast, toastError } from "@/store/toastStore";
@@ -40,13 +41,23 @@ export default function ScenesPage() {
           ＋ 新建场景
         </button>
       </div>
-      <div className={`muted`} style={{ fontSize: 12, marginBottom: 10 }}>
-        场景为一等主键：第一列是场景，其后选交互模式（workflow-first 为默认；agent-first 仅探索面）与 presetContext（保证一键可推演、不被反问）。
-      </div>
-      {/* WO-BEFE-D：两颗新按钮的口径写在这里（可见文字），不塞进原生 title=（规范 §2 R-UI-3）。 */}
+      {/*
+        WO-BEFE-CLEANUP · 信息分层（规范 §2 R-UI-3 + §1）。两段成段说明降进 `?` 浮层：
+          ① 「场景为一等主键」——**信息架构的口径**，解释这张表为什么这么排；
+          ② 「复检 / 发布全链」——两颗按钮各自**做什么、被谁挡回**的口径。
+        ② 有前史：WO-BEFE-D 已把它从原生 `title=` 搬成可见小字（方向对，但只走了一半 ——
+        规范点名的落点是 `InfoPopover`，不是"另找个地方摊在第一层"）。本次补齐。
+        第一层留下的是**名字**（页标题 · 两颗按钮自己的文字），`?` 常驻可见即降层记号。
+      */}
       <div className="muted" style={{ fontSize: 12, marginBottom: 10 }} data-testid="scenes-actions-note">
-        「复检」只重算这一条的引用闭包并把断链条目摊在行内；「发布全链」按依赖序发 引用的计划 → 意图 → 本场景，
-        经 catalog_admin 审批角色，闭包不通过由后端 409 挡回（前端不自行放行）。
+        <InfoPopover topic={zh.admin.layer.scenesKeyTopic} testId="scenes-key">
+          <p>{zh.admin.layer.scenesKeyBody}</p>
+          <p>presetContext 保证一键可推演、不被反问。</p>
+        </InfoPopover>
+        <InfoPopover topic={zh.admin.layer.scenesActionTopic} testId="scenes-actions">
+          <p>{zh.admin.layer.scenesActionBody}</p>
+          <p>「发布全链」按依赖序发 引用的计划 → 意图 → 本场景，经 catalog_admin 审批角色，闭包不通过由后端 409 挡回（前端不自行放行）。</p>
+        </InfoPopover>
       </div>
 
       {creating && (
@@ -367,7 +378,12 @@ function ScenarioEditor({
     <div className="panel" data-testid="scenario-editor" style={{ margin: inline ? "8px 0" : "0 0 14px" }}>
       {readOnly && (
         <div data-testid="scenario-readonly-hint" style={{ fontSize: 12, color: "var(--amber-txt)", marginBottom: 8 }}>
-          已发布场景为只读配置（真实存于后端 /b/v1/scenarios，非前端写死）。如需修改：点该行「退役」转为草稿后即可编辑，再「发布」生效。
+          {/* 状态（「只读」）留第一层——不点就得知道这里改不动；「为什么/怎么改」降 `?`。 */}
+          已发布场景为只读
+          <InfoPopover topic={zh.admin.layer.scenesReadonlyTopic} testId="scenes-readonly">
+            <p>{zh.admin.layer.scenesReadonlyBody}</p>
+            <p>如需修改：点该行「退役」转为草稿后即可编辑，再「发布」生效。</p>
+          </InfoPopover>
         </div>
       )}
       <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>

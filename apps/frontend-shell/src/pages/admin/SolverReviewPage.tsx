@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SolverArtifact } from "@platform/contracts";
 import { fetchSolverArtifacts, generateProvisionalSolver, promoteSolverArtifact } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
+import { InfoPopover } from "@/components/InfoPopover";
+import zh from "@/locales/zh";
 import { Modal } from "@/components/ui/Modal";
 
 /**
@@ -65,19 +67,34 @@ export default function SolverReviewPage() {
 
   return (
     <div data-testid="solver-review-page">
-      <h2>求解器审核台</h2>
+      <h2>
+        求解器审核台
+        {/*
+          WO-BEFE-CLEANUP · 信息分层（规范 §1）。原文一整段把「治理口径」与「待审数」压在一起。
+          现在：**数字留第一层**（规范 §1 明写「结论性数字不许只藏在浮层里」），
+          治理口径（隔离范围 / 晋升后解锁什么 / R4 人工闸）降进 `?`。
+        */}
+        <InfoPopover topic={zh.admin.layer.solverReviewTopic} testId="solver-review-policy">
+          <p>{zh.admin.layer.solverReviewBody}</p>
+          <p>审阅冻结代码与理由后晋升 GOVERNED → 解锁任何人写真值（R4）。</p>
+        </InfoPopover>
+      </h2>
       <p style={{ color: "var(--muted)", fontSize: 12.5 }}>
-        LLM 生成的临时求解器经锁死沙箱跑通自检后为「审核中（未认证）」，默认隔离、仅创建人可用其写真值。
-        审阅冻结代码与理由后晋升 GOVERNED → 解锁任何人写真值（R4）。待审 {pendingCount} 个。
+        待审 <b data-testid="solver-review-pending">{pendingCount}</b> 个
       </p>
 
       {/* WO-BEFE-E · 生成入口（此前本页只有"审"没有"生"，于是永远没东西可审）。 */}
       <div className="panel" style={{ padding: 10, margin: "10px 0" }} data-testid="solver-generate">
-        <div className="section-title">缺求解器？让 LLM 生成一个临时件（生成 ≠ 可用）</div>
-        <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 8, lineHeight: 1.7 }}>
-          产物是 <b>冻结代码 + PROVISIONAL + 未认证</b>：先在锁死沙箱里跑通自检才登记，
-          默认<b>不能</b>写真值（仅创建人可用其写真值且带「未认证·LLM」标）。
-          解锁写真值的唯一路径是下面那颗「晋升 GOVERNED」——那才是 R4 的人工闸。
+        {/* 「生成 ≠ 可用」是**诚实位**，短且要紧 ⇒ 留在第一层不降；产物形态与解锁路径降 `?`。 */}
+        <div className="section-title">
+          生成临时求解器（生成 ≠ 可用）
+          <InfoPopover topic={zh.admin.layer.solverProvisionalTopic} testId="solver-provisional">
+            <p>{zh.admin.layer.solverProvisionalBody}</p>
+            <p>
+              产物先在锁死沙箱里跑通自检才登记，默认<b>不能</b>写真值（仅创建人可用其写真值且带「未认证·LLM」标）。
+              解锁写真值的唯一路径是下面那颗「晋升 GOVERNED」——那才是 R4 的人工闸。
+            </p>
+          </InfoPopover>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <input
@@ -123,7 +140,12 @@ export default function SolverReviewPage() {
       {isLoading ? (
         <div style={{ color: "var(--muted2)" }}>加载中…</div>
       ) : artifacts.length === 0 ? (
-        <div className="empty-state" data-testid="solver-review-empty">暂无临时求解器制品 —— 用上面那块生成一个，生成后在此审核</div>
+        <div className="empty-state" data-testid="solver-review-empty">
+          暂无临时求解器制品
+          <InfoPopover topic={zh.admin.layer.solverProvisionalTopic} testId="solver-review-empty-how">
+            <p>用上面那块生成一个，生成后在此审核。空列表是真值，不是加载失败。</p>
+          </InfoPopover>
+        </div>
       ) : (
         <table className="cmp" data-testid="solver-artifacts-table">
           <thead>

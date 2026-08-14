@@ -18,6 +18,8 @@ import {
   type DeprecationMetaVM,
   type ElementReferenceVM,
 } from "@/api/endpoints";
+import { InfoPopover } from "@/components/InfoPopover";
+import zh from "@/locales/zh";
 import { toast, toastError } from "@/store/toastStore";
 
 /**
@@ -401,11 +403,26 @@ export default function OntologyRelationsPage() {
         </div>
       )}
 
+      {/*
+        WO-BEFE-CLEANUP · 信息分层（规范 §2 R-UI-3「公式与口径不在第一层」）。
+        原文一整段是**口径推导式**（`最新已发布快照 ⊕ 本次会话写回包`）+ 机制解释，整段占着第一层。
+        现在拆成两半，**一个字都没删**：
+          · 第一层留**状态**一句（「刷新后会退回」这件事本身，用户要在不点击的前提下知道）；
+          · `?` 浮层放**凭什么**（口径推导式 · 后端 9 处投影掉 deprecation 的机制 · 「不是 bug」的判断依据）。
+        `?` 触发器常驻可见 = 规范 §1 要求的降层记号（静默降层等于删除）。
+      */}
       <div className="muted" data-testid="orel-link-honesty" style={{ fontSize: 12, marginBottom: 18, lineHeight: 1.7 }}>
-        ⚠ 状态列口径 = <b>最新已发布快照</b>（<code>GET /a/v1/ontology/versions</code> 的{" "}
-        <code>snapshot.linkTypes[].deprecation</code>）⊕ <b>本次会话的写回包</b>。
-        工作集里的弃用态今天<b>没有只读下发口</b>（后端 9 处 <code>ontologyLinks.list</code> 读取方全部把{" "}
-        <code>deprecation</code> 投影掉了），所以刷新页面会退回快照口径 —— 这是如实标注，不是显示 bug。
+        ⚠ 状态列含本次会话尚未发布的改动，刷新页面后会退回已发布快照 —— 这是如实标注，不是显示 bug。
+        <InfoPopover topic={zh.admin.layer.relStatusTopic} testId="orel-link-honesty">
+          <p>{zh.admin.layer.relStatusBody}</p>
+          <p className="mono" style={{ fontSize: 12 }}>
+            snapshot.linkTypes[].deprecation ⊕ session write-back
+          </p>
+          <p>
+            工作集里的弃用态今天<b>没有只读下发口</b>：后端 9 处 <code>ontologyLinks.list</code> 读取方
+            全部把 <code>deprecation</code> 投影掉了。
+          </p>
+        </InfoPopover>
       </div>
 
       {/* ═══════════ 因果边 ═══════════ */}

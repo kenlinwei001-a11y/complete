@@ -12,6 +12,7 @@ import {
   type IntakeImportResult,
   type IntakeObjectifyResult,
 } from "@/api/endpoints";
+import { InfoPopover } from "@/components/InfoPopover";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -213,20 +214,35 @@ function ReconcileQueue() {
 
   return (
     <div className="panel" style={{ marginTop: 12 }} data-testid="reconcile-queue">
+      {/*
+        WO-BEFE-CLEANUP · 信息分层（规范 §1）：第一层留**计数与状态**，
+        「这一份与上面那份预览的区别」「队列不可用 ≠ 没有候选」两段解释降进 `?` 浮层。
+        两段一字未删，`?` 触发器常驻可见 = 规范 §1 要求的降层记号。
+      */}
       <div className="section-title">
         对账候选队列（待人确认 <span data-testid="reconcile-pending-count">{pending.length}</span> / 共 {items.length} 条）
-      </div>
-      <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
-        这里是**落了库**的候选（intake 的 <span className="mono">intake_persist_candidates</span> 节点写入），
-        与上面那块「本次解析预览」不是同一份：预览刷新即消失，这里的一直在，直到有人拍板。
+        <InfoPopover topic={zh.admin.layer.intakeQueueTopic} testId="intake-queue">
+          <p>{zh.admin.layer.intakeQueueBody}</p>
+          <p>直到有人拍板为止。</p>
+        </InfoPopover>
       </div>
       {q.isError ? (
         <div className="muted" style={{ fontSize: 12 }} data-testid="reconcile-queue-error">
-          队列不可用（需 admin 角色，或后端不可达）——不是「没有候选」，是这次没查出来。
+          队列不可用
+          <InfoPopover topic={zh.admin.layer.intakeUnavailTopic} testId="intake-unavailable">
+            <p>{zh.admin.layer.intakeUnavailBody}</p>
+          </InfoPopover>
         </div>
       ) : items.length === 0 ? (
         <div className="muted" style={{ fontSize: 12 }} data-testid="reconcile-queue-empty">
-          {q.isLoading ? "加载队列…" : "队列为空。上传原型并解析后，映射不上的列会落到这里等人确认。"}
+          {/* 空态：**状态**（「队列为空」/「加载中」）留第一层，「怎么才会有」降 `?`。
+              空 ≠ 故障，这一点必须在不点击的前提下就能看出来，所以状态词不许降。 */}
+          {q.isLoading ? "加载队列…" : "队列为空"}
+          {!q.isLoading && (
+            <InfoPopover topic={zh.admin.layer.intakeQueueTopic} testId="intake-queue-empty">
+              <p>上传原型并解析后，映射不上的列会落到这里等人确认。空列表是真值，不是加载失败。</p>
+            </InfoPopover>
+          )}
         </div>
       ) : (
         <table className="cmp" style={{ width: "100%" }}>

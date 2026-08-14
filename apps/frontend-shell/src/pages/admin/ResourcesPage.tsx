@@ -8,6 +8,8 @@ import {
   fetchResourceRelations,
   fetchResourceQuality,
 } from "@/api/endpoints";
+import { InfoPopover } from "@/components/InfoPopover";
+import zh from "@/locales/zh";
 
 /**
  * WO-DRIL-P4 · 智能资源治理台（/admin/resources · Decision Resource Intelligence Layer §6.4 消费端）。
@@ -77,7 +79,26 @@ function ResourceDetail({ resource: seed }: { resource: IntelligenceResource }) 
       <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>
         {resource.label} <span className="badge">{KIND_LABEL[kind] ?? kind}</span>
       </div>
-      <div className="mono" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>{kind}/{key}</div>
+      <div className="mono" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>
+        {kind}/{key}
+        {/*
+          WO-BEFE-CLEANUP · 这条是**升层**不是降层（规范 §1「诚实位允许降到浮层，绝不允许删除」，
+          但前提是它得先在屏上存在）。WO-BEFE-F 接上单资源端点时，「这一屏读的是新端点还是退回了
+          列表投影」只写进了 `data-detail-source` 这个 **DOM 属性** —— 测试看得见，**用户看不见**。
+          属性不是 UI：叠加质量分没算进来时，屏上的 quality 是检索那一刻的快照，
+          而用户没有任何办法知道。故在第一层补一个可见徽标（只在退回投影时出现），
+          端点口径本身降进 `?`。
+        */}
+        {!detail.data && !detail.isLoading && (
+          <span className="badge amber" style={{ marginLeft: 6 }} data-testid="resource-detail-fallback">
+            列表投影（未取到单资源详情）
+          </span>
+        )}
+        <InfoPopover topic={zh.admin.layer.resDetailTopic} testId="res-detail-source">
+          <p>{zh.admin.layer.resDetailBody}</p>
+          <p>取不到详情时退回列表行投影，面板不空白，但会在上面挂「列表投影」徽标 —— 不假装有新数据。</p>
+        </InfoPopover>
+      </div>
       <div style={{ fontSize: 12, marginBottom: 10 }}>{resource.description}</div>
 
       {/* 单资源端点带回来的选型信息（列表投影为省带宽通常不含·§5.5）：一句话能力 + 正/负向问句。 */}
