@@ -11,9 +11,28 @@
   --line2: rgba(226, 235, 245, 0.14);
   --txt: #e9eef5;
   /* WO-THEME-A11Y：暗色三级文字补 WCAG AA 校核（当初仅浅色做了·暗色漏）——对最亮底 panel #2c3d5e 亦达标：
-     txt 9.3:1 · muted 5.8:1 · muted2 4.5:1。旧 muted2 #67737f 仅 2.2–2.6:1（青蓝底上失读·本次修复）。 */
-  --muted: #b1bece;
-  --muted2: #9ba9b7;
+     txt 9.3:1 · muted 5.8:1 · muted2 4.5:1。旧 muted2 #67737f 仅 2.2–2.6:1（青蓝底上失读·本次修复）。
+
+     ⚠ **WO-R9-CONTRAST（2026-08-14）实测推翻上面那句「亦达标」的含义**：达标的是 WCAG 的**数值**，
+     不是**屏上可读**。仓主截屏实拍读不了的那 16 个元素，量出来正是 `--muted2` 压在 `--panel` 上
+     的 **4.52:1** —— 它 ≥ 4.5，**"通过"了 WCAG AA**，因为 WCAG 的 4.5 是给**正文尺寸的拉丁字母**
+     定的，公式里**根本没有字号**（只有"大字 ≥18pt 放宽到 3:1"这一个单向豁免）。
+     那 16 个元素是 **9–10px 的中文**。形态照 CLAUDE.md 铁律 0.6：
+     **「我用『WCAG 数值达标』当作『屏上读得了』的证据，而前者并不度量后者。」**
+
+     现行判据（`scripts/check-text-legibility.mjs`，零自由参数，两个锚点都来自 WCAG 自己）：
+         required(S, w) = max(3.0, 72 / (S × (w≥700 ? 24/18.66 : 1)))
+     由 4.5 = k/16（正文，参照浏览器默认正文尺寸 16px）与 3.0 = k/24（大字豁免）联立解出 k=72。
+     ⇒ 12px 要 6.0 · 11px 要 6.55 · 10px 要 **7.2** · 9px 要 **8.0**。
+
+     下面这三级的值**不是手调的，是拿那道门自己的 `judgeUnit()` 反解出来的**（最差面 = 暗色下
+     `--panel-glass` 叠在 `--bg` 上 = #2f3e5b，比 `--panel` 还亮一档）：
+         txt 9.14 · muted 7.32 · muted2 6.09（等效中性灰 236 / 211 / 194，三级仍可辨）
+     **为什么不是"把 muted2 一路调亮了事"**：门头有现算——要让 muted2 在 **10px** 达标需要 7.2，
+     那需要 #d3d3d3，会**比二级还亮 ⇒ 层级反转**。所以 10px 的中文在本调色板内**无解**，
+     只能升字号；12px 是判据与调色板的交点，这三级值就是在那个交点上解出来的。 */
+  --muted: #ced7e1;
+  --muted2: #bbc5ce;
   --accent: #4c90f0;
   /* 领域色（图谱/图例/标签复用） */
   --c-factory: #5e8fe8;
@@ -26,6 +45,39 @@
   --c-forecast: #d2b04c;
   --c-solver: #c470b8;
   --c-agent: #5fc2ae;
+
+  /* ── WO-R9-CONTRAST · **文字安全变体（`-txt` 族）** ────────────────────────────
+     语义色与领域色在本仓身兼两职：既当**填充/描边**（图元、徽标底、边框），又当**文字色**。
+     两职对颜色的要求**方向相反**：填充要"够饱和才认得出是哪一类"，文字要"够对比才读得清"。
+     一个值同时满足两者是做不到的 —— 实测（三套主题最差面）：
+         `--danger` 3.11 / 3.02 / 3.06 · `--warn` 5.65 / 1.66 / 1.68 · `--ok` 4.64 / 2.02 / 2.05
+         领域色 `--c-*` 在两套浅色主题上普遍只有 **1.8–2.9**（≈ 看不见）。
+     若直接把这些令牌调到文字可读，图元就会褪成一片粉/淡黄，"红=风险"的语义当场失效。
+
+     故**拆职**：`--X` 保持原值继续当填充/描边（**一个字节不改，视觉识别不变**）；
+     新增 `--X-txt` 只作文字色，逐主题按判据反解到 ≥ required(12px)=6.0（`--matrix` 现算可复核）。
+     配对表写在门里（`TEXT_TOKENS`），少一个都会被判据 C 当场判红 —— 不是靠人记得加。
+     **色相/饱和度保持不变**（HSL 只动 L）：暖橙仍是暖橙、风险红仍是风险红，只是明度让到可读处。 */
+  --accent-txt: #a2c6f7;
+  --ok-txt: #91d2a0;
+  --warn-txt: #eabd5d;
+  --amber-txt: #eabd5d;
+  --danger-txt: #f0b4b8;
+  --c-factory-txt: #abc4f3;
+  --c-product-txt: #6cd5c1;
+  --c-process-txt: #e9bb8f;
+  --c-equip-txt: #c6bcf6;
+  --c-people-txt: #ebb5c7;
+  --c-quality-txt: #91d2a0;
+  --c-capacity-txt: #80cfe4;
+  --c-forecast-txt: #dcc174;
+  --c-solver-txt: #e1b7db;
+  --c-agent-txt: #87d1c2;
+  /* 实心 accent 底（主按钮 / 分段控件选中态）—— 上面压 `--on-accent` 白字。
+     旧写法直接拿 `--accent` 当底：白字实测仅 **3.20:1**（12px 需 6.0），沙盘的 `30D/60D/90D`
+     分段控件就是这么读不了的。`--accent` 本身继续当描边/淡染，不动。 */
+  --accent-solid: #115dc9;
+
   --font-sans: "Inter", "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
 
@@ -86,10 +138,30 @@
   --panel2: #edf1f7;      /* 导航栏 / 卡内嵌区（较 panel 略暗，同暗色下 panel2<panel 的层级关系） */
   --line: rgba(20, 28, 44, 0.1);   /* 发丝边（深墨低透） */
   --line2: rgba(20, 28, 44, 0.16); /* 较重边：输入 / 徽标 / 表头 */
-  --txt: #14203a;         /* 主文本（深墨蓝）≈ 16.2:1 */
-  --muted: #475069;       /* 次要文本 ≈ 8.0:1 */
-  --muted2: #5b6577;      /* 三级文本 ≈ 5.9:1 */
+  --txt: #14203a;         /* 主文本（深墨蓝）≈ 16.2:1（对最差面 --panel2 14.28） */
+  /* WO-R9-CONTRAST：二/三级文本按尺寸加权判据在**最差面 `--panel2 #edf1f7`** 上重解
+     （原值是对**白面**校的 8.0 / 5.9，落到 panel2 上只剩 7.07 / 5.19，12px 需 6.0 ⇒ 三级不达标）。 */
+  --muted: #3f465c;       /* 次要文本 ≈ 8.26:1（对 --panel2） */
+  --muted2: #515a6a;      /* 三级文本 ≈ 6.13:1（对 --panel2） */
   --accent: #3b5bdb;      /* 皇家蓝（较暗色 #4c90f0 下调以对白面达 AA·5.7:1） */
+
+  /* 文字安全变体（见 :root 同名块的推导）——浅底方向：只压暗 L，色相/饱和不动。 */
+  --accent-txt: #274ad7;
+  --ok-txt: #2a6638;
+  --warn-txt: #75540f;
+  --amber-txt: #75540f;
+  --danger-txt: #ad222d;
+  --c-factory-txt: #1b54bd;
+  --c-product-txt: #1d6558;
+  --c-process-txt: #844d1a;
+  --c-equip-txt: #5636e5;
+  --c-people-txt: #a42b54;
+  --c-quality-txt: #2a6638;
+  --c-capacity-txt: #196277;
+  --c-forecast-txt: #6d581b;
+  --c-solver-txt: #8d3a81;
+  --c-agent-txt: #266458;
+  --accent-solid: #3455da;
 
   /* chrome 表面 / 交互（浅色变体） */
   --topbar-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(245, 247, 251, 0.72));
@@ -99,7 +171,10 @@
   --scrollbar-thumb: rgba(20, 28, 44, 0.18);
   --nav-active-bg: linear-gradient(90deg, rgba(59, 91, 219, 0.13), rgba(59, 91, 219, 0.03));
   --nav-active-border: rgba(59, 91, 219, 0.35);
-  --nav-active-txt: #2f49be;  /* 活动导航文字（较 --accent 再压深以对蓝染活动底达 AA·5.5:1） */
+  /* 活动导航文字。原 #2f49be 对蓝染活动底实测 **5.52:1**，12px 需 6.0。
+     ⚠ 与 `--accent-txt`（#274ad7）取齐**不够** —— 那是对页面表面校的，压在**蓝染活动底**上只剩
+     5.10（判据 C 的特例对当场判红）。活动底比页面底更蓝更暗，必须单独再压一档：6.58。 */
+  --nav-active-txt: #1f3cb4;
   /* --on-accent 保持 #fff（accent 蓝底恒配白字·主题不变） */
 
   /* 悬浮层表面（冷蓝）：浅底下不透明白卡即最高可读面（txt 16.19 / muted 8.02 / muted2 5.88 / accent 5.67）。 */
@@ -124,9 +199,32 @@
   --line: #ececec;        /* 发丝边（中性浅灰） */
   --line2: #e2e2e2;       /* 较重边 */
   --txt: #1c1c1c;         /* 主文本（近黑·吸色深卡 #1f1f1f / 按钮 #1c1e1d） */
-  --muted: #8a8a8a;       /* 次要文本（中性灰） */
-  --muted2: #bebebe;      /* 三级文本（中性浅灰·吸色 tab 未选 #bebebe） */
+  /* ⚠ WO-R9-CONTRAST：原 `--muted #8a8a8a` / `--muted2 #bebebe` 是**从参考图吸色**来的
+     （tab 未选态那个浅灰），当**装饰灰**没问题，当**正文色**实测只有 **3.08 / 1.66**：
+     1.66:1 的中文在白面上基本等于看不见 —— 这不是"偏淡"，是**失读**。三套主题里 warm 最差。
+     现按同一判据在最差面 `--panel2 #f2f2f2` 上重解（中性灰只有 L 一个自由度）：8.30 / 6.07。
+     视觉代价诚实记账：warm 的"轻盈感"确实变重了；但 1.66:1 的层次感是**看不见的层次感**。 */
+  --muted: #474747;       /* 次要文本 ≈ 8.30:1（对 --panel2） */
+  --muted2: #5b5b5b;      /* 三级文本 ≈ 6.07:1（对 --panel2） */
   --accent: #E8590C;      /* 品牌深橙（实心主导·设计定稿·较参考 #f76501 深一档更"实"·纯色不渐变） */
+
+  /* 文字安全变体（见 :root 同名块的推导）——暖砂白底方向：只压暗 L，色相/饱和不动。 */
+  --accent-txt: #9d3c08;
+  --ok-txt: #2b6738;
+  --warn-txt: #77550f;
+  --amber-txt: #77550f;
+  --danger-txt: #af222e;
+  --c-factory-txt: #1b55bf;
+  --c-product-txt: #1d6658;
+  --c-process-txt: #844e1a;
+  --c-equip-txt: #5637e5;
+  --c-people-txt: #a52c55;
+  --c-quality-txt: #2b6738;
+  --c-capacity-txt: #196378;
+  --c-forecast-txt: #6d581b;
+  --c-solver-txt: #8e3b82;
+  --c-agent-txt: #276559;
+  --accent-solid: #aa4109;
 
   /* chrome 表面 / 交互（磨砂玻璃 material：顶栏半透 + 活跃导航实心深橙白字 + logo 实心深橙） */
   --topbar-bg: rgba(255, 255, 255, 0.62);  /* 顶栏半透（配 ShellLayout backdrop-blur 呈磨砂条） */
@@ -134,8 +232,10 @@
   --hover-tint: #f4f4f4;
   --hover-tint-strong: #ededed;
   --scrollbar-thumb: #d4d4d4;
-  --nav-active-bg: #E8590C;            /* 活动导航实心深橙 pill（非浅色 tint·橙主导） */
-  --nav-active-border: #E8590C;
+  /* 活动导航实心橙 pill（非浅色 tint·橙主导）。⚠ 原为 `#E8590C`，其上的白字实测仅 **3.58:1**
+     （12px 需 6.0，连 WCAG AA 4.5 都不到）⇒ 改用同色相压深的 `--accent-solid`，白字 6.05。 */
+  --nav-active-bg: #aa4109;
+  --nav-active-border: #aa4109;
   --nav-active-txt: #ffffff;           /* 橙底白字 */
   --logo-bg: #E8590C;                  /* 顶栏 logo 纯深橙实心（原 conic 彩环·仅 warm 覆盖·暗/冷蓝走 fallback 不变） */
   --logo-glow: none;                   /* 无辉光 */
