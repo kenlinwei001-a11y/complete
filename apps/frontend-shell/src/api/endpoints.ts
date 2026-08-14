@@ -59,6 +59,9 @@ import type {
   SimCertification,
   SimCheckpoint,
   TickState,
+  // WO-ACTIVE-EDGE-UX · 推演边 active 开关（契约唯一来源，前端不重定义 R1）
+  PropagationRule,
+  SimCounterfactualResult,
   // WO-PROCESS-INSTANCE · 流程运行时（前端不重定义，contracts-only-shared）
   ProcessStuckResponse,
   ProcessInstanceDetail,
@@ -649,6 +652,30 @@ export const createSimSession = (body: { baseSnapshot: TickState; scope?: Record
  * 补上它，分叉出的子会话才不再"刷新即丢"（此前 `branchId` 只活在 SandboxView 的 useState）。
  */
 export const fetchSimSessions = () => api.a<{ items: SimSession[] }>("/a/v1/sim/sessions");
+// ── 推演边的 active 开关 + 关掉后的对照（WO-ACTIVE-EDGE-UX）────────────────────────────
+/**
+ * 本租户的传导边目录（默认只回 PUBLISHED）。
+ * 这是"边"这个概念在前端的**唯一**来源——此前全仓只有 `SimReadinessPanel` 数了个数
+ * （`propagationCount`），没有任何一页把边本身画出来给人看，更别说开关。
+ */
+export const fetchPropagationRules = (published = true) =>
+  api.a<{ items: PropagationRule[] }>(`/a/v1/sim/propagation-rules?published=${published ? "true" : "false"}`);
+/**
+ * 改本会话屏蔽的边（**会话世界态，不是本体真值** ⇒ 不经 Action 审批；R4-sim）。
+ * ⚠ 这**不是** `PropagationRule.status`：那个是全租户持久发布态，改它要走 R4 正门，且一改就没法对照。
+ */
+export const patchSimDisabledRules = (sessionId: string, disabledRuleKeys: string[]) =>
+  api.a<{ id: string; disabledRuleKeys: string[] }>(
+    `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/disabled-rules`,
+    { method: "PATCH", body: { disabledRuleKeys } },
+  );
+/**
+ * 对照跑：同一 tick、开/关两版各跑一遍，回差异。**不写世界态**（会话 curTick 一格不动）。
+ * `disabledRuleKeys` 传候选集 ⇒ 拨一下开关立刻拿到差值，不必先 PATCH 再跑
+ * （§3.3「关掉一条边 ⇒ 立刻看到结果差异，不是再点一次运行」）。
+ */
+export const simCounterfactual = (sessionId: string, body: { n?: number; disabledRuleKeys?: string[] }) =>
+  api.a<SimCounterfactualResult>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/counterfactual`, { body });
 /** 推进 n 个 tick（默认 1）→ 返回 curTick + 新世界态（+trace 若有传导规则）。 */
 export const simTick = (sessionId: string, n = 1) =>
   api.a<{ curTick: number; state: TickState; trace?: unknown[] }>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/tick`, { body: { n } });

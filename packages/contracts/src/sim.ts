@@ -116,9 +116,17 @@ export const SimSessionSchema = z.object({
    * 用 **`key` 不用 `id`**：契约里 `key` 写明是「稳定键，可被 OPERATION_CATALOG/审计引用」，
    * 而 `id` 是 `newId()` 的 randomBytes，跨重建即漂。
    *
-   * 缺省 `[]` ⇒ 不传时与本字段引入前**逐字节相同**（additive · 可回退 RL9）。
+   * 缺省/缺失 ⇒ 一律读作 `[]`（消费方一律写 `?? []`），与本字段引入前**逐字节相同**（additive · 可回退 RL9）。
+   *
+   * ⚠ **刻意 optional 而非 required**（沿用本文件 `SimCertification.trialTick.derivationNodes`
+   * 立下的同一条理由，别推翻）：`SimSession` 在前端被当**字面量**构造 7 处
+   * （`apps/frontend-shell/test/` 下 sandbox-p0 / sandbox-view / sandbox-declutter /
+   * sandbox-three-zone / sandbox-kpi-layer / sandbox-finance-worldstate 等 fixture），
+   * 置为必填会把整包前端打成编译红 —— 而那些文件属于并行在跑的另几张单，不该被本单牵动。
+   * DataCore 侧**恒填**（`app.ts` 三处 `SimSession` 字面量 + `repo/pg.ts rowToSession` 的 `?? []`），
+   * 故服务端答复里它总在。
    */
-  disabledRuleKeys: z.array(z.string()).default([]),
+  disabledRuleKeys: z.array(z.string()).optional(),
   createdAt: z.string(),
 });
 export type SimSession = z.infer<typeof SimSessionSchema>;
