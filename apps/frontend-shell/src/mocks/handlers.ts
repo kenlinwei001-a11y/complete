@@ -3047,6 +3047,70 @@ export const handlers = [
     art.trustLevel = "VERIFIED";
     return HttpResponse.json(art);
   }),
+  /**
+   * WO-BEFE-E · 生成临时求解器（datacore app.ts:3574）。
+   *
+   * ⚠ 真后端这一步**要调 LLM**（`generateProvisionalSolver` 未注入 LLM 直接 400）。
+   * mock 态不假装有 LLM：产物的 `computeSource` 明写是占位、`rationale` 明写「mock 态未调 LLM」，
+   * 免得有人拿 mock 跑一遍就以为生成链路已验（本仓纪律：画出来的假线路图比空白更危险）。
+   * 状态机照抄后端：新件一律 `PROVISIONAL` + `trustLevel:UNVERIFIED`（R4 下游闸未解）。
+   */
+  http.post("*/a/v1/solvers/generate", async ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const b = (await request.json().catch(() => ({}))) as { key?: string; intent?: string };
+    if (!b.key || !b.intent) return err(400, "VALIDATION_ERROR", "key + intent required");
+    if (MOCK_SOLVER_ARTIFACTS.some((a) => a.key === b.key)) return err(409, "INVALID_STATE", `求解器 ${b.key} 已存在临时件`);
+    const art = {
+      id: `sart_mock_${MOCK_SOLVER_ARTIFACTS.length + 1}`, tenantId: "demo", key: b.key, version: 1,
+      status: "PROVISIONAL" as const, origin: "LLM_GENERATED" as const, trustLevel: "UNVERIFIED" as const,
+      computeSource: `// mock 态占位：真后端此处是 LLM 生成并冻结的纯函数源码\n// intent: ${b.intent}\nexport function compute() { return {}; }`,
+      rationale: `mock 态**未调 LLM**（真链路需配 comprehend provider）——此文本为占位，不可据此认为生成链路已验。intent: ${b.intent}`,
+      hash: `mockhash${String(MOCK_SOLVER_ARTIFACTS.length + 1).padStart(8, "0")}`,
+      outputShape: [], createdBy: "admin", createdAt: "2026-08-14T00:00:00.000Z",
+    };
+    MOCK_SOLVER_ARTIFACTS.push(art as unknown as (typeof MOCK_SOLVER_ARTIFACTS)[number]);
+    return HttpResponse.json(art, { status: 201 });
+  }),
+  /**
+   * WO-BEFE-E · 求解器影响面反查（agentcore server.ts:1270）。
+   * 复用同文件的 `ruleReferences` 同款形状；`via` 说的是"经哪条路引用的"，不是装饰。
+   */
+  http.get("*/b/v1/solvers/:key/references", ({ params }) => {
+    const key = String((params as { key: string }).key);
+    // 与 db 里真实存在的工作流/意图对账：谁的步骤里写了这个 solverKey，谁就算引用（与后端 computeReferences 同判据）。
+    const references = [
+      ...db.workflows
+        .filter((w) => w.steps.some((s) => s.type === "invoke_solver" && s.params.solverKey === key))
+        .map((w) => ({ kind: "workflow", key: w.id, name: w.name, via: "steps[].invoke_solver.solverKey" })),
+      ...db.plans
+        .filter((p) => p.steps.some((s) => (s as { type?: string; params?: { solverKey?: string } }).type === "invoke_solver" && (s as { params?: { solverKey?: string } }).params?.solverKey === key))
+        .map((p) => ({ kind: "plan", key: p.key, name: p.key, via: "steps[].invoke_solver.solverKey" })),
+    ];
+    return HttpResponse.json({ references, count: references.length });
+  }),
+  /**
+   * WO-BEFE-E · 字段角色确定性解析（datacore app.ts:3609）。
+   *
+   * ⚠ 只有这 4 个通用图求解器在后端 `SOLVER_FIELD_ROLES`（`solvers/field-roles.ts:31`）里声明了角色，
+   * 其余**必须**回空 roles —— 桩若给每个 key 都编一份角色，「这个求解器不吃角色」这一支就永远测不到。
+   */
+  http.get("*/a/v1/solvers/:key/field-roles", ({ params }) => {
+    const key = String((params as { key: string }).key);
+    const DECLARED: Record<string, Record<string, string>> = {
+      supplier_disruption_radius: { rootType: "Supplier" },
+      concentration_risk: { rootType: "Supplier", sinkType: "Order" },
+      shared_bottleneck: { resourceType: "Line", sharedByType: "Order", priorityField: "priority" },
+      margin_attribution: { targetType: "Order", revenueField: "revenue" },
+    };
+    const roles = DECLARED[key] ?? {};
+    const candidates: Record<string, { value: string; score: number; signals: string[] }[]> = {};
+    for (const [role, v] of Object.entries(roles)) candidates[role] = [{ value: v, score: 3, signals: ["lexicon", "fanIn"] }];
+    return HttpResponse.json({
+      solverKey: key, roles, candidates,
+      confidence: Object.keys(roles).length > 0 ? 1 : 0,
+      ambiguous: false,
+    });
+  }),
 
   // ---- 增量 §7.10：规划体检基线（当前定稿 S&OP 版本 → plan_audit 输入字段集） ----
   http.get("*/a/v1/plan-versions/current", ({ request }) => {

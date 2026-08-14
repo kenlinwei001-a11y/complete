@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SolverArtifact } from "@platform/contracts";
-import { fetchSolverArtifacts, promoteSolverArtifact } from "@/api/endpoints";
+import { fetchSolverArtifacts, generateProvisionalSolver, promoteSolverArtifact } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
 import { Modal } from "@/components/ui/Modal";
 
@@ -37,6 +37,29 @@ export default function SolverReviewPage() {
     onError: toastError,
   });
 
+  /**
+   * WO-BEFE-E · 生成临时求解器（`POST /a/v1/solvers/generate`，此前**前端零调用**）。
+   *
+   * 追到底才敢下这个结论（铁律 0.5）：`solverArtifacts` 的唯一写者是
+   * `registerProvisionalSolver`（datacore `solvers/service.ts:599`）← 唯一被
+   * `generateProvisionalSolver`（`:545`）调 ← 唯一被本端点调（`app.ts:3579`）；
+   * `seed.ts` 里一条种子都没有。**所以本页在生产里永远是空的** —— 而它的空态还写着
+   * 「LLM 生成后在此审核」，把「没有入口」说成了「还没有人生成」。这个表单就是那个入口。
+   */
+  const [genKey, setGenKey] = useState("");
+  const [genIntent, setGenIntent] = useState("");
+  const generate = useMutation({
+    mutationFn: () => generateProvisionalSolver(genKey.trim(), genIntent.trim()),
+    onSuccess: (art) => {
+      toast(`${art.key} 已生成（${art.status}·未认证）—— 请审阅冻结代码后再决定是否晋升`, "success");
+      void qc.invalidateQueries({ queryKey: ["a", "solver-artifacts"] });
+      setGenKey("");
+      setGenIntent("");
+      setDetail(art); // 生成即打开代码 —— "先看代码再说"是本页的纪律，不是可选动作
+    },
+    onError: toastError,
+  });
+
   const artifacts = data?.artifacts ?? [];
   const pendingCount = artifacts.filter((a) => a.status === "PROVISIONAL" || a.status === "ADVISORY_PASSED").length;
 
@@ -47,6 +70,45 @@ export default function SolverReviewPage() {
         LLM 生成的临时求解器经锁死沙箱跑通自检后为「审核中（未认证）」，默认隔离、仅创建人可用其写真值。
         审阅冻结代码与理由后晋升 GOVERNED → 解锁任何人写真值（R4）。待审 {pendingCount} 个。
       </p>
+
+      {/* WO-BEFE-E · 生成入口（此前本页只有"审"没有"生"，于是永远没东西可审）。 */}
+      <div className="panel" style={{ padding: 10, margin: "10px 0" }} data-testid="solver-generate">
+        <div className="section-title">缺求解器？让 LLM 生成一个临时件（生成 ≠ 可用）</div>
+        <div style={{ fontSize: 11.5, color: "var(--muted2)", marginBottom: 8, lineHeight: 1.7 }}>
+          产物是 <b>冻结代码 + PROVISIONAL + 未认证</b>：先在锁死沙箱里跑通自检才登记，
+          默认<b>不能</b>写真值（仅创建人可用其写真值且带「未认证·LLM」标）。
+          解锁写真值的唯一路径是下面那颗「晋升 GOVERNED」——那才是 R4 的人工闸。
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            data-testid="solver-gen-key"
+            value={genKey}
+            placeholder="求解器 key（如 supplier_lead_time_risk）"
+            onChange={(e) => setGenKey(e.target.value)}
+            style={{ width: 240, fontSize: 12 }}
+          />
+          <input
+            data-testid="solver-gen-intent"
+            value={genIntent}
+            placeholder="用一句话说它要算什么"
+            onChange={(e) => setGenIntent(e.target.value)}
+            style={{ flex: 1, minWidth: 260, fontSize: 12 }}
+          />
+          <button
+            className="btn"
+            data-testid="solver-gen-submit"
+            disabled={generate.isPending || genKey.trim() === "" || genIntent.trim() === ""}
+            onClick={() => generate.mutate()}
+          >
+            {generate.isPending ? "生成中…" : "生成临时求解器"}
+          </button>
+        </div>
+        {generate.isError && (
+          <div className="badge red" style={{ marginTop: 6 }} data-testid="solver-gen-error">
+            {(generate.error as Error).message}
+          </div>
+        )}
+      </div>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", margin: "10px 0" }}>
         <span style={{ fontSize: 12 }}>状态过滤：</span>
@@ -61,7 +123,7 @@ export default function SolverReviewPage() {
       {isLoading ? (
         <div style={{ color: "var(--muted2)" }}>加载中…</div>
       ) : artifacts.length === 0 ? (
-        <div className="empty-state" data-testid="solver-review-empty">暂无临时求解器制品（LLM 生成后在此审核）</div>
+        <div className="empty-state" data-testid="solver-review-empty">暂无临时求解器制品 —— 用上面那块生成一个，生成后在此审核</div>
       ) : (
         <table className="cmp" data-testid="solver-artifacts-table">
           <thead>

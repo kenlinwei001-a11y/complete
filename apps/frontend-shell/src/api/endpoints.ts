@@ -966,6 +966,57 @@ export const checkSolverWriteTruth = (key: string) =>
 export const promoteSolverArtifact = (key: string) =>
   api.a<SolverArtifact>(`/a/v1/solvers/${encodeURIComponent(key)}/promote`, { body: {} });
 
+/**
+ * WO-BEFE-E · 生成临时求解器（`POST /a/v1/solvers/generate`·datacore app.ts:3574·requireAdmin）。
+ *
+ * ── 为什么这条是**整页级别**的缺口，不是"少个按钮" ─────────────────────────────
+ * 沿链路追到底（铁律 0.5）：`solverArtifacts` 这张表的**唯一写者**是
+ * `registerProvisionalSolver`（`apps/datacore/src/solvers/service.ts:599`/`:626`），
+ * 它的唯一调用方是 `generateProvisionalSolver`（`:545`），后者的唯一调用方就是本端点
+ * （`app.ts:3579`）。`seed.ts` 里**没有任何种子**写这张表（实测 grep 全仓 0 处）。
+ * ⇒ 本端点零前端调用方 = **`/admin/solver-review` 这一整页在生产里永远是空的**，
+ *   它的空态还写着「LLM 生成后在此审核」—— 而"生成"这件事在界面上根本没有入口。
+ *
+ * ── R4 判定 ──────────────────────────────────────────────────────────────────
+ * 生成**不写业务真值**：产物是 `status:PROVISIONAL` + `trustLevel:UNVERIFIED` 的冻结代码。
+ * 用它写真值另受两道已在前端接好的闸：`/solvers/:key/write-truth-check`（仅创建人）与
+ * `/solvers/:key/promote`（人工审批 → GOVERNED）。**R4 的闸在下游且已接，故本条无需经 Action 审批链。**
+ */
+export const generateProvisionalSolver = (key: string, intent: string) =>
+  api.a<SolverArtifact>("/a/v1/solvers/generate", { body: { key, intent } });
+
+/**
+ * WO-BEFE-E · 求解器影响面反查（`GET /b/v1/solvers/:key/references`·agentcore server.ts:1270）。
+ * 「改了这个求解器 → 哪些编排资源引用它」。同族的 `/a/v1/rules/:id/references` 早已有前端调用方
+ * （`fetchRuleReferences`），求解器这一条一直没有 —— 于是求解器目录页看得到 key，看不到牵连。
+ */
+export const fetchSolverReferences = (key: string) =>
+  api.b<{ references: { kind: string; key: string; name?: string; via: string }[]; count: number }>(
+    `/b/v1/solvers/${encodeURIComponent(key)}/references`,
+  );
+
+/**
+ * WO-BEFE-E · 字段角色确定性解析（`GET /a/v1/solvers/:key/field-roles`·datacore app.ts:3609）。
+ *
+ * A13「地板语义确定化」：通用图求解器要知道**本租户本体里哪个类型/字段**充当 root/sink/resource/…，
+ * 这条端点给的就是那份绑定 + 候选 + 置信度 + 是否真歧义（零 LLM·R6 确定性）。
+ * 只有 4 个通用图求解器声明了角色（后端 `SOLVER_FIELD_ROLES`），其余返回空 roles —— 这不是错，
+ * 是「这个求解器不吃角色」。前端据此**只在有角色时**渲染，不给别的求解器画一块空面板。
+ *
+ * ⚠ 响应类型**不在 `@platform/contracts` 里**（住在 `apps/datacore/src/solvers/field-roles.ts`，
+ *   跨 app import 源码为 R1 所禁）。故此处按响应形状就地声明 —— 这是「契约里没有」而非
+ *   「契约里有却重定义」，与 contracts-only-shared 不冲突。要根治得把它提进契约包，属另开工单。
+ */
+export interface SolverFieldRolesVM {
+  solverKey: string;
+  roles: Record<string, string>;
+  candidates: Record<string, { value: string; score: number; signals: string[] }[]>;
+  confidence: number;
+  ambiguous: boolean;
+}
+export const fetchSolverFieldRoles = (key: string) =>
+  api.a<SolverFieldRolesVM>(`/a/v1/solvers/${encodeURIComponent(key)}/field-roles`);
+
 export const fetchActionDrafts = (status?: string) =>
   api.a<ActionDraft[]>(`/a/v1/action-drafts${status ? `?status=${status}` : ""}`);
 export const fetchActionDraft = (id: string) => api.a<ActionDraft>(`/a/v1/action-drafts/${id}`);
