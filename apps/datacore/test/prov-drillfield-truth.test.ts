@@ -502,6 +502,62 @@ describe("WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 →
     expect(aggInLevels, "levels 里应真有聚合节点（0 = 上面几条断言无从证明自己在扫）").toBeGreaterThan(0);
   }, 300_000);
 
+  it("口径锚（补通用判据抓不到的那一格）：4 个聚合叶的 drillValue == 该字段自己的聚合真值，逐叶现算不写死", async () => {
+    // ── 为什么必须有这一条（本单变异反证当场逼出来的，不是补充说明）──────────────────
+    //   M4 实测：把 `capacity_gap` 的 drillValue 改回 `totalCapWan`（Σcap×300/1e4·年化万套）——
+    //   **通用判据全绿 RC=0**。因为 364.8 恰好落在 `Line.capacityDaily` 真值带 [48, Σ=12160] 内。
+    //   这不是判据写坏了，是**量纲带这个工具本身抓不到这一格**：`drillId:"*"` 在契约里只说"按类型聚合"，
+    //   没说是哪种聚合、聚合在哪个子集上，于是「Σ 的某个子集和」与「0.03×Σ」在纯数值上无法区分
+    //   （gap_attribution 那 24 个聚合节点就是**按基地**的子集和，把带收紧成"必须等于全类 Σ"会把它们全误杀）。
+    //   ⇒ 真正的缺口在**契约词汇**（缺 drillAgg/drillScope 这类聚合描述符），不在这个测试文件里；
+    //     补契约超出本单范围（🚦范围边界：不碰 contracts），故按本文件前半已立的**锚**模式收口：
+    //     锚不写死数字，逐叶**现算**该字段在它所声称的那批行上的聚合真值，改种子照样成立。
+    const t = await makeApp();
+    await seedBattery(t);
+    const out = (await t.services.solvers.invoke(ADMIN, SDGA_SOLVER, {})) as unknown as {
+      demandSide: { drivers: { id: string; provenance: AnyProv }[] } | null;
+      supplySide: { drivers: { id: string; provenance: AnyProv }[] } | null;
+    };
+    const leaves = new Map(
+      [...(out.demandSide?.drivers ?? []), ...(out.supplySide?.drivers ?? [])].map((d) => [d.id, d.provenance]),
+    );
+    const props = async (tk: string) => (await t.repos.objects.listByType(ADMIN.tenantId, tk)).map((o) => o.props);
+    const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+
+    // 逐叶：期望值 = 该叶 factor 文案所声称的那个聚合，**现从仓储算**（非硬编码数字）。
+    const orders = await props("Order");
+    const lines = await props("Line");
+    const matBal = await props("MaterialBalance");
+    const equip = await props("Equipment");
+    const anchors: [string, number, string][] = [
+      // 「在手订单需求（OPEN 未交付）」⇒ Σ`Order.qty` over status==="OPEN"（套）
+      ["order_backlog", sum(orders.filter((o) => String(o.status) === "OPEN").map((o) => Number(o.qty))), "Σ Order.qty(OPEN)"],
+      // 「产能缺口（需求−年化产能）」的证据叶标的是 `Line.capacityDaily` ⇒ Σ 全线该字段（套/日）
+      ["capacity_gap", sum(lines.map((l) => Number(l.capacityDaily ?? 0))), "Σ Line.capacityDaily"],
+      // 「物料缺口（ΣgapTon 折万套）」⇒ Σ max(0,`MaterialBalance.gapTon`)（吨）
+      ["material_gap", sum(matBal.map((m) => Math.max(0, Number(m.gapTon ?? 0)))), "Σ max(0,MaterialBalance.gapTon)"],
+      // 「设备 OEE 损失（1−OEE 均值×产能）」⇒ mean(`Equipment.oee_current`)（无量纲）
+      ["oee_loss", sum(equip.map((e) => Number(e.oee_current ?? 0.85))) / (equip.length || 1), "mean Equipment.oee_current"],
+    ];
+    let checked = 0;
+    for (const [leafId, expected, how] of anchors) {
+      const pv = leaves.get(leafId);
+      expect(pv, `叶「${leafId}」不见了 —— 锚失去对象，请解释它为什么消失（不许静默放过）`).toBeTruthy();
+      expect(pv!.drillId, `${leafId}：本锚只管聚合叶（drillId 应为 "*"）`).toBe(AGG);
+      checked++;
+      // 引擎逐叶 round(,2~4)，故按 1e-3 相对容差比，而不是苛求逐位相等。
+      const got = Number(pv!.drillValue);
+      expect(
+        Math.abs(got - expected) <= Math.max(1e-3, Math.abs(expected) * 1e-4),
+        `${leafId}：标签写着 ${pv!.drillType}.*.${pv!.drillField}，那个字段的聚合真值（${how}）是 ${expected}，` +
+          `溯源却回了 ${got} —— 比值 ${expected === 0 ? "n/a" : (got / expected).toPrecision(4)}。` +
+          `**量纲带查不出这一格**（它只管落没落在 [min, Σ] 里），所以由本锚正面咬：` +
+          `drillValue 必须是那个字段自己的口径，不是它乘了个换算系数之后的样子（#96 同族）`,
+      ).toBe(true);
+    }
+    expect(checked, "锚必须真咬到 4 个聚合叶（少一个 = 锚空转）").toBe(4);
+  }, 300_000);
+
   it("路径表完整性锚：supply_demand_gap_attribution 今天**丢掉**全部入参 → 故上表只列 1 条；哪天接了 args 这条必红", async () => {
     // 这条不是在给"丢参数"背书，而是把「为什么只列 1 条路径」从**我的说法**变成**机器的说法**。
     // 实测：`supplyDemandGapAttribution(ctx, args)` 函数体内零处读 args（catalog.ts:135 却对外声明
