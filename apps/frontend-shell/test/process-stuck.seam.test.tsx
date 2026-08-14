@@ -434,8 +434,18 @@ describe("WO-PROCESS-INSTANCE FE · 诚实缺席（缺就不显示那一块）",
     expect(txt).not.toContain("没有正在等待的流程实例");
     expect(txt).toContain("4");
     expect(txt).not.toContain("一切顺利");
-    // 那一批的口径声明同时也得在
+    // 那一批的说明同时也得在
     expect(screen.getByTestId("stuck-derived-count").textContent).toBe("4");
+
+    // WO-UI-BURNDOWN-21（2026-08-14）：这条诚实位**留在第一层**，不许被"降层"降没了。
+    // 判据出处 `docs/CONVENTION-ui-information-layering.md` §4.2：
+    // 「这条诚实位若为真，用户会不会重新解读第一层的那个结论？会 ⇒ 它属于第一层。」
+    // 这里正是"会"：不看它，本页的 0 会被读成「流程都没卡」。
+    // 那次分层只改了一个指路词（「口径声明」→「说明」），被指的那段一个字没动 ——
+    // 故这三句必须仍然**不点就看得见**。
+    expect(txt, "改成 `?` 浮层就等于把它藏起来了 —— §4.2 明令这条不许降层").toContain("本页只统计运行时实例");
+    expect(txt).toContain("会直接读反");
+    expect(txt).toContain("见上方那条说明");
   });
 });
 
