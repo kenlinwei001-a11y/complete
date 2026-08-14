@@ -15,7 +15,7 @@ import { FinanceProjectionPanel } from "@/views/sim/SandboxImpactBand";
  * 后端算了、契约逼着必填带上、`SandboxImpactBand.tsx:192` 也真调了求解器、还真按契约 `safeParse`
  * 校了形 —— **每一半都是绿的，字段就是没上屏**。这正是本仓「绿测试 ≠ 能用·断在接缝」的标本。
  * 所以这道门从**真实求解器回包**出发：
- *  · **MSW 拦真 URL**（`*/b/v1/solvers/finance_world_projection/run`，
+ *  · **MSW 拦真 URL**（见下方 `SOLVER_URL`：MSW 通配前缀 + `/b/v1/solvers/finance_world_projection/run`，
  *    与 `api/endpoints.ts:350` `runSolver` 拼的那条路一字不差），
  *  · **不 `vi.mock` 组件、不 `vi.mock('@/api/endpoints')`** —— 真 fetch → 真 zod 校形 → 真渲染。
  *    桩打在组件上，验的就是桩；桩打在网络上，验的才是这条链。
