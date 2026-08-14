@@ -13,6 +13,12 @@ import {
   buildProcessCanvasModel,
   classifyTickDrive,
   classifyTickDriveCanary,
+  labelTiersFit,
+  lineGapPx,
+  procLabelBandPx,
+  procLabelBoxHPx,
+  procLabelTierGapPx,
+  PROC_LAYOUT,
   TICK_DRIVE_ORDER,
   type ProcessLiveInput,
 } from "@/views/sim/processCanvas";
@@ -582,6 +588,81 @@ describe("§G additive 可回退（比的是基线实现的真输出，不是我
     // 关键：它们变成「无承载对象」而**不是**「本层不随节拍变」—— 前者补数据即动，后者结构上不动
     expect(cnt(without, "NO_CARRIER_OBJECTS")).toBe(cnt(withObjs, "TICK_DRIVEN") + cnt(withObjs, "NO_CARRIER_OBJECTS"));
     expect(cnt(without, "NOT_TICK_DRIVEN")).toBe(cnt(withObjs, "NOT_TICK_DRIVEN"));
+  });
+
+  /**
+   * G9 —— 本单实测抓到的一个**只差一点就发出去**的版面 bug（记在这里当护栏）。
+   *
+   * 站上多了第三行读数之后，同侧两层之间只剩 `labelTierGap(28) − 3×labelLineH(39) = −11px`，
+   * **跨层压字**。而 `labelOverflow` 那套检测比的是**同一层内**相邻标签的**水平**包围盒 ——
+   * 它对垂直方向一言不发（「我用 X 当作 Y 的证据，而 X 并不度量 Y」的又一例）。
+   * 所以这条断言必须**单独存在**，不能指望既有的 overflow 断言顺手咬到。
+   */
+  it("G9 · 标签分层不许压字：两行 / 三行两种版面都得装得下（`labelOverflow` 咬不到这一维）", () => {
+    // 先证这个判据**能说「不」**（否则它说「行」一文不值）—— 与主逻辑共用同一份实现
+    expect(PROC_LAYOUT.labelTierGap, "层距是 0 ⇒ 下面的判据在退化输入上跑").toBeGreaterThan(0);
+    const need2 = 2 * PROC_LAYOUT.labelLineH;
+    const need3 = 3 * PROC_LAYOUT.labelLineH;
+    // 反面样例：三行文字配「不加层距」的旧几何 —— 必须判为装不下
+    expect(PROC_LAYOUT.labelTierGap >= need3, "旧层距居然装得下三行 ⇒ 常量变了，本条的取证已过期，须重算").toBe(false);
+
+    expect(labelTiersFit(false), "两行版面装不下 ⇒ 本单把既有版面弄坏了").toBe(true);
+    expect(labelTiersFit(true), "三行版面装不下 ⇒ 节拍读数会压到下一层标签上").toBe(true);
+    // 层距与块高都必须真的长了一行（只长一个 = 另一个继续压）
+    expect(procLabelTierGapPx(true)).toBe(PROC_LAYOUT.labelTierGap + PROC_LAYOUT.labelLineH);
+    expect(procLabelBoxHPx(true)).toBe(PROC_LAYOUT.labelBoxH + PROC_LAYOUT.labelLineH);
+    expect(procLabelTierGapPx(true)).toBeGreaterThanOrEqual(need3);
+    expect(procLabelBoxHPx(true)).toBeGreaterThanOrEqual(need3);
+    // 不传时**逐字节回到旧几何**（additive：几何一动，canvas.h 与每座站的 y 全会变）
+    expect(procLabelTierGapPx(false)).toBe(PROC_LAYOUT.labelTierGap);
+    expect(procLabelBoxHPx(false)).toBe(PROC_LAYOUT.labelBoxH);
+    expect(procLabelBoxHPx(false)).toBeGreaterThanOrEqual(need2);
+    expect(procLabelBandPx(false)).toBeLessThan(procLabelBandPx(true));
+    expect(lineGapPx(false)).toBeLessThan(lineGapPx(true));
+
+    // 落到**真模型**上：接了节拍维的那份，每座站的第三行基线必须仍在自己的标签块里
+    const input: ProcessLiveInput = {
+      rules: RULES.map((r) => ({ sourceTypeKey: r.sourceTypeKey, targetTypeKey: r.targetTypeKey })),
+      nodeObjectIds: NODE_OBJECT_IDS,
+      snapshot: { sessionId: "s1", tick: 1, state: worldAt(1), origin: "MEASURED" },
+      prevSnapshot: { sessionId: "s1", tick: 0, state: worldAt(0), origin: "MEASURED" },
+    };
+    const m = buildProcessCanvasModel(PROCESS_DEFINITIONS_RESPONSE, WAIT_KIND_ORDER, input);
+    const stations = m.lines.flatMap((l) => l.stations);
+    expect(stations.length, "一座站都没有 ⇒ 下面在空集合上跑").toBeGreaterThan(0);
+    for (const st of stations) {
+      const thirdLineY = st.label.subY + PROC_LAYOUT.labelLineH; // 组件就是这么摆第三行的
+      expect(thirdLineY, `${st.key} 的节拍读数落在标签块之外 ⇒ 它会压到下一层`).toBeLessThanOrEqual(
+        st.label.box.y + st.label.box.h,
+      );
+    }
+    /**
+     * 跨层不压字 —— 判据必须**对站圈半径归一**。
+     *
+     * ⚠ 这一条第一版写错过，留作反面教材：原来直接比 `t0.box.y + h ≤ t1.box.y`，
+     *   实测红在 `182 > 180.51`。根因不是版面压字，是**站圈半径不同**
+     *   （`r ∝ √标准工期`，`top = y + r + labelBase + tier×tierGap`）——
+     *   工期大的站圈大、标签自然更靠下 1.5px。那条断言度量的是「半径差」，不是「层距够不够」。
+     *   形态还是那句：**「我用 X 当作 Y 的证据，而 X 并不度量 Y。」**
+     *   ⇒ 改成先减掉 `y + r`（站圈下缘），只比**层内偏移**，与半径无关。
+     */
+    for (const st of stations) {
+      const offset = st.label.box.y - (st.y + st.r); // 相对站圈下缘的层内偏移
+      expect(offset, `${st.key} 的标签层偏移与 tier 对不上`).toBeCloseTo(
+        PROC_LAYOUT.labelBase + st.label.tier * procLabelTierGapPx(true),
+        6,
+      );
+      expect(st.label.box.h).toBe(procLabelBoxHPx(true));
+    }
+    // 归一之后，「tier0 块底 ≤ tier1 块顶」就是纯层距不等式 —— 与 labelTiersFit 同一件事，
+    // 但这里是**从真模型的站上量出来的**，不是再算一遍常量。
+    const tiers = [...new Set(stations.map((s) => s.label.tier))].sort();
+    expect(tiers.length, "全部站都挤在同一层 ⇒ 跨层断言在空集合上跑").toBeGreaterThan(1);
+    for (let i = 1; i < tiers.length; i += 1) {
+      const lo = PROC_LAYOUT.labelBase + tiers[i - 1]! * procLabelTierGapPx(true) + procLabelBoxHPx(true);
+      const hi = PROC_LAYOUT.labelBase + tiers[i]! * procLabelTierGapPx(true);
+      expect(lo, `tier${tiers[i - 1]} 的标签块压进了 tier${tiers[i]}`).toBeLessThanOrEqual(hi);
+    }
   });
 
   it("G8 · 分档函数本身：三档判据逐条可证伪（不靠上面那些集成路径间接证明）", () => {

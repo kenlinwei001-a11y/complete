@@ -279,6 +279,20 @@ export type ProcessOrderBasis = "display-order" | "measured";
  * 这不是"今天恰好没变"，是"不可能变"。故屏上说「本层不随节拍变」是**事实陈述**，
  * 不是"暂时没数据"的委婉说法。
  *
+ * **实测日期 2026-08-14**（真后端种子·数字有保质期，别照抄）：65 条流程 / 64 种承载物 ×
+ * 13 条传导规则（两端共 11 种类型）⇒ 三档实为 **9 / 0 / 56**，即今天只有 **13.8%** 会随节拍动。
+ * 复验命令（与 `locales/zh.ts` 的 `liveBasis` 同一条，别另抄一套）：
+ *   `node -e "const s=require('fs').readFileSync('apps/datacore/src/seed.ts','utf8');
+ *    const b=s.slice(s.indexOf('const DEMO_PROCESS_DEFINITIONS'),s.indexOf('export async function seedDemoProcessLayer'));
+ *    const d=[...b.matchAll(/carrierTypeKey: \"([A-Za-z0-9_]+)\"/g)].map(m=>m[1]);
+ *    const r=s.slice(s.indexOf('const DEMO_PROPAGATION_RULES'),s.indexOf('export async function seedDemoPropagationRules'));
+ *    const t=new Set([...r.matchAll(/^\s*(?:source|target)TypeKey: \"([A-Za-z0-9_]+)\"/gm)].map(m=>m[1]));
+ *    console.log(d.length, t.size, d.filter(x=>t.has(x)).length)"`  ⇒ 当日现跑 `65 11 9`。
+ * ⚠ 抽规则时**必须逐字段抽**（种子里 `viaLinkKey` 行尾带 `// 实测 …` 注释，
+ *   要求五行连续的整体正则会静默漏抽 8/13 而金丝雀照样绿 —— 本单亲手踩过，
+ *   记账在 `docs/SYSTEM-ONTOLOGY.md` §8 `G-PROCESS-TICK-COVERAGE`）。
+ * 缺口与「该补哪些传导规则」的建议同样登记在那一行。
+ *
  * ── ⚠ 这条判据**测不出**的那件事（必须当面说，不许让它长得像已经答了）──────────
  * `NOT_TICK_DRIVEN` 只说明「**今天的传导图够不着它**」，
  * **不说明**「它本质上不该随节拍变」。
@@ -378,7 +392,14 @@ export interface ProcessLiveVM {
   readonly tick: number | null;
   readonly prevTick: number | null;
   readonly origin: "MEASURED" | "DERIVED" | null;
-  /** 三档各几条（现算；`TICK_DRIVE_ORDER` 全列，含 0 条的档）。 */
+  /**
+   * 三档各几条。**每次由本函数按当次下发数据重算**，`TICK_DRIVE_ORDER` 全列（含 0 条的档 ——
+   * 「这一档是 0」与「这一档没算」在屏上必须分得开）。前端不写死任何条数。
+   * 判据与当日数字（2026-08-14 现跑 9 / 0 / 56）见本文件 `ProcessTickDrive` 的文档块，
+   * 复验命令也在那里（同一条，别另抄一套）；
+   * 恒等式「三档之和 == `total`」由 `liveDriveCoversAll` 现算，门在
+   * `apps/frontend-shell/test/sandbox-process-live.seam.test.tsx` §B1。
+   */
   readonly byDrive: readonly { readonly kind: ProcessTickDrive; readonly count: number }[];
   /** 结构上会随节拍变的流程键（升序）。 */
   readonly drivableKeys: readonly string[];
@@ -561,11 +582,59 @@ export const PROC_LAYOUT = {
 } as const;
 
 /**
+ * ══════════════════════════════════════════════════════════════════════════════
+ * 🔴 站名标签是**几行**？—— WO-PROCESS-CANVAS-LIVE 把它从 2 行变成了 3 行
+ * ══════════════════════════════════════════════════════════════════════════════
+ * 不接节拍维：站名 + `P## · N天` = **2 行**（本单之前的样子）。
+ * 接了节拍维：再加一行读数 / 「不随节拍」 = **3 行**。
+ *
+ * ⚠ **这不是"多画一行字"那么简单，它会当场压字**（2026-08-14 本单现算逼出来的，
+ *   不是想出来的）。`labelBoxH`(26) 恰好 = 2 × `labelLineH`(13)，
+ *   而 `labelTierGap`(28) 只比它多 **2px** —— 那 2px 就是同侧两层之间的全部余量：
+ *     · 基线（2 行）：tier0 占 [13, 39]，tier1 起于 41 ⇒ 余 **+2px**  ✅
+ *     · 加第三行不动层距：tier0 占 [13, **52**]，tier1 仍起于 41 ⇒ **−11px，压字** ⛔
+ *   而且 `labelOverflow` 那套检测**看不见**这一类：它比的是**同一层内**相邻标签的水平包围盒，
+ *   压的是**跨层的垂直方向** —— 又一次「我用 X 当作 Y 的证据，而 X 并不度量 Y」。
+ *
+ * ⇒ 处置：层距与块高在接节拍维时各加一个 `labelLineH`，把基线那 **+2px** 的余量**原样还原**：
+ *     · 修后（3 行 + 层距 28→41）：tier0 占 [13, 52]，tier1 起于 54 ⇒ 余 **+2px** ✅
+ *     · 标签带厚度 67 → 93，恰好等于 tier1 第三行的底（93）⇒ 不溢出到下一条线。
+ *   复算（纯算术，随时可跑）：
+ *     `node -e "const B=13,G=28,T=2,H=26,L=13;const b3=L*3,g=G+L,h=H+L;
+ *      console.log('基线余量',(B+G)-(B+L*2), '不改层距',(B+G)-(B+b3), '修后',(B+g)-(B+b3),
+ *      '带厚', B+(T-1)*G+H, '→', B+(T-1)*g+h)"`
+ *     ⇒ 当日现跑 `基线余量 2 不改层距 -11 修后 2 带厚 67 → 93`。
+ *
+ * ⛔ **默认参数 `false` 是 additive 契约的一部分**：不传节拍维时这三个函数的返回值
+ *   与本单之前**逐字节相同**（几何一动，`canvas.h` / 每座站的 `y` 全会变，§G1 当场红）。
+ * ⚠ 有保质期：`METRO_LAYOUT` 的 `labelBoxH` / `labelTierGap` / `labelLineH` 任一变动，
+ *   上面每个数都作废，须重跑那条算术而不是照抄。
+ */
+export function procLabelTierGapPx(withLive = false): number {
+  return PROC_LAYOUT.labelTierGap + (withLive ? PROC_LAYOUT.labelLineH : 0);
+}
+
+/** 单个标签块的高度（`withLive` 时容纳第三行）。 */
+export function procLabelBoxHPx(withLive = false): number {
+  return PROC_LAYOUT.labelBoxH + (withLive ? PROC_LAYOUT.labelLineH : 0);
+}
+
+/**
+ * 「同侧分层不许压字」的**现算判据**（机器判据，不是上面那段注释）。
+ * 层距与块高都必须 ≥ 实际要画的行数 × 行高 —— 任一不成立即会跨层压字，
+ * 而 `labelOverflow` 那套水平检测**看不到**它。门在 `sandbox-process-live.seam.test.tsx` §G9。
+ */
+export function labelTiersFit(withLive = false): boolean {
+  const need = (withLive ? 3 : 2) * PROC_LAYOUT.labelLineH;
+  return procLabelTierGapPx(withLive) >= need && procLabelBoxHPx(withLive) >= need;
+}
+
+/**
  * 单侧标签带的最大厚度（px）= 第一层让位 + 分层推开的总量 + 标签块高。
  * 与第一档 `metroLabelBandPx()` 同式（那边还加了站圈半径，这里在 `lineGapPx()` 里单独加）。
  */
-export function procLabelBandPx(): number {
-  return PROC_LAYOUT.labelBase + (PROC_LAYOUT.maxLabelTiers - 1) * PROC_LAYOUT.labelTierGap + PROC_LAYOUT.labelBoxH;
+export function procLabelBandPx(withLive = false): number {
+  return PROC_LAYOUT.labelBase + (PROC_LAYOUT.maxLabelTiers - 1) * procLabelTierGapPx(withLive) + procLabelBoxHPx(withLive);
 }
 
 /**
@@ -573,9 +642,9 @@ export function procLabelBandPx(): number {
  * 站圈上缘 + 换乘弧拱高（线**上方**）+ 站圈下缘 + 标签带（线**下方**）+ 走线沟。
  * 少任一项就会出现「上一条线的标签压到下一条线的换乘弧」——门直接验算这个不等式。
  */
-export function lineGapPx(): number {
+export function lineGapPx(withLive = false): number {
   return (
-    STATION_RADIUS.max + PROC_LAYOUT.interchangeRise + STATION_RADIUS.max + procLabelBandPx() + PROC_LAYOUT.gutter
+    STATION_RADIUS.max + PROC_LAYOUT.interchangeRise + STATION_RADIUS.max + procLabelBandPx(withLive) + PROC_LAYOUT.gutter
   );
 }
 
@@ -623,24 +692,39 @@ export function processStationRadius(days: number, maxStdDays: number): number {
  *
  * 封顶两层后仍撞的，**如实记进 `labelOverflow`**，不再加层。
  */
-export function placeStationLabel(x: number, y: number, r: number, col: number, name: string, sub: string): ProcessLabelVM {
+export function placeStationLabel(
+  x: number,
+  y: number,
+  r: number,
+  col: number,
+  name: string,
+  sub: string,
+  withLive = false,
+): ProcessLabelVM {
   const tier = col % PROC_LAYOUT.maxLabelTiers;
-  const top = y + r + PROC_LAYOUT.labelBase + tier * PROC_LAYOUT.labelTierGap;
+  const top = y + r + PROC_LAYOUT.labelBase + tier * procLabelTierGapPx(withLive);
   const w = Math.max(estimateLabelWidth(name, PROC_LAYOUT.labelFontPx), estimateLabelWidth(sub, PROC_LAYOUT.labelFontPx));
   return {
     tier,
     x,
     nameY: top + PROC_LAYOUT.labelLineH,
     subY: top + PROC_LAYOUT.labelLineH * 2,
-    box: { x: x - w / 2, y: top, w, h: PROC_LAYOUT.labelBoxH },
+    // ⚠ 块高随行数走（见 `procLabelBoxHPx` 的长注释）：第三行的基线恰好落在块底，
+    //    块高不跟着长 = 屏上有字、包围盒不认它 ⇒ 压字检测对它一言不发。
+    box: { x: x - w / 2, y: top, w, h: procLabelBoxHPx(withLive) },
   };
 }
 
 /** 第 `index` 个站位落在本条线的第几行第几列、画布坐标是多少（与第一档同一套折行算法）。 */
-export function procSlotPoint(index: number, plan: MetroRowPlan, y0: number): { row: number; col: number; x: number; y: number } {
+export function procSlotPoint(
+  index: number,
+  plan: MetroRowPlan,
+  y0: number,
+  withLive = false,
+): { row: number; col: number; x: number; y: number } {
   const row = Math.min(plan.rowCount - 1, Math.floor(index / plan.perRow));
   const col = index - row * plan.perRow;
-  return { row, col, x: PROC_LAYOUT.padX + col * PROC_LAYOUT.gapX, y: y0 + row * lineGapPx() };
+  return { row, col, x: PROC_LAYOUT.padX + col * PROC_LAYOUT.gapX, y: y0 + row * lineGapPx(withLive) };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -738,7 +822,10 @@ export function buildProcessCanvasModel(
   const widestRow = plans.reduce((m, p) => Math.max(m, p.perRow), 1);
   const canvasW = Math.max(PROC_LAYOUT.minWidth, PROC_LAYOUT.padX + PROC_LAYOUT.padX / 2 + Math.max(0, widestRow - 1) * PROC_LAYOUT.gapX);
 
-  const gap = lineGapPx();
+  // ⚠ 几何随「有没有第三行」走（见 `procLabelBandPx` 的长注释）。`withLive === false` 时
+  //    下面每个几何量与本单之前逐字节相同 —— additive 契约就靠这一个布尔守住。
+  const withLive = liveByKey !== null;
+  const gap = lineGapPx(withLive);
   const stationByKey = new Map<string, { st: ProcessStationVM; lineIdx: number }>();
   let cursorY = PROC_LAYOUT.padTop + STATION_RADIUS.max + PROC_LAYOUT.interchangeRise;
 
@@ -746,7 +833,7 @@ export function buildProcessCanvasModel(
     const plan = plans[lineIdx]!;
     const y0 = cursorY;
     const stations: ProcessStationVM[] = defs.map((p, i) => {
-      const slot = procSlotPoint(i, plan, y0);
+      const slot = procSlotPoint(i, plan, y0, withLive);
       const r = processStationRadius(p.stdDurationDays, maxStdDays);
       const sub = `${p.key} · ${round1(p.stdDurationDays)}天`;
       return {
@@ -764,7 +851,7 @@ export function buildProcessCanvasModel(
         y: slot.y,
         row: slot.row,
         col: slot.col,
-        label: placeStationLabel(slot.x, slot.y, r, slot.col, p.name, sub),
+        label: placeStationLabel(slot.x, slot.y, r, slot.col, p.name, sub, withLive),
         // ⚠ 条件展开而不是 `live: liveByKey?.get(...)` —— 后者在不传时会留下一个
         //    `"live":undefined` 的属性槽（`JSON.stringify` 虽然会丢它，但 `Object.keys`
         //    与逐键比对会分家）。additive 契约要的是**键根本不存在**。
@@ -896,7 +983,7 @@ export function buildProcessCanvasModel(
     // ⛔ 恒为 `display-order`：端点没下发先后（文件头 §0），改成 `measured` 之前
     //    必须先有一条真的下发实测站序的取数 —— 光把这个字面量改掉就是造假。
     orderBasis: "display-order",
-    canvas: { w: canvasW, h: Math.max(1, cursorY - gap + STATION_RADIUS.max + procLabelBandPx() + PROC_LAYOUT.padBottom) },
+    canvas: { w: canvasW, h: Math.max(1, cursorY - gap + STATION_RADIUS.max + procLabelBandPx(withLive) + PROC_LAYOUT.padBottom) },
     maxStdDays,
     labelOverflow,
     ...(liveVM === null ? {} : { live: liveVM }),

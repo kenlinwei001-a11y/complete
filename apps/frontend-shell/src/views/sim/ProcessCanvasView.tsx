@@ -489,6 +489,18 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
    *
    * `retry:false`：`sim.propagation` / 沙盘能力关着时后端回 404 FEATURE_NOT_FOUND，
    * 那是"没开通"不是"坏了"，重试无意义；取不到时本档如实说"分类算不出"，不假装全是静态。
+   *
+   * ⚠ **已知边界（2026-08-14 现跑登记，不是猜的）**：`SandboxView` 支持 `injectedConfig`
+   *   （给它传值时它自己的 `cfgQuery` 带 `enabled:false`、不落缓存），本档此时会**自己去取一份**，
+   *   两边可能不是同一份配置。
+   *   **判据落在"谁传值"上，不落在"谁提到过这个名字"**：
+   *   `grep -rn "injectedConfig=" apps/frontend-shell/src apps/frontend-shell/test`
+   *   当日现跑 —— `src` 下 **0 处传值**，`test` 下 10 处（`sandbox-console.seam` / `sandbox-p0` /
+   *   `sandbox-three-zone` …）。`src` 里出现这个名字的只有 `SandboxView.tsx` 自己的
+   *   prop 声明与解构（`:238`/`:366`/`:370`/`:373`）—— **声明不是传值**。
+   *   ⇒ 生产路径上宿主必取 `["a","sim","view-config"]` 那个键，本档与它共用同一份，不分家。
+   *   ⚠ 有保质期：将来若有 `src` 代码开始传 `injectedConfig`，这条要改成由宿主把配置下发给本档，
+   *   而不是各取各的；复验就跑上面那条 grep（`src` 命中数 > 0 即失效）。
    */
   const cfgQuery = useQuery({ queryKey: ["a", "sim", "view-config"], queryFn: fetchSimViewConfig, retry: false });
   const rulesQuery = useQuery({ queryKey: ["a", "sim-propagation-rules"], queryFn: () => fetchSimPropagationRules(), retry: false });
