@@ -19,10 +19,17 @@ import type {
   SkillDefinition,
   WorkflowDefinition,
   RiskTimelineOutput,
+  // WO-BEFE-B · 行动与审批组（契约已有的形状从这里来）
+  FactoryCalendar,
+  VirtualPersona,
+  OpsPlaybook,
+  OpsTickReport,
 } from "@platform/contracts";
 import type {
   FallbackClusterVM,
   OntologyGraphVM,
+  ScheduledJobVM,
+  SchedulerRunVM,
   SimClockVM,
   TickReportVM,
   WorkspaceInput,
@@ -1445,6 +1452,95 @@ export const ACTION_DRAFTS: ActionDraft[] = [
     createdAt: "2026-06-08T08:00:00Z", updatedAt: "2026-06-09T08:00:00Z",
   },
 ];
+
+/**
+ * WO-BEFE-B · Action 审批留痕事件（`GET /a/v1/action-drafts/:id/audit` 的 `events` 段）。
+ *
+ * 真后端从 outbox 里筛 `action.*` 且 `payload.draftId === id`（`actions.ts:824`）。
+ * mock 侧同样**由真实变更追加**（见 handlers 里 decision / cancel 两处 `pushActionEvent`），
+ * 不是摆一份静态好看的清单 —— 摆静态的话，审批面就算根本没打后端也照样显示留痕，
+ * 那正是本仓「绿测试≠能用」要堵的形态。种子这两条对应上面两份草稿的既有状态。
+ */
+export const ACTION_EVENTS: { event: string; payload: Record<string, unknown>; at: string; status?: string }[] = [
+  { event: "action.pending_approval", payload: { draftId: "act-001", actionTypeKey: "shift_plan_change", step: 1, role: "planner" }, at: "2026-06-10T08:00:00Z", status: "SENT" },
+  { event: "action.approved", payload: { draftId: "act-002", actionTypeKey: "outsource_transfer" }, at: "2026-06-09T08:00:00Z", status: "SENT" },
+];
+
+/** WO-BEFE-B · S3 调度任务（后端 `scheduler.ts` · `domain.ts:786`）。 */
+export const SCHEDULED_JOBS: ScheduledJobVM[] = [
+  { id: "sjob-forecast-w", tenantId: TENANT_ID, kind: "FORECAST", refId: "model-arima-1", cron: "0 2 * * 1", timezone: "Asia/Shanghai", nextRunAt: "2026-06-15T18:00:00Z", lastRunAt: "2026-06-08T18:00:00Z", status: "ACTIVE" },
+  { id: "sjob-sop-open", tenantId: TENANT_ID, kind: "SOP_CYCLE", refId: "sop-monthly", cron: "0 1 25 * *", timezone: "Asia/Shanghai", nextRunAt: "2026-06-24T17:00:00Z", status: "ACTIVE" },
+  // 带 lastError 的一条：诚实位——错误必须在屏上看得见，不许被"已暂停"三个字盖掉。
+  { id: "sjob-remind", tenantId: TENANT_ID, kind: "APPROVAL_REMINDER", refId: "reminder-default", cron: "0 0 * * *", timezone: "Asia/Shanghai", nextRunAt: "2026-06-13T16:00:00Z", lastRunAt: "2026-06-12T16:00:00Z", status: "PAUSED", lastError: "上一轮 3 条催办未送达（通知通道 503）" },
+];
+
+/** WO-BEFE-B · 调度运行历史（`GET /a/v1/scheduler/jobs/:id/runs`）。 */
+export const SCHEDULER_RUNS: SchedulerRunVM[] = [
+  { id: "sjob-forecast-w@2026-06-08T18:00:00Z", tenantId: TENANT_ID, jobId: "sjob-forecast-w", scheduledAt: "2026-06-08T18:00:00Z", startedAt: "2026-06-08T18:00:01Z", finishedAt: "2026-06-08T18:02:11Z", status: "SUCCEEDED" },
+  { id: "sjob-forecast-w@2026-06-01T18:00:00Z", tenantId: TENANT_ID, jobId: "sjob-forecast-w", scheduledAt: "2026-06-01T18:00:00Z", startedAt: "2026-06-01T18:00:01Z", finishedAt: "2026-06-01T18:00:09Z", status: "FAILED", error: "模型 model-arima-1 输入窗口不足 8 周" },
+  { id: "sjob-remind@2026-06-12T16:00:00Z", tenantId: TENANT_ID, jobId: "sjob-remind", scheduledAt: "2026-06-12T16:00:00Z", startedAt: "2026-06-12T16:00:00Z", finishedAt: "2026-06-12T16:00:03Z", status: "FAILED", error: "通知通道 503" },
+];
+
+/** WO-BEFE-B · OC9 工厂日历（契约 `FactoryCalendarSchema`）。 */
+export const FACTORY_CALENDARS: FactoryCalendar[] = [
+  {
+    id: `cal_${TENANT_ID}_default`, tenantId: TENANT_ID, calendarKey: "default", weekendMode: "SAT_SUN_OFF",
+    exceptions: [
+      { date: "2026-06-25", kind: "HOLIDAY", label: "端午" },
+      { date: "2026-06-27", kind: "EXTRA_WORKDAY", label: "调休补班" },
+      { date: "2026-07-06", kind: "MAINTENANCE", label: "年度检修" },
+    ],
+    updatedAt: "2026-06-01T00:00:00Z",
+  },
+];
+
+/**
+ * WO-BEFE-B · 虚拟操作团队（回放编排器 §1）。
+ * ⚠️ 真后端只在 SYNTHETIC 租户返回非空（`opsteam/team.ts:30`）；mock 直接给内容，
+ * 但页面上必须把「这是 SYNTHETIC 租户才有的东西」这句话显出来（隔离语义不能只活在后端）。
+ */
+export const OPS_PERSONAS: VirtualPersona[] = [
+  { username: "vp_planner_zhang", roles: ["planner"], attributes: {}, isVirtual: true, styleSeed: 11, displayName: "张（虚拟计划员）" },
+  { username: "vp_approver_li", roles: ["admin"], attributes: {}, isVirtual: true, styleSeed: 22, displayName: "李（虚拟审批人）" },
+  { username: "vp_sop_host", roles: ["planner"], attributes: {}, isVirtual: true, styleSeed: 33, displayName: "王（虚拟 S&OP 主持）" },
+];
+
+/** WO-BEFE-B · 剧本（回放编排器 §2）。 */
+export const OPS_PLAYBOOK: OpsPlaybook = {
+  key: "default-ops",
+  version: 3,
+  cadence: {
+    daily: [
+      { kind: "ask", persona: "vp_planner_zhang", view: "cockpit", queryPool: "daily_ops", prob: 0.6 },
+      { kind: "review_actions", persona: "vp_approver_li", policy: { approve: 0.82, reject: 0.11, cancel: 0.04 }, commentPool: "approval_comments" },
+    ],
+    monthly: [{ kind: "sop_cycle", persona: "vp_sop_host" }],
+  },
+};
+
+/** WO-BEFE-B · 回放 tick 报告（回放编排器 §3）。 */
+export const OPS_TICK_REPORTS: OpsTickReport[] = [
+  {
+    tick: 1, date: "2026-06-11",
+    executed: [
+      { kind: "ask", persona: "vp_planner_zhang", ref: "task-vp-001" },
+      { kind: "review_actions", persona: "vp_approver_li", ref: "act-002", decision: "APPROVE" },
+    ],
+    skipped: [{ kind: "sop_cycle", persona: "vp_sop_host", reason: "非月度节点" }],
+  },
+  {
+    tick: 2, date: "2026-06-12",
+    executed: [{ kind: "ask", persona: "vp_planner_zhang", ref: "task-vp-002" }],
+    skipped: [{ kind: "review_actions", persona: "vp_approver_li", reason: "无待审批草稿" }],
+  },
+];
+
+/** WO-BEFE-B · 文本池快照（`GET /a/v1/ops/pools`，后端 `poolSnapshot()`）。 */
+export const OPS_POOLS: Record<string, unknown> = {
+  daily_ops: { size: 40, consumed: 12 },
+  approval_comments: { size: 24, consumed: 7 },
+  sop_resolutions: { size: 16, consumed: 3 },
+};
 
 // ---------------------------------------------------------------------------
 // 合成数据 / 模拟时钟
