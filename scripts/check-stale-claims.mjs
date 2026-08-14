@@ -1059,6 +1059,7 @@ function runBaselineFactChecks(exemptions, readSource) {
         code: "STALE-6",
         file: e.file,
         line: e.line,
+        endLine: e.line,
         detail: `【基线登记的赌注失守】${fc.means ?? ""} ${r.reason}`,
         key: `${e.key}#factcheck`,
         sample: e.sample ?? "",
