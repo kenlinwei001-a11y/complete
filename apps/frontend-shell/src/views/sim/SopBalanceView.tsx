@@ -307,7 +307,7 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
       key: "demand",
       label: zh.sim.sop.kpi.demand,
       value: demand != null ? fmt(demand) : "—",
-      formula: "需求P50 = ② 三线对照合计.滚动P50（缺省 inputs.demTotal）",
+      formula: "需求P50 = ② 三线对照合计.滚动P50（万套/月·缺省 inputs.demTotal）",
       source: "S&OP ② 需求评审（PlanTarget 同源勾稽）",
       inputs: ["三线应用细分滚动P50", "目标(年度分解)", "上月实际"],
       rule: "C21",
@@ -317,7 +317,7 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
       key: "supply",
       label: zh.sim.sop.kpi.supply,
       value: supply != null ? fmt(supply) : "—",
-      formula: "可供给 = Σ基地(周产能×爬坡×认证)月聚合 + Σ决议增量",
+      formula: "可供给 = Σ基地(周产能×爬坡×认证)月聚合 + Σ决议增量（万套/月）",
       source: "S&OP ③ 供应评审（S1.2 月聚合） + ⑤ 决议",
       inputs: ["逐基地月供给", "认证系数", "⑤ 决议增量"],
       note: "⑤ 决议编辑中即时重算（display 侧）；落库走第⑤步执行",
@@ -327,10 +327,10 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
       label: zh.sim.sop.kpi.gap,
       value: gap != null ? fmt(gap) : "—",
       color: gap != null && gap > kpi.gapRed ? "var(--danger-txt)" : "var(--ok-txt)",
-      formula: `缺口 = 需求P50 − 可供给（> ${kpi.gapRed} 红）`,
+      formula: `缺口 = 需求P50 − 可供给（万套/月·> ${kpi.gapRed} 红）`,
       source: "②/③/⑤ 联动即时重算",
       inputs: ["需求P50", "可供给"],
-      note: `缺口 > ${kpi.gapRed} 万套 → 红标，自动进⑤高管决策会议程`,
+      note: `缺口 > ${kpi.gapRed} 万套/月 → 红标，自动进⑤高管决策会议程`,
     },
     {
       key: "revAttain",
@@ -623,7 +623,7 @@ function Step3({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
           </table>
           <div className={s3.flagged ? styles.noteRed : styles.noteInfo} data-testid="sop-gap">
             需求 <b className="mono">{fmt(s3.dem ?? 0)}</b> − 供给 <b className="mono">{fmt(s3.sup ?? 0)}</b> = 缺口{" "}
-            <b className="mono">{fmt(s3.gap ?? 0)}</b> 万套{s3.flagged ? `（${zh.sim.sop.gapRed} → 红标，自动进⑤议程）` : ""}
+            <b className="mono">{fmt(s3.gap ?? 0)}</b> 万套/月{s3.flagged ? `（${zh.sim.sop.gapRed} → 红标，自动进⑤议程）` : ""}
           </div>
         </>
       )}
@@ -869,8 +869,12 @@ function VersionCompare() {
   return (
     <div style={{ marginTop: 10 }} data-testid="sop-version-compare">
       <div className="section-title">版本演进对比（V1 → V7，缺口 = 需求 − 供给）</div>
+      {/* WO-P50-REMAINING-3 · 屏上必须分得出分母：本表三列是 `SopVersionRow` 的**年**口径
+          （`battery.ts` 实测 `demBase = Σ DemandSegment.tgt` = 375 万套/年），而**同一屏**上方的
+          S&OP KPI 条（需求/可供给/缺口）是**月**口径（实测 26.58 量级）—— 相差 12 倍。
+          原先本表三列一个单位都没写，读的人只能把 375 和 26.58 当成同一件事的两个数。 */}
       <table className="cmp" data-testid="sop-version-compare-table">
-        <thead><tr><th>版本</th><th>日期</th><th>需求</th><th>供给</th><th>缺口</th><th>变化备注</th></tr></thead>
+        <thead><tr><th>版本</th><th>日期</th><th>需求(万套/年)</th><th>供给(万套/年)</th><th>缺口(万套/年)</th><th>变化备注</th></tr></thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.ver} data-testid={`sop-ver-${r.ver}`} style={r.isFinal ? { background: "rgba(76,144,240,.08)", fontWeight: 600 } : undefined}>

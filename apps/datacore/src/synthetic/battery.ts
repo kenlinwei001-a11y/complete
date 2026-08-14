@@ -1258,12 +1258,18 @@ const principalProps: PropertyDef[] = [
   { propKey: "parentRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Principal" },
 ];
 // cockpit P5 / sop 绿地：S&OP 版本演进（V1→V7 需求/供给/缺口/备注），驱动 V5/V7 版本切换 + 版本对比表。
+//
+// WO-P50-REMAINING-3 量纲实测（不信注释信算术）：`demBase = round(totalTgt, 0)`，
+// 而 `totalTgt = Σ DemandSegment.tgt` = 201.7+139.2+34.1 = **375 万套/年**（= 700 亿 ÷ 1.8667 万元/套 规模锚）。
+// ⇒ 本表三列全是 **万套/年**，而同屏上方的 S&OP KPI 条（需求/可供给/缺口）是 **万套/月**（实测 26.58 量级）。
+// 两者相差 12 倍、同屏并列、原先**三列一个单位都没写** —— 正是「屏上分不出」的那半个信息。
+// 故此处把量纲写进属性定义（屏上表头由前端 `VersionCompare` 一并写清）。
 const sopVersionRowProps: PropertyDef[] = [
   { propKey: "verId", dataType: "string", isPrimaryKey: true },
   { propKey: "ver", dataType: "string", isPrimaryKey: false }, // V1..V7
   { propKey: "date", dataType: "string", isPrimaryKey: false },
-  { propKey: "demand", dataType: "number", isPrimaryKey: false },
-  { propKey: "supply", dataType: "number", isPrimaryKey: false },
+  { propKey: "demand", dataType: "number", isPrimaryKey: false, unit: "万套/年", description: "该版本的年度需求口径（Σ DemandSegment.tgt 派生·万套/年，非 S&OP 月度台账口径）" },
+  { propKey: "supply", dataType: "number", isPrimaryKey: false, unit: "万套/年", description: "该版本的年度可供给口径（万套/年·与 demand 同分母）" },
   { propKey: "note", dataType: "string", isPrimaryKey: false },
   { propKey: "isFinal", dataType: "boolean", isPrimaryKey: false },
 ];

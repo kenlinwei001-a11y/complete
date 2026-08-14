@@ -1343,11 +1343,18 @@ export const zh = {
       finalBadge: (n: number) => `V${n} 已定稿·C22 锁定`,
       c21Chip: "C21 差异提报 → 进议程",
       step5Blocked: "④ 财务整合未通过，阻断进入⑤（先修正财务输入并重跑第④步）",
-      gapRed: "缺口 > 2 万套",
+      gapRed: "缺口 > 2 万套/月",
       kpi: {
-        demand: "需求 P50(万套)",
-        supply: "可供给(万套)",
-        gap: "产销缺口(万套)",
+        // WO-P50-REMAINING-3 · 屏上必须分得出**分母**：这三卡全是 S&OP **月**口径
+        // （需求 = ② 三线合计滚动 P50 ← PlanTarget(level=month)×基线占比；
+        //  可供给 = ③ Σ基地周产能×monthlyWeeks；缺口 = 两者之差，同轴）。
+        // 与 `DemandSegment.demandWanPerYearP50`（万套/**年**·Σ375）、
+        // `capacity_forecast.capWanP50`（万套/**窗口**）都写「万套」但分母不同 ——
+        // 只写「万套」正是让用户在屏上分不出的那半个信息（仓主 2026-08-14 实测撞上的就是这个）。
+        // 实测锚（seed 42·2026-03）：② 合计 26.58 / ③ 22.68 / 缺口 3.90，量级即月。
+        demand: "需求 P50(万套/月)",
+        supply: "可供给(万套/月)",
+        gap: "产销缺口(万套/月)",
         revAttain: "收入预算达成",
         gmVsBudget: "毛利率 vs 预算",
         cash: "现金垫 C18",
