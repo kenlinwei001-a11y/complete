@@ -36,6 +36,7 @@
     "apps/agentcore/src/persistence/pg.ts::runMigrations",
     "apps/agentcore/src/refs/report.ts::agentRuleRefs",
     "apps/agentcore/src/resources.ts::RefProbeUnavailableError",
+    "apps/agentcore/src/resources.ts::computeReferences",
     "apps/agentcore/src/resources.ts::probeMissingRefs",
     "apps/agentcore/src/resources.ts::probeUnavailable",
     "apps/agentcore/src/router/ceo-route.ts::shouldUseFreeLLM",

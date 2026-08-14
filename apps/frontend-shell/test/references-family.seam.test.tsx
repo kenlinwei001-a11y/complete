@@ -193,27 +193,34 @@ describe("WO-REFERENCES-FAMILY ② 「同一份实现」的可证伪判据", () 
   const SHARED_COUNT_SUFFIX = "处引用";
   const SHARED_NONE = "今天没有引用方（可以放心改）。";
 
-  it("②-A 同一句文案在两个不同挂载点（技能库 · MCP）逐字出现", async () => {
+  /**
+   * ⚠ 两个挂载点**刻意拆成两个独立 `it`**，不写在一个用例里顺序断言。
+   * 写在一个用例里，第一处断言一失败整个用例就中止 —— 屏幕上只有 **1 条红**，
+   * 证明不了「两处同时变」（本单实测 MUT-3 时踩过：合并写法只红 1 条）。
+   * 拆开后同一次变异必然打出 **2 条独立的红**，才是「同一份实现」的机器证据。
+   */
+  it("②-A1 挂载点甲（技能库）逐字用共享文案", async () => {
     const user = userEvent.setup();
     loginAs("planner");
-    server.use(
-      http.get("*/b/v1/skills/:id/references", () => HttpResponse.json({ references: [], count: 0 })),
-      http.get("*/b/v1/mcp-configs/:id/references", () => HttpResponse.json({ references: [], count: 0 })),
-    );
-
+    server.use(http.get("*/b/v1/skills/:id/references", () => HttpResponse.json({ references: [], count: 0 })));
     renderApp("/admin/skills");
     await user.click(await screen.findByRole("button", { name: /产能分析方法论/ }));
     await screen.findByTestId("skill-editor");
     await waitFor(() => expect(screen.getByTestId("references-count-skill-skl-capacity").textContent).toContain(SHARED_COUNT_SUFFIX));
     const skillBody = await expandPanel(user, "skill-skl-capacity");
-    expect(skillBody.textContent).toContain(SHARED_NONE);
-    cleanup();
+    // 逐字相等（不是 contain）：MUT-3 只在原句前后加字时，contain 会漏过去 —— 本单实测漏过一次。
+    expect(within(skillBody).getByTestId("references-none-skill-skl-capacity").textContent).toBe(SHARED_NONE);
+  });
 
+  it("②-A2 挂载点乙（MCP）逐字用**同一句**共享文案", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    server.use(http.get("*/b/v1/mcp-configs/:id/references", () => HttpResponse.json({ references: [], count: 0 })));
     renderApp("/admin/mcp");
     await user.click(await screen.findByRole("button", { name: /示例 MCP 服务器/ }));
     await waitFor(() => expect(screen.getByTestId("references-count-mcp-config-mcp-demo").textContent).toContain(SHARED_COUNT_SUFFIX));
     const mcpBody = await expandPanel(user, "mcp-config-mcp-demo");
-    expect(mcpBody.textContent).toContain(SHARED_NONE);
+    expect(within(mcpBody).getByTestId("references-none-mcp-config-mcp-demo").textContent).toBe(SHARED_NONE);
   });
 
   it("②-B 结构证据：面板只有一份实现文件，各页只 import 不自持客户端", () => {
