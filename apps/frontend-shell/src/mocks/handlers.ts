@@ -5259,6 +5259,25 @@ export const handlers = [
     mockSimWorlds.set(child.id, { tick: 0, state: child.baseSnapshot });
     return HttpResponse.json(child, { status: 201 });
   }),
+  /**
+   * WO-BEFE-E · 传导规则清单（datacore app.ts:1860）。
+   * `?published=false` 才连草稿一起列（后端判据 `published !== "false"` ⇒ 默认只列已发布）——
+   * 桩照抄这一条，否则"默认看不到草稿"这一支永远验不到。
+   * 规则条数与 `view-config` 的 `propagationCount: 1` 对齐：两处不一致的话，屏上会出现
+   * 「1 传导规则」配一张两行的表，那正是本单要治的「数与内容不是同一件事」。
+   */
+  http.get("*/a/v1/sim/propagation-rules", ({ request }) => {
+    const includeDrafts = new URL(request.url).searchParams.get("published") === "false";
+    const rows = [
+      { id: "simpr_mock_1", tenantId: "demo", key: "pr_a_to_b", sourceTypeKey: "TypeA", sourceStateVar: "s1",
+        viaLinkKey: "linkAB", targetTypeKey: "TypeB", targetStateVar: "s2", coefficient: 0.85, delayTicks: 1,
+        combine: "sum", decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null, published: true },
+      { id: "simpr_mock_2", tenantId: "demo", key: "pr_draft", sourceTypeKey: "TypeB", sourceStateVar: "s2",
+        viaLinkKey: "linkAB", targetTypeKey: "TypeC", targetStateVar: "s1", coefficient: 0.5, delayTicks: 0,
+        combine: "sum", decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null, published: false },
+    ];
+    return HttpResponse.json({ items: includeDrafts ? rows : rows.filter((r) => r.published) });
+  }),
   http.get("*/a/v1/sim/compare", () =>
     HttpResponse.json({
       a: [{ tick: 0, state: { "TypeA#0": { s1: 50 } } }, { tick: 1, state: { "TypeA#0": { s1: 65 } } }],

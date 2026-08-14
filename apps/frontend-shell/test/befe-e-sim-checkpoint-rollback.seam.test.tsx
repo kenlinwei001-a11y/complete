@@ -223,3 +223,103 @@ describe("WO-BEFE-E ① 沙盘存档清单 + 回滚（GET …/checkpoints · POS
     expect(eps).toContain("/rollback`");
   });
 });
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ② GET /a/v1/sim/propagation-rules —— 「有个数、没有内容」
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+describe("WO-BEFE-E ② 传导规则清单（GET /a/v1/sim/propagation-rules）", () => {
+  beforeEach(() => {
+    loginAs("planner");
+  });
+  afterEach(() => cleanup());
+
+  /**
+   * 病灶：沙盘顶栏写着「{propagationCount} 传导规则」，就绪面板甚至会警告
+   * 「已发布 N 条传导规则，本次一条都没触发」（`SimReadinessPanel.tsx:278`）——
+   * 而**哪 N 条**在界面上问不出来 ⇒ 那句警告没有可操作的下一步。
+   */
+  /**
+   * 「本体派生」这一块住在**诊断抽屉**里（`SandboxConsole.tsx:580` 的 `diagOpen`），入口是
+   * `sc-diag-toggle`（那颗按钮折叠时也常驻可见）。传导规则清单放这里是对的：它回答的是
+   * 「这一屏的骨架从哪来」这类**读数**，不是用户要做的动作 —— 与它解释的那个计数同处一块。
+   */
+  async function openDiagnostics(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(await screen.findByTestId("sc-diag-toggle"));
+    await screen.findByTestId("sc-diag-derived");
+  }
+
+  it("②-A 用户看得到：逐条规则来自 `GET /a/v1/sim/propagation-rules`（源→链路→靶 + 系数 + 延迟）", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    server.use(
+      http.get("*/a/v1/sim/propagation-rules", ({ request }) => {
+        calls.push(request.url);
+        return HttpResponse.json({
+          items: [
+            {
+              id: "simpr_probe", tenantId: "demo", key: "pr_probe",
+              sourceTypeKey: "ProbeSrc", sourceStateVar: "sv_a", viaLinkKey: "PROBE_LINK",
+              targetTypeKey: "ProbeTgt", targetStateVar: "sv_b", coefficient: 0.42, delayTicks: 3,
+              combine: "sum", decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null,
+            },
+          ],
+        });
+      }),
+    );
+    mountSandbox();
+    await mountedSandboxSessionId();
+    await openDiagnostics(user);
+
+    await waitFor(() => expect(calls.length, "沙盘挂载后一个规则请求都没发 ⇒ 入口仍是死的").toBeGreaterThan(0));
+    expect(calls[0]!, `打错端点：${calls[0]!}`).toContain("/a/v1/sim/propagation-rules");
+
+    // ★ 屏上逐字段来自响应（源/链路/靶/系数/延迟），零写死。
+    const row = await screen.findByTestId("sandbox-propagation-pr_probe");
+    expect(row.textContent).toContain("ProbeSrc.sv_a");
+    expect(row.textContent).toContain("PROBE_LINK");
+    expect(row.textContent).toContain("ProbeTgt.sv_b");
+    expect(row.textContent).toContain("0.42");
+    expect(row.textContent).toContain("3 tick");
+  });
+
+  it("②-B 「查不出来」不许塌成「没有规则」：端点 500 → 明说这次没查出来", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("*/a/v1/sim/propagation-rules", () =>
+        HttpResponse.json({ error: { code: "BOOM", message: "规则表炸了", requestId: "req_p" } }, { status: 500 }),
+      ),
+    );
+    mountSandbox();
+    await mountedSandboxSessionId();
+    await openDiagnostics(user);
+
+    const box = await screen.findByTestId("sandbox-propagation-error");
+    expect(box.textContent).toContain("不是");
+    expect(screen.queryByTestId("sandbox-propagation-empty"), "读不出来被渲染成「没有规则」⇒ 把「我没找到」说成了「它不存在」").toBeNull();
+    expect(screen.queryByTestId("sandbox-propagation-list")).toBeNull();
+  });
+
+  it("②-C 真空态与错误态分得开：0 条 → 明写「tick 只会推进时间，状态不会传导」", async () => {
+    const user = userEvent.setup();
+    server.use(http.get("*/a/v1/sim/propagation-rules", () => HttpResponse.json({ items: [] })));
+    mountSandbox();
+    await mountedSandboxSessionId();
+    await openDiagnostics(user);
+
+    const empty = await screen.findByTestId("sandbox-propagation-empty");
+    // 空态必须说清**后果**（tick 推进但不传导），不是一句"暂无数据"。
+    expect(empty.textContent).toContain("不会沿链路传导");
+    expect(screen.queryByTestId("sandbox-propagation-error"), "空态被渲染成错误态 ⇒ 两件事混了").toBeNull();
+  });
+
+  it("②-D 不是死组件：URL 真在 endpoints.ts 里，清单真的挂在沙盘的「本体派生」块", () => {
+    const view = readRepoFile("../src/views/sim/SandboxView.tsx");
+    expect(view).toContain("fetchSimPropagationRules");
+    expect(view).toContain(`data-testid="sandbox-propagation-rules"`);
+    const eps = readRepoFile("../src/api/endpoints.ts");
+    // 金丝雀：先抓一个**已知必在**的同族 URL。
+    expect(eps, "金丝雀未中 ⇒ 读法坏了，下面的「不存在」全部不可信").toContain("/a/v1/sim/view-config");
+    expect(eps).toContain("/a/v1/sim/propagation-rules");
+  });
+});

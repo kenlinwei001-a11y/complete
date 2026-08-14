@@ -7,6 +7,7 @@ import {
   fetchSimCertification,
   fetchSimCheckpoints,
   fetchSimCompare,
+  fetchSimPropagationRules,
   fetchSimSessions,
   fetchSimViewConfig,
   simBranch,
@@ -487,6 +488,16 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     retry: false,
   });
   const [rollingBack, setRollingBack] = useState<string | null>(null); // 正在回滚的那个 checkpointId
+  /**
+   * WO-BEFE-E · 传导规则清单（`GET /a/v1/sim/propagation-rules`）。
+   * 与会话无关（是**租户级**配置），故不挂 `enabled: !!sessionId` —— 没建会话时也该看得到"这套世界怎么传导"。
+   * `retry:false`：`sim.propagation` 关着时后端回 404 FEATURE_NOT_FOUND，那是"没开通"不是"坏了"，重试无意义。
+   */
+  const propagationQuery = useQuery({
+    queryKey: ["a", "sim-propagation-rules"],
+    queryFn: () => fetchSimPropagationRules(),
+    retry: false,
+  });
   const adopt = useActionDraft(); // 采纳 → R4 Action 草稿（RL4 正门，沙盘模拟态不直写真值）
 
   /**
@@ -1119,10 +1130,42 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       id: "derived",
       title: "本体派生",
       node: (
+        <>
         <span data-testid="sandbox-config-summary" style={{ font: "600 10px var(--font-mono)", color: "var(--muted2)" }}>
           本体派生 {cfg.nodeTypes.length} 类对象 · {cfg.linkTypes.length} 类链路 · {cfg.stateVars.length} 状态变量 ·{" "}
           {cfg.propagationCount} 传导规则
         </span>
+        {/*
+          WO-BEFE-E · 传导规则**逐条**（`GET /a/v1/sim/propagation-rules`，此前前端零调用）。
+          上面那句「{propagationCount} 传导规则」是个**没有内容的数**：就绪面板甚至会警告
+          「已发布 N 条传导规则，本次一条都没触发」（`SimReadinessPanel.tsx:278`），
+          而**哪 N 条**在界面上问不出来 ⇒ 那句警告没有可操作的下一步。这一段就是那个下一步。
+        */}
+        <div data-testid="sandbox-propagation-rules" style={{ marginTop: 6 }}>
+          {propagationQuery.isError ? (
+            <div className={styles.sub} data-testid="sandbox-propagation-error">
+              传导规则清单不可用（`sim.propagation` 未开通或后端不可达）——这是「没查出来」，不是「没有规则」。
+            </div>
+          ) : (propagationQuery.data?.items?.length ?? 0) === 0 ? (
+            <div className={styles.sub} data-testid="sandbox-propagation-empty">
+              {propagationQuery.isLoading ? "加载传导规则…" : "本租户没有已发布的传导规则 —— tick 只会推进时间，状态不会沿链路传导。"}
+            </div>
+          ) : (
+            <ul data-testid="sandbox-propagation-list" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+              {propagationQuery.data!.items.map((r) => (
+                <li key={r.id} data-testid={`sandbox-propagation-${r.key}`} style={{ font: "600 10px var(--font-mono)", color: "var(--muted2)" }}>
+                  {r.sourceTypeKey}.{r.sourceStateVar} —{r.viaLinkKey}→ {r.targetTypeKey}.{r.targetStateVar}
+                  <span className={styles.sub} style={{ marginLeft: 6 }}>
+                    ×{r.coefficient} · 延迟 {r.delayTicks} tick
+                    {/* 节拍闸门是「这条流为什么没触发」最常见的答案 —— 有绑定就必须看得见 */}
+                    {r.cadenceNodeId ? ` · 过节拍闸门 ${r.cadenceNodeId}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        </>
       ),
     },
   ];

@@ -55,6 +55,7 @@ import type {
   SandboxViewConfig,
   Perturbation,
   PerturbationKind,
+  PropagationRule, // WO-BEFE-E · 传导规则清单（契约已有，前端不重定义）
   SimSession,
   SimCertification,
   SimCheckpoint,
@@ -733,6 +734,20 @@ export const retrieveOptTemplates = (need: string) =>
  */
 export const solveOptTemplate = (family: string, args: Record<string, unknown>, seed = 42) =>
   api.a<Record<string, unknown>>("/a/v1/opt/solve", { body: { family, args, seed } });
+
+/**
+ * WO-BEFE-E · 传导规则清单（`GET /a/v1/sim/propagation-rules`·datacore app.ts:1860·此前前端零调用）。
+ *
+ * 病灶是**屏上有个数、没有内容**：沙盘顶栏写着「{propagationCount} 传导规则」
+ * （`SandboxView.tsx` 的 `sandbox-config-summary`），就绪面板甚至会警告
+ * 「已发布 N 条传导规则，本次一条都没触发」（`SimReadinessPanel.tsx:278`）——
+ * 而**哪 N 条**在界面上问不出来，于是那句警告没有可操作的下一步。
+ *
+ * `?published=false` 连草稿一起列（后端默认 `published !== "false"` ⇒ 只列已发布）。
+ * entitlement：`sim.propagation`（关 = 404 FEATURE_NOT_FOUND，R3 先于 authz）。
+ */
+export const fetchSimPropagationRules = (includeDrafts = false) =>
+  api.a<{ items: PropagationRule[] }>(`/a/v1/sim/propagation-rules${includeDrafts ? "?published=false" : ""}`);
 
 /** 就绪认证（L0-L4 + 三维 + canEnter + 诚实 gaps）。 */
 export const fetchSimCertification = (sessionId: string, scope: "GLOBAL" | "LOCAL" = "GLOBAL", target?: string) =>
