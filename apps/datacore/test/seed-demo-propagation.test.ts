@@ -31,16 +31,26 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const cfg = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: ADMIN })).json()) as {
       nodeTypes: string[]; stateVars: string[]; propagationCount: number;
     };
-    expect(cfg.propagationCount).toBe(13); // WO-P1：六方向补齐后 3 → 13
+    expect(cfg.propagationCount).toBe(35); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35
     expect(cfg.stateVars.length).toBeGreaterThan(0);
     // stateVars 派生自规则 source/target stateVar。WO-P1 后覆盖六个方向的量纲：
     // 需求(demandPressure/demandLoad/loadIndex/utilPressure) · 产能(queuePressure) ·
     // 供应(deliveryDelay/shortageRisk/supplyRisk) · 交付(expeditePressure/queueDays) ·
     // 成本(priceShock/costPressure) · 现金(receivablePressure/overduePressure)。
+    // 档 1 扩面再补 6 个量纲（换型/批次周转/清关排队/检修窗挤压/认证排队/来料催交），
+    // 档 2 再补 15 个（执行层 工单/在制/质检/缺陷/异常 · 订单行/承诺/收货地点/催收 ·
+    // 替代料/MRP 缺口 · 调拨 · 设备负荷/维修积压 · 成品提货）。
+    // 档 3 再补 1 个 `reviewPressure`（供应商绩效复评）——它是 `Supplier` 身上**第一个被写**的量纲，
+    // 在此之前 Supplier 只当 source ⇒ P28 屏上标着「随节拍变」而读数恒定（见 seed.ts 档 3 段头）。
     expect(cfg.stateVars).toEqual([
-      "costPressure", "deliveryDelay", "demandLoad", "demandPressure", "expeditePressure",
-      "loadIndex", "overduePressure", "priceShock", "queueDays", "queuePressure",
-      "receivablePressure", "shortageRisk", "supplyRisk", "utilPressure",
+      "changeoverPressure", "clearanceQueueDays", "collectionPressure", "costPressure", "defectPressure",
+      "deliveryDelay", "deliveryHoldRisk", "demandLoad", "demandPressure", "drawdownPressure",
+      "expeditePressure", "feedPressure", "gapPressure", "handlingBacklog", "inboundExpeditePressure",
+      "inspectBacklog", "loadIndex", "loadPressure", "overduePressure", "priceShock",
+      "promiseRisk", "qualificationQueue", "queueDays", "queuePressure", "receivablePressure",
+      "releasePressure", "repairBacklog", "reviewPressure", "shortageRisk", "splitPressure",
+      "supplyRisk", "switchPressure", "transferPressure", "turnoverPressure", "utilPressure",
+      "windowSqueeze",
     ]);
     // 节点类型派生自本体（含 demo 真类型）。
     expect(cfg.nodeTypes).toContain("Order");
@@ -55,14 +65,22 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const items = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json()).items as Array<{
       key: string; status: string; viaLinkKey: string; sourceTypeKey: string; targetTypeKey: string;
     }>;
-    expect(items.length).toBe(13);
+    expect(items.length).toBe(35);
     expect(items.every((r) => r.status === "PUBLISHED")).toBe(true);
     const viaKeys = items.map((r) => r.viaLinkKey).sort();
     expect(viaKeys).toEqual([
-      "customer_has_invoice", "line_belongs_to_base", "line_has_process",
+      "base_dispatches_transfer", "base_has_shipment", "base_maint_plan",
+      "customer_has_invoice", "customer_has_location", "customer_has_overdue_record",
+      "defect_raises_exception", "equipment_has_maintenance_order",
+      "line_belongs_to_base", "line_has_process", "line_runs_work_order",
+      "material_has_alternative", "material_has_balance", "material_has_batch",
       "material_supplied_by_po", "material_used_by_model", "material_used_by_model",
-      "model_demanded_by_order", "model_demanded_by_order", "model_producible_at",
-      "order_for_model", "order_of_customer", "po_inspected_by", "supplier_supplies_material",
+      "model_changeover", "model_demanded_by_order", "model_demanded_by_order", "model_has_cert",
+      "model_producible_at", "model_stocked_as_finished_goods",
+      "order_for_model", "order_has_line", "order_has_promise", "order_of_customer",
+      "po_customs_cleared_by", "po_from_supplier", "po_inspected_by", "process_uses_equipment",
+      "supplier_supplies_material", "wip_lot_found_defect",
+      "work_order_sampled_by_quality_lot", "work_order_yields_wip_lot",
     ]);
   });
 
@@ -92,7 +110,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(canary.length).toBeGreaterThan(0);
 
     const rules = await t.repos.sim.listPropagationRules("demo", true);
-    expect(rules.length).toBe(13);
+    expect(rules.length).toBe(35);
     const dead: string[] = [];
     for (const r of rules) {
       const ok = links.some(
@@ -137,7 +155,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     await seedDemoPropagationRules(t.repos);
     await seedDemoPropagationRules(t.repos);
     const items = await t.repos.sim.listPropagationRules("demo", true);
-    expect(items.length).toBe(13);
+    expect(items.length).toBe(35);
   });
 
   it("live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导", async () => {
@@ -214,8 +232,8 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(trace.some((x) => x.ruleKey === "demo_model_supply_risk_to_order_shortage" && x.toObjectId === orderId && x.viaLinkKey === "model_demanded_by_order")).toBe(true);
   });
 
-  // 六方向各有一条边真触发（REQ143 的验收面）：一次扰动六个源头，逐方向核 trace。
-  it("🔴 六方向逐条真触发：13 条规则在真 tick 的 trace 里一条不缺（REQ143）", async () => {
+  // 每条边真触发（REQ143 的验收面 + 档 1 扩面）：一次扰动若干源头，逐组核 trace。
+  it("🔴 逐条真触发：35 条规则在真 tick 的 trace 里一条不缺（REQ143 + WO-PROCESS-TICK-COVERAGE 档 1/2/3）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     await seedDemoPropagationRules(t.repos);
@@ -226,19 +244,36 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const orderId = head("order_for_model"), baseId = head("line_belongs_to_base");
     const supplierId = head("supplier_supplies_material"), materialId = head("material_used_by_model");
 
+    // 🔴 清关段要**沿着真实例链**回溯着扰，不能指望"随便扰一个供应商"就能带到它。
+    // 实测（本单）：全 demo 只有 **1 条** `po_customs_cleared_by` 边（S 规模下只有高电压电解液
+    // 主供 SUP-015 是进口·`battery-extended.ts:271` 有原文），而 `head("supplier_supplies_material")`
+    // 取到的是另一家 —— 于是这条规则**结构上可达（方向门绿）却在本用例里恒不触发**。
+    // 这正是本仓要分清的两态：「没接线」vs「接了线但这次的源够不着」。修法是**把源接到位**，
+    // 不是把断言放宽成 `≥0`（放宽等于让这条链断了也照样绿）。
+    const customsLink = links.find((l) => l.type === "po_customs_cleared_by")!;
+    const customsPoId = customsLink.fromId;
+    const customsMatId = links.find((l) => l.type === "material_supplied_by_po" && l.toId === customsPoId)!.fromId;
+    const customsSupplierId = links.find((l) => l.type === "supplier_supplies_material" && l.toId === customsMatId)!.fromId;
+
     const sid = (await (await t.app.inject({
       method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
       payload: { baseSnapshot: {
         [orderId]: { demandPressure: 10, costPressure: 8 },
         [baseId]: { loadIndex: 20 },
         [supplierId]: { deliveryDelay: 10 },
+        [customsSupplierId]: { deliveryDelay: 10 }, // 进口料的主供 —— 清关段唯一的活源
         [materialId]: { priceShock: 5 },
       } },
     })).json()).id as string;
-    await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 6 } });
+    // 🔴 为什么是 9 拍不是 6 拍：档 2 把执行链接长了 —— 最深的一条是
+    //   Base.loadIndex →(delay1) Line →(0) WorkOrder →(0) WIPLot →(delay1) DefectRecord →(0) ExceptionEvent，
+    //   算上「产出落在 tick+1」这一格，异常处置积压要到第 7 拍才出现。原来的 6 拍**恰好差一拍** ⇒
+    //   `demo_defect_to_exception_backlog` 被判"没触发"。这是本用例自己抖出来的（机器先说话），
+    //   修法是把拍数加够，不是把这条从名单里删掉。
+    await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 9 } });
 
     const fired = new Set<string>();
-    for (let tk = 1; tk <= 6; tk++) {
+    for (let tk = 1; tk <= 9; tk++) {
       for (const x of (await t.repos.sim.getTickState("demo", sid, tk))?.trace ?? []) fired.add(x.ruleKey);
     }
     // 逐方向列出来 —— 哪个方向断了，报错信息直接指到那个方向，不用再去猜。
@@ -249,10 +284,35 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       交付: ["demo_material_shortage_to_po_expedite", "demo_po_expedite_to_inspection_queue"],
       成本: ["demo_material_price_to_model_cost", "demo_model_cost_to_order_cost"],
       现金: ["demo_order_cost_to_customer_receivable", "demo_customer_receivable_to_invoice_overdue"],
+      // WO-PROCESS-TICK-COVERAGE 档 1：挂在既有正向边上的六条扩面规则。
+      // 它们全部由上面四个源头（订单需求 / 基地负载 / 供应商延迟 / 物料涨价）经既有链驱动，
+      // 不额外造源 —— 「能不能被现有扰动带动」本身就是这一档要证明的事。
+      扩面档1: [
+        "demo_model_demand_to_changeover_pressure", "demo_material_shortage_to_batch_turnover",
+        "demo_po_expedite_to_customs_queue", "demo_base_load_to_maint_window_squeeze",
+        "demo_model_demand_to_cert_queue", "demo_base_load_to_inbound_expedite",
+      ],
+      // WO-PROCESS-TICK-COVERAGE 档 2：挂在新补的**影响向逆边**上的 15 条。
+      // 同样不额外造源 —— 全部由上面那四个源头（订单需求 / 基地负载 / 供应商延迟 / 物料涨价）
+      // 沿真链传下来。哪一条没被带到，报错就直接指到它，不用再猜。
+      扩面档2: [
+        "demo_line_util_to_wo_release", "demo_wo_release_to_wip_feed", "demo_wo_release_to_quality_backlog",
+        "demo_wip_feed_to_defect_pressure", "demo_defect_to_exception_backlog",
+        "demo_order_demand_to_line_split", "demo_order_shortage_to_promise_risk",
+        "demo_customer_receivable_to_location_hold", "demo_customer_receivable_to_collection",
+        "demo_material_shortage_to_alt_switch", "demo_material_shortage_to_balance_gap",
+        "demo_base_load_to_transfer_pressure",
+        "demo_process_queue_to_equipment_load", "demo_equipment_load_to_repair_backlog",
+        "demo_model_demand_to_fg_drawdown",
+      ],
+      // WO-PROCESS-TICK-COVERAGE 档 3：闭掉「标着会动、其实不动」那一条。
+      // 它同样不额外造源 —— 由供应商延迟这个源头经 Material→PurchaseOrder 两跳带回 Supplier
+      // （`Supplier.deliveryDelay` 出去、`Supplier.reviewPressure` 回来，是两个量纲不是回路）。
+      扩面档3: ["demo_po_expedite_to_supplier_review"],
     };
     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys.filter((k) => !fired.has(k)).map((k) => `${dir}/${k}`));
     expect(missing).toEqual([]);
-    // 六方向合计 13 条 = 全部种子规则（没有哪条规则游离在六方向之外）。
+    // 九组合计 35 条 = 全部种子规则（没有哪条规则游离在分组之外）。
     expect(Object.values(DIRS).flat().sort()).toEqual(
       (await t.repos.sim.listPropagationRules("demo", true)).map((r) => r.key).sort(),
     );
