@@ -1445,6 +1445,22 @@
         "note2": "退出码三态均现跑取证：S1 豁免基线写成非法 JSON → RC=2（不是 RC=1）；S2 门自变异令 isWriter 恒 false（读回文件确认含变异串）→ 必中金丝雀当场开火 RC=2 报「门自己瞎了」，**不是** RC=0 报「全仓基线写入都诚实」；P1 注入「缺 typescript」→ RC=2；P2 注入未预期异常 → 顶层 try/catch 归 RC=2 而非 node 默认的 1；P3 注入真违规 → 仍是 RC=1（**没有**被兜底吞成 2，那是比假红更糟的假绿）；P0 无注入 → RC=0。另有一条正向自证：把 8 条 why 手写进基线后再跑一次 --update，产物**字节级不变**（git status 为空）—— 本门自己的基线就是用共享写入器写的，人话不会被自己的 --update 吞掉。"
       },
       "notes": "MANUAL（有 pnpm 别名，未进 gates 串）：守「凡会写 *-baseline.json 的 scripts/*.mjs，每一处写入都必须经由 scripts/lib/baseline-doc.mjs 的 buildBaselineDoc()，且开写前跑过 baselineDocCanary()」。病根是 --update 静默吞掉人手挂账（check-backend-frontend-seam.mjs 曾吞掉 978 字两笔挂账，0e19f2c4 修好）——共享写入器只是一份实现，没有任何东西拦住新门再手搓一份，绕开一次就没人会发现。识别「会写基线」要两路证据同时成立（写入目标解析到 *-baseline.json + 存在 --update/--seed/--write 入口），单路必然误判：只看路 A 会把读基线比对的门算成写入方，只看路 B 会把任何带 --write 的脚本算进来。全程走 AST，注释与字符串里的 writeFileSync 不算数。同名局部 buildBaselineDoc 判为 SHADOWED（第二份实现：共享写入器补新判据时它不会跟着变）。现算 19 个基线写入方 · 11 走共享写入器 · 8 条存量逐条挂账带 why（check-backend-frontend-seam / check-cli-parity / check-coverage-blind / check-debattery / check-dev-jargon-onscreen / check-ontology-anchors / check-ontology-descriptions / check-ui-first-layer）。⚠ check-ui-first-layer.mjs 是本单派单时就点名的禁改文件，故**显式挂豁免而不是放宽判据** —— 放宽是隐形的，豁免是看得见的。诚实边界：只认命名形如 *-baseline.json 的写入目标（gate-ledger.json / feature-rollout.json 这类账本在射程外）· 只认结构不认语义（把人手 note 塞进 computed 照样判合规，那归 baselineDocCanary 的四向判据）· 目标路径运行期拼出来的解析不到 ⇒ 落射程外而非判绿。disposition=WIRE：判据纯静态、零依赖、单次 <1s，接进 gates 链无成本；本单范围边界不含扩 gates 串，故只加 pnpm 别名（binding=MANUAL），接链由审核方裁。"
+    },
+    "check-quantile-field-naming.mjs": {
+      "alias": "quantile-field-naming:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "packages/contracts/src/solvers.ts",
+        "packages/contracts/src"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "WO-P50-RENAME 三向变异 + 审核方补的退出码变异（2026-08-14 · 基线 b38ec106）",
+        "note": "① 同名多量纲变异 ⇒ RC=1（COLLISION）；② **别名变异 ⇒ RC=1 且 COLLISION 0 / BARE 1** —— 这一条最要紧：兼容别名与新名量纲相同，判据①天然抓不到它，必须靠判据②「裸分位名」才咬得住；③ 目录不存在 ⇒ RC=2。⚠️ dev 还自报门自己差点成了假绿：初版 UNIT_TAG 正则漏 `m` 标志 ⇒ 多行 JSDoc 的 @unit 永不匹配 ⇒ 全退到「上下 40 行找 unit: z.literal」兜底 ⇒ capWanP50 被判成隔壁的「电芯/日」，**而门打印绿灯**，三条旧金丝雀全绿（它们写的是单行形式）—— 已补第 4 条覆盖生产真实形态的回归金丝雀。⚠️ 审核方补：原文 `try` 嵌在 `if (import.meta.url===…) {}` 里，gate-exit-discipline 只认 Program 直接子语句 ⇒ 报「无顶层兜底」；改成 `const isMain=…; try { if(isMain) main(); } catch {}` 后，注入 throw 实测 RC=2。**这是同一形态当天第二次**（前一次 check-dbui-flow-order.mjs）。"
+      },
+      "notes": "守 R18「字段名自带口径」：分位字段名必须与量纲一一对应，不同单位不共用词根。判据三条 —— ① COLLISION 同名多量纲；② BARE 裸分位名（p50/p90 这类不带口径的名字，**专堵兼容别名**）；③ UNDECLARED 缺 @unit 标注。判据全部取自契约的 @unit 标注，**不硬编码字段清单**（硬编码清单的门等于给未来的新字段发免检证）。建门缘由：全仓实测 `p50` 背了 **6 个不同含义**（需求分位 万套/年 · 窗口产能 万套/窗口 · 工序×型号 电芯/日 · T+N 累计 套 · S&OP 万套 · 周供给 套/周），其中两个都写「万套」但分母不同（年 vs 窗口）—— 只写「万套」正是让用户分不出的那半个信息。诚实边界：本门只认契约层的声明，前端自己另抄一份接口它看不见（本单实测真有两处，已删并改为复用契约类型）。"
     }
   }
 }

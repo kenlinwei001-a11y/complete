@@ -85,4 +85,36 @@ describe("WO-B / F1 · BaseOutlookPanel 前瞻产能推演卡", () => {
     await user.click(screen.getByTestId("outlook-dim-base"));
     await waitFor(() => expect(screen.getByTestId("outlook-line-available")).toBeInTheDocument());
   });
+
+  // ===== WO-P50-RENAME · SEAM：量纲必须**到屏上**，不是只到契约 =====
+  /**
+   * 这条咬的是接缝，不是函数：求解器（`packsP50At30/60/90` + `unit:"套"` 单源下发）
+   * → 前端表头（`T+30 累计(套)`）。**只改字段名不算做完** —— 用户看的是表头，不是字段名。
+   *
+   * 为什么值也要一起咬：只断言「屏上有『套』」会被一个写死的表头文案骗过去
+   * （本仓「绿测试≠能用」的老形态）。故同时断言 T+90 > T+30 —— 这个关系只有在
+   * 真的把后端 `packsP50At90/At30` 渲上去时才成立，写死文案做不到。
+   */
+  it("SEAM：byModel 表头带量纲「套」且值真来自后端 packsP50At*（改名后量纲仍到屏）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    render(<BaseOutlookPanel baseId="changzhou" />);
+    await waitFor(() => expect(screen.getByTestId("outlook-line-available")).toBeInTheDocument());
+    await user.click(screen.getByTestId("outlook-dim-model"));
+
+    const tbl = await screen.findByTestId("outlook-bymodel-table");
+    const head = tbl.querySelector("thead")?.textContent ?? "";
+    // ① 三个累计列 + 缺口列都带量纲（量纲由后端 unit 字段单源下发·前端不内联）。
+    expect(head).toContain("T+30 累计(套)");
+    expect(head).toContain("T+90 累计(套)");
+    expect(head).toContain("缺口(套)");
+    // ② 「套」不许与产能格的「电芯/日」混：本表是累计存量，不是日速率。
+    expect(head).not.toContain("电芯/日");
+
+    // ③ 值真来自后端（单调关系写死文案伪造不出来）。
+    const p30 = Number((screen.getByTestId("outlook-bymodel-4680-NCM-p30").textContent ?? "0").replace(/[^0-9.]/g, ""));
+    const p90 = Number((screen.getByTestId("outlook-bymodel-4680-NCM-p90").textContent ?? "0").replace(/[^0-9.]/g, ""));
+    expect(p30).toBeGreaterThan(0);
+    expect(p90).toBeGreaterThan(p30);
+  });
 });

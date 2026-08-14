@@ -26,8 +26,8 @@ describe("A4 ontology, solvers, derivations, action drafts, outbox", () => {
     expect(a3).toEqual(a1);
     const b = (await invoke({ modelId: "4680-NCM", qty: 80, weeks: 6 })).json();
     expect(b).not.toEqual(a1);
-    const data = (a1 as { data: { p50: number; p90: number; gapPct: number; mainBottleneck: string } }).data;
-    expect(data.p50).toBeGreaterThan(0);
+    const data = (a1 as { data: { capWanP50: number; capWanP90: number; gapPct: number; mainBottleneck: string } }).data;
+    expect(data.capWanP50).toBeGreaterThan(0);
     // legacy aliases kept for AgentCore QOS seed plans
     expect(typeof data.gapPct).toBe("number");
     expect(typeof data.mainBottleneck).toBe("string");

@@ -18,7 +18,7 @@ export const PLAN_BUILDER_FIXTURES: PlanBuilderCanvas[] = [
       nodes: [
         { id: "n1", type: "INPUT", label: "输入 baseId", position: { x: 80, y: 200 }, outputSchema: { type: "object", properties: { baseId: { type: "string" } } } },
         { id: "n2", type: "SOLVER", label: "产能推演", position: { x: 320, y: 200 }, solverKey: "capacity_forecast", args: { baseId: "{{n1.output.baseId}}" }, timeoutMs: 30000 },
-        { id: "n3", type: "OUTPUT", label: "输出结论", position: { x: 560, y: 200 }, blocks: [{ type: "text", markdown: "产能结果：{{n2.output.p50}}" }] },
+        { id: "n3", type: "OUTPUT", label: "输出结论", position: { x: 560, y: 200 }, blocks: [{ type: "text", markdown: "产能结果：{{n2.output.capWanP50}}（万套/窗口）" }] },
       ],
       edges: [
         { id: "e1", from: "n1", to: "n2" },

@@ -480,7 +480,7 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
 
   const perBaseRows: Record<string, unknown>[] = [];
   const cumP50ByWeek: number[] = new Array(weeks).fill(0);
-  let p50 = 0;
+  let capWanP50 = 0;
   const pendingCertList: string[] = [];
   let mainBn = "";
   let mainTightness = -1;
@@ -493,7 +493,7 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
       cumTotal += add;
       for (let i = w - 1; i < weeks; i++) cumP50ByWeek[i] = (cumP50ByWeek[i] as number) + add;
     }
-    p50 += cumTotal;
+    capWanP50 += cumTotal;
     if (b.tightness > mainTightness) {
       mainTightness = b.tightness;
       mainBn = b.bottleneck;
@@ -509,8 +509,8 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
       cumTotal: round(cumTotal, 4),
     });
   }
-  p50 = round(p50, 4);
-  const p90 = round(p50 * healthFactor, 4);
+  capWanP50 = round(capWanP50, 4);
+  const capWanP90 = round(capWanP50 * healthFactor, 4);
 
   let gap: number;
   let ok: boolean;
@@ -524,15 +524,15 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
       const dueDay = dayFrom(CAP_P.forecastStart, b.dueDate);
       const wkEff = Math.max(1, Math.floor((dueDay - logisticsDays(b.address)) / 7));
       cumDemand += b.qty || 0;
-      const cumP90 = round((cumP50ByWeek[Math.min(wkEff, weeks) - 1] as number) * healthFactor, 4);
-      const rowOk = cumDemand <= cumP90;
-      if (!rowOk) worst = Math.max(worst, cumDemand - cumP90);
-      batchRows.push({ qty: b.qty, dueDate: b.dueDate, address: b.address, wkEff, cumDemand: round(cumDemand, 4), cumP90, ok: rowOk });
+      const cumCapWanP90 = round((cumP50ByWeek[Math.min(wkEff, weeks) - 1] as number) * healthFactor, 4);
+      const rowOk = cumDemand <= cumCapWanP90;
+      if (!rowOk) worst = Math.max(worst, cumDemand - cumCapWanP90);
+      batchRows.push({ qty: b.qty, dueDate: b.dueDate, address: b.address, wkEff, cumDemand: round(cumDemand, 4), cumCapWanP90, ok: rowOk });
     }
     gap = round(Math.max(worst, 0), 4);
     ok = batchRows.every((r) => r.ok === true);
   } else {
-    gap = round(qty - p90, 4);
+    gap = round(qty - capWanP90, 4);
     ok = gap <= 0;
   }
 
@@ -549,7 +549,7 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
         reason: outsourceRedlineRejectReason(ratio, CAP_P.whatIf.outsourceMax),
       };
     } else {
-      let adjusted = p50 * (1 + CAP_P.whatIf.nightShiftCoef * n + CAP_P.whatIf.channelCoef * ch) + qty * ratio;
+      let adjusted = capWanP50 * (1 + CAP_P.whatIf.nightShiftCoef * n + CAP_P.whatIf.channelCoef * ch) + qty * ratio;
       let physicalCap = 0;
       for (const b of net) physicalCap += b.weeklyCap * weeks;
       physicalCap = round(physicalCap, 4);
@@ -593,8 +593,8 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
     .sort((a, b) => (a.base < b.base ? -1 : 1));
 
   return {
-    p50,
-    p90,
+    capWanP50,
+    capWanP90,
     healthFactor,
     gap,
     ok,
@@ -1567,14 +1567,14 @@ export function mockBaseOutlook(args: Record<string, unknown>): Record<string, u
     .map(([model, defs]) => {
       const def = defs.find((d) => d.base === baseName || d.baseId === baseName || d.baseId === baseId);
       if (!def) return null;
-      const p50At90 = p50AtH(def, 90);
+      const packsP50At90 = p50AtH(def, 90);
       const demand90 = SOP_ORDERS.filter(
         (o) => o.bases[0] === baseId && o.model === model && dayFromISO(SOP_FORECAST_START, o.due) >= 0 && dayFromISO(SOP_FORECAST_START, o.due) <= 90,
       ).reduce((a, o) => a + o.qty, 0);
       return {
-        model, modelName: model, p50At30: p50AtH(def, 30), p50At60: p50AtH(def, 60), p50At90,
-        mainBn: def.bottleneck, gap: round(p50At90 - demand90, 2),
-        provenance: { kind: "跨求解器", source: "capacity_forecast", drillType: "Model", drillField: "p50/mainBn" },
+        model, modelName: model, packsP50At30: p50AtH(def, 30), packsP50At60: p50AtH(def, 60), packsP50At90,
+        mainBn: def.bottleneck, packsGap: round(packsP50At90 - demand90, 2), unit: "套" as const,
+        provenance: { kind: "跨求解器", source: "capacity_forecast", drillType: "Model", drillField: "packsP50At*/mainBn" },
       };
     })
     .filter((r): r is NonNullable<typeof r> => r != null);
@@ -1618,7 +1618,7 @@ const IMPEDIMENT_SCAN_ID = "scan_1f4a9c3b";
  *  · `join.path`    `:219`（LOCUS_PROP）/ `:281`（RULE_GATE）两种真路径原文。
  *  · `rungSource`   `:407`（THRESHOLD）/ `:434`（PEER_*）—— **零步长常数**：档位要么是规则阈值本身，
  *                           要么是同侪对象上真实存在的取值。
- *  · `provenance.formula` `:739` `patchCapacityContext(…) → 判据 X(metricPath) 重算 + Σ computeByProcessModel.p50 重算`
+ *  · `provenance.formula` `:739` `patchCapacityContext(…) → 判据 X(metricPath) 重算 + Σ computeByProcessModel.cellsPerDayP50 重算`
  *  · `dims` 三维    `:668-694` breach / severity / capacityP50，`unit` 与 `betterWhen` 逐字同。
  *  · `candidateId`  走契约 `solutionCandidateId`（引擎 `:709` 同一个函数），**本文件零模板串**。
  * 因子的 `factorName` / `mark` / `grain` 一律从 `CAPACITY_FACTOR_BINDINGS` **现查**（契约单源），
@@ -1724,7 +1724,7 @@ function mkCandidate(a: {
       },
       {
         key: "capacityP50",
-        label: `产能 p50 合计${a.capacity.baseId ? `（基地 ${a.capacity.baseId}）` : "（全域）"}`,
+        label: `产能 cellsPerDayP50 合计（电芯/日）${a.capacity.baseId ? `（基地 ${a.capacity.baseId}）` : "（全域）"}`,
         value: a.capacity.value,
         baseline: a.capacity.baseline,
         unit: "套/天",
@@ -1742,7 +1742,7 @@ function mkCandidate(a: {
       solverKey: "chain_impediments",
       formula:
         `patchCapacityContext(${a.objectType}/${a.objectId}.${a.prop}: ${a.fromValue}→${a.toValue}) ` +
-        `→ 判据 ${a.ruleKey}(${a.metricPath}) 重算 + Σ computeByProcessModel.p50 重算`,
+        `→ 判据 ${a.ruleKey}(${a.metricPath}) 重算 + Σ computeByProcessModel.cellsPerDayP50 重算`,
       inputs: [`${a.objectType}.${a.prop}`, a.metricPath, `rule:${a.ruleKey}`],
     },
     dataMode: a.dataMode,

@@ -293,10 +293,10 @@ export class VleService {
       };
     }
     const ref = await referenceCapacityForecast(this.repos, ctx.tenantId, modelId, weeks);
-    const aP50 = typeof actual.p50 === "number" ? actual.p50 : NaN;
-    const aP90 = typeof actual.p90 === "number" ? actual.p90 : NaN;
-    const dP50 = Math.abs(aP50 - ref.p50);
-    const dP90 = Math.abs(aP90 - ref.p90);
+    const aP50 = typeof actual.capWanP50 === "number" ? actual.capWanP50 : NaN;
+    const aP90 = typeof actual.capWanP90 === "number" ? actual.capWanP90 : NaN;
+    const dP50 = Math.abs(aP50 - ref.capWanP50);
+    const dP90 = Math.abs(aP90 - ref.capWanP90);
     const tol = VleService.REF_TOLERANCE;
     const pass = Number.isFinite(aP50) && Number.isFinite(aP90) && dP50 <= tol && dP90 <= tol;
     // diff 下钻：找首个 cumTotal 与被测 perBaseRows 偏离的基地（若被测透出 perBaseRows）。
@@ -316,11 +316,11 @@ export class VleService {
       point: `参照实现双算 capacity_forecast(${modelId}) P50/P90（第二套独立代码比对）`,
       oracle: "reference",
       pass,
-      expected: { p50: ref.p50, p90: ref.p90 },
-      actual: { p50: aP50, p90: aP90 },
+      expected: { capWanP50: ref.capWanP50, capWanP90: ref.capWanP90 },
+      actual: { capWanP50: aP50, capWanP90: aP90 },
       diff: pass
         ? undefined
-        : `P50 期望 ${ref.p50} 实际 ${aP50}（Δ${Number(dP50.toFixed(6))}）· P90 期望 ${ref.p90} 实际 ${aP90}（Δ${Number(dP90.toFixed(6))}）${firstDivergentBase ? ` · 首个偏离基地 ${firstDivergentBase}` : ""}`,
+        : `P50 期望 ${ref.capWanP50} 实际 ${aP50}（Δ${Number(dP50.toFixed(6))}）· P90 期望 ${ref.capWanP90} 实际 ${aP90}（Δ${Number(dP90.toFixed(6))}）${firstDivergentBase ? ` · 首个偏离基地 ${firstDivergentBase}` : ""}`,
     };
   }
 

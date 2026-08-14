@@ -43,14 +43,14 @@ describe("R11-SHAPE · 渲染契约（求解器输出形状 ↔ 渲染绑定，B
   };
 
   it("渲染绑定字段全在求解器输出形状 → SHAPE BOUND，gate 通过", () => {
-    const r = validateClosure({ ...base, solverNeeds: [{ solverKey: "capacity_forecast", inputFields: [], renderBindings: ["p50", "p90", "perBaseRows", "gap"] }] }, policy);
+    const r = validateClosure({ ...base, solverNeeds: [{ solverKey: "capacity_forecast", inputFields: [], renderBindings: ["capWanP50", "capWanP90", "perBaseRows", "gap"] }] }, policy);
     expect(r.shapeBroken).toBe(0);
     expect(r.gatePassed).toBe(true);
-    expect(r.findings.some((f) => f.kind === "SHAPE" && f.ref === "capacity_forecast.output.p50" && f.status === "BOUND")).toBe(true);
+    expect(r.findings.some((f) => f.kind === "SHAPE" && f.ref === "capacity_forecast.output.capWanP50" && f.status === "BOUND")).toBe(true);
   });
 
   it("渲染绑定引用求解器不产出的字段 → SHAPE FAILED，gate 不通过（G-2 跨服务形状断）", () => {
-    const r = validateClosure({ ...base, solverNeeds: [{ solverKey: "capacity_forecast", inputFields: [], renderBindings: ["p50", "ghostField"] }] }, policy);
+    const r = validateClosure({ ...base, solverNeeds: [{ solverKey: "capacity_forecast", inputFields: [], renderBindings: ["capWanP50", "ghostField"] }] }, policy);
     expect(r.shapeBroken).toBe(1);
     expect(r.gatePassed).toBe(false);
     expect(r.findings.some((f) => f.kind === "SHAPE" && f.status === "FAILED" && f.detail?.includes("ghostField"))).toBe(true);

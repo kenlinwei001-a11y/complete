@@ -2,11 +2,13 @@ import { useState } from "react";
 import { useLiveSolver } from "./sim/useLiveSolver";
 import styles from "./RiskBoardView.module.css";
 import { Provenance } from "@/components/Provenance";
+// contracts-only-shared：byModel 行形状**不在前端重定义**，直接用契约类型（WO-P50-RENAME）。
+import type { BaseCapacityOutlookByModel } from "@platform/contracts";
 
 /**
  * WO-B / F1 · 每基地前瞻产能推演子面板（renderer 内嵌于产能推演看板基地卡详情）。
  * 三档窗口 tab（30/60/90）→ 读真求解器 base_capacity_outlook({baseId,horizon}) → 四线对比
- * （可用产能 / 在产占用 / 未来订单 / 销售预测）+ 缺口/富余标记；改窗口/后端颗粒（Order.due/DemandSegment.p50）
+ * （可用产能 / 在产占用 / 未来订单 / 销售预测）+ 缺口/富余标记；改窗口/后端颗粒（Order.due/DemandSegment.p50·套）
  * → 前瞻真变（非写死·KILL-MOCK）。P1：缺口窗展开「逐日推演过程」——每条日行动补 rationale（触发缺口值 +
  * 收窄量 + provenance 溯源对象·R13 每步可溯），折叠展示。
  */
@@ -20,7 +22,7 @@ interface Horizon {
   demand: number; gap: number; status: "缺口" | "富余" | "平衡"; crossDay: number | null; dayPlan: DayAction[];
 }
 // WO-CAPACITY-DEEPEN-ADDITIVE 块D · byModel 每产品前瞻（后端 base_capacity_outlook 纯加字段·optional）。
-interface ByModel { model: string; modelName: string; p50At30: number; p50At60: number; p50At90: number; mainBn: string; gap: number; unit?: string; provenance: { kind: string; source: string; drillType: string; drillField: string } }
+type ByModel = BaseCapacityOutlookByModel;
 interface Outlook { baseId: string; baseName: string; forecastStart: string; horizons: Horizon[]; dayPlan: DayAction[]; summary: string; byModel?: ByModel[] }
 
 const LINE_COLOR: Record<string, string> = {
@@ -101,11 +103,11 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
                     <tr key={m.model} data-testid={`outlook-bymodel-${m.model}`}
                       title={`溯源 ${m.provenance.source}（${m.provenance.drillType}.${m.provenance.drillField}）·跨求解器勾稽`}>
                       <td style={{ textAlign: "left" }}><b>{m.modelName}</b></td>
-                      <td className="mono" data-testid={`outlook-bymodel-${m.model}-p30`} style={{ textAlign: "right" }}>{fmt(m.p50At30)}</td>
-                      <td className="mono" style={{ textAlign: "right" }}>{fmt(m.p50At60)}</td>
-                      <td className="mono" data-testid={`outlook-bymodel-${m.model}-p90`} style={{ textAlign: "right" }}>{fmt(m.p50At90)}</td>
+                      <td className="mono" data-testid={`outlook-bymodel-${m.model}-p30`} style={{ textAlign: "right" }}>{fmt(m.packsP50At30)}</td>
+                      <td className="mono" style={{ textAlign: "right" }}>{fmt(m.packsP50At60)}</td>
+                      <td className="mono" data-testid={`outlook-bymodel-${m.model}-p90`} style={{ textAlign: "right" }}>{fmt(m.packsP50At90)}</td>
                       <td data-testid={`outlook-bymodel-${m.model}-bn`} style={{ textAlign: "left", color: "var(--c-solver-txt)" }}>{m.mainBn}</td>
-                      <td className="mono" style={{ textAlign: "right", color: m.gap < 0 ? "var(--danger-txt)" : "var(--ok-txt)" }}>{fmt(m.gap)}</td>
+                      <td className="mono" style={{ textAlign: "right", color: m.packsGap < 0 ? "var(--danger-txt)" : "var(--ok-txt)" }}>{fmt(m.packsGap)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -3,7 +3,7 @@ import { validationError } from "../errors.js";
 import { NOMINAL_PROCESS_YIELD } from "../synthetic/battery.js";
 import { baseName, baseProvenanceSynthetic, clamp, dayFrom, maintWeekOf, normalizeBaseRef, num, str, type SolverContext } from "./types.js";
 import { liveTightness, oeeTension, primaryFactor, resolveBaseId, yieldTension } from "./risk.js";
-import { CAPACITY_FACTOR_BINDINGS, type CapacityFactorBinding } from "@platform/contracts";
+import { CAPACITY_FACTOR_BINDINGS, type CapacityFactorBinding, type ByProcessModelRow } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：拒绝文案里的百分数由 outsourceRedlineRejectReason 生成，禁手写百分数。
 import { OUTSOURCE_REDLINE, outsourceRedlineRejectReason } from "@platform/contracts";
 
@@ -185,30 +185,17 @@ export function computeRollup(c: SolverContext): { bases: BaseRollup[]; ruleRefs
 // WO-CAPLIVE-1-ATOM · byProcessModel —— per-工序×型号-物料 颗粒（treat G-CAPACITY-FACTOR-SHALLOW）。
 // 现状缺口：computeRollup 与 modelId 无关、基地产能用代表工序=车间均值（:146-158）→ 未到 per-工序×型号-物料。
 // 本函数沿产能金字塔链路（设备→工序→∩物料）**逐工序×逐型号**真派生（非均值封顶），每格：
-//   p50 = 工序日产能(computeRollup 该工序节点) × 认证系数(型号维·certByModel) × 良率基线再基(Process.yield_baseline)
+//   cellsPerDayP50 = 工序日产能(computeRollup 该工序节点) × 认证系数(型号维·certByModel) × 良率基线再基(Process.yield_baseline)
 //         × 物料齐套系数(层4 ∩·Material 覆盖率)
 //   bottleneck = max{良率波动张力(工序良率), 设备OEE张力(该工序设备均值), 物料齐套张力(覆盖率)}（BN 词表·与 perBaseRows 一致）
-//   gap = p50 × 主瓶颈张力/100（该格因主瓶颈处于风险的产能）
+//   cellsPerDayGap = cellsPerDayP50 × 主瓶颈张力/100（该格因主瓶颈处于风险的产能）
 // **因子落点读 CapacityFactorBinding 单源**（改绑定表即改逐格瓶颈来源·非写死 → SEAM 改坏绑定即红）。R6 确定·R13 每值溯源。
 // ---------------------------------------------------------------------------
 
-export interface ByProcessModelRow {
-  baseId: string;
-  base: string;
-  process: string;
-  processName: string;
-  model: string;
-  material?: string;
-  p50: number;
-  /** WO-UNIT-MEANING · p50/gap 的量纲**单一真值**（治本单源·前端只格式化不内联·治 G-UNIT-NORMALIZE）：
-   *  p50 = **工序日产能** → `套/天`（用户曾问"每一行是天/周/月/年"·裸数字无意义即此坑）。 */
-  unit: string;
-  bottleneck: string;
-  bottleneckMark?: string;
-  tightness: number;
-  gap: number;
-  provenance: { objectType: string; objectId: string; prop: string; formula: string };
-}
+// WO-P50-RENAME：本文件原先**另抄一份** `ByProcessModelRow` 接口（含 `unit: string`，而契约 schema 里
+// 根本没有 `unit` 字段，注释还写 `套/天` 而契约写 `电芯/日`）——两份定义、两个量纲，正是本仓反复治的
+// 「第二真相源」。现删除本地副本，直接复用契约类型：契约改了这里编译即红。
+export type { ByProcessModelRow } from "@platform/contracts";
 
 /** 主瓶颈圈号（CapacityFactorBinding.mark）→ perBaseRows 同款 BN 词表因子名（逐格 bottleneck 与基地级一致）。 */
 const BN_BY_MARK: Record<string, string> = { "⑥": "良率波动", "③": "设备OEE", "⑬": "物料齐套" };
@@ -268,14 +255,14 @@ export function computeByProcessModel(
       const pid = str(proc.props.processId);
       const processCap = procCapById.get(pid) ?? 0;
       if (processCap <= 0) continue; // 无产能工序（缺设备/静态数据）跳过·不臆造
-      // 良率基线再基（读 binding ⑥ 落点属性·把工序运算良率重基到校准良率基线·mutating yield_baseline 即改 p50）。
+      // 良率基线再基（读 binding ⑥ 落点属性·把工序运算良率重基到校准良率基线·mutating yield_baseline 即改 cellsPerDayP50）。
       const yBaseline = num(proc.props[yProp], num(proc.props.yield, 1));
       const yOper = num(proc.props.yield, 1);
       const yieldRebase = yOper > 0 ? yBaseline / yOper : 1;
       // 该工序设备 OEE 均值（capacity 链同口径 equipmentOee·A×P×Q 或 oee_current 快照）。
       const equips = equipByProcess[pid] ?? [];
       const oeeAvg = equips.length > 0 ? equips.reduce((a, e) => a + equipmentOee(e.props), 0) / equips.length : 1;
-      const p50 = round(processCap * certFactor * yieldRebase * matFactor, 4);
+      const cellsPerDayP50 = round(processCap * certFactor * yieldRebase * matFactor, 4);
       // 逐格候选张力（BN 词表·圈号锚 binding.mark）→ 主瓶颈 = 张力最大（确定性 tiebreak：value desc, mark asc）。
       const cand = [
         { mark: "⑥", value: yieldTension(c, yBaseline), objectType: yb?.objectType ?? "Process", prop: yProp, objectId: pid },
@@ -283,7 +270,7 @@ export function computeByProcessModel(
         { mark: "⑬", value: clamp(Math.round((1 - matFactor) * 100), 0, 100), objectType: matb?.objectType ?? "Material", prop: matb?.prop ?? "onHand", objectId: matName ?? "" },
       ].sort((a, b) => b.value - a.value || (a.mark < b.mark ? -1 : 1));
       const top = cand[0]!;
-      const gap = round((p50 * top.value) / 100, 4);
+      const cellsPerDayGap = round((cellsPerDayP50 * top.value) / 100, 4);
       rows.push({
         baseId,
         base: baseName(c, baseId),
@@ -291,17 +278,21 @@ export function computeByProcessModel(
         processName: str(proc.props.name, pid),
         model: modelId,
         ...(matName ? { material: matName } : {}),
-        p50,
-        unit: "套/天", // WO-UNIT-MEANING：p50 量纲单源下发（工序**日**产能·前端不再裸渲染无意义数字）
+        cellsPerDayP50,
+        // WO-P50-RENAME 实测订正：本值 = channels × channelOutputDaily × yield 一路上溯到
+        // `battery.ts:3824 baseDailyCellsWeekly = annualEffectivePacks × packCellCount / (52×7)`，
+        // 量纲是 **电芯/日**，不是原先写死的「套/天」（packCellCount=96 ⇒ 两者差 96 倍）。
+        // 判据：全年需求 375 万套 / 13 基地 / 364 天 ≈ 792 套·日，而本值实测 6.1e4 —— 只能是电芯。
+        unit: "电芯/日" as const,
         bottleneck: BN_BY_MARK[top.mark] ?? top.mark,
         bottleneckMark: top.mark,
         tightness: top.value,
-        gap,
+        cellsPerDayGap,
         provenance: {
           objectType: top.objectType,
           objectId: top.objectId,
           prop: top.prop,
-          formula: `p50 = 工序产能(${round(processCap, 2)}) × 认证系数(${certFactor}) × 良率基线再基(${round(yieldRebase, 4)}) × 物料齐套(${round(matFactor, 4)}) = ${p50} 套/天；主瓶颈=max张力→${BN_BY_MARK[top.mark] ?? top.mark}(${top.value}/100)`,
+          formula: `cellsPerDayP50 = 工序产能(${round(processCap, 2)}) × 认证系数(${certFactor}) × 良率基线再基(${round(yieldRebase, 4)}) × 物料齐套(${round(matFactor, 4)}) = ${cellsPerDayP50} 电芯/日；主瓶颈=max张力→${BN_BY_MARK[top.mark] ?? top.mark}(${top.value}/100)`,
         },
       });
     }
@@ -336,14 +327,14 @@ export function patchCapacityContext(
       return { ...c, materials: bump(c.materials ?? []) };
     // WO-ENGINE-2 件一：⑤ 换型损失的 override 此前落进 `default` ⇒ 克隆世界与基线**逐字节相同** ⇒ 敏感度恒 0。
     // 补此分支后 override 真落进 ctx；但**这仍不足以让 ⑤ 复活**——`computeByProcessModel` 的
-    // p50 = processCap × certFactor × yieldRebase × matFactor **不含换型项**（本文件全文 0 次 changeover），
-    // 故 ∂p50/∂minutes 仍恒 0。第三重死见 `engine2-changeover-lever.seam.test.ts` 的逐重实测。
+    // cellsPerDayP50 = processCap × certFactor × yieldRebase × matFactor **不含换型项**（本文件全文 0 次 changeover），
+    // 故 ∂cellsPerDayP50/∂minutes 仍恒 0。第三重死见 `engine2-changeover-lever.seam.test.ts` 的逐重实测。
     case "ChangeoverMatrix":
       return { ...c, changeoverMatrix: bump(c.changeoverMatrix ?? []) };
     // WO-ENGINE-2 件一：⑤ 换型损失的 override 此前落进 `default` ⇒ 克隆世界与基线**逐字节相同** ⇒ 敏感度恒 0。
     // 补此分支后 override 真落进 ctx；但**这仍不足以让 ⑤ 复活**——`computeByProcessModel` 的
-    // p50 = processCap × certFactor × yieldRebase × matFactor **不含换型项**（本文件全文 0 次 changeover），
-    // 故 ∂p50/∂minutes 仍恒 0。第三重死见 `lever-binding-drift.test.ts` 的具名记账。
+    // cellsPerDayP50 = processCap × certFactor × yieldRebase × matFactor **不含换型项**（本文件全文 0 次 changeover），
+    // 故 ∂cellsPerDayP50/∂minutes 仍恒 0。第三重死见 `lever-binding-drift.test.ts` 的具名记账。
     default:
       return { ...c };
   }
@@ -367,7 +358,7 @@ export function curveMult(
 /**
  * PRD-CAP-DEMANDDELTA · 订单簿基线需求（选项 b）：
  * 取 `Order.model===modelId` 且状态 OPEN、交期落在 [forecastStart, forecastStart+weeks×7] 的订单 qty 求和，
- * 归一到「万套/窗口」口径（与 p50/p90 同轴）。确定性 R6：只读 c.orders 快照，无随机/时钟。
+ * 归一到「万套/窗口」口径（与 capWanP50/capWanP90 同轴）。确定性 R6：只读 c.orders 快照，无随机/时钟。
  */
 function computeBaselineDemand(
   c: SolverContext,
@@ -422,7 +413,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
   if (!certAll || certAll.size === 0) throw validationError(`model ${modelId} has no certified lines`);
 
   // WO-BASE-ID-FIDELITY 症① · 可选 base 作用域（治「常州基地 4680-NCM 加20%」与「4680-NCM 加20%」答案相同的静默丢 base）。
-  // 给 base → 规范化（resolveBaseId 单一出处·认 obj_base_<id>/中文名/baseId）→ 只保留该基地认证条目 → p50/perBaseRows/
+  // 给 base → 规范化（resolveBaseId 单一出处·认 obj_base_<id>/中文名/baseId）→ 只保留该基地认证条目 → capWanP50/perBaseRows/
   // 缺口全部收窄到该基地该型号；该型号未在该基地认证 → 诚实 throw（非静默空/冒充）。不给 → 全网合计·scope:"ALL" 诚实标。
   //
   // WO-BASE-SLOT-UNIFY §A 引擎半 · 「给没给 base」的判据必须与「怎么解析 base」同源。
@@ -460,7 +451,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
   const qty = batches ? batches.reduce((a, b) => a + num(b.qty), 0) : num(args.qty, 0);
   // WO-SCENARIO-INPUT-PHASE0 收口（复验退单修·治「1天交付被当成 1 周」）：
   //   旧写法 `Math.max(1, Math.floor(weeks))` 把亚周窗口直接抹成 1 周 —— 解析半已能把「1天」归一为
-  //   0.143，但求解器 floor 成 1，**「1天」与「1周」返回字节相同的结果**（实测 p50 均 1.9642）。
+  //   0.143，但求解器 floor 成 1，**「1天」与「1周」返回字节相同的结果**（实测 capWanP50 均 1.9642）。
   // 分离两个概念（勿再合并）：
   //   weeksExact  = 真实窗口周数（**可小数**·下界 1/7 = 最小 1 天·线性口径用）
   //   weekSlots   = 整数周槽位（数组长度 / 逐周循环 / 数组索引用·ceil 保证索引不越界）
@@ -488,7 +479,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
   // P50 accumulation + per-base drilldown rows.
   const perBaseRows: Record<string, unknown>[] = [];
   const cumP50ByWeek: number[] = new Array(weekSlots).fill(0); // cumulative P50 at end of week w (1-based index w-1)
-  let p50 = 0;
+  let capWanP50 = 0;
   const pendingCertList: string[] = [];
   let mainBn = "";
   let mainTightness = -1;
@@ -507,7 +498,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
       cumTotal += add;
       for (let i = w - 1; i < weekSlots; i++) cumP50ByWeek[i] = (cumP50ByWeek[i] as number) + add;
     }
-    p50 += cumTotal;
+    capWanP50 += cumTotal;
     // S1.3 tightness for the per-base bottleneck column + global mainBn —— LIVE 优先（真数据），无真数据源回落 MOCK。
     const bn = primaryFactor(c, baseId);
     const lt = liveTightness(c, baseId, bn);
@@ -532,8 +523,8 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
       cumTotal: round(cumTotal, 4),
     });
   }
-  p50 = round(p50, 4);
-  const p90 = round(p50 * healthFactor, 4);
+  capWanP50 = round(capWanP50, 4);
+  const capWanP90 = round(capWanP50 * healthFactor, 4);
 
   // PRD-CAP-DEMANDDELTA · effectiveDemand = (显式 qty 或 订单簿基线) × (1 + demandDelta)。
   // WO-BASE-ID-FIDELITY 症①：base 作用域下基线需求也收窄到该基地可承接订单（诚实·base 产能 vs base 需求同尺度）。
@@ -544,21 +535,21 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
   // WO-DIALOGUE-Q1Q2 · 反向阈值分支（「型号 加 多少 需求量 N 周就不能接了/穿仓」）：
   //   thresholdQty = 还能加多少 = **P90 产能天花板 − 已占基线需求(baselineDemand)** = 增量余量（万套）。
   // ⚠ 口径纠正（非 raw P90）：raw P90 是产能天花板绝对值，而「还能加多少」须扣掉已在制承诺量（订单簿基线需求）。
-  // 用 **P90**（保守/承诺口径·p90 = p50×healthFactor ≤ p50）；baselineDemand ≥ p90 → thresholdQty=0（诚实「已无余量」·不报负）。
+  // 用 **P90**（保守/承诺口径·capWanP90 = capWanP50×healthFactor ≤ capWanP50）；baselineDemand ≥ capWanP90 → thresholdQty=0（诚实「已无余量」·不报负）。
   // summary 透明列全三值（天花板 P90 / 已占 baselineDemand / 还能加 thresholdQty）使口径可核。R6 确定·R13 每值溯源。
   if (str(args.mode) === "threshold") {
     const modelName = str(c.models.find((m) => str(m.props.modelId) === modelId)?.props.name, modelId);
-    const thresholdQty = baselineDemand >= p90 ? 0 : round(p90 - baselineDemand, 4);
+    const thresholdQty = baselineDemand >= capWanP90 ? 0 : round(capWanP90 - baselineDemand, 4);
     const summary =
       thresholdQty > 0
-        ? `${modelName} 未来 ${weeksLabel}产能天花板 P90=${p90} 万套，已被在手订单基线需求占用 ${baselineDemand} 万套，还能再接约 ${thresholdQty} 万套即触及天花板（穿仓）。主瓶颈：${mainBn || "无"}。`
-        : `${modelName} 未来 ${weeksLabel}产能天花板 P90=${p90} 万套已被在手订单基线需求 ${baselineDemand} 万套占满，已无余量可再接（增量阈值 0）。主瓶颈：${mainBn || "无"}。`;
+        ? `${modelName} 未来 ${weeksLabel}产能天花板 P90=${capWanP90} 万套，已被在手订单基线需求占用 ${baselineDemand} 万套，还能再接约 ${thresholdQty} 万套即触及天花板（穿仓）。主瓶颈：${mainBn || "无"}。`
+        : `${modelName} 未来 ${weeksLabel}产能天花板 P90=${capWanP90} 万套已被在手订单基线需求 ${baselineDemand} 万套占满，已无余量可再接（增量阈值 0）。主瓶颈：${mainBn || "无"}。`;
     return {
       ...scopeOut,
       mode: "threshold",
       weeks: weeksOut,
-      p50,
-      p90,
+      capWanP50,
+      capWanP90,
       baselineDemand,
       thresholdQty,
       thresholdUnit: "万套",
@@ -571,7 +562,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
       // R13 溯源：口径三值可下钻（thresholdQty = P90 天花板 − 已占基线需求·非 raw P90）。
       provenance: {
         thresholdQty: { formula: "P90 产能天花板 − 订单簿基线需求（增量余量·还能加多少·万套）", valueLabel: "阈值增量（万套/窗口）" },
-        p90: { formula: "p50 × healthFactor（P90 产能天花板·承诺口径）", valueLabel: "P90 产能天花板（万套/窗口）" },
+        capWanP90: { formula: "capWanP50 × healthFactor（P90 产能天花板·承诺口径）", valueLabel: "P90 产能天花板（万套/窗口）" },
         baselineDemand: { formula: "Σ Order.qty（modelId，due in weeks，OPEN）/ 10000", valueLabel: "已占基线需求（万套/窗口）" },
       },
     };
@@ -590,15 +581,15 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
       const dueDay = dayFrom(p.forecastStart, b.dueDate);
       const wkEff = Math.max(1, Math.floor((dueDay - logisticsDays(p, b.address)) / 7));
       cumDemand += num(b.qty);
-      const cumP90 = round((cumP50ByWeek[Math.min(wkEff, weekSlots) - 1] as number) * healthFactor, 4);
-      const rowOk = cumDemand <= cumP90;
-      if (!rowOk) worst = Math.max(worst, cumDemand - cumP90);
-      batchRows.push({ qty: num(b.qty), dueDate: b.dueDate, address: b.address, wkEff, cumDemand: round(cumDemand, 4), cumP90, ok: rowOk });
+      const cumCapWanP90 = round((cumP50ByWeek[Math.min(wkEff, weekSlots) - 1] as number) * healthFactor, 4);
+      const rowOk = cumDemand <= cumCapWanP90;
+      if (!rowOk) worst = Math.max(worst, cumDemand - cumCapWanP90);
+      batchRows.push({ qty: num(b.qty), dueDate: b.dueDate, address: b.address, wkEff, cumDemand: round(cumDemand, 4), cumCapWanP90, ok: rowOk });
     }
     gap = round(Math.max(worst, 0), 4);
     ok = batchRows.every((r) => r.ok === true);
   } else {
-    gap = round(effectiveDemand - p90, 4);
+    gap = round(effectiveDemand - capWanP90, 4);
     ok = gap <= 0;
   }
 
@@ -616,7 +607,7 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
         reason: outsourceRedlineRejectReason(ratio, p.whatIf.outsourceMax),
       };
     } else {
-      let adjusted = p50 * (1 + p.whatIf.nightShiftCoef * n + p.whatIf.channelCoef * ch) + qty * ratio;
+      let adjusted = capWanP50 * (1 + p.whatIf.nightShiftCoef * n + p.whatIf.channelCoef * ch) + qty * ratio;
       // C03 physical ceiling: full-cert, no-ramp weekly capacity over the window.
       let physicalCap = 0;
       for (const baseId of cert.keys()) physicalCap += (weeklyByBase.get(baseId) ?? 0) * weeksExact;
@@ -664,11 +655,12 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     .sort((a, b) => (a.base < b.base ? -1 : 1));
 
   // PRD-CAP-DEMANDDELTA · 全零诚实门：已认证但认证基地全零产能 → 数据缺口，不得输出自信瓶颈。
-  if (p50 === 0) {
+  if (capWanP50 === 0) {
     return {
       ...scopeOut,
-      p50: 0,
-      p90: 0,
+      capWanP50: 0,
+      capWanP90: 0,
+      unit: "万套/窗口" as const, // WO-P50-RENAME：量纲单源下发
       healthFactor,
       gap: 0,
       ok: false,
@@ -696,8 +688,9 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
 
   return {
     ...scopeOut,
-    p50,
-    p90,
+    capWanP50,
+    capWanP90,
+    unit: "万套/窗口" as const, // WO-P50-RENAME：量纲单源下发（前端只格式化·不内联单位）
     healthFactor,
     gap,
     ok,
@@ -718,11 +711,11 @@ export function capacityForecast(c: SolverContext, args: ForecastArgs): Record<s
     demandDelta,
     // PRD-CAP-DEMANDDELTA · R13 溯源：compute 步可下钻的公式/口径。
     provenance: {
-      p50: { formula: "Σ_base weeklyCap × certFactor × curveMult(周)", valueLabel: "P50 产能（万套/窗口）" },
-      p90: { formula: "p50 × healthFactor", valueLabel: "P90 产能（万套/窗口）" },
+      capWanP50: { formula: "Σ_base weeklyCap × certFactor × curveMult(周)", valueLabel: "P50 产能（万套/窗口）" },
+      capWanP90: { formula: "capWanP50 × healthFactor", valueLabel: "P90 产能（万套/窗口）" },
       baselineDemand: { formula: "Σ Order.qty（modelId，due in weeks，OPEN）/ 10000", valueLabel: "订单簿基线需求（万套/窗口）" },
       effectiveDemand: { formula: "(qty > 0 ? qty : baselineDemand) × (1 + demandDelta)", valueLabel: "有效需求（万套/窗口）" },
-      gap: { formula: "max(0, effectiveDemand − p90) / effectiveDemand", valueLabel: "缺口比例" },
+      gap: { formula: "max(0, effectiveDemand − capWanP90) / effectiveDemand", valueLabel: "缺口比例" },
     },
     // 轨M 增量1（假2）：紧张度数据模式——LIVE=任一基地主瓶颈来自真 OEE/利用率/良率；MOCK=全回落 → 前端红/橙显"估算"。
     dataMode: anyLive ? "LIVE" : "MOCK",

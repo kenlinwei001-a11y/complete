@@ -157,14 +157,14 @@ describe("WO-BASE-SLOT-UNIFY §E-1 · capacity_feasibility 四种基地写法 �
     const net = await t.dataCore.solver.invoke({ tenantId: TENANT, userId: "u", roles: ["admin"] } as never, "capacity_forecast", netArgs!);
     const scoped = await t.dataCore.solver.invoke({ tenantId: TENANT, userId: "u", roles: ["admin"] } as never, "capacity_forecast", withBase.cfArgs!);
     await t.app.close();
-    const netP50 = (net.data as { p50: number }).p50;
-    const scopedP50 = (scoped.data as { p50: number }).p50;
-    console.log(`\n  ── §E-1 语义真达成 ──\n  「常州工厂」p50=${scopedP50}  vs  全网 p50=${netP50}`);
+    const netP50 = (net.data as { capWanP50: number }).capWanP50;
+    const scopedP50 = (scoped.data as { capWanP50: number }).capWanP50;
+    console.log(`\n  ── §E-1 语义真达成 ──\n  「常州工厂」capWanP50=${scopedP50}  vs  全网 capWanP50=${netP50}`);
     // 相同 = base 到了但没起作用（假绿温床·mock 无视 object ref 时就是这样）。
     expect(scopedP50).not.toBe(netP50);
     expect(scopedP50).toBeLessThan(netP50);
     // ★ 且必须是**真基地的真产能**，不是「解析不到 → 一个基地都没匹上 → 0」的幽灵零：
-    //   槽口径退回 string 时这里实测就是 p50=0（不同 ≠ 对，"不同"能被一个错答蒙混过去）。
+    //   槽口径退回 string 时这里实测就是 capWanP50=0（不同 ≠ 对，"不同"能被一个错答蒙混过去）。
     expect(scopedP50, "常州应有真实产能（0 = 谁都没匹上的幽灵零，不是收窄）").toBeGreaterThan(0);
   }, 180_000);
 });

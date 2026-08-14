@@ -28,7 +28,7 @@ import { refTypeDefFromRows, resolveBaseRef } from "../src/solvers/types.js";
  */
 
 const CTX: AuthCtx = { tenantId: "demo", userId: "u", roles: ["admin"], attributes: {} };
-type Cap = { p50: number; scope?: string; scopeBaseId?: string; scopeBaseName?: string; perBaseRows?: unknown[] };
+type Cap = { capWanP50: number; scope?: string; scopeBaseId?: string; scopeBaseName?: string; perBaseRows?: unknown[] };
 
 /** 工单 §E 指定的四种写法（后两种是老代码必炸的「人话后缀」形态）。 */
 const spellingsFor = (baseId: string, cnName: string): { label: string; ref: string }[] => [
@@ -57,9 +57,9 @@ beforeAll(async () => {
     const mid = String(m.props.modelId);
     const net = (await t.services.solvers.invoke(CTX, "capacity_forecast", { modelId: mid, demandDelta: 0.2 })) as Cap;
     const rows = (net.perBaseRows ?? []) as { baseId: string }[];
-    if (rows.length >= 2 && (net.p50 ?? 0) > 0) {
+    if (rows.length >= 2 && (net.capWanP50 ?? 0) > 0) {
       modelId = mid;
-      netP50 = net.p50;
+      netP50 = net.capWanP50;
       targetBaseId = rows[0]!.baseId;
       break;
     }
@@ -68,16 +68,16 @@ beforeAll(async () => {
 }, 180_000);
 
 describe("WO-BASE-SLOT-UNIFY §E-2 · capacity_forecast 直调：四种写法 → 同一个 base（引擎半·不经槽位层）", () => {
-  it("★ 命门：<名>/<baseId>/<名>基地/<名>工厂 四写法 scopeBaseId 与 p50 全等；且都不是全网", async () => {
+  it("★ 命门：<名>/<baseId>/<名>基地/<名>工厂 四写法 scopeBaseId 与 capWanP50 全等；且都不是全网", async () => {
     expect(modelId, "需一个认证≥2基地的型号做全网 vs 单基地对比").not.toBe("");
     const got: Record<string, Cap> = {};
     const lines: string[] = [];
     for (const s of spellingsFor(targetBaseId, cnName)) {
       const out = (await t.services.solvers.invoke(CTX, "capacity_forecast", { modelId, demandDelta: 0.2, base: s.ref })) as Cap;
       got[s.ref] = out;
-      lines.push(`  ${s.label.padEnd(12)} base="${s.ref}" → scope=${out.scope} scopeBaseId=${out.scopeBaseId} p50=${out.p50}`);
+      lines.push(`  ${s.label.padEnd(12)} base="${s.ref}" → scope=${out.scope} scopeBaseId=${out.scopeBaseId} capWanP50=${out.capWanP50}`);
     }
-    console.log(`\n  ── §E-2 引擎半四写法（modelId=${modelId} 全网 p50=${netP50}）──\n${lines.join("\n")}`);
+    console.log(`\n  ── §E-2 引擎半四写法（modelId=${modelId} 全网 capWanP50=${netP50}）──\n${lines.join("\n")}`);
 
     const ref0 = got[targetBaseId]!;
     for (const s of spellingsFor(targetBaseId, cnName)) {
@@ -85,11 +85,11 @@ describe("WO-BASE-SLOT-UNIFY §E-2 · capacity_forecast 直调：四种写法 �
       // ★ 命门：后缀写法此前 400 unknown base；现四写法全部收敛到同一个 base。
       expect(out.scope, `${s.label}「${s.ref}」应 scope=BASE`).toBe("BASE");
       expect(out.scopeBaseId, `${s.label}「${s.ref}」应解析到同一 baseId`).toBe(targetBaseId);
-      expect(out.p50, `${s.label}「${s.ref}」p50 应与裸 baseId 写法字节一致`).toBe(ref0.p50);
+      expect(out.capWanP50, `${s.label}「${s.ref}」capWanP50 应与裸 baseId 写法字节一致`).toBe(ref0.capWanP50);
       expect((out.perBaseRows ?? []).length).toBe(1);
     }
     // 收窄真发生了（否则四写法"全等"可能只是因为四条都退回了全网 = 假绿）。
-    expect(ref0.p50).toBeLessThan(netP50);
+    expect(ref0.capWanP50).toBeLessThan(netP50);
   }, 120_000);
 
   it("REST 直调（/a/v1/solvers/capacity_forecast/invoke）四写法同 200 同 scopeBaseId —— agent 工具直调走的就是这条", async () => {
@@ -113,10 +113,10 @@ describe("WO-BASE-SLOT-UNIFY §E-2 · capacity_forecast 直调：四种写法 �
     const byRef = (await t.services.solvers.invoke(CTX, "capacity_forecast", {
       modelId, demandDelta: 0.2, base: { objectType: "Base", objectId: targetBaseId, label: "无所谓的展示名" },
     })) as Cap;
-    console.log(`\n  ── §E-2 object ref 形态 ──\n  字符串: scope=${byStr.scope} p50=${byStr.p50}\n  对象ref: scope=${byRef.scope} p50=${byRef.p50}`);
+    console.log(`\n  ── §E-2 object ref 形态 ──\n  字符串: scope=${byStr.scope} capWanP50=${byStr.capWanP50}\n  对象ref: scope=${byRef.scope} capWanP50=${byRef.capWanP50}`);
     expect(byRef.scope).toBe("BASE");
     expect(byRef.scopeBaseId).toBe(targetBaseId);
-    expect(byRef.p50).toBe(byStr.p50);
+    expect(byRef.capWanP50).toBe(byStr.capWanP50);
   }, 120_000);
 
   it("诚实边界：真未知基地仍 400（partial 不许把不认识的东西猜成认识的）", async () => {
@@ -135,7 +135,7 @@ describe("WO-BASE-SLOT-UNIFY §E-2 · capacity_forecast 直调：四种写法 �
     const nul = (await t.services.solvers.invoke(CTX, "capacity_forecast", { modelId, demandDelta: 0.2, base: null })) as Cap;
     expect(net.scope).toBe("ALL");
     expect(nul.scope).toBe("ALL"); // 计划模板 {{slots.base}} 在无基地时给的就是 null
-    expect(nul.p50).toBe(net.p50);
+    expect(nul.capWanP50).toBe(net.capWanP50);
   }, 120_000);
 });
 

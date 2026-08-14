@@ -187,6 +187,7 @@
     "apps/datacore/src/synthetic/battery.ts::BN_FACTORS",
     "apps/datacore/src/synthetic/battery.ts::batteryLinkTypes",
     "apps/datacore/src/synthetic/battery.ts::capexScenario",
+    "apps/datacore/src/synthetic/battery.ts::demandSegmentProps",
     "apps/datacore/src/synthetic/battery.ts::line_belongs_to_base",
     "apps/datacore/src/synthetic/battery.ts::oee_current",
     "apps/datacore/src/synthetic/battery.ts::rngShip",

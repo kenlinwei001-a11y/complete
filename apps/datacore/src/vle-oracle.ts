@@ -29,10 +29,10 @@ interface CurveCfg {
 export interface ReferenceForecast {
   modelId: string;
   weeks: number;
-  /** 参照独立算出的 P50（万套，4 位小数）。 */
-  p50: number;
-  /** 参照独立算出的 P90 = P50 × 健康系数。 */
-  p90: number;
+  /** 参照独立算出的 P50。@unit 万套/窗口（4 位小数） */
+  capWanP50: number;
+  /** 参照独立算出的 P90 = capWanP50 × 健康系数。@unit 万套/窗口 */
+  capWanP90: number;
   healthFactor: number;
   /** 逐基地中间量（用于 diff 下钻：定位首个偏离对象）。 */
   perBase: { baseId: string; weeklyWan: number; certFactor: number; maintWeek: number | null; cumTotal: number }[];
@@ -197,7 +197,7 @@ export async function referenceCapacityForecast(
   const stale = dataHealth.some((h) => h.props.critical === true && n(h.props.lagHours) > n(health.staleHours, 2));
   const healthFactor = stale ? n(health.degraded, 0.9) : n(health.normal, 0.93);
 
-  let p50 = 0;
+  let capWanP50 = 0;
   const perBase: ReferenceForecast["perBase"] = [];
   for (const [baseId, status] of [...certByBase.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
     const certFactor = certFactors[status] ?? 1;
@@ -205,10 +205,10 @@ export async function referenceCapacityForecast(
     const maintWeek = maintWeekByBase.get(baseId) ?? null;
     let cumTotal = 0;
     for (let w = 1; w <= weeks; w++) cumTotal += weekly * certFactor * weekCurve(curve, w, maintWeek);
-    p50 += cumTotal;
+    capWanP50 += cumTotal;
     perBase.push({ baseId, weeklyWan: weekly, certFactor, maintWeek, cumTotal: r4(cumTotal) });
   }
-  p50 = r4(p50);
-  const p90 = r4(p50 * healthFactor);
-  return { modelId, weeks, p50, p90, healthFactor, perBase };
+  capWanP50 = r4(capWanP50);
+  const capWanP90 = r4(capWanP50 * healthFactor);
+  return { modelId, weeks, capWanP50, capWanP90, healthFactor, perBase };
 }

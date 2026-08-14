@@ -6,7 +6,7 @@ import { round } from "../src/prng.js";
  * WO-DIALOGUE-Q1Q2 · 求解器引擎半（真 capacity_forecast/bottleneck_matrix·经真 app + battery 种子）。
  *
  * Q1（反向阈值口径纠正）：capacity_forecast(mode:"threshold") 的 thresholdQty **= P90 天花板 − 已占基线需求
- * baselineDemand**（增量余量·还能加多少），**非** raw P90。用 P90（承诺口径·p90≤p50）。baselineDemand≥p90→0（诚实无余量）。
+ * baselineDemand**（增量余量·还能加多少），**非** raw P90。用 P90（承诺口径·capWanP90≤capWanP50）。baselineDemand≥capWanP90→0（诚实无余量）。
  * Q2（限域引擎半）：bottleneck_matrix(baseIds:["xinyang"]) 仅信阳一行（risk.ts:106 baseIds ?? 全域·传入即限域）。
  *
  * 数据×引擎两半接缝（SEAM）：数据半（seed 令 baseIds 槽真达 solver）在 agentcore 侧驱动；此处坐实引擎半——
@@ -27,29 +27,29 @@ describe("WO-DIALOGUE-Q1Q2 · capacity_forecast(mode:'threshold') 反向阈值�
 
     expect(out.mode).toBe("threshold");
     expect(out.thresholdUnit).toBe("万套");
-    expect(typeof out.p90).toBe("number");
+    expect(typeof out.capWanP90).toBe("number");
     expect(typeof out.baselineDemand).toBe("number");
     expect(typeof out.thresholdQty).toBe("number");
 
-    const p90 = out.p90 as number;
+    const capWanP90 = out.capWanP90 as number;
     const bd = out.baselineDemand as number;
     // ★ 口径纠正命门：thresholdQty = P90 − baselineDemand（clamp 0），**不是** raw P90。
-    const expected = bd >= p90 ? 0 : round(p90 - bd, 4);
+    const expected = bd >= capWanP90 ? 0 : round(capWanP90 - bd, 4);
     expect(out.thresholdQty).toBe(expected);
 
-    // p90/baselineDemand 与前向 forecast 同口径（同 modelId/weeks·mode 不改这两值）——证阈值分支复用同一产能/需求轴。
-    expect(out.p90).toBe(fwd.data.p90);
+    // capWanP90/baselineDemand 与前向 forecast 同口径（同 modelId/weeks·mode 不改这两值）——证阈值分支复用同一产能/需求轴。
+    expect(out.capWanP90).toBe(fwd.data.capWanP90);
     expect(out.baselineDemand).toBe(fwd.data.baselineDemand);
 
-    // 该种子 baselineDemand>0（在手订单落窗）→ thresholdQty 严格 < p90（坐实「减掉已占」而非 raw p90）。
+    // 该种子 baselineDemand>0（在手订单落窗）→ thresholdQty 严格 < capWanP90（坐实「减掉已占」而非 raw capWanP90）。
     expect(bd).toBeGreaterThan(0);
-    expect(out.thresholdQty as number).toBeLessThan(p90);
-    expect(out.thresholdQty).toBe(round(p90 - bd, 4));
+    expect(out.thresholdQty as number).toBeLessThan(capWanP90);
+    expect(out.thresholdQty).toBe(round(capWanP90 - bd, 4));
 
     // summary 透明列全三值（天花板 P90 / 已占 baselineDemand / 还能加 thresholdQty）使口径可核。
     const summary = String(out.summary);
     expect(summary).toContain("P90");
-    expect(summary).toContain(String(p90));
+    expect(summary).toContain(String(capWanP90));
     expect(summary).toContain(String(bd));
     expect(summary).toContain(String(out.thresholdQty));
 
@@ -57,9 +57,9 @@ describe("WO-DIALOGUE-Q1Q2 · capacity_forecast(mode:'threshold') 反向阈值�
   });
 
   it("Q1 诚实无余量：baselineDemand ≥ P90 → thresholdQty=0（不报负·纯函数口径覆盖）", async () => {
-    // 直接以纯函数覆盖 clamp 分支（battery 种子恒 bd<p90·无法自然触发无余量）——证 baselineDemand≥p90→0。
+    // 直接以纯函数覆盖 clamp 分支（battery 种子恒 bd<capWanP90·无法自然触发无余量）——证 baselineDemand≥capWanP90→0。
     const { capacityForecast } = await import("../src/solvers/capacity.js");
-    const clamp = (p90: number, bd: number) => (bd >= p90 ? 0 : round(p90 - bd, 4));
+    const clamp = (capWanP90: number, bd: number) => (bd >= capWanP90 ? 0 : round(capWanP90 - bd, 4));
     expect(clamp(40, 40)).toBe(0);
     expect(clamp(40, 50)).toBe(0);
     expect(clamp(40, 27.7)).toBe(round(12.3, 4));

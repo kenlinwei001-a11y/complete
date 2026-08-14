@@ -185,7 +185,7 @@ describe("欠账 #178 · 作用域诚实位上屏（后→前接缝·两个方�
     });
 
     it("没有诚实位 → null（**不许**编一句「未指定范围」：没说 ≠ 说了没限定）", () => {
-      expect(readScopeHonesty({ p50: 1, p90: 2 })).toBeNull();
+      expect(readScopeHonesty({ capWanP50: 1, capWanP90: 2 })).toBeNull();
       expect(readScopeHonesty({ scope: "ALL" })).toBeNull(); // 有档位没原文 → 不摆一个点不开的记号
       expect(readScopeHonesty(null)).toBeNull();
       expect(readScopeHonesty([{ scope: "ALL", scopeNote: "x" }])).toBeNull();

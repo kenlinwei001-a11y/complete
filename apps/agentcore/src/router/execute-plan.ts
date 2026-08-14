@@ -97,7 +97,7 @@ function scanUnverified(text: string): boolean {
 
 /**
  * 提取单步产物的**核心标量字段**（top-level number/string/boolean）→ 供确定性兜底内嵌可核数字。
- * 跳过数组/嵌套对象（perBaseRows/provenance 等大结构·避免噪声）；核心口径值（thresholdQty/p90/baselineDemand/
+ * 跳过数组/嵌套对象（perBaseRows/provenance 等大结构·避免噪声）；核心口径值（thresholdQty/capWanP90/baselineDemand/
  * mainBottleneck/gap/ok/summary …）均为 top-level 标量，故此过滤即覆盖各求解器的可核心数。长串截断。
  */
 export function coreScalars(data: unknown): { key: string; value: string }[] {
@@ -117,7 +117,7 @@ export function coreScalars(data: unknown): { key: string; value: string }[] {
  *    `catch` 触发，四种失败（真没绑 / 模型名不存在 / 限流 / 调用失败）都会走到这里。留着这句注释，
  *    等于让下一个读代码的人继续相信「走到这儿 = 没绑 provider」，而那正是 classifySynthFailure 刚治好的病。
  * WO-DIALOGUE-Q1Q2（治「未溯源空壳」类·reviewer flag）：**为所有 solver 步**内嵌其核心标量字段
- * （thresholdQty/p90/baselineDemand/mainBottleneck/summary …），使无 LLM 时答案也显**可核数字**而非空 ⟦ref⟧ 壳；
+ * （thresholdQty/capWanP90/baselineDemand/mainBottleneck/summary …），使无 LLM 时答案也显**可核数字**而非空 ⟦ref⟧ 壳；
  * 每数仍绑其步 ⟦ref:N⟧（→ provenance[N]·R13 溯源），非裸编（数字红线 scanUnverified 只对 LLM 综合启用·此处诚实标）。
  */
 /**

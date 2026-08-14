@@ -805,7 +805,7 @@ export function buildPlaceholderInspectorInput(args: {
             carrier: "有" as const,
             evidence:
               `\`${yieldBinding.objectType}.${yieldBinding.prop}\` · 20 因子绑定 ${yieldBinding.mark} · capacity-factors.ts:57（writable）` +
-              " + 真消费方 apps/datacore/src/solvers/capacity.ts:255-271（良率基线再基·改它即改 p50）",
+              " + 真消费方 apps/datacore/src/solvers/capacity.ts:255-271（良率基线再基·改它即改 cellsPerDayP50）",
             baseline: jitter(seed, `${nodeId}/yield`, 0.88, 0.98),
             domain: { min: 0, max: 1, step: 0.01 },
             effect: { op: "inert" as const },

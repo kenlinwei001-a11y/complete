@@ -101,13 +101,13 @@ describe("SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输�
     expect(solve.resolvedParams?.solverKey).toBe(loadOut.solverKeys[0]);
 
     // ★★ 而且这个值**真的被用来调求解器了**（不是解析出来就扔）：
-    //    mock capacity_forecast 返回 p50/p90/mainBottleneck；
-    //    未知求解器走的是通用兜底 `{solverKey, ok:true, args}`——**没有 p50**。
-    //    所以 p50 是数字 ⇒ 真的按第一层给的 key 调到了 capacity_forecast，而非兜底。
+    //    mock capacity_forecast 返回 capWanP50/capWanP90/mainBottleneck；
+    //    未知求解器走的是通用兜底 `{solverKey, ok:true, args}`——**没有 capWanP50**。
+    //    所以 capWanP50 是数字 ⇒ 真的按第一层给的 key 调到了 capacity_forecast，而非兜底。
     const solveOut = solve.output as { solverKey: string; data: Record<string, unknown> };
     expect(solveOut.solverKey).toBe("capacity_forecast");
-    expect(typeof solveOut.data.p50).toBe("number");
-    expect(typeof solveOut.data.p90).toBe("number");
+    expect(typeof solveOut.data.capWanP50).toBe("number");
+    expect(typeof solveOut.data.capWanP90).toBe("number");
     expect(solveOut.data.demandDelta).toBe(0.2); // 本节点自己的 args 也真的到达了求解器
 
     // —— 边 = 可见性授权：第二层能看见第一层，正是因为有这条边 ——
@@ -198,7 +198,7 @@ describe("SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输�
       const n = body.nodeResults.find((r) => r.nodeId === id)!;
       expect(n.status, id).toBe("COMPLETED");
       expect(n.resolvedParams?.solverKey, id).toBe("capacity_forecast");
-      expect(typeof (n.output as { data: Record<string, unknown> }).data.p50, id).toBe("number");
+      expect(typeof (n.output as { data: Record<string, unknown> }).data.capWanP50, id).toBe("number");
     }
   });
 });

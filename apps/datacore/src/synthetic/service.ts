@@ -1661,7 +1661,7 @@ export class SyntheticService {
       order: LEDGER_LAYOUT,
       "plan-audit": { solverKey: "plan_audit", fieldGroups: PLAN_AUDIT_FIELD_GROUPS, outputFields: ["H", "M", "S", "score", "verdict"] },
       "plan-generate": { solverKey: "plan_generate", goalFields: PLAN_GENERATE_GOAL_FIELDS, outputFields: ["schemes", "recommend"] },
-      "project-sim": { solverKey: "capacity_forecast", driverFactors: PROJECT_SIM_DRIVER_FACTORS, outputFields: ["p50", "p90", "gap", "perBaseRows", "mainBn"] },
+      "project-sim": { solverKey: "capacity_forecast", driverFactors: PROJECT_SIM_DRIVER_FACTORS, outputFields: ["capWanP50", "capWanP90", "gap", "perBaseRows", "mainBn"] },
       "global-sim": { solverKey: "portfolio" },
       "sop-balance": { apiTag: "sop" },
     };

@@ -9,7 +9,7 @@ import type { SolverContext } from "../src/solvers/types.js";
  *
  * 派单人给的账是「三处键名写错 + `patchCapacityContext` 不认 ChangeoverMatrix」两重死，修完即活。
  * 本文件的四条断言是**亲手跑出来的反例**：改名与 patch 白名单都是真错、也都已修，但 ⑤ **仍然拨不出来**，
- * 因为还有第三重——`capacity.ts` 的 p50 公式**根本不含换型项**，故 ∂Σp50/∂minutes 恒 0，
+ * 因为还有第三重——`capacity.ts` 的 cellsPerDayP50 公式**根本不含换型项**，故 ∂ΣcellsPerDayP50/∂minutes 恒 0，
  * 候选会在 `discoverCapacityLevers` 的「无下游影响 → 非有效杠杆」处被丢弃。
  *
  * 每条断言都能单独变异反证（见各条注释里的「改坏它会红」）。
@@ -27,7 +27,7 @@ async function levers(t: TestApp, args: Record<string, unknown>): Promise<{ leve
 }
 
 const sumP50 = (ctx: SolverContext): number =>
-  computeByProcessModel(ctx, MODEL).reduce((a, r) => a + r.p50, 0);
+  computeByProcessModel(ctx, MODEL).reduce((a, r) => a + r.cellsPerDayP50, 0);
 
 describe("WO-ENGINE-2 件一 · 换型损失⑤ 的三重死（逐重实测）", () => {
   it("第一重（已修）· 数据半：ChangeoverMatrix 的真属性是 minutes，changeoverMin 在对象上恒不存在", async () => {

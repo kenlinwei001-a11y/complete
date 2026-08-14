@@ -109,8 +109,8 @@ describe("WO-DIALOGUE-Q1Q2 · SEAM 真 orchestrator 端到端（数据 seed × �
             data: {
               mode: "threshold",
               weeks: args.weeks ?? 6,
-              p50: 40,
-              p90: 37.2,
+              capWanP50: 40,
+              capWanP90: 37.2,
               baselineDemand: 27.7,
               thresholdQty: 9.5,
               thresholdUnit: "万套",
@@ -165,11 +165,11 @@ describe("WO-DIALOGUE-Q1Q2 · SEAM 真 orchestrator 端到端（数据 seed × �
 });
 
 describe("WO-DIALOGUE-Q1Q2 · executePlan 确定性兜底内嵌核心数字（治「未溯源空壳」类）", () => {
-  it("coreScalars：抽 top-level 标量（thresholdQty/p90/baselineDemand/mainBottleneck）·跳过数组/对象", () => {
+  it("coreScalars：抽 top-level 标量（thresholdQty/capWanP90/baselineDemand/mainBottleneck）·跳过数组/对象", () => {
     const rows = coreScalars({
       mode: "threshold",
-      p50: 40,
-      p90: 37.2,
+      capWanP50: 40,
+      capWanP90: 37.2,
       baselineDemand: 27.7,
       thresholdQty: 9.5,
       thresholdUnit: "万套",
@@ -179,7 +179,7 @@ describe("WO-DIALOGUE-Q1Q2 · executePlan 确定性兜底内嵌核心数字（�
     });
     const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
     expect(map.thresholdQty).toBe("9.5");
-    expect(map.p90).toBe("37.2");
+    expect(map.capWanP90).toBe("37.2");
     expect(map.baselineDemand).toBe("27.7");
     expect(map.mainBottleneck).toBe("化成");
     expect(map.thresholdUnit).toBe("万套");
@@ -195,7 +195,7 @@ describe("WO-DIALOGUE-Q1Q2 · executePlan 确定性兜底内嵌核心数字（�
     };
     const executor = {
       run: async () => ({
-        payload: { data: { mode: "threshold", p90: 37.2, baselineDemand: 27.7, thresholdQty: 9.5, thresholdUnit: "万套", mainBottleneck: "化成" }, snapshotVersion: "v1" },
+        payload: { data: { mode: "threshold", capWanP90: 37.2, baselineDemand: 27.7, thresholdQty: 9.5, thresholdUnit: "万套", mainBottleneck: "化成" }, snapshotVersion: "v1" },
         outcome: "ok",
         durationMs: 1,
         toolCallId: "tc_test",
@@ -213,7 +213,7 @@ describe("WO-DIALOGUE-Q1Q2 · executePlan 确定性兜底内嵌核心数字（�
     const md = (res.answer.blocks[0] as { markdown: string }).markdown;
     // ★ 命门：核心数字内嵌可核（非旧「产物见 ⟦ref:0⟧」空壳）。
     expect(md).toContain("thresholdQty=9.5");
-    expect(md).toContain("p90=37.2");
+    expect(md).toContain("capWanP90=37.2");
     expect(md).toContain("baselineDemand=27.7");
     expect(md).toContain("mainBottleneck=化成");
     expect(md).toContain("⟦ref:0⟧"); // 每数仍绑步溯源（R13）

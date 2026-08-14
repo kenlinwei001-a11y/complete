@@ -45,13 +45,13 @@ interface PerBaseRow {
 }
 
 function indepP50(rows: PerBaseRow[], weeks: number): number {
-  let p50 = 0;
+  let capWanP50 = 0;
   for (const r of rows) {
     let cum = 0;
     for (let w = 1; w <= weeks; w++) cum += r.weeklyCap * r.certFactor * indepCurve(w, r.maintWeek);
-    p50 += cum;
+    capWanP50 += cum;
   }
-  return round(p50, 4);
+  return round(capWanP50, 4);
 }
 
 async function forecast(t: TestApp, args: Record<string, unknown>) {
@@ -73,7 +73,7 @@ describe("S1 solvers", () => {
     expect(rows.some((r) => r.certFactor === 1)).toBe(true);
     expect(rows.every((r) => r.maintWeek !== null && r.maintWeek >= 3 && r.maintWeek <= 10)).toBe(true);
     // hand-computed P50 from the per-base drilldown inputs
-    expect(out.p50).toBe(indepP50(rows, weeks));
+    expect(out.capWanP50).toBe(indepP50(rows, weeks));
     // per-base cumTotal also matches
     for (const r of rows) {
       let cum = 0;
@@ -81,7 +81,7 @@ describe("S1 solvers", () => {
       expect(r.cumTotal).toBe(round(cum, 4));
     }
     expect(out.healthFactor).toBe(P.health.normal);
-    expect(out.p90).toBe(round((out.p50 as number) * P.health.normal, 4));
+    expect(out.capWanP90).toBe(round((out.capWanP50 as number) * P.health.normal, 4));
     expect(out.pendingCertList as string[]).not.toHaveLength(0);
     // aliases kept for AgentCore seed plans
     expect(out.mainBottleneck).toBe(out.mainBn);
@@ -142,9 +142,9 @@ describe("S1 solvers", () => {
     // §6.2 test hook: mark the critical source stale
     await t.services.solvers.markSourceStale("demo", "iot-scada", 4.2);
     const after = await forecast(t, { modelId: "4680-NCM", qty: 40, weeks: 6 });
-    expect(after.p50).toBe(before.p50); // same input → same P50
+    expect(after.capWanP50).toBe(before.capWanP50); // same input → same P50
     expect(after.healthFactor).toBe(0.9);
-    expect(after.p90).toBe(round((after.p50 as number) * 0.9, 4));
+    expect(after.capWanP90).toBe(round((after.capWanP50 as number) * 0.9, 4));
     expect(String(after.degradeNote)).toContain("4.2");
     expect(String(after.degradeNote)).toContain("C09");
   });
@@ -158,7 +158,7 @@ describe("S1 solvers", () => {
       { qty: 10, dueDate: "2026-08-21", address: "广州" }, // dueDay 72，wkEff = floor((72−5)/7) = 9
     ];
     const out = await forecast(t, { modelId: "4680-NCM", batches, weeks: 8 });
-    const rows = out.batchRows as { qty: number; dueDate: string; wkEff: number; cumDemand: number; cumP90: number; ok: boolean }[];
+    const rows = out.batchRows as { qty: number; dueDate: string; wkEff: number; cumDemand: number; cumCapWanP90: number; ok: boolean }[];
     expect(rows).toHaveLength(3);
     expect(rows[0]!.wkEff).toBe(2);
     expect(rows[1]!.wkEff).toBe(5);
@@ -169,7 +169,7 @@ describe("S1 solvers", () => {
     expect(rows[2]!.cumDemand).toBe(118);
     // the tight batch must fail in 1 effective week; gap = max shortfall
     expect(rows[0]!.ok).toBe(false);
-    const worst = Math.max(...rows.filter((r) => !r.ok).map((r) => round(r.cumDemand - r.cumP90, 4)), 0);
+    const worst = Math.max(...rows.filter((r) => !r.ok).map((r) => round(r.cumDemand - r.cumCapWanP90, 4)), 0);
     expect(out.gap).toBe(round(worst, 4));
     expect(out.ok).toBe(false);
   });
@@ -185,7 +185,7 @@ describe("S1 solvers", () => {
     });
     const wi = out.whatIf as Record<string, number | boolean>;
     expect(wi.rejected).toBe(false);
-    const raw = (out.p50 as number) * (1 + 0.06 * 2 + 0.05 * 4) + 40 * 0.1;
+    const raw = (out.capWanP50 as number) * (1 + 0.06 * 2 + 0.05 * 4) + 40 * 0.1;
     const expected = round(Math.min(raw, wi.physicalCap as number), 4);
     expect(wi.adjustedP50).toBe(expected);
     expect(wi.capped).toBe(raw > (wi.physicalCap as number));

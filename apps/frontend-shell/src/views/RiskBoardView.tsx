@@ -1142,7 +1142,7 @@ function RiskDetailPanel({
           targetProp="weeklyCap"
           beforeLabel={zh.risk.live.leverBefore}
           adoptActionTypeKey="plan_change"
-          snapshot={{ mode: "capacity", qty: 0, p50: card.peak, p90: card.peak, mainBn: card.factor }}
+          snapshot={{ mode: "capacity", qty: 0, capWanP50: card.peak, capWanP90: card.peak, mainBn: card.factor }}
           onLiveState={onLiveState}
         />
       </div>

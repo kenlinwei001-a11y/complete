@@ -48,7 +48,7 @@ async function submitFrontendPayload(t: TestApp, query: string) {
   const p50Block = (task.answer?.blocks ?? []).find(
     (b) => b.type === "kpi" && (b as { label?: string }).label === "P50 产能",
   ) as { value?: string } | undefined;
-  return { task, cfArgs, p50: p50Block?.value };
+  return { task, cfArgs, capWanP50: p50Block?.value };
 }
 
 describe("WO-SCENARIO-FORCED-EXTRACT · forced 分支自由文本解析 seam", () => {
@@ -73,11 +73,11 @@ describe("WO-SCENARIO-FORCED-EXTRACT · forced 分支自由文本解析 seam", (
 
     // ③ 语义达成：两问句答案必须真不同（生产实测 常州 5.5176 ≠ 全网 12.3016；测试环境 mock 金值
     // 常州 24.2（仅常州 24GWh）≠ 全网 74.7（常州+宜宾+溧阳 74GWh），钉死防静默回归）。
-    expect(withBase.p50).toBeTruthy();
-    expect(plain.p50).toBeTruthy();
-    expect(withBase.p50).not.toBe(plain.p50);
-    expect(Number(withBase.p50)).toBeCloseTo(24.2, 1);
-    expect(Number(plain.p50)).toBeCloseTo(74.7, 1);
+    expect(withBase.capWanP50).toBeTruthy();
+    expect(plain.capWanP50).toBeTruthy();
+    expect(withBase.capWanP50).not.toBe(plain.capWanP50);
+    expect(Number(withBase.capWanP50)).toBeCloseTo(24.2, 1);
+    expect(Number(plain.capWanP50)).toBeCloseTo(74.7, 1);
 
     await t.app.close();
   });

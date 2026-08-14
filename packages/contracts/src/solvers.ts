@@ -76,16 +76,27 @@ export const ByProcessModelRowSchema = z.object({
   model: z.string(),
   /** 关键物料名（层4 ∩ 物料齐套约束·model-material 颗粒·无物料数据时省）。 */
   material: z.string().optional(),
-  /** 该工序×型号日产能贡献（电芯/日·processCap × certFactor × 良率基线再基 × 物料齐套系数）。 */
-  p50: z.number(),
+  /**
+   * 该工序×型号日产能贡献 P50。
+   * @unit 电芯/日
+   * WO-P50-RENAME：字段名自带量纲（`cellsPerDay`）——本仓曾有 4 个不同量纲共用 `p50` 一个名字，
+   * 用户在杠杆重算明细表里分不出「这行是需求的万套还是产能的电芯」。名字即口径，禁止再退回 `p50`。
+   * 派生：processCap × certFactor × 良率基线再基 × 物料齐套系数。
+   */
+  cellsPerDayP50: z.number(),
+  /** `cellsPerDayP50` / `cellsPerDayGap` 的量纲**单一真值**（后端单源下发·前端只格式化不内联·治 G-UNIT-NORMALIZE）。 */
+  unit: z.literal("电芯/日"),
   /** 逐格主瓶颈因子（BN 口径·与 perBaseRows.bottleneck 同词表：良率波动/设备OEE/物料齐套）。 */
   bottleneck: z.string(),
   /** 逐格主瓶颈圈号（① –⑳·映射 CapacityFactorBinding.mark·前端徽标锚·无则省）。 */
   bottleneckMark: z.string().optional(),
   /** 该格紧张度（0–100·= 主瓶颈因子的逐工序张力）。 */
   tightness: z.number(),
-  /** 缺口 = p50 × 主瓶颈紧张度/100（该格因主瓶颈而处于风险的产能·电芯/日）。 */
-  gap: z.number(),
+  /**
+   * 缺口 = cellsPerDayP50 × 主瓶颈紧张度/100（该格因主瓶颈而处于风险的产能）。
+   * @unit 电芯/日
+   */
+  cellsPerDayGap: z.number(),
   /** R13 每值溯源：来源对象/属性/派生公式。 */
   provenance: z.object({
     objectType: z.string(),
@@ -98,8 +109,20 @@ export type ByProcessModelRow = z.infer<typeof ByProcessModelRowSchema>;
 
 export const CapacityForecastOutputSchema = z
   .object({
-    p50: z.number(),
-    p90: z.number(),
+    /**
+     * 窗口内产能中位口径 P50。
+     * @unit 万套/窗口
+     * WO-P50-RENAME：与 `DemandSegment.demandWanP50`（万套/**年**·需求）、
+     * `ByProcessModelRow.cellsPerDayP50`（电芯/日·单工序）**不是同一个量**，故不共用名字。
+     */
+    capWanP50: z.number(),
+    /**
+     * 窗口内产能承诺口径 P90 = capWanP50 × healthFactor（保守下界）。
+     * @unit 万套/窗口
+     */
+    capWanP90: z.number(),
+    /** `capWanP50`/`capWanP90`/`baselineDemand`/`effectiveDemand` 的量纲单一真值（后端单源下发）。 */
+    unit: z.literal("万套/窗口").optional(),
     // WO-CAPLIVE-1-ATOM（additive·per-工序×型号-物料 深化·治 G-CAPACITY-FACTOR-SHALLOW）：granularity:'process-model' 时输出。
     byProcessModel: z.array(ByProcessModelRowSchema).optional(),
     // 轨M 增量1（假2 真推演红线）：紧张度/主瓶颈数据模式（LIVE=真 OEE/利用率/良率；MOCK=全回落 → 前端显"估算"）。
@@ -121,7 +144,8 @@ export const CapacityForecastOutputSchema = z
           address: z.string().optional(), // 交付地址（净窗口已扣该地址物流时长）
           wkEff: z.number().int(),
           cumDemand: z.number(),
-          cumP90: z.number(),
+          /** 截至该周的累计产能 P90（承诺口径）。@unit 万套/窗口 */
+          cumCapWanP90: z.number(),
           ok: z.boolean(),
         }),
       )
@@ -576,14 +600,24 @@ export type SolverGenDraft = z.infer<typeof SolverGenDraftSchema>;
 export const BaseCapacityOutlookByModelSchema = z.object({
   model: z.string(),
   modelName: z.string(),
-  /** T+30 天该基地该型号累计可承接（套·= capacity_forecast 该基地 cumTotal×1e4）。 */
-  p50At30: z.number(),
-  p50At60: z.number(),
-  p50At90: z.number(),
+  /**
+   * T+30/60/90 天该基地该型号累计可承接。
+   * @unit 套
+   * WO-P50-RENAME：口径是**套**（= capacity_forecast 该基地 cumTotal×1e4），与
+   * `CapacityForecastOutput.capWanP50`（万套）差 1e4，故不共用名字。
+   */
+  packsP50At30: z.number(),
+  packsP50At60: z.number(),
+  packsP50At90: z.number(),
+  /** `packsP50At*`/`packsGap` 的量纲单一真值（后端单源下发）。 */
+  unit: z.literal("套").optional(),
   /** 该型号主瓶颈工序（= capacity_forecast 该 model mainBn·跨求解器一致）。 */
   mainBn: z.string(),
-  /** 缺口 = p50@90 − 该型号 90 天落窗未来订单（本基地首产地·套）。 */
-  gap: z.number(),
+  /**
+   * 缺口 = packsP50At90 − 该型号 90 天落窗未来订单（本基地首产地）。
+   * @unit 套
+   */
+  packsGap: z.number(),
   /** R13 溯源：每值来自 capacity_forecast（P50/mainBn）。 */
   provenance: z.object({ kind: z.string(), source: z.string(), drillType: z.string(), drillField: z.string() }),
 });

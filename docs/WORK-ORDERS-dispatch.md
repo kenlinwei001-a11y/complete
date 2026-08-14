@@ -38,6 +38,37 @@
    往块注释里写复验命令时，`grep -rn "X" apps/*/src/**/*.ts` 里的 `*/` 会**提前关掉块注释**，
    把后面的代码全变成语法错。写成 `grep -rn "X" apps/datacore/src`（目录形式）即可。
 
+9. **⛔ 新建门脚本必须同批做三件事**（2026-08-14 一天内**三张单**都漏，全靠门自己抓出来）：
+   ① **登进 `scripts/gate-ledger.json`**（`alias`/`binding`/`guardedPaths`/`escalation`/`ontologyRef`/
+      `provenRed`/`notes`）—— 不登账 = 那道门**天然免疫门账治理**，没人核它的责任边界与是否真红过；
+   ② **登进 `docs/SYSTEM-ONTOLOGY.md` §7**（`ontology-writeback:check` 的 G3-a 会两头对账）；
+   ③ **守退出码三分**（0 通过 / 1 主判据判负 / **2 门自己坏了**），且必须有统一 `toolBroken()` 出口
+      与**顶层兜底**。
+   ⚠️ **顶层兜底的写法有唯一一种被认**：`check-gate-exit-discipline.mjs` 只认 `try` 是
+   **Program 的直接子语句**。下面这种写法**语义完全正确、注入异常也确实退 2**，但门会报
+   「无顶层兜底 · 找到 0 处兜底结构」（当天在两道门上各栽一次）：
+   ```js
+   if (import.meta.url === pathToFileURL(process.argv[1]).href) { try { main(); } catch { … } }  // ❌ 门不认
+   const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;                        // ✅
+   try { if (isMain) main(); } catch (e) { toolBroken(`未预期异常（${e?.message||e}）`); }
+   ```
+   ⚠️ 文件若被测试 `import`，**别用 `process.on("uncaughtException")` 全局 handler** ——
+   它会装进跑测试的那个进程、把无关异常抢走并 `exit(2)`，连累整个测试进程。
+   ⚠️ **读文件失败走 `toolBroken` RC=2**，不许算进违规计数走 RC=1 —— 环境失败与真违规撞同一个码，
+   会把「门没跑起来」读成「仓库真有违规」。
+   ⚠️ **基线写入必须内联调 `scripts/lib/baseline-doc.mjs` 的 `buildBaselineDoc`**：
+   抽成 `const doc = buildBaselineDoc(…)` 再写会被 `check-baseline-writer-honesty` 判 HAND_ROLLED
+   —— 它认的是「**写入点实参里**调了共享写入器」。
+   ⚠️ **棘轮必须带松弛检测**：基线**高于**实测 = 免检名额。命中集合里不含「零命中的条目」，
+   正向遍历永远发现不了，**必须反向遍历基线**：基线 > 实测即 RC=1 并要求 `--update` 收紧。
+
+10. **⛔ 先 build 依赖再判 build 红**（同日两个 dev 给出**相反**结论，实测判明）：
+   `pnpm --filter agentcore build` 在 `@platform/llm-adapters` **未 build** 时报 **12 条 `TS7006`**；
+   先 `pnpm --filter @platform/llm-adapters build`（RC=0）再 build agentcore ⇒ **RC=0**。
+   那 12 条是**假红**，不是「基线分支上 agentcore 编译坏了」。
+   判据：**报「某包 build 坏了」之前，先把它的 workspace 依赖逐个 build 一遍**
+   （`pnpm -r build` 会按拓扑序做，单包 `--filter` 不会）。
+
 ---
 
 ## 1 · 派发顺序与冲突矩阵
