@@ -1387,6 +1387,19 @@ const MOCK_RAW_ROWS: Record<string, Record<string, unknown>[]> = {
     { so: "SO-10003", cust: "蓝海电网", qty: "1.1", due: "2026-06-28" },
   ],
 };
+/** WO-DBUI-FLOW：比对现状四分（需要/复用/新建/缺）——第 ② 步的一等内容。 */
+function mockGapAnalysis() {
+  return {
+    entries: [
+      { kind: "objectType", side: "structure", needed: 3, existing: 1, toCreate: 2, missing: 0, items: [{ key: "Order", status: "EXISTS" }, { key: "Base", status: "TO_CREATE" }, { key: "Customer", status: "TO_CREATE" }] },
+      { kind: "solver", side: "code", needed: 1, existing: 1, toCreate: 0, missing: 0, items: [{ key: "affected_orders", status: "EXISTS" }] },
+      { kind: "rule", side: "content", needed: 1, existing: 0, toCreate: 1, missing: 0, items: [{ key: "C03", status: "TO_CREATE" }] },
+    ],
+    totals: { needed: 5, existing: 2, toCreate: 3, missing: 0 },
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 function mockBuildJob(body: { script?: string; seed?: number; dryRun?: boolean }) {
   const seed = body.seed ?? 42;
   const script = (body.script ?? "").toLowerCase();
@@ -5983,7 +5996,7 @@ export const handlers = [
     return HttpResponse.json(wf);
   }),
   http.post("*/a/v1/databuilder/runs", async ({ request }) => {
-    const body = (await request.json()) as { script?: string; seed?: number; stage?: string };
+    const body = (await request.json()) as { script?: string; seed?: number; stage?: string; buildMode?: string };
     const id = newId("sbr");
     const script = (body.script ?? "").trim();
     // g8-P2：stage=manifest → 倒推补录表单（PENDING_INPUT，不建域）
@@ -6036,11 +6049,64 @@ export const handlers = [
       producedArtifacts: mockProducedArtifacts(),
       storyCoverage: mockStoryCoverage(script),
       validationTrace: mockValidationTrace(),
+      // WO-DBUI-FLOW：主流程第 ③ 步恒 PROVISIONAL（先隔离物化，第 ⑥ 步才由人裁决入库/只下载）。
+      ...(body.buildMode === "PROVISIONAL"
+        ? { buildMode: "PROVISIONAL", domainTrustLevel: "UNVERIFIED", provisionalNamespace: `demo::prov::${id}` }
+        : { buildMode: "STRICT" }),
+      // 比对现状四分（第 ② 步一等内容；改前埋在「展开七阶段 → 点进 gap 那步」三层之下）。
+      gapAnalysis: mockGapAnalysis(),
       status: "SUCCEEDED",
       createdAt: new Date().toISOString(),
     };
     MOCK_STORY_RUNS.unshift(run);
     return HttpResponse.json(run, { status: 201 });
+  }),
+  /**
+   * WO-DBUI-FLOW · 入库前冲突复验（**只读**）。三类冲突分开报，绝不合成一个「N 条冲突」。
+   * R4：预检不是审批的替代，是审批的输入。
+   */
+  http.post("*/a/v1/databuilder/runs/:id/promote-precheck", ({ params }) => {
+    const r = MOCK_STORY_RUNS.find((x) => x.id === (params as { id: string }).id);
+    if (!r) return new HttpResponse(null, { status: 404 });
+    return HttpResponse.json({
+      runId: r.id,
+      counts: { typeSameKey: 1, linkSameKeyDiffDef: 1, linkSameKeySameDef: 1 },
+      conflicts: [
+        {
+          kind: "TYPE_SAME_KEY", target: "objectType", key: "Order",
+          existingValue: { 显示名: "订单（库里既有）", 所属域: "sales", 属性数: "6" },
+          incomingValue: { 显示名: "订单", 所属域: "sales", 属性数: "8" },
+          changedFields: ["显示名", "属性数"],
+          suggestedAction: "USE", availableActions: ["USE"], requiresDecision: false,
+        },
+        {
+          kind: "LINK_SAME_KEY_DIFF_DEF", target: "linkType", key: "order_of_customer",
+          existingValue: { 起点类型: "Order", 终点类型: "Account", 基数: "N:1" },
+          incomingValue: { 起点类型: "Order", 终点类型: "Customer", 基数: "N:1" },
+          changedFields: ["终点类型"],
+          suggestedAction: "USE", availableActions: ["USE", "MERGE"], requiresDecision: true,
+        },
+        {
+          kind: "LINK_SAME_KEY_SAME_DEF", target: "linkType", key: "line_of_base",
+          existingValue: { 起点类型: "Line", 终点类型: "Base", 基数: "N:1" },
+          incomingValue: { 起点类型: "Line", 终点类型: "Base", 基数: "N:1" },
+          changedFields: [],
+          suggestedAction: "MERGE", availableActions: ["USE", "MERGE"], requiresDecision: false,
+        },
+      ],
+      clean: { objectTypes: 2, linkTypes: 1 },
+      drift: {
+        gapAtBuild: { needed: 12, existing: 3, toCreate: 9, missing: 0 },
+        gapAtPrecheck: { needed: 12, existing: 4, toCreate: 8, missing: 0 },
+        diffs: [
+          { dim: "gap", field: "existing", atBuild: "3", atPrecheck: "4" },
+          { dim: "gap", field: "toCreate", atBuild: "9", atPrecheck: "8" },
+        ],
+        changed: true,
+      },
+      pendingDecisions: 1,
+      checkedAt: new Date().toISOString(),
+    });
   }),
   // A10：终态闭环末步——手动重跑主问句验证（mock：可答则 VERIFIED + 回灌 launcher 节点 DONE）。
   http.post("*/a/v1/databuilder/runs/:id/verify", ({ params }) => {
@@ -6052,14 +6118,27 @@ export const handlers = [
       : { status: "NOT_VERIFIED", question: r.script, gapCode: "NOT_ANSWERABLE", verifiedAt: new Date().toISOString() };
     return HttpResponse.json(r);
   }),
-  http.post("*/a/v1/databuilder/runs/:id/promote", ({ params }) => {
+  http.post("*/a/v1/databuilder/runs/:id/promote", async ({ params, request }) => {
     const r = MOCK_STORY_RUNS.find((x) => x.id === (params as { id: string }).id);
     if (!r) return new HttpResponse(null, { status: 404 });
     if (r.buildMode !== "PROVISIONAL") return err(400, "VALIDATION_ERROR", "仅 PROVISIONAL 未审核域可整域晋升");
+    // WO-DBUI-FLOW：**无裁决不许写** —— 会改写既有链路定义的冲突没有人的裁决时显式报错，绝不静默覆盖。
+    let decisions: { target: string; key: string; action: string }[] = [];
+    try {
+      decisions = (((await request.json()) as { decisions?: typeof decisions })?.decisions) ?? [];
+    } catch { /* 老调用方不带 body */ }
+    const decided = new Set(decisions.map((d) => `${d.target}:${d.key}`));
+    if (!decided.has("linkType:order_of_customer")) {
+      return err(400, "VALIDATION_ERROR", "晋升被拦下：1 条冲突会改写既有本体定义，必须先有人的裁决 —— linkType:order_of_customer（终点类型 将被改写）");
+    }
     r.domainTrustLevel = "GOVERNED";
     r.domainPromotion = {
       promotedAt: new Date().toISOString(), promotedBy: "usr-planner", fromNamespace: r.provisionalNamespace ?? `demo::prov::${r.id}`,
       migratedObjects: 12, migratedDatasets: 3, migratedConnections: 1, migratedTypes: 2, promotedSolvers: [],
+      // 三份诚实名单：沿用了哪些既有类型 / 保留了哪些既有关系 / 经批准覆盖了哪些。
+      reusedTypeKeys: ["Order"],
+      keptLinkKeys: decisions.filter((d) => d.action === "USE").map((d) => d.key),
+      overwrittenLinkKeys: decisions.filter((d) => d.action === "MERGE").map((d) => d.key),
     };
     return HttpResponse.json(r);
   }),

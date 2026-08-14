@@ -5,6 +5,7 @@ import type { ActionDraft, BuildJob, BuildPhase, BuildPlan, BuildWorkflowRun, Cl
 import type { BackfillReport } from "@platform/contracts";
 import { buildModuleSyncMatrix } from "@platform/contracts";
 import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, decideActionDraft, fetchStoryRuns, runStoryBuild, previewStoryBuild, submitStoryInputs, backfillStoryRuns, fetchGeneratedScripts, stressStoryRuns, fetchIndustryTemplates, createSyntheticJob, fetchSyntheticJob, fetchGrowthTickets, fetchWorkflowRuns, startWorkflowRun, resumeWorkflowRun, approveWorkflowStep, fetchFdeGraph, verifyStoryRun, promoteStoryDomain } from "@/api/endpoints";
+import DataBuilderFlow from "./DataBuilderFlow";
 import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
 import { ValidationTracePanel } from "@/components/Answer/ValidationTracePanel";
 import { toastError, toast } from "@/store/toastStore";
@@ -617,9 +618,14 @@ function GrowthConsolePanel() {
       </div>
       <details style={{ fontSize: 12, ...FOLD, marginTop: 0, marginBottom: 6 }}>
         <summary style={FOLD_SUM}>这些工单从哪来？</summary>
+        {/* WO-DBUI-FLOW：屏上原写「三页归一（自成长收编）」「厂商中立施工」「区6」——
+            这三个词都是**说给写代码的人听的**，用户不需要知道这页是三个页合并来的，
+            也不需要认 PRD 的区号。改成"这些工单从哪来"的人话，能力一点没少。 */}
         <div>
-          三页归一（自成长收编）：建域/推演自检出的功能缺口在此沉淀为工单（厂商中立施工），与每条历史记录区6 的功能缺失自检贯通。
-          <a href="/admin/growth" style={{ marginLeft: 6 }}>→ 自成长聚焦视图（LOOP / 成长账本 / 工单全貌）</a>
+          建域和推演过程中自检出来的功能缺口，会在这里变成一张待办工单；每条历史记录里的「功能缺失自检」说的是同一批东西。
+          {/* 链接文案留的是**目的地页面的真实名字**（那是导航信息，不是开发口径）；
+              被拿掉的是「三页归一（自成长收编）」「厂商中立施工」这类说给写代码的人听的话。 */}
+          <a href="/admin/growth" style={{ marginLeft: 6 }}>→ 自成长聚焦视图（工单全貌）</a>
         </div>
       </details>
       {tickets.length === 0 ? (
@@ -1073,7 +1079,33 @@ export default function DataBuilderPage() {
 
   return (
     <div data-testid="data-builder-page">
+      {/*
+        WO-DBUI-FLOW：**主流程置顶，第一屏第一个可交互控件就是故事脚本输入**。
+        改前屏顶第一个是「快速合成」的模板下拉，用户的第一个动作在第二屏。
+        门 `scripts/check-dbui-flow-order.mjs` 咬死这条顺序（人眼查得出，但人眼不是机制）。
+      */}
+      <div className="panel" style={{ marginBottom: 14 }} data-testid="db-flow-panel">
+        <h2 style={{ margin: "0 0 8px", fontSize: 15 }}>数据构建</h2>
+        <DataBuilderFlow />
+      </div>
+
       <InPlaceApprovalPanel />
+
+      {/*
+        ⛔ WO-DBUI-FLOW §3.1：**5 个入口砍成 1 个「开始」**。
+        原来这一片（运行构建 / 建域并记入历史 / 倒推建域 / 运行工作流 / 异步运行 + dry-run·PROVISIONAL
+        两个 checkbox）在**屏顶第二屏**，逼用户在动手之前先做一道自己答不了的选择题
+        —— 屏上还挂着两个折叠区专门解释这些按钮，那是设计失败的自证。
+
+        **砍的是「开始前的选择」，不是能力**：整片降到页尾、默认折起。
+        · 三条底层路径（runDataBuilder / runStoryBuild / previewStoryBuild）一条没删，
+          其中两条已被主流程接管（第 ② 步走 dry-run 只读、第 ③ 步走 runStoryBuild 恒 PROVISIONAL）；
+        · previewStoryBuild（倒推补录）独有语义 = 产 InputManifest 并落一条 PENDING_INPUT 记录
+          可隔天回来补 —— 主流程第 ② 步替代不了「隔天回来」，故入口保留在此，
+          补录表单本身仍挂在下方历史记录里（未动）。
+      */}
+      <details className="panel" style={{ marginBottom: 14 }} data-testid="db-advanced">
+        <summary style={{ ...FOLD_SUM, fontWeight: 600 }}>进阶：逐条跑构建 / 工作流运行时 / 快速合成</summary>
       <div className="panel" style={{ marginBottom: 14 }}>
         <h2 style={{ margin: "0 0 4px" }}>数据构建发动机 · Foundry-Grade Data Builder</h2>
         {/* WO-UI-DECLUTTER-TOP3：这段是**流程口径**（含门禁硬/软规则），按规范 §1 属第二层，
@@ -1153,8 +1185,6 @@ export default function DataBuilderPage() {
         </details>
       </div>
 
-      <QuickSynthPanel />
-
       {job && (
         <div className="panel" style={{ marginBottom: 14 }} data-testid="db-result">
           <div className="section-title">
@@ -1212,8 +1242,12 @@ export default function DataBuilderPage() {
         </div>
       )}
 
-      {/* 工业级工作流运行时：故事建域的持久化步骤状态机时间线（可观测 + 一键 resume） */}
+      {/* 工业级工作流运行时：故事建域的持久化步骤状态机时间线（可观测 + 一键 resume）。
+          同步/异步两个按钮在这里面 —— 主流程不上屏（WO-DBUI-FLOW §3.1）。 */}
       <WorkflowTimelinePanel script={script} seed={seed} />
+
+      <QuickSynthPanel />
+      </details>
 
       {/* g8 故事驱动建域 · P1：历史推演记录时间线（StoryBuildRun，与自成长发动机成长账本归一为同一历史两面） */}
       <div className="panel" style={{ marginBottom: 14 }} data-testid="sbr-timeline">
@@ -1328,6 +1362,7 @@ export default function DataBuilderPage() {
         )}
       </div>
 
+      {/* 从别的页收编来的两块（缺口工单看板 / 快速合成）：**移出主流程**，不再夹在中间。 */}
       <GrowthConsolePanel />
 
       <div className="panel">

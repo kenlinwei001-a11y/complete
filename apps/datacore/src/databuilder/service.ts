@@ -11,6 +11,10 @@ import type {
   DataBuilderAgent,
   DataBuilderConfig,
   InputManifest,
+  PromoteBody,
+  PromoteConflict,
+  PromotePrecheck,
+  PromoteWorldDrift,
   ScaffoldManifest,
   ScaffoldReceipt,
   StoryBuildRun,
@@ -927,6 +931,180 @@ export class DataBuilderService {
     return r;
   }
 
+  // ---- WO-DBUI-FLOW · 入库前冲突预检（第 ⑥ 步「人工确定入库」的输入）--------------------
+  //
+  // 仓主原话：「模拟的数据是否可以入库，**需要系统再次复验自检，因为人不清楚系统里面的数据现状，
+  // 是否有冲突等等**」。
+  //
+  // ⚠ **R4 判定（必须留在代码里，不许只写在 PRD）**：
+  //    **预检不是审批的替代，是审批的输入。** 晋升本身仍是人工审批动作（端点 requireAdmin，
+  //    本体 §7 已登记）；预检只把「真写会发生什么」提前算出来给审批人看，
+  //    **一个字节都不写**（`promote-precheck.test.ts` 用全表指纹咬死，不是靠这句注释保证）。
+
+  /**
+   * 三类冲突的**唯一实现**（预检与真写共用同一份 —— 抄两份 = 预检说的和真写做的会漂移，
+   * 那正是本单要消灭的病）。纯函数：给定「隔离态」与「真租户态」两份快照即可判定，不碰任何 IO。
+   *
+   * 判据（工单 §3.3.1，三类**分开**报，绝不合成一个「N 条冲突」）：
+   *   · `TYPE_SAME_KEY`          真租户已有同 key ObjectType ⇒ 今天**静默跳过**（沿用既有，且不计入 migratedTypes）
+   *   · `LINK_SAME_KEY_DIFF_DEF` 同 key LinkType 且 from/to/cardinality **任一不同** ⇒ 今天**无条件覆盖**（静默真值写入）
+   *   · `LINK_SAME_KEY_SAME_DEF` 同 key LinkType 且三者全同 ⇒ 覆盖但无语义变化（仅 version+1）
+   */
+  static detectPromoteConflicts(input: {
+    provTypes: { key: string; displayName?: string; domain?: string; properties?: unknown[] }[];
+    realTypes: { key: string; displayName?: string; domain?: string; properties?: unknown[] }[];
+    provLinks: { key: string; fromTypeKey: string; toTypeKey: string; cardinality: string }[];
+    realLinks: { key: string; fromTypeKey: string; toTypeKey: string; cardinality: string }[];
+  }): PromoteConflict[] {
+    const conflicts: PromoteConflict[] = [];
+    const realTypeByKey = new Map(input.realTypes.map((t) => [t.key, t]));
+    const realLinkByKey = new Map(input.realLinks.map((l) => [l.key, l]));
+
+    const typeFace = (t: { displayName?: string; domain?: string; properties?: unknown[] }) => ({
+      显示名: t.displayName ?? "—",
+      所属域: t.domain ?? "—",
+      属性数: String((t.properties ?? []).length),
+    });
+
+    for (const t of [...input.provTypes].sort((a, b) => (a.key < b.key ? -1 : 1))) {
+      const existing = realTypeByKey.get(t.key);
+      if (!existing) continue; // 干净：本次真会新建
+      const a = typeFace(existing);
+      const b = typeFace(t);
+      conflicts.push({
+        kind: "TYPE_SAME_KEY",
+        target: "objectType",
+        key: t.key,
+        existingValue: a,
+        incomingValue: b,
+        // 类型冲突今天不逐字段覆盖（整条跳过），所以差异字段只作**提示**（让人看见"字段可能不一致"）。
+        changedFields: (["显示名", "所属域", "属性数"] as const).filter((f) => a[f] !== b[f]),
+        // USE = 沿用既有 = 今天的默认行为，也是最安全的那个（不动既有真值）。
+        suggestedAction: "USE",
+        availableActions: ["USE"], // RENAME/NEW 尚未实现 ⇒ 不给假按钮
+        requiresDecision: false, // 沿用既有不改真值 ⇒ 不堵；但必须在回执里点名（reusedTypeKeys）
+      });
+    }
+
+    const linkFace = (l: { fromTypeKey: string; toTypeKey: string; cardinality: string }) => ({
+      起点类型: l.fromTypeKey,
+      终点类型: l.toTypeKey,
+      基数: l.cardinality,
+    });
+
+    for (const l of [...input.provLinks].sort((a, b) => (a.key < b.key ? -1 : 1))) {
+      const existing = realLinkByKey.get(l.key);
+      if (!existing) continue; // 干净：本次真会新建
+      const a = linkFace(existing);
+      const b = linkFace(l);
+      const changedFields = (["起点类型", "终点类型", "基数"] as const).filter((f) => a[f] !== b[f]);
+      const diff = changedFields.length > 0;
+      conflicts.push({
+        kind: diff ? "LINK_SAME_KEY_DIFF_DEF" : "LINK_SAME_KEY_SAME_DEF",
+        target: "linkType",
+        key: l.key,
+        existingValue: a,
+        incomingValue: b,
+        changedFields,
+        // 定义不同 ⇒ 建议 USE（保既有真值，最安全）；定义相同 ⇒ MERGE（写了个一样的，无害）。
+        suggestedAction: diff ? "USE" : "MERGE",
+        availableActions: ["USE", "MERGE"],
+        // 只堵真正危险的那一步：会改写既有真值定义的那类。**不搞「必须先调预检」的隐式耦合。**
+        requiresDecision: diff,
+      });
+    }
+    return conflicts;
+  }
+
+  /** 闭包策略只读解析：**绝不** 走 `latestByKey`（它会 `ensurePreset` 写一条 builder）——预检必须零写入。 */
+  private async closurePolicyReadOnly(ctx: AuthCtx, builderKey?: string): Promise<DataBuilderConfig["closure"]> {
+    const key = builderKey || DEFAULT_BUILDER_KEY;
+    const list = (await this.repos.dataBuilderAgents.list(ctx.tenantId, (a) => a.key === key)).sort(
+      (a, b) => b.version - a.version,
+    );
+    const latest = list.find((a) => a.status === "PUBLISHED") ?? list[0];
+    return latest?.config.closure ?? DEFAULT_BUILDER_CONFIG.closure;
+  }
+
+  /**
+   * 入库前冲突预检（**只读**）：在 `promoteDomain` 真写之前，拿**当前**真租户状态**现算**。
+   *
+   * 为什么必须现算而不是复用建域时那份：缺口分析是**建域时（T1）**算的，人点「入库」是 **T2** ——
+   * 中间别人可能建了同名类型、改了闭包策略。`drift` 就是这两个时刻的并列。
+   */
+  async promotePrecheck(ctx: AuthCtx, runId: string): Promise<PromotePrecheck> {
+    const run = await this.repos.storyBuildRuns.get(ctx.tenantId, runId);
+    if (!run) throw notFound("story build run");
+    const provNs = run.provisionalNamespace;
+    if (!provNs) throw validationError("该域无隔离命名空间，无法预检");
+
+    const provTypes = await this.repos.ontologyTypes.list(provNs);
+    const provLinks = await this.repos.ontologyLinks.list(provNs);
+    const realTypes = await this.ontology.listTypes(ctx);
+    const realLinks = await this.repos.ontologyLinks.list(ctx.tenantId);
+    const conflicts = DataBuilderService.detectPromoteConflicts({ provTypes, realTypes, provLinks, realLinks });
+
+    const counts = {
+      typeSameKey: conflicts.filter((c) => c.kind === "TYPE_SAME_KEY").length,
+      linkSameKeyDiffDef: conflicts.filter((c) => c.kind === "LINK_SAME_KEY_DIFF_DEF").length,
+      linkSameKeySameDef: conflicts.filter((c) => c.kind === "LINK_SAME_KEY_SAME_DEF").length,
+    };
+
+    // ---- T1/T2 世界漂移：两维的世界依赖不同，分开报（契约注释已写明诚实边界）---------
+    const drift = await this.computeWorldDrift(ctx, run);
+
+    return {
+      runId,
+      counts,
+      conflicts,
+      clean: {
+        objectTypes: provTypes.length - counts.typeSameKey,
+        linkTypes: provLinks.length - counts.linkSameKeyDiffDef - counts.linkSameKeySameDef,
+      },
+      drift,
+      pendingDecisions: conflicts.filter((c) => c.requiresDecision).length,
+      checkedAt: nowIso(),
+    };
+  }
+
+  /** T1（建域时封存）vs T2（预检时现算）并列。纯读。 */
+  private async computeWorldDrift(ctx: AuthCtx, run: StoryBuildRun): Promise<PromoteWorldDrift> {
+    const diffs: PromoteWorldDrift["diffs"] = [];
+    const snapClosure = (c: ClosureReport) => ({
+      gatePassed: c.gatePassed,
+      objectsBound: c.objectsBound,
+      dataOrphans: c.dataOrphans,
+      forwardMissing: c.forwardMissing,
+      chainBroken: c.chainBroken ?? 0,
+      shapeBroken: c.shapeBroken ?? 0,
+    });
+    let closureAtBuild: PromoteWorldDrift["closureAtBuild"];
+    let closureAtPrecheck: PromoteWorldDrift["closureAtPrecheck"];
+    let gapAtBuild: PromoteWorldDrift["gapAtBuild"];
+    let gapAtPrecheck: PromoteWorldDrift["gapAtPrecheck"];
+
+    const plan = run.buildPlan;
+    if (plan) {
+      const policy = await this.closurePolicyReadOnly(ctx, plan.builderKey);
+      closureAtPrecheck = snapClosure(validateClosure(plan, policy, run.buildMode ?? "STRICT"));
+      if (run.closureReport) closureAtBuild = snapClosure(run.closureReport);
+      // `analyzeGap` **真的读当前真租户**（已有类型/规则/切片/数据集）—— 这才是世界漂移的检出维。
+      gapAtPrecheck = (await analyzeGap({ repos: this.repos, ontology: this.ontology }, ctx, plan, run.scaffoldReceipt)).totals;
+      if (run.gapAnalysis) gapAtBuild = run.gapAnalysis.totals;
+    }
+
+    const cmp = <T extends Record<string, unknown>>(dim: "closure" | "gap", a?: T, b?: T) => {
+      if (!a || !b) return;
+      for (const f of Object.keys(a)) {
+        if (String(a[f]) !== String(b[f])) diffs.push({ dim, field: f, atBuild: String(a[f]), atPrecheck: String(b[f]) });
+      }
+    };
+    cmp("closure", closureAtBuild, closureAtPrecheck);
+    cmp("gap", gapAtBuild, gapAtPrecheck);
+
+    return { closureAtBuild, closureAtPrecheck, gapAtBuild, gapAtPrecheck, diffs, changed: diffs.length > 0 };
+  }
+
   /**
    * A18.4 整域晋升编排（用户裁决 ⑤：晋升整域 + 逐制品）：人工审核通过一个 PROVISIONAL 未审核域后，
    * 一次性把"隔离预览"转为"治理真值"——① 把隔离命名空间（伪租户 `tenant::prov::runId`）的
@@ -934,8 +1112,13 @@ export class DataBuilderService {
    * ② 逐制品晋升本域产出的临时求解器 PROVISIONAL → GOVERNED（解锁写真值，复用 promoteSolver）；
    * ③ 翻转 domainTrustLevel UNVERIFIED→GOVERNED + 记 domainPromotion + 发 domain.promoted。
    * 幂等：已 GOVERNED 直接返回（不重复迁移）。守 R4：晋升=人工审批动作（端点 requireAdmin）。
+   *
+   * **WO-DBUI-FLOW**：加一道「预检结论 + 人的裁决」入参。
+   * ⚠ 刻意**不**做成「必须先调预检」的隐式耦合 —— 没有必裁冲突时，老调用方（不传 decisions）
+   *   行为逐字节不变；**只有**「会改写既有链路定义」这一类无裁决时**显式报错**，
+   *   绝不静默按默认动作（无条件覆盖）写。**预检不是审批的替代，是审批的输入（R4）。**
    */
-  async promoteDomain(ctx: AuthCtx, runId: string): Promise<StoryBuildRun> {
+  async promoteDomain(ctx: AuthCtx, runId: string, body?: PromoteBody): Promise<StoryBuildRun> {
     const run = await this.repos.storyBuildRuns.get(ctx.tenantId, runId);
     if (!run) throw notFound("story build run");
     if (run.buildMode !== "PROVISIONAL") throw validationError("仅 PROVISIONAL 未审核域可整域晋升");
@@ -943,17 +1126,51 @@ export class DataBuilderService {
     const provNs = run.provisionalNamespace;
     if (!provNs) throw validationError("该 PROVISIONAL 域无隔离命名空间，无法晋升");
 
-    // ① 迁移本体类型/链路（real 缺则建；已存在则 upsert 续版本）。
+    // ① 迁移本体类型/链路（real 缺则建；已存在则按**人的裁决**处理，不再静默）。
+    //    冲突判定与预检**共用同一份实现** `detectPromoteConflicts` —— 抄两份就会漂移：
+    //    预检说的和真写做的对不上，比没有预检更坏。
     const provTypes = await this.repos.ontologyTypes.list(provNs);
+    const provLinks = await this.repos.ontologyLinks.list(provNs);
+    const conflicts = DataBuilderService.detectPromoteConflicts({
+      provTypes,
+      realTypes: await this.ontology.listTypes(ctx),
+      provLinks,
+      realLinks: await this.repos.ontologyLinks.list(ctx.tenantId),
+    });
+    const decisionOf = new Map(
+      (body?.decisions ?? []).map((d) => [`${d.target}:${d.key}`, d.action] as const),
+    );
+    // **无裁决不许写**（只堵会改写既有真值的那一类；其余保持老行为 ⇒ 老调用方零回归）。
+    const undecided = conflicts.filter((c) => c.requiresDecision && !decisionOf.has(`${c.target}:${c.key}`));
+    if (undecided.length > 0) {
+      throw validationError(
+        `晋升被拦下：${undecided.length} 条冲突会改写既有本体定义，必须先有人的裁决（先调 promote-precheck 看清冲突，再带 decisions 入库）—— ` +
+          undecided.map((c) => `${c.target}:${c.key}（${c.changedFields.join("/")} 将被改写）`).join("；"),
+      );
+    }
+
     let migratedTypes = 0;
+    const reusedTypeKeys: string[] = [];
     for (const t of provTypes) {
       if (!(await this.ontology.getType(ctx, t.key))) {
         await this.ontology.upsertType(ctx, { key: t.key, displayName: t.displayName, domain: t.domain, properties: t.properties, derivedProperties: t.derivedProperties, sourceBindings: t.sourceBindings });
         migratedTypes++;
+      } else {
+        // 老行为保持（沿用既有、本次不新建），但**不再静默** —— 回执里点名，屏上看得见。
+        reusedTypeKeys.push(t.key);
       }
     }
-    for (const lt of await this.repos.ontologyLinks.list(provNs)) {
+    const keptLinkKeys: string[] = [];
+    const overwrittenLinkKeys: string[] = [];
+    for (const lt of provLinks) {
+      const c = conflicts.find((x) => x.target === "linkType" && x.key === lt.key);
+      // 裁决 USE = 沿用既有、不覆盖（新能力）；缺省沿用老行为 = 覆盖。
+      if (c && decisionOf.get(`linkType:${lt.key}`) === "USE") {
+        keptLinkKeys.push(lt.key);
+        continue;
+      }
       await this.ontology.upsertLinkType(ctx, { key: lt.key, fromTypeKey: lt.fromTypeKey, toTypeKey: lt.toTypeKey, cardinality: lt.cardinality });
+      if (c?.kind === "LINK_SAME_KEY_DIFF_DEF") overwrittenLinkKeys.push(lt.key); // R4 留痕：每条都是一次经审批的真值写入
     }
 
     // ② 迁移连接器 + 原始表 + 原始行（id 保持 → run.producedDatasets/Connections 引用迁移后仍有效）。
@@ -1013,6 +1230,10 @@ export class DataBuilderService {
         migratedConnections,
         migratedTypes,
         promotedSolvers,
+        // WO-DBUI-FLOW 诚实位：沿用/保留/覆盖三份名单，让「屏上数字看不出发生了什么」这个盲区闭掉。
+        reusedTypeKeys,
+        keptLinkKeys,
+        overwrittenLinkKeys,
       },
     };
     await this.repos.storyBuildRuns.put(promoted);

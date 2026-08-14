@@ -48,7 +48,7 @@ import { resolveFieldRoles } from "./solvers/field-roles.js";
 // WO-DATABUILDER-PIPELINE：接入/导入改由 pipeline 驱动（解析/对账的纯函数由 intake-pipeline 内部调用）。
 import { runIntakePipeline, runIntakeImportPipeline } from "./databuilder/intake-pipeline.js";
 import { projectPipelineOrder } from "./databuilder/pipeline-service.js";
-import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema, BuildPipelineUpsertSchema } from "@platform/contracts";
+import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema, BuildPipelineUpsertSchema, PromoteBodySchema } from "@platform/contracts";
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
 // WO-WAITING-STATES-FE · 业务流程层等待态下发（GET /a/v1/process-definitions）：
 // 词表与职能登记册随响应下发，前端不得再写第二份字面量数组（process.ts §1 单源纪律）。
@@ -4919,12 +4919,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     requireAdmin(c);
     return databuilder.verifyBuild(c, (req.params as { id: string }).id);
   });
+  // WO-DBUI-FLOW · 入库前冲突复验（第 ⑥ 步「人工确定入库」的**输入**）：拿当前真租户状态**现算**，
+  // 三类冲突分开报 + T1/T2 世界漂移。**只读**（`promote-precheck.test.ts` 用全表指纹咬死）。
+  // ⚠ R4：**预检不是审批的替代，是审批的输入** —— 晋升仍是人工审批动作（requireAdmin 不变）。
+  app.post("/a/v1/databuilder/runs/:id/promote-precheck", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.promotePrecheck(c, (req.params as { id: string }).id);
+  });
   // A18.4 整域晋升编排：人工审核通过 PROVISIONAL 未审核域 → 隔离数据迁入真租户 + 逐制品晋升临时求解器
   // GOVERNED + 翻转域信任级（R4：晋升=人工审批动作）。发 domain.promoted。
+  // WO-DBUI-FLOW：body 可带人的裁决（decisions）；会改写既有本体定义的冲突**无裁决即报错**，不静默覆盖。
   app.post("/a/v1/databuilder/runs/:id/promote", async (req) => {
     const c = ctx(req);
     requireAdmin(c);
-    return databuilder.promoteDomain(c, (req.params as { id: string }).id);
+    const body = req.body ? parseBody(PromoteBodySchema, req.body) : undefined;
+    return databuilder.promoteDomain(c, (req.params as { id: string }).id, body);
   });
   // prototype-intake 正门：上传原型 HTML → 确定性抽数据表 + 关系（R6）→ 对既有本体字段对账预览
   // （能映射自动接、映射不上生成候选给人确认，类比 MergeCandidate；不调 LLM）。发 prototype.intake_recorded。
