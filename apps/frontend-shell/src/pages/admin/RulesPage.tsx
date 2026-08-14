@@ -215,8 +215,8 @@ export default function RulesPage() {
                           · B 侧 `/b/v1/rules/:key/references`：agent/scenario/workflow/plan 的编排绑定
                           同一条规则可能 A 侧 0、B 侧 3。把两个数加起来或只取一个，都是拿一个数盖住两个事实。
                           注意入参不同：A 侧吃 `rule.id`，B 侧吃 `rule.key`（后端签名如此）。 */}
-                      <ReferencesPanel kind="rule" id={r.id} title="被上报引用" />
-                      <ReferencesPanel kind="rule-orchestration" id={r.key} title="被编排资源引用" />
+                      <ReferencesPanel kind="rule" id={r.id} />
+                      <ReferencesPanel kind="rule-orchestration" id={r.key} />
                     </td>
                   </tr>
                 )}

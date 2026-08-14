@@ -27,13 +27,18 @@ export interface ReferencesPanelProps {
   kind: ReferenceTargetKind;
   /** 后端路由的 `:id` / `:key` —— 各 kind 用哪个由 `fetchReferences` 单点决定，调用方不必知道。 */
   id: string;
-  /** 记号前缀。缺省是通用措辞；某些页面要说得更具体（如「被哪些编排资源引用」）。 */
-  title?: string;
 }
 
-/** 本面板全部文案的**唯一**出处。改这里 ⇒ 所有挂载点同时变（这就是「同一份实现」的可证伪判据）。 */
+/**
+ * 本面板全部文案的**唯一**出处。改这里 ⇒ 所有挂载点同时变（这就是「同一份实现」的可证伪判据）。
+ *
+ * ⚠ 记号文案刻意**不做成 prop**（两个原因，都实测过）：
+ *  ① 做成 `title="…"` 传进来，各页就能各写各的措辞 —— 「同一份实现」当场破功；
+ *  ② `scripts/check-ui-first-layer.mjs` 把**文案型属性**（`title`/`label`/`desc`…）计作
+ *     一条第一层信息块。实测：8 个挂载点各传一个 `title` ⇒ 5 个页面的 `first` 各 +1，
+ *     棘轮当场变红。措辞收在这里，挂载处只剩 `kind`/`id` 两个机器参数，页面不长信息块。
+ */
 export const REFERENCES_COPY = {
-  title: "引用反查",
   countSuffix: "处引用",
   unknown: "引用未查出",
   none: "今天没有引用方（可以放心改）。",
@@ -42,7 +47,20 @@ export const REFERENCES_COPY = {
   via: "经",
 } as const;
 
-export default function ReferencesPanel({ kind, id, title }: ReferencesPanelProps): JSX.Element {
+/** 每族问的那一句话（措辞随族不同，实现只有一份）。 */
+const KIND_LABEL: Record<ReferenceTargetKind, string> = {
+  agent: "被谁引用",
+  workflow: "被谁引用",
+  skill: "被谁引用",
+  "mcp-config": "被谁引用",
+  rule: "被上报引用",
+  "rule-orchestration": "被编排资源引用",
+  solver: "改它会波及谁",
+  slice: "被谁引用",
+  "external-signal": "被哪些因果因子引用",
+};
+
+export default function ReferencesPanel({ kind, id }: ReferencesPanelProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const q = useQuery({
     queryKey: ["references", kind, id],
@@ -67,7 +85,7 @@ export default function ReferencesPanel({ kind, id, title }: ReferencesPanelProp
         onClick={() => setOpen((v) => !v)}
         data-testid={`references-toggle-${testKey}`}
       >
-        {title ?? REFERENCES_COPY.title}
+        {KIND_LABEL[kind]}
         <span
           className={`badge ${q.isError ? "amber" : q.isLoading ? "" : q.data!.count > 0 ? "amber" : "green"}`}
           style={{ marginLeft: 6 }}

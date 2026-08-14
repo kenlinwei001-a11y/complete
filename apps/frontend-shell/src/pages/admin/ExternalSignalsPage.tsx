@@ -99,7 +99,7 @@ export default function ExternalSignalsPage() {
                         ⚠ 这条端点的响应形状与引用族其余各条**都不同**（它还带因果边与指标归因），
                         归一在 `fetchReferences` 那一层做；后端的 `metricLinkage=pending`
                         原样带到 note 上屏 —— 「归因还没接」不许被读成「不影响任何指标」。 */}
-                    <ReferencesPanel kind="external-signal" id={s.signalKey} title="被哪些因果因子引用" />
+                    <ReferencesPanel kind="external-signal" id={s.signalKey} />
                   </td>
                 </tr>
               )}

@@ -189,7 +189,7 @@ export default function SlicesPage() {
                         改一条切片的 root/paths 会波及哪些已上报的 plan/intent/agent。
                         事实源是 B→A 的上报登记表（`reportedRefs`），与 B 侧那几条同族但不同源 ——
                         统一走同一块面板，形状差异在 `fetchReferences` 那一层归一。 */}
-                    <ReferencesPanel kind="slice" id={s.sliceKey} title="被谁引用" />
+                    <ReferencesPanel kind="slice" id={s.sliceKey} />
                     <SliceInspector sliceKey={s.sliceKey} canEdit={canEdit} onChanged={() => refreshSlice(s.sliceKey)} />
                   </td>
                 </tr>

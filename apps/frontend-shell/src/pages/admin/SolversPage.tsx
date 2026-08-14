@@ -268,7 +268,7 @@ function SolverImpactPanel({ solverKey }: { solverKey: string }) {
 
   return (
     <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 8 }} data-testid={`solver-impact-${solverKey}`}>
-      <ReferencesPanel kind="solver" id={solverKey} title="改它会波及谁" />
+      <ReferencesPanel kind="solver" id={solverKey} />
 
       <div>
         <b style={{ fontSize: 12 }}>在本租户本体里绑到哪（A13 地板语义 · 确定性无 LLM）</b>

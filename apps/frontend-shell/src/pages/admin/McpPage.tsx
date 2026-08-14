@@ -119,7 +119,7 @@ function McpEditor({ config, onChanged }: { config: McpServerConfig | null; onCh
         </div>
         {/* WO-REFERENCES-FAMILY（`GET /b/v1/mcp-configs/:id/references`）：
             改/停一个 MCP 配置，会打断哪些 Agent 与流程。新建态（config==null）没有 id 可查，故不渲染。 */}
-        {config && <ReferencesPanel kind="mcp-config" id={config.id} title="被谁引用" />}
+        {config && <ReferencesPanel kind="mcp-config" id={config.id} />}
         {testMut.data && (
           <div data-testid="mcp-tools">
             <div className="section-title">{t.discoveredTools}</div>
