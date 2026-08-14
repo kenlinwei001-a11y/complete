@@ -52,7 +52,7 @@ describe("WO-ACTIVE-EDGE-UX · 前端接缝：从 workspace 到「关掉一条�
   });
 
   // ── ① 可达层：八页挂载点（与门脚本共用同一份 analyze）────────────────────────────
-  it("🔴 可达：八个推演页都挂了 EdgeActivePanel，且都挂在主组件里（与门脚本同一份判据）", async () => {
+  it("🔴 可达：九个推演页都挂了 EdgeActivePanel，且都挂在主组件里（与门脚本同一份判据）", async () => {
     const analyze = await loadAnalyze();
     const PAGES: [string, string][] = [
       ["sandbox", "apps/frontend-shell/src/views/sim/SandboxView.tsx"],
@@ -63,6 +63,9 @@ describe("WO-ACTIVE-EDGE-UX · 前端接缝：从 workspace 到「关掉一条�
       ["optimize-whatif", "apps/frontend-shell/src/views/OptimizeWhatifView.tsx"],
       ["decision-play", "apps/frontend-shell/src/views/DecisionPlayView.tsx"],
       ["sop-balance", "apps/frontend-shell/src/views/sim/SopBalanceView.tsx"],
+      // 第 9 页 —— 工单 §1 那张表漏的：它按 registry 的 renderer 语义取表、把本页读成「风险看板」，
+      // 而真实 workspace 下发的标题是「产能推演」（`mocks/fixtures.ts` 的 `{ key:"risk", title:"产能推演" }`）。
+      ["risk-board", "apps/frontend-shell/src/views/RiskBoardView.tsx"],
     ];
     // 金丝雀：同一个 analyze 对两个已知答案的合成样例必须给出相反结论。
     // 不跑它就没资格把下面的"八页全过"读成结论（铁律 0.6）。

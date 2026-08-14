@@ -27,7 +27,15 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-/** §1 表里那 8 个推演页（renderer id → 源码文件）。改这张表 = 改本单的覆盖面，要有理由。 */
+/**
+ * 推演页清单（renderer id → 源码文件）。改这张表 = 改本单的覆盖面，要有理由。
+ *
+ * 前 8 条来自工单 §1；**第 9 条 `risk-board` 是复核时补的**：工单按 registry 里"带推演语义的
+ * renderer"取表，把它读成了「风险看板」，而**真实 workspace 下发的标题是「产能推演」**
+ * （`apps/frontend-shell/src/mocks/fixtures.ts` 的 `{ key: "risk", title: "产能推演" }`）。
+ * 判据落在**用户看到的那个名字**上，不落在文件名/renderer key 上 ——
+ * 仓主说的「所有推演的功能」是按用户认知说的，不是按我们的目录说的。
+ */
 const PAGES = [
   ["sandbox", "apps/frontend-shell/src/views/sim/SandboxView.tsx"],
   ["project-sim", "apps/frontend-shell/src/views/sim/ProjectSimView.tsx"],
@@ -37,6 +45,7 @@ const PAGES = [
   ["optimize-whatif", "apps/frontend-shell/src/views/OptimizeWhatifView.tsx"],
   ["decision-play", "apps/frontend-shell/src/views/DecisionPlayView.tsx"],
   ["sop-balance", "apps/frontend-shell/src/views/sim/SopBalanceView.tsx"],
+  ["risk-board", "apps/frontend-shell/src/views/RiskBoardView.tsx"], // ← 第 9 页（工单表漏的，见上）
 ];
 
 /**

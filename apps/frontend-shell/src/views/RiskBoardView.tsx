@@ -21,6 +21,7 @@ import { useActionDraft } from "./sim/shared";
 import { DynamicLeverPanel } from "./sim/DynamicLeverPanel";
 import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
+import EdgeActivePanel from "./sim/EdgeActivePanel";
 import { BaseOutlookPanel } from "./BaseOutlookPanel";
 import { DispositionDetailPanel } from "./DispositionDetailPanel";
 import { CapacityDerivationDag } from "./capacity/CapacityDerivationDag";
@@ -572,6 +573,13 @@ export default function RiskBoardView(_props: ViewRendererProps) {
       {/* 历史处置案例 + 风险推演编排过程 DAG（两态共享·看板下半区）。 */}
       <HistoricalCasesSection />
       <InferenceProcessPanel testId="inference-risk" solved />
+      {/* WO-ACTIVE-EDGE-UX 挂载点 —— **这是工单那张表漏掉的第 9 页**。
+          工单 §1 按 registry 里"带推演语义的 renderer"列了 8 页，把本页读成了「风险看板」；
+          但**真实 workspace 下发的标题是「产能推演」**（`mocks/fixtures.ts` 的
+          `{ key: "risk", title: "产能推演", renderer: "risk-board" }`，后端 BUILTIN_VIEWS 同源）。
+          判据落在**用户看到的那个名字**上，不落在文件名/renderer key 上 ——
+          「所有推演的功能」是按用户认知说的，不是按我们的目录说的。 */}
+      <EdgeActivePanel pageKey="risk-board" />
     </div>
   );
 }
