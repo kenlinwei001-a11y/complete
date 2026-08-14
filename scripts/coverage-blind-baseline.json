@@ -303,12 +303,6 @@
       "symbol": "ct.basis",
       "why": "遍历 `ct.basis` 的循环体里有 expect，但整条用例没有任何咬住 `ct.basis` 条数的断言 ⇒ 该集合为空时循环一圈不跑、零断言执行、用例照绿。反例输入：让 `ct.basis` 返回 `[]` —— 0/N 与 N/N 同色。"
     },
-    "apps/datacore/test/a6-cross-segment-contention.seam.test.ts :: CONTENTION-3 · 「无争用」必须是**显式结论**：≥2 业务线但不越线 ⇒ NO_CONTENTION；单业务线压满 ⇒ 不许冒充争用 :: EXISTS_FOR_ALL :: notContended": {
-      "detector": "EXISTS_FOR_ALL",
-      "file": "apps/datacore/test/a6-cross-segment-contention.seam.test.ts:201",
-      "symbol": "notContended",
-      "why": "派生集合 `notContended` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
-    },
     "apps/datacore/test/a6-cross-segment-contention.seam.test.ts :: CONTENTION-5 · scope.businessTypes 放行后：承载业务线的**真裁**，不承载的**诚实报 UNKNOWN**（绝不静默退回全域） :: EXISTS_FOR_ALL :: carriers": {
       "detector": "EXISTS_FOR_ALL",
       "file": "apps/datacore/test/a6-cross-segment-contention.seam.test.ts:245",
@@ -518,12 +512,6 @@
       "file": "apps/datacore/test/enterprise-state.seam.test.ts:62",
       "symbol": "orders",
       "why": "派生集合 `orders` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
-    },
-    "apps/datacore/test/ext-signal-references.test.ts :: C5 诚实空：无因果引用的信号 → hasReferences=false + note（不伪造） :: EXISTS_FOR_ALL :: other": {
-      "detector": "EXISTS_FOR_ALL",
-      "file": "apps/datacore/test/ext-signal-references.test.ts:53",
-      "symbol": "other",
-      "why": "派生集合 `other` 上只有存在性断言（toBeGreaterThan(0) / not.toHaveLength(0) / toContain / toBeTruthy），既无基数断言也无对全集的逐条遍历 ⇒ 拿 ∃ 冒充 ∀。反例输入：只产出 1 条也全绿 —— 1/N 与 N/N 同色。"
     },
     "apps/datacore/test/factor-scope-singlesource.seam.test.ts :: ⑧ 数值不退化：每个因子的细分层既不整层恒 0，也不把整个基地缺口独吞（单对象归一退化门） :: LOOP_NO_FLOOR :: baseOnly.scope?.availableFactors??[]": {
       "detector": "LOOP_NO_FLOOR",

@@ -94,8 +94,19 @@ describe("WO-R9-NAVREACH · §A 派单链路（从真 HTTP 出发·摘掉 manife
       expect(ws.features, `${FEATURE_KEY} 未下发 ⇒ ViewPage 第一道闸关死 ⇒ 页面 404`).toContain(FEATURE_KEY);
 
       // ③ 可发现性的后端那一半：它得真出现在 business 导航里，前端才有东西可归组
+      const viewKeys = new Set(ws.views.map((v) => v.viewKey));
       const nav = ws.navigation.filter((n) => n.group === "business").map((n) => n.viewKey ?? n.key);
+      expect(nav.length).toBeGreaterThan(1);
       expect(nav, `${VIEW_KEY} 不在 business 导航里 ⇒ 前端 NAV_GROUPS 查不中 ⇒ 条目静默消失`).toContain(VIEW_KEY);
+      /**
+       * ∀ 而非 ∃：**一条**导航都不许指向 `workspace.views` 之外的键 —— 那是孤儿入口，
+       * 侧栏点得着、点进去 403/404。只咬被测那一个键时，「N 条导航里只有它对得上」
+       * 与「N 条全对得上」测试同色（假绿第 12 形态）。
+       * 这与 §B 的 R3 是同一条不变量的两面：那边验"关了就不许留在导航里"，
+       * 这边验"留在导航里的必须真发得出视图"。
+       */
+      const orphans = nav.filter((k) => !viewKeys.has(k));
+      expect(orphans, `business 导航里有 workspace.views 之外的孤儿入口：${orphans.join("、")}`).toEqual([]);
     }
   });
 
