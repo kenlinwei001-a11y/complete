@@ -71,15 +71,41 @@ describe("WO-BEFE-E ② 执行计划改 / 发（PUT …/plans/:id · POST …/pl
   });
   afterEach(() => cleanup());
 
-  it("②-A 用户看得到那条死路：新建的计划是 DRAFT，且第一层写明「执行期解析不到」", async () => {
+  /**
+   * ⚠ **本条断言在 WO-BEFE-CLEANUP 被改过一次，改的理由必须记下来**（否则后人会以为判据被放宽了）。
+   *
+   * 原文只有一句 `expect(warn.textContent).toContain("执行期解析不到")` ——
+   * 它把「**状态**在不在第一层」和「**后果**说没说清」压成了同一句断言。
+   * 分层改造（口径/后果降 `?` 浮层，规范 §2 R-UI-3）之后这一句当场报红，
+   * 而它报红的原因**不是诚实位没了**，是它换了承载层。
+   *
+   * 判据因此拆成两半，**两半都比原来严**：
+   *   · 第一层：状态词「DRAFT 未发布」必须**默认可见**（不点就得知道这条链是断的）；
+   *   · 浮层：后果（执行期解析不到 / latest 只认已发布）必须**默认不在 DOM、hover 后真可见**。
+   * 少任何一半都说明分层做坏了 —— 前者少 = 状态被一起降走，后者少 = 内容被删。
+   */
+  it("②-A 用户看得到那条死路：DRAFT 状态在第一层，后果在 `?` 浮层（默认不可见·hover 后可见）", async () => {
     const user = userEvent.setup();
     await openDraftIntent();
     await createAndBindDraft(user);
 
+    // ── 第一层：状态词常驻可见，不需要任何交互。
     const warn = screen.getByTestId("plan-draft-warning");
-    // 诚实位必须说清楚**后果**（执行期解析不到），不是一句"未发布"。
-    expect(warn.textContent).toContain("执行期解析不到");
+    expect(warn).toBeVisible();
+    expect(warn.textContent, "状态词跟着解释一起降走了 ⇒ 用户不点就不知道链断了").toContain("DRAFT 未发布");
     expect(screen.getByTestId("plan-editor-status").textContent).toBe("DRAFT");
+
+    // ── 浮层：后果默认**不在 DOM**（不是 hidden）。
+    expect(
+      screen.queryByTestId("info-body-catalog-risk-draft"),
+      "后果默认就摊在第一层 ⇒ 分层没做",
+    ).toBeNull();
+
+    // ── 真 hover 才出来，且原文那句后果一个字没丢（D4 守恒：降层 ≠ 删除）。
+    await user.hover(screen.getByTestId("info-catalog-risk-draft"));
+    const body = await screen.findByTestId("info-body-catalog-risk-draft");
+    expect(body).toBeVisible();
+    expect(body.textContent, "后果被删了，不是降层").toContain("执行期解析不到");
   });
 
   it("②-B 真 URL + 真 method/body：改步骤 → PUT …/catalog/plans/<id>，body.steps = 编辑框里那份", async () => {

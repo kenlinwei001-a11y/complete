@@ -129,7 +129,24 @@ describe("WO-BEFE-E ③ 对账候选 HITL 队列（GET …/reconcile-candidates 
     );
     await intakeAndParse(user);
     const box = await screen.findByTestId("reconcile-queue-error");
-    expect(box.textContent).toContain("不是");
+
+    /*
+     * ⚠ WO-BEFE-CLEANUP 改了这条的**承载层**（`docs/CONVENTION-ui-information-layering.md` §1）：
+     *   「队列不可用」是**状态**，留第一层（不点就得看见）；
+     *   「不是『没有候选』，是这次没查到」是**诚实位说明**，规范归 `?` 浮层。
+     * 判据随之拆两半，**两半都比原来严**（原来一句 `toContain("不是")` 连"不是"出现在哪都不管）：
+     *   ① 状态词默认可见；② 那句「≠ 没有候选」在浮层里、默认不在 DOM、hover 后真可见。
+     * 这条门要治的病（「我没找到」被说成「它不存在」）一点没放宽 —— 反而多咬了一层。
+     */
+    expect(box).toBeVisible();
+    expect(box.textContent, "连「不可用」这个状态都没了 ⇒ 用户会以为查过了且确实没有").toContain("队列不可用");
+
+    expect(screen.queryByTestId("info-body-intake-unavailable")).toBeNull();
+    await user.hover(screen.getByTestId("info-intake-unavailable"));
+    const why = await screen.findByTestId("info-body-intake-unavailable");
+    expect(why).toBeVisible();
+    expect(why.textContent, "「≠ 没有候选」这句被删了，不是降层").toContain("不是");
+
     expect(screen.queryByTestId("reconcile-queue-empty"), "读不出来被渲染成「队列为空」⇒ 把「我没找到」说成了「它不存在」").toBeNull();
   });
 
