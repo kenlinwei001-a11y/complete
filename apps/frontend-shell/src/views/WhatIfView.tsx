@@ -5,6 +5,7 @@ import { fetchObjectTypes, queryObjectsPaged, invokeSolver } from "@/api/endpoin
 import { toastError } from "@/store/toastStore";
 import type { ViewConfigVM } from "@/api/types";
 import zh from "@/locales/zh";
+import { InfoPopover } from "@/components/InfoPopover";
 // WO-BEFE-WIRE-3 · 影响传播统一入口（POST /a/v1/simulation/impact-analysis）的**唯一生产调用方**。
 // 挂在本页而不是另开一页：这一页的表单（类型/对象/属性/假设值）**就是**那个端点要的 `change`，
 // 另造一张页 = 让用户把同一个假设填两遍，且两处口径迟早分家。
@@ -169,9 +170,19 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }} data-testid="what-if">
       {/* ── 说明 ── */}
       <div className="panel" data-testid="wi-intro">
-        <div className="section-title">通用假设推演 · 把某属性改成 X，看下游怎样</div>
+        <div className="section-title">
+          通用假设推演 · 把某属性改成 X，看下游怎样
+          {/* 「这一页怎么用」是一整句操作说明 —— 按规范 §1 它既不是数值、也不是状态、也不是名字，
+              降进 `?` 浮层，原文一字未删。 */}
+          <InfoPopover topic={zh.whatIf.info.howItWorks} testId="wi-intro-how">
+            <span data-testid="wi-intro-how-body">
+              选一个对象、改它的某个属性到假设值 → 前向重算下游派生链，给出 before / after 变化与影响面。
+            </span>
+          </InfoPopover>
+        </div>
+        {/* 「不落库」这条**留第一层**（规范 §4.2）：它若为真，用户对下面所有读数的解读完全不同 ——
+            不看它，这一页会被当成真的改了数据。破坏性/写入语义的诚实位不降层。 */}
         <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.7 }}>
-          选一个对象、改它的某个属性到假设值 → 前向重算下游派生链，给出 before / after 变化与影响面。
           <b>不落库、确定性</b>——纯试算，不改真实数据。
         </div>
       </div>
@@ -263,7 +274,18 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
           `POST /a/v1/simulation/impact-analysis`（世界隔离 + 对象/流程/决策/KPI 四维 + 诚实标记）。
           两个出口共用上面同一张表单 —— 用户不必把假设填两遍。 */}
       <div className="panel" data-testid="wi-impact-panel">
-        <div className="section-title">① b 在推演世界里分析影响（世界隔离 · 四维分项）</div>
+        {/* 标题只留**名字**；括号里那串「世界隔离 · 四维分项」说的是这一格**怎么算的**，
+            是口径不是名字（规范 §1 / R-UI-3）—— 连同「跟上面那个按钮差在哪」一起降浮层。 */}
+        <div className="section-title">
+          ① b 在推演世界里分析影响
+          <InfoPopover topic={zh.whatIf.info.impactWorld} testId="wi-impact-world">
+            <span data-testid="wi-impact-world-body">
+              世界隔离 · 四维分项：上面那个按钮走 generic_inference（无世界、单个裸计数）；
+              这一格跑在被隔离的推演世界里，给对象 / 流程 / 决策 / KPI 四维分项 + 诚实标记。
+              两个出口共用同一张表单，假设不必填两遍。
+            </span>
+          </InfoPopover>
+        </div>
         <ImpactAnalysisPanel change={impactChange} />
       </div>
 
@@ -285,9 +307,16 @@ function WhatIfResult({ out, currentProp }: { out: GenericInferenceOutput; curre
     return (
       <div className="panel empty-state" data-testid="wi-empty" style={{ padding: 24 }}>
         <div className="code">🫧</div>
-        <div style={{ fontWeight: 600, color: "var(--txt)" }}>该假设无下游影响</div>
-        <div style={{ fontSize: 12, color: "var(--muted2)", maxWidth: 460, textAlign: "center", lineHeight: 1.7 }}>
-          前向重算后未产生任何派生字段变化——此属性可能没有下游派生链，或假设值不改变任何派生结果。诚实空态，不编造影响面。
+        {/* 「该假设无下游影响」这个结论本身已经窄而准（它不说「没数据」也不说「算不出」），
+            所以「为什么没有」——两种可能的病因 + 诚实空态交代——按规范 §1 降进 `?` 浮层，
+            第一层留结论 + 记号。原文一字未删。 */}
+        <div style={{ fontWeight: 600, color: "var(--txt)" }}>
+          该假设无下游影响
+          <InfoPopover topic={zh.whatIf.info.emptyWhy} testId="wi-empty-why">
+            <span data-testid="wi-empty-why-body">
+              前向重算后未产生任何派生字段变化——此属性可能没有下游派生链，或假设值不改变任何派生结果。诚实空态，不编造影响面。
+            </span>
+          </InfoPopover>
         </div>
       </div>
     );

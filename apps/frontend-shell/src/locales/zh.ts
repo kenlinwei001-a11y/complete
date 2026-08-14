@@ -2707,6 +2707,18 @@ export const zh = {
       switched: "「决策切换」是什么意思",
     },
   },
+  /**
+   * 通用假设推演页的 `?` 浮层标题（同上走 R14）。
+   * 对应 `views/WhatIfView.tsx` 里降进浮层的三段说明：这一页怎么用 ·
+   * 第二个出口跟第一个差在哪 · 空态「为什么没有影响」。
+   */
+  whatIf: {
+    info: {
+      howItWorks: "这一页怎么用",
+      impactWorld: "这一格跟上面那个按钮差在哪",
+      emptyWhy: "为什么算不出影响",
+    },
+  },
 } as const;
 
 export type Locale = typeof zh;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
 import { queryClient } from "@/store/queryClient";
@@ -115,6 +116,47 @@ describe("WO · 通用假设推演页 generic_inference", () => {
     expect(await screen.findByTestId("wi-empty")).toBeInTheDocument();
     expect(screen.queryByTestId("wi-deltas")).toBeNull();
     expect(screen.queryByTestId("wi-impact")).toBeNull();
+  });
+
+  /**
+   * **降层 ≠ 删除**（WO-UI-BURNDOWN-21 · `docs/CONVENTION-ui-information-layering.md` §1）
+   *
+   * 上面那条只咬「空态出没出来」，它**证明不了**空态里那段病因说明还在 ——
+   * 整段删掉它照样绿。故本条按规范 §1 的三判据 + 一条反向断言逐条咬。
+   *
+   * ⚠ 判据写法：`InfoPopover` 在 `open===false` 时**根本不渲染**，
+   * 所以「默认不可见」必须写 `toBeNull()`；写 `not.toBeVisible()` 会让 jest-dom 自己抛错，
+   * 那是**测试报错**，不是判据成立。
+   */
+  it("空态的病因说明降进 `?` 浮层：默认不在 DOM、hover 后原文一字不少、且不许还留在第一层", async () => {
+    loginAs("planner");
+    server.use(
+      http.post("*/a/v1/solvers/generic_inference/invoke", () =>
+        HttpResponse.json({ data: { deltas: [], rows: [], affectedObjects: 0, count: 0, rootTypes: ["Base"] }, snapshotVersion: "ov-gi" }),
+      ),
+    );
+    renderApp("/v/what-if");
+    fireEvent.click(await fillHypothesis("util", "99"));
+    const empty = await screen.findByTestId("wi-empty");
+
+    // ① 结论 + 可见记号都在第一层
+    expect(empty.textContent).toContain("该假设无下游影响");
+    const trigger = screen.getByTestId("info-wi-empty-why");
+    expect(trigger).toBeVisible();
+
+    // ② 正文默认不在 DOM
+    expect(screen.queryByTestId("wi-empty-why-body")).toBeNull();
+
+    // ④ 反向：病因说明不许还摆在第一层（否则「既留第一层又抄一份进浮层」也会全绿）
+    expect(empty.textContent, "长说明还留在第一层 ⇒ 没降层").not.toContain("此属性可能没有下游派生链");
+
+    // ③ hover 之后原文逐字取得回来
+    await userEvent.hover(trigger);
+    const body = await screen.findByTestId("wi-empty-why-body");
+    expect(body).toBeVisible();
+    expect(body.textContent).toContain("前向重算后未产生任何派生字段变化");
+    expect(body.textContent).toContain("此属性可能没有下游派生链，或假设值不改变任何派生结果");
+    expect(body.textContent).toContain("诚实空态，不编造影响面");
   });
 
   it("专用 route /v/what-if 可达 + 未选齐时推演按钮禁用（不空跑）", async () => {
