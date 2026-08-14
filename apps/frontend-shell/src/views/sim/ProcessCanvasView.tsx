@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { fetchProcessDefinitions } from "@/api/endpoints";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchProcessDefinitions, fetchSimPropagationRules, fetchSimViewConfig } from "@/api/endpoints";
 import zh from "@/locales/zh";
 import { InfoPopover } from "@/components/InfoPopover";
 import { WAIT_KIND_ORDER, WAIT_KIND_STYLE, type ProcessDefinitionsResponse } from "@/views/process/processWait";
 import {
   buildProcessCanvasModel,
   linesCoverAll,
+  liveDriveCoversAll,
   PROC_LAYOUT,
+  TICK_DRIVE_ORDER,
   type ProcessCanvasModel,
   type ProcessLineVM,
+  type ProcessLiveInput,
   type ProcessStationVM,
+  type ProcessTickDrive,
+  type ProcessTickSnapshot,
 } from "./processCanvas";
 import {
   fitTransform,
@@ -81,9 +87,15 @@ import styles from "./ProcessCanvasView.module.css";
  * R6 确定性：无时钟、无随机；排序与几何全序在 `processCanvas.ts` 里定（几何只算不量）。
  */
 
+/**
+ * ⚠ WO-PROCESS-CANVAS-LIVE：`ready` 从**存模型**改成**存响应**。
+ * 理由是接节拍之后模型不再只是 `res` 的函数 —— 它还吃「当前是哪一拍」；
+ * 把模型冻在 state 里，推一拍就永远不会重建（画面照旧、数字照旧，而测试可能还是绿的）。
+ * 现在响应存 state、模型走 `useMemo(res, liveInput)` 现算 ⇒ 换一拍必然重算。
+ */
 type LoadState =
   | { status: "loading" }
-  | { status: "ready"; model: ProcessCanvasModel }
+  | { status: "ready"; res: ProcessDefinitionsResponse }
   | { status: "error"; code: string; message: string; requestId: string | null };
 
 interface EnvelopeError {
@@ -106,6 +118,113 @@ export interface ProcessCanvasViewProps {
   onPick: (processKey: string) => void;
   /** 诚实位总开关，与控制台其余档位共用同一个（关掉只影响本档自己的说明段）。 */
   honesty?: boolean;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 🔴 § 节拍观察者（WO-PROCESS-CANVAS-LIVE）—— **只读订阅，不做第二个控制器**
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 沙盘世界态缓存条目的形状。**逐字沿用** `SandboxView.WorldSnapshot`
+ * （`views/sim/SandboxView.tsx:134`）—— 这里只写它的**读侧**投影，
+ * 刻意不 import 那个类型：本档一旦 import `SandboxView`，就会把整棵沙盘树拖进
+ * 第五档的懒挂载 chunk 里（第五档的存在意义之一就是"没点进来 = 一次请求都不发"）。
+ * 形状漂了会被 §H 的门当场咬住（那条断言拿的是真 `SandboxView` 写进去的条目）。
+ */
+interface WorldCacheEntry {
+  tick: number;
+  state: Record<string, Record<string, number>>;
+  origin: "DERIVED" | "MEASURED";
+}
+
+/** 沙盘世界态的缓存键前缀（`SandboxView` 的 `["a","sim-world", sessionId]`）。 */
+const WORLD_KEY_PREFIX = ["a", "sim-world"] as const;
+
+/**
+ * 从查询缓存里读**当前这个世界**的快照。
+ *
+ * ── 为什么是"读缓存"而不是"自己建会话、自己发 tick" ──────────────────────────
+ * 沙盘的会话归 `SandboxView` 所有（`sessionId` 在它的 `useState` 里），
+ * 「推进 tick」这个动作也归它（`sandbox-tick-btn` → `simTick` →
+ * `qc.setQueryData(["a","sim-world", id], …)`，`SandboxView.tsx:705`）。
+ * 第五档要的是**同一个世界的同一拍**，所以它必须做观察者：
+ *  · 自己建会话 ⇒ 屏上会出现**两个世界**，用户在控制条上推的那一拍打不到这张图 ——
+ *    那正是「看起来在动、其实动的是另一个世界」这类最难查的假象；
+ *  · 自己发 tick ⇒ 同一个会话被两处推进，`curTick` 互相打架。
+ * ⇒ 本档**一行写操作都没有**：不 `setQueryData`、不 `invalidateQueries`、不发 tick。
+ *
+ * ── 为什么不用 `useQuery` 精确订阅那个键 ────────────────────────────────────
+ * 因为**键里那一段 `sessionId` 只有 `SandboxView` 知道**（它在组件 state 里，没有下发）。
+ * 所以这里按**前缀**找：缓存里有数据的 `["a","sim-world", <非空 id>]` 条目就是
+ * 「沙盘这会儿在推的那个世界」。多个世界（分支）时取 `dataUpdatedAt` 最大的那个 ——
+ * 即"沙盘最后动过的那一个"，并把 `sessionId` **写在屏上**，让读的人能核对
+ * 自己看的是不是控制条上那个世界。
+ *
+ * ⚠ 排序里出现了时间戳（`dataUpdatedAt`），但它**不进模型**：
+ *   `buildProcessCanvasModel` 收到的是选中之后的那一份快照，纯函数、R6 不受影响。
+ */
+function readWorldFromCache(qc: ReturnType<typeof useQueryClient>): (ProcessTickSnapshot & { updatedAt: number }) | null {
+  const rows = qc
+    .getQueryCache()
+    .findAll({ queryKey: [...WORLD_KEY_PREFIX] })
+    .map((q) => {
+      const sessionId = String((q.queryKey as unknown[])[2] ?? "");
+      const data = q.state.data as WorldCacheEntry | undefined;
+      return { sessionId, data, updatedAt: q.state.dataUpdatedAt };
+    })
+    .filter((r): r is { sessionId: string; data: WorldCacheEntry; updatedAt: number } => r.sessionId.length > 0 && r.data != null);
+  if (rows.length === 0) return null;
+  // 全序：先按最后更新时间降序，同刻按 sessionId 升序（不留并列歧义 —— 并列时两次渲染取到不同世界，
+  // 屏上会无缘无故跳一拍，而且没有任何迹象说明为什么）。
+  rows.sort((a, b) => b.updatedAt - a.updatedAt || a.sessionId.localeCompare(b.sessionId));
+  const top = rows[0]!;
+  return { sessionId: top.sessionId, tick: top.data.tick, state: top.data.state, origin: top.data.origin, updatedAt: top.updatedAt };
+}
+
+/** 两张快照是不是同一张（避免缓存里任何一个别的查询变动都把本档重渲一遍）。 */
+function sameSnapshot(a: ProcessTickSnapshot | null, b: ProcessTickSnapshot | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.sessionId === b.sessionId && a.tick === b.tick && a.origin === b.origin && a.state === b.state;
+}
+
+/**
+ * 订阅沙盘世界态，并**自己记住上一拍**（算「相比上一节拍」用）。
+ *
+ * ⚠ 「上一拍」必须由本档自己留存，不能问后端要：`GET …/:id/world` 只回当前态。
+ *   留存的判据是 **tick 变了**才推进 —— 同一拍内的重取（事件失效触发的 refetch）
+ *   不许把 prev 冲掉，否则「相比上一拍」会变成「相比这一拍」= 恒 0，
+ *   而那个 0 会被读成「这一拍什么都没动」。这条正是本仓「一个数盖住两个事实」的形态。
+ */
+function useSandboxWorldObserver(): { snapshot: ProcessTickSnapshot | null; prevSnapshot: ProcessTickSnapshot | null } {
+  const qc = useQueryClient();
+  const [snapshot, setSnapshot] = useState<ProcessTickSnapshot | null>(null);
+  const prevRef = useRef<ProcessTickSnapshot | null>(null);
+  const curRef = useRef<ProcessTickSnapshot | null>(null);
+
+  useEffect(() => {
+    const pull = () => {
+      const next = readWorldFromCache(qc);
+      const nextSnap: ProcessTickSnapshot | null =
+        next === null ? null : { sessionId: next.sessionId, tick: next.tick, state: next.state, origin: next.origin };
+      setSnapshot((prev) => {
+        if (sameSnapshot(prev, nextSnap)) return prev;
+        // 只有**换了拍**（或换了世界）才把上一张存成 prev；同一拍的重取不动 prev。
+        const cur = curRef.current;
+        if (cur !== null && nextSnap !== null && (cur.tick !== nextSnap.tick || cur.sessionId !== nextSnap.sessionId)) {
+          prevRef.current = cur;
+        }
+        curRef.current = nextSnap;
+        return nextSnap;
+      });
+    };
+    pull();
+    return qc.getQueryCache().subscribe(pull);
+  }, [qc]);
+
+  // prev 与 cur 必须是**同一个世界**的两拍：切了分支世界之后拿旧世界的读数作差 = 张冠李戴。
+  const prev = prevRef.current;
+  const usablePrev = prev !== null && snapshot !== null && prev.sessionId === snapshot.sessionId ? prev : null;
+  return { snapshot, prevSnapshot: usablePrev };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -143,6 +262,13 @@ function Station({
   const t = zh.sim.sandbox.processCanvas;
   const color = `var(${WAIT_KIND_STYLE[s.waitKind].colorVar})`;
   const interchange = s.sharedCarrierWith.length > 0;
+  /**
+   * 节拍读数（WO-PROCESS-CANVAS-LIVE）。`undefined` = 本次没接节拍维（additive 回退态），
+   * 此时下面每一处新增读数**一个都不渲染** —— 屏与本单之前逐字相同。
+   */
+  const live = s.live;
+  /** 这一拍真动了 ⇒ 站圈外加一圈脉冲环（**动的证据画在站上**，不是只写在说明段里）。 */
+  const moved = live?.moved === true;
   return (
     <g
       className={styles.station}
@@ -165,13 +291,24 @@ function Station({
       data-shared-with={s.sharedCarrierWith.join(",")}
       data-std-days={s.stdDurationDays}
       data-r={s.r}
+      /* ── 节拍维的受控读数出口（WO-PROCESS-CANVAS-LIVE）。没接节拍维时这四个属性**不存在**，
+            不是空串 —— `getAttribute` 返回 null 与返回 "" 在门里是两个不同的命题。 */
+      {...(live === undefined
+        ? {}
+        : {
+            "data-drive": live.drive,
+            "data-moved": live.moved ? "1" : "0",
+            "data-reading": live.reading === null ? "" : String(live.reading),
+            "data-delta": live.delta === null ? "" : String(live.delta),
+            "data-carrier-objects": String(live.carrierObjectCount),
+          })}
       role="button"
       tabIndex={0}
       aria-pressed={selected}
       /* ⚠ **没有 `<title>`**：见组件头浮层纪律。读屏走 aria-label（`role="button"` 下生效）。 */
       aria-label={`${s.name}（${s.key}）· ${zh.processWait.waitKind[s.waitKind].label} · ${t.stdDays(s.stdDurationDays)}${
         interchange ? ` · 换乘：与 ${s.sharedCarrierWith.join("、")} 共用承载物 ${s.carrierTypeKey}` : ""
-      }`}
+      }${live === undefined ? "" : t.stationLiveAria(live.drive, live.reading, live.delta, live.carrierObjectCount)}`}
       style={{ pointerEvents: "all" }}
       onClick={() => onPick(s.key)}
       onKeyDown={(e: ReactKeyboardEvent<SVGGElement>) => {
@@ -192,6 +329,16 @@ function Station({
         fill="transparent"
       />
       {selected ? <circle className={styles.stationHalo} cx={s.x} cy={s.y} r={s.r + 6} /> : null}
+      {/* 这一拍真动了 —— 画一圈脉冲环。**形状编码**而不是只换颜色：
+          色觉差异者与打印稿上，"变了没有"必须仍然看得出来（与本仓三态四重编码同源纪律）。 */}
+      {moved ? <circle className={styles.movedRing} data-testid={`spc-moved-${s.key}`} cx={s.x} cy={s.y} r={s.r + 4} /> : null}
+      {/* 不随节拍变的那批：**形状**上也标出来（虚线外环，`<circle>` 没有可渲染子节点 ⇒ 不占第一层信息块）。
+          刻意**不用降低不透明度**（"灰掉"）：规范与派单都点名 —— 灰掉读作"被禁用/坏了"，
+          而这里的事实是"它本来就不随节拍变"。形状说一遍、文字说一遍、`data-drive` 说一遍、
+          `aria-label` 说一遍 —— 四重编码，任一渠道单独都能把它与"没数据"分开。 */}
+      {live !== undefined && live.drive !== "TICK_DRIVEN" ? (
+        <circle className={styles.staticRing} data-testid={`spc-static-${s.key}`} cx={s.x} cy={s.y} r={s.r + 4} />
+      ) : null}
       {interchange ? (
         <>
           <circle className={styles.interchangeOuter} cx={s.x} cy={s.y} r={s.r} style={{ stroke: color }} />
@@ -206,6 +353,27 @@ function Station({
       <text className={styles.stationSub} x={s.label.x} y={s.label.subY} textAnchor="middle">
         {s.key} · {s.stdDurationDays}D
       </text>
+      {/* 第三行 = 节拍读数。**只在接了节拍维时才有这一行**（没接 ⇒ 版面与本单之前一模一样）。
+          三档各说各的话：
+           · 随节拍变 ⇒ 印读数与增量（有增量才印增量，没有上一拍就不印一个假的 0）；
+           · 接了线没数据 ⇒ 印「0 个承载对象」，**不是**印 0；
+           · 本层不随节拍变 ⇒ 印那句话本身，而不是留空白（空白会被读成"加载中/坏了"）。 */}
+      {live === undefined ? null : (
+        <text
+          className={live.drive === "TICK_DRIVEN" ? styles.stationLive : styles.stationStatic}
+          data-testid={`spc-live-${s.key}`}
+          data-drive={live.drive}
+          x={s.label.x}
+          y={s.label.subY + PROC_LAYOUT.labelLineH}
+          textAnchor="middle"
+        >
+          {live.drive === "TICK_DRIVEN"
+            ? live.reading === null
+              ? t.liveNoReading
+              : `${live.reading}${live.delta === null ? "" : t.deltaSuffix(live.delta)}`
+            : t.driveMark[live.drive]}
+        </text>
+      )}
     </g>
   );
 }
@@ -301,7 +469,7 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
     fetchProcessDefinitions()
       .then((res: ProcessDefinitionsResponse) => {
         if (!alive) return;
-        setState({ status: "ready", model: buildProcessCanvasModel(res, WAIT_KIND_ORDER) });
+        setState({ status: "ready", res });
       })
       .catch((e: unknown) => {
         if (!alive) return;
@@ -312,8 +480,47 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
     };
   }, []);
 
-  const model = state.status === "ready" ? state.model : null;
+  /**
+   * ── 节拍维的两个**租户级**输入（与会话无关，故没建会话时也照取）────────────────
+   *
+   * 两条都**共用宿主已经在用的缓存键与 queryFn**（`SandboxView.tsx:368` / `:493`）：
+   * TanStack 按 key 去重 ⇒ 第五档挂出来**不多发一次请求**，拿到的也必然是同一份数据。
+   * 另起一个键 = 第二份可能漂移的副本，那正是本仓记过的「两个 dev 各发明一套」的形态。
+   *
+   * `retry:false`：`sim.propagation` / 沙盘能力关着时后端回 404 FEATURE_NOT_FOUND，
+   * 那是"没开通"不是"坏了"，重试无意义；取不到时本档如实说"分类算不出"，不假装全是静态。
+   */
+  const cfgQuery = useQuery({ queryKey: ["a", "sim", "view-config"], queryFn: fetchSimViewConfig, retry: false });
+  const rulesQuery = useQuery({ queryKey: ["a", "sim-propagation-rules"], queryFn: () => fetchSimPropagationRules(), retry: false });
+  const { snapshot, prevSnapshot } = useSandboxWorldObserver();
+
+  /**
+   * 节拍维输入。**两条判据源任一缺席 ⇒ 整个 `live` 为 `null`** ——
+   * 于是本档逐字节退回本单之前的行为（additive 可回退），屏上另说一句"分类算不上来"，
+   * 而**不是**默认把 65 条全判成「不随节拍变」：那会把"我不知道"渲染成"我知道它是静态的"，
+   * 是本仓最忌的那类假陈述。
+   */
+  const liveInput: ProcessLiveInput | null = useMemo(() => {
+    const cfg = cfgQuery.data;
+    const rules = rulesQuery.data?.items;
+    if (cfg === undefined || rules === undefined) return null;
+    return {
+      rules: rules.map((r) => ({ sourceTypeKey: r.sourceTypeKey, targetTypeKey: r.targetTypeKey })),
+      nodeObjectIds: cfg.nodeObjectIds ?? {},
+      snapshot,
+      prevSnapshot,
+    };
+  }, [cfgQuery.data, rulesQuery.data, snapshot, prevSnapshot]);
+
+  const model: ProcessCanvasModel | null = useMemo(
+    () => (state.status === "ready" ? buildProcessCanvasModel(state.res, WAIT_KIND_ORDER, liveInput) : null),
+    [state, liveInput],
+  );
   const covered = useMemo(() => (model === null ? true : linesCoverAll(model)), [model]);
+  const driveCovered = useMemo(() => (model === null ? true : liveDriveCoversAll(model)), [model]);
+  /** 判据源缺席的原因（屏上要说清是"没开通/取不到"还是"没建会话"，两者处置不同）。 */
+  const liveGap: "none" | "config" | "session" =
+    liveInput === null ? "config" : liveInput.snapshot === null ? "session" : "none";
 
   const viewportSize = useCallback(() => {
     const el = canvasRef.current;
@@ -480,6 +687,66 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
           <InfoPopover topic={zh.sim.sandbox.info.processLayers} testId="process-layers">
             <span data-testid="spc-layers-note">{t.layersNote}</span>
           </InfoPopover>
+          {/* ── ⑥ 【WO-PROCESS-CANVAS-LIVE·本轮新增】节拍总结 = 仓主要的那个「某个时间的 screenshot + 总结」
+                 第一层**只放一句结论 + 一个 `?` 记号**，取证 / 分类判据 / 判据测不出什么 全在浮层。
+                 ⚠ 三件事在这一句里必须分得开，任缺其一都会把一个事实伪装成另一个：
+                   · 这是**哪一拍、哪个世界**（不写出来，"动了"是相对谁说的就没法核对）；
+                   · **随节拍变的有几条 / 这一拍真动了几条**（两个数不是一回事）；
+                   · **不随节拍变的有几条** —— 明说它「本层不随节拍变」，
+                     既不是"没数据"，也不是"没画出来"。 */}
+          <b
+            className={liveGap === "none" ? styles.liveOk : styles.liveGap}
+            data-testid="spc-live-summary"
+            data-gap={liveGap}
+            data-session={model.live?.sessionId ?? ""}
+            data-tick={model.live?.tick ?? ""}
+            data-prev-tick={model.live?.prevTick ?? ""}
+            data-origin={model.live?.origin ?? ""}
+            data-comparable={model.live?.comparable === true ? "1" : "0"}
+            data-driven={model.live?.byDrive.find((g) => g.kind === "TICK_DRIVEN")?.count ?? ""}
+            data-nodata={model.live?.byDrive.find((g) => g.kind === "NO_CARRIER_OBJECTS")?.count ?? ""}
+            data-static={model.live?.byDrive.find((g) => g.kind === "NOT_TICK_DRIVEN")?.count ?? ""}
+            data-moved={model.live?.movedKeys.length ?? ""}
+          >
+            {model.live === undefined
+              ? t.liveConfigMissing
+              : t.liveSummary({
+                  sessionId: model.live.sessionId,
+                  tick: model.live.tick,
+                  prevTick: model.live.prevTick,
+                  origin: model.live.origin,
+                  comparable: model.live.comparable,
+                  driven: model.live.byDrive.find((g) => g.kind === "TICK_DRIVEN")?.count ?? 0,
+                  noData: model.live.byDrive.find((g) => g.kind === "NO_CARRIER_OBJECTS")?.count ?? 0,
+                  staticCount: model.live.byDrive.find((g) => g.kind === "NOT_TICK_DRIVEN")?.count ?? 0,
+                  moved: model.live.movedKeys.length,
+                  netDelta: model.live.netDelta,
+                  movedByWaitKind: model.live.movedByWaitKind.map((g) => ({
+                    label: zh.processWait.waitKind[g.kind].label,
+                    drivable: g.drivable,
+                    moved: g.moved,
+                  })),
+                })}
+          </b>
+          <InfoPopover topic={zh.sim.sandbox.info.processTickDrive} testId="process-tick-drive">
+            <span data-testid="spc-live-basis">{t.liveBasis}</span>
+            {/* ⛔ 这一条是本档最要紧的诚实位：判据**测不出**「本质上该不该随节拍变」。
+                   把它删掉，屏上那句「本层不随节拍变」就会被读成一个它证明不了的结论。 */}
+            <span data-testid="spc-live-limit">{t.liveLimit}</span>
+            <span data-testid="spc-live-waitkind-static">{t.liveWaitKindStatic}</span>
+            <span data-testid="spc-live-observer">{t.liveObserver}</span>
+            {model.live === undefined ? null : (
+              <span data-testid="spc-live-drive-breakdown">
+                {TICK_DRIVE_ORDER.map((k) => `${t.driveLabel[k]} ${model.live?.byDrive.find((g) => g.kind === k)?.count ?? 0}`).join(" · ")}
+                {model.live.movedKeys.length === 0 ? "" : ` ｜ ${t.liveMovedKeys(model.live.movedKeys.join("、"))}`}
+              </span>
+            )}
+            {!driveCovered ? (
+              <span className={shell.processMismatch} data-testid="spc-live-drive-mismatch">
+                {t.liveDriveMismatch}
+              </span>
+            ) : null}
+          </InfoPopover>
           {/* ② 标准工期 ≠ 实测滞留（常驻，不折叠） */}
           <span data-testid="spc-stddays-caveat">{t.stdDaysCaveat}</span>
           {/* 换乘：有几处就说几处；一处没有也要说"这批数据就没有"，不留白 */}
@@ -518,7 +785,11 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
       {model !== null ? (
         <>
           {/* 四态计数条 ＋ 图例 ＋ 缩放控件（图元样例不带任何数字，不会被误读成数据） */}
-          <div className={shell.processKindBar} data-testid="spc-kindbar">
+          {/* ⚠ `data-layer="template"`（WO-PROCESS-CANVAS-LIVE 新增）：这一条四态计数数的是
+              `ProcessDefinition.waitKind` —— **模板层**，推 tick 一个字都不会变。
+              把它标出来，是因为它就摆在会随节拍跳的读数旁边，不标就会被读成"这四个数也在动"。
+              这一拍"每一态里有几条真动了"是另一族度量，在 `spc-live-summary` 那句话里。 */}
+          <div className={shell.processKindBar} data-testid="spc-kindbar" data-layer="template" data-tick-invariant="1">
             {model.byWaitKind.map((g) => (
               <span key={g.kind} className={shell.processKindChip} data-testid={`spc-kind-${g.kind}`} data-count={g.count}>
                 <i aria-hidden="true" style={{ background: `var(${WAIT_KIND_STYLE[g.kind].colorVar})` }} />
@@ -547,29 +818,54 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
             ) : null}
           </div>
 
+          {/* ── 图例 ──────────────────────────────────────────────────────────────
+              **WO-PROCESS-CANVAS-LIVE 把它从第一层降到浮层**，理由是规范原文而不是腾地方：
+              `docs/CONVENTION-ui-information-layering.md` §2 R-UI-3 ——「口径 / 公式 / 这个符号
+              是什么意思」属浮层，第一层只放数值 / 状态 / 名字。图例整块正是"这个符号什么意思"。
+              ⚠ **降层不是删除**（规范 §1）：`?` 触发器就是第一层留下的可见记号，
+                四条原文一字未动、testid 一字未改，本轮新增的两个图元（脉冲环 / 虚线外环）
+                也在同一处说明 —— 否则这张图上会出现"没人解释过的新符号"。
+              实测（`node scripts/check-ui-first-layer.mjs --explain`）：
+                first 38 → 35（回到本单之前的数）· deferred 10 → 16，
+                即**内容真的搬下去了**，不是被删掉（D4 守恒判据要的正是这个方向）。 */}
           <section className={styles.legend} data-testid="spc-legend" role="note">
-            <i className={styles.legendChip} data-testid="spc-legend-station">
-              <svg width="26" height="18" aria-hidden="true">
-                <circle className={styles.stationDot} cx="13" cy="9" r="7" />
-              </svg>
-              {t.legendStation}
-            </i>
-            <i className={styles.legendChip} data-testid="spc-legend-interchange">
-              <svg width="26" height="18" aria-hidden="true">
-                <circle className={styles.interchangeOuter} cx="13" cy="9" r="7" />
-                <circle className={styles.interchangeInner} cx="13" cy="9" r="3" />
-              </svg>
-              {t.legendInterchange}
-            </i>
-            <i className={styles.legendChip} data-testid="spc-legend-dashed">
-              <svg width="34" height="18" aria-hidden="true">
-                <line className={styles.rail} x1="3" y1="9" x2="31" y2="9" />
-              </svg>
-              {t.legendDashed}
-            </i>
-            <i className={styles.legendChip} data-testid="spc-legend-waitkind">
-              {t.legendWaitKind}
-            </i>
+            <InfoPopover topic={zh.sim.sandbox.info.processLegend} testId="process-legend">
+              <i className={styles.legendChip} data-testid="spc-legend-station">
+                <svg width="26" height="18" aria-hidden="true">
+                  <circle className={styles.stationDot} cx="13" cy="9" r="7" />
+                </svg>
+                {t.legendStation}
+              </i>
+              <i className={styles.legendChip} data-testid="spc-legend-interchange">
+                <svg width="26" height="18" aria-hidden="true">
+                  <circle className={styles.interchangeOuter} cx="13" cy="9" r="7" />
+                  <circle className={styles.interchangeInner} cx="13" cy="9" r="3" />
+                </svg>
+                {t.legendInterchange}
+              </i>
+              <i className={styles.legendChip} data-testid="spc-legend-dashed">
+                <svg width="34" height="18" aria-hidden="true">
+                  <line className={styles.rail} x1="3" y1="9" x2="31" y2="9" />
+                </svg>
+                {t.legendDashed}
+              </i>
+              <i className={styles.legendChip} data-testid="spc-legend-waitkind">
+                {t.legendWaitKind}
+              </i>
+              {/* 本轮新增的两个图元 —— 新符号必须在同一处有解释，否则屏上会多出没人说过的东西 */}
+              <i className={styles.legendChip} data-testid="spc-legend-moved">
+                <svg width="26" height="18" aria-hidden="true">
+                  <circle className={styles.movedRing} cx="13" cy="9" r="7" />
+                </svg>
+                {t.legendMoved}
+              </i>
+              <i className={styles.legendChip} data-testid="spc-legend-static">
+                <svg width="26" height="18" aria-hidden="true">
+                  <circle className={styles.staticRing} cx="13" cy="9" r="7" />
+                </svg>
+                {t.legendStatic}
+              </i>
+            </InfoPopover>
           </section>
 
           {model.lines.length === 0 ? (
