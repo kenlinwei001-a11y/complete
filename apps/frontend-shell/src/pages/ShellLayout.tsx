@@ -164,7 +164,9 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       //    的位置，每个需要决策的点都需要这个页面」。**已照办的部分**：5 区推演的唯一实现搬到
       //    `views/DecisionPlayPanel.tsx`，`ChainImpedimentView` 逐条阻滞点、`OrderChainView` 订单面板
       //    都已就地嵌入（点开即在原地展开，URL 不变）。
-      //    **没照办的部分（本条为什么还在）—— 先测清连坐面再动，不摸黑删**（实测四条）：
+      //    **没照办的部分（本条为什么还在）—— 先测清连坐面再动，不摸黑删**（2026-08-14 实测四条·
+      //    复验：`node scripts/check-nav-group-coverage.mjs`（RC=0，输出含「6 条专用 route 全部有
+      //    kind:"route" 入口…且无悬空条目」）＋ `grep -rn "decision-play" apps/frontend-shell/src apps/frontend-shell/test`）：
       //     ① `check-nav-group-coverage.mjs` 判据④：6 条专用 route 必须各有 `kind:"route"` 入口，
       //        删了这一条 ⇒ `/v/decision-play` 变悬空条目 ⇒ 门当场红（机器先说话，不是我猜的）；
       //     ② `views/DashboardView.tsx:162` 有 `navigate("/v/decision-play")`，且
