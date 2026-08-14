@@ -49,7 +49,8 @@ import { toast, toastError } from "@/store/toastStore";
  * 只给**会签链**：发起 `publish-requests` → 各域 owner `signoff` → 全域 APPROVE 后后端自动发布
  * （`app.ts:2891`）。这就是本页对 R4 的兑现方式。
  *
- * 🚦 诚实位（三条，全部实测得来，不许拿界面糊过去）：
+ * 🚦 诚实位（三条，全部 2026-08-14 实测得来，不许拿界面糊过去；复验命令见每条末尾，
+ *    并由 `apps/frontend-shell/test/ontology-relations.seam.test.tsx` §④ 钉成事实锁）：
  *  ① 因果边**改不了**：`POST …/propagation-rules` 把 `id` 写在 body 展开之后恒覆盖
  *     ⇒ 只能新建。停用一条**已存在**的规则需要后端补 PUT/PATCH，今天做不到。
  *  ② 结构边的**工作集弃用态**没有只读下发口，状态列的口径是「已发布快照 ⊕ 本次会话写回包」。
@@ -167,6 +168,35 @@ export default function OntologyRelationsPage() {
   const showRefs = useMutation({
     mutationFn: (key: string) => fetchElementReferences("link", key).then((r) => ({ key, ...r })),
     onSuccess: (r) => setRefPanel(r),
+    onError: toastError,
+  });
+
+  // ── 关系两端的**对象类型**的弃用流程（同一个 `governance.deprecate/retire`，只是 kind 不同）──
+  //
+  // 为什么放在本页而不是对象类型浏览页：弃用一个类型会把**它两端的所有关系**一起作废，
+  // 用户是在看关系图谱时才会问「这个类型还要不要」。而且后端是同一个函数、同一道
+  // 「还有人引用就不许下线」的闸 —— 分到两页会变成两套 UI 讲同一件事。
+  //
+  // ⚠ 这一段不是为了消 `befe-seam` 的红而加的空壳：没有真正的调用方，
+  //   只在 `endpoints.ts` 里放两个函数就是「把死端点换成死客户端函数」，
+  //   基线注释里点名批过这种做法。故此处给它真界面、真按钮、真列表。
+  const [typeKeyToDeprecate, setTypeKeyToDeprecate] = useState("");
+  const [typeDeprecation, setTypeDeprecation] = useState<Record<string, DeprecationMetaVM>>({});
+  const deprecateType = useMutation({
+    mutationFn: (key: string) => deprecateOntologyElement("type", key),
+    onSuccess: (r) => {
+      setTypeDeprecation((s) => ({ ...s, [r.key]: r.deprecation }));
+      toast(`对象类型 ${r.key} 已停用`, "success");
+    },
+    onError: toastError,
+  });
+  const retireType = useMutation({
+    mutationFn: (key: string) => retireOntologyElement("type", key),
+    onSuccess: (r) => {
+      setTypeDeprecation((s) => ({ ...s, [r.key]: { status: "RETIRED" } }));
+      toast(`对象类型 ${r.key} 已下线`, "success");
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-object-types"] });
+    },
     onError: toastError,
   });
 
@@ -426,33 +456,46 @@ export default function OntologyRelationsPage() {
           onChange={(e) => setPr({ ...pr, targetStateVar: e.target.value })}
           style={{ width: 140 }}
         />
-        <input
-          data-testid="orel-rule-coef"
-          type="number"
-          step="0.05"
-          title="影响系数"
-          value={pr.coefficient}
-          onChange={(e) => setPr({ ...pr, coefficient: e.target.value })}
-          style={{ width: 82 }}
-        />
-        <input
-          data-testid="orel-rule-delay"
-          type="number"
-          min="0"
-          title="延迟 tick 数"
-          value={pr.delayTicks}
-          onChange={(e) => setPr({ ...pr, delayTicks: e.target.value })}
-          style={{ width: 72 }}
-        />
-        <select
-          data-testid="orel-rule-status"
-          title="启停：启用的边进推演，停用的边在册不生效"
-          value={pr.status}
-          onChange={(e) => setPr({ ...pr, status: e.target.value as "DRAFT" | "PUBLISHED" })}
-        >
-          <option value="PUBLISHED">启用</option>
-          <option value="DRAFT">停用</option>
-        </select>
+        {/* 同上：字段口径一律用**可见 label**，不用原生 title（UI 规范 §2 R-UI-3）。 */}
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5 }}>
+          <span className="muted">系数</span>
+          <input
+            data-testid="orel-rule-coef"
+            type="number"
+            step="0.05"
+            value={pr.coefficient}
+            onChange={(e) => setPr({ ...pr, coefficient: e.target.value })}
+            style={{ width: 76 }}
+          />
+        </label>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5 }}>
+          <span className="muted">延迟(tick)</span>
+          <input
+            data-testid="orel-rule-delay"
+            type="number"
+            min="0"
+            value={pr.delayTicks}
+            onChange={(e) => setPr({ ...pr, delayTicks: e.target.value })}
+            style={{ width: 66 }}
+          />
+        </label>
+        {/*
+          启停语义**写在可见文案里**，不挂 `title=` ——
+          UI 规范 §2 R-UI-3 禁止用原生 title 承载需要阅读的口径
+          （`test/provenance-popover-legibility.test.tsx:1120` 是只减不增的棘轮，
+          我第一版写了一句带冒号的长 title，当场被它咬住）。
+        */}
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5 }}>
+          <span className="muted">启停</span>
+          <select
+            data-testid="orel-rule-status"
+            value={pr.status}
+            onChange={(e) => setPr({ ...pr, status: e.target.value as "DRAFT" | "PUBLISHED" })}
+          >
+            <option value="PUBLISHED">启用（进推演）</option>
+            <option value="DRAFT">停用（在册不生效）</option>
+          </select>
+        </label>
         <button
           className="btn primary sm"
           data-testid="orel-rule-create"
@@ -513,6 +556,60 @@ export default function OntologyRelationsPage() {
         <br />
         复验探针：<code>grep -n &apos;id: newId(&quot;simpr&quot;)&apos; apps/datacore/src/app.ts</code>
       </div>
+
+      {/* ═══════════ 关系两端的对象类型 · 弃用流程 ═══════════ */}
+      <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>对象类型 · 弃用流程</h3>
+      <div className="muted" style={{ fontSize: 11.5, marginBottom: 8, lineHeight: 1.7 }}>
+        停用/下线一个<b>类型</b>会连带作废它两端的全部关系，所以它和上面两张表是同一件事的两端。
+        后端是同一个治理函数、同一道「还有人引用就不许下线」的闸。
+      </div>
+      <div className="panel" style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <select data-testid="orel-type-select" value={typeKeyToDeprecate} onChange={(e) => setTypeKeyToDeprecate(e.target.value)}>
+          <option value="">选一个对象类型…</option>
+          {typeOptions.map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+        <button
+          className="btn sm"
+          data-testid="orel-type-deprecate"
+          disabled={!typeKeyToDeprecate || deprecateType.isPending}
+          onClick={() => deprecateType.mutate(typeKeyToDeprecate)}
+        >
+          停用类型
+        </button>
+        <button
+          className="btn sm"
+          data-testid="orel-type-retire"
+          disabled={!typeKeyToDeprecate || retireType.isPending}
+          onClick={() => retireType.mutate(typeKeyToDeprecate)}
+        >
+          下线类型
+        </button>
+        <span className="muted" style={{ fontSize: 11 }}>
+          下线前后端会先查引用；有引用则 409 并逐条列出，界面原样显示。
+        </span>
+      </div>
+      {Object.keys(typeDeprecation).length > 0 && (
+        <table className="cmp" data-testid="orel-type-table" style={{ width: "100%", marginBottom: 12 }}>
+          <thead>
+            <tr>
+              <th>对象类型</th>
+              <th>状态（本次会话写回包）</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(typeDeprecation).map(([k, dep]) => (
+              <tr key={k} data-testid={`orel-type-row-${k}`}>
+                <td className="mono">{k}</td>
+                <td data-testid={`orel-type-status-${k}`}>{statusLabel(dep).text}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
 
       {/* ═══════════ 发布会签（R4）═══════════ */}
       <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>发布会签（R4）</h3>

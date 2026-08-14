@@ -195,6 +195,28 @@ describe("WO-BEFE-A ② 结构边 CRUD 与启停（POST link-types / links:depre
     expect(after.propCount, "停用结构边动了因果边计数 ⇒ 两种边的语义被糊在一起了").toBe(before.propCount);
   });
 
+  it("停用一个**对象类型** ⇒ 打的是 `types/*/deprecate` 那条路（不是 links，也不是 interfaces）", async () => {
+    /**
+     * 为什么要单独咬这条：`deprecateOntologyElement(kind)` 的第一版把路径段写成
+     * `${kind === "link" ? "links" : "types"}` —— 归一化后是 `/a/v1/ontology/*​/*​/deprecate`，
+     * 会**冒领** `interfaces/*​/…` 这类同形状但根本没接的端点，让接缝门把它们误判成「已修复」。
+     * 现在改成两条各自的字面量路径；本条断言真发出去的 URL 里**有 `/types/`、没有 `/links/`**，
+     * 把「路径段是字面量」这件事钉在链路上，而不是靠人记得别用三元拼段。
+     */
+    const posts: Hit[] = [];
+    spyOn("post", "*/a/v1/ontology/types/:key/deprecate", posts);
+
+    const user = userEvent.setup();
+    await openPage();
+    await user.selectOptions(await screen.findByTestId("orel-type-select"), "Order");
+    await user.click(screen.getByTestId("orel-type-deprecate"));
+
+    await waitFor(() => expect(posts.length, "POST …/types/Order/deprecate 没发出去").toBe(1));
+    expect(posts[0]!.url).toContain("/a/v1/ontology/types/Order/deprecate");
+    expect(posts[0]!.url, "打到了 links 那条路 ⇒ kind 分支接反了").not.toContain("/links/");
+    expect((await screen.findByTestId("orel-type-status-Order")).textContent).toBe("已停用");
+  });
+
   it("下线一条**仍被因果边引用**的结构边 ⇒ 后端 409 逐条列引用方，界面不假装成功", async () => {
     const user = userEvent.setup();
     await openPage();

@@ -2041,8 +2041,20 @@ export function mockChainImpediments(args: Record<string, unknown>): Record<stri
         kind: "BREAK",
         breakSubtype: "LEADTIME",
         status: "UNKNOWN",
+        // ⚠ 2026-08-14 修漂移：原文写 `C01–C33`，而引擎
+        //   `apps/datacore/src/solvers/chain-impediment.ts:237` 早已是 `C01–C34`。
+        //   这条漂移一直没被发现，**不是因为没有门** —— `test/chain-impediment.seam.test.tsx:522`
+        //   那条「逐字同源」的门就是为它设的 —— 而是因为该门的定位器
+        //   （`factHits(checkedTree("apps/datacore/src", …))`）撞上了 `test/factlock.ts`
+        //   `stripComments` 的缺陷：引擎文件里一条**行注释含 `/*`** 开出假块注释，吞掉 71 行，
+        //   连带吞掉定位探针 ⇒ 全树命中 0 处 ⇒ 整个 describe 在收集期就抛
+        //   「定位探针失效」⇒ **该文件 0 个用例被执行**。门在，但它从没跑到判据那一步。
+        //   复验（先看基线红，再看修好）：
+        //     `git show 5a67624d:apps/frontend-shell/test/factlock.ts > /tmp/fl.ts` 换回旧版 →
+        //     `pnpm --filter frontend-shell exec vitest run test/chain-impediment.seam.test.tsx`
+        //     旧版：`Tests no tests` + 「引擎 caveat 模板全树命中 0 处」；新版：41 个用例真跑。
         reason:
-          "断点·时间（上游可用日 > 下游需求日）在规则库 C01–C33 中无任何承载阈值的规则（逐条核过）；" +
+          "断点·时间（上游可用日 > 下游需求日）在规则库 C01–C34 中无任何承载阈值的规则（逐条核过）；" +
           "本引擎拒绝自造提前期阈值 —— 需先在规则库定义一条提前期规则，本判定器随即可绑定（R16 生长信号）",
       },
     ],

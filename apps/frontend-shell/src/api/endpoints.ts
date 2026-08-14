@@ -1691,7 +1691,8 @@ export const advanceProcessInstance = (id: string, body: AdvanceProcessInstanceR
 // 而 `GET /a/v1/sim/view-config` 的注释白纸黑字承诺「换行业 = 换本体内容不改代码」。
 // 没有编辑界面，那句承诺兑现不了。
 //
-// ⚠ 三条**实测订正**（照铁律 0.5「grep 不是结论，再追一层」查出来的，与派单原文不符）：
+// ⚠ 三条**实测订正**（2026-08-14 实测，照铁律 0.5「grep 不是结论，再追一层」查出来的，与派单原文不符）。
+//   复验命令逐条附在各条末尾，复审可亲手跑：
 //  ① `PropagationRule` **没有 `active` 字段**。启停语义落在 `status: DRAFT|PUBLISHED|RETIRED`
 //     （契约 `packages/contracts/src/sim.ts:82`），仓储侧第二个参数叫 `publishedOnly` 不叫
 //     `activeOnly`（`apps/datacore/src/repo/repo.ts:394`），过滤判据是 `status === "PUBLISHED"`
@@ -1705,6 +1706,14 @@ export const advanceProcessInstance = (id: string, body: AdvanceProcessInstanceR
 //     全都把 `deprecation` 投影掉了）。唯一带 `deprecation` 的读是**已发布快照**
 //     `GET /a/v1/ontology/versions` 的 `snapshot.linkTypes`（`ontology.ts:352`）。
 //     故状态列的口径 = 快照态 ⊕ 本次会话的写回包，两者在界面上分别标注，不合成一个数字。
+//
+// 复验（2026-08-14 逐条跑过，复审可原样重跑）：
+//   ① `grep -n 'status: z.enum(\["DRAFT"' packages/contracts/src/sim.ts`
+//      `grep -n 'listPropagationRules(tenantId: string, publishedOnly' apps/datacore/src/repo/repo.ts`
+//   ② `grep -n 'id: newId("simpr")' apps/datacore/src/app.ts`（id 在 body 展开之后 ⇒ 恒覆盖）
+//   ③ `grep -n 'ontologyLinks.list' apps/datacore/src/app.ts`（9 处读取方，逐个看投影字段）
+//   三条同时被 `apps/frontend-shell/test/ontology-relations.seam.test.tsx` §④ 钉成事实锁：
+//   后端哪天补了更新路径 / 改了口径，那组断言先红，这段注释随之作废。
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** 弃用状态机（治理增量 §2.2）。字段缺省 = 从未弃用（ACTIVE）。 */
@@ -1752,23 +1761,32 @@ export const createLinkType = (body: {
     { method: "POST", body },
   );
 
-/** 停用（ACTIVE → DEPRECATED）。`kind` 二选一，后端是同一个 `governance.deprecate`。 */
-export const deprecateOntologyElement = (kind: "link" | "type", key: string, supersededBy?: string) =>
-  api.a<{ key: string; deprecation: DeprecationMetaVM }>(
-    `/a/v1/ontology/${kind === "link" ? "links" : "types"}/${encodeURIComponent(key)}/deprecate`,
-    { method: "POST", body: supersededBy ? { supersededBy } : {} },
-  );
+/**
+ * 停用（ACTIVE → DEPRECATED）。`kind` 二选一，后端是同一个 `governance.deprecate`。
+ *
+ * ⚠ 两条路**必须各写各的字面量段**，不许写成 `/a/v1/ontology/${seg}/${key}/deprecate` ——
+ * 那样归一化后是 `/a/v1/ontology/*​/*​/deprecate`，会**冒领** `interfaces/*​/deprecate` 之类
+ * 同形状但**根本没接**的端点，让 `befe-seam:check` 把它们误判成「已修复」而从基线摘掉。
+ * 2026-08-14 实测踩过：第一版用 ternary 拼段，`POST /a/v1/ontology/interfaces/*​/retire`
+ * 被无辜摘掉一条（我从没接过对象接口）。**消红消到不该消的地方，比不消更糟**。
+ * 复验：`node scripts/check-backend-frontend-seam.mjs` 看「已修复」清单里有没有你没接过的路。
+ */
+export const deprecateOntologyElement = (kind: "link" | "type", key: string, supersededBy?: string) => {
+  const body = { method: "POST" as const, body: supersededBy ? { supersededBy } : {} };
+  return kind === "link"
+    ? api.a<{ key: string; deprecation: DeprecationMetaVM }>(`/a/v1/ontology/links/${encodeURIComponent(key)}/deprecate`, body)
+    : api.a<{ key: string; deprecation: DeprecationMetaVM }>(`/a/v1/ontology/types/${encodeURIComponent(key)}/deprecate`, body);
+};
 
 /**
- * 下线（DEPRECATED → RETIRED）。
+ * 下线（DEPRECATED → RETIRED）。字面量段的理由同上。
  * ⚠ 后端 `ontology-governance.ts:203` 在 `references.total > 0` 时抛 409 并逐条列出引用方 ——
  * 这不是异常，是设计：**还有人在引用就不许下线**。界面必须把那句话原样显示出来。
  */
 export const retireOntologyElement = (kind: "link" | "type", key: string) =>
-  api.a<{ key: string; status: "RETIRED" }>(
-    `/a/v1/ontology/${kind === "link" ? "links" : "types"}/${encodeURIComponent(key)}/retire`,
-    { method: "POST", body: {} },
-  );
+  kind === "link"
+    ? api.a<{ key: string; status: "RETIRED" }>(`/a/v1/ontology/links/${encodeURIComponent(key)}/retire`, { method: "POST", body: {} })
+    : api.a<{ key: string; status: "RETIRED" }>(`/a/v1/ontology/types/${encodeURIComponent(key)}/retire`, { method: "POST", body: {} });
 
 /** 引用反查（治理增量 §7.4）：这条边今天被谁引用着。下线前的前置检查。 */
 export interface ElementReferenceVM {

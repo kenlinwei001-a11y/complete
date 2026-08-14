@@ -2509,8 +2509,8 @@ export const handlers = [
       // ⚠ WO-BEFE-A：下面三行**必须留在此处、必须是对象字面量** ——
       //   `apps/datacore/test/mock-linktype-direction.gate.test.ts:40` 的抽取器按**本文件源码文本**
       //   在本端点路径之后找紧跟的那个数组，把它们换成 `mockLinkTypes.map(...)` 会让它抽出 0 条
-      //   → 该门当场报「工具坏了」。（实测过两次：一次是换成 store 读法，抽取锚点漂到 3568 行的
-      //   建模草稿夹具；一次是本注释里**照抄了抽取器的搜索串**，锚点落进注释自己 —— 两次都抽出 0 条。
+      //   → 该门当场报「工具坏了」。（2026-08-14 实测过两次：一次是换成 store 读法，抽取锚点漂到
+      //   3568 行的建模草稿夹具；一次是本注释里**照抄了抽取器的搜索串**，锚点落进注释自己 —— 两次都抽出 0 条。
       //   后者尤其值得记：注释里写下工具要找的那个串，就等于给工具埋了个假锚点。）
       //   那是一道本单范围外的 datacore 门，不许碰坏。故此处保持字面量，尾部 `.concat` 追加
       //   本会话新建的边（门只对账「种子三条的方向 vs 真本体」，新建的边不在其射程）。
@@ -4954,9 +4954,10 @@ export const handlers = [
   // `view-config` / `sessions` 沙盘控制台照用；`scope-precheck` 现**无前端调用方**
   // （`endpoints.ts fetchSimScopePrecheck` 随之只剩定义无消费），保留是因为后端端点仍在，
   // 但它已是「实现有、无生产调用方」的形态，见 PRD-sim-scope-local §遗留。
-  // ⚠ WO-BEFE-A：这条**从写死的桩改成了真派生** —— `stateVars` / `propagationCount` / `linkTypes`
-  //   全部由 `mockPropRules` / `mockLinkTypes` 两个 store 现算，口径逐条镜像后端
+  // ⚠ WO-BEFE-A（2026-08-14）：这条**从写死的桩改成了真派生** —— `stateVars` / `propagationCount` /
+  //   `linkTypes` 全部由 `mockPropRules` / `mockLinkTypes` 两个 store 现算，口径逐条镜像后端
   //   `apps/datacore/src/app.ts:1873-1885`（见 store 声明处的对齐说明）。
+  //   复验：`pnpm --filter frontend-shell exec vitest run test/ontology-relations.seam.test.tsx`
   //   桩恒回 `propagationCount: 1` 时，「建一条边 ⇒ 推演口径跟着变」根本无从断言 ——
   //   那正是 SEAM-GATE 要堵的「表单能提交」式假绿。
   //   零回归：种子 = 1 条已启用因果边（`s1 → s2`）⇒ `stateVars` / `propagationCount` 与旧桩逐字节相同；
@@ -5032,6 +5033,23 @@ export const handlers = [
       return err(409, "INVALID_STATE", `link '${key}' 仍被 ${refs.length} 处引用，无法 RETIRE：${refs.map((r) => `${r.refKind}:${r.key}@${r.where}`).join(", ")}`);
     }
     l.deprecation = { ...(l.deprecation ?? { status: "DEPRECATED" }), status: "RETIRED", retiredAt: "2026-08-14T00:00:00.000Z" };
+    return HttpResponse.json({ key, status: "RETIRED" });
+  }),
+  // 对象类型的弃用流程（后端 app.ts:2788/2793 → 与 link 同一个 `governance.deprecate/retire`，只是 kind 不同）。
+  http.post("*/a/v1/ontology/types/:key/deprecate", ({ params }) => {
+    const key = decodeURIComponent(String((params as { key: string }).key));
+    return HttpResponse.json({
+      key,
+      deprecation: { status: "DEPRECATED", deprecatedAt: "2026-08-14T00:00:00.000Z", graceUntil: "2026-11-12T00:00:00.000Z" },
+    });
+  }),
+  http.post("*/a/v1/ontology/types/:key/retire", ({ params }) => {
+    const key = decodeURIComponent(String((params as { key: string }).key));
+    // 与 link 侧同口径：还有人引用就 409（后端 `ontology-governance.ts:203` 对两种 kind 是同一段代码）。
+    const refs = mockElementRefs(key);
+    if (refs.length > 0) {
+      return err(409, "INVALID_STATE", `type '${key}' 仍被 ${refs.length} 处引用，无法 RETIRE：${refs.map((r) => `${r.refKind}:${r.key}@${r.where}`).join(", ")}`);
+    }
     return HttpResponse.json({ key, status: "RETIRED" });
   }),
   // `GET /a/v1/ontology/references`（后端 app.ts:2808 → `governance.references`，查 element_refs 索引）。
