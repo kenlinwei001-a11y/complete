@@ -1,0 +1,42 @@
+# WO-DSH-POC-S1 · 路 B 运行时 cordis.yml（@platform/dsh-harness）。
+# 与 S0 冒烟配置的差异：stock sdk-jsonrpc-server 换成我方 platform-sdk-server
+# （stock 的 createSession 不收 setup 钩子 —— sdk/server/src/server.ts:223-231 写死，
+#  而 setup 是按 AgentDefinition 组 scoped 世界的唯一入口）。
+# stdout 只走 JSON-RPC，禁止挂 console logger。
+#
+# 全量钉 0.1.0-rc.6（npm dist-tag 分裂：多数包 latest 停在 0.0.1-rc.1，裸装必 ERESOLVE）。
+
+- id: platform-sdk-server
+  name: './plugins/platform-sdk-server.mjs'
+
+- id: llm
+  name: '@deepseek-ai/dsh-llm'
+
+- id: session
+  name: '@deepseek-ai/dsh-session'
+
+- id: system-prompt
+  name: '@deepseek-ai/dsh-system-prompt'
+  config:
+    persona: 'platform dsh harness (POC S1)'
+
+- id: tools
+  name: '@deepseek-ai/dsh-tools'
+
+- id: skill
+  name: '@deepseek-ai/dsh-skill'
+
+- id: agent
+  name: '@deepseek-ai/dsh-agent'
+
+- id: agent-loop
+  name: '@deepseek-ai/dsh-agent-loop'
+  config:
+    agents: []
+
+# --- POC 夹具（生产部署替换为 platform LLM 适配器插件 + 真工具） ---
+- id: mock-llm
+  name: './plugins/mock-llm.mjs'
+
+- id: echo-tool
+  name: './plugins/echo-tool.mjs'
