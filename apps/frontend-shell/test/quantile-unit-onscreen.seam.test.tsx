@@ -181,6 +181,81 @@ describe("§2 · 契约里零裸分位名（旧名不回潮）", () => {
   });
 });
 
+/**
+ * §2b · **改名漏改断言**这一族（铁律 0.6 第 3 次 ⇒ 必须建机制，不许只写「下次注意」）。
+ *
+ * 三次实测，同一形态 —— **「我用『生产代码改完了』当作『这个改名做完了』的证据，而前者并不度量后者」**：
+ *  ① `xservice-smoke.test.ts` 断言 `payload.data.p50`，改名后实测 `undefined`，自改名起一直红；
+ *  ② `base-outlook-card.test.tsx` 断言溯源串含 `DemandSegment.p50`，mock 已发 `demandWanPerYearP50`；
+ *  ③ `skill-studio.test.tsx` 断言输出契约含 `p50`/`p90`，fixtures 已是 `capWanP50/capWanP90`。
+ * ①②③ 全部**红在 canonical 上**、没人发现 —— 因为跑的是别的单的测试子集。
+ *
+ * 还有一种更隐蔽的、**不会红**的：测试自己造一份带旧名的 mock、再断言它渲染出来
+ *（`dash-supply-demand` 的 `drillField:"p50"`、`global-sim-drill-seam` 的 `PROV(...,"p50",...)`）——
+ * 自洽所以永远绿，但它**不再镜像生产**（生产发 `demandWanPerYearP50`）。这是「已排练 ≠ 已实现」。
+ *
+ * 机制（机器先说话）：**旧名作为「数据键」出现在任何 src/test 代码里即红**。
+ * 判据用**大小写**区分，无需例外清单也几乎零误报：
+ *  · 小写 `p50`/`p90` = **字段名/数据键**（本仓已全部改名 ⇒ 不该再有）；
+ *  · 大写 `P50`/`P90` = **屏上显示标签**（「需求 P50(万套/月)」「滚动 P90」），合法、不咬。
+ * 唯一豁免：本文件自己（金丝雀里必须写出坏样例）。
+ */
+describe("§2b · 改名漏改断言：旧名不许作为数据键留在任何代码里", () => {
+  /** 旧名被当**数据键**用：属性访问 `x.p50` · 对象键 `drillField: "p50"` · 串里的点路径 `"DemandSegment.p50"`。 */
+  const OLD_AS_DATA_KEY = /(?:\.|["'`]|:\s*["'`])p(?:50|90)\b/;
+
+  /**
+   * 两类**合法**用法，按语法上下文排除（不是按文件名开白名单 ——
+   * 白名单迟早被例外吃光，而上下文规则对**新文件**照样生效，这才拦得住下一次）：
+   *  ① DOM 测试钩子：`testId="p50"` / `data-testid="kpi-p50"` —— 是选择器不是数据键；
+   *  ② **缺席断言**：`expect(data.p50).toBeUndefined()` —— 它正是「旧名已消失」的证据，
+   *     写出旧名是它的工作。咬它等于罚这道机制自己。
+   */
+  const DOM_HOOK = /(?:data-)?[Tt]est[Ii]d\s*=\s*["'{]|data-testid=|testId:/;
+  const ABSENCE_ASSERT = /toBeUndefined|toBeNull|not\.to|\.not\b|\?: unknown/;
+
+  const judgeLine = (line: string): boolean =>
+    OLD_AS_DATA_KEY.test(line) && !DOM_HOOK.test(line) && !ABSENCE_ASSERT.test(line);
+
+  it("src + test 全扫（剥注释）：零处把 `p50`/`p90` 当数据键用；显示标签/测试钩子/缺席断言不误伤", () => {
+    // ── 金丝雀（必咬 3 条）：三次真事故各取一行原文形态 ──
+    for (const bad of [
+      'expect(typeof payload.data.p50).toBe("number");', // ① xservice-smoke 当年那一行
+      'expect(t.getAttribute("title")).toContain("DemandSegment.p50");', // ② base-outlook-card
+      'expect(output).toHaveTextContent("p50");', // ③ skill-studio
+      'provenance: { drillType: "DemandSegment", drillField: "p50", drillValue: 20 },', // ④ 自洽假绿那类
+    ]) expect(judgeLine(bad), `必咬却没咬：${bad}`).toBe(true);
+
+    // ── 金丝雀（必不咬 3 类）：大写显示标签 · DOM 钩子 · 缺席断言 ──
+    for (const ok of [
+      'expect(summary).toContain("P90");',
+      '<span>需求 P50(万套/月)</span>',
+      '<div className={styles.kpi} data-testid="kpi-p50">',
+      'testId="p90"',
+      'expect(data.p50, "裸 `p50` 回潮").toBeUndefined();',
+    ]) expect(judgeLine(ok), `误伤合法用法：${ok}`).toBe(false);
+
+    // 金丝雀：只写在注释里的旧名不算回潮（证明剥注释这一步没坏）
+    expect(commentOnlyCanary('drillField: "p50"').filter(([, s]) => s.split("\n").some(judgeLine))).toEqual([]);
+
+    const trees = [
+      ...srcCode("apps/frontend-shell/src"),
+      ...srcCode("apps/frontend-shell/test"),
+      ...srcCode("apps/datacore/src"),
+      ...srcCode("apps/datacore/test"),
+      ...srcCode("packages/contracts/src"),
+    ];
+    expect(trees.length).toBeGreaterThan(500); // 扫描面非空自证
+
+    const hits: string[] = [];
+    for (const [file, code] of trees) {
+      if (file.endsWith("quantile-unit-onscreen.seam.test.tsx")) continue; // 本文件的金丝雀必须写出坏样例
+      code.split("\n").forEach((line, i) => { if (judgeLine(line)) hits.push(`${file}:${i + 1}  ${line.trim()}`); });
+    }
+    expect(hits, `旧分位名仍被当数据键使用（改名漏改的第 4 次）：\n  ${hits.join("\n  ")}`).toEqual([]);
+  });
+});
+
 describe("§3 · 屏上真出现单位（渲染结果，不是字段名）", () => {
   it("S&OP：KPI 条 + ② 三线对照表头 = 万套/月；⑤ 版本演进表头 = 万套/年（同屏两个分母，可分辨）", async () => {
     const user = userEvent.setup();
