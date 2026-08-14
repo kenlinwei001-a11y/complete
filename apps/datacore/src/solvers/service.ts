@@ -39,6 +39,7 @@ import { chainLossAttribution as runChainLossAttribution, type ChainLossObject }
 import { describeChainScope, echoChainScope, isChainScopeUnscoped, normalizeChainScope, orderInChainScope, resolveScopeBaseIds, type ChainScope } from "./scope.js";
 import { normalizeSolverArgs } from "./arg-aliases.js"; // WO-SILENT-WRONG-ANSWER-3 · 入参键名归一单一出处（base/baseId/baseName · horizon/days）
 import { detectChainImpediments, CONTENTION_LOCUS_TYPE, IMPEDIMENT_RULE_BINDINGS, type ImpedimentRuleBinding } from "./chain-impediment.js"; // WO-SANDBOX-E3 · 阻滞点判定（纯函数·阈值全从规则读回）+ WO-DECISION-PLAY-OPTIONS 判据册（决策路按落点类型收窄）
+import { isDynamicDrillId, resolveDynamicDrill, type DrillResolution } from "./dynamic-drill.js"; // WO-DYNAMIC-DRILL-RESOLVE · `DYNAMIC-*`/`*` 占位的查询期解析（单一出处·口径由数据声明）
 import { projectProcessFlowTime } from "./process-flow.js"; // WO-FLOWTIME · 流程实例流转时长（站间时长/卡顿站/瓶颈站·反推非编造）
 import { projectFinanceWorld, type FinanceWorldArgs } from "./finance-world.js"; // WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影（finance_pnl 缺的那半·只读 R4）
 import { reconstructAndPersist } from "../process/reconstruct.js"; // WO-FLOWTIME · 反推器 IO 适配层（算法在 contracts 纯函数）
@@ -84,6 +85,13 @@ const DRILL_PK_FIELD: Record<string, string> = {
   Process: "processId",
   Shipment: "shipId",
   EquipmentDowntime: "dtId",
+  // WO-DYNAMIC-DRILL-RESOLVE · 链路落点域两条因子的承载类型（`cf-batch-idle` / `cf-base-capacity-contention`）。
+  // 修前这两个类型不在表里 → 落到 `"id"` 兜底，而两者的主键实测分别是 `batchId` / `baseId`
+  // （`objects.listByType` 首行实测：`{"batchId":"pos_ncm_b0",…}` / `{"baseId":"changzhou",…}`）
+  // ⇒ 占位在落点上下文里会解析不出 id。这两条因子 `metricKey` 是 `chain_flow`（无 Metric·不进任何归因树），
+  // 故加这两行**只**影响本单新加的落点解析路，既有归因树读不到它们。
+  MaterialBatch: "batchId",
+  Base: "baseId",
 };
 
 /** 产能因子细分层取几个对象（同一因子下按紧张度排序的前 N 个真对象·N 太大树会糊）。 */
@@ -119,8 +127,13 @@ const DECISION_JOIN_RANK: Record<"LOCUS_EXACT" | "LOCUS_TYPE" | "BASE_SCOPE", nu
 };
 type DecisionJoinKind = keyof typeof DECISION_JOIN_RANK;
 
-/** 归因树里表示「本类型内按作用域现解析」的占位 drillId（契约既有约定，见 GapProvenanceSchema.drillId）。 */
-const isWildcardDrillId = (id: string): boolean => id === "" || id === "*" || id.startsWith("DYNAMIC");
+/**
+ * 归因树里表示「本类型内按作用域现解析」的占位 drillId（契约既有约定，见 GapProvenanceSchema.drillId）。
+ *
+ * WO-DYNAMIC-DRILL-RESOLVE：判据实现搬到 `dynamic-drill.ts` 做**单一出处**（本文件三处 + 落点 join
+ * 共用同一份），这里只留别名。各抄一份判据 = 改一处漏三处，正是本仓 0.6 戒律点名的装饰品。
+ */
+const isWildcardDrillId = isDynamicDrillId;
 
 /** WO-OPTWHATIF-NL-WIRING · 选中决策对象引用（= AgentCore ObjectRef 结构·经 invoke args 透传）。 */
 interface SelectionRef { objectType: string; objectId: string; label?: string }
@@ -2602,17 +2615,54 @@ export class SolverService {
 
     // drill 真值读取（pkField 映射覆盖各指标域证据对象；与 market_share 同源、补商业/财务域类型）。
     const drillCache = new Map<string, Record<string, unknown>[]>();
-    const drillVal = async (type: string, id: string, field: string): Promise<number> => {
+    const rowsOf = async (type: string): Promise<Record<string, unknown>[]> => {
       if (!drillCache.has(type)) drillCache.set(type, (await this.repos.objects.listByType(ctx.tenantId, type)).map((o) => o.props));
-      const rows = drillCache.get(type)!;
+      return drillCache.get(type)!;
+    };
+    const drillVal = async (type: string, id: string, field: string): Promise<number> => {
+      const rows = await rowsOf(type);
       const pkField = DRILL_PK_FIELD[type] ?? "id"; // WO-FACTOR-SCOPE-SINGLESOURCE：表提到模块级·与产能域下钻共用一份
       const row = rows.find((r) => str(r[pkField]) === id);
       return row ? num(row[field]) : 0;
     };
 
+    // ── WO-DYNAMIC-DRILL-RESOLVE · 因子 → 落点的**查询期**解析（占位不再冻在播种期）────────────
+    //
+    // 归因期的「上下文」= **本次世界态里该类型的全部对象**（没有 locus 收窄，就该拿全量当候选池），
+    // 挑哪一张由因子自己声明的 `drillPick` 决定（`dynamic-drill.ts`·引擎里没有 if 链）。
+    //
+    // ⚠ 解析产物**照旧写进 `provenance.drillId`（具体 id，不是占位）**——归因树下游
+    //   （`collectGapAnchors` 的 byKey/byType 分流、`decisionImpedimentPlays` 的 LOCUS_EXACT join、
+    //   前端 `gapAttributionToBaseRootCause`）读的都是这个键，改成占位会让整条决策链退成按类型认。
+    //   同时**加两个只在动态解析时出现的键**（`drillIdDeclared` / `drillResolveBasis`）：
+    //   读者必须能分辨「这一张是因子直接指名的」还是「引擎按 drillPick 现挑的」——
+    //   不标出来就是把「这一类的因」冒充成「这一张自己的因」，即换个马甲的静默回落。
+    const resolveFactorDrill = async (
+      cf: Record<string, unknown>,
+    ): Promise<{ drillId: string; drillValue: number; dyn: DrillResolution | null }> => {
+      const type = str(cf.drillType);
+      const field = str(cf.drillField);
+      const declared = str(cf.drillId);
+      if (!isDynamicDrillId(declared)) return { drillId: declared, drillValue: await drillVal(type, declared, field), dyn: null };
+      const res = resolveDynamicDrill({
+        placeholder: declared,
+        drillType: type,
+        drillField: field,
+        pick: str(cf.drillPick),
+        pkField: DRILL_PK_FIELD[type] ?? "id",
+        rows: await rowsOf(type),
+        contextLabel: `本次归因的世界态（全量 ${type}）`,
+      });
+      // 解析不出来 ⇒ 占位原样留在 drillId 上、值 0，并由 basis 说清为什么 —— 不拿任意一条冒充。
+      return { drillId: res.drillId ?? declared, drillValue: res.drillValue ?? 0, dyn: res };
+    };
+    /** 动态解析的诚实标记（非动态因子返回空对象 ⇒ 既有节点逐字节不变）。 */
+    const dynMarks = (declared: string, dyn: DrillResolution | null): Record<string, unknown> =>
+      dyn === null ? {} : { drillIdDeclared: declared, drillResolveBasis: dyn.basis, drillCandidateCount: dyn.candidateCount };
+
     // 结构层（L1）：单节点承接 gap 的结构可解释部分，下钻本域入口 gap 因子真证据（无入口证据则挂 Metric.actual）。
     const entryCf = cfById.get(entryFactorId);
-    const entryRaw = entryCf ? await drillVal(str(entryCf.drillType), str(entryCf.drillId), str(entryCf.drillField)) : 0;
+    const entryDrill = entryCf ? await resolveFactorDrill(entryCf) : null;
     const l1Contribution = round(G * structuralExplained, 4);
     const l1residual = round(G - l1Contribution, 4);
     const l1Node = {
@@ -2627,9 +2677,10 @@ export class SolverService {
         ? {
             kind: str(entryCf.kind) as "实测" | "派生" | "外部信号" | "决策",
             drillType: str(entryCf.drillType),
-            drillId: str(entryCf.drillId),
+            drillId: entryDrill!.drillId,
             drillField: str(entryCf.drillField),
-            drillValue: entryRaw,
+            drillValue: entryDrill!.drillValue,
+            ...dynMarks(str(entryCf.drillId), entryDrill!.dyn),
             ...(entryCf.provenanceSynthetic ? { provenanceSynthetic: true } : {}),
           }
         : { kind: "派生" as const, drillType: "Metric", drillId: str(m.metricId ?? m.key), drillField: "actual", drillValue: num(m.actual) },
@@ -2675,13 +2726,16 @@ export class SolverService {
       if (kind === "外部信号") return "external";
       return "supply";
     };
+    // WO-DYNAMIC-DRILL-RESOLVE：串行（不再 Promise.all）——`rowsOf` 的缓存写在 await 之后，
+    // 并发进入会让同一类型被 listByType 读多遍；解析结果虽仍确定，但白读一轮，且掩盖缓存语义。
     const rawMap = new Map<string, number>();
-    await Promise.all(
-      reachedFactors.map(async (rf) => {
-        const cf = cfById.get(rf.id)!;
-        rawMap.set(rf.id, await drillVal(str(cf.drillType), str(cf.drillId), str(cf.drillField)));
-      }),
-    );
+    const drillMap = new Map<string, { drillId: string; drillValue: number; dyn: DrillResolution | null }>();
+    for (const rf of reachedFactors) {
+      const cf = cfById.get(rf.id)!;
+      const d = await resolveFactorDrill(cf);
+      drillMap.set(rf.id, d);
+      rawMap.set(rf.id, d.drillValue);
+    }
     const maxAbsRaw = Math.max(1, ...[...rawMap.values()].map((v) => Math.abs(v)));
     const sevMap = new Map<string, { sev: number; raw: number }>();
     for (const rf of reachedFactors) {
@@ -2730,10 +2784,11 @@ export class SolverService {
         provenance: {
           kind: str(s.cf.kind) as "实测" | "派生" | "外部信号" | "决策",
           drillType: str(s.cf.drillType),
-          drillId: str(s.cf.drillId),
+          drillId: drillMap.get(s.r.id)!.drillId, // WO-DYNAMIC-DRILL-RESOLVE：占位在查询期解析出的那一张（非动态因子恒等于声明值）
           drillField: str(s.cf.drillField),
           drillValue: s.raw,
           severityKind: sk,
+          ...dynMarks(str(s.cf.drillId), drillMap.get(s.r.id)!.dyn),
           ...(s.cf.provenanceSynthetic ? { provenanceSynthetic: true } : {}),
         },
       };
@@ -3651,6 +3706,16 @@ export class SolverService {
    *    原文「`"*"` 表示按类型聚合」）：因子讲的是**这一类**落点的因，不是这一张的因。屏上必须标出来，
    *    否则读者会把「这类物料短缺」读成「这张 mbal-7 自己的归因」。
    *  · `NONE`  —— 真没有。**不回落到贡献最大的默认因子**（那正是 `sandboxConsoleModel.ts` §8 拒绝猜 factorId 的理由）。
+   *
+   * ── WO-DYNAMIC-DRILL-RESOLVE · `TYPE` 档必须同时回答「那到底是哪一张」──────────────
+   * 光说「按类型对上」还不够用：读者站在 `MaterialBalance/mbal-7` 这条阻滞点前面，要的是
+   * 「物料短缺这个因，落在**我这一张**上是什么读数」。所以 `TYPE` 档额外回带
+   * `resolvedDrillId` / `resolvedDrillValue` / `resolveBasis` —— 占位在**本落点这一个上下文**里
+   * 解析出的实例（候选池就是这一张，故必然等于 `locus.objectId`）与它 `drillField` 的真读数。
+   *
+   * ⚠ **`precision` 仍然是 `TYPE`，不许因为解析出了实例就升成 `EXACT`**：
+   *   `EXACT` 的含义是「因子**指名**了这一张」，而这里是「因子讲的是这一类，引擎把它落到了这一张」。
+   *   两者证据强度不同；把后者显示成前者就是换个马甲的静默回落（本单工单点名禁止的那一条）。
    */
   private async decisionPlayLocus(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     const locusType = args.locusType === undefined ? "" : str(args.locusType);
@@ -3661,19 +3726,50 @@ export class SolverService {
     const factors = (await this.repos.objects.listByType(ctx.tenantId, "CausalFactor")).map((o) => o.props);
     const sameType = factors.filter((f) => str(f.drillType) === locusType).sort((a, b) => str(a.factorId).localeCompare(str(b.factorId)));
     const exact = sameType.find((f) => str(f.drillId) === locusId);
-    const wildcard = sameType.find((f) => str(f.drillId) === "*" || str(f.drillId).startsWith("DYNAMIC-"));
+    // WO-DYNAMIC-DRILL-RESOLVE：通配判据用 `dynamic-drill.ts` 的单一出处，不再在这里抄一份表达式
+    //（原文 `=== "*" || startsWith("DYNAMIC-")` 与 `isWildcardDrillId` 已经是两份，改一处漏一处）。
+    const wildcard = sameType.find((f) => isDynamicDrillId(str(f.drillId)));
     const hit = exact ?? wildcard;
     const precision = exact ? "EXACT" : hit ? "TYPE" : "NONE";
+
+    // TYPE 档：把占位在**这一个落点的上下文**里解析成实例（候选池 = 这一张，故必然落回 locus.objectId；
+    // 解析不到 ⇒ 三个键全 null + basis 说明，绝不拿别的对象顶上）。
+    let dyn: DrillResolution | null = null;
+    if (hit && !exact) {
+      const pkField = DRILL_PK_FIELD[locusType] ?? "id";
+      const rows = (await this.repos.objects.listByType(ctx.tenantId, locusType))
+        .map((o) => o.props)
+        .filter((r) => str(r[pkField]) === locusId);
+      dyn = resolveDynamicDrill({
+        placeholder: str(hit.drillId),
+        drillType: locusType,
+        drillField: str(hit.drillField),
+        pick: str(hit.drillPick),
+        pkField,
+        rows,
+        contextLabel: `落点 ${locusType}／${locusId} 这一个上下文`,
+      });
+    }
+
     const join = {
       status: hit ? "JOINED" : "NO_FACTOR",
       precision,
       factorId: hit ? str(hit.factorId) : null,
       factorLabel: hit ? str(hit.label) : null,
       drillField: hit ? str(hit.drillField) : null,
+      // 因子声明的原文（EXACT 档就是具体 id；TYPE 档是 `*`/`DYNAMIC-*` 占位）——读者据此分辨证据强度。
+      drillIdDeclared: hit ? str(hit.drillId) : null,
+      // 占位在本落点上下文里解析出的那一张 + 它的真读数（EXACT 档不需要解析 ⇒ null）。
+      resolvedDrillId: dyn ? dyn.drillId : null,
+      resolvedDrillValue: dyn ? dyn.drillValue : null,
+      resolveBasis: dyn ? dyn.basis : null,
       basis: hit
         ? exact
           ? `CausalFactor.drillId「${str(hit.drillId)}」逐字节等于 locus.objectId「${locusId}」`
-          : `CausalFactor.drillId「${str(hit.drillId)}」是按类型聚合的占位（契约 gap-attribution.ts:30「"*" 表示按类型聚合」）⇒ 只对上到类型 ${locusType}，不是这一张 ${locusId} 自己的因子`
+          : `CausalFactor.drillId「${str(hit.drillId)}」是按类型聚合的占位（契约 gap-attribution.ts:30「"*" 表示按类型聚合」）⇒ 只对上到类型 ${locusType}，不是这一张 ${locusId} 自己的因子` +
+            (dyn?.drillId
+              ? `；该占位在本落点上下文里解析为 ${locusType}/${dyn.drillId}（${str(hit.drillField)}=${dyn.drillValue}）—— 这是「这一类的因落在这一张上的读数」，**不是**这一张自己的因子，精度仍为 TYPE`
+              : `；且该占位在本落点上下文里解析不出实例（${dyn?.basis ?? "未解析"}）`)
         : `本租户 ${sameType.length} 条 drillType=${locusType} 的 CausalFactor 里，既无 drillId 等于「${locusId}」的，也无按类型聚合的占位 ⇒ 诚实说没有，不回落到贡献最大的默认因子（回落会在屏上造出一个看着确凿、实则与这条落点无关的根因）`,
       candidateFactorCount: sameType.length,
     };
@@ -3716,7 +3812,11 @@ export class SolverService {
         `是因为候选身上没有 代价/周期/风险/敞口/可逆 这几维的真值 —— 合并就得替它们编数，而编出来的数会被比对矩阵与推荐组合当真用。`,
       summary:
         `落点 ${locusType}／${locusId}：${loci.length} 条阻滞点 · ${candidateTotal} 条可执行解法 · ` +
-        `因子对上 ${join.status === "JOINED" ? `${join.factorId}（${precision} 精度）` : "无（诚实空，不回落默认根因）"}`,
+        `因子对上 ${
+          join.status === "JOINED"
+            ? `${join.factorId}（${precision} 精度${join.resolvedDrillId ? `·占位现解析为 ${locusType}/${join.resolvedDrillId}，${join.drillField}=${join.resolvedDrillValue}` : ""}）`
+            : "无（诚实空，不回落默认根因）"
+        }`,
     };
   }
 
