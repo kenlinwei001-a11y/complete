@@ -38,6 +38,55 @@
  * 这正是本单派单里那句「你的指标不许奖励删内容」——若只有 ①②③，本门会**奖励删除**，
  * 那它就不是在守这份规范，而是在鼓励违反它。
  *
+ * ══ ⚠ D5/D6/D7：D1–D4 全都以「**基线里登记的那个文件**」为度量单位，
+ *              而**文件不是内容的归属单位** —— 搬一次家，归属就变了（WO-RATCHET-NEWFILE-BLINDSPOT）
+ * ════════════════════════════════════════════════════════════════════════════
+ * 2026-08-14 在合成沙盘里**实测复现**了两个盲区（不是推想；复现脚本见本单报告）：
+ *
+ *  · **盲区①「搬家能让棘轮失忆」** —— 沙盘四步：
+ *      A 基态 `OldPage` 20 块，登记基线 ⇒ RC=0；
+ *      B 内容整体搬进**新文件** `NewPanel`、`OldPage` 退化成壳 ⇒ RC=1（D4 单文件守恒确实咬到了）；
+ *      C 照门自己的提示语「更新基线并写 why」把 `OldPage` 条目改成 0/0 ⇒ RC=0；
+ *      D **`NewPanel` 从 20 块堆到 120 块 ⇒ 仍然 RC=0、零红、一个字都不说。**
+ *    要害不在 B（那一步门是对的），在 **D**：内容一旦落进未登记文件，
+ *    D1/D2/D2b/D3/D4 **全部对它永久失效**，旧判据只对它查两条硬上限（字号 ≤3、零口径）。
+ *    真实存量印证：`DecisionPlayView` 79→0 的对面 `DecisionPlayPanel` 实测 first=90，
+ *    而扫描面 122 个文件里 **27 个未登记**、Σfirst 5752 中 **1491 块（26%）在棘轮射程之外**。
+ *
+ *  · **盲区②「D4 守恒对新文件根本不适用」** —— 沙盘两步：
+ *      A 新文件带一整块 `InfoPopover`（deferred=8，total=10）⇒ RC=0；
+ *      B **整块浮层直接删掉、不留任何可见记号**（deferred 8→0，total 10→2）⇒ **仍然 RC=0、零红。**
+ *    规范 §1 白纸黑字「诚实位允许降到浮层，**绝不允许删除**」，而门在这里一声不吭。
+ *
+ * **形态**（照 CLAUDE.md 铁律 0.6 的句式）：
+ *   **「我用『基线里那一条的数字没涨』当作『屏上第一层没变多』的证据，而前者并不度量后者。」**
+ *   `files` 里的一条，度量的是**一个文件**；要度量的却是**屏上的内容**。两者被 `git mv` 一分开就脱钩。
+ *
+ * ⚠ **为什么修法不是「把 `DecisionPlayPanel` 加进基线」**：那只堵这一个文件，
+ *   下一个新文件照旧免检 —— 洞的成因是「未登记 = 免检」这条**规则**，不是「少登记了某一条」。
+ *   照铁律 0.6，第 2 次起必须建机制，**机制的判据是「下次同样的错发生时机器先说话」**。
+ *   故三条新判据都咬**规则**：
+ *
+ *  ⑤ **D5 全局守恒** —— 守恒的对象从「一个文件」上提到「**扫描面全体这个内容集合**」：
+ *     实测 `Σ(first + deferred)`（**含未登记文件**）不许低于 `conserve.total`。
+ *     搬家：老文件掉、新文件涨、集合不变 ⇒ 绿（正确）。删除：无论删在新文件还是老文件 ⇒ 红。
+ *     这条直接治盲区②：新文件里删掉一整块浮层，全局总量当场掉。
+ *  ⑥ **D6 未登记文件也进棘轮** —— 基线新增 `unlisted` 段：**机器自动落账**的新文件账。
+ *     · D6a 扫到的文件既不在 `files` 也不在 `unlisted` ⇒ **红**，要求 `--tighten` 落账。
+ *       免检期从「永远」缩短为「该文件第一次进仓的那一次提交」。
+ *     · D6b 落了账的新文件走**与 `files` 完全同一份 `judge()`**（D1/D2/D2b/D3/D4 全套），
+ *       **并且**硬上限（字号 ≤3、第一层零口径）继续有效 —— 新文件没有历史包袱的豁免理由。
+ *       ⚠ 同一份实现，不另抄一套比较逻辑：抄一份就是装饰品（本仓 2026-08-08 实测）。
+ *     `unlisted` 与 `files` 刻意分两段：`files` 是**人工审过、逐条带 why** 的存量账，
+ *     `unlisted` 是**机器落账**的新文件账。`--update` 因此**不再把新文件提拔进 `files`** ——
+ *     否则跑一次 `--update` 就等于「把新文件加进基线」，正是本单要禁的那个修法。
+ *  ⑦ **D7 棘轮松弛检测（反向遍历基线）** —— 基线**高于**实测 = **免检名额**：
+ *     页面已经改好了，基线还记着旧的高值，于是它可以一路涨回旧值而门不吭声。
+ *     正向遍历发现不了（`judge` 只在 `r > b` 时说话），必须**反向遍历基线**：
+ *     `b.first/formula/prose/sizes > 实测` ⇒ 红，要求 `--tighten` 收紧。
+ *     基线里有、当前扫不到的条目（文件删了/改名）同样是死账（同名文件一建回来就继承旧额度）⇒ 一并红。
+ *     实测（2026-08-14 首次上这条）：sizes 81 条 · prose 7 条 · first 3 条 · formula 1 条松弛。
+ *
  * ══ 诚实边界（本门做不到什么 · 不许当成"规范已全部机械化"）═══════════════════
  *  · **R-UI-1 视线距离本门判不了，且不打算假装能判。** 规范的判据是「标签与数值同时读进眼里
  *    要不要移动视线超过一张卡宽」——那是**渲染后的几何量**（依赖视口宽、flex 分配、字体度量），
@@ -52,6 +101,18 @@
  *    浮层组件名。用别的命名法写的折叠会被误判成第一层（**偏保守，宁可多报**）。
  *  · 本门**不守原生 `title=` 存量**（规范 §2 明令禁止用它当浮层）：该项另有 dev 在建专门的棘轮，
  *    两道门各设一份基线必然漂移。本门只在 `--census` 里**报数**，不据此红。
+ *  · **D5 全局守恒会被同批的新增内容抵消。** 它守的是「集合总量不掉」，
+ *    所以「这里删 20 块、那里新写 20 块」在同一次改动里**净额为零 ⇒ 绿**。
+ *    它拦得住「只删不补」，拦不住「边删边补」。逐文件的 D4 才是细粒度那一层，
+ *    两条各守一半：D4 咬**哪个文件**变少了，D5 咬**总量**有没有真的少。
+ *  · **D7 松弛检测刻意只覆盖 `first / formula / prose / sizes` 这四个「只降不升」的字段。**
+ *    `deferred` 方向相反（越高越严），它的松弛（基线低于实测，实测 17 条）
+ *    **不单独报红**，只在 `--tighten` 时顺手上调 —— 因为报它会逼出「基线数字变大」的收紧动作，
+ *    与「基线只降不升 ⇒ 一眼可审」这条可审计性冲突。危害由 D5 全局守恒兜底（删任何一块总量都掉），
+ *    但上一条边界同样适用：**边删边补时兜不住**。这是本门今天真实的缺口，不许读成「已守住」。
+ *  · **`unlisted` 的首次落账值 = 落账当时的实测值，不是「达标值」。**
+ *    D6 保证的是「从此不许更差」，**不是**「这些新文件合格」——
+ *    27 个首次落账文件里，第一层最重的一个 first=90。棘轮永远只答「有没有变差」。
  *
  * ══ 金丝雀（保命判据 · 每次运行都先跑）════════════════════════════════════════
  * 开扫之前先拿**内嵌样例**过一遍 `analyze()` —— **与主逻辑同一份实现，不另抄正则**
@@ -83,6 +144,7 @@
  *   node scripts/check-ui-first-layer.mjs --selftest   # 只跑金丝雀
  *   node scripts/check-ui-first-layer.mjs --census     # 普查表（写 AUDIT 文档用）
  *   node scripts/check-ui-first-layer.mjs --update     # 重写基线（需人工核 why）
+ *   node scripts/check-ui-first-layer.mjs --tighten    # **只收紧不放松**：收掉 D7 松弛名额 + 落账新文件
  *   node scripts/check-ui-first-layer.mjs --rev <rev>  # 从某个 git rev 读文件（改前/改后对比用）
  *   node scripts/check-ui-first-layer.mjs --explain <file>  # 单文件：第一层到底堆了什么
  */
@@ -91,6 +153,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { join, dirname, resolve, relative, basename } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -799,21 +862,29 @@ const BACKLOG_TOP_N = (() => {
  * 而判据写反时门照样报绿（它只是不再红而已）。两者必须各自有必咬/必不咬样例，且**共用这一份实现**。
  *
  * @param r 实测读数（analyze() 的输出 + file 字段）
- * @param b 基线条目；`undefined` = 新文件（不进基线，直接按规范硬上限收）
+ * @param b 基线条目；`undefined` = 尚未落账的文件（只按规范硬上限收，无历史值可比）
+ * @param opts.hardCap 是否**额外**叠加「新文件硬上限」（字号 ≤3 · 第一层零口径）。
+ *        默认 `!b`（保持旧行为）。`unlisted` 段的条目传 `true` ——
+ *        它们有历史值可比（走下面全套棘轮），但**没有历史包袱的豁免理由**，
+ *        故硬上限继续有效。⚠ 这一段必须与 `files` 段**共用本函数**，不许另抄一套。
  */
-export function judge(r, b) {
+export function judge(r, b, opts = {}) {
   const fails = [];
-  if (!b) {
-    // 新文件：没有历史包袱，直接按规范原文的硬上限收
+  const hardCap = opts.hardCap ?? !b;
+  // 措辞对两种情形**保持同一个前缀**：落进 `unlisted` 的仍然是「新文件」，
+  // 只是从此多受一层棘轮；换个前缀会让同一条违规在落账前后长得不一样，白白制造 diff 噪声。
+  const tag = "新文件";
+  if (hardCap) {
+    // 没有历史包袱 ⇒ 直接按规范原文的硬上限收
     if (r.sizes > HARD_SIZE_CAP)
-      fails.push(`【新文件·R-UI-2】${r.file} 字号 ${r.sizes} 级 > ${HARD_SIZE_CAP}（${(r.sizeValues || []).join(" ")}）`);
+      fails.push(`【${tag}·R-UI-2】${r.file} 字号 ${r.sizes} 级 > ${HARD_SIZE_CAP}（${(r.sizeValues || []).join(" ")}）`);
     if (r.formula > 0)
       fails.push(
-        `【新文件·R-UI-3】${r.file} 第一层有 ${r.formula} 处口径/公式，应进 \`?\` 浮层：` +
+        `【${tag}·R-UI-3】${r.file} 第一层有 ${r.formula} 处口径/公式，应进 \`?\` 浮层：` +
           (r.formulaItems || []).map((x) => `L${x.line} "${x.text}"`).slice(0, 3).join(" · ")
       );
-    return fails;
   }
+  if (!b) return fails;
 
   /*
    * D1：第一层信息块只降不升 —— **但「结构化改造」豁免**。
@@ -863,7 +934,13 @@ export function judge(r, b) {
    *   · 加结构  ：first↑ deferred↑ total↑        ⇒ 绿（CapacityDerivationDag 18→30）
    *   · 删内容  ：first↓ deferred 不变 total↓    ⇒ **红**
    */
-  const baseTotal = b.first + b.deferred;
+  /*
+   * ⚠ 守恒下界优先读 `totalFloor`，回落到 `first + deferred`。
+   * 为什么要这个字段：`--tighten` 把 `first` 往下收（D1 更严）会顺手把 `first+deferred` 也拉低，
+   * 于是 **D4 反而变松** —— 收紧一个判据把另一个放松了，是本门第一版 tighten 实测踩到的坑。
+   * `totalFloor` 只升不降，把这条守恒线钉在原处。
+   */
+  const baseTotal = typeof b.totalFloor === "number" ? Math.max(b.totalFloor, b.first + b.deferred) : b.first + b.deferred;
   const total = r.total ?? r.first + r.deferred;
   const deferredShrank = r.deferred < b.deferred;
   const totalShrank = total < baseTotal;
@@ -889,6 +966,64 @@ export function judge(r, b) {
   }
 
   return fails;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * D5 · 全局守恒 —— 守恒的对象是**扫描面全体这个内容集合**，不是某一个文件
+ *
+ * 为什么必须再来一条：D4 只在**一个文件内部**比 total，而搬家会改变内容的归属文件。
+ * 沙盘实测（本单）：内容搬进未登记的新文件后，D1–D4 对它**全部失效**，
+ * 在里面把一整块 `InfoPopover` 删光（deferred 8→0）门都不吭声。
+ * 把守恒提到与「内容」同粒度的集合上，搬家不改变集合、删除才改变集合。
+ *
+ * @param cur  { total, first, deferred, files } 本次实测的全局汇总（含未登记文件）
+ * @param base { total, files } 基线登记的下界；缺失 = 尚未建账（返回空，由 --tighten 建）
+ * ═══════════════════════════════════════════════════════════════════════════ */
+export function judgeGlobal(cur, base) {
+  const fails = [];
+  if (!base || typeof base.total !== "number") return fails; // 未建账 ⇒ 不红（首次建账走 --tighten）
+  if (cur.total < base.total)
+    fails.push(
+      `【D5 全局守恒】扫描面**全体**信息总量 ${base.total} → ${cur.total}（少了 ${base.total - cur.total}）。` +
+        `${SPEC} §1：「诚实位允许降到浮层，**绝不允许删除**」。` +
+        `本条度量的是**内容集合**不是单个文件 —— 搬家（老文件掉·新文件涨）总量不变、不会红；` +
+        `会红只有一个成因：**内容真的变少了**（含删在未登记新文件里的那些，D1–D4 看不见它们）。` +
+        `确属合理删除/合并时跑 \`--tighten\` 并在基线 conserve.why 里写明。`
+    );
+  return fails;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * D7 · 棘轮松弛检测（反向遍历基线）
+ *
+ * 棘轮的免检名额长这样：页面已经改好（实测 3 级字号），基线还记着旧的 7 级 ——
+ * 于是它可以一路涨回 7 级而门一声不吭。**正向遍历永远发现不了**：
+ * `judge()` 只在 `r > b` 时说话，`r < b` 是它眼里的「变好了」。
+ * 必须**反向**拿基线去比实测。
+ *
+ * ⚠ 只覆盖 first/formula/prose/sizes 这四个「只降不升」的字段；`deferred` 方向相反，
+ *   见头注诚实边界那一条（不单独报红，`--tighten` 时顺手上调）。
+ * ═══════════════════════════════════════════════════════════════════════════ */
+const SLACK_FIELDS = ["first", "formula", "prose", "sizes"];
+export function judgeSlack(r, b, where = "files") {
+  const fails = [];
+  if (!b) return fails;
+  const loose = SLACK_FIELDS.filter((f) => (b[f] ?? 0) > (r[f] ?? 0)).map((f) => `${f} ${b[f] ?? 0}>${r[f] ?? 0}`);
+  if (loose.length)
+    fails.push(
+      `【D7 棘轮松弛】${r.file}（${where}）基线**高于**实测：${loose.join(" · ")} ⇒ 这是**免检名额**，` +
+        `它可以一路涨回基线值而门一个字都不说。跑 \`node scripts/check-ui-first-layer.mjs --tighten\` 收紧` +
+        `（该模式**只降不升**，不会把已变差的条目洗成新基线）。`
+    );
+  return fails;
+}
+
+/** 基线里有、当前扫不到的条目 = 死账：同名文件一建回来就继承旧额度，同样是免检名额。 */
+export function judgeStale(file, where = "files") {
+  return [
+    `【D7 死账】${file}（${where}）在基线里，但当前扫描面里**没有这个文件**（删了/改名）。` +
+      `留着它等于给同名文件预留一份旧额度 —— 跑 \`--tighten\` 摘掉。`,
+  ];
 }
 
 /**
@@ -949,6 +1084,129 @@ const JUDGE_CANARIES = [
     r: { file: "x", first: 10, deferred: 0, formula: 0, prose: 0, sizes: 3, total: 10, sizeValues: [] },
     red: false,
   },
+  /* ── D6 回归金丝雀：钉死本单实测到的盲区①（合成沙盘 D 步：新文件 20→120 块，门零反应）── */
+  {
+    name: "判据必红-6【D6】已落账新文件也进 D1 棘轮：first 20→120 而 deferred 不涨",
+    b: { first: 20, deferred: 0, formula: 0, prose: 0, sizes: 0 },
+    r: { file: "x", first: 120, deferred: 0, formula: 0, prose: 0, sizes: 0, total: 120, sizeValues: [] },
+    opts: { hardCap: true },
+    red: true,
+    msgMust: /D1 棘轮/,
+  },
+  /* ── D6 回归金丝雀：钉死盲区②（合成沙盘 B 步：新文件里整块浮层被删，deferred 8→0）── */
+  {
+    name: "判据必红-7【D6】已落账新文件也进 D4 守恒：浮层整块删掉 deferred 8→0",
+    b: { first: 2, deferred: 8, formula: 0, prose: 0, sizes: 0 },
+    r: { file: "x", first: 2, deferred: 0, formula: 0, prose: 0, sizes: 0, total: 2, sizeValues: [] },
+    opts: { hardCap: true },
+    red: true,
+    msgMust: /D4 守恒/,
+  },
+  {
+    name: "判据必红-8【D6】落了账也不豁免硬上限：字号 4 级（新文件没有历史包袱的理由）",
+    b: { first: 5, deferred: 0, formula: 0, prose: 0, sizes: 4 },
+    r: { file: "x", first: 5, deferred: 0, formula: 0, prose: 0, sizes: 4, total: 5, sizeValues: [] },
+    opts: { hardCap: true },
+    red: true,
+    msgMust: /R-UI-2/,
+  },
+  {
+    name: "判据必绿-4【D6】已落账新文件守规矩且未变差 ⇒ 绿（证明 D6 不是无脑红）",
+    b: { first: 5, deferred: 3, formula: 0, prose: 0, sizes: 3 },
+    r: { file: "x", first: 5, deferred: 3, formula: 0, prose: 0, sizes: 3, total: 8, sizeValues: [] },
+    opts: { hardCap: true },
+    red: false,
+  },
+  {
+    /** 反证「hardCap 不是把 files 段也一起收紧」：存量页 7 级字号是登记在案的历史包袱，不该被硬上限咬。 */
+    name: "判据必绿-5【D6】存量登记页（files 段）不叠加硬上限：7 级字号未变差 ⇒ 绿",
+    b: { first: 101, deferred: 6, formula: 0, prose: 1, sizes: 7 },
+    r: { file: "x", first: 101, deferred: 6, formula: 0, prose: 1, sizes: 7, total: 107, sizeValues: [] },
+    red: false,
+  },
+  /*
+   * ── totalFloor 回归金丝雀 ──────────────────────────────────────────────────
+   * 钉死本单实测踩到的那个坑：`--tighten` 把 first 189→158 收紧后，
+   * `first+deferred` 从 189 掉到 158，**D4 守恒线跟着掉了 31** ⇒ 收紧一个判据把另一个放松了。
+   * 有 totalFloor，同样的读数必须仍然红。
+   */
+  {
+    name: "判据必红-9【D4】totalFloor 钉住守恒线：first 已收紧到 158，删到 150 仍要红",
+    b: { first: 158, deferred: 0, formula: 0, prose: 0, sizes: 3, totalFloor: 189 },
+    r: { file: "x", first: 150, deferred: 0, formula: 0, prose: 0, sizes: 3, total: 150, sizeValues: [] },
+    red: true,
+    msgMust: /D4 守恒/,
+  },
+  {
+    name: "判据必绿-6【D4】totalFloor 不是无脑红：总量回到下界 189 ⇒ 绿",
+    b: { first: 158, deferred: 0, formula: 0, prose: 0, sizes: 3, totalFloor: 189 },
+    r: { file: "x", first: 158, deferred: 31, formula: 0, prose: 0, sizes: 3, total: 189, sizeValues: [] },
+    red: false,
+  },
+];
+
+/**
+ * D5 金丝雀 —— 直接跑 `judgeGlobal()` 本体（不另抄一套比较）。
+ * 三向：搬家必绿（这正是 D4 会误伤而 D5 必须放行的那一种）· 净删必红 · 未建账必绿。
+ */
+const GLOBAL_CANARIES = [
+  {
+    name: "全局必绿-1 搬家：老文件掉 20、新文件涨 20，集合总量不变",
+    cur: { total: 6704 },
+    base: { total: 6704 },
+    red: false,
+  },
+  {
+    name: "全局必红-1 净删：新文件里整块浮层被删，集合总量掉 8（盲区②的读数）",
+    cur: { total: 6696 },
+    base: { total: 6704 },
+    red: true,
+    msgMust: /D5 全局守恒/,
+  },
+  {
+    name: "全局必绿-2 尚未建账（conserve 缺失）⇒ 不红，由 --tighten 建账",
+    cur: { total: 1 },
+    base: undefined,
+    red: false,
+  },
+];
+
+/**
+ * D7 金丝雀 —— 直接跑 `judgeSlack()` 本体。
+ * ⚠ 必红-1 的数字取自本仓真实存量（AgentsPage 基线 sizes 7 · 实测 3）。
+ */
+const SLACK_CANARIES = [
+  {
+    name: "松弛必红-1 基线 sizes 7 > 实测 3 ⇒ 4 级免检名额（真实存量：AgentsPage）",
+    b: { first: 101, deferred: 6, formula: 0, prose: 1, sizes: 7 },
+    r: { file: "x", first: 101, deferred: 6, formula: 0, prose: 1, sizes: 3 },
+    red: true,
+    msgMust: /D7 棘轮松弛/,
+  },
+  {
+    name: "松弛必红-2 基线 first 189 > 实测 158（真实存量：DataBuilderPage）",
+    b: { first: 189, deferred: 0, formula: 0, prose: 21, sizes: 3 },
+    r: { file: "x", first: 158, deferred: 0, formula: 0, prose: 4, sizes: 3 },
+    red: true,
+  },
+  {
+    name: "松弛必绿-1 基线与实测逐字段相等 ⇒ 无名额",
+    b: { first: 10, deferred: 2, formula: 0, prose: 0, sizes: 3 },
+    r: { file: "x", first: 10, deferred: 2, formula: 0, prose: 0, sizes: 3 },
+    red: false,
+  },
+  {
+    name: "松弛必绿-2 实测**高于**基线（那是变差，归 judge 的正向棘轮，不归本条）",
+    b: { first: 10, deferred: 2, formula: 0, prose: 0, sizes: 3 },
+    r: { file: "x", first: 40, deferred: 2, formula: 0, prose: 0, sizes: 3 },
+    red: false,
+  },
+  {
+    name: "松弛必绿-3 deferred 基线低于实测：刻意不报（见头注诚实边界）",
+    b: { first: 10, deferred: 2, formula: 0, prose: 0, sizes: 3 },
+    r: { file: "x", first: 10, deferred: 40, formula: 0, prose: 0, sizes: 3 },
+    red: false,
+  },
 ];
 
 function runJudgeCanaries() {
@@ -956,7 +1214,7 @@ function runJudgeCanaries() {
   for (const c of JUDGE_CANARIES) {
     let out;
     try {
-      out = judge(c.r, c.b);
+      out = judge(c.r, c.b, c.opts || {});
     } catch (e) {
       fails.push(`${c.name} —— judge() 抛异常：${e.message}`);
       continue;
@@ -972,6 +1230,33 @@ function runJudgeCanaries() {
   }
   return fails;
 }
+
+/**
+ * D5 / D7 金丝雀跑法 —— 与 `runJudgeCanaries` 同一套断言形态（红/绿 + 措辞），
+ * **各自直接调判据本体**（`judgeGlobal` / `judgeSlack`），不另抄比较逻辑。
+ */
+function runNamedCanaries(list, fn, label) {
+  const fails = [];
+  for (const c of list) {
+    let out;
+    try {
+      out = fn(c);
+    } catch (e) {
+      fails.push(`${label}｜${c.name} —— 判据抛异常：${e.message}`);
+      continue;
+    }
+    const isRed = out.length > 0;
+    if (isRed !== c.red) {
+      fails.push(`${label}｜${c.name} —— 期望${c.red ? "红" : "绿"}，实得${isRed ? "红：" + out[0] : "绿"}`);
+      continue;
+    }
+    if (c.msgMust && !out.some((m) => c.msgMust.test(m)))
+      fails.push(`${label}｜${c.name} —— 红了但诊断措辞不对，应含 ${c.msgMust}，实得：${out[0]}`);
+  }
+  return fails;
+}
+const runGlobalCanaries = () => runNamedCanaries(GLOBAL_CANARIES, (c) => judgeGlobal(c.cur, c.base), "D5");
+const runSlackCanaries = () => runNamedCanaries(SLACK_CANARIES, (c) => judgeSlack(c.r, c.b), "D7");
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * 存量榜（burn-down board）· **可见性改造，不进判据**（WO-UI-LAYERING-BURNDOWN §3.1）
@@ -1011,8 +1296,10 @@ function printBacklog(base, rows, topN) {
   const bDefer = sum("deferred");
   const rate = (f, d) => (f + d === 0 ? "—" : ((d / (f + d)) * 100).toFixed(1) + "%");
   const zeroDeferred = entries.filter((e) => e.deferred === 0);
-  // 未进基线的新文件：它们不在棘轮里，按规范硬上限收（见 judge），这里只报数以免被读成"全仓已登记"
+  // 不在人工存量账里的文件 = `unlisted` 段（机器落账，受同一套棘轮 + 硬上限）。
+  // 单列报数，以免本榜被读成「全仓页面都在这张表里」。
   const unlisted = rows.filter((r) => !base.files[r.file]).length;
+  const unlistedFirst = rows.filter((r) => !base.files[r.file]).reduce((a, r) => a + r.first, 0);
 
   console.log("");
   console.log(`── 存量榜 · 第一层最重的 ${Math.min(topN, entries.length)} 页（${SPEC}）────────────────`);
@@ -1038,9 +1325,23 @@ function printBacklog(base, rows, topN) {
   );
   console.log(
     `   **${zeroDeferred.length} 页 deferred=0（从没降过层）** —— 一个总数答不了这件事，故单列。` +
-      (unlisted ? `　另有 ${unlisted} 个新文件未进基线（按规范硬上限收，不在本榜）。` : "")
+      (unlisted
+        ? `　另有 ${unlisted} 个文件在 \`unlisted\` 段（第一层合计 ${unlistedFirst} 块，受同一套棘轮 + 硬上限，不在本榜）。`
+        : "")
   );
   console.log(`   优先级：formula（违规 R-UI-3）> sizes>3（违规 R-UI-2）> prose > first 纯数量。`);
+}
+
+/**
+ * 全局汇总（D5 的度量对象）—— **含未登记文件**，这正是它与逐文件 D4 的分野。
+ * 单独抽出来是为了让门与 `--tighten` 用**同一份**汇总口径：
+ * 两处各算一遍，哪天口径漂了就会「写进去的下界」与「比对的实测」不是一个东西。
+ */
+function globalSummary(rows) {
+  const ok = rows.filter((r) => !r.broken);
+  const first = ok.reduce((a, r) => a + r.first, 0);
+  const deferred = ok.reduce((a, r) => a + r.deferred, 0);
+  return { files: ok.length, first, deferred, total: first + deferred };
 }
 
 function gate() {
@@ -1065,10 +1366,38 @@ function gate() {
 
   const fails = [];
   const byFile = new Map(rows.map((r) => [r.file, r]));
-  for (const r of rows) fails.push(...judge(r, base.files[r.file]));
+  const unlisted = base.unlisted && typeof base.unlisted === "object" ? base.unlisted : {};
 
-  // 基线里有、现在扫不到的文件（删了/改名）——只提示，不红
+  for (const r of rows) {
+    const inFiles = base.files[r.file];
+    const inUnlisted = unlisted[r.file];
+    if (inFiles) {
+      fails.push(...judge(r, inFiles)); // 存量人工账：棘轮，不叠硬上限（历史包袱已登记在案）
+      fails.push(...judgeSlack(r, inFiles, "files")); // D7
+    } else if (inUnlisted) {
+      // D6b：机器落账的新文件 —— **同一份 judge()**，且硬上限继续有效
+      fails.push(...judge(r, inUnlisted, { hardCap: true }));
+      fails.push(...judgeSlack(r, inUnlisted, "unlisted")); // D7
+    } else {
+      // D6a：既不在 files 也不在 unlisted ⇒ 免检期到此为止（旧行为：永久免检）
+      fails.push(...judge(r, undefined)); // 硬上限照旧
+      fails.push(
+        `【D6 未落账】${r.file} 是扫描面里的新文件，两段基线里都没有它 ⇒ ` +
+          `D1/D2/D2b/D3/D4 对它**全部失效**（实测 first=${r.first} deferred=${r.deferred}）。` +
+          `跑 \`node scripts/check-ui-first-layer.mjs --tighten\` 把它落进 \`unlisted\` 段并写 why，` +
+          `从下一次起它与存量页受同一套棘轮。`
+      );
+    }
+  }
+
+  // D5 全局守恒 —— 度量的是**内容集合**，含未登记文件
+  fails.push(...judgeGlobal(globalSummary(rows), base.conserve));
+
+  // D7 死账：基线里有、现在扫不到的文件（删了/改名）—— 留着等于给同名文件预留额度
   const gone = Object.keys(base.files).filter((f) => !byFile.has(f));
+  const goneUnlisted = Object.keys(unlisted).filter((f) => !byFile.has(f));
+  for (const f of gone) fails.push(...judgeStale(f, "files"));
+  for (const f of goneUnlisted) fails.push(...judgeStale(f, "unlisted"));
 
   if (fails.length) {
     console.error(`❌ ui-first-layer:check 未通过（${fails.length} 条）\n`);
@@ -1105,7 +1434,11 @@ function main() {
   //    两组各咬一半：`runCanaries` 咬**检测器**（数得对不对），
   //    `runJudgeCanaries` 咬**判据**（数对了之后判得对不对）。
   //    只有前者时，判据写反照样报绿 —— 那正是本仓踩过的坑。
-  const canaryFails = [...runCanaries(), ...runJudgeCanaries()];
+  //    D5/D7 各自再咬自己那一条（`judgeGlobal` / `judgeSlack` 本体），
+  //    并跑共享基线写入器的四向金丝雀 —— 写入器坏了，基线会静默抹掉人手挂账。
+  const canaryFails = [...runCanaries(), ...runJudgeCanaries(), ...runGlobalCanaries(), ...runSlackCanaries()];
+  const bdc = baselineDocCanary();
+  if (!bdc.ok) canaryFails.push(`共享基线写入器 baselineDocCanary() ${bdc.got}（应：${bdc.want}）`);
   if (canaryFails.length) {
     console.error("⛔ 门自己瞎了 —— 金丝雀不中，**不许**据此报「代码干净 / 无命中」：");
     canaryFails.forEach((f) => console.error("   · " + f));
@@ -1122,6 +1455,15 @@ function main() {
     console.log(
       `✅ 判据金丝雀 ${JUDGE_CANARIES.length}/${JUDGE_CANARIES.length} 全中（必红 ${jRed} + 必绿 ${JUDGE_CANARIES.length - jRed}）`
     );
+    const gRed = GLOBAL_CANARIES.filter((c) => c.red).length;
+    console.log(
+      `✅ D5 全局守恒金丝雀 ${GLOBAL_CANARIES.length}/${GLOBAL_CANARIES.length} 全中（必红 ${gRed} + 必绿 ${GLOBAL_CANARIES.length - gRed}）`
+    );
+    const sRed = SLACK_CANARIES.filter((c) => c.red).length;
+    console.log(
+      `✅ D7 棘轮松弛金丝雀 ${SLACK_CANARIES.length}/${SLACK_CANARIES.length} 全中（必红 ${sRed} + 必绿 ${SLACK_CANARIES.length - sRed}）`
+    );
+    console.log(`✅ 共享基线写入器 baselineDocCanary()：${bdc.got}`);
     const rows = analyzeAll(null);
     console.log(`✅ 扫描面 ${rows.length} 个文件（下界 ${MIN_FILES}）`);
     if (rows.length < MIN_FILES) process.exit(2);
@@ -1179,51 +1521,113 @@ function main() {
     process.exit(0);
   }
 
-  if (has("--update")) {
+  if (has("--update") || has("--tighten")) {
+    const tighten = has("--tighten");
     const rows = analyzeAll(null).filter((r) => !r.broken);
     if (rows.length < MIN_FILES) {
       console.error(`⛔ 拒绝写基线：只枚举到 ${rows.length} 个文件（下界 ${MIN_FILES}）`);
       process.exit(2);
     }
     const prev = loadBaseline();
+    const prevFiles = prev?.files || {};
+    const prevUnlisted = prev?.unlisted || {};
+    const live = new Set(rows.map((r) => r.file));
     const files = {};
+    const unlisted = {};
+    const moves = [];
+
     for (const r of rows.sort((a, b) => a.file.localeCompare(b.file))) {
-      const old = prev?.files?.[r.file];
-      files[r.file] = {
-        first: r.first,
-        deferred: r.deferred,
-        formula: r.formula,
-        prose: r.prose,
-        sizes: r.sizes,
-        page: pageOf(r.file),
-        why: old?.why || whyFor(r),
+      const inFiles = prevFiles[r.file];
+      const inUnlisted = prevUnlisted[r.file];
+      /*
+       * ⚠ **`--update` 不再把新文件提拔进 `files`**（本单 WO-RATCHET-NEWFILE-BLINDSPOT 的要点）。
+       * 两段各有主人：`files` = 人工审过、逐条带 why 的存量账；`unlisted` = 机器落账的新文件账。
+       * 若 `--update` 把新文件写进 `files`，跑一次它就等于「把新文件加进基线」——
+       * 正是本单明令禁止的那个修法（只堵这一个，下一个照旧免检）。
+       */
+      const bucket = inFiles ? files : unlisted;
+      const old = inFiles || inUnlisted;
+      /*
+       * `--tighten` 的收紧口径 —— 逐字段想清楚「调它会不会顺手放松别的判据」。
+       *
+       * ⚠ **`deferred` 刻意不动**（第一版把它调成实测值，当场实测出反效果）：
+       *   D1 有一条豁免「first 上升但 deferred 同时上升 ⇒ 放行」（规范 §3 要求的结构化改造）。
+       *   把 b.deferred 抬到实测值，等于**回溯掐掉这条豁免** —— 本仓实测：一跑就凭空多出
+       *   **14 条 D1 红**（ActionsPage / AgentsPage / OrderChainView …），
+       *   而那些页面**一个字都没改**。那不是「收紧免检名额」，是「把已经判绿的存量状态判红」。
+       *   形态照铁律 0.6：**「我用『这个字段调大 = 更严』当作『整道门更严』的证据，
+       *   而单字段的方向并不度量判据整体的方向。」**
+       *
+       * · first/formula/prose/sizes 取 min（只降 = 只严），这是 D7 要收的那四个名额；
+       * · deferred 保持 prev 不动（它的松弛见头注诚实边界，由 D5 全局守恒兜底）；
+       * · `totalFloor` 补一个**只升不降**的 D4 守恒下界 —— 因为 first 降下去会让
+       *   `baseTotal = first + deferred` 跟着降、把 D4 放松。有它，D4 只会更严不会更松。
+       */
+      const pickMin = (f) => (!old || !tighten ? r[f] : Math.min(old[f] ?? r[f], r[f]));
+      const entry = {
+        first: pickMin("first"),
+        deferred: !old || !tighten ? r.deferred : old.deferred ?? r.deferred,
+        formula: pickMin("formula"),
+        prose: pickMin("prose"),
+        sizes: pickMin("sizes"),
+        page: old?.page || pageOf(r.file),
+        why: old?.why || (inFiles ? whyFor(r) : whyForUnlisted(r)),
       };
+      // 只在「会被放松」时才落这个字段：等于 first+deferred 时省掉，免得给 122 条各加一行噪声。
+      const floor = Math.max(old ? (old.totalFloor ?? old.first + old.deferred) : 0, entry.first + entry.deferred);
+      if (floor > entry.first + entry.deferred) entry.totalFloor = floor;
+      bucket[r.file] = entry;
+      if (!old) moves.push(r.file);
     }
-    writeFileSync(
-      BASELINE,
-      JSON.stringify(
-        {
-          note:
-            `${SPEC} 的存量棘轮（断点 G-UI-FIRSTLAYER-OVERLOAD）。` +
-            "first=第一层信息块数 · deferred=第二层/浮层信息块数 · formula=第一层口径公式条数 · sizes=字号层级数。" +
-            "四者只降不升；且 first 下降时 deferred 不许同时下降（D4 守恒：那是删内容不是分层）。" +
-            "新文件不进基线 ⇒ 直接按规范硬上限收（字号 ≤3、第一层零口径公式）。",
-          spec: SPEC,
-          gate: "scripts/check-ui-first-layer.mjs",
-          generatedFrom: "node scripts/check-ui-first-layer.mjs --update",
-          fileCount: rows.length,
-          totals: {
-            first: rows.reduce((a, r) => a + r.first, 0),
-            formula: rows.reduce((a, r) => a + r.formula, 0),
-            nativeTitle: rows.reduce((a, r) => a + r.nativeTitle, 0),
-          },
-          files,
+
+    // 死账清理（D7）：基线里有、当前扫不到的条目一律摘掉 —— 留着等于给同名文件预留旧额度。
+    const dropped = [...Object.keys(prevFiles), ...Object.keys(prevUnlisted)].filter((f) => !live.has(f));
+
+    const g = globalSummary(rows);
+    const prevConserve = prev?.conserve;
+    const doc = buildBaselineDoc({
+      prev,
+      // 散文归人手：prev 里已有就逐字节沿用（判据①），只有首次建账才落这份常量。
+      prose: {
+        note:
+          `${SPEC} 的存量棘轮（断点 G-UI-FIRSTLAYER-OVERLOAD）。` +
+          "first=第一层信息块数 · deferred=第二层/浮层信息块数 · formula=第一层口径公式条数 · sizes=字号层级数。" +
+          "四者只降不升；且 first 下降时 deferred 不许同时下降（D4 守恒：那是删内容不是分层）。" +
+          "`files`=人工审过的存量账 · `unlisted`=机器落账的新文件账（受同一套棘轮 + 规范硬上限）· " +
+          "`conserve`=扫描面全体信息总量下界（D5 全局守恒，搬家不动它、删除才动它）。",
+        spec: SPEC,
+        gate: "scripts/check-ui-first-layer.mjs",
+      },
+      // 算出的字段永远覆盖 prev —— 否则棘轮会被冻结成一张永不变的表（写入器判据④）。
+      computed: {
+        generatedFrom: `node scripts/check-ui-first-layer.mjs ${tighten ? "--tighten" : "--update"}`,
+        fileCount: rows.length,
+        totals: {
+          first: rows.reduce((a, r) => a + r.first, 0),
+          formula: rows.reduce((a, r) => a + r.formula, 0),
+          nativeTitle: rows.reduce((a, r) => a + r.nativeTitle, 0),
         },
-        null,
-        1
-      ) + "\n"
+        files,
+        unlisted,
+        conserve: {
+          // 下界只升不降（升 = 更严）：--tighten 绝不把守恒线往下调，否则一次删内容后跑一下就洗白了。
+          total: tighten && typeof prevConserve?.total === "number" ? Math.max(prevConserve.total, g.total) : g.total,
+          files: g.files,
+          why:
+            prevConserve?.why ||
+            "D5 全局守恒下界 = 建账当时扫描面全体 Σ(first+deferred)，**含未登记文件**。" +
+              "度量对象是内容集合不是单个文件：搬家总量不变 ⇒ 不红；删除总量下降 ⇒ 红。",
+        },
+      },
+    });
+    writeFileSync(BASELINE, JSON.stringify(doc, null, 1) + "\n");
+    console.log(
+      `✅ 基线已写（${tighten ? "--tighten 只收紧" : "--update 全量"}）：` +
+        `files ${Object.keys(files).length} 条 · unlisted ${Object.keys(unlisted).length} 条 · ` +
+        `conserve.total ${doc.conserve.total} → ${relative(ROOT, BASELINE)}`
     );
-    console.log(`✅ 基线已写：${rows.length} 条 → ${relative(ROOT, BASELINE)}`);
+    if (moves.length) console.log(`   新落账 ${moves.length} 条（进 unlisted 段，从下一次起受同一套棘轮）`);
+    if (dropped.length) console.log(`   摘掉死账 ${dropped.length} 条：${dropped.slice(0, 5).join(" · ")}`);
     process.exit(0);
   }
 
@@ -1246,6 +1650,18 @@ function whyFor(r) {
   if (r.formula) bits.push(`${r.formula} 处口径/公式未降浮层（R-UI-3）`);
   if (r.sizes > HARD_SIZE_CAP) bits.push(`字号 ${r.sizes} 级 > 3（R-UI-2）`);
   return "存量·规范落地前：" + bits.join("；");
+}
+/**
+ * `unlisted` 段的自动 why —— 措辞刻意写成「**落账 ≠ 达标**」：
+ * 棘轮永远只答「有没有变差」，落账值是落账当时的实测值，不是合格线。
+ * 人可以事后把这句改成真正的挂账理由（共享写入器会逐字节保住它）。
+ */
+function whyForUnlisted(r) {
+  return (
+    "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（" +
+    `first ${r.first} · deferred ${r.deferred} · formula ${r.formula} · prose ${r.prose} · sizes ${r.sizes}）。` +
+    "**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
+  );
 }
 
 /*
