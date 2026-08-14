@@ -72,6 +72,17 @@ import { join, relative } from "node:path";
 
 const ROOT = process.cwd();
 const BASELINE = join(ROOT, "scripts/backend-frontend-seam-baseline.json");
+
+// ⚠ 位置是刻意的：本常量原先声明在文件尾部（`writeBaseline` 旁），而金丝雀区在它**之前**运行
+//   ⇒ 金丝雀里一碰它就是 TDZ 报错。而金丝雀里抛异常被映射成 RC=2「门自己坏了」，
+//   于是「给基线写入加一条金丝雀」这个动作本身会把整道门变成恒 RC=2。故提到顶部。
+//   （只搬声明，正文一字未改。）
+const BASELINE_NOTE =
+  "后端↔前端接缝缺口棘轮基线（WO-GATE-BEFE-SEAM · 闭本体 §8 G-BE-FE-SEAM-DEAD）。" +
+  "sseFields = 后端 emit 了、前端生产代码零提及的字段名；endpoints = 后端注册了、前端零调用的路由。" +
+  "**只减不增**：--update 只摘掉已修复项，绝不收编新增缺口（否则棘轮秒变橡皮图章）；" +
+  "要把一条新缺口记进存量，必须人手编辑本文件——那是一个可评审的显式动作，不是脚本的副作用。" +
+  "首次建账（本文件不存在时）用 --seed。";
 const FE_SRC = join(ROOT, "apps/frontend-shell/src");
 const AGENTCORE_SRC = join(ROOT, "apps/agentcore/src");
 const DATACORE_SRC = join(ROOT, "apps/datacore/src");
@@ -565,13 +576,37 @@ export function mentionsInProd(name, prodTexts) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 const ROUTE_EXEMPTIONS = [
   { re: /^\/(healthz|readyz|metrics)$/, why: "容器探活/指标端点·由 compose 与 nginx 消费，非前端" },
-  { re: /^\/[ab]\/v1\/(healthz|readyz|metrics)$/, why: "网关前缀下的探活别名·同上" },
+  // ⛔ `metrics` 曾在下面这条里，是**一条假阴性**（WO-BEFE-G 的 dev 取证，审核方逐层复核确认）：
+  //    该条 `why` 写着"网关前缀下的探活别名"，但全仓**没有** `/a/v1/metrics` 或 `/b/v1/metrics`
+  //    形态的探活路由。它的 `metrics` 分支在全仓唯一命中的是 `GET /a/v1/metrics`
+  //    （`apps/datacore/src/app.ts:3303`）—— SPINE 经营目标-指标-责任骨架的**指标库**，
+  //    返回 `Metric` 本体对象、走 `ctx(req)` **用户鉴权**的纯业务端点。
+  //    旁证（后端自己分得清）：`app.ts:937` `SERVICE_ONLY_PATHS = new Set(["/metrics"])`
+  //    —— 只含**裸** `/metrics`，明确不含带前缀的那条。
+  //
+  //    形态（铁律 0.6 句式）：**「我用『它长得像探活路径』当作『它是探活端点』的证据，
+  //    而前者并不度量后者。」** 危害比基线里记一笔更大：**结构性豁免不计入基线数**，
+  //    所以这条真缺口是**隐身**的 —— 门每次都报"零调用 186（新增 0）"，而它一直不在那 186 里。
+  //    摘掉 `metrics` 后它现身，按基线注的规矩**人手**记进 endpoints（可评审的显式动作）。
+  { re: /^\/[ab]\/v1\/(healthz|readyz)$/, why: "网关前缀下的探活别名·同上（刻意不含 metrics：带前缀的 metrics 是业务端点，见上方注释）" },
   { re: /\/internal\//, why: "服务间内部钩子（B←A 事件失效等）·SERVICE_TOKEN 凭证，前端一律 403" },
-  { re: /^\/\.well-known\//, why: "认证基础设施（JWKS 等）·由 AgentCore 验签侧消费，不经前端" },
+  // ⚠ 锚点曾写作 `/^\/\.well-known\//`（要求路径**以** `/.well-known/` 开头），而全仓真实注册的是
+  //   `/a/v1/.well-known/jwks.json`（`apps/datacore/src/app.ts:1072`）——以 `/a/v1/` 开头 ⇒ 这条恒不命中。
+  //   它没造成事故，纯属侥幸：下一条 `/\/jwks/`（不带锚）替它兜住了。
+  //   这就是 C15 存在的理由 —— **一条从没命中过的规则，和一条写对了的规则，在汇总数字上一模一样。**
+  //   ⛔ 记一笔方法论：C15 报"死条目"时**不许直接删**。本条与 `/^\/openapi/` 同被报死，
+  //     追一层后结论**相反**：这条是规则写错（路由在，锚点歪），那条是路由真不存在。
+  //     照单删会把一条意图正确的规则连同意图一起删掉。
+  { re: /\/\.well-known\//, why: "认证基础设施（JWKS 等）·由 AgentCore 验签侧消费，不经前端" },
   { re: /\/jwks/, why: "JWKS 公钥集·服务间验签用" },
   { re: /^\/a\/v1\/references\/report$/, why: "服务间引用上报·SERVICE_TOKEN 专用（见 CLAUDE.md 服务间凭证一节）" },
   { re: /\/credential$/, why: "凭据读取·SERVICE_TOKEN 专用，no-secrets-echo 纪律禁止前端触达" },
-  { re: /^\/openapi/, why: "API 自描述文档端点" },
+  // ⛔ `{ re: /^\/openapi/, why: "API 自描述文档端点" }` 已删（C15 首跑当场报死）。
+  //   追一层复核（不止 grep 一次）：① 全仓无 `"/openapi…"` 形态的路由注册；
+  //   ② 三个 package.json 里**没有任何** swagger/openapi/scalar/redoc 类依赖
+  //      ⇒ 排除"经插件注册、grep 看不见"这条间接路（金丝雀：同法查 fastify 类依赖命中 4 个，工具是好的）。
+  //   ⇒ 定性「真不存在」，不是「有但看不见」。一条豁免没有对应的被豁免物，
+  //     不是"少查一条"而是**一个写宽了的陷阱**：将来谁注册 `/openapi-export` 之类会被静默吞掉。
 ];
 const exemptReason = (p) => ROUTE_EXEMPTIONS.find((e) => e.re.test(p))?.why;
 
@@ -734,6 +769,52 @@ function canaries(ctx) {
     return { ok: bad.length === 0 && ctx.prodFiles.length > 50, got: `生产文件 ${ctx.prodFiles.length} · 混入 mocks/测试 ${bad.length}`, want: ">50 且 0" };
   });
 
+  // C14 基线写入不吞人手挂账（四向 · 与 --update/--seed 共用 buildBaselineDoc，不另抄一份）
+  //     来历：`--update` 曾无条件写 `note: BASELINE_NOTE`，把 978 字、两笔人手挂账
+  //     （WO-R2 +9 条 · WO-R6 metrics-authz 1 条，每笔都写着「为何这条不许走 ROUTE_EXEMPTIONS」）
+  //     静默吞掉。**这个字段有两个主人**：常量说它归脚本，正文说它归人手 —— 谁最后写谁赢，
+  //     而 --update 永远最后写。四向缺一不可：
+  //       ① 吞了人手 note ⇒ 复审只剩一份没有理由的名单；
+  //       ② 吞了人手新增的顶层键 ⇒ 同一个病换个字段名再来一次（白名单式保留漏一个就吞一个）；
+  //       ③ --seed 反而不落常量 ⇒ 首次建账建出一份没说明的账；
+  //       ④ 算出来的三个字段被 prev 的旧值挡住 ⇒ --update 不更新，棘轮从「只减不增」变成「冻结」，
+  //          而它照样 RC=0 —— 这是四向里最隐蔽的一向（门还在跑，只是不再度量任何东西）。
+  add("baseline/写入不吞人手挂账", "note 有两个主人（常量 vs 人手）⇒ --update 静默吞掉挂账理由；反向若 prev 挡住算出的字段则棘轮冻结", () => {
+    const HAND = "【人手挂账】__befe_canary_hand_written__";
+    const prev = { version: 1, note: HAND, __handAdded: "keep-me", generatedBy: "旧", sseFields: ["old.a"], endpoints: ["/old"] };
+    const upd = buildBaselineDoc(new Set(["new.b"]), new Set(["/new"]), "--update", prev);
+    const seed = buildBaselineDoc(new Set(["new.b"]), new Set(["/new"]), "--seed", null);
+    const checks = {
+      "①人手 note 逐字节留存": upd.note === HAND,
+      "②人手新增顶层键留存": upd.__handAdded === "keep-me",
+      "③--seed 首次建账落常量": seed.note === BASELINE_NOTE,
+      "④算出的字段确实被更新": upd.sseFields.join() === "new.b" && upd.endpoints.join() === "/new" && upd.generatedBy.includes("--update"),
+    };
+    const bad = Object.entries(checks).filter(([, v]) => !v).map(([k]) => k);
+    return { ok: bad.length === 0, got: bad.length ? `未通过：${bad.join(" · ")}` : "四向全通过", want: "四向全通过" };
+  });
+
+  // C15 豁免表不许有死条目（与主逻辑共用 ROUTE_EXEMPTIONS 与 backendRoutes，不另抄一份）
+  //     来历：`/^\/[ab]\/v1\/(healthz|readyz|metrics)$/` 的 `metrics` 分支在全仓
+  //     **一条探活路由都没命中**，唯一命中的是业务端点 `GET /a/v1/metrics`（SPINE 指标库）。
+  //     一条 `why` 与事实不符的豁免，效果不是"少查一条"，是**把一条真缺口变成隐身**
+  //     —— 结构性豁免不进基线数，门每次照报「新增 0」。
+  //
+  //     本条咬的是**死条目**：一条豁免今天一条真实注册路由都不匹配，只有两种可能，
+  //     两种都必须当场说话：
+  //       · 它**已过期**（当初豁免的路由早删了）⇒ 是装饰品，占着"这里已经想过了"的位置；
+  //       · 它是个**陷阱**（写宽了，正等着未来某条真业务路由撞上来被静默吞掉）⇒ 正是上面那次。
+  //     判据只能查"命中数是否为 0"这一半（"命中的对不对"要语义判断，机器做不了），
+  //     所以另一半靠报告里**逐条打印今天命中了谁** —— 让复审看见，而不是靠人想起来去审。
+  add("exempt/豁免表无死条目", "why 与事实不符的豁免不会少查一条，而是把真缺口变成隐身（结构性豁免不进基线数，门照报「新增 0」）", () => {
+    const dead = [];
+    for (const e of ROUTE_EXEMPTIONS) {
+      const hit = ctx.backendRoutes.filter((r) => e.re.test(r.norm)).map((r) => r.norm);
+      if (hit.length === 0) dead.push(`${e.re} —— ${e.why}`);
+    }
+    return { ok: dead.length === 0, got: dead.length ? `死豁免 ${dead.length} 条：${dead.join(" | ")}` : `${ROUTE_EXEMPTIONS.length} 条豁免全部命中真实路由`, want: "0 条死豁免" };
+  });
+
   return list;
 }
 
@@ -857,22 +938,46 @@ const newEp = curEp.filter((k) => !baseEp.has(k));
 const fixedSse = [...baseSse].filter((f) => !curSse.includes(f));
 const fixedEp = [...baseEp].filter((k) => !curEp.includes(k));
 
-const BASELINE_NOTE =
-  "后端↔前端接缝缺口棘轮基线（WO-GATE-BEFE-SEAM · 闭本体 §8 G-BE-FE-SEAM-DEAD）。" +
-  "sseFields = 后端 emit 了、前端生产代码零提及的字段名；endpoints = 后端注册了、前端零调用的路由。" +
-  "**只减不增**：--update 只摘掉已修复项，绝不收编新增缺口（否则棘轮秒变橡皮图章）；" +
-  "要把一条新缺口记进存量，必须人手编辑本文件——那是一个可评审的显式动作，不是脚本的副作用。" +
-  "首次建账（本文件不存在时）用 --seed。";
+/**
+ * 基线文档的**唯一**构造出口（主逻辑与金丝雀 C14 共用此函数，不许各抄一份）。
+ *
+ * ⛔ 存在理由 = 一处真实的自相矛盾（WO-BEFE-C 的 dev 取证发现，审核方复核确认）：
+ *    原实现无条件写 `note: BASELINE_NOTE`，而 `BASELINE_NOTE` 自己的正文写着
+ *      「要把一条新缺口记进存量，**必须人手编辑本文件** —— 那是一个可评审的显式动作，
+ *        不是脚本的副作用」。
+ *    于是这个字段有**两个主人**：常量说它归脚本，正文说它归人手。谁最后写谁赢，
+ *    而 `--update` 永远最后写 ⇒ **人手挂账被脚本静默吞掉**。
+ *    实测被吞的是 978 字、两笔挂账（WO-R2 收编 +9 条 · WO-R6 metrics-authz 1 条），
+ *    每一笔都写着「为什么这条没接线、为什么不许走 ROUTE_EXEMPTIONS」——
+ *    正是复审时唯一能区分「真欠账」与「结构性豁免」的依据。吞掉它，
+ *    下一个人看到的是一份没有理由的名单，只能靠猜。
+ *
+ *    形态（铁律 0.6 句式）：**「我用『常量里写了这段话』当作『这段话是当前真相』的证据，
+ *    而前者并不度量后者」** —— 人手在文件里补的那部分，常量里根本没有。
+ *
+ * 修法：`note` 与任何人手新增的顶层键，**只在首次建账（--seed）时由脚本写**；
+ *      此后一律**原样保留**文件里的既有值。脚本只拥有它真正在算的三个字段
+ *      （`generatedBy` / `sseFields` / `endpoints`）。
+ *
+ * @param prev 既有基线对象（不存在时传 `null`）——`--seed` 传 null，`--update` 传读回来的那份。
+ */
+function buildBaselineDoc(sse, ep, how, prev) {
+  // 先摊开 prev：人手加的任何顶层键（未来可能有 exempt/burndown 之类）都跟着活下来，
+  // 不必等有人想起来在这里补一行 —— 「白名单式保留」漏一个就又吞一个。
+  return {
+    ...(prev ?? {}),
+    version: 1,
+    // note 归人手：有既有值就用既有值，只有首次建账才落常量。
+    note: prev?.note ?? BASELINE_NOTE,
+    generatedBy: `node scripts/check-backend-frontend-seam.mjs ${how}`,
+    sseFields: [...sse].sort(),
+    endpoints: [...ep].sort(),
+  };
+}
 
 function writeBaseline(sse, ep, how) {
-  writeFileSync(
-    BASELINE,
-    JSON.stringify(
-      { version: 1, note: BASELINE_NOTE, generatedBy: `node scripts/check-backend-frontend-seam.mjs ${how}`, sseFields: [...sse].sort(), endpoints: [...ep].sort() },
-      null,
-      2,
-    ) + "\n",
-  );
+  const prev = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : null;
+  writeFileSync(BASELINE, JSON.stringify(buildBaselineDoc(sse, ep, how, prev), null, 2) + "\n");
 }
 
 if (SEED) {
@@ -905,6 +1010,18 @@ console.log(
   `· 散文位剔除（欠账 #174）：前端生产代码里判为散文的字符串 ${proseStrings} 条，其中写着 /a|b|api/v1/ 路由的归一路径 ${prosePaths.size} 条` +
     ` —— 一律**不**计作调用方；其中 ${proseOnlyPaths.length} 条无任何真 URL 串佐证${proseOnlyPaths.length ? `（${proseOnlyPaths.join(" , ")}）` : ""}。`,
 );
+// ── 结构性豁免逐条点名（不是装饰，是 C15 的另一半） ──
+//    C15 只能机器判「命中数是否为 0」；「命中的对不对」要语义判断，机器做不了。
+//    那一半只能靠**每次都打印出来**给复审看见 —— 上一条假阴性
+//    （`metrics` 豁免唯一命中的是 SPINE 业务端点）之所以活了这么久，
+//    正因为豁免结果从不上屏：屏上只有一个汇总数字「结构性豁免 13」，
+//    没人能从一个数字里看出它豁免掉的是探活还是业务。**数字不会说谎，但它什么也没说。**
+console.log(`· 结构性豁免逐条点名（${ROUTE_EXEMPTIONS.length} 条规则 → ${exemptCount} 条端点）——「豁免≠隐身」，每条今天命中了谁一律上屏：`);
+for (const e of ROUTE_EXEMPTIONS) {
+  const hit = [...new Set(backendRoutes.filter((r) => e.re.test(r.norm)).map((r) => r.norm))].sort();
+  console.log(`    ${String(e.re).padEnd(46)} → ${hit.length ? hit.join(" , ") : "（0 条·C15 会红）"}`);
+  console.log(`    ${" ".repeat(46)}   理由：${e.why}`);
+}
 if (fixedSse.length || fixedEp.length) {
   console.log(`· ✅ 有人把接缝接上了：SSE ${fixedSse.slice(0, 8).join(", ")}${fixedSse.length > 8 ? " …" : ""}` +
     `${fixedEp.length ? ` · 端点 ${fixedEp.slice(0, 5).join(" | ")}${fixedEp.length > 5 ? " …" : ""}` : ""}`);

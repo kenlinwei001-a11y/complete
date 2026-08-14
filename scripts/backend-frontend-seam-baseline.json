@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "后端↔前端接缝缺口棘轮基线（WO-GATE-BEFE-SEAM · 闭本体 §8 G-BE-FE-SEAM-DEAD）。sseFields = 后端 emit 了、前端生产代码零提及的字段名；endpoints = 后端注册了、前端零调用的路由。**只减不增**：--update 只摘掉已修复项，绝不收编新增缺口（否则棘轮秒变橡皮图章）；要把一条新缺口记进存量，必须人手编辑本文件——那是一个可评审的显式动作，不是脚本的副作用。首次建账（本文件不存在时）用 --seed。 | WO-R2 收编（2026-08-13）：+9 条。① 7 条 /a/v1/ontology/interfaces* 来自 WO-69 P3——该单是**后端 only**（对象接口发布门），管理端 UI 未建，属已知欠账不是结构性豁免；② 2 条 plan-builders new-version/retire 来自 WO-A Phase 1——页面只做了 列表/新建/编辑/编译/发布/试运行，这两个按钮未做。二者都是「后端开了口子前端没接」的真缺口（G-BE-FE-SEAM-DEAD 同族），入基线是为了**让欠账可见且只降不升**，不是消红。\n\n【2026-08-13 收编 WO-R6 metrics-authz 时手工挂账 1 条】`GET /a/v1/actions/metrics`（apps/datacore/src/app.ts:3772）：租户级 Action 执行稳定率明细，**用户鉴权**（非服务间/探活基础设施 ⇒ 不走 ROUTE_EXEMPTIONS，那样是把它谎报成结构性端点）。实测其来源分支 handoff-wo-metrics-authz 上前端消费方**本来就是 0**（金丝雀：同分支后端 app.ts 1 处 / metrics.ts 2 处 / 测试 4 处命中），不是收编时漏捞。**未在本批接线的理由**：它需要一个新的运维可见面，而「加哪个页 / 放进哪个导航组」属导航信息架构，是仓主的决策，收编方不得擅自决定；只加 api/endpoints.ts 的客户端函数而不给消费方，则是把一个死端点换成一个死客户端函数、纯为消红。⇒ 记为真欠账（G-BE-FE-SEAM-DEAD 同族），burn-down 另立单。",
+  "note": "后端↔前端接缝缺口棘轮基线（WO-GATE-BEFE-SEAM · 闭本体 §8 G-BE-FE-SEAM-DEAD）。sseFields = 后端 emit 了、前端生产代码零提及的字段名；endpoints = 后端注册了、前端零调用的路由。**只减不增**：--update 只摘掉已修复项，绝不收编新增缺口（否则棘轮秒变橡皮图章）；要把一条新缺口记进存量，必须人手编辑本文件——那是一个可评审的显式动作，不是脚本的副作用。首次建账（本文件不存在时）用 --seed。 | WO-R2 收编（2026-08-13）：+9 条。① 7 条 /a/v1/ontology/interfaces* 来自 WO-69 P3——该单是**后端 only**（对象接口发布门），管理端 UI 未建，属已知欠账不是结构性豁免；② 2 条 plan-builders new-version/retire 来自 WO-A Phase 1——页面只做了 列表/新建/编辑/编译/发布/试运行，这两个按钮未做。二者都是「后端开了口子前端没接」的真缺口（G-BE-FE-SEAM-DEAD 同族），入基线是为了**让欠账可见且只降不升**，不是消红。\n\n【2026-08-13 收编 WO-R6 metrics-authz 时手工挂账 1 条】`GET /a/v1/actions/metrics`（apps/datacore/src/app.ts:3772）：租户级 Action 执行稳定率明细，**用户鉴权**（非服务间/探活基础设施 ⇒ 不走 ROUTE_EXEMPTIONS，那样是把它谎报成结构性端点）。实测其来源分支 handoff-wo-metrics-authz 上前端消费方**本来就是 0**（金丝雀：同分支后端 app.ts 1 处 / metrics.ts 2 处 / 测试 4 处命中），不是收编时漏捞。**未在本批接线的理由**：它需要一个新的运维可见面，而「加哪个页 / 放进哪个导航组」属导航信息架构，是仓主的决策，收编方不得擅自决定；只加 api/endpoints.ts 的客户端函数而不给消费方，则是把一个死端点换成一个死客户端函数、纯为消红。⇒ 记为真欠账（G-BE-FE-SEAM-DEAD 同族），burn-down 另立单。\n\n【2026-08-14 审核方人手挂账 1 条 —— 这是**纠正一笔记账错误**，不是收编新缺口】`GET /a/v1/metrics`（apps/datacore/src/app.ts:3529）：SPINE 经营目标-指标-责任骨架的**指标库**，返回 Metric 本体对象、走 ctx(req) 用户鉴权的纯业务端点。**它不是今天才出现的缺口，是一直在、被一条写错的结构性豁免藏住的存量**：门的 ROUTE_EXEMPTIONS 里 `/^\\/[ab]\\/v1\\/(healthz|readyz|metrics)$/` 的 why 写着「网关前缀下的探活别名」，而全仓没有 /a/v1/metrics 或 /b/v1/metrics 形态的探活路由 —— 该分支唯一命中的就是这条业务端点。旁证：后端自己分得清，app.ts:937 SERVICE_ONLY_PATHS 只含**裸** /metrics。（发现人 WO-BEFE-G 的 dev，审核方逐层复核确认并修门。）**危害比基线里记一笔更大**：结构性豁免不计入基线数 ⇒ 这条缺口是**隐身**的，门每次照报「零调用 186（新增 0）」，而它从来不在那 186 里。已摘掉豁免里的 metrics 分支并补金丝雀 C15「豁免表无死条目」，故它现身、按规矩人手入账。**未接线的理由**：它需要一个新的运维/经营指标可见面，而「加哪个页、放进哪个导航组」属导航信息架构，是仓主的决策，收编方不得擅自决定（照本文件 WO-R6 已立的先例）。只加 api/endpoints.ts 客户端函数而不给消费方 = 把一个死端点换成一个死客户端函数，纯为消红，不做。",
   "generatedBy": "node scripts/check-backend-frontend-seam.mjs --update",
   "sseFields": [
     "actionDraftIds",
@@ -35,6 +35,7 @@
     "GET /a/v1/meta/breakpoints/*",
     "GET /a/v1/meta/derive",
     "GET /a/v1/meta/refbase",
+    "GET /a/v1/metrics",
     "GET /a/v1/metrics/*",
     "GET /a/v1/ontology-workflows",
     "GET /a/v1/ontology-workflows/*",
