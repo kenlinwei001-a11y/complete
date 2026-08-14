@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SimCounterfactualResult } from "@platform/contracts";
-import { fetchPropagationRules, fetchSimSessions, patchSimDisabledRules, simCounterfactual } from "@/api/endpoints";
+import { createSimSession, fetchPropagationRules, fetchSimSessions, fetchSimViewConfig, patchSimDisabledRules, simCounterfactual } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
 import { HintDot } from "./shared";
-import { buildDiffRows, buildEdgeRows, buildVerdict, pickProbeSession, toggleEdge } from "./edgeActiveModel";
+import { buildDiffRows, buildEdgeRows, buildVerdict, deriveBaseSnapshot, pickProbeSession, toggleEdge } from "./edgeActiveModel";
 
 /**
  * ══ WO-ACTIVE-EDGE-UX · 推演边的 active 开关 + 关掉后的结果对照 ══
@@ -93,7 +93,30 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
     () => (sessionId ? { id: sessionId } : pickProbeSession(sessionsQuery.data?.items ?? [])),
     [sessionId, sessionsQuery.data],
   );
-  const effectiveSessionId = probeSession?.id ?? null;
+  /** 本页没有会话、租户也一个都没有时，就地开出来的**探针世界**（懒建：只在第一次拨开关时才建）。 */
+  const [probeCreated, setProbeCreated] = useState<string | null>(null);
+  const effectiveSessionId = probeSession?.id ?? probeCreated;
+  /** 差值算在哪个世界上：自带会话/租户已有会话 = 真世界；探针世界 = tick0 为 DERIVED 占位。 */
+  const probeIsSynthetic = !sessionId && !probeSession && probeCreated !== null;
+
+  /**
+   * 拿一个能算对照的世界。顺序：本页自带 → 租户已有 → **就地开一个探针世界**。
+   *
+   * ⚠ 为什么允许"就地开"：`SimSession` 是仿真世界，不是真值（R4-sim），建它不经 Action 审批；
+   * 而且 tick0 走的是**沙盘自己那一份** `deriveBaseSnapshot` —— 不是本单新发明的世界。
+   * ⚠ 为什么必须**懒建**：页面一挂载就建会话 = 每打开一次推演页就多一行世界，属于无声副作用。
+   *   只在用户真的拨了开关（= 明确表达"我想看关掉之后怎么样"）时才建。
+   * ⚠ 为什么必须**标出处**：tick0 是 `hash01` 占位值（沙盘自己也把它盖章 `DERIVED`），
+   *   拿它算出来的差值只反映**边的结构影响**，不是实测量级。不标 = 拿占位值冒充实测（顶 R13）。
+   */
+  const ensureSession = useCallback(async (): Promise<string | null> => {
+    if (effectiveSessionId) return effectiveSessionId;
+    const cfg = await fetchSimViewConfig();
+    const s = await createSimSession({ baseSnapshot: deriveBaseSnapshot(cfg), scope: { kind: "GLOBAL", target: null } });
+    setProbeCreated(s.id);
+    void qc.invalidateQueries({ queryKey: ["a", "sim-sessions"] });
+    return s.id;
+  }, [effectiveSessionId, qc]);
 
   const rules = rulesQuery.data?.items ?? [];
   /** 屏上的屏蔽集：拨过开关就用本地候选集，否则用会话上持久的那一份。 */
@@ -116,10 +139,11 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
       const next = toggleEdge(disabled, key, nextActive);
       setPendingDisabled(next);
       setFailure(null);
-      if (!effectiveSessionId) return; // 无世界可对照：开关状态照记，差值诚实缺（下方已写明原因）
       setBusy(true);
       try {
-        setResult(await simCounterfactual(effectiveSessionId, { n: ticks, disabledRuleKeys: next }));
+        const sid = await ensureSession();
+        if (sid === null) return; // 拿不到世界：开关状态照记，差值诚实缺（下方已写明原因）
+        setResult(await simCounterfactual(sid, { n: ticks, disabledRuleKeys: next }));
       } catch (e) {
         // 失败只报**能从响应直接读出**的事实，不写任何内联因果断言（诚实灰纪律）。
         setResult(null);
@@ -128,7 +152,7 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
         setBusy(false);
       }
     },
-    [disabled, effectiveSessionId, ticks],
+    [disabled, ensureSession, ticks],
   );
 
   /** 把当前候选集**落到会话上**（此后这个世界真的按"关掉"跑 tick）。仍不碰本体真值。 */
@@ -193,11 +217,19 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
         </span>
       </header>
 
-      {/* 无世界可对照时，边照样列出来（它们是真配置，不是占位），只把差值那一半诚实标缺。 */}
+      {/* 还没拨过开关时说明差值从哪来：本页自带世界 / 租户已有世界 / 拨了才就地开一个探针世界。 */}
       {!effectiveSessionId && (
         <p data-testid={tid("no-session")} style={{ color: MUTED, margin: "0 0 8px" }}>
-          本租户还没有可推演的世界（<code>SimSession</code> 为 0 条），差值需要一个世界态作起点，故暂不可算。
-          开关状态照记；到「推演沙盘」建一个世界后，本面板即可算出关掉这条边的差异。
+          本页不持有推演世界，本租户当前也没有可推演的会话（<code>SimSession</code> 为 0 条）。
+          拨动任一开关时会**就地开一个探针世界**（tick0 由本体配置派生的占位值）来算差值。
+        </p>
+      )}
+      {/* R13 出处：拿占位世界算出来的差值只反映**边的结构影响**，不是实测量级 —— 必须标，不许含糊。 */}
+      {probeIsSynthetic && (
+        <p data-testid={tid("probe-origin")} style={{ color: MUTED, margin: "0 0 8px" }}>
+          出处：本页就地开的**探针世界**，其 tick0 世界态是由本体配置派生的<b>占位值</b>（非实测）。
+          下方差值反映的是<b>这条边的结构影响</b>（系数 × 延迟 × 链路扇出），量级不可当实测读。
+          要在实测世界上对照，请在「推演沙盘」里建世界后再回到本页。
         </p>
       )}
 

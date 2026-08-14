@@ -15,7 +15,7 @@
  * 前端另写一份 `cf - base` 看着无害，但两侧一旦漂移（取整、缺格当 0、容差），
  * 屏上那个"关掉这条边涨了 3.2"就是个查无对证的数。本文件只做**排版**，不做**算术**。
  */
-import type { PropagationRule, SimCounterfactualResult, SimStateDiffCell } from "@platform/contracts";
+import type { PropagationRule, SandboxViewConfig, SimCounterfactualResult, SimStateDiffCell, TickState } from "@platform/contracts";
 
 /** 一行边的展示模型。 */
 export interface EdgeRowVM {
@@ -188,4 +188,48 @@ export function pickProbeSession<T extends { id: string; createdAt: string; scop
   const usable = sessions.filter((s) => !(s.scope as { snapshotKind?: unknown })?.snapshotKind);
   if (usable.length === 0) return null;
   return [...usable].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))[0] ?? null;
+}
+
+// ── tick0 世界态派生（**从 SandboxView 迁来，不是新写的第二份**）─────────────────────────
+/**
+ * 字符串 → 稳定 [0,1)（把抽象 key 映射成可视初值；与行业无关，R14）。
+ *
+ * ⚠ **迁移说明（重要，别读成"又造了一份"）**：`hash01` / `deriveBaseSnapshot` 原本住在
+ * `SandboxView.tsx`，本单把它们迁到这里、由 `SandboxView` 反向 import —— **实现一行未改**，
+ * 迁的唯一理由是：`EdgeActivePanel` 也要用它（给没有推演世界的页就地开一个探针世界），
+ * 而 `SandboxView → EdgeActivePanel` 已经是一条依赖边，反向 import 会成环。
+ * 在这里放一份**副本**才是错的：两份 tick0 派生 ⇒ 沙盘的世界与探针世界不是同一个世界，
+ * 而用户看到的差值会因此对不上账。
+ */
+export function hash01(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 1000) / 1000;
+}
+
+/**
+ * 从配置派生 tick0 世界态。键 = **真物化对象 id**（`cfg.nodeObjectIds`，与 `propagateTick` 引擎
+ * `idsByType` 同源）→ `state[sourceId]` 真命中 → tick 真传导。
+ * 空世界（该类型无对象）退 `${type}#0` 占位（无传导，页面仍可跑）。
+ *
+ * ⚠ **这批值是 `DERIVED` 占位、不是实测**（`SandboxView` 的 `WorldOrigin` 章程原文）。
+ * 凡是拿它当起点算出来的差值，界面上必须跟着标出处 —— 见 `EdgeActivePanel` 里那句
+ * 「本页就地开的探针世界」。不标 = 把占位值算出来的数当实测给人看，那是 R13 明令禁止的。
+ */
+export function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
+  const state: TickState = {};
+  const vars = cfg.stateVars.length > 0 ? cfg.stateVars : ["v"]; // 无传导规则态：单占位变量，保证页面可跑
+  for (const t of cfg.nodeTypes) {
+    const ids = cfg.nodeObjectIds?.[t] ?? [];
+    const keys = ids.length > 0 ? ids : [`${t}#0`]; // 有真对象用真 id；空世界退占位键
+    for (const oid of keys) {
+      const row: Record<string, number> = {};
+      for (const v of vars) row[v] = Math.round(hash01(`${oid}|${v}`) * 100);
+      state[oid] = row;
+    }
+  }
+  return state;
 }

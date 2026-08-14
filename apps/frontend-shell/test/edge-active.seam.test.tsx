@@ -79,22 +79,29 @@ describe("WO-ACTIVE-EDGE-UX · 前端接缝：从 workspace 到「关掉一条�
   });
 
   // ── 金丝雀：mock workspace 真下发这一页（否则下面"没渲染出来"会被误读成"组件坏了"）────
-  it("金丝雀：mock workspace 真下发 what-if（视图 + feature 双闸都开）", () => {
+  //
+  // 选 `project-sim` 而不是 `what-if` 作主用例的落点，理由是**它走的是真 workspace 那条路**：
+  // `/v/:viewKey` → `ViewPage` → 查 `workspace.features` 的 `view.<key>` ∧ `workspace.views` 有该条目
+  // → `getRenderer(view.renderer)`。`what-if` 在 `App.tsx` 有**专用静态 route**，会绕过这两道闸 ——
+  // 拿它当"从真实 workspace 响应出发"的证据是不成立的（本单初稿踩过，实测 mock workspace 里
+  // 压根没有 `what-if` 这一条，而页面照样打得开）。
+  it("金丝雀：mock workspace 真下发 project-sim（视图 + feature 双闸都开）", () => {
     const planner = ACCOUNTS.find((a) => a.username === "planner")!;
     const ws = workspaceForAccount(planner, db.tenantOverrides, db.configVersion);
     const views = ws.views ?? [];
-    expect(views.find((v) => v.viewKey === "what-if" || v.renderer === "what-if")).toBeDefined();
+    expect(views.find((v) => v.key === "project-sim" || v.renderer === "project-sim")).toBeDefined();
+    expect(ws.features).toContain("view.project-sim");
   });
 
   // ── ②③ 渲染层 + 交互层：真导航 → 真边 → 拨开关 → 真差异 ──────────────────────────
-  it("🔴 SEAM：/v/what-if 打开 → 面板列出真边 → 拨开关 → 差异带方向与量级显示出来", async () => {
+  it("🔴 SEAM：/v/project-sim 打开 → 面板列出真边 → 拨开关 → 差异带方向与量级显示出来", async () => {
     const user = userEvent.setup();
-    renderApp("/v/what-if");
+    renderApp("/v/project-sim");
 
     // ② 渲染层：面板真出现，且列的是 MSW 真响应里的那两条边（不是写死的占位行）。
-    const panel = await screen.findByTestId("edge-active-what-if-panel", {}, { timeout: 5000 });
-    expect(within(panel).getByTestId("edge-active-what-if-count").textContent).toContain("2 条边");
-    const rowA = within(panel).getByTestId(`edge-active-what-if-edge-${EDGE_A}`);
+    const panel = await screen.findByTestId("edge-active-project-sim-panel", {}, { timeout: 5000 });
+    expect(within(panel).getByTestId("edge-active-project-sim-count").textContent).toContain("2 条边");
+    const rowA = within(panel).getByTestId(`edge-active-project-sim-edge-${EDGE_A}`);
     // 边的字段来自真 `PropagationRule`：源/目标/链路/系数/延迟，前端零加工。
     expect(rowA.textContent).toContain("TypeA.s1");
     expect(rowA.textContent).toContain("linkAB");
@@ -103,24 +110,24 @@ describe("WO-ACTIVE-EDGE-UX · 前端接缝：从 workspace 到「关掉一条�
     expect(rowA.getAttribute("data-active")).toBe("true");
 
     // ③ 交互层：拨一下开关 —— 不点任何"再运行一次"的按钮（§3.3「立刻看到差异」）。
-    await user.click(within(panel).getByTestId(`edge-active-what-if-toggle-${EDGE_A}`));
+    await user.click(within(panel).getByTestId(`edge-active-project-sim-toggle-${EDGE_A}`));
 
     // 差异表真的出来了，且**带方向和量级**（不是只标个"变了"）。
     // MSW fixture：TypeB#0.s1 基线 30，关掉这条边后 30 − 0.5×60 = 0 ⇒ Δ = −30，方向 ↓。
-    const diff = await within(panel).findByTestId("edge-active-what-if-diff", {}, { timeout: 5000 });
-    const cell = within(diff).getByTestId("edge-active-what-if-diff-TypeB#0-s1");
+    const diff = await within(panel).findByTestId("edge-active-project-sim-diff", {}, { timeout: 5000 });
+    const cell = within(diff).getByTestId("edge-active-project-sim-diff-TypeB#0-s1");
     expect(cell.textContent).toContain("↓");
     expect(cell.textContent).toContain("−30");
 
     // 关掉的边**没有从列表里消失**，而是可见地降级（§3.3：消失了用户就不知道自己关了什么）。
-    const rowAfter = within(panel).getByTestId(`edge-active-what-if-edge-${EDGE_A}`);
+    const rowAfter = within(panel).getByTestId(`edge-active-project-sim-edge-${EDGE_A}`);
     expect(rowAfter.getAttribute("data-active")).toBe("false");
-    expect(within(panel).getByTestId(`edge-active-what-if-off-${EDGE_A}`).textContent).toContain("已关闭");
+    expect(within(panel).getByTestId(`edge-active-project-sim-off-${EDGE_A}`).textContent).toContain("已关闭");
     // 另一条边**没被连坐**（证明关的是这一条，不是把整张表停了）。
-    expect(within(panel).getByTestId(`edge-active-what-if-edge-${EDGE_B}`).getAttribute("data-active")).toBe("true");
+    expect(within(panel).getByTestId(`edge-active-project-sim-edge-${EDGE_B}`).getAttribute("data-active")).toBe("true");
 
     // 结论句必须是 CHANGED 那一支（有变化），不是"没变"的两种诚实缺席之一。
-    expect(within(panel).getByTestId("edge-active-what-if-verdict").textContent).toContain("发生变化");
+    expect(within(panel).getByTestId("edge-active-project-sim-verdict").textContent).toContain("发生变化");
   });
 
   // ── ④ 「没变」的两种成因必须分开说（同一个数盖住两个不同事实 = 本仓的老病）─────────
