@@ -17,8 +17,16 @@
  * 检查清单不算机制（本仓自己的第 11 条错账原话：写在文档里的纪律不是机制）。
  *
  * ── 用法 ────────────────────────────────────────────────────────────────────
- *   node scripts/check-wo-anchors.mjs <工单文件>          # 校验一个 md
- *   cat prompt.txt | node scripts/check-wo-anchors.mjs -  # 校验 stdin（派 agent 前的提示词）
+ *   node scripts/check-wo-anchors.mjs <工单文件>                    # 按**当前工作目录**校验
+ *   cat prompt.txt | node scripts/check-wo-anchors.mjs -            # 校验 stdin（派 agent 前的提示词）
+ *   node scripts/check-wo-anchors.mjs <文件|-> --rev <git-ref>      # 按**工单声明的基线**校验
+ *
+ * ⚠️ `--rev` 不是可选的方便功能，是**判据正确性**问题（2026-08-13 实测）：
+ *    收编循环里的工单，基线常常不是 canonical（例如「基于 verify-reclaim-6 开工」）。
+ *    不带 --rev 时本门按当前 checkout 验，会把「基线上有、canonical 上没有」的文件
+ *    一律报成 FILE_MISSING —— **假红**，而且方向恰好相反：它会让人以为工单在瞎写路径。
+ *    形态：「我用『canonical 上有没有这个文件』当作『工单基线上有没有』的证据。」
+ *    凡工单里写了 `git checkout -B ... origin/<X>`，就该带 `--rev origin/<X>`。
  *
  * ── 退出码三分（与本仓其它门同口径）────────────────────────────────────────
  *   0 = 全部锚点现场可验证
@@ -112,7 +120,17 @@ function canary() {
 }
 
 function main() {
-  const arg = process.argv[2];
+  const argv = process.argv.slice(2);
+  const revIdx = argv.indexOf("--rev");
+  const REV = revIdx >= 0 ? argv[revIdx + 1] : null;
+  // ⚠ 不能写成 `i !== revIdx && i !== revIdx + 1`：`--rev` 缺省时 revIdx = -1，
+  //   `i !== revIdx + 1` 退化成 `i !== 0`，**把工单文件名自己滤掉**，门当场报「用法」并退 2。
+  //   形态：「我用『哨兵值参与算术后仍是哨兵』当作真的，而 -1+1=0 恰好是合法下标。」
+  const arg = argv.filter((a, i) => revIdx < 0 || (i !== revIdx && i !== revIdx + 1))[0];
+  if (REV && !git(["rev-parse", "--verify", "-q", `${REV}^{commit}`]).ok) {
+    console.error(`⛔ 门自己坏了：--rev ${REV} 解析不到（先 git fetch origin）。本次结论作废。RC=2`);
+    process.exit(2);
+  }
   if (!arg) {
     console.error("用法：node scripts/check-wo-anchors.mjs <工单.md>  |  cat prompt.txt | node scripts/check-wo-anchors.mjs -");
     process.exit(2);
@@ -131,7 +149,10 @@ function main() {
     if (seen.has(key)) continue;
     seen.add(key);
     const abs = path.join(ROOT, a.file);
-    if (!existsSync(abs) || !statSync(abs).isFile()) {
+    const present = REV
+      ? git(["rev-parse", "--verify", "-q", `${REV}:${a.file}`]).ok   // 判据落在 RC 上，不是输出非空
+      : existsSync(abs) && statSync(abs).isFile();
+    if (!present) {
       problems.push({
         kind: "FILE_MISSING",
         raw: a.raw,
@@ -141,8 +162,9 @@ function main() {
       continue;
     }
     checkedFiles++;
+    const contentOf = () => (REV ? execFileSync("git", ["show", `${REV}:${a.file}`], { cwd: ROOT, encoding: "utf8" }) : readFileSync(abs, "utf8"));
     if (a.symbol) {
-      const lines = readFileSync(abs, "utf8").split("\n");
+      const lines = contentOf().split("\n");
       const hits = [];
       lines.forEach((l, i) => { if (l.includes(a.symbol)) hits.push(i + 1); });
       if (hits.length === 0) {
@@ -155,7 +177,7 @@ function main() {
         }
       }
     } else if (a.line != null) {
-      const total = readFileSync(abs, "utf8").split("\n").length;
+      const total = contentOf().split("\n").length;
       checkedLines++;
       if (a.line > total) {
         problems.push({ kind: "LINE_OOB", raw: a.raw, msg: `${a.file} 只有 ${total} 行，锚点却指 :${a.line}`, hint: "裸行号锚点无法自动重算 —— 补上 (symbol) 再验" });
@@ -192,6 +214,7 @@ function main() {
   // ⚠ 这行数字**现算**，不写死分母。原写「N/5」而 N 只加了 2+2=4 —— 屏上永远显示「4/5」，
   //   看的人会以为有一条金丝雀没过。分母写死是本仓点过名的病（gate.sh 那句「13 条治理门」）。
   console.log(`· 金丝雀 ${c.passed}/${c.total} 通过（${c.detail}）`);
+  console.log(`· 基线：${REV ?? "当前工作目录（未传 --rev）"}`);
   console.log(`· 现场核过：文件 ${checkedFiles} · 行号 ${checkedLines} · 分支 ${checkedBranches}`);
   console.log("· ⚠️ 本门查不出「文件缺 ≠ 能力缺」那一类（需语义判断）——");
   console.log("     凡以「canonical 缺某文件」立单，仍须人工复核该能力有没有别的承载物。");
