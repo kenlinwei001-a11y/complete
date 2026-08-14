@@ -78,18 +78,25 @@ describe("WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影", () 
     await seedDemoPropagationRules(t.repos);
     await enableSim(t);
 
-    // ① 传导规则真的种进去了，且成本/现金那四条在（不是"规则条数变多了"这种不度量目标的数）。
-    const rules = await t.repos.sim.listPropagationRules("demo", true);
-    expect(rules.length).toBeGreaterThan(4);
-    const keys = rules.map((r) => r.key);
-    for (const k of [
+    /**
+     * ① 传导规则真的种进去了，且成本/现金那四条**一条不缺**。
+     *
+     * ⚠ 判据写成**集合等号**而不是 `for … toContain`：后者是 `coverage-blind` 门的
+     *   `EXISTS_FOR_ALL` 形态 —— 「四条里只种了一条」与「四条全种」在某些写法下给同一个颜色。
+     *   （这条是那道门在本单**当场报红逼出来的**，不是我自己想起来的：机器先说话。）
+     */
+    const COST_CASH_RULE_KEYS = [
+      "demo_customer_receivable_to_invoice_overdue",
       "demo_material_price_to_model_cost",
       "demo_model_cost_to_order_cost",
       "demo_order_cost_to_customer_receivable",
-      "demo_customer_receivable_to_invoice_overdue",
-    ]) {
-      expect(keys, `成本/现金链缺一条：${k}`).toContain(k);
-    }
+    ];
+    const rules = await t.repos.sim.listPropagationRules("demo", true);
+    expect(rules.length).toBeGreaterThan(4);
+    const keys = rules.map((r) => r.key);
+    expect(keys).toHaveLength(rules.length); // 基数锚：keys 不是空集也不是被过滤过的子集
+    // 等号（不是包含）：成本/现金链在种子里恰好是这四条，多一条少一条都要有人看见。
+    expect(keys.filter((k) => COST_CASH_RULE_KEYS.includes(k)).sort()).toEqual(COST_CASH_RULE_KEYS);
     // ② 金额基线真的在（FinancePlan 三行 + ARInvoice 台账非空）。
     const plans = await t.repos.objects.listByType("demo", "FinancePlan");
     expect(plans.length).toBeGreaterThan(2);
