@@ -94,6 +94,22 @@ export async function login(tenantId: string, username: string, password: string
   return api.a<{ accessToken: string }>("/a/v1/auth/login", { body: { tenantId, username, password } });
 }
 
+/**
+ * 登出（WO-BEFE-G · 断点 `G-BE-FE-SEAM-DEAD`）—— **服务端**吊销 refresh 会话。
+ *
+ * 为什么必须有这一跳（分诊清单 `docs/TRIAGE-befe-seam-longtail.md` §6 的病灶）：
+ * `refresh_token` 是 httpOnly cookie（datacore `app.ts:1091` `clearCookie path=/a/v1/auth`），
+ * JS 读不到也删不掉；而 `apiClient.ts` 的 `silentRefresh()` 带 `credentials:"include"`
+ * POST `/a/v1/auth/refresh` 就能用它换回新 accessToken。
+ * 所以只清 `tokenStore`（内存里的 accessToken）**不等于登出** —— 下一次 401 重试即可复活会话。
+ *
+ * 本路由在 datacore 的 `PUBLIC_PATHS`（`app.ts:945`）里：它认的是 **cookie 不是 Bearer**，
+ * 故先清本地 token 也不影响本请求成功；顺序由 `store/authSession.ts` 决定，见那里的顶注。
+ */
+export async function logout(): Promise<{ ok: boolean }> {
+  return api.a<{ ok: boolean }>("/a/v1/auth/logout", { body: {} });
+}
+
 export async function fetchWorkspace(): Promise<Workspace> {
   const raw = await api.a<unknown>("/a/v1/me/workspace");
   return WorkspaceSchema.parse(raw);

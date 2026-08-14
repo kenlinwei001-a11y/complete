@@ -1788,6 +1788,12 @@ export const handlers = [
 
   http.post("*/a/v1/auth/refresh", () => err(401, "REFRESH_FAILED", "请重新登录")),
 
+  // WO-BEFE-G · 登出（服务端吊销 refresh 会话）。真后端 `datacore app.ts:1090`：
+  // `reply.clearCookie("refresh_token", { path: "/a/v1/auth" })` → `{ ok: true }`，属 PUBLIC_PATHS（认 cookie 不认 Bearer）。
+  // 必须有这条 handler：`test/setup.ts:61` 起的是 `onUnhandledRequest: "error"`，
+  // 少了它，任何点到「退出登录」的用例都会因未桩请求而红（与本改动无关的假红）。
+  http.post("*/a/v1/auth/logout", () => HttpResponse.json({ ok: true })),
+
   http.get("*/a/v1/me/workspace", ({ request }) => {
     const account = auth(request);
     if (!account) return err(401, "UNAUTHORIZED", "未登录");

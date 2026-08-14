@@ -99,7 +99,6 @@
     "POST /a/v1/action-drafts/*/reject",
     "POST /a/v1/action-drafts/*/submit",
     "POST /a/v1/action-types",
-    "POST /a/v1/auth/logout",
     "POST /a/v1/bootstrap",
     "POST /a/v1/capability-inventory/diff",
     "POST /a/v1/ceo/dataset/generate",
