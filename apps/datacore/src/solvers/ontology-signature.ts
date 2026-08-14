@@ -326,12 +326,34 @@ export const SOLVER_ONTOLOGY_SIGNATURES: Record<string, SolverOntologySignature>
   /**
    * quote_margin（E6b 扩展族）：BOM 成本四项分解 —— 读 **Material.unitPrice**（敏感成本列）。
    * 这就是 WO-69 的原病例：受限用户曾拿到 margin 0.868（真值 0.2565）。签名让它**明确落在拒绝侧**。
+   *
+   * ⚠ 并线补声明（WO-R9-SIGNATURE·被 S5 实跑当场揪出）：本分支合入 `WO-QUOTE-MARGIN-CUSTOMER`
+   * 之后，`deriveExtendedArgs` 的 `quote_margin` 分支从「Material 前 4 行 + 写死 price=500」
+   * 改成了**沿 `order_of_customer` 边走客户 → 订单 → 型号 → 真 BOM + 真单价**，读取面因此长出
+   * 4 个类型 + 2 个属性。签名**漏声明 = 守卫误放行 = 出错数字**（正是本门存在的理由），
+   * 故按真读取处逐条补齐，而不是把 S5 断言改软。逐条取证（`solvers/extended.ts` 行号）：
+   *   · `Material.matId`      —— :936 `mats.map((m) => [str(m.matId), m])` 建 matById 索引
+   *   · `Model.unitPrice`     —— :960 `(c.models…).find((m) => str(m.modelId) === modelId)?.unitPrice`
+   *   · `Order.model/qty`     —— :927-928 `str(o.p.model)` / `num(o.p.qty)`（型号选定 qtyByModel）
+   *   · `Order.unitPrice`     —— :959 qty 加权均价
+   *   · `Order.so`            —— :1023 `priceRows.map((o) => str(o.p.so))`（CUSTOMER 分支可溯订单号）
+   *   · `BOMHeader.modelId`   —— :937 按 modelId 过滤 · `.status` :939（量产优先）· `.bomId` :939-940/944/1021
+   *   · `BOMDetail.bomId`     —— :944 归属过滤 · `.sequence`/`.bomDetailId` :945（排序 R6）
+   *                              · `.materialId`/`.quantity`/`.lossRate` :948-953（真 BOM 三项）
+   *   · `Customer.custName`   —— :906/908 精确匹配与双向子串 · `.orderCustNames` :907/1016（下单品牌名桥）
+   *                              · `.custId` :919（→ `order_of_customer` 边定位该客户的订单）
+   * `Customer` 三属性只在**点名客户**（`args.custName` 非空）的分支才读，缺省入参的 S5 实跑观测不到 →
+   * 与 `capacity_forecast` 的 `Material` 同型：**主动多声明**（过度声明是安全方向·多拒；漏声明是事故方向）。
    */
   quote_margin: {
     reads: [
-      { typeKey: "Material", propKeys: ["bomUnit", "unitPrice"] },
+      { typeKey: "Material", propKeys: ["bomUnit", "matId", "unitPrice"] },
       { typeKey: "Line", propKeys: ["baseId"], linkKeys: ["model_certified_on"] },
-      { typeKey: "Model", propKeys: ["modelId"] },
+      { typeKey: "Model", propKeys: ["modelId", "unitPrice"] },
+      { typeKey: "Order", propKeys: ["model", "qty", "so", "unitPrice"], linkKeys: ["order_of_customer"] },
+      { typeKey: "BOMHeader", propKeys: ["bomId", "modelId", "status"] },
+      { typeKey: "BOMDetail", propKeys: ["bomDetailId", "bomId", "lossRate", "materialId", "quantity", "sequence"] },
+      { typeKey: "Customer", propKeys: ["custId", "custName", "orderCustNames"] },
     ],
   },
 
