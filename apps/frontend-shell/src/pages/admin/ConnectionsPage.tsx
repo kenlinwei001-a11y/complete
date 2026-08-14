@@ -14,6 +14,7 @@ import {
   uploadFile,
 } from "@/api/endpoints";
 import { DataCategoriesPanel } from "./DataCategoriesPanel";
+import { KnowledgeBasePanel } from "./KnowledgeBasePanel";
 import { healthStatusLabel, HEALTH_POLL_MS } from "@/components/Health/HealthBadge";
 import { JsonSchemaForm } from "@/components/JsonSchemaForm/JsonSchemaForm";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -178,6 +179,11 @@ export default function ConnectionsPage() {
           </div>
         )}
       </div>
+
+      {/* WO-BEFE-F · S4 知识库（POST /a/v1/kb/search · /:connId/docs · /:connId/sync）：
+          挂在连接页，因为 connId 是这三条端点的路径参数 —— 脱离连接谈 KB 没有主语。
+          无 knowledge_base 连接时该组件返回 null（不渲染空壳）。 */}
+      <KnowledgeBasePanel connections={connections ?? []} />
 
       {wizardOpen && (
         <ConnectionWizard

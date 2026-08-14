@@ -48,6 +48,7 @@ import type {
   QueryTimeseriesAggOutput,
   ModelingSuggestion,
   LlmProvider,
+  LlmBudgetStatus,
   PublishImpact,
   PurposeBinding,
   OpsSchedule,
@@ -1229,6 +1230,50 @@ export const putLlmBindings = (bindings: PurposeBinding[]) =>
     body: { bindings },
   });
 
+// ---------------------------------------------------------------------------
+// WO-BEFE-F · OC7 LLM 成本配额（DataCore `/a/v1/llm-budgets`·admin）
+//
+// 缺口形态（门 `befe-seam:check` 载体② · 断点 `G-BE-FE-SEAM-DEAD`）：账本状态机在 A 侧完整
+// （`apps/datacore/src/app.ts:1276-1290` OK → SOFT_EXCEEDED → HARD_EXCEEDED·`degrade`），
+// **服务间**消费方也在（`apps/agentcore/src/ops/llm-budget.ts:58/73` 带 `x-service-token` 读+记账），
+// 唯独**没有任何人能配这条线** —— `PUT` 是 `mustAdmin` 纯管理动作、零服务调用方，于是硬线永远是
+// 种子里的那个数，管理员看不到用了多少、也改不了上限。这里补的就是那一半。
+//
+// ⚠ `POST /a/v1/llm-budgets/record` **故意不接**：它是 AgentCore 记账用的服务间写入口
+// （`ops/llm-budget.ts:73`）。给前端一个「记一笔用量」的按钮 = 让浏览器伪造 token 计数，
+// 账本立刻失去可信度。属「设计上不该有前端」，见本单分诊表。
+// ---------------------------------------------------------------------------
+export const fetchLlmBudget = () => api.a<LlmBudgetStatus>("/a/v1/llm-budgets");
+export const putLlmBudget = (body: { hardLimitTokens: number; softLimitPct?: number }) =>
+  api.a<LlmBudgetStatus>("/a/v1/llm-budgets", { method: "PUT", body });
+
+// ---------------------------------------------------------------------------
+// WO-BEFE-F · S4 知识库（DataCore `/a/v1/kb`·挂在 `knowledge_base` 连接器上）
+//
+// 三条端点（`apps/datacore/src/app.ts:5186/5193/5211`）全是**用户鉴权**（`ctx(req)` + `authz.require`
+// CONNECTION WRITE），不是服务间路由 —— 即「本该有前端，但一个字都没接」。落点选连接详情页而非新开
+// 一页：KB 的真实语义就是「某个 knowledge_base 连接的内容」，`connId` 是路径参数，脱离连接无从谈起。
+// ---------------------------------------------------------------------------
+/** 一条召回片段（`apps/datacore/src/kb.ts:13` KbHit；契约包未导出该类型，故此处为前端 VM 而非重定义契约）。 */
+export interface KbHitVM {
+  text: string;
+  score: number;
+  docId: string;
+  span: { start: number; end: number };
+  source: "KB_CHUNK";
+  connId: string;
+}
+export const searchKb = (body: { query: string; topK?: number; connId?: string }) =>
+  api.a<{ hits: KbHitVM[] }>("/a/v1/kb/search", { body });
+/** 文档入库（走 JSON 分支 `RuleDocJsonSchema`·app.ts:324；后端亦支持 multipart，此处取确定性更强的一条）。 */
+export const addKbDoc = (connId: string, filename: string, contentBase64: string) =>
+  api.a<{ docId: string; chunkCount: number }>(`/a/v1/kb/${encodeURIComponent(connId)}/docs`, {
+    body: { filename, contentBase64 },
+  });
+/** 全量重嵌（连接下所有已存文档重新切块+embedding）。 */
+export const syncKb = (connId: string) =>
+  api.a<{ docs: number; chunks: number }>(`/a/v1/kb/${encodeURIComponent(connId)}/sync`, { body: {} });
+
 // ---- A7 Foundry-Grade Data Builder（agent 驱动 data pipeline 发动机）----
 export const fetchDataBuilders = () => api.a<DataBuilderAgent[]>("/a/v1/data-builders");
 export const runDataBuilder = (body: BuildRunBody) =>
@@ -1661,6 +1706,18 @@ export const fetchResources = (params: { kind?: string; tag?: string } = {}) => 
 /** 混合检索（NL query → 排序 + scoreBreakdown + explanation）——治理页搜索框。 */
 export const searchResources = (body: { query: string; kinds?: string[]; maxResults?: number; minScore?: number }) =>
   api.b<ResourceSearchResponse>("/b/v1/resources/search", { body });
+
+/**
+ * WO-BEFE-F · 单资源详情（`GET /b/v1/resources/:kind/:key`·`apps/agentcore/src/server.ts:1020`）。
+ *
+ * 为什么这条不是「列表里已经有了」：`ResourceRegistryService.get()`
+ * （`apps/agentcore/src/dril/resource-registry.ts:253-259`）比 `list()`（同文件 :239）**多一步
+ * `overlayQuality`** —— 把 `resource_quality_scores` 的运行时 EWMA 叠回 `resource.quality`。
+ * 治理台此前把列表行对象直接当详情用，于是详情面板拿的是**没有质量叠加的旧投影**；
+ * 更要命的是搜索结果行也走同一条路，点进去看到的是检索快照而非当前真值。
+ */
+export const fetchResource = (kind: string, key: string) =>
+  api.b<IntelligenceResource>(`/b/v1/resources/${encodeURIComponent(kind)}/${encodeURIComponent(key)}`);
 
 /** 单资源 1-hop 关系图。 */
 export const fetchResourceRelations = (kind: string, key: string) =>

@@ -893,6 +893,81 @@ const MOCK_MATERIALS = [
 
 let idSeq = 1000;
 const newId = (prefix: string) => `${prefix}-${++idSeq}`;
+
+/**
+ * WO-BEFE-F · DRIL 智能资源 mock 库（`/b/v1/resources*`）。
+ *
+ * **`capability` / `suitableQuestions` 只在详情里给，列表里刻意不给** —— 这不是偷懒，
+ * 是照真后端的形状：`ResourceRegistryService.get()`（`apps/agentcore/src/dril/resource-registry.ts:253`）
+ * 比 `list()`（:239）多一步 `overlayQuality`，详情本就比列表富。mock 若让两者一模一样，
+ * 「详情端点接没接」在屏上就看不出差别 —— 那种 mock 会让接缝测试**恒绿**，正是本仓要堵的假绿。
+ */
+interface MockDrilResource {
+  kind: string;
+  key: string;
+  label: string;
+  description: string;
+  domain?: string;
+  tieredTags?: Record<string, string[]>;
+  /** 只在 `GET /b/v1/resources/:kind/:key` 里下发的那部分（列表/检索一律剥掉）。 */
+  detail: {
+    capability: string;
+    suitableQuestions: string[];
+    notSuitableQuestions: string[];
+    quality?: { successRate: number; usageCount: number; avgLatencyMs: number };
+  };
+}
+const DRIL_RESOURCES: MockDrilResource[] = [
+  {
+    kind: "solver",
+    key: "capacity_forecast",
+    label: "产能推演",
+    description: "推演产能满足度 P50/P90、缺口率、主瓶颈。",
+    domain: "plan",
+    tieredTags: { l1_domain: ["plan"], l2_decisionType: ["预测"], l5_algorithm: ["推演"] },
+    detail: {
+      capability: "给定型号与时窗，算出产能满足度与主瓶颈工序。",
+      suitableQuestions: ["下季度 A 型号产能够不够？"],
+      notSuitableQuestions: ["这批货运费多少？"],
+      quality: { successRate: 0.92, usageCount: 17, avgLatencyMs: 240 },
+    },
+  },
+  {
+    kind: "slice",
+    key: "model_capacity_network",
+    label: "型号可产网络",
+    description: "某型号可产基地网络切片。",
+    domain: "plan",
+    detail: {
+      capability: "列出某型号可产的基地与产线拓扑。",
+      suitableQuestions: ["常州能不能产 A 型号？"],
+      notSuitableQuestions: ["A 型号毛利多少？"],
+    },
+  },
+];
+
+/**
+ * WO-BEFE-F · OC7 配额状态派生 —— 与真后端 `budgetStatus()`
+ * （`apps/datacore/src/app.ts:1269-1274`）逐行同构，**mock 里不存派生值**：
+ * hard=0 ⇒ 恒 OK（0 的语义是「不限」，不是「上限为零」）。
+ */
+const mockBudgetStatus = () => {
+  const b = db.llmBudget;
+  const soft = Math.floor(b.hardLimitTokens * b.softLimitPct);
+  const state =
+    b.hardLimitTokens > 0 && b.usedTokens >= b.hardLimitTokens
+      ? "HARD_EXCEEDED"
+      : b.hardLimitTokens > 0 && b.usedTokens >= soft
+        ? "SOFT_EXCEEDED"
+        : "OK";
+  return {
+    usedTokens: b.usedTokens,
+    hardLimitTokens: b.hardLimitTokens,
+    softLimitTokens: soft,
+    state,
+    degrade: state !== "OK",
+  };
+};
 const mockCategoryMode: Record<string, "SYSTEM_INTEGRATION" | "FILE_UPLOAD"> = {};
 const mockCategoryTpl: Record<string, string[] | null> = {};
 
@@ -3361,6 +3436,127 @@ export const handlers = [
     }
     db.llmBindings = bindings as typeof db.llmBindings;
     return HttpResponse.json({ bindings, warnings });
+  }),
+
+  // ---- WO-BEFE-F · OC7 LLM 成本配额（GET/PUT /a/v1/llm-budgets）--------------------------------
+  // `budgetStatus()` 与 `apps/datacore/src/app.ts:1269-1274` 逐行同构：hard=0 ⇒ 恒 OK（不限）。
+  // ⚠ `POST /a/v1/llm-budgets/record` **故意不建 mock**：它是 AgentCore 的服务间记账入口，
+  //   前端不该有调用方；建了 mock 就等于给一条不该存在的路铺了砖（见本单分诊表 (2) 类）。
+  // ---- WO-BEFE-F · DRIL 智能资源（`/b/v1/resources*`）--------------------------------------------
+  // 详情路由必须注册在 `/search` **之后**：msw 按注册序匹配，`:kind/:key` 会把 `search` 吃掉。
+  http.get("*/b/v1/resources", ({ request }) => {
+    const kind = new URL(request.url).searchParams.get("kind");
+    const items = DRIL_RESOURCES.filter((r) => !kind || r.kind === kind).map(({ detail: _d, ...rest }) => rest);
+    return HttpResponse.json({ items, total: items.length });
+  }),
+  http.post("*/b/v1/resources/search", async ({ request }) => {
+    const body = (await request.json()) as { query?: string };
+    const q = (body.query ?? "").trim();
+    const results = DRIL_RESOURCES.filter((r) => !q || r.label.includes(q) || r.description.includes(q)).map(
+      ({ detail: _d, ...rest }, i) => ({
+        resource: rest,
+        score: Number((0.9 - i * 0.1).toFixed(3)),
+        scoreBreakdown: { semantic: 0.5, domain: 0.2, ontology: 0.1, history: 0.05, cost: 0.02 },
+        explanation: `${rest.label} 命中五级标签与语义。`,
+      }),
+    );
+    return HttpResponse.json({ results, explanation: q ? `据五级标签+语义命中：共 ${results.length} 条。` : "空查询。" });
+  }),
+  http.get("*/b/v1/resources/:kind/:key/relations", ({ params }) => {
+    const r = DRIL_RESOURCES.find((x) => x.kind === params.kind && x.key === params.key);
+    if (!r) return err(404, "RESOURCE_NOT_FOUND", `resource not found: ${params.kind}/${params.key}`);
+    return HttpResponse.json({
+      resource: { kind: r.kind, key: r.key },
+      relations: [{ relType: "reads", toKind: "field", toKey: "Model" }],
+      inbound: [{ fromKind: "workflow", fromKey: "wf-capacity", relType: "invokes" }],
+    });
+  }),
+  http.get("*/b/v1/resources/:kind/:key/quality", ({ params }) => {
+    const r = DRIL_RESOURCES.find((x) => x.kind === params.kind && x.key === params.key);
+    if (!r) return err(404, "RESOURCE_NOT_FOUND", `resource not found: ${params.kind}/${params.key}`);
+    return HttpResponse.json({
+      kind: r.kind,
+      key: r.key,
+      quality: r.detail.quality ? { ...r.detail.quality, lastProbeAt: "2026-07-25T00:00:00Z" } : null,
+    });
+  }),
+  // 单资源详情：比列表多 capability / 正负向问句 / 质量叠加（真后端 overlayQuality 的 mock 对应物）。
+  http.get("*/b/v1/resources/:kind/:key", ({ params }) => {
+    const r = DRIL_RESOURCES.find((x) => x.kind === params.kind && x.key === params.key);
+    if (!r) return err(404, "RESOURCE_NOT_FOUND", `resource not found: ${params.kind}/${params.key}`);
+    const { detail, ...rest } = r;
+    return HttpResponse.json({ ...rest, ...detail });
+  }),
+
+  http.get("*/a/v1/llm-budgets", () => HttpResponse.json(mockBudgetStatus())),
+  http.put("*/a/v1/llm-budgets", async ({ request }) => {
+    const body = (await request.json()) as { hardLimitTokens?: number; softLimitPct?: number };
+    if (typeof body.hardLimitTokens !== "number" || body.hardLimitTokens < 0 || !Number.isInteger(body.hardLimitTokens)) {
+      return err(400, "VALIDATION_ERROR", "hardLimitTokens 须为 ≥0 整数");
+    }
+    db.llmBudget.hardLimitTokens = body.hardLimitTokens;
+    if (typeof body.softLimitPct === "number") db.llmBudget.softLimitPct = body.softLimitPct;
+    return HttpResponse.json(mockBudgetStatus());
+  }),
+
+  // ---- WO-BEFE-F · S4 知识库（POST /a/v1/kb/search · /a/v1/kb/:connId/docs · /a/v1/kb/:connId/sync）----
+  // 检索用**确定性**词元重合打分（非随机、非嵌入）：同 query 同库必得同序，符合本仓「确定性种子」纪律。
+  http.post("*/a/v1/kb/search", async ({ request }) => {
+    const body = (await request.json()) as { query?: string; topK?: number; connId?: string };
+    const q = (body.query ?? "").trim();
+    if (!q) return err(400, "VALIDATION_ERROR", "query required");
+    const topK = Math.min(10, Math.max(1, body.topK ?? 5));
+    const terms = [...q];
+    const hits = db.kbDocs
+      .filter((d) => !body.connId || d.connId === body.connId)
+      .map((d) => {
+        const overlap = terms.filter((t) => t.trim() && d.text.includes(t)).length;
+        return {
+          text: d.text.slice(0, 160),
+          score: terms.length ? Number((overlap / terms.length).toFixed(4)) : 0,
+          docId: d.id,
+          span: { start: 0, end: Math.min(160, d.text.length) },
+          source: "KB_CHUNK" as const,
+          connId: d.connId,
+        };
+      })
+      .filter((h) => h.score > 0)
+      .sort((a, b) => (b.score === a.score ? a.docId.localeCompare(b.docId) : b.score - a.score))
+      .slice(0, topK);
+    return HttpResponse.json({ hits });
+  }),
+  http.post("*/a/v1/kb/:connId/docs", async ({ params, request }) => {
+    const connId = String(params.connId);
+    const conn = db.connections.find((c) => c.id === connId);
+    if (!conn) return err(404, "NOT_FOUND", "connection not found");
+    if (conn.connectorTypeKey !== "knowledge_base") {
+      return err(400, "VALIDATION_ERROR", `connection ${connId} is not a knowledge_base connector`);
+    }
+    const body = (await request.json()) as { filename?: string; contentBase64?: string };
+    if (!body.filename || !body.contentBase64) return err(400, "VALIDATION_ERROR", "filename/contentBase64 required");
+    // ⚠ `atob()` 返回的是 **latin-1 二进制串**，不是 UTF-8 文本 —— 直接用它，中文全变乱码，
+    // 于是「上传了中文文档 → 搜中文搜不到」。（本单接缝测试当场把这条抖出来：检索恒零命中。）
+    // 必须先还原字节再按 UTF-8 解码。
+    const bytes = Uint8Array.from(atob(body.contentBase64), (ch) => ch.charCodeAt(0));
+    const text = new TextDecoder("utf-8").decode(bytes);
+    // 真后端切块 ~512 token/块（`chunkText`）；mock 取 512 字符，只为「块数随文长变」是真的。
+    const chunkCount = Math.max(1, Math.ceil(text.length / 512));
+    const doc = { id: newId("kbdoc"), connId, filename: body.filename, chunkCount, text };
+    db.kbDocs.push(doc);
+    return HttpResponse.json({ docId: doc.id, chunkCount }, { status: 201 });
+  }),
+  http.post("*/a/v1/kb/:connId/sync", ({ params }) => {
+    const connId = String(params.connId);
+    const conn = db.connections.find((c) => c.id === connId);
+    if (!conn) return err(404, "NOT_FOUND", "connection not found");
+    if (conn.connectorTypeKey !== "knowledge_base") {
+      return err(400, "VALIDATION_ERROR", `connection ${connId} is not a knowledge_base connector`);
+    }
+    const docs = db.kbDocs.filter((d) => d.connId === connId);
+    return HttpResponse.json(
+      { docs: docs.length, chunks: docs.reduce((n, d) => n + d.chunkCount, 0) },
+      { status: 202 },
+    );
   }),
 
   http.post("*/a/v1/rules/:id/retire", ({ params }) => {
