@@ -123,9 +123,18 @@ export class DecisionKernelService {
    * 能不能改成路径 A（挑一条真 planKey）？**不能，那会变成静默错数**：
    *  · `params.risk.mitigations` 的键是 7 个**基地级产能风险因子**（物料齐套/设备OEE/人力工时/瓶颈工序/
    *    物流时长/换型损失/良率波动），方案是 early_stock / air_freight / reroute 这类**基地处置动作**；
-   *  · 而 `decision_play` 的方案恒为 3 条**公司级供应链战略**（opt-backup-cert 缩短备份供应商认证周期 /
-   *    opt-lta-clause 长协加价格联动条款 / opt-insource 上游自采矿+战略储备·`service.ts decisionPlay` 里写死的
-   *    三条·任何 metricKey 都一样），factorId 是 gap_attribution 的因果因子 id（cf-*）。
+   *  · 而 `decision_play.options` 是**公司级供应链战略**（opt-backup-cert 缩短备份供应商认证周期 /
+   *    opt-lta-clause 长协加价格联动条款 / opt-insource 上游自采矿+战略储备），factorId 是
+   *    gap_attribution 的因果因子 id（cf-*）。
+   *    ⚠ **「恒 3 条·任何 metricKey 都一样」这句于 2026-08-14 起过期**（WO-DECISION-PLAY-OPTIONS，
+   *    照铁律 0.6 就地回写）：这三条现在**依据可核对才下发** —— 方案 `provenance` 的下钻对象必须能在本次
+   *    归因树的落点集里核对到，够不着就整条不下发（实测 `cash`/`market_share`/`demand_attain` 现在 0 条，
+   *    `seg_attain_*`/`material_cov` 仍 3 条）。**但本段结论一个字不改**：留下来的仍是公司级战略粒度，
+   *    与基地处置方案库仍无真实映射；`options` 可能为空只是让 `dryRunMitigation` 更早地无单可试而已。
+   *  · 真正「基地处置粒度」的候选现在有了，但**不在 `options` 里**：`decision_play.impedimentPlays`
+   *    是枚举器 `enumerateImpedimentOptions` 的原样产物（杠杆是 `Material.leadTime` 这类真属性）。
+   *    **本单刻意不把它接进 commit 派单**：它没有 `planKey`，语义也不是 `params.risk.mitigations` 的处置动作，
+   *    强接过去正是本段警告的那种「让链路看起来通」。要接需另立一个语义正确的动作类型，属后续单。
    *  两个域**没有任何真实映射**。若为了"让链路看起来通"而按 eff 最大/成本最低挑一条：台账写着决策者选了
    *  「上游自采矿+战略储备」，Action 却去执行「空运补料」并按它的 eff/tn 把张力曲线压下去——
    *  **界面上分辨不出**，正是本仓刚清掉的「假 MO 号 / 猜一个值写下去」同款病，只是换了件衣服。
