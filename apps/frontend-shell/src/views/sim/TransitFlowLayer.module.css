@@ -313,7 +313,7 @@
 
 /* ① 三角形车头（唯一落在弧上的图元） */
 .carBody {
-  fill: var(--c-capacity-txt);
+  fill: var(--c-capacity);
   stroke: var(--panel);
   stroke-width: 1;
 }
@@ -323,11 +323,11 @@
 }
 
 .car[data-state="queued"] .carBody {
-  fill: var(--warn-txt);
+  fill: var(--warn);
 }
 
 .car[data-state="released"] .carBody {
-  fill: var(--ok-txt);
+  fill: var(--ok);
 }
 
 .car[data-state="pending"] .carBody {
@@ -355,12 +355,12 @@
 
 /* ③ 横条堆叠（挂在站上·环内） */
 .residentBar {
-  fill: var(--c-product-txt);
+  fill: var(--c-product);
   opacity: 0.85;
 }
 
 .resident[data-state="queued"] .residentBar {
-  fill: var(--warn-txt);
+  fill: var(--warn);
 }
 
 /* 图元图例 */

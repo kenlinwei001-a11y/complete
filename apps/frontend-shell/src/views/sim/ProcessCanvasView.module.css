@@ -113,7 +113,7 @@
 }
 /* 普通站：实心圈，填色 = 等待态语义色（由组件内联下发，见文件头）。 */
 .stationDot {
-  fill: var(--accent-txt);
+  fill: var(--accent);
   stroke: var(--panel);
   stroke-width: 2.5;
 }

@@ -209,7 +209,7 @@
   fill: none;
 }
 .closureArrowHead {
-  fill: var(--ok-txt);
+  fill: var(--ok);
 }
 .closureLabel {
   fill: var(--ok-txt);
@@ -241,13 +241,13 @@
 
 /* ── 站图元 ───────────────────────────────────────────────────────────────── */
 .stationStop {
-  fill: var(--accent-txt);
+  fill: var(--accent);
   stroke: var(--panel);
   stroke-width: 2.5;
 }
 /* 增值站：语义色（正向）+ 不同描边，与"损失占比≈0 的普通站"在形状/配色上都分得开。 */
 .stationValueAdd {
-  fill: var(--ok-txt);
+  fill: var(--ok);
   stroke: var(--panel);
   stroke-width: 2.5;
 }
@@ -313,7 +313,7 @@
   fill: none;
 }
 .reworkArrowHead {
-  fill: var(--danger-txt);
+  fill: var(--danger);
 }
 
 .lineLabel {

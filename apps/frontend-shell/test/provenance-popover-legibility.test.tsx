@@ -383,7 +383,7 @@ describe("#104 ②常量对比 · 主文字对浮层表面达 WCAG AA，且三�
   });
 
   // 诚实边界：把本门**不**保证的那部分数算出来摆着，不粉饰。
-  it("诚实记录：次要文字 token 对浮层表面的实际比值（warm 的 muted/muted2 系全主题既有欠账，非本 WO 引入）", () => {
+  it("诚实记录：次要文字 token 对浮层表面的实际比值（warm 的 muted/muted2 欠账已由 WO-R9-CONTRAST 还清 · 本条现为反向棘轮）", () => {
     const report: string[] = [];
     for (const theme of THEMES) {
       const surface = judgeSurface(SURFACE_CLASS, theme).solid!;
@@ -398,10 +398,27 @@ describe("#104 ②常量对比 · 主文字对浮层表面达 WCAG AA，且三�
       const txt = parseColor(resolveVars("var(--txt)", TOKENS[theme]))!;
       expect(contrast(txt, surface), `实测记录：\n  ${report.join("\n  ")}`).toBeGreaterThanOrEqual(4.5);
     }
-    // warm 的 --muted2 对**任何**白面都是 1.86 —— 记在案，属 tokens.css [data-theme="warm"] 的全局欠账。
+    /*
+     * ⚠ **这条断言 2026-08-14 被 WO-R9-CONTRAST 翻面了 —— 记录一下它是怎么翻的，因为这正是它存在的意义。**
+     *
+     * 原文写的是 `expect(warmMuted2).toBeLessThan(4.5)`，理由是「warm 的 --muted2 对任何白面都是 1.86，
+     * 属 tokens.css [data-theme=warm] 的全局欠账，是另一张单」，并附了一句**给未来的人的话**：
+     *   > 「warm --muted2 的数值若变了，说明有人动了 warm 全局文字 token —— 那是另一张单，请同步这条记录」
+     * WO-R9-CONTRAST 就是那张单，它把 warm 的 `--muted2` 从 `#bebebe`（1.86:1，白面上等于看不见）
+     * 改成 `#5b5b5b`（对最差面 6.07:1）。于是这条断言**当场红了** —— 这不是回归，是**欠账被还清**。
+     * **它红得完全正确：机器先说话，不是人事后想起来**（CLAUDE.md 铁律 0.6 要的就是这个）。
+     *
+     * 现在把方向翻过来钉住：**只许更好，不许退回**。若哪天有人把 warm 的三级文字色调回浅灰，
+     * 这条会立刻红，且提示语直接指向那张单。判据数值取本仓可读性门的同一个来源（12px 阈值 6.0），
+     * 不在这里另写一个数。
+     */
     const warmSurface = judgeSurface(SURFACE_CLASS, "warm").solid!;
     const warmMuted2 = contrast(parseColor(resolveVars("var(--muted2)", TOKENS.warm))!, warmSurface);
-    expect(warmMuted2, "warm --muted2 的数值若变了，说明有人动了 warm 全局文字 token —— 那是另一张单，请同步这条记录").toBeLessThan(4.5);
+    expect(
+      warmMuted2,
+      "warm --muted2 对浮层白面的对比度掉回 6.0 以下 —— WO-R9-CONTRAST 已把它从 1.86 修到 6.07，" +
+        "这条只许更好不许退回。若确要改 warm 全局文字 token，请同时跑 `pnpm text-legibility:check`（判据 C 令牌矩阵会一并判）。",
+    ).toBeGreaterThanOrEqual(6.0);
   });
 });
 
