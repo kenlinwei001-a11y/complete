@@ -43,10 +43,14 @@ describe("跨服务真实联调冒烟 — 真实 AgentCore HTTP 客户端 ↔ �
     expect(Array.isArray(data.affected)).toBe(true); // 既有键保留
   });
 
-  it("capacity_forecast 跨服务可解析并产出 p50", async () => {
+  it("capacity_forecast 跨服务可解析并产出 capWanP50（万套/窗口）", async () => {
     const payload = await dc.solver.invoke(ctx, "capacity_forecast", { modelId: "4680-NCM", qty: 40, weeks: 6 });
     expect(payload.snapshotVersion).toBeTruthy();
-    expect(typeof (payload.data as { p50?: unknown }).p50).toBe("number");
+    // WO-P50-REMAINING-3：上一单把 `p50` 改成 `capWanP50` 时漏了这条断言，它自 08-14 起一直红着
+    // （断言 `typeof undefined === "number"`）。裸 `p50` 已从产能链彻底移除，这里也不许再回潮。
+    const data = payload.data as { capWanP50?: unknown; p50?: unknown };
+    expect(typeof data.capWanP50).toBe("number");
+    expect(data.p50, "裸 `p50` 回潮 —— 兼容别名正是本轮要根治的第二真相源").toBeUndefined();
   });
 
   it("错误信封透传：未知求解器 → DataCoreHttpError(404)", async () => {
