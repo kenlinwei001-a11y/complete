@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { IntelligenceResource, TieredTags } from "@platform/contracts";
 import {
+  fetchResource,
   fetchResources,
   searchResources,
   fetchResourceRelations,
@@ -42,8 +43,25 @@ function tierChips(tt?: TieredTags): { layer: string; values: string[] }[] {
   ].filter((r) => r.values.length > 0);
 }
 
-function ResourceDetail({ resource }: { resource: IntelligenceResource }) {
-  const { kind, key } = resource;
+/**
+ * WO-BEFE-F · 详情面板改吃 `GET /b/v1/resources/:kind/:key`（`apps/agentcore/src/server.ts:1020`）。
+ *
+ * 病灶：此前详情**完全复用列表行对象**（`setSelected(r)` / `setSelected(r.resource)`），
+ * 于是那条单资源端点零调用方 —— 门 `befe-seam:check` 载体② 点名的正是它。
+ * 而它并非「列表已经有了」的重复：`ResourceRegistryService.get()`
+ * （`apps/agentcore/src/dril/resource-registry.ts:253-259`）比 `list()`（同文件 :239）
+ * **多一步 `overlayQuality`**，把 `resource_quality_scores` 的运行时 EWMA 叠回 `resource.quality`。
+ * 点搜索结果进来时更明显：那是检索那一刻的快照，不是当前真值。
+ *
+ * 兜底：详情在途/失败 → 退回列表行投影（`seed`），面板不空白也不假装有新数据。
+ */
+function ResourceDetail({ resource: seed }: { resource: IntelligenceResource }) {
+  const { kind, key } = seed;
+  const detail = useQuery({
+    queryKey: ["b", "resource-detail", kind, key],
+    queryFn: () => fetchResource(kind, key),
+  });
+  const resource = detail.data ?? seed;
   const relations = useQuery({
     queryKey: ["b", "resource-relations", kind, key],
     queryFn: () => fetchResourceRelations(kind, key),
@@ -55,12 +73,36 @@ function ResourceDetail({ resource }: { resource: IntelligenceResource }) {
   const q = quality.data?.quality;
 
   return (
-    <div className="panel" data-testid="resource-detail">
+    <div className="panel" data-testid="resource-detail" data-detail-source={detail.data ? "endpoint" : "list-seed"}>
       <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 2 }}>
         {resource.label} <span className="badge">{KIND_LABEL[kind] ?? kind}</span>
       </div>
       <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6 }}>{kind}/{key}</div>
       <div style={{ fontSize: 12, marginBottom: 10 }}>{resource.description}</div>
+
+      {/* 单资源端点带回来的选型信息（列表投影为省带宽通常不含·§5.5）：一句话能力 + 正/负向问句。 */}
+      {resource.capability && (
+        <div style={{ fontSize: 11.5, marginBottom: 8 }} data-testid="resource-capability">
+          <span style={{ color: "var(--muted)" }}>能力：</span>
+          {resource.capability}
+        </div>
+      )}
+      {(resource.suitableQuestions?.length || resource.notSuitableQuestions?.length) && (
+        <div style={{ fontSize: 11.5, marginBottom: 10 }} data-testid="resource-questions">
+          {(resource.suitableQuestions ?? []).map((s) => (
+            <div key={`y-${s}`}>
+              <span className="badge green" style={{ marginRight: 4 }}>适合</span>
+              {s}
+            </div>
+          ))}
+          {(resource.notSuitableQuestions ?? []).map((s) => (
+            <div key={`n-${s}`}>
+              <span className="badge red" style={{ marginRight: 4 }}>不适合</span>
+              {s}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* 五级标签 */}
       {tierChips(resource.tieredTags).length > 0 && (

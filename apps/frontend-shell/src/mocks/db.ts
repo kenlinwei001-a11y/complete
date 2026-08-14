@@ -126,6 +126,9 @@ function freshDb(): MockDb {
       { id: "conn-mes", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "MES 制造执行系统", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T02:30:00Z" },
       { id: "conn-qms", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "QMS 质量管理系统", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T01:30:00Z" },
       { id: "conn-srm", tenantId: TENANT_ID, connectorTypeKey: "rest_api", name: "SRM 供应商关系管理", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-11T23:00:00Z" },
+      // WO-BEFE-F · S4 知识库连接（`knowledge_base` 类型）——`/a/v1/kb/:connId/*` 的挂载点。
+      // 没有这一条，KB 面板在 mock 态永远是空壳：「接了线没数据」而不是「接了线」（铁律 0.5 三态之二）。
+      { id: "conn-kb", tenantId: TENANT_ID, connectorTypeKey: "knowledge_base", name: "制度与工艺知识库", config: {}, status: "ACTIVE", lastSyncAt: "2026-06-12T04:00:00Z" },
     ],
     ruleDocs: [structuredClone(RULE_DOC)],
     candidates: structuredClone(RULE_CANDIDATES),

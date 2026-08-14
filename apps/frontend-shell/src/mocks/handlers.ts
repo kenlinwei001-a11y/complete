@@ -895,6 +895,58 @@ let idSeq = 1000;
 const newId = (prefix: string) => `${prefix}-${++idSeq}`;
 
 /**
+ * WO-BEFE-F · DRIL 智能资源 mock 库（`/b/v1/resources*`）。
+ *
+ * **`capability` / `suitableQuestions` 只在详情里给，列表里刻意不给** —— 这不是偷懒，
+ * 是照真后端的形状：`ResourceRegistryService.get()`（`apps/agentcore/src/dril/resource-registry.ts:253`）
+ * 比 `list()`（:239）多一步 `overlayQuality`，详情本就比列表富。mock 若让两者一模一样，
+ * 「详情端点接没接」在屏上就看不出差别 —— 那种 mock 会让接缝测试**恒绿**，正是本仓要堵的假绿。
+ */
+interface MockDrilResource {
+  kind: string;
+  key: string;
+  label: string;
+  description: string;
+  domain?: string;
+  tieredTags?: Record<string, string[]>;
+  /** 只在 `GET /b/v1/resources/:kind/:key` 里下发的那部分（列表/检索一律剥掉）。 */
+  detail: {
+    capability: string;
+    suitableQuestions: string[];
+    notSuitableQuestions: string[];
+    quality?: { successRate: number; usageCount: number; avgLatencyMs: number };
+  };
+}
+const DRIL_RESOURCES: MockDrilResource[] = [
+  {
+    kind: "solver",
+    key: "capacity_forecast",
+    label: "产能推演",
+    description: "推演产能满足度 P50/P90、缺口率、主瓶颈。",
+    domain: "plan",
+    tieredTags: { l1_domain: ["plan"], l2_decisionType: ["预测"], l5_algorithm: ["推演"] },
+    detail: {
+      capability: "给定型号与时窗，算出产能满足度与主瓶颈工序。",
+      suitableQuestions: ["下季度 A 型号产能够不够？"],
+      notSuitableQuestions: ["这批货运费多少？"],
+      quality: { successRate: 0.92, usageCount: 17, avgLatencyMs: 240 },
+    },
+  },
+  {
+    kind: "slice",
+    key: "model_capacity_network",
+    label: "型号可产网络",
+    description: "某型号可产基地网络切片。",
+    domain: "plan",
+    detail: {
+      capability: "列出某型号可产的基地与产线拓扑。",
+      suitableQuestions: ["常州能不能产 A 型号？"],
+      notSuitableQuestions: ["A 型号毛利多少？"],
+    },
+  },
+];
+
+/**
  * WO-BEFE-F · OC7 配额状态派生 —— 与真后端 `budgetStatus()`
  * （`apps/datacore/src/app.ts:1269-1274`）逐行同构，**mock 里不存派生值**：
  * hard=0 ⇒ 恒 OK（0 的语义是「不限」，不是「上限为零」）。
@@ -3249,6 +3301,52 @@ export const handlers = [
   // `budgetStatus()` 与 `apps/datacore/src/app.ts:1269-1274` 逐行同构：hard=0 ⇒ 恒 OK（不限）。
   // ⚠ `POST /a/v1/llm-budgets/record` **故意不建 mock**：它是 AgentCore 的服务间记账入口，
   //   前端不该有调用方；建了 mock 就等于给一条不该存在的路铺了砖（见本单分诊表 (2) 类）。
+  // ---- WO-BEFE-F · DRIL 智能资源（`/b/v1/resources*`）--------------------------------------------
+  // 详情路由必须注册在 `/search` **之后**：msw 按注册序匹配，`:kind/:key` 会把 `search` 吃掉。
+  http.get("*/b/v1/resources", ({ request }) => {
+    const kind = new URL(request.url).searchParams.get("kind");
+    const items = DRIL_RESOURCES.filter((r) => !kind || r.kind === kind).map(({ detail: _d, ...rest }) => rest);
+    return HttpResponse.json({ items, total: items.length });
+  }),
+  http.post("*/b/v1/resources/search", async ({ request }) => {
+    const body = (await request.json()) as { query?: string };
+    const q = (body.query ?? "").trim();
+    const results = DRIL_RESOURCES.filter((r) => !q || r.label.includes(q) || r.description.includes(q)).map(
+      ({ detail: _d, ...rest }, i) => ({
+        resource: rest,
+        score: Number((0.9 - i * 0.1).toFixed(3)),
+        scoreBreakdown: { semantic: 0.5, domain: 0.2, ontology: 0.1, history: 0.05, cost: 0.02 },
+        explanation: `${rest.label} 命中五级标签与语义。`,
+      }),
+    );
+    return HttpResponse.json({ results, explanation: q ? `据五级标签+语义命中：共 ${results.length} 条。` : "空查询。" });
+  }),
+  http.get("*/b/v1/resources/:kind/:key/relations", ({ params }) => {
+    const r = DRIL_RESOURCES.find((x) => x.kind === params.kind && x.key === params.key);
+    if (!r) return err(404, "RESOURCE_NOT_FOUND", `resource not found: ${params.kind}/${params.key}`);
+    return HttpResponse.json({
+      resource: { kind: r.kind, key: r.key },
+      relations: [{ relType: "reads", toKind: "field", toKey: "Model" }],
+      inbound: [{ fromKind: "workflow", fromKey: "wf-capacity", relType: "invokes" }],
+    });
+  }),
+  http.get("*/b/v1/resources/:kind/:key/quality", ({ params }) => {
+    const r = DRIL_RESOURCES.find((x) => x.kind === params.kind && x.key === params.key);
+    if (!r) return err(404, "RESOURCE_NOT_FOUND", `resource not found: ${params.kind}/${params.key}`);
+    return HttpResponse.json({
+      kind: r.kind,
+      key: r.key,
+      quality: r.detail.quality ? { ...r.detail.quality, lastProbeAt: "2026-07-25T00:00:00Z" } : null,
+    });
+  }),
+  // 单资源详情：比列表多 capability / 正负向问句 / 质量叠加（真后端 overlayQuality 的 mock 对应物）。
+  http.get("*/b/v1/resources/:kind/:key", ({ params }) => {
+    const r = DRIL_RESOURCES.find((x) => x.kind === params.kind && x.key === params.key);
+    if (!r) return err(404, "RESOURCE_NOT_FOUND", `resource not found: ${params.kind}/${params.key}`);
+    const { detail, ...rest } = r;
+    return HttpResponse.json({ ...rest, ...detail });
+  }),
+
   http.get("*/a/v1/llm-budgets", () => HttpResponse.json(mockBudgetStatus())),
   http.put("*/a/v1/llm-budgets", async ({ request }) => {
     const body = (await request.json()) as { hardLimitTokens?: number; softLimitPct?: number };
