@@ -1,4 +1,4 @@
-import { LIVED_IN_SCENE_HISTORY, BASE_REGISTRY, PLAN_GOAL_TARGETS } from "@platform/contracts";
+import { LIVED_IN_SCENE_HISTORY, BASE_REGISTRY, PLAN_GOAL_TARGETS, assertSharedFeatureNames } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：规则表达式/抽取候选里的阈值一律派生，禁内联裸阈值/手写百分数。
 import { OUTSOURCE_REDLINE, outsourceRedlineConstraintExpr, outsourceRedlinePct, outsourceRedlineViolationExprPublished, ruleParamRef } from "@platform/contracts";
 import type {
@@ -153,10 +153,21 @@ export const ORDERS = Array.from({ length: 20 }, (_, i) => {
 // FeatureRegistry（Entitlement §2 首批注册清单）
 // ---------------------------------------------------------------------------
 
-export const FEATURE_REGISTRY: FeatureDef[] = [
+/**
+ * ⚠ 功能名（`name`）的单一真相源是 `@platform/contracts` 的 `SHARED_FEATURE_NAMES`
+ * （WO-VIEWNAME-SINGLE-SOURCE）。mock 的职责是**如实复刻生产**：这份表在 `VITE_MOCK=1`
+ * 下经 handlers.ts 的 `GET …/a/v1/features/registry` 桩喂给「功能开通配置」页 —— 与生产同一个页面、
+ * 同一个字段（`FeaturesPage` 渲染 `def.name`）。mock 自起一个名字 = 演示态在对用户说谎，
+ * 而且是最难发现的那个方向（两边都"看起来对"）。
+ * 实测本表曾在 5 个键上与后端各写一个名（`view.risk-board` 写「推演看板」而册是
+ * 「风险推演看板」…）。下面的字面量是**受检副本**，`assertSharedFeatureNames()` 在模块
+ * 加载期逐条核对，不符即抛；mock 独有的键（`view.aop` / `view.graph-*` / `view.dash.widget.gwh`）
+ * 不跨服务、不在册内，保持本地自治。
+ */
+export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
   { key: "view.dash", name: "驾驶舱", level: "VIEW", defaultOn: true, bindings: { intents: ["capacity_feasibility"] } },
   { key: "view.ontology-graph", name: "本体图谱", level: "VIEW", defaultOn: true },
-  { key: "view.risk-board", name: "推演看板", level: "VIEW", defaultOn: true, bindings: { intents: ["affected_orders", "risk_root_cause"], solverKeys: ["risk_timeline"] } },
+  { key: "view.risk-board", name: "风险推演看板", level: "VIEW", defaultOn: true, bindings: { intents: ["affected_orders", "risk_root_cause"], solverKeys: ["risk_timeline"] } },
   { key: "view.ledger", name: "订单台账", level: "VIEW", defaultOn: true, bindings: { intents: ["affected_orders"] } },
   { key: "view.plan-audit", name: "规划体检", level: "VIEW", defaultOn: true, bindings: { intents: ["plan_audit_run"], solverKeys: ["plan_audit"], apiTags: ["plan-audit"] } },
   { key: "view.plan-generate", name: "规划建议", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["plan_generate"] } },
@@ -236,9 +247,9 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.graph-mvp", name: "图谱·MVP 核心与缺口", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
   { key: "view.graph-agent", name: "图谱·智能体网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
   { key: "view.graph-loop", name: "图谱·学习闭环", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
-  { key: "shell.query-dock", name: "查询对话", level: "BLOCK", defaultOn: true },
-  { key: "qos.agent-fallback", name: "探索模式兜底", level: "BLOCK", defaultOn: true },
-  { key: "view.project-sim.whatif", name: "What-if 推演", level: "BLOCK", defaultOn: true, requires: ["view.project-sim"] },
+  { key: "shell.query-dock", name: "查询对话坞", level: "BLOCK", defaultOn: true },
+  { key: "qos.agent-fallback", name: "Agent 兜底（路径 B）", level: "BLOCK", defaultOn: true },
+  { key: "view.project-sim.whatif", name: "What-if 调参", level: "BLOCK", defaultOn: true, requires: ["view.project-sim"] },
   { key: "view.risk-board.mitigation", name: "处置方案区", level: "BLOCK", defaultOn: true, requires: ["view.risk-board"], bindings: { intents: ["adopt_mitigation"] } },
   { key: "view.dash.widget.gwh", name: "驾驶舱·总产能卡", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
   { key: "act.plan-audit.apply-fix", name: "体检一键修正", level: "ACTION", defaultOn: true, requires: ["view.plan-audit"] },
@@ -250,7 +261,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用。
   { key: "opt.multiobj", name: "多目标 + 跨对象占用", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { solverKeys: ["multi_objective", "cross_object_occupancy"] } },
   // WO-A · No-code Plan Builder Canvas（Phase 1：线性多 solver 链）。defaultOn 与两侧后端注册表 parity。
-  { key: "admin.plan-builder", name: "计划构建画布", level: "BLOCK", defaultOn: true },
+  { key: "admin.plan-builder", name: "计划构建器", level: "BLOCK", defaultOn: true },
   /**
    * WO-BEFE-F 实测补齐的 **parity 缺口**：`qos.dril-routing` 在**两侧后端都注册了**
    * （`apps/datacore/src/features.ts:125` · `apps/agentcore/src/features/registry.ts:117`，
@@ -263,7 +274,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
    * 这一条正是工单提醒的那个坑：**功能键 ≠ 路由键**，而且注册表漏一个键 = 该功能永远开不出来。
    */
   { key: "qos.dril-routing", name: "DRIL 智能资源路由（Path-B 组包注入）", level: "BLOCK", defaultOn: false },
-];
+], "frontend-shell/src/mocks/fixtures.ts FEATURE_REGISTRY");
 
 /** 账号 → 生效功能集（base_manager 关闭 view.plan-audit 与 act.adopt-to-draft，演示 404 与 E2） */
 export function featuresForAccount(account: MockAccount, tenantOverrides: Record<string, boolean>): string[] {
