@@ -77,6 +77,9 @@ describe("SEAM · 真 kit_readiness 答案块 → 采购四段渲染", () => {
     expect(orders!.length).toBe(ROWS.length);
     let itemCount = 0;
     for (const o of orders!) {
+      // 逐单的下限，不是全局的：`itemCount > 0` 只证明「有某一张单有项」，
+      // 证明不了「每张单都解析出了项」—— 一张单被解析成 0 项时它照样绿。
+      expect(o.items.length).toBeGreaterThan(0); // 真载荷实测 [4,4]
       for (const it of o.items) {
         itemCount++;
         expect(it.legs.map((l) => l.leg)).toEqual([...PROCUREMENT_LEGS]);
@@ -119,7 +122,10 @@ describe("SEAM · 真 kit_readiness 答案块 → 采购四段渲染", () => {
 
   it("⑥ 引擎自报的汇总与契约唯一实现在真载荷上完全对得上（口径同源的实证）", () => {
     const orders = buildKitOrderVMs(COLUMNS, ROWS)!;
+    // 两层基数下限：没有它，"完全对得上"在零次比较上也是绿的。
+    expect(orders.length).toBe(ROWS.length);
     for (const o of orders) {
+      expect(o.items.length).toBeGreaterThan(0);
       for (const it of o.items) {
         expect(it.criticalAgreement).toBe("AGREE");
         expect(it.ownerAgreement).toBe("AGREE");

@@ -64,6 +64,9 @@ describe("S08 齐套答案 · 采购四段接线", () => {
   it("② 四段逐段渲染：段名 + 天数 + 责任方，四段一段不少", () => {
     renderAnswer("task-kit-1", ANSWER_KIT);
     const panel = screen.getByTestId("kit-procurement");
+    // 「四段一段不少」这句话的机器判据：契约真有四段，下面才是在逐段验。
+    // 契约哪天加/减一段，这里先红 —— 逼着回来把新段的渲染断言补上，而不是循环少跑一圈静悄悄。
+    expect(PROCUREMENT_LEGS).toHaveLength(4);
     for (const leg of PROCUREMENT_LEGS) {
       const row = within(panel).getByTestId(`kit-leg-SO-3391-elyte-${leg}`);
       expect(row).toBeInTheDocument();
@@ -209,7 +212,10 @@ describe("S08 采购四段 · 口径同源", () => {
   it("⑭ 屏上的合计 == 契约 procurementTotalDays（前端不另写一份加法）", () => {
     const orders = buildKitOrderVMs(KIT_TABLE_COLUMNS, KIT_TABLE_ROWS);
     expect(orders).not.toBeNull();
+    // 两层循环各自的基数下限：任一层塌成空集，下面的逐项对拍就一次都不执行而照样绿。
+    expect(orders!.length).toBe(KIT_TABLE_ROWS.length); // fixture 两行 ⇒ 两张单，解析漏一张即红
     for (const o of orders!) {
+      expect(o.items.length).toBeGreaterThan(0); // 实测 [2,1]：每张单都真有缺料项
       for (const it of o.items) {
         const legs = it.legs.map(
           (l) =>
@@ -230,7 +236,10 @@ describe("S08 采购四段 · 口径同源", () => {
 
   it("⑮ 引擎自报的汇总与契约重算一致时不报 MISMATCH（真载荷上对得上）", () => {
     const orders = buildKitOrderVMs(KIT_TABLE_COLUMNS, KIT_TABLE_ROWS)!;
+    // 同上：三个 AGREE 若一次都没被执行，本条用例证明不了任何"对得上"。
+    expect(orders.length).toBe(KIT_TABLE_ROWS.length);
     for (const o of orders) {
+      expect(o.items.length).toBeGreaterThan(0);
       for (const it of o.items) {
         expect(it.criticalAgreement).toBe("AGREE");
         expect(it.ownerAgreement).toBe("AGREE");
