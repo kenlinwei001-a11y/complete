@@ -25,7 +25,9 @@
     "pg": "^8.16.0",
     "pino": "^9.6.0",
     "zod": "^4.0.0",
-    "@platform/llm-adapters": "workspace:*"
+    "@platform/llm-adapters": "workspace:*",
+    "@deepseek-ai/dsh-sdk-client": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-sdk-protocol": "0.1.0-rc.6"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
