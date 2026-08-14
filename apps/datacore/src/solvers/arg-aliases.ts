@@ -7,8 +7,8 @@ import { validationError } from "../errors.js";
  *   ① `capacity_forecast` 只读 `args.base`，而**目录 `argHints` 里根本没有 `base` 这个键**
  *      （`catalog.ts` 声明 `{modelId, qty, weeks}`），兄弟求解器（`bottleneck_matrix` / `risk_timeline` /
  *      `affected_orders` / `base_capacity_outlook`）声明的又全是 `baseId`。于是照目录/照直觉传 `baseId`：
- *        `{modelId:"4680-NCM",qty:100,weeks:6,baseId:"changzhou"}` → p50 **12.3016** · `scope:"ALL"` · 4 个基地
- *        `{modelId:"4680-NCM",qty:100,weeks:6,base  :"changzhou"}` → p50 **5.5176**  · `scope:"BASE"` · 1 个基地
+ *        `{modelId:"4680-NCM",qty:100,weeks:6,baseId:"changzhou"}` → capWanP50 **12.3016** · `scope:"ALL"` · 4 个基地
+ *        `{modelId:"4680-NCM",qty:100,weeks:6,base  :"changzhou"}` → capWanP50 **5.5176**   · `scope:"BASE"` · 1 个基地
  *      前者与**完全不传基地**的输出**逐字节相同** —— 用户问「常州的产能预测」，拿到的是全网数字，页面不报错。
  *   ② `risk_timeline` 同病更重：目录 `argHints` 写的是 `{baseId, days}`，而求解器读的是 `{base, factor, horizon}`
  *      —— **两个声明键一个都不被读**。实测 `{baseId:"zaozhuang"}` 返回 8 张卡

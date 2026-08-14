@@ -454,7 +454,7 @@ export function rungsFor(args: {
 // § 4 · 逐候选真试算（**效果是量出来的**）
 // ══════════════════════════════════════════════════════════════════════════════
 
-/** 产能目标：Σ over 认证型号 of Σ p50（可按基地收窄，同尺度才谈得上偏差）。 */
+/** 产能目标：Σ over 认证型号 of Σ cellsPerDayP50（电芯/日·可按基地收窄，同尺度才谈得上偏差）。 */
 function capacityObjective(c: SolverContext, baseFilter?: string): number | null {
   const models = [...c.certByModel.keys()].sort();
   if (models.length === 0) return null;
@@ -462,7 +462,7 @@ function capacityObjective(c: SolverContext, baseFilter?: string): number | null
   let rows = 0;
   for (const m of models) {
     for (const r of computeByProcessModel(c, m, CAPACITY_FACTOR_BINDINGS, baseFilter)) {
-      total += r.p50;
+      total += r.cellsPerDayP50;
       rows++;
     }
   }
@@ -706,7 +706,7 @@ export function enumerateImpedimentOptions(
           },
           {
             key: "capacityP50",
-            label: `产能 p50 合计${locusBase ? `（基地 ${locusBase}）` : "（全域）"}`,
+            label: `产能 cellsPerDayP50 合计（电芯/日）${locusBase ? `（基地 ${locusBase}）` : "（全域）"}`,
             value: afterCap,
             baseline: baseCap,
             unit: "套/天",
@@ -757,7 +757,7 @@ export function enumerateImpedimentOptions(
             solverKey: IMPEDIMENT_OPTION_SOLVER_KEY,
             formula:
               `patchCapacityContext(${anchor.binding.objectType}/${anchor.objectRef}.${anchor.binding.prop}: ${round(anchor.currentValue, 4)}→${round(rung.toValue, 4)}) ` +
-              `→ 判据 ${binding.ruleKey}(${binding.metricPath}) 重算 + Σ computeByProcessModel.p50 重算`,
+              `→ 判据 ${binding.ruleKey}(${binding.metricPath}) 重算 + Σ computeByProcessModel.cellsPerDayP50 重算`,
             inputs: [`${anchor.binding.objectType}.${anchor.binding.prop}`, binding.metricPath, `rule:${binding.ruleKey}`],
           },
           dataMode: im.dataMode,

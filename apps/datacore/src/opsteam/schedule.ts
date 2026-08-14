@@ -107,12 +107,12 @@ export class OpsScheduleService {
     // capacity_forecast 经 invoke → forecastSnapshots + calibrationForecasts（M11 配对样本）。
     const ctx = this.serviceCtx(tenantId);
     for (const modelId of modelIds) {
-      const out = (await this.solvers.invoke(ctx, "capacity_forecast", { modelId })) as { p50?: number };
+      const out = (await this.solvers.invoke(ctx, "capacity_forecast", { modelId })) as { capWanP50?: number };
       await this.outbox.emit(tenantId, "ops_schedule.forecast_run", {
         executedAs: "SERVICE_ACCOUNT", // 平台 §6.3 Q1 例外：计算类无权责，ServiceAccount 身份
         modelId,
         weeks: cfg?.weeks ?? 12,
-        p50: out.p50 ?? null,
+        capWanP50: out.capWanP50 ?? null,
       });
     }
   }

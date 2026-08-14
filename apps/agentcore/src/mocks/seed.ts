@@ -303,8 +303,8 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
           params: {
             blocks: [
               // PRD-CAP-DEMANDDELTA：capacity_forecast 输出单位统一为「万套/窗口」，不再沿用 GWh。
-              { type: "kpi", label: "P50 产能", value: "{{steps.s2.output.data.p50}}", unit: "万套", fromStep: "s2", outputPath: "$.data.p50" },
-              { type: "kpi", label: "P90 产能", value: "{{steps.s2.output.data.p90}}", unit: "万套", fromStep: "s2", outputPath: "$.data.p90" },
+              { type: "kpi", label: "P50 产能", value: "{{steps.s2.output.data.capWanP50}}", unit: "万套/窗口", fromStep: "s2", outputPath: "$.data.capWanP50" },
+              { type: "kpi", label: "P90 产能", value: "{{steps.s2.output.data.capWanP90}}", unit: "万套/窗口", fromStep: "s2", outputPath: "$.data.capWanP90" },
               { type: "kpi", label: "有效需求", value: "{{steps.s2.output.data.effectiveDemand}}", unit: "万套", fromStep: "s2", outputPath: "$.data.effectiveDemand" },
               { type: "kpi", label: "缺口比例", value: "{{steps.s2.output.data.gapPct}}", fromStep: "s2", outputPath: "$.data.gapPct" },
               { type: "kpi", label: "主要瓶颈", value: "{{steps.s2.output.data.mainBottleneck}}", fromStep: "s2", outputPath: "$.data.mainBottleneck" },
@@ -1054,7 +1054,7 @@ export function seedRegistry(now = new Date().toISOString()): {
       },
       outputSchema: {
         type: "object",
-        properties: { conclusion: { type: "string" }, p50: { type: "number" }, p90: { type: "number" }, gapPct: { type: "number" } },
+        properties: { conclusion: { type: "string" }, capWanP50: { type: "number" }, capWanP90: { type: "number" }, gapPct: { type: "number" } },
       },
       references: [
         { kind: "solver", key: "capacity_forecast", role: "context", required: true },

@@ -48,7 +48,7 @@ export const DRIL_TAG_TAXONOMY: {
     { tag: "external", keywords: ["外部信号", "地缘", "矿价", "external"] },
   ],
   l2_decisionType: [
-    { tag: "Prediction", keywords: ["预测", "预估", "推演", "满足度", "forecast", "predict", "p50", "p90"] },
+    { tag: "Prediction", keywords: ["预测", "预估", "推演", "满足度", "forecast", "predict", "p50", "p90", "capWanP50", "capWanP90"] },
     { tag: "Optimization", keywords: ["优化", "最优", "最小化", "优选", "分配", "排序", "排程", "optimize", "optimal"] },
     { tag: "Simulation", keywords: ["模拟", "沙盘", "情景", "反事实", "what-if", "假设", "simulate", "scenario"] },
     { tag: "Diagnosis", keywords: ["诊断", "归因", "根因", "为什么", "定位", "瓶颈", "diagnose", "rootcause", "attribution"] },

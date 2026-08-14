@@ -234,8 +234,8 @@ export const MOCK_SOLVER_REGISTRY: readonly MockSolverRegistryItem[] = [
       "forecast"
     ],
     "outputShape": [
-      "p50",
-      "p90",
+      "capWanP50",
+      "capWanP90",
       "byProcessModel",
       "dataMode",
       "healthFactor",

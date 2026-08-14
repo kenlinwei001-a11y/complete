@@ -493,19 +493,20 @@ export class MockSolverClient implements SolverClient {
           ).reduce((s, b) => s + b.gwh, 0)
         : 20;
       const delta = Number(args.demandDelta ?? 0);
-      const p50 = Math.round(baseGwh * (1 + rnd() * 0.1) * 10) / 10;
-      const p90 = Math.round(p50 * (0.85 + rnd() * 0.1) * 10) / 10;
+      const capWanP50 = Math.round(baseGwh * (1 + rnd() * 0.1) * 10) / 10;
+      const capWanP90 = Math.round(capWanP50 * (0.85 + rnd() * 0.1) * 10) / 10;
       // PRD-CAP-DEMANDDELTA mock：effectiveDemand 由 demandDelta 驱动，缺口比例分母随其走。
-      const effectiveDemand = Math.round(p50 * (1 + delta) * 10) / 10;
-      const gap = Math.max(0, Math.round((effectiveDemand - p90) * 10) / 10);
+      const effectiveDemand = Math.round(capWanP50 * (1 + delta) * 10) / 10;
+      const gap = Math.max(0, Math.round((effectiveDemand - capWanP90) * 10) / 10);
       const gapPct = effectiveDemand > 0 ? Math.round((gap / effectiveDemand) * 1000) / 10 : 0;
       const baselineDemand = Math.round((effectiveDemand / Math.max(0.01, 1 + delta)) * 10) / 10;
       const bottlenecks = ["化成", "卷绕", "涂布", "装配", "注液"];
       const mainBottleneck = bottlenecks[Math.floor(rnd() * bottlenecks.length)] as string;
       return {
         data: {
-          p50,
-          p90,
+          capWanP50,
+          capWanP90,
+          unit: "万套/窗口",
           effectiveDemand,
           baselineDemand,
           demandDelta: delta,
@@ -517,10 +518,10 @@ export class MockSolverClient implements SolverClient {
           dataMode: "MOCK",
           // PRD-CAP-DEMANDDELTA：per-field provenance 供 executor  richer provenance。
           provenance: {
-            p50: { formula: "Σ_base weeklyCap × certFactor × curveMult(周)", valueLabel: "P50 产能（万套/窗口）" },
-            p90: { formula: "p50 × healthFactor", valueLabel: "P90 产能（万套/窗口）" },
+            capWanP50: { formula: "Σ_base weeklyCap × certFactor × curveMult(周)", valueLabel: "P50 产能（万套/窗口）" },
+            capWanP90: { formula: "capWanP50 × healthFactor", valueLabel: "P90 产能（万套/窗口）" },
             effectiveDemand: { formula: "baseline × (1 + demandDelta)", valueLabel: "有效需求（万套/窗口）" },
-            gap: { formula: "max(0, effectiveDemand − p90) / effectiveDemand", valueLabel: "缺口比例" },
+            gap: { formula: "max(0, effectiveDemand − capWanP90) / effectiveDemand", valueLabel: "缺口比例" },
           },
         },
         snapshotVersion: SNAPSHOT,

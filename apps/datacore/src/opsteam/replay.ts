@@ -152,8 +152,8 @@ export class OpsReplayService {
         // （invoke 落 forecastSnapshots + calibrationForecasts；runWithParams 不落，故用 invoke）。
         const modelIdx = Math.floor(deterministicDraw(derive) * action.modelPool.length);
         const modelId = action.modelPool[modelIdx] ?? action.modelPool[0];
-        const out = (await this.deps.solvers.invoke(persona, "capacity_forecast", { modelId })) as { p50?: number };
-        return { exec: { kind: "run_forecast", persona: action.persona, ref: String(modelId), decision: `p50=${out.p50 ?? "?"}` } };
+        const out = (await this.deps.solvers.invoke(persona, "capacity_forecast", { modelId })) as { capWanP50?: number };
+        return { exec: { kind: "run_forecast", persona: action.persona, ref: String(modelId), decision: `capWanP50=${out.capWanP50 ?? "?"}` } };
       }
 
       case "review_actions": {

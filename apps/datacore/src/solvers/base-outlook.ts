@@ -1,6 +1,6 @@
 import { num, str, dayFrom } from "./types.js";
 import { round } from "../prng.js";
-import { deriveDisposition, type DispositionStep } from "@platform/contracts";
+import { deriveDisposition, type DispositionStep, type BaseCapacityOutlookByModel } from "@platform/contracts";
 // WO-DECISION-INFO ③.2：前置期读数与 risk_timeline 处置表**同一对函数**（单一出处·勿另写一套）。
 import { crossBaseLeadOf, outsourceLeadOf } from "./decision-info.js";
 
@@ -82,23 +82,9 @@ export interface HorizonOutlook {
  * 每 model 的 T+30/60/90 产能预测（同源 `capacity_forecast` 该基地 P50·跨求解器勾稽）+ 主瓶颈工序（= `capacity_forecast` 该 model mainBn）+ 缺口。
  * 由 service.ts 把已有 `capacity_forecast` per-model（P50/mainBn）join 进本基地 outlook（现有 per-base 四线零改·R13 每值溯 capacity_forecast）。
  */
-export interface ByModelOutlook {
-  model: string;
-  modelName: string;
-  /** T+30 天该基地该型号累计可承接（套·= capacity_forecast 该基地 cumTotal×1e4）。 */
-  p50At30: number;
-  p50At60: number;
-  p50At90: number;
-  /** 该型号主瓶颈工序（= capacity_forecast 该 model mainBn·跨求解器一致）。 */
-  mainBn: string;
-  /** 缺口 = p50@90 − 该型号 90 天内落窗未来订单（本基地首产地·套）。 */
-  gap: number;
-  /** WO-UNIT-MEANING · p50At30/60/90 与 gap 的量纲**单一真值**（治本单源·前端只格式化不内联·治 G-UNIT-NORMALIZE）：
-   *  T+30/60/90 = 该窗内**累计**可承接 → `套`（区别于 byProcessModel 的"套/天"日产能）。 */
-  unit: string;
-  /** R13 溯源：每值来自 capacity_forecast（P50/mainBn），join 进 outlook。 */
-  provenance: { kind: string; source: string; drillType: string; drillField: string };
-}
+// WO-P50-RENAME：本地原另抄一份 `ByModelOutlook`（与契约 `BaseCapacityOutlookByModelSchema` 同形状、
+// 各写各的注释）——第二真相源。现改为直接复用契约类型，契约改了这里编译即红。
+export type ByModelOutlook = BaseCapacityOutlookByModel;
 
 export interface BaseOutlookResult {
   baseId: string;

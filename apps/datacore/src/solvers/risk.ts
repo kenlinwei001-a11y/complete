@@ -448,7 +448,7 @@ export function applyLeverOverlay(
 }
 
 /**
- * WO-LIVE-DISPOSITION · 逐基地产能链日产能（Σ 逐工序×型号 p50·**与 service.ts capacityInferenceApply 逐字同口径**：
+ * WO-LIVE-DISPOSITION · 逐基地产能链日产能（Σ 逐工序×型号 cellsPerDayP50·**与 service.ts capacityInferenceApply 逐字同口径**：
  * 同 `computeByProcessModel`、同 key 粒度 `${baseId}|${process}|${model}`、同 Σ 聚合）。
  * 处置表用它算「覆写后/基线」产能比 capRatio → 物料/良率/OEE 杠杆经真产能链传导进缺口（非另算一套）。
  * 无 Material/Model 数据（未载扩展层 / 空认证）→ 返回空 Map（诚实·上层 capRatio 回落 1·不臆造）。
@@ -456,7 +456,7 @@ export function applyLeverOverlay(
 export function baseChainCapacityDaily(c: SolverContext): Map<string, number> {
   const m = new Map<string, number>();
   for (const modelId of [...c.certByModel.keys()].sort())
-    for (const r of computeByProcessModel(c, modelId)) m.set(r.baseId, round((m.get(r.baseId) ?? 0) + r.p50, 4));
+    for (const r of computeByProcessModel(c, modelId)) m.set(r.baseId, round((m.get(r.baseId) ?? 0) + r.cellsPerDayP50, 4));
   return m;
 }
 

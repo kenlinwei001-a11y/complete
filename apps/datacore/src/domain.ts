@@ -910,7 +910,8 @@ export interface ForecastSnapshotRecord {
   id: string; // fcst_<tenant>_<model>
   tenantId: string;
   modelId: string;
-  p50: number;
+  /** @unit 万套/窗口 */
+  capWanP50: number;
   weeks: number;
   predictedDaily: number; // 万套/日
   createdAt: string;

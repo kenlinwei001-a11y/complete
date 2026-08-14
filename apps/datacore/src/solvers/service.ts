@@ -928,7 +928,7 @@ export class SolverService {
     );
 
     const c = await this.loadContext(ctx.tenantId, undefined, { withExtended: true });
-    // 单型号（合法 modelId）vs 多型号聚合（缺省/非法 modelId·base 级活台）：目标 = Σ over models 的 byProcessModel p50。
+    // 单型号（合法 modelId）vs 多型号聚合（缺省/非法 modelId·base 级活台）：目标 = Σ over models 的 byProcessModel cellsPerDayP50。
     const models = modelId && c.certByModel.has(modelId) ? [modelId] : [...c.certByModel.keys()];
     const empty = { levers: [] as unknown[], deltas: [], rows: [], affectedObjects: 0, count: 0, rootTypes: [] as string[] };
     if (models.length === 0) return empty;
@@ -956,7 +956,7 @@ export class SolverService {
     const baseFilter = scopeGiven && activeBases.size === 1 ? [...activeBases][0] : undefined;
     const modelLabel = models.join(",");
     const total = (ctx2: SolverContext): number =>
-      round(models.reduce((s, m) => s + computeByProcessModel(ctx2, m, CAPACITY_FACTOR_BINDINGS, baseFilter).reduce((a, r) => a + r.p50, 0), 0), 6);
+      round(models.reduce((s, m) => s + computeByProcessModel(ctx2, m, CAPACITY_FACTOR_BINDINGS, baseFilter).reduce((a, r) => a + r.cellsPerDayP50, 0), 0), 6);
     const baseline = total(c);
 
     // typeKey → ctx 对象数组（仅 capacity 链相关类型；ctx 无该类型 → 空，诚实不臆造）。
@@ -1009,7 +1009,7 @@ export class SolverService {
         sensitivity: best.sensitivity,
         provenance: {
           src: "capacity_forecast · byProcessModel(±ε)",
-          formula: `∂(Σ byProcessModel.p50 · model=${modelLabel}) / ∂(${b.objectType}.${b.prop})（ε=${epsilon}）`,
+          formula: `∂(Σ byProcessModel.cellsPerDayP50 · model=${modelLabel}) / ∂(${b.objectType}.${b.prop})（ε=${epsilon}）`,
           factorBinding: `${b.mark} ${b.factorName}`,
         },
       });
@@ -1029,7 +1029,7 @@ export class SolverService {
    * 前端产能活台拨杆（DynamicLeverPanel grain='process-model'）拖动原子因子（Process.yield_baseline / Equipment.oee_current /
    * Material.onHand …）时，不走 ontology-core recompute（demo 本体这些因子无下游派生边·恒空 → dataMode:EMPTY 空壳），
    * 改走**产能金字塔代码链**：克隆 ctx（patchCapacityContext·不 mutate·R6）套假设值，重算 capacity_forecast.byProcessModel
-   * 逐工序×型号 Σp50，按 `${baseId}|${process}|${model}` 配对 before/after → p50 真变的格出 delta（真产能增益）。
+   * 逐工序×型号 ΣcellsPerDayP50，按 `${baseId}|${process}|${model}` 配对 before/after → 真变的格出 delta（真产能增益）。
    * modelId 缺省/非法（base 级活台传 base 名·非型号）→ 多型号聚合（Σ over 全部认证型号）；合法 modelId → 单型号。
    * deltas 全来自 computeByProcessModel 真值（KILL-MOCK-RED·缺型号/空 cert → dataMode:EMPTY 不臆造·绝不写死数字）。
    * DynamicLeverPanel 现有渲染读 deltas/rows/affectedObjects/count/capGain → 直接可用（契约 additive·shapeKeys 允许额外键）。
@@ -1046,11 +1046,11 @@ export class SolverService {
     if (models.length === 0) {
       return { deltas: [], rows: [], affectedObjects: 0, count: 0, rootTypes, dataMode: "EMPTY", note: "型号无认证基地·无产能链" };
     }
-    // 逐工序×型号 p50 索引（key=`${baseId}|${process}|${model}`·Σ over models）。
+    // 逐工序×型号 cellsPerDayP50 索引（key=`${baseId}|${process}|${model}`·Σ over models）。
     const rowsOf = (ctx2: SolverContext): Map<string, number> => {
       const m = new Map<string, number>();
       for (const model of models)
-        for (const r of computeByProcessModel(ctx2, model)) m.set(`${r.baseId}|${r.process}|${r.model}`, r.p50);
+        for (const r of computeByProcessModel(ctx2, model)) m.set(`${r.baseId}|${r.process}|${r.model}`, r.cellsPerDayP50);
       return m;
     };
     const before = rowsOf(c);
@@ -1063,14 +1063,14 @@ export class SolverService {
     for (const key of [...before.keys()].sort()) {
       const b = before.get(key)!;
       const a = after.get(key);
-      if (a === undefined || a === b) continue; // p50 未变 → 非 delta（apply 落点不在该格产能链上·诚实）
-      deltas.push({ objId: key, type: "ProcessModel", prop: "p50", before: b, after: a });
+      if (a === undefined || a === b) continue; // cellsPerDayP50 未变 → 非 delta（apply 落点不在该格产能链上·诚实）
+      deltas.push({ objId: key, type: "ProcessModel", prop: "cellsPerDayP50", before: b, after: a });
     }
     const sum = (m: Map<string, number>): number => [...m.values()].reduce((s, v) => s + v, 0);
     return {
       deltas,
-      // WO-UNIT-MEANING：本路径 delta 恒为 ProcessModel.p50 = **工序日产能** → 与 capacity.ts
-      // byProcessModel 同口径「套/天」（同一 p50 语义·跨接缝不漂移）。
+      // WO-P50-RENAME：本路径 delta 恒为 ProcessModel.cellsPerDayP50 = **工序日产能** → 与 capacity.ts
+      // byProcessModel 同口径「电芯/日」（同一语义·跨接缝不漂移·量纲实测订正见 capacity.ts）。
       rows: deltas.map((d) => ({ objectId: d.objId, type: d.type, prop: d.prop, before: d.before, after: d.after, unit: "套/天" })),
       affectedObjects: deltas.length,
       count: deltas.length,
@@ -3119,8 +3119,8 @@ export class SolverService {
   /**
    * WO-CAPACITY-DEEPEN-ADDITIVE 块D · 每产品前瞻（SEAM 数据半）。
    * 对本基地每个可产型号（certByModel 含 baseId），逐 horizon∈{30,60,90} 调 `capacity_forecast`（同求解器·同 context），
-   * 取该基地 perBaseRows.cumTotal（万套）×1e4 作 p50@H（与四线同单位·同源勾稽·改 capacity_forecast 输入即真变·R13）；
-   * mainBn = capacity_forecast 该 model 主瓶颈（跨求解器一致）；gap = p50@90 − 该型号 90 天落窗未来订单（本基地首产地）。
+   * 取该基地 perBaseRows.cumTotal（万套）×1e4 作 packsP50At{H}（与四线同单位·同源勾稽·改 capacity_forecast 输入即真变·R13）；
+   * mainBn = capacity_forecast 该 model 主瓶颈（跨求解器一致）；packsGap = packsP50At90 − 该型号 90 天落窗未来订单（本基地首产地）。
    * 确定性（无 Date.now/随机·forecastStart 锚）·纯读（不写库）。
    */
   private async outlookByModel(
@@ -3136,7 +3136,7 @@ export class SolverService {
       const modelId = str(m.props.modelId);
       const cert = c.certByModel.get(modelId);
       if (!cert || !cert.has(baseId)) continue; // 仅本基地可产型号
-      const p50: Record<number, number> = {};
+      const packsP50: Record<number, number> = {};
       let mainBn = "";
       let ok = true;
       for (const H of horizons) {
@@ -3149,11 +3149,11 @@ export class SolverService {
         }
         const perBaseRows = (fc.perBaseRows as Record<string, unknown>[]) ?? [];
         const pb = perBaseRows.find((r) => str(r.baseId) === baseId);
-        p50[H] = round(num(pb?.cumTotal) * 1e4, 2); // 万套→套（与四线 available 同单位）
+        packsP50[H] = round(num(pb?.cumTotal) * 1e4, 2); // 万套→套（与四线 available 同单位）
         mainBn = str(fc.mainBn, mainBn); // 该 model 主瓶颈（跨求解器一致·最后一档取全窗口口径）
       }
       if (!ok) continue;
-      // gap = p50@90 − 该型号 90 天内落窗未来订单（本基地首产地·套）。
+      // packsGap = packsP50At90 − 该型号 90 天内落窗未来订单（本基地首产地·套）。
       const demand90 = round(
         orders
           .filter(
@@ -3170,13 +3170,13 @@ export class SolverService {
       rows.push({
         model: modelId,
         modelName: str(m.props.name, modelId),
-        p50At30: p50[30] ?? 0,
-        p50At60: p50[60] ?? 0,
-        p50At90: p50[90] ?? 0,
+        packsP50At30: packsP50[30] ?? 0,
+        packsP50At60: packsP50[60] ?? 0,
+        packsP50At90: packsP50[90] ?? 0,
         mainBn,
-        gap: round((p50[90] ?? 0) - demand90, 2),
-        unit: "套", // WO-UNIT-MEANING：T+30/60/90 累计可承接 + 缺口的量纲单源下发（前端只格式化·不内联）
-        provenance: { kind: "跨求解器", source: "capacity_forecast", drillType: "Model", drillField: "p50/mainBn" },
+        packsGap: round((packsP50[90] ?? 0) - demand90, 2),
+        unit: "套" as const, // WO-UNIT-MEANING：T+30/60/90 累计可承接 + 缺口的量纲单源下发（前端只格式化·不内联）
+        provenance: { kind: "跨求解器", source: "capacity_forecast", drillType: "Model", drillField: "packsP50At*/mainBn" },
       });
     }
     return rows;
@@ -4952,9 +4952,9 @@ export class SolverService {
         id: `fcst_${ctx.tenantId}_${modelId}`,
         tenantId: ctx.tenantId,
         modelId,
-        p50: num(out.p50),
+        capWanP50: num(out.capWanP50),
         weeks,
-        predictedDaily: round(num(out.p50) / (weeks * 7), 6),
+        predictedDaily: round(num(out.capWanP50) / (weeks * 7), 6),
         createdAt: new Date().toISOString(),
       });
       // M11 §1: 轻量预测记录（按日窗口；含周曲线，供配对引擎与重放归因消费）
@@ -5140,7 +5140,7 @@ export class SolverService {
 
   /**
    * M11 §1 预测记录：对窗口内每个目标日落一条 calf_ 记录（全基地合计 + 每基地切片），
-   * predicted 含爬坡/检修周曲线（Σ日预测 = p50）。已配对窗口不重写（一个预测只配对一次）。
+   * predicted 含爬坡/检修周曲线（Σ日预测 = capWanP50）。已配对窗口不重写（一个预测只配对一次）。
    */
   private async recordCalibrationForecasts(
     tenantId: string,

@@ -344,7 +344,7 @@ const FEASIBILITY_SOLVERS: SliceSolver[] = [
   {
     key: "capacity_forecast",
     capability: "型号需求增量产能可行性前瞻（P50/P90·缺口率·主瓶颈·必填 {modelId,demandDelta,weeks}）",
-    outputShape: ["p50", "p90", "gapPct", "mainBottleneck", "baseId", "horizon", "lines", "gap", "surplus", "plan", "summary"],
+    outputShape: ["capWanP50", "capWanP90", "gapPct", "mainBottleneck", "baseId", "horizon", "lines", "gap", "surplus", "plan", "summary"],
   },
 ];
 
