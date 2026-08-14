@@ -14,6 +14,8 @@ import type {
   BuildPipelineKind,
   BuildPipelineUpsert,
   StoryBuildRun,
+  PromoteDecision,
+  PromotePrecheck,
   FdeNode,
   BackfillReport,
   PlanSliceResponse,
@@ -1582,8 +1584,13 @@ export const submitStoryInputs = (id: string, inputs: Record<string, string | nu
 export const verifyStoryRun = (id: string) =>
   api.a<StoryBuildRun>(`/a/v1/databuilder/runs/${id}/verify`, { method: "POST" });
 // A18.4 整域晋升编排：审核通过 PROVISIONAL 未审核域 → 隔离数据迁入真租户 + 逐制品晋升求解器 + 翻转域信任级
-export const promoteStoryDomain = (id: string) =>
-  api.a<StoryBuildRun>(`/a/v1/databuilder/runs/${id}/promote`, { method: "POST" });
+// WO-DBUI-FLOW：可带人的裁决（decisions）；会改写既有本体定义的冲突无裁决时后端显式报错，不静默覆盖。
+export const promoteStoryDomain = (id: string, decisions?: PromoteDecision[]) =>
+  api.a<StoryBuildRun>(`/a/v1/databuilder/runs/${id}/promote`, { method: "POST", body: { decisions: decisions ?? [] } });
+// WO-DBUI-FLOW · 入库前冲突复验（只读：拿当前真租户状态现算，一个字节都不写）。
+// R4：预检不是审批的替代，是审批的输入。
+export const promotePrecheck = (id: string) =>
+  api.a<PromotePrecheck>(`/a/v1/databuilder/runs/${id}/promote-precheck`, { method: "POST" });
 // 工业级工作流运行时：故事建域的持久化步骤状态机（检查点/可重入/可重试/可观测）
 export const fetchWorkflowRuns = () => api.a<BuildWorkflowRun[]>("/a/v1/databuilder/workflow-runs");
 export const fetchWorkflowRun = (id: string) => api.a<BuildWorkflowRun>(`/a/v1/databuilder/workflow-runs/${id}`);
