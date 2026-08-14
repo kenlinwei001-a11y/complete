@@ -1112,62 +1112,6 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     },
     {
       /**
-       * WO-BEFE-E · 存档与回滚（`GET …/:id/checkpoints` + `POST …/:id/rollback`，两条此前前端零调用）。
-       *
-       * 修的不是"少了个列表"，是**「存档检查点」这颗按钮此前是单向的**：能存进去，看不见，回不去。
-       * 后端 `app.ts:1808` 那段注释里写着「前端 useQuery 属 WO-1/WO-4 边界，不在本单」——
-       * 那张单没落地，读端就在后端躺着。这一栏是它的出口。
-       *
-       * ⚠ 诚实位：回滚是**破坏性**的（后端真删该 tick 之后的态），所以按钮旁必须写明这一句，
-       *   而不是让用户点完才发现推演没了。想留住分叉走「分支」——那条主线零字节改动。
-       */
-      id: "checkpoints",
-      title: "存档与回滚",
-      node: (
-        <div data-testid="sandbox-checkpoints">
-          {checkpointsQuery.isError ? (
-            <div className={styles.sub} data-testid="sandbox-checkpoints-error">
-              存档清单不可用（沙盘存档功能未开通或后端不可达）
-            </div>
-          ) : (checkpointsQuery.data?.items?.length ?? 0) === 0 ? (
-            <div className={styles.sub} data-testid="sandbox-checkpoints-empty">
-              {checkpointsQuery.isLoading ? "加载存档…" : "还没有存档。点上方「存档检查点」存一个，之后可以回到这一刻。"}
-            </div>
-          ) : (
-            <>
-              <div className={styles.sub} style={{ marginBottom: 4 }} data-testid="sandbox-checkpoints-count">
-                {checkpointsQuery.data!.items.length} 个存档（按 tick 排序 · 回滚会删掉该存档之后的推演）
-              </div>
-              <ul data-testid="sandbox-checkpoints-list" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-                {checkpointsQuery.data!.items.map((cp) => (
-                  <li
-                    key={cp.id}
-                    data-testid={`sandbox-checkpoint-${cp.id}`}
-                    data-tick={String(cp.tick)}
-                    style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", font: "600 10px var(--font-mono)" }}
-                  >
-                    <span className="mono" style={{ color: "var(--muted2)" }} data-testid={`sandbox-checkpoint-label-${cp.id}`}>
-                      {cp.label}
-                    </span>
-                    <span className={styles.sub} data-testid={`sandbox-checkpoint-tick-${cp.id}`}>tick {cp.tick}</span>
-                    <button
-                      className="btn sm ghost"
-                      data-testid={`sandbox-rollback-${cp.id}`}
-                      disabled={rollingBack !== null}
-                      onClick={() => void onRollback(cp.id, cp.label, cp.tick)}
-                    >
-                      {rollingBack === cp.id ? "回滚中…" : "回到这一刻"}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
-      ),
-    },
-    {
-      /**
        * WO-SANDBOX-DECLUTTER · 本体派生计数（旧顶栏 `sandbox-config-summary`）。
        * 「3 类对象 · 1 类链路 · 2 状态变量 · 1 传导规则」是**调试者**的读数：
        * 它回答「这一屏的骨架从哪来」，不回答「今天该动哪个决策」。搬进抽屉，字一个没改。
@@ -1346,6 +1290,67 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   // ── 左区折叠区：决策者用得上的几样（多场景对比 / AI 指挥台 / 企业状态 / 快照分叉）─────
   //    PRD §2 末两行判的是「已在折叠区，**不动**」——本单不改它们的层，只随左区一起搬。
   const rail: SandboxConsoleRailSection[] = [ // hardcoded-data-allow：本数组是**折叠区区块的 JSX 结构**，块内数值字面量实测全是布局值（gap/marginTop/lineHeight/width），零业务数据
+    {
+      /**
+       * WO-BEFE-E · 存档与回滚（`GET …/:id/checkpoints` + `POST …/:id/rollback`，两条此前前端零调用）。
+       *
+       * 修的不是"少了个列表"，是**「存档检查点」这颗按钮此前是单向的**：能存进去，看不见，回不去。
+       * 后端 `app.ts:1808` 那段注释里写着「前端 useQuery 属 WO-1/WO-4 边界，不在本单」——
+       * 那张单没落地，读端就在后端躺着。这一栏是它的出口。
+       *
+       * ⚠ 为什么放 `rail` 而不是 `diagnostics`：回滚是**用户要做的动作**，不是**给人看的读数**。
+       *   `diagnostics` 整块藏在「诊断」抽屉后面（`SandboxConsole.tsx:588` 的 `diagOpen`），
+       *   把一个主动作埋进诊断抽屉 = 等于没接。`rail` 里的同族（多场景对比 / 指挥台 /
+       *   快照分叉比对）个个都带动作按钮，这一栏与它们同类。
+       * ⚠ 诚实位：回滚是**破坏性**的（后端真删该 tick 之后的态），所以清单抬头就写明这一句，
+       *   而不是让用户点完才发现推演没了。想留住分叉走「分支」——那条主线零字节改动。
+       */
+      id: "checkpoints",
+      title: "存档与回滚",
+      defaultOpen: true,
+      node: (
+        <div data-testid="sandbox-checkpoints">
+          {checkpointsQuery.isError ? (
+            <div className={styles.sub} data-testid="sandbox-checkpoints-error">
+              存档清单不可用（沙盘存档功能未开通或后端不可达）——这是「没查出来」，不是「没有存档」。
+            </div>
+          ) : (checkpointsQuery.data?.items?.length ?? 0) === 0 ? (
+            <div className={styles.sub} data-testid="sandbox-checkpoints-empty">
+              {checkpointsQuery.isLoading ? "加载存档…" : "还没有存档。点上方「存档检查点」存一个，之后可以回到这一刻。"}
+            </div>
+          ) : (
+            <>
+              <div className={styles.sub} style={{ marginBottom: 4 }} data-testid="sandbox-checkpoints-count">
+                {checkpointsQuery.data!.items.length} 个存档（按 tick 排序 · 回滚会删掉该存档之后的推演）
+              </div>
+              <ul data-testid="sandbox-checkpoints-list" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                {checkpointsQuery.data!.items.map((cp) => (
+                  <li
+                    key={cp.id}
+                    data-testid={`sandbox-checkpoint-${cp.id}`}
+                    data-tick={String(cp.tick)}
+                    style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", font: "600 10px var(--font-mono)" }}
+                  >
+                    <span className="mono" style={{ color: "var(--muted2)" }} data-testid={`sandbox-checkpoint-label-${cp.id}`}>
+                      {cp.label}
+                    </span>
+                    <span className={styles.sub} data-testid={`sandbox-checkpoint-tick-${cp.id}`}>tick {cp.tick}</span>
+                    <button
+                      className="btn sm ghost"
+                      data-testid={`sandbox-rollback-${cp.id}`}
+                      disabled={rollingBack !== null}
+                      onClick={() => void onRollback(cp.id, cp.label, cp.tick)}
+                    >
+                      {rollingBack === cp.id ? "回滚中…" : "回到这一刻"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      ),
+    },
     {
       id: "compare",
       title: "多场景对比",

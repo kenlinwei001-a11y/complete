@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import type { SandboxViewConfig } from "@platform/contracts";
 import SandboxView from "@/views/sim/SandboxView";
-import { fetchSimCheckpoints, simWorld } from "@/api/endpoints";
+import { fetchSimCheckpoints, fetchSimSessions, simWorld } from "@/api/endpoints";
 import { loginAs } from "./utils";
 import { server } from "./setup";
 
@@ -68,12 +68,20 @@ async function openCheckpointRail(user: ReturnType<typeof userEvent.setup>): Pro
   await user.click(within(sec).getByText("存档与回滚"));
 }
 
-/** 沙盘挂载后先建会话（组件 init 是异步的，等到世界列表出现为止）。 */
+/**
+ * 沙盘挂载后 `init()` 会自建一条会话（`SandboxView.tsx:643`）。
+ * 会话 id 从**真端点**读（`GET /a/v1/sim/sessions`），不从别的 WO 的 UI 里抠 ——
+ * 抠了就把本门的成败绑在一块与本单无关的界面上（那块一改，本门红在错误的地方）。
+ */
 async function mountedSandboxSessionId(): Promise<string> {
   await screen.findByTestId("sandbox-view");
-  const list = await screen.findByTestId("sandbox-worlds-list");
-  const row = within(list).getAllByTestId(/^sandbox-world-sims/)[0]!;
-  return row.getAttribute("data-testid")!.replace(/^sandbox-world-/, "");
+  let id = "";
+  await waitFor(async () => {
+    const r = await fetchSimSessions();
+    expect(r.items.length, "沙盘挂载后没有建出会话 ⇒ 后面全是空胜").toBeGreaterThan(0);
+    id = r.items[0]!.id;
+  });
+  return id;
 }
 
 describe("WO-BEFE-E ① 沙盘存档清单 + 回滚（GET …/checkpoints · POST …/rollback）", () => {
@@ -95,7 +103,8 @@ describe("WO-BEFE-E ① 沙盘存档清单 + 回滚（GET …/checkpoints · POS
     await user.click(screen.getByTestId("sandbox-checkpoint-btn"));
     await waitFor(() => expect(screen.getByTestId("sandbox-checkpoints-count").textContent).toContain("1 个存档"));
     await user.click(screen.getByTestId("sandbox-tick-btn"));
-    await waitFor(() => expect(Number(screen.getByTestId("sandbox-worlds-list").textContent!.match(/tick (\d+)/)![1])).toBeGreaterThan(0));
+    // `ptl-now` 是屏上那根时间轴当前 tick 的读数（来自组件 state ← tick 回包）。
+    await waitFor(() => expect(Number(screen.getByTestId("ptl-now").textContent)).toBeGreaterThan(0));
     await user.click(screen.getByTestId("sandbox-checkpoint-btn"));
     await waitFor(() => expect(screen.getByTestId("sandbox-checkpoints-count").textContent).toContain("2 个存档"));
 
@@ -171,9 +180,7 @@ describe("WO-BEFE-E ① 沙盘存档清单 + 回滚（GET …/checkpoints · POS
       expect(JSON.stringify(after.state)).toBe(JSON.stringify(atCheckpoint.state));
     });
     // ★ 屏上的 tick 轴也跟着退（用的是后端回包里的 curTick，不是前端按 checkpoint.tick 猜的）。
-    await waitFor(() =>
-      expect(screen.getByTestId("sandbox-worlds-list").textContent).toContain(`tick ${atCheckpoint.tick}`),
-    );
+    await waitFor(() => expect(screen.getByTestId("ptl-now").textContent).toBe(String(atCheckpoint.tick)));
   });
 
   it("①-D 零写死反证：rollback 打成 500 → 屏上存档清单还在、世界态一个字节没动（没有乐观改屏）", async () => {

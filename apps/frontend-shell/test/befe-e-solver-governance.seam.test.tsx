@@ -123,6 +123,22 @@ describe("WO-BEFE-E ⑤②③ 求解器牵连与接地（GET /b/v1/solvers/:key/
   });
   afterEach(() => cleanup());
 
+  /**
+   * 让目录页真的列出这几个 key（默认桩 `MOCK_SOLVER_REGISTRY` 只有 4 个代表性求解器，
+   * 其中一个都不在后端 `SOLVER_FIELD_ROLES` 的四个之列）。
+   * ⚠ 只换**注册表**这一条，`references`/`field-roles` 仍走各用例自己的桩或默认桩 ——
+   *   换多了就等于把本门要验的那两跳也一起 mock 掉。
+   */
+  function registryWith(keys: string[]) {
+    server.use(
+      http.get("*/a/v1/solvers/registry", () =>
+        HttpResponse.json({
+          solvers: keys.map((key) => ({ key, name: key, description: `${key} 探针`, argHints: {}, domain: "generic", outputShape: [] })),
+        }),
+      ),
+    );
+  }
+
   /** 打开目录页并展开某条求解器的「牵连与接地」（第二层：点一次才出）。 */
   async function openImpact(user: ReturnType<typeof userEvent.setup>, key: string) {
     renderApp("/admin/solvers");
@@ -138,6 +154,7 @@ describe("WO-BEFE-E ⑤②③ 求解器牵连与接地（GET /b/v1/solvers/:key/
     const user = userEvent.setup();
     const refCalls: string[] = [];
     const roleCalls: string[] = [];
+    registryWith(["concentration_risk"]);
     server.use(
       http.get("*/b/v1/solvers/:key/references", ({ request }) => {
         refCalls.push(request.url);
@@ -164,6 +181,7 @@ describe("WO-BEFE-E ⑤②③ 求解器牵连与接地（GET /b/v1/solvers/:key/
 
   it("⑤-E 「查不出来」不许塌成「没人引用」：references 500 → 明说这次没查到，且不渲染任何计数", async () => {
     const user = userEvent.setup();
+    registryWith(["concentration_risk"]);
     server.use(
       http.get("*/b/v1/solvers/:key/references", () =>
         HttpResponse.json({ error: { code: "BOOM", message: "反查炸了", requestId: "req_s" } }, { status: 500 }),
@@ -179,13 +197,14 @@ describe("WO-BEFE-E ⑤②③ 求解器牵连与接地（GET /b/v1/solvers/:key/
 
   it("⑤-F 「不吃角色」与「解析失败」分得开：无声明的求解器显式说明，不画空面板", async () => {
     const user = userEvent.setup();
-    // `capacity_analysis` 不在后端 SOLVER_FIELD_ROLES 的四个之列 ⇒ 空 roles。
-    await openImpact(user, "capacity_analysis");
-    const none = await screen.findByTestId("solver-roles-none-capacity_analysis");
+    registryWith(["capacity_forecast", "shared_bottleneck"]);
+    // `capacity_forecast` 不在后端 SOLVER_FIELD_ROLES 的四个之列 ⇒ 空 roles。
+    await openImpact(user, "capacity_forecast");
+    const none = await screen.findByTestId("solver-roles-none-capacity_forecast");
     expect(none.textContent).toContain("不是解析失败");
-    expect(screen.queryByTestId("solver-roles-capacity_analysis"), "空 roles 却渲染了绑定表 ⇒ 表里是编的行").toBeNull();
+    expect(screen.queryByTestId("solver-roles-capacity_forecast"), "空 roles 却渲染了绑定表 ⇒ 表里是编的行").toBeNull();
     // 对照组：有声明的那个必须真的渲染出绑定（否则上一条是空胜）。
-    await user.click(screen.getByTestId("solver-detail-toggle-capacity_analysis"));
+    await user.click(screen.getByTestId("solver-detail-toggle-capacity_forecast"));
     await user.click(screen.getByTestId("solver-detail-toggle-shared_bottleneck"));
     await screen.findByTestId("solver-roles-shared_bottleneck");
     expect(screen.getByTestId("solver-role-shared_bottleneck-resourceType").textContent!.length).toBeGreaterThan(0);

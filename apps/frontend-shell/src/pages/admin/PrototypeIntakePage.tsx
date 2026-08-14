@@ -23,8 +23,14 @@ import zh from "@/locales/zh";
 export default function PrototypeIntakePage() {
   const [html, setHtml] = useState("");
   const [filename, setFilename] = useState("prototype.html");
-  const m = useMutation({ mutationFn: () => submitIntake(html) });
   const qc = useQueryClient();
+  const m = useMutation({
+    mutationFn: () => submitIntake(html),
+    // WO-BEFE-E：解析这一步在后端会把候选**落库**（`intake_persist_candidates` 节点），
+    // 所以下面那张 HITL 队列必须跟着重取 —— 不重取的话，刚落库的候选要等下次刷新才看得见，
+    // 而用户此刻正盯着上面那份预览里同一批列名，会以为队列坏了。
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["a", "reconcile-candidates"] }),
+  });
   const imp = useMutation({ mutationFn: () => importIntake(html, filename.trim() || "prototype.html") });
   const obj = useMutation({
     mutationFn: (connId: string) => objectifyIntake(connId),

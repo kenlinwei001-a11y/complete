@@ -4423,6 +4423,24 @@ export const handlers = [
     const status = url.searchParams.get("status");
     return HttpResponse.json(status ? db.intents.filter((i) => i.status === status) : db.intents);
   }),
+  /**
+   * WO-BEFE-E 顺带补的 mock 缺口：`createIntent`（agentcore `server.ts` 的
+   * `POST /api/v1/catalog/packages/:packageId/intents`）**此前没有 handler**。
+   * 后果不只在测试里：`VITE_MOCK=1` 下点 CatalogPage 的「创建意图」（`cta-intent`）会撞
+   * `onUnhandledRequest:"error"` —— 那颗按钮在 mock 态一直是死的。
+   * 状态机照抄后端：新意图一律 `DRAFT`、版本从 1 起。
+   */
+  http.post("*/b/v1/catalog/packages/:packageId/intents", async ({ params, request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const packageId = String((params as { packageId: string }).packageId);
+    const intent = {
+      id: newId("int"), packageId, version: 1, status: "DRAFT" as const,
+      createdAt: "2026-08-14T00:00:00.000Z", updatedAt: "2026-08-14T00:00:00.000Z",
+      ...body,
+    } as (typeof db.intents)[number];
+    db.intents.push(intent);
+    return HttpResponse.json(intent, { status: 201 });
+  }),
   http.put("*/b/v1/catalog/intents/:intentId", async ({ params, request }) => {
     const body = (await request.json()) as Record<string, unknown>;
     const intent = db.intents.find((i) => i.id === params.intentId);

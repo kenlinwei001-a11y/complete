@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { fetchPlans } from "@/api/endpoints";
+import { createIntent, fetchPlans } from "@/api/endpoints";
 import { db } from "@/mocks/db";
 import { PACKAGE_ID } from "@/mocks/ids";
 import { loginAs, renderApp } from "./utils";
@@ -37,12 +37,22 @@ import { server } from "./setup";
 
 const readRepoFile = (rel: string): string => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 
-/** 打开 catalog 页并选中一个意图（编辑器里才有计划区）。 */
-async function openIntent(key: string) {
+/**
+ * 造一个 **DRAFT** 意图并选中它（计划区的编辑动作只对 DRAFT 意图开放 —— `editable` 判据）。
+ * 种子里 4 条意图全是 PUBLISHED，所以必须先建一条；建的这一步走真 API（`createIntent`），
+ * 不是往 mock db 里塞，免得绕开后端形状。
+ */
+async function openDraftIntent(): Promise<string> {
+  const key = "befe_e_probe_intent";
+  await createIntent(PACKAGE_ID, {
+    key, name: "WO-BEFE-E 探针意图", description: "", examples: [], slots: [],
+    planId: "", riskLevel: "READ", owner: "admin", enabledViews: "*",
+  });
   renderApp("/admin/catalog");
   await waitFor(() => expect(screen.getByTestId(`intent-${key}`)).toBeTruthy());
   await userEvent.click(screen.getByTestId(`intent-${key}`));
   await screen.findByTestId("intent-editor");
+  return key;
 }
 
 /** 建一个 DRAFT 计划并把绑定切到它上面（走屏上的真按钮，不是往 db 里塞）。 */
@@ -63,7 +73,7 @@ describe("WO-BEFE-E ② 执行计划改 / 发（PUT …/plans/:id · POST …/pl
 
   it("②-A 用户看得到那条死路：新建的计划是 DRAFT，且第一层写明「执行期解析不到」", async () => {
     const user = userEvent.setup();
-    await openIntent("adopt_mitigation");
+    await openDraftIntent();
     await createAndBindDraft(user);
 
     const warn = screen.getByTestId("plan-draft-warning");
@@ -75,7 +85,7 @@ describe("WO-BEFE-E ② 执行计划改 / 发（PUT …/plans/:id · POST …/pl
   it("②-B 真 URL + 真 method/body：改步骤 → PUT …/catalog/plans/<id>，body.steps = 编辑框里那份", async () => {
     const user = userEvent.setup();
     const calls: { url: string; method: string; body: Record<string, unknown> }[] = [];
-    await openIntent("adopt_mitigation");
+    await openDraftIntent();
     const planId = await createAndBindDraft(user);
 
     server.use(
@@ -86,12 +96,11 @@ describe("WO-BEFE-E ② 执行计划改 / 发（PUT …/plans/:id · POST …/pl
     );
 
     const editor = screen.getByTestId("plan-steps-editor") as HTMLTextAreaElement;
-    await user.clear(editor);
+    // ⚠ 用 `fireEvent.change` 而不是 `user.type`：userEvent 把 `{` 当**按键描述符**解析
+    //   （`{Enter}` 那一套），JSON 里的花括号会直接抛 "Expected key descriptor"。
+    //   这里要输入的是一整段 JSON 文本，粘贴语义正是 change。
     // 刻意一份**与骨架完全不同**的步骤：body 里若还是骨架，说明发的是写死的默认值。
-    await user.type(
-      editor,
-      '[{{"id":"probe","type":"render_answer","params":{{"blocks":[]}}}}]'.replace(/\{\{/g, "{").replace(/\}\}/g, "}"),
-    );
+    fireEvent.change(editor, { target: { value: '[{"id":"probe","type":"render_answer","params":{"blocks":[]}}]' } });
     await user.click(screen.getByTestId("plan-save"));
 
     await waitFor(() => expect(calls.length, "点了保存一个请求都没发 ⇒ 入口仍是死的").toBe(1));
@@ -102,7 +111,7 @@ describe("WO-BEFE-E ② 执行计划改 / 发（PUT …/plans/:id · POST …/pl
 
   it("②-C 效果层（本门的要害）：发布 → 计划真的从 DRAFT 变 PUBLISHED，影响面来自响应", async () => {
     const user = userEvent.setup();
-    await openIntent("adopt_mitigation");
+    await openDraftIntent();
     const planId = await createAndBindDraft(user);
 
     // 骨架已以 render_answer 收尾（CatalogPage `createPlanMut` 的模板），故这一发应当成功。
@@ -126,17 +135,11 @@ describe("WO-BEFE-E ② 执行计划改 / 发（PUT …/plans/:id · POST …/pl
 
   it("②-D 后端校验失败不许吞：步骤不以 render_answer 收尾 → 400 原文亮在屏上，状态仍是 DRAFT", async () => {
     const user = userEvent.setup();
-    await openIntent("adopt_mitigation");
+    await openDraftIntent();
     const planId = await createAndBindDraft(user);
 
     const editor = screen.getByTestId("plan-steps-editor") as HTMLTextAreaElement;
-    await user.clear(editor);
-    await user.type(
-      editor,
-      '[{{"id":"s1","type":"query_objects","params":{{"objectType":"Order","filter":{{}}}}}}]'
-        .replace(/\{\{/g, "{")
-        .replace(/\}\}/g, "}"),
-    );
+    fireEvent.change(editor, { target: { value: '[{"id":"s1","type":"query_objects","params":{"objectType":"Order","filter":{}}}]' } });
     await user.click(screen.getByTestId("plan-save"));
     await waitFor(async () => {
       const truth = (await fetchPlans(PACKAGE_ID)).find((p) => p.id === planId)!;
@@ -156,7 +159,7 @@ describe("WO-BEFE-E ② 执行计划改 / 发（PUT …/plans/:id · POST …/pl
   it("②-E JSON 写坏了当场说、且不发请求（把 400 换成一句本地原文错误）", async () => {
     const user = userEvent.setup();
     let putHits = 0;
-    await openIntent("adopt_mitigation");
+    await openDraftIntent();
     await createAndBindDraft(user);
     server.use(
       http.put("*/b/v1/catalog/plans/:planId", () => {
@@ -166,8 +169,7 @@ describe("WO-BEFE-E ② 执行计划改 / 发（PUT …/plans/:id · POST …/pl
     );
 
     const editor = screen.getByTestId("plan-steps-editor") as HTMLTextAreaElement;
-    await user.clear(editor);
-    await user.type(editor, "not json at all");
+    fireEvent.change(editor, { target: { value: "not json at all" } });
     await user.click(screen.getByTestId("plan-save"));
 
     expect((await screen.findByTestId("plan-steps-error")).textContent).toContain("解析失败");
