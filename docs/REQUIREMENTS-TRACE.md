@@ -50,7 +50,7 @@
 | D1 | 「典型的传统 BI，只展示发生了什么，**不提供根因分析，不提供解决推演后的方案**」 | WO-DECISION-PLAY-OPTIONS | ✅ 查实**真病比报的重**：不是"数值写死"，是**方案身份与根因语义无关**（现金域根因是应收账龄，照样拿到"正极供应链战略"）。已改为**依据可核对才下发** |
 | D2 | 同上·下半场 | WO-DECISION-PLAY-FE-CONSUME | ✅ 屏上三种态说**三句不同的话**；`gapClose=null` 时**一个 0 都不出现** |
 | D3 | 同族矛盾（门抖出来的） | WO-LTA-EVIDENCE-CONFLICT | ✅ 「因为 A 家违约 ⇒ 给 B 家加条款」治根；顺带查出屏上那个「160 万」**从头到尾指错人** |
-| D4 | 同族·更狠的一条 | WO-ORDER-DEPENDENT-PICK | ⛔ **重启丢失，待重派**：归因树入口因子按 `factorId` **字典序**取第一个 ⇒ 新增一个字母靠前的因子，根因整个换人，**零测试变红** |
+| D4 | 同族·更狠的一条 | WO-ORDER-DEPENDENT-PICK | ✅ 入口因子改为**本域因果 DAG 的源点**（入度 0 + 可达因子数）。⚠️ 反例已躺在库里：`capacity` 域 2 条非根因子，字母序恰好选中零出边那个孤点 |
 
 ## E · 导航与信息架构
 
@@ -68,7 +68,7 @@
 
 | # | 仓主原话 | 对应 WO | 状态 |
 |---|---|---|---|
-| F1 | 「看不懂『产能推演』这个 UX，你希望用户看到这个做什么？」 | WO-UI-LAYERING-BURNDOWN | 🟡 6 层产能金字塔已按 `role` 公式可读化；**分层欠账仍剩 21 条**，WO-UI-BURNDOWN-21 在跑 |
+| F1 | 「看不懂『产能推演』这个 UX，你希望用户看到这个做什么？」 | WO-UI-LAYERING-BURNDOWN + WO-UI-BURNDOWN-21 | ✅ 6 层产能金字塔可读化 + **分层欠账 21 → 0，门首次 RC=0** |
 
 ## G · Agent 系统换心（deepseek-harness）
 
@@ -92,6 +92,18 @@
 | H7 | 「完成了 PRD 就派单，无需我确认」 | 铁律 0.6 §3「不许为派活请示」 |
 
 ---
+
+## 新增待办（本轮 dev 交回时点名，均未修）
+
+| 项 | 谁点的 | 性质 |
+|---|---|---|
+| **审批留痕里记着假的产能数** `G-LEVER-SNAPSHOT-UNIT-LIE` | WO-P50-REMAINING-3 | 🔶 **等裁决**：`RiskBoardView` 把张力峰值（0–100）塞进 `snapshot.capWanP50`（契约量纲 万套/窗口），而该 snapshot 整个进 `plan_change` 的 **ActionDraft payload**。门守的是「名字量纲唯一」，守不了「塞进这个名字的值是不是那个量纲」；屏上不显示所以肉眼也看不见。修法二选一且会改 payload 语义 |
+| **mock 与真后端 S&OP 量级差 4–12 倍** | WO-P50-REMAINING-3 | ⛔ 未派。先于本单存在的 mock 尺度问题，改它=改值，故只报不动 |
+| **agentcore 3 处 stale 文案** | WO-P50-REMAINING-3 | ⛔ 未派。`navigation-slice.ts` 把已不存在的 `p50` 当 `DemandSegment` 关键属性喂给 LLM ⇒ **模型拿不到值，不报错** |
+| **`sandboxConsoleModel.ts:709` 过时文案** | WO-DYNAMIC-DRILL-RESOLVE | ⛔ 未派。写着 `DYNAMIC-MBAL` 解析为 `worstMbal.matBalId`，而该符号已删 |
+| **`STALE-8` 正则盲区**（实测漏 6 条） | WO-VIEWNAME-SINGLE-SOURCE | ⛔ 未派。带点 slug 与非 `view.` 前缀它看不见 |
+| **`view.risk-board` 功能名 vs 页标题不一致** | WO-VIEWNAME-SINGLE-SOURCE | 🔶 **等裁决**：功能名「风险推演看板」vs 页标题「产能推演」。属产品命名 |
+| **设备 OEE 口径分歧** | WO-DYNAMIC-DRILL / WO-ORDER-DEPENDENT-PICK **两个 dev 独立发现** | 🔶 **等裁决**：铭牌 `oeeA×oeeP×oeeQ` vs 时序聚合 `oee_current`，两套口径给出不同的「最差设备」 |
 
 ## 现在最该看的三件事
 
