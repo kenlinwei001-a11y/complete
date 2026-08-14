@@ -305,18 +305,37 @@ export function DynamicLeverPanel({
               <span>影响面</span>
               <b data-testid="lever-affected-count">{out?.affectedObjects ?? 0}</b>
             </div>
-            {/* D5 · 在途可见：拖杠杆触发的重算不再无声——已耗时（秒级递增）+ 主动取消。
-                本面板杠杆全是滑杆（连续控件）→ 按仓主定案**不弹二次确认框**（每动一下弹一次不可用），
-                照旧 debounce + 取消前序（D1 并线后底层求解真的会停，取消本就免费）。 */}
-            {live.isFetching && (
-              <div data-testid="lever-live-inflight">
-                <span>求解中 · 已耗时</span>
+          </div>
+
+          {/* D5 · 在途可见：拖杠杆触发的重算不再无声——已耗时（秒级递增）+ 主动取消。
+              本面板杠杆全是滑杆（连续控件）→ 按仓主定案**不弹二次确认框**（每动一下弹一次不可用），
+              照旧 debounce + 取消前序（D1 并线后底层求解真的会停，取消本就免费）。
+
+              ⚠ **为什么搬出 `.abCompare`（仓主 2026-08-14 点名「很难看」）**：
+              `.abCompare` 是一排**统计块**（`> div` 带边框 · `b` 是 18px 等宽大数字 · `span` 是 12px 弱化标签）。
+              本块原是它的第三个子元素，于是自动继承那套样式 ⇒ 「已耗时 **3s**」被渲染成与
+              「调整前峰值张力 **97.8**」「影响面 **900**」同等份量的统计数字，旁边还塞一个 `btn sm`。
+              **它不是统计值，是瞬态状态**——两者混排，读的人会把"跑了几秒"当成一个业务指标。
+              且它随每次拖动出现/消失，会把整排统计块**顶得来回跳**。
+              现改为独立的一行状态条，并**恒占位**（不 fetching 时渲染等高空条）⇒ 布局不跳。
+              ⚠ D4：已耗时与取消是诚实位（让人知道自己要放弃的是跑了多久的求解），**只改形态、一个字不删**。 */}
+          <div className={styles.inflightStrip} aria-live="polite">
+            {live.isFetching ? (
+              <span data-testid="lever-live-inflight">
+                <span className={styles.inflightDot} aria-hidden="true" />
+                求解中 · 已耗时{" "}
                 <b className="mono" data-testid="lever-live-elapsed">{Math.floor(live.elapsedMs / 1000)}s</b>
-                <button className="btn sm" data-testid="lever-live-cancel" style={{ marginLeft: 6 }} onClick={live.cancel} title="放弃本次重算（服务端会真的中止底层求解）">
+                <button
+                  type="button"
+                  className={styles.inflightCancel}
+                  data-testid="lever-live-cancel"
+                  onClick={live.cancel}
+                  title="放弃本次重算（服务端会真的中止底层求解）"
+                >
                   取消
                 </button>
-              </div>
-            )}
+              </span>
+            ) : null}
           </div>
 
           {out && out.count > 0 && (

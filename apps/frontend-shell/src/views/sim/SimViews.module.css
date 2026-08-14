@@ -403,6 +403,58 @@
   color: var(--muted);
 }
 
+/* 求解在途状态条（仓主 2026-08-14 点名「很难看」的那个）。
+   与 .abCompare 的统计块**刻意不同形**：无边框、无大数字、字号回到正文 12px ——
+   它报的是「系统此刻在做什么」，不是一个业务指标，两者混排会让人把耗时读成指标。
+   `min-height` 恒占位 ⇒ 出现/消失时上下不跳（拖滑块会频繁触发）。 */
+.inflightStrip {
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.inflightStrip b {
+  font-size: 12px;          /* 覆盖 .abCompare b 的 18px：耗时不是统计值 */
+  font-weight: 600;
+  color: var(--txt);
+  margin: 0 2px;
+}
+/* 呼吸点：唯一的「在跑」视觉信号，比一个图标安静。
+   prefers-reduced-motion 下停动画但保留可见（信息不靠动效传递）。 */
+.inflightDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-right: 6px;
+  flex: none;
+  animation: inflightPulse 1.2s ease-in-out infinite;
+}
+@keyframes inflightPulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .inflightDot { animation: none; opacity: 0.8; }
+}
+/* 取消做成文字按钮而非 .btn sm —— 它是次要动作，不该和主操作等重 */
+.inflightCancel {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.inflightCancel:hover,
+.inflightCancel:focus-visible { color: var(--txt); }
+
 /* —— S&OP —— */
 .sopGrid {
   display: grid;
