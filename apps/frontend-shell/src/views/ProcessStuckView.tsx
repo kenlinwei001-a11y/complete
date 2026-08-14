@@ -263,11 +263,14 @@ export default function ProcessStuckView() {
       {stuck.length === 0 ? (
         <div className={styles.empty} data-testid="stuck-empty">
           {derivedStuckCount > 0 ? (
+            /* ⚠ 这一支的文案**刻意不出现**「没有正在等待的流程实例」这半句。
+               此刻它是假的：真有 derivedStuckCount 条卡着，只是产地不同、本投影算不了。
+               先说真相（确有 N 条卡着）、再说本页的口径（这一类为 0），顺序反过来就会被读反。 */
             <>
-              本页（运行时实例投影）没有正在等待的流程实例。
+              ⚠ 此刻**确有 {derivedStuckCount} 条流程卡着**（见上方那条口径声明）。
               <br />
-              ⚠ 这**不是**「没有流程卡着」—— 上面那 {derivedStuckCount} 条反推实例正卡着，
-              只是产地不同、本投影算不了。把这句读成「一切顺利」会直接读反。
+              本页只统计运行时实例（<code>origin=MANAGED</code>），而这一类此刻为 0 条 ——
+              把本页的 0 读成「流程都没卡」会直接读反。
             </>
           ) : (
             <>
