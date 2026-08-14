@@ -1195,6 +1195,21 @@ export const zh = {
       versions: "版本列表",
       steps: ["① 产品评审", "② 需求评审", "③ 供应评审", "④ 财务整合", "⑤ 高管决策会"],
       runStep: (n: string) => `执行第${n}步`,
+      /**
+       * WO-UI-LAYERING-BURNDOWN：以下四条原先**直接印在第一层**，按
+       * `docs/CONVENTION-ui-information-layering.md` §2 R-UI-3
+       * 「凡形如 `A × B ÷ C`、「口径差」的文字，一律进 `?` 浮层」降层。
+       * 第一层留短名 + `?` 记号（规范 §1：静默降层等于删除）。
+       */
+      info: {
+        s1Topic: "①产品评审为什么排在最前",
+        s1Body: "产品评审先行：可产矩阵（型号×产线认证关系）变化直接改变 ②③ 的可行域。",
+        s3Topic: "供给怎么算出来的",
+        s3Body: "供给 = Σ基地（周产能 × 爬坡系数 × 认证系数）。认证中的基地按认证系数打折，量产基地系数 1.0。",
+        mrpTopic: "净需求怎么算出来的",
+        mrpBody: "净需求 = Σ需求 × BOM 用量 − 库存 − 在途（C06）。",
+        mrpSourceBody: "两瓶颈与决策推演大屏同源（C06 齐套口径）——同一份齐套口径，不是各算一套。",
+      },
       locked: "已定稿——变更须走变更 Action（C22 锁定，任何字段变更必须走计划变更 Action）",
       lockDemo: "改字段尝试（演示 409 PLAN_LOCKED）",
       finalize: "定稿 → 走 Action 审批（C10/C22）",

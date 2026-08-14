@@ -12,6 +12,7 @@ import { Provenance } from "@/components/Provenance";
 import { SopReschedulePanel } from "./SopReschedulePanel";
 import EdgeActivePanel from "./EdgeActivePanel";
 import zh from "@/locales/zh";
+import { InfoPopover } from "@/components/InfoPopover";
 import styles from "./SimViews.module.css";
 
 const STATUS_BADGE: Record<SopVersionVM["status"], { label: string; cls: string }> = {
@@ -372,7 +373,12 @@ function Step1({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
   const s1 = v.steps.s1 as { changes?: Record<string, unknown>[]; boundaryDeltaWanPerMonth?: number } | undefined;
   return (
     <div data-testid="sop-step1">
-      <div className={styles.noteInfo}>产品评审先行：可产矩阵（型号×产线认证关系）变化直接改变 ②③ 的可行域。</div>
+      <div className={styles.noteInfo}>
+        产品评审先行
+        <InfoPopover topic={zh.sim.sop.info.s1Topic} testId="sop-s1-why">
+          <div style={{ fontSize: 12, lineHeight: 1.7 }}>{zh.sim.sop.info.s1Body}</div>
+        </InfoPopover>
+      </div>
       {!locked && (
         <button className="btn primary" onClick={() => run({})} data-testid="sop-run-1">
           {zh.sim.sop.runStep("①")}（PLM 认证边 diff）
@@ -570,8 +576,11 @@ function Step3({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
             </span>
           ))}
           <button className="btn primary" onClick={() => run({ increments: incs })} data-testid="sop-run-3">
-            {zh.sim.sop.runStep("③")}（供给 = Σ基地 周产能×爬坡×认证）
+            {zh.sim.sop.runStep("③")}
           </button>
+          <InfoPopover topic={zh.sim.sop.info.s3Topic} testId="sop-s3-formula">
+            <div style={{ fontSize: 12, lineHeight: 1.7 }}>{zh.sim.sop.info.s3Body}</div>
+          </InfoPopover>
         </div>
       )}
       {s3?.perBase && (
@@ -769,7 +778,12 @@ function MrpTable() {
   const mats = data?.materials ?? [];
   return (
     <div style={{ marginTop: 10 }} data-testid="sop-mrp">
-      <div className="section-title">物料线 · MRP 净需求（净需求 = Σ需求×BOM − 库存 − 在途，C06）</div>
+      <div className="section-title">
+        物料线 · MRP 净需求
+        <InfoPopover topic={zh.sim.sop.info.mrpTopic} testId="sop-mrp-formula">
+          <div style={{ fontSize: 12, lineHeight: 1.7 }}>{zh.sim.sop.info.mrpBody}</div>
+        </InfoPopover>
+      </div>
       <table className="cmp" data-testid="sop-mrp-table">
         <thead><tr><th>物料</th><th>净需求</th><th>长协覆盖</th><th>现货缺口</th><th>最早齐套</th></tr></thead>
         <tbody>
@@ -784,7 +798,12 @@ function MrpTable() {
           ))}
         </tbody>
       </table>
-      <div className={styles.noteInfo}>{data ? `${data.shortageCount} 种现货缺口；两瓶颈与决策推演大屏同源（C06 齐套口径）` : "加载中…"}</div>
+      <div className={styles.noteInfo}>
+        {data ? `${data.shortageCount} 种现货缺口` : "加载中…"}
+        <InfoPopover topic={zh.sim.sop.info.mrpTopic} testId="sop-mrp-source">
+          <div style={{ fontSize: 12, lineHeight: 1.7 }}>{zh.sim.sop.info.mrpSourceBody}</div>
+        </InfoPopover>
+      </div>
     </div>
   );
 }
