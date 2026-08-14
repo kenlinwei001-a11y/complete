@@ -286,6 +286,32 @@ describe("WO-SLICE-16-LAYERS · 切片十六层结构", () => {
     expect(pop.className).toContain("popover-surface"); // 不自写背景（欠账 #104）
     expect(pop.textContent).toContain("缺试切参数");
 
+    /*
+     * WO-UI-BURNDOWN-21 · **降层 ≠ 删除**（`docs/CONVENTION-ui-information-layering.md` §1）
+     *
+     * 「缺席的层不画占位内容」这条**平台策略**从第一层降进了 `?` 浮层。
+     * 它是诚实位，§1 的红线是「允许降到浮层，**绝不允许删除**」——
+     * 只有「第一层不再有它」这一半断言的话，把它整段删掉也会绿，那正好是红线要拦的事。
+     * 故三判据 + 反向断言配成一对。
+     * ⚠ `InfoPopover` 在 `open===false` 时**不渲染**，故写 `toBeNull()`；
+     *   写 `not.toBeVisible()` 会让 jest-dom 自己抛错，那是测试报错不是判据成立。
+     */
+    const honestyTrigger = screen.getByTestId("info-slice-layers-honesty-model_capacity_network");
+    expect(honestyTrigger).toBeVisible(); // ① 第一层留着可见记号
+    expect(screen.queryByTestId("slice-layers-honesty-body-model_capacity_network")).toBeNull(); // ②
+    // ④ 反向：这句策略不许还摆在第一层
+    expect(
+      screen.getByTestId("slice-layers-model_capacity_network").textContent,
+      "策略说明还留在第一层 ⇒ 没降层",
+    ).not.toContain("宁可显示空并说明为什么");
+    // ③ hover 后原文一字不少
+    await user.hover(honestyTrigger);
+    const honestyBody = await screen.findByTestId("slice-layers-honesty-body-model_capacity_network");
+    expect(honestyBody).toBeVisible();
+    expect(honestyBody.textContent).toContain("缺席的层不画占位内容");
+    expect(honestyBody.textContent).toContain("本平台宁可显示空并说明为什么，也不画假数据");
+    await user.unhover(honestyTrigger);
+
     // 十六层仍然全在（层数守恒），且**一条占位明细都不许有**
     expect(screen.getByTestId("slice-layers-total-model_capacity_network").textContent).toContain("16");
     await user.click(screen.getByTestId("slice-layer-card-model_capacity_network-rule"));

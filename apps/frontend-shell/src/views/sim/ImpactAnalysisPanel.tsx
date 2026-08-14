@@ -73,45 +73,14 @@ function fmtVal(v: unknown): string {
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * 浮层正文（口径 / 公式 / 诚实位说明 —— 规范 §1 规定它们不许待在第一层）
+ *
+ * ⚠ 这两段正文原本抽成 `BasisNote` / `HonestyNote` 两个组件，**看着**在浮层里 ——
+ *   实际是定义在浮层之外的一段 JSX，只是被浮层引用。人和门都读作「第一层还摆着一段口径」
+ *   （门的记账原话：「定义在外、只在浮层里用的组件，会被算进第一层」）。
+ *   照本仓 §0.6 句式：**我用「它被浮层引用了」当作「它在浮层里」的证据，而前者并不度量后者。**
+ *   2026-08-14 · WO-UI-BURNDOWN-21 就地内联进 `<InfoPopover>` 的 children，文案一个字没改。
+ *   复验：`node scripts/check-ui-first-layer.mjs --explain apps/frontend-shell/src/views/sim/ImpactAnalysisPanel.tsx`
  * ═══════════════════════════════════════════════════════════════════════════ */
-
-function BasisNote({ basis }: { basis: ImpactAnalysisResponse["basis"] }) {
-  return (
-    <span data-testid="impact-basis-note">
-      传播引擎 <code>{basis.engine}</code>（全平台唯一那一份增量重算，本页不另算一套）。
-      计数口径 <code>{basis.countBasis}</code> = 去重对象数，不是 delta 行数。
-      <br />
-      世界 <code>{basis.worldId}</code> · tick {basis.worldTick} · 状态 {basis.worldStatus}；
-      世界态往克隆图上叠加了 <b>{basis.worldOverlayApplied}</b> 条（objectId × stateVar）。
-      叠加 0 条 ⇒ 这次实质跑在真本体当前值上，<b>没有发生世界隔离</b>。
-      <br />
-      本体里参与传播的 ACTIVE 派生规格 <b>{basis.derivationSpecCount}</b> 条；为 0 时四维必空 ——
-      那是「没有派生边可传」，不是「没影响」。
-      {basis.observedOldValue === undefined ? null : (
-        <>
-          <br />
-          世界里的真实旧值：<code>{fmtVal(basis.observedOldValue)}</code>
-          {basis.oldValueMismatch ? "（与调用方声明的旧值不一致，仅如实标注，不影响计算）" : ""}
-        </>
-      )}
-    </span>
-  );
-}
-
-function HonestyNote({ warnings }: { warnings: string[] }) {
-  return (
-    <span data-testid="impact-warnings-note">
-      下面每一条都是后端原文透传（前端不改写、不总结、不合并）：
-      <ul style={{ margin: "4px 0 0", paddingLeft: 16 }}>
-        {warnings.map((w) => (
-          <li key={w} style={{ marginBottom: 2 }}>
-            {w}
-          </li>
-        ))}
-      </ul>
-    </span>
-  );
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * 一张分项卡（第一层只放：数值 · 状态 · 名字）
@@ -121,13 +90,22 @@ function DimensionCard<T>({
   dim,
   label,
   testId,
-  caliber,
+  content,
 }: {
   dim: Dim<T>;
   label: string;
   testId: string;
-  /** 进浮层的口径说明（连接键、全域是什么）。 */
-  caliber: ReactNode;
+  /**
+   * **浮层正文**（连接键、全域是什么）—— 这个 prop 的值整段渲染在下面那个 `<InfoPopover>` 里，
+   * 一个字都不出现在第一层。
+   *
+   * ⚠ 名字从 `caliber` 改成 `content`（2026-08-14 · WO-UI-BURNDOWN-21）：`caliber`（口径）
+   * 说的是**这段文字是什么**，而这里真正要说清的是**它落在哪一层** —— 落点才是分层规范管的事。
+   * `content` 是本仓浮层 render-prop 的通名（`scripts/check-ui-first-layer.mjs` 的
+   * `DEFER_ATTR_RE` 收的就是这一组名字），改名之后**人和门读到的是同一件事**：
+   * 这段文字在浮层里。改名前门把它算进第一层 —— 门没错，是名字没说实话。
+   */
+  content: ReactNode;
 }) {
   const ok = isAvailable(dim);
   return (
@@ -169,7 +147,7 @@ function DimensionCard<T>({
         ) : null}
         <InfoPopover topic={zh.sim.sandbox.info.impactDimension(label)} testId={`impact-${testId}`} align="right">
           <span data-testid={`impact-caliber-${testId}`}>
-            {caliber}
+            {content}
             {ok ? (
               <>
                 <br />
@@ -214,7 +192,8 @@ function DetailTables({ res }: { res: ImpactAnalysisResponse }) {
             {objects.items.length === 0 ? (
               <tr>
                 <td colSpan={3} className={styles.meta} data-testid="impact-detail-objects-empty">
-                  本次传播闭包为空（明细 0 条）—— 口径见上面的 <b>?</b>，别当成「查不到」。
+                  {/* 这里只留结论 + 指路；「怎么算的」那段在上面那个 `?` 浮层里，不在这一层重复一遍。 */}
+                  本次传播闭包为空（明细 0 条）—— 怎么算的见上面的 <b>?</b>，别当成「查不到」。
                 </td>
               </tr>
             ) : (
@@ -499,14 +478,42 @@ export function ImpactAnalysisPanel({
                 / 共 {res.affectedObjects.universe}
               </span>
               <InfoPopover topic={zh.sim.sandbox.info.impactBasis} testId="impact-basis" align="right">
-                <BasisNote basis={res.basis} />
+                <span data-testid="impact-basis-note">
+                  传播引擎 <code>{res.basis.engine}</code>（全平台唯一那一份增量重算，本页不另算一套）。
+                  计数口径 <code>{res.basis.countBasis}</code> = 去重对象数，不是 delta 行数。
+                  <br />
+                  世界 <code>{res.basis.worldId}</code> · tick {res.basis.worldTick} · 状态 {res.basis.worldStatus}；
+                  世界态往克隆图上叠加了 <b>{res.basis.worldOverlayApplied}</b> 条（objectId × stateVar）。
+                  叠加 0 条 ⇒ 这次实质跑在真本体当前值上，<b>没有发生世界隔离</b>。
+                  <br />
+                  本体里参与传播的 ACTIVE 派生规格 <b>{res.basis.derivationSpecCount}</b> 条；为 0 时四维必空 ——
+                  那是「没有派生边可传」，不是「没影响」。
+                  {res.basis.observedOldValue === undefined ? null : (
+                    <>
+                      <br />
+                      世界里的真实旧值：<code>{fmtVal(res.basis.observedOldValue)}</code>
+                      {res.basis.oldValueMismatch ? "（与调用方声明的旧值不一致，仅如实标注，不影响计算）" : ""}
+                    </>
+                  )}
+                </span>
               </InfoPopover>
               {/* 诚实位降层后第一层保留的可见记号 —— 静默降层等于删除。 */}
               {res.warnings.length > 0 ? (
                 <span className={styles.flag} data-testid="impact-warning-flag">
-                  ⚠ {res.warnings.length} 条口径提示
+                  {/* 第一层留的是**条数**（一个数）+ `?` 记号；「这几条到底在说什么」在浮层里。 */}
+                  ⚠ {res.warnings.length} 条读数提示
                   <InfoPopover topic={zh.sim.sandbox.info.impactHonesty} testId="impact-warnings" align="right">
-                    <HonestyNote warnings={res.warnings} />
+                    <span data-testid="impact-warnings-note">
+                      这 {res.warnings.length} 条是本次读数的口径提示，下面每一条都是后端原文透传
+                      （前端不改写、不总结、不合并）：
+                      <ul style={{ margin: "4px 0 0", paddingLeft: 16 }}>
+                        {res.warnings.map((w) => (
+                          <li key={w} style={{ marginBottom: 2 }}>
+                            {w}
+                          </li>
+                        ))}
+                      </ul>
+                    </span>
                   </InfoPopover>
                 </span>
               ) : null}
@@ -533,7 +540,7 @@ export function ImpactAnalysisPanel({
                 dim={res.affectedProcesses as Dim<AffectedProcessItem>}
                 label="流程"
                 testId="processes"
-                caliber={
+                content={
                   <>
                     连接键 = 流程定义的 <code>carrierTypeKey</code> ∩ 受影响对象的类型集合。
                     全域 = 本租户流程定义总条数。粒度是<b>定义</b>不是实例。
@@ -547,7 +554,7 @@ export function ImpactAnalysisPanel({
                 dim={res.affectedKpis as Dim<AffectedKpiItem>}
                 label="KPI"
                 testId="kpis"
-                caliber={
+                content={
                   <>
                     承载判据是<b>结构性</b>的：同时具备 <code>target</code> 与 <code>actual</code> 两个属性的对象类型即承载 KPI
                     （不写死类型名，换行业自动跟着走）。本次判定为 KPI 承载类型：
@@ -562,7 +569,7 @@ export function ImpactAnalysisPanel({
                 dim={res.affectedDecisions as Dim<AffectedDecisionItem>}
                 label="决策"
                 testId="decisions"
-                caliber={
+                content={
                   <>
                     连接键 = 决策台账的锚定指标 ∩ 上面那批受影响 KPI 的 key —— 所以它是<b>从 KPI 推出来的</b>，
                     不与 KPI 并列。全域 = 本租户决策台账总条数。

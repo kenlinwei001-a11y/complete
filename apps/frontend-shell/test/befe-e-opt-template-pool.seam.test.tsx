@@ -158,6 +158,52 @@ describe("WO-BEFE-E ④ 优化模板池（GET opt/templates · GET opt/retrieve 
     expect(screen.getByTestId("ow-family-facility_location")).toBeInTheDocument();
   });
 
+  /**
+   * ④-E2 · **降层 ≠ 删除**（WO-UI-BURNDOWN-21 · `docs/CONVENTION-ui-information-layering.md` §1）
+   *
+   * ④-E 只咬「第一层还说不说得出『未开通 / 回退』」，它**证明不了**完整口径没被顺手删掉 ——
+   * 把那段长说明整段删了，④-E 照样绿（第一层那两个词还在）。这就是本仓那句
+   * 「我用『第一层还留着记号』当作『内容还在』的证据，而前者并不度量后者」。
+   * 故本组按规范 §1 的**三判据**逐条咬，并配一条**反向**断言：
+   *   ① `?` 记号默认可见（静默降层等于删除）
+   *   ② 浮层正文默认**不在 DOM**（`InfoPopover` 在 `open===false` 时不渲染 ⇒
+   *      判据写 `toBeNull()`；写 `not.toBeVisible()` 会让 jest-dom 自己抛错，
+   *      那是**测试报错**不是判据成立）
+   *   ③ hover 之后原文**一字不少**
+   *   ④（反向）那段长说明**不许还留在第一层** —— 只有 ①②③ 的话，
+   *      整段既留第一层又抄进浮层也会全绿，等于没降层。
+   */
+  it("④-E2 回退态的完整口径降进 `?` 浮层：默认不在 DOM、hover 后原文一字不少、且不许还留在第一层", async () => {
+    server.use(
+      http.get("*/a/v1/opt/templates", () =>
+        HttpResponse.json({ error: { code: "FEATURE_NOT_FOUND", message: "opt.solver-pool 未开通", requestId: "req_o" } }, { status: 404 }),
+      ),
+    );
+    renderApp("/v/optimize-whatif");
+    await screen.findByTestId("optimize-whatif");
+    await waitFor(() => expect(screen.getByTestId("ow-family-source").getAttribute("data-authoritative")).toBe("0"));
+
+    // ① 第一层留着可见记号
+    const trigger = screen.getByTestId("info-ow-family-source-why");
+    expect(trigger).toBeVisible();
+
+    // ② 正文默认不在 DOM
+    expect(screen.queryByTestId("ow-family-source-body")).toBeNull();
+
+    // ④ 反向：整段口径不许还摆在第一层（`ow-family-source` 这一格的可见文本里）
+    const firstLayerText = screen.getByTestId("ow-family-source").textContent ?? "";
+    expect(firstLayerText, "长口径还留在第一层 ⇒ 没降层，只是又抄了一份进浮层").not.toContain("可能与后端不一致");
+
+    // ③ hover 之后原文逐字取得回来
+    await userEvent.hover(trigger);
+    const body = await screen.findByTestId("ow-family-source-body");
+    expect(body).toBeVisible();
+    expect(body.textContent).toContain("取不到后端模板族清单");
+    expect(body.textContent).toContain("本租户未开通优化模板池");
+    expect(body.textContent).toContain("或后端不可达");
+    expect(body.textContent).toContain("下面是本页内置的回退清单，可能与后端不一致");
+  });
+
   it("④-F 不是死组件：三条 URL 真在 endpoints.ts 里，且页面不再自带 family 清单当权威", () => {
     const view = readRepoFile("../src/views/OptimizeWhatifView.tsx");
     expect(view.length, "OptimizeWhatifView.tsx 读到了空内容——路径漂了，先修路径再看结论").toBeGreaterThan(1000);

@@ -56,9 +56,16 @@
   font-size: 12px;
 }
 
+/* 字号层级收敛到 3 级（规范 R-UI-2「一屏之内最多三级字号」，2026-08-14 · WO-UI-BURNDOWN-21）：
+     16px = 本页要回答的那些数（等待态计数）与页标题
+     13px = 步骤名 / 事实值 / 空态与错误块
+     12px = 标签 / 徽标 / 辅助说明 / 代码片段
+   改前是 12 / 13 / 14 / 16 四级：14px 同时被"计数"和"步骤名"两种角色占着，
+   而这两者一个是结论、一个是名字，视觉权重本就不该相同（R-UI-2 反例原话）。
+   复验：node scripts/check-ui-first-layer.mjs --explain apps/frontend-shell/src/views/ProcessStuckView.tsx */
 .tallyCount {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 16px;
   color: var(--accent-txt);
 }
 
@@ -92,7 +99,7 @@
 }
 
 .stepName {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 

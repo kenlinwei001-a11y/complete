@@ -182,7 +182,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
 }
 .groupTitle {
@@ -191,7 +191,7 @@
 }
 .groupTitle h4 {
   margin: 0;
-  font-size: 14px;
+  font-size: 16px;
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -222,8 +222,15 @@
   flex-direction: column;
   gap: 2px;
 }
+/* 字号层级收敛到 3 级（规范 R-UI-2，2026-08-14 · WO-UI-BURNDOWN-21）：
+     20px = 本页要回答的那几个数（顶部 KPI），**最大的这一级只给它们**
+     16px = 页标题 / 分组标题 / 分组图标 / 每组的条数
+     12px = 标签 · 判据 · 表格 · 辅助说明
+   改前是 12 / 13 / 14 / 16 / 20 五级 —— 13 与 14 两级之间肉眼分不出，
+   只是把"标题"这一级摊成了三份，读者要多做一次视觉降噪。
+   复验：node scripts/check-ui-first-layer.mjs --explain apps/frontend-shell/src/views/process/ProcessWaitView.tsx */
 .groupStats b {
-  font-size: 13px;
+  font-size: 16px;
   color: var(--kind-color);
   font-family: var(--font-mono);
 }

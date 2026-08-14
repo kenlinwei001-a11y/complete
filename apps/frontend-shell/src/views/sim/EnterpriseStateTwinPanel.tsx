@@ -47,26 +47,15 @@ function stateLabel(s: EnterpriseState): string {
 /** 数值：`null` = 诚实空 → 「—」。0 是真的 0，两者必须分得开。 */
 const fmtNum = (n: number | null): string => (n === null ? "—" : Number.isInteger(n) ? String(n) : n.toFixed(2));
 
-function ForkNote() {
-  return (
-    <span data-testid="twin-fork-note">
-      分叉<b>产生一条新行</b>，真实世界那一行一个字节都不动（两世界物理隔离）。
-      新行的逻辑时刻与各项数值<b>原样继承</b>，每条指标的来源被后端翻成 <code>FORKED</code> ——
-      因为这些数是复制来的，<b>没有重算</b>。目标世界只能是一个已存在的推演会话 id，不能是真实世界。
-    </span>
-  );
-}
-
-function DiffNote() {
-  return (
-    <span data-testid="twin-diff-note">
-      差分口径 = 契约里那一份纯函数（<code>diffEnterpriseStates</code>），A/B 两侧同一份实现，
-      按指标 <code>key</code> 对齐后<b>只留值不相等的项</b>。所以「0 项差异」= 两份快照逐项一致，
-      不是「没查到」。<code>from</code> / <code>to</code> 为「—」表示该项在那份快照里<b>数不出来</b>
-      （诚实空），与 0 是两件事。
-    </span>
-  );
-}
+/*
+ * ⚠ 这两段说明**刻意不抽成组件**（2026-08-14 · WO-UI-BURNDOWN-21）。
+ * 抽成 `function ForkNote()` 时它们的正文**看着**在浮层里，实际是定义在浮层之外的一段 JSX ——
+ * 读者点开才看得到、可门与人复审时都读作「第一层还摆着一段口径」
+ * （`scripts/check-ui-first-layer.mjs` 的记账原话：「定义在外、只在浮层里用的组件，会被算进第一层」）。
+ * 这正是本仓 §0.6 那句形态：**我用「它被浮层引用了」当作「它在浮层里」的证据，而前者并不度量后者。**
+ * 故就地内联进 `<InfoPopover>` 的 children —— 文案一个字没改，只是真的挪进了浮层。
+ * 复验：`node scripts/check-ui-first-layer.mjs --explain <本文件>` 的 formula 应为 0。
+ */
 
 export function EnterpriseStateTwinPanel() {
   const qc = useQueryClient();
@@ -197,7 +186,11 @@ export function EnterpriseStateTwinPanel() {
             <span className={styles.meta}>
               分叉源
               <InfoPopover topic={zh.sim.sandbox.info.twinFork} testId="twin-fork">
-                <ForkNote />
+                <span data-testid="twin-fork-note">
+                  分叉<b>产生一条新行</b>，真实世界那一行一个字节都不动（两世界物理隔离）。
+                  新行的逻辑时刻与各项数值<b>原样继承</b>，每条指标的来源被后端翻成 <code>FORKED</code> ——
+                  因为这些数是复制来的，<b>没有重算</b>。目标世界只能是一个已存在的推演会话 id，不能是真实世界。
+                </span>
               </InfoPopover>
             </span>
             <select
@@ -282,7 +275,12 @@ export function EnterpriseStateTwinPanel() {
             <span className={styles.meta}>
               基准
               <InfoPopover topic={zh.sim.sandbox.info.twinDiff} testId="twin-diff">
-                <DiffNote />
+                <span data-testid="twin-diff-note">
+                  差分口径 = 契约里那一份纯函数（<code>diffEnterpriseStates</code>），A/B 两侧同一份实现，
+                  按指标 <code>key</code> 对齐后<b>只留值不相等的项</b>。所以「0 项差异」= 两份快照逐项一致，
+                  不是「没查到」。<code>from</code> / <code>to</code> 为「—」表示该项在那份快照里<b>数不出来</b>
+                  （诚实空），与 0 是两件事。
+                </span>
               </InfoPopover>
             </span>
             <select

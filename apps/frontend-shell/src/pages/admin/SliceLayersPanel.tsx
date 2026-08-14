@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { SliceEmptyGraph, SliceLayer, SliceLayerId, SliceLayersResponse } from "@platform/contracts";
 import { fetchSliceLayers } from "@/api/endpoints";
+import { InfoPopover } from "@/components/InfoPopover";
 import zh from "@/locales/zh";
 import styles from "./SliceLayersPanel.module.css";
 
@@ -48,6 +49,18 @@ const NUM_CLASS: Record<SliceLayer["status"], string> = {
  * 口径浮层。两个继承来的坑（WO-SANDBOX-DECLUTTER 实测）：
  *  ① onClick 必须幂等 `setOpen(true)`，**不能取反** —— 取反 + 外层点击关闭会互相抵消，点了没反应；
  *  ② 必须戴 `popover-surface` 类，**不自写 background** —— 自写的半透背景会让底下正文透上来（欠账 #104）。
+ *
+ * ⚠ **存量欠账（WO-UI-BURNDOWN-21 记账，本单不修）**：本组件是
+ * `@/components/InfoPopover` 的**第二套实现**，直接违反规范 §2 原文
+ * 「浮层规格（统一，别每页各做一套）」。两处后果都是实的：
+ *  · 交互不一致：本组件**点击**展开，`InfoPopover` 是**悬停 / 聚焦**展开；
+ *  · `check-ui-first-layer.mjs` 的 `DEFER_COMPONENT_RE` 不认识 `WhyPopover`
+ *    ⇒ 挂在它里面的正文被门算成**第一层**（门的诚实边界原文：
+ *    「别的命名法写的折叠会被误判成第一层，偏保守宁可多报」）。
+ *    也就是说：本页现有 3 处 WhyPopover 的正文，**运行时在浮层里、门读作在第一层**。
+ * 不在本单顺手改的理由：3 处调用点的接缝断言咬着 `${testId}-pop` 这个锚点与
+ * `popover-surface` 类，且 **点击→悬停是行为变更**，属另一张单，不该混在烧红单里静默做掉。
+ * 新写的浮层一律用 `InfoPopover`（见下方 headline 处那一个）。
  */
 function WhyPopover({ label, marked, children, testId }: { label: string; marked?: boolean; children: React.ReactNode; testId: string }) {
   const [open, setOpen] = useState(false);
@@ -325,9 +338,23 @@ export default function SliceLayersPanel({
         <span className={styles.headlineMeta} data-testid={`slice-layers-graph-${sliceKey}`}>
           {t.graphSummary(graph.nodes, graph.edges)}
           {graph.truncated && <span className="badge amber" style={{ marginLeft: 6 }}>{t.truncated}</span>}
+          {/* 「空的层为什么不画占位内容」是**平台策略**（凭什么这么显示），不是本页的读数 ——
+              规范 §1 降进浮层，第一层留 `?` 记号（静默降层等于删除）。
+              这条不适用 §4.2 的升层判据：四态（有数据 / 本切片未纳入 / 缺席 / 未判定）
+              在卡面上已各自写明，不看这句也不会把「缺席」读成别的东西。
+
+              ⚠ 这里用 `InfoPopover` 而不是本文件那个 `WhyPopover`，两条理由**都成立**：
+              ① 规范 §2 原文「浮层规格（统一，别每页各做一套）」—— `InfoPopover` 是那一套的唯一实现，
+                 `WhyPopover` 是本页自造的第二套（存量，本单不动它，见下方组件注释）；
+              ② `check-ui-first-layer.mjs` 的 `DEFER_COMPONENT_RE` 只认得册上那几个浮层组件名，
+                 **`WhyPopover` 它不认识** ⇒ 挂在 WhyPopover 里的正文会被门读成「还摆在第一层」。
+                 门自己在诚实边界里写明了这条（「别的命名法写的折叠会被误判成第一层，偏保守宁可多报」）。
+                 用自造组件降层 ⇒ 运行时真降了、门却报你更差了。 */}
+          <InfoPopover topic={t.honestyLabel} testId={`slice-layers-honesty-${sliceKey}`}>
+            <span data-testid={`slice-layers-honesty-body-${sliceKey}`}>{t.honesty}</span>
+          </InfoPopover>
         </span>
       </div>
-      <div className={styles.honesty}>{t.honesty}</div>
 
       {/* 子图没解出来时，**先说这件事**：否则下面十六张空卡会被读成「平台没有这些层」。 */}
       {graph.empty && (

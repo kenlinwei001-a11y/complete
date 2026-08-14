@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { runSolver } from "@/api/endpoints";
+import { InfoPopover } from "@/components/InfoPopover";
+import zh from "@/locales/zh";
 import type { ViewRendererProps } from "../registry";
 import {
   buildChainLineMap,
@@ -594,9 +596,25 @@ export function ChainLineMapView({ view, chrome = "full", onPayload, familyAncho
       <header className={styles.head}>
         <div>
           {chrome === "full" ? <h3>全链线路图 · 环节损失归因</h3> : null}
+          {/*
+           * 分层（规范 §1 / R-UI-3）：
+           *  · **读图法降浮层** —— 「站 = 环节」「圈大小 ∝ 损失占比」是**图例**，
+           *    与本页 `processLegend` 同族：「这个符号什么意思」属浮层，不属第一层。
+           *  · **范围留第一层** —— 它是一个**值**（这张图到底画的是哪一票数据），
+           *    不看它整张图的读数都可能被套错对象。
+           *
+           * 顺带把 `LossAttribution`（契约类型名）从屏上撤下来：用户读了它做不了任何决定，
+           * 浮层里改说「各环节损失归因」。求解器 key 保留 —— 那个是可复验的抓手（能拿去查引擎）。
+           * 说的是同一件事，一个信息都没少。
+           */}
           <p className={styles.sub}>
-            站 = 环节 · 站圈大小 ∝ 该环节吃掉的<b>全链损失占比</b>（引擎 <code>{CHAIN_LOSS_SOLVER_KEY}</code> 的{" "}
-            <code>LossAttribution</code>）。范围：
+            <InfoPopover topic={zh.sim.sandbox.info.chainMapLegend} testId="clm-legend">
+              <span data-testid="clm-legend-body">
+                站 = 环节 · 站圈大小 ∝ 该环节吃掉的<b>全链损失占比</b>（引擎 <code>{CHAIN_LOSS_SOLVER_KEY}</code>{" "}
+                算出的各环节损失归因）。
+              </span>
+            </InfoPopover>
+            范围：
             <b data-testid="clm-scope">{Object.keys(args).length === 0 ? "未限定（全域）" : JSON.stringify(args)}</b>
           </p>
         </div>

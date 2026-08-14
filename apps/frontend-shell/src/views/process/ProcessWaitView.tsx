@@ -261,7 +261,7 @@ function WaitKindGroup({ g, selectedKey, onSelect }: { g: WaitKindGroupVM; selec
             <span className={styles.ownersLabel}>{t.group.owners}</span>
             {g.owners.map((o) => (
               <span key={o.key} className={styles.ownerChip}>
-                {o.name} <small>×{o.count}</small>
+                {o.name} <small>{t.group.ownerCount(o.count)}</small>
               </span>
             ))}
           </p>

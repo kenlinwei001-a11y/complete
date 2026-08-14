@@ -1,4 +1,5 @@
 import type { DoNothing } from "@platform/contracts";
+import { InfoPopover } from "@/components/InfoPopover";
 import { Provenance } from "@/components/Provenance";
 import { AbsentNote, MissingEvidenceNote, SubSection } from "./decisionInfoShared";
 
@@ -60,9 +61,13 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
             >
               <b className="mono" style={{ color: "var(--danger-txt)" }}>{catchUp.days} {catchUp.unit}</b>
             </Provenance>
-            <span style={{ marginLeft: 8, color: "var(--muted2)" }}>
+            {/*
+             * 分层（规范 §1 / R-UI-3）：算式是**解释**不是**结论** —— 降进 `?` 浮层，
+             * 第一层只留天数与那个 `?` 记号。原文一字未删，只换了层。
+             */}
+            <InfoPopover topic="这个天数怎么来的" testId={`donothing-catchup-caliber-${baseName}`}>
               缺口 {catchUp.shortfall} {u.qty} ÷ 空闲日产能 {catchUp.freeDaily} {u.qty}/日
-            </span>
+            </InfoPopover>
           </div>
         ) : (
           <MissingEvidenceNote testId={`donothing-catchup-empty-${baseName}`} title="缺口自然消化天数：算不出" ev={catchUp} />
@@ -79,7 +84,8 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
             </div>
             <table className="cmp" data-testid={`donothing-delay-table-${baseName}`} style={{ fontSize: 12 }}>
               <thead>
-                <tr><th>订单</th><th>客户</th><th>数量({u.qty})</th><th>交期</th><th>延误(天)</th><th>口径</th></tr>
+                {/* 列名说的是这一列**装的是什么**（派生 / 估算 的出身标），不是口径本身；口径在该列的 `?` 里。 */}
+                <tr><th>订单</th><th>客户</th><th>数量({u.qty})</th><th>交期</th><th>延误(天)</th><th>数据出身</th></tr>
               </thead>
               <tbody>
                 {delay.orders.map((o) => (
@@ -132,9 +138,18 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
           </div>
         ) : (
           <>
-            <MissingEvidenceNote testId={`donothing-penalty-empty-${baseName}`} title="违约金 / 罚则：本平台未承载违约金口径" ev={penalty} />
+            <MissingEvidenceNote testId={`donothing-penalty-empty-${baseName}`} title="违约金 / 罚则：本平台未承载" ev={penalty} />
             <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 3 }} data-testid={`donothing-penalty-nozero-${baseName}`}>
               此处<b>刻意不显示金额</b>（不是 0）：显示 0 等于断言「不赔钱」，而本仓没有任何规则/字段支持该断言。
+              {/*
+               * 分层（规范 §1）：诚实位**允许降到浮层、绝不允许删除** ——
+               * 「本平台未承载违约金口径」这句原文原封不动搬进浮层，第一层留「未承载」徽标 + `?` 记号。
+               */}
+              <InfoPopover topic="为什么这里空着" testId={`donothing-penalty-caliber-${baseName}`}>
+                本平台未承载违约金口径：唯一带罚金的字段是供应商长协的欠交罚金，
+                说的是<b>供应商欠我方</b>，不是<b>我方晚交客户</b> —— 拿它回答这里等于张冠李戴。
+                要点亮此块，需数据侧补齐订单的逐日违约金率与对应罚则规则。
+              </InfoPopover>
             </div>
           </>
         )}

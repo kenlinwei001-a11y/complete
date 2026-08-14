@@ -215,6 +215,11 @@ describe("WO-WAITING-STATES-FE · §B 四态可辨识（需求头号判据：不
     const owners = screen.getByTestId("pw-owners-WAITING_EXTERNAL_SYSTEM").textContent ?? "";
     expect(owners).toContain("需求计划");
     expect(owners).toContain("供应链");
+    // WO-UI-BURNDOWN-21（2026-08-14）：条数原先写作 `×2`，一个乘号是算式记号（规范 R-UI-3）。
+    // 记号换成量词之后**数必须还在** —— 否则那不是分层，是把信息删了。
+    expect(owners, "责任职能后面的条数被改没了").toContain("2 条");
+    expect(owners).toContain("1 条");
+    expect(owners, "乘号记号没换干净").not.toContain("×");
   });
 });
 

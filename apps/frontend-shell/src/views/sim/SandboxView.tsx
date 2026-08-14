@@ -273,9 +273,14 @@ function SimCommanderDock({ sessionId, curTick }: { sessionId: string | null; cu
   };
   return (
     <div className="panel" data-testid="sim-commander-dock" style={{ padding: 12, marginTop: 12 }}>
-      <div className={styles.secHead}>AI 指挥台 · 自然语言驱动推演</div>
-      <div className={styles.sub} style={{ marginBottom: 8 }}>
-        用自然语言指挥本沙盘会话（如「把某基地产能推进两个 tick 看负载」）——AI 经 path-B 调 sim_* 工具真驱动（模拟态·不写真值 R4）。
+      <div className={styles.secHead}>
+        AI 指挥台 · 自然语言驱动推演
+        {/* 分层（规范 §1）：这一段是**怎么用**，属浮层；第一层留标题 + `?` 记号，原文一字未删。 */}
+        <InfoPopover topic={zh.sim.sandbox.info.commanderHow} testId="sandbox-commander-how">
+          <span data-testid="sandbox-commander-how-body">
+            用自然语言指挥本沙盘会话（如「把某基地产能推进两个 tick 看负载」）——AI 经 path-B 调 sim_* 工具真驱动（模拟态·不写真值 R4）。
+          </span>
+        </InfoPopover>
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <input
@@ -1012,9 +1017,19 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                  · LOCAL ⇒ 只算根类型 + hops 跳邻域，且只留两端都在范围内的边；
                  · 自称 LOCAL 却拿不到根 ⇒ 裁成空图并显式报缺，**绝不**退回 GLOBAL。
                 tick 回包里的 `scope` 回执（算了几个对象/几条边/丢了多少）就是它的收据。 */}
+            {/*
+             * 分层（规范 §1）：两个**结论**留第一层（「已作用于推演本身」「裁成空图并报缺」——
+             * 上面那条断言反转记账咬的就是这两句）；中间「到底裁了什么」是口径，降进 `?` 浮层。
+             * 原文一字未删。
+             */}
             <div data-testid="sandbox-scope-reach-note">
-              ✅ 范围选择<b>已作用于推演本身</b>：切「局部」后引擎只按该对象类型的邻域子图传导，
-              就绪认证的试算也跑在同一范围里。范围拿不到根时<b>裁成空图并报缺</b>，不会拿全局结果冒充局部。
+              ✅ 范围选择<b>已作用于推演本身</b>
+              <InfoPopover topic={zh.sim.sandbox.info.scopeLocalReach} testId="sandbox-scope-reach">
+                <span data-testid="sandbox-scope-reach-body">
+                  切「局部」后引擎只按该对象类型的邻域子图传导，就绪认证的试算也跑在同一范围里。
+                </span>
+              </InfoPopover>
+              ；范围拿不到根时<b>裁成空图并报缺</b>，不拿全局结果冒充局部。
             </div>
             {scopeDrifted && (
               <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -1153,7 +1168,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                 <li key={r.id} data-testid={`sandbox-propagation-${r.key}`} style={{ font: "600 12px var(--font-mono)", color: "var(--muted2)" }}>
                   {r.sourceTypeKey}.{r.sourceStateVar} —{r.viaLinkKey}→ {r.targetTypeKey}.{r.targetStateVar}
                   <span className={styles.sub} style={{ marginLeft: 6 }}>
-                    ×{r.coefficient} · 延迟 {r.delayTicks} tick
+                    {/* `×0.5` 里那个乘号是算式记号（规范 R-UI-3）；系数值本身是这条边的身份，留第一层。 */}
+                    系数 {r.coefficient} · 延迟 {r.delayTicks} tick
                     {/* 节拍闸门是「这条流为什么没触发」最常见的答案 —— 有绑定就必须看得见 */}
                     {r.cadenceNodeId ? ` · 过节拍闸门 ${r.cadenceNodeId}` : ""}
                   </span>
@@ -1276,9 +1292,19 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                 {perturbing ? "施加中…" : "施加扰动"}
               </button>
 
+              {/*
+               * 分层（规范 §1）：留第一层的是两个**结论**——「作用在当前 tick」与
+               * 「沙盘是模拟态，采纳才经 Action 正门写真值」（后者是 R4 诚实位，且它为真会改变
+               * 用户对整块的解读 ⇒ §4.2 判据落在第一层）；中间「之后会怎样」是机制说明，降浮层。
+               */}
               <div className={styles.sub} style={{ marginTop: 6, lineHeight: 1.6 }} data-testid="sandbox-perturbation-note">
-                扰动作用在<b>当前 tick</b>（不推进时间）；之后每次「推进 tick」，引擎沿本体链路把它扩散到下游，
-                填了持续 tick 数的到期还会自动回退。沙盘是<b>模拟态</b>，采纳才经 Action 正门写真值（R4）。
+                扰动作用在<b>当前 tick</b>（不推进时间）
+                <InfoPopover topic={zh.sim.sandbox.info.perturbAfter} testId="sandbox-perturb-after">
+                  <span data-testid="sandbox-perturb-after-body">
+                    之后每次「推进 tick」，引擎沿本体链路把它扩散到下游，填了持续 tick 数的到期还会自动回退。
+                  </span>
+                </InfoPopover>
+                。沙盘是<b>模拟态</b>，采纳才经 Action 正门写真值（R4）。
               </div>
 
               {lastPerturbation && (
@@ -1356,12 +1382,32 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
             </div>
           ) : (checkpointsQuery.data?.items?.length ?? 0) === 0 ? (
             <div className={styles.sub} data-testid="sandbox-checkpoints-empty">
-              {checkpointsQuery.isLoading ? "加载存档…" : "还没有存档。点上方「存档检查点」存一个，之后可以回到这一刻。"}
+              {checkpointsQuery.isLoading ? (
+                "加载存档…"
+              ) : (
+                <>
+                  {/* 第一层留状态本身（「还没有存档」）；「怎么存一个」是操作指引，降浮层。 */}
+                  还没有存档。
+                  <InfoPopover topic={zh.sim.sandbox.info.checkpointEmptyHow} testId="sandbox-checkpoints-empty-how">
+                    <span data-testid="sandbox-checkpoints-empty-how-body">
+                      点上方「存档检查点」存一个，之后可以回到这一刻。
+                    </span>
+                  </InfoPopover>
+                </>
+              )}
             </div>
           ) : (
             <>
+              {/*
+               * 分层：第一层留数（「N 个存档」）**与那条破坏性诚实位**（「回滚会删掉该存档之后的推演」）——
+               * 后者绝不降层：本格上方的注释写明「清单抬头就写明这一句，而不是让用户点完才发现推演没了」，
+               * 规范 §4.2 的判据在这里也指向第一层。只把「按 tick 排序」这条纯排序口径降进 `?`。
+               */}
               <div className={styles.sub} style={{ marginBottom: 4 }} data-testid="sandbox-checkpoints-count">
-                {checkpointsQuery.data!.items.length} 个存档（按 tick 排序 · 回滚会删掉该存档之后的推演）
+                {checkpointsQuery.data!.items.length} 个存档 · 回滚会删掉该存档之后的推演
+                <InfoPopover topic={zh.sim.sandbox.info.checkpointCaliber} testId="sandbox-checkpoints-caliber">
+                  <span data-testid="sandbox-checkpoints-caliber-body">按 tick 排序</span>
+                </InfoPopover>
               </div>
               <ul data-testid="sandbox-checkpoints-list" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
                 {checkpointsQuery.data!.items.map((cp) => (
@@ -1397,7 +1443,13 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       node: compare ? (
         <div data-testid="sandbox-compare">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-            <span className={styles.sub}>分支后各自推进 tick，再刷新对比看 A/B 差异</span>
+            <span className={styles.sub}>
+              A/B 差异
+              {/* 「怎么用」是操作指引，属浮层；第一层留这一格是什么 + `?` 记号。 */}
+              <InfoPopover topic={zh.sim.sandbox.info.compareHow} testId="sandbox-compare-how">
+                <span data-testid="sandbox-compare-how-body">分支后各自推进 tick，再刷新对比看 A/B 差异</span>
+              </InfoPopover>
+            </span>
             <button className="btn sm ghost" data-testid="sandbox-compare-refresh-btn" disabled={!branchId} onClick={onRefreshCompare}>
               刷新对比
             </button>
@@ -1406,7 +1458,13 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
         </div>
       ) : (
         <div className={styles.sub} data-testid="sandbox-compare-idle">
-          还没有分支。点控制条的「分支（多场景对比）」从当前 tick 派生子会话，这里出 A/B 逐 tick 差异。
+          {/* 第一层留状态本身（「还没有分支」）；「怎么开一个」是操作指引，降浮层。 */}
+          还没有分支。
+          <InfoPopover topic={zh.sim.sandbox.info.compareEmptyHow} testId="sandbox-compare-idle-how">
+            <span data-testid="sandbox-compare-idle-how-body">
+              点控制条的「分支（多场景对比）」从当前 tick 派生子会话，这里出 A/B 逐 tick 差异。
+            </span>
+          </InfoPopover>
         </div>
       ),
     },
@@ -1426,8 +1484,13 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       title: "AI 指挥台",
       node: (
         <div className={styles.sub} data-testid="sandbox-commander-moved" style={{ lineHeight: 1.7 }}>
-          AI 指挥台已提到左区<b>一等位置</b>（本区块上方，不再需要展开折叠块才能问）。
-          这一格保留为入口记号：功能没有删，只是升了层。
+          {/* 第一层留「去哪找它」这个结论；「为什么这一格还在」是设计交代，降浮层。 */}
+          AI 指挥台已提到左区<b>一等位置</b>
+          <InfoPopover topic={zh.sim.sandbox.info.commanderMovedWhy} testId="sandbox-commander-moved-why">
+            <span data-testid="sandbox-commander-moved-why-body">
+              （本区块上方，不再需要展开折叠块才能问）。这一格保留为入口记号：功能没有删，只是升了层。
+            </span>
+          </InfoPopover>
         </div>
       ),
     },

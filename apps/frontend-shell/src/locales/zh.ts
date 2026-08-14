@@ -1078,6 +1078,11 @@ export const zh = {
         paretoRate: "影响率怎么算 · 分母是什么",
         inspectorEvidence: "下钻证据为何是空的",
         stepTable: "逐环节表的口径",
+        /**
+         * WO-UI-BURNDOWN-21 · 全链线路图页头的**读图法**（站是什么、圈为什么有大有小、数哪来的）。
+         * 与上面 `processLegend` 同族：「这个符号什么意思」属浮层，第一层只留标题与范围值。
+         */
+        chainMapLegend: "怎么读这张图 · 站和圈分别是什么",
         // ── WO-BEFE-WIRE-3 · 影响传播 / 快照分叉比对（口径与公式一律进浮层，第一层只留数值与状态）──
         impactBasis: "影响面怎么算 · 引擎与口径",
         impactDimension: (label: string) => `${label} · 这一维的连接键与全域`,
@@ -1129,6 +1134,20 @@ export const zh = {
          */
         candidateHow: "这条对策是怎么推出来的",
         candidateNone: "为什么这个阻滞点没有方案",
+        /**
+         * WO-UI-BURNDOWN-21（2026-08-14）· 沙盘第一层那批**成段说明**的浮层标题。
+         * 规范 §1：第一层只放「数值 / 状态 / 名字」，成段说明属浮层。
+         * 下面每一条对应的正文都是**原文照搬**下沉的（一个字没删），
+         * 第一层留下的是结论那半句 + `?` 记号 ——「静默降层等于删除」。
+         */
+        commanderHow: "AI 指挥台怎么用、它动的是什么",
+        scopeLocalReach: "选「局部」之后引擎到底裁了什么",
+        perturbAfter: "施加扰动之后会发生什么",
+        checkpointCaliber: "这份存档清单怎么排、回滚会动什么",
+        checkpointEmptyHow: "怎么存第一个档",
+        compareHow: "多场景对比怎么用",
+        compareEmptyHow: "怎么开出第一个分支",
+        commanderMovedWhy: "这一格为什么只剩一行字",
       },
       /**
        * WO-SANDBOX-CANDIDATES-FE · 候选对策区的**壳文案**。
@@ -1992,6 +2011,19 @@ export const zh = {
       unreachable: (list: string) => `不可达目标：${list}`,
     },
     // WO-SLICE-16-LAYERS · 本体切片十六层结构（层名/状态/说明文案单一来源，R14 不内联业务常数）。
+    /**
+     * 切片检视面板的 `?` 浮层标题（走 R14）。
+     * 对应 `pages/admin/SliceInspector.tsx` 里降进浮层的四段：两种「空」各自的因由 ·
+     * 只读态的权限口径 · 编辑态的权限与生效范围。标题一律写成用户会问的那句话。
+     */
+    sliceInspector: {
+      info: {
+        missingArgs: "为什么算不出这张子图",
+        emptyGraph: "为什么这张子图是空的",
+        readOnly: "谁能改这条切片规格",
+        editSpec: "谁能改、保存后影响谁",
+      },
+    },
     sliceLayers: {
       title: "十六层结构",
       // 第一层只放结论（CONVENTION-ui-information-layering §1）：一句话说清"这条切片覆盖了几层"。
@@ -2041,6 +2073,12 @@ export const zh = {
       loading: "解析十六层…",
       error: "十六层解析失败",
       // 诚实位（绝不删除，只允许降层）：说明这一页为什么可能显示空。
+      // WO-UI-BURNDOWN-21：这句是**平台策略**（「凭什么这么显示」），不是本页的读数 ——
+      // 按 CONVENTION-ui-information-layering §1 降进 `?` 浮层，第一层留可见记号。
+      // 判据用的是 §4.2 的反问：「这条若为真，用户会不会重新解读第一层那个数？」
+      // 不会 —— 层数与状态各自都已写明（`有数据 / 本切片未纳入 / 缺席 / 未判定` 四态分得清清楚楚），
+      // 不看这句也不会把「缺席」读成别的东西。故属浮层，不属第一层。
+      honestyLabel: "空的层为什么不画占位内容",
       honesty:
         "缺席的层不画占位内容——本平台宁可显示空并说明为什么，也不画假数据。",
       // ── 子图未解出（graph.empty）· 真后端实测（2026-08-10，demo/seed 42）：
@@ -2499,6 +2537,13 @@ export const zh = {
       countLabel: (n: number) => `${n} 条流程`,
       stdDaysLabel: (d: number, pct: number) => `标准工期合计 ${d} 天（占全部 ${pct}%）`,
       owners: "等谁（责任职能）",
+      /**
+       * 责任职能后面那个数：这个职能在本组里挂着几条流程。
+       * 原先屏上写作 `×3` —— 一个乘号是**算式记号**，规范 R-UI-3 点名它不该待在第一层
+       * （2026-08-14 · WO-UI-BURNDOWN-21）。数本身是结论、该留在第一层，
+       * 故把记号换成它的量词：`3 条`。**数没变，只是记号换成了人话。**
+       */
+      ownerCount: (n: number) => `${n} 条`,
       empty: "本租户暂无此类等待的流程 —— 这是真实读数，不是没渲染。",
     },
     table: {
@@ -2667,6 +2712,35 @@ export const zh = {
       title: "⚠ 等待类型词表漂移",
       missing: (keys: string) => `契约里有、后端没下发：${keys}`,
       unknown: (keys: string) => `后端下发了、契约里没有：${keys}（前端不会渲染它，因为词表单源在契约）`,
+    },
+  },
+  /**
+   * 优化推演页的 `?` 浮层标题（走 R14：浮层文案不内联在组件里）。
+   *
+   * 这四条对应 `views/OptimizeWhatifView.tsx` 里**降进浮层**的四段说明。
+   * 第一层留的是它们各自的**结论**（清单出处 / 检索不可用 / 未接入引擎 / 决策切换），
+   * 浮层回答「凭什么」——见 `docs/CONVENTION-ui-information-layering.md` §1 三层准入。
+   * 标题一律写成**用户会问的那句话**，不是内部字段名。
+   */
+  opt: {
+    info: {
+      familySource: "这份模板清单是从哪来的",
+      retrieveHow: "「按需求找模板」怎么用",
+      retrieveError: "为什么检索不可用",
+      unavailable: "怎么把最优化引擎接上",
+      switched: "「决策切换」是什么意思",
+    },
+  },
+  /**
+   * 通用假设推演页的 `?` 浮层标题（同上走 R14）。
+   * 对应 `views/WhatIfView.tsx` 里降进浮层的三段说明：这一页怎么用 ·
+   * 第二个出口跟第一个差在哪 · 空态「为什么没有影响」。
+   */
+  whatIf: {
+    info: {
+      howItWorks: "这一页怎么用",
+      impactWorld: "这一格跟上面那个按钮差在哪",
+      emptyWhy: "为什么算不出影响",
     },
   },
 } as const;
