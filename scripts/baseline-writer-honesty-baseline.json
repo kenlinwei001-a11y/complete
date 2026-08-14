@@ -1,0 +1,64 @@
+{
+  "note": "baseline-writer-honesty 棘轮基线：**存量**「自己手搓基线写入逻辑、绕开 scripts/lib/baseline-doc.mjs」的具名豁免，只许降不许升。每条必须写 why（空 why / 留着 TODO 一律判红）。`form` 与 `sites` 是门现算的，`why` 归人手 —— 这份基线自己就是用共享写入器写的，故人手写在这里的话不会被 `--update` 吞掉。",
+  "generatedBy": "node scripts/check-baseline-writer-honesty.mjs --update",
+  "exempt": {
+    "check-backend-frontend-seam.mjs": {
+      "form": "SHADOWED",
+      "why": "存量·**第二份实现**（不是抹人话）。它就是这一族病的**原案发地**（978 字两笔人手挂账被 --update 吞掉，已于 0e19f2c4 修好），修法是在本文件 L964 自己定义了一个**同名**局部 buildBaselineDoc(sse, ep, how, prev)，语义上确实做到了 `...prev` 全摊开 + `note: prev?.note ?? BASELINE_NOTE` —— **今天不吃人话**。留红点在于它是第二份实现且签名不同（位置参数 vs 具名对象）：scripts/lib/baseline-doc.mjs 哪天补第五向判据，它不会跟着变，于是同一个病会从这里再长一次。收口=改调共享写入器并删掉局部实现，属改既有门的行为，不在 WO-BASELINE-WRITER-HONESTY 的范围边界内（本单只建机制、如实登存量），另单处理。",
+      "sites": [
+        "L980 → scripts/backend-frontend-seam-baseline.json"
+      ]
+    },
+    "check-cli-parity.mjs": {
+      "form": "HAND_ROLLED",
+      "why": "存量·**全覆盖式写入**：L71 一句 `writeFileSync(BASELINE, JSON.stringify({ missingImpl }))`，prev 只用于比对、写的时候完全不读 ⇒ 今天基线里只有 missingImpl 一个键（现算），所以**眼下没有人话可抹**；但任何人明天往这份基线里写一句「为何这条 CLI 命令允许缺实现」，下一次 --update 就会静默抹掉它。属「接了线没数据」那一档的镜像：病灶在，只是暂时没触发。收口=改调共享写入器（prose.note 归人手 / computed.missingImpl 归机器），属改既有门，不在本单范围边界内。",
+      "sites": [
+        "L71 → scripts/cli-parity-baseline.json"
+      ]
+    },
+    "check-coverage-blind.mjs": {
+      "form": "HAND_ROLLED",
+      "why": "存量·**两条写入路一严一松，且已有真实人手挂账悬在上面**。L1290（--update）走 `{ ...baseline, entries }`，人手键活得下来；L1259（--seed）是整份重建的字面量对象，只写 note/seededAt/gate/entries —— 而这份基线现在带着一个**脚本里根本不存在的顶层键 `seedProvenance`**（WO-R6 手写的 217→263 重建挂账，`grep seedProvenance scripts/check-coverage-blind.mjs` 零命中），一旦有人跑 --seed 就整块消失。这正是「note 有两个主人」的同形病，只是主人换成了 seedProvenance。收口=两条路都改调共享写入器，属改既有门，不在本单范围边界内。",
+      "sites": [
+        "L1259 → coverage-blind-baseline.json",
+        "L1290 → coverage-blind-baseline.json"
+      ]
+    },
+    "check-debattery.mjs": {
+      "form": "HAND_ROLLED",
+      "why": "存量·**一个脚本管两份基线，两处都是全覆盖**（L268 debattery-baseline.json / L269 frontend-data-baseline.json），写的是纯计数表 `{ 文件: 命中数 }`，没有 note 也没有 why —— 所以这两份基线今天**没有任何可被人审的理由**，这本身就是共享写入器要治的那个终局：棘轮退化成一张没人看得懂的数字表。现算 debattery-baseline.json 顶层 0 个键（已收敛到空对象），frontend-data-baseline.json 23 个文件计数。收口=改调共享写入器并借 prose.note 把口径写上去，属改既有门，不在本单范围边界内。",
+      "sites": [
+        "L268 → scripts/debattery-baseline.json",
+        "L269 → scripts/frontend-data-baseline.json"
+      ]
+    },
+    "check-dev-jargon-onscreen.mjs": {
+      "form": "HAND_ROLLED",
+      "why": "存量·**与原案发地一字不差的形态**：L298 的 `--update` 无条件写 `note: \\`${SPEC} §3.3…\\`` 这个模板常量并整份重建对象，prev 一个字节都不读 ⇒ 人手写进这份基线的任何挂账都会被下一次 --update 抹掉，且抹掉的那一刻屏上只会说「✅ 基线已写」。这是本门存量里**风险最高**的一条（其余多为全覆盖但无 note 常量之争）。收口=改调共享写入器（note 走 prose、total/files 走 computed），属改既有门，不在本单范围边界内。",
+      "sites": [
+        "L298 → scripts/dev-jargon-baseline.json"
+      ]
+    },
+    "check-ontology-anchors.mjs": {
+      "form": "HAND_ROLLED",
+      "why": "存量·**全覆盖式写入，但自带一道方向相反的护栏**：L546 整份重建 `{ tolerance, verified, unverified }`，prev 只用来算 dropped —— 且 L540 会在「基线里已校准锚点在本体中消失」时**拒绝写入并 RC=1**，所以它抹不掉 verified 名单，只抹得掉人手加的顶层键/散文（今天这份基线现算 3 个键，全是机器算的，故未触发）。留红点是「护的是名单不是人话」，且仍是第二份写入逻辑。收口=改调共享写入器（dropped 那道护栏照旧保留），属改既有门，不在本单范围边界内。",
+      "sites": [
+        "L546 → scripts/ontology-anchor-baseline.json"
+      ]
+    },
+    "check-ontology-descriptions.mjs": {
+      "form": "HAND_ROLLED",
+      "why": "存量·**最短的一条也最彻底**：L84 `writeFileSync(BASELINE, JSON.stringify({ violations: current }))` —— 除 violations 外**一切归零**，prev 完全不读。今天这份基线正好只有 violations 一个键（现算），所以没抹到东西；但它是「棘轮里连一句为什么都放不下」的极端形态：谁想给某条存量违规写理由，写完下一次 --update 就没了。收口=改调共享写入器，属改既有门，不在本单范围边界内。",
+      "sites": [
+        "L84 → scripts/ontology-description-baseline.json"
+      ]
+    },
+    "check-ui-first-layer.mjs": {
+      "form": "HAND_ROLLED",
+      "why": "存量·**本单派单时就已知、且是本单的禁改文件**（WO-BASELINE-WRITER-HONESTY §1 范围边界明列，故只登豁免、不动它）。实况：L1202 的 --update 整份重建顶层对象并无条件写 note 常量（顶层 note/spec/gate/generatedFrom/fileCount/totals 全归机器），逐条 entry 里的 `why: old?.why || whyFor(r)` 倒是保住了人手理由 ⇒ **人话保住了一半（条目级），顶层那半没保住**。之所以宁可显式挂账也不把判据放宽到「它也算通过」：放宽是隐形的，挂账是看得见的 —— 前者会让这道门在建成当天就变成装饰品。收口另单处理。",
+      "sites": [
+        "L1202 → scripts/ui-first-layer-baseline.json"
+      ]
+    }
+  }
+}

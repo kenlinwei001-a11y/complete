@@ -70,7 +70,8 @@
     "factlock-anchor:check": "node scripts/check-factlock-anchor.mjs",
     "gate-exit-discipline:check": "node scripts/check-gate-exit-discipline.mjs",
     "lever-prop-resolvable:check": "node scripts/check-lever-prop-resolvable.mjs",
-    "wo-anchors:check": "node scripts/check-wo-anchors.mjs"
+    "wo-anchors:check": "node scripts/check-wo-anchors.mjs",
+    "baseline-writer-honesty:check": "node scripts/check-baseline-writer-honesty.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
