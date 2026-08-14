@@ -29,6 +29,21 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+/**
+ * 统一的「门自己坏了」出口 —— RC=2。
+ *
+ * 为什么必须有它（本仓真发生过的假红/假绿）：`readFileSync` 读不到文件、缺依赖、只读 FS、
+ * node 版本差异，这些是**环境**失败，不是「页面真不合格」。原文把读不到文件也算进 `bad++`
+ * ⇒ 走 RC=1，与「主流程没排第一」撞同一个码，读的人分不出是仓库违规还是门没跑起来。
+ * 判据：**RC=1 只留给主判据明确判负那一条路径**，其余一律 RC=2 并宣告结论作废。
+ */
+function toolBroken(why, hint) {
+  console.error(`🛠️ 门自己坏了：${why}`);
+  console.error("   ⇒ **本次结论作废**——既不能读成「页面都合格」，也不能读成「有页不合格」。");
+  if (hint) console.error(`   修法：${hint}`);
+  process.exit(2);
+}
+
 /** 主流程组件必须排在这些面板之前。 */
 const MUST_FOLLOW = ["QuickSynthPanel", "WorkflowTimelinePanel", "GrowthConsolePanel", "InPlaceApprovalPanel"];
 /** 给开发看的话（屏上出现即不合格）。 */
@@ -96,10 +111,12 @@ function main() {
   const root = process.cwd();
   const c = runCanaries();
   if (!c.ok) {
-    console.error("❌ 工具坏了：金丝雀不符预期，**不报**「页面都合格」。");
     console.error("   必中样例:", JSON.stringify(c.bad));
     console.error("   必不中样例:", JSON.stringify(c.good));
-    process.exit(2);
+    toolBroken(
+      "金丝雀不符预期（判据本体失灵）",
+      "analyze() 的注释剥离或位置比较被改坏了；先让两条金丝雀复绿再谈仓库合不合格。",
+    );
   }
   console.log(
     `金丝雀 2/2 通过：必中样例抓到 ${c.bad.orderViolations.length} 处顺序违规 + ${c.bad.banned.length} 个上屏违禁词；` +
@@ -111,10 +128,13 @@ function main() {
     let src;
     try {
       src = readFileSync(resolve(root, rel), "utf8");
-    } catch {
-      console.error(`❌ ${rel}：读不到`);
-      bad++;
-      continue;
+    } catch (e) {
+      // 读不到 = **环境**失败，不是「页面不合格」。原文在这里 bad++ ⇒ 退 1，
+      // 与真违规撞码，把「门没跑起来」读成「仓库真有问题」。
+      toolBroken(
+        `读不到 ${rel}（${e?.message || e}）`,
+        "是不是 cwd 不在仓库根？本门用 process.cwd() 解析相对路径。文件真被删/改名了则须同步改 FILES。",
+      );
     }
     const r = analyze(src);
     const isPage = rel.endsWith("DataBuilderPage.tsx");
@@ -133,4 +153,20 @@ function main() {
   console.log("\n✅ 主流程排第一 · 屏上无区号 · 屏上无开发口径。");
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) main();
+// ── 顶层兜底 ──────────────────────────────────────────────────────────────────
+// 形态刻意选**顶层 try/catch**，不用 `process.on("uncaughtException")` 全局 handler：
+// 本文件 `export function analyze`，将来被测试 import 时，顶层无条件注册全局 handler
+// 会装进跑测试的那个进程、把无关异常抢走并 exit(2)，连累整个测试进程
+// （同样的取舍记在 scripts/check-edge-active-mounts.mjs 头注里）。
+// ⚠️ `try` 必须是 **Program 的直接子语句** —— `check-gate-exit-discipline.mjs` 只认这一形态
+// （它的理由是「嵌在函数里的 try 不覆盖全流程」）。初稿写成 `if (isMain) { try {…} }`，
+// 语义完全一样、变异反证也确实退 2，但门报「无顶层兜底 · 找到 0 处兜底结构」。
+// 处置是**改我的文件去合规**，不是放宽那道门 —— 为了让自己变绿去松判据，就是把门做成装饰品。
+const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
+try {
+  if (isMain) main();
+} catch (e) {
+  // 走到这里 = 未预期异常（缺依赖 / 只读 FS / 权限 / OOM / node 版本差异）。
+  // 没有这个兜底，node 默认退 1 —— 恰好撞上「真有页不合格」的码，被读成真违规。
+  toolBroken(`未预期异常（${e?.message || e}）`, (e?.stack || "").split("\n").slice(1, 3).join("\n   "));
+}

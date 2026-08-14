@@ -1393,6 +1393,40 @@
       },
       "notes": "NONE（未接任何链）：本门是 WO-ACTIVE-EDGE-UX 的一次性挂载点门，判的是 9 个推演页的 <EdgeActivePanel> 挂在**默认导出主组件**里、而不是只在跑完推演才渲染的子组件里（初稿真犯过：没跑过推演就看不见开关，而「先关一条边再看结果」恰是最常见用法 —— G-SKILL-REFGRAPH-DEAD-EXTRACTOR 同族：实现有、测试绿、链路走不到）。disposition=WIRE 的判断：判据是纯静态、零依赖、单次 <1s，接进 gates 链无成本，且页面清单 PAGES 会随新推演页增加而需要维护 —— 不接链就没人记得更新它。**未接前它的真实状态是「跑过一次就没人再跑」**，本次登账即为把这件事显式化，实际接链需同批改 package.json 的 gates 串与本条 binding，由审核方裁。",
       "disposition": "WIRE"
+    },
+    "check-dbui-flow-order.mjs": {
+      "alias": "dbui-flow-order:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx",
+        "apps/frontend-shell/src/pages/admin/DataBuilderFlow.tsx",
+        "apps/frontend-shell/src/pages/admin/PromotePrecheckPanel.tsx"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "补登账时三向变异实跑（2026-08-14 · 基线 b731b098）",
+        "note": "补登账缘由：本门建于 WO-DBUI-FLOW，建时漏登 —— gate-ledger:check 判据①「无遗漏」与 ontology-writeback G3-a 同时报红抓出（本体 §7 已写它、账上却没有，两边不一致）。三向变异（每条先自证「变异体 ≠ 原文」，撤回后复绿、git status 干净、门 RC=0）：① 真违规 —— 在 DataBuilderPage.tsx 的 <DataBuilderFlow /> 之前插入 <QuickSynthPanel /> ⇒ RC=1 且点名「QuickSynthPanel 排在主流程之前」，**没有**被兜底吞成 2；② 判据本体失灵 —— 让 analyze() 恒返回空结果 ⇒ 内嵌金丝雀当场 RC=2「门自己坏了」，**不是**安静报「页面都合格」，证明金丝雀与主判据共用同一份 analyze()；③ 未预期异常 —— 在 main() 首行注入 throw ⇒ RC=2。⚠️ ③ 与「读不到文件」两条是本次同批补的：原文**有** RC=2 出口却**缺顶层兜底**，且把 readFileSync 失败算进 bad++ 走 RC=1 —— 环境失败与真违规撞同一个码（gate-exit-discipline:check 当场报红）。兜底刻意用**顶层 try/catch**而非 process.on 全局 handler：本文件 export analyze，将来被测试 import 时全局 handler 会装进跑测试的进程、把无关异常抢走并 exit(2)。⚠️ 变异①第一次做**错**了：拿未剥注释的源码 indexOf(\"<DataBuilderFlow\")，第一处命中落在第 1085 行那条**注释**里，插进去的 JSX 根本不上屏 —— 必须自证「是你想要的那个变异体」，不只是「变异体≠原文」。"
+      },
+      "notes": "NONE（未接任何链）：WO-DBUI-FLOW 的一次性顺序门。判两条 = ① DataBuilderPage 默认导出组件的 JSX 里 <DataBuilderFlow 必须出现在 QuickSynthPanel / WorkflowTimelinePanel / GrowthConsolePanel / InPlaceApprovalPanel 任何一个之前（改前屏顶第一个是「快速合成」的行业模板下拉，用户的第一个动作在第二屏）；② 剥掉注释后不许出现 PRD 区号与开发口径词表 —— 注释里保留区号做 PRD 溯源是允许的，不剥注释会把合法溯源全部误报。诚实边界：静态判「源码里谁先出现」≠ 渲染后的视觉顺序（CSS order / 绝对定位能翻盘，本门不假装能判）；违禁词表是硬编码三个词，新造的开发口径它看不见 —— 更广的黑话由 dev-jargon:check 用 TS 解析 JSX 覆盖。"
+    },
+    "check-dev-jargon-onscreen.mjs": {
+      "alias": "dev-jargon:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/frontend-shell/src/views",
+        "apps/frontend-shell/src/pages/admin",
+        "scripts/dev-jargon-baseline.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "补登账时变异实跑，并当场抓出一个真洞（2026-08-14 · 基线 b731b098）",
+        "note": "补登账缘由同 dbui-flow-order：建于 WO-UI-LAYERING-BURNDOWN，建时漏登。变异反证过程中**抓出本门自己的一个假绿**，已同批修：往 DataBuilderPage.tsx 的真 JSX 里塞 **1** 条开发话（<div>strictObject 逐键核过</div>）⇒ 门 **RC=0 放行**，还照常打印「屏上开发话未新增」；塞 2 条才红。根因是**棘轮松弛** —— 基线记该文件 1 条，而它早被修干净、实测 0，差出来的 1 格成了谁都能用的**免检名额**；而 rows 只含有命中的文件，零命中文件根本不出现，所以正向遍历永远发现不了。形态：「我用『没有超过基线』当作『没有新增』的证据，而前者并不度量后者。」修法 = 反向遍历基线做松弛检测，基线 > 实测即 RC=1 并要求跑 --update 收紧（棘轮只降不升还不够，**降了必须当场收紧**，否则余量一格一格攒成免检额度）。收紧后（total 11→10）复验：塞 1 条 ⇒ RC=1 点名 L1089 \"strictObject\"，撤回 ⇒ RC=0。退出码纪律原文即合规（toolBroken + 顶层 try/catch + 金丝雀 6/6），gate-exit-discipline:check 未点名它。"
+      },
+      "notes": "NONE（未接任何链）：守「给开发看的话不许上屏」。**关键设计：不 grep 源码文本**，而用 typescript 解析 JSX，只取真正会渲染出去的字（JSX 文本节点 · 文案型属性字面量 · 其中的模板串片段），注释/变量名/import/data-testid/className 一律不看 —— 全仓 grep WO 编号命中数百条但绝大多数在注释里，拿原始命中数当判据会得出「全仓到处是违规」这个恰好相反的结论，然后门因噪声太大被永久关掉。词表逐条对着派单 §3.3 原文抄：契约类型名 XxxSchema · strictObject · WO 编号 · PRD 区号 · 内部机制名（三页归一/自成长收编/厂商中立施工）· 实现细节标识符（zod/tsx/useQuery/useState/repo./msw）。诚实边界（不许读成「屏上已干净」）：① 经 locales/ 等变量**间接**上屏的测不出来（本门不跨文件解析，与 check-ui-first-layer 的 formula 判据同一个盲区）；② 词表是有限的，新的黑话形态要手工补进 JARGON，不会自己冒出来。另有扫描面下界 MIN_FILES 防「枚举器坏了报 0 违规」。"
     }
   }
 }

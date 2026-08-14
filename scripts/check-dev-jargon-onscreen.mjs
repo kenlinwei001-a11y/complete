@@ -306,6 +306,28 @@ function main() {
     process.exit(2);
   }
 
+  // ── 松弛检测：基线**高于**实测 = 一个免检名额（2026-08-14 变异反证当场抓出）──────────
+  // 实测经过：往 DataBuilderPage.tsx 的真 JSX 里塞 **1** 条开发话 ⇒ 门 **RC=0 放行**；
+  // 塞 2 条才红。原因：基线记 `DataBuilderPage.tsx: 1`，而该文件早被修干净、实测 0 ——
+  // 差出来的那 1 格谁都能用，且**门本来还会打印「屏上开发话未新增」**，读起来像干净。
+  // 形态（铁律 0.6 句式）：**「我用『没有超过基线』当作『没有新增』的证据，而前者并不度量后者。」**
+  // ⇒ 棘轮只降不升还不够，**降了就必须当场收紧**，否则余量会一格一格攒成免检额度。
+  // 注意 `rows` 只含**有命中**的文件，零命中的文件根本不出现在里面 —— 所以必须反向遍历基线。
+  const actual = new Map(rows.map((r) => [r.file, r.hits.length]));
+  const slack = [];
+  for (const [f, b] of Object.entries(base.files ?? {})) {
+    const a = actual.get(f) ?? 0;
+    if (a < b) slack.push(`${f}：基线 ${b} > 实测 ${a} ⇒ 余 ${b - a} 格免检名额`);
+  }
+  if (slack.length) {
+    console.error(`❌ dev-jargon:check 棘轮松弛（${slack.length} 个文件）——**这不是通过**\n`);
+    slack.forEach((s) => console.error("  · " + s));
+    console.error("\n  为什么这算不通过：余量 = 免检名额。新塞进这些文件的开发话不会被抓，");
+    console.error("  而门还会照常打印「屏上开发话未新增」——**这正是本仓最贵的那种假绿**。");
+    console.error("  修法：`node scripts/check-dev-jargon-onscreen.mjs --update` 把基线收到实测值。");
+    process.exit(1);
+  }
+
   const fails = [];
   for (const r of rows) {
     const b = base.files[r.file] ?? 0;
