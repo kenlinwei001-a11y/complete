@@ -25,6 +25,7 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 /** §1 表里那 8 个推演页（renderer id → 源码文件）。改这张表 = 改本单的覆盖面，要有理由。 */
 const PAGES = [
@@ -63,6 +64,14 @@ export function analyze(src) {
   return { ok: true, reason: "OK", mounts, range };
 }
 
+// ⚠ 以下是**命令行入口**，只在被直接执行时跑（`node scripts/check-edge-active-mounts.mjs`）。
+// 加这道守卫的理由很具体：前端接缝门 `test/edge-active.seam.test.tsx` **import 本文件的 `analyze`**
+// —— 这正是"金丝雀必须与主逻辑共用同一份实现"那条纪律的落点。若不守卫，一次 import 就会
+// 跑完整个门并可能 `process.exit(1)`，**把跑测试的那个进程一起带走**（表现为一条与本用例
+// 无关的诡异失败）。守卫之后：命令行跑门、测试只借判据，互不干扰。
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main();
+
+function main() {
 // ── 金丝雀：两个已知答案的合成样例，跑的是上面那个 analyze，不是另抄的正则 ────────────
 const CANARY_HIT = `export default function P() {\n  return <div><EdgeActivePanel pageKey="x" /></div>;\n}\nfunction Sub() { return null; }\n`;
 const CANARY_MISS = `export default function P() {\n  return <Sub />;\n}\nfunction Sub() {\n  return <EdgeActivePanel pageKey="x" />;\n}\n`;
@@ -107,3 +116,4 @@ if (bad > 0) {
   process.exit(1);
 }
 console.log(`\n🟢 ${PAGES.length}/${PAGES.length} 个推演页均已挂载且挂在主组件里。`);
+}
