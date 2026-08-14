@@ -1,5 +1,10 @@
 # WO 套件 · `docs/PRD-skill-migration.md` 的可执行切片
 
+<!-- wo-anchors: allow-missing: apps/agentcore/src/mocks/skill-export.ts, apps/agentcore/test/skill-contract-vocab.seam.test.ts, apps/agentcore/test/skill-export.seam.test.ts, apps/agentcore/test/skill-plan-parity.seam.test.ts, scripts/check-skill-business-intent.mjs, scripts/check-skill-entitlement-single.mjs, scripts/check-skill-export.mjs, scripts/check-skill-plan-parity.mjs, scripts/check-skill-ref-closure.mjs, scripts/check-skill-single-source.mjs, scripts/check-skill-vocab-single.mjs, scripts/skill-business-intent-baseline.json, scripts/smoke-llm.ts -->
+<!-- 以上均为**本单要求新建**的文件，不是它声称已存在的。门仍逐条列出（豁免≠隐身）；
+     一旦某条真的建出来，门反过来点名「豁免过期」提醒清表，防止豁免烂在那儿挡真错。 -->
+
+
 > ## ⚠️ 过期横幅（收编时加·2026-08-13）
 > - **基线 sha**：`9b49b5f6` — **canonical 已在其后 473 个提交**。
 > - **本次有没有重跑**：**没有可执行断言可跑**（纯 WO 规划文档）⇒ 改做**抽查 3 个 `file:line` 锚点回代码核对**。

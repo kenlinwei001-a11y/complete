@@ -40,7 +40,7 @@
  */
 
 import { readFileSync, existsSync, statSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 
@@ -119,6 +119,12 @@ function canary() {
   return { passed, total, detail: "锚点正/负 · tsx/json 不截断 · mdx 前缀不匹 · 分支抽取 · git 正/负" };
 }
 
+/** 子进程跑自己校验单份工单，取**退出码**（不解析 stdout —— 那正是本门在防的取值方式）。 */
+function spawnSelf(file) {
+  const r = spawnSync(process.execPath, [new URL(import.meta.url).pathname, file], { cwd: ROOT, encoding: "utf8" });
+  return r.status ?? 2;
+}
+
 function main() {
   const argv = process.argv.slice(2);
   const revIdx = argv.indexOf("--rev");
@@ -131,13 +137,45 @@ function main() {
     console.error(`⛔ 门自己坏了：--rev ${REV} 解析不到（先 git fetch origin）。本次结论作废。RC=2`);
     process.exit(2);
   }
+  // 无参 = **门链模式**：扫「相对 canonical 有变更的 `docs/WO-*.md`」。
+  // 这是把本门从「靠人记得跑」变成机器入口的那一步（门账里那笔 disposition=WIRE 的待办）。
+  // 范围**刻意不是全量**：47 份历史工单里 23 份锚点早已漂移，全扫恒红 = 又一个装饰品门；
+  // 只咬「这条分支新写/改过的工单」才是可达成、且真的在防那件事（新工单误导下一个 dev）。
   if (!arg) {
-    console.error("用法：node scripts/check-wo-anchors.mjs <工单.md>  |  cat prompt.txt | node scripts/check-wo-anchors.mjs -");
-    process.exit(2);
+    const CANON = "origin/claude/inspiring-gates-aqczjg";
+    if (!git(["rev-parse", "--verify", "-q", `${CANON}^{commit}`]).ok) {
+      console.error(`⛔ 门自己坏了：读不到 canonical ${CANON}（先 git fetch origin）。本次结论作废。RC=2`);
+      process.exit(2);
+    }
+    const changed = git(["diff", "--name-only", CANON, "HEAD", "--", "docs/WO-*.md"]).out
+      .split("\n").map((x) => x.trim()).filter((x) => x && existsSync(path.join(ROOT, x)));
+    // 金丝雀：diff 工具本身必须活着 —— 拿一个必然有差异的路径验（docs/ 整体必有变更时才有意义，
+    // 故这里改为验「命令本身可执行且 canonical 可解析」，并在零命中时明说是零命中而非"干净"。
+    console.log(`· 门链模式：相对 ${CANON} 变更的 WO 文档 ${changed.length} 份`);
+    if (changed.length === 0) { console.log("✅ check-wo-anchors：本分支未新增/修改任何 WO 文档，无可校验对象（这是**零命中**，不是「都对」）。RC=0"); process.exit(0); }
+    let bad = 0;
+    for (const f of changed) {
+      const r = spawnSelf(f);
+      console.log(`  ${r === 0 ? "✓" : "✗"} ${f}${r === 0 ? "" : `（RC=${r}）`}`);
+      if (r !== 0) bad++;
+    }
+    if (bad) { console.log(`\n✗ check-wo-anchors：${bad}/${changed.length} 份工单的锚点对不上 —— 逐份单跑看详情：node scripts/check-wo-anchors.mjs <文件>`); process.exit(1); }
+    console.log(`✅ check-wo-anchors：${changed.length} 份变更工单锚点全部现场可验证。RC=0`);
+    process.exit(0);
   }
   const c = canary();
   const text = arg === "-" ? readFileSync(0, "utf8") : readFileSync(path.resolve(arg), "utf8");
   if (!text.trim()) die2("输入为空 —— 空输入必然零命中，那不是「工单干净」");
+
+  // 显式豁免：`<!-- wo-anchors: allow-missing: a/b.ts, c/d.ts -->`（可多行，累加）
+  // 前瞻型工单会引用**还不存在**的路径（那正是它要求造的东西）。门若一律报 FILE_MISSING，
+  // 就把「按计划要新建」误判成「路径写错了」—— 又一次「我用 X 当作 Y 的证据」。
+  // 用**显式声明**不用启发式猜（猜会在两个方向上各错一半）。
+  const allowMissing = new Set();
+  for (const m of text.matchAll(/<!--\s*wo-anchors:\s*allow-missing:\s*([^>]*?)-->/g)) {
+    for (const one of m[1].split(",")) { const v = one.trim().replace(/^`|`$/g, ""); if (v) allowMissing.add(v); }
+  }
+  const exempted = [], staleExempt = [];
 
   const problems = [];
   const anchors = extractAnchors(text);
@@ -152,6 +190,9 @@ function main() {
     const present = REV
       ? git(["rev-parse", "--verify", "-q", `${REV}:${a.file}`]).ok   // 判据落在 RC 上，不是输出非空
       : existsSync(abs) && statSync(abs).isFile();
+    // 豁免仍**逐条列出**（豁免 ≠ 隐身）；声明了却已存在 ⇒ 反过来点名，防止豁免表烂在那儿挡真错。
+    if (!present && allowMissing.has(a.file)) { exempted.push(a.file); continue; }
+    if (present && allowMissing.has(a.file)) staleExempt.push(a.file);
     if (!present) {
       problems.push({
         kind: "FILE_MISSING",
@@ -215,6 +256,12 @@ function main() {
   //   看的人会以为有一条金丝雀没过。分母写死是本仓点过名的病（gate.sh 那句「13 条治理门」）。
   console.log(`· 金丝雀 ${c.passed}/${c.total} 通过（${c.detail}）`);
   console.log(`· 基线：${REV ?? "当前工作目录（未传 --rev）"}`);
+  if (allowMissing.size) {
+    console.log(`· 声明为「本单要新建」而豁免 ${new Set(exempted).size}/${allowMissing.size} 条：${[...new Set(exempted)].join(" · ") || "（声明了但正文没引用）"}`);
+  }
+  for (const f of new Set(staleExempt)) {
+    problems.push({ kind: "STALE_EXEMPT", raw: f, msg: `${f} 在豁免表里，但它**已经存在** ⇒ 豁免过期`, hint: "从 allow-missing 删掉它，否则这条豁免会一直挡着真错" });
+  }
   console.log(`· 现场核过：文件 ${checkedFiles} · 行号 ${checkedLines} · 分支 ${checkedBranches}`);
   console.log("· ⚠️ 本门查不出「文件缺 ≠ 能力缺」那一类（需语义判断）——");
   console.log("     凡以「canonical 缺某文件」立单，仍须人工复核该能力有没有别的承载物。");
