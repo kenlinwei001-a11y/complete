@@ -1376,6 +1376,11 @@ export function resetMockSim(): void {
  * 两张单刻意给不同 `fromQuestion`：`gtk_1`（"未知能力问句"）重跑仍答不出 ⇒ 停 IN_REVIEW；
  * `gtk_2`（含"达成率"）重跑可答 ⇒ VERIFIED。两条分支在 mock 上**都能走到**，
  * 不然「验证不通过」那一支就是永不进入的死分支（本仓「接了线没数据」的老形态）。
+ *
+ * ⚠ `gtk_2` 的初态刻意是 **IN_PROGRESS 而不是 OPEN**：驾驶舱的「开放工单」指标数的是
+ * `status === "OPEN"` 的条数，既有断言（`f45.growth-cockpit.test.tsx:31` 与 :34）咬着 **1 张**。
+ * 新增一张 OPEN 会把那个数字改成 2 —— 那不是"测试过时"，是我改了它度量的那件事。
+ * 让 `gtk_2` 从"已认领"起步：既补齐了 submit/verify 两跳的可驱动性，又一个字都没动那条指标。
  */
 type MockGrowthTicket = {
   id: string; tenantId: string; fromQuestion: string; gapCode: string;
@@ -1385,7 +1390,7 @@ type MockGrowthTicket = {
 };
 const GROWTH_TICKET_SEED: MockGrowthTicket[] = [
   { id: "gtk_1", tenantId: "demo", fromQuestion: "未知能力问句", gapCode: "NO_CAPABILITY", ioContract: { inputs: [], outputShape: [] }, ontologyRefs: { objectTypes: [], slices: [], rules: [] }, acceptance: "应能答", status: "OPEN", createdAt: "2026-06-17T07:00:00Z" },
-  { id: "gtk_2", tenantId: "demo", fromQuestion: "订单达成率怎么算", gapCode: "EMPTY_DATA", ioContract: { inputs: [], outputShape: [] }, ontologyRefs: { objectTypes: [], slices: [], rules: [] }, acceptance: "应能答", status: "OPEN", createdAt: "2026-06-17T07:30:00Z" },
+  { id: "gtk_2", tenantId: "demo", fromQuestion: "订单达成率怎么算", gapCode: "EMPTY_DATA", ioContract: { inputs: [], outputShape: [] }, ontologyRefs: { objectTypes: [], slices: [], rules: [] }, acceptance: "应能答", status: "IN_PROGRESS", assignee: "cli-agent", createdAt: "2026-06-17T07:30:00Z" },
 ];
 let growthTicketState: MockGrowthTicket[] = GROWTH_TICKET_SEED.map((t) => ({ ...t }));
 function resetGrowthTickets(): void {

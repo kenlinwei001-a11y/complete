@@ -47,11 +47,24 @@ const readRepoFile = (rel: string): string => readFileSync(fileURLToPath(new URL
  * ⚠ 用它下「这条 URL 打了 / 没打」结论之前先跑 `expectRecorderAlive()` 金丝雀 ——
  * 记录器自己坏了（事件没订阅上）会让每条**否定**断言恒真（铁律 0.6：报否定结论先自证工具）。
  */
-type Recorded = { method: string; url: string };
+type Recorded = { method: string; url: string; body?: unknown };
 function useRequestLog(): Recorded[] {
   const calls: Recorded[] = [];
   const onStart = ({ request }: { request: Request }): void => {
-    calls.push({ method: request.method, url: request.url });
+    const rec: Recorded = { method: request.method, url: request.url };
+    calls.push(rec);
+    // body 从**克隆**里读（原 Request 留给 handler，绝不消费它）；异步落位，故断言侧一律 waitFor。
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      request
+        .clone()
+        .text()
+        .then((t) => {
+          rec.body = t ? (JSON.parse(t) as unknown) : null;
+        })
+        .catch(() => {
+          rec.body = null;
+        });
+    }
   };
   beforeEach(() => {
     calls.length = 0;
@@ -125,28 +138,19 @@ describe("WO-BEFE-D ① 组织世界（/a/v1/org 五条）", () => {
   });
 
   it("①-B 在岗开关真打 PATCH（真 URL + 真 method + 真 body），且屏上徽标当场翻转", async () => {
-    const bodies: unknown[] = [];
-    server.use(
-      http.patch("*/a/v1/org/principals/:principalId/availability", async ({ request, params }) => {
-        bodies.push(await request.json());
-        return HttpResponse.json({
-          principalId: String(params.principalId), orgKey: "p_zhang_ming", name: "张明", title: "销售经理",
-          kind: "person", parentRef: "prin-sales", roleRefs: ["prin-role-sales-mgr"],
-          platformRoles: ["planner"], available: false, workload: 7,
-        });
-      }),
-    );
     renderApp("/admin/org");
     await waitFor(() => expect(screen.getByTestId("org-world-page").getAttribute("data-ready")).toBe("1"));
 
     expect(screen.getByTestId("org-available-p_zhang_ming").getAttribute("data-available")).toBe("1");
     fireEvent.click(screen.getByTestId("org-availability-toggle-p_zhang_ming"));
 
-    await waitFor(() => expect(bodies.length, "点了开关一个请求都没发 ⇒ 入口仍是死的").toBe(1));
-    expect(bodies[0]).toEqual({ available: false });
-    const patched = hits(reqLog, "/a/v1/org/principals/prin-p-zhangming/availability");
-    expect(patched.length, "URL 打错了（principalId 没进路径）").toBe(1);
-    expect(patched[0]!.method).toBe("PATCH");
+    // ⚠ 这里**刻意不覆盖 handler**（第一版覆盖了，结果：PATCH 桩不改 mock 的组织态 ⇒
+    //   失效后重取 chart 拿回的还是 available:true，屏上永远翻不过来。桩把被测的那条链自己掐了）。
+    //   旁路记账 + 真 handler ⇒ 「请求真发出」与「屏上真变」两件事同时可断言。
+    await waitFor(() => expect(hits(reqLog, "/a/v1/org/principals/prin-p-zhangming/availability").length, "点了开关一个请求都没发 ⇒ 入口仍是死的").toBe(1));
+    const patched = hits(reqLog, "/a/v1/org/principals/prin-p-zhangming/availability")[0]!;
+    expect(patched.method).toBe("PATCH");
+    await waitFor(() => expect(patched.body, "body 没带上 available（或带成了字符串）").toEqual({ available: false }));
     await waitFor(() =>
       expect(screen.getByTestId("org-available-p_zhang_ming").getAttribute("data-available"), "请求发了但屏上没变 = 只发不显").toBe("0"),
     );
@@ -235,9 +239,14 @@ describe("WO-BEFE-D ① 组织世界（/a/v1/org 五条）", () => {
     const user = userEvent.setup();
     renderApp("/admin/org");
     await waitFor(() => expect(screen.getByTestId("org-world-page").getAttribute("data-ready")).toBe("1"));
-    // 5 亿的订单：销售(500 万)/财务(2000 万)/总经理(5000 万)全部超上限；经营委员会那条要 crossBase 才开
-    fireEvent.change(screen.getByTestId("org-matter-scope"), { target: { value: "order" } });
-    fireEvent.change(screen.getByTestId("org-matter-amount"), { target: { value: "500000000" } });
+    // ⚠ 这组数是**实测选出来的**，不是想当然：第一版用「5 亿的订单」，结果经营委员会那条
+    //   `lim_exec_order` 的 `maxOrderValue` 是 `null`（= 金额不设限，**不是**上限为 0），孙伟照样有权批。
+    //   —— 「null = 不设限」与「null = 批不了」在契约里是**方向相反**的两类维度（黑名单 vs 白名单），
+    //   拿错一边这条用例就变成"可批 1 人"。真正谁都过不去的是**资本投入**：
+    //   总经理上限 1000 万、经营委员会上限 10 亿，故取 20 亿 + capitalExpenditure。
+    fireEvent.change(screen.getByTestId("org-matter-scope"), { target: { value: "investment" } });
+    fireEvent.change(screen.getByTestId("org-matter-amount"), { target: { value: "2000000000" } });
+    fireEvent.click(screen.getByTestId("org-matter-capex"));
     await user.click(screen.getByTestId("org-resolve-run"));
     await screen.findByTestId("org-resolution");
 
@@ -260,11 +269,17 @@ describe("WO-BEFE-D ① 组织世界（/a/v1/org 五条）", () => {
     expectRecorderAlive(reqLog); // ← 先自证记录器活着，否则下面这条否定断言恒真
     expect(hits(reqLog, "/a/v1/action-drafts").map((c) => `${c.method} ${c.url}`), "组织世界页打了审批链端点 = 绕过 R4").toEqual([]);
 
+    // 源码侧的补充判据：**没有 import 任何审批写函数**。
+    // ⚠ 判据落在函数名上，**不是**落在字符串 "action-drafts" 上 —— 那个串在本页的
+    //   R4 说明注释里就有（写着"真值写入仍只有 POST /a/v1/action-drafts 这条路"）。
+    //   拿注释里的提及当"有调用"的证据，正是本仓「提及 ≠ 读取」那条老坑。
     const src = readRepoFile("../src/pages/admin/OrgWorldPage.tsx");
-    // 金丝雀：同样的读法先抓一个已知必在的串，抓不到说明是读法坏了而不是"没有写调用"。
     expect(src, "金丝雀未中 ⇒ 读法坏了，下面的「不存在」全部不可信").toContain("resolveApprovers");
-    expect(src).not.toContain("approveActionDraft");
-    expect(src).not.toContain("action-drafts");
+    for (const fn of ["createActionDraft", "decideActionDraft", "fetchActionDrafts", "useActionDraft"]) {
+      expect(src, `组织世界页 import 了审批写函数 ${fn}`).not.toContain(fn);
+    }
+    // 也不许自己用 api.a 绕过 endpoints 层直接打审批端点
+    expect(src).not.toContain('api.a("/a/v1/action-drafts');
   });
 
   it("①-G entitlement 关（org.world 真暗发）→ 页面不存在（R3 不泄露功能存在性）", async () => {
@@ -466,16 +481,15 @@ describe("WO-BEFE-D ③ 自成长发动机（probe / submit / verify）", () => 
     expect(screen.getAllByTestId(/^ticket-/).map((r) => r.textContent), "探针跑完工单表变了 ⇒ 它写了东西").toEqual(before);
   });
 
-  it("③-B ★接缝驱动：认领 → 提交复核 → 重跑验证，状态一跳一跳真推进（gtk_2 重跑可答 ⇒ VERIFIED）", async () => {
+  it("③-B ★接缝驱动：提交复核 → 重跑验证，状态一跳一跳真推进（gtk_2 重跑可答 ⇒ VERIFIED）", async () => {
     const user = userEvent.setup();
     renderApp("/admin/growth");
     await waitFor(() => expect(screen.getByTestId("growth-cockpit-page").getAttribute("data-ready")).toBe("1"));
 
+    // gtk_2 种子态是 IN_PROGRESS（已认领）—— 见 handlers.ts 那段注释：
+    // 多一张 OPEN 会改掉「开放工单 1 张」这个既有断言度量的东西。
     const row = () => screen.getByTestId("ticket-gtk_2");
-    expect(row().textContent).toContain("OPEN");
-
-    await user.click(screen.getByTestId("claim-gtk_2"));
-    await waitFor(() => expect(row().textContent).toContain("IN_PROGRESS"));
+    expect(row().textContent).toContain("IN_PROGRESS");
 
     await user.click(await screen.findByTestId("submit-gtk_2"));
     await waitFor(() => expect(row().textContent, "提交复核之后状态没动 ⇒ 那颗按钮是装饰").toContain("IN_REVIEW"));
