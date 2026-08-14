@@ -3754,6 +3754,110 @@ export const handlers = [
     return HttpResponse.json({ references, count: references.length });
   }),
 
+  /* ── WO-REFERENCES-FAMILY · 引用反查族的其余各条 ────────────────────────────
+   * B 侧这 5 条在后端是**同一个函数**在答（`apps/agentcore/src/resources.ts:186`
+   * `computeReferences`，按 `kind` 分支）。mock 照抄它的判据（谁的哪个字段指向我），
+   * **不是**编一段好看的假数据 —— 判据抄歪了，接缝测试验的就不是真链路。
+   * ⚠ 形状按后端原样：B 侧条目的标识字段是 `id`（不是 `key`），A 侧 rules 才是 `key`。
+   *   这个差异是真的，前端 `fetchReferences` 那一层做归一。
+   */
+  // agent：场景入口 / 场景的 defaultAgentId + workflow 的 invoke_agent 步骤
+  http.get("*/b/v1/agents/:id/references", ({ params }) => {
+    const id = String((params as { id: string }).id);
+    if (!db.agents.some((a) => a.id === id)) return err(404, "AGENT_NOT_FOUND", `agent not found: ${id}`);
+    const references = [
+      ...db.scenes.filter((s) => s.defaultAgentId === id).map((s) => ({ kind: "scene-entry", id: s.id, name: s.viewKey, via: "defaultAgentId" })),
+      ...db.scenarios.filter((sc) => sc.defaultAgentId === id).map((sc) => ({ kind: "scenario", id: sc.id, name: `${sc.scenarioKey}·${sc.name}`, via: "scenario.defaultAgentId" })),
+      ...db.workflows
+        .filter((w) => w.steps.some((st) => st.type === "invoke_agent" && (st.params as { agentId?: string }).agentId === id))
+        .map((w) => ({ kind: "workflow", id: w.id, name: w.name, via: "steps.invoke_agent" })),
+    ];
+    return HttpResponse.json({ references, count: references.length });
+  }),
+  // workflow：被哪些 Agent 当 WORKFLOW 工具挂着
+  http.get("*/b/v1/workflows/:id/references", ({ params }) => {
+    const id = String((params as { id: string }).id);
+    if (!db.workflows.some((w) => w.id === id)) return err(404, "WORKFLOW_NOT_FOUND", `workflow not found: ${id}`);
+    const references = db.agents
+      .filter((a) => (a.tools ?? []).some((t) => t.kind === "WORKFLOW" && t.workflowId === id))
+      .map((a) => ({ kind: "agent", id: a.id, name: a.name, via: "tools[kind=WORKFLOW]" }));
+    return HttpResponse.json({ references, count: references.length });
+  }),
+  // skill：被哪些 Agent 挂着
+  http.get("*/b/v1/skills/:id/references", ({ params }) => {
+    const id = String((params as { id: string }).id);
+    if (!db.skills.some((s) => s.id === id)) return err(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
+    const references = db.agents
+      .filter((a) => (a.skills ?? []).some((s) => s.skillId === id))
+      .map((a) => ({ kind: "agent", id: a.id, name: a.name, via: "skills" }));
+    return HttpResponse.json({ references, count: references.length });
+  }),
+  // mcp-config：Agent 的 mcpServers / MCP 工具 + workflow 的 invoke_mcp_tool
+  http.get("*/b/v1/mcp-configs/:id/references", ({ params }) => {
+    const id = String((params as { id: string }).id);
+    if (!db.mcpConfigs.some((c) => c.id === id)) return err(404, "MCP_CONFIG_NOT_FOUND", `mcp config not found: ${id}`);
+    const references = [
+      ...db.agents
+        .filter((a) => (a.mcpServers ?? []).some((m) => m.mcpConfigId === id) || (a.tools ?? []).some((t) => t.kind === "MCP" && t.mcpConfigId === id))
+        .map((a) => ({ kind: "agent", id: a.id, name: a.name, via: "mcpServers/tools[kind=MCP]" })),
+      ...db.workflows
+        .filter((w) => w.steps.some((st) => st.type === "invoke_mcp_tool" && (st.params as { mcpConfigId?: string }).mcpConfigId === id))
+        .map((w) => ({ kind: "workflow", id: w.id, name: w.name, via: "steps.invoke_mcp_tool" })),
+    ];
+    return HttpResponse.json({ references, count: references.length });
+  }),
+  // rule（**B 侧**）：编排资源的规则绑定。与上面 A 侧 `/a/v1/rules/:id/references` 是两套事实源，
+  // 也吃两种入参（A 吃 rule.id、B 吃 rule.key）—— 后端签名如此，mock 照抄，不许统一掉。
+  http.get("*/b/v1/rules/:key/references", ({ params }) => {
+    const key = String((params as { key: string }).key);
+    const hasKey = (v: unknown): boolean => v === "ALL_APPLICABLE" || (Array.isArray(v) && v.includes(key));
+    const references = [
+      ...db.agents.filter((a) => hasKey(a.ruleBindings?.ruleKeys)).map((a) => ({
+        kind: "agent", id: a.id, name: a.name,
+        via: a.ruleBindings?.ruleKeys === "ALL_APPLICABLE" ? "ruleBindings=ALL_APPLICABLE" : "ruleBindings.ruleKeys",
+      })),
+      ...db.scenarios.filter((sc) => (sc.rules ?? []).includes(key)).map((sc) => ({ kind: "scenario", id: sc.id, name: `${sc.scenarioKey}·${sc.name}`, via: "scenario.rules" })),
+      ...db.workflows
+        .filter((w) => w.steps.some((st) => st.type === "evaluate_rules" && hasKey((st.params as { ruleIds?: unknown }).ruleIds)))
+        .map((w) => ({ kind: "workflow", id: w.id, name: w.name, via: "steps.evaluate_rules" })),
+    ];
+    return HttpResponse.json({ references, count: references.length });
+  }),
+  // slice（A 侧）：形状是 `{refs, total}`（`refKind/key/version/where`），与上面各条**都不同** ——
+  // 后端 `ontology-governance.ts:351 sliceReferences` 读的是 B→A 上报登记表。mock 照抄形状。
+  http.get("*/a/v1/ontology/slices/:key/references", ({ params }) => {
+    const key = String((params as { key: string }).key);
+    const refs = db.workflows
+      .filter((w) => w.steps.some((st) => st.type === "resolve_slice" && (st.params as { sliceKey?: string }).sliceKey === key))
+      .map((w) => ({ refKind: "plan", key: w.key ?? w.id, version: "latest" as const, where: "reportedRefs" }));
+    return HttpResponse.json({ refs, total: refs.length });
+  }),
+  // external-signal（A 侧）：因果因子反查，形状再不同一层（factors + causalEdges + 指标归因）。
+  // `metricLinkage: "pending"` 是后端的**诚实位**（归因未种时不编），mock 保留它 ——
+  // 抹平成 "bound" 就等于替后端撒谎。
+  http.get("*/a/v1/external-signals/:key/references", ({ params }) => {
+    const key = String((params as { key: string }).key);
+    const FACTORS: Record<string, { factorId: string; label: string; drillField: string; isRoot: boolean }[]> = {
+      li_carbonate_price: [
+        { factorId: "cf_material_cost", label: "正极材料成本上行", drillField: "value", isRoot: true },
+        { factorId: "cf_margin_squeeze", label: "毛利承压", drillField: "value", isRoot: false },
+      ],
+      usd_cny: [{ factorId: "cf_export_fx", label: "出口结汇收益变动", drillField: "value", isRoot: true }],
+    };
+    const factors = (FACTORS[key] ?? []).map((f) => ({ ...f, drillValue: 0, provenanceSynthetic: true, boundMetricKeys: [] as string[] }));
+    return HttpResponse.json({
+      signalKey: key,
+      name: key,
+      category: "",
+      factors,
+      causalEdges: [],
+      metricsAffected: [],
+      hasReferences: factors.length > 0,
+      metricLinkage: "pending",
+      ...(factors.length === 0 ? { note: "本信号暂无因果因子引用（未进任何根因树·诚实空）" } : {}),
+    });
+  }),
+
   // ---- LLM Provider 配置体系增量 §1（/admin/llm-providers 页消费形态） ----
   http.get("*/a/v1/llm-providers", () => HttpResponse.json(db.llmProviders)),
   http.post("*/a/v1/llm-providers", async ({ request }) => {

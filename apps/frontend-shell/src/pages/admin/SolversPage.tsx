@@ -3,10 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import {
   fetchSolverCategories,
   fetchSolverFieldRoles,
-  fetchSolverReferences,
   fetchSolverRegistry,
   type SolverCatalogItem,
 } from "@/api/endpoints";
+import ReferencesPanel from "@/components/ReferencesPanel";
 
 /**
  * C5 求解器目录页（/admin/solvers · 只读发现）。
@@ -243,20 +243,22 @@ export default function SolversPage() {
  * 求解器目录页此前只回答「有哪些求解器、吃什么参数、吐什么形状」——全是**静态注册表**信息。
  * 一个真要动它的人还缺两件事：**动了谁会疼**（引用反查）、**它在我这套本体上落到哪个类型/字段**
  * （A13 地板语义）。两条端点后端都写好了，前端一条都没接。
- * 同族的 `/a/v1/rules/:id/references` 早有前端调用方（`fetchRuleReferences`），求解器这条被落下了。
+ * 同族的 `/a/v1/rules/:id/references` 早有前端调用方，求解器这条曾被落下（WO-BEFE-E 补上）。
+ *
+ * ── WO-REFERENCES-FAMILY 改造 ───────────────────────────────────────────────
+ * 「改它会波及谁」这半块**原本是本页自己写的一份**。实测这一族后端共 13 条 `/references` 端点、
+ * B 侧 7 条由同一个 `computeReferences` 支撑 —— 每页各写一份，必然长出 N 套形态不同的引用面板。
+ * 故此处换成共享件 `<ReferencesPanel>`：**本页不再持有引用反查的任何实现**。
+ * 剩下的「绑到哪」（field-roles）是求解器独有的，与引用族无关，仍留在本页。
  *
  * ── 诚实边界 ────────────────────────────────────────────────────────────────
  * · 只有 4 个通用图求解器在后端 `SOLVER_FIELD_ROLES` 里声明了角色；其余返回**空 roles**。
  *   那不是错，是「这个求解器不吃角色」—— 屏上明写这一句，**不画一块空面板**假装有内容。
  * · `count:0` 与「查不出来」必须分得开：前者是真的没人引用（可以放心改），
  *   后者是这次没查到（不能据此说"随便改"）。塌成一个 0 就是把风险藏起来。
+ *   这条诚实位现在由 `<ReferencesPanel>` 统一守，全族一处实现。
  */
 function SolverImpactPanel({ solverKey }: { solverKey: string }) {
-  const refs = useQuery({
-    queryKey: ["b", "solver-references", solverKey],
-    queryFn: () => fetchSolverReferences(solverKey),
-    retry: false,
-  });
   const roles = useQuery({
     queryKey: ["a", "solver-field-roles", solverKey],
     queryFn: () => fetchSolverFieldRoles(solverKey),
@@ -266,29 +268,7 @@ function SolverImpactPanel({ solverKey }: { solverKey: string }) {
 
   return (
     <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 8 }} data-testid={`solver-impact-${solverKey}`}>
-      <div>
-        <b style={{ fontSize: 12 }}>改它会波及谁（引用反查）</b>
-        {refs.isError ? (
-          <div className="muted" style={{ fontSize: 12 }} data-testid={`solver-refs-error-${solverKey}`}>
-            这次没查出来（编排服务不可达）——**不等于**没人引用，别据此放心改。
-          </div>
-        ) : refs.isLoading ? (
-          <div className="muted" style={{ fontSize: 12 }}>查询中…</div>
-        ) : (
-          <div style={{ fontSize: 12 }} data-testid={`solver-refs-${solverKey}`}>
-            <span className={`badge ${refs.data!.count > 0 ? "amber" : "green"}`} data-testid={`solver-refs-count-${solverKey}`}>
-              {refs.data!.count} 处引用
-            </span>
-            {refs.data!.references.map((r) => (
-              <span key={`${r.kind}:${r.key}:${r.via}`} className="badge mono" style={{ marginLeft: 4 }} data-testid={`solver-ref-${solverKey}-${r.kind}-${r.key}`}>
-                {r.kind}/{r.key}
-                <span className="muted" style={{ marginLeft: 3 }}>经 {r.via}</span>
-              </span>
-            ))}
-            {refs.data!.count === 0 && <span className="muted" style={{ marginLeft: 6 }}>今天没有编排资源引用它。</span>}
-          </div>
-        )}
-      </div>
+      <ReferencesPanel kind="solver" id={solverKey} title="改它会波及谁" />
 
       <div>
         <b style={{ fontSize: 12 }}>在本租户本体里绑到哪（A13 地板语义 · 确定性无 LLM）</b>

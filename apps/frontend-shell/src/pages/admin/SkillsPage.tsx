@@ -4,6 +4,7 @@ import type { SkillCompileResult, SkillDefinition } from "@platform/contracts";
 import { isWriteModeSkill } from "@platform/contracts";
 import { compileSkill, fetchSkills, fetchSkillSeedGate, publishSkill, saveSkill } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
+import ReferencesPanel from "@/components/ReferencesPanel";
 import zh from "@/locales/zh";
 import {
   parseDeadRefKeys,
@@ -175,6 +176,12 @@ function SkillEditor({ skill, onChanged }: { skill: SkillDefinition; onChanged: 
       {/* ② 引用与依赖：Skill「绑了哪些业务资产」的唯一可见面。空则整块不渲染。 */}
       <SkillReferenceTable title="引用资产" testid="skill-references" refs={skill.references} deadKeys={deadKeys} />
       <SkillReferenceTable title="依赖技能" testid="skill-depends-on" refs={skill.dependsOn} deadKeys={deadKeys} />
+
+      {/* ②b **反向**引用（WO-REFERENCES-FAMILY · `GET /b/v1/skills/:id/references`）：
+          上面两块是本技能**出向**引用的资产；这一块是**谁在引用本技能**（哪些 Agent 挂了它）。
+          方向相反、事实源相反（前者读 `skill.references` 字段，后者读 `computeReferences`），
+          缺了它，退役/改写一个技能时看不到会打断谁。 */}
+      <ReferencesPanel kind="skill" id={skill.id} title="被谁引用" />
 
       {/* ③ 契约：结构化展示，不是丢一坨 JSON 字符串 */}
       <SkillSchemaView title="输入契约" testid="skill-input-schema" schema={skill.inputSchema} />

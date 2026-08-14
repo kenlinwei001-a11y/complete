@@ -1,8 +1,9 @@
 import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RuleDryRunResult, RuleEntry } from "@platform/contracts";
-import { createRule, dryRunRule, fetchObjectTypes, fetchRuleReferences, fetchRules, publishRule, retireRule, updateRule } from "@/api/endpoints";
+import { createRule, dryRunRule, fetchObjectTypes, fetchReferences, fetchRules, publishRule, retireRule, updateRule, type ReferenceItem } from "@/api/endpoints";
 import { invalidateForEvent } from "@/store/eventInvalidation";
+import ReferencesPanel from "@/components/ReferencesPanel";
 import { Modal } from "@/components/ui/Modal";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
@@ -22,7 +23,7 @@ export default function RulesPage() {
   // 引用模式增量 §2.3：发布确认页（影响面清单 + 二次确认）
   const [confirming, setConfirming] = useState<{
     rule: RuleEntry;
-    references: { kind: string; key: string; name?: string; via: string }[];
+    references: ReferenceItem[];
   } | null>(null);
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ["a", "rules"] });
 
@@ -72,10 +73,12 @@ export default function RulesPage() {
     onError: toastError,
   });
 
-  // 发布前先反查影响面（references），弹确认页
+  // 发布前先反查影响面（references），弹确认页。
+  // ⚠ 走的是**全族唯一**的客户端 `fetchReferences`（WO-REFERENCES-FAMILY），不是本页专用函数 ——
+  //   同一句「改这个会波及谁」在本仓只有一个实现。
   const beginPublish = async (rule: RuleEntry) => {
     try {
-      const { references } = await fetchRuleReferences(rule.id);
+      const { items: references } = await fetchReferences("rule", rule.id);
       setConfirming({ rule, references });
     } catch (e) {
       toastError(e as Error);
@@ -207,6 +210,13 @@ export default function RulesPage() {
                       <div className="mono" style={{ fontSize: 12, padding: "6px 8px", background: "var(--bg2)", borderRadius: 6 }}>
                         {r.expression}
                       </div>
+                      {/* WO-REFERENCES-FAMILY：**两条端点、两套事实源，不许合成一个数**。
+                          · A 侧 `/a/v1/rules/:id/references`：B 发布时上报的出向引用 + A 本地 ActionType.checkRules
+                          · B 侧 `/b/v1/rules/:key/references`：agent/scenario/workflow/plan 的编排绑定
+                          同一条规则可能 A 侧 0、B 侧 3。把两个数加起来或只取一个，都是拿一个数盖住两个事实。
+                          注意入参不同：A 侧吃 `rule.id`，B 侧吃 `rule.key`（后端签名如此）。 */}
+                      <ReferencesPanel kind="rule" id={r.id} title="被上报引用" />
+                      <ReferencesPanel kind="rule-orchestration" id={r.key} title="被编排资源引用" />
                     </td>
                   </tr>
                 )}
@@ -255,7 +265,7 @@ function PublishConfirm({
   onConfirm,
 }: {
   rule: RuleEntry;
-  references: { kind: string; key: string; name?: string; via: string }[];
+  references: ReferenceItem[];
   pending: boolean;
   onCancel: () => void;
   onConfirm: () => void;
@@ -271,7 +281,7 @@ function PublishConfirm({
         <ul style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10, maxHeight: 180, overflow: "auto" }} data-testid="publish-impact-list">
           {references.map((r, i) => (
             <li key={i}>
-              <span className="badge">{r.kind}</span> {r.name ?? r.key}（{r.via}）
+              <span className="badge">{r.kind}</span> {r.name ?? r.ref}（{r.via}）
             </li>
           ))}
         </ul>

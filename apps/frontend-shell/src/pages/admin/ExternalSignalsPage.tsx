@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { fetchExternalSignals, fetchSignalSeries, signalSensitivity, type SignalSensitivityResult } from "@/api/endpoints";
+import ReferencesPanel from "@/components/ReferencesPanel";
 import { toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
@@ -93,6 +94,12 @@ export default function ExternalSignalsPage() {
                   <td colSpan={7} style={{ background: "var(--panel2, rgba(255,255,255,.02))" }}>
                     <span style={{ fontSize: 12, color: "var(--muted2)", marginRight: 8 }}>近 12 月：</span>
                     <Sparkline signalKey={s.signalKey} />
+                    {/* WO-REFERENCES-FAMILY（`GET /a/v1/external-signals/:key/references`）：
+                        本信号被哪些因果因子当下钻源引用（`CausalFactor.drillId == signalKey`）。
+                        ⚠ 这条端点的响应形状与引用族其余各条**都不同**（它还带因果边与指标归因），
+                        归一在 `fetchReferences` 那一层做；后端的 `metricLinkage=pending`
+                        原样带到 note 上屏 —— 「归因还没接」不许被读成「不影响任何指标」。 */}
+                    <ReferencesPanel kind="external-signal" id={s.signalKey} title="被哪些因果因子引用" />
                   </td>
                 </tr>
               )}

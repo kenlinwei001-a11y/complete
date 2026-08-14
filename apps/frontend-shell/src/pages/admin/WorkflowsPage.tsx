@@ -13,6 +13,7 @@ import {
   type WorkflowRunResult,
 } from "@/api/endpoints";
 import { ApiClientError } from "@/api/apiClient";
+import ReferencesPanel from "@/components/ReferencesPanel";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import { filterSuggestions, templateSuggestions } from "./templateSuggest";
@@ -229,6 +230,11 @@ function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition;
           {e.code}: {e.message}
         </div>
       ))}
+
+      {/* WO-REFERENCES-FAMILY（`GET /b/v1/workflows/:id/references`）：本流程被哪些 Agent 当工具挂着。
+          与上面那道 `BREAKING_CHANGE_WITH_LATEST_REFS` 门是同一件事的两端 ——
+          那道门在**发布被拒时**才说话，这一块在**动手改之前**就把牵连摊开。 */}
+      <ReferencesPanel kind="workflow" id={workflow.id} title="被谁引用" />
 
       {steps.map((step, i) => (
         <StepRow

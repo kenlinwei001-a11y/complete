@@ -484,11 +484,9 @@ export const reviewCandidate = (id: string, action: "APPROVE" | "EDIT_APPROVE" |
   api.a<RuleCandidateVM>(`/a/v1/rule-candidates/${id}/review`, { body: { action, patch } });
 
 export const fetchRules = () => api.a<RuleEntry[]>("/a/v1/rules");
-/** 引用模式增量 §2.3：发布前影响面（references 反查，A 规则库统一形态） */
-export const fetchRuleReferences = (id: string) =>
-  api.a<{ references: { kind: string; key: string; name?: string; via: string }[]; count: number }>(
-    `/a/v1/rules/${id}/references`,
-  );
+// 引用模式增量 §2.3：发布前影响面（references 反查）。
+// ⚠ 原 `fetchRuleReferences` 已并入本文件末尾的 `fetchReferences("rule", id)`（WO-REFERENCES-FAMILY）——
+//   引用反查全族**只有一个客户端**。留一个专用函数在这儿，下一个人就会照着再抄一个。
 
 // ---- 管理平台增量 §5：规则手工管理（编辑器 + dry-run） ----
 export const createRule = (body: {
@@ -1058,15 +1056,10 @@ export const promoteSolverArtifact = (key: string) =>
 export const generateProvisionalSolver = (key: string, intent: string) =>
   api.a<SolverArtifact>("/a/v1/solvers/generate", { body: { key, intent } });
 
-/**
- * WO-BEFE-E · 求解器影响面反查（`GET /b/v1/solvers/:key/references`·agentcore server.ts:1270）。
- * 「改了这个求解器 → 哪些编排资源引用它」。同族的 `/a/v1/rules/:id/references` 早已有前端调用方
- * （`fetchRuleReferences`），求解器这一条一直没有 —— 于是求解器目录页看得到 key，看不到牵连。
- */
-export const fetchSolverReferences = (key: string) =>
-  api.b<{ references: { kind: string; key: string; name?: string; via: string }[]; count: number }>(
-    `/b/v1/solvers/${encodeURIComponent(key)}/references`,
-  );
+// WO-BEFE-E · 求解器影响面反查（`GET /b/v1/solvers/:key/references`·agentcore server.ts:1270）。
+// ⚠ 原 `fetchSolverReferences` 已并入本文件末尾的 `fetchReferences("solver", key)`
+//   （WO-REFERENCES-FAMILY）：它与 rules/agents/workflows/skills/mcp-configs 那几条是**同一族**，
+//   后端也确实是同一个函数（`agentcore/src/resources.ts:186` `computeReferences`）在答。
 
 /**
  * WO-BEFE-E · 字段角色确定性解析（`GET /a/v1/solvers/:key/field-roles`·datacore app.ts:3609）。
@@ -2260,3 +2253,136 @@ export const signoffPublishRequest = (id: string, decision: "APPROVE" | "REJECT"
     method: "POST",
     body: { decision, ...(comment ? { comment } : {}) },
   });
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * WO-REFERENCES-FAMILY · 引用反查族（一族端点 = 一个客户端 + 一块共享面板）
+ *
+ * ── 为什么是一张单、不是五张 ─────────────────────────────────────────────────
+ * `befe-seam` 实测（2026-08-14，本单亲手跑，明细见交回报告）：后端注册的 `/references`
+ * 端点共 13 条，其中 9 条前端零调用。B 侧 7 条**全部**由同一个后端函数支撑
+ * （`apps/agentcore/src/resources.ts:186` `computeReferences`，7 个路由 `server.ts:910/1259/
+ * 1267/1273/1600/1969/3185` 逐条调它）。按「域」把它们切进 5 张单，最可能的结果是
+ * 长出 5 份形态不同的引用面板 —— 那正是本仓「同一概念多套实现」的老形态。
+ * 故：**一个 `fetchReferences(kind, id)` + 一块 `<ReferencesPanel>`，所有入口共用。**
+ *
+ * ── URL 一律用模板串，不许用 `+` 拼 ─────────────────────────────────────────
+ * `scripts/check-backend-frontend-seam.mjs` 的 `extractFrontendPaths` 只认**字符串字面量**里
+ * 的路径（`${…}` 整段原子跳过 → 归一成 `*`）。`"/b/v1/agents/" + id + "/references"` 会被切成
+ * 三段短串，一段都匹配不上后端路由 ⇒ 明明接了线，门照样报「零调用」。
+ * 这不是猜的：本单跑过变异反证（把模板串改成 `+` 拼 ⇒ 该端点当场退回零调用清单）。
+ *
+ * ── 形状不统一是**后端的事实**，归一在这一层做，不许下推到每个页面 ────────────
+ *   · B 侧 7 条 + A 侧 rules：`{ references: [{kind, id|key, name?, via}], count }`
+ *   · A 侧 slices：            `{ refs: [{refKind, key, version, where}], total }`
+ *   · A 侧 external-signals：  因果因子反查（`factors[]` + `causalEdges` + `metricsAffected`）
+ * 三种形状各有其道理（它们回答的不是同一个问题），但**屏上要回答的那一句是同一句**：
+ * 「改这个东西，会波及谁」。故此处归一成 `ReferenceItem`，差异用 `note` 如实带出。
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+/** 归一后的一条引用：谁（kind/ref/name）经由什么途径（via）引用了我。 */
+export interface ReferenceItem {
+  kind: string;
+  ref: string;
+  name?: string;
+  via: string;
+}
+export interface ReferencesResult {
+  items: ReferenceItem[];
+  count: number;
+  /** 后端如实带回的补充说明（如「本信号暂无因果因子引用」）。没有就没有，不编。 */
+  note?: string;
+}
+
+/**
+ * 可反查的对象族。
+ * ⚠ `rule` 与 `rule-orchestration` 是**两条不同的端点、两套不同的事实源**，不许合并：
+ *   · `rule`               → A `/a/v1/rules/:id/references`：B 侧发布时上报的出向引用 + A 本地 `ActionType.checkRules`
+ *   · `rule-orchestration` → B `/b/v1/rules/:key/references`：agent/scenario/workflow/plan 的编排绑定
+ * 一条规则可能在 A 侧 0 引用而 B 侧 3 引用（反之亦然）。合成一个「引用数」= 把两个事实盖成一个数字。
+ */
+export type ReferenceTargetKind =
+  | "agent"
+  | "workflow"
+  | "skill"
+  | "mcp-config"
+  | "rule"
+  | "rule-orchestration"
+  | "solver"
+  | "slice"
+  | "external-signal";
+
+/** `{ references: [...], count }` 家族（B 侧 7 条中的 6 条 + A 侧 rules）。 */
+interface RefsEnvelope {
+  references: { kind: string; id?: string; key?: string; name?: string; via: string }[];
+  count: number;
+}
+const fromRefsEnvelope = (raw: RefsEnvelope): ReferencesResult => ({
+  items: (raw.references ?? []).map((r) => ({
+    kind: r.kind,
+    // 后端两侧字段名不同（B 用 `id`、A 用 `key`）——这是真实差异，取到哪个用哪个，不许凭空造。
+    ref: r.id ?? r.key ?? "",
+    ...(r.name ? { name: r.name } : {}),
+    via: r.via,
+  })),
+  count: raw.count ?? (raw.references ?? []).length,
+});
+
+/** `{ refs: [...], total }` 家族（A 侧 slices）。 */
+interface SliceRefsEnvelope {
+  refs: { refKind: string; key: string; version: number | "latest"; where: string }[];
+  total: number;
+}
+const fromSliceEnvelope = (raw: SliceRefsEnvelope): ReferencesResult => ({
+  items: (raw.refs ?? []).map((r) => ({ kind: r.refKind, ref: r.key, via: `${r.where}@v${r.version}` })),
+  count: raw.total ?? (raw.refs ?? []).length,
+});
+
+/** 外部信号：因果因子反查（形状与上面两族都不同，见本节顶注）。 */
+interface SignalRefsEnvelope {
+  signalKey: string;
+  factors: { factorId: string; label: string; drillField: string; isRoot: boolean; provenanceSynthetic: boolean }[];
+  metricsAffected: string[];
+  metricLinkage: "bound" | "pending";
+  note?: string;
+}
+const fromSignalEnvelope = (raw: SignalRefsEnvelope): ReferencesResult => ({
+  items: (raw.factors ?? []).map((f) => ({
+    kind: f.isRoot ? "causal-factor(root)" : "causal-factor",
+    ref: f.factorId,
+    name: f.label,
+    via: f.drillField,
+  })),
+  count: (raw.factors ?? []).length,
+  // 指标归因未种时后端如实回 `pending` —— 那句「还没接上」必须原样带到屏上，不许悄悄读成 0。
+  ...(raw.note
+    ? { note: raw.note }
+    : raw.metricLinkage === "pending"
+      ? { note: "指标归因待接（后端 metricLinkage=pending）：这不是「不影响任何指标」" }
+      : { note: `波及指标：${(raw.metricsAffected ?? []).join("、")}` }),
+});
+
+/**
+ * kind → 端点。**每个 kind 只登记一条 URL**：
+ * `/a/v1/slices/:key/references` 与 `/a/v1/ontology/slices/:key/references` 是同一个 handler
+ * （`datacore/src/app.ts:2997` 与 `:3001` 都调 `governance.sliceReferences`）的两条别名路径，
+ * 前端只走 `ontology` 那条（与本页其余切片端点同前缀）。另一条**仍留在接缝基线里** ——
+ * 为消一条红去写第二个客户端函数，是「把死端点换成死函数」，本仓明令禁止。
+ */
+const REFERENCE_SOURCES: Record<ReferenceTargetKind, (id: string) => Promise<ReferencesResult>> = {
+  agent: async (id) => fromRefsEnvelope(await api.b<RefsEnvelope>(`/b/v1/agents/${encodeURIComponent(id)}/references`)),
+  workflow: async (id) => fromRefsEnvelope(await api.b<RefsEnvelope>(`/b/v1/workflows/${encodeURIComponent(id)}/references`)),
+  skill: async (id) => fromRefsEnvelope(await api.b<RefsEnvelope>(`/b/v1/skills/${encodeURIComponent(id)}/references`)),
+  "mcp-config": async (id) => fromRefsEnvelope(await api.b<RefsEnvelope>(`/b/v1/mcp-configs/${encodeURIComponent(id)}/references`)),
+  "rule-orchestration": async (id) => fromRefsEnvelope(await api.b<RefsEnvelope>(`/b/v1/rules/${encodeURIComponent(id)}/references`)),
+  solver: async (id) => fromRefsEnvelope(await api.b<RefsEnvelope>(`/b/v1/solvers/${encodeURIComponent(id)}/references`)),
+  rule: async (id) => fromRefsEnvelope(await api.a<RefsEnvelope>(`/a/v1/rules/${encodeURIComponent(id)}/references`)),
+  slice: async (id) => fromSliceEnvelope(await api.a<SliceRefsEnvelope>(`/a/v1/ontology/slices/${encodeURIComponent(id)}/references`)),
+  "external-signal": async (id) => fromSignalEnvelope(await api.a<SignalRefsEnvelope>(`/a/v1/external-signals/${encodeURIComponent(id)}/references`)),
+};
+
+/**
+ * 引用反查的**唯一**客户端。所有入口（规则 / 求解器 / Agent / 流程 / 技能 / MCP / 切片 / 外部信号）
+ * 都走这一个函数 —— 不许每个 kind 各写一个 `fetchXxxReferences`（那正是本单要收掉的形态）。
+ */
+export const fetchReferences = (kind: ReferenceTargetKind, id: string): Promise<ReferencesResult> =>
+  REFERENCE_SOURCES[kind](id);

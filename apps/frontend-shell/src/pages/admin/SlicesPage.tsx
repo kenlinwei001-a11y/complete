@@ -14,6 +14,7 @@ import type { PlanSliceResponse } from "@platform/contracts";
 import { toast, toastError } from "@/store/toastStore";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { baseRoles } from "@/pages/adminRegistry";
+import ReferencesPanel from "@/components/ReferencesPanel";
 import SliceInspector from "./SliceInspector";
 
 /**
@@ -184,6 +185,11 @@ export default function SlicesPage() {
               {expanded === s.sliceKey && (
                 <tr data-testid={`slice-expanded-${s.sliceKey}`}>
                   <td colSpan={8} style={{ background: "var(--panel-2, transparent)" }}>
+                    {/* WO-REFERENCES-FAMILY（`GET /a/v1/ontology/slices/:key/references`）：
+                        改一条切片的 root/paths 会波及哪些已上报的 plan/intent/agent。
+                        事实源是 B→A 的上报登记表（`reportedRefs`），与 B 侧那几条同族但不同源 ——
+                        统一走同一块面板，形状差异在 `fetchReferences` 那一层归一。 */}
+                    <ReferencesPanel kind="slice" id={s.sliceKey} title="被谁引用" />
                     <SliceInspector sliceKey={s.sliceKey} canEdit={canEdit} onChanged={() => refreshSlice(s.sliceKey)} />
                   </td>
                 </tr>
