@@ -873,7 +873,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       {/* WO-SURFACE-7DIM · 诚实标注（KILL-MOCK-RED）：本次编排哪些两阶段供给用了 mock 兜底（WO-DATA 未落）；空则不显。 */}
       {d && (d.mockNotes?.length ?? 0) > 0 && (
         <div className={styles.noteRed} data-testid="global-sim-mocknotes">
-          诚实标注 · 两阶段网络供给 mock 兜底（WO-DATA 未落 · 真距离/供芯派生见接真收口）：{d.mockNotes!.join("；")}
+          {/* §3.3「开发的话不许上屏」：原文印着工单编号「WO-DATA 未落」——那是内部排期，
+              用户读了做不了任何决定。诚实位本身（哪些供给用了兜底）一个字没删，只把编号移进本注释。 */}
+          诚实标注 · 两阶段网络供给用了兜底数据（真距离 / 供芯派生尚未接真）：{d.mockNotes!.join("；")}
         </div>
       )}
 

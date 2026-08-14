@@ -1195,6 +1195,21 @@ export const zh = {
       versions: "版本列表",
       steps: ["① 产品评审", "② 需求评审", "③ 供应评审", "④ 财务整合", "⑤ 高管决策会"],
       runStep: (n: string) => `执行第${n}步`,
+      /**
+       * WO-UI-LAYERING-BURNDOWN：以下四条原先**直接印在第一层**，按
+       * `docs/CONVENTION-ui-information-layering.md` §2 R-UI-3
+       * 「凡形如 `A × B ÷ C`、「口径差」的文字，一律进 `?` 浮层」降层。
+       * 第一层留短名 + `?` 记号（规范 §1：静默降层等于删除）。
+       */
+      info: {
+        s1Topic: "①产品评审为什么排在最前",
+        s1Body: "产品评审先行：可产矩阵（型号×产线认证关系）变化直接改变 ②③ 的可行域。",
+        s3Topic: "供给怎么算出来的",
+        s3Body: "供给 = Σ基地（周产能 × 爬坡系数 × 认证系数）。认证中的基地按认证系数打折，量产基地系数 1.0。",
+        mrpTopic: "净需求怎么算出来的",
+        mrpBody: "净需求 = Σ需求 × BOM 用量 − 库存 − 在途（C06）。",
+        mrpSourceBody: "两瓶颈与决策推演大屏同源（C06 齐套口径）——同一份齐套口径，不是各算一套。",
+      },
       locked: "已定稿——变更须走变更 Action（C22 锁定，任何字段变更必须走计划变更 Action）",
       lockDemo: "改字段尝试（演示 409 PLAN_LOCKED）",
       finalize: "定稿 → 走 Action 审批（C10/C22）",
@@ -1944,6 +1959,154 @@ export const zh = {
     honestyTopic: "口径与溯源（诚实位）",
     honesty:
       "6 层沿产能金字塔既有派生链路（本体 §3·不改链路，仅可视化）；锚点真值溯 base_capacity_outlook.available/gap，各层瓶颈张力溯 bottleneck_matrix（R13 每值可溯·R14 因素表单源 factorOntology）。",
+
+    /* ══ WO-UI-LAYERING-BURNDOWN 追加 · 仓主「看不懂这个 UX，你希望用户看到这个做什么？」════
+     * 诊断：**模型是对的，屏上没把它讲出来。** 这条链回答的是产能领域最值钱的一问 ——
+     * 「可用产能是怎么从设备一路算上来的、哪一层把它卡住了」，因为产能不够时人真正要知道的是
+     * **该去修哪一层**（修 OEE？修良率？还是催料？）。屏上答不了它，四个原因逐条对治如下。
+     * ════════════════════════════════════════════════════════════════════════════════ */
+
+    /**
+     * ① 每层「在算什么」——原先只有展开明细才看得到，而它正是这一层的**身份**。
+     * 单源 `views/capacity/factorOntology.ts` 的 `ONTO_LAYERS[].role`，前端**不重写一份**。
+     * ⚠ 这也是层3 与层4 在屏上唯一可分辨之处（今天两层都是「张力95/100·◆危」，长得一模一样）。
+     */
+    roleLabel: "这层在算",
+
+    /**
+     * ② **量纲**：契约 `packages/contracts/src/solvers.ts` 原文 ——
+     * 「张力是 0–100 的紧张度指数（越高越紧），**不是百分比、不是被测量本身的值**」。
+     * 不写在脸上，「张力95/100」会被读成「95%」或「OEE=95」。
+     */
+    tightUnit: "0–100 指数·越高越紧",
+    tightTopic: "张力是什么量纲",
+    tightBody:
+      "张力是 0–100 的紧张度指数（越高越紧），不是百分比，也不是被测量本身的值。" +
+      "例：「设备OEE 张力95/100」= 设备OEE 这一项的紧张度 95/100，不是 OEE=95%。",
+
+    /**
+     * ③ **绝对产能数缺在哪一环**（实测结论，不许拿张力冒充产能数）。
+     * 亲手核过：`BottleneckMatrixOutputSchema.rows[].tightness` 是 `z.record(string, number)`，
+     * 契约注释写明 0–100 —— **层1–4 今天只有张力，引擎不下发各层的绝对产能数**。
+     * 绝对数从第 5 层（`base_capacity_outlook.available`）才开始有。
+     */
+    noAbsMark: "层1–4 无绝对产能数",
+    noAbsTopic: "为什么前 4 层看不到「套」",
+    noAbsBody:
+      "前 4 层今天只有张力，没有绝对产能数：引擎 bottleneck_matrix 的输出里每个因素只有一个 0–100 的紧张度，" +
+      "不下发「这一层输出多少套」。所以这四层能告诉你「哪一层最紧」，但**还不能**告诉你「这一层掉了多少套」。" +
+      "绝对数从第 5 层（可用产能 base_capacity_outlook.available）才开始有。" +
+      "这里如实报缺 —— 拿张力当产能数显示，就是拿一个数冒充另一个数。",
+
+    /**
+     * ④ **缺口的分母**：缺口没有需求这个分母就无法核对（缺口是可用的好几倍时，用户第一反应是"这数对吗"）。
+     * `demand` 引擎其实**一直在下发**（`solvers/base-outlook.ts` HorizonOutlook.demand，gap = available − demand），
+     * 是前端的 `Horizon` 接口漏读了它。
+     */
+    gapDenom: (demand: string, available: string) => `= 可用 ${available} − 需求 ${demand}`,
+    gapDenomMissing: "引擎本次未下发需求值 —— 缺口的分母缺失，无法在屏上核对",
+  },
+  /**
+   * WO-UI-LAYERING-BURNDOWN · 决策推演页「行动清单」——原 ④触发规则 + ⑤推荐组合合成的那一张。
+   *
+   * ── 为什么合并（仓主原话：「这个我没有看懂，**为何不简化为 action list**？」）──────────
+   * 合并的理由比「看不懂」更硬：**那是两个源在说同一批行动，措辞还不一致**。
+   *   · 区④「触发动作」← `synthetic/battery-extended.ts` 种子 `TRIGGER_RULES.action`
+   *     ：「启动备份供应商认证」「长协重谈加价格联动条款」
+   *   · 区⑤「推荐组合」← `solvers/service.ts` 的方案 `label`
+   *     ：「缩短备份供应商认证周期」「长协加价格联动条款」
+   * 同一件事两种说法、分两块摆 —— 用户要自己在心里做这道对账题。
+   *
+   * ── 三态**三套话，一个字都不许合并**（本文件 processWait 同源纪律）────────────────
+   * 「**没有规则在盯它**」与「**规则在盯它但没到线**」是两个不同事实，
+   * 合成一句「—」就是本仓「一个数盖住两个事实」的老形态（CLAUDE.md 铁律 0.5 ①）。
+   * 故 `NO_RULE` / `NOT_FIRED` / `FIRED` 各有互不相同的 `badge` 与 `why`。
+   *
+   * ── 分层（`docs/CONVENTION-ui-information-layering.md` §1）────────────────────────
+   * 第一层只三列：**做什么 · 何时 · 触发没有**（＝名字 + 状态，规范准入清单原文）。
+   * 「凭什么」（哪条规则 · op+阈值 · 当前值 · thresholdSource · 预期效果）全进 `?` 浮层。
+   */
+  decisionPlay: {
+    /**
+     * 「从阻滞点进来」横幅的**降层文案**（WO-UI-LAYERING-BURNDOWN §2.3 三分的第 ② 类）。
+     * 第 ① 类（**结论**：下面显示的是默认根因）留在第一层，不在这里；
+     * 第 ③ 类（契约是不是 strictObject）已下屏进代码注释 —— 用户读了它做不了任何决定。
+     */
+    entry: {
+      whyTopic: "为什么对不上",
+      whyBody:
+        "阻滞点锚在真对象 locus{objectType,objectId} 上，决策推演锚在 CausalFactor 上，" +
+        "今天引擎回包里没有任何承载因果因子的字段。唯一可能的对法是拿 locus{objectType,objectId} " +
+        "去撞 CausalFactor{drillType,drillId} —— 实测撞不上：demo 的 locus 只有 " +
+        "MaterialBalance / MaterialBatch / Line 三类，而合成种子里带 drillType=MaterialBatch 或 Line 的因子一条都没有。",
+      whyNoGuess:
+        "所以没有猜一个 factorId 传过来（猜了会被 decision_play 静默回落到贡献最大的默认根因，" +
+        "屏上就会出现一个看着确凿、实则与这条阻滞点无关的根因）。",
+      whyCarried: (stage: string) => `今天真带过来的只有 stage=${stage}（段级粗筛，不是因子级）。`,
+      caveatTopic: "这条阻滞点的诚实位",
+    },
+    actions: {
+      title: "行动清单",
+      /** 第一层三列的列名 —— 与规范 §1「①数值 ②状态 ③名字」对齐。 */
+      colWhat: "做什么",
+      colWhen: "何时",
+      colFired: "触发没有",
+      countHint: (n: number, fired: number) => `${n} 条行动 · ${fired} 条已被规则触发`,
+      empty: "引擎既没给推荐组合，也没给触发规则 —— 诚实空态，不编行动。",
+      /** 时间窗：**不写死档位**。档位由引擎实际给的 phase 现算（后端方案数/档位会变）。 */
+      phaseUnknown: "未排期",
+      phaseUnknownWhy:
+        "引擎没给这条行动的周期（它来自触发规则，规则只说「信号到线就做」，不说做多久）——" +
+        "所以这里不填一个看着确凿的档位。",
+      filterAll: "全部",
+      filterStateLabel: "按触发态筛",
+      filterPhaseLabel: "按时间窗筛",
+      /** 三态三套话（badge = 第一层那一列；why = 浮层里「凭什么这么说」）。 */
+      state: {
+        FIRED: {
+          badge: "已触发",
+          why: "有规则在盯这条行动，**信号已经越过阈值** —— 这是「现在就该做」，不是「建议做」。",
+        },
+        NOT_FIRED: {
+          badge: "规则未到线",
+          why: "有规则在盯这条行动，**但信号还没越过阈值**。规则在册、没触发 —— 不等于没人管它。",
+        },
+        NO_RULE: {
+          badge: "无触发规则",
+          why:
+            "**没有任何规则在盯这条行动。** 它来自求解器按「补缺口/代价比」选出的推荐组合，" +
+            "不是被某个信号触发的 —— 也就是说：没人会在它该做的时候提醒你。" +
+            "这与「规则未到线」是两件不同的事，别读成同一句。",
+        },
+      },
+      ruleTopic: "凭什么这么说",
+      /** ⚠ 措辞刻意把**规则模板**与**当前值**拆成两句，见下方 ruleShape 注释。 */
+      ruleTemplate: (signalRef: string, op: string, threshold: string) => `规则：${signalRef} 需 ${op} ${threshold}`,
+      ruleCurrent: (v: string) => `当前：${v}`,
+      ruleVerdict: (fired: boolean) => (fired ? "⇒ 已越阈，触发" : "⇒ 未越阈，未触发"),
+      thresholdSrc: {
+        "rule.params": "阈值来源：已被已发布规则的 params 覆盖（不是引擎默认值）。",
+        "trigger.default": "阈值来源：触发规则对象自带的默认值（没有已发布规则覆盖它）。",
+      } as Record<string, string>,
+      effect: (closesGap: string, unit: string) => `预期补缺口 ${closesGap}${unit}`,
+      effectNone: "引擎没给这条行动的预期效果（它只有规则、没有对应的求解器方案）。",
+      narrowing: (pct: string) => `若整组推荐都落地，缺口收窄 ${pct}%`,
+      inPlan: "在推荐组合内",
+      notInPlan: "不在推荐组合内",
+      /** 规则↔方案怎么对上的（诚实位：引擎今天不给显式关联）。 */
+      joinTopic: "这条规则和这条方案怎么对上的",
+      join: {
+        engine: (ref: string) => `引擎显式给了关联（${ref}）—— 不是前端猜的。`,
+        id: (t: string, o: string) =>
+          `**引擎今天不给「规则 ↔ 方案」的显式关联字段**，这一行是前端按标识符对上的：` +
+          `\`${t}\` 与 \`${o}\` 去掉前缀后同名。同名即同一件事 —— 这是个约定，不是引擎保证。`,
+        prefix: (t: string, o: string) =>
+          `**引擎今天不给「规则 ↔ 方案」的显式关联字段**，这一行是前端按标识符首段对上的：` +
+          `\`${t}\` 与 \`${o}\` 首段同名，且本次只有这一个候选（有歧义时前端拒绝合并，宁可分两行）。` +
+          `这是个约定，不是引擎保证。`,
+        none: "这一行没有对到任何规则/方案 —— 前端没有为了让清单好看而猜一个。",
+      },
+    },
   },
   /**
    * WO-WAITING-STATES-FE · 业务流程等待态（需求 §20「『等待』是一等状态」）。

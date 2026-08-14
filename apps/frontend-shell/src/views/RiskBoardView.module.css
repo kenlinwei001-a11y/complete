@@ -147,7 +147,7 @@
   margin-bottom: 4px;
 }
 .rkPeak {
-  font-size: 17px;
+  font-size: 19px;
   font-family: var(--font-mono);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -208,7 +208,7 @@
   flex-wrap: wrap;
 }
 .rkDetH b {
-  font-size: 14.5px;
+  font-size: 13px;
 }
 .rkDetH span {
   font-size: 12px;

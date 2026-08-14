@@ -106,11 +106,11 @@ describe("WO-D · 决策推演页 5 区", () => {
     expect(screen.getByTestId("dp-matrix-opt-backup-cert-closesGap")).toHaveTextContent("3.2%");
     expect(screen.getByTestId("dp-matrix-opt-insource-closesGap")).toHaveAttribute("data-best", "1");
     expect(screen.getByTestId("dp-matrix-opt-backup-cert-closesGap")).not.toHaveAttribute("data-best", "1");
-    // ④ 触发规则
-    expect(screen.getByTestId("dp-trigger-trig-backup-cert")).toBeInTheDocument();
-    // ⑤ 推荐组合 + 差距收窄
+    // ④ 行动清单（原「触发规则」+「推荐组合」合成一张·WO-UI-LAYERING-BURNDOWN）
     expect(screen.getByTestId("dp-plan")).toBeInTheDocument();
-    expect(screen.getByTestId("dp-step-opt-lta-clause")).toBeInTheDocument();
+    // 触发规则并进了它对应的那一行（trig-backup-cert ↔ opt-backup-cert，去前缀同名）
+    expect(screen.getByTestId("dp-action-opt-backup-cert")).toHaveAttribute("data-fired", "1");
+    expect(screen.getByTestId("dp-action-opt-lta-clause")).toBeInTheDocument();
     expect(screen.getByTestId("dp-narrowed-pct")).toHaveTextContent("21.94%");
   });
 
@@ -149,6 +149,8 @@ describe("WO-D · 决策推演页 5 区", () => {
     expect(screen.getByTestId("dp-narrowed-pct")).toHaveTextContent("21.94%");
     expect(screen.getByTestId("dp-matrix-row-opt-lta-clause")).toHaveTextContent("推荐");
     expect(screen.getByTestId("dp-matrix-row-opt-insource")).not.toHaveTextContent("推荐");
+    // 推荐组合变化同样体现在行动清单上（A 态没有自采这一行）
+    expect(screen.queryByTestId("dp-action-opt-insource")).toBeNull();
 
     // 切引擎态 B（同组件代码·仅后端根因颗粒变）——清缓存 + 换 handler + 重挂。
     cleanup();
@@ -161,6 +163,7 @@ describe("WO-D · 决策推演页 5 区", () => {
     expect(await screen.findByTestId("dp-option-cg-opt-backup-cert")).toHaveTextContent("5.9%");
     expect(screen.getByTestId("dp-narrowed-pct")).toHaveTextContent("32.01%");
     expect(screen.getByTestId("dp-matrix-row-opt-insource")).toHaveTextContent("推荐");
+    expect(screen.getByTestId("dp-action-opt-insource")).toBeInTheDocument();
   });
 
   it("C5 · triggers fired 随信号真值；thresholdSource=rule.params → 「已被规则覆盖」", async () => {
@@ -173,12 +176,20 @@ describe("WO-D · 决策推演页 5 区", () => {
       ],
     };
     renderDP(payload);
-    expect(await screen.findByTestId("dp-trigger-fired-trig-lta-reprice")).toHaveTextContent("已触发");
-    expect(screen.getByTestId("dp-trigger-fired-trig-backup-cert")).toHaveTextContent("未触发");
-    expect(screen.getByTestId("dp-trigger-trig-lta-reprice")).toHaveAttribute("data-fired", "1");
-    expect(screen.getByTestId("dp-trigger-trig-backup-cert")).toHaveAttribute("data-fired", "0");
-    expect(screen.getByTestId("dp-trigger-src-trig-backup-cert")).toHaveTextContent("已被规则覆盖");
-    expect(screen.getByTestId("dp-trigger-src-trig-lta-reprice")).toHaveTextContent("默认阈值");
+    // 合并后：规则挂在它对应的行动行上（trig-lta-reprice ↔ opt-lta-clause 首段同名·唯一候选）。
+    const lta = await screen.findByTestId("dp-action-opt-lta-clause");
+    const backup = screen.getByTestId("dp-action-opt-backup-cert");
+    expect(lta).toHaveAttribute("data-fired", "1");
+    expect(backup).toHaveAttribute("data-fired", "0");
+    // 「已触发」与「规则未到线」是第一层那一列；三态三套话，NO_RULE 另有第三套（见接缝测试）。
+    expect(screen.getByTestId("dp-action-state-opt-lta-clause")).toHaveTextContent("已触发");
+    expect(screen.getByTestId("dp-action-state-opt-backup-cert")).toHaveTextContent("规则未到线");
+    // thresholdSource 是**诚实位**，按规范 §1 降到 `?` 浮层（允许降层·不许删除）——
+    // 故断言方式是「触发后可见」，不是「查 DOM 存在」。
+    fireEvent.mouseEnter(screen.getByTestId("info-wrap-dp-action-opt-backup-cert"));
+    expect(await screen.findByTestId("dp-trigger-src-trig-backup-cert")).toHaveTextContent("已被已发布规则的 params 覆盖");
+    fireEvent.mouseEnter(screen.getByTestId("info-wrap-dp-action-opt-lta-clause"));
+    expect(await screen.findByTestId("dp-trigger-src-trig-lta-reprice")).toHaveTextContent("默认值");
   });
 
   it("空根因 / 功能未开 → 诚实空态，不编方案", async () => {

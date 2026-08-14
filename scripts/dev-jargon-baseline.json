@@ -1,0 +1,12 @@
+{
+ "note": "docs/CONVENTION-ui-information-layering.md §3.3「开发的话不许上屏」棘轮。只数**会渲染出去的字**（JSX 文本 + 文案型属性字面量），注释/变量名/testid 不算。",
+ "spec": "docs/CONVENTION-ui-information-layering.md",
+ "gate": "scripts/check-dev-jargon-onscreen.mjs",
+ "total": 11,
+ "files": {
+  "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx": 1,
+  "apps/frontend-shell/src/pages/admin/OntologyRelationsPage.tsx": 2,
+  "apps/frontend-shell/src/views/sim/SandboxConsole.tsx": 4,
+  "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx": 4
+ }
+}

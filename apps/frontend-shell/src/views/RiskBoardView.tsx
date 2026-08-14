@@ -1919,11 +1919,11 @@ function CaseReplayModal({ kase, onClose }: { kase: HistoryRiskCase; onClose: ()
           }}
         />
         <div className="section-title" style={{ marginTop: 10 }}>处置时间线</div>
-        <div data-testid="case-timeline" style={{ display: "grid", gap: 4, fontSize: 12.5 }}>
+        <div data-testid="case-timeline" style={{ display: "grid", gap: 4, fontSize: 12 }}>
           {kase.timeline.map((t, i) => (<div key={i}><span className="mono">{t.date}</span> · <span className="zh">{t.event}</span></div>))}
         </div>
         {kase.affectedOrders.length > 0 && (
-          <div style={{ marginTop: 8, fontSize: 12.5 }} data-testid="case-affected-orders">
+          <div style={{ marginTop: 8, fontSize: 12 }} data-testid="case-affected-orders">
             受影响订单：{kase.affectedOrders.map((so) => (<span key={so} className="badge" style={{ marginRight: 4 }}>{so}</span>))}
           </div>
         )}
