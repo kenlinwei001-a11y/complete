@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ADMIN, invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
+import { installReadRecorder, observedReadSurface } from "./ontology-signature.recorder.js";
+import { SOLVER_ONTOLOGY_SIGNATURES } from "../src/solvers/ontology-signature.js";
 import { FinanceWorldProjectionOutputSchema, type FinanceWorldProjectionOutput } from "@platform/contracts";
 
 /**
@@ -398,6 +400,54 @@ describe("WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影", () 
     expect(ghost.statusCode).toBe(404);
     // 金丝雀：同一个 key 在**存在的**世界上必须 200 —— 否则上面两条读不出是"隔离生效"还是"求解器坏了"。
     expect((await invokeSolver(t, "finance_world_projection", { worldId: sid })).statusCode).toBe(200);
+  });
+
+  /**
+   * 本体签名是**机器校验的事实**，不是手写清单（WO-69 P2 S5 同款判据）。
+   *
+   * ⚠ 为什么不去 `ontology-signature.seam.test.ts` 的 `S5_FIXTURES` 里加一行：那个跑法是
+   * `invoke(ctx, key, args)` 直调，而本求解器**必须先有一个世界**（不给 `worldId` 直接 400）——
+   * 加进去只会得到一条"跑不起来"的样例。故在**本文件**里用同一个记录器验同一件事：
+   * 它有真世界可跑，验的是同一个不变量。
+   *
+   * 判据方向与 S5 一致：**观测 ⊆ 声明**。漏声明 = 列级守卫会误放行 = 受限用户拿到错数字
+   * （WO-69 的原病例：quote_margin 毛利 0.868 vs 真值 0.2565，「没权限」伪装成「业务数字」）。
+   * 过度声明是安全方向（多拒），不判红。
+   */
+  it("🔴 本体签名实跑比对：真读到的类型/属性都在 SOLVER_ONTOLOGY_SIGNATURES 声明内（漏声明即红）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoPropagationRules(t.repos);
+    await enableSim(t);
+    const { materialId, orderId } = await costChainInstance(t);
+    const sid = await createWorld(t, { [materialId]: { priceShock: 8 }, [orderId]: { costPressure: 5 } });
+
+    const sig = SOLVER_ONTOLOGY_SIGNATURES.finance_world_projection;
+    expect(sig, "求解器必须有签名——**未知读取面 = 列级受限调用者一律拒**，未知≠安全").toBeDefined();
+    const declared = new Map((sig!.reads ?? []).map((r) => [r.typeKey, r.propKeys]));
+    expect(declared.size).toBeGreaterThan(3); // 基数锚：声明不是空集
+
+    const { rec, restore } = installReadRecorder(t);
+    try {
+      await t.services.solvers.invoke(t.adminCtx, "finance_world_projection", { worldId: sid });
+    } finally {
+      restore();
+    }
+    const observed = observedReadSurface(rec);
+    expect(observed.size).toBeGreaterThan(0); // 金丝雀：记录器真记到了东西（记 0 条 = 探针坏了，不是"没读"）
+
+    const violations: string[] = [];
+    for (const [typeKey, props] of observed) {
+      if (!declared.has(typeKey)) {
+        violations.push(`真读了未声明的对象类型 ${typeKey}（属性 ${[...props].sort().join("/")}）`);
+        continue;
+      }
+      const propKeys = declared.get(typeKey);
+      if (propKeys === undefined) continue; // 声明为全属性
+      const missing = [...props].filter((p) => !propKeys.includes(p)).sort();
+      if (missing.length > 0) violations.push(`类型 ${typeKey} 真读了未声明的属性 ${missing.join(", ")}`);
+    }
+    expect(violations, `签名漏声明（列级守卫会误放行 → 出错数字）：\n${violations.join("\n")}`).toEqual([]);
   });
 
   it("分层不重复：`finance_pnl` 保持「本体真值口径」（施加扰动它照样不动，这是它的正确行为）", async () => {

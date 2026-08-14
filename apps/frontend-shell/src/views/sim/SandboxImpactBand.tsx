@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+// 校形用**契约那一份 schema**（`safeParse`），故这里不再 import 它的 type：
+// 类型由 `parsed.data` 推出来，与运行期校验**同一个出处** —— 两者分家正是上一版 `as` 硬转的病根。
 import { FinanceWorldProjectionOutputSchema } from "@platform/contracts";
-import type { FinanceWorldProjectionOutput, ImpactChange } from "@platform/contracts";
+import type { ImpactChange } from "@platform/contracts";
 import { InfoPopover } from "@/components/InfoPopover";
 import { runSolver } from "@/api/endpoints";
 import zh from "@/locales/zh";
