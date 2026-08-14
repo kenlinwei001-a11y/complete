@@ -63,7 +63,8 @@
      匹配 **305 个文件**且含 `synthetic/service.ts` ⇒ **`*` 确实跨 `/`**。真机制是两条：
      (a) **含通配的 pathspec 不当目录前缀用** —— 字面前缀 `apps/datacore/src` 命中 42，
      含通配的 `apps/*/src` 命中 **0**，补成 `apps/*/src/*` 命中 **94**；
-     (b) `X/**/*.ext` **要求至少一个中间目录段**，本仓 `test/` 下无子目录 ⇒ `apps/*/test/**/*.test.ts` 恒 0。
+     (b) `X/**/*.ext` **要求至少一个中间目录段**，而本仓 **462 个测试文件全在 `apps/*/test/` 直属层**、没有一个在子目录里 ⇒ `apps/*/test/**/*.test.ts` 恒 0，`apps/*/test/*.test.ts` 命中 **462**。
+     ⚠️ **2026-08-14 实测订正措辞**（dev 顶回来的，属实）：原文写「本仓 `test/` 下**无子目录**」——**不准**。实测有 **2 个** 子目录（`apps/agentcore/test/fixtures`、`apps/frontend-shell/test/fixtures`），只是里面**零个** `.test.ts`。机制（`**` 要中间段）成立，但**病因说错了一档**：照原文去找「子目录」会找到两个，然后以为这条戒律过期了。判据该落在「**目标文件在不在子目录里**」，不是「**有没有子目录**」——这本身又是一次「我用 X 当作 Y 的证据，而 X 并不度量 Y」。
    - `git rev-parse <rev>:<path>` 不带 `--verify -q` 时，路径不存在会**把输入串原样打到 stdout**
      → "文件不存在"被误判成"存在但内容不同"。同日一个 dev 全表 `ABSENT=0`，
      加参数后结论完全改写（40 条分支实际带着 canonical 缺失的文件）。
@@ -71,8 +72,10 @@
      `--verify -q` 时 RC=1）。**真正会骗人的不是退出码，是它仍把输入串打到 stdout**：
      只看 `-n "$out"` 的 shell 调用会被骗，看 RC 的不会。判据要落在 RC 上，不是输出非空。
    - **这两条订正本身就是本铁律的实例**：一条写在最容易被信的地方的错误病因，
-     比没有这条更危险 —— `scripts/check-crossbranch-reinvent.mjs:68` 与
-     `scripts/gate-ledger.json:929` 都引用了旧病因，需随之更正。
+     比没有这条更危险 —— `scripts/check-crossbranch-reinvent.mjs` 与 `scripts/gate-ledger.json` 里都引用了旧病因。
+     ✅ **2026-08-14 已全部回写**（WO-GATE-LEDGER-FIX，实测是 **6 处**不是原文说的 2 处）。
+     ⚠️ **本条原文写死了行号（`:68` / `:929`），两个都已过期**（现为 `:93` / `:245`，且 `:929` 那行根本是 `"ontologyRef": null`）—— **行号会漂，写死行号的引用天生带保质期**。
+     以后引用一律**用符号/锚点串**（如「`check-crossbranch-reinvent.mjs` 里的『病因订正』注释段」），行号只在同一次对话里当临时坐标用。
 6. **「路径开关」类的假绿：生产实参与测试实参交集为空**（2026-08-06 实测，`G-SEED-PROVENANCE-BACKFILL-UNASSERTED`）。
    `synthetic/service.ts` 的 provenance 回填由 `viaModelingChain` 二选一；生产 `seed.ts:92` 传 `false`，
    而**两个相关测试用例都传 `true`**，被 `if (!chainMode)` 跳过 ⇒ **测试三周来验的是生产已经放弃的那条路**，
