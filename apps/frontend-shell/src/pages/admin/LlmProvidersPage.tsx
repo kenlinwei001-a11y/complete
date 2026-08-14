@@ -463,7 +463,7 @@ function BudgetPanel() {
               {data.state === "OK" ? "正常" : data.state === "SOFT_EXCEEDED" ? "已过软线" : "已过硬线"}
             </span>
             {data.degrade && (
-              <span className="muted" style={{ fontSize: 11.5 }} data-testid="llm-budget-degrade">
+              <span className="muted" style={{ fontSize: 12 }} data-testid="llm-budget-degrade">
                 ⚠ 已触发降级：路径 A 跳过非必要 compose，路径 B 新任务前先警示；过硬线则直接拒绝。
               </span>
             )}
@@ -511,7 +511,7 @@ function BudgetPanel() {
       )}
 
       <div className="section-title" style={{ marginTop: 16 }}>调整配额</div>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 8 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
         硬线 = 本周期 token 上限（<b>0 表示不限</b>）；软线 = 硬线的百分比，越线即开始降级。
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>

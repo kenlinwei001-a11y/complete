@@ -1260,7 +1260,7 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, rc
       </div>
       {/* 件四 · 兜底态表达强度：引擎明说「没按这个因子细分」时，必须是**用户不可能忽略**的形态
           （整条告警条 + 一键回到基地级），而不是树底下一行 10.5px 的小字 —— 旧形态见本文件
-          `data-testid="rootcause-scope-note"` 那两个分支（fontSize:10.5·灰字），是被漏看的那一行。
+          `data-testid="rootcause-scope-note"` 那两个分支（fontSize: 12·灰字），是被漏看的那一行。
           复验：`apps/frontend-shell/test/caplive-cockpit.test.tsx` SEAM②b（断言 role=alert + 引擎原话 + 一键回基地级）。 */}
       {factorRejected ? (
         <div

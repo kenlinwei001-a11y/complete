@@ -261,7 +261,7 @@ export default function OntologyRelationsPage() {
   return (
     <div data-testid="ontology-relations-page">
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>本体关系</h2>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 12, lineHeight: 1.7 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 12, lineHeight: 1.7 }}>
         两种边分开管：<b>结构边</b>（A 与 B 有没有关系、几对几）是图谱骨架；<b>因果边</b>（A 的某个量变了 B 跟着变多少）是推演的边。
         <br />
         关掉一条<b>因果边</b>，沙盘推演结果真的会变；关掉一条<b>结构边</b>不会 —— 两者的「启停」不是一回事，不合成一个开关。
@@ -325,7 +325,7 @@ export default function OntologyRelationsPage() {
       {linksByDomain.length === 0 && <div className="empty-state">暂无结构边</div>}
       {linksByDomain.map(([dk, rows]) => (
         <div key={dk} data-testid={`orel-link-domain-${dk}`} style={{ marginBottom: 12 }}>
-          <div className="muted" style={{ fontSize: 11.5, margin: "6px 0 3px" }}>
+          <div className="muted" style={{ fontSize: 12, margin: "6px 0 3px" }}>
             域：{domainName.get(dk) ?? dk}（{rows.length}）
           </div>
           <table className="cmp" style={{ width: "100%" }}>
@@ -388,9 +388,9 @@ export default function OntologyRelationsPage() {
             {refPanel.total > 0 && <span className="muted">（&gt;0 时后端拒绝下线，409 逐条列出）</span>}
           </div>
           {refPanel.total === 0 ? (
-            <div className="muted" style={{ fontSize: 11.5 }}>无引用 —— 可以下线</div>
+            <div className="muted" style={{ fontSize: 12 }}>无引用 —— 可以下线</div>
           ) : (
-            <ul style={{ fontSize: 11.5, margin: 0, paddingLeft: 18 }}>
+            <ul style={{ fontSize: 12, margin: 0, paddingLeft: 18 }}>
               {refPanel.refs.map((r, i) => (
                 <li key={`${r.refKind}-${r.key}-${i}`} className="mono">
                   {r.refKind}:{r.key}@{r.where}
@@ -401,7 +401,7 @@ export default function OntologyRelationsPage() {
         </div>
       )}
 
-      <div className="muted" data-testid="orel-link-honesty" style={{ fontSize: 11, marginBottom: 18, lineHeight: 1.7 }}>
+      <div className="muted" data-testid="orel-link-honesty" style={{ fontSize: 12, marginBottom: 18, lineHeight: 1.7 }}>
         ⚠ 状态列口径 = <b>最新已发布快照</b>（<code>GET /a/v1/ontology/versions</code> 的{" "}
         <code>snapshot.linkTypes[].deprecation</code>）⊕ <b>本次会话的写回包</b>。
         工作集里的弃用态今天<b>没有只读下发口</b>（后端 9 处 <code>ontologyLinks.list</code> 读取方全部把{" "}
@@ -457,7 +457,7 @@ export default function OntologyRelationsPage() {
           style={{ width: 140 }}
         />
         {/* 同上：字段口径一律用**可见 label**，不用原生 title（UI 规范 §2 R-UI-3）。 */}
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5 }}>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}>
           <span className="muted">系数</span>
           <input
             data-testid="orel-rule-coef"
@@ -468,7 +468,7 @@ export default function OntologyRelationsPage() {
             style={{ width: 76 }}
           />
         </label>
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5 }}>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}>
           <span className="muted">延迟(tick)</span>
           <input
             data-testid="orel-rule-delay"
@@ -485,7 +485,7 @@ export default function OntologyRelationsPage() {
           （`test/provenance-popover-legibility.test.tsx:1120` 是只减不增的棘轮，
           我第一版写了一句带冒号的长 title，当场被它咬住）。
         */}
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5 }}>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}>
           <span className="muted">启停</span>
           <select
             data-testid="orel-rule-status"
@@ -517,7 +517,7 @@ export default function OntologyRelationsPage() {
       {rulesByDomain.length === 0 && <div className="empty-state">暂无因果边</div>}
       {rulesByDomain.map(([dk, rows]) => (
         <div key={dk} data-testid={`orel-rule-domain-${dk}`} style={{ marginBottom: 12 }}>
-          <div className="muted" style={{ fontSize: 11.5, margin: "6px 0 3px" }}>
+          <div className="muted" style={{ fontSize: 12, margin: "6px 0 3px" }}>
             域：{domainName.get(dk) ?? dk}（{rows.length}）
           </div>
           <table className="cmp" style={{ width: "100%" }}>
@@ -547,7 +547,7 @@ export default function OntologyRelationsPage() {
         </div>
       ))}
 
-      <div className="muted" data-testid="orel-rule-honesty" style={{ fontSize: 11, marginBottom: 18, lineHeight: 1.7 }}>
+      <div className="muted" data-testid="orel-rule-honesty" style={{ fontSize: 12, marginBottom: 18, lineHeight: 1.7 }}>
         ⚠ 因果边今天<b>只能新建，改不了</b>：<code>POST /a/v1/sim/propagation-rules</code> 把{" "}
         <code>id: newId(&quot;simpr&quot;)</code> 写在请求体展开之后（<code>apps/datacore/src/app.ts:1867</code>），
         传进去的 id 恒被覆盖 ⇒ 每次 POST 都是一条新规则。所以这里<b>不提供</b>「停用已有边」的开关 ——
@@ -559,7 +559,7 @@ export default function OntologyRelationsPage() {
 
       {/* ═══════════ 关系两端的对象类型 · 弃用流程 ═══════════ */}
       <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>对象类型 · 弃用流程</h3>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 8, lineHeight: 1.7 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8, lineHeight: 1.7 }}>
         停用/下线一个<b>类型</b>会连带作废它两端的全部关系，所以它和上面两张表是同一件事的两端。
         后端是同一个治理函数、同一道「还有人引用就不许下线」的闸。
       </div>
@@ -588,7 +588,7 @@ export default function OntologyRelationsPage() {
         >
           下线类型
         </button>
-        <span className="muted" style={{ fontSize: 11 }}>
+        <span className="muted" style={{ fontSize: 12 }}>
           下线前后端会先查引用；有引用则 409 并逐条列出，界面原样显示。
         </span>
       </div>
@@ -613,7 +613,7 @@ export default function OntologyRelationsPage() {
 
       {/* ═══════════ 发布会签（R4）═══════════ */}
       <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>发布会签（R4）</h3>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 8, lineHeight: 1.7 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8, lineHeight: 1.7 }}>
         上面的建/停/下线写的是<b>工作集</b>，不是已发布真值。真值是 <code>OntologyVersion</code> 快照 ——
         经<b>各域 owner 会签</b>后由后端自动固化（全域 APPROVE → <code>publishVersion</code>）。
         本页<b>不提供</b>「直接发布」按钮：那条路会绕开会签。
@@ -622,7 +622,7 @@ export default function OntologyRelationsPage() {
         <button className="btn primary sm" data-testid="orel-publish-open" disabled={openPublish.isPending} onClick={() => openPublish.mutate()}>
           发起发布会签
         </button>
-        <span className="muted" style={{ fontSize: 11.5 }}>
+        <span className="muted" style={{ fontSize: 12 }}>
           已发布版本：{versions.data && versions.data.length > 0 ? `v${Math.max(...versions.data.map((v) => v.version))}` : "尚无"}
         </span>
       </div>

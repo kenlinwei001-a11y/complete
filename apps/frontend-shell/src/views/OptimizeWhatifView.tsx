@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { invokeSolver } from "@/api/endpoints";
+import { fetchOptTemplates, invokeSolver, retrieveOptTemplates, solveOptTemplate } from "@/api/endpoints";
 import type { ViewConfigVM } from "@/api/types";
+import { toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
 /**
@@ -15,8 +16,17 @@ import zh from "@/locales/zh";
  * 诚实态：本地无 OPTIMIZER_BASE_URL → 后端返「未接入最优化引擎」→ 本页诚实提示（非空白 / 非假 Δ）。
  */
 
-/** 5 CP-SAT 核心 family（= app.ts OPT_FAMILIES·抽象优化模板池，零业务常数）。 */
-const FAMILIES: { key: string; label: string; hint: string }[] = [
+/**
+ * 各 family 的**中文口径与开箱示例**（UI 文案 + 演示输入，不是"有哪些 family"的真相源）。
+ *
+ * ⚠ **WO-BEFE-E 订正**：这份表原先是清单本身，注释写着「= app.ts OPT_FAMILIES」——
+ *   那正是本仓治过的「同一概念两套词表」：后端加/减一个 family，界面不会知道，
+ *   两边都能跑、谁也不报错。现在**权威在后端**（`GET /a/v1/opt/templates`），
+ *   本表只回答「这个 key 怎么用中文说、拿什么示例开箱跑」。
+ *   后端给了而本表没有的 key **照样上屏**（标「本页暂无中文示例」），不许静默隐藏 ——
+ *   隐藏就等于把新模板藏起来，恰是本单要治的病。
+ */
+const FAMILY_COPY: { key: string; label: string; hint: string }[] = [
   { key: "facility_location", label: "选址（基地×订单）", hint: "选开哪些设施 + 每个订单在哪生产·min 总成本" },
   { key: "min_cost_flow", label: "调拨网络", hint: "供需网络·min 运输成本" },
   { key: "set_cover", label: "覆盖布点", hint: "最少集合覆盖全域" },
@@ -195,9 +205,51 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
     },
   });
 
+  /**
+   * WO-BEFE-E · 模板族**权威清单**（`GET /a/v1/opt/templates`）。
+   *
+   * `retry:false`：`opt.solver-pool` 是暗发 feature（defaultOn:false），关着时后端回
+   * 404 `FEATURE_NOT_FOUND`（R3 先于 authz）——那是「本租户没开通」，不是「后端坏了」，重试没意义。
+   * 取不到 ⇒ 回退到本页内置的 `FAMILY_COPY` 键集，并**在屏上写明这是回退**（不冒充权威）。
+   */
+  const templatesQuery = useQuery({ queryKey: ["a", "opt-templates"], queryFn: fetchOptTemplates, retry: false });
+  const authoritative = templatesQuery.data?.families ?? null;
+  /** 屏上要铺的 family 卡：后端给的为准；后端给了而本页无中文文案的**照样上屏**（标注而非隐藏）。 */
+  const families = useMemo(() => {
+    const keys = authoritative ?? FAMILY_COPY.map((f) => f.key);
+    return keys.map((key) => FAMILY_COPY.find((f) => f.key === key) ?? { key, label: key, hint: "本页暂无中文示例——可经 CLI/curl 调用（R15）" });
+  }, [authoritative]);
+
   const errMsg = (error as { message?: string } | undefined)?.message ?? "";
   const unavailable = isError && /未接入|OPTIMIZER_BASE_URL|not.?configured/i.test(errMsg);
-  const activeFamily = FAMILIES.find((f) => f.key === family);
+  const activeFamily = families.find((f) => f.key === family);
+
+  // ── WO-BEFE-E · 按需求检索模板（`GET /a/v1/opt/retrieve`·advisory 不入确定性求解路径）──
+  const [need, setNeed] = useState("");
+  const [needSubmitted, setNeedSubmitted] = useState<string | null>(null);
+  const retrieveQuery = useQuery({
+    queryKey: ["a", "opt-retrieve", needSubmitted],
+    queryFn: () => retrieveOptTemplates(needSubmitted!),
+    enabled: needSubmitted !== null && needSubmitted.trim() !== "",
+    retry: false,
+  });
+
+  // ── WO-BEFE-E · 基线求解（`POST /a/v1/opt/solve`）——「就现在，最优怎么排」──────────
+  // 此前本页**必须先加一条扰动才肯求解**（下面「推演」按钮 `disabled={perturbs.length === 0}`），
+  // 于是这个最朴素的问法在界面上问不出来。
+  const [baseSolve, setBaseSolve] = useState<Record<string, unknown> | null>(null);
+  const [baseSolving, setBaseSolving] = useState(false);
+  const onSolveBaseline = async () => {
+    setBaseSolving(true);
+    try {
+      setBaseSolve(await solveOptTemplate(family, baseline));
+    } catch (e) {
+      setBaseSolve(null);
+      toastError(e);
+    } finally {
+      setBaseSolving(false);
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }} data-testid="optimize-whatif">
@@ -205,13 +257,68 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
       <div className="panel">
         <div className="section-title">优化推演 · {activeFamily?.label ?? family}</div>
         <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.6 }}>{activeFamily?.hint}——改一个参数，看最优决策怎么变。</div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-          {FAMILIES.map((f) => (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }} data-testid="ow-family-list">
+          {families.map((f) => (
             <button key={f.key} data-testid={`ow-family-${f.key}`} className={`btn sm${family === f.key ? " primary" : ""}`} title={f.hint} onClick={() => onPickFamily(f.key)}>
               {f.label}
             </button>
           ))}
         </div>
+        {/* WO-BEFE-E · 清单出处的诚实位：来自后端（权威）还是本页内置（回退）—— 两者绝不长得一样。 */}
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6 }} data-testid="ow-family-source" data-authoritative={authoritative ? "1" : "0"}>
+          {authoritative
+            ? `模板族清单来自后端 /a/v1/opt/templates（${authoritative.length} 个 · 权威）`
+            : templatesQuery.isLoading
+              ? "正在取模板族清单…"
+              : "⚠ 取不到后端模板族清单（本租户未开通优化模板池 opt.solver-pool，或后端不可达）——下面是本页内置的回退清单，可能与后端不一致"}
+        </div>
+      </div>
+
+      {/* WO-BEFE-E · 按需求找模板（GET /a/v1/opt/retrieve · advisory 不入确定性求解路径 FUS2） */}
+      <div className="panel" data-testid="ow-retrieve">
+        <div className="section-title">按需求找模板<span style={{ fontSize: 12, color: "var(--muted2)", fontWeight: 400, marginLeft: 8 }}>只帮你选型，不参与求解</span></div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+          <input
+            data-testid="ow-need-input"
+            value={need}
+            placeholder="用一句话说你要解什么（例：选在哪些地方开点、成本最低）"
+            onChange={(e) => setNeed(e.target.value)}
+            style={{ flex: 1, minWidth: 260 }}
+          />
+          <button className="btn sm" data-testid="ow-need-search" disabled={need.trim() === ""} onClick={() => setNeedSubmitted(need.trim())}>
+            找模板
+          </button>
+        </div>
+        {retrieveQuery.isError && (
+          <div style={{ fontSize: 12, color: "var(--amber-txt)", marginTop: 6 }} data-testid="ow-retrieve-error">
+            检索不可用（本租户未开通优化模板池，或后端不可达）——这是「没查出来」，不是「没有匹配的模板」。
+          </div>
+        )}
+        {retrieveQuery.data && (
+          <div style={{ marginTop: 8, fontSize: 12 }} data-testid="ow-retrieve-result" data-mode={retrieveQuery.data.mode}>
+            {/* `mode` 必须原样显示：用户有权知道这次是 embedding 还是关键词回退（后端明写"不静默"）。 */}
+            <span className="badge" data-testid="ow-retrieve-mode">
+              {retrieveQuery.data.mode === "embedding" ? "向量检索" : "关键词回退（模板复用检索未开通）"}
+            </span>
+            <span style={{ marginLeft: 8 }}>
+              {retrieveQuery.data.candidates.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  className="badge mono"
+                  style={{ marginRight: 4, cursor: "pointer" }}
+                  data-testid={`ow-retrieve-pick-${c.key}`}
+                  onClick={() => onPickFamily(c.key)}
+                >
+                  {c.key}
+                </button>
+              ))}
+            </span>
+            {retrieveQuery.data.note && (
+              <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 4 }} data-testid="ow-retrieve-note">{retrieveQuery.data.note}</div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ① 输入 · 当前局面（可编辑数值格） */}
@@ -220,6 +327,23 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12, marginTop: 8 }}>
           {Object.entries(baseline).map(([coll, arr]) =>
             Array.isArray(arr) && arr.length > 0 ? <EditableTable key={coll} coll={coll} rows={arr as Record<string, unknown>[]} onEdit={editCell} /> : null,
+          )}
+        </div>
+        {/* WO-BEFE-E · 「就现在，最优怎么排」（POST /a/v1/opt/solve）——
+            此前必须先加一条扰动才肯求解，这个最朴素的问法在界面上问不出来。 */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+          <button className="btn sm" data-testid="ow-solve-baseline" disabled={baseSolving} onClick={() => void onSolveBaseline()}>
+            {baseSolving ? "求解中…" : "只求基线最优（不改任何参数）"}
+          </button>
+          {baseSolve && (
+            <span style={{ fontSize: 12 }} data-testid="ow-baseline-result">
+              目标值 <b className="mono" data-testid="ow-baseline-objective">{fmt(baseSolve.objective as number | null)}</b>
+              {typeof baseSolve.optimal === "boolean" && (
+                <span className="badge" style={{ marginLeft: 6 }} data-testid="ow-baseline-optimal">
+                  {baseSolve.optimal ? "可证最优" : String(baseSolve.status ?? "非最优")}
+                </span>
+              )}
+            </span>
           )}
         </div>
       </div>

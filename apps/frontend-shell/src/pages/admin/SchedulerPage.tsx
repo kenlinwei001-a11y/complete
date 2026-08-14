@@ -60,18 +60,18 @@ export default function SchedulerPage() {
               {items.map((j) => (
                 <tr key={j.id} style={{ cursor: "pointer" }} onClick={() => setSelected(j.id)} data-testid={`job-${j.id}`}>
                   <td>
-                    <div className="mono" style={{ fontSize: 11 }}>{j.id}</div>
+                    <div className="mono" style={{ fontSize: 12 }}>{j.id}</div>
                     <span className="badge blue">{j.kind}</span>
                   </td>
-                  <td className="mono" style={{ fontSize: 11 }}>{j.cron}</td>
-                  <td style={{ fontSize: 11 }}>{j.nextRunAt.slice(0, 16)}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>{j.cron}</td>
+                  <td style={{ fontSize: 12 }}>{j.nextRunAt.slice(0, 16)}</td>
                   <td>
                     <span className={`badge ${j.status === "ACTIVE" ? "green" : "amber"}`} data-testid={`job-${j.id}-status`}>
                       {j.status}
                     </span>
                     {/* 诚实位：出错原因不许被"已暂停"三个字盖掉 */}
                     {j.lastError && (
-                      <div className="muted" style={{ fontSize: 10, color: "var(--c-risk, #c33)" }} data-testid={`job-${j.id}-error`}>
+                      <div className="muted" style={{ fontSize: 12, color: "var(--danger-txt)" }} data-testid={`job-${j.id}-error`}>
                         {j.lastError}
                       </div>
                     )}
@@ -112,7 +112,7 @@ function JobRuns({ jobId }: { jobId: string }) {
   return (
     <div className="panel" data-testid="job-runs">
       <div className="section-title">
-        运行历史 · <span className="mono" style={{ fontSize: 11 }}>{jobId}</span>
+        运行历史 · <span className="mono" style={{ fontSize: 12 }}>{jobId}</span>
       </div>
       {isLoading && <div className="muted" style={{ fontSize: 12 }}>…</div>}
       {runs && items.length === 0 && (
@@ -130,14 +130,14 @@ function JobRuns({ jobId }: { jobId: string }) {
           <tbody>
             {items.map((r) => (
               <tr key={r.id} data-testid={`run-${r.id}`}>
-                <td style={{ fontSize: 11 }}>{r.scheduledAt.slice(0, 16)}</td>
-                <td style={{ fontSize: 11 }}>{r.finishedAt ? r.finishedAt.slice(11, 16) : "—"}</td>
+                <td style={{ fontSize: 12 }}>{r.scheduledAt.slice(0, 16)}</td>
+                <td style={{ fontSize: 12 }}>{r.finishedAt ? r.finishedAt.slice(11, 16) : "—"}</td>
                 <td>
                   <span className={`badge ${r.status === "SUCCEEDED" ? "green" : r.status === "FAILED" ? "red" : ""}`}>
                     {r.status}
                   </span>
                   {r.error && (
-                    <div className="muted" style={{ fontSize: 10 }} data-testid={`run-${r.id}-error`}>
+                    <div className="muted" style={{ fontSize: 12 }} data-testid={`run-${r.id}-error`}>
                       {r.error}
                     </div>
                   )}

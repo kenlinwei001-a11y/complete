@@ -82,7 +82,7 @@ export function KnowledgeBasePanel({ connections }: { connections: ConnectionIns
   return (
     <div className="panel" style={{ marginTop: 14 }} data-testid="kb-panel">
       <div className="section-title">知识库（S4 · 语义检索）</div>
-      <div className="muted" style={{ fontSize: 11.5, marginBottom: 10 }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
         文档入库后按 ~512 token 切块并嵌入；检索只会命中你有权读取的知识库连接。
       </div>
 
@@ -130,12 +130,12 @@ export function KnowledgeBasePanel({ connections }: { connections: ConnectionIns
         </button>
 
         {lastIngest && (
-          <span className="muted" style={{ fontSize: 11.5 }} data-testid="kb-ingest-result">
+          <span className="muted" style={{ fontSize: 12 }} data-testid="kb-ingest-result">
             已入库 <b className="zh">{lastIngest.filename}</b> · {lastIngest.chunkCount} 切块
           </span>
         )}
         {lastSync && (
-          <span className="muted" style={{ fontSize: 11.5 }} data-testid="kb-sync-result">
+          <span className="muted" style={{ fontSize: 12 }} data-testid="kb-sync-result">
             重嵌 {lastSync.docs} 篇 / {lastSync.chunks} 切块
           </span>
         )}
@@ -153,7 +153,7 @@ export function KnowledgeBasePanel({ connections }: { connections: ConnectionIns
           }}
           style={{ flex: 1 }}
         />
-        <label style={{ fontSize: 11.5 }} className="muted">
+        <label style={{ fontSize: 12 }} className="muted">
           <input
             type="checkbox"
             data-testid="kb-scope-all"
@@ -188,10 +188,10 @@ export function KnowledgeBasePanel({ connections }: { connections: ConnectionIns
                 {(search.data?.hits ?? []).map((h) => (
                   <tr key={`${h.docId}-${h.span.start}`} data-testid={`kb-hit-${h.docId}`}>
                     <td className="mono">{h.score.toFixed(3)}</td>
-                    <td className="zh" style={{ fontSize: 11.5 }}>
+                    <td className="zh" style={{ fontSize: 12 }}>
                       {h.text}
                     </td>
-                    <td className="mono" style={{ fontSize: 10.5 }}>
+                    <td className="mono" style={{ fontSize: 12 }}>
                       {h.docId}
                     </td>
                   </tr>

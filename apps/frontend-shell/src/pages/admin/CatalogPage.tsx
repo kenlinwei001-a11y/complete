@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { IntentClassifyPreviewResult, IntentDefinition, SlotDef } from "@platform/contracts";
-import { classifyIntentPreview, createIntent, createPlan, fetchIntents, fetchObjectTypes, fetchPlans, publishIntent, retireIntent, updateIntent } from "@/api/endpoints";
+import type { ExecutionPlan, IntentClassifyPreviewResult, IntentDefinition, PublishImpact, SlotDef } from "@platform/contracts";
+import { classifyIntentPreview, createIntent, createPlan, fetchIntents, fetchObjectTypes, fetchPlans, publishIntent, publishPlan, retireIntent, updateIntent, updatePlan } from "@/api/endpoints";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { toast, toastError } from "@/store/toastStore";
@@ -288,6 +288,9 @@ function IntentEditor({ intent, packageId }: { intent: IntentDefinition; package
         )}
       </div>
 
+      {/* WO-BEFE-E：绑定的那个计划的**改 / 发**（此前两条端点前端零调用 ⇒ 骨架建完改不了也发不了）。 */}
+      <PlanEditor plan={(plans ?? []).find((p) => p.id === planId) ?? null} packageId={packageId} />
+
       {/* C10 试分类（AC8 旁证）：改 examples/description 后当场验示例问句是否命中本意图（确定性词法打分，无 LLM）。 */}
       <div className="section-title" style={{ marginTop: 12 }}>试分类（验示例问句是否命中本意图）</div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -332,6 +335,134 @@ function IntentEditor({ intent, packageId }: { intent: IntentDefinition; package
                 </tbody>
               </table>
             </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * WO-BEFE-E · 执行计划「改 / 发」（`PUT /b/v1/catalog/plans/:id` · `POST …/:id/publish`）。
+ *
+ * ── 修的是一条**真死路**，不是"补一个编辑器" ─────────────────────────────────────
+ * 上面那颗「＋新建执行计划」造出来的是 `status:"DRAFT"` + 一份写死的两步骨架。
+ * 意图侧照样能保存、能发布 —— 因为发布前校验走 `resolvePlanByRef(..., {forValidation:true})`
+ * （agentcore `catalog/service.ts:191`），该档**允许回落到未发布的最高版本**（service.ts:76-79）。
+ * 而**执行期**解析走同一函数的缺省档（`resolvePlanForIntent`·service.ts:82），只认
+ * `status === "PUBLISHED"`（service.ts:74），拿不到就 `return undefined`。
+ * 净效果：**意图发布成功、屏上一片绿、真跑起来永远解析不到计划**。
+ * 这就是为什么下面那条 DRAFT 警示必须留在第一层 —— 它不是提示音，它是这条链断没断的诚实位。
+ *
+ * ── 步骤为什么用 JSON 直改而不是可视化画布 ──────────────────────────────────────
+ * 画布已经有了（`/admin/plan-builder`·WO-A），那是另一条链（PlanDSL 编译产物）。
+ * 这里要的是**把已存在的 DRAFT 推过发布线**这一跳，不重造一个编辑器；JSON 直改最小，
+ * 且与后端 `CreatePlanBodySchema.partial()` 逐字段对应。解析失败当场说、不发请求、不吞。
+ */
+function PlanEditor({ plan, packageId }: { plan: ExecutionPlan | null; packageId: string }) {
+  const queryClient = useQueryClient();
+  const [draftSteps, setDraftSteps] = useState<string>("");
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [impact, setImpact] = useState<PublishImpact | null>(null);
+  // 换了绑定的计划 → 重置编辑缓冲（渲染期同步 setState 是 React 官方的 derived-state 写法，
+  // 比 useEffect 少一帧闪烁；条件成立时才 set，故不会循环）。
+  const [boundId, setBoundId] = useState<string | null>(null);
+  if (plan && boundId !== plan.id) {
+    setBoundId(plan.id);
+    setDraftSteps(JSON.stringify(plan.steps, null, 2));
+    setParseError(null);
+    setImpact(null);
+  }
+
+  const invalidatePlans = () => void queryClient.invalidateQueries({ queryKey: ["b", "plans", { packageId }] });
+
+  const saveMut = useMutation({
+    mutationFn: () => {
+      // 解析失败**不发请求** —— 把 `JSON.parse` 的原文错误亮在屏上，比发一个 400 回来再猜有用。
+      let steps: Record<string, unknown>[];
+      try {
+        steps = JSON.parse(draftSteps) as Record<string, unknown>[];
+      } catch (e) {
+        throw new Error(`步骤 JSON 解析失败：${(e as Error).message}`);
+      }
+      if (!Array.isArray(steps)) throw new Error("步骤必须是一个数组");
+      return updatePlan(plan!.id, { steps });
+    },
+    onSuccess: () => {
+      setParseError(null);
+      invalidatePlans();
+      toast("计划步骤已保存（仍为 DRAFT，需发布后执行期才解析得到）", "success");
+    },
+    onError: (e) => {
+      setParseError((e as Error).message);
+      toastError(e);
+    },
+  });
+
+  const publishMut = useMutation({
+    mutationFn: () => publishPlan(plan!.id),
+    onSuccess: (p) => {
+      setImpact(p.impact);
+      invalidatePlans();
+      toast(`计划已发布 v${p.version} —— 绑定它的意图现在执行期解析得到了`, "success");
+    },
+    onError: toastError,
+  });
+
+  if (!plan) {
+    return (
+      <div className="muted" style={{ fontSize: 12, marginTop: 6 }} data-testid="plan-editor-unbound">
+        未绑定执行计划 —— 意图发布得了，但执行期解析不到计划（QOS 路径 A 会落空）。先在上面选一个或新建。
+      </div>
+    );
+  }
+
+  const isDraft = plan.status === "DRAFT";
+  return (
+    <div className="panel" style={{ marginTop: 8, padding: 8 }} data-testid="plan-editor" data-plan-status={plan.status}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span className="mono" style={{ fontSize: 12 }} data-testid="plan-editor-key">{plan.key} v{plan.version}</span>
+        <span className={`badge ${isDraft ? "amber" : "green"}`} data-testid="plan-editor-status">{plan.status}</span>
+        {isDraft && (
+          <>
+            <button className="btn sm" data-testid="plan-save" disabled={saveMut.isPending} onClick={() => saveMut.mutate()}>
+              {saveMut.isPending ? "保存中…" : "保存计划步骤"}
+            </button>
+            <button className="btn sm primary" data-testid="plan-publish" disabled={publishMut.isPending} onClick={() => publishMut.mutate()}>
+              {publishMut.isPending ? "发布中…" : "发布计划"}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* 诚实位（第一层，不许降层）：DRAFT = 这条链今天是断的。 */}
+      {isDraft && (
+        <div className="badge red" style={{ marginTop: 6, display: "inline-block" }} data-testid="plan-draft-warning">
+          DRAFT 未发布 —— 绑定它的意图在执行期解析不到计划（latest 只认 PUBLISHED）。发布后才真能跑。
+        </div>
+      )}
+
+      <textarea
+        data-testid="plan-steps-editor"
+        aria-label="计划步骤 JSON"
+        value={draftSteps}
+        disabled={!isDraft}
+        onChange={(e) => setDraftSteps(e.target.value)}
+        style={{ width: "100%", minHeight: 120, marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 12 }}
+      />
+      {parseError && (
+        <div className="badge red" style={{ marginTop: 4 }} data-testid="plan-steps-error">{parseError}</div>
+      )}
+      {publishMut.isError && (
+        <div className="badge red" style={{ marginTop: 4 }} data-testid="plan-publish-error">
+          {(publishMut.error as Error).message}
+        </div>
+      )}
+      {impact && (
+        <div style={{ marginTop: 6, fontSize: 12 }} data-testid="plan-publish-impact">
+          影响面：<b data-testid="plan-impact-intents">{impact.intents}</b> 个意图引用本计划
+          {impact.refs.length > 0 && (
+            <span className="mono muted" style={{ marginLeft: 6 }}>{impact.refs.map((r) => r.key).join("、")}</span>
           )}
         </div>
       )}

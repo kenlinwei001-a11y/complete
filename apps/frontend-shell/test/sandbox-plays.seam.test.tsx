@@ -276,7 +276,13 @@ describe("§1 · 方案环端到端（真 endpoints · 真 URL · 真 body）", 
     const worldsBox = await screen.findByTestId("sandbox-plays-worlds");
     await waitFor(() => expect(worldsBox.getAttribute("data-count")).toBe(String(DP_THREE.options.length)));
 
-    const cpCalls = calls.filter((c) => c.path.includes("/checkpoint"));
+    // ⚠ WO-BEFE-E 订正（**测量口径**，不是行为变更）：原判据是 `path.includes("/checkpoint")`，
+    //   而 `"/checkpoints".includes("/checkpoint")` 恒真 —— 沙盘右栏「存档与回滚」接上
+    //   `GET …/:id/checkpoints`（存档清单读端）之后，这个 filter 会把**读清单**也数成「存了一次档」，
+    //   于是断言从 1 变 2 而方案环一个字节没改。形态（铁律 0.6 句式）：
+    //   「我用『路径含 /checkpoint 的请求数』当作『存了几次档』的证据，而前者并不度量后者。」
+    //   改判 **POST + 精确后缀**：只数真正的存档写入。
+    const cpCalls = calls.filter((c) => c.method === "POST" && c.path.replace(/\?.*$/, "").endsWith("/checkpoint"));
     const branchCalls = calls.filter((c) => c.path.includes("/branch"));
     expect(cpCalls.length, "N 个方案应共用**一个**检查点：各存各的会让它们起点不同，比出来的差异里混着「起点就不一样」").toBe(1);
     expect(branchCalls.length).toBe(DP_THREE.options.length);

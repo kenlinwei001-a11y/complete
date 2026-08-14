@@ -5,11 +5,14 @@ import {
   createSimPerturbation,
   createSimSession,
   fetchSimCertification,
+  fetchSimCheckpoints,
   fetchSimCompare,
+  fetchSimPropagationRules,
   fetchSimSessions,
   fetchSimViewConfig,
   simBranch,
   simCheckpoint,
+  simRollback,
   simTick,
   simWorld,
   submitQuery,
@@ -482,6 +485,30 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const [branching, setBranching] = useState(false);
   const [branchId, setBranchId] = useState<string | null>(null); // 子分支会话 id（对比用）
   const [compare, setCompare] = useState<{ a: SimCompareSeries; b: SimCompareSeries } | null>(null);
+  /**
+   * WO-BEFE-E · 存档清单（`GET /a/v1/sim/sessions/:id/checkpoints`）。
+   *
+   * 在此之前「存档检查点」这颗按钮**存进去的东西没有任何出口**：`onCheckpoint` 只 toast 一句，
+   * 清单看不到、回滚点不了；分支用的还是当场新存的那一个，历史存档一个都用不上。
+   * 这条 query 就是那个出口 —— 也是 `sim.checkpoint_saved` 事件第一次有可失效的缓存承载。
+   */
+  const checkpointsQuery = useQuery({
+    queryKey: ["a", "sim-checkpoints", sessionId ?? ""],
+    queryFn: () => fetchSimCheckpoints(sessionId as string),
+    enabled: !!sessionId,
+    retry: false,
+  });
+  const [rollingBack, setRollingBack] = useState<string | null>(null); // 正在回滚的那个 checkpointId
+  /**
+   * WO-BEFE-E · 传导规则清单（`GET /a/v1/sim/propagation-rules`）。
+   * 与会话无关（是**租户级**配置），故不挂 `enabled: !!sessionId` —— 没建会话时也该看得到"这套世界怎么传导"。
+   * `retry:false`：`sim.propagation` 关着时后端回 404 FEATURE_NOT_FOUND，那是"没开通"不是"坏了"，重试无意义。
+   */
+  const propagationQuery = useQuery({
+    queryKey: ["a", "sim-propagation-rules"],
+    queryFn: () => fetchSimPropagationRules(),
+    retry: false,
+  });
   const adopt = useActionDraft(); // 采纳 → R4 Action 草稿（RL4 正门，沙盘模拟态不直写真值）
 
   /**
@@ -796,11 +823,50 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     if (!sessionId) return;
     try {
       const cp = await simCheckpoint(sessionId, `tick${curTick}`);
+      // WO-BEFE-E：存完**重取清单**（不本地 push 一条 —— 那是第二套真相源，且顺序会与后端
+      // `(tick, createdAt, id)` 全序漂移，而顺序在这里是语义：用户按它挑回滚点，顺序错 = 挑错档）。
+      void qc.invalidateQueries({ queryKey: ["a", "sim-checkpoints", sessionId] });
       toast(`检查点已存：${cp.label}（tick ${cp.tick}）`, "success");
     } catch (e) {
       toastError(e);
     }
-  }, [sessionId, curTick]);
+  }, [sessionId, curTick, qc]);
+
+  /**
+   * WO-BEFE-E · 回到某个存档（`POST /a/v1/sim/sessions/:id/rollback`）。
+   *
+   * ⚠ **破坏性**：后端 `deleteTicksAfter`（app.ts:1836）真的把该 tick 之后的推演删了。
+   *   所以这里给的是「回滚」而不是「预览」；想留住分叉请点旁边的「分支」（主线零字节改动）。
+   * 世界态直接落屏 —— 用的是**后端回包里的那一份**，不是前端按 checkpoint.tick 猜一份。
+   */
+  const onRollback = useCallback(
+    async (checkpointId: string, label: string, tick: number) => {
+      if (!sessionId) return;
+      setRollingBack(checkpointId);
+      try {
+        const res = await simRollback(sessionId, checkpointId);
+        setWorld(res.state);
+        setCurTick(res.curTick);
+        // 回滚后世界态的出处是**后端实测**（与 tick 回包同源），不是本地占位。
+        setWorldOrigin("MEASURED");
+        // 时间轴同步截断：轨迹留到回滚点为止，否则时间轴还画着已被删掉的那几格。
+        setHistory((h) => h.slice(0, res.curTick + 1));
+        // 分支对比失效：主线已被截断，旧的 A/B 序列不再对应同一条时间线。
+        setCompare(null);
+        // 后端把 `curTick` 写回了会话（app.ts:1838），世界列表那一列要跟着变；
+        // 扰动/存档清单同理重取（回滚删的是 tick 态，清单口径由后端说了算，前端不猜）。
+        void qc.invalidateQueries({ queryKey: ["a", "sim-sessions"] });
+        void qc.invalidateQueries({ queryKey: ["a", "sim-checkpoints", sessionId] });
+        void qc.invalidateQueries({ queryKey: ["a", "sim-perturbations", sessionId] });
+        toast(`已回到存档「${label}」（tick ${tick}）—— 其后的推演已删除`, "success");
+      } catch (e) {
+        toastError(e);
+      } finally {
+        setRollingBack(null);
+      }
+    },
+    [sessionId, qc],
+  );
 
   // 分支（北极星）：当前 tick 存检查点 → 从该检查点派生子会话 → 取 A(主线)/B(分支) 对比序列。
   const onBranch = useCallback(async () => {
@@ -1075,10 +1141,42 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       id: "derived",
       title: "本体派生",
       node: (
+        <>
         <span data-testid="sandbox-config-summary" style={{ font: "600 12px var(--font-mono)", color: "var(--muted2)" }}>
           本体派生 {cfg.nodeTypes.length} 类对象 · {cfg.linkTypes.length} 类链路 · {cfg.stateVars.length} 状态变量 ·{" "}
           {cfg.propagationCount} 传导规则
         </span>
+        {/*
+          WO-BEFE-E · 传导规则**逐条**（`GET /a/v1/sim/propagation-rules`，此前前端零调用）。
+          上面那句「{propagationCount} 传导规则」是个**没有内容的数**：就绪面板甚至会警告
+          「已发布 N 条传导规则，本次一条都没触发」（`SimReadinessPanel.tsx:278`），
+          而**哪 N 条**在界面上问不出来 ⇒ 那句警告没有可操作的下一步。这一段就是那个下一步。
+        */}
+        <div data-testid="sandbox-propagation-rules" style={{ marginTop: 6 }}>
+          {propagationQuery.isError ? (
+            <div className={styles.sub} data-testid="sandbox-propagation-error">
+              传导规则清单不可用（`sim.propagation` 未开通或后端不可达）——这是「没查出来」，不是「没有规则」。
+            </div>
+          ) : (propagationQuery.data?.items?.length ?? 0) === 0 ? (
+            <div className={styles.sub} data-testid="sandbox-propagation-empty">
+              {propagationQuery.isLoading ? "加载传导规则…" : "本租户没有已发布的传导规则 —— tick 只会推进时间，状态不会沿链路传导。"}
+            </div>
+          ) : (
+            <ul data-testid="sandbox-propagation-list" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+              {propagationQuery.data!.items.map((r) => (
+                <li key={r.id} data-testid={`sandbox-propagation-${r.key}`} style={{ font: "600 12px var(--font-mono)", color: "var(--muted2)" }}>
+                  {r.sourceTypeKey}.{r.sourceStateVar} —{r.viaLinkKey}→ {r.targetTypeKey}.{r.targetStateVar}
+                  <span className={styles.sub} style={{ marginLeft: 6 }}>
+                    ×{r.coefficient} · 延迟 {r.delayTicks} tick
+                    {/* 节拍闸门是「这条流为什么没触发」最常见的答案 —— 有绑定就必须看得见 */}
+                    {r.cadenceNodeId ? ` · 过节拍闸门 ${r.cadenceNodeId}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        </>
       ),
     },
   ];
@@ -1246,6 +1344,67 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   // ── 左区折叠区：决策者用得上的几样（多场景对比 / AI 指挥台 / 企业状态 / 快照分叉）─────
   //    PRD §2 末两行判的是「已在折叠区，**不动**」——本单不改它们的层，只随左区一起搬。
   const rail: SandboxConsoleRailSection[] = [ // hardcoded-data-allow：本数组是**折叠区区块的 JSX 结构**，块内数值字面量实测全是布局值（gap/marginTop/lineHeight/width），零业务数据
+    {
+      /**
+       * WO-BEFE-E · 存档与回滚（`GET …/:id/checkpoints` + `POST …/:id/rollback`，两条此前前端零调用）。
+       *
+       * 修的不是"少了个列表"，是**「存档检查点」这颗按钮此前是单向的**：能存进去，看不见，回不去。
+       * 后端 `app.ts:1808` 那段注释里写着「前端 useQuery 属 WO-1/WO-4 边界，不在本单」——
+       * 那张单没落地，读端就在后端躺着。这一栏是它的出口。
+       *
+       * ⚠ 为什么放 `rail` 而不是 `diagnostics`：回滚是**用户要做的动作**，不是**给人看的读数**。
+       *   `diagnostics` 整块藏在「诊断」抽屉后面（`SandboxConsole.tsx:588` 的 `diagOpen`），
+       *   把一个主动作埋进诊断抽屉 = 等于没接。`rail` 里的同族（多场景对比 / 指挥台 /
+       *   快照分叉比对）个个都带动作按钮，这一栏与它们同类。
+       * ⚠ 诚实位：回滚是**破坏性**的（后端真删该 tick 之后的态），所以清单抬头就写明这一句，
+       *   而不是让用户点完才发现推演没了。想留住分叉走「分支」——那条主线零字节改动。
+       */
+      id: "checkpoints",
+      title: "存档与回滚",
+      defaultOpen: true,
+      node: (
+        <div data-testid="sandbox-checkpoints">
+          {checkpointsQuery.isError ? (
+            <div className={styles.sub} data-testid="sandbox-checkpoints-error">
+              存档清单不可用（沙盘存档功能未开通或后端不可达）——这是「没查出来」，不是「没有存档」。
+            </div>
+          ) : (checkpointsQuery.data?.items?.length ?? 0) === 0 ? (
+            <div className={styles.sub} data-testid="sandbox-checkpoints-empty">
+              {checkpointsQuery.isLoading ? "加载存档…" : "还没有存档。点上方「存档检查点」存一个，之后可以回到这一刻。"}
+            </div>
+          ) : (
+            <>
+              <div className={styles.sub} style={{ marginBottom: 4 }} data-testid="sandbox-checkpoints-count">
+                {checkpointsQuery.data!.items.length} 个存档（按 tick 排序 · 回滚会删掉该存档之后的推演）
+              </div>
+              <ul data-testid="sandbox-checkpoints-list" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                {checkpointsQuery.data!.items.map((cp) => (
+                  <li
+                    key={cp.id}
+                    data-testid={`sandbox-checkpoint-${cp.id}`}
+                    data-tick={String(cp.tick)}
+                    style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", font: "600 12px var(--font-mono)" }}
+                  >
+                    <span className="mono" style={{ color: "var(--muted2)" }} data-testid={`sandbox-checkpoint-label-${cp.id}`}>
+                      {cp.label}
+                    </span>
+                    <span className={styles.sub} data-testid={`sandbox-checkpoint-tick-${cp.id}`}>tick {cp.tick}</span>
+                    <button
+                      className="btn sm ghost"
+                      data-testid={`sandbox-rollback-${cp.id}`}
+                      disabled={rollingBack !== null}
+                      onClick={() => void onRollback(cp.id, cp.label, cp.tick)}
+                    >
+                      {rollingBack === cp.id ? "回滚中…" : "回到这一刻"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      ),
+    },
     {
       id: "compare",
       title: "多场景对比",

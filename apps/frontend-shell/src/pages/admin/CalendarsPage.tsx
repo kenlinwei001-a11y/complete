@@ -145,7 +145,7 @@ export default function CalendarsPage() {
         ) : net.data ? (
           <div style={{ marginTop: 8, fontSize: 13 }}>
             净生产天数：<strong className="mono" data-testid="net-days">{net.data.netProductionDays}</strong>
-            <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>
+            <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>
               （{net.data.from} → {net.data.to}）
             </span>
           </div>

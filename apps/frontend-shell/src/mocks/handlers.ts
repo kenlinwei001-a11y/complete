@@ -1,5 +1,5 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
-import type { AgentRunRecord, BuildPipeline, BuildPipelineKind, PlanBuilderCanvas, PlanBuilderCompileResult, PlanBuilderPublishResult, CreatePlanBuilderBody, UpdatePlanBuilderBody, PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport, FactoryCalendar, OpsPlaybook } from "@platform/contracts";
+import type { AgentRunRecord, BuildPipeline, BuildPipelineKind, PlanBuilderCanvas, PlanBuilderCompileResult, PlanBuilderPublishResult, CreatePlanBuilderBody, UpdatePlanBuilderBody, PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport, FactoryCalendar, OpsPlaybook, ReconcileAction, SchemaReconcileCandidate } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition, deriveDispositionOptions, SEG_REGISTRY } from "@platform/contracts";
 // WO-DECISION-INFO-FE · 决策三块（影响面 / 不作为后果 / 方案代价）的 mock 载荷类型，
 // 与真后端共用同一份契约 ⇒ mock 与引擎口径不可能分家。
@@ -1576,6 +1576,19 @@ const mockSimWorlds = new Map<string, { tick: number; state: Record<string, unkn
  * R6 确定性：id 走计数器、`createdAt` 固定串，无随机数、无真实时钟。
  */
 const mockSimPerturbations = new Map<string, Record<string, unknown>[]>();
+/**
+ * WO-BEFE-E · 存档清单 + 逐 tick 态历史（= `GET …/:id/checkpoints` 与 `POST …/:id/rollback` 的 mock 数据源）。
+ *
+ * 原先 `POST …/checkpoint` 是**无状态桩**：恒回 `{id:"cp_mock", tick:1}`，存进去的东西不落任何地方。
+ * 于是"存两次得到两条""回滚真能把世界态拨回去"这两件事在 mock 上根本演不出来 —— 断言只能咬桩，
+ * 那正是本仓治过的假绿。要证明接缝是通的，mock 必须**有状态**：
+ *   · `mockSimCheckpoints`：每个会话的存档清单，排序与后端 `app.ts:1826` **同一把尺**（tick → createdAt → id）；
+ *   · `mockSimTickHistory`：逐 tick 世界态，回滚据此**真取回**那一刻的态（不是把当前态原样回一遍）。
+ * mock 只镜像后端已有语义（`deleteTicksAfter` + `curTick` 拨回），**不复制传导引擎** —— 那是第二套真相源。
+ * R6 确定性：id 走计数器、`createdAt` 由 tick + 序号确定性拼出，无随机数、无真实时钟。
+ */
+const mockSimCheckpoints = new Map<string, { id: string; sessionId: string; tenantId: string; tick: number; label: string; createdAt: string }[]>();
+const mockSimTickHistory = new Map<string, Map<number, Record<string, unknown>>>();
 let mockSimSeq = 0;
 let mockPertSeq = 0;
 
@@ -1687,15 +1700,24 @@ export function resetMockOntologyRelations(): void {
   mockOntologyVersionSeq = 1;
   mockRelSeq = 0;
 }
-
+let mockCpSeq = 0;
 export function resetMockSim(): void {
   mockSimSessions.clear();
   mockSimWorlds.clear();
   mockSimPerturbations.clear();
+  mockSimCheckpoints.clear();
+  mockSimTickHistory.clear();
   mockSimSeq = 0;
   mockPertSeq = 0;
+  mockCpSeq = 0;
   mockEnterpriseStates.clear();
   resetMockOntologyRelations();
+}
+/** 记一份逐 tick 态（tick 引擎每次落态都要经这里，回滚才有得取）。 */
+function rememberTickState(sessionId: string, tick: number, state: Record<string, unknown>): void {
+  const hist = mockSimTickHistory.get(sessionId) ?? new Map<number, Record<string, unknown>>();
+  hist.set(tick, state);
+  mockSimTickHistory.set(sessionId, hist);
 }
 
 /**
@@ -1907,21 +1929,47 @@ export function clearMockTimers(): void {
  * （intake_parse 产 INTAKE_PARSE_RESULT · intake_reconcile 产 INTAKE_RECONCILE_RESULT）。
  * 值与拆分前逐字一致 —— 出厂默认（四节点全开）下 intake 响应的 intake/reconcile 两段与改造前相同。
  */
+/**
+ * WO-BEFE-E · 对账候选 HITL 队列的 mock store（= `GET/POST …/reconcile-candidates` 的数据源）。
+ * 形状 = 契约 `SchemaReconcileCandidate`（落库后带 `id`/`tenantId`）。
+ * 由 intake 的 `intake_persist_candidates` 节点写入 —— 与真后端同一个触发点，不另开后门。
+ */
+const mockReconcileCandidates = new Map<string, SchemaReconcileCandidate & { id: string; tenantId: string }>();
+export function resetMockReconcileCandidates(): void {
+  mockReconcileCandidates.clear();
+}
+
 const INTAKE_PARSE_RESULT = {
   dataSources: [
     { name: "BASE_DATA", columns: ["baseId", "name", "util", "gwh"], sampleRows: [{ baseId: "changzhou", name: "常州", util: 88, gwh: 35 }, { baseId: "xiamen", name: "厦门", util: 85, gwh: 28 }] },
     { name: "ORDER_DATA", columns: ["so", "cust", "model", "qty", "baseRef"], sampleRows: [{ so: "SO-001", cust: "星辰汽车", model: "4680-NCM", qty: 1200, baseRef: "changzhou" }] },
   ],
-  links: [{ src: "ORDER_DATA", tgt: "BASE_DATA", rel: "produced_at" }],
+  // ⚠ WO-BEFE-E：`{src,tgt}` → `{from,to,origin}` —— 契约 `ProtoLinkSchema` 与后端
+  // `prototype-intake.ts:104/111` 逐字如此。桩此前照前端手写的错类型写，两边一起错了一整程。
+  links: [{ from: "ORDER_DATA", to: "BASE_DATA", rel: "produced_at", origin: "ref" as const }],
   unparsed: [{ name: "CHART_CONFIG", reason: "非数据表（图表配置对象，已诚实跳过不静默丢）" }],
 };
+/**
+ * ⚠ **WO-BEFE-E 订正**：`candidates[].column` → `prototypeColumn`，并补齐 `suggestedAction`/`status`。
+ *
+ * 原字段名与后端**不一致**：真后端 `reconcileIntake`（`apps/datacore/src/databuilder/prototype-intake.ts:144`）
+ * 与契约 `SchemaReconcileCandidateSchema` 都叫 `prototypeColumn`。这份桩当年照着**前端手写的错类型**
+ * （`endpoints.ts` 里那份 `IntakePreview`）写，于是页面与桩互相印证、一起错：mock 态好好的，
+ * 真后端下 `PrototypeIntakePage` 那行渲染出的是 `ORDER_DATA.undefined`。
+ * 这正是本仓治过的「mock 与引擎口径分家 ⇒ 测试咬 mock 恒绿」。现在两边同用契约字段名。
+ * `autoMapped` 那一段后端确实叫 `column`（`prototype-intake.ts:140`），**不许顺手统一** —— 两段本就不同名。
+ */
 const INTAKE_RECONCILE_RESULT = {
   autoMapped: [
     { datasetName: "BASE_DATA", column: "name", targetType: "Base", targetField: "name" },
     { datasetName: "BASE_DATA", column: "util", targetType: "Base", targetField: "util" },
   ],
   candidates: [
-    { datasetName: "ORDER_DATA", column: "cust", candidates: [{ targetType: "Order", targetField: "cust", score: 0.82 }, { targetType: "Customer", targetField: "name", score: 0.61 }] },
+    {
+      datasetName: "ORDER_DATA", prototypeColumn: "cust",
+      candidates: [{ targetType: "Order", targetField: "cust", score: 0.82 }, { targetType: "Customer", targetField: "name", score: 0.61 }],
+      suggestedAction: "USE" as const, status: "PENDING" as const,
+    },
   ],
 };
 
@@ -1979,7 +2027,88 @@ function planBuilderById(id: string): PlanBuilderCanvas | undefined {
   return db.planBuilders.find((c) => c.id === id);
 }
 
+/**
+ * WO-BEFE-E · `facility_location` 真暴力最优（min 总成本 = Σ开设 + Σ就近指派；
+ * 容量判据：开设总容量 ≥ 总需求即可行 —— 就近指派近似）。
+ *
+ * 从 `solvers/:key/invoke` 的 `optimize_whatif` 分支**提到模块顶层**：
+ * `POST /a/v1/opt/solve` 的桩要用同一份。抄第二份就是第二套真相源 ——
+ * 两边一旦漂移，「基线求解」与「推演的基线那一半」会给出不同的数，而屏上看不出来。
+ * ⚠ 这是 mock 态的**形状回放**，非可证最优；真 CP-SAT 仍须打 sidecar（services/optimizer·DEPLOY.md）。
+ */
+function mockSolveFacilityLocation(a: Record<string, unknown>) {
+  const facilities = (a.facilities as { id: string; openCost: number; capacity?: number }[]) ?? [];
+  const clients = (a.clients as { id: string; demand?: number }[]) ?? [];
+  const assign = (a.assignCosts as { client: string; facility: string; cost: number }[]) ?? [];
+  const n = facilities.length;
+  if (!n || !clients.length) return null;
+  const costOf = (c: string, f: string) => assign.find((x) => x.client === c && x.facility === f)?.cost;
+  const totalDemand = clients.reduce((s, c) => s + (c.demand ?? 0), 0);
+  let best: { openFacilities: string[]; assignments: { client: string; facility: string }[]; objective: number } | null = null;
+  for (let mask = 1; mask < 1 << n; mask++) {
+    const open = facilities.filter((_, i) => (mask & (1 << i)) !== 0);
+    const cap = open.reduce((s, f) => s + (f.capacity ?? Number.POSITIVE_INFINITY), 0);
+    if (cap < totalDemand) continue; // 容量不足 → 该组合不可行
+    let obj = open.reduce((s, f) => s + f.openCost, 0);
+    const assignments: { client: string; facility: string }[] = [];
+    let ok = true;
+    for (const c of clients) {
+      let bf: string | null = null;
+      let bc = Number.POSITIVE_INFINITY;
+      for (const f of open) {
+        const cc = costOf(c.id, f.id);
+        if (typeof cc === "number" && cc < bc) { bc = cc; bf = f.id; }
+      }
+      if (bf == null) { ok = false; break; }
+      obj += bc;
+      assignments.push({ client: c.id, facility: bf });
+    }
+    if (!ok) continue;
+    if (!best || obj < best.objective) best = { openFacilities: open.map((f) => f.id), assignments, objective: obj };
+  }
+  return best;
+}
+
+/**
+ * WO-BEFE-E · 优化模板池 `/a/v1/opt/*` 的 mock 数据源。
+ *
+ * ⚠ **五个 key 与 `apps/datacore/src/app.ts:3660` 的 `OPT_FAMILIES` 逐字一致**。
+ * 桩自己再编一份就把本单要治的病（同一概念两套词表）原样搬进 mock 层。
+ */
+const MOCK_OPT_FAMILIES = ["facility_location", "min_cost_flow", "set_cover", "independent_set", "combinatorial_auction"] as const;
+
 export const handlers = [
+  // ── WO-BEFE-E · 优化模板池三条（datacore app.ts:3682 / :3689 / :3664）────────────
+  // ⚠ 语义照抄后端，**不放宽**：`opt.embedding-retrieval` 是 defaultOn:false 的暗发门，
+  // 故 retrieve 回的是 `mode:"comprehend"` 关键词回退档（后端 app.ts:3700 的那一支）。
+  // 桩若一律回 `embedding`，"这次是哪一档算的"这个诚实位在测试里就永远验不到。
+  http.get("*/a/v1/opt/templates", () => HttpResponse.json({ families: [...MOCK_OPT_FAMILIES] })),
+  http.get("*/a/v1/opt/retrieve", ({ request }) => {
+    const need = (new URL(request.url).searchParams.get("need") ?? "").trim();
+    if (!need) return err(400, "VALIDATION_ERROR", "opt retrieve 需 ?need=<需求文本>");
+    const q = need.toLowerCase();
+    const matched = MOCK_OPT_FAMILIES.filter((f) => q.includes(f) || q.includes(f.replace(/_/g, " ")));
+    return HttpResponse.json({
+      mode: "comprehend",
+      embeddingEnabled: false,
+      candidates: (matched.length ? matched : MOCK_OPT_FAMILIES).map((key) => ({ key })),
+      note: "opt.embedding-retrieval 未开 → 退回 comprehend 关键词列表（不静默）",
+    });
+  }),
+  http.post("*/a/v1/opt/solve", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { family?: string; args?: Record<string, unknown> };
+    if (!MOCK_OPT_FAMILIES.includes(body.family as (typeof MOCK_OPT_FAMILIES)[number])) {
+      return err(400, "VALIDATION_ERROR", `family 必须是 ${MOCK_OPT_FAMILIES.join("|")} 之一`);
+    }
+    if (body.family === "facility_location") {
+      const sol = mockSolveFacilityLocation(body.args ?? {});
+      if (!sol) return err(400, "VALIDATION_ERROR", "facility_location 需 facilities + clients + assignCosts");
+      return HttpResponse.json({ ...sol, optimal: true, status: "OPTIMAL" });
+    }
+    // 其余 family：mock 态无真解引擎 —— **诚实说没接入**，不编一个目标值出来
+    // （本仓纪律：画出来的假线路图比空白更危险）。真解须打 sidecar（services/optimizer）。
+    return err(501, "OPTIMIZER_NOT_CONFIGURED", `${body.family} 未接入最优化引擎（mock 态只回放 facility_location；真解需 OPTIMIZER_BASE_URL sidecar）`);
+  }),
   // ======================== A · DataCore ========================
 
   http.post("*/a/v1/auth/login", async ({ request }) => {
@@ -2130,10 +2259,42 @@ export const handlers = [
       ran.push(n.stepKey);
       if (n.stepKey === "intake_parse") out.intake = structuredClone(INTAKE_PARSE_RESULT);
       if (n.stepKey === "intake_reconcile") out.reconcile = structuredClone(INTAKE_RECONCILE_RESULT);
-      if (n.stepKey === "intake_persist_candidates") out.persistedCandidates = INTAKE_RECONCILE_RESULT.candidates.length;
+      // WO-BEFE-E：`intake_persist_candidates` 这一节点在真后端**真的落库**
+      // （`intake-pipeline.ts:135` 逐条 `repos.reconcileCandidates.put`）。桩此前只回一个计数，
+      // 于是「落库了的那批」在 mock 态根本不存在 ⇒ HITL 队列演不出来。现在真写进 store。
+      if (n.stepKey === "intake_persist_candidates") {
+        for (const [i, c] of INTAKE_RECONCILE_RESULT.candidates.entries()) {
+          const id = `rcc_mock_${i}`;
+          if (!mockReconcileCandidates.has(id)) mockReconcileCandidates.set(id, { ...structuredClone(c), id, tenantId: "demo" });
+        }
+        out.persistedCandidates = INTAKE_RECONCILE_RESULT.candidates.length;
+      }
       if (n.stepKey === "intake_emit") out.emitted = "prototype.intake_recorded";
     }
     return HttpResponse.json({ ...out, status: "SUCCEEDED", ranSteps: ran, pipeline: { kind: pipeline.kind, factory: pipeline.factory } });
+  }),
+  // ── WO-BEFE-E · 对账候选 HITL 队列（datacore app.ts:4804 / :4811）──────────────
+  // 状态机照抄后端：`status` 过滤；resolve 写 `RESOLVED` + `resolvedAction`/`resolvedTarget`/`resolvedAt`。
+  http.get("*/a/v1/databuilder/reconcile-candidates", ({ request }) => {
+    const want = new URL(request.url).searchParams.get("status");
+    const items = [...mockReconcileCandidates.values()]
+      .filter((c) => (want ? c.status === want : true))
+      // R6 确定性：按 id 稳定排序（Map 迭代序是插入序，跨用例不可依赖）。
+      .sort((a, b) => a.id.localeCompare(b.id));
+    return HttpResponse.json({ items });
+  }),
+  http.post("*/a/v1/databuilder/reconcile-candidates/:id/resolve", async ({ params, request }) => {
+    const id = String((params as { id: string }).id);
+    const cand = mockReconcileCandidates.get(id);
+    if (!cand) return err(404, "NOT_FOUND", "对账候选不存在");
+    const body = (await request.json()) as { action?: ReconcileAction; target?: string };
+    const resolved: SchemaReconcileCandidate & { id: string; tenantId: string } = {
+      ...cand, status: "RESOLVED", resolvedAction: body.action,
+      ...(body.target ? { resolvedTarget: body.target } : {}),
+      resolvedAt: "2026-08-14T00:00:00.000Z", // 确定性时间戳（R6·无 `new Date()`）
+    };
+    mockReconcileCandidates.set(id, resolved);
+    return HttpResponse.json(resolved);
   }),
   // P3 导入正门（mock）：HTML 物化进库 → 返回落库连接 + RawDataset 概要（值与原型一致）。
   http.post("*/a/v1/databuilder/intake/import", () =>
@@ -2976,39 +3137,9 @@ export const handlers = [
         return a;
       };
 
-      // facility_location 真暴力最优：min 总成本 = Σ开设 + Σ就近指派；容量：开设总容量 ≥ 总需求即可行（就近指派近似）。
-      const solveFL = (a: Record<string, unknown>) => {
-        const facilities = (a.facilities as { id: string; openCost: number; capacity?: number }[]) ?? [];
-        const clients = (a.clients as { id: string; demand?: number }[]) ?? [];
-        const assign = (a.assignCosts as { client: string; facility: string; cost: number }[]) ?? [];
-        const n = facilities.length;
-        if (!n || !clients.length) return null;
-        const costOf = (c: string, f: string) => assign.find((x) => x.client === c && x.facility === f)?.cost;
-        const totalDemand = clients.reduce((s, c) => s + (c.demand ?? 0), 0);
-        let best: { openFacilities: string[]; assignments: { client: string; facility: string }[]; objective: number } | null = null;
-        for (let mask = 1; mask < 1 << n; mask++) {
-          const open = facilities.filter((_, i) => (mask & (1 << i)) !== 0);
-          const cap = open.reduce((s, f) => s + (f.capacity ?? Number.POSITIVE_INFINITY), 0);
-          if (cap < totalDemand) continue; // 容量不足 → 该组合不可行
-          let obj = open.reduce((s, f) => s + f.openCost, 0);
-          const assignments: { client: string; facility: string }[] = [];
-          let ok = true;
-          for (const c of clients) {
-            let bf: string | null = null;
-            let bc = Number.POSITIVE_INFINITY;
-            for (const f of open) {
-              const cc = costOf(c.id, f.id);
-              if (typeof cc === "number" && cc < bc) { bc = cc; bf = f.id; }
-            }
-            if (bf == null) { ok = false; break; }
-            obj += bc;
-            assignments.push({ client: c.id, facility: bf });
-          }
-          if (!ok) continue;
-          if (!best || obj < best.objective) best = { openFacilities: open.map((f) => f.id), assignments, objective: obj };
-        }
-        return best;
-      };
+      // WO-BEFE-E：这段暴力最优**提到了模块顶层**（`mockSolveFacilityLocation`），
+      // 因为 `POST /a/v1/opt/solve` 的桩要用同一份 —— 抄第二份就是第二套真相源。
+      const solveFL = mockSolveFacilityLocation;
 
       if (family === "facility_location" && ow.args) {
         const base = solveFL(ow.args);
@@ -3269,6 +3400,70 @@ export const handlers = [
     art.status = "GOVERNED";
     art.trustLevel = "VERIFIED";
     return HttpResponse.json(art);
+  }),
+  /**
+   * WO-BEFE-E · 生成临时求解器（datacore app.ts:3574）。
+   *
+   * ⚠ 真后端这一步**要调 LLM**（`generateProvisionalSolver` 未注入 LLM 直接 400）。
+   * mock 态不假装有 LLM：产物的 `computeSource` 明写是占位、`rationale` 明写「mock 态未调 LLM」，
+   * 免得有人拿 mock 跑一遍就以为生成链路已验（本仓纪律：画出来的假线路图比空白更危险）。
+   * 状态机照抄后端：新件一律 `PROVISIONAL` + `trustLevel:UNVERIFIED`（R4 下游闸未解）。
+   */
+  http.post("*/a/v1/solvers/generate", async ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const b = (await request.json().catch(() => ({}))) as { key?: string; intent?: string };
+    if (!b.key || !b.intent) return err(400, "VALIDATION_ERROR", "key + intent required");
+    if (MOCK_SOLVER_ARTIFACTS.some((a) => a.key === b.key)) return err(409, "INVALID_STATE", `求解器 ${b.key} 已存在临时件`);
+    const art = {
+      id: `sart_mock_${MOCK_SOLVER_ARTIFACTS.length + 1}`, tenantId: "demo", key: b.key, version: 1,
+      status: "PROVISIONAL" as const, origin: "LLM_GENERATED" as const, trustLevel: "UNVERIFIED" as const,
+      computeSource: `// mock 态占位：真后端此处是 LLM 生成并冻结的纯函数源码\n// intent: ${b.intent}\nexport function compute() { return {}; }`,
+      rationale: `mock 态**未调 LLM**（真链路需配 comprehend provider）——此文本为占位，不可据此认为生成链路已验。intent: ${b.intent}`,
+      hash: `mockhash${String(MOCK_SOLVER_ARTIFACTS.length + 1).padStart(8, "0")}`,
+      outputShape: [], createdBy: "admin", createdAt: "2026-08-14T00:00:00.000Z",
+    };
+    MOCK_SOLVER_ARTIFACTS.push(art as unknown as (typeof MOCK_SOLVER_ARTIFACTS)[number]);
+    return HttpResponse.json(art, { status: 201 });
+  }),
+  /**
+   * WO-BEFE-E · 求解器影响面反查（agentcore server.ts:1270）。
+   * 复用同文件的 `ruleReferences` 同款形状；`via` 说的是"经哪条路引用的"，不是装饰。
+   */
+  http.get("*/b/v1/solvers/:key/references", ({ params }) => {
+    const key = String((params as { key: string }).key);
+    // 与 db 里真实存在的工作流/意图对账：谁的步骤里写了这个 solverKey，谁就算引用（与后端 computeReferences 同判据）。
+    const references = [
+      ...db.workflows
+        .filter((w) => w.steps.some((s) => s.type === "invoke_solver" && s.params.solverKey === key))
+        .map((w) => ({ kind: "workflow", key: w.id, name: w.name, via: "steps[].invoke_solver.solverKey" })),
+      ...db.plans
+        .filter((p) => p.steps.some((s) => (s as { type?: string; params?: { solverKey?: string } }).type === "invoke_solver" && (s as { params?: { solverKey?: string } }).params?.solverKey === key))
+        .map((p) => ({ kind: "plan", key: p.key, name: p.key, via: "steps[].invoke_solver.solverKey" })),
+    ];
+    return HttpResponse.json({ references, count: references.length });
+  }),
+  /**
+   * WO-BEFE-E · 字段角色确定性解析（datacore app.ts:3609）。
+   *
+   * ⚠ 只有这 4 个通用图求解器在后端 `SOLVER_FIELD_ROLES`（`solvers/field-roles.ts:31`）里声明了角色，
+   * 其余**必须**回空 roles —— 桩若给每个 key 都编一份角色，「这个求解器不吃角色」这一支就永远测不到。
+   */
+  http.get("*/a/v1/solvers/:key/field-roles", ({ params }) => {
+    const key = String((params as { key: string }).key);
+    const DECLARED: Record<string, Record<string, string>> = {
+      supplier_disruption_radius: { rootType: "Supplier" },
+      concentration_risk: { rootType: "Supplier", sinkType: "Order" },
+      shared_bottleneck: { resourceType: "Line", sharedByType: "Order", priorityField: "priority" },
+      margin_attribution: { targetType: "Order", revenueField: "revenue" },
+    };
+    const roles = DECLARED[key] ?? {};
+    const candidates: Record<string, { value: string; score: number; signals: string[] }[]> = {};
+    for (const [role, v] of Object.entries(roles)) candidates[role] = [{ value: v, score: 3, signals: ["lexicon", "fanIn"] }];
+    return HttpResponse.json({
+      solverKey: key, roles, candidates,
+      confidence: Object.keys(roles).length > 0 ? 1 : 0,
+      ambiguous: false,
+    });
   }),
 
   // ---- 增量 §7.10：规划体检基线（当前定稿 S&OP 版本 → plan_audit 输入字段集） ----
@@ -4896,6 +5091,24 @@ export const handlers = [
     const status = url.searchParams.get("status");
     return HttpResponse.json(status ? db.intents.filter((i) => i.status === status) : db.intents);
   }),
+  /**
+   * WO-BEFE-E 顺带补的 mock 缺口：`createIntent`（agentcore `server.ts` 的
+   * `POST /api/v1/catalog/packages/:packageId/intents`）**此前没有 handler**。
+   * 后果不只在测试里：`VITE_MOCK=1` 下点 CatalogPage 的「创建意图」（`cta-intent`）会撞
+   * `onUnhandledRequest:"error"` —— 那颗按钮在 mock 态一直是死的。
+   * 状态机照抄后端：新意图一律 `DRAFT`、版本从 1 起。
+   */
+  http.post("*/b/v1/catalog/packages/:packageId/intents", async ({ params, request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const packageId = String((params as { packageId: string }).packageId);
+    const intent = {
+      id: newId("int"), packageId, version: 1, status: "DRAFT" as const,
+      createdAt: "2026-08-14T00:00:00.000Z", updatedAt: "2026-08-14T00:00:00.000Z",
+      ...body,
+    } as (typeof db.intents)[number];
+    db.intents.push(intent);
+    return HttpResponse.json(intent, { status: 201 });
+  }),
   http.put("*/b/v1/catalog/intents/:intentId", async ({ params, request }) => {
     const body = (await request.json()) as Record<string, unknown>;
     const intent = db.intents.find((i) => i.id === params.intentId);
@@ -4941,11 +5154,48 @@ export const handlers = [
   }),
   http.get("*/b/v1/catalog/packages/:packageId/plans", () => HttpResponse.json(db.plans)),
   // G-4：自助创建执行计划（消裁决#27 死路 —— 意图可绑定新建计划）
-  http.post("*/b/v1/catalog/packages/:packageId/plans", async ({ request }) => {
-    const body = (await request.json()) as { key?: string };
-    const plan = { id: `plan_${Date.now()}`, key: body.key ?? `plan_${Date.now()}`, version: 1, status: "DRAFT" };
+  http.post("*/b/v1/catalog/packages/:packageId/plans", async ({ params, request }) => {
+    const body = (await request.json()) as { key?: string; steps?: Record<string, unknown>[] };
+    const plan = {
+      id: `plan_${Date.now()}`, packageId: String((params as { packageId: string }).packageId),
+      key: body.key ?? `plan_${Date.now()}`, version: 1, status: "DRAFT",
+      steps: body.steps ?? [],
+    };
     db.plans.push(plan);
     return HttpResponse.json(plan, { status: 201 });
+  }),
+  // ── WO-BEFE-E · 执行计划改 / 发布（后端 agentcore server.ts:653 / :661）───────────
+  // 两条状态机判据照抄后端 `catalog/service.ts:243/:271`，**不放宽**：
+  //   · 非 DRAFT 改 → 409 INVALID_STATE（`service.ts:246`）
+  //   · 非 DRAFT 发 → 409 INVALID_STATE（`service.ts:274`）
+  //   · 步骤不以 `render_answer` 收尾 → 400 PLAN_VALIDATION_ERROR（`service.ts:276` requireRenderAnswer）
+  // 桩若把这三条放宽，前端"发不出去时屏上说什么"这一支就永远测不到（而那正是用户最常撞的墙）。
+  http.put("*/b/v1/catalog/plans/:planId", async ({ params, request }) => {
+    const plan = db.plans.find((p) => p.id === String((params as { planId: string }).planId));
+    if (!plan) return err(404, "PLAN_NOT_FOUND", "计划不存在");
+    if (plan.status !== "DRAFT") return err(409, "INVALID_STATE", "仅 DRAFT 状态的计划可修改");
+    const patch = (await request.json()) as { key?: string; steps?: Record<string, unknown>[] };
+    if (patch.key !== undefined) plan.key = patch.key;
+    if (patch.steps !== undefined) plan.steps = patch.steps;
+    return HttpResponse.json(plan);
+  }),
+  http.post("*/b/v1/catalog/plans/:planId/publish", ({ params }) => {
+    const plan = db.plans.find((p) => p.id === String((params as { planId: string }).planId));
+    if (!plan) return err(404, "PLAN_NOT_FOUND", "计划不存在");
+    if (plan.status !== "DRAFT") return err(409, "INVALID_STATE", "仅 DRAFT 状态的计划可发布");
+    const last = plan.steps[plan.steps.length - 1];
+    if (plan.steps.length === 0 || (last as { type?: string } | undefined)?.type !== "render_answer") {
+      return err(400, "PLAN_VALIDATION_ERROR", "计划必须以 render_answer 步骤收尾");
+    }
+    plan.status = "PUBLISHED";
+    // 影响面 = 引用本计划的意图反查（后端 `planImpact`·service.ts:252 同口径：按 planId 或 planRef.planKey）。
+    const refs = db.intents.filter(
+      (i) => i.status !== "RETIRED" && (i.planId === plan.id || (i.planRef && i.planRef.planKey === plan.key)),
+    );
+    return HttpResponse.json({
+      ...plan,
+      impact: { agents: 0, plans: 0, intents: refs.length, refs: refs.map((i) => ({ kind: "intent", key: i.key, version: i.version, name: i.name })) },
+    });
   }),
 
   // ---- 兜底运营 ----
@@ -5677,6 +5927,7 @@ export const handlers = [
     const s: MockSimSession = { id, tenantId: "demo", baseSnapshot: base, scope: body.scope ?? {}, status: "READY", curTick: 0, parentCheckpointId: null, createdAt: "2026-08-09T00:00:00.000Z" };
     mockSimSessions.set(id, s);
     mockSimWorlds.set(id, { tick: 0, state: base });
+    rememberTickState(id, 0, base);
     return HttpResponse.json(s, { status: 201 });
   }),
   // WO-L4B · 世界列表（= 前端 sessionsQuery 的真数据源；后端对应 app.ts:1405）。
@@ -5715,6 +5966,9 @@ export const handlers = [
     bucket[p.targetStateVar] = p.mode === "delta" ? before + p.magnitude : p.mode === "scale" ? before * p.magnitude : p.magnitude;
     state[p.targetObjectId] = bucket;
     mockSimWorlds.set(id, { tick: cur.tick, state });
+    // WO-BEFE-E：扰动就地改写的是**本 tick 的态**，故同步覆盖历史里那一格 ——
+    // 否则「施加扰动 → 存档 → 再扰动 → 回滚」拿回来的会是扰动前的旧态，回滚看起来"多回了一步"。
+    rememberTickState(id, cur.tick, state);
     return HttpResponse.json({ perturbation: p, curTick: cur.tick, state }, { status: 201 });
   }),
   http.get("*/a/v1/sim/sessions/:id/perturbations", ({ params }) =>
@@ -5760,11 +6014,47 @@ export const handlers = [
     const s = mockSimSessions.get(id);
     if (s) { s.curTick = n; s.status = "RUNNING"; }
     mockSimWorlds.set(id, { tick: n, state });
+    rememberTickState(id, n, state);
     return HttpResponse.json({ curTick: n, state });
   }),
+  // WO-BEFE-E：存档改**有状态**（原先恒回 `cp_mock`/`tick:1`，存两次也只看得到一条 ⇒ 清单证明不了任何事）。
+  // `tick` 取世界当前 tick（与后端 app.ts:1795 `tick: s.curTick` 同语义），不再写死 1。
   http.post("*/a/v1/sim/sessions/:id/checkpoint", async ({ params, request }) => {
     const body = (await request.json().catch(() => ({}))) as { label?: string };
-    return HttpResponse.json({ id: "cp_mock", sessionId: String((params as { id: string }).id), tenantId: "demo", tick: 1, label: body.label ?? "cp", createdAt: new Date().toISOString() });
+    const id = String((params as { id: string }).id);
+    const tick = mockSimWorlds.get(id)?.tick ?? 0;
+    const seq = ++mockCpSeq;
+    const cp = {
+      id: `simcp_mock_${seq}`, sessionId: id, tenantId: "demo", tick,
+      label: body.label ?? `tick${tick}`,
+      // 确定性时间戳：序号 → 固定基准日的秒偏移（无 `new Date()`，同一串操作重跑字节级一致 R6）。
+      createdAt: `2026-08-14T00:00:${String(seq).padStart(2, "0")}.000Z`,
+    };
+    mockSimCheckpoints.set(id, [...(mockSimCheckpoints.get(id) ?? []), cp]);
+    return HttpResponse.json(cp, { status: 201 });
+  }),
+  // WO-BEFE-E · 存档清单读端（后端 app.ts:1825）。排序与后端**同一把尺**：`tick → createdAt → id` 全序，
+  // 不靠插入序 —— 「存档 → 回滚 → 在更早的 tick 再存一次」这条常规动作正好会让两者相反。
+  http.get("*/a/v1/sim/sessions/:id/checkpoints", ({ params }) => {
+    const rows = [...(mockSimCheckpoints.get(String((params as { id: string }).id)) ?? [])];
+    rows.sort((a, b) => a.tick - b.tick || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    return HttpResponse.json({ items: rows });
+  }),
+  // WO-BEFE-E · 回滚（后端 app.ts:1832）：删掉该 tick 之后的 tick 态 + `curTick` 拨回 + 回**当时**的世界态。
+  // 「回当时的态」这一点是本 handler 的要害：若图省事回当前态，回滚测试会恒绿而缺口仍在。
+  http.post("*/a/v1/sim/sessions/:id/rollback", async ({ params, request }) => {
+    const id = String((params as { id: string }).id);
+    const body = (await request.json().catch(() => ({}))) as { checkpointId?: string };
+    const cp = (mockSimCheckpoints.get(id) ?? []).find((c) => c.id === String(body.checkpointId));
+    if (!cp) return HttpResponse.json({ error: { code: "NOT_FOUND", message: "checkpoint not found", requestId: "req_mock" } }, { status: 404 });
+    const hist = mockSimTickHistory.get(id) ?? new Map<number, Record<string, unknown>>();
+    for (const t of [...hist.keys()]) if (t > cp.tick) hist.delete(t);
+    mockSimTickHistory.set(id, hist);
+    const state = hist.get(cp.tick) ?? {};
+    mockSimWorlds.set(id, { tick: cp.tick, state });
+    const s = mockSimSessions.get(id);
+    if (s) s.curTick = cp.tick;
+    return HttpResponse.json({ curTick: cp.tick, state });
   }),
   http.post("*/a/v1/sim/sessions/:id/branch", async ({ params, request }) => {
     const body = (await request.json().catch(() => ({}))) as { checkpointId?: string };
@@ -5777,6 +6067,25 @@ export const handlers = [
     mockSimSessions.set(child.id, child);
     mockSimWorlds.set(child.id, { tick: 0, state: child.baseSnapshot });
     return HttpResponse.json(child, { status: 201 });
+  }),
+  /**
+   * WO-BEFE-E · 传导规则清单（datacore app.ts:1860）。
+   * `?published=false` 才连草稿一起列（后端判据 `published !== "false"` ⇒ 默认只列已发布）——
+   * 桩照抄这一条，否则"默认看不到草稿"这一支永远验不到。
+   * 规则条数与 `view-config` 的 `propagationCount: 1` 对齐：两处不一致的话，屏上会出现
+   * 「1 传导规则」配一张两行的表，那正是本单要治的「数与内容不是同一件事」。
+   */
+  http.get("*/a/v1/sim/propagation-rules", ({ request }) => {
+    const includeDrafts = new URL(request.url).searchParams.get("published") === "false";
+    const rows = [
+      { id: "simpr_mock_1", tenantId: "demo", key: "pr_a_to_b", sourceTypeKey: "TypeA", sourceStateVar: "s1",
+        viaLinkKey: "linkAB", targetTypeKey: "TypeB", targetStateVar: "s2", coefficient: 0.85, delayTicks: 1,
+        combine: "sum", decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null, published: true },
+      { id: "simpr_mock_2", tenantId: "demo", key: "pr_draft", sourceTypeKey: "TypeB", sourceStateVar: "s2",
+        viaLinkKey: "linkAB", targetTypeKey: "TypeC", targetStateVar: "s1", coefficient: 0.5, delayTicks: 0,
+        combine: "sum", decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null, published: false },
+    ];
+    return HttpResponse.json({ items: includeDrafts ? rows : rows.filter((r) => r.published) });
   }),
   http.get("*/a/v1/sim/compare", () =>
     HttpResponse.json({

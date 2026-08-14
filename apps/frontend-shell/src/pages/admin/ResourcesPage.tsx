@@ -82,13 +82,13 @@ function ResourceDetail({ resource: seed }: { resource: IntelligenceResource }) 
 
       {/* 单资源端点带回来的选型信息（列表投影为省带宽通常不含·§5.5）：一句话能力 + 正/负向问句。 */}
       {resource.capability && (
-        <div style={{ fontSize: 11.5, marginBottom: 8 }} data-testid="resource-capability">
+        <div style={{ fontSize: 12, marginBottom: 8 }} data-testid="resource-capability">
           <span style={{ color: "var(--muted)" }}>能力：</span>
           {resource.capability}
         </div>
       )}
       {(resource.suitableQuestions?.length || resource.notSuitableQuestions?.length) && (
-        <div style={{ fontSize: 11.5, marginBottom: 10 }} data-testid="resource-questions">
+        <div style={{ fontSize: 12, marginBottom: 10 }} data-testid="resource-questions">
           {(resource.suitableQuestions ?? []).map((s) => (
             <div key={`y-${s}`}>
               <span className="badge green" style={{ marginRight: 4 }}>适合</span>

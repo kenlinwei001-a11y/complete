@@ -222,7 +222,7 @@ function DraftDetail({ draft, onChanged }: { draft: ActionDraft; onChanged: () =
           >
             {t.submit}
           </button>
-          <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>
+          <span className="muted" style={{ fontSize: 12, marginLeft: 8 }}>
             {t.submitHint}
           </span>
         </div>
@@ -293,7 +293,7 @@ function AuditTrail({ draftId }: { draftId: string }) {
               <span className="mono" data-testid="audit-execution">{JSON.stringify(data.executionResult)}</span>
             )}
           </div>
-          <div className="section-title" style={{ fontSize: 11 }}>{t.auditEvents}</div>
+          <div className="section-title" style={{ fontSize: 12 }}>{t.auditEvents}</div>
           {data.events.length === 0 ? (
             <div className="muted" style={{ fontSize: 12 }} data-testid="audit-no-events">{t.auditNoEvents}</div>
           ) : (

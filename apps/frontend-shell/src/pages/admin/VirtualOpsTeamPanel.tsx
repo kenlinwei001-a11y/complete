@@ -49,7 +49,7 @@ export function VirtualOpsTeamPanel() {
   return (
     <section className="panel" style={{ marginBottom: 16 }} data-testid="virtual-ops-panel">
       <h3 style={{ fontSize: 13 }}>D · 虚拟操作团队与剧本（仅 SYNTHETIC 租户）</h3>
-      <p style={{ fontSize: 11, color: "var(--muted2)" }}>
+      <p style={{ fontSize: 12, color: "var(--muted2)" }}>
         虚拟账号与真人走**完全相同**的 API（提问 / 审批 / S&OP），编排器不直写任何结果表。
         真实租户此处为空是**设计如此**，不是缺陷。
       </p>
@@ -109,7 +109,7 @@ export function VirtualOpsTeamPanel() {
               <div key={c} style={{ fontSize: 12, padding: "2px 0" }} data-testid={`cadence-${c}`}>
                 <span className="badge">{c}</span>
                 {acts.map((a, i) => (
-                  <span key={i} className="mono" style={{ marginLeft: 6, fontSize: 11 }}>
+                  <span key={i} className="mono" style={{ marginLeft: 6, fontSize: 12 }}>
                     {a.kind}@{a.persona}
                   </span>
                 ))}
@@ -141,13 +141,13 @@ export function VirtualOpsTeamPanel() {
                 {/* 计数与明细分开：第一层给数，明细在同格里压成一行小字（不另开一层） */}
                 <td data-testid={`tick-${r.tick}-executed`}>
                   {r.executed.length}
-                  <span className="muted" style={{ fontSize: 10, marginLeft: 6 }}>
+                  <span className="muted" style={{ fontSize: 12, marginLeft: 6 }}>
                     {r.executed.map((e) => `${e.kind}${e.decision ? `→${e.decision}` : ""}`).join(", ")}
                   </span>
                 </td>
                 <td data-testid={`tick-${r.tick}-skipped`}>
                   {r.skipped.length}
-                  <span className="muted" style={{ fontSize: 10, marginLeft: 6 }}>
+                  <span className="muted" style={{ fontSize: 12, marginLeft: 6 }}>
                     {r.skipped.map((s) => s.reason).join(", ")}
                   </span>
                 </td>

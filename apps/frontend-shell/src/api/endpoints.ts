@@ -61,6 +61,7 @@ import type {
   SandboxViewConfig,
   Perturbation,
   PerturbationKind,
+  PropagationRule, // WO-BEFE-E · 传导规则清单（契约已有，前端不重定义）
   SimSession,
   SimCertification,
   SimCheckpoint,
@@ -74,6 +75,12 @@ import type {
   EnterpriseState,
   ImpactAnalysisRequest,
   ImpactAnalysisResponse,
+  // WO-BEFE-E · 执行计划编辑/发布（契约已有 ExecutionPlan，前端不重定义 —— contracts-only-shared）
+  ExecutionPlan,
+  // WO-BEFE-E · 原型 intake 对账（前端此前手写重定义了一份**字段名与后端不同**的形状，见 IntakePreview 注释）
+  IntakeResponse,
+  SchemaReconcileCandidate,
+  ReconcileAction,
 } from "@platform/contracts";
 import { ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 真实世界 worldId 单源（前端不许再写一个 "REAL" 字面量）
 import { api } from "./apiClient";
@@ -684,6 +691,90 @@ export const simWorld = (sessionId: string) =>
 /** 命名存档（检查点）。 */
 export const simCheckpoint = (sessionId: string, label?: string) =>
   api.a<SimCheckpoint>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/checkpoint`, { body: { label } });
+
+// ── WO-BEFE-E · 存档「存得进、看不见、回不去」的两条补口 ─────────────────────────
+// 门 `befe-seam:check` 载体② 把这两条列为「后端注册了·前端零调用」：
+//   `GET  /a/v1/sim/sessions/*/checkpoints`   （后端 app.ts:1825 · WO-ENGINE-2 件二·半边A 开的读端）
+//   `POST /a/v1/sim/sessions/*/rollback`      （后端 app.ts:1832）
+// 实测的病灶不是"少了个 API"，是**沙盘上那颗「存档检查点」按钮存进去的东西没有任何出口**：
+//   `SandboxView.onCheckpoint`（SandboxView.tsx:784）只 toast 一句「检查点已存」，
+//   既没有清单可看，也没有回滚可点；`simBranch` 虽然吃 `checkpointId`，但它用的是**当场新存的**
+//   那一个（SandboxView.tsx:799 先 `simCheckpoint` 再 `simBranch`），历史存档一个都用不上。
+// 后端 app.ts:1808 那段长注释里白纸黑字写着「前端 useQuery 属 WO-1/WO-4 边界，不在本单」——
+// 那张单从没落地，于是读端在后端躺了整整一程。本单接的就是这一跳。
+//
+// ⚠ 排序是**语义**不是美观（后端 app.ts:1826 同款纪律）：用户按这张表挑回滚点/分支点，
+//   顺序错 = 挑错档。前端**不再排一遍** —— 后端已按 `(tick, createdAt, id)` 全序排好，
+//   前端再排一次就是第二套真相源（两边定序规则一旦漂移，界面与引擎各说各话）。
+/** 列出这个世界的全部存档（后端已按 `tick → createdAt → id` 全序排好，前端原样承接不重排）。 */
+export const fetchSimCheckpoints = (sessionId: string) =>
+  api.a<{ items: SimCheckpoint[] }>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/checkpoints`);
+/**
+ * 回到某个存档：后端删掉该 tick 之后的全部 tick 态、把 `curTick` 拨回存档那一刻，回当时的世界态。
+ *
+ * ⚠ **这是破坏性的**：`deleteTicksAfter`（app.ts:1836）真的把之后的推演删了，不是"另存一份"。
+ *   想保留分叉请用「分支」（`simBranch`）—— 那条是派生子会话，主线一个字节不动。
+ */
+export const simRollback = (sessionId: string, checkpointId: string) =>
+  api.a<{ curTick: number; state: TickState }>(
+    `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/rollback`,
+    { body: { checkpointId } },
+  );
+
+// ── WO-BEFE-E · 优化模板池 `/a/v1/opt/*`（三条此前前端零调用）─────────────────────
+//   `GET  /a/v1/opt/templates`  （datacore app.ts:3682）
+//   `GET  /a/v1/opt/retrieve`   （datacore app.ts:3689）
+//   `POST /a/v1/opt/solve`      （datacore app.ts:3664）
+// 全部经 entitlement `apiTags:"opt"`（feature `opt.solver-pool`·**defaultOn:false 暗发**）；
+// 关 = 404 `FEATURE_NOT_FOUND`（R3 先于 authz）。调用方**必须**把 404 当「本租户没开通」处理，
+// 不许当「后端坏了」，更不许静默回退成一份前端自造的清单（那就成了第二套真相源）。
+//
+// 病灶（沿链路追出来的，非按端点名猜）：`views/OptimizeWhatifView.tsx:19` 手抄了一份
+// **5 个 family 的字面量清单**，注释还写着「= app.ts OPT_FAMILIES」——那正是「同一概念两套词表」：
+// 后端加/减一个 family，界面不会知道，两边都能跑、谁也不报错。本组把**权威**交还给后端。
+//
+// R4：三条都不写业务真值 —— `opt/solve` 走 `ontology.invokeSolver`（纯求解返回结果），
+//     `opt/whatif` 后端注释亦明写「扰动克隆（不落真值 R4）」。故无需经 Action 审批链。
+/** 列后端真正提供的优化模板族（**权威清单**，前端不再自带一份）。 */
+export const fetchOptTemplates = () => api.a<{ families: string[] }>("/a/v1/opt/templates");
+/**
+ * 按需求文本检索模板（advisory·FUS2 不入确定性求解路径）。
+ * 后端诚实分档：`opt.embedding-retrieval` 关 → `mode:"comprehend"` 关键词回退（显式标注，不静默）；
+ * 开 → `mode:"embedding"` + `coverageGap`。`mode` 必须原样显示 —— 用户有权知道这次是哪一档算的。
+ */
+export const retrieveOptTemplates = (need: string) =>
+  api.a<{
+    mode: "comprehend" | "embedding";
+    embeddingEnabled: boolean;
+    candidates: { key: string; score?: number }[];
+    coverageGap?: unknown;
+    note?: string;
+  }>(`/a/v1/opt/retrieve?need=${encodeURIComponent(need)}`);
+/**
+ * 基线求解（不带扰动）——回答「现在的最优方案是什么」。
+ *
+ * ⚠ 这条不是 `opt/whatif` 的重复：优化推演页此前**必须先加一条扰动才肯求解**
+ * （`OptimizeWhatifView` 的「推演」按钮 `disabled={perturbs.length === 0}`，
+ * 空扰动时屏上写「至少加一条推演（改一个参数）才能求解」）⇒ 用户想问「就现在，最优怎么排」
+ * 在界面上**问不出来**。这条端点就是那个问法。
+ */
+export const solveOptTemplate = (family: string, args: Record<string, unknown>, seed = 42) =>
+  api.a<Record<string, unknown>>("/a/v1/opt/solve", { body: { family, args, seed } });
+
+/**
+ * WO-BEFE-E · 传导规则清单（`GET /a/v1/sim/propagation-rules`·datacore app.ts:1860·此前前端零调用）。
+ *
+ * 病灶是**屏上有个数、没有内容**：沙盘顶栏写着「{propagationCount} 传导规则」
+ * （`SandboxView.tsx` 的 `sandbox-config-summary`），就绪面板甚至会警告
+ * 「已发布 N 条传导规则，本次一条都没触发」（`SimReadinessPanel.tsx:278`）——
+ * 而**哪 N 条**在界面上问不出来，于是那句警告没有可操作的下一步。
+ *
+ * `?published=false` 连草稿一起列（后端默认 `published !== "false"` ⇒ 只列已发布）。
+ * entitlement：`sim.propagation`（关 = 404 FEATURE_NOT_FOUND，R3 先于 authz）。
+ */
+export const fetchSimPropagationRules = (includeDrafts = false) =>
+  api.a<{ items: PropagationRule[] }>(`/a/v1/sim/propagation-rules${includeDrafts ? "?published=false" : ""}`);
+
 /** 就绪认证（L0-L4 + 三维 + canEnter + 诚实 gaps）。 */
 export const fetchSimCertification = (sessionId: string, scope: "GLOBAL" | "LOCAL" = "GLOBAL", target?: string) =>
   api.a<SimCertification>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/certification?scope=${scope}${target ? `&target=${encodeURIComponent(target)}` : ""}`);
@@ -859,7 +950,9 @@ import {
   type MappingRegistries,
   type SolverArtifact,
   // WO-BEFE-A · 因果边（传导规则）契约类型：前端**不重定义**（R1 contracts-only-shared）。
-  type PropagationRule,
+  //   ⚠ 合并 WO-BEFE-A × WO-BEFE-E 时此处曾重复声明（两单各自引入同一个类型，tsc 报
+  //     TS2300 Duplicate identifier）。保留 :64 那一处（在 api 层顶部的类型汇总里），
+  //     此处只留说明——**不是删掉了它，是它已在上面声明过**。
 } from "@platform/contracts";
 
 export const fetchAop = async (year: number): Promise<AopResponse> =>
@@ -917,6 +1010,57 @@ export const checkSolverWriteTruth = (key: string) =>
   api.a<{ allowed: boolean; label?: string; reason?: string }>(`/a/v1/solvers/${encodeURIComponent(key)}/write-truth-check`);
 export const promoteSolverArtifact = (key: string) =>
   api.a<SolverArtifact>(`/a/v1/solvers/${encodeURIComponent(key)}/promote`, { body: {} });
+
+/**
+ * WO-BEFE-E · 生成临时求解器（`POST /a/v1/solvers/generate`·datacore app.ts:3574·requireAdmin）。
+ *
+ * ── 为什么这条是**整页级别**的缺口，不是"少个按钮" ─────────────────────────────
+ * 沿链路追到底（铁律 0.5）：`solverArtifacts` 这张表的**唯一写者**是
+ * `registerProvisionalSolver`（`apps/datacore/src/solvers/service.ts:599`/`:626`），
+ * 它的唯一调用方是 `generateProvisionalSolver`（`:545`），后者的唯一调用方就是本端点
+ * （`app.ts:3579`）。`seed.ts` 里**没有任何种子**写这张表（实测 grep 全仓 0 处）。
+ * ⇒ 本端点零前端调用方 = **`/admin/solver-review` 这一整页在生产里永远是空的**，
+ *   它的空态还写着「LLM 生成后在此审核」—— 而"生成"这件事在界面上根本没有入口。
+ *
+ * ── R4 判定 ──────────────────────────────────────────────────────────────────
+ * 生成**不写业务真值**：产物是 `status:PROVISIONAL` + `trustLevel:UNVERIFIED` 的冻结代码。
+ * 用它写真值另受两道已在前端接好的闸：`/solvers/:key/write-truth-check`（仅创建人）与
+ * `/solvers/:key/promote`（人工审批 → GOVERNED）。**R4 的闸在下游且已接，故本条无需经 Action 审批链。**
+ */
+export const generateProvisionalSolver = (key: string, intent: string) =>
+  api.a<SolverArtifact>("/a/v1/solvers/generate", { body: { key, intent } });
+
+/**
+ * WO-BEFE-E · 求解器影响面反查（`GET /b/v1/solvers/:key/references`·agentcore server.ts:1270）。
+ * 「改了这个求解器 → 哪些编排资源引用它」。同族的 `/a/v1/rules/:id/references` 早已有前端调用方
+ * （`fetchRuleReferences`），求解器这一条一直没有 —— 于是求解器目录页看得到 key，看不到牵连。
+ */
+export const fetchSolverReferences = (key: string) =>
+  api.b<{ references: { kind: string; key: string; name?: string; via: string }[]; count: number }>(
+    `/b/v1/solvers/${encodeURIComponent(key)}/references`,
+  );
+
+/**
+ * WO-BEFE-E · 字段角色确定性解析（`GET /a/v1/solvers/:key/field-roles`·datacore app.ts:3609）。
+ *
+ * A13「地板语义确定化」：通用图求解器要知道**本租户本体里哪个类型/字段**充当 root/sink/resource/…，
+ * 这条端点给的就是那份绑定 + 候选 + 置信度 + 是否真歧义（零 LLM·R6 确定性）。
+ * 只有 4 个通用图求解器声明了角色（后端 `SOLVER_FIELD_ROLES`），其余返回空 roles —— 这不是错，
+ * 是「这个求解器不吃角色」。前端据此**只在有角色时**渲染，不给别的求解器画一块空面板。
+ *
+ * ⚠ 响应类型**不在 `@platform/contracts` 里**（住在 `apps/datacore/src/solvers/field-roles.ts`，
+ *   跨 app import 源码为 R1 所禁）。故此处按响应形状就地声明 —— 这是「契约里没有」而非
+ *   「契约里有却重定义」，与 contracts-only-shared 不冲突。要根治得把它提进契约包，属另开工单。
+ */
+export interface SolverFieldRolesVM {
+  solverKey: string;
+  roles: Record<string, string>;
+  candidates: Record<string, { value: string; score: number; signals: string[] }[]>;
+  confidence: number;
+  ambiguous: boolean;
+}
+export const fetchSolverFieldRoles = (key: string) =>
+  api.a<SolverFieldRolesVM>(`/a/v1/solvers/${encodeURIComponent(key)}/field-roles`);
 
 export const fetchActionDrafts = (status?: string) =>
   api.a<ActionDraft[]>(`/a/v1/action-drafts${status ? `?status=${status}` : ""}`);
@@ -1115,11 +1259,46 @@ export const publishIntent = (intentId: string) =>
   api.b<IntentDefinition>(`/b/v1/catalog/intents/${intentId}/publish`, { body: {} });
 export const retireIntent = (intentId: string) =>
   api.b<IntentDefinition>(`/b/v1/catalog/intents/${intentId}/retire`, { body: {} });
+/**
+ * 列执行计划。类型用契约的 `ExecutionPlan`（**不再本地窄化成四字段**）——
+ * 后端 `listPlans`（catalog/service.ts:226）吐的就是完整行，窄化的直接后果是
+ * `steps` 在类型层面凭空消失，于是没人想得到"计划的步骤其实是拿得到的、可以编辑的"。
+ */
 export const fetchPlans = (packageId: string) =>
-  api.b<{ id: string; key: string; version: number; status: string }[]>(`/b/v1/catalog/packages/${packageId}/plans`);
+  api.b<ExecutionPlan[]>(`/b/v1/catalog/packages/${packageId}/plans`);
 /** G-4：消裁决#27 死路 —— 前端自助创建可绑定的执行计划（后端 createPlan 端点本就存在）。 */
 export const createPlan = (packageId: string, body: { key: string; name?: string; steps: Record<string, unknown>[] }) =>
   api.b<{ id: string; key: string; version: number; status: string }>(`/b/v1/catalog/packages/${packageId}/plans`, { body });
+
+// ── WO-BEFE-E · 执行计划「建得出、改不了、发不了」的两条补口 ───────────────────────
+// 门 `befe-seam:check` 载体② 列作「后端注册了·前端零调用」：
+//   `PUT  /api/v1/catalog/plans/:planId`          （agentcore server.ts:653 · requireRole catalog_admin）
+//   `POST /api/v1/catalog/plans/:planId/publish`  （agentcore server.ts:661 · 同上）
+//
+// ⚠ 这不是"锦上添花的编辑器"，是一条**真死路**（沿链路追出来的，非按端点名猜）：
+//   上面的 `createPlan` 造出来的是 `status:"DRAFT"`（catalog/service.ts:238 写死）+ 一份
+//   写死的两步骨架（CatalogPage.tsx:128 的 `query_objects Order` / 占位 render_answer）。
+//   意图侧照样能保存、能发布 —— 因为发布前校验走 `resolvePlanByRef(..., { forValidation: true })`
+//   （catalog/service.ts:191），该分支**允许回落到未发布的最高版本**（service.ts:76-79）。
+//   而**执行期**解析走的是同一个函数的 `forValidation` 缺省档（service.ts:82 `resolvePlanForIntent`），
+//   它只认 `status === "PUBLISHED"`（service.ts:74），拿不到就 `return undefined`。
+//   净效果：**意图发布成功、屏上一片绿、真跑起来永远解析不到计划**。
+//   两条缺口一模一样地致命 —— 骨架改不了（PUT 无前端调用方）、DRAFT 发不出去（publish 无前端调用方）。
+//
+// R4：计划发布不写业务真值（只翻 `status` + 上报出向规则引用），不经 Action 审批链；
+//     真正的 R4 闸在 solver 写真值那一侧（`/a/v1/solvers/:key/write-truth-check`，已另有前端调用方）。
+/** 改执行计划（仅 DRAFT 可改，后端 409 `INVALID_STATE` 挡非 DRAFT）。 */
+export const updatePlan = (planId: string, body: { key?: string; name?: string; steps?: Record<string, unknown>[] }) =>
+  api.b<ExecutionPlan>(`/b/v1/catalog/plans/${encodeURIComponent(planId)}`, { method: "PUT", body });
+/**
+ * 发布执行计划 DRAFT → PUBLISHED（**这一步之前，绑了它的意图在执行期解析不到计划**）。
+ *
+ * 响应附 `impact` = 引用它的意图反查（引用模式增量 §2.3：publish 响应必须附影响面），
+ * 前端必须把这个数原样显示 —— 它回答的是「我这一发，影响到谁」。
+ * 后端校验失败回 400 `PLAN_VALIDATION_ERROR`（前向引用 / 缺 render_answer 收尾），错误原文照显不吞。
+ */
+export const publishPlan = (planId: string) =>
+  api.b<ExecutionPlan & { impact: PublishImpact }>(`/b/v1/catalog/plans/${encodeURIComponent(planId)}/publish`, { body: {} });
 
 // 回放编排器 §6：真实租户运营自动化 OpsSchedule（管理台 /admin/ops-schedule）
 export const fetchOpsSchedule = () =>
@@ -1589,19 +1768,43 @@ export interface BoundaryVersionVM {
 export const fetchBoundaryImpact = () => api.a<{ impact: BoundaryImpactRow[]; registries: string[] }>("/a/v1/boundary/impact");
 export const fetchBoundaryVersion = () => api.a<BoundaryVersionVM>("/a/v1/boundary/version");
 
-// DF.13c 原型 intake：上传 HTML 原型 → 确定性解析数据表/关系 + 对账既有本体字段（文件↔表可见）。
-export interface IntakePreview {
-  intake: {
-    dataSources: { name: string; columns: string[]; sampleRows: Record<string, unknown>[] }[];
-    links: { src: string; tgt: string; rel: string }[];
-    unparsed: { name: string; reason: string }[];
-  };
-  reconcile: {
-    autoMapped: { datasetName: string; column: string; targetType: string; targetField: string }[];
-    candidates: { datasetName: string; column: string; candidates: { targetType: string; targetField: string; score: number }[] }[];
-  };
-}
+/**
+ * DF.13c 原型 intake：上传 HTML 原型 → 确定性解析数据表/关系 + 对账既有本体字段（文件↔表可见）。
+ *
+ * ⚠ **WO-BEFE-E 订正（这是一个真渲染 bug，不是类型洁癖）**：本类型原先是前端**手写重定义**的，
+ *   候选那一段写成 `{ datasetName, column, candidates }`，而后端 `reconcileIntake`
+ *   （`apps/datacore/src/databuilder/prototype-intake.ts:144`）返的字段名是 **`prototypeColumn`**
+ *   （契约 `SchemaReconcileCandidateSchema` 亦然）。于是 `PrototypeIntakePage` 那行
+ *   `{c.datasetName}.{c.column}` 在**真后端**下渲染出的是 `ORDER_DATA.undefined` —— 屏上一个
+ *   看不出错的空洞。之所以没人发现：MSW 桩当年照着这份**错的**前端类型写（`column`），
+ *   于是测试与页面互相印证、一起错（本仓治过的「mock 与引擎口径分家、测试咬 mock 恒绿」同型事故）。
+ *   现在直接用契约类型（contracts-only-shared），形状分家在结构上不再可能。
+ */
+export type IntakePreview = IntakeResponse;
 export const submitIntake = (html: string) => api.a<IntakePreview>("/a/v1/databuilder/intake", { method: "POST", body: { html } });
+
+// ── WO-BEFE-E · 对账候选 HITL 队列（两条端点此前前端零调用）───────────────────────
+//   `GET  /a/v1/databuilder/reconcile-candidates`          （datacore app.ts:4804 · requireAdmin）
+//   `POST /a/v1/databuilder/reconcile-candidates/:id/resolve`（datacore app.ts:4811 · requireAdmin）
+// 病灶：intake 那一步**已经把候选落库了**（`intake-pipeline.ts:135` 的
+// `intake_persist_candidates` 节点，逐条 `repos.reconcileCandidates.put`），而前端只把**本次响应里**
+// 那几条当纯文本列出来（`PrototypeIntakePage.tsx:138`）—— 队列看得见一行字，**一条都确认不了**，
+// 刷新即消失。落库的那批从此无人问津（形态：「接了线接错地方」—— 写端接了、读/写回端没接）。
+/** 列对账候选队列（`?status=PENDING` 只看待确认）。 */
+export const fetchReconcileCandidates = (status?: "PENDING" | "RESOLVED") =>
+  api.a<{ items: SchemaReconcileCandidate[] }>(
+    `/a/v1/databuilder/reconcile-candidates${status ? `?status=${status}` : ""}`,
+  );
+/**
+ * 人对某条候选拍板：USE/RENAME/NEW/MERGE/DISCARD（+ 目标字段）→ RESOLVED + 发
+ * `schema_reconcile.resolved` 事件（datacore app.ts:4819）。
+ * `target` 的语义随 action 变（RENAME/USE = 选中的既有字段；NEW = 新字段名），故由调用方给全。
+ */
+export const resolveReconcileCandidate = (id: string, action: ReconcileAction, target?: string) =>
+  api.a<SchemaReconcileCandidate>(
+    `/a/v1/databuilder/reconcile-candidates/${encodeURIComponent(id)}/resolve`,
+    { method: "POST", body: { action, ...(target ? { target } : {}) } },
+  );
 
 // DF.13c P3 导入正门：HTML 物化进库（经 prototype_html 连接器）→ 数据连接器可见导入文件 + 在线查看。
 export interface IntakeImportResult {
