@@ -32,6 +32,9 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "ops/fallback", label: zh.nav.opsFallback, roles: ["admin", "catalog_admin"] },
   // 回放编排器 §6：真实租户运营自动化（tenant_admin）
   { path: "ops-schedule", label: zh.nav.opsSchedule, roles: ["admin", "tenant_admin"] },
+  // WO-BEFE-B：S3 定时任务台 / OC9 工厂日历（后端 admin only ⇒ 此处不放宽到 tenant_admin）
+  { path: "scheduler", label: zh.nav.scheduler, roles: ["admin", "tenant_admin"] },
+  { path: "calendars", label: zh.nav.calendars, roles: ["admin"] },
   { path: "features", label: zh.nav.features, roles: ["admin", "catalog_admin"] },
   // LLM Provider 增量 §1.4：/admin/llm-providers（tenant_admin）
   { path: "llm-providers", label: zh.nav.llmProviders, roles: ["admin", "tenant_admin"] },
@@ -99,7 +102,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   { key: "rules", title: "规则与校准", paths: ["rules", "calibration"] },
   { key: "build", title: "构建与成长", paths: ["data-builder", "pipelines", "growth", "evals", "solvers", "solver-review"] },
   { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "resources", "plan-builder", "ops/fallback", "views"] },
-  { key: "ops", title: "运营与审批", paths: ["actions", "ops-schedule", "notifications", "validation"] },
+  { key: "ops", title: "运营与审批", paths: ["actions", "ops-schedule", "scheduler", "calendars", "notifications", "validation"] },
   { key: "governance", title: "平台治理", paths: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration", "meta"] },
 ];
 

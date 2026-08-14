@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActionDraft } from "@platform/contracts";
-import { decideActionDraft, fetchActionDrafts } from "@/api/endpoints";
+import { cancelActionDraft, decideActionDraft, fetchActionDraftAudit, fetchActionDrafts } from "@/api/endpoints";
 import { ConfirmModal } from "@/components/ui/Modal";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { baseRoles } from "@/pages/adminRegistry";
@@ -10,7 +10,11 @@ import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
 const t = zh.admin.actions;
-const STATUSES = ["PENDING_APPROVAL", "APPROVED", "REJECTED", "EXECUTED", "EXECUTION_FAILED"] as const;
+// WO-BEFE-B：CANCELLED 此前不在筛选里 —— 撤回后的草稿在这个页面上**根本看不到**，
+// 于是"撤回成功"这件事没有任何可核查的落点。加上它，撤回才有去处。
+const STATUSES = ["PENDING_APPROVAL", "APPROVED", "REJECTED", "CANCELLED", "EXECUTED", "EXECUTION_FAILED"] as const;
+/** 后端 `actions.ts:753`：EXECUTING 之后不可撤 —— 前端按同一集合置灰（真正的拦截仍在后端）。 */
+const CANCELLABLE = ["DRAFT", "PENDING_APPROVAL", "APPROVED"];
 
 /** Action 草稿与审批（PRD §7.9）：状态机列表 + 详情（参数快照/来源任务）+ 审批二次确认 */
 export default function ActionsPage() {
@@ -68,7 +72,7 @@ export default function ActionsPage() {
 function DraftDetail({ draft, onChanged }: { draft: ActionDraft; onChanged: () => void }) {
   const queryClient = useQueryClient();
   const { data: workspace } = useWorkspace();
-  const [confirm, setConfirm] = useState<"APPROVE" | "REJECT" | null>(null);
+  const [confirm, setConfirm] = useState<"APPROVE" | "REJECT" | "CANCEL" | null>(null);
   const [comment, setComment] = useState("");
 
   const pendingStep = draft.approvalSteps.find((s) => !s.decision);
@@ -77,11 +81,34 @@ function DraftDetail({ draft, onChanged }: { draft: ActionDraft; onChanged: () =
     draft.status === "PENDING_APPROVAL" &&
     pendingStep != null &&
     (myBaseRoles.includes(pendingStep.role) || myBaseRoles.includes("admin"));
+  // 撤回可见性：状态闸 + 身份闸（发起人或 admin）。两条都与后端 `cancel()` 同判据；
+  // 前端置灰只是省一次往返，**不是**授权点 —— 越过它后端仍会 409。
+  // workspace 契约里只有 `username`（无 userId），而草稿的 origin.userId 形如 `usr-planner`
+  // ⇒ 两种写法都认。认错只会多显一个按钮，后端仍会 409 —— 但少显会让发起人**根本撤不了**。
+  const me = workspace?.user?.username ?? "";
+  const canCancel =
+    CANCELLABLE.includes(draft.status) &&
+    (myBaseRoles.includes("admin") || draft.origin.userId === me || draft.origin.userId === `usr-${me}`);
 
   const decideMut = useMutation({
     mutationFn: (decision: "APPROVE" | "REJECT") => decideActionDraft(draft.id, decision, comment),
     onSuccess: () => {
       toast("审批已提交", "success");
+      void queryClient.invalidateQueries({ queryKey: ["a", "action-drafts"] });
+      void queryClient.invalidateQueries({ queryKey: ["a", "action-draft-audit", draft.id] });
+      onChanged();
+    },
+    onError: toastError,
+  });
+
+  /**
+   * WO-BEFE-B · 撤回。**不绕开 R4**：cancel 只把草稿移出审批链（→ CANCELLED），
+   * 后端不执行 payload、不写任何真值；真值写入仍只有"审批通过 → 执行"这一条路。
+   */
+  const cancelMut = useMutation({
+    mutationFn: () => cancelActionDraft(draft.id),
+    onSuccess: () => {
+      toast("已撤回", "success");
       void queryClient.invalidateQueries({ queryKey: ["a", "action-drafts"] });
       onChanged();
     },
@@ -160,16 +187,86 @@ function DraftDetail({ draft, onChanged }: { draft: ActionDraft; onChanged: () =
         </div>
       )}
 
+      {/* WO-BEFE-B · 撤回：与审批分区放置——它不是"第三种审批意见"，是**放弃**这条链。
+          可撤状态之外不渲染（而不是渲染个死按钮），免得让人以为执行中的也能撤。 */}
+      {CANCELLABLE.includes(draft.status) && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+          <button
+            className="btn sm"
+            disabled={!canCancel}
+            title={canCancel ? undefined : t.cancelNoPermission}
+            onClick={() => setConfirm("CANCEL")}
+            data-testid="cancel-btn"
+          >
+            {t.cancel}
+          </button>
+        </div>
+      )}
+
+      <AuditTrail draftId={draft.id} />
+
       {confirm && (
         <ConfirmModal
-          title={confirm === "APPROVE" ? t.approve : t.reject}
-          message={confirm === "APPROVE" ? t.confirmApprove : t.confirmReject}
+          title={confirm === "APPROVE" ? t.approve : confirm === "REJECT" ? t.reject : t.cancel}
+          message={confirm === "APPROVE" ? t.confirmApprove : confirm === "REJECT" ? t.confirmReject : t.confirmCancel}
           onCancel={() => setConfirm(null)}
           onConfirm={() => {
-            decideMut.mutate(confirm);
+            if (confirm === "CANCEL") cancelMut.mutate();
+            else decideMut.mutate(confirm);
             setConfirm(null);
           }}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * WO-BEFE-B · R4 留痕（`GET /a/v1/action-drafts/:id/audit`）。
+ *
+ * 为什么这块非有不可：R4 说「真值写入经 Action 审批」，而**审批过没过、谁批的、后端到底发没发事件**
+ * 此前在界面上一个字都看不到 —— 后端 `actions.ts:822` 把留痕算好了，前端零调用方。
+ * 没有它，"经过审批"这件事在产品里是不可核查的，只能去翻库。
+ *
+ * 诚实位：`executionResult` 为 `null` 时显「未执行」而不是空对象/0；事件为空时明说"尚无事件"，
+ * 不许拿一句"暂无数据"把"没查到"和"确实没有"混成一句。
+ */
+function AuditTrail({ draftId }: { draftId: string }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["a", "action-draft-audit", draftId],
+    queryFn: () => fetchActionDraftAudit(draftId),
+  });
+
+  return (
+    <div style={{ marginTop: 14 }} data-testid="audit-trail">
+      <div className="section-title">{t.auditTitle}</div>
+      {isLoading && <div className="muted" style={{ fontSize: 12 }}>…</div>}
+      {isError && <div className="muted" style={{ fontSize: 12 }} data-testid="audit-error">留痕读取失败</div>}
+      {data && (
+        <>
+          <div style={{ fontSize: 12, margin: "4px 0" }}>
+            <span className="section-title" style={{ display: "inline" }}>{t.auditExecution}：</span>
+            {data.executionResult == null ? (
+              <span className="badge" data-testid="audit-not-executed">{t.auditNotExecuted}</span>
+            ) : (
+              <span className="mono" data-testid="audit-execution">{JSON.stringify(data.executionResult)}</span>
+            )}
+          </div>
+          <div className="section-title" style={{ fontSize: 11 }}>{t.auditEvents}</div>
+          {data.events.length === 0 ? (
+            <div className="muted" style={{ fontSize: 12 }} data-testid="audit-no-events">{t.auditNoEvents}</div>
+          ) : (
+            <div data-testid="audit-events" data-count={data.events.length}>
+              {data.events.map((e, i) => (
+                <div key={`${e.event}-${e.at}-${i}`} style={{ display: "flex", gap: 8, fontSize: 12, padding: "2px 0" }}>
+                  <span className="mono" data-testid={`audit-event-${i}`}>{e.event}</span>
+                  <span className="muted">{e.at.slice(0, 16)}</span>
+                  {e.status && <span className="badge">{e.status}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
