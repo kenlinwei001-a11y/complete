@@ -92,6 +92,20 @@
      （本仓铁则：语义域色 theme-invariant，风险红在任何皮下都读作风险红）。 */
   --danger-soft: rgba(224, 98, 108, 0.14);
 
+  /* WO-FE-RED-7：选中项底纹。与上面 --danger-soft 同源的一笔账 ——
+     `PlanBuilderPage.module.css .canvasItemActive` 原写 `var(--primary-soft, #dbeafe)`，
+     而 --primary-soft 全仓无定义 ⇒ **永远**取那个写死的浅蓝，三套皮逐字节相同。
+     2026-08-14 实测（复验：`node scripts/check-text-legibility.mjs` 的同一套算法；
+     该项底纹上压的是 --txt 与 --muted2 两行字）：
+       写死 #dbeafe：暗色 txt **1.05:1**（近白字压近白面 = 看不见）· muted2 1.44:1
+                     浅色 13.27 / 5.70 · 暖砂 13.97 / 5.57  ← 只有默认皮是坏的，所以极易漏
+     ⇒ 逐皮定义。**不复用 --nav-active-bg**：它在 warm 下是实心深橙 #aa4109（配 --nav-active-txt 白字），
+       而这里压的是 --txt（近黑）⇒ 复用会把「不可读」从暗色皮搬到暖砂皮，不是修好。
+     取值走**半透 accent tint**（同 --danger-soft 的做法：叠在已不透明的 --panel 上，故半透无害），
+     alpha 与各皮 --nav-active-bg 的首停靠齐，保证选中态在视觉上同一族。
+     修后实测：暗色 txt 7.61 / muted2 5.07 · 浅色 13.50 / 5.80 · 暖砂 14.71 / 5.86（皆 ≥ AA 4.5）。 */
+  --primary-soft: rgba(76, 144, 240, 0.16);
+
   /* WO-THEME-SWITCH-U8：chrome 表面/交互 token（原为组件内硬编码 rgba/hex，收口至此以便主题翻转）。
      暗色值 == 收口前的渲染字面（逐值等价·保证黑曜石视觉不变·C3 additive）。 */
   --topbar-bg: linear-gradient(180deg, rgba(42, 58, 92, 0.82), rgba(28, 41, 66, 0.66));  /* 青蓝玻璃顶栏（随主题退火·纵向微渐变系玻璃条本体·非"背景渐变"） */
@@ -169,6 +183,7 @@
   --hover-tint: rgba(20, 28, 44, 0.05);
   --hover-tint-strong: rgba(20, 28, 44, 0.07);
   --scrollbar-thumb: rgba(20, 28, 44, 0.18);
+  --primary-soft: rgba(59, 91, 219, 0.13);  /* 选中项底纹（浅色皮·见 :root 同名块的实测与推导） */
   --nav-active-bg: linear-gradient(90deg, rgba(59, 91, 219, 0.13), rgba(59, 91, 219, 0.03));
   --nav-active-border: rgba(59, 91, 219, 0.35);
   /* 活动导航文字。原 #2f49be 对蓝染活动底实测 **5.52:1**，12px 需 6.0。
@@ -234,6 +249,9 @@
   --scrollbar-thumb: #d4d4d4;
   /* 活动导航实心橙 pill（非浅色 tint·橙主导）。⚠ 原为 `#E8590C`，其上的白字实测仅 **3.58:1**
      （12px 需 6.0，连 WCAG AA 4.5 都不到）⇒ 改用同色相压深的 `--accent-solid`，白字 6.05。 */
+  /* ⚠ 选中项底纹在暖砂下**不跟** --nav-active-bg 走实心橙：那颗 pill 自带白字（--nav-active-txt），
+     而 .canvasItemActive 上压的是 --txt（近黑）—— 实心深橙配近黑字读不了。故走同色相的浅 tint。 */
+  --primary-soft: rgba(232, 89, 12, 0.12);
   --nav-active-bg: #aa4109;
   --nav-active-border: #aa4109;
   --nav-active-txt: #ffffff;           /* 橙底白字 */
