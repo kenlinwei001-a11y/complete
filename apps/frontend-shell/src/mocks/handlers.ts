@@ -1348,15 +1348,38 @@ const mockSimWorlds = new Map<string, { tick: number; state: Record<string, unkn
  * R6 确定性：id 走计数器、`createdAt` 固定串，无随机数、无真实时钟。
  */
 const mockSimPerturbations = new Map<string, Record<string, unknown>[]>();
+/**
+ * WO-BEFE-E · 存档清单 + 逐 tick 态历史（= `GET …/:id/checkpoints` 与 `POST …/:id/rollback` 的 mock 数据源）。
+ *
+ * 原先 `POST …/checkpoint` 是**无状态桩**：恒回 `{id:"cp_mock", tick:1}`，存进去的东西不落任何地方。
+ * 于是"存两次得到两条""回滚真能把世界态拨回去"这两件事在 mock 上根本演不出来 —— 断言只能咬桩，
+ * 那正是本仓治过的假绿。要证明接缝是通的，mock 必须**有状态**：
+ *   · `mockSimCheckpoints`：每个会话的存档清单，排序与后端 `app.ts:1826` **同一把尺**（tick → createdAt → id）；
+ *   · `mockSimTickHistory`：逐 tick 世界态，回滚据此**真取回**那一刻的态（不是把当前态原样回一遍）。
+ * mock 只镜像后端已有语义（`deleteTicksAfter` + `curTick` 拨回），**不复制传导引擎** —— 那是第二套真相源。
+ * R6 确定性：id 走计数器、`createdAt` 由 tick + 序号确定性拼出，无随机数、无真实时钟。
+ */
+const mockSimCheckpoints = new Map<string, { id: string; sessionId: string; tenantId: string; tick: number; label: string; createdAt: string }[]>();
+const mockSimTickHistory = new Map<string, Map<number, Record<string, unknown>>>();
 let mockSimSeq = 0;
 let mockPertSeq = 0;
+let mockCpSeq = 0;
 export function resetMockSim(): void {
   mockSimSessions.clear();
   mockSimWorlds.clear();
   mockSimPerturbations.clear();
+  mockSimCheckpoints.clear();
+  mockSimTickHistory.clear();
   mockSimSeq = 0;
   mockPertSeq = 0;
+  mockCpSeq = 0;
   mockEnterpriseStates.clear();
+}
+/** 记一份逐 tick 态（tick 引擎每次落态都要经这里，回滚才有得取）。 */
+function rememberTickState(sessionId: string, tick: number, state: Record<string, unknown>): void {
+  const hist = mockSimTickHistory.get(sessionId) ?? new Map<number, Record<string, unknown>>();
+  hist.set(tick, state);
+  mockSimTickHistory.set(sessionId, hist);
 }
 
 /**
@@ -4867,6 +4890,7 @@ export const handlers = [
     const s: MockSimSession = { id, tenantId: "demo", baseSnapshot: base, scope: body.scope ?? {}, status: "READY", curTick: 0, parentCheckpointId: null, createdAt: "2026-08-09T00:00:00.000Z" };
     mockSimSessions.set(id, s);
     mockSimWorlds.set(id, { tick: 0, state: base });
+    rememberTickState(id, 0, base);
     return HttpResponse.json(s, { status: 201 });
   }),
   // WO-L4B · 世界列表（= 前端 sessionsQuery 的真数据源；后端对应 app.ts:1405）。
@@ -4905,6 +4929,9 @@ export const handlers = [
     bucket[p.targetStateVar] = p.mode === "delta" ? before + p.magnitude : p.mode === "scale" ? before * p.magnitude : p.magnitude;
     state[p.targetObjectId] = bucket;
     mockSimWorlds.set(id, { tick: cur.tick, state });
+    // WO-BEFE-E：扰动就地改写的是**本 tick 的态**，故同步覆盖历史里那一格 ——
+    // 否则「施加扰动 → 存档 → 再扰动 → 回滚」拿回来的会是扰动前的旧态，回滚看起来"多回了一步"。
+    rememberTickState(id, cur.tick, state);
     return HttpResponse.json({ perturbation: p, curTick: cur.tick, state }, { status: 201 });
   }),
   http.get("*/a/v1/sim/sessions/:id/perturbations", ({ params }) =>
@@ -4950,11 +4977,47 @@ export const handlers = [
     const s = mockSimSessions.get(id);
     if (s) { s.curTick = n; s.status = "RUNNING"; }
     mockSimWorlds.set(id, { tick: n, state });
+    rememberTickState(id, n, state);
     return HttpResponse.json({ curTick: n, state });
   }),
+  // WO-BEFE-E：存档改**有状态**（原先恒回 `cp_mock`/`tick:1`，存两次也只看得到一条 ⇒ 清单证明不了任何事）。
+  // `tick` 取世界当前 tick（与后端 app.ts:1795 `tick: s.curTick` 同语义），不再写死 1。
   http.post("*/a/v1/sim/sessions/:id/checkpoint", async ({ params, request }) => {
     const body = (await request.json().catch(() => ({}))) as { label?: string };
-    return HttpResponse.json({ id: "cp_mock", sessionId: String((params as { id: string }).id), tenantId: "demo", tick: 1, label: body.label ?? "cp", createdAt: new Date().toISOString() });
+    const id = String((params as { id: string }).id);
+    const tick = mockSimWorlds.get(id)?.tick ?? 0;
+    const seq = ++mockCpSeq;
+    const cp = {
+      id: `simcp_mock_${seq}`, sessionId: id, tenantId: "demo", tick,
+      label: body.label ?? `tick${tick}`,
+      // 确定性时间戳：序号 → 固定基准日的秒偏移（无 `new Date()`，同一串操作重跑字节级一致 R6）。
+      createdAt: `2026-08-14T00:00:${String(seq).padStart(2, "0")}.000Z`,
+    };
+    mockSimCheckpoints.set(id, [...(mockSimCheckpoints.get(id) ?? []), cp]);
+    return HttpResponse.json(cp, { status: 201 });
+  }),
+  // WO-BEFE-E · 存档清单读端（后端 app.ts:1825）。排序与后端**同一把尺**：`tick → createdAt → id` 全序，
+  // 不靠插入序 —— 「存档 → 回滚 → 在更早的 tick 再存一次」这条常规动作正好会让两者相反。
+  http.get("*/a/v1/sim/sessions/:id/checkpoints", ({ params }) => {
+    const rows = [...(mockSimCheckpoints.get(String((params as { id: string }).id)) ?? [])];
+    rows.sort((a, b) => a.tick - b.tick || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    return HttpResponse.json({ items: rows });
+  }),
+  // WO-BEFE-E · 回滚（后端 app.ts:1832）：删掉该 tick 之后的 tick 态 + `curTick` 拨回 + 回**当时**的世界态。
+  // 「回当时的态」这一点是本 handler 的要害：若图省事回当前态，回滚测试会恒绿而缺口仍在。
+  http.post("*/a/v1/sim/sessions/:id/rollback", async ({ params, request }) => {
+    const id = String((params as { id: string }).id);
+    const body = (await request.json().catch(() => ({}))) as { checkpointId?: string };
+    const cp = (mockSimCheckpoints.get(id) ?? []).find((c) => c.id === String(body.checkpointId));
+    if (!cp) return HttpResponse.json({ error: { code: "NOT_FOUND", message: "checkpoint not found", requestId: "req_mock" } }, { status: 404 });
+    const hist = mockSimTickHistory.get(id) ?? new Map<number, Record<string, unknown>>();
+    for (const t of [...hist.keys()]) if (t > cp.tick) hist.delete(t);
+    mockSimTickHistory.set(id, hist);
+    const state = hist.get(cp.tick) ?? {};
+    mockSimWorlds.set(id, { tick: cp.tick, state });
+    const s = mockSimSessions.get(id);
+    if (s) s.curTick = cp.tick;
+    return HttpResponse.json({ curTick: cp.tick, state });
   }),
   http.post("*/a/v1/sim/sessions/:id/branch", async ({ params, request }) => {
     const body = (await request.json().catch(() => ({}))) as { checkpointId?: string };

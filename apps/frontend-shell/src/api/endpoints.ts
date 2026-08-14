@@ -658,6 +658,36 @@ export const simWorld = (sessionId: string) =>
 /** 命名存档（检查点）。 */
 export const simCheckpoint = (sessionId: string, label?: string) =>
   api.a<SimCheckpoint>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/checkpoint`, { body: { label } });
+
+// ── WO-BEFE-E · 存档「存得进、看不见、回不去」的两条补口 ─────────────────────────
+// 门 `befe-seam:check` 载体② 把这两条列为「后端注册了·前端零调用」：
+//   `GET  /a/v1/sim/sessions/*/checkpoints`   （后端 app.ts:1825 · WO-ENGINE-2 件二·半边A 开的读端）
+//   `POST /a/v1/sim/sessions/*/rollback`      （后端 app.ts:1832）
+// 实测的病灶不是"少了个 API"，是**沙盘上那颗「存档检查点」按钮存进去的东西没有任何出口**：
+//   `SandboxView.onCheckpoint`（SandboxView.tsx:784）只 toast 一句「检查点已存」，
+//   既没有清单可看，也没有回滚可点；`simBranch` 虽然吃 `checkpointId`，但它用的是**当场新存的**
+//   那一个（SandboxView.tsx:799 先 `simCheckpoint` 再 `simBranch`），历史存档一个都用不上。
+// 后端 app.ts:1808 那段长注释里白纸黑字写着「前端 useQuery 属 WO-1/WO-4 边界，不在本单」——
+// 那张单从没落地，于是读端在后端躺了整整一程。本单接的就是这一跳。
+//
+// ⚠ 排序是**语义**不是美观（后端 app.ts:1826 同款纪律）：用户按这张表挑回滚点/分支点，
+//   顺序错 = 挑错档。前端**不再排一遍** —— 后端已按 `(tick, createdAt, id)` 全序排好，
+//   前端再排一次就是第二套真相源（两边定序规则一旦漂移，界面与引擎各说各话）。
+/** 列出这个世界的全部存档（后端已按 `tick → createdAt → id` 全序排好，前端原样承接不重排）。 */
+export const fetchSimCheckpoints = (sessionId: string) =>
+  api.a<{ items: SimCheckpoint[] }>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/checkpoints`);
+/**
+ * 回到某个存档：后端删掉该 tick 之后的全部 tick 态、把 `curTick` 拨回存档那一刻，回当时的世界态。
+ *
+ * ⚠ **这是破坏性的**：`deleteTicksAfter`（app.ts:1836）真的把之后的推演删了，不是"另存一份"。
+ *   想保留分叉请用「分支」（`simBranch`）—— 那条是派生子会话，主线一个字节不动。
+ */
+export const simRollback = (sessionId: string, checkpointId: string) =>
+  api.a<{ curTick: number; state: TickState }>(
+    `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/rollback`,
+    { body: { checkpointId } },
+  );
+
 /** 就绪认证（L0-L4 + 三维 + canEnter + 诚实 gaps）。 */
 export const fetchSimCertification = (sessionId: string, scope: "GLOBAL" | "LOCAL" = "GLOBAL", target?: string) =>
   api.a<SimCertification>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/certification?scope=${scope}${target ? `&target=${encodeURIComponent(target)}` : ""}`);
