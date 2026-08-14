@@ -437,6 +437,58 @@ function solverScopeTexts(solverKey) {
  * 6 · 金丝雀（与主逻辑共用同一批函数 · 不中即「门自己坏了」exit 2）
  * ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ── 三载体枚举的**唯一**实现（主判定与金丝雀共用）────────────────────────────
+ * 抽出来的理由不是整洁，是本仓的硬纪律：**金丝雀必须与主逻辑共用同一份实现，不许各抄一份**
+ * ——抄了就是装饰品，改主逻辑时金丝雀拿旧的去测、照样绿（2026-08-08 实测踩过）。
+ * 下面三个函数被 §7 主判定与 §6 金丝雀两处调用，改一处两处一起变。
+ */
+function censusS3() {
+  const rows = [];
+  for (const [solver, v] of [...shapes].sort()) {
+    const scope = solverScopeTexts(solver);
+    const declaredAt = v.from === "schema" ? `${rel(SOLVER_SERVICE)}:${anchorLine}→${v.schema}` : `${rel(SOLVER_SERVICE)}:${anchorLine}`;
+    for (const f of v.keys) {
+      const r = verdictTopLevel(f, prodTexts, scope);
+      rows.push({ id: `S3:${solver}.${f}`, carrier: "S3", owner: solver, field: f, cls: r.verdict, why: r.why, evidence: declaredAt });
+    }
+  }
+  return rows;
+}
+function censusS5() {
+  const rows = [];
+  for (const [solver, r] of [...ifaceRoots].sort()) {
+    const t = solverIfaces.get(r.root);
+    const scope = solverScopeTexts(solver);
+    for (const p of t.props) {
+      const bi = p.typeText.indexOf("{");
+      if (bi < 0) continue;                       // 非内联对象（`string` / 具名类型）——具名的归载体④，本层不重复算
+      for (const q of objectMemberProps(p.typeText, bi)) {
+        const v = verdictTopLevel(q.name, prodTexts, scope);
+        rows.push({ id: `S5:${solver}.${p.name}.${q.name}`, carrier: "S5", owner: `${solver}.${p.name}`, field: q.name, cls: v.verdict, why: v.why, evidence: `${t.file}:${t.line}（接口 ${r.root}）` });
+      }
+    }
+  }
+  return rows;
+}
+function censusS4() {
+  const rows = [];
+  let exempt = 0, covered = 0, noScope = 0;
+  for (const [name, usedAt] of [...usedBySolvers].sort()) {
+    if (schemaExemptReason(name)) { exempt++; continue; }
+    covered++;
+    const seeds = feSchemaImporters.get(name) ?? new Set();
+    const scopeTexts = [...expandScope(seeds, importersOf)].map((r) => byRel.get(r)).filter(Boolean);
+    if (scopeTexts.length === 0) noScope++;
+    const scopeHasRest = scopeTexts.some(hasBindingRest);
+    const decl = schemas.get(name);
+    for (const p of decl.props) {
+      const r = verdictScoped(p.name, scopeTexts, prodTexts, scopeHasRest);
+      rows.push({ id: `S4:${name}.${p.name}`, carrier: "S4", owner: name, field: p.name, cls: r.verdict, why: r.why, evidence: `${decl.file}:${decl.line}（求解器侧引用 ${usedAt}）` });
+    }
+  }
+  return { rows, exempt, covered, noScope };
+}
+
 function canaries() {
   const list = [];
   const add = (name, why, fn) => list.push({ name, why, fn });
@@ -460,19 +512,49 @@ function canaries() {
     return { ok: props.includes("candidates") && props.includes("severity"), got: props.join(","), want: "含 candidates 与 severity" };
   });
 
-  // C4 **必中**（载体③·主逻辑同一个 verdictTopLevel）：candidateStats 是今天已知的真死字段
-  add("必中/载体③ chain_impediments.candidateStats", "咬不中它 ⇒ 判定器恒不咬 ⇒ 报出的「干净」是假的", () => {
-    const v = verdictTopLevel("candidateStats", prodTexts, solverScopeTexts("chain_impediments"));
-    return { ok: v.verdict === "DEAD", got: `${v.verdict}（${v.why}）`, want: "DEAD" };
+  /* ⛔ C4/C5/C13 原先各点名一个**活代码里的具体字段**当"今天已知的真死字段"
+   *   （`candidateStats` / `ChainImpedimentSchema.candidates` / `candidateStats.emitted`）。
+   *   2026-08-14 三条**同时**报「期望 DEAD、实际 CONSUMED」，门整体 RC=2、连续多日不产出任何结论。
+   *   追一层（不许照 grep 收工）：不是判定器坏了，是 **WO-SANDBOX-CANDIDATES-FE 把它们全接上了** ——
+   *     · `chainImpediment.ts:655` `for (const s of payload.candidateStats ?? []) statById.set(...)` 真运行时消费
+   *     · `SandboxConsole.tsx:1644` `t.statLine(..., im.stat.emitted)` 真上屏
+   *     · `chainImpediment.ts:526/529/682/743` `im.candidates` 真进逻辑
+   *   ⇒ 金丝雀过期，门是好的。**这是好消息被门报成了坏消息。**
+   *
+   *   根因不是"选错了字段"，改指另一个字段只是把过期时间往后推。形态（铁律 0.6 句式）：
+   *   **「我用『今天这个字段是死的』当作『判定器能判死』的永久证据，而前者会过期、后者不会。」**
+   *   金丝雀的标的有自己的生命周期，而金丝雀控制不了它 —— 死字段被接线是**本门存在的目的**，
+   *   一道门不该在自己成功时崩掉。
+   *
+   *   改法：把"必中"从**点名字段**改成**群体判据** —— 判定器跑遍真实仓库，
+   *   必须**既**判得出 DEAD **又**判得出 CONSUMED。两个方向都咬：
+   *     · 恒不咬（全 CONSUMED）⇒ 报出的"干净"是假的 ⇒ 红；
+   *     · 恒咬（全 DEAD）⇒ 全仓报成缺口、门变噪音 ⇒ 红。
+   *   它永不过期，且仍跑在**真源码**上（不是合成样例）。
+   *   唯一会让它红的真实事件是「全仓死字段清零」——那本就该停下来看一眼，不该静默通过。 */
+  add("必中/载体③ 判定器双向可判（群体）", "点名单个字段的必中金丝雀会在该字段被接线时误报「门坏了」——把成功报成失败；群体判据永不过期且两个方向都咬", () => {
+    const rows = censusS3();
+    const d = rows.filter((r) => r.cls === "DEAD"), c = rows.filter((r) => r.cls === "CONSUMED");
+    return {
+      ok: d.length > 0 && c.length > 0,
+      got: `载体③ 扫 ${rows.length} 字段 · DEAD ${d.length}（例 ${d[0]?.id ?? "无"}）· CONSUMED ${c.length}（例 ${c[0]?.id ?? "无"}）`,
+      want: "DEAD>0 且 CONSUMED>0（恒不咬与恒咬两种坏法都要红）",
+    };
   });
 
-  // C5 **必中**（载体④·主逻辑同一个 verdictScoped）：candidates 全域有同名、作用域内零消费
-  add("必中/载体④ ChainImpedimentSchema.candidates", "全域名字匹配会把它放过（12 个文件有同名）——作用域判据失效则本门等于没建", () => {
-    const seeds = feSchemaImporters.get("ChainImpedimentSchema") ?? new Set();
-    const texts = [...expandScope(seeds, importersOf)].map((r) => byRel.get(r)).filter(Boolean);
-    const v = verdictScoped("candidates", texts, prodTexts, texts.some(hasBindingRest));
-    const globalHits = mentionsInProd("candidates", prodTexts).length;
-    return { ok: v.verdict === "DEAD" && globalHits > 0, got: `${v.verdict}（${v.why}）· 全域同名 ${globalHits} 文件 · 作用域 ${texts.length} 文件`, want: "DEAD 且 全域同名>0（证明它确实是作用域判据抓到的）" };
+  // C5 **必中**（载体④·作用域判据）：同样改成群体判据，但多咬一层 ——
+  //    必须存在**至少一个**「作用域内判死、而全域同名命中 >0」的字段。
+  //    这一层单靠 DEAD>0 咬不住：一个退化成全域匹配的判定器照样能产出 DEAD（那些全域也没人提的字段），
+  //    只有"全域有同名却仍判死"才证明**作用域**这层真的在起作用。作用域判据失效 ⇒ 本门等于没建。
+  add("必中/载体④ 作用域判据严于全域（群体）", "退化成全域名字匹配的判定器照样有 DEAD 输出——只有「全域有同名却仍判死」才证明作用域这层在起作用", () => {
+    const { rows } = censusS4();
+    const strict = rows.filter((r) => r.cls === "DEAD" && mentionsInProd(r.field, prodTexts).length > 0);
+    const consumed = rows.filter((r) => r.cls === "CONSUMED");
+    return {
+      ok: strict.length > 0 && consumed.length > 0,
+      got: `载体④ 扫 ${rows.length} 字段 · 作用域判死且全域有同名 ${strict.length}（例 ${strict[0]?.id ?? "无"}，全域 ${strict[0] ? mentionsInProd(strict[0].field, prodTexts).length : 0} 文件）· CONSUMED ${consumed.length}`,
+      want: "「作用域判死 且 全域同名>0」的字段 >0，且 CONSUMED>0",
+    };
   });
 
   // C6 **必不中**（载体③）：前端真在消费的字段必须放过
@@ -533,9 +615,18 @@ function canaries() {
   });
 
   // C13 **必中**（载体⑤）：candidateStats 行里的 `emitted` 是今天已知的真死字段
-  add("必中/载体⑤ chain_impediments.candidateStats.emitted", "咬不中 ⇒ 嵌套内联行字段判定失效（这层正是「为什么这个阻滞点没有方案」的所在）", () => {
-    const v = verdictTopLevel("emitted", prodTexts, solverScopeTexts("chain_impediments"));
-    return { ok: v.verdict === "DEAD", got: `${v.verdict}（${v.why}）`, want: "DEAD" };
+  // 同 C4/C5 改成群体判据（原先点名 `candidateStats.emitted`，已被 SandboxConsole.tsx:1644 接线）。
+  // 本层多咬一条**结构性**判据：`censusS5` 必须真的产出行 —— 嵌套内联对象的成员抽取一旦失效，
+  // 它会安静地返回空数组，而"扫了 0 个字段"和"扫了 N 个字段全是 CONSUMED"在汇总数字上都写着「没缺口」。
+  // **一个恒空的枚举器是最完美的假绿**：它永远不报错，永远说干净。
+  add("必中/载体⑤ 嵌套内联行字段可判（群体）", "嵌套成员抽取失效时枚举器安静返回空数组 —— 「扫了 0 个」与「全干净」在汇总数字上无法区分，恒空枚举器是最完美的假绿", () => {
+    const rows = censusS5();
+    const d = rows.filter((r) => r.cls === "DEAD"), c = rows.filter((r) => r.cls === "CONSUMED");
+    return {
+      ok: rows.length > 0 && d.length > 0 && c.length > 0,
+      got: `载体⑤ 扫 ${rows.length} 个嵌套行字段 · DEAD ${d.length}（例 ${d[0]?.id ?? "无"}）· CONSUMED ${c.length}（例 ${c[0]?.id ?? "无"}）`,
+      want: "扫描数>0 且 DEAD>0 且 CONSUMED>0",
+    };
   });
 
   // C13b **必不中**（载体⑤）：counts 行里的 total 前端真在读
@@ -584,58 +675,21 @@ const dead = [];        // { id, carrier, owner, field, cls, why, evidence }
 const undecided = [];   // 同形状，但不 gate
 let consumedCount = 0, scannedFields = 0;
 
+// 三载体一律走 census*()——与金丝雀**同一份实现**。这里只做分档累加，不再各写一遍枚举。
+const file2 = (rows) => { for (const row of rows) { scannedFields++; if (row.cls === "DEAD") dead.push(row); else if (row.cls === "UNDECIDED") undecided.push(row); else consumedCount++; } };
+
 // ── 载体③ ──
-for (const [solver, v] of [...shapes].sort()) {
-  const scope = solverScopeTexts(solver);
-  const declaredAt = v.from === "schema" ? `${rel(SOLVER_SERVICE)}:${anchorLine}→${v.schema}` : `${rel(SOLVER_SERVICE)}:${anchorLine}`;
-  for (const f of v.keys) {
-    scannedFields++;
-    const r = verdictTopLevel(f, prodTexts, scope);
-    const row = { id: `S3:${solver}.${f}`, carrier: "S3", owner: solver, field: f, cls: r.verdict, why: r.why, evidence: declaredAt };
-    if (r.verdict === "DEAD") dead.push(row);
-    else if (r.verdict === "UNDECIDED") undecided.push(row);
-    else consumedCount++;
-  }
-}
+file2(censusS3());
 
 // ── 载体⑤（求解器层结果接口的嵌套一层内联对象字段）──
-let ifaceNestedScanned = 0;
-for (const [solver, r] of [...ifaceRoots].sort()) {
-  const t = solverIfaces.get(r.root);
-  const scope = solverScopeTexts(solver);
-  for (const p of t.props) {
-    const bi = p.typeText.indexOf("{");
-    if (bi < 0) continue;                       // 非内联对象（`string` / 具名类型）——具名的归载体④，本层不重复算
-    for (const q of objectMemberProps(p.typeText, bi)) {
-      scannedFields++; ifaceNestedScanned++;
-      const v = verdictTopLevel(q.name, prodTexts, scope);
-      const row = { id: `S5:${solver}.${p.name}.${q.name}`, carrier: "S5", owner: `${solver}.${p.name}`, field: q.name, cls: v.verdict, why: v.why, evidence: `${t.file}:${t.line}（接口 ${r.root}）` };
-      if (v.verdict === "DEAD") dead.push(row);
-      else if (v.verdict === "UNDECIDED") undecided.push(row);
-      else consumedCount++;
-    }
-  }
-}
+const s5rows = censusS5();
+const ifaceNestedScanned = s5rows.length;
+file2(s5rows);
 
 // ── 载体④ ──
-let schemaCovered = 0, schemaExempt = 0, schemaNoScope = 0;
-for (const [name, usedAt] of [...usedBySolvers].sort()) {
-  if (schemaExemptReason(name)) { schemaExempt++; continue; }
-  schemaCovered++;
-  const seeds = feSchemaImporters.get(name) ?? new Set();
-  const scopeTexts = [...expandScope(seeds, importersOf)].map((r) => byRel.get(r)).filter(Boolean);
-  if (scopeTexts.length === 0) schemaNoScope++;
-  const scopeHasRest = scopeTexts.some(hasBindingRest);
-  const decl = schemas.get(name);
-  for (const p of decl.props) {
-    scannedFields++;
-    const r = verdictScoped(p.name, scopeTexts, prodTexts, scopeHasRest);
-    const row = { id: `S4:${name}.${p.name}`, carrier: "S4", owner: name, field: p.name, cls: r.verdict, why: r.why, evidence: `${decl.file}:${decl.line}（求解器侧引用 ${usedAt}）` };
-    if (r.verdict === "DEAD") dead.push(row);
-    else if (r.verdict === "UNDECIDED") undecided.push(row);
-    else consumedCount++;
-  }
-}
+const s4 = censusS4();
+const schemaCovered = s4.covered, schemaExempt = s4.exempt, schemaNoScope = s4.noScope;
+file2(s4.rows);
 
 /* ════════════════════════════════════════════════════════════════════════════
  * 8 · 棘轮基线（每条带理由 · 条数只降不升 · maxEntries 恒等于条数）
