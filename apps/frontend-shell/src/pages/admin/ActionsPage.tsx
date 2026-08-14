@@ -10,6 +10,7 @@ import {
   submitActionDraft,
 } from "@/api/endpoints";
 import { ConfirmModal } from "@/components/ui/Modal";
+import { InfoPopover } from "@/components/InfoPopover";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { baseRoles } from "@/pages/adminRegistry";
 import { toast, toastError } from "@/store/toastStore";
@@ -235,12 +236,21 @@ function DraftDetail({ draft, onChanged }: { draft: ActionDraft; onChanged: () =
           <button
             className="btn sm"
             disabled={!canCancel}
-            title={canCancel ? undefined : t.cancelNoPermission}
             onClick={() => setConfirm("CANCEL")}
             data-testid="cancel-btn"
           >
             {t.cancel}
           </button>
+          {/* WO-FE-RED-7：「为什么点不动」原挂在**原生 `title=`** 上，规范 §2 R-UI-3 明令禁止
+              （原生 tooltip 由 OS 绘制、不受组件控制、移开会滞留）。更要命的是**禁用按钮本身**：
+              `disabled` 的 `<button>` 在多数浏览器里不派发 hover/focus 事件 ⇒ 那句解释
+              **恰恰在唯一需要它的状态下打不开** —— 这不是"体验差一点"，是它从来没工作过。
+              改挂到按钮**旁边**一个独立可聚焦的 `?` 上：第一层留可见记号，正文进浮层。 */}
+          {!canCancel && (
+            <InfoPopover topic="为什么不能撤回" testId="cancel-why">
+              {t.cancelNoPermission}
+            </InfoPopover>
+          )}
         </div>
       )}
 
