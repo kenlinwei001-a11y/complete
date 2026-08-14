@@ -40,6 +40,7 @@ import { describeChainScope, echoChainScope, isChainScopeUnscoped, normalizeChai
 import { normalizeSolverArgs } from "./arg-aliases.js"; // WO-SILENT-WRONG-ANSWER-3 · 入参键名归一单一出处（base/baseId/baseName · horizon/days）
 import { detectChainImpediments } from "./chain-impediment.js"; // WO-SANDBOX-E3 · 阻滞点判定（纯函数·阈值全从规则读回）
 import { projectProcessFlowTime } from "./process-flow.js"; // WO-FLOWTIME · 流程实例流转时长（站间时长/卡顿站/瓶颈站·反推非编造）
+import { projectFinanceWorld, type FinanceWorldArgs } from "./finance-world.js"; // WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影（finance_pnl 缺的那半·只读 R4）
 import { reconstructAndPersist } from "../process/reconstruct.js"; // WO-FLOWTIME · 反推器 IO 适配层（算法在 contracts 纯函数）
 // WO-SANDBOX-S3：杠杆标签/单位单源已下沉到叶模块（见下方 re-export 注释）；本文件内部用别名引用同一份对象。
 import { LEVER_PROP_META as LEVER_PROP_META_LOCAL, type LeverValueKind } from "./lever-meta.js";
@@ -214,6 +215,13 @@ export const SOLVER_KEYS = [
   // 时刻全部由**既有带时间戳单据反推**（origin=DERIVED_FROM_DOCUMENT，逐条溯回单据 id+字段+原值），
   // ⛔ 一次都不读 stdDurationDays（不拿标准工期冒充实测）；反推不出的诚实缺席（四种 kind，非 0）。
   "process_flow_time",
+  // WO-FINANCE-WORLDSTATE 财务**金额**随世界态扰动的投影（`finance_pnl` 缺的那半）：
+  // `financePnl(ctx)` 零世界态入参 ⇒ 施加任何扰动都返回逐字节相同的一组数；本条吃 `args.worldId`，
+  // 以 FinancePlan.{budget,rolling} 与 ARInvoice.amount 的**真值**为基线，用世界态里
+  // costPressure/receivablePressure/overduePressure 做投影，每个金额带 provenance（R13），
+  // 换算除数随回包下发（`basis.divisor`·可由 args.pressureUnit 改写，不是藏起来的魔数）。
+  // R4：只读投影，绝不写回本体（采纳走 ActionDraft）。`finance_pnl` 保持原样答"本体真值口径"。
+  "finance_world_projection",
 ] as const;
 
 /** SolverContext 核心 10 类（loadContext 全表扫的对象类型全集·裁剪只作用于此 10 类）。 */
@@ -406,6 +414,16 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   //  · `origin` 反推值 vs 实测值的诚实位（今天恒 DERIVED_FROM_DOCUMENT）；
   //  · `coverage` 规则覆盖了几条流程 / 反推出几条 / 一共几条（不藏分母）。
   process_flow_time: ["asOf", "asOfSource", "origin", "coverage", "totals", "bottleneck", "stations", "timelines", "timelinesShown", "stuck", "absences", "absencesShown", "summary"],
+  // WO-FINANCE-WORLDSTATE 财务世界态投影。诚实位全部进形状（漏一个 = 前端只看得见"有个数"）：
+  //  · `basis` 换算口径（kind:"PROJECTION" 是"推演≠实测"的机器判据 + divisor 的出处）——
+  //    前端要把它**常驻第一层**，靠的就是这个键；
+  //  · `available` / `unavailableReason` 世界态为空 / 无基线时据实报缺（前端据此退回缺口记号，不显示 0）；
+  //  · `notes` 逐条诚实缺席（收入行无传导规则 / 权重字段缺失 / 链没接）；
+  //  · `chain` 产生这些压力的真规则 id 与真系数（"凭什么是这个数"当场可查）。
+  finance_world_projection: [
+    "worldId", "curTick", "worldStateSource", "worldObjectCount", "available", "unavailableReason",
+    "notes", "basis", "pressures", "lines", "cash", "chain", "reconChecks", "reconciled", "summary",
+  ],
 };
 
 const DAY_MS = 86400000;
@@ -3517,6 +3535,23 @@ export class SolverService {
   }
 
   /**
+   * WO-FINANCE-WORLDSTATE · 财务**金额**随世界态扰动的投影（`finance_world_projection`）。
+   *
+   * 与上面的 `financePnl` 是**两条并存的口径**，不是替代关系：
+   *  · `finance_pnl`（上）= 本体真值口径。签名不吃世界态 —— **这是有意的**，它有既有调用方与金值，
+   *    动签名会连坐；施加扰动它返回同一组数是它的**正确行为**，不是 bug。
+   *  · 本方法       = 世界态推演投影口径。吃 `args.worldId`，同一份 FinancePlan 基线 ×
+   *    该世界里的成本/回款压力 → 金额。R4：只读投影，一个字都不写回本体。
+   *
+   * 算核在 `./finance-world.ts`（纯 IO 适配在那，本方法只做派发）—— 与
+   * `chainLossAttribution`/`processFlowTime` 的兄弟写法一致。
+   */
+  private async financeWorldProjection(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const out = await projectFinanceWorld({ repos: this.repos }, ctx, args as FinanceWorldArgs);
+    return out as unknown as Record<string, unknown>;
+  }
+
+  /**
    * WO-SANDBOX-E2 · 「逐单类」求解器的作用域选单**共用出处**（`order_fullchain` / `atp_check` 走同一条）。
    *
    * 两个失败形态各修各的，绝不互换：
@@ -4863,6 +4898,9 @@ export class SolverService {
     //（后者不在核心 10 类也不在扩展 10 类里 —— mrp_netting 同样自行读取），故先于通用 loadContext 拦截。
     if (solverKey === "chain_impediments") return this.chainImpediments(ctx, args);
     if (solverKey === "finance_pnl") return this.financePnl(ctx);
+    // WO-FINANCE-WORLDSTATE：读 sim 会话/世界态 + FinancePlan/Order/Customer/ARInvoice（非电池 context），
+    // 照 finance_pnl / chain_impediments 兄弟模式先于通用 loadContext 拦截。
+    if (solverKey === "finance_world_projection") return this.financeWorldProjection(ctx, args);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
     // WO-SANDBOX-E1 环节级损失归因（沿本体链路 hop 读对象图 + 链路，非 compute() 的电池 context），
     // 照 sop_reschedule/order_fullchain 兄弟模式先于 loadContext 拦截。

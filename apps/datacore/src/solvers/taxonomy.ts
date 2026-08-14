@@ -88,6 +88,9 @@ export const SOLVER_CATEGORY_MAP: Record<SolverKey, SolverCategory> = {
   cockpit_kpi: "performance_finance", // 驾驶舱几个核心经营 KPI 各是多少
   ksf_graph: "performance_finance", // 关键成功要素怎么支撑财务计划、哪些问题在威胁它
   finance_pnl: "performance_finance", // 量价本利：收入/成本/毛利 预算 vs 滚动差多少
+  // WO-FINANCE-WORLDSTATE：与上一条**分层**不是重复 —— 那个答「本体真值下三科目各是多少」（静态口径），
+  // 这个答「在**这个推演世界里**、施加了那条扰动之后，成本/毛利/应收各变成多少钱」（世界态投影口径）。
+  finance_world_projection: "performance_finance",
   capex_scenario: "performance_finance", // 三情景产能投资投不投、项目 IRR 与缺口窗口
   carbon_footprint: "performance_finance", // 单位产品碳成本多少、对比阈值差多少（可持续口径的经营账）
 

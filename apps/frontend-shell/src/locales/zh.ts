@@ -754,9 +754,14 @@ export const zh = {
       /**
        * WO-SANDBOX-V3 · 下区影响带（PRD §1③）的文案。
        *
-       * ⚠ `financeGap` 是**诚实位**，不是免责声明 —— 它陈述一个实测事实：
-       *   平台今天没有「随世界态变化的金额型财务指标」。规范 §1 明写诚实位
+       * ⚠ `financeGap` 是**诚实位**，不是免责声明。规范 §1 明写诚实位
        *   **允许降层、绝不允许删除**，故它常驻第一层。
+       *
+       * ⚠ **WO-FINANCE-WORLDSTATE 改写了它承载的那个事实，而不是删了它**：
+       *   原文陈述「平台今天没有随世界态变化的金额型财务指标」——那句话在本单之后**不再成立**
+       *   （`finance_world_projection` 就是那个出处）。诚实位说了假话比没有诚实位更坏，
+       *   故这里**改写内容、保留位置**。`finance_pnl` 不吃 `worldId / sessionId` 这一条**仍然成立**
+       *   且仍然写在里面：本单一个字都没动它的签名（它有既有调用方与金值，动签名会连坐）。
        */
       impact: {
         autoNote: "扰动一施加即自动分析（沙盘里的「假设」就是已经发生的那条扰动，不需要再按一次确认）",
@@ -768,9 +773,27 @@ export const zh = {
         deltaNone: "与基线逐项相等 —— 是「比过了，一项都没动」，不是「没比」。",
         deltaMoved: (n: number, total: number) => `${n} / ${total} 项偏离基线`,
         deltaRest: (n: number) => `其余 ${n} 项（与基线同值）`,
-        financeGapTitle: "金额口径为何不在这一带",
+        financeGapTitle: "这块金额是怎么来的 / 什么时候没有",
         financeGapBody:
-          "本带给的是**世界态指数**（0–100，随扰动沿本体传导链变化），不是金额。平台今天唯一的金额科目表求解器 `finance_pnl` 读的是本体真值（FinancePlan + DemandSegment），其实现签名不吃 worldId / sessionId ⇒ **同一个租户下，施加任何扰动它都返回同一组数**。把它摆在这里会得到一块「看起来是财务、实际永远不动」的面板，那比留空更坏。带单位的金额型指标要随扰动动，唯一已接线的出处是上面那块「逐节点指标影响」的 KPI 维（`Metric` 对象的 target/actual/unit 在被隔离的世界里重算）。",
+          "**这是推演投影，不是实测值。** 基线取本体真值（FinancePlan 的 rolling / ARInvoice 的 amount），增量由**这个世界里**的成本压力（Order.costPressure）、回款压力（Customer.receivablePressure）、逾期压力（ARInvoice.overduePressure）沿种子里的传导规则折算：金额 = 基线 ×（1 + 压力 ÷ 换算除数），除数由后端随回包下发（不是前端写死的系数），产生这些压力的传导规则真 id 与真系数也一并回传，改种子系数这里跟着变。⚠️ **不要把它和 `finance_pnl` 搞混**：那个求解器读本体真值、其实现签名不吃 worldId / sessionId ⇒ 同一个租户下施加任何扰动它都返回同一组数 —— 那是它的正确行为（本单一个字没动它），只是它答不了「这个世界里花了多少钱」。本带的金额来自另一条通路 `finance_world_projection`。世界态为空 / 没有金额基线 / 该能力未开通时，这里**据实报缺**，绝不显示一个不动的 0。",
+        moneyTitle: "财务金额随扰动的变化",
+        moneyQuestion: "这次扰动，钱上差多少",
+        /** 口径**常驻第一层**（不是浮层里的一句话）：读者一眼要知道这不是实测数。 */
+        moneyCaliber: "推演投影 · 非实测",
+        moneyCaliberDetail: (divisor: number) => `基线 ×（1 + 压力 ÷ ${divisor}）`,
+        moneyLoading: "正在向财务投影求解器要数…",
+        moneyNoSession: "还没有推演世界 —— 建好世界这里才有金额可投影。",
+        /** 求解器说不可用（世界态空 / 无基线）：把**后端原话**摆出来，本页不替它编一个解释。 */
+        moneyUnavailable: (reason: string) => `这个世界暂时给不出金额口径 —— ${reason}`,
+        /** 请求本身失败（能力未开通 / 网络）：同样给后端原话。 */
+        moneyFailed: (msg: string) => `财务投影求解器没答上来，下面是后端原话，本页不替它编一个数：${msg}`,
+        moneyBaselineWord: "基线",
+        moneyProjectedWord: "投影",
+        moneyCashTitle: "应收 / 逾期",
+        moneyArRow: "应收余额",
+        moneyOverdueRow: "逾期敞口",
+        moneyChain: (n: number) => `换算链 ${n} 跳（真规则系数）`,
+        moneyNotes: (n: number) => `诚实缺席 ${n} 条`,
       },
       /**
        * WO-V4-PLAYS · 方案环（PRD-sandbox-v4 §3.3）的文案。
