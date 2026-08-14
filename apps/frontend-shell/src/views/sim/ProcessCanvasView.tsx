@@ -499,7 +499,11 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
                   <path
                     key={`${ic.fromKey}-${ic.toKey}`}
                     className={styles.interchangeArc}
-                    data-testid={`spc-interchange-${ic.fromKey}-${ic.toKey}`}
+                    /* ⚠ 命名空间刻意与说明段的 `spc-interchange-note` 分开：
+                       `getAllByTestId(/^spc-interchange-/)` 会把那句说明也捞进来，
+                       于是"逐条验弧的出处"这条断言会去查一个叫 note 的流程键 ——
+                       这正是本仓记过的"我用 X 当作 Y 的证据"那类错，写测试时当场撞到过。 */
+                    data-testid={`spc-ic-${ic.fromKey}-${ic.toKey}`}
                     data-carrier={ic.carrierTypeKey}
                     data-cross-line={ic.crossLine ? "1" : "0"}
                     d={ic.d}

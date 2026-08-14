@@ -115,6 +115,24 @@ function renderedProcessKeys(): string[] {
     .filter((k) => k.length > 0);
 }
 
+/** 屏上每座站的几何 + 归属（现算；`data-*` 是本档唯一的受控读数出口，见组件头浮层纪律）。 */
+function renderedStations(): { key: string; cx: number; cy: number; r: number; days: number; lane: string; interchange: boolean }[] {
+  return screen.getAllByTestId(/^spc-card-/).map((g) => {
+    const circle = g.querySelector("circle:not([class*='Halo'])");
+    // 站必须真是个圆（线路图的图元），不是一个被 CSS 画圆的 div —— 那是卡片墙换皮。
+    const lane = g.closest("[data-testid^='spc-lane-']");
+    return {
+      key: g.getAttribute("data-process-key") ?? "",
+      cx: Number(circle?.getAttribute("cx") ?? Number.NaN),
+      cy: Number(circle?.getAttribute("cy") ?? Number.NaN),
+      r: Number(g.getAttribute("data-r") ?? Number.NaN),
+      days: Number(g.getAttribute("data-std-days") ?? Number.NaN),
+      lane: lane?.getAttribute("data-testid")?.replace("spc-lane-", "") ?? "",
+      interchange: g.getAttribute("data-interchange") === "1",
+    };
+  });
+}
+
 beforeEach(() => {
   loginAs("planner");
   installHandlers();
@@ -386,5 +404,157 @@ describe("§E D4 守恒（新增 ≠ 搬走）", () => {
     }
     // 档位数 == 登记表长度（加档必须过登记表，不许在渲染处随手多画一个）
     expect(screen.getAllByTestId(/^sc-mode-/).length).toBe(CANVAS_MODES.length);
+  }, 90000);
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// §F WO-R9-METRO-UX · **形**必须是地铁线路图，且线**不许臆造顺序**
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ── 这一节守的命题 ───────────────────────────────────────────────────────────
+ * 仓主看到第五档真屏后的原话：「**没有看到类似『地铁线路』的 UX**」。
+ * §B/§C/§D 全绿的那一版就是卡片墙 —— 说明**既有断言一条都没有度量"形"**。
+ * 照铁律 0.6 的句式：「我用『条数对、能点开、诚实位在』当作『形对』的证据，
+ * 而前者并不度量后者。」故本节把"形"变成可被机器咬的判据：
+ * 站是**圆**、有**坐标**、连在**轨**上、轨上标着**依据档位**。
+ *
+ * ── 更要紧的那一半：不许臆造顺序 ─────────────────────────────────────────────
+ * 派单原话：「**编一个看起来像流程的顺序，比卡片墙更坏** —— 它看着专业，
+ * 但那个顺序不会因为现实变化而变」。故 F2/F3 咬的不是"画得好看"，是
+ * **每一条画出来的关系都必须能在响应里指出它的出处**：
+ *  · 轨（同线相邻）只表示排版序 ⇒ 必须标 `display-order`，且两端必须同域；
+ *  · 换乘弧只由**共用承载物**产生 ⇒ 两端在响应里的 `carrierTypeKey` 必须真的相等。
+ * 任何一条连线指不出出处，就是编的。
+ */
+describe("§F 线路图之形 + 连线必须有出处（这一节红了 = 又画回卡片墙，或顺序是编的）", () => {
+  it("F1 · 是 SVG 线路图：站是**圆**、有画布坐标，且站数 == 端点下发条数", async () => {
+    const user = userEvent.setup();
+    await enterSandbox();
+    const board = await openProcessMode(user);
+
+    const stage = within(board).getByTestId("spc-stage");
+    expect(stage.tagName.toLowerCase(), "第五档的画布不是 <svg> ⇒ 又是 DOM 卡片墙换皮，不是线路图").toBe("svg");
+
+    const stations = renderedStations();
+    expect(stations.length, "一座站都没有 ⇒ 下面每条几何断言都在空集合上跑，恒真恒绿").toBeGreaterThan(0);
+    // 判据仍是**恒等式**（不是金值）：屏上站数 == 端点这次真发出去的条数
+    expect(ledger.served).toBeGreaterThan(0);
+    expect(stations.length, "屏上站数 ≠ 端点下发条数 ⇒ 本档漏画了流程").toBe(ledger.served);
+
+    for (const s of stations) {
+      expect(Number.isFinite(s.cx) && Number.isFinite(s.cy), `站 ${s.key} 没有画布坐标 ⇒ 它不在一条线上，只是个 DOM 块`).toBe(true);
+      expect(s.r, `站 ${s.key} 半径不是正数 ⇒ 站圈没画出来`).toBeGreaterThan(0);
+    }
+
+    // 轨真的存在（有 ≥2 站的线就必须有段）——只有站没有线，那是散点图不是线路图
+    expect(screen.getAllByTestId(/^spc-seg-/).length, "一段轨都没有 ⇒ 站之间没有连线，这不是线路图").toBeGreaterThan(0);
+
+    // 同一行相邻两站的圆**不重叠**（几何只算不量：圆心距 > 两半径之和）
+    const byLaneRow = new Map<string, typeof stations>();
+    for (const s of stations) {
+      const k = `${s.lane}#${s.cy}`;
+      const b = byLaneRow.get(k);
+      if (b === undefined) byLaneRow.set(k, [s]);
+      else b.push(s);
+    }
+    for (const group of byLaneRow.values()) {
+      const ordered = [...group].sort((a, b) => a.cx - b.cx);
+      for (let i = 1; i < ordered.length; i += 1) {
+        const a = ordered[i - 1]!;
+        const b = ordered[i]!;
+        expect(b.cx - a.cx, `站 ${a.key} 与 ${b.key} 的圆压在一起（圆心距 ${b.cx - a.cx} ≤ ${a.r + b.r}）`).toBeGreaterThan(a.r + b.r);
+      }
+    }
+  }, 90000);
+
+  it("F2 · 轨只表示**排版序**：每段都标 display-order，且两端必属**同一条线**（跨域连线 = 臆造端到端顺序）", async () => {
+    const user = userEvent.setup();
+    await enterSandbox();
+    await openProcessMode(user);
+
+    // ① 屏上的依据档位必须是 display-order —— 端点没下发先后（processCanvas.ts §0 有结构证明）
+    expect(
+      screen.getByTestId("spc-order-basis").getAttribute("data-basis"),
+      "站序依据被标成了 measured，但本档端点根本没下发实测站序 ⇒ 那是造假",
+    ).toBe("display-order");
+
+    // ② 逐段验出处：标了档位 + 两端同域
+    const laneOf = new Map(PROCESS_DEFINITIONS_RESPONSE.definitions.map((d) => [d.key, d.domainKey] as const));
+    const segs = screen.getAllByTestId(/^spc-seg-/);
+    expect(segs.length).toBeGreaterThan(0);
+    for (const seg of segs) {
+      expect(seg.getAttribute("data-order-basis"), "有一段轨没标依据档位 ⇒ 读的人会当它是流向").toBe("display-order");
+      const [from, to] = (seg.getAttribute("data-testid") ?? "").replace("spc-seg-", "").split("-");
+      expect(
+        laneOf.get(String(from)),
+        `轨 ${from}→${to} 跨了业务域 —— 端点没下发任何跨域先后关系，这条线是编的`,
+      ).toBe(laneOf.get(String(to)));
+    }
+
+    // ③ 「为什么是虚线」的取证与两个实测反例进了浮层，且**没被删**（触发器在第一层）
+    expect(screen.getByTestId("info-process-order-basis")).toBeTruthy();
+    await user.click(screen.getByTestId("info-process-order-basis"));
+    expect(await screen.findByTestId("spc-order-basis-note", undefined, { timeout: 20000 })).toHaveTextContent("strictObject");
+    expect(screen.getByTestId("spc-order-basis-why"), "「编号相邻 ≠ 先后」的实测反例被删了").toHaveTextContent("P43");
+    expect(screen.getByTestId("spc-order-basis-where"), "「实测站序在哪」的复验探针被删了").toHaveTextContent("flow-rules.ts");
+  }, 90000);
+
+  it("F3 · 换乘弧的出处唯一 = **共用承载物**：两端在响应里的 carrierTypeKey 必须真的相等", async () => {
+    const user = userEvent.setup();
+    await enterSandbox();
+    await openProcessMode(user);
+
+    const defs = PROCESS_DEFINITIONS_RESPONSE.definitions;
+    const carrierOf = new Map(defs.map((d) => [d.key, d.carrierTypeKey] as const));
+    // 现算「应该有几座换乘站」：承载物被 >1 条流程用的那些流程（金丝雀 A2 已证 fixture 里真有）
+    const expectInterchange = new Set(
+      defs.filter((d) => defs.some((o) => o.key !== d.key && o.carrierTypeKey === d.carrierTypeKey)).map((d) => d.key),
+    );
+    expect(expectInterchange.size, "fixture 里没有共用承载物的流程 ⇒ 这条断言在空集合上跑").toBeGreaterThan(1);
+
+    // 屏上标成换乘的那批，必须与现算的那批**一模一样**（多标 = 编关系，少标 = 漏画关系）
+    const onScreen = new Set(renderedStations().filter((s) => s.interchange).map((s) => s.key));
+    expect([...onScreen].sort(), "屏上的换乘站集合 ≠ 现算的共用承载物流程集合").toEqual([...expectInterchange].sort());
+
+    // ⚠ 弧的 testid 命名空间是 `spc-ic-` 而不是 `spc-interchange-`：后者会把说明段
+    //   `spc-interchange-note` 一起捞进来，于是下面"逐条验出处"会去查一个叫 note 的流程键。
+    //   写这条断言时**当场撞到过**，故把坑连同理由留在这里（第 2 次就该建机制，见铁律 0.6）。
+    const arcs = screen.getAllByTestId(/^spc-ic-/);
+    expect(arcs.length, "有换乘站却一条换乘弧都没画").toBeGreaterThan(0);
+    for (const arc of arcs) {
+      const [from, to] = (arc.getAttribute("data-testid") ?? "").replace("spc-ic-", "").split("-");
+      const c = carrierOf.get(String(from));
+      expect(c, `换乘弧 ${from}→${to} 的起点不在本次响应里 ⇒ 这条弧是凭空画的`).toBeDefined();
+      expect(carrierOf.get(String(to)), `换乘弧 ${from}→${to} 两端的承载物不同 ⇒ 这条换乘关系是编的`).toBe(c);
+      expect(arc.getAttribute("data-carrier")).toBe(c);
+    }
+
+    // 屏上那句「共用承载物 ≠ 先后 ≠ 依赖」的诚实位在（隐喻误读的防线，抄第一档 AND≠OR 的做法）
+    expect(screen.getByTestId("spc-interchange-note")).toHaveTextContent("不说明有先后");
+  }, 90000);
+
+  it("F4 · 站圈大小是**真编码**不是装饰：工期大的站半径不小于工期小的站，且缩放控件真的动", async () => {
+    const user = userEvent.setup();
+    await enterSandbox();
+    const board = await openProcessMode(user);
+
+    const stations = renderedStations();
+    const byDays = [...stations].sort((a, b) => a.days - b.days);
+    expect(byDays[0]!.days, "所有站工期相同 ⇒ 半径单调性这条断言恒真（换个 fixture 才咬得住）").toBeLessThan(
+      byDays[byDays.length - 1]!.days,
+    );
+    for (let i = 1; i < byDays.length; i += 1) {
+      expect(
+        byDays[i]!.r,
+        `站 ${byDays[i]!.key}（${byDays[i]!.days}天）的圈比 ${byDays[i - 1]!.key}（${byDays[i - 1]!.days}天）还小 ⇒ 半径没在编码工期`,
+      ).toBeGreaterThanOrEqual(byDays[i - 1]!.r);
+    }
+
+    // 缩放：点一下放大，画布上的变换真的变了（不是画了三个不通电的按钮）
+    const before = board.getAttribute("data-zoom");
+    await user.click(screen.getByTestId("spc-zoom-in"));
+    await waitFor(() => expect(board.getAttribute("data-zoom")).not.toBe(before), { timeout: 20000 });
+    expect(Number(board.getAttribute("data-zoom"))).toBeGreaterThan(Number(before));
   }, 90000);
 });
