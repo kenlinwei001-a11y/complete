@@ -1383,7 +1383,17 @@ type MockPropRule = {
 };
 type MockPublishRequest = { id: string; ontologyVersion: number; status: "PENDING" | "APPROVED" | "REJECTED"; touchedDomains: string[]; signoffs: { domainKey: string; decision: string }[]; createdAt: string };
 
-/** 结构边种子 = `GET /a/v1/ontology/mapping/registries` 那三条的同一份真值（方向见该 handler 的欠账 #160 注释）。 */
+/**
+ * 结构边种子 —— 与映射表注册表段那个 handler 里的三条字面量**同一份真值**。
+ *
+ * ⚠ 为什么这里是「两处副本 + 机器盯着」而不是「一处」：那个 handler 里的字面量**不能**换成
+ * `mockLinkTypes.map(...)` —— `apps/datacore/test/mock-linktype-direction.gate.test.ts:40`
+ * 的抽取器读的是**本文件源码文本**（`indexOf("linkTypes: [", anchor)`），换成 store 读法它会抽出 0 条、
+ * 当场报「工具坏了」。那是一道本单范围外的 datacore 门，不许碰坏。
+ * 于是只能留两份，并把「两份必须一致」交给机器：`test/ontology-relations.seam.test.tsx` §④
+ * 在**运行时**跨 `mapping/registries` 与 `ontology/versions` 两个端点逐 key 对账 —— 人忘了同步，机器先说话。
+ * （方向纪律见该 handler 的欠账 #160 注释，逐字适用于本种子。）
+ */
 const MOCK_LINK_SEED: MockLinkType[] = [
   { key: "model_producible_at", fromType: "Model", toType: "Base", cardinality: "N:N" },
   { key: "order_for_model", fromType: "Order", toType: "Model", cardinality: "1:1" },
@@ -2496,11 +2506,21 @@ export const handlers = [
       // 已由 `apps/datacore/test/mock-linktype-direction.gate.test.ts` 钉成机械门：
       // 改坏这三行任一方向，机器当场报红，不必等人去发现。
       // （原注释写死 `battery.ts:2321`，收编时实测已漂到 2336 ⇒ 改用符号引用，免得注释自己过期。）
+      // ⚠ WO-BEFE-A：下面三行**必须留在此处、必须是对象字面量** ——
+      //   `apps/datacore/test/mock-linktype-direction.gate.test.ts:40` 的抽取器按**本文件源码文本**
+      //   在本端点路径之后找紧跟的那个数组，把它们换成 `mockLinkTypes.map(...)` 会让它抽出 0 条
+      //   → 该门当场报「工具坏了」。（实测过两次：一次是换成 store 读法，抽取锚点漂到 3568 行的
+      //   建模草稿夹具；一次是本注释里**照抄了抽取器的搜索串**，锚点落进注释自己 —— 两次都抽出 0 条。
+      //   后者尤其值得记：注释里写下工具要找的那个串，就等于给工具埋了个假锚点。）
+      //   那是一道本单范围外的 datacore 门，不许碰坏。故此处保持字面量，尾部 `.concat` 追加
+      //   本会话新建的边（门只对账「种子三条的方向 vs 真本体」，新建的边不在其射程）。
+      //   种子与顶部 `MOCK_LINK_SEED` 的一致性由 `test/ontology-relations.seam.test.tsx` §④
+      //   在**运行时**跨两个端点逐 key 对账 —— 人忘了同步，机器先说话。
       linkTypes: [
         { key: "model_producible_at", fromType: "Model", toType: "Base", cardinality: "N:N" },
         { key: "order_for_model", fromType: "Order", toType: "Model", cardinality: "1:1" },
         { key: "line_belongs_to_base", fromType: "Base", toType: "Line", cardinality: "1:N" },
-      ],
+      ].concat(mockLinkTypes.filter((l) => !MOCK_LINK_SEED.some((s) => s.key === l.key)).map((l) => ({ key: l.key, fromType: l.fromType, toType: l.toType, cardinality: l.cardinality }))),
       rules: [
         { key: "C03", expression: "weeklySupply.p90 >= weeklyDemand", scope: "Order、Base", severity: "阻断" },
         { key: "C06", expression: "kitCoverDays >= 5", scope: "MaterialBalance", severity: "阻断" },
