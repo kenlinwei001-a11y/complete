@@ -25,6 +25,7 @@ import { PmDag, type PmDagNode } from "./PmDag";
 import { PerturbationTimeline, PERTURBATION_KINDS } from "./PerturbationTimeline";
 import { HeatStrip, useActionDraft } from "./shared";
 import { SimReadinessPanel } from "./SimReadinessPanel";
+import EdgeActivePanel from "./EdgeActivePanel";
 import { SimComparePanel } from "./SimComparePanel";
 import { SandboxConsole, type SandboxConsoleRailSection } from "./SandboxConsole";
 import { SandboxImpactBand } from "./SandboxImpactBand"; // WO-SANDBOX-V3 · ③下区影响带（本文件是它唯一的生产调用方）
@@ -1494,6 +1495,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
             </div>
           </div>
           <PerturbationTimeline sessionId={sessionId} curTick={curTick} />
+          {/* WO-ACTIVE-EDGE-UX 挂载点：沙盘是唯一自己持有推演会话的页，故把本会话 id 传下去 ——
+              开关直接作用在**这个世界**上（其余推演页不持有会话，面板自行回落到最近一个可推演会话）。 */}
+          <EdgeActivePanel pageKey="sandbox" sessionId={sessionId} />
           </>
         }
         // WO-SANDBOX-V3 · ① 左区：扰动因素输入（唯一输入区）

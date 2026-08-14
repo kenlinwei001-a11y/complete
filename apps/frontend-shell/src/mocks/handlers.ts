@@ -25,6 +25,8 @@ import {
 } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
+// WO-ACTIVE-EDGE-UX：差值算法与"未知 key 不静默忽略"的判据一律走契约唯一实现，mock 不另写一份。
+import { diffTickStates, unknownPropagationRuleKeys, type PropagationRule } from "@platform/contracts";
 // WO-PROCESS-INSTANCE：等待态词表单源（mock 也不许手抄一份五值数组）。
 import { PROCESS_TASK_WAIT_STATES } from "@platform/contracts";
 import type { RiskTimelineOutput } from "@platform/contracts";
@@ -1469,8 +1471,32 @@ const gsliveScenarios = new Map<string, { id: string; label: string; parentId: s
  * **有状态**才能证明"事件到达 → 重取 → 屏上真的变了"，否则重取回来的还是同一个死值，等于没测。
  * R6 确定性：id 走计数器、时间戳固定，无随机数、无真实时钟。
  */
-type MockSimSession = { id: string; tenantId: string; baseSnapshot: Record<string, unknown>; scope: Record<string, unknown>; status: string; curTick: number; parentCheckpointId: string | null; createdAt: string };
+type MockSimSession = { id: string; tenantId: string; baseSnapshot: Record<string, unknown>; scope: Record<string, unknown>; status: string; curTick: number; parentCheckpointId: string | null; createdAt: string; disabledRuleKeys?: string[] };
 const mockSimSessions = new Map<string, MockSimSession>();
+/**
+ * WO-ACTIVE-EDGE-UX · 传导边目录（= `GET /a/v1/sim/propagation-rules` 的 mock 数据源）。
+ *
+ * 为什么必须加：`test/setup.ts` 起的是 `onUnhandledRequest: "error"` —— `EdgeActivePanel` 一挂上
+ * 就会请求这条，mock 这边没镜像的话，**每一个挂了本面板的用例都会红**，而且红在一条与它自己
+ * 无关的请求上（与扰动时间轴当初一模一样的坑）。
+ *
+ * 两条边的形状与 `GET /a/v1/ontology/mapping/registries` 的 mock 本体保持**同向**
+ * （`Base --line_belongs_to_base(1:N)--> Line` 那条纪律的同族）：源类型/目标类型/链路 key
+ * 三者必须与本体声明同向，写反 ⇒ `targetsOf` 恒空 ⇒ 规则一次都不触发且不报任何错。
+ * 这里用 mock 世界自有的 `TypeA/TypeB/linkAB`（与 `/a/v1/sim/view-config` mock 同源），不引业务实体名（R14）。
+ */
+const MOCK_PROPAGATION_RULES: PropagationRule[] = [ // hardcoded-data-allow —— mock 世界的传导边 fixture，非生产业务数据
+  {
+    id: "simpr_mock_a", tenantId: "demo", key: "mock_a_to_b",
+    sourceTypeKey: "TypeA", sourceStateVar: "s1", viaLinkKey: "linkAB", targetTypeKey: "TypeB", targetStateVar: "s1",
+    coefficient: 0.5, delayTicks: 0, combine: "sum", decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null, status: "PUBLISHED",
+  },
+  {
+    id: "simpr_mock_b", tenantId: "demo", key: "mock_a_to_b_slow",
+    sourceTypeKey: "TypeA", sourceStateVar: "s2", viaLinkKey: "linkAB", targetTypeKey: "TypeB", targetStateVar: "s2",
+    coefficient: 0.25, delayTicks: 1, combine: "sum", decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null, status: "PUBLISHED",
+  },
+];
 const mockSimWorlds = new Map<string, { tick: number; state: Record<string, unknown> }>();
 /**
  * WO-SIM-PERTURB-TIMELINE · 扰动清单（= `GET …/:id/perturbations` 的 mock 数据源）。
@@ -5049,6 +5075,67 @@ export const handlers = [
   }),
   // WO-L4B · 世界列表（= 前端 sessionsQuery 的真数据源；后端对应 app.ts:1405）。
   http.get("*/a/v1/sim/sessions", () => HttpResponse.json({ items: [...mockSimSessions.values()] })),
+  // ── WO-ACTIVE-EDGE-UX · 推演边 active 开关三条（后端对应 app.ts 的
+  //    GET /sim/propagation-rules · PATCH …/disabled-rules · POST …/counterfactual）──
+  //
+  // 🔴 本组 mock 的纪律与上面「扰动」那组同源：**只供世界态，绝不冒充引擎**。
+  //    差值 `diffs` 由**契约函数** `diffTickStates` 现算（与真后端同一支实现），
+  //    mock 只负责给出"边开着"与"边关掉"两份世界态 —— 这样一来：
+  //      · 差值算法只有一份，mock 与真后端不可能在算术上漂移；
+  //      · 而"关掉这条边世界会长什么样"这件事，mock 老老实实承认是 fixture，不假装是算出来的。
+  //    反面教材就在本文件不远处：mock 复制引擎语义 ⇒ 第二套真相源 ⇒ 前端测试全绿而真链路早断。
+  http.get("*/a/v1/sim/propagation-rules", () => HttpResponse.json({ items: MOCK_PROPAGATION_RULES })),
+  http.patch("*/a/v1/sim/sessions/:id/disabled-rules", async ({ params, request }) => {
+    const id = String((params as { id: string }).id);
+    const body = (await request.json().catch(() => ({}))) as { disabledRuleKeys?: string[] };
+    const requested = body.disabledRuleKeys ?? [];
+    // 与真后端同一条纪律：未知 key **显式 400**，不静默忽略（静默忽略 = 用户以为关掉了、其实没关）。
+    const unknown = unknownPropagationRuleKeys(requested, MOCK_PROPAGATION_RULES);
+    if (unknown.length > 0) {
+      return HttpResponse.json(
+        { error: { code: "UNKNOWN_PROPAGATION_RULE_KEY", message: `未知传导规则 key：${unknown.join(", ")}`, requestId: "mock" } },
+        { status: 400 },
+      );
+    }
+    const s = mockSimSessions.get(id);
+    const keys = [...new Set(requested)].sort();
+    if (s) s.disabledRuleKeys = keys;
+    return HttpResponse.json({ id, disabledRuleKeys: keys });
+  }),
+  http.post("*/a/v1/sim/sessions/:id/counterfactual", async ({ params, request }) => {
+    const id = String((params as { id: string }).id);
+    const body = (await request.json().catch(() => ({}))) as { n?: number; disabledRuleKeys?: string[] };
+    const disabled = [...new Set(body.disabledRuleKeys ?? mockSimSessions.get(id)?.disabledRuleKeys ?? [])].sort();
+    const unknown = unknownPropagationRuleKeys(disabled, MOCK_PROPAGATION_RULES);
+    if (unknown.length > 0) {
+      return HttpResponse.json(
+        { error: { code: "UNKNOWN_PROPAGATION_RULE_KEY", message: `未知传导规则 key：${unknown.join(", ")}`, requestId: "mock" } },
+        { status: 400 },
+      );
+    }
+    const suppressed = MOCK_PROPAGATION_RULES.filter((r) => disabled.includes(r.key));
+    // fixture 世界：基线 = 边全开跑一格；反事实 = 每关掉一条边，其目标格少收一份 `coefficient×源值`。
+    // 这是**声明的 fixture**，不是引擎复制品；真后端那一版由 `propagateTick` 真算。
+    const baselineState: Record<string, Record<string, number>> = { "TypeA#0": { s1: 60, s2: 40 }, "TypeB#0": { s1: 30, s2: 25 } };
+    const counterfactualState: Record<string, Record<string, number>> = JSON.parse(JSON.stringify(baselineState)) as typeof baselineState;
+    for (const r of suppressed) {
+      const cell = counterfactualState[`${r.targetTypeKey}#0`];
+      if (cell && typeof cell[r.targetStateVar] === "number") {
+        cell[r.targetStateVar] = Number((cell[r.targetStateVar]! - r.coefficient * (baselineState[`${r.sourceTypeKey}#0`]?.[r.sourceStateVar] ?? 0)).toFixed(6));
+      }
+    }
+    return HttpResponse.json({
+      fromTick: mockSimSessions.get(id)?.curTick ?? 0,
+      ticks: body.n ?? 1,
+      disabledRuleKeys: disabled,
+      suppressedRules: suppressed,
+      baselineState,
+      counterfactualState,
+      diffs: diffTickStates(baselineState, counterfactualState), // ← 契约唯一实现，mock 不另写一份差值算法
+      // fixture 世界里这几条边确实"跑过"（基线态就是它们跑出来的），故如实回填。
+      suppressedRulesFiredInBaseline: suppressed.map((r) => r.key).sort(),
+    });
+  }),
   // WO-L4B · 当前世界态（= worldQuery 的真数据源；后端对应 app.ts:1410）。
   http.get("*/a/v1/sim/sessions/:id/world", ({ params }) => {
     const id = String((params as { id: string }).id);

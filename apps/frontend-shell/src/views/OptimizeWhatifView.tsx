@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { invokeSolver } from "@/api/endpoints";
 import type { ViewConfigVM } from "@/api/types";
 import zh from "@/locales/zh";
+import EdgeActivePanel from "./sim/EdgeActivePanel";
 
 /**
  * 优化推演页（renderer=optimize-whatif·闭 G-12 前端半）——把 `optimize_whatif`（轨B·增量3）从"一个 Δ 数字"
@@ -274,6 +275,10 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
       )}
 
       {data && !isError && submitted && <DecisionResult out={data} family={submitted.family} baseArgs={submitted.baseline} perturbs={submitted.perturbs} />}
+      {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。
+          ⚠ 本页自己的 Δ 来自 CP-SAT 重解，**不由传导边驱动**；本面板给出的是同一租户传导世界的
+          反事实差异，面板内文案已写明其口径与出处，不冒充本页优化结果的变化。 */}
+      <EdgeActivePanel pageKey="optimize-whatif" />
     </div>
   );
 }

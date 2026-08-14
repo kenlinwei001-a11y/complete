@@ -15,6 +15,7 @@ import { GlobalSimLevers, type LeverState, type FreeLever, type LeverCandidate, 
 import { GlobalSimScenarioBar, type ScenarioSnapshotInput } from "./GlobalSimScenarioBar";
 import { ScheduleTable, type Transfer } from "./ScheduleTable";
 import { CustomerImpactBar } from "./CustomerImpactBar";
+import EdgeActivePanel from "./EdgeActivePanel";
 import zh from "@/locales/zh";
 import styles from "./GlobalSimView.module.css";
 
@@ -924,6 +925,8 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         <span className={styles.grpLabel}>[ 多目标联合 what-if · 跨对象占用（opt.multiobj） ]</span>
         <MultiObjWhatifPanel />
       </div>
+      {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。 */}
+      <EdgeActivePanel pageKey="global-sim" />
     </div>
   );
 }

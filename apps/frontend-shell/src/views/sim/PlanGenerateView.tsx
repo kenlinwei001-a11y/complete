@@ -14,6 +14,7 @@ import { RadarChart } from "./RadarChart";
 import { buildPropagation, PropagationTimeline, type PropagationVM } from "./PropagationTimeline";
 import { KsfGraph } from "@/components/KsfGraph";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
+import EdgeActivePanel from "./EdgeActivePanel";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -412,6 +413,9 @@ function SchemeCard({
       <KsfGraph testId="gen-ksf-graph" />
       {/* inference-process 横切：本次方案生成推演的编排过程 DAG */}
       <InferenceProcessPanel testId="inference-gen" solved />
+      {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。
+          逻辑全在 EdgeActivePanel/edgeActiveModel 里，本页只有这一行。 */}
+      <EdgeActivePanel pageKey="plan-generate" />
     </div>
   );
 }

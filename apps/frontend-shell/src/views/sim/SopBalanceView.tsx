@@ -10,6 +10,7 @@ import type { ViewRendererProps } from "../registry";
 import { fmt, useActionDraft } from "./shared";
 import { Provenance } from "@/components/Provenance";
 import { SopReschedulePanel } from "./SopReschedulePanel";
+import EdgeActivePanel from "./EdgeActivePanel";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -264,6 +265,8 @@ function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; 
           {zh.common.save}
         </button>
       </div>
+      {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。 */}
+      <EdgeActivePanel pageKey="sop-balance" />
     </div>
   );
 }

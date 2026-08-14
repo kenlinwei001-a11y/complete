@@ -20,6 +20,7 @@ import { useLiveSolver } from "./useLiveSolver";
 import { DynamicLeverPanel } from "./DynamicLeverPanel";
 import { PmDag, type PmDagNode } from "./PmDag";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
+import EdgeActivePanel from "./EdgeActivePanel";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -510,6 +511,8 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
       )}
       {/* inference-process 横切：产能/项目推演的编排过程 DAG（model 收敛子模式：型号→认证产线→基地） */}
       <InferenceProcessPanel testId="inference-project" solved mode="model-network" />
+      {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。 */}
+      <EdgeActivePanel pageKey="project-sim" />
     </div>
   );
 }

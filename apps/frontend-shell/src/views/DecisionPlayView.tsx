@@ -7,6 +7,7 @@ import { api } from "@/api/apiClient";
 import { toast, toastError } from "@/store/toastStore";
 import type { ViewConfigVM } from "@/api/types";
 import zh from "@/locales/zh";
+import EdgeActivePanel from "./sim/EdgeActivePanel";
 
 /**
  * 决策推演页（renderer=decision-play）——把 `decision_play` 求解器（G-DECISION·CEO-3）天然的 5 区决策产物落地为一张页：
@@ -500,6 +501,8 @@ function DecisionPlay({
           optionIds={recommendedPlan.optionIds}
         />
       </div>
+      {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。 */}
+      <EdgeActivePanel pageKey="decision-play" />
     </div>
   );
 }
