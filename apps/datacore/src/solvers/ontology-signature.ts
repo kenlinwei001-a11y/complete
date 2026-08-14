@@ -361,6 +361,30 @@ export const SOLVER_ONTOLOGY_SIGNATURES: Record<string, SolverOntologySignature>
    * joinField）之外，反推器不会碰别的属性；但**过度声明是安全方向（多拒），漏声明是事故方向**，
    * 故此处按文件头纪律取最保守的一档。
    */
+  /**
+   * WO-FINANCE-WORLDSTATE · `finance_world_projection`：读取面**静态可穷举**（不像上下两条要解析器）。
+   *
+   * 四类真读的属性逐条列清（照文件头口径：只 `listByType` 取集合而不读属性的类型不计入；
+   * 这四类每一类都真读了属性）：
+   *  · `FinancePlan.{line,budget,rolling,finId}` —— 金额基线 + provenance 真主键；
+   *  · `Order.{qty,unitPrice}`                  —— 成本压力的**金额权重**（读错/读不到 → 权重塌成等权，
+   *    金额会变，故必须计入读取面：漏声明是事故方向）；
+   *  · `Customer` 只用 `id`（权重经 `customer_has_invoice` 链路从发票聚上来）—— **不读任何属性**，
+   *    但仍声明 `linkKeys`，因为链路读不到会让应收投影恒等于基线（静默变数）；
+   *  · `ARInvoice.{amount,invoiceId}`           —— 应收/逾期逐张真金额 + 下钻主键。
+   *
+   * ⚠ 世界态（`SimSession.baseSnapshot` / `SimTickState.state`）**不在本表内**：它不是本体对象，
+   *   列级策略也不作用于它。这不是漏声明 —— 是它压根不属于 `OntologyReadSurface` 的论域。
+   */
+  finance_world_projection: {
+    reads: [
+      { typeKey: "FinancePlan", propKeys: ["budget", "finId", "line", "rolling"] },
+      { typeKey: "Order", propKeys: ["qty", "unitPrice"] },
+      { typeKey: "Customer", propKeys: [], linkKeys: ["customer_has_invoice"] },
+      { typeKey: "ARInvoice", propKeys: ["amount", "invoiceId"] },
+    ],
+  },
+
   process_flow_time: {
     reads: [],
     resolveReads: async () => {

@@ -499,7 +499,10 @@ describe("generic_inference 通用 what-if 求解器（H · G-5 通用 what-if�
     //         全量跑 datacore 才抖出来，`expected 60 to be 59`）——不是我改完代码顺手想起来的。
     //         这正是上面那段话说的机制：**机器先说话**。若当时只跑了 process-* 那两个文件，
     //         两边都绿、这条一路绿到部署才炸，与 E1/E3 那次并线是**同一个形态**。
-    expect(SOLVER_KEYS.length).toBe(60);
+    //   +61 = WO-FINANCE-WORLDSTATE finance_world_projection（财务**金额**随世界态扰动的投影 ——
+    //         `finance_pnl(ctx)` 零世界态入参、施加任何扰动都返回逐字节相同的一组数，缺的正是金额那一跳；
+    //         新增 key 而**不动** finance_pnl 的签名：它有既有调用方与金值，动签名会连坐）。
+    expect(SOLVER_KEYS.length).toBe(61);
     expect(SOLVER_OUTPUT_SHAPES.generic_inference?.length ?? 0).toBeGreaterThan(0);
   });
 
