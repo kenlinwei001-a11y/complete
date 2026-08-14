@@ -11,7 +11,22 @@ import {
   submitGrowthTicket,
   verifyGrowthTicket,
 } from "@/api/endpoints";
+import { InfoPopover } from "@/components/InfoPopover";
+import zh from "@/locales/zh";
 import { toastError, toast } from "@/store/toastStore";
+
+/**
+ * WO-BEFE-CLEANUP · 信息分层（`docs/CONVENTION-ui-information-layering.md` §2 R-UI-3）。
+ *
+ * 本页三段成段说明降进 `?` 浮层：页首「燃料」总述 · 运行/探针副作用差别 · 工单状态机。
+ * 三段都是「**凭什么/怎么运转**」，规范 §1 归浮层；第一层留下的是**名字与状态**
+ * （标题 · 「只探针（不补）」按钮 · 工单状态徽标 · 各计数）。
+ *
+ * ⚠ 其中「运行 vs 只探针」那一句有前史：它最早塞在按钮的原生 `title=` 里，
+ *   WO-BEFE-D 因规范 §2 禁用原生 tooltip 把它改成了按钮旁的可见小字 —— 方向对，但只走了一半。
+ *   `InfoPopover` 才是规范点名的那个落点（受控 DOM · 键盘可达 · `?` 常驻记号），本次补齐。
+ */
+const L = zh.admin.layer;
 
 /**
  * 自成长发动机驾驶舱（PRD §16 / 主线 P6）：把"客户问题"当燃料跑一轮 LOOP（探针→补齐→重跑→收敛），
@@ -95,10 +110,13 @@ export default function GrowthCockpitPage() {
 
   return (
     <div data-testid="growth-cockpit-page" data-ready={ready ? "1" : "0"}>
-      <h2 style={{ fontSize: 16, marginBottom: 4 }}>自成长发动机驾驶舱</h2>
-      <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
-        把"客户明确问题"当燃料：真跑一遍 QOS 诊断缺口 → 能自动补的补(数据真人正门) → 缺功能出工单 → 循环重跑直到收敛。
-      </div>
+      <h2 style={{ fontSize: 16, marginBottom: 4 }}>
+        自成长发动机驾驶舱
+        <InfoPopover topic={L.growthFuelTopic} testId="growth-fuel">
+          <p>{L.growthFuelBody}</p>
+          <p>缺功能出工单 → 循环重跑直到收敛。</p>
+        </InfoPopover>
+      </h2>
 
       {/* 运行 */}
       <div className="panel" style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -115,9 +133,9 @@ export default function GrowthCockpitPage() {
         >
           {probeMut.isPending ? "探针中…" : "只探针（不补）"}
         </button>
-        <span className="muted" style={{ fontSize: 12 }}>
-          「运行」会补数据 / 开工单 / 发事件；「只探针」不动任何数据。
-        </span>
+        <InfoPopover topic={L.growthProbeTopic} testId="growth-probe-diff">
+          <p>{L.growthProbeBody}</p>
+        </InfoPopover>
       </div>
 
       {/* 探针结果：与「本次运行」分开一块——两者副作用不同，混在一起会让人以为探完就已经补过了。 */}
@@ -169,11 +187,16 @@ export default function GrowthCockpitPage() {
       )}
 
       {/* 工单看板 */}
-      <div className="section-title">成长工单（缺功能·需开发）</div>
-      {/* 生命周期一行说明（原先塞在按钮 title= 里；R-UI-3 要求口径进可见文字）。 */}
-      <div className="muted" style={{ fontSize: 12, marginBottom: 4 }} data-testid="growth-ticket-lifecycle-note">
-        OPEN →「认领」→ IN_PROGRESS →「提交复核」→ IN_REVIEW →「重跑验证」（把原问句经 QOS 再跑一遍：
-        能答出来才 VERIFIED，否则停在 IN_REVIEW 并把新缺口码显示在旁边）。
+      {/* 生命周期说明原是第一层成段文字（更早是按钮 `title=`）；现降进 `?`，第一层只留区块名。 */}
+      <div className="section-title" data-testid="growth-ticket-lifecycle-note">
+        成长工单（缺功能·需开发）
+        <InfoPopover topic={L.growthTicketTopic} testId="growth-ticket-lifecycle">
+          <p>{L.growthTicketBody}</p>
+          <p>
+            「重跑验证」把原问句经 QOS 再跑一遍：能答出来才 VERIFIED，否则停在 IN_REVIEW
+            并把新缺口码显示在旁边。
+          </p>
+        </InfoPopover>
       </div>
       <table className="cmp" data-testid="growth-tickets" style={{ width: "100%", marginBottom: 14 }}>
         <thead><tr><th>问题</th><th>缺口</th><th>状态</th><th>操作</th></tr></thead>

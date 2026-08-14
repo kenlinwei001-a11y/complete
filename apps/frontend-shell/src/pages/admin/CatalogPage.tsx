@@ -5,10 +5,25 @@ import type { ExecutionPlan, IntentClassifyPreviewResult, IntentDefinition, Publ
 import { classifyIntentPreview, createIntent, createPlan, fetchIntents, fetchObjectTypes, fetchPlans, publishIntent, publishPlan, retireIntent, updateIntent, updatePlan } from "@/api/endpoints";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { InfoPopover } from "@/components/InfoPopover";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 
 const t = zh.admin.catalog;
+
+/**
+ * WO-BEFE-CLEANUP · 信息分层（`docs/CONVENTION-ui-information-layering.md` §1）。
+ *
+ * 本页三条红字诚实位原本是「**状态 + 后果解释**」一整句挤在第一层。现在按规范拆两半：
+ *   · **状态**（「未选目标对象类型」「未绑定执行计划」「DRAFT 未发布」）**留在第一层**
+ *     —— 它是规范 §1 允许的第三类「它是什么的一个名字/状态」，且红色徽标本身就是可见记号；
+ *   · **后果与依据**（「执行期解析不到计划（QOS 路径 A 会落空）」「latest 只认 PUBLISHED」）
+ *     降进 `?` 浮层 —— 那是「凭什么」，规范 §1 归浮层。
+ *
+ * ⚠ 这**不是**把诚实位删掉：三条红字一条不少，红色徽标照旧默认可见，
+ *   降下去的只有解释，且 `?` 触发器常驻（规范 §1「静默降层等于删除」的那个记号）。
+ */
+const L = zh.admin.layer;
 
 /** 意图目录与执行计划（PRD §7.8 catalog）：列表（status 筛选）+ 编辑器 + 发布/退役 */
 export default function CatalogPage() {
@@ -260,7 +275,10 @@ function IntentEditor({ intent, packageId }: { intent: IntentDefinition; package
       </table>
       {missingRefType.length > 0 && (
         <div className="badge red" style={{ marginTop: 6 }} data-testid="slot-reftype-missing">
-          objectRef 槽位 [{missingRefType.join("、")}] 未选目标对象类型 —— 发布前必填（AC4）
+          objectRef 槽位 [{missingRefType.join("、")}] 未选目标对象类型
+          <InfoPopover topic={L.catalogRiskTopic} testId="catalog-risk-reftype">
+            <p>{L.catalogRiskNoTargetBody}</p>
+          </InfoPopover>
         </div>
       )}
       {editable && (
@@ -412,7 +430,10 @@ function PlanEditor({ plan, packageId }: { plan: ExecutionPlan | null; packageId
   if (!plan) {
     return (
       <div className="muted" style={{ fontSize: 12, marginTop: 6 }} data-testid="plan-editor-unbound">
-        未绑定执行计划 —— 意图发布得了，但执行期解析不到计划（QOS 路径 A 会落空）。先在上面选一个或新建。
+        未绑定执行计划 —— 先在上面选一个或新建。
+        <InfoPopover topic={L.catalogRiskTopic} testId="catalog-risk-unbound">
+          <p>{L.catalogRiskNoPlanBody}</p>
+        </InfoPopover>
       </div>
     );
   }
@@ -435,10 +456,13 @@ function PlanEditor({ plan, packageId }: { plan: ExecutionPlan | null; packageId
         )}
       </div>
 
-      {/* 诚实位（第一层，不许降层）：DRAFT = 这条链今天是断的。 */}
+      {/* 诚实位：DRAFT = 这条链今天是断的。**状态留第一层（红徽标常驻），只把「凭什么」降进 `?`**。 */}
       {isDraft && (
         <div className="badge red" style={{ marginTop: 6, display: "inline-block" }} data-testid="plan-draft-warning">
-          DRAFT 未发布 —— 绑定它的意图在执行期解析不到计划（latest 只认 PUBLISHED）。发布后才真能跑。
+          DRAFT 未发布 —— 发布后才真能跑。
+          <InfoPopover topic={L.catalogRiskTopic} testId="catalog-risk-draft">
+            <p>{L.catalogRiskDraftBody}</p>
+          </InfoPopover>
         </div>
       )}
 

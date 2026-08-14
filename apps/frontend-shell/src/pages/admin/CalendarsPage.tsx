@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FactoryCalendar } from "@platform/contracts";
 import { fetchCalendar, fetchCalendarNetWindow, saveCalendar } from "@/api/endpoints";
+import { InfoPopover } from "@/components/InfoPopover";
+import zh from "@/locales/zh";
 import { toast, toastError } from "@/store/toastStore";
 
 /**
@@ -16,6 +18,20 @@ import { toast, toastError } from "@/store/toastStore";
  * 诚实位：净生产天数是**后端算的**（`netProductionDays`），本页只显示、不在前端复算 ——
  * 前端自己算一遍就会出现"屏上的数和求解器用的数不是同一个"这种最难查的偏差。
  */
+/**
+ * WO-BEFE-CLEANUP · 信息分层（`docs/CONVENTION-ui-information-layering.md` §1 / §2 R-UI-3）。
+ *
+ * 本页两处「凭什么」降进 `?` 浮层，第一层只留**名字与数值**：
+ *  ① 周末制式选择器：标签原文「周末口径：」——**口径**属浮层。降层后标签只剩名字，
+ *     `?` 里说清三个枚举值各自扣哪几天。这不只是为过门：`SAT_SUN_OFF / SUN_OFF / NONE`
+ *     是原样透出的**后端枚举**，此前屏上没有一个字解释它们，用户只能猜。
+ *  ② 净生产窗口标题的括号注「（后端按本日历重算，前端不复算）」——数据来源属浮层。
+ *
+ * ⛔ 两处都**不是删除**：`?` 触发器本身就是规范 §1 要求的那个「可见记号」，
+ *    且降层后的正文比原文更全（补了逐枚举值口径与净天数算式）。
+ */
+const L = zh.admin.layer;
+
 const WEEKEND_MODES = ["SAT_SUN_OFF", "SUN_OFF", "NONE"] as const;
 const EXC_KINDS = ["HOLIDAY", "MAINTENANCE", "EXTRA_WORKDAY"] as const;
 
@@ -64,7 +80,7 @@ export default function CalendarsPage() {
           <input className="inp" value={key} onChange={(e) => setKey(e.target.value)} data-testid="calendar-key" />
         </label>
         <label style={{ fontSize: 12, marginLeft: 12 }}>
-          周末口径：
+          周末制式：
           <select
             className="inp"
             aria-label="周末口径"
@@ -77,6 +93,10 @@ export default function CalendarsPage() {
             ))}
           </select>
         </label>
+        {/* 降层记号：`?` 常驻可见（规范 §1「静默降层等于删除」）。 */}
+        <InfoPopover topic={L.calWeekendTopic} testId="cal-weekend">
+          <p>{L.calWeekendBody}</p>
+        </InfoPopover>
       </section>
 
       <section className="panel" style={{ marginBottom: 16 }}>
@@ -131,7 +151,12 @@ export default function CalendarsPage() {
       </section>
 
       <section className="panel">
-        <div className="section-title">净生产窗口（后端按本日历重算，前端不复算）</div>
+        <div className="section-title">
+          净生产窗口
+          <InfoPopover topic={L.calNetTopic} testId="cal-net">
+            <p>{L.calNetBody}</p>
+          </InfoPopover>
+        </div>
         <label style={{ fontSize: 12 }}>
           起：
           <input className="inp" value={from} onChange={(e) => setFrom(e.target.value)} data-testid="net-from" aria-label="窗口起" />

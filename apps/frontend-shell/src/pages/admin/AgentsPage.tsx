@@ -331,11 +331,18 @@ function AgentOwnRuns({ agent }: { agent: AgentDefinition | null }) {
   const runs = data?.runs ?? [];
   return (
     <div className={styles.block} data-testid="agent-own-runs">
+      {/*
+        WO-BEFE-CLEANUP · 信息分层（规范 §1）。副标题说的是**数据源与聚合口径**
+        （「引擎回填的真实归属·跨版本按同一个 Agent 聚合」）—— 那是「凭什么」，归浮层。
+        第一层留区块名；`?` 常驻可见 = 降层记号。⚠ 下面的**数字一个都没降**（规范 §1：
+        结论性数字不许只藏在浮层里）。
+      */}
       <div className={styles.blockTitle}>
         {c.agentRunsTitle}
-        <span className={styles.headSub} style={{ marginLeft: 8 }}>
-          {c.agentRunsSubtitle}
-        </span>
+        <InfoPopover topic={zh.admin.layer.agentOwnRunsTopic} testId="agent-own-runs-source">
+          <p>{c.agentRunsSubtitle}</p>
+          <p>读端：GET /b/v1/agents/:id/runs（与下方按任务聚合的那一段是两个读端，不是同一份数据换个过滤）。</p>
+        </InfoPopover>
       </div>
       {isLoading ? (
         <div className={styles.noteBody}>{c.loading}</div>
@@ -359,7 +366,14 @@ function AgentOwnRuns({ agent }: { agent: AgentDefinition | null }) {
             <thead>
               <tr>
                 <th>{c.colTime}</th>
-                <th>{c.colOrigin}</th>
+                {/* 「来源」列的语义此前只写在 locales 注释与代码注释里 —— 用户一个字都看不到。
+                    这是**升层**：把「运行数的含义变了」这条诚实位真正搬上屏（`?` 常驻）。 */}
+                <th>
+                  {c.colOrigin}
+                  <InfoPopover topic={zh.admin.layer.agentOriginTopic} testId="agent-origin-col">
+                    <p>{zh.admin.layer.agentOriginBody}</p>
+                  </InfoPopover>
+                </th>
                 <th>{c.colVersion}</th>
                 <th>{c.colModel}</th>
                 <th>{c.colIterations}</th>
@@ -448,9 +462,10 @@ function TaskAgentRuns({ taskId }: { taskId: string }) {
     <div className={styles.block} data-testid="task-agent-runs">
       <div className={styles.blockTitle}>
         {c.taskRunsTitle}
-        <span className={styles.headSub} style={{ marginLeft: 8 }}>
-          {c.taskRunsSubtitle}
-        </span>
+        <InfoPopover topic={zh.admin.layer.agentTaskRunsTopic} testId="task-agent-runs-source">
+          <p>{c.taskRunsSubtitle}</p>
+          <p>读端：GET /b/v1/queries/:taskId/agent-runs（复数）。按**任务**聚合，回答「这一次会诊叫了谁」。</p>
+        </InfoPopover>
       </div>
       {isLoading ? (
         <div className={styles.noteBody}>{c.loading}</div>

@@ -7,6 +7,8 @@ import {
   fetchSolverRegistry,
   type SolverCatalogItem,
 } from "@/api/endpoints";
+import { InfoPopover } from "@/components/InfoPopover";
+import zh from "@/locales/zh";
 
 /**
  * C5 求解器目录页（/admin/solvers · 只读发现）。
@@ -71,11 +73,20 @@ export default function SolversPage() {
 
   return (
     <div data-testid="solvers-page">
-      <h2 style={{ fontSize: 16, marginBottom: 4 }}>求解器目录</h2>
-      <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-        求解器由平台代码注册（非用户创建），此页只读发现：key / 名称 / 描述 / 参数提示 / 输出形状。
-        工作流步骤 invoke_solver 的 solverKey 引用此目录。<b>如需新增求解器，请联系实施。</b>
-      </div>
+      {/*
+        WO-BEFE-CLEANUP · 信息分层（规范 §1 / §2 R-UI-3）。
+        「这一页的数据从哪来 / 谁引用它 / 怎么新增」是**数据来源与口径**，规范归浮层；
+        第一层留页名与下方的**计数、名字、状态**。`?` 常驻可见即降层记号，内容一字未删。
+      */}
+      <h2 style={{ fontSize: 16, marginBottom: 10 }}>
+        求解器目录
+        <InfoPopover topic={zh.admin.layer.solversSourceTopic} testId="solvers-source">
+          <p>{zh.admin.layer.solversSourceBody}</p>
+          <p>
+            工作流步骤 invoke_solver 的 solverKey 引用此目录。<b>如需新增求解器，请联系实施。</b>
+          </p>
+        </InfoPopover>
+      </h2>
 
       <div className="panel" style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 10 }}>
         <input
@@ -119,9 +130,13 @@ export default function SolversPage() {
       {/* 决策问题类目（10 类）：按「我在做什么决策」找求解器。与上面的 domain 筛选是两个维，不合并。 */}
       {categoryReg && nonEmptyCategories.length > 0 && (
         <div className="panel" style={{ marginBottom: 12 }} data-testid="solver-category-registry">
-          <div className="section-title">按决策问题找求解器（{nonEmptyCategories.length} 类 · 共 {categoryReg.total} 个求解器）</div>
-          <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-            归类判据是「它回答的是不是这句问话」，不是「它用了哪种算法」——故同一句问话下可能既有 CP-SAT 也有启发式。
+          {/* 计数留第一层（规范 §1：结论性数字不许只藏在浮层里）；**归类判据**是口径，降 `?`。 */}
+          <div className="section-title">
+            按决策问题找求解器（{nonEmptyCategories.length} 类 · 共 {categoryReg.total} 个求解器）
+            <InfoPopover topic={zh.admin.layer.solversTaxonomyTopic} testId="solvers-taxonomy">
+              <p>{zh.admin.layer.solversTaxonomyBody}</p>
+              <p>所以同一句问话下可能既有 CP-SAT 也有启发式。</p>
+            </InfoPopover>
           </div>
           <table className="cmp" style={{ width: "100%" }}>
             <thead>
@@ -226,7 +241,11 @@ export default function SolversPage() {
       ))}
       {solvers.length === 0 && (
         <div className="empty-state" data-testid="solvers-empty">
-          暂无可见求解器（求解器由平台提供，按 feature 开通显隐；如需新增请联系实施）。
+          {/* 空是**真值**不是故障 ⇒ 状态词留第一层；「为什么空 / 怎么才有」降 `?`。 */}
+          暂无可见求解器
+          <InfoPopover topic={zh.admin.layer.solversEmptyTopic} testId="solvers-empty-why">
+            <p>{zh.admin.layer.solversEmptyBody}</p>
+          </InfoPopover>
         </div>
       )}
     </div>
@@ -291,7 +310,13 @@ function SolverImpactPanel({ solverKey }: { solverKey: string }) {
       </div>
 
       <div>
-        <b style={{ fontSize: 12 }}>在本租户本体里绑到哪（A13 地板语义 · 确定性无 LLM）</b>
+        {/* 区块名留第一层；解析口径（A13 地板语义 · 确定性无 LLM）降 `?`。 */}
+        <b style={{ fontSize: 12 }}>
+          字段角色绑定
+          <InfoPopover topic={zh.admin.layer.solversRolesTopic} testId={`solver-roles-info-${solverKey}`}>
+            <p>{zh.admin.layer.solversRolesBody}</p>
+          </InfoPopover>
+        </b>
         {roles.isError ? (
           <div className="muted" style={{ fontSize: 12 }} data-testid={`solver-roles-error-${solverKey}`}>
             这次没查出来（后端不可达）——不是「没有绑定」。
@@ -312,11 +337,19 @@ function SolverImpactPanel({ solverKey }: { solverKey: string }) {
                 </span>
               </div>
             ))}
-            {/* 真歧义必须亮在第一层：top1 与 top2 咬得很紧时，这份绑定只是"确定性默认"，不是"确定"。 */}
+            {/*
+              真歧义**必须亮在第一层** —— 这条不许降：徽标变琥珀 +「真歧义」三个字都是状态，
+              规范 §1 允许留在第一层。降下去的只有「为什么叫真歧义」那句口径。
+            */}
             <div style={{ marginTop: 3 }}>
               <span className={`badge ${roles.data!.ambiguous ? "amber" : ""}`} data-testid={`solver-roles-confidence-${solverKey}`}>
-                置信度 {roles.data!.confidence.toFixed(2)}{roles.data!.ambiguous ? " · 真歧义（top1/top2 咬得紧，此绑定只是确定性默认）" : ""}
+                置信度 {roles.data!.confidence.toFixed(2)}{roles.data!.ambiguous ? " · 真歧义" : ""}
               </span>
+              {roles.data!.ambiguous && (
+                <InfoPopover topic={zh.admin.layer.solversAmbiguousTopic} testId={`solver-roles-ambiguous-${solverKey}`}>
+                  <p>{zh.admin.layer.solversAmbiguousBody}</p>
+                </InfoPopover>
+              )}
             </div>
           </div>
         )}
