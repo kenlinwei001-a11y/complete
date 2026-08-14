@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import type { StoryBuildRun } from "@platform/contracts";
 import { makeApp, ADMIN, type TestApp } from "./helpers.js";
+import { createMemoryRepos } from "../src/repo/memory.js";
+import { PgStore } from "../src/repo/pg.js";
 import type { Repos } from "../src/repo/repo.js";
 
 /**
@@ -342,5 +345,70 @@ describe("WO-DBUI-FLOW · 入库前冲突预检（只读 · 三类分开 · 无�
     const p = (ok.json() as { domainPromotion?: { reusedTypeKeys?: string[]; migratedTypes: number } }).domainPromotion!;
     expect(p.reusedTypeKeys).toContain(clash.key); // 诚实位：屏上看得见"复用了既有的 X"
     expect(p.migratedTypes).toBe(provTypes.length - 1); // 老行为不变：沿用的那条不计入
+  });
+
+  /**
+   * 仓储双实现对齐（R9）：新增的三份名单落在 `story_build_runs` 的 **JSONB `doc` 整体列**里
+   * （`migrations/015_story_build_run.sql`），故**不需要**新列/新迁移 —— 但「不需要」这句话
+   * 必须用**同一组断言在两个实现上各跑一遍**钉死，不能留作注释里的声称
+   * （病史：漏改 pg 半边 = pg 模式下功能不存在而 memory 测试全绿）。
+   */
+  it("仓储双实现：新增的三份名单在 memory 与真 PgStore 上同一组断言都往返得回来", async () => {
+    const run = {
+      id: "sbr_dual",
+      tenantId: "demo",
+      script: SCRIPT,
+      producedConnections: [],
+      producedDatasets: [],
+      producedArtifacts: [],
+      storyCoverage: [],
+      nodes: [],
+      buildMode: "PROVISIONAL",
+      status: "SUCCEEDED",
+      createdAt: "2026-08-14T00:00:00.000Z",
+      domainPromotion: {
+        promotedAt: "2026-08-14T00:00:00.000Z",
+        promotedBy: "usr_demo_admin",
+        fromNamespace: "demo::prov::sbr_dual",
+        migratedObjects: 1, migratedDatasets: 1, migratedConnections: 1, migratedTypes: 1,
+        promotedSolvers: [],
+        reusedTypeKeys: ["Order"],
+        keptLinkKeys: ["order_of_customer"],
+        overwrittenLinkKeys: ["line_of_base"],
+      },
+    } as unknown as StoryBuildRun;
+
+    // 同一组断言，跑两遍（下面这个闭包就是"同一组"的字面保证）。
+    const assertRoundTrip = (back: StoryBuildRun | undefined, where: string) => {
+      expect(back, where).toBeTruthy();
+      expect(back!.domainPromotion?.reusedTypeKeys, where).toEqual(["Order"]);
+      expect(back!.domainPromotion?.keptLinkKeys, where).toEqual(["order_of_customer"]);
+      expect(back!.domainPromotion?.overwrittenLinkKeys, where).toEqual(["line_of_base"]);
+      expect(back, where).toEqual(run);
+    };
+
+    const mem = createMemoryRepos();
+    await mem.storyBuildRuns.put(run);
+    assertRoundTrip(await mem.storyBuildRuns.get("demo", "sbr_dual"), "memory");
+
+    // 跑**真** PgStore 的 put/get SQL 与 JSONB doc 编解码，用 Map 背板替掉网络
+    // （证明的是「PgStore 走整体 doc 列、不逐字段列举」，不是「连过一台真 postgres」）。
+    const rows = new Map<string, { tenant_id: string; doc: unknown }>();
+    const fakePool = {
+      async query(sql: string, vals: unknown[]) {
+        if (sql.trimStart().startsWith("SELECT")) {
+          const [id, tenantId] = vals as [string, string];
+          const r = rows.get(id);
+          return { rows: r && r.tenant_id === tenantId ? [{ doc: r.doc }] : [] };
+        }
+        const [id, tenantId, docJson] = vals as [string, string, string];
+        rows.set(id, { tenant_id: tenantId, doc: JSON.parse(docJson) });
+        return { rows: [] };
+      },
+    };
+    const pg = new PgStore<StoryBuildRun>(fakePool as never, "story_build_runs");
+    await pg.put(run);
+    assertRoundTrip(await pg.get("demo", "sbr_dual"), "pg");
+    expect(await pg.get("other", "sbr_dual")).toBeUndefined(); // R2 租户隔离
   });
 });
