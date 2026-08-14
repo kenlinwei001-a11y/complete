@@ -52,6 +52,11 @@ import type {
   PurposeBinding,
   OpsSchedule,
   OpsScheduleRecord,
+  // WO-BEFE-B · 契约里已有的形状一律从这里导入（不在 api/types.ts 重定义）
+  VirtualPersona,
+  OpsPlaybook,
+  OpsTickReport,
+  FactoryCalendar,
   SandboxViewConfig,
   Perturbation,
   PerturbationKind,
@@ -72,9 +77,13 @@ import type {
 import { ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 真实世界 worldId 单源（前端不许再写一个 "REAL" 字面量）
 import { api } from "./apiClient";
 import type {
+  ActionDraftAuditVM,
+  CalendarNetWindowVM,
   FallbackClusterVM,
   ObjectsPage,
   OntologyGraphVM,
+  ScheduledJobVM,
+  SchedulerRunVM,
   SimClockVM,
   SopVersionVM,
   SyncJobVM,
@@ -895,6 +904,22 @@ export const fetchActionDrafts = (status?: string) =>
 export const fetchActionDraft = (id: string) => api.a<ActionDraft>(`/a/v1/action-drafts/${id}`);
 export const decideActionDraft = (id: string, decision: "APPROVE" | "REJECT", comment: string) =>
   api.a<ActionDraft>(`/a/v1/action-drafts/${id}/decision`, { body: { decision, comment } });
+/**
+ * WO-BEFE-B · R4「真值写入经 Action 审批」的**留痕读端**（后端 actions.ts:822 `audit()`）。
+ * 审批链上每一步谁批的、后端发了哪些 `action.*` 事件、执行结果是什么——此前后端算了没人看。
+ * 注意：这是**只读**投影，不参与状态迁移（迁移只走 decision / cancel 两条写路）。
+ */
+export const fetchActionDraftAudit = (id: string) =>
+  api.a<ActionDraftAuditVM>(`/a/v1/action-drafts/${encodeURIComponent(id)}/audit`);
+/**
+ * WO-BEFE-B · 撤回（后端 actions.ts:753 `cancel()`）。
+ * **不绕开 R4**：cancel 只把草稿从「待审批」移到 CANCELLED —— 它是审批链的**放弃**分支，
+ * 不是通过分支；后端不因 cancel 执行任何 payload、不写任何真值（无 `execute()` 调用）。
+ * 后端另有两道闸：状态必须 ∈ {DRAFT, PENDING_APPROVAL, APPROVED}（EXECUTING 之后不可撤），
+ * 且仅发起人或 admin 可撤 —— 前端按同判据置灰，但**真正的拦截在后端**。
+ */
+export const cancelActionDraft = (id: string) =>
+  api.a<ActionDraft>(`/a/v1/action-drafts/${encodeURIComponent(id)}/cancel`, { body: {} });
 
 // ---------------- B · AgentCore ----------------
 
@@ -1035,6 +1060,45 @@ export const fetchOpsSchedule = () =>
   api.a<{ schedule: OpsScheduleRecord | null }>("/a/v1/ops/schedule");
 export const saveOpsSchedule = (schedule: OpsSchedule) =>
   api.a<{ schedule: OpsScheduleRecord }>("/a/v1/ops/schedule", { method: "PUT", body: schedule });
+
+/* ── WO-BEFE-B · 回放编排器 §1–§3：虚拟操作团队 / 剧本 / tick 报告 ──────────────
+ * 与上面 OpsSchedule 同住 /admin/ops-schedule 页，但是**另外四条端点**，此前零调用方。
+ * ⚠️ 隔离语义（后端 opsteam/team.ts:30 `isSyntheticTenant`）：这些只在 SYNTHETIC 租户有内容，
+ *    真实租户读到空、写会 403 —— 前端必须**如实显示这条边界**，不许把 403 画成"暂无数据"。
+ * ⚠️ 同名不同物：`fetchTickReports()`（上文）打的是 `/a/v1/synthetic/clock/ticks`，
+ *    与本处 `/a/v1/ops/tick-reports` **是两条不同的路由、两种不同的记录**，别合并。 */
+export const fetchOpsPersonas = () => api.a<{ items: VirtualPersona[] }>("/a/v1/ops/personas");
+export const seedOpsPersonas = () =>
+  api.a<{ items: VirtualPersona[] }>("/a/v1/ops/personas/seed", { body: {} });
+export const fetchOpsPlaybook = () => api.a<{ playbook: OpsPlaybook | null }>("/a/v1/ops/playbook");
+export const saveOpsPlaybook = (playbook: OpsPlaybook) =>
+  api.a<{ playbook: OpsPlaybook }>("/a/v1/ops/playbook", { method: "PUT", body: playbook });
+export const fetchOpsPools = () =>
+  api.a<{ pools: Record<string, unknown> }>("/a/v1/ops/pools");
+export const fetchOpsTickReports = () => api.a<{ items: OpsTickReport[] }>("/a/v1/ops/tick-reports");
+
+/* ── WO-BEFE-B · S3 调度器（后端 app.ts:4967–4982 · scheduler.ts）────────────────
+ * 定时任务台：列表 / 暂停 / 恢复 / 单条运行历史。此前后端注册了四条、前端零调用。 */
+export const fetchSchedulerJobs = (kind?: string) =>
+  api.a<ScheduledJobVM[]>(`/a/v1/scheduler/jobs${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`);
+export const fetchSchedulerJobRuns = (id: string) =>
+  api.a<SchedulerRunVM[]>(`/a/v1/scheduler/jobs/${encodeURIComponent(id)}/runs`);
+export const pauseSchedulerJob = (id: string) =>
+  api.a<ScheduledJobVM>(`/a/v1/scheduler/jobs/${encodeURIComponent(id)}/pause`, { body: {} });
+export const resumeSchedulerJob = (id: string) =>
+  api.a<ScheduledJobVM>(`/a/v1/scheduler/jobs/${encodeURIComponent(id)}/resume`, { body: {} });
+
+/* ── WO-BEFE-B · OC9 工厂日历（后端 app.ts:1293–1310，admin only）───────────────
+ * 日历一等对象 + 净生产窗口：把自然天数折算成净生产天数（节假日/检修扣除）。
+ * `FactoryCalendar` 在契约里已有 → 从 @platform/contracts 导入，不本地重定义。 */
+export const fetchCalendar = (key: string) =>
+  api.a<FactoryCalendar>(`/a/v1/calendars/${encodeURIComponent(key)}`);
+export const saveCalendar = (key: string, body: Partial<Pick<FactoryCalendar, "weekendMode" | "exceptions">>) =>
+  api.a<FactoryCalendar>(`/a/v1/calendars/${encodeURIComponent(key)}`, { method: "PUT", body });
+export const fetchCalendarNetWindow = (key: string, from: string, to: string) =>
+  api.a<CalendarNetWindowVM>(
+    `/a/v1/calendars/${encodeURIComponent(key)}/net-window?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
 
 export const fetchFallbackStats = (packageId: string) =>
   api.b<{ items: FallbackClusterVM[] }>(`/b/v1/ops/fallback-stats?packageId=${packageId}`);
