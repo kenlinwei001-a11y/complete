@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchObjectTypeStats, fetchBusinessDomains, fetchObjectTypes, queryObjectsPaged, type ObjectTypeStat } from "@/api/endpoints";
+import { InfoPopover } from "@/components/InfoPopover";
 import styles from "./ObjectTypesBrowserPage.module.css";
 
 /**
@@ -147,7 +148,6 @@ export default function ObjectTypesBrowserPage() {
                           className="btn sm"
                           data-testid={`ot-instances-${s.key}`}
                           disabled={!hasInstances}
-                          title={hasInstances ? undefined : whyDisabled}
                           aria-expanded={hasInstances ? rowOpen : undefined}
                           aria-controls={rowOpen ? detailId : undefined}
                           onClick={toggle}
@@ -155,8 +155,19 @@ export default function ObjectTypesBrowserPage() {
                           {rowOpen ? "收起 ↑" : "看实例 →"}
                         </button>
                         {!hasInstances && (
+                          /* WO-FE-RED-7：按钮上那个重复的 `title=` 已删（规范 §2 R-UI-3 禁止拿
+                             原生 title 当浮层；且 `disabled` 的 button 多数浏览器不派发 hover/focus
+                             ⇒ 那句话恰恰在唯一需要它的状态下打不开）。理由改由这里的 `?` 承载：
+                             第一层留「物化 N 个 · 无实例可下钻」这个**结论**，整句进浮层。
+                             ⚠ 这个 `div` 自己的 `title={whyDisabled}` **刻意保留** ——
+                             `test/f57.object-types-browser.test.tsx` 咬的正是它
+                             （`why.getAttribute("title")` 含接口回的 displayName，用来证明这句话
+                             来自数据不是死文案）。动它属另一张单的范围，本单不碰。 */
                           <div className={`muted ${styles.otWhyDisabled}`} data-testid={`ot-instances-why-${s.key}`} title={whyDisabled}>
                             物化 {s.count} 个 · 无实例可下钻
+                            <InfoPopover topic="为什么点不动" testId={`ot-why-${s.key}`}>
+                              {whyDisabled}
+                            </InfoPopover>
                           </div>
                         )}
                       </td>

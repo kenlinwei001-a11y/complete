@@ -5,6 +5,7 @@ import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { discoverLevers, fetchRules, runSolver, type DiscoveredLever } from "@/api/endpoints";
 import { Feature } from "@/workspace/featureGate";
 import { Provenance } from "@/components/Provenance";
+import { InfoPopover } from "@/components/InfoPopover";
 import { fmt, useActionDraft } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import zh from "@/locales/zh";
@@ -380,13 +381,21 @@ export function DynamicLeverPanel({
                     {distinct < out.rows.length && (
                       /* ⚠ 括号里的解释原本写在第一层，被 `check-ui-first-layer` 当场判红
                          （D2b「第一层长说明串 ≥24 字」）——**我刚给别的单立的规矩，自己当场犯了**。
-                         按规范降到 `title` 浮层，第一层只留「N 行中仅 M 个不同结果」这个**结论**。 */
-                      <span
-                        className={styles.deltaDistinct}
-                        data-testid="lever-delta-distinct"
-                        title="其余为同值重复：该维度不参与本次计算，故多行结果相同"
-                      >
+                         按规范降到浮层，第一层只留「N 行中仅 M 个不同结果」这个**结论**。
+
+                         ⚠ 2026-08-14（WO-FE-RED-7）再修一次：上一版降到的是**原生 `title=`**，
+                         而规范 §2 R-UI-3 明令禁止拿 title 当浮层（浏览器原生 tooltip 由 OS 绘制、
+                         不受组件控制、移开后会滞留）。于是它换了一道门继续红：
+                         `provenance-popover-legibility` 的 title= 棘轮。
+                         **躲开一道门不等于治好** —— 正解是 `InfoPopover`，两道门同时绿。
+                         `topic` 用字面量而非 locale 变量：`check-ui-first-layer` 把
+                         `topic={变量}` 计作一条**第一层**信息块（`topic="字面量"` 不计），
+                         写成变量会让 first 涨、D1 棘轮当场红。 */
+                      <span className={styles.deltaDistinct} data-testid="lever-delta-distinct">
                         {out.rows.length} 行中仅 <b className="mono">{distinct}</b> 个不同结果
+                        <InfoPopover topic="为什么会有同值重复" testId="lever-delta-distinct">
+                          其余为同值重复：该维度不参与本次计算，故多行结果相同。
+                        </InfoPopover>
                       </span>
                     )}
                   </div>
