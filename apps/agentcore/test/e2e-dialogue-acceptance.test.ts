@@ -249,7 +249,10 @@ describe("S4/S7 · CEO 深问 agent 调 solver + 决策结构化接地输出（s
     const { task, calls } = await runCeoDeep(t);
     expect(task.path).toBe("AGENT"); // 真 path-B（非确定性单跳）
     const seq = calls.map((c) => c.toolName);
-    expect(seq).toContain("invoke_solver"); // 涉算题真落 solver
+    // 咬**整条工具序**，不只是"里面有 invoke_solver"：脚本是确定性的（ceoDecisionTurns 两轮），
+    // 少调一个 / 多调一个 / 顺序换了，`toContain` 一律同色 —— 那正是「∃ 冒充 ∀」。
+    // 实测两条（`final_answer` 是终结指令，不落 toolCalls 台账）。
+    expect(seq).toEqual(["query_objects", "invoke_solver"]); // 涉算题真落 solver
     await t.app.close();
   });
 

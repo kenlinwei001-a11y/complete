@@ -498,8 +498,13 @@ describe("WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 →
     }
 
     // 金丝雀（与主判据共用同一个字段读法）：`"*"` 确实也进了 levels —— 证明上面在扫的是有货的集合。
-    const aggInLevels = ga.levels.flatMap((L) => L.nodes).filter((n) => n.provenance?.drillId === AGG).length;
-    expect(aggInLevels, "levels 里应真有聚合节点（0 = 上面几条断言无从证明自己在扫）").toBeGreaterThan(0);
+    const aggInLevels = ga.levels.flatMap((L) => L.nodes).filter((n) => n.provenance?.drillId === AGG);
+    expect(aggInLevels.length, "levels 里应真有聚合节点（0 = 上面几条断言无从证明自己在扫）").toBeGreaterThan(0);
+    // 而且这批聚合节点**逐个**都不落在会被拼 id 的 Order 上 —— 与 ③ 同一条不变量，
+    // 在 levels 这一侧再全称验一遍（原来这里只数了个数，一个都没逐条看过）。
+    for (const n of aggInLevels) {
+      expect(n.provenance!.drillType, `levels 里的聚合节点落在 Order 上 = 掉进②那条会拼 id 的消费路`).not.toBe("Order");
+    }
   }, 300_000);
 
   it("路径表完整性锚：supply_demand_gap_attribution 今天**丢掉**全部入参 → 故上表只列 1 条；哪天接了 args 这条必红", async () => {

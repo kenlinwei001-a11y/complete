@@ -247,9 +247,11 @@ describe("WO-ORG-WORLD ③ 单源：扩既有 Principal，未新造 Person", () 
     for (const id of Object.values(REUSED_SYNTHETIC_DEPT_IDS)) {
       expect(seeded.filter((s) => s === id)).toHaveLength(0); // 复用者不重新播，只被引用
     }
-    // 引用是真的存在的（角色/人的 parentRef 指向复用 id）
+    // 引用是真的存在的（角色/人的 parentRef 指向复用 id）——**逐个**复用 id 都必须真被引用。
+    // 原来只咬 finance 一个：3 个复用 id 里验 1 个，另两个断了照样绿（1/N 与 N/N 同色）。
     const parents = buildOrgPrincipals(TENANT).map((p) => p.parentRef);
-    expect(parents).toContain(REUSED_SYNTHETIC_DEPT_IDS.finance);
+    const reusedIds = Object.values(REUSED_SYNTHETIC_DEPT_IDS);
+    expect(reusedIds.filter((id) => parents.includes(id))).toEqual(reusedIds);
   });
 });
 
