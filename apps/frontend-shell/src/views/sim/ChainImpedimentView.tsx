@@ -16,6 +16,9 @@ import {
   type ImpedimentVM,
 } from "./chainImpediment";
 import styles from "./ChainImpedimentView.module.css";
+// WO-ORDER-JOURNEY · 决策推演就地嵌入（与 `/v/decision-play` 页面壳**同一份实现**，不是复刻一份）。
+import { DecisionPlayEmbed } from "../DecisionPlayPanel";
+import zh from "@/locales/zh";
 
 /**
  * WO-IMPEDIMENT-FE · 全链阻滞点（卡点 / 堵点 / 断点）。
@@ -186,6 +189,20 @@ function ImpedimentCard({ im }: { im: ImpedimentVM }) {
           {im.honesty.detail}
         </p>
       ) : null}
+
+      {/* ── WO-ORDER-JOURNEY · 决策推演**就地嵌入**（不再跳走）─────────────────────────
+          仓主原话：「每个需要决策的点都需要这个页面」。一条阻滞点 = 「一个具体的卡点 +
+          系统能给出方案对比」= 判定为决策点，故就地挂。
+          默认折叠：本页在 `check-ui-first-layer` 棘轮基线里（first=83），整块摊开会当场涨；
+          第一层只留 `summary` 那**一个可见记号**（静默降层等于删除，故记号必须写清点开拿到什么）。
+          锚：这条阻滞点自己的 `locus{objectType,objectId}` —— 引擎据此产出 `locusPlay`
+          （因子对上情况 + 该落点的可执行解法），**不猜 factorId**。 */}
+      <DecisionPlayEmbed
+        metricKey=""
+        locus={{ objectType: im.locus.objectType, objectId: im.locus.objectId, label: im.locus.label }}
+        testId={`ci-play-${im.impedimentId}`}
+        summaryLabel={zh.decisionPlay.embedSummary}
+      />
     </li>
   );
 }

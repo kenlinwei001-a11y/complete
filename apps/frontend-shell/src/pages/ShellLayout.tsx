@@ -160,7 +160,20 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       // 专用 route（App.tsx `{ path: "v/<静态段>" }`·免 workspace 下发即可达）。
       // `decision-play` 此前写成 `kind:"view"` —— 后端 `BUILTIN_VIEWS` 从未派单它（view-manifest.ts:54-56
       // 明写"诚实排除"），于是 `viewByKey.get("decision-play")` 恒空、`return null` 恒静默 ⇒ 幽灵条目。
-      { kind: "route" as const, key: "decision-play", label: "决策推演" },
+      // ── WO-ORDER-JOURNEY · 仓主原话：「决策推演**不应该在这个位置**，而是嵌入到每个需要决策推演
+      //    的位置，每个需要决策的点都需要这个页面」。**已照办的部分**：5 区推演的唯一实现搬到
+      //    `views/DecisionPlayPanel.tsx`，`ChainImpedimentView` 逐条阻滞点、`OrderChainView` 订单面板
+      //    都已就地嵌入（点开即在原地展开，URL 不变）。
+      //    **没照办的部分（本条为什么还在）—— 先测清连坐面再动，不摸黑删**（实测四条）：
+      //     ① `check-nav-group-coverage.mjs` 判据④：6 条专用 route 必须各有 `kind:"route"` 入口，
+      //        删了这一条 ⇒ `/v/decision-play` 变悬空条目 ⇒ 门当场红（机器先说话，不是我猜的）；
+      //     ② `views/DashboardView.tsx:162` 有 `navigate("/v/decision-play")`，且
+      //        `test/decision-play.test.tsx:211` 断言它可达 —— 而 DashboardView 在本单禁改清单里；
+      //     ③ `test/imp2plan.seam.test.tsx:161` 直接挂 `/v/decision-play` 这条 route；
+      //     ④ 沙盘 `sandboxConsoleModel.ts:716 DECISION_PLAY_PATH` + `IMP_PARAM` 一整套深链 query 契约。
+      //    ⇒ 裁决：**保留 route、保留入口、改标签把新定位写在脸上**（独立页 = 兜底/深链落点，
+      //    主交互已回到各决策点原地）。删入口属导航信息架构决策且会连坐上面四处，不在本单单方面做。
+      { kind: "route" as const, key: "decision-play", label: "决策推演（独立页 · 各卡点已就地嵌入）" },
       // ── 已收编进沙盘模式切换的四页：`consolidatedWhen` 开 → 隐藏（详见类型定义处的语义说明）──
       // 沙盘关着的租户仍看得到它们（这四页本身不受 sim.sandbox 门控，人人可进）。
       { kind: "route" as const, key: "what-if", label: "假设推演", consolidatedWhen: "sim.sandbox" },
