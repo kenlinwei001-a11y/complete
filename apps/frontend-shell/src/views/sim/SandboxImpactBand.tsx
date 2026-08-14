@@ -192,6 +192,9 @@ export function FinanceProjectionPanel({ worldId, curTick }: FinanceProjectionPa
       const res = await runSolver("finance_world_projection", { worldId });
       /**
        * 🔴 **按契约校形，不许 `as` 硬转**（本单实测栽过，全量前端回归当场咬出来的）。
+       * **2026-08-14 实测**：第一版用 `as` 硬转，回包缺 `lines` 时整棵 React 树被卸掉（沙盘白屏），
+       * 连坐 `metro-semantics.seam` ×2 + `sandbox-ia-consolidate.seam` ×2。
+       * 复验：`pnpm --filter frontend-shell exec vitest run sandbox-finance-worldstate`（回包缺字段那一例）。
        *
        * 第一版写的是 `res.data as FinanceWorldProjectionOutput` —— 一个**编译期**断言，
        * 运行期什么都不检查。于是回包只要缺 `lines`，下面 `out.lines.find(...)` 就抛，
