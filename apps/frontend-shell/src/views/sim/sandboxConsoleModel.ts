@@ -54,8 +54,19 @@ import {
  * 中央画布的模式。设计稿是三个（线路图 / 物理拓扑 / 链路阶段）；
  * 第四个 `ontology` 是**旧沙盘主屏的本体 PmDag 拓扑**——它是已接线的真功能，
  * 重组时不许丢，故降为画布的第四模式而不是删掉（去处见交付报告）。
+ *
+ * ── 第五档 `process`（WO-SANDBOX-PROCESS-MODE）───────────────────────────────
+ * 业务流程层（`ProcessDefinition`，条数由端点下发）。它与前四档**不是同一个数据模型**：
+ * 前四档画的是链路节拍层（`CHAIN_NODE_REGISTRY` 的 24 个冻结 nodeId ＋ 引擎载荷），
+ * 第五档画的是业务活动台账。契约 `process.ts` 文件头写的「两层不能合并」约束的是
+ * **两个数据模型不许互相顶替、不许揉成一张表** —— 它没有说不能同屏。
+ * 故第五档是画布上的**另一个图层**：自己取数、自己的检视面板、自己的选中态（`processKey`），
+ * 只共用这一块画布区域与这一排档位按钮。`CHAIN_NODE_REGISTRY` 一个 id 都没动、没增、没改。
+ *
+ * ⚠ 加档位时的硬约束：本表**只登记档位**，不登记任何一档的数据。谁要往
+ *   `CANVAS_MODE_*` 里塞流程键或节点键，就是在这里开始揉两层。
  */
-export const CANVAS_MODES = ["metro", "topo", "chain", "ontology"] as const;
+export const CANVAS_MODES = ["metro", "topo", "chain", "ontology", "process"] as const;
 export type CanvasMode = (typeof CANVAS_MODES)[number];
 
 export const CANVAS_MODE_LABEL: Record<CanvasMode, string> = {
@@ -63,6 +74,7 @@ export const CANVAS_MODE_LABEL: Record<CanvasMode, string> = {
   topo: "物理拓扑",
   chain: "链路阶段",
   ontology: "本体拓扑",
+  process: "业务流程",
 };
 
 /** 画布标题（设计稿 `cvT` 那一行）。 */
@@ -71,6 +83,8 @@ export const CANVAS_MODE_TITLE: Record<CanvasMode, string> = {
   topo: "物理拓扑 · 基地 × 工序热力矩阵",
   chain: "链路阶段 · 按引擎返回的节点分段铺开（5 段 · 段数/节点数以后端注册表为准）",
   ontology: "本体拓扑 · 节点 = 已发布对象类型，着色随 tick 变（推演沙盘原主屏）",
+  // ⚠ 标题里**不写条数**：条数由端点下发，写死一个数就是种子一变即撒谎（判据现算在画布上）。
+  process: "业务流程 · 一级业务域 × 核心业务流程（点一条 → 右栏出它的完整本体关系）",
 };
 
 // ══════════════════════════════════════════════════════════════════════════════

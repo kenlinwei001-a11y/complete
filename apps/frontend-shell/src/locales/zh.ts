@@ -723,6 +723,35 @@ export const zh = {
         metricsCount: (n: number) => `${n} 项`,
       },
       /**
+       * WO-SANDBOX-PROCESS-MODE · 主画布**第五档「业务流程」**的文案。
+       *
+       * ⚠ 本块**一个业务词都没有**：域名 / 流程名 / 职能名 / 承载物类型名一律来自端点下发，
+       *   这里只放界面骨架（R14 零写死词表 —— 编错比不编危险，业务专家会照着错的理解）。
+       * ⚠ 本块**不出现任何条数金值**（没有 `65`）：条数一律由 `counts(total, laid, lanes)` 现算填入。
+       *   把金值抄进文案 = 种子一变就撒谎，而屏上撒谎比屏上没有更糟。
+       */
+      processCanvas: {
+        counts: (total: number, laid: number, lanes: number) =>
+          `端点下发 ${total} 条业务流程 · 本档铺开 ${laid} 条 · ${lanes} 个一级业务域（两个数都是现算的，不是写死的金值）`,
+        mismatch: "⚠ 下发条数 ≠ 铺开条数 —— 本档漏画了流程，这不是「租户没有」而是渲染层掉了",
+        disjointOk: "与链路节拍层 24 个冻结节点的键交集：0（两层同屏、不同模型）",
+        disjointBroken: (keys: string) => `🔴 两层键集合出现交集：${keys} —— 有人把业务流程层揉进了链路节拍层`,
+        layersNote:
+          "契约 packages/contracts/src/process.ts 文件头原话：链路节拍层（24 条 CHAIN_NODE_REGISTRY）与业务流程层（65 条 ProcessDefinition）「两层粒度不同，不能互相替代，也不能合并」。那句话约束的是两个**数据模型**（不许互相顶替、不许揉成一张表），不是「不能同屏」。本档是画布上的另一个图层：自己的取数（GET /a/v1/process-definitions）、自己的检视面板、自己的选中态（processKey 而非 nodeId），只共用同一块画布区域与同一套档位按钮。左边那个交集数就是这条约束的机器判据 —— 它一旦非 0，说明两层真被揉了。",
+        stdDaysCaveat: "卡上的天数是**标准工期**（模板值），不是「此刻已经卡了多久」——运行态由 /instances 与 process_flow_time 回答，本档不答。",
+        unregisteredDomains: (keys: string) =>
+          `⚠ 域登记册里查不到这些 domainKey：${keys} —— 单开泳道显示，不静默并进「其它」（静默并进会把「后端漏发」伪装成「前端没画」）`,
+        laneUnregistered: "（域未登记）",
+        laneStat: (count: number, days: number) => `${count} 条 · 标准工期合计 ${days}D`,
+        stdDays: (d: number) => `标准 ${d}D`,
+        loading: "取业务流程台账中…（GET /a/v1/process-definitions）",
+        errorTitle: "业务流程台账取不到 —— 下面是后端原话，本档不替它编一个解释：",
+        empty: "端点返回了 0 条业务流程。这是「本租户没有流程台账」，不是「本档没画」——两者在屏上必须分得开。",
+        /** 右栏：本档的检视面板标题与未选中提示。 */
+        inspectTitle: "流程检视 · 完整本体关系",
+        inspectHint: "点画布里任一条业务流程 → 这里出它的完整本体关系：承载类型 / 属性 / 派生 / 一跳关系 / 同承载物流程 / 打到它的杠杆 / 十六层三态。",
+      },
+      /**
        * WO-SANDBOX-V3 · 下区影响带（PRD §1③）的文案。
        *
        * ⚠ `financeGap` 是**诚实位**，不是免责声明 —— 它陈述一个实测事实：
@@ -817,6 +846,7 @@ export const zh = {
         timeWindow: "时窗 30D / 60D / 90D 为何禁用",
         seed: "SEED · 确定性种子",
         chainCoverage: "链路阶段 · 在册 ≠ 有数据（完整口径与取证）",
+        processLayers: "业务流程档 · 两层为何能同屏、又为何不合并",
         paretoRate: "影响率怎么算 · 分母是什么",
         inspectorEvidence: "下钻证据为何是空的",
         stepTable: "逐环节表的口径",

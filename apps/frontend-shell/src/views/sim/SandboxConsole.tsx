@@ -11,6 +11,16 @@ import { TRANSIT_SOURCE_SPECS, CADENCE_ABSENCE, PROCUREMENT_BRANCH } from "./tra
 import { PhysicalTopologyView } from "./PhysicalTopologyView";
 import { NodeInspectorView } from "./InspectorNodePanel";
 import TransitFlowView from "./TransitFlowLayer";
+import { ProcessCanvasView } from "./ProcessCanvasView";
+/**
+ * WO-SANDBOX-PROCESS-MODE · 第五档的检视面板**直接复用**「流程等待态」那一页的既有组件
+ * （`views/process/ProcessInspectPanel`），一行都不改：它已经把
+ * 承载类型 / 属性 / 派生 / 一跳关系 / 同承载物流程 / 打到它的杠杆 / 十六层三态
+ * 全部由 `GET /a/v1/process-definitions/{key}/inspect` 一次调用画出来。
+ * 重写一份 = 两份措辞将来各飘各的，正是本仓最恨的那种"第二套口径"。
+ * ⚠ 复用不等于搬走：`/v/process-wait` 那一页原样保留、内容不变（D4 守恒）。
+ */
+import { ProcessInspectPanel } from "@/views/process/ProcessInspectPanel";
 import { PLACEHOLDER_SEED_DEFAULT } from "./physicalTopology";
 import { type ChainLossPayload } from "./chainLineMap";
 import {
@@ -249,6 +259,16 @@ export function SandboxConsole({
   };
   const [honesty, setHonesty] = useState(true);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  /**
+   * WO-SANDBOX-PROCESS-MODE · 第五档的选中态。
+   *
+   * ⚠ **刻意与 `selectedNodeId` 分成两个 state**，不是图省事没合并：
+   *   `selectedNodeId` 装的是链路节拍层的 24 个冻结 nodeId（`capacity.schedule` 那种），
+   *   本 state 装的是业务流程键（`P01` 那种）。合成一个 `selectedKey` 就等于承认两层同模型 ——
+   *   那正是契约 `process.ts` 文件头禁止的事（且两层的检视器吃的入参根本不同）。
+   *   两个 state 之间**没有任何互相写入**，切档不互相清空（切回去仍是原来选中的那个）。
+   */
+  const [selectedProcessKey, setSelectedProcessKey] = useState<string | null>(null);
   const [railTab, setRailTab] = useState<"steps" | "vars">("steps");
   const [transitOn, setTransitOn] = useState(false);
   const [chainZoom, setChainZoom] = useState(1);
@@ -437,6 +457,15 @@ export function SandboxConsole({
   const pickEmptyNode = useCallback((nodeId: string) => {
     setSelectedNodeId(nodeId);
     setRailTab("vars");
+  }, []);
+
+  /**
+   * 点第五档的流程卡 → 右栏出 `ProcessInspectPanel`。
+   * **只写 `selectedProcessKey`，一个字都不碰 `selectedNodeId` / `railTab`** ——
+   * 两层的选中态互不污染，这就是「同屏不同模型」在代码里的样子。
+   */
+  const pickProcess = useCallback((processKey: string) => {
+    setSelectedProcessKey(processKey);
   }, []);
 
   const toggleBase = (id: string) =>
@@ -955,10 +984,48 @@ export function SandboxConsole({
                 </p>
               )}
             </div>
+
+            {/* ── 业务流程（WO-SANDBOX-PROCESS-MODE · 第五档）────────────────────────
+                **另一个图层，不是把前四档扩了**：自己取数（`GET /a/v1/process-definitions`）、
+                自己的选中态（`selectedProcessKey`，与节拍层的 `selectedNodeId` 各归各、互不写入）、
+                右栏换成 `ProcessInspectPanel`。契约 `process.ts` 那句「两层不能合并」约束的是
+                两个**数据模型**，不是「不能同屏」—— 同屏 ≠ 同模型，判据是两层键集合交集恒为空
+                （现算在 `spc-disjoint` 上，SEAM 门咬死）。
+                与其余四档同样走 `mounted` 懒挂载：没点进来 = 一次请求都不发。 */}
+            <div className={styles.canvasSlot} hidden={mode !== "process"} data-testid="sc-slot-process">
+              {mounted.has("process") ? (
+                <ProcessCanvasView selectedProcessKey={selectedProcessKey} onPick={pickProcess} honesty={honesty} />
+              ) : null}
+            </div>
           </div>
         </main>
-        {/* ── 右：节点检视 ────────────────────────────────────────────────── */}
-        <aside className={styles.pane} data-testid="sc-inspect-pane">
+        {/* ── 右：节点检视 ──────────────────────────────────────────────────
+             ⚠ 两层的检视器**不共用**：链路节拍层（前四档）走 `NodeInspectorView` / `StepDetail`，
+                业务流程层（第五档）走 `ProcessInspectPanel`。硬塞进同一个检视器才是真的把两层揉了
+                —— 它们没有共用的数据结构（一个吃 `nodeId` + 五段耗时，一个吃 `processKey` + 本体关系）。 */}
+        <aside className={styles.pane} data-testid="sc-inspect-pane" data-layer={mode === "process" ? "process" : "chain"}>
+          {mode === "process" ? (
+            <>
+              <div className={styles.paneHead}>
+                <h2 data-testid="sc-inspect-title">{zh.sim.sandbox.processCanvas.inspectTitle}</h2>
+                {selectedProcessKey !== null ? (
+                  <span className={styles.tag} data-testid="sc-inspect-process-key">
+                    {selectedProcessKey}
+                  </span>
+                ) : null}
+              </div>
+              <div className={styles.paneBody}>
+                {selectedProcessKey === null ? (
+                  <p className={styles.stateLine} data-testid="sc-process-inspect-hint">
+                    {zh.sim.sandbox.processCanvas.inspectHint}
+                  </p>
+                ) : (
+                  <ProcessInspectPanel processKey={selectedProcessKey} onClose={() => setSelectedProcessKey(null)} />
+                )}
+              </div>
+            </>
+          ) : (
+          <>
           <div className={styles.paneHead}>
             <h2 data-testid="sc-inspect-title">{selected === null ? "节点检视" : selected.label}</h2>
             {selected !== null ? (
@@ -1002,6 +1069,8 @@ export function SandboxConsole({
               </>
             )}
           </div>
+          </>
+          )}
         </aside>
         </section>
       </div>

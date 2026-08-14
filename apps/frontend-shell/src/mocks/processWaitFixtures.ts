@@ -5,6 +5,8 @@ import {
   ProcessDefinitionSchema,
   ProcessDomainSchema,
   ProcessInstanceSchema,
+  ProcessInspectResponseSchema,
+  type ProcessInspectResponse,
 } from "@platform/contracts";
 import type { ProcessDefinitionsResponse, ProcessInstancesResponse } from "@/views/process/processWait";
 
@@ -237,4 +239,103 @@ export const processInstancesFixture = (key: string): ProcessInstancesResponse =
     definition: ProcessDefinitionSchema.parse({ ...def, id: `pdef_${TENANT_ID}_${key}`, tenantId: TENANT_ID }),
     absence: { ...PROCESS_INSTANCES_P01.absence!, processKey: key, name: def.name, carrierTypeKey: def.carrierTypeKey },
   };
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-SANDBOX-PROCESS-MODE · `GET /a/v1/process-definitions/:key/inspect` 的 mock
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ══ 为什么现在才补这条 mock ═════════════════════════════════════════════════
+ * `ProcessInspectPanel` 此前只在 `/v/process-wait` 出现，而那一页在 mock 模式下点开面板
+ * 会打到一个**没有 handler 的路由**（实测：本段补之前 `handlers.ts` 里
+ * `process-definitions/:key/inspect` 零命中；金丝雀 —— 同一条 grep 对
+ * `process-definitions/:key/instances` 在同一文件命中一条，证明是真没有、不是 grep 坏了）。
+ * 沙盘第五档把这个面板搬到主画布右栏，这个缺口就从"某页的边角"变成"主屏上一点就报错"。
+ *
+ * ══ 🔴 这份 mock **不编造本体** ═══════════════════════════════════════════════
+ * 关键选择：`carrier.status` 一律 `absent`。**这不是偷懒，是 mock 世界的真实情况** ——
+ * `handlers.ts` 的 `GET /a/v1/ontology/object-types` 里根本没有 `MaterialBalance` /
+ * `ProductionSchedule` / `PlanTarget` 这些承载类型（实测；金丝雀：同一条 grep 对
+ * `Material` 在该文件命中 14 处，证明工具是好的）。硬给它们编几条属性和中文名，
+ * 就是本仓最恨的那种假数据：屏上看着很满，对应的真后端字段却一个都不存在，
+ * 还会让「前端诚实回落裸键」那条分支永远跑不到。
+ * 缺席理由照实写"缺在哪一环"，与真后端 `absent` 分支同形
+ * （真后端那一态的录制样本见 `test/fixtures/process-inspect-real.json` 的 `P32-ABSENT-PROBE`）。
+ *
+ * ══ 但**能从 mock 自己的数据算出来的，一律算真的** ═══════════════════════════
+ *  · `process.*` —— 逐字取自本文件上方的 `RAW_DEFINITIONS`（真种子子集）；
+ *  · `domainName` / `ownerFunctionName` —— 查 `RAW_DOMAINS` / `PROCESS_OWNER_FUNCTIONS`，
+ *    查不到即 `null`（前端显裸键，不臆造）；
+ *  · `sharedCarrierProcesses` —— **真反查**：同 `carrierTypeKey` 的其它流程。
+ *    P37 / P40 共用 `ProductionSchedule` 那一对因此在 mock 里真的能互相查到 ——
+ *    这是本面板最值得当场看见的一条本体关系，且它不需要任何编造。
+ *  · `runtime` —— `available:false` ＋ 后端今天的口径（定义层不下发运行态）。
+ */
+
+/** 缺席理由：说清缺在哪一环，不写「暂无数据」这种什么都没说的话。 */
+const mockCarrierAbsentReason = (typeKey: string): string =>
+  `承载类型 ${typeKey} 在 mock 世界的已发布本体里查不到（GET /a/v1/ontology/object-types 不含该类型）⇒ 属性 / 派生 / 一跳关系 / 十六层全部取不到。这是 mock 数据的边界，不是「这条流程没有承载物」：真后端 SEED_DEMO 下该类型是存在的（录制样本见 test/fixtures/process-inspect-real.json）。`;
+
+/**
+ * 按 processKey 现算一份 inspect 响应。
+ * 未登记的 key ⇒ 返回 `null`，由 handler 回 404 信封 —— **不拿别的流程的数据顶包**。
+ */
+export const processInspectFixture = (key: string): ProcessInspectResponse | null => {
+  const def = RAW_DEFINITIONS.find((d) => d.key === key);
+  if (def === undefined) return null;
+  const domainOf = (k: string): string | null => RAW_DOMAINS.find((d) => d.key === k)?.name ?? null;
+  const ownerOf = (k: string): string | null => PROCESS_OWNER_FUNCTIONS.find((f) => f.key === k)?.displayName ?? null;
+
+  return ProcessInspectResponseSchema.parse({
+    process: {
+      key: def.key,
+      domainKey: def.domainKey,
+      name: def.name,
+      ownerFunctionKey: def.ownerFunctionKey,
+      stdDurationDays: def.stdDurationDays,
+      waitKind: def.waitKind,
+      carrierTypeKey: def.carrierTypeKey,
+      domainName: domainOf(def.domainKey),
+      ownerFunctionName: ownerOf(def.ownerFunctionKey),
+    },
+    runtime: {
+      available: false,
+      // 口径与真后端 `apps/datacore/src/process/inspect.ts` 的 `runtime.reason` 同义：
+      // 本投影是**定义层**，运行态本就不由它下发（不是"还没做"）。
+      reason:
+        "本投影是定义层投影，不下发运行态。「此刻卡了多久 / 有几单堵在这一步」由 GET /a/v1/process-definitions/{key}/instances 或求解器 process_flow_time 回答。",
+      stdDurationDays: def.stdDurationDays,
+      stdDurationCaption: "标准工期（模板值）· 不是此刻已卡时长",
+      unanswerable: ["此刻这一步卡了多久？", "现在有几单堵在这一步？", "实测在制品数是多少？"],
+    },
+    carrier: {
+      status: "absent",
+      typeKey: def.carrierTypeKey,
+      displayName: null,
+      domain: null,
+      description: null,
+      properties: [],
+      derivedProperties: [],
+      objectCount: null,
+      absentReason: mockCarrierAbsentReason(def.carrierTypeKey),
+    },
+    // 承载类型都解析不到，一跳关系与杠杆自然也解析不到 —— 空数组，界面对空集合有明确文案。
+    relations: [],
+    sharedCarrierProcesses: RAW_DEFINITIONS.filter((d) => d.carrierTypeKey === def.carrierTypeKey && d.key !== def.key)
+      .map((d) => ({
+        key: d.key,
+        name: d.name,
+        domainKey: d.domainKey,
+        domainName: domainOf(d.domainKey),
+        ownerFunctionKey: d.ownerFunctionKey,
+        ownerFunctionName: ownerOf(d.ownerFunctionKey),
+        waitKind: d.waitKind,
+        stdDurationDays: d.stdDurationDays,
+      }))
+      .sort((a, b) => a.key.localeCompare(b.key)),
+    levers: [],
+    carrierLayers: null,
+    carrierLayersAbsentReason: `承载类型 ${def.carrierTypeKey} 解析不到 ⇒ 切不出以它为根的一跳子图，十六层三态无从算起。不返回 16 个空壳假装算过。`,
+  });
 };

@@ -69,7 +69,7 @@ import { newPlanBuilderCanvas } from "./planBuilderFixtures";
 import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
 import { BUILD_PIPELINE_KINDS, factoryPipeline, pipelineOrder, resolvePipeline } from "./pipelineFixtures";
 // WO-WAITING-STATES-FE · 流程等待态 fixture（过契约 schema 的真种子子集，见该文件头三重防漂移机制）
-import { PROCESS_DEFINITIONS_RESPONSE, processInstancesFixture } from "./processWaitFixtures";
+import { PROCESS_DEFINITIONS_RESPONSE, processInspectFixture, processInstancesFixture } from "./processWaitFixtures";
 import { historyBundleFor, LIVED_WATERMARK } from "./livedInFixtures";
 
 /**
@@ -2224,6 +2224,20 @@ export const handlers = [
   http.get("*/a/v1/process-definitions/:key/instances", ({ params }) =>
     HttpResponse.json(processInstancesFixture(String(params.key))),
   ),
+  // WO-SANDBOX-PROCESS-MODE · 流程节点检视（沙盘第五档右栏 ＋ /v/process-wait 共用同一个面板）。
+  // 补之前这条路由在 mock 模式下**没有 handler** ⇒ 面板一点就落错误分支。
+  // fixture 现算自 mock 自己的定义表，`carrier` 一律 absent —— 那是 mock 世界的真实情况
+  // （object-types 里确实没有这些承载类型），**不编造本体**。理由详见 fixture 文件的注释。
+  http.get("*/a/v1/process-definitions/:key/inspect", ({ params }) => {
+    const body = processInspectFixture(String(params.key));
+    if (body === null) {
+      return HttpResponse.json(
+        { error: { code: "NOT_FOUND", message: `mock 世界没有流程 ${String(params.key)}（fixture 只取了真种子的一个子集）`, requestId: "req_mock_process_inspect" } },
+        { status: 404 },
+      );
+    }
+    return HttpResponse.json(body);
+  }),
   http.get("*/a/v1/process-definitions", () => HttpResponse.json(PROCESS_DEFINITIONS_RESPONSE)),
   http.get("*/a/v1/ontology/object-types", () =>
     // 图谱体系：与真后端 SEED_DEMO 一致的推演图谱（推演读这些类型），非只 Base。
