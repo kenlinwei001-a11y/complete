@@ -39,6 +39,14 @@ import { loginAs, renderApp } from "./utils";
 /** 会诊那条任务：**顶层 0 条 + 扇出 1 条**（`mocks/handlers.ts` 的 `run-fanout-1`）。 */
 const CONSULT_TASK = "task-consult-1";
 
+/**
+ * `AgentBudgetSchema` 的五个必填项（`packages/contracts/src/qos.ts:657`）。
+ * ⚠️ 不许写 `budget: {}` —— 那样 `AgentRunRecordSchema.parse` 会抛 ZodError，
+ * 而 MSW 里抛出的异常表现成「handler 查找失败」→ 界面永远停在"加载中…"，
+ * 报错长得像**组件没接线**，其实是**测试夹具形状不对**。本单实测踩过，故钉在这里。
+ */
+const BUDGET = { maxIterations: 8, maxToolCalls: 10, maxSolverCalls: 8, maxDurationMs: 600_000, maxClarifications: 0 };
+
 async function openConsole() {
   loginAs("planner");
   renderApp("/admin/agents");
@@ -79,12 +87,12 @@ describe("WO-BEFE-C · 接缝① GET /b/v1/agents/:id/runs（这个 Agent 跑过
           runs: [
             AgentRunRecordSchema.parse({
               id: "run-explore-2", taskId: "task-explore-2", model: "m", iterations: [],
-              budget: {}, budgetExhausted: false, totalInputTokens: 1, totalOutputTokens: 1,
+              budget: BUDGET, budgetExhausted: false, totalInputTokens: 1, totalOutputTokens: 1,
               agentKey: "explore_agent", agentVersion: 2, attribution: "REGISTERED", origin: "ROOT",
             }),
             AgentRunRecordSchema.parse({
               id: "run-explore-1", taskId: "task-explore-1", model: "m", iterations: [],
-              budget: {}, budgetExhausted: false, totalInputTokens: 1, totalOutputTokens: 1,
+              budget: BUDGET, budgetExhausted: false, totalInputTokens: 1, totalOutputTokens: 1,
               agentKey: "explore_agent", agentVersion: 1, attribution: "REGISTERED", origin: "ROOT",
             }),
           ],
@@ -137,12 +145,12 @@ describe("WO-BEFE-C · 接缝② GET /b/v1/queries/:taskId/agent-runs（这一�
           runs: [
             AgentRunRecordSchema.parse({
               id: "run-root-x", taskId: CONSULT_TASK, model: "m", iterations: [],
-              budget: {}, budgetExhausted: false, totalInputTokens: 1, totalOutputTokens: 1,
+              budget: BUDGET, budgetExhausted: false, totalInputTokens: 1, totalOutputTokens: 1,
               agentKey: "coordinator", agentVersion: 1, attribution: "REGISTERED", origin: "ROOT",
             }),
             AgentRunRecordSchema.parse({
               id: "run-fanout-1", taskId: CONSULT_TASK, model: "m", iterations: [],
-              budget: {}, budgetExhausted: false, totalInputTokens: 1, totalOutputTokens: 1,
+              budget: BUDGET, budgetExhausted: false, totalInputTokens: 1, totalOutputTokens: 1,
               agentKey: "explore_agent", agentVersion: 2, attribution: "REGISTERED",
               origin: "FANOUT", stepId: "dispatch_0",
             }),
@@ -181,7 +189,7 @@ describe("WO-BEFE-C · 接缝② GET /b/v1/queries/:taskId/agent-runs（这一�
           runs: [
             AgentRunRecordSchema.parse({
               id: "run-legacy-x", taskId: CONSULT_TASK, model: "m", iterations: [],
-              budget: {}, budgetExhausted: false, totalInputTokens: 1, totalOutputTokens: 1,
+              budget: BUDGET, budgetExhausted: false, totalInputTokens: 1, totalOutputTokens: 1,
             }),
           ],
         }),
