@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ENTERPRISE_STATE_REAL_WORLD_ID, type EnterpriseState, type EnterpriseStateMetric } from "@platform/contracts";
 import { fetchLatestEnterpriseState } from "@/api/endpoints";
+import { InfoPopover } from "@/components/InfoPopover";
 import styles from "./SimViews.module.css";
 
 /**
@@ -112,14 +113,26 @@ export function EnterpriseStatePanel({ worldId = ENTERPRISE_STATE_REAL_WORLD_ID 
         </div>
       </div>
 
+      {/*
+       * 分层（规范 §1 / R-UI-3）：「口径版本 / 读入几类输入 / 从哪 fork 来」是**数据来源**，
+       * 规范把它划给浮层；第一层留「自哪来」这一个名字 + `?` 记号。
+       * 而下面那条「N 项数不出来」是**诚实位**，且它为真时用户会重新解读上面那些数
+       * （规范 §4.2 判据）⇒ 留在第一层，只把「已按诚实空显示为『—』并附原因」这句口径降层。
+       */}
       <div className={styles.sub} data-testid="enterprise-state-provenance" style={{ marginBottom: 8, lineHeight: 1.6 }}>
         溯源：{state.provenance.mode === "FORK" ? "自另一份快照 fork" : "自对象库现场捕获"}
-        {state.forkedFromStateId ? ` · 源快照 ${state.forkedFromStateId}` : ""} · 口径版本{" "}
-        {state.provenance.captureVersion} · 读入{" "}
-        <span data-testid="enterprise-state-input-count">{state.provenance.inputs.length}</span> 类输入
+        <InfoPopover topic="这份快照怎么来的" testId="enterprise-state-provenance-caliber">
+          {state.forkedFromStateId ? `源快照 ${state.forkedFromStateId} · ` : ""}口径版本{" "}
+          {state.provenance.captureVersion} · 读入{" "}
+          <span data-testid="enterprise-state-input-count">{state.provenance.inputs.length}</span> 类输入
+        </InfoPopover>
         {emptyCount > 0 ? (
           <div data-testid="enterprise-state-empty-note">
-            其中 <b>{emptyCount}</b> 项当前数不出来，已按诚实空显示为「—」并附原因（<b>不是 0</b>）。
+            其中 <b>{emptyCount}</b> 项<b>数不出来</b>，显示为「—」（<b>不是 0</b>）。
+            <InfoPopover topic="为什么是「—」不是 0" testId="enterprise-state-empty-caliber">
+              这 {emptyCount} 项当前数不出来，已按诚实空显示为「—」并附原因（<b>不是 0</b>）；
+              显示 0 等于断言「数出来就是零」，那是另一件事。
+            </InfoPopover>
           </div>
         ) : null}
       </div>

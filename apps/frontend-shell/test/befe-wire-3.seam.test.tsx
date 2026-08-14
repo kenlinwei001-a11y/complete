@@ -542,6 +542,35 @@ describe("WO-BEFE-WIRE-3 ④ 两个新面板遵守 UI 信息分层规范", () =>
     expect(body.textContent).toContain("DISTINCT_OBJECTS");
   });
 
+  /**
+   * WO-UI-BURNDOWN-21（2026-08-14）· 分项卡的连接键口径**真的在浮层里**。
+   *
+   * 这条咬的是一个具体的假绿形态：那段口径原先经名叫 `caliber` 的 render-prop 传进来，
+   * 「看着」在浮层里，人与门读到的却是「第一层还摆着一段 `∩` 式子」。改名为 `content` 之后
+   * 名字与落点一致 —— 但**改名本身证明不了落点**，所以判据必须落在渲染出来的 DOM 上：
+   * 关着时第一层里一个 `∩` 都没有，hover 之后那句原文一字不少。
+   */
+  it("④-D 连接键口径落在浮层：第一层的卡上没有 `∩`，hover 后原文一字不少", async () => {
+    const user = userEvent.setup();
+    await createSimSession({ baseSnapshot: {} });
+    renderApp("/v/what-if");
+    await fillHypothesis("util", "2");
+    fireEvent.click(screen.getByTestId("impact-run"));
+    await screen.findByTestId("impact-head");
+
+    // 关着时：浮层正文不在 DOM，且这张卡的第一层文本里没有那条式子。
+    expect(screen.queryByTestId("impact-caliber-processes")).toBeNull();
+    const card = await screen.findByTestId("impact-dim-processes");
+    expect(card.textContent ?? "", "`∩` 还在第一层 ⇒ 分层没做，只是换了个 prop 名").not.toContain("∩");
+
+    // 触发后：原文还在（这一条才是"没删内容"的证据）。
+    await user.hover(screen.getByTestId("info-wrap-impact-processes"));
+    const body = await screen.findByTestId("impact-caliber-processes");
+    expect(body.textContent, "口径被降没了 —— 那是删除不是分层").toContain("∩");
+    expect(body.textContent).toContain("carrierTypeKey");
+    expect(body.textContent).toContain("全域");
+  });
+
   it("④-C 第二层要点一次才出：明细表默认不渲染，点「展开明细」才有", async () => {
     const user = userEvent.setup();
     await createSimSession({ baseSnapshot: {} });

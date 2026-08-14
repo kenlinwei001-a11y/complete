@@ -116,7 +116,11 @@ describe("WO-ACTIVE-EDGE-UX · 前端接缝：从 workspace 到「关掉一条�
     expect(rowA.textContent).toContain("TypeA.s1");
     expect(rowA.textContent).toContain("linkAB");
     expect(rowA.textContent).toContain("TypeB.s1");
-    expect(rowA.textContent).toContain("×0.5");
+    // 2026-08-14 分层（`docs/CONVENTION-ui-information-layering.md` R-UI-3）：
+    // 屏上原写 `×0.5`，一个乘号即算式记号，规范点名要降层。系数值本身是这条边的身份、留在第一层，
+    // 只把乘号换回它的名字 ⇒ 断言随之从 `×0.5` 改成「系数 0.5」。**数没变，只是记号换了名字**，
+    // 这不是把红改绿：`0.5` 这个数仍被逐字断言。
+    expect(rowA.textContent).toContain("系数 0.5");
     expect(rowA.getAttribute("data-active")).toBe("true");
 
     // ③ 交互层：拨一下开关 —— 不点任何"再运行一次"的按钮（§3.3「立刻看到差异」）。

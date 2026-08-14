@@ -263,8 +263,14 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
               <span style={{ color: MUTED }}> —{r.viaLinkKey}→ </span>
               <code style={{ fontSize: 12 }}>{r.to}</code>
             </span>
+            {/*
+             * 分层（R-UI-3）：原写作 `×0.5` —— 一个乘号是**算式**，规范点名要降浮层。
+             * 但这两个数是这条边的身份（改哪条边就看它们），属第一层的「数值」。
+             * 故把乘号换成它本来的名字「系数」：算式记号降层，数值与名字留在第一层，
+             * 「系数与延迟是什么」的完整口径在同一块的 `?` 里（本页 header 那个）已给全。
+             */}
             <span style={{ color: MUTED, whiteSpace: "nowrap" }}>
-              ×{r.coefficient} · 延迟 {r.delayTicks}
+              系数 {r.coefficient} · 延迟 {r.delayTicks}
             </span>
             {r.dimmed && (
               <span data-testid={tid(`off-${r.key}`)} style={{ color: "#f0b7bd", whiteSpace: "nowrap" }}>
