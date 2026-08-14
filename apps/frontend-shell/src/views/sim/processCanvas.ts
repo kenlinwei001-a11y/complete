@@ -552,7 +552,14 @@ export function buildProcessCanvasModel(res: ProcessDefinitionsResponse, waitKin
     lines,
     unregisteredDomainKeys,
     byWaitKind,
-    chainLayerOverlap: chainLayerOverlap(sorted.map((p) => p.key)),
+    /**
+     * ⚠ 交集必须算**真的要画上去的那批键**（`lines→stations→key`），
+     * 不是响应里那批（`res.definitions`）。两者今天恒等，但**它们度量的不是同一件事**：
+     * 响应里干净、渲染时被改名成 `capacity.*` 的话，按响应算会屏上写着 0 而 DOM 里真有交集
+     * —— 那正是本仓铁律 0.6 那句「我用 X 当作 Y 的证据，而 X 并不度量 Y」。
+     * 改这一行是写变异反证时逼出来的：按响应算的版本，变异体只红一半。
+     */
+    chainLayerOverlap: chainLayerOverlap(lines.flatMap((l) => l.stations.map((s) => s.key))),
     interchanges,
     // ⛔ 恒为 `display-order`：端点没下发先后（文件头 §0），改成 `measured` 之前
     //    必须先有一条真的下发实测站序的取数 —— 光把这个字面量改掉就是造假。
