@@ -85,6 +85,15 @@ import type {
   IntakeResponse,
   SchemaReconcileCandidate,
   ReconcileAction,
+  // WO-BEFE-D · 组织世界 + 决策因果图（前端不重定义，contracts-only-shared）
+  ApprovalLimit,
+  ApprovalMatter,
+  ApproverResolution,
+  Authority,
+  Delegation,
+  OrgPrincipal,
+  DecisionGraph,
+  GapReport,
 } from "@platform/contracts";
 import { ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 真实世界 worldId 单源（前端不许再写一个 "REAL" 字面量）
 import { api } from "./apiClient";
@@ -2260,3 +2269,131 @@ export const signoffPublishRequest = (id: string, decision: "APPROVE" | "REJECT"
     method: "POST",
     body: { decision, ...(comment ? { comment } : {}) },
   });
+// ══════════════════════════════════════════════════════════════════════════
+// WO-BEFE-D · 组织世界（`/a/v1/org/*`）——「为什么这个流程现在卡住了」的人侧答案
+// ══════════════════════════════════════════════════════════════════════════
+//
+// 契约类型一律从 `@platform/contracts` import（contracts-only-shared 铁律）：
+// 再写一份 `ApproverCandidate` 就是第二真相源 —— 后端加一个落选原因，前端不会跟着变。
+//
+// ⚠ **entitlement `org.world` 是真暗发**（不是"写了 defaultOn:false 但被模板 all-on 顶开"那种）：
+// 它同时列进 `apps/datacore/src/features.ts` 的 `WORLD_DARK_LAUNCH_FEATURES`，
+// 而 `templateFeatures()` 的 battery 模板正是 `ALL_FEATURE_KEYS` **减去**这几个暗发集合。
+// 于是对 demo 租户它**确实是关的** ⇒ 这五条端点默认 404 `FEATURE_NOT_FOUND`。
+// 那是**预期行为不是故障**；开通方式 = 租户 override（`POST /a/v1/tenants/:id/features`）。
+// 判据不是"注册表里 defaultOn 是 false"，是"对租户 resolve 之后的结果"（features.ts:206 顶注）。
+
+/** 组织架构（部门/角色/人三层）。后端按 `ORG_PRINCIPAL_VM_KEYS` 白名单下发（no-secrets-echo）。 */
+export const fetchOrgChart = () =>
+  api.a<{ departments: OrgPrincipal[]; roles: OrgPrincipal[]; persons: OrgPrincipal[] }>("/a/v1/org/chart");
+
+/** 职权 + 审批额度（配置面只读；写面属管理台，后端未开）。 */
+export const fetchOrgAuthorities = () =>
+  api.a<{ authorities: Authority[]; limits: ApprovalLimit[] }>("/a/v1/org/authorities");
+
+/** 授权代理关系（被代理人不在岗时权力落到谁身上）。 */
+export const fetchOrgDelegations = () => api.a<{ delegations: Delegation[] }>("/a/v1/org/delegations");
+
+/**
+ * 置某人在岗/不在岗 —— **代理链在生产里的唯一触发源**。
+ * 需 admin / tenant_admin（后端 `org/routes.ts:86` 同款判据；前端按同一判据禁用控件，
+ * 不摆一个必然 403 的按钮）。
+ */
+export const setOrgAvailability = (principalId: string, available: boolean) =>
+  api.a<OrgPrincipal>(`/a/v1/org/principals/${encodeURIComponent(principalId)}/availability`, {
+    method: "PATCH",
+    body: { available },
+  });
+
+/**
+ * 解析审批人：给定一个待批事项 → 谁有权批 + 谁为什么批不了。
+ *
+ * ⛔ **R4 红线**：本端点是**纯读**（后端 `resolveApprovers` 只 list 四张表、零写入，
+ * `org/service.ts:113`），它回答「谁有权」，**不代替审批、不写任何真值**。
+ * 真值写入仍只有 `POST /a/v1/action-drafts` → S2 审批链这一条路。
+ */
+export const resolveApprovers = (matter: ApprovalMatter) =>
+  api.a<ApproverResolution>("/a/v1/org/approvers/resolve", { method: "POST", body: matter });
+
+// ══════════════════════════════════════════════════════════════════════════
+// WO-BEFE-D · 决策因果图（`/a/v1/causal-graphs/*`）——「为什么这个决策被触发」
+// ══════════════════════════════════════════════════════════════════════════
+//
+// 两个数据源**分两条路由不合成一条**（后端 app.ts:3930 顶注：沙盘按 tick 记时、台账按 ISO 记时，
+// 二者今天没有任何字段互指，合成就得现编一个统一的"时间"）。前端照此分两个函数，不包一层"统一入口"。
+// entitlement `decision.causal-graph`：`defaultOn:false` 但**不在**任何暗发集合里
+// ⇒ battery 模板 L2 「all on」会把它打开 ⇒ 对 demo 租户实际是**开**的。
+
+/** 沙盘源：一次推演 → Cause(扰动)/Impact(传导轨迹)；其余三段由后端诚实报缺（segmentGaps）。 */
+export const fetchSimCausalGraph = (sessionId: string) =>
+  api.a<DecisionGraph>(`/a/v1/causal-graphs/sim/${encodeURIComponent(sessionId)}`);
+
+/** 台账源：一条决策 → 五段全覆盖（RESULT 段在 outcome 未回填时报 NOT_YET_REALIZED）。 */
+export const fetchDecisionCausalGraph = (decisionId: string) =>
+  api.a<DecisionGraph>(`/a/v1/causal-graphs/decision/${encodeURIComponent(decisionId)}`);
+
+// ══════════════════════════════════════════════════════════════════════════
+// WO-BEFE-D · 自成长发动机剩余三条（探针 / 工单提交复核 / 工单重跑验证）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 缺口探针：把问句真跑一遍 orchestrator → 终态 → 结构化 `GapReport`。
+ *
+ * 与 `runGrowth`（LOOP）的差别是**副作用**，不是精度：
+ * LOOP 会补数据、scaffold DRAFT、开工单、发 `growth.*` 事件；探针**只诊断不动数据**。
+ * 「先看看断在哪，别动我的库」今天只能 curl —— 这条就是补它。
+ */
+export const probeGrowth = (query: string, packageId = "pkg_battery_manufacturing", view = "dash") =>
+  api.b<GapReport>("/b/v1/growth/probe", {
+    method: "POST",
+    body: { packageId, query, context: { view, selectedObjects: [], filters: {} } },
+  });
+
+/** 工单提交复核（IN_PROGRESS → IN_REVIEW）。 */
+export const submitGrowthTicket = (id: string) =>
+  api.b<GrowthTicket>(`/b/v1/growth/tickets/${encodeURIComponent(id)}/submit`, { method: "POST", body: {} });
+
+/**
+ * 工单重跑验证（IN_REVIEW → VERIFIED，或停在 IN_REVIEW 并回带新缺口）。
+ * 后端拿工单的 `fromQuestion` 重新经 QOS 实跑 —— 「施工合并后真的能答了吗」的活证据。
+ */
+export const verifyGrowthTicket = (id: string) =>
+  api.b<{ ticket: GrowthTicket; verified: boolean; gapReport: GapReport }>(
+    `/b/v1/growth/tickets/${encodeURIComponent(id)}/verify`,
+    { method: "POST", body: {} },
+  );
+
+// ══════════════════════════════════════════════════════════════════════════
+// WO-BEFE-D · 场景三条（服务端组装启动 / 单场景闭包复检 / 一键发布全链）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 场景启动（**服务端**组装 presetContext）。
+ *
+ * 与前端自己拼 `submitQuery` 的差别不是风格，是**三件后端才做得了的事**
+ * （见 agentcore `server.ts:2750`）：
+ *  ① `status !== "PUBLISHED"` → 409（前端拼装这一路完全没有这道闸）；
+ *  ② 场景所属视图 entitlement 关 → 404（R3 先于 authz）；
+ *  ③ 用户改写 query 时跑 `parseCapacityFeasibilityVariant` 归一化
+ *     （"1天交付" → weeks），并把 `_normalizedSlots` 写进 presetSlots 供 R13 留痕校验。
+ * 前端拼装那条路 ③ 整块缺失 ⇒ 用户在卡上敲的自由文本拿不到归一化槽位。
+ */
+export const launchScenario = (key: string, query?: string) =>
+  api.b<{ taskId: string; status: string; streamUrl: string; scenario: string; query: string }>(
+    `/b/v1/scenarios/${encodeURIComponent(key)}/launch`,
+    { method: "POST", body: query?.trim() ? { query: query.trim() } : {} },
+  );
+
+/** 单场景引用闭包复检（编辑器实时校验；与 `/manage` 的 closure 同一个 `scenarioClosure()` 口径）。 */
+export const fetchScenarioClosure = (key: string) =>
+  api.b<ScenarioClosure>(`/b/v1/scenarios/${encodeURIComponent(key)}/closure`);
+
+/**
+ * 一键发布全链（计划 → 意图 → 场景，按依赖序）。
+ * R4：后端 `requireCatalogAdmin` + 发布前重跑无死路上架门，闭合失败 409 —— 不绕审批。
+ */
+export const publishScenarioChain = (key: string) =>
+  api.b<{ scenario: Scenario; publishedChain: { kind: string; key: string }[] }>(
+    `/b/v1/scenarios/${encodeURIComponent(key)}/publish-chain`,
+    { method: "POST", body: {} },
+  );

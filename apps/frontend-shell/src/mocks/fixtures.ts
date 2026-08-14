@@ -211,6 +211,21 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   //   那是 mock 在说谎，而且是往"功能更全"的方向说谎（最难发现的那个方向）。
   // 要在 mock 模式看这一页：`db.tenantOverrides["process.runtime"] = true`（正是租户开通的等价动作）。
   { key: "process.runtime", name: "流程运行时（实例·卡点）", level: "VIEW", defaultOn: false },
+  // ── WO-BEFE-D · 两个新键，**两个方向相反的真相**（照抄 resolve 后的结果，不照抄注册表字面量）──
+  //
+  // 判据是 `apps/datacore/src/features.ts:342 templateFeatures()`：battery 模板 =
+  // `ALL_FEATURE_KEYS` **减去** 四个暗发集合（QOS / PERF / WORLD / INCOMPLETE_DATA）。
+  // 于是 `defaultOn:false` 这个字面量**单靠自己拦不住** demo 租户 —— 进没进那四个集合才是判据。
+  //
+  //  · `org.world` **在** `WORLD_DARK_LAUNCH_FEATURES`（features.ts:222）⇒ 对 demo 租户**真的关**。
+  //    后端 `org-world.test.ts:450` 用真 HTTP + demo 租户断言 404 FEATURE_NOT_FOUND，坐实这一点。
+  //    mock 写 false = 照抄真相；要在 mock 模式看这一页：`db.tenantOverrides["org.world"] = true`。
+  //  · `decision.causal-graph` **不在**任何暗发集合里（features.ts:95 只写了 defaultOn:false）
+  //    ⇒ battery 模板 L2「all on」**会把它打开** ⇒ 对 demo 租户实际是**开**的。
+  //    mock 若照抄 L1 的 false，因果图面板会被级联过滤掉，接缝断言恒真（哑门）——
+  //    这正是上面 sim.* 那批注释里写的同一个坑，故此处 defaultOn: true。
+  { key: "org.world", name: "组织世界（人/角色/部门/职权/审批额度/代理）", level: "VIEW", defaultOn: false },
+  { key: "decision.causal-graph", name: "决策因果图", level: "BLOCK", defaultOn: true },
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
   // 图谱八视角（§7.18：零新代码视角，BLOCK 级逐个开关；key 与视图 key 对齐路由守卫 view.{viewKey}）
   { key: "view.graph-all", name: "图谱·业务建模全景", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },

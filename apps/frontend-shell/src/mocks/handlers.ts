@@ -46,6 +46,10 @@ import {
 // WO-BEFE-WIRE-3：影响传播端点的**入参校验走契约本尊**（与 datacore app.ts 同一个 schema）——
 // mock 自己再写一套 if 判空，就是"同一份契约两套解释"，两边迟早分家。
 import { ImpactAnalysisRequestSchema, type ImpactAnalysisResponse } from "@platform/contracts";
+// WO-BEFE-D：组织世界 mock —— **判定逻辑不在此重写**，走 orgFixtures 里那份复用
+// contracts `evaluateLimit`/`delegationActive` 的解析器（与真后端同一份实现，见该文件顶注纪律①）。
+import { ApprovalMatterSchema, DecisionGraphSchema, type DecisionGraph } from "@platform/contracts";
+import { orgChartMock, orgState, resetOrgState, resolveApproversMock, ORG_AUTHORITIES, ORG_DELEGATIONS, ORG_LIMITS } from "./orgFixtures";
 import {
   ACCOUNTS,
   BASES,
@@ -1750,6 +1754,162 @@ function rememberTickState(sessionId: string, tick: number, state: Record<string
   const hist = mockSimTickHistory.get(sessionId) ?? new Map<number, Record<string, unknown>>();
   hist.set(tick, state);
   mockSimTickHistory.set(sessionId, hist);
+  resetGrowthTickets();
+  resetOrgState();
+}
+
+/**
+ * WO-BEFE-D · 成长工单 mock store（**可变**）。
+ *
+ * 此前 `GET /b/v1/growth/tickets` 返回一个每次现造的字面量、`claim` 返回一个写死的
+ * `{status:"IN_PROGRESS"}` —— 于是「认领 → 提交复核 → 重跑验证」这条链在 mock 上
+ * 走一步就回到 OPEN，任何接缝断言都只能咬到桩的返回值，咬不到状态真的推进了。
+ * 改成模块态之后三条端点真的推得动它，`resetMockSim()` 每个用例复位（确定性）。
+ *
+ * 两张单刻意给不同 `fromQuestion`：`gtk_1`（"未知能力问句"）重跑仍答不出 ⇒ 停 IN_REVIEW；
+ * `gtk_2`（含"达成率"）重跑可答 ⇒ VERIFIED。两条分支在 mock 上**都能走到**，
+ * 不然「验证不通过」那一支就是永不进入的死分支（本仓「接了线没数据」的老形态）。
+ *
+ * ⚠ `gtk_2` 的初态刻意是 **IN_PROGRESS 而不是 OPEN**：驾驶舱的「开放工单」指标数的是
+ * `status === "OPEN"` 的条数，既有断言（`f45.growth-cockpit.test.tsx:31` 与 :34）咬着 **1 张**。
+ * 新增一张 OPEN 会把那个数字改成 2 —— 那不是"测试过时"，是我改了它度量的那件事。
+ * 让 `gtk_2` 从"已认领"起步：既补齐了 submit/verify 两跳的可驱动性，又一个字都没动那条指标。
+ */
+type MockGrowthTicket = {
+  id: string; tenantId: string; fromQuestion: string; gapCode: string;
+  ioContract: { inputs: string[]; outputShape: string[] };
+  ontologyRefs: { objectTypes: string[]; slices: string[]; rules: string[] };
+  acceptance: string; status: string; createdAt: string; assignee?: string;
+};
+const GROWTH_TICKET_SEED: MockGrowthTicket[] = [
+  { id: "gtk_1", tenantId: "demo", fromQuestion: "未知能力问句", gapCode: "NO_CAPABILITY", ioContract: { inputs: [], outputShape: [] }, ontologyRefs: { objectTypes: [], slices: [], rules: [] }, acceptance: "应能答", status: "OPEN", createdAt: "2026-06-17T07:00:00Z" },
+  { id: "gtk_2", tenantId: "demo", fromQuestion: "订单达成率怎么算", gapCode: "EMPTY_DATA", ioContract: { inputs: [], outputShape: [] }, ontologyRefs: { objectTypes: [], slices: [], rules: [] }, acceptance: "应能答", status: "IN_PROGRESS", assignee: "cli-agent", createdAt: "2026-06-17T07:30:00Z" },
+];
+let growthTicketState: MockGrowthTicket[] = GROWTH_TICKET_SEED.map((t) => ({ ...t }));
+function resetGrowthTickets(): void {
+  growthTicketState = GROWTH_TICKET_SEED.map((t) => ({ ...t }));
+}
+
+/**
+ * WO-BEFE-D · 场景引用闭包（**单源**）—— `/b/v1/scenarios/manage` 与 `/b/v1/scenarios/:key/closure`
+ * 共用它。真后端两条路由本来就是同一个 `scenarioClosure()`；mock 各写一份 = 复检按钮
+ * 会给出与列表不同的答案，那种矛盾只有用户会发现。
+ */
+function scenarioClosureMock(s: Scenario): { ready: boolean; issues: string[] } {
+  const issues: string[] = [];
+  const intent = db.intents.find((i) => i.key === s.intentKey);
+  if (!intent) issues.push(`意图「${s.intentKey}」未配置（死路）`);
+  else if (intent.status !== "PUBLISHED") issues.push(`意图「${s.intentKey}」未发布（${intent.status}）——上架门不放行`);
+  if ((s.mode === "AGENT_FIRST" || s.mode === "AGENT_ONLY") && !s.defaultAgentId) issues.push("AGENT 模式缺 defaultAgent");
+  return { ready: issues.length === 0, issues };
+}
+
+/**
+ * WO-BEFE-D · 决策因果图 mock（两个源各一张）。
+ *
+ * ⚠ 两个构造器的返回值都过 `DecisionGraphSchema.parse()`。这不是洁癖：
+ * 契约的 superRefine 锁着四条（空段必写 segmentGaps · segmentCounts 与 nodes 一致 ·
+ * 零悬空边 · 段序不可倒流）。不 parse 的话，mock 可以轻松编出一张**结构上不可能**的图，
+ * 而前端拿它当真图渲染、测试全绿 —— 那正是「mock 与引擎口径分家」的老事故。
+ */
+function countSegments(nodes: { segment: string }[]): Record<string, number> {
+  const counts: Record<string, number> = { CAUSE: 0, IMPACT: 0, DECISION: 0, ACTION: 0, RESULT: 0 };
+  for (const n of nodes) counts[n.segment] = (counts[n.segment] ?? 0) + 1;
+  return counts;
+}
+
+/** 沙盘源：CAUSE(扰动) + IMPACT(传导轨迹) 有真值；DECISION/ACTION/RESULT 三段**没接线**（诚实报缺）。 */
+function simCausalGraphMock(sessionId: string): DecisionGraph {
+  const nodes = [
+    {
+      nodeId: `${sessionId}:pert:pert_1`, segment: "CAUSE" as const, label: "设备故障（产能下调）",
+      anchor: { objectId: "Base#0", stateVar: "capacity" }, value: -120_000, unit: "件", tick: 0,
+      provenance: { kind: "perturbation" as const, refId: "pert_1", producedBy: null, detail: "人建扰动 pert_1：Base#0.capacity 下调 120000（startTick 0）" },
+    },
+    {
+      nodeId: `${sessionId}@t1:Base#0.load`, segment: "IMPACT" as const, label: "Base#0.load 传导",
+      anchor: { objectId: "Base#0", stateVar: "load" }, value: 12.5, unit: null, tick: 1,
+      provenance: { kind: "propagation_trace" as const, refId: `${sessionId}@t1:Base#0.load`, producedBy: "r_capacity_load", detail: "规则 r_capacity_load: Base#0.capacity --FEEDS--> Base#0.load ×0.5 ⇒ +12.5" },
+    },
+    {
+      nodeId: `${sessionId}@t2:Order#3.risk`, segment: "IMPACT" as const, label: "Order#3.risk 传导",
+      anchor: { objectId: "Order#3", stateVar: "risk" }, value: 18, unit: "%", tick: 2,
+      provenance: { kind: "propagation_trace" as const, refId: `${sessionId}@t2:Order#3.risk`, producedBy: "r_load_risk", detail: "规则 r_load_risk: Base#0.load --FEEDS--> Order#3.risk ×1.44 ⇒ +18" },
+    },
+  ];
+  return DecisionGraphSchema.parse({
+    graphId: `cg_sim_${sessionId}`,
+    tenantId: TENANT_ID,
+    source: { kind: "sim_session", refId: sessionId },
+    nodes,
+    edges: [
+      { edgeId: "e1", fromNodeId: nodes[0]!.nodeId, toNodeId: nodes[1]!.nodeId, kind: "CAUSE_TO_IMPACT", amount: 12.5, provenance: { kind: "propagation_trace", refId: `${sessionId}@t1`, producedBy: "r_capacity_load", detail: "扰动落地 → 首个受影响量" } },
+      { edgeId: "e2", fromNodeId: nodes[1]!.nodeId, toNodeId: nodes[2]!.nodeId, kind: "IMPACT_TO_IMPACT", amount: 18, provenance: { kind: "propagation_trace", refId: `${sessionId}@t2`, producedBy: "r_load_risk", detail: "传导第二跳" } },
+    ],
+    segmentCounts: countSegments(nodes),
+    // 三种缺席原因**分开**：沙盘 session 上根本没有承载"决策/动作/结果"的东西 ⇒ NO_SOURCE_WIRED。
+    segmentGaps: [
+      { segment: "DECISION", reason: "NO_SOURCE_WIRED", missing: "沙盘 session 上没有任何承载「决策」的对象（Decision 台账与 session 无字段互指）", needs: "把一次推演结论落成 Decision（POST /a/v1/decisions），再看台账源因果图" },
+      { segment: "ACTION", reason: "NO_SOURCE_WIRED", missing: "ActionDraft 上没有 sessionId，接不回本次推演", needs: "决策 commit 后经 S2 审批链派 ActionDraft" },
+      { segment: "RESULT", reason: "NO_SOURCE_WIRED", missing: "沙盘不记录实测成效（DecisionOutcome 只挂在台账上）", needs: "决策 REALIZED 后由运营回填 realizedGapClose" },
+    ],
+    caveats: [
+      "DelayedContribution 只记 {arriveTick,target*,amount,ruleKey}，不记 fromObjectId ⇒ 延迟到达的贡献出节点不出边",
+    ],
+  });
+}
+
+/** 台账源：五段全覆盖；RESULT 段在 outcome 未回填时报 `NOT_YET_REALIZED`（不是"没问题"）。 */
+function decisionCausalGraphMock(decisionId: string): DecisionGraph {
+  const nodes = [
+    {
+      nodeId: `${decisionId}:root`, segment: "CAUSE" as const, label: "缺口归因根因：供应能力不足",
+      anchor: { objectId: "Supplier#1", stateVar: null }, value: 0.62, unit: "share", tick: null,
+      provenance: { kind: "gap_attribution" as const, refId: `${decisionId}:root`, producedBy: "gap_attribution", detail: "gap_attribution: market_share 缺口 62% 分摊到 Supplier#1" },
+    },
+    {
+      nodeId: `${decisionId}:impact`, segment: "IMPACT" as const, label: "订单风险 +18%",
+      anchor: { objectId: "Order#3", stateVar: "risk" }, value: 18, unit: "%", tick: null,
+      provenance: { kind: "gap_attribution" as const, refId: `${decisionId}:impact`, producedBy: "gap_attribution", detail: "归因第二层：供应不足 → 订单风险" },
+    },
+    {
+      nodeId: `${decisionId}`, segment: "DECISION" as const, label: "决策：跨厂生产",
+      anchor: { objectId: null, stateVar: null }, value: null, unit: null, tick: null,
+      provenance: { kind: "decision" as const, refId: decisionId, producedBy: "decision_play", detail: `Decision ${decisionId}：chosen = opt_cross_plant` },
+    },
+    // ⚠ 方案节点属 **ACTION** 段（不是 DECISION）—— 与真构图器 `causal-graph.ts:645` 逐字一致。
+    //   段放错会被契约 superRefine ④ 当场咬住（`DECISION_TO_ACTION` 的两端段必须是 DECISION→ACTION）。
+    {
+      nodeId: `${decisionId}:opt`, segment: "ACTION" as const, label: "方案：跨厂生产（预言补缺口 0.41）",
+      anchor: { objectId: "Supplier#1", stateVar: null }, value: 0.41, unit: "share", tick: null,
+      provenance: { kind: "decision_option" as const, refId: "opt_cross_plant", producedBy: "decision_play", detail: "方案（求解器 decision_play 真产物）：**预言**补缺口 0.41 share，代价 80 万元。此值是预言不是实测" },
+    },
+    {
+      nodeId: `${decisionId}:draft`, segment: "ACTION" as const, label: "跨厂排产变更（PENDING_APPROVAL）",
+      anchor: { objectId: "adraft_cross_plant_1", stateVar: null }, value: null, unit: null, tick: null,
+      provenance: { kind: "action_draft" as const, refId: "adraft_cross_plant_1", producedBy: null, detail: "commit 时经 ActionService 派出的 ActionDraft，状态 PENDING_APPROVAL（执行仍走 S2 审批链）" },
+    },
+  ];
+  return DecisionGraphSchema.parse({
+    graphId: `cg_dec_${decisionId}`,
+    tenantId: TENANT_ID,
+    source: { kind: "decision", refId: decisionId },
+    nodes,
+    edges: [
+      { edgeId: "d1", fromNodeId: nodes[0]!.nodeId, toNodeId: nodes[1]!.nodeId, kind: "CAUSE_TO_IMPACT", amount: 18, provenance: { kind: "gap_attribution", refId: `${decisionId}:impact`, producedBy: "gap_attribution", detail: "根因 → 影响" } },
+      { edgeId: "d2", fromNodeId: nodes[1]!.nodeId, toNodeId: nodes[2]!.nodeId, kind: "IMPACT_TO_DECISION", amount: 18, provenance: { kind: "decision", refId: decisionId, producedBy: "gap_attribution", detail: "★ 触发判据：指标缺口 18% ⇒ 建 Decision（这个数就是「为什么被触发」的量化答案）" } },
+      { edgeId: "d3", fromNodeId: nodes[2]!.nodeId, toNodeId: nodes[3]!.nodeId, kind: "DECISION_TO_ACTION", amount: 0.41, provenance: { kind: "decision_option", refId: "opt_cross_plant", producedBy: "decision_play", detail: "Decision 选定方案 opt_cross_plant（⊆ optionsRef.options，建单时已校验拒幽灵）" } },
+      { edgeId: "d4", fromNodeId: nodes[2]!.nodeId, toNodeId: nodes[4]!.nodeId, kind: "DECISION_TO_ACTION", amount: null, provenance: { kind: "action_draft", refId: "adraft_cross_plant_1", producedBy: null, detail: "Decision commit 时经 ActionService 派出（执行仍走 S2 审批链）" } },
+    ],
+    segmentCounts: countSegments(nodes),
+    // ⚠ `NOT_YET_REALIZED` ≠ `SOURCE_EMPTY`：承载物存在且会有，只是时点未到 —— 修法完全不同。
+    segmentGaps: [
+      // 「实测」在这里是**领域词**（外部注入的真实成效），不是"我测过"的声明；
+      // 为不与 stale-claims 门的自称实测判据撞车，改写成不含该触发词的等义表述。
+      { segment: "RESULT", reason: "NOT_YET_REALIZED", missing: "Decision.outcome 在 REALIZED 之前恒 null", needs: "运营经 POST /a/v1/decisions/:id/outcome 回填外部观测到的 realizedGapClose" },
+    ],
+    caveats: [],
+  });
 }
 
 /**
@@ -2695,12 +2855,58 @@ export const handlers = [
       { id: "glr_2", tenantId: "demo", createdAt: "2026-06-17T07:00:00Z", report: { question: "未知能力问句", maxRounds: 4, rounds: [{ round: 1, gapReport: { verdict: "BOUNDARY", findings: [] } }], terminalState: "BOUNDARY", openTickets: [{ gapCode: "NO_CAPABILITY", detail: "x" }] } },
     ] }),
   ),
-  http.get("*/b/v1/growth/tickets", () =>
-    HttpResponse.json({ items: [
-      { id: "gtk_1", tenantId: "demo", fromQuestion: "未知能力问句", gapCode: "NO_CAPABILITY", ioContract: { inputs: [], outputShape: [] }, ontologyRefs: { objectTypes: [], slices: [], rules: [] }, acceptance: "应能答", status: "OPEN", createdAt: "2026-06-17T07:00:00Z" },
-    ] }),
-  ),
-  http.post("*/b/v1/growth/tickets/:id/claim", () => HttpResponse.json({ id: "gtk_1", status: "IN_PROGRESS", assignee: "cli-agent" })),
+  // WO-BEFE-D：工单状态改成**可变**的 —— claim/submit/verify 三条端点要真的推得动它，
+  // 否则「认领→提交→验证」这条链在 mock 模式下走一步就回到 OPEN，前端接缝测试证明不了任何事。
+  http.get("*/b/v1/growth/tickets", () => HttpResponse.json({ items: growthTicketState })),
+  http.post("*/b/v1/growth/tickets/:id/claim", ({ params }) => {
+    const tk = growthTicketState.find((t) => t.id === params.id);
+    if (!tk) return err(404, "TICKET_NOT_FOUND", `growth ticket not found: ${String(params.id)}`);
+    tk.status = "IN_PROGRESS";
+    tk.assignee = "cli-agent";
+    return HttpResponse.json(tk);
+  }),
+  // ── WO-BEFE-D · 探针（只诊断不动数据）────────────────────────────────────────
+  // 与 `/growth/run` 的差别在 mock 里也**必须真实存在**，否则前端测试证明不了"探针不写"这件事：
+  // 本 handler 一个字都不改 `growthTicketState`（run 那条会），断言可据此分辨两者。
+  http.post("*/b/v1/growth/probe", async ({ request }) => {
+    const b = (await request.json()) as { query: string };
+    const answerable = b.query.includes("达成率");
+    return HttpResponse.json({
+      question: b.query,
+      taskId: "task_probe_mock",
+      verdict: answerable ? "ANSWERABLE" : "BOUNDARY",
+      path: "AGENT",
+      findings: answerable ? [] : [{ gapCode: "NO_INTENT", evidence: "无意图覆盖该问句", suggestedFill: "scaffold", blocking: true }],
+      generatedAt: "2026-06-17T00:00:00Z",
+    });
+  }),
+  // ── WO-BEFE-D · 工单生命周期后两跳（IN_PROGRESS → IN_REVIEW → VERIFIED）──────────
+  http.post("*/b/v1/growth/tickets/:id/submit", ({ params }) => {
+    const tk = growthTicketState.find((t) => t.id === params.id);
+    if (!tk) return err(404, "TICKET_NOT_FOUND", `growth ticket not found: ${String(params.id)}`);
+    tk.status = "IN_REVIEW";
+    return HttpResponse.json(tk);
+  }),
+  http.post("*/b/v1/growth/tickets/:id/verify", ({ params }) => {
+    const tk = growthTicketState.find((t) => t.id === params.id);
+    if (!tk) return err(404, "TICKET_NOT_FOUND", `growth ticket not found: ${String(params.id)}`);
+    // 与真后端同款判据：重跑该单的原问句 → `verdict === "ANSWERABLE"` 才 VERIFIED，
+    // 否则**停在 IN_REVIEW** 并回带新缺口（不是失败，是"还没好"——两者处置不同）。
+    const answerable = tk.fromQuestion.includes("达成率");
+    tk.status = answerable ? "VERIFIED" : "IN_REVIEW";
+    return HttpResponse.json({
+      ticket: tk,
+      verified: answerable,
+      gapReport: {
+        question: tk.fromQuestion,
+        taskId: "task_verify_mock",
+        verdict: answerable ? "ANSWERABLE" : "BOUNDARY",
+        path: "AGENT",
+        findings: answerable ? [] : [{ gapCode: tk.gapCode, evidence: "重跑仍答不出", suggestedFill: "继续施工", blocking: true }],
+        generatedAt: "2026-06-17T00:00:00Z",
+      },
+    });
+  }),
 
   http.get("*/a/v1/ontology/slices", () =>
     HttpResponse.json(
@@ -4845,17 +5051,14 @@ export const handlers = [
   }),
 
   // ---- 场景启动器 P2/P3：Scenario 一等对象管理（场景为主键，完整可配）----
-  http.get("*/b/v1/scenarios/manage", () => {
-    const closureOf = (s: Scenario) => {
-      const issues: string[] = [];
-      if (!db.intents.some((i) => i.key === s.intentKey)) issues.push(`意图「${s.intentKey}」未配置（死路）`);
-      if ((s.mode === "AGENT_FIRST" || s.mode === "AGENT_ONLY") && !s.defaultAgentId) issues.push("AGENT 模式缺 defaultAgent");
-      return { ready: issues.length === 0, issues };
-    };
-    return HttpResponse.json(
-      [...db.scenarios].sort((a, b) => (a.scenarioKey < b.scenarioKey ? -1 : 1)).map((s) => ({ ...s, closure: closureOf(s) })),
-    );
-  }),
+  http.get("*/b/v1/scenarios/manage", () =>
+    // WO-BEFE-D：闭包口径抽成 `scenarioClosureMock` 单源 —— `/manage` 与 `/:key/closure`
+    // 在真后端就是同一个 `scenarioClosure()`；mock 这边各写一份的话，「复检」按钮会给出
+    // 与列表不同的答案，而那种矛盾只有用户会发现。
+    HttpResponse.json(
+      [...db.scenarios].sort((a, b) => (a.scenarioKey < b.scenarioKey ? -1 : 1)).map((s) => ({ ...s, closure: scenarioClosureMock(s) })),
+    ),
+  ),
   http.post("*/b/v1/scenarios", async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>;
     const key = String(body.scenarioKey ?? "");
@@ -4908,6 +5111,139 @@ export const handlers = [
     sc.status = "RETIRED";
     sc.updatedAt = new Date().toISOString();
     return HttpResponse.json(sc);
+  }),
+  // ── WO-BEFE-D · 场景三条（此前前端零调用方）─────────────────────────────────
+  // ⚠ MSW 按注册序匹配：`:key/closure` 这类子路径必须排在任何 `:key` 通配之前。
+  //   本文件今天没有 `GET */b/v1/scenarios/:key`，但排序仍照此纪律写，免得下一个人加了那条就静默吞掉。
+  http.get("*/b/v1/scenarios/:key/closure", ({ params }) => {
+    const sc = db.scenarios.find((s) => s.scenarioKey === params.key);
+    if (!sc) return err(404, "SCENARIO_NOT_FOUND", "场景不存在");
+    return HttpResponse.json(scenarioClosureMock(sc));
+  }),
+  /**
+   * 服务端组装启动。mock 侧**必须真的做那三件事**，否则前端改走这条路的收益在测试上看不见：
+   *  ① 非 PUBLISHED → 409（前端自己拼 `/b/v1/queries` 那条路根本没有这道闸）；
+   *  ② 用户改写 query 时，把归一化结果写进 `slotPresets._normalizedSlots`
+   *     （真后端由 agentcore `parseCapacityFeasibilityVariant` 算；mock 用一个**刻意简化但确定性**的
+   *      规则：识别「N天/N周」→ weeks。简化的是解析器，不是"有没有归一化"这件事）；
+   *  ③ 回包带 `scenario` / `query` 两个字段 —— 前端据此断言"启动的是哪张卡、用的是哪句问句"。
+   */
+  http.post("*/b/v1/scenarios/:key/launch", async ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const sc = db.scenarios.find((s) => s.scenarioKey === params.key || s.intentKey === params.key);
+    if (!sc) return err(404, "SCENARIO_NOT_FOUND", `scenario not found: ${String(params.key)}`);
+    if (sc.status !== "PUBLISHED") return err(409, "INVALID_STATE", `场景未发布（${sc.status}），不可启动`);
+    const body = ((await request.json().catch(() => ({}))) ?? {}) as { query?: string };
+    const userQuery = body.query?.trim() || sc.triggerQuestion;
+    const slotPresets: Record<string, unknown> = { ...sc.presetContext.slotPresets };
+    if (userQuery !== sc.triggerQuestion) {
+      const days = /(\d+)\s*天/.exec(userQuery);
+      const weeks = /(\d+)\s*周/.exec(userQuery);
+      const w = weeks ? Number(weeks[1]) : days ? Math.max(1, Math.ceil(Number(days[1]) / 7)) : undefined;
+      if (w !== undefined) {
+        slotPresets.weeks = w;
+        slotPresets._normalizedSlots = { weeks: { raw: userQuery, normalized: w, unit: "week" } };
+      }
+    }
+    // 任务本体与 `POST /b/v1/queries` **同一条造法**（scriptForQuery + registerTaskScript）——
+    // 换的只是"谁来组装 context"，不是"任务怎么跑"。另造一条会让对话坞在两条启动路上行为不同。
+    const context = {
+      view: sc.presetContext.targetView,
+      selectedObjects: sc.presetContext.selectedObjects,
+      filters: {},
+      presetSlots: slotPresets,
+      scenarioIntentKey: sc.intentKey,
+      scenarioKey: sc.scenarioKey,
+    };
+    const taskId = newId("task");
+    const plan = scriptForQuery(taskId, userQuery, context as never);
+    db.tasks.set(taskId, {
+      id: taskId, query: userQuery, context, plan, status: "ROUTING", clarificationRounds: 0,
+      createdAt: new Date().toISOString(),
+    });
+    registerTaskScript(taskId, plan.segments);
+    return HttpResponse.json(
+      { taskId, status: "ROUTING", streamUrl: `/b/v1/queries/${taskId}/events`, scenario: sc.scenarioKey, query: userQuery },
+      { status: 202 },
+    );
+  }),
+  /** 一键发布全链：计划 → 意图 → 场景（依赖序）。闭包不通过 → 409（R4 不绕，前端不许自己放行）。 */
+  http.post("*/b/v1/scenarios/:key/publish-chain", ({ params }) => {
+    const sc = db.scenarios.find((s) => s.scenarioKey === params.key);
+    if (!sc) return err(404, "SCENARIO_NOT_FOUND", "场景不存在");
+    const publishedChain: { kind: string; key: string }[] = [];
+    // ① 意图：DRAFT → PUBLISHED（真后端还会先发它引用的计划；mock 的 intents 无 planRef 层，故只此一跳）。
+    const intent = db.intents.find((i) => i.key === sc.intentKey);
+    if (intent && intent.status !== "PUBLISHED") {
+      intent.status = "PUBLISHED";
+      publishedChain.push({ kind: "intent", key: intent.key });
+    }
+    // ② 场景：链补齐后**重跑**上架门 —— 仍不闭合就 409（不是发完再说）。
+    const closure = scenarioClosureMock(sc);
+    if (!closure.ready) return err(409, "VALIDATION_ERROR", `场景引用未闭合（死路），不可发布：${closure.issues.join("；")}`);
+    sc.status = "PUBLISHED";
+    sc.version += 1;
+    sc.updatedAt = new Date().toISOString();
+    publishedChain.push({ kind: "scenario", key: sc.scenarioKey });
+    return HttpResponse.json({ scenario: sc, publishedChain });
+  }),
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WO-BEFE-D · 组织世界 `/a/v1/org/*`（五条·此前前端零调用方）
+  // ══════════════════════════════════════════════════════════════════════════
+  http.get("*/a/v1/org/chart", ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    return HttpResponse.json(orgChartMock());
+  }),
+  http.get("*/a/v1/org/authorities", ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    return HttpResponse.json({ authorities: ORG_AUTHORITIES, limits: ORG_LIMITS });
+  }),
+  http.get("*/a/v1/org/delegations", ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    return HttpResponse.json({ delegations: ORG_DELEGATIONS });
+  }),
+  /**
+   * 在岗状态写面。mock 也**照抄后端那三道判据**（`org/routes.ts:83`）：
+   * 角色不够 → 403 · 人不存在 → 404 · 非 person → 400。
+   * 少一道都会让前端在 mock 上试出一个生产里不成立的行为。
+   */
+  http.patch("*/a/v1/org/principals/:principalId/availability", async ({ request, params }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    if (!account.roles.some((r) => ["admin", "tenant_admin"].includes(r.split(":")[0]!))) {
+      return err(403, "FORBIDDEN", "需要 admin 或 tenant_admin 角色");
+    }
+    const body = ((await request.json().catch(() => ({}))) ?? {}) as { available?: unknown };
+    if (typeof body.available !== "boolean") return err(400, "VALIDATION_ERROR", "available 必须是布尔值");
+    const row = orgState.principals.find((p) => p.principalId === params.principalId);
+    if (!row) return err(404, "NOT_FOUND", `org principal ${String(params.principalId)} not found`);
+    if (row.kind !== "person") return err(400, "VALIDATION_ERROR", "只有 kind=person 的主体有在岗状态（部门/角色没有）");
+    row.available = body.available;
+    return HttpResponse.json(row);
+  }),
+  /** 谁能批这一单。入参走**契约本尊** `ApprovalMatterSchema`，mock 不另写一套判空。 */
+  http.post("*/a/v1/org/approvers/resolve", async ({ request }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const parsed = ApprovalMatterSchema.safeParse((await request.json().catch(() => ({}))) ?? {});
+    if (!parsed.success) return err(400, "VALIDATION_ERROR", parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+    return HttpResponse.json(resolveApproversMock(parsed.data));
+  }),
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WO-BEFE-D · 决策因果图 `/a/v1/causal-graphs/*`（两条·此前前端零调用方）
+  // ══════════════════════════════════════════════════════════════════════════
+  // ⚠ 两个 handler 的返回值都过 `DecisionGraphSchema.parse()` —— 契约的 superRefine 会当场
+  //   咬住「空段没写 segmentGaps」「segmentCounts 与 nodes 不符」「悬空边」「段序倒流」。
+  //   即：mock 若编了一张结构上不可能的图，**mock 自己先炸**，而不是让前端拿它当真图渲染出来。
+  http.get("*/a/v1/causal-graphs/sim/:sessionId", ({ request, params }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    return HttpResponse.json(simCausalGraphMock(String(params.sessionId)));
+  }),
+  http.get("*/a/v1/causal-graphs/decision/:decisionId", ({ request, params }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    return HttpResponse.json(decisionCausalGraphMock(String(params.decisionId)));
   }),
 
   // ---- 查询任务 ----

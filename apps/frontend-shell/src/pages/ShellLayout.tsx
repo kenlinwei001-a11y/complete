@@ -235,7 +235,9 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   { title: "编排与场景", items: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "resources", "plan-builder", "ops/fallback", "views"].map((key) => ({ kind: "admin" as const, key })) },
   // WO-BEFE-B：scheduler / calendars 两个新页同时登记进 adminRegistry.ADMIN_NAV_GROUPS 与**这里**
   //（照上面那条警告：只改前者会掉进「其它」兜底桶）。
-  { title: "运营与审批", items: ["actions", "ops-schedule", "scheduler", "calendars", "notifications", "validation"].map((key) => ({ kind: "admin" as const, key })) },
+  // WO-BEFE-D：`org`（组织世界）与 `actions`（审批中心）相邻 —— 前者答「该谁批」，后者是「真去批」。
+  // 两处分组源（本表 + adminRegistry.ADMIN_NAV_GROUPS）必须同改，f61 结构守卫按 ADMIN_PAGES 全覆盖对账。
+  { title: "运营与审批", items: ["actions", "org", "ops-schedule", "scheduler", "calendars", "notifications", "validation"].map((key) => ({ kind: "admin" as const, key })) },
   // WO-SWEEP-03-NAV-GROUP · meta 归组定音：meta（系统自我 = 平台自我元模型 / dogfooding 本体查看器）是平台描述自身的
   // 治理/系统级构件（非租户业务建模），故 adminRegistry(建模) 与 ShellLayout(平台与系统) 的分歧在此按「平台与系统」定案；
   // 同步把 adminRegistry.ADMIN_NAV_GROUPS 的 meta 从 modeling 挪到 governance，两处分组源就此对齐、不再漂移。

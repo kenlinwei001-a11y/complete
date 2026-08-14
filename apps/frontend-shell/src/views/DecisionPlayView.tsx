@@ -3,6 +3,8 @@ import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { invokeSolver } from "@/api/endpoints";
 import { BlockConversable } from "@/components/BlockConversable";
+// WO-BEFE-D：决策台账因果图（GET /a/v1/causal-graphs/decision/:id）——「为什么这个决策被触发」。
+import { CausalGraphPanel } from "@/components/CausalGraph/CausalGraphPanel";
 import { api } from "@/api/apiClient";
 import { toast, toastError } from "@/store/toastStore";
 import type { ViewConfigVM } from "@/api/types";
@@ -626,6 +628,8 @@ function DimBar({ optionId, dimKey, label, value, unit, better }: { optionId: st
 function CommitBar({ metricKey, factorId, optionIds }: { metricKey: string; factorId: string; optionIds: string[] }) {
   const [busy, setBusy] = useState(false);
   const [committedId, setCommittedId] = useState<string | null>(null);
+  // WO-BEFE-D：提交之后才有台账 id 可查因果图（COMMITTED 的 Decision 才带 actionDraftIds ⇒ ACTION 段才有真值）。
+  const [graphOpen, setGraphOpen] = useState(false);
 
   const commit = async () => {
     if (busy || committedId) return;
@@ -645,19 +649,32 @@ function CommitBar({ metricKey, factorId, optionIds }: { metricKey: string; fact
   };
 
   return (
-    <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-      <button
-        className="btn primary"
-        data-testid="dp-commit"
-        disabled={busy || committedId != null || optionIds.length === 0}
-        onClick={commit}
-      >
-        {committedId ? "已提交决策" : busy ? "提交中…" : "提交决策 → 审批链"}
-      </button>
-      {committedId && (
-        <span data-testid="dp-commit-result" style={{ fontSize: 12, color: "var(--ok-txt)" }}>
-          已提交 <span className="mono">{committedId}</span> → 派 ActionDraft，走 S2 审批链（门不绕·前端不直改计划）。
-        </span>
+    <div style={{ marginTop: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <button
+          className="btn primary"
+          data-testid="dp-commit"
+          disabled={busy || committedId != null || optionIds.length === 0}
+          onClick={commit}
+        >
+          {committedId ? "已提交决策" : busy ? "提交中…" : "提交决策 → 审批链"}
+        </button>
+        {committedId && (
+          <span data-testid="dp-commit-result" style={{ fontSize: 12, color: "var(--ok-txt)" }}>
+            已提交 <span className="mono">{committedId}</span> → 派 ActionDraft，走 S2 审批链（门不绕·前端不直改计划）。
+          </span>
+        )}
+        {/* WO-BEFE-D：决策台账因果图（只读投影）。**不改任何真值** —— 与上面那颗提交按钮是两件事。 */}
+        {committedId && (
+          <button className="btn sm" data-testid="dp-causal-toggle" onClick={() => setGraphOpen((v) => !v)}>
+            {graphOpen ? "收起因果图" : "为什么触发这个决策 → 看因果图"}
+          </button>
+        )}
+      </div>
+      {committedId && graphOpen && (
+        <div style={{ marginTop: 10 }}>
+          <CausalGraphPanel source={{ kind: "decision", refId: committedId }} testid="dp-causal-graph" />
+        </div>
       )}
     </div>
   );

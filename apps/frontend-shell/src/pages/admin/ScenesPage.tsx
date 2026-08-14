@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Scenario, SceneEntryMode } from "@platform/contracts";
-import { createScenario, fetchAgents, fetchIntents, fetchScenariosManage, fetchViewConfigs, growScenario, publishScenario, retireScenario, updateScenario, type ScenarioClosure } from "@/api/endpoints";
+import { createScenario, fetchAgents, fetchIntents, fetchScenarioClosure, fetchScenariosManage, fetchViewConfigs, growScenario, publishScenario, publishScenarioChain, retireScenario, updateScenario, type ScenarioClosure } from "@/api/endpoints";
 import { invalidateForEvent } from "@/store/eventInvalidation";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toast, toastError } from "@/store/toastStore";
@@ -42,6 +42,11 @@ export default function ScenesPage() {
       </div>
       <div className={`muted`} style={{ fontSize: 12, marginBottom: 10 }}>
         场景为一等主键：第一列是场景，其后选交互模式（workflow-first 为默认；agent-first 仅探索面）与 presetContext（保证一键可推演、不被反问）。
+      </div>
+      {/* WO-BEFE-D：两颗新按钮的口径写在这里（可见文字），不塞进原生 title=（规范 §2 R-UI-3）。 */}
+      <div className="muted" style={{ fontSize: 12, marginBottom: 10 }} data-testid="scenes-actions-note">
+        「复检」只重算这一条的引用闭包并把断链条目摊在行内；「发布全链」按依赖序发 引用的计划 → 意图 → 本场景，
+        经 catalog_admin 审批角色，闭包不通过由后端 409 挡回（前端不自行放行）。
       </div>
 
       {creating && (
@@ -108,7 +113,41 @@ function ScenarioRow({
     onSuccess: (run) => { toast(run.maturity === "GOVERNED" ? "发育验证通过：已可用" : `发育中：缺 ${run.verification.gapCode ?? "?"}`, run.maturity === "GOVERNED" ? "success" : "info"); setDevOpen(true); onChanged(); },
     onError: toastError,
   });
-  const closure = scenario.closure;
+  /**
+   * WO-BEFE-D · 单场景闭包**复检**（`GET /b/v1/scenarios/:key/closure`，此前前端零调用方）。
+   *
+   * `/b/v1/scenarios/manage` 逐条附的 `closure` 与本端点同一个 `scenarioClosure()` 口径 ——
+   * 但那是**列表快照**：改完引用的计划/意图之后，要么整表刷新、要么屏上留着旧断链。
+   * 而断链的条目此前只挂在发布按钮的 `title` 里（悬停才看得见）—— 那不叫"用户找得到"。
+   * 这颗按钮做两件事：只重算这一条（不刷全表）、把 issues **展开在屏上**。
+   */
+  const [recheck, setRecheck] = useState<ScenarioClosure | null>(null);
+  const recheckMut = useMutation({
+    mutationFn: () => fetchScenarioClosure(scenario.scenarioKey),
+    onSuccess: setRecheck,
+    onError: toastError,
+  });
+  /**
+   * WO-BEFE-D · **一键发布全链**（`POST /b/v1/scenarios/:key/publish-chain`，此前前端零调用方）。
+   *
+   * 与旁边那颗「发布」不是重复入口，是两件事：
+   *  · 「发布」只发这一张卡 —— 引用的计划/意图还是 DRAFT 时闭包不 ready，按钮本来就被禁用；
+   *  · 「发布全链」按依赖序把 计划 → 意图 → 场景 一次发出去（scaffold 出来的 DRAFT 链的终态闭环）。
+   * R4 不绕：后端 `requireCatalogAdmin` + 发布前重跑无死路上架门，闭合不了直接 409。
+   * 所以这颗按钮**不禁用**在 `!ready` 上 —— `!ready` 恰恰是它存在的理由（禁用了就等于没有它）。
+   */
+  const publishChain = useMutation({
+    mutationFn: () => publishScenarioChain(scenario.scenarioKey),
+    onSuccess: (r) => {
+      toast(`已按依赖序发布 ${r.publishedChain.length} 项：${r.publishedChain.map((c) => `${c.kind}:${c.key}`).join(" → ")}`, "success");
+      invalidateForEvent("scenario.published");
+      setRecheck(null);
+      onChanged();
+    },
+    onError: toastError,
+  });
+  // 复检结果优先于列表快照：用户刚点过复检，屏上就该显示那一次的真答案。
+  const closure = recheck ?? scenario.closure;
   const ready = closure?.ready !== false;
   const run = scenario.lastOntogenesisRun;
 
@@ -131,6 +170,30 @@ function ScenarioRow({
             <span className="badge red" title={closure?.issues.join("；")}>
               断链 {closure?.issues.length ?? 0}
             </span>
+          )}
+          {/* WO-BEFE-D：只重算这一条（GET …/:key/closure），不刷全表。 */}
+          <button
+            className="btn sm"
+            style={{ marginLeft: 4 }}
+            data-testid={`scenario-recheck-${scenario.scenarioKey}`}
+            disabled={recheckMut.isPending}
+            onClick={() => recheckMut.mutate()}
+          >
+            {recheckMut.isPending ? "复检中…" : "复检"}
+          </button>
+          {/* 断链条目摊开在屏上——此前只挂在按钮 title 里，悬停才看得见 = 用户找不到。 */}
+          {recheck && (
+            <div data-testid={`scenario-recheck-result-${scenario.scenarioKey}`} data-ready={recheck.ready ? "1" : "0"} style={{ fontSize: 12, marginTop: 3 }}>
+              {recheck.ready ? (
+                <span className="muted">复检：引用已闭合，无死路</span>
+              ) : (
+                <ul style={{ margin: "2px 0 0 14px", color: "var(--warn)" }}>
+                  {recheck.issues.map((s) => (
+                    <li key={s}>{s}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
         </td>
         <td>
@@ -159,6 +222,23 @@ function ScenarioRow({
               onClick={() => publish.mutate()}
             >
               发布
+            </button>
+          )}
+          {/* WO-BEFE-D：按依赖序发布 计划 → 意图 → 场景（scaffold 出的 DRAFT 链的终态闭环）。
+              **刻意不按 `ready` 禁用**：`!ready` 正是这颗按钮的适用场景（计划/意图还没发布）。
+              闭合不了由后端 409 挡（R4 不绕），不由前端猜。 */}
+          {/* 规范 §2 R-UI-3：口径不进原生 `title=`（有棘轮咬着）。
+              「发布全链」= 按依赖序发 引用的计划 → 意图 → 本场景；经 catalog_admin 审批角色，
+              闭包不通过后端直接 409。这段说明写在表头下的一行可见小字里。 */}
+          {scenario.status === "DRAFT" && (
+            <button
+              className="btn sm"
+              style={{ marginLeft: 4 }}
+              data-testid={`scenario-publish-chain-${scenario.scenarioKey}`}
+              disabled={publishChain.isPending}
+              onClick={() => publishChain.mutate()}
+            >
+              {publishChain.isPending ? "发布全链中…" : "发布全链"}
             </button>
           )}
           {scenario.status === "PUBLISHED" && (
