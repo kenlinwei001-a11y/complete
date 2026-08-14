@@ -14,6 +14,7 @@ import {
   GapAnalysisSchema,
 } from "./databuilder.js";
 import { GapReportSchema } from "./growth.js";
+import { ReconcileActionSchema } from "./prototype-intake.js";
 import { ValidationTraceSchema } from "./qos.js";
 
 /**
@@ -321,6 +322,16 @@ export const StoryBuildRunSchema = z.object({
       migratedTypes: z.number().int().default(0),
       /** 整域内逐制品晋升为 GOVERNED 的临时求解器 key。 */
       promotedSolvers: z.array(z.string()).default([]),
+      /**
+       * WO-DBUI-FLOW：**同 key 沿用既有、本次没建**的对象类型 key。
+       * 病史：这批类型此前既不进 `migratedTypes` 也不出现在任何回执里 ⇒ 人以为建了新类型、
+       * 实际用的是库里那个，而屏上数字一点看不出。诚实位补在这里（新增字段，`.optional()` 零回归）。
+       */
+      reusedTypeKeys: z.array(z.string()).optional(),
+      /** 人裁决为「沿用既有、不覆盖」的链路 key（默认行为原本是无条件覆盖）。 */
+      keptLinkKeys: z.array(z.string()).optional(),
+      /** 人裁决为「覆盖」的链路 key（每一条都是一次经审批的真值写入，R4 留痕）。 */
+      overwrittenLinkKeys: z.array(z.string()).optional(),
     })
     .optional(),
   /** （可选）以生成场景跑一遍 QOS 推演的答案（P5；§9 归一：经 AgentCore growth/probe 实跑）。 */
@@ -358,6 +369,148 @@ export const StoryInputsBodySchema = z.object({
   inputs: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
 });
 export type StoryInputsBody = z.infer<typeof StoryInputsBodySchema>;
+
+// ---- WO-DBUI-FLOW · 入库前冲突预检（第 ⑥ 步「人工确定入库」的输入，只读）------------
+//
+// 仓主原话：「模拟的数据是否可以入库，**需要系统再次复验自检，因为人不清楚系统里面的数据现状，
+// 是否有冲突等等**」。落点在 `promoteDomain`（`datacore/databuilder/service.ts`）真写之前：
+// 缺口分析是**建域时（T1）**算的，人点「入库」时（T2）世界可能已变（别人建了同名类型、改了策略）。
+//
+// ⚠ **预检不是审批的替代，是审批的输入**（R4）：晋升仍是人工审批动作（端点 requireAdmin）。
+//    预检**一个字节都不写**——它只把「真写会发生什么」提前算出来给人看。
+
+/**
+ * 三类冲突**分开**登记，绝不合成一个「N 条冲突」——
+ * 「会改掉既有定义」与「写了个一样的」危险度差一个量级，合成即让人无法裁决。
+ */
+export const PROMOTE_CONFLICT_KINDS = [
+  /** 真租户已有同 `key` 的 ObjectType：今天**静默跳过**（沿用既有），且不计入 migratedTypes ⇒ 屏上看不出。 */
+  "TYPE_SAME_KEY",
+  /** 同 `key` 的 LinkType 但 from/to/cardinality 任一不同：今天**无条件覆盖** = 一次静默的本体真值写入。 */
+  "LINK_SAME_KEY_DIFF_DEF",
+  /** 同 `key` 的 LinkType 且定义全同：覆盖但无语义变化（仅 version+1 churn）。 */
+  "LINK_SAME_KEY_SAME_DEF",
+] as const;
+export const PromoteConflictKindSchema = z.enum(PROMOTE_CONFLICT_KINDS);
+export type PromoteConflictKind = z.infer<typeof PromoteConflictKindSchema>;
+
+/**
+ * 冲突类目录（屏上文案 + 危险度 + 今天的默认行为）——**契约单源**，前端不重定义（R1 / R14）。
+ * `severity` 是给人排序用的，不是给机器阻断用的：阻断判据在 `requiresDecision`（见下）。
+ */
+export const PROMOTE_CONFLICT_REGISTRY: {
+  kind: PromoteConflictKind;
+  label: string;
+  /** 无裁决时 `promoteDomain` 今天会做什么（诚实位：屏上直说「你不选也会发生这个」）。 */
+  defaultBehavior: string;
+  severity: "HIGH" | "MEDIUM" | "LOW";
+}[] = [
+  { kind: "TYPE_SAME_KEY", label: "对象类型同名（库里已有）", defaultBehavior: "沿用库里既有的那个，本次不新建（字段可能与故事要的不一致）", severity: "MEDIUM" },
+  { kind: "LINK_SAME_KEY_DIFF_DEF", label: "链路同名但定义不同", defaultBehavior: "覆盖既有定义（端点/基数被改写）——这是一次真值写入，必须人裁决", severity: "HIGH" },
+  { kind: "LINK_SAME_KEY_SAME_DEF", label: "链路同名且定义相同", defaultBehavior: "覆盖（版本号 +1，语义无变化）", severity: "LOW" },
+];
+
+/**
+ * 一条冲突：`既有值` · `将写值` · `建议动作`（工单 §3.3.2 的三样）。
+ * 动作词表**复用** `SchemaReconcileCandidate` 已立的 `ReconcileAction`（USE/RENAME/NEW/MERGE/DISCARD），
+ * 不另发明一套：`USE`=沿用既有 · `MERGE`=覆盖 · `RENAME`=改名新建。
+ */
+export const PromoteConflictSchema = z.object({
+  kind: PromoteConflictKindSchema,
+  target: z.enum(["objectType", "linkType"]),
+  key: z.string(),
+  /** 真租户当下的定义（逐字段字符串化，屏上直接可读；类型同 key 时给 displayName/domain/属性数）。 */
+  existingValue: z.record(z.string(), z.string()).default({}),
+  /** 隔离命名空间里待迁入的定义（同一字段集，可与 existingValue 逐字段对照）。 */
+  incomingValue: z.record(z.string(), z.string()).default({}),
+  /** 逐字段差异的字段名（仅 LINK_SAME_KEY_DIFF_DEF 非空）。 */
+  changedFields: z.array(z.string()).default([]),
+  /** 系统建议动作（人可改；`USE`=不动既有真值 = 最安全的默认）。 */
+  suggestedAction: ReconcileActionSchema,
+  /** `promoteDomain` **今天真能执行**的动作集合。RENAME/NEW/DISCARD 尚未实现 ⇒ 不列出（不给假按钮）。 */
+  availableActions: z.array(ReconcileActionSchema).default([]),
+  /**
+   * 是否**必须**有人的裁决才允许写。true 仅用于「默认行为会改写既有真值」的那一类
+   * （LINK_SAME_KEY_DIFF_DEF）——不搞「必须先调预检」的隐式耦合，只堵真正危险的那一步。
+   */
+  requiresDecision: z.boolean().default(false),
+});
+export type PromoteConflict = z.infer<typeof PromoteConflictSchema>;
+
+/** 闭包判定的可比摘要（T1/T2 并列显示用）。 */
+export const ClosureSnapshotSchema = z.object({
+  gatePassed: z.boolean(),
+  objectsBound: z.number().int(),
+  dataOrphans: z.number().int(),
+  forwardMissing: z.number().int(),
+  chainBroken: z.number().int(),
+  shapeBroken: z.number().int(),
+});
+export type ClosureSnapshot = z.infer<typeof ClosureSnapshotSchema>;
+
+/** 比对现状的可比摘要（T1/T2 并列显示用）。 */
+export const GapTotalsSnapshotSchema = z.object({
+  needed: z.number().int(),
+  existing: z.number().int(),
+  toCreate: z.number().int(),
+  missing: z.number().int(),
+});
+export type GapTotalsSnapshot = z.infer<typeof GapTotalsSnapshotSchema>;
+
+/**
+ * 「建域后世界变了没有」——把 T1（建域时封存）与 T2（预检时现算）并列。
+ *
+ * ⚠ **诚实边界（两维的世界依赖不同，不许当成一回事）**：
+ *   · `closure*` 由 `validateClosure(plan, policy, buildMode)` 得出，是**纯函数** ——
+ *     plan 已冻结 ⇒ 它唯一可能漂移的输入是**闭包策略**（builder preset 被人改过）。
+ *   · `gap*` 由 `analyzeGap(deps, ctx, plan)` 得出，**真的读当前真租户**（已有类型/规则/切片/数据集）——
+ *     这才是「别人在你建完域之后动了库」的检出维。
+ *   两维都报，但别拿闭包那维冒充世界漂移。
+ */
+export const PromoteWorldDriftSchema = z.object({
+  closureAtBuild: ClosureSnapshotSchema.optional(),
+  closureAtPrecheck: ClosureSnapshotSchema.optional(),
+  gapAtBuild: GapTotalsSnapshotSchema.optional(),
+  gapAtPrecheck: GapTotalsSnapshotSchema.optional(),
+  /** 逐字段差异（`dim` = closure|gap，屏上直接列「变在哪」）。 */
+  diffs: z.array(z.object({ dim: z.enum(["closure", "gap"]), field: z.string(), atBuild: z.string(), atPrecheck: z.string() })).default([]),
+  /** 任一维不一致 ⇒ true：**建域后世界变了**。 */
+  changed: z.boolean().default(false),
+});
+export type PromoteWorldDrift = z.infer<typeof PromoteWorldDriftSchema>;
+
+/** `POST /a/v1/databuilder/runs/:id/promote-precheck` 响应（**只读**：调它不改变任何世界态）。 */
+export const PromotePrecheckSchema = z.object({
+  runId: z.string(),
+  /** 三类各自计数（**分开**，绝不给一个合计数——合计等于让人无法裁决）。 */
+  counts: z.object({
+    typeSameKey: z.number().int(),
+    linkSameKeyDiffDef: z.number().int(),
+    linkSameKeySameDef: z.number().int(),
+  }),
+  conflicts: z.array(PromoteConflictSchema).default([]),
+  /** 无冲突、可直接迁入的制品数（让人知道「其余的都干净」）。 */
+  clean: z.object({ objectTypes: z.number().int(), linkTypes: z.number().int() }),
+  drift: PromoteWorldDriftSchema,
+  /** 还差几条人的裁决才允许入库（= requiresDecision 且未裁决的条数）。 */
+  pendingDecisions: z.number().int().default(0),
+  checkedAt: IsoTime,
+});
+export type PromotePrecheck = z.infer<typeof PromotePrecheckSchema>;
+
+/** 人对一条冲突的裁决（`resolvedAction` 的等价物，沿用同一词表）。 */
+export const PromoteDecisionSchema = z.object({
+  target: z.enum(["objectType", "linkType"]),
+  key: z.string(),
+  action: ReconcileActionSchema,
+});
+export type PromoteDecision = z.infer<typeof PromoteDecisionSchema>;
+
+/** `POST /a/v1/databuilder/runs/:id/promote` 请求体（缺省 = 空裁决；有必裁冲突时后端显式报错，绝不静默按默认写）。 */
+export const PromoteBodySchema = z.object({
+  decisions: z.array(PromoteDecisionSchema).default([]),
+});
+export type PromoteBody = z.infer<typeof PromoteBodySchema>;
 
 /** g8-P4 压测请求体：跑一组故事脚本，统计覆盖率/失败率（= 自动生成管线压测）。 */
 export const StressBodySchema = z.object({
