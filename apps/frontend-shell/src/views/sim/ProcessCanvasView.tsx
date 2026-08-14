@@ -148,7 +148,15 @@ function Station({
       className={styles.station}
       /* ⚠ testid 与上一版**逐字不变**（`spc-card-<key>`）：结构红线那条断言
          （§C1 现算「屏上渲染的键」∩ 24 个冻结 nodeId）就是靠它取键的。
-         换个名字 = 那条断言在空集合上跑、恒绿 —— 假绿的又一形态。 */
+         换个名字 = 那条断言在空集合上跑、恒绿 —— 假绿的又一形态。
+         2026-08-14 实测：取键的是 `renderedProcessKeys()`
+         （`apps/frontend-shell/test/sandbox-process-mode.seam.test.tsx:111`，
+         `getAllByTestId(/^spc-card-/)` + 读 `data-process-key`），咬它的是同文件 `:251` 的
+         「C1 · 第五档渲染的键集合 ∩ CHAIN_NODE_REGISTRY 的 24 个 nodeId = ∅」。
+         那条断言自带防空绿护栏（`keys.length` 与 `nodeIds.size` 都先断言 > 0），
+         所以改名会**当场红**而不是恒绿——护栏在，不是靠这段注释拦。
+         复验：`pnpm --filter frontend-shell exec vitest run sandbox-process-mode`。
+         ⚠ 有保质期：testid 前缀、`data-process-key` 属性名、或那条断言的取键方式任一改动即须重测。 */
       data-testid={`spc-card-${s.key}`}
       data-process-key={s.key}
       data-layer="process"
@@ -331,10 +339,27 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
    * 当缩放被 `ZOOM_LIMITS.min`（0.4）夹住、内容仍比视口高时，这个式子是**负数** ——
    * 于是内容被往上顶出视口，**整张图的头几条线看不见了**，而屏上没有任何迹象说它被顶走了。
    *
-   * 真后端实测（13 条线 · 65 站）：contentH≈2509，k 夹到 0.4 ⇒ contentH·k≈1004 > 视口 ≈560
-   * ⇒ y ≈ −222，1 号线整条在视口上方。第一次跑真后端截图时正是它把「点站」打飘的
-   * （点击坐标落在画布之外），mock（5 条线）因为装得下所以从没露过 —— 又一个
-   * 「小数据集恒绿、真数据集才炸」的形态。
+   * **2026-08-14 真浏览器实测**（13 条线 · 65 站）：contentH≈2509，k 夹到 0.4
+   * ⇒ contentH·k≈1004 > 视口 ≈560 ⇒ y ≈ −222，1 号线整条在视口上方。
+   * 第一次跑真后端截图时正是它把「点站」打飘的（点击坐标落在画布之外），
+   * mock（5 条线）因为装得下所以从没露过 —— 又一个「小数据集恒绿、真数据集才炸」的形态。
+   *
+   * ── 复验方式（分两半：能现算的现算，只能真浏览器测的说清楚它只能真浏览器测）──────
+   * ① **可离线核对的那一半**（当场就能跑，不需要浏览器）：
+   *    · 「13 条线 · 65 站」= 种子里 `DEMO_PROCESS_DEFINITIONS` 的条数与 distinct `domainKey`：
+   *      `node -e "const s=require('fs').readFileSync('apps/datacore/src/seed.ts','utf8');
+   *       const r=[...s.matchAll(/\{ key: \"(P\d\d)\", domainKey: \"(D\d\d)\"/g)];
+   *       console.log(r.length, new Set(r.map(x=>x[2])).size)"` ⇒ 2026-08-14 现跑 `65 13`；
+   *    · 算术：`k = ZOOM_LIMITS.min = 0.4`（`apps/frontend-shell/src/views/sim/physicalTopology.ts:832`），
+   *      `fitTransform` 的居中式在同文件 `:861`；2509×0.4 = 1003.6 ≈1004，(560−1003.6)/2 = −221.8 ≈−222。
+   * ② **只能真浏览器测的那一半**：`contentH≈2509` 与「视口 ≈560」是真后端 + 真布局的量值。
+   *    jsdom 量不到视口 ⇒ `fitTransform` 回 `measured=false` ⇒ 本档直接退回单位变换，
+   *    **这条分支在 vitest 里根本走不到**（`sandbox-process-mode` 绿不证明它对）。
+   *    真浏览器复验：`docker compose up` 或双服务起来 → 沙盘第五档 → 点「适应」→
+   *    看 `spc-fit-clamped` 是否出现、1 号线是否还在视口内。
+   *    ⚠ 现状如实记账：`spc-fit-clamped` 今天**没有任何测试断言**（全仓仅本文件两处引用），
+   *      它是一个只在真屏上才成立的诚实位，不是被门咬住的判据。
+   * ⚠ 有保质期：`ZOOM_LIMITS.min` / `PROC_LAYOUT` 版面常量 / 种子流程条数任一变动即须重测。
    *
    * ⇒ 处置：装得下就居中（保持原行为），**装不下就顶左对齐**并当面说一句
    *   （`spc-fit-clamped`）—— 「缩到下限仍装不下」是一个事实，不许让它长得像"已经适应了"。

@@ -57,8 +57,17 @@
  *
  * **③ 真正的站序确实存在，但不在本档够得着的地方。**
  *    `BATTERY_PROCESS_FLOW_RULES`（`apps/datacore/src/process/flow-rules.ts:104`）
- *    有 6 条链、覆盖 8 条流程，其中**只有 2 条是真多站**（`P33→P34→P35`、`P43→P47`），
- *    每一行都是逐条查实测数据填出来的。它经 `process_flow_time` 求解器与
+ *    有 6 条链、覆盖 **9** 条流程（`P25/P33/P34/P35/P41/P42/P43/P47/P51`），其中
+ *    **只有 2 条是真多站**（`P33→P34→P35`、`P43→P47`），
+ *    每一行都是逐条查实测数据填出来的。
+ *    ⚠ **2026-08-14 现跑订正**：本句原写「覆盖 8 条流程」，实际是 9 ——
+ *      `flowRuleCoveredProcessKeys()` 是「端点/文档/测试共用同一份，不许各数一遍」的
+ *      单一事实源（`apps/datacore/src/process/flow-rules.ts:218`），它当日返回 9 个键。
+ *      复验：`node -e "import('./apps/datacore/dist/process/flow-rules.js').then(m=>
+ *      console.log(m.BATTERY_PROCESS_FLOW_RULES.length, m.flowRuleCoveredProcessKeys()))"`
+ *      ⇒ `6 [ 'P25','P33','P34','P35','P41','P42','P43','P47','P51' ]`（需先 `pnpm -r build`）。
+ *      同一句话的另一份拷贝在 `locales/zh.ts` 的 `orderBasisWhereReal`（屏上那句），已同步订正。
+ *    它经 `process_flow_time` 求解器与
  *    `GET /a/v1/process-definitions/{key}/instances` 下发（带 `flowKey` + `stationIndex`），
  *    **不经本档这个端点**。要在本档画出实测站序，需要改 datacore 加一条下发 —— 那在本单
  *    范围边界之外，故**如实缺席**并把探针写在屏上，不偷偷编一个顺序顶上。
@@ -361,8 +370,25 @@ export function processStationRadius(days: number, maxStdDays: number): number {
 /**
  * 站名标签摆位：一律在线**下方**（上方留给换乘弧），同侧按列号奇偶**分两层交替**。
  *
- * 交替而不是全挤一层，是因为中文站名普遍比 `gapX` 宽（实测「产能投资立项与评审」
- * 8 个全角字 ≈ 88px，加上读数行仍逼近间距）；两层交替把有效水平间距翻倍。
+ * 交替而不是全挤一层，是因为中文站名的估宽**逼近**相邻站间距 `gapX`(150)，余量薄。
+ *
+ * **2026-08-14 现跑**（`estimateLabelWidth` 是纯函数，定义在 `chainLineMap.ts:567`：
+ * 码位 > U+00FF 按 1 字号宽、其余按 0.55，`labelFontPx = 11`）：
+ *   · 65 条种子流程名里最宽的是 P16「客户收货地点与物流条款维护」13 个全角字 = **143px**；
+ *   · 「产能投资立项与评审」是 **9** 个全角字 = **99px**。
+ *     ⚠ 本句原写「8 个全角字 ≈ 88px」——**字数与像素各少算一个字**，本轮现跑订正。
+ *   · 单层时相邻两站相撞的判据是 `labelBoxesOverlap`（`chainLineMap.ts:590`）：
+ *     `(w_a + w_b) / 2 + labelGapX(8) > gapX(150)`，即两名合计 > **284px**；
+ *     最宽的两条相加已 271px（143 + 128），余量不到 5%。
+ *     两层交替把同层水平间距翻到 300px，判据放宽到合计 > 584px。
+ * 复验（同一份 `estimateLabelWidth` 的公式，别另抄一套）：
+ *   `node -e "const s=require('fs').readFileSync('apps/datacore/src/seed.ts','utf8');
+ *    const n=[...s.matchAll(/name: \"([^\"]+)\", ownerFunctionKey/g)].map(m=>m[1]);
+ *    const e=t=>[...t].reduce((a,c)=>a+((c.codePointAt(0)>0xff)?11:11*0.55),0);
+ *    console.log(n.length, Math.max(...n.map(e)))"` ⇒ 2026-08-14 现跑 `65 143`。
+ * ⚠ 有保质期：`PROC_LAYOUT.gapX` / `METRO_LAYOUT.labelFontPx` / `labelGapX` / 种子流程名
+ *   任一变动，上面每个数都作废，须重跑而不是照抄。
+ *
  * 封顶两层后仍撞的，**如实记进 `labelOverflow`**，不再加层。
  */
 export function placeStationLabel(x: number, y: number, r: number, col: number, name: string, sub: string): ProcessLabelVM {
