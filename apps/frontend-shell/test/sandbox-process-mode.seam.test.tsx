@@ -261,6 +261,23 @@ describe("§C 结构红线（这一条红了 = 有人把两层揉了）", () => 
     expect(nodeIds.size, "冻结注册表是空的 ⇒ 交集恒空，断言无意义").toBeGreaterThan(0);
 
     const overlap = keys.filter((k) => nodeIds.has(k));
+
+    /**
+     * **同源判据**（这一条是写变异反证时补的，它咬的东西与下面两条都不一样）：
+     * 屏上 `spc-disjoint` 那个数，必须等于**现数 DOM** 得到的交集大小。
+     *
+     * 为什么单独立一条：原实现按**响应**算交集，而屏上那句话声称度量的是
+     * 「本档渲染出来的键」。两者今天恒等 ⇒ 谁也发现不了。把一个冻结 nodeId
+     * 在**渲染时**混进来（变异体 2）就会分家：DOM 里有交集、屏上照样写 0。
+     * 那正是「我用 X 当作 Y 的证据，而 X 并不度量 Y」。
+     * ⚠ 注意这条在变异体下**必须仍然绿**（1 == 1）—— 它证明的是"两个数同源"，
+     * 不是"没有交集"；判"有没有交集"是下面那条的事。两条各咬各的，别合并。
+     */
+    expect(
+      screen.getByTestId("spc-disjoint").getAttribute("data-overlap"),
+      "屏上写的交集数 ≠ 现数 DOM 得到的交集数 ⇒ 屏上那句诚实位度量的不是屏上画的东西",
+    ).toBe(String(overlap.length));
+
     expect(
       overlap,
       `业务流程层的键与链路节拍层的冻结 nodeId 出现交集：${overlap.join("、")} —— ` +
