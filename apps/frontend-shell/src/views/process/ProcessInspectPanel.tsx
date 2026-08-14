@@ -18,7 +18,12 @@ import styles from "./ProcessInspectPanel.module.css";
  *   **绝不臆造中文名** —— 编错比不编危险，业务专家会照着错的理解。
  *   界面骨架文案（表头、区块标题）走 `locales/zh.ts`，与业务词表严格分开。
  *
- * · **不拿标准工期冒充实测卡顿**：`runtime.available` 恒 `false`，
+ * · **不拿标准工期冒充实测卡顿**：`runtime.available` 恒 `false`
+ *   （**2026-08-13 实测**；复验：`curl -s -H 'X-Debug-User: demo:admin:admin' \
+ *   'http://127.0.0.1:4001/a/v1/process-definitions/P32/inspect' | jq .runtime`
+ *   —— 65/65 条流程全量扫过，`runtime.available` 无一为 true。
+ *   ⚠️ 这条**有保质期**：`ProcessInstance` 承载物一旦接上（见本体 §2.K 与
+ *   `impact-analysis` 的 `instanceLevel` 缺口），此处即过期，必须改口径而不是加豁免），
  *   页面把 `runtime.reason` 与 `runtime.unanswerable` **当面列出来**，
  *   工期数字旁边贴 `runtime.stdDurationCaption`（口径也是后端下发的，
  *   免得前端写一句将来会过期的说明 —— `G-FRONTEND-HARDCODED-ABSENCE` 记的就是这个病）。

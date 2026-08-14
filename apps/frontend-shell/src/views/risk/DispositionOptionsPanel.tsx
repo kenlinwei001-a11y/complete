@@ -26,7 +26,7 @@ export function DispositionOptionsPanel({ row }: { row: PlanRow }) {
 
   if (!opts) {
     return (
-      <div data-testid="disposition-options-panel" style={panelStyle}>
+      <div data-testid="disposition-options-panel" className={styles.rkOptPanel}>
         <SubSection testId="disposition-options-section" title="③ 方案与代价 · 能怎么办、各要付什么">
           <AbsentNote
             testId="disposition-options-absent"
@@ -43,7 +43,7 @@ export function DispositionOptionsPanel({ row }: { row: PlanRow }) {
 
   if (opts.status === "EMPTY") {
     return (
-      <div data-testid="disposition-options-panel" style={panelStyle}>
+      <div data-testid="disposition-options-panel" className={styles.rkOptPanel}>
         <SubSection testId="disposition-options-section" title="③ 方案与代价 · 能怎么办、各要付什么">
           <div className="empty-state" data-testid="disposition-options-empty" style={{ fontSize: 11, lineHeight: 1.7, color: "var(--muted)" }}>
             <b style={{ color: "var(--muted2)" }}>无需处置，故不出方案（这是结论，不是缺数据）</b>
@@ -57,7 +57,7 @@ export function DispositionOptionsPanel({ row }: { row: PlanRow }) {
   }
 
   return (
-    <div data-testid="disposition-options-panel" style={panelStyle}>
+    <div data-testid="disposition-options-panel" className={styles.rkOptPanel}>
       <SubSection
         testId="disposition-options-section"
         title="③ 方案与代价 · 能怎么办、各要付什么"
@@ -110,13 +110,6 @@ export function DispositionOptionsPanel({ row }: { row: PlanRow }) {
   );
 }
 
-const panelStyle = {
-  marginTop: 10,
-  padding: "10px 12px",
-  border: "1px solid var(--line, rgba(140,170,200,.28))",
-  borderRadius: 6,
-  background: "var(--panel2, rgba(120,160,200,.06))",
-} as const;
 
 /** 成本单元格：OK 显总额 · PARTIAL 只报**已算出的那部分**并列缺项 · EMPTY 完全不显金额（绝不按 0 并入）。 */
 function CostCell({ option }: { option: DispositionOption }) {
