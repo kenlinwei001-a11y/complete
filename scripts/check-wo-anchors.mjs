@@ -39,6 +39,34 @@
  *    这条边界必须诚实说出来，否则本门自己就变成「我用『锚点门绿了』当作『工单没错』的证据」。
  */
 
+/* ── 退出码纪律 · 顶层兜底（WO-R9-GATE-CLOSEOUT）───────────────────────────────
+ * 本门上面已经写明退出码三分（0 干净 / 1 锚点对不上 / 2 门自己坏了），也已经有 `die2()`
+ * 这个 RC=2 出口 —— 但那只堵住了**已知**的失败路径。而「已知」永远不完整：
+ * 只读 FS / 权限 / OOM / node 版本差异 / `git` 不在 PATH / 本地 `./x.mjs` 被删，
+ * 全都会抛未捕获异常，而 **node 对未捕获异常一律退 1** —— 恰好撞上「锚点对不上」这个码。
+ * 于是「门根本没跑起来」被读成「这张单在瞎写路径」，方向**正好相反**。
+ * 形态（CLAUDE.md 铁律 0.6 句式）：
+ *   > 「我用『进程非 0 退出』当作『工单有错』的证据，而前者并不度量后者。」
+ *
+ * 照 `scripts/check-ui-first-layer.mjs` / `scripts/check-gate-exit-discipline.mjs` 的现成写法补，
+ * 不自创：同步 throw 走 `uncaughtException`、顶层 await 之后的 throw 走 `unhandledRejection`，
+ * **两个都要挂**，只挂一个有洞；再加一层顶层 `try/catch` 包住主流程（栈更短、提示更准，
+ * 且让「有兜底」这件事在**源码结构上**也成立 —— `check-gate-exit-discipline.mjs` 的判据②认的就是这个结构）。
+ *
+ * ⚠ 反向判据（做坏了比不做更糟）：兜底**不许**把真违规也吞成 2，那是拿更糟的假绿换掉假红。
+ *   本门的 RC=1 只由 `main()` 末尾那条 `process.exit(1)` 产生，而 `process.exit` 是**终止**不是抛出，
+ *   顶层 `catch` 碰不到它 —— 三向退出码由下面 `WO_ANCHORS_FORCE_BOOM` 的故障注入**机器验**，
+ *   不靠这段注释保证（写在注释里的约定不是机制）。 */
+process.on("uncaughtException", (e) => bail(e));
+process.on("unhandledRejection", (e) => bail(e));
+function bail(e) {
+  console.error(`⛔ 门自己坏了：check-wo-anchors.mjs 未预期异常（${e?.message || e}）`);
+  console.error("   本次结论作废 —— **不许**读成「锚点都对」，也**不许**读成「这张单有错」：");
+  console.error("   本门这次根本没跑完，它什么都没证明。RC=2");
+  console.error("   " + String(e?.stack || "").split("\n").slice(1, 4).join("\n   "));
+  process.exit(2); // 2 = 工具自己坏了（1 留给「锚点真对不上」那一条路径，两者处置相反，不许合并）
+}
+
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import path from "node:path";
@@ -126,6 +154,11 @@ function spawnSelf(file) {
 }
 
 function main() {
+  // 故障注入开关：只给三向退出码机验用 —— 验「未预期异常 ⇒ RC=2 而不是 node 默认的 1」。
+  // 故意不 catch：这就是「未预期」的定义。（写在注释里的约定不是机制，只有机器跑得到的才是。）
+  if (process.env.WO_ANCHORS_FORCE_BOOM === "1") {
+    throw new TypeError("（故障注入）未预期异常，验顶层兜底 —— 期望 RC=2");
+  }
   const argv = process.argv.slice(2);
   const revIdx = argv.indexOf("--rev");
   const REV = revIdx >= 0 ? argv[revIdx + 1] : null;
@@ -279,4 +312,15 @@ function main() {
   process.exit(1);
 }
 
-main();
+/*
+ * ── 兜底之二：把主流程也包起来 ──────────────────────────────────────────────
+ * 上面的两个 `process.on` 钩子已覆盖同步与异步两侧，这里再包一层不是冗余：
+ * 它让「兜底」在**源码结构上**也成立（`check-gate-exit-discipline.mjs` 判据②认的就是这个结构），
+ * 且异常在这里被拿住时栈更短。`main()` 里的 `process.exit(0|1)` 是终止不是抛出，走不到这里 ——
+ * 真违规仍然是 RC=1，没有被吞成 2。
+ */
+try {
+  main();
+} catch (e) {
+  bail(e);
+}
