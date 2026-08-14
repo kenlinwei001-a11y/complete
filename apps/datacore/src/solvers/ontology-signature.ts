@@ -348,6 +348,28 @@ export const SOLVER_ONTOLOGY_SIGNATURES: Record<string, SolverOntologySignature>
       { typeKey: "Model", propKeys: ["modelId"] },
     ],
   },
+
+  /**
+   * WO-FLOWTIME · `process_flow_time`：读取面**由反推规则表决定**（`process/flow-rules.ts`），
+   * 不是静态可穷举的 —— 换行业换规则表，读的单据类型跟着变（R14）。故静态 `reads` 留空、
+   * 全部交给 `resolveReads` 从规则表现算。
+   *
+   * ⚠ 与 `concentration_risk`（读取面由**入参**决定）同族，但来源不同：那个看 args，
+   * 这个看**配置表**。两者都不能静态声明，但可解析 ⇒ 都属于「静态 reads 是下界 + 解析器补全」。
+   *
+   * `propKeys` 一律省略（= 全属性·最保守）：规则表声明的字段（enterField/exitField/partyField/
+   * joinField）之外，反推器不会碰别的属性；但**过度声明是安全方向（多拒），漏声明是事故方向**，
+   * 故此处按文件头纪律取最保守的一档。
+   */
+  process_flow_time: {
+    reads: [],
+    resolveReads: async () => {
+      const { BATTERY_PROCESS_FLOW_RULES } = await import("../process/flow-rules.js");
+      const types = new Set<string>();
+      for (const r of BATTERY_PROCESS_FLOW_RULES) for (const s of r.stations) types.add(s.typeKey);
+      return [...types].sort().map((typeKey) => ({ typeKey }));
+    },
+  },
 };
 
 /** 已签名求解器 key（目录/DRIL 投影用；排序确定性 R6）。 */

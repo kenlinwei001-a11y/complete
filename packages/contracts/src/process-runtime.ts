@@ -356,6 +356,15 @@ export const ProcessStuckResponseSchema = z.strictObject({
   stuck: z.array(ProcessStuckReasonSchema),
   /** 各等待态计数（五个 key 恒在，值可为 0 —— 这是**统计**不是「诚实位」，0 有意义）。 */
   byWaitState: z.record(ProcessTaskWaitStateSchema, z.number().int().nonnegative()),
+  /**
+   * 🔴 **本投影答不出的那一批**（合并新增·WO-R9-PROCESS-MERGE）：
+   * 到此刻同样卡着、但产地是 `DERIVED_FROM_DOCUMENT`（从单据反推）的实例数。
+   *
+   * 它们没有"第几步"——单据上没有这个事实，编一个步名就是造假——故进不了 `stuck[]`。
+   * 但**不许因此静默消失**：不报这个数，调用方会把「本投影没算它们」读成「它们不存在」。
+   * 要看这一批，走 `process_flow_time` 求解器或 `GET /a/v1/process-definitions/:key/instances`。
+   */
+  derivedStuckCount: z.number().int().nonnegative(),
 });
 export type ProcessStuckResponse = z.infer<typeof ProcessStuckResponseSchema>;
 
