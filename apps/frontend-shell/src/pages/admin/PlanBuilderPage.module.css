@@ -42,7 +42,13 @@
 
 .canvasItemActive {
   border-color: var(--primary, #2563eb);
-  background: var(--primary-soft, #dbeafe);
+  /* WO-FE-RED-7 · **兜底是故意去掉的**（不是漏写）：
+     原为 `var(--primary-soft, #dbeafe)`，而 --primary-soft 当时全仓无定义 ⇒ 永远取那个写死的浅蓝，
+     暗色皮下 --txt 压上去实测只有 1.05:1（近白字压近白面 = 看不见）。令牌已在 tokens.css 逐皮定义。
+     去掉兜底是为了把看管权交给 `scripts/check-css-token-defined.mjs` ——
+     那道门只咬**无兜底**的 var()，日后谁删了这颗令牌它当场报红；
+     留着兜底则会被它按「写了兜底就是有意为之」放过，重新退回今天这个坑。 */
+  background: var(--primary-soft);
 }
 
 .main {
