@@ -494,7 +494,12 @@ describe("generic_inference 通用 what-if 求解器（H · G-5 通用 what-if�
     //   要求「金值/注册即更」的由来：漏对账就会把 59 写成 58，然后一路绿到部署才炸。
     //   +58 = WO-SANDBOX-E1 chain_loss_attribution（环节级损失归因·Σ非增值 pct==100%）
     //   +59 = WO-SANDBOX-E3 chain_impediments（全链阻滞点判定·卡点/堵点/断点三类）
-    expect(SOLVER_KEYS.length).toBe(59);
+    //   +60 = WO-FLOWTIME process_flow_time（流程**实例**层站间流转时长·哪一张单卡着/卡在谁那里/卡了多久）
+    //         ⚠ 这个 +1 是被本条金值**当场报红**逼出来的（2026-08-14 合并 WO-R9-PROCESS-MERGE 时
+    //         全量跑 datacore 才抖出来，`expected 60 to be 59`）——不是我改完代码顺手想起来的。
+    //         这正是上面那段话说的机制：**机器先说话**。若当时只跑了 process-* 那两个文件，
+    //         两边都绿、这条一路绿到部署才炸，与 E1/E3 那次并线是**同一个形态**。
+    expect(SOLVER_KEYS.length).toBe(60);
     expect(SOLVER_OUTPUT_SHAPES.generic_inference?.length ?? 0).toBeGreaterThan(0);
   });
 
