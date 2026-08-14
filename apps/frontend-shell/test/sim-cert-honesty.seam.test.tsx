@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ClosureReport, GapReport } from "@platform/contracts";
 
 // ── 接缝驱动（SEAM-GATE）：真后端投影函数 → 真前端面板，中间不插任何手写 fixture ──────────
@@ -26,7 +27,31 @@ import { SimReadinessPanel } from "@/views/sim/SimReadinessPanel";
  *     （真跑 demo：L4_CERTIFIED ∧ canEnter=true ∧ 完整度 64%）。
  *
  * 本门的判据一句话：**屏上每个数字/每句话，都要能回答「它度量的到底是什么」。**
+ *
+ * ══ 2026-08-14 · WO-UI-BURNDOWN-21：三处断言按新的**层**重写（不是放宽）══
+ * 这几句解释按 `docs/CONVENTION-ui-information-layering.md` §1 降进了 `?` 浮层
+ * （第一层留窄而准的徽标/数值 + `?` 记号）。原来的 `getByTestId(...).textContent` 写法
+ * 此后必然拿不到文字 —— 但那不等于文字没了。故断言改成**降层三判据**：
+ *   ① `?` 记号默认可见 ② 浮层正文默认不在 DOM ③ hover 后原文一字不少。
+ * ⚠ 第 ③ 条是要害：少了它，「降层」与「删除」在测试里长得一模一样，
+ *   而本仓这门课的原话就是「静默降层等于删除」。
+ * ⚠ 写法：默认态用 `expect(q).toBeNull()`，**不许**用 `not.toBeVisible()` ——
+ *   浮层关着时 `queryByTestId` 返回 `null`，jest-dom 会抛 "received value must be an
+ *   HTMLElement"，那是**测试自己报错**，不是判据成立。
+ *
+ * 哪几句**没有**降层（同一份规范的 §4.2，方向相反）：
+ *   「⚠ 已发布 N 条传导规则，本次一条都没触发」留在第一层 ——
+ *   不看它，「传导触发 0/N」会被读成「本来就没规则」。只有后半句「为什么不触发」进了浮层。
  */
+
+/** 降层三判据的公共动作：hover 那个 `?`，把浮层正文取回来。 */
+async function openInfo(testId: string): Promise<HTMLElement> {
+  const user = userEvent.setup();
+  expect(screen.getByTestId(`info-${testId}`), "第一层没有 `?` 记号 ⇒ 静默降层 = 删除").toBeVisible();
+  expect(screen.queryByTestId(`info-body-${testId}`), "浮层正文默认就在 DOM ⇒ 它没起到收纳作用").toBeNull();
+  await user.hover(screen.getByTestId(`info-wrap-${testId}`));
+  return await screen.findByTestId(`info-body-${testId}`);
+}
 
 const okClosure = (): ClosureReport => ({
   gatePassed: true,
@@ -150,7 +175,7 @@ describe("WO-CERT-HONESTY · 就绪认证面板口径（接缝：deriveCertifica
     expect(screen.getByTestId("sim-cert-entering-groups").textContent).toBe(`行动 ${ACTION_COUNT} · 传导 ${PROP_COUNT} · 派生 2`);
   });
 
-  it("③a Trial Tick 每个数各叫各的名：派生报**规模**、传导报**真触发/分母**，屏上绝无「规则触发 N 条」", () => {
+  it("③a Trial Tick 每个数各叫各的名：派生报**规模**、传导报**真触发/分母**，屏上绝无「规则触发 N 条」", async () => {
     const cert = renderPanel(skewedScope());
 
     // 后端口径：派生那个数是规模（名副其实），传导那两个数是真触发与分母。
@@ -173,10 +198,18 @@ describe("WO-CERT-HONESTY · 就绪认证面板口径（接缝：deriveCertifica
     expect(screen.queryByTestId("sim-cert-trial-propagation-silent")).toBeNull();
     // passed 的语义写在屏上：它证明的是「重算没崩」，不是「这个世界推得动」。
     expect(screen.getByTestId("sim-cert-trial-passed").textContent).toContain("重算未抛异常");
-    expect(screen.getByTestId("sim-cert-trial-meaning").textContent).toContain("不代表这个世界已经推动过");
+    // passed 的语义仍然写在屏上，只是**换了层**：第一层留 `?` 记号，正文 hover 才出（见文件头记账）。
+    expect(card.textContent ?? "", "这句还留在第一层 ⇒ 降层没做").not.toContain("不代表这个世界已经推动过");
+    const meaning = await openInfo("sim-cert-trial-meaning");
+    expect(meaning.textContent, "降层把这句降没了 —— 那是删除不是分层").toContain("不代表这个世界已经推动过");
+    expect(meaning.textContent).toContain("派生依赖图可拓扑排序");
+    // 「派生图节点」那个数的口径同样在浮层里，原文一字不少。
+    const nodes = await openInfo("sim-cert-trial-nodes-meaning");
+    expect(nodes.textContent).toContain("派生依赖图规模");
+    expect(nodes.textContent).toContain("实际求值 0 条");
   });
 
-  it("③b 病样看得见：declared>0 且 fired===0 ⇒ 屏上明说「一条都没触发」，并入 gaps[]（不是一个静默的 0）", () => {
+  it("③b 病样看得见：declared>0 且 fired===0 ⇒ 屏上明说「一条都没触发」，并入 gaps[]（不是一个静默的 0）", async () => {
     // 这一支就是本仓最常见的病：规则声明了一堆，跑起来一条都不触发。
     // 只报 fired 的话，它与「本来就没有规则」在屏上长得**一模一样**——分辨不了就等于没报。
     const cert = deriveCertification(
@@ -188,8 +221,13 @@ describe("WO-CERT-HONESTY · 就绪认证面板口径（接缝：deriveCertifica
 
     expect(cert.gaps.map((g) => g.gapCode)).toContain("PROPAGATION_ALL_SILENT");
     const silent = screen.getByTestId("sim-cert-trial-propagation-silent");
+    // 这条诚实位**不点就看得见**（规范 §4.2：不看它，「传导触发 0/N」会被读成「本来就没规则」）。
     expect(silent.textContent).toContain(`已发布 ${PROP_COUNT} 条传导规则`);
     expect(silent.textContent).toContain("一条都没触发");
+    // 而「为什么不触发」是口径，降进浮层 —— 原文一字不少。
+    const why = await openInfo("sim-cert-trial-silent-why");
+    expect(why.textContent).toContain("规则在册，但当前世界态驱动不动传导");
+    expect(why.textContent).toContain("闸门未放行");
     // 对照组：**没有**传导规则时（declared=0）不许报哑火——那不是病，是这个世界本来就没传导。
     const noRules = deriveCertification(
       okClosure(), noGaps(),
@@ -213,7 +251,7 @@ describe("WO-CERT-HONESTY · 就绪认证面板口径（接缝：deriveCertifica
     expect(screen.queryByTestId("sim-cert-trial-propagation-silent")).toBeNull();
   });
 
-  it("④ 「已认证」与「完整度」并排时必须带一句解释：两者度量不同、互不蕴含（判据不改，只改表达）", () => {
+  it("④ 「已认证」与「完整度」并排时必须带一句解释：两者度量不同、互不蕴含（判据不改，只改表达）", async () => {
     // 认证达 L4「✓可进入推演」，同时完整度远不满 —— 老屏上这两个贴一起就是自相矛盾。
     const scope = skewedScope();
     scope.needed = { derivationRules: 20, actions: ACTION_COUNT, propagationRules: PROP_COUNT }; // 应建 33 · 已建 13
@@ -224,10 +262,14 @@ describe("WO-CERT-HONESTY · 就绪认证面板口径（接缝：deriveCertifica
     expect(cert.worldCompleteness.pct).toBeLessThan(50); // 两者同屏成立，不是 bug
     expect(screen.getByTestId("sim-cert-canenter").textContent).toContain("可进入推演");
 
+    // 第一层留的是那个**结论**（六个字），解释降进 `?` 浮层 —— 原文一字不少（见文件头记账）。
     const note = screen.getByTestId("sim-cert-completeness-note");
     expect(note.textContent).toContain("完整度 ≠ 认证");
-    expect(note.textContent).toContain("能不能跑");
-    expect(note.textContent).toContain("这个世界建得全不全");
-    expect(note.textContent).toContain("互不蕴含");
+    expect(note.textContent, "整段解释还摆在第一层 ⇒ 降层没做").not.toContain("互不蕴含");
+    const body = await openInfo("sim-cert-completeness-note-why");
+    expect(body.textContent).toContain("能不能跑");
+    expect(body.textContent).toContain("这个世界建得全不全");
+    expect(body.textContent).toContain("互不蕴含");
+    expect(body.textContent).toContain("只建了一部分的世界");
   });
 });

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { SimCertification } from "@platform/contracts";
+import { InfoPopover } from "@/components/InfoPopover";
 import styles from "./SimViews.module.css";
 
 /**
@@ -253,18 +254,30 @@ export function SimReadinessPanel({
               label={cert.trialTick.passed ? "重算未抛异常" : "重算抛异常"}
               testId="sim-cert-trial-passed"
             />
-            <div className={styles.sub} style={{ fontSize: 12 }} data-testid="sim-cert-trial-meaning">
-              「通过」= 派生依赖图可拓扑排序（无环），**不代表这个世界已经推动过**。
-            </div>
+            {/*
+             * 分层（规范 §1 / R-UI-3）：徽标文案「重算未抛异常」本身已经是**窄而准**的结论
+             * （它不叫「通过」、不叫「可运行」，一个字都没夸大）——所以「这个词到底证明了什么」
+             * 属于「凭什么」，降进 `?` 浮层，第一层留徽标 + `?` 记号。
+             * 与 ProcessStuckView 那条**不降层**的诚实位的区别（规范 §4.2 判据）：
+             * 那里的第一层读数（0 条卡着）不看说明就会被读反；这里的徽标不会。
+             */}
+            <InfoPopover topic="「重算未抛异常」证明了什么" testId="sim-cert-trial-meaning">
+              <span data-testid="sim-cert-trial-meaning-body">
+                「通过」= 派生依赖图可拓扑排序（无环），**不代表这个世界已经推动过**。
+              </span>
+            </InfoPopover>
             {/* #152 拆账：Trial Tick 曾长期**只跑派生**，`rulesFired` 一个合数把「传导零触发」盖得严严实实。
                 现在两相分开报，且传导带**分母** —— `declared > 0 && fired === 0` 是**必须让人看见**的事实：
                 规则都在，但这个世界态驱动不动它们。（WO-SIM-ACT-CLOSE 的论据，与上面 WO-CERT-HONESTY 的
                 「名字要名副其实」是两条独立理由，都留着。） */}
             <div className="mono" style={{ fontSize: 12 }} data-testid="sim-cert-trial-derivation-nodes">
               派生图节点 {cert.trialTick.derivationNodes ?? 0} 个
-            </div>
-            <div className={styles.sub} style={{ fontSize: 12 }} data-testid="sim-cert-trial-nodes-meaning">
-              = 派生依赖图规模；本次空跑不喂变更集，实际求值 0 条。
+              {/* 「这个数度量的是什么」是口径 —— 降浮层；第一层留数与名（规范 §1）。 */}
+              <InfoPopover topic="「派生图节点」这个数是什么" testId="sim-cert-trial-nodes-meaning">
+                <span data-testid="sim-cert-trial-nodes-meaning-body">
+                  = 派生依赖图规模；本次空跑不喂变更集，实际求值 0 条。
+                </span>
+              </InfoPopover>
             </div>
             {cert.trialTick.propagationCovered && (
               <>
@@ -275,8 +288,16 @@ export function SimReadinessPanel({
                     只报分子的话，「本来就没规则」与「全哑火」在屏上长得一模一样。 */}
                 {(cert.trialTick.propagationRulesDeclared ?? 0) > 0 && (cert.trialTick.propagationRulesFired ?? 0) === 0 && (
                   <div style={{ fontSize: 12, color: "var(--warn-txt)" }} data-testid="sim-cert-trial-propagation-silent">
+                    {/*
+                     * 这条诚实位**留在第一层**（规范 §4.2）：不看它，「传导触发 0/N」会被读成
+                     * 「本来就没规则」。只有后半句「为什么不触发」是口径，降进 `?`。
+                     */}
                     ⚠ 已发布 {cert.trialTick.propagationRulesDeclared} 条传导规则，本次一条都没触发
-                    —— 规则在册，但当前世界态驱动不动传导（源态为 0 / 无匹配边 / 闸门未放行）
+                    <InfoPopover topic="为什么一条都没触发" testId="sim-cert-trial-silent-why">
+                      <span data-testid="sim-cert-trial-silent-why-body">
+                        规则在册，但当前世界态驱动不动传导（源态为 0 / 无匹配边 / 闸门未放行）
+                      </span>
+                    </InfoPopover>
                   </div>
                 )}
               </>
@@ -312,10 +333,19 @@ export function SimReadinessPanel({
           </div>
           {/* ④ 认证 vs 完整度：判据本身没问题（见 certification.ts canEnterSimulation 注释），
                  缺的是这句解释——不解释就会被读成「已认证 · 33%」自相矛盾。 */}
+          {/*
+           * 分层（规范 §1）：第一层留「完整度 ≠ 认证」这一个**结论**（六个字就说完了），
+           * 「各自判的是什么、为什么互不蕴含」这段解释降进 `?` 浮层，原文一字未删。
+           */}
           <div className={styles.sub} style={{ fontSize: 12, marginTop: 4 }} data-testid="sim-cert-completeness-note">
-            完整度 ≠ 认证：认证判「<b>能不能跑</b>」（结构闭合 + L4 三元组 + 空跑未抛异常）；
-            完整度判「<b>这个世界建得全不全</b>」（已建 / 应建）。两者互不蕴含 ——
-            只建了一部分的世界，其已建的那部分照样可以闭合可跑。
+            完整度 ≠ 认证
+            <InfoPopover topic="完整度与认证各判什么" testId="sim-cert-completeness-note-why">
+              <span data-testid="sim-cert-completeness-note-body">
+                完整度 ≠ 认证：认证判「<b>能不能跑</b>」（结构闭合 + L4 三元组 + 空跑未抛异常）；
+                完整度判「<b>这个世界建得全不全</b>」（已建 / 应建）。两者互不蕴含 ——
+                只建了一部分的世界，其已建的那部分照样可以闭合可跑。
+              </span>
+            </InfoPopover>
           </div>
         </Card>
       </div>
@@ -355,7 +385,13 @@ export function SimReadinessPanel({
             ))
         ) : (
           <div className={styles.sub} data-testid="sim-cert-entering-empty" style={{ marginTop: 4 }}>
-            尚无将进入沙盘的要素（世界为空——先种传导规则 / 派生 / 写回行动）。
+            尚无将进入沙盘的要素
+            {/* 「为什么空、下一步做什么」是解释与指引，降浮层；第一层留状态本身 + `?` 记号。 */}
+            <InfoPopover topic="为什么是空的、下一步做什么" testId="sim-cert-entering-empty-why">
+              <span data-testid="sim-cert-entering-empty-body">
+                世界为空——先种传导规则 / 派生 / 写回行动。
+              </span>
+            </InfoPopover>
           </div>
         )}
       </div>
