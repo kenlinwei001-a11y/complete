@@ -1,4 +1,4 @@
-import type { FeatureDef } from "@platform/contracts";
+import { assertSharedFeatureNames, type FeatureDef } from "@platform/contracts";
 import type { AuthCtx, FeatureAuditRecord, FeatureConfigRecord } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import { AppError, validationError } from "./errors.js";
@@ -10,7 +10,15 @@ import { builtInViewFeatureDefs, builtInViewFeatureMap } from "./synthetic/view-
  * narrowing. Disabled = "does not exist" → 404 FEATURE_NOT_FOUND before authz.
  */
 
-export const FEATURE_REGISTRY: FeatureDef[] = [
+/**
+ * ⚠ 功能名（`name`）的单一真相源是 `@platform/contracts` 的 `SHARED_FEATURE_NAMES`
+ * （WO-VIEWNAME-SINGLE-SOURCE）。凡被 ≥2 份注册表声明的键（本表 + AgentCore
+ * `features/registry.ts` + 前端 mock `fixtures.ts`），名字由那份册说了算；
+ * 下面的字面量是**受检副本**——`assertSharedFeatureNames()` 在模块加载期逐条核对，
+ * 不符即抛（不是静默覆盖：覆盖会造出"源码写 A、运行时是 B"的假绿）。
+ * 只有本表独有的键（`view.dash.widget.*` / `domain.*` / `sim.propagation` …）才是本地自治。
+ */
+export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
   // VIEW level · 内置视图（单一来源 synthetic/view-manifest.BUILTIN_VIEWS 派生·防 features/map/VIEW_DEFS/scenarioSeed
   // 四处漂移·WO-MEMORY-VIEW-RESILIENCE）。含 view.dash/ontology-graph/risk-board/ledger/plan-audit/plan-generate/
   // project-sim/sop-balance/global-sim——名称/bindings 与此前一字不差，唯 project-sim/sop-balance 相对序随 scenarioSeed
@@ -165,7 +173,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // Person/Role/Department/Authority/ApprovalLimit/Delegation + 「给定待批事项→谁有权批」查询面。
   // ⚠️ **开关默认值是产品决策不是 dev 决策**：本单一律 defaultOn:false，要开由产品显式 override（seedDemoEntitlements 或租户配置）。
   { key: "org.world", name: "组织世界（人/角色/部门/职权/审批额度/代理）", level: "VIEW", defaultOn: false, bindings: { apiTags: ["org-world"] } },
-];
+], "datacore/features.ts FEATURE_REGISTRY");
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
 

@@ -72,6 +72,15 @@ export interface BuiltInView {
   /** 管控功能键（entitlement·VIEW_FEATURE_MAP 值·workspace viewAllowed 查此·关=导航消失 R3）。 */
   featureKey: string;
   /** FEATURE_REGISTRY 内该功能的展示名（可与 title 不同·如「驾驶舱」vs 视图 title「经营驾驶舱」）。 */
+  /**
+   * 功能开关册里的功能名（`FeatureDef.name`·前端「功能开通配置」页渲染的就是它）。
+   *
+   * ⚠ **不是本地自治字段**：本表这批键同时被 AgentCore `features/registry.ts` 与前端 mock
+   * `fixtures.ts` 声明 ⇒ 跨服务，名字的单一真相源是 `@platform/contracts` 的
+   * `SHARED_FEATURE_NAMES`（WO-VIEWNAME-SINGLE-SOURCE）。这里写的值经
+   * `builtInViewFeatureDefs()` 进 `features.ts` FEATURE_REGISTRY，在那里被
+   * `assertSharedFeatureNames()` 逐条核对 —— 改这里不改册 ⇒ 模块加载期当场抛。
+   */
   featureName: string;
   /** 是否随出厂合成种入 scenarioSeed.views（true = 核心视图·进 report.views 验收快照）。 */
   seed: boolean;
