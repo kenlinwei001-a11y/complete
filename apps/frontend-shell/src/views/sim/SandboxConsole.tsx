@@ -991,6 +991,8 @@ export function SandboxConsole({
                 右栏换成 `ProcessInspectPanel`。契约 `process.ts` 那句「两层不能合并」约束的是
                 两个**数据模型**，不是「不能同屏」—— 同屏 ≠ 同模型，判据是两层键集合交集恒为空
                 （现算在 `spc-disjoint` 上，SEAM 门咬死）。
+                **2026-08-14 实测**：真后端 65 条流程 / mock 11 条，两次 `data-overlap` 均为 `0`；
+                复验 `pnpm --filter frontend-shell exec vitest run sandbox-process-mode` 的 §C1，或屏上读该 testid 属性。
                 与其余四档同样走 `mounted` 懒挂载：没点进来 = 一次请求都不发。 */}
             <div className={styles.canvasSlot} hidden={mode !== "process"} data-testid="sc-slot-process">
               {mounted.has("process") ? (

@@ -19,6 +19,9 @@
  *
  * ── 结构红线：两层的键集合必须**交集为空**（机器先说话，不靠人记得）───────────
  * `disjointFromChainLayer()` 现算「本档要渲染的流程键」∩「24 个冻结 nodeId」。
+ * **2026-08-14 实测**：真后端 65 条 / mock 11 条，交集均为空（屏上 `spc-disjoint[data-overlap]="0"`）。
+ * 复验：`pnpm --filter frontend-shell exec vitest run sandbox-process-mode`（§A1 先证该函数**能说「有」**，
+ * 否则它说「没有」一文不值；§C1 才咬交集为空）。⚠ 有保质期：两层任一侧改键空间即须重测。
  * 非空 = 有人把两层揉了（例如把 `ProcessDefinition` 塞进 `CHAIN_NODE_REGISTRY`，
  * 或给流程编了个 `capacity.*` 形状的键）。这个数**画在屏上**（`spc-disjoint`），
  * 并被 `sandbox-process-mode.seam.test.tsx` 咬死 —— 揉了当场红。

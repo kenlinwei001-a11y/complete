@@ -248,7 +248,8 @@ export const processInstancesFixture = (key: string): ProcessInstancesResponse =
 /**
  * ══ 为什么现在才补这条 mock ═════════════════════════════════════════════════
  * `ProcessInspectPanel` 此前只在 `/v/process-wait` 出现，而那一页在 mock 模式下点开面板
- * 会打到一个**没有 handler 的路由**（实测：本段补之前 `handlers.ts` 里
+ * 会打到一个**没有 handler 的路由**（**2026-08-14 实测**；复验：`grep -n ":key/inspect" apps/frontend-shell/src/mocks/handlers.ts`，
+ * 金丝雀：同条件 grep `:key/instances` 有命中 ⇒ 工具是好的。本段补之前 `handlers.ts` 里
  * `process-definitions/:key/inspect` 零命中；金丝雀 —— 同一条 grep 对
  * `process-definitions/:key/instances` 在同一文件命中一条，证明是真没有、不是 grep 坏了）。
  * 沙盘第五档把这个面板搬到主画布右栏，这个缺口就从"某页的边角"变成"主屏上一点就报错"。
@@ -256,7 +257,9 @@ export const processInstancesFixture = (key: string): ProcessInstancesResponse =
  * ══ 🔴 这份 mock **不编造本体** ═══════════════════════════════════════════════
  * 关键选择：`carrier.status` 一律 `absent`。**这不是偷懒，是 mock 世界的真实情况** ——
  * `handlers.ts` 的 `GET /a/v1/ontology/object-types` 里根本没有 `MaterialBalance` /
- * `ProductionSchedule` / `PlanTarget` 这些承载类型（实测；金丝雀：同一条 grep 对
+ * `ProductionSchedule` / `PlanTarget` 这些承载类型（**2026-08-14 实测**；
+ * 复验：`node -e 'require("./src/mocks/fixtures")' ` 或直接在 mock 模式点开任一流程看 `carrier.status`；
+ * ⚠ 有保质期：mock 一旦播种这些类型，此处即过期，**改口径不许加豁免**。金丝雀：同一条 grep 对
  * `Material` 在该文件命中 14 处，证明工具是好的）。硬给它们编几条属性和中文名，
  * 就是本仓最恨的那种假数据：屏上看着很满，对应的真后端字段却一个都不存在，
  * 还会让「前端诚实回落裸键」那条分支永远跑不到。
@@ -302,9 +305,12 @@ export const processInspectFixture = (key: string): ProcessInspectResponse | nul
     runtime: {
       available: false,
       // 口径与真后端 `apps/datacore/src/process/inspect.ts` 的 `runtime.reason` 同义：
+      // **2026-08-14 实测**逐字同义；复验：起真后端后
+      //   curl -s -H 'X-Debug-User: demo:admin:admin' localhost:4801/a/v1/process-definitions/P32/inspect | jq -r .runtime.reason
+      // 与本串比对。⚠ 有保质期：真后端改了这句话此处即过期，**改口径不许加豁免**。
       // 本投影是**定义层**，运行态本就不由它下发（不是"还没做"）。
       reason:
-        "本投影是定义层投影，不下发运行态。「此刻卡了多久 / 有几单堵在这一步」由 GET /a/v1/process-definitions/{key}/instances 或求解器 process_flow_time 回答。",
+        "本投影是定义层投影，不下发运行态。「此刻卡了多久 / 有几单堵在这一步」由 GET /a/v1/process-definitions/{key}/instances 或求解器 process_flow_time 回答。",  // 2026-08-14 实测：与真后端 process/inspect.ts 的 runtime.reason 逐字同义；复验 curl -s -H 'X-Debug-User: demo:admin:admin' localhost:4801/a/v1/process-definitions/P32/inspect | jq -r .runtime.reason
       stdDurationDays: def.stdDurationDays,
       stdDurationCaption: "标准工期（模板值）· 不是此刻已卡时长",
       unanswerable: ["此刻这一步卡了多久？", "现在有几单堵在这一步？", "实测在制品数是多少？"],
