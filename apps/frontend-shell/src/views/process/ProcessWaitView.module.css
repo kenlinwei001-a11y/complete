@@ -315,3 +315,68 @@
   font: inherit;
   color: inherit;
 }
+
+/* ── WO-FLOWTIME · 实例下钻面板 ──────────────────────────────────────────────
+   零 hex 字面量：全部走 tokens.css 的语义变量（三套皮自动跟随），与本文件既有纪律一致。 */
+.drillBtn {
+  background: transparent;
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.drillBtn:hover {
+  background: var(--hover-tint);
+  color: var(--fg);
+}
+.instPanel {
+  border-left: 2px solid var(--kind-color, var(--line2));
+  margin: 6px 0 10px;
+  padding: 8px 0 8px 12px;
+}
+.instHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.instHead b {
+  color: var(--fg);
+  font-size: 12px;
+}
+.instHead span,
+.instHead small {
+  color: var(--muted2);
+  font-size: 11px;
+}
+/* 推导值诚实位：与 .notMeasured 同一视觉档（本文件已有该类，此处只补下钻面板专用的两个） */
+.stdCompare {
+  color: var(--muted2);
+  font-size: 11px;
+  margin: 2px 0 6px;
+}
+.absent {
+  border: 1px dashed var(--line2);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 8px 10px;
+}
+.absent b {
+  color: var(--fg);
+  display: block;
+  margin-bottom: 4px;
+}
+.absent p {
+  margin: 2px 0;
+}
+.src {
+  color: var(--muted2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  max-width: 320px;
+  overflow-wrap: anywhere;
+}

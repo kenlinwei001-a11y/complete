@@ -122,6 +122,19 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "sim.perturbation_created", producer: "推演沙盘·施加/排期一条扰动（POST /a/v1/sim/sessions/:id/perturbations · app.ts:1626）", tier: "IN_SESSION", invalidates: ["sim-perturbations", "sim-world"] },
   // sim.checkpoint_saved **仍不登记**：datacore 没有列出检查点的路由（listCheckpoints 仓储层写好了，但 route 层从不调用），
   // 前端无列表可缓存。理由与解法逐条记在 frontend-shell/src/store/eventInvalidation.ts 的 SIM_EVENT_GAPS。
+  // ── L19 业务流程实例环（WO-FLOWTIME）───────────────────────────────────────────
+  // 生产者：`apps/datacore/src/process/reconstruct.ts reconstructAndPersist()`，由求解器
+  // `process_flow_time` 与端点 `GET /a/v1/process-definitions/:key/instances` 两处调用。
+  // 消费者（**先读端后事件**，与 sim.perturbation_created 那次同一条纪律）：
+  //   `frontend-shell/src/views/process/ProcessWaitView.tsx` 的 `InstancePanel`
+  //   `useQuery(["a","process-instances", processKey])`，映射见
+  //   `eventInvalidation.ts LABEL_TO_KEYS["process-instances"]`。
+  //   —— 那个面板本可以用 useEffect+fetch（页面顶层就是），**刻意改成 useQuery 正是为了给这两条
+  //      订阅一个真实的落地点**：没有 queryKey 就没有可失效的缓存，登记出来就是假接线。
+  { event: "process.instance_entered", producer: "流程实例反推·从既有带时间戳单据反推出实例与站间时长（process/reconstruct.ts reconstructAndPersist）", tier: "IN_SESSION", invalidates: ["process-instances"] },
+  // stuck 走 NOTIFY：一条业务流程实例卡住是要人去处理的（卡在谁那里事件负载里带着），
+  // 不只是"刷新一下页面"。同时失效实例面板，让人点进去就能看到最新的卡顿清单。
+  { event: "process.instance_stuck", producer: "流程实例反推·检出到分析截止时刻仍未出站的实例（同上，负载带 worstProcessKey/worstStuckDays）", tier: "NOTIFY", invalidates: ["process-instances", "notifications"] },
 ];
 
 /** 按消费视图反查订阅（前端某页声明它依赖哪些事件）。 */

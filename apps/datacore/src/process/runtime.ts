@@ -3,6 +3,8 @@ import {
   PROCESS_TASK_WAIT_STATES,
   evaluateGate,
   isWaitState,
+  processInstanceId,
+  processInstanceKey,
   type AdvanceProcessInstanceRequest,
   type CreateProcessInstanceRequest,
   type ProcessGateContext,
@@ -81,7 +83,14 @@ export class ProcessRuntimeService {
     }
 
     const now = this.clock().toISOString();
-    const instanceId = `pinst_${tenantId}_${def.key}_${body.subjectRef.objectId}`.replace(/[^\w-]/g, "_");
+    /**
+     * ⚠ **合并后 id 必须经 `processInstanceId()` 铸**（WO-R9-PROCESS-MERGE）。
+     * 合并前这里就地拼 `` `pinst_${tenantId}_${def.key}_${objectId}` ``，
+     * 而反推器（`process/reconstruct.ts` → contracts §6）拼出来的是**逐字节相同的串** ——
+     * 同一个 `(租户, P##, 承载对象)` 被两边各写一行时**互相覆盖**，是静默数据丢失。
+     * 现在 `origin` 参与构成（MANAGED ⇒ `pinst_mg_…`）⇒ 结构上不可能再撞。
+     */
+    const instanceId = processInstanceId("MANAGED", tenantId, def.key, body.subjectRef.objectId);
 
     const tasks: ProcessTask[] = body.tasks.map((t, i) => ({
       id: `ptask_${instanceId}_${i + 1}`,
@@ -95,13 +104,33 @@ export class ProcessRuntimeService {
       ...(t.input ? { input: t.input } : {}),
     }));
 
+    /**
+     * 请求体（DTO）→ 合并后实体的字段映射**只在这一处**发生，不散落到别处：
+     *   `definitionKey` → `processKey` · `subjectRef.{typeKey,objectId}` → `carrier{TypeKey,ObjectId}`。
+     * 运行时实例是**单站**（一条 P## 上的一次经过），故 `flowKey = key`、`stationIndex = 0` ——
+     * 这与契约里「单站流程此值 = 自身 key」是同一条口径，不是为凑字段临时编的。
+     */
     const instance: ProcessInstance = {
       id: instanceId,
       tenantId,
-      definitionKey: def.key,
-      subjectRef: body.subjectRef,
+      key: processInstanceKey(def.key, body.subjectRef.objectId),
+      processKey: def.key,
+      carrierObjectId: body.subjectRef.objectId,
+      carrierTypeKey: body.subjectRef.typeKey,
+      flowKey: processInstanceKey(def.key, body.subjectRef.objectId),
+      stationIndex: 0,
+      enteredAt: now,
+      exitedAt: null,
+      waitState: null,
+      waitStateOrigin: null,
       status: "RUNNING",
-      startedAt: now,
+      // 责任方：职能层取定义上的 ownerFunctionKey；**具体责任方如实留空** ——
+      // 运行时实例的"具体是谁"落在每一步的 task 上，在实例这一层硬填一个就是把两层压成一层。
+      ownerRef: { functionKey: def.ownerFunctionKey, partyField: null, partyValue: null },
+      origin: "MANAGED",
+      // MANAGED 的时刻由引擎自采，**没有**源单据可溯 —— 塞一条假溯源才是造假（契约 superRefine 挡住）。
+      sourceDocuments: [],
+      scopeObjectTypes: [body.subjectRef.typeKey],
       currentTaskId: tasks[0]!.id,
     };
 
@@ -201,7 +230,21 @@ export class ProcessRuntimeService {
         };
         if (!verdict.waitRef) delete (blocked as Partial<ProcessTask>).waitRef;
         tasks[i] = touch(blocked);
-        next = { ...next, status: "WAITING", currentTaskId: task.id };
+        /**
+         * 合并后**实例这一层也要说得出「在等什么」**（原来只有 task 层有）。
+         * 关键是同时落 `waitStateOrigin: "TASK_GATE"` —— 它宣告这一格是**这一单自己**
+         * 的 gate 判出来的现场值，而不是从 `ProcessDefinition.waitKind` 抄来的平均值。
+         * 反推产物在同一个字段上写的是 `DEFINITION_TEMPLATE`，两者一眼可辨（契约 §4 裁法①）。
+         */
+        next = {
+          ...next,
+          status: "WAITING",
+          currentTaskId: task.id,
+          waitState: verdict.waitState,
+          waitStateOrigin: "TASK_GATE",
+          ...(verdict.waitRef ? { waitRef: verdict.waitRef } : {}),
+        };
+        if (!verdict.waitRef) delete (next as Partial<ProcessInstance>).waitRef;
         return;
       }
       // gate 已满足 ⇒ 开工。清掉等待痕迹（不再卡着了）。
@@ -209,7 +252,8 @@ export class ProcessRuntimeService {
       delete (running as Partial<ProcessTask>).waitingSince;
       delete (running as Partial<ProcessTask>).waitRef;
       tasks[i] = touch(running);
-      next = { ...next, status: "RUNNING", currentTaskId: task.id };
+      next = { ...next, status: "RUNNING", currentTaskId: task.id, waitState: null, waitStateOrigin: null };
+      delete (next as Partial<ProcessInstance>).waitRef;
     };
 
     if (cursor < tasks.length) {
@@ -233,8 +277,11 @@ export class ProcessRuntimeService {
 
         cursor += 1;
         if (cursor >= tasks.length) {
-          next = { ...next, status: "DONE", endedAt: nowIso };
+          // 合并后出站时刻叫 `exitedAt` 且是 **nullable 而非 optional**（契约裁法：
+          // optional 会让「漏写」与「空值」同形，nullable 两态都能被断言）。
+          next = { ...next, status: "DONE", exitedAt: nowIso, waitState: null, waitStateOrigin: null };
           delete (next as Partial<ProcessInstance>).currentTaskId;
+          delete (next as Partial<ProcessInstance>).waitRef;
         } else {
           enter(cursor); // 下一步随即入场并判它的 gate
         }
@@ -271,7 +318,7 @@ export class ProcessRuntimeService {
 
   /** 把一个卡住的 (instance, task) 翻成需求那句问话的答案。 */
   private async reasonOf(instance: ProcessInstance, task: ProcessTask): Promise<ProcessStuckReason> {
-    const defs = await this.repos.processDefinitions.list(instance.tenantId, (d) => d.key === instance.definitionKey);
+    const defs = await this.repos.processDefinitions.list(instance.tenantId, (d) => d.key === instance.processKey);
     const def = defs[0];
     const waitedMs =
       task.waitingSince !== undefined
@@ -281,10 +328,11 @@ export class ProcessRuntimeService {
 
     return {
       instanceId: instance.id,
-      definitionKey: instance.definitionKey,
-      // 查不到定义 ⇒ 字段缺席。**不填 definitionKey 充数** —— 那会让前端把 "P17" 当流程名显示给 COO。
+      processKey: instance.processKey,
+      // 查不到定义 ⇒ 字段缺席。**不填 processKey 充数** —— 那会让前端把 "P17" 当流程名显示给 COO。
       ...(def?.name ? { definitionName: def.name } : {}),
-      subjectRef: instance.subjectRef,
+      // 合并后实体是**平铺**的两个字段；此处重新组回嵌套形，让前端能整块下钻（投影形状未变）。
+      subjectRef: { typeKey: instance.carrierTypeKey, objectId: instance.carrierObjectId },
       taskId: task.id,
       taskName: task.name,
       taskSeq: task.seq,
@@ -304,7 +352,31 @@ export class ProcessRuntimeService {
    * 字典序 —— 三级全定序，同数据两次查询必得同一个数组（R6）。
    */
   async stuck(tenantId: string): Promise<ProcessStuckResponse> {
-    const instances = await this.repos.processInstances.list(tenantId, (i) => i.status === "WAITING");
+    /**
+     * 🔴 **合并后这张表里住着两种产地的实例**（WO-R9-PROCESS-MERGE），本方法只答得了其中一种。
+     *
+     * 本投影的每一条都要给出 `taskId/taskName/taskSeq`（需求 §4.5「卡在第几步」），
+     * 而反推产物（`DERIVED_FROM_DOCUMENT`）**没有步**——单据上没有这个事实，
+     * 编一个步名出来就是造假。故此处按 `origin` 显式收窄。
+     *
+     * ⚠ 收窄的判据是 `origin`，**不是**「有没有 `currentTaskId`」。后者也能过滤出同一批，
+     * 但那是**碰巧**：它把「这条实例是另一种东西」误表述成「这条实例数据不全」，
+     * 于是下一个人会去"修"那个并不存在的缺字段。判据必须说出真正的理由。
+     *
+     * 且被排除的那批**不许静默消失**：`derivedStuckCount` 如实报数并指路到
+     * `process_flow_time` / `GET /a/v1/process-definitions/:key/instances`。
+     * 「没算」与「算出来是 0」是两个命题——不报数就是把前者伪装成后者。
+     */
+    const instances = await this.repos.processInstances.list(
+      tenantId,
+      (i) => i.status === "WAITING" && i.origin === "MANAGED",
+    );
+    const derivedStuckCount = (
+      await this.repos.processInstances.list(
+        tenantId,
+        (i) => i.status === "WAITING" && i.origin === "DERIVED_FROM_DOCUMENT",
+      )
+    ).length;
     const reasons: ProcessStuckReason[] = [];
     for (const inst of instances) {
       if (!inst.currentTaskId) continue;
@@ -326,6 +398,6 @@ export class ProcessRuntimeService {
       PROCESS_TASK_WAIT_STATES.map((s) => [s, reasons.filter((r) => r.waitState === s).length]),
     ) as Record<ProcessTaskWaitState, number>;
 
-    return { evaluatedAt: this.clock().toISOString(), stuck: reasons, byWaitState };
+    return { evaluatedAt: this.clock().toISOString(), stuck: reasons, byWaitState, derivedStuckCount };
   }
 }

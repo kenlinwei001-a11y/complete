@@ -265,16 +265,34 @@ export function projectProcessInspect(input: ProcessInspectInput): ProcessInspec
     },
     runtime: {
       available: false,
+      /**
+       * ⚠ **2026-08-14 照实重写（WO-R9-PROCESS-MERGE）—— 原文已成谎话。**
+       *
+       * 原文写「`ProcessTask` / `ProcessInstance` 两个承载物**全仓不存在**」。
+       * 那句话在 2026-08-10 属实，但此后 WO-PROCESS-INSTANCE 与 WO-FLOWTIME **各自把它建出来了**
+       * （`migrations/033` + `contracts/process-instance.ts`），合并后两者收敛成一个承载物。
+       * 一个说「这做不到」的诚实位在能力做出来之后没人回写，就从"诚实"变成"说谎"——
+       * 而且是最难发现的一种：它看起来还很谦虚。**本仓 `G-FRONTEND-HARDCODED-ABSENCE` 记的就是这个病。**
+       *
+       * 🔴 但 `available` 仍是 `false`，这不是妥协是**分层**：本投影是**定义层**的
+       * （它答「这条流程长什么样、承载物是谁、哪些杠杆打得到」），运行态本就不该由它下发。
+       * 缺席理由因此从「平台做不到」改成「**本投影不答，去哪儿答**」——
+       * 前者是能力声明（已过期），后者是路由说明（长期成立）。
+       */
       reason:
-        "本平台**没有流程运行态**：`ProcessTask` / `ProcessInstance` 两个承载物全仓不存在" +
-        "（PRD-enterprise-decision-twin §5 的 E2 未实现）。没有 `ProcessTask.enteredAt` 就没有「进入这一步的时刻」，" +
-        "也就没有任何办法算出「此刻已卡多久」。这是**诚实缺席**，不是本次取数失败。",
+        "本投影**不下发运行态**，但这不再是「平台做不到」：`ProcessInstance` 承载物已落地" +
+        "（`migrations/033_process_instances.sql`），`ProcessTask` 亦已落地（运行时层的步）。" +
+        "本端点是**定义层**投影（答「这条流程长什么样」），运行态属**实例层**，请走 " +
+        "`GET /a/v1/process-definitions/{key}/instances`（站间时长/卡在谁那里/溯源）" +
+        "或求解器 `process_flow_time`。此处的 `stdDurationDays` 是标准工期，" +
+        "⛔ **任何时候都不得当作「此刻已卡多久」读** —— 这一条一个字都没有放宽。",
       stdDurationDays: d.stdDurationDays,
       stdDurationCaption: "标准工期（配置值，天）—— 不是实测卡顿时长",
       unanswerable: [
-        "这个流程此刻已经卡了多久？（需要 ProcessTask.enteredAt）",
-        "现在有几单堵在这一步？（需要 ProcessInstance 计数）",
-        "实测在制品数是多少？（需要运行态实例）",
+        "这个流程此刻已经卡了多久？（本投影不答；走 /process-definitions/{key}/instances 的 flowTime）",
+        "现在有几单堵在这一步？（本投影不答；同上端点的 instanceCount + stuckProcessKey）",
+        "实测在制品数是多少？（**仍然答不出**：需要流程引擎/MES 直采即 origin=MEASURED，今天 0 条；" +
+          "今天的实例全部是从既有单据反推的 DERIVED_FROM_DOCUMENT，反推不出在制品实时计数）",
       ],
     },
     carrier,

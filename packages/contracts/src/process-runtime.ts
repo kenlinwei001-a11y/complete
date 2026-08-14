@@ -1,5 +1,16 @@
 /**
- * WO-PROCESS-INSTANCE · **流程运行时层**（`ProcessInstance` / `ProcessTask`）。
+ * WO-PROCESS-INSTANCE · **流程运行时层**（`ProcessTask` + gate + 卡点投影）。
+ *
+ * ══ ⚠ 2026-08-14 合并回写（WO-R9-PROCESS-MERGE）—— 本文件**少了两样东西** ═══════
+ *
+ * `ProcessInstance` 与等待态词表（`PROCESS_TASK_WAIT_STATES` 一族）**已移入
+ * `process-instance.ts`**，因为那边有另一份独立做出来的 `ProcessInstance`，
+ * 而两份的 id 生成式**逐字节相同** ⇒ 是同一个实体不是两层（完整取证见 `process-instance.ts` 文件头）。
+ * 合并后依赖是一条直线 `process.ts → process-instance.ts → process-runtime.ts`（无环）。
+ * **符号名与 barrel 导出一字未改**，故本层测试与消费方无感 —— 移动的是文件，不是契约。
+ *
+ * 本文件现在只管**运行时那一半**：步（`ProcessTask` 八字段）· 前置条件（`gate`）·
+ * 五等待态的唯一产地（`evaluateGate`）· 「为什么卡住」的读侧投影。
  *
  * 需求原文（`docs/PRD-enterprise-decision-twin.md` §4.5「『等待』是一等状态」）：
  *
@@ -52,53 +63,14 @@
  */
 import { z } from "zod";
 import { IsoTime } from "./common.js";
-import { PROCESS_WAIT_KINDS } from "./process.js";
-
-// ══════════════════════════════════════════════════════════════════════════
-// § 1 · 运行时等待态 —— 模板四值**派生** + 审批一值
-// ══════════════════════════════════════════════════════════════════════════
-
-/**
- * 一个 `ProcessTask` 可能停住的五种等待态（需求 §4.5 逐字）。
- *
- * 顺序 = `PROCESS_WAIT_KINDS` 原序 + `WAITING_APPROVAL` 末位追加。
- * 末位追加而非插中间，是为了让「模板四值」在本数组里始终是一段**连续前缀**，
- * 派生断言可以直接比前四位，改一个字就红。
- */
-export const PROCESS_TASK_WAIT_STATES = [...PROCESS_WAIT_KINDS, "WAITING_APPROVAL"] as const;
-export const ProcessTaskWaitStateSchema = z.enum(PROCESS_TASK_WAIT_STATES);
-export type ProcessTaskWaitState = (typeof PROCESS_TASK_WAIT_STATES)[number];
-
-/** 非等待态：还没开始 / 正在做 / 做完了 / 不做了。 */
-export const PROCESS_TASK_LIVE_STATES = ["PENDING", "RUNNING", "DONE", "CANCELLED"] as const;
-
-/**
- * `ProcessTask.status` 全集 = 四个推进态 + 五个等待态。
- * 同样是**派生**（见文件头「单一来源」）。
- */
-export const PROCESS_TASK_STATUSES = [...PROCESS_TASK_LIVE_STATES, ...PROCESS_TASK_WAIT_STATES] as const;
-export const ProcessTaskStatusSchema = z.enum(PROCESS_TASK_STATUSES);
-export type ProcessTaskStatus = (typeof PROCESS_TASK_STATUSES)[number];
-
-/** 类型收窄：这个 status 是不是「卡住了」。前端「为什么卡住」区块的唯一判据。 */
-export function isWaitState(s: ProcessTaskStatus): s is ProcessTaskWaitState {
-  return (PROCESS_TASK_WAIT_STATES as readonly string[]).includes(s);
-}
-
-/**
- * 五个等待态的**人话**（前端展示用，单一来源在此，前端不得再写一份）。
- * `blocker` 回答「等谁/等什么」，是「为什么卡住」那句话的主语。
- */
-export const PROCESS_TASK_WAIT_STATE_META: Record<
-  ProcessTaskWaitState,
-  { readonly displayName: string; readonly blocker: string }
-> = {
-  WAITING_USER: { displayName: "等人处理", blocker: "责任岗位尚未做动作" },
-  WAITING_DATA: { displayName: "等数据齐", blocker: "上游数据未到齐" },
-  WAITING_EXTERNAL_SYSTEM: { displayName: "等外部回话", blocker: "外部方/外部系统未回执" },
-  WAITING_SCHEDULE: { displayName: "等窗口开闸", blocker: "节拍/窗口时间未到" },
-  WAITING_APPROVAL: { displayName: "等审批", blocker: "审批单未批复" },
-};
+// 等待态词表与 `ProcessInstance` 现居 `process-instance.ts`（合并·见文件头）。
+// 这里 import 而不是再写一份 —— 手抄一份就是 `process.ts` §1 警告的那次事故的形态。
+import {
+  ProcessInstanceSchema,
+  ProcessTaskStatusSchema,
+  ProcessTaskWaitStateSchema,
+  type ProcessTaskWaitState,
+} from "./process-instance.js";
 
 // ══════════════════════════════════════════════════════════════════════════
 // § 2 · 前置条件 `gate` —— **五个等待态的唯一入口**
@@ -311,35 +283,16 @@ export const ProcessTaskSchema = z.strictObject({
 export type ProcessTask = z.infer<typeof ProcessTaskSchema>;
 
 // ══════════════════════════════════════════════════════════════════════════
-// § 4 · `ProcessInstance`
+// § 4 · `ProcessInstance` —— **已移至 `process-instance.ts`**（合并·见文件头）
+//
+// 原文在此定义了一份 `ProcessInstance`（`definitionKey`/`subjectRef`/`status`/
+// `startedAt`/`endedAt`/`currentTaskId`）。合并后它与 WO-FLOWTIME 那份收敛成一个，
+// 字段对照与逐条取舍理由写在 `process-instance.ts` 文件头，此处不复述（免两份注释漂移）。
+//
+// 🔴 原来那条红线**没有丢**，只是换了承载字段：
+//   「一个实例必须作用在具体对象上」= 合并后的 `carrierObjectId` + `carrierTypeKey`
+//   （两者都 `.min(1)`，且 `create()` 仍校验 `carrierTypeKey === def.carrierTypeKey`）。
 // ══════════════════════════════════════════════════════════════════════════
-
-/** 实例整体状态。`WAITING` = 当前步卡在某个等待态。 */
-export const PROCESS_INSTANCE_STATUSES = ["RUNNING", "WAITING", "DONE", "CANCELLED"] as const;
-export const ProcessInstanceStatusSchema = z.enum(PROCESS_INSTANCE_STATUSES);
-export type ProcessInstanceStatus = (typeof PROCESS_INSTANCE_STATUSES)[number];
-
-/**
- * 一条**正在跑的**业务流程 —— 即「这一单现在走到哪一步」的承载物。
- *
- * 🔴 `subjectRef` 是本层的红线，同 `ProcessDefinition.carrierTypeKey`（模板层红线 3）：
- * 模板层要求「一条流程必须有承载物**类型**」，本层要求「一个实例必须作用在具体**对象**上」。
- * 没有 subject 的实例 = 一条不知道在处理什么的流程，那是空壳不是孪生。
- */
-export const ProcessInstanceSchema = z.strictObject({
-  id: z.string().min(1),
-  tenantId: z.string().min(1), // R2
-  /** → `ProcessDefinition.key`（形如 `P17`）。 */
-  definitionKey: z.string().regex(/^P\d{2}$/, "definitionKey 必须形如 P01"),
-  /** 🔴 作用在哪个具体对象上（`typeKey` 应与该定义的 `carrierTypeKey` 一致）。 */
-  subjectRef: z.strictObject({ typeKey: z.string().min(1), objectId: z.string().min(1) }),
-  status: ProcessInstanceStatusSchema,
-  startedAt: IsoTime,
-  endedAt: IsoTime.optional(),
-  /** 当前所在步（`ProcessTask.id`）。已完成/已取消则缺席。 */
-  currentTaskId: z.string().min(1).optional(),
-});
-export type ProcessInstance = z.infer<typeof ProcessInstanceSchema>;
 
 // ══════════════════════════════════════════════════════════════════════════
 // § 5 · 「为什么这个流程现在卡住了」—— 读侧投影
@@ -357,9 +310,16 @@ export type ProcessInstance = z.infer<typeof ProcessInstanceSchema>;
  */
 export const ProcessStuckReasonSchema = z.strictObject({
   instanceId: z.string().min(1),
-  definitionKey: z.string().min(1),
+  /**
+   * → `ProcessDefinition.key`。**合并时由 `definitionKey` 改名为 `processKey`**：
+   * 判据是仓内既有约定（`impact-analysis.ts:132` 的 `processKey // P01…P65`），
+   * 不是"哪个好听"。改名前后全仓零消费方（前端/AgentCore 对本投影 grep 均 0 命中，
+   * 金丝雀 `ProcessWaitView` 同命令有命中 ⇒ 是真没人用，不是 grep 坏了）。
+   */
+  processKey: z.string().min(1),
   /** 流程名（来自 `ProcessDefinition.name`）。查不到定义则缺席。 */
   definitionName: z.string().min(1).optional(),
+  /** 作用在哪个具体对象上（= 实例的 `carrierTypeKey`/`carrierObjectId`，此处保持嵌套形以便前端整块下钻）。 */
   subjectRef: z.strictObject({ typeKey: z.string().min(1), objectId: z.string().min(1) }),
 
   /** 卡在哪一步。 */
@@ -396,6 +356,15 @@ export const ProcessStuckResponseSchema = z.strictObject({
   stuck: z.array(ProcessStuckReasonSchema),
   /** 各等待态计数（五个 key 恒在，值可为 0 —— 这是**统计**不是「诚实位」，0 有意义）。 */
   byWaitState: z.record(ProcessTaskWaitStateSchema, z.number().int().nonnegative()),
+  /**
+   * 🔴 **本投影答不出的那一批**（合并新增·WO-R9-PROCESS-MERGE）：
+   * 到此刻同样卡着、但产地是 `DERIVED_FROM_DOCUMENT`（从单据反推）的实例数。
+   *
+   * 它们没有"第几步"——单据上没有这个事实，编一个步名就是造假——故进不了 `stuck[]`。
+   * 但**不许因此静默消失**：不报这个数，调用方会把「本投影没算它们」读成「它们不存在」。
+   * 要看这一批，走 `process_flow_time` 求解器或 `GET /a/v1/process-definitions/:key/instances`。
+   */
+  derivedStuckCount: z.number().int().nonnegative(),
 });
 export type ProcessStuckResponse = z.infer<typeof ProcessStuckResponseSchema>;
 
@@ -411,7 +380,15 @@ export type ProcessInstanceDetail = z.infer<typeof ProcessInstanceDetailSchema>;
 
 // ── 请求体 ────────────────────────────────────────────────────────────────
 
-/** `POST /a/v1/process-instances` 建实例。 */
+/**
+ * `POST /a/v1/process-instances` 建实例。
+ *
+ * ⚠ 合并后**请求体刻意不改名**（实体字段改叫 `processKey`/`carrierObjectId`，这里仍是
+ * `definitionKey`/`subjectRef`）。理由有二，都不是惰性：
+ *  ① 这是 **DTO 不是实体** —— 「我要实例化哪一条**定义**」用 `definitionKey` 反而更准；
+ *  ② 保持不变 ⇒ ① 那 545 行测试**一行都不用改**。「不用改测试」是"没有掩盖回归"的最强证据，
+ *     比任何一段解释都硬。映射在 `process/runtime.ts create()` 里一处完成，不散落。
+ */
 export const CreateProcessInstanceRequestSchema = z.strictObject({
   definitionKey: z.string().regex(/^P\d{2}$/),
   subjectRef: z.strictObject({ typeKey: z.string().min(1), objectId: z.string().min(1) }),
