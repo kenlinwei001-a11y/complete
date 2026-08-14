@@ -180,7 +180,17 @@ grep -rnE '`\$\{[a-zA-Z]' apps/frontend-shell/src/api/endpoints.ts              
 本组 58 条**一条都不该进那张表**：没有一条是探活 / `/internal/` 钩子 / JWKS / `credential` / openapi。
 上面 5 条 (2) 的理由（服务间数据面 / CLI / 运维触发 / 供应脚本）虽也是结构性的，
 但**颗粒不同**——豁免表是"这类路由永远不该有前端"，而这 5 条是"这条路由今天的消费方在别处"。
-把它们塞进豁免表会让表失去可判定性，故**建议仍留在基线**，只在基线条目上加 `why` 注解。
+把它们塞进豁免表会让表失去可判定性，故**建议仍留在基线**。
+
+### ⛔ 派单让我"往基线条目加 `why` 注解"—— **今天做不到，做了会被下一次 `--update` 抹掉**
+
+派单 §3 写「往基线条目加 `why` 注解说明理由」。**实测这条指令不可执行**，两层原因（见 §5.3）：
+
+1. `endpoints` 是**扁平字符串数组**，**没有 per-entry 的 `why` 槽位** —— 一条端点只能是一个字符串；
+2. 唯一能放散文的 `note` 字段，会被 `--update` **整段覆盖**（`writeBaseline` 写死 `note: BASELINE_NOTE`）。
+
+⇒ 本单**没有动基线**（`git diff` 对 `scripts/backend-frontend-seam-baseline.json` 为空），
+全部 `why` 落在本文件里 —— 本文件是 git 里的一等文档，不会被任何脚本覆盖。
 
 ---
 
@@ -244,6 +254,43 @@ grep -rnE '`\$\{[a-zA-Z]' apps/frontend-shell/src/api/endpoints.ts              
 3. **（可选）支持模板串拼 URL 的识别 —— 建议先不加**。本组实测用不上：前端当前没有任何变量拼前缀的写法
    （§1 两条 grep 均为 0）。真出现之前加它是过度设计，还会把「散文剔除」那条判据的边界搞模糊
    （欠账 #174 的老坑：描述缺口的那段话反而把缺口盖住）。**等真样例再动。**
+
+### 5.3 第二条：`--update` 会**抹掉基线里手写的 `why` 记账**（一枪上了膛）
+
+派单要求「往基线条目加 `why` 注解」。实测**做不到**，且**现存记账正处于被抹的风险里**：
+
+| 事实 | 证据 |
+|---|---|
+| `endpoints` 是**扁平字符串数组**，没有 per-entry `why` 槽位 | `scripts/backend-frontend-seam-baseline.json:11-198`，每条就是一个字符串 |
+| 唯一能放散文的是 `note` 一个字段 | 同上 `:3` |
+| `--update` 把 `note` **写死成罐头** | `scripts/check-backend-frontend-seam.mjs:867-876` `writeBaseline()` 里 `note: BASELINE_NOTE`（`:860-865` 的常量），**不读旧值** |
+| 当前 `note` = 罐头 **237** 字 + 手写记账 **741** 字 | 手写部分是 WO-R2（+9 条 ontology/interfaces 与 plan-builders）与 WO-R6（`actions/metrics` 挂账）两笔**可评审的显式记账** |
+| 它至今没被抹，纯属侥幸 | 文件里 `generatedBy` 已经是 `--update` —— 说明手写是在**最后一次 `--update` 之后**补的。**下一次谁跑 `--update`，741 字当场归零** |
+
+形态照铁律 0.6 句式：
+> **「我用『把理由写进基线』当作『理由被保存下来了』的证据，而前者并不度量后者 —— 那个字段是脚本的输出位，不是人的输入位。」**
+
+**建议**（同样属门的当值单，本单不改）：
+1. `writeBaseline()` **保留旧 `note`**（读旧值、罐头只在文件不存在时用），或把罐头挪到独立字段
+   （如 `schemaNote`），把 `note` 留给人。
+2. 更彻底：把 `endpoints` 从 `string[]` 升成 `{ key, why? }[]`（读侧兼容旧的纯字符串），
+   让 `why` 有**每条**的落点 —— 这才是派单那句话真正需要的东西。
+3. **在此之前，一切 `why` 写进 `docs/`**（本文件即是），因为 `docs/` 不会被任何脚本覆盖。
+
+**本单据此没有动 `scripts/backend-frontend-seam-baseline.json`**（`git diff` 对该文件为空）。
+
+复验：
+
+```bash
+node -e '
+const fs=require("fs");
+const g=fs.readFileSync("scripts/check-backend-frontend-seam.mjs","utf8");
+const b=JSON.parse(fs.readFileSync("scripts/backend-frontend-seam-baseline.json","utf8"));
+const wb=/function writeBaseline\([\s\S]*?\n\}/.exec(g)[0];
+console.log("writeBaseline 写死 note:", /note:\s*BASELINE_NOTE/.test(wb));
+console.log("endpoints 全是字符串（无 why 槽位）:", b.endpoints.every(e=>typeof e==="string"));
+console.log("generatedBy:", b.generatedBy, "· note 长度:", b.note.length);'
+```
 
 ---
 
