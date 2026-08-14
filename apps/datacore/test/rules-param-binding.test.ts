@@ -12,12 +12,12 @@ import { BATTERY_SOLVER_PARAMS, BATTERY_RULES } from "../src/synthetic/battery.j
  * 规则那份没人读 = **诱饵**：下一个人去改规则种子，以为改了推演，其实一个数都没动。
  *
  * 本文件的头号判据（缺则本单退回）：**改规则定义、不改任何代码，求解器输出的数真的跟着变**。
- * 只断言"规则被读到了 / 值传下去了"（运输层）一律不算 —— 所以每条都去比 `p50/p90` 这种**推演结论数值**。
+ * 只断言"规则被读到了 / 值传下去了"（运输层）一律不算 —— 所以每条都去比 `capWanP50/capWanP90` 这种**推演结论数值**。
  */
 
 interface CapacityOut {
-  p50: number;
-  p90: number;
+  capWanP50: number;
+  capWanP90: number;
   healthFactor: number;
   degradeNote?: string;
   pendingCertList?: string[];
@@ -59,7 +59,7 @@ describe("规则即引用 P4 · 改规则即改推演（数值维·效果层）"
     const before = await capacity(t);
     expect(before.healthFactor).toBe(0.93);
     expect(before.degradeNote).toBeUndefined();
-    expect(before.p90).toBeCloseTo(before.p50 * 0.93, 3);
+    expect(before.capWanP90).toBeCloseTo(before.capWanP50 * 0.93, 3);
 
     // 只改规则：延迟阈值 2h → 1h。**阈值只写 params 一处**，expression 引用它。
     // 此处曾写成 `lagHours > 1` + `staleHours: 1` 两份同值 —— 那正是 G-C08-EXPR-PARAM-SPLIT 的病灶形态，
@@ -76,9 +76,9 @@ describe("规则即引用 P4 · 改规则即改推演（数值维·效果层）"
     const after = await capacity(t);
     // ① 推演**数值**跟着变：同一批数据源现在越过 1h 阈值 → P90 系数 0.93 → 0.9，P90 真的掉下来。
     expect(after.healthFactor).toBe(0.9);
-    expect(after.p50).toBe(before.p50); // P50 不受健康度影响 → 变的确实是 C09 这条链，不是别的
-    expect(after.p90).toBeLessThan(before.p90);
-    expect(after.p90).toBeCloseTo(before.p50 * 0.9, 3);
+    expect(after.capWanP50).toBe(before.capWanP50); // P50 不受健康度影响 → 变的确实是 C09 这条链，不是别的
+    expect(after.capWanP90).toBeLessThan(before.capWanP90);
+    expect(after.capWanP90).toBeCloseTo(before.capWanP50 * 0.9, 3);
     // ② 降级说明里的阈值/系数也来自规则（前端读的是这句话）。
     expect(after.degradeNote).toContain("（>1h）");
     // ③ 同一次改动让规则闸也翻转（P2 评估维）——数值维与评估维**同源**，不再各说各话。
@@ -102,7 +102,7 @@ describe("规则即引用 P4 · 改规则即改推演（数值维·效果层）"
 
     const after = await capacity(t);
     expect(after.healthFactor).toBe(0.5);
-    expect(after.p90).toBeCloseTo(before.p50 * 0.5, 3);
+    expect(after.capWanP90).toBeCloseTo(before.capWanP50 * 0.5, 3);
   });
 
   it("SEAM-3 · 改 C04 认证降额系数 → 认证中产线的产能贡献真的变（P50 数值下降）", async () => {
@@ -121,8 +121,8 @@ describe("规则即引用 P4 · 改规则即改推演（数值维·效果层）"
     });
 
     const after = await capacity(t);
-    expect(after.p50).toBeLessThan(before.p50); // 0.6 → 0.2：认证中基地贡献缩水
-    expect(after.p90).toBeLessThan(before.p90);
+    expect(after.capWanP50).toBeLessThan(before.capWanP50); // 0.6 → 0.2：认证中基地贡献缩水
+    expect(after.capWanP90).toBeLessThan(before.capWanP90);
   });
 
   it("SEAM-4 · 改 C21 产销偏差阈值 → S&OP 步骤 2 的越线判定（flagged/议题）真的翻转", async () => {

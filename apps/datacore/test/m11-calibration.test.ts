@@ -270,7 +270,7 @@ describe("M11 校准引擎（PRD-addendum-m11-calibration C1–C9）", () => {
       evidence: { windowFrom: "2026-06-01", windowTo: "2026-06-30", nPairs: 30, mapeBefore: 12, simulatedMapeAfter: 9.5, bias: 0.2, flags: [] },
     };
     await t.repos.calibrationProposals.put(proposal);
-    const before = (await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 1 })).json() as { data: { p50: number } };
+    const before = (await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 1 })).json() as { data: { capWanP50: number } };
 
     // 批准走 Action（§S2）：EXECUTED 后 version+1 + 新值生效
     const approve = await t.app.inject({ method: "POST", url: `/a/v1/calibration/proposals/${proposal.id}/approve`, headers: PLANNER, payload: {} });
@@ -282,14 +282,14 @@ describe("M11 校准引擎（PRD-addendum-m11-calibration C1–C9）", () => {
     expect((await t.services.solvers.getParams("demo")).ramp.base).toBe(0.8);
     const v1 = await t.services.solvers.paramsVersion("demo");
     expect(v1).toBe(v0 + 1);
-    const after = (await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 1 })).json() as { data: { p50: number } };
-    expect(after.data.p50).toBeLessThan(before.data.p50); // 后续求解用新值（week1 爬坡 0.8）
+    const after = (await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 1 })).json() as { data: { capWanP50: number } };
+    expect(after.data.capWanP50).toBeLessThan(before.data.capWanP50); // 后续求解用新值（week1 爬坡 0.8）
 
     // S1 修订：runWithParams(旧版本) 复现旧输出（同输入同参数版本同输出）
     const replayOld = await t.services.solvers.runWithParams("demo", "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 1 }, { paramsVersion: v0 });
-    expect(replayOld.p50).toBe(before.data.p50);
+    expect(replayOld.capWanP50).toBe(before.data.capWanP50);
     const replayNew = await t.services.solvers.runWithParams("demo", "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 1 }, { paramsVersion: v1 });
-    expect(replayNew.p50).toBe(after.data.p50);
+    expect(replayNew.capWanP50).toBe(after.data.capWanP50);
 
     // 一键回滚（亦走 Action）→ 恢复上一参数版本值
     const rb = await t.app.inject({ method: "POST", url: `/a/v1/calibration/proposals/${proposal.id}/rollback`, headers: PLANNER, payload: {} });
