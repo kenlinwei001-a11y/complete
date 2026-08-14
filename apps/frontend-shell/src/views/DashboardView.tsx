@@ -762,7 +762,7 @@ function MetricStrip({ metrics, selectedKey, onSelect }: { metrics: MetricRow[] 
       {/* 顶部「综合达成健康度」汇总头（真派生自越线数） */}
       <div data-testid="metric-health" style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 12, color: "var(--muted)" }}>综合达成健康度</span>
-        <b style={{ fontSize: 22, fontWeight: 700, color: health.color, letterSpacing: "0.02em" }}>{health.word}</b>
+        <b style={{ fontSize: 16, fontWeight: 700, color: health.color, letterSpacing: "0.02em" }}>{health.word}</b>
         <span style={{ fontSize: 12, color: "var(--muted2)" }}>{rows.length} 项指标 · {missCount} 项越线</span>
       </div>
       {rows.map((m) => {
@@ -788,7 +788,7 @@ function MetricStrip({ metrics, selectedKey, onSelect }: { metrics: MetricRow[] 
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12.5, color: "var(--txt)" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12, color: "var(--txt)" }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: status, flex: "none" }} />
                 {m.name}
                 <span style={{ fontSize: 12, color: selected ? "var(--accent-txt)" : "var(--muted2)" }}>{selected ? "下钻中 ›" : "下钻 ›"}</span>
