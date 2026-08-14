@@ -304,8 +304,14 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
                     <code style={{ fontSize: 12 }}>{d.objectId}</code>
                     <span style={{ color: MUTED }}>.{d.stateVar}</span>
                   </td>
-                  <td style={{ padding: "2px 8px" }}>{d.baseline ?? "缺"}</td>
-                  <td style={{ padding: "2px 8px" }}>{d.counterfactual ?? "缺"}</td>
+                  {/* `null` = 这一格在那一版世界里**根本没有**（≠ 值为 0）。两句话不同，屏上必须分得开；
+                      而 `delta` 仍按引擎 `readVar` 的缺格读 0 约定算，所以变化量照样看得见。 */}
+                  <td style={{ padding: "2px 8px" }}>
+                    {d.baseline ?? <span style={{ color: MUTED }} title="该世界里没有这一格">无此格</span>}
+                  </td>
+                  <td style={{ padding: "2px 8px" }}>
+                    {d.counterfactual ?? <span style={{ color: MUTED }} title="该世界里没有这一格">无此格</span>}
+                  </td>
                   <td
                     style={{ padding: "2px 8px", color: d.direction === "up" ? "#f0b7bd" : d.direction === "down" ? "#8fd6c4" : MUTED }}
                   >

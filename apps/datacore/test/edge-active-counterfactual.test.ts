@@ -151,7 +151,12 @@ describe("WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → �
     const cell = out.diffs.find((d) => d.objectId === lineIds[0] && d.stateVar === "utilPressure");
     expect(cell).toBeDefined();
     expect(cell!.baseline).toBe(10);
-    expect(cell!.counterfactual).toBe(0);
+    // 🔴 关掉这条边后，这一格在反事实世界里**整个不存在**（没有任何规则往它写）——
+    //    `counterfactual` 如实报 `null`（「这个世界里没有这一格」≠「这一格是 0」），
+    //    而 `delta` 照**引擎自己的读数约定**（`propagation.ts:367 readVar` 缺格读 0）算出 −10。
+    //    这一条是实跑逼出来的：初版把 `delta` 也写成 null ⇒ 屏上显示"算不出"，
+    //    而真相是"它降到了 0"，正是最该被看见的那个结论被藏起来了。
+    expect(cell!.counterfactual).toBeNull();
     expect(cell!.delta).toBe(-10);
     expect(cell!.direction).toBe("down");
 
@@ -316,9 +321,14 @@ describe("WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → �
     const d = diffTickStates({ o: { x: 10, y: 5 } }, { o: { x: 4, y: 5 } });
     expect(d.length).toBe(1); // y 没变 ⇒ 不上桌
     expect(d[0]).toMatchObject({ objectId: "o", stateVar: "x", baseline: 10, counterfactual: 4, delta: -6, direction: "down" });
-    // 某一侧缺这一格 ⇒ delta 为 null、方向 unknown（**不拿 0 冒充"没变"**）。
+    // 某一侧**缺这一格**：显示层如实报 `null`（「没有这一格」≠「这一格是 0」），
+    // 而 delta 照引擎 `readVar` 的约定按 0 算 ⇒ 用户看得到"它降到 0 了"这个结论。
     const missing = diffTickStates({ o: { x: 10 } }, {});
-    expect(missing[0]!.delta).toBeNull();
-    expect(missing[0]!.direction).toBe("unknown");
+    expect(missing[0]!.baseline).toBe(10);
+    expect(missing[0]!.counterfactual).toBeNull();
+    expect(missing[0]!.delta).toBe(-10);
+    expect(missing[0]!.direction).toBe("down");
+    // 两侧都缺 ⇒ 真的算不出，且这种格根本不上桌（`onlyChanged`）。
+    expect(diffTickStates({ o: { x: 10 } }, { o: { x: 10 } })).toEqual([]);
   });
 });

@@ -173,11 +173,24 @@ export function unknownPropagationRuleKeys(
 export const SimStateDiffCellSchema = z.object({
   objectId: z.string(),
   stateVar: z.string(),
-  /** 全规则跑出来的值（"边开着"）。该格在基线里不存在 ⇒ `null`（诚实缺，不填 0）。 */
+  /**
+   * 全规则跑出来的值（"边开着"）。该格在那一版世界里**根本不存在** ⇒ `null`
+   * （诚实缺：`null` 与 `0` 在屏上必须分得开——「这个世界里没有这一格」不等于「这一格是 0」）。
+   */
   baseline: z.number().nullable(),
-  /** 屏蔽掉 `disabledRuleKeys` 后跑出来的值（"边关掉"）。 */
+  /** 屏蔽掉 `disabledRuleKeys` 后跑出来的值（"边关掉"）。语义同上。 */
   counterfactual: z.number().nullable(),
-  /** 两者之差；任一侧为 `null` ⇒ `null`（算不出就说算不出，不拿 0 冒充"没变"）。 */
+  /**
+   * 两者之差。
+   *
+   * ⚠ **缺格按 0 参与相减，这不是"拿 0 冒充没变"，是照抄引擎自己的读数约定**：
+   * `propagation.ts:367 readVar` 原文 `return typeof v === "number" ? v : 0` —— 引擎读一个
+   * 不存在的状态变量，读到的就是 0。差值若不照这个约定算，就会出现最常见的那个病样：
+   * 关掉一条边导致目标格**整个消失**（本仓实测：`Line.utilPressure` 由 10 → 该键不存在），
+   * 屏上却显示"算不出"，用户看不到它其实**降到了 0**。
+   * **两侧都缺** ⇒ `null`（那才是真的算不出，且这种格根本不会上桌）。
+   * 显示层仍能分辨：`baseline`/`counterfactual` 保留 `null`，只有 `delta` 用引擎约定。
+   */
   delta: z.number().nullable(),
   /** 方向：`up`/`down`/`flat`；`delta` 为 `null` 时是 `unknown`。§3.3「一眼看出方向和量级」。 */
   direction: z.enum(["up", "down", "flat", "unknown"]),
@@ -209,8 +222,10 @@ export function diffTickStates(
     for (const stateVar of vars) {
       const bv = typeof b[stateVar] === "number" ? (b[stateVar] as number) : null;
       const cv = typeof cf[stateVar] === "number" ? (cf[stateVar] as number) : null;
-      const delta = bv === null || cv === null ? null : cv - bv;
-      const changed = delta === null ? bv !== cv : Math.abs(delta) > DIFF_EPSILON;
+      // 缺格按 0 参与相减 —— 与引擎 `readVar`（`propagation.ts:367`）同一约定，见 `delta` 字段注释。
+      // 两侧都缺才是真的算不出（那种格也不会上桌，因为它没变）。
+      const delta = bv === null && cv === null ? null : (cv ?? 0) - (bv ?? 0);
+      const changed = delta === null ? false : Math.abs(delta) > DIFF_EPSILON;
       if (onlyChanged && !changed) continue;
       cells.push({
         objectId,

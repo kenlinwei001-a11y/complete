@@ -173,9 +173,17 @@ describe("WO-ACTIVE-EDGE-UX · 前端接缝：从 workspace 到「关掉一条�
     expect(diffs.map((d) => d.objectId)).toEqual(["o2", "o1", "o3"]); // 影响量级降序
     expect(diffs[0]!.arrow).toBe("↓");
     expect(diffs[0]!.deltaText).toBe("−10");
+    expect(diffs[0]!.absentIn).toBe("none");
     expect(diffs[1]!.arrow).toBe("↑");
-    expect(diffs[2]!.deltaText).toBe("缺"); // 算不出就说算不出，**不拿 0 冒充"没变"**
+    // 两侧都缺 ⇒ 真的算不出（`delta === null`），文案说"算不出"而不是编一个 0。
+    expect(diffs[2]!.deltaText).toBe("算不出");
     expect(diffs[2]!.relative).toBeNull();
+    // 只有一侧缺 ⇒ 显示层标"无此格"，但**变化量照样算得出**（引擎缺格读 0 的约定）。
+    const oneSide = buildDiffRows([
+      { objectId: "o4", stateVar: "w", baseline: 10, counterfactual: null, delta: -10, direction: "down" },
+    ]);
+    expect(oneSide[0]!.absentIn).toBe("counterfactual");
+    expect(oneSide[0]!.deltaText).toBe("−10");
   });
 
   // ── ⑥ 会话挑选：方案快照 bag 不是可推演的世界，必须排除 ──────────────────────────

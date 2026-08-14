@@ -84,10 +84,16 @@ export interface DiffRowVM {
   counterfactual: number | null;
   delta: number | null;
   direction: SimStateDiffCell["direction"];
-  /** 方向记号：↑/↓/→/？。`？` = 算不出（某一侧缺这一格），**不拿 0 冒充"没变"**。 */
+  /** 方向记号：↑/↓/→/？。`？` = 两侧都没有这一格（真的算不出，不上桌）。 */
   arrow: "↑" | "↓" | "→" | "？";
-  /** 已带正负号的量级文本（如 `+3.20` / `−1.05`）。`null` 侧一律显式写"缺"。 */
+  /** 已带正负号的量级文本（如 `+3.20` / `−1.05`）。 */
   deltaText: string;
+  /**
+   * 这一格在哪一版世界里**根本不存在**（不是"值为 0"）。
+   * 屏上必须分得开：「关掉这条边之后，这个状态变量整个没了」与「它变成了 0」是两句不同的话，
+   * 而 `delta` 两种情形都按引擎约定算成 −10 —— 不标出来就把这个区别抹掉了。
+   */
+  absentIn: "none" | "baseline" | "counterfactual";
   /** 相对基线的变化幅度（0-1）；基线为 0 或缺失 ⇒ `null`（不造一个百分比出来）。 */
   relative: number | null;
 }
@@ -113,7 +119,8 @@ export function buildDiffRows(cells: readonly SimStateDiffCell[]): DiffRowVM[] {
       delta: c.delta,
       direction: c.direction,
       arrow: c.direction === "up" ? "↑" : c.direction === "down" ? "↓" : c.direction === "flat" ? "→" : "？",
-      deltaText: c.delta === null ? "缺" : fmt(c.delta),
+      deltaText: c.delta === null ? "算不出" : fmt(c.delta),
+      absentIn: c.baseline === null ? "baseline" : c.counterfactual === null ? "counterfactual" : "none",
       relative:
         c.delta === null || c.baseline === null || c.baseline === 0 ? null : c.delta / Math.abs(c.baseline),
     }))
