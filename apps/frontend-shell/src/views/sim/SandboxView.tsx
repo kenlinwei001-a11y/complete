@@ -41,6 +41,7 @@ import {
 import { EnterpriseStatePanel } from "./EnterpriseStatePanel"; // WO-ENTERPRISE-STATE · 企业状态快照（只读）——本文件的 rail 是它唯一的生产调用方
 import { EnterpriseStateTwinPanel } from "./EnterpriseStateTwinPanel"; // WO-BEFE-WIRE-3 · 快照分叉(fork)与比对(diff)——同样，本文件的 rail 是它唯一的生产调用方
 import SandboxPlaysPanel, { type PlayAnchor } from "./SandboxPlaysPanel"; // WO-V4-PLAYS · 方案环（本文件的左区是它唯一的生产调用方）
+import { CausalGraphPanel } from "@/components/CausalGraph/CausalGraphPanel"; // WO-BEFE-D · 沙盘源因果图（GET /a/v1/causal-graphs/sim/:sessionId）——本文件的 rail 是它在沙盘侧唯一的生产调用方
 import styles from "./SimViews.module.css";
 
 /**
@@ -1306,6 +1307,28 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       id: "enterprise-state-twin",
       title: "快照分叉与比对",
       node: <EnterpriseStateTwinPanel />,
+    },
+    {
+      /**
+       * WO-BEFE-D · **沙盘源因果图** —— `GET /a/v1/causal-graphs/sim/:sessionId`
+       * 此前后端注册了、前端零调用方（门 `befe-seam:check` 载体② 照出来的）。
+       *
+       * 为什么挂在沙盘而不是新开一页：这条路由的入参就是**本沙盘会话的 sessionId**，
+       * 别的地方根本拿不到它。新开一页就得让用户手抄一个 id —— 那不是入口，是折磨。
+       *
+       * ⚠ 这一行是 `CausalGraphPanel` 在沙盘侧唯一的生产调用方（右栏是手工组装的数组、无自动扫描）。
+       * 沙盘源只有 CAUSE/IMPACT 两段有真值，其余三段由**后端**写 `segmentGaps` 诚实报缺 ——
+       * 前端不替它补，也不把空段画成"没问题"。
+       */
+      id: "causal-graph",
+      title: "因果图（本会话）",
+      node: sessionId ? (
+        <CausalGraphPanel source={{ kind: "sim", refId: sessionId }} testid="sandbox-causal-graph" />
+      ) : (
+        <div className={styles.sub} data-testid="sandbox-causal-graph-idle">
+          沙盘会话未就绪 —— 因果图按 sessionId 取，没有会话就没有可解释的对象（不拿空图冒充"无因果"）。
+        </div>
+      ),
     },
   ];
 

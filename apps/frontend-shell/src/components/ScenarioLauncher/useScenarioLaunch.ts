@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { submitQuery, type ScenarioCardVM } from "@/api/endpoints";
+import { launchScenario, submitQuery, type ScenarioCardVM } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
@@ -50,14 +50,56 @@ export function useQuickLaunch(): (input: {
   };
 }
 
+/**
+ * 场景卡启动 —— **走服务端组装**（`POST /b/v1/scenarios/:key/launch`）。
+ *
+ * ══ WO-BEFE-D：为什么把这条从「前端自己拼 submitQuery」改成打 launch 端点 ═════════
+ *
+ * 门 `befe-seam:check` 把 `POST /b/v1/scenarios/:key/launch` 报成「后端注册了、前端零调用方」。
+ * 追一层才看清这不是"没接线"，是**接了线接错地方**：前端确实在启动场景，只是绕过了
+ * 场景语义那一跳，直接打通用的 `/b/v1/queries`。绕过去的**不是风格，是三件后端才做得了的事**
+ * （逐条对照 `apps/agentcore/src/server.ts:2750`）：
+ *
+ *  ① **发布态闸**：`sc.status !== "PUBLISHED"` → 409。前端拼装这条路**完全没有这道闸** ——
+ *     一张 DRAFT/RETIRED 的卡照样能被启动（卡片列表默认只给 PUBLISHED，但那是列表的过滤，
+ *     不是启动的校验；`includeInactive=true` 与深链接都能绕过列表）。
+ *  ② **entitlement 先于 authz（R3）**：场景所属视图关闭 → 404 FEATURE_NOT_FOUND。
+ *  ③ **产能可行性变体归一化**：用户在卡上改写了 query 时，后端跑
+ *     `parseCapacityFeasibilityVariant()` 把「1天交付」这类自由文本解析成
+ *     `{model, demandDelta, weeks, base}` 并回写 `slotPresets`，还把
+ *     `_normalizedSlots` 塞进去供 R13 留痕校验。**这一整块前端没有也做不了**
+ *     （解析器在 agentcore 的 `agent/sim-planner.ts`，前端跨不过去）——
+ *     于是用户敲的自由文本此前拿不到归一化槽位，path-A 只能吃卡上的旧预置值。
+ *
+ * ⚠ `useQuickLaunch` **保持原样不动**：它服务的是「数据构建发动机一键推演」那类
+ *   **没有场景卡**的启动（没有 scenarioKey 可传给 launch 端点）。把它一起改掉就是
+ *   拿一条端点去顶两种不同的入参 —— 那才是真的接错地方。
+ */
 export function useScenarioLaunch(): (card: ScenarioCardVM, userQuery?: string) => Promise<void> {
-  const quickLaunch = useQuickLaunch();
-  return async (card: ScenarioCardVM, userQuery?: string) =>
-    quickLaunch({
-      query: userQuery?.trim() || card.triggerQuestion,
-      targetView: card.presetContext.targetView,
-      selectedObjects: card.presetContext.selectedObjects,
-      slotPresets: card.presetContext.slotPresets,
-      scenarioIntentKey: card.intentKey, // 具象化：透传卡意图 → orchestrator 强制 path-A 秒级出答（不落慢 agent）
-    });
+  const navigate = useNavigate();
+  return async (card: ScenarioCardVM, userQuery?: string) => {
+    const canonicalView = resolveViewKey(card.presetContext.targetView) ?? card.presetContext.targetView;
+    const store = useSessionStore.getState();
+    // 本地会话态照旧在**发请求之前**摆好：屏上先进落点视图、先起对话线程，
+    // 用户不必盯着一个没反应的按钮等网络（这一段与原实现逐字同义，只换了那一跳网络调用）。
+    store.setView(canonicalView);
+    store.setSelectedObjects(card.presetContext.selectedObjects);
+    const localId = safeUuid();
+    store.startConversation({ localId, query: userQuery?.trim() || card.triggerQuestion });
+    store.setDockExpanded(true);
+    navigate(`/v/${canonicalView}`);
+    try {
+      // 服务端按 SCENARIO_CATALOG 单源组装 presetContext + 归一化槽位 + 绑定 intentKey，
+      // 前端只把「哪张卡 + 用户改写的问句」交出去。
+      // ⚠ 卡片 VM 上的 `sNo` **就是** `scenarioKey`（后端 `GET /b/v1/scenarios` 那一跳
+      //   逐字写着 `sNo: s.scenarioKey`）。卡上没有第二个叫 scenarioKey 的字段 —— 想当然写
+      //   `card.scenarioKey` 会编译报错（已实测），这行注释留着免得下一个人再撞一次。
+      const res = await launchScenario(card.sNo, userQuery);
+      store.updateConversation(localId, { taskId: res.taskId });
+      store.setConversationId(res.taskId);
+    } catch (e) {
+      store.updateConversation(localId, { submitError: (e as Error).message });
+      toastError(e);
+    }
+  };
 }

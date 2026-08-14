@@ -61,6 +61,12 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "resources", label: zh.nav.resources, roles: ["admin", "catalog_admin"] },
   // WO-A · No-code Plan Builder Canvas（Phase 1：线性多 solver 链）。
   { path: "plan-builder", label: zh.nav.planBuilder, roles: ["admin", "catalog_admin"] },
+  // WO-BEFE-D · 组织世界（entitlement org.world 真暗发·见 App.tsx 路由 featureKey）：
+  // 人/角色/部门 · 职权与审批额度 · 授权代理 · 「这一单该谁批」解析器。
+  // 角色面比后端**宽**是有意的：读面（chart/authorities/delegations/resolve）后端只要 entitlement 不要角色，
+  // 审批人问题恰恰是 approver/planner 最需要的；唯一的写面（availability）在页内按
+  // admin/tenant_admin 单独禁用（与 org/routes.ts:86 同判据），不摆必然 403 的按钮。
+  { path: "org", label: "组织世界", roles: ["admin", "tenant_admin", "approver", "planner"] },
   { path: "meta", label: "系统自我", roles: ["admin"] },
   { path: "boundary", label: "边界册治理", roles: ["admin"] },
   { path: "prototype-intake", label: "原型 intake", roles: ["admin", "data_admin"] },
@@ -99,7 +105,9 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   { key: "rules", title: "规则与校准", paths: ["rules", "calibration"] },
   { key: "build", title: "构建与成长", paths: ["data-builder", "pipelines", "growth", "evals", "solvers", "solver-review"] },
   { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "resources", "plan-builder", "ops/fallback", "views"] },
-  { key: "ops", title: "运营与审批", paths: ["actions", "ops-schedule", "notifications", "validation"] },
+  // WO-BEFE-D：组织世界归「运营与审批」—— 它答的是「这一单该谁批 / 为什么没人批得了」，
+  // 与审批中心（actions）同一条决策链上的相邻两跳，不归「平台治理」（那是租户/权限/开关的地盘）。
+  { key: "ops", title: "运营与审批", paths: ["actions", "org", "ops-schedule", "notifications", "validation"] },
   { key: "governance", title: "平台治理", paths: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration", "meta"] },
 ];
 

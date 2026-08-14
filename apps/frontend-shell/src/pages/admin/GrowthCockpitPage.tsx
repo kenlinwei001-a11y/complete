@@ -1,7 +1,16 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { GrowthRunReport } from "@platform/contracts";
-import { runGrowth, fetchGrowthLedger, fetchGrowthTickets, claimGrowthTicket } from "@/api/endpoints";
+import type { GapReport, GrowthRunReport } from "@platform/contracts";
+import {
+  runGrowth,
+  fetchGrowthLedger,
+  fetchGrowthTickets,
+  claimGrowthTicket,
+  // WO-BEFE-D：三条「后端注册了、前端零调用方」的端点补上（探针 / 提交复核 / 重跑验证）。
+  probeGrowth,
+  submitGrowthTicket,
+  verifyGrowthTicket,
+} from "@/api/endpoints";
 import { toastError, toast } from "@/store/toastStore";
 
 /**
@@ -46,6 +55,38 @@ export default function GrowthCockpitPage() {
     onError: toastError,
   });
 
+  // ── WO-BEFE-D · 只探针不补（POST /b/v1/growth/probe）───────────────────────────
+  // 与「运行」的差别是**副作用**不是精度：LOOP 会补数据、scaffold DRAFT、开工单、发 growth.* 事件；
+  // 探针只诊断。「先看看断在哪，别动我的库」此前只能 curl —— 这颗按钮就是补它。
+  const [probe, setProbe] = useState<GapReport | null>(null);
+  const probeMut = useMutation({
+    mutationFn: () => probeGrowth(query),
+    onSuccess: setProbe,
+    onError: toastError,
+  });
+
+  // ── WO-BEFE-D · 工单生命周期后两跳（此前前端只到「认领」就断了）────────────────
+  // OPEN →(claim) IN_PROGRESS →(submit) IN_REVIEW →(verify) VERIFIED / 停 IN_REVIEW 并回带新缺口。
+  const submitTk = useMutation({
+    mutationFn: (id: string) => submitGrowthTicket(id),
+    onSuccess: () => { toast("已提交复核", "success"); void qc.invalidateQueries({ queryKey: ["b", "growth-tickets"] }); },
+    onError: toastError,
+  });
+  // 验证结果按工单 id 存 —— 这是「这一张单重跑之后到底能不能答」的答案，不是可缓存资源。
+  const [verifyResult, setVerifyResult] = useState<Record<string, { verified: boolean; verdict: string; gapCodes: string[] }>>({});
+  const verifyTk = useMutation({
+    mutationFn: (id: string) => verifyGrowthTicket(id).then((r) => ({ id, ...r })),
+    onSuccess: (r) => {
+      setVerifyResult((prev) => ({
+        ...prev,
+        [r.id]: { verified: r.verified, verdict: r.gapReport.verdict, gapCodes: r.gapReport.findings.map((f) => f.gapCode) },
+      }));
+      toast(r.verified ? "重跑通过：已 VERIFIED" : `仍答不出（${r.gapReport.verdict}）—— 停在 IN_REVIEW`, r.verified ? "success" : "info");
+      void qc.invalidateQueries({ queryKey: ["b", "growth-tickets"] });
+    },
+    onError: toastError,
+  });
+
   const runs = ledger?.items ?? [];
   const tks = tickets?.items ?? [];
   // 量化：需求可答率 = CONVERGED / 总运行
@@ -64,7 +105,37 @@ export default function GrowthCockpitPage() {
         <input data-testid="growth-query" value={query} onChange={(e) => setQuery(e.target.value)} style={{ flex: 1, minWidth: 240 }} />
         <label style={{ fontSize: 12 }}>K <input data-testid="growth-k" type="number" value={maxRounds} min={1} max={20} onChange={(e) => setMaxRounds(Number(e.target.value))} style={{ width: 56 }} /></label>
         <button className="btn primary sm" data-testid="growth-run" disabled={run.isPending || !query.trim()} onClick={() => run.mutate()}>{run.isPending ? "跑动中…" : "运行"}</button>
+        {/* WO-BEFE-D：只诊断不动数据。刻意不是 primary —— 它是「先看看」，不是主动作。 */}
+        <button
+          className="btn sm"
+          data-testid="growth-probe"
+          title="只把问句跑一遍看断在哪：不补数据、不开工单、不发事件"
+          disabled={probeMut.isPending || !query.trim()}
+          onClick={() => probeMut.mutate()}
+        >
+          {probeMut.isPending ? "探针中…" : "只探针（不补）"}
+        </button>
       </div>
+
+      {/* 探针结果：与「本次运行」分开一块——两者副作用不同，混在一起会让人以为探完就已经补过了。 */}
+      {probe && (
+        <div className="panel" style={{ marginBottom: 12 }} data-testid="growth-probe-report">
+          <div className="section-title">
+            探针结论 <span className="badge" data-testid="growth-probe-verdict">{probe.verdict}</span>
+            <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>只诊断，未补任何数据 / 未开工单</span>
+          </div>
+          {probe.findings.length === 0 ? (
+            <div className="muted" style={{ fontSize: 11.5 }}>无缺口条目</div>
+          ) : (
+            probe.findings.map((f, i) => (
+              <div key={`${f.gapCode}-${i}`} data-testid={`growth-probe-finding-${f.gapCode}`} style={{ fontSize: 11.5, padding: "3px 0" }}>
+                <span className="mono">{f.gapCode}</span>
+                <span className="muted" style={{ marginLeft: 8 }}>{f.evidence}</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {/* 量化指标 */}
       <div className="panel" style={{ marginBottom: 12, display: "flex", gap: 24, fontSize: 12 }}>
@@ -104,7 +175,37 @@ export default function GrowthCockpitPage() {
               <td style={{ fontSize: 11.5 }}>{t.fromQuestion}</td>
               <td className="mono">{t.gapCode}</td>
               <td><span className={`badge ${TICKET_BADGE[t.status] ?? ""}`}>{t.status}</span></td>
-              <td>{t.status === "OPEN" && <button className="btn sm" data-testid={`claim-${t.id}`} onClick={() => claim.mutate(t.id)}>认领</button>}</td>
+              <td style={{ whiteSpace: "nowrap" }}>
+                {t.status === "OPEN" && <button className="btn sm" data-testid={`claim-${t.id}`} onClick={() => claim.mutate(t.id)}>认领</button>}
+                {/* WO-BEFE-D：认领之后此前就没有下一颗按钮了 —— 工单永远停在 IN_PROGRESS，
+                    后端的 submit/verify 两条端点只能 curl。这两颗补上生命周期的后两跳。 */}
+                {t.status === "IN_PROGRESS" && (
+                  <button className="btn sm" data-testid={`submit-${t.id}`} disabled={submitTk.isPending} onClick={() => submitTk.mutate(t.id)}>
+                    提交复核
+                  </button>
+                )}
+                {t.status === "IN_REVIEW" && (
+                  <button
+                    className="btn sm primary"
+                    data-testid={`verify-${t.id}`}
+                    title="把这张单的原问句经 QOS 重跑一遍：能答出来才 VERIFIED，否则停在 IN_REVIEW 并回带新缺口"
+                    disabled={verifyTk.isPending}
+                    onClick={() => verifyTk.mutate(t.id)}
+                  >
+                    {verifyTk.isPending ? "重跑中…" : "重跑验证"}
+                  </button>
+                )}
+                {verifyResult[t.id] && (
+                  <span
+                    className={`badge ${verifyResult[t.id]!.verified ? "green" : "amber"}`}
+                    style={{ marginLeft: 4 }}
+                    data-testid={`verify-result-${t.id}`}
+                    title={verifyResult[t.id]!.gapCodes.join("、")}
+                  >
+                    {verifyResult[t.id]!.verified ? "重跑可答 ✓" : `仍缺：${verifyResult[t.id]!.gapCodes.join("、") || verifyResult[t.id]!.verdict}`}
+                  </span>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

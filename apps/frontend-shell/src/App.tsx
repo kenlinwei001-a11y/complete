@@ -68,6 +68,8 @@ const QueryHistoryPage = lazy(() => import("@/pages/admin/QueryHistoryPage"));
 const LlmProvidersPage = lazy(() => import("@/pages/admin/LlmProvidersPage"));
 // WO-A · No-code Plan Builder Canvas（Phase 1：线性多 solver 链）。
 const PlanBuilderPage = lazy(() => import("@/pages/admin/PlanBuilderPage"));
+// WO-BEFE-D · 组织世界（entitlement org.world 真暗发·关→404 不泄露存在性）。
+const OrgWorldPage = lazy(() => import("@/pages/admin/OrgWorldPage"));
 // 管理平台增量：租户 / 用户 / 视图配置
 const TenantsPage = lazy(() => import("@/pages/admin/TenantsPage"));
 const UsersPage = lazy(() => import("@/pages/admin/UsersPage"));
@@ -198,6 +200,18 @@ export const routes: RouteObject[] = [
         element: (
           <AdminGuard path="plan-builder" featureKey="admin.plan-builder">
             {lazyWrap(<PlanBuilderPage />)}
+          </AdminGuard>
+        ),
+      },
+      // WO-BEFE-D · 组织世界：entitlement org.world 门控（关→404）。
+      // 与 plan-builder / resources 同款写法：`org.world` 是**真暗发**（同时列进后端
+      // WORLD_DARK_LAUNCH_FEATURES ⇒ battery 模板 all-on 也跳过它），故 demo 租户默认进来就是 404 ——
+      // 那正是 R3「功能关闭 = 不存在」，不是页面坏了。开通 = 租户 override（/admin/features）。
+      {
+        path: "admin/org",
+        element: (
+          <AdminGuard path="org" featureKey="org.world">
+            {lazyWrap(<OrgWorldPage />)}
           </AdminGuard>
         ),
       },
