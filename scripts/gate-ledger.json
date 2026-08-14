@@ -242,7 +242,7 @@
       "provenRed": {
         "kind": "MUTATION",
         "evidence": "建成首跑即红（2026-08-09）",
-        "note": "① exit 2「门自己坏了」：金丝雀 SkillExecutionSchema 未命中 —— 真因是本门自己踩了 CLAUDE.md 铁律 0.5 判据#5 那个坑（pathspec 里的 * 不跨 /，apps/*/src 恒匹配 0 个文件），金丝雀当场抓住，改目录 pathspec 后 exit 1 正确命中 orchestrator-s1 的 server.ts + skill-graph.ts。② 负向实测：PerturbationKindSchema 在 268 条未并分支全无，exit 0 且否定结论带金丝雀背书。"
+        "note": "① exit 2「门自己坏了」：金丝雀 SkillExecutionSchema 未命中 —— 真因是本门自己踩了 CLAUDE.md 铁律 0.5 判据#5 那个坑（apps/*/src 恒匹配 0 个文件），金丝雀当场抓住，改目录 pathspec 后 exit 1 正确命中 orchestrator-s1 的 server.ts + skill-graph.ts。② 负向实测：PerturbationKindSchema 在 268 条未并分支全无，exit 0 且否定结论带金丝雀背书。⚠️ **病因订正（2026-08-11 CLAUDE.md 已订正 · 2026-08-14 WO-GATE-LEDGER-FIX 复测并回写本条）**：本条原文把病因写成「pathspec 里的 * 不跨 /」——**那是错的病因，照它修会修错方向**（会把 * 换成 **，而 ** 恰恰是第二个坑）。2026-08-14 在 d250622e 上实跑 `git ls-files -- <pathspec> | wc -l`：`apps/*/src/*.ts` 命中 **341** 且含 `apps/datacore/src/synthetic/service.ts` ⇒ **`*` 确实跨 `/`**。真机制两条：(a) **含通配的 pathspec 不当目录前缀用**（字面前缀 `apps/datacore/src` 命中 172 · 含通配 `apps/*/src` 命中 **0** · 补一段 `apps/*/src/*` 命中 **567**）；(b) `X/**/*.ext` **要求至少一个中间目录段**（本仓 `apps/*/test/` 下只有 `fixtures/` 且其中零个 `.test.ts` ⇒ `apps/*/test/**/*.test.ts` 恒 0，而 `apps/*/test/*.test.ts` 命中 **461**）。**「金丝雀当场抓住、改目录 pathspec 后正确命中」这段事实经过不变，变的只是对病因的归因** —— 诚实位不删，改的是口径。数字有保质期，复验以现跑为准。"
       },
       "notes": "MANUAL 签字：本门需 git ls-remote + 逐分支 git grep（实测 268 条未并分支），耗时与网络依赖都不适合进 gates 链（链上门须自包含且快）。触发时机 = **落笔新建对象类型/契约字段/表之前**，用 --symbol <待建符号名> 单查。治「我用『我没在主线上看到它』当作『它不存在』的证据」——该形态已发生四次，第 4 次是自造 Skill.execution 而它已在未并分支上设计好实现好带 SEAM 测试。",
       "disposition": "MANUAL"
@@ -1218,7 +1218,7 @@
       "provenRed": {
         "kind": "MUTATION",
         "evidence": "WO-STALE-CLAIMS 四条变异实跑（2026-08-08，docs/PRD-stale-claims.md §5）",
-        "note": "① 注入「运行态实测…共 0 条」但无日期 → STALE-1 红 RC=1；② 注入「PurchaseOrder 对象全仓 0 条」（带日期+端点，故 STALE-1/2 都不咬）→ **STALE-3 事实层**红 RC=1，证明治本那层真在把事实读回来核；③a 把 CLAIM_KEYWORDS 改成繁体 → 金丝雀报「⛔ 门自己瞎了：只扫到 0 处关键词」RC=1，**不是**报代码干净；③b 把 SCAN_ROOT 改成 apps/*/src（复现 pathspec 通配符不跨 / 的真实陷阱）→ 报「扫描根不存在」RC=1；④ 把 putAll 事实源正则改坏 → 报「putAll 事实源读不出（读到 0 个类型）—— STALE-3 这一层等于没开」RC=1。每条 git checkout 撤回、撤后 git status 干净、HEAD 未变（747ae2e5）、门复绿 RC=0。"
+        "note": "① 注入「运行态实测…共 0 条」但无日期 → STALE-1 红 RC=1；② 注入「PurchaseOrder 对象全仓 0 条」（带日期+端点，故 STALE-1/2 都不咬）→ **STALE-3 事实层**红 RC=1，证明治本那层真在把事实读回来核；③a 把 CLAIM_KEYWORDS 改成繁体 → 金丝雀报「⛔ 门自己瞎了：只扫到 0 处关键词」RC=1，**不是**报代码干净；③b 把 SCAN_ROOT 改成 apps/*/src（复现「含通配的 pathspec 不当目录前缀用 ⇒ 恒 0 命中」这个真实陷阱；⚠️ 本条原写「pathspec 通配符不跨 /」，那是 2026-08-11 已被实测推翻的错病因，* 确实跨 /，2026-08-14 WO-GATE-LEDGER-FIX 照 CLAUDE.md 铁律 0.5 判据 #5 订正段回写）→ 报「扫描根不存在」RC=1；④ 把 putAll 事实源正则改坏 → 报「putAll 事实源读不出（读到 0 个类型）—— STALE-3 这一层等于没开」RC=1。每条 git checkout 撤回、撤后 git status 干净、HEAD 未变（747ae2e5）、门复绿 RC=0。"
       },
       "notes": "接 scripts/gate.sh 而非 pnpm gates，理由同 check-nav-group-coverage.mjs：check-ontology-writeback.mjs 正向断言要求进 gates 链的门必须先在本体 §7 登记，而 §7 回写归审核方（本单工单只授权改 §7，且若同批登 §7 会把 G3 的 pendingWireCount 从 12 顶到 13、撞上只降不升的棘轮基线）。审核方在 §7 登记本门并同批调基线后可升 GATES_CHAIN。守的是本体 §8 G-STALE-MEASURED-CLAIM：过期声明自称「运行态实测」。"
     },
