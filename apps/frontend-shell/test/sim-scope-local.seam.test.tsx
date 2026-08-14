@@ -242,6 +242,15 @@ describe("WO-SIM-SCOPE-LOCAL · ② 会话范围（去掉 `scope:{}` 空范围�
     // 反向：作废的旧话不许再出现 —— 它曾经真的在屏上挂了一整个增量。
     expect(note, "旧文案复活 = 屏上又开始说引擎不裁剪范围（与 buildPropagationInputs 的实现相反）")
       .not.toContain("尚未裁剪推演本身");
+
+    // WO-UI-BURNDOWN-21（2026-08-14）· 中间那句「到底裁了什么」按规范 §1 降进了 `?` 浮层，
+    // 两个**结论**（上面两条断言）仍在第一层。降层不是删除 ⇒ 必须能把原文原样取回来。
+    expect(note, "口径还摆在第一层 ⇒ 降层没做").not.toContain("邻域子图传导");
+    expect(screen.queryByTestId("info-body-sandbox-scope-reach"), "浮层正文默认就在 DOM ⇒ 没起到收纳作用").toBeNull();
+    await user.hover(await screen.findByTestId("info-wrap-sandbox-scope-reach"));
+    const reach = await screen.findByTestId("info-body-sandbox-scope-reach");
+    expect(reach.textContent, "口径被降没了 —— 那是删除不是分层").toContain("只按该对象类型的邻域子图传导");
+    expect(reach.textContent).toContain("就绪认证的试算也跑在同一范围里");
   });
 
   it("选中范围与会话范围漂移 → 显式提示 + 「按当前范围重建会话」按钮（不静默、不自动重建）", async () => {

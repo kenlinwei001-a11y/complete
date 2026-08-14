@@ -98,10 +98,18 @@ describe("WO-BEFE-E ① 沙盘存档清单 + 回滚（GET …/checkpoints · POS
     await openCheckpointRail(user);
     // 空态先诚实说「还没有存档」——不是画一张空表让人以为清单坏了。
     expect((await screen.findByTestId("sandbox-checkpoints-empty")).textContent).toContain("还没有存档");
+    // WO-UI-BURNDOWN-21（2026-08-14）：「怎么存一个」这句操作指引按规范 §1 降进了 `?` 浮层。
+    // 降层不是删除 ⇒ 触发后原文必须一字不少地回来。
+    await user.hover(await screen.findByTestId("info-wrap-sandbox-checkpoints-empty-how"));
+    expect((await screen.findByTestId("info-body-sandbox-checkpoints-empty-how")).textContent)
+      .toContain("点上方「存档检查点」存一个");
 
     // 存第一档（tick 0）→ 推进 → 存第二档（tick 更大）。全部走屏上的真按钮。
     await user.click(screen.getByTestId("sandbox-checkpoint-btn"));
     await waitFor(() => expect(screen.getByTestId("sandbox-checkpoints-count").textContent).toContain("1 个存档"));
+    // 「回滚会删掉该存档之后的推演」是**破坏性动作**的诚实位 —— 必须常驻第一层，
+    // 不许因为"分层"被藏进浮层（点完才发现推演没了 = 本页注释里点名要避免的那件事）。
+    expect(screen.getByTestId("sandbox-checkpoints-count").textContent).toContain("回滚会删掉该存档之后的推演");
     await user.click(screen.getByTestId("sandbox-tick-btn"));
     // `ptl-now` 是屏上那根时间轴当前 tick 的读数（来自组件 state ← tick 回包）。
     await waitFor(() => expect(Number(screen.getByTestId("ptl-now").textContent)).toBeGreaterThan(0));

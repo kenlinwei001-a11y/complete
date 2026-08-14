@@ -1129,6 +1129,20 @@ export const zh = {
          */
         candidateHow: "这条对策是怎么推出来的",
         candidateNone: "为什么这个阻滞点没有方案",
+        /**
+         * WO-UI-BURNDOWN-21（2026-08-14）· 沙盘第一层那批**成段说明**的浮层标题。
+         * 规范 §1：第一层只放「数值 / 状态 / 名字」，成段说明属浮层。
+         * 下面每一条对应的正文都是**原文照搬**下沉的（一个字没删），
+         * 第一层留下的是结论那半句 + `?` 记号 ——「静默降层等于删除」。
+         */
+        commanderHow: "AI 指挥台怎么用、它动的是什么",
+        scopeLocalReach: "选「局部」之后引擎到底裁了什么",
+        perturbAfter: "施加扰动之后会发生什么",
+        checkpointCaliber: "这份存档清单怎么排、回滚会动什么",
+        checkpointEmptyHow: "怎么存第一个档",
+        compareHow: "多场景对比怎么用",
+        compareEmptyHow: "怎么开出第一个分支",
+        commanderMovedWhy: "这一格为什么只剩一行字",
       },
       /**
        * WO-SANDBOX-CANDIDATES-FE · 候选对策区的**壳文案**。

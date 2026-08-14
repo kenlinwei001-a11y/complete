@@ -526,6 +526,38 @@ describe("§3 · 输入唯一性：主区与下区**零输入控件**（PRD §4.
     // 而扰动那条路写的是 SimSession 世界态：它的说明必须常驻，不许降层
     expect(screen.getByTestId("sandbox-perturbation-note").textContent ?? "").toContain("采纳才经 Action 正门写真值");
   });
+
+  /**
+   * WO-UI-BURNDOWN-21（2026-08-14）· 扰动说明那一段的**分层接缝**。
+   *
+   * 这条与上面那条是**一对**，缺一不可：
+   *  · 上面咬「R4 诚实位必须常驻第一层」（规范 §4.2：它为真会改变用户对整块的解读）；
+   *  · 本条咬「中间那段机制说明确实降进了浮层，且**原文一字不少**」。
+   * 只有上面那条，降层做过头把 R4 那句也藏了不会红；只有本条，把整段留在第一层也不会红。
+   */
+  it("分层接缝：扰动说明的机制部分降进 `?`，R4 那句仍在第一层，且降层不是删除", async () => {
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    const note = screen.getByTestId("sandbox-perturbation-note");
+
+    // ① 第一层：两个结论都在，中间那段机制说明**不在**。
+    expect(note.textContent ?? "").toContain("扰动作用在");
+    expect(note.textContent ?? "").toContain("采纳才经 Action 正门写真值");
+    expect(note.textContent ?? "", "机制说明还摆在第一层 ⇒ 降层没做").not.toContain("扩散到下游");
+
+    // ② `?` 记号默认可见；浮层正文默认不在 DOM。
+    //    ⚠ 用 `toBeNull()`：关着时 `queryByTestId` 返回 null，`not.toBeVisible()` 会让 jest-dom
+    //    抛 "received value must be an HTMLElement" —— 那是测试自己报错，不是判据成立。
+    expect(within(note).getByTestId("info-sandbox-perturb-after")).toBeVisible();
+    expect(screen.queryByTestId("info-body-sandbox-perturb-after")).toBeNull();
+
+    // ③ 触发后原文还在 —— 这一条才是"没删内容"的证据。
+    await user.hover(within(note).getByTestId("info-wrap-sandbox-perturb-after"));
+    const body = await screen.findByTestId("info-body-sandbox-perturb-after");
+    expect(body.textContent, "降层把这段降没了 —— 那是删除不是分层").toContain("引擎沿本体链路把它扩散到下游");
+    expect(body.textContent).toContain("填了持续 tick 数的到期还会自动回退");
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
