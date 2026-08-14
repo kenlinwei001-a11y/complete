@@ -113,9 +113,21 @@ export interface ProcessCanvasViewProps {
 /**
  * 一座站。**换乘站画双环**（与第一档同款图元），普通站单实心圈。
  *
- * 可点性：`<g role="button">` + 显式 `pointerEvents:"all"` ——
- * `<g>` 自身没有填充，不显式开 `pointer-events` 时点在圈与标签**之间**的空隙会穿透，
- * 用起来就是"有时点不中"。（这条是几何层的坑，不是样式偏好。）
+ * ── ⚠ 可点性：一个**只有真浏览器才抓得到**的坑（本单实测踩到并订正）────────────
+ * 第一版写的是 `<g role="button" style={{pointerEvents:"all"}}>`，
+ * **jsdom 里 17/17 全绿**，真浏览器里点不开检视面板（实测 playwright 超时 120s）。
+ * 根因：**SVG `<g>` 自己没有几何**，`pointer-events` 加在它身上不会凭空造出一块可点区域；
+ * 只有它的**子元素**（有 fill 的 circle / text）才参与命中测试。
+ * 而 playwright（以及"想点这个站"的人）点的是这一组的**包围盒中心** ——
+ * 那个点落在圈与下方标签**之间的空白**里，穿透过去谁也没点到。
+ *
+ * 这正是本仓「绿测试 ≠ 能用」的又一形态：**jsdom 不做命中测试**，
+ * 所以"能不能点中"这件事它根本不度量 —— 拿它的绿当作可点性的证据就是
+ * 「我用 X 当作 Y 的证据，而 X 并不度量 Y」。
+ *
+ * ⇒ 订正：显式补一块**透明命中圈**（`fill="transparent"`，注意不是 `fill="none"` ——
+ *   `none` 不接收指针事件，`transparent` 接收）。半径 `r + 8` 且封顶：
+ *   必须 < `PROC_LAYOUT.gapX / 2`，否则相邻两站的命中区会互相抢点击。
  */
 function Station({
   s,
@@ -159,6 +171,16 @@ function Station({
         }
       }}
     >
+      {/* 透明命中圈 —— 见上方注释。它必须在最前面画（在圈/字**下面**），
+          否则会盖住站圈本身，把 `:hover` 的视觉反馈也一起吃掉。 */}
+      <circle
+        className={styles.hitArea}
+        data-testid={`spc-hit-${s.key}`}
+        cx={s.x}
+        cy={s.y}
+        r={Math.min(s.r + 8, PROC_LAYOUT.gapX / 2 - 2)}
+        fill="transparent"
+      />
       {selected ? <circle className={styles.stationHalo} cx={s.x} cy={s.y} r={s.r + 6} /> : null}
       {interchange ? (
         <>
@@ -260,7 +282,8 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [transform, setTransform] = useState<ViewTransform>(IDENTITY_TRANSFORM);
   const canvasRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+  /** 拖拽态。`captured` = 是否**已经**越过阈值并设了指针捕获（见 `onPointerMove` 的长注释）。 */
+  const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number; captured: boolean } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -298,11 +321,33 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
   const stageW = model?.canvas.w ?? PROC_LAYOUT.minWidth;
   const stageH = model?.canvas.h ?? 420;
 
+  /**
+   * 适应画布。
+   *
+   * ── ⚠ 为什么要在 `fitTransform` 之后再夹一次（真浏览器实测逼出来的）──────────────
+   * `fitTransform` 一律**居中**：`y = (viewportH − contentH·k) / 2`。
+   * 当缩放被 `ZOOM_LIMITS.min`（0.4）夹住、内容仍比视口高时，这个式子是**负数** ——
+   * 于是内容被往上顶出视口，**整张图的头几条线看不见了**，而屏上没有任何迹象说它被顶走了。
+   *
+   * 真后端实测（13 条线 · 65 站）：contentH≈2509，k 夹到 0.4 ⇒ contentH·k≈1004 > 视口 ≈560
+   * ⇒ y ≈ −222，1 号线整条在视口上方。第一次跑真后端截图时正是它把「点站」打飘的
+   * （点击坐标落在画布之外），mock（5 条线）因为装得下所以从没露过 —— 又一个
+   * 「小数据集恒绿、真数据集才炸」的形态。
+   *
+   * ⇒ 处置：装得下就居中（保持原行为），**装不下就顶左对齐**并当面说一句
+   *   （`spc-fit-clamped`）—— 「缩到下限仍装不下」是一个事实，不许让它长得像"已经适应了"。
+   *   ⚠ 这里**不改** `physicalTopology.fitTransform`：那是四档共用的实现，
+   *   改它等于替另外三档做决定（本单范围边界之外）。故只在本档的调用点后夹一次。
+   */
+  const [fitClamped, setFitClamped] = useState(false);
   const doFit = useCallback(() => {
     const vp = viewportSize();
     // 量不到就退回单位变换（jsdom / 未布局 / display:none）——`fitTransform` 自己说了不假装。
-    const { transform: next } = fitTransform(vp.w, vp.h, stageW, stageH);
-    setTransform(next);
+    const { transform: next, measured } = fitTransform(vp.w, vp.h, stageW, stageH);
+    const overflowsY = stageH * next.k > vp.h + 0.5;
+    const overflowsX = stageW * next.k > vp.w + 0.5;
+    setTransform({ k: next.k, x: overflowsX ? 0 : next.x, y: overflowsY ? 0 : next.y });
+    setFitClamped(measured && (overflowsX || overflowsY));
   }, [stageH, stageW, viewportSize]);
 
   // 滚轮以光标为锚缩放：必须 non-passive 才能 preventDefault，故手绑而非 onWheel。
@@ -320,17 +365,48 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
     return () => el.removeEventListener("wheel", onWheel);
   }, [model === null]);
 
+  /**
+   * ── ⚠ 平移与「点站」冲突：一个 **jsdom 结构上抓不到** 的真 bug（本单实测踩到）──────
+   *
+   * 第一版照第一档 `ChainLineMapView` 抄了平移：`onPointerDown` 里立刻
+   * `setPointerCapture(e.pointerId)`。**jsdom 里 17/17 全绿，真浏览器里站点不开**。
+   *
+   * 根因：按 Pointer Events 规范，一旦设了指针捕获，后续 `pointerup` 与**由它合成的
+   * `click`** 都会被派发到**捕获元素**（这块画布 div），而不是指针底下的那座站 ——
+   * 于是站上的 `onClick` 永远不触发。
+   *
+   * 为什么第一档没这个毛病：它的站是 `role="img"` **不可点**（只 hover），
+   * 所以照抄它的平移不会暴露这条。**"另一个档这么写"不是"这么写对"的证据。**
+   *
+   * 为什么 jsdom 报不出来：jsdom 的 `setPointerCapture` 是个不做重定向的空实现，
+   * 「捕获会改写 click 的 target」这件事它**根本不模拟** ⇒ 这条门只能由真浏览器来把。
+   * （本单的机制就是 `shot-metro.mjs`：它在真 Chromium 里点站并断言检视面板出内容。）
+   *
+   * ⇒ 订正：**先不捕获**；等指针真的移动超过阈值，才认定这是拖拽、才捕获。
+   *   点击（位移 0）全程不进捕获态 ⇒ click 照常打到站上；
+   *   拖出画布外仍要跟手，靠越过阈值后补上的那次捕获保证。
+   */
+  const DRAG_THRESHOLD_PX = 3;
+
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
-    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: transform.x, oy: transform.y };
-    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: transform.x, oy: transform.y, captured: false };
   };
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const d = dragRef.current;
     if (!d) return;
-    setTransform((s) => ({ ...s, x: d.ox + (e.clientX - d.sx), y: d.oy + (e.clientY - d.sy) }));
+    const dx = e.clientX - d.sx;
+    const dy = e.clientY - d.sy;
+    if (!d.captured) {
+      if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return; // 还没算拖拽 —— 别捕获，留给 click
+      d.captured = true;
+      (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    }
+    setTransform((s) => ({ ...s, x: d.ox + dx, y: d.oy + dy }));
   };
-  const onPointerUp = () => {
+  const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (d?.captured) (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
     dragRef.current = null;
   };
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -436,6 +512,12 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
             <span className={styles.zoomVal} data-testid="spc-zoom-readout">
               {t.zoomReadout(transform.k)}
             </span>
+            {/* 缩到下限仍装不下 —— 说出来，别让它长得像"已经适应了" */}
+            {fitClamped ? (
+              <span className={styles.fitClamped} data-testid="spc-fit-clamped">
+                {t.fitClamped}
+              </span>
+            ) : null}
           </div>
 
           <section className={styles.legend} data-testid="spc-legend" role="note">

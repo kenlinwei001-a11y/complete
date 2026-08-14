@@ -74,6 +74,11 @@
   min-width: 42px;
   text-align: right;
 }
+/* 「缩到下限仍装不下」—— 诚实位，不是错误，故用提示色不用告警色。 */
+.fitClamped {
+  font-size: 10px;
+  color: var(--amber);
+}
 
 /* ── 轨（连线）────────────────────────────────────────────────────────────
    🔴 **虚线是诚实位**：端点没下发流程间先后（processCanvas.ts 文件头 §0），
@@ -90,6 +95,13 @@
 /* ── 站 ───────────────────────────────────────────────────────────────────── */
 .station {
   cursor: pointer;
+}
+/* 透明命中圈：把「点在圈边上一点点」也算点中。
+   ⚠ `fill` 由组件写成属性 `fill="transparent"`（**不是** `none`：none 不接收指针事件）。
+   这里只负责确保它确实参与命中测试，且不画任何可见描边。 */
+.hitArea {
+  stroke: none;
+  pointer-events: all;
 }
 .station:focus-visible {
   outline: none;

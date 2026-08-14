@@ -779,6 +779,8 @@ export const zh = {
         zoomOut: "缩小",
         fit: "适应画布",
         zoomReadout: (k: number) => `${Math.round(k * 100)}%`,
+        /** 缩到下限仍装不下：是事实就说出来，不许让它长得像「已经适应了」。 */
+        fitClamped: "已缩到下限仍装不下 ⇒ 顶左对齐，拖拽/滚轮看其余部分",
         canvasLabel: "业务流程线路图（可缩放平移；站可点，点开右栏出完整本体关系）",
         /** 右栏：本档的检视面板标题与未选中提示。 */
         inspectTitle: "流程检视 · 完整本体关系",
