@@ -26,8 +26,9 @@
  * 节点视图模型，也**不写**任何 `nodeId`。
  *
  * ⚠ **本轮新增的 import 边界说明（别读成"两层合并了"）**：本文件现在从 `chainLineMap.ts`
- *   import 了一批符号，但**只取几何**（`METRO_LAYOUT` / `STATION_RADIUS` / `metroRowPlan` /
- *   `metroSlotPoint` / `estimateLabelWidth` / `labelBoxesOverlap`）——
+ *   import 了 6 个符号，**逐个都是几何**，一个不多：
+ *   `METRO_LAYOUT`（版面常量）· `STATION_RADIUS`（半径上下夹取）· `metroRowPlan`（折行方案）·
+ *   `estimateLabelWidth`（纯函数估字宽）· `labelBoxesOverlap`（包围盒相交）· `LabelBox`/`MetroRowPlan`（类型）。
  *   那些是**画布坐标算法**，与「链路节拍层有哪 24 个节点」毫无关系。
  *   本文件**一个** `StationVM` / `ChainLineMap` / `ChainStage` / `stepId` 都没 import，
  *   一个 `nodeId` 都不读、不显示、不映射。判据仍由下面 §2 的交集函数现算并画到屏上。

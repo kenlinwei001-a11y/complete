@@ -40,9 +40,11 @@ import styles from "./ProcessCanvasView.module.css";
  * 站圈（大小 ∝ 一个数）· 连线 · 换乘双环 · 折返标记 · 图例 · 缩放/平移。
  *
  * ⚠ **没有引第二套 SVG 方案**：缩放/平移直接 import `physicalTopology.ts` 的
- *   `fitTransform` / `zoomAt` / `zoomCenter` / `ViewTransform`（与第一档同一份实现、
- *   同一套锚点语义与上下限，一行没抄）；版面几何与折行算法 import `chainLineMap.ts`
- *   的 `METRO_LAYOUT` / `STATION_RADIUS` / `metroRowPlan`（经 `processCanvas.ts` 转发）。
+ *   `fitTransform` / `zoomAt` / `zoomCenter` / `ZOOM_STEP` / `IDENTITY_TRANSFORM` / `ViewTransform`
+ *   （与第一档同一份实现、同一套锚点语义与上下限，一行没抄）；版面几何与折行算法在
+ *   `processCanvas.ts` 里 import 自 `chainLineMap.ts`（`METRO_LAYOUT` / `STATION_RADIUS` /
+ *   `metroRowPlan` / `estimateLabelWidth` / `labelBoxesOverlap`）。本文件另直接取一个
+ *   `STATION_RADIUS`（画折返标记的纵向让位），仅此一处。
  *
  * ── ⛔ 两层不许混（本档的结构红线）────────────────────────────────────────────
  * 本组件**不 import** 任何节拍层的**视图模型**，**不产生也不消费 `nodeId`**，
