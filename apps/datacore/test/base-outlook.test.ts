@@ -4,9 +4,9 @@ import type { AuthCtx } from "../src/domain.js";
 
 /**
  * WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演（接缝驱动组合测·数据×引擎×渲染·SEAM-GATE）。
- * 种 battery 真对象（Base/Line.capacityDaily/WorkOrder.qtyActual/Order.due/DemandSegment.p50）→
+ * 种 battery 真对象（Base/Line.capacityDaily/WorkOrder.qtyActual/Order.due/DemandSegment.demandWanPerYearP50）→
  * invoke base_capacity_outlook({baseId}) → 断言四线齐 + 缺口标记 + provenance(R13) + P1 逐日 rationale；
- * 改颗粒（Order.due 移出窗 / DemandSegment.p50）→ 前瞻真变（非写死·绿测试≠能用·亲验）。
+ * 改颗粒（Order.due 移出窗 / DemandSegment.demandWanPerYearP50）→ 前瞻真变（非写死·绿测试≠能用·亲验）。
  */
 const ADMIN: AuthCtx = { tenantId: "demo", userId: "u", roles: ["admin"], attributes: {} };
 
@@ -42,7 +42,7 @@ describe("WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演", () =>
     }
     expect(lineOf(h30, "available").value).toBeGreaterThan(0);
     expect(lineOf(h30, "futureOrders").value).toBeGreaterThan(0); // changzhou 首基地订单真落窗
-    expect(lineOf(h30, "salesForecast").value).toBeGreaterThan(0); // DemandSegment.p50×1e4 摊窗
+    expect(lineOf(h30, "salesForecast").value).toBeGreaterThan(0); // DemandSegment.demandWanPerYearP50×1e4 摊窗
 
     // ③ 缺口/富余标记（gap=available−(在产+未来)·status 真判·非写死）。
     expect(["缺口", "富余", "平衡"]).toContain(h30.status);
@@ -55,7 +55,7 @@ describe("WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演", () =>
     expect(lineOf(h30, "inProduction").provenance.drillType).toBe("WorkOrder");
     expect(lineOf(h30, "futureOrders").provenance.drillType).toBe("Order");
     expect(lineOf(h30, "salesForecast").provenance.drillType).toBe("DemandSegment");
-    expect(lineOf(h30, "salesForecast").provenance.drillField).toBe("p50");
+    expect(lineOf(h30, "salesForecast").provenance.drillField).toBe("demandWanPerYearP50");
 
     // ⑤ P1 逐日行动过程（缺口窗 → dayPlan 每条补 rationale：触发缺口值 + 收窄量 + provenance 溯源·R13）。
     expect(g.dayPlan.length).toBeGreaterThan(0);
@@ -89,14 +89,14 @@ describe("WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演", () =>
     expect(beforeFuture - after.futureOrders).toBeCloseTo(movedQty, 2); // 恰降该单量（勾稽）
   });
 
-  it("SEAM 改颗粒：DemandSegment.p50 上调 → salesForecast 真升（销售预测线随预测真变）", async () => {
+  it("SEAM 改颗粒：DemandSegment.demandWanPerYearP50 上调 → salesForecast 真升（销售预测线随预测真变）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const before = lineOf((await run(t, { baseId: "changzhou", horizon: 90 })).horizons[0]!, "salesForecast").value;
 
     const segObjs = await t.repos.objects.listByType("demo", "DemandSegment");
     const seg = segObjs[0]!;
-    seg.props.p50 = Number(seg.props.p50) + 500; // 上调 P50
+    seg.props.demandWanPerYearP50 = Number(seg.props.demandWanPerYearP50) + 500; // 上调 P50
     await t.repos.objects.put(seg);
 
     const after = lineOf((await run(t, { baseId: "changzhou", horizon: 90 })).horizons[0]!, "salesForecast").value;

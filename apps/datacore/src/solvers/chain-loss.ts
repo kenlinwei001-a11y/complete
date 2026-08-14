@@ -366,9 +366,9 @@ const STRUCTURAL_GAPS: readonly StructuralGap[] = [
     label: "客户预告接收",
     kind: "handoff",
     reason:
-      "「把客户滚动预告变成系统里的需求信号」这段的时长无承载。仓里**有**两个看着相关的对象、但都不带时刻/时长：LongTermAgreement 只有 contractedQtyTon/actualDeliveredTon/priceFormula/effectiveDate/expiryDate（**合同有效期**，不是预告刷新间隔）；DemandSegment 只有 tgt/p50/p90/act/priceWan/marginPct/floorPct（**量**，不是时刻）。缺的是「客户每次刷新预告的时刻序列」或「预告录入到进入需求计划的时长」这一个字段——加字段能补，造对象不必。",
+      "「把客户滚动预告变成系统里的需求信号」这段的时长无承载。仓里**有**两个看着相关的对象、但都不带时刻/时长：LongTermAgreement 只有 contractedQtyTon/actualDeliveredTon/priceFormula/effectiveDate/expiryDate（**合同有效期**，不是预告刷新间隔）；DemandSegment 只有 tgt/demandWanPerYearP50/demandWanPerYearP90/act/priceWan/marginPct/floorPct（**量**，不是时刻）。缺的是「客户每次刷新预告的时刻序列」或「预告录入到进入需求计划的时长」这一个字段——加字段能补，造对象不必。",
     probe:
-      "实测（seed 42·内存仓）：listByType('LongTermAgreement') n=3，首行字段 ltaId/supplierId/materialType/contractedQtyTon/actualDeliveredTon/priceLinked/breachPenaltyWan/priceFormula/effectiveDate/expiryDate 逐个核过；listByType('DemandSegment') n=3，字段 segId/segment/tgt/p50/p90/act/priceWan/marginPct/floorPct/businessType/revenueWan/marginWan。两者均无时刻序列、无时长字段。",
+      "实测（seed 42·内存仓）：listByType('LongTermAgreement') n=3，首行字段 ltaId/supplierId/materialType/contractedQtyTon/actualDeliveredTon/priceLinked/breachPenaltyWan/priceFormula/effectiveDate/expiryDate 逐个核过；listByType('DemandSegment') n=3，字段 segId/segment/tgt/demandWanPerYearP50/demandWanPerYearP90/act/priceWan/marginPct/floorPct/businessType/revenueWan/marginWan。两者均无时刻序列、无时长字段。",
   },
   {
     stepId: "demand.quote#approval",

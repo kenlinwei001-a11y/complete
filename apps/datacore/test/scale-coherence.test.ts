@@ -39,9 +39,9 @@ describe("WO-SCALE-COHERENCE · 五层尺度自洽四方互核（SEAM）", () =>
     // A(物理→量·万套) = Σ Base.gwh×1e6/packEnergyKwh × util/100
     const A = bases.reduce((s, b) => s + (num(b.props.gwh) * 1e6) / packEnergyKwh * (num(b.props.util) / 100), 0) / 1e4;
 
-    // B(需求量·万套) = Σ DemandSegment.p50 ; P̄ = Σ(p50×priceWan)/Σp50
-    const B = segs.reduce((s, d) => s + num(d.props.p50), 0);
-    const R_demand = segs.reduce((s, d) => s + num(d.props.p50) * num(d.props.priceWan), 0); // ≈700
+    // B(需求量·万套/年) = Σ DemandSegment.demandWanPerYearP50 ; P̄ = Σ(demandWanPerYearP50×priceWan)/ΣdemandWanPerYearP50
+    const B = segs.reduce((s, d) => s + num(d.props.demandWanPerYearP50), 0);
+    const R_demand = segs.reduce((s, d) => s + num(d.props.demandWanPerYearP50) * num(d.props.priceWan), 0); // ≈700
     const Pbar = R_demand / B; // 万元/套
 
     // C(产能量·万套) = Σ capacity_rollup.bases.weeklyWan × 52（真调求解器·capacity_forecast 内部同源 computeRollup）

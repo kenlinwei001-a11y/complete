@@ -235,15 +235,15 @@ function assemble(input: PortfolioInput): Assembled {
     maxDueDay = Math.max(maxDueDay, dueDay);
   }
 
-  // ③ 预测 DemandSegment（p50 万套 ×1e4 归一为套·G-UNIT-NORMALIZE·纯单位换算非业务常数）。
+  // ③ 预测 DemandSegment（demandWanPerYearP50 万套/年 ×1e4 归一为套·G-UNIT-NORMALIZE·纯单位换算非业务常数）。
   // 预测无交期锚 → dueDay = 订单/在产的规划视界末（maxDueDay·不外推 180 天免时间窗爆炸），eligibleBases 兜底全基地。
   const forecastDueDay = Math.max(maxDueDay, windowDays);
   const segSorted = [...input.demandSegments].sort((a, b) => str(a.segId).localeCompare(str(b.segId)));
   for (const d of segSorted) {
-    const p50Wan = num(d.p50);
+    const p50Wan = num(d.demandWanPerYearP50);
     if (p50Wan <= 0) continue;
     const qty = Math.round(p50Wan * 1e4);
-    items.push({ id: `FC:${str(d.segId)}`, kind: "forecast", qty, model: str(d.segment), customer: "预测", dueDay: forecastDueDay, dueWindow: 0, eligibleBases: allBaseIds.slice(), homeBase: allBaseIds[0] ?? "", drillType: "DemandSegment", drillField: "p50" });
+    items.push({ id: `FC:${str(d.segId)}`, kind: "forecast", qty, model: str(d.segment), customer: "预测", dueDay: forecastDueDay, dueWindow: 0, eligibleBases: allBaseIds.slice(), homeBase: allBaseIds[0] ?? "", drillType: "DemandSegment", drillField: "demandWanPerYearP50" });
   }
 
   // ④ G-VAR-2 · 最终交期扩视界：finalDueDays 可把某单最晚交付推到默认视界外 → 纳入 maxDueDay 令 numWindows 覆盖
@@ -806,7 +806,7 @@ function kpiOf(
   const servedQty = allocation.reduce((s, x) => s + x.qty, 0);
   // ── R18 口径显式标注（WO-UNITPRICE-SCALE 取证结论）──
   // `avgUnitPrice` 单位 = **万元/套**，**不是** `Order.unitPrice` 的 元/套。缺省 1.8 万元/套 = 18000 元/套，
-  // 与需求加权均价 P̄ = Σ(p50×priceWan)/Σp50 ≈ 1.8667 万元/套（`synthetic/service.ts` 断裂点D）及
+  // 与需求加权均价 P̄ = Σ(demandWanPerYearP50×priceWan)/ΣdemandWanPerYearP50 ≈ 1.8667 万元/套（`synthetic/service.ts` 断裂点D）及
   // `SEG_REGISTRY.priceWan`（乘 2.2 / 商 1.8 / 储 1.4 万元/套）**同一业务口径 · 仅单位不同**。
   // ⚠ 与 `solvers/service.ts orderVal` 的 `num(o.unitPrice)`（元/套·量加权均值 18471）看着差 ~30×，那是 元↔万元
   // 的单位差**不是**量纲冲突——**严禁**后人把两处"对齐"成同一个数（对齐即真炸：营收/毛利错 1e4 或 30×）。
@@ -1083,7 +1083,7 @@ export async function globalSimOptimize(
     const variance = orderCount ? qtys.reduce((s, q) => s + (q - mean) ** 2, 0) / orderCount : 0;
     const cv = mean > 0 ? Math.sqrt(variance) / mean : 0;
     const earlyDeliveryCount = typeOrders.filter((o) => o.early === true).length;
-    const forecastQty = input.demandSegments.filter((d) => businessTypeOfSegmentObj(d) === bt).reduce((s, d) => s + Math.round(num(d.p50) * 1e4), 0);
+    const forecastQty = input.demandSegments.filter((d) => businessTypeOfSegmentObj(d) === bt).reduce((s, d) => s + Math.round(num(d.demandWanPerYearP50) * 1e4), 0);
     const typeBases = new Set<string>();
     for (const o of typeOrders) for (const b of eligibleBasesOf(o)) typeBases.add(b);
     const weight = regime[bt]?.dedicationWeight ?? 1;
@@ -1095,7 +1095,7 @@ export async function globalSimOptimize(
       earlyDeliveryCount, orderQtyMean: round(mean, 2), orderQtyCv: round(cv, 4),
       capacityAnnual, demandAnnual, capacityUtil: capacityAnnual > 0 ? round(demandAnnual / capacityAnnual, 4) : 0,
       allocatedQty: allocByType.get(bt) ?? 0, displacedQty: dispByType.get(bt) ?? 0,
-      provenance: { kind: "派生", drillType: "DemandSegment", drillId: bt, drillField: "p50", drillValue: forecastQty, mockNote: null },
+      provenance: { kind: "派生", drillType: "DemandSegment", drillId: bt, drillField: "demandWanPerYearP50", drillValue: forecastQty, mockNote: null },
     };
   });
 

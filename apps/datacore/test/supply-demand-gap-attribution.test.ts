@@ -5,7 +5,7 @@ import type { AuthCtx } from "../src/domain.js";
 /**
  * WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因（挡假推演·绿测试≠能用）。
  * C1 双向(demandSide⊥supplySide+residual+各端叶) · C2 勾稽(需求端+供给端+residual=总缺口≤1e-4·亲验非只信标志)
- * · C3 颗粒①(改 DemandSegment.p50→需求端占比变) · C4 颗粒②(改 Equipment.oee_current→供给端占比变)
+ * · C3 颗粒①(改 DemandSegment.demandWanPerYearP50→需求端占比变) · C4 颗粒②(改 Equipment.oee_current→供给端占比变)
  * · C5 叶级真值(drillType/drillField/drillValue 齐) · C6 双向敏感(需求虚高 vs 供给不足→占比明显不同·非五五开)
  * · C7 R6(两跑 deep-equal) · C8 端到端(solver.invoke 一次真输出)。
  */
@@ -57,10 +57,10 @@ describe("WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因", 
   it("WO-Q7-RECONCILED-ROBUST C1：需求虚高 7 叶（p50×5+5000）→ reconciled=true·端内Σ叶==端贡献（治舍入伪影·red-bite）", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    // q7 dist 口径：所有 DemandSegment.p50 ×5 +5000 → 需求端 ~7 叶，逐叶 round(,4) 累积 >1e-4 会误报 reconciled=false。
+    // q7 dist 口径：所有 DemandSegment.demandWanPerYearP50 ×5 +5000 → 需求端 ~7 叶，逐叶 round(,4) 累积 >1e-4 会误报 reconciled=false。
     const segs = await t.repos.objects.listByType(ADMIN.tenantId, "DemandSegment");
     for (const seg of segs) {
-      await t.repos.objects.put({ ...seg, props: { ...seg.props, p50: Number(seg.props.p50) * 5 + 5000 } });
+      await t.repos.objects.put({ ...seg, props: { ...seg.props, demandWanPerYearP50: Number(seg.props.demandWanPerYearP50) * 5 + 5000 } });
     }
     const g = await run(t);
     // 末叶余额分摊 → 端内 Σ叶 == 端贡献（浮点精确·非 ≤1e-4 容差侥幸）。
@@ -74,13 +74,13 @@ describe("WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因", 
     expect(Math.abs(g.demandSide!.contribution + g.supplySide!.contribution + g.residual - g.totalGap)).toBeLessThanOrEqual(1e-4);
   });
 
-  it("C3 颗粒铁律①（需求）：改一个 DemandSegment.p50 → 需求端占比变（前后 diff）", async () => {
+  it("C3 颗粒铁律①（需求）：改一个 DemandSegment.demandWanPerYearP50 → 需求端占比变（前后 diff）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const before = await run(t);
     const segs = await t.repos.objects.listByType(ADMIN.tenantId, "DemandSegment");
     const seg = segs[0]!;
-    await t.repos.objects.put({ ...seg, props: { ...seg.props, p50: Number(seg.props.p50) * 3 + 999 } });
+    await t.repos.objects.put({ ...seg, props: { ...seg.props, demandWanPerYearP50: Number(seg.props.demandWanPerYearP50) * 3 + 999 } });
     const after = await run(t);
     expect(after.demandSide!.pct).not.toBe(before.demandSide!.pct); // 需求端占比真变（不变=写死）
     expect(after.reconciled).toBe(true); // 改颗粒后归因自洽
@@ -113,11 +113,11 @@ describe("WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因", 
   });
 
   it("C6 双向敏感：需求虚高 vs 供给不足 → 两侧占比明显不同（引擎真分·非固定五五开）", async () => {
-    // 场景A 需求虚高：放大 DemandSegment.p50（预测偏差/漂移激增）→ 需求端占比应显著高。
+    // 场景A 需求虚高：放大 DemandSegment.demandWanPerYearP50（预测偏差/漂移激增）→ 需求端占比应显著高。
     const ta = await makeApp();
     await seedBattery(ta);
     for (const s of await ta.repos.objects.listByType(ADMIN.tenantId, "DemandSegment"))
-      await ta.repos.objects.put({ ...s, props: { ...s.props, p50: Number(s.props.p50) * 5 + 5000 } });
+      await ta.repos.objects.put({ ...s, props: { ...s.props, demandWanPerYearP50: Number(s.props.demandWanPerYearP50) * 5 + 5000 } });
     const a = await run(ta);
     // 场景B 供给不足：OEE 塌 + 物料缺口放大 → 供给端占比应显著高。
     const tb = await makeApp();

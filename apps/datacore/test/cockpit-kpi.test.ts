@@ -16,7 +16,7 @@ describe("cockpit P1 · 富 KPI 数据闭环（L1 + L6）", () => {
     expect(a.financePlans.length).toBe(3);
     // 财务"毛利"线 rolling = Σ(需求×单价×毛利率)（交叉一致，非写死）
     const gm = a.financePlans.find((f) => f.line === "毛利")!;
-    const expectGm = Math.round(a.demandSegments.reduce((s, d) => s + (d.p50 as number) * (d.priceWan as number) * (d.marginPct as number) / 100, 0) * 10) / 10;
+    const expectGm = Math.round(a.demandSegments.reduce((s, d) => s + (d.demandWanPerYearP50 as number) * (d.priceWan as number) * (d.marginPct as number) / 100, 0) * 10) / 10;
     expect(gm.rolling).toBe(expectGm);
   });
 
@@ -31,7 +31,7 @@ describe("cockpit P1 · 富 KPI 数据闭环（L1 + L6）", () => {
     // 派生 marginWan 已回写（runDerivations）：= p50×priceWan×marginPct/100
     const r0 = rows[0]!.props;
     expect(typeof r0.marginWan).toBe("number");
-    expect(r0.marginWan as number).toBeCloseTo((r0.p50 as number) * (r0.priceWan as number) * (r0.marginPct as number) / 100, 1);
+    expect(r0.marginWan as number).toBeCloseTo((r0.demandWanPerYearP50 as number) * (r0.priceWan as number) * (r0.marginPct as number) / 100, 1);
     expect(typeof r0.revenueWan).toBe("number");
 
     // 富 KPI 经聚合下推算出（不是前端写死）
@@ -39,7 +39,7 @@ describe("cockpit P1 · 富 KPI 数据闭环（L1 + L6）", () => {
       const agg = await t.app.inject({ method: "POST", url: "/a/v1/objects/aggregate", headers: ADMIN, payload: { typeKey, groupBy: [], metrics: [{ prop, fn: "sum" }] } });
       return ((agg.json() as { rows: { metrics: Record<string, number> }[] }).rows[0]?.metrics[`sum_${prop}`]) ?? 0;
     };
-    expect(await sum("DemandSegment", "p50")).toBeGreaterThan(0); // 需求 P50 KPI
+    expect(await sum("DemandSegment", "demandWanPerYearP50")).toBeGreaterThan(0); // 需求 P50 KPI
     expect(await sum("DemandSegment", "marginWan")).toBeGreaterThan(0); // 毛利总额 KPI（派生聚合）
     expect(await sum("MaterialBalance", "gapTon")).toBeGreaterThanOrEqual(0); // 物料缺口 KPI
     expect(await sum("FinancePlan", "budget")).toBeGreaterThan(0); // 财务预算 KPI

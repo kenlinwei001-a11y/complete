@@ -58,7 +58,7 @@ export const RECORD_MATERIALIZE_TEMPLATES: Record<
     targetType: "DemandSegment",
     primaryKeyColumn: "segId",
     columnMapping: {
-      segId: "segId", segment: "segment", tgt: "tgt", p50: "p50", p90: "p90", act: "act",
+      segId: "segId", segment: "segment", tgt: "tgt", p50: "demandWanPerYearP50", p90: "demandWanPerYearP90", act: "act",
       priceWan: "priceWan", marginPct: "marginPct", floorPct: "floorPct",
     },
   },

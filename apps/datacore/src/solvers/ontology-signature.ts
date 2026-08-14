@@ -174,11 +174,11 @@ export const SOLVER_ONTOLOGY_SIGNATURES: Record<string, SolverOntologySignature>
     ],
   },
 
-  /** finance_pnl：FinancePlan 三线 + DemandSegment p50。属性实现固定 → 精确。 */
+  /** finance_pnl：FinancePlan 三线 + DemandSegment demandWanPerYearP50。属性实现固定 → 精确。 */
   finance_pnl: {
     reads: [
       { typeKey: "FinancePlan", propKeys: ["budget", "line", "rolling"] },
-      { typeKey: "DemandSegment", propKeys: ["p50", "segment"] },
+      { typeKey: "DemandSegment", propKeys: ["demandWanPerYearP50", "segment"] },
     ],
   },
 

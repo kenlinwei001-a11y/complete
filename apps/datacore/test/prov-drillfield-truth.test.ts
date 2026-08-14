@@ -428,7 +428,7 @@ describe("WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 →
 
     // ── 覆盖地板（**只是覆盖清单·不是验证逻辑**·验证逻辑一如既往现查本体）──────────
     //   作用：某个叶悄悄消失时**点名**报出来，而不是让计数悄悄降到还够格的水位。
-    for (const tf of ["Order.qty", "Line.capacityDaily", "MaterialBalance.gapTon", "Equipment.oee_current", "DemandSegment.p50"]) {
+    for (const tf of ["Order.qty", "Line.capacityDaily", "MaterialBalance.gapTon", "Equipment.oee_current", "DemandSegment.demandWanPerYearP50"]) {
       expect(env.typeFieldSeen.has(tf), `供需双向归因应覆盖到 ${tf} 这一叶（不见了 = 叶消失或换了字段，需当场解释）`).toBe(true);
     }
   }, 300_000);

@@ -225,11 +225,11 @@ export const SOLVER_KEYS = [
   // WO-SOP-RESCHEDULE 产销重排推演：目标订单+新交期→跨基地拆产/挤占同型号在手单/被挤单延期/换型加班延误代价，
   // 落到基地×订单×日执行方案（确定性 R6·勾稽 Σalloc+residual==qty·每值 provenance R13）。
   "sop_reschedule",
-  // WO-PORTFOLIO-OPTIMAL 全订单×全基地×时间 联合最优组合：全 OPEN 订单+在产 WorkOrder+DemandSegment.p50 三源归一
+  // WO-PORTFOLIO-OPTIMAL 全订单×全基地×时间 联合最优组合：全 OPEN 订单+在产 WorkOrder+DemandSegment.demandWanPerYearP50 三源归一
   // 联合需求→跨基地×窗口 CP-SAT 求最优（Σ_i qty·x[i,b,t]≤cap[b,t] 共享产能守恒·防重复占用）+ 冻结子集 + ≥2方案量化利弊。
   "portfolio",
   // WO-B / F1 每基地前瞻产能推演：per-base × horizon∈{30,60,90} 四线（可用产能 Line.capacityDaily×(1−util/100)
-  // ⊥ 在产占用 WorkOrder.qtyActual ⊥ 未来订单 Order.due 落窗 ⊥ 销售预测 DemandSegment.p50×1e4）+ 缺口/富余标记 +
+  // ⊥ 在产占用 WorkOrder.qtyActual ⊥ 未来订单 Order.due 落窗 ⊥ 销售预测 DemandSegment.demandWanPerYearP50×1e4）+ 缺口/富余标记 +
   // P1 行动计划逐日过程（触发缺口→贪心补→收窄·每步 provenance）。forecastStart 时间锚·系数 RuleEntry.params（R6/R13/R14）。
   "base_capacity_outlook",
   // WO-Phase3-B 薄层本体遍历求解器（净室通用·join≠compute）：包装现有 planSlice(rootType→targetType 最短路)
@@ -2807,12 +2807,12 @@ export class SolverService {
   /**
    * WO-CEO-Q7 · supply_demand_gap_attribution 供需失衡双向归因（纯推演·真新·非 gap_attribution 单向结构分摊）。
    * 总缺口 G = Σ_ver max(0, demand−supply)（SopVersionRow 产销缺口）→ **双向**分摊：
-   *   需求端(预测偏差 Σ|p50−act| / 在手订单 ΣOPEN.qty / 结构漂移 Σmax(0,p50−tgt)) ⊥
+   *   需求端(预测偏差 Σ|demandWanPerYearP50−act| / 在手订单 ΣOPEN.qty / 结构漂移 Σmax(0,demandWanPerYearP50−tgt)) ⊥
    *   供给端(产能缺口 max(0,需求−Σ产能) / 物料缺口 ΣgapTon折算 / 设备OEE损失 Σ(1−oee)×产能 / 换型损失)。
    * 两侧驱动值各 Σ（真颗粒·万套等效）→ 需求端贡献=G×explained×Σd/T · 供给端贡献=G×explained×Σs/T ·
    * residual=G×(1−explained) → **需求端+供给端+residual=G（构造上硬勾稽·C2 浮点≤1e-4）**。
    * 端内二级按叶驱动占比分摊，每叶 provenance 带 drillType/drillField/drillValue（C5）。
-   * 占比由真颗粒派生：改 DemandSegment.p50 → 需求端占比变（C3）；改 Equipment.oee_current / Line 产能 → 供给端变（C4）。
+   * 占比由真颗粒派生：改 DemandSegment.demandWanPerYearP50 → 需求端占比变（C3）；改 Equipment.oee_current / Line 产能 → 供给端变（C4）。
    * KILL-MOCK-RED：无 S&OP 产销数据 → 诚实空（不编五五开·C6）。R6：排序稳定 + 无时钟/随机。
    * 归因系数 explained / matTonToWan 一等 RuleEntry.params（R14·改系数即改归因）。
    */
@@ -2846,10 +2846,10 @@ export class SolverService {
     // ── 需求端驱动（真颗粒·万套等效）──
     const demandDrv: Drv[] = [];
     for (const s of segs) {
-      const bias = round(Math.abs(num(s.p50) - num(s.act)), 4);
+      const bias = round(Math.abs(num(s.demandWanPerYearP50) - num(s.act)), 4);
       if (bias > 0) demandDrv.push({ id: `seg_bias:${str(s.segId)}`, factor: `${str(s.segment)} 预测偏差 |P50−实际|`, driver: bias,
-        prov: { kind: "实测", drillType: "DemandSegment", drillId: str(s.segId), drillField: "p50", drillValue: num(s.p50) } });
-      const drift = round(Math.max(0, num(s.p50) - num(s.tgt)), 4);
+        prov: { kind: "实测", drillType: "DemandSegment", drillId: str(s.segId), drillField: "demandWanPerYearP50", drillValue: num(s.demandWanPerYearP50) } });
+      const drift = round(Math.max(0, num(s.demandWanPerYearP50) - num(s.tgt)), 4);
       if (drift > 0) demandDrv.push({ id: `seg_drift:${str(s.segId)}`, factor: `${str(s.segment)} 需求超目标漂移`, driver: drift,
         prov: { kind: "实测", drillType: "DemandSegment", drillId: str(s.segId), drillField: "tgt", drillValue: num(s.tgt) } });
     }
@@ -2981,7 +2981,7 @@ export class SolverService {
   /**
    * WO-PORTFOLIO-OPTIMAL · portfolio 全订单×全基地×时间 联合最优组合推演（G-PORTFOLIO-LOCAL-ONLY 闭）。
    * 照 sop_reschedule/atp_check 兄弟模式：invoke if 链拦截、私有方法内 inline listByType 读三源需求
-   * （Order OPEN + 在产 WorkOrder + DemandSegment.p50×1e4）+ Base/Line/ChangeoverMatrix，forecastStart 时间锚
+   * （Order OPEN + 在产 WorkOrder + DemandSegment.demandWanPerYearP50×1e4）+ Base/Line/ChangeoverMatrix，forecastStart 时间锚
    * （禁 Date.now·R6），系数走 PUBLISHED RuleEntry `portfolio_optimize_coeffs`.params（R14·缺省诚实兜底），
    * 委派纯算法 runPortfolioOptimize（跨基地×窗口 CP-SAT 共享产能守恒·多方案量化利弊）。未接入 → 显式报错不兜底。
    */
@@ -3959,8 +3959,8 @@ export class SolverService {
     const rollPct = rev && num(rev.rolling) ? round(num(gm?.rolling) / num(rev.rolling) * 100, 1) : 0;
     // 结构归因：储能细分占比 vs 预算（拉低毛利率主因）。
     const dsegs = (await this.repos.objects.listByType(ctx.tenantId, "DemandSegment")).map((o) => o.props);
-    const totalP50 = dsegs.reduce((s, d) => s + num(d.p50), 0) || 1;
-    const essShare = round((num(dsegs.find((d) => str(d.segment) === "储能")?.p50) / totalP50) * 100, 0);
+    const totalP50 = dsegs.reduce((s, d) => s + num(d.demandWanPerYearP50), 0) || 1;
+    const essShare = round((num(dsegs.find((d) => str(d.segment) === "储能")?.demandWanPerYearP50) / totalP50) * 100, 0);
     return {
       pnl,
       gmRow: { subject: "毛利率", budgetPct, rollPct, diffPp: round(rollPct - budgetPct, 1) },

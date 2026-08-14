@@ -11,7 +11,7 @@ import { crossBaseLeadOf, outsourceLeadOf } from "./decision-info.js";
  *   ① 可用产能   available   = Σ Base.Line.capacityDaily×(1−util/100) × 窗口天（复用 sop/capacity 同款空闲产能口径）
  *   ② 在产订单占用 inProduction = 未完工 WorkOrder.qtyActual 铺到窗（× 窗口/参照期）
  *   ③ 未来订单   futureOrders = Order.due 落在窗内（首基地=本基地）的 Σqty
- *   ④ 销售预测   salesForecast = ΣDemandSegment.p50×1e4 按基地产能占比 × 窗口/年 摊到窗
+ *   ④ 销售预测   salesForecast = ΣDemandSegment.demandWanPerYearP50×1e4 按基地产能占比 × 窗口/年 摊到窗
  * → 缺口/富余标记（gap=available−(在产+未来)）+ crossDay（累计需求首越可用产能日）。
  *
  * P1 · 行动计划逐日过程：缺口窗内产 dayPlan——每条日行动补 rationale（该日为何做此动作：触发越线缺口值
@@ -146,8 +146,8 @@ export function baseCapacityOutlook(input: BaseOutlookInput): BaseOutlookResult 
     .filter((o) => (Array.isArray(o.bases) ? String((o.bases as unknown[])[0] ?? "") : "") === baseId)
     .map((o) => ({ so: str(o.so), qty: num(o.qty), dueDay: dayFrom(forecastStart, str(o.due)), status: str(o.status) }));
 
-  // ④ 销售预测（ΣDemandSegment.p50×1e4·基地产能占比）。
-  const p50TotalWan = round(segments.reduce((a, s) => a + num(s.p50), 0), 4); // 万
+  // ④ 销售预测（ΣDemandSegment.demandWanPerYearP50×1e4·基地产能占比）。
+  const p50TotalWan = round(segments.reduce((a, s) => a + num(s.demandWanPerYearP50), 0), 4); // 万套/年
   const forecastUnitsAnnual = round(p50TotalWan * 1e4 * baseShare, 2); // 套/年（本基地份额）
 
   const buildHorizon = (H: number): HorizonOutlook => {
@@ -185,7 +185,7 @@ export function baseCapacityOutlook(input: BaseOutlookInput): BaseOutlookResult 
         key: "salesForecast",
         label: "销售预测",
         value: salesForecast,
-        provenance: { kind: "派生", drillType: "DemandSegment", drillId: "p50", drillField: "p50", drillValue: p50TotalWan },
+        provenance: { kind: "派生", drillType: "DemandSegment", drillId: "*", drillField: "demandWanPerYearP50", drillValue: p50TotalWan },
       },
     ];
 
