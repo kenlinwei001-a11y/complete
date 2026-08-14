@@ -236,7 +236,10 @@ describe("WO-DECISION-INFO-FE · ② 不作为后果（不管会怎样）", () =
     fireEvent.click(await screen.findByTestId("risk-card-乙基地"));
 
     const pen = await screen.findByTestId("donothing-penalty-乙基地");
-    expect(pen).toHaveTextContent("本平台未承载违约金口径");
+    // 2026-08-14 分层（`docs/CONVENTION-ui-information-layering.md` §1 / R-UI-3）：
+    // 「未承载违约金**口径**」那半句是**口径**，已降进 `?` 浮层（见本文件末尾的降层接缝测试）；
+    // 第一层保留的是结论本身 ——「未承载」。**断言反转记账**：这不是把红改绿，是判据跟着层走。
+    expect(pen).toHaveTextContent("本平台未承载");
     expect(within(pen).getByTestId("donothing-penalty-empty-乙基地-reason")).toHaveTextContent("无承载");
     // 补齐路径必须机器可读（供数据侧直接排期）。
     expect(within(pen).getByTestId("donothing-penalty-empty-乙基地-missing")).toHaveTextContent("Order.latePenaltyRatePerDay");
@@ -426,5 +429,60 @@ describe("WO-DECISION-INFO-FE · ⑤ 前置期溯源（R13）", () => {
     expect(screen.getByTestId("disposition-option-readyreason-A")).toHaveTextContent("拒绝按 0 天冒充");
     // 该杠杆的前置期本身也走 EMPTY 分支（不是 0 天）。
     expect(screen.getByTestId("disposition-lead-A-cross_base").getAttribute("data-lead")).toBe("EMPTY");
+  });
+});
+
+/**
+ * WO-UI-BURNDOWN-21 · **降层接缝**（`docs/CONVENTION-ui-information-layering.md` §1 / R-UI-3）。
+ *
+ * 这一组咬的不是「门变绿了」，而是**门变绿的那个动作是不是把内容删了**：
+ * 门只会数「第一层还有几处口径」，而 `first` 变小有两种成因（真降层 / 删内容），
+ * 门自己分不清哪一句话到底还在不在屏上（它的 D4 守恒只看总量）。
+ * 故此处逐条断言：**① 第一层留着 `?` 记号 ② 浮层默认不在 DOM ③ 触发后原文还在浮层里**。
+ * 少了第 ③ 条，「降层」与「删除」在测试里长得一模一样。
+ */
+describe("WO-UI-BURNDOWN-21 · 决策信息块的口径降层：降的是层，不是内容", () => {
+  it("②a 缺口自然消化：第一层只留天数 + `?`，算式原文在浮层里（不是被删了）", async () => {
+    const user = userEvent.setup();
+    useRiskStub(orderingPayload(true));
+    loginAs("planner");
+    renderApp("/v/risk");
+    fireEvent.click(await screen.findByTestId("risk-card-乙基地"));
+
+    const block = await screen.findByTestId("donothing-catchup-乙基地");
+    // ① 第一层留的是**结论**（天数）。
+    expect(block).toHaveTextContent("7 天");
+    // ② `?` 记号必须默认可见 —— 没有记号的降层 = 静默删除。
+    const trigger = within(block).getByTestId("info-donothing-catchup-caliber-乙基地");
+    expect(trigger, "第一层没有 `?` 记号 ⇒ 静默降层 = 删除").toBeVisible();
+    // ③ 浮层正文默认**不在 DOM**（不是 hidden —— 藏起来的照样被读屏念、门也白降）。
+    //    ⚠ 写法：`toBeNull()`，不是 `not.toBeVisible()` —— 后者拿到 null 会让 jest-dom 自己抛
+    //    "received value must be an HTMLElement"，那是**测试报错**，不是判据成立。
+    expect(screen.queryByTestId("info-body-donothing-catchup-caliber-乙基地")).toBeNull();
+
+    // ④ 触发后原文还在 —— 这一条才是"没删内容"的证据。
+    await user.hover(trigger);
+    const body = await screen.findByTestId("info-body-donothing-catchup-caliber-乙基地");
+    expect(body).toBeVisible();
+    expect(body.textContent, "算式被降没了 —— 那是删除不是分层").toContain("÷ 空闲日产能");
+    expect(body.textContent).toContain("缺口");
+  });
+
+  it("②c 违约金诚实位：第一层「未承载」，「未承载违约金口径」这句原文在浮层里", async () => {
+    const user = userEvent.setup();
+    useRiskStub(orderingPayload(true));
+    loginAs("planner");
+    renderApp("/v/risk");
+    fireEvent.click(await screen.findByTestId("risk-card-乙基地"));
+
+    const pen = await screen.findByTestId("donothing-penalty-乙基地");
+    expect(pen).toHaveTextContent("本平台未承载");
+    expect(screen.queryByTestId("info-body-donothing-penalty-caliber-乙基地")).toBeNull();
+
+    await user.hover(within(pen).getByTestId("info-donothing-penalty-caliber-乙基地"));
+    const body = await screen.findByTestId("info-body-donothing-penalty-caliber-乙基地");
+    expect(body.textContent, "诚实位允许降到浮层、绝不允许删除").toContain("本平台未承载违约金口径");
+    // 金额红线不因分层而松：这一块依然一个金额都不许出现。
+    expect(pen.textContent ?? "").not.toMatch(/(?:^|[^0-9])0\s*元/);
   });
 });

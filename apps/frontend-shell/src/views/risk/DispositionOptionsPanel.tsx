@@ -1,4 +1,5 @@
 import type { DispositionOption, DispositionSideEffect, RiskTimelineOutput } from "@platform/contracts";
+import { InfoPopover } from "@/components/InfoPopover";
 import { RuleRef } from "@/components/RuleRef";
 import { AbsentNote, LeadTimeReading, SubSection } from "./decisionInfoShared";
 import styles from "../RiskBoardView.module.css";
@@ -200,7 +201,13 @@ function SideEffect({ se, testId }: { se: DispositionSideEffect; testId: string 
         <div style={{ marginTop: 2 }} data-testid={`${testId}-rule`}>
           规则 <RuleRef code={se.rule.ruleKey} />：阈值 <span className="mono">{se.rule.threshold}</span> · 实际 <span className="mono">{se.rule.actual}</span> ·{" "}
           <b style={{ color: se.rule.breached ? "var(--danger-txt)" : "var(--ok-txt)" }}>{se.rule.breached ? "已越线" : "未越线"}</b>
-          <span style={{ color: "var(--muted2)" }}>（阈值取 {se.rule.ruleKey}.params.{se.rule.paramKey}·规则口径非代码内联）</span>
+          {/*
+           * 分层（R-UI-3）：「阈值从哪取的」是**凭什么**，属浮层；第一层留阈值/实际/越线三个结论 + `?` 记号。
+           * 原文一字未删，只换了层。
+           */}
+          <InfoPopover topic="这条阈值取自哪里" testId={`${testId}-rule-caliber`}>
+            阈值取 {se.rule.ruleKey}.params.{se.rule.paramKey}·规则口径非代码内联
+          </InfoPopover>
         </div>
       )}
       {se.displacedOrders && se.displacedOrders.length > 0 && (
@@ -278,11 +285,20 @@ function Coefficients({ opts }: { opts: NonNullable<PlanRow["options"]> }) {
   return (
     <div style={{ marginTop: 8, fontSize: 12 }} data-testid="disposition-coefficients">
       <b>推演系数出处</b>
+      {/*
+       * 分层（R-UI-3）：徽标只留**这个系数是哪来的**这个名字（规则参数 / 代码兜底默认），
+       * 「两者差在哪、为什么必须分开说」这段口径降进 `?` 浮层。原文一字未删，只换了层。
+       */}
+      <InfoPopover topic="规则参数与代码兜底默认差在哪" testId="disposition-coeff-caliber">
+        标「规则参数」= 该系数取自被治理过的规则口径，改规则即改数；
+        标「代码兜底默认」= 规则里没写，走的是代码里的兜底常量 —— 它<b>没有被任何人审过</b>。
+        两者不披露就等于让人把兜底当成被治理过的数。
+      </InfoPopover>
       <ul style={{ margin: "2px 0 0", paddingLeft: 16 }}>
         {opts.coefficients.map((c) => (
           <li key={c.key} data-testid={`disposition-coeff-${c.key}`} data-basis={c.basis} style={{ marginTop: 2 }}>
             <span className="mono">{c.key} = {c.value}</span>{" "}
-            <span className="badge" style={{ marginLeft: 4 }}>{c.basis === "RULE_PARAMS" ? "规则口径" : "代码兜底默认"}</span>
+            <span className="badge" style={{ marginLeft: 4 }}>{c.basis === "RULE_PARAMS" ? "规则参数" : "代码兜底默认"}</span>
             <span style={{ color: "var(--muted2)", marginLeft: 4 }}>{c.note}</span>
           </li>
         ))}
