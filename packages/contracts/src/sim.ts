@@ -99,9 +99,154 @@ export const SimSessionSchema = z.object({
   status: SimSessionStatusSchema.default("DRAFT"),
   curTick: z.number().int().default(0),
   parentCheckpointId: z.string().nullable().default(null), // 非空 = 本会话是某检查点的分支
+  /**
+   * **会话级反事实：这次推演假装哪几条传导边不存在**（WO-ACTIVE-EDGE-UX）。
+   *
+   * ⛔ **与 `PropagationRule.status` 正交，两个字段都要，不许合并**（本单最容易做错的地方）：
+   *  · `status: DRAFT|PUBLISHED|RETIRED` = **这条边在不在世界里**——对全租户生效的**持久发布态**。
+   *    改它是**本体真值写入**，必须经 Action 审批（R4）；且一改，"改之前"就没了，无从对照。
+   *  · `disabledRuleKeys` = **这次推演假装它不在**——`SimSession` 自己的**世界态**，
+   *    只影响本会话、可随时拨回、"开/关两版"能同时算出来放在一起看（对照才是本单的核心产出）。
+   *
+   * 拿 `status` 当这个开关会同时炸三头：① 顶 R4（用户点一下"关掉看看"就永久改了全租户本体）；
+   * ② 顶 R2 的精神（一个人的假设污染同租户所有人的推演）；③ 不可对照（"改之前"没了）。
+   * 写本字段**不需要** Action 审批，其依据是 R4-sim：仿真世界的写入不是真值写入
+   * （`SimSession` 的世界态 ≠ 本体真值），豁免边界见 SYSTEM-ONTOLOGY §5 R4-sim。
+   *
+   * 用 **`key` 不用 `id`**：契约里 `key` 写明是「稳定键，可被 OPERATION_CATALOG/审计引用」，
+   * 而 `id` 是 `newId()` 的 randomBytes，跨重建即漂。
+   *
+   * 缺省 `[]` ⇒ 不传时与本字段引入前**逐字节相同**（additive · 可回退 RL9）。
+   */
+  disabledRuleKeys: z.array(z.string()).default([]),
   createdAt: z.string(),
 });
 export type SimSession = z.infer<typeof SimSessionSchema>;
+
+// ── 会话级反事实：过滤 / 对照（WO-ACTIVE-EDGE-UX · 契约唯一实现，引擎与前端共用） ──────
+/**
+ * 把「本会话屏蔽了哪几条边」作用到一组传导规则上（**纯函数** R6：不改入参）。
+ *
+ * 放契约里的理由与 `isPerturbationActiveAt` 同族：**写端在前端（拨开关）、读端在引擎（过滤规则）**，
+ * 两边各写一套 `rules.filter(r => !disabled.includes(r.key))` 就是第二套真相源 ——
+ * 前端预览的"关掉后"与后端真跑的"关掉后"一旦漂移，用户看到的差值就是假的。
+ *
+ * 返回 `{ active, suppressed }` 而不是只返回 `active`：**被关掉的那几条必须还拿得到**，
+ * 因为 §3.3 要求「关掉的边在图上可见地降级（虚线/灰化），不是从图上消失」——
+ * 消失了用户就不知道自己关了什么。
+ */
+export function partitionPropagationRules<T extends { key: string }>(
+  rules: readonly T[],
+  disabledRuleKeys: readonly string[] | null | undefined,
+): { active: T[]; suppressed: T[] } {
+  const off = new Set(disabledRuleKeys ?? []);
+  if (off.size === 0) return { active: [...rules], suppressed: [] };
+  const active: T[] = [];
+  const suppressed: T[] = [];
+  for (const r of rules) (off.has(r.key) ? suppressed : active).push(r);
+  return { active, suppressed };
+}
+
+/**
+ * 传入的 `ruleKeys` 里，哪些在已知规则集合里查不到（**显式报错用**，不是给"静默忽略"打掩护）。
+ *
+ * 静默忽略未知 key = 用户以为关掉了、其实没关 —— 这正是「绿测试≠能用」的温床，
+ * 故路由必须据此 400，不许悄悄吞掉（WO §3.1.2）。
+ */
+export function unknownPropagationRuleKeys(
+  requested: readonly string[],
+  known: readonly { key: string }[],
+): string[] {
+  const have = new Set(known.map((r) => r.key));
+  return [...new Set(requested.filter((k) => !have.has(k)))].sort();
+}
+
+/** 一格世界态差异（开/关两版对照的最小单元）。`delta = counterfactual − baseline`。 */
+export const SimStateDiffCellSchema = z.object({
+  objectId: z.string(),
+  stateVar: z.string(),
+  /** 全规则跑出来的值（"边开着"）。该格在基线里不存在 ⇒ `null`（诚实缺，不填 0）。 */
+  baseline: z.number().nullable(),
+  /** 屏蔽掉 `disabledRuleKeys` 后跑出来的值（"边关掉"）。 */
+  counterfactual: z.number().nullable(),
+  /** 两者之差；任一侧为 `null` ⇒ `null`（算不出就说算不出，不拿 0 冒充"没变"）。 */
+  delta: z.number().nullable(),
+  /** 方向：`up`/`down`/`flat`；`delta` 为 `null` 时是 `unknown`。§3.3「一眼看出方向和量级」。 */
+  direction: z.enum(["up", "down", "flat", "unknown"]),
+});
+export type SimStateDiffCell = z.infer<typeof SimStateDiffCellSchema>;
+
+/** 数值比较的容差：`round12` 之后的浮点尾差不算"变了"（引擎自己就按 12 位定点写入）。 */
+const DIFF_EPSILON = 1e-9;
+
+/**
+ * 逐格对照两份 `TickState`（**纯函数** R6，确定性排序）。契约唯一实现 ——
+ * 后端算差值、前端渲染差值走**同一支**，否则"面板上写涨了 3.2"与"引擎认为涨了 3.19"这种
+ * 无从追查的漂移必然出现。
+ *
+ * `onlyChanged` 缺省 `true`：对照面板要回答的是「关掉这条边，什么变了」，
+ * 把几百格没动的一起端上去等于什么都没说。
+ */
+export function diffTickStates(
+  baseline: TickState,
+  counterfactual: TickState,
+  onlyChanged = true,
+): SimStateDiffCell[] {
+  const cells: SimStateDiffCell[] = [];
+  const objectIds = [...new Set([...Object.keys(baseline), ...Object.keys(counterfactual)])].sort();
+  for (const objectId of objectIds) {
+    const b = baseline[objectId] ?? {};
+    const cf = counterfactual[objectId] ?? {};
+    const vars = [...new Set([...Object.keys(b), ...Object.keys(cf)])].sort();
+    for (const stateVar of vars) {
+      const bv = typeof b[stateVar] === "number" ? (b[stateVar] as number) : null;
+      const cv = typeof cf[stateVar] === "number" ? (cf[stateVar] as number) : null;
+      const delta = bv === null || cv === null ? null : cv - bv;
+      const changed = delta === null ? bv !== cv : Math.abs(delta) > DIFF_EPSILON;
+      if (onlyChanged && !changed) continue;
+      cells.push({
+        objectId,
+        stateVar,
+        baseline: bv,
+        counterfactual: cv,
+        delta,
+        direction: delta === null ? "unknown" : delta > DIFF_EPSILON ? "up" : delta < -DIFF_EPSILON ? "down" : "flat",
+      });
+    }
+  }
+  return cells;
+}
+
+/**
+ * 「开/关两版各跑一遍」的对照回包（`POST /a/v1/sim/sessions/:id/counterfactual`）。
+ *
+ * ⚠ **这一趟不写世界态**：`putTickState` 一次都不调，会话的 `curTick` 一格不动 ——
+ * 否则用户点一下"看看"就把真会话推进了一格，而"看看"本该是零副作用的。
+ * 这条约束由 `apps/datacore/test/edge-active-counterfactual.test.ts` **用测试咬死**（不是注释保证）。
+ */
+export const SimCounterfactualResultSchema = z.object({
+  /** 对照的起点 tick（= 会话当前 tick，**不推进**）。 */
+  fromTick: z.number().int(),
+  /** 两版各跑了几格。 */
+  ticks: z.number().int(),
+  /** 本次对照屏蔽掉的规则 key（已按字典序去重；未传时 = 会话上的持久集合）。 */
+  disabledRuleKeys: z.array(z.string()),
+  /** 屏蔽掉的那几条规则的结构（前端据此把边"降级显示"而不是让它消失）。 */
+  suppressedRules: z.array(PropagationRuleSchema),
+  /** 全规则跑出来的世界态。 */
+  baselineState: TickStateSchema,
+  /** 屏蔽后跑出来的世界态。 */
+  counterfactualState: TickStateSchema,
+  /** 逐格差异（仅变了的格；确定性排序）。空数组 = 关掉这条边什么都没变（这也是结论）。 */
+  diffs: z.array(SimStateDiffCellSchema),
+  /**
+   * 本次对照里，被屏蔽的规则在**基线**那一版真的触发了吗。
+   * `false` ⇒ 差值为空是**因为这条边本来就没在动**（源态为 0 / 无匹配边 / 被闸门挡），
+   * 不是"关了它没影响"。两者在屏上长得一样，必须显式分开（同族戒律：一个数盖住两个事实）。
+   */
+  suppressedRulesFiredInBaseline: z.array(z.string()),
+});
+export type SimCounterfactualResult = z.infer<typeof SimCounterfactualResultSchema>;
 
 // ── 推演范围 SimScope（WO-SIM-SCOPE-TRIAL · 关闭欠账 #129/#130 `G-SIM-SCOPE-UNREAD`） ──
 /**
