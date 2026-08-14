@@ -197,6 +197,10 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
  *  - 沿真链路：sourceTypeKey/viaLinkKey/targetTypeKey 均为 demo 本体真有的对象类型/链路 key，
  *    且每条都经**实测**确认「链路存在 + 方向对 + 两端在 demo 真有实例」（#158 的教训）。
  *
+ * WO-PROCESS-TICK-COVERAGE：在 WO-P1 的 13 条之上再补 **21 条**（档 1 六条挂既有正向边 /
+ * 档 2 十五条挂新补的「影响向逆边」），共 **34 条**。目的不是把规则堆多，是把
+ * §8 `G-PROCESS-TICK-COVERAGE` 的流程覆盖率从 **9/65** 抬到 **29/65** —— 判据见档 1/档 2 的段头注释。
+ *
  * WO-P1（PRD-UPGRADE-decision-sandbox-v2 §3.1.4 · REQ143）：补齐**六个方向**，共 13 条规则。
  * 此前三条边全部指向 `Base.loadIndex`，走不到 North Star 要的「断点/卡点/时长/消耗」。
  *
@@ -489,6 +493,155 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
     targetStateVar: "overduePressure",
     coefficient: 0.4,
     delayTicks: 1, // 逾期是"账期到了才显形"，留一个 tick
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // WO-PROCESS-TICK-COVERAGE · 档 1：**沿既有正向边**补 6 条规则（本档零新链路类型）
+  //
+  // 背景（§8 `G-PROCESS-TICK-COVERAGE`）：65 条业务流程里只有 9 条的承载类型出现在传导规则两端，
+  // 屏上第五档「流程画布」13.8% 覆盖率 ⇒ 读者得不出业务结论。定性是**数据层覆盖面**：
+  // `propagateTick` 唯一的写法是写到规则 `targetTypeKey` 那一端的对象上，够不着的类型怎么推都不会动。
+  //
+  // ⛔ 本档的判据不是"凑数量"，是**三条都得成立**才补一条边：
+  //   ① 这条流程**本来就该随日节拍变**（D01 经营规划 / D02 外部信号本来就不随日节拍变，
+  //      给它们造边就是造假 —— 屏上出现「年度情景每天在跳」这种荒谬。**覆盖率不是越高越好，
+  //      是"该动的能动"**）；
+  //   ② `viaLinkKey` 在**真链路表**上真的存在、且方向是 source→target（`propagateTick` 的 navOut
+  //      只沿 `fromId→toId` 走 —— #158 的教训）；
+  //   ③ 源 stateVar 在既有传导链上**真的会被写到**（不然就是"接了线没数据"，规则恒不触发）。
+  // 三条都由 `seed-demo-propagation.test.ts` 的「方向可达门」+ 本单接缝测试当场咬死。
+  //
+  // 本档 6 条全部挂在**已经存在且已物化**的正向边上（实测条数写在各行 viaLinkKey 后），
+  // 一条新 linkType 都不需要 —— 与档 2 的「补影响向逆边」是两种修法，故分开写、分开提交。
+  // ══════════════════════════════════════════════════════════════════════════════════
+
+  // ── D07 生产制造 · 换型：型号需求负载 → 换型切换压力 ──
+  // 多品种需求同时上来 ⇒ 同一条线上的换型次数变多、换型损失变大。承载物 ChangeoverMatrix 即 P45。
+  {
+    id: "simpr_demo_model_demand_to_changeover",
+    key: "demo_model_demand_to_changeover_pressure",
+    sourceTypeKey: "Model",
+    sourceStateVar: "demandLoad",
+    viaLinkKey: "model_changeover", // 实测 Model→ChangeoverMatrix，30 条
+    targetTypeKey: "ChangeoverMatrix",
+    targetStateVar: "changeoverPressure",
+    coefficient: 0.4,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D05 采购与供应 · 批次：物料短缺 → 批次周转压力 ──
+  // 缺料时先动的就是批次（提前拉料、拆批、翻找呆滞库存）。承载物 MaterialBatch 即 P36。
+  {
+    id: "simpr_demo_material_to_batch_turnover",
+    key: "demo_material_shortage_to_batch_turnover",
+    sourceTypeKey: "Material",
+    sourceStateVar: "shortageRisk",
+    viaLinkKey: "material_has_batch", // 实测 Material→MaterialBatch，24 条
+    targetTypeKey: "MaterialBatch",
+    targetStateVar: "turnoverPressure",
+    coefficient: 0.5,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D05 采购与供应 · 清关：采购加急 → 清关排队天数 ──
+  // 与既有「交付」向（material→po→IQC）同源：加急的进口单先堆在海关那一段。承载物 CustomsClearance 即 P34。
+  // ⚠ 实测只有 **1 条** `po_customs_cleared_by` 边（S 规模下只有电解液主供 SUP-015 是进口）——
+  //   一条也是真的一条，但**别拿它当"这条链很粗"的证据**：它只证明清关段接得通，不证明它有代表性。
+  {
+    id: "simpr_demo_po_to_customs_queue",
+    key: "demo_po_expedite_to_customs_queue",
+    sourceTypeKey: "PurchaseOrder",
+    sourceStateVar: "expeditePressure",
+    viaLinkKey: "po_customs_cleared_by", // 实测 PurchaseOrder→CustomsClearance，1 条
+    targetTypeKey: "CustomsClearance",
+    targetStateVar: "clearanceQueueDays",
+    coefficient: 0.4,
+    delayTicks: 1, // 清关是"下一批才排得上"，与 po_inspected_by 同一口径
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D09 设备与维护 · 检修窗：基地负载 → 计划检修窗挤压 ──
+  // 负载越满，能停机检修的窗口越难排 —— 这是产能与维护之间真实的对立关系。承载物 MaintPlan 即 P50。
+  {
+    id: "simpr_demo_base_load_to_maint_window",
+    key: "demo_base_load_to_maint_window_squeeze",
+    sourceTypeKey: "Base",
+    sourceStateVar: "loadIndex",
+    viaLinkKey: "base_maint_plan", // 实测 Base→MaintPlan，13 条
+    targetTypeKey: "MaintPlan",
+    targetStateVar: "windowSqueeze",
+    coefficient: 0.4,
+    delayTicks: 1, // 检修窗是按周排的，负载变化要下一格才反映到排程上
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D10 基地与仓储交付 · 认证：型号需求负载 → 产线型号认证排队 ──
+  // 需求压上来 ⇒ 要拉更多产线做该型号 ⇒ 认证排队变长（认证是产能释放的真前置）。承载物 Certification 即 P55。
+  {
+    id: "simpr_demo_model_demand_to_cert_queue",
+    key: "demo_model_demand_to_cert_queue",
+    sourceTypeKey: "Model",
+    sourceStateVar: "demandLoad",
+    viaLinkKey: "model_has_cert", // 实测 Model→Certification，18 条
+    targetTypeKey: "Certification",
+    targetStateVar: "qualificationQueue",
+    coefficient: 0.3,
+    delayTicks: 1,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D10 基地与仓储交付 · 在途：基地负载 → 来料在途催交压力 ──
+  // 🔴 **口径必须当面说清，否则这条就是错标**：`chain-loss.ts:457` 已查实
+  //    `Shipment`(13 条·conn-srm/srm_shipments·挂 base_has_shipment) 是 **SRM 来料在途**，
+  //    **不是成品发到客户**。所以本条 stateVar 叫 `inboundExpeditePressure`（来料催交），
+  //    **不叫**任何带"发运时长/交付前置期"字样的名字 —— 既有种子注释里"刻意不用 base_has_shipment"
+  //    禁的是**拿它冒充成品交付链**，禁的不是这条边本身。
+  //    ⚠ 顺带如实登记一处**流程层的既有错配**（本单不改、不在范围内）：P57 名为「发运与在途跟踪」
+  //    而其 `carrierTypeKey` 是来料侧的 `Shipment` —— 屏上因此会把"来料催交"显示成 P57 的读数。
+  //    这是 `DEMO_PROCESS_DEFINITIONS` 选承载物时就带进来的，补规则既没造成它也修不好它。
+  {
+    id: "simpr_demo_base_load_to_inbound_shipment",
+    key: "demo_base_load_to_inbound_expedite",
+    sourceTypeKey: "Base",
+    sourceStateVar: "loadIndex",
+    viaLinkKey: "base_has_shipment", // 实测 Base→Shipment，13 条
+    targetTypeKey: "Shipment",
+    targetStateVar: "inboundExpeditePressure",
+    coefficient: 0.35,
+    delayTicks: 1,
     combine: "sum",
     decay: null,
     clamp: null,
