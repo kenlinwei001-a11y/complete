@@ -175,6 +175,8 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   //    （沙盘五模式 = 现状/归因/试一手/求最优/影响半径，见 `views/sim/sandboxModes.ts`，其中没有流程等待），
   //    所以它**不能**带 `consolidatedWhen` —— 带了就是把它唯一的入口在沙盘开时删掉，页面直接不可达。
   //    ⇒ 沙盘开时本组剩「流程等待」一项，组**不再**自动隐藏。这是正确行为，不是漏配。
+  //    ⚠ WO-R9-NAVREACH 再订正一次同一句：本组现有**四项**，`procurement-legs`（采购四段腿分解）
+  //      与 `process-wait` 同理不带 `consolidatedWhen` ⇒ 沙盘开时本组剩**两项**（不是一项）。
   {
     title: "归因与风险",
     items: [
@@ -182,6 +184,25 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       // 归此组不归「推演」：它答的是「现状为什么这样」（归因），不是「改一个假设会怎样」（推演），
       // 与同组两页同一判据。kind:"view" 而非 route —— 它经后端 BUILTIN_VIEWS 下发（租户本体数据 + R3 级联）。
       { kind: "view" as const, key: "process-wait" },
+      // WO-R9-NAVREACH：采购四段腿分解（「该找谁」页）——回答「这批料晚在哪一段、今天该打哪通电话」。
+      // 归此组不归「推演」：与同组两页同一判据 —— 它答的是「现状为什么这样」（归因），
+      // 不是「改一个假设会怎样」（推演）。kind:"view" 而非 route —— 它经后端 BUILTIN_VIEWS 下发
+      // （租户本体数据 + R3 级联 + `view.options` 只有 ViewConfig 这条路送得到，见后端该行注释）。
+      // 不带 consolidatedWhen：沙盘五模式里没有它（见 views/sim/sandboxModes.ts），
+      // 带了就是把它唯一的入口在沙盘开时删掉 —— 与 process-wait 同一条理由。
+      { kind: "view" as const, key: "procurement-legs" },
+      // WO-PROCESS-INSTANCE：流程卡点（**实例层**）——与 `process-wait` 是**两页**，不是重复入口：
+      //   · `process-wait`（模板层）答「这**类**流程通常在等哪一类东西」（65 条定义的 waitKind，平均值）；
+      //   · `process-stuck`（实例层）答「**这一张单**此刻卡在第几步、等谁、等了多久」（现场值）。
+      // 合并单 WO-R9-PROCESS-MERGE 新立的 `waitStateOrigin` 诚实位分的正是这两者
+      // （`DEFINITION_TEMPLATE` vs `TASK_GATE`），把它们并成一个入口就等于把那条诚实位在 IA 层抹掉。
+      // 同组不同项、同为归因（答「现状为什么这样」），故与 process-wait 相邻而不合并。
+      //
+      // kind:"view"（不是 route）：它经后端下发（`synthetic/service.ts` 增量视图桶），
+      // 且必须有 R3 页面侧守卫 —— `process.runtime` 是暗发键（defaultOn:false +
+      // INCOMPLETE_DATA_DARK_LAUNCH_FEATURES），挂成 route 会变成「关着也手敲得进去」。
+      // 不带 `consolidatedWhen`：沙盘五模式里没有流程卡点，带上就是把它唯一入口在沙盘开时删掉。
+      { kind: "view" as const, key: "process-stuck" },
       { kind: "route" as const, key: "cleanroom-attr", label: "净室归因", consolidatedWhen: "sim.sandbox" },
       { kind: "route" as const, key: "disruption-radius", label: "断供影响半径", consolidatedWhen: "sim.sandbox" },
     ],
@@ -209,7 +230,9 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   //   左导航真正渲染用的是 NAV_GROUPS。只改前者 ⇒ 该页在真实导航里掉进「其它」兜底桶。
   //   plan-builder 就是这么漏的（与 boundary/prototype-intake 同一形态，f61 结构守卫当场咬住）。
   { title: "编排与场景", items: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "resources", "plan-builder", "ops/fallback", "views"].map((key) => ({ kind: "admin" as const, key })) },
-  { title: "运营与审批", items: ["actions", "ops-schedule", "notifications", "validation"].map((key) => ({ kind: "admin" as const, key })) },
+  // WO-BEFE-B：scheduler / calendars 两个新页同时登记进 adminRegistry.ADMIN_NAV_GROUPS 与**这里**
+  //（照上面那条警告：只改前者会掉进「其它」兜底桶）。
+  { title: "运营与审批", items: ["actions", "ops-schedule", "scheduler", "calendars", "notifications", "validation"].map((key) => ({ kind: "admin" as const, key })) },
   // WO-SWEEP-03-NAV-GROUP · meta 归组定音：meta（系统自我 = 平台自我元模型 / dogfooding 本体查看器）是平台描述自身的
   // 治理/系统级构件（非租户业务建模），故 adminRegistry(建模) 与 ShellLayout(平台与系统) 的分歧在此按「平台与系统」定案；
   // 同步把 adminRegistry.ADMIN_NAV_GROUPS 的 meta 从 modeling 挪到 governance，两处分组源就此对齐、不再漂移。

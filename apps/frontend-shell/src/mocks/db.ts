@@ -1,5 +1,5 @@
-import type { BuildPipeline, BuildPipelineKind, ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, PlanBuilderCanvas, PurposeBinding, RuleEntry, Scenario, SceneEntryConfig, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
-import type { SimClockVM, SopVersionVM, TickReportVM } from "@/api/types";
+import type { BuildPipeline, BuildPipelineKind, ActionDraft, AdminTenant, AdminUser, AdminViewConfig, AgentDefinition, ConnectionInstance, IntentDefinition, LlmProvider, McpServerConfig, PlanBuilderCanvas, PurposeBinding, RuleEntry, Scenario, SceneEntryConfig, SkillDefinition, WorkflowDefinition, FactoryCalendar, VirtualPersona, OpsPlaybook, OpsTickReport } from "@platform/contracts";
+import type { SimClockVM, SopVersionVM, TickReportVM, ScheduledJobVM, SchedulerRunVM } from "@/api/types";
 import { seedSopVersions } from "./simSolvers";
 import type { RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
 import type { ModelingDraftVM } from "@/api/endpoints";
@@ -7,6 +7,13 @@ import type { TaskScriptPlan } from "./sseScripts";
 import {
   ACCOUNTS,
   ACTION_DRAFTS,
+  ACTION_EVENTS,
+  SCHEDULED_JOBS,
+  SCHEDULER_RUNS,
+  FACTORY_CALENDARS,
+  OPS_PERSONAS,
+  OPS_PLAYBOOK,
+  OPS_TICK_REPORTS,
   ADMIN_TENANTS,
   ADMIN_USERS,
   ADMIN_VIEWS,
@@ -64,6 +71,18 @@ interface MockDb {
   scenes: SceneEntryConfig[];
   scenarios: Scenario[];
   actionDrafts: ActionDraft[];
+  /**
+   * WO-BEFE-B · R4 留痕事件流（`GET /a/v1/action-drafts/:id/audit` 的 `events` 段来源）。
+   * **由真实变更追加**（decision / cancel 处 `pushActionEvent`），不是静态清单 ——
+   * 这样"审批面没真打后端"时留痕会当场为空，而不是照样好看。
+   */
+  actionEvents: { event: string; payload: Record<string, unknown>; at: string; status?: string }[];
+  schedulerJobs: ScheduledJobVM[];
+  schedulerRuns: SchedulerRunVM[];
+  calendars: FactoryCalendar[];
+  opsPersonas: VirtualPersona[];
+  opsPlaybook: OpsPlaybook | null;
+  opsTickReports: OpsTickReport[];
   sopVersions: SopVersionVM[];
   // 管理平台增量
   rules: RuleEntry[];
@@ -127,6 +146,13 @@ function freshDb(): MockDb {
     scenes: structuredClone(SCENES),
     scenarios: structuredClone(SCENARIOS),
     actionDrafts: structuredClone(ACTION_DRAFTS),
+    actionEvents: structuredClone(ACTION_EVENTS),
+    schedulerJobs: structuredClone(SCHEDULED_JOBS),
+    schedulerRuns: structuredClone(SCHEDULER_RUNS),
+    calendars: structuredClone(FACTORY_CALENDARS),
+    opsPersonas: structuredClone(OPS_PERSONAS),
+    opsPlaybook: structuredClone(OPS_PLAYBOOK),
+    opsTickReports: structuredClone(OPS_TICK_REPORTS),
     sopVersions: seedSopVersions(),
     rules: structuredClone(RULES),
     llmProviders: structuredClone(LLM_PROVIDERS),

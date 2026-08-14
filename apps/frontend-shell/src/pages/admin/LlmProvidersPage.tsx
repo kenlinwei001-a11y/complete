@@ -21,6 +21,7 @@ import {
 import { Modal } from "@/components/ui/Modal";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
+import { InfoPopover } from "@/components/InfoPopover";
 
 const KIND_BADGE: Record<LlmProvider["kind"], string> = {
   anthropic: "blue",
@@ -432,7 +433,13 @@ function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
             <th>能力要求</th>
             <th>provider</th>
             <th>model</th>
-            <th title="关掉该用途的推理（分类/选型等不需推理）：推理型模型改用同 provider 非推理兄弟出快答·治本降时延">关推理</th>
+            {/* WO-HOVER-LAYER：口径从原生 `title=` 迁到 InfoPopover（规范 §2 R-UI-3）。 */}
+            <th>
+              关推理
+              <InfoPopover topic={zh.sim.sandbox.info.llmNoReasoningTopic} testId="llm-no-reasoning" align="right">
+                {zh.sim.sandbox.info.llmNoReasoningBody}
+              </InfoPopover>
+            </th>
           </tr>
         </thead>
         <tbody>

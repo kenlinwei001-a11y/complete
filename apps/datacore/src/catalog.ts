@@ -107,9 +107,11 @@ export const SOLVER_CATALOG: CatalogItem[] = [
   { key: "yield_diagnosis", name: "良率诊断", description: "2σ 滑窗突变检测 + 根因候选按时间贴近度排序。", argHints: { processKey: "工序", series: "良率时序" }, domain: "plan", answersQuestions: ["良率为什么突然下降", "良率突变点在哪道工序", "良率异常怎么诊断定位"], tags: ["良率诊断", "yield", "突变"] },
   { key: "maintenance_stagger", name: "检修错峰", description: "检修周与交付高峰冲突 → ±4 周内选负荷最低周。", argHints: { bases: "基地检修+负荷" }, domain: "plan", answersQuestions: ["设备检修和交付高峰怎么错峰", "检修排在哪周负荷最低", "检修和交付冲突怎么避开"], tags: ["检修错峰", "maintenance", "错峰"] },
   { key: "outsourcing_split", name: "外协分配", description: "加班/外协/延期三渠道按单位成本升序贪心分配。", argHints: { gap: "缺口", weeks: "周数" }, domain: "plan", answersQuestions: ["缺口怎么在加班外协延期间分配", "外协分配怎么最省成本", "加班外协延期三渠道各分多少"], tags: ["外协分配", "outsourcing", "加班"] },
-  // WO-SILENT-WRONG-ANSWER-3 症③（S15）：补声明 modelId/custName —— 前者本单已真接线（按型号真 BOM 算成本），
-  //   后者今天**确实不生效**，故声明里就写明白，并由回包 `scope.custDimension:"NOT_APPLIED"` 兜第二道（诚实位降层不删除）。
-  { key: "quote_margin", name: "接单毛利", description: "BOM 成本四项分解 + 毛利率对比细分底线。", argHints: { price: "报价", bom: "BOM（直传则跳过引擎取数）", modelId: "型号（给了就按该型号的真 BOM 算成本；不给=全局前 4 种物料·非任何具体配方）", custName: "客户名（⚠ 今天只回显不参与计算·见回包 scope.custDimension）" }, domain: "plan", answersQuestions: ["这个报价毛利多少", "BOM 成本四项怎么分解", "报价毛利率对比细分底线如何"], tags: ["接单毛利", "quote", "毛利率"] },
+  // WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）：argHints 补 custName/modelId —— 取证单 §4 记过一笔
+  // 「卡片与 ARG_OVERRIDE 都在传 custName/modelId/qty 三个求解器不认的键」；本单起这两个键是**真读**的
+  // （客户 → order_of_customer 归属边 → 在手单 → 型号 → 真 BOM），argHints 若不补就反过来对不上了。
+  // `qty` 不列：毛利率是**比率**，报价数量不改变比率（`Order.qty` 只用于同型号多单的加权均价）。
+  { key: "quote_margin", name: "接单毛利", description: "按客户与型号取真 BOM（BOMHeader/BOMDetail）与真单价，四项分解毛利率并对比细分底线；输出带 scope 说明算的是谁。", argHints: { custName: "客户（客户名或下单品牌名）", modelId: "型号（缺省取该客户主力型号）", price: "报价（缺省取该客户该型号在手单加权均价）", bom: "BOM（直传则按 EXPLICIT 口径算，不查库）" }, domain: "plan", answersQuestions: ["这个报价毛利多少", "BOM 成本四项怎么分解", "报价毛利率对比细分底线如何", "某客户这单毛利过线吗"], tags: ["接单毛利", "quote", "毛利率", "客户"] },
   { key: "credit_exposure", name: "信用敞口", description: "敞口=应收+在产；可用额与逾期判定（C32）。", argHints: { custName: "客户", creditLimit: "额度" }, domain: "plan", answersQuestions: ["客户信用逾期多少", "信用敞口多大", "客户可用额还剩多少", "应收加在产敞口多大"], tags: ["credit", "exposure", "信用", "逾期", "敞口"] },
   { key: "quarterly_gap", name: "季度缺口对策", description: "对策按成本升序贪心覆盖季度缺口，残余明示。", argHints: { quarter: "季度", gap: "缺口" }, domain: "plan", answersQuestions: ["季度缺口怎么用对策覆盖", "对策按成本怎么排优先", "覆盖后残余还剩多少"], tags: ["季度缺口", "对策", "quarterly"] },
   { key: "carbon_footprint", name: "碳足迹核算", description: "物料+能耗两段碳排，对比欧盟阈值给改善杠杆。", argHints: { modelId: "型号", baseName: "基地" }, domain: "plan", answersQuestions: ["产品碳足迹怎么核算", "物料和能耗碳排各多少", "对比欧盟阈值差多少"], tags: ["碳足迹", "carbon", "能耗"] },
@@ -128,6 +130,14 @@ export const COCKPIT_SOLVER_CATALOG: CatalogItem[] = [
   { key: "order_fullchain", name: "订单全链推演", description: "逐单三关联判（交期/齐套/财务三闸 C15→C13→C18）+ 统一结论（可接/提价X%接/不建议接）+ 业务建模链 DAG。回答『这单能不能接、为何提价、卡在哪一判』。", argHints: { so: "订单号(缺省取首单)" }, domain: "decision", answersQuestions: ["这单能不能接", "为什么提价", "卡在哪一判"], tags: ["order", "fullchain", "credit", "delivery", "kit"] },
   { key: "mrp_netting", name: "物料 MRP 净需求", description: "读 MaterialBalance 出物料净需求/长协覆盖/现货缺口/最早齐套表（C06 齐套口径）。S&OP 供应评审物料线。", argHints: {}, domain: "plan", answersQuestions: ["物料净需求多少", "长协覆盖多少", "现货缺口"], tags: ["mrp", "material", "netting"] },
   { key: "finance_pnl", name: "量价本利科目表", description: "读 FinancePlan+DemandSegment 出收入/销售成本/毛利 预算vs滚动vs差异 + 毛利率行 + 结构归因（C15）。S&OP 财务整合。", argHints: {}, domain: "plan", answersQuestions: ["毛利为什么下滑", "量价本利", "预算 vs 滚动"], tags: ["finance", "pnl", "margin", "cost"] },
+  /**
+   * WO-FINANCE-WORLDSTATE · `finance_pnl` 的**世界态孪生**（并存两条口径，不是替代）。
+   *
+   * ⚠ 登记纪律（上一个 dev 刚踩过）：`process_flow_time` 进了 `SOLVER_KEYS` 却没进本目录，
+   * 被 `catalog.test.ts` 的「注册表键集 === SOLVER_KEYS」当场咬红。本条与 `SOLVER_KEYS` /
+   * `taxonomy.ts` / `solver-taxonomy.test.ts` 金值 / `ontology-core.test.ts` 金值 **同批**落地。
+   */
+  { key: "finance_world_projection", name: "财务世界态投影", description: "回答『在**这个推演世界**里、施加了那条扰动之后，成本/毛利/应收各变成多少**钱**』——即 `finance_pnl` 答不出的那一问（它的签名不吃 worldId，读本体真值，施加任何扰动都返回同一组数）。以 FinancePlan.{budget,rolling} 与 ARInvoice.amount 的**真值**为基线，用世界态里 costPressure（落 Order）/receivablePressure（落 Customer）/overduePressure（落 ARInvoice）三个压力做投影：销售成本 = 基线 ×（1 + 成本压力 ÷ divisor）、毛利用增量法（毛利 + Δ收入 − Δ成本，不用恒等式重算以免悄悄改掉基线残差）、应收/逾期逐张发票用真 amount 算。压力按**承载对象的真金额加权**聚合（Order.qty×unitPrice / 发票金额），分母是**全域基数**不是承载集（只对承载集平均会把「10 张单里 1 张涨价」报成全域涨价）。三样一起下发保证每个数可复核：基线真主键 + 压力的 carriers/universe + 产生该压力的 PropagationRule 真 id 与真系数（改种子系数→回包里的链跟着变）。换算除数 `basis.divisor` **随回包下发**且可由 args.pressureUnit 改写，不是藏在代码里的魔数。`basis.kind:\"PROJECTION\"` 是诚实位：这是推演投影不是实测值。世界态为空 / 无 FinancePlan 基线 → available:false + 原因，**绝不给一个不动的 0**。R4 只读：不写世界态、不写本体真值。", argHints: { worldId: "推演会话 id（必填·不给不回落到本体真值口径，那条路走 finance_pnl）", pressureUnit: "压力量纲 pp(百分点·缺省)|ratio(比率)", revenueLine: "收入行名（缺省 收入）", costLine: "成本行名（缺省 销售成本）", marginLine: "毛利行名（缺省 毛利）" }, domain: "decision", answersQuestions: ["这次扰动让成本涨了多少钱", "财务指标随扰动怎么变", "扰动之后毛利变成多少", "这个世界里应收和逾期敞口多少", "推演之后的量价本利是多少"], tags: ["finance", "worldstate", "sandbox", "projection", "财务", "金额", "推演", "扰动", "成本", "毛利", "应收"] },
   { key: "audit_timeline", name: "审计项时序推演", description: "按审计项 kind 出 90 天逐日传导度 series + 4 阶段（事件窗→约束越线→波及订单→财务击穿），与产能推演同款逐日交互。规划体检/规划建议共用。", argHints: { kind: "审计项类别(产销/毛利/齐套/现金…)", horizon: "天数(默认90)" }, domain: "plan", answersQuestions: ["审计项未来走势", "审计项 90 天逐日怎么传导", "事件窗到财务击穿四阶段怎么走"], tags: ["audit", "timeline"] },
   { key: "ksf_graph", name: "财务 KSF 图", description: "3 层有向图投影：待解决问题（越线 Metric）→ 关键成功要素 KSF（5 一等对象）→ 财务计划指标（Metric）。问题→KSF 威胁边、KSF→财务 支撑边，读 Metric(ksfRef)+KSF 投影。规划体检/规划建议共用。", argHints: {}, domain: "decision", answersQuestions: ["关键成功要素有哪些", "KSF 怎么支撑财务计划", "哪些问题威胁 KSF"], tags: ["ksf", "finance"] },
   { key: "gap_attribution", name: "深度反向缺口归因", description: "总目标缺口(Metric.gap)→沿本体反向多跳结构分摊(gap 单位·每层 Σ子+residual=父gap 硬勾稽)到基地×订单×瓶颈叶，再沿 caused_by 因果边继续溯(占比)到地缘/决策终点，产 ~20 叶子原子因素表 + residual。叶级贡献由真颗粒对象值派生(改颗粒→归因变)。回答『总缺口沿链路一路归到哪些最终根因、各占多少、每叶证据是什么』。", argHints: { metricKey: "目标指标 key(缺省取最严重越线者)" }, domain: "decision", answersQuestions: ["为什么这个指标没达标", "为什么份额/占有率下降", "储能份额为什么下降逐层拆根因", "逐层拆根因到哪一层贡献最大", "总缺口一路归到哪些最终根因、各占多少", "缺口主要来自哪层、每叶证据是什么"], tags: ["gap", "attribution", "rootcause", "缺口归因", "逐层拆根因", "份额下降", "指标没达标"] },
@@ -190,6 +200,37 @@ export const GENERIC_SOLVER_CATALOG: CatalogItem[] = [
     domain: "generic",
   },
   // WO-SANDBOX-E3 全链阻滞点判定器（卡点/堵点/断点三类机器可判 → ChainImpediment[]）。
+  {
+    /**
+     * WO-FLOWTIME · 合并时补登（WO-R9-PROCESS-MERGE·2026-08-14）。
+     *
+     * ⚠ **原单漏了这一条**：`process_flow_time` 进了 `SOLVER_KEYS` 却没进目录，
+     * 而 `catalog.test.ts` 的判据正是「注册表键集 === SOLVER_KEYS（新增求解器忘补目录描述即红）」。
+     * 是顺着 `SOLVER_KEYS.length` 这个金值往下追消费方时抖出来的，不是等全量跑撞出来的
+     * （复验：`grep -n process_flow_time apps/datacore/src/catalog.ts` 合并前 0 命中，
+     *   金丝雀同命令对 `chain_loss_attribution` 命中 1 ⇒ 是真没登记，不是 grep 坏了）。
+     */
+    key: "process_flow_time",
+    name: "流程实例流转时长",
+    description:
+      "业务流程**实例**层的站间流转时长：回答「**哪一条**流程实例被卡住、卡在**谁**那里、卡了**多久**」——即 impact-analysis 自述答不出的那三问。每条实例的进/出站时刻由**既有带时间戳单据反推**而来（origin=DERIVED_FROM_DOCUMENT，逐条带 sourceDocuments 可溯回单据 id + 字段名 + 该字段原值，R13），⛔ **一次都不读 stdDurationDays**（标准工期是计划值，拿它冒充实测卡顿是明令禁止的）。输出站内停留 dwellDays、站间流转 gapDaysToNext（负数不夹到 0——两站重叠是真实存在的）、瓶颈站（平均停留最久）与卡顿站（到 asOf 仍未出站）。「现在」由 asOf 显式指定，缺省取数据里观测到的最晚时刻并回传 asOfSource，不用 wall-clock（R6 同输入两跑字节一致）。反推不出的**诚实缺席**：四种 kind（无承载对象/无反推规则/字段缺值/结构性不适用）各带原因与复验探针，**不是 0 也不是编的数**。与 chain_loss_attribution 分层：那个答「哪一段慢」（链路节拍层·占比），这个答「哪一张单卡着」（实例层·天数 + 责任方）。",
+    argHints: {
+      processKey: "只看某一条流程节点（P##）；不传 = 全部",
+      flowKey: "只看某一条链（flowKey 前缀，如 procure_to_release）；不传 = 全部",
+      limit: "明细截断（缺省 50）——基数字段永远给全量真值，截断只影响明细数组",
+      asOf: "分析截止时刻（ISO 日期）；不传 = 数据里观测到的最晚时刻",
+    },
+    domain: "decision",
+    answersQuestions: [
+      "哪一条流程实例被卡住了",
+      "这一单卡在谁那里",
+      "卡了多久",
+      "流程节点之间流转要多久",
+      "哪个流程节点是瓶颈站",
+      "哪些流程今天反推不出来",
+    ],
+    tags: ["process", "instance", "flow-time", "流程实例", "站间流转", "卡顿", "瓶颈站", "流转时长"],
+  },
   {
     key: "chain_impediments",
     name: "全链阻滞点扫描",

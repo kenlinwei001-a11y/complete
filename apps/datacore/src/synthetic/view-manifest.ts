@@ -1,4 +1,5 @@
 import type { FeatureDef } from "@platform/contracts";
+import { BUSINESS_DOMAIN_KEYS } from "../graphmeta.js";
 
 /**
  * WO-MEMORY-VIEW-RESILIENCE · 内置视图单一来源（"内存模式视图默认配置防丢"·PRD §4.1）。
@@ -17,8 +18,50 @@ import type { FeatureDef } from "@platform/contracts";
  *   synthetic/battery  = scenarioSeed.views = SEEDED_VIEW_KEYS（= BUILTIN_VIEWS.filter(seed).map(key)）
  * 再由 `assertViewManifestIntegrity()` 在种子路径 fail-fast：任一 seeded 视图缺 featureKey/映射/VIEW_DEF → 启动即抛。
  *
- * 本文件是叶子模块（只依赖 @platform/contracts 类型），故 features.ts / service.ts / battery.ts 均可安全 import，无环。
+ * 本文件是叶子模块（只依赖 @platform/contracts 类型 + 零依赖叶子 `graphmeta.ts`），
+ * 故 features.ts / service.ts / battery.ts 均可安全 import，无环。
  */
+
+/**
+ * 「本体图谱」(`graph`) 的视角配置 —— 修 `G-GRAPH-ENTRY-DUP`（IA 重复入口）。
+ *
+ * 病灶（实测，非推测）：`graph` 此前是**零配置**（`layout: {}`、无 `options`），而
+ * `graph-all`（图谱·全景）显式带的 `{colorBy:"domain", layoutSeed:42}` **恰好等于前端默认值**
+ * （`OntologyGraphView.tsx` 的 `DEFAULT_OPTIONS = {colorBy:"domain"}` + `layoutSeed ?? 42`）。
+ * 逐条比对 `colorBy`/`nodeFilter`/`dimOthers`/`linkKinds`/`mvpOverlay`/`layoutSeed` 六个消费分支
+ * **全同 ⇒ 两个导航入口渲染输出完全相同**，用户站在导航栏前无法凭标题区分。
+ *
+ * 裁决（仓主）：两个入口都留，但必须**真的不同**。故给 `graph` 配一组真配置。
+ *
+ * 为什么选「业务域 allowlist + dimOthers」这一组（判据是**语义**，不是哪个好写）：
+ *  · 二者的**主语不同**：`graph-all` 自述是"14 业务域对象类型 **+ 求解器 + 智能体**一张图"——
+ *    主语是**整个系统三层**；而「本体图谱」的职责是**对象本体层**的浏览器（点节点出检查器：
+ *    属性/来源字段/适用规则/派生公式/字段覆盖徽章/CSV 模版，见 f7、f27）。
+ *    所以差别落在"**哪一层是主角**"上，这是这两个入口本来就该有的差别。
+ *  · **为什么是 `dimOthers: true`（淡出）而不是隐藏**：求解器/智能体节点仍**渲染**，
+ *    只是退到背景 —— ① 用户仍可点开它们看绑定关系（本体图谱是浏览器，不该藏东西）；
+ *    ② 隐藏会让 `calc`/`fb`/`orch` 边因端点消失而一起没了，图会"缺一块"而不是"分主次"。
+ *  · **为什么 `layoutSeed` 仍是 42**：故意与 `graph-all` **同布局**。换种子只会把节点位置洗一遍，
+ *    那是**任意**差异不是**有意义**差异；同布局反而让用户左右切换时一眼看出"同一张图，
+ *    强调的层不同"。
+ *  · 未选 `colorBy:"source"`（那是 `graph-source` 的职责，选它等于再造一对重复入口）、
+ *    未选 `mvpOverlay`（`graph-mvp` 的职责）、未选 `nodeFilter.tiers`（`graph-backbone` 的职责）。
+ *
+ * 域清单取 `graphmeta.BUSINESS_DOMAIN_KEYS`（14 业务域单一来源），**不手抄** ——
+ * 新增业务域时本视角自动跟随，不会因为漏抄一个域把该域整片对象误淡出。
+ */
+const ONTOLOGY_BROWSER_OPTIONS: Record<string, unknown> = {
+  graphOptions: {
+    colorBy: "domain",
+    // 主角 = 业务域对象；求解器/智能体两域不在册 ⇒ 落入 dimOthers 的淡出集。
+    nodeFilter: { domains: BUSINESS_DOMAIN_KEYS },
+    dimOthers: true,
+    layoutSeed: 42,
+  },
+  desc:
+    "对象本体层：14 业务域的对象类型与它们之间的结构关系，点任一节点看属性、来源字段、适用规则与派生公式。" +
+    "求解器与智能体属于其上的推演层与编排层，在此淡出——要三层同时看，切「图谱·全景」。",
+};
 export interface BuiltInView {
   /** ViewConfig 键（= 前端路由 viewKey·workspace.views[].viewKey·VIEW_FEATURE_MAP 键）。 */
   key: string;
@@ -57,7 +100,7 @@ export interface BuiltInView {
  */
 export const BUILTIN_VIEWS: BuiltInView[] = [
   { key: "dash", title: "经营驾驶舱", renderer: "dashboard", featureKey: "view.dash", featureName: "驾驶舱", seed: true, bindings: { apiTags: ["dash"] } },
-  { key: "graph", title: "本体图谱", renderer: "ontology-graph", featureKey: "view.ontology-graph", featureName: "本体图谱", seed: true, layout: {} },
+  { key: "graph", title: "本体图谱", renderer: "ontology-graph", featureKey: "view.ontology-graph", featureName: "本体图谱", seed: true, layout: {}, options: ONTOLOGY_BROWSER_OPTIONS },
   { key: "risk", title: "产能推演", renderer: "risk-board", featureKey: "view.risk-board", featureName: "风险推演看板", seed: true, bindings: { intents: ["risk_*"], solverKeys: ["risk_timeline"], apiTags: ["risk-board"] } },
   { key: "order", title: "订单台账", renderer: "ledger", featureKey: "view.ledger", featureName: "订单台账", seed: true },
   { key: "plan-audit", title: "规划体检", renderer: "plan-audit", featureKey: "view.plan-audit", featureName: "规划体检", seed: true, bindings: { intents: ["plan_audit_*"], solverKeys: ["plan_audit"], apiTags: ["plan-audit"] } },
@@ -126,6 +169,41 @@ export const BUILTIN_VIEWS: BuiltInView[] = [
   // **不挂 requires**（与沙盘五子视图不同）：流程层是配置驱动的业务主数据，
   // 与 `sim.sandbox` 推演沙盘无从属关系；挂上去会造出「关了沙盘就看不到业务流程」的假依赖。
   { key: "process-wait", title: "流程等待态", renderer: "process-wait", featureKey: "view.process-wait", featureName: "流程等待态", seed: true },
+  // ── 采购四段腿分解「该找谁」页（WO-R9-NAVREACH · 同族病第六层的**第二例**）──────────
+  //
+  // 病灶（2026-08-14 实测坐实，非推测）：`views/registry.ts:103` 逐字写着
+  // `registerRenderer("procurement-legs", …)`，组件 `views/sim/ProcurementLegsView.tsx` 真实现、
+  // 门 `test/procurement-legs-reachable.test.tsx` 12 例全绿 —— 而**没有任何路径渲染得到它**：
+  //   · 本表（后端派单唯一真相源）无此 key ⇒ `workspace.views` 永远没有它 ⇒ ViewPage 双闸全关；
+  //   · `App.tsx` 也无专用静态 route ⇒ 手敲 `/v/procurement-legs` 只落 `v/:viewKey` 通用守卫 → 404。
+  // 三形态定性（铁律 0.5）＝ **没接线**（不是"接了线没数据"、也不是"接错地方"）：
+  // 该 view 键在后端**整个不存在**——`grep -rn procurement-legs apps/datacore/src` 零命中，
+  // 而同族已上屏的 `process-wait` 在本表命中一行（金丝雀证明 grep 是好的，不是它瞎了）。
+  // 来历：`edeb3a10`（reclaim WO-R5 3/7）收编时**只收了前端半**，派单侧那一半没跟着来 ——
+  // 本仓反复点名的「拆两半只做一半」，与 chain-impediments 是**同一个坑的第二次**。
+  //
+  // 为什么走本表（BUILTIN_VIEWS）而不是专用 route —— 判据是**语义归属**，另有一条**结构硬约束**：
+  //   ① 语义：它消费的是**租户本体数据**（`kit_readiness` 逐缺料项的 `procurement` 四段 /
+  //      `ownerDays` / `criticalLeg`，源头是租户的 Supplier/PurchaseOrder/CustomsClearance/
+  //      IncomingInspection 真对象），可被行业模板裁剪；走专用 route 那批（what-if /
+  //      cleanroom-attr / disruption-radius / optimize-whatif）全是与租户本体无关的**净室通用**页。
+  //   ② R3「功能关闭 = 不存在」：专用 route 页面侧无 Guard，手敲 URL 照样进得去。
+  //   ③ **结构硬约束（这条决定性，不是偏好）**：`ProcurementLegsView` 读 `view.options`
+  //      （`ProcurementLegsView.tsx:305/311/316` 覆盖分析窗）与 `view.title`（`:364`），而
+  //      `App.tsx` 的专用 route **直挂组件、不传任何 props**（`lazyWrap(<WhatIfView />)` 那个形态）
+  //      ⇒ `view` 恒 undefined ⇒ 该页当场崩。`options` 只有 ViewConfig 这条路送得到。
+  //
+  // **不挂 requires**（与沙盘五子视图不同）：采购分解回答的是「这批料晚在哪一段、今天该打哪通电话」，
+  // 是采购/齐套域的业务主数据页，与 `sim.sandbox` 推演沙盘无从属关系；挂上去会造出
+  // 「关了沙盘就看不到该找谁」的假依赖。也**不进** `CONSOLIDATED_INTO_SANDBOX`：
+  // 沙盘五模式（现状/归因/试一手/求最优/影响半径，见 `views/sim/sandboxModes.ts`）里没有它，
+  // 收编表要求 `where` 写出「用户在沙盘里点哪里能到」—— 写不出来就不许进那张表（那是免死金牌，不是登记）。
+  //
+  // **不挂 bindings.solverKeys: ["kit_readiness"]**（刻意·与 chain-impediments 不同）：
+  // `kit_readiness` 是**多路共用**的求解器（QOS 问答/场景解读/mock handlers 均在调，
+  // 见 `frontend-shell/src/mocks/fixtures.ts:1376` 与 `handlers.ts:2462`），把它绑到一个 VIEW 级功能上
+  // ⇒ 关掉这一页会连带把所有别的调用方一起 404。绑定该表达的是「这个功能独占这个求解器」，此处不成立。
+  { key: "procurement-legs", title: "采购四段腿分解", renderer: "procurement-legs", featureKey: "view.procurement-legs", featureName: "采购四段腿分解", seed: true },
 ];
 
 /** scenarioSeed.views 单一来源：seed:true 的内置视图键（battery.ts 引用·防第 4 处漂移）。 */

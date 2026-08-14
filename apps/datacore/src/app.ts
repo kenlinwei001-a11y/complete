@@ -32,6 +32,8 @@ import { VleService } from "./vle.js";
 import { RulesService, assertValidExpression } from "./rules.js";
 import { LlmProviderService, TenantRoutedLlmClient, registerLlmProviderRoutes } from "./llmproviders.js";
 import { registerAdminPlatformRoutes } from "./adminplatform.js";
+import { OrgWorldService } from "./org/service.js";
+import { registerOrgWorldRoutes } from "./org/routes.js";
 import { OntologyService } from "./ontology.js";
 import { OntologyCoreService } from "./ontology-core.js";
 import { WorkflowService } from "./pipeline/service.js"; // OntoFlow（PRD v2）· 本体建模工作流·嫁接自 main
@@ -50,7 +52,8 @@ import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestS
 import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
 // WO-WAITING-STATES-FE · 业务流程层等待态下发（GET /a/v1/process-definitions）：
 // 词表与职能登记册随响应下发，前端不得再写第二份字面量数组（process.ts §1 单源纪律）。
-import { PROCESS_WAIT_KINDS, PROCESS_OWNER_FUNCTIONS } from "@platform/contracts";
+import { PROCESS_WAIT_KINDS, PROCESS_OWNER_FUNCTIONS, PROCESS_INSTANCE_ORIGINS } from "@platform/contracts";
+import { reconstructAndPersist } from "./process/reconstruct.js"; // WO-FLOWTIME · 流程实例反推（从既有带时间戳单据，非合成）
 // DF.13 外协红线单一来源（C08）：live-scenarios 触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
@@ -66,12 +69,15 @@ import { ImpactAnalysisRequestSchema } from "@platform/contracts"; // WO-IMPACT-
 import { analyzeImpact } from "./sim/impact-analysis.js";
 import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
+import { buildCausalGraphFromSim, buildCausalGraphFromDecision } from "./decision/causal-graph.js"; // WO-DECISION-CAUSAL-GRAPH · 因果图构图器（纯投影·零发明）
 import { validateClosure } from "./databuilder/closure.js";
 import { selfCheckGaps } from "./databuilder/selfcheck.js";
-import type { BuildPlan, ClosurePolicy } from "@platform/contracts";
+import type { BuildPlan, ClosurePolicy, SliceLayersResponse } from "@platform/contracts";
 import { buildSliceIndex, lookupReusable, lookupReusableByQuestion } from "./ontology/slice-index.js";
 import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
 import { projectSliceLayers } from "./ontology/slice-layers.js"; // WO-SLICE-16-LAYERS · 切片十六层只读投影
+// WO-V4-INSPECT · 业务流程节点检视只读投影（纯函数·零 IO·十六层复用上面那份 projectSliceLayers）
+import { adhocCarrierSliceKey, adhocCarrierSliceSpec, projectProcessInspect } from "./process/inspect.js";
 import { generateRefbaseOntology, refbaseNodeCount, refbaseDigest } from "./ontology/refbase.js";
 import { buildBatteryDomainCoverage } from "./ontology/refbase-coverage.js";
 import { RuleDocService } from "./ruledocs.js";
@@ -93,6 +99,8 @@ const CapabilityNeedsSchema = z.object({
 });
 import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "./solvers/service.js";
+// WO-V4-INSPECT · 杠杆标签/单位/值类的**单一真值**（PRD §4.1 的杠杆→域映射拿它当输入·前端零内联）
+import { LEVER_PROP_META } from "./solvers/lever-meta.js";
 import { solversByCategory, uncategorizedSolverKeys } from "./solvers/taxonomy.js"; // WO-L7A · 求解器决策问题分类维
 import { SOLVER_CATEGORIES, SOLVER_CATEGORY_META, isSolverCategory } from "@platform/contracts";
 // WO-ADOPT-MITIGATION · adopt_mitigation 执行器复用 base 解析**唯一严格出处**（勿在此另起一套规范化）。
@@ -128,6 +136,8 @@ import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
 import type { AuthCtx, ObjectInstance } from "./domain.js";
 import { mulberry32, hashString, randInt } from "./prng.js";
 import { DeriveDecisionFieldsRequestSchema, RecordMaterializeRequestSchema, CeoDatasetGenerateRequestSchema } from "@platform/contracts"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生 · WO-CEO-DATA-supply · 真源记录颗粒级物化 · WO-CEO-DATA-2
+import { AdvanceProcessInstanceRequestSchema, CreateProcessInstanceRequestSchema } from "@platform/contracts"; // WO-PROCESS-INSTANCE · 流程运行时（建实例/推进；body 只收**外部事实**，不收 status —— 状态机不交给调用方）
+import { ProcessRuntimeService } from "./process/runtime.js"; // WO-PROCESS-INSTANCE · 五个等待态的唯一产地（evaluateGate 单一调用点）
 import { deriveDecisionFields, weakestDataMode as weakestDerivedDataMode, validateDerivedFields, type DeriveSourceObject } from "./decision/derive-fields.js";
 import { materializeRecords, RECORD_MATERIALIZE_TEMPLATES } from "./decision/record-materialize.js";
 import { generateCeoAtomicDataset } from "./synthetic/ceo-dataset.js";
@@ -164,6 +174,16 @@ export interface AppDeps {
    * 探活端点若只回一个恒定字符串，它就只能回答"没好"，回答不了"在动吗"。
    */
   seedingPhase?: () => { phase: string; elapsedSec: number };
+  /**
+   * WO-PROCESS-INSTANCE · 流程运行时的「现在几点」。
+   *
+   * 为什么要能注入：本层的输出里有「这一步已经等了多久」，而欠账 #141 的原话是
+   * **「挂在墙钟上的断言并发时必假红」** —— 用真实时钟测「等了 3 天」，
+   * 要么得让测试睡 3 天，要么得容忍误差，两条都不可接受。注入之后
+   * 「等了多久」变成纯函数，可以断言到毫秒（R6 确定性）。
+   * 生产不传 ⇒ 落回 `() => new Date()`，与 `SchedulerService` 同形态。
+   */
+  processClock?: () => Date;
 }
 
 export interface BuiltApp {
@@ -441,6 +461,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const decisionKernel = new DecisionKernelService(repos, ontology, actions, outbox);
   const ruleScan = new RuleScanService(repos, timeseries, outbox);
   const scheduler = new SchedulerService(repos, logger.child({ component: "scheduler" }) as Logger);
+  // WO-PROCESS-INSTANCE · 流程运行时（五个等待态的唯一产地在其 evaluateGate 调用点）。时钟可注入见 AppDeps.processClock。
+  const processRuntime = new ProcessRuntimeService(repos, deps.processClock ? { clock: deps.processClock } : undefined);
   const sop = new SopService(repos, solvers, outbox);
   const kb = new KbService(repos, authz, blob, embeddings, outbox);
   const databuilder = new DataBuilderService(repos, ontology, rules, connectors, kb, solvers, outbox, routedLlm, config.DC_LLM_MODEL);
@@ -1086,6 +1108,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     for (const p of ["all", "backbone", "flow", "source", "solver", "mvp", "agent", "loop"]) {
       if (out.has(`view.graph.persp.${p}`)) out.add(`view.graph-${p}`);
     }
+    // WO-PROCESS-INSTANCE · 流程卡点面板：功能键是 `process.runtime`（**非** view.* 命名，
+    // 见 VIEW_FEATURE_MAP 里那条「与运行时引擎同生共死」的注记），而前端 `ViewPage` 的路由守卫
+    // 写死查 `view.${viewKey}`（frontend-shell/src/pages/ViewPage.tsx:33）。
+    // ⇒ 不补这条别名，会出现**最难查的那一种**断线：workspace.views 里有它、导航里点得到，
+    //   点进去 ViewPage 第一道闸就 404 —— 后端全绿、前端全绿，只有真点一下才看得见。
+    //   （这正是本仓「绿测试 ≠ 能用·断在接缝」的教科书形态，故补在与图谱视角同一个地方、同一种机制。）
+    // 别名是**单向**的：关掉 `process.runtime` ⇒ 这里不 add ⇒ 前端两道闸一起关（R3 不被绕过）。
+    if (out.has("process.runtime")) out.add("view.process-stuck");
     return [...out].sort();
   };
   app.get("/a/v1/me/workspace", async (req) => {
@@ -1772,10 +1802,32 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // `listCheckpoints`，但 24 条 `/a/v1/sim/*` 路由里从没有人开这个口 —— 病根在 route 层，不在前端。
   // 后果：`sim.checkpoint_saved` 事件没有可失效的缓存（前端无列表可读），回滚/分支只能靠调用方自己记
   // checkpointId。开此路由后该事件才具备真接线条件（前端 useQuery 属 WO-1/WO-4 边界，不在本单）。
+  // ⚠️ R9 双实现一致性：排序**必须**落在本层，不能指望两个仓储各自 ORDER BY —— 它们今天就不一致：
+  // `repo/pg.ts:103` 是 `ORDER BY tick`（且 tick 相同时次序由 DB 任意决定，非全序），
+  // 而 `repo/memory.ts:70` **一个 sort 都没有**（Map 插入序）。沙盘的常规动作正好会踩中这个分叉：
+  // 存档 → 回滚 → 在更早的 tick 再存一次 ⇒ 插入序与 tick 序相反。
+  // 实测（2026-08-13 收编本单时在 canonical 上真跑，非转述）：去掉下面这行 `.sort(...)`，
+  // memory 按插入序吐 `[2, 8, 2]`，`sim-checkpoint-list.seam.test.ts` ② 当场红：
+  //   `AssertionError: expected [ 2, 8, 2 ] to deeply equal [ 2, 2, 8 ]`
+  // 顺序在这里是**语义**而非美观：用户按它挑回滚点/分支点，顺序错 = 挑错档。
+  // 全序键取 `(tick, createdAt, id)`，与 `listPerturbations` 同款纪律 —— **不以随机 id 作首键**，
+  // id 只做最后的去歧义键，于是 memory 与 pg 返回逐字节一致（R6 确定性 ∧ R9 双实现同构）。
+  //
+  // ⚠️ **诚实边界：次键 `createdAt`/`id` 今天没有测试在驱动它（存活变异，2026-08-13 实测）。**
+  // 变异 M1「把 `.sort` 砍成只剩 `a.tick - b.tick`」⇒ `sim-checkpoint-list.seam.test.ts`
+  // **8/8 依旧全绿（RC=0）**，包括那条自称在验次键的 `expect(...).toEqual(["锚@2","回@2"])`。
+  // 病因不是断言写错，是 **`Array.prototype.sort` 自 ES2019 起是稳定排序**，而 memory 仓储
+  // 返回的正是插入序 ⇒ 同 tick 的并列项靠"稳定性"就已经落在 createdAt 序上，次键从未被真正调用。
+  // ⇒ 次键真正的守备对象是 **pg**（`ORDER BY tick` 对并列项不定序），而 pg 路径**本测试完全没覆盖**
+  //   （全仓 datacore 测试跑 memory 仓储）。**保留次键**（它对 pg 是必需的、且零成本），
+  //   但**不许**据本测试全绿宣称"双实现顺序已一致"—— 那是 R9 上一个仍然张着的口子，
+  //   要闭得靠一条真连 pg 的测试，属另开工单。这一条按"接了线没数据/没覆盖"记账，非"已验通过"。
   app.get("/a/v1/sim/sessions/:id/checkpoints", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.checkpoint");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
-    return { items: await repos.sim.listCheckpoints(c.tenantId, s.id) };
+    const items = (await repos.sim.listCheckpoints(c.tenantId, s.id))
+      .sort((a, b) => a.tick - b.tick || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    return { items };
   });
   app.post("/a/v1/sim/sessions/:id/rollback", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.checkpoint");
@@ -3213,6 +3265,180 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       ownerFunctions: PROCESS_OWNER_FUNCTIONS,
     };
   });
+  /**
+   * WO-FLOWTIME · 单条流程的**实例**与站间流转时长投影。
+   *
+   * ── 这条路由补的是上一条路由自己写着的那个洞 ──────────────────────────────
+   * 上面 `/a/v1/process-definitions` 的注释原文：
+   *   「**不下发「此刻已卡多久」**：那需要 `ProcessTask.enteredAt` 运行态，而
+   *     `ProcessTask`/`ProcessInstance` 全仓不存在 … 本路由只给 `stdDurationDays`（标准工期）
+   *     并由前端如实标注口径，**不拿标准工期冒充实测卡顿**。」
+   * 承载物现在有了（`migrations/033`），故本路由下发**实测反推**的进出站时刻与站间时长。
+   * ⛔ 那条「不拿标准工期冒充实测」的规矩**没有放宽**：本路由的任何天数都来自单据时间戳，
+   *    `stdDurationDays` 只作为**对照列**原样透出（`definition.stdDurationDays`），
+   *    与 `flowTime` 分属两个字段、两个含义，前端不可能拿错。
+   *
+   * ── 口径 ─────────────────────────────────────────────────────────────────
+   * · **只读投影**（R4）：反推 + 落派生表，不写本体真值，不碰 Action 审批路径。
+   * · R2：按 `ctx(req).tenantId` 读写；跨租户自然为空（Store 已按租户分区）。
+   * · R6：无 `Date.now()`；分析截止时刻 `asOf` 由 `?asOf=` 显式指定，缺省取**数据里最晚的
+   *   观测时刻**（`asOfSource` 一并回传，让读的人知道这个「现在」是怎么定的）。
+   * · **解析不到标 absent，不许 500**：流程 key 不存在 → 404（那是调用错，该报错）；
+   *   流程存在但反推不出实例 → **200 + `available:false` + 缺席理由 + 复验探针**
+   *   （「我不知道」是一个合法答案；把它变成 500 会让调用方以为是服务故障）。
+   */
+  app.get("/a/v1/process-definitions/:key/instances", async (req) => {
+    const c = ctx(req);
+    const key = (req.params as { key: string }).key;
+    const def = (await repos.processDefinitions.list(c.tenantId, (d) => d.key === key))[0];
+    if (!def) throw notFound(`ProcessDefinition ${key}`);
+    const q = req.query as { asOf?: string; limit?: string };
+    const outcome = await reconstructAndPersist(repos, c.tenantId, {
+      ...(q.asOf ? { asOf: q.asOf } : {}),
+      outbox,
+    });
+    const limit = Number.isFinite(Number(q.limit)) && Number(q.limit) > 0 ? Math.floor(Number(q.limit)) : 200;
+    const mine = outcome.instances.filter((i) => i.processKey === key);
+    const absence = outcome.absences.find((a) => a.processKey === key) ?? null;
+    // 站间流转投影：只保留经过本流程的链，并标出本站在链上的停留与到下一站的间隔。
+    const flowTime = outcome.timelines
+      .filter((t) => t.stations.some((s) => s.processKey === key))
+      .map((t) => ({
+        flowKey: t.flowKey,
+        totalDays: t.totalDays,
+        bottleneckProcessKey: t.bottleneckProcessKey,
+        bottleneckDwellDays: t.bottleneckDwellDays,
+        stuckProcessKey: t.stuckProcessKey,
+        stuckDays: t.stuckDays,
+        thisStation: t.stations.find((s) => s.processKey === key) ?? null,
+        stations: t.stations,
+      }))
+      .slice(0, limit);
+    return {
+      definition: def, // 含 stdDurationDays —— **对照列**，与下面的实测天数分属两个字段
+      asOf: outcome.asOf,
+      asOfSource: outcome.asOfSource,
+      /** 反推得出 ⇒ true；反推不出 ⇒ false + reason/probe（**不是空数组冒充"没有卡顿"**）。 */
+      available: mine.length > 0,
+      absence, // available=false 时非空：缺哪种单据 / 哪个字段 / 怎么复验
+      instanceCount: mine.length, // 全量基数（不受 limit 影响）
+      instances: mine.slice(0, limit),
+      instancesShown: Math.min(mine.length, limit),
+      flowTime,
+      /** 词表随响应下发（同上一条路由的既有做法：前端不必再写一份字面量数组）。 */
+      waitKinds: PROCESS_WAIT_KINDS,
+      origins: PROCESS_INSTANCE_ORIGINS,
+    };
+  });
+  /**
+   * WO-V4-INSPECT · **业务流程节点检视**（PRD-sandbox-v4-backward-derivation §4.1 + §4.2）。
+   *
+   * 「点开一条流程，看它的完整本体关系」——一次纯 join，**零新真值源、零新表、零新事件**：
+   *   `process_definitions` × `process_domains` × `object_types` × `ontology_links` × `objects`
+   *
+   * ── 四条硬约束（逐条对应 PRD，别当装饰）──────────────────────────────────
+   * ① **`carrierTypeKey` 解析不到是必须处理的态**：种子期不校验它存在
+   *    （判据在 `test/process-layer.test.ts`），故 join 不上是**可能发生的**。
+   *    此时 `carrier.status="absent"` + 说明缺在哪一环，HTTP **仍是 200** ——
+   *    流程本身存在，缺的是它的承载物。不许崩，也不许假设一定 join 得上。
+   * ② **不下发运行态**：`ProcessTask`/`ProcessInstance` 全仓不存在 ⇒「此刻卡了多久 / 有几单堵着」
+   *    答不出来。只给 `stdDurationDays` 并在 `runtime` 里如实标口径 ——
+   *    ⛔ 绝不拿标准工期冒充实测卡顿（上面那个路由的口径注释已立此规矩，此处沿用同一条）。
+   * ③ **零新真值源**：全部现算派生。
+   * ④ **R2 租户**：按 `ctx(req).tenantId` 读，跨租户自然为空（Store.list 已按租户分区）。
+   *
+   * 十六层**复用** `ontology/slice-layers.ts` 的既有投影（不另造一套），依据一条
+   * **即席一跳切片**（root = 承载类型，paths = 该类型每条一跳链路）真跑 `executeSlice` ——
+   * 层计数必须对得回真子图的 nodes/edges，拿手工拼的假 graph 喂进去屏上的数就是编的。
+   * 承载类型 absent ⇒ `carrierLayers: null` + 说明，**不返回 16 个空壳假装算过**。
+   */
+  app.get("/a/v1/process-definitions/:key/inspect", async (req) => {
+    const c = ctx(req);
+    const { key } = req.params as { key: string };
+    const [domains, definitions] = await Promise.all([
+      repos.processDomains.list(c.tenantId),
+      repos.processDefinitions.list(c.tenantId),
+    ]);
+    const definition = definitions.find((d) => d.key === key);
+    if (!definition) throw notFound(`process definition ${key}`); // 流程本身不存在才 404
+    const [types, linkTypes] = await Promise.all([ontology.listTypes(c), repos.ontologyLinks.list(c.tenantId)]);
+    const typeByKey = new Map(types.map((t) => [t.key, t]));
+    const carrierType = typeByKey.get(definition.carrierTypeKey);
+
+    // 对象计数只读**用得到的那几个类型**（承载类型 + 一跳邻居），不全表扫。
+    const countKeys = new Set<string>();
+    if (carrierType) countKeys.add(carrierType.key);
+    for (const l of linkTypes) {
+      if (l.fromTypeKey === definition.carrierTypeKey) countKeys.add(l.toTypeKey);
+      if (l.toTypeKey === definition.carrierTypeKey) countKeys.add(l.fromTypeKey);
+    }
+    const objectCounts = new Map<string, number>();
+    for (const k of [...countKeys].sort()) {
+      if (!typeByKey.has(k)) continue; // 类型不存在 ⇒ 不填（null ≠ 0，两者含义不同）
+      objectCounts.set(k, (await repos.objects.listByType(c.tenantId, k)).length);
+    }
+
+    // 十六层：承载类型在 ⇒ 真跑即席一跳切片；不在 ⇒ null（诚实说没算，不造空壳）。
+    let carrierLayers: SliceLayersResponse | null = null;
+    async function buildCarrierLayers(): Promise<SliceLayersResponse> {
+      const spec = adhocCarrierSliceSpec(definition!.carrierTypeKey, linkTypes);
+      const graph = await ontologyCore.executeSlice(c, spec, {});
+      const [ruleList, propagationRules, tsSeries, excObjs, actionTypeList, derivSpecs] = await Promise.all([
+        repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED"),
+        repos.sim.listPropagationRules(c.tenantId, true),
+        repos.tsSeries.list(c.tenantId),
+        repos.objects.listByType(c.tenantId, "ExceptionEvent"),
+        actions.listTypes(c),
+        repos.derivationSpecs.list(c.tenantId, (s) => s.status === "ACTIVE"),
+      ]);
+      const exceptionRefTypes: Record<string, number> = {};
+      for (const o of excObjs) {
+        const rt = typeof o.props.refType === "string" ? o.props.refType : "UNKNOWN";
+        exceptionRefTypes[rt] = (exceptionRefTypes[rt] ?? 0) + 1;
+      }
+      return projectSliceLayers({
+        sliceKey: adhocCarrierSliceKey(definition!.key),
+        version: 0, // 即席切片没有版本：它不是 slice_specs 里的记录，0 就是"无版本"这个事实
+        spec,
+        graph,
+        types,
+        linkTypes,
+        rules: ruleList,
+        propagationRules: propagationRules.map((p) => ({
+          key: p.key,
+          sourceTypeKey: p.sourceTypeKey,
+          sourceStateVar: p.sourceStateVar,
+          targetTypeKey: p.targetTypeKey,
+          targetStateVar: p.targetStateVar,
+          viaLinkKey: p.viaLinkKey,
+          coefficient: p.coefficient,
+        })),
+        tsSeries,
+        exceptionEventTotal: excObjs.length,
+        exceptionRefTypes,
+        // 即席切片不是发布物，没有任何 plan/intent/agent 会引用它 ⇒ ①②层恒空是**真结论**，
+        // 不是"没查"。层投影自己的 absentReason 会说明缺的是上报方。
+        references: [],
+        actionTypeKeys: actionTypeList.map((a) => a.key).sort(),
+        derivationSpecKeys: derivSpecs.map((d) => ({ specKey: d.specKey, targetType: d.targetType, targetProp: d.targetProp, formula: d.formula })),
+        args: {},
+        rootObjectTotal: objectCounts.get(definition!.carrierTypeKey) ?? 0,
+        rootObjectSamples: [],
+      });
+    }
+    if (carrierType) carrierLayers = await buildCarrierLayers();
+
+    return projectProcessInspect({
+      definition,
+      allDefinitions: definitions,
+      domains,
+      types,
+      linkTypes,
+      objectCounts,
+      leverMeta: LEVER_PROP_META,
+      carrierLayers,
+    });
+  });
   // A3.3 多跳切片规划器 + A3.4 索引复用：先查索引（命中既有切片即复用 reused:true），未命中才新规划。
   app.post("/a/v1/slices/plan", async (req) => {
     const c = ctx(req);
@@ -3701,6 +3927,54 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/decision-outcome-stats", async (req) => {
     return decisionKernel.outcomeStats(ctx(req));
   });
+
+  // ---- WO-DECISION-CAUSAL-GRAPH · 决策因果图（只读投影·回答「为什么这个决策被触发」）-------------
+  //
+  // 两个数据源分两条路由，**不合成一条**：沙盘按 tick 记时、台账按 ISO 时刻记时，
+  // 且今天二者之间没有任何字段互指（详见 decision/causal-graph.ts 顶注的实测取证）。
+  // 合成一条路由就得在响应里编一个统一的"时间"，那是现编。
+  //
+  // 全部只读（GET）。entitlement `decision.causal-graph` **暗发** —— 关 = 404 FEATURE_NOT_FOUND（R3 先于 authz）。
+  const requireCausalGraph = async (c: AuthCtx) => {
+    if (!(await features.enabled(c.tenantId, "decision.causal-graph"))) throw featureNotFound();
+  };
+  // 沙盘源：给定一次推演 → Cause(扰动) / Impact(传导轨迹 + 世界态) 真值抽取；其余三段诚实报缺。
+  app.get("/a/v1/causal-graphs/sim/:sessionId", async (req) => {
+    const c = ctx(req);
+    await requireCausalGraph(c);
+    const { sessionId } = req.params as { sessionId: string };
+    const s = await repos.sim.getSession(c.tenantId, sessionId); // R2：别租户的 session 读不到 → 404
+    if (!s) throw notFound("sim session not found");
+    // tick 0..curTick 全量读回（`trace` 只存在于 sim_tick_state 行上，是"谁把多少传给谁"的唯一真值）。
+    const ticks: { tick: number; state: TickState; trace: PropagationTrace[] | null }[] = [];
+    for (let i = 0; i <= s.curTick; i++) {
+      const row = await repos.sim.getTickState(c.tenantId, s.id, i);
+      // tick 0 行由 POST /sessions 建；缺行只可能是历史数据，跳过而不是补一个空世界（补了就是编）。
+      if (row) ticks.push({ tick: row.tick, state: row.state, trace: row.trace });
+    }
+    return buildCausalGraphFromSim({
+      tenantId: c.tenantId,
+      sessionId: s.id,
+      perturbations: await repos.sim.listPerturbations(c.tenantId, s.id),
+      ticks,
+      // PUBLISHED only：与 tick 路由（本文件 `listPropagationRules(c.tenantId, true)`）**同一个口径**，
+      // 免得因果图按一套规则解、推演按另一套跑。
+      rules: await repos.sim.listPropagationRules(c.tenantId, true),
+    });
+  });
+  // 台账源：给定一条决策 → 五段全覆盖（RESULT 段在 outcome 未回填时诚实报 NOT_YET_REALIZED）。
+  app.get("/a/v1/causal-graphs/decision/:decisionId", async (req) => {
+    const c = ctx(req);
+    await requireCausalGraph(c);
+    const { decisionId } = req.params as { decisionId: string };
+    const decision = await decisionKernel.get(c, decisionId); // R2 跨租户 404（kernel 内 notFound）
+    const drafts: NonNullable<Awaited<ReturnType<typeof repos.actionDrafts.get>>>[] = [];
+    for (const id of decision.actionDraftIds) {
+      const a = await repos.actionDrafts.get(c.tenantId, id);
+      if (a) drafts.push(a); // 查不到的由构图器落 caveat，不编一个假单
+    }
+    return buildCausalGraphFromDecision({ tenantId: c.tenantId, decision, actionDrafts: drafts });
+  });
   app.get("/a/v1/action-drafts", async (req) => {
     const { status, role } = req.query as { status?: string; role?: string };
     return actions.list(ctx(req), { status, role });
@@ -3780,7 +4054,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(RuleCreateSchema, req.body);
     // 管理平台增量 §5：手工创建（origin=MANUAL）的 expression 经 DSL 解析校验，错误定位字符位。
     // WO-RULE-EXPR-PARAMS：连同 params 一起校验闭包 —— 引用 `params.x` 却没声明 x 的规则当场拒。
-    assertValidExpression(body.expression, body.params ?? {});
+    // 传 key 后**反向**也校验：被绑定的阈值型 param 必须真被 expression 引用（防阈值退回两份）。
+    assertValidExpression(body.expression, body.params ?? {}, body.key);
     return reply.status(201).send(await rules.create(ctx(req), body));
   });
   // 管理平台增量 §5：PUT 仅 DRAFT 可改（PUBLISHED → 409 IMMUTABLE_VERSION）。
@@ -4317,6 +4592,44 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       scale: body.scale,
     });
     return dataset;
+  });
+
+  // ---- WO-PROCESS-INSTANCE · 流程运行时（「为什么这个流程现在卡住了」）------------------------
+  // R3 暗发：`process.runtime` defaultOn:false ⇒ 关 = 404 FEATURE_NOT_FOUND，**先于 authz**
+  //（先于角色门：功能关闭时连「你没权限」都不该说，那等于承认它存在）。
+  const requireProcessRuntime = async (c: AuthCtx) => {
+    if (!(await features.enabled(c.tenantId, "process.runtime"))) throw featureNotFound();
+  };
+
+  /** 全租户此刻卡住的流程 + 各等待态计数。前端卡点面板的唯一数据源。 */
+  app.get("/a/v1/process-instances/stuck", async (req) => {
+    const c = ctx(req);
+    await requireProcessRuntime(c);
+    return processRuntime.stuck(c.tenantId);
+  });
+
+  app.get("/a/v1/process-instances/:id", async (req) => {
+    const c = ctx(req);
+    await requireProcessRuntime(c);
+    const { id } = req.params as { id: string };
+    // R2：detail() 经 store.get(tenantId, id) 取，跨租户必 undefined ⇒ 404（不是 403，不泄漏存在性）。
+    return processRuntime.detail(c.tenantId, id);
+  });
+
+  app.post("/a/v1/process-instances", async (req) => {
+    const c = ctx(req);
+    await requireProcessRuntime(c);
+    const body = parseBody(CreateProcessInstanceRequestSchema, req.body);
+    return processRuntime.create(c.tenantId, body);
+  });
+
+  /** 推进：body 里给的是**外部事实**（数据到齐/外部回执/审批结论/人工已办），引擎据此重判 gate。 */
+  app.post("/a/v1/process-instances/:id/advance", async (req) => {
+    const c = ctx(req);
+    await requireProcessRuntime(c);
+    const { id } = req.params as { id: string };
+    const body = parseBody(AdvanceProcessInstanceRequestSchema, req.body ?? {});
+    return processRuntime.advance(c.tenantId, id, body);
   });
 
   // ---- A7 Foundry-Grade Data Builder（agent 驱动 data pipeline 发动机）------------------------
@@ -4999,6 +5312,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
   // ---- 管理平台增量：§2 租户/用户 + §3 场景包/视图配置 ------------------------------------------
   registerAdminPlatformRoutes(app, { repos, outbox, features, ctx });
+
+  // ---- WO-ORG-WORLD · 组织世界（七世界之②·人/角色/部门/职权/审批额度/代理）------------------
+  // Entitlement 先于 authz：`org.world` 暗发（defaultOn:false）→ 关闭时全部路由 404 FEATURE_NOT_FOUND。
+  registerOrgWorldRoutes(app, {
+    service: new OrgWorldService(repos),
+    ctx,
+    requireFeature: (req) => requireFeatureTag(req, "apiTags", "org-world"),
+  });
 
   // PATCH connection (schedule changes re-register/unregister CONNECTOR_SYNC jobs)
   app.patch("/a/v1/connections/:id", async (req) => {

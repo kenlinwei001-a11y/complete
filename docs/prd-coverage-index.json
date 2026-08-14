@@ -550,6 +550,16 @@
       "uncovered": [],
       "coverage": 1
     },
+    "PRD-sandbox-a10.md": {
+      "acceptanceIds": [
+        "E3"
+      ],
+      "covered": [
+        "E3"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
     "PRD-sandbox-a2.md": {
       "acceptanceIds": [
         "A1",
@@ -640,6 +650,18 @@
         "B8"
       ],
       "coverage": 0.87
+    },
+    "PRD-sandbox-v3-three-zone.md": {
+      "acceptanceIds": [
+        "D1",
+        "D4"
+      ],
+      "covered": [
+        "D1",
+        "D4"
+      ],
+      "uncovered": [],
+      "coverage": 1
     },
     "PRD-skill-contract-dsl.md": {
       "acceptanceIds": [

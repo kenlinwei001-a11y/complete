@@ -16,7 +16,7 @@ export interface TestApp extends BuiltApp {
   adminCtx: AuthCtx;
 }
 
-export async function makeApp(opts?: { fetchImpl?: typeof fetch; seed?: boolean; env?: Record<string, string>; seeding?: () => boolean; bootstrapRequired?: () => Promise<string | null> }): Promise<TestApp> {
+export async function makeApp(opts?: { fetchImpl?: typeof fetch; seed?: boolean; env?: Record<string, string>; seeding?: () => boolean; bootstrapRequired?: () => Promise<string | null>; processClock?: () => Date }): Promise<TestApp> {
   const blobDir = await mkdtemp(join(tmpdir(), "dc-test-"));
   const config = loadConfig({
     NODE_ENV: "test",
@@ -35,6 +35,9 @@ export async function makeApp(opts?: { fetchImpl?: typeof fetch; seed?: boolean;
     fetchImpl: opts?.fetchImpl,
     seeding: opts?.seeding,
     bootstrapRequired: opts?.bootstrapRequired,
+    // WO-PROCESS-INSTANCE：流程运行时的可注入时钟。不传 ⇒ 生产同款真实时钟。
+    // 传了才能对「已等多久」做到毫秒级断言 —— 欠账 #141「挂在墙钟上的断言并发时必假红」的对策。
+    ...(opts?.processClock ? { processClock: opts.processClock } : {}),
   });
   let adminCtx: AuthCtx = { tenantId: "demo", userId: "usr_demo_admin", roles: ["admin"], attributes: {} };
   if (opts?.seed !== false) adminCtx = await seedDemo(repos);

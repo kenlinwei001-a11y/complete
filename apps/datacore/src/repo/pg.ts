@@ -819,6 +819,19 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     // 同上：表名写错只在 pg 模式下运行时炸，memory 默认的单测证明不了这一行 ——
     // 故 enterprise-state.seam.test.ts 里另有一条断言，把 030 migration 的 CREATE TABLE 名字抽出来与本行比对。
     enterpriseStates: new PgStore(pool, "enterprise_states"),
+    // WO-ORG-WORLD · 组织世界（R9 三处同改之三 · migrations/032_org_world.sql）。
+    // 同 processDefinitions 的理由：表名写错**不会编译报错**，只在 pg 模式运行时炸，而测试默认走 memory
+    // ⇒ 单测全绿证明不了这四行对。故 org-world.test.ts 有一条断言把该 migration 里的 CREATE TABLE
+    // 表名抽出来与此处字面量比对（含金丝雀，抽不到 4 张就报「工具坏了」而不是「表名对」）。
+    orgPrincipals: new PgStore(pool, "org_principals"),
+    orgAuthorities: new PgStore(pool, "org_authorities"),
+    orgApprovalLimits: new PgStore(pool, "org_approval_limits"),
+    orgDelegations: new PgStore(pool, "org_delegations"),
+    // WO-PROCESS-INSTANCE · 流程运行时层（R9 三处同改之三 · migrations/033_process_instances.sql）。
+    // 同上：表名写错不编译报错、memory 单测也测不到 —— process-instance.test.ts 复用同一条
+    // 「migration 抽表名 ↔ 本文件字面量」对账断言把这两行也纳入。
+    processInstances: new PgStore(pool, "process_instances"),
+    processTasks: new PgStore(pool, "process_tasks"),
     sim: new PgSimRepo(pool),
     async ping() {
       await pool.query("SELECT 1");

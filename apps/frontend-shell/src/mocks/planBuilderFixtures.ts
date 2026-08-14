@@ -1,5 +1,6 @@
 import type { PlanBuilderCanvas } from "@platform/contracts";
-import { TENANT_ID, PACKAGE_ID } from "./fixtures";
+// 从**叶子**模块取，不从 fixtures 取 —— 从 fixtures 取会成环（见 ids.ts 文件头）。
+import { TENANT_ID, PACKAGE_ID } from "./ids";
 
 /** WO-A · PlanBuilder 示例画布（Phase 1：线性 INPUT→SOLVER→TRANSFORM→OUTPUT）。 */
 export const PLAN_BUILDER_FIXTURES: PlanBuilderCanvas[] = [

@@ -436,6 +436,11 @@ export function outsourcingSplit(args: Record<string, unknown>) {
 }
 
 // S15 quote_margin：BOM成本=Σ(单耗×现价×(1+加工费率))；毛利率=(价−BOM−制造费率×价−物流)/价。
+//
+// WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）· 加性透出 `scope`（这答案算的是谁 / 用了哪张 BOM / 哪些订单）。
+// 修前实测：`custName` 换任意值输出**逐字节相同**，且实参值不出现在输出任何位置 —— 任何客户问毛利拿到的
+// 都是同一份数字，而答案上印着他问的那个客户名（假个性化）。三态照 `credit_exposure` 样板：
+//   CUSTOMER = 定位到具体客户（`orders`/`bomId` 可溯）· ALL = 未指定客户的全域口径 · EXPLICIT = 调用方直传数值。
 export function quoteMargin(args: Record<string, unknown>) {
   const price = num(args.price);
   const bom = (args.bom as { unit: number; spotPrice: number; processRate?: number }[]) ?? [];
@@ -444,15 +449,17 @@ export function quoteMargin(args: Record<string, unknown>) {
   const logistics = num(args.logistics);
   const margin = price <= 0 ? 0 : round((price - bomCost - mfg - logistics) / price, 4);
   const floor = num(args.segmentFloor, 0.1);
+  const scope = (args.scope as Record<string, unknown> | undefined) ?? { mode: "EXPLICIT" };
   return {
     margin,
     floor,
     diff: round(margin - floor, 4),
     verdict: margin >= floor + 0.01 ? "过线" : margin >= floor ? "触线" : "低于底线",
     breakdown: { bomCost, mfg: round(mfg, 4), logistics, price },
-    // WO-SILENT-WRONG-ANSWER-3 症③ 诚实位：**哪一维真生效、哪一维没有**（型号 APPLIED / 客户 NOT_APPLIED）。
-    // 由 `deriveExtendedArgs` 注入；调用方直传 `bom` 的路不注入 ⇒ 键不出现 ⇒ 逐字节加性。
-    ...(args.quoteScope !== undefined ? { scope: args.quoteScope } : {}),
+    // WO-QUOTE-MARGIN-CUSTOMER：`scope` 恒出（直传 bom 的路回落 `{mode:"EXPLICIT"}`，见上 const scope）。
+    // 取代了 WO-SILENT-WRONG-ANSWER-3 症③ 的 `args.quoteScope` 条件注入 —— 后者的 custDimension:"NOT_APPLIED"
+    // 是「客户维今天没有」的诚实位，而本单把客户维**真做出来了**，故诚实位升级为 scope.mode CUSTOMER/ALL/EXPLICIT。
+    scope,
     ruleRefs: ["C15", "C24"],
   };
 }
@@ -877,70 +884,174 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       return { gap: num(args.gap, Math.round(totalDemand * 0.15)), totalDemand, ...args };
     }
     case "quote_margin": {
+      // ── WO-QUOTE-MARGIN-CUSTOMER · 欠账 #118 ────────────────────────────────
+      // 修前一行：`bom: mats.slice(0, 4)` + `price: 500` 默认
+      //   ① **BOM 取错表**：`Material` 按 matId 排序的前 4 行（al_foil/cell_case/cu_foil/elyte，**不含正极**）
+      //      → `bomCost` 恒 313.7452，与问的是哪个型号无关。真 BOM 一直在 `BOMHeader`+`BOMDetail` 里
+      //      （4680-NCM 7 行 → 632.835 / 方形-LFP 7 行 → 540.2012）。「有数据、取错表」。
+      //   ② **客户维完全不存在**：`custName` 压根不读；就算读了，数据层的 `order_of_customer` 也是轮转绑的
+      //      （已由本单数据半修好）。实测：custName 换任意值 → 输出逐字节相同。
+      // 修后：客户 →（沿 `order_of_customer` 真归属边）→ 该客户的订单 → 型号 → 真 BOM + 真单价。
+      //   调用方直传 `bom`（测试 / rules-p3 payload）→ 原样返回，标 EXPLICIT（与上线前逐字节一致·R6）。
       if (has("bom")) return args;
-      // ── WO-SILENT-WRONG-ANSWER-3 症③（S15·同属「16 个派生意图对用户实体失聪」那一族）─────────────
-      // 修前：`bom = mats.slice(0,4)` = `Material` 按 id 排序的**前 4 行**，与用户问的 `modelId` / `custName`
-      //   **毫无关系**；而输出把 `margin/verdict`（过线/触线/低于底线）算得一板一眼 —— 换个型号、换个客户，
-      //   `margin` 逐字节相同，屏上却是一句斩钉截铁的「过线」。这是**假个性化**：不是没答，是答得像真的。
-      // 本次修两件，**分清哪一维真修好了、哪一维只是被诚实标出来**（不许拿一个盖住另一个）：
-      //   ① `modelId` → **真接线**：取该型号的 BOM（`bomHeaders`/`bomDetails` 已在 `SolverContext` 里，
-      //      carbon_footprint 用的就是同一份·同一套查法），逐行 `unit = quantity × (1 + lossRate)`、
-      //      `spotPrice = Material.unitPrice`。该型号无可用 BOM → **`AMBIGUOUS_SCOPE` 400**，
-      //      绝不回落全局前 4 行（回落 = 把「铝箔+壳体+铜箔+电解液」的成本冠上用户问的型号名）。
-      //   ② `custName` → **今天真的没有客户维**：`price`/`mfgRate`/`logistics`/`segmentFloor` 四个入参
-      //      全是本行写死的常数，`Customer` 对象上也没有报价/细分底线字段可派生。故**不假装**，
-      //      改为在输出里显式标 `custDimension:"NOT_APPLIED"` + 缺什么源（诚实位·降层不删除）。
-      // 加性：不给 `modelId` → 仍取 `mats.slice(0,4)`，与改前逐字节一致；`scope` 是新增键。
-      const wantedModel = str(args.modelId);
-      let bom: { unit: number; spotPrice: number; processRate: number }[] | undefined;
-      if (wantedModel) {
-        const heads = (c.bomHeaders ?? []).map(props).filter((h) => str(h.modelId) === wantedModel);
-        const bomId = heads.length > 0 ? str(heads[0]!.bomId) : "";
-        const details = bomId ? (c.bomDetails ?? []).map(props).filter((d) => str(d.bomId) === bomId) : [];
-        const byMatId = new Map(mats.map((m) => [str(m.matId), m]));
-        const rows = details
-          .map((d) => {
-            const m = byMatId.get(str(d.materialId));
-            return m === undefined
-              ? null
-              : { unit: round(num(d.quantity, 0) * (1 + num(d.lossRate, 0)), 6), spotPrice: num(m.unitPrice, 1), processRate: 0.05 };
-          })
-          .filter((x): x is { unit: number; spotPrice: number; processRate: number } => x !== null);
-        if (rows.length === 0)
+      const custObjs = (c.customers ?? []).map(props);
+      const orders = (c.orders ?? []).map((o) => ({ id: o.id, p: props(o) }));
+      const linkRows = c.orderCustomerLinks ?? [];
+      const wantedCust = str(args.custName);
+
+      // ── 客户解析（匹配阶梯照 credit_exposure 样板：精确 custName → 下单品牌名 → 双向子串）──
+      let cust: Record<string, unknown> | undefined;
+      if (wantedCust) {
+        cust =
+          custObjs.find((x) => str(x.custName) === wantedCust) ??
+          custObjs.find((x) => (Array.isArray(x.orderCustNames) ? (x.orderCustNames as unknown[]).map(String) : []).includes(wantedCust)) ??
+          custObjs.find((x) => str(x.custName).includes(wantedCust) || wantedCust.includes(str(x.custName)));
+        // 指定了客户却匹配不到 → AMBIGUOUS_SCOPE 400（不静默落首个客户冒充答案·R-ARG-FIDELITY）。
+        if (!cust)
           throw new AppError(
             "AMBIGUOUS_SCOPE",
-            `quote_margin：问句指定型号「${wantedModel}」无可用 BOM（BOMHeader 命中 ${heads.length} 份 / BOMDetail 明细 ${details.length} 行 / 能对上 Material 的 ${rows.length} 行）` +
-              `——拒绝拿与型号无关的全局前 4 种物料冒充该型号的 BOM 成本（R-ARG-FIDELITY·G-SOLVER-SCOPE-ECHO）`,
+            `quote_margin：问句指定客户「${wantedCust}」在客户库中无匹配——拒绝静默落首个客户（R-ARG-FIDELITY·G-ARG-DROP-SEAM）`,
             400,
           );
-        bom = rows;
       }
-      const quoteScope = {
-        modelId: wantedModel || null,
-        modelDimension: wantedModel ? "APPLIED" : "ALL",
-        modelNote: wantedModel
-          ? `BOM 成本按型号 ${wantedModel} 的真 BOM 逐行计（quantity×(1+lossRate) × Material.unitPrice）`
-          : "未指定型号 → BOM 取全局前 4 种物料（非任何具体型号的配方）",
-        custName: str(args.custName) || null,
-        // ⚠ 诚实位的要点：**说清哪一维没生效**，而不是只报「算完了」。
-        custDimension: "NOT_APPLIED",
-        custNote:
-          "客户维今天不生效：price / mfgRate / logistics / segmentFloor 四项均为引擎写死常数，" +
-          "Customer 对象上无报价、无细分毛利底线字段可派生 ⇒ 换个客户名，margin 与 verdict 不会变。" +
-          "要真按客户算，需先给 Customer 补 segment/报价承载体（缺源登记·不臆造）。",
-        missingInputs: [
-          { objectType: "Customer", property: "segment", need: "客户所属细分（决定 segmentFloor 毛利底线）" },
-          { objectType: "Customer", property: "quotedPrice", need: "该客户该型号的报价（决定 price）" },
-        ],
+
+      // ── 客户 → 订单：**沿 order_of_customer 边**（数据半与引擎半必须在同一个接缝上·SEAM-GATE）──
+      const custId = cust ? str(cust.custId) : "";
+      const custName = cust ? str(cust.custName) : "";
+      const orderIdsOfCust = new Set(linkRows.filter((l) => l.custId === custId).map((l) => l.orderId));
+      const custOrders = cust ? orders.filter((o) => orderIdsOfCust.has(o.id)) : orders;
+
+      // ── 型号选定：显式 modelId 优先；否则取该客户 qty 最大的型号（并列时按 modelId 升序，R6 确定性）──
+      const qtyByModel = new Map<string, number>();
+      for (const o of custOrders) {
+        const m = str(o.p.model);
+        if (m) qtyByModel.set(m, (qtyByModel.get(m) ?? 0) + num(o.p.qty));
+      }
+      const rankedModels = [...qtyByModel.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+      const requestedModel = str(args.modelId);
+      const modelMatched = requestedModel !== "" && qtyByModel.has(requestedModel);
+      const modelId = requestedModel !== "" ? requestedModel : (rankedModels[0]?.[0] ?? "");
+
+      // ── 真 BOM：BOMHeader(该 modelId·量产优先·bomId 升序取首) → BOMDetail × Material.unitPrice ──
+      const matById = new Map(mats.map((m) => [str(m.matId), m]));
+      const headers = (c.bomHeaders ?? []).map(props).filter((h) => str(h.modelId) === modelId);
+      const header =
+        headers.filter((h) => str(h.status) === "量产").sort((a, b) => (str(a.bomId) < str(b.bomId) ? -1 : 1))[0] ??
+        headers.sort((a, b) => (str(a.bomId) < str(b.bomId) ? -1 : 1))[0];
+      const bomRows = header
+        ? (c.bomDetails ?? [])
+            .map(props)
+            .filter((d) => str(d.bomId) === str(header.bomId))
+            .sort((a, b) => num(a.sequence) - num(b.sequence) || (str(a.bomDetailId) < str(b.bomDetailId) ? -1 : 1))
+        : [];
+      const realBom = bomRows.map((d) => ({
+        material: str(d.materialId),
+        unit: num(d.quantity),
+        spotPrice: num(matById.get(str(d.materialId))?.unitPrice, 0),
+        // 加工费率口径改用 BOM 明细自己的**损耗率**（`BOMDetail.lossRate`），不再是写死的 0.05：
+        // 「单台用量 × 现价 × (1+损耗)」是这张 BOM 自己说的，不是求解器替它假设的。
+        processRate: num(d.lossRate),
+      }));
+
+      // ── 真单价：该客户该型号订单的 qty 加权均价（`Order.unitPrice`）——这才让 `qty` 第一次真被消费 ──
+      const priceRows = custOrders.filter((o) => str(o.p.model) === modelId);
+      const totalQty = priceRows.reduce((s, o) => s + num(o.p.qty), 0);
+      const weightedPrice = totalQty > 0 ? round(priceRows.reduce((s, o) => s + num(o.p.qty) * num(o.p.unitPrice), 0) / totalQty, 4) : 0;
+      const modelPrice = num((c.models ?? []).map(props).find((m) => str(m.modelId) === modelId)?.unitPrice, 0);
+      const price = weightedPrice > 0 ? weightedPrice : modelPrice;
+
+      // ── 取不到真 BOM / 真价 → 诚实回落到原默认，并把「为什么」写进 scope（不假装算出来了）──
+      const dataMode = realBom.length > 0 && price > 0 ? "OK" : "EMPTY";
+      const reason =
+        dataMode === "OK"
+          ? undefined
+          : realBom.length === 0
+            ? `型号「${modelId || "（未定位）"}」在 BOMHeader/BOMDetail 中无生效 BOM——不拿 Material 前 4 行冒充型号 BOM`
+            : `型号「${modelId}」取不到单价（该客户名下无此型号在手单，且 Model.unitPrice 缺失）`;
+
+      // ── 点了名的客户却算不出真值 → **报错，不回落**（与 `lta_gap` 删掉 `?? mats[0]` 同一条纪律）──
+      // 否则会走到下面的 `mats.slice(0,4)` 兜底：那正是本单要治的那份假数（313.7452），
+      // 只不过这次答案上还印着提问者的客户名 —— 比修前更像真的，也更危险。
+      // 仅约束 CUSTOMER 分支；未指定客户的 ALL 分支保留兜底（空租户仍出数·与上线前一致·R6）。
+      if (cust && dataMode === "EMPTY")
+        throw new AppError(
+          "EMPTY_SCOPE",
+          `quote_margin：客户「${custName}」算不出接单毛利。原因：${reason}。拒绝回落到 Material 前 4 行的通用 BOM 冒充该客户的报价成本（R-ARG-FIDELITY）`,
+          400,
+        );
+
+      // ── 并线补回：**点了名的型号**取不到真 BOM 也不许回落（canonical WO-SILENT-WRONG-ANSWER-3 症③ 的守卫）──
+      // 本分支从更早的基线分出，只在「点名客户」那条路上设了 EMPTY_SCOPE 闸；而 canonical 自分叉后
+      // 已为「点名型号」补了 AMBIGUOUS_SCOPE 400。若照分支原样收编，`modelId` 指定但无 BOM 且未点客户时，
+      // 会沿下面的 `dataMode !== "OK"` 落回 `mats.slice(0,4)` —— 把「铝箔+壳体+铜箔+电解液」的通用成本
+      // 冠上用户问的型号名，正是 canonical 已经修掉的那个静默错答。两条闸**并存**，不是二选一。
+      if (requestedModel !== "" && realBom.length === 0)
+        throw new AppError(
+          "AMBIGUOUS_SCOPE",
+          `quote_margin：问句指定型号「${requestedModel}」无可用 BOM（BOMHeader 命中 ${headers.length} 份 / 明细 ${bomRows.length} 行）` +
+            `——拒绝拿与型号无关的全局前 4 种物料冒充该型号的 BOM 成本（R-ARG-FIDELITY·G-SOLVER-SCOPE-ECHO）`,
+          400,
+        );
+
+      // ── 口径自证（**本单不发明换算常数**）─────────────────────────────────────
+      // 价来自 `Order.unitPrice`（propUnits 声明「元」·WO-SCALE-COHERENCE 后为 **元/套**≈2 万），
+      // BOM 来自 `BOMDetail.quantity`（属性中文名「**单台用量**」）× `Material.unitPrice`。
+      // 两者之间**缺一个「台/套」换算常数**：BOM 侧 Σ物料重量≈2.2kg，与 `Model.weight`（电芯级 g）同量级，
+      // 而价侧已迁到套级 —— 因此 margin 绝对值偏高。造一个常数把它压到「看着合理」= 把金值改成想要的值，
+      // 正是本仓明令禁止的做法。**本单只把口径差摆到台面上**（下方 unitBasis），
+      // 差分 / 归属 / 可溯三项不受影响（同一口径下逐客户可比）。断点登记：G-QUOTE-BOM-PRICE-UNIT-SCALE。
+      const unitBasis = {
+        price: "元/套 · Order.unitPrice（无在手单时回落 Model.unitPrice）",
+        bomCost: "元/台 · Σ BOMDetail.quantity(单台用量) × Material.unitPrice × (1+BOMDetail.lossRate)",
+        coherent: false,
+        gap: "G-QUOTE-BOM-PRICE-UNIT-SCALE",
+        note: "价按套、BOM 按台，二者间缺「台/套」换算常数（种子层欠账，非本求解器可补）——margin 绝对值偏高；逐客户差分与溯源不受影响。",
       };
+
+      const scope: Record<string, unknown> = cust
+        ? {
+            mode: "CUSTOMER",
+            custName,
+            custId,
+            orderCustNames: Array.isArray(cust.orderCustNames) ? (cust.orderCustNames as unknown[]).map(String) : [],
+            modelId,
+            ...(requestedModel !== "" && !modelMatched
+              ? { requestedModelId: requestedModel, modelMatched: false, modelNote: `客户「${custName}」名下无「${requestedModel}」在手单——单价回落该型号 Model.unitPrice（BOM 仍取该型号真 BOM）` }
+              : { modelMatched: true }),
+            bomId: header ? str(header.bomId) : null,
+            bomRows: realBom.length,
+            orders: priceRows.map((o) => str(o.p.so)).sort(),
+            orderCount: custOrders.length,
+            qty: totalQty,
+            priceSource: weightedPrice > 0 ? "Order.unitPrice（该客户该型号在手单 qty 加权）" : "Model.unitPrice（该客户名下无此型号在手单）",
+            dataMode,
+            unitBasis,
+            ...(reason ? { reason } : {}),
+          }
+        : {
+            mode: "ALL",
+            custName: null,
+            modelId,
+            bomId: header ? str(header.bomId) : null,
+            bomRows: realBom.length,
+            orderCount: custOrders.length,
+            qty: totalQty,
+            priceSource: weightedPrice > 0 ? "Order.unitPrice（全部在手单 qty 加权）" : "Model.unitPrice",
+            dataMode,
+            unitBasis,
+            note: "未指定客户→按全部在手单的主力型号计（非首客户）",
+            ...(reason ? { reason } : {}),
+          };
+
       return {
-        price: num(args.price, 500),
+        price: dataMode === "OK" ? price : num(args.price, 500),
         mfgRate: 0.1,
         logistics: 8,
         segmentFloor: 0.12,
         ...args,
-        bom: bom ?? mats.slice(0, 4).map((m) => ({ unit: num(m.bomUnit, 1), spotPrice: num(m.unitPrice, 1), processRate: 0.05 })),
-        quoteScope,
+        // args 里的 custName/modelId 是**问句实参**，不能覆盖上面解析出的口径 → scope/bom 放在 ...args 之后。
+        bom: dataMode === "OK" ? realBom : mats.slice(0, 4).map((m) => ({ unit: num(m.bomUnit, 1), spotPrice: num(m.unitPrice, 1), processRate: 0.05 })),
+        scope,
       };
     }
     case "credit_exposure": {

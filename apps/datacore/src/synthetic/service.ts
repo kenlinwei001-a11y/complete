@@ -1,4 +1,4 @@
-import { IndustryTemplateSchema, type GenSpec, type IndustryTemplate, type ModelingSuggestion, type PermissionPolicy, type PlantSpec } from "@platform/contracts";
+import { IndustryTemplateSchema, type GenSpec, type GraphViewDesc, type IndustryTemplate, type ModelingSuggestion, type PermissionPolicy, type PlantSpec } from "@platform/contracts";
 import { sampleValueDomain, applyPlantCrossings, derivePlantFromRule } from "./value-domains.js";
 import type { AuthCtx, Connection, ObjectInstance, RawDataset, SyntheticJob, SyntheticReport, User, ViewConfig } from "../domain.js";
 import { profileRows } from "../connectors/profiler.js";
@@ -38,6 +38,7 @@ import {
   projectExceptionEvents,
   BINDINGS,
   outputLineScaleForBase,
+  customerNameOfOrderCust,
 } from "./battery.js";
 import { cadenceObjectRows, deriveChainCadences } from "./cadence.js";
 import { extendedObjectTypes, generateExtended, CAUSAL_EDGES } from "./battery-extended.js";
@@ -70,6 +71,28 @@ const PLANVIEW_EXTRA_KEYS = [
   "graph-mvp",
   "graph-agent",
   "graph-loop",
+];
+
+/**
+ * **暗发中的增量视图**（WO-R9-STUCKVIEW·2026-08-14）—— 与上面那桶分开，因为它们**不能过种子期过滤**。
+ *
+ * ── 为什么必须单列（这是收编时实测出来的，不是照抄格式）─────────────────────
+ * 上面 `PLANVIEW_EXTRA_KEYS` 会先过 `filterByFeatures()` 再落 ViewConfig。对**暗发**功能来说
+ * 那是个死结：种子期 `process.runtime` 关着 ⇒ 该键被滤掉 ⇒ **根本没写进 ViewConfig** ⇒
+ * 租户日后开通了功能，`/a/v1/me/workspace` 也无从下发（它只能从 ViewConfig 里挑，挑不出没写进去的）。
+ * 表现是「开关打开了，页面还是没有」，而两侧代码看起来都对。
+ *
+ * ⇒ 正确分层：**ViewConfig 是目录，`/me/workspace` 是闸**。
+ *    目录**无条件**收录（本常量），闸在**请求期**按 `VIEW_FEATURE_MAP` 逐次判（app.ts `viewAllowed()`）。
+ *    R3「功能关闭 = 不存在」一点没松：关着时 `viewAllowed("process-stuck")` 为假 ⇒
+ *    `views` 与 `navigation` 两处同时被滤掉，且 `withRouteFeatureAliases` 不下发
+ *    `view.process-stuck` ⇒ 前端页面侧守卫也 404。三道闸全在请求期，比种子期那一道**更严**
+ *    （种子期那道只在"种下去的那一刻"生效，之后功能怎么变它都不知道）。
+ */
+const DARK_LAUNCH_EXTRA_KEYS = [
+  // 流程卡点面板（「为什么**这一张单**现在卡住了」·需求 §4.5）。控制键 `process.runtime`
+  // （features.ts:272 VIEW_FEATURE_MAP + INCOMPLETE_DATA_DARK_LAUNCH_FEATURES 暗发）。
+  "process-stuck",
 ];
 
 /** §7.18 学习闭环视角 nodeFilter.ids —— 与图谱端点概念节点 id 一字不差。 */
@@ -257,8 +280,13 @@ export class SyntheticService {
       }
       const views = await this.filterByFeatures(ctx, template.scenarioSeed.views);
       // 增量视图（§7.14–7.17 + 图谱八视角 + 运营复盘）：不进 report.views（保持验收快照稳定），但进 view_configs。
+      // ⚠ 两桶合流但**过滤方式不同**（见 DARK_LAUNCH_EXTRA_KEYS 的文件头说明）：
+      //   普通增量视图过种子期 feature 过滤；暗发视图**不过**，只由请求期 `/me/workspace` 那道闸判。
+      //   合成一句 `filterByFeatures([...A, ...B])` 就会把暗发那批永久滤掉 —— 那正是本条要防的病。
       const extraViews =
-        input.industry === "battery-manufacturing" ? await this.filterByFeatures(ctx, PLANVIEW_EXTRA_KEYS) : [];
+        input.industry === "battery-manufacturing"
+          ? [...(await this.filterByFeatures(ctx, PLANVIEW_EXTRA_KEYS)), ...DARK_LAUNCH_EXTRA_KEYS]
+          : [];
       await this.seedViewConfigs(ctx, views, extraViews, { livedIn: input.livedIn });
       // 管理平台增量 §3：场景包记录（admin/views 与场景包管理页的事实源；幂等 upsert）。
       const pkgId = "pkg_battery_manufacturing";
@@ -987,14 +1015,24 @@ export class SyntheticService {
     for (const o of g.orders) {
       await putLink(`lnk_mdbo_${o.so}`, "model_demanded_by_order", oid("Model", o.model), oid("Order", o.so));
     }
-    // commercial: Order → Customer（按订单序轮转绑定，覆盖全部客户）
-    const custIds = ext.customers.map((c) => String((c as { custId: string }).custId));
-    if (custIds.length > 0) {
-      for (let oi = 0; oi < g.orders.length; oi++) {
-        const o = g.orders[oi] as { so: string };
-        const custId = custIds[oi % custIds.length] as string;
-        await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("Customer", custId), { custId });
-      }
+    // ── commercial: Order → Customer ────────────────────────────────────────
+    // WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）：**按真实归属绑定**，不再按订单序轮转。
+    //
+    // 修前：`custIds[oi % custIds.length]` —— 与 `Order.cust` 上写的客户名毫无关系。实测（seed 42·S）
+    //   「商用车集团G」名下 3 张全是广汽集团（乘用车）的单，「电网公司F」名下挂着宇通客车（商用车）的单。
+    //   于是任何沿这条边做的客户维求解（S15 `quote_margin`）都在算别人的订单，却把提问者的客户名印在答案上。
+    // 修后：`Order.cust` → `ORDER_CUST_TO_CUSTOMER` 归属册 → `Customer.custName` → `custId`。
+    //   · 边上加带 `custName`/`orderCust`，让「这条边凭什么这么连」在边自身可自证（不必回查册）。
+    //   · 归属册里没有的订单客户名 → **不建边**（诚实缺席）。此前的轮转会给它随手落一个客户 ——
+    //     那正是「张冠李戴的数比没有更危险」（`solvers/decision-info.ts:304` 早已独立登记过同一事实）。
+    const custIdByName = new Map(ext.customers.map((c) => [String((c as { custName: string }).custName), String((c as { custId: string }).custId)]));
+    for (const ord of g.orders) {
+      const o = ord as { so: string; cust?: string };
+      const orderCust = String(o.cust ?? "");
+      const custName = orderCust ? customerNameOfOrderCust(orderCust) : undefined;
+      const custId = custName ? custIdByName.get(custName) : undefined;
+      if (!custId || !custName) continue; // 无归属登记 → 不建边（不轮转、不落首客户）
+      await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("Customer", custId), { custId, custName, orderCust });
     }
 
     // ---- 8 域切片增量：13 条跨域边中的 11 条（由 ext/g 的对象 FK 确定性派生）----
@@ -1565,11 +1603,16 @@ export class SyntheticService {
         { key: "status", label: "状态", filterable: true },
       ],
     };
-    const graphView = (title: string, graphOptions: Record<string, unknown>, layout: Record<string, unknown> = {}) => ({
+    // G-GRAPH-DESC-CONTRACT-SPLIT（已闭）：描述卡曾经写进第 3 形参 `layout`，字段名 `description`/`descriptionLink`，
+    // 而前端 OntologyGraphView 从 `options` 读 `desc`/`descLink` ⇒ 生产态八视角描述卡一张都不渲染（MSW mock 恰好
+    // 走对的形状，把生产的错位盖成全绿 —— 铁律 0.5 判据 #6）。裁定见 contracts `GraphViewDescSchema` 注释：
+    // 容器归 `options`（与同特性的 `graphOptions` 同源；`layout` 是 DF.6 拉取靶的机器消费位）。
+    // 第 3 形参**受契约类型约束**，再写错字段名即 tsc 报错，不再靠人眼发现。
+    const graphView = (title: string, graphOptions: Record<string, unknown>, desc: GraphViewDesc = {}) => ({
       title,
       renderer: "ontology-graph",
-      layout,
-      options: { graphOptions },
+      layout: {},
+      options: { graphOptions, ...desc },
     });
     // 去电池锁死 8a（R14）：把推演视图的结构（字段组/目标字段/DAG 驱动因子/问题分类）真下发到 ViewConfig.layout，
     // 使前端不再走写死兜底而是后端配置驱动（换租户/行业改这里即可，界面跟着变）。
@@ -1655,20 +1698,39 @@ export class SyntheticService {
       },
       // 运营态增量 §4.2：运营复盘（只读历史证据链页面，消费 history/bundle）
       review: { title: "运营复盘", renderer: "review", layout: { apiTag: "history" } },
+      // WO-PROCESS-INSTANCE · 流程卡点面板（暗发·见 DARK_LAUNCH_EXTRA_KEYS）。
+      // 走增量视图桶而**不进** BUILTIN_VIEWS，判据是**语义归属**（同 nav 门判据⑦ 的修法说明），逐条：
+      //  ① 它的控制键是 `process.runtime`（引擎级），不是 `view.<key>`。BUILTIN_VIEWS 的
+      //     `builtInViewFeatureDefs()` 会照 featureKey **再注册一份 defaultOn:true 的 FeatureDef** ——
+      //     那会把 features.ts:112 那条 `defaultOn:false` 顶掉，**暗发当场失效**（且静默）。
+      //  ② `seed:true` 会进 `SEEDED_VIEW_KEYS` → `scenarioSeed.views` → `report.views` 验收金值；
+      //     它是**暗发**页，出现在出厂验收快照里等于宣称"已交付"，与暗发语义直接矛盾。
+      //  ③ 它不是「净室通用页」（App.tsx 专用 route 那一类）：读的是租户自己的流程实例，
+      //     且必须有页面侧 R3 守卫 —— 专用 route 给不了（手敲 URL 绕过去）。
+      // layout 留空：本页不经 solver，数据直接来自 `GET /a/v1/process-instances/stuck`。
+      "process-stuck": { title: "流程卡点", renderer: "process-stuck", layout: {} },
       // §7.18 图谱八视角（零新代码视角：renderer=ontology-graph + graphOptions 配置）。
       // PRD-IND-map 缺口④：每视角叙事描述（逐字录自 HTML，ViewDef 配置下发，前端 descCard 渲染，非写死）。
-      "graph-all": graphView("图谱·全景", { colorBy: "domain", layoutSeed: 42 }, { description: "全域对象与关系全景：14 业务域对象类型 + 求解器 + 智能体一张图，按域着色；可切数据来源着色、主干分级、各推演网络与学习闭环视角。" }),
-      "graph-backbone": graphView("图谱·主干分级", { colorBy: "domain", nodeFilter: { tiers: [0, 1] }, dimOthers: true, layoutSeed: 42 }, { description: "按层级看节点：一级=推演主干（产能预测←工序产能→产线产能→工厂产能→基地）；二级=按业务推演链切片（产能/产销/采购/财务现金）；三级=明细（OEE历史/停机/操作员/不良/供应商/物流）。" }),
-      "graph-flow": graphView("图谱·产能推演网络", { colorBy: "domain", linkKinds: ["flow", "agg"], layoutSeed: 42 }, { description: "产能金字塔自下而上派生：节拍×OEE→设备产能→×良率×人力→工序产能→min瓶颈→产线产能→Σ→工厂产能。工序有串行（按瓶颈 min）与并行（化成/老化多通道）之分；物流时长经物料齐套约束可投产能；最后与预测场景、需求、瓶颈汇入产能预测。" }),
-      "graph-source": graphView("图谱·数据来源", { colorBy: "source", layoutSeed: 42 }, { description: "只聚焦真正来自源系统的原始数据节点，按源系统重新着色，回答『每个数据从哪来』：ERP/SAP 物料主数据、MES 工艺与制造执行、EAM/CMMS 设备资产、IoT/SCADA 节拍OEE、QMS/LIMS 质量、HR/排班 人员工时、PLM 产品BOM、WMS 物料齐套。产能域(派生)、求解器、智能体不是源数据，已淡出。" }),
-      "graph-solver": graphView("图谱·求解器", { colorBy: "domain", nodeFilter: { domains: ["solver"] }, linkKinds: ["calc"], dimOthers: true, layoutSeed: 42 }, { description: "求解器以智能辅助决策中台形式注册，绑定到对应对象类型：聚合求解器（产能金字塔）、瓶颈求解器（工艺链最小割）、场景求解器（假设情景重算）、精度校准器（预测↔实际偏差学习）。读业务对象、写回派生对象，由管线/Agent 触发。" }),
-      "graph-mvp": graphView("图谱·MVP", { colorBy: "domain", mvpOverlay: true, layoutSeed: 42 }, { description: "实色高亮的是 MVP 必备的核心闭环：工艺路线(节拍)+设备(OEE)+良率+产能聚合/瓶颈+需求→产能预测。⊕ 虚线节点是当前缺口，需从源系统补采——其中实际产出、OEE历史、生产工单MO 是离散组装制造与自学习闭环最关键的三项，缺它们系统就『算不准、学不会』。" }),
-      "graph-agent": graphView("图谱·智能体网络", { colorBy: "domain", nodeFilter: { domains: ["agent", "solver"] }, linkKinds: ["orch"], dimOthers: true, layoutSeed: 42 }, { description: "产能预测不是『一个 Agent 跑一个模型』，而是编排Agent 指挥一支专职智能体团队：意图解析/检索/建模求解/瓶颈诊断/解释校验/学习/行动，外加经验记忆库（越用越聪明）与约束规则（安全边界）。每个 Agent 把求解器与业务建模当工具调用——AI 的价值在于可自主规划、可解释、可成长的协同。" }),
+      "graph-all": graphView("图谱·全景", { colorBy: "domain", layoutSeed: 42 }, { desc: "全域对象与关系全景：14 业务域对象类型 + 求解器 + 智能体一张图，按域着色；可切数据来源着色、主干分级、各推演网络与学习闭环视角。" }),
+      "graph-backbone": graphView("图谱·主干分级", { colorBy: "domain", nodeFilter: { tiers: [0, 1] }, dimOthers: true, layoutSeed: 42 }, { desc: "按层级看节点：一级=推演主干（产能预测←工序产能→产线产能→工厂产能→基地）；二级=按业务推演链切片（产能/产销/采购/财务现金）；三级=明细（OEE历史/停机/操作员/不良/供应商/物流）。" }),
+      "graph-flow": graphView("图谱·产能推演网络", { colorBy: "domain", linkKinds: ["flow", "agg"], layoutSeed: 42 }, { desc: "产能金字塔自下而上派生：节拍×OEE→设备产能→×良率×人力→工序产能→min瓶颈→产线产能→Σ→工厂产能。工序有串行（按瓶颈 min）与并行（化成/老化多通道）之分；物流时长经物料齐套约束可投产能；最后与预测场景、需求、瓶颈汇入产能预测。" }),
+      "graph-source": graphView("图谱·数据来源", { colorBy: "source", layoutSeed: 42 }, { desc: "只聚焦真正来自源系统的原始数据节点，按源系统重新着色，回答『每个数据从哪来』：ERP/SAP 物料主数据、MES 工艺与制造执行、EAM/CMMS 设备资产、IoT/SCADA 节拍OEE、QMS/LIMS 质量、HR/排班 人员工时、PLM 产品BOM、WMS 物料齐套。产能域(派生)、求解器、智能体不是源数据，已淡出。" }),
+      "graph-solver": graphView("图谱·求解器", { colorBy: "domain", nodeFilter: { domains: ["solver"] }, linkKinds: ["calc"], dimOthers: true, layoutSeed: 42 }, { desc: "求解器以智能辅助决策中台形式注册，绑定到对应对象类型：聚合求解器（产能金字塔）、瓶颈求解器（工艺链最小割）、场景求解器（假设情景重算）、精度校准器（预测↔实际偏差学习）。读业务对象、写回派生对象，由管线/Agent 触发。" }),
+      "graph-mvp": graphView("图谱·MVP", { colorBy: "domain", mvpOverlay: true, layoutSeed: 42 }, { desc: "实色高亮的是 MVP 必备的核心闭环：工艺路线(节拍)+设备(OEE)+良率+产能聚合/瓶颈+需求→产能预测。⊕ 虚线节点是当前缺口，需从源系统补采——其中实际产出、OEE历史、生产工单MO 是离散组装制造与自学习闭环最关键的三项，缺它们系统就『算不准、学不会』。" }),
+      "graph-agent": graphView("图谱·智能体网络", { colorBy: "domain", nodeFilter: { domains: ["agent", "solver"] }, linkKinds: ["orch"], dimOthers: true, layoutSeed: 42 }, { desc: "产能预测不是『一个 Agent 跑一个模型』，而是编排Agent 指挥一支专职智能体团队：意图解析/检索/建模求解/瓶颈诊断/解释校验/学习/行动，外加经验记忆库（越用越聪明）与约束规则（安全边界）。每个 Agent 把求解器与业务建模当工具调用——AI 的价值在于可自主规划、可解释、可成长的协同。" }),
       "graph-loop": graphView(
         "图谱·学习闭环",
         { colorBy: "domain", nodeFilter: { ids: LOOP_NODE_IDS }, linkKinds: ["fb", "orch"], dimOthers: true, layoutSeed: 42 },
-        // 视角描述卡链接校准报告页（真数据 MAPE 趋势；原型假动画明确不复刻）
-        { descriptionLink: "/admin/calibration", description: "查看精度趋势与校准历史" },
+        // 视角描述卡链接校准报告页（真数据 MAPE 趋势；原型假动画明确不复刻）。
+        // 修 G-GRAPH-DESC-CONTRACT-SPLIT 时的第三处发现：本视角原先**没有叙事正文** —— 唯一那句
+        // "查看精度趋势与校准历史" 语义上是**链接文字**，却占着 `description` 位；而前端 `descLink`
+        // 需要 `{to,label}` 才渲染得出可点文字，裸字符串 `descriptionLink` 连 label 都没有。
+        // 故此处补齐两者：正文取仓内既有同视角文案（`frontend-shell/src/mocks/fixtures.ts` 学习闭环视角），
+        // label 保留原字符串，一字未改。
+        {
+          desc: "预测 ↔ 实际偏差 → 精度校准器 → 参数写回 → 越用越准（真实数据 MAPE 趋势见校准报告页，不做假动画）。",
+          descLink: { to: "/admin/calibration", label: "查看精度趋势与校准历史" },
+        },
       ),
     };
     // fail-fast（WO-MEMORY-VIEW-RESILIENCE §4.3）：种子路径断言每个 seeded 内置视图接线完整——featureKey 已注册 +

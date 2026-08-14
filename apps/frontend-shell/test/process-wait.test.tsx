@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { PROCESS_WAIT_KINDS, type ProcessWaitKind } from "@platform/contracts";
 import { getRenderer } from "@/views/registry";
 import { NAV_GROUPS } from "@/pages/ShellLayout";
@@ -36,9 +37,11 @@ import { loginAs, renderApp } from "./utils";
 /** 四态各自的 mock 期望条数（fixture 是 seed.ts 的逐字子集，见 processWaitFixtures.ts）。 */
 const EXPECTED_COUNT: Record<ProcessWaitKind, number> = {
   WAITING_USER: 2,
-  WAITING_DATA: 2,
+  // WO-V4-INSPECT 追加 P37(SCHEDULE)/P40(DATA) 这一对**共用承载物**的流程后各 +1
+  // （节点检视的「同承载物流程」反查需要 fixture 里真有一对，否则那条断言在空集合上恒真）。
+  WAITING_DATA: 3,
   WAITING_EXTERNAL_SYSTEM: 3,
-  WAITING_SCHEDULE: 2,
+  WAITING_SCHEDULE: 3,
 };
 
 describe("WO-WAITING-STATES-FE · §0 金丝雀（否定结论前先自证工具）", () => {
@@ -278,15 +281,29 @@ describe("WO-WAITING-STATES-FE · §D 诚实缺席（不许拿标准工期冒充
   });
 
   /**
-   * `ProcessTask` / `ProcessInstance` 全仓不存在（PRD-enterprise-decision-twin §5 的 E2 未实现），
-   * 故「此刻已经卡了多久」今天答不了。本仓纪律：**缺席要说出来**，
-   * 不许拿一个"看起来相关的数字"（标准工期）冒充读数 —— 那正是铁律 0.6 点名的老病。
+   * ⚠ **本条断言 2026-08-13 随 WO-FLOWTIME 改口径，照实记账**：
+   *
+   * 原断言咬的是 `cannot` 文案里出现 `ProcessTask` —— 因为当时的诚实边界是
+   * 「`ProcessTask`/`ProcessInstance` 全仓不存在，故『已卡多久』答不了」。
+   * WO-FLOWTIME 落地后**那句话不再成立**（`ProcessInstance` 有了承载物 + 反推器 + 端点），
+   * 于是这条断言当场报红。**红得对**：它咬的是一句已经过期的话。
+   *
+   * 改法不是把断言删掉或放宽，而是**换成咬新的那条诚实边界** ——
+   * 边界本身一条都没放宽，只是内容变了：
+   *  ① 实例时刻是**反推**的（推导值），不是流程引擎直采的实测值；
+   *  ② 65 条里只有 9 条反推得出，其余会明说缺什么，**不返回 0 冒充「没有卡顿」**。
+   * 同时「标准工期不是实测滞留」这条老红线**原样保留**（见下一条 it），一个字没松。
    */
-  it("页面显式声明「答不了：此刻已经卡了多久」，并点名缺的是 ProcessTask 运行态", async () => {
+  it("页面显式声明新的诚实边界：反推值 ≠ 实测值，且反推不出时不拿 0 冒充「没有卡顿」", async () => {
     renderApp("/v/process-wait");
     await screen.findByTestId("pw-summary");
     const cannot = screen.getByTestId("pw-honesty-cannot").textContent ?? "";
-    expect(cannot).toContain("ProcessTask");
+    // ① 推导值必须被标出来（不许把反推值说成实测）
+    expect(cannot).toContain("反推");
+    expect(cannot).toContain("不是流程引擎直采的实测值");
+    // ② 反推不出那一路必须被说出来，且明写不拿 0 冒充
+    expect(cannot).toContain("缺哪种单据");
+    expect(cannot).toContain("不会返回 0 冒充");
     expect(screen.getByTestId("pw-honesty")).toBeInTheDocument();
   });
 
@@ -418,5 +435,101 @@ describe("WO-WAITING-STATES-FE · §F 无硬编码（文案走 locales · 样式
 
     // 正向：四态色变量真的在样式里被消费（--kind-color 由组件注入）
     expect(css).toContain("var(--kind-color)");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// §G · WO-FLOWTIME · 实例下钻（「哪一条卡着 / 卡在谁那里 / 卡了多久 / 站间多久」）
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("WO-FLOWTIME · §G 实例下钻（两向都咬：反推得出 / 反推不出）", () => {
+  beforeEach(() => {
+    loginAs("planner");
+  });
+
+  /**
+   * ⚠ 本组断言**从 URL 出发**（同 §A 纪律）：点侧栏进得去的那张页面上的按钮，
+   * 而不是 `getRenderer` 直接取 `InstancePanel` 渲染 —— 后者证明的是「拿到组件能画」，
+   * 不证明「有任何路径能让用户点到它」。
+   */
+  it("G1 反推得出的那一路：点开 P34 → 出实例行 + 站内停留天数 + 卡在谁那里 + 溯源到具体单据字段与原值", async () => {
+    const user = userEvent.setup();
+    renderApp("/v/process-wait");
+    await screen.findByTestId("pw-summary");
+
+    await user.click(screen.getByTestId("pw-drill-P34"));
+    const panel = await screen.findByTestId("pw-inst-P34");
+
+    // ① 天数是**实测反推值**，不是标准工期。fixture 里 P34 的标准工期是 7 天、
+    //    而真跑反推出来的站内停留是 **3 天**（declaredDay=2 → clearedDay=5）。
+    //    两个数不同**是本条断言的全部意义**：若哪天有人把标准工期接到这一列上，这里当场红。
+    const row = within(panel).getByTestId("pw-inst-row-P34::obj_customsclearance_cc_po_12");
+    expect(row.querySelector("[data-dwell-days]")?.getAttribute("data-dwell-days")).toBe("3");
+    const std = PROCESS_DEFINITIONS_RESPONSE.definitions.find((d) => d.key === "P34")!.stdDurationDays;
+    expect(std).toBe(7); // 金丝雀：确认这两个数真的不同，否则上一条断言是恒真的哑门
+    expect(std).not.toBe(3);
+
+    // ② 「卡在谁那里」——职能 + **具体责任方**（单据字段名=值），两层都要有
+    const owner = within(panel).getByTestId("pw-inst-owner-P34::obj_customsclearance_cc_po_12").textContent ?? "";
+    expect(owner).toContain("supply_chain");
+    expect(owner).toContain("brokerName");
+    expect(owner).toContain("洋山报关行");
+
+    // ③ R13 溯源：字段名 + **原值**（原单位·不换算）+ 换算后的 ISO 三者都在屏幕上
+    const src = within(panel).getByTestId("pw-inst-src-P34::obj_customsclearance_cc_po_12").textContent ?? "";
+    expect(src).toContain("declaredDay=2");
+    expect(src).toContain("clearedDay=5");
+    expect(src).toContain("2026-06-12");
+    expect(src).toContain("2026-06-15");
+
+    // ④ 诚实位：推导值必须被标出来，且「现在」是怎么定的要写在屏幕上
+    expect(within(panel).getByTestId("pw-inst-origin-P34").textContent ?? "").toContain("反推");
+    expect(within(panel).getByTestId("pw-inst-asof-P34").textContent ?? "").toContain("DATA_LATEST");
+    // ⑤ 标准工期只作为**对照**出现，且明写「非实测」
+    expect(within(panel).getByTestId("pw-inst-std-P34").textContent ?? "").toContain("非实测");
+  });
+
+  it("G2 反推不出的那一路：P01 出缺席理由 + 缺席类型 + 复验探针，**不是空表也不是 0**", async () => {
+    const user = userEvent.setup();
+    renderApp("/v/process-wait");
+    await screen.findByTestId("pw-summary");
+
+    await user.click(screen.getByTestId("pw-drill-P01"));
+    const panel = await screen.findByTestId("pw-inst-P01");
+
+    // 缺席块在，且三样东西齐（类型 / 原因 / 探针）—— 缺任一样就是「说了等于没说」
+    const absent = within(panel).getByTestId("pw-inst-absent-P01");
+    expect(within(absent).getByTestId("pw-inst-absent-kind-P01").textContent ?? "").toContain("NO_RECONSTRUCTION_RULE");
+    const reason = within(absent).getByTestId("pw-inst-absent-reason-P01").textContent ?? "";
+    expect(reason).toContain("PlanTarget");
+    expect(reason.length).toBeGreaterThan(20); // 「无数据」这种什么都没说的话过不了
+    expect(within(absent).getByTestId("pw-inst-absent-probe-P01").textContent ?? "").toContain("listByType");
+
+    // 🔴 头号反证：**不许**渲染出一张空的实例表冒充「这条流程很顺畅」。
+    // 空表与「反推不出」在屏幕上必须长得不一样，否则用户会把「我不知道」读成「没问题」。
+    expect(within(panel).queryByTestId("pw-inst-counts-P01")).toBeNull();
+  });
+
+  it("G3 loading 是独立态，不与「反推不出」挤在同一个块里（RootCausePanel 那次的病）", async () => {
+    const user = userEvent.setup();
+    renderApp("/v/process-wait");
+    await screen.findByTestId("pw-summary");
+    await user.click(screen.getByTestId("pw-drill-P34"));
+    // 请求还在飞时只能看到 loading，绝不能同时出现缺席块（那是「还没回来」被宣告成「失败」）
+    const loading = screen.queryByTestId("pw-inst-loading-P34");
+    if (loading) expect(screen.queryByTestId("pw-inst-absent-P34")).toBeNull();
+    await screen.findByTestId("pw-inst-P34");
+  });
+
+  it("G4 事件订阅是真接线：queryKey 与 LABEL_TO_KEYS 的 process-instances 对得上", async () => {
+    // 「有事件没人听」是假接线。判据不是「表里写了」，而是**表里的 key 与视图真用的 key 对得上**。
+    const view = readFileSync(resolve(__dirname, "../src/views/process/ProcessWaitView.tsx"), "utf8");
+    const invalidation = readFileSync(resolve(__dirname, "../src/store/eventInvalidation.ts"), "utf8");
+    // 🐤 金丝雀：先证明两份文件都读到了（读空会让下面两条否定断言恒真）
+    expect(view).toContain("InstancePanel");
+    expect(invalidation).toContain("LABEL_TO_KEYS");
+    // 正题：视图注册的 queryKey 前缀 == 失效表里登记的前缀
+    expect(view).toContain('queryKey: ["a", "process-instances", processKey]');
+    expect(invalidation).toContain('"process-instances": [["a", "process-instances"]]');
   });
 });

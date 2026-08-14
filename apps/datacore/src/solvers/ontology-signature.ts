@@ -326,12 +326,34 @@ export const SOLVER_ONTOLOGY_SIGNATURES: Record<string, SolverOntologySignature>
   /**
    * quote_margin（E6b 扩展族）：BOM 成本四项分解 —— 读 **Material.unitPrice**（敏感成本列）。
    * 这就是 WO-69 的原病例：受限用户曾拿到 margin 0.868（真值 0.2565）。签名让它**明确落在拒绝侧**。
+   *
+   * ⚠ 并线补声明（WO-R9-SIGNATURE·被 S5 实跑当场揪出）：本分支合入 `WO-QUOTE-MARGIN-CUSTOMER`
+   * 之后，`deriveExtendedArgs` 的 `quote_margin` 分支从「Material 前 4 行 + 写死 price=500」
+   * 改成了**沿 `order_of_customer` 边走客户 → 订单 → 型号 → 真 BOM + 真单价**，读取面因此长出
+   * 4 个类型 + 2 个属性。签名**漏声明 = 守卫误放行 = 出错数字**（正是本门存在的理由），
+   * 故按真读取处逐条补齐，而不是把 S5 断言改软。逐条取证（`solvers/extended.ts` 行号）：
+   *   · `Material.matId`      —— :936 `mats.map((m) => [str(m.matId), m])` 建 matById 索引
+   *   · `Model.unitPrice`     —— :960 `(c.models…).find((m) => str(m.modelId) === modelId)?.unitPrice`
+   *   · `Order.model/qty`     —— :927-928 `str(o.p.model)` / `num(o.p.qty)`（型号选定 qtyByModel）
+   *   · `Order.unitPrice`     —— :959 qty 加权均价
+   *   · `Order.so`            —— :1023 `priceRows.map((o) => str(o.p.so))`（CUSTOMER 分支可溯订单号）
+   *   · `BOMHeader.modelId`   —— :937 按 modelId 过滤 · `.status` :939（量产优先）· `.bomId` :939-940/944/1021
+   *   · `BOMDetail.bomId`     —— :944 归属过滤 · `.sequence`/`.bomDetailId` :945（排序 R6）
+   *                              · `.materialId`/`.quantity`/`.lossRate` :948-953（真 BOM 三项）
+   *   · `Customer.custName`   —— :906/908 精确匹配与双向子串 · `.orderCustNames` :907/1016（下单品牌名桥）
+   *                              · `.custId` :919（→ `order_of_customer` 边定位该客户的订单）
+   * `Customer` 三属性只在**点名客户**（`args.custName` 非空）的分支才读，缺省入参的 S5 实跑观测不到 →
+   * 与 `capacity_forecast` 的 `Material` 同型：**主动多声明**（过度声明是安全方向·多拒；漏声明是事故方向）。
    */
   quote_margin: {
     reads: [
-      { typeKey: "Material", propKeys: ["bomUnit", "unitPrice"] },
+      { typeKey: "Material", propKeys: ["bomUnit", "matId", "unitPrice"] },
       { typeKey: "Line", propKeys: ["baseId"], linkKeys: ["model_certified_on"] },
-      { typeKey: "Model", propKeys: ["modelId"] },
+      { typeKey: "Model", propKeys: ["modelId", "unitPrice"] },
+      { typeKey: "Order", propKeys: ["model", "qty", "so", "unitPrice"], linkKeys: ["order_of_customer"] },
+      { typeKey: "BOMHeader", propKeys: ["bomId", "modelId", "status"] },
+      { typeKey: "BOMDetail", propKeys: ["bomDetailId", "bomId", "lossRate", "materialId", "quantity", "sequence"] },
+      { typeKey: "Customer", propKeys: ["custId", "custName", "orderCustNames"] },
     ],
   },
 
@@ -347,6 +369,52 @@ export const SOLVER_ONTOLOGY_SIGNATURES: Record<string, SolverOntologySignature>
       { typeKey: "Line", propKeys: ["baseId"], linkKeys: ["model_certified_on"] },
       { typeKey: "Model", propKeys: ["modelId"] },
     ],
+  },
+
+  /**
+   * WO-FLOWTIME · `process_flow_time`：读取面**由反推规则表决定**（`process/flow-rules.ts`），
+   * 不是静态可穷举的 —— 换行业换规则表，读的单据类型跟着变（R14）。故静态 `reads` 留空、
+   * 全部交给 `resolveReads` 从规则表现算。
+   *
+   * ⚠ 与 `concentration_risk`（读取面由**入参**决定）同族，但来源不同：那个看 args，
+   * 这个看**配置表**。两者都不能静态声明，但可解析 ⇒ 都属于「静态 reads 是下界 + 解析器补全」。
+   *
+   * `propKeys` 一律省略（= 全属性·最保守）：规则表声明的字段（enterField/exitField/partyField/
+   * joinField）之外，反推器不会碰别的属性；但**过度声明是安全方向（多拒），漏声明是事故方向**，
+   * 故此处按文件头纪律取最保守的一档。
+   */
+  /**
+   * WO-FINANCE-WORLDSTATE · `finance_world_projection`：读取面**静态可穷举**（不像上下两条要解析器）。
+   *
+   * 四类真读的属性逐条列清（照文件头口径：只 `listByType` 取集合而不读属性的类型不计入；
+   * 这四类每一类都真读了属性）：
+   *  · `FinancePlan.{line,budget,rolling,finId}` —— 金额基线 + provenance 真主键；
+   *  · `Order.{qty,unitPrice}`                  —— 成本压力的**金额权重**（读错/读不到 → 权重塌成等权，
+   *    金额会变，故必须计入读取面：漏声明是事故方向）；
+   *  · `Customer` 只用 `id`（权重经 `customer_has_invoice` 链路从发票聚上来）—— **不读任何属性**，
+   *    但仍声明 `linkKeys`，因为链路读不到会让应收投影恒等于基线（静默变数）；
+   *  · `ARInvoice.{amount,invoiceId}`           —— 应收/逾期逐张真金额 + 下钻主键。
+   *
+   * ⚠ 世界态（`SimSession.baseSnapshot` / `SimTickState.state`）**不在本表内**：它不是本体对象，
+   *   列级策略也不作用于它。这不是漏声明 —— 是它压根不属于 `OntologyReadSurface` 的论域。
+   */
+  finance_world_projection: {
+    reads: [
+      { typeKey: "FinancePlan", propKeys: ["budget", "finId", "line", "rolling"] },
+      { typeKey: "Order", propKeys: ["qty", "unitPrice"] },
+      { typeKey: "Customer", propKeys: [], linkKeys: ["customer_has_invoice"] },
+      { typeKey: "ARInvoice", propKeys: ["amount", "invoiceId"] },
+    ],
+  },
+
+  process_flow_time: {
+    reads: [],
+    resolveReads: async () => {
+      const { BATTERY_PROCESS_FLOW_RULES } = await import("../process/flow-rules.js");
+      const types = new Set<string>();
+      for (const r of BATTERY_PROCESS_FLOW_RULES) for (const s of r.stations) types.add(s.typeKey);
+      return [...types].sort().map((typeKey) => ({ typeKey }));
+    },
   },
 };
 

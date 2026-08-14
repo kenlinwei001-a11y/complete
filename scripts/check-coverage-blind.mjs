@@ -292,6 +292,20 @@ function esc(s) {
  * 按根标识符 `result` 判，这句会被误当成 `provenance` 的锚点 ⇒ **漏报**。
  * 「`result` 有断言」并不度量「`result.answer.provenance` 非空」——正是铁律 0.6 那句
  * 「我用 X 当作 Y 的证据，而 X 并不度量 Y」。
+ *
+ * ⚠️ **2026-08-14 WO-R9-COVBLIND 放宽：认 vitest 的双参 `expect(value, message)`**。
+ * 原版要求 `)` **紧跟** `.length` / `.size`，于是本仓大量使用的
+ * `expect(rows.length, "seedBattery 没落任何 Cadence").toBeGreaterThan(0)` **一律识别不到** ——
+ * 锚点明明在，门读不到 ⇒ **假阳性**（把合格测试判成盲，不是漏报）。
+ * 实测面：放宽前后全仓命中 303 → 269（少 34 条，其中 12 条是基线外、22 条在基线内）。
+ * 病症照铁律 0.6 的句式：**「我用『`)` 紧跟 `.length`』当作『没有基数锚点』的证据，而前者并不度量后者。」**
+ * 诊断与处方早已成文（`docs/WO-FOLLOWUP-2026-08-13.md` §3），本单只是落地它，
+ * 并**按该文要求同步下调棘轮基线**（否则棘轮会把这 22 条差额读成「有人修好了」）。
+ * 语义为何不受损：第二个实参只是失败时打印的自定义消息，
+ * `expect(xs.length, msg).toBeGreaterThan(0)` 与单参形式**在空集上同样会红** —— 装置一模一样。
+ * 放宽方向只可能**减少**命中（少报假阳性），不可能放过真盲点。
+ * 反向锁：`CANARY_CASES` 里 `d1-two-arg-floor-ok` / `d1-two-arg-tohavelength-ok` 两条
+ * 直接跑 `analyzeSource` 本体，谁把这里改回「`)` 紧跟」谁当场 RC=2。
  */
 export function hasCardinalityAnchor(body, expr) {
   if (!expr) return false;
@@ -299,17 +313,20 @@ export function hasCardinalityAnchor(body, expr) {
   if (!e) return false;
   const b = squash(body);
   const id = esc(e);
+  /** 「同一个 `expect(…)` 调用里、基数表达式之后的剩余实参 + 收尾右括号」。
+   *  懒量词 + 不跨 `;`：既能跨过 `JSON.stringify(x)` 这种带括号的消息实参，又不会串到下一条语句。 */
+  const ARGS = "(?:,[^;]*?)?\\)";
   const pats = [
     // expect(EXPR).toHaveLength(…) / .toEqual([…]) / .toMatchObject([…])
-    new RegExp(`expect\\(${id}\\)\\.(?:not\\.)?(?:toHaveLength|toEqual|toStrictEqual|toMatchObject|toMatchInlineSnapshot|toMatchSnapshot)\\b`),
+    new RegExp(`expect\\(${id}${ARGS}\\.(?:not\\.)?(?:toHaveLength|toEqual|toStrictEqual|toMatchObject|toMatchInlineSnapshot|toMatchSnapshot)\\b`),
     // expect(EXPR.length / .size) 任意 matcher —— 咬住条数这件事本身
-    new RegExp(`expect\\(${id}\\.(?:length|size)\\)`),
-    new RegExp(`expect\\(Object\\.keys\\(${id}\\)(?:\\.length)?\\)`),
-    new RegExp(`expect\\(Object\\.entries\\(${id}\\)(?:\\.length)?\\)`),
+    new RegExp(`expect\\(${id}\\.(?:length|size)[,)]`),
+    new RegExp(`expect\\(Object\\.keys\\(${id}\\)(?:\\.length)?[,)]`),
+    new RegExp(`expect\\(Object\\.entries\\(${id}\\)(?:\\.length)?[,)]`),
     // expect(EXPR.map(…)) / EXPR.filter(…).length —— 对整集的形状断言
     new RegExp(`expect\\(${id}\\.(?:map|filter|flatMap|slice|sort|every|join)\\(`),
     new RegExp(`expect\\(\\[\\.\\.\\.${id}`),
-    new RegExp(`expect\\(${id}\\.size\\)`),
+    new RegExp(`expect\\(${id}\\.size[,)]`),
   ];
   return pats.some((p) => p.test(b));
 }
@@ -319,6 +336,17 @@ const EXISTENTIAL_TAIL =
   /\)\s*\.\s*(?:not\s*\.\s*toHaveLength\s*\(\s*0\s*\)|toBeGreaterThan\s*\(\s*0\s*\)|toBeGreaterThanOrEqual\s*\(\s*1\s*\)|toBeTruthy\s*\(\s*\)|toBeDefined\s*\(\s*\)|toContain\b|toContainEqual\b)/;
 /** 严格基数断言（咬死条数） */
 const EXACT_TAIL = /\)\s*\.\s*(?:toHaveLength\s*\(\s*(?!0\s*\))|toBe\s*\(\s*\d|toEqual\s*\(|toStrictEqual\s*\(|toMatchObject\s*\(|toMatchInlineSnapshot\b|toBeGreaterThanOrEqual\s*\(\s*(?!0|1\s*\))\d)/;
+
+/**
+ * **全称·否定形**断言 —— 「反例集合为空」/「不含某元素」/「计数为 0」。
+ *
+ * ⚠️ 这是 D2 少认的那半个 ∀。D2 原版只承认两种 ∀ 装置：对集合的**遍历**（`for-of`/`forEach`/`every`）
+ * 与**咬死条数**。但 ∀ 还有第三种、且在本仓是主力的写法：
+ *   `expect(ALL.filter(反例谓词)).toEqual([])` —— 「一个反例都没有」就是 ∀。
+ * 它既不遍历被断言的那个集合，也不咬条数，于是 D2 看不见它。
+ */
+const UNIVERSAL_NEGATIVE_TAIL =
+  /\)\s*\.\s*(?:toEqual\s*\(\s*\[\s*\]\s*\)|toStrictEqual\s*\(\s*\[\s*\]\s*\)|toHaveLength\s*\(\s*0\s*\)|toBe\s*\(\s*0\s*\)|not\s*\.\s*toContainEqual\b|not\s*\.\s*toContain\b)/;
 
 /** 抽出用例体里所有 `expect( … )` 的完整片段（含尾部 matcher 链到行尾）。 */
 export function expectStatements(body) {
@@ -479,9 +507,115 @@ function derivedBindings(body) {
   return out;
 }
 
-/** D2：派生集合的断言全是存在性，无基数、无 ∀ 遍历。 */
-export function detectExistsForAll(kase) {
+/** `expect(A, "失败消息")` → `A`（顶层第一个实参；vitest 的消息实参不是断言对象，必须丢掉）。 */
+function firstArg(inner) {
+  let depth = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const c = inner[i];
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") depth--;
+    else if (c === "," && depth === 0) return inner.slice(0, i);
+  }
+  return inner;
+}
+
+/**
+ * 表达式里出现在 `.` 之后的**领域属性名** —— 即「这条断言到底在谈哪个字段」。
+ * 通用数组方法与 matcher 名一律剔除：它们在**任意**两条断言之间都相交，
+ * 拿它们做"谈的是同一件事"的判据 = 又一次「我用 X 当作 Y 的证据而 X 不度量 Y」。
+ */
+const GENERIC_MEMBERS = new Set([
+  "filter", "map", "flatMap", "find", "findIndex", "some", "every", "includes", "indexOf", "join",
+  "slice", "sort", "length", "size", "has", "get", "set", "add", "keys", "values", "entries", "push",
+  "concat", "reduce", "split", "trim", "at", "flat", "reverse", "match", "matchAll", "replace", "test",
+  "startsWith", "endsWith", "toLowerCase", "toUpperCase", "toString", "json", "body", "not",
+  "toBe", "toEqual", "toStrictEqual", "toContain", "toContainEqual", "toHaveLength", "toBeDefined",
+  "toBeTruthy", "toBeNull", "toBeGreaterThan", "toBeGreaterThanOrEqual", "toBeLessThan", "toThrow",
+]);
+function memberTokens(expr) {
+  const out = new Set();
+  const re = /\.\s*([A-Za-z_$][\w$]*)/g;
+  let m;
+  while ((m = re.exec(expr)) !== null) if (!GENERIC_MEMBERS.has(m[1])) out.add(m[1]);
+  return out;
+}
+function identTokens(expr) {
+  const out = new Set();
+  const re = /[A-Za-z_$][\w$]*/g;
+  let m;
+  while ((m = re.exec(expr)) !== null) out.add(m[0]);
+  return out;
+}
+
+/**
+ * **反空转守卫**（D2 的放行判据 · WO-R9-COVBLIND2）——「这个集合不是断言对象，是**前提**」。
+ *
+ * ## 病：门把「金丝雀」读成了「弱断言」
+ *
+ * 一条全称·否定形断言（`expect(反例集合).toEqual([])` / `.not.toContain(x)` / `toHaveLength(0)`）
+ * **在空集合上恒真**。所以本仓的写法是在它旁边补一条存在性下限，证明这条 ∀ 不是在空集上空转：
+ * ```js
+ * expect(bv.requires ?? []).not.toContain("sim.sandbox");            // ← ∀（否定形）
+ * const withRequires = BUILTIN_VIEWS.filter((v) => (v.requires ?? []).includes("sim.sandbox"));
+ * expect(withRequires.length, "全表没有任何 requires 项 ⇒ 上一条恒真（哑门）").toBeGreaterThan(0);
+ * ```
+ * 那条下限的**目的就是存在性**。D2 原版看到「`withRequires` 上只有存在性断言」就判它拿 ∃ 冒充 ∀ ——
+ * 照铁律 0.6 的句式：**「我用『这个集合上只有存在性断言』当作『这条用例拿 ∃ 冒充 ∀』的证据，
+ * 而前者并不度量后者 —— 该集合根本不是断言对象，∀ 就在它旁边那条否定断言里。」**
+ * 按 D2 原版的修法去「改强」，等于把金丝雀拆掉：门会亲手制造哑门。
+ *
+ * ## 为什么不是豁免表
+ *
+ * 豁免表（按文件/指纹放行）会连着把真弱断言一起放过，而且谁都能往里加一行。
+ * 本判据放行的**代价是必须真的写出那条 ∀**：
+ *  · 用例里得有一条全称·否定形断言（`UNIVERSAL_NEGATIVE_TAIL`）；**且**
+ *  · 它与这个集合**有链接**，二选一：
+ *    - **L1 结构链接**：该集合的名字出现在那条断言的主语里，或出现在主语所绑定的表达式里
+ *      （`expect(overlap).toEqual([])` 而 `const overlap = keys.filter((k) => nodeIds.has(k))`
+ *       ⇒ `nodeIds` 正是 overlap 的构成件）；
+ *    - **L2 同源链接**：两边**出自同一个源集合**（该集合的取数根标识符出现在那条断言的主语里）
+ *      **且**谈的是同一个领域字段（剔除通用数组/matcher 方法后仍有交集）。
+ *
+ * 光有一条不相干的 `.toEqual([])` 放行不了任何东西 —— 由 `d2-guard-unlinked` /
+ * `d2-guard-same-field-other-source` 两条金丝雀反向锁死。
+ *
+ * ⚠️ **L2 的「同源」这一半是实测逼出来的，不是想出来的**：只要「同字段」时，
+ * `apps/datacore/test/workflow.test.ts` 的 `codes`（`badRes.issues.map(i => i.code)`，
+ * 三条 `toContain` 全存在性）被同一条用例里**另一个对象**的 `expect(okRes.issues).toHaveLength(0)`
+ * 顺手放行了 —— 两边都叫 `issues`，但一个是坏图一个是好图，那条 ∀ 根本没在守它。
+ * 照铁律 0.6 的句式：**「我用『字段同名』当作『在守同一件事』的证据，而前者并不度量后者。」**
+ * 这正是本单不许用豁免表的那个理由的翻版：**放过一条不该放的，比没有这条规则更危险。**
+ *
+ * 换句话说：**这不是"标记"，是"把 ∀ 真写出来、并且真写在同一批数据上"**。
+ */
+export function isVacuityGuard(body, bind, binds) {
+  const unas = expectStatements(body).filter((s) => UNIVERSAL_NEGATIVE_TAIL.test(s.tail));
+  if (unas.length === 0) return false;
+  const nameRe = new RegExp(`\\b${esc(bind.name)}\\b`);
+  const bindMembers = memberTokens(bind.expr);
+  // 取数根：`BUILTIN_VIEWS.filter(…)` → BUILTIN_VIEWS；`badRes.issues.map(…)` → badRes
+  const root = rootIdent(String(bind.expr).replace(/^\s*(?:new|await)\s+/, ""));
+  const rootRe = root ? new RegExp(`\\b${esc(root)}\\b`) : null;
+  for (const una of unas) {
+    const subject = firstArg(una.inner);
+    // 解析一层局部/文件级绑定：被守护的断言的主语常常是个中间量
+    let resolved = subject;
+    for (const id of identTokens(subject)) {
+      const def = binds.get(id);
+      if (def !== undefined) resolved += ` ${def}`;
+    }
+    if (nameRe.test(resolved)) return true; // L1 结构链接
+    if (!rootRe || !rootRe.test(resolved)) continue; // L2 前半：必须同源
+    const subjMembers = memberTokens(resolved);
+    for (const t of bindMembers) if (subjMembers.has(t)) return true; // L2 后半：同字段
+  }
+  return false;
+}
+
+/** D2：派生集合的断言全是存在性，无基数、无 ∀ 遍历、也不是别处那条 ∀ 的反空转守卫。 */
+export function detectExistsForAll(kase, fileBinds = new Map()) {
   const hits = [];
+  const binds = new Map([...fileBinds, ...collectBindings(kase.body)]);
   for (const bind of derivedBindings(kase.body)) {
     const { name } = bind;
     const idRe = new RegExp(`\\b${esc(name)}\\b`);
@@ -493,6 +627,8 @@ export function detectExistsForAll(kase) {
     if (new RegExp(`\\b${esc(name)}\\s*\\.\\s*(?:every|forEach)\\s*\\(`).test(kase.body)) continue;
     const allExistential = stmts.every((s) => EXISTENTIAL_TAIL.test(s.tail) && !EXACT_TAIL.test(s.tail));
     if (!allExistential) continue;
+    // ∀ 的第三种写法：「反例集合为空」。它就在旁边，而这个集合是它的反空转守卫（见函数头注释）。
+    if (isVacuityGuard(kase.body, bind, binds)) continue;
     hits.push({ detector: "EXISTS_FOR_ALL", symbol: name, kind: "derived" });
   }
   return hits;
@@ -546,7 +682,7 @@ export function analyzeSource(src, file = "<inline>") {
     // D3/D2 先跑：同一条盲点若已被"更具体"的检测器定性，D1 不再重复报一遍。
     // （`const xs = all.filter(s => s.p)` + `for (const s of xs) expect(s.p)` 本是一条病，
     //   D1 只看到"xs 没有基数断言"，D3 看到的是"用被断言的谓词滤掉了反例" —— 后者才是修法。）
-    const specific = [...detectFilterTautology(kase), ...detectExistsForAll(kase)];
+    const specific = [...detectFilterTautology(kase), ...detectExistsForAll(kase, fileBinds)];
     const claimed = new Set(specific.map((h) => String(h.symbol).split(".")[0]));
     const loopHits = detectLoopNoFloor(kase, fileBinds).filter((h) => !claimed.has(rootIdent(h.symbol)));
     for (const h of [...loopHits, ...specific]) {
@@ -692,6 +828,36 @@ it("5 条深问 → 深路由", () => {
     expect: [],
   },
   {
+    // 反向锁（WO-R9-COVBLIND）：vitest 双参 `expect(value, message)` 的基数锚点必须认。
+    // 谁把 hasCardinalityAnchor 改回「`)` 紧跟 .length」，这条当场变成 ["LOOP_NO_FLOOR"] ⇒ RC=2。
+    // 这就是「机器先说话」——不靠人记得 docs/WO-FOLLOWUP-2026-08-13.md §3 写过什么。
+    name: "D1 不命中：双参 expect 的基数下限（vitest 第二实参只是失败消息）",
+    src: `
+import { it, expect } from "vitest";
+it("每个节拍都在册", async () => {
+  const rows = await repos.objects.listByType(TENANT, "Cadence");
+  expect(rows.length, "seedBattery 没落任何 Cadence —— 数据半没接进合成主流程").toBeGreaterThan(0);
+  for (const r of rows) {
+    expect(CHAIN_NODE_IDS).toContain(String(r.props.nodeId));
+  }
+});`,
+    expect: [],
+  },
+  {
+    // 同上，另一种双参形态：消息实参里**自带括号**（JSON.stringify(...)），懒量词必须跨得过去。
+    name: "D1 不命中：双参 expect + toHaveLength，且消息实参含括号",
+    src: `
+import { it, expect } from "vitest";
+it("三段齐全", () => {
+  const legs = plan.legs;
+  expect(legs, JSON.stringify(plan)).toHaveLength(4);
+  for (const leg of legs) {
+    expect(leg.days).toBeGreaterThan(0);
+  }
+});`,
+    expect: [],
+  },
+  {
     // 反面：同样是模块级常量，但来自 import（条数不在本文件里，可能悄悄缩到 0）⇒ 必须命中
     name: "D1 命中：遍历 import 进来的注册表，无基数断言",
     src: `
@@ -724,6 +890,88 @@ it("求解器带 reads", () => {
   expect(withReads).toHaveLength(59);
 });`,
     expect: [],
+  },
+  // ── 反空转守卫（WO-R9-COVBLIND2）·**双向**金丝雀 ─────────────────────────────
+  // 放行的开关不是一个可以随手打上的标记，而是「那条 ∀ 到底写没写」。
+  // 下面 5 条把两个方向各锁一遍：写了 ⇒ 放行；写了但不相干 ⇒ 照样红；改回不是 ∀ ⇒ 当场红。
+  {
+    name: "D2 不命中（L1 结构链接）：存在性下限守着一条『反例集合为空』的 ∀",
+    src: `
+import { it, expect } from "vitest";
+it("两层同屏但不许同模型", () => {
+  const nodeIds = new Set(CHAIN_NODE_REGISTRY.map((n) => n.nodeId));
+  expect(nodeIds.size, "冻结注册表是空的 ⇒ 交集恒空，断言无意义").toBeGreaterThan(0);
+  const overlap = keys.filter((k) => nodeIds.has(k));
+  expect(overlap, "两层的键出现交集").toEqual([]);
+});`,
+    expect: [],
+  },
+  {
+    // 反向：那条 ∀ 换成一条**不是** ∀ 的写法（守卫本身一字未动）⇒ 立刻恢复报红。
+    // 这就是"去掉标记当场红"——只是这里的"标记"是一条真断言，不是一个词。
+    name: "D2 命中（L1 反向）：把 `.toEqual([])` 换掉，守卫就没有东西可守了",
+    src: `
+import { it, expect } from "vitest";
+it("两层同屏但不许同模型", () => {
+  const nodeIds = new Set(CHAIN_NODE_REGISTRY.map((n) => n.nodeId));
+  expect(nodeIds.size, "冻结注册表是空的 ⇒ 交集恒空，断言无意义").toBeGreaterThan(0);
+  const overlap = keys.filter((k) => nodeIds.has(k));
+  expect(overlap.length, "两层的键出现交集").toBeGreaterThanOrEqual(0);
+});`,
+    expect: ["EXISTS_FOR_ALL"],
+  },
+  {
+    name: "D2 不命中（L2 字段链接）：存在性下限守着一条 `.not.toContain(…)` 的 ∀",
+    src: `
+import { it, expect } from "vitest";
+it("不挂 requires:[sim.sandbox]", () => {
+  const bv = BUILTIN_VIEWS.find((v) => v.key === VIEW_KEY);
+  expect(bv.requires ?? [], "被挂到沙盘门下 —— 假依赖").not.toContain("sim.sandbox");
+  const withRequires = BUILTIN_VIEWS.filter((v) => (v.requires ?? []).includes("sim.sandbox"));
+  expect(withRequires.length, "全表没有任何 requires 项 ⇒ 上一条否定断言恒真（哑门）").toBeGreaterThan(0);
+});`,
+    expect: [],
+  },
+  {
+    name: "D2 命中（L2 反向）：把否定断言换成 toBeDefined，守卫立刻恢复报红",
+    src: `
+import { it, expect } from "vitest";
+it("不挂 requires:[sim.sandbox]", () => {
+  const bv = BUILTIN_VIEWS.find((v) => v.key === VIEW_KEY);
+  expect(bv.requires ?? [], "被挂到沙盘门下 —— 假依赖").toBeDefined();
+  const withRequires = BUILTIN_VIEWS.filter((v) => (v.requires ?? []).includes("sim.sandbox"));
+  expect(withRequires.length, "全表没有任何 requires 项 ⇒ 上一条否定断言恒真（哑门）").toBeGreaterThan(0);
+});`,
+    expect: ["EXISTS_FOR_ALL"],
+  },
+  {
+    // ⛔ 防「豁免表化」：光在用例里放一条不相干的 `.toEqual([])` 不许放行任何东西。
+    // 没有这一条，本判据就退化成"只要文件里有个空数组断言，D2 全体失效"。
+    name: "D2 命中（不相干的 ∀ 放行不了）：空数组断言与该集合既无结构链接也无字段链接",
+    src: `
+import { it, expect } from "vitest";
+it("求解器带 reads", () => {
+  const withReads = catalog.map((s) => s.reads);
+  expect(withReads.length).toBeGreaterThan(0);
+  const brokenRows = response.rows.map((e) => e.stackTrace);
+  expect(brokenRows, "不该有崩过的行").toEqual([]);
+});`,
+    expect: ["EXISTS_FOR_ALL"],
+  },
+  {
+    // ⛔ 真仓实测逼出来的那一条（`workflow.test.ts` 的 `codes`）：字段同名、但**两个不同对象**。
+    // 只要"同字段"不要"同源"，这条会被顺手放行 —— 那正是「豁免连着把真弱断言一起放过」。
+    name: "D2 命中（同字段但不同源）：好图的 issues 为空，守不住坏图 issues 上的三条存在性",
+    src: `
+import { it, expect } from "vitest";
+it("校验 —— 合法图谱 ok；坏图报错", async () => {
+  const okRes = (await post(\`/validate/\${ok.id}\`)).json();
+  expect(okRes.issues).toHaveLength(0);
+  const badRes = (await post(\`/validate/\${bad.id}\`)).json();
+  const codes = badRes.issues.map((i) => i.code);
+  expect(codes).toContain("CYCLE");
+});`,
+    expect: ["EXISTS_FOR_ALL"],
   },
   {
     name: "D3 命中：先按 dataMode 过滤，再断言 dataMode",

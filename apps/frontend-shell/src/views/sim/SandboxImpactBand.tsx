@@ -1,6 +1,11 @@
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+// 校形用**契约那一份 schema**（`safeParse`），故这里不再 import 它的 type：
+// 类型由 `parsed.data` 推出来，与运行期校验**同一个出处** —— 两者分家正是上一版 `as` 硬转的病根。
+import { FinanceWorldProjectionOutputSchema } from "@platform/contracts";
 import type { ImpactChange } from "@platform/contracts";
 import { InfoPopover } from "@/components/InfoPopover";
+import { runSolver } from "@/api/endpoints";
 import zh from "@/locales/zh";
 import { ImpactAnalysisPanel } from "./ImpactAnalysisPanel";
 import styles from "./SandboxConsole.module.css";
@@ -39,6 +44,25 @@ import styles from "./SandboxConsole.module.css";
  * 把它摆进本带会得到一块"看起来是财务、实际永远不动"的面板 —— 那不是把缺口补上，
  * 那是把「缺记号」的问题当成「值不够像真的」来修，得到一屏更像真的假数据，比留空更坏。
  * 故本带的处置是：**缺金额口径就报缺金额口径**（`financeGap` 浮层，常驻第一层记号）。
+ *
+ * ── ✅ WO-FINANCE-WORLDSTATE：那个缺口**已经补上了**（上面这段判断因此部分过期）─────
+ * 上一版说得对的是**判断**（"别把 `finance_pnl` 摆上来"），说得不完整的是**结论**
+ * （"所以这一带只能留记号"）。缺的从来不是记号，是**一个吃 worldId 的求解器**。
+ * 现在有了：`finance_world_projection`（`apps/datacore/src/solvers/finance-world.ts`）——
+ * 同一份 FinancePlan / ARInvoice 真值做基线，用**这个世界里**的
+ * `Order.costPressure` / `Customer.receivablePressure` / `ARInvoice.overduePressure`
+ * 沿种子传导规则折算成金额，换算除数与传导链的真系数随回包下发（前端零写死系数）。
+ *
+ * ⚠ **`finance_pnl` 一个字都没动** —— 上面那段对它的定性今天**仍然成立**，
+ *   而且那是它的**正确行为**不是 bug（本体真值口径本来就不该随沙盘世界变）。
+ *   两条口径并存、各答各的问题；本带用的是后者。
+ *
+ * ⚠ **诚实位没有被删，只是换了承载的事实**（规范 §1：允许降层、绝不允许删除）：
+ *   `financeGap` 浮层仍常驻第一层，内容改成「这块金额是怎么来的 / 什么时候没有」；
+ *   并且第一层**多了一个常驻口径行**（`sandbox-impact-finance-caliber`：**推演投影 · 非实测**）——
+ *   一个推演数被读成实测数，比不给这个数更坏，所以这句话不许只待在浮层里。
+ *   世界态为空 / 无金额基线 / 该能力未开通 ⇒ **退回诚实缺口记号并给出后端原话**，
+ *   绝不显示 0、绝不编一个数。
  *
  * ── 本带的两半（PRD §1③ 原文「两半，左右分列」）──────────────────────────────
  *  ① **逐节点指标影响**：`ImpactAnalysisPanel`，世界固定为沙盘当前会话、扰动一施加就自动跑。
@@ -112,6 +136,208 @@ export function deriveStateVarDeltas(
 const EPS = 1e-9;
 export const isMoved = (d: StateVarDelta): boolean => Math.abs(d.delta) > EPS;
 
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-FINANCE-WORLDSTATE · 金额投影面板（本带右半的第一块）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** 后端错误信封里的原话（拿不到就把整个对象串出来 —— 宁可难看，也不替它编一句解释）。 */
+function backendMessage(e: unknown): string {
+  const env = e as { error?: { message?: string; code?: string } } | undefined;
+  return env?.error?.message ?? env?.error?.code ?? (e instanceof Error ? e.message : JSON.stringify(e));
+}
+
+/** 金额格式化：只做**显示**，不做任何换算（换算全在后端，前端零系数）。 */
+const fmtMoney = (v: number): string =>
+  v.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const signed = (v: number): string => `${v > 0 ? "+" : v < 0 ? "−" : ""}${fmtMoney(Math.abs(v))}`;
+const dirOf = (v: number): "up" | "down" | "flat" => (v > EPS ? "up" : v < -EPS ? "down" : "flat");
+
+/** 一行「基线 → 投影（Δ）」。结构与下面的 `DeltaRow` 同款（同一屏两种数不该长成两个样）。 */
+function MoneyRow({ label, baseline, projected, testId }: { label: string; baseline: number; projected: number; testId: string }) {
+  const delta = projected - baseline;
+  return (
+    <li className={styles.deltaRow} data-testid={testId} data-moved={Math.abs(delta) > EPS ? "1" : "0"}>
+      <span className={styles.deltaName}>{label}</span>
+      <span className={styles.deltaVals} data-testid={`${testId}-vals`}>
+        {fmtMoney(baseline)} → <b>{fmtMoney(projected)}</b>
+      </span>
+      <span className={styles.deltaAmt} data-testid={`${testId}-amt`} data-dir={dirOf(delta)}>
+        {signed(delta)}
+      </span>
+    </li>
+  );
+}
+
+export interface FinanceProjectionPanelProps {
+  /** 要投影哪个世界。`null` ⇒ 还没有会话（诚实空，不发请求）。 */
+  worldId: string | null;
+  /** 当前 tick —— 进 queryKey：tick 一推进，金额必须跟着重取，否则屏上是上一拍的钱。 */
+  curTick: number;
+}
+
+/**
+ * 金额投影面板。
+ *
+ * **一个系数都不在前端**：金额、Δ、换算除数、传导链系数全部来自回包。
+ * 前端只做三件事：格式化、分层（第一层结论 / 第二层明细）、以及在拿不到数时**据实报缺**。
+ */
+export function FinanceProjectionPanel({ worldId, curTick }: FinanceProjectionPanelProps) {
+  const q = useQuery({
+    // tick 进 key：不进的话 tick 推进后 react-query 命中旧缓存 ⇒ 屏上金额停在上一拍（静默错答）。
+    queryKey: ["finance-world-projection", worldId, curTick],
+    enabled: worldId !== null,
+    retry: false,
+    queryFn: async () => {
+      const res = await runSolver("finance_world_projection", { worldId });
+      /**
+       * 🔴 **按契约校形，不许 `as` 硬转**（本单实测栽过，全量前端回归当场咬出来的）。
+       * **2026-08-14 实测**：第一版用 `as` 硬转，回包缺 `lines` 时整棵 React 树被卸掉（沙盘白屏），
+       * 连坐 `metro-semantics.seam` ×2 + `sandbox-ia-consolidate.seam` ×2。
+       * 复验：`pnpm --filter frontend-shell exec vitest run sandbox-finance-worldstate`（回包缺字段那一例）。
+       *
+       * 第一版写的是 `res.data as FinanceWorldProjectionOutput` —— 一个**编译期**断言，
+       * 运行期什么都不检查。于是回包只要缺 `lines`，下面 `out.lines.find(...)` 就抛，
+       * React 把**整棵树**卸掉：屏上不是「这块面板没数据」，而是**整个沙盘白屏**。
+       * `metro-semantics.seam.test.tsx` / `sandbox-ia-consolidate.seam.test.tsx` 的桩
+       * 对任意 solverKey 都回同一份 payload，正好复现了这条路径（4 个用例连坐）。
+       *
+       * 这不只是"测试桩不严谨"：老后端、灰度中的后端、被网关改写过的响应都长这样。
+       * **一块面板绝不能有权力让整页消失** —— 校形失败按「拿不到数」处理，退回诚实缺口记号。
+       * 校形用**契约那一份 schema**（`@platform/contracts`），不在前端另写一套判据。
+       */
+      const parsed = FinanceWorldProjectionOutputSchema.safeParse(res.data);
+      if (!parsed.success) {
+        throw {
+          error: {
+            code: "FINANCE_PROJECTION_SHAPE_MISMATCH",
+            message: `财务投影回包不符合契约形状（${parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`).join("；")}）—— 本页不猜它想说什么。`,
+          },
+        };
+      }
+      return parsed.data;
+    },
+  });
+
+  const out = q.data;
+  const costLine = out?.lines.find((l) => l.role === "COST");
+  const marginLine = out?.lines.find((l) => l.role === "MARGIN");
+  const usable = out !== undefined && out.available;
+
+  return (
+    <div data-testid="sandbox-impact-finance-money">
+      <div className={styles.zoneHead}>
+        <h2>{zh.sim.sandbox.impact.moneyTitle}</h2>
+        <span className={styles.zoneQ}>{zh.sim.sandbox.impact.moneyQuestion}</span>
+        {/*
+         * 诚实位记号（`?`）：内容在浮层，记号常驻第一层。
+         * 规范 §1「允许降层、绝不允许删除」—— 本单改写了它承载的事实，位置一寸没挪。
+         */}
+        <InfoPopover topic={zh.sim.sandbox.impact.financeGapTitle} testId="impact-finance-gap">
+          <span data-testid="sandbox-impact-finance-gap">{zh.sim.sandbox.impact.financeGapBody}</span>
+        </InfoPopover>
+      </div>
+
+      {/*
+       * 🔴 **口径常驻第一层**（不是浮层里的一句话，也不是 hover 才出现的）：
+       * 这块是**推演投影**不是实测值。判据取自回包的 `basis.kind === "PROJECTION"` ——
+       * 前端不自己声称"这是投影"，而是把后端的口径声明原样立在第一层。
+       * 拿不到回包时同样立着（此时它说明的是"这一带本来给的是什么"）。
+       */}
+      <p className={styles.stateLine} data-testid="sandbox-impact-finance-caliber">
+        <b>{zh.sim.sandbox.impact.moneyCaliber}</b>
+        {out ? ` · ${zh.sim.sandbox.impact.moneyCaliberDetail(out.basis.divisor)}` : ""}
+      </p>
+
+      {worldId === null ? (
+        <p className={styles.stateLine} data-testid="sandbox-impact-finance-no-session">
+          {zh.sim.sandbox.impact.moneyNoSession}
+        </p>
+      ) : q.isPending ? (
+        <p className={styles.stateLine} data-testid="sandbox-impact-finance-loading">
+          {zh.sim.sandbox.impact.moneyLoading}
+        </p>
+      ) : q.isError ? (
+        /* 请求本身失败（能力未开通 / 网络）⇒ 退回诚实缺口记号 + **后端原话**，不显示 0。 */
+        <p className={styles.stateLine} data-testid="sandbox-impact-finance-failed">
+          {zh.sim.sandbox.impact.moneyFailed(backendMessage(q.error))}
+        </p>
+      ) : !usable ? (
+        /* 求解器说不可用（世界态为空 / 无金额基线）⇒ 同样据实报缺，理由用它自己的原话。 */
+        <p className={styles.stateLine} data-testid="sandbox-impact-finance-unavailable">
+          {zh.sim.sandbox.impact.moneyUnavailable(out?.unavailableReason ?? "")}
+        </p>
+      ) : (
+        <>
+          {/* 第一层：只放结论型的三个数（成本 / 毛利 / 逾期敞口是"钱上差多少"的答案）。 */}
+          <ul className={styles.deltaList} data-testid="sandbox-impact-finance-lines">
+            {costLine ? (
+              <MoneyRow
+                label={costLine.subject}
+                baseline={costLine.rolling}
+                projected={costLine.projected}
+                testId="sandbox-impact-finance-line-cost"
+              />
+            ) : null}
+            {marginLine ? (
+              <MoneyRow
+                label={marginLine.subject}
+                baseline={marginLine.rolling}
+                projected={marginLine.projected}
+                testId="sandbox-impact-finance-line-margin"
+              />
+            ) : null}
+            {out.cash.available ? (
+              <MoneyRow
+                label={zh.sim.sandbox.impact.moneyArRow}
+                baseline={out.cash.arBaseline}
+                projected={out.cash.arProjected}
+                testId="sandbox-impact-finance-line-ar"
+              />
+            ) : null}
+          </ul>
+
+          {/* 第二层：换算链（真规则真系数）。"凭什么是这个数"降层，但**可点开**，不是没有。 */}
+          {out.chain.length > 0 ? (
+            <details className={styles.zoneSection} data-testid="sandbox-impact-finance-chain">
+              <summary data-testid="sandbox-impact-finance-chain-toggle">
+                {zh.sim.sandbox.impact.moneyChain(out.chain.length)}
+              </summary>
+              <ul className={styles.deltaList} data-testid="sandbox-impact-finance-chain-list">
+                {out.chain.map((h) => (
+                  <li className={styles.deltaRow} key={h.ruleId} data-testid={`sandbox-impact-finance-hop-${h.ruleKey}`}>
+                    <span className={styles.deltaName}>{h.from}</span>
+                    <span className={styles.deltaVals}>→ {h.to}</span>
+                    <span className={styles.deltaAmt} data-dir="flat">
+                      ×{h.coefficient}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+
+          {/* 第二层：诚实缺席逐条（后端 `notes`）。降层可以，删掉不行。 */}
+          {out.notes.length > 0 ? (
+            <details className={styles.zoneSection} data-testid="sandbox-impact-finance-notes">
+              <summary data-testid="sandbox-impact-finance-notes-toggle">
+                {zh.sim.sandbox.impact.moneyNotes(out.notes.length)}
+              </summary>
+              <ul className={styles.deltaList} data-testid="sandbox-impact-finance-notes-list">
+                {out.notes.map((n) => (
+                  <li className={styles.deltaRow} key={n}>
+                    <span className={styles.deltaName}>{n}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function SandboxImpactBand({
   sessionId,
   change,
@@ -143,16 +369,20 @@ export function SandboxImpactBand({
 
       {/* ── ② 财务 / 世界态随扰动的动态变化（PRD §1③ 右半）─────────────────── */}
       <section className={styles.impactHalf} data-testid="sandbox-impact-finance">
+        {/*
+         * ②-a 金额（WO-FINANCE-WORLDSTATE 补的那一半）。
+         * 摆在指数差分**之前**：仓主问的是「财务指标」，钱是结论、指数是过程。
+         * 诚实位 `?`（`impact-finance-gap`）随面板一起挪进来 —— 它解释的正是这块金额，
+         * 挂在下面那块指数差分的头上属于挂错地方（记号要贴着它说明的那个东西）。
+         */}
+        <FinanceProjectionPanel worldId={sessionId} curTick={curTick} />
+
+        {/* ②-b 世界态指数差分（原有·一字未改） */}
         <div className={styles.zoneHead}>
           <h2>{zh.sim.sandbox.impact.deltaTitle}</h2>
           <span className={styles.zoneQ}>
             {zh.sim.sandbox.impact.deltaQuestion} · tick {curTick}
           </span>
-          {/* 诚实位：金额口径为什么不在这一带。**常驻第一层的可见记号**（规范 §1：
-              诚实位允许降层、绝不允许删除；静默降层等于删除）。 */}
-          <InfoPopover topic={zh.sim.sandbox.impact.financeGapTitle} testId="impact-finance-gap">
-            <span data-testid="sandbox-impact-finance-gap">{zh.sim.sandbox.impact.financeGapBody}</span>
-          </InfoPopover>
         </div>
 
         {deltas === null ? (

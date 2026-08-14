@@ -23,8 +23,16 @@ import { SOLVER_CATEGORIES, SOLVER_CATEGORY_META, isSolverCategory, type SolverC
  * （本仓「只有 test 引用 = 已排练不是已实现」的老坑）；HTTP 那条才驱动真消费方。
  */
 
-/** 本单实测的内置求解器总数（同 ontology-core.test.ts 的金值·抽取命令见 docs/WO-L7A-delivery.md §1）。 */
-const SOLVER_TOTAL = 59;
+/**
+ * 本单实测的内置求解器总数（同 ontology-core.test.ts 的金值·抽取命令见 docs/WO-L7A-delivery.md §1）。
+ *
+ * 59 → **60**：WO-FLOWTIME 的 `process_flow_time`（2026-08-14 WO-R9-PROCESS-MERGE 合并时收编）。
+ * 60 → **61**：WO-FINANCE-WORLDSTATE 的 `finance_world_projection`（财务**金额**随世界态扰动的投影
+ *   —— `finance_pnl` 签名不吃 worldId，缺的就是金额那一跳）。
+ * ⚠ 本文件的金值**必须与 `ontology-core.test.ts` 同步改**——两处写的是同一个数，
+ *   改一处不改另一处会出现「一个文件绿一个文件红」，而先看到哪个纯看运气。
+ */
+const SOLVER_TOTAL = 61;
 
 /**
  * 类目 → 成员 的**期望值**（测试侧独立写死一份，与 `SOLVER_CATEGORY_MAP` 对拍）。
@@ -66,6 +74,9 @@ const EXPECTED: Record<SolverCategory, string[]> = {
     "gap_attribution",
     "supply_demand_gap_attribution",
     "chain_loss_attribution",
+    // WO-FLOWTIME：与上一条**分层**不是重复——那个答「哪一段慢」（链路节拍层·环节损失占比），
+    // 这个答「哪一张单卡着、卡在谁那里、卡了多久」（流程实例层·全量实例 + 天数 + 责任方 + 溯源）。
+    "process_flow_time",
   ],
   countermeasure_closure: [
     "mitigation_select",
@@ -81,6 +92,9 @@ const EXPECTED: Record<SolverCategory, string[]> = {
     "metric_rollup",
     "cockpit_kpi",
     "finance_pnl",
+    // WO-FINANCE-WORLDSTATE：与上一条**分层**不是重复 —— `finance_pnl` 答「本体真值下三科目各是多少」
+    // （静态口径·不吃 worldId），这个答「在**这个推演世界**里、施加扰动之后各变成多少钱」（世界态投影口径）。
+    "finance_world_projection",
     "ksf_graph",
   ],
   combinatorial_allocation: [

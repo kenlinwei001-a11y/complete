@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeApp, seedBattery, debugUser, ADMIN, type TestApp } from "./helpers.js";
+import { makeApp, seedBattery, debugUser, ADMIN } from "./helpers.js";
 import { installReadRecorder, observedReadSurface } from "./ontology-signature.recorder.js";
 import { SOLVER_ONTOLOGY_SIGNATURES, mergeReadSurfaces } from "../src/solvers/ontology-signature.js";
 import type { OntologyReadSurface } from "@platform/contracts";

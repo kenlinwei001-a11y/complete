@@ -63,16 +63,14 @@ const notes = [];
 // ── 依赖：datacore dist（生产别名表 + 目录，**共用同一份表**，不在本文件另抄） ──
 // ⛔ 守卫必须在 import dist **之前**（dist-freshness:check 判据②）：本门比对 dist 的
 //    SOLVER_ARG_ALIASES 与目录；dist 过期 ⇒ 拿旧别名表核新目录，漂移结论不可信。
-assertDistFresh(["apps/datacore/dist"], { gate: "solver-arg-key-drift:check" });
-
+// ⚠️ 2026-08-13 · WO-R9-DISTFRESH-RC2：原先守卫之后还跟着一个手写的 `existsSync → exit(1)` 前置循环
+//    （「部分 build」：包 dist 在、但这两个文件不在）。那也是**环境**状态，退 1 会被读成「代码有问题」。
+//    现把这两条产物路径直接交给共享守卫（它逐条查存在性，kind=MISSING，退 2），手写循环删掉。
 const distAliases = abs("apps/datacore/dist/solvers/arg-aliases.js");
 const distCatalog = abs("apps/datacore/dist/catalog.js");
-for (const [label, u] of [["datacore/solvers/arg-aliases", distAliases], ["datacore/catalog", distCatalog]]) {
-  if (!existsSync(u)) {
-    console.error(`✗ solver-arg-key-drift:check 失败（前置）：${label} dist 未构建（${u.pathname}）——先 pnpm --filter datacore build`);
-    process.exit(1);
-  }
-}
+assertDistFresh(["apps/datacore/dist/solvers/arg-aliases.js", "apps/datacore/dist/catalog.js"], {
+  gate: "solver-arg-key-drift:check",
+});
 const { SOLVER_ARG_ALIASES, knownArgKeys } = await import(distAliases.href);
 // ⚠ 必须用 **ALL_SOLVER_CATALOG**（= SOLVER_CATALOG 22 ∪ GENERIC 20 ∪ COCKPIT 17 = 59），不是 SOLVER_CATALOG。
 //    第一版本门写成 `SOLVER_CATALOG` 时只扫到 22/59，会在**只看了三分之一**的情况下报「无漂移」——

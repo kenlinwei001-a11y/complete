@@ -19,18 +19,31 @@ import type {
   SkillDefinition,
   WorkflowDefinition,
   RiskTimelineOutput,
+  // WO-BEFE-B · 行动与审批组（契约已有的形状从这里来）
+  FactoryCalendar,
+  VirtualPersona,
+  OpsPlaybook,
+  OpsTickReport,
 } from "@platform/contracts";
 import type {
   FallbackClusterVM,
   OntologyGraphVM,
+  ScheduledJobVM,
+  SchedulerRunVM,
   SimClockVM,
   TickReportVM,
   WorkspaceInput,
 } from "@/api/types";
 import type { ModelingDraftVM, RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
 
-export const TENANT_ID = "tenant-battery";
-export const PACKAGE_ID = "pkg_battery";
+// ⚠ 这两个常量的**定义**已挪到叶子模块 `./ids`，此处只做 re-export（对外 API 一字未变）。
+//   原因见 ids.ts 文件头：`export … from "./planBuilderFixtures"` 会被提升，
+//   导致浏览器先求值 planBuilderFixtures 而此处常量仍在 TDZ ⇒ 整个 mock 模式白屏。
+// ⚠ 必须 **import 后再 export**，不能写 `export … from "./ids"` —— 后者只建立转发、
+//   **不创建本地绑定**，而本文件内部多处直接用 PACKAGE_ID/TENANT_ID（如第 800 行附近），
+//   写成转发式会得到 `PACKAGE_ID is not defined`（第一次改就踩到，浏览器当场报出来）。
+import { TENANT_ID, PACKAGE_ID } from "./ids";
+export { TENANT_ID, PACKAGE_ID };
 
 // ---------------------------------------------------------------------------
 // 账号（QOS §7.6 权限种子：planner 全量 / base_manager:常州 行级过滤）
@@ -185,6 +198,19 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   // WO-WAITING-STATES-FE：流程等待态（后端 BUILTIN_VIEWS 同批入册·seed:true）。
   // 不挂 requires —— 业务流程层是配置驱动的主数据，与 sim.sandbox 无从属关系（挂上去是假依赖）。
   { key: "view.process-wait", name: "流程等待态", level: "VIEW", defaultOn: true },
+  // WO-R9-NAVREACH：采购四段腿分解（后端 BUILTIN_VIEWS 同批入册·seed:true）。
+  // 不挂 requires —— 采购/齐套域业务主数据页，与 sim.sandbox 无从属关系（挂上去是假依赖）。
+  // 不挂 bindings.solverKeys ——`kit_readiness` 是多路共用求解器（见后端 view-manifest 该行注释），
+  // 绑上去会让「关这一页」连带 404 掉所有别的调用方（mock handlers.ts:3701 的 boundOff 分支同理）。
+  { key: "view.procurement-legs", name: "采购四段腿分解", level: "VIEW", defaultOn: true },
+  // WO-PROCESS-INSTANCE · 流程运行时（实例·卡点）——「为什么**这一张单**现在卡住了」。
+  // ⚠ `defaultOn: false` 在这里是**照抄真相**，不是照抄 L1（与上面 sim.* 那批的处置刚好相反）：
+  //   `process.runtime` 同时进了后端的 `INCOMPLETE_DATA_DARK_LAUNCH_FEATURES`
+  //   （`apps/datacore/src/features.ts:244`），battery 模板的 L2「all on」**会跳过它** ⇒
+  //   对真实 demo 租户它就是**关着的**。mock 若写 true，演示态会比生产态多一页 ——
+  //   那是 mock 在说谎，而且是往"功能更全"的方向说谎（最难发现的那个方向）。
+  // 要在 mock 模式看这一页：`db.tenantOverrides["process.runtime"] = true`（正是租户开通的等价动作）。
+  { key: "process.runtime", name: "流程运行时（实例·卡点）", level: "VIEW", defaultOn: false },
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
   // 图谱八视角（§7.18：零新代码视角，BLOCK 级逐个开关；key 与视图 key 对齐路由守卫 view.{viewKey}）
   { key: "view.graph-all", name: "图谱·业务建模全景", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
@@ -441,8 +467,40 @@ const LEDGER_LAYOUT = {
   ],
 };
 
-/** §7.18 八视角：零新代码 —— 全部表达为 ViewConfig(renderer="ontology-graph", options.graphOptions) */
-const GRAPH_VIEWPOINTS = [
+/**
+ * §7.18 八视角：零新代码 —— 全部表达为 ViewConfig(renderer="ontology-graph", options.graphOptions)。
+ *
+ * 描述卡走 `options.desc` / `options.descLink{to,label}`，与**生产**（`datacore/src/synthetic/service.ts`
+ * 的 `graphView()`）同形状 —— 契约单一来源 `GraphViewDescSchema`。
+ * ⚠ 这里曾经是**唯一走对形状的一侧**：生产写 `layout.description`（裸字符串 link），mock 写对的，
+ * 于是 `G-GRAPH-DESC-CONTRACT-SPLIT` 全绿藏了很久。**mock 比生产"对"也是骗人** ——
+ * 改动本常量务必与 `service.ts` 同步；`test/graph-desc-contract.seam.test.tsx` 会咬住两边同形。
+ * 导出是为了让那道门能直接比对本常量（否则只能间接经 MSW 猜）。
+ */
+/**
+ * 「本体图谱」(`graph`) 视角配置 —— 与后端 `view-manifest.ts` 的 `ONTOLOGY_BROWSER_OPTIONS` 同语义。
+ * 业务域 14 键取自后端 `graphmeta.BUSINESS_DOMAIN_KEYS`；此处是 mock，无法 import 后端源码
+ * （contracts-only-shared），故逐字对齐 —— `test/graph-desc-contract.seam.test.tsx` 会拿**真后端抓下来的
+ * ViewConfig** 与本常量对账，漂移即红（不是靠人记得同步）。
+ */
+export const ONTOLOGY_BROWSER_OPTIONS_MOCK = {
+  graphOptions: {
+    colorBy: "domain",
+    nodeFilter: {
+      domains: [
+        "factory", "product", "process", "equip", "people", "quality", "capacity",
+        "forecast", "sales", "material", "finance", "plan", "external", "decision",
+      ],
+    },
+    dimOthers: true,
+    layoutSeed: 42,
+  },
+  desc:
+    "对象本体层：14 业务域的对象类型与它们之间的结构关系，点任一节点看属性、来源字段、适用规则与派生公式。" +
+    "求解器与智能体属于其上的推演层与编排层，在此淡出——要三层同时看，切「图谱·全景」。",
+};
+
+export const GRAPH_VIEWPOINTS = [
   {
     key: "graph-all", title: "图谱·全景",
     options: { graphOptions: { colorBy: "domain", layoutSeed: 7 }, desc: "计划+执行一体化运营本体全景：圆形为业务对象，◆ 品红为求解器，⬡ 青为 Agent，颜色按数据域区分。" },
@@ -497,7 +555,12 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
   const features = featuresForAccount(account, tenantOverrides);
   const allViews = [
     { key: "dash", title: "经营驾驶舱", renderer: "dashboard", layout: DASH_LAYOUT },
-    { key: "graph", title: "本体图谱", renderer: "ontology-graph", layout: {} },
+    // 「本体图谱」不再是零配置（修 G-GRAPH-ENTRY-DUP：它此前与「图谱·全景」渲染输出完全相同）。
+    // 配置逐字对齐后端单一来源 `apps/datacore/src/synthetic/view-manifest.ts` 的 ONTOLOGY_BROWSER_OPTIONS
+    // ——业务域为主角、求解器/智能体淡出；理由见那边的长注释。
+    // ⚠ mock 与生产必须同形状同语义：mock 若留在零配置，前端测试里两个入口照样一模一样，
+    // 这个 bug 就还是测不出来（本仓刚吃过 mock 走对/生产走错的亏，反过来一样是骗人）。
+    { key: "graph", title: "本体图谱", renderer: "ontology-graph", layout: {}, options: ONTOLOGY_BROWSER_OPTIONS_MOCK },
     { key: "risk", title: "产能推演", renderer: "risk-board", layout: {} },
     { key: "order", title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
     // 推演类业务视图（增量 PRD 由原型 docs/demo-推演系统.html 反推；renderer 已注册）
@@ -535,13 +598,33 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "chain-impediments", title: "全链阻滞点", renderer: "chain-impediments", layout: {} },
     // WO-WAITING-STATES-FE：流程等待态（key/title/renderer 逐字对齐后端 view-manifest.ts BUILTIN_VIEWS）
     { key: "process-wait", title: "流程等待态", renderer: "process-wait", layout: {} },
+    // WO-R9-NAVREACH：采购四段腿分解（同上·逐字对齐后端 BUILTIN_VIEWS，门 check-nav-group-coverage 判据② 机械对账）
+    { key: "procurement-legs", title: "采购四段腿分解", renderer: "procurement-legs", layout: {} },
+    // WO-PROCESS-INSTANCE：流程卡点（**实例层**，与上一行的模板层是两页）。
+    // key/title/renderer 逐字对齐后端 `synthetic/service.ts` 的 `VIEW_DEFS["process-stuck"]` ——
+    // 它走的是**增量视图**桶（同 geo-map/review），不在 BUILTIN_VIEWS 里，故不在 nav 门判据② 的射程；
+    // 但漂了照样是「列表显示的 renderer 与注册表对不上 → 兜底卡」，所以照样必须逐字抄。
+    { key: "process-stuck", title: "流程卡点", renderer: "process-stuck", layout: {} },
     // §7.18 八视角（renderer 复用 ontology-graph，仅 options 不同）
     ...GRAPH_VIEWPOINTS.map((v) => ({ key: v.key, title: v.title, renderer: "ontology-graph", layout: {}, options: v.options })),
     // aop（旧直链入口）：renderer="aop" 未注册，演示「该视图类型暂不支持」兜底
     { key: "aop", title: "年度规划（旧）", renderer: "aop", layout: {} },
   ];
+  // ⚠ 这张表必须与后端 `VIEW_FEATURE_MAP`（apps/datacore/src/features.ts）同口径。
+  //   `process-stuck` 的控制键**不是** `view.process-stuck` 而是 `process.runtime`
+  //   （features.ts:272 有意为之：卡点面板与运行时引擎同生共死，不另立一个能各自开关的 view.* 键）。
+  //   照默认规则算成 `view.process-stuck` ⇒ 该键永不在 features 里 ⇒ 视图恒被过滤掉，
+  //   表现为「注册了、下发表里也写了，就是不出现」——最难查的那种。
   const featureKeyOf = (viewKey: string) =>
-    viewKey === "graph" ? "view.ontology-graph" : viewKey === "risk" ? "view.risk-board" : viewKey === "order" ? "view.ledger" : `view.${viewKey}`;
+    viewKey === "graph"
+      ? "view.ontology-graph"
+      : viewKey === "risk"
+        ? "view.risk-board"
+        : viewKey === "order"
+          ? "view.ledger"
+          : viewKey === "process-stuck"
+            ? "process.runtime"
+            : `view.${viewKey}`;
   // 服务端按 features 过滤后下发（前端不做解析，只消费结果）
   const views = allViews.filter((v) => features.includes(featureKeyOf(v.key)));
   // aop 不进导航（仅直链可达，演示兜底卡）；base_manager 额外隐藏图谱（含八视角）
@@ -555,6 +638,10 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     if (f === "view.risk-board") return [f, "view.risk"];
     if (f === "view.ledger") return [f, "view.order"];
     if (f === "view.dash") return [f, "view.dash"];
+    // WO-PROCESS-INSTANCE：功能键是 `process.runtime`（非 view.* 命名），而 `ViewPage` 路由守卫
+    // 写死查 `view.${viewKey}`（ViewPage.tsx:33）⇒ 必须补这条别名，否则「导航里点得到、点进去 404」。
+    // 与后端 `withRouteFeatureAliases`（app.ts:1102）同一份口径，两侧必须同增同减。
+    if (f === "process.runtime") return [f, "view.process-stuck"];
     return [f];
   });
 
@@ -874,6 +961,50 @@ export const RISK_DISPOSITION_SEED = {
   bases: [
     { ...baseRef("常州"), owner: "基地负责人 · 王经理", freeDaily: 100, plans: [{ name: "关键正极提前备料", eff: 12, tn: 2 }, { name: "增开夜班", eff: 11, tn: 2 }] },
     { ...baseRef("江门"), owner: "基地负责人 · 李经理", freeDaily: 20, plans: [{ name: "近端仓+供应商VMI", eff: 9, tn: 5 }, { name: "跨基地调剂", eff: 8, tn: 4 }] },
+  ],
+  /**
+   * WO-DECISION-INFO-FE · 决策三块的 mock 真数据源（镜像后端读的那几个真对象）：
+   *   crossBaseLead / outsourceLead ← `InterBaseTransfer.transitDays` / `Supplier.leadTime`
+   *                                   （前置期·R13 溯源锚：治「+7 / +14 两个魔数」）
+   *   crossBaseFreight              ← `InterBaseTransfer.freightCost ÷ qty`（跨基地调剂成本唯一出处）
+   *   displaceable                  ← 其他基地窗内在手单（跨基地调剂的副作用**点名到单**）
+   *   coefficients                  ← 与真仓一致标 `DEFAULT_FALLBACK`：`base_outlook_coeffs` 这条规则
+   *                                   全仓只有读方没有写方（"接了线没数据"）→ 系数是代码兜底、不是治理口径
+   *
+   * ⚠ 加班杠杆刻意**不给**前置期与成本：本体确实没有「加班启动前置期 / 加班工时费率」承载字段。
+   *   mock 若给了，前端就会被训练成"总有数可显"，而真环境是 EMPTY —— 那正是假绿的温床。
+   */
+  crossBaseLead: {
+    status: "OK" as const,
+    days: 3,
+    source: { objectType: "InterBaseTransfer", objectId: "IBT-CZ-JM-01", field: "transitDays", value: 3 },
+  },
+  outsourceLead: {
+    status: "OK" as const,
+    days: 6,
+    source: { objectType: "Supplier", objectId: "SUP-EXT-07", field: "leadTime", value: 6 },
+  },
+  /** 运费单价 = freightCost ÷ qty = 86000 ÷ 4000 = 21.5 元/套（自洽·不写第二个数）。 */
+  crossBaseFreight: { transferId: "IBT-CZ-JM-01", freightCost: 86000, qty: 4000, yuanPerUnit: 21.5 },
+  displaceable: [
+    { so: "SO-20231", cust: "远东商用车", ...baseRef("江门"), baseName: "江门", qty: 900, pri: "低", due: "2026-06-28", dueDay: 18, freeDaily: 20 },
+    { so: "SO-20244", cust: "南方电网", ...baseRef("合肥"), baseName: "合肥", qty: 1400, pri: "中", due: "2026-07-02", dueDay: 22, freeDaily: 35 },
+  ],
+  coefficients: [
+    {
+      key: "overtimeUpliftPct",
+      value: 0.15,
+      basis: "DEFAULT_FALLBACK" as const,
+      ruleKey: "base_outlook_coeffs",
+      note: "规则 base_outlook_coeffs 未发布（全仓只有读方没有写方）→ 本值是**代码兜底默认**，不是被治理过的口径；要让它可校准，需在场景包规则表里种下该 params",
+    },
+    {
+      key: "crossBaseAbsorbPct",
+      value: 0.6,
+      basis: "DEFAULT_FALLBACK" as const,
+      ruleKey: "base_outlook_coeffs",
+      note: "同上：代码兜底默认值，非规则口径",
+    },
   ],
 };
 
@@ -1320,7 +1451,111 @@ export const ACTION_DRAFTS: ActionDraft[] = [
     approvalSteps: [{ seq: 1, role: "planner", approverId: "usr-planner", decision: "APPROVE", comment: "同意", decidedAt: now }],
     createdAt: "2026-06-08T08:00:00Z", updatedAt: "2026-06-09T08:00:00Z",
   },
+  /**
+   * WO-BEFE-B · **DRAFT 态**草稿（此前 mock 里一条都没有，于是这个缺口在前端测不出来）。
+   * 来源与真后端一致：`decisions/:id/commit`（`apps/datacore/src/decision/kernel.ts:175`）
+   * 显式以 `submit: false` 建单 ⇒ 落地即 DRAFT，**不在**审批链上。
+   * 而前端 `DecisionPlayView.tsx:630` 真在走这条 commit 路 ⇒ 这类草稿在生产里真会出现。
+   * 没有「提交审批」入口时它们推不动，且 ActionsPage 的状态筛选里连 DRAFT 都没有 ⇒ 连列都列不出来。
+   */
+  {
+    id: "act-003", tenantId: TENANT_ID, actionTypeKey: "adopt_mitigation",
+    payload: { base: "常州", planKey: "mitigation-a", effectiveFrom: "2026-06-20" },
+    origin: { userId: "usr-planner" },
+    status: "DRAFT",
+    approvalSteps: [{ seq: 1, role: "planner" }],
+    createdAt: "2026-06-11T08:00:00Z", updatedAt: "2026-06-11T08:00:00Z",
+  },
 ];
+
+/**
+ * WO-BEFE-B · Action 审批留痕事件（`GET /a/v1/action-drafts/:id/audit` 的 `events` 段）。
+ *
+ * 真后端从 outbox 里筛 `action.*` 且 `payload.draftId === id`（`actions.ts:824`）。
+ * mock 侧同样**由真实变更追加**（见 handlers 里 decision / cancel 两处 `pushActionEvent`），
+ * 不是摆一份静态好看的清单 —— 摆静态的话，审批面就算根本没打后端也照样显示留痕，
+ * 那正是本仓「绿测试≠能用」要堵的形态。种子这两条对应上面两份草稿的既有状态。
+ */
+export const ACTION_EVENTS: { event: string; payload: Record<string, unknown>; at: string; status?: string }[] = [
+  { event: "action.pending_approval", payload: { draftId: "act-001", actionTypeKey: "shift_plan_change", step: 1, role: "planner" }, at: "2026-06-10T08:00:00Z", status: "SENT" },
+  { event: "action.approved", payload: { draftId: "act-002", actionTypeKey: "outsource_transfer" }, at: "2026-06-09T08:00:00Z", status: "SENT" },
+];
+
+/** WO-BEFE-B · S3 调度任务（后端 `scheduler.ts` · `domain.ts:786`）。 */
+export const SCHEDULED_JOBS: ScheduledJobVM[] = [
+  { id: "sjob-forecast-w", tenantId: TENANT_ID, kind: "FORECAST", refId: "model-arima-1", cron: "0 2 * * 1", timezone: "Asia/Shanghai", nextRunAt: "2026-06-15T18:00:00Z", lastRunAt: "2026-06-08T18:00:00Z", status: "ACTIVE" },
+  { id: "sjob-sop-open", tenantId: TENANT_ID, kind: "SOP_CYCLE", refId: "sop-monthly", cron: "0 1 25 * *", timezone: "Asia/Shanghai", nextRunAt: "2026-06-24T17:00:00Z", status: "ACTIVE" },
+  // 带 lastError 的一条：诚实位——错误必须在屏上看得见，不许被"已暂停"三个字盖掉。
+  { id: "sjob-remind", tenantId: TENANT_ID, kind: "APPROVAL_REMINDER", refId: "reminder-default", cron: "0 0 * * *", timezone: "Asia/Shanghai", nextRunAt: "2026-06-13T16:00:00Z", lastRunAt: "2026-06-12T16:00:00Z", status: "PAUSED", lastError: "上一轮 3 条催办未送达（通知通道 503）" },
+];
+
+/** WO-BEFE-B · 调度运行历史（`GET /a/v1/scheduler/jobs/:id/runs`）。 */
+export const SCHEDULER_RUNS: SchedulerRunVM[] = [
+  { id: "sjob-forecast-w@2026-06-08T18:00:00Z", tenantId: TENANT_ID, jobId: "sjob-forecast-w", scheduledAt: "2026-06-08T18:00:00Z", startedAt: "2026-06-08T18:00:01Z", finishedAt: "2026-06-08T18:02:11Z", status: "SUCCEEDED" },
+  { id: "sjob-forecast-w@2026-06-01T18:00:00Z", tenantId: TENANT_ID, jobId: "sjob-forecast-w", scheduledAt: "2026-06-01T18:00:00Z", startedAt: "2026-06-01T18:00:01Z", finishedAt: "2026-06-01T18:00:09Z", status: "FAILED", error: "模型 model-arima-1 输入窗口不足 8 周" },
+  { id: "sjob-remind@2026-06-12T16:00:00Z", tenantId: TENANT_ID, jobId: "sjob-remind", scheduledAt: "2026-06-12T16:00:00Z", startedAt: "2026-06-12T16:00:00Z", finishedAt: "2026-06-12T16:00:03Z", status: "FAILED", error: "通知通道 503" },
+];
+
+/** WO-BEFE-B · OC9 工厂日历（契约 `FactoryCalendarSchema`）。 */
+export const FACTORY_CALENDARS: FactoryCalendar[] = [
+  {
+    id: `cal_${TENANT_ID}_default`, tenantId: TENANT_ID, calendarKey: "default", weekendMode: "SAT_SUN_OFF",
+    exceptions: [
+      { date: "2026-06-25", kind: "HOLIDAY", label: "端午" },
+      { date: "2026-06-27", kind: "EXTRA_WORKDAY", label: "调休补班" },
+      { date: "2026-07-06", kind: "MAINTENANCE", label: "年度检修" },
+    ],
+    updatedAt: "2026-06-01T00:00:00Z",
+  },
+];
+
+/**
+ * WO-BEFE-B · 虚拟操作团队（回放编排器 §1）。
+ * ⚠️ 真后端只在 SYNTHETIC 租户返回非空（`opsteam/team.ts:30`）；mock 直接给内容，
+ * 但页面上必须把「这是 SYNTHETIC 租户才有的东西」这句话显出来（隔离语义不能只活在后端）。
+ */
+export const OPS_PERSONAS: VirtualPersona[] = [
+  { username: "vp_planner_zhang", roles: ["planner"], attributes: {}, isVirtual: true, styleSeed: 11, displayName: "张（虚拟计划员）" },
+  { username: "vp_approver_li", roles: ["admin"], attributes: {}, isVirtual: true, styleSeed: 22, displayName: "李（虚拟审批人）" },
+  { username: "vp_sop_host", roles: ["planner"], attributes: {}, isVirtual: true, styleSeed: 33, displayName: "王（虚拟 S&OP 主持）" },
+];
+
+/** WO-BEFE-B · 剧本（回放编排器 §2）。 */
+export const OPS_PLAYBOOK: OpsPlaybook = {
+  key: "default-ops",
+  version: 3,
+  cadence: {
+    daily: [
+      { kind: "ask", persona: "vp_planner_zhang", view: "cockpit", queryPool: "daily_ops", prob: 0.6 },
+      { kind: "review_actions", persona: "vp_approver_li", policy: { approve: 0.82, reject: 0.11, cancel: 0.04 }, commentPool: "approval_comments" },
+    ],
+    monthly: [{ kind: "sop_cycle", persona: "vp_sop_host" }],
+  },
+};
+
+/** WO-BEFE-B · 回放 tick 报告（回放编排器 §3）。 */
+export const OPS_TICK_REPORTS: OpsTickReport[] = [
+  {
+    tick: 1, date: "2026-06-11",
+    executed: [
+      { kind: "ask", persona: "vp_planner_zhang", ref: "task-vp-001" },
+      { kind: "review_actions", persona: "vp_approver_li", ref: "act-002", decision: "APPROVE" },
+    ],
+    skipped: [{ kind: "sop_cycle", persona: "vp_sop_host", reason: "非月度节点" }],
+  },
+  {
+    tick: 2, date: "2026-06-12",
+    executed: [{ kind: "ask", persona: "vp_planner_zhang", ref: "task-vp-002" }],
+    skipped: [{ kind: "review_actions", persona: "vp_approver_li", reason: "无待审批草稿" }],
+  },
+];
+
+/** WO-BEFE-B · 文本池快照（`GET /a/v1/ops/pools`，后端 `poolSnapshot()`）。 */
+export const OPS_POOLS: Record<string, unknown> = {
+  daily_ops: { size: 40, consumed: 12 },
+  approval_comments: { size: 24, consumed: 7 },
+  sop_resolutions: { size: 16, consumed: 3 },
+};
 
 // ---------------------------------------------------------------------------
 // 合成数据 / 模拟时钟

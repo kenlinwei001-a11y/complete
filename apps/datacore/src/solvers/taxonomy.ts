@@ -68,6 +68,7 @@ export const SOLVER_CATEGORY_MAP: Record<SolverKey, SolverCategory> = {
   margin_attribution: "root_cause_attribution", // 毛利为什么倒挂、哪个成本项拖垮的
   yield_diagnosis: "root_cause_attribution", // 良率为什么突然下降、突变点在哪
   chain_loss_attribution: "root_cause_attribution", // 全链时间都耗在哪个环节、凭什么这个占比
+  process_flow_time: "root_cause_attribution", // **哪一条**流程实例卡住、卡在谁那里、卡了多久（实例粒度，与上一条的环节粒度分层）
 
   // ── 对策与缺口闭合：「怎么补、方案代价多大、组合起来能收窄多少」 ──
   mitigation_select: "countermeasure_closure", // 这个风险因素该选哪个处置方案
@@ -87,6 +88,9 @@ export const SOLVER_CATEGORY_MAP: Record<SolverKey, SolverCategory> = {
   cockpit_kpi: "performance_finance", // 驾驶舱几个核心经营 KPI 各是多少
   ksf_graph: "performance_finance", // 关键成功要素怎么支撑财务计划、哪些问题在威胁它
   finance_pnl: "performance_finance", // 量价本利：收入/成本/毛利 预算 vs 滚动差多少
+  // WO-FINANCE-WORLDSTATE：与上一条**分层**不是重复 —— 那个答「本体真值下三科目各是多少」（静态口径），
+  // 这个答「在**这个推演世界里**、施加了那条扰动之后，成本/毛利/应收各变成多少钱」（世界态投影口径）。
+  finance_world_projection: "performance_finance",
   capex_scenario: "performance_finance", // 三情景产能投资投不投、项目 IRR 与缺口窗口
   carbon_footprint: "performance_finance", // 单位产品碳成本多少、对比阈值差多少（可持续口径的经营账）
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, ADMIN, type TestApp } from "./helpers.js";
-import { RULE_PARAM_BINDINGS, applyRuleParamBindings } from "@platform/contracts";
+import { RULE_PARAM_BINDINGS, applyRuleParamBindings, ruleParamRef } from "@platform/contracts";
 import { BATTERY_SOLVER_PARAMS, BATTERY_RULES } from "../src/synthetic/battery.js";
 
 /**
@@ -61,11 +61,13 @@ describe("规则即引用 P4 · 改规则即改推演（数值维·效果层）"
     expect(before.degradeNote).toBeUndefined();
     expect(before.p90).toBeCloseTo(before.p50 * 0.93, 3);
 
-    // 只改规则：延迟阈值 2h → 1h（同时把 expression 里的同一阈值改掉，保持规则自洽）。
+    // 只改规则：延迟阈值 2h → 1h。**阈值只写 params 一处**，expression 引用它。
+    // 此处曾写成 `lagHours > 1` + `staleHours: 1` 两份同值 —— 那正是 G-C08-EXPR-PARAM-SPLIT 的病灶形态，
+    // 现已被发布闸的反向校验当场 400 拒（见 rules-expr-params.seam.test.ts「运行期反向闸」）。
     await editRule(t, {
       key: "C09",
       name: "数据时延临时降级",
-      expression: "DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > 1",
+      expression: `DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > ${ruleParamRef("staleHours")}`,
       scopeObjectTypes: ["DataSourceHealth"],
       severity: "WARN",
       params: { staleHours: 1, degradedFactor: 0.9 },
@@ -92,7 +94,7 @@ describe("规则即引用 P4 · 改规则即改推演（数值维·效果层）"
     await editRule(t, {
       key: "C09",
       name: "数据时延临时降级",
-      expression: "DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > 1",
+      expression: `DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > ${ruleParamRef("staleHours")}`,
       scopeObjectTypes: ["DataSourceHealth"],
       severity: "WARN",
       params: { staleHours: 1, degradedFactor: 0.5 },
@@ -144,7 +146,7 @@ describe("规则即引用 P4 · 改规则即改推演（数值维·效果层）"
     await editRule(t, {
       key: "C21",
       name: "产销平衡偏差",
-      expression: "SopVersionRow.balanceDeviationPct > 0.30",
+      expression: `SopVersionRow.balanceDeviationPct > ${ruleParamRef("balanceDeviationPct")}`,
       scopeObjectTypes: ["SopVersionRow"],
       severity: "WARN",
       params: { balanceDeviationPct: 0.3 },
@@ -171,7 +173,7 @@ describe("规则即引用 P4 · 改规则即改推演（数值维·效果层）"
     await editRule(t, {
       key: "C18",
       name: "现金垫底线",
-      expression: "AnnualScenario.cashCushion < 200",
+      expression: `AnnualScenario.cashCushion < ${ruleParamRef("cashFloor")}`,
       scopeObjectTypes: ["AnnualScenario"],
       severity: "BLOCK",
       params: { cashFloor: 200 },

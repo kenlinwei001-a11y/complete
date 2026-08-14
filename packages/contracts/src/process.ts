@@ -47,6 +47,7 @@
  * 落在 `apps/datacore/src/seed.ts`，不在本文件 —— 换行业换种子，契约不动。
  */
 import { z } from "zod";
+import { SliceLayersResponseSchema } from "./slice-layers.js";
 
 // ══════════════════════════════════════════════════════════════════════════
 // § 1 · 等待类型 `waitKind` —— **词表单源**（台账 REQ057）
@@ -65,6 +66,17 @@ import { z } from "zod";
  * 补了它，`ProcessDefinition` 就会开始承诺一个平台不做的能力（流程级审批既无承载物、
  * 也无状态机、也无消费方），那正是本仓「建了没接线」欠账的生产方式。
  * 真要做审批，先有承载物再回来加这一项，并同步回写本注释。
+ *
+ * ── 2026-08-10 回写（WO-PROCESS-INSTANCE）：本词表**仍是四值，一个字没动** ──
+ * `WAITING_APPROVAL` 落在**运行时层** `process-runtime.ts` 的 `ProcessTask.status`，
+ * 不在本文件的 `ProcessDefinition.waitKind`。两者不是同一件事：
+ *  · 本词表 = 「**这类流程**通常卡在哪类等待」（模板/平均值）——仓主裁「流程审批不体现」
+ *    针对的正是这一层，即不做「流程定义自带审批环节」那套元能力，故维持四值；
+ *  · 运行时 = 「**这一单**此刻正卡在一个已存在的 `ActionDraft` 上」——那是对既有 S2
+ *    审批事实（`actions.ts` `approvalSteps[]` + `DRAFT→PENDING_APPROVAL→APPROVED`）的如实转述，
+ *    上面那句「先有承载物再回来加」的条件在那一层是满足的（承载物/状态机/消费方三者俱全）。
+ * 运行时那五值是 `[...PROCESS_WAIT_KINDS, "WAITING_APPROVAL"]` **派生**的，不是手抄一份 ——
+ * 本词表增删一个值，那边自动跟随，不会漂移。派生关系由 `process-instance.test.ts` 断言。
  *
  * ── 四种各自的判据（写清楚，免得下一个人凭语感挑）───────────────────────
  *  · `WAITING_USER`            等**人**做动作/拿主意（评审、拍板、录入、签字以外的操作）。
@@ -200,3 +212,177 @@ export const ProcessDefinitionSchema = z.strictObject({
   carrierTypeKey: z.string().min(1),
 });
 export type ProcessDefinition = z.infer<typeof ProcessDefinitionSchema>;
+
+// ══════════════════════════════════════════════════════════════════════════
+// § 5 · 流程节点检视投影 `GET /a/v1/process-definitions/{key}/inspect`
+//        （WO-V4-INSPECT · PRD-sandbox-v4-backward-derivation §4.1 + §4.2）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 「点开一条流程，看它的完整本体关系」的**只读派生投影**。
+ *
+ * ══ 三条设计红线（都是踩过的坑，别当装饰）═════════════════════════════════
+ *
+ * ① **零新真值源**：本响应的每一个字段都是既有表的现算 join —— `process_definitions` ×
+ *    `process_domains` × `object_types` × `ontology_links` × `objects`。
+ *    **不新增表、不新增事件、不写任何真值**（R4：沙盘只写 SimSession 世界态，不写本体真值）。
+ *
+ * ② **不下发运行态，且必须当面说清楚**：`ProcessTask` / `ProcessInstance` **全仓不存在**
+ *    （`GET /a/v1/process-definitions` 的口径注释已立此规矩）。所以
+ *    「此刻卡了多久 / 有几单堵在这一步 / 实测在制品数」**答不出来**。
+ *    本投影只给 `stdDurationDays`（**标准工期**）并用 `runtime.available=false` + `runtime.reason`
+ *    如实标缺席 —— ⛔ **绝不拿标准工期冒充实测卡顿**。
+ *    诚实位做成**结构化字段而不是一句前端文案**，是因为「写在前端的诚实位」会随改版蒸发，
+ *    而字段能被测试咬住（本仓 `G-FRONTEND-HARDCODED-ABSENCE` 记的就是这个病）。
+ *
+ * ③ **承载类型解析不到是一个必须处理的态，不是异常**：`carrierTypeKey` 在种子期
+ *    **不校验**（判据在 `apps/datacore/test/process-layer.test.ts`），所以 join 不上是**可能发生的**。
+ *    此时 `carrier.status="absent"` + `carrier.absentReason` 说明缺在哪一环，
+ *    HTTP 仍是 **200**（不是 404、更不是 500）—— 流程本身存在，缺的是它的承载物。
+ *
+ * ══ R14（去行业锁死）════════════════════════════════════════════════════════
+ * 流程名 / 域名 / 职能名 / 类型中文名 / 属性中文名 / 单位**全部随响应下发**，
+ * 前端一个字面量都不许写。缺 `displayName` 时下发 `null`，前端诚实回落裸键 —— 不臆造中文名。
+ */
+
+/** 一跳关系（沿 `OntologyLink`，带方向与基数）。 */
+export const ProcessInspectRelationSchema = z.object({
+  linkKey: z.string(),
+  /** 相对**承载类型**的方向：`out` = 承载类型是 from 端；`in` = 承载类型是 to 端。 */
+  direction: z.enum(["out", "in"]),
+  fromTypeKey: z.string(),
+  toTypeKey: z.string(),
+  cardinality: z.enum(["1:1", "1:N", "N:1", "N:N"]),
+  /** 对端类型 key（自环时 = 承载类型自己）。 */
+  neighborTypeKey: z.string(),
+  /** 对端类型中文名；本体里查不到该类型时为 `null`（诚实回落裸键，不臆造）。 */
+  neighborDisplayName: z.string().nullable(),
+  /** 对端类型在本租户的对象数；类型查不到时为 `null`（`null` ≠ `0`，两者含义不同）。 */
+  neighborObjectCount: z.number().int().nonnegative().nullable(),
+});
+export type ProcessInspectRelation = z.infer<typeof ProcessInspectRelationSchema>;
+
+/** 承载类型的属性口径（中文名/量纲/主键/枚举全部随响应下发·R14）。 */
+export const ProcessInspectPropertySchema = z.object({
+  propKey: z.string(),
+  /** 中文业务名；未登记即 `null`（前端显裸键，**不臆造**·WO-SCHEMA-ZH 留白纪律）。 */
+  displayName: z.string().nullable(),
+  dataType: z.string(),
+  unit: z.string().nullable(),
+  isPrimaryKey: z.boolean(),
+  description: z.string().nullable(),
+  enumValues: z.array(z.string()).nullable(),
+  /**
+   * 该属性是不是**派生**的（`propKey` 同时出现在 `derivedProperties` 里）。
+   * 派生 ⇒ 它的值由公式算出、不是录入的真值 —— 界面必须标出来，否则会被读成一手数据。
+   */
+  derived: z.boolean(),
+});
+export type ProcessInspectProperty = z.infer<typeof ProcessInspectPropertySchema>;
+
+/** 承载类型的派生属性（公式即口径，直接下发给人看）。 */
+export const ProcessInspectDerivedPropertySchema = z.object({
+  propKey: z.string(),
+  displayName: z.string().nullable(),
+  unit: z.string().nullable(),
+  formula: z.string(),
+});
+export type ProcessInspectDerivedProperty = z.infer<typeof ProcessInspectDerivedPropertySchema>;
+
+/** 承载类型解析结果 —— 三态里的 `present` / `absent` 两态（`not_in_slice` 在这一层没有意义）。 */
+export const ProcessInspectCarrierSchema = z.object({
+  /** `present` = 在已发布本体里查到了；`absent` = 查不到（**必须处理的态，不是异常**）。 */
+  status: z.enum(["present", "absent"]),
+  typeKey: z.string(),
+  displayName: z.string().nullable(),
+  domain: z.string().nullable(),
+  description: z.string().nullable(),
+  properties: z.array(ProcessInspectPropertySchema),
+  derivedProperties: z.array(ProcessInspectDerivedPropertySchema),
+  /** 该类型在本租户的对象数（A6 行级过滤后的可见数）；`absent` 时为 `null`。 */
+  objectCount: z.number().int().nonnegative().nullable(),
+  /** 仅 `absent`：**缺在哪一环**（不写「暂无数据」这种什么都没说的话）。 */
+  absentReason: z.string().nullable(),
+});
+export type ProcessInspectCarrier = z.infer<typeof ProcessInspectCarrierSchema>;
+
+/** 运行态诚实位 —— 见上文红线②。做成结构化字段是为了能被测试咬住。 */
+export const ProcessInspectRuntimeSchema = z.object({
+  /** 恒 `false`（今天）。变成 `true` 的那天必须同时给出真承载物，别只改这个布尔。 */
+  available: z.literal(false),
+  /** 为什么没有：说清缺的是哪个承载物，而不是「暂不支持」。 */
+  reason: z.string(),
+  /** 本流程的**标准工期**（天）——⛔ 不是「此刻已卡多久」。 */
+  stdDurationDays: z.number().positive(),
+  /** 上一行那个数的口径名，随响应下发，免得前端自己写一句可能过期的说明。 */
+  stdDurationCaption: z.string(),
+  /** 今天答不出来的问题清单（界面照单显示「这些问题本页答不了」）。 */
+  unanswerable: z.array(z.string()),
+});
+export type ProcessInspectRuntime = z.infer<typeof ProcessInspectRuntimeSchema>;
+
+/** 同承载物的其它流程（反查 `carrierTypeKey` 相同者；**不含自己**）。 */
+export const ProcessInspectSiblingSchema = z.object({
+  key: z.string(),
+  name: z.string(),
+  domainKey: z.string(),
+  domainName: z.string().nullable(),
+  ownerFunctionKey: z.string(),
+  ownerFunctionName: z.string().nullable(),
+  waitKind: ProcessWaitKindSchema,
+  stdDurationDays: z.number().positive(),
+});
+export type ProcessInspectSibling = z.infer<typeof ProcessInspectSiblingSchema>;
+
+/**
+ * 杠杆 → 业务域的传导映射（PRD §4.1，**纯派生零手抄**）。
+ * `LEVER_PROP_META[k]` 的 `Type` → 找出 `carrierTypeKey == Type` 的所有 `ProcessDefinition` → 取其 `domainKey`。
+ * ⛔ 前端**不许**写死「这条杠杆影响哪几个域」的字面量表 —— 那正是
+ * 「两个 dev 各发明一套词表、交集为 0」那次事故的形态。
+ */
+export const LeverDomainReachSchema = z.object({
+  /** `Type.prop`，= `LEVER_PROP_META` 的键。 */
+  leverKey: z.string(),
+  objectTypeKey: z.string(),
+  propKey: z.string(),
+  /** 中文标签 / 单位 / 值类，单源取自 `LEVER_PROP_META`（前端只格式化，不内联）。 */
+  label: z.string(),
+  unit: z.string(),
+  valueKind: z.string(),
+  /** 落点属性在已发布本体里解析到了吗（与 `lever-prop-resolvable:check` 同一判据）。 */
+  landingResolved: z.boolean(),
+  /** 落在 `properties` / `derivedProperties` / `stateVariables` 哪一位；解析不到为 `null`。 */
+  landingWhere: z.string().nullable(),
+  /** 该承载类型被哪些流程用（`P##` 升序）。空数组 = 这条杠杆今天打不到任何业务流程。 */
+  processKeys: z.array(z.string()),
+  /** 上面那些流程所属的业务域（去重升序）。 */
+  domains: z.array(z.object({ key: z.string(), name: z.string().nullable() })),
+});
+export type LeverDomainReach = z.infer<typeof LeverDomainReachSchema>;
+
+/** `GET /a/v1/process-definitions/{key}/inspect` 响应。 */
+export const ProcessInspectResponseSchema = z.object({
+  process: ProcessDefinitionSchema.omit({ id: true, tenantId: true }).extend({
+    /** 域中文名；域记录缺失时 `null`（前端显 `domainKey`，不臆造）。 */
+    domainName: z.string().nullable(),
+    ownerFunctionName: z.string().nullable(),
+  }),
+  runtime: ProcessInspectRuntimeSchema,
+  carrier: ProcessInspectCarrierSchema,
+  /** 一跳关系，按 `linkKey` 升序（R6 确定性：不依赖 Store 迭代序）。 */
+  relations: z.array(ProcessInspectRelationSchema),
+  /** 同承载物的其它流程，按 `key` 升序。 */
+  sharedCarrierProcesses: z.array(ProcessInspectSiblingSchema),
+  /** 打到本流程承载类型的杠杆（PRD §4.1 的反查方向）。 */
+  levers: z.array(LeverDomainReachSchema),
+  /**
+   * 承载类型的十六层三态 —— **复用 `slice-layers.ts` 的既有投影**（不另造一套）。
+   * 依据是一条**即席一跳切片**（root = `carrierTypeKey`，paths = 该类型的每条一跳链路），
+   * 不是任何已存的 `slice_specs` 记录，故 `sliceKey` 形如 `process-inspect:P37`。
+   * 承载类型 `absent` 时为 `null` —— 层数取不到就说取不到，绝不返回 16 个空壳假装算过。
+   */
+  carrierLayers: SliceLayersResponseSchema.nullable(),
+  /** `carrierLayers` 为 `null` 时说明缺在哪一环。 */
+  carrierLayersAbsentReason: z.string().nullable(),
+});
+export type ProcessInspectResponse = z.infer<typeof ProcessInspectResponseSchema>;

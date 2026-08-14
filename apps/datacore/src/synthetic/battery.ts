@@ -3,7 +3,7 @@ import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SC
 // DF.13 外协红线单一来源（C08）：规则表达式 / what-if 上限 / 合成越线样本三处**全部派生**，禁内联裸阈值（R14·R-一致）。
 import { OUTSOURCE_REDLINE, OUTSOURCE_SAMPLE, outsourceRedlinePct, outsourceRedlineViolationExpr } from "@platform/contracts";
 // WO-RULE-EXPR-PARAMS：规则 DSL 的命名阈值引用（`params.<名>`）——阈值只存 rule.params 一处，禁在 expression 里复写。
-import { ruleParamRef } from "@platform/contracts";
+import { ruleParamRef, parityRuleExpression, parityRuleParams } from "@platform/contracts";
 import type { ExcSeverity, ExcStatus } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
 import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
@@ -168,6 +168,73 @@ export function businessTypeOfCustomer(cust: string): BusinessType {
   if (/客车|商用/.test(cust)) return "commercial";
   return "passenger";
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）· **客户归属册**（单一来源 R14）
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * `Order.cust`（订单侧品牌名）→ `Customer.custName`（客户主数据侧**匿名化名册**）的**声明式**归属。
+ * `order_of_customer` 边由本册派生 —— 这是「客户维」在数据层的唯一真相。
+ *
+ * **修前的病（实测·seed 42·scale S）**：`synthetic/service.ts` 用 `custIds[oi % custIds.length]`
+ * **按订单序轮转**绑边，与订单上写的客户名毫无关系：
+ * ```
+ * cust_4 商用车集团G: SO-3431(广汽集团/2170-NCM), SO-3481(广汽集团/4680-NCM), SO-3523(广汽集团/4680-NCM)
+ * cust_7 电网公司F:   SO-3452(国家电网/方形-LFP), SO-3495(南方电网/方形-LFP), SO-3540(宇通客车/2170-NCM)
+ * ```
+ * 「商用车集团」名下三张全是乘用车整车厂的单，「电网公司」名下挂着客车厂的单 ——
+ * 任何沿这条边做客户维的求解（S15 `quote_margin`）拿到的都是**张冠李戴**的订单集。
+ *
+ * **修后的可校验不变量（R-CUST-ATTRIB）**：每条 `order_of_customer` 边两端业态必须一致 ——
+ * `businessTypeOfCustomer(Order.cust)` ≡ `customerSegKeyOf(Customer.custName)`
+ * （passenger↔pas / commercial↔com / storage↔ess）。轮转绑定必然违反此式，因此它同时是**变异反证门**。
+ *
+ * 名册侧的字母后缀（A/B/C/E/G/D/H/F）是**匿名化标签**，不承载业务含义；本册把它们钉到订单侧的品牌名上。
+ * 1:N（一个客户集团对应多个下单品牌）是刻意的：客户主数据 8 行 vs 订单品牌 14 个，1:1 不可能且不必要。
+ */
+export const ORDER_CUST_TO_CUSTOMER: Record<string, string> = {
+  // 乘用车（pas）——「整车厂A/B/C」+「海外车企E」（E ← 东风：合资/海外品牌体系归口）
+  广汽集团: "整车厂A",
+  长安汽车: "整车厂B",
+  吉利汽车: "整车厂C",
+  小鹏汽车: "整车厂C",
+  东风汽车: "海外车企E",
+  // 商用车（com）——统一归「商用车集团G」（含唯一境外品牌 Ashok Leyland）
+  宇通客车: "商用车集团G",
+  金龙客车: "商用车集团G",
+  奇瑞: "商用车集团G",
+  瑞驰新能源: "商用车集团G",
+  "Ashok Leyland": "商用车集团G",
+  // 储能（ess）——发电集团归「储能集成商D」、南网系归「储能集成商H」、国网系归「电网公司F」
+  国家电投: "储能集成商D",
+  龙源电力: "储能集成商D",
+  南方电网: "储能集成商H",
+  国家电网: "电网公司F",
+};
+
+/**
+ * `Customer.custName`（匿名化名册）→ 细分键（pas|com|ess）。
+ * 与 `synthetic/ceo-dataset.ts segOfCust` **同口径**（那里已按同样的名字前缀判细分，是既有单一来源）；
+ * 此处显式化以便当作**不变量断言**用，不再靠散落的 `includes` 各判各的。
+ */
+export function customerSegKeyOf(custName: string): "pas" | "com" | "ess" {
+  if (custName.includes("商用车")) return "com";
+  if (custName.includes("储能") || custName.includes("电网")) return "ess";
+  return "pas";
+}
+
+/** 业务类型（订单侧口径）→ 细分键（客户名册侧口径）。两套词表的唯一换算处。 */
+export function segKeyOfBusinessType(bt: BusinessType): "pas" | "com" | "ess" {
+  return bt === "commercial" ? "com" : bt === "storage" ? "ess" : "pas";
+}
+
+/**
+ * 订单客户名 → 客户主数据名（无归属登记时返回 `undefined` —— **不兜底、不轮转**）。
+ * 返回 undefined 时调用方必须**不建边**（诚实缺席），而不是随手落一个客户。
+ */
+export function customerNameOfOrderCust(cust: string): string | undefined {
+  return ORDER_CUST_TO_CUSTOMER[cust];
+}
+
 /** 细分名（乘用车/储能/商用车）→ 业务类型枚举（DemandSegment.segment 口径）。 */
 export function businessTypeOfSegment(segment: string): BusinessType {
   if (/储能/.test(segment)) return "storage";
@@ -261,7 +328,9 @@ export const NOMINAL_PROCESS_YIELD = 0.973;
 // 不再在 solver_params 里各写一份同值字面量（此前那份"诱饵"才是求解器真读的，改规则不改推演）。
 // 运行期同源：`RULE_PARAM_BINDINGS` + `RulesService` 发布投影（改规则 → solver_params 随之变）。
 export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
-  { key: "C03", name: "产能上限约束", expression: "Order.demandDelta > 0.5", severity: "BLOCK", category: "产能" },
+  // DF.14：C03/C05/C13/C09 前端 mock 规则库也物化同一条 —— expression 从 `PARITY_RULE_SEEDS` 派生，
+  // 两端只此一处，不再各写一份字面量（此前那份手抄副本正是欠账 #78 的机制面：值对齐过一次，机制没变）。
+  { key: "C03", name: "产能上限约束", expression: parityRuleExpression("C03"), severity: "BLOCK", category: "产能" },
     // DF.13 C08 外协红线：**表达式与命名阈值同源生成**，禁内联。此前 expression 写死一个比现行更宽的常数，
     // 而三个求解器、界面文案、livedin 发布态都按现行红线走 —— 规则库与推演各说各话，且四包测试全绿。
     // WO-RULE-EXPR-PARAMS（闭掉 G-C08-EXPR-PARAM-SPLIT）：expression 现在**引用** `params.outsourceRatioMax`
@@ -271,10 +340,10 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
     //   且 `rule-closure:check` 靠正则 `key: "Cxx", name:` 扫本表建"已定义规则集"——把 key 也派生会让它瞎掉
     //   （亲测：改成 OUTSOURCE_REDLINE.ruleKey 后该门立刻报「C08 被引用但未定义」）。**只有阈值该单源**。
     { key: "C08", name: "外协比例红线", expression: outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, { param: OUTSOURCE_REDLINE.paramKey }), severity: "WARN", params: { [OUTSOURCE_REDLINE.paramKey]: OUTSOURCE_REDLINE.maxRatio }, category: "外协" },
-  { key: "C13", name: "客户信用额度", expression: "Order.creditUsedRatio > 1", severity: "BLOCK", category: "财务" },
+  { key: "C13", name: "客户信用额度", expression: parityRuleExpression("C13"), severity: "BLOCK", category: "财务" },
   // A8.5 timeseries rules — evaluated against ts_agg_runs by RULE_SCAN (SUSTAIN).
-  { key: "C05", name: "产线利用率持续越线", expression: "SUSTAIN(Line.utilization > 95, 3)", severity: "WARN", category: "产能" },
-  { key: "C12", name: "预测偏差触发重校", expression: "SUSTAIN(Model.forecast_deviation > 0.08, 1)", severity: "WARN", category: "需求" },
+  { key: "C05", name: "产线利用率持续越线", expression: parityRuleExpression("C05"), severity: "WARN", category: "产能" },
+  { key: "C12", name: "预测偏差触发重校", expression: parityRuleExpression("C12"), severity: "WARN", category: "需求" },
   // §7.14 年度情景规则校验（情景卡的 C18/C23 行走真实规则引擎）。
   // C18 params.cashFloor：现金垫底线 —— 出厂值从**目标登记册** `PLAN_GOAL_TARGETS.cashFloor` 派生
   // （不再写第三份同值 50：此前 sop.cashFloor / planGenerate.targets.cashFloor / C18 expression 各一份）。
@@ -304,8 +373,8 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   //   ② 其余阈值若已写在 expression 里并由规则引擎真求值，就**不再复制一份进 params**
   //      （C11 minBufferDays / C22 maxChangeoverMin / C25 assumeTolerancePct 曾各存一份同值副本、
   //       全代码库无人读 = 诱饵，已删；阈值单源 = expression）。
-  { key: "C01", name: "产线设计产能上限", expression: "Line.weeklyCapacityWan > Line.designCeilingWan", severity: "BLOCK", params: {}, category: "产能" },
-  { key: "C02", name: "化成/老化串并产能口径", expression: "Process.parallelThroughput < Process.requiredThroughput", severity: "WARN", params: {}, category: "产能" },
+  { key: "C01", name: "产线设计产能上限", expression: parityRuleExpression("C01"), severity: "BLOCK", params: {}, category: "产能" },
+  { key: "C02", name: "化成/老化串并产能口径", expression: parityRuleExpression("C02"), severity: "WARN", params: {}, category: "产能" },
   // C04 **刻意不引用 params**（别"顺手统一"）：它的 expression 是**分类谓词**（认证状态≠量产），
   // 里面没有可参数化的数值阈值；而它的两个 params 是**产能折算系数**（算数维，经 RULE_PARAM_BINDINGS
   // 投影进 `certFactors.*` 供求解器乘）。二者不是同一个数的两份拷贝，故无分叉可言 —— 这条规则
@@ -316,7 +385,8 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   // solver_params `health.*`。**normalFactor 已删**：未降级时的 P90 基线系数 `health.normal` 归 M11 校准
   // 参数 `p90_health`（QUANTILE 方法按覆盖率反解）所有——规则再声明一份同值就是第二个写者 + 诱饵。
   // WO-RULE-EXPR-PARAMS：`> params.staleHours` 取代写死的 `> 2` —— 阈值只存 params 一处。
-  { key: "C09", name: "数据时延临时降级", expression: `DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > ${ruleParamRef("staleHours")}`, severity: "WARN", params: { staleHours: 2, degradedFactor: 0.9 }, category: "质量" },
+  // DF.14：表达式与两个 params 都从 `PARITY_RULE_SEEDS` 派生（前端 mock 物化同一条，见 fixtures.ts）。
+  { key: "C09", name: "数据时延临时降级", expression: parityRuleExpression("C09"), severity: "WARN", params: parityRuleParams("C09"), category: "质量" },
   { key: "C10", name: "场景必填+行动审批留痕", expression: "Action.approver == NULL OR Action.audited == FALSE", severity: "BLOCK", params: {}, category: "合规" },
   { key: "C11", name: "检修窗口与交付高峰错峰", expression: "MaintPlan.bufferDays < 3", severity: "WARN", params: {}, category: "排产" },
   { key: "C15", name: "经营毛利底线", expression: "Order.marginPct < Order.floorPct", severity: "BLOCK", params: {}, category: "财务" },
@@ -1102,6 +1172,48 @@ const materialBalanceProps: PropertyDef[] = [
   { propKey: "ltaPct", dataType: "number", isPrimaryKey: false }, // 长协覆盖(%)
   { propKey: "gapTon", dataType: "number", isPrimaryKey: false }, // 现货缺口(吨)
   { propKey: "etaDate", dataType: "string", isPrimaryKey: false },
+  // WO-V4-INSPECT · 齐套覆盖率（**派生非独立真值**，值由下面 materialBalanceDerived 的公式算出）。
+  // 这里之所以**同时**登记为 PropertyDef，是照 `interBaseTransfer.etaDay` 的既有先例：
+  // DerivedPropertyDef 只有 {propKey, formula} 两个字段，没有 displayName/unit/description 的位置，
+  // 而 R14 要求前端零写死词表（中文名/单位必须随响应下发）⇒ 元数据只能挂在 PropertyDef 上。
+  // ⚠ 它**不占** synthetic-field-alignment 的「非派生字段必须被合成填上」那条判据
+  //   （该测试把 derivedProperties 里出现的键从 nonDerived 集合里剔掉）。
+  {
+    propKey: "coverage",
+    dataType: "number",
+    isPrimaryKey: false,
+    unit: "%",
+    description: "齐套覆盖率（净需求中已被覆盖的比例）。**0–1 比率存储**，显示时 ×100 —— 与 LEVER_PROP_META['MaterialBalance.coverage'].kind='ratio' 同口径。派生属性：值由 (netDemandTon − gapTon) / netDemandTon 算出，不是独立录入的真值。",
+  },
+];
+/**
+ * WO-V4-INSPECT · 闭死杠杆 `MaterialBalance.coverage`（PRD-sandbox-v4 §2.2 · 断点 `G-LEVER-DEAD-LANDING`）。
+ *
+ * ── 病灶 ─────────────────────────────────────────────────────────────────────
+ * `LEVER_PROP_META` 登记了 12 条杠杆落点，11 条在 94 个本体类型里解析得到，唯独
+ * `MaterialBalance.coverage` **属性根本不存在**（现读 dist 复验：MaterialBalance 的属性是
+ * matBalId/material/unit/netDemandTon/ltaPct/gapTon/etaDate）。
+ * 既有 `check-lever-binding-drift` 看不见它 —— 那道门验的是「因子层→有没有落点」（覆盖方向），
+ * 本条缺的是反方向「落点→属性是否真存在」，它自己的诚实边界段落白纸黑字写着不证这一维。
+ *
+ * ── 为什么选「派生」而不是「补一个存储属性」（PRD §2.2 的二选一）──────────────
+ * 因为它**不是独立真值**：MRP 表上这一行只有一个自由度 —— 给定 `netDemandTon`，
+ * `ltaPct` 与 `gapTon` 已经互相决定（种子 `battery.ts` 原式：
+ * `gapTon = round(max(0, netDemandTon × (1 − ltaPct/100)), 0)`）。再存一个 `coverage`
+ * 就是**同一个自由度的第三份存储**，三者必然随时间漂开（改一处忘两处），
+ * 正是本仓「零新真值源 / R13 派生投影非新真值」要根治的形态。
+ *
+ * ── 公式为什么用 gapTon 而不是 ltaPct/100（两者今天数值相同，但概念不同）────────
+ * 今日种子里 `(netDemandTon − gapTon)/netDemandTon` 与 `ltaPct/100` 数值上一致
+ * （只差 gapTon 取整那点误差），但**这两个是不同的业务量，不许合并**：
+ *   · `ltaPct` = **长协覆盖率**（长期协议锁定的份额，PROP_DISPLAY_NAMES 已如此命名）；
+ *   · `coverage` = **齐套覆盖率**（净需求里实际不缺的份额）。
+ * 真实 MRP 里现货补货会把缺口补上 ⇒ 齐套覆盖率 > 长协覆盖率。今天二者相等，只是因为
+ * 本种子没有现货采购这一路。用 `ltaPct/100` 当公式 = 把两个概念焊死，
+ * 等哪天补了现货这条路，公式会**静默给出错的数**。故取定义式（缺口口径），不取巧合式。
+ */
+const materialBalanceDerived: DerivedPropertyDef[] = [
+  { propKey: "coverage", formula: "(netDemandTon - gapTon) / netDemandTon" },
 ];
 
 // cockpit P2 + SPINE 绿地：规划决策推演 + 根因 DAG + 经营目标-指标-责任骨架。
@@ -1918,6 +2030,10 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "MaterialBalance.matBalId": "物料平衡编号", "MaterialBalance.material": "物料",
   "MaterialBalance.unit": "计量单位", "MaterialBalance.netDemandTon": "净需求量",
   "MaterialBalance.ltaPct": "长协覆盖率", "MaterialBalance.gapTon": "现货缺口",
+  // ← LEVER_PROP_META["MaterialBalance.coverage"].label「物料齐套·覆盖率」的 "·" 后缀，单源收敛
+  //    （schema-display-name.seam.test.ts ③b 静态穷举咬这条）。与上一行「长协覆盖率」是**两个业务量**，
+  //    今日数值巧合相等，别合并（理由见 materialBalanceDerived 抬头）。
+  "MaterialBalance.coverage": "覆盖率",
   "MaterialBalance.etaDate": "预计到货日",
 
   // ---- 生产执行（MES） ----
@@ -2113,6 +2229,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
 
   // ---- 商务 / 财务 / 外部信号（CEO 反向归因域·对象类型定义在 battery-extended.ts） ----
   "Customer.custId": "客户编号", "Customer.custName": "客户名称", "Customer.creditLimit": "信用额度",
+  "Customer.orderCustNames": "下单品牌名", // WO-QUOTE-MARGIN-CUSTOMER：订单侧 `Order.cust` 的归属名集合
   "Customer.termDays": "账期天数", "Customer.receivables": "应收余额",
   "Customer.wipUnbilled": "未开票在制金额", "Customer.maxOverdueDays": "最长逾期天数",
   "CustomerLocation.locId": "客户地点编号", "CustomerLocation.customerRef": "所属客户",
@@ -2275,7 +2392,8 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plainD("Cadence", "节拍", "全链各环节的**节拍**——「这个环节多久处理一次」。等待期望 = everyDays / 2（均匀到达假设），是推演沙盘里最值钱的一维：实测全链损失里等节拍占比最高的一类。值全部由种子自身的发生序列推导，推不出的诚实标 EMPTY 并给机器可读原因，绝不补 0（0 的语义是「随到随办」，等于把节拍当不存在）。⚠ 与设备节拍 CT（秒/只，单件加工时间）是两个口径，勿混用。", cadenceProps),
     { key: "DemandSegment", displayName: "需求细分", domain: "forecast", properties: withGovernance("DemandSegment", demandSegmentProps), derivedProperties: demandSegmentDerived, sourceBindings: BINDINGS.DemandSegment ?? [] },
     plain("FinancePlan", "财务预算", financePlanProps),
-    plain("MaterialBalance", "物料平衡", materialBalanceProps),
+    // WO-V4-INSPECT：coverage 走 derivedProperties（值由公式算，非独立真值）——故不能用 plain()（它把 derivedProperties 写死成 []）。
+    { ...plain("MaterialBalance", "物料平衡", materialBalanceProps), derivedProperties: materialBalanceDerived },
     // cockpit P2 + SPINE 绿地：指标库 Metric（gapPct/delta 派生，各视图 KPI 单一出处 R-一致）+ KSF + Principal + 根因归因模板。
     { key: "Metric", displayName: "经营指标", domain: "decision", properties: withGovernance("Metric", metricProps), derivedProperties: metricDerived, sourceBindings: BINDINGS.Metric ?? [] },
     plain("KSF", "关键成功要素", ksfProps),

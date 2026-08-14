@@ -35,9 +35,14 @@ describe("A7 synthetic data", () => {
     // 现补了下发端点 GET /a/v1/process-definitions 并由本表派单。金值 14 → 15 项，同样**末位追加**，
     // 前 14 项顺序一字未动（R6）。⚠ 它**不属于沙盘家族**（无 requires: sim.sandbox）——
     // 业务流程层是配置驱动的主数据，挂到沙盘上会造出「关了沙盘就看不到业务流程」的假依赖。
+    // WO-R9-NAVREACH：采购四段腿分解 procurement-legs 入册。此前 `views/registry.ts:103` 已注册 renderer、
+    // 组件与 12 例可达门全绿，但后端**从未派单**（收编 WO-R5 时只收了前端半）⇒ workspace.views 没有它
+    // ⇒ ViewPage 双闸全关 ⇒ 用户一次都打不开。金值 15 → 16 项，同样**末位追加**，前 15 项一字未动（R6）。
+    // ⚠ 它**不属于沙盘家族**（无 requires: sim.sandbox）——采购/齐套域业务主数据页，挂沙盘上是假依赖。
     expect(report.views).toEqual([
       "dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance", "global-sim",
       "chain-line-map", "transit-flow", "physical-topology", "node-inspector", "chain-impediments", "process-wait",
+      "procurement-legs",
     ]);
     expect(report.accounts).toEqual(["admin", "planner", "base_manager"]);
 

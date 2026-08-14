@@ -181,11 +181,32 @@ export function createMemoryRepos(): Repos {
       },
     },
     agentRuns: {
+      // WO-AGENTRUN-FANOUT-PERSIST：键从 taskId 改成 run id —— 与 pg 侧「去掉 task_id UNIQUE」同语义。
+      // 旧键下，同一任务的第二条 run 会**静默覆盖**第一条（Map.set 不报错），多角色会诊三个角色只剩一条。
       async insert(r) {
-        agentRuns.set(r.taskId, clone(r));
+        agentRuns.set(r.id, clone(r));
       },
+      // 只返这个任务**自己**那条（顶层）。旧记录无 origin ⇒ 视为 ROOT（旧表 UNIQUE 约束可证）。
       async getByTask(taskId) {
-        return clone(agentRuns.get(taskId));
+        const root = [...agentRuns.values()].find((r) => r.taskId === taskId && r.origin !== "FANOUT");
+        return clone(root);
+      },
+      // 次序与 pg 侧 `ORDER BY created_at NULLS FIRST, id` **逐字对齐**：同毫秒并列时都回落 id，
+      // 两套实现绝不给出不同顺序（"memory 绿 pg 红"这类接缝坑就是这么长出来的）。
+      async listByTask(taskId) {
+        return [...agentRuns.values()]
+          .filter((r) => r.taskId === taskId)
+          .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? "") || a.id.localeCompare(b.id))
+          .map(clone);
+      },
+      // WO-AGENTRUN-ATTRIBUTION：与 pg 同语义 —— 两个条件都必须真值命中（`undefined === undefined`
+      // 那种"空对空"的误命中会让归属前的旧记录挂到随便哪个 agent 名下，故先要求字段非空）。
+      // 倒序用 createdAt；旧记录无该字段 → 回落 run id（ULID-ish 前 10 位是毫秒时间戳，仍是时序）。
+      async listByAgent(tenantId, agentKey) {
+        return [...agentRuns.values()]
+          .filter((r) => !!r.agentKey && r.agentKey === agentKey && !!r.tenantId && r.tenantId === tenantId)
+          .sort((a, b) => (b.createdAt ?? b.id).localeCompare(a.createdAt ?? a.id))
+          .map(clone);
       },
     },
     fallbackTraces: {

@@ -39,6 +39,9 @@ import { chainLossAttribution as runChainLossAttribution, type ChainLossObject }
 import { describeChainScope, echoChainScope, isChainScopeUnscoped, normalizeChainScope, orderInChainScope, resolveScopeBaseIds, type ChainScope } from "./scope.js";
 import { normalizeSolverArgs } from "./arg-aliases.js"; // WO-SILENT-WRONG-ANSWER-3 · 入参键名归一单一出处（base/baseId/baseName · horizon/days）
 import { detectChainImpediments } from "./chain-impediment.js"; // WO-SANDBOX-E3 · 阻滞点判定（纯函数·阈值全从规则读回）
+import { projectProcessFlowTime } from "./process-flow.js"; // WO-FLOWTIME · 流程实例流转时长（站间时长/卡顿站/瓶颈站·反推非编造）
+import { projectFinanceWorld, type FinanceWorldArgs } from "./finance-world.js"; // WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影（finance_pnl 缺的那半·只读 R4）
+import { reconstructAndPersist } from "../process/reconstruct.js"; // WO-FLOWTIME · 反推器 IO 适配层（算法在 contracts 纯函数）
 // WO-SANDBOX-S3：杠杆标签/单位单源已下沉到叶模块（见下方 re-export 注释）；本文件内部用别名引用同一份对象。
 import { LEVER_PROP_META as LEVER_PROP_META_LOCAL, type LeverValueKind } from "./lever-meta.js";
 import { ChainScopeSchema } from "@platform/contracts";
@@ -207,6 +210,18 @@ export const SOLVER_KEYS = [
   // WO-SANDBOX-E3 全链阻滞点判定（卡点/堵点/断点三类机器可判 → ChainImpediment[]·contracts chain-sim §6）：
   // 阈值**一律从规则表达式读回**（params.<名>/字面量/对象字段），引擎零阈值；读不回来诚实 UNKNOWN 不兜底。
   "chain_impediments",
+  // WO-FLOWTIME 业务流程**实例**层流转时长：站间流转时长 / 卡顿站 / 瓶颈站。
+  // 与 chain_loss_attribution 分层（那个答「哪一段慢」，这个答「哪一张单卡着、卡在谁那里、卡了多久」）；
+  // 时刻全部由**既有带时间戳单据反推**（origin=DERIVED_FROM_DOCUMENT，逐条溯回单据 id+字段+原值），
+  // ⛔ 一次都不读 stdDurationDays（不拿标准工期冒充实测）；反推不出的诚实缺席（四种 kind，非 0）。
+  "process_flow_time",
+  // WO-FINANCE-WORLDSTATE 财务**金额**随世界态扰动的投影（`finance_pnl` 缺的那半）：
+  // `financePnl(ctx)` 零世界态入参 ⇒ 施加任何扰动都返回逐字节相同的一组数；本条吃 `args.worldId`，
+  // 以 FinancePlan.{budget,rolling} 与 ARInvoice.amount 的**真值**为基线，用世界态里
+  // costPressure/receivablePressure/overduePressure 做投影，每个金额带 provenance（R13），
+  // 换算除数随回包下发（`basis.divisor`·可由 args.pressureUnit 改写，不是藏起来的魔数）。
+  // R4：只读投影，绝不写回本体（采纳走 ActionDraft）。`finance_pnl` 保持原样答"本体真值口径"。
+  "finance_world_projection",
 ] as const;
 
 /** SolverContext 核心 10 类（loadContext 全表扫的对象类型全集·裁剪只作用于此 10 类）。 */
@@ -261,6 +276,13 @@ const ADOPTION_AWARE_SOLVERS = new Set(["risk_timeline", "counterfactual_timelin
  *   本集合恒按 solverKey 判，否则暗发门关（默认）时台账压根不会被加载 → 前置期永远 EMPTY = 本单等于没做。
  */
 const DECISION_INFO_SOLVERS = new Set(["risk_timeline", "counterfactual_timeline"]);
+
+/**
+ * WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）· 需要「真 BOM + 订单客户归属边」的求解器（**按需加载**·不全表扫）。
+ * 只有 `quote_margin` 要沿 `order_of_customer` 走到客户的订单、再按型号取 `BOMHeader`+`BOMDetail` 的真 BOM。
+ * 其余 13 个扩展求解器不载这三样 → 与本单上线前逐字节一致（R6 向后兼容）。
+ */
+const COMMERCE_GRAPH_SOLVERS = new Set(["quote_margin"]);
 
 export const SOLVER_REQUIRED_TYPES: Record<string, readonly CoreSolverObjectType[]> = {
   // capacity_rollup：computeRollup 设备→工序→产线→基地 金字塔——只读这 4 类（无 certByModel/订单/健康/检修）。
@@ -345,7 +367,8 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   yield_diagnosis: ["breakpoint", "candidates", "ruleRefs"],
   maintenance_stagger: ["adjustments", "unresolved", "ruleRefs"],
   outsourcing_split: ["allocation", "totalCost", "savedVsAllDelay", "outsourceQualityGate", "ruleRefs"],
-  quote_margin: ["margin", "floor", "diff", "verdict", "breakdown", "ruleRefs"],
+  // WO-QUOTE-MARGIN-CUSTOMER：+ scope（客户维作用域·CUSTOMER/ALL/EXPLICIT + 可溯的 orders/bomId）。
+  quote_margin: ["margin", "floor", "diff", "verdict", "breakdown", "scope", "ruleRefs"],
   // WO-SANDBOX-D4 ③：+ chainCashflow（与 capex_scenario 端同一份「不可相加」登记）。
   credit_exposure: ["limit", "exposure", "available", "exposureBreakdown", "overdue", "newOrderVerdict", "scope", "chainCashflow", "ruleRefs"],
   // WO-ENGINE-SCOPE-FIX2：+ quarterScope（季度维·给了季度却没给缺口时标 EMPTY，写明那个数是占位不是该季真缺口）。
@@ -384,6 +407,23 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   // candidatesTruncated（探针预算耗尽的显式截断标）· candidateProbes（试算次数）。
   // 三者都是**诚实位**：漏进形状契约 = 前端看不见"为什么这个阻滞点没有方案"，那就是新一种盲区。
   chain_impediments: ["scanId", "scope", "impediments", "counts", "unresolved", "caveats", "thresholds", "candidateStats", "candidatesTruncated", "candidateProbes"],
+  // WO-FLOWTIME 流程实例流转时长。诚实位一律进形状（漏一个 = 前端只看得见好消息）：
+  //  · `absences` 反推不出的那批（四种 kind + 缺哪种单据 + 复验探针）——与 chain_impediments 的
+  //    `unresolved` 同族纪律：算不出来要能被渲染出来，不是被当成 0 隐掉；
+  //  · `asOfSource` 这个"现在"是怎么定的（ARG/DATA_LATEST/FORECAST_START）；
+  //  · `origin` 反推值 vs 实测值的诚实位（今天恒 DERIVED_FROM_DOCUMENT）；
+  //  · `coverage` 规则覆盖了几条流程 / 反推出几条 / 一共几条（不藏分母）。
+  process_flow_time: ["asOf", "asOfSource", "origin", "coverage", "totals", "bottleneck", "stations", "timelines", "timelinesShown", "stuck", "absences", "absencesShown", "summary"],
+  // WO-FINANCE-WORLDSTATE 财务世界态投影。诚实位全部进形状（漏一个 = 前端只看得见"有个数"）：
+  //  · `basis` 换算口径（kind:"PROJECTION" 是"推演≠实测"的机器判据 + divisor 的出处）——
+  //    前端要把它**常驻第一层**，靠的就是这个键；
+  //  · `available` / `unavailableReason` 世界态为空 / 无基线时据实报缺（前端据此退回缺口记号，不显示 0）；
+  //  · `notes` 逐条诚实缺席（收入行无传导规则 / 权重字段缺失 / 链没接）；
+  //  · `chain` 产生这些压力的真规则 id 与真系数（"凭什么是这个数"当场可查）。
+  finance_world_projection: [
+    "worldId", "curTick", "worldStateSource", "worldObjectCount", "available", "unavailableReason",
+    "notes", "basis", "pressures", "lines", "cash", "chain", "reconChecks", "reconciled", "summary",
+  ],
 };
 
 const DAY_MS = 86400000;
@@ -1643,10 +1683,12 @@ export class SolverService {
         id: `base:${e.base}`, factor: `基地 ${displayNameOf(e.base)}`, baseId: e.base, displayName: displayNameOf(e.base), contribution, unit,
         share: round(e.driver / totalBaseDriver, 4),
         path: [str(m.metricId), `base:${e.base}`], causalPath: [] as string[],
-        // drillValue = Σ`Order.value`（元·与 drillField 同口径）。⚠ 遗留未修：drillId 是**基地键**不是 Order 主键(so)，
-        // 该节点其实是「按基地聚合」（契约 GapProvenanceSchema 备有 `drillId:"*"` 聚合约定）——属 drillId 语义缺陷，
-        // 本单范围只修 drillField/drillValue 口径，已在交接里显式上报。
-        provenance: { kind: "派生" as const, drillType: "Order", drillId: e.base, drillField: "value", drillValue: e.valueYuan },
+        // drillValue = Σ`Order.value`（元·与 drillField 同口径）。drillId **必须** `"*"`（契约 GapProvenanceSchema
+        // 备的「按类型聚合」约定）—— 这是**聚合节点**，不是某一张订单：旧写法填基地键（`hefei`）会让下钻路径读成
+        // `Order.hefei.value`，而 `Order` 主键是 `so`（SO-3391…），仓储里根本没有 id=hefei 的订单 ⇒ 悬空下钻路径，
+        // 与 #96 同族（标签指向一个不存在的出处 · WO-R13-DRILLFIELD 取证：全局路 6 个基地节点全中）。
+        // 基地上下文不丢：本节点自带 `baseId`/`displayName`，前端照旧能显示是哪个基地。
+        provenance: { kind: "派生" as const, drillType: "Order", drillId: "*", drillField: "value", drillValue: e.valueYuan },
       };
     });
     const l1sum = round(l1nodes.reduce((a, n) => a + n.contribution, 0), 4);
@@ -1674,8 +1716,12 @@ export class SolverService {
           // driver 走万元权重；drillValue 回 `Order.value` 元真值（标签所指字段 == 回的值·R13）。
           prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderValueYuan(o) }, businessType: str(o.businessType) });
       }
+      // 设备瓶颈叶：`1 - oeeDeficit` = 该基地设备 `oee_current` 的**均值**（oeeDeficit = mean(1−oee)），是聚合不是单台，
+      // 故 drillId 走 `"*"`（同上·旧写法填基地键 → `Equipment.hefei.oee_current`，而 Equipment 主键是 `equipId`
+      // （`LINE-WS-changzhou-slurry-coating-E1` 这种），仓储里查无此设备 ⇒ 悬空下钻路径·#96 同族）。
+      // 基地上下文在节点 `id`(`equip:<base>`)/`factor` 里，前端不丢。
       if (oeeDeficit > 0) childDrivers.push({ id: `equip:${e.base}`, factor: `${e.base} 设备瓶颈（OEE 缺口）`, driver: round(oeeDeficit * e.driver, 2),
-        prov: { kind: "实测", drillType: "Equipment", drillId: e.base, drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
+        prov: { kind: "实测", drillType: "Equipment", drillId: "*", drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
       const matHere = e === baseEntries[0] && matDriver > 0; // 物料瓶颈挂首基地（正极全局·避免重复计）
       if (matHere) childDrivers.push({ id: `material:cathode`, factor: `正极物料短缺`, driver: round(matDriver * e.driver, 2),
         prov: { kind: "派生", drillType: "MaterialBalance", drillId: "mbal-2", drillField: "gapTon", drillValue: num(matBal.find((mb) => str(mb.matBalId) === "mbal-2")?.gapTon) } });
@@ -1766,8 +1812,9 @@ export class SolverService {
             // 同全局路：driver 万元权重 ⊥ drillValue 回 `Order.value` 元真值（R13）。
             prov: { kind: "实测", drillType: "Order", drillId: str(o.so), drillField: "value", drillValue: orderValueYuan(o) }, businessType: str(o.businessType) });
         }
+        // 同全局路：均值即聚合 → drillId `"*"`（旧写法填基地键即悬空下钻路径·#96 同族）。
         if (oeeDeficit > 0) expDrivers.push({ id: `equip:${scopedBaseId}`, factor: `${scopedBaseId} 设备瓶颈（OEE 缺口）`, driver: round(oeeDeficit * expDriver, 2),
-          prov: { kind: "实测", drillType: "Equipment", drillId: scopedBaseId, drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
+          prov: { kind: "实测", drillType: "Equipment", drillId: "*", drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
         const expTot = expDrivers.reduce((a, d) => a + d.driver, 0) || 1;
         const expLeaves = expDrivers
           .sort((a, b) => b.driver - a.driver || a.id.localeCompare(b.id))
@@ -1784,7 +1831,7 @@ export class SolverService {
           scope: { ...scopeBase, exposure: true, ...capScope, ...(unsupportedFactor ?? {}) },
           globalGap: G, totalGap: pgExp,
           levels: [
-            { depth: 1, label: "基地", residual: 0, nodes: [{ id: `base:${scopedBaseId}`, factor: `基地 ${dName}（可产订单敞口）`, baseId: scopedBaseId, displayName: dName, contribution: pgExp, unit, share: 1, path: [str(m.metricId), `base:${scopedBaseId}`], causalPath: [] as string[], provenance: { kind: "派生" as const, drillType: "Order", drillId: scopedBaseId, drillField: "value", drillValue: expValueYuan } }] },
+            { depth: 1, label: "基地", residual: 0, nodes: [{ id: `base:${scopedBaseId}`, factor: `基地 ${dName}（可产订单敞口）`, baseId: scopedBaseId, displayName: dName, contribution: pgExp, unit, share: 1, path: [str(m.metricId), `base:${scopedBaseId}`], causalPath: [] as string[], provenance: { kind: "派生" as const, drillType: "Order", drillId: "*", drillField: "value", drillValue: expValueYuan } }] },
             { depth: 2, label: "订单/瓶颈", nodes: expLeaves, residual: expResidual },
             ...capLevel,
           ],
@@ -2767,27 +2814,46 @@ export class SolverService {
       if (drift > 0) demandDrv.push({ id: `seg_drift:${str(s.segId)}`, factor: `${str(s.segment)} 需求超目标漂移`, driver: drift,
         prov: { kind: "实测", drillType: "DemandSegment", drillId: str(s.segId), drillField: "tgt", drillValue: num(s.tgt) } });
     }
-    const openQty = round(orders.filter((o) => str(o.status) === "OPEN").reduce((a, o) => a + num(o.qty) / 1e4, 0), 4);
+    // driver 走万套等效（与 G 同口径）⊥ drillValue 回 `Order.qty` **套**真值（标签所指字段 == 回的值·R13）。
+    // WO-R9-SDGA-DRILLID：旧写法 `drillId:"OPEN"` 把**状态枚举值**填进主键位（Order 主键是 `so`：SO-3391…），
+    // 仓储里查无 id=OPEN 的订单 ⇒ 悬空下钻路径（与 #96 / G-PROV-DRILL-DANGLING 同族）；且旧 drillValue 回的是
+    // 万套等效（Σqty/1e4=25.32），而标签写着 `Order.qty`（套·真值 Σ=253200）—— **恰差 1e4 的口径错标**，
+    // 正是 #96 那条病的另一实例。判定 = **聚合**（实测 24 张 OPEN 单同时进这一叶，不是某一张单）⇒ `drillId:"*"`。
+    const openOrders = orders.filter((o) => str(o.status) === "OPEN");
+    const openQtyRaw = round(openOrders.reduce((a, o) => a + num(o.qty), 0), 4); // Σ`Order.qty`（套·与 drillField 同口径）
+    const openQty = round(openOrders.reduce((a, o) => a + num(o.qty) / 1e4, 0), 4); // 万套等效（归因驱动值）
     if (openQty > 0) demandDrv.push({ id: "order_backlog", factor: "在手订单需求（OPEN 未交付）", driver: openQty,
-      prov: { kind: "实测", drillType: "Order", drillId: "OPEN", drillField: "qty", drillValue: openQty } });
+      prov: { kind: "实测", drillType: "Order", drillId: "*", drillField: "qty", drillValue: openQtyRaw } });
 
     // ── 供给端驱动（真颗粒·万套等效）──
     const supplyDrv: Drv[] = [];
     const finalDemand = num([...sop].sort((a, b) => (Boolean(b.isFinal) ? 1 : 0) - (Boolean(a.isFinal) ? 1 : 0) || str(b.ver).localeCompare(str(a.ver)))[0]?.demand);
+    const sumCapDaily = round(lines.reduce((a, l) => a + num(l.capacityDaily), 0), 4); // Σ`Line.capacityDaily`（套/日·与 drillField 同口径）
     const totalCapWan = round(lines.reduce((a, l) => a + num(l.capacityDaily) * 300, 0) / 1e4, 4); // 年化产能（万套·300 工作日·capacityDaily 缺则 0）
     // 产能基准：有真产能颗粒→年化产能；无（demo Line.capacityDaily 未落）→ 退需求为基准（诚实·避免 OEE 权重被 0 归零）。
     const capBase = totalCapWan > 0 ? totalCapWan : finalDemand;
     const capGap = totalCapWan > 0 ? round(Math.max(0, finalDemand - totalCapWan), 4) : 0; // 无产能颗粒→不臆造产能缺口（诚实 0）
+    // 同上：旧写法把**字段名**塞进主键位（Line 主键是 `lineId`：`LINE-WS-changzhou-slurry`…）⇒ 悬空；
+    // 且旧 drillValue 回年化万套（Σcap×300/1e4=364.8），标签却写着 `Line.capacityDaily`（套/日·真值 Σ=12160）。
+    // ⚠ 这一处**量纲带查不出来**（364.8 落在 [min=48, Σ=12160] 内）—— 带内 ≠ 口径对，故按 R13 正面改回字段口径。
+    // 判定 = **聚合**（实测 130 条产线全部参与，不是某一条线）⇒ `drillId:"*"`；产能缺口本身仍由 driver/contribution 表达。
     if (capGap > 0) supplyDrv.push({ id: "capacity_gap", factor: "产能缺口（需求−年化产能）", driver: capGap,
-      prov: { kind: "派生", drillType: "Line", drillId: "capacityDaily", drillField: "capacityDaily", drillValue: totalCapWan } });
+      prov: { kind: "派生", drillType: "Line", drillId: "*", drillField: "capacityDaily", drillValue: sumCapDaily } });
     const matGapWan = round(matBal.reduce((a, mb) => a + Math.max(0, num(mb.gapTon)), 0) * matTonToWan, 4);
+    // 判定 = **聚合**（实测 9 条物料平衡行、其中 7 条 gapTon>0 同时进这一叶）⇒ `drillId:"*"`（旧写法填字段名 `gapTon`，
+    // 而 MaterialBalance 主键是 `matBalId`（mbal-1…）⇒ 悬空）。**取值不动**：drillValue 本就是 Σ`gapTon`（吨·与字段同口径，
+    // 实测 4602 == 全表 Σ，落在量纲带 [min=0, Σ=4602] 上界）—— 这一处只有 drillId 一处病。
     if (matGapWan > 0) supplyDrv.push({ id: "material_gap", factor: "物料缺口（ΣgapTon 折万套）", driver: matGapWan,
-      prov: { kind: "派生", drillType: "MaterialBalance", drillId: "gapTon", drillField: "gapTon", drillValue: round(matBal.reduce((a, mb) => a + Math.max(0, num(mb.gapTon)), 0), 2) } });
+      prov: { kind: "派生", drillType: "MaterialBalance", drillId: "*", drillField: "gapTon", drillValue: round(matBal.reduce((a, mb) => a + Math.max(0, num(mb.gapTon)), 0), 2) } });
     // 设备 OEE 损失：Σ(1−oee_current) 均值 × 产能基准（越低 OEE → 供给损失越大·万套等效·随 oee_current 真变 C4）。
     const oeeDeficit = equipment.length ? round(equipment.reduce((a, q) => a + (1 - num(q.oee_current, 0.85)), 0) / equipment.length, 4) : 0;
     const oeeLossWan = round(oeeDeficit * capBase, 4);
+    // 判定 = **聚合**（`1−oeeDeficit` = 全部 780 台设备 `oee_current` 的**均值**，不是某一台）⇒ `drillId:"*"`
+    // （旧写法填字段名 `oee_current`，而 Equipment 主键是 `equipId`（`LINE-WS-…-E1`）⇒ 悬空）。
+    // **取值不动**：均值与字段同口径（无量纲比值·实测 0.7537 落在带 [min=0.7108, Σ=587.88] 内）——与上一单
+    // gapAttribution 设备叶的改法逐字一致（同一副牙、同一语义）。
     if (oeeLossWan > 0) supplyDrv.push({ id: "oee_loss", factor: "设备 OEE 损失（1−OEE 均值×产能）", driver: oeeLossWan,
-      prov: { kind: "实测", drillType: "Equipment", drillId: "oee_current", drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
+      prov: { kind: "实测", drillType: "Equipment", drillId: "*", drillField: "oee_current", drillValue: round(1 - oeeDeficit, 4) } });
 
     // ── 双向分摊（真占比·非五五开）──
     const sumD = round(demandDrv.reduce((a, d) => a + d.driver, 0), 4);
@@ -3352,6 +3418,39 @@ export class SolverService {
   }
 
   /**
+   * WO-FLOWTIME · 流程实例流转时长 `process_flow_time`。
+   *
+   * 照 `chainLossAttribution` 兄弟模式：本方法只做 IO 与入参归一，算法全在
+   * `process/reconstruct.ts`（IO 适配）→ `@platform/contracts` 纯函数（R6）。
+   *
+   * **诚实拒绝而非静默空答**（本仓「静默错答比崩溃更危险」纪律）：
+   * 租户没播过业务流程层（`ProcessDefinition` 0 条）时**显式 400** 并指名 `seedDemoProcessLayer`，
+   * 不返回一个空壳结果 —— 空结果会被读成「没有卡顿」，而真相是「这一维根本没数据可算」。
+   * 这与 `impact-analysis.ts` 对同一情形的处置（`available:false` + reason）是同一条判据。
+   *
+   * ⚠ 本求解器**写** `process_instances` 表（幂等覆盖）。这不违 R4：反推产物是**派生投影**，
+   * 不是本体真值 —— 它一个字节都不动 `objects`，理由写在 `migrations/033_process_instances.sql`。
+   */
+  private async processFlowTime(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const defs = await this.repos.processDefinitions.list(ctx.tenantId);
+    if (defs.length === 0) {
+      throw validationError(
+        "process_flow_time 需先播种业务流程层（ProcessDefinition 0 条）—— 没有流程定义就没有「站」，站间时长无从谈起。参见 seedDemoProcessLayer（SEED_DEMO=1 启动路径已调）。",
+      );
+    }
+    const outcome = await reconstructAndPersist(this.repos, ctx.tenantId, {
+      ...(str(args.asOf) ? { asOf: str(args.asOf) } : {}),
+      // outbox 是 setOutbox 后注入的（构造期未必有）；没有就不发事件，不因此拒绝出结果。
+      ...(this.outbox ? { outbox: this.outbox } : {}),
+    });
+    return projectProcessFlowTime(outcome, {
+      ...(str(args.processKey) ? { processKey: str(args.processKey) } : {}),
+      ...(str(args.flowKey) ? { flowKey: str(args.flowKey) } : {}),
+      ...(num(args.limit) > 0 ? { limit: num(args.limit) } : {}),
+    });
+  }
+
+  /**
    * sop 视图 ③物料线 MRP 净需求（净室读对象图,确定性 R6）：读 MaterialBalance → 净需求/长协覆盖/现货缺口/
    * 最早齐套 表（C06 齐套 / C16 安全库存口径）。前端零写死（HTML SOP_MAT 精确值=合成种子）。
    */
@@ -3433,6 +3532,23 @@ export class SolverService {
       attribution: `毛利率 ${budgetPct}%→${rollPct}%（${round(rollPct - budgetPct, 1)}pp）：储能占比 ${essShare}% 结构拉低（单价/成本未恶化）`,
       summary: `收入/成本/毛利三科目 + 毛利率 ${rollPct}%（C15）`,
     };
+  }
+
+  /**
+   * WO-FINANCE-WORLDSTATE · 财务**金额**随世界态扰动的投影（`finance_world_projection`）。
+   *
+   * 与上面的 `financePnl` 是**两条并存的口径**，不是替代关系：
+   *  · `finance_pnl`（上）= 本体真值口径。签名不吃世界态 —— **这是有意的**，它有既有调用方与金值，
+   *    动签名会连坐；施加扰动它返回同一组数是它的**正确行为**，不是 bug。
+   *  · 本方法       = 世界态推演投影口径。吃 `args.worldId`，同一份 FinancePlan 基线 ×
+   *    该世界里的成本/回款压力 → 金额。R4：只读投影，一个字都不写回本体。
+   *
+   * 算核在 `./finance-world.ts`（纯 IO 适配在那，本方法只做派发）—— 与
+   * `chainLossAttribution`/`processFlowTime` 的兄弟写法一致。
+   */
+  private async financeWorldProjection(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const out = await projectFinanceWorld({ repos: this.repos }, ctx, args as FinanceWorldArgs);
+    return out as unknown as Record<string, unknown>;
   }
 
   /**
@@ -4368,6 +4484,8 @@ export class SolverService {
       solverKey?: string;
       withAdoptions?: boolean;
       withDecisionInfo?: boolean;
+      /** WO-R8-RECLAIM-ENGINE · 商业图（收编自 handoff-wo-reclaim-engine，与 authCtx 加性并存）。 */
+      withCommerceGraph?: boolean;
       /** WO-69 P1 列级：带上调用者身份 → 求解器上下文与读投影同约束（不可读列不进求解器）。 */
       authCtx?: AuthCtx;
     },
@@ -4430,7 +4548,7 @@ export class SolverService {
     //   解法是**取并集**（见下方 `suppliers`），不是删掉一处 —— 删哪一处都会让对应那半在它自己的
     //   加载条件下拿到空表，而空表在这两个消费方那里都是「诚实缺席」的合法形态，**不会报错、只会静默少算**。
     // WO-ENGINE-SCOPE-FIX2：+BOMHeader/BOMDetail 两类（`carbon_footprint` 型号维的真源·见 types.ts 字段注释）。
-    const [materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors, suppliersExt, customsClearances, incomingInspections, bomHeaders, bomDetails] =
+    const [materials, materialBatches, customers, arInvoices, certifications, energyMeters, changeoverMatrix, capexProjects, purchaseOrders, carbonFactors, suppliersExt, customsClearances, incomingInspections, bomHeadersExt, bomDetailsExt] =
       opts?.withExtended
         ? await Promise.all([
             loadExt("Material"),
@@ -4468,7 +4586,37 @@ export class SolverService {
       : opts?.withDecisionInfo
         ? await this.repos.objects.listByType(tenantId, "Supplier")
         : empty;
+    // WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）：真 BOM 两类 + 订单客户归属边（**按需**·仅 COMMERCE_GRAPH_SOLVERS）。
+    // 三样一起载：BOM 少了取不到型号真成本、边少了定位不到「这个客户的订单」，任一半缺都会退回假个性化。
+    const [bomHeadersCommerce, bomDetailsCommerce, orderCustLinkRows] = opts?.withCommerceGraph
+      ? await Promise.all([
+          this.repos.objects.listByType(tenantId, "BOMHeader"),
+          this.repos.objects.listByType(tenantId, "BOMDetail"),
+          this.repos.links.list(tenantId, (l) => l.type === "order_of_customer"),
+        ])
+      : [empty, empty, [] as Awaited<ReturnType<typeof this.repos.links.list>>];
+    // BOMHeader/BOMDetail 的**并集加载**（并线收口·与上方 suppliersExt/suppliers 同一形态）：
+    // WO-ENGINE-SCOPE-FIX2 走 `withExtended`（carbon_footprint 型号维），WO-QUOTE-MARGIN-CUSTOMER
+    // 走 `withCommerceGraph`（quote_margin 客户维），**加载条件不同**。删掉任一处都会让对应那半在
+    // 它自己的条件下拿到空表 —— 而空表在这两个消费方那里都是「诚实缺席」的合法形态，
+    // 不报错、只静默少算（正是本文件 suppliersExt 注释点名的那个坑）。故按「谁开着就载谁」求并，
+    // 且 withExtended 已载过时不重复打仓储（保住两单各自的按需加载意图）。
+    const bomHeaders = opts?.withExtended ? bomHeadersExt : bomHeadersCommerce;
+    const bomDetails = opts?.withExtended ? bomDetailsExt : bomDetailsCommerce;
+    const orderCustomerLinks = orderCustLinkRows
+      .slice()
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) // R6 确定性
+      .map((l) => ({
+        orderId: l.fromId,
+        customerId: l.toId,
+        custId: str(l.props?.custId),
+        custName: str(l.props?.custName),
+        orderCust: str(l.props?.orderCust),
+      }));
     return {
+      // bomHeaders/bomDetails 在下方随 WO-ENGINE-SCOPE-FIX2 一并置键（同一个并集变量·见其加载处注释）——
+      // 此处不再重复置键，否则 `TS1117 多个同名属性`：后者静默覆盖前者，两单谁生效取决于书写顺序。
+      orderCustomerLinks,
       tenantId,
       params,
       isSynthProvenance,
@@ -4613,6 +4761,8 @@ export class SolverService {
       withAdoptions: ADOPTION_AWARE_SOLVERS.has(solverKey),
       // WO-DECISION-INFO：处置前置期/运费要读跨基地调拨 + 供应商台账的求解器才载（按需·不全表扫）。
       withDecisionInfo: DECISION_INFO_SOLVERS.has(solverKey),
+      // WO-QUOTE-MARGIN-CUSTOMER：真 BOM + 订单客户归属边只给 quote_margin 载（按需·不全表扫）。
+      withCommerceGraph: COMMERCE_GRAPH_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
     });
     const params =
@@ -4748,10 +4898,16 @@ export class SolverService {
     //（后者不在核心 10 类也不在扩展 10 类里 —— mrp_netting 同样自行读取），故先于通用 loadContext 拦截。
     if (solverKey === "chain_impediments") return this.chainImpediments(ctx, args);
     if (solverKey === "finance_pnl") return this.financePnl(ctx);
+    // WO-FINANCE-WORLDSTATE：读 sim 会话/世界态 + FinancePlan/Order/Customer/ARInvoice（非电池 context），
+    // 照 finance_pnl / chain_impediments 兄弟模式先于通用 loadContext 拦截。
+    if (solverKey === "finance_world_projection") return this.financeWorldProjection(ctx, args);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
     // WO-SANDBOX-E1 环节级损失归因（沿本体链路 hop 读对象图 + 链路，非 compute() 的电池 context），
     // 照 sop_reschedule/order_fullchain 兄弟模式先于 loadContext 拦截。
     if (solverKey === "chain_loss_attribution") return this.chainLossAttribution(ctx, args);
+    // WO-FLOWTIME 流程实例流转时长（读 process_definitions + 规则表点名的单据类型，非电池 context），
+    // 照 chain_loss_attribution/mrp_netting 兄弟模式先于 loadContext 拦截。
+    if (solverKey === "process_flow_time") return this.processFlowTime(ctx, args);
     // WO-Phase3-B 薄层遍历（读任意对象图 + executeSlice，非电池 context），先于 loadContext 拦截。
     if (solverKey === "ontology_query") return this.ontologyQuery(ctx, args);
     if (solverKey === "selection_optimize") return this.selectionOptimize(ctx, args);
@@ -4779,6 +4935,8 @@ export class SolverService {
       withAdoptions: ADOPTION_AWARE_SOLVERS.has(solverKey),
       // WO-DECISION-INFO：处置前置期/运费要读跨基地调拨 + 供应商台账的求解器才载（按需·不全表扫）。
       withDecisionInfo: DECISION_INFO_SOLVERS.has(solverKey),
+      // WO-QUOTE-MARGIN-CUSTOMER：真 BOM + 订单客户归属边只给 quote_margin 载（按需·不全表扫）。
+      withCommerceGraph: COMMERCE_GRAPH_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
       authCtx: ctx, // A6 列级：用户发起的求解走列级投影（S3 —— 求解器不是列级安全的绕行口）
     });

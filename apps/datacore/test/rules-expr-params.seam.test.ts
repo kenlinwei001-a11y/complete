@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ADMIN, invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
-import { OUTSOURCE_REDLINE, RULE_PARAM_BINDINGS } from "@platform/contracts";
+import { OUTSOURCE_REDLINE, PARITY_RULE_SEEDS, RULE_PARAM_BINDINGS, parityRuleParams } from "@platform/contracts";
 import { BATTERY_RULES } from "../src/synthetic/battery.js";
 
 /**
@@ -228,5 +228,101 @@ describe("WO-RULE-EXPR-PARAMS · 阈值单源不变量（防回潮）", () => {
     expect(c04?.expression).toBe("Line.certStatus != '量产'");
     expect(c04?.expression).not.toContain("params."); // 不该硬塞一个假阈值进去
     expect(Object.keys(c04?.params ?? {}).sort()).toEqual(["pendingCertFactor", "productionFactor"]);
+    // 绑定表也必须把它们记成**系数**，否则反向发布闸会逼 C04 长出一个假阈值。
+    const c04Roles = RULE_PARAM_BINDINGS.filter((b) => b.ruleKey === "C04").map((b) => b.role);
+    expect(c04Roles).toEqual(["coefficient", "coefficient"]);
+  });
+
+  /**
+   * DF.14 · 场景包侧与契约同源（与前端 `rules-expr-params.seam.test.tsx` 的同名断言夹住同一个出处
+   * ⇒ 前后端传递性同口径）。任一端换回裸字面量，对应那条立刻红。
+   */
+  it("多处物化的规则，其 expression/params 逐字节来自契约单一来源（不是手抄副本）", () => {
+    expect(PARITY_RULE_SEEDS.length, "登记表不能空，否则本用例空跑").toBeGreaterThan(0);
+    for (const seed of PARITY_RULE_SEEDS) {
+      const rule = BATTERY_RULES.find((r) => r.key === seed.key);
+      expect(rule, `场景包缺 ${seed.key}（登记为多处物化却没物化）`).toBeTruthy();
+      expect(rule?.expression, `${seed.key} 的场景包表达式与契约不同源`).toBe(seed.expression);
+      if (seed.params) expect(rule?.params).toEqual(parityRuleParams(seed.key));
+    }
+  });
+});
+
+/**
+ * WO-RULES-DSL-FAMILY · **运行期反向闸**（补 §8 记的「静态门看不见运行时规则记录」那半）。
+ *
+ * 种子期已单源，但发布路只查正向（引用的阈值都声明了吗）。管理员把 C18 的 `< params.cashFloor`
+ * 改回 `< 50` 再发布 —— 零引用，正向恒过 —— 阈值当场退回两份，病灶原地复发。
+ * 下面第一条就是那个动作，它**必须被拒**。
+ */
+describe("WO-RULES-DSL-FAMILY · 阈值不得退回字面量（运行期反向闸）", () => {
+  it("被绑定的阈值型 param 已声明、expression 却写字面量 → 创建即 400 拒绝", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const res = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/rules",
+      headers: ADMIN,
+      payload: {
+        key: "C18",
+        name: "现金垫底线",
+        expression: "AnnualScenario.cashCushion < 50", // ← 退回字面量：与 params.cashFloor 成两份
+        scopeObjectTypes: ["AnnualScenario"],
+        severity: "BLOCK",
+        params: { cashFloor: 50 },
+      },
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().error.message).toContain("params.cashFloor");
+  });
+
+  it("同一条规则改用引用式 → 照常放行（闸咬的是分叉，不是「不许编辑 C18」）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const res = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/rules",
+      headers: ADMIN,
+      payload: {
+        key: "C18",
+        name: "现金垫底线",
+        expression: "AnnualScenario.cashCushion < params.cashFloor",
+        scopeObjectTypes: ["AnnualScenario"],
+        severity: "BLOCK",
+        params: { cashFloor: 50 },
+      },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+  });
+
+  it("系数型 param（C04 认证系数）不被强制引用 —— 一刀切会逼出一个假阈值", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const res = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/rules",
+      headers: ADMIN,
+      payload: {
+        key: "C04",
+        name: "仅认证产线计入产能",
+        expression: "Line.certStatus != '量产'", // 分类谓词，本就没有阈值可引用
+        scopeObjectTypes: ["Line"],
+        severity: "WARN",
+        params: { productionFactor: 1, pendingCertFactor: 0.6 },
+      },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+  });
+
+  it("未绑定的规则把阈值写在 expression 里 → 放行（那是单源，没有第二份）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const res = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/rules",
+      headers: ADMIN,
+      payload: { key: "C11", name: "检修窗口与交付高峰错峰", expression: "MaintPlan.bufferDays < 3", scopeObjectTypes: ["MaintPlan"], severity: "WARN", params: {} },
+    });
+    expect(res.statusCode, res.body).toBe(201);
   });
 });

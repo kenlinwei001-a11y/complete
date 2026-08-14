@@ -77,6 +77,9 @@ export const zh = {
     scenes: "场景入口",
     opsFallback: "兜底统计",
     opsSchedule: "运营自动化",
+    // WO-BEFE-B · 两个新管理页
+    scheduler: "定时任务",
+    calendars: "工厂日历",
     features: "功能开通",
     calibration: "校准报告",
     tenants: "租户管理",
@@ -554,6 +557,14 @@ export const zh = {
     },
     affectedOrders: "受影响订单",
     dailyStrip: "逐日张力",
+    // WO-HOVER-LAYER（欠账 #104/#175 同族）：峰值的**口径**此前只挂在原生 `title=` 上 ——
+    // 浏览器 tooltip 延迟约 1 秒才出、触屏根本不出、不能选中复制，且这里的宿主本身
+    // 已经是个浮层（RiskPopover 走 portal），浮层里再套原生 tooltip 等于没做。
+    // 改为浮层里的**可见文字**：口径必须能被读到，不能藏在属性里。
+    peakCaliber: (min: number, max: number, hint: string) =>
+      `峰值口径：${min}–${max} 紧张度指数（${hint}）·非该因素本身的值`,
+    /** 逐日格的可访问名（读屏可达；视觉靠色块 + 下方图例给量程）。 */
+    dayCellAria: (day: number, v: string) => `D+${day} · ${v}`,
     /**
      * WO-UI-DECLUTTER-TOP3 · 浮层文案（`docs/CONVENTION-ui-information-layering.md` §1）。
      * 第一层只留「数值 / 状态 / 名字」，**口径 · 公式 · 为什么这么算 · 数据来源**一律降进 `?` 浮层；
@@ -715,11 +726,80 @@ export const zh = {
         metricsCount: (n: number) => `${n} 项`,
       },
       /**
+       * WO-SANDBOX-PROCESS-MODE · 主画布**第五档「业务流程」**的文案。
+       *
+       * ⚠ 本块**一个业务词都没有**：域名 / 流程名 / 职能名 / 承载物类型名一律来自端点下发，
+       *   这里只放界面骨架（R14 零写死词表 —— 编错比不编危险，业务专家会照着错的理解）。
+       * ⚠ 本块**不出现任何条数金值**（没有 `65`）：条数一律由 `counts(total, laid, lanes)` 现算填入。
+       *   把金值抄进文案 = 种子一变就撒谎，而屏上撒谎比屏上没有更糟。
+       */
+      processCanvas: {
+        counts: (total: number, laid: number, lanes: number) =>
+          `端点下发 ${total} 条业务流程 · 本图上站 ${laid} 座 · ${lanes} 条线（一条线 = 一个一级业务域；两个数都是现算的，不是写死的金值）`,
+        mismatch: "⚠ 下发条数 ≠ 上站座数 —— 本档漏画了流程，这不是「租户没有」而是渲染层掉了",
+        disjointOk: "与链路节拍层 24 个冻结节点的键交集：0（两层同屏、不同模型）",
+        disjointBroken: (keys: string) => `🔴 两层键集合出现交集：${keys} —— 有人把业务流程层揉进了链路节拍层`,
+        layersNote:
+          "契约 packages/contracts/src/process.ts 文件头原话：链路节拍层（24 条 CHAIN_NODE_REGISTRY）与业务流程层（65 条 ProcessDefinition）「两层粒度不同，不能互相替代，也不能合并」。那句话约束的是两个**数据模型**（不许互相顶替、不许揉成一张表），不是「不能同屏」。本档是画布上的另一个图层：自己的取数（GET /a/v1/process-definitions）、自己的检视面板、自己的选中态（processKey 而非 nodeId），只共用同一块画布区域与同一套档位按钮。左边那个交集数就是这条约束的机器判据 —— 它一旦非 0，说明两层真被揉了。",
+        stdDaysCaveat: "卡上的天数是**标准工期**（模板值），不是「此刻已经卡了多久」——运行态由 /instances 与 process_flow_time 回答，本档不答。",
+        unregisteredDomains: (keys: string) =>
+          `⚠ 域登记册里查不到这些 domainKey：${keys} —— 单开一条线显示，不静默并进「其它」（静默并进会把「后端漏发」伪装成「前端没画」）`,
+        laneUnregistered: "（域未登记）",
+        laneStat: (count: number, days: number) => `${count} 站 · 标准工期合计 ${days}D`,
+        stdDays: (d: number) => `标准 ${d}D`,
+        loading: "取业务流程台账中…（GET /a/v1/process-definitions）",
+        errorTitle: "业务流程台账取不到 —— 下面是后端原话，本档不替它编一个解释：",
+        empty: "端点返回了 0 条业务流程。这是「本租户没有流程台账」，不是「本档没画」——两者在屏上必须分得开。",
+
+        /* ── WO-R9-METRO-UX：线路图专有文案 ─────────────────────────────────
+           ⚠ 下面 `orderBasis*` 三条是本档**最重要的诚实位**：
+           端点没下发流程间先后（结构证明见 processCanvas.ts 文件头 §0），
+           所以连线画虚线、并且当面说清楚"这条线不是流向"。删掉它，
+           这张图就变成了"看着专业但顺序是编的"——派单原话说那比卡片墙更坏。 */
+        orderBasisTitle: "线怎么连？",
+        orderBasisDisplay:
+          "本图的连线是**虚线**，因为它不表示先后：取数端点 GET /a/v1/process-definitions 一条流程间的先后关系都没下发（ProcessDefinition 是 zod strictObject，字段恰好是 key/domainKey/name/ownerFunctionKey/stdDurationDays/waitKind/carrierTypeKey，没有 predecessor/successor/stationIndex——strictObject 同时保证后端不可能多发一个字段而前端没接到）。故本图退回**按域分线**：一条线 = 一个一级业务域，线的上下次序取端点下发的 ProcessDomain.order（契约对该字段的原文是「展示序」，是稳定排版序，不是业务先后），站的左右次序取域内 P## 升序。",
+        orderBasisWhyNotNumber:
+          "为什么不干脆按 P## 编号画箭头：**编号相邻 ≠ 先后**，两个实测反例都在 apps/datacore/src/process/flow-rules.ts 文件头——① 真实链「在制流转到质检」是 P43 → P47，中间跳过 P44/P45/P46；② 第一版把它写成 P42 → P43 → P47，真跑一遍 P42 的站间间隔是 −9.82 天（负数），机器当场抖出建模错误（工单下达是「伞」不是前一站）。把 P## 升序画成箭头 = 复现一个已被实测证伪的顺序。〔实测日期 2026-08-14 · 复验：读 apps/datacore/src/process/flow-rules.ts:83 起那段「P42 为什么不在链 B 里」的订正（搜 avgGapDaysToNext 即到 −9.82 的出处）；⚠ 有保质期：flow-rules.ts 的链定义一改，本句即过期，须重测而不是照抄。〕",
+        orderBasisWhereReal:
+          "实测站序确实存在，但不在本档够得着的地方：BATTERY_PROCESS_FLOW_RULES（apps/datacore/src/process/flow-rules.ts:104）有 6 条链、覆盖 9 条流程（P25/P33/P34/P35/P41/P42/P43/P47/P51），其中只有 2 条是真多站（P33→P34→P35、P43→P47），经 process_flow_time 求解器与 GET /a/v1/process-definitions/{key}/instances 下发（带 flowKey + stationIndex），**不经本档这个端点**。复验探针：curl /a/v1/process-definitions/P34/instances 看 flowKey/stationIndex，再 curl /a/v1/process-definitions 看同样字段——后者没有。要在本图画出实测站序，需要 datacore 补一条下发，那在本单范围之外，故如实缺席、不编顺序顶上。〔实测日期 2026-08-14 · 复验：node -e \"import('./apps/datacore/dist/process/flow-rules.js').then(m=>console.log(m.BATTERY_PROCESS_FLOW_RULES.length, m.flowRuleCoveredProcessKeys()))\"，当日现跑 = 6 条链 / 9 条流程。⚠ 本句此前写「覆盖 8 条流程」，2026-08-14 现跑订正为 9（flowRuleCoveredProcessKeys 是端点/文档/测试共用的单一事实源，不许各数一遍）。⚠ 有保质期：规则表增删一条链即过期。〕",
+        interchangeNote: (n: number) =>
+          `换乘站（双环）${n} 处：两条流程**共用同一个承载物**。⚠ 共用承载物只说明它们作用在同一个对象上，**不说明有先后、也不说明有依赖**（契约 process.ts 原文：P37 MPS 与 P40 APS 都落在 ProductionSchedule，「共用不是空壳」）。这是端点下发的字段里唯一一条真把两条流程连起来的关系，故画成换乘——不是因为它像先后。`,
+        interchangeNone:
+          "本次下发里没有任何两条流程共用承载物 ⇒ 全图 0 个换乘站。这是「这批数据就没有」，不是「本档没画换乘」。",
+        radiusNote:
+          "站圈大小 ∝ √标准工期，且按**本次下发的最大标准工期**归一 —— 是相对量不是绝对量，换一批数据圈会重新分布。",
+        labelOverflow: (keys: string) =>
+          `⚠ 分两层后仍有站名挤在一起：${keys} —— 如实标出来，不偷偷藏标签也不假装不挤（放大或点站看右栏读全名）`,
+        lineNo: (n: number) => `${n} 号线`,
+        legendTitle: "图例",
+        legendStation: "站 = 一条业务流程（圈大小 ∝ 标准工期）",
+        legendInterchange: "换乘站 = 与另一条流程共用承载物",
+        legendDashed: "虚线 = 同一条线上按展示序排列，**不是流向**",
+        legendFold: "折返 = 一条线太长换到下一行，线没有断",
+        legendWaitKind: "站圈颜色 = 卡在哪一类等待（四态词表来自契约）",
+        zoomIn: "放大",
+        zoomOut: "缩小",
+        fit: "适应画布",
+        zoomReadout: (k: number) => `${Math.round(k * 100)}%`,
+        /** 缩到下限仍装不下：是事实就说出来，不许让它长得像「已经适应了」。 */
+        fitClamped: "已缩到下限仍装不下 ⇒ 顶左对齐，拖拽/滚轮看其余部分",
+        canvasLabel: "业务流程线路图（可缩放平移；站可点，点开右栏出完整本体关系）",
+        /** 右栏：本档的检视面板标题与未选中提示。 */
+        inspectTitle: "流程检视 · 完整本体关系",
+        inspectHint: "点画布里任一条业务流程 → 这里出它的完整本体关系：承载类型 / 属性 / 派生 / 一跳关系 / 同承载物流程 / 打到它的杠杆 / 十六层三态。",
+      },
+      /**
        * WO-SANDBOX-V3 · 下区影响带（PRD §1③）的文案。
        *
-       * ⚠ `financeGap` 是**诚实位**，不是免责声明 —— 它陈述一个实测事实：
-       *   平台今天没有「随世界态变化的金额型财务指标」。规范 §1 明写诚实位
+       * ⚠ `financeGap` 是**诚实位**，不是免责声明。规范 §1 明写诚实位
        *   **允许降层、绝不允许删除**，故它常驻第一层。
+       *
+       * ⚠ **WO-FINANCE-WORLDSTATE 改写了它承载的那个事实，而不是删了它**：
+       *   原文陈述「平台今天没有随世界态变化的金额型财务指标」——那句话在本单之后**不再成立**
+       *   （`finance_world_projection` 就是那个出处）。诚实位说了假话比没有诚实位更坏，
+       *   故这里**改写内容、保留位置**。`finance_pnl` 不吃 `worldId / sessionId` 这一条**仍然成立**
+       *   且仍然写在里面：本单一个字都没动它的签名（它有既有调用方与金值，动签名会连坐）。
        */
       impact: {
         autoNote: "扰动一施加即自动分析（沙盘里的「假设」就是已经发生的那条扰动，不需要再按一次确认）",
@@ -731,11 +811,90 @@ export const zh = {
         deltaNone: "与基线逐项相等 —— 是「比过了，一项都没动」，不是「没比」。",
         deltaMoved: (n: number, total: number) => `${n} / ${total} 项偏离基线`,
         deltaRest: (n: number) => `其余 ${n} 项（与基线同值）`,
-        financeGapTitle: "金额口径为何不在这一带",
+        financeGapTitle: "这块金额是怎么来的 / 什么时候没有",
         financeGapBody:
-          "本带给的是**世界态指数**（0–100，随扰动沿本体传导链变化），不是金额。平台今天唯一的金额科目表求解器 `finance_pnl` 读的是本体真值（FinancePlan + DemandSegment），其实现签名不吃 worldId / sessionId ⇒ **同一个租户下，施加任何扰动它都返回同一组数**。把它摆在这里会得到一块「看起来是财务、实际永远不动」的面板，那比留空更坏。带单位的金额型指标要随扰动动，唯一已接线的出处是上面那块「逐节点指标影响」的 KPI 维（`Metric` 对象的 target/actual/unit 在被隔离的世界里重算）。",
+          "**这是推演投影，不是实测值。** 基线取本体真值（FinancePlan 的 rolling / ARInvoice 的 amount），增量由**这个世界里**的成本压力（Order.costPressure）、回款压力（Customer.receivablePressure）、逾期压力（ARInvoice.overduePressure）沿种子里的传导规则折算：金额 = 基线 ×（1 + 压力 ÷ 换算除数），除数由后端随回包下发（不是前端写死的系数），产生这些压力的传导规则真 id 与真系数也一并回传，改种子系数这里跟着变。⚠️ **不要把它和 `finance_pnl` 搞混**：那个求解器读本体真值、其实现签名不吃 worldId / sessionId ⇒ 同一个租户下施加任何扰动它都返回同一组数 —— 那是它的正确行为（本单一个字没动它），只是它答不了「这个世界里花了多少钱」。本带的金额来自另一条通路 `finance_world_projection`。世界态为空 / 没有金额基线 / 该能力未开通时，这里**据实报缺**，绝不显示一个不动的 0。",
+        moneyTitle: "财务金额随扰动的变化",
+        moneyQuestion: "这次扰动，钱上差多少",
+        /** 口径**常驻第一层**（不是浮层里的一句话）：读者一眼要知道这不是实测数。 */
+        moneyCaliber: "推演投影 · 非实测",
+        moneyCaliberDetail: (divisor: number) => `基线 ×（1 + 压力 ÷ ${divisor}）`,
+        moneyLoading: "正在向财务投影求解器要数…",
+        moneyNoSession: "还没有推演世界 —— 建好世界这里才有金额可投影。",
+        /** 求解器说不可用（世界态空 / 无基线）：把**后端原话**摆出来，本页不替它编一个解释。 */
+        moneyUnavailable: (reason: string) => `这个世界暂时给不出金额口径 —— ${reason}`,
+        /** 请求本身失败（能力未开通 / 网络）：同样给后端原话。 */
+        moneyFailed: (msg: string) => `财务投影求解器没答上来，下面是后端原话，本页不替它编一个数：${msg}`,
+        moneyBaselineWord: "基线",
+        moneyProjectedWord: "投影",
+        moneyCashTitle: "应收 / 逾期",
+        moneyArRow: "应收余额",
+        moneyOverdueRow: "逾期敞口",
+        moneyChain: (n: number) => `换算链 ${n} 跳（真规则系数）`,
+        moneyNotes: (n: number) => `诚实缺席 ${n} 条`,
+      },
+      /**
+       * WO-V4-PLAYS · 方案环（PRD-sandbox-v4 §3.3）的文案。
+       *
+       * ⚠ `caliber` / `r4` 是**诚实位**，与上面的 `financeGap` 同族：
+       *   前者写明「平行世界之间那点差异是怎么造出来的」（它是推演投影，不是实测），
+       *   后者写明「采纳只落审批草稿，沙盘绝不写本体真值」（R4 红线）。
+       *   两者常驻第一层 —— 降层可以，删除不行。
+       *
+       * ⚠ 本节**不含任何方案名 / 指标名 / 行业实体名**：那些一律来自 `decision_play` 回包
+       *   与契约 `GOAL_REGISTRY`（R14 去电池锁死）。这里只有结构性措辞。
+       */
+      plays: {
+        title: "方案环 · 扰动 → 方案 → 平行世界 → 比对 → 采纳",
+        intro:
+          "左边拨一条扰动让指标动起来，这里向决策推演求解器要 N 个对症方案；每个方案开一个平行世界（从同一个检查点分支），并排比出差异，再把选中的那个送进 Action 审批。",
+        metricLabel: "指标",
+        metricAuto: "引擎自选（缺口最大的越线指标）",
+        solve: "求方案",
+        solving: "求方案中…",
+        solveFailed: "求方案失败 —— 下面是后端原话，本页不替它编一个解释：",
+        rootPrefix: "根因 ",
+        gapWord: "缺口",
+        narrowing: (pct: number, n: number) => `推荐组合 ${n} 项 · 收窄 ${pct}%`,
+        recommended: "在推荐组合内",
+        basis: "依据：",
+        needPerturbation:
+          "还没有施加扰动 ⇒ 平行世界没有可回补的落点。先在上面拨一条扰动，方案世界才会互不相同（不给一个点了只会开出 N 个一模一样的世界的按钮）。",
+        zeroEffect: (objectId: string, stateVar: string) =>
+          `本次扰动在 ${objectId}.${stateVar} 上的实测效应为 0（引擎规整或落点未变）⇒ 按比例回补出来的差异也必然是 0。这里如实说没有可比的差异，不去换一个"看着有差异"的算法把它糊过去。`,
+        branch: (n: number) => `为 ${n} 个方案各开一个平行世界`,
+        branching: "开世界中…",
+        caliber: (objectId: string, stateVar: string, effect: number) =>
+          `口径（这一段数字是推演值，不是实测值）：回补比例 = 该方案 closesGap ÷ 根因缺口；本次扰动在 ${objectId}.${stateVar} 上的实测效应 Δ = ${Math.round(effect * 1000) / 1000}；方案世界 = 分支世界 + 一条 delta = −Δ×回补比例 的扰动。`,
+        worldsTitle: "平行世界（各方案各一个）",
+        recovered: (pct: string) => `回补 ${pct}%`,
+        adopt: "采纳（走审批）",
+        adopting: "采纳中…",
+        compareLabel: "并排比对",
+        pickA: "比对世界 A",
+        pickB: "比对世界 B",
+        compare: "比对",
+        comparing: "比对中…",
+        compareEmpty: "两个世界里读不到该落点的值 —— 如实说读不到，不用 0 冒充。",
+        diff: (d: string) => `差异 B − A = ${d}`,
+        r4:
+          "R4 红线：沙盘改的是推演会话的世界态，**不写本体真值**。「采纳」只创建 Action 草稿并进审批流（实测回 PENDING_APPROVAL），审批通过才由 Action 正门写真值。",
       },
       info: {
+        /**
+         * WO-HOVER-LAYER：以下三条原先挂在**原生 `title=`** 上，按
+         * `docs/CONVENTION-ui-information-layering.md` §2 R-UI-3「公式与口径不在第一层，
+         * 且禁止用 HTML title 属性充当浮层」迁到 InfoPopover。
+         */
+        routingConfidenceTopic: "分类置信度",
+        routingConfidenceBody:
+          "量纲＝分类置信度 0–1（QOS routing.completed 事件的 confidence），越高越确定。与阈值 tauHigh / tauMid 同尺度比较，恒 0–1；满分是 1 不是 100。",
+        skillWriteModeTopic: "写模式（推导位）",
+        skillWriteModeBody:
+          "契约 isWriteModeSkill 的推导结果，非后端下发字段：会改变真值 或 需要审批 ⇒ 受 R4「真值只经 Action 审批链变更」约束，故必须产出 action_draft。",
+        llmNoReasoningTopic: "关推理",
+        llmNoReasoningBody:
+          "关掉该用途的推理（分类 / 选型等本不需推理）：推理型模型改用同 provider 的非推理兄弟出快答，是治本的降时延手段。",
         /** `?` 触发器：hover / focus 出浮层，移开或 Esc 即消失。 */
         trigger: "?",
         triggerAria: (topic: string) => `${topic} —— 说明（悬停或聚焦查看）`,
@@ -748,6 +907,9 @@ export const zh = {
         timeWindow: "时窗 30D / 60D / 90D 为何禁用",
         seed: "SEED · 确定性种子",
         chainCoverage: "链路阶段 · 在册 ≠ 有数据（完整口径与取证）",
+        processLayers: "业务流程档 · 两层为何能同屏、又为何不合并",
+        /** WO-R9-METRO-UX：线路图的连线**为什么是虚线**（诚实位，不是免责声明）。 */
+        processOrderBasis: "业务流程线路图 · 线怎么连、为什么是虚线",
         paretoRate: "影响率怎么算 · 分母是什么",
         inspectorEvidence: "下钻证据为何是空的",
         stepTable: "逐环节表的口径",
@@ -779,9 +941,71 @@ export const zh = {
           "订单锚点：今天不是壳级控件——它由线路图按 so 自取（chain_loss_attribution 唯一认的入参），壳里没有第二个订单选择器，硬造一个就是各模式各用各的假旋钮。",
         shellContextWindow:
           "时窗：chain_loss_attribution 只认 so、chain_impediments 只认 scope，两者都没有时间窗入参，故控制台顶栏那个 30D/60D/90D 是禁用的（挂「时窗无 ARGS」徽标），壳里不再造第二个。",
+        /**
+         * WO-V4-HONEST-ORIGIN · 顶栏读数**出处**（PRD-sandbox-v4 §2.1 / §4.3）。
+         * 两条正文互斥出现：占位期一条、实测期另一条 —— 记号必须真的换掉，不是加一句免责。
+         */
+        kpiOrigin: "这批读数是哪来的",
+        kpiOriginDerived:
+          "**合成·占位**：屏上这批数由前端按 `hash01(对象id|变量名)×100` 确定性派生，还没取到后端世界态。它是可复现的占位（R6），不是任何实测值 —— 全对象取均值必然收敛到 50，那是大数定律，不是各项压力恰好都在中位。推进一个 tick、施加一条扰动，或世界态事件触发重取之后，这个记号会换成「实测」。",
+        kpiOriginMeasured:
+          "**实测**：屏上这批数取自后端世界态（`GET /a/v1/sim/sessions/:id/world` 回包，或 tick / 扰动回包），不再是前端哈希占位。口径仍是 0–100 指数（见「读数量纲」）；它描述的是**这个推演会话里的模拟世界**，不是本体真值。（本条口径实测于 2026-08-13；复验：`pnpm --filter frontend-shell exec vitest run test/sandbox-world-origin.seam.test.tsx`）",
+        /** WO-V4-PLAYS · 方案环里那点差异的口径（诚实位，常驻第一层 + `?` 出全文）。 */
+        playCaliber: "平行世界之间的差异是怎么造出来的",
+        playCaliberBody:
+          "从同一个检查点分支出来的子世界**逐字节相同**，不给它们各自一处差异，比对面板就永远是两列一样的数。差异来自一处**显式的确定性投影**（不是新真值源）：回补比例 = 该方案 `closesGap` ÷ 根因缺口（两者同量纲，比值无量纲，取自 `decision_play` 回包）；本次扰动在该状态变量上的实测效应 Δ = 扰动后值 − 扰动前值（两头都取后端回包）；方案世界 = 分支世界 + 一条 `delta = −Δ × 回补比例` 的扰动，经真端点施加、由引擎照常规整与传导。读作「这个方案按引擎自己给的 closesGap 能补掉缺口的这么多，于是在沙盘里把本次扰动的效应回补这么多」。它是**推演值**，不是实测值。",
         kpiUnit: "读数量纲 · 0–100 指数",
         kpiUnitGlobal: "全局态是**全对象、全状态变量**的均值，量纲为 0–100 指数（非百分比、非任何单一变量的原值）；越高越好。",
         kpiUnitVar: "每个状态变量的读数是该变量在**全部已物化对象**上的均值，量纲为 0–100 指数（非百分比）。",
+        /**
+         * WO-SANDBOX-CANDIDATES-FE · 候选对策的浮层标题。
+         * 第一层只放「拨哪个对象 / 拨哪个属性 / 从多少到多少 / 效果」；
+         * 口径（档位怎么来的 · join 怎么推的 · 试算公式）一律降到这两个浮层里。
+         */
+        candidateHow: "这条对策是怎么推出来的",
+        candidateNone: "为什么这个阻滞点没有方案",
+      },
+      /**
+       * WO-SANDBOX-CANDIDATES-FE · 候选对策区的**壳文案**。
+       *
+       * 只收标题/表头/连接词这类纯壳字。**不收**任何口径正文 ——
+       * 档位来源、join 路径、试算公式、缺席原因全部是**引擎回包里的字段原文**
+       * （`rungSource` / `join.path` / `provenance.formula` / `noCandidateReason` / `gaps[]`），
+       * 抄进本文件就是给引擎文案开一条会漂的分身（R14 同族纪律）。
+       */
+      candidates: {
+        title: "候选对策",
+        /** 计数：几条候选。0 条时不显示本行，改显示「为什么没方案」。 */
+        count: (n: number) => `${n} 条`,
+        lever: "拨哪个对象",
+        prop: "拨哪个属性",
+        move: "从多少拨到多少",
+        rung: "档位来源",
+        effect: "真试算的效果",
+        join: "溯源",
+        /** 档位纪律：必须让用户看见"这个数不是前端拍的"。 */
+        rungNote: "档位取自同侪真实取值 / 规则阈值本身，全链零步长常数",
+        /** 杠杆落点不是阻滞点落点时的记号（回包里没有该对象的显示名，只有业务 id）。 */
+        leverElsewhere: "杠杆不在阻滞点落点上",
+        leverIdOnly: "回包只带业务 id，无显示名 —— 如实回显 id，不去别处凑一个名字",
+        /** KPI 维表头。 */
+        dimBefore: "不施策",
+        dimAfter: "施策后",
+        dimDelta: "改善",
+        /** 维算不出来（value===null）：显示引擎给的原因，**绝不补 0**。 */
+        dimEmpty: "算不出来",
+        /** 「为什么没方案」区。 */
+        noneTitle: "为什么这个阻滞点没有方案",
+        statLine: (a: number, p: number, e: number, m: number) =>
+          `探了 ${a} 个杠杆锚点 · 试算 ${p} 次 · 有效 ${e} 个 · 下发 ${m} 条`,
+        gapsTitle: "缺口（引擎原文）",
+        statMissing: "引擎未回带本点的逐点账（candidateStats 无对应行）—— 说不出探了几个锚点，如实标注，不编一个数",
+        /** 顶部总账。 */
+        summary: (withC: number, total: number) => `${withC} 个阻滞点有对策 · 共 ${total} 条候选`,
+        absentSummary: "没有对策的分三态（修法完全不同，不许合并看）：",
+        probes: (n: number) => `本次试算探针 ${n} 次`,
+        truncated: "⚠ 探针预算已耗尽 ⇒ 后面的档位没试算完，结果不完整",
+        waiting: "等 chain_impediments 取回后，这里逐条列出候选对策。",
       },
     },
     inference: {
@@ -1101,6 +1325,17 @@ export const zh = {
       payload: "参数快照",
       originTask: "来源任务",
       noPermission: "你不是该步骤的审批角色",
+      // WO-BEFE-B · 留痕与撤回（后端 audit/cancel 此前零前端调用方）
+      auditTitle: "审批留痕",
+      auditEvents: "后端事件",
+      auditNoEvents: "该草稿尚无 action.* 事件",
+      auditExecution: "执行结果",
+      auditNotExecuted: "未执行",
+      cancel: "撤回",
+      confirmCancel: "确认撤回该 Action 草稿？撤回后不再进入执行，且不可恢复。",
+      cancelNoPermission: "仅发起人或管理员可撤回，且执行开始后不可撤",
+      submit: "提交审批",
+      submitHint: "决策台落下的草稿停在 DRAFT，需提交后才进入审批链",
     },
     catalog: {
       title: "意图目录",
@@ -1681,16 +1916,151 @@ export const zh = {
      */
     honesty: {
       title: "本页答得了什么、答不了什么",
-      canAnswer: "答得了：卡在哪一类等待（四态）· 等谁（责任职能）· 标准要等多久（工期基线）。",
+      canAnswer:
+        "答得了：卡在哪一类等待（四态）· 等谁（责任职能）· 标准要等多久（工期基线）。" +
+        "点开任一条流程还能看到**实例粒度**：哪一条单据卡着 · 卡在谁那里 · 卡了多久 · 站间流转多久。",
       cannotAnswer:
-        "答不了：**此刻这条流程已经卡了多久**。那需要运行态 ProcessTask.enteredAt，" +
-        "而 ProcessInstance / ProcessTask 尚未实现（PRD-enterprise-decision-twin §5 的 E2）。",
+        "答不了（诚实边界，一条都没放宽）：① 实例时刻是从**既有带时间戳单据反推**的（推导值，不是流程引擎直采的实测值）；" +
+        // 「9/65」是**实测值**，故按 stale-claims 门的两条要求把日期与复验方式**写进文案本身**
+        // （写在注释里门看不见，用户也看不见 —— 没有日期就没有保质期：
+        //  上游种子一变这个数会静默失真，而界面照旧言之凿凿）。
+        "② 65 条流程里只有 9 条反推得出，其余 56 条会明说「缺哪种单据」并给复验探针，**不会返回 0 冒充「没有卡顿」**。" +
+        "（**2026-08-13 实测**·battery/S/seed=42；复验：`curl -s -H 'X-Debug-User: demo:admin:admin' " +
+        "'http://127.0.0.1:4001/a/v1/process-definitions/P34/instances' | jq '{available,instanceCount}'`，" +
+        "逐条清单见 `docs/WO-FLOWTIME-feasibility.md`；上游种子若变，此数必须复测改写而不是加豁免。）",
       notMeasured: "下方「标准工期」是流程定义里的**基线工期**，不是实测滞留天数 —— 不要当作「已卡 N 天」读。",
+    },
+    /** WO-FLOWTIME · 实例下钻面板（点某条流程 → 看它的实例与站间流转时长）。 */
+    instances: {
+      open: "看实例",
+      close: "收起",
+      loading: "反推流程实例中…",
+      titleFor: (key: string) => `${key} · 流程实例与站间流转时长`,
+      asOf: (d: string, src: string) => `分析截止时刻 ${d}（来源 ${src}）`,
+      asOfHint:
+        "「分析截止时刻」缺省取**数据里观测到的最晚时刻**（不是 wall-clock，也不是预测窗起点）——" +
+        "流转时长是回溯分析，它的「现在」应当是数据的最后一刻。",
+      originNote:
+        "⚠ 下列天数**全部由既有带时间戳单据反推**（推导值，可逐条溯回单据 id + 字段名 + 该字段原值），" +
+        "不是流程引擎直采的实测值，更不是标准工期。",
+      stdCompare: (d: number) => `对照：标准工期 ${d} 天（定义值，非实测）`,
+      counts: (n: number, stuck: number) => `${n} 条实例，其中 ${stuck} 条到截止时刻仍卡着`,
+      table: {
+        instance: "实例",
+        carrier: "承载单据",
+        entered: "入站",
+        exited: "出站",
+        dwell: "站内停留(天)",
+        gap: "到下一站(天)",
+        owner: "卡在谁那里",
+        wait: "等待类型",
+        source: "溯源",
+      },
+      stillIn: "仍卡着",
+      done: "已出站",
+      noGap: "—",
+      /** 反推不出：明说缺什么 + 怎么复验，不是空表也不是 0。 */
+      absentTitle: "这条流程反推不出流转时长",
+      absentKind: (kind: string) => `缺席类型：${kind}`,
+      absentProbe: (probe: string) => `复验探针：${probe}`,
     },
     state: {
       loading: "加载流程等待态…",
       empty: "后端未返回任何流程定义。业务流程层种子由 SEED_DEMO 播入；未播种时此处为空是正常的。",
       errorTitle: "取不到流程等待态",
+    },
+    /**
+     * WO-V4-INSPECT · 节点检视面板的**界面骨架文案**（PRD-sandbox-v4 §4.2）。
+     *
+     * ⚠ 这里只放**骨架**（区块标题 / 表头 / 空态句 / 三态名），
+     * **一个业务词都不许放** —— 流程名 / 域名 / 职能名 / 对象类型中文名 / 属性中文名 / 单位
+     * 全部随 `/inspect` 响应下发（R14 零写死词表）。哪天有人往这里加一个业务名词，
+     * 就是在复制「两个 dev 各发明一套词表、交集为 0」那次事故。
+     */
+    inspect: {
+      title: "节点检视",
+      close: "关闭",
+      loading: "加载本流程的本体关系…",
+      errorTitle: "取不到本流程的检视投影",
+      openHint: "点开任意一行查看该流程的完整本体关系",
+      section: {
+        process: "流程属性",
+        runtime: "本页答不了什么（运行态诚实位）",
+        carrier: "承载物（对象类型）",
+        relations: "一跳关系",
+        shared: "同承载物的其它流程",
+        levers: "打到这个承载物的杠杆",
+        layers: "十六层三态",
+      },
+      field: {
+        name: "名称",
+        domain: "业务域",
+        owner: "责任职能",
+        waitKind: "等待类型",
+        stdDays: "标准工期（天）",
+        carrier: "承载类型",
+      },
+      carrier: {
+        objectCount: (n: number) => `本租户 ${n} 个对象`,
+      },
+      propTable: {
+        propKey: "属性键",
+        displayName: "中文业务名",
+        dataType: "类型",
+        unit: "单位",
+        flags: "标记",
+        pk: "主键",
+        derived: "派生",
+        /** 中文名缺省 = 业务含义未确证，如实说，不臆造（WO-SCHEMA-ZH 留白纪律）。 */
+        noZhName: "未登记中文名",
+      },
+      relations: {
+        empty: "本承载类型在本体链路表里没有任何一跳关系 —— 这是真实读数，不是没渲染。",
+        objectCount: (n: number) => `对端 ${n} 个对象`,
+        /** null ≠ 0：对端类型压根不存在，与「存在但没数据」是两件事。 */
+        typeMissing: "对端类型在本体里查不到",
+      },
+      shared: {
+        empty: "没有别的流程与它共用同一个承载物（一对一，不是漏查）。",
+      },
+      levers: {
+        empty: "今天没有任何登记杠杆落在这个承载类型上 —— 这是真实读数，不是没渲染。",
+        landing: (where: string) => `落点解析于 ${where}`,
+        dead: "落点属性不存在（死杠杆）",
+        reach: (domains: string, n: number) => `打到 ${n} 条流程 · 业务域：${domains || "无"}`,
+      },
+      layers: {
+        summary: (present: number, notInSlice: number, absent: number) =>
+          `有数据 ${present} 层 · 未纳入 ${notInSlice} 层 · 缺席 ${absent} 层`,
+      },
+      /** 三态名（与后端 `SliceLayerStatus` 一一对应；三态含义不同，绝不合并成"有/无"）。 */
+      layerStatus: {
+        present: "有数据",
+        not_in_slice: "平台有·本次未纳入",
+        absent: "缺席",
+      } as Record<string, string>,
+      /**
+       * 十六层的中文名（键 = 契约 `SLICE_LAYER_IDS`，**结构词不是业务词**）。
+       * 查不到即回落层 id 原文，不臆造。
+       */
+      layerName: {
+        business_scenario: "① 业务场景",
+        decision_intent: "② 决策意图",
+        object: "③ 对象",
+        property: "④ 属性",
+        relation: "⑤ 关系",
+        event: "⑥ 事件",
+        state: "⑦ 状态",
+        metric: "⑧ 指标",
+        time: "⑨ 时间",
+        rule: "⑩ 规则",
+        constraint: "⑪ 约束",
+        data_binding: "⑫ 数据绑定",
+        scenario: "⑬ 场景",
+        evidence: "⑭ 证据",
+        action: "⑮ 行动",
+        governance: "⑯ 治理与溯源",
+      } as Record<string, string>,
     },
     /** 词表漂移（后端下发词表 ≠ 契约词表）——接缝断了要显式报，不许默默少画一组。 */
     drift: {

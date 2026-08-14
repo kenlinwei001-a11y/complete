@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { loginAs, renderApp } from "./utils";
 import { resetMockDb } from "@/mocks/db";
+import { resetMockWorkflowRuns } from "@/mocks/handlers";
 import { submitIntake } from "@/api/endpoints";
 
 /**
@@ -14,7 +15,9 @@ import { submitIntake } from "@/api/endpoints";
  * 只断言"存进去了"的写法在这里一律不算数。
  */
 describe("WO-FE-WIRE-2 · pipeline 配置面接缝（改配置 ⇒ intake 处理行为真变）", () => {
-  afterEach(() => resetMockDb());
+  // WO-87：运行台账也清。下面那条诚实位断言的是「**intake 的暂停**没登记成 run」——
+  // 台账里若混进别处留下的 story_build PAUSED，它会为了**错误的理由**变红，诚实位就失去意义。
+  afterEach(() => { resetMockDb(); resetMockWorkflowRuns(); });
 
   it("基线：出厂默认（四节点全开）⇒ intake 产出解析 + 对账两段，且四步都跑了", async () => {
     const before = (await submitIntake("<html/>")) as unknown as {
@@ -80,24 +83,37 @@ describe("WO-FE-WIRE-2 · pipeline 配置面接缝（改配置 ⇒ intake 处理
    * ⚠️ 补的时候实测出来的**不是覆盖缺口，是真死锁**（派单人写的「canonical 有真放行入口所以不是
    * 死锁」与实测不符，见下）。三层各自的真相，全部亲手跑出来、不是读代码猜的：
    *
-   * ① **UI 层**：`PipelineConfigPage.tsx:176 PausedRuns` 确实挂了真入口
+   * ① **UI 层**：`PipelineConfigPage.tsx:177 PausedRuns` 确实挂了真入口
    *    （`data-testid={`approve-${r.id}`}`，:204）——所以**不是「没接线」**。
-   * ② **mock 数据层**：该入口的数据源是 `fetchWorkflowRuns` → `handlers.ts:472 MOCK_WORKFLOW_RUNS`，
-   *    而这个数组**只被 `POST /a/v1/databuilder/workflow-runs` 填**（:3902/:3908，产出 RUNNING/
-   *    SUCCEEDED/FAILED）。`POST /a/v1/databuilder/intake`（:1063）停在 PAUSED 时**只回了一个响应体**
-   *    （:1071），一条 run 都没注册。全 mock 层 `PAUSED` 仅此一处 ⇒ `PausedRuns` 永远只渲染
-   *    `paused-empty`，`approve-*` 一个都不会出现。这是铁律 0.5 的第二形态「**接了线没数据**」。
+   * ② **mock 数据层**：该入口的数据源是 `fetchWorkflowRuns` → `handlers.ts` 的 `MOCK_WORKFLOW_RUNS`，
+   *    而这个数组只被 `POST /a/v1/databuilder/workflow-runs` 填。
+   *    `POST /a/v1/databuilder/intake` 停在 PAUSED 时**只回了一个响应体**，一条 run 都没注册
+   *    ⇒ 对 intake 而言 `PausedRuns` 只会渲染 `paused-empty`。铁律 0.5 第二形态「**接了线没数据**」。
    * ③ **契约层（这才是真正卡住的地方）**：`BuildWorkflowRunSchema.kind` 是
    *    `z.literal("story_build")`（`packages/contracts/src/databuilder.ts:356`）——
    *    intake 的暂停**在类型上就没法登记成一条 run**。所以这不是补个 mock 就能了的，
    *    要动契约，属产品/架构裁决，超出本单文件边界（🚦本单只碰 tsconfig + 本测试文件）。
    *
-   * 顺带一条更重的（同样实测，供审核方另派单）：**真后端根本没有 PAUSE 这一态**。
-   * `apps/datacore/src/databuilder/intake-pipeline.ts:49-53` 明写「同步接入口无法在此暂停」，
-   * 遇到 `requiresApproval` 直接判 FAILED，:165 `runIntakePipeline` 随即 `throw`。
-   * 也就是说上面那条 it 断言的 `status:"PAUSED"` **是 mock 独有行为**，真后端是抛错。
+   * ⚠️ **2026-08-13 WO-87 订正：本段原先还写了一句「真后端根本没有 PAUSE 这一态」——那句是错的，
+   * 现予删除**（同一撤回见 `docs/WO-FOLLOWUP-2026-08-13.md` §5；WO-87 收编时逐层复验确认）。
+   * 真后端**有** PAUSE，而且是生产接线的整条：
+   *   `datacore/databuilder/workflow-engine.ts:192-199`（`requiresApproval && !isStepApproved`
+   *   ⇒ `run.status = "PAUSED"` + 发 `buildworkflow.run_paused`）
+   *   ← SOP 来自 `pipeline-defs.ts:164 resolvePipelineSteps`
+   *   ← `service.ts:578 buildStorySteps` ← `POST /a/v1/databuilder/workflow-runs`（`app.ts:4416`）；
+   *   放行 `app.ts:4540` → `service.ts:640 approveWorkflowStep`（记放行名单 + resume）。
+   * 错的形态（照铁律 0.6 的句式）：**「我用『intake-pipeline.ts 里没有 PAUSED』当作
+   * 『真后端没有暂停能力』的证据，而前者并不度量后者。」** 只 grep 了一个文件就下了全后端的结论。
    *
-   * 故本条按**诚实位**写：钉住今天的真实状态，谁把缺口闭上它就当场红，逼人回来改这段注释和断言。
+   * **准确的说法**：暂停能力按**执行口**分裂，不是按有无分裂 ——
+   *   · `story_build`（持久化工作流口）：**真能暂停、真能放行**。该条链路的接缝由
+   *     `test/build-pipeline-approval.seam.test.tsx`（WO-87）端到端咬住，死锁已闭合。
+   *   · `intake` / `intake_import`（**同步 HTTP 接入口**）：`intake-pipeline.ts:50-53` 明写
+   *     「同步接入口无法在此暂停」，遇 `requiresApproval` 判 FAILED。这是**诚实的能力边界声明**，
+   *     不是缺陷；而上面那条 it 断言的 `status:"PAUSED"` 仍是 **mock 独有行为**（真后端此处报错）。
+   *
+   * 故本条诚实位的**适用范围只到 intake 这一口**：钉住「intake 停住了但屏上无人可放行」，
+   * 卡点在契约层（③）。谁把③闭上它就当场红，逼人回来改这段注释和断言。
    * ⛔ 不许把它改成 `skip` 或删掉了事——那是把已知死锁重新变回不可见。
    */
   it("放行入口的诚实位：intake 停在 PAUSED，但屏上没有任何人放得了行（已知死锁·闭合即红）", async () => {

@@ -1,10 +1,14 @@
 import {
   PROCESS_OWNER_FUNCTIONS,
   PROCESS_WAIT_KINDS,
+  PROCESS_INSTANCE_ORIGINS,
   ProcessDefinitionSchema,
   ProcessDomainSchema,
+  ProcessInstanceSchema,
+  ProcessInspectResponseSchema,
+  type ProcessInspectResponse,
 } from "@platform/contracts";
-import type { ProcessDefinitionsResponse } from "@/views/process/processWait";
+import type { ProcessDefinitionsResponse, ProcessInstancesResponse } from "@/views/process/processWait";
 
 /**
  * WO-WAITING-STATES-FE · `GET /a/v1/process-definitions` 的 mock fixture。
@@ -20,7 +24,7 @@ import type { ProcessDefinitionsResponse } from "@/views/process/processWait";
  *     （`strictObject`，多写一个字段也炸）。契约改字段 ⇒ 本文件模块加载即抛，
  *     不会出现「mock 悄悄少一个字段、测试照样绿」。
  *  ② **词表与职能登记册取自契约**，不手抄（`PROCESS_WAIT_KINDS` / `PROCESS_OWNER_FUNCTIONS`）。
- *  ③ **数据是真种子的逐字子集**：下方 9 条 P## 全部逐字取自
+ *  ③ **数据是真种子的逐字子集**：下方 11 条 P## 全部逐字取自
  *     `apps/datacore/src/seed.ts:581-673`（key/name/owner/工期/waitKind/承载物一字不改），
  *     不是"编几条像样的"。R1 禁止前端 import 后端源码，故只能抄；抄就抄真的那份，
  *     并把出处写在每条边上，好让下一个人能逐条对账。
@@ -28,7 +32,7 @@ import type { ProcessDefinitionsResponse } from "@/views/process/processWait";
  * ── 子集怎么选的（不是随手挑）─────────────────────────────────────────────────
  * 判据：**四态每态 ≥2 条**，且覆盖多个业务域与多个责任职能。
  * 每态只留 1 条会让「分组渲染」与「单条渲染」在测试里长得一样 —— 那样断言分组逻辑等于没断言。
- * 真后端是 65 条全量；mock 取 9 条，条数不同是**刻意**的：
+ * 真后端是 65 条全量；mock 取 11 条，条数不同是**刻意**的：
  * 测试断言的是**结构与分组**，不是"恰好 65"（把 65 写进前端测试 = 又一份要同步的金值）。
  */
 
@@ -38,11 +42,15 @@ const RAW_DOMAINS = [
   { key: "D02", name: "需求与预测", businessDomainKey: "forecast" },
   { key: "D03", name: "销售与客户", businessDomainKey: "sales" },
   { key: "D05", name: "采购与供应", businessDomainKey: "material" },
+  // WO-V4-INSPECT 追加：P37/P40 共用承载物 ProductionSchedule，节点检视的「同承载物流程」反查
+  // 需要 fixture 里真有这一对，否则前端那条断言只能在空集合上跑（= 恒真的哑断言）。
+  { key: "D06", name: "计划与排产", businessDomainKey: "capacity" }, // seed.ts:534
 ] as const;
 
 /**
  * 流程：逐字取自 `apps/datacore/src/seed.ts` 的 `DEMO_PROCESS_DEFINITIONS`（行号标在每条后）。
- * 四态覆盖：USER×2 · DATA×2 · EXTERNAL×3 · SCHEDULE×2。
+ * 四态覆盖：USER×2 · DATA×3 · EXTERNAL×3 · SCHEDULE×3。
+ * 另含一对**共用承载物**的流程（P37/P40 → `ProductionSchedule`），供节点检视的反查断言用。
  */
 const RAW_DEFINITIONS = [
   // WAITING_USER ×2
@@ -58,6 +66,11 @@ const RAW_DEFINITIONS = [
   // WAITING_SCHEDULE ×2
   { key: "P06", domainKey: "D01", name: "S&OP 产销平衡例会", ownerFunctionKey: "strategy_office", stdDurationDays: 3, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "SopVersionRow" }, // seed.ts:587
   { key: "P32", domainKey: "D05", name: "物料平衡（MRP）运行", ownerFunctionKey: "supply_chain", stdDurationDays: 1, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "MaterialBalance" }, // seed.ts:621
+  // WO-V4-INSPECT 追加的一对：**共用同一个承载物** `ProductionSchedule`（契约 process.ts 文件头
+  // 明写「两条流程共用一个承载物是合法的，不是空壳」）。这一对是节点检视「同承载物流程」反查
+  // 在 mock 侧唯一的真样本 —— 少了它，前端那条断言就是在空集合上跑，恒真恒绿。
+  { key: "P37", domainKey: "D06", name: "主生产计划（MPS）编制", ownerFunctionKey: "production_planning", stdDurationDays: 5, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "ProductionSchedule" }, // seed.ts:631
+  { key: "P40", domainKey: "D06", name: "详细排产（APS）", ownerFunctionKey: "production_planning", stdDurationDays: 1, waitKind: "WAITING_DATA", carrierTypeKey: "ProductionSchedule" }, // seed.ts:634
 ] as const;
 
 const TENANT_ID = "demo";
@@ -77,4 +90,258 @@ export const PROCESS_DEFINITIONS_RESPONSE: ProcessDefinitionsResponse = {
   // 词表与登记册直接给契约的那一份 —— 与后端路由 `app.ts` 下发的是同一个常量。
   waitKinds: PROCESS_WAIT_KINDS,
   ownerFunctions: PROCESS_OWNER_FUNCTIONS,
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-FLOWTIME · `GET /a/v1/process-definitions/:key/instances` 的 mock fixture
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ══ 🔴 同一条防分家纪律，外加一条本单专有的 ═════════════════════════════════
+ *
+ * ① 走同一份 zod schema（`ProcessInstanceSchema.parse`，`strictObject`，多写一个字段即炸）。
+ * ② **值是真后端真跑出来的，不是编的**。下面两条 fixture 逐字取自本单在真后端
+ *    （`seedDemo` + 合成 `battery-manufacturing/S/seed=42` + `seedDemoProcessLayer`）
+ *    上跑 `GET /a/v1/process-definitions/P34|P01/instances` 的实际响应：
+ *      · P34 进口清关：`cc_po_12` 的 `declaredDay=2 / clearedDay=5`
+ *        （锚点 forecastStart=2026-06-10 ⇒ 2026-06-12 → 2026-06-15，停留 3 天，
+ *         责任方 `brokerName=洋山报关行`）—— 30 张采购单里只有这 1 张是进口，
+ *         **这个 1 是真值不是数据缺失**（境内直供结构上没有清关环节）。
+ *      · P01 年度经营目标分解：`available:false` + `NO_RECONSTRUCTION_RULE`，
+ *        承载物 `PlanTarget` 真有 17 条对象，缺的是反推规则不是数据。
+ * ③ **两向都给**：mock 必须同时覆盖「反推得出」与「反推不出」两条分支。
+ *    只 mock 成功那一路，`available:false` 的渲染分支就永远没被跑过，
+ *    等真后端返回它的时候才第一次执行 —— 那正是「绿测试 ≠ 能用」。
+ */
+const RAW_INSTANCES_P34 = [
+  {
+    id: `pinst_${TENANT_ID}_P34_obj_customsclearance_cc_po_12`,
+    tenantId: TENANT_ID,
+    key: "P34::obj_customsclearance_cc_po_12",
+    processKey: "P34",
+    carrierObjectId: "obj_customsclearance_cc_po_12",
+    carrierTypeKey: "CustomsClearance",
+    flowKey: "procure_to_release::po_12",
+    stationIndex: 1,
+    enteredAt: "2026-06-12",
+    exitedAt: "2026-06-15",
+    // 已出站 ⇒ 等待态与它的出处**同为 null**（契约 superRefine 的"同生共死"不变量，
+    // 少写一个当场炸 —— 本单实测炸过一次，是 schema 在替我们把关不是我记性好）。
+    waitState: null,
+    waitStateOrigin: null,
+    // 合并后（WO-R9-PROCESS-MERGE）实例带整体状态：已出站 ⇒ DONE（由 exitedAt 派生，不另存一份）。
+    status: "DONE",
+    ownerRef: { functionKey: "supply_chain", partyField: "brokerName", partyValue: "洋山报关行" },
+    origin: "DERIVED_FROM_DOCUMENT",
+    sourceDocuments: [
+      { objectId: "obj_customsclearance_cc_po_12", typeKey: "CustomsClearance", field: "declaredDay", rawValue: 2, unit: "DAY_OFFSET", resolvedAt: "2026-06-12", role: "ENTERED" },
+      { objectId: "obj_customsclearance_cc_po_12", typeKey: "CustomsClearance", field: "clearedDay", rawValue: 5, unit: "DAY_OFFSET", resolvedAt: "2026-06-15", role: "EXITED" },
+    ],
+    scopeObjectTypes: ["CustomsClearance"],
+  },
+] as const;
+
+/** 反推得出的那一路（P34 进口清关）。 */
+export const PROCESS_INSTANCES_P34: ProcessInstancesResponse = {
+  definition: ProcessDefinitionSchema.parse({
+    ...RAW_DEFINITIONS.find((d) => d.key === "P34")!,
+    id: `pdef_${TENANT_ID}_P34`,
+    tenantId: TENANT_ID,
+  }),
+  asOf: "2026-07-06",
+  asOfSource: "DATA_LATEST",
+  available: true,
+  absence: null,
+  instanceCount: 1,
+  instances: RAW_INSTANCES_P34.map((i) => ProcessInstanceSchema.parse(i)),
+  instancesShown: 1,
+  flowTime: [
+    {
+      flowKey: "procure_to_release::po_12",
+      totalDays: 30,
+      bottleneckProcessKey: "P33",
+      bottleneckDwellDays: 30,
+      stuckProcessKey: null,
+      stuckDays: null,
+      thisStation: {
+        processKey: "P34",
+        stationIndex: 1,
+        instanceKey: "P34::obj_customsclearance_cc_po_12",
+        carrierObjectId: "obj_customsclearance_cc_po_12",
+        enteredAt: "2026-06-12",
+        exitedAt: "2026-06-15",
+        dwellDays: 3,
+        stillIn: false,
+        waitState: null,
+        waitStateOrigin: null,
+        ownerRef: { functionKey: "supply_chain", partyField: "brokerName", partyValue: "洋山报关行" },
+        gapDaysToNext: 0,
+      },
+      stations: [
+        {
+          processKey: "P34",
+          stationIndex: 1,
+          instanceKey: "P34::obj_customsclearance_cc_po_12",
+          carrierObjectId: "obj_customsclearance_cc_po_12",
+          enteredAt: "2026-06-12",
+          exitedAt: "2026-06-15",
+          dwellDays: 3,
+          stillIn: false,
+          waitState: null,
+          waitStateOrigin: null,
+          ownerRef: { functionKey: "supply_chain", partyField: "brokerName", partyValue: "洋山报关行" },
+          gapDaysToNext: 0,
+        },
+      ],
+    },
+  ],
+  waitKinds: PROCESS_WAIT_KINDS,
+  origins: PROCESS_INSTANCE_ORIGINS,
+};
+
+/** 反推**不出**的那一路（P01）—— 缺席理由与探针逐字取自真后端响应。 */
+export const PROCESS_INSTANCES_P01: ProcessInstancesResponse = {
+  definition: ProcessDefinitionSchema.parse({
+    ...RAW_DEFINITIONS.find((d) => d.key === "P01")!,
+    id: `pdef_${TENANT_ID}_P01`,
+    tenantId: TENANT_ID,
+  }),
+  asOf: "2026-07-06",
+  asOfSource: "DATA_LATEST",
+  available: false,
+  absence: {
+    processKey: "P01",
+    name: "年度经营目标分解",
+    carrierTypeKey: "PlanTarget",
+    kind: "NO_RECONSTRUCTION_RULE",
+    reason:
+      "承载物 PlanTarget 有 17 条实例，但**没有任何一条反推规则**声明本流程的进/出站字段落在哪两个属性上。这是「有单据、没规则」不是「没数据」—— 修法是补规则表一行，不是补数据。",
+    probe: 'listByType("PlanTarget") 数出 17 条；再在 flow-rules.ts 里搜 processKey:"P01" 命中 0 条。',
+  },
+  instanceCount: 0,
+  instances: [],
+  instancesShown: 0,
+  flowTime: [],
+  waitKinds: PROCESS_WAIT_KINDS,
+  origins: PROCESS_INSTANCE_ORIGINS,
+};
+
+/**
+ * 按 processKey 分发。**没有兜底的"编一条"**：未登记的 key 走 `NO_RECONSTRUCTION_RULE`
+ * 缺席分支（与真后端对 56 条反推不出的流程的行为一致），而不是返回一条假实例。
+ */
+export const processInstancesFixture = (key: string): ProcessInstancesResponse => {
+  if (key === "P34") return PROCESS_INSTANCES_P34;
+  const def = RAW_DEFINITIONS.find((d) => d.key === key);
+  if (key === "P01" || def === undefined) return PROCESS_INSTANCES_P01;
+  return {
+    ...PROCESS_INSTANCES_P01,
+    definition: ProcessDefinitionSchema.parse({ ...def, id: `pdef_${TENANT_ID}_${key}`, tenantId: TENANT_ID }),
+    absence: { ...PROCESS_INSTANCES_P01.absence!, processKey: key, name: def.name, carrierTypeKey: def.carrierTypeKey },
+  };
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-SANDBOX-PROCESS-MODE · `GET /a/v1/process-definitions/:key/inspect` 的 mock
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ══ 为什么现在才补这条 mock ═════════════════════════════════════════════════
+ * `ProcessInspectPanel` 此前只在 `/v/process-wait` 出现，而那一页在 mock 模式下点开面板
+ * 会打到一个**没有 handler 的路由**（**2026-08-14 实测**；复验：`grep -n ":key/inspect" apps/frontend-shell/src/mocks/handlers.ts`，
+ * 金丝雀：同条件 grep `:key/instances` 有命中 ⇒ 工具是好的。本段补之前 `handlers.ts` 里
+ * `process-definitions/:key/inspect` 零命中；金丝雀 —— 同一条 grep 对
+ * `process-definitions/:key/instances` 在同一文件命中一条，证明是真没有、不是 grep 坏了）。
+ * 沙盘第五档把这个面板搬到主画布右栏，这个缺口就从"某页的边角"变成"主屏上一点就报错"。
+ *
+ * ══ 🔴 这份 mock **不编造本体** ═══════════════════════════════════════════════
+ * 关键选择：`carrier.status` 一律 `absent`。**这不是偷懒，是 mock 世界的真实情况** ——
+ * `handlers.ts` 的 `GET /a/v1/ontology/object-types` 里根本没有 `MaterialBalance` /
+ * `ProductionSchedule` / `PlanTarget` 这些承载类型（**2026-08-14 实测**；
+ * 复验：`node -e 'require("./src/mocks/fixtures")' ` 或直接在 mock 模式点开任一流程看 `carrier.status`；
+ * ⚠ 有保质期：mock 一旦播种这些类型，此处即过期，**改口径不许加豁免**。金丝雀：同一条 grep 对
+ * `Material` 在该文件命中 14 处，证明工具是好的）。硬给它们编几条属性和中文名，
+ * 就是本仓最恨的那种假数据：屏上看着很满，对应的真后端字段却一个都不存在，
+ * 还会让「前端诚实回落裸键」那条分支永远跑不到。
+ * 缺席理由照实写"缺在哪一环"，与真后端 `absent` 分支同形
+ * （真后端那一态的录制样本见 `test/fixtures/process-inspect-real.json` 的 `P32-ABSENT-PROBE`）。
+ *
+ * ══ 但**能从 mock 自己的数据算出来的，一律算真的** ═══════════════════════════
+ *  · `process.*` —— 逐字取自本文件上方的 `RAW_DEFINITIONS`（真种子子集）；
+ *  · `domainName` / `ownerFunctionName` —— 查 `RAW_DOMAINS` / `PROCESS_OWNER_FUNCTIONS`，
+ *    查不到即 `null`（前端显裸键，不臆造）；
+ *  · `sharedCarrierProcesses` —— **真反查**：同 `carrierTypeKey` 的其它流程。
+ *    P37 / P40 共用 `ProductionSchedule` 那一对因此在 mock 里真的能互相查到 ——
+ *    这是本面板最值得当场看见的一条本体关系，且它不需要任何编造。
+ *  · `runtime` —— `available:false` ＋ 后端今天的口径（定义层不下发运行态）。
+ */
+
+/** 缺席理由：说清缺在哪一环，不写「暂无数据」这种什么都没说的话。 */
+const mockCarrierAbsentReason = (typeKey: string): string =>
+  `承载类型 ${typeKey} 在 mock 世界的已发布本体里查不到（GET /a/v1/ontology/object-types 不含该类型）⇒ 属性 / 派生 / 一跳关系 / 十六层全部取不到。这是 mock 数据的边界，不是「这条流程没有承载物」：真后端 SEED_DEMO 下该类型是存在的（录制样本见 test/fixtures/process-inspect-real.json）。`;
+
+/**
+ * 按 processKey 现算一份 inspect 响应。
+ * 未登记的 key ⇒ 返回 `null`，由 handler 回 404 信封 —— **不拿别的流程的数据顶包**。
+ */
+export const processInspectFixture = (key: string): ProcessInspectResponse | null => {
+  const def = RAW_DEFINITIONS.find((d) => d.key === key);
+  if (def === undefined) return null;
+  const domainOf = (k: string): string | null => RAW_DOMAINS.find((d) => d.key === k)?.name ?? null;
+  const ownerOf = (k: string): string | null => PROCESS_OWNER_FUNCTIONS.find((f) => f.key === k)?.displayName ?? null;
+
+  return ProcessInspectResponseSchema.parse({
+    process: {
+      key: def.key,
+      domainKey: def.domainKey,
+      name: def.name,
+      ownerFunctionKey: def.ownerFunctionKey,
+      stdDurationDays: def.stdDurationDays,
+      waitKind: def.waitKind,
+      carrierTypeKey: def.carrierTypeKey,
+      domainName: domainOf(def.domainKey),
+      ownerFunctionName: ownerOf(def.ownerFunctionKey),
+    },
+    runtime: {
+      available: false,
+      // 口径与真后端 `apps/datacore/src/process/inspect.ts` 的 `runtime.reason` 同义：
+      // **2026-08-14 实测**逐字同义；复验：起真后端后
+      //   curl -s -H 'X-Debug-User: demo:admin:admin' localhost:4801/a/v1/process-definitions/P32/inspect | jq -r .runtime.reason
+      // 与本串比对。⚠ 有保质期：真后端改了这句话此处即过期，**改口径不许加豁免**。
+      // 本投影是**定义层**，运行态本就不由它下发（不是"还没做"）。
+      reason:
+        "本投影是定义层投影，不下发运行态。「此刻卡了多久 / 有几单堵在这一步」由 GET /a/v1/process-definitions/{key}/instances 或求解器 process_flow_time 回答。",  // 2026-08-14 实测：与真后端 process/inspect.ts 的 runtime.reason 逐字同义；复验 curl -s -H 'X-Debug-User: demo:admin:admin' localhost:4801/a/v1/process-definitions/P32/inspect | jq -r .runtime.reason
+      stdDurationDays: def.stdDurationDays,
+      stdDurationCaption: "标准工期（模板值）· 不是此刻已卡时长",
+      unanswerable: ["此刻这一步卡了多久？", "现在有几单堵在这一步？", "实测在制品数是多少？"],
+    },
+    carrier: {
+      status: "absent",
+      typeKey: def.carrierTypeKey,
+      displayName: null,
+      domain: null,
+      description: null,
+      properties: [],
+      derivedProperties: [],
+      objectCount: null,
+      absentReason: mockCarrierAbsentReason(def.carrierTypeKey),
+    },
+    // 承载类型都解析不到，一跳关系与杠杆自然也解析不到 —— 空数组，界面对空集合有明确文案。
+    relations: [],
+    sharedCarrierProcesses: RAW_DEFINITIONS.filter((d) => d.carrierTypeKey === def.carrierTypeKey && d.key !== def.key)
+      .map((d) => ({
+        key: d.key,
+        name: d.name,
+        domainKey: d.domainKey,
+        domainName: domainOf(d.domainKey),
+        ownerFunctionKey: d.ownerFunctionKey,
+        ownerFunctionName: ownerOf(d.ownerFunctionKey),
+        waitKind: d.waitKind,
+        stdDurationDays: d.stdDurationDays,
+      }))
+      .sort((a, b) => a.key.localeCompare(b.key)),
+    levers: [],
+    carrierLayers: null,
+    carrierLayersAbsentReason: `承载类型 ${def.carrierTypeKey} 解析不到 ⇒ 切不出以它为根的一跳子图，十六层三态无从算起。不返回 16 个空壳假装算过。`,
+  });
 };

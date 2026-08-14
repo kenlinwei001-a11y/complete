@@ -1,6 +1,18 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
-import type { BuildPipeline, BuildPipelineKind, PlanBuilderCanvas, PlanBuilderCompileResult, PlanBuilderPublishResult, CreatePlanBuilderBody, UpdatePlanBuilderBody, PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport } from "@platform/contracts";
-import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition } from "@platform/contracts";
+import type { BuildPipeline, BuildPipelineKind, PlanBuilderCanvas, PlanBuilderCompileResult, PlanBuilderPublishResult, CreatePlanBuilderBody, UpdatePlanBuilderBody, PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport, FactoryCalendar, OpsPlaybook } from "@platform/contracts";
+import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition, deriveDispositionOptions, SEG_REGISTRY } from "@platform/contracts";
+// WO-DECISION-INFO-FE · 决策三块（影响面 / 不作为后果 / 方案代价）的 mock 载荷类型，
+// 与真后端共用同一份契约 ⇒ mock 与引擎口径不可能分家。
+import type {
+  DispositionOptions,
+  DispositionSideEffect,
+  DoNothing,
+  DoNothingOrderDelay,
+  Exposure,
+  ExposureCustomer,
+  ExposureOrder,
+  MissingEvidence,
+} from "@platform/contracts";
 // WO-UNBLOCK-SKILL-FE · 编译 mock 复用**契约里那份**纯函数实现（Parser/图派生住在 contracts，
 // 见 packages/contracts/src/skill-compile.ts）——绝不在此另抄一套 AST/图推导，抄了就是"同一概念两套词表"。
 import {
@@ -13,6 +25,8 @@ import {
 } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
+// WO-PROCESS-INSTANCE：等待态词表单源（mock 也不许手抄一份五值数组）。
+import { PROCESS_TASK_WAIT_STATES } from "@platform/contracts";
 import type { RiskTimelineOutput } from "@platform/contracts";
 // WO-R1 收编 kit_readiness mock：基地解析镜像引擎 `resolveBaseRef`，基地表读契约单一来源（禁前端另拍一张）。
 import { BASE_REGISTRY } from "@platform/contracts";
@@ -47,6 +61,9 @@ import {
   ROLES_RESPONSE,
   SYNTHETIC_PHASES,
   SYNTHETIC_REPORT,
+  // WO-BEFE-B · 行动与审批组
+  OPS_PERSONAS,
+  OPS_POOLS,
   TENANT_ID,
   tickReport,
   TS_AGG_POINTS,
@@ -57,7 +74,7 @@ import { newPlanBuilderCanvas } from "./planBuilderFixtures";
 import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
 import { BUILD_PIPELINE_KINDS, factoryPipeline, pipelineOrder, resolvePipeline } from "./pipelineFixtures";
 // WO-WAITING-STATES-FE · 流程等待态 fixture（过契约 schema 的真种子子集，见该文件头三重防漂移机制）
-import { PROCESS_DEFINITIONS_RESPONSE } from "./processWaitFixtures";
+import { PROCESS_DEFINITIONS_RESPONSE, processInspectFixture, processInstancesFixture } from "./processWaitFixtures";
 import { historyBundleFor, LIVED_WATERMARK } from "./livedInFixtures";
 
 /**
@@ -125,6 +142,21 @@ import {
 const err = (status: number, code: string, message: string) =>
   HttpResponse.json({ error: { code, message, requestId: `req_${Math.random().toString(36).slice(2, 10)}` } }, { status });
 
+/**
+ * WO-BEFE-B · 往 R4 留痕流里追一条 `action.*` 事件（真后端是 `outbox.emit`）。
+ * `at` 用递增序号而非 `Date.now()`：R6 确定性——同一串操作重跑必须字节级一致。
+ */
+let actionEventSeq = 0;
+function pushActionEvent(event: string, payload: Record<string, unknown>): void {
+  actionEventSeq += 1;
+  db.actionEvents.push({
+    event,
+    payload,
+    at: `2026-06-12T09:${String(actionEventSeq % 60).padStart(2, "0")}:00Z`,
+    status: "SENT",
+  });
+}
+
 // ---------------------------------------------------------------------------
 // WO-LIVE-DISPOSITION · mock 处置表**真重算**（KILL-MOCK：不写死两套结果）。
 // 与后端 `buildRiskPlanRows` 同结构（主因素行 + 峰值≥90 备份行 + 14 天内 C21 反提 S&OP，按启动排序），
@@ -150,6 +182,331 @@ function mmddMock(startIso: string, day: number): string {
   return new Date(Date.parse(`${startIso}T00:00:00Z`) + day * 86400000).toISOString().slice(5, 10);
 }
 
+// ---------------------------------------------------------------------------
+// WO-DECISION-INFO-FE · mock 的**决策三块**（影响面 / 不作为后果 / 多方案代价）。
+//
+// 口径逐条照抄真后端（`apps/datacore/src/solvers/decision-info.ts`），不是另写一套看着像的：
+//   exposure      = 卡片**已有的那份** affectedOrders 聚合（不重新筛单）；金额 Σ qty×SEG 参考单价/1e4
+//                   （与 datacore `orderRevenueYi` 逐字同式·SEG_REGISTRY 单一价基）
+//   exposureOrder = `assignExposureRanks` 同判据：**hasExposure 是主序**（零敞口一律沉底），
+//                   其后 金额↓ → 单数↓ → 最早交期↑ → baseId↑（R6 全序·同输入同序）
+//   doNothing     = catchUp 用**与 planRows 同一份** shortfall/freeDaily（同一出处·不各算一套）；
+//                   delay 标 `ESTIMATED`（mock 的 affectedOrders[].delay 同样是估算，绝不当实测）；
+//                   penalty **恒 EMPTY**（与真后端一致：C01–C33 无交付罚则承载 → 前端必须显"未承载"）
+//   options       = `deriveDispositionOptions`（@platform/contracts **同一份**纯函数），
+//                   代价层照 datacore `attachOptionEvidence` 的形状装配：跨基地运费按真调拨台账算，
+//                   加班/外协成本本体无承载 → EMPTY（不填 0），外协比例对 C08 红线（OUTSOURCE_REDLINE 单源）。
+// 确定性 R6：全程无 Date.now / 无随机 —— 同 args 字节一致。
+// ---------------------------------------------------------------------------
+const SEG_PRICE_WAN: Record<string, number> = Object.fromEntries(SEG_REGISTRY.map((s) => [s.key, s.priceWan]));
+const SEG_NAME_OF: Record<string, string> = Object.fromEntries(SEG_REGISTRY.map((s) => [s.key, s.seg]));
+/** mock 世界的客户→细分映射（真后端走 `segOfCust` 的客户名集合；mock 客户是另一批名字，故在此显式列出）。 */
+const MOCK_SEG_OF_CUST: Record<string, string> = { 蔚途汽车: "pas", 极光新能源: "ess", 星河储能: "ess" };
+const mockSegKey = (cust: string): string => MOCK_SEG_OF_CUST[cust] ?? "pas";
+const r2m = (v: number): number => Math.round(v * 100) / 100;
+const r6m = (v: number): number => Math.round(v * 1e6) / 1e6;
+/** 单张订单金额（亿元）= qty(套) × 细分单价(万元/套) / 1e4 —— 与 datacore orderRevenueYi 逐字同式。 */
+const mockOrderRevenueYi = (cust: string, qty: number): number => r6m((qty * (SEG_PRICE_WAN[mockSegKey(cust)] ?? 0)) / 1e4);
+
+type MockCard = RiskTimelineOutput["cards"][number];
+
+/** ① 影响面（不含 rank —— rank 由 assignExposureRanks 统一回填，与真后端同结构）。 */
+function mockExposure(card: MockCard, window: { fromDay: number; toDay: number }, forecastStart: string): Omit<Exposure, "rank"> {
+  const orders: ExposureOrder[] = (card.affectedOrders ?? [])
+    .map((a) => ({
+      so: a.so,
+      cust: a.cust,
+      model: a.model,
+      qty: a.qty,
+      due: a.due,
+      dueDay: a.dueDay,
+      // mock 的 affectedOrders 不带 Order.pri —— 诚实留空串（前端渲成"未标"），不默认成"中"。
+      pri: "",
+      revenueYi: mockOrderRevenueYi(a.cust, a.qty),
+      seg: SEG_NAME_OF[mockSegKey(a.cust)] ?? mockSegKey(a.cust),
+    }))
+    .sort((x, y) => x.dueDay - y.dueDay || (x.so < y.so ? -1 : 1));
+
+  const byCust = new Map<string, ExposureCustomer>();
+  for (const o of orders) {
+    const e = byCust.get(o.cust);
+    if (!e) {
+      byCust.set(o.cust, { cust: o.cust, seg: o.seg, orderCount: 1, qty: o.qty, revenueYi: o.revenueYi, earliestDue: o.due, earliestDueDay: o.dueDay });
+    } else {
+      e.orderCount += 1;
+      e.qty = r2m(e.qty + o.qty);
+      e.revenueYi = r6m(e.revenueYi + o.revenueYi);
+      if (o.dueDay < e.earliestDueDay) {
+        e.earliestDue = o.due;
+        e.earliestDueDay = o.dueDay;
+      }
+    }
+  }
+  const customers = [...byCust.values()].sort((a, b) => b.revenueYi - a.revenueYi || (a.cust < b.cust ? -1 : 1));
+  const common = {
+    baseId: card.baseId,
+    baseName: card.base,
+    window: { ...window, forecastStart },
+    units: { qty: "套" as const, revenue: "亿元" as const },
+  };
+  if (orders.length === 0) {
+    return {
+      ...common,
+      status: "EMPTY",
+      orderCount: 0,
+      totalQty: 0,
+      revenueYi: 0,
+      customerCount: 0,
+      customers: [],
+      orders: [],
+      earliest: null,
+      hasExposure: false,
+      emptyReason: `本窗（D+${window.fromDay}…D+${window.toDay}·锚 ${forecastStart}）无订单交期落入：${card.base}基地在本 mock 数据集里没有窗内受影响订单 —— 有风险但本窗没有订单敞口`,
+      // mock 数据集没有窗外订单台账 → 诚实 null（不编一张"窗外还有多少"的单）。
+      nextOutsideWindow: null,
+      provenance: [],
+    };
+  }
+  return {
+    ...common,
+    status: "OK",
+    orderCount: orders.length,
+    totalQty: r2m(orders.reduce((a, o) => a + o.qty, 0)),
+    revenueYi: Math.round(orders.reduce((a, o) => a + o.revenueYi, 0) * 1e4) / 1e4,
+    customerCount: customers.length,
+    customers,
+    orders,
+    earliest: { so: orders[0]!.so, cust: orders[0]!.cust, due: orders[0]!.due, dueDay: orders[0]!.dueDay },
+    hasExposure: true,
+    provenance: orders.slice(0, 3).map((o) => ({ objectType: "Order", objectId: o.so, field: "qty", value: o.qty })),
+  };
+}
+
+/** 影响面排序键（与 datacore `assignExposureRanks` 同判据·hasExposure 为主序）。 */
+function mockAssignRanks(list: Omit<Exposure, "rank">[]): Exposure[] {
+  const ordered = [...list].sort((a, b) => {
+    if (a.hasExposure !== b.hasExposure) return a.hasExposure ? -1 : 1;
+    if (a.revenueYi !== b.revenueYi) return b.revenueYi - a.revenueYi;
+    if (a.orderCount !== b.orderCount) return b.orderCount - a.orderCount;
+    const ea = a.earliest?.dueDay ?? Number.MAX_SAFE_INTEGER;
+    const eb = b.earliest?.dueDay ?? Number.MAX_SAFE_INTEGER;
+    if (ea !== eb) return ea - eb;
+    return a.baseId < b.baseId ? -1 : a.baseId > b.baseId ? 1 : 0;
+  });
+  const rankById = new Map(ordered.map((e, i) => [e.baseId, i + 1]));
+  return list.map((e) => ({ ...e, rank: rankById.get(e.baseId) ?? ordered.length + 1 }));
+}
+
+/**
+ * 违约金的**逐条核查结论** —— 与真后端 `buildPenaltyEvidence` 同结论：本仓无任何规则承载"交付延误赔多少"。
+ * mock 里同样恒 EMPTY：如果 mock 给个数、真环境给 EMPTY，前端就会被 mock 训练成"总有金额可显"。
+ */
+const MOCK_PENALTY_EMPTY: MissingEvidence = {
+  status: "EMPTY",
+  reason:
+    "违约金/罚则**当前本体无承载**：规则库 C01–C33 逐条核过，没有一条带交付延误罚金/费率（财务类均为闸门谓词、不带金额）；" +
+    "唯一带罚金的字段 LongTermAgreement.breachPenaltyWan 是**供应商长协欠交**罚金（C27 口径），与「我方晚交客户单要赔多少」不是一回事 —— 拒绝挪用。",
+  missingFields: ["Order.latePenaltyRatePerDay", "Customer.contractPenaltyRate", "RuleEntry(交付延误罚则).params"],
+  checked: [
+    "RuleEntry.C05/C08/C21/C27（逐条核过·无交付罚则）",
+    "LongTermAgreement.breachPenaltyWan（供应商长协欠交·非交付延误）",
+    "Order.*（so/cust/qty/due —— 无罚则字段）",
+    "Customer.*（creditLimit/termDays —— 无罚则字段）",
+  ],
+};
+
+/** ② 不作为后果（catchUp / delay / penalty / atRiskCustomers 四块各自独立标状态）。 */
+function mockDoNothing(card: MockCard, exposure: Omit<Exposure, "rank">, shortfall: number, freeDaily: number): DoNothing {
+  const delayNote =
+    "delay = 由受影响订单的传导估算派生（与 affected_orders 同口径）——**确定性估算（R6 可重跑），非实测交付延误**；" +
+    "要变成实测需接 Shipment 实际交付日 / 排产完工日回写。";
+  const catchUp: DoNothing["catchUp"] =
+    shortfall > 0 && freeDaily > 0
+      ? {
+          status: "OK",
+          shortfall: r2m(shortfall),
+          freeDaily: r2m(freeDaily),
+          days: r2m(shortfall / freeDaily),
+          unit: "天",
+          formula: "缺口(套) ÷ 空闲日产能(套/日)；空闲日产能 = Σ Line.capacityDaily × (1 − Base.util/100)",
+          provenance: [
+            { objectType: "Line", objectId: card.baseId, field: "capacityDaily", value: r2m(freeDaily) },
+            { objectType: "Order", objectId: card.baseId, field: "qty", value: r2m(shortfall) },
+          ],
+        }
+      : {
+          status: "EMPTY",
+          reason:
+            shortfall <= 0
+              ? "本窗无产能缺口（可用产能覆盖窗内订单）→ 不存在\"自然消化天数\"这件事，不编一个数"
+              : `${card.base}基地空闲日产能为 0（Σ Line.capacityDaily×(1−util/100) = 0）→ 缺口除不动，拒绝按任意日产能估天数`,
+          missingFields: shortfall <= 0 ? [] : ["Line.capacityDaily", "Base.util"],
+          checked: ["Line.capacityDaily", "Base.util", "Order.qty(窗内未来订单)"],
+        };
+
+  const delayOrders: DoNothingOrderDelay[] = (card.affectedOrders ?? [])
+    .map((a) => ({ so: a.so, cust: a.cust, qty: a.qty, due: a.due, dueDay: a.dueDay, delayDays: a.delay, basis: "ESTIMATED" as const, basisNote: delayNote }))
+    .sort((x, y) => y.delayDays - x.delayDays || (x.so < y.so ? -1 : 1));
+  const delay: DoNothing["delay"] =
+    delayOrders.length > 0
+      ? { status: "OK", worstDays: delayOrders[0]!.delayDays, orders: delayOrders, note: delayNote }
+      : { status: "EMPTY", reason: "本窗无受影响订单（见 exposure.emptyReason）→ 没有\"晚交几天\"这件事可算", missingFields: [], checked: ["Order.due(窗内)", "affected_orders.delay"] };
+
+  const worstByCust = new Map<string, number>();
+  for (const d of delayOrders) worstByCust.set(d.cust, Math.max(worstByCust.get(d.cust) ?? 0, d.delayDays));
+  const atRiskCustomers = exposure.customers.map((cu) => {
+    // 与真后端同结论：order_of_customer 边按订单序轮转绑定，与 Order.cust 名称无对应 → 账期/额度连不上。
+    //
+    // ⚠ WO-R5 收编注记：此处**显式标注 `MissingEvidence` 类型**，而不是写 `status: "EMPTY" as const`。
+    // 后者会踩中 `test/transit-flow.seam.test.tsx` 的回归锁 —— 那道门全树禁 `status: "EMPTY" as const`
+    // 字面量（它治的是「缺席声明退回手写字面量、不再由 derive* 派生」那个病）。
+    // 门的正则是全树的、比它自述的靶子宽，但它在 canonical 上是**绿的**，收编不得把它弄红；
+    // 且换成类型标注在语义上更好：窄化由契约类型给，不由 `as const` 给。
+    const customerObject: MissingEvidence = {
+      status: "EMPTY",
+      reason: `订单客户「${cu.cust}」连不到 Customer 对象：order_of_customer 边由 synthetic 按订单序**轮转**绑定（custIds[i % n]），与 Order.cust 名称无对应关系 —— 拒绝拿这条边回答账期/信用额度（张冠李戴的数比没有更危险）。`,
+      missingFields: ["Customer.custName ↔ Order.cust 的真实对应（或 Order.custId 外键）"],
+      checked: ["link:order_of_customer", "Customer.custName", "Customer.termDays", "Customer.creditLimit"],
+    };
+    return {
+      cust: cu.cust,
+      orderCount: cu.orderCount,
+      qty: cu.qty,
+      revenueYi: cu.revenueYi,
+      worstDelayDays: worstByCust.get(cu.cust) ?? 0,
+      customerObject,
+    };
+  });
+
+  const okCount = [catchUp.status, delay.status, MOCK_PENALTY_EMPTY.status].filter((s) => s === "OK").length;
+  return {
+    status: okCount === 3 ? "OK" : okCount === 0 ? "EMPTY" : "PARTIAL",
+    baseId: card.baseId,
+    baseName: card.base,
+    window: exposure.window,
+    catchUp,
+    delay,
+    penalty: MOCK_PENALTY_EMPTY,
+    atRiskCustomers,
+    revenueAtRiskYi: exposure.revenueYi,
+    summary: exposure.hasExposure
+      ? `不处置：${exposure.orderCount} 张单 / ${exposure.customerCount} 个客户 / ${exposure.revenueYi} 亿元敞口受影响` +
+        `${delay.status === "OK" ? `，最坏延误 ${delay.worstDays} 天（估算·非实测）` : ""}` +
+        `${catchUp.status === "OK" ? `；缺口按本基地空闲产能自然消化需 ${catchUp.days} 天` : ""}` +
+        "；违约金**算不出**（规则库无交付罚则承载，见 penalty.reason）"
+      : `不处置：本窗无订单敞口（${exposure.emptyReason ?? ""}）` +
+        `${catchUp.status === "OK" ? `；但缺口仍需 ${catchUp.days} 天自然消化` : ""}` +
+        "；违约金**算不出**（规则库无交付罚则承载）",
+    units: { qty: "套", revenue: "亿元" },
+  };
+}
+
+/**
+ * ③ 方案代价的证据层（形状照 datacore `attachOptionEvidence`）：
+ *   跨基地 → 运费按 mock 调拨台账真算 + 挤占的在手单点名；加班/外协 → 本体无单价承载 ⇒ EMPTY（不填 0）；
+ *   外协比例 → 对 C08 红线（`OUTSOURCE_REDLINE` 单一来源·禁内联裸阈值）。
+ */
+function mockAttachOptionEvidence(opts: DispositionOptions, ctx: { baseId: string; demandInWindow: number; window: { fromDay: number; toDay: number } }): DispositionOptions {
+  const freight = RISK_DISPOSITION_SEED.crossBaseFreight;
+  const options = opts.options.map((opt) => {
+    const missing: { leverKey: string; reason: string; missingField: string }[] = [];
+    const sideEffects: DispositionSideEffect[] = [];
+    let total = 0;
+    let anyOk = false;
+    const levers = opt.levers.map((lv) => {
+      const effects: DispositionSideEffect[] = [];
+      let cost: NonNullable<typeof lv.cost>;
+      if (lv.leverKey === "cross_base") {
+        cost = {
+          status: "OK",
+          amountYuan: r2m(lv.closesGap * freight.yuanPerUnit),
+          unit: "元",
+          source: {
+            objectType: "InterBaseTransfer",
+            objectId: freight.transferId,
+            field: "freightCost",
+            value: freight.freightCost,
+            formula: `运费单价(元/套) = InterBaseTransfer.freightCost(${freight.freightCost}) ÷ InterBaseTransfer.qty(${freight.qty})；本步成本 = 收窄量(${lv.closesGap}套) × 运费单价(${freight.yuanPerUnit}元/套)`,
+          },
+        };
+        const displaced = RISK_DISPOSITION_SEED.displaceable
+          .filter((d) => d.baseId !== ctx.baseId)
+          .map((d) => ({ ...d, displacedQty: r2m(Math.min(d.qty, lv.closesGap)), delayDays: d.freeDaily > 0 ? r2m(Math.min(d.qty, lv.closesGap) / d.freeDaily) : null, provenance: { objectType: "Order", objectId: d.so, field: "qty", value: d.qty } }))
+          .slice(0, 2);
+        effects.push({
+          kind: "DISPLACE_ORDERS",
+          leverKey: lv.leverKey,
+          title: `挤占 ${displaced.length} 张其他基地在手单（${r2m(displaced.reduce((a, d) => a + d.displacedQty, 0))} 套）`,
+          detail: `按「优先级低者先让 → 交期晚者先让 → 订单号」挑，直到覆盖跨基地吸收量 ${lv.closesGap} 套；每张单延后天数 = 被挤占量 ÷ 该单基地空闲日产能。`,
+          displacedOrders: displaced.map((d) => ({ so: d.so, cust: d.cust, baseId: d.baseId, baseName: d.baseName, qty: d.qty, displacedQty: d.displacedQty, pri: d.pri, due: d.due, dueDay: d.dueDay, delayDays: d.delayDays, provenance: d.provenance })),
+        });
+      } else if (lv.leverKey === "outsource") {
+        cost = {
+          status: "EMPTY",
+          amountYuan: null,
+          unit: "元",
+          reason: "本体无外协单价/加工费承载字段（Supplier 只有 leadTime/minOrderQty/onTimeRate）→ 外协成本算不出，拒绝按任意单价估",
+          missingField: "Supplier.outsourcePricePerUnit",
+        };
+        const ratio = ctx.demandInWindow > 0 ? Math.round((lv.closesGap / ctx.demandInWindow) * 1e4) / 1e4 : 0;
+        effects.push(
+          ctx.demandInWindow > 0
+            ? {
+                kind: "RULE_BREACH",
+                leverKey: lv.leverKey,
+                title:
+                  ratio > OUTSOURCE_REDLINE.maxRatio
+                    ? `外协比例 ${r2m(ratio * 100)}% 越 ${OUTSOURCE_REDLINE.ruleKey} 红线 ${r2m(OUTSOURCE_REDLINE.maxRatio * 100)}%`
+                    : `外协比例 ${r2m(ratio * 100)}%（${OUTSOURCE_REDLINE.ruleKey} 红线 ${r2m(OUTSOURCE_REDLINE.maxRatio * 100)}%·未越）`,
+                detail: `外协量 ${lv.closesGap}套 ÷ 窗内需求 ${ctx.demandInWindow}套 = ${r2m(ratio * 100)}%；阈值取规则 ${OUTSOURCE_REDLINE.ruleKey}.params.${OUTSOURCE_REDLINE.paramKey}（**规则口径·非代码内联**）`,
+                rule: { ruleKey: OUTSOURCE_REDLINE.ruleKey, threshold: OUTSOURCE_REDLINE.maxRatio, actual: ratio, breached: ratio > OUTSOURCE_REDLINE.maxRatio, paramKey: OUTSOURCE_REDLINE.paramKey },
+              }
+            : {
+                kind: "UNKNOWN",
+                leverKey: lv.leverKey,
+                title: "外协比例是否越红线：算不出",
+                detail: "窗内需求为 0，外协比例的分母不存在",
+                missingField: "Order.qty(窗内需求)",
+              },
+        );
+      } else {
+        cost = {
+          status: "EMPTY",
+          amountYuan: null,
+          unit: "元",
+          reason: "本体无加班工时费率承载字段（Line/Base 均无 overtimeCostPerUnit / overtimeRate）→ 加班成本算不出，拒绝按任意费率估",
+          missingField: "Line.overtimeCostPerUnit",
+        };
+        effects.push({
+          kind: "UNKNOWN",
+          leverKey: lv.leverKey,
+          title: "加班的副作用：算不出",
+          detail: "本体无人力工时上限/疲劳度/加班额度承载物 → 说不出「加这些班会撞到什么」；拒绝写一句听着对的空话",
+          missingField: "Line.maxOvertimeHours",
+        });
+      }
+      if (cost.status === "OK" && cost.amountYuan !== null) {
+        total = r2m(total + cost.amountYuan);
+        anyOk = true;
+      } else {
+        missing.push({ leverKey: lv.leverKey, reason: cost.reason ?? "算不出", missingField: cost.missingField ?? "?" });
+      }
+      sideEffects.push(...effects);
+      return { ...lv, cost, sideEffects: effects };
+    });
+    if (!levers.some((l) => l.leverKey === "cross_base")) {
+      sideEffects.push({ kind: "NONE", leverKey: "cross_base", title: "不挤占任何在手单", detail: "本方案未取用跨基地调剂杠杆 → 其他基地的在手单一张都不动（这正是它比 A 贵的原因）" });
+    }
+    return {
+      ...opt,
+      levers,
+      cost: { status: missing.length === 0 ? ("OK" as const) : anyOk ? ("PARTIAL" as const) : ("EMPTY" as const), totalYuan: anyOk ? total : null, unit: "元" as const, missing },
+      sideEffects,
+    };
+  });
+  return { ...opts, options };
+}
+
 function mockRiskTimeline(args: Record<string, unknown>): RiskTimelineOutput {
   const apply = Array.isArray(args.apply) ? (args.apply as { objectType?: unknown; prop?: unknown; value?: unknown }[]) : [];
   const capRatio = mockCapRatio(apply);
@@ -157,6 +514,8 @@ function mockRiskTimeline(args: Record<string, unknown>): RiskTimelineOutput {
   const fs = RISK_DISPOSITION_SEED.forecastStart;
   const rows: NonNullable<RiskTimelineOutput["planRows"]> = [];
   const early: string[] = [];
+  // 缺口读数（`planRows` 与卡片 `doNothing.catchUp` **同一出处**·不各算一套·R-一致）。
+  const gapByBase = new Map<string, { freeDaily: number; shortfall: number }>();
   for (const card of RISK_TIMELINE.cards) {
     const seed = RISK_DISPOSITION_SEED.bases.find((b) => b.base === card.base);
     const cross = card.crossDay ?? RISK_TIMELINE.horizon;
@@ -166,12 +525,23 @@ function mockRiskTimeline(args: Record<string, unknown>): RiskTimelineOutput {
     const available = Math.round(freeDaily * H * 100) / 100;
     const futureQty = (card.affectedOrders ?? []).reduce((a, o) => a + Number((o as { qty?: number }).qty ?? 0), 0);
     const shortfall = Math.round(Math.max(0, futureQty - available) * 100) / 100;
-    const d = deriveDisposition({
+    gapByBase.set(seed.baseId, { freeDaily, shortfall });
+    // WO-DECISION-INFO ③.2：前置期由调用方从真对象带进来（`InterBaseTransfer.transitDays` / `Supplier.leadTime`），
+    // 加班杠杆不带（本体无该承载字段 → 契约内部恒 EMPTY）。绝不复活 `+7 / +14` 魔数。
+    const dispositionInput = {
       baseId: seed.baseId, forecastStart: fs, horizon: H, trigDay: Math.max(1, cross), shortfall,
       freeDaily, available, inProdTotal: 0, futureQty,
       overtimeUpliftPct: RISK_DISPOSITION_SEED.coeff.overtimeUpliftPct,
       crossBaseAbsorbPct: RISK_DISPOSITION_SEED.coeff.crossBaseAbsorbPct,
-    });
+      crossBaseLead: RISK_DISPOSITION_SEED.crossBaseLead,
+      outsourceLead: RISK_DISPOSITION_SEED.outsourceLead,
+    };
+    const d = deriveDisposition(dispositionInput);
+    // WO-DECISION-INFO ③：可比较的多方案（A 本地优先 = 上面那条贪心的同解，可对拍）+ 真代价装配。
+    const options = mockAttachOptionEvidence(
+      deriveDispositionOptions({ ...dispositionInput, coefficients: RISK_DISPOSITION_SEED.coefficients }),
+      { baseId: seed.baseId, demandInWindow: futureQty, window: { fromDay: 0, toDay: H } },
+    );
     const head = d.steps[0];
     const p0 = seed.plans[0]!;
     const common = {
@@ -185,6 +555,8 @@ function mockRiskTimeline(args: Record<string, unknown>): RiskTimelineOutput {
       done: `T+${cross}·${mmddMock(fs, cross)}（越线日）`,
       eff: head ? `${d.steps.length} 步收窄 ${d.closedTotal}套 · 残留 ${d.residual}套` : `消解≈${p0.eff}·${p0.tn}天起效`,
       plan: p0.name,
+      // 多方案只挂每基地**主行**（备份行不重复挂同一份大对象·与真后端一致）。
+      options,
       ...common,
     });
     const p1 = seed.plans[1];
@@ -208,7 +580,21 @@ function mockRiskTimeline(args: Record<string, unknown>): RiskTimelineOutput {
     });
   }
   rows.sort((a, b) => String(a.start).localeCompare(String(b.start), undefined, { numeric: true }));
-  return { ...RISK_TIMELINE, planRows: rows };
+
+  // ---- WO-DECISION-INFO-FE ①② · 影响面排序 + 不作为后果（逐卡回填·顺序与真后端一致）---------
+  // ⚠ `cards[]` 数组序**刻意不动**（既有排序契约）；给出的是显式排序键 `exposure.rank` + 顶层 `exposureOrder`。
+  const window = { fromDay: 0, toDay: H };
+  const ranked = mockAssignRanks(RISK_TIMELINE.cards.map((c) => mockExposure(c, window, fs)));
+  const rankByBase = new Map(ranked.map((e) => [e.baseId, e]));
+  const cards = RISK_TIMELINE.cards.map((c) => {
+    const exposure = rankByBase.get(c.baseId);
+    if (!exposure) return c;
+    const gap = gapByBase.get(c.baseId);
+    return { ...c, exposure, doNothing: mockDoNothing(c, exposure, gap?.shortfall ?? 0, gap?.freeDaily ?? 0) };
+  });
+  const exposureOrder = [...ranked].sort((a, b) => a.rank - b.rank).map((e) => e.baseId);
+
+  return { ...RISK_TIMELINE, cards, planRows: rows, exposureOrder };
 }
 
 /**
@@ -610,13 +996,104 @@ function mockWorkflowRun(script: string, seed: number, status: "SUCCEEDED" | "FA
     }
     return { ...d, status: skipped ? "SKIPPED" : "SUCCEEDED", attempts: 1, maxAttempts: d.stepKey === "cross_scaffold" ? 3 : 1, durationMs: 5 + (idSeq % 9), detail: d.stepKey === "record" ? `status=${status}` : undefined };
   });
-  return { id, tenantId: "demo", kind: "story_build", script, scriptHash: "mockhash", seed, inference: false, status, steps, context: {}, storyRunId: status === "SUCCEEDED" ? storyRunId : undefined, resumedCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as { id: string; status: string; steps: { stepKey: string; status: string }[]; [k: string]: unknown };
+  // 形状显式写全（WO-87）：`steps[].attempts/durationMs/error` 与 `context` 早就在数据里，
+  // 只是旧断言把它们收进了 `[k:string]: unknown` ⇒ 驱动逻辑一碰就是编译错。写全 = 让类型替我们咬。
+  return { id, tenantId: "demo", kind: "story_build", script, scriptHash: "mockhash", seed, inference: false, status, steps, context: {}, storyRunId: status === "SUCCEEDED" ? storyRunId : undefined, resumedCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as {
+    id: string;
+    status: string;
+    steps: { stepKey: string; status: string; attempts?: number; maxAttempts?: number; durationMs?: number; detail?: string; error?: { code: string; message: string; retryable: boolean } }[];
+    context: Record<string, unknown>;
+    storyRunId?: string;
+    [k: string]: unknown;
+  };
 }
 const MOCK_WORKFLOW_RUNS: ReturnType<typeof mockWorkflowRun>[] = [];
+/**
+ * 清空运行台账（测试现场清理）。`resetMockDb()` 够不着这个模块级数组 ——
+ * 不清就会出现「同文件里后一条用例看见前一条留下的运行」这种顺序耦合，
+ * 而 `POST /workflow-runs` 的「第一条故意失败」演示行为正是**看长度**决定的。
+ */
+export function resetMockWorkflowRuns(): void {
+  MOCK_WORKFLOW_RUNS.length = 0;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+ * WO-87 · story_build 的**执行侧**也按生效 pipeline 跑（此前只有 intake 按它跑）。
+ *
+ * 为什么必须补这一半：`PipelineConfigPage.tsx:177 PausedRuns` 的放行入口早就挂上了，
+ * 但它的数据源 `GET /a/v1/databuilder/workflow-runs` 里**永远不会出现 PAUSED**——
+ * 旧 `POST /workflow-runs`（:4115）压根不读 pipeline，只在 FAILED/SUCCEEDED 二选一。
+ * 于是「接了线**没数据**」（铁律 0.5 第二形态）：按钮在场、一次也不可能渲染出来 ⇒ 配了
+ * 「要人工放行」的建域运行在屏上是**死锁**。补这一半后死锁闭合，且是端到端可驱动的。
+ *
+ * 语义逐条对齐真后端（不是另发明一套）：
+ *  · 节点 `enabled:false` ⇒ 该步**不进 steps**  — `datacore/databuilder/pipeline-defs.ts:154`
+ *    `resolvePipelineSteps` 里的 `if (!n.enabled) continue`；
+ *  · 首个未获放行的 `requiresHumanApproval` 节点 ⇒ 该步及其后回 PENDING、run 置 PAUSED、**保留现场**
+ *    — `datacore/databuilder/workflow-engine.ts:192-199`；
+ *  · 放行名单存在 `run.context.__approvedSteps` — `workflow-engine.ts:51 APPROVAL_KEY`；
+ *  · approve = 记名单 + resume 续跑（不是把整条 run 直接判成功）— `databuilder/service.ts:640`；
+ *  · 闸在失败步**之后**时，失败先发生 ⇒ run 仍是 FAILED（drive 遇 FATAL 即 return，够不到闸）。
+ *
+ * 出厂 pipeline（7 节点全启用 · 零放行节点）下这几个函数是**恒等变换** ⇒ 既有 mock 行为不变。
+ * ────────────────────────────────────────────────────────────────────────────── */
+
+/** 放行名单键：与 datacore `workflow-engine.ts:51` 的 `APPROVAL_KEY` 同名同义。 */
+const MOCK_APPROVAL_KEY = "__approvedSteps";
+
+type MockWfRun = ReturnType<typeof mockWorkflowRun>;
+
+/** 该 run 已放行的步（context 里的名单）。 */
+function mockApprovedSteps(wf: MockWfRun): Set<string> {
+  const list = wf.context?.[MOCK_APPROVAL_KEY];
+  return new Set(Array.isArray(list) ? (list as string[]) : []);
+}
+
+/** 生效 story_build pipeline 的执行序（已滤掉停用节点）。 */
+function storyPipelineOrder() {
+  const pipeline = resolvePipeline("story_build");
+  return pipelineOrder(pipeline).filter((n) => n.enabled);
+}
+
+/** 该步是否为「等人放行」的闸（配了 requiresHumanApproval 且本 run 尚未放行）。 */
+function isBlockingGate(wf: MockWfRun, stepKey: string): boolean {
+  const node = storyPipelineOrder().find((n) => n.stepKey === stepKey);
+  return !!node?.sop.requiresHumanApproval && !mockApprovedSteps(wf).has(stepKey);
+}
+
+/**
+ * 按生效 pipeline 驱动一条 mock run 到下一个终态/暂停点（同步 POST 与 approve 后的 resume 共用一份）。
+ * 共用而非各抄一份，正是为了避免「两套机制不对接」——真后端也是 drive 一份实现被 start/resume 共用。
+ */
+function driveMockStoryRun(wf: MockWfRun) {
+  const keep = new Set(storyPipelineOrder().map((n) => n.stepKey));
+  wf.steps = wf.steps.filter((s) => keep.has(s.stepKey)); // 停用节点：不执行也不出现在轨迹里
+  for (const s of wf.steps) {
+    if (isBlockingGate(wf, s.stepKey)) {
+      // 停在该步**之前**：闸步及其后全部回 PENDING（现场保留，闸前跑完的步不动）。
+      let hit = false;
+      for (const x of wf.steps) {
+        if (x.stepKey === s.stepKey) hit = true;
+        if (hit) { x.status = "PENDING"; x.attempts = 0; x.durationMs = undefined; x.error = undefined; }
+      }
+      wf.status = "PAUSED";
+      wf.storyRunId = undefined;
+      return wf;
+    }
+    if (s.status === "FAILED") { wf.status = "FAILED"; return wf; } // 致命：止于该步，够不到后面的闸
+    if (s.status === "PENDING" || s.status === "RUNNING") { s.status = s.stepKey === "inference" ? "SKIPPED" : "SUCCEEDED"; s.attempts = 1; s.durationMs = 6; }
+  }
+  wf.status = "SUCCEEDED";
+  wf.storyRunId = wf.storyRunId ?? newId("sbr");
+  return wf;
+}
+
 /** 推进一个异步 RUNNING 运行一步（模拟后台脱离驱动；轮询即见逐步实时跳动）。 */
-function advanceMockWorkflow(wf: { status: string; steps: { stepKey: string; status: string; durationMs?: number }[]; storyRunId?: string }) {
+function advanceMockWorkflow(wf: MockWfRun) {
   if (wf.status !== "RUNNING") return;
   const next = wf.steps.find((s) => s.status === "PENDING");
+  // 异步后台驱动同样受闸约束：走到未放行的闸就停 PAUSED 等人（不许偷偷跑过去）。
+  if (next && isBlockingGate(wf, next.stepKey)) { wf.status = "PAUSED"; return; }
   if (next) { next.status = next.stepKey === "inference" ? "SKIPPED" : "SUCCEEDED"; next.durationMs = 6; }
   if (!wf.steps.some((s) => s.status === "PENDING")) { wf.status = "SUCCEEDED"; wf.storyRunId = wf.storyRunId ?? newId("sbr"); }
 }
@@ -1215,6 +1692,60 @@ export const handlers = [
     if (!account) return err(401, "UNAUTHORIZED", "未登录");
     return HttpResponse.json(LIVED_WATERMARK);
   }),
+  // WO-PROCESS-INSTANCE · 流程卡点（mock 模式）。
+  // 四条纪律，与真后端逐字对齐：
+  //  ① `byWaitState` 的五个 key 从契约 `PROCESS_TASK_WAIT_STATES` **派生**，不手抄字面量
+  //     —— 手抄的那份会在后端加第六个态时静默落后，而 mock 模式看不出来；
+  //  ② 计数由 `stuck` **算出来**，不是另写一份常量：两个数不同源就会出现
+  //     「列表 2 条、计数说 3 条」这种只有用户能发现的矛盾；
+  //  ③ 第二条刻意**不带** `ownerDisplayName`/`waitedMs`（自定义职能 + 未知等待起点），
+  //     用来在 mock 模式下也能看见「缺就不显示那一块」的真实行为，而不是永远只演示满字段的理想态；
+  //  ④ **`derivedStuckCount` 必须给**（WO-R9-STUCKVIEW 收编时补）——
+  //     合并单把它加成**必填**，mock 少给一个字段就会让「本投影答不出的那一批」这条诚实位
+  //     在 mock 模式下永远为 undefined，页面那一块永不渲染 = 演示态在说谎。
+  //     这里给 1 而不是 0：0 会让该分支在 mock 模式下从不进入（「接了线没数据」的又一形态）。
+  http.get("*/a/v1/process-instances/stuck", () => {
+    const stuck = [
+      {
+        instanceId: "pinst_demo_P17_ord_9001",
+        // ⚠ 合并单 WO-R9-PROCESS-MERGE 把 `definitionKey` 改名为 `processKey`
+        //   （判据：仓内既有约定 `impact-analysis.ts:132`）。mock 留旧名 = 契约与演示两套真相。
+        processKey: "P17",
+        definitionName: "销售订单评审接单",
+        subjectRef: { typeKey: "Order", objectId: "ord_9001" },
+        taskId: "ptask_pinst_demo_P17_ord_9001_1",
+        taskName: "信用超额审批",
+        taskSeq: 1,
+        waitState: "WAITING_APPROVAL" as const,
+        waitRef: "adraft_credit_9001",
+        ownerFunctionKey: "finance",
+        ownerDisplayName: "财务",
+        waitingSince: "2026-03-01T00:00:00.000Z",
+        waitedMs: 3 * 86_400_000,
+      },
+      {
+        instanceId: "pinst_demo_P44_wip_3312",
+        processKey: "P44",
+        definitionName: "工序流转报工",
+        subjectRef: { typeKey: "WIPMove", objectId: "wip_3312" },
+        taskId: "ptask_pinst_demo_P44_wip_3312_2",
+        taskName: "上料齐套确认",
+        taskSeq: 2,
+        waitState: "WAITING_DATA" as const,
+        waitRef: "stock_on_hand",
+        ownerFunctionKey: "tenant_custom_dept", // 登记册外 ⇒ 无中文名 ⇒ 前端退回显示 key
+      },
+    ];
+    const byWaitState = Object.fromEntries(
+      PROCESS_TASK_WAIT_STATES.map((s) => [s, stuck.filter((r) => r.waitState === s).length]),
+    );
+    return HttpResponse.json({
+      evaluatedAt: "2026-03-04T00:00:00.000Z",
+      stuck,
+      byWaitState,
+      derivedStuckCount: 1,
+    });
+  }),
   // DF.12 边界册治理：影响图 + 版本（直接派生 contracts 单一来源，与真后端同源）。
   http.get("*/a/v1/boundary/impact", () => HttpResponse.json({ impact: BOUNDARY_IMPACT, registries: BOUNDARY_IMPACT.map((b) => b.registry) })),
   http.get("*/a/v1/boundary/version", () => HttpResponse.json(boundaryVersion())),
@@ -1248,10 +1779,12 @@ export const handlers = [
     const body = (await request.json()) as { stepKey: string };
     const wf = MOCK_WORKFLOW_RUNS.find((x) => x.id === (params as { id: string }).id);
     if (!wf) return new HttpResponse(null, { status: 404 });
-    // 放行该步 → 续跑（与真后端 approveWorkflowStep 同语义：放行 + resume，不是把整条 run 直接判成功）。
-    const step = wf.steps.find((s) => s.stepKey === body.stepKey);
-    if (step) step.status = "SUCCEEDED";
-    wf.status = wf.steps.every((s) => s.status === "SUCCEEDED") ? "SUCCEEDED" : "RUNNING";
+    // 放行该步 → 续跑（与真后端 `databuilder/service.ts:640 approveWorkflowStep` 同语义：
+    // 把 stepKey 记进 context 放行名单，再 resume 驱动——**不是**把整条 run 直接判成功）。
+    const approved = mockApprovedSteps(wf);
+    approved.add(body.stepKey);
+    wf.context = { ...(wf.context ?? {}), [MOCK_APPROVAL_KEY]: [...approved] };
+    driveMockStoryRun(wf); // 续跑：跑到终态，或停在**下一个**未放行的闸
     return HttpResponse.json(wf);
   }),
   // DF.13c 原型 intake（mock：返回确定性示例解析 + 对账；真后端 parsePrototypeHtml 确定性解析上传 HTML）。
@@ -1758,6 +2291,27 @@ export const handlers = [
   // WO-WAITING-STATES-FE · 业务流程层等待态（需求 §20）。
   // fixture 走 `processWaitFixtures.ts`：逐条过契约 zod schema（与后端播种同一份），
   // 数据是 `apps/datacore/src/seed.ts` 的逐字子集 —— 防「mock 与真后端分家、测试咬 mock 恒绿」。
+  // ⚠ 顺序要紧：`:key/instances` 必须排在裸 `/a/v1/process-definitions` **前面**，
+  // 否则前者永远匹不到（msw 按注册序取第一个命中的 handler）。
+  // WO-FLOWTIME · 流程实例与站间流转时长。fixture 两向都给（反推得出 / 反推不出），
+  // 值逐字取自真后端真跑响应 —— 只 mock 成功那一路，`available:false` 的渲染分支就永远没跑过。
+  http.get("*/a/v1/process-definitions/:key/instances", ({ params }) =>
+    HttpResponse.json(processInstancesFixture(String(params.key))),
+  ),
+  // WO-SANDBOX-PROCESS-MODE · 流程节点检视（沙盘第五档右栏 ＋ /v/process-wait 共用同一个面板）。
+  // 补之前这条路由在 mock 模式下**没有 handler** ⇒ 面板一点就落错误分支。
+  // fixture 现算自 mock 自己的定义表，`carrier` 一律 absent —— 那是 mock 世界的真实情况
+  // （object-types 里确实没有这些承载类型），**不编造本体**。理由详见 fixture 文件的注释。
+  http.get("*/a/v1/process-definitions/:key/inspect", ({ params }) => {
+    const body = processInspectFixture(String(params.key));
+    if (body === null) {
+      return HttpResponse.json(
+        { error: { code: "NOT_FOUND", message: `mock 世界没有流程 ${String(params.key)}（fixture 只取了真种子的一个子集）`, requestId: "req_mock_process_inspect" } },
+        { status: 404 },
+      );
+    }
+    return HttpResponse.json(body);
+  }),
   http.get("*/a/v1/process-definitions", () => HttpResponse.json(PROCESS_DEFINITIONS_RESPONSE)),
   http.get("*/a/v1/ontology/object-types", () =>
     // 图谱体系：与真后端 SEED_DEMO 一致的推演图谱（推演读这些类型），非只 Base。
@@ -1863,10 +2417,21 @@ export const handlers = [
   }),
   http.get("*/a/v1/ontology/mapping/registries", () =>
     HttpResponse.json({
+      // ⚠ 方向必须与本体单源一致 —— 这三行不是随手编的示例，是 mock 模式下
+      // `MappingOverlay` 唯一的显示来源（`views/graph/MappingOverlay.tsx` 的 linkTypes 消费处）。
+      // 欠账 #160：`line_belongs_to_base` 曾写成 `Line→Base`，与本体
+      // （`apps/datacore/src/synthetic/battery.ts` 的 `batteryLinkTypes()`：
+      //  `fromTypeKey:"Base", toTypeKey:"Line"`）**方向相反** —— 与 #158 是同一个错的两个副本：
+      // 「我用『这个 linkKey 的名字读起来像 A 属于 B』当作『它在本体里就是 A→B』的证据」。
+      // 名字里的 `belongs_to` 读作 Line→Base，而契约 cardinality 只允许 1:1/1:N/N:N，
+      // N:1 语义一律**翻转方向**表达为 1:N ⇒ 真方向是 Base→Line。
+      // 已由 `apps/datacore/test/mock-linktype-direction.gate.test.ts` 钉成机械门：
+      // 改坏这三行任一方向，机器当场报红，不必等人去发现。
+      // （原注释写死 `battery.ts:2321`，收编时实测已漂到 2336 ⇒ 改用符号引用，免得注释自己过期。）
       linkTypes: [
         { key: "model_producible_at", fromType: "Model", toType: "Base", cardinality: "N:N" },
         { key: "order_for_model", fromType: "Order", toType: "Model", cardinality: "1:1" },
-        { key: "line_belongs_to_base", fromType: "Line", toType: "Base", cardinality: "1:N" },
+        { key: "line_belongs_to_base", fromType: "Base", toType: "Line", cardinality: "1:N" },
       ],
       rules: [
         { key: "C03", expression: "weeklySupply.p90 >= weeklyDemand", scope: "Order、Base", severity: "阻断" },
@@ -3186,6 +3751,150 @@ export const handlers = [
     const d = db.actionDrafts.find((x) => x.id === params.id);
     return d ? HttpResponse.json(d) : err(404, "NOT_FOUND", "草稿不存在");
   }),
+  /* ── WO-BEFE-B · R4 留痕读端（真后端 `actions.ts:822`）───────────────────────
+   * 形状与真后端逐字段对齐：{ draft, steps, executionResult, events }。
+   * `events` 从 `db.actionEvents` 按 draftId 筛 + 时间正序 —— 与后端
+   * `e.event.startsWith("action.") && e.payload.draftId === id` 同判据。 */
+  http.get("*/a/v1/action-drafts/:id/audit", ({ params }) => {
+    const d = db.actionDrafts.find((x) => x.id === params.id);
+    if (!d) return err(404, "NOT_FOUND", "草稿不存在");
+    return HttpResponse.json({
+      draft: d,
+      steps: d.approvalSteps,
+      executionResult: (d as { executionResult?: unknown }).executionResult ?? null,
+      events: db.actionEvents
+        .filter((e) => e.event.startsWith("action.") && e.payload.draftId === d.id)
+        .sort((a, b) => (a.at < b.at ? -1 : 1)),
+    });
+  }),
+  /* ── WO-BEFE-B · 撤回（真后端 `actions.ts:753`）──────────────────────────────
+   * 两道闸与后端同判据：① 状态 ∈ {DRAFT, PENDING_APPROVAL, APPROVED}（EXECUTING 之后不可撤）；
+   * ② 仅发起人或 admin。**不执行任何 payload、不写任何真值** —— cancel 是审批链的放弃分支。 */
+  http.post("*/a/v1/action-drafts/:id/cancel", ({ params, request }) => {
+    const account = auth(request);
+    const d = db.actionDrafts.find((x) => x.id === params.id);
+    if (!d) return err(404, "NOT_FOUND", "草稿不存在");
+    if (!["DRAFT", "PENDING_APPROVAL", "APPROVED"].includes(d.status)) {
+      return err(409, "INVALID_STATE", `cannot cancel in status ${d.status} (only before EXECUTING)`);
+    }
+    // 身份口径：真后端比 `ctx.userId`；mock 账号只有 username（`MockAccount`），
+    // 而种子草稿的 origin.userId 形如 `usr-planner` ⇒ 两种写法都认，别把"是发起人"误判成"不是"。
+    const isAdmin = (account?.roles ?? []).some((r) => r.split(":")[0] === "admin");
+    const me = account?.username ?? "";
+    const isOwner = d.origin.userId === me || d.origin.userId === `usr-${me}` || d.origin.userId === `usr_${me}`;
+    if (!isOwner && !isAdmin) {
+      return err(409, "INVALID_STATE", "仅发起人或管理员可取消");
+    }
+    d.status = "CANCELLED";
+    d.updatedAt = new Date().toISOString();
+    pushActionEvent("action.cancelled", { draftId: d.id });
+    return HttpResponse.json(d);
+  }),
+
+  /* ══ WO-BEFE-B · S3 调度器（真后端 app.ts:4967–4982）══════════════════════ */
+  http.get("*/a/v1/scheduler/jobs", ({ request }) => {
+    const kind = new URL(request.url).searchParams.get("kind");
+    return HttpResponse.json(kind ? db.schedulerJobs.filter((j) => j.kind === kind) : db.schedulerJobs);
+  }),
+  http.get("*/a/v1/scheduler/jobs/:id/runs", ({ params }) =>
+    HttpResponse.json(db.schedulerRuns.filter((r) => r.jobId === params.id)),
+  ),
+  http.post("*/a/v1/scheduler/jobs/:id/pause", ({ params }) => {
+    const j = db.schedulerJobs.find((x) => x.id === params.id);
+    if (!j) return err(404, "NOT_FOUND", "任务不存在");
+    j.status = "PAUSED";
+    return HttpResponse.json(j);
+  }),
+  http.post("*/a/v1/scheduler/jobs/:id/resume", ({ params }) => {
+    const j = db.schedulerJobs.find((x) => x.id === params.id);
+    if (!j) return err(404, "NOT_FOUND", "任务不存在");
+    j.status = "ACTIVE";
+    return HttpResponse.json(j);
+  }),
+
+  /* ══ WO-BEFE-B · OC9 工厂日历（真后端 app.ts:1293–1310，admin only）════════
+   * 后端 GET 不存在时回**默认壳**而非 404（`?? { …weekendMode:"SAT_SUN_OFF", exceptions:[] }`），
+   * mock 照同样语义 —— 否则前端会为"新建日历"多写一条本不存在的分支。 */
+  http.get("*/a/v1/calendars/:key", ({ params, request }) => {
+    const account = auth(request);
+    if (!(account?.roles ?? []).some((r) => r.split(":")[0] === "admin")) return err(403, "FORBIDDEN", "admin only");
+    const key = String(params.key);
+    const c = db.calendars.find((x) => x.calendarKey === key);
+    return HttpResponse.json(
+      c ?? { id: `cal_${TENANT_ID}_${key}`, tenantId: TENANT_ID, calendarKey: key, weekendMode: "SAT_SUN_OFF", exceptions: [], updatedAt: "" },
+    );
+  }),
+  http.put("*/a/v1/calendars/:key", async ({ params, request }) => {
+    const account = auth(request);
+    if (!(account?.roles ?? []).some((r) => r.split(":")[0] === "admin")) return err(403, "FORBIDDEN", "admin only");
+    const key = String(params.key);
+    const body = (await request.json()) as Partial<Pick<FactoryCalendar, "weekendMode" | "exceptions">>;
+    const prev = db.calendars.find((x) => x.calendarKey === key);
+    const rec: FactoryCalendar = {
+      id: `cal_${TENANT_ID}_${key}`,
+      tenantId: TENANT_ID,
+      calendarKey: key,
+      weekendMode: body.weekendMode ?? prev?.weekendMode ?? "SAT_SUN_OFF",
+      exceptions: body.exceptions ?? prev?.exceptions ?? [],
+      updatedAt: new Date().toISOString(),
+    };
+    if (prev) Object.assign(prev, rec);
+    else db.calendars.push(rec);
+    return HttpResponse.json(rec);
+  }),
+  /**
+   * 净生产窗口：与后端 `netProductionDays(from, to, cal)` **同算法**重算，不是摆一个好看的数。
+   * 口径：区间内逐日 —— 周末按 weekendMode 扣、HOLIDAY/MAINTENANCE 扣、EXTRA_WORKDAY 补回。
+   */
+  http.get("*/a/v1/calendars/:key/net-window", ({ params, request }) => {
+    const account = auth(request);
+    if (!(account?.roles ?? []).some((r) => r.split(":")[0] === "admin")) return err(403, "FORBIDDEN", "admin only");
+    const url = new URL(request.url);
+    const from = url.searchParams.get("from"), to = url.searchParams.get("to");
+    if (!from || !to) return err(400, "VALIDATION_ERROR", "from/to required (YYYY-MM-DD)");
+    const key = String(params.key);
+    const cal = db.calendars.find((x) => x.calendarKey === key);
+    const byDate = new Map((cal?.exceptions ?? []).map((e) => [e.date, e.kind]));
+    let net = 0;
+    for (let d = new Date(`${from}T00:00:00Z`); d <= new Date(`${to}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
+      const iso = d.toISOString().slice(0, 10);
+      const kind = byDate.get(iso);
+      if (kind === "EXTRA_WORKDAY") { net += 1; continue; }
+      if (kind === "HOLIDAY" || kind === "MAINTENANCE") continue;
+      const dow = d.getUTCDay();
+      const weekendOff =
+        (cal?.weekendMode ?? "SAT_SUN_OFF") === "SAT_SUN_OFF" ? dow === 0 || dow === 6
+          : (cal?.weekendMode ?? "") === "SUN_OFF" ? dow === 0 : false;
+      if (!weekendOff) net += 1;
+    }
+    return HttpResponse.json({ calendarKey: key, from, to, netProductionDays: net });
+  }),
+
+  /* ══ WO-BEFE-B · 回放编排器 §1–§3（真后端 app.ts:5348–5366）════════════════
+   * 隔离语义：真后端只在 SYNTHETIC 租户返回内容、写操作对真实租户 403（`opsteam/team.ts:39`）。
+   * mock 给内容以便页面可测，但页面必须把这条边界显在屏上（见 OpsSchedulePage 的说明块）。 */
+  http.get("*/a/v1/ops/personas", () => HttpResponse.json({ items: db.opsPersonas })),
+  http.post("*/a/v1/ops/personas/seed", ({ request }) => {
+    const account = auth(request);
+    if (!(account?.roles ?? []).some((r) => r === "tenant_admin" || r.split(":")[0] === "admin")) {
+      return err(403, "FORBIDDEN", "需要 tenant_admin 角色");
+    }
+    if (db.opsPersonas.length === 0) db.opsPersonas = structuredClone(OPS_PERSONAS);
+    return HttpResponse.json({ items: db.opsPersonas }, { status: 201 });
+  }),
+  http.get("*/a/v1/ops/playbook", () => HttpResponse.json({ playbook: db.opsPlaybook })),
+  http.put("*/a/v1/ops/playbook", async ({ request }) => {
+    const account = auth(request);
+    if (!(account?.roles ?? []).some((r) => r === "tenant_admin" || r.split(":")[0] === "admin")) {
+      return err(403, "FORBIDDEN", "需要 tenant_admin 角色");
+    }
+    db.opsPlaybook = (await request.json()) as OpsPlaybook;
+    return HttpResponse.json({ playbook: db.opsPlaybook });
+  }),
+  http.get("*/a/v1/ops/pools", () => HttpResponse.json({ pools: OPS_POOLS })),
+  http.get("*/a/v1/ops/tick-reports", () =>
+    HttpResponse.json({ items: [...db.opsTickReports].sort((a, b) => a.tick - b.tick) }),
+  ),
   http.get("*/a/v1/action-drafts", ({ request }) => {
     const url = new URL(request.url);
     const status = url.searchParams.get("status");
@@ -3202,6 +3911,12 @@ export const handlers = [
     step.decidedAt = new Date().toISOString();
     if (body.decision === "REJECT") d.status = "REJECTED";
     else if (d.approvalSteps.every((s) => s.decision === "APPROVE")) d.status = "APPROVED";
+    // WO-BEFE-B · R4 留痕：与真后端 `actions.ts` approve/reject 的 outbox.emit 同名同载荷。
+    // 追加在状态迁移**之后**，故 audit 里读到的 event 名与最终状态一致。
+    pushActionEvent(
+      body.decision === "REJECT" ? "action.rejected" : d.status === "APPROVED" ? "action.approved" : "action.pending_approval",
+      { draftId: d.id, actionTypeKey: d.actionTypeKey },
+    );
     // 增量 §7.12：域执行器语义镜像 —— 定稿 Action EXECUTED → 版本 FINAL；变更 Action → inputs patch
     if (d.status === "APPROVED") {
       const versionId = String((d.payload as Record<string, unknown>).versionId ?? "");
@@ -4115,8 +4830,10 @@ export const handlers = [
   http.post("*/a/v1/databuilder/workflow-runs", async ({ request }) => {
     const body = (await request.json()) as { script?: string; seed?: number; async?: boolean };
     if (body.async) {
-      // 异步：返回初始 RUNNING 快照（全 PENDING），后续 GET 逐步推进。
+      // 异步：返回初始 RUNNING 快照（全 PENDING），后续 GET 逐步推进（推进时受闸约束，见 advanceMockWorkflow）。
       const wf = mockWorkflowRun((body.script ?? "").trim(), body.seed ?? 42, "SUCCEEDED");
+      const keep = new Set(storyPipelineOrder().map((n) => n.stepKey));
+      wf.steps = wf.steps.filter((s) => keep.has(s.stepKey)); // 停用节点不进轨迹（同 resolvePipelineSteps）
       for (const s of wf.steps) s.status = "PENDING";
       wf.status = "RUNNING";
       wf.storyRunId = undefined;
@@ -4126,8 +4843,10 @@ export const handlers = [
     // 同步：第一条 mock 故意失败（演示断点 + resume 入口）；其余成功
     const status = MOCK_WORKFLOW_RUNS.length === 0 ? "FAILED" : "SUCCEEDED";
     const wf = mockWorkflowRun((body.script ?? "").trim(), body.seed ?? 42, status as "SUCCEEDED" | "FAILED");
+    // WO-87：**按生效 story_build pipeline 跑**——停用的节点不执行、配了「要人工放行」的节点停 PAUSED。
+    driveMockStoryRun(wf);
     MOCK_WORKFLOW_RUNS.push(wf);
-    return HttpResponse.json(wf, { status: status === "FAILED" ? 200 : 201 });
+    return HttpResponse.json(wf, { status: wf.status === "FAILED" ? 200 : 201 });
   }),
   http.post("*/a/v1/databuilder/workflow-runs/recover", () => {
     const recovered: string[] = [];

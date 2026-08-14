@@ -1262,3 +1262,362 @@
 .errBox b {
   color: var(--danger);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   WO-SANDBOX-CANDIDATES-FE · 阻滞点 → 候选对策
+   零硬编码颜色：全部走 styles/tokens.css 的 CSS 变量 ⇒ dark / light / warm 三套自动跟随。
+   ══════════════════════════════════════════════════════════════════════════════ */
+.impJumpItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.candBlock {
+  margin: 0 0 4px 10px;
+  padding-left: 8px;
+  border-left: 2px dashed var(--line2);
+}
+.candHeadLine {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.candHeadLine b {
+  color: var(--txt);
+}
+.candHeadLine i {
+  font-style: normal;
+  color: var(--muted2);
+  font-size: 10px;
+}
+.candList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.candCard {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ok);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 5px 8px;
+  font-size: 12px;
+}
+/* 旁路补偿（判据没动但下游产能真的变了）与前两族形态不同 —— 靠边框颜色区分，不靠深浅 */
+.candCard[data-effect="DOWNSTREAM_ONLY"] {
+  border-left-color: var(--accent);
+}
+.candHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.candLever,
+.candProp,
+.candMove {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.candLever small,
+.candProp small,
+.candMove small {
+  color: var(--muted2);
+  font-size: 10px;
+}
+.candLever b {
+  font-family: var(--font-mono);
+}
+.candProp code {
+  font-size: 10px;
+  color: var(--muted);
+}
+.candMark {
+  font-style: normal;
+  color: var(--muted2);
+}
+.candElsewhere {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--amber, #d89b28);
+  border: 1px solid var(--amber, #d89b28);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.candMove b {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--font-mono);
+}
+.candArrow {
+  font-style: normal;
+  color: var(--ok);
+}
+.candMode {
+  margin-left: auto;
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.candMode[data-mode="PARTIAL"],
+.candMode[data-mode="EMPTY"],
+.candMode[data-mode="SYNTHETIC"] {
+  color: var(--amber, #d89b28);
+  border-color: var(--amber, #d89b28);
+}
+.candTags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.candTag b {
+  color: var(--txt);
+}
+.candDims {
+  width: 100%;
+  margin-top: 4px;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.candDims th {
+  text-align: right;
+  font-weight: 400;
+  color: var(--muted2);
+  font-size: 10px;
+  padding: 1px 4px;
+}
+.candDims th:first-child {
+  text-align: left;
+}
+.candDims td {
+  text-align: right;
+  padding: 1px 4px;
+  border-top: 1px solid var(--line2);
+  font-family: var(--font-mono);
+}
+.candDimLabel {
+  text-align: left !important;
+  font-family: inherit !important;
+  color: var(--muted);
+}
+.candDimLabel small {
+  color: var(--muted2);
+}
+/* 「算不出来」必须与「0」在视觉上分家 —— 前者不是一个数 */
+.candDimEmpty {
+  text-align: left !important;
+  font-family: inherit !important;
+  color: var(--amber, #d89b28);
+}
+.candDelta[data-good="1"] {
+  color: var(--ok);
+}
+.candDelta[data-good="0"] {
+  color: var(--muted2);
+}
+
+/* ── 「为什么这个阻滞点没有方案」——空白比错答更容易被当成没问题 ─────────────── */
+.candNone {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber, #d89b28);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 5px 8px;
+  font-size: 11px;
+}
+/* 三态形状不同、不只靠深浅：NONE 是真结论（实线），UNAVAILABLE / NOT_RUN 是缺答（虚线） */
+.candNone[data-absence="UNAVAILABLE"],
+.candNone[data-absence="NOT_RUN"] {
+  border-left-style: dashed;
+}
+.candNoneHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.candNoneTag {
+  border: 1px solid var(--amber, #d89b28);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 10px;
+  color: var(--amber, #d89b28);
+}
+.candNoneTag[data-absence="NONE"] {
+  border-color: var(--line2);
+  color: var(--muted);
+}
+.candNoneTitle {
+  color: var(--muted);
+}
+.candNoneClaim {
+  margin: 3px 0 0;
+  color: var(--txt);
+}
+.candNoneReason {
+  margin: 3px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.candNoneStat {
+  margin: 3px 0 0;
+  color: var(--muted2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.candGaps {
+  margin: 3px 0 0;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.candGapsHead {
+  list-style: none;
+  margin-left: -16px;
+  color: var(--muted2);
+}
+
+/* ── 候选面总账（三态逐格，0 也显示）─────────────────────────────────────────── */
+.candSummary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.candSummarySep {
+  color: var(--muted2);
+}
+.candSummaryTag {
+  font-style: normal;
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 10px;
+}
+.candSummaryTag[data-absence="UNAVAILABLE"],
+.candSummaryTag[data-absence="NOT_RUN"] {
+  color: var(--amber, #d89b28);
+  border-color: var(--amber, #d89b28);
+}
+.candSummaryProbes {
+  color: var(--muted2);
+  font-size: 10px;
+}
+.candSummaryTrunc {
+  color: var(--amber, #d89b28);
+}
+
+/* 浮层正文的分段（第二层内容：口径 / join 路径 / 试算公式）*/
+.popSec {
+  display: block;
+  margin-top: 6px;
+  line-height: 1.5;
+}
+.popSec b {
+  display: block;
+  font-size: 11px;
+}
+.popSec i {
+  display: block;
+  font-style: normal;
+  color: var(--muted);
+  font-size: 11px;
+}
+.popSec code {
+  display: block;
+  margin-top: 2px;
+  word-break: break-all;
+  font-size: 10px;
+  color: var(--muted2);
+}
+.popNote {
+  color: var(--ok) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   WO-SANDBOX-PROCESS-MODE · 主画布第五档「业务流程」
+
+   ⚠ 零硬编码颜色：全部走 `styles/tokens.css` 的 token（三套皮自动跟随）。
+     等待类型的四种色不在本文件里 —— 它们由 `views/process/processWait.ts` 的
+     `WAIT_KIND_STYLE` 以 CSS 变量名下发（`--c-people` / `--c-forecast` / `--c-equip`
+     / `--c-capacity`），组件用内联 `background: var(<那个变量>)` 取。
+     在这里再写一遍四种颜色 = 第二份词表，改一处忘一处即两处飘。
+   ⚠ 泳道 / 卡片**复用**本文件既有的 `.stageBoard` `.lane` `.nodeCard` 系列
+     （同一块画布上读法一致），本节只补第五档独有的那几个记号。
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.processCanvas {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+/* 下发条数 ≠ 铺开条数 —— 这不是提示，是"本档漏画了"的报警，故用告警色且加粗 */
+.processMismatch {
+  display: block;
+  color: var(--danger);
+}
+.processKindBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 9px;
+}
+.processKindChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font: 10px var(--font-mono);
+  color: var(--muted);
+}
+.processKindChip i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.processKindChip b {
+  color: var(--txt);
+  font-variant-numeric: tabular-nums;
+}
+/* 流程键（P01…）—— 与节拍层卡片上那个百分比占同一个位置，但含义完全不同，故另起一个类：
+   共用 `.nodeCardPct` 会让"占比"和"流程键"在样式上被当成一回事。 */
+.processKeyChip {
+  font: 700 10px var(--font-mono);
+  color: var(--muted2);
+  letter-spacing: 0.08em;
+}
+.processWaitMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  margin-right: 4px;
+  color: var(--bg);
+  font: 700 9px var(--font-sans);
+  font-style: normal;
+  vertical-align: -2px;
+}

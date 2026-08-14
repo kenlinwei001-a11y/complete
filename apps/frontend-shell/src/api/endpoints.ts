@@ -52,6 +52,11 @@ import type {
   PurposeBinding,
   OpsSchedule,
   OpsScheduleRecord,
+  // WO-BEFE-B · 契约里已有的形状一律从这里导入（不在 api/types.ts 重定义）
+  VirtualPersona,
+  OpsPlaybook,
+  OpsTickReport,
+  FactoryCalendar,
   SandboxViewConfig,
   Perturbation,
   PerturbationKind,
@@ -59,6 +64,10 @@ import type {
   SimCertification,
   SimCheckpoint,
   TickState,
+  // WO-PROCESS-INSTANCE · 流程运行时（前端不重定义，contracts-only-shared）
+  ProcessStuckResponse,
+  ProcessInstanceDetail,
+  AdvanceProcessInstanceRequest,
   SkillCompileResult,
   SolverCategory,
   EnterpriseState,
@@ -68,9 +77,13 @@ import type {
 import { ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 真实世界 worldId 单源（前端不许再写一个 "REAL" 字面量）
 import { api } from "./apiClient";
 import type {
+  ActionDraftAuditVM,
+  CalendarNetWindowVM,
   FallbackClusterVM,
   ObjectsPage,
   OntologyGraphVM,
+  ScheduledJobVM,
+  SchedulerRunVM,
   SimClockVM,
   SopVersionVM,
   SyncJobVM,
@@ -80,7 +93,9 @@ import type {
 } from "./types";
 import { WorkspaceSchema } from "./types";
 // WO-WAITING-STATES-FE · 业务流程等待态响应形状（与真后端 GET /a/v1/process-definitions 对账的单一定义）。
-import type { ProcessDefinitionsResponse } from "@/views/process/processWait";
+import type { ProcessDefinitionsResponse, ProcessInstancesResponse } from "@/views/process/processWait";
+// WO-V4-INSPECT · 流程节点检视响应契约（前端不重定义·R1 contracts-only-shared）
+import type { ProcessInspectResponse } from "@platform/contracts";
 
 // ---------------- A · DataCore ----------------
 
@@ -212,6 +227,36 @@ export const fetchBusinessDomains = () => api.a<{ domains: { key: string; displa
  */
 export const fetchProcessDefinitions = () =>
   api.a<ProcessDefinitionsResponse>("/a/v1/process-definitions");
+
+/**
+ * WO-V4-INSPECT · 点开一条业务流程，看它的**完整本体关系**（PRD-sandbox-v4 §4.1 + §4.2）。
+ *
+ * 响应类型直接用契约的 `ProcessInspectResponse`（R1 contracts-only-shared）——
+ * 前端**不重定义**，也**不写死**任何流程名/域名/类型名/属性中文名/单位：
+ * 全部随响应下发，缺则为 `null`、界面诚实回落裸键（R14）。
+ *
+ * ⚠ 这个端点**不给运行态**：`runtime.available` 恒 `false`，`runtime.unanswerable`
+ * 是一份「本页答不了的问题」清单。界面必须把它显示出来 ——
+ * 不许拿 `stdDurationDays`（标准工期）冒充「此刻已卡多久」。
+ */
+export const fetchProcessInspect = (key: string) =>
+  api.a<ProcessInspectResponse>(`/a/v1/process-definitions/${encodeURIComponent(key)}/inspect`);
+
+/**
+ * WO-FLOWTIME · 单条流程的**实例**与站间流转时长。
+ *
+ * 补上一条上面那个端点自己写着答不了的问题：**「此刻这条流程已经卡了多久 / 卡在谁那里」**。
+ * 时刻由后端从**既有带时间戳单据反推**（`origin=DERIVED_FROM_DOCUMENT`，逐条带溯源单据），
+ * ⛔ 不是 `stdDurationDays`（标准工期）—— 后者在响应里作为 `definition.stdDurationDays`
+ * 原样透出，**是对照列**，与实测天数分属两个字段，前端不可能拿错。
+ *
+ * 反推不出时后端返回 `available:false` + `absence{kind,reason,probe}`（200 不是 500）——
+ * 「我不知道」是合法答案，把它变成错误会让调用方以为是服务故障。
+ */
+export const fetchProcessInstances = (processKey: string, limit = 50) =>
+  api.a<ProcessInstancesResponse>(
+    `/a/v1/process-definitions/${encodeURIComponent(processKey)}/instances?limit=${limit}`,
+  );
 
 export const fetchDomains = () =>
   api.a<{ domainKey: string; displayName: string; color?: string }[]>("/a/v1/ontology/domains");
@@ -859,6 +904,37 @@ export const fetchActionDrafts = (status?: string) =>
 export const fetchActionDraft = (id: string) => api.a<ActionDraft>(`/a/v1/action-drafts/${id}`);
 export const decideActionDraft = (id: string, decision: "APPROVE" | "REJECT", comment: string) =>
   api.a<ActionDraft>(`/a/v1/action-drafts/${id}/decision`, { body: { decision, comment } });
+/**
+ * WO-BEFE-B · 提交审批：DRAFT → PENDING_APPROVAL（后端 `app.ts:3898` → `actions.ts:511 submit()`）。
+ *
+ * ⚠️ 这条一开始被我判成「已有等价入口」，**判错了**，沿调用链再追一层才看清（铁律 0.5）：
+ *   `createActionDraft` 默认 `submit !== false` ⇒ 前端自己建的草稿确实自动进审批链，
+ *   **但 DRAFT 态草稿另有来源** —— `apps/datacore/src/decision/kernel.ts:175` 的
+ *   `decisions/:id/commit` 明确以 `submit: false` 建单，而这条路前端**真的在走**
+ *   （`apps/frontend-shell/src/views/DecisionPlayView.tsx:630`）。
+ *   后端 `actions.submit()` 的**唯一**调用方就是这条 HTTP 端点（`app.ts:3898`），而它前端零调用
+ *   ⇒ 决策台落下来的草稿**卡在 DRAFT，任何界面都推不动、也列不出来**。
+ * 形态（铁律 0.6 句式）：「我用『前端建单会自动提交』当作『不存在 DRAFT 态草稿』的证据，
+ * 而前者并不度量后者 —— 别的写入方按自己的默认值建单。」
+ */
+export const submitActionDraft = (id: string) =>
+  api.a<ActionDraft>(`/a/v1/action-drafts/${encodeURIComponent(id)}/submit`, { body: {} });
+/**
+ * WO-BEFE-B · R4「真值写入经 Action 审批」的**留痕读端**（后端 actions.ts:822 `audit()`）。
+ * 审批链上每一步谁批的、后端发了哪些 `action.*` 事件、执行结果是什么——此前后端算了没人看。
+ * 注意：这是**只读**投影，不参与状态迁移（迁移只走 decision / cancel 两条写路）。
+ */
+export const fetchActionDraftAudit = (id: string) =>
+  api.a<ActionDraftAuditVM>(`/a/v1/action-drafts/${encodeURIComponent(id)}/audit`);
+/**
+ * WO-BEFE-B · 撤回（后端 actions.ts:753 `cancel()`）。
+ * **不绕开 R4**：cancel 只把草稿从「待审批」移到 CANCELLED —— 它是审批链的**放弃**分支，
+ * 不是通过分支；后端不因 cancel 执行任何 payload、不写任何真值（无 `execute()` 调用）。
+ * 后端另有两道闸：状态必须 ∈ {DRAFT, PENDING_APPROVAL, APPROVED}（EXECUTING 之后不可撤），
+ * 且仅发起人或 admin 可撤 —— 前端按同判据置灰，但**真正的拦截在后端**。
+ */
+export const cancelActionDraft = (id: string) =>
+  api.a<ActionDraft>(`/a/v1/action-drafts/${encodeURIComponent(id)}/cancel`, { body: {} });
 
 // ---------------- B · AgentCore ----------------
 
@@ -999,6 +1075,45 @@ export const fetchOpsSchedule = () =>
   api.a<{ schedule: OpsScheduleRecord | null }>("/a/v1/ops/schedule");
 export const saveOpsSchedule = (schedule: OpsSchedule) =>
   api.a<{ schedule: OpsScheduleRecord }>("/a/v1/ops/schedule", { method: "PUT", body: schedule });
+
+/* ── WO-BEFE-B · 回放编排器 §1–§3：虚拟操作团队 / 剧本 / tick 报告 ──────────────
+ * 与上面 OpsSchedule 同住 /admin/ops-schedule 页，但是**另外四条端点**，此前零调用方。
+ * ⚠️ 隔离语义（后端 opsteam/team.ts:30 `isSyntheticTenant`）：这些只在 SYNTHETIC 租户有内容，
+ *    真实租户读到空、写会 403 —— 前端必须**如实显示这条边界**，不许把 403 画成"暂无数据"。
+ * ⚠️ 同名不同物：`fetchTickReports()`（上文）打的是 `/a/v1/synthetic/clock/ticks`，
+ *    与本处 `/a/v1/ops/tick-reports` **是两条不同的路由、两种不同的记录**，别合并。 */
+export const fetchOpsPersonas = () => api.a<{ items: VirtualPersona[] }>("/a/v1/ops/personas");
+export const seedOpsPersonas = () =>
+  api.a<{ items: VirtualPersona[] }>("/a/v1/ops/personas/seed", { body: {} });
+export const fetchOpsPlaybook = () => api.a<{ playbook: OpsPlaybook | null }>("/a/v1/ops/playbook");
+export const saveOpsPlaybook = (playbook: OpsPlaybook) =>
+  api.a<{ playbook: OpsPlaybook }>("/a/v1/ops/playbook", { method: "PUT", body: playbook });
+export const fetchOpsPools = () =>
+  api.a<{ pools: Record<string, unknown> }>("/a/v1/ops/pools");
+export const fetchOpsTickReports = () => api.a<{ items: OpsTickReport[] }>("/a/v1/ops/tick-reports");
+
+/* ── WO-BEFE-B · S3 调度器（后端 app.ts:4967–4982 · scheduler.ts）────────────────
+ * 定时任务台：列表 / 暂停 / 恢复 / 单条运行历史。此前后端注册了四条、前端零调用。 */
+export const fetchSchedulerJobs = (kind?: string) =>
+  api.a<ScheduledJobVM[]>(`/a/v1/scheduler/jobs${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`);
+export const fetchSchedulerJobRuns = (id: string) =>
+  api.a<SchedulerRunVM[]>(`/a/v1/scheduler/jobs/${encodeURIComponent(id)}/runs`);
+export const pauseSchedulerJob = (id: string) =>
+  api.a<ScheduledJobVM>(`/a/v1/scheduler/jobs/${encodeURIComponent(id)}/pause`, { body: {} });
+export const resumeSchedulerJob = (id: string) =>
+  api.a<ScheduledJobVM>(`/a/v1/scheduler/jobs/${encodeURIComponent(id)}/resume`, { body: {} });
+
+/* ── WO-BEFE-B · OC9 工厂日历（后端 app.ts:1293–1310，admin only）───────────────
+ * 日历一等对象 + 净生产窗口：把自然天数折算成净生产天数（节假日/检修扣除）。
+ * `FactoryCalendar` 在契约里已有 → 从 @platform/contracts 导入，不本地重定义。 */
+export const fetchCalendar = (key: string) =>
+  api.a<FactoryCalendar>(`/a/v1/calendars/${encodeURIComponent(key)}`);
+export const saveCalendar = (key: string, body: Partial<Pick<FactoryCalendar, "weekendMode" | "exceptions">>) =>
+  api.a<FactoryCalendar>(`/a/v1/calendars/${encodeURIComponent(key)}`, { method: "PUT", body });
+export const fetchCalendarNetWindow = (key: string, from: string, to: string) =>
+  api.a<CalendarNetWindowVM>(
+    `/a/v1/calendars/${encodeURIComponent(key)}/net-window?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
 
 export const fetchFallbackStats = (packageId: string) =>
   api.b<{ items: FallbackClusterVM[] }>(`/b/v1/ops/fallback-stats?packageId=${packageId}`);
@@ -1617,3 +1732,29 @@ export const publishPlanBuilder = (id: string) =>
 
 export const runPlanBuilder = (id: string, inputs: Record<string, unknown> = {}) =>
   api.b<PlanBuilderRunResult>(`/b/v1/plan-builders/${encodeURIComponent(id)}/run`, { method: "POST", body: { inputs } });
+
+// ── WO-PROCESS-INSTANCE · 流程运行时（「为什么这个流程现在卡住了」）──────────────
+// 契约类型一律从 @platform/contracts import，**前端不重定义**（contracts-only-shared 铁律）：
+// 再写一份 ProcessStuckReason 就是第二真相源 —— 后端加一个等待态，前端不会跟着变。
+
+/**
+ * 全租户此刻卡住的流程 + 各等待态计数。
+ *
+ * ⚠ 未开通 `process.runtime`（defaultOn:false 暗发）时后端 404 `FEATURE_NOT_FOUND` ——
+ * 这是**预期行为**不是故障，调用方须区分「功能没开」与「请求失败」两种情形。
+ */
+export const fetchStuckProcesses = () => api.a<ProcessStuckResponse>("/a/v1/process-instances/stuck");
+
+/** 单条实例详情：实例 + 全部步骤（八字段）+ 当前卡点。 */
+export const fetchProcessInstance = (id: string) =>
+  api.a<ProcessInstanceDetail>(`/a/v1/process-instances/${encodeURIComponent(id)}`);
+
+/**
+ * 推进一条实例。body 里给的是**外部事实**（数据到齐 / 外部回执 / 审批结论 / 人工已办），
+ * 不是「把状态改成 X」—— 状态机在引擎里，不在前端。
+ */
+export const advanceProcessInstance = (id: string, body: AdvanceProcessInstanceRequest) =>
+  api.a<ProcessInstanceDetail>(`/a/v1/process-instances/${encodeURIComponent(id)}/advance`, {
+    method: "POST",
+    body,
+  });

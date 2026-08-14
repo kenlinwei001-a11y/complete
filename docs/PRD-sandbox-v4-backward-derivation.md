@@ -76,6 +76,54 @@ for (const v of vars) row[v] = Math.round(hash01(`${oid}|${v}`) * 100);
 **并加一道门**：反方向校验「`LEVER_PROP_META` 每个键的 `Type.prop` 在已发布本体里解析得到」。
 判据必须是机器先说话 —— 本条正是「人肉 review 与现有门都看不见」的证明。
 
+#### ✅ 2.2 实施回写（WO-V4-INSPECT · 2026-08-13 · 分支 `claude/handoff-wo-v4-inspect`）
+
+**复验**（照 §0 纪律现读 dist，未用 grep）：`MaterialBalance` 属性确为
+`matBalId/material/unit/netDemandTon/ltaPct/gapTon/etaDate`，无 `coverage`；
+12 条落点里 **11 条真实存在、唯独这一条不存在** —— 本节结论成立。
+
+**选了 (b)「改成派生属性」，不是 (a)「补一个存储属性」**。判据是**自由度**：
+MRP 表的一行里，给定 `netDemandTon` 之后 `ltaPct` 与 `gapTon` **已经互相决定**
+（种子原式 `gapTon = round(max(0, netDemandTon × (1 − ltaPct/100)), 0)`）。
+再存一个 `coverage` 就是**同一个自由度的第三份存储**，三者必然随时间漂开 ——
+正是「零新真值源 / R13 派生投影非新真值」要根治的形态。
+
+**公式取 `(netDemandTon - gapTon) / netDemandTon`，不取 `ltaPct / 100`** ——
+两者今天数值相同（只差 `gapTon` 取整那点误差），但**是两个不同的业务量，不许合并**：
+
+| | 含义 | 今天为什么相等 |
+|---|---|---|
+| `ltaPct`（已有属性，中文名**长协覆盖率**） | 长期协议锁定的份额 | 本种子没有现货采购这一路 |
+| `coverage`（本次新增派生，中文名**覆盖率**） | 净需求里实际不缺的份额（齐套） | 同上 |
+
+真实 MRP 里现货补货会把缺口补上 ⇒ 齐套覆盖率 > 长协覆盖率。用 `ltaPct/100` 当公式
+= 把两个概念焊死，等哪天补了现货这条路，公式会**静默给出错的数**。
+
+**⚠️ 本节漏说的一件事（PRD 自身的缺口，照铁律 0.6 回写）**：本节把修法写成「补属性 or 改派生」二选一，
+**没提 `MaterialBalance` 上已经有一个语义几乎相同的存储属性 `ltaPct`「长协覆盖率」**。
+少了这条，(a) 那一支看起来是合理的（"补一个业务量"），实际上它会造出**第三份**同源存储。
+真正的判据不是「这是不是真业务量」，而是「**它有没有自己的自由度**」。
+
+**四落点齐**（对派生属性而言）：
+① 类型声明 `materialBalanceDerived`（`synthetic/battery.ts`）· ② `PropertyDef` 元数据
+（单位 `%` + description，照 `interBaseTransfer.etaDay` 的既有先例同时登记在 `properties` 里 ——
+`DerivedPropertyDef` 只有 `{propKey, formula}`，没有中文名/单位的槽位，而 R14 要求前端零写死）·
+③ 中文名表 `PROP_DISPLAY_NAMES["MaterialBalance.coverage"] = "覆盖率"`（与 `LEVER_PROP_META.label`
+「物料齐套·覆盖率」的 "·" 后缀单源收敛，`schema-display-name.seam.test.ts` ③b 咬着）·
+④ **真后端实测物化**（`SEED_DEMO=1` · `GET /a/v1/objects?type=MaterialBalance`）：
+`coverage` 0.920021 / 0.940058 / 0.930025 / 1 / 0.959987 / 0.910056 / 0.950045 / 0.99 / 1 —— 9 条全有值。
+
+**新门**：`lever-prop-resolvable:check`（§4.1 的守卫，见下）已上 `pnpm gates` 链并登账；
+本体 §8 新增断点 `G-LEVER-DEAD-LANDING`。
+
+**⚠️ 残留缺口（诚实标注，不许读成「杠杆修好了」）**：`(b)` 让这条落点**解析得到**，
+但**没让它变得可拨**——派生属性在 `discoverLevers` 的反向 walk 里**永远不是叶**
+（有 spec 的节点是根不是叶），且它不在 `CAPACITY_FACTOR_BINDINGS` 里。
+「解析得到」与「拨得动」是两件事，本单只闭前者。该层今天真正可拨的落点是
+`Material.onHand` / `Material.leadTime`（`lever-binding-drift:check` A1 现算即列出，故 A1 不红）。
+要让 `MaterialBalance` 这一侧真可拨，正确落点是既有的**存储**属性 `ltaPct`
+（把它加进 `LEVER_FACTOR_PROPS` 会新增一条孤儿豁免，与该门「豁免只降不升」冲突 ⇒ 另立单）。
+
 ### 2.3 流程**运行态不存在**：`ProcessTask` / `ProcessInstance` 全仓无
 
 `app.ts:3197` 注释原文：

@@ -447,3 +447,16 @@
   border-bottom: 1px solid var(--line2);
   padding-bottom: 6px;
 }
+
+/* WO-DECISION-INFO-FE ③ · 多方案与代价面板的外框。
+   原本是组件里的内联 `const panelStyle = {...}`；`debattery` 门把它算成「前端写死业务数据」
+   （判据 B 数的是「顶层 const 对象里的数值字面量条数」，而 rgba(…) 里那一串数字全被计入）。
+   门的判据在这里量错了东西——样式对象不是业务数据表——但修法仍是搬进 CSS module：
+   本仓其它组件都这么做，内联样式还会绕过 css-token-defined 的令牌校验。 */
+.rkOptPanel {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, rgba(140, 170, 200, 0.28));
+  border-radius: 6px;
+  background: var(--panel2, rgba(120, 160, 200, 0.06));
+}

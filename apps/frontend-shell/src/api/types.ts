@@ -285,3 +285,64 @@ export interface TaskEventFrame {
   event: string;
   data: Record<string, unknown>;
 }
+
+// ---- WO-BEFE-B · 行动与审批 / 调度 / 工厂日历（契约未定义 → 本地 VM） ----
+//
+// 为什么是本地 VM 而不是 `@platform/contracts`：这三组的后端记录类型住在
+// `apps/datacore/src/domain.ts`（`ScheduledJobRecord` / `SchedulerRunRecord`）与
+// `actions.ts` 的 `audit()` 返回上，**从未进过契约包**。contracts-only-shared 禁止跨 app
+// 引源码，故按本文件既有惯例（`TickReportVM` 等）在前端侧定义消费形态。
+// ⚠️ 这不是「契约已有还重定义」——落在契约里的 `ActionDraft` / `FactoryCalendar` 仍从
+// `@platform/contracts` 导入，本处只补契约**没有**的那几个形状。
+
+/** `GET /a/v1/action-drafts/:id/audit` 响应（后端 `actions.ts:822`）。 */
+export interface ActionDraftAuditVM {
+  draft: unknown;
+  steps: {
+    seq: number;
+    role: string;
+    decision?: "APPROVE" | "REJECT";
+    approverId?: string;
+    comment?: string;
+    decidedAt?: string;
+    selfApproved?: boolean;
+  }[];
+  /** 执行结果；未执行 = `null`（诚实空，前端必须显「未执行」而不是空对象）。 */
+  executionResult: unknown | null;
+  /** 后端 outbox 里 `action.*` 事件按时间正序（R4 留痕的真凭据）。 */
+  events: { event: string; payload: Record<string, unknown>; at: string; status?: string }[];
+}
+
+/** `GET /a/v1/scheduler/jobs`（后端 `domain.ts:786 ScheduledJobRecord`）。 */
+export interface ScheduledJobVM {
+  id: string;
+  tenantId: string;
+  kind: string;
+  refId: string;
+  cron: string;
+  timezone: string;
+  nextRunAt: string;
+  lastRunAt?: string;
+  status: "ACTIVE" | "PAUSED";
+  lastError?: string;
+}
+
+/** `GET /a/v1/scheduler/jobs/:id/runs`（后端 `domain.ts:799 SchedulerRunRecord`）。 */
+export interface SchedulerRunVM {
+  id: string;
+  tenantId: string;
+  jobId: string;
+  scheduledAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  status: string;
+  error?: string;
+}
+
+/** `GET /a/v1/calendars/:key/net-window`（后端 `app.ts:1304`）。 */
+export interface CalendarNetWindowVM {
+  calendarKey: string;
+  from: string;
+  to: string;
+  netProductionDays: number;
+}
