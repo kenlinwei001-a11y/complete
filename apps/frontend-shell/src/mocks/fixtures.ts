@@ -29,8 +29,14 @@ import type {
 } from "@/api/types";
 import type { ModelingDraftVM, RuleCandidateVM, RuleDocVM } from "@/api/endpoints";
 
-export const TENANT_ID = "tenant-battery";
-export const PACKAGE_ID = "pkg_battery";
+// ⚠ 这两个常量的**定义**已挪到叶子模块 `./ids`，此处只做 re-export（对外 API 一字未变）。
+//   原因见 ids.ts 文件头：`export … from "./planBuilderFixtures"` 会被提升，
+//   导致浏览器先求值 planBuilderFixtures 而此处常量仍在 TDZ ⇒ 整个 mock 模式白屏。
+// ⚠ 必须 **import 后再 export**，不能写 `export … from "./ids"` —— 后者只建立转发、
+//   **不创建本地绑定**，而本文件内部多处直接用 PACKAGE_ID/TENANT_ID（如第 800 行附近），
+//   写成转发式会得到 `PACKAGE_ID is not defined`（第一次改就踩到，浏览器当场报出来）。
+import { TENANT_ID, PACKAGE_ID } from "./ids";
+export { TENANT_ID, PACKAGE_ID };
 
 // ---------------------------------------------------------------------------
 // 账号（QOS §7.6 权限种子：planner 全量 / base_manager:常州 行级过滤）
