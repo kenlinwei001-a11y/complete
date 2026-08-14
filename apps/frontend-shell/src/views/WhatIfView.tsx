@@ -269,6 +269,11 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
 
       {/* ── 结果区 ── */}
       {ran && result ? <WhatIfResult out={result} currentProp={currentProp} /> : null}
+
+      {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。
+          ⚠ 必须挂在**主组件**里、且不进 `ran && result` 那个条件：挂进结果区 = 没跑过推演就看不见开关，
+          而"先关掉一条边再看结果"恰恰是最常见的用法（本单初稿真踩过这一下，收编前自查抓出）。 */}
+      <EdgeActivePanel pageKey="what-if" />
     </div>
   );
 }
@@ -346,8 +351,6 @@ function WhatIfResult({ out, currentProp }: { out: GenericInferenceOutput; curre
           </table>
         </div>
       </div>
-      {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。 */}
-      <EdgeActivePanel pageKey="what-if" />
     </div>
   );
 }

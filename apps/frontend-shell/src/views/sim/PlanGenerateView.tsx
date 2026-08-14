@@ -206,6 +206,9 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
           ))}
         </div>
       )}
+      {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。
+          ⚠ 挂在**主组件**里、且不进 `gen.data &&` 那个条件：挂进结果区 = 没跑过方案生成就看不见开关。 */}
+      <EdgeActivePanel pageKey="plan-generate" />
     </div>
   );
 }
@@ -413,9 +416,6 @@ function SchemeCard({
       <KsfGraph testId="gen-ksf-graph" />
       {/* inference-process 横切：本次方案生成推演的编排过程 DAG */}
       <InferenceProcessPanel testId="inference-gen" solved />
-      {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。
-          逻辑全在 EdgeActivePanel/edgeActiveModel 里，本页只有这一行。 */}
-      <EdgeActivePanel pageKey="plan-generate" />
     </div>
   );
 }
