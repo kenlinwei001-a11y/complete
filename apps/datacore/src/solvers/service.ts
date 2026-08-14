@@ -38,7 +38,7 @@ import { chainLossAttribution as runChainLossAttribution, type ChainLossObject }
 // WO-SANDBOX-E2 · 推演作用域（业务线/基地/型号）归一**单一出处**（勿在各求解器方法里另写一套解析/过滤）。
 import { describeChainScope, echoChainScope, isChainScopeUnscoped, normalizeChainScope, orderInChainScope, resolveScopeBaseIds, type ChainScope } from "./scope.js";
 import { normalizeSolverArgs } from "./arg-aliases.js"; // WO-SILENT-WRONG-ANSWER-3 · 入参键名归一单一出处（base/baseId/baseName · horizon/days）
-import { detectChainImpediments } from "./chain-impediment.js"; // WO-SANDBOX-E3 · 阻滞点判定（纯函数·阈值全从规则读回）
+import { detectChainImpediments, CONTENTION_LOCUS_TYPE, IMPEDIMENT_RULE_BINDINGS, type ImpedimentRuleBinding } from "./chain-impediment.js"; // WO-SANDBOX-E3 · 阻滞点判定（纯函数·阈值全从规则读回）+ WO-DECISION-PLAY-OPTIONS 判据册（决策路按落点类型收窄）
 import { projectProcessFlowTime } from "./process-flow.js"; // WO-FLOWTIME · 流程实例流转时长（站间时长/卡顿站/瓶颈站·反推非编造）
 import { projectFinanceWorld, type FinanceWorldArgs } from "./finance-world.js"; // WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影（finance_pnl 缺的那半·只读 R4）
 import { reconstructAndPersist } from "../process/reconstruct.js"; // WO-FLOWTIME · 反推器 IO 适配层（算法在 contracts 纯函数）
@@ -49,6 +49,8 @@ import { runOntologyQuery, NoQueryPlanError, type QueryEngineDeps } from "../ont
 import { nlToQuery } from "../ontology/nl-to-query.js";
 import { OntologyQueryInputSchema, type OntologyQueryOverride, type OntologyQueryDelta } from "@platform/contracts";
 import type { OntologyBinding, OptTemplateFamily, OptPerturbation } from "@platform/contracts";
+// WO-DECISION-PLAY-OPTIONS · 决策方案接枚举器（`enumerateImpedimentOptions` 经 `detectChainImpediments` 一路带下来的真候选）。
+import type { ChainImpediment, SolutionCandidate } from "@platform/contracts";
 
 /**
  * WO-FACTOR-SCOPE-SINGLESOURCE · 归因下钻对象类型 → 主键字段（**单一出处**）。
@@ -86,6 +88,39 @@ const DRILL_PK_FIELD: Record<string, string> = {
 
 /** 产能因子细分层取几个对象（同一因子下按紧张度排序的前 N 个真对象·N 太大树会糊）。 */
 const CAPACITY_FACTOR_TOP_N = 5;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-DECISION-PLAY-OPTIONS · 归因树落点 ⋈ 阻滞点（decision_play 接 `enumerateImpedimentOptions` 的 join 面）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 归因树上的一个**真落点**：`gap_attribution` 每个节点自带的 `provenance.{drillType,drillId,drillField,drillValue}`
+ * ——这就是 join 面，**不是**代码里另立的一张「指标→方案」映射表（那正是 `impediment-options.ts` 铁律①禁的）。
+ */
+interface GapAnchor {
+  nodeId: string;
+  factor: string;
+  /** 该节点对总缺口的贡献（**指标单位**，如 %／亿）——折算候选收窄量时的唯一比例基准。 */
+  contribution: number;
+  unit: string;
+  drillType: string;
+  drillId: string;
+  drillField: string;
+  /** 该落点的真读数（`null` = 节点没带·不拿 0 冒充）。 */
+  drillValue: number | null;
+  depth: number;
+}
+
+/** join 三条路（与 `impediment-options.ts` 同一纪律：只走数据自己有的维度，每条都留真路径原文）。 */
+const DECISION_JOIN_RANK: Record<"LOCUS_EXACT" | "LOCUS_TYPE" | "BASE_SCOPE", number> = {
+  LOCUS_EXACT: 0,
+  LOCUS_TYPE: 1,
+  BASE_SCOPE: 2,
+};
+type DecisionJoinKind = keyof typeof DECISION_JOIN_RANK;
+
+/** 归因树里表示「本类型内按作用域现解析」的占位 drillId（契约既有约定，见 GapProvenanceSchema.drillId）。 */
+const isWildcardDrillId = (id: string): boolean => id === "" || id === "*" || id.startsWith("DYNAMIC");
 
 /** WO-OPTWHATIF-NL-WIRING · 选中决策对象引用（= AgentCore ObjectRef 结构·经 invoke args 透传）。 */
 interface SelectionRef { objectType: string; objectId: string; label?: string }
@@ -380,7 +415,9 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   gap_attribution: ["rootMetric", "totalGap", "noGap", "levels", "atomicLeaves", "causalEdges", "reconChecks", "reconciled", "residualPct", "severityKind", "hypotheses", "summary", "scope", "globalGap", "noBaseData"],
   // WO-ORDER-JOURNEY：+ locusPlay（**只在传了 locusType+locusId 时出现**的落点锚定块 —— 阻滞点/订单站点
   // 的可执行解法 + locus→CausalFactor 的对上情况。不传 = 键不存在 = 输出逐字节同今天）。
-  decision_play: ["rootCause", "options", "matrix", "triggers", "recommendedPlan", "sandboxNarrowing", "summary", "locusPlay"],
+  // WO-DECISION-PLAY-OPTIONS 追加两键：optionsOmitted（被挡下的战略方案 + 理由·诚实位）·
+  // impedimentPlays（接 `enumerateImpedimentOptions` 的真候选 + join 路径·空则带 noPlayReason）。
+  decision_play: ["rootCause", "options", "matrix", "triggers", "recommendedPlan", "sandboxNarrowing", "summary", "locusPlay", "optionsOmitted", "optionsEvidence", "impedimentPlays"],
   supply_demand_gap_attribution: ["rootMetric", "totalGap", "unit", "demandSide", "supplySide", "residual", "reconChecks", "reconciled", "residualPct", "summary"],
   // WO-ATP-PROMISE atp_check 输出形状（= AtpCheckOutput 顶层 key·净读三源承诺）。
   atp_check: ["orderRef", "requestedQty", "committableQty", "promiseDate", "atpStatus", "shortfallQty", "bottleneck", "breakdown", "summary"],
@@ -3185,6 +3222,225 @@ export class SolverService {
   }
 
   /**
+   * WO-DECISION-PLAY-OPTIONS · 归因树 → 落点集（`gap_attribution` 每个节点自带的真下钻对象）。
+   *
+   * **为什么是它**：这张表不是我编的「指标 → 方案」映射，而是归因引擎**已经算出来并落在产物里**的
+   * `provenance.{drillType,drillId,drillField,drillValue}`。换 metricKey ⇒ 归因树变 ⇒ 落点集变 ⇒
+   * 能接上的阻滞点/方案跟着变。这就是「方案随根因变」的机制，不是一句口号。
+   */
+  private collectGapAnchors(ga: Record<string, unknown>): {
+    byKey: Map<string, GapAnchor>;
+    byType: Map<string, GapAnchor>;
+    baseIds: string[];
+    types: Set<string>;
+  } {
+    const byKey = new Map<string, GapAnchor>();
+    const byType = new Map<string, GapAnchor>();
+    const baseIds: string[] = [];
+    const types = new Set<string>();
+    const levels = (ga.levels as { depth: number; nodes: Record<string, unknown>[] }[]) ?? [];
+    const rows: { depth: number; node: Record<string, unknown> }[] = [];
+    for (const L of levels) for (const n of L.nodes) rows.push({ depth: L.depth, node: n });
+    for (const n of (ga.atomicLeaves as Record<string, unknown>[]) ?? []) rows.push({ depth: 99, node: n });
+    for (const { depth, node } of rows) {
+      const bid = node.baseId !== undefined && str(node.baseId) !== "" ? str(node.baseId) : undefined;
+      if (bid && !baseIds.includes(bid)) baseIds.push(bid);
+      const p = (node.provenance ?? {}) as Record<string, unknown>;
+      const drillType = str(p.drillType);
+      if (!drillType) continue;
+      const drillId = str(p.drillId);
+      const anchor: GapAnchor = {
+        nodeId: str(node.id),
+        factor: str(node.factor),
+        contribution: num(node.contribution),
+        unit: str(node.unit),
+        drillType,
+        drillId,
+        drillField: str(p.drillField),
+        drillValue: typeof p.drillValue === "number" && Number.isFinite(p.drillValue) ? (p.drillValue as number) : null,
+        depth,
+      };
+      types.add(drillType);
+      // 同一落点被多个节点引用时留**贡献最大**的那个（折算比例基准取最重的一支·R6 稳定：贡献相同再比 nodeId）。
+      const better = (a: GapAnchor, b: GapAnchor): GapAnchor =>
+        b.contribution > a.contribution || (b.contribution === a.contribution && b.nodeId < a.nodeId) ? b : a;
+      if (isWildcardDrillId(drillId)) {
+        const cur = byType.get(drillType);
+        byType.set(drillType, cur ? better(cur, anchor) : anchor);
+      } else {
+        const key = `${drillType}|${drillId}`;
+        const cur = byKey.get(key);
+        byKey.set(key, cur ? better(cur, anchor) : anchor);
+      }
+    }
+    baseIds.sort();
+    return { byKey, byType, baseIds, types };
+  }
+
+  /**
+   * WO-DECISION-PLAY-OPTIONS · **可执行方案**：根因树落点 ⋈ 阻滞点 → `enumerateImpedimentOptions` 的真候选。
+   *
+   * ══ 这一段修的是什么（`CLAUDE.md` 铁律 0.5 第三形态「接了线接错地方」）══════════════════
+   * `enumerateImpedimentOptions`（`solvers/impediment-options.ts:561`）**早就实现且已接线**，
+   * 但**只接进 `chain-impediment.ts:1101` 一处** —— 沙盘看得见候选，决策页看不见。
+   * 本方法补的是**挂载点**，不是再造一个枚举器（再造一个就有两份"方案真相"了）。
+   *
+   * ══ join 只走数据自己有的三条路（照抄 `impediment-options.ts` 铁律①：不许有人工映射表）══
+   *  · `LOCUS_EXACT` 阻滞点落点对象 == 归因树某节点的下钻对象（同类型同 id）；
+   *  · `LOCUS_TYPE`  归因树该节点的 drillId 是作用域占位（`*`/`DYNAMIC-*`）⇒ 只能按**类型**认；
+   *  · `BASE_SCOPE`  阻滞点落在基地面上，且该基地真出现在归因结构层（`levels[1].baseId`）。
+   * 三条都够不着 ⇒ **诚实空 + 写清缺哪一维**，绝不"挑一个看着合理的阻滞点"凑上去。
+   *
+   * ══ 为什么不把候选塞进 `options`（诚实边界·本单最重的一条）══════════════════════════
+   * `DecisionOption` 要求 `closesGap/cost/cycleDays/risk/exposure/reversibility` 六个数。
+   * 枚举器真算得出的只有 `breach / severity / capacityP50` 三维，**没有一个是本指标的缺口收窄量**，
+   * 更没有代价/周期/风险/可逆性。把产能增量当 `closesGap`、给候选拍一个 `cost` ——
+   * 那正是本仓刚清掉的「猜一个值写下去」。故候选**原样**下发在自己的区里（`SolutionCandidate` 是冻结契约，
+   * 自带 dims 的 baseline→value、杠杆、join 路径），并**只在能核对时**才给缺口折算：
+   * 折算判据 = 该落点的 `drillValue` 与候选 `breach` 基线**逐位相等**（证明两者度量同一个量），
+   * 此时 `Δ贡献 = 节点贡献 × Δbreach / breach基线`；不相等 ⇒ `null` + 机器可读理由，**不给 0**
+   * （「有值 0」和「算不出来」在界面上分不开，是本仓病灶族）。
+   */
+  private async decisionImpedimentPlays(
+    ctx: AuthCtx,
+    anchors: { byKey: Map<string, GapAnchor>; byType: Map<string, GapAnchor>; baseIds: string[]; types: Set<string> },
+  ): Promise<Record<string, unknown>> {
+    // ① 先看这次归因**有没有可能**接上：判据册的落点类型是静态可枚举的，交集为空就别扫（省一次全链探针，也更诚实）。
+    const locusTypes = new Set<string>(IMPEDIMENT_RULE_BINDINGS.map((b) => b.locusObjectType));
+    const usable: ImpedimentRuleBinding[] = IMPEDIMENT_RULE_BINDINGS.filter(
+      (b) => anchors.types.has(b.locusObjectType) || (b.locusObjectType === CONTENTION_LOCUS_TYPE && anchors.baseIds.length > 0),
+    );
+    if (usable.length === 0) {
+      return {
+        joined: [],
+        scanned: 0,
+        joinedCount: 0,
+        candidateCount: 0,
+        noPlayReason:
+          `本次归因树的落点类型 [${[...anchors.types].sort().join("、") || "—"}] 与阻滞点判据册的落点类型 ` +
+          `[${[...locusTypes].sort().join("、")}] **交集为空**，且归因结构层没有基地面（levels[1].baseId 为空）` +
+          `⇒ 一条 join 路都够不着。这是「接不上」不是「没有对策」：要接上需要该指标域的判据（承载物 + 已发布规则），不是在这里挑一个阻滞点凑数。`,
+      };
+    }
+
+    const c = await this.loadContext(ctx.tenantId, undefined, { withExtended: true });
+    const materialBalances = await this.repos.objects.listByType(ctx.tenantId, "MaterialBalance");
+    const links = await this.repos.links.list(ctx.tenantId, () => true);
+    const scan = detectChainImpediments({
+      c,
+      materialBalances,
+      links,
+      // 有基地面就按基地面收窄（同一条作用域纪律：报出来的必须是本次真评估的那几个）。
+      scope: anchors.baseIds.length > 0 ? normalizeChainScope({ baseIds: anchors.baseIds }) : normalizeChainScope({}),
+      bindings: usable,
+    });
+
+    const joined: Record<string, unknown>[] = [];
+    let candidateCount = 0;
+    for (const im of scan.impediments as ChainImpediment[]) {
+      const exact = anchors.byKey.get(`${im.locus.objectType}|${im.locus.objectId}`);
+      const byType = anchors.byType.get(im.locus.objectType);
+      const baseHit = im.locus.objectType === CONTENTION_LOCUS_TYPE && anchors.baseIds.includes(im.locus.objectId);
+      const kind: DecisionJoinKind | null = exact ? "LOCUS_EXACT" : byType ? "LOCUS_TYPE" : baseHit ? "BASE_SCOPE" : null;
+      if (kind === null) continue;
+      const anchor = exact ?? byType ?? null;
+      const path =
+        kind === "LOCUS_EXACT"
+          ? `gap_attribution.node ${anchor!.nodeId}（贡献 ${anchor!.contribution}${anchor!.unit}·下钻 ${anchor!.drillType}/${anchor!.drillId}.${anchor!.drillField}=${anchor!.drillValue ?? "—"}）== 阻滞点落点 ${im.locus.objectType}/${im.locus.objectId}`
+          : kind === "LOCUS_TYPE"
+            ? `gap_attribution.node ${anchor!.nodeId}（下钻 ${anchor!.drillType}/${anchor!.drillId} = 作用域占位）→ 按类型认 ${im.locus.objectType}/${im.locus.objectId}`
+            : `gap_attribution.levels[1] 基地面含 ${im.locus.objectId} → 阻滞点落在该基地面上`;
+
+      const candidates = (im.candidates ?? []) as SolutionCandidate[];
+      candidateCount += candidates.length;
+      joined.push({
+        impedimentId: im.impedimentId,
+        kind: im.kind,
+        locus: im.locus,
+        severity: im.severity,
+        ruleKey: im.evidence.ruleKey,
+        join: {
+          kind,
+          path,
+          ...(anchor ? { anchorNodeId: anchor.nodeId, anchorFactor: anchor.factor, anchorContribution: anchor.contribution } : {}),
+        },
+        candidates: candidates.map((cand) => ({
+          ...cand,
+          // 缺口折算：只在**能核对**时给数（判据见方法头），否则 null + 理由。绝不拍 0。
+          gapClose: this.candidateGapClose(anchor, cand),
+        })),
+        ...(im.noCandidateReason === undefined ? {} : { noCandidateReason: im.noCandidateReason }),
+        ...(im.noCandidateKind === undefined ? {} : { noCandidateKind: im.noCandidateKind }),
+      });
+    }
+    // R6 确定性全序：join 强度 → 阻滞点严重度降序 → id。
+    joined.sort(
+      (a, b) =>
+        DECISION_JOIN_RANK[(a.join as { kind: DecisionJoinKind }).kind] - DECISION_JOIN_RANK[(b.join as { kind: DecisionJoinKind }).kind] ||
+        num(b.severity) - num(a.severity) ||
+        str(a.impedimentId).localeCompare(str(b.impedimentId)),
+    );
+
+    const scanned = scan.impediments.length;
+    return {
+      joined,
+      scanned,
+      joinedCount: joined.length,
+      candidateCount,
+      candidatesTruncated: scan.candidatesTruncated,
+      candidateProbes: scan.candidateProbes,
+      ...(joined.length === 0
+        ? {
+            noPlayReason:
+              `扫出 ${scanned} 个阻滞点，但**没有一个**落在本次归因树的落点上` +
+              `（落点：${[...anchors.byKey.keys()].sort().slice(0, 6).join("、") || "—"}${anchors.baseIds.length ? `；基地面：${anchors.baseIds.join("、")}` : ""}）` +
+              `⇒ 三条 join 路（同对象/同类型/同基地）都够不着。属"接不上"，不是"这个根因无解"。`,
+          }
+        : {}),
+    };
+  }
+
+  /**
+   * WO-DECISION-PLAY-OPTIONS · 候选 → 本指标缺口收窄量的**可核对折算**（算不出就 `null`，不拍 0）。
+   *
+   * 判据只有一条、且是**运行时可核对**的：归因落点的真读数 `drillValue` 与候选 `breach` 维的基线
+   * **逐位相等** ⇒ 两者度量的是同一个量（如 `MaterialBalance.gapTon = 492` ⟷ C06 超阈幅度 `492`），
+   * 此时按该落点在树上的贡献等比折算。不相等（或候选压根没动判据读数）⇒ 明说算不出来，**不给数**。
+   */
+  private candidateGapClose(anchor: GapAnchor | null, cand: SolutionCandidate): Record<string, unknown> {
+    const breach = cand.dims.find((d) => d.key === "breach");
+    if (!anchor) {
+      return { value: null, basis: "", reason: "本候选经基地面接上（无单一落点节点）⇒ 无可等比折算的贡献基准" };
+    }
+    if (!breach || typeof breach.baseline !== "number" || typeof breach.value !== "number") {
+      return { value: null, basis: "", reason: "候选未算出判据读数（breach 维缺席）⇒ 收窄量无从折算" };
+    }
+    if (anchor.drillValue === null || anchor.drillValue === 0 || anchor.drillValue !== breach.baseline) {
+      return {
+        value: null,
+        basis: "",
+        reason:
+          `归因落点读数（${anchor.drillType}/${anchor.drillId}.${anchor.drillField}=${anchor.drillValue ?? "—"}）与候选判据基线（${breach.baseline}${breach.unit}）` +
+          `**不是同一个量**（不逐位相等）⇒ 拒绝按比例折算（编一个换算系数比缺这个数更坏）`,
+      };
+    }
+    if (breach.value === breach.baseline) {
+      return {
+        value: null,
+        basis: `${anchor.nodeId} 贡献 ${anchor.contribution}${anchor.unit} × Δbreach/breach基线`,
+        reason:
+          `该候选**不改变**本根因的判据读数（${breach.baseline}→${breach.value}${breach.unit}）——它的效果落在其他维` +
+          `（见 dims 的 capacityP50/severity）；本引擎无从把那些维换算成本指标缺口，故不给收窄量。`,
+      };
+    }
+    return {
+      value: round((anchor.contribution * (breach.baseline - breach.value)) / breach.baseline, 4),
+      unit: anchor.unit,
+      basis: `${anchor.nodeId} 贡献 ${anchor.contribution}${anchor.unit} × (${breach.baseline}−${breach.value})/${breach.baseline}（落点读数与判据基线逐位相等 ⇒ 同量可等比折算）`,
+    };
+  }
+
+  /**
    * WO-CEO-3 · decision_play 决策推演引擎（G-DECISION）。
    * 一根因（复用 CEO-2 gap_attribution 产物·非重造）→ ≥3 方案（读真供应链对象·各维度真算）→ 比对矩阵
    * → 触发规则（信号阈值→行动·真评估·阈值可 RuleEntry.params 覆盖 C3）→ 贪心组合 ActionPlan（分步）
@@ -3227,7 +3483,7 @@ export class SolverService {
     const shortfallFrac = round(Math.min(1, ltaShortfall / 2000), 4);
     // closesGap 真算：可解决供应根因权重 addressable × 方案有效性(真对象派生) × 缺口规模系数。改根因颗粒→addressable/有效性变→closesGap 变(C6)。
     const cg = (eff: number) => round(Math.min(addressable, addressable * eff * (0.6 + 0.4 * shortfallFrac)), 4);
-    const options = [
+    const allOptions = [
       { optionId: "opt-backup-cert", factorId: rootFactorId, label: "缩短备份供应商认证周期", sourceKind: "solver" as const,
         closesGap: cg(effBackup), cost: round(120 + certWeeks * 8, 0), cycleDays: round(certWeeks * 7, 0), risk: 0.25, exposure: round(0.6 * (1 - effBackup), 3), reversibility: 0.8,
         provenance: { kind: "求解器" as const, basis: "BackupSupplierPool.certWeeks", drillType: "BackupSupplierPool", drillId: str(cathodePool?.poolId ?? "pool-cathode"), drillValue: certWeeks } },
@@ -3238,6 +3494,66 @@ export class SolverService {
         closesGap: cg(effInsource), cost: round(800 + shortfallFrac * 1200, 0), cycleDays: 180, risk: 0.55, exposure: 0.05, reversibility: 0.2,
         provenance: { kind: "策略推理" as const, basis: "正极供应缺口(LTA 约定−实际交付)", drillType: "LongTermAgreement", drillId: "lta-lfp-cylk", drillValue: ltaShortfall } },
     ];
+
+    // ── WO-DECISION-PLAY-OPTIONS ② · 战略方案**依据可核对才下发**（治「贴上去的装饰」）──────────────
+    //
+    // 修前实测（seed=42·demo·`test/decision-play-options.seam.test.ts` 里有金丝雀）：上面这三条的
+    // **身份恒定**——`cash`（根因 应收账龄恶化·下钻 ARAging）与 `market_share`（根因 大客户丢标·下钻 BidRecord）
+    // 拿到的也是「缩短备份供应商认证周期／长协加价格联动条款／上游自采矿」。数值确实随 metricKey 变
+    // （`closesGap` 由 addressable 派生），但**方案与根因语义无关** —— 这比"数值写死"更坏：
+    // 界面上它看起来像推演出来的，其实只是三条贴上去的正极供应链战略。
+    //
+    // 判据（数据自己有的，不新立映射表）：一条方案的 `provenance.drillType/drillId` 指向的那个**真对象**，
+    // 必须能在本次归因树的落点集里被核对到（`gap_attribution` 节点自带的 `provenance` 下钻对象）：
+    //  · `OBJECT` 同类型**同实例**命中 —— 强依据；
+    //  · `TYPE`   同类型、**不同实例**（树上有该类型的落点，但不是这一条指的那个）—— 弱依据，逐条标出差异，
+    //    不许把它当成 OBJECT 静默混过去（实测就有一条：`opt-lta-clause` 读的是「首个正极长协」
+    //    `lta-lfp-rbkj`，而因果因子 `cf-lta-breach` 指的是 `lta-lfp-cylk`；同为 `opt-insource` 又写死后者
+    //    —— 两条方案对"哪份长协是证据"意见不一致。这是本单的**旁证发现**，不在本单修，但必须**出声**）；
+    //  · 都够不着 ⇒ 该方案与本根因无可核对的依据关系，**诚实不下发** + 写清为什么。
+    // 现金域根因（下钻 ARAging/Customer/DSO）与份额域（BidRecord/CompetitorPrice…）树上没有长协/备份池
+    // ⇒ 三条战略方案**一条都不下发**（修前它们照样贴上去，这正是「贴上去的装饰」的实证）。
+    const anchors = this.collectGapAnchors(ga);
+    const optionsOmitted: { optionId: string; label: string; reason: string }[] = [];
+    const optionsEvidence: { optionId: string; match: "OBJECT" | "TYPE"; note: string }[] = [];
+    const options = allOptions.filter((o) => {
+      const key = `${o.provenance.drillType}|${o.provenance.drillId}`;
+      const exact = anchors.byKey.get(key) ?? anchors.byType.get(o.provenance.drillType);
+      if (exact && (anchors.byKey.has(key) || isWildcardDrillId(exact.drillId))) {
+        optionsEvidence.push({
+          optionId: o.optionId,
+          match: "OBJECT",
+          note: `依据对象 ${key} == 归因树节点 ${exact.nodeId}（${exact.factor}·贡献 ${exact.contribution}${exact.unit}）的下钻对象`,
+        });
+        return true;
+      }
+      const sameType = [...anchors.byKey.values(), ...anchors.byType.values()]
+        .filter((a) => a.drillType === o.provenance.drillType)
+        .sort((a, b) => b.contribution - a.contribution || a.nodeId.localeCompare(b.nodeId))[0];
+      if (sameType) {
+        optionsEvidence.push({
+          optionId: o.optionId,
+          match: "TYPE",
+          note:
+            `依据**类型** ${o.provenance.drillType} 在归因树上（节点 ${sameType.nodeId}·下钻 ${sameType.drillType}/${sameType.drillId}），` +
+            `但本方案指的是 ${o.provenance.drillId} —— **同类型不同实例**，依据强度为 TYPE（弱）：两边对"哪个对象是证据"并不一致。`,
+        });
+        return true;
+      }
+      optionsOmitted.push({
+        optionId: o.optionId,
+        label: o.label,
+        reason:
+          `依据对象 ${key} 与其类型都不在本次归因树的落点集里（根因「${str(root.factor)}」的下钻面为 ` +
+          `${[...anchors.types].sort().join("、") || "—"}）⇒ 该方案与本根因无可核对的依据关系，诚实不下发。`,
+      });
+      return false;
+    });
+
+    // ── WO-DECISION-PLAY-OPTIONS ③ · 接上真枚举器（`enumerateImpedimentOptions`）────────────────
+    // 这条线此前**只接进 `chain-impediment.ts:1101`**（沙盘），决策路一处没接 —— 铁律 0.5 第三形态
+    // 「接了线接错地方」，修法是补挂载点。候选原样下发（不折算成 DecisionOption·理由见方法头）。
+    const impedimentPlays = await this.decisionImpedimentPlays(ctx, anchors);
 
     // 3) 比对矩阵。
     const matrix = options.map((o) => ({ optionId: o.optionId, label: o.label, dims: { closesGap: o.closesGap, cost: o.cost, cycleDays: o.cycleDays, risk: o.risk, exposure: o.exposure, reversibility: o.reversibility } }));
@@ -3279,13 +3595,32 @@ export class SolverService {
     const narrowedPct = round(gap > 0 ? (gap - afterGap) / gap * 100 : 0, 2);
     const sandboxNarrowing = { beforeGap: gap, afterGap, narrowedPct, ticks: 0 };
 
-    await this.outbox?.emit(ctx.tenantId, "decision.options_generated", { metricKey: rootMetric.key, factorId: rootFactorId, optionCount: options.length, firedTriggers: triggers.filter((t) => t.fired).length });
+    const playCandidateCount = num(impedimentPlays.candidateCount);
+    await this.outbox?.emit(ctx.tenantId, "decision.options_generated", {
+      metricKey: rootMetric.key,
+      factorId: rootFactorId,
+      optionCount: options.length,
+      omittedCount: optionsOmitted.length,
+      impedimentCandidateCount: playCandidateCount,
+      firedTriggers: triggers.filter((t) => t.fired).length,
+    });
     // ── WO-ORDER-JOURNEY · 落点锚定块（**加键，不改任何既有键**）───────────────────────────
     const locusPlay = await this.decisionPlayLocus(ctx, args);
     return {
       rootCause: { factorId: rootFactorId, label: str(root.factor), metricKey: rootMetric.key, gap, unit },
       options, matrix, triggers, recommendedPlan: plan, sandboxNarrowing,
-      summary: `根因「${str(root.factor)}」(可解决供应权重 ${addressable}${unit}) → ${options.length} 方案比对(补缺口/代价/周期/风险/敞口/可逆)·推荐组合 ${chosen.length} 项补 ${plan.totalClosesGap}${unit}(收窄 ${narrowedPct}%)·${triggers.filter((t) => t.fired).length}/${triggers.length} 触发规则 fire`,
+      // WO-DECISION-PLAY-OPTIONS：诚实位——被挡下的战略方案逐条留名 + 理由（前端要能显示"为什么这里空"，不是空白）。
+      optionsOmitted,
+      // WO-DECISION-PLAY-OPTIONS：留下来的每条方案，它的依据在归因树上是**同实例**还是**只同类型**（弱依据要出声）。
+      optionsEvidence,
+      // WO-DECISION-PLAY-OPTIONS：真枚举器候选（阻滞点/杠杆/逐维 baseline→value/join 路径全带·空则带 noPlayReason）。
+      impedimentPlays,
+      summary:
+        `根因「${str(root.factor)}」(可解决供应权重 ${addressable}${unit}) → ${options.length} 战略方案比对` +
+        `(补缺口/代价/周期/风险/敞口/可逆${optionsOmitted.length ? `·另 ${optionsOmitted.length} 条因依据不在本根因树上未下发` : ""})` +
+        `·推荐组合 ${chosen.length} 项补 ${plan.totalClosesGap}${unit}(收窄 ${narrowedPct}%)` +
+        `·可执行方案 ${playCandidateCount} 条(接 ${num(impedimentPlays.joinedCount)}/${num(impedimentPlays.scanned)} 个阻滞点)` +
+        `·${triggers.filter((t) => t.fired).length}/${triggers.length} 触发规则 fire`,
       ...(locusPlay === null ? {} : { locusPlay }),
     };
   }
