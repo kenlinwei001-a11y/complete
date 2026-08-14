@@ -455,6 +455,43 @@
 .inflightCancel:hover,
 .inflightCancel:focus-visible { color: var(--txt); }
 
+/* 杠杆重算 · 汇总条（第一层）+ 明细折叠（第二层）。
+   仓主 2026-08-14 定案「没价值则展示汇总数据，点击后再展示详细数据」。 */
+.deltaSummary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.deltaSummary b {
+  font-size: 13px;
+  color: var(--txt);
+}
+/* 「N 行中仅 M 个不同结果」——这是事实陈述不是警告，故用 muted2 不用告警色；
+   但要与左侧汇总分开读，故加分隔线。 */
+.deltaDistinct {
+  color: var(--muted2);
+  border-left: 1px solid var(--line2);
+  padding-left: 14px;
+}
+.deltaSummaryToggle {
+  font-size: 12px;
+  color: var(--muted2);
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 0;
+}
+.deltaSummaryToggle:hover { color: var(--txt); }
+/* 明细里的读法说明：屏上给的是引擎原始键，不解释用户读不出来。 */
+.deltaLegend {
+  font-size: 12px;
+  color: var(--muted2);
+  margin: 4px 0 6px;
+}
+
 /* —— S&OP —— */
 .sopGrid {
   display: grid;

@@ -340,7 +340,58 @@ export function DynamicLeverPanel({
 
           {out && out.count > 0 && (
             <div style={{ marginTop: 8 }} data-testid="lever-deltas">
-              <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 4 }}>{zh.sim.proj.lever.deltaTitle(out.rows.length)}</div>
+              {/* 仓主 2026-08-14 定案：「**没价值则展示汇总数据，点击后再展示详细数据**」。
+                  逐对象 before/after 是**引擎的中间产物**（哪些对象的哪个派生字段变了），不是决策信息 ——
+                  它的正当用途是**溯源**（「你说影响 900 个对象，是哪些」），故降第二层。
+                  ⚠ D4：一行没删，只是默认收起；`<details>` 保留完整表格与每值 provenance。
+
+                  汇总只报**算得出来的**四个量，一个都不编：
+                    · 影响对象数（后端 `affectedObjects`，非前端数行数）
+                    · 合计 Δ（Σ(after−before)）· 变化区间（min…max）
+                    · **去重后的不同结果数** —— 这一条是仓主实测点名的那个事实：
+                      屏上 15 行里其实只有 5 个不同的数（每条产线的三个型号 before/after 完全相同，
+                      即型号维度不参与本次计算）。**不说出来，读的人会把 15 行当成 15 个独立结论。**
+                  ⛔ 刻意**不**报「缺口 X→Y」：本面板拿不到 gap（不在 props 里），编一个就是造假；
+                     要报它须由父页传入，另立单。 */}
+              {(() => {
+                const nums = out.rows.map((r) => ({ d: Number(r.after) - Number(r.before), ok: Number.isFinite(Number(r.after)) && Number.isFinite(Number(r.before)) })).filter((x) => x.ok);
+                const total = nums.reduce((s, x) => s + x.d, 0);
+                const lo = nums.length ? Math.min(...nums.map((x) => x.d)) : 0;
+                const hi = nums.length ? Math.max(...nums.map((x) => x.d)) : 0;
+                const distinct = new Set(out.rows.map((r) => `${r.prop}|${String(r.before)}|${String(r.after)}`)).size;
+                return (
+                  <div className={styles.deltaSummary} data-testid="lever-delta-summary">
+                    <span>
+                      影响 <b className="mono">{out.affectedObjects}</b> 个对象 · 合计{" "}
+                      <b className="mono" data-testid="lever-delta-total">{total >= 0 ? "+" : ""}{fmt(total, 0)}</b>
+                      {nums.length > 1 && lo !== hi && (
+                        <> · 区间 <span className="mono">{fmt(lo, 0)} … {fmt(hi, 0)}</span></>
+                      )}
+                    </span>
+                    {distinct < out.rows.length && (
+                      /* ⚠ 括号里的解释原本写在第一层，被 `check-ui-first-layer` 当场判红
+                         （D2b「第一层长说明串 ≥24 字」）——**我刚给别的单立的规矩，自己当场犯了**。
+                         按规范降到 `title` 浮层，第一层只留「N 行中仅 M 个不同结果」这个**结论**。 */
+                      <span
+                        className={styles.deltaDistinct}
+                        data-testid="lever-delta-distinct"
+                        title="其余为同值重复：该维度不参与本次计算，故多行结果相同"
+                      >
+                        {out.rows.length} 行中仅 <b className="mono">{distinct}</b> 个不同结果
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
+              <details data-testid="lever-deltas-details">
+                <summary className={styles.deltaSummaryToggle}>{zh.sim.proj.lever.deltaTitle(out.rows.length)}</summary>
+                {/* 诚实位：对象 id 与派生字段的读法。屏上给的是引擎原始键，不解释用户读不出来。
+                    ⚠ `p50` 在本仓**有两个含义两个单位**（`packages/contracts/src/solvers.ts:87` 产能格 = 电芯/日；
+                    `apps/datacore/src/synthetic/battery.ts:1149` DemandSegment = 需求 P50·万套）。
+                    本面板的对象是产能格，故此处按前者读；**根治要在契约层改名**（另立单），UI 只能标注。 */}
+                <div className={styles.deltaLegend}>
+                  对象 = <span className="mono">基地|产线|型号</span> · 派生字段 <span className="mono">p50</span> = 该格产能 P50（电芯/日）
+                </div>
               <table className="cmp">
                 <thead>
                   <tr><th>对象</th><th>派生字段</th><th>before</th><th>after</th><th>变化</th></tr>
@@ -372,6 +423,7 @@ export function DynamicLeverPanel({
                   })}
                 </tbody>
               </table>
+              </details>
             </div>
           )}
 
