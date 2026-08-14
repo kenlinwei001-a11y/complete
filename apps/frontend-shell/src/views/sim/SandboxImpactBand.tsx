@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { FinanceWorldProjectionOutputSchema } from "@platform/contracts";
 import type { FinanceWorldProjectionOutput, ImpactChange } from "@platform/contracts";
 import { InfoPopover } from "@/components/InfoPopover";
 import { runSolver } from "@/api/endpoints";
@@ -187,7 +188,29 @@ export function FinanceProjectionPanel({ worldId, curTick }: FinanceProjectionPa
     retry: false,
     queryFn: async () => {
       const res = await runSolver("finance_world_projection", { worldId });
-      return res.data as FinanceWorldProjectionOutput;
+      /**
+       * 🔴 **按契约校形，不许 `as` 硬转**（本单实测栽过，全量前端回归当场咬出来的）。
+       *
+       * 第一版写的是 `res.data as FinanceWorldProjectionOutput` —— 一个**编译期**断言，
+       * 运行期什么都不检查。于是回包只要缺 `lines`，下面 `out.lines.find(...)` 就抛，
+       * React 把**整棵树**卸掉：屏上不是「这块面板没数据」，而是**整个沙盘白屏**。
+       * `metro-semantics.seam.test.tsx` / `sandbox-ia-consolidate.seam.test.tsx` 的桩
+       * 对任意 solverKey 都回同一份 payload，正好复现了这条路径（4 个用例连坐）。
+       *
+       * 这不只是"测试桩不严谨"：老后端、灰度中的后端、被网关改写过的响应都长这样。
+       * **一块面板绝不能有权力让整页消失** —— 校形失败按「拿不到数」处理，退回诚实缺口记号。
+       * 校形用**契约那一份 schema**（`@platform/contracts`），不在前端另写一套判据。
+       */
+      const parsed = FinanceWorldProjectionOutputSchema.safeParse(res.data);
+      if (!parsed.success) {
+        throw {
+          error: {
+            code: "FINANCE_PROJECTION_SHAPE_MISMATCH",
+            message: `财务投影回包不符合契约形状（${parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`).join("；")}）—— 本页不猜它想说什么。`,
+          },
+        };
+      }
+      return parsed.data;
     },
   });
 

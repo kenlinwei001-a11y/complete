@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ADMIN, invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
-import type { FinanceWorldProjectionOutput } from "@platform/contracts";
+import { FinanceWorldProjectionOutputSchema, type FinanceWorldProjectionOutput } from "@platform/contracts";
 
 /**
  * ══ WO-FINANCE-WORLDSTATE · 接缝门：财务**金额**随扰动真的会变 ═══════════════════
@@ -47,10 +47,25 @@ async function createWorld(t: TestApp, baseSnapshot: Record<string, Record<strin
 const tick = (t: TestApp, sid: string, n: number) =>
   t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n } });
 
+/**
+ * 跑一次投影，并**按契约校形**。
+ *
+ * ⚠ 这道校形是本单被**前端全量回归当场咬出来**才加的（不是设计时想到的）：
+ * 前端第一版用 `as FinanceWorldProjectionOutput` 硬转回包 —— 编译期断言、运行期零检查，
+ * 回包缺一个字段就把整棵 React 树卸掉（**整个沙盘白屏**，不是"这块面板没数据"）。
+ * 修法两侧对称、**共用契约那一份 schema**：前端 `safeParse` 失败即退回诚实缺口记号；
+ * 这里正向咬住「引擎出的形状真的符合契约」——两半用同一把尺子，才不会各自漂。
+ */
 async function project(t: TestApp, worldId: string): Promise<FinanceWorldProjectionOutput> {
   const res = await invokeSolver(t, "finance_world_projection", { worldId });
   expect(res.statusCode, `求解器失败：${res.body}`).toBe(200);
-  return (res.json() as { data: FinanceWorldProjectionOutput }).data;
+  const raw = (res.json() as { data: unknown }).data;
+  const parsed = FinanceWorldProjectionOutputSchema.safeParse(raw);
+  expect(
+    parsed.success,
+    `引擎回包不符合 FinanceWorldProjectionOutputSchema：${parsed.success ? "" : JSON.stringify(parsed.error.issues.slice(0, 5))}`,
+  ).toBe(true);
+  return (raw as FinanceWorldProjectionOutput);
 }
 
 const lineOf = (out: FinanceWorldProjectionOutput, role: string) => out.lines.find((l) => l.role === role)!;
