@@ -1374,6 +1374,25 @@
         "note": "本体 §7 暂无该门条目（binding=NONE，未接自动链）；变异证据见 evidence。"
       },
       "notes": "派单前门 + 门链门（双模式）。**无参 = 门链模式**：扫「相对 canonical 有变更的 docs/WO-*.md」——这是仓库状态，故可进 gates 链。范围刻意不是全量：47 份历史工单里 23 份锚点早已漂移，全扫恒红 = 装饰品门；只咬「本分支新写/改过的工单」才可达成，且真的在防那件事（新工单误导下一个 dev）。**带文件名/`-` = 派单前模式**，支持 `--rev <ref>` 按工单声明的基线校验（收编循环里基线常非 canonical，不带 --rev 会把「基线上有、canonical 上没有」误报成 FILE_MISSING）。前瞻型工单用 `<!-- wo-anchors: allow-missing: a,b -->` 显式声明「本单要新建」的路径；豁免仍逐条列出（豁免≠隐身），且声明了却已存在会反过来点名「豁免过期」。关死两类：路径不存在 / 符号零命中 / 行号漂 >40 · 分支已是 canonical 祖先（空单）。**射程外并在每次输出显式声明**：查不出「文件缺 ≠ 能力缺」（需语义判断）。三分退出码：0 干净 / 1 有错 / 2 门自己坏了。"
+    },
+    "check-edge-active-mounts.mjs": {
+      "alias": "edge-active-mounts:check",
+      "binding": "NONE",
+      "guardedPaths": [
+        "apps/frontend-shell/src/views/sim/EdgeActivePanel.tsx",
+        "apps/frontend-shell/src/views/sim/SandboxView.tsx",
+        "apps/frontend-shell/src/views/WhatIfView.tsx",
+        "apps/frontend-shell/src/views/RiskBoardView.tsx"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": null,
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "WO-GATE-LEDGER-FIX 补登账时三向变异实跑（2026-08-14 · 基线 d250622e）",
+        "note": "补登账缘由：本门是 gate-ledger:check 判据①「无遗漏」当场抓出的唯一一条未登账门 —— 建门时漏登，于是它天然免疫门账治理（没人核它的 binding、责任边界、是否红过）。三向变异（每条先自证「变异体 ≠ 原文」，撤回后复绿、git status 干净、门 RC=0）：① 真违规 —— 把 PAGES 里 risk-board 指向确实没挂 EdgeActivePanel 的 App.tsx ⇒ RC=1「🔴 1/9 页不合格」，**没有**被兜底吞成 2；② 判据本体失灵 —— 删掉 analyze 里 MOUNTED_IN_SUBCOMPONENT 那条返回（子组件挂载不再被认出）⇒ 内嵌金丝雀当场报「🛠️ 工具坏了」RC=2，**不是**安静报「9/9 都挂对了」，证明金丝雀与主判据共用 analyze 同一份实现；③ 未预期异常 —— 在 main() 首行注入 throw ⇒ RC=2。⚠️ ③ 这条本单同批才成立：原文件**有** RC=2 出口却**缺顶层兜底**，未预期异常会走 node 默认退 1、撞上「真有页没挂」那个码（gate-exit-discipline:check 当场报红，本单一并补上）。兜底刻意用**形态 (a) 顶层 try/catch** 而非 process.on 全局 handler：本文件的 analyze 被 apps/frontend-shell/test/edge-active.seam.test.tsx import，顶层无条件注册全局 handler 会装进跑测试的那个进程、把无关异常抢走并 exit(2)，连累整个测试进程。⚠️ 变异 ③ 第一次做**错**了：用 shell 传 `\\n` 给 String.replace，插进去的是字面反斜杠 n ⇒ 注入的其实是**语法错误**（链接期失败，早于任何 try/catch），得出 RC=1 的错误反证，差点据此判「兜底没生效」。改用 JS 字面量传参后 RC=2。这正是 CLAUDE.md 记的「sed 是 BRE / python replace 静默 no-op」同族坑 —— 变异反证必须先自证变异体 ≠ 原文，**且是你想要的那个变异体**。"
+      },
+      "notes": "NONE（未接任何链）：本门是 WO-ACTIVE-EDGE-UX 的一次性挂载点门，判的是 9 个推演页的 <EdgeActivePanel> 挂在**默认导出主组件**里、而不是只在跑完推演才渲染的子组件里（初稿真犯过：没跑过推演就看不见开关，而「先关一条边再看结果」恰是最常见用法 —— G-SKILL-REFGRAPH-DEAD-EXTRACTOR 同族：实现有、测试绿、链路走不到）。disposition=WIRE 的判断：判据是纯静态、零依赖、单次 <1s，接进 gates 链无成本，且页面清单 PAGES 会随新推演页增加而需要维护 —— 不接链就没人记得更新它。**未接前它的真实状态是「跑过一次就没人再跑」**，本次登账即为把这件事显式化，实际接链需同批改 package.json 的 gates 串与本条 binding，由审核方裁。",
+      "disposition": "WIRE"
     }
   }
 }
