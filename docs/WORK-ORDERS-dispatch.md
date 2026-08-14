@@ -15,6 +15,29 @@
 5. **KILL-MOCK-RED**：不得用 mock 假口径掩盖真数据；无数据就诚实披露，不编造。
 6. **金值/注册即更**：新增 solver/对象/资源 kind → 同步 golden 计数（catalog/chain:check/ontology-core）。
 
+7. **⛔ worktree 隔离的 agent 一律不许用裸 `git stash` / `git stash pop`**（2026-08-14 两个 dev
+   **各自独立**踩到，照铁律 0.6 第 2 次即建机制）。
+   **病因**：`isolation: "worktree"` 只隔离**工作目录**，**`.git` 是共用的**，而 **stash 栈是仓库全局的**。
+   于是 `stash@{0}` 会被别的 agent 并发插队改写 —— 实测：一个 dev 隔离测基线时 `git stash push`，
+   另一个 agent 在同一秒插了自己的条目，该 dev 的裸 `git stash pop` **popped 了别人的 stash**
+   （冲突落在它根本没碰过的 `ProcessCanvasView.tsx` 上）。
+   形态：**「我用『我上一条命令 push 了一个 stash』当作『stash@{0} 就是我那个』的证据，而前者并不度量后者。」**
+   **替代做法（按优先级）**：
+   ① `git worktree add --detach <tmp> <rev>` 起临时树测基线（跨 agent 零耦合，首选）；
+      ⚠ 临时树**没有 `node_modules`** —— 需要跑门就先 `ln -s <主树>/node_modules <tmp>/node_modules`，
+      否则门会退 **RC=2「工具坏了」**，那个 0 条不是「干净」。
+   ② 临时提交 + `git reset --soft` 回滚（栈是分支局部的，不共享）。
+   ③ 实在要 stash：`git stash push -m "<唯一标记>"`，取回时**用显式 ref**
+      `git stash pop "$(git stash list | grep '<唯一标记>' | cut -d: -f1)"`，**永不裸 pop**。
+   ⚠ 还要防「stash 根本没建成」：工作区干净时 `git stash push` **退 0 但不创建条目**，
+      后续 `git stash list | grep` 为空、pop 报「refs/stash@{} 不是合法引用」——
+      审核方 2026-08-14 就因此把「同一棵树」当成「合并前后对照」，得到一个看似安心的相等数。
+      **判据落在「`git stash list` 里有没有我那条」，不是「push 命令退了 0」。**
+
+8. **注释里禁止出现 `*/` 序列**（同日实测，typecheck 当场 TS1109 报出来）：
+   往块注释里写复验命令时，`grep -rn "X" apps/*/src/**/*.ts` 里的 `*/` 会**提前关掉块注释**，
+   把后面的代码全变成语法错。写成 `grep -rn "X" apps/datacore/src`（目录形式）即可。
+
 ---
 
 ## 1 · 派发顺序与冲突矩阵
