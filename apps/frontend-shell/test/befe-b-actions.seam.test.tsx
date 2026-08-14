@@ -29,6 +29,13 @@ import { checkedTree, factHits } from "./factlock";
  * （`PENDING_APPROVAL → APPROVED` / `→ CANCELLED`），而不是只断言屏上文案。
  */
 
+/**
+ * `ConfirmModal` 的确认按钮（`components/ui/Modal.tsx:107`，文案 `zh.common.confirm` = 「确认」）。
+ * ⚠️ 别写死「确定」——本仓用的是「确认」，写错会以 15s 超时收场，看起来像"按钮是死的"，
+ * 实则是探针找错了元素。这里按 role 取按钮而不是按文本，免得撞上正文里同样含「确认」的提示语。
+ */
+const confirmButton = () => screen.findByRole("button", { name: "确认" });
+
 /** 打开 /admin/actions 并选中第一行草稿（真 route → 真列表 → 真详情）。 */
 async function openFirstDraft(status = "PENDING_APPROVAL"): Promise<string> {
   renderApp("/admin/actions");
@@ -100,20 +107,40 @@ describe("WO-BEFE-B ① R4 留痕读端 GET /a/v1/action-drafts/:id/audit", () =
     expect(screen.queryByTestId("audit-execution"), "null 执行结果被渲染成了值").toBeNull();
   });
 
-  it("①-D 接缝真驱动：批准后**重取** audit，`action.approved` 真的多出来（后端状态迁移的留痕）", async () => {
+  /**
+   * ①-D 接缝真驱动：把**整条审批链**走完，断言状态真的离开 PENDING_APPROVAL。
+   *
+   * ⚠️ 这里有一条实测出来的领域事实，第一版断言就栽在它上面：种子草稿 `act-001` 的
+   * `approvalSteps` 是**两步**（`seq1 planner` → `seq2 admin`，见 `mocks/fixtures.ts:ACTION_DRAFTS`）。
+   * 批一次只是**推进到下一步**，状态**仍然**是 PENDING_APPROVAL —— 这是对的，不是 bug
+   * （后端 `actions.ts:676` 同语义：还有 next 步就 emit `action.pending_approval` 并留在原状态）。
+   * 所以"批准后状态必须迁走"这句话，只有在**最后一步**批完才成立。一步就断言会误报"审批链没跑"。
+   */
+  it("①-D 接缝真驱动：走完整条审批链 → 状态真的离开 PENDING_APPROVAL，且留痕多出 action.approved", async () => {
     const id = await openFirstDraft();
     const before = await fetchActionDraftAudit(id);
     const beforeApproved = before.events.filter((e) => e.event === "action.approved").length;
+    const steps = (await fetchActionDraft(id)).approvalSteps.length;
+    expect(steps, "审批链为空 ⇒ 这条用例证明不了什么").toBeGreaterThan(0);
 
-    // 走真实审批 UI：批准 → 二次确认。
-    fireEvent.click(await screen.findByTestId("approve-btn"));
-    fireEvent.click(await screen.findByText("确定"));
+    // 逐步批完（每批一次详情面板会关闭 ⇒ 重新选中那一行）。
+    for (let i = 0; i < steps; i++) {
+      if (i > 0) {
+        fireEvent.click(await screen.findByTestId(`draft-${id}`));
+        await screen.findByTestId("draft-detail");
+      }
+      fireEvent.click(await screen.findByTestId("approve-btn"));
+      fireEvent.click(await confirmButton());
+      // 等这一步真的落到后端再批下一步，否则会对着同一个 pending step 连点两次。
+      await waitFor(async () => {
+        const d = await fetchActionDraft(id);
+        expect(d.approvalSteps.filter((s) => s.decision).length, `第 ${i + 1} 步没落库`).toBe(i + 1);
+      });
+    }
 
     // ★ 后端态真的迁走了（不是屏上文案变了）。
-    await waitFor(async () => {
-      const d = await fetchActionDraft(id);
-      expect(d.status, "批准后状态没离开 PENDING_APPROVAL ⇒ 审批链没真跑").not.toBe("PENDING_APPROVAL");
-    });
+    const done = await fetchActionDraft(id);
+    expect(done.status, "整条链批完状态还留在 PENDING_APPROVAL ⇒ 审批链没真跑").not.toBe("PENDING_APPROVAL");
     // ★ 留痕跟着长（audit 读的是真事件流，不是静态清单）。
     const after = await fetchActionDraftAudit(id);
     expect(after.events.filter((e) => e.event === "action.approved").length).toBeGreaterThan(beforeApproved);
@@ -130,7 +157,7 @@ describe("WO-BEFE-B ① 撤回 POST /a/v1/action-drafts/:id/cancel", () => {
     expect(before.status, "起点就不是待审批 ⇒ 这条用例证明不了撤回").toBe("PENDING_APPROVAL");
 
     fireEvent.click(await screen.findByTestId("cancel-btn"));
-    fireEvent.click(await screen.findByText("确定"));
+    fireEvent.click(await confirmButton());
 
     // ★ SEAM 判据：重新打真 GET，后端状态真的是 CANCELLED。
     await waitFor(async () => {
@@ -149,7 +176,7 @@ describe("WO-BEFE-B ① 撤回 POST /a/v1/action-drafts/:id/cancel", () => {
     );
     const id = await openFirstDraft();
     fireEvent.click(await screen.findByTestId("cancel-btn"));
-    fireEvent.click(await screen.findByText("确定"));
+    fireEvent.click(await confirmButton());
 
     await waitFor(() => expect(calls.length, "点了撤回一个请求都没发").toBe(1));
     expect(calls[0]!.method).toBe("POST");
@@ -161,7 +188,7 @@ describe("WO-BEFE-B ① 撤回 POST /a/v1/action-drafts/:id/cancel", () => {
   it("①-G R4 红线：撤回后 CANCELLED 在筛选里查得到，且它**不是**通过态", async () => {
     const id = await openFirstDraft();
     fireEvent.click(await screen.findByTestId("cancel-btn"));
-    fireEvent.click(await screen.findByText("确定"));
+    fireEvent.click(await confirmButton());
     await waitFor(async () => expect((await fetchActionDraft(id)).status).toBe("CANCELLED"));
 
     // 撤回后的草稿必须在 CANCELLED 这一档查得到（否则"撤回成功"没有任何可核查落点）。
