@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 // 校形用**契约那一份 schema**（`safeParse`），故这里不再 import 它的 type：
 // 类型由 `parsed.data` 推出来，与运行期校验**同一个出处** —— 两者分家正是上一版 `as` 硬转的病根。
@@ -153,6 +153,70 @@ const fmtMoney = (v: number): string =>
 const signed = (v: number): string => `${v > 0 ? "+" : v < 0 ? "−" : ""}${fmtMoney(Math.abs(v))}`;
 const dirOf = (v: number): "up" | "down" | "flat" => (v > EPS ? "up" : v < -EPS ? "down" : "flat");
 
+/* ══════════════════════════════════════════════════════════════════════════════
+ * WO-FIELD-DEAD-6 · 「诚实位那一层」的行内样式
+ *
+ * ── 为什么是行内样式而不是 CSS module 类 ────────────────────────────────────────
+ * 本单的范围边界只含本文件与 `locales/zh.ts`；`SandboxConsole.module.css` 里另有 agent 在改
+ * （沙盘 v3/v4 · metro UX · 对比度三张单），碰它就是冲突。故新增文字的字号与颜色写在这里。
+ *
+ * ── 🔴 对比度：**不许硬编码那个门槛色**（这一条是本单实测订正的，照工单字面写会出事）──
+ * 工单给的门槛是「弱化色不低于 `#b6c3d4`（≈6.6:1）」。亲手算过（`node .contrast.mjs`，
+ * 判据 = WCAG 2.x 相对亮度公式，底色取本带真实背景 `.impactHalf { background: var(--panel) }`）：
+ *
+ *   | 前景 | 暗色底 #2c3d5e | 浅色底 #ffffff |
+ *   |---|---:|---:|
+ *   | `#b6c3d4`（工单门槛色） | **6.07:1** | **1.79:1** ⛔ |
+ *   | `var(--txt)`（暗 #e9eef5 / 浅 #14203a） | 9.30:1 | 16.19:1 |
+ *   | `var(--muted)`（暗 #b1bece / 浅 #475069） | 5.75:1 | 8.02:1 |
+ *   | `var(--muted2)`（暗 #9ba9b7 / 浅 #5b6577） | 4.52:1 | 5.88:1 |
+ *
+ * 两条实测结论：
+ *  ① 工单写的 ≈6.6:1 **在本带的真实底色上是 6.07:1**（6.6 那个数多半是对 `--bg #223251` 算的，
+ *    但本带坐在 `--panel` 上，不是坐在页面底上）——门槛照 6.07 读；
+ *  ② **把 `#b6c3d4` 直接写进样式会把浅色皮打成 1.79:1（远低于任何标准，等于不可读）。**
+ *    本仓是双皮肤（`:root` 暗 / `:root[data-theme="light"]` 浅），硬编码单一 hex 必然牺牲一边。
+ *  ⇒ 故取 `var(--txt)`：两皮下分别 9.30 / 16.19，**双向都高于门槛**，且随主题翻转自动跟上。
+ *    层级不靠调暗颜色做（那正是门槛要禁的），靠 `font-weight` 与列位做。
+ *  ⚠ 同理 `var(--warn)` 也不能用来标「回落」：浅色皮下 1.89:1。回落靠**词**与 `data-weighting`
+ *    属性标，不靠颜色标 —— 靠颜色标的信息，色觉障碍与浅色皮用户本来就收不到。
+ *
+ * 字号一律 ≥12px（CJK 小字在 11px + 4.5:1 下不可读，"过了 WCAG 数值"不等于"看得清"）。
+ * ══════════════════════════════════════════════════════════════════════════════ */
+const PROV_TEXT: CSSProperties = { font: "400 12px/1.5 var(--font-ui, inherit)", color: "var(--txt)" };
+const PROV_ROW: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, auto) auto",
+  gap: "4px 10px",
+  alignItems: "baseline",
+  padding: "3px 0",
+};
+const PROV_NAME: CSSProperties = { font: "600 12px/1.5 var(--font-mono)", color: "var(--txt)", minWidth: 0, overflowWrap: "anywhere" };
+const PROV_VALUE: CSSProperties = { font: "700 12px/1.5 var(--font-mono)", color: "var(--txt)", fontVariantNumeric: "tabular-nums", textAlign: "right" };
+/** 成色那一行（承载数 / 全域基数 / 加权口径）横跨两列 —— 它是上一行那个数的注脚，不是另一个数。 */
+const PROV_GRADE: CSSProperties = { ...PROV_TEXT, gridColumn: "1 / -1" };
+/** 「等权回落」的标记：**加粗 + 词**，不靠颜色（见上文 `--warn` 那条实测）。 */
+const PROV_FALLBACK: CSSProperties = { font: "700 12px/1.5 var(--font-ui, inherit)", color: "var(--txt)" };
+
+/**
+ * `carriers` / `universe` → 屏上那句话。**三档，不许合并**。
+ *
+ * 契约 `FinanceWorldPressureSchema.universe` 的注释原文：
+ * 「缺它 `carriers:0` 无法区分『台账空』与『查过了没中』」。
+ * 后端专门多下发一个 `universe` 就是为了让这两句话不一样；前端把它们合并成一句「无数据」，
+ * 等于把这个字段再杀一次 —— 那两件事的处置完全不同：
+ *  · 台账空 ⇒ 去补数据（本体里就没有这类对象）；
+ *  · 查过了没中 ⇒ 数据在，是这个态没传到 ⇒ 去查传导规则/扰动。
+ *
+ * ⚠ 变异反证咬的就是这个函数：把两个 `carriers === 0` 分支并成一句 ⇒
+ *   `finance-provenance.seam.test.tsx` 的「两种 carriers:0 措辞必须不同」当场红。
+ */
+export function carriersPhrase(carriers: number, universe: number): string {
+  if (carriers === 0 && universe === 0) return zh.sim.sandbox.impact.moneyCarriersNoUniverse;
+  if (carriers === 0) return zh.sim.sandbox.impact.moneyCarriersNoneCarry(universe);
+  return zh.sim.sandbox.impact.moneyCarriersSome(carriers, universe);
+}
+
 /** 一行「基线 → 投影（Δ）」。结构与下面的 `DeltaRow` 同款（同一屏两种数不该长成两个样）。 */
 function MoneyRow({ label, baseline, projected, testId }: { label: string; baseline: number; projected: number; testId: string }) {
   const delta = projected - baseline;
@@ -222,7 +286,27 @@ export function FinanceProjectionPanel({ worldId, curTick }: FinanceProjectionPa
   const out = q.data;
   const costLine = out?.lines.find((l) => l.role === "COST");
   const marginLine = out?.lines.find((l) => l.role === "MARGIN");
-  const usable = out !== undefined && out.available;
+
+  /**
+   * 🔴 **`worldObjectCount === 0` 一律不可用 —— 判据取契约，不取回包的一面之词**（WO-FIELD-DEAD-6 §2.1-4）。
+   *
+   * 契约 `finance-world.ts:146` 对 `worldObjectCount` 的原文是
+   * 「世界态里一共几个对象有态（**0 = 空世界 → `available:false`**）」——
+   * 即「空世界」与「不可用」在契约里是**同一件事**，`available` 只是它的另一种写法。
+   *
+   * 那为什么不直接信 `available`？因为两者只要有一次不一致，信 `available` 的那一版就会
+   * 把**基线原样当成投影**摆上屏：空世界里每条压力都是 0 ⇒ `projected ≡ rolling` ⇒
+   * 屏上是一组「和没扰动时一模一样的钱」，而且没有任何记号说它是空的。
+   * 这正是本仓「静默错答比不答更坏」要防的形态 —— 一个看起来正常的数，读者无从知道它是空的。
+   * 老实按契约多判一个条件，代价是一行；判错的代价是一屏假数。
+   *
+   * ⚠ 不一致时**不复用** `moneyUnavailable`（那条要显示后端的 `unavailableReason`，
+   *   而这条路径下后端压根没给理由——它以为自己是可用的）。另给一句写明矛盾本身。
+   */
+  const worldEmpty = out !== undefined && out.worldObjectCount === 0;
+  /** 回包自相矛盾：说自己可用，却报空世界。据实报缺，并把矛盾写在屏上（不替后端圆场）。 */
+  const contradictory = out !== undefined && out.available && worldEmpty;
+  const usable = out !== undefined && out.available && !worldEmpty;
 
   return (
     <div data-testid="sandbox-impact-finance-money">
@@ -249,6 +333,30 @@ export function FinanceProjectionPanel({ worldId, curTick }: FinanceProjectionPa
         {out ? ` · ${zh.sim.sandbox.impact.moneyCaliberDetail(out.basis.divisor)}` : ""}
       </p>
 
+      {/*
+       * 🔴 **世界态出处常驻第一层**（`worldStateSource` + `worldObjectCount`·WO-FIELD-DEAD-6 病①）。
+       *
+       * 这两个字段契约里是**必填**，后端每次都算、都下发，而前端此前一个都没读
+       * （`solver-field-seam:check` 判：全前端生产代码零提及 ⇒ S3 死字段）。
+       * 它们回答的是「这块钱是拿**哪一份**态、**几个**对象算出来的」：
+       *  · `TICK` = 当前 tick 真落下的态；`BASE_SNAPSHOT` = 该 tick 没落态、回落到会话基线快照
+       *    —— 两者算出来的金额可以差很远，不写出来读者不知道比的是哪两点；
+       *  · `worldObjectCount` 是**分母**：3 个对象有态和 500 个对象有态，同一个金额的份量完全不同。
+       *
+       * 摆在可用/不可用分支**之外**：不可用时它恰恰是最该看见的那行（"因为一个对象都没有态"）。
+       */}
+      {out ? (
+        <p className={styles.stateLine} style={PROV_TEXT} data-testid="sandbox-impact-finance-worldstate" data-source={out.worldStateSource} data-objects={out.worldObjectCount}>
+          {zh.sim.sandbox.impact.moneyWorldStateLabel}
+          {"："}
+          {out.worldStateSource === "TICK"
+            ? zh.sim.sandbox.impact.moneyWorldStateTick
+            : zh.sim.sandbox.impact.moneyWorldStateBaseSnapshot}
+          {" · "}
+          {zh.sim.sandbox.impact.moneyWorldObjects(out.worldObjectCount)}
+        </p>
+      ) : null}
+
       {worldId === null ? (
         <p className={styles.stateLine} data-testid="sandbox-impact-finance-no-session">
           {zh.sim.sandbox.impact.moneyNoSession}
@@ -261,6 +369,15 @@ export function FinanceProjectionPanel({ worldId, curTick }: FinanceProjectionPa
         /* 请求本身失败（能力未开通 / 网络）⇒ 退回诚实缺口记号 + **后端原话**，不显示 0。 */
         <p className={styles.stateLine} data-testid="sandbox-impact-finance-failed">
           {zh.sim.sandbox.impact.moneyFailed(backendMessage(q.error))}
+        </p>
+      ) : contradictory ? (
+        /*
+         * 回包说 `available:true`，却又报 `worldObjectCount:0` —— 两者按契约不可能同真。
+         * 据实报缺，并把**矛盾本身**写在屏上：这不是"暂时没有数"，是"这份回包不自洽"，
+         * 两者的下一步动作不同（前者等世界跑起来，后者去查后端）。
+         */
+        <p className={styles.stateLine} style={PROV_TEXT} data-testid="sandbox-impact-finance-contradiction">
+          {zh.sim.sandbox.impact.moneyWorldEmptyContradiction}
         </p>
       ) : !usable ? (
         /* 求解器说不可用（世界态为空 / 无金额基线）⇒ 同样据实报缺，理由用它自己的原话。 */
@@ -295,6 +412,70 @@ export function FinanceProjectionPanel({ worldId, curTick }: FinanceProjectionPa
                 testId="sandbox-impact-finance-line-ar"
               />
             ) : null}
+          </ul>
+
+          {/*
+           * 🔴 **成色常驻第一层**（`pressures[]`·WO-FIELD-DEAD-6 病① 的主要工作量）。
+           *
+           * 上面那三个金额是**结论**，这一段是它们的**成色**。为什么不许降进 `<details>`：
+           * 降层之后默认屏上仍然只有「一个金额」——而本单要治的病一字不差就是
+           * **「屏上一个金额，看的人无从知道它是 500 个对象里 3 个撑起来的，还是拿不到金额权重退回等权算的」**。
+           * 把成色藏起来 = 病照旧，只是多了一个可以点开的辩解。
+           * （对比：`chain`/`notes` 可以降层，因为它们回答的是"怎么算的"，不是"这个数有多实"。）
+           *
+           * 逐条三样一起给，缺一样这个数就不可复核：
+           *  ① `value` —— 聚合读数本身；
+           *  ② `carriers / universe` —— 分子与分母（见 `carriersPhrase` 的三档，不许合并）；
+           *  ③ `weighting` + `weightingNote` —— `VALUE`（按金额加权，金额口径唯一正确的聚合法）
+           *     还是 `EQUAL`（拿不到金额权重时的**回落**）。两者可信度不同，**混显就是抹掉差别**。
+           *
+           * `data-weighting` / `data-carriers` / `data-universe` 是给门用的机器判据：
+           * 屏上措辞可以改，这三个属性一改就是语义变了 —— 断言咬属性，不咬某一版的措辞。
+           */}
+          <div className={styles.zoneHead}>
+            <h2>{zh.sim.sandbox.impact.moneyPressureTitle}</h2>
+            <span className={styles.zoneQ}>{zh.sim.sandbox.impact.moneyPressureQuestion}</span>
+          </div>
+          <ul className={styles.deltaList} data-testid="sandbox-impact-finance-pressures">
+            {out.pressures.map((p) => {
+              const id = `${p.objectType}-${p.stateVar}`;
+              const equal = p.weighting === "EQUAL";
+              return (
+                <li
+                  key={id}
+                  style={PROV_ROW}
+                  data-testid={`sandbox-impact-finance-pressure-${id}`}
+                  data-weighting={p.weighting}
+                  data-carriers={p.carriers}
+                  data-universe={p.universe}
+                >
+                  <span style={PROV_NAME}>
+                    {p.objectType}.{p.stateVar}
+                  </span>
+                  <span style={PROV_VALUE} data-testid={`sandbox-impact-finance-pressure-${id}-value`}>
+                    {p.value.toFixed(2)}
+                  </span>
+                  {/* 分子/分母：三档措辞（台账空 / 查过了没中 / 真有承载），**不合并**。 */}
+                  <span style={PROV_GRADE} data-testid={`sandbox-impact-finance-pressure-${id}-carriers`}>
+                    {carriersPhrase(p.carriers, p.universe)}
+                  </span>
+                  {/*
+                   * 加权口径。`EQUAL` 必须**显式标为回落**并带 `weightingNote` 原文 ——
+                   * 「为什么退回等权」只有后端知道（是哪个金额字段拿不到），前端不替它编一句。
+                   * 回落标记靠**词 + 字重**，不靠颜色：`--warn` 在浅色皮下只有 1.89:1（见文件上方实测表），
+                   * 且靠颜色传的信息，色觉障碍用户本来就收不到。
+                   */}
+                  <span style={PROV_GRADE} data-testid={`sandbox-impact-finance-pressure-${id}-weighting`}>
+                    <b style={PROV_FALLBACK}>
+                      {equal ? zh.sim.sandbox.impact.moneyWeightingEqual : zh.sim.sandbox.impact.moneyWeightingValue}
+                    </b>
+                    {" · "}
+                    {equal ? zh.sim.sandbox.impact.moneyWeightingEqualHint : zh.sim.sandbox.impact.moneyWeightingValueHint}
+                    {p.weightingNote}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
 
           {/* 第二层：换算链（真规则真系数）。"凭什么是这个数"降层，但**可点开**，不是没有。 */}

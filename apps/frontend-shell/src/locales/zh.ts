@@ -832,6 +832,49 @@ export const zh = {
         moneyOverdueRow: "逾期敞口",
         moneyChain: (n: number) => `换算链 ${n} 跳（真规则系数）`,
         moneyNotes: (n: number) => `诚实缺席 ${n} 条`,
+
+        /* ══ WO-FIELD-DEAD-6 · 「诚实位那一层」的文案 ═══════════════════════════════
+         *
+         * 这一组治的病一句话：**屏上一个金额，看的人无从知道它是 500 个对象里 3 个撑起来的，
+         * 还是因为拿不到金额权重、退回等权硬算出来的。**
+         * 契约 `finance-world.ts` 把 `worldStateSource` / `worldObjectCount` / `pressures[]`
+         * 三个字段都写成**必填**（不带 `.optional()`），后端逐个算好下发，而前端此前一个都没读
+         * （`solver-field-seam:check` 2026-08-14 判：全前端生产代码零提及）。
+         *
+         * ⚠ 三句 `moneyCarriers*` **不许合并成一句「无数据」**：契约注释原文写着
+         *   「缺 `universe`，`carriers:0` 无法区分『台账空』与『查过了没中』」——
+         *   合并 = 把这个区分重新抹掉，等于把 `universe` 这个字段再杀一次。
+         *   `finance-provenance.seam.test.tsx` 用「两种 carriers:0 的屏上措辞必须不同」咬死这一条。
+         */
+        /** 世界态取自哪一份（`worldStateSource`）——不写出来，读者不知道这块钱是拿哪一份态算的。 */
+        moneyWorldStateLabel: "世界态取自",
+        moneyWorldStateTick: "当前 tick 的态",
+        moneyWorldStateBaseSnapshot: "该 tick 没有落态 → 回落会话基线快照",
+        /** 几个对象有态（`worldObjectCount`）——分母不藏起来。 */
+        moneyWorldObjects: (n: number) => `${n} 个对象有态`,
+        /**
+         * `worldObjectCount === 0` 但回包仍报 `available:true` —— **契约要求此时 `available:false`**
+         * （`finance-world.ts:146` 原文「0 = 空世界 → `available:false`」）。
+         * 前端照契约判，不照回包的一面之词判：空世界算出来的金额恒等于基线，摆上去就是静默错答。
+         */
+        moneyWorldEmptyContradiction:
+          "回包自相矛盾：`worldObjectCount: 0`（空世界）却报 `available: true` —— 契约要求此时 `available: false`。空世界的投影恒等于基线，摆上去就是拿基线冒充投影。本页据实报缺，不显示这组数。",
+        /** 成色区的区头：这一段回答「这几个金额凭什么可信」。 */
+        moneyPressureTitle: "这几个金额的成色",
+        moneyPressureQuestion: "每条压力由几个对象撑着 · 用什么口径聚合",
+        /** 有承载对象：分子分母一起给（只给分子 = 又一个没有成色的数）。 */
+        moneyCarriersSome: (carriers: number, universe: number) => `${carriers} / ${universe} 个对象带这个态`,
+        /** `carriers:0 · universe:0` —— 台账本身是空的（连查的对象都没有）。 */
+        moneyCarriersNoUniverse: "台账里就没有这类对象（全域 0 个）",
+        /** `carriers:0 · universe>0` —— 查过了，只是一个都没中。与上一句**是两件事**。 */
+        moneyCarriersNoneCarry: (universe: number) => `查过了：全域 ${universe} 个对象，没有一个带这个态`,
+        /** `weighting: "VALUE"` —— 金额口径唯一正确的聚合法。 */
+        moneyWeightingValue: "按金额加权",
+        /** `weighting: "EQUAL"` —— **回落**，可信度低于上面那档，不许显示成一样。 */
+        moneyWeightingEqual: "等权回落",
+        moneyWeightingEqualHint: "拿不到金额权重才退回等权，这条的可信度低于按金额加权的那些 —— 后端原话：",
+        /** `weighting: "VALUE"` 时也把后端口径原话带出来（诚实位只许降层、不许删）。 */
+        moneyWeightingValueHint: "后端口径原话：",
       },
       /**
        * WO-V4-PLAYS · 方案环（PRD-sandbox-v4 §3.3）的文案。
