@@ -47,6 +47,13 @@ const LABEL_TO_KEYS: Record<string, readonly (readonly string[])[]> = {
   //   ["a","sim-perturbations", sessionId]   PerturbationTimeline.tsx listQuery
   // 真 key 尾带 sessionId，靠前缀失效盖住（与 sim-world 同款）。
   "sim-perturbations": [["a", "sim-perturbations"]],
+  // WO-FLOWTIME · 流程实例与站间流转时长。
+  // 真消费方 = `views/process/ProcessWaitView.tsx` 的 `InstancePanel`：
+  //   ["a","process-instances", processKey]   useQuery（下钻面板）
+  // 真 key 尾带 processKey，靠前缀失效盖住全部流程（与 sim-world 同款）。
+  // ⚠ 这一行是 `process.instance_entered` / `process.instance_stuck` 两个事件**唯一**的
+  //    落地点：删了它，那两条订阅就退化成「有事件没人听」的假接线。
+  "process-instances": [["a", "process-instances"]],
 };
 
 /**

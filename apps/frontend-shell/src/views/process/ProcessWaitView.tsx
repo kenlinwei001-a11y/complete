@@ -1,12 +1,15 @@
-import { useEffect, useState } from "react";
-import { fetchProcessDefinitions } from "@/api/endpoints";
+import { Fragment, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { fetchProcessDefinitions, fetchProcessInstances } from "@/api/endpoints";
 // WO-V4-INSPECT · 节点检视面板（点开一行 → 看这条流程的完整本体关系·PRD-sandbox-v4 §4.2）
 import { ProcessInspectPanel } from "./ProcessInspectPanel";
 import { zh } from "@/locales/zh";
 import {
+  buildProcessInstancesModel,
   buildProcessWaitModel,
   WAIT_KIND_COPY,
   WAIT_KIND_STYLE,
+  type ProcessInstancesModel,
   type ProcessWaitModel,
   type WaitKindGroupVM,
 } from "./processWait";
@@ -54,6 +57,151 @@ function readError(e: unknown): { code: string; message: string; requestId: stri
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// WO-FLOWTIME · 实例下钻面板（「哪一条卡着 / 卡在谁那里 / 卡了多久 / 站间多久」）
+// ══════════════════════════════════════════════════════════════════════════════
+
+type InstState =
+  | { status: "loading" }
+  | { status: "ready"; model: ProcessInstancesModel }
+  | { status: "error"; code: string; message: string; requestId: string | null };
+
+/**
+ * 一条流程的实例明细。
+ *
+ * 三条渲染纪律（每条都对着本仓一次真事故）：
+ *  ① **loading 独立成态**，不与 error/空数据挤在同一个「暂不可用」块里 ——
+ *    请求还在飞就宣告失败，是 `RootCausePanel` 犯过的病（R13 收口 ⑦）。
+ *  ② **反推不出 ≠ 没有卡顿**：`available:false` 时渲染 `absence.reason` + `probe`，
+ *    **不渲染空表**。空表会被读成「这条流程很顺畅」，而真相是「这一维没数据可算」。
+ *  ③ **推导值必须被标出来**：面板顶部固定一行 `originNote`，说明这些天数是**反推**来的，
+ *    不是流程引擎直采，也不是标准工期；标准工期以 `stdCompare` 单独一行做对照。
+ */
+function InstancePanel({ processKey }: { processKey: string }) {
+  const t = zh.processWait.instances;
+  /**
+   * ⚠ 这里刻意用 TanStack `useQuery` 而不是 `useEffect + fetch`（页面顶层那个仍是后者）：
+   * **本查询是 `process.instance_entered` / `process.instance_stuck` 两个事件的消费方**。
+   * 没有 queryKey 就没有可失效的缓存 ⇒ 那两个事件在 `event-subscriptions.ts` 里的登记
+   * 就会是**假接线**（有事件没人听）—— `eventInvalidation.ts` 的 `SIM_EVENT_GAPS` 记着
+   * 本仓正是因为「读端零调用方」才把几个 sim 事件一直挂着不登记。
+   * queryKey 与 `LABEL_TO_KEYS["process-instances"]` 必须对上，改一处要改两处。
+   */
+  const q = useQuery({
+    queryKey: ["a", "process-instances", processKey],
+    queryFn: () => fetchProcessInstances(processKey),
+  });
+  const st: InstState = q.isPending
+    ? { status: "loading" }
+    : q.isError
+      ? { status: "error", ...readError(q.error) }
+      : { status: "ready", model: buildProcessInstancesModel(q.data) };
+
+  // 判据①：loading 是独立分支，绝不落进下面任何一个"不可用"块
+  if (st.status === "loading") {
+    return (
+      <p className={styles.stateLine} data-testid={`pw-inst-loading-${processKey}`}>
+        {t.loading}
+      </p>
+    );
+  }
+  if (st.status === "error") {
+    // 只陈述能从响应直接读出的事实（错误码 / message / requestId），不内联因果猜测
+    return (
+      <div className={styles.error} data-testid={`pw-inst-error-${processKey}`}>
+        <b>{st.code}</b>
+        <p>{st.message}</p>
+        {st.requestId && <small>requestId: {st.requestId}</small>}
+      </div>
+    );
+  }
+
+  const m = st.model;
+  return (
+    <div className={styles.instPanel} data-testid={`pw-inst-${processKey}`}>
+      <header className={styles.instHead}>
+        <b>{t.titleFor(processKey)}</b>
+        <span data-testid={`pw-inst-asof-${processKey}`}>{t.asOf(m.asOf, m.asOfSource)}</span>
+        <small>{t.asOfHint}</small>
+      </header>
+      {/* 判据③：推导值的诚实位固定在最上面，不是藏在页脚 */}
+      <p className={styles.notMeasured} data-testid={`pw-inst-origin-${processKey}`}>
+        {t.originNote}
+      </p>
+      <p className={styles.stdCompare} data-testid={`pw-inst-std-${processKey}`}>
+        {t.stdCompare(m.stdDurationDays)}
+      </p>
+
+      {/* 判据②：反推不出就说缺什么 + 怎么复验，不渲染空表冒充「没有卡顿」 */}
+      {!m.available ? (
+        <div className={styles.absent} data-testid={`pw-inst-absent-${processKey}`}>
+          <b>{t.absentTitle}</b>
+          {m.absence && (
+            <>
+              <p data-testid={`pw-inst-absent-kind-${processKey}`}>{t.absentKind(m.absence.kind)}</p>
+              <p data-testid={`pw-inst-absent-reason-${processKey}`}>{m.absence.reason}</p>
+              <small data-testid={`pw-inst-absent-probe-${processKey}`}>{t.absentProbe(m.absence.probe)}</small>
+            </>
+          )}
+        </div>
+      ) : (
+        <>
+          <p className={styles.owners} data-testid={`pw-inst-counts-${processKey}`}>
+            {t.counts(m.instanceCount, m.stuckCount)}
+          </p>
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>{t.table.instance}</th>
+                  <th>{t.table.entered}</th>
+                  <th>{t.table.exited}</th>
+                  <th className={styles.num}>{t.table.dwell}</th>
+                  <th className={styles.num}>{t.table.gap}</th>
+                  <th>{t.table.owner}</th>
+                  <th>{t.table.source}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {m.rows.slice(0, 20).map((r) => (
+                  <tr key={r.instanceKey} data-testid={`pw-inst-row-${r.instanceKey}`} data-still-in={r.stillIn}>
+                    <td>
+                      <code>{r.carrierObjectId}</code>
+                    </td>
+                    <td>{r.enteredAt}</td>
+                    <td data-testid={`pw-inst-exit-${r.instanceKey}`}>{r.exitedAt ?? t.stillIn}</td>
+                    {/* data-dwell-days 刻意不格式化：门要断言精确天数，格式化只作用于人眼 */}
+                    <td className={styles.num} data-dwell-days={r.dwellDays}>
+                      {r.dwellDays}
+                    </td>
+                    {/* 算不出就显式空（`—`），不是 0 —— 0 是结论，空是「本站未出站或已是末站」 */}
+                    <td className={styles.num} data-gap-days={r.gapDaysToNext ?? ""}>
+                      {r.gapDaysToNext ?? t.noGap}
+                    </td>
+                    <td data-testid={`pw-inst-owner-${r.instanceKey}`}>
+                      {r.ownerFunctionKey}
+                      {r.partyField && (
+                        <small>
+                          {" "}
+                          · {r.partyField}={r.partyValue}
+                        </small>
+                      )}
+                    </td>
+                    {/* R13：溯源到具体单据字段 + **原值**（原单位、不换算） */}
+                    <td className={styles.src} data-testid={`pw-inst-src-${r.instanceKey}`}>
+                      {r.sources.map((s) => `${s.field}=${String(s.rawValue)}→${s.resolvedAt}`).join(" / ")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // 单个等待态分组
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -61,6 +209,9 @@ function WaitKindGroup({ g, selectedKey, onSelect }: { g: WaitKindGroupVM; selec
   const copy = WAIT_KIND_COPY[g.kind];
   const style = WAIT_KIND_STYLE[g.kind];
   const t = zh.processWait;
+  // WO-FLOWTIME：展开哪一条流程的实例明细（null = 都没展开）。一次只开一条 ——
+  // 每条都自动拉一次实例会把 65 条流程变成 65 次反推，实测每次要扫全部承载类型。
+  const [openKey, setOpenKey] = useState<string | null>(null);
   return (
     <section
       className={styles.group}
@@ -120,44 +271,76 @@ function WaitKindGroup({ g, selectedKey, onSelect }: { g: WaitKindGroupVM; selec
                   <th>{t.table.owner}</th>
                   <th className={styles.num}>{t.table.stdDays}</th>
                   <th>{t.table.carrier}</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
                 {g.rows.map((r) => (
-                  // 整行可点：点开即拉 `/inspect`，看这条流程的完整本体关系。
-                  // 用 <tr onClick> + 单元格内真 <button>：既保住键盘可达，也不把 <button> 塞满每个格子。
-                  <tr
-                    key={r.key}
-                    data-testid={`pw-row-${r.key}`}
-                    data-kind={r.waitKind}
-                    data-selected={selectedKey === r.key ? "1" : "0"}
-                    className={styles.rowClickable}
-                    onClick={() => onSelect(r.key)}
-                  >
-                    <td>
-                      <button
-                        type="button"
-                        className={styles.rowBtn}
-                        data-testid={`pw-inspect-${r.key}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelect(r.key);
-                        }}
-                      >
-                        <code>{r.key}</code>
-                      </button>
-                    </td>
-                    <td>{r.name}</td>
-                    <td>{r.domainName}</td>
-                    <td>{r.ownerName}</td>
-                    {/* data-std-days 刻意不四舍五入：门要断言精确工期，格式化只作用于人眼 */}
-                    <td className={styles.num} data-std-days={r.stdDurationDays}>
-                      {r.stdDurationDays}
-                    </td>
-                    <td>
-                      <code>{r.carrierTypeKey}</code>
-                    </td>
-                  </tr>
+                  /**
+                   * ⚠ **合并点（WO-R9-PROCESS-MERGE）：两条互不冲突的下钻同时保留。**
+                   * 两张工单各给这一行加了一种"点开看更多"，方向不同、答的问题也不同：
+                   *  · ① 整行可点 → 侧栏 `/inspect`：这条流程的**本体关系**（定义层：承载物/链路/杠杆）；
+                   *  · ② 末列按钮 → 行内展开 `InstancePanel`：这条流程的**实例**（现场层：哪一条卡着/卡多久）。
+                   * 合并前二选一是假选择——「这类流程长什么样」与「这一张单现在怎么了」本就是两问。
+                   * 唯一要小心的是事件冒泡：末列按钮必须 `stopPropagation`，
+                   * 否则点"看实例"会**顺带**把侧栏也打开（两个面板同时弹出，用户不知道自己点了什么）。
+                   */
+                  // Fragment 必须带 key（两行一组：主行 + 展开的实例面板行）
+                  <Fragment key={r.key}>
+                    <tr
+                      data-testid={`pw-row-${r.key}`}
+                      data-kind={r.waitKind}
+                      data-selected={selectedKey === r.key ? "1" : "0"}
+                      className={styles.rowClickable}
+                      onClick={() => onSelect(r.key)}
+                    >
+                      <td>
+                        <button
+                          type="button"
+                          className={styles.rowBtn}
+                          data-testid={`pw-inspect-${r.key}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelect(r.key);
+                          }}
+                        >
+                          <code>{r.key}</code>
+                        </button>
+                      </td>
+                      <td>{r.name}</td>
+                      <td>{r.domainName}</td>
+                      <td>{r.ownerName}</td>
+                      {/* data-std-days 刻意不四舍五入：门要断言精确工期，格式化只作用于人眼 */}
+                      <td className={styles.num} data-std-days={r.stdDurationDays}>
+                        {r.stdDurationDays}
+                      </td>
+                      <td>
+                        <code>{r.carrierTypeKey}</code>
+                      </td>
+                      {/* WO-FLOWTIME：下钻到实例粒度（哪一条卡着 / 卡在谁那里 / 卡了多久） */}
+                      <td>
+                        <button
+                          type="button"
+                          className={styles.drillBtn}
+                          data-testid={`pw-drill-${r.key}`}
+                          onClick={(e) => {
+                            // 🔴 不 stopPropagation ⇒ 冒泡到 <tr onClick> ⇒ 侧栏被顺带打开。
+                            e.stopPropagation();
+                            setOpenKey(openKey === r.key ? null : r.key);
+                          }}
+                        >
+                          {openKey === r.key ? t.instances.close : t.instances.open}
+                        </button>
+                      </td>
+                    </tr>
+                    {openKey === r.key && (
+                      <tr>
+                        <td colSpan={7}>
+                          <InstancePanel processKey={r.key} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
