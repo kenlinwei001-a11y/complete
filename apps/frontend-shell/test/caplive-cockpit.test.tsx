@@ -51,6 +51,20 @@ describe("WO-CAPLIVE-2 · 产能活台 SEAM", () => {
     expect(within(row).getByTestId("lever-before-obj_Base_CZ-weeklyCap")).toHaveTextContent("88");
     expect(within(row).getByTestId("lever-after-obj_Base_CZ-weeklyCap")).toHaveTextContent("97.5");
     expect(screen.getByTestId("lever-affected-count")).toHaveTextContent("1");
+
+    // ── WO-P50-RENAME · SEAM：**仓主实测撞上的就是这张表** ────────────────────────
+    // 原病灶：明细表头只写 `before` / `after`，派生字段列渲的是引擎原始键 `p50`，
+    // 而 `p50` 在本仓背了 6 个量纲 ⇒ 用户「不可能分得出是哪个」。
+    // 现在断言量纲**在表头上**（不是藏在 hover / 注释里 —— 那两处用户看不到）。
+    const details = screen.getByTestId("lever-deltas-details");
+    const headText = details.querySelector("thead")?.textContent ?? "";
+    expect(headText).toContain("before（电芯/日）");
+    expect(headText).toContain("after（电芯/日）");
+    expect(headText).toContain("变化（电芯/日）");
+    // 图例同步说清「这一列是哪个 p50」——且必须是改名后的自带口径名。
+    expect(details.textContent ?? "").toContain("cellsPerDayP50");
+    // 反向：旧的「套/天」是 WO-P50-RENAME 实测订正掉的错量纲（差 96 倍），不许回潮。
+    expect(details.textContent ?? "").not.toContain("套/天");
   });
 
   /**

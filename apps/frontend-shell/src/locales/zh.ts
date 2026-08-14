@@ -1156,8 +1156,10 @@ export const zh = {
       gapZero: (surplus: string) => `缺口归零 · 富余 ${surplus} 万套`,
       gapLeft: (gap: string) => `缺口 ${gap} 万套`,
       adopt: "采纳产能保障方案",
-      before: "调整前 P50",
-      after: "调整后 P50",
+      // WO-P50-RENAME：默认口径是 capacity_forecast 的 capWanP50（万套/窗口）。
+      // 调用方若传的是别的量（如 RiskBoardView 传张力峰值）必须自带 beforeLabel 覆盖 —— 不许沿用本文案。
+      before: "调整前 P50（万套/窗口）",
+      after: "调整后 P50（万套/窗口）",
       logistics: (days: number) => `物流 ${days} 天`,
       pendingCert: "认证中（产能按 60% 计）",
       certPending: "认证中",
