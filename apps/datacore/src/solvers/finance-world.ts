@@ -351,7 +351,7 @@ export async function projectFinanceWorld(
   let overdueExposure = 0;
   let invoiceCarriers = 0;
   let customerLinked = 0;
-  let topInvoice: { id: string; amount: number } | null = null;
+  let topInvoice: { id: string; amount: number; invoiceId: string } | null = null;
   for (const inv of [...invoices].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
     const amount = invoiceAmount(inv);
     arBaseline += amount;
@@ -362,8 +362,11 @@ export async function projectFinanceWorld(
     const od = stateOf(worldState, inv.id, "overduePressure");
     if (od !== undefined) invoiceCarriers += 1;
     overdueExposure += amount * ((od ?? 0) / divisor);
+    // 下钻落点 = 金额最大的那张发票（平手取 id 小者 ⇒ R6 稳定）。**在循环里就把真主键 `invoiceId` 记下**，
+    // 不留到下面再去 `invoices.find(...)` 回查 —— 回查那种写法既多一次 O(n) 扫描、又把"取哪张"的规则
+    // 拆到两处，改一处忘一处就会静默指错发票。
     if (topInvoice === null || amount > topInvoice.amount || (amount === topInvoice.amount && inv.id < topInvoice.id)) {
-      topInvoice = { id: inv.id, amount };
+      topInvoice = { id: inv.id, amount, invoiceId: str(inv.props.invoiceId) || inv.id };
     }
   }
   const cash: FinanceWorldCash = {
@@ -386,7 +389,8 @@ export async function projectFinanceWorld(
     provenance: {
       kind: "实测",
       drillType: "ARInvoice",
-      drillId: invoices.length === 0 ? "*" : (topInvoice ? str(invoices.find((i) => i.id === topInvoice!.id)?.props.invoiceId) || topInvoice.id : "*"),
+      // 单对象 → **真主键**；无承载对象才落 `"*"`（契约 `GapProvenanceSchema.drillId` 的既有约定）。
+      drillId: topInvoice?.invoiceId ?? "*",
       drillField: "amount",
       drillValue: topInvoice?.amount ?? 0,
     },
