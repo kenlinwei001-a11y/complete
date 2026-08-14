@@ -118,11 +118,36 @@ describe("WO-BEFE-F ①② LLM 成本配额（GET/PUT /a/v1/llm-budgets）", () 
 
   it("诚实位：`POST /a/v1/llm-budgets/record` 属服务间记账口，前端生产代码不得有调用方", () => {
     const src = readRepoFile("../src/api/endpoints.ts");
-    // 金丝雀（铁律 0.6）：先证「这个读法找得到已知存在的那两条」，再报否定结论。
-    expect(src, "金丝雀不中 ⇒ 读法坏了，下面那条否定结论没有资格被相信").toContain('"/a/v1/llm-budgets"');
-    // 真判据：整个 src 树里不许出现 record 端点。
-    const hits = /["'`][^"'`]*\/a\/v1\/llm-budgets\/record/.exec(src);
-    expect(hits, "前端出现了 llm-budgets/record 调用 ⇒ 浏览器可伪造 token 计数，账本失去可信度").toBeNull();
+
+    /**
+     * 判据只认 **URL 字面量**：引号/反引号**紧挨着**路径开头（`api.a("/a/v1/…")` /
+     * 模板串 `` `/a/v1/…${x}` `` 都是这个形状），散文与注释不算。
+     *
+     * ⚠ 这条正则的**第一版写宽了**（`["'`][^"'`]*` 允许引号与路径之间隔任意字符），
+     * 结果把本文件旁边那句注释里的 `` `POST /a/v1/llm-budgets/record` `` 当成了调用 —— 自己咬自己。
+     * 「注释里提了一嘴」和「代码里调了」是两件事，判据必须能分开（同 CLAUDE.md「提及 ≠ 读取」）。
+     */
+    const CALL_RE = /["'`]\/a\/v1\/llm-budgets\/record/;
+
+    // 双向金丝雀（铁律 0.6）：
+    // ① 正向 —— 同款判据必须认得出**真的调用**（否则否定结论是空胜）。
+    expect(
+      CALL_RE.test('export const x = () => api.a("/a/v1/llm-budgets/record", { body });'),
+      "判据认不出真实调用形态 ⇒ **判据坏了**，下面那条「没有调用方」不许被相信",
+    ).toBe(true);
+    // ② 反向 —— 判据必须**不**把注释/散文当调用。
+    expect(
+      CALL_RE.test("// ⚠ `POST /a/v1/llm-budgets/record` 故意不接：服务间记账口"),
+      "判据把注释当成调用 ⇒ 恒红，同样不可信",
+    ).toBe(false);
+    // ③ 读法自证：这份源码确实读到了、且确实含已知存在的那两条 budget 端点。
+    expect(src.length, "endpoints.ts 读出来是空的 ⇒ 读法坏了").toBeGreaterThan(1000);
+    expect(src, "金丝雀不中 ⇒ 读法坏了，否定结论没有资格被相信").toContain('"/a/v1/llm-budgets"');
+
+    // 真判据。
+    expect(CALL_RE.test(src), "前端出现了 llm-budgets/record 调用 ⇒ 浏览器可伪造 token 计数，账本失去可信度").toBe(
+      false,
+    );
   });
 });
 

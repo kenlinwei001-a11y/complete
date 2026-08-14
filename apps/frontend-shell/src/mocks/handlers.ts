@@ -3393,7 +3393,11 @@ export const handlers = [
     }
     const body = (await request.json()) as { filename?: string; contentBase64?: string };
     if (!body.filename || !body.contentBase64) return err(400, "VALIDATION_ERROR", "filename/contentBase64 required");
-    const text = atob(body.contentBase64);
+    // ⚠ `atob()` 返回的是 **latin-1 二进制串**，不是 UTF-8 文本 —— 直接用它，中文全变乱码，
+    // 于是「上传了中文文档 → 搜中文搜不到」。（本单接缝测试当场把这条抖出来：检索恒零命中。）
+    // 必须先还原字节再按 UTF-8 解码。
+    const bytes = Uint8Array.from(atob(body.contentBase64), (ch) => ch.charCodeAt(0));
+    const text = new TextDecoder("utf-8").decode(bytes);
     // 真后端切块 ~512 token/块（`chunkText`）；mock 取 512 字符，只为「块数随文长变」是真的。
     const chunkCount = Math.max(1, Math.ceil(text.length / 512));
     const doc = { id: newId("kbdoc"), connId, filename: body.filename, chunkCount, text };

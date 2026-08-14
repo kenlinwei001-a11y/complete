@@ -229,6 +229,18 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "opt.multiobj", name: "多目标 + 跨对象占用", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { solverKeys: ["multi_objective", "cross_object_occupancy"] } },
   // WO-A · No-code Plan Builder Canvas（Phase 1：线性多 solver 链）。defaultOn 与两侧后端注册表 parity。
   { key: "admin.plan-builder", name: "计划构建画布", level: "BLOCK", defaultOn: true },
+  /**
+   * WO-BEFE-F 实测补齐的 **parity 缺口**：`qos.dril-routing` 在**两侧后端都注册了**
+   * （`apps/datacore/src/features.ts:125` · `apps/agentcore/src/features/registry.ts:117`，
+   * 均 `defaultOn: false` 暗发），而本 mock 注册表**没有它** —— 于是
+   * `featuresForAccount()` 只遍历 FEATURE_REGISTRY，`db.tenantOverrides["qos.dril-routing"]=true`
+   * **静默失效**（改了个不存在的键），/admin/resources 恒 404。
+   *
+   * 形态（铁律 0.6 句式）：「我用『设了 tenantOverride』当作『功能被打开了』的证据，
+   * 而前者并不度量后者 —— 覆盖表只对注册表里有的键起作用。」
+   * 这一条正是工单提醒的那个坑：**功能键 ≠ 路由键**，而且注册表漏一个键 = 该功能永远开不出来。
+   */
+  { key: "qos.dril-routing", name: "DRIL 智能资源路由（Path-B 组包注入）", level: "BLOCK", defaultOn: false },
 ];
 
 /** 账号 → 生效功能集（base_manager 关闭 view.plan-audit 与 act.adopt-to-draft，演示 404 与 E2） */
