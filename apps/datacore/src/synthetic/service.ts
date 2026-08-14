@@ -948,7 +948,11 @@ export class SyntheticService {
     // lifecycle: EngineeringChange → Model（change.modelId）
     for (const ec of g.engineeringChanges) await putLink(`lnk_cam_${ec.changeId}`, "change_affects_model", oid("EngineeringChange", ec.changeId), oid("Model", ec.modelId));
     // supply: MaterialAlternative → Material（alt.primaryMaterialId）
-    for (const ma of g.materialAlternatives) await putLink(`lnk_afm_${ma.altId}`, "alt_for_material", oid("MaterialAlternative", ma.altId), oid("Material", ma.primaryMaterialId));
+    for (const ma of g.materialAlternatives) {
+      await putLink(`lnk_afm_${ma.altId}`, "alt_for_material", oid("MaterialAlternative", ma.altId), oid("Material", ma.primaryMaterialId));
+      // WO-PROCESS-TICK-COVERAGE 逆边：与上一行**共用同一次遍历**（不是抄一遍派生式）⇒ 两向严格互逆。
+      await putLink(`lnk_mha_${ma.altId}`, "material_has_alternative", oid("Material", ma.primaryMaterialId), oid("MaterialAlternative", ma.altId));
+    }
     // supply: Material → Supplier（material.supplierId）
     for (const m of ext.materials) {
       const supplierId = (m as { supplierId?: string }).supplierId;
@@ -960,6 +964,9 @@ export class SyntheticService {
     for (const x of g.interBaseTransfers) {
       const tid = x.transferId as string;
       await putLink(`lnk_xff_${tid}`, "transfer_from_base", oid("InterBaseTransfer", tid), oid("Base", x.fromBase));
+      // WO-PROCESS-TICK-COVERAGE 逆边（**只逆调出端**）：调拨是由调出基地的负载压出来的决策，
+      // 调入端是结果不是原因；两端都逆会让同一条调拨被两个基地各推一次，等于把压力算两遍。
+      await putLink(`lnk_bdt_${tid}`, "base_dispatches_transfer", oid("Base", x.fromBase), oid("InterBaseTransfer", tid));
       await putLink(`lnk_xft_${tid}`, "transfer_to_base", oid("InterBaseTransfer", tid), oid("Base", x.toBase));
       await putLink(`lnk_xfm_${tid}`, "transfer_of_model", oid("InterBaseTransfer", tid), oid("Model", x.model));
     }
@@ -988,6 +995,8 @@ export class SyntheticService {
     // equip: Equipment → Process（Equipment.processId）
     for (const eq of g.equipment) {
       await putLink(`lnk_eui_${eq.equipId}`, "equip_used_in", oid("Equipment", eq.equipId), oid("Process", eq.processId));
+      // WO-PROCESS-TICK-COVERAGE 逆边：工序排队压力要能落到**具体设备**上（设备是产能瓶颈的真落点）。
+      await putLink(`lnk_pue_${eq.equipId}`, "process_uses_equipment", oid("Process", eq.processId), oid("Equipment", eq.equipId));
     }
     // supply: Model → Material（确定性 BOM：每型号取 4 种物料，按型号序错位选取，覆盖全部 8 料）
     const matIds = ext.materials.map((m) => String((m as { matId: string }).matId));
@@ -1048,6 +1057,8 @@ export class SyntheticService {
     // WO-WAREHOUSE-CUSTLOC · commercial: CustomerLocation → Customer（loc.customerRef；参照 order_of_customer 方向）
     for (const loc of ext.customerLocations) {
       await putLink(`lnk_cloc_${P(loc).locId}`, "custloc_of_customer", oid("CustomerLocation", P(loc).locId), oid("Customer", P(loc).customerRef));
+      // WO-PROCESS-TICK-COVERAGE 逆边：客户侧压力（信用/应收）要能落到该客户的**收货地点**上。
+      await putLink(`lnk_chl_${P(loc).locId}`, "customer_has_location", oid("Customer", P(loc).customerRef), oid("CustomerLocation", P(loc).locId));
     }
     // supply（批次）: Material → MaterialBatch（batch.matId）
     for (const bt of ext.materialBatches) await putLink(`lnk_mhb_${P(bt).batchId}`, "material_has_batch", oid("Material", P(bt).matId), oid("MaterialBatch", P(bt).batchId));
@@ -1083,6 +1094,13 @@ export class SyntheticService {
       const refType = String(ev.refType);
       const refId = String(ev.refId);
       await putLink(`lnk_exc_${String(ev.excId)}`, "exc_sourced_from", oid("ExceptionEvent", ev.excId), oid(refType, refId), { refType, refId });
+      // WO-PROCESS-TICK-COVERAGE 逆边（**只逆 DefectRecord 那一源**）：缺陷变多 → 异常处置积压。
+      // 为什么不把五源都逆：另四源（EquipmentAlarm/EquipmentDowntime/MaterialBalance/TriggerRule）
+      // 今天在传导图上都不是 target，逆了也没有源能驱动它们 —— 那就是「接了线没数据」的边，
+      // 只会让链路表变胖而屏上一动不动。等哪一源真被接进传导链了再逆哪一源。
+      if (refType === "DefectRecord") {
+        await putLink(`lnk_dre_${String(ev.excId)}`, "defect_raises_exception", oid("DefectRecord", refId), oid("ExceptionEvent", ev.excId));
+      }
     }
 
     // §7.14 计划域种子：年度情景/触发条件/目标分解。分解值锚定 S1.1 rollup 的供给口径
@@ -1180,7 +1198,12 @@ export class SyntheticService {
     for (const fg of g.finishedGoodsInv) {
       const fgId = String(P(fg).fgId);
       // fg_of_model 仅在型号是真 Model 时连（部分完工工单 modelId 为储能等目录外型号 → 诚实不连悬空边）。
-      if (realModelIds.has(String(P(fg).model))) await putLink(`lnk_fgm_${fgId}`, "fg_of_model", oid("FinishedGoodsInventory", fgId), oid("Model", P(fg).model));
+      if (realModelIds.has(String(P(fg).model))) {
+        await putLink(`lnk_fgm_${fgId}`, "fg_of_model", oid("FinishedGoodsInventory", fgId), oid("Model", P(fg).model));
+        // WO-PROCESS-TICK-COVERAGE 逆边：型号需求负载 → 成品库存被提走的压力（同一个 realModelIds
+        // 守卫，不另抄一份 —— 抄一份就会漂，本仓已因「金丝雀各抄一份正则」吃过亏）。
+        await putLink(`lnk_msf_${fgId}`, "model_stocked_as_finished_goods", oid("Model", P(fg).model), oid("FinishedGoodsInventory", fgId));
+      }
       await putLink(`lnk_fgw_${fgId}`, "fg_at_warehouse", oid("FinishedGoodsInventory", fgId), oid("Warehouse", P(fg).warehouseId));
     }
     for (const tx of g.inventoryTxns) {
@@ -1192,12 +1215,68 @@ export class SyntheticService {
     for (const p of g.orderPromises) {
       const promiseId = String(P(p).promiseId);
       await putLink(`lnk_pfo_${promiseId}`, "promise_for_order", oid("OrderPromise", promiseId), oid("Order", P(p).orderRef));
+      // WO-PROCESS-TICK-COVERAGE 逆边：订单缺口 → 交期承诺风险（P19 的读数就该跟着订单缺口动）。
+      await putLink(`lnk_ohp_${promiseId}`, "order_has_promise", oid("Order", P(p).orderRef), oid("OrderPromise", promiseId));
     }
     // WO-ORDERLINE 订单拆行链路（明细行 → 订单头 N:1 + 明细行 → 型号 N:1；一单多型号真表达·行级溯源）。
     for (const ln of g.orderLines) {
       const lineId = String(P(ln).lineId);
       await putLink(`lnk_loo_${lineId}`, "line_of_order", oid("OrderLine", lineId), oid("Order", P(ln).orderRef));
       await putLink(`lnk_olm_${lineId}`, "orderline_for_model", oid("OrderLine", lineId), oid("Model", P(ln).model));
+      // WO-PROCESS-TICK-COVERAGE 逆边：订单需求压力 → 拆行/排产要素确认压力（P18）。
+      await putLink(`lnk_ohl_${lineId}`, "order_has_line", oid("Order", P(ln).orderRef), oid("OrderLine", lineId));
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════════
+    // WO-PROCESS-TICK-COVERAGE 档 2 · 执行层「影响向逆边」实例（类型声明见 battery.ts 同名 15 条）
+    //
+    // 这一段与上面那些"顺手加一行"的逆边不同：这几条的**正向边本身从来没被物化过**
+    // （`wo_on_line` / `wip_for_wo` / `qlot_for_wo` / `defect_for_wiplot` / `maint_for_equip`
+    //  在 `batteryLinkTypes()` 里声明了很久，真链路表上一条实例都没有 —— 本单实测）。
+    // 所以这里不是"反投影一条已有的边"，是**第一次把这批 FK 落成边**，且只落影响向那一向：
+    // 归属向今天没有消费方，落了就是纯增重。哪天有消费方了再落哪一条。
+    //
+    // 纯投影（遍历既有对象数组、零 rng、零时钟）⇒ 同 (industry, scale, seed) 字节一致（R6）。
+    // ══════════════════════════════════════════════════════════════════════════════════
+    // D07 ①：Line → WorkOrder（wo.lineId）—— 产线吃紧 ⇒ 工单下达受阻
+    for (const wo of g.workOrders) {
+      await putLink(`lnk_lrw_${P(wo).woId}`, "line_runs_work_order", oid("Line", P(wo).lineId), oid("WorkOrder", P(wo).woId));
+    }
+    // D07 ②：WorkOrder → WIPLot（lot.woId）—— 工单积压 ⇒ 齐套发料/投料堆积
+    for (const lot of g.wipLots) {
+      await putLink(`lnk_wyw_${P(lot).lotId}`, "work_order_yields_wip_lot", oid("WorkOrder", P(lot).woId), oid("WIPLot", P(lot).lotId));
+    }
+    // D08 ①：WorkOrder → QualityLot（qlot.woId）—— 工单积压 ⇒ 过程质检攒批排队
+    for (const ql of g.qualityLots) {
+      await putLink(`lnk_wsq_${P(ql).qlotId}`, "work_order_sampled_by_quality_lot", oid("WorkOrder", P(ql).woId), oid("QualityLot", P(ql).qlotId));
+    }
+    // D08 ②：WIPLot → DefectRecord（def.lotId）—— 在制堆积 ⇒ 缺陷暴露变多
+    for (const df of g.defectRecords) {
+      await putLink(`lnk_wfd_${P(df).defectId}`, "wip_lot_found_defect", oid("WIPLot", P(df).lotId), oid("DefectRecord", P(df).defectId));
+    }
+    // D09：Equipment → MaintenanceOrder（mo.equipId）—— 设备负荷 ⇒ 维修派工积压
+    for (const mo of g.maintenanceOrders) {
+      await putLink(`lnk_ehm_${P(mo).moId}`, "equipment_has_maintenance_order", oid("Equipment", P(mo).equipId), oid("MaintenanceOrder", P(mo).moId));
+    }
+    // D05：Material → MaterialBalance（按**物料名**归属 —— MaterialBalance 只有 `material` 中文名，没有 matId）
+    // 诚实缺席：名字在 Material 目录里对不上的（S 规模下"包材"没有对应 Material）**不建边**，
+    // 不按序轮转硬凑 —— 「张冠李戴的数比没有更危险」（`order_of_customer` 那次已独立登记过同一事实）。
+    {
+      const matIdByName = new Map(ext.materials.map((m) => [String(P(m).name), String(P(m).matId)]));
+      for (const mb of g.materialBalances) {
+        const matId = matIdByName.get(String(P(mb).material));
+        if (!matId) continue;
+        await putLink(`lnk_mhbal_${P(mb).matBalId}`, "material_has_balance", oid("Material", matId), oid("MaterialBalance", P(mb).matBalId));
+      }
+    }
+    // D11：Customer → OverdueRecord（od.customerRef 是 custName ⇒ 经 custByName 换 custId）
+    // ⚠ 为什么不用 `od.invoiceRef` 直连 ARInvoice（那才是更自然的父）：实测
+    //    `overdueRecords[].invoiceRef` 形如 `INV-CG-001`，而真 ARInvoice 的 pk 是 `arinvoice_<i>_<j>`
+    //    —— **对不上任何一张真发票**。照名字猜着连就是造一条悬空边。改走客户这一层（真对得上）。
+    for (const od of ext.overdueRecords) {
+      const cid = custByName.get(String(P(od).customerRef));
+      if (!cid) continue;
+      await putLink(`lnk_cho_${P(od).overdueId}`, "customer_has_overdue_record", oid("Customer", cid), oid("OverdueRecord", P(od).overdueId));
     }
 
     // 跨域内置切片 + 每类型全字段覆盖切片（字段覆盖铁律）：合成即落库（resolve 不依赖外部配置脚本）。

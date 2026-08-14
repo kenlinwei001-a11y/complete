@@ -2561,6 +2561,49 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     // WO-ORDERLINE 订单拆行链路（明细行 → 订单·一订单 N 行 N:1 · 明细行 → 型号·N:1）
     { key: "line_of_order", fromTypeKey: "OrderLine", toTypeKey: "Order", cardinality: "N:1" }, // product（行溯源到订单头）
     { key: "orderline_for_model", fromTypeKey: "OrderLine", toTypeKey: "Model", cardinality: "N:1" }, // product（行→型号·一单多型号真表达）
+
+    // ══════════════════════════════════════════════════════════════════════════════════
+    // WO-PROCESS-TICK-COVERAGE 档 2 · **影响向逆边**（15 条）—— 沿 WO-P1 立下的同一条范式
+    //
+    // 为什么必须另立 key 而不是往既有 key 里反向塞行（WO-P1 已论证过一次，这里只复述判据）：
+    // 上面绝大多数执行层边都是**归属/FK 边**，方向「子→父」（`wo_on_line` WorkOrder→Line、
+    // `wip_for_wo` WIPLot→WorkOrder、`line_of_order` OrderLine→Order …）。
+    // 而 `sim/propagation.ts` 的 `propagateTick` 只沿 `fromId→toId` 走（navOut），
+    // 传导要的是**影响方向**「上游→下游」（产线吃紧 → 工单积压 → 在制堆积 → 缺陷变多）。
+    // 拿归属边跑影响传导必然走反 —— 这正是 #158 的病。同名 key 反向塞行会违反该 key 自己
+    // 声明的 fromTypeKey/toTypeKey，并污染既有切片的 `direction:"out"` 遍历，故一律另立 key。
+    //
+    // ⚠ 实测订正（本单亲手跑，与派单给的清单不符，以实测为准）：
+    //   上面这批 `wo_on_line` / `wip_on_line` / `qlot_for_wo` / `defect_for_wiplot` /
+    //   `maint_for_equip` / `oee_for_equip` 等 **linkType 声明存在，但 `service.ts` 从未物化过实例**
+    //   （真链路表零命中）。所以本档不是"沿已有 linkType 各加一条 rule"，而是
+    //   **声明逆边 + 在 service.ts 真物化**，两步缺一不可。
+    //
+    // 实例全部由既有对象 FK **确定性反投影**（同一份数据换个方向落），无 rng / 无时钟
+    // ⇒ 同 (industry, scale, seed) 重跑字节一致（R6）。
+    // 契约 cardinality 只允许 1:1/1:N/N:N，父→子恒为 1:N。
+    // ══════════════════════════════════════════════════════════════════════════════════
+    // D07 生产制造执行链：Line → WorkOrder → {WIPLot, QualityLot} → DefectRecord → ExceptionEvent
+    { key: "line_runs_work_order", fromTypeKey: "Line", toTypeKey: "WorkOrder", cardinality: "1:N" }, // process（影响向·`wo_on_line` 之逆）
+    { key: "work_order_yields_wip_lot", fromTypeKey: "WorkOrder", toTypeKey: "WIPLot", cardinality: "1:N" }, // process（影响向·`wip_for_wo` 之逆）
+    { key: "work_order_sampled_by_quality_lot", fromTypeKey: "WorkOrder", toTypeKey: "QualityLot", cardinality: "1:N" }, // quality（影响向·`qlot_for_wo` 之逆）
+    { key: "wip_lot_found_defect", fromTypeKey: "WIPLot", toTypeKey: "DefectRecord", cardinality: "1:N" }, // quality（影响向·`defect_for_wiplot` 之逆）
+    { key: "defect_raises_exception", fromTypeKey: "DefectRecord", toTypeKey: "ExceptionEvent", cardinality: "1:N" }, // quality（影响向·`exc_sourced_from` 之逆·仅 refType=DefectRecord 那一源）
+    // D03 订单交付链：Order → {OrderLine, OrderPromise}；Customer → CustomerLocation
+    { key: "order_has_line", fromTypeKey: "Order", toTypeKey: "OrderLine", cardinality: "1:N" }, // commercial（影响向·`line_of_order` 之逆）
+    { key: "order_has_promise", fromTypeKey: "Order", toTypeKey: "OrderPromise", cardinality: "1:N" }, // commercial（影响向·`promise_for_order` 之逆）
+    { key: "customer_has_location", fromTypeKey: "Customer", toTypeKey: "CustomerLocation", cardinality: "1:N" }, // commercial（影响向·`custloc_of_customer` 之逆）
+    { key: "customer_has_overdue_record", fromTypeKey: "Customer", toTypeKey: "OverdueRecord", cardinality: "1:N" }, // finance（应收压力→催收·按 customerRef 真归属）
+    // D05 采购与供应：Material → {MaterialAlternative, MaterialBalance}
+    { key: "material_has_alternative", fromTypeKey: "Material", toTypeKey: "MaterialAlternative", cardinality: "1:N" }, // supply（影响向·`alt_for_material` 之逆）
+    { key: "material_has_balance", fromTypeKey: "Material", toTypeKey: "MaterialBalance", cardinality: "1:N" }, // supply（MRP 缺口·按物料名归属）
+    // D06 计划与排产：Base → InterBaseTransfer
+    { key: "base_dispatches_transfer", fromTypeKey: "Base", toTypeKey: "InterBaseTransfer", cardinality: "1:N" }, // capacity（影响向·`transfer_from_base` 之逆）
+    // D09 设备与维护：Process → Equipment → MaintenanceOrder
+    { key: "process_uses_equipment", fromTypeKey: "Process", toTypeKey: "Equipment", cardinality: "N:N" }, // equip（影响向·`equip_used_in` 之逆）
+    { key: "equipment_has_maintenance_order", fromTypeKey: "Equipment", toTypeKey: "MaintenanceOrder", cardinality: "1:N" }, // equip（影响向·`maint_for_equip` 之逆）
+    // D10 基地与仓储交付：Model → FinishedGoodsInventory
+    { key: "model_stocked_as_finished_goods", fromTypeKey: "Model", toTypeKey: "FinishedGoodsInventory", cardinality: "1:N" }, // supply（影响向·`fg_of_model` 之逆）
   ];
 }
 

@@ -649,6 +649,293 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // WO-PROCESS-TICK-COVERAGE · 档 2：挂在**新补的影响向逆边**上的 15 条规则
+  //
+  // 与档 1 的区别是**修法不同，不是数量不同**：档 1 挂既有正向边（零新链路类型），
+  // 本档要先补 linkType + 在 `synthetic/service.ts` 真物化实例，规则才够得着。
+  // 逆边的必要性见 `battery.ts batteryLinkTypes()` 档 2 段头：执行层边全是归属 FK
+  // （子→父），而 `propagateTick` 只沿 `fromId→toId` 走 —— 拿归属边跑影响传导必然走反（#158）。
+  //
+  // ⚠ **实测订正派单给的清单**（以本单现跑为准）：派单说 `WorkOrder(wo_on_line→Line)` /
+  //   `WIPLot(wip_on_line→Line)` 等 21 种「沿已有 linkType 各加一条 rule 即可」。
+  //   实测两处不符：① 这些 linkType 的方向是 **子→父**（`wo_on_line` = WorkOrder→Line），
+  //   照它加规则就是 #158 的复刻；② 它们**从未物化过实例**（真链路表零命中）。
+  //   所以本档是「声明逆边 + 真物化 + 加规则」三步，不是「加一条 rule」。
+  //
+  // 每条规则的语义都是**一句能读出来的业务因果**，不是为了让屏上多一个点在跳。
+  // ══════════════════════════════════════════════════════════════════════════════════
+
+  // ── D07 生产制造执行链：产线利用率 → 工单 → 在制 → 缺陷 → 异常处置 ──
+  // 承接既有产能向（Base→Line→Process），把压力继续往执行层下推。
+  {
+    id: "simpr_demo_line_util_to_wo_release",
+    key: "demo_line_util_to_wo_release",
+    sourceTypeKey: "Line",
+    sourceStateVar: "utilPressure",
+    viaLinkKey: "line_runs_work_order", // 实测 Line→WorkOrder，260 条
+    targetTypeKey: "WorkOrder",
+    targetStateVar: "releasePressure",
+    coefficient: 0.6,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_wo_release_to_wip_feed",
+    key: "demo_wo_release_to_wip_feed",
+    sourceTypeKey: "WorkOrder",
+    sourceStateVar: "releasePressure",
+    viaLinkKey: "work_order_yields_wip_lot", // 实测 WorkOrder→WIPLot，260 条
+    targetTypeKey: "WIPLot",
+    targetStateVar: "feedPressure",
+    coefficient: 0.7,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_wo_release_to_quality_lot",
+    key: "demo_wo_release_to_quality_backlog",
+    sourceTypeKey: "WorkOrder",
+    sourceStateVar: "releasePressure",
+    viaLinkKey: "work_order_sampled_by_quality_lot", // 实测 WorkOrder→QualityLot，260 条
+    targetTypeKey: "QualityLot",
+    targetStateVar: "inspectBacklog",
+    coefficient: 0.5,
+    delayTicks: 1, // 攒批判定是"这一批做完才检"，留一个 tick
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_wip_feed_to_defect",
+    key: "demo_wip_feed_to_defect_pressure",
+    sourceTypeKey: "WIPLot",
+    sourceStateVar: "feedPressure",
+    viaLinkKey: "wip_lot_found_defect", // 实测 WIPLot→DefectRecord，85 条
+    targetTypeKey: "DefectRecord",
+    targetStateVar: "defectPressure",
+    coefficient: 0.3,
+    delayTicks: 1,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_defect_to_exception",
+    key: "demo_defect_to_exception_backlog",
+    sourceTypeKey: "DefectRecord",
+    sourceStateVar: "defectPressure",
+    viaLinkKey: "defect_raises_exception", // 实测 DefectRecord→ExceptionEvent，85 条
+    targetTypeKey: "ExceptionEvent",
+    targetStateVar: "handlingBacklog",
+    coefficient: 0.8,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D03 销售与客户：订单需求/缺口 → 拆行、交期承诺；客户应收 → 收货地点、逾期催收 ──
+  {
+    id: "simpr_demo_order_demand_to_order_line",
+    key: "demo_order_demand_to_line_split",
+    sourceTypeKey: "Order",
+    sourceStateVar: "demandPressure",
+    viaLinkKey: "order_has_line", // 实测 Order→OrderLine，38 条
+    targetTypeKey: "OrderLine",
+    targetStateVar: "splitPressure",
+    coefficient: 0.9,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_order_shortage_to_promise",
+    key: "demo_order_shortage_to_promise_risk",
+    sourceTypeKey: "Order",
+    sourceStateVar: "shortageRisk",
+    viaLinkKey: "order_has_promise", // 实测 Order→OrderPromise，24 条
+    targetTypeKey: "OrderPromise",
+    targetStateVar: "promiseRisk",
+    coefficient: 0.8,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_customer_ar_to_location_hold",
+    key: "demo_customer_receivable_to_location_hold",
+    sourceTypeKey: "Customer",
+    sourceStateVar: "receivablePressure",
+    viaLinkKey: "customer_has_location", // 实测 Customer→CustomerLocation，12 条
+    targetTypeKey: "CustomerLocation",
+    targetStateVar: "deliveryHoldRisk",
+    coefficient: 0.5,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_customer_ar_to_overdue",
+    key: "demo_customer_receivable_to_collection",
+    sourceTypeKey: "Customer",
+    sourceStateVar: "receivablePressure",
+    viaLinkKey: "customer_has_overdue_record", // 实测 Customer→OverdueRecord，2 条
+    targetTypeKey: "OverdueRecord",
+    targetStateVar: "collectionPressure",
+    coefficient: 0.6,
+    delayTicks: 1, // 催收是"逾期成立之后"的动作
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D05 采购与供应：物料短缺 → 替代料切换、MRP 缺口 ──
+  {
+    id: "simpr_demo_material_to_alternative",
+    key: "demo_material_shortage_to_alt_switch",
+    sourceTypeKey: "Material",
+    sourceStateVar: "shortageRisk",
+    viaLinkKey: "material_has_alternative", // 实测 Material→MaterialAlternative，5 条
+    targetTypeKey: "MaterialAlternative",
+    targetStateVar: "switchPressure",
+    coefficient: 0.6,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_material_to_balance_gap",
+    key: "demo_material_shortage_to_balance_gap",
+    sourceTypeKey: "Material",
+    sourceStateVar: "shortageRisk",
+    viaLinkKey: "material_has_balance", // 实测 Material→MaterialBalance，8 条（"包材"无对应 Material ⇒ 诚实不连）
+    targetTypeKey: "MaterialBalance",
+    targetStateVar: "gapPressure",
+    coefficient: 0.7,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D06 计划与排产：基地负载 → 跨基地调拨决策压力 ──
+  {
+    id: "simpr_demo_base_load_to_transfer",
+    key: "demo_base_load_to_transfer_pressure",
+    sourceTypeKey: "Base",
+    sourceStateVar: "loadIndex",
+    viaLinkKey: "base_dispatches_transfer", // 实测 Base→InterBaseTransfer，17 条（只逆调出端）
+    targetTypeKey: "InterBaseTransfer",
+    targetStateVar: "transferPressure",
+    coefficient: 0.3,
+    delayTicks: 1,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D09 设备与维护：工序排队 → 设备负荷 → 维修派工积压 ──
+  // Equipment **不是任何流程的承载物**，它在这里是**中间跳**：没有它，工序压力落不到维修单上。
+  // 这也是本档唯一一处"为了够到一个承载物而补两条边"的地方，故单独说明。
+  {
+    id: "simpr_demo_process_queue_to_equipment",
+    key: "demo_process_queue_to_equipment_load",
+    sourceTypeKey: "Process",
+    sourceStateVar: "queuePressure",
+    viaLinkKey: "process_uses_equipment", // 实测 Process→Equipment，780 条
+    targetTypeKey: "Equipment",
+    targetStateVar: "loadPressure",
+    coefficient: 0.5,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_equipment_to_maint_order",
+    key: "demo_equipment_load_to_repair_backlog",
+    sourceTypeKey: "Equipment",
+    sourceStateVar: "loadPressure",
+    viaLinkKey: "equipment_has_maintenance_order", // 实测 Equipment→MaintenanceOrder，193 条
+    targetTypeKey: "MaintenanceOrder",
+    targetStateVar: "repairBacklog",
+    coefficient: 0.6,
+    delayTicks: 1,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D10 基地与仓储交付：型号需求负载 → 成品库存被提走的压力 ──
+  {
+    id: "simpr_demo_model_demand_to_fg_drawdown",
+    key: "demo_model_demand_to_fg_drawdown",
+    sourceTypeKey: "Model",
+    sourceStateVar: "demandLoad",
+    viaLinkKey: "model_stocked_as_finished_goods", // 实测 Model→FinishedGoodsInventory，34 条
+    targetTypeKey: "FinishedGoodsInventory",
+    targetStateVar: "drawdownPressure",
+    coefficient: 0.6,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
 ];
 
 /**
