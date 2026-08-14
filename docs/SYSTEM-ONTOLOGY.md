@@ -1023,10 +1023,18 @@ GET /a/v1/process-definitions/{key}/inspect
   /v/sim-sandbox → SimSandboxGuard(entitlement sim.sandbox) → SandboxView → SandboxConsole
     --CANVAS_MODES 第五档 "process"（sandboxConsoleModel.ts:58）--> 懒挂载 ProcessCanvasView
       --fetchProcessDefinitions()（api/endpoints.ts:215）--> GET /a/v1/process-definitions
-      --buildProcessCanvasModel（views/sim/processCanvas.ts）--> 按 ProcessDomain 分泳道铺开全部流程
-      --点一条 → setSelectedProcessKey（**不写 selectedNodeId**）--> 右栏 ProcessInspectPanel
+      --buildProcessCanvasModel（views/sim/processCanvas.ts）--> 按 ProcessDomain 分**线**铺成地铁线路图
+      --点一座站 → setSelectedProcessKey（**不写 selectedNodeId**）--> 右栏 ProcessInspectPanel
         --fetchProcessInspect()--> GET /a/v1/process-definitions/{key}/inspect（即本链）
   ```
+  **形态订正（WO-R9-METRO-UX · 2026-08-14 同日回写）**：本档初版是**分组卡片墙**，
+  仓主看到真屏后原话「**没有看到类似『地铁线路』的 UX**」（他要的是「业务端到端路线图」）。
+  现改为线路图：**一条线 = 一个一级业务域**，**站 = 一条流程**，站圈 ∝ √标准工期（按本次最大值归一），
+  站圈填色 = `waitKind`，**换乘双环 = 共用承载物**。视觉语言与第一档 `ChainLineMapView` 同源：
+  缩放/平移 import `physicalTopology` 的 `fitTransform/zoomAt/zoomCenter`，
+  版面几何与折行 import `chainLineMap` 的 `METRO_LAYOUT/STATION_RADIUS/metroRowPlan` —— **没有第二套 SVG 方案**。
+  ⚠ 从 `chainLineMap` 只取**几何**，一个 `StationVM`/`ChainStage`/`stepId`/`nodeId` 都没取 ——
+  共用几何是"同一套视觉语言"，不是同一个模型，R-PROC-DISJOINT 未被放宽。
   **⛔ 结构不变量 R-PROC-DISJOINT（本档新增·机器判据不是注释）**：
   第五档要渲染的流程键集合 ∩ `CHAIN_NODE_REGISTRY` 的 24 个冻结 nodeId **恒为 ∅**。
   现算于 `views/sim/processCanvas.ts` 的 `chainLayerOverlap()`，**画在屏上**（`spc-disjoint`
@@ -1034,7 +1042,46 @@ GET /a/v1/process-definitions/{key}/inspect
   两层的**选中态也分开存**（`selectedProcessKey` vs `selectedNodeId`，互不写入）、
   **检视器分开**（`ProcessInspectPanel` vs `NodeInspectorView`）——同屏 ≠ 同模型。
   变异反证：把一个冻结 nodeId 混进流程层 ⇒ C1 红并打印「出现交集：demand.consensus」（RC=1）。
-  **条数不写死**：全档无 `65` 字面量；判据是恒等式「屏上卡片数 == 端点本次下发的 definitions 条数」
+  ⚠ 该交集自 WO-R9-METRO-UX 起改算**真要画上去的那批键**（`lines→stations→key`）而不是响应里那批：
+  两者今天恒等，但**度量的不是同一件事** —— 响应干净、渲染时改名的话，屏上会写 0 而 DOM 里真有交集。
+
+  **⛔ 结构不变量 R-PROC-ORDER-HONEST（WO-R9-METRO-UX 新增·机器判据不是注释）**：
+  本档画出来的**每一条连线都必须能在响应里指出它的出处**；指不出出处的顺序就是编的。
+  - **轨（同线相邻站）只表示排版序**：每段带 `data-order-basis="display-order"`，
+    且**两端必属同一个 `domainKey`** —— 跨域连线 = 臆造端到端顺序，门当场红。
+  - **换乘弧的出处唯一 = 共用承载物**：屏上标成换乘的站集合，必须**恒等于**现算的
+    「`carrierTypeKey` 被 >1 条流程用」的那批（多标 = 编关系，少标 = 漏关系）；
+    每条弧两端在响应里的 `carrierTypeKey` 必须真的相等。
+    ⚠ 共用承载物**不蕴含先后、也不蕴含依赖**，屏上当面写明（照第一档 `AND≠OR` 的做法）。
+  - 门：`sandbox-process-mode.seam.test.tsx` §F（F1 形是线路图 · F2 轨 · F3 换乘 · F4 圈大小真编码）。
+    变异反证：臆造一条跨域连线 ⇒ F2 红「轨 P06→P08 跨了业务域」（RC=1）。
+
+  **为什么退回按域分线（依据，不是偷懒）**：实测取证见 `docs/shots/WO-R9-METRO-UX/`（脚本 + 输出）。
+  `GET /a/v1/process-definitions` 的 `ProcessDefinition` **字段全集**（真后端 65 条取并集）为
+  `carrierTypeKey/domainKey/id/key/name/ownerFunctionKey/stdDurationDays/tenantId/waitKind`
+  —— **先后关系字段一个都没有**；且 `ProcessDefinitionSchema` 是 `z.strictObject`，
+  后端不可能多发一个而前端没接到（**结构证明，不是"grep 没找到"**；金丝雀 3/3 命中）。
+  `ProcessDomain.order` 契约原文是「**展示序**」不是业务先后，故只拿它排版并在屏上写明。
+  **编号相邻 ≠ 先后**（两个实测反例在 `process/flow-rules.ts` 文件头：真实链 `P43→P47` 跳过 P44–P46；
+  误写成 `P42→P43→P47` 时 `avgGapDaysToNext = −9.82 天`）。
+  **实测站序确实存在且今天在跑**，只是**不经本档端点**：`/{key}/instances` 实测
+  `P34 → procure_to_release::po_12` 站序 `[0:P33 → 1:P34 → 2:P35]`、`P43 → wo_to_quality::…` 站序 `[0:P43 → 1:P47]`
+  （载体 `BATTERY_PROCESS_FLOW_RULES` + `process_flow_time`）。
+  ⇒ 缺口是**一条下发**（datacore 侧），不是"平台没有这个概念"；本档如实缺席 + 屏上给复验探针。
+
+  **假绿两形态（WO-R9-METRO-UX 实测·jsdom 结构上抓不到，登记备查）**：
+  ① **指针捕获抢走 click** —— `onPointerDown → setPointerCapture` 后，`pointerup` 与合成的 `click`
+     都派发到捕获元素（画布 div），站上的 `onClick` 永不触发 ⇒ 点站没反应，而 jsdom 17/17 全绿
+     （jsdom 的 `setPointerCapture` 是不做重定向的空实现，**这件事它根本不模拟**）。
+     该写法是从第一档抄来的，第一档没露过只因它的站 `role="img"` 不可点 ——
+     **「另一个档这么写」不是「这么写对」的证据**。订正：位移 >3px 才捕获。
+  ② **「适应画布」把内容顶出视口** —— `fitTransform` 一律居中，缩放被 `ZOOM_LIMITS.min` 夹住
+     而内容仍更高时 `y` 为负（真后端 13 线实测 `y≈−222`，1 号线整条不可见），屏上无任何迹象；
+     mock 5 线装得下所以从没露过（**小数据集恒绿、真数据集才炸**）。
+     订正：装不下顶左对齐 + `spc-fit-clamped` 当面说明（**不改**四档共用的 `fitTransform`）。
+  ⇒ 机制：真浏览器驱动 `docs/shots/WO-R9-METRO-UX/shot-metro.mjs`（点站 + 断言面板出内容 + 站数恒等式）。
+
+  **条数不写死**：全档无 `65` 字面量；判据是恒等式「屏上站数 == 端点本次下发的 definitions 条数」
   （门里由 handler 现场记账，不抄金值 —— 抄了种子一变就假红/假绿）。
   **D4 守恒**：这是**新增一档**不是搬走，`/v/process-wait` 原样可达可用（门 §E 咬）。
   mock 侧同批补 `GET /a/v1/process-definitions/:key/inspect`（此前**无 handler**，mock 模式一点就报错）：

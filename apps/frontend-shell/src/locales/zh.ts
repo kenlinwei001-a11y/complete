@@ -732,21 +732,56 @@ export const zh = {
        */
       processCanvas: {
         counts: (total: number, laid: number, lanes: number) =>
-          `端点下发 ${total} 条业务流程 · 本档铺开 ${laid} 条 · ${lanes} 个一级业务域（两个数都是现算的，不是写死的金值）`,
-        mismatch: "⚠ 下发条数 ≠ 铺开条数 —— 本档漏画了流程，这不是「租户没有」而是渲染层掉了",
+          `端点下发 ${total} 条业务流程 · 本图上站 ${laid} 座 · ${lanes} 条线（一条线 = 一个一级业务域；两个数都是现算的，不是写死的金值）`,
+        mismatch: "⚠ 下发条数 ≠ 上站座数 —— 本档漏画了流程，这不是「租户没有」而是渲染层掉了",
         disjointOk: "与链路节拍层 24 个冻结节点的键交集：0（两层同屏、不同模型）",
         disjointBroken: (keys: string) => `🔴 两层键集合出现交集：${keys} —— 有人把业务流程层揉进了链路节拍层`,
         layersNote:
           "契约 packages/contracts/src/process.ts 文件头原话：链路节拍层（24 条 CHAIN_NODE_REGISTRY）与业务流程层（65 条 ProcessDefinition）「两层粒度不同，不能互相替代，也不能合并」。那句话约束的是两个**数据模型**（不许互相顶替、不许揉成一张表），不是「不能同屏」。本档是画布上的另一个图层：自己的取数（GET /a/v1/process-definitions）、自己的检视面板、自己的选中态（processKey 而非 nodeId），只共用同一块画布区域与同一套档位按钮。左边那个交集数就是这条约束的机器判据 —— 它一旦非 0，说明两层真被揉了。",
         stdDaysCaveat: "卡上的天数是**标准工期**（模板值），不是「此刻已经卡了多久」——运行态由 /instances 与 process_flow_time 回答，本档不答。",
         unregisteredDomains: (keys: string) =>
-          `⚠ 域登记册里查不到这些 domainKey：${keys} —— 单开泳道显示，不静默并进「其它」（静默并进会把「后端漏发」伪装成「前端没画」）`,
+          `⚠ 域登记册里查不到这些 domainKey：${keys} —— 单开一条线显示，不静默并进「其它」（静默并进会把「后端漏发」伪装成「前端没画」）`,
         laneUnregistered: "（域未登记）",
-        laneStat: (count: number, days: number) => `${count} 条 · 标准工期合计 ${days}D`,
+        laneStat: (count: number, days: number) => `${count} 站 · 标准工期合计 ${days}D`,
         stdDays: (d: number) => `标准 ${d}D`,
         loading: "取业务流程台账中…（GET /a/v1/process-definitions）",
         errorTitle: "业务流程台账取不到 —— 下面是后端原话，本档不替它编一个解释：",
         empty: "端点返回了 0 条业务流程。这是「本租户没有流程台账」，不是「本档没画」——两者在屏上必须分得开。",
+
+        /* ── WO-R9-METRO-UX：线路图专有文案 ─────────────────────────────────
+           ⚠ 下面 `orderBasis*` 三条是本档**最重要的诚实位**：
+           端点没下发流程间先后（结构证明见 processCanvas.ts 文件头 §0），
+           所以连线画虚线、并且当面说清楚"这条线不是流向"。删掉它，
+           这张图就变成了"看着专业但顺序是编的"——派单原话说那比卡片墙更坏。 */
+        orderBasisTitle: "线怎么连？",
+        orderBasisDisplay:
+          "本图的连线是**虚线**，因为它不表示先后：取数端点 GET /a/v1/process-definitions 一条流程间的先后关系都没下发（ProcessDefinition 是 zod strictObject，字段恰好是 key/domainKey/name/ownerFunctionKey/stdDurationDays/waitKind/carrierTypeKey，没有 predecessor/successor/stationIndex——strictObject 同时保证后端不可能多发一个字段而前端没接到）。故本图退回**按域分线**：一条线 = 一个一级业务域，线的上下次序取端点下发的 ProcessDomain.order（契约对该字段的原文是「展示序」，是稳定排版序，不是业务先后），站的左右次序取域内 P## 升序。",
+        orderBasisWhyNotNumber:
+          "为什么不干脆按 P## 编号画箭头：**编号相邻 ≠ 先后**，两个实测反例都在 apps/datacore/src/process/flow-rules.ts 文件头——① 真实链「在制流转到质检」是 P43 → P47，中间跳过 P44/P45/P46；② 第一版把它写成 P42 → P43 → P47，真跑一遍 P42 的站间间隔是 −9.82 天（负数），机器当场抖出建模错误（工单下达是「伞」不是前一站）。把 P## 升序画成箭头 = 复现一个已被实测证伪的顺序。",
+        orderBasisWhereReal:
+          "实测站序确实存在，但不在本档够得着的地方：BATTERY_PROCESS_FLOW_RULES（apps/datacore/src/process/flow-rules.ts:104）有 6 条链、覆盖 8 条流程，其中只有 2 条是真多站（P33→P34→P35、P43→P47），经 process_flow_time 求解器与 GET /a/v1/process-definitions/{key}/instances 下发（带 flowKey + stationIndex），**不经本档这个端点**。复验探针：curl /a/v1/process-definitions/P34/instances 看 flowKey/stationIndex，再 curl /a/v1/process-definitions 看同样字段——后者没有。要在本图画出实测站序，需要 datacore 补一条下发，那在本单范围之外，故如实缺席、不编顺序顶上。",
+        interchangeNote: (n: number) =>
+          `换乘站（双环）${n} 处：两条流程**共用同一个承载物**。⚠ 共用承载物只说明它们作用在同一个对象上，**不说明有先后、也不说明有依赖**（契约 process.ts 原文：P37 MPS 与 P40 APS 都落在 ProductionSchedule，「共用不是空壳」）。这是端点下发的字段里唯一一条真把两条流程连起来的关系，故画成换乘——不是因为它像先后。`,
+        interchangeNone:
+          "本次下发里没有任何两条流程共用承载物 ⇒ 全图 0 个换乘站。这是「这批数据就没有」，不是「本档没画换乘」。",
+        radiusNote:
+          "站圈大小 ∝ √标准工期，且按**本次下发的最大标准工期**归一 —— 是相对量不是绝对量，换一批数据圈会重新分布。",
+        labelOverflow: (keys: string) =>
+          `⚠ 分两层后仍有站名挤在一起：${keys} —— 如实标出来，不偷偷藏标签也不假装不挤（放大或点站看右栏读全名）`,
+        lineNo: (n: number) => `${n} 号线`,
+        legendTitle: "图例",
+        legendStation: "站 = 一条业务流程（圈大小 ∝ 标准工期）",
+        legendInterchange: "换乘站 = 与另一条流程共用承载物",
+        legendDashed: "虚线 = 同一条线上按展示序排列，**不是流向**",
+        legendFold: "折返 = 一条线太长换到下一行，线没有断",
+        legendWaitKind: "站圈颜色 = 卡在哪一类等待（四态词表来自契约）",
+        zoomIn: "放大",
+        zoomOut: "缩小",
+        fit: "适应画布",
+        zoomReadout: (k: number) => `${Math.round(k * 100)}%`,
+        /** 缩到下限仍装不下：是事实就说出来，不许让它长得像「已经适应了」。 */
+        fitClamped: "已缩到下限仍装不下 ⇒ 顶左对齐，拖拽/滚轮看其余部分",
+        canvasLabel: "业务流程线路图（可缩放平移；站可点，点开右栏出完整本体关系）",
         /** 右栏：本档的检视面板标题与未选中提示。 */
         inspectTitle: "流程检视 · 完整本体关系",
         inspectHint: "点画布里任一条业务流程 → 这里出它的完整本体关系：承载类型 / 属性 / 派生 / 一跳关系 / 同承载物流程 / 打到它的杠杆 / 十六层三态。",
@@ -870,6 +905,8 @@ export const zh = {
         seed: "SEED · 确定性种子",
         chainCoverage: "链路阶段 · 在册 ≠ 有数据（完整口径与取证）",
         processLayers: "业务流程档 · 两层为何能同屏、又为何不合并",
+        /** WO-R9-METRO-UX：线路图的连线**为什么是虚线**（诚实位，不是免责声明）。 */
+        processOrderBasis: "业务流程线路图 · 线怎么连、为什么是虚线",
         paretoRate: "影响率怎么算 · 分母是什么",
         inspectorEvidence: "下钻证据为何是空的",
         stepTable: "逐环节表的口径",
