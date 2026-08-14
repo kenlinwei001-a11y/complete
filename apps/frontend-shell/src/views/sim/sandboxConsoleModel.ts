@@ -683,11 +683,27 @@ export function fmtFlowEff(frac: number | null | undefined): string {
  *    因果因子是「下钻对象 vs 字段」，两套坐标系不共享键）。
  *
  * ② **`locus.{objectType,objectId}` ↔ `CausalFactor.{drillType,drillId}`** ——
- *    这一维**理论上共键**（都是「真对象类型 + 真对象 id」），但**实测撞不上**：
- *      · demo 15 条阻滞点的 locus 只有三类：`MaterialBalance`(7) · `MaterialBatch`(6) · `Line`(2)；
- *      · 合成种子 `battery-extended.ts` 的 `CAUSAL_FACTORS`（→ `synthetic/service.ts:785`
- *        `putAll("CausalFactor", ext.causalFactors, "factorId")` 落库，是**唯一**的 CausalFactor 写入口）
- *        共 18 种 `drillType`，其中 **`MaterialBatch` 与 `Line` 一条都没有** ⇒ 13/15 条当场出局；
+ *    这一维**理论上共键**（都是「真对象类型 + 真对象 id」），但今天撞不上。
+ *
+ *    ⚠ **2026-08-14 重测，这一段此前写错了方向，连带屏上那两句一起错了六天**（照 CLAUDE.md
+ *      铁律 0.5 判据 #1 的三分法重新定性）。原文写的是：
+ *        「locus 只有 `MaterialBalance`/`MaterialBatch`/`Line` 三类」+「共 18 种 `drillType`，
+ *          其中 `MaterialBatch` 与 `Line` 一条都没有」⇒ 读起来是**缺数据**，修法是补种子。
+ *      两处都不成立，而且**错法不同**：
+ *        · 「只有三类」—— 判据绑定表 `IMPEDIMENT_RULE_BINDINGS` 今天有 **7 条绑定 / 7 种 locus**
+ *          （`Process` · `Line` · `Order` · `MaterialBatch` · `MaterialBalance` ·
+ *           `DataSourceHealth` · `Base`）。`Base` 是 WO-A6-CONTENTION（C34 跨业务线产能争用）
+ *          之后**新长出来的第四类**，文案没跟上 ⇒ 属「上游长出新成员、句子没改」，改文案即可。
+ *        · 「`MaterialBatch` 与 `Line` 一条都没有」—— **这一句是判据本身写错了**：
+ *          `battery-extended.ts` 里 `Line`（`cf-cap-bottleneck-process`）·
+ *          `MaterialBatch`（`cf-batch-idle`）· `Base`（`cf-base-capacity-contention`）**各有 1 条**，
+ *          三条的 `drillId` 全是 `*`（通配 —— 契约既有的「按类型聚合、由引擎在作用域内解析」约定）。
+ *          真正缺的是「`*` 算不算撞上」这条 **join 判据**，**不是缺种子**：
+ *          当「缺数据」去补，补了也白补。
+ *      「因子表共 N 种 drillType」这个数今天是 **24**（不是 18），且它随种子涨 —— 所以
+ *      屏上文案里**一个写死的计数都不留**，改由溯源记号替屏上那句话盯着上游
+ *      （记号挂在 `IMPEDIMENT_JOIN_REASON` 那一段的上方，门每次跑现算比对，不符当场红）。
+ *      复验：`node scripts/check-stale-claims.mjs`。
  *      · 余下 `MaterialBalance` 只有 3 个因子承载（`cf-cathode-shortage`→mbal-2、
  *        `cf-demand-attain-gap`→mbal-2、`cf-material-short`→`DYNAMIC-MBAL` 运行期解析为
  *        `worstMbal.matBalId`），且 mbal-2 同时挂在**两个不同的 metricKey 链**上
@@ -768,19 +784,51 @@ export interface ImpedimentHandoff {
 }
 
 /** 病因文案（单一出处；视图与门都读这里，两处各写一遍必漂）。 */
-export const IMPEDIMENT_JOIN_REASON: Record<ImpedimentJoinStatus, string> = { // hardcoded-data-allow：病因文案非业务数据，正文里的数字是日期与 file:line 引用
+export const IMPEDIMENT_JOIN_REASON: Record<ImpedimentJoinStatus, string> = { // hardcoded-data-allow：病因文案非业务数据
   JOINED: "引擎载荷已带因果因子维，本次按因子精确跳转。",
+  /*
+   * ⚠ 这段文案里**只剩一个数字**（「这三类合计共 3 条因子」），而它由下面这三条溯源记号
+   *   替它盯着上游 —— 门每次跑都当场把那三个计数数出来比对，不符即红并点到这一行。
+   *   这是本单要治的病的解药：原文那两句（「locus 只有三类」「MaterialBatch/Line 一条都没有」）
+   *   是 2026-08-08 的一次性测量被写死进文案，上游长出 `Base` 之后它在屏上说了六天谎，
+   *   而**没有任何人会被通知**。写下赌注，输了才有人知道。
+   *
+   * @stale-fact apps/datacore/src/synthetic/battery-extended.ts /drillType: "(?:Line|MaterialBatch|Base)", drillId: "\*"/ ==3
+   * @stale-fact apps/datacore/src/solvers/chain-impediment.ts /locusObjectType: (?:"|CONTENTION_LOCUS_TYPE)/ ==7
+   * @stale-fact apps/datacore/src/solvers/chain-impediment.ts /CONTENTION_LOCUS_TYPE = "Base"/ ==1
+   */
   NO_FACTOR_DIMENSION:
-    "本次未能把这个阻滞点对到具体因子。原因：阻滞点锚在真对象 locus{objectType,objectId} 上，" +
-    "决策推演锚在 CausalFactor 上，而今天引擎回包里没有任何承载因果因子的字段" +
-    "（contracts ChainImpedimentSchema 是 strictObject，15 个键逐个核过，无 factorId / factorRef，locus 里也没有）。" +
-    "前端手里唯一可能的对法是拿 locus{objectType,objectId} 去撞 CausalFactor{drillType,drillId}——" +
-    "2026-08-08 实测撞不上（复验：调 chain_impediments 取 locus 三类，再调 gap_attribution 取因子的 drillType/drillId 求交集，交集为空）：" +
-    "demo 的 locus 只有 MaterialBalance / MaterialBatch / Line 三类，而合成种子里带 drillType=MaterialBatch 或 Line 的因子一条都没有；" +
-    '余下 MaterialBalance 也只有 mbal-2 有因子承载，且它同时挂在 metricKey="" 与 demand_attain 两条链上、定不下进哪条。' +
-    "更要命的是 decision_play 拿到对不上的 factorId 会静默回落到贡献最大的默认根因（solvers/service.ts:2882），" +
-    "屏上会出现一个看着确凿、实则与这条阻滞点无关的根因。故本次不猜 factorId，只把 stage 带过去做粗筛（段级精度，不是因子级）。",
+    "本次未能把这个阻滞点对到具体因子。原因：阻滞点锚在真对象上（哪条产线 / 哪个物料批次 / 哪个基地），" +
+    "决策推演锚在因果因子上，而引擎这次回包里没有任何字段指向因果因子（逐键核过，因子 id 与对象锚点里都没有）。" +
+    "退一步用「同一个对象」去对也不行，但**不是因为没有因子**：产线 / 物料批次 / 基地这三类，" +
+    "在合成种子的因子表里共 3 条因子，只是这 3 条的下钻对象都写成通配（不指名具体哪条产线、哪一批），" +
+    "而「通配算不算对上」这条判据全仓还没有定义 ⇒ **缺的是判据，不是数据**：去补种子补不好它。" +
+    "复验：调 chain_impediments 看这批阻滞点落在哪些对象类型上，再调 gap_attribution 看因子的下钻类型与下钻 id。" +
+    "更要命的是 decision_play 拿到对不上的因子 id 会静默回落到贡献最大的默认根因（solvers/service.ts:2882），" +
+    "屏上会出现一个看着确凿、实则与这条阻滞点无关的根因。故本次不猜因子 id，只把 stage 带过去做粗筛（段级精度，不是因子级）。",
 };
+
+/**
+ * 本次这批阻滞点的 locus **落在哪几类对象上** —— 从手里的载荷**当场数**，不写死。
+ *
+ * 这个函数就是本单的对策本身：屏上那句「locus 只有 …… 三类」原本是一次性测量的产物，
+ * 上游判据绑定长出第四类 `Base` 之后它在屏上说了六天谎。**能从载荷数出来的数，一律不许写进文案** ——
+ * 数据变，这句话跟着变，不需要任何人记得来改它。
+ */
+export function locusTypesOf(model: ChainImpedimentModel | null): string[] {
+  if (model === null) return [];
+  return [...new Set(model.groups.flatMap((g) => g.items).map((im) => im.locus.objectType))].sort();
+}
+
+/**
+ * 病因文案的**现算包装**：把上面那段定性说明，接在一句当场数出来的实况前面。
+ * `locusTypes` 为空（单条派生、拿不到全量）时只出定性那半段 —— 不编一个数出来充数。
+ */
+export function impedimentJoinReason(status: ImpedimentJoinStatus, locusTypes: readonly string[] = []): string {
+  const base = IMPEDIMENT_JOIN_REASON[status];
+  if (status === "JOINED" || locusTypes.length === 0) return base;
+  return `本次这批阻滞点落在 ${locusTypes.length} 类对象上（${locusTypes.join(" / ")}）。${base}`;
+}
 
 /** query 参数键（单一出处；视图写、决策推演页读、门断言，三处同源）。 */
 export const IMP_PARAM = {
@@ -804,7 +852,7 @@ export const IMP_PARAM = {
  *    传了 = 让 `decision_play` 静默回落成"看着合理的编造"（见 §8 抬头）。
  *  · `dataMode !== "LIVE"` ⇒ `caveat` 非空且随 query 带走（诚实位不许在跳转时掉）。
  */
-export function deriveImpedimentHandoff(im: ImpedimentVM): ImpedimentHandoff {
+export function deriveImpedimentHandoff(im: ImpedimentVM, locusTypes: readonly string[] = []): ImpedimentHandoff {
   const factorRef = factorRefOf(im);
   const status: ImpedimentJoinStatus = factorRef === null ? "NO_FACTOR_DIMENSION" : "JOINED";
 
@@ -830,7 +878,7 @@ export function deriveImpedimentHandoff(im: ImpedimentVM): ImpedimentHandoff {
       status,
       carried: factorRef === null ? ["stage"] : ["stage", "factorId"],
       missing: factorRef === null ? "factorId（CausalFactor 维）" : null,
-      reason: IMPEDIMENT_JOIN_REASON[status],
+      reason: impedimentJoinReason(status, locusTypes),
     },
     caveat:
       im.honesty.mode === "LIVE"
@@ -845,6 +893,8 @@ export function impedimentHandoffs(
   kind: ChainImpedimentKind | null,
 ): { im: ImpedimentVM; handoff: ImpedimentHandoff }[] {
   if (model === null) return [];
+  // 病因文案里那句「本次这批落在几类对象上」现算自**全量**（不受 kind 筛选影响 —— 它说的是本次扫描，不是本次筛选）。
+  const locusTypes = locusTypesOf(model);
   const groups = kind === null ? model.groups : model.groups.filter((g) => g.kind === kind);
-  return groups.flatMap((g) => g.items).map((im) => ({ im, handoff: deriveImpedimentHandoff(im) }));
+  return groups.flatMap((g) => g.items).map((im) => ({ im, handoff: deriveImpedimentHandoff(im, locusTypes) }));
 }

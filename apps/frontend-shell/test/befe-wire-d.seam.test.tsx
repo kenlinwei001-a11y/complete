@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -35,6 +36,46 @@ import { server } from "./setup";
  */
 
 const readRepoFile = (rel: string): string => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+
+/**
+ * 在整个 `src/` 里找**生产调用点**，返回命中的文件相对路径（按路径排序，全给出）。
+ *
+ * ⚠ 为什么不是 `readRepoFile("<写死的文件>")`（2026-08-14 WO-FE-RED-7 实测的坑）：
+ * 原写法把探针钉死在 `src/views/DecisionPlayView.tsx` 上。WO-ORDER-JOURNEY 把 5 区推演
+ * **整体搬进** `src/views/DecisionPlayPanel.tsx`（`DecisionPlayView.tsx` 只剩 40 行的壳），
+ * 于是这条断言当场变红 —— 而**代码一点毛病没有，搬家而已**。
+ * 「读源码找字符串」的探针天生会被搬家打断：它守的命题是
+ * **「这个组件有生产调用方（不是只有 test 引用）」**，
+ * 而**文件名并不度量这件事** —— 又一次「我用 X 当作 Y 的证据，而 X 并不度量 Y」。
+ * 改成全 `src/` 扫描后，搬到哪个文件都照样咬得住，只有真变成死代码才红。
+ *
+ * 复验命令（与本函数同义）：
+ *   grep -rn '<CausalGraphPanel source={{ kind: "decision"' apps/frontend-shell/src
+ */
+function findInSrc(fragment: string): string[] {
+  /*
+   * ⚠ 这里的相对路径**必须经变量**传给 `new URL`，不许写成字面量（2026-08-14 实测踩过）：
+   * Vite 的 `assetImportMetaUrl` 转换只认**静态字面量**形式的 `new URL("…", import.meta.url)`，
+   * 认出来就把它重写成资源 URL（http scheme）⇒ `fileURLToPath` 当场抛
+   * `TypeError: The URL must be of scheme file`。上面 `readRepoFile` 一直没事，
+   * 正是因为它收的是形参 `rel`（非字面量），静态分析看不出来。
+   * 复验：把下面的 `REL` 内联成字面量，本例即抛 scheme 错。
+   */
+  const REL = "../src/";
+  const SRC_DIR = fileURLToPath(new URL(REL, import.meta.url));
+  const hits: string[] = [];
+  const walk = (dir: string) => {
+    for (const ent of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = join(dir, ent.name);
+      if (ent.isDirectory()) walk(full);
+      else if (/\.(ts|tsx)$/.test(ent.name) && readFileSync(full, "utf8").includes(fragment)) {
+        hits.push(relative(SRC_DIR, full));
+      }
+    }
+  };
+  walk(SRC_DIR);
+  return hits;
+}
 
 /**
  * 请求日志 —— 走 **MSW 生命周期事件**（`server.events.on("request:start")`），**不**替换任何 handler。
@@ -632,8 +673,16 @@ describe("WO-BEFE-D ④ 场景（launch / closure / publish-chain）", () => {
     const scenes = readRepoFile("../src/pages/admin/ScenesPage.tsx");
     expect(scenes).toContain("publishScenarioChain");
     expect(scenes).toContain("fetchScenarioClosure");
-    expect(readRepoFile("../src/views/sim/SandboxView.tsx")).toContain('<CausalGraphPanel source={{ kind: "sim"');
-    expect(readRepoFile("../src/views/DecisionPlayView.tsx")).toContain('<CausalGraphPanel source={{ kind: "decision"');
+    /*
+     * ⚠ 这两条**按文件扫，不按文件名钉**（见 `findInSrc` 的注释：写死路径会被搬家打断）。
+     * 金丝雀先证扫描法没坏：一个必中的片段命中非空 ⇒ 下面的「没有生产调用方」才可信。
+     * 另注：这两条只证「有生产调用方」；**渲染层的咬合另有其人**且更硬 ——
+     * `②-B`（sim：桩换一组数 → 屏上跟着变）与 `②-C`（decision：提交 → 点开 → 真打台账源端点）
+     * 都是端到端真跑。故此处保留静态盘点即可，不必再复制一遍渲染断言。
+     */
+    expect(findInSrc("<CausalGraphPanel"), "金丝雀未中 ⇒ src 扫描坏了，下面的「没有生产调用方」全部不可信").not.toHaveLength(0);
+    expect(findInSrc('<CausalGraphPanel source={{ kind: "sim"'), "沙盘因果图没有任何生产调用方（只有 test 引用 = 已排练，不是已实现）").not.toHaveLength(0);
+    expect(findInSrc('<CausalGraphPanel source={{ kind: "decision"'), "决策台账因果图没有任何生产调用方（只有 test 引用 = 已排练，不是已实现）").not.toHaveLength(0);
     const growth = readRepoFile("../src/pages/admin/GrowthCockpitPage.tsx");
     for (const fn of ["probeGrowth", "submitGrowthTicket", "verifyGrowthTicket"]) expect(growth).toContain(fn);
     const org = readRepoFile("../src/pages/admin/OrgWorldPage.tsx");

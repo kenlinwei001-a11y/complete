@@ -167,6 +167,78 @@ interface DPLocusPlay {
   summary: string;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * WO-DECISION-PLAY-FE-CONSUME · 引擎「依据可核对才下发方案」那三个键的前端类型。
+ *
+ * ⚠ 三个键**全部 optional** —— 判据不是「我猜它可能没有」，是实测：本仓 `VITE_MOCK=1` 的
+ * `mocks/handlers.ts mockDecisionPlay()` 与既有前端测试 `test/decision-play.test.tsx` 的
+ * `DP_A/DP_B` 都是**老形状**（只有五键）。把它们标成必填 ⇒ 那些桩当场编译红，
+ * 而它们描述的是一个**真实存在过的引擎回包**。故：缺键 = 「这次引擎没给」，
+ * 前端按「没有这一块」渲染，**不当成空数组静默画一块空面板**。
+ *
+ * 📅 形状取自实测（2026-08-14）：在 `apps/datacore` 里以
+ * `services.solvers.invoke(ADMIN,"decision_play",{metricKey})` 逐个跑 demand_attain /
+ * seg_attain_ess / cash 三个指标，把真 JSON 打出来逐字段对的 —— 不是照抄工单描述。
+ * 复验：`apps/datacore/test/decision-play-options.seam.test.ts` 顶部的 `DP` 接口是同一份形状。
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+/** 被挡下的战略方案（依据不在本次根因树上）—— 逐条留名 + 引擎写的理由。 */
+interface DPOmitted {
+  optionId: string;
+  label: string;
+  reason: string;
+}
+/** 留下来的方案，它的依据在根因树上是**同实例**（OBJECT）还是**只同类型**（TYPE·弱）。 */
+interface DPEvidence {
+  optionId: string;
+  match: "OBJECT" | "TYPE";
+  note: string;
+}
+/**
+ * 候选 → 本指标缺口收窄量。`value === null` 的意思是「**算不出来**」，
+ * 不是「没效果」—— 屏上**绝不许**渲染成 0（引擎注释原话：「有值 0」和「算不出来」分不开是本仓病灶族）。
+ */
+interface DPGapClose {
+  value: number | null;
+  unit?: string;
+  basis?: string;
+  reason?: string;
+}
+interface DPPlayCandidate {
+  candidateId: string;
+  label: string;
+  lever: { objectType: string; objectId: string; prop: string; unit?: string; factorName?: string };
+  fromValue: number;
+  toValue: number;
+  join?: { kind: string; path: string };
+  rungKind?: string;
+  rungSource?: string;
+  dims?: { key: string; label: string; value: number | null; baseline: number | null; unit: string }[];
+  gapClose?: DPGapClose;
+}
+/** 一个「根因树落点 ⋈ 卡点」的接上项。`join.kind` 三态三句，禁塌成「已关联」。 */
+interface DPJoinedPlay {
+  impedimentId: string;
+  kind: string;
+  locus: { objectType: string; objectId: string; label?: string };
+  severity: number;
+  ruleKey: string;
+  join: { kind: string; path: string; anchorNodeId?: string; anchorFactor?: string; anchorContribution?: number };
+  candidates: DPPlayCandidate[];
+  noCandidateReason?: string;
+  noCandidateKind?: string;
+}
+interface DPImpedimentPlays {
+  joined: DPJoinedPlay[];
+  scanned: number;
+  joinedCount: number;
+  candidateCount: number;
+  candidatesTruncated?: boolean;
+  candidateProbes?: number;
+  /** 一条都接不上时引擎给的机器可读理由（**空则必须显示它**，不是画一块空面板）。 */
+  noPlayReason?: string;
+}
+
 interface DecisionPlayOutput {
   rootCause: { factorId: string; label: string; metricKey: string; gap: number; unit: string } | null;
   options: DPOption[];
@@ -177,6 +249,12 @@ interface DecisionPlayOutput {
   summary: string;
   /** 只在锚了落点时存在（引擎不传这个键 = 本次没锚落点，不是「锚了但空」）。 */
   locusPlay?: DPLocusPlay;
+  /** 被挡下的战略方案 —— `options` 空时**必须**靠它把「为什么空」说出来。 */
+  optionsOmitted?: DPOmitted[];
+  /** 留下来的方案的依据强度（OBJECT 强 / TYPE 弱）。 */
+  optionsEvidence?: DPEvidence[];
+  /** 真枚举器产的可执行候选（与战略方案**不是一回事**，屏上不并表）。 */
+  impedimentPlays?: DPImpedimentPlays;
 }
 
 /** 六维（与 decision_play options/matrix.dims 一字不差）· better 指方向语义（用于比对矩阵「最优列」判定，非写死数值）。 */
@@ -693,6 +771,230 @@ function LocusPlayBlock({ lp }: { lp: DPLocusPlay }) {
   );
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * WO-DECISION-PLAY-FE-CONSUME · 三个新键的上屏
+ *
+ * ── 为什么这不是锦上添花 ──────────────────────────────────────────────────────
+ * 引擎改成「依据可核对才下发方案」之后，`demand_attain` 的战略方案从 3 条变成 **0 条**
+ * （根因树上没有备份池/长协对象 ⇒ 三条都够不着，按「宁可少展示不许造数」被挡下）。
+ * 前端若不消费 `optionsOmitted`，用户看到的就是一块**无缘无故的空白** ——
+ * 那比原来贴三条假方案更糟，因为它连「为什么」都不给。
+ *
+ * ── 三档依据强度**不靠颜色分** ────────────────────────────────────────────────
+ * 本仓是双皮肤（浅/深），且色觉障碍用户分不出深浅。故每档给：
+ *   ① 一个**字形记号**（◆ / △ / ○ —— 打印成黑白也分得开）
+ *   ② 一句**互不相同的词**（「依据同一个对象」/「依据只对上类型 · 弱」/「引擎没给依据档」）
+ *   ③ 边框实/虚（形状，不是色相）
+ * 颜色只是第四层附带信息，删掉颜色这三档照样分得开 —— 这是本块的可断言判据。
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+/** 依据强度记号。`ev === undefined` ⇒ 引擎没给这一条的档位，**不静默当成强依据**。 */
+function EvidenceMark({ optionId, ev }: { optionId: string; ev: DPEvidence | undefined }) {
+  const t = zh.decisionPlay.evidence;
+  const match = ev?.match ?? "NONE";
+  const mark = match === "OBJECT" ? t.objectMark : match === "TYPE" ? t.typeMark : t.noneMark;
+  const word = match === "OBJECT" ? t.objectWord : match === "TYPE" ? t.typeWord : t.noneWord;
+  const hint = match === "OBJECT" ? t.objectHint : match === "TYPE" ? t.typeHint : t.noneHint;
+  return (
+    <span
+      className="badge"
+      data-testid={`dp-evidence-${optionId}`}
+      data-evidence={match}
+      style={{
+        fontSize: 12,
+        // 形状区分：强依据实线、弱依据虚线（色相不参与判据）。
+        borderStyle: match === "OBJECT" ? "solid" : "dashed",
+        color: "var(--muted)",
+        borderColor: "var(--line2)",
+      }}
+    >
+      <span data-testid={`dp-evidence-mark-${optionId}`}>{mark}</span> {word}
+      <InfoPopover topic={t.topic} testId={`dp-evidence-${optionId}`}>
+        <div data-testid={`dp-evidence-why-${optionId}`} style={{ fontSize: 12, lineHeight: 1.75 }}>
+          {hint}
+          {ev === undefined ? null : (
+            <div style={{ marginTop: 5, color: "var(--muted)" }}>
+              {t.enginePrefix}
+              {ev.note}
+            </div>
+          )}
+        </div>
+      </InfoPopover>
+    </span>
+  );
+}
+
+/**
+ * 被挡下的战略方案。**`options` 为空时这一块就是屏上唯一的答案** ——
+ * 「暂无数据」在这里是错的：不是没有数据，是引擎算完了、发现依据对不上、于是不下发。
+ */
+function OmittedOptionsBlock({ omitted, hasOptions }: { omitted: DPOmitted[]; hasOptions: boolean }) {
+  const t = zh.decisionPlay.omitted;
+  return (
+    <div className="panel" data-testid="dp-options-omitted" data-omitted-count={omitted.length} style={{ borderLeft: "3px solid var(--amber)" }}>
+      <div className="section-title">{t.title(omitted.length)}</div>
+      <div data-testid="dp-omitted-lead" style={{ fontSize: 13, color: "var(--txt)" }}>
+        {hasOptions ? t.leadSome : t.leadNone}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+        {omitted.map((o) => (
+          <div
+            key={o.optionId}
+            data-testid={`dp-omitted-${o.optionId}`}
+            style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+          >
+            <b className="zh">{o.label}</b>
+            <span className="badge" style={{ fontSize: 12, color: "var(--muted)", borderColor: "var(--line2)" }}>
+              {t.word}
+            </span>
+            <InfoPopover topic={t.topic} testId={`dp-omitted-${o.optionId}`}>
+              {/* 引擎原文一个字不改写（它逐条写清了「依据对象是谁 / 本次根因的下钻面是哪几类」）。 */}
+              <div data-testid={`dp-omitted-why-${o.optionId}`} style={{ fontSize: 12, lineHeight: 1.75 }}>
+                {o.reason}
+              </div>
+            </InfoPopover>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 收窄量。`value === null` ⇒ 出**词**不出数（渲染成 0 会被读成「没效果」，那是两件事）。 */
+function GapCloseTag({ candidateId, gc }: { candidateId: string; gc: DPGapClose | undefined }) {
+  const t = zh.decisionPlay.plays;
+  const known = gc !== undefined && gc.value !== null;
+  return (
+    <span
+      data-testid={`dp-gapclose-${candidateId}`}
+      data-value={known ? String(gc.value) : "null"}
+      style={{ fontSize: 12, color: known ? "var(--ok-txt)" : "var(--muted)" }}
+    >
+      {known ? t.gapCloseValue(fmt(gc.value as number), gc.unit ?? "") : t.gapCloseNone}
+      {known ? null : (
+        <InfoPopover topic={t.gapCloseTopic} testId={`dp-gapclose-${candidateId}`}>
+          <div data-testid={`dp-gapclose-why-${candidateId}`} style={{ fontSize: 12, lineHeight: 1.75 }}>
+            {gc?.reason ?? t.noPlayFallback}
+          </div>
+        </InfoPopover>
+      )}
+    </span>
+  );
+}
+
+/**
+ * 可以直接动手的候选（真枚举器产物）。
+ *
+ * ⚠ **刻意不做成表**：候选身上只有超阈幅度/严重度/产能三样真值，凑不齐战略方案那六维。
+ * 摆成一张可比的表就等于替它编四个数，而编的数会被比对矩阵「每列最优」和决策台账当真用。
+ * 故本块是列表 + 一句写在第一层的「不能并排比」，理由进浮层。
+ */
+function ImpedimentPlaysBlock({ plays }: { plays: DPImpedimentPlays }) {
+  const t = zh.decisionPlay.plays;
+  return (
+    <div
+      className="panel"
+      data-testid="dp-imp-plays"
+      data-candidate-count={plays.candidateCount}
+      data-joined-count={plays.joinedCount}
+      data-scanned={plays.scanned}
+    >
+      <div className="section-title">{t.title(plays.candidateCount, plays.joinedCount, plays.scanned)}</div>
+
+      <div data-testid="dp-imp-vs-options" style={{ fontSize: 12, color: "var(--muted)" }}>
+        {t.vsOptions}
+        <InfoPopover topic={t.vsOptionsTopic} testId="dp-imp-vs-options">
+          <div data-testid="dp-imp-vs-options-why" style={{ fontSize: 12, lineHeight: 1.75 }}>
+            {t.vsOptionsBody}
+          </div>
+        </InfoPopover>
+      </div>
+
+      {plays.joined.length === 0 ? (
+        /* 一条都接不上 ⇒ 出引擎的机器可读理由。**不是**画一块空面板，也不是「暂无数据」。 */
+        <div data-testid="dp-imp-no-play" style={{ fontSize: 12, color: "var(--muted)", marginTop: 8, lineHeight: 1.75 }}>
+          {plays.noPlayReason ?? t.noPlayFallback}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+          {plays.joined.map((j) => (
+            <div
+              key={j.impedimentId}
+              data-testid={`dp-imp-${j.impedimentId}`}
+              data-join-kind={j.join.kind}
+              style={{ borderLeft: "3px solid var(--line2)", paddingLeft: 10 }}
+            >
+              <div style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <span className="badge">{j.kind}</span>
+                <b className="zh">{j.locus.label ?? j.locus.objectId}</b>
+                <span className="mono" style={{ color: "var(--muted)" }}>{j.locus.objectType}／{j.locus.objectId}</span>
+                <span>{t.severityLabel} <b className="mono">{fmt(j.severity)}</b></span>
+                <span>{t.ruleLabel} <span className="mono">{j.ruleKey}</span></span>
+                {/* 三条接法三句话（同一个对象 / 只到类型 / 同一个基地面）—— 不塌成「已关联」。 */}
+                <span className="badge" data-testid={`dp-imp-join-${j.impedimentId}`} style={{ fontSize: 12, color: "var(--muted)", borderColor: "var(--line2)" }}>
+                  {t.joinWord[j.join.kind] ?? j.join.kind}
+                  <InfoPopover topic={t.joinTopic} testId={`dp-imp-join-${j.impedimentId}`}>
+                    <div data-testid={`dp-imp-join-why-${j.impedimentId}`} style={{ fontSize: 12, lineHeight: 1.75 }}>
+                      {j.join.path}
+                    </div>
+                  </InfoPopover>
+                </span>
+              </div>
+
+              {j.candidates.length === 0 ? (
+                /* 接上了、但这个卡点没有候选 —— 三态三句（与沙盘 CandidateAbsenceBlock 同一条纪律）。 */
+                <div
+                  data-testid={`dp-imp-nocand-${j.impedimentId}`}
+                  data-kind={j.noCandidateKind ?? "NOT_RUN"}
+                  style={{ fontSize: 12, color: "var(--muted)", marginTop: 5 }}
+                >
+                  <b>{t.noCandidate[j.noCandidateKind ?? "NOT_RUN"] ?? t.noCandidate.NOT_RUN}</b>
+                  <InfoPopover topic={t.noCandidateTopic} testId={`dp-imp-nocand-${j.impedimentId}`}>
+                    <div data-testid={`dp-imp-nocand-why-${j.impedimentId}`} style={{ fontSize: 12, lineHeight: 1.75 }}>
+                      {j.noCandidateReason ?? t.noPlayFallback}
+                    </div>
+                  </InfoPopover>
+                </div>
+              ) : (
+                <ul style={{ margin: "6px 0 0", paddingLeft: 16, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {j.candidates.map((c) => (
+                    <li key={c.candidateId} data-testid={`dp-play-cand-${c.candidateId}`} style={{ fontSize: 12, lineHeight: 1.7 }}>
+                      <b className="zh">{c.label}</b>
+                      <div className="mono" style={{ color: "var(--muted)" }} data-from={c.fromValue} data-to={c.toValue}>
+                        {c.lever.objectType}.{c.lever.prop}（{c.lever.objectId}）{fmt(c.fromValue)} → {fmt(c.toValue)} {c.lever.unit ?? ""}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <GapCloseTag candidateId={c.candidateId} gc={c.gapClose} />
+                        {c.rungSource === undefined ? null : (
+                          <InfoPopover topic={t.leverTopic} testId={`dp-play-rung-${c.candidateId}`}>
+                            <div data-testid={`dp-play-rung-why-${c.candidateId}`} style={{ fontSize: 12, lineHeight: 1.75 }}>
+                              {c.rungSource}
+                              {c.gapClose?.basis ? <div style={{ marginTop: 5, color: "var(--muted)" }}>{c.gapClose.basis}</div> : null}
+                            </div>
+                          </InfoPopover>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {plays.candidatesTruncated ? (
+        <div data-testid="dp-imp-truncated" style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
+          {t.truncated}
+          <InfoPopover topic={t.truncatedTopic} testId="dp-imp-truncated">
+            <div style={{ fontSize: 12, lineHeight: 1.75 }}>{t.truncatedBody}</div>
+          </InfoPopover>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function DecisionPlay({
   out,
   metricKey,
@@ -709,6 +1011,14 @@ function DecisionPlay({
   const { rootCause, options, matrix, recommendedPlan, sandboxNarrowing, summary } = out;
   const rc = rootCause!;
   const recSet = useMemo(() => new Set(recommendedPlan.optionIds), [recommendedPlan.optionIds]);
+
+  // WO-DECISION-PLAY-FE-CONSUME：依据强度按 optionId 索引。**查不到 ⇒ undefined，不回落成 OBJECT**
+  // （回落等于替引擎宣布「依据很硬」，正是本仓要治的那种「看着确凿」）。
+  const evidenceById = useMemo(
+    () => new Map((out.optionsEvidence ?? []).map((e) => [e.optionId, e])),
+    [out.optionsEvidence],
+  );
+  const omitted = out.optionsOmitted ?? [];
 
   // 比对矩阵「最优列」：逐维在真值中取最优（high→max / low→min），非写死。空矩阵安全。
   const bestByDim = useMemo(() => {
@@ -789,11 +1099,34 @@ function DecisionPlay({
         <div className="section-title">对症方案（{options.length}）· 点开看六维 + 为何做 / 何用 / 为何有用</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
           {options.map((o) => (
-            <OptionCard key={o.optionId} o={o} gap={rc.gap} unit={rc.unit} recommended={recSet.has(o.optionId)} />
+            <OptionCard
+              key={o.optionId}
+              o={o}
+              gap={rc.gap}
+              unit={rc.unit}
+              recommended={recSet.has(o.optionId)}
+              ev={evidenceById.get(o.optionId)}
+            />
           ))}
         </div>
+        {/*
+         * 「方案 0 条」这一态**必须自己说话**：
+         *  · 有被挡名单 ⇒ 下面那块 `dp-options-omitted` 逐条说是谁、为什么；
+         *  · 连名单都没有 ⇒ 也得出声，不许留一块无字空白。
+         */}
+        {options.length === 0 && omitted.length === 0 ? (
+          <div data-testid="dp-options-silent" style={{ fontSize: 12, color: "var(--muted)" }}>
+            {zh.decisionPlay.omitted.silent}
+          </div>
+        ) : null}
       </div>
       </BlockConversable>
+
+      {/* ── 被挡下的方案（诚实位·`options` 空时这就是屏上唯一的答案）── */}
+      {omitted.length === 0 ? null : <OmittedOptionsBlock omitted={omitted} hasOptions={options.length > 0} />}
+
+      {/* ── 可以直接动手的候选（与上面的方案**不是一回事**，刻意不并表）── */}
+      {out.impedimentPlays === undefined ? null : <ImpedimentPlaysBlock plays={out.impedimentPlays} />}
 
       {/* ── ③ 比对矩阵（行=方案·列=六维·最优列高亮）── */}
       <BlockConversable blockId="dp-matrix" blockType="decision-matrix" blockTitle="方案比对矩阵" getData={matrixBlockData} getSelection={() => [rc.factorId]} provenanceRef="decision_play">
@@ -815,6 +1148,13 @@ function DecisionPlay({
                   <td className="zh">
                     <b>{row.label}</b>
                     {recSet.has(row.optionId) && <span className="badge blue" style={{ marginLeft: 6, fontSize: 12 }}>推荐</span>}
+                    {/*
+                     * 依据强度记号也上矩阵 —— 这张表的「每列最优」会把弱依据的方案推成"最优"，
+                     * 若只有卡片上标弱、表里不标，用户读的是表、拿到的就是一个没标注的结论。
+                     */}
+                    <span style={{ marginLeft: 6 }}>
+                      <EvidenceMark optionId={`matrix-${row.optionId}`} ev={evidenceById.get(row.optionId)} />
+                    </span>
                   </td>
                   {DIMS.map((d) => {
                     const isBest = bestByDim[d.key] === row.optionId;
@@ -1062,7 +1402,7 @@ function ActionRowView({ row, rc, narrowedPct }: { row: ActionRow; rc: NonNullab
 }
 
 /** 方案卡：默认显 label + sourceKind 徽标 + 补缺口；点击展开 → 六维 + 「为何做 / 何用 / 为何有用」+ provenance 下钻。 */
-function OptionCard({ o, gap, unit, recommended }: { o: DPOption; gap: number; unit: string; recommended: boolean }) {
+function OptionCard({ o, gap, unit, recommended, ev }: { o: DPOption; gap: number; unit: string; recommended: boolean; ev?: DPEvidence }) {
   const [open, setOpen] = useState(false);
   const [drillOpen, setDrillOpen] = useState(false);
   const isSolver = o.sourceKind === "solver";
@@ -1099,6 +1439,14 @@ function OptionCard({ o, gap, unit, recommended }: { o: DPOption; gap: number; u
           </span>
         </div>
       </button>
+
+      {/*
+       * 依据强度记号 —— 刻意放在展开按钮**外面**：`InfoPopover` 里是真 `<button>`，
+       * 嵌进外层按钮里就是 button-in-button（HTML 非法，且键盘 Tab 序会乱）。
+       */}
+      <div style={{ marginTop: 6 }}>
+        <EvidenceMark optionId={o.optionId} ev={ev} />
+      </div>
 
       {open && (
         <div data-testid={`dp-option-detail-${o.optionId}`} style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>

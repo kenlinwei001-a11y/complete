@@ -3441,6 +3441,64 @@ export class SolverService {
   }
 
   /**
+   * WO-LTA-EVIDENCE-CONFLICT · 「本次推演里，**哪一份长协**是证据」——锚在**归因树指定的那一份**上。
+   *
+   * ══ 修前是什么样（实测·seed=42·demo·`decision_play({})`）══════════════════════════
+   * `opt-lta-clause` 的依据取自 `ltas.find((l) => l.materialType === "正极")` ——**列表里第一条**，
+   * 解析成 `lta-lfp-rbkj`（SUP-001）；而同一棵树上 `cf-lta-breach`（`battery-extended.ts` 因子表）
+   * 与 `opt-insource`（写死字面量）指的都是 `lta-lfp-cylk`（SUP-003）。于是**同一个根因树上，
+   * 两条方案各自认了不同的一份长协当证据**，屏上出现「因为 A 家长协违约 ⇒ 给 B 家加价格联动条款」——
+   * 读起来通顺，实际张冠李戴，而用户在界面上分辨不出（依据强度只显示为 TYPE «弱»，不显示"指错了人"）。
+   *
+   * ══ 哪一份才是对的、依据是什么（不是"随便挑一个让两边一致"）══════════════════════
+   * `lta-lfp-cylk`。三条互相独立的证据都指向它，且都不是本方法自己编的：
+   *  1. **因果链自洽**：`cf-upstream-cut` 下钻 `Supplier/SUP-003`，其下游一环 `cf-lta-breach` 下钻的
+   *     长协必须是**同一家供应商**的那份 —— `lta-lfp-cylk.supplierId === "SUP-003"`（`lta-lfp-rbkj` 是 SUP-001）。
+   *  2. **归因树是唯一裁判**：树上真正被算进贡献的长协落点只有 `cf-lta-breach` 一个
+   *     （实测 `贡献 0.1163%`）。方案的依据要"可核对"，就必须核对到**树上那个**落点，
+   *     否则 `optionsEvidence` 里那句 OBJECT/TYPE 是自说自话。
+   *  3. **种子侧旁证**：`dgap-clause` 的 `evidence` 字段原文写的是「LTA-SUP-003 合同扫描件」。
+   * 反过来说：`lta-lfp-rbkj` 唯一的"资格"是它排在数组第 1 位 —— 这不是依据，是**巧合**。
+   *
+   * ══ 为什么改解析而不是改种子 ═════════════════════════════════════════════════
+   * 三份正极长协是**真实业务形态**（一家企业本来就有多家供应商的长协），删掉/改名任何一份都是
+   * 拿数据去迁就代码。真正错的是「按数组顺序取第一条」这种**隐式选择**：它没有任何语义，
+   * 换一次种子插入顺序、多进一份长协，屏上的证据对象就悄悄换人，而且**不会有任何一条测试变红**。
+   * 同形态的坑本仓已有先例：`cf-material-short` 的 `DYNAMIC-MBAL` 被「缺口最大的那一张」解析死
+   * （`battery-extended.ts:1022`）。故本方法把选择**显式化并锚到树上**，且解析路径原样下发到 `basis`。
+   *
+   * ══ 树上没有长协落点时怎么办（诚实边界）══════════════════════════════════════
+   * 返回 `source: "NO_TREE_ANCHOR"`。此时依据门（`optionsEvidence` 那段）必然把这两条方案
+   * **整条剔除**（`anchors.types` 里压根没有 `LongTermAgreement`），所以这里挑到哪一份都上不了屏；
+   * 为保 R6 确定性仍给一个**字典序**代表，并在 `basis` 里明说「非树锚」，不允许它冒充证据。
+   */
+  private resolveEvidenceLta(
+    anchors: { byKey: Map<string, GapAnchor>; byType: Map<string, GapAnchor> },
+    ltas: Record<string, unknown>[],
+  ): { lta: Record<string, unknown> | null; ltaId: string; source: "TREE_ANCHOR" | "NO_TREE_ANCHOR"; path: string } {
+    const ltaAnchor = [...anchors.byKey.values(), ...anchors.byType.values()]
+      .filter((a) => a.drillType === "LongTermAgreement" && !isWildcardDrillId(a.drillId))
+      .sort((a, b) => b.contribution - a.contribution || a.nodeId.localeCompare(b.nodeId))[0];
+    if (ltaAnchor) {
+      const hit = ltas.find((l) => str(l.ltaId) === ltaAnchor.drillId) ?? null;
+      return {
+        lta: hit,
+        ltaId: ltaAnchor.drillId,
+        source: "TREE_ANCHOR",
+        path: `归因树节点 ${ltaAnchor.nodeId}（${ltaAnchor.factor}·贡献 ${ltaAnchor.contribution}${ltaAnchor.unit}）下钻 ${ltaAnchor.drillType}/${ltaAnchor.drillId}`,
+      };
+    }
+    // 树上没有长协落点 —— 只为 R6 取字典序代表，且**不得**被当成证据（见方法头「诚实边界」）。
+    const rep = [...ltas].sort((a, b) => str(a.ltaId).localeCompare(str(b.ltaId)))[0] ?? null;
+    return {
+      lta: rep,
+      ltaId: str(rep?.ltaId ?? ""),
+      source: "NO_TREE_ANCHOR",
+      path: "本次归因树上无 LongTermAgreement 落点 ⇒ 无树锚（按 ltaId 字典序取代表仅为 R6 确定性，不作证据）",
+    };
+  }
+
+  /**
    * WO-CEO-3 · decision_play 决策推演引擎（G-DECISION）。
    * 一根因（复用 CEO-2 gap_attribution 产物·非重造）→ ≥3 方案（读真供应链对象·各维度真算）→ 比对矩阵
    * → 触发规则（信号阈值→行动·真评估·阈值可 RuleEntry.params 覆盖 C3）→ 贪心组合 ActionPlan（分步）
@@ -3475,8 +3533,19 @@ export class SolverService {
     const ltaShortfall = round(ltas.filter((l) => str(l.materialType) === "正极").reduce((a, l) => a + Math.max(0, num(l.contractedQtyTon) - num(l.actualDeliveredTon)), 0), 0);
     const cathodePool = pools.find((p) => str(p.materialType) === "正极");
     const certWeeks = num(cathodePool?.certWeeks, 16);
-    const cathodeLta = ltas.find((l) => str(l.materialType) === "正极");
-    const priceLinked = Boolean(cathodeLta?.priceLinked);
+    // WO-LTA-EVIDENCE-CONFLICT · 长协证据解析 —— 锚在**归因树指定的那一份**上（原为 `ltas.find(正极)`
+    // ＝「数组里第一条」，解析成 lta-lfp-rbkj，与树上的 cf-lta-breach/lta-lfp-cylk 打架）。判据与
+    // 「为什么是 cylk 不是 rbkj」的三条独立证据写在 `resolveEvidenceLta` 方法头，不在这里重抄一遍。
+    // `anchors` 因此必须**在方案构造之前**算好（原在方案之后，只用于事后过滤）。
+    const anchors = this.collectGapAnchors(ga);
+    const evidenceLta = this.resolveEvidenceLta(anchors, ltas);
+    const priceLinked = Boolean(evidenceLta.lta?.priceLinked);
+    // 该证据长协自己的欠交量（与 `ltaShortfall` 的**正极全体合计**不是一个量：id 指一份、值就得是那一份的，
+    // 否则又是一次「对象与读数张冠李戴」）。全体合计仍留给 shortfallFrac→closesGap 用，那里本就该按面算。
+    const evidenceLtaShortfall = round(
+      Math.max(0, num(evidenceLta.lta?.contractedQtyTon) - num(evidenceLta.lta?.actualDeliveredTon)),
+      0,
+    );
     const effBackup = round(Math.max(0.2, 1 - certWeeks / 26), 4); // certWeeks 真值 → 越短越有效
     const effClause = priceLinked ? 0.3 : 0.7; // 无价格联动条款 → 加条款收益大
     const effInsource = 0.9;
@@ -3488,11 +3557,11 @@ export class SolverService {
         closesGap: cg(effBackup), cost: round(120 + certWeeks * 8, 0), cycleDays: round(certWeeks * 7, 0), risk: 0.25, exposure: round(0.6 * (1 - effBackup), 3), reversibility: 0.8,
         provenance: { kind: "求解器" as const, basis: "BackupSupplierPool.certWeeks", drillType: "BackupSupplierPool", drillId: str(cathodePool?.poolId ?? "pool-cathode"), drillValue: certWeeks } },
       { optionId: "opt-lta-clause", factorId: rootFactorId, label: priceLinked ? "长协条款优化" : "长协加价格联动条款", sourceKind: "agent" as const,
-        closesGap: cg(effClause), cost: round(num(cathodeLta?.breachPenaltyWan, 180) * 0.5, 0), cycleDays: 30, risk: 0.2, exposure: round(0.5 * (priceLinked ? 0.4 : 0.15), 3), reversibility: 0.9,
-        provenance: { kind: "策略推理" as const, basis: "LongTermAgreement.priceLinked", drillType: "LongTermAgreement", drillId: str(cathodeLta?.ltaId ?? "lta-lfp-cylk"), drillValue: priceLinked ? 1 : 0 } },
+        closesGap: cg(effClause), cost: round(num(evidenceLta.lta?.breachPenaltyWan, 180) * 0.5, 0), cycleDays: 30, risk: 0.2, exposure: round(0.5 * (priceLinked ? 0.4 : 0.15), 3), reversibility: 0.9,
+        provenance: { kind: "策略推理" as const, basis: `LongTermAgreement.priceLinked（证据长协 ${evidenceLta.ltaId} ← ${evidenceLta.path}）`, drillType: "LongTermAgreement", drillId: evidenceLta.ltaId, drillValue: priceLinked ? 1 : 0 } },
       { optionId: "opt-insource", factorId: rootFactorId, label: "上游自采矿+战略储备", sourceKind: "agent" as const,
         closesGap: cg(effInsource), cost: round(800 + shortfallFrac * 1200, 0), cycleDays: 180, risk: 0.55, exposure: 0.05, reversibility: 0.2,
-        provenance: { kind: "策略推理" as const, basis: "正极供应缺口(LTA 约定−实际交付)", drillType: "LongTermAgreement", drillId: "lta-lfp-cylk", drillValue: ltaShortfall } },
+        provenance: { kind: "策略推理" as const, basis: `LongTermAgreement.contractedQtyTon−actualDeliveredTon（证据长协 ${evidenceLta.ltaId} ← ${evidenceLta.path}；正极全体合计欠交 ${ltaShortfall} 吨另见 closesGap 的 shortfallFrac）`, drillType: "LongTermAgreement", drillId: evidenceLta.ltaId, drillValue: evidenceLtaShortfall } },
     ];
 
     // ── WO-DECISION-PLAY-OPTIONS ② · 战略方案**依据可核对才下发**（治「贴上去的装饰」）──────────────
@@ -3507,13 +3576,17 @@ export class SolverService {
     // 必须能在本次归因树的落点集里被核对到（`gap_attribution` 节点自带的 `provenance` 下钻对象）：
     //  · `OBJECT` 同类型**同实例**命中 —— 强依据；
     //  · `TYPE`   同类型、**不同实例**（树上有该类型的落点，但不是这一条指的那个）—— 弱依据，逐条标出差异，
-    //    不许把它当成 OBJECT 静默混过去（实测就有一条：`opt-lta-clause` 读的是「首个正极长协」
-    //    `lta-lfp-rbkj`，而因果因子 `cf-lta-breach` 指的是 `lta-lfp-cylk`；同为 `opt-insource` 又写死后者
-    //    —— 两条方案对"哪份长协是证据"意见不一致。这是本单的**旁证发现**，不在本单修，但必须**出声**）；
+    //    不许把它当成 OBJECT 静默混过去。
+    //    ✅ **本条当年点名的那个实例已于 WO-LTA-EVIDENCE-CONFLICT 修掉**：原文是「`opt-lta-clause`
+    //    读的是「首个正极长协」`lta-lfp-rbkj`，而因果因子 `cf-lta-breach` 指的是 `lta-lfp-cylk`；
+    //    同为 `opt-insource` 又写死后者 —— 两条方案对"哪份长协是证据"意见不一致」，当时判为
+    //    「旁证发现·不在本单修」。现两条方案的 drillId 一律经 `resolveEvidenceLta` 锚到树上那一份，
+    //    实测双双升为 `OBJECT`。TYPE 这条分支**保留**（它是给"树上真有该类型但确实不是这一个"的
+    //    情形留的诚实出口），但它不再被长协这条路日常触发 —— 别把"TYPE 没人走了"读成"这段是死码"；
     //  · 都够不着 ⇒ 该方案与本根因无可核对的依据关系，**诚实不下发** + 写清为什么。
     // 现金域根因（下钻 ARAging/Customer/DSO）与份额域（BidRecord/CompetitorPrice…）树上没有长协/备份池
     // ⇒ 三条战略方案**一条都不下发**（修前它们照样贴上去，这正是「贴上去的装饰」的实证）。
-    const anchors = this.collectGapAnchors(ga);
+    // `anchors` 已在方案构造之前算好（长协证据解析要用它·见上 WO-LTA-EVIDENCE-CONFLICT）。
     const optionsOmitted: { optionId: string; label: string; reason: string }[] = [];
     const optionsEvidence: { optionId: string; match: "OBJECT" | "TYPE"; note: string }[] = [];
     const options = allOptions.filter((o) => {

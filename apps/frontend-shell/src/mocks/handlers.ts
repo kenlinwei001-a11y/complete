@@ -804,15 +804,181 @@ const r2 = (x: number) => Math.round(x * 100) / 100;
 const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
 
 /**
+ * WO-DECISION-PLAY-FE-CONSUME · 桩里的**可执行候选**（真枚举器形状）。
+ * `gapClose.value === null` 是**必须演出来的一态**：它的意思是「算不出收窄量」，
+ * 不是「没效果」—— 屏上渲染成 0 会被读反。故本桩刻意给一条 null、一条有值。
+ * 形状取自 2026-08-14 实测的引擎真回包（datacore `solvers.invoke("decision_play")`）。
+ */
+const MOCK_PLAY_CANDIDATES = [
+  {
+    candidateId: "cand_mbal-2_Material.leadTime_pos_lfp_PEER_BEST_10",
+    impedimentId: "imp_BREAK.MATERIAL.material-gap_mbal-2",
+    label: "物料·到货周期 ↓ 10（物料到货·pos_lfp）",
+    lever: { objectType: "Material", objectId: "pos_lfp", prop: "leadTime", unit: "天", factorName: "物料到货" },
+    fromValue: 26,
+    toValue: 10,
+    join: { kind: "KEY_JOIN", path: "值键相等 MaterialBalance.material = Material.name = 磷酸铁锂正极（因子⑮ 物料到货）" },
+    rungKind: "PEER_BEST",
+    rungSource: "同侪 Material.leadTime 真实极值（最小） 10（全类型·6 个不同取值·当前 26）",
+    dims: [
+      { key: "breach", label: "超阈幅度（MaterialBalance.gapTon）", value: 492, baseline: 492, unit: "吨" },
+      { key: "capacityP50", label: "产能 p50 合计（全域）", value: 34523133.8622, baseline: 30258169.2393, unit: "套/天" },
+    ],
+    // 判据读数没变 ⇒ 引擎拒绝折算，给 null + 理由（**不给 0**）。
+    gapClose: {
+      value: null,
+      basis: "metricgap:demand_attain 贡献 8.096% × Δbreach/breach基线",
+      reason:
+        "该候选**不改变**本根因的判据读数（492→492吨）——它的效果落在其他维（见产能 p50 那一维）；" +
+        "本引擎无从把那些维换算成本指标缺口，故不给收窄量。",
+    },
+  },
+  {
+    candidateId: "cand_mbal-2_MaterialBalance.gapTon_mbal-2_PEER_NEXT_246",
+    impedimentId: "imp_BREAK.MATERIAL.material-gap_mbal-2",
+    label: "物料平衡·缺口吨 ↓ 246（正极齐套）",
+    lever: { objectType: "MaterialBalance", objectId: "mbal-2", prop: "gapTon", unit: "吨", factorName: "正极齐套" },
+    fromValue: 492,
+    toValue: 246,
+    join: { kind: "LOCUS_PROP", path: "落点对象自身的可拨动属性 MaterialBalance/mbal-2.gapTon" },
+    rungKind: "HALF",
+    rungSource: "落点读数对半档（492 → 246）",
+    dims: [{ key: "breach", label: "超阈幅度（MaterialBalance.gapTon）", value: 246, baseline: 492, unit: "吨" }],
+    // 落点读数与判据基线逐位相等 ⇒ 可等比折算，给真数。
+    gapClose: {
+      value: 4.048,
+      unit: "%",
+      basis: "metricgap:demand_attain 贡献 8.096% × (492−246)/492（落点读数与判据基线逐位相等 ⇒ 同量可等比折算）",
+    },
+  },
+];
+
+/** 三条战略方案的「被挡下」理由（引擎原文形状：依据对象 + 本次根因的下钻面）。 */
+const mockOmitted = (rootLabel: string, drillFaces: string) => [
+  {
+    optionId: "opt-backup-cert",
+    label: "缩短备份供应商认证周期",
+    reason:
+      `依据对象 BackupSupplierPool|pool-cathode 与其类型都不在本次归因树的落点集里` +
+      `（根因「${rootLabel}」的下钻面为 ${drillFaces}）⇒ 该方案与本根因无可核对的依据关系，诚实不下发。`,
+  },
+  {
+    optionId: "opt-lta-clause",
+    label: "长协加价格联动条款",
+    reason:
+      `依据对象 LongTermAgreement|lta-lfp-rbkj 与其类型都不在本次归因树的落点集里` +
+      `（根因「${rootLabel}」的下钻面为 ${drillFaces}）⇒ 该方案与本根因无可核对的依据关系，诚实不下发。`,
+  },
+  {
+    optionId: "opt-insource",
+    label: "上游自采矿+战略储备",
+    reason:
+      `依据对象 LongTermAgreement|lta-lfp-cylk 与其类型都不在本次归因树的落点集里` +
+      `（根因「${rootLabel}」的下钻面为 ${drillFaces}）⇒ 该方案与本根因无可核对的依据关系，诚实不下发。`,
+  },
+];
+
+/**
  * decision_play mock（CEO-3·5 区决策产物）：根因 seg_attain_ess 缺口从 ess 段（target 139.2 / 实绩 100.5·fixtures.ts:488）
  * 派生 → 3 对症方案（solver+agent·带 provenance 下钻真对象）→ 比对矩阵 → 触发规则 → 推荐组合 + 差距收窄试算。
  * 自洽：narrowedPct = totalClosesGap/beforeGap（活算·非写死）；afterGap = beforeGap − totalClosesGap。
+ *
+ * ── WO-DECISION-PLAY-FE-CONSUME：桩必须能演出**三种态** ────────────────────────
+ * 引擎改成「依据可核对才下发方案」之后，同一个求解器在不同指标上产出的形态完全不同；
+ * 桩只演一种 ⇒ `VITE_MOCK=1` 的 demo 里永远看不到「方案 0 条」那一屏，而那一屏恰恰是
+ * 最容易做错的（不消费被挡名单就是一块无缘无故的空白）。三态按 `metricKey` 分：
+ *   · `demand_attain`   有卡点候选 · 战略方案 **0 条**（三条全被挡下）
+ *   · `cash`            全空：方案 0 条 + 一个卡点都接不上（带机器可读理由）
+ *   · 其余（含 `seg_attain_ess`·缺省） 有方案（含一条**弱依据**）+ 有候选
+ * 三态的文字与数值形状取自 2026-08-14 在 datacore 真跑同名求解器打出来的回包。
  */
-function mockDecisionPlay(): Record<string, unknown> {
+function mockDecisionPlay(metricKey?: string): Record<string, unknown> {
   // 根因缺口：储能达成率 = 实绩/目标（fixtures ess 段）→ gap = (1 − 100.5/139.2)×100 ≈ 27.8%（与 gap_attribution 桩同源）。
   const essTarget = PLAN_VERSION_CURRENT.input.seg_ess; // 139.2（fixtures.ts:488 / simSolvers 同源）
   const essActual = 100.5; // 储能 lastActual（fixtures.ts:488 sopConfig.segments）——实绩偏弱下修
   const gap = r1((1 - essActual / essTarget) * 100); // 27.8
+
+  // ── 三态之二/三：战略方案 0 条（依据够不着）。这两态是本桩存在的第二个理由 ────────────
+  if (metricKey === "demand_attain" || metricKey === "cash") {
+    const isCash = metricKey === "cash";
+    const rootLabel = isCash ? "应收账龄恶化(root)" : "物料短缺(root)";
+    const drillFaces = isCash ? "ARAging、Customer、DSO" : "DecisionGap、Equipment、MaterialBalance";
+    const rootGap = isCash ? 2 : 9.2;
+    const unit = isCash ? "亿" : "%";
+    // cash：一个卡点都接不上（判据册的落点类型与本次根因的下钻面交集为空）⇒ 机器可读理由。
+    const plays = isCash
+      ? {
+          joined: [],
+          scanned: 0,
+          joinedCount: 0,
+          candidateCount: 0,
+          noPlayReason:
+            "本次归因树的落点类型 [ARAging、Customer、DSO] 与阻滞点判据册的落点类型 " +
+            "[Base、DataSourceHealth、Line、MaterialBalance、MaterialBatch、Order、Process] **交集为空**，" +
+            "且归因结构层没有基地面 ⇒ 一条 join 路都够不着。这是「接不上」不是「没有对策」。",
+        }
+      : {
+          joined: [
+            {
+              impedimentId: "imp_BREAK.MATERIAL.material-gap_mbal-2",
+              kind: "BREAK",
+              locus: { objectType: "MaterialBalance", objectId: "mbal-2", label: "磷酸铁锂正极" },
+              severity: 6,
+              ruleKey: "C06",
+              join: {
+                kind: "LOCUS_EXACT",
+                path: "gap_attribution.node metricgap:demand_attain（贡献 8.096%·下钻 MaterialBalance/mbal-2.gapTon=492）== 阻滞点落点 MaterialBalance/mbal-2",
+                anchorNodeId: "metricgap:demand_attain",
+                anchorFactor: "需求达成缺口",
+                anchorContribution: 8.096,
+              },
+              candidates: MOCK_PLAY_CANDIDATES,
+            },
+            {
+              // 接上了、但这个卡点**没有**候选 —— 与「一条都接不上」是两件事，屏上两句话。
+              impedimentId: "imp_BREAK.MATERIAL.material-gap_mbal-1",
+              kind: "BREAK",
+              locus: { objectType: "MaterialBalance", objectId: "mbal-1", label: "三元正极" },
+              severity: 8,
+              ruleKey: "C06",
+              join: {
+                kind: "LOCUS_EXACT",
+                path: "gap_attribution.node cf:cf-material-short（贡献 6.4716%·下钻 MaterialBalance/mbal-1.gapTon=1858）== 阻滞点落点 MaterialBalance/mbal-1",
+                anchorNodeId: "cf:cf-material-short",
+                anchorFactor: "物料短缺(root)",
+                anchorContribution: 6.4716,
+              },
+              candidates: [],
+              noCandidateReason:
+                "枚举已跑完，有效候选 0 个（探了 2 个杠杆锚点 / 6 次试算），不足 2 个 ⇒ 构不成多方案对比，诚实不下发。",
+              noCandidateKind: "NONE",
+            },
+          ],
+          scanned: 7,
+          joinedCount: 2,
+          candidateCount: MOCK_PLAY_CANDIDATES.length,
+          candidatesTruncated: false,
+          candidateProbes: 45,
+        };
+    return {
+      rootCause: { factorId: isCash ? "cf-ar-aging" : "cf-material-short", label: rootLabel, metricKey, gap: rootGap, unit },
+      options: [],
+      matrix: [],
+      triggers: [
+        { triggerId: "trig-backup-cert", signalRef: "licarb_pct_cum", signalValue: 14.29, op: ">", threshold: 12, fired: true, action: "启动备份供应商认证", thresholdSource: "trigger.default" },
+        { triggerId: "trig-fx-hedge", signalRef: "usd_cny", signalValue: 7.18, op: ">", threshold: 8, fired: false, action: "外汇对冲展期", thresholdSource: "trigger.default" },
+      ],
+      recommendedPlan: { planId: `plan-${isCash ? "cf-ar-aging" : "cf-material-short"}`, optionIds: [], steps: [], totalClosesGap: 0, totalCost: 0 },
+      sandboxNarrowing: { beforeGap: rootGap, afterGap: rootGap, narrowedPct: 0, ticks: 0 },
+      optionsOmitted: mockOmitted(rootLabel, drillFaces),
+      optionsEvidence: [],
+      impedimentPlays: plays,
+      summary:
+        `根因「${rootLabel}」→ 0 战略方案比对（另 3 条因依据不在本根因树上未下发）` +
+        `·可执行方案 ${plays.candidateCount} 条(接 ${plays.joinedCount}/${plays.scanned} 个阻滞点)`,
+    };
+  }
+
   const options = [
     { optionId: "opt-backup-cert", factorId: "cf-upstream-cut", label: "缩短备份供应商认证周期", sourceKind: "solver",
       closesGap: 3.2, cost: 248, cycleDays: 112, risk: 0.25, exposure: 0.23, reversibility: 0.8,
@@ -850,6 +1016,54 @@ function mockDecisionPlay(): Record<string, unknown> {
       totalClosesGap, totalCost,
     },
     sandboxNarrowing: { beforeGap: gap, afterGap, narrowedPct, ticks: 0 },
+    // 三态之一：有方案。其中 `opt-lta-clause` 是**弱依据**（同类型不同实例）——
+    // 这一档必须在 demo 里真出现过，否则「弱依据要出声」这条规矩在 mock 态永远演不到。
+    optionsOmitted: [],
+    optionsEvidence: [
+      { optionId: "opt-backup-cert", match: "OBJECT",
+        note: "依据对象 BackupSupplierPool|pool-cathode == 归因树节点 cf:cf-cert-cycle（认证周期长(root)·贡献 0.4772%）的下钻对象" },
+      { optionId: "opt-lta-clause", match: "TYPE",
+        note: "依据**类型** LongTermAgreement 在归因树上（节点 cf:cf-lta-breach·下钻 LongTermAgreement/lta-lfp-cylk），但本方案指的是 lta-lfp-rbkj —— **同类型不同实例**，依据强度为 TYPE（弱）。" },
+      { optionId: "opt-insource", match: "OBJECT",
+        note: "依据对象 LongTermAgreement|lta-lfp-cylk == 归因树节点 cf:cf-lta-breach（长协违约·贡献 0.1163%）的下钻对象" },
+    ],
+    impedimentPlays: {
+      joined: [
+        {
+          impedimentId: "imp_BREAK.MATERIAL.material-gap_mbal-2",
+          kind: "BREAK",
+          locus: { objectType: "MaterialBalance", objectId: "mbal-2", label: "磷酸铁锂正极" },
+          severity: 6,
+          ruleKey: "C06",
+          join: {
+            kind: "LOCUS_EXACT",
+            path: "gap_attribution.node material:cathode（贡献 3.2811%·下钻 MaterialBalance/mbal-2.gapTon=492）== 阻滞点落点 MaterialBalance/mbal-2",
+            anchorNodeId: "material:cathode",
+            anchorFactor: "正极物料短缺",
+            anchorContribution: 3.2811,
+          },
+          candidates: MOCK_PLAY_CANDIDATES,
+        },
+        {
+          // BASE_SCOPE 这条接法也得演到（三条接法三句话，不塌成「已关联」）。
+          impedimentId: "imp_BOTTLENECK.CAPACITY.cross-segment-contention_changzhou",
+          kind: "BOTTLENECK",
+          locus: { objectType: "Base", objectId: "changzhou", label: "常州" },
+          severity: 67,
+          ruleKey: "C34",
+          join: { kind: "BASE_SCOPE", path: "gap_attribution.levels[1] 基地面含 changzhou → 阻滞点落在该基地面上" },
+          candidates: [],
+          noCandidateReason:
+            "枚举已跑完，有效候选 0 个（探了 10 个杠杆锚点 / 34 次试算）。缺口：对象类型 Base 上没有任何可拨动落点；判据 C34 不是任何可拨动因子的门。",
+          noCandidateKind: "NONE",
+        },
+      ],
+      scanned: 8,
+      joinedCount: 2,
+      candidateCount: MOCK_PLAY_CANDIDATES.length,
+      candidatesTruncated: false,
+      candidateProbes: 80,
+    },
     summary: `根因「上游减供」(储能达成率缺口 ${gap}%) → 3 方案比对·推荐组合 2 项补 ${totalClosesGap}%(收窄 ${narrowedPct}%)·2/3 触发规则 fire`,
   };
 }
@@ -1761,14 +1975,20 @@ export function resetMockSim(): void {
   mockCpSeq = 0;
   mockEnterpriseStates.clear();
   resetMockOntologyRelations();
+  // ⚠ 这两行必须留在 `resetMockSim()` 里。它们曾在收编 WO-BEFE-D 的那次合并中被冲突解决
+  //   错挪进下面的 `rememberTickState()`，造成两个方向都错的后果：
+  //   ① 逐用例复位失效 —— 成长工单/组织在岗态跨用例串味（gtk_1 认领后停在 IN_PROGRESS ⇒
+  //      「开放工单」下一例读成 0；张明被置为不在岗后不复位 ⇒ 下一例的 toggle 把他翻回在岗）；
+  //   ② 沙盘每 tick 反而把这两份态**清一次** —— 一边跑沙盘一边看组织/成长页会看到数据自己跳回初态。
+  //   两者都不是「测试洁癖」，是 mock 世界的真实一致性。
+  resetGrowthTickets();
+  resetOrgState();
 }
 /** 记一份逐 tick 态（tick 引擎每次落态都要经这里，回滚才有得取）。 */
 function rememberTickState(sessionId: string, tick: number, state: Record<string, unknown>): void {
   const hist = mockSimTickHistory.get(sessionId) ?? new Map<number, Record<string, unknown>>();
   hist.set(tick, state);
   mockSimTickHistory.set(sessionId, hist);
-  resetGrowthTickets();
-  resetOrgState();
 }
 
 /**
@@ -3327,7 +3547,12 @@ export const handlers = [
       return HttpResponse.json({ data: mockCounterfactual(base), snapshotVersion: "ov-12" });
     }
     // VITE_MOCK 可见性桩（仅 mock 态·真部署走真 solver）：决策推演页 + 供需双向归因 panel。
-    if (key === "decision_play") return HttpResponse.json({ data: mockDecisionPlay(), snapshotVersion: "ov-12" });
+    // metricKey 真透传：三种态（有方案 / 方案 0 条有候选 / 全空带理由）在 demo 里都演得到。
+    if (key === "decision_play")
+      return HttpResponse.json({
+        data: mockDecisionPlay(typeof invArgs.metricKey === "string" ? invArgs.metricKey : undefined),
+        snapshotVersion: "ov-12",
+      });
     if (key === "supply_demand_gap_attribution") return HttpResponse.json({ data: mockSupplyDemandGap(), snapshotVersion: "ov-12" });
     if (key === "mitigation_select")
       // cockpit P3 对症方案优选（与 params.risk.mitigations 同源形状）
@@ -5000,7 +5225,11 @@ export const handlers = [
       return HttpResponse.json({ data: mockCounterfactual(base), snapshotVersion: "ov-12" });
     }
     // VITE_MOCK 可见性桩（/b/v1 等价·与 /a/v1 invoke 同口径）：决策推演 + 供需双向归因。
-    if (key === "decision_play") return HttpResponse.json({ data: mockDecisionPlay(), snapshotVersion: "ov-12" });
+    if (key === "decision_play")
+      return HttpResponse.json({
+        data: mockDecisionPlay(typeof args.metricKey === "string" ? args.metricKey : undefined),
+        snapshotVersion: "ov-12",
+      });
     if (key === "supply_demand_gap_attribution") return HttpResponse.json({ data: mockSupplyDemandGap(), snapshotVersion: "ov-12" });
     if (key === "mrp_netting")
       return HttpResponse.json({
