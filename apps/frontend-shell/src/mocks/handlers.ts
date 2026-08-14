@@ -1,5 +1,5 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
-import type { AgentRunRecord, BuildPipeline, BuildPipelineKind, PlanBuilderCanvas, PlanBuilderCompileResult, PlanBuilderPublishResult, CreatePlanBuilderBody, UpdatePlanBuilderBody, PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport } from "@platform/contracts";
+import type { AgentRunRecord, BuildPipeline, BuildPipelineKind, PlanBuilderCanvas, PlanBuilderCompileResult, PlanBuilderPublishResult, CreatePlanBuilderBody, UpdatePlanBuilderBody, PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport, FactoryCalendar, OpsPlaybook } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition, deriveDispositionOptions, SEG_REGISTRY } from "@platform/contracts";
 // WO-DECISION-INFO-FE · 决策三块（影响面 / 不作为后果 / 方案代价）的 mock 载荷类型，
 // 与真后端共用同一份契约 ⇒ mock 与引擎口径不可能分家。
@@ -61,6 +61,9 @@ import {
   ROLES_RESPONSE,
   SYNTHETIC_PHASES,
   SYNTHETIC_REPORT,
+  // WO-BEFE-B · 行动与审批组
+  OPS_PERSONAS,
+  OPS_POOLS,
   TENANT_ID,
   tickReport,
   TS_AGG_POINTS,
@@ -138,6 +141,21 @@ import {
 
 const err = (status: number, code: string, message: string) =>
   HttpResponse.json({ error: { code, message, requestId: `req_${Math.random().toString(36).slice(2, 10)}` } }, { status });
+
+/**
+ * WO-BEFE-B · 往 R4 留痕流里追一条 `action.*` 事件（真后端是 `outbox.emit`）。
+ * `at` 用递增序号而非 `Date.now()`：R6 确定性——同一串操作重跑必须字节级一致。
+ */
+let actionEventSeq = 0;
+function pushActionEvent(event: string, payload: Record<string, unknown>): void {
+  actionEventSeq += 1;
+  db.actionEvents.push({
+    event,
+    payload,
+    at: `2026-06-12T09:${String(actionEventSeq % 60).padStart(2, "0")}:00Z`,
+    status: "SENT",
+  });
+}
 
 // ---------------------------------------------------------------------------
 // WO-LIVE-DISPOSITION · mock 处置表**真重算**（KILL-MOCK：不写死两套结果）。
@@ -4070,6 +4088,150 @@ export const handlers = [
     const d = db.actionDrafts.find((x) => x.id === params.id);
     return d ? HttpResponse.json(d) : err(404, "NOT_FOUND", "草稿不存在");
   }),
+  /* ── WO-BEFE-B · R4 留痕读端（真后端 `actions.ts:822`）───────────────────────
+   * 形状与真后端逐字段对齐：{ draft, steps, executionResult, events }。
+   * `events` 从 `db.actionEvents` 按 draftId 筛 + 时间正序 —— 与后端
+   * `e.event.startsWith("action.") && e.payload.draftId === id` 同判据。 */
+  http.get("*/a/v1/action-drafts/:id/audit", ({ params }) => {
+    const d = db.actionDrafts.find((x) => x.id === params.id);
+    if (!d) return err(404, "NOT_FOUND", "草稿不存在");
+    return HttpResponse.json({
+      draft: d,
+      steps: d.approvalSteps,
+      executionResult: (d as { executionResult?: unknown }).executionResult ?? null,
+      events: db.actionEvents
+        .filter((e) => e.event.startsWith("action.") && e.payload.draftId === d.id)
+        .sort((a, b) => (a.at < b.at ? -1 : 1)),
+    });
+  }),
+  /* ── WO-BEFE-B · 撤回（真后端 `actions.ts:753`）──────────────────────────────
+   * 两道闸与后端同判据：① 状态 ∈ {DRAFT, PENDING_APPROVAL, APPROVED}（EXECUTING 之后不可撤）；
+   * ② 仅发起人或 admin。**不执行任何 payload、不写任何真值** —— cancel 是审批链的放弃分支。 */
+  http.post("*/a/v1/action-drafts/:id/cancel", ({ params, request }) => {
+    const account = auth(request);
+    const d = db.actionDrafts.find((x) => x.id === params.id);
+    if (!d) return err(404, "NOT_FOUND", "草稿不存在");
+    if (!["DRAFT", "PENDING_APPROVAL", "APPROVED"].includes(d.status)) {
+      return err(409, "INVALID_STATE", `cannot cancel in status ${d.status} (only before EXECUTING)`);
+    }
+    // 身份口径：真后端比 `ctx.userId`；mock 账号只有 username（`MockAccount`），
+    // 而种子草稿的 origin.userId 形如 `usr-planner` ⇒ 两种写法都认，别把"是发起人"误判成"不是"。
+    const isAdmin = (account?.roles ?? []).some((r) => r.split(":")[0] === "admin");
+    const me = account?.username ?? "";
+    const isOwner = d.origin.userId === me || d.origin.userId === `usr-${me}` || d.origin.userId === `usr_${me}`;
+    if (!isOwner && !isAdmin) {
+      return err(409, "INVALID_STATE", "仅发起人或管理员可取消");
+    }
+    d.status = "CANCELLED";
+    d.updatedAt = new Date().toISOString();
+    pushActionEvent("action.cancelled", { draftId: d.id });
+    return HttpResponse.json(d);
+  }),
+
+  /* ══ WO-BEFE-B · S3 调度器（真后端 app.ts:4967–4982）══════════════════════ */
+  http.get("*/a/v1/scheduler/jobs", ({ request }) => {
+    const kind = new URL(request.url).searchParams.get("kind");
+    return HttpResponse.json(kind ? db.schedulerJobs.filter((j) => j.kind === kind) : db.schedulerJobs);
+  }),
+  http.get("*/a/v1/scheduler/jobs/:id/runs", ({ params }) =>
+    HttpResponse.json(db.schedulerRuns.filter((r) => r.jobId === params.id)),
+  ),
+  http.post("*/a/v1/scheduler/jobs/:id/pause", ({ params }) => {
+    const j = db.schedulerJobs.find((x) => x.id === params.id);
+    if (!j) return err(404, "NOT_FOUND", "任务不存在");
+    j.status = "PAUSED";
+    return HttpResponse.json(j);
+  }),
+  http.post("*/a/v1/scheduler/jobs/:id/resume", ({ params }) => {
+    const j = db.schedulerJobs.find((x) => x.id === params.id);
+    if (!j) return err(404, "NOT_FOUND", "任务不存在");
+    j.status = "ACTIVE";
+    return HttpResponse.json(j);
+  }),
+
+  /* ══ WO-BEFE-B · OC9 工厂日历（真后端 app.ts:1293–1310，admin only）════════
+   * 后端 GET 不存在时回**默认壳**而非 404（`?? { …weekendMode:"SAT_SUN_OFF", exceptions:[] }`），
+   * mock 照同样语义 —— 否则前端会为"新建日历"多写一条本不存在的分支。 */
+  http.get("*/a/v1/calendars/:key", ({ params, request }) => {
+    const account = auth(request);
+    if (!(account?.roles ?? []).some((r) => r.split(":")[0] === "admin")) return err(403, "FORBIDDEN", "admin only");
+    const key = String(params.key);
+    const c = db.calendars.find((x) => x.calendarKey === key);
+    return HttpResponse.json(
+      c ?? { id: `cal_${TENANT_ID}_${key}`, tenantId: TENANT_ID, calendarKey: key, weekendMode: "SAT_SUN_OFF", exceptions: [], updatedAt: "" },
+    );
+  }),
+  http.put("*/a/v1/calendars/:key", async ({ params, request }) => {
+    const account = auth(request);
+    if (!(account?.roles ?? []).some((r) => r.split(":")[0] === "admin")) return err(403, "FORBIDDEN", "admin only");
+    const key = String(params.key);
+    const body = (await request.json()) as Partial<Pick<FactoryCalendar, "weekendMode" | "exceptions">>;
+    const prev = db.calendars.find((x) => x.calendarKey === key);
+    const rec: FactoryCalendar = {
+      id: `cal_${TENANT_ID}_${key}`,
+      tenantId: TENANT_ID,
+      calendarKey: key,
+      weekendMode: body.weekendMode ?? prev?.weekendMode ?? "SAT_SUN_OFF",
+      exceptions: body.exceptions ?? prev?.exceptions ?? [],
+      updatedAt: new Date().toISOString(),
+    };
+    if (prev) Object.assign(prev, rec);
+    else db.calendars.push(rec);
+    return HttpResponse.json(rec);
+  }),
+  /**
+   * 净生产窗口：与后端 `netProductionDays(from, to, cal)` **同算法**重算，不是摆一个好看的数。
+   * 口径：区间内逐日 —— 周末按 weekendMode 扣、HOLIDAY/MAINTENANCE 扣、EXTRA_WORKDAY 补回。
+   */
+  http.get("*/a/v1/calendars/:key/net-window", ({ params, request }) => {
+    const account = auth(request);
+    if (!(account?.roles ?? []).some((r) => r.split(":")[0] === "admin")) return err(403, "FORBIDDEN", "admin only");
+    const url = new URL(request.url);
+    const from = url.searchParams.get("from"), to = url.searchParams.get("to");
+    if (!from || !to) return err(400, "VALIDATION_ERROR", "from/to required (YYYY-MM-DD)");
+    const key = String(params.key);
+    const cal = db.calendars.find((x) => x.calendarKey === key);
+    const byDate = new Map((cal?.exceptions ?? []).map((e) => [e.date, e.kind]));
+    let net = 0;
+    for (let d = new Date(`${from}T00:00:00Z`); d <= new Date(`${to}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
+      const iso = d.toISOString().slice(0, 10);
+      const kind = byDate.get(iso);
+      if (kind === "EXTRA_WORKDAY") { net += 1; continue; }
+      if (kind === "HOLIDAY" || kind === "MAINTENANCE") continue;
+      const dow = d.getUTCDay();
+      const weekendOff =
+        (cal?.weekendMode ?? "SAT_SUN_OFF") === "SAT_SUN_OFF" ? dow === 0 || dow === 6
+          : (cal?.weekendMode ?? "") === "SUN_OFF" ? dow === 0 : false;
+      if (!weekendOff) net += 1;
+    }
+    return HttpResponse.json({ calendarKey: key, from, to, netProductionDays: net });
+  }),
+
+  /* ══ WO-BEFE-B · 回放编排器 §1–§3（真后端 app.ts:5348–5366）════════════════
+   * 隔离语义：真后端只在 SYNTHETIC 租户返回内容、写操作对真实租户 403（`opsteam/team.ts:39`）。
+   * mock 给内容以便页面可测，但页面必须把这条边界显在屏上（见 OpsSchedulePage 的说明块）。 */
+  http.get("*/a/v1/ops/personas", () => HttpResponse.json({ items: db.opsPersonas })),
+  http.post("*/a/v1/ops/personas/seed", ({ request }) => {
+    const account = auth(request);
+    if (!(account?.roles ?? []).some((r) => r === "tenant_admin" || r.split(":")[0] === "admin")) {
+      return err(403, "FORBIDDEN", "需要 tenant_admin 角色");
+    }
+    if (db.opsPersonas.length === 0) db.opsPersonas = structuredClone(OPS_PERSONAS);
+    return HttpResponse.json({ items: db.opsPersonas }, { status: 201 });
+  }),
+  http.get("*/a/v1/ops/playbook", () => HttpResponse.json({ playbook: db.opsPlaybook })),
+  http.put("*/a/v1/ops/playbook", async ({ request }) => {
+    const account = auth(request);
+    if (!(account?.roles ?? []).some((r) => r === "tenant_admin" || r.split(":")[0] === "admin")) {
+      return err(403, "FORBIDDEN", "需要 tenant_admin 角色");
+    }
+    db.opsPlaybook = (await request.json()) as OpsPlaybook;
+    return HttpResponse.json({ playbook: db.opsPlaybook });
+  }),
+  http.get("*/a/v1/ops/pools", () => HttpResponse.json({ pools: OPS_POOLS })),
+  http.get("*/a/v1/ops/tick-reports", () =>
+    HttpResponse.json({ items: [...db.opsTickReports].sort((a, b) => a.tick - b.tick) }),
+  ),
   http.get("*/a/v1/action-drafts", ({ request }) => {
     const url = new URL(request.url);
     const status = url.searchParams.get("status");
@@ -4086,6 +4248,12 @@ export const handlers = [
     step.decidedAt = new Date().toISOString();
     if (body.decision === "REJECT") d.status = "REJECTED";
     else if (d.approvalSteps.every((s) => s.decision === "APPROVE")) d.status = "APPROVED";
+    // WO-BEFE-B · R4 留痕：与真后端 `actions.ts` approve/reject 的 outbox.emit 同名同载荷。
+    // 追加在状态迁移**之后**，故 audit 里读到的 event 名与最终状态一致。
+    pushActionEvent(
+      body.decision === "REJECT" ? "action.rejected" : d.status === "APPROVED" ? "action.approved" : "action.pending_approval",
+      { draftId: d.id, actionTypeKey: d.actionTypeKey },
+    );
     // 增量 §7.12：域执行器语义镜像 —— 定稿 Action EXECUTED → 版本 FINAL；变更 Action → inputs patch
     if (d.status === "APPROVED") {
       const versionId = String((d.payload as Record<string, unknown>).versionId ?? "");

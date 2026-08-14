@@ -4,6 +4,7 @@ import type { OpsSchedule } from "@platform/contracts";
 import { fetchOpsSchedule, saveOpsSchedule } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
 import { SimClockConsole } from "./SimClockConsole";
+import { VirtualOpsTeamPanel } from "./VirtualOpsTeamPanel";
 
 const EMPTY: OpsSchedule = { forecasts: [] };
 
@@ -251,6 +252,12 @@ export default function OpsSchedulePage() {
         <h3 style={{ fontSize: 13 }}>C · 模拟时钟（A8 时序推进 · 自合成数据页迁入）</h3>
         <SimClockConsole />
       </section>
+
+      {/* WO-BEFE-B · D 段：虚拟操作团队与剧本（回放编排器 §1–§3，四条端点此前零调用方）。
+          与上面 A/B/C 同页是因为它们同属"运营自动化"这一个关切；隔离语义（仅 SYNTHETIC）在面板内说明。 */}
+      <div style={{ marginTop: 16 }}>
+        <VirtualOpsTeamPanel />
+      </div>
     </div>
   );
 }

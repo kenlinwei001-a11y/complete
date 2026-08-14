@@ -77,6 +77,9 @@ export const zh = {
     scenes: "场景入口",
     opsFallback: "兜底统计",
     opsSchedule: "运营自动化",
+    // WO-BEFE-B · 两个新管理页
+    scheduler: "定时任务",
+    calendars: "工厂日历",
     features: "功能开通",
     calibration: "校准报告",
     tenants: "租户管理",
@@ -1322,6 +1325,17 @@ export const zh = {
       payload: "参数快照",
       originTask: "来源任务",
       noPermission: "你不是该步骤的审批角色",
+      // WO-BEFE-B · 留痕与撤回（后端 audit/cancel 此前零前端调用方）
+      auditTitle: "审批留痕",
+      auditEvents: "后端事件",
+      auditNoEvents: "该草稿尚无 action.* 事件",
+      auditExecution: "执行结果",
+      auditNotExecuted: "未执行",
+      cancel: "撤回",
+      confirmCancel: "确认撤回该 Action 草稿？撤回后不再进入执行，且不可恢复。",
+      cancelNoPermission: "仅发起人或管理员可撤回，且执行开始后不可撤",
+      submit: "提交审批",
+      submitHint: "决策台落下的草稿停在 DRAFT，需提交后才进入审批链",
     },
     catalog: {
       title: "意图目录",

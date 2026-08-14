@@ -44,6 +44,9 @@ const McpPage = lazy(() => import("@/pages/admin/McpPage"));
 const ScenesPage = lazy(() => import("@/pages/admin/ScenesPage"));
 const OpsFallbackPage = lazy(() => import("@/pages/admin/OpsFallbackPage"));
 const OpsSchedulePage = lazy(() => import("@/pages/admin/OpsSchedulePage"));
+// WO-BEFE-B · 两个新管理页（S3 定时任务台 / OC9 工厂日历），各闭一组零调用端点
+const SchedulerPage = lazy(() => import("@/pages/admin/SchedulerPage"));
+const CalendarsPage = lazy(() => import("@/pages/admin/CalendarsPage"));
 const FeaturesPage = lazy(() => import("@/pages/admin/FeaturesPage"));
 const CalibrationPage = lazy(() => import("@/pages/admin/CalibrationPage"));
 const ExternalSignalsPage = lazy(() => import("@/pages/admin/ExternalSignalsPage"));
@@ -166,6 +169,8 @@ export const routes: RouteObject[] = [
       admin("scenes", <ScenesPage />),
       admin("ops/fallback", <OpsFallbackPage />),
       admin("ops-schedule", <OpsSchedulePage />),
+      admin("scheduler", <SchedulerPage />),
+      admin("calendars", <CalendarsPage />),
       admin("features", <FeaturesPage />),
       admin("llm-providers", <LlmProvidersPage />),
       admin("calibration", <CalibrationPage />),
