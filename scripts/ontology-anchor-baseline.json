@@ -217,6 +217,7 @@
     "apps/frontend-shell/src/views/sim/chainImpediment.ts::absenceOf",
     "apps/frontend-shell/src/views/sim/chainImpediment.ts::formatLeverValue",
     "apps/frontend-shell/src/views/sim/chainImpediment.ts::toCandidateVM",
+    "apps/frontend-shell/src/views/sim/edgeActiveModel.ts::deriveBaseSnapshot",
     "apps/frontend-shell/src/views/sim/inspectorModel.ts::CADENCE_ABSENCE_REASON",
     "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts::chainStageCoverage",
     "apps/frontend-shell/test/f25.graph-viewpoints.test.tsx::link",

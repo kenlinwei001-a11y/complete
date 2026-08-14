@@ -34,8 +34,16 @@ import type { Perturbation, PropagationRule, SimCheckpoint, SimSession, SimTickS
 
 const { Pool } = pg;
 
-/** 推演沙盘 pg 仓储（migration026·三具名列表 + 传导规则 doc-jsonb；R2 跨租户 null）。 */
-class PgSimRepo implements SimRepo {
+/**
+ * 推演沙盘 pg 仓储（migration026·三具名列表 + 传导规则 doc-jsonb；R2 跨租户 null）。
+ *
+ * ⚠ `sim_session` 是**逐列**表不是 doc-jsonb 表 ⇒ 契约上加一个字段，这里**不会自动跟上**：
+ *   忘了改 = memory 模式（测试默认）全绿、pg 模式（生产）该字段恒为默认值，功能等于不存在。
+ *   这正是 R9「四处同改」要防的那一手。导出本类是为了让
+ *   `apps/datacore/test/edge-active-counterfactual.test.ts` 拿**真实现**跑一遍 put→get 往返，
+ *   把上面这句话钉成断言而不是注释里的声称（同 `PgStore` 被 `upsert-type-roundtrip.test.ts` 导出的理由）。
+ */
+export class PgSimRepo implements SimRepo {
   constructor(private pool: pg.Pool) {}
   private rowToSession(r: Record<string, unknown>): SimSession {
     return {
@@ -43,16 +51,19 @@ class PgSimRepo implements SimRepo {
       baseSnapshot: r.base_snapshot as SimSession["baseSnapshot"], scope: r.scope as SimSession["scope"],
       status: r.status as SimSession["status"], curTick: r.cur_tick as number,
       parentCheckpointId: (r.parent_checkpoint_id as string | null) ?? null,
+      // WO-ACTIVE-EDGE-UX：034 加的列。旧行读回 `null`/`undefined` ⇒ `[]`（additive 可回退 RL9）。
+      disabledRuleKeys: (r.disabled_rule_keys as string[] | null) ?? [],
       createdAt: (r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at)),
     };
   }
   async createSession(s: SimSession) { await this.putSession(s); }
   async putSession(s: SimSession) {
     await this.pool.query(
-      `INSERT INTO sim_session (id, tenant_id, base_snapshot, scope, status, cur_tick, parent_checkpoint_id, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-       ON CONFLICT (id) DO UPDATE SET base_snapshot=$3, scope=$4, status=$5, cur_tick=$6, parent_checkpoint_id=$7`,
-      [s.id, s.tenantId, JSON.stringify(s.baseSnapshot), JSON.stringify(s.scope), s.status, s.curTick, s.parentCheckpointId, s.createdAt],
+      `INSERT INTO sim_session (id, tenant_id, base_snapshot, scope, status, cur_tick, parent_checkpoint_id, disabled_rule_keys, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT (id) DO UPDATE SET base_snapshot=$3, scope=$4, status=$5, cur_tick=$6, parent_checkpoint_id=$7, disabled_rule_keys=$8`,
+      [s.id, s.tenantId, JSON.stringify(s.baseSnapshot), JSON.stringify(s.scope), s.status, s.curTick, s.parentCheckpointId,
+        JSON.stringify(s.disabledRuleKeys ?? []), s.createdAt],
     );
   }
   async getSession(tenantId: string, id: string) {

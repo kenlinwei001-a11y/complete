@@ -28,6 +28,7 @@ import { PmDag, type PmDagNode } from "./PmDag";
 import { PerturbationTimeline, PERTURBATION_KINDS } from "./PerturbationTimeline";
 import { HeatStrip, useActionDraft } from "./shared";
 import { SimReadinessPanel } from "./SimReadinessPanel";
+import EdgeActivePanel from "./EdgeActivePanel";
 import { SimComparePanel } from "./SimComparePanel";
 import { SandboxConsole, type SandboxConsoleRailSection } from "./SandboxConsole";
 import { SandboxImpactBand } from "./SandboxImpactBand"; // WO-SANDBOX-V3 · ③下区影响带（本文件是它唯一的生产调用方）
@@ -104,15 +105,14 @@ const BANNER_GAP_PREVIEW = 3;
 // 依赖方向是单向的（SandboxView → PerturbationTimeline），不成环。
 
 // ── 确定性派生（R6/R14）：从配置 + 索引算初值，无任何业务常数（纯结构哈希）。 ────────────
-/** 字符串 → 稳定 [0,1)（用于把抽象 key 映射成可视初值；与行业无关）。 */
-function hash01(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return ((h >>> 0) % 1000) / 1000;
-}
+// ⚠ WO-ACTIVE-EDGE-UX 迁移：`hash01` / `deriveBaseSnapshot` 的**实现已迁到
+// `./edgeActiveModel`（一行未改）**，本文件改为 import + 原名 re-export，对外签名逐字节不变。
+// 迁移的唯一理由：`EdgeActivePanel` 也要用同一份 tick0 派生（给没有推演世界的推演页就地开探针世界），
+// 而本文件已经 import 了 `EdgeActivePanel` ⇒ 反向 import 会成环。
+// **在那边放一份副本才是错的**：两份 tick0 派生 = 沙盘的世界与探针世界不是同一个世界，
+// 用户看到的差值会对不上账（这正是本仓「第二套真相源」那条老账的形态）。
+export { deriveBaseSnapshot, hash01 } from "./edgeActiveModel";
+import { deriveBaseSnapshot, hash01 } from "./edgeActiveModel";
 
 /**
  * ══ WO-V4-HONEST-ORIGIN（PRD-sandbox-v4 §2.1 / §4.3）· 屏上这批读数**是哪来的** ══════════
@@ -138,22 +138,7 @@ export interface WorldSnapshot {
   origin: WorldOrigin;
 }
 
-/** 从配置派生 tick0 世界态。P0 修：键 = **真物化对象 id**（cfg.nodeObjectIds，= propagateTick 引擎 idsByType
- * 同源）→ state[sourceId] 真命中 → tick 真传导。空世界（该类型无对象）退 `${type}#0` 占位（无传导，页面仍可跑）。 */
-export function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
-  const state: TickState = {};
-  const vars = cfg.stateVars.length > 0 ? cfg.stateVars : ["v"]; // 无传导规则态：单占位变量，保证页面可跑
-  for (const t of cfg.nodeTypes) {
-    const ids = cfg.nodeObjectIds?.[t] ?? [];
-    const keys = ids.length > 0 ? ids : [`${t}#0`]; // 有真对象用真 id；空世界退占位键
-    for (const oid of keys) {
-      const row: Record<string, number> = {};
-      for (const v of vars) row[v] = Math.round(hash01(`${oid}|${v}`) * 100);
-      state[oid] = row;
-    }
-  }
-  return state;
-}
+// （`deriveBaseSnapshot` 的实现见 `./edgeActiveModel`，本文件顶部已 re-export，签名与行为逐字节不变。）
 
 /** 对象当前态聚合成单值（节点着色用）：所有 stateVar 均值，0-100。 */
 function aggregate(row: Record<string, number> | undefined): number {
@@ -1666,6 +1651,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
             </div>
           </div>
           <PerturbationTimeline sessionId={sessionId} curTick={curTick} />
+          {/* WO-ACTIVE-EDGE-UX 挂载点：沙盘是唯一自己持有推演会话的页，故把本会话 id 传下去 ——
+              开关直接作用在**这个世界**上（其余推演页不持有会话，面板自行回落到最近一个可推演会话）。 */}
+          <EdgeActivePanel pageKey="sandbox" sessionId={sessionId} />
           </>
         }
         // WO-SANDBOX-V3 · ① 左区：扰动因素输入（唯一输入区）

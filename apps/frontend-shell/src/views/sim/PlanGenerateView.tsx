@@ -14,6 +14,7 @@ import { RadarChart } from "./RadarChart";
 import { buildPropagation, PropagationTimeline, type PropagationVM } from "./PropagationTimeline";
 import { KsfGraph } from "@/components/KsfGraph";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
+import EdgeActivePanel from "./EdgeActivePanel";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -205,6 +206,9 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
           ))}
         </div>
       )}
+      {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。
+          ⚠ 挂在**主组件**里、且不进 `gen.data &&` 那个条件：挂进结果区 = 没跑过方案生成就看不见开关。 */}
+      <EdgeActivePanel pageKey="plan-generate" />
     </div>
   );
 }

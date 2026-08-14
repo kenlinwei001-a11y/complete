@@ -1,7 +1,14 @@
 # WO-ACTIVE-EDGE-UX · 推演边的 active 开关 + 关掉后的结果对照（横向铺到所有推演页）
 
-<!-- wo-anchors: allow-missing: apps/frontend-shell/src/views/sim/EdgeActivePanel.tsx, apps/frontend-shell/src/views/sim/edgeActiveModel.ts, apps/frontend-shell/test/edge-active.seam.test.tsx, apps/datacore/test/edge-active-counterfactual.test.ts -->
-<!-- 这四条是本单要新建的产物，现在当然不存在。豁免≠隐身：门仍会逐条列出；本单落地后门会反过来点名「豁免过期」提醒清表。 -->
+<!-- 豁免表已清空（WO-ACTIVE-EDGE-UX 落地 · 2026-08-14）。
+     原文曾豁免这四条「本单要新建、当时还不存在」的产物：
+       apps/frontend-shell/src/views/sim/EdgeActivePanel.tsx
+       apps/frontend-shell/src/views/sim/edgeActiveModel.ts
+       apps/frontend-shell/test/edge-active.seam.test.tsx
+       apps/datacore/test/edge-active-counterfactual.test.ts
+     四条**现已全部存在**，`check-wo-anchors` 当场报 4 条 STALE_EXEMPT 并 RC=1 逼着清表 ——
+     这就是工单原文预告的那句「本单落地后门会反过来点名『豁免过期』提醒清表」，机器先说的话，不是人想起来的。
+     留着不清 = 这条豁免会一直挡着真错（门自己给的原话）。 -->
 
 ## 🚦 范围边界（本单身份）
 

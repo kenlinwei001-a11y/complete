@@ -9,6 +9,7 @@ import zh from "@/locales/zh";
 // 挂在本页而不是另开一页：这一页的表单（类型/对象/属性/假设值）**就是**那个端点要的 `change`，
 // 另造一张页 = 让用户把同一个假设填两遍，且两处口径迟早分家。
 import { ImpactAnalysisPanel } from "./sim/ImpactAnalysisPanel";
+import EdgeActivePanel from "./sim/EdgeActivePanel";
 
 /**
  * 通用假设推演页（renderer=what-if）——把 `generic_inference` 求解器（G-5 通用 what-if）落地为一张交互页：
@@ -268,6 +269,11 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
 
       {/* ── 结果区 ── */}
       {ran && result ? <WhatIfResult out={result} currentProp={currentProp} /> : null}
+
+      {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。
+          ⚠ 必须挂在**主组件**里、且不进 `ran && result` 那个条件：挂进结果区 = 没跑过推演就看不见开关，
+          而"先关掉一条边再看结果"恰恰是最常见的用法（本单初稿真踩过这一下，收编前自查抓出）。 */}
+      <EdgeActivePanel pageKey="what-if" />
     </div>
   );
 }

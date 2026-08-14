@@ -59,7 +59,7 @@ import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { applyPerturbationToState, isPerturbationActiveAt, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimSession, type TickState } from "@platform/contracts";
+import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
 import { firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type UnresolvedCadenceGate } from "./sim/propagation.js";
 // 传导相入参（图/范围/规则参数/节拍闸门）的**唯一装配处**——本文件不许再装配第二遍。
@@ -1548,6 +1548,36 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const listPublishedPropRules = (c: AuthCtx): Promise<PropagationRule[]> =>
     repos.sim.listPropagationRules(c.tenantId, true);
 
+  // ── 会话级反事实：这次推演假装哪几条边不存在（WO-ACTIVE-EDGE-UX）────────────────────
+  //
+  // ⛔ **过滤刻意不下沉进 `listPublishedPropRules`**，而是留在拿得到 `SimSession` 的调用点上。
+  //    理由是那 8 处 `listPropagationRules` 调用**语义各不相同**，一刀切必错（逐处判定见下）：
+  //      · `POST …/tick`（本文件 tick 路）                   → **过滤**：这就是"这次推演"本身
+  //      · `POST …/counterfactual`（本单新增）               → **两版都跑**：过滤的那一版是反事实版
+  //      · `trialPropagate`（就绪认证 Trial Tick）           → **不过滤**：认证问的是"这个世界的配置
+  //        能不能驱动传导"（能力），不是"这次假设跑出什么"（假设）。过滤会让用户拨一下开关就把
+  //        就绪度拉低，屏上看着像世界坏了 —— 而世界一个字节没变。
+  //      · `GET /sim/propagation-rules` / `GET /sim/view-config` → **不过滤**：这是边的**目录**。
+  //        §3.3 明写「关掉的边要可见地降级，不是从图上消失」；过滤掉 = 用户不知道自己关了什么。
+  //      · `assembleCertification` 的 `publishedOnly=false` 全量  → **不过滤**：完整度数的是"配了几条"。
+  //      · `causal-graphs/sim/:sessionId`                    → **不过滤**：因果图解释的是**已记录的历史**
+  //        （trace 里真跑过的那些），而屏蔽集是**当下**的；过滤会让历史边失去它的规则元数据。
+  //      · `slices/:key/layers` 两处 + `solvers/finance-world.ts` → **不过滤**：租户级本体投影，无会话。
+  //
+  // 写这个集合**不需要 Action 审批**，依据是 R4-sim（SYSTEM-ONTOLOGY §5）原文：
+  //   「仿真世界（`isSimulated===true`，`worldId` = 推演会话 id）的写入**不经 Action 审批**
+  //     —— 因为它根本不是真值。豁免仅限『写进仿真世界自己那一行』。」
+  // 这里写的正是 `sim_session` 自己那一行的世界态：本体里的 `PropagationRule.status` 一个字节不动，
+  // 别租户、别会话、下一次新建的会话全都看不到这次屏蔽。若哪天要把"这条边其实该退役"落成真值，
+  // 那是改 `status`，必须走 R4 正门 —— 两件事分属两个字段，不许合并（契约 `SimSession.disabledRuleKeys` 注释）。
+  /** 本会话真正参与推演的规则（= 已发布 − 本会话屏蔽），并把屏蔽掉的那几条一并带回（供"降级显示"）。 */
+  const sessionPropRules = async (c: AuthCtx, s: SimSession, override?: readonly string[]) => {
+    const published = await listPublishedPropRules(c);
+    const disabled = [...new Set(override ?? s.disabledRuleKeys ?? [])].sort();
+    const { active, suppressed } = partitionPropagationRules(published, disabled);
+    return { published, active, suppressed, disabled };
+  };
+
   // ⚠ `buildPropagationInputs` 曾**在这里**以闭包形式存在，现已提取到 `./sim/propagation-inputs.ts`
   //   （WO-CERT-CONTRACT-RECONCILE：两个 dev 并行各造了一份同名物，收成一份）。
   //   语义原样保留（含「不含 propRules」那条性能判据）；提出去的唯一理由是让结构门
@@ -1562,6 +1592,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const s: SimSession = {
       id: newId("sims"), tenantId: c.tenantId, baseSnapshot: base, scope: b.scope ?? {},
       status: Object.keys(base).length > 0 ? "READY" : "DRAFT", curTick: 0, parentCheckpointId: null,
+      disabledRuleKeys: [], // WO-ACTIVE-EDGE-UX：新会话不屏蔽任何边 ⇒ 与本字段引入前逐字节相同（RL9）
       createdAt: new Date().toISOString(),
     };
     await repos.sim.createSession(s);
@@ -1584,14 +1615,29 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const s = await getSimOr404(c, (req.params as { id: string }).id);
     return { tick: s.curTick, state: await simCurrent(c, s) };
   });
-  app.post("/a/v1/sim/sessions/:id/tick", async (req) => {
-    const c = ctx(req); await requireSim(c, "sim.propagation");
-    const s = await getSimOr404(c, (req.params as { id: string }).id);
-    const n = Math.max(1, Math.floor(Number((req.body as { n?: number })?.n ?? 1)));
+  /**
+   * 从会话**当前态**推进 n 格（`propagateTick` 的唯一驱动处）。
+   *
+   * `persist` 是本函数与"对照跑"的**唯一**区别（WO-ACTIVE-EDGE-UX §3.1.4）：
+   *  · `true`  → `POST …/tick` 真跑：逐格 `putTickState`，会话 `curTick` 真进位；
+   *  · `false` → `POST …/counterfactual` 对照跑：**一次 `putTickState` 都不调、`putSession` 不调、
+   *    事件不发**，会话逐字节不动 —— 否则用户点一下"关掉这条边看看"就把真会话推进了一格。
+   *
+   * ⚠ 为什么必须是**同一个函数**而不是"对照那边照着抄一遍"：对照要成立，两版就必须是
+   * **同一套算法在两组规则上跑**。抄一份出来，两边任何一处漂移（扰动顺序、pending 结算、闸门）
+   * 都会被算进"关掉这条边的影响"里，而那部分差异根本不是边造成的 —— 那就是把噪声当结论。
+   * 这与本仓 `applyPerturbationToState` 被提到契约里是同一条纪律。
+   */
+  const simAdvanceTicks = async (
+    c: AuthCtx,
+    s: SimSession,
+    opts: { rules: PropagationRule[]; n: number; persist: boolean },
+  ) => {
+    const { rules: propRules, n, persist } = opts;
     let state = await simCurrent(c, s);
-    // 增量 3 传导核接入（opt-in）：本租户有 PUBLISHED PropagationRule 才传导，否则退回恒等 tick
-    // （无规则不触发，可回退）。propagateTick 是纯函数（R6 确定性、R14 零业务常数）。
-    const propRules = await listPublishedPropRules(c); // PUBLISHED only
+    let curTick = s.curTick;
+    // 增量 3 传导核接入（opt-in）：有规则才传导，否则退回恒等 tick（无规则不触发，可回退）。
+    // propagateTick 是纯函数（R6 确定性、R14 零业务常数）。
     const propagate = propRules.length > 0;
     // ── 扰动接入传导（WO-P2 · PRD-UPGRADE-decision-sandbox-v2 §3.1.3）───────────────────
     // 顺序 = `listPerturbations` 的 `startTick↑ → 建单先后`（repo.ts:362）。**这里绝不重排**：
@@ -1646,7 +1692,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     let unresolvedGates: UnresolvedCadenceGate[] = [];
     /** 本次 tick 的范围回执（诚实回带：这一格是在什么范围下算出来的·R-ARG-FIDELITY）。 */
     let scopeReport: ScopeReport | null = null;
-    let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.pending ?? []) : [];
+    let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, curTick))?.pending ?? []) : [];
     if (propagate) {
       // ── 会话范围读端（WO-SIM-SCOPE-TRIAL · 闭 #129/#130 `G-SIM-SCOPE-UNREAD`）────────────
       // 此前这里是就地物化 + 无条件全本体，`s.scope` **从头到尾没人读**：
@@ -1666,8 +1712,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }
     let trace: PropagationTrace[] | null = null;
     let appliedPerturbations: string[] = [];
+    /** 本次推进中真正产出过贡献的规则 key（对照跑用它区分"关了没影响"与"这条边本来就没动"）。 */
+    const firedKeys = new Set<string>();
     for (let i = 0; i < n; i++) {
-      const beforeTick = s.curTick; // 当前 tick t（结算 pending arriveTick===t）
+      const beforeTick = curTick; // 当前 tick t（结算 pending arriveTick===t）
       if (engineTick) {
         const out = propagateTick(
           graph, state, propRules, pending, beforeTick, ruleParams, cadenceGates,
@@ -1675,15 +1723,35 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         );
         state = out.next; pending = out.pending; unresolvedGates = out.unresolvedGates;
         appliedPerturbations = out.appliedPerturbations;
+        for (const k of firedPropagationRuleKeys(out.trace, out.pending)) firedKeys.add(k);
         // 无传导规则的世界：本 tick 若没有任何扰动动作，trace 保持 `null`（与本单引入前逐字节相同·可回退）。
         trace = propagate || out.trace.length > 0 ? out.trace : null;
-        s.curTick += 1;
+        curTick += 1;
       } else {
         // 无 PUBLISHED 传导规则：恒等桩进位（状态原样，确定性 R6；可回退）。
-        state = simState(state); pending = []; trace = null; s.curTick += 1;
+        state = simState(state); pending = []; trace = null; curTick += 1;
       }
-      await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: s.curTick, state, pending, trace });
+      // ⛔ 对照跑（persist=false）在此**一个字节都不写** —— 这条约束由
+      //    `test/edge-active-counterfactual.test.ts` 逐字节咬死（不是靠这行注释保证）。
+      if (persist) await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: curTick, state, pending, trace });
     }
+    return {
+      curTick, state, trace, pending, propagate, scopeReport,
+      cadence: { gates: cadenceGates, skipped: gateSkipped, unresolved: unresolvedGates },
+      appliedPerturbations, sessionPerturbationCount: sessionPerturbations.length,
+      firedRuleKeys: [...firedKeys].sort(),
+    };
+  };
+
+  app.post("/a/v1/sim/sessions/:id/tick", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const n = Math.max(1, Math.floor(Number((req.body as { n?: number })?.n ?? 1)));
+    // PUBLISHED only，**再减去本会话屏蔽的边**（WO-ACTIVE-EDGE-UX 的引擎接缝就是这一行）。
+    // `disabledRuleKeys` 为空 ⇒ `partitionPropagationRules` 原样返回 ⇒ 与本单引入前逐字节相同（RL9）。
+    const rules = (await sessionPropRules(c, s)).active;
+    const r = await simAdvanceTicks(c, s, { rules, n, persist: true });
+    s.curTick = r.curTick;
     s.status = "RUNNING"; await repos.sim.putSession(s);
     await outbox.emit(c.tenantId, "sim.tick_completed", { sessionId: s.id, curTick: s.curTick });
     // `cadence` 段是**诚实缺席的出口**（E4）：哪些节点有闸门、哪些节点查得到但用不了、
@@ -1691,20 +1759,107 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // 而不是看到一条安静的零。
     return {
       curTick: s.curTick,
-      state,
-      ...(propagate
+      state: r.state,
+      ...(r.propagate
         ? {
-            trace,
-            cadence: { gates: cadenceGates, skipped: gateSkipped, unresolved: unresolvedGates },
+            trace: r.trace,
+            cadence: r.cadence,
             // 范围回执（WO-SIM-SCOPE-TRIAL）：算了几个对象、几条边、丢了多少、范围是不是根本拿不到。
             // 与 `cadence` 同一条纪律 —— 让"筛选没生效"看得见，而不是从一个安静的数字里去猜。
-            scope: scopeReport,
+            scope: r.scopeReport,
           }
         : {}),
       // 溯源（WO-P2）：这一格世界态是哪几次扰动仍在起作用的结果。只在这个世界真有扰动时下发，
       // 无扰动的租户响应形状逐字节同旧（可回退）。
-      ...(sessionPerturbations.length > 0 ? { appliedPerturbations } : {}),
+      ...(r.sessionPerturbationCount > 0 ? { appliedPerturbations: r.appliedPerturbations } : {}),
     };
+  });
+
+  // ── 会话级反事实：开关 + 对照（WO-ACTIVE-EDGE-UX）─────────────────────────────────
+  //
+  // 仓主原话：「所有推演的功能，包括『推演沙盘』就需要借鉴这个设计UX」——
+  // 指的是「关系边上有 active 开关，关掉这条边，就能看到推演结果怎么变」。
+  // 两条路由分别是那句话的两半：`disabled-rules` 是"关"，`counterfactual` 是"看到怎么变"。
+
+  /**
+   * 改本会话屏蔽的传导边（**世界态写入，不是本体真值写入 ⇒ 不需要 Action 审批**）。
+   *
+   * R4 原文是「**真值写入**经 Action 审批：对象物化/本体变更经 `domainExecutor`，EXECUTED 才落」。
+   * 本路由写的是 `sim_session.disabled_rule_keys` —— 这一行属于**仿真世界**，
+   * R4-sim 明写「仿真世界的写入不经 Action 审批，因为它根本不是真值；豁免仅限写进仿真世界自己那一行」。
+   * 本路由三条边界全部满足：① 不回写真实世界（`PropagationRule.status` 一个字节不动）；
+   * ② 要让"这条边其实该退役"生效，仍须改 `status` 走 R4 正门；③ 屏蔽只对本会话可见。
+   * ⚠ 下一个人若把这里读成"漏了审批"而去加 Action 链，就会把一次性的假设推演变成审批工单 —— 那是返工。
+   *
+   * **未知 ruleKey 一律 400，不许静默忽略**：静默忽略 = 用户以为关掉了、其实没关，
+   * 屏上差值恒 0 而他会以为"这条边没影响"——正是「绿测试≠能用」的温床（WO §3.1.2）。
+   */
+  app.patch("/a/v1/sim/sessions/:id/disabled-rules", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation"); // R3 entitlement 先于 authz
+    const s = await getSimOr404(c, (req.params as { id: string }).id); // R2：别租户的会话 404
+    const body = parseBody(z.object({ disabledRuleKeys: z.array(z.string()) }), req.body);
+    const published = await listPublishedPropRules(c);
+    const unknown = unknownPropagationRuleKeys(body.disabledRuleKeys, published);
+    if (unknown.length > 0) {
+      throw new AppError(
+        "UNKNOWN_PROPAGATION_RULE_KEY",
+        `未知传导规则 key：${unknown.join(", ")}。本租户已发布的 key = [${published.map((r) => r.key).join(", ")}]。` +
+          `拒绝静默忽略——静默忽略会让你以为这条边已经关掉，而它其实一直在跑。`,
+        400,
+      );
+    }
+    s.disabledRuleKeys = [...new Set(body.disabledRuleKeys)].sort(); // 去重 + 全序 ⇒ 同输入同落盘（R6）
+    await repos.sim.putSession(s);
+    return { id: s.id, disabledRuleKeys: s.disabledRuleKeys };
+  });
+
+  /**
+   * 对照跑：**同一 tick、开/关两种规则集各跑一遍、返回差异**（本单的核心产出，不是附加项）。
+   *
+   * · **确定性**（R6）：两版共用 `simAdvanceTicks` 同一支，输入相同即输出相同；回包不含任何
+   *   wall-clock 字段（`computedAt` 之类一律不加 —— 加了它同输入就不再字节一致）。
+   * · **不写世界态**：两版都 `persist: false`；`putTickState`/`putSession`/`outbox.emit` 一次都不调。
+   *   会话的 `curTick` 与全部 tick 行在本路由前后**逐字节相同**（测试咬死，见 §4）。
+   * · `disabledRuleKeys` 可由 body 覆盖 ⇒ 前端拨一下开关就能立刻要到差值，
+   *   不必先 PATCH 再跑（§3.3「关掉一条边 ⇒ 立刻看到结果差异，不是再点一次运行」）。
+   */
+  app.post("/a/v1/sim/sessions/:id/counterfactual", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation"); // R3
+    const s = await getSimOr404(c, (req.params as { id: string }).id); // R2
+    const body = parseBody(
+      z.object({ n: z.number().int().min(1).max(64).optional(), disabledRuleKeys: z.array(z.string()).optional() }),
+      req.body ?? {},
+    );
+    const n = body.n ?? 1;
+    const published = await listPublishedPropRules(c);
+    if (body.disabledRuleKeys) {
+      const unknown = unknownPropagationRuleKeys(body.disabledRuleKeys, published);
+      if (unknown.length > 0) {
+        throw new AppError(
+          "UNKNOWN_PROPAGATION_RULE_KEY",
+          `未知传导规则 key：${unknown.join(", ")}。对照跑同样拒绝静默忽略——` +
+            `否则差值恒 0，而你会以为"关掉这条边没有影响"。`,
+          400,
+        );
+      }
+    }
+    const { active, suppressed, disabled } = await sessionPropRules(c, s, body.disabledRuleKeys);
+    // 基线 = 全部已发布规则（"边开着"）；反事实 = 减去屏蔽集（"边关掉"）。两版同一起点、同一算法。
+    const baseline = await simAdvanceTicks(c, s, { rules: published, n, persist: false });
+    const counterfactual = await simAdvanceTicks(c, s, { rules: active, n, persist: false });
+    const result: SimCounterfactualResult = {
+      fromTick: s.curTick,
+      ticks: n,
+      disabledRuleKeys: disabled,
+      suppressedRules: suppressed,
+      baselineState: baseline.state,
+      counterfactualState: counterfactual.state,
+      diffs: diffTickStates(baseline.state, counterfactual.state),
+      // 诚实位：屏蔽的这几条在基线那版真的动了吗。没动 ⇒ 差值为空是"它本来就没在跑"，
+      // 不是"关掉它没影响"。两者在屏上长得一样，必须显式分开。
+      suppressedRulesFiredInBaseline: suppressed.map((r) => r.key).filter((k) => baseline.firedRuleKeys.includes(k)).sort(),
+    };
+    return result;
   });
   /**
    * 把一条扰动施加到**当前 tick**，并把结果落回 `sim_tick_state`（`/act` 与 `POST /perturbations` 共用）。
@@ -1845,7 +2000,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!cp || cp.sessionId !== parent.id) throw notFound("checkpoint not found");
     const baseState = (await repos.sim.getTickState(c.tenantId, parent.id, cp.tick))?.state ?? {};
     const child: SimSession = { id: newId("sims"), tenantId: c.tenantId, baseSnapshot: simState(baseState), scope: parent.scope,
-      status: "READY", curTick: 0, parentCheckpointId: cp.id, createdAt: new Date().toISOString() };
+      status: "READY", curTick: 0, parentCheckpointId: cp.id,
+      // 分支**继承**父会话屏蔽的边：分支的语义是"从这个存档点接着往下试"，屏蔽集属于那个世界的假设。
+      // 不继承 ⇒ 分支出来的世界会悄悄把边又打开，用户看到的数与父会话对不上却查不出原因。
+      disabledRuleKeys: [...(parent.disabledRuleKeys ?? [])],
+      createdAt: new Date().toISOString() };
     await repos.sim.createSession(child);
     await repos.sim.putTickState({ sessionId: child.id, tenantId: c.tenantId, tick: 0, state: simState(baseState), pending: [], trace: null });
     await outbox.emit(c.tenantId, "sim.branched", { parentSessionId: parent.id, childSessionId: child.id, checkpointId: cp.id });
@@ -2227,7 +2386,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return { id: s.id, label: sc.label, parentId: sc.parentId ?? null, page: sc.page, primary: sc.primary, createdAt: s.createdAt, kpi: sc.kpi, servedCount: sc.servedCount, displacedCount: sc.displacedCount, ontimeRate: sc.ontimeRate };
   };
   const putSnapshotSession = async (c: AuthCtx, idPrefix: string, scope: Record<string, unknown>): Promise<SimSession> => {
-    const s: SimSession = { id: newId(idPrefix), tenantId: c.tenantId, baseSnapshot: {}, scope, status: "READY", curTick: 0, parentCheckpointId: null, createdAt: new Date().toISOString() };
+    const s: SimSession = { id: newId(idPrefix), tenantId: c.tenantId, baseSnapshot: {}, scope, status: "READY", curTick: 0, parentCheckpointId: null, disabledRuleKeys: [], createdAt: new Date().toISOString() };
     await repos.sim.createSession(s);
     return s;
   };

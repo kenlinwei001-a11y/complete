@@ -10,6 +10,7 @@ import type { ViewRendererProps } from "../registry";
 import { fmt, useActionDraft } from "./shared";
 import { Provenance } from "@/components/Provenance";
 import { SopReschedulePanel } from "./SopReschedulePanel";
+import EdgeActivePanel from "./EdgeActivePanel";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -126,6 +127,9 @@ export default function SopBalanceView(_props: ViewRendererProps) {
           {v && <VersionDetail key={v.id} v={v} seq={seq} step={step} setStep={setStep} onChanged={invalidate} />}
         </div>
       </div>
+      {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。
+          ⚠ 挂在**主组件**里、不进 `v &&` 那个条件：挂进 VersionDetail = 没选中月度版本就看不见开关。 */}
+      <EdgeActivePanel pageKey="sop-balance" />
     </div>
   );
 }
