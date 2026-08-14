@@ -999,6 +999,38 @@ export const fetchAgentRun = async (taskId: string): Promise<AgentRunProbe> => {
     throw e; // 真错误（网络 / 401 / 500）照旧抛，不许被"诚实态"吞掉
   }
 };
+/**
+ * WO-AGENTRUN-ATTRIBUTION · **这个 Agent 的历次运行**（真后端 `agentcore/src/server.ts` `GET /b/v1/agents/:id/runs`）。
+ *
+ * 与 `fetchQueryHistory(...).filter(path==="AGENT")` 是**两件不同的事**，别混：
+ * 后者是「本租户走过 AGENT 路的全部任务」（租户级，归不到 Agent 头上）；
+ * 本函数返回的是引擎在运行时真回填了归属的那些运行（跨版本按 agentKey 聚合）。
+ *
+ * 空数组是**常态**不是故障：未接 LLM 提供商时引擎根本不进循环（诚实降级直接作答），
+ * 那种环境下任何 Agent 的运行数都是 0。调用方不许把它画成"加载失败"。
+ */
+export const fetchAgentRuns = (agentId: string) =>
+  api.b<{ agentId: string; agentKey: string; runs: AgentRunRecord[] }>(`/b/v1/agents/${agentId}/runs`);
+
+/**
+ * WO-BEFE-C · 一次任务的**全部**运行（顶层 + 多角色会诊扇出的子运行）。
+ * 真后端 `apps/agentcore/src/server.ts:552` `GET /api/v1/queries/:taskId/agent-runs`
+ * （前端一律走 `/b/v1` 别名，`server.ts rewriteUrl` 单源重写）。
+ *
+ * **与单数 `fetchAgentRun` 是两件事，别拿一个替另一个**：
+ * 单数按契约返**一个** `AgentRunRecord`，而多角色会诊的真实形态是「**0 条顶层 + N 条子运行**」——
+ * 编排层顶层压根没跑 agent 循环，真正干活的是那 N 个角色子 agent。于是同一次会诊里
+ * 单数端点返 404（`kind:"NO_RUN"`）而复数端点返 N 条，**两者都是真话**：
+ * 前者答「这个任务自己没跑循环」，后者答「它叫了 N 个角色去跑」。
+ * 界面必须两个都读，只读单数就会把一次三角色会诊显示成"本次未进入 Agent 循环"。
+ *
+ * 空数组是**常态**不是故障（后端 `server.ts:562` 原注）：走 WORKFLOW 路、
+ * 或未接 LLM provider 被 `completeNoLlmDegradation` 诚实降级，都不产生任何 run。
+ * 调用方不许把它画成"加载失败"。
+ */
+export const fetchTaskAgentRuns = (taskId: string) =>
+  api.b<{ taskId: string; runs: AgentRunRecord[] }>(`/b/v1/queries/${taskId}/agent-runs`);
+
 export const replyClarification = (
   taskId: string,
   body: { kind: "INTENT_CHOICE" | "SLOT_FILLING"; chosenIntentKey?: string; slotValues?: Record<string, unknown>; none?: true },

@@ -1,5 +1,5 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
-import type { BuildPipeline, BuildPipelineKind, PlanBuilderCanvas, PlanBuilderCompileResult, PlanBuilderPublishResult, CreatePlanBuilderBody, UpdatePlanBuilderBody, PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport } from "@platform/contracts";
+import type { AgentRunRecord, BuildPipeline, BuildPipelineKind, PlanBuilderCanvas, PlanBuilderCompileResult, PlanBuilderPublishResult, CreatePlanBuilderBody, UpdatePlanBuilderBody, PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition, deriveDispositionOptions, SEG_REGISTRY } from "@platform/contracts";
 // WO-DECISION-INFO-FE · 决策三块（影响面 / 不作为后果 / 方案代价）的 mock 载荷类型，
 // 与真后端共用同一份契约 ⇒ mock 与引擎口径不可能分家。
@@ -924,6 +924,141 @@ const DATA_BUILDER_PRESET = {
   updatedAt: "2026-06-14T00:00:00.000Z",
 };
 const MOCK_BUILD_JOBS: unknown[] = [];
+
+/**
+ * WO-AGENTRUN-ATTRIBUTION · Agent 运行记录（形状对着 `AgentRunRecordSchema`）。
+ *
+ * **一份数据、两个读端**（`/queries/:taskId/agent-run` 与 `/agents/:id/runs` 都从这里取）——
+ * 抄成两份就会漂：真后端两个读端读的是同一行库记录，mock 里各写各的当场就制造出一个
+ * 「同一次运行在两个界面上数字不一样」的假象，而那个假象在真部署里不存在。
+ *
+ * 归属刻意覆盖三态（这正是界面要区分的三种情况，缺一种就测不出诚实位）：
+ *  · `run-agent-1`  → EXPLORATORY：`task-agent-1` 是 dash 视图上的自由问句，真走探索路，
+ *                     全程没有 Agent 定义参与。这不是"忘了填 agentId"，是引擎正面声明。
+ *  · `run-explore-*`→ REGISTERED：真绑到 `explore_agent` 的两次运行，且**跨版本**（v1 / v2）——
+ *                     用来钉死「按 key 聚合」这条：若哪天改成按 id 过滤，v1 那条会当场消失。
+ *  · `run-legacy-1` → 无任何归属字段：归属上线前的旧记录，**未知**。它必须既不出现在
+ *                     任何 Agent 的运行列表里，也不被当成 EXPLORATORY 混算。
+ * `contextOps: []` 同样是刻意的真值（欠账 #91：默认 20 万窗口下软阈值够不到，三刀一次都不会跑）。
+ *
+ * WO-AGENTRUN-FANOUT-PERSIST · `origin` 同样覆盖三态，且**与归属正交**（别把两列合读）：
+ *  · 今天的引擎给每条新记录都写 `origin` —— 顶层 `ROOT`，`invoke_agent` 扇出的子运行 `FANOUT`。
+ *    故除 `run-legacy-1` 外每条都必须有，漏写就是 mock 形状比真后端旧了一个版本。
+ *  · `run-fanout-1` → FANOUT + REGISTERED：一条记录同时是"被会诊叫去的"和"归属明确的"，
+ *    这是**正常**形态而非矛盾 —— 位置回答"谁叫它跑的"，归属回答"跑的是哪个 Agent"。
+ *  · `run-legacy-1` → 无 `origin`：本字段上线前的旧记录，界面显示 "—"，不冒充「直接运行」。
+ */
+const AGENT_RUNS: AgentRunRecord[] = [
+  {
+    id: "run-agent-1",
+    taskId: "task-agent-1",
+    model: "claude-opus-4-8",
+    iterations: [
+      {
+        index: 0,
+        toolCalls: [
+          { toolCallId: "toolu_1", toolName: "discover", input: {}, outcome: "OK", durationMs: 120 },
+          { toolCallId: "toolu_2", toolName: "query_objects", input: { objectType: "Order" }, outcome: "OK", durationMs: 310 },
+        ],
+      },
+      {
+        index: 1,
+        toolCalls: [{ toolCallId: "toolu_3", toolName: "invoke_solver", input: { solver: "capacity_forecast" }, outcome: "OK", durationMs: 1840 }],
+      },
+      {
+        index: 2,
+        toolCalls: [{ toolCallId: "toolu_4", toolName: "evaluate_rules", input: {}, outcome: "ERROR", durationMs: 95 }],
+      },
+    ],
+    budget: { maxIterations: 24, maxToolCalls: 40, maxSolverCalls: 8, maxDurationMs: 600000, maxClarifications: 0, maxDiscoverCalls: 8, maxRoundTrips: 24 },
+    budgetExhausted: false,
+    totalInputTokens: 18432,
+    totalOutputTokens: 2106,
+    contextOps: [],
+    tenantId: TENANT_ID,
+    attribution: "EXPLORATORY",
+    origin: "ROOT", // 探索路也是**这个任务自己**那次循环（位置与归属正交：ROOT + EXPLORATORY 并存）
+    createdAt: "2026-06-16T10:20:31Z",
+  },
+  {
+    id: "run-explore-2",
+    taskId: "task-explore-2",
+    model: "claude-opus-4-8",
+    iterations: [
+      { index: 0, toolCalls: [{ toolCallId: "toolu_e1", toolName: "query_objects", input: { objectType: "Base" }, outcome: "OK", durationMs: 210 }] },
+      { index: 1, toolCalls: [{ toolCallId: "toolu_e2", toolName: "invoke_solver", input: { solver: "capacity_forecast" }, outcome: "OK", durationMs: 1620 }] },
+    ],
+    budget: { maxIterations: 8, maxToolCalls: 10, maxSolverCalls: 8, maxDurationMs: 600000, maxClarifications: 0, maxDiscoverCalls: 8, maxRoundTrips: 24 },
+    budgetExhausted: false,
+    totalInputTokens: 9120,
+    totalOutputTokens: 1340,
+    contextOps: [],
+    tenantId: TENANT_ID,
+    agentId: "agt-explore",
+    agentKey: "explore_agent",
+    agentVersion: 2,
+    attribution: "REGISTERED",
+    origin: "ROOT",
+    createdAt: "2026-06-16T14:02:10Z",
+  },
+  {
+    id: "run-explore-1",
+    taskId: "task-explore-1",
+    model: "claude-opus-4-8",
+    iterations: [{ index: 0, toolCalls: [{ toolCallId: "toolu_o1", toolName: "query_objects", input: { objectType: "Order" }, outcome: "OK", durationMs: 180 }] }],
+    budget: { maxIterations: 8, maxToolCalls: 10, maxSolverCalls: 8, maxDurationMs: 600000, maxClarifications: 0, maxDiscoverCalls: 8, maxRoundTrips: 24 },
+    budgetExhausted: false,
+    totalInputTokens: 4210,
+    totalOutputTokens: 660,
+    contextOps: [],
+    tenantId: TENANT_ID,
+    agentId: "agt-explore-v1",
+    agentKey: "explore_agent",
+    agentVersion: 1,
+    attribution: "REGISTERED",
+    origin: "ROOT",
+    createdAt: "2026-06-15T11:41:00Z",
+  },
+  {
+    /**
+     * WO-AGENTRUN-FANOUT-PERSIST · **会诊扇出的子运行**（此前这类记录在全仓根本不存在）。
+     *
+     * 真实形态刻意照抄后端：`taskId` 是**会诊那个任务**的 id（子 agent 挂父任务，事件才串得起来），
+     * `origin: "FANOUT"` + `stepId: "dispatch_0"`（它是三角里的第一路），归属仍是 REGISTERED ——
+     * 位置与归属正交，一条记录同时是 FANOUT 和 REGISTERED 是**正常**的，不是矛盾。
+     * 有了它，`explore_agent` 的运行数从 2 变 3，界面必须能说清多出来的那次是被会诊叫去的。
+     */
+    id: "run-fanout-1",
+    taskId: "task-consult-1",
+    model: "claude-opus-4-8",
+    iterations: [
+      { index: 0, toolCalls: [{ toolCallId: "toolu_f1", toolName: "query_objects", input: { objectType: "Material" }, outcome: "OK", durationMs: 240 }] },
+    ],
+    budget: { maxIterations: 8, maxToolCalls: 10, maxSolverCalls: 8, maxDurationMs: 600000, maxClarifications: 0, maxDiscoverCalls: 8, maxRoundTrips: 24 },
+    budgetExhausted: false,
+    totalInputTokens: 3180,
+    totalOutputTokens: 470,
+    contextOps: [],
+    tenantId: TENANT_ID,
+    agentId: "agt-explore",
+    agentKey: "explore_agent",
+    agentVersion: 2,
+    attribution: "REGISTERED",
+    origin: "FANOUT",
+    stepId: "dispatch_0",
+    createdAt: "2026-06-16T15:30:00Z",
+  },
+  {
+    id: "run-legacy-1",
+    taskId: "task-legacy-1",
+    model: "claude-opus-4-8",
+    iterations: [],
+    budget: { maxIterations: 8, maxToolCalls: 10, maxSolverCalls: 8, maxDurationMs: 600000, maxClarifications: 0, maxDiscoverCalls: 8, maxRoundTrips: 24 },
+    budgetExhausted: false,
+    totalInputTokens: 100,
+    totalOutputTokens: 20,
+  },
+];
 // g8 故事驱动建域 · P1：StoryBuildRun 历史推演记录（mock 模式内存存储，提交→列出可见）
 const META_POLICY = { tenantId: "demo", roles: ["admin"] as string[] };
 const MOCK_STORY_RUNS: { id: string; script: string; status: string; createdAt: string; [k: string]: unknown }[] = [];
@@ -4118,6 +4253,27 @@ export const handlers = [
       // 把 task 标成 path=AGENT + COMPLETED 却从不写 run），mock 不带这一态就测不出诚实位。
       { taskId: "task-agent-1", query: "结合最近产能与订单，帮我判断下季度整体经营风险在哪", path: "AGENT", status: "COMPLETED", view: "dash", conversationId: "conv-a1", classification: null, answerSummary: "识别 3 处风险敞口，其中电解液供应最紧", createdAt: "2026-06-16T10:20:00Z", completedAt: "2026-06-16T10:20:31Z" },
       { taskId: "task-agent-2", query: "随便聊聊，当前产线整体健康度怎么样", path: "AGENT", status: "COMPLETED", view: "dash", conversationId: "conv-a2", classification: null, answerSummary: "未接入可用的 LLM 提供商，已诚实降级", createdAt: "2026-06-16T09:05:00Z", completedAt: "2026-06-16T09:05:01Z" },
+      // WO-AGENTRUN-ATTRIBUTION：两条**归属得上**的运行（绑到 explore_agent，且分属 v1/v2）。
+      // 加进来不是为了凑数：租户级清单里若一条归属得上的都没有，「归属已可得」这句话在 mock 模式下
+      // 就无从被界面证实，而真部署里这类运行恰恰是主流（场景入口 Agent / 角色 Agent 都走这条）。
+      { taskId: "task-explore-2", query: "用探索分析 Agent 复核一下常州基地的产能缺口", path: "AGENT", status: "COMPLETED", view: "graph", conversationId: "conv-e2", classification: null, answerSummary: "缺口 1.0 万套，建议加夜班", createdAt: "2026-06-16T14:02:00Z", completedAt: "2026-06-16T14:02:10Z" },
+      { taskId: "task-explore-1", query: "在手单里哪些型号交期最紧", path: "AGENT", status: "COMPLETED", view: "graph", conversationId: "conv-e1", classification: null, answerSummary: "3 个型号进入交期红区", createdAt: "2026-06-15T11:40:00Z", completedAt: "2026-06-15T11:41:00Z" },
+      /**
+       * WO-BEFE-C · 多角色会诊那一条（`task-consult-1`）。
+       *
+       * ⚠️ **这一行是本单实测补上的**，补之前 mock 里存在一个「有数据、但界面永远够不到」的洞：
+       * `AGENT_RUNS` 里躺着 `run-fanout-1`（`taskId: "task-consult-1"`，`origin: "FANOUT"`），
+       * 两个读端的 mock handler 也都会照实返回它 —— 但**任务清单里没有这一行**，
+       * 而观测台的运行列表正是从 `GET /b/v1/queries` 来的 ⇒ 用户在界面上永远展不开这条任务，
+       * 那条会诊子运行就永远看不见。形态与本仓 `path: "PATH_A"` 那次同源：
+       * **数据摆在那儿、没有消费方按它取，于是错了三个月没人发现**；这次是本单接上复数读端
+       * （`GET /b/v1/queries/:taskId/agent-runs`）当场撞出来的。
+       *
+       * 它的真实形态刻意保持「**顶层 0 条 + 扇出 N 条**」：单数端点对它如实 404
+       * （界面显示"本次未进入 Agent 循环"），复数端点返 1 条 —— 两句同时为真，
+       * 这正是 `TaskAgentRuns` 那条 rootless 说明存在的理由。
+       */
+      { taskId: "task-consult-1", query: "组织一次多角色会诊：这批电解液涨价我们该怎么应对", path: "AGENT", status: "COMPLETED", view: "dash", conversationId: "conv-c1", classification: null, answerSummary: "三角色会诊：采购/生产/财务给出联合建议", createdAt: "2026-06-16T15:29:00Z", completedAt: "2026-06-16T15:30:20Z" },
     ].slice(0, limit);
     return HttpResponse.json({ items, total: items.length });
   }),
@@ -4127,15 +4283,12 @@ export const handlers = [
   http.get("*/b/v1/queries/:taskId/decision-trace", ({ request, params }) => {
     if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
     const taskId = String(params.taskId);
-    const toolCalls =
-      taskId === "task-agent-1"
-        ? [
-            { tool: "discover", outcome: "OK", durationMs: 120, at: "2026-06-16T10:20:03Z" },
-            { tool: "query_objects", outcome: "OK", durationMs: 310, at: "2026-06-16T10:20:09Z" },
-            { tool: "invoke_solver", outcome: "OK", durationMs: 1840, at: "2026-06-16T10:20:18Z" },
-            { tool: "evaluate_rules", outcome: "ERROR", durationMs: 95, at: "2026-06-16T10:20:24Z" },
-          ]
-        : []; // 降级那条没进循环 ⇒ 没有工具调用，这是真值不是缺数据
+    // 工具调用从**同一份** run 记录派生（真后端两处读的也是同一批 toolCalls 行）——
+    // 抄成两份，界面上就会出现「运行记录说调了 4 次、痕迹里只有 2 次」这种真部署里不存在的矛盾。
+    // 没有 run 记录的那条（未接 LLM 的诚实降级）自然得到空数组：真值，不是缺数据。
+    const toolCalls = (AGENT_RUNS.find((r) => r.taskId === taskId)?.iterations ?? []).flatMap((it) =>
+      it.toolCalls.map((tc) => ({ tool: tc.toolName, outcome: tc.outcome, durationMs: tc.durationMs })),
+    );
     return HttpResponse.json({
       decisionId: taskId,
       tenantId: TENANT_ID,
@@ -4160,36 +4313,49 @@ export const handlers = [
   http.get("*/b/v1/queries/:taskId/agent-run", ({ request, params }) => {
     if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
     const taskId = String(params.taskId);
-    if (taskId !== "task-agent-1") {
+    // WO-AGENTRUN-FANOUT-PERSIST · 与真后端 `getByTask` **同一个谓词**（`origin IS DISTINCT FROM 'FANOUT'`）：
+    // 单数端点只返这个任务自己那条，绝不拿会诊扇出的子运行冒充。少了这个过滤，mock 模式下
+    // 会诊任务会返回一条真后端会 404 的记录 —— 又一次「mock 形状 ≠ 真后端形状」（G-MOCK-PATH-ENUM-DRIFT 同源）。
+    // 旧记录无 origin ⇒ 视为顶层，照旧返回（`!== "FANOUT"` 而非 `=== "ROOT"`）。
+    const run = AGENT_RUNS.find((r) => r.taskId === taskId && r.origin !== "FANOUT");
+    if (!run) {
       // 与真后端同码：任务在但引擎没进循环 → AGENT_RUN_NOT_FOUND（不是 TASK_NOT_FOUND）
       return err(404, "AGENT_RUN_NOT_FOUND", `no agent run for task: ${taskId}`);
     }
+    return HttpResponse.json(run);
+  }),
+
+  /**
+   * WO-AGENTRUN-FANOUT-PERSIST · 一次任务的**全部**运行（真后端 `GET /api/v1/queries/:taskId/agent-runs`）。
+   * 多角色会诊的真实形态是「0 条顶层 + N 条子运行」，故这里刻意不做 origin 过滤。
+   */
+  http.get("*/b/v1/queries/:taskId/agent-runs", ({ request, params }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const taskId = String(params.taskId);
+    return HttpResponse.json({ taskId, runs: AGENT_RUNS.filter((r) => r.taskId === taskId) });
+  }),
+
+  /**
+   * WO-AGENTRUN-ATTRIBUTION · **这个 Agent 的历次运行**（真后端 `GET /b/v1/agents/:id/runs`）。
+   *
+   * 与真后端同语义，三条都不许省（省一条，界面在 mock 模式下就会显示一个真部署里不存在的样子）：
+   *  ① 按 `agentKey` **跨版本**聚合 —— 按 id 过滤在换版当天就归零；
+   *  ② 归属不上的运行（EXPLORATORY / 无归属字段的旧记录）**一条都不出现**；
+   *  ③ agent 不存在 → 404 AGENT_NOT_FOUND（与越租户同码）。
+   */
+  http.get("*/b/v1/agents/:id/runs", ({ request, params }) => {
+    if (!auth(request)) return err(401, "UNAUTHORIZED", "未登录");
+    const agent = db.agents.find((a) => a.id === String(params.id));
+    if (!agent) return err(404, "AGENT_NOT_FOUND", `agent not found: ${String(params.id)}`);
     return HttpResponse.json({
-      id: "run-agent-1",
-      taskId,
-      model: "claude-opus-4-8",
-      iterations: [
-        {
-          index: 0,
-          toolCalls: [
-            { toolCallId: "toolu_1", toolName: "discover", input: {}, outcome: "OK", durationMs: 120 },
-            { toolCallId: "toolu_2", toolName: "query_objects", input: { objectType: "Order" }, outcome: "OK", durationMs: 310 },
-          ],
-        },
-        {
-          index: 1,
-          toolCalls: [{ toolCallId: "toolu_3", toolName: "invoke_solver", input: { solver: "capacity_forecast" }, outcome: "OK", durationMs: 1840 }],
-        },
-        {
-          index: 2,
-          toolCalls: [{ toolCallId: "toolu_4", toolName: "evaluate_rules", input: {}, outcome: "ERROR", durationMs: 95 }],
-        },
-      ],
-      budget: { maxIterations: 24, maxToolCalls: 40, maxSolverCalls: 8, maxDurationMs: 600000, maxClarifications: 0, maxDiscoverCalls: 8, maxRoundTrips: 24 },
-      budgetExhausted: false,
-      totalInputTokens: 18432,
-      totalOutputTokens: 2106,
-      contextOps: [],
+      agentId: agent.id,
+      agentKey: agent.key,
+      // WO-AGENTRUN-FANOUT-PERSIST · 次序也照抄真后端（`listByAgent`: `created_at DESC NULLS LAST, id DESC`）。
+      // 此前 mock 直接用数组序，恰好与倒序一致所以看不出来 —— 一加会诊子运行（时间更晚但排在数组末尾）
+      // 当场就漂。「恰好对」不是「对」，靠数组序等于把正确性押在字面量的书写顺序上。
+      runs: AGENT_RUNS.filter((r) => r.agentKey === agent.key && r.tenantId === TENANT_ID).sort((a, b) =>
+        (b.createdAt ?? b.id).localeCompare(a.createdAt ?? a.id),
+      ),
     });
   }),
 
