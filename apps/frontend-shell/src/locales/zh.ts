@@ -2271,11 +2271,25 @@ export const zh = {
      */
     entry: {
       whyTopic: "为什么对不上",
+      /*
+       * ⚠ 这句话此前印在屏上的版本是 **2026-08-08 的一次性测量被写死进文案**：
+       *   「locus 只有 MaterialBalance / MaterialBatch / Line 三类」+
+       *   「带 drillType=MaterialBatch 或 Line 的因子一条都没有」。
+       *   两句今天都是假的，且**错法不同**（混了必修错地方）：
+       *     · 「只有三类」= 上游判据绑定长出了第四类 `Base`（C34 跨业务线产能争用），文案没跟 ⇒ 改文案；
+       *     · 「一条都没有」= **判据本身写错了** —— 产线 / 物料批次 / 基地各有 1 条因子，
+       *       只是下钻 id 是通配 `*`，缺的是「通配算不算对上」这条 join 判据，**不是缺种子**。
+       *   新文案里唯一的那个数（「共 3 条」）由下面这条溯源记号替它盯着上游，门每次跑现算比对。
+       *
+       * @stale-fact apps/datacore/src/synthetic/battery-extended.ts /drillType: "(?:Line|MaterialBatch|Base)", drillId: "\*"/ ==3
+       * @stale-fact apps/datacore/src/solvers/chain-impediment.ts /locusObjectType: (?:"|CONTENTION_LOCUS_TYPE)/ ==7
+       */
       whyBody:
-        "阻滞点锚在真对象 locus{objectType,objectId} 上，决策推演锚在 CausalFactor 上，" +
-        "今天引擎回包里没有任何承载因果因子的字段。唯一可能的对法是拿 locus{objectType,objectId} " +
-        "去撞 CausalFactor{drillType,drillId} —— 实测撞不上：demo 的 locus 只有 " +
-        "MaterialBalance / MaterialBatch / Line 三类，而合成种子里带 drillType=MaterialBatch 或 Line 的因子一条都没有。",
+        "阻滞点锚在真对象上（哪条产线 / 哪个物料批次 / 哪个基地），决策推演锚在因果因子上，" +
+        "而引擎这次回包里没有任何字段指向因果因子 —— 两头拼不起来。" +
+        "退一步用「同一个对象」去对也不行，但**不是因为没有因子**：产线 / 物料批次 / 基地这三类，" +
+        "在因子表里共 3 条因子，只是这 3 条的下钻对象都写成通配（不指名具体哪条产线、哪一批），" +
+        "而「通配算不算对上」这条判据全仓还没有定义 ⇒ 缺的是判据，不是数据：去补数据补不好它。",
       whyNoGuess:
         "所以没有猜一个 factorId 传过来（猜了会被 decision_play 静默回落到贡献最大的默认根因，" +
         "屏上就会出现一个看着确凿、实则与这条阻滞点无关的根因）。",
