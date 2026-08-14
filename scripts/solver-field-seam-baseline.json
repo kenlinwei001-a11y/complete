@@ -2,7 +2,7 @@
   "note": "① 本文件是 `scripts/check-solver-field-seam.mjs` 的**存量死字段棘轮**：后端声明会下发、前端零消费方的求解器输出字段。\n② 每条必须写 `why`（<10 字即判红）。**无理由白名单正是本门要治的病**——豁免要说清「凭什么这条今天可以不接」。\n③ `maxEntries` 必须**恒等于** `entries.length`；`ratchetHigh` 是历史最高水位，**只降不升**。\n   评审唯一必须拒绝的一行，就是把 ratchetHigh 调大。加一条豁免 = 同时改 maxEntries = 一处显眼 diff，评审必然看见。\n④ `--update` **只删不加**（修好的摘掉），新增死字段**不自动收编**——要记进存量必须人手编辑本文件。\n⑤ `id` 形如 `S3:<求解器>.<字段>`（输出顶层字段）/ `S4:<契约schema>.<字段>`（契约 schema 嵌套一层）/ `S5:<求解器>.<顶层字段>.<行字段>`（结果接口内联行，嵌套一层）。\n⑥ **2026-08-13 · 本门从 `claude/integ-ui-w5` 收编进 canonical 时，ratchetHigh 由 116 → 120。** 这是本文件唯一一次抬高水位，理由必须在这里说清、供评审当场否决：116 那个数是 2026-08-11 在 `integ-ui-w5` 那棵树上量的，而 canonical 此后又并了三轮（`183970ba` / `9ee260ab` 等），门第一次量 canonical 时多出 6 条、少了 2 条（`--update` 已摘掉，116→114）。 6 条里 **4 条是真缺口**（chain_impediments 的候选/归因账，属 WO-SANDBOX-S3 后续，不在收编单的范围边界内），**2 条是本门载体④ 作用域规则的误报**（`RiskTimelineOutputSchema.scopeNote`/`scopeBaseName` 经`readScopeHonesty(raw: unknown)` 类型擦除透传消费，逐条见各自 why）。 换言之：抬高的 4 = 真缺口 4，误报那 2 抵掉了 `--update` 摘掉的 2。**此后仍然只降不升。**",
   "generatedBy": "node scripts/check-solver-field-seam.mjs --update + 人手收编 6 条（2026-08-13 收编 integ-ui-w5）",
   "ratchetHigh": 120,
-  "maxEntries": 120,
+  "maxEntries": 102,
   "entries": [
     {
       "id": "S3:assignment_optimize.binCount",
@@ -18,14 +18,6 @@
       "owner": "assignment_optimize",
       "field": "binType",
       "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `assignment_optimize.binType` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
-      "evidence": "apps/datacore/src/solvers/service.ts:260"
-    },
-    {
-      "id": "S3:assignment_optimize.itemCount",
-      "carrier": "S3",
-      "owner": "assignment_optimize",
-      "field": "itemCount",
-      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `assignment_optimize.itemCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
       "evidence": "apps/datacore/src/solvers/service.ts:260"
     },
     {
@@ -157,30 +149,6 @@
       "evidence": "apps/datacore/src/solvers/service.ts:260"
     },
     {
-      "id": "S3:chain_impediments.candidateProbes",
-      "carrier": "S3",
-      "owner": "chain_impediments",
-      "field": "candidateProbes",
-      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `chain_impediments.candidateProbes` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。 【本门的病历·2026-08-11】WO-SANDBOX-S3 给 chain_impediments 长出方案候选一族（candidates/candidateStats/candidatesTruncated/candidateProbes）时，端点早就有、前端也在调（views/sim/chainImpediment.ts 用契约 schema 解析载荷），befe-seam:check **全绿**——它量的是端点粒度，不看端点下发什么字段。审核方据此下了「接缝没问题」的结论，这正是本门要治的那个错：「我用『端点有人调』当作『这个端点的输出都有人看』的证据，而前者并不度量后者」。",
-      "evidence": "apps/datacore/src/solvers/service.ts:260"
-    },
-    {
-      "id": "S3:chain_impediments.candidateStats",
-      "carrier": "S3",
-      "owner": "chain_impediments",
-      "field": "candidateStats",
-      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `chain_impediments.candidateStats` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。 【本门的病历·2026-08-11】WO-SANDBOX-S3 给 chain_impediments 长出方案候选一族（candidates/candidateStats/candidatesTruncated/candidateProbes）时，端点早就有、前端也在调（views/sim/chainImpediment.ts 用契约 schema 解析载荷），befe-seam:check **全绿**——它量的是端点粒度，不看端点下发什么字段。审核方据此下了「接缝没问题」的结论，这正是本门要治的那个错：「我用『端点有人调』当作『这个端点的输出都有人看』的证据，而前者并不度量后者」。",
-      "evidence": "apps/datacore/src/solvers/service.ts:260"
-    },
-    {
-      "id": "S3:chain_impediments.candidatesTruncated",
-      "carrier": "S3",
-      "owner": "chain_impediments",
-      "field": "candidatesTruncated",
-      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `chain_impediments.candidatesTruncated` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。 【本门的病历·2026-08-11】WO-SANDBOX-S3 给 chain_impediments 长出方案候选一族（candidates/candidateStats/candidatesTruncated/candidateProbes）时，端点早就有、前端也在调（views/sim/chainImpediment.ts 用契约 schema 解析载荷），befe-seam:check **全绿**——它量的是端点粒度，不看端点下发什么字段。审核方据此下了「接缝没问题」的结论，这正是本门要治的那个错：「我用『端点有人调』当作『这个端点的输出都有人看』的证据，而前者并不度量后者」。",
-      "evidence": "apps/datacore/src/solvers/service.ts:260"
-    },
-    {
       "id": "S3:changeover_sequence.savedVsDueMin",
       "carrier": "S3",
       "owner": "changeover_sequence",
@@ -250,14 +218,6 @@
       "owner": "combinatorial_auction",
       "field": "bidType",
       "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `combinatorial_auction.bidType` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
-      "evidence": "apps/datacore/src/solvers/service.ts:260"
-    },
-    {
-      "id": "S3:combinatorial_auction.itemCount",
-      "carrier": "S3",
-      "owner": "combinatorial_auction",
-      "field": "itemCount",
-      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `combinatorial_auction.itemCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
       "evidence": "apps/datacore/src/solvers/service.ts:260"
     },
     {
@@ -413,14 +373,6 @@
       "evidence": "apps/datacore/src/solvers/service.ts:260"
     },
     {
-      "id": "S3:independent_set.nodeType",
-      "carrier": "S3",
-      "owner": "independent_set",
-      "field": "nodeType",
-      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `independent_set.nodeType` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
-      "evidence": "apps/datacore/src/solvers/service.ts:260"
-    },
-    {
       "id": "S3:inventory_optimize.locationSeries",
       "carrier": "S3",
       "owner": "inventory_optimize",
@@ -506,14 +458,6 @@
       "owner": "min_cost_flow",
       "field": "flows",
       "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `min_cost_flow.flows` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
-      "evidence": "apps/datacore/src/solvers/service.ts:260"
-    },
-    {
-      "id": "S3:min_cost_flow.nodeType",
-      "carrier": "S3",
-      "owner": "min_cost_flow",
-      "field": "nodeType",
-      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `min_cost_flow.nodeType` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
       "evidence": "apps/datacore/src/solvers/service.ts:260"
     },
     {
@@ -605,20 +549,36 @@
       "evidence": "apps/datacore/src/solvers/service.ts:260"
     },
     {
-      "id": "S3:packing_optimize.itemCount",
-      "carrier": "S3",
-      "owner": "packing_optimize",
-      "field": "itemCount",
-      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `packing_optimize.itemCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
-      "evidence": "apps/datacore/src/solvers/service.ts:260"
-    },
-    {
       "id": "S3:packing_optimize.itemType",
       "carrier": "S3",
       "owner": "packing_optimize",
       "field": "itemType",
       "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `packing_optimize.itemType` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
       "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:process_flow_time.absencesShown",
+      "carrier": "S3",
+      "owner": "process_flow_time",
+      "field": "absencesShown",
+      "why": "人手挂账（2026-08-14 · WO-FIELD-DEAD-6 病②，**非 --update 自动收编**）：求解器输出顶层字段 `process_flow_time.absencesShown` = 本次实际下发了几条 `absences`（反推不出来的那批的截断分母）——与 `absences` 成对，是「算不出来要能被渲染出来、不是被当成 0 隐掉」这条诚实位纪律的分母半。 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:323）。判死证据：全前端生产代码零提及。【这不是「3 个字段没人看」，是**整个求解器零前端消费方**】复核（2026-08-14 亲手跑，判据与门共用 `scripts/lib/seam-lex.mjs` 的 `mentionsInProd`，前端生产面 210 个文件、已剔 mocks/ 与测试）：求解器 key `process_flow_time` 在前端仅 2 个文件命中，且**两处都不是调用** —— `views/ProcessStuckView.tsx:258` 是 JSX 里的 `<code>` 文案（告诉读者「要看这一批，走 process_flow_time 求解器或 GET /a/v1/process-definitions/:key/instances」），`locales/zh.ts:741,762` 是两条诚实位串。再追一层（铁律 0.5：grep 不是结论）：前端三条调用通路全部查过 —— `runSolver(...)` 21 处、`invokeSolver(...)` 20 处、间接分发两处 （`views/sim/useLiveSolver.ts:101` 的 `runSolver(solverKey,…)` 与 `views/DashboardView.tsx:646` 的 `invokeSolver(q.solverKey,…)`）；`useLiveSolver` 的 10 个调用点实参**全是字符串字面量**（portfolio / sop_reschedule / capacity_forecast / generic_inference / plan_audit / plan_generate / cross_object_occupancy / optimize_whatif / base_capacity_outlook / bottleneck_matrix），无一是本求解器；`DashboardView` 那条由后端下发的 widget 定义驱动，全仓无任何 widget 定义引用本 key。金丝雀（同一条判据、同一份实现）：`finance_world_projection` ⇒ 2 文件命中且其一是真调用点 `views/sim/SandboxImpactBand.tsx:192` ⇒ 工具是好的，上面这个否定结论才有资格被相信。【门为什么只报得出 3 条】本求解器声明 13 个顶层字段，逐字段全域命中（同上判据）：summary 45 · origin 16 · coverage 10 · stations 7 · asOf 5 · bottleneck 5 · stuck 5 · totals 5 · asOfSource 2 · absences 1 · **timelines 0 · timelinesShown 0 · absencesShown 0**。另外 10 个的命中**全是通名撞车**（门自己的诚实边界写着「通名（rows/summary/total）撞车会漏报」），不是这个求解器的输出被消费。**照 3 条去修就是治症状**：真实缺口是这 13 个字段一个都没上屏。【为什么本单不接线】接线要先决定「它放进哪个页、哪个导航组」= 导航信息架构 = 仓主的决策，照 `scripts/backend-frontend-seam-baseline.json` 里 WO-R6 已立的先例挂账待裁决；为消红加一个没人调的客户端函数 = 把死字段换成死函数，不做。【不要读成「这些数据前端完全看不到」】流程**实例**层的数据另有一条载体已接：`GET /a/v1/process-definitions/:key/instances` → `views/process/ProcessWaitView.tsx:79` 的 `InstancePanel`（本体 §3 L19 登记在册）。死的是**求解器这条通路**，不是这批事实本身 —— 两者定性不同、修法不同，不许合成一句。【复验命令】`node scripts/check-solver-field-seam.mjs --verbose | grep process_flow_time`；`grep -rn 'process_flow_time' apps/frontend-shell/src`（今日实测 5 命中，全为文案/注释，零调用）。",
+      "evidence": "apps/datacore/src/solvers/service.ts:323"
+    },
+    {
+      "id": "S3:process_flow_time.timelines",
+      "carrier": "S3",
+      "owner": "process_flow_time",
+      "field": "timelines",
+      "why": "人手挂账（2026-08-14 · WO-FIELD-DEAD-6 病②，**非 --update 自动收编**）：求解器输出顶层字段 `process_flow_time.timelines` = 逐流程实例的站间流转时长明细（哪一条实例、在哪个站、停了多久）——本求解器的**主输出**，也是「哪一条流程实例被卡住、卡在谁那里、卡了多久」三问的答案本体。 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:323）。判死证据：全前端生产代码零提及。【这不是「3 个字段没人看」，是**整个求解器零前端消费方**】复核（2026-08-14 亲手跑，判据与门共用 `scripts/lib/seam-lex.mjs` 的 `mentionsInProd`，前端生产面 210 个文件、已剔 mocks/ 与测试）：求解器 key `process_flow_time` 在前端仅 2 个文件命中，且**两处都不是调用** —— `views/ProcessStuckView.tsx:258` 是 JSX 里的 `<code>` 文案（告诉读者「要看这一批，走 process_flow_time 求解器或 GET /a/v1/process-definitions/:key/instances」），`locales/zh.ts:741,762` 是两条诚实位串。再追一层（铁律 0.5：grep 不是结论）：前端三条调用通路全部查过 —— `runSolver(...)` 21 处、`invokeSolver(...)` 20 处、间接分发两处 （`views/sim/useLiveSolver.ts:101` 的 `runSolver(solverKey,…)` 与 `views/DashboardView.tsx:646` 的 `invokeSolver(q.solverKey,…)`）；`useLiveSolver` 的 10 个调用点实参**全是字符串字面量**（portfolio / sop_reschedule / capacity_forecast / generic_inference / plan_audit / plan_generate / cross_object_occupancy / optimize_whatif / base_capacity_outlook / bottleneck_matrix），无一是本求解器；`DashboardView` 那条由后端下发的 widget 定义驱动，全仓无任何 widget 定义引用本 key。金丝雀（同一条判据、同一份实现）：`finance_world_projection` ⇒ 2 文件命中且其一是真调用点 `views/sim/SandboxImpactBand.tsx:192` ⇒ 工具是好的，上面这个否定结论才有资格被相信。【门为什么只报得出 3 条】本求解器声明 13 个顶层字段，逐字段全域命中（同上判据）：summary 45 · origin 16 · coverage 10 · stations 7 · asOf 5 · bottleneck 5 · stuck 5 · totals 5 · asOfSource 2 · absences 1 · **timelines 0 · timelinesShown 0 · absencesShown 0**。另外 10 个的命中**全是通名撞车**（门自己的诚实边界写着「通名（rows/summary/total）撞车会漏报」），不是这个求解器的输出被消费。**照 3 条去修就是治症状**：真实缺口是这 13 个字段一个都没上屏。【为什么本单不接线】接线要先决定「它放进哪个页、哪个导航组」= 导航信息架构 = 仓主的决策，照 `scripts/backend-frontend-seam-baseline.json` 里 WO-R6 已立的先例挂账待裁决；为消红加一个没人调的客户端函数 = 把死字段换成死函数，不做。【不要读成「这些数据前端完全看不到」】流程**实例**层的数据另有一条载体已接：`GET /a/v1/process-definitions/:key/instances` → `views/process/ProcessWaitView.tsx:79` 的 `InstancePanel`（本体 §3 L19 登记在册）。死的是**求解器这条通路**，不是这批事实本身 —— 两者定性不同、修法不同，不许合成一句。【复验命令】`node scripts/check-solver-field-seam.mjs --verbose | grep process_flow_time`；`grep -rn 'process_flow_time' apps/frontend-shell/src`（今日实测 5 命中，全为文案/注释，零调用）。",
+      "evidence": "apps/datacore/src/solvers/service.ts:323"
+    },
+    {
+      "id": "S3:process_flow_time.timelinesShown",
+      "carrier": "S3",
+      "owner": "process_flow_time",
+      "field": "timelinesShown",
+      "why": "人手挂账（2026-08-14 · WO-FIELD-DEAD-6 病②，**非 --update 自动收编**）：求解器输出顶层字段 `process_flow_time.timelinesShown` = 本次实际下发了几条 timeline（截断分母）——不下发这个数，前端无从知道屏上这几条是全部还是被截过的一部分。 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:323）。判死证据：全前端生产代码零提及。【这不是「3 个字段没人看」，是**整个求解器零前端消费方**】复核（2026-08-14 亲手跑，判据与门共用 `scripts/lib/seam-lex.mjs` 的 `mentionsInProd`，前端生产面 210 个文件、已剔 mocks/ 与测试）：求解器 key `process_flow_time` 在前端仅 2 个文件命中，且**两处都不是调用** —— `views/ProcessStuckView.tsx:258` 是 JSX 里的 `<code>` 文案（告诉读者「要看这一批，走 process_flow_time 求解器或 GET /a/v1/process-definitions/:key/instances」），`locales/zh.ts:741,762` 是两条诚实位串。再追一层（铁律 0.5：grep 不是结论）：前端三条调用通路全部查过 —— `runSolver(...)` 21 处、`invokeSolver(...)` 20 处、间接分发两处 （`views/sim/useLiveSolver.ts:101` 的 `runSolver(solverKey,…)` 与 `views/DashboardView.tsx:646` 的 `invokeSolver(q.solverKey,…)`）；`useLiveSolver` 的 10 个调用点实参**全是字符串字面量**（portfolio / sop_reschedule / capacity_forecast / generic_inference / plan_audit / plan_generate / cross_object_occupancy / optimize_whatif / base_capacity_outlook / bottleneck_matrix），无一是本求解器；`DashboardView` 那条由后端下发的 widget 定义驱动，全仓无任何 widget 定义引用本 key。金丝雀（同一条判据、同一份实现）：`finance_world_projection` ⇒ 2 文件命中且其一是真调用点 `views/sim/SandboxImpactBand.tsx:192` ⇒ 工具是好的，上面这个否定结论才有资格被相信。【门为什么只报得出 3 条】本求解器声明 13 个顶层字段，逐字段全域命中（同上判据）：summary 45 · origin 16 · coverage 10 · stations 7 · asOf 5 · bottleneck 5 · stuck 5 · totals 5 · asOfSource 2 · absences 1 · **timelines 0 · timelinesShown 0 · absencesShown 0**。另外 10 个的命中**全是通名撞车**（门自己的诚实边界写着「通名（rows/summary/total）撞车会漏报」），不是这个求解器的输出被消费。**照 3 条去修就是治症状**：真实缺口是这 13 个字段一个都没上屏。【为什么本单不接线】接线要先决定「它放进哪个页、哪个导航组」= 导航信息架构 = 仓主的决策，照 `scripts/backend-frontend-seam-baseline.json` 里 WO-R6 已立的先例挂账待裁决；为消红加一个没人调的客户端函数 = 把死字段换成死函数，不做。【不要读成「这些数据前端完全看不到」】流程**实例**层的数据另有一条载体已接：`GET /a/v1/process-definitions/:key/instances` → `views/process/ProcessWaitView.tsx:79` 的 `InstancePanel`（本体 §3 L19 登记在册）。死的是**求解器这条通路**，不是这批事实本身 —— 两者定性不同、修法不同，不许合成一句。【复验命令】`node scripts/check-solver-field-seam.mjs --verbose | grep process_flow_time`；`grep -rn 'process_flow_time' apps/frontend-shell/src`（今日实测 5 命中，全为文案/注释，零调用）。",
+      "evidence": "apps/datacore/src/solvers/service.ts:323"
     },
     {
       "id": "S3:quarterly_gap.combo",
@@ -635,14 +595,6 @@
       "field": "residualGap",
       "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `quarterly_gap.residualGap` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
       "evidence": "apps/datacore/src/solvers/service.ts:260"
-    },
-    {
-      "id": "S3:risk_timeline.exposureOrder",
-      "carrier": "S3",
-      "owner": "risk_timeline",
-      "field": "exposureOrder",
-      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `risk_timeline.exposureOrder` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260→RiskTimelineOutputSchema）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
-      "evidence": "apps/datacore/src/solvers/service.ts:260→RiskTimelineOutputSchema"
     },
     {
       "id": "S3:risk_timeline.otdBatch",
@@ -781,14 +733,6 @@
       "evidence": "packages/contracts/src/solvers.ts:99（求解器侧引用 apps/datacore/src/solvers/service.ts:9）"
     },
     {
-      "id": "S4:ChainImpedimentSchema.candidates",
-      "carrier": "S4",
-      "owner": "ChainImpedimentSchema",
-      "field": "candidates",
-      "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `ChainImpedimentSchema.candidates` 由后端声明下发（声明处 packages/contracts/src/chain-sim.ts:832（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:40））。判死证据：解析该 schema 的前端文件（含其直接 importer）里零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。 【本门的病历·2026-08-11】WO-SANDBOX-S3 给 chain_impediments 长出方案候选一族（candidates/candidateStats/candidatesTruncated/candidateProbes）时，端点早就有、前端也在调（views/sim/chainImpediment.ts 用契约 schema 解析载荷），befe-seam:check **全绿**——它量的是端点粒度，不看端点下发什么字段。审核方据此下了「接缝没问题」的结论，这正是本门要治的那个错：「我用『端点有人调』当作『这个端点的输出都有人看』的证据，而前者并不度量后者」。",
-      "evidence": "packages/contracts/src/chain-sim.ts:832（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:40）"
-    },
-    {
       "id": "S4:ChainImpedimentSchema.contention",
       "carrier": "S4",
       "owner": "ChainImpedimentSchema",
@@ -802,22 +746,6 @@
       "owner": "ChainImpedimentSchema",
       "field": "manifestations",
       "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `ChainImpedimentSchema.manifestations` 由后端声明下发（声明处 packages/contracts/src/chain-sim.ts:832（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:40））。判死证据：解析该 schema 的前端文件（含其直接 importer）里零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
-      "evidence": "packages/contracts/src/chain-sim.ts:832（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:40）"
-    },
-    {
-      "id": "S4:ChainImpedimentSchema.noCandidateKind",
-      "carrier": "S4",
-      "owner": "ChainImpedimentSchema",
-      "field": "noCandidateKind",
-      "why": "存量（2026-08-13 本门自 `integ-ui-w5` 收编进 canonical 当日快照）：本门的 08-11 水位是在 **另一棵树** 上量的；收编到 canonical 时该树已多并三轮（WO-SANDBOX-S3 的 chain_impediments 候选账等），于是长出本条。判死证据见 evidence；归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用。修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
-      "evidence": "packages/contracts/src/chain-sim.ts:1075（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:41）· 作用域内零提及"
-    },
-    {
-      "id": "S4:ChainImpedimentSchema.noCandidateReason",
-      "carrier": "S4",
-      "owner": "ChainImpedimentSchema",
-      "field": "noCandidateReason",
-      "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `ChainImpedimentSchema.noCandidateReason` 由后端声明下发（声明处 packages/contracts/src/chain-sim.ts:832（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:40））。判死证据：解析该 schema 的前端文件（含其直接 importer）里零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。 【本门的病历·2026-08-11】WO-SANDBOX-S3 给 chain_impediments 长出方案候选一族（candidates/candidateStats/candidatesTruncated/candidateProbes）时，端点早就有、前端也在调（views/sim/chainImpediment.ts 用契约 schema 解析载荷），befe-seam:check **全绿**——它量的是端点粒度，不看端点下发什么字段。审核方据此下了「接缝没问题」的结论，这正是本门要治的那个错：「我用『端点有人调』当作『这个端点的输出都有人看』的证据，而前者并不度量后者」。",
       "evidence": "packages/contracts/src/chain-sim.ts:832（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:40）"
     },
     {
@@ -835,14 +763,6 @@
       "field": "tenantId",
       "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `ChainImpedimentSchema.tenantId` 由后端声明下发（声明处 packages/contracts/src/chain-sim.ts:832（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:40））。判死证据：解析该 schema 的前端文件（含其直接 importer）里零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
       "evidence": "packages/contracts/src/chain-sim.ts:832（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:40）"
-    },
-    {
-      "id": "S4:RiskTimelineOutputSchema.exposureOrder",
-      "carrier": "S4",
-      "owner": "RiskTimelineOutputSchema",
-      "field": "exposureOrder",
-      "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `RiskTimelineOutputSchema.exposureOrder` 由后端声明下发（声明处 packages/contracts/src/solvers.ts:321（求解器侧引用 apps/datacore/src/solvers/service.ts:9））。判死证据：解析该 schema 的前端文件（含其直接 importer）里零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
-      "evidence": "packages/contracts/src/solvers.ts:321（求解器侧引用 apps/datacore/src/solvers/service.ts:9）"
     },
     {
       "id": "S4:RiskTimelineOutputSchema.otdBatch",
@@ -867,70 +787,6 @@
       "field": "scopeNote",
       "why": "**误报·经类型擦除的整包透传消费**（2026-08-13 收编时亲手复核）：该字段前端**真有消费方** —— `apps/frontend-shell/src/lib/solverScopeHonesty.ts` 的 `readFlat` 第 92 行 `str(payload.scopeNote)` 逐字读它；链路 `views/RiskBoardView.tsx:214 <ScopeHonestyBadge payload={data}/>` → `readScopeHonesty(raw: unknown)`。本门载体④ 的作用域是「前端 import 了该 schema（或其 z.infer 别名）的文件 ∪ 其直接 importer」，而 `readScopeHonesty` 的形参**刻意**是 `unknown`（文件头写死：诚实位是加性键，先 pick 一次就丢一次），故它不在作用域内 —— 这正是本门头注自曝的盲区「前端可能经解构/重命名/**类型透传**/`...rest` 消费」那一档。按本门失败提示的指定处置：加基线并把消费点写进 why（可评审的显式动作）。⚠ 别照「前端零消费方」去修 —— 那会让人再写一份平行读取器，正是本仓刚裁掉的那种双实现。",
       "evidence": "packages/contracts/src/solvers.ts:321 · 真消费方 apps/frontend-shell/src/lib/solverScopeHonesty.ts:92"
-    },
-    {
-      "id": "S4:SolutionCandidateSchema.candidateId",
-      "carrier": "S4",
-      "owner": "SolutionCandidateSchema",
-      "field": "candidateId",
-      "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `SolutionCandidateSchema.candidateId` 由后端声明下发（声明处 packages/contracts/src/chain-sim.ts:702（求解器侧引用 apps/datacore/src/solvers/impediment-options.ts:40））。判死证据：前端未 import 该契约 schema，且字段名全域零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。 【本门的病历·2026-08-11】WO-SANDBOX-S3 给 chain_impediments 长出方案候选一族（candidates/candidateStats/candidatesTruncated/candidateProbes）时，端点早就有、前端也在调（views/sim/chainImpediment.ts 用契约 schema 解析载荷），befe-seam:check **全绿**——它量的是端点粒度，不看端点下发什么字段。审核方据此下了「接缝没问题」的结论，这正是本门要治的那个错：「我用『端点有人调』当作『这个端点的输出都有人看』的证据，而前者并不度量后者」。",
-      "evidence": "packages/contracts/src/chain-sim.ts:702（求解器侧引用 apps/datacore/src/solvers/impediment-options.ts:40）"
-    },
-    {
-      "id": "S4:SolutionCandidateSchema.effectKind",
-      "carrier": "S4",
-      "owner": "SolutionCandidateSchema",
-      "field": "effectKind",
-      "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `SolutionCandidateSchema.effectKind` 由后端声明下发（声明处 packages/contracts/src/chain-sim.ts:702（求解器侧引用 apps/datacore/src/solvers/impediment-options.ts:40））。判死证据：前端未 import 该契约 schema，且字段名全域零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。 【本门的病历·2026-08-11】WO-SANDBOX-S3 给 chain_impediments 长出方案候选一族（candidates/candidateStats/candidatesTruncated/candidateProbes）时，端点早就有、前端也在调（views/sim/chainImpediment.ts 用契约 schema 解析载荷），befe-seam:check **全绿**——它量的是端点粒度，不看端点下发什么字段。审核方据此下了「接缝没问题」的结论，这正是本门要治的那个错：「我用『端点有人调』当作『这个端点的输出都有人看』的证据，而前者并不度量后者」。",
-      "evidence": "packages/contracts/src/chain-sim.ts:702（求解器侧引用 apps/datacore/src/solvers/impediment-options.ts:40）"
-    },
-    {
-      "id": "S4:SolutionCandidateSchema.fromValue",
-      "carrier": "S4",
-      "owner": "SolutionCandidateSchema",
-      "field": "fromValue",
-      "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `SolutionCandidateSchema.fromValue` 由后端声明下发（声明处 packages/contracts/src/chain-sim.ts:702（求解器侧引用 apps/datacore/src/solvers/impediment-options.ts:40））。判死证据：前端未 import 该契约 schema，且字段名全域零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。 【本门的病历·2026-08-11】WO-SANDBOX-S3 给 chain_impediments 长出方案候选一族（candidates/candidateStats/candidatesTruncated/candidateProbes）时，端点早就有、前端也在调（views/sim/chainImpediment.ts 用契约 schema 解析载荷），befe-seam:check **全绿**——它量的是端点粒度，不看端点下发什么字段。审核方据此下了「接缝没问题」的结论，这正是本门要治的那个错：「我用『端点有人调』当作『这个端点的输出都有人看』的证据，而前者并不度量后者」。",
-      "evidence": "packages/contracts/src/chain-sim.ts:702（求解器侧引用 apps/datacore/src/solvers/impediment-options.ts:40）"
-    },
-    {
-      "id": "S4:SolutionCandidateSchema.rungKind",
-      "carrier": "S4",
-      "owner": "SolutionCandidateSchema",
-      "field": "rungKind",
-      "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `SolutionCandidateSchema.rungKind` 由后端声明下发（声明处 packages/contracts/src/chain-sim.ts:702（求解器侧引用 apps/datacore/src/solvers/impediment-options.ts:40））。判死证据：前端未 import 该契约 schema，且字段名全域零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。 【本门的病历·2026-08-11】WO-SANDBOX-S3 给 chain_impediments 长出方案候选一族（candidates/candidateStats/candidatesTruncated/candidateProbes）时，端点早就有、前端也在调（views/sim/chainImpediment.ts 用契约 schema 解析载荷），befe-seam:check **全绿**——它量的是端点粒度，不看端点下发什么字段。审核方据此下了「接缝没问题」的结论，这正是本门要治的那个错：「我用『端点有人调』当作『这个端点的输出都有人看』的证据，而前者并不度量后者」。",
-      "evidence": "packages/contracts/src/chain-sim.ts:702（求解器侧引用 apps/datacore/src/solvers/impediment-options.ts:40）"
-    },
-    {
-      "id": "S4:SolutionCandidateSchema.rungSource",
-      "carrier": "S4",
-      "owner": "SolutionCandidateSchema",
-      "field": "rungSource",
-      "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `SolutionCandidateSchema.rungSource` 由后端声明下发（声明处 packages/contracts/src/chain-sim.ts:702（求解器侧引用 apps/datacore/src/solvers/impediment-options.ts:40））。判死证据：前端未 import 该契约 schema，且字段名全域零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。 【本门的病历·2026-08-11】WO-SANDBOX-S3 给 chain_impediments 长出方案候选一族（candidates/candidateStats/candidatesTruncated/candidateProbes）时，端点早就有、前端也在调（views/sim/chainImpediment.ts 用契约 schema 解析载荷），befe-seam:check **全绿**——它量的是端点粒度，不看端点下发什么字段。审核方据此下了「接缝没问题」的结论，这正是本门要治的那个错：「我用『端点有人调』当作『这个端点的输出都有人看』的证据，而前者并不度量后者」。",
-      "evidence": "packages/contracts/src/chain-sim.ts:702（求解器侧引用 apps/datacore/src/solvers/impediment-options.ts:40）"
-    },
-    {
-      "id": "S4:SolutionCandidateSchema.toValue",
-      "carrier": "S4",
-      "owner": "SolutionCandidateSchema",
-      "field": "toValue",
-      "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `SolutionCandidateSchema.toValue` 由后端声明下发（声明处 packages/contracts/src/chain-sim.ts:702（求解器侧引用 apps/datacore/src/solvers/impediment-options.ts:40））。判死证据：前端未 import 该契约 schema，且字段名全域零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。 【本门的病历·2026-08-11】WO-SANDBOX-S3 给 chain_impediments 长出方案候选一族（candidates/candidateStats/candidatesTruncated/candidateProbes）时，端点早就有、前端也在调（views/sim/chainImpediment.ts 用契约 schema 解析载荷），befe-seam:check **全绿**——它量的是端点粒度，不看端点下发什么字段。审核方据此下了「接缝没问题」的结论，这正是本门要治的那个错：「我用『端点有人调』当作『这个端点的输出都有人看』的证据，而前者并不度量后者」。",
-      "evidence": "packages/contracts/src/chain-sim.ts:702（求解器侧引用 apps/datacore/src/solvers/impediment-options.ts:40）"
-    },
-    {
-      "id": "S5:chain_impediments.candidateStats.emitted",
-      "carrier": "S5",
-      "owner": "chain_impediments.candidateStats",
-      "field": "emitted",
-      "why": "存量（2026-08-11 建门当日快照）：求解器结果接口的内联行字段（嵌套一层） `chain_impediments.candidateStats.emitted` 由后端声明下发（声明处 apps/datacore/src/solvers/chain-impediment.ts:447（接口 ChainScanResult））。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。 【本门的病历·2026-08-11】WO-SANDBOX-S3 给 chain_impediments 长出方案候选一族（candidates/candidateStats/candidatesTruncated/candidateProbes）时，端点早就有、前端也在调（views/sim/chainImpediment.ts 用契约 schema 解析载荷），befe-seam:check **全绿**——它量的是端点粒度，不看端点下发什么字段。审核方据此下了「接缝没问题」的结论，这正是本门要治的那个错：「我用『端点有人调』当作『这个端点的输出都有人看』的证据，而前者并不度量后者」。",
-      "evidence": "apps/datacore/src/solvers/chain-impediment.ts:447（接口 ChainScanResult）"
-    },
-    {
-      "id": "S5:chain_impediments.candidateStats.noCandidateKind",
-      "carrier": "S5",
-      "owner": "chain_impediments",
-      "field": "noCandidateKind",
-      "why": "存量（2026-08-13 本门自 `integ-ui-w5` 收编进 canonical 当日快照）：本门的 08-11 水位是在 **另一棵树** 上量的；收编到 canonical 时该树已多并三轮（WO-SANDBOX-S3 的 chain_impediments 候选账等），于是长出本条。判死证据见 evidence；归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用。修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
-      "evidence": "apps/datacore/src/solvers/chain-impediment.ts:615（接口 ChainScanResult）· 全前端生产代码零提及"
     },
     {
       "id": "S5:chain_impediments.segmentAttribution.unattributedTotal",
