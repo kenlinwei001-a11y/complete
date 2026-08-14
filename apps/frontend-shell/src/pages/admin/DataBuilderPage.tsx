@@ -623,7 +623,9 @@ function GrowthConsolePanel() {
             也不需要认 PRD 的区号。改成"这些工单从哪来"的人话，能力一点没少。 */}
         <div>
           建域和推演过程中自检出来的功能缺口，会在这里变成一张待办工单；每条历史记录里的「功能缺失自检」说的是同一批东西。
-          <a href="/admin/growth" style={{ marginLeft: 6 }}>→ 看工单全貌</a>
+          {/* 链接文案留的是**目的地页面的真实名字**（那是导航信息，不是开发口径）；
+              被拿掉的是「三页归一（自成长收编）」「厂商中立施工」这类说给写代码的人听的话。 */}
+          <a href="/admin/growth" style={{ marginLeft: 6 }}>→ 自成长聚焦视图（工单全貌）</a>
         </div>
       </details>
       {tickets.length === 0 ? (

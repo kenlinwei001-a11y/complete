@@ -286,7 +286,7 @@ export default function DataBuilderFlow() {
       <StepBox step={STEPS[0]} active={current === "input"} done={reached("gap")}>
         <div style={{ marginTop: 6 }}>
           <textarea
-            data-testid="db-script"
+            data-testid="dbf-script"
             aria-label="故事脚本"
             value={script}
             onChange={(e) => setScript(e.target.value)}
@@ -295,7 +295,7 @@ export default function DataBuilderFlow() {
           />
           <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 8, flexWrap: "wrap" }}>
             <label style={LABEL}>
-              seed <input data-testid="db-seed" type="number" value={seed} onChange={(e) => setSeed(Number(e.target.value))} style={{ width: 80 }} />
+              seed <input data-testid="dbf-seed" type="number" value={seed} onChange={(e) => setSeed(Number(e.target.value))} style={{ width: 80 }} />
             </label>
             <button className="btn primary" data-testid="dbf-start" disabled={readM.isPending || !script.trim()} onClick={() => readM.mutate()}>
               {readM.isPending ? "读取中…" : "开始"}
