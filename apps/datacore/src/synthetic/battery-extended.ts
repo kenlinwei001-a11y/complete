@@ -504,13 +504,27 @@ const CAPACITY_CAUSAL_FACTORS = [
 //
 // `metricKey: "chain_flow"` 是**新域**且**故意不挂 Metric/因果边**：本组只服务「locus → 因子」这一跳，
 // 不进任何 `gap_attribution` 树 ⇒ 既有归因结论逐字节不变（可回退性由此而来，不靠自觉）。
+//
+// ⚠ **本组一律不带 `baseScopeField`（这一条是被门当场报红逼出来的，不是想起来的）**：
+// 第一版给 `cf-base-capacity-contention` 写了 `baseScopeField: "baseId"`，我当时以为
+// 「`metricKey: "chain_flow"` 是新域 ⇒ 不会进任何既有归因树」。**这个判断是错的**：
+// `solvers/service.ts:1570` 的产能域因子选择器是
+//   `allCausalFactors.filter((c) => str(c.baseScopeField) !== "")`
+// —— **它按 `baseScopeField` 挑，根本不看 `metricKey`**。于是这条因子当场混进产能归因树，
+// 而 `Base` 每个基地**只有一个对象** ⇒ `popMax` 归一后紧张度恒 1 ⇒ 因子头独吞整个基地缺口，
+// 被既有接缝门 `factor-scope-singlesource.seam.test.ts:188`（单对象归一退化门）打红，
+// 原文 `基地产能面吃紧引发跨业务线争用 的因子头独吞了整个基地缺口（紧张度恒 1 = 组内归一退化）：
+// expected 9.0076 to be less than 9.0076`。
+// 这正是本组头注里已经写着的那条排除理由（`Material.onHand` 因无 baseId 会退化成「13 张卡同一个数」）
+// 的**镜像形态**：不是没有 baseId，是**每个 base 只有一个**，同样退化。
+// 形态（铁律 0.6 句式）：**「我用『metricKey 是新域』当作『不会进既有归因树』的证据，而前者并不度量后者。」**
+// ⇒ 本组只服务「locus → 因子」这一跳，故不带 `baseScopeField`/`drillPick`/`drillNorm`
+//   （后两者没有 `baseScopeField` 时本就不被任何代码读，留着就是死字段）。
 const CHAIN_LOCUS_CAUSAL_FACTORS = [
   { factorId: "cf-batch-idle", label: "批次呆滞占用在制", drillType: "MaterialBatch", drillId: "*", drillField: "idleDays",
-    kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "chain_flow",
-    drillPick: "max", drillNorm: "popMax" },
+    kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "chain_flow" },
   { factorId: "cf-base-capacity-contention", label: "基地产能面吃紧引发跨业务线争用", drillType: "Base", drillId: "*", drillField: "util",
-    kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "chain_flow",
-    baseScopeField: "baseId", drillPick: "max", drillNorm: "popMax" },
+    kind: "实测", isRoot: true, provenanceSynthetic: false, metricKey: "chain_flow" },
 ];
 
 export const CAUSAL_FACTORS = [
