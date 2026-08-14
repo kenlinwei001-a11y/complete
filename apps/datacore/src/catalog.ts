@@ -193,6 +193,37 @@ export const GENERIC_SOLVER_CATALOG: CatalogItem[] = [
   },
   // WO-SANDBOX-E3 全链阻滞点判定器（卡点/堵点/断点三类机器可判 → ChainImpediment[]）。
   {
+    /**
+     * WO-FLOWTIME · 合并时补登（WO-R9-PROCESS-MERGE·2026-08-14）。
+     *
+     * ⚠ **原单漏了这一条**：`process_flow_time` 进了 `SOLVER_KEYS` 却没进目录，
+     * 而 `catalog.test.ts` 的判据正是「注册表键集 === SOLVER_KEYS（新增求解器忘补目录描述即红）」。
+     * 是顺着 `SOLVER_KEYS.length` 这个金值往下追消费方时抖出来的，不是等全量跑撞出来的
+     * （复验：`grep -n process_flow_time apps/datacore/src/catalog.ts` 合并前 0 命中，
+     *   金丝雀同命令对 `chain_loss_attribution` 命中 1 ⇒ 是真没登记，不是 grep 坏了）。
+     */
+    key: "process_flow_time",
+    name: "流程实例流转时长",
+    description:
+      "业务流程**实例**层的站间流转时长：回答「**哪一条**流程实例被卡住、卡在**谁**那里、卡了**多久**」——即 impact-analysis 自述答不出的那三问。每条实例的进/出站时刻由**既有带时间戳单据反推**而来（origin=DERIVED_FROM_DOCUMENT，逐条带 sourceDocuments 可溯回单据 id + 字段名 + 该字段原值，R13），⛔ **一次都不读 stdDurationDays**（标准工期是计划值，拿它冒充实测卡顿是明令禁止的）。输出站内停留 dwellDays、站间流转 gapDaysToNext（负数不夹到 0——两站重叠是真实存在的）、瓶颈站（平均停留最久）与卡顿站（到 asOf 仍未出站）。「现在」由 asOf 显式指定，缺省取数据里观测到的最晚时刻并回传 asOfSource，不用 wall-clock（R6 同输入两跑字节一致）。反推不出的**诚实缺席**：四种 kind（无承载对象/无反推规则/字段缺值/结构性不适用）各带原因与复验探针，**不是 0 也不是编的数**。与 chain_loss_attribution 分层：那个答「哪一段慢」（链路节拍层·占比），这个答「哪一张单卡着」（实例层·天数 + 责任方）。",
+    argHints: {
+      processKey: "只看某一条流程节点（P##）；不传 = 全部",
+      flowKey: "只看某一条链（flowKey 前缀，如 procure_to_release）；不传 = 全部",
+      limit: "明细截断（缺省 50）——基数字段永远给全量真值，截断只影响明细数组",
+      asOf: "分析截止时刻（ISO 日期）；不传 = 数据里观测到的最晚时刻",
+    },
+    domain: "decision",
+    answersQuestions: [
+      "哪一条流程实例被卡住了",
+      "这一单卡在谁那里",
+      "卡了多久",
+      "流程节点之间流转要多久",
+      "哪个流程节点是瓶颈站",
+      "哪些流程今天反推不出来",
+    ],
+    tags: ["process", "instance", "flow-time", "流程实例", "站间流转", "卡顿", "瓶颈站", "流转时长"],
+  },
+  {
     key: "chain_impediments",
     name: "全链阻滞点扫描",
     description:
