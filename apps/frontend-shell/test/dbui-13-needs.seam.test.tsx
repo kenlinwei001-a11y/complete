@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MODULE_KINDS, MODULE_KIND_REGISTRY } from "@platform/contracts";
+import { BuildNeedsReportSchema, MODULE_KINDS, MODULE_KIND_REGISTRY } from "@platform/contracts";
+import { runDataBuilder } from "@/api/endpoints";
 import { loginAs, renderApp } from "./utils";
 
 /**
@@ -42,6 +43,21 @@ async function reachStepTwo() {
 }
 
 describe("WO-DBUI-13-NEEDS · 第 ② 步逐类清点（接缝：干跑回执 → 屏上 13 类）", () => {
+  /*
+   * §0 是**这条接缝的另一端**：屏上好看不代表接得上真后端。
+   * 前端这半跑在 mock 上，若 mock 的形状与共享契约漂了（后端改字段名、少一个字段），
+   * 上面 5 条照样全绿，而生产环境第 ② 步会空白 —— 那正是本仓「绿测试≠能用·断在接缝」的老坑。
+   * 故这里拿**共享契约**去校验 mock 真正回的那份 JSON：漂了当场红。
+   */
+  it("§0 干跑回执里的逐类清单**合共享契约**（mock 与真后端不许各说各话）", async () => {
+    loginAs("planner");
+    const job = await runDataBuilder({ script: "常州基地产能紧张", seed: 42, dryRun: true, builderKey: "foundry-grade-data-builder" });
+    expect(job.needs, "干跑回执里没有逐类清单 —— 第 ② 步无米下锅").toBeTruthy();
+    const parsed = BuildNeedsReportSchema.parse(job.needs); // 形状不合契约即抛
+    expect(parsed.groups.map((g) => g.kind)).toEqual([...MODULE_KINDS]);
+  });
+
+
   it("§1 13 类逐类上屏，一类不少 —— 且每一类的名字是人话，不是内部键名", async () => {
     const { needs } = await reachStepTwo();
 
