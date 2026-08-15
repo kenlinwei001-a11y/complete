@@ -66,15 +66,21 @@ function StepBox({ step, active, done, children }: { step: (typeof STEPS)[number
 type ReadGroup = { label: string; items: string[] };
 
 /**
- * 第 ② 步「系统读出来什么」的分组。
+ * 第 ② 步「系统**读出来**什么」的分组 —— 注意它与下面「还**缺**什么」是两个问题。
+ * 本函数只回答前者，用的是干跑回执里那份没有类型的 5 键散记（`BuildJob.preview`）。
  *
- * ⚠ **诚实边界（两个来源给的东西不一样多，不许混着说）**：
- *   · **建之前**只能拿到 dry-run 回执 `BuildJob.preview` —— 后端只往里塞了 **5 类**
- *     （数据源 / 对象类型 / 规则 / 求解器 / 知识库，见 `service.ts` 的 `job.preview = {...}`）。
- *     意图 / 计划 / 工作流 / 技能 / Agent / MCP / 场景 这 7 类**建之前拿不到** ——
- *     它们在 `BuildPlan` 里，而 `BuildPlan` 今天**没有按 id 取的只读端点**（全仓 grep 无
- *     `/build-plans` 路由）。所以这里不假装有 13 类。
- *   · **建之后** `run.buildPlan` 落库，13 类齐全 —— 那时才切到全量。
+ * ⚠ **这里原先写着一段错的诊断，删掉它比留着更重要，故记账在此**：
+ *   原文说「另外 7 类建之前拿不到 —— `BuildPlan` 今天没有按 id 取的只读端点
+ *   （全仓 grep 无 `/build-plans` 路由）」。**两句都不成立**（2026-08-15 实测）：
+ *   端点叫 `/a/v1/data-builders/plans/:id`，干跑之后按 `job.planId` 去取立刻 **200**、
+ *   **13 个需求数组全在**（12 个非空）。拿一个**猜出来的路径**去 grep，
+ *   报的 0 命中度量的是「我猜错了名字」，不是「它不存在」——
+ *   而这条错诊断当时被当成了排期依据。
+ *   复验：`pnpm --filter datacore exec vitest run test/databuilder-needs.seam.test.ts` 的 §0
+ *   （那条用例就是这句话的可执行版本，路由改名/端点没了当场红）。
+ *
+ * 真实的诚实边界见下面逐类清单那一段：拿不到的不是「7 类需求」，
+ * 而是那 7 类**在另一个系统里到底有没有**。需求本身一直都在。
  */
 function readGroupsFromPreview(preview: BuildJob["preview"]): ReadGroup[] {
   if (!preview) return [];
@@ -101,7 +107,8 @@ function readGroupsFromPreview(preview: BuildJob["preview"]): ReadGroup[] {
  * 上一版这里写着「`BuildPlan` 今天没有按 id 取的只读端点（全仓 grep 无 `/build-plans` 路由）」。
  * **这个结论是错的**：路由叫 `/a/v1/data-builders/plans/:id`，不叫 `/build-plans` ——
  * 拿一个猜的路径去 grep，报的 0 命中度量的是「我猜错了名字」，不是「它不存在」。
- * 实测：干跑之后立刻按 `job.planId` 去取，**HTTP 200，13 个需求数组全在**（12 个非空）。
+ * 2026-08-15 实测：干跑之后立刻按 `job.planId` 去取，**HTTP 200，13 个需求数组全在**（12 个非空）。
+ * 复验：`pnpm --filter datacore exec vitest run test/databuilder-needs.seam.test.ts` 的 §0。
  *
  * 真正的缺口是后端**干跑那条路上没去比对现状**（直接跳过了比差那一步），
  * 回执只塞了 5 个键。现在干跑也真比一遍，回执带上逐类清单，这里如实渲染。

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MODULE_KINDS, type BuildPlan } from "@platform/contracts";
+import { MODULE_KINDS, MODULE_KIND_REGISTRY, type BuildPlan } from "@platform/contracts";
 import { MODULE_PROVISIONERS, NEED_ARRAY_TO_KIND, analyzeGap, summarizeGap, type ProvisionerDeps } from "../src/databuilder/provisioners.js";
 import { assemblePlanBody, type LlmComprehendOutput } from "../src/databuilder/comprehend.js";
 import type { AuthCtx } from "../src/domain.js";
@@ -31,6 +31,21 @@ describe("ModuleProvisioner 注册表 · 无遗漏保证（倒序管线：新模
   it("NEED_ARRAY_TO_KIND 的目标 kind 全在 MODULE_KINDS 内（映射不指向幽灵 kind）", () => {
     for (const kind of Object.values(NEED_ARRAY_TO_KIND)) expect(MODULE_KINDS).toContain(kind);
     expect(new Set(Object.values(NEED_ARRAY_TO_KIND)).size).toBe(MODULE_KINDS.length); // 13 个字段一一映射 13 个 kind
+  });
+
+  /*
+   * WO-DBUI-13-NEEDS：新增模块除了要注册 provisioner，还得**有个能上屏的名字**。
+   * 漏了这一步不会报错，只会在用户屏上露出内部键名（`ontology_type` 这种下划线键）——
+   * 那正是 `check-dev-jargon-onscreen` 守的那条线，但那道门只扫字面量、看不见这里的映射缺失。
+   */
+  it("MODULE_KIND_REGISTRY 覆盖全部 MODULE_KINDS 且一一对应（新增模块漏配人话名字即红）", () => {
+    expect(MODULE_KIND_REGISTRY.map((m) => m.kind).sort()).toEqual([...MODULE_KINDS].sort());
+    for (const m of MODULE_KIND_REGISTRY) {
+      expect(m.label, `${m.kind} 的名字是空的`).toBeTruthy();
+      // 名字必须是人话，不许直接把内部键名端上去
+      expect(m.label, `${m.kind} 直接把内部键名当名字用了`).not.toBe(m.kind);
+      expect(m.deepLink.startsWith("/"), `${m.kind} 的去处不是一个页面路径`).toBe(true);
+    }
   });
 });
 

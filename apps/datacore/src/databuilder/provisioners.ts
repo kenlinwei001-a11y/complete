@@ -170,7 +170,8 @@ export function summarizeGap(g: GapAnalysis): string {
 //
 // ── 这一段修的是什么病（先说清楚，免得下一个人又诊错）───────────────────────────
 // 病**不是**「BuildPlan 没有按 id 读的端点」—— `GET /a/v1/data-builders/plans/:id`
-// （`app.ts` 的 data-builders 路由段）**早就有**，实测干跑后立刻 200 且 13 个 need 数组全在。
+// （`app.ts` 的 data-builders 路由段）**早就有**：2026-08-15 实测，干跑后立刻 200 且 13 个
+// need 数组全在。复验 `test/databuilder-needs.seam.test.ts` §0（这句话的可执行版本）。
 // 真病是**「接了线接错地方」**：`analyzeGap` 有两个生产调用方（工作流的 gap 步 / 入库前复验），
 // 唯独**干跑这条路上没挂** —— 干跑直接 `setPhase("gap","SKIPPED")`，
 // 回执只塞了 5 个键的 `job.preview`。计划就在同一个函数作用域里躺着，只是没人去比对现状。
