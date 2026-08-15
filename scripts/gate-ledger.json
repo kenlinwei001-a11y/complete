@@ -1462,6 +1462,25 @@
       },
       "notes": "MANUAL（有 pnpm 别名，未进 gates 串）：守「凡会写 *-baseline.json 的 scripts/*.mjs，每一处写入都必须经由 scripts/lib/baseline-doc.mjs 的 buildBaselineDoc()，且开写前跑过 baselineDocCanary()」。病根是 --update 静默吞掉人手挂账（check-backend-frontend-seam.mjs 曾吞掉 978 字两笔挂账，0e19f2c4 修好）——共享写入器只是一份实现，没有任何东西拦住新门再手搓一份，绕开一次就没人会发现。识别「会写基线」要两路证据同时成立（写入目标解析到 *-baseline.json + 存在 --update/--seed/--write 入口），单路必然误判：只看路 A 会把读基线比对的门算成写入方，只看路 B 会把任何带 --write 的脚本算进来。全程走 AST，注释与字符串里的 writeFileSync 不算数。同名局部 buildBaselineDoc 判为 SHADOWED（第二份实现：共享写入器补新判据时它不会跟着变）。现算 19 个基线写入方 · **12 走共享写入器 · 7 条存量逐条挂账带 why**（check-backend-frontend-seam / check-cli-parity / check-coverage-blind / check-debattery / check-dev-jargon-onscreen / check-ontology-anchors / check-ontology-descriptions）。**✅ 2026-08-14 WO-RATCHET-NEWFILE-BLINDSPOT：check-ui-first-layer.mjs 已收口并从豁免摘掉（8→7）** —— 该单解禁了那个文件。原文此处写「它是禁改文件，故显式挂豁免而不是放宽判据」，**这句已过期**，留着会被直接引用；挂豁免不放宽判据这条原则本身仍成立（放宽是隐形的，豁免是看得见的）。摘掉的动作**不是人想起来的**：本门的反向棘轮「已经走共享写入器却仍挂名 ⇒ RC=1」当场点名，这正是 M5 变异当初预演的那一条。⚠ 收口时实测到一条判据②的真实形态（值得写进来免得后人踩）：把 buildBaselineDoc(…) 抽成 `const doc = …` 再 writeFileSync(BASELINE, JSON.stringify(doc,…))，本门判 **HAND_ROLLED** —— 它认的是「**写入点实参里**调了共享写入器」，**必须内联在 writeFileSync 的实参里**。诚实边界：只认命名形如 *-baseline.json 的写入目标（gate-ledger.json / feature-rollout.json 这类账本在射程外）· 只认结构不认语义（把人手 note 塞进 computed 照样判合规，那归 baselineDocCanary 的四向判据）· 目标路径运行期拼出来的解析不到 ⇒ 落射程外而非判绿。disposition=WIRE：判据纯静态、零依赖、单次 <1s，接进 gates 链无成本；本单范围边界不含扩 gates 串，故只加 pnpm 别名（binding=MANUAL），接链由审核方裁。"
     },
+    "check-unit-value-provenance.mjs": {
+      "alias": "unit-value-provenance:check",
+      "binding": "MANUAL",
+      "disposition": "WIRE",
+      "guardedPaths": [
+        "packages/contracts/src",
+        "apps/frontend-shell/src/views/RiskBoardView.tsx",
+        "apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx",
+        "apps/frontend-shell/src/views/sim/ProjectSimView.tsx"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "WO-SNAPSHOT-UNIT-LIE 四向变异，全部现跑取证（2026-08-15）",
+        "note": "M1 病灶原样复原（RiskBoardView 的 snapshot 改回 `capWanP50: card.peak, capWanP90: card.peak`）⇒ RC=1，逐字点名「RiskBoardView.tsx 量纲无凭 0 → 2：L1155 `capWanP50: card.peak`（该字段 @unit 万套/窗口）」—— 这是本门存在的理由，抓不到就是白建；M1' 撤回 ⇒ RC=0。M2 反向棘轮松弛：把 SopBalanceView.tsx 的基线从 3 抬到 5（造一个免检名额）⇒ RC=1「棘轮松弛：基线 5 > 实测 3 ⇒ 余 2 格免检名额」，**不是** RC=0 打印「量纲无凭未新增」。M3 背书写错量纲：把 tightnessPeak 那行的 `@unit 张力指数(0-100·无量纲)` 改成 `@unit 万套/窗口` ⇒ RC=1 且**不吃棘轮**（背错比不背危险：人看见有背书就默认核过了）。M4 门自变异令自己失明：把注释块起始判据 `^\\s*\\/\\*` 放宽回 `\\/\\*`（初版真实病因）⇒ 金丝雀 4 条全灭、注册表里 capWanP50 直接消失，门报 **RC=2「工具坏了」**，**不是** RC=0 报「全仓量纲干净」—— 证明金丝雀与主判据共用同一份 analyze()/buildUnitRegistry()，不是另抄的正则。另：基线缺失 ⇒ RC=2（不是 RC=1）；顶层兜底走 toolBroken() 归 RC=2。"
+      },
+      "notes": "守「带 @unit 的契约字段，**塞进去的值**必须量纲自证」—— 补 `check-quantile-field-naming`（名级）够不到的那一半。病根 G-LEVER-SNAPSHOT-UNIT-LIE：RiskBoardView 把张力峰值（0–100 指数）塞进 snapshot.capWanP50（@unit 万套/窗口），该快照整份进 plan_change 的 ActionDraft payload、ActionsPage 原样打给审批人看 ⇒ 审批留痕里记着一个假的产能数。名级门三条判据全过（名字量纲唯一）· UI 门看不见（不上屏）· TS 看不见（两边都是 number）。判据不判「量纲对不对」（一般情形不可判定），只判「有没有凭据」，四条：(a) 右值末端标识符 == 字段名；(b) 右值末端是同 @unit 的另一个字段；(c) 字面量 0；(d) 同行 `@unit <与契约逐字相同>` 人手背书。其余判 UNPROVEN。注册表**现算自契约 @unit、不硬编码清单**，但只收「名字量纲唯一」的字段（同名有的带 @unit 有的不带 = 泛名，剔除）。**诚实边界（实测数字，不是估计）**：不加泛名限制 ⇒ 注册表 27 项 / 全仓 259 条红，绝大多数是 `target: \"Model\"`、`target: AuthCtx = body.user` 这类毫不相干的行 —— 一道喊 259 次狼的门就是装饰品；加上之后 ⇒ 注册表 14 项 / 量纲赋值点 54 处 / UNPROVEN 42 条落棘轮。**故泛名字段（qty/target/demand/rolling/kitGap/baselineGap）的值级量纲本门管不了**，要管得先让那些名字自带口径（那是名级门的活）。第二条边界：只认**单行**赋值文本 —— 跨行对象字面量、以及经函数/prop 多层传递后才落地的值，本门看不见。本病能被静态抓到是因为它恰好写在一行里；跨层传递那一半靠同批加的**运行时量纲断言** `assertLeverAdoptSnapshot()`（写 payload 那一刻 zod strict parse）——**门与运行时断言是两层，缺任一半都不够**，别把本门当成全部。棘轮带反向遍历基线的松弛检测（基线高于实测 = 免检名额 ⇒ 判红）；基线经 scripts/lib/baseline-doc.mjs 的 buildBaselineDoc() **内联**写入，开跑前先过 baselineDocCanary()。disposition=WIRE：判据纯静态、零依赖、单次 <1s，接进 gates 链无成本；本单范围边界不含扩 gates 串，故只加 pnpm 别名（binding=MANUAL），接链由审核方裁。"
+    },
     "check-quantile-field-naming.mjs": {
       "alias": "quantile-field-naming:check",
       "binding": "GATES_CHAIN",

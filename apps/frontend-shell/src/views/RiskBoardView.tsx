@@ -1150,7 +1150,9 @@ function RiskDetailPanel({
           // 改判别式联合的 `risk_tightness` 分支：张力峰值**用自己的名字** `tightnessPeak` 记下来。
           // ⚠️ 刻意**不补** `capWanP*`：本屏这一刻手上只有张力曲线，真产能数拿不到 ——
           //    宁可少记，不许拿手边这个 0–100 的数去顶替（编数比不记危险）。
-          snapshot={{ kind: "risk_tightness", mode: "capacity", tightnessPeak: card.peak, mainBn: card.factor }}
+          // 背书（`check-unit-value-provenance` 判据 d）：`card.peak` 由 `risk_timeline` 的
+          // `tensionSeries` 取峰，恒在 0–100（求解器封顶 98），确为张力指数 —— 亲手核过，故背书。
+          snapshot={{ kind: "risk_tightness", mode: "capacity", tightnessPeak: card.peak /* @unit 张力指数(0-100·无量纲) */, mainBn: card.factor }}
           // `plan_change` 的后端 paramsSchema `required:["versionId","reason"]` —— 不给这两位，
           // 建草稿即 400、卡在 DRAFT 进不了审批链（真后端 inject 实测）。versionId 与同页
           // `CapacityScenarioPanel.adoptScenario` 的 `risk:<baseId>:<...>` 同构。

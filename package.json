@@ -72,7 +72,8 @@
     "lever-prop-resolvable:check": "node scripts/check-lever-prop-resolvable.mjs",
     "wo-anchors:check": "node scripts/check-wo-anchors.mjs",
     "baseline-writer-honesty:check": "node scripts/check-baseline-writer-honesty.mjs",
-    "quantile-field-naming:check": "node scripts/check-quantile-field-naming.mjs"
+    "quantile-field-naming:check": "node scripts/check-quantile-field-naming.mjs",
+    "unit-value-provenance:check": "node scripts/check-unit-value-provenance.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
