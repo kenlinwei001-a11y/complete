@@ -6,7 +6,8 @@ import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
  * ── 病灶（本模块存在的唯一理由）────────────────────────────────────────────
  * 修此单之前，mock 把**年**口径的数塞进了**月**口径的字段：`SOP_PER_BASE[].monthly`
  * 字段名叫 monthly、值却是 88.0/52.3/…（Σ367.9），而真后端 `sop.ts step3` 的同名
- * `perBase[].monthly` 实测 Σ 只有 22.6839。同一张 S&OP 平衡台，mock 与真后端读数差 13–16 倍。
+ * `perBase[].monthly`（2026-08-15 实测）Σ 只有 22.6839 —— 同一张 S&OP 平衡台，
+ * mock 与真后端读数差 13–16 倍。复验：`POST /a/v1/sop/versions/:id/advance {step:3}`。
  * 后果不是「演示数据不准」而是**两边给出相反的结论**：同一份基线喂进 `plan_audit`，
  * mock 判「可定稿但有重要风险（58/100）」，真后端判「站不住（43/100）」——
  * mock 模式下看盘的人会以为计划可以定稿，而真系统说它站不住。这正是 KILL-MOCK-RED 要堵的。
@@ -115,7 +116,8 @@ export const yearToMonth = (yearValue: number): number => r(yearValue * MONTH_SH
 const NAME_OF_BASE: Record<string, string> = Object.fromEntries(BASE_REGISTRY.map((b) => [b.baseId, b.name]));
 
 /**
- * 真后端 `sop.ts step3` 的 `perBase` 实测逐基地值（13 基地全量·万套/**月**·certFactor 同实测）。
+ * 真后端 `sop.ts step3` 的 `perBase` 逐基地值（13 基地全量·万套/**月**·certFactor 同源）。
+ * 2026-08-15 实测；复验：`POST /a/v1/sop/versions/:id/advance {step:3}`（seed=42·scale S）。
  * 旧 mock 只有 5 行且是年量级聚合（88.0/52.3/46.0/38.3/143.3），
  * 现改为与真后端**同形同值**：Σ = 22.6839 = 真后端 `s3.sup` 字节一致。
  * `monthly` 之所以留名不改 —— 真后端契约里这个字段就叫 monthly 且就是月量级；
@@ -157,7 +159,8 @@ export const SOP_WIZARD_SEGMENTS = SOP_SEG_MONTH_TARGET.map((s) => {
 
 /**
  * ── ⚠️ 钱轴是**年**，不跟着量轴缩 ──────────────────────────────────────────
- * 实测真后端 `finance_pnl`：收入 budget **686** / rolling **700**、销售成本 569.5 / 581.1、
+ * 2026-08-15 实测真后端 `finance_pnl`（复验 `POST /b/v1/solvers/finance_pnl/run`）：
+ * 收入 budget **686** / rolling **700**、销售成本 569.5 / 581.1、
  * 毛利 116.5 / **118.9**、毛利率 17% → 17%。这是**年**口径（亿元/年），rolling 700 就是需求侧营收锚本体。
  * 而 S&OP ②③ 的量是**月**口径（万套/月）。两轴不同期间是真后端自己的设计，不是 bug ——
  * 所以本单**只**把量轴从年改月，钱轴（s4 的 revSum/gmSum/gmBudget、cashCushion）一个字节不动。
@@ -180,6 +183,7 @@ export const SOP_MARGIN_ROLLING_YI = FINANCE_PNL_YEAR.pnl[2].rolling;
  * 收入预算（亿元/年）= `finance_pnl` 收入行 budget = **686**。
  * 旧 mock 写 700（= rolling 自己），于是达成率恒 100%；真后端 `cockpit_kpi.revAttainPct` 实测 **102**
  * （= 700 ÷ 686，目录条目原文「收入达成率(收入行 rolling÷budget)」）。改到 686 才与真后端对上。
+ * 2026-08-15 实测；复验：`POST /a/v1/solvers/cockpit_kpi/invoke`。
  */
 export const SOP_REVENUE_BUDGET_YI = FINANCE_PNL_YEAR.pnl[0].budget;
 

@@ -715,6 +715,8 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
       // 所以演示行为不变、只有量级回到月 —— 这正是「改值不改故事」与「只改标注不改值」的分界。
       // ⚠️ 钱轴是**年**（亿元/年），不跟着量轴缩：真后端 `finance_pnl` 收入 budget 686 / rolling 700，
       // `cockpit_kpi.revAttainPct` 实测 102 = 700÷686。旧 mock 把预算写成 700（= rolling 自己）⇒ 达成率恒 100%。
+      // 2026-08-15 实测；复验：`POST /b/v1/solvers/finance_pnl/run` 与 `/a/v1/solvers/cockpit_kpi/invoke`
+      //（真后端同名端点；判据见 test/mock-scale-truth.seam.test.ts 的 L2 钱轴一节）。
       revBudget: SOP_REVENUE_BUDGET_YI,
       segments: SOP_WIZARD_SEGMENTS,
       defaultResolutions: SOP_DEFAULT_RESOLUTIONS,

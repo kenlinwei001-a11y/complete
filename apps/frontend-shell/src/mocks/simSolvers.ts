@@ -694,7 +694,7 @@ export function mockBottleneckMatrix(args: { baseIds?: string[] }): Record<strin
  * WO-MOCK-SCALE-TRUTH：`dem`/`seg_*`/`sup` 是**月**口径（万套/月）——真后端 `sop.ts currentPlanVersion`
  * 从 FINAL 版本的 s2/s3（月度台账）解析，缺省路则取 `PlanTarget(level=month) × baselineShare`。
  * 旧值 375.0/201.7/139.2/34.1/374.2 是**年**口径，与真后端实测差 7.6–15.6 倍；
- * 现值与 `GET /a/v1/plan-versions/current` 实测回包字节一致：
+ * 2026-08-15 实测，现值与 `GET /a/v1/plan-versions/current` 回包字节一致：
  * `{dem:27.92, seg_pas:14.52, seg_ess:8.93, seg_com:4.47, sup:25.8523, ltaCov:92, kitGap:654, gmTarget:16, cashCushion:58, capex:0}`。
  * 注：`ltaCov/kitGap/gmTarget/cashCushion/capex` 本来就与真后端同值（它们是比率/吨/亿元，不随量级缩）。
  */
@@ -728,7 +728,8 @@ const SOP_P = { gapRed: 2, dvThreshold: 0.1, cashFloor: 50, gmTolerance: 0.5 };
 /**
  * ③ 供应评审产能线（万套/**月**·13 基地全量）。
  * 旧值是 5 行年量级聚合（88.0/52.3/46.0/38.3/143.3 → Σ367.9），字段名叫 `monthly` 却是年数 ——
- * 本单按真后端 `sop.ts step3` 实测逐基地重写，形状与值都对齐（Σ = 22.6839 = 真后端 `s3.sup`）。
+ * 本单按真后端 `sop.ts step3` 逐基地重写，形状与值都对齐（Σ = 22.6839 = 真后端 `s3.sup`）。
+ * 2026-08-15 实测；复验：`POST /a/v1/sop/versions/:id/advance {step:3}`（种子 seed=42·scale S）。
  * `certFactor` 也照实测改正：真后端 `合肥` 已全认证（1）、`江门` 在爬坡（0.6），旧 mock 把两者写反了。
  */
 const SOP_PER_BASE = SOP_PER_BASE_MONTHLY;
@@ -876,7 +877,8 @@ export function mockSopAdvance(v: SopVersionVM, step: number, payload: Record<st
 /**
  * 种子：上月（2026-06）已定稿版本 —— 演示 C22 锁定与 409。
  *
- * WO-MOCK-SCALE-TRUTH：整份 s2/s3/s4/s5 从年量级改到**月**量级，逐格对齐真后端实跑：
+ * WO-MOCK-SCALE-TRUTH：整份 s2/s3/s4/s5 从年量级改到**月**量级，逐格对齐真后端实跑
+ *（2026-08-15 实测；复验：`POST /a/v1/sop/versions/:id/advance {step:2|3}`）：
  *  · s2 target/rolling = `PlanTarget(month) × baselineShare` = 14.52 / 8.93 / 4.47（Σ27.92）
  *  · s2 P90 = `round(rolling × 0.936, 2)`（与真后端缺省派生一字不差）
  *  · s2 lastActual = 年实绩按计划月度权重折算（唯一折法，见 sopScale.yearToMonth）
@@ -901,8 +903,9 @@ export function seedSopVersions(): SopVersionVM[] {
   const totalP90 = round(rows.reduce((a, r) => a + r.rollingWanPerMonthP90, 0), 2);
   const sup = SOP_SUPPLY_BASELINE;
   const gap = round(totalTarget - sup, 4);
-  // ④ 财务整合：**钱轴是年口径，不跟着量轴缩**（真后端 `finance_pnl` 实测 收入 rolling 700 / 毛利 118.9 /
-  // 毛利率 17%，亿元/年）。旧值本来就与真后端一致 —— 这一步不属于本次量级病灶，原样保留、只把来源指向 sopScale。
+  // ④ 财务整合：**钱轴是年口径，不跟着量轴缩**（真后端 `finance_pnl` 收入 rolling 700 / 毛利 118.9 /
+  // 毛利率 17%，亿元/年；2026-08-15 实测，复验 `POST /b/v1/solvers/finance_pnl/run`）。
+  // 旧值本来就与真后端一致 —— 这一步不属于本次量级病灶，原样保留、只把来源指向 sopScale。
   const revSum = SOP_REVENUE_ROLLING_YI;
   const gmSum = SOP_MARGIN_ROLLING_YI;
   const gmBudget = 17.0;
