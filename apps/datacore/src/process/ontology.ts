@@ -42,7 +42,21 @@ const p = (propKey: string, dataType: PropertyDef["dataType"], description: stri
   description,
 });
 
-/** 流程实例层的两个对象类型（描述齐全 —— 见文件头最后一段）。 */
+/**
+ * 流程层的对象类型（描述齐全 —— 见文件头最后一段）。
+ *
+ * ⚠ **2026-08-15 回写（WO-STEP-TEMPLATE-LAYER）：本函数从 2 个类型变成 3 个。**
+ * 新增 `ProcessStepTemplate` —— 模板层与运行时层之间此前缺的那一跳
+ * （`ProcessDefinition` 说"有哪些流程"，`ProcessTask` 说"这一单走到第几步"，
+ *  中间"一条流程标准分几步"**没有任何承载物**，于是 `POST /a/v1/process-instances`
+ *  的 `tasks` 无源可填）。它与另两个同属**平台流程层制品**（换行业不变），
+ * 故与它们同进同出，理由与文件头第一段逐字相同 —— 不进 `batteryObjectTypes()`。
+ *
+ * 🔴 **金值影响：`demo-chain-provenance` / `a3-refbase` 锁的 94/95 一个都不动。**
+ * 那两个金值度量的是**行业模板**类型数（`batteryObjectTypes()`），本函数一直在它之外；
+ * 判据见文件头第二段。真正会变的是**本函数自己的计数**，由
+ * `process-flow-time.seam.test.ts` 与 `process-step-template.seam.test.ts` 断言。
+ */
 export function processLayerObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status">[] {
   return [
     {
@@ -87,6 +101,25 @@ export function processLayerObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId"
       derivedProperties: [],
       sourceBindings: [],
     },
+    {
+      key: "ProcessStepTemplate",
+      displayName: "业务流程步骤模板",
+      domain: "plan",
+      description:
+        "一条业务流程的**标准步骤**（这类流程通常分几步、每步谁做、通常卡在哪类等待、计划多久）。它是建流程实例时步骤清单的**唯一合法来源**——此前 ProcessDefinition 只说「有哪些流程」，不说「一条流程分几步」，于是建实例的步骤无处可取。⚠ 三条口径别读错：① 这是**模板/计划**层，stdDurationDays 是计划工期、waitKind 是「这类流程通常卡在哪」，都**不是实测**（实测在 ProcessTask 的 startedAt/endedAt/durationMs 与 status）；② 本类型**不含前置条件 gate**——gate 里装的是具体审批单 id / 数据 key / 外部回执号，那是「这一单」的现场事实，模板给不出；③ 65 条流程里**只有一部分**有步骤模板，没有的流程是真的没有（承载单据上没有可锚的阶段痕迹），不是数据没录全。",
+      properties: [
+        p("processKey", "string", "所属流程定义 key（P01…P65），指向 ProcessDefinition。同一流程的步骤共享它。"),
+        p("seq", "number", "步序，从 1 起连续无缺号。确定性展示序，也是建实例时任务的先后序。"),
+        p("name", "string", "步名（行业模板内容，随租户/行业变）。"),
+        p("ownerFunctionKey", "string", "本步的责任职能 key，取自平台职能登记册 PROCESS_OWNER_FUNCTIONS。回答「这一步归谁」。"),
+        p("stdDurationDays", "number", "本步的**计划**工期（天，半天粒度）。各步之和恒等于所属 ProcessDefinition.stdDurationDays——步骤模板不引入新的总量真值。⛔ 非实测。"),
+        p("waitKind", "enum", "本步通常卡在哪一类等待，**模板层四值** PROCESS_WAIT_KINDS：WAITING_USER/WAITING_DATA/WAITING_EXTERNAL_SYSTEM/WAITING_SCHEDULE。运行时那五值（多一个 WAITING_APPROVAL）在 ProcessTask.status 上，不在这里。"),
+        p("carrierAnchor", "json", "本步在承载对象上的**痕迹锚点** {kind: TIMESTAMP_FIELD|STATUS_VALUE, propKey, value}。这是「这一步不是编出来的」的证据：TIMESTAMP_FIELD 指向承载类型上真实存在的时刻属性，STATUS_VALUE 还要求该阶段值在真实对象里出现过。无锚的步不许存在。"),
+        p("basis", "string", "依据出处：这一步是从哪读来的（文件 + 那段话在说什么）。把取证留在原地，免得后人照缺省理由改错方向。"),
+      ],
+      derivedProperties: [],
+      sourceBindings: [],
+    },
   ];
 }
 
@@ -97,11 +130,13 @@ export function processLayerObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId"
  *  · `process_instance_of`     N:1 —— 多条实例指向同一条流程定义。
  *  · `process_instance_carries` N:1 —— 一条实例指向一个承载对象；同一张单据可能被多个流程节点
  *    经过（如同一张采购单同时是 P33 与 P34 链上的一环），故是 N:1 而非 1:1。
+ *  · `process_step_of`          N:1 —— 一条流程有多步，每步指回它所属的定义（WO-STEP-TEMPLATE-LAYER）。
  */
 export function processLayerLinkTypes(rules: readonly ProcessFlowRule[] = BATTERY_PROCESS_FLOW_RULES): Omit<LinkTypeDef, "id" | "tenantId" | "version">[] {
   const carrierTypes = [...new Set(rules.flatMap((r) => r.stations.map((s) => s.typeKey)))].sort((a, b) => a.localeCompare(b));
   return [
     { key: "process_instance_of", fromTypeKey: "ProcessInstance", toTypeKey: "ProcessDefinition", cardinality: "N:1" },
+    { key: "process_step_of", fromTypeKey: "ProcessStepTemplate", toTypeKey: "ProcessDefinition", cardinality: "N:1" },
     ...carrierTypes.map((t) => ({
       key: `process_instance_carries_${t}`,
       fromTypeKey: "ProcessInstance",
