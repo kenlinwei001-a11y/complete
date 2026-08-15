@@ -9,6 +9,19 @@ import { ruleParamRef } from "@platform/contracts";
 import { CAPACITY_FACTOR_BINDINGS, solutionCandidateId } from "@platform/contracts";
 import zh from "@/locales/zh";
 import { ORDERS } from "./fixtures";
+// WO-MOCK-SCALE-TRUTH：S&OP 量级/口径单一来源（年口径 ⊥ 月口径两套分母，值取自真后端实跑）。
+import {
+  DEMAND_YEAR,
+  DEMAND_YEAR_TOTAL_WAN,
+  PLAN_TARGET_MONTH_WAN,
+  SOP_DEFAULT_RESOLUTIONS,
+  SOP_DEMAND_UNIT,
+  SOP_MONTH,
+  SOP_PER_BASE_MONTHLY,
+  SOP_SEG_MONTH_TARGET,
+  sopP90,
+  yearToMonth,
+} from "./sopScale";
 
 /**
  * 推演类求解器的 Mock 实现 —— 逐行移植 DataCore 真实算法
@@ -36,7 +49,10 @@ const AUDIT_T = {
   kitFixTons: 200,
   cashHard: 50,
   cashSoft: 55,
-  essShareBaseline: 139.2 / 375.0, // PRD-IND-audit §4.5-A2 取值对齐（≈0.3712，随 demand segment 缩放同步更新）
+  // PRD-IND-audit §4.5-A2 取值对齐（≈0.3712）。**这是年口径结构比**（储能年 P50 ÷ 三段年 P50 合计），
+  // 与月度台账的细分占比（baselineShare 0.32）比较是有意为之 —— 两边都是无量纲占比，真后端实测同值
+  // （plan_audit R01 回包原文「偏离基线 0.3712121212121212 达 0.0514」）。改用月值就把两个分母混了。
+  essShareBaseline: (DEMAND_YEAR.find((d) => d.key === "ess")?.p50 ?? 0) / DEMAND_YEAR_TOTAL_WAN,
   essShareTol: 0.05,
   capexSoft: 10,
   segMargins: Object.fromEntries(SEG_REGISTRY.map((s) => [s.key, s.marginPct])) as { pas: number; ess: number; com: number }, // DF.3 单一来源
@@ -672,12 +688,33 @@ export function mockBottleneckMatrix(args: { baseIds?: string[] }): Record<strin
 // 增量 §7.10：GET /a/v1/plan-versions/current（与 V7 定稿基线同值 —— 原型 AUDIT_PRESETS.V7）
 // ---------------------------------------------------------------------------
 
+/**
+ * WO-MOCK-SCALE-TRUTH：`dem`/`seg_*`/`sup` 是**月**口径（万套/月）——真后端 `sop.ts currentPlanVersion`
+ * 从 FINAL 版本的 s2/s3（月度台账）解析，缺省路则取 `PlanTarget(level=month) × baselineShare`。
+ * 旧值 375.0/201.7/139.2/34.1/374.2 是**年**口径，与真后端实测差 7.6–15.6 倍；
+ * 现值与 `GET /a/v1/plan-versions/current` 实测回包字节一致：
+ * `{dem:27.92, seg_pas:14.52, seg_ess:8.93, seg_com:4.47, sup:25.8523, ltaCov:92, kitGap:654, gmTarget:16, cashCushion:58, capex:0}`。
+ * 注：`ltaCov/kitGap/gmTarget/cashCushion/capex` 本来就与真后端同值（它们是比率/吨/亿元，不随量级缩）。
+ */
 export const PLAN_VERSION_CURRENT = {
   versionId: "sop-202606-final",
-  versionLabel: "2026-06 V1",
-  month: "2026-06",
+  versionLabel: `${SOP_MONTH} V1`,
+  month: SOP_MONTH,
   status: "FINAL",
-  input: { dem: 375.0, seg_pas: 201.7, seg_ess: 139.2, seg_com: 34.1, sup: 374.2, ltaCov: 92, kitGap: 654, gmTarget: 16.0, cashCushion: 58, capex: 0 },
+  input: {
+    dem: PLAN_TARGET_MONTH_WAN,
+    seg_pas: SOP_SEG_MONTH_TARGET.find((s) => s.key === "pas")!.target,
+    seg_ess: SOP_SEG_MONTH_TARGET.find((s) => s.key === "ess")!.target,
+    seg_com: SOP_SEG_MONTH_TARGET.find((s) => s.key === "com")!.target,
+    // `sup` 走真后端 currentPlanVersion 的**不含 certFactor** 口径（25.8523），
+    // 与 step3 的含 certFactor 口径（22.6839）是两个量，别互相顶替。
+    sup: 25.8523,
+    ltaCov: 92,
+    kitGap: 654,
+    gmTarget: 16.0,
+    cashCushion: 58,
+    capex: 0,
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -685,21 +722,20 @@ export const PLAN_VERSION_CURRENT = {
 // ---------------------------------------------------------------------------
 
 const SOP_P = { gapRed: 2, dvThreshold: 0.1, cashFloor: 50, gmTolerance: 0.5 };
-/** ② 三线对照量纲（与真后端 `SopService` 的 `SOP_DEMAND_UNIT` 同值·形状对齐）。 */
-const SOP_DEMAND_UNIT = "万套/月" as const;
 
-/** ③ 供应评审产能线（决议前基线 367.9 万套，对齐 700 亿规模需求） */
-const SOP_PER_BASE = [
-  { baseId: "常州", monthly: 88.0, certFactor: 1 },
-  { baseId: "成都", monthly: 52.3, certFactor: 1 },
-  { baseId: "合肥", monthly: 46.0, certFactor: 0.6 },
-  { baseId: "江门", monthly: 38.3, certFactor: 1 },
-  { baseId: "其余9基地", monthly: 143.3, certFactor: 1 },
-];
+/**
+ * ③ 供应评审产能线（万套/**月**·13 基地全量）。
+ * 旧值是 5 行年量级聚合（88.0/52.3/46.0/38.3/143.3 → Σ367.9），字段名叫 `monthly` 却是年数 ——
+ * 本单按真后端 `sop.ts step3` 实测逐基地重写，形状与值都对齐（Σ = 22.6839 = 真后端 `s3.sup`）。
+ * `certFactor` 也照实测改正：真后端 `合肥` 已全认证（1）、`江门` 在爬坡（0.6），旧 mock 把两者写反了。
+ */
+const SOP_PER_BASE = SOP_PER_BASE_MONTHLY;
 
-/** ③供给基线（决议前）= Σ SOP_PER_BASE.monthly = 367.9 万套（对齐 fixtures.ts:485 注释·f17 sop-balance 用同值）。
- *  供需失衡双向归因 mock 桩从此派生总缺口 G = 需求(dem 375.0) − 供给基线（非写死）。 */
-export const SOP_SUPPLY_BASELINE = Math.round(SOP_PER_BASE.reduce((s, b) => s + b.monthly, 0) * 10) / 10;
+/**
+ * ③供给基线（决议前）= Σ SOP_PER_BASE.monthly = **22.6839 万套/月**（真后端 step3 `sup` 字节一致）。
+ * 精度从 1 位小数放到 4 位：月量级下 1 位小数会把 22.6839 抹成 22.7，与真后端不再字节可比。
+ */
+export const SOP_SUPPLY_BASELINE = Math.round(SOP_PER_BASE.reduce((s, b) => s + b.monthly, 0) * 1e4) / 1e4;
 
 const num = (v: unknown, d = 0): number => (typeof v === "number" && Number.isFinite(v) ? v : d);
 const str = (v: unknown, d = ""): string => (typeof v === "string" ? v : d);
@@ -724,12 +760,15 @@ export function mockSopAdvance(v: SopVersionVM, step: number, payload: Record<st
   };
   if (step === 1) {
     v.steps.s1 = {
+      // `impactWanPerMonth` 本来就是月量级（旧 mock 唯一没被年口径污染的一步）；
+      // 只把「认证转量产」的基地换成真后端实测**确实在认证中**的那个（成都 4680-NCM 1.297 万套/月）——
+      // 旧写法挂在合肥，而合肥在真种子里已全认证（certFactor 1），挂错了对象。
       changes: [
-        { kind: "认证转量产", modelId: "4680-NCM", baseId: "合肥", impactWanPerMonth: 1.8 },
+        { kind: "认证转量产", modelId: "4680-NCM", baseId: "成都", impactWanPerMonth: 1.297 },
         { kind: "爬坡中", modelId: "4680-NCM", baseId: "常州", impactWanPerMonth: 0 },
         { kind: "退役评审", modelId: "2170-NCM", baseId: "眉山", impactWanPerMonth: -0.9 },
       ],
-      boundaryDeltaWanPerMonth: 1.8,
+      boundaryDeltaWanPerMonth: 1.297,
     };
     if (v.status === "DRAFT") v.status = "IN_REVIEW";
     touch();
@@ -832,44 +871,71 @@ export function mockSopAdvance(v: SopVersionVM, step: number, payload: Record<st
   throw new SopMockError(422, "VALIDATION_ERROR", "step must be 1–5");
 }
 
-/** 种子：上月（2026-06）已定稿版本 —— 演示 C22 锁定与 409 */
+/**
+ * 种子：上月（2026-06）已定稿版本 —— 演示 C22 锁定与 409。
+ *
+ * WO-MOCK-SCALE-TRUTH：整份 s2/s3/s4/s5 从年量级改到**月**量级，逐格对齐真后端实跑：
+ *  · s2 target/rolling = `PlanTarget(month) × baselineShare` = 14.52 / 8.93 / 4.47（Σ27.92）
+ *  · s2 P90 = `round(rolling × 0.936, 2)`（与真后端缺省派生一字不差）
+ *  · s2 lastActual = 年实绩按计划月度权重折算（唯一折法，见 sopScale.yearToMonth）
+ *  · s3 sup = Σ perBase.monthly = 22.6839、gap = 5.2361（真后端 step3 字节一致）
+ *  · s4 revSum/gmSum 由**月**量 × 单价/毛利率现算（旧值 700.0 亿是年营收锚，塞进月台账即 13 倍谎）
+ *  · s5 决议增量按供给量级同比缩（夜班/加急不可能在月口径下补出 3.4 万套）
+ */
 export function seedSopVersions(): SopVersionVM[] {
   const t = "2026-06-10T08:00:00Z";
+  const rows = SOP_SEG_MONTH_TARGET.map((s) => ({
+    key: s.key,
+    name: s.name,
+    target: s.target,
+    rolling: s.target,
+    rollingWanPerMonthP90: sopP90(s.target),
+    lastActual: yearToMonth(DEMAND_YEAR.find((d) => d.key === s.key)?.act ?? 0),
+    dv: 0,
+    flagged: false,
+    unit: SOP_DEMAND_UNIT,
+  }));
+  const totalTarget = round(rows.reduce((a, r) => a + r.target, 0), 4);
+  const totalP90 = round(rows.reduce((a, r) => a + r.rollingWanPerMonthP90, 0), 2);
+  const sup = SOP_SUPPLY_BASELINE;
+  const gap = round(totalTarget - sup, 4);
+  // ④ 财务整合：月度滚动收入/毛利额由本月三细分量 × 细分单价/毛利率现算（亿元/月）。
+  const priceOf = (k: string) => SEG_REGISTRY.find((s) => s.key === k)?.priceWan ?? 0;
+  const marginOf = (k: string) => SEG_REGISTRY.find((s) => s.key === k)?.marginPct ?? 0;
+  const revSum = round(rows.reduce((a, r) => a + r.rolling * priceOf(r.key), 0), 2);
+  const gmSum = round(rows.reduce((a, r) => a + (r.rolling * priceOf(r.key) * marginOf(r.key)) / 100, 0), 2);
+  const gmBudget = 17.0;
+  const gmRoll = round((gmSum / revSum) * 100, 4);
+  // ⑤ 决议增量：与向导缺省项同源（sopScale·按供给口径同比缩），不再各写一份。
+  const resolutions = SOP_DEFAULT_RESOLUTIONS.map((r) => ({ ...r }));
+  const supFinal = round(sup + resolutions.reduce((a, r) => a + r.delta, 0), 4);
   return [
     {
       id: "sop-202606-final",
-      month: "2026-06",
+      month: SOP_MONTH,
       status: "FINAL",
-      inputs: { demTotal: 375.0 },
+      inputs: { demTotal: totalTarget },
       steps: {
-        s1: { changes: [{ kind: "认证转量产", modelId: "4680-NCM", baseId: "合肥", impactWanPerMonth: 5.1 }], boundaryDeltaWanPerMonth: 5.1 },
+        // ① 认证转量产的边界影响本来就是月量级（旧 mock 只有这一步是对的）——改基地对齐实测爬坡态：
+        // 真后端 `江门` 在认证中（certFactor 0.6，方形-LFP 影响 1.1406 万套/月），`合肥` 已全认证。
+        s1: { changes: [{ kind: "认证转量产", modelId: "方形-LFP", baseId: "江门", impactWanPerMonth: 1.1406 }], boundaryDeltaWanPerMonth: 1.1406 },
         s2: {
-          rows: [
-            { key: "pas", name: "乘用车", target: 201.7, rolling: 201.7, rollingWanPerMonthP90: 188.79, lastActual: 200.6, dv: 0, flagged: false, unit: SOP_DEMAND_UNIT },
-            { key: "ess", name: "储能", target: 139.2, rolling: 139.2, rollingWanPerMonthP90: 130.29, lastActual: 100.5, dv: 0, flagged: false, unit: SOP_DEMAND_UNIT },
-            { key: "com", name: "商用车", target: 34.1, rolling: 34.1, rollingWanPerMonthP90: 31.92, lastActual: 39.5, dv: 0, flagged: false, unit: SOP_DEMAND_UNIT },
-          ],
-          total: { target: 375.0, rolling: 375.0, rollingWanPerMonthP90: 351.0, dv: 0, unit: SOP_DEMAND_UNIT },
+          rows,
+          total: { target: totalTarget, rolling: totalTarget, rollingWanPerMonthP90: totalP90, dv: 0, unit: SOP_DEMAND_UNIT },
         },
-        s3: { perBase: SOP_PER_BASE, increments: [], sup: 367.9, dem: 375.0, gap: 7.1, flagged: true },
-        s4: { revSum: 700.0, gmSum: 118.9, gmBudget: 17.0, cashCushion: 58, gmRoll: 17.0, gmOk: true, cashOk: true, pass: true, violations: [] },
+        s3: { perBase: SOP_PER_BASE, increments: [], sup, dem: totalTarget, gap, flagged: gap > SOP_P.gapRed },
+        s4: { revSum, gmSum, gmBudget, cashCushion: 58, gmRoll, gmOk: gmRoll >= gmBudget - SOP_P.gmTolerance, cashOk: true, pass: true, violations: [] },
         s5: {
-          resolutions: [
-            { name: "常州化成夜班×1", delta: 3.4 },
-            { name: "江门正极加急 200 吨", delta: 1.4 },
-          ],
-          supFinal: 372.7,
-          gapFinal: 2.3,
+          resolutions,
+          supFinal,
+          gapFinal: round(totalTarget - supFinal, 4),
         },
       },
       agenda: [
-        { source: "GAP", title: "产销缺口 7.1 万套（>2），需供给对策", detail: { gap: 7.1 } },
+        { source: "GAP", title: `产销缺口 ${gap} 万套（>${SOP_P.gapRed}），需供给对策`, detail: { gap } },
       ],
-      resolutions: [
-        { name: "常州化成夜班×1", delta: 3.4 },
-        { name: "江门正极加急 200 吨", delta: 1.4 },
-      ],
-      supFinal: 372.7,
+      resolutions,
+      supFinal,
       createdAt: t,
       updatedAt: t,
     },
