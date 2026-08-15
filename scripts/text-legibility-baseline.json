@@ -14,9 +14,9 @@
    "largeBoldPx": 18.66
   }
  },
- "fileCount": 8,
+ "fileCount": 9,
  "totals": {
-  "site": 14,
+  "site": 15,
   "floor": 0
  },
  "files": {
@@ -39,6 +39,11 @@
    "site": 4,
    "floor": 0,
    "why": "4 处：L376 彩色徽标上的白字、L1723/L1743 `--ok` 绿底上的深墨字 —— 均属【本门诚实边界①的已知误报】判据 A 拿「该主题所有表面令牌里最差的那一个」当底色，而这几处文字并不落在页面表面上，是压在**彩色实心块**上（真浏览器实测该屏对应元素达标）。静态源码里不存在「这段字最终落在哪块颜色上」这个事实，所以本门只能偏保守地多报 —— 登记在此而不是把判据放宽：放宽会同时放掉真违规。；L1641 `var(--ink, #e8b54a)` 是仪表盘指针记号（幽灵令牌 `--ink` 靠 fallback 苟活，暗色 5.65 / 浅色 1.66)，属**风险板**自己的欠账，与推演沙盘无关，留给该页的 burn-down 单。"
+  },
+  "apps/frontend-shell/src/views/process/ProcessStartFromTemplate.module.css": {
+   "site": 1,
+   "floor": 0,
+   "why": "L108 `.primary` 用 `var(--on-accent)`（白）13px。【本门诚实边界①的已知误报】判据 A 拿「该主题所有表面令牌里最差的那一个」当底色，而这段字并不落在页面表面上，是压在按钮自己的**实心 accent 底**上（同一条规则里就写着 `background: var(--accent-solid)`）——判据 A 扫的是声明块里的 `color`+`font-size`，读不到「这段字最终落在哪块颜色上」这个渲染期事实，故只能偏保守地多报。与 GlobalSimView.module.css `.btnPrimary` 是同一类，处置照同一个先例：登记在此，不放宽判据（放宽会同时放掉真违规）。⚠ 挂账**不等于**没修：本门当场抖出的那个**真缺陷**已修 —— 该按钮底原写 `var(--accent)`，warm 主题是 `#E8590C`，白字实测仅 3.58:1（13px/400 需 5.54），现改用 tokens.css 专为「实心 accent 底 + 白字」定的 `--accent-solid`（逐主题 #115dc9 / #3455da / #aa4109，白字实测 6.04 / 6.07 / 6.05，三主题全部达标），与 global.css `.btn-primary` 同一个结论。复验：`node scripts/check-text-legibility.mjs --census` 看本文件仍为 site:1（那 1 处即本条误报），并对照 tokens.css 第 79/178/242 行的 `--accent-solid` 取值自算对比度。"
   },
   "apps/frontend-shell/src/views/process/ProcessWaitView.module.css": {
    "site": 2,

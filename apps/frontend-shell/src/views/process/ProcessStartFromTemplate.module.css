@@ -105,11 +105,16 @@
   color: var(--accent-txt);
 }
 
+/* 主按钮底用 `--accent-solid` 而不是 `--accent` —— 这是 `text-legibility:check` 当场抖出来的**真缺陷**，
+   不是门的误报：`--accent` 在 warm 主题是 `#E8590C`，压 `--on-accent`（白）实测仅 **3.58:1**，
+   而 13px/400 按门的判据需要 `max(3.0, 72/13) = 5.54`。`--accent-solid` 是 tokens.css 里
+   专为「实心 accent 底 + 白字」定的那一档（逐主题 #115dc9 / #3455da / #aa4109，白字实测 6.04 / 6.07 / 6.05），
+   global.css 的 `.btn-primary` 早已因同一条理由改过（WO-R9-CONTRAST）——这里沿用同一个结论，不另立一套。 */
 .primary {
   align-self: flex-start;
-  background: var(--accent);
+  background: var(--accent-solid);
   color: var(--on-accent);
-  border: 1px solid var(--line2);
+  border: 1px solid var(--accent-solid);
   border-radius: 6px;
   padding: 7px 14px;
   font-size: 13px;
