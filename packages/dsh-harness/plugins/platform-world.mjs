@@ -55,6 +55,14 @@ export function validateSetupSpec(spec) {
     }
     out.governance = spec.governance
   }
+  if (spec.finalAnswer !== undefined) {
+    if (typeof spec.finalAnswer !== 'object' || spec.finalAnswer === null
+      || typeof spec.finalAnswer.description !== 'string'
+      || typeof spec.finalAnswer.schema !== 'object' || spec.finalAnswer.schema === null) {
+      throw new TypeError('setup.finalAnswer requires {description: string, schema: object}')
+    }
+    out.finalAnswer = spec.finalAnswer
+  }
   return out
 }
 
@@ -83,6 +91,48 @@ export async function applySetupSpec(agentCtx, spec) {
   }
 
   // TODO(S2·部分落地): skills SkillProvider 注册仍待 S2 后半；governance 网桥见下。
+
+  // --- S3 · final_answer / load_skill scoped 注册（Answer 结构化载体 + 技能全文按需取） ---
+  // final_answer：模型调它 = 收尾。harness 侧只做形状兜底校验（严校验在 agentcore 重组装侧
+  // 对 AnswerBlockSchema —— wire 宽松、重组装严格，单校验点不双写）。
+  const tools = agentCtx.get('tools')
+  if (spec.finalAnswer !== undefined) {
+    if (!tools) throw new Error('setup.finalAnswer requires the tools plugin in cordis.yml')
+    tools.register({
+      name: 'final_answer',
+      description: spec.finalAnswer.description,
+      parameters: spec.finalAnswer.schema,
+      output: {
+        schema: { type: 'object', properties: { recorded: { type: 'boolean' } }, required: ['recorded'] },
+        render: () => [{ type: 'text', text: 'final answer recorded' }],
+      },
+      execute: async (args) => {
+        if (typeof args !== 'object' || args === null) throw new Error('final_answer arguments must be an object')
+        return { recorded: true }
+      },
+    })
+  }
+  // load_skill：spec.skills 自带全文，纯查找（我方 load_skill 语义：返回 body+resources+治理位；
+  // 治理位不进 tool_result 字节 —— 这里 render 只出 body/resources 文本，governance 留在 value 里
+  // 供会话日志/重组装读取，与 loop.ts「治理位不进字节」同口径）。
+  if (spec.skills !== undefined && spec.skills.length > 0) {
+    if (!tools) throw new Error('setup.skills requires the tools plugin in cordis.yml')
+    const byKey = new Map(spec.skills.map((s) => [s.key, s]))
+    tools.register({
+      name: 'load_skill',
+      description: '按需加载技能全文（目录摘要在 system prompt；调此取 body/resources）。',
+      parameters: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'] },
+      output: {
+        schema: { type: 'object' },
+        render: (args, value) => [{ type: 'text', text: value.found === false ? `skill not found: ${args.key}` : `## ${value.key}\n\n${value.body}` }],
+      },
+      execute: async (args) => {
+        const skill = byKey.get(args?.key)
+        if (!skill) return { found: false, key: args?.key ?? '' } // 缺省 fail-closed：找不到 = 明确否定，不编造
+        return { found: true, key: skill.key, body: skill.body, resources: skill.resources, governance: skill.governance }
+      },
+    })
+  }
 
   // --- S2 · 治理闸：scoped tools/pre-execute 监听器（只收本 agent 的调用） ---
   // 次序：① 允许表（spec.tools 非空 = 白名单，表外即 deny）② ruleBindings 裁决器。

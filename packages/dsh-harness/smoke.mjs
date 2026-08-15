@@ -34,7 +34,7 @@ async function runCase(label, { extraEnv = {}, setup } = {}) {
       events.push(t)
       if (t === 'tool/result') toolResults.push(JSON.stringify(n.params.event).slice(0, 300))
     }
-  })()
+  })().catch(() => {}) // close() 会拒 pending waiter；立即挂 catch 防 unhandled rejection
   let replayError = ''
   try {
     client.start()
@@ -54,17 +54,18 @@ async function runCase(label, { extraEnv = {}, setup } = {}) {
       } catch (e) { replayError = String(e?.message ?? e) }
     }
   } finally {
-    await sub.return?.()
+    sub.close()
     await client.close()
-    await collector.catch(() => {})
+    await collector
   }
   const count = readFileSync(countFile, 'utf8').split('\n').filter(Boolean).length
   const turnEnd = events.includes('turn/end')
+  const toolResultSeen = toolResults.some((r) => r.includes('final answer recorded'))
   console.log(`CASE_${label}_EVENTS=${JSON.stringify(events)}`)
   if (toolResults.length > 0) console.log(`CASE_${label}_TOOLRESULT=${toolResults[0]}`)
   if (replayError) console.log(`CASE_${label}_REPLAY_ERROR=${JSON.stringify(replayError)}`)
   console.log(`CASE_${label}_EXECUTE_COUNT=${count} TURN_END=${turnEnd}`)
-  return { count, turnEnd, replayError }
+  return { count, turnEnd, replayError, toolResultSeen }
 }
 
 const BASE_SETUP = {
@@ -77,12 +78,26 @@ const BASE_SETUP = {
 const a = await runCase('A', { extraEnv: { PLATFORM_GOV_DENY: 'echo_tool' }, setup: BASE_SETUP })
 const b = await runCase('B', { setup: BASE_SETUP })
 const c = await runCase('C', { setup: { ...BASE_SETUP, governance: undefined, tools: [{ name: 'not_echo' }] } })
+// S3 · case D：scoped final_answer 过 wire（mock 剧本调它收尾；允许表含 final_answer 不被治理闸误伤）
+const d = await runCase('D', {
+  extraEnv: { MOCK_SCENARIO: 'final_answer' },
+  setup: {
+    ...BASE_SETUP,
+    governance: undefined,
+    tools: [{ name: 'final_answer' }],
+    finalAnswer: {
+      description: '终止工具（S3 smoke）',
+      schema: { type: 'object', properties: { blocks: { type: 'array' }, provenance: { type: 'array' } }, required: ['blocks', 'provenance'] },
+    },
+  },
+})
 
 let fail = 0
 if (!(a.count === 0 && a.turnEnd)) { console.log('SMOKE_FAIL: case A (governance deny ⇒ execute 0)'); fail = 1 }
 if (!(b.count === 1 && b.turnEnd)) { console.log('SMOKE_FAIL: case B (baseline ⇒ execute 1)'); fail = 1 }
 if (!b.replayError.includes('creation-only')) { console.log('SMOKE_FAIL: case B setup replay not rejected'); fail = 1 }
 if (!(c.count === 0 && c.turnEnd)) { console.log('SMOKE_FAIL: case C (allow-list exclude ⇒ execute 0)'); fail = 1 }
+if (!(d.turnEnd && d.toolResultSeen)) { console.log('SMOKE_FAIL: case D (final_answer recorded over wire)'); fail = 1 }
 if (fail) process.exit(1)
 console.log('SMOKE_OK')
 process.exit(0)

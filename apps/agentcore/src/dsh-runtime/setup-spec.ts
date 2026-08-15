@@ -13,6 +13,7 @@
 import { createHash } from "node:crypto";
 import type { AgentDefinition, McpServerConfig, SkillDefinition } from "@platform/contracts";
 import { isWriteModeSkill, mcpServerNameSlug } from "@platform/contracts";
+import { DEFAULT_FINAL_ANSWER_SCHEMA, FINAL_ANSWER_DESC } from "../agent/loop.js";
 
 // ---------------------------------------------------------------------------
 // SetupSpec：过 wire 的会话创建期组态（与 packages/dsh-harness 侧 validateSetupSpec 对偶）
@@ -29,6 +30,12 @@ export interface DshSetupSpec {
   skills?: DshSkillSpec[];
   /** 治理线（S2 answerer 网桥消费；fail-closed 方向对我方有利）。 */
   governance?: DshGovernanceSpec;
+  /**
+   * final_answer 终止工具的 schema 下发（harness 侧 scoped 注册；模型调它收尾 =
+   * 我方 Answer 的结构化载体）。description/schema 单一出处 = agent/loop.ts 导出常量；
+   * expectsSchema 模式下由 buildSessionSetup 替换为调用方 schema（raw input 直通 structured）。
+   */
+  finalAnswer?: { description: string; schema: Record<string, unknown> };
 }
 
 export interface DshMcpServerSpec {
@@ -212,9 +219,15 @@ export function buildSessionSetup(input: {
   grantedToolNames: string[];
   mcpServers?: DshMcpServerSpec[];
   skills?: DshSkillSpec[];
+  /** loop.ts AgentLoopOpts.expectsSchema 对位：提供则替换 final_answer schema，raw input 进 structured。 */
+  expectsSchema?: Record<string, unknown>;
+  finalAnswerDescription?: string;
 }): DshSetupSpec {
   const { agent } = input;
-  const effectiveToolNames = [...new Set([...agent.scopeDeclaration.toolNames, ...input.grantedToolNames])];
+  // final_answer/load_skill 是循环自加的元工具（AgentLoopOpts 契约：调用方 tools 不得含，
+  // 循环自加）——dsh 路的允许表同理在适配层自加，否则治理闸会把收尾工具一并拒掉。
+  const loopMetaTools = ["final_answer", ...(input.skills?.length ? ["load_skill"] : [])];
+  const effectiveToolNames = [...new Set([...agent.scopeDeclaration.toolNames, ...input.grantedToolNames, ...loopMetaTools])];
   return {
     persona: `${agent.systemPrompt}\n\n${input.agentSystemCore}`,
     tools: effectiveToolNames.map((name) => ({ name })),
@@ -223,6 +236,10 @@ export function buildSessionSetup(input: {
     governance: {
       ruleBindings: agent.ruleBindings,
       scopeObjectTypes: agent.scopeDeclaration.objectTypes,
+    },
+    finalAnswer: {
+      description: input.finalAnswerDescription ?? FINAL_ANSWER_DESC,
+      schema: input.expectsSchema ?? DEFAULT_FINAL_ANSWER_SCHEMA,
     },
   };
 }
