@@ -8,14 +8,21 @@ import { loginAs, renderApp } from "./utils";
  * AUDIT.1（audit 视图 1:1 复刻 · 时序推演）：规划体检展开审计项时序 → 与产能推演同款 **逐日圆点轴**
  * （消费 risk_timeline 已产 series）：顶部摘要 + 逐日圆点 + 三档图例 + 点选日点详情。4 节点 stepper 保留为概览。
  */
+// WO-MOCK-SCALE-TRUTH：本文件原来找的是 `audit-item-med-X02`（软风险档）——
+// 那是**年口径假基线**的产物：旧 mock 的 dem 375.0 / sup 374.2 都是年数塞进月字段，
+// 两个大数相减恰好只差 0.8，落进 (gapSoft 0.3, gapHard 2] ⇒ 看着像"软风险"。
+// 量级修对后 dem 27.92 − sup 25.8523 = 2.0677 > gapHard 2 ⇒ X02 是**硬卡**，
+// 与真后端 `plan_audit` 实测一致（H=[X02]·verdict「站不住」·score 43）。
+// 档位变了不是回归，是那个谎被拆穿后的正确读数。
 describe("AUDIT.1 · 规划体检逐日圆点轴（消费已产 series）", () => {
   it("展开 X02 → 逐日圆点轴（摘要+圆点+图例）+ 点选日点出详情；stepper 概览仍在", async () => {
     const user = userEvent.setup();
     loginAs("planner");
     renderApp("/v/plan-audit");
 
-    const x02 = await screen.findByTestId("audit-item-med-X02");
-    await user.click(within(x02).getByTestId("tl-toggle-med-X02"));
+    // WO-MOCK-SCALE-TRUTH：X02 的档位从 `med` 改到 `hard`（见本文件顶部说明）。
+    const x02 = await screen.findByTestId("audit-item-hard-X02");
+    await user.click(within(x02).getByTestId("tl-toggle-hard-X02"));
     await screen.findByTestId("audit-risk-timeline-X02");
 
     // 逐日圆点轴（消费 risk_timeline card.series）
@@ -44,8 +51,9 @@ describe("AUDIT.1 · 规划体检逐日圆点轴（消费已产 series）", () =
     loginAs("planner");
     renderApp("/v/plan-audit");
 
-    const x02 = await screen.findByTestId("audit-item-med-X02");
-    await user.click(within(x02).getByTestId("tl-toggle-med-X02"));
+    // WO-MOCK-SCALE-TRUTH：X02 的档位从 `med` 改到 `hard`（见本文件顶部说明）。
+    const x02 = await screen.findByTestId("audit-item-hard-X02");
+    await user.click(within(x02).getByTestId("tl-toggle-hard-X02"));
     const dda = await screen.findByTestId("dda-X02");
 
     const scale = TIGHTNESS_METRIC.scaleMax;
