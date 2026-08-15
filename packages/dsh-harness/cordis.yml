@@ -9,6 +9,14 @@
 - id: platform-sdk-server
   name: './plugins/platform-sdk-server.mjs'
 
+# S2 · 治理裁决网桥：mock 模式 deny 清单取 env PLATFORM_GOV_DENY（csv）优先于 config.deny。
+# 生产换 mode: http + url 指向 agentcore 规则评估端点（带外通道）。
+- id: platform-governance
+  name: './plugins/platform-governance.mjs'
+  config:
+    mode: 'mock'
+    deny: []
+
 - id: llm
   name: '@deepseek-ai/dsh-llm'
 

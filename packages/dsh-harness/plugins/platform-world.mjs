@@ -12,6 +12,7 @@
 //   - governance     → 校验形态；answerer 网桥（rules PRE_CHECK → tools/pre-execute 裁决）为 S2
 
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
+import { getAdjudicator } from './platform-governance.mjs'
 
 /** agent 级 system prompt section 的固定名/序（root persona 是 order 0，agent 追加其后）。 */
 export const AGENT_PERSONA_SECTION = 'platform:agent-persona'
@@ -66,7 +67,7 @@ export async function applySetupSpec(agentCtx, spec) {
   if (spec.persona !== undefined) {
     const systemPrompt = agentCtx.get('systemPrompt')
     if (!systemPrompt) throw new Error('setup.persona requires the system-prompt plugin in cordis.yml')
-    systemPrompt.section.call(agentCtx.get('systemPrompt'), {
+    systemPrompt.section({
       name: AGENT_PERSONA_SECTION,
       order: AGENT_PERSONA_ORDER,
       text: spec.persona,
@@ -81,6 +82,29 @@ export async function applySetupSpec(agentCtx, spec) {
     await agentCtx.plugin(McpClient, config)
   }
 
-  // TODO(S2): tools 允许表强执（scoped restrict / pre-execute 闸）+ skills SkillProvider + governance 网桥。
-  // spec.tools / spec.skills / spec.governance 已校验透传到此，S2 直接消费。
+  // TODO(S2·部分落地): skills SkillProvider 注册仍待 S2 后半；governance 网桥见下。
+
+  // --- S2 · 治理闸：scoped tools/pre-execute 监听器（只收本 agent 的调用） ---
+  // 次序：① 允许表（spec.tools 非空 = 白名单，表外即 deny）② ruleBindings 裁决器。
+  // 监听器挂在 agentCtx 上 —— dsh scope-filtered dispatch 保证只收本 agent 的调用
+  // （core/tools 事件文档：agent-scoped listeners receive only that agent's calls）。
+  const allow = spec.tools !== undefined && spec.tools.length > 0
+    ? new Set(spec.tools.map((t) => t.name))
+    : undefined
+  if (allow !== undefined || spec.governance !== undefined) {
+    agentCtx.on('tools/pre-execute', async (exec, next) => {
+      if (allow !== undefined && !allow.has(exec.name)) {
+        return { kind: 'deny', reason: `tool ${exec.name} not in agent scope allow-list (scopeDeclaration ∪ granted)` }
+      }
+      if (spec.governance !== undefined) {
+        const adjudicator = getAdjudicator()
+        // 有治理声明但部署没配裁决器 = 配置错误，fail-closed 拒（不静默放行）。
+        if (!adjudicator) {
+          return { kind: 'deny', reason: 'governance ruleBindings present but no adjudicator plugin configured (fail-closed)' }
+        }
+        return adjudicator({ name: exec.name, arguments: exec.arguments }, spec.governance)
+      }
+      return next()
+    })
+  }
 }

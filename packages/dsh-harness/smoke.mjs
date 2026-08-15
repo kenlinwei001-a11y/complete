@@ -1,74 +1,88 @@
-// WO-DSH-POC-S1 · harness 包自证冒烟：用低层 HarnessClient 驱动我方 platform-sdk-server，
-// 第一发 prompt 携带 setup spec（persona + 空 tools/mcp/skills），断言：
-//   ① server 变体收下 setup 不报错（wire 扩展生效）；
-//   ② 事件流与 stock 一致（24 帧词表同 S0）；turn/end reason=completed；
-//   ③ 对已活会话再带 setup → 显式报错（创建期语义）。
-// mock LLM 剧本：一轮 echo_tool 调用 + 一轮文本收尾。
+// WO-DSH-POC-S2 · harness 自证冒烟（含 S1 回归）。每例 spawn 独立子进程（裁决器配置走 env，进程级）。
+//
+// S1 断言（case B 顺带）：setup spec 被接收；事件流 24 帧含 tool/result+turn/end；活会话重放 setup 被拒。
+// S2 kill 条件断言：
+//   case A（governance deny echo_tool）   → execute 计数 == 0，turn 仍 completed
+//   case B（无治理拒绝，基线）            → execute 计数 == 1
+//   case C（setup.tools 允许表不含 echo_tool）→ execute 计数 == 0（允许表强执）
 import { HarnessClient } from '@deepseek-ai/dsh-sdk-client'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const events = []
 
-const client = new HarnessClient({
-  command: process.execPath,
-  args: [join(here, 'node_modules/@deepseek-ai/dsh-sdk-jsonrpc-demo/lib/bin.js'), 'cordis.yml'],
-  cwd: here,
-  requestTimeoutMs: 30000,
-})
-
-const sub = client.subscribeSessionTree('s1-smoke')
-const collector = (async () => {
-  for await (const n of sub) {
-    if (n.method === 'session.event') events.push(n.params?.event?.type ?? '?')
+async function runCase(label, { extraEnv = {}, setup } = {}) {
+  const countFile = join(mkdtempSync(join(tmpdir(), 'dsh-s2-')), 'count')
+  writeFileSync(countFile, '')
+  const events = []
+  const toolResults = []
+  const client = new HarnessClient({
+    command: process.execPath,
+    args: [join(here, 'node_modules/@deepseek-ai/dsh-sdk-jsonrpc-demo/lib/bin.js'), 'cordis.yml'],
+    cwd: here,
+    requestTimeoutMs: 30000,
+    env: { ...process.env, ECHO_COUNT_FILE: countFile, ...extraEnv },
+  })
+  const sessionId = `s2-${label}`
+  const sub = client.subscribeSessionTree(sessionId)
+  const collector = (async () => {
+    for await (const n of sub) {
+      if (n.method !== 'session.event') continue
+      const t = n.params?.event?.type ?? '?'
+      events.push(t)
+      if (t === 'tool/result') toolResults.push(JSON.stringify(n.params.event).slice(0, 300))
+    }
+  })()
+  let replayError = ''
+  try {
+    client.start()
+    await client.initialize({ cwd: here, provider: 'mock', model: 'mock' })
+    await client.request('session/prompt', {
+      sessionId,
+      contentBlocks: [{ type: 'text', text: 'call echo_tool then answer' }],
+      ...(setup ? { setup } : {}),
+    })
+    const deadline = Date.now() + 30000
+    while (!events.includes('turn/end') && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    if (label === 'B') {
+      try {
+        await client.request('session/prompt', { sessionId, contentBlocks: [{ type: 'text', text: 'again' }], setup: setup ?? {} })
+      } catch (e) { replayError = String(e?.message ?? e) }
+    }
+  } finally {
+    await sub.return?.()
+    await client.close()
+    await collector.catch(() => {})
   }
-})()
+  const count = readFileSync(countFile, 'utf8').split('\n').filter(Boolean).length
+  const turnEnd = events.includes('turn/end')
+  console.log(`CASE_${label}_EVENTS=${JSON.stringify(events)}`)
+  if (toolResults.length > 0) console.log(`CASE_${label}_TOOLRESULT=${toolResults[0]}`)
+  if (replayError) console.log(`CASE_${label}_REPLAY_ERROR=${JSON.stringify(replayError)}`)
+  console.log(`CASE_${label}_EXECUTE_COUNT=${count} TURN_END=${turnEnd}`)
+  return { count, turnEnd, replayError }
+}
 
-client.start()
-const init = await client.initialize({ cwd: here, provider: 'mock', model: 'mock' })
-console.log('SMOKE_INIT=' + JSON.stringify(init))
-
-const setup = {
+const BASE_SETUP = {
   persona: 'smoke persona via setup spec',
-  tools: [],
   mcpServers: [],
   skills: [],
-  governance: { ruleBindings: { ruleKeys: [], mode: 'PRE_CHECK' } },
+  governance: { ruleBindings: { ruleKeys: ['r_deny_echo'], mode: 'PRE_CHECK' }, scopeObjectTypes: [] },
 }
-const messageId = await client.request('session/prompt', {
-  sessionId: 's1-smoke',
-  contentBlocks: [{ type: 'text', text: 'call echo_tool then answer' }],
-  setup,
-})
-console.log('SMOKE_PROMPT_OK messageId=' + JSON.stringify(messageId))
 
-// 等 turn/end（reason=completed）；30s 兜底。
-const deadline = Date.now() + 30000
-while (!events.includes('turn/end') && Date.now() < deadline) {
-  await new Promise((r) => setTimeout(r, 100))
-}
-console.log('SMOKE_EVENTS=' + JSON.stringify(events))
+const a = await runCase('A', { extraEnv: { PLATFORM_GOV_DENY: 'echo_tool' }, setup: BASE_SETUP })
+const b = await runCase('B', { setup: BASE_SETUP })
+const c = await runCase('C', { setup: { ...BASE_SETUP, governance: undefined, tools: [{ name: 'not_echo' }] } })
 
-// ③ 负向：活会话再带 setup 必须报错。
-let replayError = ''
-try {
-  await client.request('session/prompt', {
-    sessionId: 's1-smoke',
-    contentBlocks: [{ type: 'text', text: 'again' }],
-    setup,
-  })
-} catch (e) {
-  replayError = String(e?.message ?? e)
-}
-console.log('SMOKE_SETUP_REPLAY_ERROR=' + JSON.stringify(replayError))
-
-await sub.return?.()
-await client.close()
-await collector.catch(() => {})
-
-if (!events.includes('turn/end')) { console.log('SMOKE_FAIL: no turn/end'); process.exit(1) }
-if (!events.includes('tool/result')) { console.log('SMOKE_FAIL: no tool/result'); process.exit(1) }
-if (!replayError.includes('creation-only')) { console.log('SMOKE_FAIL: setup replay not rejected'); process.exit(1) }
+let fail = 0
+if (!(a.count === 0 && a.turnEnd)) { console.log('SMOKE_FAIL: case A (governance deny ⇒ execute 0)'); fail = 1 }
+if (!(b.count === 1 && b.turnEnd)) { console.log('SMOKE_FAIL: case B (baseline ⇒ execute 1)'); fail = 1 }
+if (!b.replayError.includes('creation-only')) { console.log('SMOKE_FAIL: case B setup replay not rejected'); fail = 1 }
+if (!(c.count === 0 && c.turnEnd)) { console.log('SMOKE_FAIL: case C (allow-list exclude ⇒ execute 0)'); fail = 1 }
+if (fail) process.exit(1)
 console.log('SMOKE_OK')
 process.exit(0)
