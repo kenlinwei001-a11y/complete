@@ -318,8 +318,15 @@ describe("WO-STEP-TEMPLATE-LAYER · 契约 §2 不变量在真种子上成立，
       carrierAnchor: { kind: "TIMESTAMP_FIELD", propKey: "startDate", value: null },
       basis: "变异反证用",
     }));
+    /**
+     * ⚠ **咬死条数，不用 `toContain`**（`coverage-blind:check` D2「拿 ∃ 冒充 ∀」当场抖出来的）。
+     * 三步各违一次半天粒度 ⇒ 该报 3 条 `DURATION_GRAIN`；`toContain` 在「只报了 1 条」时
+     * 照样绿，于是「粒度校验只对第一步生效」这种真回归会被测试放过去。
+     * 另外那条 `DURATION_SUM_MISMATCH` 是同一份数据的必然结果（0.333×3 整数化后 3 ≠ 2），
+     * 一起钉死 —— 全集逐条相等，比"含有某一条"强一档。
+     */
     const codes = validateProcessStepTemplateSet(def, thirds).map((i) => i.code);
-    expect(codes).toContain("DURATION_GRAIN");
+    expect([...codes].sort()).toEqual([...thirds.map(() => "DURATION_GRAIN"), "DURATION_SUM_MISMATCH"]);
     expect(PROCESS_STEP_DURATION_GRAIN_DAYS).toBe(0.5);
   });
 
