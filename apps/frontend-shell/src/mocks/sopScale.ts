@@ -19,7 +19,8 @@ import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
  *    比需求侧低 14.08%，差额就是真后端注释里那条「认证爬坡缺口」。
  *
  * **S&OP 月度平衡台读的是第 2 条**：`sop.ts step2` 缺省目标线 = `PlanTarget(level=month)`
- * × `Segment.baselineShare`。所以月口径 27.92 是 322.2 的 6 月分摊，**不是 375/12**。
+ * × `Segment.baselineShare`。所以月口径 27.92 是 **322.2 按季节权重分摊到 2026-06 的那一份**，
+ * **不是 375/12**（那既错分母又错来源）。
  * 旧 mock 的错法是把第 1 条的 375.0 直接当月值 —— 既错了分母（年当月），又错了来源（需求侧当供给侧）。
  *
  * ── 数从哪来（现算，不是抄注释）────────────────────────────────────────────
@@ -41,11 +42,13 @@ const r = (v: number, p: number): number => {
 // ---------------------------------------------------------------------------
 
 /**
- * `DemandSegment.demandWanPerYearP50` / `.act`（万套/**年**）——与 datacore 种子字节一致。
- * 这一层**不参与**月度平衡台的量级，只用于：细分达成率（act/P50）、结构占比基线、需求侧归因。
+ * `DemandSegment` 的年口径三线（万套/**年**）——与 datacore 种子字节一致，
+ * 也是 `GET /a/v1/objects?type=DemandSegment` 下发的那三行的唯一出处。
+ * 这一层**不参与**月度平衡台的量级，只用于：细分达成率（act ÷ P50）、结构占比基线、需求侧归因。
+ *
+ * ⚠️ 字段名必须自带量纲（`demandWanPerYearP50`），**不许**缩成裸 `p50`/`p90` ——
+ * 本仓 `p50` 一个名字背 6 个量纲，裸名即歧义；`quantile-unit-onscreen` 接缝门会当场报红。
  */
-// ⚠️ 字段名必须自带量纲（`demandWanPerYearP50`），**不许**缩成裸 `p50`/`p90` ——
-// 本仓 `p50` 一个名字背 6 个量纲，裸名即歧义；`quantile-unit-onscreen` 接缝门会当场报红。
 export const DEMAND_YEAR = [
   { key: "pas", name: "乘用车", demandWanPerYearP50: 201.7, demandWanPerYearP90: 199.6, act: 200.6 },
   { key: "ess", name: "储能", demandWanPerYearP50: 139.2, demandWanPerYearP90: 108.4, act: 100.5 },

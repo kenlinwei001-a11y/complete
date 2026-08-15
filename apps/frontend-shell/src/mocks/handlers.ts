@@ -2869,11 +2869,19 @@ export const handlers = [
     } else if (type === "Model") {
       rows = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"].map((m) => ({ id: `model-${m}`, props: { name: m } }));
     } else if (type === "DemandSegment") {
-      rows = [
-        { segId: "dseg-1", segment: "乘用车", tgt: 201.7, demandWanPerYearP50: 201.7, demandWanPerYearP90: 199.6, act: 200.6 },
-        { segId: "dseg-2", segment: "储能", tgt: 139.2, demandWanPerYearP50: 139.2, demandWanPerYearP90: 108.4, act: 100.5 },
-        { segId: "dseg-3", segment: "商用车", tgt: 34.1, demandWanPerYearP50: 34.1, demandWanPerYearP90: 34.0, act: 39.5 },
-      ].map((r) => ({ id: r.segId, props: r }));
+      // WO-MOCK-SCALE-TRUTH：这三行**年**口径数此前在本文件内联一份、`sopScale` 又一份 ——
+      // 同一个 700 亿营收锚有两个出处，改一处即漂。现统一从 `DEMAND_YEAR` 派生（值字节不变）。
+      rows = DEMAND_YEAR.map((d, i) => ({
+        id: `dseg-${i + 1}`,
+        props: {
+          segId: `dseg-${i + 1}`,
+          segment: d.name,
+          tgt: d.demandWanPerYearP50,
+          demandWanPerYearP50: d.demandWanPerYearP50,
+          demandWanPerYearP90: d.demandWanPerYearP90,
+          act: d.act,
+        },
+      }));
     } else if (type === "Workshop") {
       const workshops = filterByScope(BASES, account).flatMap((b) =>
         ["制浆", "涂布", "辊压", "分切", "卷绕", "装配", "注液", "化成", "分容", "PACK"].map((wt, i) => ({
