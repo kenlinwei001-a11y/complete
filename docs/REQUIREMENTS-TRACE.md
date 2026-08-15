@@ -94,7 +94,7 @@
 | # | 仓主原话 | 状态 |
 |---|---|---|
 | G1 | 「期望用 deepseek-harness 替换目前的 agent 系统，**是否可行**」 | ✅ `docs/REPORT-harness-migration-feasibility.md` |
-| G2 | 「所有推演的功能都需要**借鉴这个设计 UX**」 | 🟡 部分（metro / 分层 / 诚实位各单已融入） |
+| G2 | 「所有推演的功能都需要**借鉴这个设计 UX**」 | 🔶 **等仓主一句话** —— 「这个」的指代物**仓内有三份互相冲突的记录，全出自我，从未对账**：（甲）台账 §G 的章节归属暗示是 deepseek-harness；（乙）`docs/WO-ACTIVE-EDGE-UX.md` 第 43–45 行写「参考 HTML 里关系边上的 active 开关」；（丙）`docs/ASSESS-pi-agent-harness-replacement.md` 记着仓主校正「把 agent 的 UI/UX/CLI 升级到 pi 的水准」。⚠️ 我这张派单**引用了乙的原话，却按甲的章节归属去认指代物** —— 形态：「我用『这条记录躺在 §G 里』当作『它说的是 deepseek-harness』的证据」。⚠️ 且**本行此前记 🟡 与 §A 的 A4/A5 记 ✅ 是同一件事** —— 同一条要求在台账里同时是 🟡 和 ✅。**已交付**：从仓内 `docs/reference-prototype-decision-platform.html` 抽出 **9 条可逐页对照的判据**，12 页 × 10 判据 = 120 格三态表（符合 17 · 不符合 46 · **判不了 57**），并建门 `sim-ux-criteria:check` 守判据表本身。 |
 | G3 | 「关于换心，是否需要做一个 **POC** 验证？」「你发我提示词，我转发给做 POC 的 dev」 | 🔷 **在仓主手上**，进度我不掌握 |
 | G4 | 「你看一下 **POC 测试报告**」 | ✅ 已阅并反馈 |
 
