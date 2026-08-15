@@ -229,6 +229,129 @@ export const GlobalSimPlanPayloadSchema = z.object({
 export type GlobalSimPlanPayload = z.infer<typeof GlobalSimPlanPayloadSchema>;
 
 // ---------------------------------------------------------------------------
+// WO-SNAPSHOT-UNIT-LIE · 杠杆采纳留痕快照（`G-LEVER-SNAPSHOT-UNIT-LIE` 收口）
+// ---------------------------------------------------------------------------
+//
+// ══ 病灶（真发生过，不是假想）══════════════════════════════════════════════════
+// `DynamicLeverPanel` 的 `snapshot` prop 原本是一个**扁平结构**：
+//   `{ mode, qty, capWanP50, capWanP90, mainBn }`
+// 两个调用方各喂各的：
+//   · `ProjectSimView`  → `capWanP50: out.capWanP50`（**万套/窗口**·真产能，对的）
+//   · `RiskBoardView`   → `capWanP50: card.peak`（**张力峰值 0–100 指数**，不是产能）
+// 而 `adoptCombo` 把整个 snapshot 打进 ActionDraft 的 payload，`ActionsPage` 又把
+// payload 整份 JSON 打给审批人看 ⇒ **审批留痕里写着「当时产能 P50 = 97.8 万套/窗口」，
+// 实际那是设备 OEE 的张力指数。审批的人看不出来。**
+//
+// ══ 为什么三道防线一道都没拦住 ══════════════════════════════════════════════════
+//   · `check-quantile-field-naming` 守的是「一个**名字**只对应一个量纲」——
+//     `capWanP50` 这个名字量纲唯一、`@unit` 写得好好的，三条判据全过。
+//     它守不了「塞进这个名字的**值**是不是那个量纲」。
+//   · UI 门看的是屏上的字，而这个数**不上屏**（只进 payload）。
+//   · TypeScript 只查类型，两边都是 `number` —— **量纲不在类型系统里**。
+// 形态（铁律 0.6 句式）：
+//   **「我用『字段名的量纲唯一』当作『这个字段里的值量纲正确』的证据，而前者并不度量后者。」**
+//
+// ══ 修法：让「借名字」在类型层就不可能 ═══════════════════════════════════════════
+// 判别式联合 —— `kind` 决定这份快照携带**哪个量纲**的量，两个量纲**不共用任何字段名**：
+//   · `capacity_forecast` → `capWanP50/capWanP90`（万套/窗口）
+//   · `risk_tightness`    → `tightnessPeak`（张力指数 0–100·无量纲）
+// 张力峰值本身**是有意义的量**，问题只是它借了别人的名字 ⇒ 给它自己的名字，照记不误。
+// 两个分支都 `.strict()`：往张力快照里塞 `capWanP50` ⇒ **运行时当场炸**，不是静默通过。
+// 这条比类型检查更要紧 —— payload 是 `Record<string, unknown>` 过一手的，类型在那儿断了。
+//
+// ⛔ **不许在这里为「兼容旧形状」留一个扁平分支** —— 那就是第二真相源，等于把病放回来。
+// 历史留痕（已落库的旧 payload）**一律不改写**（R4：ActionDraft 是审批面，改写 = 伪造审批记录）；
+// 它们靠「**没有 `kind` 字段**」自证是旧形状 ⇒ 见下方 `isLegacyUnitUnsafeSnapshot`。
+
+/** 产能推演快照：真产能数，量纲 **万套/窗口**（与 `capacity_forecast` 输出同轴）。 */
+export const CapacityForecastSnapshotSchema = z
+  .object({
+    kind: z.literal("capacity_forecast"),
+    /** 推演模式（`ProjectSimView` 的 mode 透传·非量纲字段）。 */
+    mode: z.string(),
+    /** 需求量。@unit 万套 */
+    qty: z.number(),
+    /** 窗口内产能中位口径。@unit 万套/窗口 */
+    capWanP50: z.number(),
+    /** 窗口内产能承诺口径。@unit 万套/窗口 */
+    capWanP90: z.number(),
+    /** 主瓶颈名。 */
+    mainBn: z.string(),
+    /** 基线缺口（`adoptCombo` 打进 payload 时补）。@unit 万套/窗口 */
+    baselineGap: z.number().optional(),
+  })
+  .strict();
+export type CapacityForecastSnapshot = z.infer<typeof CapacityForecastSnapshotSchema>;
+
+/**
+ * 风险张力快照：**张力峰值**，量纲 **张力指数（0–100·无量纲）**，不是产能。
+ *
+ * ⚠️ 这里**刻意没有** `capWanP50/capWanP90` —— 产能页在拨杠杆那一刻手上只有张力曲线
+ * （`card.peak`），**拿不到真产能数**。红线：宁可少记，不许记假的。
+ * 想在留痕里同时看到真产能 ⇒ 得先把 `capacity_forecast` 真调一次，那是另一件事，
+ * **不许**拿手边这个 0–100 的数去顶替。
+ */
+export const RiskTightnessSnapshotSchema = z
+  .object({
+    kind: z.literal("risk_tightness"),
+    /** 推演模式（产能页固定 "capacity"·非量纲字段）。 */
+    mode: z.string(),
+    /** 窗口内张力峰值。@unit 张力指数(0-100·无量纲) */
+    tightnessPeak: z.number(),
+    /** 主瓶颈/首要因子名。 */
+    mainBn: z.string(),
+    /** 基线缺口（`adoptCombo` 打进 payload 时补）。@unit 张力指数(0-100·无量纲) */
+    baselineGap: z.number().optional(),
+  })
+  .strict();
+export type RiskTightnessSnapshot = z.infer<typeof RiskTightnessSnapshotSchema>;
+
+/** 杠杆采纳留痕快照（判别式联合·`kind` 决定量纲）。 */
+export const LeverAdoptSnapshotSchema = z.discriminatedUnion("kind", [
+  CapacityForecastSnapshotSchema,
+  RiskTightnessSnapshotSchema,
+]);
+export type LeverAdoptSnapshot = z.infer<typeof LeverAdoptSnapshotSchema>;
+
+/**
+ * **写进审批留痕之前**的运行时量纲断言 —— 这是本次收口的「机器先说话」那一层。
+ *
+ * 为什么运行时这一道不能省（类型检查顶不上）：`ActionDraft.payload` 的类型是
+ * `Record<string, unknown>`，值一旦进去，TS 就什么都不知道了；而 payload 是**审批面**，
+ * 写错的代价是「审批的人照着一个假数签了字」。所以判据必须落在**运行期**，
+ * 且必须在**写 payload 那一刻**（不是读的时候——读的时候已经签完字了）。
+ *
+ * 抛错而非静默降级：塞错量纲 ⇒ 采纳按钮当场失败，用户看得见。
+ * **静默吞掉才是这个病的原样复发**（原病灶正是「没人报错、一路绿到审批页」）。
+ */
+export function assertLeverAdoptSnapshot(snapshot: unknown): LeverAdoptSnapshot {
+  const r = LeverAdoptSnapshotSchema.safeParse(snapshot);
+  if (!r.success) {
+    throw new Error(
+      `杠杆采纳留痕快照量纲校验不通过（拒绝把量纲存疑的数写进审批留痕）：${r.error.issues
+        .map((i) => `${i.path.join(".") || "<root>"} ${i.message}`)
+        .join(" · ")}`,
+    );
+  }
+  return r.data;
+}
+
+/**
+ * 旧形状识别（**只读不改**）：`G-LEVER-SNAPSHOT-UNIT-LIE` 收口**之前**落库的留痕
+ * 没有 `kind` 判别字段，其 `capWanP50/capWanP90` 的量纲**无凭**——
+ * 产能页来的那批装的其实是张力指数（0–100），项目推演页来的那批才是真产能。
+ *
+ * 用途只有一个：**把「不知道」显式说出来**，而不是让读者默认它是万套/窗口。
+ * ⛔ 绝不据此改写历史 payload（R4：ActionDraft 是审批面，改写 = 伪造审批记录）。
+ */
+export function isLegacyUnitUnsafeSnapshot(snapshot: unknown): boolean {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return false;
+  const s = snapshot as Record<string, unknown>;
+  if (typeof s.kind === "string") return false; // 新形状：量纲由 kind 自证
+  return "capWanP50" in s || "capWanP90" in s;
+}
+
+// ---------------------------------------------------------------------------
 // §S3 调度器
 // ---------------------------------------------------------------------------
 
