@@ -54,28 +54,47 @@ interface Verdict {
 /** 一个数量级 = 10 倍。`decades >= 1` 即判红。 */
 const DECADE = 1;
 
-function magnitudeVerdict(label: string, mock: number, real: number): Verdict {
-  const base = { label, mock, real };
-  if (!Number.isFinite(mock) || !Number.isFinite(real)) {
-    return { ...base, ratio: NaN, decades: Infinity, ok: false, reason: `${label}：非有限数（mock=${mock} real=${real}）` };
+/**
+ * **唯一**的比值判据实现。`magnitudeVerdict`（数量级窗）与 `annualizeVerdict`（年化自洽窗）
+ * 都只是把不同的 [lo, hi] 喂给它 —— 全文件（含金丝雀、含变异反证）共用这一份，
+ * 不许各抄一份公式（抄了就是装饰品：改主逻辑时金丝雀拿旧的去测、照样绿）。
+ */
+function ratioVerdict(label: string, value: number, ref: number, lo: number, hi: number, refName: string): Verdict {
+  const base = { label, mock: value, real: ref };
+  if (!Number.isFinite(value) || !Number.isFinite(ref)) {
+    return { ...base, ratio: NaN, decades: Infinity, ok: false, reason: `${label}：非有限数（${value} / ${ref}）` };
   }
-  if (real === 0 || mock === 0) {
-    const ok = mock === real;
-    return { ...base, ratio: NaN, decades: ok ? 0 : Infinity, ok, reason: ok ? `${label}：两侧同为 0` : `${label}：一侧为 0 另一侧不是（mock=${mock} real=${real}）` };
+  if (ref === 0 || value === 0) {
+    const ok = value === ref;
+    return { ...base, ratio: NaN, decades: ok ? 0 : Infinity, ok, reason: ok ? `${label}：两侧同为 0` : `${label}：一侧为 0 另一侧不是（${value} / ${ref}）` };
   }
-  const ratio = mock / real;
+  const ratio = value / ref;
   const decades = Math.abs(Math.log10(Math.abs(ratio)));
-  const ok = decades < DECADE;
+  const ok = ratio >= lo && ratio <= hi;
   return {
     ...base,
     ratio,
     decades,
     ok,
     reason: ok
-      ? `${label}：mock ${mock} vs 真后端 ${real}（${ratio.toFixed(4)}×，未跨数量级）`
-      : `${label}：mock ${mock} vs 真后端 ${real} ⇒ **${ratio.toFixed(2)} 倍**，跨了 ${decades.toFixed(2)} 个数量级`,
+      ? `${label}：${value} vs ${refName} ${ref}（${ratio.toFixed(4)}×，在窗内）`
+      : `${label}：${value} vs ${refName} ${ref} ⇒ **${ratio.toFixed(2)} 倍**，越出 [${lo}, ${hi}] 窗（跨 ${decades.toFixed(2)} 个数量级）`,
   };
 }
+
+/** L2/L3 用：跨一个数量级即红。 */
+const magnitudeVerdict = (label: string, mock: number, real: number): Verdict =>
+  ratioVerdict(label, mock, real, 10 ** -DECADE, 10 ** DECADE, "真后端");
+
+/**
+ * L1 用：月值年化后与年值的比必须落在 [1/3, 3]。
+ * 真实季节性/认证爬坡缺口最多带来 ~1.6 倍，而"年数当月数"的签名是 ~12 倍 ——
+ * 两者之间隔着一整个数量级，窗口开在 3 不会误伤。
+ */
+const ANNUALIZE_LO = 1 / 3;
+const ANNUALIZE_HI = 3;
+const annualizeVerdict = (label: string, monthly: number, annual: number): Verdict =>
+  ratioVerdict(`${label}（月 ${monthly} ×12 = ${(monthly * 12).toFixed(2)}）`, monthly * 12, annual, ANNUALIZE_LO, ANNUALIZE_HI, "年口径");
 
 const failures = (vs: Verdict[]): Verdict[] => vs.filter((v) => !v.ok);
 const explain = (vs: Verdict[]): string => vs.map((v) => v.reason).join("\n");
@@ -183,47 +202,44 @@ describe("WO-MOCK-SCALE-TRUTH · mock 与真后端量级判据", () => {
   // L1 量纲自洽层：不依赖任何冻结基准，专治「年数塞进月字段」
   // -------------------------------------------------------------------------
   it("L1 量纲自洽 · 凡月口径的量 ×12 必须与对应年口径同量级（年数塞进月字段即红）", () => {
-    // 判据：月值年化后与年值的比落在 [1/3, 3]。真实季节性/爬坡缺口最多带来 ~1.6 倍，
-    // 而"年数当月数"的签名是 ~12 倍 —— 两者之间隔着一整个数量级，不会误伤。
-    const ANNUALIZE_LO = 1 / 3;
-    const ANNUALIZE_HI = 3;
-    const annualized = (monthly: number, annual: number) => (monthly * 12) / annual;
-    const rows: { label: string; monthly: number; annual: number }[] = [
-      { label: "S&OP 月目标总量 vs PlanTarget(year)", monthly: PLAN_TARGET_MONTH_WAN, annual: PLAN_TARGET_YEAR_WAN },
-      { label: "Σ perBase.monthly vs PlanTarget(year)", monthly: SOP_SUPPLY_BASELINE, annual: PLAN_TARGET_YEAR_WAN },
-      { label: "plan-versions.dem vs PlanTarget(year)", monthly: PLAN_VERSION_CURRENT.input.dem, annual: PLAN_TARGET_YEAR_WAN },
-      { label: "plan-versions.sup vs PlanTarget(year)", monthly: PLAN_VERSION_CURRENT.input.sup, annual: PLAN_TARGET_YEAR_WAN },
+    // ⚠️ 逐基地那一族**不能**用 [1/3,3] 窗对"年目标均摊"比 —— 各基地产能天然相差 5.5 倍
+    // （常州 3.7666 vs 扬州 0.6846），拿均摊当判据就是「我用 X 当作 Y 的证据，而 X 并不度量 Y」，
+    // 会把正常的小基地报成红（本判据第一版就这么错过，被自己的用例当场抖出来）。
+    // 逐基地改用数量级窗（同一份 ratioVerdict），照样能抓住"某个基地填了年数"（签名 ≥12 倍）。
+    const perBaseAvgAnnual = PLAN_TARGET_YEAR_WAN / SOP_PER_BASE_MONTHLY.length;
+    const rows: Verdict[] = [
+      annualizeVerdict("S&OP 月目标总量 vs PlanTarget(year)", PLAN_TARGET_MONTH_WAN, PLAN_TARGET_YEAR_WAN),
+      annualizeVerdict("Σ perBase.monthly vs PlanTarget(year)", SOP_SUPPLY_BASELINE, PLAN_TARGET_YEAR_WAN),
+      annualizeVerdict("plan-versions.dem vs PlanTarget(year)", PLAN_VERSION_CURRENT.input.dem, PLAN_TARGET_YEAR_WAN),
+      annualizeVerdict("plan-versions.sup vs PlanTarget(year)", PLAN_VERSION_CURRENT.input.sup, PLAN_TARGET_YEAR_WAN),
       // 逐细分：月目标 ×12 对该细分的年 P50。新增/改细分自动被覆盖（不是逐条写死）。
-      ...SOP_SEG_MONTH_TARGET.map((s) => ({
-        label: `细分 ${s.key} 月目标 vs demandWanPerYearP50`,
-        monthly: s.target,
-        annual: DEMAND_YEAR.find((d) => d.key === s.key)!.demandWanPerYearP50,
-      })),
+      ...SOP_SEG_MONTH_TARGET.map((s) =>
+        annualizeVerdict(
+          `细分 ${s.key} 月目标 vs demandWanPerYearP50`,
+          s.target,
+          DEMAND_YEAR.find((d) => d.key === s.key)!.demandWanPerYearP50,
+        ),
+      ),
+      // 逐基地普扫（新增基地自动进）：单基地月产能年化 vs 年目标均摊，数量级窗。
+      ...SOP_PER_BASE_MONTHLY.map((b) => magnitudeVerdict(`基地 ${b.baseId} 月产能年化`, b.monthly * 12, perBaseAvgAnnual)),
     ];
-    const bad = rows.filter((r) => {
-      const k = annualized(r.monthly, r.annual);
-      return !(k >= ANNUALIZE_LO && k <= ANNUALIZE_HI);
-    });
+    // ⚠️ 一次断言收全部 —— 分成两条 expect 会在第一条就抛出，
+    // 后面那族根本没跑到，报告里点不到真正出问题的那一行（变异反证第一次就吃了这个亏）。
     expect(
-      bad,
-      `以下"月"口径的量年化后与年口径量级对不上（年数塞进月字段的典型签名是 ~12 倍）：\n` +
-        bad.map((r) => `  ${r.label}：月 ${r.monthly} ×12 = ${(r.monthly * 12).toFixed(2)} vs 年 ${r.annual} ⇒ ${annualized(r.monthly, r.annual).toFixed(2)}×`).join("\n"),
+      failures(rows).map((v) => v.label),
+      `以下"月"口径的量年化后与年口径量级对不上（年数塞进月字段的典型签名是 ~12 倍）：\n${explain(failures(rows))}`,
     ).toEqual([]);
 
-    // 逐基地普扫（新增基地自动进）。这里**不能**用上面那个 [1/3,3] 窗口对"年目标均摊"比 ——
-    // 各基地产能天然相差 5.5 倍（常州 3.7666 vs 扬州 0.6846），拿均摊当判据就是
-    // 「我用 X 当作 Y 的证据，而 X 并不度量 Y」：会把正常的小基地报成红。
-    // 改用数量级判据（共用同一个 magnitudeVerdict），它照样能抓住"某个基地填了年数"——
-    // 年量级填进单基地的签名是 ~12 倍以上，稳稳越过一个数量级。
-    const perBaseAvgAnnual = PLAN_TARGET_YEAR_WAN / SOP_PER_BASE_MONTHLY.length;
-    const perBase = SOP_PER_BASE_MONTHLY.map((b) => magnitudeVerdict(`基地 ${b.baseId} 月产能年化`, b.monthly * 12, perBaseAvgAnnual));
-    expect(failures(perBase), `以下基地的月产能年化后跨了数量级：\n${explain(failures(perBase))}`).toEqual([]);
-    // 金丝雀（同一条 magnitudeVerdict）：把旧的年量级单基地值（常州 88.0）喂进去必须红。
-    expect(magnitudeVerdict("金丝雀·旧常州年量级", 88.0 * 12, perBaseAvgAnnual).ok).toBe(false);
-
-    // 金丝雀（同一条 annualized 公式）：把旧的年量级值当月值喂进去，必须落在窗口外。
-    expect(annualized(375.0, PLAN_TARGET_YEAR_WAN)).toBeGreaterThan(ANNUALIZE_HI);
-    expect(annualized(367.9, PLAN_TARGET_YEAR_WAN)).toBeGreaterThan(ANNUALIZE_HI);
+    // 金丝雀（同一份 ratioVerdict）：把旧的年量级值当月值喂进去，必须全红且点名。
+    const canaries = [
+      annualizeVerdict("金丝雀·旧 dem 375.0 当月值", 375.0, PLAN_TARGET_YEAR_WAN),
+      annualizeVerdict("金丝雀·旧 Σ perBase 367.9 当月值", 367.9, PLAN_TARGET_YEAR_WAN),
+      magnitudeVerdict("金丝雀·旧常州 88.0 当月值", 88.0 * 12, perBaseAvgAnnual),
+    ];
+    expect(canaries.every((c) => !c.ok), `L1 金丝雀应全红，实际：\n${explain(canaries)}`).toBe(true);
+    // 且必须点名"差多少倍"——只说"越窗"没法判断是量纲错还是季节性波动。
+    expect(canaries[0]!.reason).toContain("13.97 倍");
+    expect(canaries[1]!.reason).toContain("13.70 倍");
   });
 
   // -------------------------------------------------------------------------
