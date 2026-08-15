@@ -217,13 +217,43 @@ export const FALLBACK_SOLVER_CATALOG_KEYS: readonly string[] = Object.freeze(
   Object.keys(FALLBACK_SOLVER_CATALOG).sort(),
 );
 
-/** 对象类型 → 关键属性（agent 导航用·只列驱动求解器/答案的关键字段）。 */
+/**
+ * 对象类型 → 关键属性（agent 导航用·只列驱动求解器/答案的关键字段）。
+ *
+ * ⚠ **这张表里的名字必须与本体属性名逐字相等**，否则**不会有任何一处报错** —— 它有两个消费方，
+ *   两个都是「静默丢弃」而不是「抛错」：
+ *     ① `renderNavigationSlice`（本文件 :436）把名字直接印进 agent 首轮 prompt ⇒ 名字错了，
+ *        模型照着一个**不存在的字段**去查，工具回空；
+ *     ② `agent/ontology-context.ts` 的 `renderTypeBlock` 拿它当**白名单**过滤 `getTypeSemantics`
+ *        的真属性（`if (wanted && !wanted.has(pk)) continue`）⇒ 名字错了，那个属性的
+ *        **口径（description/unit/派生公式）整条被滤掉**，模型拿不到值，屏上少一段解释。
+ *   即：改名漏改这一族在这里**类型系统看不见、三包 typecheck 全绿**（CLAUDE.md 铁律 0.6
+ *   第 4 条点名的「第 ④ 类位置」）。故本表下方挂 `@stale-fact` 记号，由 `check-stale-claims` 现算比对。
+ *
+ * ── 2026-08-15 实测修正（WO-STALE-TEXT-SWEEP）─────────────────────────────────
+ * `DemandSegment` 原写 `["segment", "p50", "demandPct"]`，**三个里有两个是假的**，且**错法不同**：
+ *   · `p50`      —— 真·改名漏改：上游已改名 `demandWanPerYearP50`（名字自带分母「万套/**年**」，
+ *                   与 `CapacityForecastOutput.capWanP50` 的「万套/**窗口**」是两个量）。
+ *                   它是 `DemandSegment` 上**唯一带 description+unit 的属性**，被滤掉的正是那半个信息 ——
+ *                   实测后果：`renderTypeBlock` 对 DemandSegment 一行都渲染不出 ⇒ 整个口径块返 `null`。
+ *   · `demandPct` —— **从来就不是** `DemandSegment` 的属性：它是驾驶舱供需块的块内字段
+ *                   （`DashboardView.tsx` `demandPct: view.demand?.pct`），被当成对象属性写进了本表。
+ *                   这一条不是"改名没跟上"，是"一开始就抄错了地方"，修法不同：不是换新名，是换成真属性。
+ * 现列的五个全部逐字取自 `apps/datacore/src/synthetic/battery.ts` 的 `demandSegmentProps`，
+ * 且都是求解器真读的字段（`solvers/service.ts` `supplyDemandGapAttribution`：
+ * `|demandWanPerYearP50 − act|` 出预测偏差、`demandWanPerYearP50 − tgt` 出结构漂移，
+ * `segId` 进 `provenance.drillId`、`segment` 进因子标签）。
+ *
+ * @stale-fact apps/datacore/src/synthetic/battery.ts /propKey: "demandWanPerYearP50"/ ==1
+ * @stale-fact apps/datacore/src/synthetic/battery.ts /propKey: "(?:segId|segment|act|tgt)"/ ==4
+ * @stale-fact apps/datacore/src/synthetic/battery.ts /propKey: "p50"/ ==0
+ */
 const OBJECT_KEY_PROPS: Record<string, string[]> = {
   Metric: ["metricKey", "actual", "target", "gap"],
   RootCauseChain: ["factorId", "caused_by", "contribution"],
   CausalFactor: ["factorId", "label", "impact"],
   PlanTarget: ["metricKey", "target", "period"],
-  DemandSegment: ["segment", "p50", "demandPct"],
+  DemandSegment: ["segId", "segment", "demandWanPerYearP50", "act", "tgt"],
   Base: ["baseId", "name", "capacityDaily", "util"],
   Line: ["lineId", "capacityDaily", "max_capacity_day", "util"],
   Model: ["modelId", "unitPrice", "series"],
