@@ -205,10 +205,22 @@ describe("WO-STEP-TEMPLATE-LAYER FE · 结构守卫", () => {
 
   it("三色系：样式零硬编码颜色（全部走 tokens.css 变量）", () => {
     const css = readFileSync(join(SRC, "views", "process", "ProcessStartFromTemplate.module.css"), "utf8");
-    // 金丝雀：这份 CSS 真的在用变量（读错文件/读空文件时此条先红）
-    expect(css).toContain("var(--");
-    expect(css, "出现 hex 颜色字面量").not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-    expect(css, "出现颜色函数字面量").not.toMatch(/\b(rgba?|hsla?|color-mix)\s*\(/);
+    /**
+     * 🔴 **剥注释再查** —— 与上面组件源码那两条同一条纪律，初版漏了，被真数据当场抖出来：
+     * 补上「`--accent` 在 warm 是 `#E8590C`，白字仅 3.58:1，故改用 `--accent-solid`」这段
+     * **取证注释**后，本条立刻自红。但注释里**引用**色值当证据不是「硬编码颜色」——
+     * 这条门要禁的是**声明里**写死色值（那才会真上屏）。判据落错位置的后果不是漏判，
+     * 是逼人把取证删掉去凑绿，那正好把「为什么这么改」的证据从原地擦掉。
+     */
+    const cssCode = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    // 🐤 正向金丝雀：文件真读到了，且剥注释没把声明一起吞掉。
+    expect(cssCode, "剥注释把声明吞了 ⇒ 下面的否定结论全部作废").toContain("var(--");
+    // 🐤 反向金丝雀：一个**只可能在注释里**出现的串，剥完必须没有 —— 否则「剥」根本没生效，
+    //    下面两条否定断言会退化成「原文里就没有」，再也分不出注释与声明。
+    expect(css, "反向金丝雀样例本身必须存在于原文").toContain("WO-STEP-TEMPLATE-LAYER");
+    expect(cssCode, "剥注释没生效 ⇒ 下面的否定结论不成立").not.toContain("WO-STEP-TEMPLATE-LAYER");
+    expect(cssCode, "出现 hex 颜色字面量").not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(cssCode, "出现颜色函数字面量").not.toMatch(/\b(rgba?|hsla?|color-mix)\s*\(/);
   });
 
   it("诚实位：组件不许出现「未知 / N/A / 暂无」这类占位符（缺席只许不显示）", () => {
