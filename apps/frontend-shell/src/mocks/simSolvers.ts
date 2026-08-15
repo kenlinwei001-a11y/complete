@@ -1558,8 +1558,12 @@ export function mockGlobalSim(args: Record<string, unknown>): Record<string, unk
 // ⊥ 销售预测 ΣDemandSegment.demandWanPerYearP50×1e4 按产能占比摊窗 → 缺口/富余 + crossDay + P1 逐日 dayPlan（触发→加班/跨基地/外协→收窄·provenance）。
 // forecastStart 锚（禁 Date.now·R6）·每线/每日值 provenance（R13）。改 baseId/horizon → 前瞻真变（非写死）。
 // ---------------------------------------------------------------------------
-// 演示 DemandSegment.demandWanPerYearP50（万套/年·= datacore seed 同量级 201.7/139.2/34.1 → Σ375）。
-const OUTLOOK_SEG_P50: number[] = [201.7, 139.2, 34.1];
+// 演示 DemandSegment.demandWanPerYearP50（万套/年 → Σ375）。
+// WO-MOCK-SCALE-TRUTH 续：这里曾内联第三份 `201.7/139.2/34.1`（handlers 那份已收编、sopScale 一份）。
+// 量级本来就对（是年口径、也标着年口径），所以量级门抓不到它 —— 它是**单一出处**的病，不是量级的病：
+// 改 `DEMAND_YEAR` 而漏改这里，`base_capacity_outlook` 的销售预测线就会静静地按旧锚算。
+// 现从 `DEMAND_YEAR` 派生，值字节不变（Σ 仍 375.0）。
+const OUTLOOK_SEG_P50: number[] = DEMAND_YEAR.map((d) => d.demandWanPerYearP50);
 // 演示每基地在产占用总量（未完工 WorkOrder.qtyActual·代表值·确定性）。
 const OUTLOOK_INPROD: Record<string, number> = { changzhou: 35738, jinhua: 28800, chengdu: 26400, hefei: 24100 };
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { server } from "./setup";
 import { tokenFor } from "@/mocks/db";
 import { ACCOUNTS } from "@/mocks/fixtures";
-import { mockPlanAudit, PLAN_VERSION_CURRENT, SOP_SUPPLY_BASELINE, seedSopVersions } from "@/mocks/simSolvers";
+import { mockBaseOutlook, mockPlanAudit, PLAN_VERSION_CURRENT, SOP_SUPPLY_BASELINE, seedSopVersions } from "@/mocks/simSolvers";
 import {
   DEMAND_YEAR,
   DEMAND_YEAR_REVENUE_YI,
@@ -328,5 +328,56 @@ describe("WO-MOCK-SCALE-TRUTH · mock 与真后端量级判据", () => {
     const legacy = mockPlanAudit({ ...PLAN_VERSION_CURRENT.input, dem: 375.0, seg_pas: 201.7, seg_ess: 139.2, seg_com: 34.1, sup: 374.2 }) as { score: number; verdict: string };
     expect(legacy.verdict).not.toBe(REAL.auditVerdict);
     expect(legacy.score).not.toBe(REAL.auditScore);
+  });
+
+  // -------------------------------------------------------------------------
+  // L4 单一出处层：量级对了，但"有几份"还没被咬住
+  // -------------------------------------------------------------------------
+  /**
+   * **为什么 L1–L3 不够**：它们咬的是"值对不对"，咬不住"值有几份"。
+   * 本单里同一个错犯了**三次** —— 年口径三线 `201.7/139.2/34.1` 被内联了三处：
+   *   ① `simSolvers.SOP_PER_BASE`（量级也错，L1/L2 抓得到）
+   *   ② `handlers.ts` 的 `DemandSegment` 桩（量级**是对的** ⇒ L1/L2 全绿，抓不到）
+   *   ③ `simSolvers.OUTLOOK_SEG_P50`（同上，量级对、标注也对，照样抓不到）
+   * ②③ 是「单一出处」的病、不是「量级」的病：改 `DEMAND_YEAR` 而漏改副本，
+   * 消费方就静静地按旧锚算，而本文件上面每一条断言都会继续绿。
+   *
+   * **为什么不用扫源码字面量**：第一版想剥注释后扫 `201.7|139.2|34.1`，
+   * 实测 `stripComments` 的常见写法只剥**整行** `//`，剥不掉**行尾**注释
+   * （`const x = ess.demandWanPerYearP50; // 139.2 万套/年` 照样命中）⇒ 恒假红。
+   * 判据落在**行为**上就没有这个盲区：消费方真跑一遍，值必须与唯一出处相等。
+   */
+  it("L4 单一出处 · 年口径三线的每个消费方都与 DEMAND_YEAR 同值（再内联一份副本即红）", async () => {
+    server.use();
+    const src = DEMAND_YEAR.map((d) => [d.demandWanPerYearP50, d.demandWanPerYearP90, d.act]);
+
+    // 消费方①：`GET /a/v1/objects?type=DemandSegment` 实际下发的三行。
+    const rows = await listObjects("DemandSegment");
+    expect(rows.length, "DemandSegment 桩没下发三行 —— 先修桩再看下面的结论").toBe(DEMAND_YEAR.length);
+    expect(
+      rows.map((r) => [r.props.demandWanPerYearP50, r.props.demandWanPerYearP90, r.props.act]),
+      "DemandSegment 桩与 DEMAND_YEAR 不同值 ⇒ 年口径又有了第二份出处",
+    ).toEqual(src);
+
+    // 消费方②：`base_capacity_outlook` 的销售预测线，其下钻证据 = Σ demandWanPerYearP50。
+    const outlook = mockBaseOutlook({ baseId: "changzhou" }) as {
+      horizons: { lines: { key: string; provenance: { drillField: string; drillValue: number } }[] }[];
+    };
+    const forecastLines = outlook.horizons
+      .flatMap((h) => h.lines)
+      .filter((l) => l.key === "salesForecast");
+    expect(forecastLines.length, "没取到销售预测线 —— 探针过期，先修探针再看结论").toBeGreaterThan(0);
+    for (const l of forecastLines) {
+      expect(l.provenance.drillField).toBe("demandWanPerYearP50");
+      expect(
+        l.provenance.drillValue,
+        `base_capacity_outlook 销售预测线的锚 ${l.provenance.drillValue} ≠ Σ DEMAND_YEAR ${DEMAND_YEAR_TOTAL_WAN} ⇒ OUTLOOK_SEG_P50 又被内联成第二份`,
+      ).toBe(DEMAND_YEAR_TOTAL_WAN);
+    }
+
+    // 金丝雀：证明上面那条**真的对副本敏感**，不是恒真。
+    // 手工搭一份"内联副本漂了"的样子（把 ess 改回旧锚以外的值），断言判据会认出不同。
+    const drifted = src.map((row, i) => (i === 1 ? [row[0]! + 1, row[1], row[2]] : row));
+    expect(drifted, "金丝雀：漂了一位的副本必须与唯一出处不等，否则本条断言恒真").not.toEqual(src);
   });
 });
