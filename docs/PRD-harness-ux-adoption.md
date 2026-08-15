@@ -363,6 +363,44 @@ node scripts/check-sim-ux-criteria.mjs --census    # 打印现算的推演页全
 node scripts/check-sim-ux-criteria.mjs --tighten   # 收紧基线（只收紧不放松）
 ```
 
+### 6.5 变异反证 7/7 实跑（每条先证「变异体 ≠ 原文」再显式捕获退出码）
+
+`out=$(node scripts/check-sim-ux-criteria.mjs 2>&1); rc=$?` —— **不用** `cmd | tail; echo $?`（管道尾恒 0）。
+
+| # | 变异 | 结果 |
+|---|---|---|
+| M1 | 删 §4 表的 `order-chain` 行 | **RC=1** · ①枚举一致点名 `order-chain` ＋ ④棘轮死账 |
+| M2 | 把 `sim-sandbox × U1` 写成「部分」 | **RC=1** · ②三态合法点名该格 |
+| M3 | 删 §4.2 里 `U3` 那条理由 | **RC=1** · ③判不了必须有理由点名 U3 |
+| M4 | `global-sim × U1` 符合 → 判不了 | **RC=1** · ④棘轮倒退 ＋ 总量 17→16 |
+| M5 | `what-if × U1` 不符合 → 符合 | **RC=1** · ④棘轮松弛（免检名额，**反向遍历基线才发现得了**） |
+| M6 | 删 §0.1 的「丙」行 | **RC=1** · ⑤指代冲突登记「只剩 2/3 行」 |
+| M7 | 在无扫描面的 cwd 跑 | **RC=2** ＋ 「本次结论作废，不许读作表合规」 |
+| — | 逐条还原 | **RC=0** 复绿 · `git status --porcelain` 空 |
+
+### 6.6 ⚠ 需要审核方点头的两件事（本单不擅自当作已批准）
+
+1. **待接线棘轮 13 → 14**（`scripts/gate-ledger-baseline.json` 的 `pendingWireCount`）。
+   本门是**已建未接线**（`binding=NONE` / `disposition=WIRE`）——本单的 🚦范围边界禁改
+   `package.json` 与 `scripts/gate.sh`，接不进 `gates` 串。该棘轮**只降不升**，故必须上调基线并写明理由。
+   **若不接受这次上调，正确动作是把它接进 `gates` 串（该数当场回落 13），不是删门。**
+   刻意**不改成** `disposition=MANUAL` 避红：MANUAL 要写得出「为何刻意不接链」的理由，
+   而本门是纯静态、零依赖、单次 <1s 的文档判据检查，写不出这样的理由 ——
+   **编一个假理由换一个绿数字，比红着更糟**。
+2. **建议新增断点 `G-GATE-ROSTER-HANDCOPIED`**（§7.5）：门的名单是手抄的 ⇒ 漏掉的对象永远绿。
+   编号与措辞属本体治理，本单只列建议不擅自加。
+
+### 6.7 与其它门的关系（跑过的实测）
+
+| 门 | RC | 说明 |
+|---|---|---|
+| `gate-exit-discipline:check` | **0** | 82/82 守纪律（含本门：有 RC=2 出口 + 顶层兜底） |
+| `ontology-writeback:check` | **0** | §7 登记齐 · 待接线 14（基线 14，已随本单上调） |
+| `baseline-writer-honesty:check` | **0** | 本门走共享 `buildBaselineDoc`，不进手搓豁免名单 |
+| `gate-ledger:check` | 2 | **环境态**：28 条 `guardedPaths` 指向未构建的 dist（本单轻画像禁 build）。输出明写「其余判据（账无遗漏/无幽灵 · binding 与现算一致 · escalation/disposition 合法）本次均已核过且相符」⇒ 本单的账是过的 |
+| `ontology-anchors:check` | 1 | **存量漂移**：7 条全部落在 `handlers.ts` / `databuilder.ts` / `orchestrator.ts` / `engine.ts`，本单一个字都没碰（本单新增 §7 只有 1 行，`git diff | grep '^+' | grep -c` 这四个文件 = **0**）。⚠ 这道门**当场抓到过本单一个真错**：我把 `WO-ACTIVE-EDGE-UX.md:43-45` 写进了反引号，抽取器不区分「举例」与「锚点」⇒ 判 `FILE_MISSING`；改写成「第 43–45 行」后消失。**机器先说话** |
+| `system-ontology:check` | 1 | **环境态**：缺的两个锚点是 `apps/agentcore/dist/mocks/seed.js` 与 `packages/contracts/dist/index.js`，两者在**基线版本的本体里就已引用**（`grep -c` 基线副本 = 2），dist 未构建所致 |
+
 ---
 
 ## 7 · 《本体引用与影响》
