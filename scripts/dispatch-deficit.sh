@@ -123,9 +123,104 @@ fi
 # ── 欠派 ───────────────────────────────────────────────────────────────────────
 # 判据不是「agent 少」，是「机器闲着而队列非空」。队列长度由调用方传入（未传则跳过该判据，
 # 并**明说跳过了** —— 静默跳过会让报告读起来像全覆盖）。
-QUEUE="${1:-}"
-if [ -z "$QUEUE" ]; then
-  echo "ℹ️  未传待派队列长度（用法：$0 <待派单数>）⇒ **欠派判据本次未评估**，不代表不欠派。"
+# ⚠️ **2026-08-15 改：队列长度改为自算，不再依赖调用方传参**（仓主要求
+#    「少于 4 个 agent 就触发检测待派/待复验/待写WO 的清单，然后自动推进」）。
+#    旧版洞在这里：不传就打一句「本次未评估」然后 **rc 保持 0** ——
+#    读起来像「调度正常」，而它其实什么都没查。
+#    形态：**「我用『探针退 0』当作『不欠派』的证据，而前者并不度量后者。」**
+#    自算三个队列，全部取自**落盘的真相源**（不是我脑子里的印象，重启也不丢）：
+#      ① 待派 = docs/REQUIREMENTS-TRACE.md 里标 ⛔ 的行
+#      ② 待复验 = 已推但**未并进集成分支**的 handoff 分支（祖先关系判定，不看文件存在性）
+#      ③ 待写WO = 本体 §8 里标 🔴 未修 / ◑ 部分闭合的断点
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TRACE="$ROOT_DIR/docs/REQUIREMENTS-TRACE.md"
+ONTO="$ROOT_DIR/docs/SYSTEM-ONTOLOGY.md"
+
+# ① 待派
+Q_TODO=0
+if [ -f "$TRACE" ]; then
+  Q_TODO=$(grep -c '⛔' "$TRACE" 2>/dev/null || echo 0)
+else
+  echo "⛔ 找不到 $TRACE ⇒ **工具坏了**，待派队列本次算不出，不许读成 0" >&2
+  exit 2
+fi
+
+# ② 待复验
+# ⚠️ **判据踩过一次坑，写在这里防复发**（2026-08-15 实测）：
+#    第一版用「分支 tip 不是集成分支的祖先」当判据 ⇒ 报出 **288 条**。
+#    错在历史分支绝大多数是 **cherry-pick / squash** 进 canonical 的，
+#    **祖先关系天然不成立**，于是「早已收编」被读成「待复验」。
+#    形态（CLAUDE.md 铁律 0.6 句式）：
+#      **「我用『tip 不是祖先』当作『内容没并进来』的证据，而前者并不度量后者。」**
+#    与本文件早已记过的「拿 git log C..b | wc -l 当有无未合并内容的判据」是同一个病。
+#    改法：加**时间闸** —— 只有「tip 不比集成分支尖端旧」的才可能待复验。
+#    ⚠️ 时间闸**必要不充分**：漏掉「推得早、至今没并」的分支。此边界如实打在输出里。
+Q_VERIFY=0
+Q_VERIFY_LIST=""
+Q_VERIFY_UNKNOWN=0
+INTEG="origin/claude/verify-reclaim-6"
+if git -C "$ROOT_DIR" rev-parse --verify -q "$INTEG" >/dev/null 2>&1; then
+  INTEG_TS=$(git -C "$ROOT_DIR" log -1 --format=%ct "$INTEG" 2>/dev/null || echo 0)
+  while read -r sha ref; do
+    [ -z "$ref" ] && continue
+    b="${ref#refs/heads/}"
+    git -C "$ROOT_DIR" merge-base --is-ancestor "$sha" "$INTEG" 2>/dev/null && continue
+    if ! git -C "$ROOT_DIR" cat-file -e "${sha}^{commit}" 2>/dev/null; then
+      Q_VERIFY_UNKNOWN=$(( Q_VERIFY_UNKNOWN + 1 )); continue
+    fi
+    TS=$(git -C "$ROOT_DIR" log -1 --format=%ct "$sha" 2>/dev/null || echo 0)
+    if [ "$TS" -ge "$INTEG_TS" ]; then
+      Q_VERIFY=$(( Q_VERIFY + 1 )); Q_VERIFY_LIST="${Q_VERIFY_LIST} ${b}"
+    fi
+  done < <(git -C "$ROOT_DIR" ls-remote origin 'refs/heads/claude/handoff-*' 2>/dev/null)
+else
+  echo "ℹ️  取不到 $INTEG ⇒ 待复验队列**未评估**（不代表为 0）"
+fi
+
+# ③ 待写WO：本体 §8 里未闭的断点
+Q_GAP=0
+[ -f "$ONTO" ] && Q_GAP=$(grep -cE '🔴 *未修|◑ *部分闭合' "$ONTO" 2>/dev/null || echo 0)
+
+# 金丝雀：三个数至少有一个能算出非零，否则大概率是我抓错了文件
+if [ "$Q_TODO" -eq 0 ] && [ "$Q_VERIFY" -eq 0 ] && [ "$Q_GAP" -eq 0 ]; then
+  echo "⚠️  三个队列同时算出 0 —— 先怀疑是我抓错了文件/正则，再信「真没活了」。"
+  echo "     复核：grep -c '⛔' $TRACE ; git ls-remote origin 'refs/heads/claude/handoff-*' | wc -l"
+fi
+
+QUEUE=$(( Q_TODO + Q_VERIFY + Q_GAP ))
+echo "队列现算：待派 ${Q_TODO}（TRACE ⛔）· 待复验 ${Q_VERIFY}（已推未并）· 待写WO ${Q_GAP}（§8 未闭）= 合计 ${QUEUE}"
+[ -n "$Q_VERIFY_LIST" ] && { echo "   待复验分支（前 10）："; for b in $Q_VERIFY_LIST; do echo "     · $b"; done | head -10; }
+[ "$Q_VERIFY_UNKNOWN" -gt 0 ] && echo "   ℹ️  另有 ${Q_VERIFY_UNKNOWN} 条远端分支本地无对象 ⇒ **判不了**（不计入，也不等于已收编）"
+echo "   ⚠️ 待复验用了时间闸（必要不充分）：推得早、至今没并的分支它看不见。"
+
+# 仓主定的硬线：**在跑 agent < 4 就必须触发推进**
+# ⚠️ **在跑 agent 数：本脚本量不了，两种启发式都实测失败，不许再猜第三种**
+#    ① 按 worktree 目录名 grep 进程表 ⇒ **报 0 而实际 4 个在跑**
+#       （subagent 的进程命令行里不含它的 worktree 路径，只在跑测试那几分钟短暂出现）。
+#    ② 按 worktree 目录 mtime 15 分钟内有活动 ⇒ **同样报 0**（目录本身不被 touch）。
+#    形态：**「我用『进程表/文件系统里的某个痕迹』当作『agent 在不在跑』的证据，
+#            而那些痕迹并不度量它。」**
+#    ⇒ 唯一可靠来源是**调度方自己的 agent 列表**（审核方的 ListAgents）。
+#    故：由调用方传入；**不传就明说未评估，绝不默认 0** ——
+#    默认 0 会让本探针永远喊「欠派」，喊多了就没人信，等于把机制做成噪声。
+AGENTS="${1:-}"
+if [ -z "$AGENTS" ]; then
+  echo "   在跑 agent：**未传入 ⇒ 未评估**（用法：$0 <在跑agent数>；该数只有调度方的 agent 列表能给准）"
+elif ! [ "$AGENTS" -eq "$AGENTS" ] 2>/dev/null; then
+  echo "⛔ 在跑 agent 数「$AGENTS」不是整数 ⇒ 工具用错了，本次结论作废" >&2; exit 2
+else
+  echo "   在跑 agent：${AGENTS}（调用方传入）"
+fi
+CAP_AGENTS=4
+if [ -n "$AGENTS" ] && [ "$AGENTS" -lt "$CAP_AGENTS" ] && [ "$QUEUE" -gt 0 ]; then
+  echo "🔴 **欠派**：在跑 agent ${AGENTS} < 下限 ${CAP_AGENTS}，而队列合计 ${QUEUE} 非空。"
+  echo "   仓主 2026-08-15 定：**少于 4 个就触发检测待派/待复验/待写WO，然后自动推进**。"
+  echo "   ⚠️ 「gate 在跑」不是不派的理由 —— agent 大部分时间在读码改文件，"
+  echo "      真冲突的只有它跑 vitest 那几分钟，让它自己探 vitest 进程数避让即可。"
+  rc=1
+fi
+
+if false; then :
 elif ! [ "$QUEUE" -eq "$QUEUE" ] 2>/dev/null; then
   echo "⛔ 待派队列长度「$QUEUE」不是整数 ⇒ 工具用错了，本次结论作废" >&2
   exit 2
