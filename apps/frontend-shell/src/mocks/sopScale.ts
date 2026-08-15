@@ -43,19 +43,24 @@ const r = (v: number, p: number): number => {
  * `DemandSegment.demandWanPerYearP50` / `.act`（万套/**年**）——与 datacore 种子字节一致。
  * 这一层**不参与**月度平衡台的量级，只用于：细分达成率（act/P50）、结构占比基线、需求侧归因。
  */
+// ⚠️ 字段名必须自带量纲（`demandWanPerYearP50`），**不许**缩成裸 `p50`/`p90` ——
+// 本仓 `p50` 一个名字背 6 个量纲，裸名即歧义；`quantile-unit-onscreen` 接缝门会当场报红。
 export const DEMAND_YEAR = [
-  { key: "pas", name: "乘用车", p50: 201.7, p90: 199.6, act: 200.6 },
-  { key: "ess", name: "储能", p50: 139.2, p90: 108.4, act: 100.5 },
-  { key: "com", name: "商用车", p50: 34.1, p90: 34.0, act: 39.5 },
+  { key: "pas", name: "乘用车", demandWanPerYearP50: 201.7, demandWanPerYearP90: 199.6, act: 200.6 },
+  { key: "ess", name: "储能", demandWanPerYearP50: 139.2, demandWanPerYearP90: 108.4, act: 100.5 },
+  { key: "com", name: "商用车", demandWanPerYearP50: 34.1, demandWanPerYearP90: 34.0, act: 39.5 },
 ] as const;
 
 /** Σ demandWanPerYearP50 = 375.0 万套/年（需求侧年口径）。 */
-export const DEMAND_YEAR_TOTAL_WAN = r(DEMAND_YEAR.reduce((a, d) => a + d.p50, 0), 4);
+export const DEMAND_YEAR_TOTAL_WAN = r(DEMAND_YEAR.reduce((a, d) => a + d.demandWanPerYearP50, 0), 4);
 
 const PRICE_WAN: Record<string, number> = Object.fromEntries(SEG_REGISTRY.map((s) => [s.key, s.priceWan]));
 
-/** 需求侧年营收锚 = Σ(P50 × priceWan)：万套 × 万元/套 = 亿元 ⇒ **700.0 亿元/年**。 */
-export const DEMAND_YEAR_REVENUE_YI = r(DEMAND_YEAR.reduce((a, d) => a + d.p50 * (PRICE_WAN[d.key] ?? 0), 0), 4);
+/** 需求侧年营收锚 = Σ(demandWanPerYearP50 × priceWan)：万套 × 万元/套 = 亿元 ⇒ **700.0 亿元/年**。 */
+export const DEMAND_YEAR_REVENUE_YI = r(
+  DEMAND_YEAR.reduce((a, d) => a + d.demandWanPerYearP50 * (PRICE_WAN[d.key] ?? 0), 0),
+  4,
+);
 
 /** 需求加权均价 P̄ = Σ(P50×price)/ΣP50 ≈ 1.8667 万元/套（真后端 avgUnitPrice 同式）。 */
 export const AVG_UNIT_PRICE_WAN = r(DEMAND_YEAR_REVENUE_YI / DEMAND_YEAR_TOTAL_WAN, 4);

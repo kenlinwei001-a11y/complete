@@ -54,7 +54,7 @@ const AUDIT_T = {
   // PRD-IND-audit §4.5-A2 取值对齐（≈0.3712）。**这是年口径结构比**（储能年 P50 ÷ 三段年 P50 合计），
   // 与月度台账的细分占比（baselineShare 0.32）比较是有意为之 —— 两边都是无量纲占比，真后端实测同值
   // （plan_audit R01 回包原文「偏离基线 0.3712121212121212 达 0.0514」）。改用月值就把两个分母混了。
-  essShareBaseline: (DEMAND_YEAR.find((d) => d.key === "ess")?.p50 ?? 0) / DEMAND_YEAR_TOTAL_WAN,
+  essShareBaseline: (DEMAND_YEAR.find((d) => d.key === "ess")?.demandWanPerYearP50 ?? 0) / DEMAND_YEAR_TOTAL_WAN,
   essShareTol: 0.05,
   capexSoft: 10,
   segMargins: Object.fromEntries(SEG_REGISTRY.map((s) => [s.key, s.marginPct])) as { pas: number; ess: number; com: number }, // DF.3 单一来源

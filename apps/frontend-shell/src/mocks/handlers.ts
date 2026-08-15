@@ -903,7 +903,7 @@ function mockDecisionPlay(metricKey?: string): Record<string, unknown> {
   // 旧代码之所以没炸，只是因为当时 seg_ess 恰好也被错填成年值；把 seg_ess 修对，这里就会算出 −1025%。
   // 「接了线接错地方」的典型：改取年口径本体，不再借道月度台账字段。
   const ess = DEMAND_YEAR.find((d) => d.key === "ess")!;
-  const essTarget = ess.p50; // 139.2 万套/年（DemandSegment.demandWanPerYearP50）
+  const essTarget = ess.demandWanPerYearP50; // 139.2 万套/年
   const essActual = ess.act; // 100.5 万套/年（DemandSegment.act）——实绩偏弱下修
   const gap = r1((1 - essActual / essTarget) * 100); // 27.8
 
@@ -1095,7 +1095,7 @@ function mockSupplyDemandGap(): Record<string, unknown> {
   const residual = r1(G - demandContribution - supplyContribution); // 取余保证 Σ=G
   const essSeg = DEMAND_YEAR.find((d) => d.key === "ess")!;
   // 需求端叶的 driverValue 同样回到**年**口径（真后端 seg_bias 叶实测 38.7 = P50 139.2 − act 100.5）。
-  const essBias = r1(essSeg.p50 - essSeg.act); // 38.7 万套/年
+  const essBias = r1(essSeg.demandWanPerYearP50 - essSeg.act); // 38.7 万套/年
   const demandDrivers = [
     { id: "seg_bias:ess", factor: "储能 预测偏差（P50−实绩）", contribution: r1(demandContribution * 0.84), share: r4(0.84), unit: "万套", driverValue: essBias,
       provenance: { kind: "派生", drillType: "DemandSegment", drillId: "ess", drillField: "demandWanPerYearP50−act", drillValue: essBias } },
