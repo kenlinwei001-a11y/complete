@@ -1614,6 +1614,58 @@ function mockGapAnalysis() {
   };
 }
 
+/**
+ * WO-DBUI-13-NEEDS · 干跑回执里的**逐类缺口清单**（13 类 = 后端 `MODULE_KINDS` 全集）。
+ *
+ * ⚠ 这里刻意**复刻真后端的诚实边界**，不是随手编一份好看的数据：
+ *   · 本系统这一侧的 6 类（数据源 / 知识库 / 对象类型 / 规则 / 切片 / 求解器）
+ *     真查得到 ⇒ `evidence: "PROBED"`，四态有数。
+ *   · 另一系统那一侧的 7 类，建之前**没有只读探针** ⇒ `evidence: "NOT_PROBED"`，
+ *     items 全 `UNKNOWN`、`existing/toCreate/missing` 恒 0 而 `unknown = needed`。
+ *   mock 若在这里给一份"全都查得到"的漂亮数据，屏上那句「要等创建时才知道」就永远不会被看到，
+ *   前端测试也就验不到它 —— mock 该给的是它真实对应的那一态。
+ */
+function mockNeedsReport(types: string[]) {
+  const probed = (kind: string, side: string, items: { key: string; status: string }[]) => ({
+    kind, side, evidence: "PROBED",
+    needed: items.length,
+    existing: items.filter((i) => i.status === "EXISTS").length,
+    toCreate: items.filter((i) => i.status === "TO_CREATE").length,
+    missing: items.filter((i) => i.status === "MISSING").length,
+    unknown: 0,
+    items,
+  });
+  const unprobed = (kind: string, keys: string[]) => ({
+    kind, side: "cross_system", evidence: keys.length > 0 ? "NOT_PROBED" : "PROBED",
+    needed: keys.length, existing: 0, toCreate: 0, missing: 0, unknown: keys.length,
+    items: keys.map((key) => ({ key, status: "UNKNOWN" })),
+  });
+  const groups = [
+    probed("dataset", "content", types.map((t) => ({ key: t.toLowerCase(), status: "TO_CREATE" }))),
+    probed("kb_doc", "content", [{ key: "场景脚本", status: "TO_CREATE" }]),
+    // Order 已在库里（复用）；其余本次新建 —— 「复用了既有的」正是"人不清楚系统里数据现状"的正面回答
+    probed("ontology_type", "structure", types.map((t) => ({ key: t, status: t === "Order" ? "EXISTS" : "TO_CREATE" }))),
+    probed("rule", "structure", [{ key: "C03", status: "TO_CREATE" }]),
+    probed("slice", "structure", [{ key: "order_risk", status: "EXISTS" }]),
+    // 求解器是代码，不能自动建 ⇒ 未注册的那个只能落工单（MISSING），不是"待建"
+    probed("solver", "code", [{ key: "affected_orders", status: "EXISTS" }, { key: "credit_exposure", status: "MISSING" }]),
+    unprobed("intent", ["risk_inference"]),
+    unprobed("plan", ["plan_risk_inference"]),
+    unprobed("workflow", ["risk_workflow"]),
+    unprobed("skill", ["skl_risk"]),
+    unprobed("agent", ["risk_agent"]),
+    unprobed("scene", ["risk_scene"]),
+    unprobed("mcp", []), // 本次用不到 —— needed=0 也是一个确定的答案，不是空壳
+  ];
+  const sum = (f: "needed" | "existing" | "toCreate" | "missing" | "unknown") => groups.reduce((a, g) => a + (g[f] as number), 0);
+  return {
+    groups,
+    totals: { needed: sum("needed"), existing: sum("existing"), toCreate: sum("toCreate"), missing: sum("missing"), unknown: sum("unknown") },
+    unprobedKinds: groups.filter((g) => g.evidence === "NOT_PROBED").map((g) => g.kind),
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 function mockBuildJob(body: { script?: string; seed?: number; dryRun?: boolean }) {
   const seed = body.seed ?? 42;
   const script = (body.script ?? "").toLowerCase();
@@ -1649,6 +1701,8 @@ function mockBuildJob(body: { script?: string; seed?: number; dryRun?: boolean }
     preview: dryRun
       ? { dataSources: types.map((t) => ({ name: `${t}数据源`, datasetKey: t.toLowerCase(), rowCount: 20, fields: 4 })), objectTypes: types, rules: ["C03"], solverNeeds: ["affected_orders"], kbDocs: 1 }
       : undefined,
+    // 逐类缺口清单只在干跑时有（建之后由 gapAnalysis 接手，那时跨系统类才有确切状态）
+    needs: dryRun ? mockNeedsReport(types) : undefined,
     createdAt: new Date().toISOString(),
     finishedAt: new Date().toISOString(),
   };

@@ -3,7 +3,19 @@
 // 三处的"需要 vs 已有"收敛成一张跨模块统一 diff。模块全集 = BuildPlan 的 13 个 need 数组，一一对应
 // 注册表里的 provisioner——**新增模块必须注册**（provisioners.test 覆盖门强制；BuildPlan 任一根级数组
 // 字段未登记即红，保证"倒序"无遗漏、未来新模块自动被纳入统一机制）。
-import type { BuildPlan, GapAnalysis, GapAnalysisEntry, GapItem, GapStatus, ModuleKind, ScaffoldReceipt } from "@platform/contracts";
+import type {
+  BuildNeedsReport,
+  BuildPlan,
+  GapAnalysis,
+  GapAnalysisEntry,
+  GapItem,
+  GapStatus,
+  ModuleKind,
+  NeedGroup,
+  NeedItem,
+  NeedItemStatus,
+  ScaffoldReceipt,
+} from "@platform/contracts";
 import type { Repos } from "../repo/repo.js";
 import type { OntologyService } from "../ontology.js";
 import type { AuthCtx } from "../domain.js";
@@ -151,4 +163,107 @@ export async function analyzeGap(
 export function summarizeGap(g: GapAnalysis): string {
   const t = g.totals;
   return `需 ${t.needed} · 复用 ${t.existing} · 新建 ${t.toCreate} · 缺 ${t.missing}`;
+}
+
+// ---------------------------------------------------------------------------
+// 建**之前**的 13 类缺口清单（WO-DBUI-13-NEEDS）
+//
+// ── 这一段修的是什么病（先说清楚，免得下一个人又诊错）───────────────────────────
+// 病**不是**「BuildPlan 没有按 id 读的端点」—— `GET /a/v1/data-builders/plans/:id`
+// （`app.ts` 的 data-builders 路由段）**早就有**，实测干跑后立刻 200 且 13 个 need 数组全在。
+// 真病是**「接了线接错地方」**：`analyzeGap` 有两个生产调用方（工作流的 gap 步 / 入库前复验），
+// 唯独**干跑这条路上没挂** —— 干跑直接 `setPhase("gap","SKIPPED")`，
+// 回执只塞了 5 个键的 `job.preview`。计划就在同一个函数作用域里躺着，只是没人去比对现状。
+//
+// ── 为什么不直接复用 `analyzeGap`（两者差在哪，差的正是诚实位）────────────────────
+//  ① `analyzeGap` **跳过 needed=0 的类**（`if (planned.length === 0) continue`）⇒ 13 类只回来一部分，
+//     而「本次用不到工作流」本身就是用户要的答案之一，不该消失。
+//  ② `analyzeGap` 在**没有 scaffold 回执**时，把 7 类跨系统需求**一律默认成 `TO_CREATE`**。
+//     建完之后有回执，这个默认是对的；**建之前没有回执**，它就变成了**拿猜当测** ——
+//     屏上会显示「本次新建 2 个工作流」，而真相是「DataCore 这一刻根本不知道 B 栈有没有」。
+//     A→B 今天只有 `POST /b/v1/internal/scaffold` 一条路，它是**下发即创建**、没有只读探针。
+//     故本函数对这种情形出 `UNKNOWN` + `evidence:"NOT_PROBED"`，**绝不写 0**（0 会被读成「不缺」）。
+//
+// 两个函数共用同一份 `MODULE_PROVISIONERS` 注册表 —— 单一来源在**注册表**上，不在这两个投影上。
+// ---------------------------------------------------------------------------
+
+/** 跨系统回执状态 → 本次现状。**没有回执项 = 查不到**（`UNKNOWN`），不是「要新建」。 */
+function crossSystemStatus(s: "REUSED" | "SCAFFOLDED" | "MISSING" | undefined): NeedItemStatus {
+  if (s === "REUSED") return "EXISTS";
+  if (s === "SCAFFOLDED") return "TO_CREATE";
+  if (s === "MISSING") return "MISSING";
+  return "UNKNOWN";
+}
+
+/**
+ * 13 类逐类的「需要几个 / 各是哪几个 / 现状如何」。
+ *
+ * @param scaffoldReceipt 有回执（建之后）⇒ 跨系统类也能定状态；无回执（建之前）⇒ 跨系统类如实 UNKNOWN。
+ */
+export async function buildNeedsReport(
+  deps: ProvisionerDeps,
+  ctx: AuthCtx,
+  plan: BuildPlan,
+  scaffoldReceipt?: ScaffoldReceipt,
+): Promise<BuildNeedsReport> {
+  const recByKind = new Map<string, Map<string, "REUSED" | "SCAFFOLDED" | "MISSING">>();
+  for (const it of scaffoldReceipt?.items ?? []) {
+    if (!recByKind.has(it.kind)) recByKind.set(it.kind, new Map());
+    recByKind.get(it.kind)!.set(it.key, it.status);
+  }
+
+  const groups: NeedGroup[] = [];
+  for (const prov of MODULE_PROVISIONERS) {
+    // ⚠ 与 analyzeGap 的关键差别：**不跳过 needed=0** —— 「本次用不到」也要说出口。
+    const planned = uniq(prov.planned(plan));
+    let items: NeedItem[];
+    if (prov.side === "cross_system") {
+      const rec = recByKind.get(prov.kind);
+      items = planned.map((key) => ({ key, status: crossSystemStatus(rec?.get(key)) }));
+    } else {
+      const existing = await prov.existing!(deps, ctx);
+      items = planned.map((key) => ({
+        key,
+        status: existing.has(key) ? "EXISTS" : prov.autoCreatable ? "TO_CREATE" : "MISSING",
+      }));
+    }
+    const count = (s: NeedItemStatus): number => items.filter((i) => i.status === s).length;
+    const unknown = count("UNKNOWN");
+    groups.push({
+      kind: prov.kind,
+      side: prov.side,
+      // 证据强度**从数据派生**，不是另写一套判断：有任何一条查不到，这一组就不算查过。
+      evidence: unknown > 0 ? "NOT_PROBED" : "PROBED",
+      needed: items.length,
+      existing: count("EXISTS"),
+      toCreate: count("TO_CREATE"),
+      missing: count("MISSING"),
+      unknown,
+      items,
+    });
+  }
+
+  const totals = groups.reduce(
+    (a, g) => ({
+      needed: a.needed + g.needed,
+      existing: a.existing + g.existing,
+      toCreate: a.toCreate + g.toCreate,
+      missing: a.missing + g.missing,
+      unknown: a.unknown + g.unknown,
+    }),
+    { needed: 0, existing: 0, toCreate: 0, missing: 0, unknown: 0 },
+  );
+
+  return {
+    groups,
+    totals,
+    unprobedKinds: groups.filter((g) => g.evidence === "NOT_PROBED").map((g) => g.kind),
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/** 一行摘要（喂阶段 detail）：需 N · 复用 X · 待建 Y · 建不出 Z · 查不到 U。 */
+export function summarizeNeeds(r: BuildNeedsReport): string {
+  const t = r.totals;
+  return `需 ${t.needed} · 复用 ${t.existing} · 待建 ${t.toCreate} · 建不出 ${t.missing} · 现状查不到 ${t.unknown}`;
 }

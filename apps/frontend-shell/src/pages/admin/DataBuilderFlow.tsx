@@ -1,7 +1,7 @@
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { BuildJob, GapAnalysis, ProducedArtifact, StoryBuildRun } from "@platform/contracts";
-import { MODULE_REGISTRY, buildModuleSyncMatrix } from "@platform/contracts";
+import type { BuildJob, GapAnalysis, NeedGroup, NeedItemStatus, ProducedArtifact, StoryBuildRun } from "@platform/contracts";
+import { MODULE_KIND_REGISTRY, MODULE_REGISTRY, buildModuleSyncMatrix } from "@platform/contracts";
 import { runDataBuilder, runStoryBuild, fetchStoryRun } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
 import { PromotePrecheckPanel } from "./PromotePrecheckPanel";
@@ -92,6 +92,46 @@ function readGroupsFromPreview(preview: BuildJob["preview"]): ReadGroup[] {
     { label: "求解器", items: p.solverNeeds ?? [] },
     { label: "知识库", items: p.kbDocs ? [`${p.kbDocs} 篇`] : [] },
   ].filter((g) => g.items.length > 0);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * 第 ② 步「还缺什么」的 13 类逐类清单（WO-DBUI-13-NEEDS）
+ *
+ * ── 上一版为什么只有 5 类，以及那次分诊错在哪 ────────────────────────────────
+ * 上一版这里写着「`BuildPlan` 今天没有按 id 取的只读端点（全仓 grep 无 `/build-plans` 路由）」。
+ * **这个结论是错的**：路由叫 `/a/v1/data-builders/plans/:id`，不叫 `/build-plans` ——
+ * 拿一个猜的路径去 grep，报的 0 命中度量的是「我猜错了名字」，不是「它不存在」。
+ * 实测：干跑之后立刻按 `job.planId` 去取，**HTTP 200，13 个需求数组全在**（12 个非空）。
+ *
+ * 真正的缺口是后端**干跑那条路上没去比对现状**（直接跳过了比差那一步），
+ * 回执只塞了 5 个键。现在干跑也真比一遍，回执带上逐类清单，这里如实渲染。
+ *
+ * ── 诚实边界（**这一段是本次改动的要害，不许简化**）──────────────────────────
+ * 13 类里只有 6 类的「库里有没有」是**这一刻真查得到**的（数据源 / 知识库文档 /
+ * 本体对象类型 / 业务规则 / 数据切片 / 求解器 —— 都在本系统这一侧）。
+ * 另外 7 类的实物在**另一个系统**里，而两系统之间今天只有一条「下发即创建」的通道、
+ * 没有只读探针 ⇒ 建之前**真的查不到**它们在不在。
+ *
+ * ⛔ 所以这几类**不渲染 0** —— 屏上写「0」会被读成「不缺」，那是拿猜当测。
+ *    它们照实说「需要几个 · 库里有没有要等创建时才知道」，一个字不多说。
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+const KIND_LABEL = new Map(MODULE_KIND_REGISTRY.map((m) => [m.kind, m]));
+
+/** 单条需求的现状说法（人话；`查不到` 与 `不缺` 是两回事，措辞必须分得开）。 */
+const NEED_ITEM_LABEL: Record<NeedItemStatus, string> = {
+  EXISTS: "库里已有",
+  TO_CREATE: "本次新建",
+  MISSING: "建不出来",
+  UNKNOWN: "现状查不到",
+};
+
+/** 一组的一句话结论。**第一层只放这一句**（数值 / 状态 / 名字），具体条目在下面的折叠里。 */
+function needVerdict(g: NeedGroup): string {
+  if (g.needed === 0) return "本次用不到";
+  if (g.evidence === "NOT_PROBED") return `需 ${g.needed} · 库里有没有要等创建时才知道`;
+  const tail = g.missing > 0 ? ` · 建不出 ${g.missing}` : "";
+  return `需 ${g.needed} · 复用 ${g.existing} · 待建 ${g.toCreate}${tail}`;
 }
 
 /** 建成之后：从落库的 `BuildPlan` 出 13 类全量（与后端 `BuildPlan` 的 13 类需求一一对应）。 */
@@ -338,6 +378,64 @@ export default function DataBuilderFlow() {
                 </ul>
               )}
             </div>
+            {/*
+              逐类清点 —— 仓主原话要的是「数据字段，求解器，约束，规则，本体…」全都说得出话。
+              第一层只放每类的一句结论（数值/状态/名字），「具体是哪几个」进折叠（第二层）。
+            */}
+            {preview.needs && (
+              <div data-testid="dbf-needs" style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  逐类清点 <span className="badge" style={{ fontSize: 12 }}>{preview.needs.groups.length} 类</span>
+                  <span style={LABEL}> · 共需 {preview.needs.totals.needed} · 可复用 {preview.needs.totals.existing} · 待建 {preview.needs.totals.toCreate} · 建不出 {preview.needs.totals.missing} · 现状查不到 {preview.needs.totals.unknown}</span>
+                </div>
+                {/* 拿不到的那几类**集中点名**——散在卡片里容易被当成「这几类不缺」。 */}
+                {preview.needs.unprobedKinds.length > 0 && (
+                  <div data-testid="dbf-needs-unprobed" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 4 }}>
+                    这几类现在还查不出库里有没有：
+                    {preview.needs.unprobedKinds.map((k) => (
+                      <span key={k} className="badge" style={{ fontSize: 12, marginLeft: 4 }}>{KIND_LABEL.get(k)?.label ?? k}</span>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
+                  {preview.needs.groups.map((g) => (
+                    <div
+                      key={g.kind}
+                      data-testid={`dbf-need-${g.kind}`}
+                      data-evidence={g.evidence}
+                      data-needed={g.needed}
+                      style={{ border: "1px solid var(--line)", borderRadius: 6, padding: "6px 8px", opacity: g.needed === 0 ? 0.6 : 1 }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>{KIND_LABEL.get(g.kind)?.label ?? g.kind}</div>
+                      <div
+                        data-testid={`dbf-need-verdict-${g.kind}`}
+                        style={{ fontSize: 12, color: g.evidence === "NOT_PROBED" ? "var(--amber-txt, #8a5a1e)" : g.missing > 0 ? "var(--danger-txt, #b4232a)" : "var(--muted)" }}
+                      >
+                        {needVerdict(g)}
+                      </div>
+                      {g.items.length > 0 && (
+                        <details data-testid={`dbf-need-detail-${g.kind}`}>
+                          <summary style={{ fontSize: 12, cursor: "pointer" }}>点开看是哪几个</summary>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                            {g.items.map((it) => (
+                              <span key={it.key} data-testid={`dbf-need-item-${g.kind}-${it.key}`} className="badge" style={{ fontSize: 12 }}>
+                                {it.key} · {NEED_ITEM_LABEL[it.status]}
+                              </span>
+                            ))}
+                          </div>
+                          {g.evidence === "NOT_PROBED" && (
+                            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+                              这几项要在另一个系统里建，本系统这一刻只能读出「要哪几个」，读不出「那边有没有」。开始创建之后就会有确切答案。
+                            </div>
+                          )}
+                          <a href={KIND_LABEL.get(g.kind)?.deepLink ?? "#"} style={{ fontSize: 12 }}>去这一类的管理页 →</a>
+                        </details>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {gap && (
               <div data-testid="dbf-gap-totals" style={{ marginTop: 8, fontSize: 13 }}>
                 比对库里现状：需 <b>{gap.totals.needed}</b> · 复用既有 <b>{gap.totals.existing}</b> · 本次新建 <b>{gap.totals.toCreate}</b> · 建不出来 <b>{gap.totals.missing}</b>

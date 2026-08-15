@@ -48,7 +48,7 @@ import { DEFAULT_BUILDER_CONFIG, DEFAULT_BUILDER_KEY, DEFAULT_BUILDER_NAME } fro
 import { BuildWorkflowEngine, RetryableStepError, APPROVAL_KEY, type WorkflowStepDef, type StepContext } from "./workflow-engine.js";
 import { resolvePipelineSteps, type StepRegistry } from "./pipeline-defs.js";
 import { BuildPipelineService } from "./pipeline-service.js";
-import { analyzeGap, summarizeGap } from "./provisioners.js";
+import { analyzeGap, summarizeGap, buildNeedsReport, summarizeNeeds } from "./provisioners.js";
 import { fdeGraphForRun, projectFdeNodes, summarizeFdeNodes } from "./fde-graph.js";
 import { buildScaffoldManifestRecord } from "./scaffold-manifest.js";
 import type { BuildVerification, FdeNode, ScaffoldManifestRecord } from "@platform/contracts";
@@ -1395,7 +1395,24 @@ export class DataBuilderService {
       job.closure = closure;
 
       if (dryRun) {
-        setPhase("gap", "SKIPPED");
+        /*
+         * WO-DBUI-13-NEEDS · 干跑也要**真比一遍现状**。
+         *
+         * 改前这里是 `setPhase("gap","SKIPPED")` + 一个 5 键的 `job.preview` ——
+         * 于是前端第 ② 步「还缺什么」只说得出 5 类。而**倒推出的 `plan` 就在这个作用域里、13 个
+         * need 数组全在**（同一次实测：`GET /a/v1/data-builders/plans/:id` 干跑后立刻 200，
+         * 12 个数组非空）。也就是说不是「那一刻拿不到」，是**这条路上没去比对**。
+         *
+         * `buildNeedsReport` 是**只读**的（列已有类型/规则/切片/数据集/知识库 + 读求解器注册表），
+         * 零副作用，dry-run 的「不落库」承诺不受影响。
+         *
+         * ⚠ 不传 `scaffoldReceipt`：建之前根本没有回执，而 A→B 只有「下发即创建」这一条路。
+         *   跨系统那 7 类因此如实出 `UNKNOWN`（`evidence:"NOT_PROBED"`）——
+         *   **绝不能写 0**：0 在屏上会被读成「不缺」，那是拿猜当测。
+         */
+        const needs = await buildNeedsReport({ repos: this.repos, ontology: this.ontology }, ctx, plan);
+        job.needs = needs;
+        setPhase("gap", "DONE", summarizeNeeds(needs));
         setPhase("rawin", "SKIPPED");
         setPhase("transform", "SKIPPED");
         setPhase("closure", closure.gatePassed ? "DONE" : "FAILED", `对象绑定 ${closure.objectsBound} · data 孤儿 ${closure.dataOrphans} · 正向缺失 ${closure.forwardMissing}`);

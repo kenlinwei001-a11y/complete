@@ -266,6 +266,114 @@ export const ClosureReportSchema = z.object({
 });
 export type ClosureReport = z.infer<typeof ClosureReportSchema>;
 
+// ---------------------------------------------------------------------------
+// 模块全集（= BuildPlan 的 13 个 need 数组）
+//
+// ⚠ 这一段**原本写在文件末尾的 gap_analysis 节里**，WO-DBUI-13-NEEDS 把它上提到这里，
+//   因为「建之前的缺口清单」(`BuildNeedsReportSchema`) 要挂进下面的 `BuildJobSchema`，
+//   而 zod 的 schema 是**求值期**构造的：被引用者必须先声明。位置变了，语义一个字没变；
+//   下面 gap_analysis 那节继续直接引用这里的声明，仍是单一来源。
+// ---------------------------------------------------------------------------
+
+/** 模块全集（= BuildPlan 13 个 need 数组）。新增 BuildPlan need 数组 → 必须在此追加并注册 provisioner。 */
+export const MODULE_KINDS = [
+  // 内容类（content）：产数据/文档
+  "dataset", "kb_doc",
+  // 结构类（structure，DataCore 本体栈）
+  "ontology_type", "rule", "slice",
+  // 代码类（check-only）：求解器是代码，不能自动建 → 缺则落工单
+  "solver",
+  // 跨系统类（cross_system，AgentCore B 栈，经 scaffold 创建）
+  "intent", "plan", "workflow", "skill", "agent", "scene", "mcp",
+] as const;
+export const ModuleKindSchema = z.enum(MODULE_KINDS);
+export type ModuleKind = z.infer<typeof ModuleKindSchema>;
+
+/**
+ * 13 类的**人话名字 + 去哪核对**（单一来源，前端不许另抄一份 —— contracts-only-shared）。
+ *
+ * ⚠ 名字必须是**用户读得懂的话**：屏上写「本体对象类型」，不写内部键名，也不写契约类型名。
+ *   `scripts/check-dev-jargon-onscreen.mjs` 咬的就是这一条。
+ */
+export const MODULE_KIND_REGISTRY: { kind: ModuleKind; label: string; deepLink: string }[] = [
+  { kind: "dataset", label: "数据源与字段", deepLink: "/admin/connections" },
+  { kind: "kb_doc", label: "知识库文档", deepLink: "/admin/knowledge" },
+  { kind: "ontology_type", label: "本体对象类型", deepLink: "/admin/modeling" },
+  { kind: "rule", label: "业务规则", deepLink: "/admin/rules" },
+  { kind: "slice", label: "数据切片", deepLink: "/admin/slices" },
+  { kind: "solver", label: "求解器", deepLink: "/admin/modeling" },
+  { kind: "intent", label: "问句意图", deepLink: "/admin/catalog" },
+  { kind: "plan", label: "执行计划", deepLink: "/admin/catalog" },
+  { kind: "workflow", label: "工作流", deepLink: "/admin/workflows" },
+  { kind: "skill", label: "技能", deepLink: "/admin/skills" },
+  { kind: "agent", label: "智能助手", deepLink: "/admin/agents" },
+  { kind: "scene", label: "场景入口", deepLink: "/admin/scenes" },
+  { kind: "mcp", label: "外部工具接入", deepLink: "/admin/mcp" },
+];
+
+// ---------------------------------------------------------------------------
+// 建**之前**的「还缺什么」清单（干跑回执 · 13 类逐类）· WO-DBUI-13-NEEDS
+//
+// 为什么要单独一份、不复用 GapAnalysis：两者回答的问题不同，**能不能答**也不同。
+//   · `GapAnalysis`（建之后）：B 栈现状由 scaffold 回执给出，四态齐全。
+//   · 本清单（建之前）：DataCore 能直查的只有自己这半边（数据源/知识库/对象类型/规则/切片/求解器）。
+//     另外 7 类在 AgentCore，而 A→B 今天**只有 `POST /b/v1/internal/scaffold` 这一条路，它是「下发即创建」，
+//     没有只读探针** ⇒ 「库里有没有」这一刻**真的查不到**。
+//
+// ⛔ 所以本清单**不许**把「查不到」写成 0 —— 0 会被读成「不缺」，那是造数。
+//    查不到就出 `UNKNOWN` + `evidence: "NOT_PROBED"`，让屏上如实说「这几类要等创建时才知道」。
+// ---------------------------------------------------------------------------
+
+/**
+ * 现状核对的证据强度 —— 这一列存在的唯一理由是**不许拿猜当测**。
+ * · `PROBED`     真查过本租户现状，`existing/toCreate/missing` 可信。
+ * · `NOT_PROBED` 这一刻查不到（见上）。此时只有 `needed` 可信，其余恒 0，items 全 `UNKNOWN`。
+ */
+export const NEED_EVIDENCE = ["PROBED", "NOT_PROBED"] as const;
+export const NeedEvidenceSchema = z.enum(NEED_EVIDENCE);
+export type NeedEvidence = z.infer<typeof NeedEvidenceSchema>;
+
+/** 单条需求的现状。`UNKNOWN` = 查不到，**不是**「不缺」。 */
+export const NeedItemStatusSchema = z.enum(["EXISTS", "TO_CREATE", "MISSING", "UNKNOWN"]);
+export type NeedItemStatus = z.infer<typeof NeedItemStatusSchema>;
+
+export const NeedItemSchema = z.object({ key: z.string(), status: NeedItemStatusSchema });
+export type NeedItem = z.infer<typeof NeedItemSchema>;
+
+export const NeedGroupSchema = z.object({
+  kind: ModuleKindSchema,
+  side: z.enum(["content", "structure", "code", "cross_system"]),
+  evidence: NeedEvidenceSchema,
+  /** 本次故事需要几个（永远可信 —— 它来自倒推出的计划本身，不依赖现状查询）。 */
+  needed: z.number().int(),
+  existing: z.number().int(),
+  toCreate: z.number().int(),
+  missing: z.number().int(),
+  /** 现状查不到的条数（`evidence=NOT_PROBED` 时 = `needed`）。 */
+  unknown: z.number().int().default(0),
+  items: z.array(NeedItemSchema),
+});
+export type NeedGroup = z.infer<typeof NeedGroupSchema>;
+
+export const BuildNeedsReportSchema = z.object({
+  /**
+   * 恒 13 组（= `MODULE_KINDS` 全集，顺序同 `MODULE_KIND_REGISTRY`）。
+   * 本次没需求的那一类 `needed=0` —— 「本次用不到」也是一个确定的答案，不是空壳。
+   */
+  groups: z.array(NeedGroupSchema),
+  totals: z.object({
+    needed: z.number().int(),
+    existing: z.number().int(),
+    toCreate: z.number().int(),
+    missing: z.number().int(),
+    unknown: z.number().int(),
+  }),
+  /** 现状查不到、且本次确有需求的那些类（前端据此如实说「这几类现在还查不出」）。 */
+  unprobedKinds: z.array(ModuleKindSchema),
+  generatedAt: z.string(),
+});
+export type BuildNeedsReport = z.infer<typeof BuildNeedsReportSchema>;
+
 // ---- build job（一次运行）-------------------------------------------------
 
 export const BUILD_PHASES = ["intake", "comprehend", "gap", "rawin", "transform", "closure", "publish"] as const;
@@ -292,6 +400,14 @@ export const BuildJobSchema = z.object({
   closure: ClosureReportSchema.optional(),
   /** dry-run 预览：将创建/灌注/加工的清单（不落库）。 */
   preview: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * 建**之前**的 13 类缺口清单（dry-run 才有）。
+   *
+   * ⚠ 与 `preview` 的关系：`preview` 是**没有类型**的 5 键散记（`z.record`），
+   *   历史消费方还在读它，故保留不动；本字段是**有契约的那一份**，13 类逐类可核。
+   *   两者同源（同一个已倒推出的 `BuildPlan`），不是两份真值。
+   */
+  needs: BuildNeedsReportSchema.optional(),
   error: z.string().optional(),
   createdAt: z.string(),
   finishedAt: z.string().optional(),
@@ -390,19 +506,8 @@ export type BuildWorkflowStartBody = z.infer<typeof BuildWorkflowStartBodySchema
 // 三处的"需要 vs 已有"收敛成一张跨模块统一 diff。模块全集 = BuildPlan 的全部 need 数组（13 类），
 // 一一对应注册表里的 ModuleProvisioner——新增模块必须注册（覆盖门禁强制，见 provisioners.test）。
 
-/** 模块全集（= BuildPlan 13 个 need 数组）。新增 BuildPlan need 数组 → 必须在此追加并注册 provisioner。 */
-export const MODULE_KINDS = [
-  // 内容类（content）：产数据/文档
-  "dataset", "kb_doc",
-  // 结构类（structure，DataCore 本体栈）
-  "ontology_type", "rule", "slice",
-  // 代码类（check-only）：求解器是代码，不能自动建 → 缺则落工单
-  "solver",
-  // 跨系统类（cross_system，AgentCore B 栈，经 scaffold 创建）
-  "intent", "plan", "workflow", "skill", "agent", "scene", "mcp",
-] as const;
-export const ModuleKindSchema = z.enum(MODULE_KINDS);
-export type ModuleKind = z.infer<typeof ModuleKindSchema>;
+// `MODULE_KINDS` / `ModuleKindSchema` / `MODULE_KIND_REGISTRY` 的声明**在本文件上方**
+// （挪上去是因为 `BuildJobSchema.needs` 要引用它们，zod 求值期要求先声明；见那一段的说明）。
 
 /** EXISTS=已有可复用 · TO_CREATE=需新建（可自动建）· MISSING=不能自动建（如求解器代码→工单）。 */
 export const GapStatusSchema = z.enum(["EXISTS", "TO_CREATE", "MISSING"]);
