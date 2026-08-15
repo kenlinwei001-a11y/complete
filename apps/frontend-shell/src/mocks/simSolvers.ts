@@ -17,7 +17,9 @@ import {
   SOP_DEFAULT_RESOLUTIONS,
   SOP_DEMAND_UNIT,
   SOP_MONTH,
+  SOP_MARGIN_ROLLING_YI,
   SOP_PER_BASE_MONTHLY,
+  SOP_REVENUE_ROLLING_YI,
   SOP_SEG_MONTH_TARGET,
   sopP90,
   yearToMonth,
@@ -899,11 +901,10 @@ export function seedSopVersions(): SopVersionVM[] {
   const totalP90 = round(rows.reduce((a, r) => a + r.rollingWanPerMonthP90, 0), 2);
   const sup = SOP_SUPPLY_BASELINE;
   const gap = round(totalTarget - sup, 4);
-  // ④ 财务整合：月度滚动收入/毛利额由本月三细分量 × 细分单价/毛利率现算（亿元/月）。
-  const priceOf = (k: string) => SEG_REGISTRY.find((s) => s.key === k)?.priceWan ?? 0;
-  const marginOf = (k: string) => SEG_REGISTRY.find((s) => s.key === k)?.marginPct ?? 0;
-  const revSum = round(rows.reduce((a, r) => a + r.rolling * priceOf(r.key), 0), 2);
-  const gmSum = round(rows.reduce((a, r) => a + (r.rolling * priceOf(r.key) * marginOf(r.key)) / 100, 0), 2);
+  // ④ 财务整合：**钱轴是年口径，不跟着量轴缩**（真后端 `finance_pnl` 实测 收入 rolling 700 / 毛利 118.9 /
+  // 毛利率 17%，亿元/年）。旧值本来就与真后端一致 —— 这一步不属于本次量级病灶，原样保留、只把来源指向 sopScale。
+  const revSum = SOP_REVENUE_ROLLING_YI;
+  const gmSum = SOP_MARGIN_ROLLING_YI;
   const gmBudget = 17.0;
   const gmRoll = round((gmSum / revSum) * 100, 4);
   // ⑤ 决议增量：与向导缺省项同源（sopScale·按供给口径同比缩），不再各写一份。

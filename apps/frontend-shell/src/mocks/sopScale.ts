@@ -150,11 +150,33 @@ export const SOP_WIZARD_SEGMENTS = SOP_SEG_MONTH_TARGET.map((s) => {
   };
 });
 
-/** ④财务整合的月度收入预算（亿元/**月**）= Σ(月目标 × 细分单价)。旧值 700.0 是**年**营收锚。 */
-export const SOP_MONTH_REVENUE_BUDGET_YI = r(
-  SOP_SEG_MONTH_TARGET.reduce((a, s) => a + s.target * (PRICE_WAN[s.key] ?? 0), 0),
-  2,
-);
+/**
+ * ── ⚠️ 钱轴是**年**，不跟着量轴缩 ──────────────────────────────────────────
+ * 实测真后端 `finance_pnl`：收入 budget **686** / rolling **700**、销售成本 569.5 / 581.1、
+ * 毛利 116.5 / **118.9**、毛利率 17% → 17%。这是**年**口径（亿元/年），rolling 700 就是需求侧营收锚本体。
+ * 而 S&OP ②③ 的量是**月**口径（万套/月）。两轴不同期间是真后端自己的设计，不是 bug ——
+ * 所以本单**只**把量轴从年改月，钱轴（s4 的 revSum/gmSum/gmBudget、cashCushion）一个字节不动。
+ * 记这一笔是因为：不写下来，下一个人很容易"顺手"把 700 也缩成 52，那才是把对的改错。
+ */
+export const FINANCE_PNL_YEAR = {
+  pnl: [
+    { subject: "收入", budget: 686, rolling: 700, diff: 14 },
+    { subject: "销售成本", budget: 569.5, rolling: 581.1, diff: 11.6 },
+    { subject: "毛利", budget: 116.5, rolling: 118.9, diff: 2.4 },
+  ],
+  gmRow: { subject: "毛利率", budgetPct: 17, rollPct: 17, diffPp: 0 },
+} as const;
+
+/** ④滚动收入合计（亿元/年）= `finance_pnl` 收入行 rolling = 700（= 需求侧营收锚）。 */
+export const SOP_REVENUE_ROLLING_YI = FINANCE_PNL_YEAR.pnl[0].rolling;
+/** ④滚动毛利合计（亿元/年）= `finance_pnl` 毛利行 rolling = 118.9。 */
+export const SOP_MARGIN_ROLLING_YI = FINANCE_PNL_YEAR.pnl[2].rolling;
+/**
+ * 收入预算（亿元/年）= `finance_pnl` 收入行 budget = **686**。
+ * 旧 mock 写 700（= rolling 自己），于是达成率恒 100%；真后端 `cockpit_kpi.revAttainPct` 实测 **102**
+ * （= 700 ÷ 686，目录条目原文「收入达成率(收入行 rolling÷budget)」）。改到 686 才与真后端对上。
+ */
+export const SOP_REVENUE_BUDGET_YI = FINANCE_PNL_YEAR.pnl[0].budget;
 
 /** Σ SOP_PER_BASE_MONTHLY —— 决议增量按此缩放（与 simSolvers 的 SOP_SUPPLY_BASELINE 同值同源）。 */
 const SUPPLY_BASELINE_MONTH = r(SOP_PER_BASE_MONTHLY.reduce((a, b) => a + b.monthly, 0), 4);

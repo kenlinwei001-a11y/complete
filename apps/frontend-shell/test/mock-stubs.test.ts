@@ -9,7 +9,7 @@ import { ACCOUNTS } from "@/mocks/fixtures";
  * 对这两 solver invoke 返 404 → 两块诚实空，CEO 在 mock/demo 里看不到（真部署态正常）。
  * 此测**不 override** base handler（区别于 decision-play/dash-supply-demand 测），直打 base 桩，证：
  *  C1 base 桩非 404（渲得出）· C2 桩数字自洽（decision narrowedPct=补缺口/缺口；供需 Σ叶=侧、Σ侧+residual=G）·
- *  C3 数字派生自 fixtures（gap 由 ess 段派生 27.8；供需 G 由 dem−供给基线派生 7.1；供给端无 capacity_gap 叶=诚实空）。
+ *  C3 数字派生自 fixtures（gap 由 ess 段**年**口径派生 27.8；供需 G 由 SopVersionRow 派生 81；供给端无 capacity_gap 叶=诚实空）。
  */
 
 const token = tokenFor(ACCOUNTS.find((a) => a.username === "planner")!);
@@ -51,8 +51,10 @@ describe("VITE-MOCK 桩 · base solver invoke 可见性", () => {
   it("C1+C2+C3 supply_demand_gap_attribution：base 非 404 + 双向分解 + 勾稽 Σ=G + 产能诚实空", async () => {
     server.use();
     const s = await invoke("supply_demand_gap_attribution");
-    // C3：总缺口由 dem(375.0) − 供给基线(367.9) 派生 = 7.1（非写死）
-    expect(s.totalGap).toBeCloseTo(7.1, 4);
+    // C3：总缺口由 SopVersionRow Σmax(0, demand−supply) 派生 = 81 万套/**年**（非写死）。
+    // WO-MOCK-SCALE-TRUTH：旧桩从**月度台账** dem−供给基线 派生（7.1），与真求解器的取数对象不同 ——
+    // 真后端实测 totalGap = 81（36+26+15+4），差 11.4 倍、跨一个数量级。改的是"取错了对象"，不是"数不准"。
+    expect(s.totalGap).toBeCloseTo(81, 4);
     // 双向分解齐（需求端 ⊥ 供给端 + residual）
     expect(s.demandSide.drivers.length).toBeGreaterThan(0);
     expect(s.supplySide.drivers.length).toBeGreaterThan(0);

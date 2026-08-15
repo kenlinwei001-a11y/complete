@@ -134,7 +134,7 @@ import {
   type MockForecastArgs,
 } from "./simSolvers";
 // WO-MOCK-SCALE-TRUTH：年口径（DemandSegment / SopVersionRow / AOP 营收）单一来源。
-import { AOP_BASE_REVENUE_YI, DEMAND_YEAR, SOP_VERSION_ROWS, SOP_VERSION_TOTAL_GAP_WAN, SUPPLY_V7_WAN } from "./sopScale";
+import { AOP_BASE_REVENUE_YI, DEMAND_YEAR, FINANCE_PNL_YEAR, SOP_VERSION_ROWS, SOP_VERSION_TOTAL_GAP_WAN, SUPPLY_V7_WAN } from "./sopScale";
 import {
   affectedOrdersOutput,
   AOP_RESPONSE,
@@ -5266,16 +5266,15 @@ export const handlers = [
       return HttpResponse.json({ data: mockMultiObj(key, args), snapshotVersion: "ov-12" });
     }
     if (key === "finance_pnl")
+      // WO-MOCK-SCALE-TRUTH：量价本利科目表是**年**口径（亿元/年）。旧 mock 写 240/248/39.4，
+      // 真后端实测 686/700/118.9（收入 rolling 700 就是需求侧营收锚本体）——同一张表差 2.8 倍。
+      // 这一族**不随**量轴改月：钱轴与量轴期间不同是真后端自己的设计，见 mocks/sopScale.ts。
       return HttpResponse.json({
         data: {
-          pnl: [
-            { subject: "收入", budget: 240, rolling: 248, diff: 8 },
-            { subject: "销售成本", budget: 200.6, rolling: 208.3, diff: 7.7 },
-            { subject: "毛利", budget: 39.4, rolling: 39.7, diff: 0.3 },
-          ],
-          gmRow: { budgetPct: 16.4, rollPct: 16.0, diffPp: -0.4 },
-          attribution: "毛利率 16.4%→16.0%（-0.4pp）：储能占比 37% 结构拉低（单价/成本未恶化）",
-          summary: "收入/成本/毛利三科目 + 毛利率 16.0%（C15）",
+          pnl: FINANCE_PNL_YEAR.pnl.map((row) => ({ ...row })),
+          gmRow: { ...FINANCE_PNL_YEAR.gmRow },
+          attribution: `毛利率 ${FINANCE_PNL_YEAR.gmRow.budgetPct}%→${FINANCE_PNL_YEAR.gmRow.rollPct}%（${FINANCE_PNL_YEAR.gmRow.diffPp}pp）：储能占比 37% 结构拉低（单价/成本未恶化）`,
+          summary: `收入/成本/毛利三科目 + 毛利率 ${FINANCE_PNL_YEAR.gmRow.rollPct}%（C15）`,
         },
         snapshotVersion: "ov-12",
       });

@@ -45,7 +45,7 @@ import type { ModelingDraftVM, RuleCandidateVM, RuleDocVM } from "@/api/endpoint
 import { TENANT_ID, PACKAGE_ID } from "./ids";
 export { TENANT_ID, PACKAGE_ID };
 // WO-MOCK-SCALE-TRUTH：S&OP 月度台账口径单一来源（叶子模块·只依赖 @platform/contracts，无 TDZ 风险）。
-import { SOP_DEFAULT_RESOLUTIONS, SOP_MONTH_REVENUE_BUDGET_YI, SOP_WIZARD_SEGMENTS } from "./sopScale";
+import { SOP_DEFAULT_RESOLUTIONS, SOP_REVENUE_BUDGET_YI, SOP_WIZARD_SEGMENTS } from "./sopScale";
 
 // ---------------------------------------------------------------------------
 // 账号（QOS §7.6 权限种子：planner 全量 / base_manager:常州 行级过滤）
@@ -713,7 +713,9 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
       // P90 = `round(rolling × 0.936, 2)`（真后端缺省派生同式），lastActual = 年实绩按月度权重折算。
       // **滚动修正的比例原样保留**（乘用车贴目标 / 储能下修 −3.9% / 商用车上修 >+10% → C21 红标），
       // 所以演示行为不变、只有量级回到月 —— 这正是「改值不改故事」与「只改标注不改值」的分界。
-      revBudget: SOP_MONTH_REVENUE_BUDGET_YI, // 月度收入预算（亿元/月）= Σ(月目标 × 细分单价) ⇒ 52.49
+      // ⚠️ 钱轴是**年**（亿元/年），不跟着量轴缩：真后端 `finance_pnl` 收入 budget 686 / rolling 700，
+      // `cockpit_kpi.revAttainPct` 实测 102 = 700÷686。旧 mock 把预算写成 700（= rolling 自己）⇒ 达成率恒 100%。
+      revBudget: SOP_REVENUE_BUDGET_YI,
       segments: SOP_WIZARD_SEGMENTS,
       defaultResolutions: SOP_DEFAULT_RESOLUTIONS,
     },
