@@ -158,7 +158,7 @@ export const MOCK_SOLVER_REGISTRY: readonly MockSolverRegistryItem[] = [
   {
     "key": "base_capacity_outlook",
     "name": "每基地前瞻产能推演",
-    "description": "给定基地，按 30/60/90 天窗口前瞻推演四线对比：可用产能(Σ Line.capacityDaily×(1−util/100)×窗口) vs 在产订单占用(未完工 WorkOrder.qtyActual 铺窗) vs 未来订单(Order.due 落窗 Σqty·首基地=本基地) vs 销售预测(ΣDemandSegment.p50×1e4 按产能占比摊窗) → 缺口/富余标记 + 累计需求越线日(crossDay)。缺口窗给逐日行动过程 dayPlan(触发缺口→加班/跨基地/外协贪心补→收窄·每步 provenance)。改 Order.due/DemandSegment.p50/Line.capacityDaily 颗粒→前瞻真变。forecastStart 时间锚(确定性 R6)·每线/每日值可溯(R13)·系数 RuleEntry.params(R14)。回答『这个基地未来 30/60/90 天产能够不够、缺口哪天出现、逐日怎么处置』。",
+    "description": "给定基地，按 30/60/90 天窗口前瞻推演四线对比：可用产能(Σ Line.capacityDaily×(1−util/100)×窗口) vs 在产订单占用(未完工 WorkOrder.qtyActual 铺窗) vs 未来订单(Order.due 落窗 Σqty·首基地=本基地) vs 销售预测(ΣDemandSegment.demandWanPerYearP50×1e4 按产能占比摊窗) → 缺口/富余标记 + 累计需求越线日(crossDay)。缺口窗给逐日行动过程 dayPlan(触发缺口→加班/跨基地/外协贪心补→收窄·每步 provenance)。改 Order.due/DemandSegment.demandWanPerYearP50/Line.capacityDaily 颗粒→前瞻真变。forecastStart 时间锚(确定性 R6)·每线/每日值可溯(R13)·系数 RuleEntry.params(R14)。回答『这个基地未来 30/60/90 天产能够不够、缺口哪天出现、逐日怎么处置』。",
     "argHints": {
       "baseId": "基地 ID 或名称(必填·如 hefei/合肥)",
       "horizon": "窗口天数(可选·默认 30/60/90 全出)"
@@ -1743,7 +1743,7 @@ export const MOCK_SOLVER_REGISTRY: readonly MockSolverRegistryItem[] = [
   {
     "key": "supply_demand_gap_attribution",
     "name": "供需失衡双向归因",
-    "description": "产销缺口(SopVersionRow Σmax(0,demand−supply))→**双向**分摊到需求端(预测偏差 Σ|P50−实际|/在手订单/结构漂移)⊥供给端(产能缺口/物料缺口/设备OEE损失)，两侧真颗粒驱动值各 Σ 按占比切缺口→需求端贡献+供给端贡献+residual=总缺口(硬勾稽≤1e-4)，各端下钻叶带 drillType/drillField/drillValue。改 DemandSegment.p50→需求端占比变·改 Equipment.oee_current/Line 产能→供给端变。回答『供需为什么对不上——是需求预测虚高还是产能/物料供不上、各占多少、每叶证据是什么』。",
+    "description": "产销缺口(SopVersionRow Σmax(0,demand−supply))→**双向**分摊到需求端(预测偏差 Σ|P50−实际|/在手订单/结构漂移)⊥供给端(产能缺口/物料缺口/设备OEE损失)，两侧真颗粒驱动值各 Σ 按占比切缺口→需求端贡献+供给端贡献+residual=总缺口(硬勾稽≤1e-4)，各端下钻叶带 drillType/drillField/drillValue。改 DemandSegment.demandWanPerYearP50→需求端占比变·改 Equipment.oee_current/Line 产能→供给端变。回答『供需为什么对不上——是需求预测虚高还是产能/物料供不上、各占多少、每叶证据是什么』。",
     "argHints": {
       "metricKey": "达成率指标 key(缺省用 S&OP 产销缺口)"
     },

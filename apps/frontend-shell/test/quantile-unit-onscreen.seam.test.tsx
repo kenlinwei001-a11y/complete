@@ -213,9 +213,24 @@ describe("§2b · 改名漏改断言：旧名不许作为数据键留在任何�
    */
   const DOM_HOOK = /(?:data-)?[Tt]est[Ii]d\s*=\s*["'{]|data-testid=|testId:/;
   const ABSENCE_ASSERT = /toBeUndefined|toBeNull|not\.to|\.not\b|\?: unknown/;
+  /**
+   * ③ **检索关键词表**（2026-08-15 随扫描面扩到 agentcore 一并加的第三类合法用法）：
+   * `keywords: [… "p50", "p90" …]` 里的 `p50` 是**用户会打出来的字**，不是本仓的数据键 ——
+   * 用户确实会问「p50 是多少」，把它从关键词表里删掉是让检索退化，不是修改名漏改。
+   * 与 ①② 同族、同判据形状：**语法上下文表明它不是数据键**，而不是按文件名开白名单
+   * （白名单迟早被例外吃光；上下文规则对新文件照样生效）。
+   *
+   * ⚠ 豁免的粒度是**那一段**，不是**那一行**（第一版写成整行 `!KEYWORD_TABLE.test(line)`，
+   *   被下面自己的必咬金丝雀当场抖出来）：整行免检意味着只要同行出现 `keywords: [`，
+   *   同一行上真正的数据键 `drillField: "p50"` 也跟着免检 —— 那才是「为让门变绿而放宽判据」。
+   *   故这里**只把关键词数组那一段抹成等长空格**再判：抹段不抹行，同行的真病灶照样咬。
+   *   等长替换而非删除，理由同本仓既有戒律：偏移一旦不守恒，定位就开始骗人。
+   */
+  const stripKeywordTables = (line: string): string =>
+    line.replace(/\b(?:keywords|synonyms|aliases)\s*:\s*\[[^\]]*\]/g, (m) => " ".repeat(m.length));
 
   const judgeLine = (line: string): boolean =>
-    OLD_AS_DATA_KEY.test(line) && !DOM_HOOK.test(line) && !ABSENCE_ASSERT.test(line);
+    OLD_AS_DATA_KEY.test(stripKeywordTables(line)) && !DOM_HOOK.test(line) && !ABSENCE_ASSERT.test(line);
 
   it("src + test 全扫（剥注释）：零处把 `p50`/`p90` 当数据键用；显示标签/测试钩子/缺席断言不误伤", () => {
     // ── 金丝雀（必咬 3 条）：三次真事故各取一行原文形态 ──
@@ -233,19 +248,32 @@ describe("§2b · 改名漏改断言：旧名不许作为数据键留在任何�
       '<div className={styles.kpi} data-testid="kpi-p50">',
       'testId="p90"',
       'expect(data.p50, "裸 `p50` 回潮").toBeUndefined();',
+      '{ tag: "Prediction", keywords: ["预测", "forecast", "p50", "p90", "capWanP50"] },', // 检索关键词≠数据键
     ]) expect(judgeLine(ok), `误伤合法用法：${ok}`).toBe(false);
+    // ⚠ 关键词表这条豁免**只免这一种语法上下文**，不许顺手把同行的真数据键也放过：
+    expect(judgeLine('{ keywords: ["预测"], drillField: "p50" }'), "关键词表豁免被放宽成了整行免检").toBe(true);
 
     // 金丝雀：只写在注释里的旧名不算回潮（证明剥注释这一步没坏）
     expect(commentOnlyCanary('drillField: "p50"').filter(([, s]) => s.split("\n").some(judgeLine))).toEqual([]);
 
+    // ⚠ **2026-08-15 扫描面补 agentcore 两棵树**（WO-STALE-TEXT-SWEEP）。
+    //   本机制建立时列了 5 棵树，**独独漏了 `apps/agentcore`** —— 于是改名漏改在那里
+    //   第 4 次复发且照样全绿：`agent/navigation-slice.ts` 的 `keyProps` 里躺着 `"p50"`
+    //  （喂给 LLM 的属性名清单·CLAUDE.md 铁律 0.6 第 4 条点名的"第 ④ 类位置"）、
+    //   `mocks/solver-registry.ts` 的 description 里躺着 `DemandSegment.p50` ×3。
+    //   这两处**本判据一咬一个准**，缺的从来不是判据，是**扫描面**——
+    //   形态（铁律 0.6 句式）：「我用『这道门是绿的』当作『旧名没回潮』的证据，
+    //   而前者并不度量后者 —— 它只度量了我列进 trees 的那几棵树。」
     const trees = [
       ...srcCode("apps/frontend-shell/src"),
       ...srcCode("apps/frontend-shell/test"),
       ...srcCode("apps/datacore/src"),
       ...srcCode("apps/datacore/test"),
+      ...srcCode("apps/agentcore/src"),
+      ...srcCode("apps/agentcore/test"),
       ...srcCode("packages/contracts/src"),
     ];
-    expect(trees.length).toBeGreaterThan(500); // 扫描面非空自证
+    expect(trees.length).toBeGreaterThan(700); // 扫描面非空自证（补两棵树后水位跟着抬，抬不上去=没扫到）
 
     const hits: string[] = [];
     for (const [file, code] of trees) {

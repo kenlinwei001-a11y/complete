@@ -704,10 +704,32 @@ export function fmtFlowEff(frac: number | null | undefined): string {
  *      屏上文案里**一个写死的计数都不留**，改由溯源记号替屏上那句话盯着上游
  *      （记号挂在 `IMPEDIMENT_JOIN_REASON` 那一段的上方，门每次跑现算比对，不符当场红）。
  *      复验：`node scripts/check-stale-claims.mjs`。
- *      · 余下 `MaterialBalance` 只有 3 个因子承载（`cf-cathode-shortage`→mbal-2、
- *        `cf-demand-attain-gap`→mbal-2、`cf-material-short`→`DYNAMIC-MBAL` 运行期解析为
- *        `worstMbal.matBalId`），且 mbal-2 同时挂在**两个不同的 metricKey 链**上
- *        （`""` 与 `demand_attain`）—— 撞上了也定不下该进哪条链。
+ *      · 余下 `MaterialBalance` 有 3 个因子承载（`cf-cathode-shortage`→mbal-2、
+ *        `cf-demand-attain-gap`→mbal-2、`cf-material-short`→`DYNAMIC-MBAL` 通配占位），
+ *        且 mbal-2 同时挂在**两个不同的 metricKey 链**上（`""` 与 `demand_attain`）
+ *        —— 撞上了也定不下该进哪条链。**今天这一维对不上，卡在这条 metricKey 二义上。**
+ *
+ *        ⚠ **2026-08-15 重测订正本行**：原文写「`cf-material-short`→`DYNAMIC-MBAL` 运行期解析为
+ *          `worstMbal.matBalId`」。这半句今天**两处都不成立，且错法不同**（照铁律 0.5 判据 #1
+ *          的三分法拆开说 —— 混成一句会让人去修错的地方）：
+ *          · **符号已不存在**：`worstMbal` 是 `synthetic/battery-extended.ts` 在**播种期**
+ *            就把占位解析成具体 id 落库的那套写法，**已被 WO-DYNAMIC-DRILL-RESOLVE 整个删除**
+ *            （今天全仓只在讲这段历史的注释里出现，无任何声明处）。指着一个不存在的符号，
+ *            读者按图索骥必然扑空 —— 这是「过期文案」里最贵的一种。
+ *          · **口径已不唯一**：解析搬到了**查询期**（`apps/datacore/src/solvers/dynamic-drill.ts`
+ *            的 `resolveDynamicDrill`，单一出处），挑哪一张**由本次上下文的候选池决定**，
+ *            两种上下文给两个不同答案，不许再用一句「缺口最大的那一张」盖住：
+ *              - **归因期**（`solvers/service.ts` 的 `resolveFactorDrill`，候选池 = 全量
+ *                `MaterialBalance`）才按因子自己声明的 `drillPick:"max"` 取 `gapTon` 最大的一张；
+ *              - **落点期**（`solvers/service.ts` 的 `decisionPlayLocus`，候选池 = 落点自己那一行）
+ *                候选恒为 1 条 ⇒ **按落点逐张解析成它自己**，且精度**仍标 `TYPE` 不升 `EXACT`**
+ *                （因子讲的是这一**类**的因，不是这一**张**自己的因子）。
+ *            ⇒ 旧文案连带的那个旧结论（「7 张 mbal 里只有被挑中的那张能对上、其余读作无因子」）
+ *            **已随占位归位而消失**，别再照它去补种子。
+ *
+ *          @stale-fact apps/datacore/src/solvers/dynamic-drill.ts /export function resolveDynamicDrill/ ==1
+ *          @stale-fact apps/datacore/src/synthetic/battery-extended.ts /drillId: "DYNAMIC-MBAL"/ ==1
+ *          @stale-fact apps/datacore/src/synthetic/battery-extended.ts /drillType: "MaterialBalance"/ ==3
  *
  * ③ **`stage`** —— 粗，但**真能带**（本体 `G-IMPEDIMENT-LOSS-NOJOIN` 记的也是这一维）。
  *    故本层把 stage 带过去做粗筛，并当面说清它是段级精度、不是因子级。

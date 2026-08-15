@@ -475,13 +475,59 @@ const NEGATIVE_ASSERTIONS = [
 /** 溯源记号：`@stale-fact <路径> /<正则>/ <op><n>` —— 一条**机器能跑的断言**，不是一个指针。 */
 const STALE_FACT_MARK = /@stale-fact\s+([\w./@-]+)\s+\/((?:[^/\\]|\\.)+)\/\s*(==|!=|>=|<=|>|<)\s*(\d+)/g;
 
+/**
+ * **提及 ≠ 写下赌注**（2026-08-15 补）——「用反引号把 @stale-fact 当术语提一嘴」是文档里的正常写法
+ * （"故本表下方挂 `@stale-fact` 记号"），它**不是**一条挂坏了的赌注。
+ * 不区分这两者，后果是**反过来的**：谁在注释里认真解释这套机制，谁就被门判「语法不完整」——
+ * 门开始惩罚写文档的人，而真正的坏记号淹在噪声里。这与本仓既有的「`grep -rl` 到的可能只是
+ * 注释里提了一嘴，**提及 ≠ 读取**」是同一条判据。
+ *
+ * 判据刻意做得**窄**：只剔除「紧贴反引号包起来」这一种形态。真要写一条赌注，
+ * `@stale-fact` 后面必然跟空格 + 路径，绝不会紧跟一个反引号 —— 所以这条剔除**不给任何坏记号开后门**
+ * （金丝雀 `ONSCREEN_MUST_BITE` 里那条「@stale-fact apps/x.ts 大概有三条吧」照样被咬）。
+ */
+const MARK_MENTION = /`@stale-fact`/g;
+/**
+ * 「作者试图写一条赌注」的粗计数（单一出处：`parseStaleFactMarks` 与 `extractMarksWithLines` 共用）。
+ *
+ * ⚠ 剔除提及时**必须等长替换**（换成同宽空格），不许直接删：`extractMarksWithLines` 要拿
+ * `m.index` 去数行号，删一段就把后面所有偏移左移，报出的行号**全漂**。
+ * 本文件为此已经栽过一次并留了戒律（见 `stripCommentsKeepLines` 的「偏移与行号逐字节守恒」），
+ * 这里是同一条：**行号一旦不守恒，定位就开始骗人。**
+ */
+function countMarkAttempts(text) {
+  const masked = text.replace(MARK_MENTION, (m) => " ".repeat(m.length));
+  return [...masked.matchAll(/@stale-fact/g)];
+}
+
 /** 解析一个文本块里的全部记号。**语法错的记号不静默忽略** —— 忽略了等于把赌注撕了。 */
 export function parseStaleFactMarks(text) {
   const marks = [];
   for (const m of text.matchAll(STALE_FACT_MARK)) marks.push({ file: m[1], pattern: m[2], op: m[3], n: Number(m[4]) });
-  // 写了 `@stale-fact` 却没匹上完整语法 ⇒ 记号本身坏了，必须出声（否则作者以为自己挂了赌注，其实没有）
-  const rough = (text.match(/@stale-fact/g) ?? []).length;
-  return { marks, malformed: rough - marks.length };
+  // 写了 @stale-fact 却没匹上完整语法 ⇒ 记号本身坏了，必须出声（否则作者以为自己挂了赌注，其实没有）
+  return { marks, malformed: countMarkAttempts(text).length - marks.length };
+}
+
+/**
+ * 从一段源码里抽出全部记号 **及其行号**（纯函数 —— 金丝雀直接喂它，与全仓扫描共用这同一份实现）。
+ *
+ * 与 `parseStaleFactMarks` 分开一层的理由：那个只回记号本体（`judgeOnscreen` 按"单元"用它，
+ * 不需要行号）；本函数要报的是「记号写在哪一行」，因为它扫的是**整个文件**而不是某个单元 ——
+ * 没有行号，报出来的红没法让人找到那条赌注。
+ */
+export function extractMarksWithLines(text) {
+  const out = [];
+  for (const m of text.matchAll(STALE_FACT_MARK)) {
+    out.push({
+      file: m[1],
+      pattern: m[2],
+      op: m[3],
+      n: Number(m[4]),
+      line: text.slice(0, m.index).split("\n").length,
+    });
+  }
+  const attempts = countMarkAttempts(text);
+  return { marks: out, malformed: attempts.length - out.length, malformedLines: attempts.map((r) => text.slice(0, r.index).split("\n").length) };
 }
 
 const OP_FN = {
@@ -568,9 +614,40 @@ export function judgeRenameResidue(decls, literals) {
  *   形态（铁律 0.6 句式）：「我用『两个字符串不相等』当作『同一个概念有两份真相源』的证据，
  *   而前者并不度量后者 —— 得先确认它们说的是同一个概念。」
  */
+/**
+ * ⚠ **2026-08-15 · `feature-name` 两条槽位的判据补盲区（WO-STALE-TEXT-SWEEP）**
+ *
+ * ── 旧判据错在哪（不是"太严"，是**度量错了对象**）─────────────────────────────
+ * 旧写法 `key:\s*"view\.([a-z0-9-]+)"` 把两个互不相干的限制一起焊进了正则：
+ *   ① 前缀只认 `view.`；② slug 段里不许出现 `.`。
+ * 而功能开关册的键**从来就不止 `view.` 前缀、也从来允许多段** —— 同一份注册表里躺着
+ * `shell.query-dock` · `qos.agent-fallback` · `admin.plan-builder` · `act.export` · `sim.sandbox`
+ * 与 `view.graph.persp.all` · `view.project-sim.whatif` · `view.risk-board.mitigation`。
+ * 这些键**一条都抽不出来**，于是「一个概念两份真相源」这条判据在它们身上等于没开。
+ * 实测（下方 `featureKeySlotCanary()` 跑的是**同一份 `VIEW_TITLE_SLOTS`**，不是另抄的正则）：
+ * 被 ≥2 个真相源同时登记、因而**真有可能查出分叉**的键，旧判据 43 个 → 新判据 82 个，
+ * 其中 **39 个是旧判据完全看不见的**（`agentcore/features/registry.ts` × `datacore/features.ts`
+ * × `frontend-shell/mocks/fixtures.ts` 三方各登记一份名字的那批）。
+ *
+ * 形态（铁律 0.6 句式）：**「我用『门报了 N 条』当作『只有 N 条』的证据，而前者并不度量后者」** ——
+ * 门报 0 条分叉不是因为没有分叉，是因为它压根没把这些键抽出来。
+ *
+ * ── 新判据为什么**仍咬得住**原来那个病 ────────────────────────────────────────
+ * 新判据 = **「带点的小写键」即功能键**（`<段>.<段>[.<段>…]`），前缀不限。
+ * 「至少含一个点」这一条**是收窄不是放宽**：它把**同形但不同概念**的 `key:` 挡在外面 ——
+ * 求解器键 `finance_pnl`、视图 slug `order-chain` 都不带点，一个都不会误进 `feature-name`
+ * 命名空间（那是 `view-title` 那两条槽位的地盘，本次一个字未动）。
+ * 原病灶 `view.order-chain`（订单全链聚合 → 订单进展与卡因）依旧逐字命中。
+ *
+ * ── 顺带堵上加宽才会出现的新坑：**捕获整键含前缀** ──────────────────────────
+ * 旧写法捕获组只取 `view.` 之后那截（`dash`）。前缀一放开，`view.x` 与 `qos.x` 就会并进
+ * 同一个 slug 桶 ⇒ 两个**本来无关**的功能被判成"标题分叉"，凭空造出一条假红。
+ * 故新捕获组取**整键**（`view.dash`）—— 加宽判据时必须同时问「这个键还唯一吗」。
+ */
+const FEATURE_KEY = String.raw`[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+`;
 const VIEW_TITLE_SLOTS = [
-  { ns: "feature-name", re: /key:\s*"view\.([a-z0-9-]+)"\s*,\s*name:\s*"([^"]+)"/g },
-  { ns: "feature-name", re: /featureKey:\s*"view\.([a-z0-9-]+)"\s*,\s*featureName:\s*"([^"]+)"/g },
+  { ns: "feature-name", re: new RegExp(String.raw`key:\s*"(${FEATURE_KEY})"\s*,\s*name:\s*"([^"]+)"`, "g") },
+  { ns: "feature-name", re: new RegExp(String.raw`featureKey:\s*"(${FEATURE_KEY})"\s*,\s*featureName:\s*"([^"]+)"`, "g") },
   { ns: "view-title", re: /key:\s*"([a-z0-9-]+)"\s*,\s*title:\s*"([^"]+)"/g },
   { ns: "view-title", re: /"([a-z0-9-]+)":\s*\{\s*[\r\n]?\s*title:\s*"([^"]+)"/g },
 ];
@@ -840,6 +917,67 @@ function viewTitleJudgeCanary() {
   return bad;
 }
 
+/**
+ * ⑧ **功能键槽位**的金丝雀（2026-08-15 补盲区随手加的那道机器）。
+ *
+ * 跑的是**同一份 `VIEW_TITLE_SLOTS`**，不是另抄一份正则 —— 抄了就是装饰品：
+ * 改主正则时金丝雀拿旧的去测、照样绿（本仓 2026-08-08 实测过的那个坑）。
+ * 四条必咬 = 旧判据的盲区各取一例；两条必不咬 = 加宽**不许**把非功能键卷进来。
+ */
+function featureKeySlotCanary() {
+  const probe = [
+    'const F = [{ key: "view.dash", name: "驾驶舱" },',
+    '  { key: "view.graph.persp.all", name: "图谱·全景" },', // 盲区①：带点的多段 slug
+    '  { key: "qos.agent-fallback", name: "Agent 兜底" },', // 盲区②：非 view. 前缀
+    '  { featureKey: "view.project-sim.whatif", featureName: "What-if 调参" },', // 盲区③：两者兼有
+    '  { key: "finance_pnl", name: "量价本利科目表" },', // 必不咬：求解器键（不带点）
+    '  { key: "order-chain", name: "订单进展与卡因" }];', // 必不咬：裸视图 slug（不带点）
+  ].join("\n");
+  const seen = new Set();
+  for (const { ns, re } of VIEW_TITLE_SLOTS) {
+    re.lastIndex = 0;
+    for (const m of probe.matchAll(re)) seen.add(`${ns}:${m[1]}`);
+  }
+  const bad = [];
+  for (const want of ["feature-name:view.dash", "feature-name:view.graph.persp.all", "feature-name:qos.agent-fallback", "feature-name:view.project-sim.whatif"]) {
+    if (!seen.has(want)) bad.push(`⑧功能键必咬：槽位正则抽不到「${want}」—— 盲区没补上（或补完又被改窄了）`);
+  }
+  for (const never of ["feature-name:finance_pnl", "feature-name:order-chain"]) {
+    if (seen.has(never)) bad.push(`⑧功能键必不咬：不带点的「${never}」被当成功能键卷进来了 —— 判据加宽过头，会把求解器键/视图 slug 混成一个命名空间`);
+  }
+  // 捕获整键（含前缀）：否则 `view.x` 与 `qos.x` 会并成一个桶，凭空造出假分叉
+  if (seen.has("feature-name:dash")) bad.push("⑧功能键：捕获组只取了 `view.` 之后那截 —— 不同前缀的同名键会并桶，造出假分叉");
+  return bad;
+}
+
+/**
+ * ⑥b **记号扫全仓**的金丝雀（跑 `extractMarksWithLines` + `runStaleFactMark` 本体）。
+ * 验四件事：抽得到 · 行号对 · 语法坏的能被认出来 · **术语提及不被误判**。
+ * 行号错了，报出来的红没人找得到那条赌注。
+ */
+function markSweepCanary() {
+  const probe = ["行1", '// @stale-fact fake/upstream.ts /drillType: "Line"/ ==1', "行3", "// @stale-fact 这条语法是坏的"].join("\n");
+  const { marks, malformed } = extractMarksWithLines(probe);
+  const bad = [];
+  if (marks.length !== 1) bad.push(`⑥b必咬：应抽到 1 条合法记号，实得 ${marks.length}`);
+  else {
+    if (marks[0].line !== 2) bad.push(`⑥b行号：合法记号在第 2 行，实得 ${marks[0].line} —— 行号错了，报出的红没人找得到`);
+    const r = runStaleFactMark(marks[0], canaryReadSource);
+    if (!r.ok || r.got !== 1) bad.push(`⑥b执行器：内嵌假来源里 /drillType: "Line"/ 应现算 1 且通过，实得 got=${r.got} ok=${r.ok}`);
+  }
+  if (malformed !== 1) bad.push(`⑥b语法坏的记号应被认出 1 处，实得 ${malformed} —— 认不出 = 作者以为挂了赌注其实没挂`);
+
+  // **提及 ≠ 赌注**：注释里用反引号提一嘴这个术语，不许被判成"语法不完整"（否则门开始惩罚写文档的人）。
+  // 同时验行号仍守恒 —— 剔除提及是等长替换，不是删除。
+  const mention = ["行1", "说明：故本表下方挂 `@stale-fact` 记号，由门现算比对。", '// @stale-fact fake/upstream.ts /drillType: "Line"/ ==1'].join("\n");
+  const mres = extractMarksWithLines(mention);
+  if (mres.malformed !== 0) bad.push(`⑥b提及被误判：反引号包起来的术语提及被当成坏记号（实得 malformed=${mres.malformed}）`);
+  if (mres.marks.length !== 1 || mres.marks[0].line !== 3) {
+    bad.push(`⑥b提及剔除破坏了行号守恒：真记号应在第 3 行，实得 ${mres.marks[0]?.line ?? "无"} —— 删而不是等长替换，偏移会全漂`);
+  }
+  return bad;
+}
+
 function selftest(facts, scanStats) {
   const blind = [];
   for (const c of MUST_BITE) {
@@ -859,7 +997,7 @@ function selftest(facts, scanStats) {
     const codes = judgeOnscreen(c.text, c.mark, { readSource: canaryReadSource }).map((v) => v.code);
     if (codes.length > 0) blind.push(`屏上必不咬样例「${c.name}」被误咬（${codes.join(",")}）`);
   }
-  blind.push(...renameJudgeCanary(), ...viewTitleJudgeCanary());
+  blind.push(...renameJudgeCanary(), ...viewTitleJudgeCanary(), ...featureKeySlotCanary(), ...markSweepCanary());
   // 基线写入器的四向金丝雀（**跑 buildBaselineDoc 本体**）—— 不过 ⇒ `--update` 会静默吞掉人手挂账
   {
     const c = baselineDocCanary();
@@ -980,6 +1118,61 @@ function scanOnscreen(root, facts) {
   return { violations, files, literalHits, missing: false };
 }
 
+/**
+ * ── ⑥b · **记号扫全仓**（2026-08-15 WO-STALE-TEXT-SWEEP 补）──────────────────────
+ *
+ * **修的是什么**：`scanOnscreen` 只走 `SCAN_ROOT`（`apps/frontend-shell/src`），而且只在
+ * **命中枚举/否定断言的那个单元**上下文里跑记号。于是有两类记号**写了等于没写**：
+ *   ① 写在别的包里的（`apps/agentcore/src/**` / `apps/datacore/src/**` / `packages/**`）——
+ *      扫描根压根不到那儿；
+ *   ② 写在 `SCAN_ROOT` 里、但**所在单元没有枚举/否定断言**的（例如挂在一段纯注释的机制说明上）——
+ *      没有单元命中，就没有人去跑它。
+ * 两类的后果与本门早就在治的 `malformed` 一模一样：**作者以为自己挂了赌注，其实门一条都没跑。**
+ * 形态（铁律 0.6 句式）：「我用『我写下了记号』当作『这条赌注会被执行』的证据，而前者并不度量后者。」
+ *
+ * **判据**：`@stale-fact` 是**可执行断言**，不是注解 —— 写在仓里哪儿都得被执行。故本函数在
+ * 全部 `apps/<pkg>/src` + `packages/<pkg>/src` 下逐文件抽记号并跑，执行器仍是
+ * `runStaleFactMark`（**单一出处**，与 `judgeOnscreen`、`runBaselineFactChecks` 同一个）。
+ *
+ * **与 `scanOnscreen` 的重叠怎么处理**：不靠"划分地盘"（划错了就有洞），靠**结果去重** ——
+ * 同一条记号失守时两路会给出**逐字节相同的 `detail`**（都出自 `runStaleFactMark` 的 reason），
+ * 主流程按 `file|detail` 去重即可。宁可两路都扫到，也不留"谁都不管"的缝。
+ */
+function scanStaleFactMarks(root, facts) {
+  const violations = [];
+  let files = 0;
+  let markCount = 0;
+  for (const r of srcRoots(root)) {
+    for (const f of walk(r)) {
+      files += 1;
+      const rel = relative(root, f);
+      const { marks, malformed, malformedLines } = extractMarksWithLines(readFileSync(f, "utf8"));
+      markCount += marks.length;
+      if (malformed > 0) {
+        violations.push({
+          file: rel,
+          line: malformedLines[0] ?? 1,
+          code: "STALE-6",
+          detail: `有 ${malformed} 处 \`@stale-fact\` 语法不完整 —— 作者以为自己挂了赌注，其实门一条都没跑。语法：@stale-fact <路径> /<正则>/ <op><n>`,
+          sample: "",
+        });
+      }
+      for (const m of marks) {
+        const res = runStaleFactMark(m, facts.readSource);
+        if (res.ok) continue;
+        violations.push({
+          file: rel,
+          line: m.line,
+          code: "STALE-6",
+          detail: res.reason,
+          sample: `@stale-fact ${m.file} /${m.pattern}/ ${m.op}${m.n}`,
+        });
+      }
+    }
+  }
+  return { violations, files, markCount };
+}
+
 // ── ⑦⑧ 全仓真相源扫描（跨包 —— 「一个概念两份真相源」按定义就不在单包里）──────
 
 function srcRoots(root) {
@@ -1069,6 +1262,33 @@ function runBaselineFactChecks(exemptions, readSource) {
   return out;
 }
 
+/**
+ * 同一条**记号**可能被两路扫到（`scanOnscreen` 的单元路径 + `scanStaleFactMarks` 的全仓路径），
+ * 两路的 `detail` 逐字节同源（都出自 `runStaleFactMark` 的 reason）⇒ 去重。
+ * **刻意不按 key 去重**：key 一路是单元 hash、一路是记号行号，本来就不同；按内容才认得出"同一件事"。
+ *
+ * ⚠ **只对 STALE-6 去重**（第一版栽在这儿，当场被门自己的松弛检测抖出来）：
+ *   第一版对所有码按 `file|code|detail` 去重，而 STALE-5 的 `detail` 是**由 enumHit/negHit 两个布尔
+ *   拼出来的固定句式** —— 同一个文件里两处不同位置的断言会得到**逐字节相同**的 detail，
+ *   于是被当成"同一件事"合并掉：实测 11 条屏上违规被压成 9 条，基线里 3 条豁免当场"松弛"。
+ *   形态（铁律 0.6 句式）：**「我用『两条报告的文字一样』当作『它们是同一条违规』的证据，
+ *   而前者并不度量后者」** —— 文字一样只说明句式是模板，不说明位置是同一处。
+ *   STALE-6 不同：它的 detail 里带着**这条赌注自己的 file/pattern/op/n/现算值**，
+ *   文字相同即赌注相同，合并才是对的。
+ */
+function dedupViolations(list) {
+  const seen = new Set();
+  const out = [];
+  for (const v of list) {
+    if (v.code !== "STALE-6") { out.push(v); continue; }
+    const k = `${v.file}|${v.detail}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(v);
+  }
+  return out;
+}
+
 function main() {
   const argv = process.argv.slice(2);
   const materializedTypes = loadMaterializedTypes(REPO_ROOT);
@@ -1101,9 +1321,16 @@ function main() {
   if (!selftestOnly && localeTitles === null) {
     toolBroken(new Error("apps/frontend-shell/src/locales/zh.ts 读不到"), "屏上标题的前端真相源缺失");
   }
+  // ⑥b 全仓记号扫描（记号写在哪儿都得被执行 —— 否则"挂了赌注"是假的）
+  const markSweep = selftestOnly ? { violations: [], files: 999, markCount: 99 } : scanStaleFactMarks(REPO_ROOT, facts);
   const onscreenViolations = selftestOnly
     ? []
-    : [...onscreen.violations, ...judgeRenameResidue(truth.decls, truth.literals), ...judgeViewTitleForks(truth.registry, localeTitles)].map((v) => ({
+    : dedupViolations([
+        ...onscreen.violations,
+        ...markSweep.violations,
+        ...judgeRenameResidue(truth.decls, truth.literals),
+        ...judgeViewTitleForks(truth.registry, localeTitles),
+      ]).map((v) => ({
         ...v,
         key: v.key ?? unitKey(v.file, `${v.code}|${v.sample}`),
         endLine: v.endLine ?? v.line,
@@ -1115,6 +1342,10 @@ function main() {
     if (onscreen.files < 50) blind.push(`屏上层只扫到 ${onscreen.files} 个源文件（<50）—— 扫描根 ${SCAN_ROOT} 是不是没读到？`);
     if (onscreen.literalHits < 5) blind.push(`屏上层只抽到 ${onscreen.literalHits} 处字面量断言（<5）—— 剥注释器或断言正则坏了，不是屏上干净了`);
     if (truth.registry.size < 20) blind.push(`视图标题真相源只抽到 ${truth.registry.size} 个 slug（<20）—— ⑧ 这一层等于没开`);
+    // ⑥b 扫描规模下限：记号是**生产实例**（今日 11 条）。抽到 0 条 ⇒ 报「工具坏了」，
+    //    **不许**报「全仓记号都通过」—— 那正是本门自己在治的那种「我没找到 ≠ 它不存在」。
+    if (markSweep.files < 100) blind.push(`⑥b 记号扫描只走到 ${markSweep.files} 个源文件（<100）—— srcRoots 是不是没读到？`);
+    if (markSweep.markCount < 5) blind.push(`⑥b 全仓只抽到 ${markSweep.markCount} 条 @stale-fact 记号（<5）—— 抽取器坏了，不是记号没人写了`);
     if (truth.decls.length < 1) blind.push("全仓一条**改名声明**都没抽到（<1）—— ⑦ 这一层等于没开（今日已知至少 1 条）");
     if (truth.literals.length < 1000) blind.push(`活字面量只抽到 ${truth.literals.length} 行（<1000）—— 剥注释器把字面量也剥了？⑦ 这一层等于没开`);
   }
