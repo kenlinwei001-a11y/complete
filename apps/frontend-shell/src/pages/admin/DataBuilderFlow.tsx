@@ -406,7 +406,7 @@ export default function DataBuilderFlow() {
                       data-needed={g.needed}
                       style={{ border: "1px solid var(--line)", borderRadius: 6, padding: "6px 8px", opacity: g.needed === 0 ? 0.6 : 1 }}
                     >
-                      <div style={{ fontSize: 12, fontWeight: 600 }}>{KIND_LABEL.get(g.kind)?.label ?? g.kind}</div>
+                      <div data-testid={`dbf-need-label-${g.kind}`} style={{ fontSize: 12, fontWeight: 600 }}>{KIND_LABEL.get(g.kind)?.label ?? g.kind}</div>
                       <div
                         data-testid={`dbf-need-verdict-${g.kind}`}
                         style={{ fontSize: 12, color: g.evidence === "NOT_PROBED" ? "var(--amber-txt, #8a5a1e)" : g.missing > 0 ? "var(--danger-txt, #b4232a)" : "var(--muted)" }}
