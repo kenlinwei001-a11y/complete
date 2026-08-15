@@ -1092,6 +1092,29 @@
       },
       "notes": ""
     },
+    "check-sim-ux-criteria.mjs": {
+      "alias": null,
+      "binding": "NONE",
+      "guardedPaths": [
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/synthetic/view-manifest.ts",
+        "apps/frontend-shell/src/pages/ShellLayout.tsx",
+        "apps/frontend-shell/src/views/registry.ts",
+        "apps/frontend-shell/src/views/sim/sandboxModes.ts",
+        "docs/PRD-harness-ux-adoption.md",
+        "scripts/check-edge-active-mounts.mjs",
+        "scripts/sim-ux-criteria-baseline.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "本体 §7「sim-ux-criteria 推演页 UX 判据表可核对性门」段 · 七向变异反证逐条真跑（2026-08-15）",
+        "note": "七向 7/7 实跑，每条先证「变异体 != 原文」（字节数变化打印在案）再显式捕获退出码（out=$(cmd 2>&1); rc=$?，非管道尾 $?）：M1 删 §4 表的 order-chain 行 → ①枚举一致 + ④棘轮死账 RC=1；M2 把一格写成「部分」 → ②三态合法 RC=1（这正是本单要消灭的含糊词）；M3 删 §4.2 里 U3 那条理由 → ③判不了必须有理由 RC=1；M4 把 global-sim×U1 从「符合」改「判不了」 → ④棘轮倒退 + 总量 17→16 RC=1；M5 把 what-if×U1 从「不符合」改「符合」 → ④棘轮松弛（免检名额·反向遍历基线才发现得了）RC=1；M6 删 §0.1 的「丙」行 → ⑤指代冲突登记 RC=1；M7 在无扫描面的 cwd 跑 → RC=2 且明说「不许读作表合规」。逐条还原后复绿 RC=0、git status --porcelain 空。"
+      },
+      "notes": "把仓主那句「所有推演的功能都要借鉴这个设计 UX」从台账里的三个字「已融入」变成可核对的东西。本门**不判 UX 好不好**（九条判据里今天只有 U4 真能机检，且已有门 check-edge-active-mounts.mjs），它判「判据表还算不算数」：①现算四源并集 ∪ 既有门名单 与 PRD §4 表逐页对齐（拦手抄漏页——既有门的 PAGES 至今漏 cleanroom-attr/disruption-radius/order-chain 三页，于是它们从未被问过、永远绿）·②三态只许 符合/不符合/判不了 ·③「判不了」必须在 §4.2 有理由 ·④棘轮 + 反向遍历基线的松弛检测 ·⑤指代冲突登记不许丢。已建**未接线**（binding=NONE·disposition=WIRE）：本单范围边界禁改 package.json 与 scripts/gate.sh，接线留给审核方；接线前靠人手 `node scripts/check-sim-ux-criteria.mjs`。",
+      "disposition": "WIRE"
+    },
     "check-sim-readiness.mjs": {
       "alias": null,
       "binding": "NONE",
