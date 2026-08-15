@@ -6,6 +6,7 @@ import {
   type ProcessStuckResponse,
 } from "@platform/contracts";
 import { fetchStuckProcesses } from "@/api/endpoints";
+import ProcessStartFromTemplate from "./process/ProcessStartFromTemplate";
 import styles from "./ProcessStuckView.module.css";
 
 /**
@@ -298,6 +299,14 @@ export default function ProcessStuckView() {
       <p className={styles.stateLine}>
         判定时刻 <code data-testid="stuck-evaluated-at">{evaluatedAt}</code>（服务端时钟）
       </p>
+
+      {/* 🔴 WO-STEP-TEMPLATE-LAYER：上面那句「平台自带的 65 条是**模板**，不是正在跑的单子」
+          此前是一句**没有出路的**实话 —— 读者知道了没有实例，却没有任何办法开一条。
+          这一块就是那句话的出路：按标准步骤模板建一条实例。
+          它挂在本页而不是另开一页，判据是「同一个问题的两半」：本页上半答"哪些卡着"，
+          下半答"怎么开一条出来"；分成两页会让第一次用的人在空态里停住。
+          ⚠ 它自己也**不许造数**：没有步骤模板的流程，那边说清楚且不给按钮。 */}
+      <ProcessStartFromTemplate />
     </div>
   );
 }

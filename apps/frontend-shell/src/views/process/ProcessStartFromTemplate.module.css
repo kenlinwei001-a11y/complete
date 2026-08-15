@@ -1,0 +1,156 @@
+/* WO-STEP-TEMPLATE-LAYER · 「按模板建一条流程实例」样式。
+   零硬编码颜色：全部走 styles/tokens.css 的 CSS 变量 ⇒ dark / light / warm 三套自动跟随
+   （门：process-start-from-template.seam.test.tsx「三色系」组 —— 出现 hex 或任何颜色函数字面量即红）。
+   字号收敛到 3 级（规范 R-UI-2）：13px = 步名/正文块 · 12px = 标签/徽标/辅助说明 · 16px = 小节标题。 */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 12px 14px;
+  color: var(--txt);
+  font-family: var(--font-sans);
+}
+
+.head h4 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  max-width: 88ch;
+}
+
+.stateLine {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.root code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldLabel {
+  color: var(--muted2);
+  font-size: 12px;
+}
+
+.select {
+  background: var(--bg2);
+  color: var(--txt);
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  max-width: 52ch;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.stepName {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stepMeta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.badge {
+  background: var(--bg2);
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 1px 7px;
+  font-size: 12px;
+  color: var(--accent-txt);
+}
+
+.primary {
+  align-self: flex-start;
+  background: var(--accent);
+  color: var(--on-accent);
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.absent {
+  color: var(--muted);
+  font-size: 13px;
+  background: var(--panel2);
+  border: 1px dashed var(--line2);
+  border-radius: 8px;
+  padding: 12px;
+  line-height: 1.7;
+}
+
+.probe {
+  color: var(--muted2);
+  font-size: 12px;
+}
+
+.ok {
+  color: var(--txt);
+  font-size: 13px;
+  background: var(--panel2);
+  border: 1px solid var(--ok);
+  border-radius: 8px;
+  padding: 12px;
+  line-height: 1.7;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.error {
+  color: var(--danger-txt);
+  font-size: 13px;
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 12px;
+  line-height: 1.7;
+}

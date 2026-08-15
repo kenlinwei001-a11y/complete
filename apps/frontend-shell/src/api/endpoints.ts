@@ -76,6 +76,9 @@ import type {
   ProcessStuckResponse,
   ProcessInstanceDetail,
   AdvanceProcessInstanceRequest,
+  // WO-STEP-TEMPLATE-LAYER · 步骤模板层（同上：契约类型一律 import，前端不重定义）
+  ProcessStepTemplateResponse,
+  CreateProcessInstanceRequest,
   SkillCompileResult,
   SolverCategory,
   EnterpriseState,
@@ -295,6 +298,24 @@ export const fetchProcessInspect = (key: string) =>
 export const fetchProcessInstances = (processKey: string, limit = 50) =>
   api.a<ProcessInstancesResponse>(
     `/a/v1/process-definitions/${encodeURIComponent(processKey)}/instances?limit=${limit}`,
+  );
+
+/**
+ * WO-STEP-TEMPLATE-LAYER · 一条流程的**标准步骤模板** —— 建实例时 `tasks` 的唯一合法来源。
+ *
+ * ── 为什么必须先有这个端点，界面才敢有「启动流程」按钮 ────────────────────
+ * `POST /a/v1/process-instances` 要求 `tasks.min(1)`（步骤逐条给全），
+ * 而 `ProcessDefinition` 九个字段里没有一个是步骤 ⇒ 在本端点之前，
+ * 前端接那个按钮就得**凭空发明步骤**，正是后端 `process/runtime.ts create()`
+ * 那条「不许凭空建」红线所反对的。
+ *
+ * ⚠ **`available:false` 是一个合法答案，不是错误**（HTTP 200）：这条流程还没有步骤模板。
+ * 界面必须把 `absence.reason`/`absence.probe` **原样显示出来并且不给启动按钮** ——
+ * 宁可少展示，不许造数。拿一份"默认三步"顶上去，就是本仓「诚实位在说谎」的复现。
+ */
+export const fetchProcessStepTemplate = (processKey: string) =>
+  api.a<ProcessStepTemplateResponse>(
+    `/a/v1/process-definitions/${encodeURIComponent(processKey)}/step-template`,
   );
 
 export const fetchDomains = () =>
@@ -2103,6 +2124,20 @@ export const fetchStuckProcesses = () => api.a<ProcessStuckResponse>("/a/v1/proc
 /** 单条实例详情：实例 + 全部步骤（八字段）+ 当前卡点。 */
 export const fetchProcessInstance = (id: string) =>
   api.a<ProcessInstanceDetail>(`/a/v1/process-instances/${encodeURIComponent(id)}`);
+
+/**
+ * WO-STEP-TEMPLATE-LAYER · **按模板建一条流程实例**。
+ *
+ * ⚠ `body.tasks` **必须**由契约的 `tasksFromStepTemplate(steps)` 折出来 ——
+ * 那是模板→任务的**唯一一处转换实现**，前后端 import 同一个函数。
+ * 前端自己拼一份 `tasks`，就是本仓反复出事的「两个 dev 各发明一套词表」形态：
+ * 后端将来改了转换口径，这边不会跟着变，而且没有任何测试会红。
+ *
+ * ⚠ 未开通 `process.runtime`（defaultOn:false 暗发）时后端 404 `FEATURE_NOT_FOUND` ——
+ * 与 `fetchStuckProcesses` 同一条：「功能没开」不是「请求失败」，调用方必须分开处置。
+ */
+export const createProcessInstance = (body: CreateProcessInstanceRequest) =>
+  api.a<ProcessInstanceDetail>("/a/v1/process-instances", { method: "POST", body });
 
 /**
  * 推进一条实例。body 里给的是**外部事实**（数据到齐 / 外部回执 / 审批结论 / 人工已办），

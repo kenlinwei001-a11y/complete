@@ -80,7 +80,7 @@ import { newPlanBuilderCanvas } from "./planBuilderFixtures";
 import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
 import { BUILD_PIPELINE_KINDS, factoryPipeline, pipelineOrder, resolvePipeline } from "./pipelineFixtures";
 // WO-WAITING-STATES-FE · 流程等待态 fixture（过契约 schema 的真种子子集，见该文件头三重防漂移机制）
-import { PROCESS_DEFINITIONS_RESPONSE, processInspectFixture, processInstancesFixture } from "./processWaitFixtures";
+import { PROCESS_DEFINITIONS_RESPONSE, processInspectFixture, processInstancesFixture, processStepTemplateFixture } from "./processWaitFixtures";
 import { historyBundleFor, LIVED_WATERMARK } from "./livedInFixtures";
 
 /**
@@ -2627,6 +2627,63 @@ export const handlers = [
       derivedStuckCount: 1,
     });
   }),
+  /**
+   * WO-STEP-TEMPLATE-LAYER · 按模板建实例（mock 模式）。
+   *
+   * 🔴 **步骤一律回显请求体里的那一份**，mock 自己一步都不发明 ——
+   * 这条 handler 存在的意义正是让「建出来的步骤逐条来自模板」这件事在 mock 模式下**也真的成立**：
+   * 若这里返回一份固定的演示步骤，界面会显示一组与用户所选模板无关的步，
+   * 而且看起来一切正常 —— 那就是把本单要治的病原样搬进了演示态。
+   *
+   * 首步状态给 `RUNNING`：模板**不产 gate**（契约裁决 ②），无 gate ⇒ 真后端 `create()`
+   * 建完立刻判一次首步 gate、判定为可开工。这里与真后端同形，不是随手填一个状态。
+   */
+  http.post("*/a/v1/process-instances", async ({ request }) => {
+    const account = auth(request);
+    if (!account) return err(401, "UNAUTHORIZED", "未登录");
+    const body = (await request.json()) as {
+      definitionKey: string;
+      subjectRef: { typeKey: string; objectId: string };
+      tasks: { name: string; ownerFunctionKey: string }[];
+    };
+    // id 形如真后端 `processInstanceId("MANAGED", …)` ⇒ `pinst_mg_…`（origin 参与构成，见契约 §4）。
+    const instanceId = `pinst_mg_demo_${body.definitionKey}_${body.subjectRef.objectId}`;
+    const now = "2026-03-04T00:00:00.000Z";
+    const tasks = body.tasks.map((t, i) => ({
+      id: `ptask_${instanceId}_${i + 1}`,
+      tenantId: "demo",
+      instanceId,
+      seq: i + 1,
+      name: t.name,
+      ownerFunctionKey: t.ownerFunctionKey,
+      status: i === 0 ? "RUNNING" : "PENDING",
+      ...(i === 0 ? { startedAt: now } : {}),
+    }));
+    return HttpResponse.json({
+      instance: {
+        id: instanceId,
+        tenantId: "demo",
+        key: `${body.definitionKey}::${body.subjectRef.objectId}`,
+        processKey: body.definitionKey,
+        carrierObjectId: body.subjectRef.objectId,
+        carrierTypeKey: body.subjectRef.typeKey,
+        flowKey: `${body.definitionKey}::${body.subjectRef.objectId}`,
+        stationIndex: 0,
+        enteredAt: now,
+        exitedAt: null,
+        waitState: null,
+        waitStateOrigin: null,
+        status: "RUNNING",
+        ownerRef: { functionKey: tasks[0]?.ownerFunctionKey ?? "supply_chain", partyField: null, partyValue: null },
+        origin: "MANAGED",
+        // MANAGED 的时刻由引擎自采，**没有**源单据可溯 —— 塞一条假溯源才是造假（真后端 superRefine 挡住）。
+        sourceDocuments: [],
+        scopeObjectTypes: [body.subjectRef.typeKey],
+        ...(tasks[0] ? { currentTaskId: tasks[0].id } : {}),
+      },
+      tasks,
+    });
+  }),
   // DF.12 边界册治理：影响图 + 版本（直接派生 contracts 单一来源，与真后端同源）。
   http.get("*/a/v1/boundary/impact", () => HttpResponse.json({ impact: BOUNDARY_IMPACT, registries: BOUNDARY_IMPACT.map((b) => b.registry) })),
   http.get("*/a/v1/boundary/version", () => HttpResponse.json(boundaryVersion())),
@@ -2885,6 +2942,20 @@ export const handlers = [
         { ver: "V5", date: "2026-05-29", demand: 132, supply: 129, gap: 3, note: "财务整合", isFinal: false },
         { ver: "V7", date: "2026-06-12", demand: 134, supply: 133, gap: 1, note: "高管会待定稿", isFinal: true },
       ].map((r) => ({ id: `sopv-${r.ver}`, props: r }));
+    } else if (type === "CustomsClearance") {
+      /**
+       * WO-STEP-TEMPLATE-LAYER · 清关记录（P34 的承载物）。
+       *
+       * 补这一支的理由是**避免一条会上屏的谎**：本 handler 的 `else` 兜底会把**订单**当成
+       * 任何未登记类型返回，于是「按模板建实例」面板在 mock 模式下选 P34 时，
+       * 承载对象下拉里会列出一串订单 id —— 看着一切正常，实则类型完全不对。
+       * 属性取自真后端 `battery-extended.ts` 的 `CustomsClearance` 声明（含步骤模板锚住的
+       * `declaredDay`/`clearedDay` 两个时刻），不多编字段。
+       */
+      rows = [
+        { clearanceId: "CC-PO-0007", poId: "PO-0007", supplierId: "SUP-015", portName: "上海洋山", brokerName: "远洋报关行", declaredDay: 6, clearedDay: 11, holdDays: 2, status: "已放行" },
+        { clearanceId: "CC-PO-0012", poId: "PO-0012", supplierId: "SUP-015", portName: "宁波北仑", brokerName: "华东通关", declaredDay: 9, clearedDay: 13, holdDays: 0, status: "查验中" },
+      ].map((r) => ({ id: r.clearanceId, props: r }));
     } else {
       let orders = filterByScope(ORDERS, account);
       if (base) orders = orders.filter((o) => o.bases.includes(base));
@@ -3266,6 +3337,19 @@ export const handlers = [
     if (body === null) {
       return HttpResponse.json(
         { error: { code: "NOT_FOUND", message: `mock 世界没有流程 ${String(params.key)}（fixture 只取了真种子的一个子集）`, requestId: "req_mock_process_inspect" } },
+        { status: 404 },
+      );
+    }
+    return HttpResponse.json(body);
+  }),
+  // WO-STEP-TEMPLATE-LAYER · 一条流程的标准步骤模板（建实例时 tasks 的唯一合法来源）。
+  // ⚠ 同样必须排在裸 `/a/v1/process-definitions` **前面**（msw 取第一个命中的 handler）。
+  // fixture 里**只有 P34 有模板**，与真后端 65 条里只有 7 条有同形 —— 理由见 fixture 文件注释。
+  http.get("*/a/v1/process-definitions/:key/step-template", ({ params }) => {
+    const body = processStepTemplateFixture(String(params.key));
+    if (body === null) {
+      return HttpResponse.json(
+        { error: { code: "NOT_FOUND", message: `mock 世界没有流程 ${String(params.key)}（fixture 只取了真种子的一个子集）`, requestId: "req_mock_step_template" } },
         { status: 404 },
       );
     }
