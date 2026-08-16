@@ -299,11 +299,14 @@ export interface TopologyFacts {
  * 四个只读请求的**请求体单一来源**（视图发请求、测试造载荷都引它，免得两处 metrics 拼不一样）。
  *
  * ⚠ 为什么必须走 `/objects/aggregate` 而不是前端自己 join：
- *   `GET /a/v1/objects` 内部写死 `queryObjects(ctx, type, {}, 1000)`（`apps/datacore/src/app.ts:2369`），
+ *   `GET /a/v1/objects` 内部写死 `queryObjects(ctx, type, {}, 1000)`（`apps/datacore/src/app.ts` 的
+ *   `app.get("/a/v1/objects", …)` 端点，行号会漂），
  *   实测 `type=EquipmentOEE` 回 `total=1000`、`page=3` 回 0 条 —— **5460 行只能拿到 1000 行（18%）**；
  *   `POST /a/v1/objects/query` 的 `limit` 被契约夹在 ≤1000（实测传 6000 → 400 VALIDATION_ERROR）。
  *   而 `/objects/aggregate` 在服务端**全量读**（`ontology-governance.ts:721` 明写"不受 ≤1000 截断影响"），
  *   实测 130 组 / `truncated=false` / 29KB / 160ms。所以：不是"前端 join 慢"，是**前端 join 拿不全数据**。
+ *   （WO-OEE-UNIFY 复核 2026-08-16：裁决 C 的派生发生在生成期内存全量，不经该端点；
+ *   ≤1000 截断的伤口在 app.ts/ontology.ts，修它属后续单的范围。）
  *
  * ⚠ `metrics` 契约上限 **5 条**（`AggregateRequestSchema`），`groupBy` 上限 2 维 —— 下面的取值是贴着上限排的，
  *   加字段前先想清楚挤掉谁。样本量不占额度：`min_planned === max_planned` 时可由 `sum/min` 反解。

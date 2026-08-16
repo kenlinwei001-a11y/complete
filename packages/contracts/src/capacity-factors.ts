@@ -87,6 +87,21 @@ export const CAPACITY_FACTOR_BINDINGS: CapacityFactorBinding[] = [
  *     oee_current 存在且 >0  →  取 oee_current              （= 有效 OEE·**唯一真被消费的值**）
  *     否则                   →  取 oeeA × oeeP × oeeQ        （兜底分解·仅当快照缺失）
  *
+ * ⚠️ **2026-08-16 订正（WO-OEE-UNIFY · 仓主裁决 C = `EquipmentOEE` 事实表当权威）**：
+ * 本段此前写「`synthetic/battery.ts` 给**每台**设备都回填了 `oee_current = round(oeeA×oeeP×oeeQ, 3)`，
+ * 时序 `oee_daily_7d` 也持续把它物化」——那是**一个字段两个写入方、写两个不同定义的量**（`G-OEE-DUAL-TRUTH`），
+ * 且「OEE-A 可由 `oee_current /(oeeP × oeeQ)` 反解、不丢失可解释性」一句**实测为假**：
+ * 物化后 780 台反解误差平均 0.0901（对照组·播种期快照 0.000293）——不超过 1、不会自曝，只是安静地错。
+ * **现世界**：`EquipmentOEE` 日事实表是唯一权威（`battery.ts equipmentOeeAtomsDaily` 单一出处），
+ * `oeeA/oeeP/oeeQ/oee_current` 全部是它 7 日均值的**同源派生**，播种期回填与 `oee_daily_7d` 物化规格均已撤
+ * ⇒ `oee_current` 只剩一个写入方；可解释性**不靠反解**——OEE-A 就是 `Equipment.oeeA`，与 `oee_current` 同一张表
+ * （残差仅「均值乘积 vs 乘积均值」的协方差，780 台实测平均 0.0006、最大 0.0028）。
+ * 「快照优先 ⇒ 兜底分支恒不进入 ⇒ 登记三原子为可写落点等于登记三个拨不动的杠杆」的判断**不变**，④⑦ 仍 `writable:false`。
+ * 若将来要让三原子可拨，正确姿势是改事实表/派生口径（改产能链语义），不是放开 ④⑦；
+ * `check-lever-binding-drift.mjs` 会一直盯着这条不变量。
+ *
+ * ── 以下为 2026-08-16 前的原文，保留作历史背景（其中「回填/物化」两句已被上面订正）──
+ *
  * 而 `synthetic/battery.ts` 给**每台**设备都回填了 `oee_current = round(oeeA×oeeP×oeeQ, 3)`，
  * 时序 `oee_daily_7d` 也持续把它物化 ⇒ 生产数据下**兜底分支恒不进入**，三原子被快照完全掩蔽。
  * 后果（实测·见 `docs/PRD-lever-binding-drift.md` §2）：`patchCapacityContext` 改 `oeeA/oeeP/oeeQ` 后

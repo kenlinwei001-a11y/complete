@@ -1925,8 +1925,10 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "Process.capacityUnitKind": "硬容量单元类型", "Process.requiredThroughput": "上游要求日吞吐",
   "Equipment.equipId": "设备编号", "Equipment.processId": "所属工序", "Equipment.lineId": "所属产线",
   "Equipment.baseId": "所属基地", "Equipment.ctSeconds": "节拍", "Equipment.availFactor": "可用系数",
-  "Equipment.oeeA": "OEE可用率", "Equipment.oeeP": "OEE表现性", "Equipment.oeeQ": "OEE质量率",
-  "Equipment.oee_current": "OEE", // ← LEVER「设备·OEE」
+  // WO-OEE-UNIFY 裁决 C 标注：四个 OEE 属性全部 = EquipmentOEE 日事实表 7 日均值（同源·equipmentOeeAtomsDaily），
+  // 属性表同屏并列时用户能看出是同一套口径；oeeA×oeeP×oeeQ 与 oee_current 之间仅余协方差级残差（实测 ≤0.003）。
+  "Equipment.oeeA": "OEE可用率（事实表7日均值）", "Equipment.oeeP": "OEE表现性（事实表7日均值）", "Equipment.oeeQ": "OEE质量率（事实表7日均值）",
+  "Equipment.oee_current": "OEE（综合·事实表7日均值）", // ← LEVER「设备·OEE」
   "Equipment.equipment_code": "设备编码", "Equipment.equipment_type": "设备类型",
   "Equipment.manufacturer": "制造厂商", "Equipment.install_date": "安装日期", "Equipment.status": "设备状态",
   "Equipment.mtbf": "平均无故障时间", "Equipment.mttr": "平均修复时间", "Equipment.health_score": "设备健康度",
