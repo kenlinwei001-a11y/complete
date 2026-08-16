@@ -5,7 +5,8 @@ import { BASE_REGISTRY, BUSINESS_TYPE_LABEL, objectiveHeader } from "@platform/c
 import type { GlobalSimScheduleRow, GlobalSimKpi, GlobalSimBusinessTypeSummary, BusinessType, GlobalSimDueComparison, GlobalSimMethodScenario, GlobalSimCost } from "@platform/contracts";
 import { composeGlobalSimNarrative, searchObjects, type GlobalSimSevenDimKpi, type SimComposeNarrative } from "@/api/endpoints";
 import type { ViewRendererProps } from "../registry";
-import { fmt, useActionDraft } from "./shared";
+import { fmt, useActionDraft, ExportReportButton } from "./shared";
+import type { ProvenanceReport } from "./exportProvenance";
 import { toastError } from "@/store/toastStore";
 import { Feature } from "@/workspace/featureGate";
 import { RecomputeConfirmDialog } from "@/components/RecomputeConfirmDialog";
@@ -358,6 +359,42 @@ export default function GlobalSimView(_props: ViewRendererProps) {
   const ontimeRate = primaryScen && primaryScen.servedCount + primaryScen.displacedCount > 0
     ? (primaryScen.objectiveValues.ontime / (primaryScen.servedCount + primaryScen.displacedCount)) * 100 : 0;
 
+  /**
+   * WO-U7-U9-REST · 判据 U9：导出物自带出处与生成时间。
+   * 联合解对「目标 + 订单子集 + 冻结集」三者都敏感，少写一样复算出的就是另一份排产 —— 全进 basis。
+   */
+  const buildReport = (): ProvenanceReport => ({
+    docName: "全局项目推演",
+    basis: [
+      `求解器 portfolio（twoStage 联合求解 · 本体快照 ${res.snapshotVersion ?? "—"} · 同输入同输出）`,
+      `主目标：${SCEN_LABEL[primary] ?? primary} · 订单 ${orderIds.length} 单（冻结 ${frozenOrderIds.length} 单）· 场景 ${scenSet.join("/")}`,
+    ],
+    sections: [
+      {
+        heading: "结论",
+        head: ["项", "值"],
+        rows: d
+          ? [
+              ["判定", d.feasible ? "可行 · 全部订单都排下了" : `${d.status}${d.optimal ? "·可证最优" : ""} · 有被挤单`],
+              ["按期率", `${ontimeRate.toFixed(0)}%`],
+              ["被挤单量（套）", fmt(displacedQty, 0)],
+            ]
+          : [],
+      },
+      {
+        heading: "主方案读数",
+        head: ["项", "值"],
+        rows: primaryScen
+          ? [
+              ["按期（单）", primaryScen.objectiveValues.ontime],
+              ["代价", fmt(primaryScen.objectiveValues.cost)],
+              ["换型（小时）", fmt(primaryScen.objectiveValues.changeover)],
+            ]
+          : [],
+      },
+    ],
+  });
+
   // WO-L3-TRANSFER · 交期/外协联动读数（联合解真产物·随转拨 committedBatches 在同一次守恒解内实时变）。
   //   需外协残差 = 被挤单量（联合解算不下的量·真残差）；延后单 = 分配里未按期的单（交期传导）。
   const displacedQty = useMemo(() => (d?.displaced ?? []).reduce((s, x) => s + (Number(x.qty) || 0), 0), [d]);
@@ -406,6 +443,8 @@ export default function GlobalSimView(_props: ViewRendererProps) {
           <p>把所有订单放在一起、在所有基地和时间窗上共享产能、不重复占用 → 一次算出全局最优。调节杠杆 / 勾选订单子集 / 切换目标 → 方案立即重算：产能占用图、KPI、排产安排、客户影响全链联动。</p>
         </div>
         <span className={styles.badge} title="这些数字是算法在满足产能约束下试算出来的最优方案（推演结果），不是数据库里已经发生的既有事实。" data-testid="global-sim-badge">推演结果 · 非数据库事实</span>
+        {/* 判据 U9：导出入口（第一层只留按钮 + ? 记号，口径进浮层 —— 共享件统一分层）。 */}
+        <ExportReportButton pageKey="global-sim" build={buildReport} />
       </div>
 
       {/* ① 递进批次会话条（范围 / status / 已提交批次链） */}
