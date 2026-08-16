@@ -110,6 +110,38 @@
 
 ---
 
+## I · 交付底座：typecheck 扫描面（WO-TEST-TYPECHECK-BLIND · 2026-08-16）
+
+> 仓主原话：「**我需要完成一个可交付的系统，不是 demo 系统。**」
+> 这一条不是某个功能，是**判据本身的可信度** —— 本表序言里那句
+> 「我用『门 RC=0』当作『这 6 步都做好了』的证据，而前者并不度量后者」，
+> 在 typecheck 上有一个更彻底的版本：**它连看都没看。**
+
+| # | 事实 | 状态 |
+|---|---|---|
+| I1 | `datacore`/`agentcore` 的 `typecheck` **从不检查测试文件** —— `tsconfig.typecheck.json` 早在 `7302a0fc`（2026-08-13 · WO-R4「件一(1/2)」，标题自陈只做一半）就建好且注释写明要纳入 `test/`，而 `package.json` 的脚本**从来指向 `tsconfig.json`**；第二半的接线躺在 `claude/handoff-wo-typecheck-testblind` 上、被标注「[待裁·勿盲并]」而未并 —— **因为光翻开关会当场变红**。三天里 **466 个测试文件零检查** | ✅ **已接线**（两包脚本改指宽面；build 用的 `tsconfig.json` 未动） |
+| I2 | 接线后暴露 **354 个**真类型错误（datacore 272 + agentcore 82，涉 69 个文件） | ✅ **全部修完归零**，亲手复验：两包 `tsc -p tsconfig.typecheck.json --noEmit` 各 **0 error** |
+| I3 | 修的位置 | ✅ **全在测试侧，生产源码零改动**；`as any`/`@ts-ignore` **一处未用**（那是把「看不见」换成「假装看见了」，比原状更坏） |
+| I4 | 防复发 | ✅ 新门 `typecheck-coverage:check`，判据落在 `tsc --listFilesOnly` 的程序全集上（**刻意不读 `include`/`exclude`** —— 读配置去推断正是本单栽的跟头）；反向金丝雀 + 三向变异反证 RC=0/1/2 全机验；已接 `pnpm gates` + 门账 + 本体 §7/§8 |
+| I5 | 复验方式 | ✅ **金丝雀实测**：接线前往两包测试文件塞 `const __canary: number = "str"` ⇒ `typecheck` RC=**0**（漏网）；接线后同一探针 ⇒ RC=**2** + TS2322（抓住）。金丝雀用完已还原，`git status --porcelain` 为空 |
+
+**这批错误的形态**（说明为什么「三周没人发现」不是偶然）：契约字段改名后 fixture 没跟上 ·
+`ObjectInstance.origin` 这类**必填**字段 91 处缺失 · 测试本地断言类型漏声明生产真会发的字段
+（`RiskCard.adoptedMitigation` / `GA.reconChecks` / `no` / `amp`）· `status: "RUNNING"` 这种
+**枚举里根本不存在**的值 · `origin: "MANUAL" as ObjectInstance["origin"]`（用 `as` 把
+「字符串塞进判别联合」整个盖住）。**没有一条是靠读代码能稳定发现的，全部要靠类型系统看见它们。**
+
+**留给审核方的两条**（本单范围边界外，未擅动）：
+① `apps/agentcore/src/mocks/clients.ts:240/376/706` —— `MockDataCore` 若干方法**比接口少写形参**
+（`queryObjects` 漏 `asOfEpoch`、`listObjectTypeKeys`/`listPublishedRuleKeys` 漏 `ctx`）。
+TS 允许少写形参实现接口，于是 mock 的**具体类型比契约窄**，测试按契约调就编译不过；
+更要紧的是 **mock 因此对 R2 租户隔离与 §13.1 任务快照读是「收了参数不认」**。
+本单在测试侧用「上转到它实现的那个接口」绕开（非 `as any`），**生产侧建议补齐形参**。
+② `claude/handoff-wo-typecheck-testblind` 分支里的 `pipeline-config-seam.test.tsx`（55 行新测试）
+属另一单（WO-R4 件二）产出，本单未收编，**别随分支删除一起丢了**。
+
+---
+
 ## ⛔ 未派（我欠的）
 
 1. **步骤模板层** —— B4 的前置
