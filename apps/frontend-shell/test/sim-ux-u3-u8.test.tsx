@@ -84,6 +84,70 @@ function drHandlers() {
   ];
 }
 
+// ── 净室归因页的本体与三求解器（与 `test/cleanroom-attr.test.tsx` 同源结构，只保留本条用到的那部分）──
+const CR_TYPES = [
+  { key: "Furnace", displayName: "化成柜", domain: "capacity", status: "ACTIVE", properties: [{ propKey: "furnaceId", dataType: "string", isPrimaryKey: true }, { propKey: "capacity", dataType: "number", isPrimaryKey: false }] },
+  { key: "Job", displayName: "在制任务", domain: "capacity", status: "ACTIVE", properties: [{ propKey: "jobId", dataType: "string", isPrimaryKey: true }, { propKey: "furnaceRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Furnace" }, { propKey: "qty", dataType: "number", isPrimaryKey: false }, { propKey: "priority", dataType: "number", isPrimaryKey: false }] },
+  { key: "Customer", displayName: "客户", domain: "people", status: "ACTIVE", properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true }, { propKey: "orderRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Order" }] },
+  { key: "Order", displayName: "订单", domain: "product", status: "ACTIVE", properties: [{ propKey: "orderId", dataType: "string", isPrimaryKey: true }, { propKey: "supplierRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Supplier" }] },
+  { key: "Supplier", displayName: "供应商", domain: "supply", status: "ACTIVE", properties: [{ propKey: "supplierId", dataType: "string", isPrimaryKey: true }] },
+  { key: "Product", displayName: "产品", domain: "product", status: "ACTIVE", properties: [{ propKey: "prodId", dataType: "string", isPrimaryKey: true }, { propKey: "revenue", dataType: "number", isPrimaryKey: false }, { propKey: "rawCost", dataType: "number", isPrimaryKey: false }, { propKey: "laborCost", dataType: "number", isPrimaryKey: false }] },
+];
+
+function crHandlers() {
+  return [
+    http.get("*/a/v1/ontology/object-types", () => HttpResponse.json(CR_TYPES)),
+    http.post("*/a/v1/solvers/shared_bottleneck/invoke", async ({ request }) => {
+      const { args } = (await request.json()) as { args: Record<string, string> };
+      const rt = args.resourceType;
+      return HttpResponse.json({
+        data: {
+          bottlenecks: [{ resourceType: rt, resourceId: `${rt}-01`, capacity: 100, demand: 138, sharerCount: 3 }],
+          // ★ 这份 sharers 求解器一直都在回 —— 改前页面一行都没渲染，只显了个 3。
+          contention: [{ resourceId: `${rt}-01`, sharers: ["a", "b", "c"] }],
+          downgraded: [{ resourceId: `${rt}-01`, sharedByType: args.sharedByType, objectId: "c", reason: "优先级最低" }],
+          summary: `1 个共享瓶颈,3 张单争用,1 张被降级 · ${rt}`,
+        },
+        snapshotVersion: "ov-cr",
+      });
+    }),
+    http.post("*/a/v1/solvers/concentration_risk/invoke", async ({ request }) => {
+      const { args } = (await request.json()) as { args: { startType: string; path: { toType: string }[] } };
+      const rootType = args.path[args.path.length - 1]!.toType;
+      const top = { rootType, rootId: `${rootType}-hub`, dependents: ["c1", "c2"], count: 2 };
+      return HttpResponse.json({ data: { concentrations: [top], topExposure: top, summary: "1 个隐性集中单点" }, snapshotVersion: "ov-cr" });
+    }),
+    http.post("*/a/v1/solvers/margin_attribution/invoke", async ({ request }) => {
+      const { args } = (await request.json()) as { args: { targetType: string; costFields: { field: string; label?: string }[] } };
+      const d0 = args.costFields[0]!.label ?? args.costFields[0]!.field;
+      const d1 = args.costFields[1] ? (args.costFields[1].label ?? args.costFields[1].field) : "其他";
+      return HttpResponse.json({
+        data: {
+          inverted: [
+            {
+              id: `${args.targetType}-9`,
+              revenue: 100,
+              totalCost: 128,
+              margin: -28,
+              marginRate: -0.28,
+              topDriver: { label: d0, value: 80, share: 0.625 },
+              // ★ 这份逐项拆解同样一直都在回 —— 改前只渲染了 topDriver 一个徽标。
+              attribution: [
+                { label: d0, value: 80, share: 0.625 },
+                { label: d1, value: 48, share: 0.375 },
+              ],
+            },
+          ],
+          rootDrivers: [{ label: d0, invertedCount: 1, totalValue: 80 }],
+          invertedCount: 1,
+          summary: `1 个目标毛利倒挂；根因主驱动 ${d0}`,
+        },
+        snapshotVersion: "ov-cr",
+      });
+    }),
+  ];
+}
+
 describe("判据 U3 · 过程图节点点击 → 面板同时给出「来源」与「规则」", () => {
   it("U3-C1 · order-chain（ofc-dag）：点「①交期判」→ 面板出来源 + 规则，且规则值取自后端 ruleRefs（C02/C03）", async () => {
     loginAs("planner");
@@ -158,6 +222,37 @@ describe("判据 U3 · 过程图节点点击 → 面板同时给出「来源」�
 });
 
 describe("判据 U8 · 看明细落在受控展开态，不是死路也不是跳页", () => {
+  it("U8-C2 · cleanroom-attr：争用方 / 成本拆项就地展开（改前这两份明细求解器已回，却一行都没渲染）", async () => {
+    loginAs("planner");
+    server.use(...crHandlers());
+    const { router } = renderApp("/v/cleanroom-attr");
+
+    // ① 共享瓶颈：屏上原本只有「3 方争用」这个数，「是哪几方」（contention[].sharers）整个丢掉。
+    await screen.findByTestId("cr-bn-result", {}, { timeout: 8000 });
+    const sharers = screen.getByTestId("cr-bn-sharers-Furnace-01");
+    expect(sharers.tagName).toBe("DETAILS"); // 受控展开态，不是 <Link>/navigate
+    expect(sharers).not.toHaveAttribute("open");
+    const sharerBody = screen.getByTestId("cr-bn-sharers-body-Furnace-01");
+    for (const s of ["a", "b", "c"]) expect(sharerBody).toHaveTextContent(s);
+    fireEvent.click(screen.getByTestId("cr-bn-sharers-sum-Furnace-01"));
+    await waitFor(() => expect(screen.getByTestId("cr-bn-sharers-Furnace-01")).toHaveAttribute("open"));
+
+    // ② 毛利倒挂：本页三块走 tab（默认落共享瓶颈），得先切过去 —— 不切就找不到，
+    // 那是「没在屏上」而不是「没实现」，两者不许混（第一版就是漏了这一下）。
+    fireEvent.click(screen.getByTestId("cr-tab-margin"));
+    // 屏上原本只有「主驱动」一个徽标，逐项成本拆解（attribution[]）整个丢掉。
+    const attr = await screen.findByTestId("cr-ma-attr-Product-9");
+    expect(attr.tagName).toBe("DETAILS");
+    expect(attr).not.toHaveAttribute("open");
+    fireEvent.click(screen.getByTestId("cr-ma-attr-sum-Product-9"));
+    await waitFor(() => expect(screen.getByTestId("cr-ma-attr-Product-9")).toHaveAttribute("open"));
+    // 占比分母必须写出来 —— 62.5% 是占**总成本**，不是毛利率，混了会读反结论。
+    expect(screen.getByTestId("cr-ma-attr-body-Product-9")).toHaveTextContent("占比分母 = 总成本");
+
+    // 反向断言：两次展开路由都没动（U8 的判据就是「看细节不被带走」）。
+    expect(router.state.location.pathname).toBe("/v/cleanroom-attr");
+  });
+
   it("U8-C1 · disruption-radius：超出首屏 12 个的对象可就地展开（改前只有一句「+3 更多」，无处可看）", async () => {
     loginAs("planner");
     server.use(...drHandlers());

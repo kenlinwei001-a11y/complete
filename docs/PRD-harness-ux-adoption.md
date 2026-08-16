@@ -243,19 +243,23 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
 |---|---|---|---|---|---|---|---|---|---|---|
 | 推演沙盘 `sim-sandbox` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **符合** | **不符合** | **符合** | 不符合 |
 | 项目推演 `project-sim` | **符合** | **符合** | **符合** | **符合** | 不符合 | **符合** | **不符合** | **符合** | **符合** | **不符合** |
-| 全局项目推演 `global-sim` | **符合** | 不符合 | **不符合** | **符合** | 不适用 | **不符合** | **符合** | **符合** | **不符合** | **不符合** |
+| 全局项目推演 `global-sim` | **符合** | 不符合 | **不符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **不符合** | **不符合** |
 | 产能推演 `risk` | **符合** | 不符合 | **不符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **不符合** |
-| 订单全链 `order-chain` | **符合** | 不符合 | **不符合** | **不符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **不符合** |
+| 订单全链 `order-chain` | **符合** | 不符合 | **符合** | **不符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **不符合** |
 | 决策推演 `decision-play` | **符合** | **不符合** | **不符合** | **符合** | 不适用 | **符合** | **符合** | **不符合** | **符合** | **不符合** |
-| 假设推演 `what-if` | **不符合** | 不符合 | **不符合** | **符合** | 不适用 | **不符合** | **不符合** | **符合** | **符合** | **符合** |
-| 优化推演 `optimize-whatif` | **不符合** | 不符合 | **不符合** | **符合** | 不适用 | **不符合** | **不符合** | **符合** | **符合** | **符合** |
-| 归因 `cleanroom-attr` | **符合** | 不符合 | **不符合** | **不符合** | 不适用 | **符合** | **不符合** | **符合** | **不符合** | **符合** |
-| 影响半径 `disruption-radius` | **符合** | 不符合 | **不符合** | **不符合** | 不符合 | **符合** | **不符合** | **符合** | **不符合** | **符合** |
+| 假设推演 `what-if` | **符合** | 不符合 | **不符合** | **符合** | 不适用 | **符合** | **不符合** | **符合** | **符合** | **符合** |
+| 优化推演 `optimize-whatif` | **不符合** | 不符合 | **不符合** | **符合** | 不适用 | **符合** | **不符合** | **符合** | **符合** | **符合** |
+| 归因 `cleanroom-attr` | **符合** | 不符合 | **不符合** | **不符合** | 不适用 | **符合** | **不符合** | **符合** | **符合** | **符合** |
+| 影响半径 `disruption-radius` | **符合** | 不符合 | **符合** | **不符合** | 不符合 | **符合** | **不符合** | **符合** | **符合** | **符合** |
 | 方案生成 `plan-generate` | **符合** | 不符合 | **不符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **不符合** |
 | 月度规划 `sop-balance` | **不符合** | **不符合** | **不符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **不符合** |
 
-**合计（12 页 × 10 判据 = 120 格）：符合 60 · 不符合 53 · 判不了 0 · 不适用 7。**
-（上一版：符合 17 · 不符合 46 · 判不了 57 · 不适用 0。）
+**合计（12 页 × 10 判据 = 120 格）：符合 68 · 不符合 45 · 判不了 0 · 不适用 7。**
+（上一版：符合 60 · 不符合 53 · 判不了 0 · 不适用 7；再上一版：符合 17 · 不符合 46 · 判不了 57 · 不适用 0。）
+
+> **2026-08-16 WO-SANDBOX-53CELLS 改的 8 格**（逐格实现与测试见 §4.5）：
+> U1 `what-if` · U3 `order-chain`/`disruption-radius` · U5 `global-sim`/`what-if`/`optimize-whatif` ·
+> U8 `cleanroom-attr`/`disruption-radius`。**方向全部是 不符合 → 符合**（棘轮只升不降，无一格反向）。
 
 > ⚠ **「判不了 57 → 0」不许读作「都验过了」——那是本表最容易被误读的一行数。**
 > 57 格的去向是**三条互不相同的路**，逐条写在这里，谁也不许含混过去：
@@ -304,9 +308,13 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
   `sim-sandbox` 无任何提交闸（探针命中 0），杠杆/开关变更即重算。
   ⚠ **沙盘「推进一格 tick」不算提交闸** —— 那是**时间前进**（推演语义本身），不是「填完表再点一下」。
   这两者长得像，混了会把一个正确实现判红。
-- **不符合 3 页**：`what-if` `WhatIfView.tsx` 的 `wi-run` 显式运行闸 ·
-  `optimize-whatif` `OptimizeWhatifView.tsx:200-201` `queryKey` 挂 `submitted` + `enabled: submitted != null` ·
+- **不符合 2 页**：
+  `optimize-whatif` `OptimizeWhatifView.tsx` `queryKey` 挂 `submitted` + `enabled: submitted != null` ·
   `sop-balance` `SopBalanceView.tsx:391/501/594/660/754` **五个** `sop-run-N` 提交按钮。
+- ✅ **`what-if` 于 2026-08-16 WO-SANDBOX-53CELLS 闭**（不符合 → 符合）：`wi-run` 提交闸**已删**，
+  假设四维直接进 `queryKey`（`["a","what-if","infer",typeKey,objectId,prop,value]`），改任一项即重调求解器。
+  自由文本框配 300ms 防抖 —— **防抖不是提交闸**：它只推迟发请求、不推迟输入回显，
+  且「不点某个东西结果永远不更新」这个态**结构上不存在了**。机检见 §4.5。
 
 **U2 分步标口径**（判据：**推演过程**分步 ∧ 每步标 数据/求解器/规则；业务流程步骤不算）
 - `project-sim` **符合**：`ProjectSimView.tsx` 的 `step` 驱动同一份 `forecast` 结果分层展开，
@@ -325,11 +333,17 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
   - `sim-sandbox`：`SandboxConsole.tsx:261` `selectedNodeId` ← `:446/:458` 节点点击 →
     `:1065` `<NodeInspectorView …>`，面板里 `InspectorNodePanel.tsx:374-381` 逐条渲染
     `ruleRef.ruleKey / params.<param> / path / note`（规则码看得见），另有来源说明段。
-- **不符合 10 页**。其中 4 页**有图但点了没反应**，这是本轮追一层追出来的：
+- ✅ **`order-chain` / `disruption-radius` 于 2026-08-16 WO-SANDBOX-53CELLS 闭**（不符合 → 符合）：
+  病**不是「没有图」**，是**接了线接错地方**（铁律 0.5 第三形态）——
   `@/components/Dag/LayeredDag.tsx:104` 的 `onClick={() => onNodeClick?.(n)}` 里 `onNodeClick` 是**可选**的，
-  而 `order-chain`（`:927` `ofc-dag`、`:1010` `problem-dag`）与 `disruption-radius`（`:305` `dr-fanout`）
-  挂载时**都没传** ⇒ 点节点什么都不发生。`risk` 的 `ProvenanceDag`（`RiskBoardView.tsx:1310`）同理。
-  余下 6 页（`global-sim`/`decision-play`/`what-if`/`optimize-whatif`/`cleanroom-attr`/`plan-generate`）
+  三处挂载（`ofc-dag` / `problem-dag` / `dr-fanout`）**都没传** ⇒ 点节点静默什么都不发生，**屏上分辨不出**。
+  修法是**补挂载点**，不是造组件。新增 `views/sim/DagNodeInspector.tsx`（一份实现、三处挂载），
+  `src`(来源)/`rule`(规则) **必填**、空值 `assertDagNodeFacts` 直接抛（判据写生产入口，不只写测试）。
+  逐格实现与测试见 §4.5。
+- **不符合 8 页**。其中 **`risk` 仍是「有图但点了没反应」**：`ProvenanceDag`（`RiskBoardView.tsx:1310`）
+  的 `NodeProv` 是 **hover** 浮层且给的是 来源 + 依据（`basis`），**没有规则**；
+  且该组件被 cockpit 等页共用，改它会外溢 —— 本单**没做**，诚实挂账（§5 新 P1）。
+  余下 7 页（`global-sim`/`decision-play`/`what-if`/`optimize-whatif`/`cleanroom-attr`/`plan-generate`/`sop-balance`）
   **连图都没有**。金丝雀：同一探针 `project-sim`=3 · `order-chain`=4 · `disruption-radius`=3 ⇒ 工具是好的。
 
 **U4 反事实开关**（唯一此前已有机检的判据）
@@ -361,9 +375,17 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
   ⚠ 这里踩过一次坑：初版探针只认 `SnapshotBadge|Provenance|snapshotVersion|依据|出处`，
   `sim-sandbox` 报 1（疑似注释），差点判「不符合」；**再追一层**才看到它走的是 `provenance.solverKey`
   这条路 —— **「我 grep 不到」和「它不存在」是两个命题**。
-- **不符合 3 页**：`global-sim`（全文无 `SnapshotBadge`/`<Provenance>`；`provenance` 只出现在
-  数据结构定义与注释里，屏上不渲染）· `what-if`（deltas 表全裸数字）·
-  `optimize-whatif`（`ow-family-source` 那条诚实位说的是**模板清单**的出处，不是目标值的出处）。
+- ✅ **三页于 2026-08-16 WO-SANDBOX-53CELLS 全闭**（不符合 → 符合），三页的病各不相同，逐页记：
+  - `global-sim` —— 改前全文无 `SnapshotBadge`/`<Provenance>`，`provenance` 只出现在类型定义与
+    hover 的 `title=` 串里。现把出处挂到**已有的**三个读数（按期率/总代价/被挤单）上。
+    ⚠ 刻意**不新开第一层信息块**：本文件在 `ui-first-layer` 棘轮里 `first=209`（只降不升），
+    而 `<Provenance>` 是 hover 浮层，计 `deferred` 不计 `first` —— 改完该门 RC=0。
+  - `what-if` —— 改前 deltas 表与影响面计数全裸；**唯一**提到求解器名的地方在**导出物**的 `basis` 里。
+    「导出里写了」**不度量**「屏上标了出处」（照铁律 0.6 句式，这是两件事）。现挂 `SnapshotBadge` + 六要素浮层。
+  - `optimize-whatif` —— 改前屏上唯一的出处 `ow-family-source` 说的是**模板清单**的出处，
+    不是**目标值**的出处；拿它当 U5 成立就是「我用 X 当作 Y 的证据」。现给 Δ 挂溯源，
+    并写清优化解敏感的那三样（**模板族 · seed · 扰动清单**），另加一条第一层出处行 `ow-objective-source`。
+    对应的机检也刻意落在**那个数字自己**的浮层上，不是「屏上出现过求解器名」。
 
 **U6 结论即动作**
 - **符合 8 页**：`sim-sandbox` · `global-sim` · `risk` · `plan-generate` · `sop-balance`（原判不变）＋
@@ -404,12 +426,21 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
   `SandboxConsole.tsx:1310` 的 `JumpList onOpen={navigate}` 是**阻滞点交接**（把这条阻滞点交给另一张页去处置），
   `ProjectSimView.tsx:232/233/251` 的 `<Link to="/v/global-sim">` 文案是「把这批一起求全局最优 →」
   「接不住？回全局重排 →」—— 都是**切视角/交接**，不是「想看细节被带走」。
-- **不符合 4 页**：
+- **不符合 1 页**：
   - `global-sim` —— `GlobalSimView.tsx:153/851` `<Link className={styles.drillLink} to="/v/project-sim?order=…">进项目推演细排 →`。
-    **类名逐字就叫 `drillLink`**：下钻本身是靠跳页实现的，正是这条判据点名的那件事。
-  - `cleanroom-attr` / `disruption-radius` —— 受控展开态命中 **0**：不是「跳了页」，是**根本没有下钻**，
-    明细全平铺。对这条判据的用户价值（看细节不丢现场）而言同样不成立，故记 `不符合` 而非 `不适用`
-    —— 判据在这两页上**落得下脚**（它们有明细可下钻），只是没做。
+    **类名逐字就叫 `drillLink`**：下钻本身是靠跳页实现的，正是这条判据点名的那件事。（本单未动，仍排 §5 P1。）
+- ✅ **`cleanroom-attr` / `disruption-radius` 于 2026-08-16 WO-SANDBOX-53CELLS 闭**（不符合 → 符合）。
+  这两页的病与 `global-sim` **不同**（那是跳走，这是没有），修法也不同 ——
+  它们的病是「**求解器早就把明细回来了，页面一行都没渲染**」，于是屏上出现一个数之后**无路可走**：
+  - `disruption-radius`：`dr-layer-*` 超出 `CHIP_CAP=12` 的部分只写一句「+N 更多」——**死路**。
+    改为内联 `<details>` 就地展开其余对象（首屏仍只出 12 个，第一层密度不涨）。
+  - `cleanroom-attr`：① 共享瓶颈只显 `{sharerCount} 方争用`，而「**是哪几方**」（`contention[].sharers`）
+    整个丢掉；② 毛利倒挂只显一个「主驱动」徽标，而**逐项成本拆解**（`attribution[]`）整个丢掉。
+    两处都改为内联 `<details>` 就地展开，并在成本拆解里显式写清「占比分母 = 总成本，不是营收」
+    （不写清会被读成毛利率，读反结论）。
+  ⚠ 机检落在 `<details>` 的 **`open` 属性**上，**不落在「那个 id 在不在 DOM 里」**：
+  `<details>` 折叠时子节点照样在 DOM 里（jsdom 与浏览器一致），拿「DOM 里没有」当「屏上没显示」的证据
+  会当场红 —— 本单第一版就是这么写的（同一形态：「我用 X 当作 Y 的证据，而 X 并不度量 Y」）。
 
 **U9 导出带口径与时间戳**
 - **符合 4 页**：`what-if` / `optimize-whatif` / `cleanroom-attr` / `disruption-radius` —— 本单接线（§4.4）。
@@ -484,6 +515,43 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
 导出物自己那套浅色排版是**刻意**的：它是**离开应用的独立文档**，那里不存在本应用的 `:root` 变量表，
 写 `var(--txt)` 会解析成空值把字变透明 —— 与 `RiskBoardView` 的「导出最终规划」同一处理。
 
+### 4.5 WO-SANDBOX-53CELLS 真改了哪 8 格（2026-08-16 · 逐格 file:line + 机检）
+
+**挑格判据同 §4.4：「同一条判据在多个页面上同时不符合」优先** —— 那类改动一份实现能收多页。
+本轮按「一次改法能复用到几页 × 每页改动量」排序（完整排序表见 §5.1），做了收益最高的四条判据。
+
+| # | 判据 | 页 | 改前的**具体**病 | 改法 | 机检 |
+|---|---|---|---|---|---|
+| 1 | **U3** | `order-chain` | `ofc-dag`/`problem-dag` 挂 `LayeredDag` 时没传 `onNodeClick`（该 prop 可选）⇒ 点了静默无事 | 补挂载点 + `DagNodeInspector`；规则栏取后端真值 `judges.*.ruleRefs` | `sim-ux-u3-u8` U3-C1/C2/C3 |
+| 2 | **U3** | `disruption-radius` | 同上（`dr-fanout`） | 同上；规则标 `projection`（净室页无业务规则库） | `sim-ux-u3-u8` U3-C4 |
+| 3 | **U1** | `what-if` | `wi-run` 提交闸 + 命令式 `run()` 写 state | 假设四维进 `queryKey`，闸删除；文本框 300ms 防抖 | `what-if` U1 那条 |
+| 4 | **U5** | `what-if` | deltas 表与影响面计数全裸；求解器名只在**导出物**里 | `SnapshotBadge` + `<Provenance>` 六要素 | `what-if` C1/C3 沿用 |
+| 5 | **U5** | `global-sim` | 全文无 `SnapshotBadge`/`<Provenance>` | 三个读数各挂溯源（浮层，不占第一层） | `sim-ux-u1-u5` U5-C1 |
+| 6 | **U5** | `optimize-whatif` | 唯一出处 `ow-family-source` 说的是模板清单不是目标值 | Δ 挂溯源（模板族·seed·扰动清单）+ 第一层出处行 | `sim-ux-u1-u5` U5-C2 |
+| 7 | **U8** | `disruption-radius` | 「+N 更多」是**死路** | 内联 `<details>` 就地展开其余对象 | `sim-ux-u3-u8` U8-C1 |
+| 8 | **U8** | `cleanroom-attr` | `contention[].sharers` 与 `attribution[]` 求解器已回、页面零渲染 | 两处内联 `<details>` + 占比分母诚实位 | `sim-ux-u3-u8` U8-C2 |
+
+**一份实现、三处挂载**（`views/sim/DagNodeInspector.tsx`，对位 §4.4 的 `exportProvenance.ts` 同一处理）：
+- `src`(来源) 与 `rule`(规则) **必填**，空值 `assertDagNodeFacts` **直接抛**。
+  理由与 U9 那次相同：U3 的失败模式是「面板点得开，里面只有一句标题」，
+  而那种失败**在屏上看不出来**（抽屉照样弹、照样好看），只有真去核数字的人才发现无从下手。
+  所以判据写在**生产代码入口**，不是只写在测试里。
+- `ruleKind` **分两档且屏上分得出**，这是诚实位不是装饰：
+  `ruleKey`（规则库里查得到 —— `order_fullchain` 的 `judges.*.ruleRefs` = C02/C06/C15…）
+  与 `projection`（**确定性投影规则** —— 净室页与 `problem-dag` 无业务规则库时代码里逐字实现的判定逻辑）。
+  在没有规则键的地方硬写一个规则键 = **把用户支去规则库里找一个不存在的东西**。
+  `problem-dag` 归 `projection` 是**实测**出来的：`OrderRootChainSchema`（`packages/contracts/src/planviews.ts`）
+  的 `layers[]` **只有 `kind` 与 `label`，没有任何 ruleRef**。
+
+**测试为什么是接缝测试而不是组件测试**（假绿第 9 形态的对策）：三条 U3 断言全部**真渲染页面 →
+真点 DAG 节点 → 断言面板两栏**，且规则栏**咬后端真值**（`ruleRefs`）而非前端字面量 ——
+页面改成写死一个「C02」它仍绿，但**引擎改了 `ruleRefs` 而页面没跟上它会红**。它验的是接缝。
+另配两条**反向断言**：关闭后面板真的消失（防「面板一直在 DOM 里」）、`<details>` 的 `open` 真的翻转。
+
+**分层与主题**：新文件 `DagNodeInspector` 实测 `first=1 / deferred=12`，已 `--tighten` 落进
+`ui-first-layer` 基线的 `unlisted` 段（只收紧）；`.module.css` **零字面色值**（全走既有 token，暗/亮各自成立），
+**不新开字号档**（只复用已有的 12 / 12.5 两级，D3 棘轮只降不升）。
+
 ---
 
 ## 5 · 优先级
@@ -511,6 +579,46 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
 ⚠ **本单刻意不排 U6 的优先级**：「结论即动作」在 `what-if`/`optimize-whatif`/`cleanroom-attr`/
 `disruption-radius` 四页缺失，但这四页是**净室通用页**（与租户本体无关），它们该不该产生 Action 草稿
 **是产品决策不是缺陷**——硬补会造出「在一个通用假设页上生成全租户 Action」这种更糟的东西。**登记备裁。**
+
+### 5.1 「不符合」全量优先级表（2026-08-16 WO-SANDBOX-53CELLS 建 · 按**判据**排不按页排）
+
+**排序判据不是「哪页最烂」，是「一次改法能复用到几页」。** 逐页做等于把同一件事想 12 遍；
+按判据做的话，一份实现（共享组件 / 同一种接线）能一次收多页 —— §4.4 与 §4.5 都是这么挑的。
+
+> 起点是本单开工时的 **53 格不符合**。⚠ 其中 **13 格不归本单**：
+> `U7`(2) + `U9`(8) 由 `WO-U7-U9-REST` 做，`U4`(3) 由 `WO-EDGE-PANEL-3PAGES` 做 ——
+> 三张单**靠判据编号分工，不靠页面分工**，所以同一页的不同判据可能由不同单在改。
+
+| 序 | 判据 | 开工时不符合页数 | 一次改法能复用几页 | 预估改法 | 本单处置 |
+|---:|---|---:|---:|---|---|
+| **1** | **U3** 点节点看凭什么 | 10 | **3**（有图的那 3 页）+ 7 页要先造图 | 有图的：补 `onNodeClick` + 共享 `DagNodeInspector`（**改动量最小、收益最高**：组件本就支持，页面没挂）。无图的：得先有过程图，那是造功能不是接线 | ✅ 做了 2 页（`order-chain`/`disruption-radius`）· `risk` 挂账（见下） |
+| **2** | **U2** 分步标口径 | 11 | **≈11**（若建共享「求解步骤条」组件） | 每页声明**自己那条真实求解链**（数据源/求解器键/规则），共享组件渲染「第 N/M 步」并让步骤态真正**分段揭示结果**。⚠ 不是把业务流程步骤改个名字冒充 —— `sop-balance`/`decision-play` 正是被这一点判红的 | ⛔ 未做（最大的一块，需一张专单，见 §5.2） |
+| **3** | **U5** 结论数字标出处 | 3 | **3** | 已有 `SnapshotBadge`/`<Provenance>` 两个共享件，逐页挂即可；难点只在**写对每页的口径**（谁算的·算在什么之上） | ✅ **3 页全闭** |
+| **4** | **U8** 看明细不换页 | 3 | **2 + 1**（两种病，修法不同） | ①「明细已取回却没渲染 / 只留一句『+N 更多』」⇒ 内联 `<details>` 就地展开（2 页）；②「下钻靠 `<Link>` 跳页」⇒ 要把目标页那段搬成抽屉，改动量大得多（1 页） | ✅ 做了①的 2 页 · `global-sim` 属②，挂账 |
+| **5** | **U4b** 排除项与主因同图 | 5 | **5**（若把 `EdgeActivePanel` 的关闭态投影进各页的图） | 让被 `disabledRuleKeys` 关掉的边**留在因果/传导图上并可见地降级**（虚线＋降透明度＋「已关闭」标记），而不是只活在独立面板里 | ⛔ 未做（见 §5.2；且它与 `WO-EDGE-PANEL-3PAGES` 在动的 `EdgeActivePanel` 有耦合面，**刻意避让**） |
+| **6** | **U6** 结论即动作 | 5 | **1 + 4** | `project-sim` 那格是**真缺陷**（文案承诺了不存在的动作，已排 P0）；其余 4 页是**净室通用页**，该不该产生 Action 属产品裁决，**不许硬补** | ⛔ 未做（1 格待裁接不接 · 4 格备裁） |
+| **7** | **U1** 改输入即重演 | 3 | **1 + 2** | `what-if` 是纯前端撤闸（廉价）；`optimize-whatif` 走**真 CP-SAT**、`sop-balance` 的五个闸串的是 **S&OP 业务流程**（评审→平衡→定稿），两者撤闸前都得先量重解成本/先裁决语义 | ✅ 做了 `what-if` · 另 2 页挂账（见 §5.2） |
+| — | U7 / U9 / U4 | 13 | — | — | 🚦 **不归本单**（`WO-U7-U9-REST` / `WO-EDGE-PANEL-3PAGES`） |
+
+**为什么 U2 排第 2 却没做**：它的页数最多（11），但它是**唯一一条今天在本仓没有任何共享件可复用**的判据 ——
+U3 有 `LayeredDag`、U5 有 `<Provenance>`、U8 有 `<details>` 惯例，而「推演过程分几步算」这件事
+每页的**语义**都不同（`cleanroom-attr` 是三块各一条链、`risk` 是三层求解、`order-chain` 是三判并联）。
+硬在一天内铺 11 页，产出的会是 11 个长得像步骤条、但**步骤态不真正驱动结果分段**的装饰件 ——
+那正是判据 U2 本身点名要排除的东西（「业务流程步骤不算」）。故拆成独立一张单，见 §5.2。
+
+### 5.2 本单挂账的格 —— **差什么才能做** + 对应的可派单
+
+| 格 | 差什么才能做（不是「未做」，是**前置**） | 可派的具体单 |
+|---|---|---|
+| **U3 × `risk`** | `ProvenanceDag` 是 **cockpit 等页共用**的组件，且它的 `DagNode` 契约里**只有 `basis`（依据）没有 `rule`**；`NodeProv` 又是 **hover** 不是 click。差两样：① 一个**不外溢**的改法（给该组件加**可选** `onNodeClick`，不传则维持今天的 hover 行为，零回归）；② `plan_rootcause` / `gap_attribution` 的节点上**有没有规则键可给** —— 若引擎侧确实没有，就得照本单 `problem-dag` 的办法记 `projection` 并说清 | **WO-U3-RISK-DAG**（中画像）：给 `components/ProvenanceDag.tsx` 加可选 `onNodeClick` + 在 `RiskBoardView` 挂 `DagNodeInspector`；先实测引擎节点有无规则键，有则 `ruleKey`、无则 `projection` 并在报告里点名缺口 |
+| **U3 × 无图的 7 页** | 差的是**图本身**（`global-sim`/`decision-play`/`what-if`/`optimize-whatif`/`cleanroom-attr`/`plan-generate`/`sop-balance` 连过程图都没有）。这不是接线是造功能，且**每页画什么图是产品判断**（净室通用页画「本体倒推链」还是「求解步骤」？） | **WO-U3-DAG-DESIGN**（先出设计裁决，再逐页派）：本单建议这 7 页与 **U2** 合并做 —— 「分步标口径」的步骤条与「过程图」是同一份结构的两种画法，分两张单做会造出两套平行结构（RL3 单一来源禁止） |
+| **U2 × 11 页** | 差一个**共享的求解步骤契约**：每页要能声明「这条结论分几步算出来、每步的 数据源 / 求解器键 / 规则」。今天求解器输出里**没有这层结构**（只有终值 + 少量 provenance），所以要么前端逐页手写步骤声明（可行，但得逐页核对不许编），要么引擎侧补一个 `steps[]` 回执 | **WO-U2-STEPWISE-1**（重画像·先做 2–3 页样板）：定共享组件 + 步骤声明形状，先在 `cleanroom-attr`（三块三条链，语义最清楚）与 `risk` 上落地并驱动结果分段揭示；样板过了再铺其余页 |
+| **U1 × `optimize-whatif`** | 差**一次实测**：撤闸后每改一个基线数值格就要重跑一次真 CP-SAT，**重解成本没人量过**。防抖能挡住键入抖动，但挡不住「一次求解要 3 秒」这种情形 | **WO-U1-OPT-COST**（轻画像）：量 `optimize_whatif` 在本仓样例上的 p50/p95 求解耗时；< ~300ms 则照 `what-if` 的办法撤闸，否则给「自动重演 / 手动求解」两态并把理由写进屏上 |
+| **U1 × `sop-balance`** | 差一次**语义裁决**：那五个 `sop-run-1..5` 串的是 **S&OP 业务流程**（评审→平衡→定稿），不是「填完表再点一下」。撤掉它们等于取消流程节点 —— 这是产品决策不是缺陷 | **WO-U1-SOP-VERDICT**（先裁决）：请仓主定「月度规划的五步是流程节点还是提交闸」。若是流程节点，本格应从 `不符合` 改判为**不适用**并按判据⑥逐格登记理由；若是提交闸，再派前端单 |
+| **U8 × `global-sim`** | 差的是**把目标页那段搬成抽屉**：`drillLink` 跳的是 `/v/project-sim?order=…`，那是一整张页的功能。要做成「不换页」得先决定**抽屉里放哪一部分**（全量细排？还是只放该单的排产结果？） | **WO-U8-GLOBALSIM-DRAWER**（中画像·先出设计）：把「进项目推演细排」改成同屏抽屉，保留跳页作为「要做别的事」的出口（判据明写「切视角/交接不算违反」） |
+| **U4b × 5 页** | 差一个**决定**：`EdgeActivePanel` 今天是独立面板，要让排除项「留在图上」得把 `disabledRuleKeys` 的投影下沉到各页的图组件里。⚠ 该文件正被 `WO-EDGE-PANEL-3PAGES` 改动，**本单刻意避让** | **WO-U4B-ONGRAPH**（等 `WO-EDGE-PANEL-3PAGES` 收编后派）：在 `LayeredDag`/`PmDag` 上加一个「已关闭」态（虚线＋降透明度＋文字标记，复用 `EdgeActivePanel` 已有的三路编码），5 页统一挂 |
+| **U6 × `project-sim`** | 差一次**裁决**：`ProjectSimView.tsx:1069` 的文案写「结论可采纳为 Action」而代码里没有那条路。接上 / 撤文案二选一，**不许维持现状** | 已排 §5 P0（`WO-PROJSIM-U6`） |
+| **U6 × 净室 4 页** | 差一次**产品判断**：净室通用页该不该产生全租户 Action 草稿（R2 tenant 语义） | 登记备裁（§5 已写明不排优先级） |
 
 ---
 
@@ -719,3 +827,25 @@ node scripts/check-sim-ux-criteria.mjs --tighten   # 收紧基线（只收紧不
   4. §5 原有的两条 P0（推演页单一来源 / 三页补 U4）**一条没动** —— 那是接线单与产品裁决，不在本单边界内。
 - **保质期**：§4.4 的 4 页判定随那 4 个文件改动而漂移；§4.3 的 7 格 `不适用` 随「那几页长不长出因果图」
   而失效。**两者都由 `sim-ux-criteria:check` 的判据 ④⑥ 守着** —— 门红了就是本文该更新了，不是门坏了。
+
+### 9.2 2026-08-16 WO-SANDBOX-53CELLS 增补（改了什么 · 没做什么）
+
+- 基线：`origin/claude/verify-reclaim-6`；handoff 分支 `claude/handoff-wo-sandbox-53cells`。
+- **本单第一产出是 §5.1 的全量优先级表**（53 格按**判据**排、不按页排，附「一次改法能复用几页」），
+  ＋ §5.2 的**挂账表**（每格写清「差什么才能做」并各配一张可派单）。
+- **真改 8 格**（§4.5）：U1 `what-if` · U3 `order-chain`/`disruption-radius` ·
+  U5 `global-sim`/`what-if`/`optimize-whatif` · U8 `cleanroom-attr`/`disruption-radius`。
+  读数：**符合 60 → 68 · 不符合 53 → 45 · 判不了 0（不变）· 不适用 7（不变）**。
+- **棘轮方向核对**（照判据④）：`sim-ux-criteria-baseline.json` 的 diff **只有 8 行，全部
+  `不符合 → 符合`，零反向**。而且这 8 格**不是我数出来的** —— 是门先报「⑧ 条免检名额」逐格点名，
+  再 `--tighten` 收紧的（机器先说话）。
+- **本单没做的（诚实挂账，别当成做了）**：
+  1. **U2（11 页）一页没做** —— 页数最多但今天**没有可复用的共享件**，一天内硬铺会产出 11 个
+     「步骤态不真正驱动结果分段」的装饰件，正是判据 U2 自己点名要排除的东西。已拆 `WO-U2-STEPWISE-1`。
+  2. **U4b（5 页）一页没做** —— 与 `WO-EDGE-PANEL-3PAGES` 正在改的 `EdgeActivePanel` 有耦合面，**刻意避让**。
+  3. **U3 × `risk`** —— `ProvenanceDag` 是跨页共用组件且契约里没有 `rule` 字段，改它会外溢。已拆 `WO-U3-RISK-DAG`。
+  4. **U1 × `optimize-whatif` / `sop-balance`** —— 前者差一次**重解成本实测**，后者差一次**语义裁决**
+     （五个闸串的是 S&OP 业务流程，撤掉等于取消流程节点）。两张单都已写在 §5.2。
+  5. **U6 / U7 / U9 / U4** —— U7/U9 归 `WO-U7-U9-REST`、U4 归 `WO-EDGE-PANEL-3PAGES`（判据编号分工）；
+     U6 的 1 格待裁、4 格备裁。
+  6. 门 B（真浏览器）**仍一行没写**，§4.2 那 4 条 B-x 明账**继续悬着** —— 与上一版同。
