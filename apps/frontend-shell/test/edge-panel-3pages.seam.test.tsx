@@ -274,6 +274,30 @@ describe("WO-EDGE-PANEL-3PAGES · 三页的「关掉一条边看结果怎么变�
     expect(screen.queryByTestId("dr-edges-off-badge")).toBeNull();
   });
 
+  // ── ③c 共享面板在 disruption-radius 上**真渲染得出来**（静态可达 ≠ 打得开）──────────
+  //
+  // 为什么单列一条而不是靠上面的「① 可达」：那一条读的是**源码文本**，它答「有没有路径」，
+  // 答不了「那条路径走过去到底出不出东西」。本仓栽过的正是后者（实现有、门绿、页面打不开）。
+  it("🔴 SEAM disruption-radius：共享面板真渲染出真边（静态可达 ≠ 打得开）", async () => {
+    const user = userEvent.setup();
+    renderDR();
+    await waitFor(() => expect(screen.getByTestId("dr-radius")).toHaveTextContent("2 层"), { timeout: 8000 });
+
+    await user.click(screen.getByTestId("dr-edge-panel-summary"));
+    const panel = await screen.findByTestId("edge-active-disruption-radius-panel", {}, { timeout: 8000 });
+    // 列的是 MSW 真响应里的传导边（`MOCK_RULE_SEED` 三条），不是占位行。
+    expect(within(panel).getByTestId("edge-active-disruption-radius-count").textContent).toContain("3 条边");
+    expect(within(panel).getByTestId(`edge-active-disruption-radius-edge-${EDGE_A}`).textContent).toContain("TypeA.s1");
+
+    // 🔴 **两套开关互不干扰**（本页最容易被做错的地方：两族边共用一个 state ⇒ 关一边动两边）。
+    //    拨传导边 ⇒ 面板出差值，而**本页自己的半径一格不动**（它由关系边决定，不由传导边决定）。
+    await user.click(within(panel).getByTestId(`edge-active-disruption-radius-toggle-${EDGE_A}`));
+    const diff = await within(panel).findByTestId("edge-active-disruption-radius-diff", {}, { timeout: 8000 });
+    expect(within(diff).getByTestId("edge-active-disruption-radius-diff-TypeB#0-s1").textContent).toContain("−30");
+    expect(screen.getByTestId("dr-radius")).toHaveTextContent("2 层"); // 没被连坐
+    expect(screen.queryByTestId("dr-edges-off-badge")).toBeNull(); // 关系边一条都没关
+  });
+
   // ── ③b 两种「空」必须分得开：本体没链 ≠ 你把链关断了（修法完全相反）────────────────
   it("🔴 诚实位 disruption-radius：把链上的边全关掉 ⇒ 空态说的是「边被关了」，不是「本体没链」", async () => {
     const user = userEvent.setup();
