@@ -24,7 +24,16 @@ import { makeApp, ADMIN } from "./helpers.js";
 
 const SCRIPT = "常州基地产能紧张，影响订单交期与客户信用，请做风险推演";
 
-/** 本系统这一侧能直查现状的那几类（其余为跨系统类，建之前查不到）。 */
+/**
+ * 本系统这一侧能直查现状的那几类（其余为跨系统类，建之前查不到）。
+ *
+ * ⚠ 这两个是**故意手写的独立期望**，不从响应的 `group.side` 派生 —— 派生了就变成
+ *   「拿被测对象自己的说法去验它自己」，`side` 分错一类这道门永远不会红。
+ *   代价是它们与契约 `MODULE_KINDS` 之间**没有类型关联**：新增一类或改名时
+ *   typecheck 一声不吭，只是那一类**悄悄没人测**（同 CLAUDE.md 铁律 0.6 第 4 条的
+ *   「④ 类目名硬写成字符串字面量」形态）。故下面 `§0b` 用**穷尽 + 互斥**把这个洞堵死：
+ *   两个数组的并集必须逐字等于 `MODULE_KINDS`，多一类少一类都当场红。
+ */
 const LOCAL_KINDS = ["dataset", "kb_doc", "ontology_type", "rule", "slice", "solver"] as const;
 const CROSS_KINDS = ["intent", "plan", "workflow", "skill", "agent", "scene", "mcp"] as const;
 
@@ -53,6 +62,27 @@ describe("WO-DBUI-13-NEEDS · 干跑回执的 13 类缺口清单（接缝：倒�
     // 13 个 need 数组 —— 也就是说「那一刻拿不到 13 类」这个说法本身不成立
     expect(arrayFields.length).toBe(MODULE_KINDS.length);
     await app.app.close();
+  });
+
+  it("§0b 本文件的两张类目表**穷尽且互斥**覆盖 MODULE_KINDS（契约新增一类 → 这条先红，不许悄悄少测）", () => {
+    // 为什么这条必须存在：LOCAL_KINDS / CROSS_KINDS 是**字符串字面量数组**，
+    // 契约里 `MODULE_KINDS` 新增一类或改个名，TypeScript **一个字都不会说** ——
+    // §3/§4 只会安静地少循环一类，屏上那一类的现状从此无人验证。
+    // 形态照铁律 0.6 的句式：
+    //   **「我用『§3/§4 是绿的』当作『13 类都验过了』的证据，而前者只度量了我手抄进来的那几类。」**
+    const declared = [...LOCAL_KINDS, ...CROSS_KINDS];
+
+    // ① 互斥：同一类不许两边都写（写了就有一类的期望自相矛盾，且并集数还凑得上）
+    expect(new Set(declared).size, `LOCAL_KINDS / CROSS_KINDS 有重复项：${declared.join(",")}`).toBe(declared.length);
+
+    // ② 穷尽：并集必须逐字等于契约全集（多、少、改名，三种都当场红）
+    expect([...declared].sort(), "本文件的类目表与契约 MODULE_KINDS 已分叉 —— 差集里的那几类今天没有任何断言在验").toEqual(
+      [...MODULE_KINDS].sort(),
+    );
+
+    // ③ 金丝雀：证明上面比的真是契约全集，不是空数组恒真
+    expect(MODULE_KINDS.length, "MODULE_KINDS 读成空了 ⇒ 本条什么都没验").toBe(13);
+    expect(MODULE_KIND_REGISTRY.map((r) => r.kind).sort(), "契约内部两份表自己就对不上").toEqual([...MODULE_KINDS].sort());
   });
 
   it("§1 干跑回执带逐类清单：13 类一个不少（新增模块没接线即红），且形状合契约", async () => {

@@ -222,13 +222,19 @@ export const FALLBACK_SOLVER_CATALOG_KEYS: readonly string[] = Object.freeze(
  *
  * ⚠ **这张表里的名字必须与本体属性名逐字相等**，否则**不会有任何一处报错** —— 它有两个消费方，
  *   两个都是「静默丢弃」而不是「抛错」：
- *     ① `renderNavigationSlice`（本文件 :436）把名字直接印进 agent 首轮 prompt ⇒ 名字错了，
- *        模型照着一个**不存在的字段**去查，工具回空；
+ *     ① 本文件 `renderNavigationSlice` 把 `keyProps.join("/")` 直接印进 agent 首轮 prompt
+ *        ⇒ 名字错了，模型照着一个**不存在的字段**去查，工具回空；
  *     ② `agent/ontology-context.ts` 的 `renderTypeBlock` 拿它当**白名单**过滤 `getTypeSemantics`
  *        的真属性（`if (wanted && !wanted.has(pk)) continue`）⇒ 名字错了，那个属性的
  *        **口径（description/unit/派生公式）整条被滤掉**，模型拿不到值，屏上少一段解释。
  *   即：改名漏改这一族在这里**类型系统看不见、三包 typecheck 全绿**（CLAUDE.md 铁律 0.6
- *   第 4 条点名的「第 ④ 类位置」）。故本表下方挂 `@stale-fact` 记号，由 `check-stale-claims` 现算比对。
+ *   第 4 条点名的「第 ④ 类位置」）。
+ *
+ * 🔒 **守它的机制**：`apps/agentcore/test/keyprops-ontology-parity.seam.test.ts` ——
+ *    把本表 × DataCore 本体真相源（`synthetic/battery.ts` + `battery-extended.ts` 的
+ *    `PropertyDef` / `DerivedPropertyDef` 声明）逐名对账，任何一个名字在该类型上不存在即红。
+ *    **下次再有人改名，是机器先说话，不靠人想起来。**
+ *    （下方 `@stale-fact` 记号保留 —— 它守的是 `check-stale-claims` 那条独立通路，两者互不替代。）
  *
  * ── 2026-08-15 实测修正（WO-STALE-TEXT-SWEEP）─────────────────────────────────
  * `DemandSegment` 原写 `["segment", "p50", "demandPct"]`，**三个里有两个是假的**，且**错法不同**：
@@ -244,36 +250,74 @@ export const FALLBACK_SOLVER_CATALOG_KEYS: readonly string[] = Object.freeze(
  * `|demandWanPerYearP50 − act|` 出预测偏差、`demandWanPerYearP50 − tgt` 出结构漂移，
  * `segId` 进 `provenance.drillId`、`segment` 进因子标签）。
  *
+ * ── 2026-08-16 全表复核（WO-STALE-TEXT-4）·「3 处」这个数是错的，实测 **40 处** ─────────
+ * 上一单只查了被点名的 `DemandSegment` 一行就收工 —— **这本身就是铁律 0.5 的病**：
+ * 「我用『被点名的那处修好了』当作『这张表干净了』的证据，而前者并不度量后者。」
+ * 本单把 **25 个类型 / 85 个属性名**逐个拿去和本体对账，**40 个（47%）在其声明的类型上不存在**。
+ * 修完当天实测归零。四种错法混在一起，**修法不同，不许合成一句话说**：
+ *   · **A 改名漏改**（上游改了名、本表没跟）：`Metric.metricKey`→`key`（本体上 Metric 的键就叫
+ *     `key`，`metricKey` 是 **CausalFactor** 的属性）· `Line.util`→`utilization`（`util` 在 **Base** 上）·
+ *     `Model.series`→`seriesId` · `Customer.name`→`custName` · `Customer.overdue`→`maxOverdueDays` ·
+ *     `Material.materialId`→`matId` · `MaterialBalance.materialId`→`material` ·
+ *     `PurchaseOrder.material`→`matId` · `PurchaseOrder.eta`/`Shipment.eta`→`etaDay` ·
+ *     `Shipment.shipmentId`→`shipId` · `Process.yieldPct`→`yield` · `Equipment.equipmentId`→`equipId` ·
+ *     `Equipment.oee`→`oee_current` · `FinishedGoodsInventory.modelId`→`model` ·
+ *     `FinanceAccount.accountId`→`accId` · `PlanTarget.target`→`value`。
+ *   · **B 抄错地方**（那个名字是**别的类型/别的层**的字段，不是改名）：`Base.capacityDaily`
+ *     （`capacityDaily` 只长在 **Line** 上，Base 的日产能是 `formationCapDaily`/`agingCapDaily`）·
+ *     `Material.gapTon`（在 **MaterialBalance** 上）· `Material.netDemand`（真名 `netDemandTon`，
+ *     且也在 MaterialBalance 上）· `CarbonFactor.{factorKey,coefficient,unit}`（本体上是
+ *     `factorId/kind/key/factor` 四个，三个名字全不沾边）· `Segment.{segment,attainPct}`
+ *     （Segment 是 `segKey/name/gmRate/baselineShare`；`attainPct` **全 datacore 零声明**，
+ *     它是达成率 **Metric** 的语义，被当成 Segment 的字段写进来了）· `FinanceMetric.{metricKey,value,period}`
+ *     （该类型是 `metricId/scenarioKey/cashCushion/irr/capexSpent/netMargin`）·
+ *     `FinancePlan.{metricKey,variance}` · `QualityStandard.{spec,threshold}`（真名
+ *     `itemName/targetValue/toleranceUpper/toleranceLower`）· `CausalFactor.impact` ·
+ *     `PlanTarget.metricKey`。
+ *   · **C 把「求解器输出字段」当成了「对象属性」**：`Metric.gap` —— 本体上 Metric 的缺口是**两个派生
+ *     属性**（`delta` = `actual - target`、`gapPct` = 百分比），`gap` 只是 `gap_attribution` 运行期
+ *     算进输出的字段名（`solvers/service.ts` `gap: round(target - actual, 4)`）。
+ *     **一个假名把两个真派生属性一起盖住了** —— 而派生属性正是 `renderTypeBlock` 唯一会渲染公式的那类。
+ *     `RootCauseChain.contribution` 同病（全仓零 propKey 声明）。
+ *   · **D 把「链路（LinkType）」当成了「属性」**：`RootCauseChain.caused_by` —— `caused_by` 是
+ *     **CausalFactor→CausalFactor 的 N:N 链路**（`battery.ts` `batteryLinkTypes()`），既不是属性、
+ *     也不挂在 RootCauseChain 上。属性通道里放链路名，`getTypeSemantics` 永远查不到。
+ *
+ * 现表内**每一个名字**都逐字取自本体声明；新增的名字一律选「该类型上真有、且求解器/答案真读」的那个，
+ * 找不到等价物的（`contribution`/`impact`/`attainPct`/`variance`）**直接删，不拿形近的顶替**。
+ *
  * @stale-fact apps/datacore/src/synthetic/battery.ts /propKey: "demandWanPerYearP50"/ ==1
  * @stale-fact apps/datacore/src/synthetic/battery.ts /propKey: "(?:segId|segment|act|tgt)"/ ==4
  * @stale-fact apps/datacore/src/synthetic/battery.ts /propKey: "p50"/ ==0
  */
-const OBJECT_KEY_PROPS: Record<string, string[]> = {
-  Metric: ["metricKey", "actual", "target", "gap"],
-  RootCauseChain: ["factorId", "caused_by", "contribution"],
-  CausalFactor: ["factorId", "label", "impact"],
-  PlanTarget: ["metricKey", "target", "period"],
+export const OBJECT_KEY_PROPS: Record<string, string[]> = {
+  // `delta`/`gapPct` 是派生属性（带 formula）—— 旧表那个假名 `gap` 把它俩一起盖住了。
+  Metric: ["key", "actual", "target", "delta", "gapPct"],
+  RootCauseChain: ["chainId", "kpiCategory", "factor", "driverType", "baseWeight"],
+  CausalFactor: ["factorId", "label", "metricKey", "isRoot"],
+  PlanTarget: ["tgtId", "period", "level", "value"],
   DemandSegment: ["segId", "segment", "demandWanPerYearP50", "act", "tgt"],
-  Base: ["baseId", "name", "capacityDaily", "util"],
-  Line: ["lineId", "capacityDaily", "max_capacity_day", "util"],
-  Model: ["modelId", "unitPrice", "series"],
+  // Base 的日产能分化成/老化两段（`capacityDaily` 只长在 Line 上）。
+  Base: ["baseId", "name", "formationCapDaily", "agingCapDaily", "util"],
+  Line: ["lineId", "capacityDaily", "max_capacity_day", "utilization"],
+  Model: ["modelId", "unitPrice", "seriesId"],
   Order: ["so", "qty", "model", "due", "status"],
   WorkOrder: ["woId", "qtyActual", "status"],
-  FinishedGoodsInventory: ["modelId", "qtyOnHand", "qtyReserved"],
-  Customer: ["custId", "name", "creditLimit", "overdue"],
-  FinancePlan: ["metricKey", "budget", "rolling", "variance"],
-  FinanceMetric: ["metricKey", "value", "period"],
-  FinanceAccount: ["accountId", "balance"],
-  Material: ["materialId", "onHand", "netDemand", "gapTon"],
-  MaterialBalance: ["materialId", "gapTon", "coverage"],
+  FinishedGoodsInventory: ["model", "qtyOnHand", "qtyReserved"],
+  Customer: ["custId", "custName", "creditLimit", "maxOverdueDays"],
+  FinancePlan: ["finId", "line", "budget", "rolling"],
+  FinanceMetric: ["metricId", "scenarioKey", "cashCushion", "netMargin"],
+  FinanceAccount: ["accId", "cashOnHand", "receivable", "payable"],
+  Material: ["matId", "name", "onHand", "dailyUse", "leadTime"],
+  MaterialBalance: ["material", "netDemandTon", "gapTon", "coverage"],
   Supplier: ["supplierId", "name", "leadTime"],
-  PurchaseOrder: ["poId", "material", "qty", "eta"],
-  Process: ["processId", "name", "yieldPct"],
-  Equipment: ["equipmentId", "name", "oee", "status"],
-  QualityStandard: ["standardId", "spec", "threshold"],
-  CarbonFactor: ["factorKey", "coefficient", "unit"],
-  Shipment: ["shipmentId", "eta", "status"],
-  Segment: ["segment", "attainPct"],
+  PurchaseOrder: ["poId", "matId", "qty", "etaDay"],
+  Process: ["processId", "name", "yield"],
+  Equipment: ["equipId", "equipment_code", "oee_current", "status"],
+  QualityStandard: ["standardId", "itemName", "targetValue", "toleranceUpper", "toleranceLower"],
+  CarbonFactor: ["factorId", "kind", "key", "factor"],
+  Shipment: ["shipId", "etaDay", "status"],
+  Segment: ["segKey", "name", "gmRate", "baselineShare"],
 };
 
 /** 每 solver 一句话规则提示（相关不变量/门·非全量规则集）。 */
