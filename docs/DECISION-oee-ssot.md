@@ -192,10 +192,13 @@ LINE-WS-jinhua-slitting-winding-E1
 
 ---
 
-## 7. 复算（不需要 vitest / 不需要 build，单进程 node）
+## 7. 复算
 
-本单所有数字由**直接 import 生产源码**算出（`generateBattery(42,"S")` + `tsgen.genPoint` + 复现 `timeseries.ts:322` 的
-`round(weighted_avg, 6)`），不是照公式重写、也不是读注释抄来的。两条金丝雀先自证工具：
+**§1 的口径数字**：由**直接 import 生产源码**算出（`generateBattery(42,"S")` + `tsgen.genPoint` + 复现 `timeseries.ts`
+第 322 行的 `round(weighted_avg, 6)`），不是照公式重写、也不是读注释抄来的。
+跑法：单进程 node + 一个 loader hook（把 `@platform/contracts` 指向本仓 `packages/contracts/src`、`.js`→`.ts`、
+用 esbuild 转译）。**不需要 vitest、不需要 `pnpm -r build`**，但**需要 `node_modules` 在位**（`packages/contracts` 依赖 zod）——
+本单在 4 核机满载时跑，全程未起任何测试套件。两条金丝雀先自证工具：
 ① `entityRefFieldOf("Equipment")==="equipId"`；② **780/780 台**播种期 `oee_current` 必须逐台等于 `round(oeeA×oeeP×oeeQ,3)`
 （不等 ⇒ 说明我读错了 `battery.ts:3959`，脚本 `exit 2` 报「工具坏了」而不是报数）。
 
