@@ -117,7 +117,9 @@ describe("场景启动器 · 措辞鲁棒性接缝门（20 场景 × 4 种说法
           : ""),
     );
 
-    expect(bad.map((r) => `${r.sNo ?? r.c.sNo}/${r.c.kind}: ${r.c.query} → ${r.routedIntent}`)).toEqual([]);
+    // 原写 `r.sNo ?? r.c.sNo`：`Outcome` 上**没有** sNo（见上面的 interface），左半恒 undefined、
+    // 恒走右半 —— 死分支。上面第 114 行的日志行本来就直接用 r.c.sNo。
+    expect(bad.map((r) => `${r.c.sNo}/${r.c.kind}: ${r.c.query} → ${r.routedIntent}`)).toEqual([]);
   }, 600_000);
 });
 

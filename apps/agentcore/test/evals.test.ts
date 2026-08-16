@@ -174,7 +174,7 @@ describe("WO-1 · EvalService 生产化缺陷修复", () => {
     const auth = { tenantId, userId: "u1", roles: ["planner"] };
     const report = await svc.run(auth, "agent_quality");
     expect(report.metrics.toolCorrectness).toBe(0);
-    expect(report.results[0].failures.some!((f) => f.startsWith("maxToolCalls"))!).toBe(true);
+    expect(report.results[0]!.failures.some((f) => f.startsWith("maxToolCalls"))).toBe(true);
   });
 
   it("SP12 · feedbackQuality 校验 caller 租户权限", async () => {

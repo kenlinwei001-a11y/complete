@@ -214,12 +214,14 @@ describe("WO-REFGATE-ENT · F14 · 单源：发布路由与种子审计**调的�
 
   it("crossSystemSkillRefs 同时抽 references 与 dependsOn（两条数据通道，只接一条 = 半扇门）", () => {
     const want = crossSystemSkillRefs({
+      // role 是 SkillReferenceSchema 的必填项（`.default("context")` ⇒ 解析后必有），
+      // 这里显式写默认值，语义与省略时一致。
       references: [
-        { kind: "solver", key: "s1", required: true },
-        { kind: "rule", key: "r1", required: true },
-        { kind: "solver", key: "s_optional", required: false }, // 可选引用不进事实门
+        { kind: "solver", key: "s1", required: true, role: "context" },
+        { kind: "rule", key: "r1", required: true, role: "context" },
+        { kind: "solver", key: "s_optional", required: false, role: "context" }, // 可选引用不进事实门
       ],
-      dependsOn: [{ kind: "ontologyType", key: "Base", required: true }],
+      dependsOn: [{ kind: "ontologyType", key: "Base", required: true, role: "context" }],
     });
     expect(want.solverKeys).toEqual(["s1"]);
     expect(want.ruleKeys).toEqual(["r1"]);

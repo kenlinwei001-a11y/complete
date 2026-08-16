@@ -244,7 +244,10 @@ describe("WO-Phase1-D+A SEAM · generic_inference / Q7 真 orchestrator 端到�
     expect(task.status).toBe("COMPLETED");
     expect(task.classification?.model).toMatch(/^deterministic:ceo-route/);
     expect(task.matchedIntent?.intentKey).toBe("capacity_feasibility");
-    expect(task.slots?.model?.objectId).toBe("model_4680_ncm");
+    // QueryTask.slots 的契约类型是 Record<string, unknown>（槽值形状由各意图自定），
+    // 所以取具体字段前必须显式说明本用例期望的形状 —— 写成局部类型而不是 any，
+    // 这样 objectId 拼错照样报错。
+    expect((task.slots?.model as { objectId?: string } | undefined)?.objectId).toBe("model_4680_ncm");
     expect((task.answer?.blocks?.length ?? 0)).toBeGreaterThan(0);
     await t.app.close();
   });

@@ -18,7 +18,9 @@ describe("SEAM-ARG-DROP · CEO 种子数据半（slotNames × plan 模板 一致
       const intent = intentByKey.get(key);
       expect(intent, `缺 CEO 意图 ${key}`).toBeTruthy();
       const declared = new Set((intent!.slots ?? []).map((s) => s.name));
-      const plan = planById.get(intent!.planId)!;
+      // planId 在 Intent 契约上是可选的（草稿意图可以还没绑定 plan）；本用例断言的正是
+      // 「CEO 意图都已绑定 plan」，故此处断言非空是判据的一部分，不是掩盖。
+      const plan = planById.get(intent!.planId!)!;
       const invoke = (plan.steps as { type: string; params?: { args?: unknown } }[]).find((s) => s.type === "invoke_solver");
       const refs = invoke ? collectSlotRefs(invoke.params?.args ?? {}) : new Set<string>();
       for (const r of refs) {

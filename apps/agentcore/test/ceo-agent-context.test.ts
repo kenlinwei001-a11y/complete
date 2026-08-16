@@ -19,7 +19,9 @@ const pcEss: PageContext = {
 const task = (query: string, pageContext?: PageContext): QueryTask => ({
   id: "task_t", tenantId: "demo", userId: "u", packageId: "pkg", conversationId: "c",
   query, context: { view: "gap-waterfall", selectedObjects: [], filters: {}, ...(pageContext ? { pageContext } : {}) },
-  status: "RUNNING", clarificationRounds: 0, createdAt: "2026-07-17T00:00:00.000Z",
+  // 原写 "RUNNING" —— QueryTask.status 的枚举里**根本没有**这个值（合法值见契约 qos.ts）。
+  // 本 fixture 只是给 buildAgentUser / resolveCeoRoute 喂上下文，用 EXECUTING_AGENT 语义最贴。
+  status: "EXECUTING_AGENT", clarificationRounds: 0, createdAt: "2026-07-17T00:00:00.000Z",
 });
 
 describe("WO-CEO-6 · CEO agent + PageContext 注入（闭 G-3）", () => {

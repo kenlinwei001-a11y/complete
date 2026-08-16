@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SkillDefinitionSchema, type AgentDefinition, type Answer, type EvalCase, type SkillDefinition } from "@platform/contracts";
+import { DEFAULT_AGENT_BUDGET, SkillDefinitionSchema, type AgentDefinition, type Answer, type EvalCase, type SkillDefinition } from "@platform/contracts";
 // AgentLoopResult 的出处是 `src/agent/loop.ts`，不是契约包（契约包从来没导出过它）。
 // 原来从 "@platform/contracts" 取 ⇒ TS2305，隐式变成 any，`loopResult()` 的返回形状三年没人校验过。
 import type { AgentLoopResult } from "../src/agent/loop.js";
@@ -49,18 +49,25 @@ function loopResult(text: string): AgentLoopResult {
   return {
     outcome: "ANSWERED",
     answer: answerFixture(text),
+    // 这个 fixture 原本与 AgentRunRecordSchema（qos.ts:744）**四处对不上**，全是 typecheck
+    // 看不见测试文件期间攒下的：
+    //   · `iterations: 1`  —— 契约里是 AgentIteration[]，不是计数
+    //   · `toolCalls: 0`   —— AgentRunRecord 上没有这个字段（它是 AgentIteration 的）
+    //   · `startedAt` / `finishedAt` —— 契约里没有这两个名字（时间字段叫 createdAt）
+    //   · 缺 `model` / `budget` / `budgetExhausted` 三个**必填**字段
     run: {
       id: "ar_1",
       taskId: "task_1",
+      model: "test-model",
+      iterations: [],
+      budget: DEFAULT_AGENT_BUDGET,
+      budgetExhausted: false,
+      totalInputTokens: 10,
+      totalOutputTokens: 5,
       tenantId: TENANT_A,
       agentId: "agt_probe",
       agentKey: "probe",
-      totalInputTokens: 10,
-      totalOutputTokens: 5,
-      toolCalls: 0,
-      iterations: 1,
-      startedAt: new Date().toISOString(),
-      finishedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
     },
     sketch: [],
   };
@@ -68,7 +75,9 @@ function loopResult(text: string): AgentLoopResult {
 
 function makeFakeEngine(resultText: string, emit?: (event: string, payload: unknown) => Promise<void>): ExecutionEngine {
   return {
-    runRegisteredAgent: async (opts) => {
+    // opts 显式标注：本对象经 `as unknown as ExecutionEngine` 断言，拿不到上下文类型，
+    // 不标注就是隐式 any（TS7006）。
+    runRegisteredAgent: async (opts: { taskId: string }) => {
       await emit?.("answer.final", { taskId: opts.taskId });
       await emit?.("step.completed", { taskId: opts.taskId });
       return loopResult(resultText);
@@ -80,7 +89,11 @@ async function setup(resultText = "hello") {
   const repos = createMemoryRepos();
   await repos.packages.insert({ ...seedScenarioPackage(), id: PKG, tenantId: TENANT_A });
   const emitCalls: [string, unknown][] = [];
-  const engine = makeFakeEngine(resultText, async (event, payload) => emitCalls.push([event, payload]));
+  // 块体而非表达式体：`push` 返回 number，简写箭头会让返回类型变成 Promise<number>，
+  // 与形参声明的 Promise<void> 不符（TS2345）。
+  const engine = makeFakeEngine(resultText, async (event, payload) => {
+    emitCalls.push([event, payload]);
+  });
   const runner = new SkillProbeRunner({
     repos,
     engine,
@@ -162,7 +175,7 @@ describe("SkillProbeRunner · WO-1 生产化缺陷修复", () => {
     expect(Date.now() - t0).toBeLessThan(500);
     expect(run.total).toBe(1);
     expect(run.passed).toBe(0);
-    expect(run.results[0].failures.some!((f) => f.startsWith("probe timeout"))!).toBe(true);
+    expect(run.results[0]!.failures.some((f) => f.startsWith("probe timeout"))).toBe(true);
   });
 
   it("SP5 · 词表可达性（假绿第 6 例反证）：判定用的值必须是契约真枚举，生产 skill 才可能带上", () => {
@@ -193,8 +206,10 @@ describe("SkillProbeRunner · WO-1 生产化缺陷修复", () => {
     const agentRo = await repos.agents.get(`agt_probe_${TENANT_A}_ro`);
     const agentWr = await repos.agents.get(`agt_probe_${TENANT_A}_wr`);
     expect(agentRo!.tools.some((t) => t.kind === "BUILTIN" && t.name === "invoke_solver")).toBe(true);
-    expect(agentRo!.tools.some((t) => t.name === "create_action_draft")).toBe(false);
-    expect(agentWr!.tools.some((t) => t.name === "create_action_draft")).toBe(true);
+    // `name` 只在 BUILTIN 变体上有（MCP/WORKFLOW 变体没有这个字段），故先按 kind 收窄 ——
+    // 与上一行同一写法。不收窄时 TS2339，且语义上也只有 BUILTIN 工具谈得上叫这个名字。
+    expect(agentRo!.tools.some((t) => t.kind === "BUILTIN" && t.name === "create_action_draft")).toBe(false);
+    expect(agentWr!.tools.some((t) => t.kind === "BUILTIN" && t.name === "create_action_draft")).toBe(true);
   });
 
   it("SP6 · twin systemPrompt 与 probe 一致（除 skills 为空）", async () => {
@@ -291,7 +306,7 @@ describe("SkillProbeRunner · WO-1 生产化缺陷修复", () => {
     });
 
     const run = await runner.runSkill(auth(TENANT_A), "in", { intentKey: "my_intent" });
-    expect(run.results[0].observed!.intentKey!).toBe("my_intent");
+    expect(run.results[0]!.observed!.intentKey).toBe("my_intent");
   });
 
   it("behaviorGain · answerMust 为空时失败", async () => {
@@ -312,7 +327,7 @@ describe("SkillProbeRunner · WO-1 生产化缺陷修复", () => {
 
     const run = await runner.runSkill(auth(TENANT_A), "bg");
     expect(run.results[0]!.pass!).toBe(false);
-    expect(run.results[0].failures.some!((f) => f.includes("missing answerMust"))!).toBe(true);
+    expect(run.results[0]!.failures.some((f) => f.includes("missing answerMust"))).toBe(true);
   });
 
   it("behaviorGain · 答案必须依赖 skill（twin 不出现）", async () => {

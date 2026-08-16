@@ -32,8 +32,10 @@ describe("L3 · 纯函数（R6）", () => {
 
   it("mapCoupledChainToPortfolio：长协环→materialConstraint·转拨绝对量→committedBatches·良率/百分比→近似环诚实标", () => {
     const routes = [
-      { domain: "lta", route: "lta_gap", solverKey: "lta_gap", args: {}, perDomainScore: 0.7 },
-      { domain: "yield", route: "yield_diagnosis", solverKey: "yield_diagnosis", args: {}, perDomainScore: 0.7 },
+      // requiredArgs 是 DomainRoute 的必填项（domain-resolver.ts:215）；ceo-route 派生的域
+      // 无额外硬门，契约注释里写明就是 `[]`。
+      { domain: "lta", route: "lta_gap", solverKey: "lta_gap", args: {}, perDomainScore: 0.7, requiredArgs: [] },
+      { domain: "yield", route: "yield_diagnosis", solverKey: "yield_diagnosis", args: {}, perDomainScore: 0.7, requiredArgs: [] },
     ];
     const m = mapCoupledChainToPortfolio(Q3, routes, [["lta_gap", "yield_diagnosis"]]);
     expect(m.portfolioArgs.globalSim).toBe(true);
