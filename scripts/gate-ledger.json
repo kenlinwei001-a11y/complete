@@ -1499,6 +1499,25 @@
         "note": "① 同名多量纲变异 ⇒ RC=1（COLLISION）；② **别名变异 ⇒ RC=1 且 COLLISION 0 / BARE 1** —— 这一条最要紧：兼容别名与新名量纲相同，判据①天然抓不到它，必须靠判据②「裸分位名」才咬得住；③ 目录不存在 ⇒ RC=2。⚠️ dev 还自报门自己差点成了假绿：初版 UNIT_TAG 正则漏 `m` 标志 ⇒ 多行 JSDoc 的 @unit 永不匹配 ⇒ 全退到「上下 40 行找 unit: z.literal」兜底 ⇒ capWanP50 被判成隔壁的「电芯/日」，**而门打印绿灯**，三条旧金丝雀全绿（它们写的是单行形式）—— 已补第 4 条覆盖生产真实形态的回归金丝雀。⚠️ 审核方补：原文 `try` 嵌在 `if (import.meta.url===…) {}` 里，gate-exit-discipline 只认 Program 直接子语句 ⇒ 报「无顶层兜底」；改成 `const isMain=…; try { if(isMain) main(); } catch {}` 后，注入 throw 实测 RC=2。**这是同一形态当天第二次**（前一次 check-dbui-flow-order.mjs）。"
       },
       "notes": "守 R18「字段名自带口径」：分位字段名必须与量纲一一对应，不同单位不共用词根。判据三条 —— ① COLLISION 同名多量纲；② BARE 裸分位名（p50/p90 这类不带口径的名字，**专堵兼容别名**）；③ UNDECLARED 缺 @unit 标注。判据全部取自契约的 @unit 标注，**不硬编码字段清单**（硬编码清单的门等于给未来的新字段发免检证）。建门缘由：全仓实测 `p50` 背了 **6 个不同含义**（需求分位 万套/年 · 窗口产能 万套/窗口 · 工序×型号 电芯/日 · T+N 累计 套 · S&OP 万套 · 周供给 套/周），其中两个都写「万套」但分母不同（年 vs 窗口）—— 只写「万套」正是让用户分不出的那半个信息。诚实边界：本门只认契约层的声明，前端自己另抄一份接口它看不见（本单实测真有两处，已删并改为复用契约类型）。"
+    },
+    "check-name-consistency.mjs": {
+      "alias": "name-consistency:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/src/synthetic/view-manifest.ts",
+        "apps/datacore/src/synthetic/service.ts",
+        "packages/contracts/src/feature-names.ts",
+        "apps/frontend-shell/src/locales/zh.ts",
+        "apps/frontend-shell/src/views"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§8 G-NAME-DUAL-LABEL",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "WO-NAME-CONSISTENCY 四向变异（每条先自证「变异体 ≠ 原文」，撤回后复绿、git status 干净、门 RC=0）",
+        "note": "① 判据① 真违规 —— view.ledger 视图标题「订单台账」→「订单总账」（功能名不动）⇒ RC=1「未登记的名字分歧 1 处 · order【featureName-vs-navTitle】」；② 判据② 真违规 —— zh.sim.proj.title「项目推演」→「项目模拟」（导航不动）⇒ RC=1 且**报出精确出处** ProjectSimView.tsx:258，证明判据② 真的穿过了「组件 hN → zh 词表」这条间接链，不是只比了两张表；③ 判据本体失灵 —— 把 compatible() 改成恒 true（门变装饰品的经典形态）⇒ **词法自检当场报「工具坏了」RC=2**，**不是**安静报「仓库很干净」，证明金丝雀与主判据共用同一份 compatible/analyze 实现（各抄一份的话这里会照绿）；④ 未预期异常 —— main() 首行注入 throw ⇒ 顶层兜底 RC=2。⚠️ **建门过程中门自己的三重自证抓出了门自己的三个 bug**，若无它们本门会报「✅ 仓库很干净」而实际一条都没扫到：(a) 词法自检抓出 parseBuiltinViews 的 indexOf('[') 锚在**类型注解** BuiltInView[] 上 ⇒ 配对出空数组体、0 条；(b) 供给侧下界（rows<20 ⇒ RC=2）抓出「只允许一层嵌套」的正则把带 bindings/layout 的条目整条丢掉，16 条只剩 6 条；(c) **同一个锚错在 VIEW_DEFS 的 Record<string,{…}> 类型注解上复现** ⇒ 增量视图恒 0 条。三者同形态（铁律 0.6 句式）：「我用『正则/indexOf 有命中』当作『我扫到了那张表』的证据，而前者并不度量后者。」另有一处**看不见的漏检**被反向金丝雀逼出：ProcessWaitView 有三处 const t = zh.… 绑定，解析器原取**文件里第一处**（zh.processWait.instances）而标题归**最近前置**那处（zh.processWait）管 ⇒该页静默退成盲区、判据② 对它失效；改成取最近前置绑定后恢复。这类 bug 不报错不留痕，只让门对某一页悄悄失效。"
+      },
+      "notes": "守 G-NAME-DUAL-LABEL：同一个视图的名字有**三份**（功能名 featureName → 管理台「功能开通配置」页 · 视图标题 title → 侧栏导航 + ViewConfig · 页内大标题 → 组件第一个 hN），三条下发链此前互不校验 ⇒「导航点 A、进去看到 B」没人拦得住。既有 assertSharedFeatureNames() 只对齐**功能名那一列内部**的三份注册表，管不到三列之间；而 feature-names.ts 头注释把**全部**跨列分歧一并划成「正常」，真缺陷就躲在那句话后面。**门不替仓主拍板「叫哪个名字」**（那是产品决策），只守「**不一致的必须登记过**」：存量 5 处挂 DECLARED（逐条写 verdict INTENTIONAL/DEFECT/SPLIT + 理由）等裁决，**新增未登记分歧一律红** ——仓主没拍板之前门也照常工作，这是设计目的。另设 DECLARED_BLIND 登记「页标题非静态串」的盲区（当前 1 处 node-inspector，其大标题是被选中节点的名字，属数据不属页面命名），防「把标题改成动态表达式即可绕门」。**副标题不算分歧**（compatible()：其中一个是另一个以 U+00B7 分隔的前缀）—— 放松到这一档是有意的：不放松会报出 6 条假分叉、门就没人看了；反向金丝雀钉住这个档位不许滑动。基线**只许降不许升**：无 --update、无数字基线可自动更新；DECLARED 陈旧条目即红（分歧修好后门逼你把条目删掉），MAX_DECLARED / MAX_BLIND 是硬上限只许改小。**为什么必须是脚本不能是 vitest**：三个真相源分居 datacore / contracts / frontend-shell，R1 contracts-only-shared 禁止跨 app import 源码 ⇒任何单包测试都看不全三份。**实测 30 视图 · 分歧 5 处**，裁决清单（含推荐与连坐面）见 docs/AUDIT-name-consistency.md。"
     }
   }
 }
