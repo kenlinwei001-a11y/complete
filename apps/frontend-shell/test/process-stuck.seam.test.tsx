@@ -1,4 +1,5 @@
 import { Suspense, createElement } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -119,16 +120,22 @@ function payloadOf(rows: Record<string, unknown>[], derivedStuckCount = 0): Proc
   } as ProcessStuckResponse;
 }
 
-/** 经 registry 取 renderer 渲染 —— 只证「registry 那一行在」，**不证可达**（可达见 §0）。 */
+/** 经 registry 取 renderer 渲染 —— 只证「registry 那一行在」，**不证可达**（可达见 §0）。
+ *  WO-IA-E2E5E6 · E5 起组件内出现 Link/useSearchParams（跨页互跳），隔离渲染必须给
+ *  Router 上下文 —— MemoryRouter 只是上下文，不改变本节断言证明的东西。 */
 async function renderViaRegistry() {
   const { getRenderer } = await import("@/views/registry");
   const Renderer = getRenderer("process-stuck");
   expect(Renderer, "registry 里没有 process-stuck ⇒ 组件零生产调用方（F2/F3/F4 同款坑）").toBeTruthy();
   render(
     createElement(
-      Suspense,
-      { fallback: null },
-      createElement(Renderer as never, { view: { key: "process-stuck" } as never }),
+      MemoryRouter,
+      null,
+      createElement(
+        Suspense,
+        { fallback: null },
+        createElement(Renderer as never, { view: { key: "process-stuck" } as never }),
+      ),
     ),
   );
 }

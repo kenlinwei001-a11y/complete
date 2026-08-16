@@ -112,11 +112,14 @@ export const BUILTIN_VIEWS: BuiltInView[] = [
   { key: "risk", title: "产能推演", renderer: "risk-board", featureKey: "view.risk-board", featureName: "风险推演看板", seed: true, bindings: { intents: ["risk_*"], solverKeys: ["risk_timeline"], apiTags: ["risk-board"] } },
   { key: "order", title: "订单台账", renderer: "ledger", featureKey: "view.ledger", featureName: "订单台账", seed: true },
   { key: "plan-audit", title: "规划体检", renderer: "plan-audit", featureKey: "view.plan-audit", featureName: "规划体检", seed: true, bindings: { intents: ["plan_audit_*"], solverKeys: ["plan_audit"], apiTags: ["plan-audit"] } },
-  { key: "plan-generate", title: "方案生成", renderer: "plan-generate", featureKey: "view.plan-generate", featureName: "规划建议", seed: true, bindings: { intents: ["plan_generate_*"], solverKeys: ["plan_generate"], apiTags: ["plan-generate"] } },
-  { key: "project-sim", title: "项目推演", renderer: "project-sim", featureKey: "view.project-sim", featureName: "项目推演", seed: true, bindings: { solverKeys: ["capacity_forecast"], intents: ["capacity_*"] } },
+  { key: "plan-generate", title: "规划建议", renderer: "plan-generate", featureKey: "view.plan-generate", featureName: "规划建议", seed: true, bindings: { intents: ["plan_generate_*"], solverKeys: ["plan_generate"], apiTags: ["plan-generate"] } },
+  // WO-IA-E2E5E6 仓主改名：title（导航/页标题命名空间）改「接单可行性」；featureName（功能名册命名空间）
+  // 暂留「项目推演」——它经 SHARED_FEATURE_NAMES 与 AgentCore features/registry.ts 受检副本互锁，
+  // 改名须同步动 agentcore（超出本单范围），残留登记见交单报告。下一行 global-sim 同理。
+  { key: "project-sim", title: "接单可行性", renderer: "project-sim", featureKey: "view.project-sim", featureName: "项目推演", seed: true, bindings: { solverKeys: ["capacity_forecast"], intents: ["capacity_*"] } },
   { key: "sop-balance", title: "月度规划", renderer: "sop-balance", featureKey: "view.sop-balance", featureName: "月度规划", seed: true, bindings: { intents: ["sop_*"], solverKeys: ["sop_balance"], apiTags: ["sop"] } },
   // 全局项目推演（portfolio 求解器·全订单×全基地×时间联合最优）：renderer/solver 均已就绪，此前 scenarioSeed 漏接致内存态重启后 404。
-  { key: "global-sim", title: "全局项目推演", renderer: "global-sim", featureKey: "view.global-sim", featureName: "全局项目推演", seed: true, layout: { solverKey: "portfolio" }, bindings: { solverKeys: ["portfolio"] } },
+  { key: "global-sim", title: "接单组合优选", renderer: "global-sim", featureKey: "view.global-sim", featureName: "全局项目推演", seed: true, layout: { solverKey: "portfolio" }, bindings: { solverKeys: ["portfolio"] } },
   // ── 推演沙盘四子视图（WO-SANDBOX-VIEW-MOUNT · 补最后一英里）───────────────────
   //
   // 病灶（实测坐实，非推测）：这四个视图**组件写了、测试有、渲染器也注册了**

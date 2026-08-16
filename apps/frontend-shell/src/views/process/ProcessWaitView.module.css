@@ -302,6 +302,39 @@
   white-space: nowrap;
 }
 
+/* ── WO-IA-E2E5E6 · E5 双向入口 ──────────────────────────────────────────────
+   零硬编码颜色：沿用既有语义令牌（--accent-txt / --muted2 / --line2 / --bg2），三套皮自动跟随。 */
+/* 行内「现在有 N 张单卡在这里 →」：链接色走 accent，与 drillBtn 的"可点"信号同档 */
+.stuckLink {
+  color: var(--accent-txt);
+  font-size: 12px;
+  white-space: nowrap;
+  text-decoration: none;
+  border-bottom: 1px dashed var(--line2);
+}
+.stuckLink:hover {
+  text-decoration: underline;
+}
+/* 「暂不可得」：明说 + 原因（内联同行），视觉上与 .absent 同一档（dashed 框 = 这一格算不出，不是 0） */
+.stuckNa {
+  border: 1px dashed var(--line2);
+  border-radius: 4px;
+  padding: 2px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+/* 0 张：静默陈述，不给可点信号（没有可去的地方） */
+.stuckZero {
+  color: var(--muted2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+/* 从「流程卡点」页带 ?focus= 跳回来时的行定位高亮（文本徽标在站名 td 里，见组件注释） */
+.rowClickable[data-focus="1"] {
+  background: var(--bg2);
+  box-shadow: inset 2px 0 0 var(--accent-txt);
+}
+
 /* ── WO-V4-INSPECT · 行可点（点开 → 节点检视面板）───────────────────────────
    零硬编码颜色：沿用既有 --c-* / --bg2 / --accent 语义令牌，三套皮自动跟随。 */
 .rowClickable {

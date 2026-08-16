@@ -5,7 +5,7 @@
  "generatedFrom": "node scripts/check-ui-first-layer.mjs --tighten",
  "fileCount": 122,
  "totals": {
-  "first": 5761,
+  "first": 5768,
   "formula": 49,
   "nativeTitle": 124
  },
@@ -989,13 +989,14 @@
    "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 80 · deferred 1 · formula 1 · prose 0 · sizes 5）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
   },
   "apps/frontend-shell/src/views/ProcessStuckView.tsx": {
-   "first": 35,
+   "first": 34,
    "deferred": 0,
    "formula": 0,
-   "prose": 8,
+   "prose": 6,
    "sizes": 3,
    "page": "主视图（views 顶层）",
-   "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 35 · deferred 0 · formula 1 · prose 8 · sizes 4）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
+   "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 35 · deferred 0 · formula 1 · prose 8 · sizes 4）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。",
+   "totalFloor": 35
   },
   "apps/frontend-shell/src/views/risk/decisionInfoShared.tsx": {
    "first": 20,
@@ -1120,7 +1121,7 @@
   }
  },
  "conserve": {
-  "total": 6813,
+  "total": 6834,
   "files": 122,
   "why": "D5 全局守恒下界 = 建账当时扫描面全体 Σ(first+deferred)，**含未登记文件**。度量对象是内容集合不是单个文件：搬家总量不变 ⇒ 不红；删除总量下降 ⇒ 红。"
  }

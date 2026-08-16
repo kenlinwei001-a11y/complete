@@ -154,14 +154,27 @@ const RENDERER_FLOOR = 15; // 已注册渲染器下界（当前 24）；**被测
 const VIEWDEF_FLOOR = 4; // VIEW_DEFS 增量 renderer 下界（当前 5）；**供给侧**解析崩了 → ⑦ 误红（失败安全，但仍要看得见）
 
 /**
- * 刻意不给导航的专用 route（显式豁免·每条必须写理由）。
+ * 判据④ 的**带理由豁免表**：刻意不给导航入口的专用 route。
  *
- * 空表是**当前的真实状态**（7 条专用 route 全部已有入口），不是"还没填"。
- * 往这里加一条 = 公开声明「这个页面用户找不到是有意的」，理由要经得起问；
- * 且键必须是 App.tsx 里真实存在的 route（判据④ 会红出陈旧豁免）。
- * @type {Record<string, string>}
+ * **单一出处在被测代码里**（同 CONSOLIDATED_INTO_SANDBOX 的理由：门里手抄一份 = 装饰品，
+ * 前端改了门还拿旧表对账）：`ShellLayout.tsx` 的 `ROUTE_NO_NAV`（WO-IA-E2E5E6 立，
+ * 首条 = `decision-play`，仓主裁决「决策推演不该占导航位，嵌进各决策点」）。
+ * 本门只解析对账：键必须是 App.tsx 里真实存在的 route（陈旧豁免 = 红），
+ * 且在成功时把豁免清单打出来，让它无处躺平。
+ * 解析失败 → 豁免集为空 → 判据④ **误红**（失败安全那一侧），词法自检负责把「门瞎了」与「代码错了」分开报。
  */
-const INTENTIONALLY_NO_NAV = {};
+const ROUTE_NO_NAV_CANARY = null; // 无常驻金丝雀：豁免表合法状态可以是空表（只靠词法自证解析器没瞎）
+
+/**
+ * `ShellLayout.ROUTE_NO_NAV` 的 `"<route键>": "理由"` 条目。
+ * 形态：`"decision-play": "仓主裁决…"`（理由可跨行 —— 故键与值各自匹配，不吃换行敏感）。
+ * ⚠ 入参必须是**已去注释**的对象体。
+ */
+function parseRouteNoNav(body) {
+  const out = {};
+  for (const m of body.matchAll(/"([^"]+)"\s*:\s*"([^"]*)"/g)) out[m[1]] = m[2];
+  return out;
+}
 
 /**
  * 判据⑦ 的**带理由豁免清单**（棘轮：只降不升）—— 「这个 renderer 键注册了，但刻意没有任何渲染路径」。
@@ -466,6 +479,20 @@ function parseRendererValues(body) {
         `（应做到：注释里的不算 / via 与 where 两个字段都提得出 —— 少了 via 就分不清该验后端派单还是该验 route）`,
     );
   }
+
+  /* ── 判据④ 豁免表（ROUTE_NO_NAV）的词法自检（WO-IA-E2E5E6）───────────────────── */
+  const SAMPLE_NONAV = `
+    // "commented-key": "注释里的不算",
+    "canary-no-nav": "仓主裁决：这条 route 刻意不给导航入口（理由可跨行
+        续写也不影响提取）",
+  `;
+  const gotNoNav = parseRouteNoNav(stripComments(SAMPLE_NONAV));
+  if (JSON.stringify(gotNoNav) !== JSON.stringify({ "canary-no-nav": "仓主裁决：这条 route 刻意不给导航入口（理由可跨行\n        续写也不影响提取）" })) {
+    gateBroken.push(
+      `✗ 词法自检：parseRouteNoNav 提取结果不对 —— 期望 { canary-no-nav: "…" }，实得 ${JSON.stringify(gotNoNav)}` +
+        `（应做到：注释里的不算 / 理由跨行也提得出 / 键与值两个字段都在）`,
+    );
+  }
 }
 
 /* ---------- 后端真相源：BUILTIN_VIEWS 里 seed:true 那批 ---------- */
@@ -530,6 +557,8 @@ let navViewKeys = [];
 let navRouteKeys = [];
 /** WO-SANDBOX-IA-CONSOLIDATE · 收编表（判据①④ 的豁免源 + 判据⑧ 的被测集）。 */
 let consolidated = [];
+/** WO-IA-E2E5E6 · 判据④ 豁免表（单一出处在 ShellLayout.ROUTE_NO_NAV，本门只解析对账）。 */
+let INTENTIONALLY_NO_NAV = {};
 if (shellSrc) {
   const stripped = stripComments(shellSrc);
   const body = arrayBlock(stripped, declOf("NAV_GROUPS"), `${SHELL} NAV_GROUPS`);
@@ -539,6 +568,8 @@ if (shellSrc) {
   }
   const consBody = arrayBlock(stripped, declOf("CONSOLIDATED_INTO_SANDBOX"), `${SHELL} CONSOLIDATED_INTO_SANDBOX`, "{");
   if (consBody !== null) consolidated = parseConsolidated(consBody);
+  const noNavBody = arrayBlock(stripped, declOf("ROUTE_NO_NAV"), `${SHELL} ROUTE_NO_NAV`, "{");
+  if (noNavBody !== null) INTENTIONALLY_NO_NAV = parseRouteNoNav(noNavBody);
 }
 const consolidatedKeys = consolidated.map((c) => c.key);
 const consolidatedSet = new Set(consolidatedKeys);
@@ -643,7 +674,7 @@ if (noEntry.length > 0) {
       `    修法三选一：① 加 { kind: "route", key: "…", label: "…" } 到对应分组；\n` +
       `              ② 若已收编进某控制台但该页本身不受那个 entitlement 门控 →\n` +
       `                 条目**照留**并加 consolidatedWhen: "<那个 entitlement>"（控制台在则隐藏，不在则单列）；\n` +
-      `              ③ 若确属刻意不给任何入口，写进本门的 INTENTIONALLY_NO_NAV 并注明理由（会被打印出来，无处躺平）。`,
+      `              ③ 若确属刻意不给任何入口，写进 ${SHELL} 的 ROUTE_NO_NAV 并注明理由（本门从这里对账，会被打印出来，无处躺平）。`,
   );
 }
 const staleExempt = Object.keys(INTENTIONALLY_NO_NAV).filter((k) => !routeSet.has(k));

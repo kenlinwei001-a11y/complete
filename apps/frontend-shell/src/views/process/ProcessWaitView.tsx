@@ -1,6 +1,9 @@
 import { Fragment, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { fetchProcessDefinitions, fetchProcessInstances } from "@/api/endpoints";
+import type { ProcessStuckResponse } from "@platform/contracts";
+import { fetchProcessDefinitions, fetchProcessInstances, fetchStuckProcesses } from "@/api/endpoints";
+import { InfoPopover } from "@/components/InfoPopover";
 // WO-V4-INSPECT · 节点检视面板（点开一行 → 看这条流程的完整本体关系·PRD-sandbox-v4 §4.2）
 import { ProcessInspectPanel } from "./ProcessInspectPanel";
 import { zh } from "@/locales/zh";
@@ -54,6 +57,72 @@ function readError(e: unknown): { code: string; message: string; requestId: stri
   const code = anyE?.error?.code ?? anyE?.code ?? (anyE?.status ? `HTTP_${anyE.status}` : "UNKNOWN");
   const message = anyE?.error?.message ?? anyE?.message ?? String(e);
   return { code: String(code), message, requestId: anyE?.error?.requestId ?? anyE?.requestId ?? null };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-IA-E2E5E6 · E5 双向入口（模板层 → 实例层 /v/process-stuck）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 各站卡单计数的**三态**（与页面 LoadState 同源纪律：loading 独立成态，不与不可用混）：
+ *  · ready       → 计数来自 `/a/v1/process-instances/stuck` 投影（运行时实例口径），按 processKey 分桶；
+ *  · unavailable → **明说「暂不可得」+ 原因，绝不摆 0**（0 会被读成「这站很顺」，而真相是算不出）；
+ *  · loading     → 行内什么数都不摆（不是 0，也不是骨架 —— 数还没回来，摆任何东西都是抢先下结论）。
+ */
+type StuckSummary =
+  | { status: "loading" }
+  | { status: "ready"; byProcess: ReadonlyMap<string, number>; derivedStuckCount: number }
+  | { status: "unavailable"; reason: string };
+
+/** 拉卡点投影并分桶。404/FEATURE_NOT_FOUND 与真失败**分开说**（前者是暗发预期态，后者是故障）。 */
+async function loadStuckSummary(t: typeof zh.processWait.crosslink): Promise<StuckSummary> {
+  try {
+    const res: ProcessStuckResponse = await fetchStuckProcesses();
+    const byProcess = new Map<string, number>();
+    for (const r of res.stuck) byProcess.set(r.processKey, (byProcess.get(r.processKey) ?? 0) + 1);
+    return { status: "ready", byProcess, derivedStuckCount: res.derivedStuckCount };
+  } catch (e) {
+    const { code, message } = readError(e);
+    const anyE = e as { status?: number };
+    if (code === "FEATURE_NOT_FOUND" || anyE?.status === 404) {
+      return { status: "unavailable", reason: t.stuckUnavailableDark };
+    }
+    return { status: "unavailable", reason: t.stuckUnavailableError(`${code}: ${message}`) };
+  }
+}
+
+/** 行内那一格：「现在有 N 张单卡在这里 →」/ 「暂不可得」/ 「没有单卡在这里」/ 什么都没有（loading）。
+ *  两种**不可点**态（拿不到 / 真的 0）共用一个 <span> 槽位（文案·testid·样式仍各自分开）——
+ *  ui-first-layer 门按静态模板数信息块，三态各起一个元素就是 +3 块纯往第一层堆。 */
+function StuckCountCell({ processKey, stuck }: { processKey: string; stuck: StuckSummary }) {
+  const t = zh.processWait.crosslink;
+  if (stuck.status === "loading") return null;
+  const n = stuck.status === "ready" ? (stuck.byProcess.get(processKey) ?? 0) : 0;
+  if (stuck.status !== "ready" || n === 0) {
+    const na = stuck.status !== "ready";
+    return (
+      <span
+        className={na ? styles.stuckNa : styles.stuckZero}
+        data-testid={na ? `pw-stuck-na-${processKey}` : `pw-stuck-zero-${processKey}`}
+      >
+        {na ? `${t.stuckUnavailable}：${stuck.status === "unavailable" ? stuck.reason : ""}` : t.stuckHereZero}
+      </span>
+    );
+  }
+  return (
+    <Link
+      to={`/v/process-stuck?proc=${encodeURIComponent(processKey)}`}
+      className={styles.stuckLink}
+      data-testid={`pw-stuck-link-${processKey}`}
+      data-count={n}
+      onClick={(e) => {
+        // 🔴 不 stopPropagation ⇒ 冒泡到 <tr onClick> ⇒ 侧栏检视面板被顺带打开（同下方实例按钮的病）。
+        e.stopPropagation();
+      }}
+    >
+      {t.stuckHere(n)}
+    </Link>
+  );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -205,7 +274,7 @@ function InstancePanel({ processKey }: { processKey: string }) {
 // 单个等待态分组
 // ══════════════════════════════════════════════════════════════════════════════
 
-function WaitKindGroup({ g, selectedKey, onSelect }: { g: WaitKindGroupVM; selectedKey: string | null; onSelect: (key: string) => void }) {
+function WaitKindGroup({ g, selectedKey, onSelect, stuck, focusKey }: { g: WaitKindGroupVM; selectedKey: string | null; onSelect: (key: string) => void; stuck: StuckSummary; focusKey: string | null }) {
   const copy = WAIT_KIND_COPY[g.kind];
   const style = WAIT_KIND_STYLE[g.kind];
   const t = zh.processWait;
@@ -295,6 +364,7 @@ function WaitKindGroup({ g, selectedKey, onSelect }: { g: WaitKindGroupVM; selec
                       data-testid={`pw-row-${r.key}`}
                       data-kind={r.waitKind}
                       data-selected={selectedKey === r.key ? "1" : "0"}
+                      data-focus={focusKey === r.key ? "1" : "0"}
                       className={styles.rowClickable}
                       onClick={() => onSelect(r.key)}
                     >
@@ -311,7 +381,13 @@ function WaitKindGroup({ g, selectedKey, onSelect }: { g: WaitKindGroupVM; selec
                           <code>{r.key}</code>
                         </button>
                       </td>
-                      <td>{r.name}</td>
+                      <td>
+                        {/* E5 反向定位：徽标文本直接缀在站名后（td 本就是一个信息块，
+                            不再为它单起 <small> —— 第一层块数受门棘轮约束）。
+                            机器断言走行上的 data-focus 属性，不依赖这段文本的节点结构。 */}
+                        {r.name}
+                        {focusKey === r.key ? ` ${t.crosslink.focusBadge}` : ""}
+                      </td>
                       <td>{r.domainName}</td>
                       <td>{r.ownerName}</td>
                       {/* data-std-days 刻意不四舍五入：门要断言精确工期，格式化只作用于人眼 */}
@@ -335,6 +411,9 @@ function WaitKindGroup({ g, selectedKey, onSelect }: { g: WaitKindGroupVM; selec
                         >
                           {openKey === r.key ? t.instances.close : t.instances.open}
                         </button>
+                        {/* WO-IA-E2E5E6 · E5：模板层 → 实例层（过滤到该站的流程卡点页）。
+                            计数与那边渲染的卡片数被接缝测试钉成相等 —— 数对不上的链接比没有更坏。 */}
+                        <StuckCountCell processKey={r.key} stuck={stuck} />
                       </td>
                     </tr>
                     {openKey === r.key && (
@@ -361,6 +440,12 @@ function WaitKindGroup({ g, selectedKey, onSelect }: { g: WaitKindGroupVM; selec
 
 export default function ProcessWaitView() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  // WO-IA-E2E5E6 · E5：各站卡单计数（流程卡点投影）。与定义表**各拉各的**——
+  // 定义表失败不该拖死计数，计数暗发（process.runtime 关）也不该拖死定义表。
+  const [stuck, setStuck] = useState<StuckSummary>({ status: "loading" });
+  // E5 反向入口：/v/process-stuck 的卡「这类流程通常在这站等什么 →」带 ?focus=<processKey> 跳回。
+  const [params] = useSearchParams();
+  const focusKey = params.get("focus");
   // WO-V4-INSPECT：点开哪一条流程（null = 没点开）。面板自己拉 `/inspect`，本页不预取 ——
   // 65 条流程各预取一次 = 65 次请求，而用户一次只看一条。
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -375,27 +460,62 @@ export default function ProcessWaitView() {
       .catch((e: unknown) => {
         if (alive) setState({ status: "error", ...readError(e) });
       });
+    loadStuckSummary(t.crosslink).then((s) => {
+      if (alive) setStuck(s);
+    });
     return () => {
       alive = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // focus 定位：数据 ready 后把那一行滚进视口（高亮靠 data-focus 属性，见 WaitKindGroup）。
+  // jsdom 没有 scrollIntoView（undefined）——照 TaskDetailPage.tsx:36 的既有守卫，别裸调。
+  useEffect(() => {
+    if (state.status !== "ready" || focusKey === null || focusKey === "") return;
+    const row = document.querySelector(`[data-testid="pw-row-${CSS.escape(focusKey)}"]`);
+    if (row && typeof (row as HTMLElement).scrollIntoView === "function") {
+      (row as HTMLElement).scrollIntoView({ block: "center" });
+    }
+  }, [state.status, focusKey]);
 
   return (
     <div className={styles.root} data-testid="pw-root">
       <header className={styles.head}>
-        <h3>{t.title}</h3>
+        <h3>
+          {t.title}
+          {/* 口径类说明（这页**不是什么** + 数据来源）属 R-UI-3 的浮层层级 ——
+              留在第一层正是 ui-first-layer 门 D1 咬的「纯往第一层堆」。 */}
+          <InfoPopover topic={t.title} testId="pw-head">
+            <p>{t.vsImpediments}</p>
+            <p>{t.sourceNote}</p>
+          </InfoPopover>
+        </h3>
         <p className={styles.sub}>{t.subtitle}</p>
-        <p className={styles.sub}>{t.vsImpediments}</p>
-        <p className={styles.source}>{t.sourceNote}</p>
       </header>
 
       {/* 诚实位：先说清楚这一页答不了什么，再给数（不是把免责声明藏在页脚） */}
       <section className={styles.honesty} data-testid="pw-honesty">
         <b>{t.honesty.title}</b>
         <p>{t.honesty.canAnswer}</p>
-        <p data-testid="pw-honesty-cannot">{t.honesty.cannotAnswer}</p>
+        {/* E5：focus 的站查无此行 ⇒ 并进「答不了」段明说（同属"这一页答不出什么"），
+            不另起信息块 —— 第一层块数受 ui-first-layer 门棘轮约束。 */}
+        <p data-testid="pw-honesty-cannot">
+          {t.honesty.cannotAnswer}
+          {state.status === "ready" &&
+          focusKey !== null &&
+          focusKey !== "" &&
+          !state.model.groups.some((g) => g.rows.some((r) => r.key === focusKey))
+            ? ` ${t.crosslink.focusMissing(focusKey)}`
+            : ""}
+        </p>
         <p className={styles.notMeasured} data-testid="pw-not-measured">
           {t.honesty.notMeasured}
+          {/* E5 口径声明：反推实例归属不到站（单据上没有「第几步」），各站计数不含它们 ——
+              与上一句同属"别把这个数读反"，并进同一段，不另起块。 */}
+          {stuck.status === "ready" && stuck.derivedStuckCount > 0
+            ? ` ${t.crosslink.derivedNote(stuck.derivedStuckCount)}`
+            : ""}
         </p>
       </section>
 
@@ -485,7 +605,7 @@ export default function ProcessWaitView() {
           )}
 
           {state.model.groups.map((g) => (
-            <WaitKindGroup key={g.kind} g={g} selectedKey={selectedKey} onSelect={setSelectedKey} />
+            <WaitKindGroup key={g.kind} g={g} selectedKey={selectedKey} onSelect={setSelectedKey} stuck={stuck} focusKey={focusKey} />
           ))}
         </>
       )}
