@@ -1,0 +1,224 @@
+import { describe, expect, it } from "vitest";
+import { makeApp, seedBattery, ADMIN, type TestApp } from "./helpers.js";
+
+/**
+ * WO-ACTION-NOOP-EXEC · 非 global-sim 的 `plan_change` **按 payload 形态二分**（G-ACTION-NOOP-EXEC 续接）。
+ *
+ * ── 病灶与本单改动 ───────────────────────────────────────────────────────────
+ * `plan_change` 一个 key 承载六条生产者，此前只有 `source:"global-sim"` 一条有真执行器，
+ * 其余**一律诚实失败**。实测（WO-ACTION-NOOP-EXEC）发现这一刀切错了半边：
+ * 风险看板「采纳风险处置方案」（`RiskBoardView.tsx adoptScenario()`）发的
+ * `payload.levers = LiveScenario.apply`，其契约就是 `{objectType,objectId,prop,value}[]` ——
+ * **与 `采纳产能保障方案` 的杠杆同形**，也就是说它一直带着一份可直接落库的真值写入指令，
+ * 却因为 source 不叫 global-sim 而被判「未实现」。本单据此二分：
+ *   · 带 levers → 真写本体属性 + runDerivations（与 `采纳产能保障方案` **同一份**写入器）；
+ *   · 不带 levers → 仍诚实失败，但错误里说清**为什么**（模拟态结论 / 无落点），欠账可读。
+ *
+ * ── 本测的头号判据（写死在这里防回潮）─────────────────────────────────────────
+ * **审批后回仓储查那个对象，属性必须真的变成了拨定值。**
+ * 断言 `ok:true` / `status==="EXECUTED"` / targetRef 非空都是**运输层**断言 ——
+ * 那正是让「假 MO 号」这个病灶存活至今的东西（状态全绿、真值零动）。
+ *
+ * ── 为什么第一条是金丝雀（铁律 0.6：扫描/检查类结论一律先自证工具）───────────────
+ * 本测的核心手法是「建草稿 → 审批 → 回读对象核对字段」。若这套手法本身坏了
+ * （回读端点换形状 / 种子里没这个对象 / 审批路由改了），那么**所有**用例都会读到"没变"，
+ * 而我会把它读成"代码没写"——恰好是相反的结论。故先拿一个**确知有真写入路径**的型
+ * （`对象数据变更`，`app.ts domainExecutor` 里第一批就有分支）跑同一套手法：
+ * 它若也报"没变"，报的是**工具坏了**，不许报"代码没写"。
+ */
+
+interface ExecDone {
+  status: string;
+  executionResult: { ok?: boolean; targetRef?: string; error?: string };
+}
+
+/** 建草稿 → 提交 → 审批，返回终态（两种回包形状都认——审批端点历史上回过 draft 包裹与裸包两形态）。 */
+async function submitAndApprove(t: TestApp, actionTypeKey: string, payload: Record<string, unknown>): Promise<ExecDone> {
+  const created = await t.app.inject({
+    method: "POST",
+    url: "/a/v1/action-drafts",
+    headers: ADMIN,
+    payload: { actionTypeKey, payload, submit: true },
+  });
+  expect(created.statusCode, created.body).toBeLessThan(300);
+  const draftId = (created.json() as { draftId: string }).draftId;
+  const approved = await t.app.inject({
+    method: "POST",
+    url: `/a/v1/action-drafts/${draftId}/approve`,
+    headers: ADMIN,
+    payload: {},
+  });
+  const b = approved.json() as {
+    status?: string;
+    draft?: { status: string; executionResult?: ExecDone["executionResult"] };
+    executionResult?: ExecDone["executionResult"];
+  };
+  return {
+    status: b.draft?.status ?? b.status ?? "",
+    executionResult: b.draft?.executionResult ?? b.executionResult ?? {},
+  };
+}
+
+/** 回仓储读一个对象的属性真值（**不复用审批响应里的回显**——回显证明不了落库）。 */
+async function readProp(t: TestApp, type: string, objectId: string, prop: string): Promise<unknown> {
+  const res = await t.app.inject({ method: "GET", url: `/a/v1/objects?type=${type}&pageSize=500`, headers: ADMIN });
+  const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
+  const hit = items.find((o) => o.id === objectId);
+  expect(hit, `回读不到对象 ${objectId}（类型 ${type}）—— 是回读手法坏了，不是写入没发生`).toBeTruthy();
+  return hit!.props[prop];
+}
+
+async function firstEquipment(t: TestApp): Promise<{ id: string; oee: number }> {
+  const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Equipment&pageSize=1", headers: ADMIN });
+  const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
+  expect(items.length, "种子里应有 Equipment 对象（否则本测无从验证写回）").toBeGreaterThan(0);
+  const e = items[0]!;
+  return { id: e.id, oee: Number(e.props.oee_current) };
+}
+
+describe("plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败", () => {
+  it("金丝雀（先自证检查手法）：`对象数据变更` 走同一套「审批→回读核对」必须看得见真值变化", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const eq = await firstEquipment(t);
+    const target = Math.min(0.99, Number((eq.oee + 0.05).toFixed(4)));
+    expect(target, "构造值必须与现值不同，否则本金丝雀无法区分'写了'与'没写'").not.toBe(eq.oee);
+
+    const done = await submitAndApprove(t, "对象数据变更", {
+      objectId: eq.id,
+      patch: { oee_current: target },
+      reason: "金丝雀：验证「审批→回读核对」这套手法本身是通的",
+    });
+    expect(done.status, `金丝雀执行失败：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
+    const after = Number(await readProp(t, "Equipment", eq.id, "oee_current"));
+    expect(
+      after,
+      "⛔ 金丝雀不中 ⇒ **本测的检查手法坏了**（回读端点/种子/审批路由变了），" +
+        "下面任何用例报出的『真值没变』都不许读作『代码没写』——本次结论作废，先修手法。",
+    ).toBeCloseTo(target, 6);
+  }, 120000);
+
+  it("★ 主判据：plan_change 带 levers → 审批后 Equipment.oee_current **在仓储里真的变了**", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const eq = await firstEquipment(t);
+    const target = Math.min(0.99, Number((eq.oee + 0.08).toFixed(4)));
+    expect(target).not.toBe(eq.oee);
+
+    // 载荷逐字照抄生产者 `RiskBoardView.tsx adoptScenario()`：versionId + reason + baseId + levers(=LiveScenario.apply)。
+    const done = await submitAndApprove(t, "plan_change", {
+      versionId: `risk:changzhou:scn-1`,
+      reason: "采纳风险处置方案：设备提效（基地 changzhou）",
+      baseId: "changzhou",
+      scenarioId: "scn-1",
+      scenarioName: "设备提效",
+      levers: [{ objectType: "Equipment", objectId: eq.id, prop: "oee_current", value: target }],
+    });
+    expect(done.status, `执行未成功：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
+
+    // ★ 效果层：这一条红 = 又回到「审批通过但什么都没写」。
+    const after = Number(await readProp(t, "Equipment", eq.id, "oee_current"));
+    expect(after, "审批通过但 Equipment.oee_current 未变 —— 空执行回潮（G-ACTION-NOOP-EXEC）").toBeCloseTo(target, 6);
+    expect(after).not.toBeCloseTo(eq.oee, 6);
+
+    // targetRef 自证写了什么，且**绝不能是 MO 形态**（假单号与真单号不可分辨正是病灶）。
+    expect(done.executionResult.targetRef).toContain("PLAN-CHANGE-LEVER");
+    expect(String(done.executionResult.targetRef)).not.toMatch(/^MO-\d{4}/);
+  }, 120000);
+
+  it("诚实边界①：sim_sandbox 结论（patch.simulated:true·无杠杆）→ 失败且点名「仿真不得回流真实」，真值零动", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const eq = await firstEquipment(t);
+
+    // 载荷照抄 `SandboxView.tsx onAdopt()`。
+    const done = await submitAndApprove(t, "plan_change", {
+      versionId: "sim:sess-1@tick3",
+      reason: "采纳推演沙盘结论（GLOBAL · 全局态 71.4）",
+      patch: { source: "sim_sandbox", simulated: true, sessionId: "sess-1", tick: 3, globalKpi: 71.4, scope: "GLOBAL" },
+    });
+    expect(done.status).toBe("EXECUTION_FAILED");
+    expect(done.executionResult.error).toContain("EXECUTOR_NOT_IMPLEMENTED");
+    expect(done.executionResult.error, "错误必须说清『为什么』，否则欠账只活在源码注释里").toContain("simulated");
+    expect(done.executionResult.error).toContain("仿真");
+    // 且真值未被污染。
+    expect(Number(await readProp(t, "Equipment", eq.id, "oee_current"))).toBeCloseTo(eq.oee, 6);
+  }, 120000);
+
+  it("诚实边界②：order-chain 结论（只有 verdict·无杠杆）→ 失败且点名「没有 levers 落点」", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+
+    // 载荷照抄 `OrderChainView.tsx` 的「采纳结论 → 工单」按钮。
+    const done = await submitAndApprove(t, "plan_change", {
+      versionId: "order-chain:SO-00001",
+      reason: "全链判定：可接",
+      so: "SO-00001",
+      verdict: "可接",
+    });
+    expect(done.status).toBe("EXECUTION_FAILED");
+    expect(done.executionResult.error).toContain("EXECUTOR_NOT_IMPLEMENTED");
+    expect(done.executionResult.error).toContain("levers");
+    // 错误里必须把收到的键列出来——审批人据此判断"是生产者少发了字段"还是"这一型本来就没落点"。
+    expect(done.executionResult.error).toContain("verdict");
+  }, 120000);
+
+  it("原子性：杠杆行缺 value → 拒绝臆造写入，且**一个字节都不写**", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const eq = await firstEquipment(t);
+
+    const done = await submitAndApprove(t, "plan_change", {
+      versionId: "risk:changzhou:scn-2",
+      reason: "采纳风险处置方案（残缺载荷）",
+      levers: [{ objectType: "Equipment", objectId: eq.id, prop: "oee_current" }],
+    });
+    expect(done.status).toBe("EXECUTION_FAILED");
+    expect(done.executionResult.error).toContain("拒绝臆造写入");
+    expect(Number(await readProp(t, "Equipment", eq.id, "oee_current"))).toBeCloseTo(eq.oee, 6);
+  }, 120000);
+});
+
+describe("采纳经营方案 · 域映射缺失 ⇒ 诚实失败（**不是**忘了接·勿改成 NO_WRITE 洗白）", () => {
+  it("审批后诚实失败，且错误里带得出「为什么今天写不了」的四条论据", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+
+    // 载荷照抄 `PlanGenerateView.tsx adoptScheme()`。
+    const done = await submitAndApprove(t, "采纳经营方案", {
+      schemeNo: "壹",
+      pathKey: "P2",
+      scheme: { name: "稳健", outcome: { rev: 512, gm: 0.171, share: 0.19, turns: 6.2, cash: 46, capex: 22 }, scores: {}, hardViol: [] },
+      targets: { revGrowthPct: 18, gmFloor: 0.155, sharePts: 12, turnsFloor: 6, capexCap: 30, cashFloor: 40 },
+    });
+    expect(done.status).toBe("EXECUTION_FAILED");
+    expect(done.executionResult.error).toContain("EXECUTOR_NOT_IMPLEMENTED");
+    // 「没接」与「为什么没接」是两件事，处置也不同（排单去接 vs 先立域映射）。错误必须说得出后者。
+    expect(done.executionResult.error).toContain("域映射缺失");
+    expect(done.executionResult.error).toContain("PLAN_GOAL_TARGETS");
+  }, 120000);
+
+  it("硬约束（业务已裁定·勿改）：采纳动作**绝不覆盖**经营目标基线 —— 审批前后 plan_generate 输出逐字节相同", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+
+    // 用真消费者取证：`plan_generate` 读的就是目标基线。目标若被动过，同参数两次调用不可能同输出。
+    const before = await t.app.inject({ method: "POST", url: "/a/v1/solvers/plan_generate/invoke", headers: ADMIN, payload: { args: {} } });
+    expect(before.statusCode, before.body).toBeLessThan(300);
+
+    const done = await submitAndApprove(t, "采纳经营方案", {
+      schemeNo: "叁",
+      pathKey: "P5",
+      scheme: { name: "进取", outcome: { rev: 610, gm: 0.142, share: 0.24, turns: 5.4, cash: 31, capex: 44 }, scores: {}, hardViol: ["C15"] },
+      // 刻意送一组**与基线完全不同**的目标：若执行器哪天偷偷把 targets 写回基线，本例立刻变红。
+      targets: { revGrowthPct: 99, gmFloor: 0.99, sharePts: 99, turnsFloor: 99, capexCap: 999, cashFloor: 999 },
+    });
+    expect(done.status).toBe("EXECUTION_FAILED");
+
+    const after = await t.app.inject({ method: "POST", url: "/a/v1/solvers/plan_generate/invoke", headers: ADMIN, payload: { args: {} } });
+    expect(
+      JSON.stringify((after.json() as { data: unknown }).data),
+      "采纳动作改动了经营目标基线 —— 违反业务硬裁定「目标不能改」（actions.ts ACTION_WIRING 采纳经营方案 条）",
+    ).toBe(JSON.stringify((before.json() as { data: unknown }).data));
+  }, 120000);
+});
