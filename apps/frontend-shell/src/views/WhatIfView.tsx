@@ -441,7 +441,7 @@ function WhatIfResult({
                 src="求解器 generic_inference（前向重算下游派生链·不落库试算）"
                 formula="受影响对象数 = 前向重算后至少一个派生字段发生变化的对象个数"
                 inputs={[`假设：${assumptionLine}`, "派生链：本体 PropertyDef 的派生定义"]}
-                rule="R6 确定性：同假设同快照重跑，逐字节一致"
+                rule="确定性重算：同一个假设 + 同一份快照重跑，结果逐字节一致"
                 note="试算不落库——这个数说的是「假设世界里会波及多少对象」，真实数据未被改动。"
               >
                 {out.affectedObjects}
@@ -456,7 +456,7 @@ function WhatIfResult({
                 src="求解器 generic_inference · deltas"
                 formula="派生字段变化数 = Σ 各受影响对象上 before ≠ after 的派生字段条数"
                 inputs={[`假设：${assumptionLine}`, `受影响对象 ${out.affectedObjects} 个`]}
-                rule="R6 确定性"
+                rule="确定性重算：同一个假设 + 同一份快照重跑，结果逐字节一致"
               >
                 {out.count}
               </Provenance>

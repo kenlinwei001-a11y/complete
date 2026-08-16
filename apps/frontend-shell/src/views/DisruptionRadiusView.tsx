@@ -304,7 +304,7 @@ function fanoutNodeFacts(
       title: `断供根 · ${disp(out.rootType)}`,
       verdict: `影响半径 ${out.radius} 层 · 波及 ${out.totalAffected} 个对象`,
       src: `本体对象 ${out.rootType}（真取自 /a/v1/objects，非写死清单）`,
-      rule: "反向扇出链倒推：沿「谁 ref 我」逐层下探；同层多候选按 type→viaField 字典序取首（确定性 R6）",
+      rule: "反向扇出链倒推：沿「谁引用我」逐层下探；同层多个候选时按 类型名→字段名 字典序取第一个（确定性：同本体同来源重跑结果一致）",
       ruleKind: "projection",
       formula: "半径 = 命中数 > 0 的层数；波及总数 = Σ 各层命中数",
       inputs: [

@@ -595,7 +595,7 @@ function DecisionResult({ out, family, baseArgs, perturbs }: { out: OptWhatifOut
             src={`求解器 optimize_whatif · ${family}`}
             formula="Δ = 扰动后目标值 − 基线目标值（两次求解同 seed 同模板族，可比）"
             inputs={[...solverBasis, `基线目标值 ${fmt(baselineObjective)}`, `扰动后目标值 ${fmt(perturbedObjective)}`]}
-            rule="R6 确定性：同入参同 seed 重跑逐字节一致 —— 数变了必然是扰动改的，不是求解器在飘"
+            rule="确定性重算：同一组入参 + 同一个 seed 重跑，结果逐字节一致 —— 数变了必然是扰动改的，不是求解器在飘"
             note="优化解对「模板族 · seed · 扰动清单」三样都敏感，复算时三样必须一致，否则得到的不是同一个最优方案。"
           >
             {delta != null && delta > 0 ? "+" : ""}{fmt(deltaObjective)}

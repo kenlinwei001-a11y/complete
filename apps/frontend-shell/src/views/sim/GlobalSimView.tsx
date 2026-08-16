@@ -779,7 +779,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                         src={`求解器 portfolio${res.snapshotVersion ? ` · 快照 ${res.snapshotVersion}` : ""}`}
                         formula="按期率 = 该方案按期完成数 ÷ (获排单 + 被挤单)"
                         inputs={[`目标：${SCEN_LABEL[primary]}`, `获排 ${primaryScen.servedCount}`, `被挤 ${primaryScen.displacedCount}`]}
-                        rule="R6 确定性：同订单集同杠杆同目标重解，逐字节一致"
+                        rule="确定性重算：同一批订单 + 同一组杠杆 + 同一个目标，重解结果逐字节一致"
                         note="联合求解结果 —— 是算法在产能约束下试算出的最优方案，不是数据库里已发生的事实。"
                       >
                         {ontimeRate.toFixed(0)}%
@@ -796,7 +796,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                         src={`求解器 portfolio · 目标函数${res.snapshotVersion ? ` · 快照 ${res.snapshotVersion}` : ""}`}
                         formula="总代价 = 各目标项按权重加权求和（惩罚分，非货币）"
                         inputs={[`目标：${SCEN_LABEL[primary]}`, ...(d.cost.unit ? [`量纲：${d.cost.unit}`] : [])]}
-                        rule="R6 确定性"
+                        rule="确定性重算：同一批订单 + 同一组杠杆 + 同一个目标，重解结果逐字节一致"
                         note={d.cost.unit ? undefined : "后端本次未下发量纲字段——诚实留空，不臆造成「元」。"}
                       >
                         {fmt(d.cost.total, 0)}
@@ -812,7 +812,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                         src={`求解器 portfolio · displaced${res.snapshotVersion ? ` · 快照 ${res.snapshotVersion}` : ""}`}
                         formula="被挤单 = 产能排不下、被联合求解挤出决策集的订单条数"
                         inputs={[`目标：${SCEN_LABEL[primary]}`, `获排 ${primaryScen.servedCount}`]}
-                        rule="R6 确定性 · 产能台账守恒（一份产能只算一次）"
+                        rule="确定性重算 · 产能台账守恒（一份产能只算一次）"
                         note="逐单在下方「客户级影响」可查——这个数不对时，先核那张表里哪一单不该被挤。"
                       >
                         {primaryScen.displacedCount}
