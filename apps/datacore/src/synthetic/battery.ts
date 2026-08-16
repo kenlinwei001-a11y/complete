@@ -2877,7 +2877,10 @@ export const BATTERY_TS_AGG_SPECS: {
   weightField?: string;
   output: { objectType: string; property: string };
 }[] = [
-  { key: "oee_daily_7d", seriesKey: "oee:equip", window: { grain: "day", rolling: 7 }, agg: "weighted_avg", weightField: "output", output: { objectType: "Equipment", property: "oee_current" } },
+  // WO-OEE-UNIFY 裁决 C：原 `oee_daily_7d`（oee:equip 7 日加权 → Equipment.oee_current）规格已撤——
+  // 它是 oee_current 的第二个写入方（写的是与事实表不同定义的量，G-OEE-DUAL-TRUTH 病根）。
+  // oee_current 现由 EquipmentOEE 事实行在生成期同源派生；`oee:equip` 原始日序列保留（仅作时序查询素材，
+  // 不再物化进任何对象属性）。
   { key: "yield_daily", seriesKey: "yield:process", window: { grain: "day" }, agg: "avg", output: { objectType: "Process", property: "yield_baseline" } },
   { key: "line_output_daily", seriesKey: "output:line", window: { grain: "day" }, agg: "sum", output: { objectType: "Line", property: "actual_output_daily" } },
   { key: "schedule_attainment", seriesKey: "attainment:line", window: { grain: "week" }, agg: "avg", output: { objectType: "Line", property: "schedule_attainment" } },
@@ -3461,6 +3464,30 @@ export function deriveOrderLines(
 }
 
 /**
+ * WO-OEE-UNIFY（仓主裁决 C：`EquipmentOEE` 日事实表当权威）· 设备 OEE 的**单一出处**。
+ * 同一组加盐哈希既产 7 日事实行（`equipmentOEEs`），又产 `Equipment` 上的
+ * `oeeA/oeeP/oeeQ/oee_current`（= 该台 7 日事实行对应字段的算术均值）——
+ * 旧①「铭牌三原子」与 ③「日事实表」由此同源同数，不再是两个互不知情的真值源；
+ * 旧②「时序 `oee_daily_7d` 物化覆写 `oee_current`」已随该规格一并撤除（单一写入方）。
+ * 纯 hash 派生，不占 `rngTopo` 流（R6：下游合成值字节不动）。
+ */
+export function equipmentOeeAtomsDaily(equipId: string): { avail: number; perf: number; qual: number; oee: number }[] {
+  const rows: { avail: number; perf: number; qual: number; oee: number }[] = [];
+  for (let d = 0; d < 7; d++) {
+    const avail = round(0.85 + (hashString(`${equipId}_oee${d}`) % 15) / 100, 3);
+    const perf = round(0.88 + (hashString(`${equipId}_perf${d}`) % 10) / 100, 3);
+    const qual = round(0.95 + (hashString(`${equipId}_qual${d}`) % 5) / 100, 3);
+    rows.push({ avail, perf, qual, oee: round(avail * perf * qual, 3) });
+  }
+  return rows;
+}
+
+/** 7 日均值（3 位舍入）——`Equipment` 四个 OEE 属性统一的派生口径。 */
+function meanOfDaily(rows: { avail: number; perf: number; qual: number; oee: number }[], pick: "avail" | "perf" | "qual" | "oee"): number {
+  return round(rows.reduce((a, r) => a + r[pick], 0) / rows.length, 3);
+}
+
+/**
  * Deterministic generation: master data (Base) → Model → Order → production
  * topology (Line/Process/Equipment) → calendars (MaintPlan/Shipment) → misc.
  * Referential integrity by construction; same seed → byte-identical output.
@@ -3928,6 +3955,12 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
           const processSuffix = processId.split("-").pop() ?? "";
           const manufacturerPool = ["先导智能", "赢合科技", "利元亨", "科恒股份", "大族激光"];
           void rngTopo(); // WO-SCALE-COHERENCE R6：占 ctSeconds 原 rng 位（保持后续 avail/oee 字节一致），ct 改 gwhᵢ 派生
+          const availFactor = round(0.86 + rngTopo() * 0.08, 3);
+          // WO-OEE-UNIFY 裁决 C：oeeA/oeeP/oeeQ/oee_current 由 EquipmentOEE 日事实行**同源派生**
+          // （7 日均值·equipmentOeeAtomsDaily），不再是独立的「铭牌」真值源。
+          // 三个 void 占原铭牌 A/P/Q 的 rng 位、且严格跟在 availFactor 之后（R6：抽取序一字不动）。
+          void rngTopo(); void rngTopo(); void rngTopo();
+          const oeeDaily = equipmentOeeAtomsDaily(equipId);
           equipment.push({
             equipId,
             processId,
@@ -3935,10 +3968,11 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
             baseId: b.baseId,
             // 节拍(s/电芯)：gwhᵢ 派生 → 串行工序日产 ≥ 基地夹点（令 min 绑 gwh 夹点·非玩具线级）
             ctSeconds: ctSecondsBase,
-            availFactor: round(0.86 + rngTopo() * 0.08, 3),
-            oeeA: round(0.9 + rngTopo() * 0.06, 3),
-            oeeP: round(0.88 + rngTopo() * 0.08, 3),
-            oeeQ: round(0.96 + rngTopo() * 0.03, 3),
+            availFactor,
+            oeeA: meanOfDaily(oeeDaily, "avail"),
+            oeeP: meanOfDaily(oeeDaily, "perf"),
+            oeeQ: meanOfDaily(oeeDaily, "qual"),
+            oee_current: meanOfDaily(oeeDaily, "oee"),
             // SA-6：设备台账字段（R12 全建模对齐）
             equipment_code: equipId,
             equipment_type: typeMap[processSuffix] ?? processSuffix,
@@ -3953,12 +3987,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
           });
         }
       }
-      // WO-CEO-DATA-2：Equipment.oee_current 由 A×P×Q 派生（不额外消耗 rngTopo·R6 字节一致）。
-      for (const eq of equipment) {
-        if (eq.oee_current === undefined) {
-          eq.oee_current = round(Number(eq.oeeA) * Number(eq.oeeP) * Number(eq.oeeQ), 3);
-        }
-      }
+      // WO-OEE-UNIFY 裁决 C：原「播种期回填 oee_current = round(A×P×Q,3)」已删——
+      // oeeA/oeeP/oeeQ/oee_current 在设备创建时由 EquipmentOEE 事实行同源派生（单一写入方），
+      // 此处不再存在「先填一个、等时序物化来覆写」的接缝。
       // WO-SCALE-COHERENCE：化成通道数/单通道日产按 gwhᵢ 派生（令线级化成夹点 ≥ 基地夹点·headroom）。
       void randInt(rngTopo, 600, 780); // R6：占原 channels rng 位
       void randInt(rngTopo, 80, 95); // R6：占原 channelOutputDaily rng 位
@@ -4528,11 +4559,11 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     const equipId = eq.equipId as string;
     const lineId = eq.lineId as string;
     const baseId = eq.baseId as string;
-    // OEE snapshot for past 7 days
+    // OEE snapshot for past 7 days —— 与 Equipment.oeeA/oeeP/oeeQ/oee_current 同一出处
+    // （equipmentOeeAtomsDaily·WO-OEE-UNIFY 裁决 C：本表是权威，设备属性是它的 7 日均值派生）。
+    const oeeDailyRows = equipmentOeeAtomsDaily(equipId);
     for (let d = 0; d < 7; d++) {
-      const avail = round(0.85 + (hashString(`${equipId}_oee${d}`) % 15) / 100, 3);
-      const perf = round(0.88 + (hashString(`${equipId}_perf${d}`) % 10) / 100, 3);
-      const qual = round(0.95 + (hashString(`${equipId}_qual${d}`) % 5) / 100, 3);
+      const { avail, perf, qual, oee } = oeeDailyRows[d]!;
       equipmentOEEs.push({
         oeeId: `OEE-${equipId}-${d}`,
         equipId,
@@ -4542,7 +4573,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         availability: avail,
         performance: perf,
         quality: qual,
-        oee: round(avail * perf * qual, 3),
+        oee,
         plannedProductionTime: 480,
         actualProductionTime: round(480 * avail, 0),
       });
