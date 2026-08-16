@@ -299,6 +299,8 @@ function memStore<T extends { id: string; tenantId: string }>(): Store<T> {
   return {
     async get(t, id) { const v = m.get(k(t, id)); return v ? structuredClone(v) : undefined; },
     async put(item) { m.set(k(item.tenantId, item.id), structuredClone(item)); },
+    // Store 的必填方法（repo.ts:99）：幂等 + 后写覆盖 + 空数组 no-op ⇒ 依次 put 即可。
+    async putMany(items) { for (const item of items) m.set(k(item.tenantId, item.id), structuredClone(item)); },
     async remove(t, id) { m.delete(k(t, id)); },
     async list(t, pred) { return [...m.values()].filter((v) => v.tenantId === t && (!pred || pred(v))).map((v) => structuredClone(v)); },
   };

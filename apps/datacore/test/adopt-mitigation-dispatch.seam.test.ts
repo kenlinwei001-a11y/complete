@@ -35,6 +35,11 @@ interface RiskCard {
   series: number[];
   currentTightness: { value: number };
   mitigated?: { series: number[]; peak: number; appliedPlan: string; effectiveFrom: number };
+  /**
+   * WO-ADOPT-MITIGATION 加性披露（生产 `src/solvers/risk.ts:675` 仅在真有采纳时置键）。
+   * 本文件通篇断言它，却漏在这个本地接口上没声明 —— typecheck 看不见 test/ 时无人发现。
+   */
+  adoptedMitigation?: { planKey: string; eff: number; tn: number };
 }
 
 const riskTimeline = (t: TestApp, args: Record<string, unknown>, ctx: AuthCtx = SVC) =>

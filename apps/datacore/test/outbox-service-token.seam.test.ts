@@ -28,7 +28,9 @@ interface Sent {
 
 async function runDelivery(hookUrls: string[]): Promise<Sent[]> {
   const sent: Sent[] = [];
-  const fetchImpl = (async (url: RequestInfo | URL, init?: RequestInit) => {
+  // 不用 `RequestInfo`：那是 DOM lib 的名字，本包 lib 只有 ES2022 + @types/node ⇒ TS2552。
+  // 直接从全局 fetch 的签名取，既准确又不依赖 DOM。
+  const fetchImpl = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const h = (init?.headers ?? {}) as Record<string, string>;
     sent.push({
       url: String(url),

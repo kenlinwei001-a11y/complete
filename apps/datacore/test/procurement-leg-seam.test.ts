@@ -44,7 +44,7 @@ async function seedShortageOrder(t: TestApp, qty: number): Promise<void> {
     tenantId: "demo",
     type: "Order",
     props: { so: "SO-0001", cust: "缺料压测客户", model: "4680-NCM", qty, due: "2026-09-01", status: "OPEN" },
-    origin: { type: "SYNTHETIC" },
+    origin: { type: "SYNTHETIC", jobId: "job_test" }, // SYNTHETIC 变体的 jobId 是必填（domain.ts:378）
   });
 }
 
@@ -205,7 +205,7 @@ describe("WO-SANDBOX-D2 · SEAM：缺料订单 → 按责任方分解的最早�
       tenantId: "demo",
       type: "Material",
       props: { matId: "aa_orphan", name: "无凭证物料", bomUnit: 1, onHand: 0, inTransit: 0, leadTime: 10, supplierId: "SUP-999" },
-      origin: { type: "SYNTHETIC" },
+      origin: { type: "SYNTHETIC", jobId: "job_test" }, // SYNTHETIC 变体的 jobId 是必填（domain.ts:378）
     });
 
     const rows = await runKit(t);

@@ -68,7 +68,9 @@ export async function seedBattery(t: TestApp, seed = 42): Promise<void> {
   if (res.statusCode !== 202) throw new Error(`synthetic job failed: ${res.body}`);
 }
 
-export const invokeSolver = (t: TestApp, solverKey: string, args: Record<string, unknown>, headers = ADMIN) =>
+// headers 显式标 Record<string, string>：不标时会从默认值 ADMIN 推成 `{ "x-debug-user": string }`，
+// 于是调用方传别的租户头（或大小写不同的 "X-Debug-User"）就报 TS2345 —— 而 HTTP 头本就大小写无关。
+export const invokeSolver = (t: TestApp, solverKey: string, args: Record<string, unknown>, headers: Record<string, string> = ADMIN) =>
   t.app.inject({ method: "POST", url: `/a/v1/solvers/${solverKey}/invoke`, headers, payload: { args } });
 
 export const ORDERS_CSV = `so,cust,model,qty,due,status

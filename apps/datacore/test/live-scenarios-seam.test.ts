@@ -11,7 +11,9 @@ import { makeApp, ADMIN, type TestApp } from "./helpers.js";
  */
 
 const H = { ...ADMIN, "content-type": "application/json" };
-const post = (t: TestApp, url: string, payload: unknown) =>
+// payload 标 unknown 会赋不进 inject 的 InjectPayload，并把 inject 的重载解析歪掉
+// （返回类型退化成 `void & Promise<Response> & Chain` ⇒ 本文件 21 处 .statusCode/.json 全报不存在）。
+const post = (t: TestApp, url: string, payload: Record<string, unknown>) =>
   t.app.inject({ method: "POST", url, headers: H, payload });
 const get = (t: TestApp, url: string) => t.app.inject({ method: "GET", url, headers: ADMIN });
 

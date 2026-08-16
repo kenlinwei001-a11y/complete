@@ -6,7 +6,9 @@ const J = <T>(r: { json: () => unknown }) => r.json() as T;
 async function get(t: TestApp, url: string, headers = ADMIN) {
   return t.app.inject({ method: "GET", url, headers });
 }
-async function post(t: TestApp, url: string, payload: unknown, headers = ADMIN) {
+// payload 不能标 unknown：赋不进 inject 的 InjectPayload，且会把重载解析歪掉，
+// 连带本文件所有 .statusCode/.json 报「不存在」。
+async function post(t: TestApp, url: string, payload: Record<string, unknown>, headers = ADMIN) {
   return t.app.inject({ method: "POST", url, headers, payload });
 }
 
