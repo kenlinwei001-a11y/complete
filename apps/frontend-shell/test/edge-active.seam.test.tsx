@@ -15,8 +15,14 @@ import { resolve } from "node:path";
  * 门脚本有 `import.meta.url === argv[1]` 守卫，import 它不会跑门、不会 `process.exit`。
  */
 type MountAnalysis = { ok: boolean; reason: string; mounts: number[]; outside?: number[]; range: [number, number] | null };
-const loadAnalyze = async (): Promise<(src: string) => MountAnalysis> =>
-  ((await import(resolve(__dirname, "../../../scripts/check-edge-active-mounts.mjs"))) as { analyze: (s: string) => MountAnalysis }).analyze;
+type SimPage = { key: string; file: string | null; why: string[] };
+type Roster = { pages: SimPage[]; excluded: { key: string }[]; violations: { code: string; key: string; detail: string }[] };
+type GateModule = {
+  analyze: (s: string) => MountAnalysis;
+  loadSimPageRoster: (readFile: (rel: string) => string) => Roster;
+};
+const loadGate = async (): Promise<GateModule> =>
+  (await import(resolve(__dirname, "../../../scripts/check-edge-active-mounts.mjs"))) as GateModule;
 
 /**
  * WO-ACTIVE-EDGE-UX · **前端接缝门**：从真实 workspace 出发 → 导航到推演页 → 面板渲染出真边
@@ -51,33 +57,43 @@ describe("WO-ACTIVE-EDGE-UX · 前端接缝：从 workspace 到「关掉一条�
     loginAs("planner"); // mock 里 planner 持 admin 角色（无独立 admin 账号）
   });
 
-  // ── ① 可达层：八页挂载点（与门脚本共用同一份 analyze）────────────────────────────
-  it("🔴 可达：九个推演页都挂了 EdgeActivePanel，且都挂在主组件里（与门脚本同一份判据）", async () => {
-    const analyze = await loadAnalyze();
-    const PAGES: [string, string][] = [
-      ["sandbox", "apps/frontend-shell/src/views/sim/SandboxView.tsx"],
-      ["project-sim", "apps/frontend-shell/src/views/sim/ProjectSimView.tsx"],
-      ["global-sim", "apps/frontend-shell/src/views/sim/GlobalSimView.tsx"],
-      ["plan-generate", "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx"],
-      ["what-if", "apps/frontend-shell/src/views/WhatIfView.tsx"],
-      ["optimize-whatif", "apps/frontend-shell/src/views/OptimizeWhatifView.tsx"],
-      ["decision-play", "apps/frontend-shell/src/views/DecisionPlayView.tsx"],
-      ["sop-balance", "apps/frontend-shell/src/views/sim/SopBalanceView.tsx"],
-      // 第 9 页 —— 工单 §1 那张表漏的：它按 registry 的 renderer 语义取表、把本页读成「风险看板」，
-      // 而真实 workspace 下发的标题是「产能推演」（`mocks/fixtures.ts` 的 `{ key:"risk", title:"产能推演" }`）。
-      ["risk-board", "apps/frontend-shell/src/views/RiskBoardView.tsx"],
-    ];
+  // ── ① 可达层：推演页挂载点（名册与判据都与门脚本共用同一份实现）──────────────────
+  //
+  // ⚠ WO-INFER-PAGE-SSOT：本用例此前**自己抄了一份 9 条的 PAGES 数组** —— 与门脚本里那份
+  //   手抄名单一模一样的第二份。两份名单里都没有的页，测试与门**一起看不见、一起绿**
+  //   （本体 §8 `G-GATE-ROSTER-HANDCOPIED`：门只能证明「它问过的那些是对的」）。
+  //   现在名册由 `loadSimPageRoster` 现算（判据的单一来源 `scripts/lib/sim-page-roster.mjs`），
+  //   本文件里一个页面键都不存 —— 与「金丝雀必须与主逻辑共用同一份实现」是同一条纪律，
+  //   只是这次共用的不只是判据，还有**受检对象集合**本身。
+  it("🔴 可达：现算名册里的推演页都挂了 EdgeActivePanel（已知缺口按门的棘轮基线豁免·与门脚本同一份判据与同一份名册）", async () => {
+    const { analyze, loadSimPageRoster } = await loadGate();
+    const root = resolve(__dirname, "../../..");
+
     // 金丝雀：同一个 analyze 对两个已知答案的合成样例必须给出相反结论。
-    // 不跑它就没资格把下面的"八页全过"读成结论（铁律 0.6）。
+    // 不跑它就没资格把下面的"全过"读成结论（铁律 0.6）。
     expect(analyze(`export default function P() {\n  return <EdgeActivePanel />;\n}\n`).ok).toBe(true);
     const sub = analyze(`export default function P() {\n  return <S />;\n}\nfunction S() {\n  return <EdgeActivePanel />;\n}\n`);
     expect(sub.ok).toBe(false);
     expect(sub.reason).toBe("MOUNTED_IN_SUBCOMPONENT");
 
-    const root = resolve(__dirname, "../../..");
-    for (const [key, rel] of PAGES) {
-      const r = analyze(readFileSync(resolve(root, rel), "utf8"));
-      expect(`${key}:${r.reason}`).toBe(`${key}:OK`);
+    const roster = loadSimPageRoster((rel) => readFileSync(resolve(root, rel), "utf8"));
+    // 名册下界 + 交叉断言：名册塌了/非法时，下面的「全过」是失败危险方向的绿，先在这里咬死。
+    expect(roster.pages.length).toBeGreaterThanOrEqual(8);
+    expect(roster.violations.map((v) => `${v.code}:${v.key}`)).toEqual([]);
+
+    // 已知缺口取门自己的棘轮基线（**不在本文件另列一份豁免**，否则又是第二份手抄名单）。
+    const baseline = JSON.parse(readFileSync(resolve(root, "scripts/edge-active-mounts-baseline.json"), "utf8")) as {
+      gaps: Record<string, { reason: string; why: string }>;
+    };
+    for (const p of roster.pages) {
+      if (p.key in baseline.gaps) {
+        // 在册的缺口必须写得出理由 —— 没有理由的挂账把棘轮降级成白名单。
+        expect(`${p.key}:${(baseline.gaps[p.key].why ?? "").length > 40}`).toBe(`${p.key}:true`);
+        continue;
+      }
+      expect(`${p.key}:file`).toBe(`${p.key}:${p.file ? "file" : "MISSING"}`);
+      const r = analyze(readFileSync(resolve(root, p.file as string), "utf8"));
+      expect(`${p.key}:${r.reason}`).toBe(`${p.key}:OK`);
     }
   });
 
