@@ -5,6 +5,7 @@ import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { fetchOptTemplates } from "@/api/endpoints";
+import { checkedTree, factHits } from "./factlock";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
 
@@ -204,13 +205,37 @@ describe("WO-BEFE-E ④ 优化模板池（GET opt/templates · GET opt/retrieve 
     expect(body.textContent).toContain("下面是本页内置的回退清单，可能与后端不一致");
   });
 
-  it("④-F 不是死组件：三条 URL 真在 endpoints.ts 里，且页面不再自带 family 清单当权威", () => {
+  it("④-F 不是死组件：三条 URL 真有生产调用方，且页面不再自带 family 清单当权威", () => {
+    /*
+     * ⚠ 三条客户端的判据从「OptimizeWhatifView.tsx 的文本里有这个名字」搬到**整棵前端源码树**
+     * （`./factlock`，剥注释后）—— 名字住在哪个文件与「它有没有被调」无关，
+     * 而 `readRepoFile` 不剥注释，注释里提一嘴就能把删掉的接线盖住（`G-FACTLOCK-POSITION-ANCHOR`）。
+     *
+     * 探针是**用法形**不是裸名，两种用法都收：
+     *   · `queryFn: fetchOptTemplates` —— react-query 传**引用**（本页实测就是这个形态，
+     *     裸调用形 `fetchOptTemplates(` 全仓 0 命中，只按调用形写会得到一条恒红的断言）；
+     *   · `solveOptTemplate(`          —— 直接调用。
+     * 裸名不行：`export const fetchOptTemplates = (` 这个**声明**自己就含裸名，
+     * 于是「有声明」被读作「有调用」（只有声明 = 没接线，本仓假绿第 9 形态），
+     * `import { … }` 那一行同理。
+     */
+    const fe = checkedTree("apps/frontend-shell/src", "const FAMILY_COPY:", 100);
+    for (const fn of ["fetchOptTemplates", "retrieveOptTemplates", "solveOptTemplate"]) {
+      expect(
+        factHits(fe, new RegExp(`(?:queryFn|mutationFn):\\s*${fn}\\b|\\b${fn}\\s*\\(`)),
+        `${fn} 零生产调用方（只有声明/只有 import = 没接线）`,
+      ).not.toEqual([]);
+    }
+
     const view = readRepoFile("../src/views/OptimizeWhatifView.tsx");
     expect(view.length, "OptimizeWhatifView.tsx 读到了空内容——路径漂了，先修路径再看结论").toBeGreaterThan(1000);
-    expect(view).toContain("fetchOptTemplates");
-    expect(view).toContain("retrieveOptTemplates");
-    expect(view).toContain("solveOptTemplate");
-    // 旧的「清单本身」标识符不许回潮（回潮 = 两套词表复发）。
+    /*
+     * 下面这一对**故意仍锚在这个文件上**，位置就是事实本身：命题是
+     * 「**这一页**不许自持权威 family 清单」，页作用域天生带文件主语（整树扫会把主语抹掉：
+     * 别处存在一份权威清单是合法的，本页存在才是病）。
+     * 正向那条是**反空胜守卫**：两个常量一起被删时，光有 `not.toContain` 会空胜通过。
+     * 故两条同进退，一并登记进 `scripts/factlock-anchor-baseline.json`（WO-FACTLOCK-TRIAGE）。
+     */
     expect(view).not.toContain("const FAMILIES:");
     expect(view).toContain("const FAMILY_COPY:");
 

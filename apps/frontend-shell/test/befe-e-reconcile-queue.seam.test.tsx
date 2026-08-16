@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { ProtoLinkSchema, SchemaReconcileCandidateSchema } from "@platform/contracts";
 import { fetchReconcileCandidates } from "@/api/endpoints";
+import { checkedTree, factHits } from "./factlock";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
 
@@ -168,14 +169,28 @@ describe("WO-BEFE-E ③ 对账候选 HITL 队列（GET …/reconcile-candidates 
     expect(() => ProtoLinkSchema.parse({ from: "A", to: "B", rel: "r", origin: "ref" })).not.toThrow();
   });
 
-  it("③-F 不是死组件：`ReconcileQueue` 真的挂在页上，两条 URL 真在 endpoints.ts 里", () => {
+  it("③-F 不是死组件：`ReconcileQueue` 真有挂载点，两条 URL 真有生产调用方", () => {
+    /*
+     * ⚠ 三条判据从「PrototypeIntakePage.tsx 的文本」搬到**整棵前端源码树**（`./factlock`，剥注释）。
+     * 名字/挂载点搬去别的文件是无害重构，而 `readRepoFile` 不剥注释、注释里提一嘴就能盖住
+     * 被删的接线 —— 假红假绿两个方向都错（`G-FACTLOCK-POSITION-ANCHOR`）。
+     * 字段名 `c.prototypeColumn` 这条尤其是纯代理：它想说的「屏上渲染的是 prototypeColumn 不是
+     * undefined」在本文件 L65-69 已经**端到端断言过**（比对 `reconcile-col-*` 的真 textContent），
+     * 那条才是真行为判据，这里只留「不是死代码」的静态盘点。
+     */
+    const fe = checkedTree("apps/frontend-shell/src", "<ReconcileQueue />", 100);
+    expect(factHits(fe, "<ReconcileQueue />"), "ReconcileQueue 零生产挂载点 ⇒ 死组件").not.toEqual([]);
+    for (const fn of ["fetchReconcileCandidates", "resolveReconcileCandidate"]) {
+      expect(
+        factHits(fe, new RegExp(`(?:queryFn|mutationFn):\\s*${fn}\\b|\\b${fn}\\s*\\(`)),
+        `${fn} 零生产调用方（只有声明/只有 import = 没接线）`,
+      ).not.toEqual([]);
+    }
+    // 漂移不许回潮：`c.column` / `l.src` 一旦回来，真后端下又是 undefined。
+    expect(factHits(fe, "c.prototypeColumn"), "候选列字段名没有任何生产使用点").not.toEqual([]);
+
     const page = readRepoFile("../src/pages/admin/PrototypeIntakePage.tsx");
     expect(page.length, "PrototypeIntakePage.tsx 读到了空内容——路径漂了，先修路径再看结论").toBeGreaterThan(1000);
-    expect(page).toContain("<ReconcileQueue />");
-    expect(page).toContain("fetchReconcileCandidates");
-    expect(page).toContain("resolveReconcileCandidate");
-    // 那两处漂移不许回潮（`c.column` / `l.src` 一旦回来，真后端下又是 undefined）。
-    expect(page).toContain("c.prototypeColumn");
     expect(page).not.toContain("{l.src}");
 
     const eps = readRepoFile("../src/api/endpoints.ts");

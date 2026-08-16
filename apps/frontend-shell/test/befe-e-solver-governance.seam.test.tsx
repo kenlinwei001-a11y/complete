@@ -5,6 +5,7 @@ import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { fetchSolverArtifacts } from "@/api/endpoints";
+import { checkedTree, factHits } from "./factlock";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
 
@@ -222,25 +223,37 @@ describe("WO-BEFE-E ⑤②③ 求解器牵连与接地（GET /b/v1/solvers/:key/
     expect(screen.getByTestId("solver-role-shared_bottleneck-resourceType").textContent!.length).toBeGreaterThan(0);
   });
 
-  it("⑤-G 不是死组件：三条 URL 真在 endpoints.ts 里，面板真的挂在两个页上", () => {
-    const review = readRepoFile("../src/pages/admin/SolverReviewPage.tsx");
-    expect(review.length, "SolverReviewPage.tsx 读到了空内容——路径漂了").toBeGreaterThan(1000);
-    expect(review).toContain("generateProvisionalSolver");
-    expect(review).toContain('data-testid="solver-gen-submit"');
+  it("⑤-G 不是死组件：三条 URL 真有生产调用方，面板真有挂载点", () => {
+    /*
+     * ⚠ 判据从「某个写死页面文件的文本」搬到**整棵前端源码树**（`./factlock`，剥注释后）——
+     * 除了那一条**页作用域的否定断言**（见下），它天生带文件主语，必须留在原地。
+     * 原写法的两个错误方向见 `./factlock` 顶注：搬家假红 · 注释假绿。
+     * 「面板真的挂在两个页上」另有更硬的其人：⑤-A…⑤-F 全是 `renderApp("/admin/solver-review")`
+     * 与 `renderApp("/admin/solvers")` 端到端真跑。
+     */
+    const fe = checkedTree("apps/frontend-shell/src", '<SolverImpactPanel solverKey=', 100);
+    expect(factHits(fe, 'data-testid="solver-gen-submit"'), "生成入口零生产挂载点").not.toEqual([]);
+    expect(factHits(fe, "<SolverImpactPanel solverKey="), "影响面板零生产挂载点").not.toEqual([]);
+    expect(factHits(fe, '<ReferencesPanel kind="solver"'), "共享引用面板零生产挂载点").not.toEqual([]);
+    for (const fn of ["generateProvisionalSolver", "fetchSolverFieldRoles"]) {
+      expect(
+        factHits(fe, new RegExp(`(?:queryFn|mutationFn):\\s*${fn}\\b|\\b${fn}\\s*\\(`)),
+        `${fn} 零生产调用方（只有声明/只有 import = 没接线）`,
+      ).not.toEqual([]);
+    }
+    // 两条 URL：锁「在不在前端生产代码里」，不锁「在 endpoints.ts 这个文件里」。
+    expect(factHits(fe, "/b/v1/solvers/${encodeURIComponent(id)}/references`"), "求解器引用反查 URL 没接").not.toEqual([]);
+    expect(factHits(fe, "/a/v1/solvers/${encodeURIComponent(key)}/field-roles`"), "字段角色 URL 没接").not.toEqual([]);
+    expect(factHits(fe, '"/a/v1/solvers/generate"'), "临时求解器生成 URL 没接").not.toEqual([]);
 
+    /*
+     * 这一条**故意仍锚在 SolversPage.tsx 上**，位置就是事实本身：命题是
+     * 「**本页**不许再自持一份引用反查客户端」（WO-REFERENCES-FAMILY 收归共享件）。
+     * 整树扫会把主语抹掉 —— 别处存在 `fetchSolverReferences` 与本页存在，是两件不同的事。
+     * 门本身也按 N2 放行反向断言（`not.toContain` = 位置即事实）。
+     */
     const solvers = readRepoFile("../src/pages/admin/SolversPage.tsx");
     expect(solvers.length, "SolversPage.tsx 读到了空内容——路径漂了").toBeGreaterThan(1000);
-    expect(solvers).toContain("<SolverImpactPanel solverKey=");
-    // WO-REFERENCES-FAMILY：引用反查那半块已收归共享件，本页**不许**再自持一份实现。
-    expect(solvers).toContain('<ReferencesPanel kind="solver"');
     expect(solvers, "本页又自己写了一份引用反查客户端 ⇒ 同一概念两套实现").not.toContain("fetchSolverReferences");
-    expect(solvers).toContain("fetchSolverFieldRoles");
-
-    const eps = readRepoFile("../src/api/endpoints.ts");
-    // 金丝雀：先抓一个**已知必在**的同族 URL；抓不到说明读法坏了，而不是端点没接。
-    expect(eps, "金丝雀未中 ⇒ 读法坏了，下面的「不存在」全部不可信").toContain("/promote`");
-    expect(eps).toContain('"/a/v1/solvers/generate"');
-    expect(eps).toContain("/b/v1/solvers/${encodeURIComponent(id)}/references`");
-    expect(eps).toContain("/a/v1/solvers/${encodeURIComponent(key)}/field-roles`");
   });
 });
