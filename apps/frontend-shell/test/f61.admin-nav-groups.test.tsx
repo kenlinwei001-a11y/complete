@@ -3,7 +3,7 @@ import { screen, within } from "@testing-library/react";
 import type { RouteObject } from "react-router-dom";
 import { loginAs, renderApp } from "./utils";
 import { ADMIN_PAGES, groupAdminPages, ADMIN_NAV_GROUPS } from "@/pages/adminRegistry";
-import { NAV_GROUPS, CONSOLIDATED_INTO_SANDBOX } from "@/pages/ShellLayout";
+import { NAV_GROUPS, CONSOLIDATED_INTO_SANDBOX, ROUTE_NO_NAV } from "@/pages/ShellLayout";
 import { routes } from "@/App";
 import { ACCOUNTS, workspaceForAccount } from "@/mocks/fixtures";
 import { db } from "@/mocks/db";
@@ -272,12 +272,13 @@ describe("WO-ROUTE-NAV-COVERAGE · 专用 route 必须在侧栏真出现（可�
     const hrefs = new Set(Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href")));
     // 金丝雀：沙盘入口本身必须在侧栏 —— 它不在的话，"经沙盘收编"这条到达路径根本不成立。
     expect(hrefs.has("/v/sim-sandbox"), "沙盘入口不在侧栏 ⇒ 收编项的到达路径不成立，本条的放行是假的").toBe(true);
-    const missing = dedicatedRouteKeys.filter((k) => !hrefs.has(`/v/${k}`) && !CONSOLIDATED_INTO_SANDBOX[k]);
+    const missing = dedicatedRouteKeys.filter((k) => !hrefs.has(`/v/${k}`) && !CONSOLIDATED_INTO_SANDBOX[k] && !(k in ROUTE_NO_NAV));
     expect(
       missing,
-      `以下专用 route 页既不在侧栏单列、也没被任何控制台收编：[${missing.join(", ")}] —— ` +
+      `以下专用 route 页既不在侧栏单列、也没被任何控制台收编、也未登记 ROUTE_NO_NAV 豁免：[${missing.join(", ")}] —— ` +
         `页面写了、路由通了、点不到，只有知道 URL 的人（= 写它的那个 dev）进得去。` +
-        `修法：加 { kind: "route", key: "…", label: "…" } 到 ShellLayout.NAV_GROUPS 对应分组。`,
+        `修法：加 { kind: "route", key: "…", label: "…" } 到 ShellLayout.NAV_GROUPS 对应分组；` +
+        `若确属仓主裁决「刻意不给导航入口」（如 decision-play），登记 ShellLayout.ROUTE_NO_NAV 并写理由（门与本测试都对账这张表）。`,
     ).toEqual([]);
   });
 
@@ -293,7 +294,8 @@ describe("WO-ROUTE-NAV-COVERAGE · 专用 route 必须在侧栏真出现（可�
       expect(hrefs.has("/v/sim-init"), "sim.sandbox 关着，初始化向导入口仍出现在侧栏 —— 暗发语义被破坏（R3）").toBe(false);
       // 而没有页面侧 Guard 的路由页本就人人可进，无可泄露 ⇒ 不受 entitlement 影响。
       // ⚠ 收编项（consolidatedWhen: "sim.sandbox"）在这一档**必须回来**：沙盘不在了，收编也就不成立。
-      const gateless = dedicatedRouteKeys.filter((k) => k !== "sim-sandbox" && k !== "sim-init");
+      // ⚠ ROUTE_NO_NAV 豁免项（decision-play）在这一档**不回来**：它不是被收编，是仓主裁决刻意不给导航入口。
+      const gateless = dedicatedRouteKeys.filter((k) => k !== "sim-sandbox" && k !== "sim-init" && !(k in ROUTE_NO_NAV));
       const missing = gateless.filter((k) => !hrefs.has(`/v/${k}`));
       expect(missing, `无 Guard 的专用 route 入口不该随 sim.sandbox 消失：[${missing.join(", ")}]`).toEqual([]);
     } finally {

@@ -606,10 +606,10 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     { key: "order", title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
     // 推演类业务视图（增量 PRD 由原型 docs/demo-推演系统.html 反推；renderer 已注册）
     { key: "plan-audit", title: "规划体检", renderer: "plan-audit", layout: PLAN_AUDIT_LAYOUT },
-    { key: "plan-generate", title: "方案生成", renderer: "plan-generate", layout: PLAN_GENERATE_LAYOUT },
-    { key: "project-sim", title: "项目推演", renderer: "project-sim", layout: PROJECT_SIM_LAYOUT },
+    { key: "plan-generate", title: "规划建议", renderer: "plan-generate", layout: PLAN_GENERATE_LAYOUT },
+    { key: "project-sim", title: "接单可行性", renderer: "project-sim", layout: PROJECT_SIM_LAYOUT },
     // WO-PORTFOLIO-OPTIMAL 全局项目推演（全订单×全基地×时间联合最优组合·共享产能守恒·冻结子集·多方案）
-    { key: "global-sim", title: "全局项目推演", renderer: "global-sim", layout: {} },
+    { key: "global-sim", title: "接单组合优选", renderer: "global-sim", layout: {} },
     { key: "sop-balance", title: "月度规划", renderer: "sop-balance", layout: {} },
     // 剩余视图增量（§7.14–7.17）
     { key: "annual-scenario", title: "年度规划", renderer: "annual-scenario", layout: {} },

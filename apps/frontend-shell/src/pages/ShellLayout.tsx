@@ -117,6 +117,23 @@ export const CONSOLIDATED_INTO_SANDBOX: Record<
 
 // WO-SWEEP-03-NAV-GROUP（导航分组防漂移）：export 供 f61 结构守卫——NAV_GROUPS 的 admin 键须覆盖全部 ADMIN_PAGES，
 // 防管理页漏登记后再漂到「其它」兜底组（此前 boundary/prototype-intake 即因漏配落「其它」）。
+/**
+ * WO-IA-E2E5E6 · **刻意不给导航入口的专用 route**（route 保留、深链契约不动）。
+ *
+ * 与 `CONSOLIDATED_INTO_SANDBOX` 同形态的一张**声明表**：屏上结果（导航里没有这条）与
+ * 「忘了登记」一模一样，但性质相反 —— 进本表 = 显式声明「这个入口被仓主从导航里拿掉是有意的」，
+ * 有表、有理由、有门对账（`scripts/check-nav-group-coverage.mjs` 判据④ 读这张表；
+ * `test/f61.admin-nav-groups.test.tsx` 的到达路径断言同样读这张表，不许另抄一份）。
+ * 键必须是 `App.tsx` 里真实存在的专用 route（门会红出陈旧豁免）；route 一删，本表条目必须同删。
+ */
+export const ROUTE_NO_NAV: Record<string, string> = {
+  // 仓主原话：「导航栏里面的『决策推演』不应该在这个位置，而是嵌入到每个需要决策的点」。
+  // 已嵌入的决策点：`OrderChainView` 订单面板 · `ChainImpedimentView` 逐条阻滞点 · `ShellLayout` 对话坞上方
+  // （三处与页面壳共用 `DecisionPlayPanel` 同一份实现）；沙盘阻滞点 → 方案对比那一跳（`SandboxConsole`）
+  // 与驾驶舱入口（`DashboardView`）继续走 `/v/decision-play` 深链 —— route 保留，`imp*` query 契约一个键没动。
+  "decision-play":
+    "仓主裁决（WO-IA-E2E5E6）：决策推演不该占导航位，已嵌入各决策点（订单链/链阻滞/壳布局三处共用 DecisionPlayPanel）；route 保留 = 深链 query 契约（fromImpediment/imp* 一族）不变",
+};
 export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
   { title: null, items: [{ kind: "view", key: "dash" }] },
   { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate", "review"].map((key) => ({ kind: "view" as const, key })) },
@@ -139,8 +156,9 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   //    逐条到达路径的实测取证见 `docs/AUDIT-sandbox-ia-consolidate.md`（2026-08-10 实测 5/5 绿；
   //    复验：`cd apps/frontend-shell && npx vitest run test/sandbox-ia-consolidate.seam.test.tsx` §件一）。
   //    上一版自己写着「WO-SANDBOX-CONSOLE 落地后这几行应当删掉」——控制台早已落地，这是在执行那条定案。
-  //    **保留** `project-sim` / `global-sim` / `risk` / `order-chain` / `decision-play`：
+  //    **保留** `project-sim` / `global-sim` / `risk` / `order-chain`：
   //    它们是独立场景（各自的求解器、各自的一页），不是沙盘的画布模式，收进去只会把沙盘撑爆。
+  //    （`decision-play` 原也在此列，WO-IA-E2E5E6 起导航条目删除、route 保留 —— 见 `ROUTE_NO_NAV`。）
   {
     title: "推演",
     items: [
@@ -158,24 +176,8 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       // 也就是说：这不是我在两个都行的方案里挑一个，是机器先说话（复验见提交说明）。
       ...["project-sim", "global-sim", "risk", "order-chain"].map((key) => ({ kind: "view" as const, key })),
       // 专用 route（App.tsx `{ path: "v/<静态段>" }`·免 workspace 下发即可达）。
-      // `decision-play` 此前写成 `kind:"view"` —— 后端 `BUILTIN_VIEWS` 从未派单它（view-manifest.ts:54-56
-      // 明写"诚实排除"），于是 `viewByKey.get("decision-play")` 恒空、`return null` 恒静默 ⇒ 幽灵条目。
-      // ── WO-ORDER-JOURNEY · 仓主原话：「决策推演**不应该在这个位置**，而是嵌入到每个需要决策推演
-      //    的位置，每个需要决策的点都需要这个页面」。**已照办的部分**：5 区推演的唯一实现搬到
-      //    `views/DecisionPlayPanel.tsx`，`ChainImpedimentView` 逐条阻滞点、`OrderChainView` 订单面板
-      //    都已就地嵌入（点开即在原地展开，URL 不变）。
-      //    **没照办的部分（本条为什么还在）—— 先测清连坐面再动，不摸黑删**（2026-08-14 实测四条·
-      //    复验：`node scripts/check-nav-group-coverage.mjs`（RC=0，输出含「6 条专用 route 全部有
-      //    kind:"route" 入口…且无悬空条目」）＋ `grep -rn "decision-play" apps/frontend-shell/src apps/frontend-shell/test`）：
-      //     ① `check-nav-group-coverage.mjs` 判据④：6 条专用 route 必须各有 `kind:"route"` 入口，
-      //        删了这一条 ⇒ `/v/decision-play` 变悬空条目 ⇒ 门当场红（机器先说话，不是我猜的）；
-      //     ② `views/DashboardView.tsx:162` 有 `navigate("/v/decision-play")`，且
-      //        `test/decision-play.test.tsx:211` 断言它可达 —— 而 DashboardView 在本单禁改清单里；
-      //     ③ `test/imp2plan.seam.test.tsx:161` 直接挂 `/v/decision-play` 这条 route；
-      //     ④ 沙盘 `sandboxConsoleModel.ts:716 DECISION_PLAY_PATH` + `IMP_PARAM` 一整套深链 query 契约。
-      //    ⇒ 裁决：**保留 route、保留入口、改标签把新定位写在脸上**（独立页 = 兜底/深链落点，
-      //    主交互已回到各决策点原地）。删入口属导航信息架构决策且会连坐上面四处，不在本单单方面做。
-      { kind: "route" as const, key: "decision-play", label: "决策推演（独立页 · 各卡点已就地嵌入）" },
+      // `decision-play` 的导航条目**已删**（仓主裁决 WO-IA-E2E5E6，登记在本文件 `ROUTE_NO_NAV`）：
+      // 「决策推演不应该在导航这个位置，而是嵌入到每个需要决策的点」——route 保留（深链契约不动）。
       // ── 已收编进沙盘模式切换的四页：`consolidatedWhen` 开 → 隐藏（详见类型定义处的语义说明）──
       // 沙盘关着的租户仍看得到它们（这四页本身不受 sim.sandbox 门控，人人可进）。
       { kind: "route" as const, key: "what-if", label: "假设推演", consolidatedWhen: "sim.sandbox" },

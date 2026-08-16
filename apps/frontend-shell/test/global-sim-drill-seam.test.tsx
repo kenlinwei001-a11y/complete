@@ -114,7 +114,7 @@ describe("global-sim ↔ project-sim · 下钻接缝一致性（三源并集口�
 
     const notFound = await screen.findByTestId("proj-order-notfound");
     expect(notFound.textContent).toContain("WIP:WO-1");
-    expect(notFound.textContent).toContain("项目推演仅细排销售订单");
+    expect(notFound.textContent).toContain("接单可行性仅细排销售订单");
     // 兜底提供返回全局的口子。
     expect(screen.getByTestId("proj-notfound-back-global")).toHaveAttribute("href", "/v/global-sim");
   });

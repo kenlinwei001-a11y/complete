@@ -164,3 +164,33 @@
   padding: 14px;
   line-height: 1.7;
 }
+
+/* ── WO-IA-E2E5E6 · E5 双向入口 ─────────────────────────────────────────────
+   零硬编码颜色：沿用既有语义令牌（--accent-txt / --bg2 / --line2 / --warn / --panel2），三套皮自动跟随。 */
+/* 卡片头「这类流程通常在这站等什么 →」：链接色走 accent，可点信号与徽章同档 */
+.waitLink {
+  color: var(--accent-txt);
+  font-size: 12px;
+  white-space: nowrap;
+  text-decoration: none;
+  border-bottom: 1px dashed var(--line2);
+}
+.waitLink:hover {
+  text-decoration: underline;
+}
+/* ?proc= 过滤横幅：与诚实位同一视觉档（左粗边 = 提示，不是故障） */
+.filterBanner {
+  color: var(--muted);
+  font-size: 13px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: 6px;
+  padding: 8px 12px;
+  line-height: 1.7;
+}
+.filterClear {
+  color: var(--accent-txt);
+  margin-left: 8px;
+  white-space: nowrap;
+}
