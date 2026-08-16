@@ -111,7 +111,17 @@ import { InProcOptimizerClient } from "./solvers/inproc-optimizer.js";
 import { runWithCancellation } from "./solvers/cancellation.js"; // WO-D1 · 请求作用域求解取消令牌
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
-import { ActionService, MockActionExecutor, UnwiredActionExecutor, GlobalSimPlanExecutor, planChangeIsWired, type ActionExecutor } from "./actions.js";
+import {
+  ActionService,
+  MockActionExecutor,
+  UnwiredActionExecutor,
+  GlobalSimPlanExecutor,
+  planChangeIsWired,
+  parseLevers,
+  notImplementedResult,
+  type ActionExecutor,
+  type LeverParse,
+} from "./actions.js";
 import { SopService } from "./sop.js";
 import { PlanService } from "./planviews.js";
 import { CalibrationService } from "./calibration/index.js";
@@ -514,13 +524,76 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     },
     mockExecutor,
   );
+  /**
+   * WO-ACTION-NOOP-EXEC · **本体属性杠杆写入器（唯一实现）**——`采纳产能保障方案` 与
+   * 带杠杆的非 global-sim `plan_change` 共用这一份。
+   *
+   * 为什么必须共用而不是各写一份：两条生产者发的是**同一个形状**
+   * （`discoverLevers` 的 `{objectType,objectId,prop}` + 前端拨定的 `value`
+   *  ≡ `LiveScenario.apply` 的 `{objectType,objectId,prop,value}`）。
+   * 各抄一份的下场本仓已有先例：改主逻辑时另一份拿旧规则照跑、照绿（金丝雀装饰品那一类）。
+   *
+   * 语义：「采纳」= 把拨定的杠杆**落成本体属性真值**，而非开一张新单据。
+   * 新单据是一条新记录，不改变任何现有真值——拨完杠杆再推演仍是老数，与用户"采纳后要看到变化"的预期相反。
+   * 落成属性后再 `runDerivations`，下游 KPI/派生属性立刻反映本次采纳。
+   */
+  const applyLeverWrites = async (
+    draft: import("./domain.js").ActionDraft,
+    parse: LeverParse,
+    label: string,
+    refPrefix: string,
+  ): Promise<{ ok: boolean; targetRef?: string; error?: string }> => {
+    if (parse.kind === "ABSENT" || parse.kind === "EMPTY") {
+      return { ok: false, error: `${label}：payload.levers 为空——无可写入的杠杆，拒绝空转（不假装已采纳）` };
+    }
+    if (parse.kind === "INVALID") {
+      // 缺任一要素即**诚实失败**，绝不猜一个值写下去（写错真值比不写危险）。
+      return { ok: false, error: `${label}：杠杆行缺 objectId/prop/value（收到 ${parse.detail}）——拒绝臆造写入` };
+    }
+    const written: string[] = [];
+    for (const l of parse.levers) {
+      const obj = await repos.objects.get(draft.tenantId, l.objectId);
+      if (!obj) return { ok: false, error: `${label}：对象不存在 ${l.objectId}` };
+      await repos.objects.put({ ...obj, props: { ...obj.props, [l.prop]: l.value }, origin: { type: "MANUAL" } });
+      written.push(`${l.objectId}.${l.prop}`);
+    }
+    // 派生重算：让下游 KPI/派生属性立刻反映本次采纳（与「对象数据变更」同一套）。
+    await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
+    // targetRef 自证写了什么、写了几处——**刻意不使用 MO- 前缀**（那正是假单号的形态）。
+    return { ok: true, targetRef: `${refPrefix}:${written.length}:${written[0]}` };
+  };
+
   const domainExecutor: ActionExecutor = {
     async execute(draft) {
       // 全局项目推演采纳（plan_change · source:"global-sim"）→ 真实回灌基线（其余 plan_change 不受影响）。
       if (draft.actionTypeKey === "plan_change") {
-        // 仅 global-sim 来源有真回灌；其余来源**不得**借 plan_change 的 WIRED 之名假装写了 → 诚实失败。
+        // ① 仅 global-sim 来源有真回灌。
         if (planChangeIsWired(draft.payload)) return globalSimExecutor.execute(draft);
-        return unwiredExecutor.execute(draft);
+        // ② 非 global-sim **但带真本体属性杠杆**（风险看板「采纳风险处置方案」发 `LiveScenario.apply`）
+        //    → 与「采纳产能保障方案」是同一种真值写入，走同一套写入器（WO-ACTION-NOOP-EXEC 接线）。
+        //    判据落在 payload 的**形状**上，不落在 source 串上：source 是生产者自报家门（会漏、会改名），
+        //    而「有没有 {objectId,prop,value}」是这条 Action 到底能不能写真值的**充要条件**。
+        const levers = parseLevers(draft.payload);
+        if (levers.kind !== "ABSENT") {
+          return applyLeverWrites(draft, levers, "采纳风险处置方案(plan_change)", "PLAN-CHANGE-LEVER");
+        }
+        // ③ 其余形态（order-chain 结论 / coordinate_capacity / global-sim-scenario KPI 快照 / sim_sandbox 结论）
+        //    payload 里没有任何可写的杠杆 → **不得**借 plan_change 的 WIRED 之名假装写了 → 诚实失败并说清为什么。
+        const p = draft.payload as Record<string, unknown>;
+        const patch = (p.patch ?? {}) as Record<string, unknown>;
+        const simulated = patch.simulated === true;
+        return notImplementedResult(
+          "plan_change",
+          simulated
+            ? `本草稿的 payload.patch 自带 \`simulated: true\`（源 ${String(patch.source ?? "?")}）——` +
+                `它是**模拟态**结论。把模拟世界的结论直接写成真实世界的真值，正是 ` +
+                `PRD-enterprise-decision-twin §4.1 明令禁止的「仿真回流真实」。此处诚实失败是**正确行为**：` +
+                `要让它可执行，需要的是一条「模拟结论 → 具体本体杠杆」的翻译（今天不存在），不是放宽这道判据。`
+            : `本草稿的 payload 里没有 \`levers[{objectType,objectId,prop,value}]\`（收到的键：` +
+                `${Object.keys(p).join("/") || "（空）"}）——它只带结论/KPI 快照，没有任何“写哪个对象的哪个属性”` +
+                `的落点，无法在不臆造的前提下写入真值。带杠杆的 plan_change（风险看板「采纳风险处置方案」）` +
+                `已可真写；本形态属域映射缺失，见本体 §8 G-PLAN-CHANGE-NO-LEVER。`,
+        );
       }
       if (draft.actionTypeKey === "AOP情景拍板") {
         const r = await plan.applyFinalize(draft.tenantId, draft);
@@ -593,28 +666,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       // （`mapping.ts` 旧注册表写的 target 是「生产工单MO（写回）」：那是一条新记录，不改变现有真值，
       //   拨完杠杆再推演仍是老数——与用户"采纳后要看到变化"的预期不符。已按属性写入实现。）
       if (draft.actionTypeKey === "采纳产能保障方案") {
-        const levers = Array.isArray(draft.payload.levers) ? (draft.payload.levers as Record<string, unknown>[]) : [];
-        if (levers.length === 0) {
-          return { ok: false, error: "采纳产能保障方案：payload.levers 为空——无可写入的杠杆，拒绝空转（不假装已采纳）" };
-        }
-        const written: string[] = [];
-        for (const l of levers) {
-          const objectId = String(l.objectId ?? "");
-          const prop = String(l.prop ?? "");
-          const value = l.value;
-          // 缺任一要素即**诚实失败**，绝不猜一个值写下去（写错真值比不写危险）。
-          if (!objectId || !prop || typeof value !== "number" || !Number.isFinite(value)) {
-            return { ok: false, error: `采纳产能保障方案：杠杆行缺 objectId/prop/value（收到 ${JSON.stringify(l)}）——拒绝臆造写入` };
-          }
-          const obj = await repos.objects.get(draft.tenantId, objectId);
-          if (!obj) return { ok: false, error: `采纳产能保障方案：对象不存在 ${objectId}` };
-          await repos.objects.put({ ...obj, props: { ...obj.props, [prop]: value }, origin: { type: "MANUAL" } });
-          written.push(`${objectId}.${prop}`);
-        }
-        // 派生重算：让下游 KPI/派生属性立刻反映本次采纳（与「对象数据变更」同一套）。
-        await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
-        // targetRef 自证写了什么、写了几处——**刻意不使用 MO- 前缀**（那正是假单号的形态）。
-        return { ok: true, targetRef: `CAP-ADOPT:${written.length}:${written[0]}` };
+        // 写入实现见上方 `applyLeverWrites`（与带杠杆的 plan_change 共用同一份·不许再抄第二份）。
+        return applyLeverWrites(draft, parseLevers(draft.payload), "采纳产能保障方案", "CAP-ADOPT");
       }
 
       // ── 采纳处置方案 adopt_mitigation（G-ACTION-NOOP-EXEC 收口 · 本类型此前审批通过后一字节不写）──

@@ -125,8 +125,6 @@ for (const name of writebackNames) {
 //    NO_WRITE 的正当用途只有一个：**租户经 registerType 自注册的键**（平台侧不可能有内置执行器，
 //    判 NOT_IMPLEMENTED 会误杀正当功能）——那条路径走的是 `ACTION_WIRING[key] ?? "NO_WRITE"` 的默认值，
 //    根本不进 ACTION_WIRING 表。所以内置键出现 NO_WRITE 本身就可疑，必须留下可复核的书面理由。
-const ratStart = actionsSrc.indexOf("export const NO_WRITE_RATIONALE");
-if (ratStart < 0) fails.push("锚点失效：actions.ts 找不到 NO_WRITE_RATIONALE（断言⑤ 依赖它·勿删）");
 // ⚠️ 取花括号体用**配平扫描**，不用 `indexOf("\n};")`：后者只认多行缩进写法，遇到单行
 // `= { k: "v" };` 直接 -1 → slice 出垃圾 → 明明登记了却报"没登记"（假红），换个形态就可能变假绿。
 // 这个 bug 是本门自己做变异反证时当场暴露的——门的解析器也要经得起变形。
@@ -140,11 +138,32 @@ const braceBody = (src, from) => {
   }
   return "";
 };
-const ratBody = ratStart >= 0 ? braceBody(actionsSrc, ratStart) : "";
-// 不锚行首（单行字面量里多个键挤在一行），键允许带引号 / 中文 / 下划线。
-const rationale = new Map(
-  [...ratBody.matchAll(/(?:^|[{,\s])"?([\p{L}\p{N}_$]+)"?\s*:\s*"([^"]*)"/gu)].map((m) => [m[1], m[2]]),
-);
+// 键允许带引号 / 中文 / 下划线；值允许跨行由 `+` 拼接的长字符串（只取第一段即可判空/判占位）。
+// ⚠️ 本解析器**同时**服务断言⑤（NO_WRITE_RATIONALE）与断言⑥（NOT_IMPLEMENTED_RATIONALE）——
+//    刻意共用同一份实现，不许各抄一份：抄了就是装饰品（改主正则时另一份拿旧的照跑、照绿）。
+// ⚠️ 锚点必须**带词边界**找，不许用 `indexOf(anchor)`：`NOT_IMPLEMENTED_RATIONALE` 是
+//    `NOT_IMPLEMENTED_RATIONALE_RENAMED` 的**前缀**，于是「有人把这张签字簿重构掉」这个变异
+//    会让 indexOf 照样命中改名后的表、照样解析出理由 → **门变绿并打印"均已签实名理由"**。
+//    这个洞是本门自己做变异反证时当场抖出来的（改名→绿），与断言⑤当年那个 `indexOf("\n};")`
+//    是同一形态：**解析器自己骗自己**。`\b` 在 `E` 与 `_` 之间不成立，故它正好挡住这类改名。
+const findAnchor = (src, anchor) => {
+  const m = new RegExp(`export\\s+const\\s+${anchor}\\b`).exec(src);
+  return m ? m.index : -1;
+};
+const parseRationale = (src, anchor) => {
+  const at = findAnchor(src, anchor);
+  if (at < 0) return null; // null = 锚点失效（与"表存在但为空"是两回事，调用方分开处置）
+  const body = braceBody(src, at);
+  return new Map(
+    [...body.matchAll(/(?:^|[{,\s])"?([\p{L}\p{N}_$]+)"?\s*:\s*(?:"([^"]*)"|`([^`]*)`)/gu)].map((m) => [
+      m[1],
+      m[2] ?? m[3] ?? "",
+    ]),
+  );
+};
+const ratStart = findAnchor(actionsSrc, "NO_WRITE_RATIONALE");
+if (ratStart < 0) fails.push("锚点失效：actions.ts 找不到 NO_WRITE_RATIONALE（断言⑤ 依赖它·勿删）");
+const rationale = parseRationale(actionsSrc, "NO_WRITE_RATIONALE") ?? new Map();
 const PLACEHOLDER = /^\s*(|-|—|TODO|TBD|N\/A|待定|无|暂无|见上|同上)\s*$/i;
 for (const key of registered) {
   if (wiring.get(key) !== "NO_WRITE") continue;
@@ -161,6 +180,35 @@ for (const key of registered) {
   }
 }
 
+// ⑥ 已注册**内置** ActionType 若标 NOT_IMPLEMENTED，必须在 `NOT_IMPLEMENTED_RATIONALE` 里签**为什么没接**。
+//    （WO-ACTION-NOOP-EXEC 新增·与⑤对称）病灶：三态里 NOT_IMPLEMENTED 此前是唯一「红着、却没人要求解释」的一态。
+//    于是一条欠账可以永远停在「没接」，而**「没接」与「为什么没接」是两个不同的命题、处置相反**：
+//      · 「该写而没写」⇒ 排单去接；
+//      · 「域映射缺失」⇒ 先立承载对象/读端，硬接就是假 MO 号换件衣服（本仓刚清掉的那个病）。
+//    只写前者，等于把判断留给下一个读代码的人重新推算一遍——而本仓已实证：那个推算每轮都错
+//    （本体 §116 与 §8 两处同源过期）。故要求签字，且理由随执行期错误吐给用户与审计（notImplementedResult）。
+const niAnchor = "NOT_IMPLEMENTED_RATIONALE";
+const niRationale = parseRationale(actionsSrc, niAnchor);
+if (niRationale === null) {
+  fails.push(
+    `锚点失效：actions.ts 找不到 ${niAnchor}（断言⑥ 依赖它·勿删）—— ` +
+      `它是"每条欠账必须说清为什么没接"的签字簿。`,
+  );
+}
+for (const key of registered) {
+  if (wiring.get(key) !== "NOT_IMPLEMENTED") continue;
+  const why = niRationale?.get(key);
+  if (why === undefined) {
+    fails.push(
+      `断言⑥ 已注册内置 ActionType「${key}」标了 NOT_IMPLEMENTED 但没在 NOT_IMPLEMENTED_RATIONALE 里签理由 —— ` +
+        `「没接」不等于「说清了为什么没接」，而这两件事的修法相反（该写而没写 ⇒ 排单接；域映射缺失 ⇒ 先立落点）。` +
+        `请写清：这一型的 payload 到底该落到**哪个对象的哪个属性**上，以及今天为什么落不了。`,
+    );
+  } else if (PLACEHOLDER.test(why)) {
+    fails.push(`断言⑥ 「${key}」的 NOT_IMPLEMENTED 理由是占位词「${why}」—— 签字要签真话，占位等于没签。`);
+  }
+}
+
 if (fails.length > 0) {
   console.error(`\n✗ action-wiring:check 失败（${fails.length}）：`);
   for (const f of fails) console.error(`  - ${f}`);
@@ -172,5 +220,6 @@ console.log(
   `\n✓ action-wiring:check 通过：${registered.length} 个已注册 ActionType 全部显式归类` +
     `（WIRED ${byW.WIRED ?? 0} · NO_WRITE ${byW.NO_WRITE ?? 0} · NOT_IMPLEMENTED ${byW.NOT_IMPLEMENTED ?? 0}）；` +
     `WIRED 者在 domainExecutor 均有真分支；兜底为诚实执行器（无假 MO 号产地）；` +
-    `mapping.ts ${writebackNames.size} 条写回声明与接线态无矛盾；NO_WRITE 内置项 ${byW.NO_WRITE ?? 0} 个均已签实名理由。`,
+    `mapping.ts ${writebackNames.size} 条写回声明与接线态无矛盾；NO_WRITE 内置项 ${byW.NO_WRITE ?? 0} 个均已签实名理由；` +
+    `NOT_IMPLEMENTED 内置项 ${byW.NOT_IMPLEMENTED ?? 0} 个均已签「为什么没接」实名理由（断言⑥）。`,
 );
