@@ -86,9 +86,10 @@ describe("WO-ACTIVE-EDGE-UX · 前端接缝：从 workspace 到「关掉一条�
       gaps: Record<string, { reason: string; why: string }>;
     };
     for (const p of roster.pages) {
-      if (p.key in baseline.gaps) {
+      const gap = baseline.gaps[p.key];
+      if (gap) {
         // 在册的缺口必须写得出理由 —— 没有理由的挂账把棘轮降级成白名单。
-        expect(`${p.key}:${(baseline.gaps[p.key].why ?? "").length > 40}`).toBe(`${p.key}:true`);
+        expect(`${p.key}:${(gap.why ?? "").length > 40}`).toBe(`${p.key}:true`);
         continue;
       }
       expect(`${p.key}:file`).toBe(`${p.key}:${p.file ? "file" : "MISSING"}`);
