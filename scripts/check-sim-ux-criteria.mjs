@@ -73,8 +73,18 @@ const SRC = {
   edgeGate: "scripts/check-edge-active-mounts.mjs",
 };
 
-/** 三态 —— 只有这三个词合法。「部分」「基本满足」「已融入」一律判非法（判据②）。 */
-export const STATES = ["符合", "不符合", "判不了"];
+/**
+ * 四态 —— 只有这四个词合法。「部分」「基本满足」「已融入」一律判非法（判据②）。
+ *
+ * ⚠ **`不适用` 是 WO-HARNESS-UX-GAP-1 加的第四态，它不是 `判不了` 的近义词**：
+ *   · `判不了` = 问题是对的，但今天答不出来 ⇒ **是欠账**，要么补取证要么上门 B；
+ *   · `不适用` = **问题问错了对象**（判据预设的那个东西在这一页上不存在，
+ *     如「排除项与主因同图」而该页根本没有图）⇒ **不是欠账，不许排进优先级**。
+ * 合并这两个词会同时造出两种错：把不该做的事排进排期，和把真欠账当成已裁决。
+ * 代价是 `不适用` 极易被当成免死金牌，故判据⑥ 要求它**逐格**在 §4.3 登记理由
+ * （比 `判不了` 的**逐判据**登记更严 —— 越像豁免的东西，举证责任越重）。
+ */
+export const STATES = ["符合", "不符合", "判不了", "不适用"];
 /** 判「这是推演功能吗」的词面判据：用户看到的那个名字里有没有这两个词之一。 */
 const SIM_WORD = /推演|沙盘/;
 /**
@@ -233,11 +243,33 @@ export function parsePrdTable(md) {
   const reasons = new Set();
   for (const m of (section(md, "### 4.2") ?? "").matchAll(/U\d+b?/g)) reasons.add(m[0]);
 
+  /**
+   * §4.2 **拆账**（B-x 明账）—— §2.1 的判据改写把「不可判的那半」拆了出去，
+   * 拆出去的每一条必须在这里留名。删掉它 = 下一个人把「表里判不了 0」读成「这条要求验完了」，
+   * 而那正是本单最容易被误读的一行数（判据⑦）。
+   */
+  const carveOffs = new Set();
+  for (const m of (section(md, "### 4.2") ?? "").matchAll(/\bB-\d+\b/g)) carveOffs.add(m[0]);
+
+  /**
+   * §4.3 **`不适用` 逐格登记**：`| \`page-key\` | U4b | 理由 |`。
+   * 三列缺一不可 —— 只有页和判据、理由栏空着的行**不算登记**（那是把豁免写成了填空题）。
+   */
+  const naReg = new Set();
+  for (const line of (section(md, "### 4.3") ?? "").split("\n")) {
+    if (!line.trim().startsWith("|")) continue;
+    const cs = cells(line);
+    if (cs.length < 3) continue;
+    const page = (cs[0].match(/`([a-z0-9-]+)`/) ?? [])[1];
+    const crit = (cs[1].match(/^(U\d+b?)$/) ?? [])[1];
+    if (page && crit && cs[2].replace(/[—\-\s]/g, "") !== "") naReg.add(`${page}×${crit}`);
+  }
+
   // §0.1 指代冲突表：甲 / 乙 / 丙 三行
   const s01 = section(md, "### 0.1") ?? "";
   const conflict = ["甲", "乙", "丙"].filter((t) => new RegExp(`\\|\\s*\\*{0,2}${t}\\*{0,2}\\s*\\|`).test(s01));
 
-  return { criteria, rows, reasons, conflict, illegal };
+  return { criteria, rows, reasons, carveOffs, naReg, conflict, illegal };
 }
 
 /* ═══════════════════ 金丝雀（与主判据共用上面那两个函数）══════════════════════ */
@@ -254,21 +286,34 @@ const CANARY_PRD_OK = [
   "| 页 | U1 改输入即重演 | U2 分步 |",
   "|---|---|---|",
   "| 沙盘 `sim-sandbox` | **符合** | 判不了 |",
-  "| 假设 `what-if` | 不符合 | 判不了 |",
+  "| 假设 `what-if` | 不符合 | 不适用 |",
   "",
   "### 4.1 依据",
   "略",
   "",
-  "### 4.2 判不了的理由",
-  "| 判据 | 为什么 |",
-  "|---|---|",
-  "| U2（2 格） | 需渲染 |",
+  "### 4.2 拆出去的那一半",
+  "| # | 判据 | 为什么 |",
+  "|---|---|---|",
+  "| **B-1** | U2（2 格） | 需渲染 |",
+  "",
+  "### 4.3 不适用逐格登记",
+  "| 页 | 判据 | 理由 |",
+  "|---|---|---|",
+  "| `what-if` | U2 | 该页没有分步这回事 |",
 ].join("\n");
 
-/** 必不中样例：把一格写成「部分」（判据② 要抓的正是这种含糊词）+ 抽掉「丙」行。 */
+/**
+ * 必不中样例，四处一起坏（判据 ②⑤⑥⑦ 各一处），全部喂给**同一个** `parsePrdTable`：
+ *  · 把一格写成「部分」（②要抓的含糊词）
+ *  · 抽掉「丙」行（⑤）
+ *  · 把 §4.3 的登记理由挖空（⑥：只有页和判据、理由空着 ⇒ 不算登记）
+ *  · 抽掉 §4.2 的 `B-1` 拆账（⑦）
+ */
 const CANARY_PRD_BAD = CANARY_PRD_OK
-  .replace("| 假设 `what-if` | 不符合 | 判不了 |", "| 假设 `what-if` | 部分 | 判不了 |")
-  .replace("| **丙** | c | z |", "");
+  .replace("| 沙盘 `sim-sandbox` | **符合** | 判不了 |", "| 沙盘 `sim-sandbox` | 部分 | 判不了 |")
+  .replace("| **丙** | c | z |", "")
+  .replace("| `what-if` | U2 | 该页没有分步这回事 |", "| `what-if` | U2 | — |")
+  .replace("| **B-1** | U2（2 格） | 需渲染 |", "| — | U2（2 格） | 需渲染 |");
 
 const CANARY_SRC = {
   viewManifest: [
@@ -319,14 +364,17 @@ export function canaries() {
   const notok = parsePrdTable(CANARY_PRD_BAD);
   const src = parseSources(CANARY_SRC);
 
-  // ①必中：合法表解析出 2 行 × 2 判据、零非法、三方冲突表齐、§4.2 覆盖 U2
+  // ①必中：合法表解析出 2 行 × 2 判据、零非法（含「不适用」被认作合法）、三方冲突表齐、
+  //        §4.2 覆盖 U2 且拆账 B-1 在册、§4.3 逐格登记了 `what-if × U2`
   if (!(ok.rows.length === 2 && ok.criteria.join(",") === "U1,U2" && ok.illegal.length === 0 &&
-        ok.conflict.length === 3 && ok.reasons.has("U2"))) {
-    bad.push(`①必中样例：rows=${ok.rows.length} criteria=${ok.criteria.join(",")} illegal=${ok.illegal.length} conflict=${ok.conflict.length}（应为 2 / U1,U2 / 0 / 3）`);
+        ok.conflict.length === 3 && ok.reasons.has("U2") &&
+        ok.carveOffs.has("B-1") && ok.naReg.has("what-if×U2"))) {
+    bad.push(`①必中样例：rows=${ok.rows.length} criteria=${ok.criteria.join(",")} illegal=${ok.illegal.length} conflict=${ok.conflict.length} carveOffs=${[...ok.carveOffs].join("/")} naReg=${[...ok.naReg].join("/")}（应为 2 / U1,U2 / 0 / 3 / B-1 / what-if×U2）`);
   }
-  // ②必不中：「部分」必须被判非法，且「丙」行缺失必须被发现
-  if (!(notok.illegal.length === 1 && notok.illegal[0].value === "部分" && notok.conflict.length === 2)) {
-    bad.push(`②必不中样例：illegal=${JSON.stringify(notok.illegal)} conflict=${notok.conflict.length}（应为 1 条「部分」 / 2）`);
+  // ②必不中：「部分」判非法 · 「丙」行缺失 · §4.3 理由挖空后不算登记 · §4.2 拆账被抽掉
+  if (!(notok.illegal.length === 1 && notok.illegal[0].value === "部分" && notok.conflict.length === 2 &&
+        notok.naReg.size === 0 && notok.carveOffs.size === 0)) {
+    bad.push(`②必不中样例：illegal=${JSON.stringify(notok.illegal)} conflict=${notok.conflict.length} naReg=${notok.naReg.size} carveOffs=${notok.carveOffs.size}（应为 1 条「部分」 / 2 / 0 / 0）`);
   }
   // ③源头提取：注释行不算、BLOCK 不算、别名归一（risk→risk-board·sandbox→sim-sandbox）
   const want = { A: "risk-board", B: "sim-sandbox", C: "project-sim,risk-board,sim-sandbox", D: "cleanroom-attr", E: "sim-sandbox" };
@@ -453,6 +501,33 @@ function main() {
   for (const r of prd.rows) for (const [c, v] of Object.entries(r.cells)) if (v === "判不了") undecidable.add(c);
   for (const c of [...undecidable].sort()) {
     if (!prd.reasons.has(c)) fail.push(`③ 判不了必须有理由：判据 ${c} 有「判不了」的格，但 §4.2 理由表里没有它 —— 「判不了」不许当免死金牌`);
+  }
+
+  /*
+   * 判据⑥ **`不适用` 逐格登记**（WO-HARNESS-UX-GAP-1 加）。
+   * 举证责任按「这个词有多像免死金牌」定：`判不了` 逐**判据**给理由就够（③），
+   * 而 `不适用` 说的是「这条判据在这一页上根本不成立」—— 那是**替这一格豁免掉一条横向要求**，
+   * 所以必须**逐格**在 §4.3 写明「判据预设的那个对象在这一页上为什么不存在」。
+   * 只有页和判据、理由栏写「—」的行不算登记（解析侧已剔），否则豁免就成了填空题。
+   */
+  const naCells = [];
+  for (const r of prd.rows) {
+    for (const [c, v] of Object.entries(r.cells)) if (v === "不适用") naCells.push({ page: canon(r.key, s.alias), criterion: c });
+  }
+  for (const n of naCells) {
+    if (!prd.naReg.has(`${n.page}×${n.criterion}`)) {
+      fail.push(`⑥ 不适用逐格登记：${n.page} × ${n.criterion} 记「不适用」，但 §4.3 里没有它带理由的那一行 —— 「不适用」不是免死金牌，它要说清「判据预设的那个对象为什么在这一页上不存在」`);
+    }
+  }
+
+  /*
+   * 判据⑦ **拆账不许丢**（WO-HARNESS-UX-GAP-1 加）。
+   * §2.1 的判据改写把「不可判的那半」拆去了 §4.2 的 B-x 明账。删掉那张表，
+   * 「表里判不了 0」就会被下一个人读成「这条要求已经验完了」—— 而两者之间隔着的正是这几条。
+   * 形态照铁律 0.6：**「我用『判据表里没有判不了』当作『这条要求验完了』的证据，而前者并不度量后者。」**
+   */
+  if (prd.carveOffs.size === 0) {
+    fail.push(`⑦ 拆账不许丢：§4.2 里一条 \`B-x\` 明账都没有 —— 判据改写把「不可判的那半」拆了出去，拆出去的必须留名，否则「判不了 0」会被读成「都验过了」`);
   }
 
   // 判据⑤ 指代冲突登记
