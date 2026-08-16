@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, ADMIN, type TestApp } from "./helpers.js";
+import { BATTERY_ACTION_TYPES } from "../src/synthetic/battery.js";
 
 /**
  * WO-ACTION-NOOP-EXEC · 非 global-sim 的 `plan_change` **按 payload 形态二分**（G-ACTION-NOOP-EXEC 续接）。
@@ -177,6 +178,86 @@ describe("plan_change（非 global-sim）· 按 payload 形态二分：带杠杆
     expect(done.executionResult.error).toContain("拒绝臆造写入");
     expect(Number(await readProp(t, "Equipment", eq.id, "oee_current"))).toBeCloseTo(eq.oee, 6);
   }, 120000);
+});
+
+/**
+ * ── 兜底线普查（WO-ACTION-NOOP-EXEC · 机器先说话）──────────────────────────────
+ *
+ * 为什么要有这一条：`G-ACTION-NOOP-EXEC` 这张账被人手改过四轮，每轮都留下一句
+ * 「现在还剩 N 型」，而**每一轮的那个 N 到下一轮都是错的**（本体 §116 与 §8 两处同源过期
+ * 就是实证）。根因是那个数一直靠**读代码推算**，没有任何机器在数。
+ *
+ * 本条把「还剩几型落兜底线」变成**跑出来的**结果：把每个已注册 ActionType 用一份最小合法载荷
+ * 真推过 `建草稿 → 提交 → 审批 → domainExecutor`，看它最终**落在哪条线上**。
+ * 判别标记是 `EXECUTOR_NOT_IMPLEMENTED:` —— 它只由 `actions.ts notImplementedResult()` 产出，
+ * 是兜底线的唯一出口；任何其它结局（EXECUTED、或"情景不存在"这类**领域**错误）都证明它进了真分支。
+ *
+ * ⚠️ 金丝雀内置：`对象数据变更` / `采纳产能保障方案` 是**确知已接**的型。它们若也被数进兜底线，
+ *    那是本普查的手法坏了（载荷构造错 / 审批路由变了），**不许**读作「代码没接」。
+ */
+const MINIMAL_PAYLOADS: Record<string, Record<string, unknown>> = {
+  adopt_mitigation: { base: "常州", factor: "cf-nonexistent-probe", planKey: "probe" },
+  plan_change: { versionId: "census:probe", reason: "普查探针（无杠杆形态）" },
+  AOP情景拍板: { scenarioKey: "__census_probe__", year: 2026 },
+  校准参数变更: { proposalId: "__census_probe__", mode: "approve" },
+  采纳经营方案: { schemeNo: "壹", scheme: {}, targets: {} },
+  定稿月度计划版本: { versionId: "__census_probe__", snapshot: {} },
+  计划版本变更: { versionId: "__census_probe__", reason: "普查探针" },
+  采纳产能保障方案: { modelId: "4680-NCM", levers: [] },
+  对象数据变更: { objectId: "__census_probe__", patch: {}, reason: "普查探针" },
+  流水线发布物化: { workflowId: "__census_probe__", nodeId: "n1", rows: [] },
+};
+
+/** 已知**确已接**真执行器的型（金丝雀基准·改这里等于改基准，请连同论据一起改）。 */
+const KNOWN_WIRED_CANARIES = ["对象数据变更", "采纳产能保障方案"];
+
+/**
+ * 实测golden：**跑出来的**、当前真正落在兜底线上的型。
+ * 改这个数组前必须先跑本用例看新输出，**不许照着源码推算**（那正是本条要根治的病）。
+ */
+const EXPECTED_FALLBACK = ["采纳经营方案"];
+
+describe("兜底线普查 · 「还剩几型审批通过后什么都不写」由机器数，不由人推算", () => {
+  it("逐型真推过 domainExecutor，落兜底线者必须恰好等于登记在案的那一组", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+
+    const registered = BATTERY_ACTION_TYPES.map((a) => a.key);
+    expect(registered.length, "BATTERY_ACTION_TYPES 读出 0 型 ⇒ **本普查坏了**，不许读作『没有动作类型』").toBeGreaterThan(0);
+
+    const fallback: string[] = [];
+    const realBranch: { key: string; outcome: string }[] = [];
+    for (const key of registered) {
+      const payload = MINIMAL_PAYLOADS[key];
+      expect(payload, `新增了 ActionType「${key}」却没给普查载荷 —— 本普查会漏数它，请补 MINIMAL_PAYLOADS`).toBeTruthy();
+      const done = await submitAndApprove(t, key, payload!);
+      const err = String(done.executionResult.error ?? "");
+      if (err.includes("EXECUTOR_NOT_IMPLEMENTED")) fallback.push(key);
+      else realBranch.push({ key, outcome: done.status + (err ? `(${err.slice(0, 60)})` : "") });
+    }
+
+    // 普查结果原样打印——交单报告里的那个数字直接取这里，不再手抄。
+    // eslint-disable-next-line no-console
+    console.log(
+      `\n[兜底线普查] 已注册 ${registered.length} 型｜落兜底线 ${fallback.length} 型：${fallback.join("、") || "（无）"}\n` +
+        realBranch.map((r) => `   进真分支：${r.key} → ${r.outcome}`).join("\n"),
+    );
+
+    // ★ 金丝雀先说话：确知已接的型若也被数进兜底线，是手法坏了，不是代码没接。
+    for (const c of KNOWN_WIRED_CANARIES) {
+      expect(
+        fallback,
+        `⛔ 金丝雀「${c}」被数进了兜底线 ⇒ **本普查的手法坏了**（载荷/审批路由/判别标记变了）。` +
+          `本次普查结论作废：不许据此报「还剩 N 型没接」。`,
+      ).not.toContain(c);
+    }
+
+    expect(
+      [...fallback].sort(),
+      "兜底线成员变了。多出来 = 有型退回空执行（回潮）；少了 = 有型接上了，" +
+        "请同步改 EXPECTED_FALLBACK 与本体 §8 G-ACTION-NOOP-EXEC 的状态描述（**别只改代码不改账**）。",
+    ).toEqual([...EXPECTED_FALLBACK].sort());
+  }, 300000);
 });
 
 describe("采纳经营方案 · 域映射缺失 ⇒ 诚实失败（**不是**忘了接·勿改成 NO_WRITE 洗白）", () => {

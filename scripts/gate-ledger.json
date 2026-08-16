@@ -11,10 +11,10 @@
         "apps/datacore/src/synthetic/battery.ts"
       ],
       "escalation": "审核方",
-      "ontologyRef": "§7:841",
+      "ontologyRef": "§7:1793",
       "provenRed": {
         "kind": "MUTATION",
-        "evidence": "本体 §7 行841",
+        "evidence": "本体 §7 行1793",
         "note": "径走 `ACTION_WIRING[key] ?? \"NO_WRITE\"` 根本不进表，故内置键出现 `NO_WRITE` 本身就可疑。四条变异反证已跑：洗白无理由→红 / 与 mapping 打架→红 / 占位理由→红 / **签"
       },
       "notes": ""
