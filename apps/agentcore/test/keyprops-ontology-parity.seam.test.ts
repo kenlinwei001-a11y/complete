@@ -114,6 +114,25 @@ function splitTopLevel(arrBody: string): string[] {
 
 const propKeysIn = (s: string): string[] => [...s.matchAll(/propKey:\s*"([^"]+)"/g)].map((m) => m[1]!);
 
+/**
+ * `const xxxProps: PropertyDef[] = [...]` / `DerivedPropertyDef[]` → 变量名 → 属性名。
+ *
+ * 🚦 **主逻辑与金丝雀共用这一份**（房规：各抄一份正则的金丝雀是装饰品 —— 改主正则时它拿旧的去测、照样绿）。
+ * ⚠ 注意 `m.index + m[0].length - 1`：正则末尾那个 `[` 才是数组开头。
+ *   写成 `text.indexOf("[")` 会命中**类型标注** `PropertyDef[]` 的那个 `[` ⇒ 抽出空数组
+ *   —— 本单第一版金丝雀就是这么写的，当场被自己咬红（正是这条金丝雀该干的事）。
+ */
+function collectPropVarDecls(text: string): { vars: Map<string, string[]>; unresolved: string[] } {
+  const vars = new Map<string, string[]>();
+  const unresolved: string[] = [];
+  for (const m of text.matchAll(/(?:const|let)\s+(\w+)\s*:\s*(?:Property|DerivedProperty)Def\[\]\s*=\s*\[/g)) {
+    const body = balanced(text, m.index! + m[0].length - 1, "[", "]");
+    if (body) vars.set(m[1]!, propKeysIn(body));
+    else unresolved.push(`变量 ${m[1]} 的数组体配平失败`);
+  }
+  return { vars, unresolved };
+}
+
 export type OntologyProps = Map<string, Set<string>>;
 
 /**
@@ -131,12 +150,8 @@ export function extractOntologyProps(): { props: OntologyProps; unresolved: stri
 
   // ── ① battery.ts：`const xxxProps: PropertyDef[] = [...]` + `batteryObjectTypes()` 注册体
   const bat = stripComments(readFileSync(join(REPO_ROOT, ONTOLOGY_SOURCES[0]), "utf8"));
-  const varProps = new Map<string, string[]>();
-  for (const m of bat.matchAll(/(?:const|let)\s+(\w+)\s*:\s*(?:Property|DerivedProperty)Def\[\]\s*=\s*\[/g)) {
-    const body = balanced(bat, m.index! + m[0].length - 1, "[", "]");
-    if (body) varProps.set(m[1]!, propKeysIn(body));
-    else unresolved.push(`变量 ${m[1]} 的数组体配平失败`);
-  }
+  const { vars: varProps, unresolved: varErrs } = collectPropVarDecls(bat);
+  unresolved.push(...varErrs);
   const fnIdx = bat.indexOf("export function batteryObjectTypes()");
   const retArr = fnIdx < 0 ? null : balanced(bat, bat.indexOf("[", bat.indexOf("return [", fnIdx)), "[", "]");
   if (!retArr) unresolved.push("batteryObjectTypes() 的 return 数组抽不出来");
@@ -203,11 +218,32 @@ describe("§1 · 抽取器自证（不中就报「工具坏了」，不许报「
     // 第一版抽取器就栽在这里：`cadenceProps` 的 description 里有 `∈[0, everyDays)`，
     // 不跳字符串就会把 `[` 计进深度 ⇒ 整个 cadenceProps 抽不出来 ⇒ 读作「Cadence 没有属性」。
     expect(props.get("Cadence"), "Cadence 的属性抽空了 ⇒ 括号配平又把字符串当代码算了").toContain("everyDays");
-    // 同一条判据的合成必中样例（与主逻辑共用 balanced/splitTopLevel，不另抄一份）。
-    const synth = `const xProps: PropertyDef[] = [\n  { propKey: "a", description: "相位 ∈[0, n) 且 {不闭合" },\n  { propKey: "b" },\n];`;
-    const body = balanced(synth, synth.indexOf("["), "[", "]");
-    expect(body, "合成样例都配平不了 ⇒ balanced 坏了").not.toBeNull();
-    expect(propKeysIn(body!)).toEqual(["a", "b"]);
+
+    // 合成必中样例 —— 走**主逻辑同一个入口** `collectPropVarDecls`，不另抄一份配平。
+    // description 里那句 `∈[0, n)` 逐字仿 `battery.ts` 的 `cadenceProps.offsetDays`：不跳字符串就会
+    // 把 `[` 计进深度、把 `)` 当括号 ⇒ 抽出空表 ⇒ 结论反转成「Cadence 没有属性」。
+    const synth = [
+      `const xProps: PropertyDef[] = [`,
+      `  { propKey: "a", description: "周期内相位，∈[0, everyDays) 且含 { 不闭合的花括号" },`,
+      `  { propKey: "b" },`,
+      `];`,
+    ].join("\n");
+    const got = collectPropVarDecls(synth);
+    expect(got.unresolved, "合成样例都配平不了 ⇒ balanced 坏了，本节一切结论作废").toEqual([]);
+    expect(got.vars.get("xProps"), "字符串里的括号又把配平算歪了").toEqual(["a", "b"]);
+
+    // 反向必判假：把「跳字符串」这一步拿掉，同一段样例必须抽**不**出来 ——
+    // 证明上面那条绿是「跳字符串」给的，不是碰巧（只跑正向只能证明今天绿，跑反向才证明是谁给的牙）。
+    const naive = (t: string): string | null => {
+      let d = 0;
+      const s = t.indexOf("[", t.indexOf("= ["));
+      for (let i = s; i < t.length; i++) {
+        if (t[i] === "[") d++;
+        else if (t[i] === "]") { d--; if (d === 0) return t.slice(s, i + 1); }
+      }
+      return null;
+    };
+    expect(propKeysIn(naive(synth) ?? ""), "不跳字符串竟然也抽对了 ⇒ 本条金丝雀没在验它该验的东西").not.toEqual(["a", "b"]);
   });
 
   it("金丝雀 E · 剥注释管线活着（双向：注释不算代码 · 代码不许被当注释吃掉）", () => {
