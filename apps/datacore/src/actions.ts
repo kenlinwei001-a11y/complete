@@ -40,7 +40,16 @@ export const ACTION_WIRING: Record<string, ActionWiring> = {
   计划版本变更: "WIRED",
   对象数据变更: "WIRED",
   流水线发布物化: "WIRED",
-  // plan_change 仅 source==="global-sim" 有真回灌；其余 source 落未实现（执行期按 payload 二次判定）。
+  // plan_change 一个 key 承载**三条形态不同**的生产者，执行期按 payload 二次判定（WO-ACTION-NOOP-EXEC 实测）：
+  //   ① source==="global-sim"（`GlobalSimView.tsx:354`）→ GlobalSimPlanExecutor 真回灌基线；
+  //   ② 带真本体属性杠杆 `payload.levers[{objectType,objectId,prop,value}]`
+  //      （`RiskBoardView.tsx adoptScenario()` 发的 `LiveScenario.apply`）→ **本单接上**：与
+  //      `采纳产能保障方案` 同一套写入器落成属性真值 + runDerivations；
+  //   ③ 其余四条生产者（order-chain 结论 / coordinate_capacity 协调加产 / global-sim-scenario KPI 快照 /
+  //      sim_sandbox 结论）payload 里**没有任何可写的杠杆** → 诚实失败（理由随错误吐出）。
+  //      其中 sim_sandbox 两条的 payload 自带 `patch.simulated: true`：把模拟态结论直接写成真值
+  //      恰是 PRD-enterprise-decision-twin §4.1 明令禁止的「仿真世界回流真实世界」——
+  //      这条诚实失败是**正确行为**，不是欠账（见本体 §8 G-PLAN-CHANGE-NO-LEVER）。
   plan_change: "WIRED",
   采纳产能保障方案: "WIRED", // ← 已接：杠杆落成本体属性真值（app.ts）+ runDerivations；写回意图见 mapping.ts:85
   // ← 已接：审批通过后写 AdoptedMitigation 台账（app.ts）→ risk_timeline 真曲线自第 tn 天起扣 eff。
@@ -56,6 +65,14 @@ export const ACTION_WIRING: Record<string, ActionWiring> = {
   //    （增量 §0-4 / §7.11 规划建议「采纳方案」，payload = 方案快照 + 目标面板值）——
   //    载荷里带着方案与目标，却一个字节都不落，正是欠账形态。
   //    业务裁定（已定·勿改）：采纳一个方案**不得覆盖全局经营目标基线**（PLAN_GOAL_TARGETS）——「目标不能改」。
+  //
+  // ⚠️ WO-ACTION-NOOP-EXEC 逐型定性结论（**本单刻意不接·理由已实测·勿当成"忘了做"**）：
+  //    本型属「**域映射缺失**」而非「该写而没写」——四条论据全部实测，逐条见 `NOT_IMPLEMENTED_RATIONALE.采纳经营方案`。
+  //    一句话：载荷里的三样东西（公司级聚合预测 outcome / 目标面板 targets / 只活在求解器内部的 pathKey）
+  //    **没有一样能落到某个对象的某个属性上**，而 PRD 指定的落点（AOP 年度情景细化）今天的承载对象
+  //    `AnnualScenario` 属性全是已播种真值，覆盖即毁数。硬接 = 假 MO 号换件衣服（本仓刚清掉的那个病）。
+  //    正确的下一步是先立「方案采纳台账对象 + AOP 细化读端」这一对新要素（跨 battery.ts 注册 + 读端，
+  //    超出本单范围边界），已登记为本体 §8 `G-ADOPT-SCHEME-NO-CARRIER`。
   采纳经营方案: "NOT_IMPLEMENTED",
 };
 
@@ -75,6 +92,93 @@ export function planChangeIsWired(payload: unknown): boolean {
   return (payload as { source?: unknown } | undefined)?.source === "global-sim";
 }
 
+// ---------------------------------------------------------------------------
+// WO-ACTION-NOOP-EXEC · 本体属性杠杆：**两条生产路径共用的**真值写入最小单元
+// ---------------------------------------------------------------------------
+
+/**
+ * 杠杆行 `{objectType?, objectId, prop, value}` —— **不是本单发明的形状**，是两条已在跑的生产路径
+ * 各自独立长出来的同一个形状，故必须共用同一份解析实现（各抄一份必然漂移）：
+ *  · `采纳产能保障方案`：`payload.levers` 由 `discoverLevers` 产出（LEVER_PROP_META 真本体属性）；
+ *  · `plan_change`（非 global-sim·风险看板「采纳风险处置方案」）：`RiskBoardView.tsx adoptScenario()`
+ *    发 `payload.levers = LiveScenario.apply`，其契约（`frontend-shell/src/api/endpoints.ts` `LiveScenario`）
+ *    正是 `{ objectType: string; objectId: string; prop: string; value: number }[]`。
+ *
+ * ⚠️ 判据不放宽：任一行缺 `objectId` / `prop` / 有限数值 `value` → 整体 `INVALID`，**一个字节都不写**。
+ * 「猜一个值写下去」比「不写」危险得多——写错的真值之后无法与真数分辨（本仓刚清掉的假 MO 号同款病）。
+ */
+export interface OntologyLever {
+  objectType?: string;
+  objectId: string;
+  prop: string;
+  value: number;
+}
+
+export type LeverParse =
+  /** payload 里根本没有 `levers` 字段（或不是数组）——与「空数组」定性不同，处置也不同。 */
+  | { kind: "ABSENT" }
+  /** `levers: []` —— 生产者明确说了「没有杠杆」，执行即空转，拒绝。 */
+  | { kind: "EMPTY" }
+  /** 有行但行残缺 —— 拒绝臆造。 */
+  | { kind: "INVALID"; detail: string }
+  | { kind: "OK"; levers: OntologyLever[] };
+
+export function parseLevers(payload: Record<string, unknown> | undefined): LeverParse {
+  const raw = payload?.levers;
+  if (!Array.isArray(raw)) return { kind: "ABSENT" };
+  if (raw.length === 0) return { kind: "EMPTY" };
+  const levers: OntologyLever[] = [];
+  for (const r of raw) {
+    const row = (r ?? {}) as Record<string, unknown>;
+    const objectId = String(row.objectId ?? "");
+    const prop = String(row.prop ?? "");
+    const value = row.value;
+    if (!objectId || !prop || typeof value !== "number" || !Number.isFinite(value)) {
+      return { kind: "INVALID", detail: JSON.stringify(r) };
+    }
+    levers.push({
+      objectType: row.objectType === undefined ? undefined : String(row.objectType),
+      objectId,
+      prop,
+      value,
+    });
+  }
+  return { kind: "OK", levers };
+}
+
+/**
+ * 每型「为什么今天写不了」的**具体**理由（诚实失败时随错误信息一起吐给前端与审计）。
+ *
+ * 为什么要有这张表：`EXECUTOR_NOT_IMPLEMENTED` 那段通用文案只说了「没接」，说不出「为什么没接」。
+ * 而这两件事的处置完全不同 —— 「该写而没写」要排单去接，「域映射缺失」要先立映射再谈接。
+ * 把理由写在错误里，欠账就**在用户看得见的地方**可读，而不是只活在源码注释里。
+ */
+export const NOT_IMPLEMENTED_RATIONALE: Record<string, string> = {
+  采纳经营方案:
+    "域映射缺失（非「排期没排到」）：本型 payload 是 `{schemeNo, pathKey, scheme.outcome, targets}` —— " +
+    "`outcome{rev,gm,share,turns,cash,capex}` 是**公司级年度聚合预测**，不是任何本体对象的属性" +
+    "（`plan_generate` 在 `solvers/service.ts` 的读取声明是空数组：它一个核心对象类型都不读）；" +
+    "`targets` 是目标面板值，而业务已裁定「采纳一个方案不得覆盖全局经营目标基线（PLAN_GOAL_TARGETS）」；" +
+    "`pathKey` 在 datacore 全仓只存在于 `solvers/plan.ts` 内部，无任何跨模块消费方。" +
+    "PRD-plan-generate-1to1 §2/§3.4 指定的落点是「下发年度情景规划台(AOP)细化」，" +
+    "而 `AnnualScenario` 现有属性全是已播种的三情景真值，覆盖即毁真值。" +
+    "⇒ 需先立「方案采纳台账 + AOP 细化读端」这一对新要素，才谈得上接执行器（见本体 §8 G-ADOPT-SCHEME-NO-CARRIER）。",
+};
+
+/**
+ * 诚实失败结果的**唯一产地**：统一 `EXECUTOR_NOT_IMPLEMENTED:` 前缀（前端/审计据此识别），
+ * 并把该型的具体缺口拼在后面。`why` 显式传入时优先于 `NOT_IMPLEMENTED_RATIONALE`
+ * （给「同一个 key 但不同 payload 形态」的场景用——如非 global-sim 的 `plan_change`）。
+ */
+export function notImplementedResult(key: string, why?: string): { ok: false; error: string } {
+  const base =
+    `EXECUTOR_NOT_IMPLEMENTED: 动作类型「${key}」尚未接入真实执行器，审批通过后不会写入任何真值。` +
+    `此处诚实失败而非返回占位单号——曾经的兜底会返回 MO-2026-xxxx 形态的假工单号，` +
+    `使「没做」与「做了」在界面与审计里完全无法区分（G-ACTION-NOOP-EXEC）。`;
+  const rationale = why ?? NOT_IMPLEMENTED_RATIONALE[key];
+  return { ok: false, error: rationale ? `${base}【本型的具体缺口】${rationale}` : base };
+}
+
 /**
  * 未接线动作的**诚实执行器**：取代此前返回假 MO 号的兜底。
  * NOT_IMPLEMENTED → `ok:false`（草稿落 EXECUTION_FAILED·错误码可被前端/审计识别）；
@@ -91,13 +195,8 @@ export class UnwiredActionExecutor implements ActionExecutor {
     // 在 ACTION_WIRING 里显式标 NOT_IMPLEMENTED → 诚实失败，让欠账可见、可门禁、不可伪装成 NO_WRITE。
     const wiring: ActionWiring = ACTION_WIRING[key] ?? "NO_WRITE";
     if (wiring === "NO_WRITE") return { ok: true, targetRef: `NO_WRITE:${key}` };
-    return {
-      ok: false,
-      error:
-        `EXECUTOR_NOT_IMPLEMENTED: 动作类型「${key}」尚未接入真实执行器，审批通过后不会写入任何真值。` +
-        `此处诚实失败而非返回占位单号——曾经的兜底会返回 MO-2026-xxxx 形态的假工单号，` +
-        `使「没做」与「做了」在界面与审计里完全无法区分（G-ACTION-NOOP-EXEC）。`,
-    };
+    // 具体缺口（若已登记）随错误一起吐出——让「为什么没接」在界面与审计里可读，不只活在源码注释里。
+    return notImplementedResult(key);
   }
 }
 
