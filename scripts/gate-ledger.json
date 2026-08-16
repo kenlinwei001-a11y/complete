@@ -1144,8 +1144,9 @@
         "apps/frontend-shell/src/pages/ShellLayout.tsx",
         "apps/frontend-shell/src/views/registry.ts",
         "apps/frontend-shell/src/views/sim/sandboxModes.ts",
+        "apps/frontend-shell/src/App.tsx",
         "docs/PRD-harness-ux-adoption.md",
-        "scripts/check-edge-active-mounts.mjs",
+        "scripts/lib/sim-page-roster.mjs",
         "scripts/sim-ux-criteria-baseline.json"
       ],
       "escalation": "审核方",
@@ -1155,7 +1156,7 @@
         "evidence": "本体 §7「sim-ux-criteria 推演页 UX 判据表可核对性门」段 · 七向变异反证逐条真跑（2026-08-15）",
         "note": "七向 7/7 实跑，每条先证「变异体 != 原文」（字节数变化打印在案）再显式捕获退出码（out=$(cmd 2>&1); rc=$?，非管道尾 $?）：M1 删 §4 表的 order-chain 行 → ①枚举一致 + ④棘轮死账 RC=1；M2 把一格写成「部分」 → ②三态合法 RC=1（这正是本单要消灭的含糊词）；M3 删 §4.2 里 U3 那条理由 → ③判不了必须有理由 RC=1；M4 把 global-sim×U1 从「符合」改「判不了」 → ④棘轮倒退 + 总量 17→16 RC=1；M5 把 what-if×U1 从「不符合」改「符合」 → ④棘轮松弛（免检名额·反向遍历基线才发现得了）RC=1；M6 删 §0.1 的「丙」行 → ⑤指代冲突登记 RC=1；M7 在无扫描面的 cwd 跑 → RC=2 且明说「不许读作表合规」。逐条还原后复绿 RC=0、git status --porcelain 空。"
       },
-      "notes": "把仓主那句「所有推演的功能都要借鉴这个设计 UX」从台账里的三个字「已融入」变成可核对的东西。本门**不判 UX 好不好**（九条判据里今天只有 U4 真能机检，且已有门 check-edge-active-mounts.mjs），它判「判据表还算不算数」：①现算四源并集 ∪ 既有门名单 与 PRD §4 表逐页对齐（拦手抄漏页——既有门的 PAGES 至今漏 cleanroom-attr/disruption-radius/order-chain 三页，于是它们从未被问过、永远绿）·②三态只许 符合/不符合/判不了 ·③「判不了」必须在 §4.2 有理由 ·④棘轮 + 反向遍历基线的松弛检测 ·⑤指代冲突登记不许丢。已建**未接线**（binding=NONE·disposition=WIRE）：本单范围边界禁改 package.json 与 scripts/gate.sh，接线留给审核方；接线前靠人手 `node scripts/check-sim-ux-criteria.mjs`。"
+      "notes": "把仓主那句「所有推演的功能都要借鉴这个设计 UX」从台账里的三个字「已融入」变成可核对的东西。本门**不判 UX 好不好**（九条判据里今天只有 U4 真能机检，且已有门 check-edge-active-mounts.mjs），它判「判据表还算不算数」：①现算推演页名册 与 PRD §4 表逐页对齐 + 名册合法（拦手抄漏页）·②三态只许 符合/不符合/判不了 ·③「判不了」必须在 §4.2 有理由 ·④棘轮 + 反向遍历基线的松弛检测 ·⑤指代冲突登记不许丢。⚠️ **2026-08-16 WO-INFER-PAGE-SSOT 订正了判据① 自己的一个洞**：它原来的「现算四源并集 **∪ 既有门名单**」里，那个「既有门名单」读的正是 check-edge-active-mounts.mjs 里**手抄的 PAGES 数组** —— 即**拿一份手抄名单去校验另一份手抄名单**；两份都没有的页两道门一起看不见、一起绿。形态（铁律 0.6 句式）：「我用『另一道门的名单里有它』当作『它在受检面里』的证据。」现改为两道门共用同一支现算实现 scripts/lib/sim-page-roster.mjs（五条纳入判据 + 一条排除判据 + 三条交叉断言，每页带依据链），本门源码里一个页面键、一条源头正则都不存；guardedPaths 里的 check-edge-active-mounts.mjs 随之换成 scripts/lib/sim-page-roster.mjs（责任边界跟着真实依赖走）。金丝雀 5 → 14 向（名册库十向与 edge-active-mounts:check 同一支实现）。实测名册 12 页与 PRD §4 表 12 行仍逐页一致、棘轮 符合 17 不变 —— **改的是「这 12 页从哪来」，不是「哪 12 页」**。⚠️ 本条 notes 原末句写着「已建**未接线**（binding=NONE·disposition=WIRE）：接线留给审核方」—— **该措辞已过期**，本次删去：本门现已在 package.json 的 gates 串里（本条 binding 字段现算即 GATES_CHAIN，故不再带 disposition）。写在最容易被信的地方的过期事实比没有更危险。"
     },
     "check-sim-readiness.mjs": {
       "alias": null,
@@ -1462,18 +1463,23 @@
       "binding": "NONE",
       "guardedPaths": [
         "apps/frontend-shell/src/views/sim/EdgeActivePanel.tsx",
-        "apps/frontend-shell/src/views/sim/SandboxView.tsx",
-        "apps/frontend-shell/src/views/WhatIfView.tsx",
-        "apps/frontend-shell/src/views/RiskBoardView.tsx"
+        "scripts/lib/sim-page-roster.mjs",
+        "scripts/edge-active-mounts-baseline.json",
+        "apps/datacore/src/synthetic/view-manifest.ts",
+        "apps/frontend-shell/src/pages/ShellLayout.tsx",
+        "apps/frontend-shell/src/views/sim/sandboxModes.ts",
+        "apps/frontend-shell/src/views/registry.ts",
+        "apps/frontend-shell/src/App.tsx",
+        "apps/frontend-shell/src/views/**"
       ],
       "escalation": "审核方",
-      "ontologyRef": null,
+      "ontologyRef": "G-GATE-ROSTER-HANDCOPIED",
       "provenRed": {
         "kind": "MUTATION",
-        "evidence": "WO-GATE-LEDGER-FIX 补登账时三向变异实跑（2026-08-14 · 基线 d250622e）",
+        "evidence": "WO-GATE-LEDGER-FIX 补登账时三向变异实跑（2026-08-14 · 基线 d250622e）；WO-INFER-PAGE-SSOT 名册改现算后**七向重跑**（2026-08-16 · 基线 12260423）：① 真违规（整行删掉 WhatIfView 的挂载行）⇒ RC=1「what-if 未挂载」并打印它进名册的依据链；② C1 漏标（删 risk 的 sim:true，词面仍像推演）⇒ RC=1「C1 risk 漏标」；③ 名册缩水（删 plan-generate 的 sim:true —— 它词面不含「推演」故 C1 咬不到）⇒ RC=1「名册缩水 11<12」，证明反向漏检那条防线真的在咬；④ 判据本体失灵（打断名册库的 X1 排除）⇒ RC=2「名册金丝雀 ⑦X1 排除失效」；⑤ 判据本体失灵（删 analyze 的 MOUNTED_IN_SUBCOMPONENT 分支）⇒ RC=2「analyze 金丝雀必不中不符预期」；⑥ 未预期异常（main 首行 throw）⇒ RC=2；⑦ 扫描面缺失（在无源码的 cwd 里跑）⇒ RC=2「读不到 view-manifest.ts」。每条先自证「变异体 ≠ 原文」，撤回后 RC=0 且 git status 干净。⚠️ 变异① 第一次做**错**了：把 `<EdgeActivePanel` 改名成 `<EdgeActivePanelXXX`，而 analyze 用的是 `includes` **子串**匹配 ⇒ 改名后照样命中，得出 RC=0 的错误反证，差点据此判「门不咬真违规」。改成整行删除才是我要的那个变异体 —— 与下面 2026-08-14 那次「反斜杠 n」同族：变异反证必须先自证变异体 ≠ 原文，**且是你想要的那个变异体**。",
         "note": "补登账缘由：本门是 gate-ledger:check 判据①「无遗漏」当场抓出的唯一一条未登账门 —— 建门时漏登，于是它天然免疫门账治理（没人核它的 binding、责任边界、是否红过）。三向变异（每条先自证「变异体 ≠ 原文」，撤回后复绿、git status 干净、门 RC=0）：① 真违规 —— 把 PAGES 里 risk-board 指向确实没挂 EdgeActivePanel 的 App.tsx ⇒ RC=1「🔴 1/9 页不合格」，**没有**被兜底吞成 2；② 判据本体失灵 —— 删掉 analyze 里 MOUNTED_IN_SUBCOMPONENT 那条返回（子组件挂载不再被认出）⇒ 内嵌金丝雀当场报「🛠️ 工具坏了」RC=2，**不是**安静报「9/9 都挂对了」，证明金丝雀与主判据共用 analyze 同一份实现；③ 未预期异常 —— 在 main() 首行注入 throw ⇒ RC=2。⚠️ ③ 这条本单同批才成立：原文件**有** RC=2 出口却**缺顶层兜底**，未预期异常会走 node 默认退 1、撞上「真有页没挂」那个码（gate-exit-discipline:check 当场报红，本单一并补上）。兜底刻意用**形态 (a) 顶层 try/catch** 而非 process.on 全局 handler：本文件的 analyze 被 apps/frontend-shell/test/edge-active.seam.test.tsx import，顶层无条件注册全局 handler 会装进跑测试的那个进程、把无关异常抢走并 exit(2)，连累整个测试进程。⚠️ 变异 ③ 第一次做**错**了：用 shell 传 `\\n` 给 String.replace，插进去的是字面反斜杠 n ⇒ 注入的其实是**语法错误**（链接期失败，早于任何 try/catch），得出 RC=1 的错误反证，差点据此判「兜底没生效」。改用 JS 字面量传参后 RC=2。这正是 CLAUDE.md 记的「sed 是 BRE / python replace 静默 no-op」同族坑 —— 变异反证必须先自证变异体 ≠ 原文，**且是你想要的那个变异体**。"
       },
-      "notes": "NONE（未接任何链）：本门是 WO-ACTIVE-EDGE-UX 的一次性挂载点门，判的是 9 个推演页的 <EdgeActivePanel> 挂在**默认导出主组件**里、而不是只在跑完推演才渲染的子组件里（初稿真犯过：没跑过推演就看不见开关，而「先关一条边再看结果」恰是最常见用法 —— G-SKILL-REFGRAPH-DEAD-EXTRACTOR 同族：实现有、测试绿、链路走不到）。disposition=WIRE 的判断：判据是纯静态、零依赖、单次 <1s，接进 gates 链无成本，且页面清单 PAGES 会随新推演页增加而需要维护 —— 不接链就没人记得更新它。**未接前它的真实状态是「跑过一次就没人再跑」**，本次登账即为把这件事显式化，实际接链需同批改 package.json 的 gates 串与本条 binding，由审核方裁。",
+      "notes": "NONE（未接任何链）：本门是 WO-ACTIVE-EDGE-UX 的挂载点门，判的是推演页的 <EdgeActivePanel> 挂在**默认导出主组件**里、而不是只在跑完推演才渲染的子组件里（初稿真犯过：没跑过推演就看不见开关，而「先关一条边再看结果」恰是最常见用法 —— G-SKILL-REFGRAPH-DEAD-EXTRACTOR 同族：实现有、测试绿、链路走不到）。disposition=WIRE 的判断：判据是纯静态、零依赖、单次 <1s，接进 gates 链无成本。**未接前它的真实状态是「跑过一次就没人再跑」**，实际接链需同批改 package.json 的 gates 串与本条 binding，由审核方裁。⚠️ **2026-08-16 WO-INFER-PAGE-SSOT 大改：受检名册从手抄数组改成现算（闭 G-GATE-ROSTER-HANDCOPIED 本门这一侧）**。原文这句「页面清单 PAGES 会随新推演页增加而需要维护」本身就是病灶的自白 —— 需要人去维护的名单，就是会漏的名单：实测那份手抄的 9 条漏了 cleanroom-attr / disruption-radius / order-chain 三页，于是**它们从未被本门问过、永远绿**。形态（铁律 0.6 句式）：「我用『名单里那几个都合格』当作『所有该合格的都合格』的证据。」现在名册（连同「页 → 源码文件」映射）由 scripts/lib/sim-page-roster.mjs 从五个注册册现算，本门源码里一个页面键都不存；名册当场 9 → 12 页，多问出的 3 页缺口具名登记在 scripts/edge-active-mounts-baseline.json 的棘轮里（每条必填 why，只减不增）。同批新增两条反向防线：**名册规模棘轮**（现算页数 < 基线 ⇒ 红，堵「删掉 BUILTIN_VIEWS 的 sim:true 悄悄退出受检面」）与**交叉断言 C1**（词面含「推演|沙盘」却没标 sim:true ⇒ 漏标，红）。guardedPaths 随之从 4 条具体页面改成「名册的五个源头 + 面板 + 判据库 + 基线 + views 全树」—— 在门账里列 12 条页面路径就是把手抄名单换个地方再抄一遍。",
       "disposition": "WIRE"
     },
     "check-dbui-flow-order.mjs": {

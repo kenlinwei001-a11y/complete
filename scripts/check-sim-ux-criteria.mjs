@@ -14,12 +14,18 @@
  * （「我用 X 当作 Y 的证据，而 X 并不度量 Y」）。守判据表本身，是今天唯一能机械化且不失真的一层。
  *
  * ── 五条判据（同时成立才算过）────────────────────────────────────────────────
- *  ① **枚举一致**：**现算**的推演页全集（四源并集 ∪ 既有门名单）与 PRD §4 表的行逐个对齐。
- *     多一页少一页都红。拦的是「手抄漏页」—— 本仓已发生过两次：
+ *  ① **枚举一致**：**现算**的推演页名册与 PRD §4 表的行逐个对齐。多一页少一页都红。
+ *     拦的是「手抄漏页」—— 本仓已发生过两次：
  *       · `WO-ACTIVE-EDGE-UX.md §1` 的表漏了 `risk-board`（复核时补的，注释里写着）；
- *       · `check-edge-active-mounts.mjs` 的 `PAGES` 至今漏 `cleanroom-attr` / `disruption-radius` /
- *         `order-chain` 三个沙盘模式页 —— **它们从未被那道门问过**，于是永远绿。
+ *       · `check-edge-active-mounts.mjs` 的 `PAGES` 曾漏 `cleanroom-attr` / `disruption-radius` /
+ *         `order-chain` 三个页 —— **它们从未被那道门问过**，于是永远绿。
  *     形态：**「我用『门是绿的』当作『这些页都合格』的证据，而门的名单里根本没有它们。」**
+ *     ⚠ **WO-INFER-PAGE-SSOT 订正了本判据自己的一个洞**：它此前的「现算全集」里有一个源 E，
+ *     读的正是 `check-edge-active-mounts.mjs` 那个**手抄的 `PAGES` 数组** —— 也就是
+ *     **拿一份手抄名单去校验另一份手抄名单**。两份名单都没有的页，两道门一起看不见、一起绿。
+ *     形态（铁律 0.6 句式）：**「我用『另一道门的名单里有它』当作『它在受检面里』的证据。」**
+ *     现在名册由 `scripts/lib/sim-page-roster.mjs` 从**注册册**现算（五条纳入判据 + 一条排除判据
+ *     + 三条交叉断言，每页带依据链），两道门共用同一支实现，本文件里一个页面键都不存。
  *  ② **三态合法**：§4 表每一格必须是 `符合` / `不符合` / `判不了` 三者之一。
  *     拦的是把「判不了」写成「部分」「基本满足」「已融入」这类含糊词 —— **本单存在的全部理由**。
  *  ③ **判不了必须有理由**：凡某判据列出现过 `判不了`，该判据编号必须在 §4.2 的理由表里出现。
@@ -34,8 +40,9 @@
  *     删掉这张表 = 下一个人再把它当成已经定案的东西，然后基于错的指代物开工。
  *
  * ── 金丝雀（铁律 0.6：报否定结论前先自证工具，且**与主判据共用同一份实现**）──────────
- * 四向内嵌样例全部喂给**同一个** `parsePrdTable()` / `parseSources()`，不另抄一份正则
- * （抄了就是装饰品：改主正则时金丝雀拿旧的去测、照样绿。本仓 2026-08-08 实测过）。
+ * 内嵌样例全部喂给**同一个** `parsePrdTable()` / `ratchet()`，源头枚举那一层则跑
+ * `sim-page-roster.rosterCanary()`（十向，与 `edge-active-mounts:check` 同一支实现），
+ * 不另抄一份正则（抄了就是装饰品：改主正则时金丝雀拿旧的去测、照样绿。本仓 2026-08-08 实测过）。
  * 任一不符预期 ⇒ 打印「⛔ 工具坏了」并 **RC=2**，**不许**打印「表是合规的」。
  *
  * ── 退出码三分（不许合并）──────────────────────────────────────────────────
@@ -47,13 +54,13 @@
  *    源码里不存在那些量。硬编代理指标 = 度量写法不度量行为，本门刻意不做。
  *  · 本门**不判 §4 表里每一格填得对不对** —— 它判「格子合法、覆盖齐全、只许变好」。
  *    填错一格本门抓不到；那由 PRD §4.1 逐格依据 + 人工复审接住。
- *  · 判据① 的「现算全集」只认四个源头的**字面量**写法。改成循环/拼接生成 ⇒ 提取变空 ⇒
- *    金丝雀的下界断言当场报「工具坏了」（失败安全那一侧），不会静悄悄变绿。
+ *  · 判据① 的「现算名册」只认注册册里的**字面量**写法。改成循环/拼接生成 ⇒ 提取变空 ⇒
+ *    名册下界断言当场报「工具坏了」（失败安全那一侧），不会静悄悄变绿。
  *
  * 用法：
  *   node scripts/check-sim-ux-criteria.mjs            # 门
  *   node scripts/check-sim-ux-criteria.mjs --selftest # 只跑金丝雀
- *   node scripts/check-sim-ux-criteria.mjs --census    # 打印现算全集 + 四源分歧
+ *   node scripts/check-sim-ux-criteria.mjs --census    # 打印现算名册 + 逐判据贡献 + 排除项
  *   node scripts/check-sim-ux-criteria.mjs --seed      # 首次建账
  *   node scripts/check-sim-ux-criteria.mjs --tighten   # 只收紧不放松（收掉免检名额）
  */
@@ -61,17 +68,18 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
+import { canon, computeRoster, rosterCanary, SIM_SOURCE_FILES } from "./lib/sim-page-roster.mjs";
 
 const PRD = "docs/PRD-harness-ux-adoption.md";
 const BASELINE = "scripts/sim-ux-criteria-baseline.json";
-const SRC = {
-  viewManifest: "apps/datacore/src/synthetic/view-manifest.ts",
-  features: "apps/datacore/src/features.ts",
-  shellLayout: "apps/frontend-shell/src/pages/ShellLayout.tsx",
-  sandboxModes: "apps/frontend-shell/src/views/sim/sandboxModes.ts",
-  registry: "apps/frontend-shell/src/views/registry.ts",
-  edgeGate: "scripts/check-edge-active-mounts.mjs",
-};
+/**
+ * ⚠ WO-INFER-PAGE-SSOT：本门此前自己抄了一份「四源枚举 + 既有门名单」的实现，
+ * 其中**源 E 读的是 `check-edge-active-mounts.mjs` 里那个手抄的 `PAGES` 数组** ——
+ * 即「用一份手抄名单去校验另一份手抄名单」。名单里没有的页两边都看不见，于是两道门一起绿。
+ * 现在两道门共用同一份判据实现 `scripts/lib/sim-page-roster.mjs`（名单一律现算，
+ * 每页带依据链），本文件里**一个页面键、一条源头正则都不存**。
+ */
+const SRC = SIM_SOURCE_FILES;
 
 /**
  * 四态 —— 只有这四个词合法。「部分」「基本满足」「已融入」一律判非法（判据②）。
@@ -85,111 +93,6 @@ const SRC = {
  * （比 `判不了` 的**逐判据**登记更严 —— 越像豁免的东西，举证责任越重）。
  */
 export const STATES = ["符合", "不符合", "判不了", "不适用"];
-/** 判「这是推演功能吗」的词面判据：用户看到的那个名字里有没有这两个词之一。 */
-const SIM_WORD = /推演|沙盘/;
-/**
- * `sandbox` ≡ `sim-sandbox` —— 唯一一条**不能**从 `VIEW_ALIAS` 派生的等价对，故显式写死并说明理由：
- * 沙盘主入口是 `App.tsx` 直挂 Guard 的静态路由、**不经 registry 字符串键分发**
- * （本体 §7 `nav-group-coverage` 判据⑦ 已记：「反向 1 个 `sim-sandbox` 属 App.tsx 直挂 Guard
- * 不经 registry 分发，非缺陷」）。既有门 `check-edge-active-mounts.mjs` 用的是渲染器侧的
- * `sandbox`，四个枚举源用的是视图键 `sim-sandbox`，不对齐就会凭空多出一页。
- */
-const EXTRA_ALIAS = { sandbox: "sim-sandbox" };
-
-/* ═══════════════════ 唯一实现 · 源头枚举 ═══════════════════════════════════════ */
-
-/** 注释行不算数（`//` 开头 / 块注释续行 `*` 开头）—— 注释里提一嘴 ≠ 真登记了一个视图。 */
-function isComment(line) {
-  const t = line.trim();
-  return t.startsWith("//") || t.startsWith("*") || t.startsWith("/*");
-}
-
-/** `VIEW_ALIAS`（短键 → 规范键）：单一来源是前端 registry，本门不另抄一份别名表。 */
-export function parseViewAlias(registrySrc) {
-  const out = {};
-  const block = registrySrc.split("const VIEW_ALIAS")[1] ?? "";
-  const body = block.split("};")[0] ?? "";
-  for (const line of body.split("\n")) {
-    if (isComment(line)) continue;
-    const m = line.match(/^\s*"?([a-z0-9-]+)"?\s*:\s*"([a-z0-9-]+)"\s*,/);
-    if (m) out[m[1]] = m[2];
-  }
-  return out;
-}
-
-/** 规范化：短键 → 规范键 → 沙盘等价对。四个源头各用各的键，必须先对齐再比集合。 */
-export function canon(key, alias) {
-  const a = alias[key] ?? key;
-  return EXTRA_ALIAS[a] ?? a;
-}
-
-/**
- * 四源 + 既有门名单的枚举。**唯一实现** —— 金丝雀跑的就是它，不另抄正则。
- * @returns {{A:string[],B:string[],C:string[],D:string[],E:string[],union:string[],alias:object}}
- */
-export function parseSources({ viewManifest, features, shellLayout, sandboxModes, registry, edgeGate }) {
-  const alias = parseViewAlias(registry ?? "");
-  const c = (k) => canon(k, alias);
-
-  // 源 A · 后端内置视图（title 或 featureName 含「推演/沙盘」）
-  const A = [];
-  for (const line of (viewManifest ?? "").split("\n")) {
-    if (isComment(line)) continue;
-    const m = line.match(/\{\s*key:\s*"([^"]+)",\s*title:\s*"([^"]*)"/);
-    if (!m) continue;
-    const fn = line.match(/featureName:\s*"([^"]*)"/);
-    if (SIM_WORD.test(m[2]) || (fn && SIM_WORD.test(fn[1]))) A.push(c(m[1]));
-  }
-
-  // 源 B · Entitlement 注册表，**只取 VIEW 级**（BLOCK 级是页内的块不是页，
-  //        取进来会凭空多出 `dash`/`graph` 这种不是推演页的东西）。
-  const B = [];
-  for (const line of (features ?? "").split("\n")) {
-    if (isComment(line)) continue;
-    const m = line.match(/\{\s*key:\s*"([^"]+)",\s*name:\s*"([^"]*)",\s*level:\s*"VIEW"/);
-    if (m && SIM_WORD.test(m[2])) B.push(c(m[1].replace(/\./g, "-").replace(/^view-/, "")));
-  }
-
-  // 源 C · 左导航「推演」组里的全部条目（含 `.map` 展开那一行）
-  const C = [];
-  {
-    let inGroup = false;
-    for (const line of (shellLayout ?? "").split("\n")) {
-      if (/title:\s*"推演"/.test(line)) { inGroup = true; continue; }
-      if (!inGroup) continue;
-      if (/^\s{2}\},\s*$/.test(line)) { inGroup = false; continue; }
-      if (isComment(line)) continue;
-      const one = line.match(/kind:\s*"(?:route|view)"\s*as\s*const,\s*key:\s*"([^"]+)"/);
-      if (one) C.push(c(one[1]));
-      const spread = line.match(/\.\.\.\[([^\][{}]+)\]\.map\(/);
-      if (spread) for (const q of spread[1].match(/"([^"]+)"/g) ?? []) C.push(c(q.replace(/"/g, "")));
-    }
-  }
-
-  // 源 D · 沙盘模式收编表（原独立推演页 → 沙盘的一个模式）
-  const D = [];
-  {
-    const blk = (sandboxModes ?? "").split("SANDBOX_MODE_ORIGIN_VIEW")[1] ?? "";
-    const body = blk.split("};")[0] ?? "";
-    for (const line of body.split("\n")) {
-      if (isComment(line)) continue;
-      const m = line.match(/^\s*\w+:\s*"([a-z0-9-]+)"\s*,/);
-      if (m) D.push(c(m[1]));
-    }
-  }
-
-  // 源 E · 既有门 `check-edge-active-mounts.mjs` 的手抄名单（**当作一个源来对账，不当作真理**）
-  const E = [];
-  for (const line of (edgeGate ?? "").split("\n")) {
-    if (isComment(line)) continue;
-    const m = line.match(/\[\s*"([a-z0-9-]+)",\s*"(apps\/[^"]+)"\s*\]/);
-    if (m) E.push(c(m[1]));
-  }
-
-  const uniq = (xs) => [...new Set(xs)].sort();
-  const union = uniq([...A, ...B, ...C, ...D, ...E]);
-  return { A: uniq(A), B: uniq(B), C: uniq(C), D: uniq(D), E: uniq(E), union, alias };
-}
 
 /* ═══════════════════ 唯一实现 · PRD 判据表解析 ═════════════════════════════════ */
 
@@ -315,54 +218,11 @@ const CANARY_PRD_BAD = CANARY_PRD_OK
   .replace("| `what-if` | U2 | 该页没有分步这回事 |", "| `what-if` | U2 | — |")
   .replace("| **B-1** | U2（2 格） | 需渲染 |", "| — | U2（2 格） | 需渲染 |");
 
-const CANARY_SRC = {
-  viewManifest: [
-    "  // { key: \"comment-only\", title: \"推演注释\" },   ← 注释里的不算",
-    "  { key: \"risk\", title: \"产能推演\", renderer: \"risk-board\", featureName: \"风险推演看板\" },",
-    "  { key: \"order\", title: \"订单台账\", renderer: \"ledger\", featureName: \"订单台账\" },",
-  ].join("\n"),
-  features: [
-    "  { key: \"sim.sandbox\", name: \"推演沙盘\", level: \"VIEW\", defaultOn: false },",
-    "  { key: \"view.graph.persp.flow\", name: \"图谱·产能推演网络\", level: \"BLOCK\", defaultOn: true },",
-  ].join("\n"),
-  shellLayout: [
-    "  {",
-    "    title: \"推演\",",
-    "    items: [",
-    "      { kind: \"route\" as const, key: \"sim-sandbox\", label: \"推演沙盘\", feature: \"sim.sandbox\" },",
-    "      ...[\"project-sim\", \"risk\"].map((key) => ({ kind: \"view\" as const, key })),",
-    "    ],",
-    "  },",
-    "  {",
-    "    title: \"归因与风险\",",
-    "    items: [{ kind: \"view\" as const, key: \"process-wait\" }],",
-    "  },",
-  ].join("\n"),
-  sandboxModes: [
-    "export const SANDBOX_MODE_ORIGIN_VIEW: Record<SandboxMode, string | null> = {",
-    "  now: null,",
-    "  attribute: \"cleanroom-attr\",",
-    "};",
-  ].join("\n"),
-  registry: [
-    "const VIEW_ALIAS: Record<string, string> = {",
-    "  risk: \"risk-board\",",
-    "  optimize: \"optimize-whatif\",",
-    "};",
-  ].join("\n"),
-  edgeGate: [
-    "const PAGES = [",
-    "  [\"sandbox\", \"apps/frontend-shell/src/views/sim/SandboxView.tsx\"],",
-    "];",
-  ].join("\n"),
-};
-
-/** 四向金丝雀。任一不符预期 ⇒ 工具坏了（RC=2），**不许**报「表是合规的」。 */
+/** 金丝雀。任一不符预期 ⇒ 工具坏了（RC=2），**不许**报「表是合规的」。 */
 export function canaries() {
   const bad = [];
   const ok = parsePrdTable(CANARY_PRD_OK);
   const notok = parsePrdTable(CANARY_PRD_BAD);
-  const src = parseSources(CANARY_SRC);
 
   // ①必中：合法表解析出 2 行 × 2 判据、零非法（含「不适用」被认作合法）、三方冲突表齐、
   //        §4.2 覆盖 U2 且拆账 B-1 在册、§4.3 逐格登记了 `what-if × U2`
@@ -376,11 +236,10 @@ export function canaries() {
         notok.naReg.size === 0 && notok.carveOffs.size === 0)) {
     bad.push(`②必不中样例：illegal=${JSON.stringify(notok.illegal)} conflict=${notok.conflict.length} naReg=${notok.naReg.size} carveOffs=${notok.carveOffs.size}（应为 1 条「部分」 / 2 / 0 / 0）`);
   }
-  // ③源头提取：注释行不算、BLOCK 不算、别名归一（risk→risk-board·sandbox→sim-sandbox）
-  const want = { A: "risk-board", B: "sim-sandbox", C: "project-sim,risk-board,sim-sandbox", D: "cleanroom-attr", E: "sim-sandbox" };
-  for (const [k, v] of Object.entries(want)) {
-    if (src[k].join(",") !== v) bad.push(`③源 ${k} 提取=「${src[k].join(",")}」应为「${v}」`);
-  }
+  // ③源头枚举：跑名册库自己的十向金丝雀（**与 edge-active-mounts:check 同一支实现**，
+  //   不在本文件另抄一份源头正则 —— 抄了就是装饰品，改主正则时这里拿旧的去测、照样绿）。
+  const rc = rosterCanary();
+  for (const b of rc.bad) bad.push(`③名册库：${b}`);
   // ④棘轮方向：同一份比较逻辑，倒退与松弛各一例
   const r = ratchet({ base: { a: { U1: "符合", U2: "不符合" } }, now: { a: { U1: "判不了", U2: "符合" } } });
   if (!(r.regressed.length === 1 && r.slack.length === 1 && r.dead.length === 0)) {
@@ -424,7 +283,7 @@ function toolBroken(what, hint) {
 }
 
 // ⚠ 刻意用顶层 try/catch，**不用** `process.on("uncaughtException")`：本文件导出的
-// `parsePrdTable` / `parseSources` / `ratchet` 可被测试 import（金丝雀与主逻辑共用同一份实现
+// `parsePrdTable` / `canaries` / `ratchet` 可被测试 import（金丝雀与主逻辑共用同一份实现
 // 那条纪律的落点）；顶层无条件注册全局 handler 会装进跑测试的那个进程，一旦别处抛未捕获异常
 // 就会被本门抢走并 exit(2)，把整个测试进程带走。try 只包住「被直接执行时才跑的那一句」。
 const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? "").href;
@@ -452,27 +311,31 @@ function main() {
     console.error("   ⛔ 不许把本次结果读作「判据表合规」。");
     process.exit(2);
   }
-  console.log(`✅ 金丝雀 5/5（必中表 · 必不中表「部分」被抓 · 四源提取含注释/BLOCK/别名三向 · 棘轮双向 · 基线写入器四向）`);
+  console.log(`✅ 金丝雀 14/14（必中表 · 必不中表「部分」被抓 · 名册库十向 · 棘轮双向 · 基线写入器四向）`);
   if (flag("--selftest")) { console.log("（--selftest：只跑金丝雀，未比对仓库内容）"); return; }
 
-  // ── 现算四源 + 既有门名单 ──────────────────────────────────────────────
+  // ── 现算推演页名册（判据的单一来源 · 与 edge-active-mounts:check 同一支实现）──────
   const srcTexts = Object.fromEntries(Object.entries(SRC).map(([k, p]) => [k, read(p)]));
-  const s = parseSources(srcTexts);
-  // 下界自证：任一源头提取为空 ⇒ 供给侧被重构成解析不了的写法 ⇒ 差集恒空 ⇒ 门恒绿（失败危险方向）
-  for (const k of ["A", "C", "D", "E"]) {
-    if (s[k].length === 0) toolBroken(`源 ${k} 提取为 0 条`, "四个源头都不可能真的空；提取为空 = 解析器瞎了，不是仓库里没有推演页。");
+  const roster = computeRoster(srcTexts);
+  const s = { union: roster.pages.map((p) => p.key), alias: roster.alias, byRule: roster.sources.byRule };
+  // 下界自证：任一判据提取为空 ⇒ 供给侧被重构成解析不了的写法 ⇒ 差集恒空 ⇒ 门恒绿（失败危险方向）
+  for (const k of ["R1", "R3", "R4", "R5"]) {
+    if (s.byRule[k].length === 0) toolBroken(`判据 ${k} 提取为 0 条`, "这几条判据的源头都不可能真的空；提取为空 = 解析器瞎了，不是仓库里没有推演页。");
   }
   if (Object.keys(s.alias).length === 0) toolBroken("VIEW_ALIAS 提取为 0 条", "别名表空 ⇒ 键无法归一 ⇒ 同一页会被算成两页。");
 
   if (flag("--census")) {
-    console.log("\n── 现算推演页全集（四源 + 既有门名单）──");
-    for (const k of ["A", "B", "C", "D", "E"]) console.log(`  源 ${k}: ${s[k].join(" ") || "（空）"}`);
-    console.log(`  并集 ${s.union.length}: ${s.union.join(" ")}`);
-    const only = (a, b) => a.filter((x) => !b.includes(x));
-    const enumerated = [...new Set([...s.A, ...s.B, ...s.C, ...s.D])].sort();
-    console.log(`\n── 四源分歧 ──`);
-    console.log(`  枚举有而既有门无：${only(enumerated, s.E).join(" ") || "（无）"}`);
-    console.log(`  既有门有而枚举无：${only(s.E, enumerated).join(" ") || "（无）"}`);
+    console.log(`\n── 现算推演页名册（${roster.pages.length} 页 · scripts/lib/sim-page-roster.mjs）──`);
+    for (const p of roster.pages) {
+      console.log(`  ${p.key.padEnd(18)} ${p.file ?? "（解析不到源码文件）"}`);
+      for (const w of p.why) console.log(`      ← ${w}`);
+    }
+    console.log(`\n── 逐判据贡献 ──`);
+    for (const [k, v] of Object.entries(s.byRule)) console.log(`  ${k}: ${v.length} · ${v.join(" ") || "（空）"}`);
+    console.log(`\n── 有理由地排除（不是漏掉）──`);
+    for (const e of roster.excluded) console.log(`  ${e.key.padEnd(18)} ${e.why}`);
+    console.log(`\n── 交叉断言 ──`);
+    console.log(roster.violations.length ? roster.violations.map((v) => `  ${v.code} ${v.key}：${v.detail}`).join("\n") : "  （零违规）");
     return;
   }
 
@@ -484,7 +347,10 @@ function main() {
 
   const fail = [];
 
-  // 判据① 枚举一致
+  // 判据① 枚举一致（名册合法性也归本判据 —— 名册非法时「一致」这句话本身就没意义）
+  for (const v of roster.violations) {
+    fail.push(`① 名册合法：${v.code} ${v.key} —— ${v.detail}`);
+  }
   const tableKeys = [...new Set(prd.rows.map((r) => canon(r.key, s.alias)))].sort();
   const missing = s.union.filter((k) => !tableKeys.includes(k));
   const extra = tableKeys.filter((k) => !s.union.includes(k));
@@ -571,7 +437,7 @@ function main() {
   }
 
   // ── 报告 ────────────────────────────────────────────────────────────────
-  console.log(`· 现算推演页全集 ${s.union.length} 页（源 A ${s.A.length} · B ${s.B.length} · C ${s.C.length} · D ${s.D.length} · 既有门 E ${s.E.length}）`);
+  console.log(`· 现算推演页名册 ${s.union.length} 页（R1 ${s.byRule.R1.length} · R2 ${s.byRule.R2.length} · R3 ${s.byRule.R3.length} · R4 ${s.byRule.R4.length} · R5 ${s.byRule.R5.length}）· 有理由排除 ${roster.excluded.length} 个沙盘内部构件 · 交叉断言违规 ${roster.violations.length}`);
   console.log(`· PRD §4 表：${prd.rows.length} 页 × ${prd.criteria.length} 判据 = ${prd.rows.length * prd.criteria.length} 格 · 符合 ${rr.conform}${prev ? `（基线 ${prev.conform}）` : ""}`);
   console.log(`· 「判不了」出现在 ${undecidable.size} 个判据上，§4.2 理由覆盖 ${prd.reasons.size} 个`);
 

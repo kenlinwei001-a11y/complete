@@ -1,0 +1,20 @@
+{
+  "note": "edge-active-mounts 棘轮基线：**已知缺口**（推演页未挂 EdgeActivePanel）的具名登记，只许降不许升。受检名册由 scripts/lib/sim-page-roster.mjs **现算**，本文件里一个页面键都不存 —— 名单一手抄，新增的页就永远不在里面、于是永远绿（本体 §8 G-GATE-ROSTER-HANDCOPIED）。`gaps.<page>.reason` 归机器算；`gaps.<page>.why` 与本 note 归人手，由 scripts/lib/baseline-doc.mjs 保证 --tighten 不吞人话。补挂面板属产品改动：收口时删掉对应条目并跑 --tighten，额度即收回。",
+  "generatedBy": "node scripts/check-edge-active-mounts.mjs --seed",
+  "gaps": {
+    "cleanroom-attr": {
+      "reason": "NO_MOUNT",
+      "why": "**这三条挂账不是新发现的债，是本门第一次问出口的旧债** —— WO-INFER-PAGE-SSOT 把受检名册从手抄的 9 条改成现算的 12 条之前，本页从未被本门问过一次（G-GATE-ROSTER-HANDCOPIED 的确切现场）。缺口本身早已在册：docs/PRD-harness-ux-adoption.md §4 的 U4「反事实开关」列，本页写的就是**不符合**。为什么本单不顺手补挂：给一页加 <EdgeActivePanel> 是**产品改动**（要定它在这页的位置、要定 sessionId 从哪来、要配 SEAM 测试），不在 WO-INFER-PAGE-SSOT 的范围边界内（本单只碰名册与门）。收口路径：补挂 → 删本条 → 跑 --tighten，额度当场收回；不收紧的话反向棘轮会把它当「免检名额」报红。"
+    },
+    "disruption-radius": {
+      "reason": "NO_MOUNT",
+      "why": "同 cleanroom-attr：本页是沙盘「影响半径」模式的原独立页（SANDBOX_MODE_ORIGIN_VIEW.radius），此前不在手抄名单里 ⇒ 从未被问过。PRD §4 的 U4 列已记为**不符合**，与本条一致（两处说同一件事，不是新增结论）。补挂属产品改动，不在本单范围边界内；收口 = 补挂 + 删本条 + --tighten。"
+    },
+    "order-chain": {
+      "reason": "NO_MOUNT",
+      "why": "同上，唯依据不同：本页凭 R3（左导航「推演」组成员）进名册 —— ShellLayout 的注释写明它与 project-sim/global-sim/risk/decision-play 一样是「独立场景（各自的求解器、各自的一页）」，故留在推演组、不收编进沙盘。PRD §4 的 U4 列同样记为**不符合**。补挂属产品改动，不在本单范围边界内；收口 = 补挂 + 删本条 + --tighten。"
+    }
+  },
+  "gapCount": 3,
+  "rosterSize": 12
+}
