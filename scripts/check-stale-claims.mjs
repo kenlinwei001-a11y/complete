@@ -733,6 +733,47 @@ export function runStaleSelfMark(mark, live) {
 }
 
 /**
+ * 把一段自述切成**句** —— ⑩ 的作用域单位。
+ *
+ * ⚠ **为什么必须切到句，不能停在"单元"**（2026-08-16 变异反证 M4 当场抖出来的洞）：
+ *   一个块注释就是**一个单元**，四十行里只要**任何一处**出现过 ISO 日期，
+ *   整块四十行的现状计数就全被当成史料放行。实测：往《做不到的部分》里注入一句
+ *   「本门今天守着 42 条链路」（无日期无赌注），门 **RC=0 照样报绿** ——
+ *   因为同块的第 3 条里写着 2026-08-08。
+ *   形态（铁律 0.6 句式）：**「我用『这一块里有日期』当作『这句话有保质期』的证据，
+ *   而前者并不度量后者。」** 与本文件早就记过的边界 #5（单元切大了会把邻居的日期算成自己的）
+ *   是同一个病 —— 那条边界当时只是"记着"，没有机制，于是它照样发生了。
+ *
+ * 切法（**无窗口**，只认真正的句读）：
+ *   · 在 `。` `；` 处断句；
+ *   · **空注释行**断段（`*` 或 `//` 后什么都没有）；
+ *   · **软换行不断**（中文注释里一句话折两行是常态，按行切会把日期与计数生生劈开）。
+ * 判据落在句读上而不是行数上，是因为「窗宽一改结论就变，等于把判据交给运气」——
+ * 这条戒律本文件另外两处（主语必须同行 · 记号贴不贴着）已经付过学费。
+ */
+export function selfSentences(text) {
+  const out = [];
+  let cur = "";
+  for (const raw of text.split("\n")) {
+    const body = raw.replace(/^\s*(?:\/\/|\*)?[ \t]?/, "");
+    if (body.trim() === "") {
+      if (cur.trim()) out.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += body;
+    let i = cur.search(/[。；]/);
+    while (i !== -1) {
+      out.push(cur.slice(0, i + 1));
+      cur = cur.slice(i + 1);
+      i = cur.search(/[。；]/);
+    }
+  }
+  if (cur.trim()) out.push(cur);
+  return out;
+}
+
+/**
  * ⑨⑩ 判据本体（**纯函数** —— 金丝雀直接喂它，与自扫描共用这同一份实现）。
  *
  * @param {string} text     声明单元原文
@@ -754,16 +795,22 @@ export function judgeSelfUnit(text, markText, live) {
     const r = runStaleSelfMark(m, live);
     if (!r.ok) out.push({ code: "STALE-9", detail: r.reason });
   }
-  // ⑩ 史料按**语法上下文**排除：同单元带 ISO 日期戳 ⇒ 「那天测的」，保质期写在脸上
-  const isHistory = DATE_PATTERNS.some((re) => re.test(text));
-  const { marks: factMarks } = parseStaleFactMarks(markText);
-  if (SELF_STATE_CLAIM.test(text) && !isHistory && marks.length === 0 && factMarks.length === 0) {
+  // ── ⑩ 逐**句**判：证据（日期戳 / 赌注）必须与那个计数**同句** ────────────────
+  // 作用域刻意做成对称的：日期与赌注都只在**它自己那一句**里算数。
+  // 放宽任何一边，都会退回 M4 抖出来的那个洞 ——「四十行里有一处日期/一条赌注，
+  // 整块的现状计数就全免检」。判据是句读，不是行数窗。
+  for (const s of selfSentences(text)) {
+    if (!SELF_STATE_CLAIM.test(s)) continue;
+    if (DATE_PATTERNS.some((re) => re.test(s))) continue; // 同句带日期 ⇒ 史料，保质期写在脸上
+    if (extractSelfMarks(s).marks.length > 0) continue; // 同句带赌注 ⇒ 机器每次现算复核
     out.push({
       code: "STALE-10",
       detail:
-        "门的自述里用**现状口吻**报了一个计数（今天/今日/现在/当前/实测 + 数字 + 量词），却既无日期戳也无赌注 —— " +
+        `门的自述里这一句用**现状口吻**报了一个计数，却**同句**既无日期戳也无赌注：「${s.trim().slice(0, 70)}」 —— ` +
         "没有保质期、也没有机器复核，上游一变这句话就变成一道**会说谎的门**。" +
-        "修法：① 若说的是史料 ⇒ 补上实测日期（YYYY-MM-DD）；② 若说的是此刻 ⇒ 挂 @stale-self <口径名> <op><n>，把这句话赌的口径写下来。",
+        "修法：① 若说的是史料 ⇒ 在**这一句里**补实测日期（YYYY-MM-DD）；" +
+        "② 若说的是此刻 ⇒ 在**这一句里**挂 @stale-self <口径名> <op><n>，把它赌的口径写下来。" +
+        "（证据写在四十行外的另一条里不算 —— 那正是本层变异反证 M4 抓出来的洞。）",
     });
   }
   return out;
@@ -1185,49 +1232,68 @@ function markSweepCanary() {
  * 变异反证喂的是「故意写过时的自述」，两类各一条：
  *   · 赌注失守（数字与现算不符）⇒ 必须 STALE-9；
  *   · 现状口吻报数、无日期无赌注 ⇒ 必须 STALE-10。
- * 再各配一条必**不**咬（赌注相符 / 带日期的史料），证明它不是「见数字就红」的噪声门。
+ * 再配上必**不**咬那一组（赌注同句相符 / 软换行 / 带日期的史料 / 反引号举例 / 无计数散文），
+ * 证明它不是「见数字就红」的噪声门。样例表见 `SELF_MUST_BITE` / `SELF_MUST_NOT_BITE`。
  */
+const SELF_CANARY_LIVE = { "canary.alpha": 11, "canary.beta": 0 };
+
+/**
+ * 必咬（门自述层）。**提到模块级、不藏在函数里**：末行那句「N 必咬 + M 必不咬」
+ * 要**现算**这两个数 —— 把条数写死进文案，正是本单在治的那个病。
+ */
+const SELF_MUST_BITE = [
+  {
+    name: "⑨变异反证·赌注失守：自述写 0 条，而现算 11 条",
+    text: " * 写在源码里的记号，今天全仓 0 条（@stale-self canary.alpha ==0）。",
+    mark: " * 写在源码里的记号，今天全仓 0 条（@stale-self canary.alpha ==0）。",
+    expect: "STALE-9",
+  },
+  {
+    name: "⑩变异反证·现状口吻报数却既无日期也无赌注",
+    text: " * 后者今天有 6 条真数据在跑。",
+    mark: " * 后者今天有 6 条真数据在跑。",
+    expect: "STALE-10",
+  },
+  {
+    name: "⑨口径名打错 ⇒ 这条赌注从来没被执行过",
+    text: " * 今天 3 条（@stale-self canary.typo ==3）。",
+    mark: " * 今天 3 条（@stale-self canary.typo ==3）。",
+    expect: "STALE-9",
+  },
+  {
+    name: "⑨语法不完整 ⇒ 作者以为挂了赌注其实没挂",
+    text: " * 今天 3 条。",
+    mark: " * 今天 3 条。 @stale-self 大概三条吧",
+    expect: "STALE-9",
+  },
+  {
+    // M4 抖出来的洞：证据落在**同一块的另一条**里，不算数
+    name: "⑩证据不同句：块里别处有日期与赌注，但这一句自己什么都没有",
+    text: " * 3. 2026-08-08 那天实测到 6 例（@stale-self canary.alpha ==11）。\n *\n * 16. 本门今天守着 42 条链路。",
+    mark: " * 3. 2026-08-08 那天实测到 6 例（@stale-self canary.alpha ==11）。\n *\n * 16. 本门今天守着 42 条链路。",
+    expect: "STALE-10",
+  },
+];
+
+/** 必**不**咬（门自述层）。咬了就是噪声门 —— 噪声一多，白名单一长，门就死了。 */
+const SELF_MUST_NOT_BITE = [
+  // ⚠ 终态形式是**赌注与那个数同句**（就像 @stale-fact 要求记号贴着那条字面量）：
+  //   写在四十行外的另一条里不算数，那正是 M4 抖出来的洞。
+  { name: "赌注与计数同句 ⇒ 放行（这就是本层要的终态）", text: " * 今天全仓 11 条（@stale-self canary.alpha ==11）。", mark: " * 今天全仓 11 条（@stale-self canary.alpha ==11）。" },
+  { name: "软换行不断句：赌注折到下一行仍算同句 ⇒ 放行", text: " * 今天全仓 11 条\n * （@stale-self canary.alpha ==11）。", mark: " * 今天全仓 11 条\n * （@stale-self canary.alpha ==11）。" },
+  { name: "带 ISO 日期戳的史料 ⇒ 放行（保质期写在脸上，本仓刻意保留的错账）", text: " * 2026-08-08 一天之内实测到 6 例同一个病。", mark: " * 2026-08-08 一天之内实测到 6 例同一个病。" },
+  { name: "语法举例整段放进反引号 ⇒ 术语提及，不是坏赌注", text: " * 语法说明。", mark: " * 语法：`@stale-self <口径名> <op><n>`，由门现算比对。" },
+  { name: "没有计数的普通说明 ⇒ 放行", text: " * 本层只对门自己那份自述开。", mark: " * 本层只对门自己那份自述开。" },
+];
+
 function selfClaimCanary() {
   const bad = [];
-  const LIVE = { "canary.alpha": 11, "canary.beta": 0 };
-  const cases = [
-    // ── 必咬（变异反证：两类各一条）────────────────────────────────────────────
-    {
-      name: "⑨变异反证·赌注失守：自述写 0 条，而现算 11 条",
-      text: " * 写在源码里的记号，今天全仓 0 条。",
-      mark: " * 写在源码里的记号，今天全仓 0 条。 @stale-self canary.alpha ==0",
-      expect: "STALE-9",
-    },
-    {
-      name: "⑩变异反证·现状口吻报数却既无日期也无赌注",
-      text: " * 后者今天有 6 条真数据在跑。",
-      mark: " * 后者今天有 6 条真数据在跑。",
-      expect: "STALE-10",
-    },
-    {
-      name: "⑨口径名打错 ⇒ 这条赌注从来没被执行过",
-      text: " * 今天 3 条。",
-      mark: " * 今天 3 条。 @stale-self canary.typo ==3",
-      expect: "STALE-9",
-    },
-    {
-      name: "⑨语法不完整 ⇒ 作者以为挂了赌注其实没挂",
-      text: " * 今天 3 条。",
-      mark: " * 今天 3 条。 @stale-self 大概三条吧",
-      expect: "STALE-9",
-    },
-  ];
-  for (const c of cases) {
+  const LIVE = SELF_CANARY_LIVE;
+  for (const c of SELF_MUST_BITE) {
     const codes = judgeSelfUnit(c.text, c.mark, LIVE).map((v) => v.code);
     if (!codes.includes(c.expect)) bad.push(`门自述必咬样例「${c.name}」没被咬（期望 ${c.expect}，实得 ${codes.join(",") || "无"}）`);
   }
-  const passCases = [
-    { name: "赌注相符 ⇒ 放行（这就是本层要的终态）", text: " * 今天全仓 11 条。", mark: " * 今天全仓 11 条。 @stale-self canary.alpha ==11" },
-    { name: "带 ISO 日期戳的史料 ⇒ 放行（保质期写在脸上，本仓刻意保留的错账）", text: " * 2026-08-08 一天之内实测到 6 例同一个病。", mark: " * 2026-08-08 一天之内实测到 6 例同一个病。" },
-    { name: "语法举例整段放进反引号 ⇒ 术语提及，不是坏赌注", text: " * 语法说明。", mark: " * 语法：`@stale-self <口径名> <op><n>`，由门现算比对。" },
-    { name: "没有计数的普通说明 ⇒ 放行", text: " * 本层只对门自己那份自述开。", mark: " * 本层只对门自己那份自述开。" },
-  ];
-  for (const c of passCases) {
+  for (const c of SELF_MUST_NOT_BITE) {
     const codes = judgeSelfUnit(c.text, c.mark, LIVE).map((v) => v.code);
     if (codes.length > 0) bad.push(`门自述必不咬样例「${c.name}」被误咬（${codes.join(",")}）—— 噪声一多白名单就长，门就死了`);
   }
@@ -1783,7 +1849,7 @@ function main() {
     console.log(
       `✅ 金丝雀：${MUST_BITE.length} 条必咬全部咬中，${MUST_NOT_BITE.length} 条必不咬全部放过，putAll 事实源 ${materializedTypes.size} 个类型；` +
         `屏上层 ${ONSCREEN_MUST_BITE.length} 必咬 + ${ONSCREEN_MUST_NOT_BITE.length} 必不咬全中，⑦⑧ 判据金丝雀四向全过；` +
-        "⑨⑩ 门自述层变异反证 4 必咬 + 4 必不咬全中",
+        `⑨⑩ 门自述层变异反证 ${SELF_MUST_BITE.length} 必咬 + ${SELF_MUST_NOT_BITE.length} 必不咬全中`,
     );
     return;
   }
@@ -2007,8 +2073,9 @@ try {
  *        7 条 UNMARKED + 4 条 FALSE-POSITIVE）。
  *        赌注：@stale-self baseline.factChecks ==0
  *        赌注：@stale-self baseline.confirmedStale ==0
- *    ⇒ 今天的真实分工是：**记号路径已在生产**（11 条）、**基线赌注路径今天没有数据**
- *      （属「接了线没数据」，不是「没接线」——`runBaselineFactChecks` 仍被主流程无条件调用）。
+ *    ⇒ 今天的真实分工是：**记号路径已在生产**（现算 11 条，@stale-self marks.production ==11）、
+ *      **基线赌注路径今天 0 条数据**（@stale-self baseline.factChecks ==0；属「接了线没数据」，
+ *      不是「没接线」——`runBaselineFactChecks` 仍被主流程无条件调用）。
  *    ⇒ 复验命令：`node scripts/check-stale-claims.mjs`（末行直接打印这三个现算值）。
  * 7. **⑤ 只咬四种句式**（「只有…N 类」「共 N 种」「恰好 N 个」「一条都没有 / 没有任何一条 / 全仓 0 条」）。
  *    一句「locus 就那么几类」「基本没有」本门一个字都看不见 —— 它治的是**把数量词写死**这一族，
@@ -2021,8 +2088,8 @@ try {
  *    （同 ①② 那条「日期只验有没有，不验对不对」的边界，是同一族。）
  * 9. **⑦ 只认被**声明**过的改名**。`前名「X」` 这类声明是仓里唯一能被机器读出的
  *    「A 和 B 是同一个东西」的证据；没写声明就改名的，机器无从知道两个字符串说的是一回事，
- *    本门一个字都不说。全仓只抽到 **1 条**改名声明 —— 覆盖面就这么大，不粉饰。
- *    赌注：@stale-self truth.renameDecls ==1
+ *    本门一个字都不说。全仓现在只抽到 **1 条**改名声明（@stale-self truth.renameDecls ==1）
+ *    —— 覆盖面就这么大，不粉饰；这一条一旦有人补了第二条改名声明，门会当场红，逼这句话跟着改。
  * 10. **⑧ 的 locale↔slug 桥只认 camelCase→kebab-case 的精确相等**。`quarter`（真 slug
  *    `quarterly-rolling`）、`geo`（真 slug `geo-map`）、`calib` 这类都对不上 ⇒ **一个字都不说**。
  *    宁可漏，不可诬：猜一个映射然后据此判人，比不判更坏。
