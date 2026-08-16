@@ -234,6 +234,37 @@ function minimalPayloads(sopVersionId: string): Record<string, Record<string, un
   };
 }
 
+/**
+ * 造一个走到 `EXEC_MEETING` 的真 S&OP 版本（`定稿月度计划版本` 的前置）。
+ * 步骤序列与实参照抄既有 `test/sop-actions.test.ts` 的真实用法——**不自创**，
+ * 免得本普查因为自己编的入参失败，然后被读成「执行器没接」。
+ */
+async function makeSopVersionAtExecMeeting(t: TestApp): Promise<string> {
+  const created = await t.app.inject({
+    method: "POST",
+    url: "/a/v1/sop/versions",
+    headers: APPROVER,
+    payload: { month: "2026-07", inputs: { demTotal: 120 } },
+  });
+  expect(created.statusCode, created.body).toBe(201);
+  const id = (created.json() as { id: string }).id;
+  const advance = (step: number, payload: Record<string, unknown> = {}) =>
+    t.app.inject({ method: "POST", url: `/a/v1/sop/versions/${id}/advance`, headers: APPROVER, payload: { step, payload } });
+  await advance(1);
+  await advance(2, {
+    segments: [
+      { key: "pas", name: "乘用车", target: 60, rolling: 61, lastActual: 58 },
+      { key: "ess", name: "储能", target: 38, rolling: 37, lastActual: 36 },
+      { key: "com", name: "商用车", target: 22, rolling: 21, lastActual: 20 },
+    ],
+  });
+  await advance(3, {});
+  await advance(4, { revSum: 100, gmSum: 14, gmBudget: 14, cashCushion: 56 });
+  const s5 = await advance(5, { resolutions: [{ name: "常州夜班", delta: 1.2 }] });
+  expect((s5.json() as { status?: string }).status, `S&OP 版本没走到 EXEC_MEETING：${s5.body}`).toBe("EXEC_MEETING");
+  return id;
+}
+
 /** 已知**确已接**真执行器的型（金丝雀基准·改这里等于改基准，请连同论据一起改）。 */
 const KNOWN_WIRED_CANARIES = ["对象数据变更", "采纳产能保障方案"];
 
@@ -251,15 +282,11 @@ describe("兜底线普查 · 「还剩几型审批通过后什么都不写」由
     const registered = BATTERY_ACTION_TYPES.map((a) => a.key);
     expect(registered.length, "BATTERY_ACTION_TYPES 读出 0 型 ⇒ **本普查坏了**，不许读作『没有动作类型』").toBeGreaterThan(0);
 
-    // 先造一个**真** S&OP 版本（见 minimalPayloads 头注：这两型建草稿期就校验版本存在）。
-    const sopRes = await t.app.inject({
-      method: "POST",
-      url: "/a/v1/sop/versions",
-      headers: APPROVER,
-      payload: { month: "2026-07", inputs: {} },
-    });
-    expect(sopRes.statusCode, sopRes.body).toBeLessThan(300);
-    const sopVersionId = (sopRes.json() as { id: string }).id;
+    // 先造一个**真** S&OP 版本并把它推到 EXEC_MEETING（见 minimalPayloads 头注）。
+    // ⚠️ 又一次实测纠正：只建版本还不够 —— `定稿月度计划版本` 的草稿在建草稿期还要求版本
+    //    **已走完五步状态机**，否则 409「cannot request finalize from DRAFT (run step ⑤ first)」，
+    //    同样走不到执行器。步骤序列照抄既有 `test/sop-actions.test.ts` 的真实用法，不自创。
+    const sopVersionId = await makeSopVersionAtExecMeeting(t);
     const payloads = minimalPayloads(sopVersionId);
 
     const fallback: string[] = [];
