@@ -15,8 +15,8 @@ class MockOpt implements OptimizerClient {
 
 async function seedJobs(t: TestApp) {
   await t.repos.ontologyTypes.put({ id: "ot_j", tenantId: "demo", key: "Job", displayName: "工单", domain: "plan", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "jid", dataType: "string", isPrimaryKey: true }, { propKey: "model", dataType: "string", isPrimaryKey: false }, { propKey: "size", dataType: "number", isPrimaryKey: false }] });
-  await t.repos.objects.put({ id: "j_1", tenantId: "demo", type: "Job", props: { jid: "J1", model: "A", size: 6 } });
-  await t.repos.objects.put({ id: "j_2", tenantId: "demo", type: "Job", props: { jid: "J2", model: "B", size: 4 } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "j_1", tenantId: "demo", type: "Job", props: { jid: "J1", model: "A", size: 6 } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "j_2", tenantId: "demo", type: "Job", props: { jid: "J2", model: "B", size: 4 } });
 }
 
 describe("A8.2/8.3 · sequencing/packing CP-SAT 代理接线", () => {

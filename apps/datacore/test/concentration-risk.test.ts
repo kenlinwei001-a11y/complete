@@ -29,18 +29,18 @@ describe("PRD-fde §8c/Q5 · concentration_risk 求解器（隐性客户集中�
   async function seedConvergent(t: TestApp, ctx: AuthCtx) {
     await seedOntology(t, ctx);
     // 二级供应商：华东电解液（暗线单点）、西南隔膜（仅 1 客户依赖）
-    await t.repos.objects.put({ id: "华东电解液", tenantId: ctx.tenantId, type: "Supplier", props: { supId: "华东电解液" } });
-    await t.repos.objects.put({ id: "西南隔膜", tenantId: ctx.tenantId, type: "Supplier", props: { supId: "西南隔膜" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "华东电解液", tenantId: ctx.tenantId, type: "Supplier", props: { supId: "华东电解液" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "西南隔膜", tenantId: ctx.tenantId, type: "Supplier", props: { supId: "西南隔膜" } });
     // 物料：3 种看似不同的物料,但 正极A/电解液B 都来自华东电解液
-    await t.repos.objects.put({ id: "正极A", tenantId: ctx.tenantId, type: "Material", props: { matId: "正极A", supplierRef: "华东电解液" } });
-    await t.repos.objects.put({ id: "电解液B", tenantId: ctx.tenantId, type: "Material", props: { matId: "电解液B", supplierRef: "华东电解液" } });
-    await t.repos.objects.put({ id: "隔膜C", tenantId: ctx.tenantId, type: "Material", props: { matId: "隔膜C", supplierRef: "西南隔膜" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "正极A", tenantId: ctx.tenantId, type: "Material", props: { matId: "正极A", supplierRef: "华东电解液" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "电解液B", tenantId: ctx.tenantId, type: "Material", props: { matId: "电解液B", supplierRef: "华东电解液" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "隔膜C", tenantId: ctx.tenantId, type: "Material", props: { matId: "隔膜C", supplierRef: "西南隔膜" } });
     // 订单：分散指向 3 种物料
     const orders: [string, string][] = [["SO1", "正极A"], ["SO2", "电解液B"], ["SO3", "正极A"], ["SO4", "电解液B"], ["SO5", "正极A"], ["SO6", "隔膜C"]];
-    for (const [so, mat] of orders) await t.repos.objects.put({ id: so, tenantId: ctx.tenantId, type: "Order", props: { soId: so, materialRef: mat } });
+    for (const [so, mat] of orders) await t.repos.objects.put({ origin: { type: "MANUAL" }, id: so, tenantId: ctx.tenantId, type: "Order", props: { soId: so, materialRef: mat } });
     // 客户：星辰/蓝海/远景/光宇/天合 各自下单,多跳后全收敛到华东电解液;海辰 → 西南隔膜
     const customers: [string, string][] = [["星辰", "SO1"], ["蓝海", "SO2"], ["远景", "SO3"], ["光宇", "SO4"], ["天合", "SO5"], ["海辰", "SO6"]];
-    for (const [c, so] of customers) await t.repos.objects.put({ id: `c_${c}`, tenantId: ctx.tenantId, type: "Customer", props: { custId: c, orderRef: so } });
+    for (const [c, so] of customers) await t.repos.objects.put({ origin: { type: "MANUAL" }, id: `c_${c}`, tenantId: ctx.tenantId, type: "Customer", props: { custId: c, orderRef: so } });
   }
 
   it("多跳反向聚合 → 报华东电解液隐性单点、敞口 5、列出 5 家依赖客户;西南隔膜仅 1 不计入", async () => {
@@ -75,14 +75,14 @@ describe("PRD-fde §8c/Q5 · concentration_risk 求解器（隐性客户集中�
     const ctx: AuthCtx = { tenantId: "demo", userId: "u", roles: ["admin"], attributes: {} };
     await seedOntology(t, ctx);
     // 2 客户 → 2 物料 → 2 不同供应商,无收敛
-    await t.repos.objects.put({ id: "S1", tenantId: ctx.tenantId, type: "Supplier", props: { supId: "S1" } });
-    await t.repos.objects.put({ id: "S2", tenantId: ctx.tenantId, type: "Supplier", props: { supId: "S2" } });
-    await t.repos.objects.put({ id: "M1", tenantId: ctx.tenantId, type: "Material", props: { matId: "M1", supplierRef: "S1" } });
-    await t.repos.objects.put({ id: "M2", tenantId: ctx.tenantId, type: "Material", props: { matId: "M2", supplierRef: "S2" } });
-    await t.repos.objects.put({ id: "O1", tenantId: ctx.tenantId, type: "Order", props: { soId: "O1", materialRef: "M1" } });
-    await t.repos.objects.put({ id: "O2", tenantId: ctx.tenantId, type: "Order", props: { soId: "O2", materialRef: "M2" } });
-    await t.repos.objects.put({ id: "c_A", tenantId: ctx.tenantId, type: "Customer", props: { custId: "A", orderRef: "O1" } });
-    await t.repos.objects.put({ id: "c_B", tenantId: ctx.tenantId, type: "Customer", props: { custId: "B", orderRef: "O2" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "S1", tenantId: ctx.tenantId, type: "Supplier", props: { supId: "S1" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "S2", tenantId: ctx.tenantId, type: "Supplier", props: { supId: "S2" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "M1", tenantId: ctx.tenantId, type: "Material", props: { matId: "M1", supplierRef: "S1" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "M2", tenantId: ctx.tenantId, type: "Material", props: { matId: "M2", supplierRef: "S2" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "O1", tenantId: ctx.tenantId, type: "Order", props: { soId: "O1", materialRef: "M1" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "O2", tenantId: ctx.tenantId, type: "Order", props: { soId: "O2", materialRef: "M2" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "c_A", tenantId: ctx.tenantId, type: "Customer", props: { custId: "A", orderRef: "O1" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "c_B", tenantId: ctx.tenantId, type: "Customer", props: { custId: "B", orderRef: "O2" } });
 
     const out = await t.services.solvers.invoke(ctx, "concentration_risk", { startType: "Customer", path: PATH });
     expect((out.concentrations as unknown[]).length).toBe(0);

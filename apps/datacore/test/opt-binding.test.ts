@@ -35,19 +35,19 @@ async function seedLogistics(t: Awaited<ReturnType<typeof makeApp>>) {
   // 物流租户：仓库（开设成本）+ 门店。
   await t.repos.ontologyTypes.put({ id: "ot_wh", tenantId: "logi", key: "Warehouse", displayName: "仓库", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "whId", dataType: "string", isPrimaryKey: true }, { propKey: "setupCost", dataType: "number", isPrimaryKey: false }, { propKey: "serveCost", dataType: "number", isPrimaryKey: false }] });
   await t.repos.ontologyTypes.put({ id: "ot_store", tenantId: "logi", key: "Store", displayName: "门店", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "storeId", dataType: "string", isPrimaryKey: true }] });
-  await t.repos.objects.put({ id: "w1", tenantId: "logi", type: "Warehouse", props: { whId: "WH_North", setupCost: 100, serveCost: 3 } });
-  await t.repos.objects.put({ id: "w2", tenantId: "logi", type: "Warehouse", props: { whId: "WH_South", setupCost: 200, serveCost: 2 } });
-  await t.repos.objects.put({ id: "s1", tenantId: "logi", type: "Store", props: { storeId: "ST_A" } });
-  await t.repos.objects.put({ id: "s2", tenantId: "logi", type: "Store", props: { storeId: "ST_B" } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "w1", tenantId: "logi", type: "Warehouse", props: { whId: "WH_North", setupCost: 100, serveCost: 3 } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "w2", tenantId: "logi", type: "Warehouse", props: { whId: "WH_South", setupCost: 200, serveCost: 2 } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "s1", tenantId: "logi", type: "Store", props: { storeId: "ST_A" } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "s2", tenantId: "logi", type: "Store", props: { storeId: "ST_B" } });
 }
 
 async function seedHealth(t: Awaited<ReturnType<typeof makeApp>>) {
   // 医疗租户：诊所（建设成本）+ 社区。**同一模板，完全不同的本体类型/字段名。**
   await t.repos.ontologyTypes.put({ id: "ot_clinic", tenantId: "health", key: "Clinic", displayName: "诊所", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "clinicId", dataType: "string", isPrimaryKey: true }, { propKey: "buildCost", dataType: "number", isPrimaryKey: false }, { propKey: "reachCost", dataType: "number", isPrimaryKey: false }] });
   await t.repos.ontologyTypes.put({ id: "ot_comm", tenantId: "health", key: "Community", displayName: "社区", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "commId", dataType: "string", isPrimaryKey: true }] });
-  await t.repos.objects.put({ id: "c1", tenantId: "health", type: "Clinic", props: { clinicId: "CL_East", buildCost: 50, reachCost: 1 } });
-  await t.repos.objects.put({ id: "co1", tenantId: "health", type: "Community", props: { commId: "CM_1" } });
-  await t.repos.objects.put({ id: "co2", tenantId: "health", type: "Community", props: { commId: "CM_2" } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "c1", tenantId: "health", type: "Clinic", props: { clinicId: "CL_East", buildCost: 50, reachCost: 1 } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "co1", tenantId: "health", type: "Community", props: { commId: "CM_1" } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "co2", tenantId: "health", type: "Community", props: { commId: "CM_2" } });
 }
 
 const logiBinding: OntologyBinding = {

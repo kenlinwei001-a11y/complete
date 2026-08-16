@@ -37,9 +37,9 @@ async function seedIndustry(t: Awaited<ReturnType<typeof makeApp>>, tenant: stri
   await t.repos.ontologyTypes.put({ id: `ot_${facType}`, tenantId: tenant, key: facType, displayName: facType, domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: facPk, dataType: "string", isPrimaryKey: true }, { propKey: openF, dataType: "number", isPrimaryKey: false }, { propKey: assignF, dataType: "number", isPrimaryKey: false }] });
   await t.repos.ontologyTypes.put({ id: `ot_${cliType}`, tenantId: tenant, key: cliType, displayName: cliType, domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: cliPk, dataType: "string", isPrimaryKey: true }] });
   let i = 0;
-  for (const f of facs) await t.repos.objects.put({ id: `f${tenant}${i++}`, tenantId: tenant, type: facType, props: f });
+  for (const f of facs) await t.repos.objects.put({ origin: { type: "MANUAL" }, id: `f${tenant}${i++}`, tenantId: tenant, type: facType, props: f });
   i = 0;
-  for (const c of clis) await t.repos.objects.put({ id: `c${tenant}${i++}`, tenantId: tenant, type: cliType, props: c });
+  for (const c of clis) await t.repos.objects.put({ origin: { type: "MANUAL" }, id: `c${tenant}${i++}`, tenantId: tenant, type: cliType, props: c });
 }
 
 function fl(tenant: string, facType: string, cliType: string, openRef: string, assignRef: string): OntologyBinding {

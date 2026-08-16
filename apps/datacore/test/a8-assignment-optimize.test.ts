@@ -16,9 +16,9 @@ const CTX: AuthCtx = { tenantId: "demo", userId: "u", roles: ["admin"], attribut
 async function seed(t: TestApp) {
   await t.repos.ontologyTypes.put({ id: "ot_o", tenantId: "demo", key: "Order", displayName: "订单", domain: "sales", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true }, { propKey: "weight", dataType: "number", isPrimaryKey: false }, { propKey: "cost", dataType: "number", isPrimaryKey: false }] });
   await t.repos.ontologyTypes.put({ id: "ot_b", tenantId: "demo", key: "Base", displayName: "基地", domain: "factory", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "baseId", dataType: "string", isPrimaryKey: true }, { propKey: "capacity", dataType: "number", isPrimaryKey: false }] });
-  await t.repos.objects.put({ id: "o_a", tenantId: "demo", type: "Order", props: { so: "SO-A", weight: 5, cost: 3 } });
-  await t.repos.objects.put({ id: "o_b", tenantId: "demo", type: "Order", props: { so: "SO-B", weight: 4, cost: 2 } });
-  await t.repos.objects.put({ id: "b1", tenantId: "demo", type: "Base", props: { baseId: "常州", capacity: 10 } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_a", tenantId: "demo", type: "Order", props: { so: "SO-A", weight: 5, cost: 3 } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_b", tenantId: "demo", type: "Order", props: { so: "SO-B", weight: 4, cost: 2 } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "b1", tenantId: "demo", type: "Base", props: { baseId: "常州", capacity: 10 } });
 }
 
 describe("A8.1 · assignment_optimize（CP-SAT sidecar 代理）接线", () => {
@@ -59,7 +59,7 @@ describe("A8.1 · assignment_optimize（CP-SAT sidecar 代理）接线", () => {
   it("R2：只取本租户对象（他租户订单不进请求）", async () => {
     const t = await makeApp();
     await seed(t);
-    await t.repos.objects.put({ id: "o_x", tenantId: "other", type: "Order", props: { so: "SO-X", weight: 9, cost: 9 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_x", tenantId: "other", type: "Order", props: { so: "SO-X", weight: 9, cost: 9 } });
     const mock = new MockOptimizer({ status: "OPTIMAL", optimal: true, assignments: [], objective: 0 });
     t.services.solvers.setOptimizer(mock);
     await t.services.solvers.invoke(CTX, "assignment_optimize", { itemType: "Order", binType: "Base" });

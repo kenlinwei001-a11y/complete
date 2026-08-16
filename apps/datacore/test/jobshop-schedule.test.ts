@@ -79,7 +79,7 @@ async function seedSchedule(t: TestApp, opType = "SchedOp", durOverride?: Record
     for (const op of OPS) {
       const opId = `${j.jobId}-${op.opName}`;
       const duration = durOverride?.[opId] ?? op.duration;
-      await t.repos.objects.put({
+      await t.repos.objects.put({ origin: { type: "MANUAL" },
         id: `obj_${opId}`,
         tenantId: "demo",
         type: opType,
@@ -131,7 +131,7 @@ describe("WO-JOBSHOP · job_shop_schedule 接线（默认 CI · Mock 引擎）",
     const t = await makeApp();
     await seedSchedule(t);
     // 别租户同类型对象不得混入
-    await t.repos.objects.put({ id: "obj_X", tenantId: "other", type: "SchedOp", props: { opId: "X-涂布", jobId: "X", machine: "coater", duration: 999, order: 1, group: "Z" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "obj_X", tenantId: "other", type: "SchedOp", props: { opId: "X-涂布", jobId: "X", machine: "coater", duration: 999, order: 1, group: "Z" } });
     const mock = new MockJobShop();
     t.services.solvers.setOptimizer(mock);
     await t.services.solvers.invoke(CTX, "job_shop_schedule", { opType: "SchedOp" });
@@ -196,8 +196,8 @@ describe.skipIf(!SIDECAR)("WO-JOBSHOP · 真 CP-SAT sidecar 端到端（OPTIMIZE
       derivedProperties: [], sourceBindings: [],
       properties: [{ propKey: "pairId", dataType: "string", isPrimaryKey: true }, { propKey: "fromModel", dataType: "string", isPrimaryKey: false }, { propKey: "toModel", dataType: "string", isPrimaryKey: false }, { propKey: "minutes", dataType: "number", isPrimaryKey: false }],
     });
-    await t.repos.objects.put({ id: "co_ab", tenantId: "demo", type: "SchedCo", props: { pairId: "AB", fromModel: "A", toModel: "B", minutes: 200 } });
-    await t.repos.objects.put({ id: "co_ba", tenantId: "demo", type: "SchedCo", props: { pairId: "BA", fromModel: "B", toModel: "A", minutes: 200 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "co_ab", tenantId: "demo", type: "SchedCo", props: { pairId: "AB", fromModel: "A", toModel: "B", minutes: 200 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "co_ba", tenantId: "demo", type: "SchedCo", props: { pairId: "BA", fromModel: "B", toModel: "A", minutes: 200 } });
     const withCo = await t.services.solvers.invoke(CTX, "job_shop_schedule", { opType: "SchedOp", changeoverType: "SchedCo" });
     expect(Number(withCo.makespan)).toBeGreaterThan(Number(noCo.makespan));
   });

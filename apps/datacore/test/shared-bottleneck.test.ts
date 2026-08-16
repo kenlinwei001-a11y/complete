@@ -15,12 +15,12 @@ describe("PRD-fde §8d/Q4 · shared_bottleneck 求解器（谁挤占谁/哪单�
     await t.repos.ontologyTypes.put({ id: "ot_proc", tenantId: ctx.tenantId, key: "Proc", displayName: "工序", domain: "process", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "procId", dataType: "string", isPrimaryKey: true }, { propKey: "capacity", dataType: "number", isPrimaryKey: false }] });
     await t.repos.ontologyTypes.put({ id: "ot_ord", tenantId: ctx.tenantId, key: "Ord", displayName: "订单", domain: "sales", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true }, { propKey: "procRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Proc" }, { propKey: "qty", dataType: "number", isPrimaryKey: false }, { propKey: "prio", dataType: "number", isPrimaryKey: false }] });
     // 化成工序产能 10；另一道宽松工序产能 100
-    await t.repos.objects.put({ id: "o_p1", tenantId: ctx.tenantId, type: "Proc", props: { procId: "化成", capacity: 10 } });
-    await t.repos.objects.put({ id: "o_p2", tenantId: ctx.tenantId, type: "Proc", props: { procId: "卷绕", capacity: 100 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_p1", tenantId: ctx.tenantId, type: "Proc", props: { procId: "化成", capacity: 10 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_p2", tenantId: ctx.tenantId, type: "Proc", props: { procId: "卷绕", capacity: 100 } });
     // 星辰(7,prio3)、蓝海(8,prio2) 都挤化成 → 瓶颈;第三单走卷绕不瓶颈
-    await t.repos.objects.put({ id: "o_o1", tenantId: ctx.tenantId, type: "Ord", props: { so: "星辰", procRef: "化成", qty: 7, prio: 3 } });
-    await t.repos.objects.put({ id: "o_o2", tenantId: ctx.tenantId, type: "Ord", props: { so: "蓝海", procRef: "化成", qty: 8, prio: 2 } });
-    await t.repos.objects.put({ id: "o_o3", tenantId: ctx.tenantId, type: "Ord", props: { so: "远景", procRef: "卷绕", qty: 5, prio: 1 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_o1", tenantId: ctx.tenantId, type: "Ord", props: { so: "星辰", procRef: "化成", qty: 7, prio: 3 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_o2", tenantId: ctx.tenantId, type: "Ord", props: { so: "蓝海", procRef: "化成", qty: 8, prio: 2 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_o3", tenantId: ctx.tenantId, type: "Ord", props: { so: "远景", procRef: "卷绕", qty: 5, prio: 1 } });
   }
 
   it("读对象图 → 判化成是瓶颈、星辰蓝海争用、蓝海(优先级低)被降级", async () => {
@@ -50,7 +50,7 @@ describe("PRD-fde §8d/Q4 · shared_bottleneck 求解器（谁挤占谁/哪单�
     const t = await makeApp();
     const ctx: AuthCtx = { tenantId: "demo", userId: "u", roles: ["admin"], attributes: {} };
     await t.repos.ontologyTypes.put({ id: "ot_proc", tenantId: ctx.tenantId, key: "Proc", displayName: "工序", domain: "process", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "procId", dataType: "string", isPrimaryKey: true }, { propKey: "capacity", dataType: "number", isPrimaryKey: false }] });
-    await t.repos.objects.put({ id: "o_p1", tenantId: ctx.tenantId, type: "Proc", props: { procId: "化成", capacity: 100 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_p1", tenantId: ctx.tenantId, type: "Proc", props: { procId: "化成", capacity: 100 } });
     const out = await t.services.solvers.invoke(ctx, "shared_bottleneck", { resourceType: "Proc", sharedByType: "Ord", viaField: "procRef" });
     expect((out.bottlenecks as unknown[]).length).toBe(0);
 

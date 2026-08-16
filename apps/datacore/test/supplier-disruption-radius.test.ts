@@ -25,18 +25,18 @@ describe("PRD-fde §8 Q2 · supplier_disruption_radius 求解器（断供影响�
     await t.repos.ontologyTypes.put({ id: "ot_ord", tenantId: ctx.tenantId, key: "Order", displayName: "订单", domain: "sales", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "soId", dataType: "string", isPrimaryKey: true }, { propKey: "materialRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Material" }] });
     await t.repos.ontologyTypes.put({ id: "ot_cust", tenantId: ctx.tenantId, key: "Customer", displayName: "客户", domain: "sales", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true }, { propKey: "orderRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Order" }] });
     // 供应商
-    await t.repos.objects.put({ id: "华东电解液", tenantId: ctx.tenantId, type: "Supplier", props: { supId: "华东电解液" } });
-    await t.repos.objects.put({ id: "西南隔膜", tenantId: ctx.tenantId, type: "Supplier", props: { supId: "西南隔膜" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "华东电解液", tenantId: ctx.tenantId, type: "Supplier", props: { supId: "华东电解液" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "西南隔膜", tenantId: ctx.tenantId, type: "Supplier", props: { supId: "西南隔膜" } });
     // 物料：正极A/电解液B 来自华东电解液;隔膜C 来自西南隔膜(不受华东断供影响)
-    await t.repos.objects.put({ id: "正极A", tenantId: ctx.tenantId, type: "Material", props: { matId: "正极A", supplierRef: "华东电解液" } });
-    await t.repos.objects.put({ id: "电解液B", tenantId: ctx.tenantId, type: "Material", props: { matId: "电解液B", supplierRef: "华东电解液" } });
-    await t.repos.objects.put({ id: "隔膜C", tenantId: ctx.tenantId, type: "Material", props: { matId: "隔膜C", supplierRef: "西南隔膜" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "正极A", tenantId: ctx.tenantId, type: "Material", props: { matId: "正极A", supplierRef: "华东电解液" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "电解液B", tenantId: ctx.tenantId, type: "Material", props: { matId: "电解液B", supplierRef: "华东电解液" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "隔膜C", tenantId: ctx.tenantId, type: "Material", props: { matId: "隔膜C", supplierRef: "西南隔膜" } });
     // 订单：SO1..SO5 用受影响物料;SO6 用隔膜C(不受影响)
     const orders: [string, string][] = [["SO1", "正极A"], ["SO2", "电解液B"], ["SO3", "正极A"], ["SO4", "电解液B"], ["SO5", "正极A"], ["SO6", "隔膜C"]];
-    for (const [so, mat] of orders) await t.repos.objects.put({ id: so, tenantId: ctx.tenantId, type: "Order", props: { soId: so, materialRef: mat } });
+    for (const [so, mat] of orders) await t.repos.objects.put({ origin: { type: "MANUAL" }, id: so, tenantId: ctx.tenantId, type: "Order", props: { soId: so, materialRef: mat } });
     // 客户
     const customers: [string, string][] = [["星辰", "SO1"], ["蓝海", "SO2"], ["远景", "SO3"], ["光宇", "SO4"], ["天合", "SO5"], ["海辰", "SO6"]];
-    for (const [c, so] of customers) await t.repos.objects.put({ id: `c_${c}`, tenantId: ctx.tenantId, type: "Customer", props: { custId: c, orderRef: so } });
+    for (const [c, so] of customers) await t.repos.objects.put({ origin: { type: "MANUAL" }, id: `c_${c}`, tenantId: ctx.tenantId, type: "Customer", props: { custId: c, orderRef: so } });
   }
 
   it("反向扇出 → 华东断供波及 2 物料/5 订单/5 客户,半径 3 层,叶层 5 客户;隔膜C 链不受影响", async () => {
@@ -62,7 +62,7 @@ describe("PRD-fde §8 Q2 · supplier_disruption_radius 求解器（断供影响�
     const ctx: AuthCtx = { tenantId: "demo", userId: "u", roles: ["admin"], attributes: {} };
     await seedSupplyChain(t, ctx);
     // 西南隔膜只供隔膜C→SO6→海辰,但若从一个无物料的根扇出 → 0
-    await t.repos.objects.put({ id: "孤立供应商", tenantId: ctx.tenantId, type: "Supplier", props: { supId: "孤立供应商" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "孤立供应商", tenantId: ctx.tenantId, type: "Supplier", props: { supId: "孤立供应商" } });
     const out = await t.services.solvers.invoke(ctx, "supplier_disruption_radius", { rootType: "Supplier", rootId: "孤立供应商", layers: LAYERS });
     expect(out.radius).toBe(0);
     expect(out.totalAffected).toBe(0);
