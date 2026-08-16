@@ -11,6 +11,7 @@ import { db } from "@/mocks/db";
 import { PROCESS_DEFINITIONS_RESPONSE } from "@/mocks/processWaitFixtures";
 import { buildProcessWaitModel, WAIT_KIND_STYLE } from "@/views/process/processWait";
 import { zh } from "@/locales/zh";
+import { checkedTree, factHits } from "./factlock";
 import { loginAs, renderApp } from "./utils";
 
 /**
@@ -528,13 +529,28 @@ describe("WO-FLOWTIME · §G 实例下钻（两向都咬：反推得出 / 反推
 
   it("G4 事件订阅是真接线：queryKey 与 LABEL_TO_KEYS 的 process-instances 对得上", async () => {
     // 「有事件没人听」是假接线。判据不是「表里写了」，而是**表里的 key 与视图真用的 key 对得上**。
-    const view = readFileSync(resolve(__dirname, "../src/views/process/ProcessWaitView.tsx"), "utf8");
-    const invalidation = readFileSync(resolve(__dirname, "../src/store/eventInvalidation.ts"), "utf8");
-    // 🐤 金丝雀：先证明两份文件都读到了（读空会让下面两条否定断言恒真）
-    expect(view).toContain("InstancePanel");
-    expect(invalidation).toContain("LABEL_TO_KEYS");
-    // 正题：视图注册的 queryKey 前缀 == 失效表里登记的前缀
-    expect(view).toContain('queryKey: ["a", "process-instances", processKey]');
-    expect(invalidation).toContain('"process-instances": [["a", "process-instances"]]');
+    /*
+     * ⚠ 2026-08-16 WO-FACTLOCK-TRIAGE：判据从「这两个写死文件的文本」搬到**整棵前端源码树**
+     * （`./factlock`，剥注释后）。要锁的事实是「**这条 queryKey 前缀**两边对得上」——
+     * 它与「注册它的那段代码住在哪个文件」无关：`InstancePanel` 抽成独立文件、
+     * 失效表拆分模块，都是无害重构，而原写法会当场假红（`G-FACTLOCK-POSITION-ANCHOR`）。
+     * 反方向也堵上了：原写法的 `readFileSync` **不剥注释**，注释里抄一句 queryKey 就能假绿。
+     *
+     * 原来那两条手写金丝雀（`InstancePanel` / `LABEL_TO_KEYS`）一并撤掉 ——
+     * `checkedTree` 内建四条更硬的（扫描面下界 · 已知必中 · 注释不算代码 · 代码没被当注释吃），
+     * 而且**与主判据共用同一份实现**，不会出现「金丝雀绿而主判据瞎」。
+     * 另注：手写那两条的失败文案写着「读空会让下面两条**否定**断言恒真」，
+     * 而下面两条其实是**正向** `toContain` —— 正向断言在空串上必然失败，本就不会恒真。
+     */
+    const fe = checkedTree("apps/frontend-shell/src", "LABEL_TO_KEYS", 100);
+    // 正题：视图注册的 queryKey 前缀 == 失效表里登记的前缀（两边各自必须真有人写）
+    expect(
+      factHits(fe, 'queryKey: ["a", "process-instances", processKey]'),
+      "视图没有注册 process-instances 的 queryKey ⇒ 事件来了也没人听",
+    ).not.toEqual([]);
+    expect(
+      factHits(fe, '"process-instances": [["a", "process-instances"]]'),
+      "失效表里没登记 process-instances 前缀 ⇒ 有事件没人听（假接线）",
+    ).not.toEqual([]);
   });
 });
