@@ -47,6 +47,7 @@
  *   R3 `nav-sim-group`     左导航「推演」组的成员（专用 route 与后端派单两类都在这里现身）
  *   R4 `sandbox-mode`      `SANDBOX_MODE_ORIGIN_VIEW` 里某个沙盘模式的原独立页
  *   R5 `consolidated-page` `CONSOLIDATED_INTO_SANDBOX` 里 `via: "static-route"` 的条目
+ *   R6 `route-no-nav`      `ROUTE_NO_NAV` 里的条目（有专用 route、按产品裁决不占导航位）
  *                          （= 被收编成沙盘模式、但**本身仍是一整页**的那批）
  *
  * ── 一条排除判据（不是漏掉，是**有理由地不算**）────────────────────────────────
@@ -181,6 +182,29 @@ export function featureKeyToViewKey(featureKey, alias) {
  * 否则「推演」组会平白少掉 project-sim / global-sim / risk / order-chain 四个。
  * @returns {Record<string,string[]>}
  */
+/**
+ * `ROUTE_NO_NAV`（`ShellLayout.tsx`）逐键解析 —— R6 的来源。
+ *
+ * ⚠️ **注释行不算数**：与 `parseNavGroups` 同一条纪律 —— 注释里提一嘴某个键
+ * （如「`decision-play` 原也在此列」这种说明历史的话）**不等于**它真登记在表里。
+ * 抽取器只认 `"key":` 这种真键位，且必须落在 `ROUTE_NO_NAV = {` 到匹配 `};` 之间。
+ */
+export function parseRouteNoNav(shellSrc) {
+  const start = shellSrc.indexOf("export const ROUTE_NO_NAV");
+  if (start < 0) return [];
+  const open = shellSrc.indexOf("{", start);
+  const end = shellSrc.indexOf("\n};", open);
+  if (open < 0 || end < 0) return [];
+  const body = shellSrc.slice(open + 1, end);
+  const keys = [];
+  for (const line of body.split("\n")) {
+    if (isComment(line)) continue;
+    const m = line.match(/^\s*"([a-z0-9-]+)"\s*:/);
+    if (m) keys.push(m[1]);
+  }
+  return keys;
+}
+
 export function parseNavGroups(shellSrc) {
   const groups = {};
   let title = null;
@@ -287,6 +311,7 @@ export function computeRoster(texts) {
   const builtins = parseBuiltinViews(texts.viewManifest);
   const featureDefs = featureViewDefs(texts.features, builtins);
   const navGroups = parseNavGroups(texts.shellLayout);
+  const routeNoNav = parseRouteNoNav(texts.shellLayout);
   const consolidated = parseConsolidated(texts.shellLayout);
   const modes = parseSandboxModes(texts.sandboxModes);
   const files = { ...parseRendererFiles(texts.registry), ...parseStaticRouteFiles(texts.app) };
@@ -315,6 +340,19 @@ export function computeRoster(texts) {
     add(featureKeyToViewKey(fd.key, alias), `R2 entitlement-view（${fd.key}「${fd.name}」· 来源 ${fd.from}）`);
   }
   for (const k of navGroups["推演"] ?? []) add(k, "R3 nav-sim-group（左导航「推演」组成员）");
+  // ── R6 route-no-nav（2026-08-16 加）──────────────────────────────────────────
+  // **它补的是 E2 造出来的一个新类别**：仓主裁决「决策推演不该占导航位」⇒ 导航项删了、
+  // route 留着（`imp*` 深链契约一个键没动）。于是该页：
+  //   · R3 抓不到（不在导航「推演」组了）；
+  //   · R1 也抓不到（`view-manifest.ts` 有意把 decision-play 排除在 BUILTIN_VIEWS 之外 ——
+  //     它只有前端 renderer + 静态路由，没有 VIEW_DEF/功能键，「配置不完整·诚实排除」）。
+  // ⇒ **页还在、还是推演页，却掉出了受检面** —— 这正是 `G-GATE-ROSTER-HANDCOPIED` 那一族
+  //   「不在名单里就永远绿」的新变种，只不过这次不是手抄名单漏了，是**判据没跟上产品裁决**。
+  // 判据落在 `ROUTE_NO_NAV` 这张表上：它是 E2 那张单为「有 route 无导航项」建的**单一登记表**
+  //   （`check-nav-group-coverage.mjs` 判据④ 与 `test/f61.admin-nav-groups.test.tsx` 都读它，
+  //    不许另抄一份），且表自带纪律「route 一删，本表条目必须同删」——
+  //   所以拿它当来源不会造出第二真相源。
+  for (const k of routeNoNav) add(k, "R6 route-no-nav（ROUTE_NO_NAV：有专用 route、按产品裁决不占导航位）");
   for (const [mode, origin] of Object.entries(modes)) {
     if (origin) add(origin, `R4 sandbox-mode（沙盘模式「${mode}」的原独立页）`);
   }
