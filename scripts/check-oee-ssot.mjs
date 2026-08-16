@@ -41,6 +41,13 @@
  *    `equipmentOee` 出，却无条件标 `prop:"oee_current"`）本门**不覆盖**——那是 §5 建议的后续单。
  *  · 「披露串存在」≠「披露串真的渲染在那个数旁边」。本门保证的是**结构上有**，
  *    像不像话要人看。（同 `check-gate-exit-discipline.mjs` 的诚实边界。）
+ *  · **属性名由后端运行时下发的屏，本门一个字都看不见** —— 实测标本：
+ *    `views/process/ProcessInspectPanel.tsx` 用 `displayName ?? propKey` 渲染属性表，
+ *    而 `Equipment` 的四个 OEE 属性中文名（`battery.ts` `PROP_DISPLAY_NAMES`：
+ *    `oeeA`→"OEE可用率" · `oeeP`→"OEE表现性" · `oeeQ`→"OEE质量率" · `oee_current`→"OEE"）
+ *    经 `withPropDisplayNames` → `PropertyDef.displayName` → REST 下发，**前端文件里没有任何字面量**。
+ *    于是「同一张属性表上四个 OEE 名并列、且 A×P×Q ≠ OEE」这个真实混用，
+ *    本门判为「未触及」。这一半只能靠接缝测试或后端侧的门接住 —— 见 `docs/DECISION-oee-ssot.md` §5。
  *
  * ══ 金丝雀（保命判据 · 每次运行都先跑）════════════════════════════════════════
  * 开扫之前先拿样例过一遍 `analyzeScreen()` —— **与主逻辑同一份实现，不另抄正则**
