@@ -15,7 +15,7 @@ import { Provenance } from "@/components/Provenance";
 import { RuleRef } from "@/components/RuleRef";
 import { EvaluatedRules } from "@/components/EvaluatedRules";
 import type { ViewRendererProps } from "../registry";
-import { fmt, SnapshotBadge } from "./shared";
+import { fmt, SnapshotBadge, useActionDraft } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import { DynamicLeverPanel } from "./DynamicLeverPanel";
 import { PmDag, type PmDagNode } from "./PmDag";
@@ -156,6 +156,12 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
     queryKey: ["a", "objects", { type: "Order", view: "project-sim" }],
     queryFn: () => searchObjects("Order", ""),
   });
+  // WO-SIM-ACTION-REAL：选中订单的 so（采纳结论时随 payload 上送，审批通过后回 stamp 到该 Order）。
+  const selectedOrderSo = useMemo(() => {
+    if (!selectedOrder) return null;
+    const hit = (orders.data?.items ?? []).find((o) => o.id === selectedOrder);
+    return hit ? String(hit.props.so ?? hit.id) : null;
+  }, [selectedOrder, orders.data]);
 
   // ⑤瓶颈定位基线：capacity_forecast 出 P50/gap/perBaseRows/mainBn（⑥ 杠杆反推的瓶颈种子）。
   // ⑥ what-if 已从「焊死 capacity_forecast whatIf 三系数」迁到动态杠杆走 generic_inference（见 DynamicLeverPanel）。
@@ -444,6 +450,8 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
                   qty={qty}
                   weeks={Number((out as Record<string, unknown>).weeks ?? weeks)}
                   onOpenBn={() => setBnOpen(true)}
+                  isStale={forecast.isStale}
+                  orderSo={selectedOrderSo}
                 />
               </div>
 
@@ -531,6 +539,8 @@ function StepBody({
   qty,
   weeks,
   onOpenBn,
+  isStale,
+  orderSo,
 }: {
   step: number;
   out: CapacityForecastOutput;
@@ -539,6 +549,10 @@ function StepBody({
   qty: number;
   weeks: number;
   onOpenBn: () => void;
+  /** D5：结果对应旧参数时不许采纳（采纳的必须是屏上参数真算出来的结论·非过期解）。 */
+  isStale?: boolean;
+  /** 选中销售订单的 so（下钻细排场景）；采纳结论时随 payload 上送回 stamp。 */
+  orderSo?: string | null;
 }) {
   const totalQty = Number((out as Record<string, unknown>).qty ?? qty);
 
@@ -819,6 +833,10 @@ function StepBody({
       <div className={styles.okBar} style={{ borderColor: okColor, color: okColor }} data-testid="proj-verdict-bar">
         {mode === "batch" ? (out.ok ? zh.sim.proj.batchOk : zh.sim.proj.batchGap(fmt(out.gap))) : out.ok ? "✓ 产能可满足" : `✗ 缺口 ${fmt(out.gap)} 万套`}
       </div>
+      {/* WO-SIM-ACTION-REAL：兑现 DAG fc 节点那句「结论可采纳为 Action」——采纳 = 参数组合 + 推演快照
+          造「采纳产能预测结论」草稿走 S2 审批，审批通过落 ForecastAdoption 台账对象（+选中订单回 stamp）。
+          不直改任何真值（R4）；D5：结果对应旧参数时不许采纳（与全局页同一纪律）。 */}
+      <AdoptConclusionButton out={out} mode={mode} modelId={modelId} totalQty={totalQty} weeks={weeks} isStale={isStale} orderSo={orderSo} />
       {/* 规则即引用 P2：求解器真评估的规则闸门（PASS/WARN/BLOCK），改规则即改此处结论 */}
       <EvaluatedRules rules={out.evaluatedRules} ruleSetVersion={out.ruleSetVersion} />
       {/* PRD-IND-model §4.4-⑥：缺口时显示对症对策表（acts，方案库，i18n 下发零写死），与下方 what-if 滑杆并存 */}
@@ -891,8 +909,75 @@ function StepBody({
   );
 }
 
-// ---------------- DAG 装配（六层固定，§7.13） ----------------
+/**
+ * WO-SIM-ACTION-REAL · 步骤⑥「采纳结论」按钮：把屏上这份结论（参数组合 + 推演快照）造成
+ * 「采纳产能预测结论」Action 草稿走 S2 审批 —— 审批通过由 domainExecutor 落 ForecastAdoption
+ * 台账对象（payload 契约 = contracts ForecastAdoptionPayloadSchema，量纲逐字段标注）。
+ * 与 DynamicLeverPanel 的「采纳杠杆组合」（采纳产能保障方案 → 改写本体杠杆属性）分工不重叠：
+ * 那个改杠杆真值，这个把**结论本身**落成可溯源台账。
+ */
+function AdoptConclusionButton({
+  out,
+  mode,
+  modelId,
+  totalQty,
+  weeks,
+  isStale,
+  orderSo,
+}: {
+  out: CapacityForecastOutput;
+  mode: "single" | "batch";
+  modelId: string;
+  totalQty: number;
+  weeks: number;
+  isStale?: boolean;
+  orderSo?: string | null;
+}) {
+  const adopt = useActionDraft();
+  const onAdopt = (): void => {
+    adopt.mutate({
+      actionTypeKey: "采纳产能预测结论",
+      payload: {
+        source: "project-sim",
+        modelId,
+        mode,
+        demandWan: totalQty, // 万套（与步骤①「需求量(万套)」同轴）
+        ...(mode === "single" ? { weeks } : {}), // 周
+        ...(mode === "batch" && out.batchRows
+          ? { batches: out.batchRows.map((b) => ({ qtyWan: b.qty, dueDate: b.dueDate, address: b.address ?? "" })) }
+          : {}),
+        snapshot: {
+          capWanP50: out.capWanP50, // 万套/窗口
+          capWanP90: out.capWanP90, // 万套/窗口
+          gapWan: Math.max(0, out.gap), // 万套（契约定义 = max(0, demand−P90)，可达时归 0）
+          healthFactor: out.healthFactor, // 无量纲 0–1
+          ok: out.ok,
+          mainBn: out.mainBn ?? "", // 瓶颈因素名（文本）
+          ...(out.ruleSetVersion ? { ruleSetVersion: out.ruleSetVersion } : {}),
+        },
+        ...(orderSo ? { orderId: orderSo } : {}),
+      },
+    });
+  };
+  return (
+    <button
+      className="btn sm primary"
+      style={{ marginTop: 10 }}
+      data-testid="pm-adopt-conclusion"
+      disabled={adopt.isPending || isStale}
+      title={
+        isStale
+          ? "当前结果对应旧参数——请先按新参数重算再采纳"
+          : "采纳结论 → 生成「采纳产能预测结论」Action 草稿（参数组合 + 推演快照 · 走 S2 审批 · 审批通过才落台账真值 R4）"
+      }
+      onClick={onAdopt}
+    >
+      {adopt.isPending ? "生成草稿中…" : isStale ? "采纳结论（需先重算）" : "采纳结论（→ Action 审批）"}
+    </button>
+  );
+}
 
+// ---------------- DAG 装配（六层固定，§7.13） ----------------
 function buildDag(
   out: CapacityForecastOutput,
   mode: "single" | "batch",
@@ -1066,7 +1151,7 @@ function dagNodeDetail(
         formula: `P90 = P50 ${fmt(out.capWanP50)} × 健康度 ${out.healthFactor} = ${fmt(out.capWanP90)}；缺口 = 需求 ${fmt(totalQty)} − P90`,
         inputs: ["P50", `健康度系数 ${out.healthFactor}`, "需求"],
         rule: "C09",
-        note: out.degradeNote ?? "结论可采纳为 Action（参数组合 + 推演快照写回）",
+        note: out.degradeNote ?? "结论可采纳为 Action（参数组合 + 推演快照写回）：步骤⑥「采纳结论」生成草稿走 S2 审批，审批通过落 ForecastAdoption 台账对象",
       };
   }
   return { title: id, src: "—" };
