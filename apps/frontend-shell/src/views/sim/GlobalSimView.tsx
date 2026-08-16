@@ -402,7 +402,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       {/* ① 顶栏 */}
       <div className={styles.header}>
         <div className={styles.titleBlock}>
-          <h2 title="全局项目推演：把全部项目（订单）、全部基地、各个时间段放在一起统一排产，一次算出全局最划算的方案——不是一个项目一个项目单独算再拼起来。底层机制仍是一次「联合求解」。">全局项目推演 · 决策驾驶舱（全局最优在先）</h2>
+          <h2 title="接单组合优选：把全部项目（订单）、全部基地、各个时间段放在一起统一排产，一次算出全局更划算的组合——不是一个项目一个项目单独算再拼起来。底层机制仍是一次「联合求解」。">接单组合优选 · 决策驾驶舱（全局最优在先）</h2>
           <p>把所有订单放在一起、在所有基地和时间窗上共享产能、不重复占用 → 一次算出全局最优。调节杠杆 / 勾选订单子集 / 切换目标 → 方案立即重算：产能占用图、KPI、排产安排、客户影响全链联动。</p>
         </div>
         <span className={styles.badge} title="这些数字是算法在满足产能约束下试算出来的最优方案（推演结果），不是数据库里已经发生的既有事实。" data-testid="global-sim-badge">推演结果 · 非数据库事实</span>
@@ -431,7 +431,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       {res.needsConfirm && (
         <RecomputeConfirmDialog
           elapsedMs={res.elapsedMs}
-          what="全局项目推演"
+          what="接单组合优选"
           onConfirm={res.confirmRecompute}
           onKeep={res.keepCurrent}
         />
@@ -832,13 +832,13 @@ export default function GlobalSimView(_props: ViewRendererProps) {
           {/* 磨砂卡② 被挤单 / 固定单卡（双向下钻） */}
           {d && (
             <div className={styles.glass}>
-              <span className={styles.grpLabel}>[ 被挤单 / 固定单 · 进项目推演细排 ]</span>
+              <span className={styles.grpLabel}>[ 被挤单 / 固定单 · 进接单可行性细排 ]</span>
               <div className={styles.cardGrid} data-testid="global-sim-displaced">
                 {d.displaced.length ? d.displaced.map((x) => (
                   <div key={x.orderId} className={`${styles.orderCard} ${styles.displaced}`} data-testid={`global-sim-displaced-${x.orderId}`} title={provTitle(x.provenance)}>
                     <strong>{x.orderId}</strong>（{x.kind === "forecast" ? "预测" : x.kind === "wip" ? "在产" : x.model}）<br />
                     <span className="amt">{fmt(x.qty, 0)}</span> 套 · 未获排
-                    <DrillAffordance kind={x.kind} id={x.orderId} label="进项目推演细排 →" testId={`global-sim-drill-${x.orderId}`} prov={x.provenance} />
+                    <DrillAffordance kind={x.kind} id={x.orderId} label="进接单可行性细排 →" testId={`global-sim-drill-${x.orderId}`} prov={x.provenance} />
                   </div>
                 )) : <span className={styles.empty}>全部需求项获排（无被挤）</span>}
               </div>

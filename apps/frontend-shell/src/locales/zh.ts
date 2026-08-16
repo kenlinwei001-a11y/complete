@@ -1267,7 +1267,7 @@ export const zh = {
       },
     },
     proj: {
-      title: "项目推演",
+      title: "接单可行性",
       orders: "订单列表",
       single: "整单",
       batch: "分批",

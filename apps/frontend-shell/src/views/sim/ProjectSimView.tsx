@@ -246,18 +246,18 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
         >
           <span>
             ⚠ 未找到订单 <strong style={{ fontFamily: "var(--font-mono)", color: "var(--amber-txt)" }}>{notFoundOrder}</strong>
-            ——可能是在产工单(<span className="mono">WIP:</span>)或销售预测(<span className="mono">FC:</span>)项；项目推演仅细排销售订单。
+            ——可能是在产工单(<span className="mono">WIP:</span>)或销售预测(<span className="mono">FC:</span>)项；接单可行性仅细排销售订单。
           </span>
           <Link to="/v/global-sim" data-testid="proj-notfound-back-global" style={{ marginLeft: "auto", color: "var(--accent-txt)", fontWeight: 600, textDecoration: "none", borderBottom: "1px dashed rgba(76,144,240,.5)" }}>
-            返回全局项目推演 →
+            返回接单组合优选 →
           </Link>
         </div>
       )}
       <div className={styles.head}>
         <div>
           <h3>{zh.sim.proj.title}</h3>
-          <div className={styles.sub}>
-            一个型号即一个项目级模拟：①场景解析 → ②可产基地收敛 → ③驱动因子装载 → ④逐级聚合P50 → ⑤瓶颈定位 → ⑥结论与对策；任何参数变更即重算（debounce 300ms · 竞态最后发出者胜）。
+          <div className={styles.sub} data-testid="proj-sub">
+            全局主计划框架内的细排 —— 一个型号即一个项目级模拟：①场景解析 → ②可产基地收敛 → ③驱动因子装载 → ④逐级聚合P50 → ⑤瓶颈定位 → ⑥结论与对策；任何参数变更即重算（debounce 300ms · 竞态最后发出者胜）。
           </div>
         </div>
         {/* D5 · 在途可见：不止「重算中…」——补已耗时（秒级递增）+ 主动取消（用户可直接放弃，不必靠改参数间接取消）。
