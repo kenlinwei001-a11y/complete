@@ -1,0 +1,293 @@
+{
+  "note": "① 本文件是 `check-gate-roster-handcopied.mjs` 的**全门定性账**：每一个写死在门源码里的顶层常量集合逐条定性。**受检对象集合（扫哪些门）由 `scripts/gate-census.mjs` 的 `listGateScripts()` 现算**，本文件里一个门文件名都不存 —— 否则本门自己就犯了它要治的病（名单一手抄，新加的门就永远不在里面）。② `verdict` 三选一，处置完全不同、不许合并：`criteria`=判据本体（写死是对的，`why` 要答「凭什么它不随仓库演进而变」）；`computed`=已现算（抽到的只是现算逻辑的输入常量，如扫描根/词法表）；`roster`=**真债**（受检对象集合写死了，`why` 必须写**差集是多少**、**该从哪儿现算**、**差什么才能修**）。③ `why` <20 字即判红：无理由的定性就是白名单，正是本门要治的病。④ `ratchetHigh` 是 `roster` 债的历史最高水位，**只降不升**；评审唯一必须拒绝的一行就是把它调大。⑤ `--tighten` **只删死账、不收编新候选**：新候选必须人手定性，自动收编 = 买来一片绿。",
+  "generatedBy": "node scripts/check-gate-roster-handcopied.mjs --seed",
+  "entries": {
+    "check-agent-config-complete.mjs:CANARIES": {
+      "verdict": "criteria",
+      "why": "金丝雀样例表（必中/必不中各一组，与主逻辑共用同一份判定器）。它不随仓库演进而变——它定义的是「这道门认得出什么」，改它等于改判据本身。现算化会变成拿被测物定义判据（自证循环），比写死更糟。"
+    },
+    "check-arg-drop-seam.mjs:ROUTER_EMITS": {
+      "verdict": "computed",
+      "why": "CEO 路由可解析的过滤实体表，单一来源 = apps/agentcore/src/router/ceo-route.ts（门头注已声明「改路由解析须同步本表」）。**实测差集 0**：ceo-route.ts 里出现的 ceo_* intent 恰为 11 个，与本表逐个对上、无名单外也无死账。判为 computed 而非 roster 的理由：门另有动态半（读 agentcore dist 真种子逐 intent 比对），漏登记的 intent 会在动态半暴露。"
+    },
+    "check-arg-drop-seam.mjs:PROJECT_BASE_EMITS": {
+      "verdict": "computed",
+      "why": "同 ROUTER_EMITS，是它的投影子集（只保留 base 维），由同一份单一来源派生。"
+    },
+    "check-backend-frontend-seam.mjs:REGEX_PREV_KEYWORDS": {
+      "verdict": "criteria",
+      "why": "正则字面量的前导关键字表（return/typeof/instanceof…），用于区分 `/` 是除号还是正则起点。JS 词法常量，不随仓库演进而变。"
+    },
+    "check-boundary-singlesource.mjs:CONSUMERS": {
+      "verdict": "computed",
+      "why": "本单 ① 后已降级为**正向断言名册**：只答「这 3 个绑定必须由 BASE_REGISTRY.map 派生」（判据，随架构变不随内容变）。「谁内联了」这一半——即真正的受检对象集合——已改为 SCAN_ROOTS 全仓现算，名册不再决定扫谁。另有死账断言逼它跟着现实走。"
+    },
+    "check-boundary-singlesource.mjs:SEG_CONSUMERS": {
+      "verdict": "roster",
+      "why": "**差集 12**：实测全仓有 16 个文件引用 SEG_REGISTRY，名册只列 4 个。更要害的是 SEG 这一半**只有正向断言、没有全仓负向扫描**——「某文件内联了 seg 价/利/色但压根不引用 SEG_REGISTRY」这一形态今天一个都扫不到（BASE 那一半本单已改成现算，SEG 尚未）。**差什么才能修**：SEG_REGISTRY 的值是价格/毛利/颜色三类，缺一个像 baseId 那样稳定可判的字面量形状；要先在契约里给 SEG 值定一个可机检的形状（如统一走 segColor()/segPrice() 取值函数），才有得扫。属契约改动，动 packages/**，超出本单纯门单的范围边界。"
+    },
+    "check-boundary-singlesource.mjs:PLAN_GOAL_CONSUMERS": {
+      "verdict": "roster",
+      "why": "**差集 0（今天）**：实测引用 PLAN_GOAL_TARGETS 的文件恰为名册这 3 个。但机制与 SEG 同病——只有正向断言、无全仓负向扫描，新增一个内联目标阈值的文件永远不会被问。**差什么才能修**：同 SEG_CONSUMERS，需要先给目标阈值定可机检的字面量形状（阈值是纯数字，比 baseId 难判得多，裸扫会把无关的同值数字全误伤）。"
+    },
+    "check-boundary-singlesource.mjs:SCAN_ROOTS": {
+      "verdict": "computed",
+      "why": "本单 ① 新加的扫描根：内联 baseId 的受检文件由这五个根**递归遍历现算**（实测 612 个 .ts/.tsx），根本身是判据。它取代的正是原来那份手抄 3 文件名单。"
+    },
+    "check-chain-closure.mjs:SLICE_FIXTURE_TYPES": {
+      "verdict": "criteria",
+      "why": "切片闭合测试的夹具对象类型（Order/Model/Base + 各自域）。判据本体：夹具是为构造断言而设的最小样例，随仓库长大也不该变大。"
+    },
+    "check-chain-closure.mjs:SLICE_FIXTURE_LINKS": {
+      "verdict": "criteria",
+      "why": "切片闭合测试的夹具关系边（has_model/at_base）。判据本体，同 SLICE_FIXTURE_TYPES。"
+    },
+    "check-chain-closure.mjs:SLICE_REQUEST": {
+      "verdict": "criteria",
+      "why": "切片请求的最小对象集（Order/Model/Base）。判据本体：它是测试输入，不是受检对象集合。"
+    },
+    "check-chain-node-singlesource.mjs:SENTINELS": {
+      "verdict": "criteria",
+      "why": "**视野塌陷哨兵**（demand.consensus 等 4 个必现节点）：解析结果里少任一个 ⇒ 判「视野被截断」而非「真的没有」。判据本体，且它正是本仓「我没找到 ≠ 它不存在」那条戒律的落地件——现算化会让它失去自证能力。"
+    },
+    "check-chain-node-singlesource.mjs:TRANSPARENT_TYPE_WRAPPERS": {
+      "verdict": "criteria",
+      "why": "TS 内置透明工具类型（Partial/Readonly/Required），解包后判定内层类型。语言常量，不随仓库演进而变。"
+    },
+    "check-chain-node-singlesource.mjs:SKIP_DIRS": {
+      "verdict": "computed",
+      "why": "同上，遍历跳过表。受检集合由 SCANNED_TREES 遍历现算。"
+    },
+    "check-chain-scan-honesty.mjs:SCAN_TARGETS": {
+      "verdict": "roster",
+      "why": "**差集 11**：写死 3 个扫描目标，而全仓引用 ChainImpediment 的文件实测 14 个（含 solvers/impediment-options.ts、decision/causal-graph.ts 这类同样产数字的地方）。门只问那 3 个，别处塞裸阈值一样绿。**差什么才能修**：需要先定「哪些文件算『产链路数字的地方』」这个判据——不能简单地把 14 个全扫（前端 mock 与视图层出现字面量是正常的），得按「是否写入 ChainImpedimentSchema 字段」来判，这要求解析赋值目标而不只是文件引用。属中等工作量的判据设计，本单未排。"
+    },
+    "check-chain-scan-honesty.mjs:NUMERIC_OUTPUT_KEYS": {
+      "verdict": "criteria",
+      "why": "被判「不许裸字面量」的数值输出字段名。判据本体：它定义诚实性的作用域，改它 = 改规范。"
+    },
+    "check-chain-scan-honesty.mjs:JS_RESERVED": {
+      "verdict": "criteria",
+      "why": "JS 保留字表，用于把关键字从标识符里排除。语言常量，不随仓库演进而变。"
+    },
+    "check-chain-scan-honesty.mjs:REQUIRED_EVIDENCE": {
+      "verdict": "criteria",
+      "why": "回包里必须带的证据字段（ruleKey/metricValue/threshold/unit），与契约 ChainImpedimentSchema 的诚实要求一字对应。判据本体：它定义「什么叫每个数字都有产地」。"
+    },
+    "check-cockpit-widgets.mjs:REQUIRED_WIDGET_TYPES": {
+      "verdict": "criteria",
+      "why": "驾驶舱**必须具备**的部件类型（kpi/metric-strip/dag/counterfactual/version-toggle/order-ledger），逐条取自 PRD。判据本体：它是「什么算合格」的定义，不是「现在有哪些」的枚举——现算化会变成「有什么就算合格」的同义反复。"
+    },
+    "check-cockpit-widgets.mjs:REQUIRED_COMPONENTS": {
+      "verdict": "criteria",
+      "why": "同上，驾驶舱必须具备的组件键。判据本体：现算化即自证循环。"
+    },
+    "check-coverage-blind.mjs:GENERIC_MEMBERS": {
+      "verdict": "criteria",
+      "why": "JS 通用集合方法名词表（filter/map/find/some…），用来判「这个调用是不是通用成员访问」。随 JS 语言演进而变，**不随本仓演进而变** —— 仓库里新增一个求解器不会让 Array.prototype 多一个方法。"
+    },
+    "check-coverage-blind.mjs:CANARY_D4": {
+      "verdict": "criteria",
+      "why": "D4「调用实参里的布尔开关」判据的金丝雀（含一条必不中：数据表里的同名字段）。判据本体。"
+    },
+    "check-crossbranch-reinvent.mjs:IGNORE": {
+      "verdict": "criteria",
+      "why": "通用文件名忽略表（default/index/types/schema/config/utils）——这些名字在任何分支里都会撞，拿它们做重复造轮判据会全是噪声。判据本体：它定义「哪些名字不携带信息」。"
+    },
+    "check-dark-launch-integrity.mjs:STAGES": {
+      "verdict": "criteria",
+      "why": "灰度阶段枚举（dark/explicit/tiered/ga），与发布规范一字对应。判据本体：改它 = 改发布流程定义。"
+    },
+    "check-dbui-flow-order.mjs:MUST_FOLLOW": {
+      "verdict": "criteria",
+      "why": "DataBuilder 流程面板的**规范顺序**（QuickSynth→WorkflowTimeline→GrowthConsole→InPlaceApproval）。判据本体：顺序是规范规定的，现算化等于「代码怎么排就算对」。"
+    },
+    "check-dbui-flow-order.mjs:FILES": {
+      "verdict": "roster",
+      "why": "**差集 0（今天）**：实测 pages/admin 下 DataBuilder*/Promote* 文件恰为这 3 个。机制同病：新增一个 DataBuilder 相关面板文件不会被顺序门问。**差什么才能修**：改成按 pages/admin 下文件名前缀现算即可，工作量极小；差集为 0 故未排上。"
+    },
+    "check-deploy-governance.mjs:APPS": {
+      "verdict": "roster",
+      "why": "**差集 1**：名册列 2 个 config.ts（agentcore/datacore），实测仓内有 3 个 —— apps/datacore/src/calibration/config.ts 从未被部署治理门问过。**差什么才能修**：需要先裁定「calibration/config.ts 算不算一个需要治理的部署配置」（它是标定子模块的配置，未必需要同等的 env 治理约束）——这是**产品/治理裁决**不是门能自己定的，故本单不擅自扩面。裁定后改成现算 apps/*/src/**/config.ts 即可。"
+    },
+    "check-dril-quality.mjs:need": {
+      "verdict": "computed",
+      "why": "门自己要 import 的 dist 产物清单（跑前的依赖自证：缺了就报「工具没准备好」）。这是**门的依赖**，不是受检对象集合——受检对象是运行时从 agentcore 真实注册表读回的技能。"
+    },
+    "check-dril-registry.mjs:need": {
+      "verdict": "computed",
+      "why": "同上，门自身的 dist 依赖自证清单。"
+    },
+    "check-dril-retrieval.mjs:need": {
+      "verdict": "computed",
+      "why": "同上，门自身的 dist 依赖自证清单。"
+    },
+    "check-dril-retrieval.mjs:ONTOLOGY_TYPES": {
+      "verdict": "criteria",
+      "why": "金值目录里用到的本体类型与中文名对照。判据本体：随金值一同人工维护，是 golden 的一部分。"
+    },
+    "check-dril-retrieval.mjs:GOLDEN_QUERIES": {
+      "verdict": "criteria",
+      "why": "检索金值：问句→应命中的求解器键。判据本体（golden fixture）——它定义「检索算不算准」，现算化即自证循环（拿检索结果去定义检索标准）。"
+    },
+    "check-edge-active-mounts.mjs:PAGES": {
+      "verdict": "roster",
+      "why": "**差集 3**（cleanroom-attr / disruption-radius / order-chain 三页从未被问过），反向还多 2 页（plan-generate / sop-balance 因标题里没有「推演」二字而长期不在名册）。这是 G-GATE-ROSTER-HANDCOPIED 的首个已知现场。**为什么本单没改**：已由 WO-INFER-PAGE-SSOT 在 claude/handoff-wo-infer-page-ssot 上收口（新增 scripts/lib/sim-page-roster.mjs 判据库 + BUILTIN_VIEWS 加显式 sim 字段），该分支**尚未并入本条基线所在的 canonical**；重复做会造成两份现算实现打架。收口 = 并入那条分支后本条自动转 computed。"
+    },
+    "check-factlock-anchor.mjs:MUST_BITE": {
+      "verdict": "criteria",
+      "why": "必咬样例（病样原文逐字取自真实提交 e639a6c2^）。判据本体：它定义「什么叫事实锁失效」。里面的 apps/x/src/V.tsx 是合成路径，不是仓内文件。"
+    },
+    "check-factlock-anchor.mjs:MUST_NOT_BITE": {
+      "verdict": "criteria",
+      "why": "必不中样例（修法样板 / 反向断言不许被咬）。判据本体，与必咬侧成对——只做必中侧的金丝雀证明不了工具没在乱咬。"
+    },
+    "check-function-signature.mjs:need": {
+      "verdict": "computed",
+      "why": "同上，门自身的 dist 依赖自证清单。"
+    },
+    "check-gate-ledger.mjs:DISPOSITIONS": {
+      "verdict": "criteria",
+      "why": "门账处置枚举（WIRE/MANUAL/FOLD/DELETE），与 PRD-gate-ledger §4.1 一字对应。判据本体：它定义合法取值，改它 = 改治理规范，不随门的数量而变。"
+    },
+    "check-lever-landing-exists.mjs:CANARIES": {
+      "verdict": "criteria",
+      "why": "拨杆落点存在性的金丝雀（含 Material.leadTime —— 曾被 grep 误报 0 命中、实际存在的那一条）。判据本体，且它钉住的正是「工具会骗你」这个坑。"
+    },
+    "check-mock-fidelity.mjs:LINK_SHAPES": {
+      "verdict": "criteria",
+      "why": "mock 与后端两侧的字段名对照表（fromType↔fromTypeKey 等）。判据本体：它定义「同一个概念在两侧各叫什么」，是契约形状不是对象集合。"
+    },
+    "check-object-interface.mjs:need": {
+      "verdict": "computed",
+      "why": "同上，门自身的 dist 依赖自证清单。"
+    },
+    "check-object-interface.mjs:FOUR": {
+      "verdict": "roster",
+      "why": "**差集：迁移文件维度 > 0**。名册钉死 repo.ts/memory.ts/pg.ts 三件套（架构常量，合理）＋ **一个写死的迁移文件名 migrations/032_object_interfaces.sql**。后者会漂：对象接口相关的后续迁移（033、034…）不会进这张表，于是「新表没同时改三处」这条 CLAUDE.md 明令的约定，在新迁移上永远绿。**差什么才能修**：把迁移这一维改成按内容现算（扫 migrations/*.sql 里 CREATE TABLE 涉及 object_interface 的那些），需要一条能识别「哪张迁移属于对象接口族」的判据，属小到中等工作量。"
+    },
+    "check-ontology-anchors.mjs:SRC_ROOTS": {
+      "verdict": "computed",
+      "why": "扫描根（apps/packages/scripts/deploy/services/db-seed/.github）= 仓库顶层目录全集。受检文件集合由这些根**递归遍历现算**，根本身是判据（「哪些目录算源码」）。实测与仓库顶层目录一致，无缺口。"
+    },
+    "check-ontology-anchors.mjs:JS_EXT": {
+      "verdict": "computed",
+      "why": "参与扫描的源码扩展名（ts/tsx/js/jsx/mjs/cjs）。现算的输入参数，受检集合由 SRC_ROOTS 遍历得出。"
+    },
+    "check-ontology-anchors.mjs:CANARY_DEF_EXPECT": {
+      "verdict": "criteria",
+      "why": "锚点抽取器的金丝雀期望值（对应内嵌的 CANARY_LINES 合成样例）。判据本体。"
+    },
+    "check-ontology-slice-coverage.mjs:EXEMPT_TYPES": {
+      "verdict": "roster",
+      "why": "**豁免名单**（FeatureConfig/Tenant/User/LlmProvider… 7 个基础设施类型不计入切片覆盖）。它**会随仓库演进而变**——新增一个基础设施类型就该进来——但今天既无棘轮也无 why，任何人加一条即可让一个真业务类型静默免检。**差什么才能修**：豁免名单不该现算（现算等于自动豁免），正确修法是给它加**棘轮 + 逐条 why**（照 scripts/lib/baseline-doc.mjs 的写法），条数只降不升。工作量小；本单未排是因为它与本门要治的「扫描面写死」是**同族不同病**（这是豁免膨胀，不是漏检），改法也不同，塞进本单会把两件事混成一件。"
+    },
+    "check-opt-template.mjs:CORES": {
+      "verdict": "roster",
+      "why": "**差集 1**：名册写死 5 核心，而 apps/datacore/src/solvers/opt-binding.ts 的 bindToSolverArgs 实测有 **6 个 case**（多一个 cross_object_occupancy）—— 该核的 requiredRoles 是否在契约枚举里落地，本门从未问过。**差什么才能修**：CORES 应从 packages/contracts/src/opt-template.ts 的 family 枚举**现算**（那才是单一来源），再与 opt-binding 的 case 集合做双向交叉断言。工作量小；本单未排是因为要先确认 cross_object_occupancy 属于「五核心」之外的扩展核还是漏登记的第六核——属产品语义裁决。"
+    },
+    "check-outsource-redline.mjs:CONSUMERS": {
+      "verdict": "roster",
+      "why": "**差集 1**：实测全仓 15 个文件引用契约 token（OUTSOURCE_REDLINE 等），名册列 14 个，漏 packages/contracts/src/livedin.ts —— 它从未被断言③「必须引用契约 token」问过。缓解项：该门的负向半（裸字面量扫描）已是 SCAN_ROOTS 全仓现算，所以漏的只是正向断言这一半。**差什么才能修**：把名册改成「现算引用方 ⊇ 名册」的交叉断言即可，工作量小；本单没排上是因为优先修了差集更大、且能拿出 A/B 假绿实证的 boundary-singlesource。"
+    },
+    "check-outsource-redline.mjs:SCAN_ROOTS": {
+      "verdict": "computed",
+      "why": "裸字面量负向扫描的根（四个包 src）。受检文件由递归遍历现算。**注**：缺 packages/llm-adapters/src，但该包与 C08 外协红线无任何关系（零命中），故不构成缺口。"
+    },
+    "check-prd-coverage.mjs:TEST_DIRS": {
+      "verdict": "roster",
+      "why": "**差集 1**：写死三个 test 目录，实测还有 packages/contracts/test（存在且有测试文件），从未计入 PRD 覆盖统计。**差什么才能修**：改成按 pnpm-workspace 成员现算 <pkg>/test 即可，工作量极小；本单未排是优先级，且这一条影响的是覆盖率**统计口径**（会让分母变大、数字变难看），改动需要同批复核 req-coverage 基线，不是纯门单能独立收的。"
+    },
+    "check-prd-data-grounding.mjs:SIM_CONTEXT_MARKERS": {
+      "verdict": "criteria",
+      "why": "推演语境标记词表（stateVar/targetStateVar/readVar/PropagationRule…），用于判「这句话在说推演还是在说本体」。判据本体：词表是判据，不是对象集合。"
+    },
+    "check-prd-data-grounding.mjs:SENSE_MUST_BE_ONTOLOGY": {
+      "verdict": "criteria",
+      "why": "词义消歧的必不中样例（同句含「推演」但实为本体属性目标）。判据本体：金丝雀性质。"
+    },
+    "check-prd-data-grounding.mjs:UNIVERSE_ANCHORS": {
+      "verdict": "criteria",
+      "why": "PRD 落地性判据的锚点对（Line.utilization / Line.businessType / Order.businessType），逐条取自本体。判据本体：它定义「拿哪几对已知真值来自证抽取器没瞎」。"
+    },
+    "check-redline-wired.mjs:SKIP_DIRS": {
+      "verdict": "computed",
+      "why": "遍历跳过表（node_modules/dist/build/.git/coverage/__snapshots__）。它是**现算的输入参数**，不是受检对象集合——受检集合由 PROD_ROOTS 遍历现算得出。"
+    },
+    "check-redline-wired.mjs:PROD_ROOTS": {
+      "verdict": "computed",
+      "why": "扫描根（五个包的 src + scripts）。受检文件由递归遍历现算，根本身是判据；实测覆盖全部 5 个工作区包，无缺口。"
+    },
+    "check-scenario-slot-keys.mjs:ALIASES": {
+      "verdict": "criteria",
+      "why": "槽位键别名表（model↔modelId 等）。判据本体：它定义「哪两个名字指同一件事」，是归一化规则不是对象集合。"
+    },
+    "check-screen-value-provenance.mjs:SCAN_DIRS": {
+      "verdict": "roster",
+      "why": "**差集 3**：三个根覆盖 173 个 .tsx，漏 App.tsx / main.tsx / workspace/featureGate.tsx。这三个文件里 App.tsx 确实挂路由与 Guard、可能出现屏上数值。**差什么才能修**：把根改成 apps/frontend-shell/src 全遍历即可，工作量极小；本单没排上纯粹是优先级——差集 3 且这三个文件今天实测零命中，改了当场也是绿的（改它买不到任何新信息，只买到防将来）。"
+    },
+    "check-screen-value-provenance.mjs:GEOMETRY_TARGETS": {
+      "verdict": "criteria",
+      "why": "SVG/几何属性名表（dx/dy/cx/cy/x1/y2…），用于判「这个数字进的是几何上下文还是数值上下文」。SVG 规范定义，不随仓库演进而变。"
+    },
+    "check-sim-ux-criteria.mjs:SRC": {
+      "verdict": "computed",
+      "why": "推演页四源 + 两个解析源的文件路径。它是**现算的输入**：门从这四个源现算推演页并集再与 PRD 表对齐，路径本身是「单一来源在哪」的声明。本体 §7 已记该门判据① 就是「现算 vs 表」。"
+    },
+    "check-solver-arg-key-drift.mjs:POSITIVE": {
+      "verdict": "criteria",
+      "why": "求解器参数键漂移的正例金丝雀（capacity_forecast×modelId 等）。判据本体：它定义「什么叫键对得上」。"
+    },
+    "check-solver-license.mjs:CODE_DIRS": {
+      "verdict": "computed",
+      "why": "扫描根（apps/packages/services/scripts）。受检文件由递归遍历现算，根本身是判据。"
+    },
+    "check-solver-license.mjs:SKIP": {
+      "verdict": "computed",
+      "why": "同上，遍历跳过表。受检集合由 CODE_DIRS 遍历现算。"
+    },
+    "check-stale-claims.mjs:ONSCREEN_VERDICTS": {
+      "verdict": "criteria",
+      "why": "屏上陈旧断言的三分判定枚举（FALSE-POSITIVE/UNMARKED/CONFIRMED-STALE），三者处置完全不同。判据本体：它定义合法结论，不随屏上有多少断言而变。"
+    },
+    "check-text-legibility.mjs:RATCHET_CANARIES": {
+      "verdict": "criteria",
+      "why": "棘轮双向金丝雀（降了必绿 / 升了必红 / 字号硬底新增必红）。判据本体：它定义棘轮的方向语义，与 CSS 里有多少 token 无关。"
+    },
+    "check-ui-first-layer.mjs:SCAN_DIRS": {
+      "verdict": "roster",
+      "why": "**差集 54**：扫描面覆盖 122 个 .tsx，而 apps/frontend-shell/src 下实测 176 个 —— components/**（44 个，含 Answer/QueryDock/Dag/CausalGraph/Provenance 等真上屏组件）、pages 非 admin（7）、src 顶层（2）、workspace（1）**全部在射程之外**。门自己的头注已记「27 个未登记文件、1491 块在棘轮射程之外」并为此建了 D6，但 D6 只覆盖 SCAN_DIRS **之内**的新文件，目录之外的一个都够不着。**差什么才能修**：把扫描面改成 frontend-shell/src 全遍历后，会一次涌入 54 个文件的存量账（首轮 --tighten 落账即可，不需要改 apps/**），但本门每次运行要加载 typescript 并做 AST 遍历，扩面 44% 的耗时与内存需实测；且首轮落账值必须人工抽审（棘轮的首账落错就锁死了一个坏基线）。属中等工作量，本单未排。"
+    },
+    "check-ui-first-layer.mjs:SLACK_FIELDS": {
+      "verdict": "criteria",
+      "why": "哪四个字段做松弛检测（first/formula/prose/sizes —— 只降不升的那四个；deferred 方向相反刻意不含）。判据本体：它定义棘轮的方向语义。"
+    },
+    "check-ui-first-layer.mjs:JUDGE_CANARIES": {
+      "verdict": "criteria",
+      "why": "D1–D4 判据的金丝雀样例（真分层/纯删除/纯堆料各一例）。判据本体：它定义「什么样的改动算变好、什么样算作弊」，与仓库里有多少页面无关。"
+    },
+    "check-ui-first-layer.mjs:SLACK_CANARIES": {
+      "verdict": "criteria",
+      "why": "D7 棘轮松弛检测的金丝雀（基线高于实测 = 免检名额）。判据本体，同 JUDGE_CANARIES。"
+    },
+    "check-verdict-rollup.mjs:FILES": {
+      "verdict": "roster",
+      "why": "**差集 0（今天）**：实测 docs/ 下 CHECK-*.md 恰为这 4 份。但机制同病：新增第 5 份检查规格文档不会被汇总门问，且它不会以任何方式报警。**差什么才能修**：改成 readdirSync(docs) 按 /^CHECK-.*\\.md$/ 现算即可，工作量极小；本单未排是因为差集为 0、改了买不到当下信息。"
+    },
+    "check-verdict-rollup.mjs:CAN": {
+      "verdict": "criteria",
+      "why": "裁定汇总的金丝雀样例（含 docs/CHECK-*.md 路径与期望符号）。判据本体：路径在这里是**样例数据**不是受检对象，受检对象是同文件的 FILES。"
+    },
+    "check-coverage-blind.mjs:CANARY_CASES": {
+      "verdict": "criteria",
+      "why": "覆盖盲区门的金丝雀样例表（D1–D5 各判据的必中/必不中合成源码，含 /x /y 这类占位路径）。判据本体：它定义「这道门认得出哪几种盲区」，与仓库里有多少测试文件无关；现算化即自证循环。"
+    },
+    "check-ref-closure.mjs:GUARDED_PUBLISH_ROUTES": {
+      "verdict": "roster",
+      "why": "**差集 6**：手抄 3 条发布路（agents/workflows/skills），而 apps/agentcore/src/server.ts 里实测有 **9 条** app.post 发布路由。逐条追过一层后，**至少 1 条是真洞**：`/api/v1/catalog/plans/:planId/publish` → catalog/service.ts:271 publishPlan **确证携带规则引用**（planStepRuleRefs(published.steps) 并 reportRefs 上报 A），却**从不调 probeMissingRefs** ⇒ 引用一条不存在的规则照样发布成功 —— 这正是本门 D1「新增一条发布路忘了接」要治的形态，而名单手抄导致它从未被问过。`/b/v1/plan-builders/:id/publish` 走 publishCanvas→publishPlan 同一条路，同病。`/b/v1/scenarios/:key/publish` 另有 scenarioClosure 闭合守卫（不同机制，非缺口），intents/mcp-configs 需再追一层才能定性。**差什么才能修**：门这一半可以现算（枚举 server.ts 的 app.post 发布路由 + 棘轮登记未守的），这属纯门单；但**把探针真接到 plan 发布路上要动 apps/agentcore/src**，超出本单范围边界。本单按「门这一半能改就改」处置，见 ③。"
+    }
+  },
+  "candidateCount": 71,
+  "rosterCount": 15,
+  "ratchetHigh": 15
+}

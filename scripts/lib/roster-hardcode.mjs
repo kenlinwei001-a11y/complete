@@ -56,6 +56,21 @@ export const PATHISH_RE = new RegExp(`^(?:${REPO_TOP_DIRS.map((d) => d.replace("
 export const KEYISH_RE = /^[a-z][a-z0-9]*(?:[-_.:][a-z0-9]+)*$/i;
 
 /**
+ * 路由类元素：`/b/v1/agents/:id/publish` 这种 HTTP 路径。
+ *
+ * ⚠ **这条判据是被反向自证逼出来的，不是设计时想到的**（本单实测）：
+ * 首版只有「路径类 + 键类」两个信号，于是 `check-ref-closure.mjs` 报**零候选** ——
+ * 而它明明手抄了 `GUARDED_PUBLISH_ROUTES` 三条发布路，全仓实测有 **9 条**以 `publish` 结尾的路由。
+ * 漏的原因是那三条元素既不以 `apps` 起头（不是仓内路径）、又以斜杠起头（`KEYISH_RE` 要求首字符是字母）。
+ *
+ * **教训照 CLAUDE.md 铁律 0.6 记账**：正向金丝雀六向全通过，却完全没能证明扫描面选对了 ——
+ * **「金丝雀证明的是工具没瞎，不是扫描面选对了。」** 这两件事必须分开验：
+ * 正向自证拿"确定写死的门"过一遍，**反向自证还要把零候选的门逐个人工看一遍**，
+ * 而这个盲区正是在反向那一步抖出来的。
+ */
+export const ROUTEISH_RE = /^\/[a-z0-9][a-z0-9/:*._-]*$/i;
+
+/**
  * 散文元素：含 CJK、或长过 40 字符、或含空白。
  * 散文占多数 ⇒ 这一坨多半是**金丝雀样例 / 规范条文抄录 / 理由文本**，不是受检对象名册。
  */
@@ -171,23 +186,30 @@ export const MIN_MEMBERS = 3;
  * 定性（criteria / computed / roster）只能由人写进基线 —— 见文件头「区分判据只有一句」。
  */
 export function signals(entry) {
-  const s = entry.strings;
+  // **嵌套引号要先剥**（又一个反向自证抖出来的坑）：本仓多道门把路由**连同它的引号**存进名册
+  // （`route: '"/b/v1/agents/:id/publish"'`），因为它们要拿这串去和源码原文做 `indexOf`。
+  // 不剥的话抽出来的元素首字符是 `"`，路由/键两个判据一个都匹配不上 ⇒ 整条名册读作"散文"，静默漏掉。
+  const s = entry.strings.map((x) => x.replace(/^["'`]+/, "").replace(/["'`]+$/, ""));
   const pathish = s.filter((x) => PATHISH_RE.test(x));
-  const keyish = s.filter((x) => !PATHISH_RE.test(x) && KEYISH_RE.test(x) && !isProse(x));
+  const routeish = s.filter((x) => !PATHISH_RE.test(x) && ROUTEISH_RE.test(x));
+  const keyish = s.filter((x) => !PATHISH_RE.test(x) && !ROUTEISH_RE.test(x) && KEYISH_RE.test(x) && !isProse(x));
   const prose = s.filter((x) => isProse(x));
   const candidate =
     s.length >= MIN_MEMBERS &&
     // 路径类 ≥2：两条以上仓内路径写死在门里，几乎必然是"受检文件名册"
     (pathish.length >= 2 ||
+      // 路由类 ≥2：两条以上 HTTP 路径写死在门里 —— 同理，且这一类漏得最隐蔽（见 ROUTEISH_RE 头注）
+      routeish.length >= 2 ||
       // 键类过半且 ≥3：一串注册键
       (keyish.length >= MIN_MEMBERS && keyish.length >= s.length / 2));
   return {
     n: s.length,
     pathish: pathish.length,
+    routeish: routeish.length,
     keyish: keyish.length,
     prose: prose.length,
     candidate,
-    sample: (pathish.length ? pathish : keyish).slice(0, 4),
+    sample: (pathish.length ? pathish : routeish.length ? routeish : keyish).slice(0, 4),
   };
 }
 
@@ -244,6 +266,16 @@ function f() {
   return local;
 }
 `;
+  // ⑦ 必中·路由类名册（`check-ref-closure.mjs` 的 `GUARDED_PUBLISH_ROUTES` **原文形状**，
+  //    含它那层嵌套引号 —— 这一条是**反向自证抖出盲区后补的**，取真实写法而非我编的样例：
+  //    编一个自己保证能过的样例，正是当初漏掉这一整类的原因。
+  const SAMPLE_ROUTE_ROSTER = `
+const GUARDED_PUBLISH_ROUTES = [
+  { label: "agent 发布", route: '"/b/v1/agents/:id/publish"' },
+  { label: "workflow 发布", route: '"/b/v1/workflows/:id/publish"' },
+  { label: "skill 发布", route: '"/b/v1/skills/:id/publish"', persistCall: "repos.skills.update" },
+];
+`;
 
   const one = (src) => extractRosters(src).map((e) => ({ e, s: signals(e) }));
   const pathR = one(SAMPLE_PATH_ROSTER);
@@ -252,8 +284,11 @@ function f() {
   const prose = one(SAMPLE_PROSE);
   const inCmt = one(SAMPLE_IN_COMMENT);
   const local = one(SAMPLE_LOCAL);
+  const routeR = one(SAMPLE_ROUTE_ROSTER);
 
   const checks = {
+    "⑦必中·路由类名册被抽出且判为候选（本条由反向自证抖出的盲区补的）":
+      routeR.length === 1 && routeR[0].e.name === "GUARDED_PUBLISH_ROUTES" && routeR[0].s.candidate === true && routeR[0].s.routeish === 3,
     "①必中·路径类名册被抽出且判为候选":
       pathR.length === 1 && pathR[0].e.name === "SEG_CONSUMERS" && pathR[0].s.candidate === true && pathR[0].s.pathish === 3,
     "②必中·键类名册被抽出且判为候选":
@@ -270,8 +305,8 @@ function f() {
   const bad = Object.entries(checks).filter(([, v]) => !v).map(([k]) => k);
   return {
     ok: bad.length === 0,
-    got: bad.length ? `未通过：${bad.join(" · ")}` : "六向全通过",
-    want: "六向全通过（路径类必中 · 键类必中 · 判据本体必被抽出 · 散文必不中 · 注释内必不抽 · 函数内必不抽）",
+    got: bad.length ? `未通过：${bad.join(" · ")}` : "七向全通过",
+    want: "七向全通过（路径类必中 · 路由类必中 · 键类必中 · 判据本体必被抽出 · 散文必不中 · 注释内必不抽 · 函数内必不抽）",
     detail: { pathR: pathR.map((x) => x.e.name), keyR: keyR.map((x) => x.e.name), crit: crit.map((x) => x.e.name), local: local.length },
   };
 }
