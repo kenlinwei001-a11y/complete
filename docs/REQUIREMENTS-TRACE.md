@@ -38,7 +38,8 @@
 | B1 | 「**彻查**所有后端有功能、前端没有的情况还有哪些」 | ✅ | 建 `befe-seam:check`；零调用 **196 → 128** |
 | B2 | 「**都派**」 | ✅ | BEFE-A/B/C/D/E/F/G 七张全收编 |
 | B3 | 「不局限在推演沙盘，而是**整体系统**」 | ✅ | + REFERENCES-FAMILY：引用族 9 条 → 一个客户端 + 一块共享面板 |
-| B4 | 剩余 `POST /a/v1/process-instances` | 🟡 | **诚实挂账不接**：契约要 `tasks.min(1)`，而流程定义**零步骤字段** ⇒ 前端无数据源可填。前置是**步骤模板层**，⛔ 未派 |
+| B4 | 剩余 `POST /a/v1/process-instances` | ✅ | **前置已补、线已接、接缝已驱动通**。前置（步骤模板层）落地：契约 `process-step-template.ts` + 表 + 种子 + 读端点 `GET /a/v1/process-definitions/{key}/step-template`；`tasks.min(1)` **一个字未放宽**，改的是步骤从**模板**来。前端 `views/process/ProcessStartFromTemplate.tsx`（挂 `/v/process-stuck` 页内）经契约 `tasksFromStepTemplate()`（前后端共用的唯一一处转换）折出 `tasks` 再 POST。**实测**：`apps/datacore/test/process-instance-wire.seam.test.ts` 走界面同形链路 ①模板 → ②`GET /a/v1/objects?type=<carrierTypeKey>`（按钮的渲染前提）→ ③转换 → ④POST → ⑤`GET …/{id}` **读回**，7 条有模板的流程**全部走通**且读回步数 == 模板步数（P25/2步/对象9 · P34/2/1 · P35/2/20 · P41/3/17 · P42/2/20 · P43/2/20 · P51/2/20）；变异反证 RC=1。前端侧 `test/process-start-from-template.seam.test.tsx` 8/8 绿 |
+| B4a | 同族**仍欠**：`POST …/{id}/advance`、`GET …/{id}` | 🟡 | **诚实挂账**：两个客户端函数（`api/endpoints.ts` `advanceProcessInstance` / `fetchProcessInstance`）**生产消费方为 0**（金丝雀：同法查 `createProcessInstance` 命中组件 2 处 ⇒ 工具是好的），属「死端点换成死客户端函数」那一形态。⚠ 接缝门**照不见**它们：门的前端侧只比**路径字面量**不比方法，`endpoints.ts` 里有字面量就判"已接"（该盲区基线 note 已记）。后果：实例建出来后**界面上再也看不到它**（除非它恰好卡住进了卡点清单），也**无法推进**。卡在「实例详情/推进要放哪个页」= 导航信息架构，属仓主决策 |
 
 ## C · 数据构建发动机 / 逆向数据推演 —— **第二版逐步复核**
 
@@ -112,7 +113,8 @@
 
 ## ⛔ 未派（我欠的）
 
-1. **步骤模板层** —— B4 的前置
+1. ~~**步骤模板层** —— B4 的前置~~ ✅ **已交付并已接线**（见 B4 行；接缝实测 7/7 走通）。
+   **改由 B4a 接棒**：同族的 `advance` / 实例详情两条仍无前端消费方，卡在导航信息架构（仓主决策）
 2. **13 类需求卡片补齐** —— C10
 3. **`STALE-8` 正则盲区**（实测漏 6 条：带点 slug 与非 `view.` 前缀）
 4. **`sandboxConsoleModel.ts:709` 过时文案**（写着已被删除的 `worstMbal`）
