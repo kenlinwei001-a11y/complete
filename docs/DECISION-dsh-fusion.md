@@ -3,9 +3,15 @@
 > **状态**：已裁决 · 护栏已落地
 > **日期**：2026-08-16
 > **对象**：POC 分支 `claude/handoff-wo-dsh-poc-s1` @ `6b9a7558`（S1→S4 四个提交）
-> **本单**：`WO-DSH-FUSE-GUARDS`（纯门单 + 纯文档单）
+> **本单**：`WO-DSH-FUSE-GUARDS`（门单 + 文档单；不碰 `apps/**` / `packages/**` / `pnpm-lock.yaml`。
+> `package.json` 原在禁改之列，审核方复核时判定那是派单范围划错并当场放开，仅用于把本门接进 `gates` 串）
 > **相关**：`docs/REPORT-dsh-poc-s0.md`（POC 自述）· `docs/REPORT-harness-migration-feasibility.md`（可行性）·
 > `scripts/check-dsh-dormancy.mjs`（本裁决的机器执行体）· `docs/SYSTEM-ONTOLOGY.md` §7 / §8 `G-DSH-DORMANT-UNGUARDED`
+>
+> ⚠️ **POC 的交付面有两半，引用时必须分清**：**分支面**（`claude/handoff-wo-dsh-poc-s1` 上的代码与
+> `docs/REPORT-*.md`）⊕ **报告面**（POC 测试结果报告 `dshpoctestresults.md`，**只在对话里流转、
+> 从没提交进分支**）。**在分支上 grep 不到，不等于 POC 没说过** —— 本文件 §3 前置 B 末尾
+> 记着我因此写反过一条结论。全文引用一律标注「POC **分支** `file:line`」或「POC **报告** §N」。
 
 ---
 
@@ -47,7 +53,10 @@ flag 关时该模块不加载。部署面实测零处设这个 flag。
 
 ## 2 · 本裁决的机器执行体 · `dsh-dormancy:check`
 
-`scripts/check-dsh-dormancy.mjs` 守三条，任一破即 **RC=1**：
+`scripts/check-dsh-dormancy.mjs` 守三条，任一破即 **RC=1**。
+**已并入 `pnpm gates`**（55→56 条治理门，别名 `dsh-dormancy:check`，门账 `binding=GATES_CHAIN`）⇒ **每次 gate/CI 真跑**，
+不靠人记得手动跑。（第一版交付时是「已建未接线」，见 §6 与 §7 遗留 1 的处置记录。）
+
 
 | 判据 | 守什么 | 破了会怎样 |
 |---|---|---|
@@ -114,11 +123,14 @@ flag 关时该模块不加载。部署面实测零处设这个 flag。
   累计调用 ≥ `loopRepeatCap` ⇒ 判无进度环 ⇒ 优雅降级 `STALL_LOOP`（唯一诚实出口 `degrade`，非 500）。
   出货 compose 已默认设 `LOOP_REPEAT_CAP=3`（`DEPLOY.md` Loop Control 五开关，
   由 `scripts/check-deploy-governance.mjs` 守门，删行即红）。
-- dsh 侧：`apps/agentcore/src/dsh-runtime/reassemble.ts:10` 逐字写着
+- dsh 侧（**分支面**）：`apps/agentcore/src/dsh-runtime/reassemble.ts:10` 逐字写着
   「**`STALL_LOOP` 不可重建（dsh 无环检测——E6 三档 verdict 的「放弃或外壳保留」项），不出**」；
   `apps/agentcore/test/dsh-poc-acceptance.test.ts:192` 同口径称其为「**文档化放弃项**」；
   `docs/REPORT-dsh-poc-s0.md` §6 写「环检测是我方 `loop.ts` 自有机制，dsh 无此概念，
   **重建不了**，须外壳保留或放弃该观测位」。
+- dsh 侧（**报告面**）：POC 测试结果报告 `dshpoctestresults.md` §7「已知限制（文档化放弃项，
+  不粉饰）」第 1 条明写「**进生产需在 runner 侧补 watchdog**」。
+  ⚠️ 该报告**不在分支上**（只作为对话交付物存在）—— 见本节末尾的方法论记账。
 
 **为什么这构成闸**：**翻 flag = 少一道安全护栏**。
 这不是功能差异（少个观测位、屏上少一行），是**风险差异** —— 病态同签名循环在我方 loop 下被
@@ -134,13 +146,40 @@ flag 关时该模块不加载。部署面实测零处设这个 flag。
 3. 若决定**不补**而是「外壳保留」，必须写清外壳在哪一层拦、并给出对应断言。
    「放弃该观测位」不是本条的合法销账方式。
 
-> ⚠️ **措辞订正（对派单口径）**：派单写「POC 已文档化放弃，说『进生产需在 runner 侧补 watchdog』」。
-> 前半属实且有逐字出处（上引三处）；后半的「runner 侧补 watchdog」这句话
-> **在 POC 分支上零命中**（`git grep -in watchdog` 在该分支只命中
-> `apps/agentcore/src/router/orchestrator.ts` 里既有的 terminal watchdog，与 dsh 无关；
-> 金丝雀：同一搜法数 `STALL_LOOP` 得 68 条 ⇒ 搜法正常）。
-> 那是**审核方/派单方开的药方，不是 POC 的原话** —— 两者不可混记，否则下一个人会去
-> POC 报告里找一段不存在的承诺。
+**「进生产需在 runner 侧补 watchdog」的出处**：POC 测试结果报告
+`dshpoctestresults.md` §7「已知限制（文档化放弃项，不粉饰）」第 1 条，原文：
+
+> **`STALL_LOOP` 不可重建**：dsh 无环检测，我方 `STALL_LOOP` 降级理由在 dsh 路无法重组装
+> （E6 已列入「外壳保留/放弃」档）。**进生产需在 runner 侧补 watchdog。**
+
+⇒ 这句话**是 POC 的原话**，不是审核方事后开的药方。上面「销账判据」第 1 条
+（`dsh-runtime` 侧补环检测/看门狗）正是对它的落地，两者同源。
+
+> ### ⚠️ 方法论记账 · 这一条我第一版写反了，形态是本仓的老病
+>
+> **第一版原文**（已删）：我据 `git grep -in watchdog` 在 POC **分支**上零命中，
+> 判「那是审核方/派单方开的药方，不是 POC 的原话」。
+> **grep 没错，结论错了。** 那句话在 `dshpoctestresults.md` 里白纸黑字写着，
+> 而**那份报告只作为对话交付物存在、从没提交进分支**，所以分支上必然零命中。
+>
+> **形态**（`CLAUDE.md` 铁律 0.6 句式）：
+> > **「我用『它不在这个分支上』当作『它不是 POC 说的』的证据，而前者并不度量后者。」**
+>
+> 而且这次连金丝雀都救不了我 —— 我确实跑了金丝雀（同一搜法数 `STALL_LOOP` 得 68 条，
+> 证明 `git grep` 是好的），于是「工具没坏 ⇒ 零命中是真的零」这一步是对的，
+> **错在下一步**：把「在这个扫描面里是真的零」直接读成「在世界上不存在」。
+> **金丝雀证明的是工具没瞎，不是扫描面选对了。** 扫描面选错时，
+> 金丝雀会陪着你一起给出一个自信的错误答案。
+>
+> **判据（以后引用 POC 结论一律照此）**：
+> 1. **出处判定不能只查分支** —— POC 的交付面 = 分支代码 ⊕ **分支外的报告**
+>    （`dshpoctestresults.md` 这类只在对话里流转的独立交付物）。
+>    分支不是 POC 产出的全集。
+> 2. **引用时必须标明来自哪一面**：写「（POC **报告** §7）」或「（POC **分支** `x.ts:NN`）」，
+>    不许只写「POC 说」。本文件已按此改：§3 前置 B 的三处分支内引用保留 `file:line`，
+>    报告内引用标注为「POC 报告 §7 已知限制第 1 条」。
+> 3. **报「某话不存在」之前，先问「我扫的这个面，是它该在的面吗？」**
+>    ——「工具没瞎」和「面选对了」是两个命题，前者不蕴含后者。
 
 ### 前置 C · MCP `serverName` 是 root 级预约
 
@@ -330,10 +369,15 @@ POC 报告 §5 对照表写「闭包 | 38 包在独立目录，agentcore 零侵�
 - ❌ **没有跑 `pnpm -r build` / `pnpm -r test` / `scripts/gate.sh`**（派单纪律：
   审核方此刻正在跑四包 gate，4 核机不许并发重画像）。本单只跑
   `node scripts/check-dsh-dormancy.mjs` 及其自变异样例。
-- ❌ **没有把门接进 `pnpm gates` 串**。本单范围边界禁改 `package.json` 与 `scripts/gate.sh`
-  ⇒ 门账 `binding=NONE` / `disposition=WIRE`，**接线属治理裁量，由审核方定**。
-  ⚠️ 这意味着**门今天不会自动跑** —— 在它被接进链之前，§1 那句「不能翻」仍然靠人记得。
-  见 §7 遗留。
+- ✅ ~~没有把门接进 `pnpm gates` 串~~ —— **第一版确实没接，现已补接**。
+  第一版交付时门账是 `binding=NONE` / `disposition=WIRE`，理由是本单范围边界禁改 `package.json`
+  与 `scripts/gate.sh`。**审核方复核时判定那是派单范围划错**（「造出的正是本仓有门在防的那个状态：
+  已建未接线」），当场放开这两处，本单随即补接：`package.json` 加别名 + 追加进 `gates` 串尾。
+  **`scripts/gate.sh` 一个字没改** —— 它把门数 `GATES_N` 从 `package.json` **现算**
+  （自陈「出处唯一 = package.json 的 gates 脚本，这里只做投影」），接 `gates` 串即自动进 `gate.sh`；
+  改它反而会造出第二处真值。**验收证据**：`pendingWireCount` 棘轮余量**退回来了**
+  （接线前现算 14 = 基线 14 压线，接线后现算 **13**），`binding` 现算 `GATES_CHAIN`
+  （`callers=package.json:gates`），`ontology-writeback:check` 打印「pnpm gates 含 **56** 个 check 门 · §7 漏登 0」。
 - ❌ **没有修事实一那条**（`packages/dsh-harness` 无 `build`/`test` ⇒ 常设门看不见整包）。
   修它要动 `packages/**`，超出本单范围边界。已登记为遗留。
 
@@ -343,7 +387,7 @@ POC 报告 §5 对照表写「闭包 | 38 包在独立目录，agentcore 零侵�
 
 | # | 遗留 | 为什么本单不做 | 建议处置 |
 |---|---|---|---|
-| 1 | `dsh-dormancy:check` 未接进 `pnpm gates` 串 | 范围边界禁改 `package.json` / `scripts/gate.sh` | 接进 `gates` 串（`binding` 转 `GATES_CHAIN`，`pendingWireCount` 当场回落）。**在此之前本门是「已建未接线」，护栏只在有人手动跑时生效** |
+| 1 | ~~`dsh-dormancy:check` 未接进 `pnpm gates` 串~~ | ~~范围边界禁改 `package.json` / `scripts/gate.sh`~~ | ✅ **已闭**（审核方放开范围后同单补接）：`binding` 转 `GATES_CHAIN`，`pendingWireCount` 由 14 回落 **13**，`pnpm gates` 门数 55→**56** |
 | 2 | `packages/dsh-harness` 无 `build` / 无 `test` ⇒ 常设门整包看不见 | 要动 `packages/**` | 若决定长期保留该包，至少补一个 `test` 脚本把 `smoke.mjs` 挂上去；否则它的任何回归都不会有人知道 |
 | 3 | 事实二的「零侵入」文案与 `dependencies` 实况对不上 | 要动 `packages/**` / `apps/**` | 合并时同批把 `package.json` 的 `description` 与 `README.md:4` 改成真话（如「代码加载零侵入；依赖闭包侵入 2 个协议包」），或把两个包挪进 `devDependencies` 并验证生产路径不需要它们 |
 | 4 | 事实三的「38 包」写在包描述与报告结论里 | 同上 | 合并时同批订正为 43，或改成不写死数字 |
@@ -368,5 +412,5 @@ POC 报告 §5 对照表写「闭包 | 38 包在独立目录，agentcore 零侵�
 ## 9 · 一句话交底
 
 > **并进来的是一台已经装好、没通电的机器；本单做的是把闸刀锁上，并写清三把钥匙分别在谁手里。**
-> 锁是 `scripts/check-dsh-dormancy.mjs`（**待接进 `pnpm gates` 才自动生效**），
+> 锁是 `scripts/check-dsh-dormancy.mjs`（**已接进 `pnpm gates`，每次 gate/CI 真跑**），
 > 钥匙是 §3 的三条前置条件。
