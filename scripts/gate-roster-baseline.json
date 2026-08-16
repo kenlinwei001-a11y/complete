@@ -198,10 +198,6 @@
       "verdict": "computed",
       "why": "裸字面量负向扫描的根（四个包 src）。受检文件由递归遍历现算。**注**：缺 packages/llm-adapters/src，但该包与 C08 外协红线无任何关系（零命中），故不构成缺口。"
     },
-    "check-prd-coverage.mjs:TEST_DIRS": {
-      "verdict": "roster",
-      "why": "**差集 1**：写死三个 test 目录，实测还有 packages/contracts/test（存在且有测试文件），从未计入 PRD 覆盖统计。**差什么才能修**：改成按 pnpm-workspace 成员现算 <pkg>/test 即可，工作量极小；本单未排是优先级，且这一条影响的是覆盖率**统计口径**（会让分母变大、数字变难看），改动需要同批复核 req-coverage 基线，不是纯门单能独立收的。"
-    },
     "check-prd-data-grounding.mjs:SIM_CONTEXT_MARKERS": {
       "verdict": "criteria",
       "why": "推演语境标记词表（stateVar/targetStateVar/readVar/PropagationRule…），用于判「这句话在说推演还是在说本体」。判据本体：词表是判据，不是对象集合。"
@@ -222,13 +218,13 @@
       "verdict": "computed",
       "why": "扫描根（五个包的 src + scripts）。受检文件由递归遍历现算，根本身是判据；实测覆盖全部 5 个工作区包，无缺口。"
     },
+    "check-ref-closure.mjs:GUARDED_ROUTE_SPECS": {
+      "verdict": "criteria",
+      "why": "WO-GATE-ROSTER-SWEEP ③ 后已降级为**附加判据表**：受检集合（问哪些发布路）已改为现算 server.ts 全部 app.post 发布路由，本表只登记「某条路除『必须有探针』外还要满足什么」（skill 路必须拦在 repos.skills.update 之前）。它答的是「什么算合格」而非「有哪些对象」——现算出的路由不在此表时仍受「必须有探针」约束，故漏登一条不会让它免检。"
+    },
     "check-scenario-slot-keys.mjs:ALIASES": {
       "verdict": "criteria",
       "why": "槽位键别名表（model↔modelId 等）。判据本体：它定义「哪两个名字指同一件事」，是归一化规则不是对象集合。"
-    },
-    "check-screen-value-provenance.mjs:SCAN_DIRS": {
-      "verdict": "roster",
-      "why": "**差集 3**：三个根覆盖 173 个 .tsx，漏 App.tsx / main.tsx / workspace/featureGate.tsx。这三个文件里 App.tsx 确实挂路由与 Guard、可能出现屏上数值。**差什么才能修**：把根改成 apps/frontend-shell/src 全遍历即可，工作量极小；本单没排上纯粹是优先级——差集 3 且这三个文件今天实测零命中，改了当场也是绿的（改它买不到任何新信息，只买到防将来）。"
     },
     "check-screen-value-provenance.mjs:GEOMETRY_TARGETS": {
       "verdict": "criteria",
@@ -281,13 +277,9 @@
     "check-verdict-rollup.mjs:CAN": {
       "verdict": "criteria",
       "why": "裁定汇总的金丝雀样例（含 docs/CHECK-*.md 路径与期望符号）。判据本体：路径在这里是**样例数据**不是受检对象，受检对象是同文件的 FILES。"
-    },
-    "check-ref-closure.mjs:GUARDED_ROUTE_SPECS": {
-      "verdict": "criteria",
-      "why": "WO-GATE-ROSTER-SWEEP ③ 后已降级为**附加判据表**：受检集合（问哪些发布路）已改为现算 server.ts 全部 app.post 发布路由，本表只登记「某条路除『必须有探针』外还要满足什么」（skill 路必须拦在 repos.skills.update 之前）。它答的是「什么算合格」而非「有哪些对象」——现算出的路由不在此表时仍受「必须有探针」约束，故漏登一条不会让它免检。"
     }
   },
-  "candidateCount": 71,
-  "rosterCount": 14,
-  "ratchetHigh": 14
+  "candidateCount": 69,
+  "rosterCount": 12,
+  "ratchetHigh": 12
 }

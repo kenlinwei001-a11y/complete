@@ -36,7 +36,38 @@ import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 const DOCS = "docs";
-const TEST_DIRS = ["apps/frontend-shell/test", "apps/datacore/test", "apps/agentcore/test"];
+/**
+ * 测试语料根 —— **现算**，不再手抄。
+ *
+ * ══ WO-GATE-ROSTER-SWEEP 修（2026-08-16）· 本体 §8 `G-GATE-ROSTER-HANDCOPIED` ══════
+ * **病**：原文写死 `["apps/frontend-shell/test", "apps/datacore/test", "apps/agentcore/test"]`。
+ * 实测差集 **1**：`packages/contracts/test` 存在且有测试文件，**从未进过 PRD 覆盖语料** ——
+ * 于是「只在契约包测过」的验收项被一律判为**未覆盖**（本门的假红方向），
+ * 而反过来，将来新建一个工作区包的测试也照样进不来（假绿方向）。
+ * **形态**：「我用『那 3 个 test 目录里的语料』当作『全仓测试语料』的证据。」
+ *
+ * **修法**：从 `apps/*` 与 `packages/*` **枚举**存在的 `test/` 目录 —— 判据是
+ * 「工作区成员下有没有 test 目录」，随包结构自动跟随，新增包不必有人想起来改这里。
+ */
+const TEST_ROOTS = ["apps", "packages"];
+function liveTestDirs() {
+  const out = [];
+  for (const root of TEST_ROOTS) {
+    if (!existsSync(root)) continue;
+    for (const pkg of readdirSync(root)) {
+      const d = join(root, pkg, "test");
+      if (existsSync(d)) out.push(d);
+    }
+  }
+  return out.sort();
+}
+const TEST_DIRS = liveTestDirs();
+/** 语料根下界（金丝雀）：枚举器一坏集合就空 ⇒ 所有验收项报「未覆盖」，是**假红**的危险方向。 */
+if (TEST_DIRS.length < 3) {
+  console.error(`⛔ prd-coverage:check **工具坏了**：只枚举到 ${TEST_DIRS.length} 个 test 目录（下界 3）—— 枚举器坏了，不是测试没了。`);
+  console.error("   本次结论作废：**不许**读作「验收项覆盖率低 / 有未覆盖项」——集合塌陷时每一项都会报未覆盖。");
+  process.exit(2);
+}
 const OUT = "docs/prd-coverage-index.json";
 
 // 验收项编号族（清晰、低噪）。C 系列排除（与规则码 C01–C33 冲突）。

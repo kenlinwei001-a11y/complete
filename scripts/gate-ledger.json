@@ -912,7 +912,7 @@
         "evidence": null,
         "note": "本体 §7 行836 未记录已执行的反证"
       },
-      "notes": ""
+      "notes": "WO-GATE-ROSTER-SWEEP 2026-08-16：测试语料根从手抄 3 个 test 目录改为枚举 apps/*/test + packages/*/test 现算（差集 1：packages/contracts/test 此前从未进过语料）。加语料根下界自证：<3 个目录即 RC=2「工具坏了」，因为集合塌陷会把每一项都报成「未覆盖」——这是**假红**的危险方向。⚠️ 诚实记账：改后「有测试引用 210 · 零测试引用 11」两个数**一字未变**，因为 contracts/test 今天不引用任何验收编号；本次买到的是机制正确（新增工作区包自动进语料），不是当下的数字变化。"
     },
     "check-prd-data-grounding.mjs": {
       "alias": "prd-data-grounding:check",
@@ -1074,7 +1074,7 @@
         "note2": "退出码三态均现跑取证：S1 基线非法 JSON → RC=2；S2 门自变异令 analyzeSource 的 hits 恒空 → 3 条必中金丝雀开火 RC=2（**不是** RC=1 报「屏上数值都有记号」）；S3 门自变异把「标识符名也算记号」这条**曾经真犯过的错**加回去 → 必不中金丝雀 EMPTY_SANDBOX_SCOPE 当场开火 RC=2；S4 把扫描目录换成不存在的路径（模拟 cwd 不对）→ RC=2 报规模下界 0<100。金丝雀 10 条**全部是合成样例**，刻意不拿存量缺陷当必中样例——那样一来「缺陷被修好」会让门报「工具坏了」，正好把要咬的场景吞掉（同批 carrier 门的 M5 变异当场演示过这个陷阱）。",
         "note3": "对照组是实测出来的、不是编的：同族 hash 占位在 views/sim/physicalTopology.ts（PROVENANCE_LABEL/PROVENANCE_BADGE，19 条记号）与 views/sim/inspectorModel.ts（emptyReason + 占位·未接真值，11 条记号）都判过——三个文件同族做法、只有一个不吭声，正是本门要区分的那件事。"
       },
-      "notes": "射程诚实：本门**做不到全自动溯源**，是 WO 明确允许的「白名单 + 棘轮」形态，四条边界每次运行强制打印——① 只到**文件级**，不证记号贴在那个数旁边（SandboxView 恰是极端反例：同屏阻滞点行有「合成数据」徽标、顶栏一个都没有，这种同文件不同区域的缺席本门看不见）；② 不做数据流，追不到跨文件传播；③ 只认三类污染源（Math.imul 型哈希 / Math.random / 调用它们的本地函数），写死常数与 mock fixture 看不见；④ 记号判定偏假绿（只出现在 console.log 里的「占位」也算）。判定用 TypeScript AST 非行式正则：污染函数取不动点传递闭包，来源点要求进数值上下文（Math.round/floor/ceil/abs/min/max · toFixed · 算术）且排除 .toString(（id 生成）与几何/样式落点（dx/dy/width/opacity…，布局抖动不是屏上读数）；记号只认字符串/模板/JSX 文本字面量，**标识符名不算**（EMPTY_SANDBOX_SCOPE 会让 SandboxView 假装有记号——这条是实测逼出来的）。现算扫描面 174 个生产前端源文件、含来源点 3 个文件 / 8 处、无记号 1 个（已具名挂账）。"
+      "notes": "WO-GATE-ROSTER-SWEEP 2026-08-16：扫描面从手抄 3 目录（views/pages/components）改为现算全遍历 apps/frontend-shell/src + EXCLUDE_DIRS 排除判据（默认纳入、例外具名）。实测扫描面 174 → 220 个文件，补上 App.tsx / main.tsx / workspace/featureGate.tsx 三个此前从未被问过的上屏文件；改后门仍 RC=0，存量违规 0。"
     },
     "check-scenario-slot-keys.mjs": {
       "alias": "scenario-slot-keys:check",

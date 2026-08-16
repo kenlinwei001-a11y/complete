@@ -72,8 +72,30 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
 const BASELINE = join(ROOT, "scripts/screen-value-provenance-baseline.json");
-/** 生产 UI 层。`lib/` 刻意不扫：`lib/uuid.ts` 那类是 id 生成，不是屏上读数。 */
-const SCAN_DIRS = ["apps/frontend-shell/src/views", "apps/frontend-shell/src/pages", "apps/frontend-shell/src/components"];
+/**
+ * 生产 UI 层。
+ *
+ * ══ WO-GATE-ROSTER-SWEEP 修（2026-08-16）· 扫描面从**手抄 3 目录**改为**现算全体 UI 源** ══
+ * **病**（本体 §8 `G-GATE-ROSTER-HANDCOPIED`）：受检对象集合写死成三个目录名，
+ * 于是**这三个目录之外的上屏文件永远绿**。实测差集 **3 个 `.tsx`** ——
+ * `App.tsx`（挂路由与 Guard）/ `main.tsx` / `workspace/featureGate.tsx` 从未被本门问过一次。
+ * 差集小不等于机制对：**判据错的时候，差集为几只是今天的偶然**（明天在 `src/` 顶层
+ * 新写一个上屏组件，它照样一辈子免检）。
+ *
+ * **修法**：受检文件 = `apps/frontend-shell/src` **全遍历**，用**排除判据**（`EXCLUDE_DIRS`）
+ * 表达「哪些不算屏上读数」——排除是判据（会被人 review、每条带理由），名单不是。
+ */
+const SCAN_ROOT = "apps/frontend-shell/src";
+/**
+ * 排除判据（**这是判据本体，不是名册**：每条答的是「凭什么它不算屏上读数」）。
+ *  · `lib/`      —— `lib/uuid.ts` 那类是 id 生成，不是屏上读数（沿用原注释的理由）
+ *  · `mocks/`    —— mock 数据源，本来就该有字面量；扫它会把整份 fixtures 报成"无溯源"
+ *  · `locales/`  —— i18n 文案表
+ *  · `styles/`   —— 样式
+ * 其余一律进扫描面 —— **默认纳入、例外具名**，与旧版「默认排除、纳入具名」方向相反，
+ * 这正是本单要换掉的那个方向。
+ */
+const EXCLUDE_DIRS = /^(lib|mocks|locales|styles)(\/|$)/;
 const SKIP = /(^|\/)(__tests__|__mocks__|mocks|fixtures)(\/|$)|\.(test|spec)\.[tj]sx?$/;
 const MIN_FILES = 100; // 实测 174；低于此下界多半是 cwd 不对或目录读错
 
@@ -275,8 +297,12 @@ function listFiles(dir, out = []) {
   }
   return out;
 }
-let files = [];
-for (const d of SCAN_DIRS) files = listFiles(join(ROOT, d), files);
+// **现算**：全遍历 UI 源根，再按排除判据剔除（默认纳入、例外具名）。
+const scanRootAbs = join(ROOT, SCAN_ROOT);
+let files = listFiles(scanRootAbs, []).filter((abs) => {
+  const relFromRoot = abs.slice(scanRootAbs.length + 1).split("\\").join("/");
+  return !EXCLUDE_DIRS.test(relFromRoot);
+});
 if (files.length < MIN_FILES) {
   gateToolBroken(`只枚举到 ${files.length} 个前端源文件（下界 ${MIN_FILES}）`, "多半是 cwd 不在仓根：本门必须在仓根跑。");
 }
@@ -364,7 +390,7 @@ console.log(
     `（必中 ${CANARIES.filter((c) => c.name.startsWith("必中")).length} · 必不中 ${CANARIES.filter((c) => c.name.startsWith("必不中")).length}；全部为合成样例，与主逻辑共用 analyzeSource）`,
 );
 console.log(
-  `· screen-value-provenance：扫描 ${files.length} 个生产前端源文件（views/pages/components，排除测试与 mock）· ` +
+  `· screen-value-provenance：扫描 ${files.length} 个生产前端源文件（**现算**全遍历 ${SCAN_ROOT}，按 EXCLUDE_DIRS 排除 lib/mocks/locales/styles 与测试）· ` +
     `含合成数值来源点 ${rows.length} 个文件 / ${rows.reduce((a, r) => a + r.hits.length, 0)} 处 · 无来源记号 ${violations.length} 个（已豁免 ${used.size}）`,
 );
 for (const r of rows) console.log(`  ${r.markers.length ? "✓" : "✗"} ${r.file}  来源点 ${r.hits.length} · 记号 ${r.markers.length}${!r.markers.length && exempt[r.file] ? "【基线豁免】" : ""}`);
