@@ -128,12 +128,13 @@ import {
   mockBaseOutlook,
   mockChainImpediments,
   PLAN_VERSION_CURRENT,
-  SOP_SUPPLY_BASELINE,
   SopMockError,
   sopPlanLocked,
   type MockAuditInput,
   type MockForecastArgs,
 } from "./simSolvers";
+// WO-MOCK-SCALE-TRUTH：年口径（DemandSegment / SopVersionRow / AOP 营收）单一来源。
+import { AOP_BASE_REVENUE_YI, DEMAND_YEAR, FINANCE_PNL_YEAR, SOP_VERSION_ROWS, SOP_VERSION_TOTAL_GAP_WAN, SUPPLY_V7_WAN } from "./sopScale";
 import {
   affectedOrdersOutput,
   AOP_RESPONSE,
@@ -797,8 +798,10 @@ const COCKPIT_ROLLUP_METRICS = [
 // VITE_MOCK 可见性桩：decision_play（CEO-3 决策推演）+ supply_demand_gap_attribution（供需失衡双向归因）。
 // 病根：WO-D 决策页 + 供需 panel 已合入真部署态，但纯 VITE_MOCK=1 态 base mock 对这两 solver invoke 返 404
 // → 两块诚实空，CEO 在 demo 里看不到。此桩**仅 mock 可见性用途**（真部署走真求解器·不覆盖）。
-// 诚实：数字从已有真 fixtures 确定性派生（PLAN_VERSION_CURRENT.input / SOP_SUPPLY_BASELINE / ess 段 / kitGap / oee），
+// 诚实：数字从已有真 fixtures 确定性派生（sopScale 的年口径 DemandSegment / SopVersionRow + kitGap / oee），
 // 非编造"来自数据库"；结构与真 solver 一字不差（DecisionPlayOutput / SupplyDemandGapOutput 契约）。R6 无随机·字节一致。
+// WO-MOCK-SCALE-TRUTH：两处取数对象都改过 —— decision_play 的 ess 目标从**月**字段 seg_ess 改回**年**口径
+// DemandSegment.demandWanPerYearP50；供需归因的 G 从月度台账改回 SopVersionRow（与真求解器同口径）。
 const r1 = (x: number) => Math.round(x * 10) / 10;
 const r2 = (x: number) => Math.round(x * 100) / 100;
 const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
@@ -893,9 +896,15 @@ const mockOmitted = (rootLabel: string, drillFaces: string) => [
  * 三态的文字与数值形状取自 2026-08-14 在 datacore 真跑同名求解器打出来的回包。
  */
 function mockDecisionPlay(metricKey?: string): Record<string, unknown> {
-  // 根因缺口：储能达成率 = 实绩/目标（fixtures ess 段）→ gap = (1 − 100.5/139.2)×100 ≈ 27.8%（与 gap_attribution 桩同源）。
-  const essTarget = PLAN_VERSION_CURRENT.input.seg_ess; // 139.2（fixtures.ts:488 / simSolvers 同源）
-  const essActual = 100.5; // 储能 lastActual（fixtures.ts:488 sopConfig.segments）——实绩偏弱下修
+  // 根因缺口：储能达成率 = 实绩/目标 → gap = (1 − 100.5/139.2)×100 ≈ 27.8%（与真后端 metric `seg_attain_ess`
+  // 的 `actual = round(act/tgt×100, 1)` 同式同值）。
+  // WO-MOCK-SCALE-TRUTH：这两个数是 `DemandSegment` 的**年**口径（P50 139.2 / act 100.5），
+  // 旧写法却从 `PLAN_VERSION_CURRENT.input.seg_ess` 取 —— 那个字段是**月**口径（8.93）。
+  // 旧代码之所以没炸，只是因为当时 seg_ess 恰好也被错填成年值；把 seg_ess 修对，这里就会算出 −1025%。
+  // 「接了线接错地方」的典型：改取年口径本体，不再借道月度台账字段。
+  const ess = DEMAND_YEAR.find((d) => d.key === "ess")!;
+  const essTarget = ess.demandWanPerYearP50; // 139.2 万套/年
+  const essActual = ess.act; // 100.5 万套/年（DemandSegment.act）——实绩偏弱下修
   const gap = r1((1 - essActual / essTarget) * 100); // 27.8
 
   // ── 三态之二/三：战略方案 0 条（依据够不着）。这两态是本桩存在的第二个理由 ────────────
@@ -1069,20 +1078,27 @@ function mockDecisionPlay(metricKey?: string): Record<string, unknown> {
 }
 
 /**
- * supply_demand_gap_attribution mock（供需失衡双向归因·勾稽 Σ=G）：总缺口 G = 需求(dem 375.0) − 供给基线(367.9·SOP_SUPPLY_BASELINE)
+ * supply_demand_gap_attribution mock（供需失衡双向归因·勾稽 Σ=G）：总缺口 G
  * → 需求端(预测虚高) ⊥ 供给端(物料/OEE) + residual。侧/叶贡献确定性分摊，last 叶取余保证 Σ 精确=父（非写死叙事）。
  * 诚实：供给端**不含** capacity_gap 叶（Line.capacityDaily 未落·忠于 demo 种子）→ 前端渲「产能数据未接·诚实空」，绝不编造产能占比。
+ *
+ * WO-MOCK-SCALE-TRUTH：G 的**取数对象换了**。旧写法 `G = dem − SOP_SUPPLY_BASELINE` 从**月度台账**派生（7.1），
+ * 而真求解器的口径是 `SopVersionRow Σ max(0, demand−supply)`（目录条目原文），**年**口径，实测 **81 万套**。
+ * 即旧桩不是"数不准"而是"取错了对象"——差 11.4 倍，跨了一个数量级。
  */
 function mockSupplyDemandGap(): Record<string, unknown> {
-  const dem = PLAN_VERSION_CURRENT.input.dem; // 375.0（三段 rolling 合计·fixtures.ts:484）
-  const G = r1(dem - SOP_SUPPLY_BASELINE); // 375.0 − 367.9 = 7.1
-  // 侧分摊（预测虚高 → 需求端主导·residual 15%·非五五开）：demand 5.0 / supply 1.0 / residual 1.1（Σ=7.1）。
-  const demandContribution = r1(G * 0.704); // ≈5.0
-  const supplyContribution = r1(G * 0.141); // ≈1.0
-  const residual = r1(G - demandContribution - supplyContribution); // 1.1（取余保证 Σ=G）
+  // 与真求解器同式同源：Σ max(0, SopVersionRow.demand − .supply)（万套/年）⇒ 36+26+15+4 = 81。
+  const G = SOP_VERSION_TOTAL_GAP_WAN;
+  // 侧分摊（预测虚高 → 需求端主导·residual 15%·非五五开）：占比不变，随 G 一起放大到年口径。
+  const demandContribution = r1(G * 0.704);
+  const supplyContribution = r1(G * 0.141);
+  const residual = r1(G - demandContribution - supplyContribution); // 取余保证 Σ=G
+  const essSeg = DEMAND_YEAR.find((d) => d.key === "ess")!;
+  // 需求端叶的 driverValue 同样回到**年**口径（真后端 seg_bias 叶实测 38.7 = P50 139.2 − act 100.5）。
+  const essBias = r1(essSeg.demandWanPerYearP50 - essSeg.act); // 38.7 万套/年
   const demandDrivers = [
-    { id: "seg_bias:ess", factor: "储能 预测偏差（rolling−实绩）", contribution: r1(demandContribution * 0.84), share: r4(0.84), unit: "万套", driverValue: 33.3,
-      provenance: { kind: "派生", drillType: "DemandSegment", drillId: "ess", drillField: "rolling−lastActual", drillValue: 33.3 } },
+    { id: "seg_bias:ess", factor: "储能 预测偏差（P50−实绩）", contribution: r1(demandContribution * 0.84), share: r4(0.84), unit: "万套", driverValue: essBias,
+      provenance: { kind: "派生", drillType: "DemandSegment", drillId: "ess", drillField: "demandWanPerYearP50−act", drillValue: essBias } },
     { id: "order_backlog", factor: "在手订单需求（OPEN 未交付折口径）", contribution: 0, share: 0, unit: "万套", driverValue: 108.4,
       provenance: { kind: "实测", drillType: "Order", drillId: "*", drillField: "qty", drillValue: 1084000 } },
   ];
@@ -1090,7 +1106,9 @@ function mockSupplyDemandGap(): Record<string, unknown> {
   demandDrivers[1]!.share = r4(demandDrivers[1]!.contribution / demandContribution);
   const supplyDrivers = [
     // 无 capacity_gap 叶（capacityDaily 未落）——诚实缺，非编造。仅物料/OEE 真叶。
-    { id: "material_gap", factor: "正极物料缺口（ΣkitGap 折万套）", contribution: 0, share: 0, unit: "万套", driverValue: PLAN_VERSION_CURRENT.input.kitGap /* 654 */,
+    // WO-MOCK-SCALE-TRUTH 量纲修正：`unit` 写着「万套」，旧 driverValue 却直接塞了 kitGap 的**吨**数（654）——
+    // 屏上等于把吨当万套读。真后端此叶实测 46.02 万套；下钻证据仍是 654 吨（drillField=kitGap），两者分栏不混。
+    { id: "material_gap", factor: "正极物料缺口（ΣkitGap 折万套）", contribution: 0, share: 0, unit: "万套", driverValue: 46.02,
       provenance: { kind: "派生", drillType: "MaterialBalance", drillId: "gapTon", drillField: "kitGap", drillValue: PLAN_VERSION_CURRENT.input.kitGap } },
     { id: "oee_loss", factor: "设备 OEE 损失（1−oee_current×产能）", contribution: r1(supplyContribution * 0.3), share: r4(0.3), unit: "万套", driverValue: 0.84,
       provenance: { kind: "实测", drillType: "Equipment", drillId: "oee_current", drillField: "oee_current", drillValue: 0.84 } },
@@ -2905,11 +2923,19 @@ export const handlers = [
     } else if (type === "Model") {
       rows = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"].map((m) => ({ id: `model-${m}`, props: { name: m } }));
     } else if (type === "DemandSegment") {
-      rows = [
-        { segId: "dseg-1", segment: "乘用车", tgt: 201.7, demandWanPerYearP50: 201.7, demandWanPerYearP90: 199.6, act: 200.6 },
-        { segId: "dseg-2", segment: "储能", tgt: 139.2, demandWanPerYearP50: 139.2, demandWanPerYearP90: 108.4, act: 100.5 },
-        { segId: "dseg-3", segment: "商用车", tgt: 34.1, demandWanPerYearP50: 34.1, demandWanPerYearP90: 34.0, act: 39.5 },
-      ].map((r) => ({ id: r.segId, props: r }));
+      // WO-MOCK-SCALE-TRUTH：这三行**年**口径数此前在本文件内联一份、`sopScale` 又一份 ——
+      // 同一个 700 亿营收锚有两个出处，改一处即漂。现统一从 `DEMAND_YEAR` 派生（值字节不变）。
+      rows = DEMAND_YEAR.map((d, i) => ({
+        id: `dseg-${i + 1}`,
+        props: {
+          segId: `dseg-${i + 1}`,
+          segment: d.name,
+          tgt: d.demandWanPerYearP50,
+          demandWanPerYearP50: d.demandWanPerYearP50,
+          demandWanPerYearP90: d.demandWanPerYearP90,
+          act: d.act,
+        },
+      }));
     } else if (type === "Workshop") {
       const workshops = filterByScope(BASES, account).flatMap((b) =>
         ["制浆", "涂布", "辊压", "分切", "卷绕", "装配", "注液", "化成", "分容", "PACK"].map((wt, i) => ({
@@ -2932,13 +2958,11 @@ export const handlers = [
       // WO-SURFACE-7DIM：与 mockGlobalSim 两阶段 schedule[] 同源（PORT_TRANSFERS·单一来源·灭漂移）。
       rows = PORT_TRANSFERS.map((r) => ({ id: r.transferId, props: r }));
     } else if (type === "SopVersionRow") {
-      // SOP.4 版本演进对比（V1/V3/V5/V7）
-      rows = [
-        { ver: "V1", date: "2026-05-01", demand: 127, supply: 114, gap: 13, note: "初版需求", isFinal: false },
-        { ver: "V3", date: "2026-05-15", demand: 130, supply: 123, gap: 7, note: "供给评审上修", isFinal: false },
-        { ver: "V5", date: "2026-05-29", demand: 132, supply: 129, gap: 3, note: "财务整合", isFinal: false },
-        { ver: "V7", date: "2026-06-12", demand: 134, supply: 133, gap: 1, note: "高管会待定稿", isFinal: true },
-      ].map((r) => ({ id: `sopv-${r.ver}`, props: r }));
+      // SOP.4 版本演进对比（V1/V3/V5/V7）。
+      // WO-MOCK-SCALE-TRUTH：本体属性定义写死 `demand/supply` 的 `unit: "万套/年"`
+      //（description 还专门写了「非 S&OP 月度台账口径」），真后端种子实测 360/368/375/383 与
+      // 324/342/360/379。旧 mock 的 127/130/132/134 既不是年也不是月，是第三份真相源 —— 现改回年口径。
+      rows = SOP_VERSION_ROWS.map((r) => ({ id: `sopv-${r.ver}`, props: { ...r } }));
     } else {
       let orders = filterByScope(ORDERS, account);
       if (base) orders = orders.filter((o) => o.bases.includes(base));
@@ -3623,8 +3647,10 @@ export const handlers = [
         snapshotVersion: "ov-12",
       });
     if (key === "cockpit_kpi")
-      // DS.2 富 KPI（mock：从对象派生的 5 标量确定性示例）
-      return HttpResponse.json({ data: { supplyV7: 132, revAttainPct: 102, utilPeak: 88, aopBaseRev: 240, cashCushion: 58 }, snapshotVersion: "ov-12" });
+      // DS.2 富 KPI（mock：从对象派生的 5 标量确定性示例）。
+      // WO-MOCK-SCALE-TRUTH：`supplyV7` = 定稿版 SopVersionRow.supply（万套/年·真后端实测 379，旧值 132）；
+      // `aopBaseRev` = 基准情景年营收 = 供给侧年口径 322.2 × P̄ 1.8667（亿元·真后端实测 601.5，旧值 240）。
+      return HttpResponse.json({ data: { supplyV7: SUPPLY_V7_WAN, revAttainPct: 102, utilPeak: 88, aopBaseRev: AOP_BASE_REVENUE_YI, cashCushion: 58 }, snapshotVersion: "ov-12" });
     if (key === "metric_rollup") {
       // SPINE.4 经营指标条（mock：op 级 4 指标·物料保障率越线·交付达成率已达成——单一出处 COCKPIT_ROLLUP_METRICS）
       const missCount = COCKPIT_ROLLUP_METRICS.filter((m) => m.miss).length;
@@ -5302,16 +5328,15 @@ export const handlers = [
       return HttpResponse.json({ data: mockMultiObj(key, args), snapshotVersion: "ov-12" });
     }
     if (key === "finance_pnl")
+      // WO-MOCK-SCALE-TRUTH：量价本利科目表是**年**口径（亿元/年）。旧 mock 写 240/248/39.4，
+      // 真后端实测 686/700/118.9（收入 rolling 700 就是需求侧营收锚本体）——同一张表差 2.8 倍。
+      // 这一族**不随**量轴改月：钱轴与量轴期间不同是真后端自己的设计，见 mocks/sopScale.ts。
       return HttpResponse.json({
         data: {
-          pnl: [
-            { subject: "收入", budget: 240, rolling: 248, diff: 8 },
-            { subject: "销售成本", budget: 200.6, rolling: 208.3, diff: 7.7 },
-            { subject: "毛利", budget: 39.4, rolling: 39.7, diff: 0.3 },
-          ],
-          gmRow: { budgetPct: 16.4, rollPct: 16.0, diffPp: -0.4 },
-          attribution: "毛利率 16.4%→16.0%（-0.4pp）：储能占比 37% 结构拉低（单价/成本未恶化）",
-          summary: "收入/成本/毛利三科目 + 毛利率 16.0%（C15）",
+          pnl: FINANCE_PNL_YEAR.pnl.map((row) => ({ ...row })),
+          gmRow: { ...FINANCE_PNL_YEAR.gmRow },
+          attribution: `毛利率 ${FINANCE_PNL_YEAR.gmRow.budgetPct}%→${FINANCE_PNL_YEAR.gmRow.rollPct}%（${FINANCE_PNL_YEAR.gmRow.diffPp}pp）：储能占比 37% 结构拉低（单价/成本未恶化）`,
+          summary: `收入/成本/毛利三科目 + 毛利率 ${FINANCE_PNL_YEAR.gmRow.rollPct}%（C15）`,
         },
         snapshotVersion: "ov-12",
       });

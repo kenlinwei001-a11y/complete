@@ -14,12 +14,18 @@ describe("F15 · 规划体检 · 时序推演传导链", () => {
     loginAs("planner");
     renderApp("/v/plan-audit");
 
-    // 基线自动体检 → X02 产销缺口（软风险，缺口 0.8）
-    const x02 = await screen.findByTestId("audit-item-med-X02");
+    // 基线自动体检 → X02 产销缺口（**硬卡**，缺口 2.07 万套/月）
+    // WO-MOCK-SCALE-TRUTH：这里原写 `med`（软风险·缺口 0.8）—— 那是**年口径假基线**的产物：
+    // 旧 mock 的 dem 375.0 / sup 374.2 都是年数塞进月字段，两个大数相减恰好只差 0.8，
+    // 落在 (gapSoft 0.3, gapHard 2] 里 ⇒ 看着像"软风险"。量级修对后
+    // dem 27.92 − sup 25.8523 = 2.0677 > gapHard 2 ⇒ X02 是**硬卡**，
+    // 与真后端 `plan_audit` 实测一致（H=[X02]·verdict「站不住」·score 43）。
+    // 即「档位变了」不是回归，正是本单要治的那个谎被拆穿后的**正确**读数。
+    const x02 = await screen.findByTestId("audit-item-hard-X02");
     expect(x02).toHaveTextContent("产销缺口");
 
     // 折叠开关「⏱ 时序推演（不解决会怎样）」→ 调 risk_timeline 渲染 PropagationTimeline
-    await user.click(within(x02).getByTestId("tl-toggle-med-X02"));
+    await user.click(within(x02).getByTestId("tl-toggle-hard-X02"));
     await screen.findByTestId("audit-risk-timeline-X02");
     const ptl = await screen.findByTestId("ptl-X02");
 

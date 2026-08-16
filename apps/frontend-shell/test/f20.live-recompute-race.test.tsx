@@ -13,30 +13,31 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * + 序号守卫）；同一 debounce 窗口内的连续变更只发一次请求。
  */
 describe("F20 · 改参即重算：debounce 300ms + 竞态最后发出者胜", () => {
-  it("慢请求（dem=999 哨兵延迟 400ms）被后发请求取代：仅 dem=383 的结果上屏", async () => {
+  it("慢请求（dem=999 哨兵延迟 400ms）被后发请求取代：仅 dem=34.65 的结果上屏", async () => {
     loginAs("planner");
     renderApp("/v/plan-audit");
 
-    // 基线结果就绪
+    // 基线结果就绪。WO-MOCK-SCALE-TRUTH：基线改月口径后，产销缺口 2.0677 真的越线 ⇒ 1 硬矛盾（与真后端一致）。
     await screen.findByTestId("audit-verdict");
-    await waitFor(() => expect(screen.getByTestId("audit-counts")).toHaveTextContent("0 硬矛盾 / 6 软风险 / 3 建议"));
+    await waitFor(() => expect(screen.getByTestId("audit-counts")).toHaveTextContent("1 硬矛盾 / 5 软风险 / 3 建议"));
 
-    // 第一次改参：dem=999（mock 侧该请求慢 400ms）
+    // 第一次改参：dem=999（mock 侧该请求慢 400ms —— 999 是慢请求哨兵值，与量级无关，保持不变）
     fireEvent.change(screen.getByTestId("audit-input-dem"), { target: { value: "999" } });
     await sleep(330); // 越过 debounce → 慢请求已在途
 
-    // 第二次改参：dem=383（快请求，> 供给 374.2 → 硬缺口）→ 取消前序在途请求
-    fireEvent.change(screen.getByTestId("audit-input-dem"), { target: { value: "383" } });
+    // 第二次改参：dem=34.65（快请求，> 供给 25.8523 → 硬缺口 8.7977）→ 取消前序在途请求
+    fireEvent.change(screen.getByTestId("audit-input-dem"), { target: { value: "34.65" } });
 
-    // 最后一次结果上屏：dem=383 → 缺口 8.8（383 − 供给 374.2）硬卡（X02）+ 细分不自洽（X01）
-    const x02 = await screen.findByTestId("audit-item-hard-X02");
-    expect(x02).toHaveTextContent("缺口 8.8 万套");
+    // 最后一次结果上屏：dem=34.65 → 缺口 8.7977（34.65 − 供给 25.8523）硬卡（X02）+ 细分不自洽（X01）。
+    // ⚠️ 这里必须 waitFor**内容**而不是 findByTestId：月口径基线本身已带一条硬 X02（缺口 2.0677），
+    // findBy 会立刻拿到那条旧的就返回，等不到重算 —— 断言对象必须是"重算后的数"，不是"元素存在"。
+    await waitFor(() => expect(screen.getByTestId("audit-item-hard-X02")).toHaveTextContent("缺口 8.7977 万套"));
     expect(screen.getByTestId("audit-item-hard-X01")).toHaveTextContent("细分自洽");
 
-    // 慢请求（dem=999 → 缺口 624.8 = 999 − 供给 374.2）即使返回也不得上屏（AbortController + 序号守卫）
+    // 慢请求（dem=999 → 缺口 973.1477 = 999 − 供给 25.8523）即使返回也不得上屏（AbortController + 序号守卫）
     await sleep(600);
-    expect(screen.queryByText(/624\.8/)).not.toBeInTheDocument();
-    expect(screen.getByTestId("audit-item-hard-X02")).toHaveTextContent("缺口 8.8 万套");
+    expect(screen.queryByText(/973\.1477/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("audit-item-hard-X02")).toHaveTextContent("缺口 8.7977 万套");
   });
 
   it("同一 debounce 窗口内连改三次 → 只发一次重算请求（以最终值计算）", async () => {
@@ -55,17 +56,17 @@ describe("F20 · 改参即重算：debounce 300ms + 竞态最后发出者胜", (
     await screen.findByTestId("audit-verdict");
     expect(calls).toBe(1);
 
-    // 300ms 窗口内连改三次（376 → 377 → 378）→ 仅合并为 1 次请求
+    // 300ms 窗口内连改三次（29.6 → 29.65 → 29.65…）→ 仅合并为 1 次请求
     const dem = screen.getByTestId("audit-input-dem");
-    fireEvent.change(dem, { target: { value: "376" } });
+    fireEvent.change(dem, { target: { value: "29.6" } });
     await sleep(50);
-    fireEvent.change(dem, { target: { value: "377" } });
+    fireEvent.change(dem, { target: { value: "29.65" } });
     await sleep(50);
-    fireEvent.change(dem, { target: { value: "378" } });
+    fireEvent.change(dem, { target: { value: "29.6523" } });
 
-    // dem=378：缺口 3.8（378 − 供给 374.2）> 2 → X02 硬卡
-    const x02 = await screen.findByTestId("audit-item-hard-X02");
-    expect(x02).toHaveTextContent("缺口 3.8 万套");
+    // dem=29.6523：缺口 3.8（29.6523 − 供给 25.8523）> 2 → X02 硬卡
+    // 同上：断言重算后的**数**，不能用 findByTestId（基线自带一条硬 X02，元素一直在）。
+    await waitFor(() => expect(screen.getByTestId("audit-item-hard-X02")).toHaveTextContent("缺口 3.8 万套"));
     expect(calls).toBe(2);
   });
 });

@@ -22,8 +22,10 @@ describe("SOP 前端 1:1（P90 列 / MRP 表 / 科目表 / 版本对比）", () 
     // ② 需求评审 → P90 列（取自 DemandSegment.p90）
     await user.click(screen.getByTestId("sop-step-chip-2"));
     await user.click(await screen.findByTestId("sop-run-2"));
-    // 商用车 P90 = 34.0（取自 handlers.ts dseg-3；demand 规模锁定后 P50 34.1、P90 34.0）
-    await waitFor(() => expect(screen.getByTestId("sop-p90-com")).toHaveTextContent("34"));
+    // 商用车滚动 P90 = 4.85 万套/**月**（`round(rolling 5.18 × 0.936, 2)`，与真后端 step2 缺省派生同式）。
+    // WO-MOCK-SCALE-TRUTH：旧断言 34.0 其实是 `DemandSegment.demandWanPerYearP90` ——**年**口径的数被
+    // 填进了月口径的 `rollingWanPerMonthP90` 列。列名自带分母（…PerMonth…），值必须是月量级。
+    await waitFor(() => expect(screen.getByTestId("sop-p90-com")).toHaveTextContent("4.9"));
     expect(screen.getByTestId("sop-p90-total")).toBeInTheDocument();
 
     // ③ 供应评审 → 物料线 MRP 表（3 物料，三元正极缺口 654）
@@ -37,9 +39,10 @@ describe("SOP 前端 1:1（P90 列 / MRP 表 / 科目表 / 版本对比）", () 
     await user.click(await screen.findByTestId("sop-run-4"));
     const pnl = await screen.findByTestId("sop-pnl-table");
     expect(within(pnl).getByTestId("sop-pnl-row-毛利")).toBeInTheDocument();
-    // PRD-IND-sop §4.5-5：收入预算口径 240（真预算），滚动确认收入 248 → 达成率 103%
-    expect(within(pnl).getByTestId("sop-pnl-row-收入")).toHaveTextContent("240");
-    expect(within(pnl).getByTestId("sop-pnl-row-收入")).toHaveTextContent("248");
+    // 量价本利科目表是**年**口径（亿元/年）：收入预算 686 / 滚动确认收入 700（= 需求侧营收锚）→ 达成率 102%。
+    // WO-MOCK-SCALE-TRUTH：旧断言 240/248 比真后端 `finance_pnl` 实测小 2.8 倍。
+    expect(within(pnl).getByTestId("sop-pnl-row-收入")).toHaveTextContent("686");
+    expect(within(pnl).getByTestId("sop-pnl-row-收入")).toHaveTextContent("700");
     expect(screen.getByTestId("sop-pnl-attr")).toHaveTextContent("储能占比");
 
     // ⑤ 高管会 → 版本演进对比（V7 待定稿）

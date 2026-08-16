@@ -44,6 +44,8 @@ import type { ModelingDraftVM, RuleCandidateVM, RuleDocVM } from "@/api/endpoint
 //   写成转发式会得到 `PACKAGE_ID is not defined`（第一次改就踩到，浏览器当场报出来）。
 import { TENANT_ID, PACKAGE_ID } from "./ids";
 export { TENANT_ID, PACKAGE_ID };
+// WO-MOCK-SCALE-TRUTH：S&OP 月度台账口径单一来源（叶子模块·只依赖 @platform/contracts，无 TDZ 风险）。
+import { SOP_DEFAULT_RESOLUTIONS, SOP_REVENUE_BUDGET_YI, SOP_WIZARD_SEGMENTS } from "./sopScale";
 
 // ---------------------------------------------------------------------------
 // 账号（QOS §7.6 权限种子：planner 全量 / base_manager:常州 行级过滤）
@@ -703,19 +705,21 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     sopConfig: {
       gapRed: 2,
       cashFloor: 50,
-      revBudget: 700.0, // 需求结构 53.8/37.1/9.1 → 滚动确认收入 700亿
-      // 滚动预测按 lastActual 趋势修正：乘用车贴目标；储能实绩偏弱下修；商用车实绩偏强上修（>±10% → C21）。
-      // 三段 rolling 合计对齐 seed/audit 需求 375（= 乘用车 201.7 + 储能 133.8 + 商用车 39.5），
-      // 与③供给基线 367.9 得产销缺口 ≈7.1 万套（>gapRed 2 → 红标）。
-      segments: [
-        { key: "pas", name: "乘用车", target: 201.7, rolling: 201.7, rollingWanPerMonthP90: 199.6, lastActual: 200.6 },
-        { key: "ess", name: "储能", target: 139.2, rolling: 133.8, rollingWanPerMonthP90: 108.4, lastActual: 100.5 },
-        { key: "com", name: "商用车", target: 34.1, rolling: 39.5, rollingWanPerMonthP90: 34.0, lastActual: 39.5 },
-      ],
-      defaultResolutions: [
-        { name: "常州化成夜班×1", delta: 3.4 },
-        { name: "江门正极加急 200 吨", delta: 1.4 },
-      ],
+      // ── WO-MOCK-SCALE-TRUTH：本块整体从**年**量级改到**月**量级 ────────────────────
+      // 病灶：这里下发的是 S&OP 五步法向导的**②需求评审入参**，量纲是 `万套/月`（真后端
+      // `SopService.SOP_DEMAND_UNIT`），而旧值 201.7/139.2/34.1 是 `DemandSegment` 的**年** P50，
+      // rollingWanPerMonthP90 更是直接把年 P90（199.6/108.4/34.0）填进了月字段。
+      // 现按真后端 step2 缺省路重算：target = `PlanTarget(month) × Segment.baselineShare`（14.52/8.93/4.47），
+      // P90 = `round(rolling × 0.936, 2)`（真后端缺省派生同式），lastActual = 年实绩按月度权重折算。
+      // **滚动修正的比例原样保留**（乘用车贴目标 / 储能下修 −3.9% / 商用车上修 >+10% → C21 红标），
+      // 所以演示行为不变、只有量级回到月 —— 这正是「改值不改故事」与「只改标注不改值」的分界。
+      // ⚠️ 钱轴是**年**（亿元/年），不跟着量轴缩：真后端 `finance_pnl` 收入 budget 686 / rolling 700，
+      // `cockpit_kpi.revAttainPct` 实测 102 = 700÷686。旧 mock 把预算写成 700（= rolling 自己）⇒ 达成率恒 100%。
+      // 2026-08-15 实测；复验：`POST /b/v1/solvers/finance_pnl/run` 与 `/a/v1/solvers/cockpit_kpi/invoke`
+      //（真后端同名端点；判据见 test/mock-scale-truth.seam.test.ts 的 L2 钱轴一节）。
+      revBudget: SOP_REVENUE_BUDGET_YI,
+      segments: SOP_WIZARD_SEGMENTS,
+      defaultResolutions: SOP_DEFAULT_RESOLUTIONS,
     },
     // DF.4 单一来源：planGoals 从 PLAN_GOAL_TARGETS 派生（与后端 targets 同源，灭三处漂移 R14/R6）。
     planGoals: { revGrowthPct: PLAN_GOAL_TARGETS.revGrowthPct, gmFloorPct: PLAN_GOAL_TARGETS.gmFloorPct, sharePts: PLAN_GOAL_TARGETS.sharePts, capexCap: PLAN_GOAL_TARGETS.capexCap, cashFloor: PLAN_GOAL_TARGETS.cashFloor, invTurns: PLAN_GOAL_TARGETS.turns },
