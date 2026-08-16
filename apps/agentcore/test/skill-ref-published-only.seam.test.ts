@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { loadConfig } from "../src/config.js";
+import type { RuleEngineClient } from "../src/tools/clients.js";
 import { wireDeps } from "../src/deps.js";
 import { ScriptedLlmClient } from "../src/llm/mock.js";
 import { MockMcpClient } from "../src/mcp/mock.js";
@@ -261,10 +262,14 @@ describe("WO-REFGATE-ENT · N-01 · 引用可校验门查的是「可不可以�
   it("mock 客户端同语义：draftRuleKeys 里的 key 不在已发布集 → 引用它的技能发布 422", async () => {
     const t = await createTestApp();
     const mockDc = createMockDataCore();
-    expect(await mockDc.rules.listPublishedRuleKeys({ tenantId: TENANT, userId: "u", roles: [] } as never)).toContain("C03");
+    // 上转到接口：mock 的 listPublishedRuleKeys 漏了接口声明的 ctx 形参（src/mocks/clients.ts:706），
+    // 直接调具体类型会 TS2554。原来的 `as never` 压不住 arity 错，只是把实参类型糊掉了。
+    const mockRules: RuleEngineClient = mockDc.rules;
+    expect(await mockRules.listPublishedRuleKeys({ tenantId: TENANT, userId: "u", roles: [] })).toContain("C03");
 
     (t.dataCore.rules as unknown as { draftRuleKeys: Set<string> }).draftRuleKeys.add("C03");
-    expect(await t.dataCore.rules.listPublishedRuleKeys({ tenantId: TENANT, userId: "u", roles: [] } as never)).not.toContain("C03");
+    const rules: RuleEngineClient = t.dataCore.rules;
+    expect(await rules.listPublishedRuleKeys({ tenantId: TENANT, userId: "u", roles: [] })).not.toContain("C03");
 
     const create = await t.app.inject({
       method: "POST",

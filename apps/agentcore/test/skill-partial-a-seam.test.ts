@@ -41,7 +41,7 @@ function skillFixture(overrides: Partial<SkillDefinition> & { key: string }): Sk
   return SkillDefinitionSchema.strict().parse({
     id: `skl_${overrides.key}`,
     tenantId: TENANT,
-    key: overrides.key,
+    // key 不重复写：参数类型上必填，末尾 `...overrides` 必定覆盖（TS2783）。
     version: 1,
     name: `Fixture ${overrides.key}`,
     summary: GOOD_SUMMARY,

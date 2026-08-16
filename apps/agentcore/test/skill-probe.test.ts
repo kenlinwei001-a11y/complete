@@ -29,9 +29,9 @@ function skillFixture(overrides: Partial<SkillDefinition> & { key: string; name:
   return SkillDefinitionSchema.strict().parse({
     id: overrides.id ?? `skl_${overrides.key}_v1`,
     tenantId: overrides.tenantId ?? TENANT_A,
-    key: overrides.key,
     version: overrides.version ?? 1,
-    name: overrides.name,
+    // key / name 不在这里重复写：它们在参数类型上就是**必填**，末尾的 `...overrides`
+    // 必定覆盖，写在前面纯属死代码（TS2783 点名的就是这个）。
     summary: "summary",
     body: overrides.body ?? "skill body",
     resources: [],
