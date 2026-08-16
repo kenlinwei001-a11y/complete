@@ -661,62 +661,87 @@ function main() {
 
 /* ═══════════════════ 变异反证（每条 B-x 一个违规样例，且必须红在对应那条上）═════ */
 
+/** 证明「变异体 ≠ 原文」的**可打印证据**。长度差为 0 也可能真改了（等长替换），故必须给首个差异位。 */
+function diffProof(a, b) {
+  if (a === b) return null;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return { dLen: a.length - b.length, at: i, was: a.slice(i, i + 14), now: b.slice(i, i + 14) };
+}
+
 /**
- * 逐条 B-x 喂违规样例，断言：
- *   ① 门确实报红（有 fail）；
- *   ② **被牵连的 B-x 集合恰好等于目标那一条**（不许误伤别的账）。
+ * 逐条 B-x 喂违规样例，**三向断言**：
+ *   ① 变异体 ≠ 原文（锚点真命中 —— 附首个差异位，等长替换时长度差为 0 也照样成立）；
+ *   ② 触发的**判据编号集合**恰好等于预期（`wantCodes`，不是散文而是断言）；
+ *   ③ **被牵连的 B-x 集合恰好等于目标那一条**（不许误伤别的账）。
  * 走的是**同一个** `parseSplitAccounts` + `judge`，不另起一套。
+ *
+ * ⚠ ② 这一向是 2026-08-16 补的：初版只把预期写成散文（`want: "①+③"`），
+ * 而实测触发的是 `①⑥` —— **打印出来的「期望」是错的却没人拦**，正是本仓
+ * 「写在最容易被信的地方的错误说法比没有更危险」那条。断言化之后，写错当场红。
  */
 function mutationProof({ prdText, ontology, wired, chain, baseline }) {
   const M = [
     {
-      id: "M1", target: "B-1", want: "①+③",
+      id: "M1", target: "B-1", wantCodes: "①⑥",
       why: "把 B-1 的「要判它得有什么」挖成 `—`（明账写成填空题）",
+      note: "①空栏 + ⑥改口（受理方随之消失）。③**刻意不触发** —— 栏已空时 ③ 主动跳过，免得同一处坏账被报两遍",
       mutate: (t) => t.replace("| 真浏览器：改一个输入、**不点任何按钮**，断言结果 DOM 在 N 毫秒内变了 |", "| — |"),
     },
     {
-      id: "M2", target: "B-2", want: "③",
+      id: "M2", target: "B-2", wantCodes: "③⑥",
       why: "把 B-2 的受理方从「R13 溯源链」改成一个没登记的去处",
+      note: "③出口没点名任何已登记受理方 + ⑥改口",
       mutate: (t) => t.replace("| 归 R13 溯源链验收，不在本表射程 |", "| 以后再说 |"),
     },
     {
-      id: "M3", target: "B-3", want: "④",
+      id: "M3", target: "B-3", wantCodes: "④",
       why: "删掉 §5 里点名 B-3 的那张单（挂账退化成「诚实地永远不做」）",
-      mutate: (t) => t.split("\n").filter((l) => !(l.trim().startsWith("|") && /\bB-3\b/.test(l) && !/### 4\.2/.test(l) && !/^\| \*\*B-3\*\*/.test(l.trim()))).join("\n"),
+      note: "④只咬「没单」这一件事，账本身没动 ⇒ 不许牵连 ⑥",
+      mutate: (t) => t.split("\n").filter((l) => !(l.trim().startsWith("|") && /\bB-3\b/.test(l) && !/^\| \*\*B-3\*\*/.test(l.trim()))).join("\n"),
     },
     {
-      id: "M4", target: "B-4", want: "②反向",
+      id: "M4", target: "B-4", wantCodes: "②⑥",
       why: "把 B-4 认领的判据改成一个 §2 判据表里不存在的 U99（僵尸账）",
+      note: "②反向（U99 不在判据表）+ ⑥改绑。②正向（U7/U8 没人认领）不带 B-x 标签，故不进牵连集",
       mutate: (t) => t.replace("| **B-4** | **U7 的内容面** ＋ **U8 的几何面**", "| **B-4** | **U99 的内容面** ＋ **U98 的几何面**"),
     },
     {
-      id: "M5", target: "B-2", want: "⑥销账 + ②正向",
+      id: "M5", target: "B-2", wantCodes: "②⑥⑦",
       why: "整行删掉 B-2（明账最危险的死法：没人注意到它没了）",
+      note: "②正向（U3 挪走了却没人认领）+ ⑥销账 + ⑦分母 4→3。**⑦跟着红是对的**：账少了一条，自陈的分母就不再属实",
       mutate: (t) => t.split("\n").filter((l) => !l.trim().startsWith("| **B-2** |")).join("\n"),
     },
     {
-      id: "M6", target: null, want: "⑦",
+      id: "M6", target: null, wantCodes: "⑦",
       why: "把自陈从「内容面机检 1/4」改成 4/4（门建成之后最可能发生的那件事）",
+      note: "**等长替换 ⇒ 长度差为 0**，所以这一条的「变异体≠原文」必须靠首个差异位来证，不能靠字节数",
       mutate: (t) => t.replace(/内容面机检\s*1\s*\/\s*4/, "内容面机检 4/4"),
     },
   ];
 
   let bad = 0;
-  console.log("\n── 变异反证（每条先证「变异体 ≠ 原文」，再断言红在对应那条上）──");
+  console.log("\n── 变异反证（每条先证「变异体 ≠ 原文」，再断言判据编号与牵连账**都**对得上）──");
   for (const m of M) {
     const mutated = m.mutate(prdText);
-    if (mutated === prdText) { console.error(`  ✗ ${m.id} 变异体与原文相同 —— **锚点没命中，这一条什么都没证**（${m.why}）`); bad++; continue; }
+    const d = diffProof(prdText, mutated);
+    if (!d) { console.error(`  ✗ ${m.id} 变异体与原文完全相同 —— **锚点没命中，这一条什么都没证**（${m.why}）`); bad++; continue; }
     const prd2 = parseSplitAccounts(mutated);
     const { fail } = judge({ prd: prd2, ontology, wired, chain, baseline });
     const hitB = [...new Set(fail.map((f) => f.account).filter((a) => a && /^B-\d+$/.test(a)))].sort();
-    const codes = [...new Set(fail.map((f) => f.code))].join("");
+    const codes = [...new Set(fail.map((f) => f.code))].sort().join("");
     const wantB = m.target ? [m.target] : [];
-    const okRed = fail.length > 0;
+    const okCodes = codes === m.wantCodes;
     const okAim = hitB.join(",") === wantB.join(",");
-    if (okRed && okAim) {
-      console.log(`  ✓ ${m.id}（${m.why}）→ Δ${prdText.length - mutated.length} 字节 · 判据${codes} · 牵连 ${hitB.join(",") || "（无 B-x，按预期）"} · 期望${m.want}`);
+    const evid = `变异证据：长度差 ${d.dLen} · 首个差异 @${d.at}「${d.was.replace(/\n/g, "⏎")}」→「${d.now.replace(/\n/g, "⏎")}」`;
+    if (okCodes && okAim) {
+      console.log(`  ✓ ${m.id} ${m.why}`);
+      console.log(`      ${evid}`);
+      console.log(`      判据 ${codes}（期望 ${m.wantCodes}）· 牵连 ${hitB.join(",") || "（无 B-x，按预期）"}（期望 ${wantB.join(",") || "无"}）· ${m.note}`);
     } else {
-      console.error(`  ✗ ${m.id}（${m.why}）→ 报红=${okRed} 牵连=[${hitB.join(",")}] 期望=[${wantB.join(",")}] 判据${codes}`);
+      console.error(`  ✗ ${m.id} ${m.why}`);
+      console.error(`      ${evid}`);
+      console.error(`      判据 ${codes}（期望 ${m.wantCodes}${okCodes ? "" : " ← 不符"}）· 牵连 [${hitB.join(",")}]（期望 [${wantB.join(",")}]${okAim ? "" : " ← 不符"}）`);
       for (const f of fail) console.error(`      · ${f.code}${f.account ? `[${f.account}]` : ""} ${f.msg.slice(0, 110)}`);
       bad++;
     }
@@ -725,5 +750,5 @@ function mutationProof({ prdText, ontology, wired, chain, baseline }) {
     console.error(`\n⛔ 变异反证 ${M.length - bad}/${M.length} —— 有 ${bad} 条没打中，本门的判据**没有被证明会红**（装饰品风险）。`);
     process.exit(2); // 门自己没被证明有效 = 工具坏了，不是仓库有问题
   }
-  console.log(`\n✓ 变异反证 ${M.length}/${M.length} 全中，且每条只红在对应那条账上（无误伤）。`);
+  console.log(`\n✓ 变异反证 ${M.length}/${M.length} 全中：判据编号与牵连账**都**与预期逐条相等（既证会红，也证不误伤）。`);
 }
