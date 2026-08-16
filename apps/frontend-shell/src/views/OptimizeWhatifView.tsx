@@ -5,6 +5,9 @@ import type { ViewConfigVM } from "@/api/types";
 import { toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import { InfoPopover } from "@/components/InfoPopover";
+// WO-SANDBOX-53CELLS · 判据 U5（结论数字标出处）：目标值/Δ 此前是裸数字，
+// 屏上唯一带出处的 `ow-family-source` 说的是模板清单的出处、不是目标值的出处。
+import { Provenance } from "@/components/Provenance";
 import EdgeActivePanel from "./sim/EdgeActivePanel";
 // WO-HARNESS-UX-GAP-1 · 判据 U7（同屏问答知道自己在哪一页）+ U9（导出物自带出处与生成时间）。
 // 本页走 App.tsx 的专用 route，不经 ViewPage ⇒ 必须自己调 usePageView（理由见 shared.tsx 该函数注释）。
@@ -537,8 +540,21 @@ function EditableTable({ coll, rows, onEdit }: { coll: string; rows: Record<stri
   );
 }
 
-/** 结果区：决策切换横幅 + 基线/扰动后方案并排 + Δ + 白话解读。 */
+/**
+ * 结果区：决策切换横幅 + 基线/扰动后方案并排 + Δ + 白话解读。
+ *
+ * ══ 判据 U5「结论数字标出处」 ══
+ * 改前本页三个结论数字（Δ 目标值 · 基线目标值 · 扰动后目标值）**全是裸数字**。
+ * 屏上唯一带出处的是 `ow-family-source` —— 但那条说的是**模板清单**的出处
+ * （「这 N 个 family 是后端权威给的还是页面回退的」），**不是目标值的出处**。
+ * 拿它当 U5 的证据就是「我用 X 当作 Y 的证据，而 X 并不度量 Y」。
+ *
+ * 改后每个目标值挂 `<Provenance>`，并写清优化解**敏感的那三样**：
+ * 模板族 · seed · 扰动清单 —— 少写一样，第三方复算出来的最优方案就可能不是同一个。
+ */
 function DecisionResult({ out, family, baseArgs, perturbs }: { out: OptWhatifOutput; family: string; baseArgs: Record<string, unknown>; perturbs: { target: string; value: number }[] }) {
+  const perturbLines = perturbs.map((p) => `${p.target}→${p.value}`);
+  const solverBasis = [`模板族 ${family}`, "seed 42", perturbLines.length ? `扰动 ${perturbLines.join("，")}` : "扰动（未设）"];
   const { baselineObjective, perturbedObjective, deltaObjective, feasible, conflictConstraints, explanation, baselineSolution, perturbedSolution } = out;
   const delta = typeof deltaObjective === "number" ? deltaObjective : null;
   const deltaColor = delta == null ? "var(--muted)" : delta > 0 ? "var(--amber)" : delta < 0 ? "var(--ok)" : "var(--muted)";
@@ -573,8 +589,23 @@ function DecisionResult({ out, family, baseArgs, perturbs }: { out: OptWhatifOut
           <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--txt)" }}>{feasible ? "最优决策不变（只是成本变化）" : "扰动后不可行"}</span>
         )}
         <span className="mono" data-testid="ow-delta-obj" style={{ marginLeft: "auto", fontSize: 20, fontWeight: 700, color: deltaColor }}>
-          {delta != null && delta > 0 ? "+" : ""}{fmt(deltaObjective)}
+          {/* 判据 U5：Δ 是本页最重的那个结论数字 —— 它必须说得出谁算的、算在什么之上。 */}
+          <Provenance
+            testId="ow-delta"
+            src={`求解器 optimize_whatif · ${family}`}
+            formula="Δ = 扰动后目标值 − 基线目标值（两次求解同 seed 同模板族，可比）"
+            inputs={[...solverBasis, `基线目标值 ${fmt(baselineObjective)}`, `扰动后目标值 ${fmt(perturbedObjective)}`]}
+            rule="R6 确定性：同入参同 seed 重跑逐字节一致 —— 数变了必然是扰动改的，不是求解器在飘"
+            note="优化解对「模板族 · seed · 扰动清单」三样都敏感，复算时三样必须一致，否则得到的不是同一个最优方案。"
+          >
+            {delta != null && delta > 0 ? "+" : ""}{fmt(deltaObjective)}
+          </Provenance>
         </span>
+      </div>
+
+      {/* 判据 U5：整屏结论的口径一句话说清（基线/扰动后两张卡的目标值同出一处）。 */}
+      <div style={{ fontSize: 12, color: "var(--muted2)" }} data-testid="ow-objective-source">
+        目标值出处：求解器 <span className="mono">optimize_whatif</span> · {solverBasis.join(" · ")}
       </div>
 
       {/* 基线 vs 扰动后 方案并排 */}

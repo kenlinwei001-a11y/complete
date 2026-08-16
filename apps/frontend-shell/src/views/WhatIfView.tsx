@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ImpactChange } from "@platform/contracts";
 import { fetchObjectTypes, queryObjectsPaged, invokeSolver } from "@/api/endpoints";
@@ -6,6 +6,9 @@ import { toastError } from "@/store/toastStore";
 import type { ViewConfigVM } from "@/api/types";
 import zh from "@/locales/zh";
 import { InfoPopover } from "@/components/InfoPopover";
+// WO-SANDBOX-53CELLS · 判据 U5（结论数字标出处）：本页 deltas 表与影响面计数此前全是裸数字。
+import { Provenance } from "@/components/Provenance";
+import { SnapshotBadge } from "./sim/shared";
 // WO-BEFE-WIRE-3 · 影响传播统一入口（POST /a/v1/simulation/impact-analysis）的**唯一生产调用方**。
 // 挂在本页而不是另开一页：这一页的表单（类型/对象/属性/假设值）**就是**那个端点要的 `change`，
 // 另造一张页 = 让用户把同一个假设填两遍，且两处口径迟早分家。
@@ -87,15 +90,29 @@ function objectLabel(props: Record<string, unknown>, pkKey: string | undefined, 
   return base;
 }
 
+/**
+ * 输入防抖（判据 U1 的配套，不是可选优化）。
+ *
+ * 撤掉提交闸后「假设值」是个自由文本框：不防抖 ⇒ 每敲一个键发一次求解，
+ * 用户打 `1200` 会连发 `1` `12` `120` `1200` 四次，中间三次都是**没意义的假设**。
+ * 防抖只推迟**发请求**，不推迟输入回显 —— 屏上的值一直是用户刚敲的那个，
+ * 所以它**不是提交闸**（提交闸的定义是「不点某个东西结果永远不更新」，与「晚 300ms 更新」是两件事）。
+ */
+function useDebounced<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
 export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
   usePageView("what-if");
   const [typeKey, setTypeKey] = useState<string>("");
   const [objectId, setObjectId] = useState<string>("");
   const [prop, setProp] = useState<string>("");
   const [value, setValue] = useState<string>("");
-  const [result, setResult] = useState<GenericInferenceOutput | null>(null);
-  const [ran, setRan] = useState(false);
-  const [busy, setBusy] = useState(false);
 
   // 类型列表（真 REST /a/v1/ontology/object-types）——不写死。
   const typesQ = useQuery({
@@ -119,7 +136,47 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
   const currentProp = useMemo(() => currentType?.properties.find((p) => p.propKey === prop), [currentType, prop]);
   const currentValue = currentObject && prop ? currentObject.props[prop] : undefined;
 
-  const canRun = typeKey !== "" && objectId !== "" && prop !== "" && value.trim() !== "" && !busy;
+  /**
+   * ══ 判据 U1「改输入即重演」——**撤掉提交闸** ══
+   *
+   * 改前：四个字段填完还要点 `wi-run`，`run()` 命令式调求解器写进 `result` state。
+   * 那是判据 U1 逐字点名的那个东西，且它的失败模式最坏：
+   * **用户改完假设值不点，屏上还挂着上一次的结果，看起来像是新的**（表格照样在、数字照样漂亮），
+   * 除非他记得自己刚改过什么，否则分辨不出。
+   *
+   * 改后：假设直接进 `queryKey`，改任一字段 → key 变 → 真重调求解器。
+   * 「不点按钮结果不更新」这个中间态**结构上不存在了**，不是靠自觉。
+   */
+  const debouncedValue = useDebounced(value.trim(), 300);
+  const assumptionReady = typeKey !== "" && objectId !== "" && prop !== "" && debouncedValue !== "";
+  /**
+   * 值类型强制（数值属性转 number，其余透传字符串）——**本页唯一一份口径**。
+   * 两个出口（自动重演的 `generic_inference` 与下面那个影响传播端点）都调它，
+   * 不许各写一遍三元式：两处分家后「同一个假设两处结论对不上」会被读成引擎不一致。
+   */
+  const coerce = (raw: string): unknown =>
+    currentProp?.dataType === "number" && Number.isFinite(Number(raw)) ? Number(raw) : raw;
+  const coercedValue = coerce(debouncedValue);
+
+  const runQ = useQuery({
+    // 假设的每一维都在 key 里：改型号/对象/属性/值任一 → key 变 → 重算（R6 同输入同输出，可缓存）。
+    queryKey: ["a", "what-if", "infer", typeKey, objectId, prop, debouncedValue],
+    queryFn: async () =>
+      (await invokeSolver("generic_inference", { apply: [{ objectType: typeKey, objectId, prop, value: coercedValue }] })) as {
+        data: GenericInferenceOutput;
+        snapshotVersion: string;
+      },
+    enabled: assumptionReady,
+    retry: false,
+  });
+  const result = runQ.data?.data ?? null;
+  const busy = runQ.isFetching;
+  // 值还没落定（用户正在敲）时不许把上一次的结果说成当前假设的结果 —— 那正是 U1 要消灭的那个中间态。
+  const settled = debouncedValue === value.trim();
+
+  useEffect(() => {
+    if (runQ.isError) toastError(runQ.error);
+  }, [runQ.isError, runQ.error]);
 
   /**
    * WO-BEFE-WIRE-3 · 本页表单 → 影响传播端点要的**那一处变更**。
@@ -129,17 +186,24 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
    * `oldValue` 是**调用方声明的变更前值**，纯记录性：后端不拿它计算，只在与世界里的真实旧值
    * 不一致时回一个 `basis.oldValueMismatch` 标记出来（我们把那个标记显示在第一层）。
    */
+  /**
+   * ⚠ 这里刻意读**未防抖**的 `value`，不读 `debouncedValue`。
+   * 防抖是**自动重演那条路**的限流手段（不加就每敲一键发一次求解）；
+   * 这个面板有自己的运行按钮，用户点下去时该拿的是**他此刻屏上看到的那个值**，
+   * 晚 300ms 反而会出现「按钮点了、送出去的却是上一个字符」的错位。
+   * 类型强制走上面同一个 `coerce`，所以两个出口的**口径**仍是一份，只是**时机**不同。
+   */
   const impactChange = useMemo<ImpactChange | null>(() => {
-    if (typeKey === "" || objectId === "" || prop === "" || value.trim() === "") return null;
-    const coerced: unknown =
-      currentProp?.dataType === "number" && Number.isFinite(Number(value)) ? Number(value) : value;
+    const raw = value.trim();
+    if (typeKey === "" || objectId === "" || prop === "" || raw === "") return null;
     return {
       objectType: typeKey,
       objectId,
       prop,
-      value: coerced,
+      value: coerce(raw),
       ...(currentValue === undefined ? {} : { oldValue: currentValue }),
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeKey, objectId, prop, value, currentProp, currentValue]);
 
   const onSelectType = (k: string): void => {
@@ -147,8 +211,6 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
     setObjectId("");
     setProp("");
     setValue("");
-    setResult(null);
-    setRan(false);
   };
 
   /**
@@ -175,26 +237,6 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
         },
       ],
     };
-  };
-
-  const run = async (): Promise<void> => {
-    if (!canRun || impactChange === null) return;
-    setBusy(true);
-    try {
-      // 值类型强制（数值属性转 number，其余透传字符串）走 `impactChange` 单源 ——
-      // 此前这里另写了一遍同样的三元式，两处迟早分家（WO-BEFE-WIRE-3 顺手合并）。
-      const res = await invokeSolver("generic_inference", {
-        apply: [{ objectType: typeKey, objectId, prop, value: impactChange.value }],
-      });
-      setResult(res.data as GenericInferenceOutput);
-      setRan(true);
-    } catch (e) {
-      toastError(e);
-      setResult(null);
-      setRan(false);
-    } finally {
-      setBusy(false);
-    }
   };
 
   return (
@@ -249,7 +291,7 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
                 data-testid="wi-object-select"
                 value={objectId}
                 disabled={typeKey === "" || objects.length === 0}
-                onChange={(e) => { setObjectId(e.target.value); setResult(null); setRan(false); }}
+                onChange={(e) => setObjectId(e.target.value)}
               >
                 <option value="">{objects.length === 0 && typeKey !== "" && !objectsQ.isFetching ? "该类型暂无对象" : "选择对象…"}</option>
                 {objects.map((o) => (
@@ -266,7 +308,7 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
                 data-testid="wi-prop-select"
                 value={prop}
                 disabled={!currentType}
-                onChange={(e) => { setProp(e.target.value); setResult(null); setRan(false); }}
+                onChange={(e) => setProp(e.target.value)}
               >
                 <option value="">选择属性…</option>
                 {(currentType?.properties ?? []).map((p) => (
@@ -294,9 +336,15 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
               />
             </label>
 
-            <button className="btn primary" data-testid="wi-run" disabled={!canRun} onClick={run}>
-              {busy ? "推演中…" : "推演下游影响"}
-            </button>
+            {/* 判据 U1：这里**不再有提交闸**。留的是一个**状态记号**（在算 / 已按当前假设算出），
+                不是按钮 —— 它不控制任何东西，只回答「我现在看到的是不是刚才那个假设的结果」。 */}
+            <div style={{ fontSize: 12, color: "var(--muted)", paddingBottom: 6 }} data-testid="wi-live-state">
+              {!assumptionReady
+                ? "填完四项即自动推演"
+                : busy || !settled
+                  ? "推演中…"
+                  : "已按当前假设推演（改任一项即重演，无需点按钮）"}
+            </div>
           </div>
         )}
       </div>
@@ -322,7 +370,9 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
       </div>
 
       {/* ── 结果区 ── */}
-      {ran && result ? <WhatIfResult out={result} currentProp={currentProp} /> : null}
+      {assumptionReady && settled && result ? (
+        <WhatIfResult out={result} snapshotVersion={runQ.data?.snapshotVersion} assumption={{ typeKey, objectId, prop, value: debouncedValue }} />
+      ) : null}
 
       {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。
           ⚠ 必须挂在**主组件**里、且不进 `ran && result` 那个条件：挂进结果区 = 没跑过推演就看不见开关，
@@ -332,8 +382,29 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
   );
 }
 
-function WhatIfResult({ out, currentProp }: { out: GenericInferenceOutput; currentProp?: TypeProp }) {
+/**
+ * ══ 判据 U5「结论数字标出处」 ══
+ *
+ * 改前本页的结论数字（受影响对象 / 派生字段变化 / deltas 表的 before-after）**全是裸数字**：
+ * 屏上没有一个字说「这是谁算的、算在哪个快照上」。判据表因此记「不符合」。
+ * 唯一提到求解器名的地方在**导出物**的 basis 里 —— 但导出物不上屏，
+ * 「导出里写了」不度量「屏上标了出处」（照铁律 0.6 的句式，这两件事不是一回事）。
+ *
+ * 改后：`SnapshotBadge`（求解器键 + 快照版本，走后端真回执 `snapshotVersion`）
+ * ＋ 每个结论数字挂 `<Provenance>` 六要素（来源 / 推导 / 输入 / 规则）。
+ * 用户读了能做的决定：数不对时知道该找哪一环，而不是整屏一起怀疑。
+ */
+function WhatIfResult({
+  out,
+  snapshotVersion,
+  assumption,
+}: {
+  out: GenericInferenceOutput;
+  snapshotVersion?: string;
+  assumption: { typeKey: string; objectId: string; prop: string; value: string };
+}) {
   const rows = out.rows ?? [];
+  const assumptionLine = `${assumption.typeKey}/${assumption.objectId}.${assumption.prop} = ${assumption.value}`;
   // 诚实空态：无 delta（该属性无下游派生 / 改动不引起任何重算）——不编造影响。
   if (out.count === 0 || rows.length === 0) {
     return (
@@ -356,16 +427,40 @@ function WhatIfResult({ out, currentProp }: { out: GenericInferenceOutput; curre
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="wi-result">
-      {/* 影响面计数 */}
+      {/* 影响面计数 —— 判据 U5：每个结论数字都指名道姓说出谁算的、算在什么之上。 */}
       <div className="panel" data-testid="wi-impact">
-        <div className="section-title">② 影响面</div>
+        <div className="section-title">
+          ② 影响面
+          <SnapshotBadge snapshotVersion={snapshotVersion} tool="generic_inference" />
+        </div>
         <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: "var(--accent-txt)" }} data-testid="wi-affected-count">{out.affectedObjects}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: "var(--accent-txt)" }} data-testid="wi-affected-count">
+              <Provenance
+                testId="wi-affected"
+                src="求解器 generic_inference（前向重算下游派生链·不落库试算）"
+                formula="受影响对象数 = 前向重算后至少一个派生字段发生变化的对象个数"
+                inputs={[`假设：${assumptionLine}`, "派生链：本体 PropertyDef 的派生定义"]}
+                rule="R6 确定性：同假设同快照重跑，逐字节一致"
+                note="试算不落库——这个数说的是「假设世界里会波及多少对象」，真实数据未被改动。"
+              >
+                {out.affectedObjects}
+              </Provenance>
+            </div>
             <div style={{ fontSize: 12, color: "var(--muted)" }}>受影响对象</div>
           </div>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: "var(--ok-txt)" }} data-testid="wi-delta-count">{out.count}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: "var(--ok-txt)" }} data-testid="wi-delta-count">
+              <Provenance
+                testId="wi-delta"
+                src="求解器 generic_inference · deltas"
+                formula="派生字段变化数 = Σ 各受影响对象上 before ≠ after 的派生字段条数"
+                inputs={[`假设：${assumptionLine}`, `受影响对象 ${out.affectedObjects} 个`]}
+                rule="R6 确定性"
+              >
+                {out.count}
+              </Provenance>
+            </div>
             <div style={{ fontSize: 12, color: "var(--muted)" }}>派生字段变化</div>
           </div>
           <div>
@@ -377,7 +472,15 @@ function WhatIfResult({ out, currentProp }: { out: GenericInferenceOutput; curre
 
       {/* before / after deltas 表 */}
       <div className="panel" data-testid="wi-deltas">
-        <div className="section-title">③ 下游 before → after（{rows.length}）</div>
+        <div className="section-title">
+          ③ 下游 before → after（{rows.length}）
+          <SnapshotBadge snapshotVersion={snapshotVersion} tool="generic_inference" />
+        </div>
+        {/* 判据 U5：整张表的出处一句话说清（逐行再挂一次浮层会把表挤爆，且每行出处相同）。 */}
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 4 }} data-testid="wi-deltas-src">
+          全表由求解器 <span className="mono">generic_inference</span> 在假设 <span className="mono">{assumptionLine}</span> 下前向重算得出
+          {snapshotVersion ? <> · 快照 <span className="mono">{snapshotVersion}</span></> : null}
+        </div>
         <div style={{ overflowX: "auto" }}>
           <table className="cmp" style={{ minWidth: 620 }}>
             <thead>
