@@ -115,8 +115,35 @@
 1. **步骤模板层** —— B4 的前置
 2. **13 类需求卡片补齐** —— C10
 3. **`STALE-8` 正则盲区**（实测漏 6 条：带点 slug 与非 `view.` 前缀）
-4. **`sandboxConsoleModel.ts:709` 过时文案**（写着已被删除的 `worstMbal`）
-5. **agentcore 3 处 stale 文案** —— `navigation-slice.ts` 把已不存在的 `p50` 当关键属性**喂给 LLM**（⚠️ 不报错，只是模型拿不到值）
+4. ~~**`sandboxConsoleModel.ts:709` 过时文案**（写着已被删除的 `worstMbal`）~~ ✅ **本条记账本身已过期（WO-STALE-TEXT-4 · 2026-08-16 实测）**：
+   2026-08-15 提交 `75f0adfe` 已修，`REQUIREMENTS-TRACE` 漏改这一行。今天该文件里 `worstMbal` 只剩 **2 处**（`:713`/`:715`），
+   两处都在那条 **2026-08-15 订正块**里，原文就写着「**符号已不存在** …… 已被 WO-DYNAMIC-DRILL-RESOLVE 整个删除」
+   —— 属**合法历史记录**，不是过时文案（本仓要求的正是这种「说清错法与修法」的记账）。
+   **机器复验（否定结论必附金丝雀）**：剥注释后扫 7 棵树 1319 个源文件，`worstMbal` 在**可执行代码里 0 处**，
+   同一趟扫描里已知必中的 `resolveDynamicDrill` 命中 **4 处**（若它也是 0 就是工具坏了，不是代码干净）。
+   ⚠️ **行号 `:709` 也已漂**（现 713/715）—— 印证「写死行号的引用天生带保质期」，本行改用符号串锚定。
+5. ~~**agentcore 3 处 stale 文案**~~ ✅ **已修，但「3 处」这个数错得离谱：实测 40 处**（WO-STALE-TEXT-4 · 2026-08-16）。
+   上一单只修了被点名的 `DemandSegment` 一行就收工 —— 形态即铁律 0.5：
+   **「我用『被点名的那处修好了』当作『这张表干净了』的证据，而前者并不度量后者。」**
+   本单把 `navigation-slice.ts` 的 `OBJECT_KEY_PROPS` **25 个类型 / 85 个属性名**逐个与 DataCore 本体真相源
+   （`synthetic/battery.ts` + `battery-extended.ts` 的 `PropertyDef`/`DerivedPropertyDef` 声明）对账，
+   **40 个（47%）在其声明的类型上根本不存在**，现已全部归位（实测 40 → 0）。四种错法**修法不同、不许合成一句**：
+   **A 改名漏改 16 处**（`Metric.metricKey`→`key` · `Line.util`→`utilization` · `Process.yieldPct`→`yield` ·
+   `Equipment.oee`→`oee_current` · `Customer.overdue`→`maxOverdueDays` …）；
+   **B 抄错地方**（那名字是**别的类型/别的层**的字段，换新名没用、要换真属性）：`Base.capacityDaily`
+   （`capacityDaily` 只长在 **Line** 上）· `Material.gapTon`（在 **MaterialBalance** 上）· `Segment.attainPct`
+   （**全 datacore 零 propKey 声明**，那是达成率 Metric 的语义）· `CarbonFactor` 三个名字全不沾边；
+   **C 把「求解器输出字段」当对象属性**：`Metric.gap` —— 本体上缺口是**两个派生属性**（`delta`/`gapPct`），
+   一个假名把两个真派生属性一起盖住，而派生属性正是 `renderTypeBlock` 唯一会渲染公式的那类；
+   **D 把「链路」当属性**：`RootCauseChain.caused_by` —— `caused_by` 是 CausalFactor→CausalFactor 的 **N:N LinkType**。
+   同批修 `mocks/solver-registry.ts` 的 `Metric.gap`（→ `Metric.target−Metric.actual`）；剥注释后全 `agentcore/src`
+   的 `Type.prop` 引用 **19 处、假名 0 处**（金丝雀：`DemandSegment.demandWanPerYearP50` 必中）。
+   🔒 **机制（本单真正的交付）**：`apps/agentcore/test/keyprops-ontology-parity.seam.test.ts` ——
+   四节：① 抽取器五条金丝雀自证（含「字符串里的 `∈[0, everyDays)` 把括号配平算歪」这条**本单真踩过**的回归）·
+   ② 整张表逐名对账、报错时现算「这名字实际长在哪个类型上」以区分 A/B 两种错法 ·
+   ③ 剥注释扫全 `agentcore/src` 的 `Type.prop` 面 · ④ **接缝**：真跑 `projectNavigationSlice → renderNavigationSlice`
+   断言名字确实到达 prompt，并驱动 `renderOntologySemanticContext` 断言「真名渲得出口径、假名让整块塌成 null」。
+   **修 40 处文案是一次性的，这个文件才是机制 —— 下次改名是机器先说话。**
 6. **mock 与真后端 S&OP 量级差 4–12 倍**（改它=改值，只报不动）
 
 ## 🔶 等你裁决

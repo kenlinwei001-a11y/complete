@@ -290,7 +290,7 @@ export const FALLBACK_SOLVER_CATALOG_KEYS: readonly string[] = Object.freeze(
  * @stale-fact apps/datacore/src/synthetic/battery.ts /propKey: "(?:segId|segment|act|tgt)"/ ==4
  * @stale-fact apps/datacore/src/synthetic/battery.ts /propKey: "p50"/ ==0
  */
-const OBJECT_KEY_PROPS: Record<string, string[]> = {
+export const OBJECT_KEY_PROPS: Record<string, string[]> = {
   // `delta`/`gapPct` 是派生属性（带 formula）—— 旧表那个假名 `gap` 把它俩一起盖住了。
   Metric: ["key", "actual", "target", "delta", "gapPct"],
   RootCauseChain: ["chainId", "kpiCategory", "factor", "driverType", "baseWeight"],
