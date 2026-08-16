@@ -562,6 +562,23 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-agentcore-dsh-upgrade.md": {
+      "hasOntologyRef": true,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/server.ts",
+        "apps/agentcore/test/dsh-poc-acceptance.test.ts",
+        "packages/contracts/src/agentcore.ts",
+        "packages/dsh-harness/README.md",
+        "packages/dsh-harness/cordis.yml"
+      ],
+      "brokenArtifacts": [
+        "apps/agentcore/test/dsh-poc-acceptance.test.ts",
+        "packages/dsh-harness/README.md",
+        "packages/dsh-harness/cordis.yml"
+      ]
+    },
     "PRD-aop-annual-scenario-1to1.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -3165,6 +3182,7 @@
     ],
     "apps/agentcore/src/server.ts": [
       "PRD-addendum-skill-authoring.md",
+      "PRD-agentcore-dsh-upgrade.md",
       "PRD-cli-full-coverage.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-in-dialog-gap-fill-loop.md",
@@ -3192,6 +3210,7 @@
     ],
     "packages/contracts/src/agentcore.ts": [
       "PRD-addendum-skill-authoring.md",
+      "PRD-agentcore-dsh-upgrade.md",
       "PRD-scenario-launcher.md",
       "PRD-skill-compiler-registry.md",
       "PRD-skill-contract-dsl.md",
@@ -3253,6 +3272,15 @@
       "PRD-skill-contract-dsl.md",
       "PRD-skill-governance-learning.md",
       "PRD-v2-agent.md"
+    ],
+    "apps/agentcore/test/dsh-poc-acceptance.test.ts": [
+      "PRD-agentcore-dsh-upgrade.md"
+    ],
+    "packages/dsh-harness/README.md": [
+      "PRD-agentcore-dsh-upgrade.md"
+    ],
+    "packages/dsh-harness/cordis.yml": [
+      "PRD-agentcore-dsh-upgrade.md"
     ],
     "apps/datacore/src/planviews.ts": [
       "PRD-aop-annual-scenario-1to1.md",

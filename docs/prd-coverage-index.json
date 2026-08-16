@@ -188,6 +188,26 @@
       "uncovered": [],
       "coverage": 1
     },
+    "PRD-agentcore-dsh-upgrade.md": {
+      "acceptanceIds": [
+        "D1",
+        "D2",
+        "D3",
+        "E1",
+        "E5",
+        "E6"
+      ],
+      "covered": [
+        "D1",
+        "D2",
+        "D3",
+        "E1",
+        "E5",
+        "E6"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
     "PRD-build-workflow-runtime.md": {
       "acceptanceIds": [
         "F55"
