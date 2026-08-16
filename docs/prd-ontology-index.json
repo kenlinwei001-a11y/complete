@@ -1290,6 +1290,7 @@
         "packages/bundle/headless/README.md",
         "packages/contracts/dist/index.js",
         "scripts/check-sim-ux-criteria.mjs",
+        "scripts/edge-active-mounts-baseline.json",
         "scripts/gate-ledger-baseline.json",
         "scripts/gate.sh",
         "scripts/lib/baseline-doc.mjs"
@@ -3579,6 +3580,9 @@
       "PRD-harness-ux-adoption.md"
     ],
     "scripts/check-sim-ux-criteria.mjs": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "scripts/edge-active-mounts-baseline.json": [
       "PRD-harness-ux-adoption.md"
     ],
     "scripts/gate-ledger-baseline.json": [

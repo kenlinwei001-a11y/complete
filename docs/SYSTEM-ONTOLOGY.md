@@ -1433,7 +1433,7 @@ toType 是 Order」一句**字面为假**，实有 3 条；但其限定句「Ord
 沿链路走：
 
 ```
-① 前端      EdgeActivePanel（`views/sim/EdgeActivePanel.tsx`·8 页共享一件）
+① 前端      EdgeActivePanel（`views/sim/EdgeActivePanel.tsx`·9 页共享一件·名册现算见下「门」段）
              边目录 ← GET /a/v1/sim/propagation-rules（**不过滤**：关掉的边要"可见地降级"不是消失）
 ② 拨开关     POST /a/v1/sim/sessions/:id/counterfactual  { n, disabledRuleKeys }（候选集，不落库）
 ③ 引擎       simAdvanceTicks(persist:false) ×2 —— 全规则一版、减去屏蔽集一版，**同一支算法**
@@ -1456,13 +1456,65 @@ toType 是 Order」一句**字面为假**，实有 3 条；但其限定句「Ord
 ① 这条边真跑了但影响被吃掉（"关掉它确实没影响"）；② 它在基线里**压根没触发**（源态为 0 / 无匹配边 / 被节拍闸门挡）。
 回包 `suppressedRulesFiredInBaseline` 就是分开这两件事的那个字段，前端 `buildVerdict` 给出**两句不同的话**。
 
-**门**：`scripts/check-edge-active-mounts.mjs`（**9** 页挂载点静态可达，且必须挂在**主组件**里 ——
+### 反事实链路 · 第二条（结构向）：会话级屏蔽**关系边** → 扇出改道或断链（WO-EDGE-PANEL-3PAGES · 2026-08-16）
+
+⚠️ **这是与上面那条并列的第二条反事实链路，不是它的一个分支** —— 关的是**两族不同的边**，
+读成同一件事就会以为「一处做了另一处也有了」，而它们在代码里没有任何共享路径：
+
+| | 上面那条（量级向） | 本条（结构向） |
+|---|---|---|
+| 关的是什么 | `PropagationRule` —— `源类型.状态变量 —链路→ 目标类型.状态变量`，带**系数与延迟** | **本体 ref 边** —— `引用方类型.引用字段`（`OTypeLite.properties[].refToTypeKey`） |
+| 承载物 | `SimSession.disabledRuleKeys`（落库） | 页面本地 state（**不落库、不落 URL**，只活在这一次查看里） |
+| 关掉之后变的是 | 下游**状态变量的取值**（`diffTickStates` 逐格差值） | **走到哪、波及谁** —— `radius` / `totalAffected` / 分层 DAG |
+| 有没有第二种结果 | 没有，只有"差多少" | **有两种**：**改道**（该层还有别的引用边 ⇒ 扇出改走那一条，波及**另一批**对象）／**断链**（只有这一条 ⇒ 链在此终止） |
+| 今天落在哪 | 9 个推演页（共享件 `EdgeActivePanel`） | **仅 `disruption-radius` 一页**（`views/DisruptionRadiusView.tsx`），因为只有它整页就是一条可断的链 |
+
+沿链路走（本条）：
+
+```
+① 倒推   deriveDisruptionLayers(types, rootType, disabledEdges)   ← 纯函数·确定性 R6
+          排序（type→viaField 字典序）**在过滤之前** ⇒「关掉首选 ⇒ 次选顶上」是确定的
+          ⚠ 这一行是本条最容易做错且**看不出来**的地方：写成「截断到第 i−1 跳」时
+            数照样变小、屏上无破绽，但**改道那一支永远不出现**
+② 求解   POST /a/v1/solvers/supplier_disruption_radius/invoke { rootType, rootId, layers }
+          `layers` 进 react-query 的 queryKey ⇒ 关一下开关即自动重解（不需要"再点一次运行"）
+③ 上屏   dr-radius / dr-total / dr-leaf / dr-fanout(LayeredDag) / dr-layer-* 全部随之换一批数
+```
+
+**R4 边界**：本条**不写任何东西**（本体里那条 ref 边一个字节不动），与 `disabledRuleKeys` 同属
+**R4-sim** 那条「反事实不碰真值」的纪律；差别只在承载物 —— 那条落 `sim_session` 行，本条连库都不落。
+
+**诚实位（一个数不许盖住两个事实 · 本条特有）**：链为空有两个完全不同的成因，屏上长得一样，
+**修法完全相反**（一个去建模、一个把开关拨回来）：① 本体本来就没有反向引用链（`dr-empty-no-layers`）；
+② **你自己把链上的边关断了**（`dr-empty-edges-cut`）。两个 testid 分开、文案分开。
+另有一条**本条特有**的诚实位：「已关 N 条 · 下方为反事实读数」徽标**必须留在第一层**
+（开关面板折起来也看得见）—— 否则用户会把反事实读数当成现状，那比看不到开关更坏。
+
+**接缝门**：`apps/frontend-shell/test/edge-panel-3pages.seam.test.tsx`（6 例）——
+断言的是「关掉一条边 ⇒ **屏上本页自己的读数**真的变了」（半径 2→1 · 波及 3→1 · 第一层换成另一类对象），
+不是「面板渲染出来了」。两个变异反证现跑：重算不吃开关 ⇒ 红在「数没变」；改成截断式 ⇒ 红在
+`expected [] to deeply equal [{ type: 'Warehouse' }]`。**两个都红在数上，不是红在面板上。**
+
+**门**：`scripts/check-edge-active-mounts.mjs`（挂载点静态可达，且必须挂在**主组件**里 ——
 挂进子组件 = 没跑出结果就看不见开关，本单初稿真踩过 3 处，是这道门当场抖出来的）。
+⚠️ **2026-08-16 WO-EDGE-PANEL-3PAGES 现跑订正 —— 本行原来那个「9 页」是个假数**：
+它是门里**手抄**的名单长度，而不是「该被问的页有几页」。名册改**现算**
+（`scripts/lib/sim-page-roster.mjs`，WO-INFER-PAGE-SSOT）后当场多问出 3 页
+（`cleanroom-attr` / `disruption-radius` / `order-chain`，此前**从未被这道门问过一次**）。
+今日实测：**现算名册 10 页 · 挂对 9 · 在册裁决 1**（`cleanroom-attr` 判**不适用**，
+理由与「差什么才能收」逐条登记在 `scripts/edge-active-mounts-baseline.json` 的
+`gaps.cleanroom-attr.why`）；棘轮基线 **3 → 1**（只降）。
+⚠️ 名册规模 10 是**本分支**的现算值；`WO-INFER-PAGE-SSOT` 的 `BUILTIN_VIEWS` 显式 `sim: true`
+并入后会长到 12（棘轮只拦缩水、不拦增长）。**数字有保质期，与门的现跑输出不符时以门为准并当场回写本行。**
 ⚠️ **2026-08-14 WO-GATE-LEDGER-FIX 现跑订正**：本行原写「8 页」，而门内 `PAGES` 表**当时已是 9 条**
 —— 第 9 条 `risk-board` 是该单复核时补的（工单按 renderer key 取表，把它读成「风险看板」，
 而 workspace 真实下发的标题是「产能推演」），补了表却没回写本体，于是本体比门少数一页。
-复验：`node scripts/check-edge-active-mounts.mjs` 末行自己打印「🟢 N/N 个推演页」（今日实测 9/9 · RC=0）。
-数字有保质期（随推演页增删而动），与门的现跑输出不符时**以门为准**并当场回写本行。
+⚠️ **上面这条 08-14 的订正本身，2026-08-16 又被证明只订对了一半**：它把「8」改成「9」，
+却仍然是在**手抄名单的长度**这个量上打转 —— 形态照铁律 0.6 句式：
+**「我用『门里那张表有几行』当作『该被问的页有几页』的证据，而前者并不度量后者。」**
+同一个病连犯两次（08-14 少数一页 · 08-16 少问三页），第二次的修法才是对的：**名册现算**。
+复验命令不变，但读法要换：看它打印的「现算名册 N 页 · 挂对 M · 已知缺口 K」，
+**不要**再去数门源码里有几行。
 ⚠️ 该门 **2026-08-14 之前从未登进 `scripts/gate-ledger.json`** —— 是 `gate-ledger:check` 判据①
 「无遗漏」当场抓出的唯一一条未登账门。后果不只是少一行账：`ontology-writeback:check` 的
 **G3-c「已建未接线」棘轮是在门账上现算的**，账里没有它 ⇒ 它对该棘轮**隐身**，
@@ -2024,7 +2076,7 @@ toType 是 Order」一句**字面为假**，实有 3 条；但其限定句「Ord
 | G-DECISION-EVIDENCE-SPLIT | **同一根因树上，两条方案各认了不同的一份证据对象 —— 屏上读起来通顺，实际张冠李戴，而用户分辨不出**（WO-LTA-EVIDENCE-CONFLICT·2026-08-14 实测登记并当日闭）。**病灶**：`apps/datacore/src/solvers/service.ts` 的 `decisionPlay` 里 `opt-lta-clause` 的依据取自 `ltas.find((l) => l.materialType === "正极")` —— **「数组里第一条」**，实测解析成 `lta-lfp-rbkj`（SUP-001）；而同一棵归因树上 `cf-lta-breach`（`apps/datacore/src/synthetic/battery-extended.ts` 因子表）与 `opt-insource`（源码**字面量**）指的都是 `lta-lfp-cylk`（SUP-003）。于是决策页出现「因为 **A 家**长协违约 ⇒ 给 **B 家**加价格联动条款」。**为什么此前没被抓到**：`optionsEvidence` 只把它标成 `TYPE`（同类型不同实例·弱依据），屏上是一个「弱」字，**不是「指错了人」** —— 依据门量的是「够不够得着」，不是「两条方案彼此同不同意」，两者不是一个命题。**哪一份才是对的（三条互相独立、都不是引擎自己编的）**：① 因果链自洽 —— `cf-upstream-cut` 下钻 `Supplier/SUP-003`，其下游一环的长协必须同供应商，`lta-lfp-cylk.supplierId === "SUP-003"`；② 归因树是唯一裁判 —— 树上真正被算进贡献的长协落点只有 `cf-lta-breach`（实测贡献 `0.1163%`）；③ 种子旁证 —— `dgap-clause.evidence` 原文写的是「LTA-SUP-003 合同扫描件」。反过来 `lta-lfp-rbkj` 唯一的「资格」是排在数组第 1 位，那是巧合不是依据。**定性 = 解析问题，不是数据问题**：三份正极长协是真实业务形态（一家企业本就有多家供应商长协），删改任何一份都是拿数据迁就代码；错的是「按数组顺序取第一条」这种**没有语义的隐式选择** —— 换一次种子插入顺序、多进一份长协，屏上的证据对象就悄悄换人，且**不会有任何一条测试变红**。**同族形态（不是同一处，别混）**：`cf-material-short` 的 `DYNAMIC-MBAL` 被「缺口最大的那一张」解析死（`apps/datacore/src/synthetic/battery-extended.ts` 的 `worstMbal`）—— 那一条至少有语义（worst），本条连语义都没有。 | `gap_attribution` 归因树 provenance 落点 → `solvers/service.ts` `collectGapAnchors` → `resolveEvidenceLta` → `DecisionOption.provenance{drillType,drillId,drillValue,basis}` → `optionsEvidence` OBJECT/TYPE → 决策页 `DecisionPlayPanel` 依据记号 | **接了线接错地方**（依据门在、有牙、已验有牙，只是方案侧的证据 id 从来不是从树上解出来的）。→ **✅ 已闭（WO-LTA-EVIDENCE-CONFLICT）**：新增 `resolveEvidenceLta`（把「哪份长协是证据」显式锚到树上贡献最大的 `LongTermAgreement` 落点，解析路径原样写进 `provenance.basis`；树上无该类型落点 → `NO_TREE_ANCHOR`，此时依据门本就整条剔除这两个方案，兜底代表只保 R6、不得冒充证据），为此把 `collectGapAnchors` 提到方案构造之前。**顺带闭同族的「对象与读数张冠李戴」**：`opt-insource` 原 `drillId` 指一份长协、`drillValue` 却是**正极全体合计欠交 1550 吨**，现改为该证据长协自身欠交 600 吨（合计量仍留给 `shortfallFrac`→`closesGap`，那里本就该按面算）。门 `apps/datacore/test/decision-play-lta-evidence.seam.test.ts` 七例全经 `solvers.invoke("decision_play")` 生产入口驱动、期望值现算不写死 id；变异反证 L2/L3/L4/L5 真红、L1/L6/L7 金丝雀保持绿。**金值随之变**（同批更新·逐条说明见交回报告）：`opt-lta-clause.cost` 160→90（`breachPenaltyWan` 从 rbkj 的 320 换成 cylk 的 180，×0.5）· `opt-insource.provenance.drillValue` 1550→600 · 两条方案 `optionsEvidence.match` TYPE/OBJECT→OBJECT/OBJECT |
 | G-PROCESS-TICK-COVERAGE | **推演沙盘第五档接上了节拍，但传导规则只够得着 9/65 条业务流程 —— 「动态」今天只覆盖 13.8%**（WO-PROCESS-CANVAS-LIVE·2026-08-14 现跑登记）。**这条不是实现缺陷，是数据层覆盖面**，故与「没接线」分开记：接线半已完成并有门（§7 `process-tick-live:seam`），缺的是**传导规则条数**。**实测（自己重跑，非照抄）**：`apps/datacore/src/seed.ts` 的 `DEMO_PROCESS_DEFINITIONS` 65 条、`carrierTypeKey` 去重 **64 种**；`DEMO_PROPAGATION_RULES` **13 条**、`sourceTypeKey ∪ targetTypeKey` = **11 种**（ARInvoice/Base/Customer/IncomingInspection/Line/Material/Model/Order/Process/PurchaseOrder/Supplier）。两者交集只命中 **9 条流程**：P15(Customer)·P17(Order)·P22(Model)·P28(Supplier)·P33(PurchaseOrder)·P35(IncomingInspection)·P38(Line)·P54(Base)·P59(ARInvoice) ⇒ **9/65 = 13.8%**；逐域看 D01/D02/D07/D08/D09/D12/D13 **七个域一条都点不亮**。⚠ **抽取工具第一版自己骗过我一次，照铁律 0.6 记账**：规则用的整体正则要求 `sourceTypeKey→sourceStateVar→viaLinkKey→targetTypeKey→targetStateVar` 五行连续，而种子里多条规则的 `viaLinkKey` 行尾带 `// 实测 …` 注释 ⇒ 只抽到 **5/13**，而当时的金丝雀只验「抽到了一条已知存在的规则」（存在性）⇒ **照样绿**。形态：**「我用『抽到了一条』当作『抽全了』的证据，而前者并不度量后者。」** 机制：金丝雀改成**恒等式**（抽出条数 === 原文 `^\s*sourceTypeKey:` 行数），不等即 RC=3 报「工具坏了」，不许报覆盖率。⚠ **这个数有保质期**：种子里增删任一条传导规则或流程定义即作废，须重跑不许照抄。**修法（另立工单·本单范围外）**：按「一条链补全一条业务域」的原则补传导规则，而不是逐条流程配一条边 —— 优先级见交回报告的建议表（生产执行 WorkOrder/WIPLot/ProductionSchedule → 质量 QualityLot/DefectRecord → 物料 MaterialBalance/MaterialBatch → 设备 EquipmentOEE/MaintenanceOrder → 交付 Shipment/FinishedGoodsInventory）。⚠ **补规则时必须同时判「这条流程本来该不该随节拍变」**：D01 经营规划（PlanTarget/KSF/AnnualScenario/CapexProject）与 D02 外部信号（CompetitorPrice/CommodityPriceTrend）**本来就不随日节拍变**，给它们硬造传导边就是造假（派单原话：「强行让它们跟着 tick 抖动就是造假」）。 | `apps/datacore/src/seed.ts` `DEMO_PROPAGATION_RULES`(13) × `DEMO_PROCESS_DEFINITIONS`(65) 的 `carrierTypeKey` 交集 → `GET /a/v1/sim/propagation-rules` → `views/sim/processCanvas.ts classifyTickDrive` → 第五档屏上三档 | **接了线数据不够**（接线半已闭且有门与五轮变异反证；缺口是传导规则覆盖面 9/65）。屏上**如实报**：56 条标「本层不随节拍变」并在浮层写明该判据**测不出**「本质上该不该随节拍变」 |
 | G-PROCESS-TICK-COVERAGE | **推演沙盘第五档的节拍覆盖面：9/65（13.8%）→ 29/65（44.6%）**（WO-PROCESS-CANVAS-LIVE 2026-08-14 登记缺口 · WO-PROCESS-TICK-COVERAGE 同日收编大半）。**这条不是实现缺陷，是数据层覆盖面**，故与「没接线」分开记：接线半早已完成并有门（§7 `process-tick-live:seam`），动的是**种子**（传导规则 + 传导所需的链路方向）。**当日现跑（自己重跑，非照抄）**：`DEMO_PROCESS_DEFINITIONS` 65 条 / `carrierTypeKey` 去重 **64 种**；`DEMO_PROPAGATION_RULES` **13 → 35 条**、`sourceTypeKey ∪ targetTypeKey` **11 → 32 种**；`batteryLinkTypes()` **+15 条影响向逆边**、真链路实例 **4666 → 6729**。逐域：D03 2→5/8 · D04 1/8 · D05 4→7/9 · D06 1→2/5 · **D07 0→3/4** · **D08 0→3/4** · **D09 0→2/4** · D10 1→4/4 · D11 1→2/3。<br>**修法分三档、判据不同，别混**（这正是本条要留住的东西）：**档 1「沿既有正向边补规则」**（6 条·零新 linkType：`model_changeover` / `material_has_batch` / `po_customs_cleared_by` / `base_maint_plan` / `model_has_cert` / `base_has_shipment`）；**档 2「补影响向逆边 + 真物化 + 补规则」**（15 条逆边 + 15 条规则）；**档 3「闭掉标着会动其实不动的那一条」**（1 条·零新 linkType·见本行末 ✅）。⚠ **档 2 的必要性来自一处被误判过的事实**：`wo_on_line` / `wip_for_wo` / `qlot_for_wo` / `defect_for_wiplot` / `maint_for_equip` 等 linkType **声明存在但 `synthetic/service.ts` 从未物化过实例**（真链路表零命中），且方向是**归属 FK（子→父）**；而 `propagateTick` 的 navOut 只沿 `fromId→toId` 走 ⇒ 「沿已有 linkType 各加一条 rule」这条修法**是错的**，照它做就是 #158 的复刻。⚠ 同一批订正：`MaterialBalance` **不是「0 条已发布链路」**——实有 7 条（`exc_sourced_from` 的一源），只是方向是 ExceptionEvent→MaterialBalance，拿它跑传导因果反了，故另走 `material_has_balance`（按物料名归属·8 条）。<br>⛔ **红线（已机器化，不再靠人记）**：D01 经营规划（6 条）+ D02 外部信号（5 条）**本来就不随日节拍变**，给它们造边就是造假 —— **覆盖率不是越高越好，是「该动的能动」**。同理拒绝 D04 产品平台/系列规划（60/30 天战略周期，与 D01 同类）。守门人 = `apps/datacore/test/process-tick-coverage.seam.test.ts` §B2（这两域整域必须 `NOT_TICK_DRIVEN`）。<br>**剩余 36 条的诚实分解 11+7+18**（不是「还没做」，三种形态修法各不同；⚠ 这三个数是**逐条枚举数出来的**，不是估的 —— 初稿写成 11+6+19 时漏了 `AdoptedMitigation` P65 也是零对象，「一个写在最容易被信的地方的错数字比没有更危险」）：① **判断不该动** 11 条 = D01 P01–P06 + D02 P07–P11；② **零物化对象、结构上补不了** 7 条 = `ProductionSchedule` P37/P40 · `WIPMove` P44 · `SparePartConsumption` P53 · `ShiftPlan` P61 · `OperatorSkillCert` P62 · `AdoptedMitigation` P65 —— 生成器产了（或压根没产）但 `service.ts` 刻意不物化「高量低值执行类」；要点亮得先物化对象，那会动 94 类型金值，是另一张单；③ **有对象但今天无任何可用入边** 18 条 = D03 P12/P13/P14（商机/投标/赢单丢单，`segment` 是字符串不是 FK，连不出真边）· D04 P20/P21/P23/P24/P25/P26/P27（产品与工程，30–60 天战略/工程周期，**判为不该随日节拍变**）· D05 P29/P30 · D06 P39 `Cadence` · D08 P46 `QualityStandard`（标准制定，同 D04 口径）· D09 P52 `EquipmentOEE`（见下）· D11 P58 `FinancePlan` · D13 P63 `Metric` / P64 `RootCauseChain` —— **D13 尤其要小心：没有任何业务对象 FK 指向 `Metric`，硬造一条就是发明关系**。<br>⚠ **明确未做、代价已量化**：`EquipmentOEE`（P52 · OEE 采集与损失分解 · 真的该随节拍变）要 `equipment_has_oee` 一条边 = **+5460 条链路实例**（链路表再翻一倍），为 1 条流程翻倍链路表判为不值 —— **这是判断，留给审核方否决，不是遗漏**。 | `apps/datacore/src/seed.ts` `DEMO_PROPAGATION_RULES`(35) × `DEMO_PROCESS_DEFINITIONS`(65) 的 `carrierTypeKey` 交集（逆边实例产地 `synthetic/service.ts`·类型声明 `synthetic/battery.ts batteryLinkTypes()`）→ `GET /a/v1/sim/propagation-rules` + `GET /a/v1/sim/view-config` `nodeObjectIds` → `views/sim/processCanvas.ts classifyTickDrive` → 第五档屏上三档 | **接了线数据不够，已收编大半**（29/65）。屏上**如实报**：36 条标「本层不随节拍变」并在浮层写明该判据**测不出**「本质上该不该随节拍变」。⚠ **前端两处文案里的当日数字（`processCanvas.ts` 文档块 / `locales/zh.ts` `liveBasis` 的 `9 / 0 / 56`、`65 11 9`）在本单之后已过期，应改为 `29 / 0 / 36`、`65 32 29`** —— 本单范围边界禁碰 `apps/frontend-shell/**`（同期三个 agent 在改），故**如实登记为待办**而非静默留旧数。✅ **「标着会动、其实不动」那一条已闭（档 3）**：判据取 source∪target 两端，而 `Supplier`(P28) 档 1/2 后只当 source、没有任何规则写它 ⇒ 读数恒定。**当时判「要改前端判据、是另一张单」是把路堵窄了** —— 修法有两条：(a) 改判据区分 source-only/target ⇒ 把 P28 如实**降档**（治标签·前端侧）；(b) 补一条真的写它的规则 ⇒ 让标签**变成真的**（治链路·种子侧）。只有 (b) 让这条流程真能用，且落在本单范围内，故走 (b)：`demo_po_expedite_to_supplier_review`（`PurchaseOrder.expeditePressure` --`po_from_supplier`--> `Supplier.reviewPressure`）。**这条边 30 条实例早已物化**（`service.ts` 的 `lnk_pos_*`），所以是纯档 1 修法：零新 linkType、零新物化。业务因果为真：某供应商的采购单反复要加急 ⇒ 触发该供应商绩效复评（P28 语义就是「准入与评估」）。**不构成回路**：`reviewPressure` 只被写不被读，被读的 `deliveryDelay` 一字节不碰 ⇒「三个纯源量纲无人写」这条前提仍成立。⇒ **29 条现在条条真动**（此前是 28 真动 + 1 假动）。§C4 随之从「登记缺席」**翻转成复发闸**：`sourceOnly === []` 恒空 + Supplier 读数前后不等，谁再补只读不写的类型进来机器当场红。变异反证两轮均 RC=1：删该规则 ⇒ `expected [ 'Supplier' ] to deeply equal []`；系数改 0 ⇒ `expected 10 not to be 10`。 |
-| G-GATE-ROSTER-HANDCOPIED | **门的名单是手抄的 ⇒ 漏掉的对象永远绿**（WO-HARNESS-UX-ADOPTION 2026-08-15 实测发现·整类）。**现场**：`scripts/check-edge-active-mounts.mjs` 的 `PAGES` 是**手抄的 9 条**（注释自陈「前 8 条来自工单 §1；第 9 条 risk-board 是复核时补的」），而「推演页」四源并集实测 **12 页** ⇒ `cleanroom-attr` / `disruption-radius` / `order-chain` **三页从未被那道门问过，于是永远绿**。**形态**（铁律 0.6 句式）：**「我用『名单里那几个都合格』当作『所有该合格的都合格』的证据，而前者并不度量后者。」****这不是那一道门的个案**：凡把受检对象集合**写死在门里**的判据都在射程内 —— 门只能证明「它问过的那些是对的」，证明不了「该问的都问了」。**判据**：受检集合必须**现算**（从 route 表 / 注册册 / 文件系统枚举），写死名单则必须同批加一条「名单 vs 现算」的一致性断言。**已闭的第一步**：`sim-ux-criteria:check` 判据① 就是「枚举一致（现算 vs 表）」，专拦手抄漏页；`check-edge-active-mounts.mjs` 的名单**尚未改成现算**，故本条标 **🔴 未修**。⚠️ 顺带记：三源（`BUILTIN_VIEWS` / `features.ts` VIEW 级 / `NAV_GROUPS` 推演组）对「哪些算推演页」**互不一致**，所以「现算」本身也要先定单一来源。 |
+| G-GATE-ROSTER-HANDCOPIED | **门的名单是手抄的 ⇒ 漏掉的对象永远绿**（WO-HARNESS-UX-ADOPTION 2026-08-15 实测发现·整类）。**现场**：`scripts/check-edge-active-mounts.mjs` 的 `PAGES` 是**手抄的 9 条**（注释自陈「前 8 条来自工单 §1；第 9 条 risk-board 是复核时补的」），而「推演页」四源并集实测 **12 页** ⇒ `cleanroom-attr` / `disruption-radius` / `order-chain` **三页从未被那道门问过，于是永远绿**。**形态**（铁律 0.6 句式）：**「我用『名单里那几个都合格』当作『所有该合格的都合格』的证据，而前者并不度量后者。」****这不是那一道门的个案**：凡把受检对象集合**写死在门里**的判据都在射程内 —— 门只能证明「它问过的那些是对的」，证明不了「该问的都问了」。**判据**：受检集合必须**现算**（从 route 表 / 注册册 / 文件系统枚举），写死名单则必须同批加一条「名单 vs 现算」的一致性断言。**已闭的第一步**：`sim-ux-criteria:check` 判据① 就是「枚举一致（现算 vs 表）」，专拦手抄漏页。⚠️ 顺带记：三源（`BUILTIN_VIEWS` / `features.ts` VIEW 级 / `NAV_GROUPS` 推演组）对「哪些算推演页」**互不一致**，所以「现算」本身也要先定单一来源。**◑ 部分闭合（2026-08-16）**：① 名册已改现算（`scripts/lib/sim-page-roster.mjs`，五条纳入判据 + 一条排除判据 + 三条交叉断言，`WO-INFER-PAGE-SSOT`）；② **它当场多问出的那 3 页已逐页出结论**（`WO-EDGE-PANEL-3PAGES`）：`order-chain` / `disruption-radius` **补挂**，`cleanroom-attr` 判**不适用**并把理由与「差什么才能收」写进棘轮基线的 `why`，棘轮 **3 → 1**。⚠️ **为什么仍是「部分」而不是「已闭」**：本条是**整类**病，不是那一道门的个案 —— 全仓其余把受检集合写死在门里的判据一个都还没查（判据：`grep -n "const PAGES\|const FILES\|const TARGETS" scripts/*.mjs` 一类的写死名单，逐条判「该不该现算」）。**只把发病的那一处治好就宣布闭合，正是本条自己警告的那个形态。**⚠️ 另记一条同源实测（2026-08-16）：本体 §3「反事实链路」那一行的「9 页」在 08-14 已被订正过一次（8→9），**而那次只订对了一半** —— 它仍在数手抄表的行数。同一个病在同一行连犯两次，第二次才换成现算。 |
 
 > **WO-CAPACITY-PAGE-100PCT 残口补闭（2026-07-30 · 「产能推演」页 100% 实证 LOOP · 台账 `docs/capacity-page-audit-ledger.md`）**
 > 三条**已标 ✅ 已闭**的断点在**真浏览器亲跑**下仍有可复现残口，本单补闭（均不新增对象类型/链路/事件/求解器，故金值不变）：
