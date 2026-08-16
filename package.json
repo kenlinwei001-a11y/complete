@@ -76,6 +76,7 @@
     "quantile-field-naming:check": "node scripts/check-quantile-field-naming.mjs",
     "sim-ux-criteria:check": "node scripts/check-sim-ux-criteria.mjs",
     "dsh-dormancy:check": "node scripts/check-dsh-dormancy.mjs"
+    "unit-value-provenance:check": "node scripts/check-unit-value-provenance.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

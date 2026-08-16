@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 // DF.13 外协红线单一来源（C08）：规则缺失时的兜底上限读契约，禁内联裸阈值。
-import { OUTSOURCE_REDLINE } from "@platform/contracts";
+// WO-SNAPSHOT-UNIT-LIE：留痕快照形状 + 写 payload 前的运行时量纲断言，同样只认契约（禁本地另抄一份）。
+import { OUTSOURCE_REDLINE, assertLeverAdoptSnapshot, type LeverAdoptSnapshot } from "@platform/contracts";
 import { discoverLevers, fetchRules, runSolver, type DiscoveredLever } from "@/api/endpoints";
 import { Feature } from "@/workspace/featureGate";
 import { Provenance } from "@/components/Provenance";
@@ -105,6 +106,7 @@ export function DynamicLeverPanel({
   grain,
   beforeLabel,
   adoptActionTypeKey = "采纳产能保障方案",
+  adoptPayloadExtra,
   onLiveState,
 }: {
   /**
@@ -121,8 +123,19 @@ export function DynamicLeverPanel({
   factors: string[];
   scopeObjectIds?: string[];
   modelId: string;
-  /** WO-P50-RENAME：产能推演快照，量纲 **万套/窗口**（与 capacity_forecast 输出同轴）。 */
-  snapshot: { mode: string; qty: number; capWanP50: number; capWanP90: number; mainBn: string };
+  /**
+   * 采纳时写进 **ActionDraft payload（审批面）** 的留痕快照。
+   *
+   * WO-SNAPSHOT-UNIT-LIE 实测：本 prop 原是扁平的 `{mode,qty,capWanP50,capWanP90,mainBn}`，
+   * 两个调用方各喂各的量纲 —— `ProjectSimView` 喂 `out.capWanP50`（**万套/窗口**·真产能），
+   * 而 `RiskBoardView` 喂 `card.peak`（**张力峰值 0–100 指数**）。后者经 `adoptCombo` 整份进
+   * payload，`ActionsPage` 又把 payload 原样打给审批人 ⇒ **审批留痕里记着一个假的产能数**。
+   * 与 `beforeValue` 那次同族（同一个 prop 背两个量纲），只是这个不上屏、藏在 payload 里。
+   *
+   * 改判别式联合（契约 `LeverAdoptSnapshotSchema`）：`kind` 决定携带哪个量纲的量，
+   * 两个量纲**不共用字段名** ⇒ 借名字这件事在类型层就写不出来，运行期还有 `.strict()` 兜一道。
+   */
+  snapshot: LeverAdoptSnapshot;
   /** WO-CAPLIVE-2：参数化推演目标（项目推演页默认 Base.oeeIndex；产能页传 Base.weeklyCap/Process 级）。
    *  硬编（旧 :91 targetType:"Base"/targetProp:"oeeIndex"）→ 参数，杠杆自不同产能目标反推（保 ProjectSimView 默认不回归）。 */
   targetType?: string;
@@ -135,6 +148,19 @@ export function DynamicLeverPanel({
   beforeLabel?: string;
   /** 采纳杠杆组合的 ActionType（默认产能保障方案·C5 门经审批草稿）。 */
   adoptActionTypeKey?: string;
+  /**
+   * 该 ActionType **自己的必填 payload 位**（本面板不猜，由调用方按后端 `paramsSchema` 给）。
+   *
+   * WO-SNAPSHOT-UNIT-LIE 实测（真后端 inject，不是读注释）：`RiskBoardView` 传
+   * `adoptActionTypeKey="plan_change"`，而 `plan_change` 的 `paramsSchema`
+   * （`synthetic/battery.ts` BATTERY_ACTION_TYPES）`required: ["versionId","reason"]` ——
+   * 本面板原来只发 `{modelId, levers, snapshot}` ⇒ `POST /a/v1/action-drafts` 直接
+   * **400 `payload.versionId is required`**，草稿建了却卡在 `DRAFT` 进不了审批链。
+   * MSW mock（`mocks/handlers.ts` 的 action-drafts 桩）**根本不校验 paramsSchema**、
+   * 一律回 201 `PENDING_APPROVAL` ⇒ 前端测试全绿，谁也没看见后端在拒收。
+   * 这正是「生产实参与测试实参交集为空」那一族假绿。
+   */
+  adoptPayloadExtra?: Record<string, unknown>;
   /** WO-CAPLIVE-2：向父级暴露当前活推演态（当前杠杆组合 apply + 增益 + 影响面），供产能页方案存/分支/横比消费。 */
   onLiveState?: (s: { apply: { objectType: string; objectId: string; prop: string; value: number }[]; capGain: number; affected: number }) => void;
 }) {
@@ -229,12 +255,20 @@ export function DynamicLeverPanel({
   });
 
   const adoptCombo = (apply: { objectType: string; objectId: string; prop: string; value: number }[]): void => {
+    // WO-SNAPSHOT-UNIT-LIE · **写审批留痕之前**的运行时量纲断言（契约单源，不在本文件另判一遍）。
+    // 为什么非要运行时这一道：payload 的类型是 `Record<string, unknown>`，值一进去 TS 就不管了；
+    // 而 payload 是审批面 —— 写错的代价是「审批的人照着一个假数签了字」。
+    // 塞错量纲 ⇒ 这里当场抛，采纳按钮报错、用户看得见；**静默通过才是原病灶的复发形态**。
+    const auditedSnapshot = assertLeverAdoptSnapshot({ ...snapshot, baselineGap: baseGap });
     action.mutate({
       actionTypeKey: adoptActionTypeKey,
       payload: {
         modelId,
         levers: apply, // 迁移：动态杠杆组合 [{objectType,prop,value}]（替原 whatIf 三系数）
-        snapshot: { ...snapshot, capWanP50: snapshot.capWanP50, baselineGap: baseGap },
+        snapshot: auditedSnapshot,
+        // 各 ActionType 自己的必填位（如 `plan_change` 的 versionId/reason）由调用方给。
+        // 不给 ⇒ 后端 `submitInner` 校验 paramsSchema 直接 422/400，草稿卡在 DRAFT 进不了审批链。
+        ...adoptPayloadExtra,
       },
     });
   };

@@ -882,7 +882,10 @@ function StepBody({
           baseGap={out.gap}
           factors={[out.mainBn, ...new Set(out.perBaseRows.map((r) => r.bottleneck).filter(Boolean))].filter(Boolean) as string[]}
           modelId={modelId}
-          snapshot={{ mode, qty: totalQty, capWanP50: out.capWanP50, capWanP90: out.capWanP90, mainBn: out.mainBn }}
+          // WO-SNAPSHOT-UNIT-LIE：判别式联合的 `capacity_forecast` 分支 —— 本处的值**本来就是**
+          // 真产能（直接来自 `capacity_forecast` 输出的同名字段，量纲自证），加 `kind` 后
+          // 与产能页那份 `risk_tightness` 快照在留痕里**分得开**（原先两者长得一模一样）。
+          snapshot={{ kind: "capacity_forecast", mode, qty: totalQty, capWanP50: out.capWanP50, capWanP90: out.capWanP90, mainBn: out.mainBn }}
         />
       </Feature>
       {/* WO-GLOBALSIM-GLASS-REDESIGN 去重：多目标 + 跨对象占用联合 what-if 本是「全局能力」，

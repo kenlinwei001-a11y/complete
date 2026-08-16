@@ -1142,7 +1142,24 @@ function RiskDetailPanel({
           targetProp="weeklyCap"
           beforeLabel={zh.risk.live.leverBefore}
           adoptActionTypeKey="plan_change"
-          snapshot={{ mode: "capacity", qty: 0, capWanP50: card.peak, capWanP90: card.peak, mainBn: card.factor }}
+          // WO-SNAPSHOT-UNIT-LIE · 本处原写 `capWanP50: card.peak, capWanP90: card.peak` ——
+          // `card.peak` 是**张力峰值（0–100 指数）**，而 `capWanP50` 的契约量纲是**万套/窗口**，
+          // 该快照整份进 `plan_change` 的 ActionDraft payload、`ActionsPage` 原样打给审批人看
+          // ⇒ 审批留痕里记着一个假的产能数。判据是算术不是注释：全公司窗口产能在 366.8 万套/年
+          // 量级，而 `card.peak` 恒在 0–100 且随瓶颈因子变，两者不可能是同一个量。
+          // 改判别式联合的 `risk_tightness` 分支：张力峰值**用自己的名字** `tightnessPeak` 记下来。
+          // ⚠️ 刻意**不补** `capWanP*`：本屏这一刻手上只有张力曲线，真产能数拿不到 ——
+          //    宁可少记，不许拿手边这个 0–100 的数去顶替（编数比不记危险）。
+          // 背书（`check-unit-value-provenance` 判据 d）：`card.peak` 由 `risk_timeline` 的
+          // `tensionSeries` 取峰，恒在 0–100（求解器封顶 98），确为张力指数 —— 亲手核过，故背书。
+          snapshot={{ kind: "risk_tightness", mode: "capacity", tightnessPeak: card.peak /* @unit 张力指数(0-100·无量纲) */, mainBn: card.factor }}
+          // `plan_change` 的后端 paramsSchema `required:["versionId","reason"]` —— 不给这两位，
+          // 建草稿即 400、卡在 DRAFT 进不了审批链（真后端 inject 实测）。versionId 与同页
+          // `CapacityScenarioPanel.adoptScenario` 的 `risk:<baseId>:<...>` 同构。
+          adoptPayloadExtra={{
+            versionId: `risk:${baseIdForScope}:lever`,
+            reason: `采纳产能保障杠杆组合（基地 ${card.base} · 首要因子 ${card.factor}）`,
+          }}
           onLiveState={onLiveState}
         />
       </div>
