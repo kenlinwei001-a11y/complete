@@ -35,8 +35,17 @@ interface MockLinkType { key: string; fromType: string; toType: string; cardinal
  * 抄了就是装饰品，改主正则时金丝雀拿旧的去测、照样绿）。
  */
 function extractMockLinkTypes(src: string): MockLinkType[] {
-  const anchor = src.indexOf("/a/v1/ontology/mapping/registries");
-  if (anchor < 0) throw new Error(`工具坏了：${MOCK_PATH} 里找不到 registries handler 锚点（文件被挪了/端点改名了）`);
+  // ⚠️ **锚点必须咬 handler，不能咬裸路径串**（2026-08-15 四包 gate 实测抓出）：
+  //    裸串 `/a/v1/ontology/mapping/registries` 在本文件里出现 **2 次** ——
+  //    第 1 次在一段**注释**里（`057157fe` 收编 WO-ACTIVE-EDGE-UX 时带进来的），
+  //    真 handler 在 2000 行开外。`indexOf` 取第一处 ⇒ 从注释往后找 `linkTypes: [`
+  //    ⇒ 抽出 **0 条**，金丝雀当场报「工具坏了」（它没有谎报「mock 很干净」，这正是它该干的）。
+  //    形态（CLAUDE.md 铁律 0.5 判据 #5 同族）：
+  //      **「我用『源码里出现了这个路径串』当作『这里就是那个 handler』的证据，而前者并不度量后者。」**
+  //    本仓已因未剥注释的 `indexOf` 栽过至少三次（变异反证插进注释里 / 补文案插进 import 区）。
+  //    改法：锚 `http.get("…路径…"` 这个**调用形态**，注释里不会出现它。
+  const anchor = src.search(/http\.get\(\s*"[^"]*\/a\/v1\/ontology\/mapping\/registries"/);
+  if (anchor < 0) throw new Error(`工具坏了：${MOCK_PATH} 里找不到 registries **handler**（不是注释）锚点（文件被挪了/端点改名了）`);
   const start = src.indexOf("linkTypes: [", anchor);
   if (start < 0) throw new Error("工具坏了：registries handler 之后找不到 linkTypes 数组");
   const end = src.indexOf("]", start);
