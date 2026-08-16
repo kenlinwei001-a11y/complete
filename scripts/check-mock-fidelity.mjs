@@ -24,10 +24,19 @@
  *   载体② **条目**（链路方向/基数）：mock 与后端**同 key** 的链路类型条目，
  *          `fromType↔fromTypeKey` / `toType↔toTypeKey` / `cardinality` 必须一致。
  *          两侧的值都从**真源码**抽，本门不存任何「期望值」——只存已知欠账的**豁免名单**。
+ *   载体③ **widget 文案**（title/unit，WO-TITLE-DIVERGENCE 扩维 2026-08-16）：mock 与后端
+ *          **同 key** 的 widget 条目，`title` 必须逐字节相等，`unit` 一侧有一侧没有也算分叉。
+ *          来历：aop-base 单位差 4 个数量级（万 vs 亿）、oee-trend 文案 7日 vs 数据 14 天，
+ *          而 fixtures.ts 注释一直声称「门A 守不漂」——门A（cockpit-widgets:check）只查
+ *          widget **type 在不在**，一个字的文案都不比。形态：「我用『type 三处齐』当作
+ *          『两套 DASH_LAYOUT 不漂』的证据，而前者并不度量后者。」
+ *          抽取/比对实现与接缝测试 `mock-widget-copy.seam.test.tsx` 共用
+ *          `scripts/lib/widget-copy.mjs`，不另抄一份。
  *
  * ── 与既有门的分工（别重复造轮子） ────────────────────────────────────────────
  *   · `nav-group-coverage:check` 判据② 管的是**反方向**：后端有、mock 缺（⇒ 前端断言恒真的哑门）。
- *   · `cockpit-widgets:check` 管 DASH_LAYOUT 后端/mock 漂移。
+ *   · `cockpit-widgets:check` 管 DASH_LAYOUT 后端/mock 漂移——但只查 widget **type 存在性**，
+ *     title/unit 一个字都不比（①②两处分叉就是在它眼皮底下活的），文案维由本门载体③补。
  *   · 本门补的是**没人管的那个方向**：**mock 有、后端没有（或相反）**。三者互补，不重叠。
  *
  * ── 诚实边界（先读，免得把这道门当成它不是的东西） ────────────────────────────
@@ -92,6 +101,7 @@ process.on("unhandledRejection", (e) =>
 //    被读成「真有谎报」。动态 import 把失败推到执行期，才兜得住。
 let lex, splitTopLevel, stripComments, lineOf, walk, M_CODE;
 let METHODS, extractBackendRoutes, normalizePath, extractRewritePrefixes, pathMatches;
+let widgetEntries, compareWidget;
 try {
   // 故障注入开关：只给自检用，用来**机械验证**「缺依赖 ⇒ RC=2」这条路径真的成立
   // （写在注释里的约定不是机制；只有机器跑得到的才是）。
@@ -102,10 +112,16 @@ try {
     lex, splitTopLevel, stripComments, lineOf, walk, M_CODE,
     METHODS, extractBackendRoutes, normalizePath, extractRewritePrefixes, pathMatches,
   } = await import(spec));
+  // 载体③ 的抽取/比对单源（与接缝测试 mock-widget-copy.seam.test.tsx 共用同一份）。
+  // 它自己也 import source-lex；任何一个缺了都是「没得扫」，不是「mock 干净」。
+  const wspec = process.env.MOCK_FIDELITY_FORCE_NO_WIDGETCOPY === "1"
+    ? "./lib/__widget-copy-does-not-exist__.mjs"
+    : "./lib/widget-copy.mjs";
+  ({ widgetEntries, compareWidget } = await import(wspec));
 } catch (e) {
   toolBroken(
-    `读不到词法原语库 scripts/lib/source-lex.mjs（${e?.message || e}）`,
-    "本门的抽取器全靠它；缺了不是「mock 干净」，是「没得扫」。多半是这个 worktree 没取全文件。",
+    `读不到词法原语库 scripts/lib/source-lex.mjs 或 widget 文案库 scripts/lib/widget-copy.mjs（${e?.message || e}）`,
+    "本门的抽取器全靠它们；缺了不是「mock 干净」，是「没得扫」。多半是这个 worktree 没取全文件。",
   );
 }
 
@@ -273,6 +289,23 @@ for (const f of backendFiles) {
   }
 }
 
+// 载体③ widget 文案：mock 侧扫全部 mocks/ 文件；后端侧只扫 datacore
+// （widget 布局的唯一后端下发方是 datacore 视图布局；agentcore 不下发 widget，
+//  扫它只会把 QOS 的同形对象配进来制造噪声 —— 与载体② 的扫描面刻意不同，特此写明）。
+const mockWidgets = [];
+for (const f of mockFiles) {
+  const src = readFileSync(f, "utf8");
+  for (const e of widgetEntries(src)) mockWidgets.push({ ...e, file: relative(ROOT, f) });
+}
+const beWidgetsByKey = new Map();
+for (const f of walk(DATACORE_SRC).filter((f) => !/\.(test|spec)\.tsx?$/.test(f))) {
+  const src = readFileSync(f, "utf8");
+  for (const e of widgetEntries(src)) {
+    if (!beWidgetsByKey.has(e.key)) beWidgetsByKey.set(e.key, []);
+    beWidgetsByKey.get(e.key).push({ ...e, file: relative(ROOT, f) });
+  }
+}
+
 /* ════════════════════════════════════════════════════════════════════════════
  * 3 · 金丝雀（与主逻辑共用同一批函数 · 不中即「门自己坏了」exit 2）
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -342,6 +375,30 @@ function canaries() {
     return { ok: same.length === 0 && diff.length === 2, got: `相同→${same.length} 条差异 · 相反→${diff.length} 条差异`, want: "0 / 2" };
   });
 
+  // C9 真文件：两侧 widget 都必须抽得到（任一侧空 ⇒ 同 key 交集恒空 ⇒ 载体③恒绿）。
+  //    金丝雀钥匙选 aop-base/oee-trend——它们就是 WO-TITLE-DIVERGENCE 修掉的那两条，
+  //    它们若哪天抽不到，多半是把形状判据改坏了。
+  add("widget/真文件 两侧都抽到", "任一侧抽空 ⇒ 交集恒空 ⇒ 门恒报「零分叉」——与载体② C7 同一个坏法", () => {
+    const m = ["aop-base", "oee-trend"].every((k) => mockWidgets.some((e) => e.key === k));
+    const b = ["aop-base", "oee-trend"].every((k) => beWidgetsByKey.has(k));
+    return { ok: m && b && mockWidgets.length >= 10, got: `mock ${mockWidgets.length} 条(含目标=${m}) · backend key 数 ${beWidgetsByKey.size}(含目标=${b})`, want: "两侧都含 aop-base/oee-trend" };
+  });
+
+  // C10 widget 比对判据**双向**：同文案判同、unit 万 vs 亿必须判分叉（①的原形）、
+  //     title 差一个字也必须判分叉（②的原形）、一侧缺 unit 也算分叉
+  add("widget/比对双向", "恒等比对器会把单位差 4 个数量级的分叉全放过（①②就是这么活下来的）", () => {
+    const base = { key: "k", title: "AOP 基准营收 (亿)", type: "kpi", unit: "亿" };
+    const same = compareWidget(base, { ...base });
+    const unitDiff = compareWidget(base, { ...base, unit: "万" });
+    const titleDiff = compareWidget({ ...base, title: "OEE 7日趋势" }, { ...base, title: "OEE 14 日趋势" });
+    const missing = compareWidget({ ...base, unit: undefined }, { ...base });
+    return {
+      ok: same.length === 0 && unitDiff.length === 1 && unitDiff[0].field === "unit" && titleDiff.length === 1 && titleDiff[0].field === "title" && missing.length === 1,
+      got: `同→${same.length} · 单位→${unitDiff.length} · 标题→${titleDiff.length} · 缺侧→${missing.length}`,
+      want: "0 / 1(unit) / 1(title) / 1",
+    };
+  });
+
   return list;
 }
 
@@ -389,6 +446,23 @@ for (const me of mockLinks) {
   }
 }
 
+// 载体③ widget 文案 title/unit（同 key 交集；一侧独有 key 不在本载体管辖，见顶注「诚实边界」）
+const fmtVal = (v) => (v === undefined ? "（无）" : JSON.stringify(v));
+const widgetViolations = [];
+for (const me of mockWidgets) {
+  const cands = beWidgetsByKey.get(me.key);
+  if (!cands || cands.length === 0) continue;
+  const best = cands.map((b) => ({ b, d: compareWidget(me, b) })).sort((x, y) => x.d.length - y.d.length)[0];
+  if (best.d.length === 0) continue;
+  for (const d of best.d) {
+    widgetViolations.push({
+      id: `WIDGET ${me.key}.${d.field}`,
+      where: `${me.file}:${me.line}`,
+      detail: `mock=${fmtVal(d.mock)} vs 后端=${fmtVal(d.backend)}（${best.b.file}:${best.b.line}）`,
+    });
+  }
+}
+
 /* ════════════════════════════════════════════════════════════════════════════
  * 5 · 棘轮基线（只减不增）
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -416,7 +490,7 @@ if (base && typeof base === "object" && base.exemptions && typeof base.exemption
 }
 const exempt = base.exemptions ?? {};
 
-const current = [...routeViolations, ...linkViolations];
+const current = [...routeViolations, ...linkViolations, ...widgetViolations];
 const currentIds = current.map((v) => v.id);
 const fresh = current.filter((v) => !(v.id in exempt));
 const fixed = Object.keys(exempt).filter((id) => !currentIds.includes(id));
@@ -458,7 +532,7 @@ if (UPDATE) {
 }
 
 /* ── 报告 ── */
-console.log(`· 金丝雀 ${canaryResults.length}/${canaryResults.length} 全中（词法 1 · 路由 4 · 对象解析 2 · 条目 2）——抽取器在真源码上有效，下面的否定结论才有资格被相信。`);
+console.log(`· 金丝雀 ${canaryResults.length}/${canaryResults.length} 全中（词法 1 · 路由 4 · 对象解析 2 · 条目 2 · widget 2）——抽取器在真源码上有效，下面的否定结论才有资格被相信。`);
 console.log(
   `· 载体① 目录：mock 声明 ${mockRoutes.length} 条路由 · 后端注册 ${backendRoutes.length} 条` +
     `（别名前缀 ${rewritePrefixes.join("/")}）· **mock 谎报 ${routeViolations.length} 条**`,
@@ -466,6 +540,10 @@ console.log(
 console.log(
   `· 载体② 条目：mock 链路条目 ${mockLinks.length} 条 · 后端同类 key ${beLinksByKey.size} 个` +
     ` · **方向/基数不一致 ${linkViolations.length} 条**`,
+);
+console.log(
+  `· 载体③ widget 文案：mock widget ${mockWidgets.length} 条 · 后端同类 key ${beWidgetsByKey.size} 个` +
+    ` · **title/unit 分叉 ${widgetViolations.length} 条**`,
 );
 if (VERBOSE || fresh.length) {
   for (const v of current) {
@@ -492,6 +570,6 @@ if (fresh.length) {
   process.exit(1);
 }
 console.log(
-  `\n✓ mock-fidelity:check 通过：mock 声明的目录与条目无**新增**谎报` +
+  `\n✓ mock-fidelity:check 通过：mock 声明的目录、条目与 widget 文案无**新增**谎报` +
     `（存量 ${Object.keys(exempt).length} 条已记基线，只减不增）。`,
 );
