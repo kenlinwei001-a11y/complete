@@ -15,7 +15,8 @@ import { Provenance } from "@/components/Provenance";
 import { RuleRef } from "@/components/RuleRef";
 import { EvaluatedRules } from "@/components/EvaluatedRules";
 import type { ViewRendererProps } from "../registry";
-import { fmt, SnapshotBadge } from "./shared";
+import { fmt, SnapshotBadge, ExportReportButton } from "./shared";
+import type { ProvenanceReport } from "./exportProvenance";
 import { useLiveSolver } from "./useLiveSolver";
 import { DynamicLeverPanel } from "./DynamicLeverPanel";
 import { PmDag, type PmDagNode } from "./PmDag";
@@ -169,6 +170,44 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
   const forecast = useLiveSolver("capacity_forecast", args, (raw) => CapacityForecastOutputSchema.parse(raw));
   const out = forecast.data;
 
+  /**
+   * WO-U7-U9-REST · 判据 U9：导出物自带出处与生成时间。
+   * 复算三要素全进 basis：求解器 + 本体快照版本 + **全部入参**（型号/数量/周期或分批清单）
+   * —— 入参少写一项，第三方照着重跑出的就不是屏上这份结论。
+   * `out` 未回（查询进行中）时结论/逐基地两段留空 ⇒ 共享件渲染「诚实空态，不补编」。
+   */
+  const buildReport = (): ProvenanceReport => ({
+    docName: "项目推演",
+    basis: [
+      `求解器 capacity_forecast（本体快照 ${forecast.snapshotVersion ?? "—"} · 同输入同输出）`,
+      `入参：型号 ${modelId} · ${
+        mode === "single"
+          ? `数量 ${qty} 万套 · 周期 ${weeks} 周`
+          : `分批 ${batches.length} 批（${batches.map((b) => `${b.qty}万套/${b.dueDate}/${b.address}`).join("；")}）`
+      }`,
+      `数据健康度：P90 = P50 × ${out?.healthFactor ?? "—"}（C09 系数随驱动因子新鲜度联动）`,
+    ],
+    sections: [
+      {
+        heading: "结论",
+        head: ["项", "值"],
+        rows: out
+          ? [
+              ["产能 P50（万套/窗口）", fmt(out.capWanP50)],
+              ["产能 P90（万套/窗口）", fmt(out.capWanP90)],
+              ["缺口（万套）", fmt(out.gap)],
+              ["判定", out.ok ? "可接" : "接不住"],
+            ]
+          : [],
+      },
+      {
+        heading: "逐基地",
+        head: ["基地", "周产能", "认证系数", "主瓶颈", "紧张度"],
+        rows: (out?.perBaseRows ?? []).map((r) => [r.base, fmt(r.weeklyCap), r.certFactor, r.bottleneck, fmt(r.tightness)]),
+      },
+    ],
+  });
+
   // ⑤ 多维瓶颈矩阵（bottleneck_matrix 求解器，弹窗按需取数）
   const bnBases = useMemo(() => (out ? out.perBaseRows.map((r) => r.base) : []), [out]);
   const bnMatrix = useQuery({
@@ -260,6 +299,8 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
             一个型号即一个项目级模拟：①场景解析 → ②可产基地收敛 → ③驱动因子装载 → ④逐级聚合P50 → ⑤瓶颈定位 → ⑥结论与对策；任何参数变更即重算（debounce 300ms · 竞态最后发出者胜）。
           </div>
         </div>
+        {/* 判据 U9：导出入口（第一层只留按钮 + ? 记号，口径进浮层 —— 共享件统一分层）。 */}
+        <ExportReportButton pageKey="project-sim" build={buildReport} />
         {/* D5 · 在途可见：不止「重算中…」——补已耗时（秒级递增）+ 主动取消（用户可直接放弃，不必靠改参数间接取消）。
             本页杠杆全是连续控件（滑杆/数字框）→ 按仓主定案**不弹二次确认框**，照旧 debounce + 取消前序。 */}
         {forecast.isFetching && (
