@@ -325,7 +325,16 @@ node scripts/check-ref-closure.mjs --census               # 现算 9 条发布�
 **本单改过的门当前状态**（逐个实跑，显式捕获退出码）：
 `boundary-singlesource` 0 · `gate-roster` 0 · `ref-closure` 0 ·
 `screen-value-provenance` 0 · `prd-coverage` 0 ·
-`gate-exit-discipline` 0（83/83 门守纪律）· `ontology-writeback` 0 · `ontology-anchors` 0。
+`gate-exit-discipline` 0（83/83 门守纪律）· `ontology-writeback` 0 · `ontology-anchors` 0 ·
+`stale-claims` 0 · `baseline-writer-honesty` 0（走共享写入器 12 → 15，本单一条豁免都没加）。
+
+**本单一共被机器点名 4 次**（全都不是人想起来的，逐条如实记）：
+① `ontology-writeback` 报「§7 漏登 1」⇒ 才去补本体 §7 条目；
+② `ontology-anchors` 咬红我写进本体的 `catalog.ts:394`（行号越界 + 未校准新增）⇒ 改成不带行号的说法；
+③ 本单自己建的 `gate-roster` 接住我改 `ref-closure` 造成的死账与未定性常量 ⇒ `--tighten` + 补定性；
+④ `baseline-writer-honesty` 把本单三处新写入器判为 `HAND_ROLLED` —— 我确实 import 并调用了 `buildBaselineDoc`，
+   但先赋给中间变量再写，静态判定看不出「写的那一刻」用没用共享写入器（「导入了」≠「写的时候用了」）。
+   三处一律改成内联在写入表达式里，`ref-closure` 另补 `baselineDocCanary()`。
 
 `gate-ledger` 与 `system-ontology` 报 RC=2 / RC=1，**均为预存在**：
 本 worktree 未 `pnpm -r build`，两者引用的 `dist/**` 路径解析不到。
