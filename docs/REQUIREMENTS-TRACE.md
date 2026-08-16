@@ -39,6 +39,7 @@
 | B2 | 「**都派**」 | ✅ | BEFE-A/B/C/D/E/F/G 七张全收编 |
 | B3 | 「不局限在推演沙盘，而是**整体系统**」 | ✅ | + REFERENCES-FAMILY：引用族 9 条 → 一个客户端 + 一块共享面板 |
 | B4 | 剩余 `POST /a/v1/process-instances` | 🟡 | **诚实挂账不接**：契约要 `tasks.min(1)`，而流程定义**零步骤字段** ⇒ 前端无数据源可填。前置是**步骤模板层**，⛔ 未派 |
+| B5 | 屏上承诺的 Action 要真接上（WO-SIM-ACTION-REAL：「我需要完成一个可交付的系统，不是 demo 系统」⇒ 对假承诺的处置是**接上，不是撤文案**） | ✅ | 项目推演屏 DAG fc 节点「结论可采纳为 Action」原零接线（金丝雀自证后四个 Action 符号 0 命中）→ 步骤⑥「采纳结论」真接既有 S2 链：ActionDraft（参数组合+量纲核对过的推演快照）→ 审批 → domainExecutor 新分支**真落 ForecastAdoption 台账对象** + 选中订单回 stamp（targetRef 用 `FC-ADOPT:` 不用假 MO 号）；头号验收 = 审批后**另一条路读回**字段逐值对拍（datacore seam 4/4 + 前端 2/2），变异反证真红（拆写入 → 「expected [] to have a length of 1 but got +0」）；剩 `采纳经营方案` 一型 NOT_IMPLEMENTED（本体 G-ACTION-NOOP-EXEC 已回写 ◑ 部分闭合） |
 
 ## C · 数据构建发动机 / 逆向数据推演 —— **第二版逐步复核**
 
