@@ -26,7 +26,9 @@ import { useWorkspace } from "@/workspace/useWorkspace";
 import { TaskRun } from "@/components/QueryDock/TaskRun";
 import { PmDag, type PmDagNode } from "./PmDag";
 import { PerturbationTimeline, PERTURBATION_KINDS } from "./PerturbationTimeline";
-import { HeatStrip, useActionDraft } from "./shared";
+import { HeatStrip, useActionDraft, ExportReportButton } from "./shared";
+import type { ProvenanceReport } from "./exportProvenance";
+import { useSessionStore } from "@/store/sessionStore";
 import { SimReadinessPanel } from "./SimReadinessPanel";
 import EdgeActivePanel from "./EdgeActivePanel";
 import { SimComparePanel } from "./SimComparePanel";
@@ -397,6 +399,27 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const [scope, setScope] = useState<SandboxScope>(EMPTY_SANDBOX_SCOPE);
 
   /**
+   * ══ WO-U7-U9-REST · 判据 U7：把「我是哪一页」报给同屏问答 ══════════════════════
+   * 本页走 App.tsx 专用 route（`v/sim-sandbox` → SimSandboxGuard），不经 `ViewPage`
+   * ⇒ `setView` 在这里一次都不会被调到，问答答的是上一页残值（病机详见
+   * `shared.tsx` 的 `usePageView` 头注）。报到与 `ViewPage` 共用同一个 `setView`，不另开一条路。
+   *
+   * 视图键定案 = **`sim-sandbox`**（不是 `sandbox`）：route 路径 / entitlement `sim.sandbox` /
+   * NAV_GROUPS 三处枚举源同键，`sandbox` 只是 EdgeActivePanel pageKey 与旧手抄名单的局部叫法
+   * （名册判据库 `scripts/lib/sim-page-roster.mjs` 的 `EXTRA_ALIAS` 已把等价对显式定为此向）。
+   *
+   * 本页比别的专用 route 多一个维度 —— `mode`：收编模式（attribute/tryone/optimize/radius）
+   * 整屏换成内嵌页，报到由内嵌页自己的 `usePageView` 完成（它报它自己的键）；
+   * 本 effect 只在「现状」主控台模式下报 `sim-sandbox`，并在从收编模式切回时把残值改回来
+   * （收编页 unmount 时没有清理函数，这里不报，`view` 会一直停在上一屏的键上）。
+   * 顺序无竞争：收编模式下本 effect 条件为假、一个字都不写，不会盖掉内嵌页的报到。
+   */
+  const setView = useSessionStore((s) => s.setView);
+  useEffect(() => {
+    if (mode === "now") setView("sim-sandbox");
+  }, [mode, setView]);
+
+  /**
    * ══ WO-L4B（欠账 #145）· `sim.*` 事件的**真消费方**就是下面这两条 useQuery ══
    *
    * 病灶：`sim.session_created` / `sim.branched` / `sim.tick_completed` 三个事件 datacore 一直在发
@@ -593,6 +616,47 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     if (objs.length === 0) return 0;
     return objs.reduce((a, o) => a + aggregate(world[o]), 0) / objs.length;
   }, [world]);
+
+  /**
+   * WO-U7-U9-REST · 判据 U9：导出物自带出处与生成时间。
+   * 渲染半是共享件 `ExportReportButton`（一份实现、多页挂载，出处措辞只有一处）；
+   * 这里只提供**本页的**口径行与世界快照读数。`build` 故意做成函数：导出要的是
+   * 「点下去那一刻屏上的数」，提前算好会在 tick 推进后导出一份过期的表。
+   * 复算必需的三样都写进 basis：哪个会话、第几 tick、世界态是实测还是本地占位
+   * （占位世界复算出来的数与屏上不同源，不写清就是一份无法复算的导出）。
+   */
+  const buildExport = (): ProvenanceReport => {
+    const objs = Object.keys(world);
+    return {
+      docName: "推演沙盘",
+      basis: [
+        `沙盘会话 ${sessionId ?? "（未建立）"} · 当前 tick ${curTick}`,
+        worldOrigin === "MEASURED"
+          ? "世界态出处：GET /a/v1/sim/sessions/:id/world 取回（实测）"
+          : "世界态出处：本地基线快照（占位，未经后端重演——按此复算会与屏上不同源）",
+        `推演范围：${describeSandboxScope(scope)}`,
+      ],
+      sections: [
+        {
+          heading: "全局读数",
+          head: ["指标", "值"],
+          rows: [
+            ["全局均值（0–100 指数 · 全对象均值）", globalKpi.toFixed(1)],
+            ["当前 tick", curTick],
+            ["当前模式", SANDBOX_MODE_LABEL[mode]],
+          ],
+        },
+        {
+          heading: "逐状态变量均值（0–100 · 全对象）",
+          head: ["状态变量", "均值"],
+          rows: (cfg?.stateVars ?? []).map((v) => [
+            v,
+            objs.length ? (objs.reduce((a, o) => a + (world[o]?.[v] ?? 0), 0) / objs.length).toFixed(1) : "—",
+          ]),
+        },
+      ],
+    };
+  };
 
   // ── 扰动落点候选（全部来自 view-config = 租户本体派生；本文件零行业实体名 R14）─────────────
   // 对象 id 取 `cfg.nodeObjectIds`（= 引擎 `idsByType` 同源的**真物化对象 id**）——不是类型名。
@@ -1552,6 +1616,10 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
 
   return (
     <div data-testid="sandbox-view" className={styles.head}>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+        {/* 判据 U9：导出入口（第一层只留按钮 + ? 记号，口径进浮层 —— 共享件统一分层）。 */}
+        <ExportReportButton pageKey="sim-sandbox" build={buildExport} />
+      </div>
       <SandboxModeSwitch mode={mode} onChange={setMode} scope={scope} />
       {/* ══ 一次只渲染一个模式 ═══════════════════════════════════════════════════
           判据是另一屏**不在 DOM**，不是 hidden —— 故这里是**互斥的条件渲染**，

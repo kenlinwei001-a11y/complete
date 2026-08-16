@@ -8,6 +8,9 @@ import { InfoPopover } from "@/components/InfoPopover";
 import { api } from "@/api/apiClient";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
+// WO-U7-U9-REST · 判据 U9：导出物自带出处与生成时间（共享件，一份实现多页挂载）。
+import { ExportReportButton } from "./sim/shared";
+import type { ProvenanceReport } from "./sim/exportProvenance";
 
 /**
  * WO-ORDER-JOURNEY · **决策推演面板**（`DecisionPlayView` 页面壳与各宿主页的就地嵌入，用的是这一份）。
@@ -1061,6 +1064,54 @@ function DecisionPlay({
     recommendedOptionIds: [...recSet],
   });
 
+  /**
+   * WO-U7-U9-REST · 判据 U9：导出一份第三方可复算的决策产物文档。
+   * 复算必需的两样都写进 basis：求解器与它的入参（指标/根因因素/落点锚）——
+   * 同一份 decision_play 换一组入参就是另一份结论，不写清入参等于不可复算。
+   * 逐方案的「依据」列直接抄引擎给的 provenance（kind + basis），前端不改写、不总结。
+   */
+  const buildExport = (): ProvenanceReport => ({
+    docName: "决策推演",
+    basis: [
+      `求解器 decision_play（指标 ${rc.metricKey || metricKey} · 根因因素 ${rc.factorId}${out.locusPlay ? " · 落点锚已锚定" : ""}）`,
+      "逐方案依据见「对症方案」表（引擎 provenance 原文照登，前端未改写）",
+    ],
+    sections: [
+      {
+        heading: "根因",
+        head: ["项", "值"],
+        rows: [
+          ["根因", rc.label],
+          ["越线指标", rc.metricKey],
+          ["缺口", `${fmt(rc.gap)}${rc.unit}`],
+          ["摘要", summary],
+        ],
+      },
+      {
+        heading: "对症方案",
+        head: ["方案", "来源", "补缺口", "代价", "周期(天)", "依据"],
+        rows: options.map((o) => [
+          o.label,
+          o.sourceKind,
+          fmt(o.closesGap),
+          fmt(o.cost),
+          o.cycleDays,
+          `${o.provenance.kind} · ${o.provenance.basis}`,
+        ]),
+      },
+      {
+        heading: "推荐方案",
+        head: ["项", "值"],
+        rows: [
+          ["方案 ID", recommendedPlan.planId],
+          ["步骤数", recommendedPlan.steps.length],
+          ["合计补缺口", fmt(recommendedPlan.totalClosesGap)],
+          ["合计代价", fmt(recommendedPlan.totalCost)],
+        ],
+      },
+    ],
+  });
+
   return (
     <div
       style={{ display: "flex", flexDirection: "column", gap: 14 }}
@@ -1070,8 +1121,13 @@ function DecisionPlay({
     >
       {/* WO-ORDER-JOURNEY：壳与嵌入是同一份实现的**可断言记号** —— 两处都渲染这一行，
           改这里一处文案 ⇒ 壳页与嵌入处同时变（接缝测试两处断言一起红）。 */}
-      <div data-testid="dp-impl-stamp" style={{ fontSize: 12, color: "var(--muted2)" }}>
-        {zh.decisionPlay.implStamp}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div data-testid="dp-impl-stamp" style={{ fontSize: 12, color: "var(--muted2)" }}>
+          {zh.decisionPlay.implStamp}
+        </div>
+        {/* 判据 U9 导出入口。**嵌入态不挂**：那时本组件只是宿主页里的一个块，
+            「这一页」是宿主，不该由它出一份 pageKey=decision-play 的导出（testid 也会撞）。 */}
+        {embedded ? null : <ExportReportButton pageKey="decision-play" build={buildExport} />}
       </div>
 
       {/* ── 从阻滞点进来的入口横幅（WO-SANDBOX-IMP2PLAN；不改下面 5 区）── */}
