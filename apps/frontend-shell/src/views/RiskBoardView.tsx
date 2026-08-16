@@ -17,7 +17,8 @@ import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { EChart } from "@/components/ui/EChart";
 import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
-import { useActionDraft } from "./sim/shared";
+import { useActionDraft, ExportReportButton } from "./sim/shared";
+import type { ProvenanceReport } from "./sim/exportProvenance";
 import { DynamicLeverPanel } from "./sim/DynamicLeverPanel";
 import type { ViewRendererProps } from "./registry";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
@@ -234,6 +235,30 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   const openCard = openBase ? cards.find((c) => c.base === openBase) ?? null : null;
   // WO-LIVE-DISPOSITION：处置表数据源 = 点过「生成/重算」则用**重算结果**（吃当前杠杆推演态），否则基线查询结果。
   const planRows: PlanRow[] = livePlan?.rows ?? data.planRows ?? [];
+
+  /**
+   * WO-U7-U9-REST · 判据 U9：导出物自带出处与生成时间 —— 换用共享件 `exportProvenance`
+   * （缺 basis/时间戳直接抛）。旧 `exportPlanRows` 的失败模式它亲手演示过：页脚自称
+   * 「导出含口径」，通篇却没有生成时间、也没有求解器/入参出处 ⇒ 拿它进决议附件的人无法复算。
+   * 复算必需的都在 basis：求解器、窗口、阈值、以及这份表是基线还是吃了 N 项杠杆的重算结果
+   * （同一张表两种来源，复算路径完全不同，不写清就是又一份「页脚自称」）。
+   */
+  const buildPlanReport = (): ProvenanceReport => ({
+    docName: zh.risk.planTitle,
+    basis: [
+      `求解器 risk_timeline（窗口 ${horizon} 天 · 阈值 ${threshold} · 同输入同输出）`,
+      livePlan
+        ? `本表为「生成/重算行动计划」结果，吃 ${livePlan.leverCount} 项杠杆推演（非基线）`
+        : "本表为基线查询结果（未吃杠杆推演）",
+    ],
+    sections: [
+      {
+        heading: zh.risk.planTitle,
+        head: ["#", "行动项", "负责人", "启动", "完成", "预期效果", "依据/规则"],
+        rows: planRows.map((r, i) => [i + 1, r.det ? `${r.act}（${r.det}）` : r.act, r.owner, r.start, r.done, r.eff, r.rule]),
+      },
+    ],
+  });
   // 换推演窗口 → 丢弃上一窗口的重算结果（否则 30 天窗算出的计划挂在 90 天窗下=串窗·诚实回落基线）。
   const pickHorizon = (h: number) => {
     setHorizon(h);
@@ -500,12 +525,9 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                       其中几个基地窗内确有缺口（行动项因此重算）、几个无缺口（故不变）。 */}
                   {livePlan && <OverlayEffectNote rows={planRows} />}
                   {"　"}
-                  <span className={styles.tierChip} data-testid="risk-plan-export" role="button" tabIndex={0}
-                    style={{ display: "inline-block" }}
-                    onClick={() => exportPlanRows(planRows, zh.risk.planTitle)}
-                    onKeyDown={(e) => e.key === "Enter" && exportPlanRows(planRows, zh.risk.planTitle)}>
-                    ⬇ 导出最终规划
-                  </span>
+                  {/* WO-U7-U9-REST · 判据 U9：换成共享导出件（出处 + 生成时间，缺一直接抛）。
+                      旧 testid risk-plan-export 已由 export-report-risk 接替（risk-order-tab 测试同步改）。 */}
+                  <ExportReportButton pageKey="risk" build={buildPlanReport} />
                 </span>
               </div>
               <table className="cmp" data-testid="risk-plan-table">
@@ -663,20 +685,8 @@ function OverlayEffectNote({ rows }: { rows: PlanRow[] }) {
   );
 }
 
-/** 导出最终规划：前端生成独立浅色系静态 HTML 表格文档并触发下载（非截图·去交互态·字段同页表·可进 S&OP 附件）。 */
-function exportPlanRows(rows: { act: string; det?: string; owner: string; start: string; done: string; eff: string; rule: string }[], title: string) {
-  const esc = (s: unknown) => String(s ?? "").replace(/[&<>]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[m] ?? m));
-  const trs = rows.map((r, i) => `<tr><td>${i + 1}</td><td><b>${esc(r.act)}</b>${r.det ? `<br><small>${esc(r.det)}</small>` : ""}</td><td>${esc(r.owner)}</td><td>${esc(r.start)}</td><td>${esc(r.done)}</td><td>${esc(r.eff)}</td><td>${esc(r.rule)}</td></tr>`).join("");
-  const html = `<!doctype html><meta charset="utf-8"><title>${esc(title)}</title><style>body{font-family:system-ui,sans-serif;max-width:1050px;margin:24px auto;color:#1b2733}h2{font-size:18px}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid #dde3ea;padding:7px 9px;text-align:left}th{background:#f3f6f9}small{color:#6a7787}</style><h2>${esc(title)}</h2><table><thead><tr><th>#</th><th>行动项</th><th>负责人</th><th>启动</th><th>完成</th><th>预期效果</th><th>依据/规则</th></tr></thead><tbody>${trs}</tbody></table><p style="font-size:11px;color:#8a98a8">导出含口径，可直接进入 S&amp;OP 决议附件。</p>`;
-  const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${title.replace(/[\s·]/g, "")}.html`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
+/** （旧 `exportPlanRows` 已随 WO-U7-U9-REST 退役：页脚自称「含口径」却无时间戳无出处 ——
+    导出统一走 `sim/exportProvenance` 共享件，缺 basis/时间戳直接抛。） */
 
 type OrderAgg = {
   summary?: { orderCount: number; totalQty: number; custCount: number; revenue: number };

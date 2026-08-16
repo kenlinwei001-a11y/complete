@@ -18,8 +18,9 @@ describe("§CAPSIM · 订单聚合双 tab + 真营收聚合 + 基地筛选裁剪
     renderApp("/v/risk");
 
     // 默认瓶颈视角：网格卡 + 处置计划导出按钮在位（③）。
+    // WO-U7-U9-REST：导出件换成共享 ExportReportButton（判据 U9），testid 随之更名。
     await screen.findByTestId("risk-card-常州");
-    expect(screen.getByTestId("risk-plan-export")).toBeInTheDocument();
+    expect(screen.getByTestId("export-report-risk")).toBeInTheDocument();
 
     // 切到订单聚合 tab（①）。
     await user.click(screen.getByTestId("risk-tab-order"));
