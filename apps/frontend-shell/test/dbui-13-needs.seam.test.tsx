@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { BuildNeedsReport } from "@platform/contracts";
 import { BuildNeedsReportSchema, MODULE_KINDS, MODULE_KIND_REGISTRY } from "@platform/contracts";
 import { runDataBuilder } from "@/api/endpoints";
 import { loginAs, renderApp } from "./utils";
+import { server } from "./setup";
 
 /**
  * WO-DBUI-13-NEEDS · 第 ② 步「显示目前缺少的信息」——接缝驱动测试（前端半）。
@@ -23,11 +25,32 @@ import { loginAs, renderApp } from "./utils";
  *    光有标题、结论是空串的，§2 当场红。
  */
 
-const CROSS_KINDS = ["intent", "plan", "workflow", "skill", "agent", "scene", "mcp"];
+/**
+ * 截下 UI **这一次**真正收到的那份干跑回执。
+ *
+ * ⚠ 不许拿「测试自己再调一次接口」代替：那证明的是「接口回得出 13 类」，
+ *   **不是**「屏上这些卡是那份回执变来的」—— 两件事不同，§6 要的是后者。
+ *   （形态同本仓那条老账：「我用 X 当作 Y 的证据，而 X 并不度量 Y」。）
+ *
+ * ⚠ 同时这是**去掉硬写类名**的支点：哪几类跨系统、哪几类查不到，
+ *   一律从回执自己的 `side` / `evidence` 读，不在测试里另抄一份类名清单 ——
+ *   抄了就会在「契约新增一类 / 改个名」时**悄悄少测**，而 typecheck 一个字都看不见。
+ */
+function captureReceipt(): { get: () => BuildNeedsReport | undefined; stop: () => void } {
+  let got: BuildNeedsReport | undefined;
+  const onResponse = async ({ request, response }: { request: Request; response: Response }) => {
+    if (!request.url.includes("/a/v1/data-builders/run")) return;
+    const body = (await response.clone().json()) as { needs?: BuildNeedsReport };
+    if (body?.needs) got = body.needs;
+  };
+  server.events.on("response:mocked", onResponse);
+  return { get: () => got, stop: () => server.events.removeListener("response:mocked", onResponse) };
+}
 
-/** 从真入口走到第 ② 步（输入脚本 → 开始 → 逐类清点出现）。 */
+/** 从真入口走到第 ② 步（输入脚本 → 开始 → 逐类清点出现），并交出 UI 实收的那份回执。 */
 async function reachStepTwo() {
   const user = userEvent.setup();
+  const cap = captureReceipt();
   loginAs("planner");
   renderApp("/admin/data-builder");
   await screen.findByTestId("data-builder-page");
@@ -39,7 +62,16 @@ async function reachStepTwo() {
   await user.click(screen.getByTestId("dbf-start"));
 
   const needs = await screen.findByTestId("dbf-needs", undefined, { timeout: 5000 });
-  return { user, needs };
+  // 金丝雀：真截到了回执才往下比；截不到 = 探针坏了，不许读成「没差异」
+  await waitFor(() => expect(cap.get(), "没截到干跑回执 —— 后面的比对全是空转").toBeTruthy());
+  const receipt = cap.get()!;
+  cap.stop();
+  return { user, needs, receipt };
+}
+
+/** 屏上的「一类一张卡」= 同时带 `data-evidence` 与 `data-needed` 的那些节点（标题/结论/明细/条目都没有这两个属性）。 */
+function cardsOf(needs: HTMLElement): Element[] {
+  return [...needs.querySelectorAll("[data-evidence][data-needed]")];
 }
 
 describe("WO-DBUI-13-NEEDS · 第 ② 步逐类清点（接缝：干跑回执 → 屏上 13 类）", () => {
@@ -93,20 +125,23 @@ describe("WO-DBUI-13-NEEDS · 第 ② 步逐类清点（接缝：干跑回执 �
   });
 
   it("§3 【要害】查不到的那几类**明说查不到**，不渲染成 0（0 会被读成「不缺」）", async () => {
-    const { needs } = await reachStepTwo();
+    const { needs, receipt } = await reachStepTwo();
 
     // 屏上先集中点名一次（散在卡片里容易被漏读）
     const unprobed = within(needs).getByTestId("dbf-needs-unprobed");
     expect(unprobed.textContent).toContain("还查不出");
 
+    // 「哪几类查不到」由**回执**说了算 —— 不在测试里另抄一份类名清单（抄了就会悄悄少测）
+    const unprobedGroups = receipt.groups.filter((g) => g.evidence === "NOT_PROBED");
     // 金丝雀：这一屏真的存在「查不到」的类，否则下面整段是空转恒真
-    const unknownCards = CROSS_KINDS
-      .map((k) => within(needs).getByTestId(`dbf-need-${k}`))
-      .filter((c) => c.getAttribute("data-evidence") === "NOT_PROBED");
-    expect(unknownCards.length).toBeGreaterThan(0);
+    expect(unprobedGroups.length, "本屏一个「查不到」的类都没有 —— §3 整段空转").toBeGreaterThan(0);
+    // 不变量：查不到的只可能是跨系统那半（本系统这半直查得到，查不到就是后端出了别的错）
+    for (const g of unprobedGroups) expect(g.side, `${g.kind} 不是跨系统类却报查不到`).toBe("cross_system");
 
-    for (const card of unknownCards) {
-      const kind = card.getAttribute("data-testid")!.replace("dbf-need-", "");
+    for (const g of unprobedGroups) {
+      const kind = g.kind;
+      const card = within(needs).getByTestId(`dbf-need-${kind}`);
+      expect(card.getAttribute("data-evidence"), `${kind} 屏上没标成查不到`).toBe("NOT_PROBED");
       const verdict = within(card).getByTestId(`dbf-need-verdict-${kind}`).textContent ?? "";
       // 明说：这一刻不知道
       expect(verdict, `${kind} 没说清「现在查不到」`).toContain("要等创建时才知道");
@@ -119,37 +154,85 @@ describe("WO-DBUI-13-NEEDS · 第 ② 步逐类清点（接缝：干跑回执 �
     }
   });
 
+  /*
+   * §4 的三类样本**全部由回执自己挑**（「有复用的那一类」「代码类」「本次用不到的那一类」），
+   * 不点名 `ontology_type` / `solver` / `mcp`。理由同 §3：类名硬写在测试里，
+   * 契约改名或新增一类时**悄悄少测**，而 typecheck 看不见字符串里的类名。
+   */
   it("§4 查得到的那几类给的是**真数**：复用 / 待建 / 建不出 分得开", async () => {
-    const { needs } = await reachStepTwo();
+    const { needs, receipt } = await reachStepTwo();
 
-    // 本体对象类型：库里已有 Order（复用），其余待建 —— 「复用了既有的」正是"人不清楚库里现状"的正面回答
-    const types = within(needs).getByTestId("dbf-need-ontology_type");
-    expect(types.getAttribute("data-evidence")).toBe("PROBED");
-    expect(within(types).getByTestId("dbf-need-verdict-ontology_type").textContent).toMatch(/复用 1/);
-    expect(within(types).getByTestId("dbf-need-item-ontology_type-Order").textContent).toContain("库里已有");
+    // ① 有复用的那一类 —— 「复用了既有的」正是"人不清楚库里现状"的正面回答
+    const reuse = receipt.groups.find((g) => g.evidence === "PROBED" && g.existing > 0);
+    expect(reuse, "回执里没有任何「复用了既有」的类 —— 这段无从验起").toBeTruthy();
+    const reuseCard = within(needs).getByTestId(`dbf-need-${reuse!.kind}`);
+    expect(reuseCard.getAttribute("data-evidence")).toBe("PROBED");
+    expect(within(reuseCard).getByTestId(`dbf-need-verdict-${reuse!.kind}`).textContent).toContain(`复用 ${reuse!.existing}`);
+    const existsItem = reuse!.items.find((i) => i.status === "EXISTS")!;
+    expect(within(reuseCard).getByTestId(`dbf-need-item-${reuse!.kind}-${existsItem.key}`).textContent).toContain("库里已有");
 
-    // 求解器是代码、不能自动建 ⇒ 缺的那个必须说「建不出来」，不能混进「待建」
-    const solver = within(needs).getByTestId("dbf-need-solver");
-    expect(within(solver).getByTestId("dbf-need-verdict-solver").textContent).toMatch(/建不出 1/);
-    expect(within(solver).getByTestId("dbf-need-item-solver-credit_exposure").textContent).toContain("建不出来");
+    // ② 代码类（求解器）不能自动建 ⇒ 缺的那个必须说「建不出来」，不能混进「待建」
+    const code = receipt.groups.find((g) => g.side === "code" && g.missing > 0);
+    expect(code, "回执里没有「建不出来」的代码类 —— 这段空转").toBeTruthy();
+    const codeCard = within(needs).getByTestId(`dbf-need-${code!.kind}`);
+    expect(within(codeCard).getByTestId(`dbf-need-verdict-${code!.kind}`).textContent).toContain(`建不出 ${code!.missing}`);
+    const missingItem = code!.items.find((i) => i.status === "MISSING")!;
+    expect(within(codeCard).getByTestId(`dbf-need-item-${code!.kind}-${missingItem.key}`).textContent).toContain("建不出来");
 
-    // 本次用不到的类也要说话（needed=0 是一个确定的答案，不是空壳）
-    const mcp = within(needs).getByTestId("dbf-need-mcp");
-    expect(mcp.getAttribute("data-needed")).toBe("0");
-    expect(within(mcp).getByTestId("dbf-need-verdict-mcp").textContent).toContain("本次用不到");
+    // ③ 本次用不到的类也要说话（needed=0 是一个确定的答案，不是空壳）
+    const unused = receipt.groups.find((g) => g.needed === 0);
+    expect(unused, "回执里没有 needed=0 的类 —— 这段空转").toBeTruthy();
+    const unusedCard = within(needs).getByTestId(`dbf-need-${unused!.kind}`);
+    expect(unusedCard.getAttribute("data-needed")).toBe("0");
+    expect(within(unusedCard).getByTestId(`dbf-need-verdict-${unused!.kind}`).textContent).toContain("本次用不到");
   });
 
   it("§5 「缺几个」在第一层，「缺哪几个」点开才看 —— 明细确实挂在折叠里", async () => {
-    const { needs } = await reachStepTwo();
+    const { needs, receipt } = await reachStepTwo();
 
-    const types = within(needs).getByTestId("dbf-need-ontology_type");
-    const detail = within(types).getByTestId("dbf-need-detail-ontology_type");
+    // 样本由回执自己挑：随便哪一类，只要本次真有「待建」的条目（类名不硬写，理由同 §3/§4）
+    const grp = receipt.groups.find((g) => g.items.some((i) => i.status === "TO_CREATE"));
+    expect(grp, "回执里没有任何「本次新建」的条目 —— §5 无从验起").toBeTruthy();
+    const card = within(needs).getByTestId(`dbf-need-${grp!.kind}`);
+    const detail = within(card).getByTestId(`dbf-need-detail-${grp!.kind}`);
     // 明细的宿主是原生折叠（第二层），不是直接摊在第一层
     expect(detail.tagName.toLowerCase()).toBe("details");
     expect((detail as HTMLDetailsElement).open).toBe(false);
     // 结论那一行**不在**折叠里（它属于第一层）
-    expect(detail.contains(within(types).getByTestId("dbf-need-verdict-ontology_type"))).toBe(false);
+    expect(detail.contains(within(card).getByTestId(`dbf-need-verdict-${grp!.kind}`))).toBe(false);
     // 点开之后逐条可见，且每条都带现状
-    expect(within(detail).getByTestId("dbf-need-item-ontology_type-Base").textContent).toContain("本次新建");
+    const toCreate = grp!.items.find((i) => i.status === "TO_CREATE")!;
+    expect(within(detail).getByTestId(`dbf-need-item-${grp!.kind}-${toCreate.key}`).textContent).toContain("本次新建");
+  });
+
+  /**
+   * §6【本单要害·WO-BUILDPLAN-13CARDS】**后端回了几类，屏上就得有几张卡**。
+   *
+   * 为什么 §1 不够：§1 逐个 `kind` 去 `getByTestId`，能抓「少渲染了某一类」，
+   * 却**抓不住「屏上这些卡根本不是从回执来的」** —— 若前端改成照 `MODULE_KIND_REGISTRY`
+   * 这个常量摆 13 张卡、结论写死一句话，§1/§2 照样全绿。
+   * 那正是本仓「绿测试≠能用」的老形态：**测试咬的是常量，不是那条链**。
+   *
+   * 故本条把判据落在**同一次驱动里 UI 真正收到的那份 JSON** 上，且比两件事：
+   *   ① 卡片数 == 回执 `groups` 数（多渲、漏渲、拿常量凑数，三种都红）；
+   *   ② 每张卡的 `data-needed` == 该组回执里的 `needed`（证明数字是**读来的**不是**摆出来的**）。
+   */
+  it("§6 【要害】后端回几类屏上就几张卡，且卡上的数字来自回执而非常量", async () => {
+    const { needs, receipt } = await reachStepTwo();
+
+    // 金丝雀：回执真的非空，否则下面两条比对恒真
+    expect(receipt.groups.length, "回执里一个类都没有 —— §6 整段空转").toBeGreaterThan(0);
+
+    const cards = cardsOf(needs);
+    expect(
+      cards.length,
+      `后端回了 ${receipt.groups.length} 类，屏上却是 ${cards.length} 张卡`,
+    ).toBe(receipt.groups.length);
+
+    // 逐类核对数字来源（kind 取自回执，测试里一个类名字面量都不写）
+    for (const g of receipt.groups) {
+      const card = within(needs).getByTestId(`dbf-need-${g.kind}`);
+      expect(card.getAttribute("data-needed"), `${g.kind} 卡上的「需几个」与回执对不上`).toBe(String(g.needed));
+    }
   });
 });
