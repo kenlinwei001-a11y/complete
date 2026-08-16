@@ -47,7 +47,7 @@ const DR_TYPES = [
   { key: "Material", displayName: "物料", status: "ACTIVE", properties: [{ propKey: "materialId", dataType: "string", isPrimaryKey: true }, { propKey: "supplierRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Supplier" }] },
 ];
 
-function typesHandler(types: unknown) {
+function typesHandler(types: Record<string, unknown>[]) {
   return http.get("*/a/v1/ontology/object-types", () => HttpResponse.json(types));
 }
 
