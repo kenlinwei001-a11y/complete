@@ -1816,7 +1816,7 @@ function main() {
     if (onscreen.files < 50) blind.push(`屏上层只扫到 ${onscreen.files} 个源文件（<50）—— 扫描根 ${SCAN_ROOT} 是不是没读到？`);
     if (onscreen.literalHits < 5) blind.push(`屏上层只抽到 ${onscreen.literalHits} 处字面量断言（<5）—— 剥注释器或断言正则坏了，不是屏上干净了`);
     if (truth.registry.size < 20) blind.push(`视图标题真相源只抽到 ${truth.registry.size} 个 slug（<20）—— ⑧ 这一层等于没开`);
-    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==11
+    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==12
     //    ⇒ 这个数不再是传说，它由本门每次现算并对账）。抽到 0 条 ⇒ 报「工具坏了」，
     //    **不许**报「全仓记号都通过」—— 那正是本门自己在治的那种「我没找到 ≠ 它不存在」。
     if (markSweep.files < 100) blind.push(`⑥b 记号扫描只走到 ${markSweep.files} 个源文件（<100）—— srcRoots 是不是没读到？`);
@@ -2067,13 +2067,13 @@ try {
  *        `frontend-shell/locales/zh.ts` ×2 · `frontend-shell/views/sim/sandboxConsoleModel.ts` ×6）。
  *        WO-STALE-TEXT-SWEEP 当天就补上了生产实例，而这句自述留在原地 ——
  *        **它把「已经在用」写成了「还没在用」，方向正好相反**。
- *        赌注：@stale-self marks.production ==11
+ *        赌注：@stale-self marks.production ==12
  *      · 原文写「`runBaselineFactChecks` 那条今天有 6 条真数据，挂在两条 CONFIRMED-STALE 上」。
  *        **实为 0 条赌注、0 条 CONFIRMED-STALE**（存量已被后续单改完，基线只剩
  *        7 条 UNMARKED + 4 条 FALSE-POSITIVE）。
  *        赌注：@stale-self baseline.factChecks ==0
  *        赌注：@stale-self baseline.confirmedStale ==0
- *    ⇒ 今天的真实分工是：**记号路径已在生产**（现算 11 条，@stale-self marks.production ==11）、
+ *    ⇒ 今天的真实分工是：**记号路径已在生产**（现算 11 条，@stale-self marks.production ==12）、
  *      **基线赌注路径今天 0 条数据**（@stale-self baseline.factChecks ==0；属「接了线没数据」，
  *      不是「没接线」——`runBaselineFactChecks` 仍被主流程无条件调用）。
  *    ⇒ 复验命令：`node scripts/check-stale-claims.mjs`（末行直接打印这三个现算值）。

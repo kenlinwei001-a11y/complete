@@ -402,9 +402,16 @@ const RAW_STEP_TEMPLATES: Readonly<
   ],
 };
 
-/** 缺席理由：与真后端同形 —— 说清缺在哪一环 + 给可复跑探针，不写「暂无数据」。 */
+/**
+ * 缺席理由：与真后端同形 —— 说清缺在哪一环 + 给可复跑探针，不写「暂无数据」。
+ *
+ * ⚠️ 下面那句话里的计数**必须挂赌注**，否则上游一变它就悄悄变假 ——
+ * 原文写「只有 7 条有」，2026-08-16 收编 WO-STEP-TEMPLATE-LAYER 后实测已是 **9 条**
+ * （新增 P34 清关 / P25 工程变更），这句话在没人动它的情况下自己过期了。
+ *          @stale-fact apps/datacore/src/process/flow-rules.ts /processKey:/ ==9
+ */
 const mockStepTemplateAbsence = (key: string) => ({
-  reason: `mock 世界里流程 ${key} 没有步骤模板。真后端 65 条流程里也只有 7 条有（候选集由 apps/datacore/src/process/flow-rules.ts 的 flowRuleCoveredProcessKeys() 算出，其中 2 条因单据只记了一个可用时刻而建不出多步）——「多数流程今天建不出实例」是平台的真实状态，mock 不替它遮掩。`,
+  reason: `mock 世界里流程 ${key} 没有步骤模板。真后端流程里只有 9 条有（2026-08-16 现算）（候选集由 apps/datacore/src/process/flow-rules.ts 的 flowRuleCoveredProcessKeys() 算出，其中 2 条因单据只记了一个可用时刻而建不出多步）——「多数流程今天建不出实例」是平台的真实状态，mock 不替它遮掩。`,
   probe: `真后端复验：curl -s -H 'X-Debug-User: demo:u1:admin' 'http://127.0.0.1:4001/a/v1/process-definitions/${key}/step-template' | jq '{available,absence}'；mock 侧复验：读 apps/frontend-shell/src/mocks/processWaitFixtures.ts 的 RAW_STEP_TEMPLATES（今天只有 P34 一条）。`,
 });
 

@@ -230,6 +230,16 @@ function minimalPayloads(sopVersionId: string): Record<string, Record<string, un
     计划版本变更: { versionId: sopVersionId, reason: "普查探针" },
     采纳产能保障方案: { modelId: "4680-NCM", levers: [] },
     对象数据变更: { objectId: "__census_probe__", patch: {}, reason: "普查探针" },
+    // WO-SIM-ACTION-REAL 新增型。载荷形状照 `ForecastAdoptionPayloadSchema` 逐字段填，**不自创**
+    // ——普查若因我编错入参而失败，会被读成「执行器没接」，那正是本普查要避免的误判。
+    采纳产能预测结论: {
+      source: "project-sim",
+      modelId: "4680-NCM",
+      mode: "single",
+      demandWan: 40,
+      weeks: 6,
+      snapshot: { capWanP50: 42, capWanP90: 38, gapWan: 2, healthFactor: 0.9, ok: false, mainBn: "__census_probe__" },
+    },
     流水线发布物化: { workflowId: "__census_probe__", nodeId: "n1", rows: [] },
   };
 }

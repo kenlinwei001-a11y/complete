@@ -293,7 +293,7 @@ describe("剩余视图增量 · 计划域（§7.14/§7.15）", () => {
     expect(["阻断", "告警", "提示"]).toContain(reg.rules[0]!.severity);
     expect([...reg.rules].sort((a, b) => (a.key < b.key ? -1 : 1)).map((r) => r.key)).toEqual(reg.rules.map((r) => r.key));
     // Action 4 行 + 事件 3 行（静态种子逐字）
-    expect(reg.actions.map((a) => a.name)).toEqual(["采纳产能保障方案", "预警处置方案", "调整排产分配", "定稿月度计划版本"]);
+    expect(reg.actions.map((a) => a.name)).toEqual(["采纳产能保障方案", "采纳产能预测结论", "预警处置方案", "调整排产分配", "定稿月度计划版本"]);
     expect(reg.events.map((e) => e.name)).toEqual(["检修窗口", "交付高峰", "到货间隙"]);
     expect(reg.actions[0]!.check).toContain("C10");
   });

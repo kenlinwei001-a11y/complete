@@ -553,8 +553,8 @@ describe("WO-ORG-WORLD ⑥ 平台铁律", () => {
     expect((roleRes.json() as { error: { code: string } }).error.code).toBe("VALIDATION_ERROR");
   });
 
-  it("R9 四处齐：032 migration 的表名与 pg.ts 的字面量逐字对账（含金丝雀）", async () => {
-    const sql = await readFile(join(REPO_APP, "migrations/032_org_world.sql"), "utf8");
+  it("R9 四处齐：036 migration 的表名与 pg.ts 的字面量逐字对账（含金丝雀）", async () => {
+    const sql = await readFile(join(REPO_APP, "migrations/036_org_world.sql"), "utf8");
     const pg = await readFile(join(REPO_APP, "src/repo/pg.ts"), "utf8");
     const tables = [...sql.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]!);
     // 金丝雀：抽不到 4 张表 ⇒ 报「工具坏了」，不许报「表名对上了」

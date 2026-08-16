@@ -151,7 +151,10 @@ export function DynamicLeverPanel({
   /**
    * 该 ActionType **自己的必填 payload 位**（本面板不猜，由调用方按后端 `paramsSchema` 给）。
    *
-   * WO-SNAPSHOT-UNIT-LIE 实测（真后端 inject，不是读注释）：`RiskBoardView` 传
+   * WO-SNAPSHOT-UNIT-LIE **2026-08-15 实测**（真后端 inject，不是读注释）：`RiskBoardView` 传
+   * 复验方式：`pnpm --filter datacore exec vitest run test/lever-snapshot-unit.seam.test.ts`
+   * （该测试直接 inject `POST /a/v1/action-drafts`，断言缺 `versionId` 时返 400；
+   *   走 MSW mock 复验不算数 —— mock 不校验 paramsSchema，恒回 201，正是下面说的那族假绿）。
    * `adoptActionTypeKey="plan_change"`，而 `plan_change` 的 `paramsSchema`
    * （`synthetic/battery.ts` BATTERY_ACTION_TYPES）`required: ["versionId","reason"]` ——
    * 本面板原来只发 `{modelId, levers, snapshot}` ⇒ `POST /a/v1/action-drafts` 直接
