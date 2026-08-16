@@ -159,7 +159,10 @@ export const NOT_IMPLEMENTED_RATIONALE: Record<string, string> = {
     "`outcome{rev,gm,share,turns,cash,capex}` 是**公司级年度聚合预测**，不是任何本体对象的属性" +
     "（`plan_generate` 在 `solvers/service.ts` 的读取声明是空数组：它一个核心对象类型都不读）；" +
     "`targets` 是目标面板值，而业务已裁定「采纳一个方案不得覆盖全局经营目标基线（PLAN_GOAL_TARGETS）」；" +
-    "`pathKey` 在 datacore 全仓只存在于 `solvers/plan.ts` 内部，无任何跨模块消费方。" +
+    "`pathKey` 唯一的消费方是 `solvers/service.ts` 里 plan_generate **本次调用自己的输出后处理**" +
+    "（`schemes.find(s => s.pathKey === out.recommend)`，用来挑出推荐方案喂规则判定）——" +
+    "**没有任何仓储、对象或别的求解器以「已采纳的 pathKey」为输入**，" +
+    "即写下去也没有读端（那只是把本断点换成「有写端无读端」，参见 G-SIM-SCOPE-UNREAD 的形态）。" +
     "PRD-plan-generate-1to1 §2/§3.4 指定的落点是「下发年度情景规划台(AOP)细化」，" +
     "而 `AnnualScenario` 现有属性全是已播种的三情景真值，覆盖即毁真值。" +
     "⇒ 需先立「方案采纳台账 + AOP 细化读端」这一对新要素，才谈得上接执行器（见本体 §8 G-ADOPT-SCHEME-NO-CARRIER）。",
