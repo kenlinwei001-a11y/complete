@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ACCOUNTS, workspaceForAccount } from "@/mocks/fixtures";
 import { db } from "@/mocks/db";
 import { loginAs, renderApp } from "./utils";
+import { server } from "./setup";
+import { deriveDisruptionLayers, edgeKeyOf, type OTypeLite } from "@/views/DisruptionRadiusView";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -51,6 +54,76 @@ const loadAnalyze = async (): Promise<(src: string) => MountAnalysis> =>
 const EDGE_A = "mock_a_to_b"; // TypeA.s1 −(0.5)→ TypeB.s1
 const EDGE_B = "mock_a_to_b_slow"; // TypeA.s2 −(0.25)→ TypeB.s2
 
+// ══ disruption-radius 的本体夹具 ═════════════════════════════════════════════════════
+/**
+ * **刻意造成第一跳有两条候选边**（`Material.supplierRef` 与 `Warehouse.supplierRef`）——
+ * 这是本文件与既有 `test/disruption-radius.test.tsx` 那条线性链夹具的**唯一实质差别**，
+ * 也是它存在的理由：线性链只演得出「关掉 ⇒ 断链」，演不出「关掉 ⇒ **改道**」。
+ * 而「改道」才是本页「关掉一条关系边」最容易被做错的那一半：
+ * 若实现写成「截断到第 i−1 跳」，改道这一支永远不出现，且**看不出来**（数照样变小）。
+ * 判据排序是 type→viaField 字典序 ⇒ `Material` < `Warehouse` ⇒ 默认走 Material 这条。
+ */
+const DR_TYPES = [
+  { key: "Supplier", displayName: "供应商", status: "ACTIVE", properties: [{ propKey: "supplierId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }] },
+  { key: "Material", displayName: "物料", status: "ACTIVE", properties: [{ propKey: "matId", dataType: "string", isPrimaryKey: true }, { propKey: "supplierRef", dataType: "ref", refToTypeKey: "Supplier" }] },
+  { key: "Warehouse", displayName: "仓库", status: "ACTIVE", properties: [{ propKey: "whId", dataType: "string", isPrimaryKey: true }, { propKey: "supplierRef", dataType: "ref", refToTypeKey: "Supplier" }] },
+  { key: "Order", displayName: "销售订单", status: "ACTIVE", properties: [{ propKey: "soId", dataType: "string", isPrimaryKey: true }, { propKey: "materialRef", dataType: "ref", refToTypeKey: "Material" }] },
+];
+type DrObj = { id: string; type: string; props: Record<string, unknown> };
+const DR_OBJECTS: Record<string, DrObj[]> = {
+  Supplier: [{ id: "sup_1", type: "Supplier", props: { supplierId: "S1", name: "华东电解液" } }],
+  Material: [
+    { id: "m1", type: "Material", props: { matId: "M1", supplierRef: "S1" } },
+    { id: "m2", type: "Material", props: { matId: "M2", supplierRef: "S1" } },
+  ],
+  Warehouse: [{ id: "w1", type: "Warehouse", props: { whId: "W1", supplierRef: "S1" } }],
+  Order: [{ id: "o1", type: "Order", props: { soId: "O1", materialRef: "M1" } }],
+};
+const DR_PK: Record<string, string> = { Supplier: "supplierId", Material: "matId", Warehouse: "whId", Order: "soId" };
+
+/**
+ * 忠实迷你引擎（与 datacore `service.supplierDisruptionRadius` 同口径，**按 args 现算**）。
+ * 必须现算而不是按 rootId 写死：本用例要证的正是「前端把**不同的 layers** 发过去了」——
+ * 桩若按 rootId 回写死值，屏上的数不变也照样绿，那这条门就什么都没证明。
+ */
+function drSolve(args: { rootType: string; rootId: string; layers: { type: string; viaField: string }[] }) {
+  let frontier = new Set<string>([args.rootId]);
+  const result: { type: string; viaField: string; count: number; ids: string[] }[] = [];
+  let radius = 0;
+  for (const layer of args.layers) {
+    const pk = DR_PK[layer.type];
+    const hit = (DR_OBJECTS[layer.type] ?? []).filter((o) => frontier.has(String(o.props[layer.viaField] ?? "")));
+    const ids = hit.map((o) => String((pk ? o.props[pk] : undefined) ?? o.id)).sort();
+    result.push({ type: layer.type, viaField: layer.viaField, count: ids.length, ids });
+    if (ids.length > 0) radius += 1;
+    frontier = new Set(ids);
+    if (ids.length === 0) break;
+  }
+  const leaf = result[result.length - 1];
+  const totalAffected = result.reduce((s, l) => s + l.count, 0);
+  return {
+    rootType: args.rootType, rootId: args.rootId, layers: result, radius, totalAffected,
+    leafType: leaf?.type ?? null, leafCount: leaf?.count ?? 0,
+    summary: `断供「${args.rootId}」影响半径 ${radius} 层、波及 ${totalAffected} 个对象`,
+  };
+}
+
+function renderDR() {
+  server.use(
+    http.get("*/a/v1/ontology/object-types", () => HttpResponse.json(DR_TYPES)),
+    http.get("*/a/v1/objects", ({ request }) => {
+      const type = new URL(request.url).searchParams.get("type") ?? "";
+      const items = DR_OBJECTS[type] ?? [];
+      return HttpResponse.json({ items, total: items.length });
+    }),
+    http.post("*/a/v1/solvers/supplier_disruption_radius/invoke", async ({ request }) => {
+      const body = (await request.json().catch(() => ({}))) as { args?: Parameters<typeof drSolve>[0] };
+      return HttpResponse.json({ data: drSolve(body.args!), snapshotVersion: "ov-dr" });
+    }),
+  );
+  return renderApp("/v/disruption-radius");
+}
+
 describe("WO-EDGE-PANEL-3PAGES · 三页的「关掉一条边看结果怎么变」", () => {
   beforeEach(() => {
     loginAs("planner"); // mock 里 planner 持 admin 角色（无独立 admin 账号）
@@ -67,7 +140,10 @@ describe("WO-EDGE-PANEL-3PAGES · 三页的「关掉一条边看结果怎么变�
     expect(sub.reason).toBe("MOUNTED_IN_SUBCOMPONENT");
 
     const root = resolve(__dirname, "../../..");
-    for (const [key, rel] of [["order-chain", "apps/frontend-shell/src/views/plan/OrderChainView.tsx"]] as [string, string][]) {
+    for (const [key, rel] of [
+      ["order-chain", "apps/frontend-shell/src/views/plan/OrderChainView.tsx"],
+      ["disruption-radius", "apps/frontend-shell/src/views/DisruptionRadiusView.tsx"],
+    ] as [string, string][]) {
       expect(`${key}:${analyze(readFileSync(resolve(root, rel), "utf8")).reason}`).toBe(`${key}:OK`);
     }
 
@@ -134,5 +210,87 @@ describe("WO-EDGE-PANEL-3PAGES · 三页的「关掉一条边看结果怎么变�
     // 且上一次那一格**不再变化**（证明关的是这一条，不是把整张表停了）。
     expect(within(panel).queryByTestId("edge-active-order-chain-diff-TypeB#0-s1")).toBeNull();
     expect(within(panel).getByTestId("edge-active-order-chain-verdict").textContent).toContain("发生变化");
+  });
+
+  // ── ③ 纯模型：关掉一条关系边 ⇒ **改道**（不是简单截断）、且确定性 ─────────────────────
+  it("🔴 模型 disruption-radius：关掉首选边 ⇒ 倒推改走次选边（不是截断），同输入同输出", () => {
+    const types = DR_TYPES as OTypeLite[];
+    // 全开：Material 字典序在 Warehouse 之前 ⇒ 走 Material，再沿 Order.materialRef 下探一跳。
+    const full = deriveDisruptionLayers(types, "Supplier");
+    expect(full).toEqual([
+      { type: "Material", viaField: "supplierRef" },
+      { type: "Order", viaField: "materialRef" },
+    ]);
+    // 关掉首选边 ⇒ **改道**到 Warehouse。
+    // 🔴 这一条正是「截断式实现」过不去的地方：截断只会得到 `[]`，得不到 Warehouse。
+    const rerouted = deriveDisruptionLayers(types, "Supplier", new Set([edgeKeyOf(full[0]!)]));
+    expect(rerouted).toEqual([{ type: "Warehouse", viaField: "supplierRef" }]);
+    // 两条都关掉 ⇒ 真的无边可走（断链），这才是空链。
+    expect(deriveDisruptionLayers(types, "Supplier", new Set(["Material.supplierRef", "Warehouse.supplierRef"]))).toEqual([]);
+    // 确定性（R6）：类型数组顺序不影响结论 —— 排序在过滤之前。
+    expect(JSON.stringify(deriveDisruptionLayers([...types].reverse(), "Supplier", new Set(["Material.supplierRef"])))).toBe(
+      JSON.stringify(rerouted),
+    );
+    // 缺省实参不变式：不传 disabledEdges ⇒ 与旧行为逐字节相同（既有 8 条用例靠它）。
+    expect(JSON.stringify(deriveDisruptionLayers(types, "Supplier", new Set()))).toBe(JSON.stringify(full));
+  });
+
+  // ── ③ 接缝层：关掉一条关系边 ⇒ **本页自己的读数**真的变（不是面板自己的差值表）───────
+  it("🔴 SEAM disruption-radius：关掉一条关系边 ⇒ 半径 2→1、波及 3→1、扇出改道到另一类对象", async () => {
+    const user = userEvent.setup();
+    renderDR();
+
+    // 关掉之前：Supplier → 物料 ×2 → 订单 ×1 ⇒ 半径 2 层、波及 3 个。
+    await waitFor(() => expect(screen.getByTestId("dr-radius")).toHaveTextContent("2 层"), { timeout: 8000 });
+    expect(screen.getByTestId("dr-total")).toHaveTextContent("3");
+    expect(screen.getByTestId("dr-layer-0")).toHaveTextContent("物料");
+    expect(screen.getByTestId("dr-layer-1")).toHaveTextContent("销售订单");
+    // 开关列表列的是**当前链上的真边**（引用方类型 · 引用字段），不是写死的行。
+    await user.click(screen.getByTestId("dr-edges-summary"));
+    expect(screen.getByTestId("dr-edge-Material.supplierRef").getAttribute("data-active")).toBe("true");
+    expect(screen.getByTestId("dr-edge-Order.materialRef")).toBeInTheDocument();
+
+    // 🔴 关掉第一跳那条关系边。
+    await user.click(screen.getByTestId("dr-edge-toggle-Material.supplierRef"));
+
+    // 屏上**本页自己的读数**真的换了一批：半径 2→1、波及 3→1。
+    await waitFor(() => expect(screen.getByTestId("dr-radius")).toHaveTextContent("1 层"), { timeout: 8000 });
+    expect(screen.getByTestId("dr-total")).toHaveTextContent("1");
+    // 且是**改道**不是截断：第一层换成了「仓库」这一类对象（截断式实现在这里只会给出空态）。
+    expect(screen.getByTestId("dr-layer-0")).toHaveTextContent("仓库");
+    expect(screen.getByTestId("dr-leaf")).toHaveTextContent("仓库 1");
+    // 关掉的边**没有从列表里消失**，而是可见地降级 + 显式「已关闭」（消失了就拨不回来）。
+    expect(screen.getByTestId("dr-edge-Material.supplierRef").getAttribute("data-active")).toBe("false");
+    expect(screen.getByTestId("dr-edge-off-Material.supplierRef").textContent).toContain("已关闭");
+    // 「这些数是反事实」必须留在第一层（折起来也看得见），否则用户会把它读成现状。
+    expect(screen.getByTestId("dr-edges-off-badge").textContent).toContain("已关 1 条");
+    // 「关掉之前是什么样」同屏可比 —— 只给关掉之后，用户分不清这次是改道还是变短。
+    expect(screen.getByTestId("dr-edges-before").textContent).toContain("2 跳 → 现 1 跳");
+
+    // 拨回去 ⇒ 读数**回到原样**（证明这是一次可逆的假设，不是把本体改了）。
+    await user.click(screen.getByTestId("dr-edge-toggle-Material.supplierRef"));
+    await waitFor(() => expect(screen.getByTestId("dr-radius")).toHaveTextContent("2 层"), { timeout: 8000 });
+    expect(screen.getByTestId("dr-total")).toHaveTextContent("3");
+    expect(screen.queryByTestId("dr-edges-off-badge")).toBeNull();
+  });
+
+  // ── ③b 两种「空」必须分得开：本体没链 ≠ 你把链关断了（修法完全相反）────────────────
+  it("🔴 诚实位 disruption-radius：把链上的边全关掉 ⇒ 空态说的是「边被关了」，不是「本体没链」", async () => {
+    const user = userEvent.setup();
+    renderDR();
+    await waitFor(() => expect(screen.getByTestId("dr-radius")).toHaveTextContent("2 层"), { timeout: 8000 });
+    await user.click(screen.getByTestId("dr-edges-summary"));
+
+    await user.click(screen.getByTestId("dr-edge-toggle-Material.supplierRef"));
+    await waitFor(() => expect(screen.getByTestId("dr-layer-0")).toHaveTextContent("仓库"), { timeout: 8000 });
+    await user.click(screen.getByTestId("dr-edge-toggle-Warehouse.supplierRef"));
+
+    // 无边可走 ⇒ 走「边被关了」这一支，**不是**「本体无反向引用链」那一支。
+    await waitFor(() => expect(screen.getByTestId("dr-empty-edges-cut")).toBeInTheDocument(), { timeout: 8000 });
+    expect(screen.queryByTestId("dr-empty-no-layers")).toBeNull(); // 两句话必须不同，不许一句盖住两个事实
+    expect(screen.queryByTestId("dr-metrics")).toBeNull();
+    // 成段解释在浮层里（第一层只留短结论 + `?`，check-ui-first-layer D2b）。
+    await user.click(screen.getByTestId("info-dr-edges-cut"));
+    expect(screen.getByTestId("dr-edges-cut-body").textContent).toContain("本体里的引用关系一个字节都没有改动");
   });
 });
