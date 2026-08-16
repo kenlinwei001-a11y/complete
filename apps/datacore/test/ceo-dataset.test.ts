@@ -49,8 +49,8 @@ describe("WO-CEO-DATA-2 · CEO 驾驶舱原子颗粒数据集", () => {
     for (const key of ["revenue", "gross_profit", "cash"] as CeoDatasetMetricKey[]) {
       const grains = ds.grains.filter((g) => g.metricKey === key);
       const expected = round(grains.reduce((s, g) => s + g.value, 0), 6);
-      expect(ds.byMetric[key].kpiValue).toBe(expected);
-      expect(ds.byMetric[key].count).toBe(grains.length);
+      expect(ds.byMetric[key]!.kpiValue!).toBe(expected);
+      expect(ds.byMetric[key]!.count!).toBe(grains.length);
     }
 
     // 比例型指标：market_share / demand_attain / seg_attain（加权平均）
@@ -59,8 +59,8 @@ describe("WO-CEO-DATA-2 · CEO 驾驶舱原子颗粒数据集", () => {
       const num = grains.reduce((s, g) => s + (g.numerator ?? g.value), 0);
       const den = grains.reduce((s, g) => s + (g.denominator ?? 1), 0);
       const expected = den > 0 ? round((num / den) * 100, 2) : 0;
-      expect(ds.byMetric[key].kpiValue).toBe(expected);
-      expect(ds.byMetric[key].denominatorSum).toBe(den);
+      expect(ds.byMetric[key]!.kpiValue!).toBe(expected);
+      expect(ds.byMetric[key]!.denominatorSum!).toBe(den);
     }
   });
 

@@ -124,8 +124,8 @@ describe.skipIf(!SIDECAR)("轨B·R7 · 真 CP-SAT sidecar 端到端（OPTIMIZER_
       { key: "rev", sense: "max" as const, terms: [{ var: "a", coef: 10 }, { var: "b", coef: 6 }] },
       { key: "risk", sense: "min" as const, terms: [{ var: "a", coef: 9 }, { var: "b", coef: 1 }] },
     ];
-    const oa = objs(); oa[0].weight = 0.9; oa[1].weight = 0.1;
-    const ob = objs(); ob[0].weight = 0.1; ob[1].weight = 0.9;
+    const oa = objs(); oa[0]!.weight! = 0.9; oa[1]!.weight! = 0.1;
+    const ob = objs(); ob[0]!.weight! = 0.1; ob[1]!.weight! = 0.9;
     const ra = await t.services.solvers.invoke(ctx, "multi_objective", { ...base, objectives: oa });
     const rb = await t.services.solvers.invoke(ctx, "multi_objective", { ...base, objectives: ob });
     expect((ra.values as Record<string, number>).a).toBe(1);  // 营收优先

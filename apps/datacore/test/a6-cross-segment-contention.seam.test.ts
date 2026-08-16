@@ -148,7 +148,7 @@ describe("WO-A6-CONTENTION · 跨业务线争用 SEAM（PRD §9 A6）", () => {
         expect(b.headroomPct).toBe(reg!.marginPct - reg!.floorPct);
       }
       // keep = 余量最大的那条（两个册值**都**参与，缺一个这条断言就废了）。
-      const best = [...ct.basis].sort((a, b) => b.headroomPct - a.headroomPct || b.marginPct - a.marginPct)[0]!;
+      const best = [...ct.basis].sort((a, b) => b.headroomPct! - a.headroomPct! || b.marginPct! - a.marginPct!)[0]!;
       expect(ct.keep).toBe(best.businessType);
     }
 
@@ -173,7 +173,7 @@ describe("WO-A6-CONTENTION · 跨业务线争用 SEAM（PRD §9 A6）", () => {
     const target = before[0]!;
     const keepBefore = target.contention!.keep!;
     // 取当选者与亚军：把当选者的底线抬到亚军之上，余量排序必须整个翻过来。
-    const ranked = [...target.contention!.basis].sort((a, b) => b.headroomPct - a.headroomPct || b.marginPct - a.marginPct);
+    const ranked = [...target.contention!.basis].sort((a, b) => b.headroomPct! - a.headroomPct! || b.marginPct! - a.marginPct!);
     const winner = ranked[0]!;
     const runnerUp = ranked[1]!;
     expect(winner.businessType).toBe(keepBefore);
@@ -182,7 +182,7 @@ describe("WO-A6-CONTENTION · 跨业务线争用 SEAM（PRD §9 A6）", () => {
     const originalFloor = regRow.floorPct;
     try {
       // 只动**一个数**：当选者的 floorPct 抬过头，使其余量低于亚军。
-      regRow.floorPct = regRow.marginPct - runnerUp.headroomPct + 1;
+      regRow.floorPct = regRow.marginPct - runnerUp.headroomPct! + 1;
       const after = contentionOf(await scan(t)).find((i) => i.impedimentId === target.impedimentId);
       expect(after, "变异后这条争用阻滞点应仍在（判的是同一个 locus）").toBeDefined();
       expect(after!.contention!.keep, "改册一个值 → 保谁必须跟着翻（不翻 ⇒ 判据没真读册 = 装饰品）").toBe(runnerUp.businessType);

@@ -115,7 +115,7 @@ describe("WO-MEMSIM-OPTIMIZER · SEAM 内存模式确定性兜底（默认 InPro
     expect(costR.occupancy).toEqual([{ item: "X", base: "b2", window: 1 }]);
     expect(ontimeR.objectiveValues.ontime).toBe(1);
     expect(costR.objectiveValues.ontime).toBe(0);
-    expect(costR.objectiveValues.cost).toBeLessThan(ontimeR.objectiveValues.cost);
+    expect(costR.objectiveValues.cost).toBeLessThan(ontimeR.objectiveValues.cost!);
   });
 
   it("引擎单测：min_fg_inventory 真最小化提前压库（早窗 vs 贴交期窗·两窗都按期·保证 strict 漂移）", async () => {
@@ -141,7 +141,7 @@ describe("WO-MEMSIM-OPTIMIZER · SEAM 内存模式确定性兜底（默认 InPro
     expect(ontimeR.occupancy).toEqual([{ item: "X", base: "b1", window: 0 }]);
     expect(fgR.occupancy).toEqual([{ item: "X", base: "b1", window: 1 }]);
     expect(fgR.objectiveValues.fgInventory).toBe(0);
-    expect(fgR.objectiveValues.fgInventory).toBeLessThan(ontimeR.objectiveValues.fgInventory); // 真降压库·灭假维度
+    expect(fgR.objectiveValues.fgInventory).toBeLessThan(ontimeR.objectiveValues.fgInventory!); // 真降压库·灭假维度
   });
 
   it("R6 确定性：默认 InProc 同参数两跑 deep-equal（贪心稳定序·无 Date.now/random）", async () => {

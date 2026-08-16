@@ -105,12 +105,12 @@ describe("WO-SIM-SCOPE-TRIAL · P3 `SimSession.scope` 接读端（效果层：LO
     const l = await tickWithScope(t, TEN, { kind: "LOCAL", target: "TypeA" });
 
     // GLOBAL：两条边都在 ⇒ b1.load = 1×10 = 10、c1.load = 1×5 = 5。
-    expect(g.state.b1.load).toBe(10);
-    expect(g.state.c1.load).toBe(5);
+    expect(g.state.b1!.load).toBe(10);
+    expect(g.state.c1!.load).toBe(5);
     // LOCAL(TypeA, 1 跳)：范围 = {a1, b1}；`b1 --FEEDS--> c1` 两端不全在范围内 ⇒ 整条边被裁
     // ⇒ r_bc 一个 target 都取不到 ⇒ c1 完全没被算（**不是算成 0，是根本没参与**）。
-    expect(l.state.b1.load).toBe(10); // 范围内那条边照常传导
-    expect(l.state.c1.load).toBe(0); // ← 这一条就是 #129 的病灶位：修之前它也会是 5
+    expect(l.state.b1!.load).toBe(10); // 范围内那条边照常传导
+    expect(l.state.c1!.load).toBe(0); // ← 这一条就是 #129 的病灶位：修之前它也会是 5
 
     // 效果层判据（本门的头号断言）：两份世界态**必须不同**。
     // 「scopePropagationGraph 被调用了」证明不了任何事——它可以调用了却原样返回。
@@ -133,11 +133,11 @@ describe("WO-SIM-SCOPE-TRIAL · P3 `SimSession.scope` 接读端（效果层：LO
 
     // LOCAL(TypeC, 1 跳)：范围 = {c1, b1}（无向展开 ⇒ 上游也进来）。
     // `a1 --FEEDS--> b1` 的 a1 在范围外 ⇒ 该边被裁 ⇒ b1.load 保持 0；`b1 --FEEDS--> c1` 在 ⇒ c1.load = 5。
-    expect(l.state.b1.load).toBe(0);
-    expect(l.state.c1.load).toBe(5);
+    expect(l.state.b1!.load).toBe(0);
+    expect(l.state.c1!.load).toBe(5);
     expect(l.state).not.toEqual(g.state);
     // 与①的 LOCAL 也不同 ⇒ 证明裁的是**这个 target 的邻域**，不是某个固定的"局部"。
-    expect(l.state.b1.load).not.toBe(g.state.b1.load);
+    expect(l.state.b1!.load).not.toBe(g.state.b1!.load);
     expect(l.scope).toMatchObject({ kind: "LOCAL", target: "TypeC", objects: 2, links: 1, droppedObjects: 1, droppedLinks: 1 });
   });
 
@@ -157,8 +157,8 @@ describe("WO-SIM-SCOPE-TRIAL · P3 `SimSession.scope` 接读端（效果层：LO
       expect(body.scope?.unresolved, `${label} 必须显式报缺`).toBeTruthy();
       expect(body.scope?.objects, label).toBe(0);
       expect(body.scope?.links, label).toBe(0);
-      expect(body.state.b1.load, label).toBe(0);
-      expect(body.state.c1.load, label).toBe(0);
+      expect(body.state.b1!.load, label).toBe(0);
+      expect(body.state.c1!.load, label).toBe(0);
       // 头号判据：**不许**等于 GLOBAL 的结果。「我算不出局部」与「局部等于全局」是两个命题。
       expect(body.state, `${label} 不许静默退回 GLOBAL`).not.toEqual(g.state);
     }

@@ -54,7 +54,7 @@ describe("SPINE · 目标-指标-责任骨架（L6 + L1 + R2）", () => {
       expect(m.miss).toBe(m.actual < m.floorVal); // 越线判定
     }
     // 营收700亿此前仅 Σp50×price 局部变量 → 现为一等目标 Metric（target 取自 GOAL_REGISTRY）
-    expect(byKey.get("revenue")!.target).toBe(GOAL_REGISTRY.revenue.target);
+    expect(byKey.get("revenue")!.target).toBe(GOAL_REGISTRY.revenue!.target);
     expect(byKey.get("revenue")!.actual).toBe(700); // 真实聚合 Σ需求×单价
   });
 

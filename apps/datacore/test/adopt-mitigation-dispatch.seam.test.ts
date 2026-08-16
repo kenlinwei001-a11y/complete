@@ -127,7 +127,7 @@ describe("SEAM · adopt_mitigation 派单必须是可执行的真单，否则诚
     const captured: Record<string, unknown>[] = [];
     const report = await buildReplay(t, captured).runTick("demo", PLAYBOOK, { tick: 1, date: "2026-07-06", seed: 42, scenarioEvents: ["risk_crossed"] });
     const draftId = report.executed[0]!.ref;
-    const draft = (await t.repos.actionDrafts.get("demo", draftId))!;
+    const draft = (await t.repos.actionDrafts.get("demo", draftId!))!;
 
     // 两步审批链真走完（planner 一审 + admin 终审），不是卡在 400/409。
     expect(draft.approvalSteps.map((s) => s.decision)).toEqual(["APPROVE", "APPROVE"]);

@@ -127,11 +127,11 @@ describe("WO-SIM-TRIAL-SCOPE-RECONCILE · 合并后两侧功能同时在场", ()
     const g = await tick(t, TEN, sidGlobal);
     const l = await tick(t, TEN, sidLocal);
     // GLOBAL：两条边都在 ⇒ b1.load = 10、c1.load = 5。
-    expect(g.state.b1.load).toBe(10);
-    expect(g.state.c1.load).toBe(5);
+    expect(g.state.b1!.load).toBe(10);
+    expect(g.state.c1!.load).toBe(5);
     // LOCAL(TypeA, 1 跳)：范围 = {a1,b1}；`b1--FEEDS-->c1` 两端不全在范围内 ⇒ 整条边被裁 ⇒ c1 根本没参与。
-    expect(l.state.b1.load).toBe(10);
-    expect(l.state.c1.load, "🔴 A 侧被合掉了：LOCAL 又按全量算（#129 原样复发）").toBe(0);
+    expect(l.state.b1!.load).toBe(10);
+    expect(l.state.c1!.load, "🔴 A 侧被合掉了：LOCAL 又按全量算（#129 原样复发）").toBe(0);
     // 头号判据（效果层）：两份世界态必须不同。「函数被调用了」证明不了任何事。
     expect(l.state, "🔴 LOCAL 与 GLOBAL 结果相同 ⇒ 范围裁剪在合并中丢了").not.toEqual(g.state);
     // 诚实回执随 tick 下发（R-ARG-FIDELITY）—— 装配处搬家后它必须还在回包里。

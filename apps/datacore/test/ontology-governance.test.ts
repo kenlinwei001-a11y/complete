@@ -282,7 +282,7 @@ describe("治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系", (
       const kind = row.group.kind;
       const matching = bases.filter((b) => String(b.props.kind ?? "") === kind && typeof b.props.util === "number");
       const expectedAvg = matching.reduce((a, b) => a + (b.props.util as number), 0) / matching.length;
-      expect(Math.abs(row.metrics.avg_util - Math.round(expectedAvg * 1e6) / 1e6)).toBeLessThan(1e-6);
+      expect(Math.abs(row.metrics.avg_util! - Math.round(expectedAvg * 1e6) / 1e6)).toBeLessThan(1e-6);
       expect(row.metrics.count_baseId).toBe(matching.length);
     }
     // fn 作用于非 number → 400

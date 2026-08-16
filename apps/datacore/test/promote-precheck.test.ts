@@ -131,7 +131,7 @@ describe("WO-DBUI-FLOW · 入库前冲突预检（只读 · 三类分开 · 无�
     await t.repos.ontologyTypes.put({
       id: "otype_clash",
       tenantId: "demo",
-      key: clash.key,
+      key: clash!.key,
       displayName: "库里那个（与故事要的不一样）",
       domain: "legacy",
       properties: [],
@@ -145,10 +145,10 @@ describe("WO-DBUI-FLOW · 入库前冲突预检（只读 · 三类分开 · 无�
     await t.repos.ontologyLinks.put({
       id: "ltype_diff",
       tenantId: "demo",
-      key: diffLink.key,
+      key: diffLink!.key,
       fromTypeKey: "LegacyFrom",
       toTypeKey: "LegacyTo",
-      cardinality: diffLink.cardinality === "1:N" ? "N:N" : "1:N",
+      cardinality: diffLink!.cardinality === "1:N" ? "N:N" : "1:N",
       version: 3,
     });
     // ③ 同 key 且定义完全相同的链路（覆盖但无语义变化）——第二条链路，没有就用同一条造不了，跳过断言
@@ -174,18 +174,18 @@ describe("WO-DBUI-FLOW · 入库前冲突预检（只读 · 三类分开 · 无�
     expect(pc.counts.linkSameKeyDiffDef).toBe(1);
     if (sameLink) expect(pc.counts.linkSameKeySameDef).toBe(1);
 
-    const typeC = pc.conflicts.find((c) => c.kind === "TYPE_SAME_KEY" && c.key === clash.key);
+    const typeC = pc.conflicts.find((c) => c.kind === "TYPE_SAME_KEY" && c.key === clash!.key);
     expect(typeC).toBeTruthy();
     // ---- ② 每条给：既有值 / 将写值 / 建议动作 -------------------------------------
     expect(typeC!.existingValue["显示名"]).toBe("库里那个（与故事要的不一样）");
-    expect(typeC!.incomingValue["显示名"]).toBe(clash.displayName);
+    expect(typeC!.incomingValue["显示名"]).toBe(clash!.displayName);
     expect(typeC!.suggestedAction).toBe("USE");
     expect(typeC!.changedFields).toContain("显示名");
 
     const diffC = pc.conflicts.find((c) => c.kind === "LINK_SAME_KEY_DIFF_DEF");
-    expect(diffC!.key).toBe(diffLink.key);
+    expect(diffC!.key).toBe(diffLink!.key);
     expect(diffC!.existingValue["起点类型"]).toBe("LegacyFrom");
-    expect(diffC!.incomingValue["起点类型"]).toBe(diffLink.fromTypeKey);
+    expect(diffC!.incomingValue["起点类型"]).toBe(diffLink!.fromTypeKey);
     expect(diffC!.changedFields.length).toBeGreaterThan(0);
     // 「会改掉既有定义」这一类必须堵：无裁决不许写
     expect(diffC!.requiresDecision).toBe(true);
@@ -213,7 +213,7 @@ describe("WO-DBUI-FLOW · 入库前冲突预检（只读 · 三类分开 · 无�
     await t.repos.ontologyTypes.put({
       id: "otype_clash2",
       tenantId: "demo",
-      key: provTypes[0].key,
+      key: provTypes[0]!.key!,
       displayName: "库里那个",
       properties: [],
       derivedProperties: [],
@@ -263,7 +263,7 @@ describe("WO-DBUI-FLOW · 入库前冲突预检（只读 · 三类分开 · 无�
     await t.repos.ontologyLinks.put({
       id: "ltype_diff",
       tenantId: "demo",
-      key: diffLink.key,
+      key: diffLink!.key,
       fromTypeKey: "LegacyFrom",
       toTypeKey: "LegacyTo",
       cardinality: "N:N",
@@ -273,25 +273,25 @@ describe("WO-DBUI-FLOW · 入库前冲突预检（只读 · 三类分开 · 无�
     // 老调用方（不带 decisions）撞上「会改写既有定义」⇒ **显式报错**，绝不静默覆盖
     const blocked = await t.app.inject({ method: "POST", url: `/a/v1/databuilder/runs/${id}/promote`, headers: ADMIN });
     expect(blocked.statusCode).toBe(400);
-    expect(JSON.stringify(blocked.json())).toContain(diffLink.key);
+    expect(JSON.stringify(blocked.json())).toContain(diffLink!.key);
     // 既有定义**没被动过**（被拦下 = 真值未写）
-    const stillLegacy = (await t.repos.ontologyLinks.list("demo", (l) => l.key === diffLink.key))[0];
-    expect(stillLegacy.fromTypeKey).toBe("LegacyFrom");
+    const stillLegacy = (await t.repos.ontologyLinks.list("demo", (l) => l.key === diffLink!.key))[0];
+    expect(stillLegacy!.fromTypeKey).toBe("LegacyFrom");
 
     // 人裁决 USE（沿用既有、不覆盖）⇒ 放行，且既有定义保住
     const ok = await t.app.inject({
       method: "POST",
       url: `/a/v1/databuilder/runs/${id}/promote`,
       headers: ADMIN,
-      payload: { decisions: [{ target: "linkType", key: diffLink.key, action: "USE" }] },
+      payload: { decisions: [{ target: "linkType", key: diffLink!.key, action: "USE" }] },
     });
     expect(ok.statusCode).toBe(200);
     const promoted = ok.json() as { domainTrustLevel: string; domainPromotion?: { keptLinkKeys?: string[]; overwrittenLinkKeys?: string[]; reusedTypeKeys?: string[] } };
     expect(promoted.domainTrustLevel).toBe("GOVERNED");
-    expect(promoted.domainPromotion?.keptLinkKeys).toContain(diffLink.key);
-    expect(promoted.domainPromotion?.overwrittenLinkKeys ?? []).not.toContain(diffLink.key);
-    const kept = (await t.repos.ontologyLinks.list("demo", (l) => l.key === diffLink.key))[0];
-    expect(kept.fromTypeKey).toBe("LegacyFrom"); // 既有真值一个字节没动
+    expect(promoted.domainPromotion?.keptLinkKeys).toContain(diffLink!.key);
+    expect(promoted.domainPromotion?.overwrittenLinkKeys ?? []).not.toContain(diffLink!.key);
+    const kept = (await t.repos.ontologyLinks.list("demo", (l) => l.key === diffLink!.key))[0];
+    expect(kept!.fromTypeKey).toBe("LegacyFrom"); // 既有真值一个字节没动
   });
 
   it("裁决 MERGE ⇒ 覆盖并留痕（R4：每条都是一次经审批的真值写入）", async () => {
@@ -303,7 +303,7 @@ describe("WO-DBUI-FLOW · 入库前冲突预检（只读 · 三类分开 · 无�
     await t.repos.ontologyLinks.put({
       id: "ltype_diff",
       tenantId: "demo",
-      key: diffLink.key,
+      key: diffLink!.key,
       fromTypeKey: "LegacyFrom",
       toTypeKey: "LegacyTo",
       cardinality: "N:N",
@@ -314,13 +314,13 @@ describe("WO-DBUI-FLOW · 入库前冲突预检（只读 · 三类分开 · 无�
       method: "POST",
       url: `/a/v1/databuilder/runs/${id}/promote`,
       headers: ADMIN,
-      payload: { decisions: [{ target: "linkType", key: diffLink.key, action: "MERGE" }] },
+      payload: { decisions: [{ target: "linkType", key: diffLink!.key, action: "MERGE" }] },
     });
     expect(ok.statusCode).toBe(200);
     const promoted = ok.json() as { domainPromotion?: { overwrittenLinkKeys?: string[] } };
-    expect(promoted.domainPromotion?.overwrittenLinkKeys).toContain(diffLink.key);
-    const now = (await t.repos.ontologyLinks.list("demo", (l) => l.key === diffLink.key))[0];
-    expect(now.fromTypeKey).toBe(diffLink.fromTypeKey); // 已覆盖为故事要的定义
+    expect(promoted.domainPromotion?.overwrittenLinkKeys).toContain(diffLink!.key);
+    const now = (await t.repos.ontologyLinks.list("demo", (l) => l.key === diffLink!.key))[0];
+    expect(now!.fromTypeKey).toBe(diffLink!.fromTypeKey); // 已覆盖为故事要的定义
   });
 
   it("同 key 沿用既有的类型不再静默：回执点名 reusedTypeKeys（此前既不进 migratedTypes 也不出现在任何回执）", async () => {
@@ -331,7 +331,7 @@ describe("WO-DBUI-FLOW · 入库前冲突预检（只读 · 三类分开 · 无�
     await t.repos.ontologyTypes.put({
       id: "otype_clash3",
       tenantId: "demo",
-      key: clash.key,
+      key: clash!.key,
       displayName: "库里那个",
       properties: [],
       derivedProperties: [],
@@ -343,7 +343,7 @@ describe("WO-DBUI-FLOW · 入库前冲突预检（只读 · 三类分开 · 无�
     const ok = await t.app.inject({ method: "POST", url: `/a/v1/databuilder/runs/${id}/promote`, headers: ADMIN });
     expect(ok.statusCode).toBe(200);
     const p = (ok.json() as { domainPromotion?: { reusedTypeKeys?: string[]; migratedTypes: number } }).domainPromotion!;
-    expect(p.reusedTypeKeys).toContain(clash.key); // 诚实位：屏上看得见"复用了既有的 X"
+    expect(p.reusedTypeKeys).toContain(clash!.key); // 诚实位：屏上看得见"复用了既有的 X"
     expect(p.migratedTypes).toBe(provTypes.length - 1); // 老行为不变：沿用的那条不计入
   });
 
