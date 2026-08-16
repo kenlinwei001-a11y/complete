@@ -175,8 +175,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
   { key: "view.plan-audit", name: "规划体检", level: "VIEW", defaultOn: true, bindings: { intents: ["plan_audit_run"], solverKeys: ["plan_audit"], apiTags: ["plan-audit"] } },
   { key: "view.plan-generate", name: "规划建议", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["plan_generate"] } },
   { key: "view.sop-balance", name: "月度规划", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["sop_balance"] } },
-  { key: "view.project-sim", name: "项目推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["capacity_forecast"] } },
-  { key: "view.global-sim", name: "全局项目推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["portfolio"] } },
+  { key: "view.project-sim", name: "接单可行性", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["capacity_forecast"] } },
+  { key: "view.global-sim", name: "接单组合优选", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["portfolio"] } },
   // 全局推演·活系统 NL/方案存比暗发门（mock 态开·MSW 桩支撑·真后端 defaultOff 避 404）。
   { key: "view.global-sim.live", name: "全局推演·活系统(NL/方案存比)", level: "BLOCK", defaultOn: true },
   // 原型中的 story 视图无后端支持 → 保留 aop 直链入口演示「该视图类型暂不支持」兜底（renderer="aop" 未注册）
