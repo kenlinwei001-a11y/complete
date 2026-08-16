@@ -58,6 +58,11 @@ export function edgeKeyOf(layer: RadiusLayer): string {
  *   · **改道**：该层还有别的引用边 ⇒ 扇出改走那一条 ⇒ 波及的是**另一批对象**；
  *   · **断链**：该层只有这一条 ⇒ 链在此终止 ⇒ 半径变短、其后各层不再可达。
  * 两种都会让 `radius` / `totalAffected` / 分层 DAG 真的换一批数（求解器按 `layers` 现算）。
+ * **实测 2026-08-16**（改道那一支：半径 2→1 · 波及 3→1 · 第一层由「物料」换成「仓库」）。
+ * **复验**：`pnpm --filter frontend-shell exec vitest run test/edge-panel-3pages.seam.test.tsx`
+ * 的「🔴 SEAM disruption-radius」与「🔴 模型 disruption-radius」两例
+ * （前者咬屏上读数真变，后者专咬「改道 ≠ 截断」——截断式实现在那里红成
+ * `expected [] to deeply equal [{ type: 'Warehouse' }]`）。
  *
  * ⚠ 这只是**这一次查看**的假设，不写任何东西：本体里那条边一个字节不动
  * （与 `EdgeActivePanel` 写 `SimSession.disabledRuleKeys` 同一条纪律 —— 反事实不碰真值 R4）。
@@ -335,7 +340,7 @@ export default function DisruptionRadiusView(_props: { view?: ViewConfigVM }) {
                 data-testid="dr-edges-off-badge"
                 style={{ marginLeft: 6, fontSize: 12 }}
               >
-                已关 {disabledEdges.length} 条 · 下方为反事实读数
+                已关 {disabledEdges.length} 条 · 下方是假设关掉后的读数
               </span>
             )}
           </summary>
