@@ -1951,7 +1951,9 @@ type MockPublishRequest = { id: string; ontologyVersion: number; status: "PENDIN
  */
 const MOCK_LINK_SEED: MockLinkType[] = [
   { key: "model_producible_at", cardinality: "N:N", fromType: "Model", toType: "Base" },
-  { key: "order_for_model", cardinality: "1:1", fromType: "Order", toType: "Model" },
+  // WO-TITLE-DIVERGENCE ④：基数本是 1:1，后端单源 battery.ts order_for_model 是 1:N
+  // （一个型号被多张订单要）。方向对、基数错 ⇒ 与后端逐字对齐。
+  { key: "order_for_model", cardinality: "1:N", fromType: "Order", toType: "Model" },
   { key: "line_belongs_to_base", cardinality: "1:N", fromType: "Base", toType: "Line" },
 ];
 /** 因果边种子：一条已启用（进推演）——与旧桩的 `propagationCount: 1` 逐字节等价，零回归。 */
@@ -3453,7 +3455,7 @@ export const handlers = [
       //   在**运行时**跨两个端点逐 key 对账 —— 人忘了同步，机器先说话。
       linkTypes: [
         { key: "model_producible_at", fromType: "Model", toType: "Base", cardinality: "N:N" },
-        { key: "order_for_model", fromType: "Order", toType: "Model", cardinality: "1:1" },
+        { key: "order_for_model", fromType: "Order", toType: "Model", cardinality: "1:N" },
         { key: "line_belongs_to_base", fromType: "Base", toType: "Line", cardinality: "1:N" },
       ].concat(mockLinkTypes.filter((l) => !MOCK_LINK_SEED.some((s) => s.key === l.key)).map((l) => ({ key: l.key, fromType: l.fromType, toType: l.toType, cardinality: l.cardinality }))),
       rules: [
