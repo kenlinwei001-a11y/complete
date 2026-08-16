@@ -48,6 +48,10 @@ export const ACTION_WIRING: Record<string, ActionWiring> = {
   //   写回意图出处：decision/kernel.ts:126 真 dispatch 本 key 建 DRAFT；mapping.ts:86「预警处置方案 →
   //   处置工单（写回）+ 风险曲线消解」是同一业务动作的中文登记名（键名不同名，据实说明不硬凑）。
   adopt_mitigation: "WIRED",
+  // ← 已接：项目推演⑥「采纳结论」→ 落 ForecastAdoption 台账对象（参数组合+推演快照全字段），
+  //   选中订单时把可行性结论回 stamp 到 Order（app.ts domainExecutor 分支）。效果层断言（读回对象
+  //   字段真变）见 test/action-adopt-forecast.seam.test.ts。
+  采纳产能预测结论: "WIRED",
   // —— 尚未接执行器：审批通过后不写任何真值（**欠账**，非「设计上无副作用」）——
   // ⚠️ 只剩这一条了。写清它写回意图的**真实出处**（上一版这里笼统写成"三条在 mapping.ts / decision-kernel 里
   //    都有写回意图"，对 `采纳经营方案` 是**事实错误**——它既不在 mapping.ts，kernel 也不派它。
