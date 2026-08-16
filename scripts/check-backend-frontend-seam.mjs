@@ -824,120 +824,6 @@ function canaries(ctx) {
 
 function tsFiles(dir) { return walk(dir); }
 
-// ── 采集 ──
-const agentcoreFiles = tsFiles(AGENTCORE_SRC).filter((p) => !/\.(test|spec)\.ts$/.test(p) && !p.includes("/mocks/"));
-const datacoreFiles = tsFiles(DATACORE_SRC).filter((p) => !/\.(test|spec)\.ts$/.test(p));
-
-const emitFields = [];
-let unresolvedPayloads = 0;
-for (const f of agentcoreFiles) {
-  const src = readFileSync(f, "utf8");
-  if (!src.includes("emit(")) continue;
-  const { fields, unresolved } = extractEmitFields(src);
-  unresolvedPayloads += unresolved;
-  for (const x of fields) emitFields.push({ ...x, file: relative(ROOT, f) });
-}
-
-const rewritePrefixes = extractRewritePrefixes(existsSync(AGENTCORE_SERVER) ? readFileSync(AGENTCORE_SERVER, "utf8") : "");
-const backendRoutes = [];
-for (const f of [...agentcoreFiles, ...datacoreFiles]) {
-  const src = readFileSync(f, "utf8");
-  if (!/\.(get|post|put|patch|delete)\s*[<(]/.test(src)) continue;
-  for (const r of extractBackendRoutes(src)) {
-    const norm = normalizePath(r.path);
-    if (!/^\/(a|b|api)\/v1\//.test(norm) && !/^\/(healthz|readyz|metrics)$/.test(norm)) continue;
-    backendRoutes.push({ ...r, norm, file: relative(ROOT, f) });
-  }
-}
-
-const prodFiles = frontendProdFiles();
-const prodTexts = prodFiles.map((p) => scanText(relative(ROOT, p), readFileSync(p, "utf8")));
-const fePaths = new Set();
-for (const t of prodTexts) for (const p of extractFrontendPaths(t.src)) fePaths.add(p);
-// 散文串里写着、但**不**计作调用方的路由（诚实位现算；`cleanPaths` 与 fePaths 同源，供 C13c 判「漏网」）
-const cleanPaths = fePaths;
-const prosePaths = new Set();
-let proseStrings = 0;
-for (const t of prodTexts) {
-  proseStrings += t.prose.length;
-  for (const p of extractProsePaths(t.src)) prosePaths.add(p);
-}
-const proseOnlyPaths = [...prosePaths].filter((p) => !cleanPaths.has(p));
-
-// ── 金丝雀先行 ──
-const ctx = { emitFields, backendRoutes, fePaths, cleanPaths, prodTexts, prodFiles: prodFiles.map((p) => relative(ROOT, p)), rewritePrefixes };
-// 金丝雀里抛异常 = 门自己坏了（RC=2），不是「代码有问题」（RC=1）：
-// `mentionsInProd` 对手搓记录会抛，这条 catch 把「有人绕开 scanText 另抄一份」变成机器当场说话。
-const canaryResults = canaries(ctx).map((c) => {
-  try { return { ...c, ...c.fn() }; }
-  catch (e) { return { ...c, ok: false, got: `抛异常：${e.message}`, want: "不抛异常" }; }
-});
-const brokenCanaries = canaryResults.filter((c) => !c.ok);
-if (brokenCanaries.length) {
-  console.error("⛔ 门自己坏了 —— befe-seam:check 的金丝雀未命中，本次**不产出任何结论**。");
-  console.error("   （铁律 0.6：金丝雀不中只许报「工具坏了」，绝不许报「代码干净 / 零缺口」。）\n");
-  for (const c of brokenCanaries) {
-    console.error(`  ✗ 金丝雀「${c.name}」未中`);
-    console.error(`      为什么它重要：${c.why}`);
-    console.error(`      期望：${JSON.stringify(c.want)}`);
-    console.error(`      实际：${JSON.stringify(c.got)}`);
-  }
-  process.exit(2);
-}
-// 诚实位**现算**，不写死。写死是假绿第 11 形态：加了金丝雀而分组计数不动，屏上照旧「5/5」。
-// （原文这里硬编码「词法 2 · SSE 抽取 3 · 路由 5 · 消费判据 3」= 13，而总数已经是 14 —— 就是这个病，已实测。）
-const GROUP_LABEL = { lex: "词法", emit: "SSE 抽取", route: "路由", consume: "消费判据" };
-const byGroup = new Map();
-for (const c of canaryResults) {
-  const g = c.name.split("/")[0];
-  byGroup.set(g, (byGroup.get(g) ?? 0) + 1);
-}
-const groupBreakdown = [...byGroup].map(([g, n]) => `${GROUP_LABEL[g] ?? g} ${n}`).join(" · ");
-console.log(`· 金丝雀 ${canaryResults.filter((c) => c.ok).length}/${canaryResults.length} 全中（${groupBreakdown}）——抽取器在真源码上有效，下面的否定结论才有资格被相信。`);
-
-// ── 载体① 判定 ──
-const fieldEvidence = new Map(); // field -> [{event,file,line}]
-for (const f of emitFields) {
-  if (!fieldEvidence.has(f.field)) fieldEvidence.set(f.field, []);
-  fieldEvidence.get(f.field).push(f);
-}
-const sseGaps = [];
-for (const [field, ev] of [...fieldEvidence].sort()) {
-  if (mentionsInProd(field, prodTexts).length === 0) sseGaps.push({ field, evidence: ev });
-}
-
-// ── 载体② 判定 ──
-const beByKey = new Map();
-for (const r of backendRoutes) {
-  const aliases = [r.norm];
-  const m = /^\/api\/v1\/([a-z-]+)(\/.*)?$/.exec(r.norm);
-  if (m && rewritePrefixes.includes(m[1])) aliases.push(`/b/v1/${m[1]}${m[2] ?? ""}`);
-  const m2 = /^\/b\/v1\/([a-z-]+)(\/.*)?$/.exec(r.norm);
-  if (m2 && rewritePrefixes.includes(m2[1])) aliases.push(`/api/v1/${m2[1]}${m2[2] ?? ""}`);
-  const key = `${r.method} ${r.norm}`;
-  if (!beByKey.has(key)) beByKey.set(key, { ...r, aliases });
-}
-const routeGaps = [];
-let exemptCount = 0;
-for (const [key, r] of [...beByKey].sort()) {
-  if (exemptReason(r.norm)) { exemptCount++; continue; }
-  const consumed = r.aliases.some((a) => [...fePaths].some((fe) => pathMatches(fe, a)));
-  if (!consumed) routeGaps.push({ key, file: r.file, line: r.line });
-}
-
-// ── 棘轮基线 ──
-const emptyBase = { version: 1, note: "", sseFields: [], endpoints: [] };
-const base = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : emptyBase;
-const baseSse = new Set(base.sseFields ?? []);
-const baseEp = new Set(base.endpoints ?? []);
-
-const curSse = sseGaps.map((g) => g.field);
-const curEp = routeGaps.map((g) => g.key);
-const newSse = curSse.filter((f) => !baseSse.has(f));
-const newEp = curEp.filter((k) => !baseEp.has(k));
-const fixedSse = [...baseSse].filter((f) => !curSse.includes(f));
-const fixedEp = [...baseEp].filter((k) => !curEp.includes(k));
-
 /**
  * 基线文档的**唯一**构造出口（主逻辑与金丝雀 C14 共用此函数，不许各抄一份）。
  *
@@ -980,86 +866,222 @@ function writeBaseline(sse, ep, how) {
   writeFileSync(BASELINE, JSON.stringify(buildBaselineDoc(sse, ep, how, prev), null, 2) + "\n");
 }
 
-if (SEED) {
-  if (existsSync(BASELINE)) {
-    console.error("✗ --seed 拒绝执行：基线已存在。首次建账才用 --seed；日常收紧用 --update（只减不增）。");
+function main() {
+  // ── 采集 ──
+  const agentcoreFiles = tsFiles(AGENTCORE_SRC).filter((p) => !/\.(test|spec)\.ts$/.test(p) && !p.includes("/mocks/"));
+  const datacoreFiles = tsFiles(DATACORE_SRC).filter((p) => !/\.(test|spec)\.ts$/.test(p));
+
+  const emitFields = [];
+  let unresolvedPayloads = 0;
+  for (const f of agentcoreFiles) {
+    const src = readFileSync(f, "utf8");
+    if (!src.includes("emit(")) continue;
+    const { fields, unresolved } = extractEmitFields(src);
+    unresolvedPayloads += unresolved;
+    for (const x of fields) emitFields.push({ ...x, file: relative(ROOT, f) });
+  }
+
+  const rewritePrefixes = extractRewritePrefixes(existsSync(AGENTCORE_SERVER) ? readFileSync(AGENTCORE_SERVER, "utf8") : "");
+  const backendRoutes = [];
+  for (const f of [...agentcoreFiles, ...datacoreFiles]) {
+    const src = readFileSync(f, "utf8");
+    if (!/\.(get|post|put|patch|delete)\s*[<(]/.test(src)) continue;
+    for (const r of extractBackendRoutes(src)) {
+      const norm = normalizePath(r.path);
+      if (!/^\/(a|b|api)\/v1\//.test(norm) && !/^\/(healthz|readyz|metrics)$/.test(norm)) continue;
+      backendRoutes.push({ ...r, norm, file: relative(ROOT, f) });
+    }
+  }
+
+  const prodFiles = frontendProdFiles();
+  const prodTexts = prodFiles.map((p) => scanText(relative(ROOT, p), readFileSync(p, "utf8")));
+  const fePaths = new Set();
+  for (const t of prodTexts) for (const p of extractFrontendPaths(t.src)) fePaths.add(p);
+  // 散文串里写着、但**不**计作调用方的路由（诚实位现算；`cleanPaths` 与 fePaths 同源，供 C13c 判「漏网」）
+  const cleanPaths = fePaths;
+  const prosePaths = new Set();
+  let proseStrings = 0;
+  for (const t of prodTexts) {
+    proseStrings += t.prose.length;
+    for (const p of extractProsePaths(t.src)) prosePaths.add(p);
+  }
+  const proseOnlyPaths = [...prosePaths].filter((p) => !cleanPaths.has(p));
+
+  // ── 金丝雀先行 ──
+  const ctx = { emitFields, backendRoutes, fePaths, cleanPaths, prodTexts, prodFiles: prodFiles.map((p) => relative(ROOT, p)), rewritePrefixes };
+  // 金丝雀里抛异常 = 门自己坏了（RC=2），不是「代码有问题」（RC=1）：
+  // `mentionsInProd` 对手搓记录会抛，这条 catch 把「有人绕开 scanText 另抄一份」变成机器当场说话。
+  const canaryResults = canaries(ctx).map((c) => {
+    try { return { ...c, ...c.fn() }; }
+    catch (e) { return { ...c, ok: false, got: `抛异常：${e.message}`, want: "不抛异常" }; }
+  });
+  const brokenCanaries = canaryResults.filter((c) => !c.ok);
+  if (brokenCanaries.length) {
+    console.error("⛔ 门自己坏了 —— befe-seam:check 的金丝雀未命中，本次**不产出任何结论**。");
+    console.error("   （铁律 0.6：金丝雀不中只许报「工具坏了」，绝不许报「代码干净 / 零缺口」。）\n");
+    for (const c of brokenCanaries) {
+      console.error(`  ✗ 金丝雀「${c.name}」未中`);
+      console.error(`      为什么它重要：${c.why}`);
+      console.error(`      期望：${JSON.stringify(c.want)}`);
+      console.error(`      实际：${JSON.stringify(c.got)}`);
+    }
+    process.exit(2);
+  }
+  // 诚实位**现算**，不写死。写死是假绿第 11 形态：加了金丝雀而分组计数不动，屏上照旧「5/5」。
+  // （原文这里硬编码「词法 2 · SSE 抽取 3 · 路由 5 · 消费判据 3」= 13，而总数已经是 14 —— 就是这个病，已实测。）
+  const GROUP_LABEL = { lex: "词法", emit: "SSE 抽取", route: "路由", consume: "消费判据" };
+  const byGroup = new Map();
+  for (const c of canaryResults) {
+    const g = c.name.split("/")[0];
+    byGroup.set(g, (byGroup.get(g) ?? 0) + 1);
+  }
+  const groupBreakdown = [...byGroup].map(([g, n]) => `${GROUP_LABEL[g] ?? g} ${n}`).join(" · ");
+  console.log(`· 金丝雀 ${canaryResults.filter((c) => c.ok).length}/${canaryResults.length} 全中（${groupBreakdown}）——抽取器在真源码上有效，下面的否定结论才有资格被相信。`);
+
+  // ── 载体① 判定 ──
+  const fieldEvidence = new Map(); // field -> [{event,file,line}]
+  for (const f of emitFields) {
+    if (!fieldEvidence.has(f.field)) fieldEvidence.set(f.field, []);
+    fieldEvidence.get(f.field).push(f);
+  }
+  const sseGaps = [];
+  for (const [field, ev] of [...fieldEvidence].sort()) {
+    if (mentionsInProd(field, prodTexts).length === 0) sseGaps.push({ field, evidence: ev });
+  }
+
+  // ── 载体② 判定 ──
+  const beByKey = new Map();
+  for (const r of backendRoutes) {
+    const aliases = [r.norm];
+    const m = /^\/api\/v1\/([a-z-]+)(\/.*)?$/.exec(r.norm);
+    if (m && rewritePrefixes.includes(m[1])) aliases.push(`/b/v1/${m[1]}${m[2] ?? ""}`);
+    const m2 = /^\/b\/v1\/([a-z-]+)(\/.*)?$/.exec(r.norm);
+    if (m2 && rewritePrefixes.includes(m2[1])) aliases.push(`/api/v1/${m2[1]}${m2[2] ?? ""}`);
+    const key = `${r.method} ${r.norm}`;
+    if (!beByKey.has(key)) beByKey.set(key, { ...r, aliases });
+  }
+  const routeGaps = [];
+  let exemptCount = 0;
+  for (const [key, r] of [...beByKey].sort()) {
+    if (exemptReason(r.norm)) { exemptCount++; continue; }
+    const consumed = r.aliases.some((a) => [...fePaths].some((fe) => pathMatches(fe, a)));
+    if (!consumed) routeGaps.push({ key, file: r.file, line: r.line });
+  }
+
+  // ── 棘轮基线 ──
+  const emptyBase = { version: 1, note: "", sseFields: [], endpoints: [] };
+  const base = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : emptyBase;
+  const baseSse = new Set(base.sseFields ?? []);
+  const baseEp = new Set(base.endpoints ?? []);
+
+  const curSse = sseGaps.map((g) => g.field);
+  const curEp = routeGaps.map((g) => g.key);
+  const newSse = curSse.filter((f) => !baseSse.has(f));
+  const newEp = curEp.filter((k) => !baseEp.has(k));
+  const fixedSse = [...baseSse].filter((f) => !curSse.includes(f));
+  const fixedEp = [...baseEp].filter((k) => !curEp.includes(k));
+
+
+  if (SEED) {
+    if (existsSync(BASELINE)) {
+      console.error("✗ --seed 拒绝执行：基线已存在。首次建账才用 --seed；日常收紧用 --update（只减不增）。");
+      process.exit(1);
+    }
+    writeBaseline(curSse, curEp, "--seed");
+    console.log(`· 首次建账：SSE 字段 ${curSse.length} 条 · 端点 ${curEp.length} 条记为今天的存量基线（此后只减不增）。`);
+    process.exit(0);
+  }
+  if (UPDATE) {
+    // 只删不加：修好的摘掉；新缺口**不**自动招安
+    const nextSse = [...baseSse].filter((f) => curSse.includes(f));
+    const nextEp = [...baseEp].filter((k) => curEp.includes(k));
+    writeBaseline(nextSse, nextEp, "--update");
+    console.log(`· 基线已收紧：SSE 字段 ${baseSse.size}→${nextSse.length} · 端点 ${baseEp.size}→${nextEp.length}（新增缺口 ${newSse.length + newEp.length} 条**未**收编）`);
+  }
+
+  // ── 报告 ──
+  console.log(
+    `· 载体① SSE 字段：后端 emit 出 ${fieldEvidence.size} 个不同字段（${emitFields.length} 处发点 · 变量 payload 未解析 ${unresolvedPayloads} 处，其字段由契约类型管辖）` +
+      ` · 前端零消费 ${sseGaps.length}（基线 ${baseSse.size} · 新增 ${newSse.length} · 已修复 ${fixedSse.length}）`,
+  );
+  console.log(
+    `· 载体② HTTP 端点：后端注册 ${beByKey.size} 条（结构性豁免 ${exemptCount}）· 前端 URL 字面量 ${fePaths.size} 条` +
+      ` · 前端零调用 ${routeGaps.length}（基线 ${baseEp.size} · 新增 ${newEp.length} · 已修复 ${fixedEp.length}）`,
+  );
+  console.log(
+    `· 散文位剔除（欠账 #174）：前端生产代码里判为散文的字符串 ${proseStrings} 条，其中写着 /a|b|api/v1/ 路由的归一路径 ${prosePaths.size} 条` +
+      ` —— 一律**不**计作调用方；其中 ${proseOnlyPaths.length} 条无任何真 URL 串佐证${proseOnlyPaths.length ? `（${proseOnlyPaths.join(" , ")}）` : ""}。`,
+  );
+  // ── 结构性豁免逐条点名（不是装饰，是 C15 的另一半） ──
+  //    C15 只能机器判「命中数是否为 0」；「命中的对不对」要语义判断，机器做不了。
+  //    那一半只能靠**每次都打印出来**给复审看见 —— 上一条假阴性
+  //    （`metrics` 豁免唯一命中的是 SPINE 业务端点）之所以活了这么久，
+  //    正因为豁免结果从不上屏：屏上只有一个汇总数字「结构性豁免 13」，
+  //    没人能从一个数字里看出它豁免掉的是探活还是业务。**数字不会说谎，但它什么也没说。**
+  console.log(`· 结构性豁免逐条点名（${ROUTE_EXEMPTIONS.length} 条规则 → ${exemptCount} 条端点）——「豁免≠隐身」，每条今天命中了谁一律上屏：`);
+  for (const e of ROUTE_EXEMPTIONS) {
+    const hit = [...new Set(backendRoutes.filter((r) => e.re.test(r.norm)).map((r) => r.norm))].sort();
+    console.log(`    ${String(e.re).padEnd(46)} → ${hit.length ? hit.join(" , ") : "（0 条·C15 会红）"}`);
+    console.log(`    ${" ".repeat(46)}   理由：${e.why}`);
+  }
+  if (fixedSse.length || fixedEp.length) {
+    console.log(`· ✅ 有人把接缝接上了：SSE ${fixedSse.slice(0, 8).join(", ")}${fixedSse.length > 8 ? " …" : ""}` +
+      `${fixedEp.length ? ` · 端点 ${fixedEp.slice(0, 5).join(" | ")}${fixedEp.length > 5 ? " …" : ""}` : ""}`);
+    console.log("  → 跑 `node scripts/check-backend-frontend-seam.mjs --update` 收紧基线（只减不增，不会招安新缺口）。");
+  }
+  if (VERBOSE) {
+    console.log("\n— 当前 SSE 零消费字段明细 —");
+    for (const g of sseGaps) console.log(`  ${g.field}  ←  ${g.evidence.map((e) => `${e.event}@${e.file}:${e.line}`).slice(0, 3).join(" , ")}`);
+    console.log("\n— 当前零调用端点明细 —");
+    for (const g of routeGaps) console.log(`  ${g.key}  ←  ${g.file}:${g.line}`);
+  }
+
+  const fails = [];
+  for (const f of newSse) {
+    const ev = fieldEvidence.get(f) ?? [];
+    fails.push(
+      `载体① 新增「后端发了·前端零消费方」字段 \`${f}\`（${ev.map((e) => `${e.event}@${e.file}:${e.line}`).slice(0, 2).join(" , ")}）` +
+        `\n      → 这就是 G-BE-FE-SEAM-DEAD：后端把字段发出去了，前端生产代码一个字都没读（注释里写「供前端…」不算消费）。` +
+        `\n        修：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或者别发这个字段。` +
+        `\n        确属暂不接：人手加进 scripts/backend-frontend-seam-baseline.json 的 sseFields 并在 PR 里说明理由。`,
+    );
+  }
+  for (const k of newEp) {
+    const g = routeGaps.find((x) => x.key === k);
+    fails.push(
+      `载体② 新增「后端注册了·前端零调用」端点 \`${k}\`（${g?.file}:${g?.line}）` +
+        `\n      → 后端开了口子没人用。修：前端 apps/frontend-shell/src/api/endpoints.ts 接上；` +
+        `\n        或属结构性非前端端点（探活/服务间/认证基础设施）→ 加进本脚本 ROUTE_EXEMPTIONS 并写明理由；` +
+        `\n        或确属暂不接 → 人手加进 scripts/backend-frontend-seam-baseline.json 的 endpoints。`,
+    );
+  }
+
+  if (fails.length) {
+    console.error(`\n✗ befe-seam:check 未通过（${fails.length} 条新增接缝缺口 · 棘轮只许降不许升）：`);
+    for (const m of fails) console.error("  - " + m);
     process.exit(1);
   }
-  writeBaseline(curSse, curEp, "--seed");
-  console.log(`· 首次建账：SSE 字段 ${curSse.length} 条 · 端点 ${curEp.length} 条记为今天的存量基线（此后只减不增）。`);
-  process.exit(0);
-}
-if (UPDATE) {
-  // 只删不加：修好的摘掉；新缺口**不**自动招安
-  const nextSse = [...baseSse].filter((f) => curSse.includes(f));
-  const nextEp = [...baseEp].filter((k) => curEp.includes(k));
-  writeBaseline(nextSse, nextEp, "--update");
-  console.log(`· 基线已收紧：SSE 字段 ${baseSse.size}→${nextSse.length} · 端点 ${baseEp.size}→${nextEp.length}（新增缺口 ${newSse.length + newEp.length} 条**未**收编）`);
-}
-
-// ── 报告 ──
-console.log(
-  `· 载体① SSE 字段：后端 emit 出 ${fieldEvidence.size} 个不同字段（${emitFields.length} 处发点 · 变量 payload 未解析 ${unresolvedPayloads} 处，其字段由契约类型管辖）` +
-    ` · 前端零消费 ${sseGaps.length}（基线 ${baseSse.size} · 新增 ${newSse.length} · 已修复 ${fixedSse.length}）`,
-);
-console.log(
-  `· 载体② HTTP 端点：后端注册 ${beByKey.size} 条（结构性豁免 ${exemptCount}）· 前端 URL 字面量 ${fePaths.size} 条` +
-    ` · 前端零调用 ${routeGaps.length}（基线 ${baseEp.size} · 新增 ${newEp.length} · 已修复 ${fixedEp.length}）`,
-);
-console.log(
-  `· 散文位剔除（欠账 #174）：前端生产代码里判为散文的字符串 ${proseStrings} 条，其中写着 /a|b|api/v1/ 路由的归一路径 ${prosePaths.size} 条` +
-    ` —— 一律**不**计作调用方；其中 ${proseOnlyPaths.length} 条无任何真 URL 串佐证${proseOnlyPaths.length ? `（${proseOnlyPaths.join(" , ")}）` : ""}。`,
-);
-// ── 结构性豁免逐条点名（不是装饰，是 C15 的另一半） ──
-//    C15 只能机器判「命中数是否为 0」；「命中的对不对」要语义判断，机器做不了。
-//    那一半只能靠**每次都打印出来**给复审看见 —— 上一条假阴性
-//    （`metrics` 豁免唯一命中的是 SPINE 业务端点）之所以活了这么久，
-//    正因为豁免结果从不上屏：屏上只有一个汇总数字「结构性豁免 13」，
-//    没人能从一个数字里看出它豁免掉的是探活还是业务。**数字不会说谎，但它什么也没说。**
-console.log(`· 结构性豁免逐条点名（${ROUTE_EXEMPTIONS.length} 条规则 → ${exemptCount} 条端点）——「豁免≠隐身」，每条今天命中了谁一律上屏：`);
-for (const e of ROUTE_EXEMPTIONS) {
-  const hit = [...new Set(backendRoutes.filter((r) => e.re.test(r.norm)).map((r) => r.norm))].sort();
-  console.log(`    ${String(e.re).padEnd(46)} → ${hit.length ? hit.join(" , ") : "（0 条·C15 会红）"}`);
-  console.log(`    ${" ".repeat(46)}   理由：${e.why}`);
-}
-if (fixedSse.length || fixedEp.length) {
-  console.log(`· ✅ 有人把接缝接上了：SSE ${fixedSse.slice(0, 8).join(", ")}${fixedSse.length > 8 ? " …" : ""}` +
-    `${fixedEp.length ? ` · 端点 ${fixedEp.slice(0, 5).join(" | ")}${fixedEp.length > 5 ? " …" : ""}` : ""}`);
-  console.log("  → 跑 `node scripts/check-backend-frontend-seam.mjs --update` 收紧基线（只减不增，不会招安新缺口）。");
-}
-if (VERBOSE) {
-  console.log("\n— 当前 SSE 零消费字段明细 —");
-  for (const g of sseGaps) console.log(`  ${g.field}  ←  ${g.evidence.map((e) => `${e.event}@${e.file}:${e.line}`).slice(0, 3).join(" , ")}`);
-  console.log("\n— 当前零调用端点明细 —");
-  for (const g of routeGaps) console.log(`  ${g.key}  ←  ${g.file}:${g.line}`);
-}
-
-const fails = [];
-for (const f of newSse) {
-  const ev = fieldEvidence.get(f) ?? [];
-  fails.push(
-    `载体① 新增「后端发了·前端零消费方」字段 \`${f}\`（${ev.map((e) => `${e.event}@${e.file}:${e.line}`).slice(0, 2).join(" , ")}）` +
-      `\n      → 这就是 G-BE-FE-SEAM-DEAD：后端把字段发出去了，前端生产代码一个字都没读（注释里写「供前端…」不算消费）。` +
-      `\n        修：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或者别发这个字段。` +
-      `\n        确属暂不接：人手加进 scripts/backend-frontend-seam-baseline.json 的 sseFields 并在 PR 里说明理由。`,
-  );
-}
-for (const k of newEp) {
-  const g = routeGaps.find((x) => x.key === k);
-  fails.push(
-    `载体② 新增「后端注册了·前端零调用」端点 \`${k}\`（${g?.file}:${g?.line}）` +
-      `\n      → 后端开了口子没人用。修：前端 apps/frontend-shell/src/api/endpoints.ts 接上；` +
-      `\n        或属结构性非前端端点（探活/服务间/认证基础设施）→ 加进本脚本 ROUTE_EXEMPTIONS 并写明理由；` +
-      `\n        或确属暂不接 → 人手加进 scripts/backend-frontend-seam-baseline.json 的 endpoints。`,
+  console.log(
+    `\n✓ befe-seam:check 通过：后端↔前端两半无**新增**「后端发了/暴露了、前端零消费方」缺口` +
+      `（存量 SSE ${sseGaps.length} · 端点 ${routeGaps.length} 已记基线，只减不增）。`,
   );
 }
 
-if (fails.length) {
-  console.error(`\n✗ befe-seam:check 未通过（${fails.length} 条新增接缝缺口 · 棘轮只许降不许升）：`);
-  for (const m of fails) console.error("  - " + m);
-  process.exit(1);
+/**
+ * 顶层兜底 —— **必须是 Program 的直接子语句**。
+ * ⚠ 写成 `if (isMain) { try {…} }` 会被 `scripts/check-gate-exit-discipline.mjs` 判「无顶层兜底」
+ *   （它只认 Program 直接子语句这一形态），即使那样写也真的能退 2。判据在**语法位置**，不在行为。
+ *
+ * ⚠ 为什么主流程要收进 `main()` 而不是留在顶层（WO-SEAM-GATE-METHOD）：
+ *   本门的抽取器（`extractFrontendCalls` / `extractBackendRoutes` / `pathMatches`…）是
+ *   「这条端点有没有前端调用方」这个判断的**唯一实现**。任何复核脚本 / 未来的接缝测试要复算，
+ *   都必须 import 它们、而不是另抄一份正则（铁律 0.6：抄了就是装饰品）。
+ *   而顶层直接跑主流程的模块**一被 import 就把整道门跑一遍**（还会 process.exit），
+ *   于是复核方只剩「抄一份」这一条路 —— 结构本身在逼人违反纪律。
+ */
+const isMain = Boolean(process.argv[1] && process.argv[1].endsWith("check-backend-frontend-seam.mjs"));
+try {
+  if (isMain) main();
+} catch (e) {
+  gateToolBroken(e);
 }
-console.log(
-  `\n✓ befe-seam:check 通过：后端↔前端两半无**新增**「后端发了/暴露了、前端零消费方」缺口` +
-    `（存量 SSE ${sseGaps.length} · 端点 ${routeGaps.length} 已记基线，只减不增）。`,
-);
