@@ -1,10 +1,61 @@
 {
   "version": 1,
+  "_doc": "位置锚事实锁的**存量清单，不是逃生舱**。每条必须能回答：把这个东西挪到别的文件，是不是真的坏了？答不是 ⇒ 它是锚点脆弱，该改测试（见 docs/AUDIT-factlock-triage.md）。三类合法形态：① 仓规四落点（位置就是仓规本身）；② 金丝雀同锚（为同一个 it 内**文件作用域**否定断言背书，扫描面必须与它一致）；③ 反空胜守卫（与同 it 内否定断言正负成对，两条一删俱空胜）。",
   "exemptions": [
     {
       "key": "apps/frontend-shell/test/transit-flow.seam.test.tsx#b71bc3c87cc0422c",
       "verdict": "位置即事实",
       "why": "契约侧采购四段腿单源 = 只有 procurement.ts 一份（WO-C 明文豁免形态；契约拆文件时红是对的）。"
+    },
+    {
+      "key": "apps/datacore/test/org-world.test.ts#636438a20eba8d1d",
+      "verdict": "仓规四落点 · CLAUDE.md《关键约定》「仓储双实现」",
+      "why": "仓规原文：「新增表需同时改 migrations/*.sql + repo/pg.ts + repo/memory.ts + repo.ts 接口」。断言的正是「032 建的 4 张表在 repo/pg.ts 里都有 PgStore 落点」—— **落点在不在那个文件**就是这条仓规本身，不是别的事实的代理。挪走 ⇒ pg 模式启动即少表，真的坏了（且测试全绿、只有真起 pg 才炸，正是本仓要堵的假绿）。"
+    },
+    {
+      "key": "apps/datacore/test/org-world.test.ts#93a19aed11b902df",
+      "verdict": "仓规四落点 · CLAUDE.md《关键约定》「仓储双实现」",
+      "why": "同上，memory 侧落点。四落点里少任一处都是真缺陷，而**位置就是这条仓规的全部内容**。"
+    },
+    {
+      "key": "apps/datacore/test/process-flow-time.seam.test.ts#b17b19cc83aacab6",
+      "verdict": "金丝雀同锚 · 背书的否定断言是文件作用域",
+      "why": "它背书的否定结论是「**契约与规则表这两份文件**的代码行里一次都不出现 stdDurationDays」（③ 头号红线：不拿标准工期冒充实测）。这条否定**必须**留在文件作用域 —— 实测 stdDurationDays 在别处真的合法存在（contracts/impact-analysis.ts · contracts/process.ts · datacore 的 catalog.ts / process/inspect.ts / process/ontology.ts / seed.ts / sim/impact-analysis.ts 共 7 处），整树扫会把这条判据变成恒红。否定既然锚在文件上，它的金丝雀就必须同扫描面：金丝雀扫 A 面、结论扫 B 面 = CLAUDE.md 铁律 0.6 的原形态。"
+    },
+    {
+      "key": "apps/datacore/test/process-flow-time.seam.test.ts#172e08f6ece37ef3",
+      "verdict": "金丝雀同锚 · 背书的否定断言是文件作用域",
+      "why": "同上，规则表侧（src/process/flow-rules.ts）的那一半。"
+    },
+    {
+      "key": "apps/datacore/test/process-flow-time.seam.test.ts#50a564f518b7de29",
+      "verdict": "仓规四落点 · CLAUDE.md《关键约定》「仓储双实现」",
+      "why": "033 建的每张表都必须在 repo/pg.ts 有 PgStore 落点，失败文案自己写着后果：「pg 模式启动即炸」。⚠ 本条是 WO-FACTLOCK-TRIAGE **修好门之后才浮出来**的：门原先把匹配器括号内整段原文当探针，prettier 的多行尾逗号让它判「不是代码符号」而**静默跳过** —— 同一个 it 里 4 行之下同形态的 memory 落点却被咬中。"
+    },
+    {
+      "key": "apps/datacore/test/process-flow-time.seam.test.ts#64ffa1317574c8d5",
+      "verdict": "仓规四落点 · CLAUDE.md《关键约定》「仓储双实现」",
+      "why": "同上，memory 侧落点；失败文案：「033 建了 ${table}，但 repo/memory.ts 没有它的 MemStore 落点」。"
+    },
+    {
+      "key": "apps/datacore/test/process-instance-merge.seam.test.ts#4fa8ee8feca9d47f",
+      "verdict": "诚实位台账 · 登记主语就是模块本身（⚠ 本清单里判据最弱的一条，见 docs/AUDIT-factlock-triage.md §拿不准 U-1）",
+      "why": "⑥ 是一条**诚实位台账复核**：前一张工单登记的边界是「`sim/impact-analysis.ts` 的 instanceLevel 硬写 available:false」，本条查合并没有把这句不好看的话偷偷删掉。台账条目的主语是**那个模块**，故文件名是命题的一部分。⚠ 诚实边界：与同清单其余条不同，本条**没有**文件作用域否定断言给它背书（同 it 内另两条 available/missingCarrier 也是正向），所以它不满足「金丝雀同锚」。真正的修法是把三条一起换成运行时断言 —— 打 `POST /a/v1/simulation/impact-analysis`（app.ts:2071）断言 `affectedProcesses.instanceLevel.available === false` 与 `missingCarrier === \"ProcessInstance\"`，样板见 impact-propagation.seam.test.ts:136。WO-FACTLOCK-TRIAGE 是禁跑 vitest 的轻画像，无法验证该改动，故留给能跑测试的后续单。"
+    },
+    {
+      "key": "apps/frontend-shell/test/befe-e-opt-template-pool.seam.test.tsx#88a91e06b530bc25",
+      "verdict": "反空胜守卫 · 与同 it 内页作用域否定断言正负成对",
+      "why": "配对的否定是 `expect(view).not.toContain(\"const FAMILIES:\")` —— 命题是「**这一页**不许自持权威 family 清单当权威」，页作用域天生带文件主语（别处存在一份权威清单是合法的，本页存在才是病），整树扫会把主语抹掉。正向的 `const FAMILY_COPY:` 是它的**反空胜守卫**：两个常量一起被删时，光有 not.toContain 会空胜通过。两条同进退。"
+    },
+    {
+      "key": "apps/frontend-shell/test/befe-wire-d.seam.test.tsx#be8e970b5b07647d",
+      "verdict": "金丝雀同锚 · 背书的否定断言是页作用域",
+      "why": "它背书的否定结论是「**组织世界页**没有 import 任何审批写函数（createActionDraft/decideActionDraft/fetchActionDrafts/useActionDraft）⇒ 没绕过 R4」。这条否定**必须**留在页作用域 —— 别的页调 createActionDraft 是完全合法的，整树扫当场变恒红。否定锚在文件上，金丝雀就必须同扫描面。同 it 内还有一条更硬的运行时判据（旁路观测全量请求，整页跑完一圈 /a/v1/action-drafts 一次都不出现），源码侧这条是补判据。"
+    },
+    {
+      "key": "apps/frontend-shell/test/befe-wire-f.seam.test.tsx#ba3f17ab1baecd6b",
+      "verdict": "金丝雀同锚 · 背书的否定断言是文件作用域",
+      "why": "它背书的否定结论是「**这三份 mock 源码**（fixtures.ts / db.ts / handlers.ts）里不许出现明文凭据形态」—— it 名写着「写进 fixture = 泄漏进仓库」，被查对象就是那三个仓库文件本身，位置即事实。金丝雀取 handlers.ts 里确实写了的 hasApiKey，证明这套 includes 判定在真源码上有效；它必须与否定同扫描面。（门把主语解析成 4 个路径的多锚，是因为 files 数组由三条路径 map 出来 —— 真锚点是 handlers.ts。）"
     }
   ]
 }
