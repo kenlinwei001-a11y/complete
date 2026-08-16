@@ -83,6 +83,8 @@ export async function buildMappingRows(repos: Repos, tenantId: string): Promise<
 // PRD-IND-map §4.4：Action / 事件类型注册表（静态种子，确定性 R6；逐字录自参考原型 ACTION_TYPES/EVENT_TYPES）。
 const ACTION_TYPE_REG: MappingRegistries["actions"] = [
   { name: "采纳产能保障方案", params: "型号 / 需求量 / 交期 / 调参组合(夜班·通道·外协)", check: "C03 上限校验 · C08 外协红线 · 需含审批人(C10)", target: "生产工单MO（写回）", perm: "发起:规划员 · 审批:生产计划部" },
+  // WO-SIM-ACTION-REAL：项目推演⑥「采纳结论」真接的 Action（屏上 DAG fc 节点那句承诺的兑现）。
+  { name: "采纳产能预测结论", params: "型号 / 需求(万套) / 窗口(周) / 推演快照(P50·P90·缺口·健康度)", check: "payload 过 ForecastAdoptionPayloadSchema 契约 · 需含审批人(C10)", target: "ForecastAdoption 台账对象（写回）+ 选中订单回 stamp", perm: "发起:规划员 · 审批:生产计划部" },
   { name: "预警处置方案", params: "基地 / 风险对象 / 方案编号 / 起效时间", check: "C06 齐套冻结 · C11 错峰评审", target: "处置工单（写回）+ 风险曲线消解", perm: "发起:基地负责人 · 审批:生产计划部" },
   { name: "调整排产分配", params: "订单 / 基地分配比例 / 生效周", check: "C04 仅认证产线 · C01 产线上限", target: "排产计划（写回）", perm: "发起:计划员 · 审批:基地负责人" },
   { name: "定稿月度计划版本", params: "计划版本号 / 三张评审表快照 / 高管决议", check: "C21 差异已提报 · C18 现金安全垫 · C22 定稿后锁定", target: "月度S&OP版本（定稿+锁定）", perm: "发起:S&OP主持人 · 审批:经营决策会" },

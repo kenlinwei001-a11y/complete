@@ -351,6 +351,66 @@ export function isLegacyUnitUnsafeSnapshot(snapshot: unknown): boolean {
   return "capWanP50" in s || "capWanP90" in s;
 }
 
+// WO-SIM-ACTION-REAL · 项目推演「采纳结论」payload 契约（actionTypeKey=采纳产能预测结论）
+// 采纳 capacity_forecast 结论 → S2 审批 → domainExecutor 落 ForecastAdoption 台账对象
+// （+ 选中订单时回 stamp 可行性结论到 Order）。G-ACTION-NOOP-EXEC 收口：该动作有真写入分支，
+// 测试断言「读回对象、字段真的变了」，不是只到 EXECUTED。
+//
+// ⚠️ 量纲纪律（G-LEVER-SNAPSHOT-UNIT-LIE 前科：无量纲紧张度曾被塞进 capWanP50 进 ActionDraft）：
+// 本 schema 每个数值字段名都标出它装的量（Wan=万套），改名必须连量一起对——
+// 「塞进这个名字的值是不是那个量纲」门守不了，只能靠名字不撒谎 + 逐字段注释。
+// ---------------------------------------------------------------------------
+
+/** 分批模式下的一批（与 capacity_forecast batchRows 同口径）。 */
+export const ForecastAdoptionBatchSchema = z.object({
+  /** 该批需求量，单位 **万套**。 */
+  qtyWan: z.number().nonnegative(),
+  /** 交付日 ISO（YYYY-MM-DD）。 */
+  dueDate: z.string().min(1),
+  /** 交付地址（物流时长查表键）。 */
+  address: z.string().min(1),
+});
+export type ForecastAdoptionBatch = z.infer<typeof ForecastAdoptionBatchSchema>;
+
+/** 推演快照：采纳那一刻 capacity_forecast 的输出要点（全部与求解器输出同轴）。 */
+export const ForecastAdoptionSnapshotSchema = z.object({
+  /** P50 累计产能，单位 **万套/窗口**（= Σ可产基地 Σ周 周产能×爬坡×检修×认证）。 */
+  capWanP50: z.number(),
+  /** P90 累计产能，单位 **万套/窗口**（= capWanP50 × healthFactor）。 */
+  capWanP90: z.number(),
+  /** 缺口，单位 **万套**（= max(0, demandWan − capWanP90)；可达时为 0）。 */
+  gapWan: z.number().nonnegative(),
+  /** 数据健康度系数，**无量纲 0–1**（C09·IoT/MES/QMS 新鲜度联动）。 */
+  healthFactor: z.number(),
+  /** 结论：P90 是否覆盖需求。 */
+  ok: z.boolean(),
+  /** 主瓶颈因素名（文本，非数值·非紧张度）。 */
+  mainBn: z.string().default(""),
+  /** 规则集版本（评估出 evaluatedRules 的那版，溯源坐标）。 */
+  ruleSetVersion: z.string().optional(),
+});
+export type ForecastAdoptionSnapshot = z.infer<typeof ForecastAdoptionSnapshotSchema>;
+
+/** 采纳项目推演结论的 Action payload（`采纳产能预测结论` · source:"project-sim"）。 */
+export const ForecastAdoptionPayloadSchema = z.object({
+  source: z.literal("project-sim"),
+  /** 型号（产品域 Model）。 */
+  modelId: z.string().min(1),
+  /** 整单 / 分批。 */
+  mode: z.enum(["single", "batch"]),
+  /** 总需求量，单位 **万套**。 */
+  demandWan: z.number().positive(),
+  /** 交付窗口，单位 **周**（single 模式必填；batch 模式窗口逐批推）。 */
+  weeks: z.number().int().positive().optional(),
+  /** 分批明细（batch 模式）。 */
+  batches: z.array(ForecastAdoptionBatchSchema).optional(),
+  /** 推演快照（采纳那一刻的屏上结论——不是重算，是用户看到并拍板的那份）。 */
+  snapshot: ForecastAdoptionSnapshotSchema,
+  /** 选中的销售订单 so（下钻细排场景）；带它则审批通过后把结论回 stamp 到该 Order。 */
+  orderId: z.string().optional(),
+});
+export type ForecastAdoptionPayload = z.infer<typeof ForecastAdoptionPayloadSchema>;
+
 // ---------------------------------------------------------------------------
 // §S3 调度器
 // ---------------------------------------------------------------------------

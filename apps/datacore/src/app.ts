@@ -58,6 +58,7 @@ import { reconstructAndPersist } from "./process/reconstruct.js"; // WO-FLOWTIME
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
+import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
@@ -747,6 +748,91 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         });
         // targetRef 自证采纳了什么——**刻意不使用 MO- 前缀**（那正是本仓刚清掉的假工单号形态）。
         return { ok: true, targetRef: `MIT-ADOPT:${adoptionId}` };
+      }
+
+      // ── 采纳产能预测结论（WO-SIM-ACTION-REAL · 屏上 DAG fc 节点承诺「结论可采纳为 Action」此前零接线）──
+      // 语义裁决：「采纳结论」= 把用户拍板那一刻的**参数组合 + 推演快照**落成一等公民台账对象
+      // `ForecastAdoption`（repos.objects 通用仓储·同 AdoptedMitigation 先例·无需建表），
+      // 选中销售订单时再把可行性结论回 stamp 到该 Order（真值变化可回读）。
+      // 它**不是**开生产工单（结论 ≠ 排产指令，臆造工单 = 假 MO 号换件衣服），
+      // 也**不是**改杠杆真值（那是「采纳产能保障方案」干的事，两动作分工不重叠）。
+      if (draft.actionTypeKey === "采纳产能预测结论") {
+        // ① payload 必须过契约（contracts ForecastAdoptionPayloadSchema·量纲逐字段标注）——
+        //    不合即诚实失败，绝不猜一个值写下去（写错真值比不写危险）。
+        const parsed = ForecastAdoptionPayloadSchema.safeParse(draft.payload);
+        if (!parsed.success) {
+          const issue = parsed.error.issues[0];
+          return {
+            ok: false,
+            error:
+              `采纳产能预测结论：payload 不合契约（${issue ? `${issue.path.join(".")}: ${issue.message}` : "unknown"}）——` +
+              `拒绝臆造写入。契约见 packages/contracts/src/actions.ts ForecastAdoptionPayloadSchema。`,
+          };
+        }
+        const p = parsed.data;
+        // ② 确定性 id（R6·无 Date.now/random）：由参数组合+快照派生 → 同一份结论重复采纳覆盖同 id（幂等不产重复）。
+        const adoptionId = `fc_${hashString(
+          [p.modelId, p.mode, p.demandWan, p.weeks ?? "", p.snapshot.capWanP50, p.snapshot.capWanP90, p.snapshot.gapWan, p.orderId ?? ""].join("|"),
+        ).toString(16)}`;
+        const objectId = `obj_forecastadoption_${adoptionId}`;
+        // ③ adoptedAt 取确定性时间锚 forecastStart（同 GlobalSimPlanExecutor / adopt_mitigation 的禁 Date.now 纪律）。
+        const fcParams = await solvers.getParams(draft.tenantId);
+        const adoptedAt = String(fcParams.forecastStart ?? "").slice(0, 10);
+        // ④ 落台账对象：参数组合 + 推演快照**全字段原样**（payload 已过契约，量纲即契约标注的量纲）。
+        await repos.objects.put({
+          id: objectId,
+          tenantId: draft.tenantId,
+          type: "ForecastAdoption",
+          props: {
+            adoptionId,
+            modelId: p.modelId,
+            mode: p.mode,
+            demandWan: p.demandWan,
+            ...(p.weeks !== undefined ? { weeks: p.weeks } : {}),
+            ...(p.batches ? { batches: p.batches } : {}),
+            capWanP50: p.snapshot.capWanP50,
+            capWanP90: p.snapshot.capWanP90,
+            gapWan: p.snapshot.gapWan,
+            healthFactor: p.snapshot.healthFactor,
+            ok: p.snapshot.ok,
+            mainBn: p.snapshot.mainBn,
+            ...(p.snapshot.ruleSetVersion ? { ruleSetVersion: p.snapshot.ruleSetVersion } : {}),
+            ...(p.orderId ? { orderId: p.orderId } : {}),
+            adoptedAt,
+            actionDraftId: draft.id,
+            status: "ACTIVE",
+          },
+          origin: { type: "ACTION", actionId: draft.id, source: "project-sim" },
+        });
+        // ⑤ 选中订单 → 回 stamp 可行性结论（该 Order 的真值就此变化，下轮读它的人看得到）。
+        //    订单解不出 → 诚实失败（不挂到猜的对象上）；注意此刻台账已落——失败语义是"回 stamp 没成"，
+        //    targetRef/错误里说清哪一步断了，不假装全成也不回滚撒谎。
+        if (p.orderId) {
+          const orderObjs = await repos.objects.listByType(draft.tenantId, "Order");
+          const ord = orderObjs.find((o) => String(o.props.so ?? "") === p.orderId || o.id === p.orderId);
+          if (!ord) {
+            return {
+              ok: false,
+              error:
+                `采纳产能预测结论：订单「${p.orderId}」在仓储里解不出（台账 ForecastAdoption ${adoptionId} 已落）——` +
+                `拒绝把结论回写到猜的对象上。请传订单 so 或对象 id。`,
+            };
+          }
+          await repos.objects.put({
+            ...ord,
+            props: {
+              ...ord.props,
+              adoptedForecastOk: p.snapshot.ok,
+              adoptedCapWanP90: p.snapshot.capWanP90,
+              adoptedGapWan: p.snapshot.gapWan,
+              adoptedByAction: draft.id,
+            },
+          });
+        }
+        // ⑥ 派生重算：让下游切片/推演立刻读到新对象（与「对象数据变更」「采纳产能保障方案」同一套）。
+        await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
+        // targetRef 自证落了哪份台账——**刻意不使用 MO- 前缀**（那正是假单号形态）。
+        return { ok: true, targetRef: `FC-ADOPT:${adoptionId}` };
       }
 
       // ⛔ 最后兜底：**不再返回假 MO 号**。未在 ACTION_WIRING 里标 WIRED 的动作一律诚实失败/诚实标注，

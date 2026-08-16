@@ -3021,6 +3021,30 @@ export const BATTERY_ACTION_TYPES = [
     checkRules: [] as string[],
     approvalChain: [{ role: "admin" }],
   },
+  // WO-SIM-ACTION-REAL：项目推演⑥「采纳结论」（payload = 参数组合 + 推演快照，契约见 contracts
+  // ForecastAdoptionPayloadSchema）。审批通过 → 落 ForecastAdoption 台账对象（+选中订单回 stamp）。
+  // 与「采纳产能保障方案」（what-if 杠杆组合 → 改写本体属性）是两个动作：那个改杠杆真值，
+  // 这个把**结论本身**（参数组合+快照）落成可溯源台账真值——屏上 DAG fc 节点承诺的正是后者。
+  {
+    key: "采纳产能预测结论",
+    name: "采纳产能预测结论",
+    paramsSchema: {
+      type: "object",
+      required: ["modelId", "mode", "demandWan", "snapshot"],
+      properties: {
+        source: { type: "string" },
+        modelId: { type: "string" },
+        mode: { type: "string" },
+        demandWan: { type: "number" },
+        weeks: { type: "number" },
+        batches: { type: "array" },
+        snapshot: { type: "object" },
+        orderId: { type: "string" },
+      },
+    },
+    checkRules: [] as string[],
+    approvalChain: [{ role: "admin" }],
+  },
   // Phase9B 对象级数据变更（逐字段替换数据）：经 Action 审批后落账，EXECUTED 时把 patch 合并进对象 props
   // 并重跑派生 → 之后 resolve_slice/invoke_solver 即「二次推演」反映新数据。绝不绕过审批直改真值。
   {
