@@ -33,31 +33,49 @@ interface ExecDone {
   executionResult: { ok?: boolean; targetRef?: string; error?: string };
 }
 
-/** 建草稿 → 提交 → 审批，返回终态（两种回包形状都认——审批端点历史上回过 draft 包裹与裸包两形态）。 */
+/**
+ * 审批用**多角色**身份：`adopt_mitigation` 的审批链是 planner → admin **两步**
+ * （`battery.ts BATTERY_ACTION_TYPES`）。只带 admin 角色时第一步会 409 INVALID_STEP，
+ * 草稿停在 PENDING_APPROVAL —— **执行器根本没被调用**，而它看起来"没报未实现"，
+ * 于是会被误判成「已接线」。这正是本文件反复警告的那种病：**信号是真的，只是它不指向我要断言的东西**。
+ */
+const APPROVER = { "x-debug-user": "demo:admin:admin|planner" };
+
+/**
+ * 建草稿 → 提交 → **走完整条审批链** → 返回终态。
+ * 两种回包形状都认（审批端点历史上回过 draft 包裹与裸包两形态）。
+ */
 async function submitAndApprove(t: TestApp, actionTypeKey: string, payload: Record<string, unknown>): Promise<ExecDone> {
   const created = await t.app.inject({
     method: "POST",
     url: "/a/v1/action-drafts",
-    headers: ADMIN,
+    headers: APPROVER,
     payload: { actionTypeKey, payload, submit: true },
   });
   expect(created.statusCode, created.body).toBeLessThan(300);
   const draftId = (created.json() as { draftId: string }).draftId;
-  const approved = await t.app.inject({
-    method: "POST",
-    url: `/a/v1/action-drafts/${draftId}/approve`,
-    headers: ADMIN,
-    payload: {},
-  });
-  const b = approved.json() as {
-    status?: string;
-    draft?: { status: string; executionResult?: ExecDone["executionResult"] };
-    executionResult?: ExecDone["executionResult"];
-  };
-  return {
-    status: b.draft?.status ?? b.status ?? "",
-    executionResult: b.draft?.executionResult ?? b.executionResult ?? {},
-  };
+
+  let out: ExecDone = { status: "", executionResult: {} };
+  // 多步链需要逐步批；上限 6 步足够覆盖本仓最长的链（2 步），超了说明链没在推进。
+  for (let step = 0; step < 6; step++) {
+    const approved = await t.app.inject({
+      method: "POST",
+      url: `/a/v1/action-drafts/${draftId}/approve`,
+      headers: APPROVER,
+      payload: {},
+    });
+    const b = approved.json() as {
+      status?: string;
+      draft?: { status: string; executionResult?: ExecDone["executionResult"] };
+      executionResult?: ExecDone["executionResult"];
+    };
+    out = {
+      status: b.draft?.status ?? b.status ?? "",
+      executionResult: b.draft?.executionResult ?? b.executionResult ?? {},
+    };
+    if (out.status !== "PENDING_APPROVAL" && out.status !== "APPROVED") break;
+  }
+  return out;
 }
 
 /** 回仓储读一个对象的属性真值（**不复用审批响应里的回显**——回显证明不了落库）。 */
@@ -231,6 +249,13 @@ describe("兜底线普查 · 「还剩几型审批通过后什么都不写」由
       const payload = MINIMAL_PAYLOADS[key];
       expect(payload, `新增了 ActionType「${key}」却没给普查载荷 —— 本普查会漏数它，请补 MINIMAL_PAYLOADS`).toBeTruthy();
       const done = await submitAndApprove(t, key, payload!);
+      // ⚠️ 先证明「执行器真的被调用过」再分类。停在 PENDING_APPROVAL/DRAFT = **本次没测到执行器**，
+      //    它既不是「已接线」也不是「没接线」——把它算进任何一桶都是拿一个不度量该事实的信号下结论。
+      expect(
+        done.status,
+        `「${key}」没走到执行终态（停在 ${done.status || "空"}）⇒ **本普查这一型没测到执行器**，` +
+          `结论作废：既不许算作已接线，也不许算作没接线。多半是审批链角色不够或载荷没过 paramsSchema。`,
+      ).toMatch(/^(EXECUTED|EXECUTION_FAILED)$/);
       const err = String(done.executionResult.error ?? "");
       if (err.includes("EXECUTOR_NOT_IMPLEMENTED")) fallback.push(key);
       else realBranch.push({ key, outcome: done.status + (err ? `(${err.slice(0, 60)})` : "") });
