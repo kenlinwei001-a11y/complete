@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchProcessDefinitions, fetchProcessInstances } from "@/api/endpoints";
 // WO-V4-INSPECT · 节点检视面板（点开一行 → 看这条流程的完整本体关系·PRD-sandbox-v4 §4.2）
@@ -165,7 +166,14 @@ function InstancePanel({ processKey }: { processKey: string }) {
                 {m.rows.slice(0, 20).map((r) => (
                   <tr key={r.instanceKey} data-testid={`pw-inst-row-${r.instanceKey}`} data-still-in={r.stillIn}>
                     <td>
-                      <code>{r.carrierObjectId}</code>
+                      {/* WO-PROCESS-INSTANCE-UI · 深链入口②：反推实例行 → 实例详情页。
+                          详情端点不按产地过滤（反推实例也能查），故这批实例同样「建出来就能找回」。 */}
+                      <Link
+                        to={`/process-instances/${encodeURIComponent(r.instanceId)}`}
+                        data-testid={`pw-inst-detail-${r.instanceKey}`}
+                      >
+                        <code>{r.carrierObjectId}</code>
+                      </Link>
                     </td>
                     <td>{r.enteredAt}</td>
                     <td data-testid={`pw-inst-exit-${r.instanceKey}`}>{r.exitedAt ?? t.stillIn}</td>

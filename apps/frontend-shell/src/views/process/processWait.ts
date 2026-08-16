@@ -290,6 +290,11 @@ export interface ProcessInstancesResponse {
 
 /** 本流程实例的**屏幕模型**：把「卡了多久 / 卡在谁那里 / 站间流转多久」三问各摊成一行。 */
 export interface ProcessInstanceRowVM {
+  /**
+   * 仓储主键 id（WO-PROCESS-INSTANCE-UI 补）—— 详情页深链 `/process-instances/:instanceId` 的唯一钥匙。
+   * ⚠ 不是 `instanceKey`：key 是「哪个流程作用在哪个对象上」的业务键，id 才带产地前缀、是详情端点的参数。
+   */
+  instanceId: string;
   instanceKey: string;
   carrierObjectId: string;
   enteredAt: string;
@@ -353,6 +358,8 @@ export function buildProcessInstancesModel(res: ProcessInstancesResponse): Proce
   const rows: ProcessInstanceRowVM[] = res.instances.map((i) => {
     const d = dwellByKey.get(i.key);
     return {
+      // id 透传（WO-PROCESS-INSTANCE-UI）：中间层把它丢掉，「找回这条实例」的深链就断在这一层。
+      instanceId: i.id,
       instanceKey: i.key,
       carrierObjectId: i.carrierObjectId,
       enteredAt: i.enteredAt,
