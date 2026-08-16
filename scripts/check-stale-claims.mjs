@@ -76,7 +76,12 @@
  *       **可被机器现场复核的断言**（枚举断言「只有 A/B/C 三类」「共 N 种」；否定断言
  *       「一条都没有」「没有任何一条」「全仓 0 条」），就必须带一条机器可跑的溯源记号。
  *       为什么只咬字面量、不咬注释：注释归 ①②（保质期那两问）；把两者混在一层，
- *       噪声会淹掉真病灶 —— 实测同一批判据在注释上命中 147 行，在字面量上只有 14 行。
+ *       噪声会淹掉真病灶 —— **同一批判据在注释里的命中数远多于字面量**（2026-08-16 实测
+ *       注释 63 行 vs 字面量 13 行）。数字本身会随前端改动而变，故真正被机器守住的是
+ *       **那个数量级差**，不是这两个数：
+ *         @stale-self onscreen.commentHits >=30
+ *         @stale-self onscreen.literalHits <=25
+ *       两条一旦交叉（注释侧塌下来或字面量侧涨上去），"只扫屏上"这个取舍就失去依据，门当场红。
  *
  *  ⑥ `STALE-6 · 溯源记号现算不符`（**永不豁免**）
  *       记号语法（刻意做成**可执行断言**，不是指针）：
@@ -160,6 +165,12 @@ import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SCAN_ROOT = "apps/frontend-shell/src";
 const BASELINE_PATH = "scripts/stale-claim-baseline.json";
+/**
+ * ⑨⑩ 自扫描的对象 —— **门自己**。
+ * 不是白名单（白名单是"这些不查"），是**受审名单**（"这些额外要查"）：
+ * 谁在下判断，谁先受审。为什么不把整个 `scripts/` 加进来，见 § 3.6 的说明。
+ */
+const SELF_SCAN_FILE = "scripts/check-stale-claims.mjs";
 
 /**
  * 屏上层豁免的三种 verdict —— **处置完全不同，混成一类必修错地方**：
@@ -421,31 +432,69 @@ function* walk(dir) {
  *   同时它认识字符串态（`'` `"` \`），所以 `"http://x"` 里的 `//` 不会被当成行注释。
  */
 export function stripCommentsKeepLines(src) {
-  let out = "";
+  return splitCodeAndComments(src).code;
+}
+
+/**
+ * **同一台状态机的另一半视图** —— 只留注释、把代码抹成等长空格（WO-STALE-REGEX-BLIND 补）。
+ *
+ * ⚠ **刻意不另写一台状态机**：两台机器 = 两套「什么算注释」= 迟早给出互相矛盾的结论，
+ *   而这类矛盾一旦出现，两边都是绿的（各自都"自洽"）。故本文件只有 `splitCodeAndComments`
+ *   一台，`code` / `comments` 是它的两个互补视图，`splitViewCanary()` 当场验互补性。
+ *
+ * ⑨⑩ 这一层要的正是这半边：**门的自述写在注释里**。
+ * 而门**实现**这套机制时必然要在代码里写下 `@stale-self` 的正则、错误文案、金丝雀样例 ——
+ * 那些是**实现**，不是自述。不区分两者的后果 2026-08-16 当场实测过：本层第一版把自己的实现
+ * 咬出 18 条噪声（真病灶只有 6 条，淹在里面）。这条排除是**语法上下文**（在不在注释里），不是文件白名单 ——
+ * 白名单迟早被例外吃光，上下文规则对以后新写的段落照样生效。
+ */
+export function stripCodeKeepComments(src) {
+  return splitCodeAndComments(src).comments;
+}
+
+/**
+ * 唯一那台状态机。两个返回视图**逐字节互补**：同一位置，一边是原字符，另一边是空格
+ * （换行两边都保留 ⇒ 行号在两个视图里完全一致，`file:line` 才不会漂）。
+ */
+function splitCodeAndComments(src) {
+  let code = "";
+  let comments = "";
   let i = 0;
   let state = 0; // 0=code 1=// 2=/* 3='' 4="" 5=``
+  const push = (inComment, s) => {
+    if (inComment) { comments += s; code += s.replace(/[^\n]/g, " "); }
+    else { code += s; comments += s.replace(/[^\n]/g, " "); }
+  };
   while (i < src.length) {
     const c = src[i];
     const n = src[i + 1];
     if (state === 0) {
-      if (c === "/" && n === "/") { state = 1; out += "  "; i += 2; continue; }
-      if (c === "/" && n === "*") { state = 2; out += "  "; i += 2; continue; }
-      if (c === "'") { state = 3; out += c; i += 1; continue; }
-      if (c === '"') { state = 4; out += c; i += 1; continue; }
-      if (c === "`") { state = 5; out += c; i += 1; continue; }
-      out += c; i += 1; continue;
+      if (c === "/" && n === "/") { state = 1; push(true, "//"); i += 2; continue; }
+      if (c === "/" && n === "*") { state = 2; push(true, "/*"); i += 2; continue; }
+      if (c === "'") { state = 3; push(false, c); i += 1; continue; }
+      if (c === '"') { state = 4; push(false, c); i += 1; continue; }
+      if (c === "`") { state = 5; push(false, c); i += 1; continue; }
+      push(false, c); i += 1; continue;
     }
-    if (state === 1) { if (c === "\n") { state = 0; out += "\n"; } else out += " "; i += 1; continue; }
+    if (state === 1) { if (c === "\n") { state = 0; push(false, "\n"); } else push(true, c); i += 1; continue; }
     if (state === 2) {
-      if (c === "*" && n === "/") { state = 0; out += "  "; i += 2; continue; }
-      out += c === "\n" ? "\n" : " "; i += 1; continue;
+      if (c === "*" && n === "/") { state = 0; push(true, "*/"); i += 2; continue; }
+      if (c === "\n") { push(false, "\n"); i += 1; continue; }
+      push(true, c); i += 1; continue;
     }
-    if (c === "\\") { out += src.slice(i, i + 2); i += 2; continue; } // 字符串里的转义整对吞
-    out += c;
+    // ⚠ **`'` / `"` 串遇换行必须复位**（2026-08-16 修，此前是真 bug 不是取舍）：
+    //   本机器不认识**正则字面量**，于是 `/putAll\(\s*["']…["']/g` 这种正则里的引号
+    //   会被当成串的开头。JS 的 `'`/`"` 串本来就不许跨行（跨行要转义），故在换行处复位
+    //   是**更正确**的语义，同时把这类误判的破坏面从「整个文件后半段」压到「这一行」。
+    //   实测：不复位时本文件的注释视图只剩 63.4%，后 2/3 被整段吞掉而门照样报绿。
+    //   反引号模板串**不复位** —— 它本来就合法跨行，复位会把真模板串切碎。
+    if (c === "\n" && (state === 3 || state === 4)) { state = 0; push(false, "\n"); i += 1; continue; }
+    if (c === "\\") { push(false, src.slice(i, i + 2)); i += 2; continue; } // 字符串里的转义整对吞
+    push(false, c);
     if ((state === 3 && c === "'") || (state === 4 && c === '"') || (state === 5 && c === "`")) state = 0;
     i += 1;
   }
-  return out;
+  return { code, comments };
 }
 
 /**
@@ -570,6 +619,201 @@ export function runStaleFactMark(mark, readSource) {
       : `溯源记号赌的是 ${mark.file} 里 /${mark.pattern}/ ${mark.op}${mark.n}，**现算 ${got}** —— ` +
         `上游变了而屏上那句话没变，它现在正在对用户说谎`,
   };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 3.6 · 门自述层（STALE-9/10 · WO-STALE-REGEX-BLIND）—— **门必须先扫自己**
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// ── 修的是什么盲区（2026-08-16 实测，逐条有 file:line）────────────────────────
+// 本门的扫描范围是 `SCAN_ROOT`（`apps/frontend-shell/src`）与 `srcRoots()`
+// （`apps/<pkg>/src` + `packages/<pkg>/src`）。**`scripts/` 一个字都不扫** ——
+// 于是本门**看不见自己**，而它自己的文件头与《做不到的部分》里写满了
+// 「今天全仓 N 条 / 实测命中 N 行」这类**自称现状的计数**：正是本门存在的理由那一族。
+// 当天有 6 个数字已经变假（`@stale-fact` 生产记号「0 条」实为 11 条、
+// 基线赌注「6 条」实为 0 条、CONFIRMED-STALE「两条」实为 0 条、
+// 注释命中「147 行」实为 63 行、字面量命中「14 行」实为 13 行），而门 RC=0 报绿。
+//
+// 形态（CLAUDE.md 铁律 0.6 句式）：
+//   **「我用『门报 RC=0』当作『仓里没有过期声明』的证据，而前者并不度量后者 ——
+//     门的扫描范围里压根没有它自己那份自述。」**
+// 这与本门自己的诚实边界第 12 条（「不碰后端注释与 docs/」）**不是同一件事**：
+// 那一条是**主动划定**的取舍，而「扫不到自己」是**没人想到过**的洞 ——
+// 一道会说谎的门，没有资格说别人说谎。
+//
+// ── 两条判据（**互补**，缺一就只堵住一半）──────────────────────────────────────
+//  ⑨ `STALE-9 · 门自述赌注失守`（**永不豁免**，同 STALE-6）
+//     记号语法（与 `@stale-fact` 同族，区别只在赌的对象；下面这行整段裹在反引号里，
+//     因为它是**语法说明不是赌注** —— 门认这条规则，见 `SELF_MARK_MENTION`）：
+//         `@stale-self <口径名> <op><n>`        op ∈ == != >= <= > <
+//     `@stale-fact` 赌的是「某个文件里某条正则的匹配数」；
+//     `@stale-self` 赌的是「**本门这一次运行现算出来的某个口径**」——
+//     像「注释里命中多少行」这种**跨文件聚合值**，没有任何单文件正则表达得了它，
+//     故必须由门把自己算出来的数摆出来让人下注。口径名认不出来 ⇒ 同样判负
+//     （作者以为自己挂了赌注，其实赌的是一个不存在的东西）。
+//
+//  ⑩ `STALE-10 · 门自述的现状计数无赌注`
+//     只咬**现状口吻**的计数（`今天 / 今日 / 现在 / 当前 / 实测 / 现算` + 数字 + 量词）。
+//     **按语法上下文排除史料，不开文件白名单**（白名单迟早被例外吃光，上下文规则对新写的段落照样生效）：
+//     同一声明单元里带 ISO 日期戳（`2026-08-08`）的，读作「那天测的」= 史料，
+//     它的保质期已经写在脸上，本层放行（这类段落是本仓刻意保留的错账，见文件头）。
+//     不带日期戳却用现状口吻报数的，就是在断言**此刻** —— 必须挂赌注。
+//
+// ── 为什么不是「把 scripts/ 整个加进 SCAN_ROOT」──────────────────────────────
+// 全仓 82 个门脚本每一个都写满「实测」，一加就是几百条存量 ⇒ 只能拿基线买绿，
+// 而买绿正是本门要治的病。故本层**只对门自己那份自述**开，判据是「谁在下判断谁先受审」。
+// 覆盖面就这么大，不粉饰：见文末《做不到的部分》第 13 条。
+
+/**
+ * 门自述赌注。刻意与 `STALE_FACT_MARK` **分开一个记号**而不是复用：
+ * 两者赌的东西不是一回事（文件里的正则计数 vs 门现算的聚合口径），
+ * 混成一个记号，`runStaleFactMark` 就得去猜第一个实参是路径还是口径名 —— 猜错就是静默放行。
+ */
+const STALE_SELF_MARK = /@stale-self\s+([a-zA-Z][A-Za-z0-9.]*)\s*(==|!=|>=|<=|>|<)\s*(\d+)/g;
+/**
+ * **提及 ≠ 写下赌注**（判据同 `MARK_MENTION`，但窗口刻意更宽一点）：
+ * 反引号里整段都算举例/术语（`` `@stale-self <口径名> <op><n>` `` 这种语法说明），
+ * 不算一条挂坏了的赌注。真要下注就写在注释正文里，不加反引号 ——
+ * 这条规则会写进报错文案，作者一看就知道该怎么改。
+ * 等长替换（不删）：`extractSelfMarks` 要拿 `m.index` 数行号，删一段后面全漂。
+ *
+ * ⚠ **反引号一律写成 `\x60`，绝不在正则字面量里放裸反引号**（2026-08-16 当场踩到并被机器抓出）：
+ *   `splitCodeAndComments` 是个不认识**正则字面量**的状态机，它只认 `'` `"` 和反引号三种串。
+ *   本条第一版写成含 **3 个**裸反引号的正则字面量 ⇒ 状态机进了模板串态且再也没出来，
+ *   **从这一行往下整个文件都被判成"代码"**，注释视图当场空掉 —— 而门照样 RC=0，
+ *   因为前面那两条赌注恰好在这一行**之前**，抽得到，`self.marks < 1` 的下限也就没喊。
+ *   形态（铁律 0.6 句式）：**「我用『赌注抽到了 2 条』当作『注释视图是完整的』的证据，
+ *   而前者并不度量后者。」** 对策是下面 `commentViewCoverage` 那道**覆盖率**下限：
+ *   它比对「原文里长得像注释的行」与「注释视图真留下的行」，被吞就当场喊工具坏了。
+ */
+const SELF_MARK_MENTION = new RegExp("\\x60@stale-self[^\\x60\\n]*\\x60", "g");
+
+/** 现状口吻的计数断言。**史料**（同单元带 ISO 日期戳）由调用方按语法上下文排除。 */
+const SELF_STATE_CLAIM = /(?:今天|今日|现在|当前|实测|现算)[^。；\n]{0,48}?(?:\*\*)?\d+(?:\*\*)?\s*(?:条|处|个|类|种|行|张)/;
+
+/** 门自述赌注的抽取（**纯函数** —— 金丝雀直接喂它，与自扫描共用这同一份实现）。 */
+export function extractSelfMarks(text) {
+  const masked = text.replace(SELF_MARK_MENTION, (m) => " ".repeat(m.length));
+  const marks = [];
+  for (const m of masked.matchAll(STALE_SELF_MARK)) {
+    marks.push({ metric: m[1], op: m[2], n: Number(m[3]), line: masked.slice(0, m.index).split("\n").length });
+  }
+  const attempts = [...masked.matchAll(/@stale-self/g)];
+  return { marks, malformed: attempts.length - marks.length, malformedLines: attempts.map((r) => masked.slice(0, r.index).split("\n").length) };
+}
+
+/**
+ * 跑一条门自述赌注 —— **与 `runStaleFactMark` 共用同一张 `OP_FN`**（另抄一份比较表就是装饰品）。
+ * @param {{metric:string, op:string, n:number}} mark
+ * @param {Record<string, number>} live  本次运行**现算**出来的口径表
+ */
+export function runStaleSelfMark(mark, live) {
+  if (!(mark.metric in live)) {
+    // 判负而不是判「工具坏了」：口径名打错 = 这条赌注**从来没被执行过**，
+    // 与「记号指向的来源文件不在了」是同一族（作者以为挂了赌注，其实一条都没跑）。
+    return {
+      ok: false,
+      got: null,
+      reason:
+        `门自述赌注里的口径名不认识：\`${mark.metric}\` —— 这条赌注从来没被执行过。` +
+        `可用口径：${Object.keys(live).sort().join(" · ")}`,
+    };
+  }
+  const got = live[mark.metric];
+  const fn = OP_FN[mark.op];
+  if (fn === undefined) return { ok: false, got, reason: `门自述赌注里的比较符不认识：${mark.op}` };
+  return {
+    ok: fn(got, mark.n),
+    got,
+    reason: fn(got, mark.n)
+      ? ""
+      : `门自述赌的是 \`${mark.metric}\` ${mark.op}${mark.n}，**本次现算 ${got}** —— ` +
+        `口径变了而门的自述没变：这道门自己正在说一句过时的话`,
+  };
+}
+
+/**
+ * 把一段自述切成**句** —— ⑩ 的作用域单位。
+ *
+ * ⚠ **为什么必须切到句，不能停在"单元"**（2026-08-16 变异反证 M4 当场抖出来的洞）：
+ *   一个块注释就是**一个单元**，四十行里只要**任何一处**出现过 ISO 日期，
+ *   整块四十行的现状计数就全被当成史料放行。实测：往《做不到的部分》里注入一句
+ *   「本门今天守着 42 条链路」（无日期无赌注），门 **RC=0 照样报绿** ——
+ *   因为同块的第 3 条里写着 2026-08-08。
+ *   形态（铁律 0.6 句式）：**「我用『这一块里有日期』当作『这句话有保质期』的证据，
+ *   而前者并不度量后者。」** 与本文件早就记过的边界 #5（单元切大了会把邻居的日期算成自己的）
+ *   是同一个病 —— 那条边界当时只是"记着"，没有机制，于是它照样发生了。
+ *
+ * 切法（**无窗口**，只认真正的句读）：
+ *   · 在 `。` `；` 处断句；
+ *   · **空注释行**断段（`*` 或 `//` 后什么都没有）；
+ *   · **软换行不断**（中文注释里一句话折两行是常态，按行切会把日期与计数生生劈开）。
+ * 判据落在句读上而不是行数上，是因为「窗宽一改结论就变，等于把判据交给运气」——
+ * 这条戒律本文件另外两处（主语必须同行 · 记号贴不贴着）已经付过学费。
+ */
+export function selfSentences(text) {
+  const out = [];
+  let cur = "";
+  for (const raw of text.split("\n")) {
+    const body = raw.replace(/^\s*(?:\/\/|\*)?[ \t]?/, "");
+    if (body.trim() === "") {
+      if (cur.trim()) out.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += body;
+    let i = cur.search(/[。；]/);
+    while (i !== -1) {
+      out.push(cur.slice(0, i + 1));
+      cur = cur.slice(i + 1);
+      i = cur.search(/[。；]/);
+    }
+  }
+  if (cur.trim()) out.push(cur);
+  return out;
+}
+
+/**
+ * ⑨⑩ 判据本体（**纯函数** —— 金丝雀直接喂它，与自扫描共用这同一份实现）。
+ *
+ * @param {string} text     声明单元原文
+ * @param {string} markText 可挂记号的范围（本单元 + 紧贴其上的连续注释块）
+ * @param {Record<string, number>} live 本次现算口径表
+ */
+export function judgeSelfUnit(text, markText, live) {
+  const out = [];
+  const { marks, malformed } = extractSelfMarks(markText);
+  if (malformed > 0) {
+    out.push({
+      code: "STALE-9",
+      detail:
+        `有 ${malformed} 处 \`@stale-self\` 语法不完整 —— 作者以为自己挂了赌注，其实门一条都没跑。` +
+        "语法：@stale-self <口径名> <op><n>（举例请整段放进反引号，门会当作术语提及放行）",
+    });
+  }
+  for (const m of marks) {
+    const r = runStaleSelfMark(m, live);
+    if (!r.ok) out.push({ code: "STALE-9", detail: r.reason });
+  }
+  // ── ⑩ 逐**句**判：证据（日期戳 / 赌注）必须与那个计数**同句** ────────────────
+  // 作用域刻意做成对称的：日期与赌注都只在**它自己那一句**里算数。
+  // 放宽任何一边，都会退回 M4 抖出来的那个洞 ——「四十行里有一处日期/一条赌注，
+  // 整块的现状计数就全免检」。判据是句读，不是行数窗。
+  for (const s of selfSentences(text)) {
+    if (!SELF_STATE_CLAIM.test(s)) continue;
+    if (DATE_PATTERNS.some((re) => re.test(s))) continue; // 同句带日期 ⇒ 史料，保质期写在脸上
+    if (extractSelfMarks(s).marks.length > 0) continue; // 同句带赌注 ⇒ 机器每次现算复核
+    out.push({
+      code: "STALE-10",
+      detail:
+        `门的自述里这一句用**现状口吻**报了一个计数，却**同句**既无日期戳也无赌注：「${s.trim().slice(0, 70)}」 —— ` +
+        "没有保质期、也没有机器复核，上游一变这句话就变成一道**会说谎的门**。" +
+        "修法：① 若说的是史料 ⇒ 在**这一句里**补实测日期（YYYY-MM-DD）；" +
+        "② 若说的是此刻 ⇒ 在**这一句里**挂 @stale-self <口径名> <op><n>，把它赌的口径写下来。" +
+        "（证据写在四十行外的另一条里不算 —— 那正是本层变异反证 M4 抓出来的洞。）",
+    });
+  }
+  return out;
 }
 
 /** ⑦ 改名声明：仓里唯一能被机器读出的「这两个名字是同一个东西」的证据。 */
@@ -978,6 +1222,123 @@ function markSweepCanary() {
   return bad;
 }
 
+/**
+ * ⑨⑩ **门自述层**的金丝雀 + **变异反证**（跑 `judgeSelfUnit` / `extractSelfMarks` 本体）。
+ *
+ * ⚠ **变异反证与主判据共用同一份实现，一个字都不另抄** —— 抄一份就是装饰品：
+ *   改主正则时反证拿旧的去测、照样绿（本仓 2026-08-08 实测抓到过这种装饰品）。
+ *   故此处**不写任何正则**，只喂样例给 `judgeSelfUnit`，用它的返回码判对错。
+ *
+ * 变异反证喂的是「故意写过时的自述」，两类各一条：
+ *   · 赌注失守（数字与现算不符）⇒ 必须 STALE-9；
+ *   · 现状口吻报数、无日期无赌注 ⇒ 必须 STALE-10。
+ * 再配上必**不**咬那一组（赌注同句相符 / 软换行 / 带日期的史料 / 反引号举例 / 无计数散文），
+ * 证明它不是「见数字就红」的噪声门。样例表见 `SELF_MUST_BITE` / `SELF_MUST_NOT_BITE`。
+ */
+const SELF_CANARY_LIVE = { "canary.alpha": 11, "canary.beta": 0 };
+
+/**
+ * 必咬（门自述层）。**提到模块级、不藏在函数里**：末行那句「N 必咬 + M 必不咬」
+ * 要**现算**这两个数 —— 把条数写死进文案，正是本单在治的那个病。
+ */
+const SELF_MUST_BITE = [
+  {
+    name: "⑨变异反证·赌注失守：自述写 0 条，而现算 11 条",
+    text: " * 写在源码里的记号，今天全仓 0 条（@stale-self canary.alpha ==0）。",
+    mark: " * 写在源码里的记号，今天全仓 0 条（@stale-self canary.alpha ==0）。",
+    expect: "STALE-9",
+  },
+  {
+    name: "⑩变异反证·现状口吻报数却既无日期也无赌注",
+    text: " * 后者今天有 6 条真数据在跑。",
+    mark: " * 后者今天有 6 条真数据在跑。",
+    expect: "STALE-10",
+  },
+  {
+    name: "⑨口径名打错 ⇒ 这条赌注从来没被执行过",
+    text: " * 今天 3 条（@stale-self canary.typo ==3）。",
+    mark: " * 今天 3 条（@stale-self canary.typo ==3）。",
+    expect: "STALE-9",
+  },
+  {
+    name: "⑨语法不完整 ⇒ 作者以为挂了赌注其实没挂",
+    text: " * 今天 3 条。",
+    mark: " * 今天 3 条。 @stale-self 大概三条吧",
+    expect: "STALE-9",
+  },
+  {
+    // M4 抖出来的洞：证据落在**同一块的另一条**里，不算数
+    name: "⑩证据不同句：块里别处有日期与赌注，但这一句自己什么都没有",
+    text: " * 3. 2026-08-08 那天实测到 6 例（@stale-self canary.alpha ==11）。\n *\n * 16. 本门今天守着 42 条链路。",
+    mark: " * 3. 2026-08-08 那天实测到 6 例（@stale-self canary.alpha ==11）。\n *\n * 16. 本门今天守着 42 条链路。",
+    expect: "STALE-10",
+  },
+];
+
+/** 必**不**咬（门自述层）。咬了就是噪声门 —— 噪声一多，白名单一长，门就死了。 */
+const SELF_MUST_NOT_BITE = [
+  // ⚠ 终态形式是**赌注与那个数同句**（就像 @stale-fact 要求记号贴着那条字面量）：
+  //   写在四十行外的另一条里不算数，那正是 M4 抖出来的洞。
+  { name: "赌注与计数同句 ⇒ 放行（这就是本层要的终态）", text: " * 今天全仓 11 条（@stale-self canary.alpha ==11）。", mark: " * 今天全仓 11 条（@stale-self canary.alpha ==11）。" },
+  { name: "软换行不断句：赌注折到下一行仍算同句 ⇒ 放行", text: " * 今天全仓 11 条\n * （@stale-self canary.alpha ==11）。", mark: " * 今天全仓 11 条\n * （@stale-self canary.alpha ==11）。" },
+  { name: "带 ISO 日期戳的史料 ⇒ 放行（保质期写在脸上，本仓刻意保留的错账）", text: " * 2026-08-08 一天之内实测到 6 例同一个病。", mark: " * 2026-08-08 一天之内实测到 6 例同一个病。" },
+  { name: "语法举例整段放进反引号 ⇒ 术语提及，不是坏赌注", text: " * 语法说明。", mark: " * 语法：`@stale-self <口径名> <op><n>`，由门现算比对。" },
+  { name: "没有计数的普通说明 ⇒ 放行", text: " * 本层只对门自己那份自述开。", mark: " * 本层只对门自己那份自述开。" },
+];
+
+function selfClaimCanary() {
+  const bad = [];
+  const LIVE = SELF_CANARY_LIVE;
+  for (const c of SELF_MUST_BITE) {
+    const codes = judgeSelfUnit(c.text, c.mark, LIVE).map((v) => v.code);
+    if (!codes.includes(c.expect)) bad.push(`门自述必咬样例「${c.name}」没被咬（期望 ${c.expect}，实得 ${codes.join(",") || "无"}）`);
+  }
+  for (const c of SELF_MUST_NOT_BITE) {
+    const codes = judgeSelfUnit(c.text, c.mark, LIVE).map((v) => v.code);
+    if (codes.length > 0) bad.push(`门自述必不咬样例「${c.name}」被误咬（${codes.join(",")}）—— 噪声一多白名单就长，门就死了`);
+  }
+  // 行号守恒：报出的红要让人找得到那条赌注（剔除提及是等长替换，不是删除）
+  const probe = ["行1", "说明：语法 `@stale-self canary.alpha ==11` 只是举例。", "行3 @stale-self canary.alpha ==11"].join("\n");
+  const ex = extractSelfMarks(probe);
+  if (ex.marks.length !== 1 || ex.marks[0].line !== 3) {
+    bad.push(`⑨行号守恒：真赌注应在第 3 行且只抽到 1 条，实得 ${ex.marks.length} 条 / 行 ${ex.marks[0]?.line ?? "无"}`);
+  }
+  if (ex.malformed !== 0) bad.push(`⑨反引号举例被误判成坏赌注（malformed=${ex.malformed}）—— 门开始惩罚写文档的人`);
+  bad.push(...splitViewCanary());
+  return bad;
+}
+
+/**
+ * **两个视图互补**的金丝雀（跑 `stripCommentsKeepLines` / `stripCodeKeepComments` 本体）。
+ *
+ * 这一条是 ⑨⑩ 的地基：`comments` 视图一坏，本层要么什么都扫不到（报「门的自述没问题」= 假绿），
+ * 要么把自己的实现全咬一遍（噪声淹掉真病灶）。两种坏法方向相反，故**双向**都验。
+ */
+function splitViewCanary() {
+  const bad = [];
+  const probe = 'const a = "字面量里的话"; // 注释里的话\n/* 块注释里的话 */\nconst re = /@x/;\n';
+  const code = stripCommentsKeepLines(probe);
+  const comm = stripCodeKeepComments(probe);
+  if (code.length !== probe.length || comm.length !== probe.length) {
+    bad.push(`⑨视图长度不守恒（code=${code.length} comments=${comm.length} 原文=${probe.length}）—— 偏移一漂，报出的 file:line 全是错的`);
+  }
+  if (code.split("\n").length !== probe.split("\n").length || comm.split("\n").length !== probe.split("\n").length) {
+    bad.push("⑨视图行数不守恒 —— 报出来的 file:line 会全部漂掉");
+  }
+  if (!code.includes("字面量里的话")) bad.push("⑨code 视图把字面量也剥了 —— ⑤ 那一层等于没开");
+  if (code.includes("注释里的话") || code.includes("块注释里的话")) bad.push("⑨code 视图没剥掉注释 —— ⑤ 会把注释当屏上文案");
+  if (!comm.includes("注释里的话") || !comm.includes("块注释里的话")) bad.push("⑨comments 视图漏了注释 —— ⑨⑩ 这一层会报「门的自述没问题」，那是假绿");
+  if (comm.includes("字面量里的话") || comm.includes("@x")) bad.push("⑨comments 视图把代码也留下了 —— 门会把自己的实现咬成噪声，真病灶淹在里面");
+  // 逐字节互补：同一位置至多一边是非空白（换行两边都留）
+  for (let i = 0; i < probe.length; i++) {
+    const a = code[i];
+    const b = comm[i];
+    if (a === "\n" && b === "\n") continue;
+    if (a !== " " && b !== " ") { bad.push(`⑨两视图在偏移 ${i} 同时非空白（'${a}'/'${b}'）—— 不互补就说明状态机分叉了`); break; }
+  }
+  return bad;
+}
+
 function selftest(facts, scanStats) {
   const blind = [];
   for (const c of MUST_BITE) {
@@ -997,7 +1358,7 @@ function selftest(facts, scanStats) {
     const codes = judgeOnscreen(c.text, c.mark, { readSource: canaryReadSource }).map((v) => v.code);
     if (codes.length > 0) blind.push(`屏上必不咬样例「${c.name}」被误咬（${codes.join(",")}）`);
   }
-  blind.push(...renameJudgeCanary(), ...viewTitleJudgeCanary(), ...featureKeySlotCanary(), ...markSweepCanary());
+  blind.push(...renameJudgeCanary(), ...viewTitleJudgeCanary(), ...featureKeySlotCanary(), ...markSweepCanary(), ...selfClaimCanary());
   // 基线写入器的四向金丝雀（**跑 buildBaselineDoc 本体**）—— 不过 ⇒ `--update` 会静默吞掉人手挂账
   {
     const c = baselineDocCanary();
@@ -1081,8 +1442,11 @@ function scanOnscreen(root, facts) {
   const violations = [];
   let files = 0;
   let literalHits = 0;
+  // 同一批判据在**注释**里的命中数 —— 只作口径统计（这一层刻意不判注释，见 ⑤ 的说明）。
+  // 它是「为什么只扫屏上字」这个取舍的**唯一证据**，故必须现算，不许写死在注释里当传说。
+  let commentHits = 0;
   const scanDir = join(root, SCAN_ROOT);
-  if (!existsSync(scanDir)) return { violations, files, literalHits, missing: true };
+  if (!existsSync(scanDir)) return { violations, files, literalHits, commentHits, missing: true };
   for (const f of walk(scanDir)) {
     files += 1;
     const rel = relative(root, f);
@@ -1091,6 +1455,12 @@ function scanOnscreen(root, facts) {
     const codeLines = stripCommentsKeepLines(raw).split("\n");
     const owner = blockCommentRanges(codeLines);
     const seen = new Set();
+    for (let i = 0; i < rawLines.length; i++) {
+      // 「这一行的注释部分」= 原文命中而剥注释后不命中 —— 靠剥注释器行数守恒才成立
+      const hitRaw = ENUM_ASSERTIONS.some((re) => re.test(rawLines[i])) || NEGATIVE_ASSERTIONS.some((re) => re.test(rawLines[i]));
+      const hitCode = ENUM_ASSERTIONS.some((re) => re.test(codeLines[i] ?? "")) || NEGATIVE_ASSERTIONS.some((re) => re.test(codeLines[i] ?? ""));
+      if (hitRaw && !hitCode) commentHits += 1;
+    }
     for (let i = 0; i < codeLines.length; i++) {
       const l = codeLines[i];
       if (!ENUM_ASSERTIONS.some((re) => re.test(l)) && !NEGATIVE_ASSERTIONS.some((re) => re.test(l))) continue;
@@ -1115,7 +1485,76 @@ function scanOnscreen(root, facts) {
       }
     }
   }
-  return { violations, files, literalHits, missing: false };
+  return { violations, files, literalHits, commentHits, missing: false };
+}
+
+/**
+ * ── ⑨⑩ · **门扫自己**（WO-STALE-REGEX-BLIND 补）──────────────────────────────────
+ *
+ * 单元切分与记号作用域**完全复用** `unitRange` / `markScopeRange` / `blockCommentRanges`
+ * （另写一套切分器 = 两套判据两个结论，迟早对不上）。唯一不同的是：本层扫的是**注释原文**，
+ * 不剥注释 —— 门的自述本来就写在注释里，剥掉就什么都不剩了。
+ *
+ * `missing: true` 走 RC=2 而不是 RC=1：读不到自己的源码 = 门坏了，不是仓库有问题。
+ */
+function scanSelf(root, live) {
+  const violations = [];
+  const p = join(root, SELF_SCAN_FILE);
+  if (!existsSync(p)) return { violations, marks: 0, missing: true };
+  const raw = readFileSync(p, "utf8");
+  // **只看注释那半边**（语法上下文排除，不是文件白名单）：代码里的正则/错误文案/金丝雀样例
+  // 是本机制的**实现**，不是门的自述。行号在两个视图里逐字节一致，故 file:line 仍指向原文。
+  const rawLines = raw.split("\n");
+  const lines = stripCodeKeepComments(raw).split("\n");
+  const owner = blockCommentRanges(lines);
+  const seen = new Set();
+  for (let i = 0; i < lines.length; i++) {
+    if (!SELF_STATE_CLAIM.test(lines[i]) && !/@stale-self/.test(lines[i])) continue;
+    const [a, b] = unitRange(lines, i, owner);
+    const rk = `${a}:${b}`;
+    if (seen.has(rk)) continue;
+    seen.add(rk);
+    const text = lines.slice(a, b + 1).join("\n");
+    const [ma, mb] = markScopeRange(lines, a, b);
+    const markText = lines.slice(ma, mb + 1).join("\n");
+    for (const v of judgeSelfUnit(text, markText, live)) {
+      violations.push({
+        file: SELF_SCAN_FILE,
+        line: a + 1,
+        endLine: b + 1,
+        code: v.code,
+        detail: v.detail,
+        key: unitKey(SELF_SCAN_FILE, text),
+        sample: (rawLines[i] ?? "").trim().slice(0, 120), // 打印**原文**那一行，人才认得出改哪儿
+      });
+    }
+  }
+  // 赌注计数同样只数注释里的（代码里那些是实现，数进来就成了「自己给自己发的通行证」）
+  return { violations, marks: extractSelfMarks(lines.join("\n")).marks.length, coverage: commentViewCoverage(rawLines, lines), missing: false };
+}
+
+/**
+ * **注释视图覆盖率** —— 「状态机把后半个文件吞了」这一族的唯一自证（2026-08-16 建）。
+ *
+ * 判据：原文里**长得像注释**的行（`//` / ` * ` / `/*` 开头）里，注释视图真正留下内容的占比。
+ * 状态机若在某个正则字面量里进了串态出不来，从那一行起注释视图全空 ⇒ 占比断崖式下跌。
+ * 这个数**不度量代码质量**，只度量「我这次到底看没看见东西」——
+ * 跌破下限时必须报「工具坏了」（RC=2），**不许**报「门的自述没问题」。
+ *
+ * 为什么不用「有没有抽到赌注」当判据：本次实测证明它不管用 ——
+ * 被吞的是文件后半段，而赌注恰好有两条在前半段，抽得到，于是下限一声不吭。
+ * 判据必须落在**被吞的那一段**上，不是落在「我手里有没有东西」上。
+ */
+function commentViewCoverage(rawLines, commentLines) {
+  const looksComment = (s) => /^\s*(\/\/|\*\s|\*$|\/\*)/.test(s);
+  let want = 0;
+  let got = 0;
+  for (let i = 0; i < rawLines.length; i++) {
+    if (!looksComment(rawLines[i])) continue;
+    want += 1;
+    if ((commentLines[i] ?? "").trim().length > 0) got += 1;
+  }
+  return { want, got, ratio: want === 0 ? 0 : got / want };
 }
 
 /**
@@ -1270,7 +1709,7 @@ function runBaselineFactChecks(exemptions, readSource) {
  * ⚠ **只对 STALE-6 去重**（第一版栽在这儿，当场被门自己的松弛检测抖出来）：
  *   第一版对所有码按 `file|code|detail` 去重，而 STALE-5 的 `detail` 是**由 enumHit/negHit 两个布尔
  *   拼出来的固定句式** —— 同一个文件里两处不同位置的断言会得到**逐字节相同**的 detail，
- *   于是被当成"同一件事"合并掉：实测 11 条屏上违规被压成 9 条，基线里 3 条豁免当场"松弛"。
+ *   于是被当成"同一件事"合并掉：**2026-08-15 实测** 11 条屏上违规被压成 9 条，基线里 3 条豁免当场"松弛"。
  *   形态（铁律 0.6 句式）：**「我用『两条报告的文字一样』当作『它们是同一条违规』的证据，
  *   而前者并不度量后者」** —— 文字一样只说明句式是模板，不说明位置是同一处。
  *   STALE-6 不同：它的 detail 里带着**这条赌注自己的 file/pattern/op/n/现算值**，
@@ -1310,12 +1749,14 @@ function main() {
   const selftestOnly = argv.includes("--selftest");
   const res = selftestOnly ? { violations: [], files: 999, keywordHits: 999, missing: false } : scan(REPO_ROOT, facts);
   if (res.missing) {
-    console.error(`⛔ 门自己瞎了：扫描根 ${SCAN_ROOT} 不存在 —— 这不是"代码干净"，是门没扫到东西。`);
-    process.exit(1);
+    // RC=**2**：扫描根不在 = 本门这次什么都没扫，属「工具坏了」。
+    // 曾经写的是 exit(1)，与「仓库真有违规」撞同一个码 —— 读的人分不出「代码有问题」
+    // 还是「门没跑起来」，而两者的处置**方向相反**（前者去改代码，后者去修门）。
+    toolBroken(new Error(`扫描根 ${SCAN_ROOT} 不存在`), "扫描根缺失");
   }
 
   // ── ⑤⑥⑦⑧ 屏上事实层 ────────────────────────────────────────────────────────
-  const onscreen = selftestOnly ? { violations: [], files: 999, literalHits: 99, missing: false } : scanOnscreen(REPO_ROOT, facts);
+  const onscreen = selftestOnly ? { violations: [], files: 999, literalHits: 99, commentHits: 99, missing: false } : scanOnscreen(REPO_ROOT, facts);
   const truth = selftestOnly ? { decls: [{}], literals: new Array(999), registry: new Map(new Array(40).fill(0).map((_, i) => [`s${i}`, []])), files: 999 } : collectTruthSources(REPO_ROOT);
   const localeTitles = selftestOnly ? [] : collectLocaleTitles(REPO_ROOT);
   if (!selftestOnly && localeTitles === null) {
@@ -1336,40 +1777,89 @@ function main() {
         endLine: v.endLine ?? v.line,
       }));
 
+  // ── ⑨⑩ 门自述层：**门必须先扫自己** ────────────────────────────────────────
+  // 基线在这里就得读出来 —— 门自述里赌的口径有一半来自基线（赌注条数 / CONFIRMED-STALE 条数）。
+  // 读不出（文件缺失 / JSON 非法）会抛，由顶层 try 归 RC=2：那是「门坏了」，不是「代码坏了」。
+  const baseline = JSON.parse(readFileSync(join(REPO_ROOT, BASELINE_PATH), "utf8"));
+  /**
+   * **现算口径表** —— 每一个数都出自本次运行的真实测量，没有一个是写死的。
+   * 门自述里的 `@stale-self` 赌注就赌在这张表上；表里没有的口径名一律判负
+   * （赌一个不存在的东西 = 这条赌注从来没被执行过）。
+   */
+  const live = selftestOnly
+    ? { "selftest.stub": 1 }
+    : {
+        "scan.files": res.files,
+        "scan.keywordHits": res.keywordHits,
+        "scan.violations": res.violations.length,
+        "onscreen.literalHits": onscreen.literalHits,
+        "onscreen.commentHits": onscreen.commentHits,
+        "onscreen.violations": onscreenViolations.length,
+        "marks.production": markSweep.markCount,
+        "marks.scannedFiles": markSweep.files,
+        "truth.renameDecls": truth.decls.length,
+        "truth.viewSlugs": truth.registry.size,
+        "truth.literals": truth.literals.length,
+        "facts.materializedTypes": materializedTypes?.size ?? 0,
+        "baseline.exemptions": baseline.exemptions.length,
+        "baseline.onscreenExemptions": (baseline.onscreenExemptions ?? []).length,
+        "baseline.factChecks": (baseline.onscreenExemptions ?? []).reduce((n, e) => n + (e.factChecks ?? []).length, 0),
+        "baseline.confirmedStale": (baseline.onscreenExemptions ?? []).filter((e) => e.verdict === "CONFIRMED-STALE").length,
+        "baseline.unmarked": (baseline.onscreenExemptions ?? []).filter((e) => e.verdict === "UNMARKED").length,
+      };
+  const self = selftestOnly ? { violations: [], marks: 99, coverage: { want: 1, got: 1, ratio: 1 }, missing: false } : scanSelf(REPO_ROOT, live);
+  if (self.missing) toolBroken(new Error(`${SELF_SCAN_FILE} 读不到`), "门读不到自己的源码");
+
   const blind = selftest(facts, selftestOnly ? null : res);
   // 屏上事实层的**扫描规模**下限：与上面同源 —— 抽到 0 条 ⇒ 报「工具坏了」，不许报「屏上没有过时事实」
   if (!selftestOnly) {
     if (onscreen.files < 50) blind.push(`屏上层只扫到 ${onscreen.files} 个源文件（<50）—— 扫描根 ${SCAN_ROOT} 是不是没读到？`);
     if (onscreen.literalHits < 5) blind.push(`屏上层只抽到 ${onscreen.literalHits} 处字面量断言（<5）—— 剥注释器或断言正则坏了，不是屏上干净了`);
     if (truth.registry.size < 20) blind.push(`视图标题真相源只抽到 ${truth.registry.size} 个 slug（<20）—— ⑧ 这一层等于没开`);
-    // ⑥b 扫描规模下限：记号是**生产实例**（今日 11 条）。抽到 0 条 ⇒ 报「工具坏了」，
+    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==11
+    //    ⇒ 这个数不再是传说，它由本门每次现算并对账）。抽到 0 条 ⇒ 报「工具坏了」，
     //    **不许**报「全仓记号都通过」—— 那正是本门自己在治的那种「我没找到 ≠ 它不存在」。
     if (markSweep.files < 100) blind.push(`⑥b 记号扫描只走到 ${markSweep.files} 个源文件（<100）—— srcRoots 是不是没读到？`);
     if (markSweep.markCount < 5) blind.push(`⑥b 全仓只抽到 ${markSweep.markCount} 条 @stale-fact 记号（<5）—— 抽取器坏了，不是记号没人写了`);
     if (truth.decls.length < 1) blind.push("全仓一条**改名声明**都没抽到（<1）—— ⑦ 这一层等于没开（今日已知至少 1 条）");
     if (truth.literals.length < 1000) blind.push(`活字面量只抽到 ${truth.literals.length} 行（<1000）—— 剥注释器把字面量也剥了？⑦ 这一层等于没开`);
+    // ⑨ 自扫描规模下限：门自述里必须真有赌注在跑。抽到 0 条 ⇒ 报「工具坏了」，
+    //    **不许**报「门的自述没问题」—— 那正是本门自己在治的「我没找到 ≠ 它不存在」。
+    if (self.marks < 1) blind.push(`⑨ 门自述里一条 @stale-self 赌注都没抽到（${self.marks} < 1）—— 抽取器坏了，或者门的自述又变回了没人下注的散文`);
+    // ⑨ **注释视图覆盖率**下限：这一条才真正度量「后半个文件有没有被状态机吞掉」。
+    //    上面那条（赌注条数）实测**挡不住**这个坑 —— 被吞的段落里正好没有赌注时它一声不吭。
+    if (self.coverage.ratio < 0.9) {
+      blind.push(
+        `⑨ 注释视图只覆盖到 ${self.coverage.got}/${self.coverage.want} 行（${(self.coverage.ratio * 100).toFixed(1)}% < 90%）—— ` +
+          "splitCodeAndComments 多半在某个**正则字面量里的裸引号/裸反引号**上进了串态出不来，从那行起整段被当成代码。" +
+          "把该正则里的引号改成 \\x22 / \\x27 / \\x60 转义写法。**这不是「门的自述没问题」，是这次根本没看见后半个文件。**",
+      );
+    }
   }
   if (blind.length > 0) {
+    // RC=**2**，不是 1（本次改正）：金丝雀不中 = **门自己瞎了**，本次什么都没证明。
+    // 撞成 1 的后果是读的人分不出「仓库真有问题」（去改代码）与「门没跑起来」（去修门），
+    // 而这两条路的方向正好相反 —— 与 `docs/SOP-reviewer-claim-discipline.md` §3 的三分约定一致。
     console.error("⛔ 门自己瞎了（金丝雀未被咬 / 扫描规模异常）—— **不是代码干净**：");
     for (const b of blind) console.error(`   · ${b}`);
-    console.error("   修门，别改结论。");
-    process.exit(1);
+    console.error("   本次结论作废：**不许**读作「代码干净 / 无违规 / 通过」。修门，别改结论。RC=2");
+    process.exit(2);
   }
   if (selftestOnly) {
     console.log(
       `✅ 金丝雀：${MUST_BITE.length} 条必咬全部咬中，${MUST_NOT_BITE.length} 条必不咬全部放过，putAll 事实源 ${materializedTypes.size} 个类型；` +
-        `屏上层 ${ONSCREEN_MUST_BITE.length} 必咬 + ${ONSCREEN_MUST_NOT_BITE.length} 必不咬全中，⑦⑧ 判据金丝雀四向全过`,
+        `屏上层 ${ONSCREEN_MUST_BITE.length} 必咬 + ${ONSCREEN_MUST_NOT_BITE.length} 必不咬全中，⑦⑧ 判据金丝雀四向全过；` +
+        `⑨⑩ 门自述层变异反证 ${SELF_MUST_BITE.length} 必咬 + ${SELF_MUST_NOT_BITE.length} 必不咬全中`,
     );
     return;
   }
 
   if (argv.includes("--list")) {
-    console.log(JSON.stringify({ generated: new Date().toISOString().slice(0, 10), count: res.violations.length, violations: res.violations, onscreenCount: onscreenViolations.length, onscreen: onscreenViolations }, null, 2));
+    console.log(JSON.stringify({ generated: new Date().toISOString().slice(0, 10), count: res.violations.length, violations: res.violations, onscreenCount: onscreenViolations.length, onscreen: onscreenViolations, selfCount: self.violations.length, self: self.violations, live }, null, 2));
     return;
   }
 
   // ── 棘轮 ──────────────────────────────────────────────────────────────────
-  const baseline = JSON.parse(readFileSync(join(REPO_ROOT, BASELINE_PATH), "utf8"));
   const allowed = new Map(baseline.exemptions.map((e) => [e.key, e]));
   const fresh = res.violations.filter((v) => !allowed.has(v.key));
   const usedKeys = new Set(res.violations.map((v) => v.key));
@@ -1410,11 +1900,27 @@ function main() {
 
   console.log(`扫描：${res.files} 个源文件 · ${res.keywordHits} 处关键词命中 · ${res.violations.length} 条声明违规 · 豁免 ${baseline.exemptions.length} 条（上限 ${baseline.maxExemptions}）`);
   console.log(
-    `屏上层：${onscreen.literalHits} 处字面量断言 · ${truth.registry.size} 个视图 slug · ${truth.decls.length} 条改名声明 ` +
+    `屏上层：${onscreen.literalHits} 处字面量断言（注释里另有 ${onscreen.commentHits} 处·不判） · ${truth.registry.size} 个视图 slug · ${truth.decls.length} 条改名声明 ` +
       `⇒ ${onscreenViolations.length} 条屏上违规 · 豁免 ${onExempt.length} 条（上限 ${baseline.onscreenMax ?? "未设"}）`,
   );
+  console.log(`门自述层：${SELF_SCAN_FILE} 里 ${self.marks} 条 @stale-self 赌注对账 ${Object.keys(live).length} 个现算口径 ⇒ ${self.violations.length} 条违规（**永不豁免**）`);
 
   let bad = false;
+  // ── ⑨⑩ 门自述层：**没有棘轮、没有豁免段** ──────────────────────────────────
+  // 理由与 STALE-6 同源：一道正在说谎的门，没有任何理由值得买「暂时不红」。
+  // 给它开豁免 = 允许门保留一句假话，而本门的全部说服力就建立在「它自己不说假话」上。
+  if (self.violations.length > 0) {
+    bad = true;
+    console.error(`\n❌ 门自述违规 ${self.violations.length} 条（**这道门自己正在说过时的话**）：`);
+    for (const v of self.violations) {
+      console.error(`   ${v.file}:${v.line}-${v.endLine}  [${v.code}]`);
+      console.error(`      ${v.detail}`);
+      console.error(`      原文：${v.sample}`);
+    }
+    console.error("\n   修法：· STALE-9 ⇒ **把自述那句话改对**（现算值已逐条打印在上面），赌注保持挂着；");
+    console.error("         · STALE-10 ⇒ 史料补 ISO 日期戳；说此刻的挂 @stale-self <口径名> <op><n>。");
+    console.error("         **不许**加豁免段：谁在下判断谁先受审，这一层没有白名单。");
+  }
   if (fresh.length > 0) {
     bad = true;
     console.error(`\n❌ 新增「自称实测」声明违规 ${fresh.length} 条：`);
@@ -1507,19 +2013,21 @@ function main() {
   }
 
   if (bad) {
-    // 两层分开报账：哪一层红，处置完全不同（注释层去补日期，屏上层去改文案 / 收敛真相源）。
-    // 合成一句「未通过」会让人去改错的地方 —— 这正是本门自己在治的那种病。
+    // 三层分开报账：哪一层红，处置完全不同（注释层去补日期，屏上层去改文案 / 收敛真相源，
+    // 门自述层去改门自己那句话）。合成一句「未通过」会让人去改错的地方 —— 这正是本门自己在治的那种病。
     const legacyBad = fresh.length > 0 || stale.length > 0;
     const onscreenBad = onFresh.length > 0 || onSlack.length > 0;
     console.error(
       `\n❌ stale-claims:check 未通过 —— 注释层(STALE-1..4)：${legacyBad ? `红（新增 ${fresh.length} · 回弹 ${stale.length}）` : "绿"}` +
-        ` · 屏上层(STALE-5..8)：${onscreenBad ? `红（新增 ${onFresh.length} · 松弛 ${onSlack.length}）` : "绿"}`,
+        ` · 屏上层(STALE-5..8)：${onscreenBad ? `红（新增 ${onFresh.length} · 松弛 ${onSlack.length}）` : "绿"}` +
+        ` · 门自述层(STALE-9/10)：${self.violations.length > 0 ? `红（${self.violations.length} 条）` : "绿"}`,
     );
     process.exit(1);
   }
   console.log(
     `✅ stale-claims:check 通过（金丝雀 ${MUST_BITE.length}+${MUST_NOT_BITE.length} 条全中 · 无新增声明违规 · 豁免棘轮 ${baseline.exemptions.length}/${baseline.maxExemptions}` +
-      ` · 屏上层棘轮 ${onExempt.length}/${baseline.onscreenMax ?? "?"}，其中 ${confirmed.length} 条已确认过时待修）`,
+      ` · 屏上层棘轮 ${onExempt.length}/${baseline.onscreenMax ?? "?"}，其中 ${confirmed.length} 条已确认过时待修` +
+      ` · 门自述 ${self.marks} 条赌注全部现算相符）`,
   );
 }
 
@@ -1552,23 +2060,36 @@ try {
  *    保证判据本身对；切分错只影响个别条目，不影响判据。
  *
  * ── 屏上事实层（STALE-5..8）**做不到的部分** ────────────────────────────────
- * 6. **`@stale-fact` 记号今天在生产代码里是「接了线没数据」，不是「没接线」**（照 CLAUDE.md
- *    铁律 0.5 判据 #1 的三分法说清楚）：执行器 `runStaleFactMark` 有两个真调用方
- *    （`judgeOnscreen` 的记号路径 + `runBaselineFactChecks` 的基线赌注路径），**后者今天有 6 条真数据**
- *    （挂在 zh.ts:2163 / sandboxConsoleModel.ts:773 这两条 CONFIRMED-STALE 上，上游一变当场红）；
- *    而**前者、即写在源码里的 `@stale-fact` 记号，今天全仓 0 条** —— 因为 WO-ONSCREEN-STALE-FACTS
- *    的 🚦 范围边界禁改 `apps/**`。所以「屏上文案自带记号」这条路是**排练过（金丝雀 5 条必咬 + 3 条必不咬）
- *    但还没有生产实例**的状态，不许读作「已经在用」。补第一条生产记号归后续单。
+ * 6. **`@stale-fact` 记号两条路径的现状（照 CLAUDE.md 铁律 0.5 判据 #1 的三分法说清楚）**。
+ *    ⚠ **本条 2026-08-16 被本门自己的 ⑨ 层抓成过时，逐条改正 —— 原文两句话都是假的**：
+ *      · 原文写「写在源码里的 `@stale-fact` 记号今天全仓 0 条 …… 还没有生产实例，不许读作『已经在用』」。
+ *        **实为 11 条**，分布在 3 个文件（`agentcore/agent/navigation-slice.ts` ×3 ·
+ *        `frontend-shell/locales/zh.ts` ×2 · `frontend-shell/views/sim/sandboxConsoleModel.ts` ×6）。
+ *        WO-STALE-TEXT-SWEEP 当天就补上了生产实例，而这句自述留在原地 ——
+ *        **它把「已经在用」写成了「还没在用」，方向正好相反**。
+ *        赌注：@stale-self marks.production ==11
+ *      · 原文写「`runBaselineFactChecks` 那条今天有 6 条真数据，挂在两条 CONFIRMED-STALE 上」。
+ *        **实为 0 条赌注、0 条 CONFIRMED-STALE**（存量已被后续单改完，基线只剩
+ *        7 条 UNMARKED + 4 条 FALSE-POSITIVE）。
+ *        赌注：@stale-self baseline.factChecks ==0
+ *        赌注：@stale-self baseline.confirmedStale ==0
+ *    ⇒ 今天的真实分工是：**记号路径已在生产**（现算 11 条，@stale-self marks.production ==11）、
+ *      **基线赌注路径今天 0 条数据**（@stale-self baseline.factChecks ==0；属「接了线没数据」，
+ *      不是「没接线」——`runBaselineFactChecks` 仍被主流程无条件调用）。
+ *    ⇒ 复验命令：`node scripts/check-stale-claims.mjs`（末行直接打印这三个现算值）。
  * 7. **⑤ 只咬四种句式**（「只有…N 类」「共 N 种」「恰好 N 个」「一条都没有 / 没有任何一条 / 全仓 0 条」）。
  *    一句「locus 就那么几类」「基本没有」本门一个字都看不见 —— 它治的是**把数量词写死**这一族，
- *    不是全部过期文案。实测这四种句式在 `apps/frontend-shell/src` 的**字面量**里命中 14 处、
- *    在**注释**里命中 147 处，两个数量级的差别正是"只扫屏上"这个取舍的理由。
+ *    不是全部过期文案。**2026-08-16 实测**这四种句式在 `apps/frontend-shell/src` 的**字面量**里
+ *    命中 13 处、在**注释**里命中 63 处（原文写的是 14 / 147，两个数都已过期；量级差这个论点仍成立，
+ *    且已由 ⑤ 那一节的两条 `@stale-self` 赌注机器守住）——「注释侧远多于字面量侧」正是
+ *    "只扫屏上"这个取舍的理由。
  * 8. **⑤ 只判"有没有挂记号"，不判"记号挂得对不对"**。作者可以挂一条恒真的记号
  *    （`/./ >=0`）来蒙混过关。本门看不出来 —— 它逼出的是**赌注**，赌得认不认真归复审。
  *    （同 ①② 那条「日期只验有没有，不验对不对」的边界，是同一族。）
  * 9. **⑦ 只认被**声明**过的改名**。`前名「X」` 这类声明是仓里唯一能被机器读出的
  *    「A 和 B 是同一个东西」的证据；没写声明就改名的，机器无从知道两个字符串说的是一回事，
- *    本门一个字都不说。今日全仓只抽到 **1 条**改名声明 —— 覆盖面就这么大，不粉饰。
+ *    本门一个字都不说。全仓现在只抽到 **1 条**改名声明（@stale-self truth.renameDecls ==1）
+ *    —— 覆盖面就这么大，不粉饰；这一条一旦有人补了第二条改名声明，门会当场红，逼这句话跟着改。
  * 10. **⑧ 的 locale↔slug 桥只认 camelCase→kebab-case 的精确相等**。`quarter`（真 slug
  *    `quarterly-rolling`）、`geo`（真 slug `geo-map`）、`calib` 这类都对不上 ⇒ **一个字都不说**。
  *    宁可漏，不可诬：猜一个映射然后据此判人，比不判更坏。
@@ -1576,4 +2097,15 @@ try {
  *    该不该一致」这类跨概念问题 —— 那需要产品口径，不是机器判据。
  * 12. **本门不碰后端注释与 `docs/`**：⑤ 只扫 `apps/frontend-shell/src`（屏上文案的所在地），
  *    ⑦⑧ 扫 `apps/<pkg>/src` + `packages/<pkg>/src`（真相源的所在地），两者都不进 `docs/`。
+ *
+ * ── 门自述层（STALE-9/10）**做不到的部分** ──────────────────────────────────
+ * 13. **⑨⑩ 只扫这一个文件**（`SELF_SCAN_FILE`），不扫 `scripts/` 里另外那些门。
+ *    这是**取舍不是遗漏**：全仓门脚本每一个都写满「实测」，一次性全开只能拿基线买绿，
+ *    而买绿正是本门要治的病。判据是「谁在下判断谁先受审」—— 先把这道门自己管住，
+ *    再一道一道纳入（每纳入一道就得把它的存量自述真改对，不许进基线）。
+ * 14. **⑨ 只对账「本门自己现算得出来的口径」**。一句「另有 3 条记在某文档里」这类
+ *    指向外部的自述，本层没有口径可赌 ⇒ 只能靠 ⑩ 逼出一个日期戳，验不了真假。
+ * 15. **⑩ 靠「有没有 ISO 日期戳」区分史料与现状**，是启发式：
+ *    一句带着 2026-08-08 却在说今天的话，本层会当史料放行（同边界 #3）。
+ *    它逼出的是**保质期**，真实性仍归 ⑨ 的赌注 —— 想被真守住就别只写日期，写赌注。
  */

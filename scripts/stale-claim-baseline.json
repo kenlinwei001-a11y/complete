@@ -395,7 +395,7 @@
       "sample": "* 同样是手写守卫（本仓无 WIPLot 契约 schema，实测 0 命中）。"
     }
   ],
-  "onscreenNote": "① 本段是 STALE-5/7/8 的**存量棘轮**，与上面 exemptions 段（STALE-1..4）刻意分开两套水位：\n   合成一套就得把 ratchetHigh 调大，而「评审唯一必须拒绝的一行」就是把它调大。\n② 每条必须写 verdict：FALSE-POSITIVE（检测器粗粒度误报）或 CONFIRMED-STALE（确认过时、修文案归后续单）。\n   CONFIRMED-STALE 的每次跑都会被门**点名打印** —— 豁免只买「暂时不红」，不买「没人知道」。\n③ **STALE-6 永不豁免**：它是「现算不符」，一条正在对用户说谎的断言没有理由值得买暂时不红。\n④ 条目可挂 factChecks[{file,pattern,op,n,means}] —— 存量文案这一单不改，但把它赌的计数登记在案；\n   走的是与 @stale-fact 记号**同一个执行器**（runStaleFactMark），上游一变当场红。\n⑤ 棘轮**松弛**（基线条目今天一条都没命中）与回弹同样判红：基线高于实测 = 一份看不见的免检名额。",
+  "onscreenNote": "① 本段是 STALE-5/7/8 的**存量棘轮**，与上面 exemptions 段（STALE-1..4）刻意分开两套水位：\n   合成一套就得把 ratchetHigh 调大，而「评审唯一必须拒绝的一行」就是把它调大。\n② 每条必须写 verdict，**三选一**（与代码里的 ONSCREEN_VERDICTS 同源；处置完全不同，混成一类必修错地方）：\n   · FALSE-POSITIVE  检测器粗粒度误报 ⇒ 去修检测器\n   · UNMARKED        是真断言、今天没被证伪，只是还没挂 @stale-fact 记号 ⇒ 去补记号\n   · CONFIRMED-STALE 已复核、今天确认是假的，修文案归另一张单 ⇒ 去改屏上那句话\n   CONFIRMED-STALE 每次跑都会被门**点名打印** —— 豁免只买「暂时不红」，不买「没人知道」。\n   ⚠ 2026-08-16 订正：本段原文只列了两档（漏了 UNMARKED），而门早已按三档判 ——\n     基线自己的说明书跟代码分叉，读的人会照两档去写 verdict，然后被门打回。\n③ **STALE-6 永不豁免**：它是「现算不符」，一条正在对用户说谎的断言没有理由值得买暂时不红。\n④ 条目可挂 factChecks[{file,pattern,op,n,means}] —— 存量文案这一单不改，但把它赌的计数登记在案；\n   走的是与 @stale-fact 记号**同一个执行器**（runStaleFactMark），上游一变当场红。\n⑤ 棘轮**松弛**（基线条目今天一条都没命中）与回弹同样判红：基线高于实测 = 一份看不见的免检名额。\n⑥ 门自述层（STALE-9/10）**没有豁免段，也不会有**：一道正在说谎的门没有资格说别人说谎。",
   "generatedBy": "node scripts/check-stale-claims.mjs --update",
   "onscreenExemptions": [
     {
