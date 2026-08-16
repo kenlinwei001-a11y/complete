@@ -333,6 +333,28 @@
       "disposition": "GATES_CHAIN",
       "notes": "闭 G-DIST-STALE-READ（欠账 #161）：本仓 15 道门 import dist 之后讲的是**源码**的话，却只查 existsSync（构建过没有），从不查新鲜度（构建得够不够新）。dist 落后于 src 时它们会说出与源码**恰好相反**的结论且全绿——2026-08-10 一天之内真实误判 4 次，其中一次把「dist 过期」错报成源码缺陷（欠账 #155：不是源码缺陷，是我的诊断错了）。共享守卫 scripts/dist-freshness.mjs 已接进全部 15 道门（fail-closed：过期即退，**只报「请先 build」不给任何内容结论**）。本门守的是「保持接线」：明天新加一道读 dist 的门若不接守卫，机器先说话，不靠人记性。两处非照抄的接法：check-chain-closure.mjs 的**静态** import dist 必须改 await import（静态 import 提升到模块体最前，写在下面的守卫形同虚设）；check-dark-launch-integrity.mjs 区分「dist 缺→诚实降级」与「dist 过期→硬红」（过期比缺席更毒：A9 会报出并不存在的不一致，A2 会把刚加的 feature 判成悬空声明）。"
     },
+    "check-dsh-dormancy.mjs": {
+      "alias": "dsh-dormancy:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "docker-compose.yml",
+        "docker-compose.seed.yml",
+        "deploy/**",
+        "apps/agentcore/Dockerfile",
+        ".github/workflows/gates.yml",
+        "apps/agentcore/src/engine.ts",
+        "apps/agentcore/package.json",
+        "docs/DECISION-dsh-fusion.md"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7 · §8 G-DSH-DORMANT-UNGUARDED",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "docs/DECISION-dsh-fusion.md §5.1（七条真变异的红/绿输出原文逐条贴出）+ `node scripts/check-dsh-dormancy.mjs --selftest`（每次运行现跑三条变异 + 三条退出码路径）",
+        "note": "**七发真变异反证是在「已并入 POC 代码的树」上做的，不是在样例上**（git archive origin/claude/handoff-wo-dsh-poc-s1 展开成完整工作树后逐条改文件、跑门、还原）：① docker-compose.yml 给 agentcore 加 `- DSH_HARNESS=1` → RC=1，只红 [D1]，点名 `docker-compose.yml:118  DSH_HARNESS 被设为真值 1`；② 改成 `- DSH_HARNESS=${DSH_HARNESS:-1}`（**缺省即开**，最阴的一种）→ RC=1，只红 [D1]，`${DSH_HARNESS:-1} 缺省即开`；③ **反向对照** `${DSH_HARNESS:-0}`（显式关 = 加固休眠）→ **RC=0**，证明本门不是「见 DSH_HARNESS 就红」的哑门；④ 把 runner.ts 的静态 import 复制到白名单外 → RC=1，只红 [D2]；⑤ 把 engine.ts:497 的 `if (process.env.DSH_HARNESS === \"1\")` 换成 `if (true)` → RC=1，只红 [D3]「裸入口（动态 import 没有被 process.env.DSH_HARNESS 的判断包住）：apps/agentcore/src/engine.ts:498」；⑥ 加第二个入口（**哪怕也带判断**）→ RC=1，只红 [D3]「入口 2 处，只许 1 处」；⑦ 从目录外**静态** import ./dsh-runtime/index.js → RC=1，只红 [D3]「裸入口（**静态** import dsh-runtime）」。七发**全部红在对应那一条上、零误伤**（其余两条标签在输出里一次都不出现），逐条还原后复绿 RC=0。另有退出码三分机验（`--selftest` 每次现跑）：注入「读不到文件」⇒ RC=2 · 注入「金丝雀不中」⇒ RC=2 · 无注入 ⇒ RC=0；1 与 2 严格分开，撞码则读的人分不出「仓库真有问题」和「门没跑起来」。**建门过程中门自己被抖出两个自伤，均已修并各补金丝雀**（照铁律 0.6 记账，两个都是机器先说话）：(a) isDeployPath 第一版把 `apps/frontend-shell/src/env.ts` 算进部署面（正则 `/(^|\\.)env(\\.|$)/` 命中 `env.ts`），后果不是漏报是**范畴错误**——前端源码里任何一处 DSH_HARNESS 字样都会被报成「部署面开了 flag」；发现方式是 `--census` 打出 9 个文件而 `git ls-files` 数出来是 8 个；已改为「必须有字面的点把 env 隔开」并补 5 条归类器金丝雀（含反向：src/env.ts 必不咬）。(b) RE_STATIC 的前缀 `(?:^|[\\s;}])` 吃掉上一行换行 ⇒ 报出来的 file:line 整体偏 1 行（POC runner.ts:13 被报成 L12，门红了按行号点开是空行，读的人会以为门在瞎报）；**原有 22 条金丝雀一条都没抓到**，因为唯一相关的样例把 import 放在第 1 行、恰好走 `^` 分支——**共用实现只保证「测的是同一份逻辑」，不保证「测到了那条分支」**；已改为行号落在关键字上并补一条把 import 放在第 4 行的金丝雀。"
+      },
+      "notes": "闭 §8 G-DSH-DORMANT-UNGUARDED（机制侧）。守的命题 = **外部 agent 运行时 dsh（deepseek-harness）并进来之后必须保持休眠**，直到 docs/DECISION-dsh-fusion.md §3 三条前置条件逐条销账（A 真 provider 从没跑过 · B STALL_LOOP 护栏净减少 · C MCP serverName 是 root 级预约、与 tenant_id everywhere 直接冲突）。三条判据：D1 部署面不许开 flag（含 `${DSH_HARNESS:-1}` 缺省即开；显式设 0/false 不红）· D2 对 @deepseek-ai/… 的静态 import 只许出现在 apps/agentcore/src/dsh-runtime/ · D3 `import(\"./dsh-runtime/…\")` 至多 1 处且必须被 process.env.DSH_HARNESS 判断包住。28 条金丝雀与主逻辑共用同一份实现（scanDeployText/scanSourceText/isDeployPath），其中三条各钉一个真实会踩的坑：DSH_HARNESS_PROVIDER 前缀陷阱（POC engine.ts:509 真有这个变量）· `join(dir, \"node_modules/@deepseek-ai/…/bin.js\")` 字符串路径不是 import（POC runner.ts:60 真实形状，朴素 grep 会把它算成第 2 处静态 import，于是「休眠属实」被读成「已经扩散」，结论正好相反）· 行号必须落在 import 关键字上。扫描面下界自证：部署面枚举不到 docker-compose.yml、或源码面低于 200 文件（本仓实测 613）⇒ RC=2，不许报「部署面很干净」。**接线经过（两段，写下来免得下一个人以为账错了）**：本单第一版交付时 binding=NONE / disposition=WIRE —— 派单的范围边界禁改 package.json 与 scripts/gate.sh，于是造出的正是本仓有门在防的那个状态「已建未接线」。审核方复核时判定那是**派单范围划错**，当场放开这两处，本单随即补接：package.json 加别名 dsh-dormancy:check + 追加进 gates 串尾（gates 门数 55 → 56）。**scripts/gate.sh 一个字没改**，因为它对 gates 的调用是 run 'pnpm gates（${GATES_N} 条治理门）' pnpm gates，而 GATES_N 从 package.json **现算**（脚本自陈「出处唯一 = package.json 的 gates 脚本，这里只做投影」）—— 接 gates 串即自动进 gate.sh，改它反而会造出第二处真值。**pendingWireCount 棘轮的那格余量已退回**：接线前现算 14（基线 14，压线不越线），接线后现算 **13** —— 这个回落本身就是「接线真的生效了」的机器证据；binding 现算也从 NONE 变为 GATES_CHAIN（callers=package.json:gates）。**基线自始至终未上调。**诚实边界（不许读成「dsh 已被彻底关住」）：本门不解析 TypeScript（worktree 常无 node_modules），D2/D3 走剥注释 + 掩字符串的词法近似，故 D3 的「被判断包住」只证明结构上外层 if 条件里提到了该 env，不证明语义上真的关得住；本门只守静态面不守运行时（docker exec -e / k8s / systemd / CI secret 注入一律看不见）；packages/dsh-harness/ 今天没有 src/（闭包以 plugins/*.mjs + cordis.yml 存在、由 dsh 自己的 loader 按名字加载、不经我方 import），故不在 D2 扫描面内。"
+    },
     "check-dril-quality.mjs": {
       "alias": "dril-quality:check",
       "binding": "MANUAL",
