@@ -97,6 +97,30 @@ export interface BuiltInView {
    * 是把一个整体拆成了四个孤儿。挂 `sim.sandbox` 后，四者与主屏同生共死，语义才对。
    */
   requires?: string[];
+  /**
+   * **这一页是不是「推演页」**（WO-INFER-PAGE-SSOT · 闭 `G-GATE-ROSTER-HANDCOPIED` 的来源侧）。
+   *
+   * ── 为什么要这个字段（不是多此一举）───────────────────────────────────────────
+   * 「哪些页是推演页」此前**全仓没有任何注册册声明过**，各道门只能靠**代理指标**去猜：
+   * 「标题里有没有『推演』二字」「归在哪个导航组」。代理指标度量的是**写法**不是**语义** ——
+   * 于是 `plan-generate`（方案生成 / 规划建议）与 `sop-balance`（月度规划）这两页明明在跑
+   * 求解器、明明挂着反事实开关，却因为名字里没有「推演」二字而被四个枚举源一致判为
+   * **非**推演页；它们能进门的名单，靠的是有人**手抄**进 `check-edge-active-mounts.mjs` 的
+   * `PAGES` 数组。名单一手抄，新增的页就永远不在里面 ⇒ **永远绿**（本体 §8 `G-GATE-ROSTER-HANDCOPIED`）。
+   *
+   * ── 它与 `requires: ["sim.sandbox"]` 的分工（两件事，别混）─────────────────────
+   *  · `requires` 说的是**生死绑定**：沙盘关 → 我也不生效（五个沙盘子视图用它）。
+   *  · `sim` 说的是**语义归类**：我是一页独立的推演页，横向的推演类要求（反事实开关、
+   *    UX 判据表…）要把我算进去。沙盘子视图**不该**标 `sim` —— 它们已收编成沙盘一屏之内的
+   *    画布模式/图层/常驻栏，登记在 `ShellLayout.CONSOLIDATED_INTO_SANDBOX`（`via: workspace.views`）。
+   *
+   * ── 谁在读它 ─────────────────────────────────────────────────────────────────
+   * `scripts/lib/sim-page-roster.mjs` 的判据 R1（推演页名册的唯一实现），
+   * 由 `edge-active-mounts:check` 与 `sim-ux-criteria:check` 两道门共用。
+   * 同一支实现还带一条**交叉断言 C1**：标题/功能名里带「推演|沙盘」却**没标本字段** ⇒ 门当场红
+   * （漏标由机器先说话，不靠人想起来）。
+   */
+  sim?: boolean;
 }
 
 /**
@@ -109,14 +133,21 @@ export interface BuiltInView {
 export const BUILTIN_VIEWS: BuiltInView[] = [
   { key: "dash", title: "经营驾驶舱", renderer: "dashboard", featureKey: "view.dash", featureName: "驾驶舱", seed: true, bindings: { apiTags: ["dash"] } },
   { key: "graph", title: "本体图谱", renderer: "ontology-graph", featureKey: "view.ontology-graph", featureName: "本体图谱", seed: true, layout: {}, options: ONTOLOGY_BROWSER_OPTIONS },
-  { key: "risk", title: "产能推演", renderer: "risk-board", featureKey: "view.risk-board", featureName: "风险推演看板", seed: true, bindings: { intents: ["risk_*"], solverKeys: ["risk_timeline"], apiTags: ["risk-board"] } },
+  { key: "risk", title: "产能推演", renderer: "risk-board", featureKey: "view.risk-board", featureName: "风险推演看板", seed: true, sim: true, bindings: { intents: ["risk_*"], solverKeys: ["risk_timeline"], apiTags: ["risk-board"] } },
   { key: "order", title: "订单台账", renderer: "ledger", featureKey: "view.ledger", featureName: "订单台账", seed: true },
   { key: "plan-audit", title: "规划体检", renderer: "plan-audit", featureKey: "view.plan-audit", featureName: "规划体检", seed: true, bindings: { intents: ["plan_audit_*"], solverKeys: ["plan_audit"], apiTags: ["plan-audit"] } },
-  { key: "plan-generate", title: "方案生成", renderer: "plan-generate", featureKey: "view.plan-generate", featureName: "规划建议", seed: true, bindings: { intents: ["plan_generate_*"], solverKeys: ["plan_generate"], apiTags: ["plan-generate"] } },
-  { key: "project-sim", title: "项目推演", renderer: "project-sim", featureKey: "view.project-sim", featureName: "项目推演", seed: true, bindings: { solverKeys: ["capacity_forecast"], intents: ["capacity_*"] } },
-  { key: "sop-balance", title: "月度规划", renderer: "sop-balance", featureKey: "view.sop-balance", featureName: "月度规划", seed: true, bindings: { intents: ["sop_*"], solverKeys: ["sop_balance"], apiTags: ["sop"] } },
+  // ⚠ `plan-generate` / `sop-balance` 是 `sim: true` 这个字段**存在的理由**：两页的标题与功能名
+  //   里都**没有**「推演」二字（方案生成/规划建议、月度规划），于是四个枚举源一致把它们判为
+  //   非推演页；而它们真的在跑求解器、真的挂着反事实开关 `EdgeActivePanel`。此前它们能被门检到，
+  //   靠的是有人把键**手抄**进 `check-edge-active-mounts.mjs` 的 PAGES 数组（`G-GATE-ROSTER-HANDCOPIED`）。
+  //   现在改成在这里**显式声明**：手抄的名单没了，漏标由交叉断言 C1 当场报红。
+  //   同批**未标**的近邻反例 `plan-audit`（规划体检）：它答的是「这份规划有什么问题」（诊断），
+  //   不是「改一个假设会怎样」（推演），与「归因与风险」组同一条判据 —— 也确实没挂反事实开关。
+  { key: "plan-generate", title: "方案生成", renderer: "plan-generate", featureKey: "view.plan-generate", featureName: "规划建议", seed: true, sim: true, bindings: { intents: ["plan_generate_*"], solverKeys: ["plan_generate"], apiTags: ["plan-generate"] } },
+  { key: "project-sim", title: "项目推演", renderer: "project-sim", featureKey: "view.project-sim", featureName: "项目推演", seed: true, sim: true, bindings: { solverKeys: ["capacity_forecast"], intents: ["capacity_*"] } },
+  { key: "sop-balance", title: "月度规划", renderer: "sop-balance", featureKey: "view.sop-balance", featureName: "月度规划", seed: true, sim: true, bindings: { intents: ["sop_*"], solverKeys: ["sop_balance"], apiTags: ["sop"] } },
   // 全局项目推演（portfolio 求解器·全订单×全基地×时间联合最优）：renderer/solver 均已就绪，此前 scenarioSeed 漏接致内存态重启后 404。
-  { key: "global-sim", title: "全局项目推演", renderer: "global-sim", featureKey: "view.global-sim", featureName: "全局项目推演", seed: true, layout: { solverKey: "portfolio" }, bindings: { solverKeys: ["portfolio"] } },
+  { key: "global-sim", title: "全局项目推演", renderer: "global-sim", featureKey: "view.global-sim", featureName: "全局项目推演", seed: true, sim: true, layout: { solverKey: "portfolio" }, bindings: { solverKeys: ["portfolio"] } },
   // ── 推演沙盘四子视图（WO-SANDBOX-VIEW-MOUNT · 补最后一英里）───────────────────
   //
   // 病灶（实测坐实，非推测）：这四个视图**组件写了、测试有、渲染器也注册了**
