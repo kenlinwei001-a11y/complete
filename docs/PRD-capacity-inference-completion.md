@@ -53,7 +53,7 @@
 - **兼容**：无 scope 时 = 现全局行为（不回归）；R6 确定性/R13 provenance/勾稽 Σ子+residual=父 全保持。
 
 ### F1 · 每基地前瞻产能推演（+30/60/90d·新）
-- **数据多已就绪**：`capacity_forecast`（已有·per-base P50/P90/gap/bottleneck·我实测 gap 89520/常州 tightness 91）+ `Order.due`（未来订单排期）+ `DemandSegment.demandWanPerYearP50`（销售预测·万套/年）。
+- **数据多已就绪**：`capacity_forecast`（已有·per-base P50/P90/gap/bottleneck·我实测 gap 89520/常州 tightness 91）+ `Order.due`（未来订单排期）+ `DemandSegment.p50`（销售预测）。
 - **新增**：per-base 前瞻投影——对 horizon∈{30,60,90} 各算：可用产能（capacity_forecast）vs 在产订单占用（WorkOrder/OPEN Order 到期铺开）vs 未来订单（Order.due 落在窗内）vs 销售预测（DemandSegment.p50 摊到窗）→ 四线对比 + 缺口/富余标记。
 - 可作 `capacity_forecast` 的 `horizonDays` 多值扩展，或新 `base_capacity_outlook` 求解器（读同源对象·R6）。前端每基地卡片加前瞻子面板（三档 tab）。
 

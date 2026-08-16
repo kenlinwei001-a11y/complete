@@ -123,6 +123,14 @@
 
 1. **⚠️ 审批留痕里记着一个假的产能数**（`G-LEVER-SNAPSHOT-UNIT-LIE`）：张力峰值（0–100）被塞进 `snapshot.capWanP50`（万套/窗口），而该快照整个进 `plan_change` 的 **ActionDraft payload**。门守不了「塞进这个名字的值是不是那个量纲」，屏上不显示所以肉眼也看不见
 2. **设备 OEE 口径分歧**（**两个 dev 独立发现**）：铭牌 `oeeA×oeeP×oeeQ` vs 时序聚合 `oee_current`，两套给出不同的「最差设备」
+   —— ✅ **取证已完成（WO-OEE-SSOT · 2026-08-16）**，裁决材料见 **`docs/DECISION-oee-ssot.md`**（一页纸：三选项逐文件逐测试连坐面 + 推荐 + 第三条路）。
+   **⚠️ 本条原文写「两套」——实测是三套**：铭牌 `oeeA×oeeP×oeeQ` / 时序 `oee_current` / **IoT 日事实表 `EquipmentOEE.oee`（5460 行·自带 a/p/q·已接物理拓扑屏）**。
+   demo 真实入参（`seed=42, scale="S"`，780 台）算出**三台不同的最差设备**（`changzhou-formation-winding-E2` 0.769233 / `jinhua-slitting-winding-E1` 0.710781 / `xinyang-formation-coating-E1` 0.776429），
+   两两「最差 10 台」名单重叠 **0/10 · 0/10 · 1/10**，`|时序−铭牌|` 逐台平均 **0.0814**。**不是精度差异，是指向不同的设备。**
+   本体断点已登 **`G-OEE-DUAL-TRUTH`**（§8·🔴 未修）。**推荐选「③ 事实表为权威、①② 从它派生」**（论据见裁决材料 §4–5）。
+   **不等裁决已落地的那一半**：新门 `oee-ssot:check`（`scripts/check-oee-ssot.mjs`）守「同屏 ≥2 套口径必须标明哪个数是哪一套」，
+   `--selftest` 已起子进程实测 RC=0/1/2 四条路径；全仓现扫出唯一存量违规 `views/capacity/factorOntology.ts`（真缺陷·已按棘轮挂账）。
+   **⚠️ 仓主只需裁一件事**：A 维持现状（②）/ B 铭牌为权威（①）/ C 事实表为权威（③）。裁完即可派后续 WO。
 3. **删不删导航里的「决策推演」**（E2）
 4. **两页合不合**（E5）
 5. **后两个改名**（E6）
