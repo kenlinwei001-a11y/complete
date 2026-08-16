@@ -1080,3 +1080,16 @@
   font: 12px var(--font-mono);
   color: var(--txt);
 }
+
+/**
+ * 「⬇ 导出」按钮与它的 `?` 记号并排（判据 U9 在第一层的全部落点）。
+ * 刻意**不设 font-size**：字号层级数是 `ui-first-layer:check` 的 D3 棘轮判据（R-UI-2 字号 ≤3 级），
+ * 这里凭空多一级会让本文件的读数变差，而按钮字号本就该跟随 `.btn.sm`。
+ * 零字面色值 —— 颜色全部来自既有的 `btn` 类（暗/亮两套主题各自成立）。
+ */
+.exportWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+}

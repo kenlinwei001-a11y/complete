@@ -4,6 +4,10 @@ import { api } from "@/api/apiClient";
 import { invokeSolver } from "@/api/endpoints";
 import type { ViewConfigVM } from "@/api/types";
 import zh from "@/locales/zh";
+// WO-HARNESS-UX-GAP-1 · 判据 U7（同屏问答知道自己在哪一页）+ U9（导出物自带出处与生成时间）。
+// 本页走 App.tsx 的专用 route，不经 ViewPage ⇒ 必须自己调 usePageView（理由见 shared.tsx 该函数注释）。
+import { ExportReportButton, usePageView } from "../sim/shared";
+import type { ProvenanceReport } from "../sim/exportProvenance";
 import {
   bottleneckCandidates,
   concentrationCandidates,
@@ -45,6 +49,7 @@ async function fetchCrTypes(): Promise<CrType[]> {
 }
 
 export default function CleanroomAttrView(_props: { view?: ViewConfigVM }) {
+  usePageView("cleanroom-attr");
   const [tab, setTab] = useState<TabKey>("bottleneck");
   const { data: types, isLoading, isError } = useQuery({ queryKey: ["a", "object-types", "cleanroom"], queryFn: fetchCrTypes, retry: false });
 
@@ -187,10 +192,40 @@ function BottleneckResult({ cand }: { cand: BottleneckCandidate }) {
   if (isError || !data) return <SolverError testid="cr-bn-error" error={error} />;
 
   const downMap = new Map(data.downgraded.map((d) => [d.resourceId, d]));
+  /**
+   * 判据 U9 · 导出物内容。`basis` 里必须带**倒推参数**：本页的求解器入参不是写死的，
+   * 而是从真对象类型结构倒推出来的（`deriveArgs.ts`）——不写清用了哪组参数，
+   * 拿到文档的人复算时会用另一组，得出不同的数还以为是我们算错了。
+   */
+  const buildReport = (): ProvenanceReport => ({
+    docName: "净室归因 · 共享瓶颈",
+    basis: [
+      "求解器 shared_bottleneck（同输入同输出）",
+      `倒推参数：${Object.entries(cand.args).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : String(v)}`).join("，")}`,
+      "参数由真对象类型结构倒推，非写死；换主类型即换参数即重解",
+      data.summary,
+    ],
+    sections: [
+      {
+        heading: "共享瓶颈",
+        head: ["资源", "需求", "产能", "超出", "争用方数", "被降级对象"],
+        rows: data.bottlenecks.map((b) => [
+          b.resourceId,
+          fmt(b.demand),
+          fmt(b.capacity),
+          fmt(b.demand - b.capacity),
+          b.sharerCount,
+          downMap.get(b.resourceId) ? `${downMap.get(b.resourceId)!.objectId}（${downMap.get(b.resourceId)!.reason}）` : "—",
+        ]),
+      },
+    ],
+  });
+
   return (
     <div className="panel" data-testid="cr-bn-result">
       <div className="section-title">
         共享瓶颈 · <span className="mono">{cand.args.sharedByType}</span> 争用 <span className="mono">{cand.args.resourceType}</span>
+        <ExportReportButton pageKey="cleanroom-bottleneck" build={buildReport} />
       </div>
       <div data-testid="cr-bn-summary" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>{data.summary}</div>
       {data.bottlenecks.length === 0 ? (
@@ -281,9 +316,30 @@ function ConcentrationResult({ cand }: { cand: ConcentrationCandidate }) {
   if (isError || !data) return <SolverError testid="cr-cc-error" error={error} />;
 
   const top = data.topExposure;
+  /** 判据 U9 · 导出物内容（`basis` 带多跳链：复算时得沿同一条链走，否则根不同）。 */
+  const buildReport = (): ProvenanceReport => ({
+    docName: "净室归因 · 隐性集中度",
+    basis: [
+      "求解器 concentration_risk（多跳反向聚合·同输入同输出）",
+      `依赖链：${cand.primary}${cand.args.path.map((h) => ` —${h.viaField}→ ${h.toType}`).join("")}（终端根 ${cand.rootType}）`,
+      "链由真对象类型的 ref 结构倒推，非写死",
+      data.summary,
+    ],
+    sections: [
+      {
+        heading: "隐性集中单点",
+        head: ["终端根", "被几个起点隐性依赖", "依赖方"],
+        rows: data.concentrations.map((c) => [c.rootId, c.count, c.dependents.join(" ")]),
+      },
+    ],
+  });
+
   return (
     <div className="panel" data-testid="cr-cc-result">
-      <div className="section-title">隐性集中单点 · 终端根 <span className="mono">{cand.rootType}</span></div>
+      <div className="section-title">
+        隐性集中单点 · 终端根 <span className="mono">{cand.rootType}</span>
+        <ExportReportButton pageKey="cleanroom-concentration" build={buildReport} />
+      </div>
       <div data-testid="cr-cc-summary" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>{data.summary}</div>
       {!top || data.concentrations.length === 0 ? (
         <div className="empty-state" data-testid="cr-cc-empty" style={{ padding: 20, fontSize: 12 }}>
@@ -368,9 +424,42 @@ function MarginResult({ cand }: { cand: MarginCandidate }) {
   if (isLoading) return <div className="empty-state">{zh.common.loading}</div>;
   if (isError || !data) return <SolverError testid="cr-ma-error" error={error} />;
 
+  /** 判据 U9 · 导出物内容（`basis` 带成本字段清单：拆成本项用了哪几个字段，决定倒挂结论）。 */
+  const buildReport = (): ProvenanceReport => ({
+    docName: "净室归因 · 毛利倒挂",
+    basis: [
+      "求解器 margin_attribution（逐目标拆成本项·同输入同输出）",
+      `倒推参数：${Object.entries(cand.args).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : String(v)}`).join("，")}`,
+      "营收/成本字段由真对象类型倒推，非写死",
+      data.summary,
+    ],
+    sections: [
+      {
+        heading: "根因主驱动成本项",
+        head: ["主驱动成本项", "拉穿目标数", "累计金额"],
+        rows: data.rootDrivers.map((d) => [d.label, d.invertedCount, fmt(d.totalValue)]),
+      },
+      {
+        heading: "倒挂目标明细",
+        head: ["目标", "营收", "成本", "毛利", "毛利率(%)", "主驱动"],
+        rows: data.inverted.map((r) => [
+          r.id,
+          fmt(r.revenue),
+          fmt(r.totalCost),
+          fmt(r.margin),
+          fmt(r.marginRate * 100),
+          r.topDriver?.label ?? "—",
+        ]),
+      },
+    ],
+  });
+
   return (
     <div className="panel" data-testid="cr-ma-result">
-      <div className="section-title">毛利倒挂根因 · 目标 <span className="mono">{cand.args.targetType}</span></div>
+      <div className="section-title">
+        毛利倒挂根因 · 目标 <span className="mono">{cand.args.targetType}</span>
+        <ExportReportButton pageKey="cleanroom-margin" build={buildReport} />
+      </div>
       <div data-testid="cr-ma-summary" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>{data.summary}</div>
       {data.invertedCount === 0 ? (
         <div className="empty-state" data-testid="cr-ma-empty" style={{ padding: 20, fontSize: 12 }}>
