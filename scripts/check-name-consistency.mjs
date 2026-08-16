@@ -735,7 +735,12 @@ function main() {
   if (!hit("risk", "featureName-vs-navTitle")) {
     toolBroken(
       "正向金丝雀不中：`risk` 的功能名「风险推演看板」与视图标题「产能推演」是已知必中样例，本次没抓到。",
-      "⇒ 报「工具坏了」，**不许**报「仓库很干净」。",
+      "⇒ 报「工具坏了」，**不许**报「仓库很干净」。\n" +
+        "    两种可能，先分清再动手：\n" +
+        "      (a) 解析器坏了 —— 修门；\n" +
+        "      (b) 仓主**有意**把 risk 的名字改一致了（裁决落地）—— 那就把本金丝雀换成另一处\n" +
+        "          已知分歧当样例（候选见 docs/AUDIT-name-consistency.md），同步删 DECLARED 对应条目\n" +
+        "          并把 MAX_DECLARED 调小。**不许**直接删掉金丝雀了事 —— 门就此失去自证能力。",
     );
   }
   const riskRow = rows.find((r) => r.key === "risk");
