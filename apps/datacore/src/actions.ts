@@ -403,7 +403,14 @@ export const BUILTIN_ACTION_EFFECTS: Record<string, ActionEffectSpec> = {
     ],
     undeclared: [
       "执行末尾 runDerivations() 会重算全租户派生属性（etaDay 等），二阶写入的对象/属性集由 DerivationSpec 决定，静态声明枚举不了",
-      "非 global-sim 的 plan_change 在 app.ts domainExecutor 里没有分支 → 落 MockActionExecutor，审批通过后实际零回写（上列三条 writes 均带 source==='global-sim' 条件，已把这一情况标出）",
+      // ⚠️ 2026-08-16 就地回写（WO-ACTION-NOOP-EXEC 实测）：原文写「非 global-sim 的 plan_change …
+      //    没有分支 → 落 MockActionExecutor，审批通过后实际零回写」——**两处都已不成立**，
+      //    而一条**在说谎的回写声明**比没有声明更危险（影响分析会照它答「批准这个不会动任何真值」）。
+      "非 global-sim 的 plan_change **按 payload 形态二分**（上列三条 writes 均带 source==='global-sim' 条件，只覆盖 global-sim 那一支）：" +
+        "① 带 `levers[{objectType,objectId,prop,value}]` 者（风险看板「采纳风险处置方案」）**真写本体属性真值** —— " +
+        "但**目标 objectType/propKey 由 payload 在运行期决定**，本 schema 的 `objectType` 要求具体 typeKey，静态声明表达不了，故只能记在此处（保持 coverage=PARTIAL，绝不以 COMPLETE 假装完整）；" +
+        "② 不带 levers 者（order-chain 结论 / coordinate_capacity / global-sim-scenario KPI 快照 / sim_sandbox 结论）**零回写且诚实失败**（`EXECUTOR_NOT_IMPLEMENTED` + 具体缺口），" +
+        "**不再**返回 MO 形态假单号（兜底早已从 MockActionExecutor 换成 UnwiredActionExecutor）。见本体 §8 G-PLAN-CHANGE-NO-LEVER。",
     ],
   },
 };

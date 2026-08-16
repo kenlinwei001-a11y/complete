@@ -269,10 +269,18 @@ async function makeSopVersionAtExecMeeting(t: TestApp): Promise<string> {
 const KNOWN_WIRED_CANARIES = ["对象数据变更", "采纳产能保障方案"];
 
 /**
- * 实测golden：**跑出来的**、当前真正落在兜底线上的型。
+ * 实测 golden：**跑出来的**、当前真正落在兜底线上的探针。
  * 改这个数组前必须先跑本用例看新输出，**不许照着源码推算**（那正是本条要根治的病）。
+ *
+ * ⚠️ 这个数组的第一版我写的是 `["采纳经营方案"]` —— **推算的，实跑当场证伪**：
+ *    机器数出来是 **2** 个。差的那个是 `plan_change`，因为它是**条件成员**：
+ *    同一个 key 承载六条生产者，本普查喂的是「无杠杆」那一形态（`{versionId, reason}`），
+ *    它确实落兜底线；而**带 levers 的那一形态真写真值**——由本文件「★ 主判据」用例
+ *    回读 `Equipment.oee_current` 逐字段咬住。
+ *    ⇒ **「落兜底线」是 (型 × 载荷形态) 的属性，不是型的属性。** 这正是 `G-PLAN-CHANGE-NO-LEVER`
+ *      要表达的东西，也是本仓「N 型没接」这个说法每轮都错的根源：它把一个二维事实压成了一维。
  */
-const EXPECTED_FALLBACK = ["采纳经营方案"];
+const EXPECTED_FALLBACK = ["plan_change", "采纳经营方案"];
 
 describe("兜底线普查 · 「还剩几型审批通过后什么都不写」由机器数，不由人推算", () => {
   it("逐型真推过 domainExecutor，落兜底线者必须恰好等于登记在案的那一组", async () => {
@@ -313,6 +321,9 @@ describe("兜底线普查 · 「还剩几型审批通过后什么都不写」由
       `\n[兜底线普查] 已注册 ${registered.length} 型｜落兜底线 ${fallback.length} 型：${fallback.join("、") || "（无）"}\n` +
         realBranch.map((r) => `   进真分支：${r.key} → ${r.outcome}`).join("\n"),
     );
+
+    // 每一型都必须被数到（普查覆盖率自证：漏数一型就等于替它作了「已接线」的默认判断）。
+    expect(fallback.length + realBranch.length, "普查覆盖数 ≠ 已注册数 ⇒ 有型被漏数").toBe(registered.length);
 
     // ★ 金丝雀先说话：确知已接的型若也被数进兜底线，是手法坏了，不是代码没接。
     for (const c of KNOWN_WIRED_CANARIES) {
