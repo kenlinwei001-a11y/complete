@@ -6,6 +6,10 @@ import { toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import { InfoPopover } from "@/components/InfoPopover";
 import EdgeActivePanel from "./sim/EdgeActivePanel";
+// WO-HARNESS-UX-GAP-1 · 判据 U7（同屏问答知道自己在哪一页）+ U9（导出物自带出处与生成时间）。
+// 本页走 App.tsx 的专用 route，不经 ViewPage ⇒ 必须自己调 usePageView（理由见 shared.tsx 该函数注释）。
+import { ExportReportButton, usePageView } from "./sim/shared";
+import type { ProvenanceReport } from "./sim/exportProvenance";
 
 /**
  * 优化推演页（renderer=optimize-whatif·闭 G-12 前端半）——把 `optimize_whatif`（轨B·增量3）从"一个 Δ 数字"
@@ -159,6 +163,7 @@ function perturbTargets(baseline: Record<string, unknown>): { value: string; lab
 }
 
 export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
+  usePageView("optimize-whatif");
   const initialFamily = (view?.layout as { family?: string } | undefined)?.family ?? "facility_location";
   const [family, setFamily] = useState(initialFamily);
   const [baseline, setBaseline] = useState<Record<string, unknown>>(() => clone(FAMILY_EXAMPLE[initialFamily] ?? {}));
@@ -253,11 +258,47 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
     }
   };
 
+  /**
+   * 判据 U9 · 导出物内容 —— 只搬屏上已有的值，本函数不做算术。
+   * `basis` 必须同时写清 **模板族 · seed · 扰动清单**：优化解对这三样都敏感，
+   * 少写一样，拿到文档的人复算出来的最优方案就可能与附件里的不是同一个。
+   */
+  const buildReport = (): ProvenanceReport => {
+    const perturbLines = (submitted?.perturbs ?? perturbs).map((p) => `${p.target}→${p.value}`);
+    return {
+      docName: "优化推演",
+      basis: [
+        `求解器 optimize_whatif · 模板族 ${submitted?.family ?? family}（seed 42·同输入同输出）`,
+        perturbLines.length ? `扰动：${perturbLines.join("，")}` : "扰动：（未设）",
+        submitted ? "下表为已提交求解的那一版入参对应的解" : "尚未点「推演」——下表只反映输入，不含求解结果",
+        data ? `可行性 ${data.feasible ? "可行" : "不可行"}${data.status ? ` · 状态 ${data.status}` : ""}` : "本次无求解结果",
+      ],
+      sections: [
+        {
+          heading: "目标值对照",
+          head: ["项", "值"],
+          rows: data
+            ? [
+                ["基线目标值", fmt(data.baselineObjective)],
+                ["扰动后目标值", fmt(data.perturbedObjective)],
+                ["差值", fmt(data.deltaObjective)],
+                ["冲突约束", data.conflictConstraints.join(" ") || "—"],
+                ["说明", data.explanation || "—"],
+              ]
+            : [],
+        },
+      ],
+    };
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }} data-testid="optimize-whatif">
       {/* 标题 + family 选择 */}
       <div className="panel">
-        <div className="section-title">优化推演 · {activeFamily?.label ?? family}</div>
+        <div className="section-title">
+          优化推演 · {activeFamily?.label ?? family}
+          <ExportReportButton pageKey="optimize-whatif" build={buildReport} />
+        </div>
         <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.6 }}>{activeFamily?.hint}——改一个参数，看最优决策怎么变。</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }} data-testid="ow-family-list">
           {families.map((f) => (

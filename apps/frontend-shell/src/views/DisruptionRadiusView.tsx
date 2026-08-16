@@ -4,6 +4,10 @@ import { fetchObjectTypes, searchObjects, invokeSolver } from "@/api/endpoints";
 import { LayeredDag, type DagNodeDef, type DagEdgeDef } from "@/components/Dag/LayeredDag";
 import type { ViewConfigVM } from "@/api/types";
 import zh from "@/locales/zh";
+// WO-HARNESS-UX-GAP-1 · 判据 U7（同屏问答知道自己在哪一页）+ U9（导出物自带出处与生成时间）。
+// 本页走 App.tsx 的专用 route，不经 ViewPage ⇒ 必须自己调 usePageView（理由见 shared.tsx 该函数注释）。
+import { ExportReportButton, usePageView } from "./sim/shared";
+import type { ProvenanceReport } from "./sim/exportProvenance";
 
 /**
  * 断供影响半径投影页（renderer=disruption-radius）——把 `supplier_disruption_radius` 求解器
@@ -92,6 +96,7 @@ interface RadiusOutput {
 const CHIP_CAP = 12;
 
 export default function DisruptionRadiusView(_props: { view?: ViewConfigVM }) {
+  usePageView("disruption-radius");
   const typesQ = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes });
   const types = (typesQ.data ?? []) as unknown as OTypeLite[];
 
@@ -138,6 +143,37 @@ export default function DisruptionRadiusView(_props: { view?: ViewConfigVM }) {
     retry: false,
   });
 
+  /**
+   * 判据 U9 · 导出物内容 —— 只搬屏上已有的值，本函数不做算术。
+   * 逐层扇出的每一行都带 `via 字段`：那是本体 ref 图上真实存在的那条边，
+   * 拿到文档的人照它能在本体里把同一条链再走一遍（这正是「可复算」的含义）。
+   */
+  const buildReport = (): ProvenanceReport => {
+    const out = runQ.data;
+    return {
+      docName: "断供影响半径",
+      basis: [
+        "求解器 supplier_disruption_radius（反向多跳逐层扇出·同输入同输出）",
+        `断供来源：${displayOf.get(rootType) ?? rootType} / ${rootId || "（未选）"}`,
+        `反向扇出链由本体 ref 图确定性倒推：${[displayOf.get(rootType) ?? rootType, ...layers.map((l) => `${displayOf.get(l.type) ?? l.type}（via ${l.viaField}）`)].join(" → ")}`,
+        out ? `影响半径 ${out.radius} 层 · 波及对象 ${out.totalAffected} 个` : "本次尚无求解结果",
+      ],
+      sections: [
+        {
+          heading: "逐层受冲击对象",
+          head: ["层", "对象类型", "引用字段", "受冲击数", "对象标识"],
+          rows: (out?.layers ?? []).map((l, i) => [
+            `L${i + 1}`,
+            displayOf.get(l.type) ?? l.type,
+            l.viaField,
+            l.count,
+            l.ids.join(" ") || "—",
+          ]),
+        },
+      ],
+    };
+  };
+
   if (typesQ.isLoading) return <div className="empty-state">{zh.common.loading}</div>;
 
   // 诚实空态①：本体无反向引用链 → 无法投影断供扩散。
@@ -157,7 +193,10 @@ export default function DisruptionRadiusView(_props: { view?: ViewConfigVM }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }} data-testid="disruption-radius">
       {/* ── 选择器：断供来源类型 + 具体来源对象（真取） ── */}
       <div className="panel" data-testid="dr-selectors">
-        <div className="section-title">断供来源</div>
+        <div className="section-title">
+          断供来源
+          <ExportReportButton pageKey="disruption-radius" build={buildReport} />
+        </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--muted)" }}>
             来源类型

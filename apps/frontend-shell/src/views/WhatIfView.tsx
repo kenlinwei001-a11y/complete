@@ -11,6 +11,10 @@ import { InfoPopover } from "@/components/InfoPopover";
 // 另造一张页 = 让用户把同一个假设填两遍，且两处口径迟早分家。
 import { ImpactAnalysisPanel } from "./sim/ImpactAnalysisPanel";
 import EdgeActivePanel from "./sim/EdgeActivePanel";
+// WO-HARNESS-UX-GAP-1 · 判据 U7（同屏问答知道自己在哪一页）+ U9（导出物自带出处与生成时间）。
+// 本页走 App.tsx 的专用 route，不经 ViewPage ⇒ 必须自己调 usePageView（理由见 shared.tsx 该函数注释）。
+import { ExportReportButton, usePageView } from "./sim/shared";
+import type { ProvenanceReport } from "./sim/exportProvenance";
 
 /**
  * 通用假设推演页（renderer=what-if）——把 `generic_inference` 求解器（G-5 通用 what-if）落地为一张交互页：
@@ -84,6 +88,7 @@ function objectLabel(props: Record<string, unknown>, pkKey: string | undefined, 
 }
 
 export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
+  usePageView("what-if");
   const [typeKey, setTypeKey] = useState<string>("");
   const [objectId, setObjectId] = useState<string>("");
   const [prop, setProp] = useState<string>("");
@@ -146,6 +151,32 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
     setRan(false);
   };
 
+  /**
+   * 判据 U9 · 导出物的内容 —— **只搬屏上已有的值，本函数不做任何算术**。
+   * 做成函数（点下去才求值）而不是提前算好的对象：用户改完输入没点推演时导出，
+   * 拿到的必须是「当前这一屏」的东西，而不是上一次的残留。
+   * `basis` 逐条写清「谁算的、算在什么之上」——第三方照这几句能把同样的数再算一遍。
+   */
+  const buildReport = (): ProvenanceReport => {
+    const rows = result?.rows ?? [];
+    return {
+      docName: "通用假设推演",
+      basis: [
+        "求解器 generic_inference（前向重算下游派生链·同输入同输出）",
+        `假设：${typeKey || "（未选类型）"} / ${objectId || "（未选对象）"} 的 ${prop || "（未选属性）"} 改为 ${value.trim() || "（未填）"}`,
+        "不落库试算——真实数据未被改动，导出物反映的是假设世界",
+        rows.length === 0 ? "本次尚无推演结果（未运行或该假设无下游影响）" : `受影响对象 ${result?.affectedObjects ?? 0} 个 · 派生字段变化 ${result?.count ?? 0} 处`,
+      ],
+      sections: [
+        {
+          heading: "下游 before → after",
+          head: ["对象", "类型", "派生字段", "before", "after", "量纲"],
+          rows: rows.map((r) => [r.objectId, r.type, r.prop, fmtVal(r.before), fmtVal(r.after), r.unit ?? "—"]),
+        },
+      ],
+    };
+  };
+
   const run = async (): Promise<void> => {
     if (!canRun || impactChange === null) return;
     setBusy(true);
@@ -179,6 +210,7 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
               选一个对象、改它的某个属性到假设值 → 前向重算下游派生链，给出 before / after 变化与影响面。
             </span>
           </InfoPopover>
+          <ExportReportButton pageKey="what-if" build={buildReport} />
         </div>
         {/* 「不落库」这条**留第一层**（规范 §4.2）：它若为真，用户对下面所有读数的解读完全不同 ——
             不看它，这一页会被当成真的改了数据。破坏性/写入语义的诚实位不降层。 */}
