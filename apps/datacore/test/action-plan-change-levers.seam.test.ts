@@ -213,18 +213,26 @@ describe("plan_change（非 global-sim）· 按 payload 形态二分：带杠杆
  * ⚠️ 金丝雀内置：`对象数据变更` / `采纳产能保障方案` 是**确知已接**的型。它们若也被数进兜底线，
  *    那是本普查的手法坏了（载荷构造错 / 审批路由变了），**不许**读作「代码没接」。
  */
-const MINIMAL_PAYLOADS: Record<string, Record<string, unknown>> = {
-  adopt_mitigation: { base: "常州", factor: "cf-nonexistent-probe", planKey: "probe" },
-  plan_change: { versionId: "census:probe", reason: "普查探针（无杠杆形态）" },
-  AOP情景拍板: { scenarioKey: "__census_probe__", year: 2026 },
-  校准参数变更: { proposalId: "__census_probe__", mode: "approve" },
-  采纳经营方案: { schemeNo: "壹", scheme: {}, targets: {} },
-  定稿月度计划版本: { versionId: "__census_probe__", snapshot: {} },
-  计划版本变更: { versionId: "__census_probe__", reason: "普查探针" },
-  采纳产能保障方案: { modelId: "4680-NCM", levers: [] },
-  对象数据变更: { objectId: "__census_probe__", patch: {}, reason: "普查探针" },
-  流水线发布物化: { workflowId: "__census_probe__", nodeId: "n1", rows: [] },
-};
+/**
+ * ⚠️ 实测纠正（**别照着源码推算，这一条就是推算会错的活例**）：
+ * `定稿月度计划版本` / `计划版本变更` 的草稿在 **POST /a/v1/action-drafts 建草稿期**
+ * 就校验 S&OP 版本存在，喂假 id 直接 404 —— **根本走不到执行器**，普查会在这里断掉。
+ * 我第一版按读代码推断「它们会落到执行器再失败」，实跑第一次就被打脸。故这两型必须喂**真版本 id**。
+ */
+function minimalPayloads(sopVersionId: string): Record<string, Record<string, unknown>> {
+  return {
+    adopt_mitigation: { base: "常州", factor: "cf-nonexistent-probe", planKey: "probe" },
+    plan_change: { versionId: "census:probe", reason: "普查探针（无杠杆形态）" },
+    AOP情景拍板: { scenarioKey: "__census_probe__", year: 2026 },
+    校准参数变更: { proposalId: "__census_probe__", mode: "approve" },
+    采纳经营方案: { schemeNo: "壹", scheme: {}, targets: {} },
+    定稿月度计划版本: { versionId: sopVersionId, snapshot: {} },
+    计划版本变更: { versionId: sopVersionId, reason: "普查探针" },
+    采纳产能保障方案: { modelId: "4680-NCM", levers: [] },
+    对象数据变更: { objectId: "__census_probe__", patch: {}, reason: "普查探针" },
+    流水线发布物化: { workflowId: "__census_probe__", nodeId: "n1", rows: [] },
+  };
+}
 
 /** 已知**确已接**真执行器的型（金丝雀基准·改这里等于改基准，请连同论据一起改）。 */
 const KNOWN_WIRED_CANARIES = ["对象数据变更", "采纳产能保障方案"];
@@ -243,11 +251,22 @@ describe("兜底线普查 · 「还剩几型审批通过后什么都不写」由
     const registered = BATTERY_ACTION_TYPES.map((a) => a.key);
     expect(registered.length, "BATTERY_ACTION_TYPES 读出 0 型 ⇒ **本普查坏了**，不许读作『没有动作类型』").toBeGreaterThan(0);
 
+    // 先造一个**真** S&OP 版本（见 minimalPayloads 头注：这两型建草稿期就校验版本存在）。
+    const sopRes = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/sop/versions",
+      headers: APPROVER,
+      payload: { month: "2026-07", inputs: {} },
+    });
+    expect(sopRes.statusCode, sopRes.body).toBeLessThan(300);
+    const sopVersionId = (sopRes.json() as { id: string }).id;
+    const payloads = minimalPayloads(sopVersionId);
+
     const fallback: string[] = [];
     const realBranch: { key: string; outcome: string }[] = [];
     for (const key of registered) {
-      const payload = MINIMAL_PAYLOADS[key];
-      expect(payload, `新增了 ActionType「${key}」却没给普查载荷 —— 本普查会漏数它，请补 MINIMAL_PAYLOADS`).toBeTruthy();
+      const payload = payloads[key];
+      expect(payload, `新增了 ActionType「${key}」却没给普查载荷 —— 本普查会漏数它，请补 minimalPayloads()`).toBeTruthy();
       const done = await submitAndApprove(t, key, payload!);
       // ⚠️ 先证明「执行器真的被调用过」再分类。停在 PENDING_APPROVAL/DRAFT = **本次没测到执行器**，
       //    它既不是「已接线」也不是「没接线」——把它算进任何一桶都是拿一个不度量该事实的信号下结论。
