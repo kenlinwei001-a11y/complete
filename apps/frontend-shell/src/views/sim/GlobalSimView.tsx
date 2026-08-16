@@ -832,7 +832,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
           {/* 磨砂卡② 被挤单 / 固定单卡（双向下钻） */}
           {d && (
             <div className={styles.glass}>
-              <span className={styles.grpLabel}>[ 被挤单 / 固定单 · 进接单可行性细排 ]</span>
+              <span className={styles.grpLabel}>[ 被挤单 / 固定单 · 接单可行性细排 ]</span>
               <div className={styles.cardGrid} data-testid="global-sim-displaced">
                 {d.displaced.length ? d.displaced.map((x) => (
                   <div key={x.orderId} className={`${styles.orderCard} ${styles.displaced}`} data-testid={`global-sim-displaced-${x.orderId}`} title={provTitle(x.provenance)}>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   PROCESS_TASK_WAIT_STATES,
   PROCESS_TASK_WAIT_STATE_META,
@@ -96,12 +97,21 @@ export function formatWaited(ms: number): string {
 function StuckCard({ r }: { r: ProcessStuckReason }) {
   const meta = PROCESS_TASK_WAIT_STATE_META[r.waitState];
   return (
-    <li className={styles.card} data-testid="stuck-card" data-wait-state={r.waitState}>
+    <li className={styles.card} data-testid="stuck-card" data-wait-state={r.waitState} data-process-key={r.processKey}>
       <div className={styles.cardHead}>
         {/* ① 卡在哪一步 */}
         <span className={styles.stepName} data-testid="stuck-step">
           第 {r.taskSeq} 步 · {r.taskName}
         </span>
+        {/* WO-IA-E2E5E6 · E5：实例层 → 模板层（这一站放在全部流程里看：这类流程通常在这站等什么）。
+            两页答两个不同的问题（张 vs 类），不合页，互跳即可。 */}
+        <Link
+          to={`/v/process-wait?focus=${encodeURIComponent(r.processKey)}`}
+          className={styles.waitLink}
+          data-testid={`stuck-wait-link-${r.processKey}`}
+        >
+          这类流程通常在这站等什么 →
+        </Link>
         {/* 流程名：查不到定义就**不渲染**，不拿 definitionKey 冒充名字 */}
         {r.definitionName ? (
           <span className={styles.defName} data-testid="stuck-defname">
@@ -163,6 +173,10 @@ function StuckCard({ r }: { r: ProcessStuckReason }) {
 
 export default function ProcessStuckView() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  // WO-IA-E2E5E6 · E5：模板层（/v/process-wait）带 ?proc=<processKey> 跳进来 → 只显示该站的卡单。
+  // 过滤是**显示层**的（取数照旧全量）：计数条 byWaitState 仍是全库事实，不被过滤偷偷改写。
+  const [params] = useSearchParams();
+  const procFilter = params.get("proc");
 
   useEffect(() => {
     let alive = true;
@@ -217,6 +231,9 @@ export default function ProcessStuckView() {
 
   const { stuck, byWaitState, evaluatedAt, derivedStuckCount } = state.data;
 
+  // 过滤是显示层的：byWaitState/derivedStuckCount 口径不动，只换下面渲染哪几张卡。
+  const visible = procFilter ? stuck.filter((r) => r.processKey === procFilter) : stuck;
+
   return (
     <div className={styles.root}>
       <div className={styles.head}>
@@ -226,6 +243,17 @@ export default function ProcessStuckView() {
           等待是流程的常态，不是故障；这里回答的是「卡在哪、找谁」。
         </p>
       </div>
+
+      {/* WO-IA-E2E5E6 · E5：从模板层按站过滤跳进来的横幅。data-count 是过滤后**实际条数** ——
+          模板层「现在有 N 张单卡在这里」那个 N 必须与它对得上（接缝测试咬的就是这一对）。 */}
+      {procFilter ? (
+        <div className={styles.filterBanner} data-testid="stuck-filter-banner" data-count={visible.length}>
+          只显示 <code>{procFilter}</code> 这一站的卡单（共 {visible.length} 张）。
+          <Link to="/v/process-stuck" className={styles.filterClear} data-testid="stuck-filter-clear">
+            看全部 →
+          </Link>
+        </div>
+      ) : null}
 
       {/* 各等待态计数。五个 key 恒在、值可为 0 —— 这里的 0 是**统计事实**（真的没有），
           与「数据缺失不显示」不冲突：那条针对的是「不知道」。 */}
@@ -260,9 +288,16 @@ export default function ProcessStuckView() {
         </div>
       ) : null}
 
-      {stuck.length === 0 ? (
+      {visible.length === 0 ? (
         <div className={styles.empty} data-testid="stuck-empty">
-          {derivedStuckCount > 0 ? (
+          {procFilter ? (
+            /* 过滤态的空 ≠ 全库为空：明说「这一站没有」，别把全库的 0 算给它。 */
+            <>
+              <code>{procFilter}</code> 这一站此刻没有正在等待的流程实例。
+              <br />
+              全库口径见上方各等待态计数（不被过滤影响）。
+            </>
+          ) : derivedStuckCount > 0 ? (
             /* ⚠ 这一支的文案**刻意不出现**「没有正在等待的流程实例」这半句。
                此刻它是假的：真有 derivedStuckCount 条卡着，只是产地不同、本投影算不了。
                先说真相（确有 N 条卡着）、再说本页的口径（这一类为 0），顺序反过来就会被读反。 */
@@ -289,7 +324,7 @@ export default function ProcessStuckView() {
         </div>
       ) : (
         <ul className={styles.list}>
-          {stuck.map((r) => (
+          {visible.map((r) => (
             <StuckCard key={r.instanceId} r={r} />
           ))}
         </ul>
