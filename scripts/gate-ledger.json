@@ -64,20 +64,20 @@
       "alias": "boundary-singlesource:check",
       "binding": "GATES_CHAIN",
       "guardedPaths": [
-        "apps/datacore/src/solvers/risk.ts",
-        "apps/datacore/src/synthetic/battery.ts",
-        "apps/frontend-shell/src/mocks/fixtures.ts",
-        "apps/frontend-shell/src/mocks/simSolvers.ts",
-        "apps/frontend-shell/src/views/plan/OrderChainView.tsx"
+        "apps/datacore/src",
+        "apps/agentcore/src",
+        "apps/frontend-shell/src",
+        "packages/contracts/src",
+        "scripts/boundary-singlesource-baseline.json"
       ],
       "escalation": "审核方",
       "ontologyRef": "§7:820",
       "provenRed": {
-        "kind": "NEVER",
-        "evidence": null,
-        "note": "本体 §7 行820 未记录已执行的反证"
+        "kind": "MUTATION",
+        "evidence": "docs/AUDIT-gate-roster-sweep.md §3.1（五向变异反证输出原文逐字贴出）",
+        "note": "WO-GATE-ROSTER-SWEEP 2026-08-16 五向变异反证已跑：M1 在旧名单内文件加内联 baseId → RC=1 点名 file:line；**M2 在旧名单外文件（apps/datacore/src/catalog.ts）加同样的内联 → 改后 RC=1，而拿 HEAD 上的旧脚本喂同一棵树 RC=0 且打印「内联基地字面量 0（零容忍）」** —— 这一对 A/B 就是 G-GATE-ROSTER-HANDCOPIED 的差集实证；M3 基线注入死账条目 → RC=1 报棘轮松弛，--tighten 后回绿且人手 why 逐字留存；M4 移走基线 → RC=2「工具坏了」（不是 RC=1）；M5 打断册解析器令 BASE_IDS 变空 → RC=2，拒绝报「内联 0」。逐条还原后复绿 RC=0。"
       },
-      "notes": ""
+      "notes": "扫描面已从手抄 3 个文件改为 SCAN_ROOTS 全仓现算（实测 612 个 .ts/.tsx），存量 19 组内联进棘轮基线 scripts/boundary-singlesource-baseline.json，逐条带 why、只降不升。"
     },
     "check-bstack-derive.mjs": {
       "alias": "bstack-derive:check",
