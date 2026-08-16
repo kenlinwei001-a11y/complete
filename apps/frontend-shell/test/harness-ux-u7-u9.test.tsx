@@ -107,6 +107,15 @@ const PAGES: { path: string; viewKey: string; exportTestId: string; timeoutMs?: 
   // 这不是「等它慢慢绿」：断言本身不变，只是加载时间本来就长。
   { path: "/v/sim-sandbox", viewKey: "sim-sandbox", exportTestId: "export-report-sim-sandbox", timeoutMs: 60_000, handlers: () => [] },
   { path: "/v/decision-play", viewKey: "decision-play", exportTestId: "export-report-decision-play", handlers: () => [] },
+  // WO-U7-U9-REST · U9 剩八页的另外六页：全是 ViewPage 分发页（U7 由 ViewPage 自己接对线，
+  // 这里一并断言只是顺手加 coverage），本单给它们各挂了共享 ExportReportButton（判据 U9）。
+  // 六页都是全应用渲染 + 真求解器 mock 的重页，超时给足（断言没松，只是加载本来就慢）。
+  { path: "/v/project-sim", viewKey: "project-sim", exportTestId: "export-report-project-sim", timeoutMs: 60_000, handlers: () => [] },
+  { path: "/v/global-sim", viewKey: "global-sim", exportTestId: "export-report-global-sim", timeoutMs: 60_000, handlers: () => [] },
+  { path: "/v/risk", viewKey: "risk", exportTestId: "export-report-risk", timeoutMs: 60_000, handlers: () => [] },
+  { path: "/v/order-chain", viewKey: "order-chain", exportTestId: "export-report-order-chain", timeoutMs: 60_000, handlers: () => [] },
+  { path: "/v/plan-generate", viewKey: "plan-generate", exportTestId: "export-report-plan-generate", timeoutMs: 60_000, handlers: () => [] },
+  { path: "/v/sop-balance", viewKey: "sop-balance", exportTestId: "export-report-sop-balance", timeoutMs: 60_000, handlers: () => [] },
 ];
 
 const SENTINEL = "__sentinel-not-a-real-view__";
