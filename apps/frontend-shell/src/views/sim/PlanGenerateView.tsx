@@ -8,7 +8,8 @@ import { workspaceQueryKey } from "@/workspace/useWorkspace";
 import { useFeature } from "@/workspace/featureGate";
 import { useSessionStore } from "@/store/sessionStore";
 import type { ViewRendererProps } from "../registry";
-import { SnapshotBadge, useActionDraft } from "./shared";
+import { SnapshotBadge, useActionDraft, ExportReportButton, fmt } from "./shared";
+import type { ProvenanceReport } from "./exportProvenance";
 import { useLiveSolver } from "./useLiveSolver";
 import { RadarChart } from "./RadarChart";
 import { buildPropagation, PropagationTimeline, type PropagationVM } from "./PropagationTimeline";
@@ -97,6 +98,42 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
     (raw) => PlanGenParsedSchema.parse(raw), // 假7：保留求解器回显的真基线 base（去 rev-100/share-17 魔法基线）
   );
 
+  /**
+   * WO-U7-U9-REST · 判据 U9：导出物自带出处与生成时间。
+   * 复算三要素全进 basis：求解器 + 本体快照版本 + **目标面板全量入参**（含硬约束开关）
+   * —— 这页是「改动即重算」，少记一个目标值，第三方重跑出的就不是屏上这三个方案。
+   * `gen.data` 未回（首算进行中）时方案对照段留空 ⇒ 共享件渲染「诚实空态，不补编」。
+   */
+  const buildReport = (): ProvenanceReport => ({
+    docName: zh.sim.gen.title,
+    basis: [
+      `求解器 plan_generate（本体快照 ${gen.snapshotVersion ?? "—"} · 同输入同输出）`,
+      `入参目标：收入增 ${goals.revGrowthPct}% · 毛利底线 ${goals.gmFloorPct}% · 份额 +${goals.sharePts}pct · CAPEX 上限 ${goals.capexCap} 亿 · 现金底线 ${goals.cashFloor} 亿 · 库存周转 ≥${goals.invTurns} 次`,
+      `硬约束开关：毛利 ${goals.hardGm ? "硬" : "软"} · 现金 ${goals.hardCash ? "硬" : "软"} · CAPEX ${goals.hardCapex ? "硬" : "软"}`,
+      `推荐口径：无硬约束冲突方案中综合分（scores.total）最高者`,
+    ],
+    sections: [
+      {
+        heading: "方案对照",
+        head: ["编号", "名称", "路径", "收入", "毛利率", "份额", "周转", "现金", "CAPEX", "综合分", "硬冲突", "推荐"],
+        rows: (gen.data?.schemes ?? []).map((s) => [
+          s.no,
+          s.name,
+          s.pathKey,
+          fmt(s.outcome.rev),
+          s.outcome.gm,
+          s.outcome.share,
+          s.outcome.turns,
+          fmt(s.outcome.cash),
+          fmt(s.outcome.capex),
+          s.scores.total,
+          s.hardViol.length ? s.hardViol.join("；") : "无",
+          s.pathKey === gen.data?.recommend && s.hardViol.length === 0 ? "✓" : "",
+        ]),
+      },
+    ],
+  });
+
   // 问题卡传导链（§7.11 与体检页共用 PropagationTimeline，全局唯一实现）
   const riskTl = useQuery({
     queryKey: ["b", "solver", "risk_timeline"],
@@ -147,6 +184,7 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
           </div>
         </div>
         {gen.isFetching && <span style={{ fontSize: 12, color: "var(--muted2)" }}>重算中…</span>}
+        <ExportReportButton pageKey="plan-generate" build={buildReport} />
       </div>
 
       {/* 目标面板（顶部横条，§7.11） */}
