@@ -108,6 +108,11 @@ const argv = new Set(process.argv.slice(2));
 const UPDATE = argv.has("--update");
 const SEED = argv.has("--seed");
 const VERBOSE = argv.has("--verbose");
+/** `--explain-method`：现算「旧口径（只比路径）判已接、新口径（方法+路径）判零调用」的差集，逐条打印。
+ *  这就是口径升级那一次抬基线的**证据本体**——不是我说新增 N 条全是存量，是它现场算给你看。 */
+const EXPLAIN_METHOD = argv.has("--explain-method");
+/** `--mutate=<形态>`：变异反证自检（喂一条已知必红的样例，门若不红即为装饰品）。见文件尾《变异反证》。 */
+const MUTATE = [...argv].find((a) => a.startsWith("--mutate="))?.slice("--mutate=".length) ?? "";
 
 /* ════════════════════════════════════════════════════════════════════════════
  * 1 · 词法扫描原语
@@ -489,6 +494,170 @@ export function extractFrontendPaths(src) {
   return found;
 }
 
+/* ── 方法口径（WO-SEAM-GATE-METHOD）──────────────────────────────────────────
+ *
+ * ⛔ 治的是本门自己身上的一处**构造性失明**（本单亲手实测复现，见下「双向自证」）：
+ *   载体② 的消费判据原本是 `pathMatches(fe, a)` —— **只比路径字面量，不比 HTTP 方法**。
+ *   而后端侧的键**是带方法的**（`const key = \`${r.method} ${r.norm}\``）。
+ *   于是同一条路径上，只要前端调了**任意一个**方法，这条路径上**全部**方法一并被判「已接」。
+ *
+ *   形态（CLAUDE.md 铁律 0.6 句式）：
+ *   > **「我用『前端出现过这条路径』当作『这个方法+路径有调用方』的证据，而前者并不度量后者。」**
+ *
+ *   危害与「结构性豁免写错」那次同级、而且更隐蔽：**被方法失明藏起来的端点根本不进基线数**，
+ *   门每次照报「零调用 128（新增 0）」—— 那 128 里从来就没有它们。
+ *   典型形状：`GET /a/v1/x` 前端在用 ⇒ `PUT /a/v1/x` `DELETE /a/v1/x` **出生即豁免**，
+ *   写端（改/删/发布/重跑）正是最容易「后端做完了、前端没做」的那一半。
+ *
+ * ── 方法从哪来（判据必须与前端运行时**同一套规则**，否则是另一种假绿）──────────
+ *   前端唯一的 HTTP 出口是 `apps/frontend-shell/src/api/apiClient.ts`：
+ *     `method: opts.method ?? (opts.body !== undefined || opts.formData ? "POST" : "GET")`
+ *   本抽取器照抄这条**默认规则**（显式 method 字面量优先；否则有 body/formData ⇒ POST；否则 GET）。
+ *   ⚠ 这是一处**跨文件耦合**：apiClient 改了默认规则而这里不改 ⇒ 门算出来的方法整体偏移，
+ *     而它照样全绿。故有常驻金丝雀 `route/方法默认规则与 apiClient 同源` 钉住那一行原文，
+ *     改了就当场 RC=2「门自己坏了」，不是安静地报「代码干净」。
+ *
+ * ── 诚实边界（必须先读）────────────────────────────────────────────────────
+ *   · 只有出现在**已识别调用位**的路径字面量才带得上方法：
+ *     `api.a(<路径>, <选项>)` / `api.b(...)` / `fetch(<url>, <init>)` / `new EventSource(<url>)`。
+ *   · 其余位置的路径字面量（赋给变量再传走 / 塞进常量表 / 由 helper 拼装 / 选项是变量）
+ *     **方法未知** ⇒ 本门对它**沿用旧口径**：对该路径上的所有方法一律算作已接。
+ *     这是刻意的保守：把「我不知道方法」当成「零调用」会造幻觉缺口，比失明更糟。
+ *     残余失明半径每次运行**上屏**（诚实位「方法未知的路径 N 条」），不许只留一个汇总数字。
+ *   · 本门**不**判「endpoints.ts 里的这个客户端函数有没有人调」。实测存在这一形态
+ *     （`fetchProcessInstance` / `advanceProcessInstance` 定义在 `api/endpoints.ts:2104/2111`，
+ *      全前端 src **零调用方**）—— 端点在门眼里「已接」，用户界面上却根本到不了。
+ *     那是**另一条**断点（客户端函数是死代码），修法也不同（要做从视图到 endpoints 的可达性分析），
+ *     本门只报不治；别把本门的绿读成「前端真能走到」。
+ */
+
+/** HTTP 方法字面量（大小写不敏感匹配，统一归一为大写）。 */
+const HTTP_METHOD_RE = /^["']([A-Za-z]+)["']$/;
+
+/**
+ * 对象字面量的顶层**键值对**（`objectTopLevelKeys` 的兄弟：那个只要键名，这个要值）。
+ * 共用 `splitTopLevel` + `stripComments`，不另抄一份切分逻辑。
+ */
+export function objectTopLevelEntries(objText) {
+  const openIdx = objText.indexOf("{");
+  if (openIdx < 0) return { entries: [], spreads: 0 };
+  const { parts } = splitTopLevel(objText, openIdx);
+  const entries = [];
+  let spreads = 0;
+  for (const raw of parts) {
+    const p = stripComments(raw).trim();   // 注释挡住键名 ⇒ 带注释的 { method: … } 读作不存在（同 stripComments 顶注）
+    if (!p) continue;
+    if (p.startsWith("...")) { spreads++; continue; }
+    let m = /^([A-Za-z_$][\w$]*)\s*:([\s\S]*)$/.exec(p);
+    if (m) { entries.push({ key: m[1], value: m[2].trim() }); continue; }
+    m = /^["']([^"']+)["']\s*:([\s\S]*)$/.exec(p);
+    if (m) { entries.push({ key: m[1], value: m[2].trim() }); continue; }
+    m = /^([A-Za-z_$][\w$]*)\s*$/.exec(p);
+    if (m) { entries.push({ key: m[1], value: m[1] }); continue; }   // 简写 `{ body }`
+  }
+  return { entries, spreads };
+}
+
+/**
+ * 一处调用位的 HTTP 方法。`null` = **方法未知**（不是 GET —— 两者处置相反，不许合并）。
+ * 规则与 `apps/frontend-shell/src/api/apiClient.ts` 的 `doFetch` 逐字对齐。
+ */
+export function methodOfCallOptions(optsText) {
+  const t = optsText === undefined || optsText === null ? "" : stripComments(optsText).trim();
+  if (t === "") return "GET";                       // `api.a(path)` —— 无选项即 GET
+  if (!t.startsWith("{")) return null;              // 选项是变量/三元 ⇒ 方法未知
+  const { entries, spreads } = objectTopLevelEntries(t);
+  const method = entries.find((e) => e.key === "method");
+  if (method) {
+    const lit = HTTP_METHOD_RE.exec(method.value);
+    return lit ? lit[1].toUpperCase() : null;       // `method: isEdit ? "PUT" : "POST"` ⇒ 未知
+  }
+  if (spreads > 0) return null;                     // `{ ...opts }` 里可能藏着 method ⇒ 未知
+  if (entries.some((e) => e.key === "body" || e.key === "formData")) return "POST";
+  return "GET";
+}
+
+/** 已识别的前端调用位头部：`api.a` / `api.b` / 裸 `fetch` / `new EventSource`（**不含**类型参数与 `(`）。 */
+const FE_CALL_RE = new RegExp(
+  String.raw`(?:\bapi\s*\.\s*(?<sys>[ab])(?![\w$])|(?<![.\w$])(?<bare>fetch)(?![\w$])|\bnew\s+(?<es>EventSource)(?![\w$]))`,
+  "g",
+);
+
+/**
+ * 从调用名之后跳过 TS 类型参数 `<…>`，返回实参表 `(` 的下标；不是调用位则返回 -1。
+ *
+ * ⚠ 这个函数是**被一次实测反证逼出来的**，留此为戒（形态与铁律 0.6 第 2 例同构）：
+ *   第一版把类型参数写成正则 `<[^(){};]*>` —— 字符类里排掉了 `{`，
+ *   而本仓 `api.a<{ accessToken: string }>(…)` 这种**对象类型参数**在 `endpoints.ts` 里有 **126 处**。
+ *   于是抽取器只认出 231 个调用位，而 `grep -c "api\.[ab]"` 是 364 —— **少了 133 处**，
+ *   它们的路径全部落进「方法未知」，被当成「对所有方法豁免」⇒ 口径升级的效果凭空缩水。
+ *   而那一版**金丝雀 21/21 全中、门也照常出数**：金丝雀证明的是工具没瞎，不是扫描面选对了。
+ *   抓住它的不是金丝雀，是**拿一个独立口径对总数**（grep 计数 vs 抽取计数）。
+ *   故 C16b 常驻金丝雀把「对象类型参数的调用位必须认出来」钉死。
+ */
+export function callArgsOpenIdx(src, afterNameIdx) {
+  let i = afterNameIdx;
+  const skipWs = () => { while (i < src.length && /\s/.test(src[i])) i++; };
+  skipWs();
+  if (src[i] === "<") {
+    // 类型参数里合法出现的东西比想象的多，每一样都实测踩过（见顶注）：
+    //   对象类型 `<{ ok: boolean }>` · 交叉/联合带括号 `<(A & { x?: B })[]>` ·
+    //   `<import("@platform/contracts").T>` · 函数类型 `<(x: number) => void>`。
+    // 早停在其中任何一样上，那个调用位就被整个丢掉 —— 而丢掉的调用位会变成「方法未知」，
+    // 于是它的路径反而对**所有**方法豁免：**抽取器越瞎，门越绿**。
+    let depth = 0;
+    while (i < src.length) {
+      const c = src[i];
+      if (c === "<") { depth++; i++; continue; }
+      if (c === ">") {
+        if (src[i - 1] === "=") { i++; continue; }          // `=>` 的 `>` 不是闭合尖括号
+        depth--; i++;
+        if (depth === 0) break;
+        continue;
+      }
+      if (c === "{") { i = skipBracedExpr(src, i + 1); continue; }
+      if (c === "(") { i = splitTopLevel(src, i).end; continue; }   // 括号整段原子跳过
+      if (c === '"' || c === "'") { i = scanQuoted(src, i, c); continue; }
+      if (c === "`") { i = scanTemplate(src, i); continue; }
+      if (c === ";" || c === ")") return -1;                // 越界 ⇒ 那个 `<` 不是类型参数
+      i++;
+    }
+    if (depth !== 0) return -1;
+    skipWs();
+  }
+  return src[i] === "(" ? i : -1;
+}
+
+/**
+ * 前端**带方法**的调用面。返回：
+ *   · `calls`   —— `{ method, path }`（方法已定）
+ *   · `unknown` —— 方法未知的路径集合（对所有方法沿用旧口径豁免，见顶注诚实边界）
+ *   · `dynamicUrl` —— 调用位的 URL 里一条 `/a|b|api/v1/` 路径都切不出来的处数（诚实位）
+ */
+export function extractFrontendCalls(src) {
+  const { mask } = lex(src);
+  const calls = [];
+  const unknown = new Set();
+  let dynamicUrl = 0;
+  const seenAtCall = new Set();
+  for (const m of src.matchAll(FE_CALL_RE)) {
+    if (mask[m.index] !== M_CODE) continue;                  // 注释/字符串里的示例不算
+    const openIdx = callArgsOpenIdx(src, m.index + m[0].length);
+    if (openIdx < 0) continue;                               // `api.a` 不带实参表（如作为值传出去）
+    const { parts } = splitTopLevel(src, openIdx);
+    if (parts.length === 0) continue;
+    const paths = [...extractFrontendPaths(parts[0])];        // 与主路径抽取**同一实现**
+    if (paths.length === 0) { dynamicUrl++; continue; }
+    for (const p of paths) seenAtCall.add(p);
+    const method = m.groups.es ? "GET" : methodOfCallOptions(parts[1]);
+    if (method === null) { for (const p of paths) unknown.add(p); continue; }
+    for (const p of paths) calls.push({ method, path: p });
+  }
+  // 不在任何已识别调用位上的路径字面量（赋给变量再传走 / 常量表 / helper 拼装）⇒ 方法未知
+  for (const p of extractFrontendPaths(src)) if (!seenAtCall.has(p)) unknown.add(p);
+  return { calls, unknown, dynamicUrl };
+}
+
 /** 同一段源码里**散文串**写着的路由（不计作调用方的那些）——供报告的诚实位与金丝雀用。 */
 export function extractProsePaths(src) {
   const { strings } = lex(src);
@@ -504,6 +673,29 @@ export function extractProsePaths(src) {
 export function extractRewritePrefixes(serverSrc) {
   const block = /rewriteUrl\s*\(req\)\s*\{[\s\S]*?\n {2}\}/.exec(serverSrc)?.[0] ?? "";
   return [...new Set([...block.matchAll(/"\/b\/v1\/([a-z-]+)"/g)].map((m) => m[1]))];
+}
+
+/**
+ * 「这条后端端点有前端调用方吗」——**唯一**判据实现（主逻辑 / 金丝雀 / 变异反证共用，不许各抄一份）。
+ *
+ * 新口径 = **方法 + 路径**。方法未知的路径沿用旧口径（对该路径所有方法一律算已接），
+ * 理由见 `extractFrontendCalls` 顶注的诚实边界：把「我不知道方法」当成「零调用」会造幻觉缺口。
+ */
+export function routeConsumedByMethod(route, feCalls, feUnknownPaths) {
+  return route.aliases.some(
+    (a) =>
+      feCalls.some((c) => c.method === route.method && pathMatches(c.path, a)) ||
+      [...feUnknownPaths].some((p) => pathMatches(p, a)),
+  );
+}
+
+/**
+ * 旧口径 = **只比路径**（本次口径升级前的判据）。
+ * 保留它**只有一个用途**：现算「口径升级暴露了哪几条」这个差集，让「新增 N 条全是存量」
+ * 有机器给出的证据，而不是靠交单人一句话。**它不再参与判负。**
+ */
+export function routeConsumedByPathOnly(route, fePaths) {
+  return route.aliases.some((a) => [...fePaths].some((fe) => pathMatches(fe, a)));
 }
 
 /** 路径匹配：段数相同，逐段 wildcard 兼容。 */
@@ -815,8 +1007,127 @@ function canaries(ctx) {
     return { ok: dead.length === 0, got: dead.length ? `死豁免 ${dead.length} 条：${dead.join(" | ")}` : `${ROUTE_EXEMPTIONS.length} 条豁免全部命中真实路由`, want: "0 条死豁免" };
   });
 
+  /* ── C16 族 · 方法口径（WO-SEAM-GATE-METHOD）────────────────────────────────
+   * 每一条都对着一次**实测踩过的坑**，不是想象出来的边界。 */
+
+  // C16 方法默认规则必须与 apiClient 同源 —— 这是一处跨文件耦合，改了它这道门会整体算错方法
+  add("method/默认规则与 apiClient 同源", "apiClient 改了默认方法而本门不改 ⇒ 全仓方法整体偏移，而门照样全绿（跨文件耦合的经典假绿）", () => {
+    const f = join(ROOT, "apps/frontend-shell/src/api/apiClient.ts");
+    const src = existsSync(f) ? readFileSync(f, "utf8") : "";
+    const want = `opts.method ?? (opts.body !== undefined || opts.formData ? "POST" : "GET")`;
+    return { ok: src.includes(want), got: src.includes(want) ? "命中" : "未命中（apiClient 的默认方法规则变了，或文件搬家了）", want };
+  });
+
+  // C16b **双向**：四种选项形态各判成什么。恒 GET 化 / 恒未知化都会被这条当场抓住
+  add("method/选项形态四向", "恒 GET 化 ⇒ 全部写端被误判「已接」；恒未知化 ⇒ 口径升级归零、门退回旧口径且照样绿", () => {
+    const got = {
+      无选项: methodOfCallOptions(undefined),
+      带body: methodOfCallOptions(`{ body }`),
+      显式method: methodOfCallOptions(`{ method: "delete" }`),
+      变量选项: methodOfCallOptions(`opts`),
+    };
+    const ok = got.无选项 === "GET" && got.带body === "POST" && got.显式method === "DELETE" && got.变量选项 === null;
+    return { ok, got, want: { 无选项: "GET", 带body: "POST", 显式method: "DELETE", 变量选项: null } };
+  });
+
+  // C16c 类型参数不许把调用位吃掉（实测两次：`<{…}>` 126 处 · `<import("…").T>` 与 `<(A & {…})[]>` 各 1 处）
+  add("method/类型参数不吃调用位", "类型参数解析早停 ⇒ 该调用位整个丢掉 ⇒ 其路径落进「方法未知」⇒ 反而对所有方法豁免：**抽取器越瞎，门越绿**", () => {
+    const s = [
+      `api.a<{ accessToken: string }>("/a/v1/canary/obj", { body: {} });`,
+      `api.b<import("@platform/contracts").T>("/b/v1/canary/imp");`,
+      `api.b<(A & { x?: B })[]>("/b/v1/canary/paren");`,
+      `api.a<(x: number) => void>("/a/v1/canary/fnty", { method: "PUT" });`,
+    ].join("\n");
+    const got = extractFrontendCalls(s).calls.map((c) => `${c.method} ${c.path}`).sort();
+    const want = ["GET /b/v1/canary/imp", "GET /b/v1/canary/paren", "POST /a/v1/canary/obj", "PUT /a/v1/canary/fnty"].sort();
+    return { ok: got.join("|") === want.join("|"), got, want };
+  });
+
+  // C16d EventSource 是 GET（SSE 订阅走的就是这条；判成别的方法会把 events 端点误报成零调用）
+  add("method/EventSource 计 GET", "SSE 订阅判错方法 ⇒ /b/v1/queries/*/events 这类被误报成零调用（幻觉缺口）", () => {
+    const got = extractFrontendCalls('new EventSource(`/b/v1/queries/${id}/events`);').calls.map((c) => `${c.method} ${c.path}`);
+    return { ok: got.join("") === "GET /b/v1/queries/*/events", got, want: ["GET /b/v1/queries/*/events"] };
+  });
+
+  // C16e 真文件**双向**：已知真调用的方法必须判「已接」，同路径上已知没调的方法必须判「零调用」
+  //      同一条路径 `/b/v1/agents/{id}` 上，前端有 GET 与 PUT（endpoints.ts:1394/1396）、没有 DELETE。
+  //      这一对是本次口径升级的**最小可判样本**：旧口径下两者结论相同（都「已接」），新口径下必须分开。
+  add("method/真文件 同路异法双向", "只做正向 ⇒ 恒真判据把全部缺口藏起来；只做反向 ⇒ 恒假判据把全仓报成缺口。两个方向缺一不可", () => {
+    const mk = (method) => ({ method, norm: "/b/v1/agents/*", aliases: ["/b/v1/agents/*", "/api/v1/agents/*"] });
+    const put = routeConsumedByMethod(mk("PUT"), ctx.feCalls, ctx.feUnknownPaths);
+    const del = routeConsumedByMethod(mk("DELETE"), ctx.feCalls, ctx.feUnknownPaths);
+    const oldPut = routeConsumedByPathOnly(mk("PUT"), ctx.fePaths);
+    const oldDel = routeConsumedByPathOnly(mk("DELETE"), ctx.fePaths);
+    const ok = put === true && del === false && oldPut === true && oldDel === true;
+    return {
+      ok,
+      got: `新口径 PUT=${put} DELETE=${del} · 旧口径 PUT=${oldPut} DELETE=${oldDel}`,
+      want: "新口径 PUT=true DELETE=false（分得开）· 旧口径两者皆 true（正是被治的失明）",
+    };
+  });
+
+  // C16f 变异反证（常驻·不是一次性 --selftest）：喂一条**方法对不上**的样例，判据必须判负
+  //      反向同时喂一条**方法对得上**的，必须判正 —— 只做前者的话，一个恒假判据也能全中。
+  add("method/变异反证 方法对不上必判负", "喂一条方法对不上的样例仍判「已接」⇒ 判据退回旧口径（或被谁改回 pathMatches 单比），门当场变装饰品", () => {
+    const be = { method: "DELETE", norm: "/a/v1/__canary_mut__", aliases: ["/a/v1/__canary_mut__"] };
+    const mismatch = extractFrontendCalls(`api.a("/a/v1/__canary_mut__", { body });`).calls;      // POST
+    const match = extractFrontendCalls(`api.a("/a/v1/__canary_mut__", { method: "DELETE" });`).calls;
+    const negative = routeConsumedByMethod(be, mismatch, new Set());
+    const positive = routeConsumedByMethod(be, match, new Set());
+    const oldWouldPass = routeConsumedByPathOnly(be, new Set(mismatch.map((c) => c.path)));
+    const ok = negative === false && positive === true && oldWouldPass === true;
+    return {
+      ok,
+      got: `方法对不上=${negative}（须 false）· 方法对得上=${positive}（须 true）· 旧口径对同一样例=${oldWouldPass}（须 true，否则样例失效）`,
+      want: "false / true / true",
+    };
+  });
+
+  // C16g 方法未知 ≠ GET（两者处置相反：前者对所有方法豁免，后者只豁免 GET 且把真 POST 报成缺口）
+  add("method/未知不许当 GET", "把「方法未知」折成 GET ⇒ 该路径的真 POST/PUT 被报成零调用（幻觉缺口），而 GET 反被误判已接", () => {
+    const calls = extractFrontendCalls(`const o = { method: "POST" }; api.a("/a/v1/__canary_unk__", o);`);
+    const be = (m) => ({ method: m, norm: "/a/v1/__canary_unk__", aliases: ["/a/v1/__canary_unk__"] });
+    const asGet = calls.calls.some((c) => c.method === "GET");
+    const post = routeConsumedByMethod(be("POST"), calls.calls, calls.unknown);
+    const ok = asGet === false && calls.unknown.has("/a/v1/__canary_unk__") && post === true;
+    return { ok, got: `折成GET=${asGet} · 进未知集=${calls.unknown.has("/a/v1/__canary_unk__")} · POST判已接=${post}`, want: "false / true / true" };
+  });
+
   return list;
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+ * 6.5 · 变异反证（`--mutate=<形态>`）
+ *
+ * 金丝雀证明**判据函数**没坏；变异反证证明**整条流水线**（抽取 → 判据 → 棘轮 → 退出码）
+ * 真的会因为一条违规而变红。两者不可互相替代：本门历史上就有过「13 条金丝雀全中、
+ * 门对真实新增字段毫无反应」的实例（见 `stripComments` 顶注）。
+ *
+ * 每个形态往**真实**的扫描面里注入一条合成端点 + 一段合成前端源码，然后断言门的判负结果。
+ * 期望不满足 ⇒ RC=1（**门是装饰品**）；形态名打错 ⇒ RC=2（工具用法错，不是代码有问题）。
+ * ═══════════════════════════════════════════════════════════════════════════ */
+const MUTANT_PATH = "/a/v1/__befe_mutation_canary__";
+const MUTATIONS = {
+  "method-mismatch": {
+    why: "后端 DELETE · 前端只有 POST ⇒ 方法对不上，**必须红**（这一条红不了，本次口径升级等于没做）",
+    beMethod: "DELETE",
+    feSrc: `export const x = () => api.a<{ ok: boolean }>("${MUTANT_PATH}", { body: {} });`,
+    mustBeRed: true,
+  },
+  "method-match": {
+    why: "后端 DELETE · 前端也是 DELETE ⇒ **必须绿**（防恒假判据：把一切都判成缺口的门同样是坏的）",
+    beMethod: "DELETE",
+    feSrc: `export const x = () => api.a<{ ok: boolean }>("${MUTANT_PATH}", { method: "DELETE" });`,
+    mustBeRed: false,
+  },
+  "path-only-blind": {
+    why: "同 method-mismatch 的样例，但**用旧口径**判 ⇒ 必须绿。这是失明本身的复现：证明上面那条红确实来自方法口径，不是别的原因",
+    beMethod: "DELETE",
+    feSrc: `export const x = () => api.a<{ ok: boolean }>("${MUTANT_PATH}", { body: {} });`,
+    mustBeRed: false,
+    usePathOnly: true,
+  },
+};
 
 /* ════════════════════════════════════════════════════════════════════════════
  * 7 · 主逻辑
@@ -895,6 +1206,18 @@ function main() {
 
   const prodFiles = frontendProdFiles();
   const prodTexts = prodFiles.map((p) => scanText(relative(ROOT, p), readFileSync(p, "utf8")));
+
+  // ── 变异反证注入（--mutate=<形态>）：往**真实**扫描面里加一条合成端点 + 一段合成前端源码 ──
+  const mutation = MUTATE ? MUTATIONS[MUTATE] : null;
+  if (MUTATE && !mutation) {
+    console.error(`⛔ --mutate=${MUTATE} 不是已知形态 ⇒ **工具用法错**，不是代码有问题。可选：${Object.keys(MUTATIONS).join(" | ")}`);
+    process.exit(2);
+  }
+  if (mutation) {
+    backendRoutes.push({ method: mutation.beMethod, path: MUTANT_PATH, norm: MUTANT_PATH, line: 0, file: "«变异反证·合成端点»" });
+    prodTexts.push(scanText("«变异反证·合成前端».ts", mutation.feSrc));
+  }
+
   const fePaths = new Set();
   for (const t of prodTexts) for (const p of extractFrontendPaths(t.src)) fePaths.add(p);
   // 散文串里写着、但**不**计作调用方的路由（诚实位现算；`cleanPaths` 与 fePaths 同源，供 C13c 判「漏网」）
@@ -907,8 +1230,20 @@ function main() {
   }
   const proseOnlyPaths = [...prosePaths].filter((p) => !cleanPaths.has(p));
 
+  // ── 方法口径（WO-SEAM-GATE-METHOD）：路径 → **方法+路径** ──
+  const feCalls = [];              // { method, path } —— 方法已定
+  const feUnknownPaths = new Set(); // 方法未知 ⇒ 对该路径上所有方法沿用旧口径（诚实边界，见 extractFrontendCalls 顶注）
+  let feDynamicUrl = 0;
+  for (const t of prodTexts) {
+    const { calls, unknown, dynamicUrl } = extractFrontendCalls(t.src);
+    feCalls.push(...calls);
+    for (const p of unknown) feUnknownPaths.add(p);
+    feDynamicUrl += dynamicUrl;
+  }
+  const feCallKeys = new Set(feCalls.map((c) => `${c.method} ${c.path}`));
+
   // ── 金丝雀先行 ──
-  const ctx = { emitFields, backendRoutes, fePaths, cleanPaths, prodTexts, prodFiles: prodFiles.map((p) => relative(ROOT, p)), rewritePrefixes };
+  const ctx = { emitFields, backendRoutes, fePaths, cleanPaths, prodTexts, prodFiles: prodFiles.map((p) => relative(ROOT, p)), rewritePrefixes, feCalls, feCallKeys, feUnknownPaths };
   // 金丝雀里抛异常 = 门自己坏了（RC=2），不是「代码有问题」（RC=1）：
   // `mentionsInProd` 对手搓记录会抛，这条 catch 把「有人绕开 scanText 另抄一份」变成机器当场说话。
   const canaryResults = canaries(ctx).map((c) => {
@@ -961,11 +1296,17 @@ function main() {
     if (!beByKey.has(key)) beByKey.set(key, { ...r, aliases });
   }
   const routeGaps = [];
+  const methodExposed = [];      // 旧口径判「已接」、新口径判「零调用」的那批 = 本次口径升级**暴露的存量**
   let exemptCount = 0;
+  // `--mutate=path-only-blind` 刻意把判据换回**旧口径**——这是失明本身的复现，不是可用配置。
+  const consumed = (r) =>
+    mutation?.usePathOnly ? routeConsumedByPathOnly(r, fePaths) : routeConsumedByMethod(r, feCalls, feUnknownPaths);
   for (const [key, r] of [...beByKey].sort()) {
     if (exemptReason(r.norm)) { exemptCount++; continue; }
-    const consumed = r.aliases.some((a) => [...fePaths].some((fe) => pathMatches(fe, a)));
-    if (!consumed) routeGaps.push({ key, file: r.file, line: r.line });
+    if (!consumed(r)) {
+      routeGaps.push({ key, file: r.file, line: r.line });
+      if (routeConsumedByPathOnly(r, fePaths)) methodExposed.push({ key, file: r.file, line: r.line });
+    }
   }
 
   // ── 棘轮基线 ──
@@ -1008,6 +1349,21 @@ function main() {
     `· 载体② HTTP 端点：后端注册 ${beByKey.size} 条（结构性豁免 ${exemptCount}）· 前端 URL 字面量 ${fePaths.size} 条` +
       ` · 前端零调用 ${routeGaps.length}（基线 ${baseEp.size} · 新增 ${newEp.length} · 已修复 ${fixedEp.length}）`,
   );
+  // ── 方法口径的**残余失明半径**（诚实位·每次上屏，不许只留汇总数字）──
+  //    「方法未知」不是「没调用」：本门对这些路径沿用旧口径（对所有方法一律算已接）。
+  //    这个数字就是本门今天仍然看不见的那一片 —— 它必须在屏上，否则下一个人会把「零调用 N」
+  //    读成「除这 N 条外前端全接了」，而那正是本次要治的那种误读。
+  console.log(
+    `· 方法口径（WO-SEAM-GATE-METHOD）：前端已识别调用位 ${feCalls.length} 处 → 方法+路径 ${feCallKeys.size} 条` +
+      ` · **方法未知**的路径 ${feUnknownPaths.size} 条（选项是变量/含展开/字面量不在调用位上 ⇒ 对该路径所有方法沿用旧口径豁免）` +
+      ` · 调用位 URL 切不出 v1 路径 ${feDynamicUrl} 处`,
+  );
+  if (methodExposed.length) {
+    console.log(
+      `· ⚠ 口径升级暴露的**存量** ${methodExposed.length} 条（旧口径只比路径 ⇒ 判「已接」；新口径比方法+路径 ⇒ 判「零调用」）` +
+        ` —— 逐条见 \`--explain-method\`。这些**不是新增违规**，是此前隐身的存量。`,
+    );
+  }
   console.log(
     `· 散文位剔除（欠账 #174）：前端生产代码里判为散文的字符串 ${proseStrings} 条，其中写着 /a|b|api/v1/ 路由的归一路径 ${prosePaths.size} 条` +
       ` —— 一律**不**计作调用方；其中 ${proseOnlyPaths.length} 条无任何真 URL 串佐证${proseOnlyPaths.length ? `（${proseOnlyPaths.join(" , ")}）` : ""}。`,
@@ -1035,6 +1391,16 @@ function main() {
     console.log("\n— 当前零调用端点明细 —");
     for (const g of routeGaps) console.log(`  ${g.key}  ←  ${g.file}:${g.line}`);
   }
+  if (EXPLAIN_METHOD) {
+    // 双向自证**上屏**：正向 = 已知真调用的方法必须判「已接」；反向 = 已知未调用的方法必须被抓到。
+    // 只做正向的口径会把全仓报成缺口，只做反向的会把缺口全藏起来 —— 两个方向一次都不能少。
+    console.log("\n— 口径升级暴露的存量（旧口径判已接 · 新口径判零调用）—");
+    for (const g of methodExposed) console.log(`  ${g.key}  ←  ${g.file}:${g.line}`);
+    console.log(`  合计 ${methodExposed.length} 条`);
+    console.log("\n— 方法未知的路径（残余失明半径 · 对该路径所有方法沿用旧口径豁免）—");
+    for (const p of [...feUnknownPaths].sort()) console.log(`  ${p}`);
+    console.log(`  合计 ${feUnknownPaths.size} 条`);
+  }
 
   const fails = [];
   for (const f of newSse) {
@@ -1054,6 +1420,23 @@ function main() {
         `\n        或属结构性非前端端点（探活/服务间/认证基础设施）→ 加进本脚本 ROUTE_EXEMPTIONS 并写明理由；` +
         `\n        或确属暂不接 → 人手加进 scripts/backend-frontend-seam-baseline.json 的 endpoints。`,
     );
+  }
+
+  if (mutation) {
+    // 变异反证的判据**只看那一条合成端点**：整仓其它存量红不红与本次自检无关。
+    const mutKey = `${mutation.beMethod} ${MUTANT_PATH}`;
+    const bitten = newEp.includes(mutKey);
+    const ok = mutation.mustBeRed ? bitten : !bitten;
+    console.log(`\n— 变异反证 \`--mutate=${MUTATE}\` —`);
+    console.log(`  形态：${mutation.why}`);
+    console.log(`  注入：后端 \`${mutKey}\` · 前端 \`${mutation.feSrc}\``);
+    console.log(`  结果：门${bitten ? "**咬住了**" : "没咬"}（期望${mutation.mustBeRed ? "咬住" : "不咬"}）`);
+    if (ok) {
+      console.log(`✓ 变异反证通过 —— 这道门对该形态是**活的**，不是装饰品。`);
+      process.exit(0);
+    }
+    console.error(`✗ 变异反证未通过 —— 门对「${MUTATE}」这个形态**没有反应**，本门在这一维度是装饰品，先修门再谈结论。`);
+    process.exit(1);
   }
 
   if (fails.length) {
