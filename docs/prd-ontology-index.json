@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14",
+  "generatedAt": "2026-08-16",
   "ontology": {
     "invariants": [
       "R1",
@@ -1269,6 +1269,34 @@
         "scripts/gate.sh"
       ],
       "brokenArtifacts": []
+    },
+    "PRD-harness-ux-adoption.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R17",
+        "R19",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-11"
+      ],
+      "artifacts": [
+        "apps/agentcore/dist/mocks/seed.js",
+        "packages/bundle/headless/README.md",
+        "packages/contracts/dist/index.js",
+        "scripts/check-sim-ux-criteria.mjs",
+        "scripts/gate-ledger-baseline.json",
+        "scripts/gate.sh",
+        "scripts/lib/baseline-doc.mjs"
+      ],
+      "brokenArtifacts": [
+        "packages/bundle/headless/README.md"
+      ]
     },
     "PRD-impediments-reachable.md": {
       "hasOntologyRef": true,
@@ -2924,16 +2952,17 @@
       "PRD-topo-realdata.md",
       "PRD-unified-build-engine.md"
     ],
+    "G-11": [
+      "PRD-harness-ux-adoption.md",
+      "PRD-sandbox-ontogenesis-buildplan.md",
+      "PRD-simulation-sandbox.md"
+    ],
     "G-12": [
       "PRD-opt-whatif-data.md",
       "PRD-optimize-whatif-conversational-wiring.md",
       "PRD-sandbox-redesign.md",
       "PRD-skill-governance-learning.md",
       "PRD-topo-realdata.md"
-    ],
-    "G-11": [
-      "PRD-sandbox-ontogenesis-buildplan.md",
-      "PRD-simulation-sandbox.md"
     ]
   },
   "orphanBreakpoints": [],
@@ -3180,6 +3209,7 @@
       "PRD-addendum-skill-authoring.md",
       "PRD-gate-ledger.md",
       "PRD-hardcoded-absence.md",
+      "PRD-harness-ux-adoption.md",
       "PRD-impediments-reachable.md",
       "PRD-nav-gate.md",
       "PRD-opt-whatif-close.md",
@@ -3538,6 +3568,25 @@
     ],
     "apps/frontend-shell/test/transit-flow.seam.test.tsx": [
       "PRD-hardcoded-absence.md"
+    ],
+    "apps/agentcore/dist/mocks/seed.js": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "packages/bundle/headless/README.md": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "packages/contracts/dist/index.js": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "scripts/check-sim-ux-criteria.mjs": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "scripts/gate-ledger-baseline.json": [
+      "PRD-harness-ux-adoption.md",
+      "PRD-skill-crossreview.md"
+    ],
+    "scripts/lib/baseline-doc.mjs": [
+      "PRD-harness-ux-adoption.md"
     ],
     "apps/datacore/src/solvers/chain-impediment.ts": [
       "PRD-impediments-reachable.md",
@@ -3937,9 +3986,6 @@
     "scripts/check-gate-ledger.mjs": [
       "PRD-skill-crossreview.md",
       "PRD-skill-migration.md"
-    ],
-    "scripts/gate-ledger-baseline.json": [
-      "PRD-skill-crossreview.md"
     ],
     "apps/agentcore/src/dril/quality.ts": [
       "PRD-skill-governance-learning.md"

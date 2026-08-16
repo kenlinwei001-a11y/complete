@@ -408,7 +408,7 @@ apps/agentcore/src/api/sse.ts:26:    "content-type": "text/event-stream",
 
 ## 8 · 顺带发现（未修，仅报告）
 
-1. **本仓迁移序号重复**：`012_agentrun_attribution.sql` 与 `012_plan_builder_canvases.sql` 同为 `012_`。
+1. **本仓迁移序号重复**：`012_agentrun_attribution.sql` 与 `012_plan_builder_canvases.sql` 同为 `012_`。（✅ 2026-08-16 已修：后到的 `012_agentrun_attribution.sql` 改号为 `014_`，判据是**首次并入时间**08:30 晚于 07:58，不是文件名字典序。本句保留原文作史料。）
    若执行器按文件名排序且假定序号唯一，存在顺序不确定或漏执行风险。
 2. **对面 mcp-client 违反了它自己的凭据教条**：`packages/mcp/mcp-client/src/index.ts:83` 的 `headers`
    是**明文字典**，而同仓 `credentials/README.md:5` 立场是
