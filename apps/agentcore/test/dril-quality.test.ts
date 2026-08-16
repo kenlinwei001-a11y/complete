@@ -88,7 +88,7 @@ describe("WO-DRIL-P3 · SEAM 低质量排名下降 vs 高质量同侪（history 
     const low = solverRes("aaa_low", { quality: { successRate: 0.05, accuracy: 0.0, trustLevel: "EXPERIMENTAL" } });
     const res = engine.search(query, [high, low], { maxResults: 10, minScore: 0 });
     const r = ranks(res);
-    expect(r["zzz_high"]).toBeLessThan(r["aaa_low"]); // 高质量在前，尽管 key 靠后
+    expect(r["zzz_high"]).toBeLessThan(r["aaa_low"]!); // 高质量在前，尽管 key 靠后
     // history 子分显式对照。
     const hi = res.results.find((x) => x.resource.key === "zzz_high")!;
     const lo = res.results.find((x) => x.resource.key === "aaa_low")!;
@@ -99,12 +99,12 @@ describe("WO-DRIL-P3 · SEAM 低质量排名下降 vs 高质量同侪（history 
     const a = solverRes("aaa", { quality: { successRate: 0.95, accuracy: 0.9, trustLevel: "GOVERNED" } });
     const b = solverRes("bbb", { quality: { successRate: 0.05, accuracy: 0.0, trustLevel: "EXPERIMENTAL" } });
     const before = ranks(engine.search(query, [a, b], { maxResults: 10, minScore: 0 }));
-    expect(before["aaa"]).toBeLessThan(before["bbb"]); // a(高) 在前
+    expect(before["aaa"]).toBeLessThan(before["bbb"]!); // a(高) 在前
     // 翻转质量（其余不变）。
     const a2 = solverRes("aaa", { quality: { successRate: 0.05, accuracy: 0.0, trustLevel: "EXPERIMENTAL" } });
     const b2 = solverRes("bbb", { quality: { successRate: 0.95, accuracy: 0.9, trustLevel: "GOVERNED" } });
     const after = ranks(engine.search(query, [a2, b2], { maxResults: 10, minScore: 0 }));
-    expect(after["bbb"]).toBeLessThan(after["aaa"]); // 翻转后 b(现高) 在前
+    expect(after["bbb"]).toBeLessThan(after["aaa"]!); // 翻转后 b(现高) 在前
   });
 
   it("R6：同 query 同资源集（含 quality）→ 字节级同序", () => {
@@ -139,11 +139,11 @@ describe("WO-DRIL-P3 · graphDistance（planSlice BFS·§7.2 ontology 第二项�
     const nr = res.results.find((x) => x.resource.key === "near")!;
     const fr = res.results.find((x) => x.resource.key === "far")!;
     expect(nr.scoreBreakdown.ontology).toBeGreaterThan(fr.scoreBreakdown.ontology);
-    expect(ranks(res)["near"]).toBeLessThan(ranks(res)["far"]);
+    expect(ranks(res)["near"]).toBeLessThan(ranks(res)["far"]!);
     // mutation：把跳数图反过来（Line 远、Equipment 近）→ 排名翻转。
     const flipped = new ResourceSearchEngine({ hopsFromFocus: new Map([["Base", 0], ["Line", 3], ["Equipment", 1]]) });
     const res2 = flipped.search("产能推演", [near, far], { maxResults: 10, minScore: 0 });
-    expect(ranks(res2)["far"]).toBeLessThan(ranks(res2)["near"]);
+    expect(ranks(res2)["far"]).toBeLessThan(ranks(res2)["near"]!);
   });
 });
 

@@ -129,7 +129,7 @@ describe("WO-1 · EvalService 生产化缺陷修复", () => {
     const casesB = await reposB.evalCases.listByTenant("tb", "classifier");
     expect(casesB.length).toBe(20);
     expect(casesB.every((c) => c.id.startsWith("ec_scenario_tb_"))).toBe(true);
-    expect(casesA[0].id).not.toBe(casesB[0].id);
+    expect(casesA[0]!.id!).not.toBe(casesB[0]!.id!);
   });
 
   it("SP11 · maxToolCalls 违反时 toolCorrectness 下降", async () => {
@@ -174,7 +174,7 @@ describe("WO-1 · EvalService 生产化缺陷修复", () => {
     const auth = { tenantId, userId: "u1", roles: ["planner"] };
     const report = await svc.run(auth, "agent_quality");
     expect(report.metrics.toolCorrectness).toBe(0);
-    expect(report.results[0].failures.some((f) => f.startsWith("maxToolCalls"))).toBe(true);
+    expect(report.results[0].failures.some!((f) => f.startsWith("maxToolCalls"))!).toBe(true);
   });
 
   it("SP12 · feedbackQuality 校验 caller 租户权限", async () => {

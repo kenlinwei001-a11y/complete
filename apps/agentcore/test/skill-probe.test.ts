@@ -119,7 +119,7 @@ describe("SkillProbeRunner · WO-1 生产化缺陷修复", () => {
 
     await runner.runSkill(auth(TENANT_A), "kv");
     const agent = await repos.agents.get(`agt_probe_${TENANT_A}_kv`);
-    expect(agent!.skills[0].skillId).toBe("skl_kv_2");
+    expect(agent!.skills[0]!.skillId).toBe("skl_kv_2");
     expect(agent!.systemPrompt).toContain("v2 body");
   });
 
@@ -132,7 +132,7 @@ describe("SkillProbeRunner · WO-1 生产化缺陷修复", () => {
 
     await runner.runSkill(auth(TENANT_A), "ks", { skillId: "skl_ks_1" });
     const agent = await repos.agents.get(`agt_probe_${TENANT_A}_ks`);
-    expect(agent!.skills[0].skillId).toBe("skl_ks_1");
+    expect(agent!.skills[0]!.skillId).toBe("skl_ks_1");
   });
 
   it("SP4 · timeoutMs 生效，engine 挂起时返回 timeout 失败", async () => {
@@ -162,7 +162,7 @@ describe("SkillProbeRunner · WO-1 生产化缺陷修复", () => {
     expect(Date.now() - t0).toBeLessThan(500);
     expect(run.total).toBe(1);
     expect(run.passed).toBe(0);
-    expect(run.results[0].failures.some((f) => f.startsWith("probe timeout"))).toBe(true);
+    expect(run.results[0].failures.some!((f) => f.startsWith("probe timeout"))!).toBe(true);
   });
 
   it("SP5 · 词表可达性（假绿第 6 例反证）：判定用的值必须是契约真枚举，生产 skill 才可能带上", () => {
@@ -291,7 +291,7 @@ describe("SkillProbeRunner · WO-1 生产化缺陷修复", () => {
     });
 
     const run = await runner.runSkill(auth(TENANT_A), "in", { intentKey: "my_intent" });
-    expect(run.results[0].observed.intentKey).toBe("my_intent");
+    expect(run.results[0].observed!.intentKey!).toBe("my_intent");
   });
 
   it("behaviorGain · answerMust 为空时失败", async () => {
@@ -311,8 +311,8 @@ describe("SkillProbeRunner · WO-1 生产化缺陷修复", () => {
     });
 
     const run = await runner.runSkill(auth(TENANT_A), "bg");
-    expect(run.results[0].pass).toBe(false);
-    expect(run.results[0].failures.some((f) => f.includes("missing answerMust"))).toBe(true);
+    expect(run.results[0]!.pass!).toBe(false);
+    expect(run.results[0].failures.some!((f) => f.includes("missing answerMust"))!).toBe(true);
   });
 
   it("behaviorGain · 答案必须依赖 skill（twin 不出现）", async () => {
@@ -344,7 +344,7 @@ describe("SkillProbeRunner · WO-1 生产化缺陷修复", () => {
     });
 
     const run = await runner.runSkill(auth(TENANT_A), "bg2");
-    expect(run.results[0].pass).toBe(true);
+    expect(run.results[0]!.pass!).toBe(true);
   });
 });
 

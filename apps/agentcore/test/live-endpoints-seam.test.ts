@@ -25,14 +25,14 @@ describe("WO-LIVE-ENDPOINTS · 活① compose 纯映射（R6·数字取 portfoli
     expect(out.scenarios[0]).toEqual({ key: "max_ontime", ontime: 11, displaced: 8, ontimeRate: 58, cost: 2447944.8 });
     expect(out.narrative).toContain("58%");
     expect(out.narrative).toContain("2447944.8");
-    expect(out.provenance[0].drillValue).toBe(11);
+    expect(out.provenance[0]!.drillValue!).toBe(11);
   });
 
   it("改 portfolio 真解 → 叙述/读数变（KILL-MOCK·输出随输入）", () => {
     const a = buildComposeNarrative("q", [{ key: "max_ontime", objectiveValues: { ontime: 11, cost: 100 }, servedCount: 11, displacedCount: 8 }]);
     const b = buildComposeNarrative("q", [{ key: "max_ontime", objectiveValues: { ontime: 5, cost: 999 }, servedCount: 5, displacedCount: 14 }]);
     expect(a.narrative).not.toBe(b.narrative);
-    expect(a.scenarios[0].ontimeRate).not.toBe(b.scenarios[0].ontimeRate);
+    expect(a.scenarios[0]!.ontimeRate!).not.toBe(b.scenarios[0]!.ontimeRate!);
   });
 });
 

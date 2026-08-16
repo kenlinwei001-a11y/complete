@@ -29,8 +29,8 @@ function shippedEnvOf(service: string): Record<string, string> {
   const svcIdx = lines.findIndex((l) => new RegExp(`^ {2}${service}:\\s*$`).test(l));
   expect(svcIdx, `docker-compose.yml 找不到 service ${service}`).toBeGreaterThanOrEqual(0);
   let envIdx = -1;
-  for (let i = svcIdx + 1; i < lines.length && !/^ {2}\S/.test(lines[i]); i++) {
-    if (/^ {4}environment:\s*$/.test(lines[i])) {
+  for (let i = svcIdx + 1; i < lines.length && !/^ {2}\S/.test(lines[i]!); i++) {
+    if (/^ {4}environment:\s*$/.test(lines[i]!)) {
       envIdx = i;
       break;
     }
@@ -38,13 +38,13 @@ function shippedEnvOf(service: string): Record<string, string> {
   expect(envIdx, `service ${service} 无 environment 块`).toBeGreaterThanOrEqual(0);
   const out: Record<string, string> = {};
   for (let i = envIdx + 1; i < lines.length; i++) {
-    if (!/^ {6}\S/.test(lines[i])) {
-      if (/^\s*(#.*)?$/.test(lines[i])) continue;
+    if (!/^ {6}\S/.test(lines[i]!)) {
+      if (/^\s*(#.*)?$/.test(lines[i]!)) continue;
       break;
     }
-    const m = lines[i].match(/^ {6}([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$/);
+    const m = lines[i].match!(/^ {6}([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$/)!;
     if (!m) continue;
-    const interp = m[2].match(/^\$\{[A-Za-z_][A-Za-z0-9_]*:-(.*)\}$/);
+    const interp = m[2].match!(/^\$\{[A-Za-z_][A-Za-z0-9_]*:-(.*)\}$/)!;
     out[m[1]] = (interp ? interp[1] : m[2]).replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1").trim();
   }
   return out;
