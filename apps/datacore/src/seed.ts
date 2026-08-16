@@ -6,6 +6,7 @@ import type { AuthCtx } from "./domain.js";
 import type { SyntheticService } from "./synthetic/service.js";
 import { seedOrgWorld } from "./org/seed.js";
 import { seedProcessLayerOntology } from "./process/ontology.js"; // WO-FLOWTIME · 流程层本体（ProcessDefinition/ProcessInstance + instance_of/carries 链路）随流程层种子一起来
+import { seedProcessStepTemplates } from "./process/step-templates.js"; // WO-STEP-TEMPLATE-LAYER · 步骤模板（65 条里只 7 条有，其余如实标缺席）
 
 export const DEMO_TENANT = "demo";
 
@@ -1188,6 +1189,14 @@ export async function seedDemoProcessLayer(repos: Repos): Promise<void> {
   );
   await repos.processDomains.putMany(domains);
   await repos.processDefinitions.putMany(defs);
+  /**
+   * WO-STEP-TEMPLATE-LAYER · 步骤模板（**只 7 条，不是 65 条**）。
+   *
+   * 必须排在 `processDefinitions.putMany` **之后**：播种时逐条校验「工期守恒」
+   * （Σ步 == 定义的 stdDurationDays），要先读得到定义。顺序反了会抛「孤儿模板」。
+   * 覆盖面与缺席理由是内容问题，全部落在 `process/step-templates.ts`，本文件不复述（免两份注释漂移）。
+   */
+  await seedProcessStepTemplates(repos, DEMO_TENANT);
   /**
    * WO-FLOWTIME · 流程层**本体**（2 个对象类型 + `instance_of`/`carries` 链路族）。
    *

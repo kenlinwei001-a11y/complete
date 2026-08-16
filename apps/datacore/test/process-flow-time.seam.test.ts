@@ -364,7 +364,22 @@ describe("WO-FLOWTIME · 流程实例反推（接缝驱动）", () => {
   // ══════════════════════════════════════════════════════════════════════════
   it("⑨ 本体登记：描述非空 + carries 链路与规则表的承载类型集合逐字相等", async () => {
     const types = processLayerObjectTypes();
-    expect(types.length).toBe(2);
+    /**
+     * 🔴 **金值 2 → 3（2026-08-15 · WO-STEP-TEMPLATE-LAYER）**。
+     *
+     * 这个数**被机器逼着改的，不是人想起来的**：本条断言原写死 `toBe(2)`，加了第三个类型后当场变红。
+     * 改数之前先确认它是**有意新增**不是回归 —— 新增的是 `ProcessStepTemplate`
+     * （`process/ontology.ts`），补的是模板层与运行时层之间那一跳：`ProcessDefinition` 说
+     * 「有哪些流程」，`ProcessTask` 说「这一单走到第几步」，而「一条流程标准分几步」此前
+     * **没有任何承载物**，于是 `POST /a/v1/process-instances` 的 `tasks` 无源可填（befe-seam 那条零调用）。
+     *
+     * ⚠ **另两个金值 94/95 一个都不动**（`demo-chain-provenance` / `a3-refbase`）：
+     * 那两个度量的是 `batteryObjectTypes()` 的**行业模板**类型数，而本函数三个类型都是
+     * **平台流程层制品**、一直在它之外（判据见 `process/ontology.ts` 文件头第二段）。
+     * 拿本条的变化去推那两条会推错 —— 它们度量的不是同一件事。
+     */
+    expect(types.length).toBe(3);
+    expect(types.map((x) => x.key).sort()).toEqual(["ProcessDefinition", "ProcessInstance", "ProcessStepTemplate"]);
     for (const ty of types) {
       expect(ty.displayName.length).toBeGreaterThan(0);
       expect((ty.description ?? "").length).toBeGreaterThan(10);

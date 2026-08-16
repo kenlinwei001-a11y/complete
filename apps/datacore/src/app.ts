@@ -149,6 +149,7 @@ import { mulberry32, hashString, randInt } from "./prng.js";
 import { DeriveDecisionFieldsRequestSchema, RecordMaterializeRequestSchema, CeoDatasetGenerateRequestSchema } from "@platform/contracts"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生 · WO-CEO-DATA-supply · 真源记录颗粒级物化 · WO-CEO-DATA-2
 import { AdvanceProcessInstanceRequestSchema, CreateProcessInstanceRequestSchema } from "@platform/contracts"; // WO-PROCESS-INSTANCE · 流程运行时（建实例/推进；body 只收**外部事实**，不收 status —— 状态机不交给调用方）
 import { ProcessRuntimeService } from "./process/runtime.js"; // WO-PROCESS-INSTANCE · 五个等待态的唯一产地（evaluateGate 单一调用点）
+import { readStepTemplate } from "./process/step-templates.js"; // WO-STEP-TEMPLATE-LAYER · 建实例时 tasks 的唯一合法数据源（有则下发步骤，无则下发可复跑的缺席取证）
 import { deriveDecisionFields, weakestDataMode as weakestDerivedDataMode, validateDerivedFields, type DeriveSourceObject } from "./decision/derive-fields.js";
 import { materializeRecords, RECORD_MATERIALIZE_TEMPLATES } from "./decision/record-materialize.js";
 import { generateCeoAtomicDataset } from "./synthetic/ceo-dataset.js";
@@ -3650,6 +3651,36 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    * 层计数必须对得回真子图的 nodes/edges，拿手工拼的假 graph 喂进去屏上的数就是编的。
    * 承载类型 absent ⇒ `carrierLayers: null` + 说明，**不返回 16 个空壳假装算过**。
    */
+  /**
+   * WO-STEP-TEMPLATE-LAYER · 一条流程的**标准步骤模板**。
+   *
+   * ── 这条路由补的是 `POST /a/v1/process-instances` 此前**无源可填**那个洞 ──────
+   * 建实例的请求体要求 `tasks.min(1)`（步骤逐条给全），而 `ProcessDefinition` 九个字段里
+   * 没有一个是步骤 ⇒ 前端要接"启动流程"按钮就得**凭空发明步骤**，正是
+   * `process/runtime.ts create()` 那条「不许凭空建」红线所反对的。本路由就是那个源。
+   *
+   * ⛔ **`tasks.min(1)` 一个字没放宽**（放宽 = 把「实例必须有步骤」这条不变量拆了）。
+   *    变的只是步骤从哪来 —— 模板来的，不是想象来的。前端把本响应的 `steps` 经契约的
+   *    `tasksFromStepTemplate()`（**唯一一处转换实现**，前后端共用）折成 `tasks` 再 POST。
+   *
+   * ── 口径 ─────────────────────────────────────────────────────────────────
+   * · **只读投影**（R4）：一次 Store.list，零副作用、零新真值源、不碰 Action 审批路径。
+   * · R2：按 `ctx(req).tenantId` 读，跨租户自然为空。
+   * · **流程 key 不存在 → 404**（那是调用错）；**流程存在但没有步骤模板 → 200 +
+   *   `available:false` + `absence{reason,probe}`**。「这条流程还没有步骤模板」是一个合法答案，
+   *   变成 404/500 会让调用方以为流程本身不存在或服务坏了。
+   * · **不做 entitlement 门**：本端点属**模板层**（与同前缀的 `/a/v1/process-definitions*`
+   *   三条一致，全部无门），而 `process.runtime` 那道暗发门管的是**运行时层**
+   *   （`/a/v1/process-instances*`）。给模板层也加门会让"看得见流程台账、却看不见它分几步"，
+   *   两层的可见性边界就糊了。
+   */
+  app.get("/a/v1/process-definitions/:key/step-template", async (req) => {
+    const c = ctx(req);
+    const { key } = req.params as { key: string };
+    const def = (await repos.processDefinitions.list(c.tenantId, (d) => d.key === key))[0];
+    if (!def) throw notFound(`ProcessDefinition ${key}`);
+    return readStepTemplate(repos, c.tenantId, def);
+  });
   app.get("/a/v1/process-definitions/:key/inspect", async (req) => {
     const c = ctx(req);
     const { key } = req.params as { key: string };

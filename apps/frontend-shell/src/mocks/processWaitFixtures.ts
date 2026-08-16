@@ -6,7 +6,14 @@ import {
   ProcessDomainSchema,
   ProcessInstanceSchema,
   ProcessInspectResponseSchema,
+  // WO-STEP-TEMPLATE-LAYER · 步骤模板 mock 走与真后端播种**同一份** schema 与不变量函数
+  ProcessStepTemplateSchema,
+  ProcessStepTemplateResponseSchema,
+  processStepTemplateId,
+  validateProcessStepTemplateSet,
   type ProcessInspectResponse,
+  type ProcessStepTemplate,
+  type ProcessStepTemplateResponse,
 } from "@platform/contracts";
 import type { ProcessDefinitionsResponse, ProcessInstancesResponse } from "@/views/process/processWait";
 
@@ -343,5 +350,108 @@ export const processInspectFixture = (key: string): ProcessInspectResponse | nul
     levers: [],
     carrierLayers: null,
     carrierLayersAbsentReason: `承载类型 ${def.carrierTypeKey} 解析不到 ⇒ 切不出以它为根的一跳子图，十六层三态无从算起。不返回 16 个空壳假装算过。`,
+  });
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-STEP-TEMPLATE-LAYER · `GET /a/v1/process-definitions/:key/step-template` 的 mock
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ══ 🔴 mock 里**只有 P34 有步骤模板**，而且那两步是真种子的逐字副本 ═══════════
+ *
+ * 上方 `RAW_DEFINITIONS` 的 11 条子集里，落在真后端步骤模板覆盖清单
+ * （`apps/datacore/src/process/step-templates.ts` 的 7 条：P25/P34/P35/P41/P42/P43/P51）
+ * 内的**只有 P34**。所以这里也只给 P34 —— 其余 10 条走 `available:false`。
+ *
+ * ⚠ 这不是"mock 偷懒"，是 mock 必须与真后端同形：真后端 65 条里也只有 7 条有模板。
+ * 给 mock 多编几条"演示用"的模板，演示态就会比真实态更好看 —— 那正是本仓
+ * 「mock 与真后端分家、测试咬 mock 恒绿」栽过的坑，而且这次的分家方向最坏：
+ * 它会把「多数流程今天建不出实例」这条**真相**在演示里藏起来。
+ *
+ * 三重防漂移（与本文件上方 `RAW_DEFINITIONS` 同一套机制）：
+ *  ① 每条过契约的 `ProcessStepTemplateSchema.parse`（strictObject，多写一个字段也炸）；
+ *  ② 整组过 `validateProcessStepTemplateSet`（工期守恒 / 步序连续 / 半天粒度）——
+ *    与真后端播种时用的**是同一个函数**，所以 mock 不可能偷偷违反不变量；
+ *  ③ 步内容逐字取自 `apps/datacore/src/process/step-templates.ts` 的 `P34`。
+ */
+const RAW_STEP_TEMPLATES: Readonly<
+  Record<string, readonly Omit<ProcessStepTemplate, "id" | "tenantId" | "processKey">[]>
+> = {
+  P34: [
+    {
+      seq: 1,
+      name: "报关申报",
+      ownerFunctionKey: "supply_chain",
+      stdDurationDays: 3,
+      waitKind: "WAITING_EXTERNAL_SYSTEM",
+      carrierAnchor: { kind: "TIMESTAMP_FIELD", propKey: "declaredDay", value: null },
+      basis:
+        "apps/datacore/src/synthetic/battery-extended.ts 的 CustomsClearance.declaredDay 字段描述原文「申报天（相对天）。到 clearedDay 之间即「清关」腿的实测耗时」——两个时刻是同一段的两端，非我划分。",
+    },
+    {
+      seq: 2,
+      name: "海关查验与放行",
+      ownerFunctionKey: "supply_chain",
+      stdDurationDays: 4,
+      waitKind: "WAITING_EXTERNAL_SYSTEM",
+      carrierAnchor: { kind: "TIMESTAMP_FIELD", propKey: "clearedDay", value: null },
+      basis:
+        "同上字段对的另一端 clearedDay（「海关放行天…放行后才进入到货检验」）。责任方是清关行/海关（packages/contracts/src/procurement.ts PROCUREMENT_LEG_OWNER.customs = CUSTOMS_BROKER），平台侧对口职能是 supply_chain（与 seed.ts P34 定义的 ownerFunctionKey 一致）。",
+    },
+  ],
+};
+
+/** 缺席理由：与真后端同形 —— 说清缺在哪一环 + 给可复跑探针，不写「暂无数据」。 */
+const mockStepTemplateAbsence = (key: string) => ({
+  reason: `mock 世界里流程 ${key} 没有步骤模板。真后端 65 条流程里也只有 7 条有（候选集由 apps/datacore/src/process/flow-rules.ts 的 flowRuleCoveredProcessKeys() 算出，其中 2 条因单据只记了一个可用时刻而建不出多步）——「多数流程今天建不出实例」是平台的真实状态，mock 不替它遮掩。`,
+  probe: `真后端复验：curl -s -H 'X-Debug-User: demo:u1:admin' 'http://127.0.0.1:4001/a/v1/process-definitions/${key}/step-template' | jq '{available,absence}'；mock 侧复验：读 apps/frontend-shell/src/mocks/processWaitFixtures.ts 的 RAW_STEP_TEMPLATES（今天只有 P34 一条）。`,
+});
+
+/**
+ * 按 processKey 现算一份步骤模板响应。
+ * 未登记的 key ⇒ `null`，由 handler 回 404 信封 —— **不拿别的流程的步骤顶包**。
+ */
+export const processStepTemplateFixture = (key: string): ProcessStepTemplateResponse | null => {
+  const def = RAW_DEFINITIONS.find((d) => d.key === key);
+  if (def === undefined) return null;
+  const raw = RAW_STEP_TEMPLATES[key];
+  if (raw === undefined) {
+    return ProcessStepTemplateResponseSchema.parse({
+      processKey: def.key,
+      processName: def.name,
+      carrierTypeKey: def.carrierTypeKey,
+      definitionStdDurationDays: def.stdDurationDays,
+      available: false,
+      steps: [],
+      absence: mockStepTemplateAbsence(key),
+      // 「算不出」与「算出来是 0」是两个命题 —— null 不是 0。
+      stepsTotalStdDurationDays: null,
+    });
+  }
+  const steps = raw.map((s) =>
+    ProcessStepTemplateSchema.parse({
+      ...s,
+      id: processStepTemplateId(TENANT_ID, key, s.seq),
+      tenantId: TENANT_ID,
+      processKey: key,
+    }),
+  );
+  // ② 整组过与真后端播种**同一个**不变量函数：mock 违反工期守恒会在模块加载时就炸。
+  const issues = validateProcessStepTemplateSet(def, steps);
+  if (issues.length > 0) {
+    throw new Error(
+      `mock 步骤模板 ${key} 违反契约不变量：${issues.map((i) => `[${i.code}] ${i.message}`).join(" | ")}`,
+    );
+  }
+  return ProcessStepTemplateResponseSchema.parse({
+    processKey: def.key,
+    processName: def.name,
+    carrierTypeKey: def.carrierTypeKey,
+    definitionStdDurationDays: def.stdDurationDays,
+    available: true,
+    steps,
+    absence: null,
+    stepsTotalStdDurationDays: steps.reduce((acc, s) => acc + s.stdDurationDays, 0),
   });
 };
