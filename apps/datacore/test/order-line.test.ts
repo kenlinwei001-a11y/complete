@@ -115,10 +115,12 @@ describe("WO-ORDERLINE · 端到端接缝（seed 落库 × 链路 × 24 单头�
     for (const ms of modelsBySo.values()) expect(new Set(ms).size).toBe(ms.length);
 
     // SEAM-3 端到端红咬：改一行 qty 落库 → 从仓储重算头级 rollup 变（行级是头级真拆分）。
-    const someLine = orderLines[0];
-    const so = String(someLine!.props.orderRef);
+    // 在这里一次性断言非空：不然 `{ ...someLine }` 展开的是 ObjectInstance|undefined，
+    // 每个字段都变成可选，整个对象就不再是合法 ObjectInstance（TS2345）。
+    const someLine = orderLines[0]!;
+    const so = String(someLine.props.orderRef);
     const beforeRollup = orderLines.filter((l) => String(l.props.orderRef) === so).reduce((a, l) => a + Number(l.props.qty), 0);
-    await t.repos.objects.put({ ...someLine, props: { ...someLine!.props, qty: Number(someLine!.props.qty) + 500 } });
+    await t.repos.objects.put({ ...someLine, props: { ...someLine.props, qty: Number(someLine.props.qty) + 500 } });
     const reread = await t.repos.objects.listByType("demo", "OrderLine");
     const afterRollup = reread.filter((l) => String(l.props.orderRef) === so).reduce((a, l) => a + Number(l.props.qty), 0);
     expect(afterRollup).toBe(beforeRollup + 500); // 头级 rollup 随行真变（非装饰）

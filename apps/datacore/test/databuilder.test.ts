@@ -13,6 +13,10 @@ describe("R11 全链闭包门 · CHAIN 维（求解器注册焊进 ClosureReport
   const base: Omit<BuildPlan, "solverNeeds"> = {
     id: "bpl_t", tenantId: "demo", builderKey: "test", scriptHash: "h", seed: 1, script: "",
     dataSources: [], objectTypes: [], rules: [], kbDocs: [], createdAt: "2026-01-01",
+    // BuildPlan 后来长出的 8 个 *Needs（contracts/databuilder.ts:214-221，带 default ⇒ 输出类型必填）。
+    // 本 fixture 一直没跟上 —— typecheck 看不见 test/ 时无人发现。
+    sliceNeeds: [], intentNeeds: [], planNeeds: [], workflowNeeds: [],
+    skillNeeds: [], agentNeeds: [], mcpNeeds: [], sceneNeeds: [],
   };
 
   it("已注册求解器 → CHAIN BOUND，gate 通过", () => {
@@ -40,6 +44,10 @@ describe("R11-SHAPE · 渲染契约（求解器输出形状 ↔ 渲染绑定，B
   const base: Omit<BuildPlan, "solverNeeds"> = {
     id: "bpl_s", tenantId: "demo", builderKey: "test", scriptHash: "h", seed: 1, script: "",
     dataSources: [], objectTypes: [], rules: [], kbDocs: [], createdAt: "2026-01-01",
+    // BuildPlan 后来长出的 8 个 *Needs（contracts/databuilder.ts:214-221，带 default ⇒ 输出类型必填）。
+    // 本 fixture 一直没跟上 —— typecheck 看不见 test/ 时无人发现。
+    sliceNeeds: [], intentNeeds: [], planNeeds: [], workflowNeeds: [],
+    skillNeeds: [], agentNeeds: [], mcpNeeds: [], sceneNeeds: [],
   };
 
   it("渲染绑定字段全在求解器输出形状 → SHAPE BOUND，gate 通过", () => {
@@ -431,7 +439,9 @@ describe("数据构建发动机页面统一规格 P3/P3.5 · 故事覆盖度 + �
 
   it("SBR P3 端点：POST run → storyCoverage 落库 + sceneNeeds.targetView 非空（区7 可落点）", async () => {
     const t = await makeApp();
-    const run = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 11 } })).json()) as StoryRunResp & { storyCoverage: { mapped: boolean }[]; buildPlan?: { sceneNeeds: { targetView: string }[] } };
+    // Omit 掉 buildPlan 再重给：直接交集会让 sceneNeeds 变成 `unknown[] & {targetView}[]`，
+    // 于是 every 的回调参数推成 unknown（TS18046）。Omit 让本处更具体的那份真正生效。
+    const run = (await (await t.app.inject({ method: "POST", url: "/a/v1/databuilder/runs", headers: ADMIN, payload: { script: SCRIPT, seed: 11 } })).json()) as Omit<StoryRunResp, "buildPlan"> & { storyCoverage: { mapped: boolean }[]; buildPlan?: { sceneNeeds: { targetView: string }[] } };
     expect(run.storyCoverage.length).toBeGreaterThan(0);
     expect(run.storyCoverage.some((c) => c.mapped)).toBe(true);
     expect(run.buildPlan?.sceneNeeds.every((s) => s.targetView.length > 0)).toBe(true);

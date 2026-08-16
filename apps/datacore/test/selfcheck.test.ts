@@ -8,7 +8,9 @@ import { selfCheckGaps } from "../src/databuilder/selfcheck.js";
  */
 describe("g8-P4 · selfCheckGaps", () => {
   it("干净建域（无缺口）→ ANSWERABLE、零 findings", () => {
-    const r = selfCheckGaps("s", "sbr_1", { gatePassed: true, findings: [], objectsBound: 3, dataOrphans: 0, forwardMissing: 0, chainBroken: 0, shapeBroken: 0 });
+    // buildMode/advisoryCount/blocked 是 ClosureReport 的必填项（contracts/databuilder.ts:261-265，
+    // 带 default ⇒ 解析后必有）。A18 语义：STRICT 口径下 blocked = !gatePassed。
+    const r = selfCheckGaps("s", "sbr_1", { gatePassed: true, findings: [], objectsBound: 3, dataOrphans: 0, forwardMissing: 0, chainBroken: 0, shapeBroken: 0, buildMode: "STRICT", advisoryCount: 0, blocked: false });
     expect(r.verdict).toBe("ANSWERABLE");
     expect(r.findings).toHaveLength(0);
   });
@@ -16,6 +18,7 @@ describe("g8-P4 · selfCheckGaps", () => {
   it("A 栈闭包 CHAIN/SHAPE 断 → SOLVER_NOT_FOUND / SHAPE_MISMATCH", () => {
     const closure: ClosureReport = {
       gatePassed: false, objectsBound: 1, dataOrphans: 0, forwardMissing: 0, chainBroken: 1, shapeBroken: 1,
+      buildMode: "STRICT", advisoryCount: 0, blocked: true, // A18：STRICT 口径 blocked = !gatePassed
       findings: [
         { kind: "CHAIN", ref: "solver:ghost", status: "FAILED", detail: "未注册" },
         { kind: "SHAPE", ref: "capacity_forecast.output.x", status: "FAILED", detail: "ghost 字段" },

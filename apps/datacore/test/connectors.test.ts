@@ -49,6 +49,7 @@ describe("A1 connectors", () => {
           ["SO-X1", 100, "2026-07-01", "OPEN"],
           ["SO-X2", 200, "2026-07-02", "CONFIRMED"],
         ],
+        options: {}, // node-xlsx 的 WorkSheet.options 在类型上是**必填**（运行时可省），故显式给空
       },
     ]);
     const res = await t.app.inject({
