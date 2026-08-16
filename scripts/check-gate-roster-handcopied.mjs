@@ -172,15 +172,19 @@ function main() {
     }
     const rosterCount = Object.values(next).filter((e) => e.verdict === "roster").length;
     const prevHigh = typeof base?.ratchetHigh === "number" ? base.ratchetHigh : rosterCount;
-    const doc = buildBaselineDoc({
-      prev: base,
-      generatedBy: `node scripts/check-gate-roster-handcopied.mjs ${isTighten ? "--tighten" : "--seed"}`,
-      prose: { note: BASELINE_NOTE },
-      // ratchetHigh 只降不升：写入时取 min，**杜绝 `--update` 悄悄把水位抬上去买绿**（本仓真发生过 87→94）。
-      computed: { entries: next, candidateCount: Object.keys(next).length, rosterCount, ratchetHigh: Math.min(prevHigh, rosterCount) },
-    });
-    writeFileSync(BASELINE, JSON.stringify(doc, null, 2) + "\n");
-    console.log(`✓ 基线已写：候选 ${Object.keys(next).length} 条 · roster 债 ${rosterCount} 条 · ratchetHigh ${doc.ratchetHigh}（${isTighten ? "只删死账" : "首次建账"}）`);
+    const nextHigh = Math.min(prevHigh, rosterCount); // 只降不升：杜绝 --update 悄悄抬水位买绿（本仓真发生过 87→94）
+    // ⚠ `buildBaselineDoc(` 必须**内联在写入表达式里**：`baseline-writer-honesty:check` 判的是
+    //   「写的那一刻用没用共享写入器」，先赋值给中间变量再写会被判 HAND_ROLLED。
+    writeFileSync(
+      BASELINE,
+      JSON.stringify(buildBaselineDoc({
+        prev: base,
+        generatedBy: `node scripts/check-gate-roster-handcopied.mjs ${isTighten ? "--tighten" : "--seed"}`,
+        prose: { note: BASELINE_NOTE },
+        computed: { entries: next, candidateCount: Object.keys(next).length, rosterCount, ratchetHigh: nextHigh },
+      }), null, 2) + "\n",
+    );
+    console.log(`✓ 基线已写：候选 ${Object.keys(next).length} 条 · roster 债 ${rosterCount} 条 · ratchetHigh ${nextHigh}（${isTighten ? "只删死账" : "首次建账"}）`);
     return 0;
   }
 

@@ -1,6 +1,6 @@
 {
   "note": "① 本文件是 `check-ref-closure.mjs` 的**未守发布路存量棘轮**。受检集合（问哪些发布路）由门**现算**（扫 server.ts 的 `app.post(\"…/publish\")`），本文件里一条路由都不当名单用 —— 名单一手抄，**忘了接探针的那条同时也会忘了进名单**，于是它一次都不会被问（本体 §8 G-GATE-ROSTER-HANDCOPIED）。② 每条必须写 `why`：**无理由白名单正是棘轮要治的病**，要说清「这条路凭什么今天可以没有探针」——是它压根不携带引用，还是它另有等价守卫，还是**它就是个真洞**（真洞必须写明代价）。③ `maxEntries` 恒等于 entries 条数；评审唯一必须拒绝的一行就是把它调大。④ `--tighten` **只删不加**：接上探针即收回额度；新增未守的发布路**不自动收编**，当场红。",
-  "generatedBy": "node scripts/check-ref-closure.mjs --seed",
+  "generatedBy": "node scripts/check-ref-closure.mjs --tighten",
   "entries": {
     "\"/api/v1/catalog/intents/:intentId/publish\"": {
       "why": "**今天未测出携带引用。** 意图发布走 catalog 服务的 publishIntent，实测其 handler 与实现里没有 solverKey / ruleKey / objectTypes 任何一类引用字段（现算判据见门内 census）。**为什么仍留在账上而不是从判据里剔除**：意图与 plan 是同一族目录对象，`slotNames` / 绑定 plan 的演进随时可能引入引用；留在账上 = 它每天被现算问一次，真引入引用时这条 `why` 会与事实矛盾并被复审抓住。**差什么才能改成「已守」**：先确认意图对象最终形态是否携带跨系统引用（属产品语义裁决），携带则同 plan 路一起接探针。"

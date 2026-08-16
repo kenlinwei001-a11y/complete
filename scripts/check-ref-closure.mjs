@@ -53,7 +53,7 @@ function gateToolBroken(e) {
 
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { buildBaselineDoc } from "./lib/baseline-doc.mjs";
+import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -459,6 +459,15 @@ function mainRefClosure() {
   const otherViolations = violations.filter((v) => !(/^D1 摘门/.test(v) && /（"[^"]+"）/.test(v)));
 
   if (argv.includes("--seed") || argv.includes("--tighten")) {
+    // 基线写入器四向金丝雀（与 buildBaselineDoc 共用同一份实现，不另抄）——
+    // 不过 ⇒ RC=2「门自己坏了」：写入器一坏会静默吞掉人手挂账的 why，
+    // 而 why 恰恰是棘轮唯一能被人审的部分，吞掉它等于把棘轮降级成白名单。
+    const bc = baselineDocCanary();
+    if (!bc.ok) {
+      console.error(`⛔ ref-closure:check 工具坏了：基线写入器金丝雀${bc.got}`);
+      console.error("   本次不写基线（写了会吞掉人手 why）。");
+      return 2;
+    }
     const isTighten = argv.includes("--tighten");
     const prev = base?.entries ?? {};
     const next = {};
@@ -466,13 +475,17 @@ function mainRefClosure() {
       if (isTighten && !(id in prev)) continue; // 新增未守的不自动收编（收编 = 买绿）
       next[id] = prev[id] ?? { why: "【待人补】--seed 落的机器事实，尚未写明「这条路凭什么今天可以没有探针」。" };
     }
-    const doc = buildBaselineDoc({
-      prev: base,
-      generatedBy: `node scripts/check-ref-closure.mjs ${isTighten ? "--tighten" : "--seed"}`,
-      prose: { note: BASELINE_NOTE },
-      computed: { entries: next, maxEntries: Object.keys(next).length, liveRouteCount: routes.length },
-    });
-    writeFileSync(BASELINE, JSON.stringify(doc, null, 2) + "\n");
+    // ⚠ `buildBaselineDoc(` 必须**内联在写入表达式里**：`baseline-writer-honesty:check` 判的是
+    //   「写的那一刻用没用共享写入器」，先赋值给中间变量再写会被判 HAND_ROLLED。
+    writeFileSync(
+      BASELINE,
+      JSON.stringify(buildBaselineDoc({
+        prev: base,
+        generatedBy: `node scripts/check-ref-closure.mjs ${isTighten ? "--tighten" : "--seed"}`,
+        prose: { note: BASELINE_NOTE },
+        computed: { entries: next, maxEntries: Object.keys(next).length, liveRouteCount: routes.length },
+      }), null, 2) + "\n",
+    );
     console.log(`✓ 基线已写：${Object.keys(next).length} 条未守发布路（${isTighten ? "只删不加" : "首次建账"}）· 现算路由 ${routes.length} 条`);
     return 0;
   }

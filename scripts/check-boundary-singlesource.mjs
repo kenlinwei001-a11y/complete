@@ -382,13 +382,18 @@ function main() {
       };
       nextEntries[key].count = v.lines.length; // 算出来的字段永远刷新（否则棘轮被冻结）
     }
-    const doc = buildBaselineDoc({
-      prev: base,
-      generatedBy: `node scripts/check-boundary-singlesource.mjs ${isSeed ? "--seed" : "--tighten"}`,
-      prose: { note: BASELINE_NOTE },
-      computed: { entries: nextEntries, maxEntries: Object.keys(nextEntries).length },
-    });
-    writeFileSync(BASELINE, JSON.stringify(doc, null, 2) + "\n");
+    // ⚠ `buildBaselineDoc(` 必须**内联在写入表达式里**：`baseline-writer-honesty:check` 判的是
+    //   「写的那一刻用没用共享写入器」，先赋值给中间变量再写会被判 HAND_ROLLED
+    //   （「导入了」≠「写的时候用了」）—— 这一条是那道门当场报红逼出来的，不是人想起来的。
+    writeFileSync(
+      BASELINE,
+      JSON.stringify(buildBaselineDoc({
+        prev: base,
+        generatedBy: `node scripts/check-boundary-singlesource.mjs ${isSeed ? "--seed" : "--tighten"}`,
+        prose: { note: BASELINE_NOTE },
+        computed: { entries: nextEntries, maxEntries: Object.keys(nextEntries).length },
+      }), null, 2) + "\n",
+    );
     console.log(`✓ 基线已写：${Object.keys(nextEntries).length} 条存量（${isTighten ? "只删不加" : "首次建账"}）`);
     return 0;
   }
