@@ -59,7 +59,8 @@
 | C7 | 「模拟的数据是否可以入库，需要**系统再次复验自检**（人不清楚系统里数据现状、**是否有冲突**）」 | ✅ **（第一版记成 🟡）** | `PromotePrecheckPanel`：**三类冲突分开显示，绝不合成一个「N 条冲突」**（「会改掉既有定义」与「写了个一样的」性质不同）；无冲突时明说「没有撞上任何既有数据，可以直接入库」；预检**一个字节都不写** |
 | C8 | 「逆向数据推演…你解决了吗」 | ✅ | v4 反推三缺口全闭：哈希占位诚实位 · `coverage` 死杠杆判定为**派生不存储**（避免同一自由度存第三份）· 流程运行时两半 |
 | C9 | 「你目前数据构建发动机的前端 UX 逻辑，**我看不懂**」「这些都是我**看不懂**的功能」 | ✅ | 建 `dev-jargon:check` 用 TS 解析 JSX **只取真上屏的字**，禁「区2/区4」「三页归一」「厂商中立施工」；建 `dbui-flow-order:check` 咬死主流程排第一 |
-| C10 | 「13 类需求卡片在第 ② 步展示」 | 🟡 | dev 顶回：**step② 是 pre-build，`BuildPlan` 无 by-id 读端点**，干跑回执只有 5 类。⛔ 补齐未派 |
+| C10 | 「13 类需求卡片在第 ② 步展示」 | ✅ | 13 类**全部上屏**，一类不少。**权威清单** = `MODULE_KINDS`（`contracts/src/databuilder.ts` §模块全集，13 项）+ `MODULE_KIND_REGISTRY`（人话名 + 去哪核对）。屏上渲染 `BuildJob.needs.groups`（`DataBuilderFlow.tsx` 的「逐类清点」段）。**7 类跨系统的现状诚实挂账**：A→B 今天只有「下发即创建」一条通道、没有只读探针 ⇒ 建之前查不到，故出 `evidence=NOT_PROBED` 并在屏上明说「要等创建时才知道」，**不渲染 0**（0 会被读成「不缺」）。复验：`pnpm --filter frontend-shell exec vitest run test/dbui-13-needs.seam.test.tsx`（7/7）+ `pnpm --filter datacore exec vitest run test/databuilder-needs.seam.test.ts` |
+| C10-注 | 上一版那条**分诊是错的**，记账防复发 | — | 原文写「`BuildPlan` 无 by-id 读端点（全仓 grep 无 `/build-plans`）」。**两句都不成立**：端点是 `/a/v1/data-builders/plans/:id`（`datacore/src/app.ts`，搜 `data-builders/plans`），前端 `endpoints.ts` 的 `fetchBuildPlan` 早已接上；`BuildPlan` 顶层**恰好 13 个 need 数组**（`scenarioTopology` 是 object 不计）。形态：**「我用『我猜的那个路径 grep 不中』当作『端点不存在』的证据，而前者只度量我猜错了名字」**。真缺口从来不是「没端点」，而是**干跑那条路上没去比对现状**、回执只塞了没类型的 5 键散记 `BuildJob.preview`（`z.record`，历史消费方仍在读，故保留）。**「5 类」与「13 类」是两个不同字段**（`preview` vs `needs`），不是同一个数少了 8 —— 混为一谈会去修错的地方 |
 
 ## D · 决策质量（「传统 BI」那条）
 
@@ -113,7 +114,7 @@
 ## ⛔ 未派（我欠的）
 
 1. **步骤模板层** —— B4 的前置
-2. **13 类需求卡片补齐** —— C10
+2. ~~**13 类需求卡片补齐** —— C10~~ ✅ **已闭**（见上 C10 行）。13 类全部上屏，跨系统 7 类如实标「查不到」不摆 0；两侧接缝测试各自钉死。**未派的其实只是这条记账没回写**，功能本身在 `6ddf76f6`/`2242f9bc`/`dac4b1d2` 就已落地 —— 队列与代码脱节了一轮
 3. **`STALE-8` 正则盲区**（实测漏 6 条：带点 slug 与非 `view.` 前缀）
 4. **`sandboxConsoleModel.ts:709` 过时文案**（写着已被删除的 `worstMbal`）
 5. **agentcore 3 处 stale 文案** —— `navigation-slice.ts` 把已不存在的 `p50` 当关键属性**喂给 LLM**（⚠️ 不报错，只是模型拿不到值）
