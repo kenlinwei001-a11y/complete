@@ -1,0 +1,26 @@
+{
+  "note": "① 本文件是 `check-ref-closure.mjs` 的**未守发布路存量棘轮**。受检集合（问哪些发布路）由门**现算**（扫 server.ts 的 `app.post(\"…/publish\")`），本文件里一条路由都不当名单用 —— 名单一手抄，**忘了接探针的那条同时也会忘了进名单**，于是它一次都不会被问（本体 §8 G-GATE-ROSTER-HANDCOPIED）。② 每条必须写 `why`：**无理由白名单正是棘轮要治的病**，要说清「这条路凭什么今天可以没有探针」——是它压根不携带引用，还是它另有等价守卫，还是**它就是个真洞**（真洞必须写明代价）。③ `maxEntries` 恒等于 entries 条数；评审唯一必须拒绝的一行就是把它调大。④ `--tighten` **只删不加**：接上探针即收回额度；新增未守的发布路**不自动收编**，当场红。",
+  "generatedBy": "node scripts/check-ref-closure.mjs --seed",
+  "entries": {
+    "\"/api/v1/catalog/intents/:intentId/publish\"": {
+      "why": "**今天未测出携带引用。** 意图发布走 catalog 服务的 publishIntent，实测其 handler 与实现里没有 solverKey / ruleKey / objectTypes 任何一类引用字段（现算判据见门内 census）。**为什么仍留在账上而不是从判据里剔除**：意图与 plan 是同一族目录对象，`slotNames` / 绑定 plan 的演进随时可能引入引用；留在账上 = 它每天被现算问一次，真引入引用时这条 `why` 会与事实矛盾并被复审抓住。**差什么才能改成「已守」**：先确认意图对象最终形态是否携带跨系统引用（属产品语义裁决），携带则同 plan 路一起接探针。"
+    },
+    "\"/api/v1/catalog/plans/:planId/publish\"": {
+      "why": "**这条是真洞，不是豁免。** agentcore 的 catalog 服务里 `publishPlan` **确证携带规则引用**：它调 `planStepRuleRefs(published.steps)` 取出计划步骤引用的规则键，并 `reportRefs` 上报给 A —— 即「它知道自己引用了哪些规则」，却**从不调 `probeMissingRefs` 校验这些规则存不存在**。代价：一个 DRAFT 计划引用一条根本不存在（或仍是 DRAFT、未发布）的规则，照样能发布成功，运行期才在 `TemplateResolutionError` / 求解器空结果上炸，属本门 D1「新增一条发布路忘了接」的原形态。**它被漏掉的原因正是本门要治的病**：旧实现把「问哪几条路」写成手抄名册，而**忘了接探针的那条同时也会忘了进名册**。**差什么才能修**：在 `publishPlan` 落库前调 `probeMissingRefs(dataCore, ctx, { ruleKeys: planStepRuleRefs(...) })` 并把 missing 转成 422 —— 改动落在 `apps/agentcore/src/catalog/service.ts`（外加把 dataCore/ctx 传进 catalog 服务），**超出 WO-GATE-ROSTER-SWEEP 的范围边界（纯门单，禁改 apps/**）**。收口 = 接探针 → 删本条 → 跑 `--tighten`，额度当场收回。"
+    },
+    "\"/b/v1/plan-builders/:id/publish\"": {
+      "why": "**同上，同一个洞的第二个入口。** `publishCanvas` 编译画布后调 plan-builder 服务里的 `this.catalog.publishPlan(plan.id)` —— 走的就是上面那条没有探针的路。两条一起收口，不许只补一条（只补一条会让「已守」这个结论继续骗人）。**差什么才能修**：与上条同一处改动（探针接在 `publishPlan` 里即两条同时收口），动 `apps/agentcore/src`，超出本单范围边界。"
+    },
+    "\"/b/v1/mcp-configs/:id/publish\"": {
+      "why": "**今天未测出携带 solver/rule/objectType 引用。** MCP 配置引用的是**外部 MCP 服务器与工具**，不是 A 的求解器/规则/对象类型注册表 —— `probeMissingRefs` 的三个切面对它都不适用（拿它去探等于问错注册表）。**它真正缺的是另一种探针**：MCP server 可达性 / 工具名存在性校验，属 B3 的能力，与本门判据不同族。**差什么才能修**：需要先有 MCP 侧的注册表读回能力（今天没有），再另立一道门；本门不假装能守它。"
+    },
+    "\"/b/v1/scenarios/:key/publish\"": {
+      "why": "**非缺口：另有等价守卫。** 这条路在落库前先跑 `scenarioClosure(a.tenantId, sc)`，`closure.ready` 为假即抛 409 并列出断链项（R11/§3.6「无死路」）—— 判据不同（它查场景引用链是否全配置好，不是查 solver/rule/objectType 是否存在于 A 的注册表），但**守的是同一件事：不许发布带死引用的东西**。**为什么不改成也接 probeMissingRefs**：会变成两套机制守同一条路且判据重叠，是治理噪声不是收益。**这条的真实风险在别处**：`scenarioClosure` 与 `probeMissingRefs` 的 fail-open 纪律**没有被同一道门守住**（本门 D2 只扫 probe 实现区），场景闭合守卫若哪天回潮成静默放行，本门看不见 —— 这属另立判据，记在此处以免被读成「已守住」。"
+    },
+    "\"/b/v1/scenarios/:key/publish-chain\"": {
+      "why": "**部分已守（经转发），但本门看不见。** 这条路会逐个发布链上的对象，其中调 `deps.catalog.publishPlan(plan.id)` —— 于是它继承了 plan 路那个洞。它自身 handler 里没有 `probeMissingRefs(`，是因为守护发生在被它调用的服务里而不是 handler 里。**这暴露本门判据的一条诚实边界**：D1 判的是「handler 体内有没有探针调用」，**判不了「经由服务层间接守住」**；照抄这条判据会把「链式发布」这类正确写法误判成缺口。**差什么才能修**：plan 路接上探针后本条自动随之收口（同一处改动）；若要彻底判准，本门需从 handler 文本判定升级为跨文件调用图判定，属中等工作量的判据升级。"
+    }
+  },
+  "maxEntries": 6,
+  "liveRouteCount": 9
+}

@@ -1,6 +1,6 @@
 {
   "note": "① 本文件是 `check-gate-roster-handcopied.mjs` 的**全门定性账**：每一个写死在门源码里的顶层常量集合逐条定性。**受检对象集合（扫哪些门）由 `scripts/gate-census.mjs` 的 `listGateScripts()` 现算**，本文件里一个门文件名都不存 —— 否则本门自己就犯了它要治的病（名单一手抄，新加的门就永远不在里面）。② `verdict` 三选一，处置完全不同、不许合并：`criteria`=判据本体（写死是对的，`why` 要答「凭什么它不随仓库演进而变」）；`computed`=已现算（抽到的只是现算逻辑的输入常量，如扫描根/词法表）；`roster`=**真债**（受检对象集合写死了，`why` 必须写**差集是多少**、**该从哪儿现算**、**差什么才能修**）。③ `why` <20 字即判红：无理由的定性就是白名单，正是本门要治的病。④ `ratchetHigh` 是 `roster` 债的历史最高水位，**只降不升**；评审唯一必须拒绝的一行就是把它调大。⑤ `--tighten` **只删死账、不收编新候选**：新候选必须人手定性，自动收编 = 买来一片绿。",
-  "generatedBy": "node scripts/check-gate-roster-handcopied.mjs --seed",
+  "generatedBy": "node scripts/check-gate-roster-handcopied.mjs --tighten",
   "entries": {
     "check-agent-config-complete.mjs:CANARIES": {
       "verdict": "criteria",
@@ -85,6 +85,10 @@
     "check-coverage-blind.mjs:GENERIC_MEMBERS": {
       "verdict": "criteria",
       "why": "JS 通用集合方法名词表（filter/map/find/some…），用来判「这个调用是不是通用成员访问」。随 JS 语言演进而变，**不随本仓演进而变** —— 仓库里新增一个求解器不会让 Array.prototype 多一个方法。"
+    },
+    "check-coverage-blind.mjs:CANARY_CASES": {
+      "verdict": "criteria",
+      "why": "覆盖盲区门的金丝雀样例表（D1–D5 各判据的必中/必不中合成源码，含 /x /y 这类占位路径）。判据本体：它定义「这道门认得出哪几种盲区」，与仓库里有多少测试文件无关；现算化即自证循环。"
     },
     "check-coverage-blind.mjs:CANARY_D4": {
       "verdict": "criteria",
@@ -278,16 +282,12 @@
       "verdict": "criteria",
       "why": "裁定汇总的金丝雀样例（含 docs/CHECK-*.md 路径与期望符号）。判据本体：路径在这里是**样例数据**不是受检对象，受检对象是同文件的 FILES。"
     },
-    "check-coverage-blind.mjs:CANARY_CASES": {
+    "check-ref-closure.mjs:GUARDED_ROUTE_SPECS": {
       "verdict": "criteria",
-      "why": "覆盖盲区门的金丝雀样例表（D1–D5 各判据的必中/必不中合成源码，含 /x /y 这类占位路径）。判据本体：它定义「这道门认得出哪几种盲区」，与仓库里有多少测试文件无关；现算化即自证循环。"
-    },
-    "check-ref-closure.mjs:GUARDED_PUBLISH_ROUTES": {
-      "verdict": "roster",
-      "why": "**差集 6**：手抄 3 条发布路（agents/workflows/skills），而 apps/agentcore/src/server.ts 里实测有 **9 条** app.post 发布路由。逐条追过一层后，**至少 1 条是真洞**：`/api/v1/catalog/plans/:planId/publish` → catalog/service.ts:271 publishPlan **确证携带规则引用**（planStepRuleRefs(published.steps) 并 reportRefs 上报 A），却**从不调 probeMissingRefs** ⇒ 引用一条不存在的规则照样发布成功 —— 这正是本门 D1「新增一条发布路忘了接」要治的形态，而名单手抄导致它从未被问过。`/b/v1/plan-builders/:id/publish` 走 publishCanvas→publishPlan 同一条路，同病。`/b/v1/scenarios/:key/publish` 另有 scenarioClosure 闭合守卫（不同机制，非缺口），intents/mcp-configs 需再追一层才能定性。**差什么才能修**：门这一半可以现算（枚举 server.ts 的 app.post 发布路由 + 棘轮登记未守的），这属纯门单；但**把探针真接到 plan 发布路上要动 apps/agentcore/src**，超出本单范围边界。本单按「门这一半能改就改」处置，见 ③。"
+      "why": "WO-GATE-ROSTER-SWEEP ③ 后已降级为**附加判据表**：受检集合（问哪些发布路）已改为现算 server.ts 全部 app.post 发布路由，本表只登记「某条路除『必须有探针』外还要满足什么」（skill 路必须拦在 repos.skills.update 之前）。它答的是「什么算合格」而非「有哪些对象」——现算出的路由不在此表时仍受「必须有探针」约束，故漏登一条不会让它免检。"
     }
   },
   "candidateCount": 71,
-  "rosterCount": 15,
-  "ratchetHigh": 15
+  "rosterCount": 14,
+  "ratchetHigh": 14
 }

@@ -993,17 +993,17 @@
       "guardedPaths": [
         "apps/agentcore/src/server.ts",
         "apps/agentcore/src/resources.ts",
-        "apps/agentcore/src/skill-lint.ts",
-        "apps/agentcore/test/skill-ref-closure.seam.test.ts"
+        "apps/agentcore/src/catalog/service.ts",
+        "scripts/ref-closure-baseline.json"
       ],
       "escalation": "审核方",
       "ontologyRef": "§7:878",
       "provenRed": {
         "kind": "MUTATION",
-        "evidence": "本体 §7 `ref-closure:check` 条目 · on-disk 变异实跑",
-        "note": "把 skill 发布路的 probeMissingRefs 改名 -> RC=1 且报 `D1 摘门：skill 发布`；撤回后 RC=0。另有 5/5 内嵌金丝雀（摘探针/注释掉探针/空集放行/静默 catch/抽取器失灵）与主逻辑共用同一份 scan()。"
+        "evidence": "docs/AUDIT-gate-roster-sweep.md §3.3（三向变异反证输出原文逐字贴出）",
+        "note": "WO-GATE-ROSTER-SWEEP 三向变异反证：**R1 A/B 同一棵树只换脚本** —— 在 server.ts 新增一条未接探针的发布路 `/b/v1/zzprobe-widgets/:id/publish`，**HEAD 上的旧脚本 RC=0 且打印「三条发布路均接探针」**（假绿：新路不在手抄名册里，D1 号称治的正是这个形态却够不着），改后 **RC=1 点名该路 + 「不在棘轮基线里 = 新增未守发布路」**；R2 把已守的 agents 路塞进基线 → RC=1 报棘轮松弛；R3 移走基线 → RC=2「工具坏了」（旧版此处退 1，方向正好相反）。逐条还原后复绿 RC=0，git status --porcelain 对 apps/ 为空。既有五向金丝雀（摘探针/注释掉探针/空集放行/静默 catch/抽取器失灵）仍 5/5 全中。 ── 历史：把 skill 发布路的 probeMissingRefs 改名 -> RC=1 且报 `D1 摘门：skill 发布`；撤回后 RC=0。另有 5/5 内嵌金丝雀（摘探针/注释掉探针/空集放行/静默 catch/抽取器失灵）与主逻辑共用同一份 scan()。"
       },
-      "notes": "守 B->A 存在性探针在三条发布路上都还在、且两层 fail-open 没回潮。静态哨兵，判得对不对由接缝测试 skill-ref-closure.seam.test.ts 咬。"
+      "notes": "WO-GATE-ROSTER-SWEEP 2026-08-16：受检发布路从手抄 3 条改为现算 server.ts 全部 9 条；未守 6 条进棘轮基线逐条带 why。普查顺带测出真洞：catalog 的 publishPlan 携带规则引用（planStepRuleRefs + reportRefs）却不调 probeMissingRefs，plan-builders 发布走同一条路，两条一并挂账（补探针要动 apps/**，超出纯门单范围边界）。"
     },
     "check-req-coverage.mjs": {
       "alias": "req-coverage:check",
