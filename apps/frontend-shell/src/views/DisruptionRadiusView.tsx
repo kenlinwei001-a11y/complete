@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchObjectTypes, searchObjects, invokeSolver } from "@/api/endpoints";
 import { LayeredDag, type DagNodeDef, type DagEdgeDef } from "@/components/Dag/LayeredDag";
@@ -8,6 +8,8 @@ import zh from "@/locales/zh";
 // 本页走 App.tsx 的专用 route，不经 ViewPage ⇒ 必须自己调 usePageView（理由见 shared.tsx 该函数注释）。
 import { ExportReportButton, usePageView } from "./sim/shared";
 import type { ProvenanceReport } from "./sim/exportProvenance";
+// WO-SANDBOX-53CELLS · 判据 U3（点节点看凭什么）：本页有图（dr-fanout）但此前没传 onNodeClick ⇒ 点了没反应。
+import { DagNodeInspector, type DagNodeFacts } from "./sim/DagNodeInspector";
 
 /**
  * 断供影响半径投影页（renderer=disruption-radius）——把 `supplier_disruption_radius` 求解器
@@ -94,6 +96,14 @@ interface RadiusOutput {
 }
 
 const CHIP_CAP = 12;
+/** 受冲击对象 chip 的样式（首屏 12 个与「就地展开」里的其余若干共用一份，两处分家会长歪）。 */
+const CHIP_STYLE: CSSProperties = {
+  fontSize: 12,
+  padding: "2px 8px",
+  borderRadius: 6,
+  background: "var(--panel2)",
+  border: "1px solid var(--line2)",
+};
 
 export default function DisruptionRadiusView(_props: { view?: ViewConfigVM }) {
   usePageView("disruption-radius");
@@ -274,9 +284,67 @@ export default function DisruptionRadiusView(_props: { view?: ViewConfigVM }) {
   );
 }
 
+/**
+ * 判据 U3 · 扇出图节点 → 「凭什么」事实（全部取自 `out` 真值 + 本页确定性倒推链，零编造）。
+ *
+ * ⚠ 这里的「规则」是 `ruleKind="projection"`（确定性投影规则）而不是业务规则键 ——
+ * 本页是**净室通用页**，与租户业务规则库无关，判定逻辑是 `deriveDisruptionLayers`
+ * 与引擎反向扇出这两段代码本身。把它冒充成 `C02` 这样的规则键，用户会去规则库里找一个不存在的东西。
+ * 但它同样能定位「哪一环坏了」：某层 count 反常 ⇒ 要么 `viaField` 倒推挑错了候选，
+ * 要么上一层 frontier 就已经错了 —— 这正是 U3 要的那个能力。
+ */
+function fanoutNodeFacts(
+  nodeId: string,
+  out: RadiusOutput,
+  disp: (k: string) => string,
+  leafIdx: number,
+): DagNodeFacts {
+  if (nodeId === "__root") {
+    return {
+      title: `断供根 · ${disp(out.rootType)}`,
+      verdict: `影响半径 ${out.radius} 层 · 波及 ${out.totalAffected} 个对象`,
+      src: `本体对象 ${out.rootType}（真取自 /a/v1/objects，非写死清单）`,
+      rule: "反向扇出链倒推：沿「谁 ref 我」逐层下探；同层多候选按 type→viaField 字典序取首（确定性 R6）",
+      ruleKind: "projection",
+      formula: "半径 = 命中数 > 0 的层数；波及总数 = Σ 各层命中数",
+      inputs: [
+        { label: "断供来源", value: out.rootId },
+        { label: "倒推链长", value: `${out.layers.length} 层` },
+      ],
+      note: "换一个来源对象 → 求解器重算 → 半径/敞口随之变（本页仅忠实投影，不缓存上一次的结论）。",
+    };
+  }
+  const i = Number(nodeId.slice(1));
+  const l = out.layers[i];
+  if (!l) return { title: nodeId, src: "—", rule: "—" };
+  const prev = i === 0 ? `${disp(out.rootType)} ${out.rootId}` : `${disp(out.layers[i - 1]!.type)} 层命中集`;
+  return {
+    title: `第 ${i + 1} 层 · ${disp(l.type)}`,
+    verdict:
+      l.count === 0
+        ? "断链——此层无对象引用上一层，更深层不再下探"
+        : `命中 ${l.count} 个${i === leafIdx ? "（叶层敞口）" : ""}`,
+    src: `本体对象 ${l.type} 的 ${l.viaField} 字段（求解器 supplier_disruption_radius 逐层实算）`,
+    rule: `本层命中 = { o ∈ ${l.type} | o.${l.viaField} ∈ 上一层命中集 }；命中 0 即停止下探`,
+    ruleKind: "projection",
+    formula: `${l.type}.${l.viaField} → ${prev}`,
+    inputs: [
+      { label: "引用字段", value: `${l.type}.${l.viaField}` },
+      { label: "上层来源", value: prev },
+      { label: "本层命中", value: String(l.count) },
+    ],
+    note:
+      l.count === 0
+        ? "断链是诚实结论，不是取数失败：此层确实没有对象引用上一层。若与预期不符，先核 viaField 倒推挑对了没有。"
+        : undefined,
+  };
+}
+
 /** 结果区：指标条 + 分层扇出 DAG + 逐层受冲击对象。改 rootId → out 变 → 全区随之变（纯投影）。 */
 function RadiusResult({ out, displayOf }: { out: RadiusOutput; displayOf: Map<string, string> }) {
   const disp = (k: string) => displayOf.get(k) ?? k;
+  // 判据 U3：点节点看凭什么（受控浮层 —— 同时满足 U8「看明细不换页」）。
+  const [inspectId, setInspectId] = useState<string | null>(null);
 
   // 叶层敞口 = 最后一个 count>0 的层（真正波及最深处）。注意：链断裂时求解器 leafType/leafCount 指"停止层"
   // （count 0），故这里以"最深非零层"计敞口更贴合 CEO 语义；求解器原始 summary 仍逐字展示不改写。
@@ -341,9 +409,20 @@ function RadiusResult({ out, displayOf }: { out: RadiusOutput; displayOf: Map<st
       <div className="panel" data-testid="dr-dag">
         <div className="section-title">分层扇出（断供根 → 逐层扩散 · 叶层敞口高亮）</div>
         <div style={{ overflowX: "auto" }}>
-          <LayeredDag nodes={nodes} edges={edges} layerTitles={titles} testId="dr-fanout" />
+          {/* 判据 U3 ·「点了没反应」→ 真接到面板。`onNodeClick` 是 LayeredDag 的**可选** prop，
+              不传就静默无事发生、且屏上分辨不出（铁律 0.5 第三形态：接了线接错地方）。 */}
+          <LayeredDag nodes={nodes} edges={edges} layerTitles={titles} testId="dr-fanout" onNodeClick={(n) => setInspectId(n.id)} />
+        </div>
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6 }} data-testid="dr-dag-hint">
+          点任一节点 → 看这一层的来源字段与判定规则。
         </div>
       </div>
+
+      <DagNodeInspector
+        facts={inspectId ? fanoutNodeFacts(inspectId, out, disp, leafIdx) : null}
+        onClose={() => setInspectId(null)}
+        testId="dr-node-inspect"
+      />
 
       {/* 逐层受冲击对象（叶层 = 敞口） */}
       <div className="panel" data-testid="dr-layers">
@@ -370,20 +449,37 @@ function RadiusResult({ out, displayOf }: { out: RadiusOutput; displayOf: Map<st
               {l.count === 0 ? (
                 <div style={{ fontSize: 12, color: "var(--muted2)" }}>断链——此层及更深层无受冲击对象。</div>
               ) : (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {l.ids.slice(0, CHIP_CAP).map((id) => (
-                    <span
-                      key={id}
-                      className="mono"
-                      style={{ fontSize: 12, padding: "2px 8px", borderRadius: 6, background: "var(--panel2)", border: "1px solid var(--line2)" }}
-                    >
-                      {id}
-                    </span>
-                  ))}
+                /* 判据 U8「看明细不换页」：原先超出 CHIP_CAP 的部分只写一句「+N 更多」——
+                   那是**死路**，想看剩下的哪几个只能离开本页去别处查，正是判据点名的
+                   「想看细节 ⇒ 现场清零」。改成**内联受控展开**（`<details>`）：默认仍只出 12 个
+                   （第一层密度不涨 · ui-first-layer 棘轮），点一下就地把整层展开，不导航。 */
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {l.ids.slice(0, CHIP_CAP).map((id) => (
+                      <span key={id} className="mono" style={CHIP_STYLE}>
+                        {id}
+                      </span>
+                    ))}
+                  </div>
                   {l.count > CHIP_CAP && (
-                    <span style={{ fontSize: 12, color: "var(--muted2)", alignSelf: "center" }}>
-                      +{l.count - CHIP_CAP} 更多
-                    </span>
+                    <details data-testid={`dr-layer-more-${i}`}>
+                      <summary
+                        data-testid={`dr-layer-more-sum-${i}`}
+                        style={{ fontSize: 12, color: "var(--muted2)", cursor: "pointer" }}
+                      >
+                        就地展开其余 {l.count - CHIP_CAP} 个 ▸
+                      </summary>
+                      <div
+                        data-testid={`dr-layer-more-body-${i}`}
+                        style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}
+                      >
+                        {l.ids.slice(CHIP_CAP).map((id) => (
+                          <span key={id} className="mono" style={CHIP_STYLE}>
+                            {id}
+                          </span>
+                        ))}
+                      </div>
+                    </details>
                   )}
                 </div>
               )}
