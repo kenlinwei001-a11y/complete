@@ -553,7 +553,15 @@ export function chainLayerOverlapCanaryKey(): string {
  * **一律推**，不另写一个数 —— 第一档的注释原文：
  * 「写死一个"看着够"的数字就是下一次压字的种子」。
  */
-export const PROC_LAYOUT = {
+// ⚠️ 豁免记号必须写在 **const 这一行本身**（`check-debattery.mjs:221` 是
+//    `if (headLine.includes(DATA_ALLOW)) continue;` —— headLine 就是 const 声明那一行）。
+//    我第一版写在上一行，门照样红 —— 「记号加了」不等于「加在门看的那个位置」。
+// 逐字段核过（不是「看着像布局」就放行）：本块 14 个字段全部是画布几何 ——
+//   gapX/padX/padTop/padBottom/interchangeRise/gutter = 像素，labelFontPx/labelLineH = 字号，
+//   maxLabelTiers = 层数上限；其余 7 个直接取自 METRO_LAYOUT.*，本身就不是字面量。
+//   没有任何一个字段装产能/需求/成本/工期这类会随真实数据变的量 —— 那类必须走 API 取真值，
+//   正是本门要拦的东西。
+export const PROC_LAYOUT = { // hardcoded-data-allow
   /**
    * 相邻站位水平间距。比第一档的 `METRO_LAYOUT.gapX`(122) 宽，理由是**本档每一站都要标名字**
    * （第一档只标一部分，靠 `pickLabelledStepIds` 抽稀）。
