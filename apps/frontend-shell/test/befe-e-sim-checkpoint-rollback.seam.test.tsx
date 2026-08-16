@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -36,8 +34,6 @@ import { server } from "./setup";
  * （`tick → createdAt → id`，后端 app.ts:1826）；回滚照后端 `deleteTicksAfter` 删该 tick 之后的态、
  * 回**当时**那一份世界态（不是把当前态原样回一遍 —— 图省事那样写，回滚断言会恒绿而缺口仍在）。
  */
-
-const readRepoFile = (rel: string): string => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 
 /** 抽象占位配置（R14 零行业实体名）—— 沙盘挂载所需，本文件不依赖它的任何数值。 */
 const CFG: SandboxViewConfig = {
@@ -235,11 +231,11 @@ describe("WO-BEFE-E ① 沙盘存档清单 + 回滚（GET …/checkpoints · POS
       ).not.toEqual([]);
     }
 
-    const eps = readRepoFile("../src/api/endpoints.ts");
-    // 金丝雀：同样的读法先抓一个**已知必在**的 URL；抓不到说明是读法坏了，而不是端点没接。
-    expect(eps, "金丝雀未中 ⇒ 读法坏了，下面的「不存在」全部不可信").toContain("/checkpoint`");
-    expect(eps).toContain("/checkpoints`");
-    expect(eps).toContain("/rollback`");
+    // URL 同样锁「在不在前端生产代码里」，不锁「在 endpoints.ts 这个文件里」——
+    // 与上面几条同扫描面（一半整树扫、一半按文件名钉，正是本仓要堵的那种自相矛盾）。
+    expect(factHits(fe, "/checkpoint`"), "存档 URL 没接").not.toEqual([]);
+    expect(factHits(fe, "/checkpoints`"), "存档列表 URL 没接").not.toEqual([]);
+    expect(factHits(fe, "/rollback`"), "回滚 URL 没接").not.toEqual([]);
   });
 });
 
@@ -340,9 +336,13 @@ describe("WO-BEFE-E ② 传导规则清单（GET /a/v1/sim/propagation-rules）"
       "fetchSimPropagationRules 零生产调用方（只有声明/只有 import = 没接线）",
     ).not.toEqual([]);
     expect(factHits(fe, `data-testid="sandbox-propagation-rules"`), "传导规则清单零生产挂载点").not.toEqual([]);
-    const eps = readRepoFile("../src/api/endpoints.ts");
-    // 金丝雀：先抓一个**已知必在**的同族 URL。
-    expect(eps, "金丝雀未中 ⇒ 读法坏了，下面的「不存在」全部不可信").toContain("/a/v1/sim/view-config");
-    expect(eps).toContain("/a/v1/sim/propagation-rules");
+    /*
+     * ⚠ 探针带上 `?published=` 这个查询串，不是图精确好看 —— 裸路径 `/a/v1/sim/propagation-rules`
+     * 全树 5 命中，其中 4 条是**散文**：`zh.ts` 的长文案、`EdgeActivePanel.tsx` 的 `<code>` 说明。
+     * 散文里**提到**一条路由 ≠ 前端在**调**它（同 `check-backend-frontend-seam.mjs` 的 isProseString
+     * 那条戒律），拿它当「接了线」的证据就是又一次「我用 X 当作 Y 的证据，而 X 并不度量 Y」。
+     * 带查询串后只剩 `api/endpoints.ts:705` 那一处真调用。
+     */
+    expect(factHits(fe, "/a/v1/sim/propagation-rules?published="), "传导规则 URL 没接（散文里提到不算）").not.toEqual([]);
   });
 });
