@@ -241,21 +241,22 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
 
 | 页 | U1 改输入即重演 | U2 分步标口径 | U3 DAG点节点 | U4 反事实开关 | U4b 排除项同图 | U5 结论标出处 | U6 结论即动作 | U7 同屏问答带上下文 | U8 看明细不换页 | U9 导出带口径 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 推演沙盘 `sim-sandbox` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **符合** | **不符合** | **符合** | 不符合 |
-| 项目推演 `project-sim` | **符合** | **符合** | **符合** | **符合** | 不符合 | **符合** | **不符合** | **符合** | **符合** | **不符合** |
-| 全局项目推演 `global-sim` | **符合** | 不符合 | **不符合** | **符合** | 不适用 | **不符合** | **符合** | **符合** | **不符合** | **不符合** |
-| 产能推演 `risk` | **符合** | 不符合 | **不符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **不符合** |
-| 订单全链 `order-chain` | **符合** | 不符合 | **不符合** | **不符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **不符合** |
-| 决策推演 `decision-play` | **符合** | **不符合** | **不符合** | **符合** | 不适用 | **符合** | **符合** | **不符合** | **符合** | **不符合** |
+| 推演沙盘 `sim-sandbox` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 项目推演 `project-sim` | **符合** | **符合** | **符合** | **符合** | 不符合 | **符合** | **不符合** | **符合** | **符合** | **符合** |
+| 全局项目推演 `global-sim` | **符合** | 不符合 | **不符合** | **符合** | 不适用 | **不符合** | **符合** | **符合** | **不符合** | **符合** |
+| 产能推演 `risk` | **符合** | 不符合 | **不符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 订单全链 `order-chain` | **符合** | 不符合 | **不符合** | **不符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 决策推演 `decision-play` | **符合** | **不符合** | **不符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** |
 | 假设推演 `what-if` | **不符合** | 不符合 | **不符合** | **符合** | 不适用 | **不符合** | **不符合** | **符合** | **符合** | **符合** |
 | 优化推演 `optimize-whatif` | **不符合** | 不符合 | **不符合** | **符合** | 不适用 | **不符合** | **不符合** | **符合** | **符合** | **符合** |
 | 归因 `cleanroom-attr` | **符合** | 不符合 | **不符合** | **不符合** | 不适用 | **符合** | **不符合** | **符合** | **不符合** | **符合** |
 | 影响半径 `disruption-radius` | **符合** | 不符合 | **不符合** | **不符合** | 不符合 | **符合** | **不符合** | **符合** | **不符合** | **符合** |
-| 方案生成 `plan-generate` | **符合** | 不符合 | **不符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **不符合** |
-| 月度规划 `sop-balance` | **不符合** | **不符合** | **不符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **不符合** |
+| 方案生成 `plan-generate` | **符合** | 不符合 | **不符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 月度规划 `sop-balance` | **不符合** | **不符合** | **不符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** |
 
-**合计（12 页 × 10 判据 = 120 格）：符合 60 · 不符合 53 · 判不了 0 · 不适用 7。**
-（上一版：符合 17 · 不符合 46 · 判不了 57 · 不适用 0。）
+**合计（12 页 × 10 判据 = 120 格）：符合 70 · 不符合 43 · 判不了 0 · 不适用 7。**
+（门机算 `node scripts/check-sim-ux-criteria.mjs`：「符合 70」为该门打印值；余下三态 = 120 − 70 − 不适用 7 − 判不了 0。
+上一版：符合 60 · 不符合 53 · 判不了 0 · 不适用 7 —— 本轮 +10 格 = WO-U7-U9-REST 闭 U7 两页 + U9 八页。）
 
 > ⚠ **「判不了 57 → 0」不许读作「都验过了」——那是本表最容易被误读的一行数。**
 > 57 格的去向是**三条互不相同的路**，逐条写在这里，谁也不许含混过去：
@@ -391,10 +392,18 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
   后果全程静默：① `QueryDock.tsx:28` 的 `fetchScene(view)` 带 `enabled: view !== ""` ⇒ 不取本页场景，
   建议问句退化成通用兜底；② `sessionStore.ts:84` `derivePageContext` 把 `view` 塞进 `pageContext.view`
   随查询搭车 ⇒ 编排侧收到的「用户在哪一页」是**上一页残值或空串**。**问答是在的，但它答的不是本页。**
-- **符合 10 页**：经 `ViewPage` 分发的 6 页（`project-sim`/`global-sim`/`risk`/`order-chain`/
-  `plan-generate`/`sop-balance`）＋ 本单接线的 4 页（`what-if`/`optimize-whatif`/`cleanroom-attr`/
-  `disruption-radius`，各调 `usePageView(...)`，见 §4.4）。
-- **不符合 2 页**：`sim-sandbox` · `decision-play` —— 同样是专用 route，本单**没做**（诚实挂账，见 §5 P1）。
+- **符合 12 页（全闭）**：经 `ViewPage` 分发的 6 页（`project-sim`/`global-sim`/`risk`/`order-chain`/
+  `plan-generate`/`sop-balance`）＋ WO-HARNESS-UX-GAP-1 接线的 4 页（`what-if`/`optimize-whatif`/
+  `cleanroom-attr`/`disruption-radius`，各调 `usePageView(...)`，见 §4.4）＋ **WO-U7-U9-REST 接线的
+  末两页**：`sim-sandbox`（`SandboxView.tsx`：`mode === "now"` 时 `setView("sim-sandbox")`——
+  收编模式整屏换内嵌页、内嵌页各自报到，沙盘只在主屏态写，无覆盖竞争；视图键定案 = `sim-sandbox`，
+  论据链：route `v/sim-sandbox` · entitlement `sim.sandbox` · `NAV_GROUPS key:"sim-sandbox"` ·
+  roster 判据库 `EXTRA_ALIAS` 显式 `sandbox→sim-sandbox`）与 `decision-play`（`DecisionPlayView.tsx`
+  调 `usePageView("decision-play")`——挂壳不挂面板，面板被 `OrderChainView`/`ChainImpedimentView`
+  嵌入复用，嵌入场由宿主页报到）。
+  机检：`harness-ux-u7-u9.test.tsx` 的 U7 段对 12 页逐页断言「整应用渲染到该 URL 后
+  `sessionStore.view` === 该页键」，每条带**前置哨兵**（先把 view 污染成哨兵值，逼页面自己改回）
+  与**反向哨兵**（哨兵不会自己变真键 ⇒ 断言非恒真）。
 
 **U8 看明细不换页**
 - **符合 8 页**：有受控展开态（抽屉/浮层/内联）承担「看明细」：
@@ -412,13 +421,20 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
     —— 判据在这两页上**落得下脚**（它们有明细可下钻），只是没做。
 
 **U9 导出带口径与时间戳**
-- **符合 4 页**：`what-if` / `optimize-whatif` / `cleanroom-attr` / `disruption-radius` —— 本单接线（§4.4）。
-- **不符合 8 页**。其中 `risk` 那格**从「判不了」落地**，且落地后的结论与直觉相反：
-  `RiskBoardView.tsx:666-679` 的 `exportPlanRows` 确实导出一份独立 HTML，逐行带「依据/规则」列，
-  页脚还写着「导出含口径，可直接进入 S&OP 决议附件」—— **但通篇没有生成时间，也没有求解器/快照出处**。
-  「含口径」四个字是**页脚自称**，不是导出物里真有那两样 ⇒ **不符合**。
-  `decision-play` 那格同样落地：全文导出相关命中 0 ⇒ **不符合**。
-  其余 6 页探针「导出」计数 0；金丝雀 `risk`=2 ⇒ 工具是好的。
+- **符合 12 页（全闭）**：`what-if` / `optimize-whatif` / `cleanroom-attr` / `disruption-radius` ——
+  WO-HARNESS-UX-GAP-1 接线（§4.4）；其余 8 页由 **WO-U7-U9-REST** 接线，全部复用同一份共享件
+  `ExportReportButton` + `exportProvenance.ts`（缺口径/缺时间戳直接抛），逐页挂载点见 §4.4：
+  `sim-sandbox`（全局读数 + 逐状态变量均值，basis 含会话/tick/世界态出处 MEASURED|DERIVED）·
+  `decision-play`（根因/对症方案/推荐方案，逐方案 provenance kind·basis 原文照登；面板嵌入复用时
+  不渲染按钮，宿主页不该冒出 pageKey=decision-play 的导出）· `project-sim`（capacity_forecast +
+  快照 + **全部入参**）· `global-sim`（portfolio twoStage + 快照 + 主目标口径）·
+  `risk`（处置计划表换共享件——**旧 `exportPlanRows` 整个退役**，它页脚自称「含口径」却通篇无生成时间
+  无出处，正是上一版落地的那格）· `order-chain`（affected_orders + 快照 + 基地筛选口径）·
+  `plan-generate`（plan_generate + 快照 + 目标面板全量入参含硬约束开关——这页「改动即重算」，
+  少记一个目标值第三方就复不出屏上这三个方案）· `sop-balance`（非单次求解而是**版本仓记录**，
+  出处 = 记录 id + 状态 + updatedAt，未选中版本时各段诚实空态）。
+  机检：同一份测试的 U9 段对 12 页逐页断言屏上导出入口 + `?` 记号在位，另三条纯函数断言
+  （文档含生成时间+口径与出处+表格本体 · 缺口径/缺时间戳必抛 · 空结果诚实留白不补编）。
 
 ### 4.2 被拆出去的那一半 —— 4 条明账，交给门 B（**本表不假装能判**）
 
@@ -484,6 +500,32 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
 导出物自己那套浅色排版是**刻意**的：它是**离开应用的独立文档**，那里不存在本应用的 `:root` 变量表，
 写 `var(--txt)` 会解析成空值把字变透明 —— 与 `RiskBoardView` 的「导出最终规划」同一处理。
 
+#### 4.4.1 WO-U7-U9-REST（2026-08-16）：剩两页 U7 ＋ 剩八页 U9 —— 至此两条判据 12 页全闭
+
+| 页 | 判据 | 改前 → 改后 | 挂载点 |
+|---|---|---|---|
+| `sim-sandbox` | U7 ＋ U9 | 不符合 → **符合**（两条） | `SandboxView.tsx`：`mode === "now"` 时 `setView("sim-sandbox")`（收编模式零写入，不盖内嵌页报到）＋ 头部 `<ExportReportButton pageKey="sim-sandbox">` |
+| `decision-play` | U7 ＋ U9 | 不符合 → **符合**（两条） | `DecisionPlayView.tsx` 壳调 `usePageView("decision-play")`；`DecisionPlayPanel.tsx` 挂导出（`embedded` 时不渲染，宿主页不冒 pageKey=decision-play 的导出） |
+| `project-sim` | U9 | 不符合 → **符合** | `ProjectSimView.tsx` `.head` 挂导出（capacity_forecast + 快照 + 全部入参） |
+| `global-sim` | U9 | 不符合 → **符合** | `GlobalSimView.tsx` header 挂导出（portfolio twoStage + 快照 + 主目标口径） |
+| `risk` | U9 | 不符合 → **符合** | `RiskBoardView.tsx` 处置计划表旧 `exportPlanRows` **整个退役**换共享件（页脚自称「含口径」却无时间戳无出处，§4.1 U9 段有案） |
+| `order-chain` | U9 | 不符合 → **符合** | `OrderChainView.tsx` `.head` 挂导出（affected_orders + 快照 + 基地筛选口径） |
+| `plan-generate` | U9 | 不符合 → **符合** | `PlanGenerateView.tsx` `.head` 挂导出（目标面板全量入参 + 硬约束开关进 basis） |
+| `sop-balance` | U9 | 不符合 → **符合** | `SopBalanceView.tsx` `.head` 挂导出（版本仓记录：id + 状态 + updatedAt 为出处） |
+
+**沙盘视图键定案 = `sim-sandbox`**（上一版 §5 P1 挂账的「报哪个要先对齐」已裁决）。
+论据链：route 路径 `v/sim-sandbox`（`App.tsx`）· entitlement `sim.sandbox`（`SimSandboxGuard` 查它）·
+`NAV_GROUPS key:"sim-sandbox"`（`ShellLayout.tsx`）· 本体 §7 判据⑦ 记的也是 `sim-sandbox`；
+`sandbox` 裸键只剩两处局部叫法（`SandboxView.tsx` 的 `EdgeActivePanel pageKey` 与
+`check-edge-active-mounts.mjs` 的旧手抄名单）；ssot 单建的 roster 判据库
+（`scripts/lib/sim-page-roster.mjs`）`EXTRA_ALIAS` 显式 `sandbox→sim-sandbox` —— 四票对一个别名，
+且别名方向一致指向 `sim-sandbox` 为规范键。
+
+**复用不重写**：8 处挂载全部是同一个 `ExportReportButton` + `exportProvenance.ts`（WO-HARNESS-UX-GAP-1 建），
+本单零新增导出实现；各页只写自己的 `basis`（口径行）与 `sections`。
+机检扩展：`harness-ux-u7-u9.test.tsx` 的 PAGES 从 6 页扩到 **12 页**，U7/U9 两段各 12 条逐页断言
+（沙盘为全仓最重页，单页 timeout 显式给到 60s——断言没松，只是加载本来就慢），28/28 绿。
+
 ---
 
 ## 5 · 优先级
@@ -495,16 +537,16 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
 | **P1** | **U1 改输入即重演** —— `what-if` / `optimize-whatif` / `sop-balance` 撤提交闸 | 参考件里这条是**逐字写着的**，且它的失败模式最坏：用户改完不点，**以为在看新结果，实际在看旧的** | 一张前端单（三页，注意 `optimize-whatif` 走真 CP-SAT，需先确认重解成本） |
 | **P1** | **U2 分步标口径** 横向铺开（今天只有 `project-sim` 一页） | 它是「凭什么信这个结论」的唯一抓手；没有它，R13 可溯源在推演页上只剩一句口号 | 逐页单 |
 | **P2** | **U4b 排除项与主因同图** | **5 页不符合**（有图但排除项没画进去），另 7 页**不适用**（无图 ⇒ 判据无处落脚，§4.3——别把这 7 页排进来） | 一张前端单 |
-| **P2** | **U9 导出带口径与时间戳** | 决定这一屏能不能进 S&OP 决议附件。今天 8 页不符合（本单已闭 4 页） | 逐页单 |
+| **P2** | **~~U9 导出带口径与时间戳~~ ✅ 已闭（WO-U7-U9-REST，2026-08-16）** | 决定这一屏能不能进 S&OP 决议附件。**12 页全闭**：前 4 页 WO-HARNESS-UX-GAP-1，剩 8 页 WO-U7-U9-REST，全部复用同一共享件（§4.4.1） | ~~逐页单~~ 已交付 |
 
 **⇩ 以下四条是 2026-08-16 WO-HARNESS-UX-GAP-1 新增/改写的优先级（前面几条保持原样）。**
 
 | 级 | 事项 | 为什么是这一级 | 归谁 |
 |---|---|---|---|
 | **P0** | **`project-sim` 的 U6：屏上写着能采纳，代码里没有那条路** | `ProjectSimView.tsx:1069` 的 `note:` 文案写「结论可采纳为 Action（参数组合 + 推演快照写回）」，而全文 `ActionDraft\|actionTypeKey\|adopt` **0 命中**。**文案承诺了一个不存在的动作** —— 这比干脆没有更糟：用户按这句话去等一张工单，永远等不到。两条路二选一（接上 / 撤文案），但**不许维持现状** | 一张前端单（先裁决接不接） |
-| **P1** | **`sim-sandbox` / `decision-play` 补 U7 报到** | 这两页与本单改的 4 页**同病同源**（专用 route 不经 `ViewPage` ⇒ 同屏问答不知道自己在哪一页），修法就是一行 `usePageView(...)`。**本单没做，诚实挂账** —— 沙盘的视图键在 `registry` 侧是 `sandbox`、四源侧是 `sim-sandbox`，报哪个要先对齐（§6 `EXTRA_ALIAS` 那条），不该顺手拍 | 一张前端单 |
+| **P1** | **~~`sim-sandbox` / `decision-play` 补 U7 报到~~ ✅ 已闭（WO-U7-U9-REST，2026-08-16）** | 视图键已裁决（**`sim-sandbox`**，论据链见 §4.4.1）：route / entitlement / NAV_GROUPS / 本体 §7 四票对一个别名。两页各一行接线（沙盘带 `mode === "now"` 条件防覆盖内嵌页报到），机检 12 页逐页断言全绿 | ~~一张前端单~~ 已交付 |
 | **P1** | **`global-sim` 的 U8：下钻靠跳页** | `GlobalSimView.tsx:153/851` 的类名逐字就叫 `drillLink`，`<Link to="/v/project-sim?order=…">进项目推演细排 →`。这是判据点名的那件事本身：**想看细节 ⇒ 被带走 ⇒ 现场清零** | 一张前端单 |
-| **P2** | **`risk` 的 U9：「含口径」是页脚自称** | `RiskBoardView.tsx:666-679` 导出物逐行带「依据/规则」列、页脚写「导出含口径」，**但通篇没有生成时间，也没有求解器/快照出处**。改法便宜：换用 `views/sim/exportProvenance.ts`（本单已建，缺那两样直接抛） | 一张前端单 |
+| **P2** | **~~`risk` 的 U9：「含口径」是页脚自称~~ ✅ 已闭（WO-U7-U9-REST，2026-08-16）** | 旧 `exportPlanRows` **整个函数退役**换共享件 `ExportReportButton`：basis 含 risk_timeline 窗口/阈值 + livePlan 杠杆注记，导出物带生成时间与求解器出处（缺口径直接抛，那句自称再也没有生存空间） | ~~一张前端单~~ 已交付 |
 | **P2** | **`cleanroom-attr` / `disruption-radius` 的 U8：不是跳页，是根本没有下钻** | 这两页受控展开态命中 **0**，明细全平铺。与 `global-sim` 的病**不同**（那是跳走，这是没有），修法也不同——别合成一张单 | 一张前端单 |
 | **P3** | **U5/U7/U8/U3 的判不了项 → 门 B 真浏览器判据** | 静态永远判不了它们；要么上 Playwright，要么**如实承认这四条今天没有验收方式**（后者也比假装有强） | 门 B 单 |
 
