@@ -419,7 +419,10 @@ const DASH_LAYOUT = {
     {
       key: "oee-trend",
       type: "chart",
-      title: "OEE 7日趋势",
+      // WO-TITLE-DIVERGENCE ②：窗口实测——本 query days:14，MSW 桩 TS_AGG_POINTS 也是
+      // Array.from({length:14})，后端同写 days:14。数据两侧都是 14 天，错的只是标题文案，
+      // 改标题对齐后端（service.ts oee-trend），不动数据。
+      title: "OEE 14 日趋势",
       span: 2,
       chartKind: "line",
       query: { kind: "timeseries", seriesKey: "oee_daily", entityIds: [], grain: "day", agg: "avg", days: 14 },
