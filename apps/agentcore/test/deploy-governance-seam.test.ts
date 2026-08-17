@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import { createTestApp, PLANNER, submitQuery, waitForTask, type TestApp } from "./helpers.js";
 import { toolUse } from "../src/llm/mock.js";
 import { loadConfig } from "../src/config.js";
@@ -147,5 +147,92 @@ describe("#88 SEAM · 出货 compose 的治理开关 → 真管线里的真早�
     expect(r.loopRepeatMetric).toBe(0); // 环检测整层未启用
     expect(r.outcome).not.toBe("STALL_LOOP");
     expect(r.rounds).toBeGreaterThan(cap + 1); // 差值即这几行字节买到的治理
+  });
+});
+
+/**
+ * #88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（WO-DSH-N3 · STALL_LOOP 看门狗销账）。
+ *
+ * 同一出货 env 源（SHIPPED_LOOP 由 shippedEnvOf 机器核，与原生臂同一份常量），
+ * 同一归因逻辑（③′ 有 cap 早停 / ④′ 去 cap 烧满剧本，差值 = compose 那行字节买到的治理），
+ * 执行层换成路 B dsh harness：watchdog（packages/dsh-harness/plugins/platform-watchdog.mjs）
+ * 在子进程内读同一 QOS_AGENT_LOOP_REPEAT_CAP（runner.ts env spread 透传，零第二真值），
+ * 达 cap 即 cancel → turn/end aborted/stall-loop → 重组装 STALL_LOOP 降级 → orchestrator
+ * 通用发 agent_degraded（orchestrator.ts:2179-2186 零改动复用）。
+ *
+ * env 卫生：engine fork 读的是**进程 env**（engine.ts:497 process.env.DSH_HARNESS），
+ * createTestApp 的 env 只进 config 管不到这层 ⇒ 本 describe 显式 save/restore 进程 env。
+ * 剧本 MOCK_SCENARIO=stall_loop = 8 轮同参 echo_tool + 文本收尾（有界，不等超时）。
+ */
+describe("#88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（N3 看门狗）", () => {
+  const HARNESS_DIR = join(ROOT, "packages/dsh-harness");
+  const ENV_KEYS = ["DSH_HARNESS", "MOCK_SCENARIO", "DSH_HARNESS_DIR", ...LOOP_KEYS] as const;
+  let savedEnv: Record<string, string | undefined>;
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+  });
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (savedEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = savedEnv[k];
+    }
+  });
+
+  function setHarnessEnv(loopEnv: Record<string, string>) {
+    process.env.DSH_HARNESS = "1";
+    process.env.MOCK_SCENARIO = "stall_loop";
+    process.env.DSH_HARNESS_DIR = HARNESS_DIR; // vitest cwd=apps/agentcore，缺省解析不到 packages/dsh-harness
+    for (const k of LOOP_KEYS) delete process.env[k];
+    for (const [k, v] of Object.entries(loopEnv)) process.env[k] = v;
+  }
+
+  async function runPathologicalDsh(loopEnv: Record<string, string>) {
+    setHarnessEnv(loopEnv);
+    const t: TestApp = await createTestApp({});
+    t.llm.queueClassification(OUT_OF_CATALOG);
+    const { taskId } = await submitQuery(t, PLANNER, "把所有未结订单反复翻一遍给我个自由结论", { view: "dash" });
+    const task = await waitForTask(t, taskId, (x) => x.status === "COMPLETED", 55000);
+    const events = await t.repos.events.listAfter(taskId, 0);
+    const degradeIdx = events.findIndex(
+      (e) => e.event === "step.completed" && (e.payload as { type?: string })?.type === "agent_degraded",
+    );
+    const answerFinalIdx = events.findIndex((e) => e.event === "answer.final");
+    const echoStarts = events.filter(
+      (e) => e.event === "step.started" && (e.payload as { type?: string })?.type === "echo_tool",
+    );
+    return {
+      task,
+      degradeRow: degradeIdx >= 0 ? events[degradeIdx] : undefined,
+      degradeIdx,
+      answerFinalIdx,
+      echoStartCount: echoStarts.length,
+      loopRepeatMetric: t.metrics.agentLoopRepeat.get(),
+    };
+  }
+
+  it("③′ 出货 env（含 cap）+ DSH_HARNESS=1：病态同签名循环被 watchdog 在 cap 处打断（STALL_LOOP），不烧满 8 轮剧本", { timeout: 60_000 }, async () => {
+    const cap = Number(SHIPPED_LOOP.QOS_AGENT_LOOP_REPEAT_CAP);
+    const r = await runPathologicalDsh(SHIPPED_LOOP);
+    expect(r.task.status).toBe("COMPLETED");
+    expect(
+      (r.degradeRow?.payload as { outcome?: string } | undefined)?.outcome,
+      "出货 cap 下病态循环未触发 STALL_LOOP 诚实降级（watchdog 缺/未咬）",
+    ).toBe("STALL_LOOP");
+    expect(r.answerFinalIdx, "缺 answer.final（降级应答仍应落屏）").toBeGreaterThanOrEqual(0);
+    expect(r.degradeIdx, "agent_degraded 必须早于 answer.final（orchestrator 通用发射次序）").toBeLessThan(r.answerFinalIdx);
+    expect(r.loopRepeatMetric).toBe(1);
+    // post-execute 计数 ⇒ 第 cap 次执行后才中断（与 native dispatch 前拦差 1，已登记语义 delta）；
+    // 剧本全长 8 ⇒ 恰好在 cap 处收束即证 watchdog 生效。
+    expect(r.echoStartCount).toBe(cap);
+    expect(r.echoStartCount).toBeLessThan(8);
+  });
+
+  it("④′ 归因臂：同剧本仅去掉 QOS_AGENT_LOOP_REPEAT_CAP → 无 STALL_LOOP ∧ metric 0 ∧ 烧满 8 轮（差值=compose 那行字节买到的治理）", { timeout: 60_000 }, async () => {
+    const { QOS_AGENT_LOOP_REPEAT_CAP: _omit, ...noCap } = SHIPPED_LOOP;
+    const r = await runPathologicalDsh(noCap);
+    expect(r.task.status).toBe("COMPLETED");
+    expect(r.degradeRow, "去 cap 后不得出现 agent_degraded（watchdog opt-in 缺省禁用）").toBeUndefined();
+    expect(r.loopRepeatMetric).toBe(0);
+    expect(r.echoStartCount).toBe(8); // 烧满剧本 = 早停确实来自 cap 那行字节
   });
 });
