@@ -429,6 +429,22 @@ export function assertOntologyInvariantsAllowPublish(report: OntologyInvariantRe
 
 // ── 求值 ───────────────────────────────────────────────────────────────────
 
+/**
+ * **反 fail-open 自证**：表达式引用的每个字段都必须在 facts 里解析成 `number`。
+ *
+ * 单独成函数并导出，是为了让这道守卫**本身**可被直接咬住 —— 它防的那个坑
+ * （`ruledsl.compare` 对非数左值返回 `false` ⇒ 字段名写错就静悄悄判成"没违反"）
+ * 在目录写对的情况下永远不会发生，于是这一支若不单独测就是一条**从未被走过的分支**。
+ */
+export function assertFactsResolvable(ast: AstNode, payload: Record<string, unknown>): void {
+  for (const path of collectFieldPaths(ast)) {
+    const v = resolveField(payload, path);
+    if (typeof v !== "number") {
+      throw new Error(`守卫引用的量「${path.join(".")}」取不到数值 —— 拒绝按通过处理`);
+    }
+  }
+}
+
 function measureOf(entry: InvariantEntry, candidates: Candidate[]): number {
   if (entry.aggregate === "COUNT") return candidates.length;
   return candidates.length === 0 ? 0 : Math.max(...candidates.map((c) => c.amount));
@@ -476,13 +492,8 @@ export function evaluateOntologyInvariants(
 
     try {
       const ast = parseExpression(entry.violationExpression);
-      // 反 fail-open 自证：字段解析不出数 ⇒ 报错，不许当"没违反"。见文件头。
-      for (const path of collectFieldPaths(ast)) {
-        const v = resolveField(payload, path);
-        if (typeof v !== "number") {
-          throw new Error(`守卫引用的量「${path.join(".")}」取不到数值 —— 拒绝按通过处理`);
-        }
-      }
+      // 反 fail-open 自证：字段解析不出数 ⇒ 报错，不许当"没违反"。见该函数的说明。
+      assertFactsResolvable(ast, payload);
       const violated = evaluateExpression(entry.violationExpression, {
         payload,
         params: { [entry.tolerance.param]: toleranceValue },

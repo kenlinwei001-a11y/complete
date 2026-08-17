@@ -109,6 +109,19 @@
 - **Rule 一等化 + `params`（G-10 规则即引用 P1/P2）**：`RuleEntry += params`（命名阈值 `Record<string,number|string|string[]>`，求解器读 `rule.params` 而非硬编码，改 param 即改推演）· 补全 13 条曾"被引用未定义"规则为一等规则（`C01/C02/C04/C06/C09/C10/C11/C15/C16/C21/C22/C24/C25`，连同 C26–C33 = **全部被引用码已一等化**，`rule-closure:check` 门守）· `SOLVER_RULE_REFS`（contracts 单一来源：求解器→规则引用，19 求解器 26 码）· `EvaluatedRule`（求解器透出真评估 PASS/WARN/BLOCK/NOT_APPLICABLE，关联规则显真结果非装饰）· **A3-SUITE-1 切片约束一等化（refbase 修）**：切片契约为独立 `IndustryTemplate.sliceContracts` 元数据集合（**非行为规则·无 DSL 表达式**·`{key,name,scopeObjectTypes,mustIncludeTypes,mustIncludeLinkKeys}`），slice fixtures 与之**同源引用**（`battery.ts BATTERY_SLICE_CONTRACTS` 单一真源·DRY），`ontology-governance/runSliceContracts` 取 `fx.expect.mustIncludeTypes/mustIncludeLinkKeys` 校验全链可达 · 契约 `packages/contracts/src/datacore.ts`。**修**：曾以 `expression:"FALSE"` 塞进 `BATTERY_TEMPLATE.rules`（行为规则集）→ ① 裸 FALSE 非法 DSL 解析报错 ② 泄漏进 planviews Order 域规则映射（金值污染）；迁出至一等 sliceContracts 集从根上解二病（元数据≠行为规则）。
 - **RuleParamBinding（规则参数绑定 · G-10 P4 数值维 · `packages/contracts/src/datacore.ts`）**：`{ruleKey, param, path, note}` —— 声明「某条规则的命名阈值喂到 `solver_params` 的哪个数值路径」，`RULE_PARAM_BINDINGS` 是这份引用关系的**单一来源**（与 `SOLVER_RULE_REFS` 分工：那张表管**哪些规则被哪个求解器评估**＝布尔闸，本表管**规则阈值喂到哪个推演系数**＝连续量）。**病根（P1/P2 之后仍缺的一半）**：P2 让求解器**评估**规则，但求解器**算数**用的系数仍读 `solver_params` 里自己那份**同值字面量**（C04 `pendingCertFactor:0.6` ↔ `certFactors.认证中:0.6`；C09 `staleHours/degradedFactor` ↔ `health.*`；C18 `cashFloor` ↔ `sop.cashFloor`＋`planGenerate.targets.cashFloor`；C21 `balanceDeviationPct` ↔ `sop.dvThreshold`）——门守的是 SolverParam 那份、**规则那份没人读 = 诱饵**（下一个人改规则种子，以为改了推演，一个数没动）。**修**：① 场景包侧 `BATTERY_SOLVER_PARAMS` 的这些值一律经 `ruleParamOf()` 从 `BATTERY_RULES` 派生（`synthetic/battery.ts`，取不到即抛错不静默回落），源码里不再存第二份同值字面量；② 运行期 `RulesService.projectRuleParams`（`rules.ts`）在**规则发布**时按本表把 `rule.params` 投影进本租户 `solver_params`（经 `SolverService.mutateParams` 唯一写入通道 → 版本 +1 + 双份历史）。纯函数 `applyRuleParamBindings()`（contracts，R6 确定性·路径写时复制）三条守则：只写声明过的路径 · **父容器不存在则跳过**（R14 非本场景包租户零副作用）· 非有限数跳过。**不许并存**：与自身 expression 同值又无人读的 params 副本（C11 `minBufferDays`/C22 `maxChangeoverMin`/C25 `assumeTolerancePct`/C02 `tolerancePct`）已删，阈值单源 = expression；C09 `normalFactor` 已删（`health.normal` 归 M11 校准参数 `p90_health`，规则再声明一份就是第二个写者）。
 - **RuleDoc / RuleCandidate / ExtractSegment**：规则文档抽取（A2，LLM extraction）· `ruleDocs`,`ruleCandidates`。
+- **OntologyInvariant（本体不变式守卫 = 本体的**第三类边**·WO-ONTOLOGY-EDGE-TRICLASS·`apps/datacore/src/ontology/invariants.ts` 目录 + 求值核·契约 `packages/contracts/src/ontology-invariant.ts`）**：
+  **病根**：本体关系此前只管两类边，**两类都只描述「有什么」** —— 结构边 `LinkType`（A 与 B 有没有关系、几对几）、因果边 `PropagationRule`（A 的某个量变了 B 跟着变多少）。
+  描述「**必须成立什么**」的那一类**在后端零表示**（不是"接了线没数据"，也不是"接错地方"，是**没接线**）。三个近邻各自都不是它，实测逐条追过：
+  ① `Rule`（A5，本节上方）有表达式、有命名阈值、有求值器，但它评的是**一行业务数据**（`evaluate(ctx, ids, payload)` 吃调用方喂的 payload），**不评本体图谱自身**；
+  ② `meta/parse.ts` 的 `SystemInvariant` 把 R1–R12 从本文件解析成图节点，但节点上**只有 id**（`push({kind:"SystemInvariant", key:r, props:{id:r}})`），无表达式、无容差、不求值 —— 那是**目录**不是守卫；
+  ③ `databuilder/domain-invariants.ts` 真求值，但对象是**建模计划 BuildPlan**（DANGLING_REF / DOMAIN_ROOT 两族写死），不可调容差、不上屏。
+  **落法**：目录 8 条守卫（**数据不是代码逻辑**·R14 换行业改这张表即可），每条 `{key,name,subject,violationExpression,tolerance{param,label,defaultValue,unit},aggregate,candidates()}`。
+  **不另起表达式语言** —— 直接复用 A5 那套 DSL（`ruledsl.ts`）**及其极性**（`表达式为真 = 违反`，与 `RulesService.evaluate` 的 `passed=!violated` 同向）。⚠ 外部参照资料里同类物是**反的**（「表达式为真即通过」），刻意不跟随：同一套 DSL 里并存两种极性，迟早有人把表达式从一处抄到另一处，语义当场反转**且不会报错**（两边都是合法布尔式）。屏上一律只说「成立/不成立」，`holds=!violated` 由后端算好下发。
+  **实测量与违反者清单出自同一处** `candidates()`（不写成两个函数：写成两个，「数说 3 条、名单列 0 条」这种自相矛盾迟早出现，且两边都"有测试"）。`aggregate` 二值：`COUNT`（实测量=候选条数，违反时候选全体即违反者）/ `MAX`（实测量=候选里最大的量，违反者=量超过容差的那些）。
+  **守卫条件的中文由语法树渲染**（`guardTextOf`），**不是另存的一段说明文字** —— 表达式一改这句话跟着改，两者不可能各说各话；机器表达式本身不上屏（本仓明令开发的话不上屏）。
+  **⛔ 反 fail-open（本模块最要紧的一处）**：`ruledsl.compare` 对**非数**左值直接返回 `false` ⇒ 字段名写错 / facts 少一项时表达式会**静悄悄判成"没违反"**，屏上显示「成立」且测试全绿。命名阈值那一路已由 `evalOperand` 抛错堵住，**字段那一路没有**。故求值前先跑 `assertFactsResolvable()` 自证：引用的每个字段都必须解析成 `number`，否则记 `error` 且 `holds` 一律按 **false** 下发。该函数**单独导出并被直接咬住**——目录写对时这一支永远不会走到，不单独测就是一条从未被走过的分支。
+  **⛔ 容差与停用是「试算开关」，不是治理动作（两套语义并存，不许合并）**：本类边的改容差/停用**只在本次请求内生效、一个字节都不落库**（走请求体，无写端点）；本体既有的「停用/下线」是治理动作 —— 有宽限期、有「仍被 N 处引用就拒绝」的 409 闸、要走会签发布。合并会把「我想试试把这条守卫关掉看看谁会红」变成「我把这条守卫下线了」。
+  **本类边不新增任何表/列**（目录是代码内数据、试算不落库）⇒ 仓储四处（migrations / `repo.ts` / `repo/pg.ts` / `repo/memory.ts`）一处未动。
 
 ### D. 行动/权限域（DataCore）
 - **ActionType / ActionDraft**：动作类型 + 草稿（审批后 EXECUTED 才写真值；Phase9B 对象级变更）· `actions.ts`,`app.ts:290`。**七要素补全（WO-ACTIONTYPE-EVOLVE·全 additive optional·旧数据 parse 不破）**：
@@ -1610,6 +1623,52 @@ R4 `SANDBOX_MODE_ORIGIN_VIEW` · R5 `CONSOLIDATED_INTO_SANDBOX` 的 `via:"static
 
 **门**：`scripts/check-dbui-flow-order.mjs`（主流程必须排第一 + 屏上不许有区号/开发口径，见 §7）。
 
+### 本体体检链路 · 第三类边：不变式守卫（WO-ONTOLOGY-EDGE-TRICLASS · 2026-08-17）
+
+**一句话**：本体图谱三样真值 → 守卫目录逐条求值 → 成立/不成立 + 违反者 → 屏上第三张表；改容差即**重走整条链**。
+
+```
+repos.ontologyTypes.list        ┐
+repos.ontologyLinks.list        ├─→ ontologyGraphFor(tenantId)   （app.ts · 唯一装配处）
+repos.sim.listPropagationRules  ┘        │
+                                         ↓
+                        evaluateOntologyInvariants(graph, overrides?)
+                        （ontology/invariants.ts · 纯函数 · R6 确定性）
+                          ① candidates() 逐条算候选（实测量与违反者同一处产）
+                          ② facts 一次算完，全体守卫共用同一份（同一次体检里两条守卫
+                             看到的图谱必须是同一个，否则"改了容差谁翻了"无从回答）
+                          ③ assertFactsResolvable() 反 fail-open 自证
+                          ④ ruledsl.evaluateExpression(违反条件, {payload:facts, params:{容差}})
+                          ⑤ 同时按**目录原值**再算一遍 → holdsAtDefault → flippedToViolate/flippedToHold
+                                         ↓
+        ┌────────────────────────────────┴────────────────────────────────┐
+        ↓                                                                  ↓
+GET  /a/v1/ontology/invariants            POST /a/v1/ontology/invariants/evaluate
+（无覆盖 = "现在到底怎么样"的真值读数）    （带试算覆盖 = 改容差/停用，**不落库**）
+        ↓                                                                  ↓
+fetchOntologyInvariants()                 evaluateOntologyInvariants(overrides)
+        └────────────────────────────────┬────────────────────────────────┘
+                                         ↓
+                 OntologyRelationsPage · 第三张表「不变式 · 体检守卫」
+                 （守卫条件 / 实测 / 容差可改 / 成立与否 / 参与体检 / 违反者逐条点名）
+```
+
+**两条出口刻意不合并成"永远 POST"**：合并后只读口就成了没有生产调用方的死端点（本仓假绿第 9 形态）。
+前端据 `invDirty` 二选一：没改任何东西走只读口，改了才走试算口 —— 两条路各有各的用处，且都有生产调用方。
+
+**阻断接线位（产品裁决未下，今天恒放行）**：`ONTOLOGY_INVARIANT_ENFORCEMENT_MODE`（`ontology/invariants.ts`）是**唯一开关**，
+今天恒为 `ANNOTATE_ONLY`。调用点**已经全部接好，不是悬空待办**：
+① 体检端点把 `enforcement` 随报告下发 → 屏上显示「只标注、不拦」与「真要拦会拦下 N 条」的代价预览；
+② **本体发布会签建单路**（`app.ts` 的 `POST /a/v1/ontology/publish-requests`）已调 `assertOntologyInvariantsAllowPublish(...)` —— 今天恒走"不拦"那一支。
+⇒ 裁决下来后是**一次改常量**，不是一次接线。⚠ 这一支今天恒假（"接了线没数据"形态），
+故 `apps/datacore/test/ontology-invariants.seam.test.ts` §④ **两个取值都测**（既测生产实参 `ANNOTATE_ONLY` 真的不拦，
+也测 `BLOCK_PUBLISH` 真的拦得住），躲开本仓记过的「生产实参与测试实参交集为空」那个坑；
+并留一条**金丝雀** `expect(ONTOLOGY_INVARIANT_ENFORCEMENT_MODE).toBe("ANNOTATE_ONLY")` ——
+裁决落地改常量那天它会红，逼人回来同步本节与屏上文案。
+
+**本链路不发任何事件**（§4 无新增）：体检是**只读投影 + 不落库的试算**，没有状态变更可供订阅。
+真值一变（建/停/下线边、会签发布）时体检结果自然随之变 —— 它读的就是那份真值，不需要额外的失效通道。
+
 ## 4. 数据流与事件失效图（模块间数据关系的单一来源）
 
 > 来源：`apps/agentcore/src/event-subscriptions.ts`（经 `GET /b/v1/event-subscriptions` 下发前端缓存失效路由）。**D-29 铁律**：任何产出型操作（上传/发布/生成/审批/tick）完成**必须**发对应领域事件，下游消费页**必须**订阅并在 SLO（事件 60s / 配置 TTL 5min）内反映。
@@ -1786,6 +1845,16 @@ R4 `SANDBOX_MODE_ORIGIN_VIEW` · R5 `CONSOLIDATED_INTO_SANDBOX` 的 `via:"static
 > - **SEAM**：`scenario-forced-extract.seam.test.ts` 复刻前端精确载荷（presetSlots+scenarioIntentKey+selectedObjects 直打 `/api/v1/queries`）断言「常州基地」≠「全网」（mock 金值 24.2≠74.7·生产实测 5.5176≠12.3016）；变异反证 extracted→`{}` 必红。
 > - **mock 保真**：`createMockDataCore.capacity_forecast` 尊重 `args.base` 作用域（此前恒全网——断言不了语义差的假绿温床）；⌘K 面板补传 userQuery（独立漏点）。
 
+> **⛔ R1–R12 与「本体不变式守卫」是两个 population，不许混为一谈（WO-ONTOLOGY-EDGE-TRICLASS · 2026-08-17）**：
+> 本节这批 **R** 是**平台自身的治理条文**——作用域是**本仓的代码与改动**，检测点是评审/门/构建，
+> 它们**写给人读**，没有表达式、没有容差、不对任何租户数据求值（`meta/parse.ts` 只把它们解析成
+> 带 `id` 的图节点，见 §2.C）。
+> §2.C 新增的 `OntologyInvariant` 是**租户本体图谱上的守卫**——作用域是**某个租户此刻的对象类型/结构边/因果边**，
+> 有可求值表达式、有可调容差、能指出违反者，屏上一等可见。
+> **两者只是名字里都有"不变量/不变式"**。混起来会长出「屏上显示 R7 成立」这种查无对证的话：
+> R7 根本没有可求值的表示，它的"成立"由人评审判定。
+> ⇒ 落到工程判据一句：**本节的 R 永远不许被抄进任何界面当数据**（本单派单原文也明令禁止）。
+
 ---
 
 ## 6. 行动（系统状态变更，多数经 Action 审批）
@@ -1953,6 +2022,17 @@ R4 `SANDBOX_MODE_ORIGIN_VIEW` · R5 `CONSOLIDATED_INTO_SANDBOX` 的 `via:"static
 
 - **`harness-ux-splitaccount:check` 拆账明账门 · 门 B（WO-GATE-B-SPLITACCOUNT 建 · 2026-08-16 · **已接线**：`binding=GATES_CHAIN`，现算在 `pnpm gates` 链上）**：守的不变量 = **「判据表里判不了 0」不度量「这条要求已经验完了」**。来历：`docs/PRD-harness-ux-adoption.md` §2.1 把六条判据各拆成两半，可判的那半留在 §4 表里逐页判，**不可判的那半**挪进 §4.2 登记为 **4 条 `B-x` 明账**，于是那张表的读数从「符合 17 · 判不了 57」变成「符合 60 · **判不了 0**」。形态（铁律 0.6 句式）：**「我用『判据表里判不了 0』当作『这条要求验完了』的证据，而前者并不度量后者。」** 兄弟门 `sim-ux-criteria:check` 判据⑦ 只挡住「整张 §4.2 表被删」这一种死法；**本门守剩下的全部**，七条：① **账形态完整**（每条 B-x 三栏「拆出去的那半 / 为什么够不着 / 要判它得有什么」非空且点名至少一个 `U#`；栏里写 `—`/`TBD`/`见上` 一律判空 —— 明账写成填空题等于没写）；② **双向绑定**（**正向**：§2.1「挪出去的那半去哪」凡写了 `§4.2` 的那一行，其 `U#` 必须被某条 B-x 认领，否则是**账凭空消失**；**反向**：每条 B-x 认领的 `U#` 必须在 §2 判据表里真实存在，否则是**僵尸账**。**只查一个方向必然漏一半**，这是本门与一般「引用完整性」检查的区别）；③ **出口不指向空气**（受理方登记表**写死**且必须逐个可解析：`R13` ⇒ 本体里必须真有 R13 这条不变量；「门 B / 真浏览器」⇒ **本门必须真在 `pnpm gates` 里**（**自指接线证明**：一道自己没接线的门去受理别人的账，等于账丢了）；「编排侧评测」⇒ §5 必须有对应可派单。写死是刻意的：新受理方必须过一次人眼，不许静悄悄多出一个没人核过的接收方）；④ **每条账有单**（§5 优先级表里必须有一行点名该 B-x 且**归属栏非空** —— 拦的是「诚实挂账」退化成「**诚实地永远不做**」，那只解决准确性不解决可交付）；⑤ **B-2 内容面现算**（扫描面 = §4.1 的 U3「**符合**」段里点名的**面板文件**，**现算不手抄**，且刻意**不含**「不符合」段的 `LayeredDag.tsx`——那是共享组件不是面板，收进来就成了代理指标；逐个**剥注释后**看有无 `本体链`/`ontologyChain` 对位实现，并断言 B-2 账面那句「本仓多数页无对位实现」仍属实。**2026-08-16 现算 = 面板文件 3（`ProjectSimView.tsx`/`SandboxConsole.tsx`/`InspectorNodePanel.tsx`）· 有对位实现 0** ⇒ 账面属实；将来某面板长出本体链，数会变、门会红，逼着回来重判这条账）；⑥ **不许静默销账**（棘轮基线 `scripts/harness-ux-splitaccount-baseline.json` 记每条账「认领的 U# + 受理方」，销账/改绑/改口/**新账**都要显式 `--tighten` —— 明账最危险的死法不是被推翻，是**没人注意到它没了**）；⑦ **自陈不许超发**（§4.2 必须写明「内容面机检 N/M」，`N` 必须等于**门现算**的 `CONTENT_CHECKED` 条数 —— 拦本门建成之后最可能发生的那件事：**「门 B 建好了 ⇒ 那四条都验了」**）。**逐条可机检判定（本门的诚实位，不许读成四条都验了）**：**B-1**（U1 时延面）**不能机检** —— 「多久」是运行期量，源码里不存在这个数，差一个能渲染真页面的 harness；**B-2**（U3 本体链面）**必要条件能机检（判据⑤ 已机检）· 充分条件不能** —— 账面原写「本仓多数页无对位实现」，**那不是「判不了」，那是「可判且判出来是不符合」**，本单把它从文档承诺变成了机器判据；**B-3**（U5 跨屏面）**不能机检，且缺的前置比 B-1 更靠前** —— 本仓没有「事实 → 读取它的页面集合」的可枚举注册表，**连该比哪两个数都列不出来**，真浏览器也无从下手；**B-4**（U7 内容面 + U8 几何面）**不能机检** —— U7 要真跑编排 + 真模型，U8 要渲染后量几何，**两面缺的东西不同，不许合成一张单**。三条的「差什么」已逐条落成 §5 可派单（`WO-GATE-B-BROWSER-HARNESS` / `WO-FACT-USAGE-REGISTRY` / `WO-R13-ONTOCHAIN-PANEL` / `WO-QOS-PAGECTX-EVAL`），门判据④ 正盯着这张表。**金丝雀 8 向、与主判据共用同一份 `parseSplitAccounts()`/`judge()`**（抄一份给金丝雀 = 装饰品）：必中账 · 必不中账六处逐条对位 · **共享组件不许混进面板文件** · 受理方存在性（R13 从本体消失 ⇒ B-2 出口指向空气）· **自指接线**（门未接线 ⇒「归门 B」那条必红）· 判据⑤ 方向（对位实现过半 ⇒ 账面理由不成立）· 剥注释双向（注释里的「本体链」不算、真代码里的不许被剥掉）· `baselineDocCanary()`。**建门当天金丝雀当场抓到本门自己的一个错**：新加的 §4.2.1 判定表第一列同样写 `**B-1**`…`**B-4**`，解析器把 4 条账读成 8 条 —— 形态是「**我用『§4.2 里所有 B-x 开头的行』当作『明账集合』的证据**」，已改成只取 §4.2 正文（第一个 `####` 之前）并**加常驻金丝雀 ①c 钉住重复 id**（机器先说话，不是人想起来）。**退出码三分**：0 干净 / 1 明账真有问题 / **2 门自己坏了**（金丝雀不中 / 扫描面缺失 / §4.2 与 §2 同时解析出 0 条 / 面板文件抽不出 / 面板文件全找不到 —— 此时**不许**读作「明账都在册」）；顶层兜底用 `const isMain = …; try { if (isMain) main() } catch`（`gate-exit-discipline` 只认 `try` 是 Program 直接子语句这一形态），**不用** `process.on` 全局 handler（本文件导出的解析器可被测试 import）。**六向变异反证 6/6 现跑**，且**三向断言**（不只断言「会红」）：变异体 ≠ 原文（打印长度差**与首个差异位** —— M6 是等长替换，长度差为 0，只看字节数会误判成「没改动」）· 判据编号集合恰好等于预期 · **被牵连的 B-x 集合恰好等于目标那一条**（证不误伤）。⚠️ 初版把预期只写成散文（`want: "①+③"`）而实测是 `①⑥`，**打印出来的「期望」是错的却没有任何东西拦**，已断言化。**诚实边界**：本门**不验四条明账的内容对不对**，只有 B-2 是例外且只到必要条件；其余三条守的是**账本身**（在不在 / 有没有主 / 指不指向空气 / 有没有单）。**「门 B 已建」≠「那四条已验」——这正是判据⑦ 存在的全部理由。** · `scripts/check-harness-ux-splitaccount.mjs`（`--selftest` 只跑金丝雀 · `--census` 打印现算明账全貌 · `--mutation-proof` 逐条 B-x 变异反证 · `--seed` 建账 · `--tighten` 显式重记），基线 `scripts/harness-ux-splitaccount-baseline.json`，明账表 `docs/PRD-harness-ux-adoption.md` §4.2 / §4.2.1，派单 §5。
 - **`typecheck-coverage:check` typecheck 扫描面门（WO-TEST-TYPECHECK-BLIND 建 · 2026-08-16 · 闭 §8 `G-TYPECHECK-SKIPS-TESTS` · 已并入 `pnpm gates`）**：守的不变量 = **每个包的 `typecheck` 命令，其扫描面必须真的包含该包的测试文件**。**病（假绿第 13 形态）**：`typecheck` 全绿，而它连测试文件看都没看 —— `apps/datacore` 与 `apps/agentcore` 的 `tsconfig.typecheck.json` 早在 `7302a0fc`（2026-08-13）就建好、注释写明「把 test/ 纳入类型检查面」，而 `package.json` 的 `typecheck` 脚本**从来指向 `tsconfig.json`**，三天里 466 个测试文件零检查；接上线当天抖出 **354 个**真类型错误。**判据刻意不读 `include`/`exclude`** —— 读配置去推断正是本断点栽的那个跟头（`extends` 链 / `files` / `exclude` 反选 / 乃至 `package.json` 根本没引用这份配置，任何一环都能让「写了」与「生效了」分家）。改为：① 从 `package.json` 的 `typecheck` 脚本**原文**解析它真正 `-p` 的那份配置（脚本指哪儿就量哪儿，不猜约定文件名）；② 对它跑 `tsc --listFilesOnly` 拿**程序文件全集**（tsc 自己的口径）；③ 断言 `git ls-files` 出来的测试文件逐个在内。取「文件在不在程序里」而非真塞金丝雀，是因为二者等价（进了程序就会被检查）而前者快 3 个数量级、且**不改动工作区任何文件**（门不该有副作用）。**反向金丝雀是保命的那一半**（与主逻辑共用 `surfaceOf()`，不另抄实现）：每次运行先验「各包 **build** 配置的面里**不该有**测试文件」——若 `surfaceOf()` 坏成恒返「全都在」，正向判据会**全部通过**而门报「干净」，正是本门要根治的那种假绿；用的是真仓文件（build 靠 `rootDir:"src"` emit，混进 test 必 TS6059 并污染 dist，这是硬约束不是约定）。**变异反证三向机验**（`--selftest`，每次现跑）：注入「测量坏了」⇒ **RC=2**（报 1 会被读成「你的测试没被覆盖」，方向正好相反）；注入「真有包没接线」（改去量 build 配置）⇒ **RC=1**，实测输出 `datacore 0/291`、`agentcore 0/175` —— **这不是模拟，是精确复现本断点修复前的真实状态**；不注入 ⇒ **RC=0**。**2026-08-16 收编日现算**：5 个包全部合规（contracts 7/7 · llm-adapters 2/2 · datacore 291/291 · agentcore 175/175 · frontend-shell 251/251），反向金丝雀 4 条全中。**诚实边界**：只保证测试文件**进了程序**，不保证它们的断言写得强（断言强度归 `coverage-blind:check` 管，两门互补不重叠）；不覆盖 `test/fixtures/*.json` 这类非 TypeScript 文件（本就不进类型面）；也不保证 `tsconfig` 之外的检查（如 vitest 自己的 transform 面）与它一致。· `scripts/check-typecheck-coverage.mjs`，`pnpm typecheck-coverage:check`。
+
+- **本体不变式守卫的两条接缝测试（WO-ONTOLOGY-EDGE-TRICLASS · 2026-08-17 · 无新门脚本，接缝由测试守）**：守的不变量 = **改容差 ⇒ 屏上那一条的「成立/不成立」真的跟着变**。
+  刻意**不**证三件事（它们能在缺口仍在的情况下全绿）：「列表渲染出来了」/「求值函数被调用了」/「请求发出去了」——
+  故断言落点一律是 `orel-inv-status-*` **那一格的字**。
+  ① **引擎侧** `apps/datacore/test/ontology-invariants.seam.test.ts`：实测量与**另一条独立端点**（`GET /a/v1/sim/propagation-rules`）的读数**交叉验证**（不是自洽）——
+  两边不等即说明体检读的不是同一份本体；容差用**实测值现算**（`measured - 0.05`）不写死数字，种子一改测试自己跟着走；
+  违反者逐条回查真规则表，确认「点名的那条边真实存在且系数确实越线」；并咬住「试算不落库」（改完再读只读口必须仍是原值）与 R6 确定性（连算两次逐字节一致）。
+  ② **屏侧** `apps/frontend-shell/test/ontology-invariants.seam.test.tsx`：走真 route + 真 `endpoints`（**不** `vi.mock`），MSW 层拦真实 URL + 真实 body，
+  故顺带咬住「覆盖真的送到了后端」而非前端自己算了个数显示出来；§④ 是**事实锁** —— 把前端 mock 的守卫 key 集合与 `apps/datacore/src/ontology/invariants.ts` 目录源码里的 key 集合**逐条对账**（含正/负向金丝雀：抽 0 条即报「工具坏了」，注释里的假 key 不许被抽出），后端加一条守卫而 mock 忘了加即当场红。
+  **变异反证（实测过）**：把「求值」那一步拆掉（`mockInvariantReport` 里 `measured > toleranceValue` 改成 `> spec.tolerance.defaultValue`，即收下容差却不拿它求值）——
+  此时面板还在、函数还在、请求照发，只有屏上的判定不再随容差变；门必须红在「改完容差后这一格应为『不成立』」那一条上。红在别处即说明证的是别的东西。
 
 ---
 
@@ -2189,6 +2269,25 @@ R4 `SANDBOX_MODE_ORIGIN_VIEW` · R5 `CONSOLIDATED_INTO_SANDBOX` 的 `via:"static
 > - **取证方法论（写给下一个 dev·非产品缺陷）**：前端 `src/env.ts` 在 localhost 下**写死直连 `127.0.0.1:4001`，不走 vite dev proxy**（`VITE_DEV_DATACORE` 改不动它）。多 worktree 并行开发时 :4001 可能属于**别人的构建**，浏览器取证会静默取到别人的输出。判据 `/proc/<pid>/cwd`；对策：自建服务用独立端口 + Playwright `page.route` 改写并打印命中次数。**「端口通 ≠ 对面是我的构建」**，与「进程还在 ≠ 还活着」同类。
 > - 附带（**R-一致**）：`risk.ts` 风险卡的 `affectedOrders` 用 `[crossDay−7, crossDay+14]` 小窗、而同页「订单聚合」tab 用 `[0, horizon]` → 同屏「1 批」vs「24 批」打架且 7/8 卡恒空。已统一到推演窗口 `[0, horizon]`。测 ⑫。
 
+
+### `G-ONTOLOGY-INVARIANT-ENFORCEMENT-UNDECIDED` —— 第三类边已上屏可调，但「违反了该拦什么」是**未下的产品裁决**（◑ 部分闭合 · WO-ONTOLOGY-EDGE-TRICLASS · 2026-08-17）
+
+**已闭的那半**：本体不变式从「写在文档里给人读的中文条文」变成**屏上一等可见、可求值、可调容差、可停用、能点名违反者**的第三类边（§2.C / §3 本体体检链路）。
+
+**仍开的那半（三条，逐条如实记）**：
+
+1. **阻断裁决未下** —— 阻断发布？阻断采纳？只标红不阻断？仓主尚未裁。今天一律 `ANNOTATE_ONLY`：如实标红、如实算出「真要拦会拦下几条」，但**一条都不拦**。
+   接线位是**唯一常量** `ONTOLOGY_INVARIANT_ENFORCEMENT_MODE`，两个调用点已接好（体检端点 + 发布会签建单路），裁决后**改这一个常量即可**。
+   ⚠ 该分支今天恒假，属「接了线没数据」形态 —— 已由测试**两个取值都测** + 生产实参金丝雀兜住（见 §7）。
+2. **容差与停用只活在本次请求里，不落库** —— 这是**刻意的**（它是推演开关不是治理动作，见 §2.C）。
+   代价如实交底：**换个人、换个浏览器看到的仍是目录原值**；「我们团队决定把系数上限定成 0.8」这种**约定**今天没有承载物。
+   要让它落库，就必须同时回答"谁能改 / 要不要会签 / 改了以后历史体检结论算不算数"——那是另一张单，不该塞进本单顺手做。
+3. **前端 mock 里那份守卫表是替身，不是真求值核** —— 真核在 datacore（用 A5 那套 DSL 真解析表达式），mock 侧只镜像同一个比较形状。
+   两边**同名同条数**由事实锁在运行时对账（§7），但**语义**若有分歧（比如将来某条守卫的表达式改成复合式）事实锁咬不到。
+   彻底解法是把求值核下沉到 `packages/contracts` 与 mock 共用一份（本仓已有先例：`enterprise-state.ts` 的 `captureEnterpriseState`），
+   前提是先把规则 DSL 也下沉——**本单不做，如实记账**。
+
+**可派的下一步**：① 裁决下来后接阻断（改一个常量 + 补一条"被拦住"的接缝测试）；② 容差落库那张单（含治理语义裁决）；③ DSL 下沉 contracts、mock 与引擎共用一份求值核。
 
 ---
 
