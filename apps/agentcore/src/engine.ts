@@ -1,4 +1,4 @@
-import { isWriteModeSkill, mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type AgentRunRecord, type Answer, type ProvenanceRef, type ResolvedRef, type RuleVerdict, type SkillDefinition, type WorkflowDefinition, ErrorCodes } from "@platform/contracts";
+import { isWriteModeSkill, mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type AgentRunKernel, type AgentRunRecord, type Answer, type ProvenanceRef, type ResolvedRef, type RuleVerdict, type SkillDefinition, type WorkflowDefinition, ErrorCodes } from "@platform/contracts";
 import {
   attributionFields,
   originFields,
@@ -179,6 +179,10 @@ function emptyAgentRunRecord(
   // WO-AGENTRUN-FANOUT-PERSIST：同理——被会诊扇出的子 agent 若在规则预检就被 BLOCK，那也是**它真跑过一次**
   // （零迭代但确有位置），照样得带上 FANOUT 落库，否则「这个 Agent 跑了几次」会漏掉被拦下的那些。
   placement?: AgentRunPlacementInput,
+  // WO-DSH-P2-UX（N5）：内核标识。dsh 分叉两点恒 "EXTERNAL"；分叉前 BLOCK 早退点传 flag 态值
+  // （`DSH_HARNESS === "1" ? "EXTERNAL" : "NATIVE"`，与分叉同一表达式）——标的是「本会走哪个内核」，
+  // 该 run 未真执行任何循环，**不许**读成「真在 dsh 上跑过」（R13 不造数纪律）。
+  kernel?: AgentRunKernel,
 ): AgentRunRecord {
   return {
     id: newId("run"),
@@ -191,6 +195,7 @@ function emptyAgentRunRecord(
     totalOutputTokens: 0,
     ...attributionFields(attribution),
     ...originFields(placement),
+    ...(kernel ? { kernel } : {}),
   };
 }
 
@@ -422,7 +427,9 @@ export class ExecutionEngine {
           return {
             outcome: "ANSWERED",
             answer: ruleViolationAnswer(verdicts),
-            run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement),
+            // WO-DSH-P2-UX（N5）：此早退点在 dsh 分叉**之前**——标「本会走哪个内核」（flag 态值，
+            // 与下方分叉同一表达式），该 run 未真执行任何循环，不许读成「真在 dsh 上跑过」。
+            run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, process.env.DSH_HARNESS === "1" ? "EXTERNAL" : "NATIVE"),
             sketch: [],
           };
         }
@@ -523,14 +530,14 @@ export class ExecutionEngine {
             provenance: [],
             unverifiedNumerics: false,
           },
-          run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement),
+          run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, "EXTERNAL"),
           sketch: [],
         };
       }
       return {
         outcome: dsh.result.outcome,
         answer: dsh.result.answer,
-        run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement),
+        run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, "EXTERNAL"),
         sketch: dsh.result.sketch,
         ...(dsh.result.structured ? { structured: dsh.result.structured } : {}),
         ...(dsh.result.degraded ? { degraded: dsh.result.degraded } : {}),
