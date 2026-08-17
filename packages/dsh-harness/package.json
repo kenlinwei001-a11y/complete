@@ -1,0 +1,27 @@
+{
+  "name": "@platform/dsh-harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WO-DSH-POC-S1 · dsh (deepseek-harness) 独立运行时包：38 包闭包与 cordis.yml 部署面收敛于此，agentcore 零侵入。",
+  "scripts": {
+    "start": "node node_modules/@deepseek-ai/dsh-sdk-jsonrpc-demo/lib/bin.js cordis.yml",
+    "smoke": "node ./smoke.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-agent": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-agent-loop": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-mcp-client": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-sdk-jsonrpc-demo": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-sdk-jsonrpc-server": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-sdk-protocol": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-session": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-skill": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-system-prompt": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.6"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-sdk-client": "0.1.0-rc.6"
+  }
+}

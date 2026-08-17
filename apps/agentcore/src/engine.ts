@@ -489,6 +489,54 @@ export class ExecutionEngine {
     // Phase8：生产可启用 LLM 滚动摘要（QOS_ROLLING_SUMMARY_LLM=1）；缺省确定性拼接。
     const summarizer = cfg.QOS_ROLLING_SUMMARY_LLM === "1" ? llmRollingSummarizer(this.deps.llm, model, agent.tenantId) : undefined;
 
+    // -----------------------------------------------------------------------
+    // WO-DSH-POC-S4 · 路 B（dsh harness）**休眠分叉**：仅 DSH_HARNESS=1 时走 JSON-RPC
+    // 子进程路径（packages/dsh-harness），缺省关闭 = 下方 runAgentLoop 逐字节旧行为。
+    // 动态 import：flag 关时 dsh 模块根本不加载。POC 验收专用；postcheck 规则后验
+    // （下方 POST_CHECK 段）在此路径不外挂——验收对照的是 loop 本体语义。
+    if (process.env.DSH_HARNESS === "1") {
+      const { buildSessionSetup, mapSkill, runDshAgent } = await import("./dsh-runtime/index.js");
+      const setup = buildSessionSetup({
+        agent,
+        agentSystemCore: AGENT_SYSTEM_CORE,
+        grantedToolNames: tools.map((t) => t.name),
+        skills: skills.map((s) => mapSkill(s)),
+        ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
+      });
+      const dsh = await runDshAgent({
+        prompt: userContent,
+        setup,
+        provider: process.env.DSH_HARNESS_PROVIDER ?? "mock",
+        model,
+        reassemble: {
+          governance: { writeMode, provenancePolicy: effectiveProvenancePolicy },
+          ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
+        },
+        onSse: (e) => { void opts.emit(e.event, e.payload); },
+      });
+      if (!dsh.result.ok) {
+        return {
+          outcome: "FAILED",
+          answer: {
+            trustLevel: "AGENT_EXPLORATORY",
+            blocks: [{ type: "text", markdown: `dsh 重组装拒绝：${dsh.result.errors.join("; ")}` }],
+            provenance: [],
+            unverifiedNumerics: false,
+          },
+          run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement),
+          sketch: [],
+        };
+      }
+      return {
+        outcome: dsh.result.outcome,
+        answer: dsh.result.answer,
+        run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement),
+        sketch: dsh.result.sketch,
+        ...(dsh.result.structured ? { structured: dsh.result.structured } : {}),
+        ...(dsh.result.degraded ? { degraded: dsh.result.degraded } : {}),
+      };
+    }
+
     const result = await runAgentLoop({
       taskId: opts.taskId,
       model,
