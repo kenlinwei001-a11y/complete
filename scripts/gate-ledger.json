@@ -1718,6 +1718,25 @@
    },
    "notes": "闭 G-DERIVED-FORMULA-UNVERIFIED：本体有 derivedProperties（带 formula）、派生管线按公式重算并物化到对象 props 上，但从来没有任何东西验过「这个 formula 真的能算出那个值」；而生产求值器 evalArithmetic（ontology.ts:78）对未知标识符**静默返 0**（实测 evalArithmetic(\"nope * 2\", {}) === 0），一条引用不存在属性的公式会安静把错数写进对象、全链零信号。既有覆盖现算：synthetic/service.ts:2030 的 derivationSpotChecks 只查 2 条派生属性各 1 个对象（唯一断言方 apps/datacore/test/synthetic.test.ts:25），而全库 14 条 ⇒ 12 条 × 全部实例今天一次都没被算过。本门**真跑生产派生管线本尊**（把出厂本体+种子种进内存仓 → OntologyService.runDerivations() → 读回 obj.props），再用门自己的**独立严格求值器**逐实例重算比对；受检集合现算（解析 synthetic/service.ts 的 putAll 调用），不手抄名册。四条判据：A 分类闭合（不可机械求值必须登记，禁静默跳过）· B/B2 标识符闭合与输入取数 · C 逐实例重算==实际值 + C2 种子预填值（值来自别的路径）· D 量纲棘轮。**诚实边界写在门头第一段**：判据 C 抓不到「公式写错了」除非该量另有独立来源——派生值就是公式算出来的，改错公式两边一致地错，这是「重算核对」方法本身的射程边界，14 条里今天只有 1 条（InterBaseTransfer.etaDay）有第二来源。",
    "disposition": "WIRE"
+  },
+  "check-feature-default-parity.mjs": {
+   "alias": "feature-default-parity:check",
+   "binding": "GATES_CHAIN",
+   "guardedPaths": [
+    "apps/datacore/src/features.ts",
+    "apps/datacore/src/synthetic/view-manifest.ts",
+    "apps/frontend-shell/src/mocks/fixtures.ts",
+    "scripts/feature-default-divergence.json"
+   ],
+   "escalation": "仓主",
+   "ontologyRef": "§7 · §8 G-GSIM-LIVE-FLAG-STALE",
+   "provenRed": {
+    "kind": "MUTATION",
+    "evidence": "2026-08-17 真仓 + 样例双向变异全中（每次跑完还原、全部显式捕获退出码 out=$(cmd 2>&1);rc=$?）：【真仓】把 apps/datacore/src/features.ts 的 view.global-sim.live 改回 defaultOn:false（= 事故原态）→ RC=1 A1，报文逐字点明「⚠️ 这个 flag 前端绿不代表真部署看得见」；改回 true → RC=0。【样例·与主逻辑共用 violationsOf + lib/feature-defaults.mjs 抽取器，不另抄正则】必中 6：①未登记反向→A1 ④陈旧登记(已同值还留着)→A2 ⑤登记值与现算不符→A3 ⑥占位理由 why 太短→A4 ⑦没写「前端绿不证明真部署可见」→A5 ⑧悬空登记→A6；必不咬 2：②两侧同值→零违规 ③已登记且理由合规的反向→零违规；抽取器自证 2：⓪注释里的 defaultOn: true 不许被算进条目 ⓪b 子串计数与顶层走查两次独立测量必须相等。【RC=2】登记表改成非法 JSON → RC=2「⛔ 门自己坏了」并明说「不许读作两侧一致/无反向/代码干净」。",
+    "note": "本门是 2026-08-17 那次事故的机制化：view.global-sim.live 在 A 侧 features.ts 是 defaultOn:false、前端 mock fixtures.ts 是 true，<Feature> 是 R3 闸 ⇒ VITE_MOCK=1 的前端测试全绿、真部署那两块看不见。形态（铁律 0.6 句式）：「我用『前端测试绿』当作『这块功能真部署可见』的证据，而前者并不度量后者。」⚠️ 本门刻意**不禁止**反向 —— 实测在册的两条（sim.sandbox / decision.causal-graph）是合法反向：A 侧 false 是 L1，而 battery 行业模板的 L2 会把它们抬开，mock 照抄的是有效值不是 L1 字面量；禁止反向会逼人把 mock 改成照抄 L1，那会让 chain-line-map/transit-flow/physical-topology/node-inspector/chain-impediments 五个子视图被 requires 级联过滤掉（与 dark-launch 旧门同一种破坏力）。故判据是「反向必须登记且写明后果」，不是「不许反向」。与 dark-launch:check 分工：那门查「投放意图 vs 代码机制」，本门查「A 侧 vs mock 两份注册表」。"
+   },
+   "disposition": "GATES_CHAIN",
+   "notes": "两侧 defaultOn 反向登记门。登记表 scripts/feature-default-divergence.json（字段 backend/mock/why/frontendGreenProves/verifiedOn/verifiedBy）。诚实边界：只比 defaultOn 字面量（=L1），不解释 L2 行业模板/L3 租户 override/L4 角色收窄后的运行期有效值 ——「A 侧 defaultOn:false」≠「所有租户都看不见」；只看两侧都声明的键（一侧缺失归 nav-group-coverage:check 判据②）。升级路径=仓主：开关默认值是产品决策。--selftest 只跑金丝雀不看仓库现状。"
   }
  }
 }

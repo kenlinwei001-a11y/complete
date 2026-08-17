@@ -148,6 +148,43 @@ TS 允许少写形参实现接口，于是 mock 的**具体类型比契约窄**�
 
 ---
 
+## J · 开关的理由过期 · 两侧 flag 反向（WO-GSIM-LIVE-FLAG-REASON · 2026-08-17 · 本体 §8 `G-GSIM-LIVE-FLAG-STALE`）
+
+> 这一条不是某个功能，是**注释与开关的可信度**。序言里那句
+> 「我用『门 RC=0』当作『这 6 步都做好了』的证据，而前者并不度量后者」，
+> 在 feature flag 上有一个更贵的版本：**前端测试绿，而真部署那块看不见。**
+>
+> **留一句已不成立的理由比没有理由更坏** —— 下一个人照着它去做兼容，
+> 等于给一个不存在的问题打补丁；或者以为端点还没做，去重做一遍已经做好的东西。
+
+| # | 事实 | 状态 | 复验方式 |
+|---|---|---|---|
+| J1 | `features.ts` 的 `view.global-sim.live` 行内注释写「真后端 `/b/v1/sim/compose` · `/a/v1/sim/scenarios` **端点未落** → defaultOff 避 404；WO-LIVE-SCENARIO 落后开门」，而五条端点在 `WO-LIVE-ENDPOINTS` 早已全部落地 | ✅ **理由已作废，注释改写为今天的真实状态**（含谁在何时验的、怎么复验） | 逐条**追到处理体**（不是只看路由注册行）：`apps/agentcore/src/server.ts` 的 `POST /b/v1/sim/compose` 调真 `portfolio`(twoStage·三方案)→`buildComposeNarrative`；`apps/datacore/src/app.ts` 的 `POST|GET /a/v1/sim/scenarios`、`GET …/compare`、`POST …/:id/branch` 四条首句均 `requireLive()`。**⚠ 派单给的 5 个行号今日全部已漂**（`features.ts` 111/112→132 · `app.ts` 2535/2546/2553/2565→2554/2565/2572/2584；`server.ts` 2364 未漂）—— 写死行号的引用天生带保质期 |
+| J2 | 前置端点在**真部署口径**下确实可用，不是空壳 / 501 / 恒抛，鉴权与 entitlement 也走得通 | ✅ **实测**，非读代码读出来的 | 真 app inject，无行业模板租户 `plain`：四条 A 侧端点 **201 / 200 / 201 / 200**；请求响应形状与前端 `composeGlobalSimNarrative`（`{page,query,sessionId,context}` → `{path,ranAgentLoop,narrative,scenarios,provenance}`）逐字段对得上 |
+| J3 | 执行既有裁决：`defaultOn` `false→true`（**不是新的产品决策** —— 注释里「落后开门」这句裁决早就做过，前置满足即执行） | ✅ | `scripts/feature-rollout.json` 同批 `tiered→ga`；`dark-launch:check` 的 A3/A4 核对两处一致 |
+| J4 | **`defaultOn` 只管 L1** —— 有行业模板的租户 L2 会整个取代 L1 ⇒ 拿 `demo` 测这条接缝等于拿一个**恒真的输入**去测一个开关 | ✅ **四格实测钉死**（这是本单最要紧的发现） | 同一份代码只翻 `defaultOn`：`demo`(battery·有模板) 两态**都是 90 项且都含本键**（对 `defaultOn` **完全不敏感**）；`plain`(无 industry) `true`→70 项/含/端点 201·200·201·200，`false`→69 项/不含/端点**全 404 FEATURE_NOT_FOUND**。⇒ 既有的 `live-scenarios-seam.test.ts` 用的正是 demo，**它证明不了这件事** |
+| J5 | 接缝测试必须**跨过 mock 那一层**（fixtures 本来就是 `true`，拿它测等于自证） | ✅ `apps/frontend-shell/test/gsim-live-deploy-visibility.seam.test.tsx`（3 passed） | workspace 由**真 datacore 应用**经 `GET /a/v1/me/workspace` 现产（跨包 import `apps/datacore/test/helpers.ts`，先例 `global-sim-seam-realsolver.test.tsx`）；租户固定 `plain`；并把 MSW 的 `/a/v1/me/workspace` 覆盖成**空 features 哨兵** —— 缓存一旦被 mock 顶掉用例立刻红，**「没走 fixtures」因此是机器证据不是注释声明** |
+| J6 | 变异反证：`defaultOn` 改回 `false` ⇒ 必须红在**「那两块没渲染出来」**，不是「组件不存在」 | ✅ **亲跑** | 红在 `Unable to find an element by: [data-testid="global-sim-nl-dock"]`，而页面其余部分**完整渲染**（12 基地 × 11 时间窗 · 「✓ 可证最优 · 有被挤单」）⇒ 红的是**闸**，不是组件缺失。改回 `true` ⇒ 3 passed |
+| J7 | 防复发机制 | ✅ 新门 `feature-default-parity:check`（本体 §7） | 逐 key 对账 A 侧 `features.ts`(+`view-manifest.ts` 派生) 与前端 `mocks/fixtures.ts` 的 `defaultOn`。**未登记的反向 RC=1** 且报文点明「这个 flag 前端绿不代表真部署看得见」；**陈旧登记同样报红**（逼人回来删掉已不成立的理由）。金丝雀与主逻辑共用 `scripts/lib/feature-defaults.mjs`。真仓变异：改回 `false` → RC=1 A1；登记表非法 JSON → RC=2 |
+
+**⑤ 还有几个 flag 是同样的病 —— 只列清单与证据，本单一个都没翻**（前置未验的开关不许顺手动）：
+
+| 键 | `features.ts` 里的理由 | 实测 | 定性 |
+|---|---|---|---|
+| `org.world` | 「**未完工的世界层功能**，前端另立单」（`WORLD_DARK_LAUNCH_FEATURES` 注释） | **前端那一单已落**：`apps/frontend-shell/src/pages/admin/OrgWorldPage.tsx` 存在且**已挂路由**（`App.tsx` `path:"admin/org"` + `<AdminGuard path="org" featureKey="org.world">`）；后端 `registerOrgWorldRoutes(...)` 已注册并挂 `requireFeatureTag("apiTags","org-world")` | **🔶 理由的「前端另立单」这一半已不成立**。⚠️ 但**未验**世界层功能是否真的完工（本单只验了「页面在、路由在」，没验端点集合是否完备、屏上有无真数据）⇒ **不翻**。另：该键在 `scripts/feature-rollout.json` **未声明投放意图** ⇒ `dark-launch:check` A1 红（**canonical 上既有**，非本单引入） |
+| `process.runtime` | 「平台自带**流程实例种子尚无**（65 条是模板，不是在跑的单子）——默认开会让每个租户的卡点面板都是空的」 | 追到写入方：`processInstances.put` 只出现在 `apps/datacore/src/process/runtime.ts`（`create`/`advance`），其唯一调用方是 HTTP 路由 `app.ts` 的 `POST /a/v1/process/instances` 系列；`synthetic/*` 里**零**实例种子 | **✅ 理由仍成立**（「接了线**没数据**」，不是「没接线」——修法是补种子，不是开门）。同样**未声明投放意图** ⇒ `dark-launch:check` A1 红（canonical 上既有） |
+| `data-import.record-materialize` | `features.ts` 注释写「R3 **暗发**·defaultOn:false·关=404」 | 真路由已落：`app.ts` 的 `materializeRecords` 两处 `features.enabled("data-import.record-materialize")` 门 + `decision/record-materialize.ts` 实现齐全。`feature-rollout.json` 自己就写着「**非「没做完」。注释里的「暗发」是措辞沿用，非当前状态**」，stage=`tiered` | **🔶 注释措辞过期**（说「暗发」= 暗示没做完），但开关本身是**产品分档**决策，不是「该开没开」⇒ 只该改注释，**不该翻开关**（翻它属产品决策=仓主） |
+| `ceo.dataset.generate` | 同上（注释「暗发」措辞） | `app.ts` 的 `POST /a/v1/ceo/dataset/generate` + `synthetic/ceo-dataset.ts` 已落；rollout stage=`tiered` 且 why 写明「非「没做完」」 | **🔶 同上：注释措辞过期，开关是产品分档** |
+| `qos.llm-budget-enforce` | 注释「暗发」 | rollout why：功能已完成，demo 刻意不点的理由是**产品体验**（配额耗尽硬线 429 拒人，demo 里是撞墙），并注明「要演示配额，正确做法是运维显式 PUT 一次 override」 | **✅ 不是同一个病**（不是「没做完」，是明写的产品决策） |
+
+**其余 26 个 `defaultOn:false`**（`sim.*` 7 · `opt.*` 5 · `qos.*` 8 · `agent.*` 4 · `decision.causal-graph` · `ceo.free-llm`）
+在 `scripts/feature-rollout.json` 里全部已声明为 `tiered`（产品分档）或 `explicit`（已完成·禁止模板顺带开），
+**没有一个声明为 `dark`（= 没做完）** ⇒ 按投放意图口径，它们的 `defaultOn:false` 不属于「理由已不成立」。
+⚠️ **诚实边界**：这一句的依据是**声明**，不是逐个功能亲手验过 ——「声明说它已完成」证明不了「它真的能用」。
+本单只对 `view.global-sim.live` 做了端到端实测，其余五条按上表逐条给证据，剩下 26 条**只做了声明层对账**。
+
+---
+
 ## ⛔ 未派（我欠的）
 
 1. **步骤模板层** —— B4 的前置

@@ -179,7 +179,12 @@ export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
   { key: "view.sop-balance", name: "月度规划", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["sop_balance"] } },
   { key: "view.project-sim", name: "接单可行性", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["capacity_forecast"] } },
   { key: "view.global-sim", name: "接单组合优选", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["portfolio"] } },
-  // 全局推演·活系统 NL/方案存比暗发门（mock 态开·MSW 桩支撑·真后端 defaultOff 避 404）。
+  // 全局推演·活系统（NL 对话框 / 方案存·分支·横比）。**两侧已同为 true**（WO-GSIM-LIVE-FLAG-REASON·2026-08-17）。
+  // ⚠️ 本行原文是「真后端 defaultOff 避 404」——那句话在 A 侧 `features.ts` 翻开之后就不成立了。
+  //    这一整单治的正是「留一句已不成立的理由」：下一个人照着它去做兼容，等于给一个不存在的问题打补丁。
+  //    今天的真实状态：A 侧 `apps/datacore/src/features.ts` 同键也是 `defaultOn: true`，**不是反向**，
+  //    故本键**不在** `scripts/feature-default-divergence.json` 里（真反向的两条是 sim.sandbox / decision.causal-graph）。
+  //    两侧一旦再次反向而未登记，`feature-default-parity:check` 会当场报红。
   { key: "view.global-sim.live", name: "全局推演·活系统(NL/方案存比)", level: "BLOCK", defaultOn: true },
   // 原型中的 story 视图无后端支持 → 保留 aop 直链入口演示「该视图类型暂不支持」兜底（renderer="aop" 未注册）
   { key: "view.aop", name: "年度规划（旧入口）", level: "VIEW", defaultOn: true },
