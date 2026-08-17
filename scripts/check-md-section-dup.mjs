@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * 门 `md-section-dup:check` · **受治理 Markdown 的同名小节门**（WO-DOCTRINE-WRITEBACK · 开 `G-MD-SECTION-DUP`）
+ * 门 `md-section-dup`（**无 pnpm 别名**，只经 `pnpm gates` 链跑；门账 `alias:null`）
+ * · **受治理 Markdown 的同名小节门**（WO-DOCTRINE-WRITEBACK · 开 `G-MD-SECTION-DUP`）
  *
  * ══ 治什么 ═════════════════════════════════════════════════════════════════════
  * 本仓有一批 md 文件是**门的输入**（判据表、明账、棘轮快照都写在里面），门用

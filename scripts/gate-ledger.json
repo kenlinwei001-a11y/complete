@@ -1664,6 +1664,25 @@
         "note": "建门当天实弹三条全中：M1 在扫描面新增带「全局最优」的 __mutation_probe.tsx ⇒ RC=1 点名该文件:行，删除复绿；M2 登记册清空 ⇒ RC=1 报 25 条命中全部无登记；M3 登记册整个删除 ⇒ RC=2 报「工具坏了，不是代码坏了」（真违规与工具故障两分没被吞）。另 --selftest 内置 12 条金丝雀/变异（与主逻辑共用 analyze()/judge()）：analyze 必咬 4（JSX 文本/title 属性/JSX 表达式三元/词表型 .ts）· 必不咬 3（注释与 testid 不算违规=本门活路 · 「优选/更划算」不咬 · 变量间接上屏=声明过的盲区）· judge 变异 5（无登记命中/登记无依据/solverField 不存在/死账漂移 各红 · 全对则绿）。金丝雀不中 ⇒ RC=2，绝不报「屏上干净」。"
       },
       "notes": "守的命题：屏上强承诺词（最优/最划算/最佳/最好的/保证）必须有东西撑着——仓主裁决「优选≠最优：无最优性保证的强承诺不上屏」的机制化。求解器双模现状（WO-OPTIMAL-WORDING ① 取证）：docker 态 CP-SAT 未设挂钟时限、optimal:true⟺cp_model.OPTIMAL（可证最优，有撑）；内存态 InProc 确定性贪心恒 FEASIBLE/optimal:false（启发式，无撑）⇒ 静态大字一律不许写死，允许的只有两类：①跟求解器自述字段（optimal）走的动态标注；②登记册 scripts/claim-strength-registry.json 里显式登记依据的字面量。判据 = analyze()（与 dev-jargon 门同一套 JSX 渲染位抽取 + 词表型 .ts 全字面量，注释/testid/变量名不看）× judge()（命中必须有同文件同片段登记；登记必须 backedBy≥20 字；solverField 若给则机械验证存在于 optimizer-client.ts；死账=登记了屏上没有的串 ⇒ 也红，登记册是对账表不是免检白名单）。「大字承诺+小字免责」不算豁免（WO 明令禁止）；否定句/释义句/技术名词照样要登记（verdict: negation/glossary/not-a-claim），让「为什么这句可以留」机器可查。退出码三分 0/1/2 + 顶层 try 是 Program 直接子语句（gate-exit-discipline 只认此形态）。诚实边界：经变量间接上屏的字面量看不见（金丝雀必不咬-3 钉死此边界）；mock 数值口径不查（WO 边界）；扫描面只覆盖推演相关页面。建门首扫：25 条命中全部登记（本单改掉 13 处无撑静态承诺，含 MultiObjWhatifPanel 写死「CP-SAT 可证最优」徽标——内存态那是谎话）。"
+    },
+    "check-md-section-dup.mjs": {
+      "alias": null,
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "docs/*.md",
+        "scripts/check-*.mjs",
+        "scripts/lib/source-lex.mjs"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "WO-DOCTRINE-WRITEBACK 交单报告 ②节（六向变异反证输出原文逐字贴出）",
+        "note": "建门当日六向变异反证全中，且**三条退出码路径各有实证**：N1 往 docs/SYSTEM-ONTOLOGY.md 注入一个与既有 §7 同号的 `## 7.` 小节 ⇒ RC=1 判据①点名「重复小节 `## 7` ×2 @ 行 1797/2256」并打印两处标题原文；N2 注入一对非编号的前缀关系标题（`## 变异探针 N2` / `## 变异探针 N2 续`）⇒ RC=1 判据②点名「行 2256 是行 2260 的严格前缀」（此变异刻意避开编号口径，单独驱动②）；N3 打断围栏识别正则（只认 ``` 不认 ~~~）⇒ 金丝雀 1/13 不中、RC=2 报「工具坏了」并明确拒绝产出任何结论；N4 把扫描面目录写错（docs→doc）⇒ **金丝雀 13/13 全中**而受检集塌成 0 份，只有层①扫描面自证（proveScanSurface 锚点必中）拦住，RC=2 —— **这一向是本门最值钱的实证：它证明了金丝雀全中并不度量扫描面选对**；N5 在受检文档里留一个未闭合围栏 ⇒ RC=2（围栏没闭则其后标题全被抑制，「没找到重复」不成立，只许说我没查出来）；N6 把标题解析正则从 `#{1,6}` 改窄成 `#{1,5}`（= 静默丢掉所有 6 级标题）⇒ **首轮 RC=0 照样绿**，因为生产语料里 6 级标题为 0 条、守恒式退化成恒等式；据此补了一条「6 级标题」金丝雀把该分歧路径在样例里走一遍，复跑同一变异 ⇒ RC=2 金丝雀 1/14 不中。逐条还原后复绿 RC=0。另：gate-roster:check 实测本门源码贡献顶层候选名册 **0 条**（受检集全现算，无写死文件名）。",
+        "canary": "14 条金丝雀与主判据共用同一份 findSectionDupes()/mdHeadings()/headingKey()，不另抄正则：必咬 6（同号复制 · 同号异名 · 无编号同名 · 前缀歧义 · 围栏未闭合 · 6 级标题守恒活口）· 必不咬 6（`## 3` vs `## 3b` 两个不同号 · 跨层级同名 · 围栏内重复 · `~~~` 围栏 · 加粗与反引号归一 · 无空格与 7 级非标题）· real 2（直接拿 docs/SYSTEM-ONTOLOGY.md 与 docs/PRD-harness-ux-adoption.md 真文件跑主逻辑，钉死「样例形状必须取自生产实物」）。"
+      },
+      "disposition": null,
+      "notes": "守的命题：**受治理 md 里同名小节只许出现一次**。病根是全仓四处 `section(md, heading)`（check-harness-ux-splitaccount / check-sim-ux-criteria / check-prd-ontology / check-ontology-anchors）一律 `lines.findIndex(l => l.trim().startsWith(heading))` —— **只取第一个**。2026-08-16 合并时 docs/PRD-harness-ux-adoption.md 的 `### 4.3` 被并集复制成两节、第一个恰好是空的那版 ⇒ 读它的门看不见第二节的 8 行登记、判据当场红；若两节内容颠倒则会**静默读旧账报绿**，那才是真假绿。JSON 那边早有重复键检查（gate-ledger:check 抓过 package.json 两个 `\"gates\"` 键、JSON.parse 只取最后一个而文件完全合法），Markdown 同名小节这边一道门都没有，本门补这一道。判据两条：① DUP 同名小节（标识**跟着读者的 startsWith 走**：标题带章节号则按 (层级,章节号)，否则按 (层级,归一化全文)；章节号必须整段匹配到边界，否则 `3b` 被读成 `3` —— 首版原型在 docs/AUDIT-name-consistency.md 上真误报过这一条）；② AMB 前缀歧义（`### 4.3` 是 `### 4.3 登记表` 的严格前缀，同样撞 startsWith）。建门当日全仓实测 0 + 0，**零容忍只有在基线干净时装得上**。**受检文件集全现算、一个文件名都不写死**（避 G-GATE-ROSTER-HANDCOPIED）：listGateScripts() 现算门名册 → 每个门源码过 lex() → 只取**字符串字面量**里的 docs/*.md（注释散文里提一嘴的不算）→ 磁盘存在性过滤；当日 15 份（本体被 12 道门读，最热），另有 11 条只在注释里被提到的不受检。金丝雀分三层，缺一层就是缺一层：①扫描面 proveScanSurface()（锚点必中 + 门数/文件数/标题数下界，N4 证明只有它拦得住扫描面塌陷）②覆盖率（裸行计数 vs 围栏感知逐文件守恒 裸=留+围栏内，当日 485=477+8；**已在源码里诚实标注该式在今天的生产语料上是半瞎的** —— 6 级标题 0 条、`~~~` 0 处，两口径唯一会分歧的地方生产上一次都走不到，N6 实证，活口是那条 6 级标题金丝雀）③样例形状（real: 一档拿真文件跑）。诚实边界：只看有门在读的那 15 份 md，docs/ 下另外几百份不在扫描面内；只认 ATX 标题（Setext 本仓用量为 0，故不实现）；**只看标题不看表行** —— 本体 §8 断点表里的同名表行（实测 G-BE-FE-SEAM-DEAD 出现 3 次、G-BE-FE-FIELD-DEAD 与 G-MOCK-OVERCLAIM 各 2 次）是同族病的行粒度形态，本门量不到，属另一道门。退出码三分 0/1/2 + 顶层 try 是 Program 直接子语句（gate-exit-discipline 只认此形态，实测 91/91 绿）。"
     }
   }
 }
