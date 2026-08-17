@@ -366,11 +366,32 @@ describe("WO-WAITING-STATES-FE · §D 诚实缺席（不许拿标准工期冒充
     const cannot = screen.getByTestId("pw-honesty-cannot").textContent ?? "";
     // ① 推导值必须被标出来（不许把反推值说成实测）
     expect(cannot).toContain("反推");
-    expect(cannot).toContain("不是流程引擎直采的实测值");
+    // ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK 改措辞（「直采」→「直接采集」）：
+    //    咬的仍是同一条边界 —— **反推值 ≠ 引擎直接采集的值**，一个字都没放宽。
+    expect(cannot).toContain("不是流程引擎直接采集的");
     // ② 反推不出那一路必须被说出来，且明写不拿 0 冒充
     expect(cannot).toContain("缺哪种单据");
-    expect(cannot).toContain("不会返回 0 冒充");
+    expect(cannot).toContain("不会拿 0 冒充");
     expect(screen.getByTestId("pw-honesty")).toBeInTheDocument();
+
+    /**
+     * ③ **屏上不许出现开发的话**（WO-SCREEN-PLAINSPEAK 的验收判据）。
+     * ⚠ 判据刻意落在 `textContent`（**渲染结果**）上，不是落在源码字符串上 ——
+     *   后者等于用 grep 自证：源码里没写 `curl` 不代表屏上没印出 `curl`
+     *   （文案经 locale 变量间接上屏，正是这道坎让 dev-jargon 门漏了两个月）。
+     * 这一段原文印着：curl 命令 · X-Debug-User 调试头 · 127.0.0.1:4001 本机端口 ·
+     * jq 表达式 · docs/*.md 仓库路径 · 一串没被渲染的 markdown 星号。
+     */
+    const onscreen = screen.getByTestId("pw-honesty").textContent ?? "";
+    for (const dev of ["curl", "jq ", "127.0.0.1", "localhost", "X-Debug-User", "/a/v1/", "docs/", "seed=42", "battery/S"]) {
+      expect(onscreen, `屏上还印着开发的话：${dev}`).not.toContain(dev);
+    }
+    // 未渲染的 markdown 星号：作者以为做了强调，读者看到的是乱码
+    expect(onscreen, "屏上还印着未渲染的 markdown 星号").not.toContain("**");
+    // 诚实边界**没有被删掉**，只是换成了人话 —— 反向断言，防「为了变干净把话删了」
+    expect(onscreen).toContain("9 条");
+    expect(onscreen).toContain("56 条");
+    expect(onscreen).toContain("2026-08-13");
   });
 
   it("标准工期旁必须写明「不是已卡 N 天」——把基线工期当实测滞留读是本页最容易犯的误读", async () => {

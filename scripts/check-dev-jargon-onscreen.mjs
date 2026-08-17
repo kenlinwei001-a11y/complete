@@ -761,6 +761,14 @@ function main() {
       byForm: Object.fromEntries(byForm()),
       localeLiterals,
       files: Object.fromEntries(rows.map((r) => [r.file, r.hits.length])),
+      // 逐文件逐形态：报红时用来算「哪个形态涨了」，把定位从「文件」收到「那几行」
+      filesByForm: Object.fromEntries(
+        rows.map((r) => {
+          const m = {};
+          for (const h of r.hits) m[h.form] = (m[h.form] ?? 0) + 1;
+          return [r.file, m];
+        })
+      ),
     };
     writeFileSync(BASELINE, JSON.stringify(out, null, 1) + "\n");
     console.log(`✅ 基线已写：${rows.length} 个文件 / ${total} 条 → ${relative(ROOT, BASELINE)}`);
@@ -796,13 +804,38 @@ function main() {
     process.exit(1);
   }
 
+  /**
+   * ── 报红要**点到那一条**，不是点到那个文件 ────────────────────────────────────
+   * 第一版报红时打的是 `hits.slice(0, 3)` = 该文件**最靠前**的三条命中。
+   * 2026-08-17 变异反证当场看出这没用：往 `zh.ts`（1800 行）第 2634 行塞一条 curl，
+   * 门确实 RC=1，但打印出来的是 L325/L417/L598 三条**存量**（基线里本来就记着的），
+   * 读的人会跑去看 L325，那里什么问题都没有。
+   * 形态（铁律 0.6 句式）：**「我用『这个文件里最靠前的三条』当作『新增的那三条』的证据，
+   * 而前者并不度量后者。」**
+   * ⇒ 基线改为**逐文件逐形态**记账，报红时先算出「哪个形态涨了」，只打印那个形态的命中。
+   *   形态粒度是免费的（`byForm` 本来就在算），而它把定位范围从「一个 1800 行的文件」
+   *   收到「这一类里的这几行」。
+   */
+  const formsOf = (hits) => {
+    const m = {};
+    for (const h of hits) m[h.form] = (m[h.form] ?? 0) + 1;
+    return m;
+  };
   const fails = [];
   for (const r of rows) {
     const b = base.files[r.file] ?? 0;
     if (r.hits.length > b) {
+      const now = formsOf(r.hits);
+      const was = base.filesByForm?.[r.file] ?? {};
+      const grew = Object.keys(now).filter((f) => now[f] > (was[f] ?? 0));
+      // 认得出哪个形态涨了 ⇒ 只打那个形态的命中；认不出（旧基线没有 filesByForm）⇒ 明说认不出
+      const pick = grew.length ? r.hits.filter((h) => grew.includes(h.form)) : r.hits;
+      const head = grew.length
+        ? grew.map((f) => `${f} ${was[f] ?? 0}→${now[f]}`).join(" · ")
+        : "（基线缺 filesByForm，认不出是哪个形态涨的 —— 跑 --list 看全量）";
       fails.push(
-        `${r.file} 屏上开发话 ${b} → ${r.hits.length}：` +
-          r.hits.slice(0, 3).map((h) => `L${h.line} "${h.match}"（${h.why}）`).join(" · ")
+        `${r.file} 屏上开发话 ${b} → ${r.hits.length}［${head}］：\n      ` +
+          pick.slice(0, 5).map((h) => `L${h.line} "${h.match}"（${h.why}）`).join("\n      ")
       );
     }
   }

@@ -68,6 +68,14 @@
 .notMeasured {
   color: var(--warn-txt) !important;
 }
+/* 保质期角标（WO-SCREEN-PLAINSPEAK）：「这个数什么时候核的」压成小字，
+   不与结论抢第一层的注意力；复验配方不上屏，见 locales/zh.ts 该段注释。 */
+.asOf {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: 0.8;
+}
 
 /* ── 取数失败 / 词表漂移 ──────────────────────────────────────────────────── */
 .error,

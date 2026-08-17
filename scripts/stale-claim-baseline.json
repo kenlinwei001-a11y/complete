@@ -1,503 +1,494 @@
 {
-  "$schema": "本文件是 scripts/check-stale-claims.mjs 的**存量豁免棘轮**。规则见 note。",
-  "note": [
-    "① 每条豁免必须写 why（<10 字即判红）。无理由白名单本身就是本门要治的病。",
-    "② key = 文件路径 + **声明单元原文的 sha256 前 16 位**。文案一改、哈希即变 ⇒ 豁免当场失效、门重新红。",
-    "   这是刻意的：豁免锚在**那句话本身**，不锚在行号 —— 行号会漂，漂了就等于白名单变成了通行证。",
-    "③ maxExemptions 必须**恒等于** exemptions.length。加一条豁免 = 同时改这个数 = 一处显眼的 diff，评审必然看见。",
-    "④ ratchetHigh 是历史最高水位，只降不升。**评审唯一必须拒绝的一行就是把它调大。**"
-  ],
-  "ratchetHigh": 38,
-  "maxExemptions": 37,
-  "exemptions": [
-    {
-      "key": "apps/frontend-shell/src/components/ProvenanceDag.tsx#4411cbdd8b75e546",
-      "file": "apps/frontend-shell/src/components/ProvenanceDag.tsx",
-      "line": 244,
-      "codes": [
-        "STALE-1",
-        "STALE-2"
-      ],
-      "why": "误报（检测器粗粒度）：触发词是**三态口径标签**（measured/synthetic/derived 的中文名「实测」）与纪律句「绝不冒充 DB 实测」，不是一次观测；同单元里的数字来自字段名清单。这类「把实测当词用」的单元本该被声明式过滤挡掉，字段清单里的数字把它顶了进来。",
-      "sample": "*   · synthetic（合成源）→ 标灰 + 诚实注「合成种子·未接实测」，绝不冒充 DB 实测。"
-    },
-    {
-      "key": "apps/frontend-shell/src/mocks/fixtures.ts#629c0b7a9d7b647c",
-      "file": "apps/frontend-shell/src/mocks/fixtures.ts",
-      "line": 165,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "转述别处的实测注记：主语是 `apps/datacore/src/seed.ts:71-79` 那条注记（复验方式已给 = 文件锚点），缺的只是日期。补日期须与被引注记同批更新，而 apps/datacore/ 在本单 🚦 禁改清单里。",
-      "sample": "// （见 `apps/datacore/src/seed.ts:71-79` 的实测注记）。mock 若照抄 L1 的 false，"
-    },
-    {
-      "key": "apps/frontend-shell/src/sse/useTaskStream.ts#36ba7c4ec324b137",
-      "file": "apps/frontend-shell/src/sse/useTaskStream.ts",
-      "line": 62,
-      "codes": [
-        "STALE-1",
-        "STALE-2"
-      ],
-      "why": "「用户实测『4680 加 20%』」记的是一次线上事故复盘，不是本仓可复跑的观测；要补日期与复验方式得回查 QOS 侧事故记录。🚦 本单范围边界外（sse/ 不在允许改的文件清单内）。",
-      "sample": "// （用户实测「4680 加 20%」正是此症：path-B 真 Kimi 慢 → 前端 60s 放弃 → 空壳断流）。"
-    },
-    {
-      "key": "apps/frontend-shell/src/store/toastStore.ts#d8f1e58641a9306c",
-      "file": "apps/frontend-shell/src/store/toastStore.ts",
-      "line": 20,
-      "codes": [
-        "STALE-1",
-        "STALE-2"
-      ],
-      "why": "「全量套件实测一次跑出 100 个残留句柄」是一次 vitest teardown 事故的复盘；它的复验方式是破坏性的（把这一行改回裸 setTimeout 再跑全量套件），所以没写成命令。🚦 本单范围边界外。",
-      "sample": "* 全量套件实测一次跑出 100 个这样的残留句柄，全部出自这一行。"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/registry.ts#8218962b6680cb33",
-      "file": "apps/frontend-shell/src/views/registry.ts",
-      "line": 88,
-      "codes": [
-        "STALE-4"
-      ],
-      "why": "**叙述型误报**：这段写的是「收口时补线」**之前**的状态（`InspectorNodePanel` 零生产调用方），而紧接着的下一行 `registerRenderer(\"node-inspector\", …)` 就是那条线本身，同段第 4 句也已写明「本行是它唯一的生产调用方」。门读得懂那句假话，读不懂它外面的「已修」框。删掉这段叙述 = 删掉 F3/F4/F2 三连坑的病因记录。",
-      "sample": "// WO-SANDBOX-F4 节点检视 + 变量输入（五段耗时瀑布 · 流动效率 · 七类变量 T/K/B/C/P/R/S 分组输入）。"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/registry.ts#c4c3027e6deb4522",
-      "file": "apps/frontend-shell/src/views/registry.ts",
-      "line": 93,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "同上叙述型（主语换成 `TransitFlowLayer`）：「实测除自身外零 src 引用」说的是补线前，同段末句已写明「本行是其唯一生产调用方」。缺的是日期。🚦 本单范围边界外。",
-      "sample": "// 宿主 F1 线路图**从未挂载过它**（实测除自身外零 src 引用）—— 与 F3/F4 同一个坑，即"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx#47bf0df7f6e858cb",
-      "file": "apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx",
-      "line": 20,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "误报（检测器粗粒度）：触发词出自屏上字段名「实测值 vs 阈值」与四态词「LIVE → 才是实测」，是**词汇**不是观测；把它顶进声明式过滤的数字来自 ①②③④ 编号与 file:line。",
-      "sample": "*  ② **判定依据** —— 触发了哪条规则红线、实测值 vs 阈值 + 单位；"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx#b3cd8db70f691f2d",
-      "file": "apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx",
-      "line": 58,
-      "codes": [
-        "STALE-1",
-        "STALE-2"
-      ],
-      "why": "真观测缺日期与复验方式：「实测 130 行」。它与 physicalTopology.ts §5.5 的同批数字（5460/780/260 行）是一套，要补就得整批复跑一次聚合端点再改，🚦 本单范围边界外。",
-      "sample": "/** 车间册一次取满（实测 130 行；`pageSize` 上限 500，够用且留余量）。 */"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/PmDag.tsx#2c9f4b1d46081716",
-      "file": "apps/frontend-shell/src/views/sim/PmDag.tsx",
-      "line": 47,
-      "codes": [
-        "STALE-1",
-        "STALE-2"
-      ],
-      "why": "真观测缺日期与复验方式：「实测 94 条 console.error + 94 个节点框全部消失」。🚦 本单范围边界外。",
-      "sample": "//   实测 94 条 console.error + 94 个节点框全部消失（只剩文字）。"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/SandboxConsole.tsx#0c89f810cf9f897d",
-      "file": "apps/frontend-shell/src/views/sim/SandboxConsole.tsx",
-      "line": 518,
-      "codes": [
-        "STALE-1",
-        "STALE-2"
-      ],
-      "why": "真观测缺日期与复验方式：屏上文案「实测 baseIds=changzhou 时 total 15→13」。本单对 SandboxConsole.tsx 的授权范围**只有可算性图例那两行**，此处是另一处文案，不擅自扩权。",
-      "sample": "勾选只驱动 <code>chain_impediments</code>（实测 baseIds=changzhou 时 total 15→13）。"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/SandboxConsole.tsx#41fcd246632423a2",
-      "file": "apps/frontend-shell/src/views/sim/SandboxConsole.tsx",
-      "line": 911,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "真观测缺日期（复验方式已给：fixture 锚点 `fixtures/chain-loss-live-evidence.json` + 门 `sandbox-console.seam §9`）。同上，不在本单对本文件的授权范围内。",
-      "sample": "* ── 这条注释记的是一次实测，不是推理 ─────────────────────────────────────────"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx#67171888f5be9e49",
-      "file": "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx",
-      "line": 41,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "🚦 本单**明令禁改** TransitFlowLayer.tsx。内容本身是叙述型（「那句话在实测面前不成立」+ 随即补线），缺日期。",
-      "sample": "*    `views/registry.ts`\"，那句话在实测面前不成立）：`views/registry.ts` 是**手工登记**的字符串键表、"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/chainFamilyLines.ts#8a841594c4f1b88e",
-      "file": "apps/frontend-shell/src/views/sim/chainFamilyLines.ts",
-      "line": 1,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "真观测缺日期（复验方式已给：`POST /b/v1/solvers/chain_loss_attribution/run` + 三张锚点订单号）。🚦 本单范围边界外。",
-      "sample": "* （实测：传 `baseIds` 结果逐字节不变，另两维在 `chain_impediments` 上直接 400）。"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/chainImpediment.ts#98e5588564b0b033",
-      "file": "apps/frontend-shell/src/views/sim/chainImpediment.ts",
-      "line": 205,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "半误报：触发词主要是纪律句「合并即是把降级结论冒充实测」；夹带一句真观测「实测确认过（页面 dump）」缺日期。🚦 本单范围边界外。",
-      "sample": "* `dataMode` → 这条结论断言了什么。**四态四句，不许合并** —— 合并即是把降级结论冒充实测。"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/chainLineMap.ts#9ffcfbd9fd4689a6",
-      "file": "apps/frontend-shell/src/views/sim/chainLineMap.ts",
-      "line": 117,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "真观测缺日期：「实测最小环节占 0.0049%」。该数已由 `chain-line-map.seam.test.tsx` 断言（有门守着，改了会红）。🚦 本单范围边界外。",
-      "sample": "*  · `min` —— **最小可见半径**。实测最小环节占 0.0049%，线性映射下它是 0.001px（= 看不见）。"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/chainLineMap.ts#bc5bdab3eae67325",
-      "file": "apps/frontend-shell/src/views/sim/chainLineMap.ts",
-      "line": 126,
-      "codes": [
-        "STALE-1",
-        "STALE-2"
-      ],
-      "why": "真观测缺日期与复验方式：「审核方实测给的数」那张三行对照表。🚦 本单范围边界外。",
-      "sample": "* 再叠上下夹取。为什么必须非线性 + 夹取（审核方实测给的数）："
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/chainLineMap.ts#cbf7aed9c1e0345f",
-      "file": "apps/frontend-shell/src/views/sim/chainLineMap.ts",
-      "line": 593,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "真观测缺日期（复验方式已给：`transit-geometry.seam.test.tsx`，且门直接引用本常数）。🚦 本单范围边界外。",
-      "sample": "* 实测残差 ~1e-10 px（见 `transit-geometry.seam.test.tsx`），此处留三个数量级余量；"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/chainLineMap.ts#62475256b7a697fa",
-      "file": "apps/frontend-shell/src/views/sim/chainLineMap.ts",
-      "line": 620,
-      "codes": [
-        "STALE-1",
-        "STALE-2"
-      ],
-      "why": "真观测缺日期与复验方式：弦插值/角度插值三组实测偏差（85.3px / 环心 / 29.8px）。🚦 本单范围边界外。",
-      "sample": "* 弦是两站之间的**直线**，它离开曲线往环内塌。实测（本环、整圈均分）："
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts#0eeea3e005de16d2",
-      "file": "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts",
-      "line": 3,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "🚦 本单**明令禁改** chainNodeSemantics.ts。内容是「实测这三种写法 tsc 都不再咬」，缺日期。",
-      "sample": "*   或 `{…} as Partial<Record<Rid, …>>` —— 实测这三种写法 `tsc` 都不再咬，"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/inspectorModel.ts#e94f73e9ad2661d9",
-      "file": "apps/frontend-shell/src/views/sim/inspectorModel.ts",
-      "line": 558,
-      "codes": [
-        "STALE-3"
-      ],
-      "why": "**病历**（本族唯一一份病因记录）：整段是被上一单修掉的**旧文案原文引用**，同段第 4 行已写明「那句话写下的当天是真的，**今天是假的**」并给出推翻它的两个 file:line。门读得见被引用的那句假话，读不见它外面的「已推翻」框 —— 判据没错，语境认不出。删掉它等于把 G-STALE-MEASURED-CLAIM 的病因抹掉。豁免按**文案哈希**锚定：这段一改，豁免当场失效、门重新红。",
-      "sample": "* 「缺承载：`Cadence` 对象全仓 0 条（**运行态实测** `GET /a/v1/objects?type=Cadence` → total 0，对象类型尚不存在）」。"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/inspectorModel.ts#f01f9600a5bd164f",
-      "file": "apps/frontend-shell/src/views/sim/inspectorModel.ts",
-      "line": 685,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "T3 evidence「`apps/datacore/src/solvers/` 零直接消费方（实测 grep 计数 0）」缺日期。本单对 inspectorModel.ts 的授权范围是 **K1/K2 两条 evidence**；T3/C4/P2 这三条「solvers/ 零消费方」是另一批欠账，且要给日期就得重新亲手复核一遍作用域内的 grep（本门的 STALE-4 对作用域限定声明明确判为「认不准、不判」）。",
-      "sample": "\"但 `apps/datacore/src/solvers/` **零直接消费方**（实测 grep 计数 0）⇒ 薄，非有\","
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/inspectorModel.ts#826287397d88b3de",
-      "file": "apps/frontend-shell/src/views/sim/inspectorModel.ts",
-      "line": 754,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "同 :685（C4 落点「supplierOnTimeRate 侧」的 0 消费方声明）：缺日期，属另一批欠账，不在本单对本文件的授权范围内。",
-      "sample": "\"但 `apps/datacore/src/solvers/` **0 消费方**（实测 grep 计数 0）⇒ 前端拿不到、也没人算它\","
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/inspectorModel.ts#360458182e3e909e",
-      "file": "apps/frontend-shell/src/views/sim/inspectorModel.ts",
-      "line": 824,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "同 :685（P2 落点的 0 消费方声明）：缺日期，属另一批欠账，不在本单对本文件的授权范围内。",
-      "sample": "\"但 `apps/datacore/src/solvers/` **0 消费方**（实测 grep 计数 0）⇒ 薄\","
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#5d103d698fd1c1ff",
-      "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
-      "line": 3,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "真观测缺日期：「BASE_REGISTRY 实测 13 个，不是 12 个」。该事实已由 `physical-topology.seam.test.tsx` 的 source-parity 用例守着。🚦 本单范围边界外。",
-      "sample": "*  · **基地轴** = `@platform/contracts` `BASE_REGISTRY`（实测 13 个，不是 12 个）。"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#1874d847aecf9f89",
-      "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
-      "line": 233,
-      "codes": [
-        "STALE-1",
-        "STALE-2"
-      ],
-      "why": "真观测缺日期与复验方式：「真值口径下 130 格利用率落在 89.7–94.0%」。🚦 本单范围边界外。",
-      "sample": "* 借得通；接了真值之后，**拿一个名叫\"占位值域\"的常数去缩放实测值**是语义错位（数值恰好一样，"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#76f5170d82188da1",
-      "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
-      "line": 254,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "真观测缺日期：「EquipmentOEE 实测 5460 行」+「实测推翻 join 键（processId 仅 3 值 / lineId 10 值）」，带真实对象字段值作证。🚦 本单范围边界外。",
-      "sample": "//  `EquipmentOEE` 实测 **5460 行**已物化（13 基地 × 10 车间 × 3 串行工序 × 2 台设备 × 7 天），"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#75b4af2bc3e6b3c4",
-      "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
-      "line": 298,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "真观测缺日期（复验方式已给：`GET /a/v1/objects` / `POST /a/v1/objects/query` / `/objects/aggregate` 三个端点与各自回值）。🚦 本单范围边界外。",
-      "sample": "*   实测 `type=EquipmentOEE` 回 `total=1000`、`page=3` 回 0 条 —— **5460 行只能拿到 1000 行（18%）**；"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#5e860829c8162ffa",
-      "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
-      "line": 391,
-      "codes": [
-        "STALE-1",
-        "STALE-2"
-      ],
-      "why": "真观测缺日期与复验方式：「实测 130/130 格恒为 480min」（这条支撑「等权 avg == 加权 avg」的裁决，值得补）。🚦 本单范围边界外。",
-      "sample": "*    · 各行计划工时**全等**时（实测 130/130 格恒为 480min），等权算术平均 **恒等于** 加权平均——"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#ee26aa97f3efd0e5",
-      "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
-      "line": 753,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "真值接线台账「实测 130/130 格全覆盖」缺日期。整份台账要补就得整批复跑，🚦 本单范围边界外。",
-      "sample": "* ── WO-TOPO-REALDATA 接上的四条（实测 130/130 格全覆盖）──────────────────────────"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#2a4a5b52e5fd6102",
-      "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
-      "line": 776,
-      "codes": [
-        "STALE-1",
-        "STALE-2"
-      ],
-      "why": "台账行「实测 5460 行」缺日期与复验方式。🚦 本单范围边界外。",
-      "sample": "shapeToday: \"逐设备逐日 {availability, performance, quality, oee, plannedProductionTime, actualProductionTime, equipId, lineI…"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#376daca56727d2bd",
-      "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
-      "line": 790,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "台账行「实测 780 台，每格 6 台」缺日期。🚦 本单范围边界外。",
-      "sample": "shapeToday: \"逐设备节拍 s/电芯（battery.ts 由 gwhᵢ 反解；实测 780 台，每格 6 台）\","
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts#b4c72321da584f97",
-      "file": "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts",
-      "line": 136,
-      "codes": [
-        "STALE-1",
-        "STALE-2"
-      ],
-      "why": "真观测缺日期与复验命令：「实测 chain_impediments 在 demo 合成种子上的判据」（已带 C02/C05 规则码与阈值出处作证）。🚦 本单范围边界外。",
-      "sample": "* **设计稿副标题与引擎判据的语义差**（实测 `chain_impediments` 在 demo 合成种子上的判据得出，"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts#df3223f80984ceaf",
-      "file": "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts",
-      "line": 366,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "真观测缺日期（复验方式已给：contracts `chain-sim.ts` 的 CHAIN_STAGES / CHAIN_NODE_REGISTRY）。🚦 本单范围边界外。",
-      "sample": "* 24 个节点全部在册 ≠ 24 个节点全部有数据。实测（seed 42 · 锚点 SO-3391）："
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/transitFlow.ts#e4bc3bc85e578b7f",
-      "file": "apps/frontend-shell/src/views/sim/transitFlow.ts",
-      "line": 99,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "🚦 本单**明令禁改** transitFlow.ts。且该行是**纪律句**「大小写以实测为准」，不是一次观测 —— 属检测器粗粒度误报。",
-      "sample": "/** 对象类型 key（用于 `GET /a/v1/objects?type=`）。大小写以实测为准。 */"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/transitFlow.ts#743fdf5be4358861",
-      "file": "apps/frontend-shell/src/views/sim/transitFlow.ts",
-      "line": 478,
-      "codes": [
-        "STALE-1"
-      ],
-      "why": "🚦 本单**明令禁改** transitFlow.ts。触发词是「现算」，用在设计陈述「图层每次渲染现算」上，不是观测 —— 误报。",
-      "sample": "* 图层走 DOM（现算值），控制台图例走这两个常量（零输入基线）。"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/transitFlow.ts#48a220e0058d5d08",
-      "file": "apps/frontend-shell/src/views/sim/transitFlow.ts",
-      "line": 704,
-      "codes": [
-        "STALE-1",
-        "STALE-2"
-      ],
-      "why": "🚦 本单**明令禁改** transitFlow.ts。「`packages/contracts` 实测 0 命中（Shipment 无 schema）」缺日期与复验命令。",
-      "sample": "* 本仓**没有** Shipment 的 contracts 级 schema（`packages/contracts` 实测 0 命中），"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/transitFlow.ts#d9bcc21ebcf5c009",
-      "file": "apps/frontend-shell/src/views/sim/transitFlow.ts",
-      "line": 748,
-      "codes": [
-        "STALE-1",
-        "STALE-2"
-      ],
-      "why": "🚦 本单**明令禁改** transitFlow.ts。「本仓无 WIPLot 契约 schema，实测 0 命中」缺日期与复验命令。",
-      "sample": "* 同样是手写守卫（本仓无 WIPLot 契约 schema，实测 0 命中）。"
-    }
-  ],
-  "onscreenNote": "① 本段是 STALE-5/7/8 的**存量棘轮**，与上面 exemptions 段（STALE-1..4）刻意分开两套水位：\n   合成一套就得把 ratchetHigh 调大，而「评审唯一必须拒绝的一行」就是把它调大。\n② 每条必须写 verdict，**三选一**（与代码里的 ONSCREEN_VERDICTS 同源；处置完全不同，混成一类必修错地方）：\n   · FALSE-POSITIVE  检测器粗粒度误报 ⇒ 去修检测器\n   · UNMARKED        是真断言、今天没被证伪，只是还没挂 @stale-fact 记号 ⇒ 去补记号\n   · CONFIRMED-STALE 已复核、今天确认是假的，修文案归另一张单 ⇒ 去改屏上那句话\n   CONFIRMED-STALE 每次跑都会被门**点名打印** —— 豁免只买「暂时不红」，不买「没人知道」。\n   ⚠ 2026-08-16 订正：本段原文只列了两档（漏了 UNMARKED），而门早已按三档判 ——\n     基线自己的说明书跟代码分叉，读的人会照两档去写 verdict，然后被门打回。\n③ **STALE-6 永不豁免**：它是「现算不符」，一条正在对用户说谎的断言没有理由值得买暂时不红。\n④ 条目可挂 factChecks[{file,pattern,op,n,means}] —— 存量文案这一单不改，但把它赌的计数登记在案；\n   走的是与 @stale-fact 记号**同一个执行器**（runStaleFactMark），上游一变当场红。\n⑤ 棘轮**松弛**（基线条目今天一条都没命中）与回弹同样判红：基线高于实测 = 一份看不见的免检名额。\n⑥ 门自述层（STALE-9/10）**没有豁免段，也不会有**：一道正在说谎的门没有资格说别人说谎。",
-  "generatedBy": "node scripts/check-stale-claims.mjs --update",
-  "onscreenExemptions": [
-    {
-      "key": "apps/frontend-shell/src/locales/zh.ts#be6709400b998c83",
-      "code": "STALE-5",
-      "file": "apps/frontend-shell/src/locales/zh.ts",
-      "line": 777,
-      "verdict": "UNMARKED",
-      "why": "真断言（BATTERY_PROCESS_FLOW_RULES 有 6 条链 / 覆盖 9 条流程），且文案里**已经带了实测日期与复验命令** —— 但那只满足 STALE-1/2（保质期两问），不构成机器可跑的断言。本单要证的恰恰是这一点：病灶 ①（sandboxConsoleModel/whyBody）同样带着日期和复验配方，照样是假的 ⇒ **「写了日期」证明不了「今天还成立」**。补 `@stale-fact apps/datacore/src/process/flow-rules.ts` 的记号归后续单。",
-      "sample": "\"实测站序确实存在，但不在本档够得着的地方：BATTERY_PROCESS_FLOW_RULES（apps/datacore/src/process/flow-rules.ts:104）有 6 条链、覆盖 9 条流程（P25/P33/P34"
-    },
-    {
-      "key": "apps/frontend-shell/src/locales/zh.ts#21e581ce8059a746",
-      "code": "STALE-5",
-      "file": "apps/frontend-shell/src/locales/zh.ts",
-      "line": 1672,
-      "verdict": "UNMARKED",
-      "why": "真断言（「归属形态只有两种正值：REGISTERED / EXPLORATORY」是对契约枚举的封死），本单未复核其真伪，也未挂记号。契约枚举一加值，这句话即失真。",
-      "sample": "\"运行记录（AgentRunRecord）现在带 agentId / agentKey / agentVersion / 归属形态，由引擎在 Agent 循环收尾时与运行数据同一次写入 —— 所以「谁跑的」和「跑出了什么」不会各说各话。归属"
-    },
-    {
-      "key": "apps/frontend-shell/src/locales/zh.ts#5760b48e306f4456",
-      "code": "STALE-5",
-      "file": "apps/frontend-shell/src/locales/zh.ts",
-      "line": 2322,
-      "verdict": "UNMARKED",
-      "why": "真断言（「65 条流程里只有 9 条反推得出」），文案已带 2026-08-13 实测日期与 curl 复验命令，但没有机器可跑的记号 —— 上游种子一变仍会静默失真。同 zh.ts:777 那条：日期只是保质期，不是真实性。",
-      "sample": "\"② 65 条流程里只有 9 条反推得出，其余 56 条会明说「缺哪种单据」并给复验探针，**不会返回 0 冒充「没有卡顿」**。\" +"
-    },
-    {
-      "key": "apps/frontend-shell/src/mocks/processWaitFixtures.ts#1acb280090190e9e",
-      "code": "STALE-5",
-      "file": "apps/frontend-shell/src/mocks/processWaitFixtures.ts",
-      "line": 217,
-      "verdict": "UNMARKED",
-      "why": "真断言（「承载物 PlanTarget 有 17 条实例，但没有任何一条反推规则…」），落在 mock fixture 的屏上文案里，本单未复核其真伪，也未挂记号。",
-      "sample": "\"承载物 PlanTarget 有 17 条实例，但**没有任何一条反推规则**声明本流程的进/出站字段落在哪两个属性上。这是「有单据、没规则」不是「没数据」—— 修法是补规则表一行，不是补数据。\","
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/ChainLineMapView.tsx#53399facf22a005f",
-      "code": "STALE-5",
-      "file": "apps/frontend-shell/src/views/sim/ChainLineMapView.tsx",
-      "line": 712,
-      "verdict": "FALSE-POSITIVE",
-      "why": "误报：「多条族线并排时只有最后一条标名」是**渲染行为的描述**（下一句「三条线同列」是举例），不是对某个集合的计数断言，没有任何上游事实能把它证伪。检测器只看到「只有…条」这个句式。",
-      "sample": "{ringMaps.length > 1 ? \"；多条族线并排时只有最后一条标名（三条线同列，标三遍是重复）\" : \"\"}"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx#d5f82c9eb4b964f7",
-      "code": "STALE-5",
-      "file": "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx",
-      "line": 816,
-      "verdict": "FALSE-POSITIVE",
-      "why": "误报：「没有任何一条在途批次同时具备发运日与到货日」是**运行期空态文案**——只在现算出的区间集合为空时才渲染，它描述的是本次数据，不是一次被硬编码下来的测量结果。上游一变，它自己就不显示了。",
-      "sample": "无可算位置的区间 —— 没有任何一条在途批次同时具备发运日与到货日，因此不画区间，也不画车。"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/chainImpediment.ts#c369da3ed4fa2291",
-      "code": "STALE-5",
-      "file": "apps/frontend-shell/src/views/sim/chainImpediment.ts",
-      "line": 377,
-      "verdict": "FALSE-POSITIVE",
-      "why": "误报：这句话是在**辨析两个概念**（「压根没跑候选枚举」≠「跑了但一条都没有」），「一条都没有」出现在引号里当被辨析的对象，不是本文案自己在断言任何集合为空。",
-      "sample": "claim: \"本次扫描的回包里没有候选字段 ⇒ 压根没跑候选枚举。与「跑了但一条都没有」不是一回事，别读成「没有对策」。\","
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/chainImpediment.ts#6c03bc98cf1aefcb",
-      "code": "STALE-5",
-      "file": "apps/frontend-shell/src/views/sim/chainImpediment.ts",
-      "line": 754,
-      "verdict": "FALSE-POSITIVE",
-      "why": "误报，同 chainImpediment.ts:377：是对「跑了但一条都没有」这个说法的辨析，不是断言。两处是同一句诚实位文案的两个出口。",
-      "sample": "\"与「跑了但一条都没有」不是一回事，别读成「没有对策」。\","
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/inspectorModel.ts#4773f980bdd7d7c7",
-      "code": "STALE-5",
-      "file": "apps/frontend-shell/src/views/sim/inspectorModel.ts",
-      "line": 830,
-      "verdict": "UNMARKED",
-      "why": "真断言（「零求解器消费方 ⇒ 今天没有任何一条链把它算进耗时」），且它正是本门 STALE-4 那一族的屏上版本，本单未复核其真伪，也未挂记号 —— 求解器一接上，这句话即失真而屏上不会变。",
-      "sample": "inertReason: \"零求解器消费方 ⇒ 今天没有任何一条链把它算进耗时；面板显示它是为了让缺口**看得见**，不是为了让它假装能算。\","
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#52e447ad00d290b7",
-      "code": "STALE-5",
-      "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
-      "line": 809,
-      "verdict": "UNMARKED",
-      "why": "真枚举断言（「Process 对象只有 涂布/卷绕/装配/化成/老化 五类」），本单未复核其真伪，也未挂记号。Process 种子一增一类，这句话即失真。",
-      "sample": "gap: \"未接：Process 对象只有 涂布/卷绕/装配/化成/老化 五类，且属 Process 层，与本图 Workshop 层十列不同口径\", // debattery-allow：这是**诚实缺口说明文案**，不是驱动逻辑的业务常"
-    },
-    {
-      "key": "apps/frontend-shell/src/views/sim/transitFlow.ts#afdf58f82d6097f2",
-      "code": "STALE-5",
-      "file": "apps/frontend-shell/src/views/sim/transitFlow.ts",
-      "line": 469,
-      "verdict": "UNMARKED",
-      "why": "真断言（「本租户采购段一条都没有 —— 代码链路是通的，缺的是数据」＝ CLAUDE.md 铁律 0.5 里的「接了线没数据」态），本单未复核其真伪，也未挂记号。补一条采购段种子它就失真。",
-      "sample": "reason: \"已经查过了，本租户采购段一条都没有 —— 代码链路是通的，缺的是数据。\","
-    }
-  ],
-  "onscreenMax": 11,
-  "onscreenRatchetHigh": 11
+ "$schema": "本文件是 scripts/check-stale-claims.mjs 的**存量豁免棘轮**。规则见 note。",
+ "note": [
+  "① 每条豁免必须写 why（<10 字即判红）。无理由白名单本身就是本门要治的病。",
+  "② key = 文件路径 + **声明单元原文的 sha256 前 16 位**。文案一改、哈希即变 ⇒ 豁免当场失效、门重新红。",
+  "   这是刻意的：豁免锚在**那句话本身**，不锚在行号 —— 行号会漂，漂了就等于白名单变成了通行证。",
+  "③ maxExemptions 必须**恒等于** exemptions.length。加一条豁免 = 同时改这个数 = 一处显眼的 diff，评审必然看见。",
+  "④ ratchetHigh 是历史最高水位，只降不升。**评审唯一必须拒绝的一行就是把它调大。**"
+ ],
+ "ratchetHigh": 38,
+ "maxExemptions": 37,
+ "exemptions": [
+  {
+   "key": "apps/frontend-shell/src/components/ProvenanceDag.tsx#4411cbdd8b75e546",
+   "file": "apps/frontend-shell/src/components/ProvenanceDag.tsx",
+   "line": 244,
+   "codes": [
+    "STALE-1",
+    "STALE-2"
+   ],
+   "why": "误报（检测器粗粒度）：触发词是**三态口径标签**（measured/synthetic/derived 的中文名「实测」）与纪律句「绝不冒充 DB 实测」，不是一次观测；同单元里的数字来自字段名清单。这类「把实测当词用」的单元本该被声明式过滤挡掉，字段清单里的数字把它顶了进来。",
+   "sample": "*   · synthetic（合成源）→ 标灰 + 诚实注「合成种子·未接实测」，绝不冒充 DB 实测。"
+  },
+  {
+   "key": "apps/frontend-shell/src/mocks/fixtures.ts#629c0b7a9d7b647c",
+   "file": "apps/frontend-shell/src/mocks/fixtures.ts",
+   "line": 165,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "转述别处的实测注记：主语是 `apps/datacore/src/seed.ts:71-79` 那条注记（复验方式已给 = 文件锚点），缺的只是日期。补日期须与被引注记同批更新，而 apps/datacore/ 在本单 🚦 禁改清单里。",
+   "sample": "// （见 `apps/datacore/src/seed.ts:71-79` 的实测注记）。mock 若照抄 L1 的 false，"
+  },
+  {
+   "key": "apps/frontend-shell/src/sse/useTaskStream.ts#36ba7c4ec324b137",
+   "file": "apps/frontend-shell/src/sse/useTaskStream.ts",
+   "line": 62,
+   "codes": [
+    "STALE-1",
+    "STALE-2"
+   ],
+   "why": "「用户实测『4680 加 20%』」记的是一次线上事故复盘，不是本仓可复跑的观测；要补日期与复验方式得回查 QOS 侧事故记录。🚦 本单范围边界外（sse/ 不在允许改的文件清单内）。",
+   "sample": "// （用户实测「4680 加 20%」正是此症：path-B 真 Kimi 慢 → 前端 60s 放弃 → 空壳断流）。"
+  },
+  {
+   "key": "apps/frontend-shell/src/store/toastStore.ts#d8f1e58641a9306c",
+   "file": "apps/frontend-shell/src/store/toastStore.ts",
+   "line": 20,
+   "codes": [
+    "STALE-1",
+    "STALE-2"
+   ],
+   "why": "「全量套件实测一次跑出 100 个残留句柄」是一次 vitest teardown 事故的复盘；它的复验方式是破坏性的（把这一行改回裸 setTimeout 再跑全量套件），所以没写成命令。🚦 本单范围边界外。",
+   "sample": "* 全量套件实测一次跑出 100 个这样的残留句柄，全部出自这一行。"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/registry.ts#8218962b6680cb33",
+   "file": "apps/frontend-shell/src/views/registry.ts",
+   "line": 88,
+   "codes": [
+    "STALE-4"
+   ],
+   "why": "**叙述型误报**：这段写的是「收口时补线」**之前**的状态（`InspectorNodePanel` 零生产调用方），而紧接着的下一行 `registerRenderer(\"node-inspector\", …)` 就是那条线本身，同段第 4 句也已写明「本行是它唯一的生产调用方」。门读得懂那句假话，读不懂它外面的「已修」框。删掉这段叙述 = 删掉 F3/F4/F2 三连坑的病因记录。",
+   "sample": "// WO-SANDBOX-F4 节点检视 + 变量输入（五段耗时瀑布 · 流动效率 · 七类变量 T/K/B/C/P/R/S 分组输入）。"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/registry.ts#c4c3027e6deb4522",
+   "file": "apps/frontend-shell/src/views/registry.ts",
+   "line": 93,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "同上叙述型（主语换成 `TransitFlowLayer`）：「实测除自身外零 src 引用」说的是补线前，同段末句已写明「本行是其唯一生产调用方」。缺的是日期。🚦 本单范围边界外。",
+   "sample": "// 宿主 F1 线路图**从未挂载过它**（实测除自身外零 src 引用）—— 与 F3/F4 同一个坑，即"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx#47bf0df7f6e858cb",
+   "file": "apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx",
+   "line": 20,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "误报（检测器粗粒度）：触发词出自屏上字段名「实测值 vs 阈值」与四态词「LIVE → 才是实测」，是**词汇**不是观测；把它顶进声明式过滤的数字来自 ①②③④ 编号与 file:line。",
+   "sample": "*  ② **判定依据** —— 触发了哪条规则红线、实测值 vs 阈值 + 单位；"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx#b3cd8db70f691f2d",
+   "file": "apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx",
+   "line": 58,
+   "codes": [
+    "STALE-1",
+    "STALE-2"
+   ],
+   "why": "真观测缺日期与复验方式：「实测 130 行」。它与 physicalTopology.ts §5.5 的同批数字（5460/780/260 行）是一套，要补就得整批复跑一次聚合端点再改，🚦 本单范围边界外。",
+   "sample": "/** 车间册一次取满（实测 130 行；`pageSize` 上限 500，够用且留余量）。 */"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/PmDag.tsx#2c9f4b1d46081716",
+   "file": "apps/frontend-shell/src/views/sim/PmDag.tsx",
+   "line": 47,
+   "codes": [
+    "STALE-1",
+    "STALE-2"
+   ],
+   "why": "真观测缺日期与复验方式：「实测 94 条 console.error + 94 个节点框全部消失」。🚦 本单范围边界外。",
+   "sample": "//   实测 94 条 console.error + 94 个节点框全部消失（只剩文字）。"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/SandboxConsole.tsx#0c89f810cf9f897d",
+   "file": "apps/frontend-shell/src/views/sim/SandboxConsole.tsx",
+   "line": 518,
+   "codes": [
+    "STALE-1",
+    "STALE-2"
+   ],
+   "why": "真观测缺日期与复验方式：屏上文案「实测 baseIds=changzhou 时 total 15→13」。本单对 SandboxConsole.tsx 的授权范围**只有可算性图例那两行**，此处是另一处文案，不擅自扩权。",
+   "sample": "勾选只驱动 <code>chain_impediments</code>（实测 baseIds=changzhou 时 total 15→13）。"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/SandboxConsole.tsx#41fcd246632423a2",
+   "file": "apps/frontend-shell/src/views/sim/SandboxConsole.tsx",
+   "line": 911,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "真观测缺日期（复验方式已给：fixture 锚点 `fixtures/chain-loss-live-evidence.json` + 门 `sandbox-console.seam §9`）。同上，不在本单对本文件的授权范围内。",
+   "sample": "* ── 这条注释记的是一次实测，不是推理 ─────────────────────────────────────────"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx#67171888f5be9e49",
+   "file": "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx",
+   "line": 41,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "🚦 本单**明令禁改** TransitFlowLayer.tsx。内容本身是叙述型（「那句话在实测面前不成立」+ 随即补线），缺日期。",
+   "sample": "*    `views/registry.ts`\"，那句话在实测面前不成立）：`views/registry.ts` 是**手工登记**的字符串键表、"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/chainFamilyLines.ts#8a841594c4f1b88e",
+   "file": "apps/frontend-shell/src/views/sim/chainFamilyLines.ts",
+   "line": 1,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "真观测缺日期（复验方式已给：`POST /b/v1/solvers/chain_loss_attribution/run` + 三张锚点订单号）。🚦 本单范围边界外。",
+   "sample": "* （实测：传 `baseIds` 结果逐字节不变，另两维在 `chain_impediments` 上直接 400）。"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/chainImpediment.ts#98e5588564b0b033",
+   "file": "apps/frontend-shell/src/views/sim/chainImpediment.ts",
+   "line": 205,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "半误报：触发词主要是纪律句「合并即是把降级结论冒充实测」；夹带一句真观测「实测确认过（页面 dump）」缺日期。🚦 本单范围边界外。",
+   "sample": "* `dataMode` → 这条结论断言了什么。**四态四句，不许合并** —— 合并即是把降级结论冒充实测。"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/chainLineMap.ts#9ffcfbd9fd4689a6",
+   "file": "apps/frontend-shell/src/views/sim/chainLineMap.ts",
+   "line": 117,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "真观测缺日期：「实测最小环节占 0.0049%」。该数已由 `chain-line-map.seam.test.tsx` 断言（有门守着，改了会红）。🚦 本单范围边界外。",
+   "sample": "*  · `min` —— **最小可见半径**。实测最小环节占 0.0049%，线性映射下它是 0.001px（= 看不见）。"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/chainLineMap.ts#bc5bdab3eae67325",
+   "file": "apps/frontend-shell/src/views/sim/chainLineMap.ts",
+   "line": 126,
+   "codes": [
+    "STALE-1",
+    "STALE-2"
+   ],
+   "why": "真观测缺日期与复验方式：「审核方实测给的数」那张三行对照表。🚦 本单范围边界外。",
+   "sample": "* 再叠上下夹取。为什么必须非线性 + 夹取（审核方实测给的数）："
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/chainLineMap.ts#cbf7aed9c1e0345f",
+   "file": "apps/frontend-shell/src/views/sim/chainLineMap.ts",
+   "line": 593,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "真观测缺日期（复验方式已给：`transit-geometry.seam.test.tsx`，且门直接引用本常数）。🚦 本单范围边界外。",
+   "sample": "* 实测残差 ~1e-10 px（见 `transit-geometry.seam.test.tsx`），此处留三个数量级余量；"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/chainLineMap.ts#62475256b7a697fa",
+   "file": "apps/frontend-shell/src/views/sim/chainLineMap.ts",
+   "line": 620,
+   "codes": [
+    "STALE-1",
+    "STALE-2"
+   ],
+   "why": "真观测缺日期与复验方式：弦插值/角度插值三组实测偏差（85.3px / 环心 / 29.8px）。🚦 本单范围边界外。",
+   "sample": "* 弦是两站之间的**直线**，它离开曲线往环内塌。实测（本环、整圈均分）："
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts#0eeea3e005de16d2",
+   "file": "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts",
+   "line": 3,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "🚦 本单**明令禁改** chainNodeSemantics.ts。内容是「实测这三种写法 tsc 都不再咬」，缺日期。",
+   "sample": "*   或 `{…} as Partial<Record<Rid, …>>` —— 实测这三种写法 `tsc` 都不再咬，"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/inspectorModel.ts#e94f73e9ad2661d9",
+   "file": "apps/frontend-shell/src/views/sim/inspectorModel.ts",
+   "line": 558,
+   "codes": [
+    "STALE-3"
+   ],
+   "why": "**病历**（本族唯一一份病因记录）：整段是被上一单修掉的**旧文案原文引用**，同段第 4 行已写明「那句话写下的当天是真的，**今天是假的**」并给出推翻它的两个 file:line。门读得见被引用的那句假话，读不见它外面的「已推翻」框 —— 判据没错，语境认不出。删掉它等于把 G-STALE-MEASURED-CLAIM 的病因抹掉。豁免按**文案哈希**锚定：这段一改，豁免当场失效、门重新红。",
+   "sample": "* 「缺承载：`Cadence` 对象全仓 0 条（**运行态实测** `GET /a/v1/objects?type=Cadence` → total 0，对象类型尚不存在）」。"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/inspectorModel.ts#f01f9600a5bd164f",
+   "file": "apps/frontend-shell/src/views/sim/inspectorModel.ts",
+   "line": 685,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "T3 evidence「`apps/datacore/src/solvers/` 零直接消费方（实测 grep 计数 0）」缺日期。本单对 inspectorModel.ts 的授权范围是 **K1/K2 两条 evidence**；T3/C4/P2 这三条「solvers/ 零消费方」是另一批欠账，且要给日期就得重新亲手复核一遍作用域内的 grep（本门的 STALE-4 对作用域限定声明明确判为「认不准、不判」）。",
+   "sample": "\"但 `apps/datacore/src/solvers/` **零直接消费方**（实测 grep 计数 0）⇒ 薄，非有\","
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/inspectorModel.ts#826287397d88b3de",
+   "file": "apps/frontend-shell/src/views/sim/inspectorModel.ts",
+   "line": 754,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "同 :685（C4 落点「supplierOnTimeRate 侧」的 0 消费方声明）：缺日期，属另一批欠账，不在本单对本文件的授权范围内。",
+   "sample": "\"但 `apps/datacore/src/solvers/` **0 消费方**（实测 grep 计数 0）⇒ 前端拿不到、也没人算它\","
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/inspectorModel.ts#360458182e3e909e",
+   "file": "apps/frontend-shell/src/views/sim/inspectorModel.ts",
+   "line": 824,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "同 :685（P2 落点的 0 消费方声明）：缺日期，属另一批欠账，不在本单对本文件的授权范围内。",
+   "sample": "\"但 `apps/datacore/src/solvers/` **0 消费方**（实测 grep 计数 0）⇒ 薄\","
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#5d103d698fd1c1ff",
+   "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
+   "line": 3,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "真观测缺日期：「BASE_REGISTRY 实测 13 个，不是 12 个」。该事实已由 `physical-topology.seam.test.tsx` 的 source-parity 用例守着。🚦 本单范围边界外。",
+   "sample": "*  · **基地轴** = `@platform/contracts` `BASE_REGISTRY`（实测 13 个，不是 12 个）。"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#1874d847aecf9f89",
+   "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
+   "line": 233,
+   "codes": [
+    "STALE-1",
+    "STALE-2"
+   ],
+   "why": "真观测缺日期与复验方式：「真值口径下 130 格利用率落在 89.7–94.0%」。🚦 本单范围边界外。",
+   "sample": "* 借得通；接了真值之后，**拿一个名叫\"占位值域\"的常数去缩放实测值**是语义错位（数值恰好一样，"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#76f5170d82188da1",
+   "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
+   "line": 254,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "真观测缺日期：「EquipmentOEE 实测 5460 行」+「实测推翻 join 键（processId 仅 3 值 / lineId 10 值）」，带真实对象字段值作证。🚦 本单范围边界外。",
+   "sample": "//  `EquipmentOEE` 实测 **5460 行**已物化（13 基地 × 10 车间 × 3 串行工序 × 2 台设备 × 7 天），"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#75b4af2bc3e6b3c4",
+   "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
+   "line": 298,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "真观测缺日期（复验方式已给：`GET /a/v1/objects` / `POST /a/v1/objects/query` / `/objects/aggregate` 三个端点与各自回值）。🚦 本单范围边界外。",
+   "sample": "*   实测 `type=EquipmentOEE` 回 `total=1000`、`page=3` 回 0 条 —— **5460 行只能拿到 1000 行（18%）**；"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#5e860829c8162ffa",
+   "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
+   "line": 391,
+   "codes": [
+    "STALE-1",
+    "STALE-2"
+   ],
+   "why": "真观测缺日期与复验方式：「实测 130/130 格恒为 480min」（这条支撑「等权 avg == 加权 avg」的裁决，值得补）。🚦 本单范围边界外。",
+   "sample": "*    · 各行计划工时**全等**时（实测 130/130 格恒为 480min），等权算术平均 **恒等于** 加权平均——"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#ee26aa97f3efd0e5",
+   "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
+   "line": 753,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "真值接线台账「实测 130/130 格全覆盖」缺日期。整份台账要补就得整批复跑，🚦 本单范围边界外。",
+   "sample": "* ── WO-TOPO-REALDATA 接上的四条（实测 130/130 格全覆盖）──────────────────────────"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#2a4a5b52e5fd6102",
+   "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
+   "line": 776,
+   "codes": [
+    "STALE-1",
+    "STALE-2"
+   ],
+   "why": "台账行「实测 5460 行」缺日期与复验方式。🚦 本单范围边界外。",
+   "sample": "shapeToday: \"逐设备逐日 {availability, performance, quality, oee, plannedProductionTime, actualProductionTime, equipId, lineI…"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#376daca56727d2bd",
+   "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
+   "line": 790,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "台账行「实测 780 台，每格 6 台」缺日期。🚦 本单范围边界外。",
+   "sample": "shapeToday: \"逐设备节拍 s/电芯（battery.ts 由 gwhᵢ 反解；实测 780 台，每格 6 台）\","
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts#b4c72321da584f97",
+   "file": "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts",
+   "line": 136,
+   "codes": [
+    "STALE-1",
+    "STALE-2"
+   ],
+   "why": "真观测缺日期与复验命令：「实测 chain_impediments 在 demo 合成种子上的判据」（已带 C02/C05 规则码与阈值出处作证）。🚦 本单范围边界外。",
+   "sample": "* **设计稿副标题与引擎判据的语义差**（实测 `chain_impediments` 在 demo 合成种子上的判据得出，"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts#df3223f80984ceaf",
+   "file": "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts",
+   "line": 366,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "真观测缺日期（复验方式已给：contracts `chain-sim.ts` 的 CHAIN_STAGES / CHAIN_NODE_REGISTRY）。🚦 本单范围边界外。",
+   "sample": "* 24 个节点全部在册 ≠ 24 个节点全部有数据。实测（seed 42 · 锚点 SO-3391）："
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/transitFlow.ts#e4bc3bc85e578b7f",
+   "file": "apps/frontend-shell/src/views/sim/transitFlow.ts",
+   "line": 99,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "🚦 本单**明令禁改** transitFlow.ts。且该行是**纪律句**「大小写以实测为准」，不是一次观测 —— 属检测器粗粒度误报。",
+   "sample": "/** 对象类型 key（用于 `GET /a/v1/objects?type=`）。大小写以实测为准。 */"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/transitFlow.ts#743fdf5be4358861",
+   "file": "apps/frontend-shell/src/views/sim/transitFlow.ts",
+   "line": 478,
+   "codes": [
+    "STALE-1"
+   ],
+   "why": "🚦 本单**明令禁改** transitFlow.ts。触发词是「现算」，用在设计陈述「图层每次渲染现算」上，不是观测 —— 误报。",
+   "sample": "* 图层走 DOM（现算值），控制台图例走这两个常量（零输入基线）。"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/transitFlow.ts#48a220e0058d5d08",
+   "file": "apps/frontend-shell/src/views/sim/transitFlow.ts",
+   "line": 704,
+   "codes": [
+    "STALE-1",
+    "STALE-2"
+   ],
+   "why": "🚦 本单**明令禁改** transitFlow.ts。「`packages/contracts` 实测 0 命中（Shipment 无 schema）」缺日期与复验命令。",
+   "sample": "* 本仓**没有** Shipment 的 contracts 级 schema（`packages/contracts` 实测 0 命中），"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/transitFlow.ts#d9bcc21ebcf5c009",
+   "file": "apps/frontend-shell/src/views/sim/transitFlow.ts",
+   "line": 748,
+   "codes": [
+    "STALE-1",
+    "STALE-2"
+   ],
+   "why": "🚦 本单**明令禁改** transitFlow.ts。「本仓无 WIPLot 契约 schema，实测 0 命中」缺日期与复验命令。",
+   "sample": "* 同样是手写守卫（本仓无 WIPLot 契约 schema，实测 0 命中）。"
+  }
+ ],
+ "onscreenNote": "① 本段是 STALE-5/7/8 的**存量棘轮**，与上面 exemptions 段（STALE-1..4）刻意分开两套水位：\n   合成一套就得把 ratchetHigh 调大，而「评审唯一必须拒绝的一行」就是把它调大。\n② 每条必须写 verdict，**三选一**（与代码里的 ONSCREEN_VERDICTS 同源；处置完全不同，混成一类必修错地方）：\n   · FALSE-POSITIVE  检测器粗粒度误报 ⇒ 去修检测器\n   · UNMARKED        是真断言、今天没被证伪，只是还没挂 @stale-fact 记号 ⇒ 去补记号\n   · CONFIRMED-STALE 已复核、今天确认是假的，修文案归另一张单 ⇒ 去改屏上那句话\n   CONFIRMED-STALE 每次跑都会被门**点名打印** —— 豁免只买「暂时不红」，不买「没人知道」。\n   ⚠ 2026-08-16 订正：本段原文只列了两档（漏了 UNMARKED），而门早已按三档判 ——\n     基线自己的说明书跟代码分叉，读的人会照两档去写 verdict，然后被门打回。\n③ **STALE-6 永不豁免**：它是「现算不符」，一条正在对用户说谎的断言没有理由值得买暂时不红。\n④ 条目可挂 factChecks[{file,pattern,op,n,means}] —— 存量文案这一单不改，但把它赌的计数登记在案；\n   走的是与 @stale-fact 记号**同一个执行器**（runStaleFactMark），上游一变当场红。\n⑤ 棘轮**松弛**（基线条目今天一条都没命中）与回弹同样判红：基线高于实测 = 一份看不见的免检名额。\n⑥ 门自述层（STALE-9/10）**没有豁免段，也不会有**：一道正在说谎的门没有资格说别人说谎。",
+ "generatedBy": "node scripts/check-stale-claims.mjs --update",
+ "onscreenExemptions": [
+  {
+   "key": "apps/frontend-shell/src/locales/zh.ts#be6709400b998c83",
+   "code": "STALE-5",
+   "file": "apps/frontend-shell/src/locales/zh.ts",
+   "line": 777,
+   "verdict": "UNMARKED",
+   "why": "真断言（BATTERY_PROCESS_FLOW_RULES 有 6 条链 / 覆盖 9 条流程），且文案里**已经带了实测日期与复验命令** —— 但那只满足 STALE-1/2（保质期两问），不构成机器可跑的断言。本单要证的恰恰是这一点：病灶 ①（sandboxConsoleModel/whyBody）同样带着日期和复验配方，照样是假的 ⇒ **「写了日期」证明不了「今天还成立」**。补 `@stale-fact apps/datacore/src/process/flow-rules.ts` 的记号归后续单。",
+   "sample": "\"实测站序确实存在，但不在本档够得着的地方：BATTERY_PROCESS_FLOW_RULES（apps/datacore/src/process/flow-rules.ts:104）有 6 条链、覆盖 9 条流程（P25/P33/P34"
+  },
+  {
+   "key": "apps/frontend-shell/src/locales/zh.ts#21e581ce8059a746",
+   "code": "STALE-5",
+   "file": "apps/frontend-shell/src/locales/zh.ts",
+   "line": 1672,
+   "verdict": "UNMARKED",
+   "why": "真断言（「归属形态只有两种正值：REGISTERED / EXPLORATORY」是对契约枚举的封死），本单未复核其真伪，也未挂记号。契约枚举一加值，这句话即失真。",
+   "sample": "\"运行记录（AgentRunRecord）现在带 agentId / agentKey / agentVersion / 归属形态，由引擎在 Agent 循环收尾时与运行数据同一次写入 —— 所以「谁跑的」和「跑出了什么」不会各说各话。归属"
+  },
+  {
+   "key": "apps/frontend-shell/src/mocks/processWaitFixtures.ts#1acb280090190e9e",
+   "code": "STALE-5",
+   "file": "apps/frontend-shell/src/mocks/processWaitFixtures.ts",
+   "line": 217,
+   "verdict": "UNMARKED",
+   "why": "真断言（「承载物 PlanTarget 有 17 条实例，但没有任何一条反推规则…」），落在 mock fixture 的屏上文案里，本单未复核其真伪，也未挂记号。",
+   "sample": "\"承载物 PlanTarget 有 17 条实例，但**没有任何一条反推规则**声明本流程的进/出站字段落在哪两个属性上。这是「有单据、没规则」不是「没数据」—— 修法是补规则表一行，不是补数据。\","
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/ChainLineMapView.tsx#53399facf22a005f",
+   "code": "STALE-5",
+   "file": "apps/frontend-shell/src/views/sim/ChainLineMapView.tsx",
+   "line": 712,
+   "verdict": "FALSE-POSITIVE",
+   "why": "误报：「多条族线并排时只有最后一条标名」是**渲染行为的描述**（下一句「三条线同列」是举例），不是对某个集合的计数断言，没有任何上游事实能把它证伪。检测器只看到「只有…条」这个句式。",
+   "sample": "{ringMaps.length > 1 ? \"；多条族线并排时只有最后一条标名（三条线同列，标三遍是重复）\" : \"\"}"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx#d5f82c9eb4b964f7",
+   "code": "STALE-5",
+   "file": "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx",
+   "line": 816,
+   "verdict": "FALSE-POSITIVE",
+   "why": "误报：「没有任何一条在途批次同时具备发运日与到货日」是**运行期空态文案**——只在现算出的区间集合为空时才渲染，它描述的是本次数据，不是一次被硬编码下来的测量结果。上游一变，它自己就不显示了。",
+   "sample": "无可算位置的区间 —— 没有任何一条在途批次同时具备发运日与到货日，因此不画区间，也不画车。"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/chainImpediment.ts#c369da3ed4fa2291",
+   "code": "STALE-5",
+   "file": "apps/frontend-shell/src/views/sim/chainImpediment.ts",
+   "line": 377,
+   "verdict": "FALSE-POSITIVE",
+   "why": "误报：这句话是在**辨析两个概念**（「压根没跑候选枚举」≠「跑了但一条都没有」），「一条都没有」出现在引号里当被辨析的对象，不是本文案自己在断言任何集合为空。",
+   "sample": "claim: \"本次扫描的回包里没有候选字段 ⇒ 压根没跑候选枚举。与「跑了但一条都没有」不是一回事，别读成「没有对策」。\","
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/chainImpediment.ts#6c03bc98cf1aefcb",
+   "code": "STALE-5",
+   "file": "apps/frontend-shell/src/views/sim/chainImpediment.ts",
+   "line": 754,
+   "verdict": "FALSE-POSITIVE",
+   "why": "误报，同 chainImpediment.ts:377：是对「跑了但一条都没有」这个说法的辨析，不是断言。两处是同一句诚实位文案的两个出口。",
+   "sample": "\"与「跑了但一条都没有」不是一回事，别读成「没有对策」。\","
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/inspectorModel.ts#4773f980bdd7d7c7",
+   "code": "STALE-5",
+   "file": "apps/frontend-shell/src/views/sim/inspectorModel.ts",
+   "line": 830,
+   "verdict": "UNMARKED",
+   "why": "真断言（「零求解器消费方 ⇒ 今天没有任何一条链把它算进耗时」），且它正是本门 STALE-4 那一族的屏上版本，本单未复核其真伪，也未挂记号 —— 求解器一接上，这句话即失真而屏上不会变。",
+   "sample": "inertReason: \"零求解器消费方 ⇒ 今天没有任何一条链把它算进耗时；面板显示它是为了让缺口**看得见**，不是为了让它假装能算。\","
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#52e447ad00d290b7",
+   "code": "STALE-5",
+   "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
+   "line": 809,
+   "verdict": "UNMARKED",
+   "why": "真枚举断言（「Process 对象只有 涂布/卷绕/装配/化成/老化 五类」），本单未复核其真伪，也未挂记号。Process 种子一增一类，这句话即失真。",
+   "sample": "gap: \"未接：Process 对象只有 涂布/卷绕/装配/化成/老化 五类，且属 Process 层，与本图 Workshop 层十列不同口径\", // debattery-allow：这是**诚实缺口说明文案**，不是驱动逻辑的业务常"
+  },
+  {
+   "key": "apps/frontend-shell/src/views/sim/transitFlow.ts#afdf58f82d6097f2",
+   "code": "STALE-5",
+   "file": "apps/frontend-shell/src/views/sim/transitFlow.ts",
+   "line": 469,
+   "verdict": "UNMARKED",
+   "why": "真断言（「本租户采购段一条都没有 —— 代码链路是通的，缺的是数据」＝ CLAUDE.md 铁律 0.5 里的「接了线没数据」态），本单未复核其真伪，也未挂记号。补一条采购段种子它就失真。",
+   "sample": "reason: \"已经查过了，本租户采购段一条都没有 —— 代码链路是通的，缺的是数据。\","
+  }
+ ],
+ "onscreenMax": 10,
+ "onscreenRatchetHigh": 10
 }

@@ -2,21 +2,19 @@
  "note": "docs/CONVENTION-ui-information-layering.md §3.3「开发的话不许上屏」棘轮。只数**会渲染出去的字**（JSX 文本 + 文案型属性字面量 + locale 面的全部非键名字面量），注释/变量名/testid 不算。",
  "spec": "docs/CONVENTION-ui-information-layering.md",
  "gate": "scripts/check-dev-jargon-onscreen.mjs",
- "total": 136,
+ "total": 116,
  "byForm": {
-  "未渲染md星号": 73,
-  "接口路径": 20,
+  "未渲染md星号": 58,
   "内部常量名": 19,
+  "接口路径": 19,
   "实现细节标识符": 14,
-  "环境变量名": 3,
   "zod术语": 2,
-  "shell命令": 2,
-  "契约类型名": 2,
-  "工单编号": 1
+  "环境变量名": 2,
+  "契约类型名": 2
  },
  "localeLiterals": 1818,
  "files": {
-  "apps/frontend-shell/src/locales/zh.ts": 64,
+  "apps/frontend-shell/src/locales/zh.ts": 44,
   "apps/frontend-shell/src/pages/admin/AgentsPage.tsx": 2,
   "apps/frontend-shell/src/pages/admin/DataBuilderFlow.tsx": 1,
   "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx": 1,
@@ -42,5 +40,101 @@
   "apps/frontend-shell/src/views/sim/SandboxConsole.tsx": 12,
   "apps/frontend-shell/src/views/sim/SimReadinessPanel.tsx": 1,
   "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx": 12
+ },
+ "filesByForm": {
+  "apps/frontend-shell/src/locales/zh.ts": {
+   "内部常量名": 3,
+   "实现细节标识符": 6,
+   "未渲染md星号": 30,
+   "接口路径": 3,
+   "zod术语": 2
+  },
+  "apps/frontend-shell/src/pages/admin/AgentsPage.tsx": {
+   "接口路径": 2
+  },
+  "apps/frontend-shell/src/pages/admin/DataBuilderFlow.tsx": {
+   "未渲染md星号": 1
+  },
+  "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx": {
+   "未渲染md星号": 1
+  },
+  "apps/frontend-shell/src/pages/admin/OntologyRelationsPage.tsx": {
+   "接口路径": 3,
+   "实现细节标识符": 2
+  },
+  "apps/frontend-shell/src/pages/admin/OrgWorldPage.tsx": {
+   "未渲染md星号": 1
+  },
+  "apps/frontend-shell/src/pages/admin/PromotePrecheckPanel.tsx": {
+   "未渲染md星号": 1
+  },
+  "apps/frontend-shell/src/pages/admin/SkillStructure.tsx": {
+   "未渲染md星号": 2
+  },
+  "apps/frontend-shell/src/pages/admin/SolversPage.tsx": {
+   "内部常量名": 1
+  },
+  "apps/frontend-shell/src/pages/admin/VirtualOpsTeamPanel.tsx": {
+   "未渲染md星号": 1
+  },
+  "apps/frontend-shell/src/pages/admin/WorkflowsPage.tsx": {
+   "内部常量名": 2
+  },
+  "apps/frontend-shell/src/views/OptimizeWhatifView.tsx": {
+   "接口路径": 1,
+   "环境变量名": 1
+  },
+  "apps/frontend-shell/src/views/ProcessStuckView.tsx": {
+   "未渲染md星号": 3,
+   "接口路径": 1
+  },
+  "apps/frontend-shell/src/views/RiskBoardView.tsx": {
+   "接口路径": 1
+  },
+  "apps/frontend-shell/src/views/capacity/CapacityRampEnvelope.tsx": {
+   "内部常量名": 1
+  },
+  "apps/frontend-shell/src/views/plan/OrderChainView.tsx": {
+   "未渲染md星号": 1
+  },
+  "apps/frontend-shell/src/views/process/ProcessStartFromTemplate.tsx": {
+   "未渲染md星号": 3
+  },
+  "apps/frontend-shell/src/views/risk/DispositionOptionsPanel.tsx": {
+   "未渲染md星号": 1
+  },
+  "apps/frontend-shell/src/views/sim/EdgeActivePanel.tsx": {
+   "接口路径": 3,
+   "未渲染md星号": 1
+  },
+  "apps/frontend-shell/src/views/sim/InspectorNodePanel.tsx": {
+   "未渲染md星号": 3,
+   "内部常量名": 3
+  },
+  "apps/frontend-shell/src/views/sim/MultiObjWhatifPanel.tsx": {
+   "环境变量名": 1
+  },
+  "apps/frontend-shell/src/views/sim/PerturbationTimeline.tsx": {
+   "接口路径": 1,
+   "未渲染md星号": 1
+  },
+  "apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx": {
+   "内部常量名": 4
+  },
+  "apps/frontend-shell/src/views/sim/SandboxConsole.tsx": {
+   "未渲染md星号": 4,
+   "内部常量名": 4,
+   "契约类型名": 2,
+   "实现细节标识符": 2
+  },
+  "apps/frontend-shell/src/views/sim/SimReadinessPanel.tsx": {
+   "未渲染md星号": 1
+  },
+  "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx": {
+   "未渲染md星号": 3,
+   "接口路径": 4,
+   "实现细节标识符": 4,
+   "内部常量名": 1
+  }
  }
 }

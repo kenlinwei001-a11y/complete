@@ -507,14 +507,23 @@ export default function ProcessWaitView() {
         <p>{t.honesty.canAnswer}</p>
         {/* E5：focus 的站查无此行 ⇒ 并进「答不了」段明说（同属"这一页答不出什么"），
             不另起信息块 —— 第一层块数受 ui-first-layer 门棘轮约束。 */}
+        {/* 强调走真正的 DOM（`<b>`），不靠 markdown 星号 —— 本页按纯文本渲染，
+            星号会原样印在屏上（WO-SCREEN-PLAINSPEAK：仓主截图上就印着一串 `**`）。
+            `<b>` 与 `<small>` 都留在**同一个 <p> 里**，不另起块：第一层块数受
+            ui-first-layer 门棘轮约束，多起一块会把那道门顶红。 */}
         <p data-testid="pw-honesty-cannot">
           {t.honesty.cannotAnswer}
+          <b>{t.honesty.cannotAnswerEmph}</b>
           {state.status === "ready" &&
           focusKey !== null &&
           focusKey !== "" &&
           !state.model.groups.some((g) => g.rows.some((r) => r.key === focusKey))
             ? ` ${t.crosslink.focusMissing(focusKey)}`
             : ""}
+          {/* 保质期角标：留下「什么时候核的、什么时候会变」，复验配方在 zh.ts 的注释里 */}
+          <small className={styles.asOf} data-testid="pw-honesty-asof">
+            {t.honesty.asOf}
+          </small>
         </p>
         <p className={styles.notMeasured} data-testid="pw-not-measured">
           {t.honesty.notMeasured}
