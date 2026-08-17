@@ -271,9 +271,8 @@ export default function OntologyRelationsPage() {
 
       {/* 接缝读数：这三个数由本页的写操作真实驱动，用户点完就能看见它变 */}
       <div className="panel" data-testid="orel-viewcfg" style={{ marginBottom: 14, display: "flex", gap: 18, flexWrap: "wrap", fontSize: 12 }}>
-        <span>
-          沙盘视图配置（<code>GET /a/v1/sim/view-config</code>）：
-        </span>
+        {/* 出处（工程师层，不上屏）：这三个数读自 GET /a/v1/sim/view-config。 */}
+        <span>推演沙盘当前生效的配置：</span>
         <span data-testid="orel-vc-linktypes">结构边 {cfg ? cfg.linkTypes.length : "—"}</span>
         <span data-testid="orel-vc-statevars">状态变量 {cfg ? cfg.stateVars.length : "—"}</span>
         <span data-testid="orel-vc-propcount">生效因果边 {cfg ? cfg.propagationCount : "—"}</span>
@@ -564,14 +563,19 @@ export default function OntologyRelationsPage() {
         </div>
       ))}
 
+      {/* ── 出处（工程师层，不上屏；屏上只留业务结论）────────────────────────────────
+       *  机制：POST /a/v1/sim/propagation-rules 把 `id: newId("simpr")` 写在请求体展开**之后**
+       *  （apps/datacore/src/app.ts 内该路由处），传进去的 id 恒被覆盖 ⇒ 每次 POST 都是一条新规则。
+       *  故本页不提供「停用已有边」开关：提供了只会 POST 出一条同 key 的重复规则，把生效条数数成两条。
+       *  真·启停需后端补 PUT/PATCH /a/v1/sim/propagation-rules/:id（后端单）。
+       *  复验探针：grep -n 'id: newId("simpr")' apps/datacore/src/app.ts
+       */}
       <div className="muted" data-testid="orel-rule-honesty" style={{ fontSize: 12, marginBottom: 18, lineHeight: 1.7 }}>
-        ⚠ 因果边今天<b>只能新建，改不了</b>：<code>POST /a/v1/sim/propagation-rules</code> 把{" "}
-        <code>id: newId(&quot;simpr&quot;)</code> 写在请求体展开之后（<code>apps/datacore/src/app.ts:1867</code>），
-        传进去的 id 恒被覆盖 ⇒ 每次 POST 都是一条新规则。所以这里<b>不提供</b>「停用已有边」的开关 ——
-        提供了只会 POST 出一条同 key 的重复规则，把生效条数数成两条。
-        真·启停需要后端补 <code>PUT/PATCH /a/v1/sim/propagation-rules/:id</code>，属后端单，本单范围外。
+        ⚠ 因果边今天<b>只能新建，改不了、也停不掉</b>：每次保存都会被当成一条全新的边收下，覆盖不掉已有的那条。
+        所以这里<b>不提供</b>「停用已有边」的开关 —— 真提供了，也只会多出一条一模一样的边，
+        把「生效因果边」的条数数成两条，反而更难看清哪条在起作用。
         <br />
-        复验探针：<code>grep -n &apos;id: newId(&quot;simpr&quot;)&apos; apps/datacore/src/app.ts</code>
+        要真正修改或停用一条已有因果边，需要先补上系统侧的修改能力；在那之前，这一页只能新建。
       </div>
 
       {/* ═══════════ 关系两端的对象类型 · 弃用流程 ═══════════ */}

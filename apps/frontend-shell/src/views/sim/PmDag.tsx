@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
+import styles from "./PmDag.module.css";
+
 /**
  * 项目推演常显 DAG 面板（增量 §7.13）：自绘 SVG 分层 DAG，六层固定
  * 需求 → 型号 → 可产基地(≤6+折叠) → 驱动因子×3 → 求解器×2 → 产能预测结论。
@@ -186,18 +188,19 @@ export function PmDag({
               stroke={n.color}
               strokeWidth={lit ? 1.6 : 1}
             />
-            <text x={p.x} y={p.y - 6} textAnchor="middle" fontSize={13} fontWeight={700} fill="var(--txt)">
+            {/* 三档字号一律在 PmDag.module.css 里，**不许改回 `fontSize={…}` 属性**
+                —— 静态门看不见 SVG 表现属性，理由见该 CSS 文件头。 */}
+            <text x={p.x} y={p.y - 7} textAnchor="middle" className={styles.nodeLabel} fill="var(--txt)">
               {n.label}
             </text>
-            <text x={p.x} y={p.y + 12} textAnchor="middle" fontSize={10.5} fill="var(--muted)">
+            <text x={p.x} y={p.y + 13} textAnchor="middle" className={styles.nodeSub} fill="var(--muted)">
               {n.sub}
             </text>
             {lit && n.st === step && (
               <text
                 x={p.x - p.w / 2 + 7}
-                y={p.y - NH / 2 + 13}
-                fontSize={9.5}
-                fontWeight={800}
+                y={p.y - NH / 2 + 14}
+                className={styles.stepBadge}
                 fill={n.color}
                 data-testid={`${testId}-current-${n.id}`}
               >

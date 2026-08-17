@@ -241,7 +241,7 @@ export function ArtifactDetailTable({ artifacts }: { artifacts: ProducedArtifact
         </table>
       </div>
       <div style={{ ...LABEL, marginTop: 4 }}>
-        本表列的是**建了哪些制品**（哪个类型 / 哪条规则 / 哪个求解器）。每张表里具体插了哪几行，
+        本表列的是<b>建了哪些制品</b>（哪个类型 / 哪条规则 / 哪个求解器）。每张表里具体插了哪几行，
         要点上面的连接器去数据集里看 —— 这张表不代替它。
       </div>
     </div>

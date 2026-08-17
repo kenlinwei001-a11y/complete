@@ -13,6 +13,10 @@ import { SnapshotBadge } from "./sim/shared";
 // 挂在本页而不是另开一页：这一页的表单（类型/对象/属性/假设值）**就是**那个端点要的 `change`，
 // 另造一张页 = 让用户把同一个假设填两遍，且两处口径迟早分家。
 import { ImpactAnalysisPanel } from "./sim/ImpactAnalysisPanel";
+// WO-U3-DAG-REST · 判据 U3（过程图 + 点节点看凭什么）。结构与画法都与样板两页同源，
+// 见 `sim/reasoningGraph.ts` 头注 —— 本页**不另建**一套。
+import { ProcessGraphPanel } from "./sim/ProcessGraphPanel";
+import { assertReasoningGraph, type ReasoningGraph } from "./sim/reasoningGraph";
 import EdgeActivePanel from "./sim/EdgeActivePanel";
 // WO-HARNESS-UX-GAP-1 · 判据 U7（同屏问答知道自己在哪一页）+ U9（导出物自带出处与生成时间）。
 // 本页走 App.tsx 的专用 route，不经 ViewPage ⇒ 必须自己调 usePageView（理由见 shared.tsx 该函数注释）。
@@ -89,6 +93,90 @@ function objectLabel(props: Record<string, unknown>, pkKey: string | undefined, 
   if (name != null && String(name) !== base) return `${base} · ${String(name)}`;
   return base;
 }
+
+/**
+ * ══ WO-U3-DAG-REST · `what-if` 推演结构（判据 U3 过程图）══
+ *
+ * ── 顶回上一单的判定，并给出取证 ──────────────────────────────────────────────
+ * `WO-U3-DAG-DESIGN` 判本页「缺**后端派生边**」而挂账。那句话本身**是真的**：
+ * `generic_inference` 的输出白名单（`apps/datacore/src/solvers/service.ts` 的
+ * `generic_inference: ["deltas","rows","affectedObjects","count","rootTypes"]`）里
+ * 确实没有任何「哪个派生字段由哪个派生字段推出」的边 —— 想画一张**数据血缘图**，今天画不出。
+ *
+ * 但**判据 U3 要的不是数据血缘图，是推演过程图**。样板两页给的就是过程图：
+ * `optimize-whatif` 的节点是「入参 / 基线求解 / 扰动后求解 / 比对 / 解读」，
+ * 每个节点的 `data` 才是求解器的输出字段名。照铁律 0.6 的句式，上一单的形态是：
+ * **「我用『后端没给派生边』当作『这一页画不出推演过程图』的证据，而前者并不度量后者。」**
+ *
+ * ── 这一页凭什么必须画图（分叉是真的，且是本页最要紧的一件事）──────────────────
+ * 同一份假设在本页有**两个出口**，且**互不为输入**：
+ *  ① `generic_inference` —— **没有世界**，直接在当前快照上前向重算派生链；
+ *  ② `POST /a/v1/simulation/impact-analysis` —— 跑在**被隔离的推演世界**里，四维分项。
+ * 两者的世界语义不同 ⇒ **两边的数不可互相印证**。步骤条把并列压成一格就会把这件事抹掉，
+ * 而它恰恰是读本页时最容易犯的错（把上下两块的数当成同一次推演的两半）。
+ */
+const WI_GRAPH: ReasoningGraph = assertReasoningGraph({
+  layerTitles: ["设定假设", "两条推演路", "读数", "逐行明细"],
+  nodes: [
+    {
+      key: "assume", layer: 0, label: "设定假设", sub: "类型 · 对象 · 属性 · 值",
+      data: "表单四项（objectType / objectId / prop / value）",
+      solver: "页面入参 · 未求解",
+      rule: "数值属性按 dataType=number 强制转数、其余透传字符串（两个出口共用同一份类型强制）",
+      ruleKind: "projection",
+      note: "输入即重演：四项任一改动就重算，不需要点任何按钮（判据 U1）。",
+    },
+    {
+      key: "infer", layer: 1, label: "前向重算", sub: "无世界 · 当前快照",
+      data: "generic_inference 响应（deltas / rows / affectedObjects / count / rootTypes）",
+      solver: "generic_inference",
+      rule: "本体派生引擎 recompute(dryRun + apply)：不落库试算，同一假设 + 同一快照重跑逐字节一致",
+      ruleKind: "projection",
+      note: "这一路**没有推演世界**——它直接在当前快照上算，所以它的数与下面那一路不是同一个世界里的数。",
+    },
+    {
+      key: "propagate", layer: 1, label: "世界隔离传播", sub: "SimSession 世界内",
+      data: "impact-analysis 响应（basis.engine / basis.worldOverlayApplied / basis.derivationSpecCount）",
+      solver: "POST /a/v1/simulation/impact-analysis",
+      rule: "在被隔离的推演世界（worldId = SimSession.id）里传播，四维各按 available 判别联合分档",
+      ruleKind: "projection",
+      note: "与左边那一路**互不为输入**：两次是两个世界里的两次独立计算，数字对不上不等于引擎不一致。",
+    },
+    {
+      key: "scope", layer: 2, label: "影响面读数", sub: "受影响对象 · 变化处数",
+      data: "affectedObjects + count + rootTypes",
+      solver: "generic_inference",
+      rule: "受影响对象数 = 重算后至少一个派生字段发生变化的对象个数；变化处数 = Σ 各对象上 before ≠ after 的字段条数",
+      ruleKind: "projection",
+      formula: "受影响对象 = |{ o | ∃p, before(o,p) ≠ after(o,p) }|",
+    },
+    {
+      key: "dims", layer: 2, label: "四维分项", sub: "对象 / 流程 / KPI / 决策",
+      data: "affectedObjects / affectedProcesses / affectedKpis / affectedDecisions（各带 count + universe）",
+      solver: "POST /a/v1/simulation/impact-analysis",
+      rule: "四个「0」不是同一个 0：available:false ⇒ 算不了（不显 0）；count:0 且 universe:0 ⇒ 台账空；count:0 且 universe:N ⇒ 查过确实没被波及",
+      ruleKind: "projection",
+      note: "流程是**定义**粒度不是实例粒度；决策是从 KPI 推出来的（锚定指标 ∩ 受影响 KPI），不与 KPI 并列。",
+    },
+    {
+      key: "deltas", layer: 3, label: "下游逐行", sub: "before → after",
+      data: "rows[]（objectId / type / prop / before / after / unit）",
+      solver: "generic_inference",
+      rule: "逐行是不同派生字段（产能/天数/比率/金额混排）⇒ 量纲取后端 PropertyDef.unit，后端没给就不显，前端不臆造",
+      ruleKind: "projection",
+      note: "空 rows 是诚实空态：该属性没有下游派生链，或假设值不改变任何派生结果——不是「算不出来」。",
+    },
+  ],
+  edges: [
+    // 分叉：同一份假设喂给两条**世界语义不同**的路。
+    { from: "assume", to: "infer" },
+    { from: "assume", to: "propagate" },
+    { from: "infer", to: "scope" },
+    { from: "propagate", to: "dims" },
+    // 逐行表是影响面那两个计数的明细（同一路，不跨路）。
+    { from: "scope", to: "deltas" },
+  ],
+});
 
 /**
  * 输入防抖（判据 U1 的配套，不是可选优化）。
@@ -348,6 +436,12 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
           </div>
         )}
       </div>
+
+      {/* ── 判据 U3 · 推演过程图 ──────────────────────────────────────────────
+          摆在两个出口**之间**：往上是假设，往下是两条路各自的读数。
+          它比上下两块多说的那件事：两条路**世界语义不同、互不为输入** ——
+          屏上两块面板并排摆着，看不出这层关系，图上一眼看得出（点任一环看它凭什么）。 */}
+      <ProcessGraphPanel graph={WI_GRAPH} testId="wi-process-graph" />
 
       {/* ── 同一份假设的**第二个出口**：跑在被隔离的推演世界里，四维分项（WO-BEFE-WIRE-3）──
           上面那个按钮走 `generic_inference`（无世界、单个裸计数）；这里走

@@ -50,8 +50,8 @@ export function VirtualOpsTeamPanel() {
     <section className="panel" style={{ marginBottom: 16 }} data-testid="virtual-ops-panel">
       <h3 style={{ fontSize: 13 }}>D · 虚拟操作团队与剧本（仅 SYNTHETIC 租户）</h3>
       <p style={{ fontSize: 12, color: "var(--muted2)" }}>
-        虚拟账号与真人走**完全相同**的 API（提问 / 审批 / S&OP），编排器不直写任何结果表。
-        真实租户此处为空是**设计如此**，不是缺陷。
+        虚拟账号与真人走<b>完全相同</b>的入口（提问 / 审批 / S&OP），编排器不直接改写任何结果。
+        真实租户此处为空是<b>设计如此</b>，不是缺陷。
       </p>
 
       {/* ── §1 虚拟人格 ── */}

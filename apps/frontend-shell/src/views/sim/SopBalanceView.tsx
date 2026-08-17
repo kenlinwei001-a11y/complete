@@ -12,6 +12,10 @@ import { fmt, useActionDraft, ExportReportButton } from "./shared";
 import type { ProvenanceReport } from "./exportProvenance";
 import { Provenance } from "@/components/Provenance";
 import { SopReschedulePanel } from "./SopReschedulePanel";
+// WO-U3-DAG-REST · 判据 U3（过程图 + 点节点看凭什么）——结构与画法与样板两页同源
+// （见 `reasoningGraph.ts` 头注）；本页**不另建**一套。
+import { ProcessGraphPanel } from "./ProcessGraphPanel";
+import { assertReasoningGraph, type ReasoningGraph } from "./reasoningGraph";
 import EdgeActivePanel from "./EdgeActivePanel";
 import zh from "@/locales/zh";
 import { InfoPopover } from "@/components/InfoPopover";
@@ -45,6 +49,115 @@ const DEFAULT_RESOLUTIONS = [
   { name: "常州化成夜班×1", delta: 1.2 }, // debattery-allow
   { name: "江门正极加急 200 吨", delta: 0.5 }, // debattery-allow
 ];
+
+/**
+ * ══ WO-U3-DAG-REST · `sop-balance` 推演结构（判据 U3 过程图）══
+ *
+ * ── 顶回上一单的判定，并说清它错在哪一步 ──────────────────────────────────────
+ * `WO-U3-DAG-DESIGN` 判本页「**无分段语义**」，理由两条，**两条都是真的**：
+ *  ① 五个 `sop-run-N` 是 S&OP **业务流程**步骤（评审→平衡→定稿），判据 §4.1 显式排除；
+ *  ② `mrp_netting` / `finance_pnl` 是两次 `runSolver(…, {})`，**空入参**、彼此无边。
+ * 但由这两条推不出「本页没有推演过程」—— 因为它们量的都不是**顶栏那六个结论数字**。
+ * 形态（铁律 0.6）：**「我用『那五个按钮是业务流程步骤』当作『本页没有推演过程』的证据，
+ * 而前者并不度量后者。」**
+ *
+ * 真正的推演过程**就写在同一个文件里**：`SopKpiBar` 的六张卡各自带着
+ * `formula` / `source` / `inputs` / `rule`（`C21` / `C15` / `C18`）—— U3 要的三样
+ * （数据·求解器·规则）**已经手写了六遍**，只是没连成图、点不开。
+ *
+ * ── 边是**后端实测**的，不是照按钮顺序摆的（这是本图与「五步业务流程图」的分水岭）──
+ * 逐条取自 `apps/datacore/src/sop.ts`：
+ *  · `step3` 开头 `if (!v.steps.s2) throw`，且 `dem = v.steps.s2.total.rolling` ⇒ **s2 → s3**；
+ *  · `step4` 开头 `if (!v.steps.s3) throw`                               ⇒ **s3 → s4**；
+ *  · `step5` 读 `v.steps.s4.pass` **与** `v.steps.s3.sup`                ⇒ **s4 → s5 且 s3 → s5**；
+ *  · `SopKpiBar` 里 `demand ← s2.total.rolling`、`supply ← s5.supFinal ?? s3.sup` ⇒ 缺口是**汇合点**。
+ * ⚠ `s1` 例外且**必须照实画**：`step3` 完全不读 `s1.boundaryDeltaWanPerMonth`，
+ * 它自己从 `computeRollup(c)` 重算可供给。所以 ① 在图上是一个**没有出边的孤点** ——
+ * 这不是画漏了，这正是这张图最该说的一句话：**改 ① 不会让顶栏的可供给动**。
+ * 补一条不存在的边会让用户以为改了①就能补缺口，那比不画更糟。
+ */
+const SOP_GRAPH: ReasoningGraph = assertReasoningGraph({
+  layerTitles: ["①② 评审输入", "③ 供应评审", "④ 财务整合", "⑤ 决议回灌", "顶栏结论读数"],
+  nodes: [
+    {
+      key: "s1", layer: 0, label: "① 产品评审", sub: "PLM 认证边 diff",
+      data: "steps.s1（changes[] / boundaryDeltaWanPerMonth）",
+      solver: "S&OP ① 产品评审（sop.step1 · computeRollup + certFactors）",
+      rule: "逐「认证中」型号×基地折算月度供给影响 = 周产能 × 月周数 × (1 − certFactor[认证中])，合计即供给可行域边界变化",
+      ruleKind: "projection",
+      formula: "impact(型号,基地) = weeklyWan × monthlyWeeks × (1 − certFactor)",
+      state: "dim",
+      note: "⚠ 诚实位：③ 供应评审**不读**这个数（它自己从 computeRollup 重算可供给）。所以这一环在图上没有出边 —— 改 ① 不会让顶栏「可供给」动。图上不补这条边，是因为后端确实没有这条边。",
+    },
+    {
+      key: "s2", layer: 0, label: "② 需求评审", sub: "三线对照 P50",
+      data: "steps.s2（rows[] / total.rolling）",
+      solver: "S&OP ② 需求评审（sop.step2 · PlanTarget 同源勾稽）",
+      rule: "C21：任一细分 |滚动 vs 目标| > 10% ⇒ 自动生成差异提报议程项，进⑤高管决策会",
+      ruleKind: "ruleKey",
+      inputs: [
+        { label: "三线", value: "目标(年度分解) / 滚动P50 / 上月实际" },
+        { label: "量纲", value: "万套/月（分母是月，与①同轴）" },
+      ],
+      note: "需求 P50 缺省回落 inputs.demTotal —— 回落时屏上那个数不是三线评审出来的，是建版本时填的。",
+    },
+    {
+      key: "s3", layer: 1, label: "③ 供应评审", sub: "月聚合可供给",
+      data: "steps.s3（perBase[] / sup / dem / gap / flagged）",
+      solver: "S&OP ③ 供应评审（sop.step3 · S1.2 月聚合）",
+      rule: "可供给 = Σ基地 Σ周(周产能 × 认证系数 × 爬坡系数)；缺口 > gapRed 即红标并自动进⑤议程",
+      ruleKind: "projection",
+      formula: "sup = Σ_base Σ_{w=1..monthlyWeeks} weeklyWan × certFactor × curveMult(w)",
+      note: "认证系数为 0 的基地整个不计入（不是按 0 产能计）——所以基地数与台账行数可能对不上。",
+    },
+    {
+      key: "s4", layer: 2, label: "④ 财务整合", sub: "毛利率 · 现金垫",
+      data: "steps.s4（revSum / gmRoll / gmBudget / cashCushion / cashOk / pass / violations）",
+      solver: "S&OP ④ 财务整合（sop.step4 · C3 公式级）",
+      rule: "C15 毛利率_roll = Σ细分(量×价×毛利率) ÷ Σ细分(量×价)，低于预算 − 容差即警示；C18 现金垫 = 13 周滚动现金最低点，低于底线**阻断**进入⑤",
+      ruleKind: "ruleKey",
+      formula: "现金垫 = min_{w∈1..13}(期初 + Σ_{k≤w}回款 − Σ付款 − ΣCAPEX)",
+      note: "C18 是阻断门不是警示：现金垫不过线时⑤这一步点不进去（屏上那个 chip 是禁用的）。",
+    },
+    {
+      key: "s5", layer: 3, label: "⑤ 决议回灌", sub: "决议增量 → 终版供给",
+      data: "steps.s5（resolutions[] / supFinal）",
+      solver: "S&OP ⑤ 高管决策会（sop.step5）",
+      rule: "supFinal = ③ 可供给 + Σ 决议增量；议程 = ② 的 C21 差异项 + ③ 的缺口对策 + ④ 的越线项",
+      ruleKind: "projection",
+      formula: "supFinal = s3.sup + Σ resolutions[].delta",
+      note: "编辑决议时顶栏供给/缺口**即时重算的是显示值**（display 侧），落库仍要走第⑤步执行 —— 没执行前刷新一次就回到 ③ 的数。",
+    },
+    {
+      key: "kpi-gap", layer: 4, label: "缺口读数", sub: "需求 − 可供给",
+      data: "顶栏三卡（需求 ← s2.total.rolling · 可供给 ← s5.supFinal ?? s3.sup · 缺口 = 两者之差）",
+      solver: "S&OP ②/③/⑤ 联动即时重算",
+      rule: "缺口 = 需求P50 − 可供给（万套/月）；超 sopConfig.gapRed 即红标并自动进⑤议程",
+      ruleKind: "projection",
+      formula: "gap = demand − supply",
+      note: "这是本图唯一的汇合点：需求来自②、供给来自⑤（未跑⑤时回落③）—— 两支任一没跑，缺口就不是本月的缺口。",
+    },
+    {
+      key: "kpi-fin", layer: 4, label: "财务三卡", sub: "达成 · 毛利率 · 现金",
+      data: "顶栏三卡（收入达成 ← s4.revSum ÷ sopConfig.revBudget · 毛利率 ← s4.gmRoll vs gmBudget · 现金垫 ← s4.cashCushion / cashOk）",
+      solver: "S&OP ④ 财务整合",
+      rule: "阈值（gapRed / cashFloor / revBudget）一律取 WorkspaceConfig.sopConfig，代码常量只作兜底 —— 换租户阈值跟着走，不焊死",
+      ruleKind: "projection",
+      formula: "收入预算达成 = s4.revSum ÷ sopConfig.revBudget",
+    },
+  ],
+  edges: [
+    // 后端实测的边（逐条见本常量头注），不含任何按按钮顺序脑补的边。
+    { from: "s2", to: "s3" },
+    { from: "s3", to: "s4" },
+    { from: "s4", to: "s5" },
+    { from: "s3", to: "s5" },
+    { from: "s2", to: "kpi-gap" },
+    { from: "s5", to: "kpi-gap" },
+    { from: "s4", to: "kpi-fin" },
+    // ⚠ 故意**没有** s1 的出边：`sop.step3` 不读 `s1.boundaryDeltaWanPerMonth`（实测）。
+  ],
+});
 
 /** S&OP 月度平衡台（renderer=sop-balance，增量 §7.12）：六卡 KPI 条 + 五步法 + 定稿走 Action + C22 锁定 */
 export default function SopBalanceView(_props: ViewRendererProps) {
@@ -263,6 +376,11 @@ function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; 
       </div>
 
       <SopKpiBar v={v} liveResolutions={!locked && v.status !== "EXEC_MEETING" ? resolutions : null} />
+
+      {/* 判据 U3 · 推演过程图 —— 紧跟 KPI 条：上面六张卡各是一个结论数字，
+          这张图说的是**那六个数分别由哪几步算出来、哪一步喂哪一步**。
+          点任一环 → 面板出该环的来源与规则（缺口/毛利率/现金垫三环带真规则键 C21/C15/C18）。 */}
+      <ProcessGraphPanel graph={SOP_GRAPH} testId="sop-process-graph" />
 
       {(locked || lockedFallback) && (
         <div className={styles.lockBanner} data-testid="sop-locked-banner">

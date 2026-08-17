@@ -16,6 +16,8 @@
  * 屏上那个"关掉这条边涨了 3.2"就是个查无对证的数。本文件只做**排版**，不做**算术**。
  */
 import type { PropagationRule, SandboxViewConfig, SimCounterfactualResult, SimStateDiffCell, TickState } from "@platform/contracts";
+// WO-STATEVAR-DISPLAYNAME：状态变量中文名的唯一消费路径（真值源在后端，此处只翻译不编名）
+import { qualifiedStateVarText, stateVarText } from "./stateVarLabel";
 
 /** 一行边的展示模型。 */
 export interface EdgeRowVM {
@@ -45,6 +47,18 @@ export interface EdgeRowVM {
   sourceTypeName: string;
   /** 目标对象类型的人话名（口径同上）。 */
   targetTypeName: string;
+  /**
+   * WO-STATEVAR-DISPLAYNAME · 源端第一级整串：`类型人话名 · 状态变量人话名`
+   * （`生产基地 · 负载指数`）。
+   *
+   * 改前第一级**只有类型名** —— 因为状态变量在全仓没有任何中文名可查（那是**没接线**：
+   * 契约里压根没有承载它的字段），于是同一个 `生产基地` 会在屏上出现 5 次而彼此不可区分，
+   * 真正把它们区分开的 `loadIndex` / `demandLoad` 只以裸键形态躺在第二级。
+   * 两段各自独立回落（见 `qualifiedStateVarText`）：变量没名字就显裸键，不牵连已有的类型名。
+   */
+  sourceLabel: string;
+  /** 目标端第一级整串（口径同上）。 */
+  targetLabel: string;
   /** 域 key（`D05`）；`null` = 未归域（target 不是任何流程的承载物）。 */
   domainKey: string | null;
   /** 域的人话名；`null` 同上。 */
@@ -143,6 +157,12 @@ export function buildEdgeRows(
    * 也保证名字这一路取不回来时页面照常可用（"名字没取到"不该让开关面板整块消失）。
    */
   typeDisplayNames: ReadonlyMap<string, string> = new Map(),
+  /**
+   * WO-STATEVAR-DISPLAYNAME · `状态变量裸键 → 中文名`（随 `GET /sim/propagation-rules` 下发）。
+   * **缺省 `undefined` ⇒ 变量名逐条回落裸键**，与本参数引入前逐字节同屏（additive 可回退）。
+   * ⛔ 前端不得在此处补任何中文名：真值源是后端 `STATE_VAR_DISPLAY_NAMES`，这里只翻译。
+   */
+  stateVarNames?: Readonly<Record<string, string>>,
 ): EdgeRowVM[] {
   const off = new Set(disabledRuleKeys);
   return [...rules]
@@ -162,6 +182,9 @@ export function buildEdgeRows(
         // （`fetchObjectTypes` 注释立的同一条规矩）。
         sourceTypeName: typeDisplayNames.get(r.sourceTypeKey) ?? r.sourceTypeKey,
         targetTypeName: typeDisplayNames.get(r.targetTypeKey) ?? r.targetTypeKey,
+        // 第一级整串：类型名 · 变量名（两段各自独立回落，见 stateVarLabel.ts 顶注）。
+        sourceLabel: qualifiedStateVarText(r.sourceTypeKey, r.sourceStateVar, typeDisplayNames, stateVarNames),
+        targetLabel: qualifiedStateVarText(r.targetTypeKey, r.targetStateVar, typeDisplayNames, stateVarNames),
         // 域**直取后端下发的字段**，前端零加工、零对照表（`G-GATE-ROSTER-HANDCOPIED`）。
         // `?? null`：老响应/租户自建边没有这两个字段 ⇒ 读作未归域，不 crash。
         domainKey: r.domainKey ?? null,
@@ -185,7 +208,13 @@ export function toggleEdge(disabledRuleKeys: readonly string[], key: string, nex
 /** 差异行的展示模型（§3.3：一眼看出**方向和量级**，不是只标个"变了"）。 */
 export interface DiffRowVM {
   objectId: string;
+  /** 状态变量**接线名**（`loadIndex`）—— testid / 排序 / 去重全认它，不认人话名。 */
   stateVar: string;
+  /**
+   * WO-STATEVAR-DISPLAYNAME · 状态变量人话名（`负载指数`）；本体未登记 ⇒ **回落成裸键本身**。
+   * 与 `stateVar` 并存而不是替换：屏上要给人看名字，而对账/深链接要认接线名，两者都不能少。
+   */
+  stateVarName: string;
   baseline: number | null;
   counterfactual: number | null;
   delta: number | null;
@@ -215,11 +244,17 @@ function fmt(n: number): string {
  * 逐格差异 → 差异行（按**影响量级降序**：用户先要看见"最受影响的是谁"）。
  * 量级相同再按 objectId/stateVar 字典序 ⇒ 全序，重跑同屏（R6）。
  */
-export function buildDiffRows(cells: readonly SimStateDiffCell[]): DiffRowVM[] {
+export function buildDiffRows(
+  cells: readonly SimStateDiffCell[],
+  /** WO-STATEVAR-DISPLAYNAME · 同 `buildEdgeRows`：缺省 ⇒ 逐条回落裸键（additive 可回退）。 */
+  stateVarNames?: Readonly<Record<string, string>>,
+): DiffRowVM[] {
   return [...cells]
     .map((c): DiffRowVM => ({
       objectId: c.objectId,
       stateVar: c.stateVar,
+      // 差异表那一列改显人话名；`stateVar` 裸键**原样保留**（testid、排序、去重全认它）。
+      stateVarName: stateVarText(c.stateVar, stateVarNames),
       baseline: c.baseline,
       counterfactual: c.counterfactual,
       delta: c.delta,

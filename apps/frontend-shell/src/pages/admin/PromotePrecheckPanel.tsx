@@ -139,7 +139,9 @@ export function PromotePrecheckPanel({ run, onDownload }: { run: StoryBuildRun; 
         <button className="btn" data-testid="dbf-precheck" disabled={checkM.isPending} onClick={() => checkM.mutate()}>
           {checkM.isPending ? "复验中…" : "复验一下再说"}
         </button>
-        <span style={LABEL}>拿库里**当下**的状态现算一遍，看这次入库会和什么撞上。只看不写。</span>
+        <span style={LABEL}>
+          拿库里<b>当下</b>的状态现算一遍，看这次入库会和什么撞上。只看不写。
+        </span>
       </div>
 
       {pc && (

@@ -1506,7 +1506,8 @@
    "guardedPaths": [
     "apps/frontend-shell/src/views",
     "apps/frontend-shell/src/pages/admin",
-    "scripts/dev-jargon-baseline.json"
+    "scripts/dev-jargon-baseline.json",
+    "apps/frontend-shell/src/locales"
    ],
    "escalation": "审核方",
    "ontologyRef": "§7",
@@ -1515,7 +1516,7 @@
     "evidence": "补登账时变异实跑，并当场抓出一个真洞（2026-08-14 · 基线 b731b098）",
     "note": "补登账缘由同 dbui-flow-order：建于 WO-UI-LAYERING-BURNDOWN，建时漏登。变异反证过程中**抓出本门自己的一个假绿**，已同批修：往 DataBuilderPage.tsx 的真 JSX 里塞 **1** 条开发话（<div>strictObject 逐键核过</div>）⇒ 门 **RC=0 放行**，还照常打印「屏上开发话未新增」；塞 2 条才红。根因是**棘轮松弛** —— 基线记该文件 1 条，而它早被修干净、实测 0，差出来的 1 格成了谁都能用的**免检名额**；而 rows 只含有命中的文件，零命中文件根本不出现，所以正向遍历永远发现不了。形态：「我用『没有超过基线』当作『没有新增』的证据，而前者并不度量后者。」修法 = 反向遍历基线做松弛检测，基线 > 实测即 RC=1 并要求跑 --update 收紧（棘轮只降不升还不够，**降了必须当场收紧**，否则余量一格一格攒成免检额度）。收紧后（total 11→10）复验：塞 1 条 ⇒ RC=1 点名 L1089 \"strictObject\"，撤回 ⇒ RC=0。退出码纪律原文即合规（toolBroken + 顶层 try/catch + 金丝雀 6/6），gate-exit-discipline:check 未点名它。"
    },
-   "notes": "NONE（未接任何链）：守「给开发看的话不许上屏」。**关键设计：不 grep 源码文本**，而用 typescript 解析 JSX，只取真正会渲染出去的字（JSX 文本节点 · 文案型属性字面量 · 其中的模板串片段），注释/变量名/import/data-testid/className 一律不看 —— 全仓 grep WO 编号命中数百条但绝大多数在注释里，拿原始命中数当判据会得出「全仓到处是违规」这个恰好相反的结论，然后门因噪声太大被永久关掉。词表逐条对着派单 §3.3 原文抄：契约类型名 XxxSchema · strictObject · WO 编号 · PRD 区号 · 内部机制名（三页归一/自成长收编/厂商中立施工）· 实现细节标识符（zod/tsx/useQuery/useState/repo./msw）。诚实边界（不许读成「屏上已干净」）：① 经 locales/ 等变量**间接**上屏的测不出来（本门不跨文件解析，与 check-ui-first-layer 的 formula 判据同一个盲区）；② 词表是有限的，新的黑话形态要手工补进 JARGON，不会自己冒出来。另有扫描面下界 MIN_FILES 防「枚举器坏了报 0 违规」。"
+   "notes": "GATES_CHAIN（已接门链）：守「给开发看的话不许上屏」。**关键设计：不 grep 源码文本**，而用 typescript 解析 JSX，只取真正会渲染出去的字（JSX 文本节点 · 文案型属性字面量 · 其中的模板串片段），注释/变量名/import/data-testid/className 一律不看 —— 全仓 grep WO 编号命中数百条但绝大多数在注释里，拿原始命中数当判据会得出「全仓到处是违规」这个恰好相反的结论，然后门因噪声太大被永久关掉。词表逐条对着派单 §3.3 原文抄：契约类型名 XxxSchema · strictObject · WO 编号 · PRD 区号 · 内部机制名（三页归一/自成长收编/厂商中立施工）· 实现细节标识符（zod/tsx/useQuery/useState/repo./msw）。诚实边界（不许读成「屏上已干净」）：① 经 locales/ 等变量**间接**上屏的测不出来（本门不跨文件解析，与 check-ui-first-layer 的 formula 判据同一个盲区）；② 词表是有限的，新的黑话形态要手工补进 JARGON，不会自己冒出来。另有扫描面下界 MIN_FILES 防「枚举器坏了报 0 违规」。 ⚠ 2026-08-17 修账（WO-SCREEN-PLAINSPEAK-ADMIN 的 dev 顶回来的，属实）：本条此前 notes 开头写着「NONE（未接任何链）」而 binding 已是 GATES_CHAIN——**账里两处自相矛盾，而本门自己看不见**；且 guardedPaths 漏了 apps/frontend-shell/src/locales，而该门实扫 locale 面（自证下界 1200，实测 1863 条字面量）。⇒ 判据③只比「binding vs 现算调用方」、判据④只比「guardedPaths 里的路径存不存在」，**都不度量「guardedPaths 是否覆盖门实际扫描的面」**。形态（铁律 0.6）：「我用『账里填的路径都存在』当作『账里填全了』的证据，而前者并不度量后者。」这条盲区已登记，补判据属另一张单。"
   },
   "check-baseline-writer-honesty.mjs": {
    "alias": "baseline-writer-honesty:check",
@@ -1698,6 +1699,62 @@
     "note": "本门**在建它的过程中就红过三次真的**（不是造出来的变异）：① 接手复跑时当场咬到 `.derivedTag` 11px —— 那是另一张单（WO-DISRUPTION-CARDS）落在集成线上的既有值，静态门 text-legibility 也红着但没人修；② `TEXT_ELS_FLOOR=60` 把 4 个**真渲染了**的页（what-if/cleanroom-attr/disruption-radius/sop-balance）判成「没渲染出来」，逐页 innerText 实测它们都有 279–850 字真内容 ⇒ 原值是拿 sim-sandbox 一页的手感定的，已按实测重标定为 12（真空态实测 4 · 最稀真实页 sop-balance 实测 25，取 12 落在两者之间）；③ 金丝雀样例的 CSS 注释里写了反引号，把模板字符串截断 ⇒ 门当场 RC=2，而不是把坏样例当好样例跑过去。变异反证 6/6 实跑，每条先证「变异体 ≠ 原文」（字节数变化；M2/M3 因等宽替换字节数不变，由 `git diff` 兜住并打印在案）再显式捕获退出码（`out=$(cmd 2>&1); rc=$?`，非管道尾 `$?`）：**M1（核心）** 把被测路由改成不存在的页 = 拆掉渲染 ⇒ RC=**2** 而非 0，报「量到文本元素 4 < 下限 12 ⇒ 页面没真渲染出来」；M2 把字号硬底 12 抬到 20 ⇒ RC=1「minFontPx=12 低于下限 20」；M3 把基线 minFontPx 改成 13（比实测好）⇒ RC=1「棘轮变坏 13→12」；M4 弄坏主逻辑的溢出判据（`VW+1` → `VW+999999`）⇒ 金丝雀当场瞎 RC=2 —— 「金丝雀与主判据共用同一份 measureLayout」由此**机验**，不是靠声明；M5 把 overflowUnreachable 并成 overflowEls（两个数合成一个）⇒ 金丝雀咬 RC=2；M6 dev server 连不上 ⇒ RC=2。六条还原后 `git status --porcelain` 空、复绿 RC=0。"
    },
    "notes": "守「这一屏能不能看」。病因是**门的分布**：本仓 62 道门全部在守「信息诚实」，一道都不守「版面」，于是「字太小 / 一屏塞几十行 / 控件不对齐 / 视口利用率低」这些用户第一眼就看见的问题在机器眼里完全不存在。形态（铁律 0.6 句式）：**「我用『62 道门全绿』当作『这一屏能看』的证据，而前者并不度量后者。」** 与既有两道门分工互不覆盖：`ui-first-layer` 数**源码里**第一层有几个信息块（静态 AST）；`text-legibility` 算**颜色够不够亮**（静态调色板 × 字号）；本门在**真 Chromium 布局后逐元素量几何**。前两者全绿而这一屏仍可以不能看。七项：最小可见字号(↑ 绝对下限 12) · 正文字号众数(↑ 下限 13) · 单屏可见交互控件数(↓ 只棘轮) · 视口利用率(↑ 只棘轮) · 左边缘未对齐的行组数(↓ 上限 0) · 横向溢出px(↓ 上限 0) · 溢出视口的元素数(↓ 只棘轮)，另有 `overflowUnreachable`「真够不着」绝对上限 0。⚠ **溢出的两个数永远分开报，不许合成一个**：前任只报了一个「415 个元素溢出视口」，读者会读成 415 个坏点，而真够不着的是 0；反过来只报「够不着=0」同样在骗人 —— **「够得着」不等于「好用」**，要横滚才看得见正是仓主说的「第一层看不到重点」。（诚实附注：本单在 12 页 × `main`/`body`/`#root` 三种扫描根上**都没能复现那个 415**，实测溢出元素恒为 0，且该页**一个可横滚容器都没有** ⇒ 前任「都在可横滚容器里」的解释与实测相反；该数未落盘，无从复算，故不采信、只保留判据。）⚠ 阈值**不许照抄参照物**（venture_twin_v2_7.html 的 body 13.5 / label 11.5 / small 10 / max-width 1520）：那是另一个产品的一屏，且它那几档装拉丁字母、本页这几档装中文，「取中间」在这里没有意义。绝对下限只取本仓自己可推导的数（minFontPx 12 = `text-legibility` 的 `FLOOR_PX`，是它判据 A 与本仓调色板的**交点**、非自由参数）；其余一律只做棘轮并逐条写明为什么不设绝对值（firstScreenCtrls 要重排信息架构 · viewportUsePct 天花板被外壳左导航 248px 卡住，两者都不在本单范围，硬设够不着的上限只会逼出豁免）。另有两条守恒判据防「删内容冒充版面变好」：C1 未对齐组变好时行组总数不许同时降（分母掉了分子当然掉）；C2 任一「越小越好」的项变好时文本元素数不许跌超 10%。⚠ **运维后果要当面说清**：本门进 gates 串后，**没有 Chromium 的环境跑 gates 会停在这里并报 RC=2**。那是**设计意图**不是故障 —— RC=2 的含义是「我没查出来」，既不是「你的代码有问题」，更不是「版面合格」。本仓既有 12 个 `scripts/ui-smoke-*.mjs` 一律 SKIP 成 `exit 0`（渲染不出来时报「通过」），本门刻意不走那条路。本容器已预置 `/opt/pw-browsers`；浏览器不在默认位置用 `PLAYWRIGHT_CHROMIUM` 指过去，**不许跑 `playwright install`**。⚠ 诚实边界：① 除横向溢出外各项都只在 `rootSelector` 指定的内容区内量、**不含外壳导航**（导航属 `ShellLayout.tsx`，算进来会让「换一个页面」与「改一次导航」在同一个数上互相污染）⇒ **本门绿不代表整屏没问题**；② 棘轮基线只铺 `sim-sandbox` **一页 × 两个视口**（1440×900 / 1280×800）—— 一天硬铺 12 页会产出 12 个没人维护的装饰件；其余 11 页由 `--survey` 逐页普查、填进 `docs/PRD-harness-ux-adoption.md` §4 的 U10 列，**普查不是门**（不参与棘轮），任一页渲染不出来普查即 RC=2，不许拿不完整的普查去填表。"
+  },
+  "check-derived-recompute.mjs": {
+   "alias": "derived-recompute:check",
+   "binding": "GATES_CHAIN",
+   "guardedPaths": [
+    "apps/datacore/src/synthetic/battery.ts",
+    "apps/datacore/src/synthetic/battery-extended.ts",
+    "apps/datacore/src/synthetic/service.ts",
+    "apps/datacore/src/ontology.ts"
+   ],
+   "escalation": "审核方",
+   "ontologyRef": "§7",
+   "provenRed": {
+    "kind": "MUTATION",
+    "evidence": "三组变异反证，逐条 out=$(cmd 2>&1); rc=$? 显式捕获退出码（非管道尾 $?）；其中两组是**改真源码 + 重新 pnpm --filter datacore build**，不是只拨环境开关",
+    "note": "M1-REAL 改错公式：把 battery.ts 的 interBaseTransferDerived 公式 dispatchDay + transitDays → dispatchDay + transitDays + 1，重新 build → RC=1，逐实例点名 InterBaseTransfer.etaDay 并给出 formula/重算值 6/预填值 5/差 -1（走判据 C2，因为该量种子里另有一份预填值）。M2-REAL 改错值（公式一字未动）：把种子行 etaDay: etaDay → etaDay: etaDay + 2，重新 build → RC=1，点名同一属性、重算值 5 / 预填值 7 / 差 2。M3-REAL 弄坏求值器：把 strictRecompute 的 const tokens = cls.tokens 改成读一个不存在的字段（TypeError）→ RC=**2 而非 0**，并打印「本次结论作废：不许读作『派生都对/无违规/通过』」。三条跑完全部还原，git status --porcelain 干净。",
+    "note2": "另有三组环境开关版可复跑：DERIVED_RECOMPUTE_MUTATE_FORMULA=\"Metric.delta=actual - target - 1\" → RC=1（点名 10 个实例，差 1）；DERIVED_RECOMPUTE_MUTATE_VALUE=\"Metric.gapPct=+1\" → RC=1；DERIVED_RECOMPUTE_BREAK_EVALUATOR=1 → RC=2。金丝雀与主判据**共用同一份实现**（classify / closureOf / compareOne / unitVerdict 四个主判定函数本尊），八条双向：抽取必中 Metric.delta→ARITH + Base.committedQty→AGG；compareOne(3,5) 必咬 / compareOne(3,3) 必不咬；closureOf 对不存在属性必咬 / 对真公式必不咬；unitVerdict 对 MaterialBalance.coverage 必咬 D1 / 对 Metric.gapPct 必不咬。"
+   },
+   "notes": "闭 G-DERIVED-FORMULA-UNVERIFIED：本体有 derivedProperties（带 formula）、派生管线按公式重算并物化到对象 props 上，但从来没有任何东西验过「这个 formula 真的能算出那个值」；而生产求值器 evalArithmetic（ontology.ts:78）对未知标识符**静默返 0**（实测 evalArithmetic(\"nope * 2\", {}) === 0），一条引用不存在属性的公式会安静把错数写进对象、全链零信号。既有覆盖现算：synthetic/service.ts:2030 的 derivationSpotChecks 只查 2 条派生属性各 1 个对象（唯一断言方 apps/datacore/test/synthetic.test.ts:25），而全库 14 条 ⇒ 12 条 × 全部实例今天一次都没被算过。本门**真跑生产派生管线本尊**（把出厂本体+种子种进内存仓 → OntologyService.runDerivations() → 读回 obj.props），再用门自己的**独立严格求值器**逐实例重算比对；受检集合现算（解析 synthetic/service.ts 的 putAll 调用），不手抄名册。四条判据：A 分类闭合（不可机械求值必须登记，禁静默跳过）· B/B2 标识符闭合与输入取数 · C 逐实例重算==实际值 + C2 种子预填值（值来自别的路径）· D 量纲棘轮。**诚实边界写在门头第一段**：判据 C 抓不到「公式写错了」除非该量另有独立来源——派生值就是公式算出来的，改错公式两边一致地错，这是「重算核对」方法本身的射程边界，14 条里今天只有 1 条（InterBaseTransfer.etaDay）有第二来源。",
+   "disposition": "WIRE"
+  },
+  "check-feature-default-parity.mjs": {
+   "alias": "feature-default-parity:check",
+   "binding": "GATES_CHAIN",
+   "guardedPaths": [
+    "apps/datacore/src/features.ts",
+    "apps/datacore/src/synthetic/view-manifest.ts",
+    "apps/frontend-shell/src/mocks/fixtures.ts",
+    "scripts/feature-default-divergence.json"
+   ],
+   "escalation": "仓主",
+   "ontologyRef": "§7 · §8 G-GSIM-LIVE-FLAG-STALE",
+   "provenRed": {
+    "kind": "MUTATION",
+    "evidence": "2026-08-17 真仓 + 样例双向变异全中（每次跑完还原、全部显式捕获退出码 out=$(cmd 2>&1);rc=$?）：【真仓】把 apps/datacore/src/features.ts 的 view.global-sim.live 改回 defaultOn:false（= 事故原态）→ RC=1 A1，报文逐字点明「⚠️ 这个 flag 前端绿不代表真部署看得见」；改回 true → RC=0。【样例·与主逻辑共用 violationsOf + lib/feature-defaults.mjs 抽取器，不另抄正则】必中 6：①未登记反向→A1 ④陈旧登记(已同值还留着)→A2 ⑤登记值与现算不符→A3 ⑥占位理由 why 太短→A4 ⑦没写「前端绿不证明真部署可见」→A5 ⑧悬空登记→A6；必不咬 2：②两侧同值→零违规 ③已登记且理由合规的反向→零违规；抽取器自证 2：⓪注释里的 defaultOn: true 不许被算进条目 ⓪b 子串计数与顶层走查两次独立测量必须相等。【RC=2】登记表改成非法 JSON → RC=2「⛔ 门自己坏了」并明说「不许读作两侧一致/无反向/代码干净」。",
+    "note": "本门是 2026-08-17 那次事故的机制化：view.global-sim.live 在 A 侧 features.ts 是 defaultOn:false、前端 mock fixtures.ts 是 true，<Feature> 是 R3 闸 ⇒ VITE_MOCK=1 的前端测试全绿、真部署那两块看不见。形态（铁律 0.6 句式）：「我用『前端测试绿』当作『这块功能真部署可见』的证据，而前者并不度量后者。」⚠️ 本门刻意**不禁止**反向 —— 实测在册的两条（sim.sandbox / decision.causal-graph）是合法反向：A 侧 false 是 L1，而 battery 行业模板的 L2 会把它们抬开，mock 照抄的是有效值不是 L1 字面量；禁止反向会逼人把 mock 改成照抄 L1，那会让 chain-line-map/transit-flow/physical-topology/node-inspector/chain-impediments 五个子视图被 requires 级联过滤掉（与 dark-launch 旧门同一种破坏力）。故判据是「反向必须登记且写明后果」，不是「不许反向」。与 dark-launch:check 分工：那门查「投放意图 vs 代码机制」，本门查「A 侧 vs mock 两份注册表」。"
+   },
+   "disposition": "GATES_CHAIN",
+   "notes": "两侧 defaultOn 反向登记门。登记表 scripts/feature-default-divergence.json（字段 backend/mock/why/frontendGreenProves/verifiedOn/verifiedBy）。诚实边界：只比 defaultOn 字面量（=L1），不解释 L2 行业模板/L3 租户 override/L4 角色收窄后的运行期有效值 ——「A 侧 defaultOn:false」≠「所有租户都看不见」；只看两侧都声明的键（一侧缺失归 nav-group-coverage:check 判据②）。升级路径=仓主：开关默认值是产品决策。--selftest 只跑金丝雀不看仓库现状。"
+  },
+  "check-branch-base.mjs": {
+   "alias": "branch-base:check",
+   "binding": "MANUAL",
+   "guardedPaths": [
+    "scripts/check-branch-base.mjs",
+    "docs/WO-HEADER-repo-and-branches.md"
+   ],
+   "escalation": "审核方",
+   "ontologyRef": null,
+   "provenRed": {
+    "kind": "MUTATION",
+    "evidence": "2026-08-17 建门时 --selftest 四条金丝雀（HEAD..HEAD 双 0 · 祖先方向不反 · 后代方向不反 · 包含关系不反）真跑；解不开的引用 → RC=2「工具坏了」而非 RC=0。",
+    "note": "本门不守仓库文件，守的是**开工前提**：一条 handoff 分支的分叉点离集成线多远。它报的 ontoAheadOfFork 就是「这条分支的一切相对基线结论的失效半径」——分叉点越旧，dev 说的『某文件零 diff』『这条红是既存的』『只改了 N 行』就越可能度量的是另一棵树。来历：一条交单分支从 main 开出（落后 2418 个提交），六项证据 + 一轮独立复验全部走完才发现基线错了。⚠ 诚实边界：只量拓扑距离，不判内容对不对，也不判 rebase 会不会冲突。"
+   },
+   "notes": "MANUAL：本门是**派单/交单流程**的两个卡点（开工步骤 2 + 交单 T5 各跑一次），不是仓库内容门，故不入 gates 串——入串会让每次 gate 去解远端引用、离线即 RC=2 假红。用法 `node scripts/check-branch-base.mjs <分支> [--onto=<集成线>] [--max=N]`，默认 onto = origin/claude/verify-reclaim-6、阈值 200。RC 三分：0 基线够新 · 1 太老须先 rebase · 2 工具坏了（不许读作没问题）。 ⚠ guardedPaths 的语义在本门上与别的门不同，写明免得被读错：本门守的是**分支的分叉点**、不是仓库里的文件，所以这里填的是「改了它就必须重跑本门」的两份东西——门自己的实现，以及派单头里那张写死集成线名字的分支表（集成线换名而这两处不同步，本门会拿旧的 onto 去量，量得越准错得越彻底）。",
+   "disposition": "MANUAL"
   }
  }
 }

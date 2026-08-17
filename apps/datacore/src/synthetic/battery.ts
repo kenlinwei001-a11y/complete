@@ -2310,6 +2310,112 @@ export function propDisplayName(typeKey: string, propKey: string): string | unde
   return PROP_DISPLAY_NAMES[`${typeKey}.${propKey}`];
 }
 
+// ---------------------------------------------------------------------------
+// WO-STATEVAR-DISPLAYNAME · **推演状态变量**中文业务名单一真值表
+//
+// ── 病灶（实测判形态：三分法的「没接线」，不是「接了线没数据」）─────────────────────
+// 推演相关的四处屏（沙盘 KPI 逐变量读数 · 扰动落点下拉 · 传导边开关面板 · 对照差异表）
+// 一律显示**裸键**（`loadIndex` / `demandLoad`）。追调用链后判定为**没接线**：
+//   · 本体侧：`loadIndex` 等在 `apps/datacore/src/synthetic/` **一次都不出现**（实测 RC=1，
+//     金丝雀 `util` RC=0 ⇒ 工具是好的）—— 它们**不是** `PropertyDef`，对象上不带这些值；
+//   · 契约侧：`SandboxViewConfig.stateVars` 是 `string[]`、`PropagationRule` 只有
+//     `sourceTypeName`/`targetTypeName`（对象类型的人话名，那一路早已接通且有数据）——
+//     **全链没有任何字段承载状态变量的名字**；
+//   · 前端侧：`EdgeActivePanel.tsx` 顶注当时如实写着「状态变量在全仓没有任何中文名 …
+//     第一级不给它编一个名字」——那是**诚实缺席**，缺的是真值源，不是渲染。
+// ⇒ 修法是**接线 + 补真值源**（补一张后端单源表 + 两条读时投影 + 前端消费），
+//   不是「补 displayName 数据」（没有可补的宿主字段），更不是前端自己编名字。
+//
+// ── 为什么**不**把它们登记成 `PropertyDef`（顶掉派单里的推荐修法，理由三条）──────────
+//   ① **会撒谎**：`PropertyDef` 的语义是「这个类型的对象带这个属性」。状态变量只活在
+//      `SimTickState.state[objectId][var]`（推演世界态），真对象上**没有**这一格。登记成属性 ⇒
+//      对象详情/目录/求解器字段表里多出一批**永远空**的列，等于用本体断言了一件假事。
+//   ② **会污染喂 LLM 的属性清单**：`type-semantics` 把属性名下发给 B 侧接地 prompt，
+//      多出 36 个对象上取不到值的属性名 = 模型照着要值却恒空（改错不报错的那一类）。
+//   ③ **本体里那个同名字段今天没有数据**：`ObjectTypeDef.stateVariables` 实测 94 类全空。
+//      ⚠️ 2026-08-17 审核方复核订正（本条初稿的病因写错了，照它修会修错方向）：
+//      初稿写「upsertType 逐字段重建 def 时**根本不抄**它 ⇒ 挂上去会落不了库，属『接了线接错地方』」——
+//      **两句都不成立**。实测 `ontology.ts` 的 upsertType 早已是 `{ ...input }` **展开写法**
+//      （`WO-D6` 就是为了修「手抄白名单漏了 7 个 OntoFlow 扩展字段」而改的，那条注释里
+//      逐字列着 `stateVariables`）⇒ **落得了库**。而且它有 5 处真 src 消费方：
+//      `process/inspect.ts` 的属性归属判定 · `pipeline/subgraph.ts` 的 buildTypeDefs 读写 ·
+//      `pipeline/service.ts` 的 STATIC 建模校验 · `app.ts` 的 REST 入参 schema。
+//      ⇒ 正确形态是**「接了线没数据」**（`ontology/slice-layers.ts` 早就这么分类了），
+//      **不是**「没接线」也不是「接了线接错地方」——三者修法完全不同（补数据 / 接线 / 补挂载点）。
+//      **本条的结论不变**（仍然不该拿它承载展示名：它的语义是 OntoFlow 建模产出的状态变量声明，
+//      不是给人看的名字），变的只是理由。留这段订正是因为**写在最容易被信的地方的错误病因，
+//      比没有病因更危险** —— 照初稿去修，会有人去查一个并不存在的落库 bug。
+// 故按本仓已验证过的 `PROP_DISPLAY_NAMES` 同一条纪律：**补一层展示名**，不动接线名、不动本体形状。
+//
+// ── 为什么按**裸变量名**建表，而不是 `Type.var` ──────────────────────────────────
+// 沙盘 KPI 与扰动下拉吃的是 `SandboxViewConfig.stateVars: string[]` —— 它是**跨类型去重**后的
+// 清单，屏上根本拿不到类型。若按 `Type.var` 建表，这两处永远查不到名字（等于没修）。
+// 且实测同名变量跨类型语义一致：`costPressure` 同时挂 Model/Order（皆「成本压力」）、
+// `shortageRisk` 同时挂 Material/Order（皆「短缺风险」）—— 名字属于**变量本身**，不属于 (类型,变量) 对。
+// 按 `Type.var` 建表反而会给同一个变量留下两个中文名的空间 = 自造第二套真相源。
+//
+// ── 诚实留白（同 PROP_DISPLAY_NAMES）───────────────────────────────────────────
+// **只登记能从种子规则注释直接读出业务因果的变量**。本表 36 条**逐条**引自
+// `apps/datacore/src/seed.ts` 的 `DEMO_PROPAGATION_RULES` 段内注释（如「② 型号需求负载 →
+// 沿"型号可产于基地"边推到基地负载指数」⇒ `loadIndex` = 负载指数），不是照英文键面意思意译。
+// 未登记者下游一律回落裸键（不渲染空白、不编名字）。
+// ---------------------------------------------------------------------------
+export const STATE_VAR_DISPLAY_NAMES: Record<string, string> = {
+  // ── 需求向：Order.demandPressure → Model.demandLoad → Base.loadIndex ──
+  demandPressure: "需求压力", demandLoad: "需求负载", loadIndex: "负载指数",
+  // ── 产能向（卡点 BOTTLENECK）：Base.loadIndex → Line.utilPressure → Process.queuePressure ──
+  utilPressure: "利用率压力", queuePressure: "排队压力",
+  // ── 供应向（断点 MATERIAL）：Supplier.deliveryDelay → Material.shortageRisk → Model.supplyRisk → Order.shortageRisk ──
+  deliveryDelay: "交付延迟", shortageRisk: "短缺风险", supplyRisk: "供应风险",
+  // ── 交付向（时长）：Material.shortageRisk → PurchaseOrder.expeditePressure → IncomingInspection.queueDays ──
+  expeditePressure: "加急压力", queueDays: "排队天数",
+  // ── 成本向（消耗）：Material.priceShock → Model.costPressure → Order.costPressure ──
+  priceShock: "价格冲击", costPressure: "成本压力",
+  // ── 现金向（消耗）：Order.costPressure → Customer.receivablePressure → ARInvoice.overduePressure ──
+  receivablePressure: "应收压力", overduePressure: "逾期压力",
+  // ── D07 生产制造 · 换型 / 执行链：产线利用率 → 工单 → 在制 → 缺陷 → 异常处置 ──
+  changeoverPressure: "换型压力", releasePressure: "工单下达压力", feedPressure: "投料压力",
+  inspectBacklog: "检验积压", defectPressure: "缺陷压力", handlingBacklog: "异常处置积压",
+  // ── D05 采购与供应：批次周转 / 清关排队 / 替代料切换 / MRP 缺口 / 供应商绩效复评 ──
+  turnoverPressure: "批次周转压力", clearanceQueueDays: "清关排队天数",
+  switchPressure: "替代料切换压力", gapPressure: "缺口压力", reviewPressure: "绩效复评压力",
+  // ── D09 设备与维护：工序排队 → 设备负荷 → 维修派工积压；基地负载 → 检修窗挤压 ──
+  loadPressure: "设备负荷压力", repairBacklog: "维修派工积压", windowSqueeze: "检修窗挤压",
+  // ── D10 基地与仓储交付：认证排队 / 成品提货 / 来料催交 ──
+  qualificationQueue: "认证排队", drawdownPressure: "成品提货压力",
+  inboundExpeditePressure: "来料催交压力",
+  // ── D06 计划与排产：基地负载 → 跨基地调拨决策压力 ──
+  transferPressure: "跨基地调拨压力",
+  // ── D03 销售与客户：拆行 / 交期承诺 / 收货暂扣 / 逾期催收 ──
+  splitPressure: "订单行拆分压力", promiseRisk: "交期承诺风险",
+  deliveryHoldRisk: "收货暂扣风险", collectionPressure: "逾期催收压力",
+};
+
+/**
+ * 推演状态变量中文业务名解析（裸变量名精确命中；未登记 → `undefined` = 诚实留白，调用方回落裸键）。
+ * **全平台唯一入口** —— 两条读时投影（`GET /a/v1/sim/view-config`、`GET /a/v1/sim/propagation-rules`）
+ * 都经此，前端不留第二份映射（单源 > 并存）。
+ */
+export function stateVarDisplayName(stateVar: string): string | undefined {
+  return STATE_VAR_DISPLAY_NAMES[stateVar];
+}
+
+/**
+ * 把一批状态变量投影成 `裸键 → 中文名` 字典（**只收登记过的**）。
+ *
+ * 未登记的键**故意不进字典**，而不是填 `null` 或回填裸键：字典里出现 `loadIndex: "loadIndex"`
+ * 会让前端分不出「查到的名字恰好等于键」与「没查到」，屏上也就无从表达"这是回落"。
+ * 键不在字典里 = 明确的"没有名字"，前端据此走回落分支并标记。
+ */
+export function stateVarDisplayNames(stateVars: readonly string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const v of [...stateVars].sort()) {
+    const zh = stateVarDisplayName(v);
+    if (zh !== undefined) out[v] = zh;
+  }
+  return out;
+}
+
 /** 给一组 PropertyDef 贴上中文业务名（已自带 displayName 的不覆盖；未登记的保持缺省）。 */
 export function withPropDisplayNames(typeKey: string, props: PropertyDef[]): PropertyDef[] {
   return props.map((p) => {

@@ -14,6 +14,10 @@ import { RecomputeConfirmDialog } from "@/components/RecomputeConfirmDialog";
 // `provenance` 只出现在类型定义与 hover 的 title= 串里，屏上结论读数一个出处都没有。
 import { Provenance } from "@/components/Provenance";
 import { useLiveSolver } from "./useLiveSolver";
+// WO-U3-DAG-REST · 判据 U3（过程图 + 点节点看凭什么）—— 结构与画法与样板两页同源，
+// 见 `reasoningGraph.ts` 头注；本页**不另建**一套。
+import { ProcessGraphPanel } from "./ProcessGraphPanel";
+import { assertReasoningGraph, type ReasoningGraph } from "./reasoningGraph";
 import { MultiObjWhatifPanel } from "./MultiObjWhatifPanel";
 import { GlobalSimLevers, type LeverState, type FreeLever, type LeverCandidate, type LeverDeltaVM } from "./GlobalSimLevers";
 import { GlobalSimScenarioBar, type ScenarioSnapshotInput } from "./GlobalSimScenarioBar";
@@ -71,6 +75,106 @@ interface PortResult {
   dueComparison?: GlobalSimDueComparison[];
   methodScenario?: GlobalSimMethodScenario;
 }
+
+/**
+ * ══ WO-U3-DAG-REST · `global-sim` 推演结构（判据 U3 过程图）══
+ *
+ * ── 顶回上一单的判定 ──────────────────────────────────────────────────────────
+ * `WO-U3-DAG-DESIGN` 判本页「缺**产品裁决**（这页的『过程』是什么没定）」而挂账。
+ * 复核后不成立：本页的过程**不用裁决，代码里读得出来** —— 一次 `portfolio` 联合求解，
+ * 输出扇出到几块并排面板，**哪块读哪个字段**是写死在本文件里的：
+ *  · 热力矩阵 ← `capacityLedger`（`matrix` useMemo 逐格取 cap/allocated）
+ *  · 客户级影响 ← `displaced`（`<CustomerImpactBar displaced={d.displaced} …>`）
+ *  · 按期率 ← `primaryScen.objectiveValues.ontime ÷ (servedCount + displacedCount)`
+ *  · 采纳草案 ← `allocation` 里 `kind==="order" && !committed` 的那批
+ * 「过程是什么」= 这张扇出图，不是一个待拍板的产品问题。
+ * 形态（铁律 0.6）：**「我用『没人裁决过』当作『没法确定』的证据，而前者并不度量后者。」**
+ *
+ * ── 这一页凭什么必须画图 ──────────────────────────────────────────────────────
+ * 分叉：一次解产出**三个互补切片**（获排 ∥ 被挤 ∥ 产能台账）——
+ * 屏上它们分散在矩阵、读数条、底栏三处，看不出是同一次解。
+ * 汇合：**按期率的分母同时要获排与被挤**（`servedCount + displacedCount`）——
+ * 少看一半就会把「按期率高」读成「排得好」，而它也可能是「大量订单被挤掉之后剩下的都按期」。
+ * 这两件事步骤条都表达不了 ⇒ `isLinearChain(GS_GRAPH) === false`。
+ */
+const GS_GRAPH: ReasoningGraph = assertReasoningGraph({
+  layerTitles: ["入参与杠杆", "联合求解", "解的三个面", "读数与结论"],
+  nodes: [
+    {
+      key: "inputs", layer: 0, label: "入参与杠杆", sub: "订单三态 · 目标 · 旋钮",
+      data: "orderIds / frozenOrderIds / objective / frozenCapacityMode / method(+weights|priority|epsilon) / levers[]",
+      solver: "页面入参 · 未求解",
+      rule: "订单三态（参与 ✓ / 固定 🔒 / 排除 ☐）与杠杆全部进求解入参；改任一项 → 参数与结果不一致即置灰，绝不让屏上结果与旁边的参数对不上",
+      ruleKind: "projection",
+      note: "复算这一屏必须带齐这一整组入参：少一样得到的就是另一份排产。",
+    },
+    {
+      key: "solve", layer: 1, label: "联合求解", sub: "两阶段 · CP-SAT",
+      data: "status / feasible / optimal / reconChecks",
+      solver: "portfolio（twoStage）",
+      rule: "「可证最优」⟺ 求解器证到 OPTIMAL；未证到只报 FEASIBLE，不许把可行解说成最优解",
+      ruleKind: "projection",
+      note: "结果是算法在产能约束下比较出的优选方案，**不是数据库里已发生的事实**。",
+    },
+    {
+      key: "alloc", layer: 2, label: "获排分配", sub: "排下了的那批",
+      data: "allocation[]（item / base / window / qty / delayDays / onTime）",
+      solver: "portfolio",
+      rule: "逐条带 provenance（drillType/drillId/drillField/drillValue），可下钻到 Line/Order/Material 的真值",
+      ruleKind: "projection",
+    },
+    {
+      key: "displaced", layer: 2, label: "被挤订单", sub: "产能排不下的",
+      data: "displaced[]（orderId / kind / qty / model / provenance）",
+      solver: "portfolio",
+      rule: "被挤 = 产能排不下、被联合求解挤出决策集的订单；产能台账守恒（一份产能只算一次）",
+      ruleKind: "projection",
+    },
+    {
+      key: "ledger", layer: 2, label: "产能台账", sub: "基地 × 窗口",
+      data: "capacityLedger[]（baseId / window / cap / allocated）",
+      solver: "portfolio",
+      rule: "占用率 = allocated ÷ cap，逐（基地,窗口）格算；cap ≤ 0 的格不参与瓶颈排序（除数为 0 不臆造 100%）",
+      ruleKind: "projection",
+      formula: "占用率(基地,窗) = allocated ÷ cap",
+    },
+    {
+      key: "ontime", layer: 3, label: "按期率", sub: "获排 ∥ 被挤 两者都要",
+      data: "scenarios[primary].objectiveValues.ontime / servedCount / displacedCount",
+      solver: "portfolio",
+      rule: "按期率 = 该方案按期完成数 ÷（获排单 + 被挤单）——**分母含被挤单**，否则挤掉一半再算按期率必然虚高",
+      ruleKind: "projection",
+      formula: "按期率 = ontime ÷ (servedCount + displacedCount)",
+      note: "这是本图上唯一的汇合点：只看获排那一支会得出一个系统性偏高的数。",
+    },
+    {
+      key: "matrix", layer: 3, label: "占用矩阵", sub: "挤压点在哪",
+      data: "由 capacityLedger 派生的 (基地,窗) → {cap, allocated} 映射",
+      solver: "portfolio",
+      rule: "只画 allocated > 0 的基地列（零占用的基地不占版面，也不冒充「有产能未用」）",
+      ruleKind: "projection",
+    },
+    {
+      key: "customer", layer: 3, label: "客户级影响", sub: "谁被挤了",
+      data: "displaced[] × 订单台账（客户名 / DemandSegment / 交付地 / 影响额）",
+      solver: "portfolio · displaced 联本体对象",
+      rule: "客户名与细分取自真对象（非写死）；被挤单逐条落到客户 —— 「被挤 N 单」这个数不对时，先核这张表里哪一单不该被挤",
+      ruleKind: "projection",
+    },
+  ],
+  edges: [
+    { from: "inputs", to: "solve" },
+    // 分叉：一次解的三个互补切片。
+    { from: "solve", to: "alloc" },
+    { from: "solve", to: "displaced" },
+    { from: "solve", to: "ledger" },
+    // 汇合：按期率的分母同时要获排与被挤。
+    { from: "alloc", to: "ontime" },
+    { from: "displaced", to: "ontime" },
+    { from: "ledger", to: "matrix" },
+    { from: "displaced", to: "customer" },
+  ],
+});
 
 /** ⑤ 方法旋钮目标键（与求解器 objectiveValues 同口径·中文标签）。 */
 const OBJ_KNOB_KEYS = ["ontime", "cost", "changeover", "delay", "fgInventory"] as const;
@@ -807,6 +911,12 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                 <div className={styles.summary}>目标交期 = 订单原始交期；可达交期 = 联合求解真实排产交付日（含两阶段在途）；差 = 可达 − 目标（正 = 晚于目标）。设最终交期放宽最晚可排窗 → 引擎在更晚窗真承接（而非被挤）·非写死。</div>
               </div>
             )}
+
+            {/* 判据 U3 · 推演过程图（结果读数**之前**：先说清这一屏是怎么算出来的，再看数）。
+                它比下面并排的几块读数多说的那件事：**一次求解的三个面**（获排 / 被挤 / 产能台账）
+                是同一次解的互补切片，而按期率**同时**要获排与被挤两个数才算得出来（真汇合）。
+                并排摆着的面板看不出这层关系，图上一眼看得出；点任一环 → 面板出该环的来源与规则。 */}
+            {d && <ProcessGraphPanel graph={GS_GRAPH} testId="global-sim-process-graph" />}
 
             {/* 求解结果读数（KPI 卡） */}
             {d && primaryScen && (

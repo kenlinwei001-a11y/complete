@@ -1,0 +1,200 @@
+/*
+ * WO-SANDBOX-CONFIG-UX · 扰动因素 × 本体关系 同屏配置面板的版面。
+ *
+ * ⛔ **一个十六进制都不许写死**（与 `EdgeActivePanel.module.css` 同一条）：本页在暗/亮/暖
+ *    三套主题下渲染，写死色值就是三套里坏两套。全部走 `styles/tokens.css` 的语义 token。
+ *
+ * ── 两列比例：`1fr | 1.25fr`（右列更宽）───────────────────────────────────────
+ * 取自 `docs/REF-ontology-twin-ux.html` 的 `.cfg`（`minmax(0,1fr) minmax(0,1.25fr)`），
+ * 而**不取**第一份参照物的 `1fr 1fr`。理由是我们右列装的东西比它多一层：
+ * 关系**表**（chip 切片 + 35 行开关 + 差值表）**再加一张图**，等宽会把图挤成一条缝。
+ * ⚠ 这不是"抄了另一个数"——两份参照物给了两个比例，我按"右列装几样东西"选了其中一个，
+ *   并把理由写在这里；下一个人要改，改的是这条理由，不是这个数。
+ *
+ * ── 断点 1100px ─────────────────────────────────────────────────────────────
+ * 与 `SandboxConsole.module.css` 的 `.zones` 用**同一个断点**，不另发明一个：
+ * 两处在同一屏上，各用各的断点会出现"外层还是两栏、内层已经堆叠"的错位中间态。
+ *
+ * ── 字号硬底 12px ───────────────────────────────────────────────────────────
+ * `check-text-legibility.mjs` 的 `FLOOR_PX` 与 `layout-legibility:check`（真浏览器实测）
+ * 指向同一档。本文件**没有任何一处低于 12px**；改这里必须同步改这一句，
+ * 否则就成了"注释替代码撒谎"（`EdgeActivePanel.module.css` 记着这条教训）。
+ */
+
+.cfg {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 12px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .cfg {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 列头：列名 + 「这一列回答什么」。与 `SandboxConsole` 的 `.zoneHead` 同构，
+   字号压在标题级 —— 最大一级只留给「这一页要回答的那个数」（R-UI-2）。 */
+/* ⚠ `padding: 0`（不是 2px）：列头与本区左边缘**齐平**。
+   那 2px 是从 `.zoneHead` 顺手抄来的，在这里没有任何作用 —— 而它实测**要花掉视口利用率**
+   （`layout-legibility` 的 M4 量的是第一屏墨迹最左/最右之差 ÷ 视口宽，左边每缩 1px 就少 1px）。 */
+.colHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0;
+}
+.colHead h3 {
+  margin: 0;
+  font: 700 13px/1.4 var(--font-sans);
+  color: var(--txt);
+}
+.colQ {
+  font: 400 12px/1.4 var(--font-sans);
+  color: var(--muted2);
+}
+
+/* ── 卡片 ─────────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 10px 10px;
+  min-width: 0;
+}
+.cardTitle {
+  margin: 0;
+  font: 700 13px/1.5 var(--font-sans);
+  color: var(--txt);
+}
+/* 「这一卡填什么」——参照物每张卡都有这一行；缺了它，卡片只是个容器。 */
+.cardHint {
+  margin: 3px 0 8px;
+  font: 400 12px/1.6 var(--font-sans);
+  color: var(--muted2);
+}
+.cardBody {
+  min-width: 0;
+}
+
+/* ── 关系表（宿主传进来的整块）───────────────────────────────────────────────
+   它自带内边距，这里只负责给它一条与下方图的分隔线，不重排它内部任何东西。 */
+.relationTable {
+  min-width: 0;
+  margin: -10px -10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* 图区（头 / 画布 / 图例 / 算式）**全出血到卡片边缘**，与上方关系表同一口径。
+   两个作用，都不是装饰：① 图本来就是这张卡里最需要宽度的东西，卡片内边距是白白让出去的；
+   ② `layout-legibility` 的 M4（视口利用率）量的是第一屏墨迹跨度 —— 右侧那行计数
+   （`margin-left:auto`）每往右 1px，这个数就多 1px。 */
+.graphHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px -10px 6px;
+  padding: 0;
+}
+.graphCount {
+  margin-left: auto;
+  font: 400 12px/1.5 var(--font-mono);
+  color: var(--muted);
+}
+
+/* 图自己横向滚 —— **页面 body 绝不横向滚**（宽图是本页最容易把整页撑破的东西）。 */
+.graphWrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0 -10px;
+  padding: 4px 0 2px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 6px 0 0;
+  padding: 0 6px 4px;
+  font: 400 12px/1.6 var(--font-sans);
+  color: var(--muted);
+}
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ── 算式清单 ──────────────────────────────────────────────────────────────
+   本单要害缺口的落点：改前这个位置写的是「系数 0.35 · 延迟 1 tick」（把公式写成了参数）。
+   ⚠ 它**不是**悬停浮层：本仓有一条既有棘轮「SVG <title> 恒为 0 · 原生 title 只降不升」
+     （2026-08-10 悬停提示滞留遮挡那次事故立的），本单初稿塞进 <title> 被它当场报红。 */
+.formulaList {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.formulaRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 3px 6px;
+  border-left: 2px solid var(--line2);
+  background: var(--bg2);
+  border-radius: 0 3px 3px 0;
+}
+.formulaRow[data-active="false"] {
+  border-left-color: var(--danger);
+}
+.formulaText {
+  font: 400 12px/1.6 var(--font-mono);
+  color: var(--txt);
+  word-break: break-word;
+}
+.formulaTag,
+.formulaOff {
+  font: 400 12px/1.6 var(--font-sans);
+  color: var(--muted);
+}
+.formulaOff {
+  color: var(--danger-txt);
+}
+
+/* 下游读数：这一行的两个数就是「关掉一条边 ⇒ 当场变小」的落点，故留在第一层。 */
+.reach {
+  margin: 8px 0 0;
+  font: 400 12px/1.7 var(--font-sans);
+  color: var(--txt);
+}
+.noteInline {
+  color: var(--muted2);
+  margin-left: 6px;
+}
+
+.note {
+  margin: 6px 0 0;
+  font: 400 12px/1.7 var(--font-sans);
+  color: var(--muted);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent-txt);
+}

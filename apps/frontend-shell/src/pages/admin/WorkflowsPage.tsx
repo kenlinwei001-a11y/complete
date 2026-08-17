@@ -218,7 +218,8 @@ function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition;
 
       {breaking && (
         <div className="panel" style={{ borderColor: "var(--danger)", marginBottom: 8 }} data-testid="wf-breaking-gate">
-          <div className="badge red" style={{ marginBottom: 6 }}>BREAKING_CHANGE_WITH_LATEST_REFS</div>
+          {/* 出处（工程师层，不上屏）：后端错误码 BREAKING_CHANGE_WITH_LATEST_REFS（见上方 onError 分支）。 */}
+          <div className="badge red" style={{ marginBottom: 6 }}>不兼容改动 · 已有引用方会受影响</div>
           <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>{breaking}</p>
           <button className="btn danger sm" disabled={publishMut.isPending} onClick={() => publishMut.mutate({ force: true })} data-testid="wf-force-publish">
             强制发布（force=true · catalog_admin · 全审计）
@@ -688,7 +689,8 @@ function RuleRefMultiSelect({
             disabled={disabled}
             onChange={() => onChange("ALL_APPLICABLE")}
           />
-          <span>ALL_APPLICABLE（按求解器 SOLVER_RULE_REFS 自动取适用规则）</span>
+          {/* 出处（工程师层，不上屏）：适用规则取自契约包的 SOLVER_RULE_REFS 映射。 */}
+          <span>ALL_APPLICABLE（按求解器自动取适用规则）</span>
         </label>
         <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
           <input type="radio" data-testid={`${testid}-pick`} checked={!isAll} disabled={disabled} onChange={() => onChange([...selected])} />

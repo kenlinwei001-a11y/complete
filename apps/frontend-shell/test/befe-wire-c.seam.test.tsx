@@ -133,8 +133,12 @@ describe("WO-BEFE-C · 接缝② GET /b/v1/queries/:taskId/agent-runs（这一�
     // 复数读端（本单新接）：可是它真叫了一个角色去跑 —— 不接这条，用户只会看到上面那句
     const panel = within(detail).getByTestId("task-agent-runs");
     expect(within(panel).getAllByTestId("task-agent-run-row").length).toBe(1);
-    // 并且必须把「这两句不矛盾」明说出来，而不是让用户自己猜
-    expect(within(panel).getByTestId("task-agent-runs-rootless").textContent).toContain("同时为真");
+    // 并且必须把「这两句不矛盾」明说出来，而不是让用户自己猜。
+    // ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK-ADMIN 把文案从「**同时为真**」（未渲染的 md 星号 +
+    //   逻辑学腔）改成「两句都是真的 …… 不是自相矛盾」。断言随之改咬**这句话的意思**
+    //   （明说了两句不矛盾），而不是某个特定措辞 —— 但仍然是硬断言：
+    //   把这句解释删掉或改成不解释，这里照样红。
+    expect(within(panel).getByTestId("task-agent-runs-rootless").textContent).toContain("不是自相矛盾");
   });
 
   it("变异反证：后端多返一条顶层运行 → 条数、扇出数、rootless 说明必须同时跟着变", async () => {

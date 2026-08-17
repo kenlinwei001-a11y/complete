@@ -8,6 +8,10 @@ import zh from "@/locales/zh";
 // 本页走 App.tsx 的专用 route，不经 ViewPage ⇒ 必须自己调 usePageView（理由见 shared.tsx 该函数注释）。
 import { ExportReportButton, usePageView } from "../sim/shared";
 import type { ProvenanceReport } from "../sim/exportProvenance";
+// WO-U3-DAG-REST · 判据 U3（过程图 + 点节点看凭什么）。结构与画法与样板两页同源
+// （见 `views/sim/reasoningGraph.ts` 头注）——本页**不另建**一套。
+import { ProcessGraphPanel } from "../sim/ProcessGraphPanel";
+import { assertReasoningGraph, type ReasoningGraph } from "../sim/reasoningGraph";
 import {
   bottleneckCandidates,
   concentrationCandidates,
@@ -131,6 +135,181 @@ function PrimaryPicker({
   );
 }
 
+/**
+ * ══ WO-U3-DAG-REST · `cleanroom-attr` 推演结构（判据 U3 过程图）══
+ *
+ * ── 顶回上一单的判定 ──────────────────────────────────────────────────────────
+ * `WO-U3-DAG-DESIGN` 判本页「缺**产品裁决**」而挂账。复核后不成立：
+ * 本页是**三个独立求解器各一档**（tab 切换），每一档的过程都由代码写死、没有可裁决的余地 ——
+ * 「参数倒推 → 求解 → 若干并列产物 → 判定」。要裁决的只是「画几张图」，
+ * 而这个问题**本页自己的信息架构早就答了**：三个 tab 三个求解器 ⇒ **一档一张图**，
+ * 把三条互不相干的链画进一张图才是杜撰。
+ *
+ * ── 本页的图为什么第一层必须是「参数倒推」（这一环别处没有）─────────────────────
+ * 本页求解器入参**不是写死的**，是从真对象类型结构倒推出来的（`deriveArgs.ts`）。
+ * 用户看到「XX 是瓶颈」时最该问的第一个问题是**「你凭什么把 XX 当成资源类型」** ——
+ * 这个问题的答案不在求解器里，在倒推规则里。所以倒推是链上的第 0 环，
+ * 且它的 `data` 必须写出**这一次真正用的那组参数**（不是参数名清单）：
+ * 参数换了、结论跟着换，屏上当场看得出。
+ */
+function bottleneckGraph(cand: BottleneckCandidate): ReasoningGraph {
+  const a = cand.args;
+  return assertReasoningGraph({
+    layerTitles: ["参数倒推", "共享瓶颈求解", "瓶颈与争用", "降级判定"],
+    nodes: [
+      {
+        key: "args", layer: 0, label: "参数倒推", sub: `${a.sharedByType} → ${a.resourceType}`,
+        data: `resourceType=${a.resourceType} · sharedByType=${a.sharedByType} · viaField=${a.viaField} · capacityField=${a.capacityField} · demandField=${a.demandField}`,
+        solver: "前端倒推 deriveArgs.bottleneckCandidates（未求解）",
+        rule: "候选 = 「有数值字段且被引用的资源类型」×「引用它且有需求字段的共享者类型」；按字段名语义强度打分（产能命名 +2 · 需求命名 +2 · 优先级 +1），同资源取分最高的共享者",
+        ruleKind: "projection",
+        note: "参数非写死：换主类型即换参数即重解。复算时必须用同一组倒推参数，否则得到的是另一个问题的答案。",
+      },
+      {
+        key: "solve", layer: 1, label: "共享瓶颈求解", sub: "需求和 vs 产能",
+        data: "shared_bottleneck 响应（bottlenecks / contention / downgraded / summary）",
+        solver: "shared_bottleneck",
+        rule: "按共享资源分组汇总需求；同输入同输出（确定性）",
+        ruleKind: "projection",
+      },
+      {
+        key: "bottlenecks", layer: 2, label: "瓶颈资源", sub: "需求和 > 产能",
+        data: `bottlenecks[]（resourceId / capacity=${a.capacityField} / demand=Σ${a.demandField} / sharerCount）`,
+        solver: "shared_bottleneck",
+        rule: "瓶颈 ⟺ 该资源上「需求和 > 产能」**且**争用者 ≥ 2 —— 单方独占把产能用满不算共享瓶颈（没人跟他抢）",
+        ruleKind: "projection",
+        formula: "超出 = demand − capacity",
+      },
+      {
+        key: "contention", layer: 2, label: "争用方", sub: "是哪几方在抢",
+        data: "contention[].sharers（逐资源的争用者 id 列表）",
+        solver: "shared_bottleneck",
+        rule: `争用者 = 经 ${a.viaField} 引用同一资源的 ${a.sharedByType} 对象；沿真 ref 边取，不按名字猜`,
+        ruleKind: "projection",
+      },
+      {
+        key: "downgraded", layer: 3, label: "被降级对象", sub: "谁让位",
+        data: "downgraded[]（resourceId / sharedByType / objectId / reason）",
+        solver: "shared_bottleneck",
+        rule: "在瓶颈资源上按优先级字段排序取让位者，理由（reason）由求解器给出、前端原样透传不改写",
+        ruleKind: "projection",
+        note: `优先级字段：${a.priorityField ?? "（本次倒推未命中优先级字段——降级顺序按求解器缺省口径，不是业务优先级）"}`,
+      },
+    ],
+    edges: [
+      { from: "args", to: "solve" },
+      // 分叉：一次求解的两个互补面（哪个资源紧张 ∥ 是谁在抢）。
+      { from: "solve", to: "bottlenecks" },
+      { from: "solve", to: "contention" },
+      // 汇合：判谁让位，两个都要（先得是瓶颈，再得知道有哪几方）。
+      { from: "bottlenecks", to: "downgraded" },
+      { from: "contention", to: "downgraded" },
+    ],
+  });
+}
+
+function concentrationGraph(cand: ConcentrationCandidate): ReasoningGraph {
+  const a = cand.args;
+  const chain = `${a.startType}${a.path.map((h) => ` —${h.viaField}→ ${h.toType}`).join("")}`;
+  return assertReasoningGraph({
+    layerTitles: ["依赖链倒推", "多跳反向聚合", "敞口读数"],
+    nodes: [
+      {
+        key: "chain", layer: 0, label: "依赖链倒推", sub: `${a.path.length} 跳`,
+        data: `startType=${a.startType} · path=${a.path.map((h) => `${h.viaField}→${h.toType}`).join(" , ")} · minDependents=${a.minDependents}`,
+        solver: "前端倒推 deriveArgs.concentrationCandidates（未求解）",
+        rule: "链由真对象类型的 ref 结构逐跳倒推（≥1 跳），终端根 = 链尾类型；非写死",
+        ruleKind: "projection",
+        note: `本次这条链：${chain}。换一条链就是换一个根 —— 复算时必须沿同一条链走，否则算的不是同一件事。`,
+      },
+      {
+        key: "solve", layer: 1, label: "多跳反向聚合", sub: "沿链回溯到根",
+        data: "concentration_risk 响应（concentrations / topExposure / summary）",
+        solver: "concentration_risk",
+        rule: `自每个 ${a.startType} 起点沿链逐跳前进到终端根，再按根反向聚合起点集合；同输入同输出`,
+        ruleKind: "projection",
+        note: "「隐性」指的是这条依赖不写在任何一张表上——它是多跳之后才显形的，所以逐跳的 viaField 必须看得见。",
+      },
+      {
+        key: "roots", layer: 2, label: "逐根计数", sub: "被几个起点依赖",
+        data: "concentrations[]（rootType / rootId / dependents[] / count）",
+        solver: "concentration_risk",
+        rule: `只收 count ≥ minDependents=${a.minDependents} 的根 —— 被 1 个起点依赖不叫集中`,
+        ruleKind: "projection",
+      },
+      {
+        key: "top", layer: 2, label: "最大敞口根", sub: "单点风险之首",
+        data: "topExposure（concentrations 中 count 最大的那一条）",
+        solver: "concentration_risk",
+        rule: "取 count 最大者；同时它也是下方条形图的分母 —— 每条的长度 = 该根 count ÷ 最大敞口 count",
+        ruleKind: "projection",
+        formula: "条长% = count ÷ topExposure.count",
+      },
+    ],
+    edges: [
+      { from: "chain", to: "solve" },
+      // 分叉：全表与「最大那一条」是求解器**并列**给的两个产物，不是前端在表上再算一遍。
+      { from: "solve", to: "roots" },
+      { from: "solve", to: "top" },
+    ],
+  });
+}
+
+function marginGraph(cand: MarginCandidate): ReasoningGraph {
+  const a = cand.args;
+  return assertReasoningGraph({
+    layerTitles: ["参数倒推", "逐目标拆成本", "倒挂判定", "根因聚合"],
+    nodes: [
+      {
+        key: "args", layer: 0, label: "参数倒推", sub: `${a.costFields.length} 个成本项`,
+        data: `targetType=${a.targetType} · revenueField=${a.revenueField} · costFields=${a.costFields.map((c) => c.field).join(" , ")} · marginThreshold=${a.marginThreshold}`,
+        solver: "前端倒推 deriveArgs.marginCandidates（未求解）",
+        rule: "目标类型 = 有营收字段 + ≥1 成本字段；成本项 = 该类型上除营收外命中成本命名的数值字段。字段非写死",
+        ruleKind: "projection",
+        note: "成本项少认一个，毛利就会算高——所以这一环列的是**这次真正用的那几个字段名**，不是「成本字段」四个字。",
+      },
+      {
+        key: "solve", layer: 1, label: "逐目标拆成本", sub: "营收 − Σ成本",
+        data: "margin_attribution 响应（inverted / rootDrivers / invertedCount / summary）",
+        solver: "margin_attribution",
+        rule: `逐目标：totalCost = Σ costFields，margin = ${a.revenueField} − totalCost，marginRate = margin ÷ ${a.revenueField}`,
+        ruleKind: "projection",
+        formula: "margin = revenue − Σ cost_i",
+      },
+      {
+        key: "inverted", layer: 2, label: "倒挂目标", sub: "毛利率未达阈值",
+        data: "inverted[]（id / revenue / totalCost / margin / marginRate / topDriver）",
+        solver: "margin_attribution",
+        rule: `倒挂 ⟺ marginRate < marginThreshold=${a.marginThreshold}`,
+        ruleKind: "projection",
+      },
+      {
+        key: "attribution", layer: 3, label: "成本拆项", sub: "各项占比",
+        data: "inverted[].attribution[]（label / value / share）",
+        solver: "margin_attribution",
+        rule: "占比分母是**总成本**不是营收（share = value ÷ totalCost）—— 读成营收占比就会把它当毛利率",
+        ruleKind: "projection",
+        formula: "share_i = cost_i ÷ totalCost",
+      },
+      {
+        key: "drivers", layer: 3, label: "根因主驱动", sub: "跨群聚合",
+        data: "rootDrivers[]（label / invertedCount / totalValue）",
+        solver: "margin_attribution",
+        rule: "按每个倒挂目标的 topDriver 归组：拉穿目标数 = 该成本项当上主驱动的目标个数，累计金额 = 这些目标上该项的金额和",
+        ruleKind: "projection",
+        note: "它是**跨倒挂目标**聚合出来的，所以只有倒挂目标进得了这张表——非倒挂目标上同样的成本项不计。",
+      },
+    ],
+    edges: [
+      { from: "args", to: "solve" },
+      { from: "solve", to: "inverted" },
+      // 分叉：同一批倒挂目标既逐条拆项，又跨条聚合出根因。
+      { from: "inverted", to: "attribution" },
+      { from: "inverted", to: "drivers" },
+    ],
+  });
+}
+
 function SolverError({ testid, error }: { testid: string; error: unknown }) {
   const msg = (error as { message?: string } | undefined)?.message;
   return (
@@ -177,6 +356,8 @@ function BottleneckBlock({ types }: { types: CrType[] }) {
         onChange={setSel}
         args={cand.args}
       />
+      {/* 判据 U3 · 推演过程图（摆在参数区与结果区之间：参数在上、图说清参数怎么变成结论、结果在下）。 */}
+      <ProcessGraphPanel graph={bottleneckGraph(cand)} testId="cr-bn-process-graph" />
       <BottleneckResult key={JSON.stringify(cand.args)} cand={cand} />
     </div>
   );
@@ -322,6 +503,8 @@ function ConcentrationBlock({ types }: { types: CrType[] }) {
         ))}
         <span style={{ marginLeft: 8, color: "var(--muted2)" }}>（根 = {cand.rootLabel}）</span>
       </div>
+      {/* 判据 U3 · 推演过程图（同上：链在上、图说清链怎么变成敞口读数、结果在下）。 */}
+      <ProcessGraphPanel graph={concentrationGraph(cand)} testId="cr-cc-process-graph" />
       <ConcentrationResult key={JSON.stringify(cand.args)} cand={cand} />
     </div>
   );
@@ -431,6 +614,8 @@ function MarginBlock({ types }: { types: CrType[] }) {
         onChange={setSel}
         args={cand.args}
       />
+      {/* 判据 U3 · 推演过程图（同上）。 */}
+      <ProcessGraphPanel graph={marginGraph(cand)} testId="cr-ma-process-graph" />
       <MarginResult key={JSON.stringify(cand.args)} cand={cand} />
     </div>
   );

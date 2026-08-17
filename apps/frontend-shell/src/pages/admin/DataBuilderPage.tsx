@@ -337,7 +337,7 @@ export function StoryCoverageView({ coverage }: { coverage: StoryCoverageSentenc
           属解释 → 折叠。一字未删（§1 红线）。 */}
       {unmapped > 0 && (
         <div data-testid="sbr-coverage-reject-gate" style={{ fontSize: 12, color: "var(--danger-txt,#E5484D)", marginBottom: 4 }}>
-          ⚠ 有 {unmapped} 句系统读不懂 —— 建议**拒绝**建域
+          ⚠ 有 {unmapped} 句系统读不懂 —— 建议<b>拒绝</b>建域
           <details style={FOLD_SUM_WRAP}>
             <summary style={FOLD_SUM}>为什么？</summary>
             <div>（下方红标即那几句）补充/改写故事后重建，勿在未理解之上建域（空壳冒充真派生）；下方「理解确认门」已锁定推演/验证/晋升。</div>

@@ -44,8 +44,8 @@
     "opt.embedding-retrieval": { "stage": "tiered", "why": "同 opt.solver-pool 分档段；Pro 档「复用检索」。" },
     "opt.evolve": { "stage": "tiered", "why": "同 opt.solver-pool 分档段；旗舰档「离线进化」逐字点名。" },
     "view.global-sim.live": {
-      "stage": "tiered",
-      "why": "⚠️ features.ts:95 的注释已过期。原文说后端 /b/v1/sim/compose 与 /a/v1/sim/scenarios「端点未落」，实测两者都已落（agentcore/src/server.ts:2117 · datacore/src/app.ts:1909/1920）。功能已毕业，注释停在毕业前 —— 这正是本表存在的理由。"
+      "stage": "ga",
+      "why": "2026-08-17（WO-GSIM-LIVE-FLAG-REASON）由 tiered 升 ga，defaultOn 同批改 true —— 这是执行 features.ts 原注释里那句既有裁决「WO-LIVE-SCENARIO 落后开门」，前置条件已满足，不是新决策。前置复核（追到处理体，不是只看路由注册行）：POST /b/v1/sim/compose 在 agentcore/src/server.ts 调真 portfolio(twoStage·三方案)→buildComposeNarrative；POST|GET /a/v1/sim/scenarios、GET /compare、POST /:id/branch 在 datacore/src/app.ts，四条的第一句都是 requireLive() ⇒ 本键关即 404 FEATURE_NOT_FOUND。真跑复验 RC=0：datacore test/live-scenarios-seam.test.ts（4 passed）+ agentcore test/live-endpoints-seam.test.ts。⚠️ 前一版声明写的行号（features.ts:95 · server.ts:2117 · app.ts:1909/1920）今天全部已漂 —— 行号会漂，判据别写死行号。⚠️ tiered→ga 不是给 demo 加功能：demo 是 battery，L2 模板早已把它抬开；这次翻的是**无行业模板 / 模板不含本键**那一档租户的 L1 默认。"
     },
     "data-import.record-materialize": {
       "stage": "tiered",

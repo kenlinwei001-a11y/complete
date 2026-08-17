@@ -3,7 +3,8 @@ import { useInRouterContext, useNavigate } from "react-router-dom";
 import { BASE_REGISTRY, CHAIN_STAGES, type ChainImpedimentKind } from "@platform/contracts";
 import { runSolver } from "@/api/endpoints";
 import zh from "@/locales/zh";
-import { ThemeToggle } from "@/components/ThemeToggle";
+// WO-SANDBOX-DENSITY：`ThemeToggle` 的 import 随顶栏那颗一起去掉 ——
+// 外壳顶栏（pages/ShellLayout.tsx）常驻同一颗，本页再挂一颗是重复不是分层（见顶栏那处注释）。
 import { InfoPopover } from "@/components/InfoPopover";
 import { ChainLineMapView } from "./ChainLineMapView";
 import { deriveFamilyAnchors, fetchOrdersForFamilies, type FamilyAnchor } from "./chainFamilyLines";
@@ -144,6 +145,28 @@ export interface SandboxConsoleProps {
    */
   inputZone?: ReactNode;
   /**
+   * WO-SANDBOX-CONFIG-UX · **左区顶部的「配置面板」**（扰动因素 × 本体关系**同屏**）。
+   *
+   * 仓主原话三句：「所有推演的功能都需要借鉴这个设计 UX」（指
+   * `docs/REF-config-page-ux.html` 的**配置页 tab**）·「核心是扰动因素输入与本体关系非常清晰，
+   * 直接体现」·「按照不同的域的卡片来配置」。落成一句可验收的话就是：
+   * **同一屏上左边拨扰动、右边是本体关系（含图），改任一侧另一侧当场变。**
+   *
+   * ⚠ 它**必须在左区之内**，不是第四个区 —— PRD §1① 的「唯一输入区」不是本单能改的，
+   *   而 `sandbox-three-zone.seam.test.tsx` §3 把这条钉成了等号断言（主区/下区的输入控件集合
+   *   **等于**白名单）。把带 `<select>` 的配置面板摆去别处，那条断言当场红，且它红得对。
+   *
+   * ── 传了它，左区就**放宽到整行**（不传 = 今天的 300px 两栏，逐字节不变）──────────
+   * 理由不是"宽点好看"：本面板内部自己是两列（扰动 | 本体关系），塞进 300px 会把右列的
+   * 关系表 + 图挤成一条缝 —— 那等于没做。故 `.zones` 在有配置面板时改走**上下两行**：
+   * 输入区整行在上（内部两列），画布整行在下。画布因此也从 `1fr − 300px` 变成整行，
+   * 只会更宽、不会更窄。
+   *
+   * ⚠ **默认值 = 今天的行为**（与本组件 `scopeBaseIds` 受控/非受控二合一同一条纪律）：
+   *   六个不传本 prop 直接挂载本组件的门，走的仍是原来那条路，一个字都不用改。
+   */
+  configZone?: ReactNode;
+  /**
    * WO-SANDBOX-V3 · **③下区内容 = 影响带**（PRD §1③）：逐节点指标影响 ＋ 财务指标随扰动的动态变化。
    *
    * 同样由宿主提供：这两半都要读**推演会话的世界态**（`sessionId` / `world` / `baseSnapshot`），
@@ -227,6 +250,7 @@ export function SandboxConsole({
   banner,
   controlBar,
   inputZone,
+  configZone,
   impactZone,
   ontologyCanvas,
   rail = [],
@@ -493,7 +517,15 @@ export function SandboxConsole({
           {/* 徽标只是**记号**；「为什么」那句话的单一出处是顶栏时窗旁的 `?`（`sc-window-note`），
               这里不抄第二份 —— 抄了就是给它开一条会漂的分身。
               原来挂在这上面的 `title=` 属性也去掉了：规范 §2 明令禁止用原生 tooltip 充当浮层
-              （OS 绘制 · 恒在最上层 · 移开滞留），而那句话已经在 `?` 里，逐字都在。 */}
+              （OS 绘制 · 恒在最上层 · 移开滞留），而那句话已经在 `?` 里，逐字都在。
+
+              ⚠ WO-SANDBOX-DENSITY 试过把**时窗那排 `disabled` 按钮 + `?`** 也一起搬到这一档
+                （它们点不动、永远不会有值，占第一层四个控件位只为讲一句「这里本来该有个东西」，
+                而这句话在本档已有徽标 + `?` 两个更便宜的载体）。**没有落地**，理由是
+                `sandbox-declutter.test.tsx`「主屏留下的是决策者那一档」那条用例把
+                `sc-window-30D/60D/90D` 明确记成「结论式顶栏…时窗档位…留着」——
+                那是另一张单**记录在案的产品判断**，不在本单可改范围内（本单只改版面）。
+                想拿掉这 4 个控件，得先由该单的所有者改判据，不能由我改它的测试来买。 */}
           <span className={`${styles.badge} ${styles.badgeGap}`} data-testid="sc-window-badge">
             时窗无 ARGS
           </span>
@@ -530,7 +562,8 @@ export function SandboxConsole({
 
         {/* 时窗：设计稿有，但两个求解器都没有时间窗入参 ⇒ 禁用 + `?` 说明（不给假旋钮）。
             徽标本体（`sc-window-badge`）搬进诊断抽屉的「调试信息」区 —— 它是调试者的读物；
-            决策者在主屏需要知道的只是「这排按钮为什么点不动」，那句话挂在 `?` 上即可。 */}
+            决策者在主屏需要知道的只是「这排按钮为什么点不动」，那句话挂在 `?` 上即可。
+            ⚠ WO-SANDBOX-DENSITY 想把这一整组也降进抽屉但**没做**，为什么见抽屉那一档的注释。 */}
         <div className={styles.seg} role="group" aria-label="时窗（未接线）">
           {TIME_WINDOWS.map((w) => (
             <button key={w} type="button" disabled aria-pressed={w === "60D"} data-testid={`sc-window-${w}`}>
@@ -573,7 +606,11 @@ export function SandboxConsole({
             真实性标注
           </button>
         </div>
-        <ThemeToggle />
+        {/* WO-SANDBOX-DENSITY · 这里原本还有一颗 `<ThemeToggle />`。**去重，不是降层**：
+            外壳顶栏（`pages/ShellLayout.tsx`）已常驻同一颗（同一个组件、同一份 localStorage、
+            同一个 `<html data-theme>`），实拍 1440×900 屏上**同时出现两个 🌙**，相距不到 260px。
+            判据只有一条：删掉之后这个能力**一次点击仍然到得了**，且入口在每一页都可见 ——
+            成立，所以这是重复而非分层。（`theme-mode.test.tsx` 直接渲染 `ThemeToggle` 本体，不经本页。） */}
       </div>
 
       {/* ══ 诊断抽屉（默认关 · 关着时内部一个节点都不渲染）══════════════════════ */}
@@ -639,11 +676,18 @@ export function SandboxConsole({
           ══════════════════════════════════════════════════════════════════════ */}
       <div className={styles.zones} data-testid="sandbox-zones">
         {/* ── ① 左区：扰动因素输入（**唯一输入区**）──────────────────────── */}
-        <aside className={styles.zoneInput} data-testid="sandbox-zone-input">
+        <aside
+          className={configZone ? `${styles.zoneInput} ${styles.zoneFullRow}` : styles.zoneInput}
+          data-testid="sandbox-zone-input"
+        >
           <div className={styles.zoneHead}>
             <h2>{zh.sim.sandbox.zones.inputTitle}</h2>
             <span className={styles.zoneQ}>{zh.sim.sandbox.zones.inputQuestion}</span>
           </div>
+
+          {/* WO-SANDBOX-CONFIG-UX · 配置面板（扰动 | 本体关系 同屏两列）——
+              左区的**第一块**：它就是这一屏要人干的那件事，摆在任何折叠块之前。 */}
+          {configZone}
 
           {/* 扰动输入 —— 这一区的**主角**，左区唯一不折叠的一块（PRD §1①）。 */}
           {inputZone}
@@ -765,7 +809,10 @@ export function SandboxConsole({
 
         {/* ── ② 主区：业务端到端路线图（`ChainLineMapView` 提为主画布；物理拓扑 /
                链路阶段 / 本体拓扑降为**主区内的档位**，不再与路线图平级抢位）──────── */}
-        <section className={styles.zoneCanvas} data-testid="sandbox-zone-canvas">
+        <section
+          className={configZone ? `${styles.zoneCanvas} ${styles.zoneFullRow}` : styles.zoneCanvas}
+          data-testid="sandbox-zone-canvas"
+        >
         {/* ── 中：画布（一块画布多模式）─────────────────────────────────────── */}
         <main className={`${styles.pane} ${styles.canvasPaneStretch}`} data-testid="sc-canvas-pane">
           <div className={styles.paneHead}>

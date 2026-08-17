@@ -1,33 +1,33 @@
 {
   "note": "版面门棘轮基线。每页每视口一组实测数，**只许变好**。`--tighten` 逐项取「更好的那个」；`--update` 会连放宽一起写下来，**不是日常操作**（本仓发生过 --update 悄悄抬基线买来一片绿）。阈值与取数方法见 scripts/check-layout-legibility.mjs 文件头。",
-  "generatedBy": "node scripts/check-layout-legibility.mjs --update",
+  "generatedBy": "node scripts/check-layout-legibility.mjs --tighten",
   "pages": {
     "sim-sandbox": {
       "route": "/v/sim-sandbox",
       "rootSelector": "main",
-      "why": "推演沙盘主页 —— 本门的样板页（WO-SANDBOX-LAYOUT-HARNESS 只铺一页）。",
+      "why": "推演沙盘主页 —— 本门的样板页（WO-SANDBOX-LAYOUT-HARNESS 只铺一页）。 ══ WO-SANDBOX-DENSITY（2026-08-17）· firstScreenCtrls 52 → 36 ══ 仓主原话「信息太多，第一层看不到重点」。三步降下来，每一步的机制不同，**不许混为一谈**：(1) 52→39：页根误挂页眉类 `.head`（`display:flex; justify-content:space-between`）把三块排成并排三列，改回竖排；同时把「已收编的原独立页」12 条深链接 `<a>` 从模式条正下方整块搬到页脚（索引不回答『现在怎么样』）。(2) 39→38：顶栏 `<ThemeToggle>` 与外壳顶栏那颗**重复**（同组件/同 localStorage/同 `<html data-theme>`，实拍相距 <260px），去重不是降层。(3) 38→36：左区动作条分两层——`推进 tick` 留第一层，`存档检查点`/`分支`/`采纳` 降进 `sandbox-more-actions`（入口常驻并带真计数）。 ══ 为什么停在 36，不继续压 ══ 逐控件普查（1440×900 · planner · mock，探针与本门共用同一份 `visible()`＋CTRL 选择器）：36 个里 **24 个属『不该压』**，逐条有主：模式条 5（这一屏问哪个问题的一等切换器，= 参照物 9 个分类 chip 的同构物，chip 必须常驻）· 画布档条 5（同上，画布的 chip 条）· 时窗 3＋`?`1（`sandbox-declutter.test.tsx:229` 记着另一张单的产品判断「结论式顶栏…时窗档位…留着」，**不由本单推翻，也不许靠改它的测试来买**）· 诚实位 `?` 4（导出/范围/KPI×2，静默降层=删除，记号必须可见）· 抽屉入口 2（诊断带真计数＋真实性标注，藏起来找不到的抽屉=把内容删了）· 治理横幅 CTA 1（`SandboxView.tsx` 判据③『给一条进抽屉看全的路』）· 图层开关 2（`sandbox-three-zone.seam` §3 白名单里的视图控件）· 导出 1。另 **6 个不在本单写入边界**（`clm-*` 缩放条 4＋图例 `?`1＋图例 summary 1，属 `ChainLineMapView.tsx`）。**剩下真可压的只有 6 个**：本单压了其中 3 个（净 −2，含入口 +1）；未压的 3 类各有主，见下『挂账』。⇒ 36 不是审美取的数，是「24 有主 + 6 越界 + 2 已换成入口 + 4 挂账」的算术结果。 ══ 代价（照实写，不粉饰）══ `采纳此推演结论`/`存档检查点`/`分支` 各多一次点击；缓解是入口写明「更多动作 · 3」且与 `推进 tick` 同排。 ══ 挂账（要压得再低，得先由这几条的所有者改判据，不是本单能定的）══ ① 方案环 2 个（`sandbox-plays-metric`/`-solve-btn`）——WO-V4-PLAYS 在 `SandboxView.tsx` 挂载点原文写「左区一等位置（**不套 `<details>`**）」；② 检视页签 2 个（`sc-tab-steps`/`sc-tab-vars`）——`变量输入` 档不依赖选中节点、是独立入口，无选中时收起会真丢一条路；③ 时窗 4 个——见上；④ `clm-*` 6 个——需 `ChainLineMapView` 的所有者出面。 ══ 参照物的口径：抄方法不抄数 ══ `docs/REF-config-page-ux.html` 的 9 个分类 chip / 一次 5–8 行，靠的是两条机制：**同类多项→chip 一次一组**（本页模式条与画布档条已是此形态）＋**不同类→分屏**（它的 `page_dash`/`page_cfg` 用 hidden 互斥）。它那 5–8 是**它自己的 IA** 的产物（整页无左侧导航、无治理横幅、无诚实位记号），直接设成本页阈值＝拿别人的合身当自己的合身，故本门对 firstScreenCtrls 仍**只做棘轮、不设绝对上限**。 ══ 折叠必须用 `display:none`，**不许用 `<details>`** ══ Chromium 141 实测：闭合 `<details>` 的子节点 `checkVisibility()` 为 false、命中测试打不到，但 `getBoundingClientRect()` **仍返回非零旧矩形** ⇒ 本门 `visible()`（计算样式＋非零矩形）把它们**当第一屏可见控件在数**。取证：52 里有 13 个正是闭合 `sandbox-consolidated-links`（`open===false`）的 12 条 `<a>` ＋ 1 个 summary。用 `<details>` 折叠＝屏上看不见、数上不降，两头落空。 ══ 顺带结清一条挂账：49→52 的 +3 到底是什么 ══ 收编单 `32f0022a` 认账时把 +3 归因给 WO-SANDBOX-NAV-CONSOLIDATE 的三个『归因』档，并留下疑问「三个档只在 attribute 模式渲染，为何默认屏（mode='now'）仍计入 +3」。**实测判定：不是那三个档。** 证据三条：① 本门探针 `renderAndMeasure` 全程**不点击**（只 login＋`history.pushState`），落地即默认模式；② 在 canonical 树上逐控件 dump，`modePane=null`、`attrTabsPresent=false`、`attrTabButtons=[]`、`activeMode=['sandbox-mode-now']` —— 三个档一个都没渲染；③ 真凶是同一个提交 `6d157c7b` 往 `CONSOLIDATED_PAGES` 里**追加的 3 条**（`process-wait`/`process-stuck`/`procurement-legs`，9→12），它们是闭合 `<details>` 里的 `<a>`，被本门按上一段那条机制计成可见。⇒ 该 +3 是**真内容增长 × 折叠计数机制**的合成，不是 `mode === 'attribute'` 条件失效（不存在那条 bug）。这 3 个随深链接索引整块搬到页脚后一并离开第一屏。 ══ ⚠ 变异反证跑出来的一条**门自身缺陷**（本单实测，未修：`check-layout-legibility.mjs` 不在本单写入边界，交由门的所有者处置）══ WO 要求做两条变异反证，第一条通过、**第二条没通过**：(A) 把降下去的三个控件放回第一层 ⇒ 门 RC=1『单屏可见交互控件数 变坏：36 → 39』✅ 咬住（1440 侧；1280 侧因那两个按钮本就落在 800px 折线以下而未咬 —— 两视口并量的价值就在这里）。(B) **把某块内容整块删掉** ⇒ 门 **RC=0，放行**。实测：删掉整块 `sandbox-scope-strip`（跨模式上下文条 · 891 字符 JSX · 4 个文本元素 + 1 个诚实位 `?`）后 textEls 601→597（跌 **0.67%**），而 C2 的阈值是 **10%** ⇒ 不触发；更糟的是 firstScreenCtrls 在 1280 上 36→**35**，被记成『变好』—— 也就是说**此刻跑 `--tighten` 就能靠删内容买到一格更好的棘轮**，正是本门文件头警告的『棘轮奖励删除』那件事。(B2) 把整个下区影响带（193 行）删掉才咬得住：textEls 601→228（跌 62.1%）⇒ C2 报『疑似删内容冒充版面变好』RC=1。⇒ **结论：本门分得开『降密』与『删内容』只在删得足够大时成立；个位数元素的整块删除落在盲区。** 形态（铁律 0.6 句式）：『我用「textEls 跌不超过 10%」当作「没有删内容」的证据，而前者并不度量后者 —— 在 601 元素的页上，10% = 60 个元素，而第一层一整块只有 4 个。』另有**第二个盲区**：C2 的前置条件是「有『越小越好』的项变好」，而删内容时该项可能恰好不变（B2 在 1440 侧就是 36→36，C2 在该视口**完全没触发**，只有 1280 侧凑巧触发）⇒ 删内容而控件数不变时，C2 一次都不会响。**建议修法（未落地）**：C2 改双判据 —— 相对跌幅 >10% **或** 绝对跌幅 ≥3 个元素，任一触发即红；并把前置条件从「有项变好」放宽到「没有项变坏」，否则删得越干净越不会被咬。 ══ WO-SANDBOX-CONFIG-UX（2026-08-17 · 追加，**未改上文一个字**）· firstScreenCtrls 36 → 25 ══ ⚠ 上文那句「36 不是审美取的数，是『24 有主 + 6 越界 + 2 已换成入口 + 4 挂账』的算术结果」**对它自己那次仍然成立**，但那笔算术的前提（第一屏装的是模式条＋画布＋控制条）已被本单换掉，故数变了而上文不动 —— 两次的账分开记，不合并成一句。本单把「扰动因素输入」与「本体关系（表＋图）」并成**左区整行的两列配置面板**（仓主原话：所有推演功能借鉴配置页 tab · 核心是扰动输入与本体关系直接体现 · 按域的卡片来配置）。第一屏因此换了内容：装的是这两列，而画布（地铁图/物理拓扑/链路阶段）与 tick 控制条**整体落到折线以下**。⇒ 25 不是又压掉了 11 个控件，是**第一屏换了主角**；被移出的那些控件一个都没删、也没套 `<details>`（上文那条 Chromium 141 的坑本单没踩：它们是真的滚出了视口，`r.top < VH && r.bottom > 0` 不成立才不计数）。**代价照实写**：想看地铁图要滚一屏。这是仓主指定的取舍（「同屏」被列为本单第一条验收判据），不是本单自作主张压密度。**反面证据（防「删内容冒充变好」）**：同一次实测 textEls 601 → 630（**涨** 4.8%）、rowGroups 13 → 13、viewportUsePct 79.7/77.1 逐字不变 —— 控件数降而墨迹量升，C2 那条守恒判据在本单方向上没有被绕过。",
       "viewports": {
         "1440x900": {
           "minFontPx": 12,
           "bodyFontPx": 13,
-          "firstScreenCtrls": 52,
+          "firstScreenCtrls": 25,
           "viewportUsePct": 79.7,
           "misalignedGroups": 0,
           "overflowPx": 0,
           "overflowEls": 0,
-          "textEls": 604,
-          "rowGroups": 14
+          "textEls": 630,
+          "rowGroups": 13
         },
         "1280x800": {
           "minFontPx": 12,
           "bodyFontPx": 13,
-          "firstScreenCtrls": 52,
+          "firstScreenCtrls": 25,
           "viewportUsePct": 77.1,
           "misalignedGroups": 0,
           "overflowPx": 0,
           "overflowEls": 0,
-          "textEls": 604,
-          "rowGroups": 14
+          "textEls": 630,
+          "rowGroups": 13
         }
       }
     }

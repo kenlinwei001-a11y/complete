@@ -90,10 +90,19 @@ import css from "./EdgeActivePanel.module.css";
  *
  * ── 人话名的出处（"不许编造"）─────────────────────────────────────────────────
  * 对象类型的中文名取自本体 `ObjectType.displayName`（`GET /a/v1/ontology/object-types`），
- * 查不到就**显裸键**。⚠ **状态变量（`loadIndex` / `demandLoad` …）在全仓没有任何中文名**
- * —— 它们只作为字符串存在于传导规则里，本体的 `properties`/`derivedProperties` 都不含它们。
- * 所以状态变量**只出现在第二级的系统键那一行**，第一级不给它编一个名字（R14 零业务常数）。
- * 这是**诚实缺席**，补法见本单交单报告"没做的部分"。
+ * 查不到就**显裸键**。
+ *
+ * ⚠ **本段口径已被 WO-STATEVAR-DISPLAYNAME 改写，别照旧文读**。原文是：
+ *   「状态变量（`loadIndex` / `demandLoad` …）在全仓没有任何中文名 …… 只出现在第二级的系统键
+ *    那一行，第一级不给它编一个名字。这是诚实缺席，补法见本单交单报告"没做的部分"。」
+ * 那句话当时**属实**，且它把缺口记在了正确的地方（缺的是真值源，不是排版）。现在缺口已闭：
+ *   · 真值源 —— `apps/datacore/src/synthetic/battery.ts` 的 `STATE_VAR_DISPLAY_NAMES`（36 条，
+ *     逐条引自 `seed.ts` 那 35 条传导规则自己的注释，不是照英文键意译）；
+ *   · 下发 —— `GET /a/v1/sim/propagation-rules` 与 `GET /a/v1/sim/view-config` 各投影一份
+ *     `stateVarNames` 字典（读时 join，不入库；两处共用同一个投影函数）；
+ *   · 消费 —— 本文件经 `stateVarLabel.ts` 这**一条**路径翻译，前端仍然零中文名映射表（R14 未破）。
+ * 于是第一级从「只有类型名」升级为「类型名 · 状态变量名」，第二级的系统键那一行**原样保留**。
+ * 未登记中文名的变量照旧回落裸键 —— 诚实缺席这条纪律没变，变的只是"能查到名字"的那部分。
  */
 
 /** 未选中任何 chip 时的初始值：`null` ⇒ `resolveActiveSlice` 回落到第一片（不是"什么都不显示"）。 */
@@ -189,12 +198,25 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
     return s?.disabledRuleKeys ?? [];
   }, [sessionId, sessionsQuery.data, effectiveSessionId]);
   const disabled = pendingDisabled ?? result?.disabledRuleKeys ?? sessionDisabled ?? [];
-  const rows = useMemo(() => buildEdgeRows(rules, disabled, typeDisplayNames), [rules, disabled, typeDisplayNames]);
+  /**
+   * WO-STATEVAR-DISPLAYNAME · 状态变量中文名字典 —— **随同一个响应下发**，不另打请求。
+   * 与上面 `typeDisplayNames` 同一条纪律（见 `fetchObjectTypes` 那段注释）：本面板挂在 8 个推演页上，
+   * 多一个 endpoint 依赖会把全仓做部分 mock 的前端测试一起打红。
+   * ⛔ 前端不建中文名映射表；真值源是后端 `STATE_VAR_DISPLAY_NAMES`（`synthetic/battery.ts`）。
+   */
+  const stateVarNames = rulesQuery.data?.stateVarNames;
+  const rows = useMemo(
+    () => buildEdgeRows(rules, disabled, typeDisplayNames, stateVarNames),
+    [rules, disabled, typeDisplayNames, stateVarNames],
+  );
   /** 按业务域切片。**条数从 `rows` 现算**（`buildDomainSlices` 里 count = rows.length），不另存一个数。 */
   const slices = useMemo(() => buildDomainSlices(rows), [rows]);
   const activeSliceId = resolveActiveSlice(slices, pickedSlice);
   const activeSlice = slices.find((x) => x.sliceId === activeSliceId) ?? null;
-  const diffRows = useMemo(() => (result ? buildDiffRows(result.diffs) : []), [result]);
+  const diffRows = useMemo(
+    () => (result ? buildDiffRows(result.diffs, stateVarNames) : []),
+    [result, stateVarNames],
+  );
   const verdict = result ? buildVerdict(result) : null;
 
   /**
@@ -367,10 +389,13 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
               onChange={(e) => void onToggle(r.key, e.target.checked)}
             />
             {/* 第 2 列：③ 一行两级 —— 人话名在上（13.5px），系统键在下（11.5px mono）。 */}
+            {/* WO-STATEVAR-DISPLAYNAME：第一级从「只有类型名」改成「类型名 · 状态变量名」。
+                改前 5 条边的第一级全是「生产基地」，彼此不可区分，真正区分它们的
+                `loadIndex`/`demandLoad` 只以裸键躺在第二级 —— 那不是排版问题，是名字没接线。 */}
             <label className={css.rowMain} htmlFor={tid(`toggle-${r.key}`)}>
-              {r.sourceTypeName}
+              {r.sourceLabel}
               <span className={css.rowArrow}>→</span>
-              {r.targetTypeName}
+              {r.targetLabel}
               <small className={css.rowKeys} data-testid={tid(`keys-${r.key}`)}>
                 {r.from} —{r.viaLinkKey}→ {r.to}
               </small>
@@ -424,9 +449,14 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
             <tbody>
               {diffRows.map((d) => (
                 <tr key={`${d.objectId}|${d.stateVar}`} data-testid={tid(`diff-${d.objectId}-${d.stateVar}`)}>
+                  {/* WO-STATEVAR-DISPLAYNAME：变量列改显人话名；接线名走 `aria-label`，
+                      ⛔ **不用原生 `title`**（规范 §2 R-UI-3：OS 绘制、恒在最上层、移开滞留）。
+                      `<code>` 里的 objectId 不动 —— 那是 id，本来就该以原文示人。 */}
                   <td>
                     <code>{d.objectId}</code>
-                    <span className={css.flat}>.{d.stateVar}</span>
+                    <span className={css.flat} aria-label={`状态变量 ${d.stateVar}`}>
+                      .{d.stateVarName}
+                    </span>
                   </td>
                   {/* `null` = 这一格在那一版世界里**根本没有**（≠ 值为 0）。两句话不同，屏上必须分得开；
                       而 `delta` 仍按引擎 `readVar` 的缺格读 0 约定算，所以变化量照样看得见。 */}

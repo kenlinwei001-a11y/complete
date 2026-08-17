@@ -641,5 +641,46 @@ export const SandboxViewConfigSchema = z.object({
   // repos.objects.listByType 非 mergedInto，稳定排序）。UI 据此把 tick0 快照键 = 真对象 id（不再 ${type}#0），
   // 使 state[sourceId] 真命中 → tick 真传导 → 节点真变色。空世界时该类型列表为空（页面退占位仍可跑）。
   nodeObjectIds: z.record(z.string(), z.array(z.string())).optional(),
+  /**
+   * WO-STATEVAR-DISPLAYNAME · **状态变量裸键 → 中文业务名**（`loadIndex` → 「负载指数」）。
+   *
+   * 病灶是三分法的**没接线**：`stateVars` 一直只有裸键，全链**没有任何字段**承载它们的名字，
+   * 于是沙盘 KPI / 扰动落点下拉 / 导出表一律显示 `loadIndex` 这种接线名，没参与建模的人读不懂。
+   *
+   * ⚠ **读时投影，不是入库字段**：由 `GET /a/v1/sim/view-config` 每次从**后端单源表**
+   * （`synthetic/battery.ts` 的 `STATE_VAR_DISPLAY_NAMES`）现查后填。真值源在后端、前端只消费 ——
+   * 前端自建一份中文映射就是第二套真相源（本仓治过多次）。
+   *
+   * ⚠ **只收登记过的键**：查不到的变量**不出现在本字典里**，而不是填裸键或空串。
+   * 字典里出现 `loadIndex: "loadIndex"` 会让前端分不出「名字恰好等于键」与「压根没名字」，
+   * 屏上也就无从把"这是回落"如实标出来。缺席 = 明确的"没有名字"。
+   *
+   * ⚠ **`.optional()` 而不是 `.default({})`**：本字段与它上面的 `nodeObjectIds` 是同一类**后补的投影**，
+   * 必填会逼着改全仓 **17 个**构造本配置字面量的前端测试（实测 `tsc` 报 17 处 TS2741）——
+   * 那些改动与本单要治的病一行关系都没有，纯属把契约的形状变化转嫁成无关返工。
+   * 缺省 `undefined` ⇒ 与本字段引入前**逐字节同屏**（additive · 可回退 RL9）：全部回落裸键，页面照常可用。
+   */
+  stateVarNames: z.record(z.string(), z.string()).optional(),
 });
 export type SandboxViewConfig = z.infer<typeof SandboxViewConfigSchema>;
+
+/**
+ * `GET /a/v1/sim/propagation-rules` 的响应信封。
+ *
+ * ── 为什么状态变量名走**信封上的字典**，而不是像 `sourceTypeName` 那样挂在每条规则上 ──────
+ *  · **字典的键就是变量名本身** —— 挂到规则上要存两份（source/target），35 条边重复 70 次，
+ *    还得防两处写出不同的名字；字典天然只有一份，不给漂移留空间。
+ *  · **沙盘那一屏拿不到类型** —— `SandboxViewConfig.stateVars` 是跨类型去重后的 `string[]`，
+ *    两个端点用**同一种形状**（`stateVarNames`）前端才能共用一条消费路径，不写两套。
+ *  · **不碰 `PropagationRuleSchema`** —— 该 schema 被 `seed.ts` 的 35 条字面量以
+ *    `Omit<PropagationRule, …>` 引用，加必填字段会逼着改那 35 条种子（本单范围外）。
+ */
+export const PropagationRulesResponseSchema = z.object({
+  items: z.array(PropagationRuleSchema),
+  /**
+   * 口径与 `SandboxViewConfig.stateVarNames` **逐条相同**（同一张后端单源表，同一个投影函数）。
+   * 同样取 `.optional()`：前端 mock 里大量 `{ items: [...] }` 的桩响应不必为此逐个补字段。
+   */
+  stateVarNames: z.record(z.string(), z.string()).optional(),
+});
+export type PropagationRulesResponse = z.infer<typeof PropagationRulesResponseSchema>;

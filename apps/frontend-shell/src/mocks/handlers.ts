@@ -2045,6 +2045,33 @@ function deriveStateVars(): string[] {
   return [...new Set(derivePublishedRules().flatMap((r) => [r.sourceStateVar, r.targetStateVar]))].sort();
 }
 
+/**
+ * WO-STATEVAR-DISPLAYNAME · 状态变量中文名的 mock 镜像。
+ *
+ * 真值源是**后端** `apps/datacore/src/synthetic/battery.ts` 的 `STATE_VAR_DISPLAY_NAMES`
+ * （36 条），mock 只是后端的替身、**不是第二份中文名来源**（同 `MOCK_OBJECT_TYPES` 镜像
+ * `PROP_DISPLAY_NAMES` 的那条纪律）。跨 app import 源码是禁的，故此处只能镜像。
+ *
+ * ⚠ **本表刻意为空，这不是"忘了填"**：mock 世界的状态变量是 `s1` / `s2` 这类纯 fixture 名
+ * （见 `MOCK_RULE_SEED`），它们**没有业务含义**，给它们编中文名正是本单明令禁止的那件事。
+ * 于是 mock 模式下这批变量一律走**诚实回落显裸键**那条分支 —— 与 `MOCK_OBJECT_TYPES`
+ * 「故意保留若干无 displayName 的属性用于验回落」同一个用意：让回落路径在 mock 世界里真的被走到。
+ *
+ * 投影**机制**照真后端接上（下方两个 handler）：将来谁往 `MOCK_RULE_SEED` 里放一个真业务变量名，
+ * 只要在此登记就立刻生效，不用再去改 handler。
+ */
+const MOCK_STATE_VAR_DISPLAY_NAMES: Record<string, string> = {};
+
+/** 镜像真后端 `stateVarDisplayNames()`：**只收登记过的键**，查不到的不进字典（不填裸键、不填空串）。 */
+function deriveStateVarNames(vars: readonly string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const v of [...vars].sort()) {
+    const zh = MOCK_STATE_VAR_DISPLAY_NAMES[v];
+    if (zh !== undefined) out[v] = zh;
+  }
+  return out;
+}
+
 export function resetMockOntologyRelations(): void {
   mockLinkTypes = MOCK_LINK_SEED.map((l) => ({ ...l }));
   mockPropRules = MOCK_RULE_SEED.map((r) => ({ ...r }));
@@ -6757,6 +6784,8 @@ export const handlers = [
       // 后端此处**不看 `deprecation`**（`app.ts:1888` `links.map(l => l.key)`）⇒ 停用结构边不减少这个数。
       linkTypes: mockLinkTypes.map((l) => l.key).sort(),
       stateVars: deriveStateVars(),
+      // WO-STATEVAR-DISPLAYNAME：镜像真后端 `app.ts` 那条读时投影（同一形状、同一"只收登记过的键"口径）。
+      stateVarNames: deriveStateVarNames(deriveStateVars()),
       radarDims: [{ key: "structure", label: "结构" }, { key: "knowledge", label: "知识" }, { key: "behavior", label: "行为" }],
       screens: ["pipeline", "entity", "readiness", "init", "sandbox"],
       propagationCount: derivePublishedRules().length,
@@ -6782,6 +6811,8 @@ export const handlers = [
         sourceTypeName: nameOf.get(r.sourceTypeKey) ?? null,
         targetTypeName: nameOf.get(r.targetTypeKey) ?? null,
       })),
+      // WO-STATEVAR-DISPLAYNAME：状态变量中文名随边下发（镜像真后端；口径见 MOCK_STATE_VAR_DISPLAY_NAMES）。
+      stateVarNames: deriveStateVarNames(items.flatMap((r) => [r.sourceStateVar, r.targetStateVar])),
     });
   }),
   // `POST /a/v1/sim/propagation-rules`（后端 app.ts:1865）：id 由服务端铸（后端把它写在 body 展开之后，

@@ -73,7 +73,11 @@
 .asOf {
   display: block;
   margin-top: 4px;
-  font-size: 11px;
+  /* 原为 11px，`check-text-legibility.mjs` 的字号硬底 FLOOR_PX = 12 当场判红
+     （基线 0 → 实测 1，随 WO-SCREEN-PLAINSPEAK 的 445f7cf1 进的集成线）。
+     WO-U10-THREE-PAGES 顺手清掉这一条 —— 它与本单是同一个病（<12px 的中文），
+     且不清掉本单就没法给出「两道门改后 RC=0」这个判据。 */
+  font-size: 12px;
   opacity: 0.8;
 }
 

@@ -309,7 +309,8 @@ function SolverImpactPanel({ solverKey }: { solverKey: string }) {
           <div className="muted" style={{ fontSize: 12 }}>解析中…</div>
         ) : roleKeys.length === 0 ? (
           <div className="muted" style={{ fontSize: 12 }} data-testid={`solver-roles-none-${solverKey}`}>
-            这个求解器不吃角色（后端 SOLVER_FIELD_ROLES 未为它声明）——不是解析失败。
+            {/* 出处（工程师层，不上屏）：后端 SOLVER_FIELD_ROLES 未为该求解器声明字段角色。 */}
+            这个求解器用不到字段角色（后端没有为它声明）——不是解析失败。
           </div>
         ) : (
           <div style={{ fontSize: 12 }} data-testid={`solver-roles-${solverKey}`}>

@@ -69,6 +69,8 @@ import { buildPropagationInputs } from "./sim/propagation-inputs.js";
 import { ImpactAnalysisRequestSchema } from "@platform/contracts"; // WO-IMPACT-PROPAGATION · 影响传播统一入口（栈B传播 × 栈A世界隔离）
 import { analyzeImpact } from "./sim/impact-analysis.js";
 import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
+// WO-STATEVAR-DISPLAYNAME：推演状态变量中文名的**唯一**投影口（单源表在 battery.ts，两条路由共用此函数）
+import { stateVarDisplayNames } from "./synthetic/battery.js";
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { buildCausalGraphFromSim, buildCausalGraphFromDecision } from "./decision/causal-graph.js"; // WO-DECISION-CAUSAL-GRAPH · 因果图构图器（纯投影·零发明）
 import { validateClosure } from "./databuilder/closure.js";
@@ -2178,6 +2180,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         sourceTypeName: nameOf.get(r.sourceTypeKey) ?? null,
         targetTypeName: nameOf.get(r.targetTypeKey) ?? null,
       })),
+      /**
+       * WO-STATEVAR-DISPLAYNAME · **状态变量的人话名**随边一起下发（`loadIndex` → 「负载指数」）。
+       * 口径与 `GET /sim/view-config` 的同名字段**逐字节相同**：同一张单源表、同一个投影函数
+       * （`stateVarDisplayNames`），不在两个路由里各写一遍映射。
+       * 只收登记过的键 ⇒ 前端查不到就显裸键（诚实回落，不编名字）。
+       */
+      stateVarNames: stateVarDisplayNames(items.flatMap((r) => [r.sourceStateVar, r.targetStateVar])),
     };
   });
   app.post("/a/v1/sim/propagation-rules", async (req, reply) => {
@@ -2208,6 +2217,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       nodeObjectIds,
       linkTypes: links.map((l) => l.key).sort(),
       stateVars,
+      // WO-STATEVAR-DISPLAYNAME · 状态变量中文名（读时投影自后端单源表；未登记的键不进字典 ⇒ 前端回落裸键）。
+      stateVarNames: stateVarDisplayNames(stateVars),
       radarDims: [
         { key: "structure", label: "结构" },
         { key: "knowledge", label: "知识" },
