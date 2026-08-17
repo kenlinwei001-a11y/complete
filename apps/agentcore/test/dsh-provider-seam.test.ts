@@ -178,6 +178,7 @@ function platformEnv(baseUrl: string, key?: string): Record<string, string> {
 }
 
 const SETUP: DshSetupSpec = {
+  tenantId: "t1", // 协调①: N4 tenantId 必填化后的字面量补齐（对位 poc-acceptance 形态）
   persona: "n1 provider seam stub",
   finalAnswer: {
     description: "终止工具（N1 seam）",
