@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import type { LightMyRequestResponse } from "fastify";
 import type { Scenario } from "@platform/contracts";
 import type { RuleEngineClient } from "../src/tools/clients.js";
 import { ADMIN, PKG, TENANT, createTestApp, type TestApp } from "./helpers.js";
@@ -56,8 +57,11 @@ async function createPlan(t: TestApp, key: string, steps: Step[]): Promise<strin
   return (res.json() as { id: string }).id;
 }
 
-const publish = (t: TestApp, planId: string): ReturnType<TestApp["app"]["inject"]> =>
-  t.app.inject({ method: "POST", url: `/api/v1/catalog/plans/${planId}/publish`, headers: H });
+// ⚠️ 别给它写 `ReturnType<TestApp["app"]["inject"]>`：那个重载解析到的是 `Chain`（可链式 builder），
+// 不是 `Promise<Response>`，宽面 typecheck（含 test/ 的 tsconfig.typecheck.json）会当场 TS2740。
+async function publish(t: TestApp, planId: string): Promise<LightMyRequestResponse> {
+  return t.app.inject({ method: "POST", url: `/api/v1/catalog/plans/${planId}/publish`, headers: H });
+}
 
 const statusOf = async (t: TestApp, planId: string): Promise<string | undefined> => (await t.repos.plans.get(planId))?.status;
 
