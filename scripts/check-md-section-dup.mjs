@@ -452,8 +452,14 @@ function main() {
 /* 顶层兜底 —— 必须是 Program 的**直接子语句**（`check-gate-exit-discipline.mjs` 只认这一形态：
  * 嵌在函数里的 try 不覆盖全流程）。node 对未捕获异常一律退 1，恰好撞上「真有违规」这个码，
  * 方向正好相反，故一切未预期异常收敛到 RC=2。 */
+/* `isMain` 判据放在 try **里面**是刻意的：`check-gate-exit-discipline.mjs` 只认
+ * 「try 是 Program 的直接子语句」这一形态，用 `if (isMain) { try {…} }` 包一层就不算数了。
+ * 需要这个判据是因为本文件 `export` 了判据本体（findSectionDupes / mdHeadings / headingKey …）——
+ * 不加守卫，任何 `import` 它的人都会在导入时被 `process.exit` 打死，
+ * 那几个 `export` 就成了一句**兑现不了的承诺**（本仓最不缺的正是这种）。 */
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 try {
-  process.exit(main());
+  if (isMain) process.exit(main());
 } catch (e) {
   toolBroken(`未预期异常（${e?.message || e}）`, String(e?.stack || ""));
 }
