@@ -1737,6 +1737,23 @@
    },
    "disposition": "GATES_CHAIN",
    "notes": "两侧 defaultOn 反向登记门。登记表 scripts/feature-default-divergence.json（字段 backend/mock/why/frontendGreenProves/verifiedOn/verifiedBy）。诚实边界：只比 defaultOn 字面量（=L1），不解释 L2 行业模板/L3 租户 override/L4 角色收窄后的运行期有效值 ——「A 侧 defaultOn:false」≠「所有租户都看不见」；只看两侧都声明的键（一侧缺失归 nav-group-coverage:check 判据②）。升级路径=仓主：开关默认值是产品决策。--selftest 只跑金丝雀不看仓库现状。"
+  },
+  "check-branch-base.mjs": {
+   "alias": "branch-base:check",
+   "binding": "MANUAL",
+   "guardedPaths": [
+    "scripts/check-branch-base.mjs",
+    "docs/WO-HEADER-repo-and-branches.md"
+   ],
+   "escalation": "审核方",
+   "ontologyRef": null,
+   "provenRed": {
+    "kind": "MUTATION",
+    "evidence": "2026-08-17 建门时 --selftest 四条金丝雀（HEAD..HEAD 双 0 · 祖先方向不反 · 后代方向不反 · 包含关系不反）真跑；解不开的引用 → RC=2「工具坏了」而非 RC=0。",
+    "note": "本门不守仓库文件，守的是**开工前提**：一条 handoff 分支的分叉点离集成线多远。它报的 ontoAheadOfFork 就是「这条分支的一切相对基线结论的失效半径」——分叉点越旧，dev 说的『某文件零 diff』『这条红是既存的』『只改了 N 行』就越可能度量的是另一棵树。来历：一条交单分支从 main 开出（落后 2418 个提交），六项证据 + 一轮独立复验全部走完才发现基线错了。⚠ 诚实边界：只量拓扑距离，不判内容对不对，也不判 rebase 会不会冲突。"
+   },
+   "notes": "MANUAL：本门是**派单/交单流程**的两个卡点（开工步骤 2 + 交单 T5 各跑一次），不是仓库内容门，故不入 gates 串——入串会让每次 gate 去解远端引用、离线即 RC=2 假红。用法 `node scripts/check-branch-base.mjs <分支> [--onto=<集成线>] [--max=N]`，默认 onto = origin/claude/verify-reclaim-6、阈值 200。RC 三分：0 基线够新 · 1 太老须先 rebase · 2 工具坏了（不许读作没问题）。 ⚠ guardedPaths 的语义在本门上与别的门不同，写明免得被读错：本门守的是**分支的分叉点**、不是仓库里的文件，所以这里填的是「改了它就必须重跑本门」的两份东西——门自己的实现，以及派单头里那张写死集成线名字的分支表（集成线换名而这两处不同步，本门会拿旧的 onto 去量，量得越准错得越彻底）。",
+   "disposition": "MANUAL"
   }
  }
 }
