@@ -179,8 +179,10 @@ export class UnwiredActionExecutor implements ActionExecutor {
     // 判 NOT_IMPLEMENTED 会打死这个正当功能。故默认 NO_WRITE——
     // ⚠️ 关键区分：**不诚实的从来不是 `ok:true`，而是那个 MO 形态的假 ref**（使"没写"与"开了工单"不可分辨）。
     // NO_WRITE 返回 `NO_WRITE:<key>`：动作确实走完了审批链，且 targetRef **自证没有写入任何真值**。
-    // 而平台**内置已注册**却没接执行器的（现仅剩 `采纳经营方案`）是**欠账**，
-    // 在 ACTION_WIRING 里显式标 NOT_IMPLEMENTED → 诚实失败，让欠账可见、可门禁、不可伪装成 NO_WRITE。
+    // 而平台**内置已注册**却没接执行器的是**欠账**，在 ACTION_WIRING 里显式标 NOT_IMPLEMENTED →
+    // 诚实失败，让欠账可见、可门禁、不可伪装成 NO_WRITE。
+    // （2026-08-18 现状：内置 11 型已全部 WIRED——最后一型「采纳经营方案」由 WO-ADOPT-SCHEME-CARRIER
+    //  接线落 scheme_adoptions 台账；本分支现只服务「下一个欠账型」与租户自定义键的判别。）
     const wiring: ActionWiring = ACTION_WIRING[key] ?? "NO_WRITE";
     if (wiring === "NO_WRITE") return { ok: true, targetRef: `NO_WRITE:${key}` };
     // 具体缺口（若已登记）随错误一起吐出——让「为什么没接」在界面与审计里可读，不只活在源码注释里。

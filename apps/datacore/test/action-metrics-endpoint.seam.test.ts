@@ -81,11 +81,13 @@ describe("SEAM · Action 三段埋点必须汇入 /metrics 端点", () => {
    * 改成 `"success"`（= 让每一次执行失败都记成成功、稳定率永远 100%），这道门**照绿**。
    * 而「稳定率」这个指标的全部意义就在失败侧——只守分子里好看的那一半，等于没守。
    *
-   * 这里走 `采纳经营方案`：它在 `synthetic/battery.ts` 里已注册，`actions.ts ACTION_WIRING` 标
-   * NOT_IMPLEMENTED → 执行期由 `UnwiredActionExecutor` **诚实失败**。断言它**确实进了分母的失败侧**：
-   * 未接线动作不许为了让稳定率好看而被悄悄排除（诚实 > 好看）。
+   * 这里走 `采纳经营方案` + **刻意不合契约的载荷**（scheme 缺 name/outcome/scores/hardViol）：
+   * WO-ADOPT-SCHEME-CARRIER 已把该型接上真执行器（落 scheme_adoptions 台账），失败产地从兜底线的
+   * `EXECUTOR_NOT_IMPLEMENTED` 变成真分支的**契约拒绝**（「payload 不合契约」·拒绝臆造写入）——
+   * 执行期仍诚实失败，指标 outcome="failed" 不变。断言它**确实进了分母的失败侧**：
+   * 失败动作不许为了让稳定率好看而被悄悄排除（诚实 > 好看）。
    */
-  it("失败侧：未接线动作诚实失败后，/metrics 里必须出现 outcome=\"failed\" 的执行计数（不许只统计成功）", async () => {
+  it("失败侧：契约拒绝的诚实失败后，/metrics 里必须出现 outcome=\"failed\" 的执行计数（不许只统计成功）", async () => {
     const t = await makeApp({ env: { SERVICE_TOKEN: SVC } });
     await seedBattery(t);
 
@@ -103,9 +105,10 @@ describe("SEAM · Action 三段埋点必须汇入 /metrics 端点", () => {
 
     const approved = await t.app.inject({ method: "POST", url: `/a/v1/action-drafts/${draftId}/approve`, headers: ADMIN, payload: {} });
     const st = approved.json() as { status: string };
-    // 前置自证：这条动作**确实执行失败了**（若哪天它被接上真执行器，本用例要换一个未接线的 key，
-    // 而不是把断言删掉——删掉就等于把失败侧的守卫一并删了）。
-    expect(st.status, "本用例依赖『采纳经营方案』未接执行器；它若已接线，请换一个 NOT_IMPLEMENTED 的 key 重写本例").toBe(
+    // 前置自证：这条动作**确实执行失败了**（契约拒绝）。若哪天契约放宽到这份载荷变合法，
+    // 本用例要换一份仍非法的载荷、或改用无 levers 的 plan_change——
+    // 而不是把断言删掉：删掉就等于把失败侧的守卫一并删了。
+    expect(st.status, "本用例依赖契约拒绝的诚实失败（payload 不合契约 → EXECUTION_FAILED）；载荷若变合法，请换失败样本重写本例").toBe(
       "EXECUTION_FAILED",
     );
 
@@ -124,7 +127,7 @@ describe("SEAM · Action 三段埋点必须汇入 /metrics 端点", () => {
     // 反向咬死：同一动作**绝不可**同时出现在 success 序列里（那正是幸存变异的形态）。
     expect(
       body,
-      "未接线动作却记成 execute success —— 把失败洗成成功，稳定率将永远好看",
+      "执行失败的动作却记成 execute success —— 把失败洗成成功，稳定率将永远好看",
     ).not.toMatch(new RegExp(`^${ACTION_METRIC_NAMES.execute}\\{action_type="采纳经营方案",outcome="success"\\}`, "m"));
   });
 });
