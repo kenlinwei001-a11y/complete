@@ -232,6 +232,13 @@
    是 **W2 棘轮回潮**：本体 §7 里 `pnpm X` 形式的执行入口，`package.json` 查无此键的
    有 **14 条 > 基线 13 条**。新增的一批被门逐条点名（`validation:check` · `ui-smoke` ·
    `cli-parity:check` 等）。这是「制度上宣称存在、实际不可执行」，另立单，本单不碰。
-4. **`G-ACTION-NOOP-EXEC` 与 `G-ADOPT-SCHEME-NO-CARRIER` 的关系没有在 §8 里理顺**：
+4. **又一条与本单无关的既有红**：`node scripts/check-ontology-writeback.mjs` 在集成线上 **RC=1**
+   —— `check-name-consistency` 在 `pnpm gates` 里但本体 §7 没登记。
+   **已证明与本单无关**：该串在回写前后各出现 **1 次**（未变），且本单 diff 的全部 6 个 hunk
+   都落在第 1968–2172 行区间内（§8 是 1957–2189，§7 是 1797–1956）⇒ **§7 一个字没动**；
+   且 6 个 hunk 全是**等长替换**（`-N,M +N,M` 的 M 相等）⇒ 全文行数未变，§8 之后的锚点不会漂。
+5. **`ontology-descriptions:check` 今日 RC=2 = 工具自己坏了**（环境类）。
+   按本仓三分约定，这读作「**我没查**」，不读作「查了没问题」——本单据此**没有**对该门下任何结论。
+6. **`G-ACTION-NOOP-EXEC` 与 `G-ADOPT-SCHEME-NO-CARRIER` 的关系没有在 §8 里理顺**：
    前者 ◑ 的**唯一**剩余项就是后者（`check-action-wiring.mjs` 报的那 1 个 NOT_IMPLEMENTED）。
    两行各自成立但读起来像两笔账，收编 `WO-ADOPT-SCHEME-CARRIER` 时应一并合并。
