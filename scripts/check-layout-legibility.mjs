@@ -113,6 +113,11 @@ import { spawn } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
+// ⚠ 页名册**从 PRD 的 §4 表现读**，不在本文件里手抄一份。
+//   本仓已有一道门专治手抄名册（`check-gate-roster-handcopied.mjs`），
+//   而 `check-edge-active-mounts.mjs` 的手抄 `PAGES` 数组漏页正是它的来历。
+//   复用 `parsePrdTable` ⇒ 表里加一页，survey 自动覆盖，不会漏。
+import { parsePrdTable } from "./check-sim-ux-criteria.mjs";
 import {
   METRICS,
   TEXT_ELS_FLOOR,
@@ -144,11 +149,18 @@ const FLOORS = {
   bodyFontPx: { cmp: "min", value: 13, why: "本页 92.2% 的文本是 12px；参照物 body 13.5px。13 严格落在两者之间，且 13px 改前已在本页调色板里。" },
   overflowPx: { cmp: "max", value: 0, why: "横向滚动条 = 版面破了，硬判据无争议；改前已是 0，设 0 即锁死现状。" },
   misalignedGroups: { cmp: "max", value: 0, why: "改前实测 0（本页重复行组确实都对齐），设 0 锁死；别人加一组参差的行立刻红。" },
+  // ⚠ 只有「真够不着」的才设绝对上限；「溢出总数」走棘轮（见 RATCHET_ONLY 与 METRICS 的注释）。
+  overflowUnreachable: { cmp: "max", value: 0, why: "内容被裁死、用户既滚不到也点不着 = 真丢内容，无争议的硬判据。注意它与「溢出总数」是两个数：总数>0 只说明要横滚才看得见（走棘轮），这一项>0 才是够不着。" },
 };
 // 只做棘轮、不设绝对阈值的项 —— 每条都必须写清「为什么不设」，否则就是偷偷放水。
 const RATCHET_ONLY = {
   firstScreenCtrls: "压到参照物那种「5–8 行」要重排信息架构，属 WO-SANDBOX-NAV-CONSOLIDATE / -STRUCTURE，不在本单范围；硬设够不着的上限只会逼出豁免。",
   viewportUsePct: "天花板被外壳左导航（248px）卡住（1440 视口下内容区最多 82.8%），而 pages/ShellLayout.tsx 不在本单范围；设一个由别人决定的下限 = 把别人的改动记在本页账上。",
+  overflowEls:
+    "「溢出视口」在本仓不等于「坏」：横向表格 / 时间轴刻度尺天生比视口宽，躺在可横滚容器里是**正常设计**。" +
+    "设绝对上限会把这类正常设计一律判红、逼出豁免。但也不能不管 —— **「够得着」不等于「好用」**，" +
+    "要横滚才看得见的内容正是「第一层看不到重点」。⇒ 折中：总数**只许降**（棘轮），" +
+    "真够不着的那部分（overflowUnreachable）另设绝对上限 0。",
 };
 
 const CONSERVATION_TEXT_DROP_PCT = 10; // C2：墨迹量跌超过它即判「疑似删内容」
@@ -174,6 +186,13 @@ const CANARY_BITE = `
  .ind1{display:inline-block;padding-left:16px}
  .ind2{display:inline-block;padding-left:32px}
  .wide{width:2400px;height:20px;background:#eee}
+ /* 「真够不着」的样例：外层 overflow-x:hidden 裁死，用户既滚不到也点不着。
+    与 .wide 刻意成对 —— .wide 是「溢出但够得着」，这个是「溢出且够不着」，
+    两个样例合起来才证明门分得开这两件事（只有一个样例证明不了「分得开」）。
+    ⚠ 本注释里不许出现反引号：整个样例是模板字符串，反引号会把它截断
+      （本单实测踩过，当场 RC=2）。 */
+ .clip{width:1100px;overflow-x:hidden}
+ .clipped{width:2400px;height:20px;background:#ddd}
 </style>
 <main><div class="pane">
   <div class="dimGroup"><div class="dimHead"><b>基地</b><small>/ 吨</small></div></div>
@@ -183,6 +202,7 @@ const CANARY_BITE = `
     <label class="opt"><span class="ind2"><input type="checkbox"></span><span>成都</span></label>
   </div>
   <div class="wide">溢出块</div>
+  <div class="clip"><div class="clipped">被裁死的溢出块</div></div>
 </div></main>`;
 
 /* 必不咬样例：同样的 `.opt` 行组，但**不包缩进壳** ⇒ 三行左边缘同一条竖线；字号 14px；无溢出。 */
@@ -212,6 +232,16 @@ async function runCanary(browser) {
     if (!(bite.minFontPx <= 8)) problems.push(`必咬样例的 8px 字号没被量出来（量到 ${bite.minFontPx}）`);
     if (!(bite.overflowPx > 0)) problems.push(`必咬样例的横向溢出没被量出来（量到 ${bite.overflowPx}）`);
     if (!(bite.misalignedGroups >= 1)) problems.push(`必咬样例的参差行组没被量出来（量到 ${bite.misalignedGroups}）`);
+    // 溢出的两个数**必须分得开**：样例里刻意各放一个。
+    // 只断言总数 ≥2 证明不了「分得开」—— 那正是「把 415 合成一个数」的病。
+    if (!(bite.overflowEls >= 2)) problems.push(`必咬样例的溢出元素没被数全（应 ≥2：一个够得着 + 一个够不着，量到 ${bite.overflowEls}）`);
+    if (!(bite.overflowUnreachable >= 1)) problems.push(`必咬样例里被 overflow-x:hidden 裁死的那个「够不着」没被认出来（量到 ${bite.overflowUnreachable}）`);
+    if (!(bite.overflowEls > bite.overflowUnreachable)) {
+      problems.push(
+        `必咬样例的两个数没分开：总数 ${bite.overflowEls} 应**严格大于**够不着数 ${bite.overflowUnreachable}` +
+          `（样例里 .wide 是「溢出但够得着」、.clipped 是「溢出且够不着」；两者相等 ⇒ 门把两件事合成了一件）。`,
+      );
+    }
   }
   // 必不咬
   if (!clean.ok) problems.push("必不咬样例的扫描根都没命中");
@@ -219,6 +249,8 @@ async function runCanary(browser) {
     if (clean.minFontPx < 11) problems.push(`必不咬样例被误报小字（${clean.minFontPx}）`);
     if (clean.overflowPx > 0) problems.push(`必不咬样例被误报溢出（${clean.overflowPx}）`);
     if (clean.misalignedGroups > 0) problems.push(`必不咬样例被误报参差（${clean.misalignedGroups}）`);
+    if (clean.overflowEls > 0) problems.push(`必不咬样例被误报溢出元素（${clean.overflowEls}）`);
+    if (clean.overflowUnreachable > 0) problems.push(`必不咬样例被误报「够不着」（${clean.overflowUnreachable}）`);
   }
   return { problems, bite, clean };
 }
@@ -292,6 +324,96 @@ const PAGES = [
   },
 ];
 
+// ───────────────────────────────────────────────────────────────────────────────
+// U10「版面」逐页普查（--survey）
+//
+// ⚠ **普查 ≠ 门**，两者刻意不同，混了就会得出错的排期：
+//   · **门**（棘轮基线）只盯 `PAGES` 里那一页 —— 本单的任务是「造一把尺子并证明它有牙」，
+//     一天硬铺 12 页棘轮，产出的会是 12 个没人维护的装饰件。
+//   · **普查**跑满 12 页，是为了给 `docs/PRD-harness-ux-adoption.md` §4 的 **U10 列**
+//     逐格填**实测数**（那张表的规矩是「不许手数、以机器为准」）。
+//
+// 判据（三条全过才算「符合」，逐条都是本门已有的量，不新发明）：
+//   ① minFontPx ≥ 12        —— 与 FLOORS.minFontPx 同一个数、同一个来历
+//   ② overflowPx = 0        —— 页面级横向滚动条
+//   ③ overflowUnreachable=0 —— 真够不着的内容（**不是** overflowEls；两者分开报）
+// ⚠ 渲染不出来的页一律记 `判不了` 并让本模式 **RC=2** —— 不许把「没量到」填成「符合」。
+// ───────────────────────────────────────────────────────────────────────────────
+const U10_RULE = "minFontPx ≥ 12 ∧ overflowPx = 0 ∧ overflowUnreachable = 0";
+
+function u10Verdict(m) {
+  if (!m) return { state: "判不了", why: "页面没渲染出来 —— 不许填成「符合」" };
+  const bad = [];
+  if (!(m.minFontPx >= 12)) bad.push(`最小字号 ${m.minFontPx}px < 12`);
+  if (!(m.overflowPx === 0)) bad.push(`横向溢出 ${m.overflowPx}px`);
+  if (!(m.overflowUnreachable === 0)) bad.push(`够不着的元素 ${m.overflowUnreachable} 个`);
+  return bad.length ? { state: "不符合", why: bad.join(" · ") } : { state: "符合", why: U10_RULE };
+}
+
+function prdPageKeys() {
+  const md = readFileSync(join(ROOT, "docs", "PRD-harness-ux-adoption.md"), "utf8");
+  const prd = parsePrdTable(md);
+  const keys = prd.rows.map((r) => r.key);
+  // 金丝雀：名册解析器自证。表里必有沙盘那一页；解析不到 ⇒ 报「工具坏了」，
+  // **不许**报「表里没有页」（铁律 0.6：否定结论必须附金丝雀命中证据）。
+  if (!keys.includes("sim-sandbox") || keys.length < 5) {
+    throw new ProbeBroken(
+      `页名册解析器金丝雀不中：从 PRD §4 表只解析到 ${keys.length} 页（${keys.join(",") || "空"}），` +
+        `且必中项 sim-sandbox ${keys.includes("sim-sandbox") ? "在" : "不在"}里面。` +
+        `⇒ 判「解析器坏了」，不许报「表里没有这些页」。`,
+    );
+  }
+  return keys;
+}
+
+async function survey(browser, baseUrl) {
+  const keys = prdPageKeys();
+  console.log(`\n══ U10「版面」逐页普查（${keys.length} 页 · 1440×900 · 名册现读自 PRD §4 表，非手抄）══`);
+  console.log(`   判据：${U10_RULE}\n`);
+  const head = ["页".padEnd(20), "最小字号".padStart(9), "正文".padStart(6), "溢出px".padStart(8),
+    "溢出元素".padStart(9), "够不着".padStart(8), "视口%".padStart(7), "控件".padStart(6), "文本元素".padStart(9), "  U10"].join("");
+  console.log(head);
+  const rows = [];
+  let broken = 0;
+  for (const key of keys) {
+    let m = null;
+    let err = "";
+    try {
+      m = await renderAndMeasure(browser, {
+        baseUrl,
+        route: `/v/${key}`,
+        viewport: { width: 1440, height: 900 },
+        rootSelector: "main",
+        login: PAGES[0].login,
+      });
+    } catch (e) {
+      err = String(e?.message || e).split("\n")[0].slice(0, 90);
+      broken++;
+    }
+    const v = u10Verdict(m);
+    rows.push({ key, m, verdict: v, err });
+    const cells = m
+      ? [String(m.minFontPx).padStart(9), String(m.bodyFontPx).padStart(6), String(m.overflowPx).padStart(8),
+         String(m.overflowEls).padStart(9), String(m.overflowUnreachable).padStart(8),
+         String(m.viewportUsePct).padStart(7), String(m.firstScreenCtrls).padStart(6), String(m.textEls).padStart(9)].join("")
+      : "".padStart(62);
+    console.log(`${key.padEnd(20)}${cells}  ${v.state}${m ? "" : ` ← ${err}`}`);
+  }
+  const tally = { 符合: 0, 不符合: 0, 判不了: 0, 不适用: 0 };
+  for (const r of rows) tally[r.verdict.state]++;
+  console.log(`\n合计：符合 ${tally.符合} · 不符合 ${tally.不符合} · 判不了 ${tally.判不了} · 不适用 ${tally.不适用}`);
+  console.log(`\n不符合逐页理由（填进 PRD §4.1 用）：`);
+  for (const r of rows.filter((x) => x.verdict.state === "不符合")) console.log(`  · ${r.key}：${r.verdict.why}`);
+  // 「溢出总数」与「真够不着」全程分开印，最后再显式对一次账 —— 防止读者把总数读成坏点数。
+  const totOverflow = rows.reduce((a, r) => a + (r.m?.overflowEls || 0), 0);
+  const totUnreach = rows.reduce((a, r) => a + (r.m?.overflowUnreachable || 0), 0);
+  console.log(
+    `\n溢出两个数（**分开报**，不许合成一个）：全 ${rows.length} 页合计溢出视口的元素 ${totOverflow} 个，` +
+      `其中**真够不着的 ${totUnreach} 个**。前者只说明「要横滚才看得见」，后者才是丢内容。`,
+  );
+  return { rows, broken, tally, totOverflow, totUnreach };
+}
+
 function loadBaseline() {
   if (!existsSync(BASELINE)) return null;
   try {
@@ -335,6 +457,7 @@ async function main() {
   const argv = process.argv.slice(2);
   const wantReport = argv.includes("--report");
   const wantSelftest = argv.includes("--selftest");
+  const wantSurvey = argv.includes("--survey");
   const wantTighten = argv.includes("--tighten");
   const wantUpdate = argv.includes("--update");
 
@@ -354,8 +477,10 @@ async function main() {
     }
     console.log(
       `✓ 金丝雀双侧通过 —— 必咬：8px 字量到 ${canary.bite.minFontPx}px · 溢出 ${canary.bite.overflowPx}px · ` +
-        `参差行组 ${canary.bite.misalignedGroups} 组；必不咬：最小字号 ${canary.clean.minFontPx}px · ` +
-        `溢出 ${canary.clean.overflowPx}px · 参差 ${canary.clean.misalignedGroups} 组。`,
+        `参差行组 ${canary.bite.misalignedGroups} 组 · 溢出元素 ${canary.bite.overflowEls} 个` +
+        `（其中真够不着 ${canary.bite.overflowUnreachable} 个 ⇒ 两个数分得开）；` +
+        `必不咬：最小字号 ${canary.clean.minFontPx}px · 溢出 ${canary.clean.overflowPx}px · ` +
+        `参差 ${canary.clean.misalignedGroups} 组 · 溢出元素 ${canary.clean.overflowEls} 个。`,
     );
     if (wantSelftest) {
       console.log("✓ --selftest 通过（金丝雀双侧 + 基线写入器四向）。");
@@ -371,6 +496,22 @@ async function main() {
       server = await startDevServer();
       baseUrl = server.url;
       console.log(`· 已起前端 dev server（VITE_MOCK=1）：${baseUrl}`);
+    }
+
+    // ── U10 逐页普查（给 PRD 的 U10 列填实测数用；**不**参与棘轮判定）──────────
+    if (wantSurvey) {
+      const s = await survey(browser, baseUrl);
+      await cleanup(browser, server);
+      if (s.broken > 0) {
+        // 有页没渲染出来 ⇒ 本次普查**不完整**，绝不许被读成「12 页都量过了」。
+        toolBroken(
+          `普查有 ${s.broken} 页没渲染出来（已在上表逐页标 判不了）。` +
+            `RC=2 的含义是「我没查全」，不是「这些页版面合格」—— 不许拿这份不完整的表去填 U10 列。`,
+        );
+        return;
+      }
+      console.log(`\n✓ 普查完整：${s.rows.length} 页全部渲染并量到（无 判不了）。可据此填 PRD §4 的 U10 列。`);
+      process.exit(0);
     }
 
     const prevDoc = loadBaseline();
@@ -398,10 +539,21 @@ async function main() {
         const cells = VIEWPORTS.map((v) => fmt(measured[page.id][v.key][m.key]).padStart(11)).join("");
         console.log(`  ${m.label.padEnd(22)}${cells}`);
       }
-      const extra = ["textEls", "rowGroups", "overflowEls", "bodyFontShare"];
+      // ⚠ `overflowUnreachable` 与上面棘轮里的 `overflowEls` **必须并排印成两行**，
+      //   不许合成一个数 —— 前任把「415 个溢出」报成一个数，读者会读成「415 个坏点」，
+      //   而其中真够不着的是 0。两行并排才读得对。
+      const extra = ["overflowUnreachable", "textEls", "rowGroups", "bodyFontShare"];
       for (const k of extra) {
         const cells = VIEWPORTS.map((v) => fmt(measured[page.id][v.key][k]).padStart(11)).join("");
-        console.log(`  ${`(参考) ${k}`.padEnd(22)}${cells}`);
+        const label = k === "overflowUnreachable" ? "其中·真够不着的" : `(参考) ${k}`;
+        console.log(`  ${label.padEnd(22)}${cells}`);
+      }
+      const anyOverflow = VIEWPORTS.some((v) => (measured[page.id][v.key].overflowEls || 0) > 0);
+      if (anyOverflow) {
+        console.log(
+          `  ↳ 读法：「溢出视口的元素数」是**要横滚才看得见**的元素，不是坏点；` +
+            `其中「真够不着」才是丢内容。前者走棘轮（只许降 —— 够得着≠好用），后者绝对上限 0。`,
+        );
       }
     }
 
@@ -428,7 +580,9 @@ async function main() {
                 ? ` 溢出元素：${(cur.overflowSamples || []).map((s) => `<${s.tag}.${s.cls}> right=${s.right}`).join(" · ") || "（页面级溢出，未定位到具体元素）"}`
                 : key === "misalignedGroups"
                   ? ` 参差的组：${(cur.misalignedSamples || []).map((g) => `${g.group} ${g.rows}行/${g.distinct}个左边缘 ${JSON.stringify(g.lefts)}`).join(" · ")}`
-                  : "";
+                  : key === "overflowUnreachable"
+                    ? ` 够不着的元素（溢出总数 ${cur.overflowEls} 里的这几个被裁死了）：${(cur.overflowUnreachableSamples || []).map((s) => `<${s.tag}.${s.cls}> right=${s.right}`).join(" · ")}`
+                    : "";
             failures.push(`${where} · ${key} = ${v}，${f.cmp === "min" ? "低于下限" : "高于上限"} ${f.value}。\n     理由：${f.why}${detail ? `\n     现场：${detail}` : ""}`);
           }
         }

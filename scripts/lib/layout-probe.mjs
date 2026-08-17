@@ -286,19 +286,47 @@ export function measureLayout(opts) {
   // ── M5 横向溢出 ────────────────────────────────────────────────────────────
   // 取数：`document.documentElement.scrollWidth - clientWidth`（页面级，故**不**限扫描根）。
   // 为什么是版面问题：页面出现横向滚动条 = 版面破了，硬判据无争议。
-  // 另给元素级细目：扫描根内右边缘超出视口宽 1px 以上的可见元素个数（定位到是谁溢出的）。
   const de = document.documentElement;
   const overflowPx = Math.max(0, de.scrollWidth - de.clientWidth);
+
+  // ── M7/M8 溢出视口的元素 —— **两个数，永远分开报** ──────────────────────────
+  // ⚠ 这两个数**必须拆开**，合成一个就会骗人（本单的直接来历）：
+  //   前任量到「415 个元素溢出视口」并报了这一个数。读者极易把 415 读成「415 个坏点」，
+  //   而其中**真够不着的是 0** —— 全都躺在可横滚容器里。
+  //   反过来，只报「够不着=0」也是骗人：**「够得着」不等于「好用」** ——
+  //   一屏塞不下、要横滚才看得见的内容，正是仓主说的「信息太多，第一层看不到重点」。
+  //   ⇒ 故：`overflowEls`（总数）进棘轮**只许降**，`overflowUnreachable`（真够不着）设**绝对上限 0**。
+  //   形态（CLAUDE.md 铁律 0.6 句式）：
+  //     > 「我用『够得着』当作『好用』的证据，而前者并不度量后者。」
+  //
+  // 「够得着」的判据（沿祖先链走，走到根为止 —— grep 一层看不见的正是这条链）：
+  //   · 祖先里有 `overflow-x: auto|scroll` **且它自己真的能滚**（scrollWidth > clientWidth）⇒ 够得着；
+  //   · 先遇到 `overflow-x: hidden|clip` ⇒ 这一层把它**裁死**了 ⇒ 够不着；
+  //   · 一路到根都没有滚动容器 ⇒ 看**页面自己**能不能横滚。
+  // ⚠ 诚实边界：`hidden` 在规范上仍可**程序化**滚动，但用户滚不动。本门站在用户那侧判「够不着」。
+  const reachable = (el) => {
+    for (let node = el.parentElement; node; node = node.parentElement) {
+      const ox = getComputedStyle(node).overflowX;
+      if (ox === "auto" || ox === "scroll") {
+        if (node.scrollWidth - node.clientWidth > 1) return true;
+      }
+      if (ox === "hidden" || ox === "clip") return false;
+    }
+    return de.scrollWidth - de.clientWidth > 1;
+  };
   const overflowEls = [];
+  const overflowUnreachableEls = [];
   for (const el of root.querySelectorAll("*")) {
     if (!visible(el)) continue;
     const r = el.getBoundingClientRect();
     if (r.right > VW + 1 && r.width > 1) {
-      overflowEls.push({
+      const rec = {
         tag: el.tagName.toLowerCase(),
         cls: String(el.className || "").slice(0, 70),
         right: Math.round(r.right),
-      });
+      };
+      overflowEls.push(rec);
+      if (!reachable(el)) overflowUnreachableEls.push(rec);
     }
   }
 
@@ -325,6 +353,9 @@ export function measureLayout(opts) {
     overflowPx,
     overflowEls: overflowEls.length,
     overflowSamples: overflowEls.slice(0, 6),
+    // ⚠ 与 overflowEls **分开报**，不许合成一个数。见上 M7/M8 的注释。
+    overflowUnreachable: overflowUnreachableEls.length,
+    overflowUnreachableSamples: overflowUnreachableEls.slice(0, 6),
   };
 }
 
@@ -332,7 +363,7 @@ export function measureLayout(opts) {
 // 三 · 渲染 harness
 // ───────────────────────────────────────────────────────────────────────────────
 
-/** 五项判据的方向：`up` = 只许升（越大越好）· `down` = 只许降（越小越好）。 */
+/** 各项判据的方向：`up` = 只许升（越大越好）· `down` = 只许降（越小越好）。 */
 export const METRICS = [
   { key: "minFontPx", dir: "up", label: "最小可见字号(px)" },
   { key: "bodyFontPx", dir: "up", label: "正文字号·众数(px)" },
@@ -340,10 +371,42 @@ export const METRICS = [
   { key: "viewportUsePct", dir: "up", label: "视口利用率(%)" },
   { key: "misalignedGroups", dir: "down", label: "左边缘未对齐的行组数" },
   { key: "overflowPx", dir: "down", label: "横向溢出(px)" },
+  // ⚠ 这一项是前任量到「415 个」之后主张纳入棘轮的，**照做**。
+  //   它与 `overflowUnreachable` 是**两个数**，报告里永远分开印：
+  //   总数只许降（横滚才看得见 ≠ 好用），真够不着的另有绝对上限 0。
+  { key: "overflowEls", dir: "down", label: "溢出视口的元素数(总)" },
 ];
 
-/** 独立口径下限：量到的文本元素少于它 ⇒ 判「没渲染出来」⇒ RC=2。 */
-export const TEXT_ELS_FLOOR = 60;
+/**
+ * 独立口径下限：量到的文本元素少于它 ⇒ 判「没渲染出来」⇒ RC=2。
+ *
+ * ⚠ **它是「空壳探测器」，不是「内容完整性检查」** —— 这句话决定了它该取多大。
+ *   它只回答「这个路由到底挂上了没有」，**不**回答「这一页内容全不全」。
+ *   后者由每页各自的棘轮基线（`textEls` + 守恒判据 C2）管。
+ *
+ * ── 标定实测（2026-08-17，本单亲手量的，不是沿用注释里的传说）───────────────────
+ *   **真空态**（这才是它要咬的）：
+ *     · 登录后跳一个不存在的路由 `/v/__nope__` ······ textEls = **4**
+ *     · 未登录停在 `/login`（`main` 根本不存在） ····· 扫描根未命中（另一条路径处理，不走本下限）
+ *   **稀疏但正常的真实页**（这些一个都不许咬）：
+ *     · `sop-balance` **25** · `disruption-radius` 32 · `cleanroom-attr` 34 · `what-if` 34
+ *     · `optimize-whatif` 64 · `sim-sandbox` 601 · `global-sim` 884
+ *   ⇒ 分界必须落在 **4 与 25 之间**。取 **12**：约为空态的 3 倍、最稀真实页的一半，两侧都有余量。
+ *
+ * ⚠ **本值 2026-08-17 从 60 下调到 12，理由是「原值标定错了」，不是「为了消红」** ——
+ *   这两者必须分清（本仓最恨 `--update` 买绿）。证据：原值 60 把 **4 个页**
+ *   （`what-if` / `cleanroom-attr` / `disruption-radius` / `sop-balance`）判成「没渲染出来」，
+ *   而逐页 `innerText` 实测它们**都渲染了真内容**（850 / 318 / 279 / 383 字，含完整表单与列表）。
+ *   形态（CLAUDE.md 铁律 0.6 句式）：
+ *     > 「我用『文本元素 < 60』当作『页面没渲染』的证据，而前者并不度量后者 ——
+ *     >   它度量的是**这一页稠不稠**，而稀疏的页天生就稀疏。」
+ *   原值是拿 `sim-sandbox`（601）一页的手感定的，**一页的手感不是全仓的判据**。
+ *
+ * ⚠ 标定时踩到一个坑，记下来免得下次又被它骗：另试过「把 `main.innerHTML` 清空」当空态样例，
+ *   量到 **47**（比真实页还高）—— 因为清空后 React 在等待期内**又把内容渲染回来了**。
+ *   那不是空态，是「空了一瞬又回来」。**用它标定会得出恰好相反的下限。**
+ */
+export const TEXT_ELS_FLOOR = 12;
 
 export async function launchBrowser() {
   const exe = findChromium();
