@@ -283,6 +283,11 @@ const WORKFLOW_STEP_TYPES: ReadonlySet<string> = new Set([
   "tool_call",
 ]);
 
+/** WORKFLOW 路径既有步骤类型判定（Timeline 分栏与适配器共用同一清单） */
+export function isWorkflowStepType(type: string): boolean {
+  return WORKFLOW_STEP_TYPES.has(type);
+}
+
 const NARRATION_RE = /^narration-(\d+)-(\d+)$/;
 
 /**

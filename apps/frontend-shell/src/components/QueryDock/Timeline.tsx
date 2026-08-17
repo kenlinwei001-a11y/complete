@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { RoleTrack, StepRow, TaskStreamState } from "@/sse/taskStreamReducer";
 import { selectRoleTracks, selectStepRows } from "@/sse/taskStreamReducer";
+import { adaptSseEvents, isWorkflowStepType } from "@/sse/dshFrameAdapter";
+import { selectChatFlow, selectTurnStats, type TurnStatsSource } from "@/sse/chatFlowProjection";
+import { ChatFlow } from "./ChatFlow";
+import { TurnStatsBar } from "./TurnStatsBar";
 import zh from "@/locales/zh";
 import { InfoPopover } from "@/components/InfoPopover";
 import styles from "./Timeline.module.css";
@@ -29,11 +33,24 @@ export function stripRolePrefix(text: string, roleLabel?: string): string {
   return text.startsWith(p) ? text.slice(p.length) : text;
 }
 
-/** 流式过程时间线（PRD §6.3） */
+/** 流式过程时间线（PRD §6.3）：单 agent 平铺模式下 agent 伪步经 ChatFlow 上屏、workflow 步保留 StepRowView；多角色分栏模式保持原生渲染 */
 export function Timeline({ state }: { state: TaskStreamState }) {
   const steps = selectStepRows(state);
-  // WO-FE-AGENT-TRACE：多角色会诊时按角色分栏；非 Coordinator 任务 tracks 为空 → 走下方原平铺渲染（逐字节不变）。
+  // WO-FE-AGENT-TRACE：多角色会诊时按角色分栏；非 Coordinator 任务 tracks 为空 → 走下方平铺渲染。
   const { tracks, ungrouped } = selectRoleTracks(state);
+  // N6 CHATUX：agent 工具/narration/降级/压缩伪步（适配器已滤掉 workflow 步类型）。
+  // 分栏模式（tracks 非空）不出 ChatFlow —— 角色栏已含 narration/步，双渲染比缺渲染更糟。
+  const chatNodes = useMemo(
+    () => (tracks.length > 0 ? [] : selectChatFlow(adaptSseEvents(state.events)).nodes),
+    [state.events, tracks.length],
+  );
+  // 平铺模式：StepRowView 只接 workflow 步（与适配器同一清单，避免双渲染）；分栏模式不滤（原生逐字节）。
+  const flatSteps = useMemo(
+    () => (tracks.length > 0 ? [] : steps.filter((s) => isWorkflowStepType(s.type))),
+    [steps, tracks.length],
+  );
+  // 统计条：answer.final 附加字段透传（缺则整格不出）
+  const stats = useMemo(() => selectTurnStats((state.answer ?? {}) as TurnStatsSource), [state.answer]);
   const [stale, setStale] = useState(false);
 
   // 心跳超过 30s 无事件 → 「仍在执行…」
@@ -82,9 +99,19 @@ export function Timeline({ state }: { state: TaskStreamState }) {
           ))}
         </div>
       )}
-      {(tracks.length > 0 ? ungrouped : steps).map((s) => (
-        <StepLine key={s.stepId} row={s} />
-      ))}
+      {tracks.length > 0 ? (
+        // 分栏模式：原生渲染逐字节（ungrouped 全类型走 StepLine，不出 ChatFlow）
+        ungrouped.map((s) => <StepLine key={s.stepId} row={s} />)
+      ) : (
+        // 平铺模式：agent 伪步 → ChatFlow；workflow 步 → StepLine（StepRowView）
+        <>
+          {chatNodes.length > 0 && <ChatFlow nodes={chatNodes} />}
+          {flatSteps.map((s) => (
+            <StepLine key={s.stepId} row={s} />
+          ))}
+        </>
+      )}
+      {stats !== undefined && <TurnStatsBar stats={stats} />}
       {running && (
         <div className={styles.spinnerRow}>
           <span className={styles.spinner} />
