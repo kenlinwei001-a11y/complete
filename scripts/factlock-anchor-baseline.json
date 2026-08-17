@@ -56,6 +56,31 @@
       "key": "apps/frontend-shell/test/befe-wire-f.seam.test.tsx#ba3f17ab1baecd6b",
       "verdict": "金丝雀同锚 · 背书的否定断言是文件作用域",
       "why": "它背书的否定结论是「**这三份 mock 源码**（fixtures.ts / db.ts / handlers.ts）里不许出现明文凭据形态」—— it 名写着「写进 fixture = 泄漏进仓库」，被查对象就是那三个仓库文件本身，位置即事实。金丝雀取 handlers.ts 里确实写了的 hasApiKey，证明这套 includes 判定在真源码上有效；它必须与否定同扫描面。（门把主语解析成 4 个路径的多锚，是因为 files 数组由三条路径 map 出来 —— 真锚点是 handlers.ts。）"
+    },
+    {
+      "key": "apps/datacore/test/process-step-template.seam.test.ts#9ef325178e7d343e",
+      "verdict": "位置即事实",
+      "why": "A-2 金丝雀同锚：该断言自称「金丝雀：种子文件必含 carrierAnchor」，背书的是同 it 内的否定结论。金丝雀失效 ⇒ 下面的「没有」全部作废，故它咬的就是这个文件本身。"
+    },
+    {
+      "key": "apps/datacore/test/process-step-template.seam.test.ts#0376b12bdf46498e",
+      "verdict": "位置即事实",
+      "why": "A-1 仓规四落点 + A-2 金丝雀：失败文案「金丝雀：PgStore 正则必须命中既有表」。CLAUDE.md 明令「新增表需同时改 migrations + repo/pg.ts + repo/memory.ts + repo.ts」——表名在 pg.ts 里出现，位置就是仓规本身。"
+    },
+    {
+      "key": "apps/frontend-shell/test/process-start-from-template.seam.test.tsx#116e978a5f0bd14c",
+      "verdict": "位置即事实",
+      "why": "A-2 金丝雀同锚：位于 it(「金丝雀：源码真被读到、且剥注释没把代码一起吞掉」) 块内，是正向必中样例。它不成立 ⇒ 同块内两条否定断言（剥注释后不含 G-FRONTEND-HARDCODED-ABSENCE）全部作废。"
+    },
+    {
+      "key": "apps/frontend-shell/test/process-start-from-template.seam.test.tsx#473c08de128e5214",
+      "verdict": "位置即事实",
+      "why": "A-2 金丝雀同锚：同上一条同块，失败文案逐字写着「剥注释把代码吞了 ⇒ 下面的否定结论全部作废」——它就是那道自证。"
+    },
+    {
+      "key": "apps/frontend-shell/test/process-start-from-template.seam.test.tsx#56b0f38a026319d3",
+      "verdict": "位置即事实",
+      "why": "A-2 金丝雀同锚：背书的否定断言是**文件作用域**的——「组件里没有第二处构造 tasks 的地方」，这个「没有」只在本文件范围内才有意义（换个文件重新拼 tasks，该断言测不到）。整树化会让它恒红，故位置是断言语义的一部分。"
     }
   ]
 }
