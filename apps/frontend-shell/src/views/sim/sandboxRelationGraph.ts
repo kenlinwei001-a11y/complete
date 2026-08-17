@@ -317,6 +317,37 @@ export interface DownstreamReachVM {
  *   量级要跑引擎（`POST …/counterfactual`），那是 `EdgeActivePanel` 的差值表在做的事。
  *   两个读数各答各的问，屏上必须分开说，合成一个数就会让人以为可达集变小 = 数值变小。
  */
+/**
+ * 只保留「焦点量纲 + 它的下游」的子图（**层号重新压紧**，焦点恒为第 0 层）。
+ *
+ * 为什么必须裁：demo 租户 35 条边 / 40 个量纲，全画出来是一张谁也读不完的网 ——
+ * 而用户此刻真正在问的是「**我拨的这个东西**会波及什么」。裁到下游子图，
+ * 图就从"系统全貌"变成"这一次推演的影响半径"，行数当场落回一屏之内。
+ *
+ * ⚠ 焦点不在图里（本体有这个量纲、但没有任何传导规则碰它）⇒ 返回**空图**。
+ *   调用方必须把这件事**明说**（「扰动它不会沿本体链路扩散」），不能画一张空图了事 ——
+ *   空图与"图没加载出来"在屏上长得一模一样。
+ */
+export function focusSubgraph(graph: RelationGraphVM, focusNodeKey: string): RelationGraphVM {
+  const reach = downstreamReach(graph, focusNodeKey);
+  if (!reach.found) return { nodes: [], edges: [], layerCount: 0, nativeCount: 0, derivedCount: 0, activeEdgeCount: 0 };
+  const keep = new Set([focusNodeKey, ...reach.nodeKeys]);
+  const edgeKeep = new Set(reach.edgeKeys);
+  // 关掉的边若两端都在子图里也留着（它要以"虚线"出现，否则用户看不到自己关了什么）。
+  const edges = graph.edges.filter((e) => edgeKeep.has(e.key) || (keep.has(e.from) && keep.has(e.to)));
+  const nodes = graph.nodes.filter((n) => keep.has(n.key));
+  const base = Math.min(...nodes.map((n) => n.layer));
+  const shifted = nodes.map((n) => ({ ...n, layer: n.layer - base }));
+  return {
+    nodes: shifted,
+    edges,
+    layerCount: shifted.length === 0 ? 0 : Math.max(...shifted.map((n) => n.layer)) + 1,
+    nativeCount: shifted.filter((n) => n.kind === "native").length,
+    derivedCount: shifted.filter((n) => n.kind === "derived").length,
+    activeEdgeCount: edges.filter((e) => e.active).length,
+  };
+}
+
 export function downstreamReach(graph: RelationGraphVM, fromNodeKey: string): DownstreamReachVM {
   const byFrom = new Map<string, RelationEdgeVM[]>();
   for (const e of graph.edges) {
