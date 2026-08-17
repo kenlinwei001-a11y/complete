@@ -512,9 +512,22 @@ describe("§F 线路图之形 + 连线必须有出处（这一节红了 = 又画
     // ③ 「为什么是虚线」的取证与两个实测反例进了浮层，且**没被删**（触发器在第一层）
     expect(screen.getByTestId("info-process-order-basis")).toBeTruthy();
     await user.click(screen.getByTestId("info-process-order-basis"));
-    expect(await screen.findByTestId("spc-order-basis-note", undefined, { timeout: 20000 })).toHaveTextContent("strictObject");
+    /**
+     * ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK 改判据落点，**三条要证的事实一条没少**：
+     *   ① 原咬 `strictObject`（zod 术语）证「端点没下发先后关系」⇒ 换成那句话本身；
+     *   ② 反例 `P43` 是**业务编号**、决策者读得懂 ⇒ **原样保留**，一个字没动；
+     *   ③ 原咬 `flow-rules.ts`（源码文件名）证「复验探针没被删」——
+     *      文件名是给工程师的，已移进 zh.ts 该段的代码注释，并升级成机器每次跑都核的
+     *      `@stale-fact` 赌注（比屏上印一个文件名强：那个只能靠人去点开看）。
+     *      屏上要留的是「真实站序存在、但本页取不到」这条事实。
+     */
+    expect(await screen.findByTestId("spc-order-basis-note", undefined, { timeout: 20000 })).toHaveTextContent(
+      "没有「谁在谁前面」这件事",
+    );
     expect(screen.getByTestId("spc-order-basis-why"), "「编号相邻 ≠ 先后」的实测反例被删了").toHaveTextContent("P43");
-    expect(screen.getByTestId("spc-order-basis-where"), "「实测站序在哪」的复验探针被删了").toHaveTextContent("flow-rules.ts");
+    expect(screen.getByTestId("spc-order-basis-where"), "「真实站序在哪」这条诚实位被删了").toHaveTextContent(
+      "真实的站序是存在的，只是本页取不到",
+    );
   }, 90000);
 
   it("F3 · 换乘弧的出处唯一 = **共用承载物**：两端在响应里的 carrierTypeKey 必须真的相等", async () => {

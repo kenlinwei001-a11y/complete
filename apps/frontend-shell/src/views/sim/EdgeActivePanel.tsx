@@ -251,8 +251,8 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
   if (rules.length === 0) {
     return (
       <section data-testid={tid("no-edges")} className={css.panel}>
-        本租户尚未发布任何传导边（<code>PropagationRule</code> · status=PUBLISHED 为 0 条），因此没有边可以关。
-        建边入口：<code>POST /a/v1/sim/propagation-rules</code>。
+        本租户尚未发布任何传导边，因此没有边可以关。要先在传导规则里建一条并发布。
+
       </section>
     );
   }
@@ -265,27 +265,26 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
           <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 420 }}>
             <p>
               每一行是一条<b>传导边</b>：<code>源类型.状态变量 —(链路)→ 目标类型.状态变量</code>，
-              带系数与延迟（tick）。数据源 <code>GET /a/v1/sim/propagation-rules</code>，前端零加工。
+              带系数与延迟（多少拍之后才传到）。这些边逐条来自已发布的传导规则，界面不做任何加工。
             </p>
             <p>
-              上面那排按钮按<b>业务域</b>分片，点一个只看那个域的边。域随边由后端下发
-              （从流程承载物登记册现算），<b>前端不存任何「规则→域」的对照表</b>——
-              存了它，新增一条边忘了登记就会从分类里悄悄消失。
+              上面那排按钮按<b>业务域</b>分片，点一个只看那个域的边。每条边归哪个域由后端随边一起给出，
+              界面不另存一份对照表 —— 存了它，新增一条边忘了登记就会从分类里悄悄消失。
             </p>
             <p>
-              第一行是<b>对象类型的业务名</b>（本体 <code>displayName</code>，查不到就显裸键）；
-              第二行是<b>系统键</b>。状态变量（如 <code>loadIndex</code>）在本体里<b>没有中文名可取</b>，
-              故只出现在系统键那一行——前端不给它编一个。
+              第一行是<b>对象类型的业务名</b>（本体里登记的中文名，没登记就显原始键）；
+              第二行是<b>系统里的键名</b>。状态变量在本体里<b>没有中文名可取</b>，
+              故只出现在系统键那一行 —— 界面不替它编一个。
             </p>
             <p>
-              关掉一条边 = <b>本次推演假装它不存在</b>，落在会话的 <code>disabledRuleKeys</code> 上。
-              它与规则的发布态 <code>status</code> <b>正交</b>：<code>status</code> 决定"这条边在不在世界里"
-              （改它是本体真值写入，须经 Action 审批 R4），本开关只决定"这次推演假装它不在"，
-              随时可拨回，且不影响同租户其他人。
+              关掉一条边 = <b>本次推演假装它不存在</b>，只记在这次会话上。
+              它与「这条边有没有发布」是两回事：后者决定这条边在不在真实世界里（改它要走审批），
+              本开关只决定这一次推演假装它不在 —— 随时可拨回，也不影响同租户其他人。
+
             </p>
             <p>
-              差值来自 <code>POST /a/v1/sim/sessions/:id/counterfactual</code>：同一起点、开/关两版各跑
-              {" "}{ticks} 个 tick，逐格相减。<b>这一趟不写世界态</b>——会话的 tick 一格不动。
+              差值的算法：同一个起点，开、关两版各推
+              {" "}{ticks} 拍，然后逐格相减。<b>这一趟不写世界态</b>——会话的拍号一格不动。
             </p>
           </div>
         </HintDot>
@@ -327,8 +326,9 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
       {/* 还没拨过开关时说明差值从哪来：本页自带世界 / 租户已有世界 / 拨了才就地开一个探针世界。 */}
       {!effectiveSessionId && (
         <p data-testid={tid("no-session")} className={css.note}>
-          本页不持有推演世界，本租户当前也没有可推演的会话（<code>SimSession</code> 为 0 条）。
-          拨动任一开关时会就地开一个探针世界（tick0 由本体配置派生的占位值）来算差值。
+          本页不持有推演世界，本租户当前也没有可推演的会话。
+          拨动任一开关时会<b>就地开一个探针世界</b>（起始值由配置派生的占位值）来算差值。
+
         </p>
       )}
       {/* R13 出处：拿占位世界算出来的差值只反映**边的结构影响**，不是实测量级 —— 必须标，不许含糊。

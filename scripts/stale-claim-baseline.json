@@ -399,15 +399,6 @@
  "generatedBy": "node scripts/check-stale-claims.mjs --update",
  "onscreenExemptions": [
   {
-   "key": "apps/frontend-shell/src/locales/zh.ts#be6709400b998c83",
-   "code": "STALE-5",
-   "file": "apps/frontend-shell/src/locales/zh.ts",
-   "line": 777,
-   "verdict": "UNMARKED",
-   "why": "真断言（BATTERY_PROCESS_FLOW_RULES 有 6 条链 / 覆盖 9 条流程），且文案里**已经带了实测日期与复验命令** —— 但那只满足 STALE-1/2（保质期两问），不构成机器可跑的断言。本单要证的恰恰是这一点：病灶 ①（sandboxConsoleModel/whyBody）同样带着日期和复验配方，照样是假的 ⇒ **「写了日期」证明不了「今天还成立」**。补 `@stale-fact apps/datacore/src/process/flow-rules.ts` 的记号归后续单。",
-   "sample": "\"实测站序确实存在，但不在本档够得着的地方：BATTERY_PROCESS_FLOW_RULES（apps/datacore/src/process/flow-rules.ts:104）有 6 条链、覆盖 9 条流程（P25/P33/P34"
-  },
-  {
    "key": "apps/frontend-shell/src/locales/zh.ts#21e581ce8059a746",
    "code": "STALE-5",
    "file": "apps/frontend-shell/src/locales/zh.ts",
@@ -489,6 +480,6 @@
    "sample": "reason: \"已经查过了，本租户采购段一条都没有 —— 代码链路是通的，缺的是数据。\","
   }
  ],
- "onscreenMax": 10,
- "onscreenRatchetHigh": 10
+ "onscreenMax": 9,
+ "onscreenRatchetHigh": 9
 }

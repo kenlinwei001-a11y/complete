@@ -417,9 +417,15 @@ describe("WO-PROCESS-INSTANCE FE · 诚实缺席（缺就不显示那一块）",
     await waitFor(() => expect(screen.getByTestId("stuck-derived-note")).toBeTruthy());
     expect(screen.getByTestId("stuck-derived-count").textContent).toBe("7");
     const txt = screen.getByTestId("stuck-derived-note").textContent ?? "";
-    // 必须说清「为什么本页答不出」（不是含糊一句"另有若干"），并给出去哪看
-    expect(txt).toContain("DERIVED_FROM_DOCUMENT");
-    expect(txt).toContain("process_flow_time");
+    /**
+     * 必须说清「为什么本页答不出」（不是含糊一句"另有若干"），并给出去哪看。
+     * ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK 改判据落点，**这两件事一件没少**：
+     *   原来靠屏上印 `DERIVED_FROM_DOCUMENT`（溯源枚举值）与 `process_flow_time`（求解器名）——
+     *   决策者读了做不出任何决定。落点换成「为什么」与「去哪看」的人话版。
+     */
+    expect(txt).toContain("反推");
+    expect(txt).toContain("单据上没有「第几步」");
+    expect(txt).toContain("流程等待态");
     // 反向：为 0 时不许挂这一块（那句话此时没有信息量，挂着像在暗示"另有一批"）
     document.body.innerHTML = "";
     net.payload = payloadOf([approvalRow()], 0);

@@ -835,7 +835,7 @@ export function SandboxConsole({
                 {familyOn && famDiscoverErr !== null ? (
                   <p className={styles.errBox} data-testid="sc-family-error" role="alert">
                     <b>产品族锚点发现失败</b>：{famDiscoverErr}
-                    。**不画三个一样的环冒充三条族线** —— 主链那一圈照常。
+                    。<b>不画三个一样的环冒充三条族线</b> —— 主链那一圈照常。
                   </p>
                 ) : null}
                 {transitOn ? (
@@ -865,9 +865,9 @@ export function SandboxConsole({
                   <InfoPopover topic={zh.sim.sandbox.info.chainCoverage} testId="chain-coverage">
                     <span data-testid="sc-chain-coverage">
                   <b>诚实边界 · 在册 ≠ 有数据：</b>设计目标 {coverage.designStageCount} 段 {coverage.designNodeCount} 节点
-                  （{coverage.designStageNames.join(" / ")}）；后端单源 <code>CHAIN_STAGES</code> 今天是{" "}
+                  （{coverage.designStageNames.join(" / ")}）；后端今天实际有{" "}
                   {coverage.backendStageCount} 段（{coverage.backendStageLabels.join(" / ")}）、
-                  <code>CHAIN_NODE_REGISTRY</code> 是 {coverage.backendRegistryNodeCount} 个静态在册节点 ——
+                  在册节点 {coverage.backendRegistryNodeCount} 个 ——
                   <b>
                     差 {coverage.missingStageCount} 段 {coverage.missingNodeCount} 个节点尚未建模
                   </b>
@@ -964,7 +964,7 @@ export function SandboxConsole({
                       )}
                       {lane.absentNodes.length > 0 ? (
                         <p className={styles.laneAbsentRow} data-testid={`sc-lane-${lane.stage}-absent`}>
-                          <b>在册不在场</b>：本段另有 {lane.absentNodes.length} 个节点在 <code>CHAIN_NODE_REGISTRY</code> 里，
+                          <b>在册不在场</b>：本段另有 {lane.absentNodes.length} 个节点在在册名单里，
                           但本次载荷<b>既没有环节、也没有 EMPTY 行</b>（引擎一个字都没提它）——
                           {lane.absentNodes.map((a) => `${a.label}（${a.nodeId}）`).join("、")}
                           。屏上单列一行，<b>不当它不存在</b>；它既不是「0 天」也不是「算不出来」，是<b>没进这次输出</b>。
@@ -1187,7 +1187,7 @@ export function SandboxConsole({
           <div className={styles.paneBody} style={{ overflowX: "auto" }}>
             {pareto === null ? (
               <p className={styles.stateLine} data-testid="sc-pareto-waiting">
-                等线路图取回 <code>chain_loss_attribution</code>（同一份响应的第三种投影，**不发第二次请求**）。
+                等线路图把数据取回来（用的是同一份响应的第三种看法，<b>不发第二次请求</b>）。
               </p>
             ) : (
               <>
@@ -1780,8 +1780,7 @@ function ImpedimentJoinNote({ dimKind, dimStageCount }: { dimKind: ChainImpedime
 function TimeWindowNote() {
   return (
     <span data-testid="sc-window-note">
-      <code>chain_loss_attribution</code> 只认锚点订单 <code>so</code>；<code>chain_impediments</code> 只认{" "}
-      <code>scope</code>。<b>两者都没有时间窗入参</b> ⇒ 这排档位今天**驱动不了任何取数**，
+      这两条取数一条只认锚点订单、一条只认范围，<b>都不接受时间窗</b> ⇒ 这排档位今天<b>驱动不了任何取数</b>，
       故禁用而不是给一个点得动、却什么都不改的假旋钮。
     </span>
   );
@@ -1831,15 +1830,13 @@ function InspectorEvidenceGapNote() {
       <b>下钻证据为空 —— 是宿主这一份载荷缺字段，不是引擎没给。</b>
       <InfoPopover topic={zh.sim.sandbox.info.inspectorEvidence} testId="inspect-evidence" align="right">
         <span data-testid="sc-inspect-evidence-gap">
-      <b>本栏复用宿主已取回的那一份 <code>chain_loss_attribution</code>（不再自取第二次）。代价照实说：</b>
-      宿主这一份经前端宽松读取层 <code>ChainLossPayloadSchema</code> 解析，而该 schema
-      <b>没有声明 <code>evidence[]</code></b> ⇒ zod 按 strip 语义把它剥掉了。
-      所以下面「R13 下钻证据」在<b>控制台里</b>是空的 ——
-      面板那句「本节点没有下钻证据」说的是<b>宿主这一份缺这个字段</b>，<b>不是引擎没给</b>。
-      <code>empty[]</code> 在 schema 里声明过，诚实缺席行原样都在。
-      补齐 = 在 <code>chainLineMap.ts</code> 的 <code>ChainLossPayloadSchema</code> 里加一行 <code>evidence</code>
-      （该文件在本单边界外）；加上后本页一行不改、证据自动回来。独立页{" "}
-      <code>/v/node-inspector</code> 走自取原始响应，证据照常。
+      <b>本栏复用控制台已经取回的那一份数据（不再自取第二次）。代价照实说：</b>
+      控制台这一份在解析时把「下钻证据」这个字段丢掉了 ——
+      所以下面「下钻证据」在<b>控制台里</b>是空的。
+      面板那句「本节点没有下钻证据」说的是<b>控制台这一份缺这个字段</b>，<b>不是引擎没给</b>。
+      诚实缺席行原样都在。
+      要补齐，需要在解析层把这个字段加回来（那是另一件事）；加上后本页一行不改、证据自动回来。
+      独立的节点检视页自取原始数据，证据照常。
         </span>
       </InfoPopover>
     </p>
@@ -2007,7 +2004,7 @@ function TransitComputabilityLegend() {
           <b>④ {CADENCE_ABSENCE.label}</b>
           <span className={styles.tierGlyph}>⇒ 不画任何「这里有节拍」的假象；有闸门时由图层出实况块</span>
           <em data-testid="sc-transit-reason-cadence">
-            本档**现时状态由下方图层现算并自陈**（`transit-cadence-absence` / `transit-cadence-live`），本图例不复述 ——
+            本档<b>现时状态由下方图层现算并自陈</b>，本图例不复述 ——
             图例自己不取数，复述出来的只会是"零输入"那一档，与屏上正在发生的事无关。
           </em>
         </li>
@@ -2015,8 +2012,8 @@ function TransitComputabilityLegend() {
           <b>⑤ {PROCUREMENT_BRANCH.label}</b>
           <span className={styles.tierGlyph}>⇒ 画不出来就说画不出来（空 + 逐条取证）</span>
           <em data-testid="sc-transit-reason-procurement">
-            同上：四段腿（契约单源 `PROCUREMENT_LEGS`）的现时可画性由下方图层现算并自陈
-            （`transit-procurement-absence` 等），本图例只给档名与画法。
+            同上：四段腿（口径取自契约那份唯一定义）的现时可画性由下方图层现算并自陈，
+            本图例只给档名与画法。
           </em>
         </li>
       </ul>

@@ -324,9 +324,19 @@ describe("§4 · 时序可算性三级判据：一个字都不许丢（几何改
     const note = screen.getByTestId("transit-geometry-source");
     expect(note.getAttribute("data-source")).toBe("chain-line-map");
     const txt = note.textContent ?? "";
-    expect(txt).toContain("chainLineMap.ts");
-    expect(txt).toContain("弧长参数");
-    expect(txt, "没有说清两图站点 key 不是同一套 ⇒ 用户会以为同角度就是同一个站").toContain("没有共同的 id 维度");
+    /**
+     * ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK 改判据落点，**要证的两件事一件没少**：
+     *   ① 几何与线路图同源（原来靠屏上印 `chainLineMap.ts` 这个**文件名**来证 ——
+     *      文件名是开发的话，用户读了做不出任何决定）；
+     *   ② 两图的站不是同一套（原来靠 `id 维度` 这个说法）。
+     *   `data-source="chain-line-map"` 那条断言（上面一行）本来就是**机器判据**，
+     *   它比屏上印一个文件名更强，且不占用户的第一层 —— 单源这件事仍被它钉着。
+     */
+    expect(txt).toContain("同源");
+    expect(txt).toContain("弧长");
+    expect(txt, "没有说清两图站点不是同一套 ⇒ 用户会以为同角度就是同一个站").toContain("没有共同的编号维度");
+    // 反向：源码文件名不许再印回屏上
+    expect(txt).not.toContain("chainLineMap.ts");
   });
 });
 

@@ -205,18 +205,17 @@ export function PerturbationTimeline({ sessionId, curTick }: PerturbationTimelin
         <HintDot label="扰动时间轴" testId="ptl-hint">
           <b>这张图的口径</b>
           <br />
-          数据源：<code>GET /a/v1/sim/sessions/:id/perturbations</code> → <code>items[]</code>，逐字段对应 ——
-          泳道名 = <code>targetObjectId</code>.<code>targetStateVar</code>；条起点 = <code>startTick</code>；
-          条长度 = <code>durationTicks</code>（<code>null</code> = 永久，右端虚线不封口）；
-          幅度 = <code>magnitude</code> 按 <code>mode</code> 读（<code>delta</code> 记 ±、
-          <code>scale</code> 记 ×、<code>set</code> 记 =）。
+          每一条都逐字段来自这次会话已施加的扰动清单 ——
+          泳道名 = 被扰动的那个对象与状态变量；条起点 = 从第几拍开始；
+          条长度 = 持续几拍（不封口的虚线 = 永久）；
+          幅度按施加方式读：加减记 ±、按比例记 ×、直接设定记 =。
           <br />
           <br />
           <b>「生效中」怎么算</b>
           <br />
-          <code>t ≥ startTick ∧ (durationTicks = null ∨ t &lt; startTick + durationTicks)</code>，
-          直接调契约的 <code>isPerturbationActiveAt</code> —— 与引擎 <code>propagateTick</code>、
-          与路由「已在当前 tick 生效者立即施加」是**同一份判据**，前端不另写一遍。
+          当前拍 ≥ 起始拍，且（永久，或当前拍还没走完持续拍数）。
+          这个判断直接调契约里那一份实现 —— 与引擎推拍、与「已生效者立即施加」用的是<b>同一份判据</b>，
+          界面不另写一遍。
           <br />
           <br />
           <b>顺序为什么是语义</b>

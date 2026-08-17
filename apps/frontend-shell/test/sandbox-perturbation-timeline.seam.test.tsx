@@ -304,15 +304,24 @@ describe("WO-SIM-PERTURB-TIMELINE · 扰动时间轴接缝（写端 → 读端�
 
     const box = timeline();
     // R-UI-3：生效判据那条公式属于「解释」，第一层不许有。
-    expect(box.textContent, "公式出现在第一层 ⇒ 违反 CONVENTION §2 R-UI-3").not.toContain("startTick + durationTicks");
+    expect(box.textContent, "公式出现在第一层 ⇒ 违反 CONVENTION §2 R-UI-3").not.toContain("起始拍");
     // 浮层默认不在 DOM（"不点就看见"的只有数值/状态/名字）。
     expect(screen.queryByTestId("ptl-hint-pop"), "浮层默认就展开 = 第一层过载").toBeNull();
 
     // 悬停 → 出现；移开 → **立即消失**（原生 tooltip 滞留事故的对策）。
     await user.hover(screen.getByTestId("ptl-hint"));
     const pop = await screen.findByTestId("ptl-hint-pop");
-    expect(pop.textContent, "浮层里必须写清生效判据（公式的正确归宿）").toContain("startTick + durationTicks");
-    expect(pop.textContent, "浮层里必须写清字段出处（不许编造）").toContain("/a/v1/sim/sessions/:id/perturbations");
+    /**
+     * ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK 改判据落点，**分层这件事一点没松**：
+     *   「公式属于解释、只许在浮层」这条 R-UI-3 判据**两向都还在**（上面 not.toContain + 这里 toContain），
+     *   只是判据串从契约字段名（`startTick + durationTicks`）与端点路径换成了人话版 ——
+     *   那两样本身就是不该上屏的开发话，拿它们当探针 = 用违规内容证明合规内容还在。
+     */
+    expect(pop.textContent, "浮层里必须写清生效判据（公式的正确归宿）").toContain("起始拍");
+    expect(pop.textContent, "浮层里必须写清生效判据（公式的正确归宿）").toContain("持续拍数");
+    expect(pop.textContent, "浮层里必须写清字段出处（不许编造）").toContain("这次会话已施加的扰动清单");
+    // 反向：端点路径不许再印回屏上
+    expect(pop.textContent).not.toContain("/a/v1/");
     await user.unhover(screen.getByTestId("ptl-hint"));
     await waitFor(() => expect(screen.queryByTestId("ptl-hint-pop"), "移开后浮层滞留 = 复刻 ChainLineMapView 那次事故").toBeNull());
 
