@@ -8,11 +8,6 @@
     "plannedSlices"
   ],
   "endpoints": [
-    "DELETE /b/v1/agents/*",
-    "DELETE /b/v1/mcp-configs/*",
-    "DELETE /b/v1/scene-entries/*",
-    "DELETE /b/v1/skills/*",
-    "DELETE /b/v1/workflows/*",
     "GET /a/v1/action-types",
     "GET /a/v1/actions/metrics",
     "GET /a/v1/capability-inventory",

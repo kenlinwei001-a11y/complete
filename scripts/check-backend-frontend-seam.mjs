@@ -1050,19 +1050,31 @@ function canaries(ctx) {
   });
 
   // C16e 真文件**双向**：已知真调用的方法必须判「已接」，同路径上已知没调的方法必须判「零调用」
-  //      同一条路径 `/b/v1/agents/{id}` 上，前端有 GET 与 PUT（endpoints.ts:1394/1396）、没有 DELETE。
-  //      这一对是本次口径升级的**最小可判样本**：旧口径下两者结论相同（都「已接」），新口径下必须分开。
+  //      旧口径下这一对结论相同（都「已接」），新口径下必须分开 —— 这就是口径升级的最小可判样本。
+  //
+  // ⚠ 2026-08-17 WO-BEFE-DELETE-WIRE 换探针（原探针 `/b/v1/agents/*` 的 PUT/DELETE）：
+  //   原探针把「`DELETE /b/v1/agents/*` **没有**前端调用方」写成了金丝雀的**期望值**。
+  //   那条缺口正是 burn-down 单要消的目标 —— 于是本条金丝雀**在缺口被修好的那一刻自毁**：
+  //   接线一落地它就报「门自己坏了」(RC=2)，门从此不产出任何结论。
+  //   形态（铁律 0.6 句式）：**「我用『某条缺口今天还在』当作『判据分得开方法』的证据，
+  //   而前者并不度量后者」** —— 前者会随 burn-down 变化，后者是判据的固有性质。
+  //   换成 `/b/v1/skills/*` 的 PUT（前端有 `saveSkill`）/ GET（`GET /b/v1/skills/:id`
+  //   `server.ts:1355` 至今无前端调用方，仍在 `backend-frontend-seam-baseline.json` 里挂账）。
+  //   ⚠ **这只是把自毁推迟到下一张单**：谁接了 `GET /b/v1/skills/:id`，本条会同样报红。
+  //   届时**不要**再换一条缺口了事 —— 真正的修法是让探针**动态**从当前扫描面里挑一对
+  //   「同路径、一方法有调用方、另一方法没有」的样本（没有这种样本时才判工具坏），
+  //   那样它就不再依赖任何一条具体缺口的存亡。本单范围边界不含本文件，故只做最小换探针。
   add("method/真文件 同路异法双向", "只做正向 ⇒ 恒真判据把全部缺口藏起来；只做反向 ⇒ 恒假判据把全仓报成缺口。两个方向缺一不可", () => {
-    const mk = (method) => ({ method, norm: "/b/v1/agents/*", aliases: ["/b/v1/agents/*", "/api/v1/agents/*"] });
+    const mk = (method) => ({ method, norm: "/b/v1/skills/*", aliases: ["/b/v1/skills/*", "/api/v1/skills/*"] });
     const put = routeConsumedByMethod(mk("PUT"), ctx.feCalls, ctx.feUnknownPaths);
-    const del = routeConsumedByMethod(mk("DELETE"), ctx.feCalls, ctx.feUnknownPaths);
+    const get = routeConsumedByMethod(mk("GET"), ctx.feCalls, ctx.feUnknownPaths);
     const oldPut = routeConsumedByPathOnly(mk("PUT"), ctx.fePaths);
-    const oldDel = routeConsumedByPathOnly(mk("DELETE"), ctx.fePaths);
-    const ok = put === true && del === false && oldPut === true && oldDel === true;
+    const oldGet = routeConsumedByPathOnly(mk("GET"), ctx.fePaths);
+    const ok = put === true && get === false && oldPut === true && oldGet === true;
     return {
       ok,
-      got: `新口径 PUT=${put} DELETE=${del} · 旧口径 PUT=${oldPut} DELETE=${oldDel}`,
-      want: "新口径 PUT=true DELETE=false（分得开）· 旧口径两者皆 true（正是被治的失明）",
+      got: `新口径 PUT=${put} GET=${get} · 旧口径 PUT=${oldPut} GET=${oldGet}`,
+      want: "新口径 PUT=true GET=false（分得开）· 旧口径两者皆 true（正是被治的失明）",
     };
   });
 
