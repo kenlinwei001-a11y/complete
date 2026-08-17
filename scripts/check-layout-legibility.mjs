@@ -514,6 +514,33 @@ async function main() {
       process.exit(0);
     }
 
+    // ── 名单 vs 现算 一致性断言（`gate-roster-handcopied` 守的那条命题）────────────
+    // 本门的 `PAGES` 是**写死的**（只铺一页），而「推演页」的全集是**能现算的**
+    // （`parsePrdTable` 读 PRD §4 表，`--survey` 用的就是它）。
+    // 该门的规矩：受检对象集合写死 ⇒ **必须同批加一条「名单 vs 现算」的一致性断言**。
+    // 故这里每次运行都把差集**报出来**，不许让「只守了 1/12」这件事沉默地待着：
+    //   · 名单里出现现算名册**没有**的页 ⇒ RC=2（名单脏了，不是代码坏了）；
+    //   · 名单是名册子集但小于全集 ⇒ 照常跑，但**打印欠账**（这是真债，登记在
+    //     `scripts/gate-roster-baseline.json` 的 `check-layout-legibility.mjs:PAGES`）。
+    {
+      const roster = prdPageKeys();
+      const gated = PAGES.map((p) => p.id);
+      const alien = gated.filter((k) => !roster.includes(k));
+      if (alien.length) {
+        throw new ProbeBroken(
+          `被测页名单里有现算名册没有的页：${alien.join(", ")}（名册 ${roster.length} 页现读自 PRD §4 表）。` +
+            `⇒ 名单脏了，判「工具坏了」而不是「版面不合格」。`,
+        );
+      }
+      const ungated = roster.filter((k) => !gated.includes(k));
+      console.log(
+        `· 名单 vs 现算：现算推演页名册 ${roster.length} 页 · 本门棘轮守 ${gated.length} 页（${gated.join(",")}）· ` +
+          `**未进棘轮 ${ungated.length} 页**${ungated.length ? `（${ungated.join(",")}）` : ""}。` +
+          `\n  ⚠ 这 ${ungated.length} 页由 \`--survey\` 逐页量过并填进 PRD 的 U10 列，但**量到 ≠ 守住** —— ` +
+          `它们今天变坏本门不会红。这是登记在册的真债（gate-roster-baseline.json:check-layout-legibility.mjs:PAGES），不是遗漏。`,
+      );
+    }
+
     const prevDoc = loadBaseline();
     const measured = {};
     for (const page of PAGES) {
