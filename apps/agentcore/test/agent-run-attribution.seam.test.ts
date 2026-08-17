@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AgentDefinition } from "@platform/contracts";
 import { AgentRunRecordSchema } from "@platform/contracts";
 import { createTestApp, debugHeaders, PLANNER, submitQuery, TENANT, waitForTask, type TestApp } from "./helpers.js";
 import { toolUse } from "../src/llm/mock.js";
+import { loadConfig } from "../src/config.js";
+import { computeResidualBudget } from "../src/router/orchestrator.js";
+import { BudgetTracker } from "../src/tools/budget.js";
 
 /**
  * WO-AGENTRUN-ATTRIBUTION · SEAM：一次运行归属到具体 Agent（`G-AGENTRUN-NO-AGENT-ATTRIBUTION` 可归属半边）。
@@ -89,6 +94,9 @@ describe("WO-AGENTRUN-ATTRIBUTION · 运行归属接缝", () => {
     expect(persisted!.tenantId).toBe(TENANT);
     expect(persisted!.attribution).toBe("REGISTERED");
     expect(persisted!.createdAt).toBeTruthy();
+    // WO-DSH-P2-UX（N5）· A6：native 路显式写内核标识 —— runAgentLoop 永不在 dsh 分叉下执行
+    // （engine.ts DSH_HARNESS=1 分叉在进 loop 之前已返回），故这里恒为 "NATIVE"。
+    expect(persisted!.kernel).toBe("NATIVE");
 
     // —— HTTP 读端：按 agent 能查到，且就是库里那条（id 对得上）——
     const res = await listRuns(t, "agt_attr_a");
@@ -244,5 +252,82 @@ describe("WO-AGENTRUN-ATTRIBUTION · 运行归属接缝", () => {
     const run = AgentRunRecordSchema.parse(res.json());
     expect(run.agentId).toBe("agt_both");
     expect(run.attribution).toBe("REGISTERED");
+  });
+});
+
+/**
+ * WO-DSH-P2-UX（N5）· A7 内核标识写入对拍（engine 级，DSH_HARNESS 休眠分叉两臂）。
+ *
+ *  - flag on（DSH_HARNESS=1）⇒ engine.ts 分叉走 dsh harness 子进程 ⇒ `run.kernel === "EXTERNAL"`；
+ *  - flag off（缺省休眠）⇒ 同入口落 native `runAgentLoop` ⇒ `run.kernel === "NATIVE"`。
+ *
+ * 对拍的是**同一个写入面**（`engine.ts emptyAgentRunRecord` 分叉两点 / `agent/loop.ts finishRun`），
+ * 前端徽标（agent-kernel-badge.test.tsx A1/A2）读的就是这里写下的值。
+ *
+ * env 卫生：engine fork 读的是**进程 env**（engine.ts `process.env.DSH_HARNESS`），
+ * createTestApp 的 env 只进 config 管不到这层 ⇒ 本 describe 显式 save/restore 进程 env
+ * （模式照 N3 deploy-governance-seam.test.ts :185-198）。
+ */
+describe("WO-DSH-P2-UX · 内核标识写入对拍（A7）", () => {
+  const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
+  const HARNESS_DIR = join(ROOT, "packages/dsh-harness");
+  const ENV_KEYS = ["DSH_HARNESS", "DSH_HARNESS_DIR", "MOCK_SCENARIO"] as const;
+  let savedEnv: Record<string, string | undefined>;
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+  });
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (savedEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = savedEnv[k];
+    }
+  });
+
+  /** engine 级直调 runRegisteredAgent（绕过 HTTP/编排层 —— 对拍的是引擎写入点本身）。 */
+  async function runEngineOnce(t: TestApp, agentId: string, taskId: string) {
+    return t.deps.engine.runRegisteredAgent({
+      taskId,
+      agentId,
+      version: "latest",
+      prompt: "看一下基地情况",
+      ctx: { tenantId: TENANT, userId: "user-planner", roles: ["planner"] },
+      nesting: {
+        callChain: [],
+        budget: new BudgetTracker(computeResidualBudget(loadConfig({ PORT: "0", LOG_LEVEL: "silent" } as NodeJS.ProcessEnv))),
+      },
+      emit: async () => {},
+    });
+  }
+
+  it("DSH_HARNESS=1 ⇒ dsh 分叉产出的 run.kernel === \"EXTERNAL\"", { timeout: 60_000 }, async () => {
+    process.env.DSH_HARNESS = "1";
+    process.env.DSH_HARNESS_DIR = HARNESS_DIR; // vitest cwd=apps/agentcore，缺省解析不到 packages/dsh-harness
+    delete process.env.MOCK_SCENARIO; // 缺省剧本：echo_tool 一轮 + 文本收尾
+    const t = await createTestApp();
+    // echo_tool 是 harness 侧世界插件（非 native BUILTIN），对 runtime 而言是 UNKNOWN（照 N3 对位形态）。
+    await t.repos.agents.insert(
+      agentDef({
+        id: "agt_kernel_dsh",
+        key: "kernel_dsh_agent",
+        tools: [{ kind: "BUILTIN", name: "echo_tool" }],
+        scopeDeclaration: { objectTypes: [], toolNames: ["echo_tool"] },
+      }),
+    );
+
+    const result = await runEngineOnce(t, "agt_kernel_dsh", "task_kernel_dsh");
+    expect(result.run.kernel).toBe("EXTERNAL");
+  });
+
+  it("flag off（缺省休眠）⇒ 同入口落 native 循环 run.kernel === \"NATIVE\"", async () => {
+    delete process.env.DSH_HARNESS;
+    const t = await createTestApp();
+    await t.repos.agents.insert(agentDef({ id: "agt_kernel_native", key: "kernel_native_agent" }));
+    t.llm.queueAgentTurn({ content: [toolUse("query_objects", { objectType: "Base", filter: {} })] });
+    t.llm.queueAgentTurn({
+      content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "内核测试回答。" }], provenance: [] })],
+    });
+
+    const result = await runEngineOnce(t, "agt_kernel_native", "task_kernel_native");
+    expect(result.run.kernel).toBe("NATIVE");
   });
 });
