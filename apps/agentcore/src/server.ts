@@ -662,7 +662,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const a = await auth(req);
     requireRole(a, "catalog_admin");
     const { planId } = req.params as { planId: string };
-    return deps.catalog.publishPlan(planId);
+    // WO-PUBLISH-REFPROBE：`a` 同时是探针的 OBO 上下文（与 agent/workflow/skill 三路同形）。
+    return deps.catalog.publishPlan(planId, a);
   });
 
   // ---------------------------------------------------------------------
@@ -3085,7 +3086,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (intent) {
       if (intent.planRef) {
         const plan = await resolvePlanByRef(deps.repos, pkg.id, intent.planRef, { forValidation: true });
-        if (plan && plan.status !== "PUBLISHED") { await deps.catalog.publishPlan(plan.id); publishedChain.push({ kind: "plan", key: plan.key }); }
+        // WO-PUBLISH-REFPROBE：本条也走同一道引用可校验门（引用死路 → 422 冒泡，整条链不落库）。
+        if (plan && plan.status !== "PUBLISHED") { await deps.catalog.publishPlan(plan.id, a); publishedChain.push({ kind: "plan", key: plan.key }); }
       }
       if (intent.status !== "PUBLISHED") { await deps.catalog.publishIntent(intent.id); publishedChain.push({ kind: "intent", key: intent.key }); }
     }

@@ -9,6 +9,7 @@ import type { McpClientPort } from "./mcp/types.js";
 import { Metrics } from "./metrics.js";
 import type { Repos } from "./persistence/repos.js";
 import { makeRefReporter, type RefReporter } from "./refs/report.js";
+import { probeMissingRefs } from "./resources.js";
 import { HttpLlmBudget, NoopLlmBudget, type LlmBudgetPort } from "./ops/llm-budget.js";
 import { Orchestrator } from "./router/orchestrator.js";
 import { CatalogService } from "./catalog/service.js";
@@ -95,7 +96,14 @@ export function wireDeps(base: {
     llmBudget,
   });
   const reportRefs = makeRefReporter(base.config);
-  const catalog = new CatalogService(base.repos, reportRefs);
+  // WO-PUBLISH-REFPROBE：探针端口在此**唯一**捆定实现（`resources.ts probeMissingRefs`）——
+  // 三个 `publishPlan` 调用方（catalog 路由 / publish-chain / plan-builder）由此共享同一道门，
+  // 谁都不必自己记得接线。用端口而非直接 import：见 `catalog/service.ts PlanRefProbe` 处的循环依赖实测。
+  const catalog = new CatalogService(
+    base.repos,
+    (ctx, want) => probeMissingRefs(base.dataCore, ctx, want),
+    reportRefs,
+  );
   const planBuilder = new PlanBuilderService(base.repos, catalog, base.dataCore, engine, events);
   const evals = new EvalService({ repos: base.repos, orchestrator, engine });
   return {

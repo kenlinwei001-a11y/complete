@@ -121,7 +121,10 @@ export class PlanBuilderService {
       key: canvas.key,
       steps: compiled.plan.steps,
     });
-    const published = await this.catalog.publishPlan(plan.id);
+    // WO-PUBLISH-REFPROBE：`publishPlan` 内部还会对**编译后的 steps** 再探一次针。
+    // 与上面 `validateRefs`（探**画布 DSL 节点**）不是重复：编译器若产出 DSL 里没有的引用，
+    // 只有里面那一次能咬住 —— 纵深，不是抄两遍。
+    const published = await this.catalog.publishPlan(plan.id, a);
 
     // 同 key 旧 PUBLISHED canvas 自动退役
     const siblings = await this.repos.planBuilders.listByPackage(canvas.packageId);
