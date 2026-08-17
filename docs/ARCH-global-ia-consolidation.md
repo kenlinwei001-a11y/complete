@@ -103,3 +103,99 @@
 **这不是"加几个沙盘页"，是把系统的"推演"能力从散落（project/risk/scenarios 各一套单发）收敛成一个交互沙盘，把"就绪"从可能三处显示收敛成一个横切面板（folded 进 modeling+growth），其余全复用现有页深链。净增 1 个业务视图、3 个 additive 增强、2 个渐进降级，~35 页零改动。** 配合 entitlement 暗发 + single-source 门，全局 IA 调整可控、可回退、不出双份。
 
 > 落地顺序仍遵 RUNBOOK：增量 4（UI）才动 IA，且 modeling/growth 是 additive、project/risk 共存降级——前 3 增量（本体/CLI/引擎）完全不碰现有页。
+
+---
+
+## 8. 实施记账 · 收编表当前态（2026-08-17 · WO-SANDBOX-NAV-CONSOLIDATE 回写）
+
+> 本节是**实施后的现状**，不是计划。单一出处在代码里
+> （`apps/frontend-shell/src/pages/ShellLayout.tsx` 的 `CONSOLIDATED_INTO_SANDBOX`
+> ＋ `apps/frontend-shell/src/views/sim/sandboxModes.ts` 的档表），本节只做人读索引；
+> 两侧漂移由 `scripts/check-nav-group-coverage.mjs` 判据⑧/⑨ 与
+> `apps/frontend-shell/test/sandbox-nav-consolidate.seam.test.tsx` 机械对账。
+
+### 8.1 已收编进沙盘的 12 个入口
+
+| 键 | via（后端哪条机制仍可达） | 沙盘里点哪里能到 | 导航回退条目 |
+|---|---|---|---|
+| `chain-line-map` | workspace.views | 「现状」→ 中栏画布**默认**档「线路图」 | 无（随 `sim.sandbox` 一起消失） |
+| `physical-topology` | workspace.views | 「现状」→ 画布档「物理拓扑」 | 无（同上） |
+| `node-inspector` | workspace.views | 「现状」→ 右栏常驻检视 → 页签「变量输入」 | 无（同上） |
+| `transit-flow` | workspace.views | 「现状」→ 线路图上的「在途批次图层」勾选框 | 无（同上） |
+| `chain-impediments` | workspace.views | 「现状」→ 主屏阻滞点统计条 + 逐条清单 | 无（同上） |
+| `cleanroom-attr` | static-route | 「归因」→ 档「净室归因」 | `kind:"route"` + `consolidatedWhen` |
+| `what-if` | static-route | 模式「试一手」 | `kind:"route"` + `consolidatedWhen` |
+| `optimize-whatif` | static-route | 模式「求最优」 | `kind:"route"` + `consolidatedWhen` |
+| `disruption-radius` | static-route | 模式「影响半径」 | `kind:"route"` + `consolidatedWhen` |
+| **`process-wait`** | workspace.views | **「归因」→ 档「流程等待态」** | **`kind:"view"` + `consolidatedWhen`** |
+| **`procurement-legs`** | workspace.views | **「归因」→ 档「采购四段腿」** | **`kind:"view"` + `consolidatedWhen`** |
+| **`process-stuck`** | **view-defs** | **「归因」→ 档「流程卡点」**（暗发键关着时该档整个不出现） | **`kind:"view"` + `consolidatedWhen`** |
+
+**两种回退语义不许混**（判据⑧a/⑧e 各守一半）：
+
+- **无回退条目** —— 该页的 entitlement 本就 `requires: ["sim.sandbox"]`，沙盘关 ⇒ 它连
+  `workspace.views` 都不下发、`/v/<key>` 本来就 404。**没有可回退的东西**，这是事实不是豁免。
+- **有条目 + `consolidatedWhen`** —— 该页**不受** `sim.sandbox` 门控（沙盘关着照样能打开）。
+  条目必须留着：删了 = 沙盘关的租户「沙盘没有 + 导航也没有」，这一页从 IA 里蒸发。
+
+唯一非法的第三态是**有条目却不带 `consolidatedWhen`** —— 那是永不消失的重复入口，
+也正是 §8.2 那个事故的形态。
+
+### 8.2 事故记账：「归因与风险」组的收编承诺被逐条豁免掏空
+
+仓主原话：**「为何导航栏还有这2个，我之前不是要求你调整吗？」**
+
+该组原设计是「沙盘一开整组消失」（两项都带 `consolidatedWhen` ⇒ 空组自动隐藏）。
+之后三张单各往组里加了一项、**每一项都不带**，注释里的理由都是
+「沙盘五模式里没有它，带了就是把它唯一的入口在沙盘开时删掉，页面直接不可达」——
+**这三条理由当时全是真的**。于是这个本该消失的组在沙盘开着时永远剩三项。
+
+**形态**（铁律 0.6 句式）：
+> **「我用『每条豁免单独看都成立』当作『整组收编还在生效』的证据，而前者并不度量后者。」**
+
+**最刺眼的一点**：`ShellLayout` 里那两条历史订正每次**只更新了数字**
+（「剩一项…这是正确行为，不是漏配」→「再订正一次同一句：剩两项」），
+从没有人问过「这个数为什么不是零」。
+
+**修法的红线**：不许用「删导航项」了事 —— 删了项而没有替代入口 = 页面彻底不可达。
+交付判据是**两条同时成立**：① 沙盘开时组不出现在侧栏；② 那三页每一页都仍有用户点得到的入口
+（不是手敲 URL、不是只有测试知道的深链）。故本轮的做法是**真收编**：给它们在沙盘里造落点。
+
+**机制（下次由机器先说话）**：`nav-group-coverage:check` 判据⑨ ——
+凡有成员带 `consolidatedWhen: X` 的组，其余成员要么也带、要么在
+`ShellLayout.GROUP_CONSOLIDATION_EXEMPT` 里逐条登记理由；违规 RC=1 并点名
+「本组的收编承诺正在被掏空：X 开时本组还剩 N 项」。
+
+### 8.3 「归因」模式的四档（同一问、不同对象）
+
+`SANDBOX_MODES` 的**五问顺序一个字没动**（决策链 = 顺序即产品表达）。三页进的是
+**模式内的档**，不是新的一环 —— 它们与 `cleanroom-attr` 回答的是**同一问**（为什么会这样），
+只是看的对象不同：
+
+| 档 | 看哪一类对象 | 原独立页 |
+|---|---|---|
+| 净室归因 | 链路损失落在哪一段 | `cleanroom-attr` |
+| 流程等待态 | 这**类**流程通常在等哪一类东西（模板层） | `process-wait` |
+| 流程卡点 | **这一张单**此刻卡在第几步、等谁、等了多久（实例层） | `process-stuck` |
+| 采购四段腿 | 这批料晚在哪一段、今天该打哪通电话（责任方） | `procurement-legs` |
+
+顺序 = 从粗到细。**模板层与实例层不合并**（上一轮裁决，本轮未推翻）：它们是同一模式下的
+**两个档**，各自渲染各自那一页，`waitStateOrigin` 的 `DEFINITION_TEMPLATE` vs `TASK_GATE`
+那条诚实位在 IA 层完好。
+
+**档内容的取法（这一条是 R3 不被绕过的结构保证）**：档不写死 `lazy(() => import(...))`，
+而是走**与 `pages/ViewPage.tsx` 逐字同构**的分发 ——
+`features.includes("view.<key>")` → `workspace.views.find(key)` → `getRenderer(view.renderer)`。
+于是「档在不在」与「导航项在不在」吃的是同一个判据，`process-stuck` 的暗发键
+`process.runtime`（`defaultOn:false`）关着时那一档**整个不渲染按钮**（不是禁用 —— 禁用同样泄露存在性）。
+
+### 8.4 《本体引用与影响》（本节增量）
+
+- **对象类型**：`ViewConfig`（档内容仍由它下发，`view.options` 与深链走同一份配置）。
+- **链路**：`NAV_GROUPS(组 → 成员 → consolidatedWhen) --条件过滤--> UnifiedNav --空组--> 自动隐藏`；
+  反向 `CONSOLIDATED_INTO_SANDBOX --档--> workspace.views + getRenderer --> 页面内容`。
+- **不变量**：R3（暗发键关 = 功能不存在，收编后仍成立）；R14（档表配置驱动、零业务常数）。
+- **门禁**（§7）：`nav-group-coverage:check` 判据⑧f（两张表不许各写一半）与判据⑨（组承诺不许被掏空）；
+  退出码补齐三分（门自己瞎了 ⇒ RC=2）。
+- **断点**（§8）：新增 `G-GROUP-CONSOLIDATION-HOLLOWED`（✅ 已闭）；
+  `G-NAV-FALLBACK-BUCKET` 补记第三个亚型（前两个亚型是逐键的，这个出在**组**这一层）。

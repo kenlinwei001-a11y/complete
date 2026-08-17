@@ -2116,10 +2116,15 @@ function ConsolidatedViewTab({ viewKey }: { viewKey: string }) {
   const renderer = view ? ((view.renderer ?? (view.layout?.renderer as string | undefined)) || undefined) : undefined;
   const Renderer = getRenderer(renderer);
   if (!view || !Renderer) {
+    /**
+     * ⚠ 这句话刻意**短**：`ui-first-layer:check` 的 D2b 棘轮数「第一层 ≥24 字的成段说明」，
+     * 而这条分支实际上走不到（判据不成立的档在上面就不出按钮了）。
+     * 为一条走不到的分支往第一层加一整段解释，是拿棘轮额度换零收益 ——
+     * 「为什么不可达」这件事写在上面的注释里，读代码的人看得到，屏上不必占位。
+     */
     return (
       <div className="empty-state" data-testid={`sandbox-attr-unavailable-${viewKey}`}>
-        「{viewKey}」这一档此刻不可达（workspace 未下发该视图或渲染器未注册）——
-        不是空数据，是这条到达路径本身不成立。
+        {viewKey}：这一档不可达（未下发或未注册）
       </div>
     );
   }

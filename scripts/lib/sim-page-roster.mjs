@@ -227,28 +227,59 @@ export function parseNavGroups(shellSrc) {
 }
 
 /**
+ * 取一个**顶层声明**的对象字面量体（`export const NAME … = { … \n};`）。
+ *
+ * ⚠ **2026-08-17 实测的一个真「门瞎了」，记在这里防复发**（WO-SANDBOX-NAV-CONSOLIDATE）：
+ * 本文件原来用 `src.split("<NAME>")[1]` 取块 —— 那取的是**第一次出现之后**的那一段。
+ * 只要有人在声明**之前**的注释里提一嘴这个名字（本仓注释密度下这是迟早的事），
+ * `[1]` 就变成「第一次提及 → 第二次提及」之间的那段**纯注释**，body 为空 ⇒
+ * 判据 R5 提取 **0 条**。当天实测：给 `NavItemRef` 的 JSDoc 里加了一句
+ * 「收编表 `CONSOLIDATED_INTO_SANDBOX` 里原来那五个子视图…」，`sim-ux-criteria:check`
+ * 当场 RC=2、`edge-active-mounts` RC=1 —— 而**被扫的代码一个字都没错**。
+ * 形态（铁律 0.6 句式）：**「我用『名字第一次出现的位置』当作『声明的位置』的证据。」**
+ * ⇒ 判据必须锚在 **`export const <NAME>` / `const <NAME>`** 上（同文件 `parseRouteNoNav`
+ *   早就是这么写的，只是这两个抽取器当时没跟着改）。
+ */
+function declBody(src, name) {
+  const s = src ?? "";
+  const start = s.search(new RegExp(String.raw`(export\s+)?const\s+${name}\b`));
+  if (start < 0) return "";
+  const open = s.indexOf("{", start);
+  if (open < 0) return "";
+  const end = s.indexOf("\n};", open);
+  return end < 0 ? s.slice(open + 1) : s.slice(open + 1, end);
+}
+
+/**
  * `CONSOLIDATED_INTO_SANDBOX`（收编登记表）→ `{ key: via }`。
  * `via` 正是 R5 与 X1 的分水岭：`static-route` 那批仍是**整页**，`workspace.views` 那批
  * 已经是沙盘一屏之内的构件。这个区分是表里**自己写着**的，不是我在门里另定的。
- * @returns {Record<string,"workspace.views"|"static-route">}
+ *
+ * ⚠ `via` 的取值**不在这里写死**（原来只认 `workspace.views|static-route`）：
+ * 表里新增第三种 `view-defs`（后端增量视图桶）时，写死的正则会**静默丢掉**那一条 ——
+ * 少一条只会让 R5/X1 的集合变小、判据更容易恒绿，正是失败危险那一侧。
+ * 故这里照实抽取，"哪一种算 R5、哪一种算 X1" 由调用方按值判断（判据留在判据处）。
+ * @returns {Record<string,string>}
  */
 export function parseConsolidated(shellSrc) {
   const out = {};
-  const blk = (shellSrc ?? "").split("CONSOLIDATED_INTO_SANDBOX")[1] ?? "";
-  const body = blk.split("\n};")[0] ?? "";
+  const body = declBody(shellSrc, "CONSOLIDATED_INTO_SANDBOX");
   for (const line of body.split("\n")) {
     if (isComment(line)) continue;
-    const m = line.match(/"?([a-z0-9-]+)"?\s*:\s*\{\s*via:\s*"(workspace\.views|static-route)"/);
+    const m = line.match(/"?([a-z0-9-]+)"?\s*:\s*\{\s*via:\s*"([a-z.-]+)"/);
     if (m) out[m[1]] = m[2];
   }
+  // 多行写法（`"key": {\n  via: "…",\n  where: "…",\n},`）—— 单行正则看不见它。
+  // 不认这一形态 = 表里换个排版就少几条，同样是"集合变小、门更容易绿"那一侧。
+  const multi = body.matchAll(/"?([a-z0-9-]+)"?\s*:\s*\{\s*(?:\/\/[^\n]*\n\s*)*via:\s*"([a-z.-]+)"/g);
+  for (const m of multi) out[m[1]] ??= m[2];
   return out;
 }
 
-/** `SANDBOX_MODE_ORIGIN_VIEW` → `{ mode: originViewKey|null }`。 */
+/** `SANDBOX_MODE_ORIGIN_VIEW` → `{ mode: originViewKey|null }`（锚在声明上，理由见 `declBody`）。 */
 export function parseSandboxModes(src) {
   const out = {};
-  const blk = (src ?? "").split("SANDBOX_MODE_ORIGIN_VIEW")[1] ?? "";
-  const body = blk.split("};")[0] ?? "";
+  const body = declBody(src, "SANDBOX_MODE_ORIGIN_VIEW");
   for (const line of body.split("\n")) {
     if (isComment(line)) continue;
     const m = line.match(/^\s*(\w+):\s*(?:"([a-z0-9-]+)"|null)\s*,/);
@@ -421,9 +452,17 @@ export const CANARY_TEXTS = {
     '  { key: "view.graph.persp.flow", name: "图谱·产能推演网络", level: "BLOCK", defaultOn: true },',
   ].join("\n"),
   shellLayout: [
+    // ⚠ 陷阱（2026-08-17 真踩过）：**声明之前**先在注释里提一嘴这个名字。
+    //   抽取器若按 `split("<NAME>")[1]` 取块，从这里就断了 ⇒ 下面整张表读成空、R5 = 0 条。
+    "  /** 收编开关的语义见收编表 `CONSOLIDATED_INTO_SANDBOX`（注释里提一嘴不等于声明在这里）。 */",
     "export const CONSOLIDATED_INTO_SANDBOX: Record<string, { via: string; where: string }> = {",
     '  "chain-line-map": { via: "workspace.views", where: "沙盘中栏画布默认模式" },',
     '  "cleanroom-attr": { via: "static-route", where: "沙盘模式切换 →「归因」" },',
+    // ⚠ 陷阱二：**多行写法** + 第三种 via 取值。单行正则或写死 via 枚举都会静默丢掉它。
+    '  "canary-multiline": {',
+    '    via: "view-defs",',
+    '    where: "沙盘模式「归因」→ 档（多行写法 + 第三种 via）",',
+    "  },",
     "};",
     "export const NAV_GROUPS = [",
     "  {",
@@ -503,6 +542,22 @@ export function rosterCanary() {
   // ⑩ 依据链非空：每一页都必须说得出它凭哪条判据进来
   const noWhy = r.pages.filter((p) => (p.why ?? []).length === 0).map((p) => p.key);
   if (noWhy.length) bad.push(`⑩依据链为空：${noWhy.join(" ")}`);
+  /* ⑪ 收编表抽取器的三个坑（2026-08-17 实测·WO-SANDBOX-NAV-CONSOLIDATE）：
+   *   a. 声明**之前**的注释里提一嘴同名 ⇒ `split(NAME)[1]` 从注释处起切，整张表读空（R5 = 0）；
+   *   b. **多行**写法（`"key": {\n via: …`）⇒ 单行正则看不见；
+   *   c. **第三种 via** 取值（`view-defs`）⇒ 写死枚举的正则静默丢掉那一条。
+   * 三者都只让集合**变小** = 判据更容易恒绿，属失败危险那一侧，故必须由金丝雀正面咬。 */
+  const cons = parseConsolidated(CANARY_TEXTS.shellLayout);
+  const consKeys = Object.keys(cons).sort().join(",");
+  if (consKeys !== "canary-multiline,chain-line-map,cleanroom-attr") {
+    bad.push(
+      `⑪收编表抽取器漏条：实得「${consKeys}」应为「canary-multiline,chain-line-map,cleanroom-attr」` +
+        `（三个坑：声明前的同名注释 / 多行写法 / 第三种 via 取值 —— 每一个都只让集合变小、门更容易绿）`,
+    );
+  }
+  if (cons["canary-multiline"] !== "view-defs") {
+    bad.push(`⑪via 取值被写死：多行条目的 via 实得「${cons["canary-multiline"]}」应为「view-defs」`);
+  }
 
   return { ok: bad.length === 0, bad, roster: r };
 }
