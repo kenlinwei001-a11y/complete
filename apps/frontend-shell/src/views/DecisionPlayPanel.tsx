@@ -547,8 +547,10 @@ function decisionPlayGraph(out: DecisionPlayOutput, rows: ActionRow[]): Reasonin
     rule: "组合选取：在候选方案中取一组使合计补缺口最大而代价可接受者；合计值为组内逐项相加（非重新求解）",
     ruleKind: "projection",
     formula: `合计补缺口 = Σ 组内方案 closesGap = ${fmt(out.recommendedPlan.totalClosesGap)}${rc.unit}`,
-    inputs: out.recommendedPlan.optionIds.map((id) => ({
-      label: "组内方案",
+    // ⚠ label 必须逐条唯一：`DagNodeInspector` 用 label 当 React key，重名会掉行（React 会警告
+    // 「two children with the same key」，而屏上只是**少一条**——不报错、看不出来）。
+    inputs: out.recommendedPlan.optionIds.map((id, i) => ({
+      label: `组内方案 ${i + 1}`,
       value: out.options.find((o) => o.optionId === id)?.label ?? id,
     })),
   });
