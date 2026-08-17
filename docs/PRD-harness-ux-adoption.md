@@ -244,21 +244,22 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
 | 推演沙盘 `sim-sandbox` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **符合** |
 | 项目推演 `project-sim` | **符合** | **符合** | **符合** | **符合** | 不符合 | **符合** | **不符合** | **符合** | **符合** | **符合** |
 | 全局项目推演 `global-sim` | **符合** | 不符合 | **不符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **不符合** | **符合** |
-| 产能推演 `risk` | **符合** | 不符合 | **不符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 产能推演 `risk` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **符合** |
 | 订单全链 `order-chain` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **符合** |
 | 决策推演 `decision-play` | **符合** | **不符合** | **不符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** |
 | 假设推演 `what-if` | **符合** | 不符合 | **不符合** | **符合** | 不适用 | **符合** | **不符合** | **符合** | **符合** | **符合** |
-| 优化推演 `optimize-whatif` | **不符合** | 不符合 | **不符合** | **符合** | 不适用 | **符合** | **不符合** | **符合** | **符合** | **符合** |
+| 优化推演 `optimize-whatif` | **不符合** | **符合** | **不符合** | **符合** | 不适用 | **符合** | **不符合** | **符合** | **符合** | **符合** |
 | 归因 `cleanroom-attr` | **符合** | 不符合 | **不符合** | 不适用 | 不适用 | **符合** | **不符合** | **符合** | **符合** | **符合** |
 | 影响半径 `disruption-radius` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **不符合** | **符合** | **符合** | **符合** |
-| 方案生成 `plan-generate` | **符合** | 不符合 | **不符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 方案生成 `plan-generate` | **符合** | **符合** | **符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** |
 | 月度规划 `sop-balance` | **不符合** | **不符合** | **不符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** |
 
-**合计（12 页 × 10 判据 = 120 格）：符合 80 · 不符合 32 · 判不了 0 · 不适用 8。**
+**合计（12 页 × 10 判据 = 120 格）：符合 84 · 不符合 28 · 判不了 0 · 不适用 8。**
 （门机算 `node scripts/check-sim-ux-criteria.mjs`：以门打印值为准，不手数。
-上一版：符合 70 · 不符合 43 · 判不了 0 · 不适用 7；再上一版：符合 60 · 不符合 53 · 判不了 0 · 不适用 7；最初：符合 17 · 不符合 46 · 判不了 57 · 不适用 0。）
+上一版：符合 80 · 不符合 32 · 判不了 0 · 不适用 8；再上一版：符合 70 · 不符合 43 · 判不了 0 · 不适用 7；再上一版：符合 60 · 不符合 53 · 判不了 0 · 不适用 7；最初：符合 17 · 不符合 46 · 判不了 57 · 不适用 0。）
 
-> **三轮改动逐格登记（方向全部 不符合 → 符合，棘轮只升不降，无一格反向）**：
+> **四轮改动逐格登记（方向全部 不符合 → 符合，棘轮只升不降，无一格反向）**：
+> - **2026-08-17 WO-U2-STEPWISE-1 + WO-U3-DAG-SPLIT（4 格，逐格实现与测试见 §4.6）**：U2 `plan-generate`/`optimize-whatif` · U3 `risk`/`plan-generate`。
 > - **2026-08-16 WO-SANDBOX-53CELLS（8 格，逐格实现与测试见 §4.5）**：U1 `what-if` · U3 `order-chain`/`disruption-radius` · U5 `global-sim`/`what-if`/`optimize-whatif` · U8 `cleanroom-attr`/`disruption-radius`。
 > - **2026-08-16 WO-U7-U9-REST（10 格）**：U7 `sim-sandbox`/`decision-play` · U9 `sim-sandbox`/`project-sim`/`global-sim`/`risk`/`order-chain`/`decision-play`/`plan-generate`/`sop-balance`。
 > - **WO-EDGE-PANEL-3PAGES（3 格，全在 U4 列）**，逐格写清去向，不许只报总数：
@@ -340,7 +341,11 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
 **U2 分步标口径**（判据：**推演过程**分步 ∧ 每步标 数据/求解器/规则；业务流程步骤不算）
 - `project-sim` **符合**：`ProjectSimView.tsx` 的 `step` 驱动同一份 `forecast` 结果分层展开，
   配 `views/sim/PmDag.tsx`（参考件 `pmDagSVG` 的对位实现）随步点亮。
-- 其余 11 页 **不符合**。两格**从「判不了」落地**，靠的是 §2.1 给 U2 补的那句排除：
+- ✅ **`plan-generate` / `optimize-whatif` 于 2026-08-17 WO-U2-STEPWISE-1 闭**（不符合 → 符合）：
+  共享步骤条 `views/sim/SolverStepBar.tsx`（`SolverStep{data,solver,rule}` 三要素强制声明 +
+  `useSolverStep` 的 `upto` **唯一分段闸**，默认末步=完整结果），两页步骤态真正驱动结果分段。
+  逐格实现、测试与变异反证见 §4.6。
+- 其余 9 页 **不符合**（`sop-balance` 的再评估见 §4.6「没做的格」）。其中两格**从「判不了」落地**，靠的是 §2.1 给 U2 补的那句排除：
   - `sop-balance`：探针命中 10 处，但逐处读下来全是 `sop-run-1..5` 串起来的 **S&OP 业务流程**
     （评审→平衡→定稿），是「事情分几步做」不是「这个数分几步算出来的」⇒ **不符合**。
   - `decision-play`：`DecisionPlayPanel.tsx:104` `steps: DPStep[]` / `:342` `recommendedPlan.steps` ——
@@ -361,11 +366,18 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
   修法是**补挂载点**，不是造组件。新增 `views/sim/DagNodeInspector.tsx`（一份实现、三处挂载），
   `src`(来源)/`rule`(规则) **必填**、空值 `assertDagNodeFacts` 直接抛（判据写生产入口，不只写测试）。
   逐格实现与测试见 §4.5。
-- **不符合 8 页**。其中 **`risk` 仍是「有图但点了没反应」**：`ProvenanceDag`（`RiskBoardView.tsx:1310`）
-  的 `NodeProv` 是 **hover** 浮层且给的是 来源 + 依据（`basis`），**没有规则**；
-  且该组件被 cockpit 等页共用，改它会外溢 —— 本单**没做**，诚实挂账（§5 新 P1）。
-  余下 7 页（`global-sim`/`decision-play`/`what-if`/`optimize-whatif`/`cleanroom-attr`/`plan-generate`/`sop-balance`）
-  **连图都没有**。金丝雀：同一探针 `project-sim`=3 · `order-chain`=4 · `disruption-radius`=3 ⇒ 工具是好的。
+- ✅ **`risk` / `plan-generate` 于 2026-08-17 WO-U3-DAG-SPLIT 闭**（不符合 → 符合），两页的病不同、修法也不同：
+  - `risk`：**有图但点了没反应** —— `ProvenanceDag` 的 `NodeProv` 是 hover 浮层且只有 来源+依据没有规则。
+    修法 = 给该共享组件加**可选** `onNodeClick`（不传则逐字节维持今天行为，cockpit 等消费方零外溢），
+    在 `RiskBoardView` 挂 `DagNodeInspector`；基地层给真规则键 `gap_attribution_coeffs.structuralExplained`
+    （PUBLISHED RuleEntry.params · `ruleKind=ruleKey`），越线/分摊/溯因/下钻各节点给确定性投影规则（`projection`）。
+  - `plan-generate`：**点了有反应但没面板**（`KsfGraph` 点击只高亮）——「点了有反应就算」正是判据点名的假绿。
+    修法 = `KsfGraph` 加**可选** `onNodeInspect`（`PlanAuditView` 不传 ⇒ 零行为变化），挂 `DagNodeInspector`；
+    severity/floorVal/传导/状态三态全部 `projection`（ksf_graph 无业务规则库，不许冒充规则键）。
+  逐格实现、测试与变异反证见 §4.6。
+- **不符合 6 页**：`global-sim`/`decision-play`/`what-if`/`optimize-whatif`/`cleanroom-attr`/`sop-balance`
+  **连图都没有**（`plan-generate` 本属此列——它的 `KsfGraph` 是卡底部附图、无点击面板，本单把它接线后出列）。
+  金丝雀：同一探针 `project-sim`=3 · `order-chain`=4 · `disruption-radius`=3 ⇒ 工具是好的。
 
 **U4 反事实开关**（唯一此前已有机检的判据）
 - **符合 11 页** / **不适用 1 页**（`cleanroom-attr`，见 §4.3）。
@@ -711,6 +723,61 @@ U4 的 1 格（`cleanroom-attr`）—— **若本页长出以 `SimSession` 为�
 机检扩展：`harness-ux-u7-u9.test.tsx` 的 PAGES 从 6 页扩到 **12 页**，U7/U9 两段各 12 条逐页断言
 （沙盘为全仓最重页，单页 timeout 显式给到 60s——断言没松，只是加载本来就慢），28/28 绿。
 
+### 4.6 WO-U2-STEPWISE-1 + WO-U3-DAG-SPLIT 真改了哪 4 格（2026-08-17 · 逐格 file:line + 变异反证）
+
+**两张单同一个 dev 做的原因**：步骤条与过程图是**同一份结构的两种画法**，拆开派会造出两套互不相认的
+结构（RL3 单一来源禁止——§5.2 的 WO-U3-DAG-DESIGN 挂账早写了这句）。共享件两份：
+`views/sim/SolverStepBar.tsx`（U2 步骤条契约）与 `views/sim/DagNodeInspector.tsx`（U3 面板，53CELLS 建）。
+
+| 格 | 改前 → 改后 | 改法（file:line 以提交 `ffc60408` 为准） |
+|---|---|---|
+| **U2 × `plan-generate`** | 不符合 → **符合** | `PlanGenerateView.tsx`：`GEN_STEPS` 五步（入参→outcome→scores→meets/hardViol→recommend，每步强制声明 `data` 字段名 + `solver=plan_generate` + `rule`），`useSolverStep` 的 `upto` 闸住综合分/雷达/达成行/推荐徽标/推荐口径行；`gen-step-inputs` 入参回执条（快照徽标 + 求解器回显基线五值） |
+| **U2 × `optimize-whatif`** | 不符合 → **符合** | `OptimizeWhatifView.tsx`：`OW_STEPS` 四步（入参→两次求解→比对判定→解读），`upto` 闸住双方案卡/Δ横幅/可行性/解读；`ow-step-inputs` 入参回执条。DOM 顺序不变、默认末步 ⇒ 改前屏面逐字节一致 |
+| **U3 × `risk`** | 不符合 → **符合** | `components/ProvenanceDag.tsx` 加**可选** `onNodeClick`（不传 ⇒ hover 行为逐字节不变，cockpit 零外溢）；`RiskBoardView.tsx` 挂 `DagNodeInspector` + 模块级 `dagNodeFacts`：基地层 = 真规则键 `gap_attribution_coeffs.structuralExplained`（缺省 0.88 · `ruleKind=ruleKey`），越线根/结构分摊/`caused_by` 逐跳/下钻证据 = `projection` |
+| **U3 × `plan-generate`** | 不符合 → **符合** | `components/KsfGraph.tsx` 加**可选** `onNodeInspect`（`PlanAuditView` 不传 ⇒ 零行为变化）+ 导出 `KsfNodeRef` 判别联合；`PlanGenerateView.tsx` 挂 `DagNodeInspector`：问题节点 severity 判定 / KSF 层 `ksfRef` 传导 / 财务层状态三态，全档 `projection`（ksf_graph 无业务规则库） |
+
+**U2 契约判定（为什么不给求解器输出加 `steps[]`）**：真改 = 求解器分步计算大改，超本单边界（不碰后端两包）；
+只在服务端把现有输出重排成 `steps[]` = 同一投影做两遍，两套并行结构迟早漂移（RL3）。
+本单走**前端按已有分段字段推导**——plan_generate 输出自带真实分段（outcome→scores→hardViol/meets→recommend），
+读的每一个数都是真值、零臆造。漂移风险用「步骤契约强制声明源字段（`SolverStep.data`）」对冲：
+字段没了/改名了，引用当场断。跨页统一的后端 `steps[]`（带逐段哈希）挂账 **WO-U2-SOLVER-STEPS**（§5.2）。
+
+**验收判据是「步骤态真正驱动结果分段」，不是「步骤条渲染出来了」**；U3 的判据是「面板带**该节点的**规则引用」，
+不是「点了有反应」。测试按此咬数不咬组件：
+- `test/sim-ux-u2-stepwise.test.tsx`（4 条）：切第 2 步 ⇒ `scheme-score-*`/`meet-*`/`recommend-badge-*` 必须**消失**
+  而 `gen-outcome-*`/入参回执**仍在**；optimize-whatif 切步 2 ⇒ 双卡 114/132 出现而 Δ 未出，步 3 ⇒ `+18`/可行性出现解读未出。
+- `test/sim-ux-u3-dag-split.test.tsx`（5 条）：risk 四类节点 + KSF 三档节点逐类咬 **来源与规则两栏同时在**，
+  规则键档咬 `gap_attribution_coeffs.structuralExplained` 键名本身 + `data-rule-kind` 徽章分档；
+  另配反向断言（Escape 后面板真消失）。
+
+**变异反证两组实测**（WO 硬要求，非推演）：
+- **变异 A**：`useSolverStep` 的 `upto` 改恒真（分段逻辑拆掉）→ RC=1，C2/C3/C4 红且红在
+  `expected <span …> to be null`（**数没变**），C1 仍绿（步骤条还在）——正是判据要求的失败模式。
+- **变异 B**：`DagNodeInspector` 删规则行 → RC=1，5 条 U3 全红
+  `Unable to find an element by: [data-testid="dag-node-inspector-rule-text"]`（**面板在、规则不在**）。
+两变异均已 revert，复跑 9/9 绿。
+
+**回归**：存量 96 测试全绿（f16.plan-generate / debattery / optimize-whatif / sim-ux-u1-u5 / f15.plan-audit /
+sim-ux-u3-u8 / capacity-page-100pct / cockpit-gap-attribution-dag / cockpit-provenance-hover /
+cockpit-rootcause-dag / caplive-cockpit / risk-inference-process / decision-info-fe / live-disposition /
+harness-ux-u7-u9），`tsc --noEmit` RC=0。默认末步=完整结果是零回归的关键设计。
+
+**没做的格（差什么 + 可派的单，逐格登记）**：
+- **U2 × `sop-balance`（评估后暂缓，证据如下）**：真求解链是 `mrp_netting` 与 `finance_pnl` 两次**各自独立**的
+  `runSolver(..., {})`，无顺序分段语义；`sop-run-1..5` 是 S&OP **业务流程**步骤（评审→平衡→定稿），
+  判据 U2 显式排除。硬造步骤条 = 判据点名的装饰。差：要么后端给这条链补分段语义（同 WO-U2-SOLVER-STEPS），
+  要么产品裁决「月度规划该不该有推演分步」。归 **WO-U2-STEPWISE-2**（剩余 9 页的那张单）处置，本报告如实留证。
+- **U2 × 其余 8 页**（`sim-sandbox`/`global-sim`/`risk`/`order-chain`/`decision-play`/`what-if`/`cleanroom-attr`/
+  `disruption-radius`）：共享件已就位、声明形状已定（`SolverStep` 三要素），差的是**逐页核对该页真实求解链**
+  （不许编）。归 **WO-U2-STEPWISE-2**（别人在做的单），本单不交。
+- **U3 × 无图 6 页**（`global-sim`/`decision-play`/`what-if`/`optimize-whatif`/`cleanroom-attr`/`sop-balance`）：
+  差的是**图本身**（造功能不是接线），且每页画什么图是产品判断。**WO-U3-DAG-DESIGN**（先设计裁决再逐页派）：
+  强烈建议与 U2 步骤条**合并设计**——同一份结构两种画法，分开做必出两套平行结构（RL3）。
+- **WO-U2-SOLVER-STEPS**（挂账）：后端 `steps[]` 跨页统一 + 逐段哈希；本单前端推导方案是它落地前的诚实过渡，
+  不是替代。
+
+**「不适用」**：本单无新增（U3 无图 6 页判「不符合」不判「不适用」——图可以造，判据不是无处落脚，是欠账）。
+
 ---
 
 ## 5 · 优先级
@@ -781,9 +848,9 @@ U3 有 `LayeredDag`、U5 有 `<Provenance>`、U8 有 `<details>` 惯例，而「
 
 | 格 | 差什么才能做（不是「未做」，是**前置**） | 可派的具体单 |
 |---|---|---|
-| **U3 × `risk`** | `ProvenanceDag` 是 **cockpit 等页共用**的组件，且它的 `DagNode` 契约里**只有 `basis`（依据）没有 `rule`**；`NodeProv` 又是 **hover** 不是 click。差两样：① 一个**不外溢**的改法（给该组件加**可选** `onNodeClick`，不传则维持今天的 hover 行为，零回归）；② `plan_rootcause` / `gap_attribution` 的节点上**有没有规则键可给** —— 若引擎侧确实没有，就得照本单 `problem-dag` 的办法记 `projection` 并说清 | **WO-U3-RISK-DAG**（中画像）：给 `components/ProvenanceDag.tsx` 加可选 `onNodeClick` + 在 `RiskBoardView` 挂 `DagNodeInspector`；先实测引擎节点有无规则键，有则 `ruleKey`、无则 `projection` 并在报告里点名缺口 |
-| **U3 × 无图的 7 页** | 差的是**图本身**（`global-sim`/`decision-play`/`what-if`/`optimize-whatif`/`cleanroom-attr`/`plan-generate`/`sop-balance` 连过程图都没有）。这不是接线是造功能，且**每页画什么图是产品判断**（净室通用页画「本体倒推链」还是「求解步骤」？） | **WO-U3-DAG-DESIGN**（先出设计裁决，再逐页派）：本单建议这 7 页与 **U2** 合并做 —— 「分步标口径」的步骤条与「过程图」是同一份结构的两种画法，分两张单做会造出两套平行结构（RL3 单一来源禁止） |
-| **U2 × 11 页** | 差一个**共享的求解步骤契约**：每页要能声明「这条结论分几步算出来、每步的 数据源 / 求解器键 / 规则」。今天求解器输出里**没有这层结构**（只有终值 + 少量 provenance），所以要么前端逐页手写步骤声明（可行，但得逐页核对不许编），要么引擎侧补一个 `steps[]` 回执 | **WO-U2-STEPWISE-1**（重画像·先做 2–3 页样板）：定共享组件 + 步骤声明形状，先在 `cleanroom-attr`（三块三条链，语义最清楚）与 `risk` 上落地并驱动结果分段揭示；样板过了再铺其余页 |
+| **U3 × `risk`** | ✅ **2026-08-17 WO-U3-DAG-SPLIT 已闭**（按本行开的药方逐字执行：可选 `onNodeClick` 不外溢 + `DagNodeInspector`；引擎侧实测基地层有真规则键 `gap_attribution_coeffs.structuralExplained` ⇒ `ruleKey`，其余节点 `projection`）。实现与测试见 §4.6 | ~~WO-U3-RISK-DAG~~（已由 WO-U3-DAG-SPLIT 吸收） |
+| **U3 × 无图的 6 页**（2026-08-17 起 7→6：`plan-generate` 的 `KsfGraph` 已接 `DagNodeInspector` 出列） | 差的是**图本身**（`global-sim`/`decision-play`/`what-if`/`optimize-whatif`/`cleanroom-attr`/`sop-balance` 连过程图都没有）。这不是接线是造功能，且**每页画什么图是产品判断**（净室通用页画「本体倒推链」还是「求解步骤」？） | **WO-U3-DAG-DESIGN**（先出设计裁决，再逐页派）：本单建议这 6 页与 **U2** 合并做 —— 「分步标口径」的步骤条与「过程图」是同一份结构的两种画法，分两张单做会造出两套平行结构（RL3 单一来源禁止）。2026-08-17 起该合并已有事实先例：WO-U2-STEPWISE-1 + WO-U3-DAG-SPLIT 正是因此合派给一个 dev |
+| **U2 × 11 页** | ✅ 共享契约 **2026-08-17 WO-U2-STEPWISE-1 已定**（`SolverStepBar.tsx`：`SolverStep{data,solver,rule}` 三要素强制声明 + `upto` 唯一分段闸），2 页样板（`plan-generate`/`optimize-whatif`）落地并闭格；`sop-balance` 评估后暂缓（证据见 §4.6「没做的格」）。剩 9 页差的是**逐页核对该页真实求解链**（不许编）。跨页统一的后端 `steps[]`（带逐段哈希）另挂 **WO-U2-SOLVER-STEPS** | ~~WO-U2-STEPWISE-1~~（已做）→ **WO-U2-STEPWISE-2**（剩余 9 页逐页铺；`sop-balance` 那页须先解 §4.6 写的分段语义缺失，不许拿 `sop-run-1..5` 业务流程冒充）+ **WO-U2-SOLVER-STEPS**（后端 `steps[]` 跨页统一，落地后前端推导方案退役） |
 | **U1 × `optimize-whatif`** | 差**一次实测**：撤闸后每改一个基线数值格就要重跑一次真 CP-SAT，**重解成本没人量过**。防抖能挡住键入抖动，但挡不住「一次求解要 3 秒」这种情形 | **WO-U1-OPT-COST**（轻画像）：量 `optimize_whatif` 在本仓样例上的 p50/p95 求解耗时；< ~300ms 则照 `what-if` 的办法撤闸，否则给「自动重演 / 手动求解」两态并把理由写进屏上 |
 | **U1 × `sop-balance`** | 差一次**语义裁决**：那五个 `sop-run-1..5` 串的是 **S&OP 业务流程**（评审→平衡→定稿），不是「填完表再点一下」。撤掉它们等于取消流程节点 —— 这是产品决策不是缺陷 | **WO-U1-SOP-VERDICT**（先裁决）：请仓主定「月度规划的五步是流程节点还是提交闸」。若是流程节点，本格应从 `不符合` 改判为**不适用**并按判据⑥逐格登记理由；若是提交闸，再派前端单 |
 | **U8 × `global-sim`** | 差的是**把目标页那段搬成抽屉**：`drillLink` 跳的是 `/v/project-sim?order=…`，那是一整张页的功能。要做成「不换页」得先决定**抽屉里放哪一部分**（全量细排？还是只放该单的排产结果？） | **WO-U8-GLOBALSIM-DRAWER**（中画像·先出设计）：把「进项目推演细排」改成同屏抽屉，保留跳页作为「要做别的事」的出口（判据明写「切视角/交接不算违反」） |
