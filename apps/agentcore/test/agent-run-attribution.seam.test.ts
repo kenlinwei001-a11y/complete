@@ -8,6 +8,13 @@ import { toolUse } from "../src/llm/mock.js";
 import { loadConfig } from "../src/config.js";
 import { computeResidualBudget } from "../src/router/orchestrator.js";
 import { BudgetTracker } from "../src/tools/budget.js";
+import {
+  STUB_DCP_SPEC,
+  STUB_FAKE_KEY,
+  startStubOpenAi,
+  stubDirectory,
+  stubProvider,
+} from "./helpers-dsh-stub.js";
 
 /**
  * WO-AGENTRUN-ATTRIBUTION · SEAM：一次运行归属到具体 Agent（`G-AGENTRUN-NO-AGENT-ATTRIBUTION` 可归属半边）。
@@ -303,19 +310,33 @@ describe("WO-DSH-P2-UX · 内核标识写入对拍（A7）", () => {
     process.env.DSH_HARNESS = "1";
     process.env.DSH_HARNESS_DIR = HARNESS_DIR; // vitest cwd=apps/agentcore，缺省解析不到 packages/dsh-harness
     delete process.env.MOCK_SCENARIO; // 缺省剧本：echo_tool 一轮 + 文本收尾
-    const t = await createTestApp();
-    // echo_tool 是 harness 侧世界插件（非 native BUILTIN），对 runtime 而言是 UNKNOWN（照 N3 对位形态）。
-    await t.repos.agents.insert(
-      agentDef({
-        id: "agt_kernel_dsh",
-        key: "kernel_dsh_agent",
-        tools: [{ kind: "BUILTIN", name: "echo_tool" }],
-        scopeDeclaration: { objectTypes: [], toolNames: ["echo_tool"] },
-      }),
-    );
+    // 裁决 A 延展（N1∩N5）：post-N1 engine 分叉强制 dcp spec（providers.ts:435），mock-llm 已迁出
+    // 生产 cordis.yml ⇒ flag-on 臂改接 N1 provider-seam A3 既定缝（stub OpenAI + dcp 绑定矩阵）。
+    // 断言逐字未动（run.kernel === "EXTERNAL"）；覆盖语义 delta 同裁决 A 登记口径。
+    const stub = await startStubOpenAi([
+      { toolCall: { name: "final_answer", arguments: JSON.stringify({ blocks: [{ type: "text", markdown: "内核测试回答。" }], provenance: [] }) }, usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
+      { text: "stub final answer", usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
+    ]);
+    const t = await createTestApp({
+      providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+    });
+    try {
+      // echo_tool 是 harness 侧世界插件（非 native BUILTIN），对 runtime 而言是 UNKNOWN（照 N3 对位形态）。
+      await t.repos.agents.insert(
+        agentDef({
+          id: "agt_kernel_dsh",
+          key: "kernel_dsh_agent",
+          model: STUB_DCP_SPEC,
+          tools: [{ kind: "BUILTIN", name: "echo_tool" }],
+          scopeDeclaration: { objectTypes: [], toolNames: ["echo_tool"] },
+        }),
+      );
 
-    const result = await runEngineOnce(t, "agt_kernel_dsh", "task_kernel_dsh");
-    expect(result.run.kernel).toBe("EXTERNAL");
+      const result = await runEngineOnce(t, "agt_kernel_dsh", "task_kernel_dsh");
+      expect(result.run.kernel).toBe("EXTERNAL");
+    } finally {
+      await stub.close();
+    }
   });
 
   it("flag off（缺省休眠）⇒ 同入口落 native 循环 run.kernel === \"NATIVE\"", async () => {
