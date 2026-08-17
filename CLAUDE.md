@@ -190,7 +190,8 @@ bash scripts/dispatch-deficit.sh <在跑agent数>     # 数从 ListAgents 取，
 ```
 
 它**自算三个队列**（全部取自落盘真相源，重启不丢）：
-① 待派 = `docs/REQUIREMENTS-TRACE.md` 里标 ⛔ 的行
+① 待派 = `docs/REQUIREMENTS-TRACE.md`「未派」章节里**未划掉**（非 ~~删除线~~）的列表项
+  （图例行 / 章节标题 / 正文提及不算；旧判据「数所有标 ⛔ 的行」2026-08-17 被 WO-DISPATCH-DEFICIT-FIX 修掉）
 ② 待复验 = 已推、tip 不比集成分支旧、且**不是**集成分支祖先的 handoff 分支
 ③ 待写WO = 本体 §8 里标 🔴 未修 / ◑ 部分闭合的断点
 
