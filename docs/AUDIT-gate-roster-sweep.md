@@ -421,6 +421,18 @@ ui-first-layer 扩面 122→182 后涌入 58 个未登记文件 + 存量违规�
 
 **归位状态**：两树现均干净（本树 §7 收口期间 `git status --porcelain` 对 scripts/docs 之外为空；P2 树内我的文件已被其 reset 清除、我的树内 P2 文件已 checkout 还原）。**影响面**：仅 `check-ui-first-layer.mjs`（我的，已取回）与 `docs/SYSTEM-ONTOLOGY.md`（P2 的，已归还）两个文件碰过别的树，均零损失归位。
 
+#### 7.7.1 第二次串台（2026-08-18 凌晨 · **新向量：git stash 全仓共享**）
+
+本单收尾期间发生第二次串台，**向量与第一次不同**：不是写错路径，是 **`git stash` 的栈为全仓所有 worktree 共享**（同一个 `.git`）。法医链：
+
+1. P3（`WO-ONTO-DEDUPE`，树 `agent-abce06d07c4289aae`）在其树 `git stash push docs/SYSTEM-ONTOLOGY.md`（其 §8 去重稿，diff 7/25）；
+2. 我在本树为做「编辑前后 A/B」跑 `git stash` / `git stash pop` 三轮 —— 其中一轮 **pop 走了 P3 的 stash**（7/25 去重稿落进本树工作区），而 P3 随后 **pop 走了我的 stash**（其原话：「stash pop restored... only a 1-line diff?!」）；
+3. 结果：本树工作区变成 P3 的去重稿（我未提交的本体回写被顶替），P3 树 pop 到我的 1 行回写后被其备份覆盖。**双方工作零损失**（P3 有 `/tmp/wo-dedupe/onto-backup.md` + 我另存 `/tmp/wo-sweep2-p3-dedup-rescue.md` 双保险；我的回写文本在编辑历史里，已重做并提交 `5477aafff`）。
+
+**处置**：① 本树 `git checkout` 丢弃 P3 内容（其树工作区已逐字节比对相同，产出在 P3 手里安全）；② 我的回写重做后**立即 commit+push**（铁律1#5 再次验证：未提交的工作随时会被外部动作抹掉）；③ 已通报 P3：stash 栈此后双方不碰，栈上遗留的 `stash@{0}`（skill-3 历史遗留）保持不动。
+
+**机制层教训（供协调者裁决是否进 CLAUDE.md）**：**worktree 隔离的是工作区，不是 stash**。多 agent 同仓并行时，`git stash` 是跨树公用品 —— 做 A/B 对比请用 `git diff > /tmp/x.patch` + `git checkout -- <file>` + `git apply /tmp/x.patch`，或 `git worktree` 级隔离做不到的地方一律不碰 stash。
+
 **防再发**（协调者四条指令已内化）：① 写操作前确认 `git rev-parse --show-toplevel` 含 `agent-af5310a15bdb31dc5`；② stray 副本已对比取回；③ 不再发生 reset 清未提交编辑（铁律1#5：完成即 commit+push）；④ 本节即串台影响面说明。
 
 ### 7.8 复验命令（sweep-2 增）
