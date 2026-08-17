@@ -2332,9 +2332,19 @@ export function propDisplayName(typeKey: string, propKey: string): string | unde
 //      对象详情/目录/求解器字段表里多出一批**永远空**的列，等于用本体断言了一件假事。
 //   ② **会污染喂 LLM 的属性清单**：`type-semantics` 把属性名下发给 B 侧接地 prompt，
 //      多出 36 个对象上取不到值的属性名 = 模型照着要值却恒空（改错不报错的那一类）。
-//   ③ **本体里那个同名字段是死的**：`ObjectTypeDef.stateVariables` 实测 94 类全空，且
-//      `ontology.ts` 的 upsertType 逐字段重建 def 时**根本不抄**它（见 `ontology/slice-layers.ts:476-485`
-//      已登记的两道窄门）——挂上去会落不了库，是「接了线接错地方」的新样本。
+//   ③ **本体里那个同名字段今天没有数据**：`ObjectTypeDef.stateVariables` 实测 94 类全空。
+//      ⚠️ 2026-08-17 审核方复核订正（本条初稿的病因写错了，照它修会修错方向）：
+//      初稿写「upsertType 逐字段重建 def 时**根本不抄**它 ⇒ 挂上去会落不了库，属『接了线接错地方』」——
+//      **两句都不成立**。实测 `ontology.ts` 的 upsertType 早已是 `{ ...input }` **展开写法**
+//      （`WO-D6` 就是为了修「手抄白名单漏了 7 个 OntoFlow 扩展字段」而改的，那条注释里
+//      逐字列着 `stateVariables`）⇒ **落得了库**。而且它有 5 处真 src 消费方：
+//      `process/inspect.ts` 的属性归属判定 · `pipeline/subgraph.ts` 的 buildTypeDefs 读写 ·
+//      `pipeline/service.ts` 的 STATIC 建模校验 · `app.ts` 的 REST 入参 schema。
+//      ⇒ 正确形态是**「接了线没数据」**（`ontology/slice-layers.ts` 早就这么分类了），
+//      **不是**「没接线」也不是「接了线接错地方」——三者修法完全不同（补数据 / 接线 / 补挂载点）。
+//      **本条的结论不变**（仍然不该拿它承载展示名：它的语义是 OntoFlow 建模产出的状态变量声明，
+//      不是给人看的名字），变的只是理由。留这段订正是因为**写在最容易被信的地方的错误病因，
+//      比没有病因更危险** —— 照初稿去修，会有人去查一个并不存在的落库 bug。
 // 故按本仓已验证过的 `PROP_DISPLAY_NAMES` 同一条纪律：**补一层展示名**，不动接线名、不动本体形状。
 //
 // ── 为什么按**裸变量名**建表，而不是 `Type.var` ──────────────────────────────────
