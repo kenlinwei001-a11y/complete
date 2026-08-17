@@ -494,6 +494,8 @@ export class ExecutionEngine {
     // 子进程路径（packages/dsh-harness），缺省关闭 = 下方 runAgentLoop 逐字节旧行为。
     // 动态 import：flag 关时 dsh 模块根本不加载。POC 验收专用；postcheck 规则后验
     // （下方 POST_CHECK 段）在此路径不外挂——验收对照的是 loop 本体语义。
+    // 守卫必须直读 process.env.DSH_HARNESS：check-dsh-dormancy.mjs D3 判据只认
+    // 「条件里提到 process.env.DSH_HARNESS」的包裹块（cfg 转发会被判裸入口，门红）。
     if (process.env.DSH_HARNESS === "1") {
       const { buildSessionSetup, mapSkill, runDshAgent } = await import("./dsh-runtime/index.js");
       const setup = buildSessionSetup({
@@ -503,17 +505,33 @@ export class ExecutionEngine {
         skills: skills.map((s) => mapSkill(s)),
         ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
       });
-      const dsh = await runDshAgent({
-        prompt: userContent,
-        setup,
-        provider: process.env.DSH_HARNESS_PROVIDER ?? "mock",
-        model,
-        reassemble: {
-          governance: { writeMode, provenancePolicy: effectiveProvenancePolicy },
-          ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
+      // WO-DSH-N1-PROVIDER：model spec（dcp:{providerId}:{modelId}）不再原样当 wire model——
+      // 经绑定矩阵解析出连接事实（modelId 剥前缀/kind/baseUrl/apiKey），env 缝注入子进程；
+      // provider 路由取 cfg.DSH_HARNESS_PROVIDER（生产值单源 = PRODUCTION_DSH_HARNESS_PROVIDER，
+      // 无 mock 回退）。非 dcp / custom_http ⇒ resolveConnectionFacts 诚实抛错。
+      const facts = await this.deps.llmSettings.resolveConnectionFacts(model, agent.tenantId);
+      const dsh = await runDshAgent(
+        {
+          prompt: userContent,
+          setup,
+          provider: cfg.DSH_HARNESS_PROVIDER,
+          model: facts.modelId,
+          reassemble: {
+            governance: { writeMode, provenancePolicy: effectiveProvenancePolicy },
+            ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
+          },
+          onSse: (e) => { void opts.emit(e.event, e.payload); },
         },
-        onSse: (e) => { void opts.emit(e.event, e.payload); },
-      });
+        {
+          env: {
+            PLATFORM_LLM_API: facts.kind === "anthropic" ? "anthropic-messages" : "openai-completions",
+            ...(facts.baseUrl ? { PLATFORM_LLM_BASE_URL: facts.baseUrl } : {}),
+            PLATFORM_LLM_MODEL: facts.modelId,
+            ...(facts.apiKey ? { PLATFORM_LLM_API_KEY: facts.apiKey } : {}),
+            ...(facts.contextWindow ? { PLATFORM_LLM_CONTEXT_WINDOW: String(facts.contextWindow) } : {}),
+          },
+        },
+      );
       if (!dsh.result.ok) {
         return {
           outcome: "FAILED",

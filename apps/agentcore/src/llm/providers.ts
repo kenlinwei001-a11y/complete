@@ -395,6 +395,23 @@ export class RoutingLlmClient implements LlmClient {
 export type LlmRole = "classifier" | "agent" | "compose";
 
 /**
+ * WO-DSH-N1-PROVIDER · dsh 路的绑定矩阵连接事实（resolveConnectionFacts 产出）：
+ * 经 runner 既有 opts.env 缝注入 harness 子进程（PLATFORM_LLM_*），wire model = 剥前缀的 modelId。
+ * apiKey 只走 env 注入，永不进 JSON-RPC 帧/日志/落盘（红线见 plan 凭据路径节）。
+ */
+export interface LlmConnectionFacts {
+  providerId: string;
+  /** 剥掉 dcp: 前缀的纯 model id（端点合法 model）。 */
+  modelId: string;
+  kind: LlmProvider["kind"];
+  baseUrl?: string;
+  /** 解密凭据（仅当 hasApiKey）；随子进程关闭消散。 */
+  apiKey?: string;
+  /** 绑定模型声明的上下文窗（有则注入 PLATFORM_LLM_CONTEXT_WINDOW）。 */
+  contextWindow?: number;
+}
+
+/**
  * Role → model-spec resolution (see resolution order in the header comment).
  * Returns a spec string; provider parsing happens in RoutingLlmClient/registry.
  */
@@ -405,6 +422,39 @@ export class LlmSettings {
     /** LLM Provider 增量 §1.3：DataCore 用途绑定目录（source of truth）。 */
     private readonly directory?: DataCoreProviderDirectory,
   ) {}
+
+  /**
+   * WO-DSH-N1-PROVIDER · dsh 路的绑定矩阵连接事实解析（纯 additive；复用 resolveDataCore 同一条
+   * directory.provider + directory.credential 路径，凭据仅内存、永不落 B 库）。
+   * v1 收窄（刻意·登记 §11）：只接受 dcp: spec 且 kind ∈ {openai_compatible, anthropic}；
+   * 非 dcp / custom_http / DISABLED / 有 hasApiKey 而凭据取不到 ⇒ 诚实抛错（指明 spec 与原因，不静默回落 mock）。
+   */
+  async resolveConnectionFacts(spec: string, tenantId: string): Promise<LlmConnectionFacts> {
+    const dc = parseDataCoreSpec(spec);
+    if (!dc) {
+      throw new Error(`dsh 路要求 DataCore 用途绑定（dcp:{providerId}:{modelId} spec），拒绝非 dcp spec: ${spec}`);
+    }
+    if (!this.directory) throw new Error("DataCore provider directory not configured");
+    const provider = await this.directory.provider(tenantId, dc.providerId);
+    if (!provider) throw new Error(`unknown LLM provider: ${dc.providerId}`);
+    if (provider.status === "DISABLED") throw new Error(`LLM provider disabled: ${provider.name}`);
+    if (provider.kind === "custom_http") {
+      throw new Error(`dsh 路 v1 不支持 custom_http kind（provider ${provider.id}；spec ${spec}）`);
+    }
+    const apiKey = provider.hasApiKey ? await this.directory.credential(tenantId, provider.id) : undefined;
+    if (provider.hasApiKey && !apiKey) {
+      throw new Error(`LLM provider credential unavailable（hasApiKey 而凭据取不到）: ${provider.id}`);
+    }
+    const bound = provider.models.find((m) => m.modelId === dc.modelId);
+    return {
+      providerId: provider.id,
+      modelId: dc.modelId,
+      kind: provider.kind,
+      ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
+      ...(apiKey ? { apiKey } : {}),
+      ...(bound?.capabilities.maxContext ? { contextWindow: bound.capabilities.maxContext } : {}),
+    };
+  }
 
   async roleModel(tenantId: string | undefined, role: LlmRole, explicit?: string): Promise<string> {
     if (explicit) {

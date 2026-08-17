@@ -20,7 +20,7 @@ async function runCase(label, { extraEnv = {}, setup } = {}) {
   const toolResults = []
   const client = new HarnessClient({
     command: process.execPath,
-    args: [join(here, 'node_modules/@deepseek-ai/dsh-sdk-jsonrpc-demo/lib/bin.js'), 'cordis.yml'],
+    args: [join(here, 'node_modules/@deepseek-ai/dsh-sdk-jsonrpc-demo/lib/bin.js'), 'cordis.poc.yml'], // WO-DSH-N1-PROVIDER：测试专档（生产档 cordis.yml 只挂 platform-llm）
     cwd: here,
     requestTimeoutMs: 30000,
     env: { ...process.env, ECHO_COUNT_FILE: countFile, ...extraEnv },
