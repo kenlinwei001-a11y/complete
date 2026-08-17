@@ -373,6 +373,13 @@ export interface Repos {
   // R9 三处同改的另两处见 memory.ts / pg.ts。
   processInstances: Store<ProcessInstance>;
   processTasks: Store<ProcessTask>;
+  // ── WO-ADOPT-SCHEME-CARRIER · 方案采纳台账（migrations/037_scheme_adoptions.sql · G-ADOPT-SCHEME-NO-CARRIER 收口）──
+  // 公司级年度拍板的审批留痕（与 Decision 台账同族），**刻意不走 objects 通用对象仓储**：
+  // plan_generate 一个核心对象类型都不读，塞进本体图谱只会冒充「可被推演关联的实体」。
+  // 同走通用 Store（表结构 id/tenant_id/doc/created_at/updated_at），不另立专用接口 ——
+  // 「同 (tenant,year) 至多一条 ACTIVE」是**写时**不变量（执行器先置旧 SUPERSEDED），读侧无排序/挑选语义。
+  // R9 四处同改：migrations/037 + 本接口 + memory.ts createMemoryRepos + pg.ts createPgRepos，缺一即漂。
+  schemeAdoptions: Store<import("@platform/contracts").SchemeAdoption>;
   // 推演沙盘（migration026·SPEC-sandbox-propagation-and-session §2.3；行业无关 jsonb）
   sim: SimRepo;
   /** Liveness for /readyz. */

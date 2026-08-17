@@ -61,23 +61,13 @@ export const ACTION_WIRING: Record<string, ActionWiring> = {
   //   选中订单时把可行性结论回 stamp 到 Order（app.ts domainExecutor 分支）。效果层断言（读回对象
   //   字段真变）见 test/action-adopt-forecast.seam.test.ts。
   采纳产能预测结论: "WIRED",
-  // —— 尚未接执行器：审批通过后不写任何真值（**欠账**，非「设计上无副作用」）——
-  // ⚠️ 只剩这一条了。写清它写回意图的**真实出处**（上一版这里笼统写成"三条在 mapping.ts / decision-kernel 里
-  //    都有写回意图"，对 `采纳经营方案` 是**事实错误**——它既不在 mapping.ts，kernel 也不派它。
-  //    门禁的理由本身错了，就是这套门自己身上的一小块假绿，故据实标注，勿再合并成一句笼统话）：
-  //    出处 = 它自己的注册声明 battery.ts `required: ["schemeNo","scheme","targets"]`
-  //    （增量 §0-4 / §7.11 规划建议「采纳方案」，payload = 方案快照 + 目标面板值）——
-  //    载荷里带着方案与目标，却一个字节都不落，正是欠账形态。
-  //    业务裁定（已定·勿改）：采纳一个方案**不得覆盖全局经营目标基线**（PLAN_GOAL_TARGETS）——「目标不能改」。
-  //
-  // ⚠️ WO-ACTION-NOOP-EXEC 逐型定性结论（**本单刻意不接·理由已实测·勿当成"忘了做"**）：
-  //    本型属「**域映射缺失**」而非「该写而没写」——四条论据全部实测，逐条见 `NOT_IMPLEMENTED_RATIONALE.采纳经营方案`。
-  //    一句话：载荷里的三样东西（公司级聚合预测 outcome / 目标面板 targets / 只活在求解器内部的 pathKey）
-  //    **没有一样能落到某个对象的某个属性上**，而 PRD 指定的落点（AOP 年度情景细化）今天的承载对象
-  //    `AnnualScenario` 属性全是已播种真值，覆盖即毁数。硬接 = 假 MO 号换件衣服（本仓刚清掉的那个病）。
-  //    正确的下一步是先立「方案采纳台账对象 + AOP 细化读端」这一对新要素（跨 battery.ts 注册 + 读端，
-  //    超出本单范围边界），已登记为本体 §8 `G-ADOPT-SCHEME-NO-CARRIER`。
-  采纳经营方案: "NOT_IMPLEMENTED",
+  // ← 已接：WO-ADOPT-SCHEME-CARRIER 收口 G-ADOPT-SCHEME-NO-CARRIER —— 审批通过后落
+  //   `scheme_adoptions` 台账（专用 doc-jsonb 表·037 迁移·R9 四处同改），方案快照+目标快照全字段，
+  //   同 (tenant,year) 至多一条 ACTIVE（写时不变量），读端 = PlanService.aop 的 schemeAdoption 段。
+  //   语义先例注释同 adopt_mitigation：「采纳」= 让拍板留痕成真值可读回，而非开一张新单据。
+  //   业务裁定（勿改）：采纳方案**不得覆盖** PLAN_GOAL_TARGETS 基线——targets 只作拍板快照留痕对账。
+  //   效果层断言（端到端读回字段真变）见 test/action-adopt-scheme.seam.test.ts。
+  采纳经营方案: "WIRED",
 };
 
 /**
@@ -156,21 +146,12 @@ export function parseLevers(payload: Record<string, unknown> | undefined): Lever
  * 为什么要有这张表：`EXECUTOR_NOT_IMPLEMENTED` 那段通用文案只说了「没接」，说不出「为什么没接」。
  * 而这两件事的处置完全不同 —— 「该写而没写」要排单去接，「域映射缺失」要先立映射再谈接。
  * 把理由写在错误里，欠账就**在用户看得见的地方**可读，而不是只活在源码注释里。
+ *
+ * 当前为空 —— 这不是疏漏，是**现状的事实**（WO-ADOPT-SCHEME-CARRIER 已把最后一条内置
+ * NOT_IMPLEMENTED「采纳经营方案」接线：落 scheme_adoptions 台账 + AOP 读端）。本表保留骨架，
+ * 给下一个「域映射缺失」型留签字位（check-action-wiring.mjs 断言⑥锚点依赖本表存在·勿删）。
  */
-export const NOT_IMPLEMENTED_RATIONALE: Record<string, string> = {
-  采纳经营方案:
-    "域映射缺失（非「排期没排到」）：本型 payload 是 `{schemeNo, pathKey, scheme.outcome, targets}` —— " +
-    "`outcome{rev,gm,share,turns,cash,capex}` 是**公司级年度聚合预测**，不是任何本体对象的属性" +
-    "（`plan_generate` 在 `solvers/service.ts` 的读取声明是空数组：它一个核心对象类型都不读）；" +
-    "`targets` 是目标面板值，而业务已裁定「采纳一个方案不得覆盖全局经营目标基线（PLAN_GOAL_TARGETS）」；" +
-    "`pathKey` 唯一的消费方是 `solvers/service.ts` 里 plan_generate **本次调用自己的输出后处理**" +
-    "（`schemes.find(s => s.pathKey === out.recommend)`，用来挑出推荐方案喂规则判定）——" +
-    "**没有任何仓储、对象或别的求解器以「已采纳的 pathKey」为输入**，" +
-    "即写下去也没有读端（那只是把本断点换成「有写端无读端」，参见 G-SIM-SCOPE-UNREAD 的形态）。" +
-    "PRD-plan-generate-1to1 §2/§3.4 指定的落点是「下发年度情景规划台(AOP)细化」，" +
-    "而 `AnnualScenario` 现有属性全是已播种的三情景真值，覆盖即毁真值。" +
-    "⇒ 需先立「方案采纳台账 + AOP 细化读端」这一对新要素，才谈得上接执行器（见本体 §8 G-ADOPT-SCHEME-NO-CARRIER）。",
-};
+export const NOT_IMPLEMENTED_RATIONALE: Record<string, string> = {};
 
 /**
  * 诚实失败结果的**唯一产地**：统一 `EXECUTOR_NOT_IMPLEMENTED:` 前缀（前端/审计据此识别），
@@ -360,8 +341,8 @@ export class GlobalSimPlanExecutor implements ActionExecutor {
 //  · 这里**只**登记回写实现与本声明同在 `apps/datacore/src/actions.ts` 的执行器
 //    （= `GlobalSimPlanExecutor`），因此声明可被 SEAM 测试逐属性对拍——执行器改了、声明没跟，测试变红。
 //  · `app.ts domainExecutor` 其余分支（AOP情景拍板 / 校准参数变更 / 定稿月度计划版本 / 计划版本变更 /
-//    对象数据变更 / 流水线发布物化）的回写**没有**登记在此：它们要么写的不是 ObjectInstance
-//    （solver params、S&OP 版本记录），要么目标类型/属性由 payload 或工作流定义在运行期决定
+//    对象数据变更 / 流水线发布物化 / 采纳经营方案）的回写**没有**登记在此：它们要么写的不是 ObjectInstance
+//    （solver params、S&OP 版本记录、scheme_adoptions 台账——doc-jsonb 专用表，非本体对象），要么目标类型/属性由 payload 或工作流定义在运行期决定
 //    （`对象数据变更` 的 objectType/patch、`流水线发布物化` 的 node.modeling.typeKey），
 //    静态声明表达不了。**宁可留空（coverage=NONE）也不编造**。
 //  · 租户经 `POST /a/v1/action-types` 注册的 `effects` 优先级高于本表（本表只是缺省兜底）。

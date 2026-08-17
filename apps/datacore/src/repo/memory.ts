@@ -516,6 +516,8 @@ export function createMemoryRepos(): Repos {
     processStepTemplates: new MemStore(),
     // WO-ENTERPRISE-STATE · 企业状态快照（R9 四处同改之三 —— migrations/030 + repo.ts 接口 + 本行 + pg.ts）
     enterpriseStates: new MemStore(),
+    // WO-ADOPT-SCHEME-CARRIER · 方案采纳台账（R9 四处同改之三 —— migrations/037 + repo.ts 接口 + 本行 + pg.ts）
+    schemeAdoptions: new MemStore(),
     // WO-ORG-WORLD · 组织世界（R9 三处同改之二 —— 与 repo.ts 接口 + pg.ts 同表语义）
     orgPrincipals: new MemStore(),
     orgAuthorities: new MemStore(),

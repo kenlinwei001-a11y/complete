@@ -834,6 +834,10 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     // 同上：表名写错只在 pg 模式下运行时炸，memory 默认的单测证明不了这一行 ——
     // 故 enterprise-state.seam.test.ts 里另有一条断言，把 030 migration 的 CREATE TABLE 名字抽出来与本行比对。
     enterpriseStates: new PgStore(pool, "enterprise_states"),
+    // WO-ADOPT-SCHEME-CARRIER · 方案采纳台账（R9 四处同改之四 · migrations/037_scheme_adoptions.sql）。
+    // 同上：表名写错不会编译报错，只在 pg 模式运行时炸 —— 故 action-adopt-scheme.seam.test.ts
+    // 复用同一条「migration 抽表名 ↔ 本文件字面量」对账断言（带金丝雀，抽不到就报工具坏了）。
+    schemeAdoptions: new PgStore(pool, "scheme_adoptions"),
     // WO-ORG-WORLD · 组织世界（R9 三处同改之三 · migrations/032_org_world.sql）。
     // 同 processDefinitions 的理由：表名写错**不会编译报错**，只在 pg 模式运行时炸，而测试默认走 memory
     // ⇒ 单测全绿证明不了这四行对。故 org-world.test.ts 有一条断言把该 migration 里的 CREATE TABLE
