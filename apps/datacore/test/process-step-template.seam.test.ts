@@ -451,7 +451,9 @@ describe("WO-STEP-TEMPLATE-LAYER · R9 仓储双实现与本体登记", () => {
     expect(types.map((x) => x.key).sort()).toEqual(["ProcessDefinition", "ProcessInstance", "ProcessStepTemplate"]);
     // 每个类型/属性必须有非空描述（`ontology-descriptions:check` 的同一条纪律）。
     for (const ty of types) {
-      expect(ty.description.length, `${ty.key} 缺描述`).toBeGreaterThan(10);
+      // `description` 在契约里是可选的 ⇒ 不许直接 `.length`（tsc TS18048）。
+      // `?? 0` 让「缺描述」落进同一条断言而不是抛 TypeError —— 与下一行属性侧写法一致。
+      expect(ty.description?.length ?? 0, `${ty.key} 缺描述`).toBeGreaterThan(10);
       for (const p of ty.properties) expect(p.description?.length ?? 0, `${ty.key}.${p.propKey} 缺描述`).toBeGreaterThan(5);
     }
     const links = processLayerLinkTypes();
