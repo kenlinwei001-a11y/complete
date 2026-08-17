@@ -107,6 +107,27 @@ describe("N3 · runner 级 stall_loop 剧本（B1-B4）", () => {
       expect(run.result.degraded).toBeUndefined();
     }
   });
+
+  it("B5 meta 守卫（M2 补咬）：stall_loop_meta + cap=3 → 8 轮同参 final_answer **不触发** stall-loop ∧ ANSWERED", { timeout: INTEGRATION_TIMEOUT }, async () => {
+    // 断言形态说明（先读 platform-watchdog.mjs:93 真实语义再定）：
+    //   META_TOOLS 守卫 = 「final_answer/load_skill 元操作不计入环检测」（对位 loop.ts:1171）。
+    //   本臂喂 8 轮**同参** final_answer：守卫在 ⇒ 零计数，8 轮烧满无 stall-loop、无 advisory；
+    //   守卫 neuter（META_TOOLS.has 摘除）⇒ 同参 final_answer 累加，第 3 轮 n>=cap=3 ⇒
+    //   watchdog cancel ⇒ tool/call 帧停 3、turn/end 落 stall-loop、本测红 —— 咬的是变异本身。
+    const run = await runDshAgent(
+      { prompt: "p", setup: {}, provider: "mock", model: "mock" },
+      { harnessDir: HARNESS_DIR, requestTimeoutMs: 30_000, env: { MOCK_SCENARIO: "stall_loop_meta", [CAP_KEY]: "3" } },
+    );
+    const end = turnEndFrame(run.events);
+    expect(JSON.stringify(end?.data), "meta 工具守卫生效时同参 final_answer 重复不得触发 stall-loop（守卫摘除 ⇒ 此帧落 abort cause）").not.toContain("stall-loop");
+    expect(JSON.stringify(run.events), "meta 工具连 advisory 档都不得触及（零计数 ⇒ n 恒 undefined）").not.toContain("platform-watchdog");
+    expect(toolCallFrames(run.events), "守卫在 ⇒ 8 轮剧本烧满；守卫摘除 ⇒ 第 cap=3 轮即 cancel，帧数停 3").toHaveLength(8);
+    expect(run.result.ok).toBe(true);
+    if (run.result.ok) {
+      expect(run.result.outcome).toBe("ANSWERED");
+      expect(run.result.degraded).toBeUndefined();
+    }
+  });
 });
 
 describe("N3 · D1 canonicalize 夹具（对位 stock 语义）", () => {

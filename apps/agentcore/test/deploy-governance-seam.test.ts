@@ -157,8 +157,10 @@ describe("#88 SEAM · 出货 compose 的治理开关 → 真管线里的真早�
  * **plan 修订（builder 实证 fork 不在自由深问路径，裁决降为 engine 级缝）**：
  * 本 describe 初版按 plan 写成「HTTP submitQuery 自由深问 + SSE 断言」，实跑 builder 实证：
  *   DSH fork 在 engine.runRegisteredAgent 内（engine.ts:497），而自由深问路径 runPathB 直调
- *   runAgentLoop（orchestrator.ts:2027，:38 直 import）不过 fork；fork 的调用方只有
- *   skill-probe / engine 内部 / orchestrator runRolePathB（:2398）。DSH_HARNESS=1 跑 ③ 同句，
+ *   runAgentLoop（orchestrator.ts:2027，:38 直 import）不过 fork；src 直调 runRegisteredAgent
+ *   共 4 处（verifier 复核补全清单）：skill-probe.ts:395 / engine.ts:764（内部）/
+ *   orchestrator.ts:2398（runRolePathB）/ orchestrator.ts:2651（runSceneAgent · AGENT_FIRST/
+ *   AGENT_ONLY 场景入口）。DSH_HARNESS=1 跑 ③ 同句，
  *   实测 task COMPLETED、path=AGENT、answer="（脚本耗尽）"（native ScriptedLlmClient 兜底）、
  *   零 subprocess spawn、零 echo_tool 事件——⇒ plan ③′（SSE 含 agent_degraded 且早于
  *   answer.final）与 plan 零改动声明（orchestrator.ts 不动）互斥。team-lead 裁决（option a）：
