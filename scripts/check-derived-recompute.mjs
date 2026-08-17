@@ -63,6 +63,22 @@
  *   ⛔ **本单只查不改**（改公式还是改值是**产品判断**不是工程判断）⇒ 存量逐条挂账进基线，
  *   条数**只降不升**；新增一条即红。
  *
+ * ══ ⚠ 诚实边界之首（**本门最容易被读错的一句，先读这条**）═══════════════════════
+ *  **判据 C 抓不到「公式写错了」这一类，除非那个量另有一个独立来源。**
+ *  理由是结构性的、不是实现不足：本仓的派生值**就是**由 formula 算出来并写进对象的
+ *  （`runDerivations` → `obj.props[propKey] = value`）。改错公式 ⇒ 管线按新公式算、
+ *  本门也按新公式重算 ⇒ **两边一致地错**，重算比对天然看不见。
+ *  这一条**不是**可以绕过去的实现瑕疵，而是「重算核对」这个方法本身的射程边界。
+ *  本门真正能抓「公式错」的，只有这三条**独立于公式**的证据链：
+ *    · **B / B2** 公式引用了不存在的属性、或输入取不到数值（生产静默当 0）；
+ *    · **C2**     该量**另有一个来源**（种子生成器早填了同名字段）⇒ 两个来源必须对上。
+ *                 现算今日命中 **1 条**：`InterBaseTransfer.etaDay`（`battery.ts:4785` 早填）。
+ *                 **另外 13 条今天没有第二来源 ⇒ 对它们本门只证「管线算得和公式一致」，
+ *                 不证「公式本身是对的」** —— 这半句必须原样写进任何引用本门的结论里。
+ *    · **D**      量纲与公式推导出的量纲不符（与公式对不对无关，是另一维）。
+ *  **要把「公式本身对不对」也守住，只有给每个派生量一个独立锚**（一份人手核对过的期望值表、
+ *  或一条来自另一条链路的同量），那是另一张单，本门刻意不假装做到了。
+ *
  * ══ 诚实边界（本门**不**保证什么 · 别把绿读成「派生都对」）═════════════════════
  *  · 真值集 = **demo 出厂本体 + 出厂种子**（`batteryObjectTypes()` ∪ `extendedObjectTypes()`
  *    × `generateBattery(42,"S")`），与 `lever-prop-resolvable:check` 同一集合。
@@ -624,6 +640,7 @@ for (const d of derived) {
   const seededByPk = seeded ? new Map(seeded.map((r) => [String(r[pkProp]), r])) : null;
   const values = [];
   let mismatched = 0;
+  let nonNumeric = 0;
   for (const o of objs) {
     let expected;
     try {
@@ -632,9 +649,26 @@ for (const d of derived) {
           ? strictAggregate(d.cls.agg, o.props[pkProp], aggSources)
           : strictRecompute(d.cls, o.props, known);
     } catch (e) {
-      // 求值器自己算不出来 ⇒ **RC=2**，绝不读作「都对」。
+      const msg = String(e?.message || e);
+      // 判据 B2 · 输入不是数值 —— 这是**代码/数据的问题（RC=1）**，不是工具坏了（RC=2）。
+      // 生产求值器对这种输入**静默当 0**（`typeof v === "number" ? v : 0`），
+      // 于是「公式的输入从来没被填上」会安静地产出一个错数，屏上照样有数。
+      if (msg.startsWith("NON_NUMERIC:") || msg.startsWith("UNKNOWN_IDENT:")) {
+        if (nonNumeric < 3) {
+          fail.push(
+            `B2 · 公式输入在实例上取不到数值：${id}（对象 ${o.props[pkProp]}）\n` +
+              `      formula ：「${d.formula}」\n` +
+              `      取不到  ：${msg}\n` +
+              `      ⇒ 生产求值器 evalArithmetic 对它**静默当 0**（不抛不报），这条派生值是个错数而全链无信号。\n` +
+              `      ⇒ 这是「接了线没数据」，不是「没接线」：修法是补数据或删死分支，不是改公式。`,
+          );
+        }
+        nonNumeric++;
+        continue;
+      }
+      // 其余（求值器自己算不出来）⇒ **RC=2**，绝不读作「都对」。
       toolBroken([
-        `重算 ${id}（对象 ${o.id}）时求值器抛异常：${e?.message || e}`,
+        `重算 ${id}（对象 ${o.id}）时求值器抛异常：${msg}`,
         "⇒「我没算出来」不许读成「都对」，故本次判定作废。",
       ]);
     }
@@ -677,6 +711,7 @@ for (const d of derived) {
     }
   }
   if (mismatched > 3) fail.push(`C · ${id} 另有 ${mismatched - 3} 个实例同样不符（此处省略）`);
+  if (nonNumeric > 3) fail.push(`B2 · ${id} 另有 ${nonNumeric - 3} 个实例同样取不到数值（此处省略）`);
   comparedProps++;
 
   /* ---- 判据 D · 量纲 ---- */
@@ -749,24 +784,32 @@ if (opaqueCount) {
 
 /* ---- --update：认账（不是消红） ---- */
 if (UPDATE) {
-  const doc = buildBaselineDoc({
-    prev,
-    generatedBy: "node scripts/check-derived-recompute.mjs --update",
-    prose: {
-      note:
-        "derived-recompute:check 的棘轮基线。unitLie = 量纲不一致的**存量挂账**（本门只查不改：" +
-        "「改公式还是改值」是产品判断不是工程判断，故挂账不修）；opaque = 不可机械求值的派生属性登记表" +
-        "（每条必须写 whyNotComputable —— 静默跳过等于「我没查」被读成「查了都对」）。" +
-        "maxUnitLie / maxOpaque 只降不升；--update 是认账用的，不是消红用的。",
-    },
-    computed: {
-      unitLie: unitNow,
-      opaque: Object.fromEntries(Object.entries(opaqueNow).filter(([, v]) => v)),
-      maxUnitLie: Math.min(maxUnit, unitCount),
-      maxOpaque: Math.min(maxOpaque, opaqueCount),
-    },
-  });
-  writeFileSync(BASELINE, JSON.stringify(doc, null, 2) + "\n");
+  // ⚠ `buildBaselineDoc(...)` 必须**内联在写入实参里**（`baseline-writer-honesty:check` 走 AST
+  //   查的就是这一处）：人手散文（note / why / whyNotComputable）走 prev 保留，算出来的走 computed。
+  writeFileSync(
+    BASELINE,
+    JSON.stringify(
+      buildBaselineDoc({
+        prev,
+        generatedBy: "node scripts/check-derived-recompute.mjs --update",
+        prose: {
+          note:
+            "derived-recompute:check 的棘轮基线。unitLie = 量纲不一致的**存量挂账**（本门只查不改：" +
+            "「改公式还是改值」是产品判断不是工程判断，故挂账不修）；opaque = 不可机械求值的派生属性登记表" +
+            "（每条必须写 whyNotComputable —— 静默跳过等于「我没查」被读成「查了都对」）。" +
+            "maxUnitLie / maxOpaque 只降不升；--update 是认账用的，不是消红用的。",
+        },
+        computed: {
+          unitLie: unitNow,
+          opaque: Object.fromEntries(Object.entries(opaqueNow).filter(([, v]) => v)),
+          maxUnitLie: Math.min(maxUnit, unitCount),
+          maxOpaque: Math.min(maxOpaque, opaqueCount),
+        },
+      }),
+      null,
+      2,
+    ) + "\n",
+  );
   console.log(`\n✎ 已写 ${BASELINE}（unitLie ${unitCount} 条 · opaque ${opaqueCount} 条）`);
   process.exit(0);
 }
