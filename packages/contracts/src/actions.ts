@@ -374,9 +374,9 @@ export type ForecastAdoptionBatch = z.infer<typeof ForecastAdoptionBatchSchema>;
 
 /** 推演快照：采纳那一刻 capacity_forecast 的输出要点（全部与求解器输出同轴）。 */
 export const ForecastAdoptionSnapshotSchema = z.object({
-  /** P50 累计产能，单位 **万套/窗口**（= Σ可产基地 Σ周 周产能×爬坡×检修×认证）。 */
+  /** P50 累计产能（= Σ可产基地 Σ周 周产能×爬坡×检修×认证）。@unit 万套/窗口 */
   capWanP50: z.number(),
-  /** P90 累计产能，单位 **万套/窗口**（= capWanP50 × healthFactor）。 */
+  /** P90 累计产能（= capWanP50 × healthFactor）。@unit 万套/窗口 */
   capWanP90: z.number(),
   /** 缺口，单位 **万套**（= max(0, demandWan − capWanP90)；可达时为 0）。 */
   gapWan: z.number().nonnegative(),
