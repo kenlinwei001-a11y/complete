@@ -150,8 +150,8 @@ describe("WO-RESOURCE-CATALOG-ONTOLOGY · 本体对象类型/字段进资源目�
       ).not.toBe("UNKNOWN_TYPE");
     }
     // 出厂基线不倒退：seed 引用面类型（Material「已知但 0 实例」语义）仍在守卫清单。
-    // 经接口调用：MockDataCore 的实现漏掉了接口声明的 ctx 形参（src/mocks/clients.ts:376），
-    // 直接调具体类型会 TS2554「Expected 0 arguments」。上转到它实现的接口 = 按契约真实形状调。
+    // 经接口调用（WO-MOCKDC-PARAMS 已把 mock 的 `listObjectTypeKeys` 形参补齐到契约，
+    // 此处上转保留 = 断言咬的是**接口**而非某个实现的具体类型）。
     const onto: OntologyClient = t.dataCore.ontology;
     const guardKeys = await onto.listObjectTypeKeys({ tenantId: TENANT, userId: "admin", roles: ["admin"] });
     for (const legacy of ["Material", "Shipment", "Segment", "Customer", "Line"]) {

@@ -5,13 +5,18 @@ import type { OntologyClient } from "../src/tools/clients.js";
 const CTX = { tenantId: "tenant-demo", userId: "u1", roles: ["planner"] };
 
 /**
- * 本文件监听的是 queryObjects 的**第 5 个**形参 `asOfEpoch` —— 它由接口
- * `src/tools/clients.ts` 的 `OntologyClient.queryObjects` 声明，但 `MockDataCore`
- * （`src/mocks/clients.ts:240`）只实现到第 4 个。TS 允许「少写形参」实现接口，
- * 于是 mock 的**具体类型**比接口窄，直接往它身上装 5 参函数会 TS2322。
+ * 本文件监听的是 queryObjects 的**第 5 个**形参 `asOfEpoch`（接口
+ * `src/tools/clients.ts` 的 `OntologyClient.queryObjects` 声明）。
  *
- * 这里先把 mock 上转成它自己实现的那个接口再打桩 —— 是**放宽到契约真实形状**，
- * 不是 `as any`（属性名写错、返回类型不符照样报）。
+ * ⚠ 历史（WO-MOCKDC-PARAMS 已闭）：`MockDataCore` 的 `queryObjects` 曾**只实现到第 4 个**。
+ * TS 允许「少写形参」实现接口，于是 mock 的具体类型比契约窄，直接往它身上装 5 参函数会 TS2322。
+ * 更要命的是：本文件的三个桩都把 `asOfEpoch` 转发丢了（`orig(ctx, type, filter, limit)`），
+ * 所以它证明的只是「执行器**传了**这个参数」，**证明不了 mock 会照它返回不同结果** ——
+ * 「按时点读」这个维度在 mock 上当时根本不存在。真正咬那件事的接缝断言见
+ * `mock-datacore-params.seam.test.ts`（同一份 mock，不打桩，直接驱动 as-of 与租户隔离）。
+ *
+ * 上转成接口再打桩仍然保留 —— 是**放宽到契约真实形状**，不是 `as any`
+ * （属性名写错、返回类型不符照样报）。
  */
 const asOntology = (o: OntologyClient): OntologyClient => o;
 

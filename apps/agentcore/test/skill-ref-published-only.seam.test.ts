@@ -262,8 +262,8 @@ describe("WO-REFGATE-ENT · N-01 · 引用可校验门查的是「可不可以�
   it("mock 客户端同语义：draftRuleKeys 里的 key 不在已发布集 → 引用它的技能发布 422", async () => {
     const t = await createTestApp();
     const mockDc = createMockDataCore();
-    // 上转到接口：mock 的 listPublishedRuleKeys 漏了接口声明的 ctx 形参（src/mocks/clients.ts:706），
-    // 直接调具体类型会 TS2554。原来的 `as never` 压不住 arity 错，只是把实参类型糊掉了。
+    // 上转到接口（WO-MOCKDC-PARAMS 已把 mock 的 `listPublishedRuleKeys` 形参补齐到契约；
+    // 上转保留 = 断言咬**接口**不咬实现，且 `as never` 那种"糊掉实参类型"的写法不许回潮）。
     const mockRules: RuleEngineClient = mockDc.rules;
     expect(await mockRules.listPublishedRuleKeys({ tenantId: TENANT, userId: "u", roles: [] })).toContain("C03");
 

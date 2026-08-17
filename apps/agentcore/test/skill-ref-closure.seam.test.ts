@@ -68,7 +68,7 @@ describe("WO-SKILL-REFCLOSURE-A · skill 发布路的引用可校验门（接缝
     const keys = items.map((i: { key: string }) => i.key);
     expect(keys).toContain(REAL_SOLVER);
     expect(keys).not.toContain(DEAD_SOLVER);
-    // 上转到接口：mock 的 listPublishedRuleKeys 漏了接口声明的 ctx 形参（src/mocks/clients.ts:706）。
+    // 上转到接口（WO-MOCKDC-PARAMS 已把 mock 的 `listPublishedRuleKeys` 形参补齐到契约；上转保留 = 咬接口不咬实现）。
     const rules: RuleEngineClient = t.dataCore.rules;
     expect(await rules.listPublishedRuleKeys({ tenantId: "demo", userId: "u", roles: [] })).toContain(REAL_RULE);
   });
