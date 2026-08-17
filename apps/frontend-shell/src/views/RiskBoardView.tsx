@@ -1463,11 +1463,12 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, rc
                     {f.message ? ` · 后端 message：${f.message}` : ""}
                   </div>
                   <div style={{ marginTop: 4, color: "var(--muted2)" }} data-testid={`rootcause-next-${base}`}>
-                    {/* 下一步按分支给，依据 = 上面那个错误码本身，不内联任何"引擎缺什么"的结论。 */}
-                    下一步：以上面的<b>错误码</b>
+                    {/* 下一步按分支给，依据 = 上面那个错误码本身，不内联任何"引擎缺什么"的结论。
+                        出处（工程师层，不上屏）：该次调用为 /a/v1/solvers/gap_attribution/invoke，
+                        错误码含义以后端错误信封 {error:{code,message,requestId}} 为准。 */}
+                    下一步：把上面的<b>错误码</b>
                     {f.requestId ? "与 requestId " : ""}
-                    在 DataCore 侧核对该次 <span className="mono">/a/v1/solvers/gap_attribution/invoke</span> 调用；
-                    错误码含义以后端错误信封 <span className="mono">{"{error:{code,message,requestId}}"}</span> 为准。
+                    交给系统管理员，请他们查这次「差距归因」为什么没算成 —— 查清之前，这一栏不会替你猜根因。
                   </div>
                 </>
               );

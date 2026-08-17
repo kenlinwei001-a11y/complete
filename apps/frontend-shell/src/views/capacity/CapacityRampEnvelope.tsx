@@ -106,7 +106,9 @@ export function CapacityRampEnvelope({ baseId }: { baseId: string }) {
         ⛔ 爬坡被 <b>{binding.mark} {binding.name}</b> 拖住（天花板最低{binding.tight != null ? ` · 溯 bottleneck_matrix.${binding.bnFactor}=${Math.round(binding.tight)}` : ""}）
       </div>
       <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5, marginTop: 6 }}>
-        子曲线天花板取自真数据（bottleneck_matrix 各因素张力·R14），爬坡形状取自 RAMP_PROFILE 配置；min 包络 = 实际爬坡（R6 确定性·非写死）。crossDay 竖线复用现有阈值口径。
+        {/* 出处（工程师层，不上屏）：形状取自 RAMP_PROFILE 配置；min 包络 = 实际爬坡（R6 确定性·非写死）。 */}
+        子曲线的天花板取自真实数据（各瓶颈因素的张力·R14），爬坡的快慢形状取自本基地的爬坡配置；
+        下包络线 = 实际能爬到的产能（取各条子曲线里最低的那条，同输入必得同结果，不是写死的曲线）。跨日竖线沿用现有阈值口径。
       </div>
     </div>
   );

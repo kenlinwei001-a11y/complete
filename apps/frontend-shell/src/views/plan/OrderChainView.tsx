@@ -1152,8 +1152,8 @@ function OrderFullchainPanel() {
                   改为「本单需求」（同样 4 字，第一层不变重）+ 浮层披露折算假设：
                   第一层留结论，口径进浮层（`CONVENTION-ui-information-layering` §2 R-UI-3）。 */}
               <tr><td>①交期·产能</td><td>{data.judges.cap.verdict}</td><td className="mono">周供给 P90 {data.judges.cap.packsPerWeekP90} vs 本单需求 {data.judges.cap.demand}（{data.judges.cap.unit ?? "套/周"}）<InfoPopover topic="这两个数凭什么放在一起比" testId="ofc-cap-basis">
-                左边是**速率**：可产基地数 × 周产能基线 → 套/周。
-                右边是**整单量**（Order.qty·套），引擎按「这一单要在一周内交完」折算成套/周再比 ——
+                左边是<b>速率</b>：可产基地数 × 周产能基线 → 套/周。
+                右边是<b>整单量</b>（这一单的总套数），引擎按「这一单要在一周内交完」折算成套/周再比 ——
                 这是 C02 的确定性代理口径，不是订单自带的周需求。跨周交付的单据此判会偏保守。
               </InfoPopover></td><td className="mono">{data.judges.cap.ruleRefs.join("/")}</td></tr>
               <tr><td>②齐套·MRP</td><td>{data.judges.kit.verdict}</td><td className="mono">{data.judges.kit.material} 缺 {data.judges.kit.gapTon} 吨</td><td className="mono">{data.judges.kit.ruleRefs.join("/")}</td></tr>

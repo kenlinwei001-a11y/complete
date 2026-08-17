@@ -33,7 +33,8 @@ export function DispositionOptionsPanel({ row }: { row: PlanRow }) {
             testId="disposition-options-absent"
             field="planRows[].options"
             what="多方案对比"
-            hint="（多方案只挂每基地的**主行**：备份方案行与「反提月度差异」行不重复挂同一份大对象 —— 点主行即可看到。）"
+            // `hint` 是纯字符串（AbsentNote 按文本渲染）⇒ 强调用「」，不用 md 星号（星号会原样印在屏上）
+            hint="（多方案只挂在每个基地的「主行」上：备份方案行与「反提月度差异」行不重复挂同一份大对象 —— 点主行即可看到。）"
           />
           {/* 前置期读数在 steps 上仍然存在（第二消费面）：即使本行没有 options，也要把"这一步为什么落在第 N 天"交出去。 */}
           <StepLeadTimes row={row} />
