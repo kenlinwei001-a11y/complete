@@ -69,8 +69,9 @@ function extractMockLinkTypes(src: string): MockLinkType[] {
  * 两种都比"静静地错着"强。
  */
 const KNOWN_CARDINALITY_DRIFT: { key: string; mock: string; real: string }[] = [
-  // mock 写 1:1，真本体是 1:N（一个型号被多张订单要）。方向对，只有基数不对 ⇒ 不在本单范围。
-  { key: "order_for_model", mock: "1:1", real: "1:N" },
+  // 2026-08-16 WO-TITLE-DIVERGENCE ④：order_for_model 的 1:1→1:N 漂移**已修**（mock 两处字面量
+  // 已对齐 battery.ts 的 1:N），按本表的设计意图（「修好了 ⇒ 顺手把这一行删掉」）删除该登记行。
+  // 本表现为**空表**——这是它该有的样子：它存在是为了让「谁再新写坏一条」当场变红。
 ];
 
 describe("WO-SANDBOX-PROP-DIRECTION · 前端 mock 链路方向 = 本体单源（#160 机械门）", () => {

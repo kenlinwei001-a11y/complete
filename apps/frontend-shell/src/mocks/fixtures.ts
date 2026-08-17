@@ -398,7 +398,9 @@ const DASH_LAYOUT = {
     { key: "supply-v7", type: "kpi", title: "可供给 (万·终版)", unit: "万", query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "supplyV7" }, provenance: { toolName: "invoke_solver", outputPath: "$.supplyV7", snapshotVersion: "ov-12" } },
     { key: "rev-attain", type: "kpi", title: "收入达成率", unit: "%", query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "revAttainPct" }, provenance: { toolName: "invoke_solver", outputPath: "$.revAttainPct", snapshotVersion: "ov-12" } },
     { key: "util-peak", type: "kpi", title: "利用率瓶颈 (峰)", unit: "%", query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "utilPeak" }, provenance: { toolName: "invoke_solver", outputPath: "$.utilPeak", snapshotVersion: "ov-12" } },
-    { key: "aop-base", type: "kpi", title: "AOP 基准营收 (万)", unit: "万", query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "aopBaseRev" }, provenance: { toolName: "invoke_solver", outputPath: "$.aopBaseRev", snapshotVersion: "ov-12" } },
+    // WO-TITLE-DIVERGENCE ①：单位本是「万」——比后端（亿）小 4 个数量级。后端权威：
+    // battery.ts revenueOf = 万套×元/套 ÷ 10000 ⇒ 亿（base-registry revenue.unit 亦为「亿」）。
+    { key: "aop-base", type: "kpi", title: "AOP 基准营收 (亿)", unit: "亿", query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "aopBaseRev" }, provenance: { toolName: "invoke_solver", outputPath: "$.aopBaseRev", snapshotVersion: "ov-12" } },
     { key: "cash-cushion", type: "kpi", title: "现金垫 C18 (亿)", unit: "亿", query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "cashCushion" }, provenance: { toolName: "invoke_solver", outputPath: "$.cashCushion", snapshotVersion: "ov-12" } },
     {
       key: "util",
@@ -419,7 +421,10 @@ const DASH_LAYOUT = {
     {
       key: "oee-trend",
       type: "chart",
-      title: "OEE 7日趋势",
+      // WO-TITLE-DIVERGENCE ②：窗口实测——本 query days:14，MSW 桩 TS_AGG_POINTS 也是
+      // Array.from({length:14})，后端同写 days:14。数据两侧都是 14 天，错的只是标题文案，
+      // 改标题对齐后端（service.ts oee-trend），不动数据。
+      title: "OEE 14 日趋势",
       span: 2,
       chartKind: "line",
       query: { kind: "timeseries", seriesKey: "oee_daily", entityIds: [], grain: "day", agg: "avg", days: 14 },
