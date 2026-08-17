@@ -367,7 +367,7 @@ export async function launchBrowser() {
  *   （CLAUDE.md 铁律 1「凭一次快照下结论」的同源纪律）。超时仍不稳 ⇒ 抛 ProbeBroken ⇒ RC=2。
  */
 export async function renderAndMeasure(browser, spec) {
-  const { baseUrl, route, viewport, rootSelector, login, settleMs = 900, stableTries = 8 } = spec;
+  const { baseUrl, route, viewport, rootSelector, login, settleMs = 900, stableTries = 20 } = spec;
   const page = await browser.newPage({ viewport });
   const pageErrors = [];
   page.on("pageerror", (e) => pageErrors.push(String(e).slice(0, 200)));
@@ -391,16 +391,24 @@ export async function renderAndMeasure(browser, spec) {
     }
     await page.waitForTimeout(settleMs);
 
+    // ⚠ 「两次采样相同」**不足以**判稳（本单实测栽过一次）：
+    //   页面在懒加载/工作台数据还没回来时会先渲一个几乎空的壳，那个壳**本身就是静止的** ——
+    //   于是两次采样当然相同，量到 `textEls=1` 却被判成「稳定」，差一点就拿一个空壳的数当基线。
+    //   救回来的是**独立口径**（textEls 下限），不是稳定性判据。
+    //   故这里把两条合成一条：**既要 ≥ 下限、又要与上一次相同**才算稳。
     let last = null;
     let stable = null;
+    const trace = [];
     for (let i = 0; i < stableTries; i++) {
       const cur = await page.evaluate(measureLayout, { rootSelector });
-      if (!cur.ok) {
-        last = cur;
-        await page.waitForTimeout(settleMs);
-        continue;
-      }
-      if (last && last.ok && last.textEls === cur.textEls && last.firstScreenCtrls === cur.firstScreenCtrls) {
+      trace.push(cur.ok ? `textEls=${cur.textEls}` : `未命中(${cur.reason})`);
+      if (
+        cur.ok &&
+        cur.textEls >= TEXT_ELS_FLOOR &&
+        last?.ok &&
+        last.textEls === cur.textEls &&
+        last.firstScreenCtrls === cur.firstScreenCtrls
+      ) {
         stable = cur;
         break;
       }
@@ -408,16 +416,14 @@ export async function renderAndMeasure(browser, spec) {
       await page.waitForTimeout(settleMs);
     }
     if (!stable) {
+      const why =
+        last?.ok && last.textEls < TEXT_ELS_FLOOR
+          ? `独立口径不过：量到文本元素 ${last.textEls} < 下限 ${TEXT_ELS_FLOOR} ⇒ 页面没真渲染出来。` +
+            `此时报「版面合格」正是假绿，故判「工具坏了」。`
+          : `版面在 ${stableTries} 次采样内未稳定。`;
       throw new ProbeBroken(
-        `版面在 ${stableTries} 次采样内未稳定（最后一次：${last?.ok ? `textEls=${last.textEls}` : last?.reason}）` +
-          `${pageErrors.length ? ` · 页面异常：${pageErrors[0]}` : ""}`,
-      );
-    }
-    if (stable.textEls < TEXT_ELS_FLOOR) {
-      throw new ProbeBroken(
-        `独立口径不过：量到文本元素 ${stable.textEls} < 下限 ${TEXT_ELS_FLOOR} ⇒ 页面没真渲染出来。` +
-          `此时报「版面合格」正是假绿，故判「工具坏了」。` +
-          `${pageErrors.length ? ` · 页面异常：${pageErrors[0]}` : ""}`,
+        `${why}\n   采样轨迹：${trace.join(" → ")}` +
+          `${pageErrors.length ? `\n   页面异常：${pageErrors[0]}` : ""}`,
       );
     }
     stable.pageErrors = pageErrors.slice(0, 3);
