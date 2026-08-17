@@ -236,6 +236,43 @@ const fail = [];
 /** 门自身的故障（与"被扫代码有问题"分开报——修法完全不同）。 */
 const gateBroken = [];
 
+/**
+ * **退出码判决的单一出处**（WO-SANDBOX-NAV-CONSOLIDATE 续跑·变异反证 M7 逼出来的）。
+ *
+ * 抽成函数不是为了好看，是为了**能被金丝雀咬住**：这条判决上一版写在文件末尾一个
+ * 三目表达式里，写反了没有任何东西会说话 —— 而它恰恰是「门瞎了 vs 代码坏了」
+ * 这两种**处置完全相反**的情形的唯一分岔口。写反的代价是人被指去改没错的代码。
+ *
+ * 判决（顺序即优先级，不许调换）：
+ *   ① `gateBroken` 非空 ⇒ **2**：门自证瞎了，整次结论作废（连同 `fail` 一起）。
+ *      此刻不存在「真违规」这个可信品类 —— 坏工具吐出的 fail 与真违规长得一模一样。
+ *   ② 否则 `fail` 非空 ⇒ **1**：门是好的，它报的是被扫代码的真问题。
+ *   ③ 都空 ⇒ **0**。
+ * 判据来源：docs/SOP-reviewer-claim-discipline.md §3 的三分表
+ * （2 = 工具坏了 ⇒ 只许说「我没查出来」，绝不许说「代码干净 / 它不存在」）。
+ */
+function verdictExitCode(gateBrokenCount, failCount) {
+  if (gateBrokenCount > 0) return 2;
+  if (failCount > 0) return 1;
+  return 0;
+}
+/* 金丝雀（必中 + 必不咬两侧，且**喂的就是上面那个函数本体**，不另抄一份三目）。
+ * 这四例里最要紧的是第三例「门瞎了 **且** 有 fail ⇒ 2」—— 上一版正是这一格写成了 1。 */
+for (const [gb, fl, want, why] of [
+  [0, 0, 0, "都干净 ⇒ 0"],
+  [0, 3, 1, "门是好的、代码有问题 ⇒ 1（先修代码）"],
+  [2, 3, 2, "门瞎了且吐了 fail ⇒ **2**（fail 是坏工具的产物，不是结论；先修门）"],
+  [2, 0, 2, "门瞎了、无 fail ⇒ 2"],
+]) {
+  const got = verdictExitCode(gb, fl);
+  if (got !== want) {
+    gateBroken.push(
+      `✗ 词法自检：退出码判决写反了 —— verdictExitCode(${gb}, ${fl}) 期望 ${want}，实得 ${got}。${why}\n` +
+        `    这一格写反的后果不是「少报一条」，是**把人指去改没错的代码**（RC=1 照 SOP §3 读作「真有问题，先修再说」）。`,
+    );
+  }
+}
+
 function read(p) {
   if (!existsSync(p)) {
     fail.push(`✗ 输入文件不存在：${p}（本门的四个输入缺一即不可判，宁可红也不放行）`);
@@ -1232,7 +1269,14 @@ if (gateBroken.length > 0 || fail.length > 0) {
     for (const f of gateBroken) console.error(f + "\n");
   }
   if (fail.length > 0) {
-    if (gateBroken.length > 0) console.error("── 被扫代码的问题 ──\n");
+    if (gateBroken.length > 0) {
+      /* 门瞎了时这一段**不是结论**，是坏工具的产物 —— 必须当场说清，否则读者会照着它去改代码。
+       * 实测（WO-SANDBOX-NAV-CONSOLIDATE 续跑·变异反证 M7）：把 parseNavGroups 的成员正则去掉
+       * `route` 一支 ⇒ 词法自检 3 条全红（门确实瞎了），而下面这段同时冒出一条
+       * 「判据⑨ 豁免不许陈旧：GROUP_CONSOLIDATION_EXEMPT["推演::sim-sandbox"] 找不到对应的组::项」——
+       * 那条是**纯假阳性**：豁免登记一个字没错，只是 route 项没被解析出来。 */
+      console.error("── 以下是**本次扫描的产出，不是结论**（门已瞎，逐条都可能是假阳性；先修门再看）──\n");
+    }
     for (const f of fail) console.error(f + "\n");
   }
   console.error(
@@ -1246,8 +1290,22 @@ if (gateBroken.length > 0 || fail.length > 0) {
    * 两者处置相反，不许合并）」，而这一行**一直把两者合并成 1** —— 门自己瞎了会被读成
    * 「你的代码有问题」，方向正好相反（去改被测代码，而该改的是门）。
    * 形态与顶部兜底那条同源：「我用『进程非 0 退出』当作『代码有问题』的证据。」
-   * 判负优先级：真违规存在 ⇒ 1（先修代码）；只有门坏了 ⇒ 2（先修门，本次结论作废）。 */
-  process.exit(fail.length > 0 ? 1 : 2);
+   *
+   * ⚠ **2026-08-17 续跑订正（变异反证 M7 当场抖出）**：上一版写的是
+   * `fail.length > 0 ? 1 : 2` —— 判负优先级给了 `fail`，理由是「真违规存在 ⇒ 先修代码」。
+   * **这个优先级是反的**，且它自己就是本文件顶部那句话警告的病：
+   * 门瞎了的时候，`fail` 里那几条**不是「真违规」，是坏工具的产物**。实测把
+   * `parseNavGroups` 的成员正则去掉 `route` 一支：词法自检 3 条全红（门确实瞎了），
+   * 同时 `fail` 冒出一条「豁免陈旧，删掉即可」的**纯假阳性** ⇒ 旧版 RC=1 ⇒ 照 SOP
+   * §3 的表（1 = 真有问题、先修再说）读，人会去删一条完全正确的豁免登记。
+   * 形态（0.6 句式）：**「我用『fail 非空』当作『被扫代码真有问题』的证据，
+   * 而门瞎了时 fail 度量的是门，不是代码。」**
+   * ⇒ 判负优先级改为 **门坏了优先**：`gateBroken` 非空 ⇒ 一律 2（整次结论作废，
+   * 包括上面那段 fail）。真违规不会因此丢 —— 门修好后它们原样再报一次，那时才是 RC=1。
+   * 这不违反顶部兜底那句「不动既有 exit(1)」：那句护的是**别把真违规吞成 2**，
+   * 而这里的前提恰恰是「门已自证瞎了，此刻没有『真违规』这个可信品类」。
+   * 判决本体在 `verdictExitCode`（文件上方），那里带四例金丝雀 —— 再写反一次会被自己咬住。 */
+  process.exit(verdictExitCode(gateBroken.length, fail.length));
 }
 const exemptNote =
   Object.keys(INTENTIONALLY_NO_NAV).length === 0
