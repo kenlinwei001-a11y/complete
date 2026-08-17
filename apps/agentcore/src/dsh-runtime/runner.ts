@@ -14,7 +14,7 @@ import { HarnessClient } from "@deepseek-ai/dsh-sdk-client";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { DshSessionEvent, ReassembleOptions, ReassembledRun, SseEmission } from "./reassemble.js";
-import { mapDshEventToSse, reassembleDshRun } from "./reassemble.js";
+import { createSseMapper, reassembleDshRun } from "./reassemble.js";
 import type { DshSetupSpec } from "./setup-spec.js";
 
 export interface DshRunnerOptions {
@@ -32,7 +32,7 @@ export interface DshRunInput {
   maxTokens?: number;
   sessionId?: string;
   reassemble?: ReassembleOptions;
-  /** 逐 SSE 增量回调（mapDshEventToSse 产出即推；answer.final/task.* 由外层在拿结果后发）。 */
+  /** 逐 SSE 增量回调（createSseMapper 产出即推；answer.final/task.* 由外层在拿结果后发）。 */
   onSse?: (emission: SseEmission) => void;
 }
 
@@ -64,6 +64,7 @@ export async function runDshAgent(input: DshRunInput, opts: DshRunnerOptions = {
   });
   const sessionId = input.sessionId ?? `dsh-${new Date().getTime().toString(36)}`;
   const events: DshSessionEvent[] = [];
+  const mapper = createSseMapper(); // N2·D-7：工厂持 meta callId 集，一次 run 一个实例
   const sub = client.subscribeSessionTree(sessionId);
   const collector = (async () => {
     for await (const n of sub) {
@@ -71,7 +72,7 @@ export async function runDshAgent(input: DshRunInput, opts: DshRunnerOptions = {
       const event = (n.params as { event?: DshSessionEvent } | undefined)?.event;
       if (!event) continue;
       events.push(event);
-      const sse = mapDshEventToSse(event);
+      const sse = mapper(event);
       if (sse) input.onSse?.(sse);
     }
   })().catch(() => undefined); // sub.close() 会拒 pending waiter；立即挂 catch 防 unhandled rejection
