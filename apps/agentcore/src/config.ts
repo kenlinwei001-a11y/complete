@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+/**
+ * WO-DSH-N1-PROVIDER · dsh 分叉 LLM provider 路由的生产值单源常量（engine 与测试共同 import；
+ * 与 packages/dsh-harness cordis.yml 的 platform-llm 插件注册路由同值）。改生产路由只改这里。
+ */
+export const PRODUCTION_DSH_HARNESS_PROVIDER = "platform";
+
 const ConfigSchema = z.object({
   PORT: z.coerce.number().int().default(4002),
   DATABASE_URL: z.string().optional(),
@@ -58,6 +64,18 @@ const ConfigSchema = z.object({
   QOS_AGENT_RETRY_MAX_ATTEMPTS: z.coerce.number().int().optional(),
   /** 增量 §4.3 红线：stdio 传输默认禁用（需显式 =1） */
   MCP_STDIO_ENABLED: z.string().optional(),
+  /**
+   * WO-DSH-N1-PROVIDER · 路 B（dsh harness）分叉开关：=1 时 runRegisteredAgent 走 JSON-RPC 子进程
+   * 路径（packages/dsh-harness）；缺省 0 = runAgentLoop 旧路逐字节不变。部署态建议 `DSH_HARNESS=0`
+   *（出货缺省 off，§16.1a 部署层回退）。
+   */
+  DSH_HARNESS: z.string().default("0"),
+  /**
+   * WO-DSH-N1-PROVIDER · dsh 分叉的 LLM provider 路由（= harness 侧 cordis.yml 注册的适配器 id）。
+   * 生产形态：platform-llm 插件经绑定矩阵（LlmSettings.resolveConnectionFacts）解析连接事实、
+   * env 缝注入子进程。部署态建议 `DSH_HARNESS_PROVIDER=platform`（单源 = PRODUCTION_DSH_HARNESS_PROVIDER）。
+   */
+  DSH_HARNESS_PROVIDER: z.string().default(PRODUCTION_DSH_HARNESS_PROVIDER),
   /** 增量 §4.3：stdio command 绝对路径白名单（逗号分隔，精确匹配） */
   MCP_STDIO_COMMAND_ALLOWLIST: z.string().optional(),
   /** 增量 §3：技能附件本地存储目录（与 DataCore BLOB_DIR 共享卷形态）；缺省仅元信息 */

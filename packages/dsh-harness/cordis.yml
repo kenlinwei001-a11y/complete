@@ -46,5 +46,11 @@
 - id: mock-llm
   name: './plugins/mock-llm.mjs'
 
+# WO-DSH-N1-PROVIDER · 生产形态 LLM 适配器桥：路由 'platform'（= agentcore config.ts
+# PRODUCTION_DSH_HARNESS_PROVIDER 同值）。连接事实逐 run 经 runner opts.env 注入
+# （PLATFORM_LLM_API/BASE_URL/MODEL/API_KEY）；env 未注入 ⇒ 不注册路由（initialize 防呆诚实报错）。
+- id: platform-llm
+  name: './plugins/platform-llm.mjs'
+
 - id: echo-tool
   name: './plugins/echo-tool.mjs'
