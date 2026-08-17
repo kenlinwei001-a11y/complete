@@ -91,6 +91,8 @@
 
 > 本单开工时 `roster` 为 **15**，修掉 5 处、期间新暴露 2 处（路由类盲区补上后），
 > 收尾 **12**，棘轮 `ratchetHigh` 同步降到 12（**只降不升**）。
+>
+> ⏩ **后续收口见 §7**（WO-GATE-ROSTER-SWEEP-2 · 2026-08-18）：`roster` 13 → **7**，`ratchetHigh` 12 → **7**。
 
 ### 2.2 `roster` 全表（12 条 · 差集实测 · 差什么才能修）
 
@@ -339,3 +341,103 @@ node scripts/check-ref-closure.mjs --census               # 现算 9 条发布�
 `gate-ledger` 与 `system-ontology` 报 RC=2 / RC=1，**均为预存在**：
 本 worktree 未 `pnpm -r build`，两者引用的 `dist/**` 路径解析不到。
 已用 `git stash` A/B 核实过：**改前改后同样报，与本单无关**。
+
+---
+
+## §7 SWEEP-2 收口（WO-GATE-ROSTER-SWEEP-2 · 2026-08-18）
+
+> **一句话结论**：开工时 `roster` **13 条**（sweep-1 收尾 12 + 期间新暴露 1 条），
+> 本单**修掉 7 处**、他单收口 1 处（`--tighten` 收死账）、扩面新暴露 2 处（如实登记为 roster），
+> 收尾 **`roster` 7 条 · `ratchetHigh` 12 → 7（只降不升）· 元门 RC=0**（无未定性 · 无死账 · 债不升）。
+> 断点 `G-GATE-ROSTER-HANDCOPIED` 维持 **◑ 部分闭合**（剩 7 条逐条在册，不写 ✅）。
+
+### 7.1 总数账
+
+| 口径 | sweep-1 收尾 | sweep-2 开工 | sweep-2 收尾 |
+|---|---:|---:|---:|
+| `roster` 债 | 12 | **13**（新暴露 1 条期间进来） | **7** |
+| `ratchetHigh` | 12 | 13（开工时自动抬起） | **7**（`--tighten` 自动 `min(prev, rosterCount)`） |
+| 候选总数 | 71 | 71 | 74（新常量净增 3，全部人手定性） |
+| `criteria` | 39 | 39 | 48（含本单翻 verdict 的 2 条：名册被一致性断言锁死后即判据本体） |
+| `computed` | 18 | 18 | 19 |
+
+### 7.2 本单修掉的 7 处（改法 + T1 变异反证）
+
+| # | 门:常量 | 差集 | 改法 | 变异反证（造一处真违规 ⇒ RC=1 点名 file:line） |
+|---|---|---:|---|---|
+| 1 | `check-ui-first-layer.mjs:SCAN_DIRS` | **54** | `SCAN_ROOT=apps/frontend-shell/src` 全递归现算（122→182 文件），`EXCLUDE_RE` 例外具名（当前零条）+ `MIN_FILES=150` 下界自证；`pageOf` 补 components/pages 非 admin 两桶标签 | `components/BlockConversable.tsx`（原差集文件）造第一层口径 ⇒ RC=1 四处点名 file:line（含【新文件·R-UI-3】硬上限 + D1 + D2 + D2b） |
+| 2 | `check-verdict-rollup.mjs:FILES` | 0（今日） | `readdirSync("docs")` 按 `/^CHECK-.*\.md$/` 现算 + 下界 4 自证；顺带修环境致死 bug：第 82 行写死原作者容器 scratchpad 路径（换机恒 ENOENT 砸 RC=2）⇒ 改 `os.tmpdir()` best-effort | 新建 `docs/CHECK-ZZZ-T1MUT.md` ⇒ 自动进汇总表点名 |
+| 3 | `check-dbui-flow-order.mjs:FILES` | 0（今日） | `SCAN_DIR=pages/admin` + `FAMILY_RE=/^(DataBuilder\|Promote).*\.tsx$/` + `MIN_FAMILY=3` 现算；读不到目录/塌下界 ⇒ RC=2 | 新建 `DataBuilderT1Mut.tsx` 放屏上 jargon ⇒ RC=1 点名 |
+| 4 | `check-outsource-redline.mjs:CONSUMERS` | 1 | 补登 `packages/contracts/src/livedin.ts`；新增**断言⑤**：现算全仓引用方（剥注释命中 CONTRACT_TOKENS、排除单源）⊆ 名册，漏登记即红；名册 verdict 翻 `criteria`（被断言锁死） | 造未登记引用方 ⇒ RC=1 断言⑤点名 |
+| 5 | `check-object-interface.mjs:FOUR` | 迁移维 >0 | 迁移维按**内容**现算：`MIGRATION_RE=/CREATE TABLE IF NOT EXISTS object_interfaces/`，编号不问（搬家史 028→032 已证明编号不稳）；多命中⇒红、零命中⇒红；FOUR 其余三维是架构常量 | 造第二份建表迁移 ⇒ RC=1 点名两份路径 |
+| 6 | `check-opt-template.mjs:CORES` | 1 | 双向现算 + **精确划分断言**：契约枚举（z.enum 12 族）= 落地 case（bindToSolverArgs 现算 6 族）⊔ `NOT_YET_BOUND`（6 族）；交集非空/幽灵账/新族两边未登记三向红；解析自证（塌陷或已知族不中 ⇒ RC=2） | 注入假 case `zzz_roster_mutation` ⇒ RC=1 点名漂移 |
+| 7 | `check-ontology-slice-coverage.mjs:EXEMPT_TYPES` | 14 条全是死账 | 实测旧 14 条豁免**全部不在 94 个已发布类型里**（零平台/元类型）= 纯死账 ⇒ 当场清零（`EXEMPT_TYPES=new Map([])` · `EXEMPT_CAP=0` 只降不升）+ 三断言：条数>CAP⇒红 · why<20字⇒红 · 豁免类型不在 types 里⇒红（死账） | 塞死账豁免 ⇒ RC=1 点名 SystemInvariant |
+
+**修完不等于门绿**：全部 7 处验收口径是「拿一个原本在差集里的文件造一处真违规，门点名到 file:line」——7/7 通过；变异现场均已删除/恢复，复跑全绿，`git status --porcelain` 对 `apps/` 为空。
+
+### 7.3 他单收口 1 处
+
+- `check-edge-active-mounts.mjs:PAGES`：由 `WO-INFER-PAGE-SSOT`（`claude/handoff-wo-infer-page-ssot`）修好（`scripts/lib/sim-page-roster.mjs` 现算），本单在基线 `--tighten` 收死账，条目删除。
+
+### 7.4 扩面新暴露 2 处（如实登基线，不算本单制造）
+
+扫描面扩开后既存违规成片露头是预期现象——这两处是**扩面后才进视野**的，按同一判据定性为 roster：
+
+| 门:常量 | 差集 | 差什么才能修 |
+|---|---:|---|
+| `check-dev-jargon-onscreen.mjs:SCAN` | 漏 `components/**` + `pages` 非 admin | 与 ui-first-layer **同族病**，修法已有成例（SCAN_ROOT 全递归 + 例外具名）；本轮未排是因为优先修差集更大的 7 处，工作量小、下个工单可单收 |
+| `check-typecheck-coverage.mjs:PACKAGES` | 工作区包与名单可能漂移 | 该从 `pnpm-workspace.yaml` 现算并交叉断言（输入即真相源，工作量小） |
+
+### 7.5 剩 7 条 roster 全表（5 旧 + 2 新 · 各自「差什么」）
+
+| 门:常量 | 手抄 | 现算 | 差集 | 差什么才能修 |
+|---|---:|---:|---:|---|
+| `check-boundary-singlesource.mjs:SEG_CONSUMERS` | 4 | 16 | **12** | SEG 值（价格/毛利/颜色）**缺像 baseId 那样稳定可机检的字面量形状**；要先在契约里给 SEG 值定可机检形状（如统一走取值函数）才有得扫——属契约改动 |
+| `check-boundary-singlesource.mjs:PLAN_GOAL_CONSUMERS` | 3 | 3 | 0（今日） | 同 SEG 病：目标阈值是纯数字，裸扫误伤，需先定可机检字面量形状 |
+| `check-chain-scan-honesty.mjs:SCAN_TARGETS` | 3 | 14 | **11** | 不能简单全扫（前端 mock/视图层字面量正常），得按「是否写入 ChainImpedimentSchema 字段」判——要求解析赋值目标而不只是文件引用，属判据设计 |
+| `check-deploy-governance.mjs:APPS` | 2 | 3 | 1 | 「标定子模块的配置算不算需要同等 env 治理约束」**属产品/治理裁决**，门不能自己定 |
+| `check-layout-legibility.mjs:PAGES` | 2 | 13 | **11 页** | 每页需浏览器渲染测字号（12×成本）且**无逐页基线机制**；已有名单vs现算一致性段兜底（新页不进名单当场红） |
+| `check-dev-jargon-onscreen.mjs:SCAN` | — | — | 见 §7.4 | 同 ui-first-layer 成例，工作量小 |
+| `check-typecheck-coverage.mjs:PACKAGES` | — | — | 见 §7.4 | 从 pnpm-workspace.yaml 现算交叉断言，工作量小 |
+
+### 7.6 既存违规登基声明（前置 3.3 · 未动一行 `apps/**`）
+
+ui-first-layer 扩面 122→182 后涌入 58 个未登记文件 + 存量违规露头，全部分解为：
+
+- **58 条 D6 未登记**：`--tighten` 如实落账进 `unlisted`（`files` 95→97 · `unlisted` 87→85 · `conserve.total` 7601）；
+- **2 个硬上限违规者**（`components/Answer/KitProcurementLegs.tsx` R-UI-3 公式 · `pages/ShellLayout.tsx` 字号 5 级）：从 unlisted 移入 `files` 带 why——存量认账，unlisted 硬上限对存量首登永红会堵死落账本身；
+- **10 条增长认账**（OrgWorldPage first 84→85 · PlanGenerateView 27→33 · PmDag sizes 0→2 等）；
+- **6 条 D4 守恒认账**（OntologyRelationsPage totalFloor 117→111 · PerturbationTimeline 66→52 等）。
+
+全部 why 带「2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：门在 merge-base 上已红（旧脚本同树实测 31 条红，BASE_RC=1），非本单制造；落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单」。**未改任何 `apps/**` 文件消红。**
+
+### 7.7 串台事故记录（诚实边界 · 协调者要求专节）
+
+本单执行期间发生**双向串台**（同仓 sibling agent P2 的 worktree 与本树互扰），全过程经 reflog 时间线法医链实证：
+
+1. **我的产出曾写入 P2 树**：`check-ui-first-layer.mjs` 新版本曾误入 P2 worktree。P2 将副本保全至 `/tmp/wo-stray-check-ui-first-layer-gate-roster-sweep-2.mjs`（95532B）。本单 diff 后确认其头注更丰满（断点引用 + 铁律 0.6 句式 + pathspec 警告），已合并精华回本树版本（功能等价）。**stray 副本已消费完毕。**
+2. **P2 的产出曾写入本树**：P2 的 `docs/SYSTEM-ONTOLOGY.md` 版本曾写入本树。本单 `git checkout` 恢复 HEAD 状态；P2 内容已在其分支 `a788735ff` 落袋（逐字节 diff 证实**零损失**）。
+3. **最严重的单次损失**：00:41 本树被 `git reset --hard HEAD`（reflog 实证）抹掉**未提交**的 check-ui-first-layer.mjs 首轮改造。教训已执行：**此后每个可命名单元立刻 commit+push**（本单 8 个提交全部即做即推）。
+
+**归位状态**：两树现均干净（本树 §7 收口期间 `git status --porcelain` 对 scripts/docs 之外为空；P2 树内我的文件已被其 reset 清除、我的树内 P2 文件已 checkout 还原）。**影响面**：仅 `check-ui-first-layer.mjs`（我的，已取回）与 `docs/SYSTEM-ONTOLOGY.md`（P2 的，已归还）两个文件碰过别的树，均零损失归位。
+
+**防再发**（协调者四条指令已内化）：① 写操作前确认 `git rev-parse --show-toplevel` 含 `agent-af5310a15bdb31dc5`；② stray 副本已对比取回；③ 不再发生 reset 清未提交编辑（铁律1#5：完成即 commit+push）；④ 本节即串台影响面说明。
+
+### 7.8 复验命令（sweep-2 增）
+
+```bash
+node scripts/check-gate-roster-handcopied.mjs            # 元门：RC=0 · roster 7 ≤ ratchetHigh 7
+node scripts/check-gate-roster-handcopied.mjs --census    # 74 候选全表（criteria 48 · computed 19 · roster 7）
+node scripts/check-ui-first-layer.mjs                    # RC=0（182 文件现算面 · 基线已登基）
+node scripts/check-verdict-rollup.mjs                    # RC=0（docs/CHECK-*.md 现算）
+node scripts/check-dbui-flow-order.mjs                   # RC=0（DataBuilder|Promote 族现算 3 个）
+node scripts/check-outsource-redline.mjs                 # RC=0（断言⑤现算引用方⊆名册）
+node scripts/check-object-interface.mjs                  # RC=0（迁移维按内容现算）
+node scripts/check-opt-template.mjs                      # RC=0（精确划分：枚举12=落地6⊔未接线6）
+node scripts/check-ontology-slice-coverage.mjs           # RC=0（豁免清零 · 三断言）
+```
+
+**sweep-2 改过的门当前状态**（逐个实跑，显式捕获退出码）：
+`gate-roster` 0 · `ui-first-layer` 0 · `verdict-rollup` 0 · `dbui-flow-order` 0 ·
+`outsource-redline` 0 · `object-interface` 0 · `opt-template` 0 · `ontology-slice-coverage` 0。
+
