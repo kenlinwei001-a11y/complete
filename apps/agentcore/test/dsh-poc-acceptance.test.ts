@@ -44,8 +44,10 @@ function echoCount(file: string): number {
 
 describe("E1 · 配置驱动行为（request/header 为观测点）", () => {
   it("改 persona/finalAnswer ⇒ header.system/header.tools 随之变；还原即复原", { timeout: INTEGRATION_TIMEOUT }, async () => {
-    const alpha: DshSetupSpec = { persona: "PERSONA_ALPHA_MARKER" };
+    // N4: DshSetupSpec.tenantId 必填化后的字面量补齐（本组 spec 均无 mcpServers，wire 语义不变）。
+    const alpha: DshSetupSpec = { tenantId: "t1", persona: "PERSONA_ALPHA_MARKER" };
     const beta: DshSetupSpec = {
+      tenantId: "t1",
       persona: "PERSONA_BETA_MARKER",
       finalAnswer: { description: "d", schema: { type: "object" } },
     };
@@ -97,7 +99,7 @@ describe("E2 · 规则闸（PRE_CHECK deny ⇒ 执行计数 0 + 拦截入流）"
     writeFileSync(baseFile, "");
 
     const denied = await runDshAgent(
-      { prompt: "call echo_tool then answer", setup: { governance: GOV }, provider: "mock", model: "mock" },
+      { prompt: "call echo_tool then answer", setup: { tenantId: "t1", governance: GOV }, provider: "mock", model: "mock" },
       {
         harnessDir: HARNESS_DIR,
         requestTimeoutMs: 30_000,
@@ -118,7 +120,7 @@ describe("E2 · 规则闸（PRE_CHECK deny ⇒ 执行计数 0 + 拦截入流）"
     if (denied.result.ok) expect(denied.result.outcome).toBe("ANSWERED");
 
     const baseline = await runDshAgent(
-      { prompt: "call echo_tool then answer", setup: { governance: GOV }, provider: "mock", model: "mock" },
+      { prompt: "call echo_tool then answer", setup: { tenantId: "t1", governance: GOV }, provider: "mock", model: "mock" },
       { harnessDir: HARNESS_DIR, requestTimeoutMs: 30_000, env: { ECHO_COUNT_FILE: baseFile } },
     );
     expect(echoCount(baseFile)).toBe(1);

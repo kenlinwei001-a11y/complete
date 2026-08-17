@@ -20,6 +20,12 @@ import { DEFAULT_FINAL_ANSWER_SCHEMA, FINAL_ANSWER_DESC } from "../agent/loop.js
 // ---------------------------------------------------------------------------
 
 export interface DshSetupSpec {
+  /**
+   * 租户隔离池键（WO-DSH-N4）：harness 侧 vendored mcp-client-tenant 按 `${tenantId}\0${serverName}`
+   * 共享/隔离 MCP 连接；mcpServers 非空时 harness validateSetupSpec fail-closed 必填。
+   * tenantId 永不进公开工具名、永不上 wire 给 MCP server；过的是 session/prompt setup 帧。
+   */
+  tenantId: string;
   /** agent 级 system prompt（scoped section，order 1，跟在部署 persona 后）。 */
   persona?: string;
   /** scoped 工具允许表（S2 在 harness 侧强执；scopeToolNames 语义见 engine.ts 并集规则）。 */
@@ -229,6 +235,7 @@ export function buildSessionSetup(input: {
   const loopMetaTools = ["final_answer", ...(input.skills?.length ? ["load_skill"] : [])];
   const effectiveToolNames = [...new Set([...agent.scopeDeclaration.toolNames, ...input.grantedToolNames, ...loopMetaTools])];
   return {
+    tenantId: agent.tenantId, // N4：harness 侧 mcp namespace 池键的唯一来源（A11 机器核）
     persona: `${agent.systemPrompt}\n\n${input.agentSystemCore}`,
     tools: effectiveToolNames.map((name) => ({ name })),
     ...(input.mcpServers?.length ? { mcpServers: input.mcpServers } : {}),

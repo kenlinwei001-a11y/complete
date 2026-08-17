@@ -282,12 +282,14 @@ test('A10: 无 tenantId 路径复刻原生六用例（同 root 同名撞 / 异�
     failOnStartupError: false,
     reconnect: { enabled: false, initialDelayMs: 500, maxDelayMs: 30000, maxAttempts: 1 },
   })
+  // cordis plugin() 返回 Fiber（thenable 但非 Promise 实例）—— assert.rejects 只吃真 Promise，包一层。
+  const load = (app, cfg) => Promise.resolve(app.plugin(Vendored, cfg))
   const app = await makeWorld()
   // T1 同 root 首挂成
   const s1 = createScope(app, { case: 'T1' })
   await s1.ctx.plugin(Vendored, catCfg('erp'))
   // T2 同 root 同名 plugin load 期 reject（duplicate namespace）
-  await assert.rejects(app.plugin(Vendored, catCfg('erp')), /serverName "erp" is already in use/)
+  await assert.rejects(load(app, catCfg('erp')), /serverName "erp" is already in use/)
   // T3 异名成
   const s3 = createScope(app, { case: 'T3' })
   await s3.ctx.plugin(Vendored, catCfg('crm'))
@@ -295,7 +297,7 @@ test('A10: 无 tenantId 路径复刻原生六用例（同 root 同名撞 / 异�
   const app2 = await makeWorld()
   await app2.plugin(Vendored, catCfg('erp'))
   // T5 重试仍拒不污染持有方
-  await assert.rejects(app.plugin(Vendored, catCfg('erp')), /serverName "erp" is already in use/)
+  await assert.rejects(load(app, catCfg('erp')), /serverName "erp" is already in use/)
   // T6 dispose 释放可重挂
   await s1.dispose()
   await app.plugin(Vendored, catCfg('erp'))

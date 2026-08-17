@@ -11,7 +11,7 @@
 //   - skills         → 校验形态；scoped SkillProvider 注册为 S2
 //   - governance     → 校验形态；answerer 网桥（rules PRE_CHECK → tools/pre-execute 裁决）为 S2
 
-import * as McpClient from '@deepseek-ai/dsh-mcp-client'
+import * as McpClient from './mcp-client-tenant.mjs'
 import { getAdjudicator } from './platform-governance.mjs'
 
 /** agent 级 system prompt section 的固定名/序（root persona 是 order 0，agent 追加其后）。 */
@@ -38,10 +38,25 @@ export function validateSetupSpec(spec) {
     }
     out.tools = spec.tools.map((t) => ({ name: t.name }))
   }
+  if (spec.tenantId !== undefined) {
+    // tenantId 是 mcp namespace 池键的唯一来源（N4）；拒空串/非串/NUL（\0 是池键分隔符，
+    // contracts 侧 tenantId 仅 z.string() 无格式约束 —— 此处兜底，见 plan risks #3）。
+    if (typeof spec.tenantId !== 'string' || spec.tenantId.length === 0 || spec.tenantId.includes('\0')) {
+      throw new TypeError('setup.tenantId must be a non-empty string without NUL')
+    }
+    out.tenantId = spec.tenantId
+  }
   if (spec.mcpServers !== undefined) {
     if (!Array.isArray(spec.mcpServers)) throw new TypeError('setup.mcpServers must be an array')
-    // 逐条按 dsh mcp-client Config schema 校验（zod parse；缺字段补默认也在这步发生）。
-    out.mcpServers = spec.mcpServers.map((c) => McpClient.Config.parse(c))
+    // N4 fail-closed：mcpServers 非空但 tenantId 缺失 → 创建期抛（带畸形 spec 的会话不许出生，
+    // 与现有校验风格一致；无 tenant 的池键会退化成根级独占语义，跨租户同名必然互撞）。
+    if (spec.mcpServers.length > 0 && out.tenantId === undefined) {
+      throw new TypeError('setup.tenantId is required when setup.mcpServers is non-empty (mcp namespace tenant isolation)')
+    }
+    // 逐条按 vendored mcp-client-tenant Config schema 校验（schemastery schema 是 callable、
+    // 无 .parse —— S1 原写法 Config.parse 在 mcpServers 非空时必抛，冒烟 mcpServers:[] 从未踩到；
+    // 缺字段补默认也在这步发生）。
+    out.mcpServers = spec.mcpServers.map((c) => McpClient.Config(c))
   }
   if (spec.skills !== undefined) {
     if (!Array.isArray(spec.skills) || spec.skills.some((s) => typeof s?.key !== 'string' || typeof s?.body !== 'string')) {
@@ -82,12 +97,12 @@ export async function applySetupSpec(agentCtx, spec) {
     })
   }
 
-  // MCP：每 server 一个 scoped mcp-client 实例，工具按 mcp__<serverName>__<tool> 进本层 ToolRuntime。
-  // 已知限制（S2 裁决）：dsh mcp-client 的 serverName 预留是**根级**的（activeServerNames 按 ctx.root
-  // 键控）——两个 agent 挂同名 server 会撞「duplicate namespace」。S2 要在「根级共享连接池 + scoped
-  // 可见性过滤」与「每会话后缀改名（破坏 mcp__ 审计名）」之间选。POC 期同 server 单 agent 先用直通。
+  // MCP（N4 已销账 S2 裁决）：每 server 一个 scoped mcp-client-tenant 实例，tenantId 注入
+  // 连接池键 —— 同 tenant 同 serverName 共享一条连接，异 tenant 同 serverName 各起独立连接；
+  // 公开名 mcp__<serverName>__<tool> 逐字节不变（tenantId 不进名、不上 wire 给 MCP server），
+  // 可见性靠 dsh-tools 原生 scope 层（平级租户 scope 互不可见）。工具进本层 ToolRuntime。
   for (const config of spec.mcpServers ?? []) {
-    await agentCtx.plugin(McpClient, config)
+    await agentCtx.plugin(McpClient, { ...config, tenantId: spec.tenantId })
   }
 
   // TODO(S2·部分落地): skills SkillProvider 注册仍待 S2 后半；governance 网桥见下。
