@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AgentDefinition, AgentRunRecord, AgentToolRef, QueryTaskStatus } from "@platform/contracts";
 import {
+  deleteAgent,
   fetchAgentRun,
   fetchAgentRuns,
   fetchTaskAgentRuns,
@@ -17,6 +18,7 @@ import {
   saveAgent,
   type QueryHistoryItem,
 } from "@/api/endpoints";
+import DeleteResourceButton from "./DeleteResourceButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { InfoPopover } from "@/components/InfoPopover";
 import ReferencesPanel from "@/components/ReferencesPanel";
@@ -766,6 +768,18 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
             </button>
           </>
         )}
+        {/* WO-BEFE-DELETE-WIRE（`DELETE /b/v1/agents/:id`）。**刻意不受 `editable` 限制**：
+            后端那条路只看引用（`assertRetireOrDelete("delete", …)`），不看 DRAFT/PUBLISHED；
+            把删除藏进 DRAFT 分支等于凭空多造一道后端没有的门，已发布且没人引用的版本反而删不掉。 */}
+        <DeleteResourceButton
+          label="Agent"
+          name={`${agent.name} v${agent.version}`}
+          referenceKind="agent"
+          referenceId={agent.id}
+          testidPrefix="agent"
+          onDelete={() => deleteAgent(agent.id)}
+          onDeleted={onChanged}
+        />
       </div>
       {publishErrors.map((e, i) => (
         <div key={i} className="badge red" style={{ marginBottom: 6 }} data-testid="agent-publish-error">

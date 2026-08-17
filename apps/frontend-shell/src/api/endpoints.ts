@@ -1168,6 +1168,19 @@ export const fetchScenes = () => api.b<SceneEntryConfig[]>("/b/v1/scene-entries"
 export const putScene = (viewKey: string, body: Partial<SceneEntryConfig>) =>
   api.b<SceneEntryConfig>(`/b/v1/scene-entries/${viewKey}`, { method: "PUT", body });
 
+/**
+ * WO-BEFE-DELETE-WIRE · 删除一个场景入口（`DELETE /b/v1/scene-entries/:id`）。
+ *
+ * ⚠ 与另外四条**不同**：后端这一条**不做引用反查**（`server.ts` 的 handler 里没有
+ * `computeReferences`/`assertRetireOrDelete` 两步），因为场景入口在本体里是**叶子** ——
+ * `resources.ts` `computeReferences` 的收尾注释写明「scene-entry：无被引用方（入口本身是叶子）→ 恒空数组」。
+ * ⇒ 它**不会**被 409 REFERENCED 挡回，点了就是真删。确认文案必须照这个事实写，不许照抄另外四条。
+ *
+ * `:id` 段后端两路解析（`sceneEntries.get(id) ?? sceneEntries.byView(tenantId, id)`），
+ * 传 `scn_` 开头的实体 id 或 viewKey 都收；本前端一律传实体 id（列表里拿得到，不必猜）。
+ */
+export const deleteSceneEntry = (id: string) => api.b<void>(`/b/v1/scene-entries/${encodeURIComponent(id)}`, { method: "DELETE" });
+
 // 场景启动器 P2/P3：Scenario 升一等对象 —— 场景为主键的管理面（每个用 workflow/agent 的场景完整可配）。
 export type ScenarioClosure = { ready: boolean; issues: string[] };
 export const fetchScenariosManage = () => api.b<(Scenario & { inactive?: boolean; closure?: ScenarioClosure })[]>("/b/v1/scenarios/manage");
@@ -1418,6 +1431,19 @@ export const saveAgent = (id: string | null, body: Partial<AgentDefinition>) =>
 export const publishAgent = (id: string) =>
   api.b<{ ok: boolean; errors?: { field: string; message: string }[] }>(`/b/v1/agents/${id}/publish`, { body: {} });
 
+/**
+ * WO-BEFE-DELETE-WIRE · 删除一个 Agent 版本（`DELETE /b/v1/agents/:id` · `server.ts` `app.delete("/b/v1/agents/:id")`）。
+ *
+ * ⚠ **`method` 必须是字面量**，不许写成 `method: cond ? "DELETE" : "PUT"` 或 `{ ...opts }` ——
+ * 接缝门的抽取器 `methodOfCallOptions`（`scripts/check-backend-frontend-seam.mjs`）对三元/展开一律读作
+ * **「方法未知」**，而「方法未知」在门里是**对所有方法豁免** ⇒ 这条端点会重新隐身。
+ * 「抽取器越瞎，门越绿」是该门自己记过的账，别再喂它一个瞎点。
+ *
+ * 返回 **204 无响应体**（`reply.status(204).send()`）；`apiClient.request` 在 204 时直接返回 undefined，
+ * 故这里的类型是 `void` 而不是被删对象 —— 写成 `<AgentDefinition>` 会得到一个恒 undefined 的假类型。
+ */
+export const deleteAgent = (id: string) => api.b<void>(`/b/v1/agents/${encodeURIComponent(id)}`, { method: "DELETE" });
+
 export const fetchWorkflows = () => api.b<WorkflowDefinition[]>("/b/v1/workflows");
 export const fetchWorkflow = (id: string) => api.b<WorkflowDefinition>(`/b/v1/workflows/${id}`);
 export const saveWorkflow = (id: string | null, body: Partial<WorkflowDefinition>) =>
@@ -1445,10 +1471,16 @@ export interface WorkflowRunResult {
 export const runWorkflow = (id: string, inputs: Record<string, unknown>) =>
   api.b<WorkflowRunResult>(`/b/v1/workflows/${id}/run`, { body: { inputs } });
 
+/** WO-BEFE-DELETE-WIRE · 删除一个流程版本（`DELETE /b/v1/workflows/:id`）。204 无体，`method` 字面量见 `deleteAgent` 顶注。 */
+export const deleteWorkflow = (id: string) => api.b<void>(`/b/v1/workflows/${encodeURIComponent(id)}`, { method: "DELETE" });
+
 export const fetchSkills = () => api.b<SkillDefinition[]>("/b/v1/skills");
 export const saveSkill = (id: string | null, body: Partial<SkillDefinition>) =>
   id ? api.b<SkillDefinition>(`/b/v1/skills/${id}`, { method: "PUT", body }) : api.b<SkillDefinition>("/b/v1/skills", { body });
 export const publishSkill = (id: string) => api.b<SkillDefinition>(`/b/v1/skills/${id}/publish`, { body: {} });
+
+/** WO-BEFE-DELETE-WIRE · 删除一个技能（`DELETE /b/v1/skills/:id`）。204 无体，`method` 字面量见 `deleteAgent` 顶注。 */
+export const deleteSkill = (id: string) => api.b<void>(`/b/v1/skills/${encodeURIComponent(id)}`, { method: "DELETE" });
 
 /**
  * WO-SKILL-COMPILER-S1 · 技能编译（`POST /b/v1/skills/:id/compile`）。
@@ -1511,6 +1543,9 @@ export const saveMcpConfig = (id: string | null, body: Record<string, unknown>) 
   id ? api.b<McpServerConfig>(`/b/v1/mcp-configs/${id}`, { method: "PUT", body }) : api.b<McpServerConfig>("/b/v1/mcp-configs", { body });
 export const testMcpConnection = (id: string) =>
   api.b<{ ok: boolean; tools: { name: string; description: string }[] }>(`/b/v1/mcp-configs/${id}/test`, { body: {} });
+
+/** WO-BEFE-DELETE-WIRE · 删除一个 MCP 配置（`DELETE /b/v1/mcp-configs/:id`）。204 无体，`method` 字面量见 `deleteAgent` 顶注。 */
+export const deleteMcpConfig = (id: string) => api.b<void>(`/b/v1/mcp-configs/${encodeURIComponent(id)}`, { method: "DELETE" });
 
 
 // ---------------- LLM Provider 配置体系（增量 §1，落位 DataCore） ----------------
