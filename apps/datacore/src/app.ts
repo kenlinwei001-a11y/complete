@@ -68,6 +68,8 @@ import { firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type P
 import { buildPropagationInputs } from "./sim/propagation-inputs.js";
 import { ImpactAnalysisRequestSchema } from "@platform/contracts"; // WO-IMPACT-PROPAGATION · 影响传播统一入口（栈B传播 × 栈A世界隔离）
 import { analyzeImpact } from "./sim/impact-analysis.js";
+import { ChangeImpactPreviewRequestSchema } from "@platform/contracts"; // WO-CHANGE-IMPACT-PREVIEW · 变更传播预览（分桶+跳数+诚实位）
+import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact.js";
 import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { buildCausalGraphFromSim, buildCausalGraphFromDecision } from "./decision/causal-graph.js"; // WO-DECISION-CAUSAL-GRAPH · 因果图构图器（纯投影·零发明）
@@ -2185,6 +2187,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const r = PropagationRuleSchema.parse({ ...(req.body as object), id: newId("simpr"), tenantId: c.tenantId });
     await repos.sim.putPropagationRule(r);
     return reply.status(201).send(r);
+  });
+  /**
+   * WO-CHANGE-IMPACT-PREVIEW · 变更传播预览（纯只读）。
+   * 改扰动/关传导边/改派生公式**按下去之前**看到波及面：四桶（recompute 传导 /
+   * rederive 派生 / rejudge 规则重判 / rewire 结构改写）+ 逐跳计数 + unresolved 诚实位
+   * （⛔ 空集不冒充「没有波及」）。语义依据与跳数保险丝论据见 sim/change-impact.ts 头注。
+   * 与 POST /a/v1/simulation/impact-analysis 划界：那条走 DerivationSpec recompute dryRun
+   * （栈B），本条覆盖 sim 传导 + 两套派生 + 规则判定四族、按关系分桶带跳数——不重复。
+   */
+  app.post("/a/v1/sim/change-impact-preview", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const body = ChangeImpactPreviewRequestSchema.parse(req.body ?? {});
+    const world = await buildChangeImpactWorld(repos, c.tenantId);
+    return previewChangeImpact(world, body.focus);
   });
   // 增量 4：沙盘视图配置——由租户**本体 + 传导规则派生**（零业务常数 R14：节点/边/状态变量全来自
   // 租户自己的本体，换行业=换本体内容不改代码）。前端 5 屏从此渲染。

@@ -643,3 +643,40 @@ export const SandboxViewConfigSchema = z.object({
   nodeObjectIds: z.record(z.string(), z.array(z.string())).optional(),
 });
 export type SandboxViewConfig = z.infer<typeof SandboxViewConfigSchema>;
+
+// ── ChangeImpactPreview 变更传播预览（WO-CHANGE-IMPACT-PREVIEW）────────────────────
+// 病灶：用户改扰动/关传导边/改派生公式，按下去之前看不到波及面（G-LEVER-SNAPSHOT-UNIT-LIE 同源）。
+// POST /a/v1/sim/change-impact-preview：纯只读预览，按关系类型分桶 + 逐跳计数 + 诚实位。
+// 模型层实现 = apps/datacore/src/sim/change-impact.ts（语义依据见其头注）。
+export const ChangeFocusSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("stateVar"), objectId: z.string(), stateVar: z.string() }),
+  z.object({ kind: z.literal("prop"), objectId: z.string(), propKey: z.string() }),
+  z.object({ kind: z.literal("propagationRule"), ruleKey: z.string() }),
+  z.object({ kind: z.literal("link"), linkKey: z.string(), fromId: z.string(), toId: z.string() }),
+  z.object({ kind: z.literal("derivedProp"), typeKey: z.string(), propKey: z.string() }),
+]);
+export type ChangeFocus = z.infer<typeof ChangeFocusSchema>;
+
+export const ChangeImpactItemSchema = z.object({
+  /** recompute=传导重算（sv:obj.var）· rederive=派生重算（op:obj.prop）· rejudge=规则重判（rule:key）· rewire=结构改写（pr:/spec:）。 */
+  bucket: z.enum(["recompute", "rederive", "rejudge", "rewire"]),
+  target: z.string(),
+  hops: z.number().int().min(1), // 焦点不计，每经一条边 +1（BFS 首达最短跳数）
+  via: z.string(), // 经由：传导规则 key / derived:{type}.{prop} / spec:{key} / linkKey / "expression"
+});
+export type ChangeImpactItem = z.infer<typeof ChangeImpactItemSchema>;
+
+export const ChangeImpactPreviewSchema = z.object({
+  focus: ChangeFocusSchema,
+  /** 稳定排序 (hops, bucket, target)（R6）。 */
+  items: z.array(ChangeImpactItemSchema),
+  /** 诚实位：追不到的明说「什么追不到、缺什么」。⛔ 空集不许冒充「没有波及」——
+   *  items 空 + unresolved 空 = 焦点确为叶子；unresolved 非空 = 有算不出来的部分。 */
+  unresolved: z.array(z.object({ what: z.string(), missing: z.string() })),
+  truncated: z.boolean(), // MAX_HOPS 保险丝触发（触发必伴随 unresolved 点名）
+  maxHops: z.number().int(),
+});
+export type ChangeImpactPreview = z.infer<typeof ChangeImpactPreviewSchema>;
+
+export const ChangeImpactPreviewRequestSchema = z.object({ focus: ChangeFocusSchema });
+export type ChangeImpactPreviewRequest = z.infer<typeof ChangeImpactPreviewRequestSchema>;
