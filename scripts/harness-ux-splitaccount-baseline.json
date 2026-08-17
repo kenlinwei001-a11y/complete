@@ -1,0 +1,44 @@
+{
+  "note": "harness-ux-splitaccount 棘轮基线：`docs/PRD-harness-ux-adoption.md` §4.2 的 B-x 明账快照。记的是每条账**认领的判据**与**受理方**，以及判据⑤ 的现算读数。销账 / 改绑 / 改口 / 新账一律要显式跑 `--tighten` —— 明账最危险的死法不是被推翻，是**没人注意到它没了**。`accounts`/`chain` 归机器算，本 note 与任何人手新增的顶层键归人手（scripts/lib/baseline-doc.mjs 保证不吞人话）。",
+  "generatedBy": "node scripts/check-harness-ux-splitaccount.mjs --seed",
+  "accounts": {
+    "B-1": {
+      "us": [
+        "U1"
+      ],
+      "receivers": [
+        "门 B（本门 · 真浏览器那一面尚未具备）"
+      ]
+    },
+    "B-2": {
+      "us": [
+        "U3"
+      ],
+      "receivers": [
+        "R13 溯源链（本体不变量）"
+      ]
+    },
+    "B-3": {
+      "us": [
+        "U5"
+      ],
+      "receivers": [
+        "门 B（本门 · 真浏览器那一面尚未具备）"
+      ]
+    },
+    "B-4": {
+      "us": [
+        "U7",
+        "U8"
+      ],
+      "receivers": [
+        "门 B（本门 · 真浏览器那一面尚未具备）",
+        "编排侧评测"
+      ]
+    }
+  },
+  "chain": {
+    "panels": 3,
+    "withChain": 0
+  }
+}
