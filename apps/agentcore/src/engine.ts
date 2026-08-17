@@ -1,4 +1,4 @@
-import { isWriteModeSkill, mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type AgentRunRecord, type Answer, type ProvenanceRef, type ResolvedRef, type RuleVerdict, type SkillDefinition, type WorkflowDefinition, ErrorCodes } from "@platform/contracts";
+import { isWriteModeSkill, mcpServerNameSlug, mcpToolFullName, type AgentDefinition, type AgentRunKernel, type AgentRunRecord, type Answer, type ProvenanceRef, type ResolvedRef, type RuleVerdict, type SkillDefinition, type WorkflowDefinition, ErrorCodes } from "@platform/contracts";
 import {
   attributionFields,
   originFields,
@@ -179,6 +179,10 @@ function emptyAgentRunRecord(
   // WO-AGENTRUN-FANOUT-PERSIST：同理——被会诊扇出的子 agent 若在规则预检就被 BLOCK，那也是**它真跑过一次**
   // （零迭代但确有位置），照样得带上 FANOUT 落库，否则「这个 Agent 跑了几次」会漏掉被拦下的那些。
   placement?: AgentRunPlacementInput,
+  // WO-DSH-P2-UX（N5）：内核标识。dsh 分叉两点恒 "EXTERNAL"；分叉前 BLOCK 早退点传 flag 态值
+  // （`DSH_HARNESS === "1" ? "EXTERNAL" : "NATIVE"`，与分叉同一表达式）——标的是「本会走哪个内核」，
+  // 该 run 未真执行任何循环，**不许**读成「真在 dsh 上跑过」（R13 不造数纪律）。
+  kernel?: AgentRunKernel,
 ): AgentRunRecord {
   return {
     id: newId("run"),
@@ -191,6 +195,7 @@ function emptyAgentRunRecord(
     totalOutputTokens: 0,
     ...attributionFields(attribution),
     ...originFields(placement),
+    ...(kernel ? { kernel } : {}),
   };
 }
 
@@ -422,7 +427,9 @@ export class ExecutionEngine {
           return {
             outcome: "ANSWERED",
             answer: ruleViolationAnswer(verdicts),
-            run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement),
+            // WO-DSH-P2-UX（N5）：此早退点在 dsh 分叉**之前**——标「本会走哪个内核」（flag 态值，
+            // 与下方分叉同一表达式），该 run 未真执行任何循环，不许读成「真在 dsh 上跑过」。
+            run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, process.env.DSH_HARNESS === "1" ? "EXTERNAL" : "NATIVE"),
             sketch: [],
           };
         }
@@ -488,6 +495,83 @@ export class ExecutionEngine {
 
     // Phase8：生产可启用 LLM 滚动摘要（QOS_ROLLING_SUMMARY_LLM=1）；缺省确定性拼接。
     const summarizer = cfg.QOS_ROLLING_SUMMARY_LLM === "1" ? llmRollingSummarizer(this.deps.llm, model, agent.tenantId) : undefined;
+
+    // -----------------------------------------------------------------------
+    // WO-DSH-POC-S4 · 路 B（dsh harness）**休眠分叉**：仅 DSH_HARNESS=1 时走 JSON-RPC
+    // 子进程路径（packages/dsh-harness），缺省关闭 = 下方 runAgentLoop 逐字节旧行为。
+    // 动态 import：flag 关时 dsh 模块根本不加载。POC 验收专用；postcheck 规则后验
+    // （下方 POST_CHECK 段）在此路径不外挂——验收对照的是 loop 本体语义。
+    // 守卫必须直读 process.env.DSH_HARNESS：check-dsh-dormancy.mjs D3 判据只认
+    // 「条件里提到 process.env.DSH_HARNESS」的包裹块（cfg 转发会被判裸入口，门红）。
+    if (process.env.DSH_HARNESS === "1") {
+      const { buildSessionSetup, mapSkill, runDshAgent } = await import("./dsh-runtime/index.js");
+      const setup = buildSessionSetup({
+        agent,
+        agentSystemCore: AGENT_SYSTEM_CORE,
+        grantedToolNames: tools.map((t) => t.name),
+        skills: skills.map((s) => mapSkill(s)),
+        ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
+      });
+      // WO-DSH-N1-PROVIDER：model spec（dcp:{providerId}:{modelId}）不再原样当 wire model——
+      // 经绑定矩阵解析出连接事实（modelId 剥前缀/kind/baseUrl/apiKey），env 缝注入子进程；
+      // provider 路由取 cfg.DSH_HARNESS_PROVIDER（生产值单源 = PRODUCTION_DSH_HARNESS_PROVIDER，
+      // 无 mock 回退）。非 dcp / custom_http ⇒ resolveConnectionFacts 诚实抛错。
+      const facts = await this.deps.llmSettings.resolveConnectionFacts(model, agent.tenantId);
+      const dsh = await runDshAgent(
+        {
+          prompt: userContent,
+          setup,
+          provider: cfg.DSH_HARNESS_PROVIDER,
+          model: facts.modelId,
+          reassemble: {
+            governance: { writeMode, provenancePolicy: effectiveProvenancePolicy },
+            ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
+          },
+          onSse: (e) => { void opts.emit(e.event, e.payload); },
+        },
+        {
+          env: {
+            PLATFORM_LLM_API: facts.kind === "anthropic" ? "anthropic-messages" : "openai-completions",
+            ...(facts.baseUrl ? { PLATFORM_LLM_BASE_URL: facts.baseUrl } : {}),
+            PLATFORM_LLM_MODEL: facts.modelId,
+            ...(facts.apiKey ? { PLATFORM_LLM_API_KEY: facts.apiKey } : {}),
+            ...(facts.contextWindow ? { PLATFORM_LLM_CONTEXT_WINDOW: String(facts.contextWindow) } : {}),
+          },
+        },
+      );
+      if (!dsh.result.ok) {
+        return {
+          outcome: "FAILED",
+          answer: {
+            trustLevel: "AGENT_EXPLORATORY",
+            blocks: [{ type: "text", markdown: `dsh 重组装拒绝：${dsh.result.errors.join("; ")}` }],
+            provenance: [],
+            unverifiedNumerics: false,
+          },
+          run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, "EXTERNAL"),
+          sketch: [],
+        };
+      }
+      // N2·D-2：dsh.result.stats 并入 answer 交叉类型（additive 运行时键；orchestrator:2187
+      // answer.final 整对象直发即自动带上，reducer :129 整对象落 state 零渲染副作用）。
+      // 失败路径（上方 :517-529）不造 stats；零 usage 帧时 reassemble 侧键整体不出。
+      // 类型从上方已动态 import 的 runDshAgent 派生（dormancy D3：全仓只许一处 dsh-runtime 入口，
+      // 类型位 import("./dsh-runtime/reassemble.js") 会被判第二入口）。
+      type DshOkResult = Extract<Awaited<ReturnType<typeof runDshAgent>>["result"], { ok: true }>;
+      const answer: AgentLoopResult["answer"] & { stats?: DshOkResult["stats"] } = {
+        ...dsh.result.answer,
+        ...(dsh.result.stats ? { stats: dsh.result.stats } : {}),
+      };
+      if (dsh.result.degraded?.reason === "STALL_LOOP") this.deps.metrics.agentLoopRepeat.inc(); // N3：对位 loop.ts:641（两 fork 互斥无双计）
+      return {
+        outcome: dsh.result.outcome,
+        answer,
+        run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, "EXTERNAL"),
+        sketch: dsh.result.sketch,
+        ...(dsh.result.structured ? { structured: dsh.result.structured } : {}),
+        ...(dsh.result.degraded ? { degraded: dsh.result.degraded } : {}),
+      };
+    }
 
     const result = await runAgentLoop({
       taskId: opts.taskId,

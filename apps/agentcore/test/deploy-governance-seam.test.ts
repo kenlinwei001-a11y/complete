@@ -1,12 +1,21 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { createTestApp, PLANNER, submitQuery, waitForTask, type TestApp } from "./helpers.js";
+import { beforeEach, afterEach, describe, expect, it } from "vitest";
+import type { AgentDefinition } from "@platform/contracts";
+import { createTestApp, PLANNER, submitQuery, TENANT, waitForTask, type TestApp } from "./helpers.js";
 import { toolUse } from "../src/llm/mock.js";
 import { loadConfig } from "../src/config.js";
 import { computeResidualBudget } from "../src/router/orchestrator.js";
 import { BudgetTracker } from "../src/tools/budget.js";
+import {
+  STUB_DCP_SPEC,
+  STUB_FAKE_KEY,
+  startStubOpenAi,
+  stubDirectory,
+  stubProvider,
+  type StubRound,
+} from "./helpers-dsh-stub.js";
 
 /**
  * #88 SEAM · 「出货 compose 的那几行字节」→ 真 QOS 管线里的**真早停**。
@@ -147,5 +156,147 @@ describe("#88 SEAM · 出货 compose 的治理开关 → 真管线里的真早�
     expect(r.loopRepeatMetric).toBe(0); // 环检测整层未启用
     expect(r.outcome).not.toBe("STALL_LOOP");
     expect(r.rounds).toBeGreaterThan(cap + 1); // 差值即这几行字节买到的治理
+  });
+});
+
+/**
+ * #88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（WO-DSH-N3 · STALL_LOOP 看门狗销账）。
+ *
+ * **plan 修订（builder 实证 fork 不在自由深问路径，裁决降为 engine 级缝）**：
+ * 本 describe 初版按 plan 写成「HTTP submitQuery 自由深问 + SSE 断言」，实跑 builder 实证：
+ *   DSH fork 在 engine.runRegisteredAgent 内（engine.ts:497），而自由深问路径 runPathB 直调
+ *   runAgentLoop（orchestrator.ts:2027，:38 直 import）不过 fork；src 直调 runRegisteredAgent
+ *   共 4 处（verifier 复核补全清单）：skill-probe.ts:395 / engine.ts:764（内部）/
+ *   orchestrator.ts:2398（runRolePathB）/ orchestrator.ts:2651（runSceneAgent · AGENT_FIRST/
+ *   AGENT_ONLY 场景入口）。DSH_HARNESS=1 跑 ③ 同句，
+ *   实测 task COMPLETED、path=AGENT、answer="（脚本耗尽）"（native ScriptedLlmClient 兜底）、
+ *   零 subprocess spawn、零 echo_tool 事件——⇒ plan ③′（SSE 含 agent_degraded 且早于
+ *   answer.final）与 plan 零改动声明（orchestrator.ts 不动）互斥。team-lead 裁决（option a）：
+ *   降为 engine 级缝，直调 engine.runRegisteredAgent；SSE 次序语义由 runner 级 B1 帧序断言
+ *   + orchestrator.ts:2179-2186 既有通用发射（native ③ 已覆盖）承接；orchestrator 零改动维持。
+ *
+ * 缝形态：真 createTestApp（真 metrics 计数器、真 repos 里真注册的 echo_agent）→
+ *   直调 t.deps.engine.runRegisteredAgent → fork 起真 dsh 子进程（mock provider +
+ *   MOCK_SCENARIO=stall_loop = 8 轮同参 echo_tool + 文本收尾剧本）→ 子进程内
+ *   watchdog（packages/dsh-harness/plugins/platform-watchdog.mjs）读同一
+ *   QOS_AGENT_LOOP_REPEAT_CAP（runner.ts env spread 透传，零第二真值）→ 达 cap 即
+ *   cancel → turn/end aborted/stall-loop → 重组装 STALL_LOOP 诚实降级。
+ * 断言（裁决逐字）：degraded.reason==='STALL_LOOP' ∧ agentLoopRepeat===1（M5 补咬，
+ *   销 M5 存活变异）∧ emit 捕获 echo_tool step.started===cap 且 <8 ∧ answer 含诚实
+ *   降级块（块内容断言不放松：「检测到无进度循环」+ 出货 cap 值）。
+ *
+ * env 卫生：engine fork 读的是**进程 env**（engine.ts:497 process.env.DSH_HARNESS），
+ * createTestApp 的 env 只进 config 管不到这层 ⇒ 本 describe 显式 save/restore 进程 env。
+ */
+describe("#88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（N3 看门狗·engine 级缝）", () => {
+  const HARNESS_DIR = join(ROOT, "packages/dsh-harness");
+  const ENV_KEYS = ["DSH_HARNESS", "MOCK_SCENARIO", "DSH_HARNESS_DIR", ...LOOP_KEYS] as const;
+  let savedEnv: Record<string, string | undefined>;
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+  });
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (savedEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = savedEnv[k];
+    }
+  });
+
+  function setHarnessEnv(loopEnv: Record<string, string>) {
+    process.env.DSH_HARNESS = "1";
+    process.env.DSH_HARNESS_DIR = HARNESS_DIR; // vitest cwd=apps/agentcore，缺省解析不到 packages/dsh-harness
+    for (const k of LOOP_KEYS) delete process.env[k];
+    for (const [k, v] of Object.entries(loopEnv)) process.env[k] = v;
+  }
+
+  /** 缝里真注册在 repos.agents 的 agent：echo_tool 是 harness 侧世界插件（非 native BUILTIN），对 runtime 而言是 UNKNOWN。 */
+  function echoAgentDef(): AgentDefinition {
+    return {
+      tenantId: TENANT,
+      id: "agt_echo",
+      key: "echo_agent",
+      version: 1,
+      name: "echo_agent",
+      description: "dsh ③′④′ 对位 agent",
+      model: STUB_DCP_SPEC, // 裁决 A：post-N1 engine 分叉强制 dcp spec（原 "claude-opus-4-8" 在 providers.ts:435 诚实抛）
+      systemPrompt: "你是回声测试 agent。",
+      tools: [{ kind: "BUILTIN", name: "echo_tool" }],
+      ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+      skills: [],
+      mcpServers: [],
+      scopeDeclaration: { objectTypes: [], toolNames: ["echo_tool"] },
+      status: "PUBLISHED",
+    };
+  }
+
+  /**
+   * 裁决 A · stub 剧本：8 轮**同签名** echo_tool（watchdog 看签名不看 mock——同 name+同 arguments
+   * 即同签名计数）+ 第 9 轮文本收尾。对位 mock-llm stall_loop 剧本的病态循环语义；
+   * cap 臂在第 3 轮（出货 cap）被 watchdog 打断 ⇒ stub 第 4 轮起收不到请求。
+   */
+  const STALL_USAGE = { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 };
+  const stallRound: StubRound = { toolCall: { name: "echo_tool", arguments: '{"text":"same"}' }, usage: STALL_USAGE };
+  const STALL_SCRIPT: StubRound[] = [...Array(8).fill({ ...stallRound, toolCall: { ...stallRound.toolCall } }), { text: "stub final answer", usage: STALL_USAGE }];
+
+  async function runPathologicalDsh(loopEnv: Record<string, string>) {
+    setHarnessEnv(loopEnv);
+    const stub = await startStubOpenAi(STALL_SCRIPT.map((r) => ({ ...r })));
+    const t: TestApp = await createTestApp({
+      providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+    });
+    try {
+      await t.repos.agents.insert(echoAgentDef());
+      const emitted: { event: string; payload: unknown }[] = [];
+      const result = await t.deps.engine.runRegisteredAgent({
+        taskId: "task_dsh_stall",
+        agentId: "agt_echo",
+        version: "latest",
+        prompt: "把所有未结订单反复翻一遍给我个自由结论",
+        ctx: { tenantId: TENANT, userId: "user-planner", roles: ["planner"] },
+        nesting: { callChain: [], budget: new BudgetTracker(computeResidualBudget(loadConfig({ PORT: "0", LOG_LEVEL: "silent", ...loopEnv } as NodeJS.ProcessEnv))) },
+        emit: async (event, payload) => {
+          emitted.push({ event, payload });
+        },
+      });
+      const echoStarts = emitted.filter(
+        (e) => e.event === "step.started" && (e.payload as { type?: string })?.type === "echo_tool",
+      );
+      return {
+        result,
+        echoStartCount: echoStarts.length,
+        loopRepeatMetric: t.metrics.agentLoopRepeat.get(),
+      };
+    } finally {
+      await stub.close();
+    }
+  }
+
+  it("③′ 出货 env（含 cap）+ DSH_HARNESS=1：病态同签名循环被 watchdog 在 cap 处打断（STALL_LOOP），不烧满 8 轮剧本", { timeout: 60_000 }, async () => {
+    const cap = Number(SHIPPED_LOOP.QOS_AGENT_LOOP_REPEAT_CAP);
+    const r = await runPathologicalDsh(SHIPPED_LOOP);
+    expect(
+      r.result.degraded?.reason,
+      "出货 cap 下病态循环未触发 STALL_LOOP 诚实降级（watchdog 缺/未咬）",
+    ).toBe("STALL_LOOP");
+    expect(r.result.outcome).toBe("BUDGET_EXHAUSTED"); // 对位 loop.ts:1182 degrade('BUDGET_EXHAUSTED','STALL_LOOP')
+    expect(r.loopRepeatMetric, "M5 补咬：STALL_LOOP 降级必须计 agentLoopRepeat（engine.ts:530）").toBe(1);
+    // post-execute 计数 ⇒ 第 cap 次执行后才中断（与 native dispatch 前拦差 1，已登记语义 delta）；
+    // 剧本全长 8 ⇒ 恰好在 cap 处收束即证 watchdog 生效。
+    expect(r.echoStartCount).toBe(cap);
+    expect(r.echoStartCount).toBeLessThan(8);
+    // 诚实降级块（块内容断言不放松）：header 镜像 loop.ts:620-632，cap 从帧 cause 取。
+    const md = r.result.answer.blocks.map((b) => (b.type === "text" ? b.markdown : "")).join("\n");
+    expect(md).toContain("[预算耗尽·诚实摘要]");
+    expect(md).toContain("检测到无进度循环");
+    expect(md).toContain(`loopRepeatCap=${cap}`);
+  });
+
+  it("④′ 归因臂：同剧本仅去掉 QOS_AGENT_LOOP_REPEAT_CAP → 无 STALL_LOOP ∧ metric 0 ∧ 烧满 8 轮（差值=compose 那行字节买到的治理）", { timeout: 60_000 }, async () => {
+    const { QOS_AGENT_LOOP_REPEAT_CAP: _omit, ...noCap } = SHIPPED_LOOP;
+    const r = await runPathologicalDsh(noCap);
+    expect(r.result.degraded, "去 cap 后不得出现 degraded（watchdog opt-in 缺省禁用）").toBeUndefined();
+    expect(r.loopRepeatMetric).toBe(0);
+    expect(r.echoStartCount).toBe(8); // 烧满剧本 = 早停确实来自 cap 那行字节
+    expect(r.result.outcome).toBe("ANSWERED");
   });
 });

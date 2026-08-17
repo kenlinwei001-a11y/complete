@@ -134,6 +134,9 @@ services:
       QOS_AGENT_LOOP_REPEAT_CAP: ${QOS_AGENT_LOOP_REPEAT_CAP:-3}
       QOS_AGENT_PER_TOOL_CALL_CAP: ${QOS_AGENT_PER_TOOL_CALL_CAP:-8}
       QOS_AGENT_RETRY_MAX_ATTEMPTS: ${QOS_AGENT_RETRY_MAX_ATTEMPTS:-1}
+      # ── dsh harness 路 B 分叉（WO-DSH-N1-PROVIDER；出货缺省 off + 真 provider 路由；同受治理门守护）
+      DSH_HARNESS: ${DSH_HARNESS:-0}
+      DSH_HARNESS_PROVIDER: ${DSH_HARNESS_PROVIDER:-platform}
     ports:
       # 同 datacore：只绑 127.0.0.1。gateway 反代与 A→B 的 scaffold/ask 调用都走 compose
       # 网络服务名（http://agentcore:4002），不经这条发布端口。

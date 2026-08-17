@@ -302,10 +302,10 @@ function isAbortError(err: unknown): boolean {
   return name === "AbortError" || name === "TimeoutError";
 }
 
-const FINAL_ANSWER_DESC =
+export const FINAL_ANSWER_DESC =
   "终止工具：当你已收集到足够事实时调用，输出结构化回答 blocks 与 provenance。回答中的每个业务数字必须用 ⟦ref:N⟧ 标注（N 为 provenance 下标）。";
 
-const DEFAULT_FINAL_ANSWER_SCHEMA: Record<string, unknown> = {
+export const DEFAULT_FINAL_ANSWER_SCHEMA: Record<string, unknown> = {
   type: "object",
   properties: {
     blocks: { type: "array", description: "AnswerBlock[]（text/table/kpi/rule_violation/action_draft）" },
@@ -581,6 +581,9 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     ...attributionFields(opts.attribution),
     // WO-AGENTRUN-FANOUT-PERSIST · 编排位置同上（ROOT / FANOUT + 扇出它的步 id）。
     ...originFields(opts.placement),
+    // WO-DSH-P2-UX（N5）· 内核标识：runAgentLoop 永不在 dsh 分叉下执行
+    // （engine.ts `DSH_HARNESS=1` 分叉在进 loop 之前已返回），故此处恒为内置内核。
+    kernel: "NATIVE",
   });
 
   /**
