@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Scenario, SceneEntryMode } from "@platform/contracts";
-import { createScenario, fetchAgents, fetchIntents, fetchScenarioClosure, fetchScenariosManage, fetchViewConfigs, growScenario, publishScenario, publishScenarioChain, retireScenario, updateScenario, type ScenarioClosure } from "@/api/endpoints";
+import { createScenario, deleteSceneEntry, fetchAgents, fetchIntents, fetchScenarioClosure, fetchScenariosManage, fetchScenes, fetchViewConfigs, growScenario, publishScenario, publishScenarioChain, retireScenario, updateScenario, type ScenarioClosure } from "@/api/endpoints";
+import DeleteResourceButton from "./DeleteResourceButton";
 import { InfoPopover } from "@/components/InfoPopover";
 import { invalidateForEvent } from "@/store/eventInvalidation";
 import { useWorkspace } from "@/workspace/useWorkspace";
@@ -93,6 +94,85 @@ export default function ScenesPage() {
         </tbody>
       </table>
       {scenarios?.length === 0 && <div className="empty-state">{zh.common.none}</div>}
+
+      <SceneEntriesSection />
+    </div>
+  );
+}
+
+/**
+ * WO-BEFE-DELETE-WIRE ⑤ · **场景入口（SceneEntry）的唯一管理面**。
+ *
+ * ── 为什么本单要新建这一块（而不是「找个现成按钮挂上去」）──────────────────────
+ * `DELETE /b/v1/scene-entries/:id` 接不上的真正原因不是「没人写 delete 函数」，而是
+ * **整个 SceneEntry 族在前端连一个消费方都没有**：`fetchScenes`（列表）与 `putScene`（改）
+ * 在本单之前是**死客户端函数** —— 全 `src/` 各自只有 1 处命中，就是它们自己的定义
+ * （金丝雀：同法查 `fetchSkills`/`fetchMcpConfigs` 各 5 处命中 ⇒ 工具是好的，不是搜法坏了）。
+ * 只加一个 `deleteSceneEntry()` 而不给它一个能看见对象的界面，就是本仓明令禁止的
+ * 「把死端点换成死客户端函数」。故这里补上**列表**，删除入口才有立足之地。
+ *
+ * ── 为什么放在本页而不是新开一页 ────────────────────────────────────────────
+ * 「加哪个页、放进哪个导航组」属导航信息架构，是仓主的决策，收编方不得擅自决定
+ * （本仓已有先例：`GET /a/v1/metrics` 与 `GET /a/v1/actions/metrics` 都为此留在基线里）。
+ * 本页（`/admin/scenes` 场景配置）**已在导航里**，且主题就是"场景"——
+ * 场景入口是同一主题下的另一类对象（Scenario 是编排剧本，SceneEntry 是某个视图上的提问引导），
+ * 挂在这里是**往既有页里加一块内容**，不新增导航位，故不触碰仓主的决策面。
+ *
+ * ── 与上面那张表的区别（别看混了）──────────────────────────────────────────
+ * 上表是 `Scenario`（`/b/v1/scenarios/manage`，有 scenarioKey/发布态/闭包）；
+ * 本块是 `SceneEntry`（`/b/v1/scene-entries`，按 viewKey 一条，无版本、改即生效）。
+ * 两者都带 `defaultAgentId`，但**不是同一张表**，删其中一个不影响另一个。
+ */
+function SceneEntriesSection(): JSX.Element {
+  const qc = useQueryClient();
+  const { data: entries, isError } = useQuery({ queryKey: ["b", "scene-entries"], queryFn: fetchScenes, retry: false });
+
+  return (
+    <div style={{ marginTop: 18 }} data-testid="scene-entries-section">
+      <div className="section-title">场景入口</div>
+      {/* 「查不出来」≠「一条都没有」：请求失败时不渲染空表，否则等于把「我不知道」说成「没有」。 */}
+      {isError ? (
+        <div className="empty-state" data-testid="scene-entries-error">
+          这次没查出来（后端不可达）——不等于没有场景入口。
+        </div>
+      ) : entries?.length === 0 ? (
+        <div className="empty-state" data-testid="scene-entries-empty">
+          {zh.common.none}
+        </div>
+      ) : (
+        <table className="cmp" data-testid="scene-entries-table" style={{ width: "100%" }}>
+          <thead>
+            <tr>
+              <th>落点视图</th>
+              <th>交互模式</th>
+              <th>默认 Agent</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {(entries ?? []).map((e) => (
+              <tr key={e.id} data-testid={`scene-entry-row-${e.viewKey}`}>
+                <td className="mono">{e.viewKey}</td>
+                <td data-testid={`scene-entry-mode-${e.viewKey}`}>{e.mode}</td>
+                <td className="mono">{e.defaultAgentId ?? "—"}</td>
+                <td style={{ textAlign: "right" }}>
+                  {/* ⚠ `referenceKind={null}`：本族在后端**没有引用检查**（handler 里没有
+                      `computeReferences`/`assertRetireOrDelete`，因为入口是叶子对象）。
+                      传一个 kind 进去会渲染出一个恒为 0 的引用面板 + 一句「有引用会被拒」的假话。 */}
+                  <DeleteResourceButton
+                    label="场景入口"
+                    name={e.viewKey}
+                    referenceKind={null}
+                    testidPrefix={`scene-entry-${e.viewKey}`}
+                    onDelete={() => deleteSceneEntry(e.id)}
+                    onDeleted={() => void qc.invalidateQueries({ queryKey: ["b", "scene-entries"] })}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
