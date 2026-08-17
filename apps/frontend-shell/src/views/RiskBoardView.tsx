@@ -35,7 +35,8 @@ import { ScopeHonestyBadge } from "@/components/ScopeHonestyBadge";
 import { ExposurePanel } from "./risk/ExposurePanel";
 import { DoNothingPanel } from "./risk/DoNothingPanel";
 import { DispositionOptionsPanel } from "./risk/DispositionOptionsPanel";
-import { ProvenanceDag, gapAttributionToBaseRootCause, type GapAttrOutput, type DagData } from "@/components/ProvenanceDag";
+import { ProvenanceDag, gapAttributionToBaseRootCause, type GapAttrOutput, type DagData, type DagNode } from "@/components/ProvenanceDag";
+import { DagNodeInspector, type DagNodeFacts } from "./sim/DagNodeInspector";
 import { matchRiskFactorToRootCause } from "@/config/riskFactorTaxonomy";
 // WO-FACTOR-SCOPE-SINGLESOURCE：因子作用域的**值**类型走契约品牌类型（裸 string 赋不进来 → 词表错配编译期红）。
 import type { CausalFactorId, RefinableFactor } from "@platform/contracts";
@@ -1220,6 +1221,79 @@ function observedFailure(err: unknown): { status?: number; code?: string; reques
  * （HTTP 状态码 / 错误码 / requestId / 响应里实际返回了哪些基地）；下一步动作按分支给且必带依据（错误码或字段名），
  * 不内联任何"引擎缺什么"的因果断言。
  */
+/**
+ * WO-U3-DAG-SPLIT · 根因推演树节点 →「凭什么」面板事实（判据 U3：面板同时有 来源 与 规则）。
+ *
+ * 规则文本逐字对齐 `apps/datacore/src/solvers/service.ts` 的 `gapAttribution` 实现（已亲手核对），
+ * 且按节点种类分两档诚实标注（与 DagNodeInspector 的 ruleKind 语义一致）：
+ *  · 基地层（ksf）——结构反向分摊的**可解释比系数**是一等规则键 `gap_attribution_coeffs`
+ *    （PUBLISHED RuleEntry.params·缺省 structuralExplained 0.88 / causalExplained 0.8·改系数即改归因）→ ruleKey；
+ *    节点级 share 分摊本身是确定性投影，写进 formula/note，不混进规则键一栏。
+ *  · 根/结构叶/因果叶/证据叶——节点级判定（越线·分摊·caused_by 逐跳·下钻直读）是确定性投影
+ *    （无业务规则库可查）→ projection。说成「规则键」会让用户去规则库里找一个不存在的键。
+ */
+function dagNodeFacts(node: DagNode, scopeBaseId: string): DagNodeFacts {
+  const src = `求解器 gap_attribution（scope.baseId=${scopeBaseId}）`;
+  const shareTxt = node.share != null ? `占比 ${Math.round(node.share * 100)}%` : null;
+  switch (node.kind) {
+    case "kpi":
+      return {
+        title: `越线根：${node.label}`,
+        verdict: `缺口 ${node.value}${node.unit ?? ""}（实际 ${node.actual} · 目标 ${node.target}）`,
+        src: `${src} · rootMetric（Metric 对象 actual/target/floorVal 真值）`,
+        rule: "越线判定 actual < floorVal；缺口 = 目标 − 实际；多指标越线时取缺口最大者为归因根",
+        ruleKind: "projection",
+        formula: node.actual != null && node.target != null ? `缺口 = 目标 ${node.target} − 实际 ${node.actual} = ${node.value}${node.unit ?? ""}` : undefined,
+        inputs: [
+          { label: "实际", value: String(node.actual ?? "—") },
+          { label: "目标", value: String(node.target ?? "—") },
+        ],
+      };
+    case "ksf":
+      return {
+        title: `结构层（基地）：${node.label}`,
+        verdict: node.sub,
+        src: `${src} · 结构层 L1（缺口按基地聚合分摊）`,
+        rule: "gap_attribution_coeffs.structuralExplained（缺省 0.88）",
+        ruleKind: "ruleKey",
+        formula: `基地贡献 = 缺口 × share（结构反向分摊：层内 Σ子 + residual = 父 gap 硬勾稽，residual 诚实承未解释）`,
+        inputs: [
+          ...(shareTxt ? [{ label: "占缺口", value: shareTxt }] : []),
+          { label: "贡献", value: `${node.contribution ?? node.value ?? "—"}${node.unit ?? ""}` },
+        ],
+        note: "系数为 PUBLISHED RuleEntry.params（改系数即改归因·≠正向推演）；节点级 share 分摊为确定性投影。",
+      };
+    case "evidence": {
+      const drill = [node.drillType, node.drillId, node.drillField].filter(Boolean).join(".");
+      return {
+        title: `证据：${node.label}`,
+        verdict: node.drillValue != null ? `当前值 ${node.drillValue}${node.drillField ? `（${node.drillField}）` : ""}` : undefined,
+        src: node.drillType ? `下钻 DB 对象：${drill}` : `${src} · 证据明细（无结构化下钻源）`,
+        rule: "下钻投影：provenance 直读对象字段真值（drillType.drillId.drillField），非新真值（R13）",
+        ruleKind: "projection",
+        ...(node.provenanceSynthetic ? { note: "合成种子 · 未接实测数据源——不冒充数据库实测。" } : {}),
+      };
+    }
+    default: {
+      // factor：结构叶（订单/设备OEE/物料·id 非 cf:）与因果叶（caused_by 逐跳·id cf:）规则不同，分开说。
+      const causal = node.id.startsWith("cf:");
+      return {
+        title: causal ? `因果链：${node.label}` : `结构叶：${node.label}`,
+        verdict: `贡献 ${node.contribution ?? node.value ?? "—"}${node.unit ?? ""}${shareTxt ? ` · ${shareTxt}` : ""}`,
+        src: causal ? `${src} · 因果层（caused_by 逐跳溯源）` : `${src} · 结构层 L2（基地内 订单/设备OEE/物料 瓶颈叶）`,
+        rule: causal
+          ? "沿 caused_by 因果边逐跳溯源：占比 = 本跳贡献 / 父跳贡献（占比分摊·不再切 gap）；因果层可解释比 causalExplained 见规则键 gap_attribution_coeffs（缺省 0.8）"
+          : "结构反向分摊：贡献由真颗粒对象值派生（Order.value / MaterialBalance.gapTon / 设备 OEE），层内 Σ子 + residual = 父 gap 硬勾稽",
+        ruleKind: "projection",
+        inputs: [
+          ...(shareTxt ? [{ label: "占比", value: shareTxt }] : []),
+          ...(node.drillType ? [{ label: "下钻源", value: [node.drillType, node.drillId, node.drillField].filter(Boolean).join(".") }] : []),
+        ],
+      };
+    }
+  }
+}
+
 function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, rcFactor, onRcFactor }: {
   base: string; factor: string; dag: DagData | undefined; loading: boolean;
   /** 真错误对象（ApiClientError：status/code/requestId/message）——空态据此陈述事实，不做因果推断。 */
@@ -1236,6 +1310,9 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, rc
   rcFactor: CausalFactorId | undefined; onRcFactor: (f: CausalFactorId | undefined) => void;
 }) {
   const nodeCount = dag?.nodes.length ?? 0;
+  // WO-U3-DAG-SPLIT · 判据 U3：点树节点 →「凭什么」面板（来源+规则·见 dagNodeFacts）。
+  // hover 弹窗照旧（看「数从哪来」）；点击开面板（看「凭什么这么判」）——两件事不打架。
+  const [inspNode, setInspNode] = useState<DagNode | null>(null);
   const reqLine = `gap_attribution · scope.baseId=${scopeBaseId}${rcFactor ? ` · scope.factorId=${rcFactor}` : ""}`;
   // 响应里 L1 结构层实际返回了哪些节点（= "归因基地集"）——纯读响应字段，不推断。
   const l1Labels = (ga?.levels?.find((L) => L.depth === 1)?.nodes ?? []).map((n) => n.factor).filter(Boolean);
@@ -1334,7 +1411,8 @@ function RootCausePanel({ base, factor, dag, loading, error, ga, scopeBaseId, rc
         </div>
       ) : dag && nodeCount > 0 ? (
         <>
-          <ProvenanceDag data={dag} />
+          <ProvenanceDag data={dag} onNodeClick={setInspNode} />
+          <DagNodeInspector facts={inspNode ? dagNodeFacts(inspNode, scopeBaseId) : null} onClose={() => setInspNode(null)} testId="dag-node-inspector" />
           {/* WO-CAPACITY-PAGE-100PCT ③ · 作用域标注**以引擎回传的 scope 为准**（不再由前端假设"点了就细分了"）：
               factorApplied=true → 真按因子细分；传了因子但引擎无该因果域 → 据实说"未按该因子细分"并给引擎原话。 */}
           {/* 向后兼容（R6·不回归）：只有引擎**显式**回执 `factorApplied:false` 时才走"未细分"诚实注解；

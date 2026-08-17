@@ -11,14 +11,24 @@ import styles from "./KsfGraph.module.css";
  * 高亮其传导的 KSF + 财务指标（沿威胁/支撑边）+ 展开该问题的 audit_timeline 逐日圆点轴（联动）。
  */
 interface KsfGraphData {
-  problems: { id: string; name: string; severity: string; ksfRef: string }[];
+  problems: { id: string; name: string; severity: string; ksfRef: string; gap?: number }[];
   ksfNodes: { id: string; key: string; name: string; sub: string }[];
   finNodes: { id: string; name: string; actual: number; target: number; unit: string; status: string }[];
   edges: { from: string; to: string; kind: "threat" | "support" }[];
   summary: string;
 }
 
-export function KsfGraph({ testId = "ksf-graph" }: { testId?: string }) {
+/**
+ * WO-U3-DAG-SPLIT · 点中的节点（判别联合，供调用方开「凭什么」面板）。
+ * 三类节点的数据形状不同（问题=越线 Metric / KSF=一等对象 / 财务=计划指标），
+ * 合在一个类型里会逼调用方做可空猜谜——分开，由 kind 收窄。
+ */
+export type KsfNodeRef =
+  | { kind: "problem"; node: KsfGraphData["problems"][number] }
+  | { kind: "ksf"; node: KsfGraphData["ksfNodes"][number] }
+  | { kind: "fin"; node: KsfGraphData["finNodes"][number] };
+
+export function KsfGraph({ testId = "ksf-graph", onNodeInspect }: { testId?: string; onNodeInspect?: (ref: KsfNodeRef) => void }) {
   const [sel, setSel] = useState<string | null>(null); // 选中的问题 id
   const { data, isLoading } = useQuery({
     queryKey: ["b", "ksf_graph"],
@@ -51,7 +61,12 @@ export function KsfGraph({ testId = "ksf-graph" }: { testId?: string }) {
               key={p.id}
               className={`${styles.node} ${styles.problem} ${sel === p.id ? styles.sel : ""}`}
               data-testid={`ksf-problem-${p.id}`}
-              onClick={() => setSel(sel === p.id ? null : p.id)}
+              onClick={() => {
+                setSel(sel === p.id ? null : p.id);
+                // WO-U3-DAG-SPLIT：可选「凭什么」面板（不外溢——不传 onNodeInspect 维持今天只高亮的行为，
+                // plan-audit 等其余消费方逐字节不变）。点消（再点同一节点）不上面板。
+                if (onNodeInspect && sel !== p.id) onNodeInspect({ kind: "problem", node: p });
+              }}
             >
               <span className={`badge ${sevCls(p.severity)}`}>{p.severity}</span> {p.name}
             </button>
@@ -62,7 +77,15 @@ export function KsfGraph({ testId = "ksf-graph" }: { testId?: string }) {
         <div className={styles.col} data-testid="ksf-col-ksf">
           <div className={styles.colHead}>{zh.sim.ksf.ksf}</div>
           {data.ksfNodes.map((k) => (
-            <div key={k.id} className={`${styles.node} ${styles.ksf} ${litKsf.has(k.id) ? styles.lit : sel ? styles.dim : ""}`} data-testid={`ksf-node-${k.key}`}>
+            <div
+              key={k.id}
+              className={`${styles.node} ${styles.ksf} ${litKsf.has(k.id) ? styles.lit : sel ? styles.dim : ""}`}
+              data-testid={`ksf-node-${k.key}`}
+              // WO-U3-DAG-SPLIT：可选点击（只在传了 onNodeInspect 时才是按钮——不传零行为变化）。
+              {...(onNodeInspect
+                ? { role: "button" as const, tabIndex: 0, style: { cursor: "pointer" }, "data-clickable": "1", onClick: () => onNodeInspect({ kind: "ksf", node: k }), onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && onNodeInspect({ kind: "ksf", node: k }) }
+                : {})}
+            >
               <b>{k.name}</b>
               <span className={styles.sub}>{k.sub}</span>
             </div>
@@ -73,7 +96,16 @@ export function KsfGraph({ testId = "ksf-graph" }: { testId?: string }) {
         <div className={styles.col} data-testid="ksf-col-fin">
           <div className={styles.colHead}>{zh.sim.ksf.fin}</div>
           {data.finNodes.map((f) => (
-            <div key={f.id} className={`${styles.node} ${styles.fin} ${litFin.has(f.id) ? styles.lit : sel ? styles.dim : ""}`} data-testid={`ksf-fin-${f.id}`} data-status={f.status}>
+            <div
+              key={f.id}
+              className={`${styles.node} ${styles.fin} ${litFin.has(f.id) ? styles.lit : sel ? styles.dim : ""}`}
+              data-testid={`ksf-fin-${f.id}`}
+              data-status={f.status}
+              // WO-U3-DAG-SPLIT：可选点击（同 KSF 层——不传 onNodeInspect 零行为变化）。
+              {...(onNodeInspect
+                ? { role: "button" as const, tabIndex: 0, style: { cursor: "pointer" }, "data-clickable": "1", onClick: () => onNodeInspect({ kind: "fin", node: f }), onKeyDown: (e: React.KeyboardEvent) => e.key === "Enter" && onNodeInspect({ kind: "fin", node: f }) }
+                : {})}
+            >
               {f.name} <span className="mono" style={{ fontSize: 12 }}>{f.actual}/{f.target}{f.unit}</span>
             </div>
           ))}

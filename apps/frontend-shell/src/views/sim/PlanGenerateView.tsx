@@ -13,8 +13,10 @@ import type { ProvenanceReport } from "./exportProvenance";
 import { useLiveSolver } from "./useLiveSolver";
 import { RadarChart } from "./RadarChart";
 import { buildPropagation, PropagationTimeline, type PropagationVM } from "./PropagationTimeline";
-import { KsfGraph } from "@/components/KsfGraph";
+import { KsfGraph, type KsfNodeRef } from "@/components/KsfGraph";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
+import { DagNodeInspector, type DagNodeFacts } from "./DagNodeInspector";
+import { SolverStepBar, useSolverStep, type SolverStep } from "./SolverStepBar";
 import EdgeActivePanel from "./EdgeActivePanel";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
@@ -69,6 +71,70 @@ const GOAL_FIELDS: { key: "revGrowthPct" | "gmFloorPct" | "sharePts" | "capexCap
 const MEET_KEYS = ["meetRevenue", "meetGm", "meetShare", "meetCapex", "meetCash", "meetTurns"] as const;
 
 /**
+ * WO-U2-STEPWISE-1 · plan_generate 推演步骤契约（判据 U2：同一份结果按步展开·每步标 数据·求解器·规则）。
+ * 每步 = 求解器输出的**真实分段字段**（后端无 steps[]·前端按已有字段推导——契约判定与论据见 SolverStepBar 头注）。
+ * 步骤语义 = 求解链：入参 → 路径推演(outcome) → 评分(scores) → 校验(hardViol/meets) → 推荐(recommend)。
+ */
+const GEN_STEPS: SolverStep[] = [
+  { key: "inputs", label: "目标与基线", data: "目标面板六目标 + 硬约束开关 + 求解器回显基线 base", solver: "plan_generate", rule: "入参回显 · 同输入同输出（本步无判定）" },
+  { key: "outcome", label: "路径推演", data: "schemes[].outcome（收入/毛利率/份额/周转/现金/CAPEX 六维）", solver: "plan_generate", rule: "5 条路径骨架（A–E）代入求解器+规则，收敛为 3 个方案" },
+  { key: "scores", label: "五维评分", data: "schemes[].scores（profit/scale/cash/growth/stability → total）", solver: "plan_generate", rule: "五维评分 → 综合分 scores.total（求解器计算 · 前端不重算）" },
+  { key: "check", label: "校验与达成", data: "schemes[].hardViol + schemes[].meets", solver: "plan_generate", rule: "硬约束冲突即 ⛔；meets 逐项 vs 目标面板（收入增/份额增按求解器回显真基线派生）" },
+  { key: "recommend", label: "推荐与取舍", data: "recommend + schemes[].gain/give + problems", solver: "plan_generate", rule: "推荐 = 无硬约束冲突方案中 scores.total 最高者" },
+];
+
+/**
+ * WO-U3-DAG-SPLIT · KSF 图节点 →「凭什么」面板事实（判据 U3：面板同时有 来源 与 规则）。
+ * 规则文本逐字对齐 `apps/datacore/src/solvers/service.ts` 的 `ksfGraph` 实现（已亲手核对）：
+ * ksf_graph 无业务规则键（确定性投影·与 order-chain 的 ruleRefs 不同）——三档节点全部 projection，
+ * 徽章必须显示「确定性投影规则」，不许冒充规则库键。
+ */
+function ksfNodeFacts(ref: KsfNodeRef): DagNodeFacts {
+  switch (ref.kind) {
+    case "problem": {
+      const p = ref.node;
+      return {
+        title: `问题：${p.name}`,
+        verdict: `严重度 ${p.severity}${p.gap != null ? ` · gap ${p.gap}` : ""}`,
+        src: "求解器 ksf_graph · 越线 Metric（actual < floorVal 下限）",
+        rule: "越线判定：actual < floorVal ⇒ 问题；severity = 越线且 gap≥2 → H / 越线 → M / 否则 S（gap = target − actual；全部达标时取 actual/target 达成率最弱一项保图非空）",
+        ruleKind: "projection",
+        inputs: [
+          { label: "severity", value: p.severity },
+          { label: "压在 KSF", value: p.ksfRef || "—" },
+          ...(p.gap != null ? [{ label: "gap", value: String(p.gap) }] : []),
+        ],
+      };
+    }
+    case "ksf": {
+      const k = ref.node;
+      return {
+        title: `关键成功要素：${k.name}`,
+        src: "求解器 ksf_graph · KSF 一等对象",
+        rule: "传导投影：问题→KSF 威胁边按 Metric.ksfRef；KSF→财务指标支撑边 = ksfRef 命中该 KSF 的全部 Metric",
+        ruleKind: "projection",
+        inputs: [{ label: "定位", value: k.sub }],
+      };
+    }
+    default: {
+      const f = ref.node;
+      return {
+        title: `财务指标：${f.name}`,
+        verdict: `${f.actual}/${f.target}${f.unit} · ${f.status}`,
+        src: "求解器 ksf_graph · Metric 对象 actual/target/floorVal 真值",
+        rule: "状态三态：actual < floorVal → RED / actual < target → AMBER / 否则 GREEN",
+        ruleKind: "projection",
+        inputs: [
+          { label: "actual", value: String(f.actual) },
+          { label: "target", value: String(f.target) },
+        ],
+      };
+    }
+  }
+}
+
+
+/**
  * 规划建议（renderer=plan-generate，增量 §7.11）：五目标面板（毛利/现金/CAPEX 带硬约束 chip）
  * 改动即重算全部方案；三方案纵向折叠卡（折叠头 KPI + 综合分大数字 + ★推荐 / ⛔降透明）。
  */
@@ -81,6 +147,10 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const canAdopt = useFeature("act.adopt-to-draft");
   const action = useActionDraft();
+  // WO-U2-STEPWISE-1 · 判据 U2：步骤态**真正驱动结果分段**（不是装饰步骤条）——
+  // 每个结果段都经 `upto(步号)` 闸：点第 N 步 ⇒ 屏上的数只显示到第 N 步为止。
+  // 默认末步（=完整结果，与改前屏面一致）；验收测试断言「切到第 N 步 ⇒ 结果区的数变了」。
+  const { active: genStep, setActive: setGenStep, upto } = useSolverStep(GEN_STEPS.length);
 
   const gen = useLiveSolver(
     "plan_generate",
@@ -222,26 +292,43 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
       {!gen.data && <div className="empty-state">{zh.common.loading}</div>}
       {gen.data && (
         <div data-testid="gen-result">
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <span style={{ fontSize: 12, color: "var(--muted)" }}>
-              推荐 = 无硬约束冲突方案中综合分最高（路径 <b className="mono">{gen.data.recommend || "—"}</b>）
-            </span>
+          {/* 判据 U2 · 推演步骤条：点第 N 步 ⇒ 下方结果区只显示到第 N 步（分段闸 = upto）。 */}
+          <SolverStepBar steps={GEN_STEPS} active={genStep} onSelect={setGenStep} testId="gen-steps" />
+          {/* 第 1 步 · 目标与基线：求解器回显的真基线（去魔法基线后的诚实回执·缺基线诚实"—"）。 */}
+          <div style={{ fontSize: 12, color: "var(--muted)", margin: "8px 0", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }} data-testid="gen-step-inputs">
             <SnapshotBadge snapshotVersion={gen.snapshotVersion ?? undefined} tool="plan_generate" />
+            <span>
+              求解器回显基线：收入 <b className="mono">{gen.data.base?.rev != null ? fmt(gen.data.base.rev) : "—"}</b>
+              {" · 毛利率 "}<b className="mono">{gen.data.base?.gm != null ? `${(gen.data.base.gm * 100).toFixed(1)}%` : "—"}</b>
+              {" · 份额 "}<b className="mono">{gen.data.base?.share != null ? `${gen.data.base.share}%` : "—"}</b>
+              {" · 周转 "}<b className="mono">{gen.data.base?.turns != null ? `${gen.data.base.turns} 次` : "—"}</b>
+              {" · 现金 "}<b className="mono">{gen.data.base?.cash != null ? `${fmt(gen.data.base.cash)} 亿` : "—"}</b>
+            </span>
           </div>
-          {gen.data.schemes.map((s) => (
-            <SchemeCard
-              key={s.no}
-              scheme={s}
-              recommended={s.pathKey === gen.data!.recommend && s.hardViol.length === 0}
-              open={openKey === s.no}
-              onToggle={() => setOpenKey(openKey === s.no ? null : s.no)}
-              canAdopt={canAdopt}
-              onAdopt={() => adoptScheme(s)}
-              goals={goals}
-              propagation={propagation}
-              base={gen.data!.base}
-            />
-          ))}
+          {upto(5) && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }} data-testid="gen-recommend-line">
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                推荐 = 无硬约束冲突方案中综合分最高（路径 <b className="mono">{gen.data.recommend || "—"}</b>）
+              </span>
+            </div>
+          )}
+          {/* 第 2 步起才有方案卡（schemes[].outcome 是第 2 步「路径推演」的数——第 1 步屏上只有入参回执）。 */}
+          {upto(2) &&
+            gen.data.schemes.map((s) => (
+              <SchemeCard
+                key={s.no}
+                scheme={s}
+                recommended={s.pathKey === gen.data!.recommend && s.hardViol.length === 0}
+                open={openKey === s.no}
+                onToggle={() => setOpenKey(openKey === s.no ? null : s.no)}
+                canAdopt={canAdopt}
+                onAdopt={() => adoptScheme(s)}
+                goals={goals}
+                propagation={propagation}
+                base={gen.data!.base}
+                upto={upto}
+              />
+            ))}
         </div>
       )}
       {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。
@@ -261,6 +348,7 @@ function SchemeCard({
   goals,
   propagation,
   base,
+  upto,
 }: {
   scheme: Scheme;
   recommended: boolean;
@@ -271,9 +359,14 @@ function SchemeCard({
   goals: GoalsState;
   propagation: PropagationVM | null;
   base?: PlanGenBase;
+  /** 判据 U2 分段闸（唯一出处 = useSolverStep.upto）：卡内每个结果段经它决定渲染与否。 */
+  upto: (stepNo: number) => boolean;
 }) {
   const color = SCHEME_COLORS[s.no] ?? "var(--accent)";
-  const viol = s.hardViol.length > 0;
+  // 硬约束冲突属于第 4 步「校验与达成」——步骤态没到第 4 步时，卡的降透明/⛔ 都不出现。
+  const viol = s.hardViol.length > 0 && upto(4);
+  // WO-U3-DAG-SPLIT · KSF 图「凭什么」面板选中节点（判据 U3：点节点 → 面板带来源+规则）。
+  const [ksfInsp, setKsfInsp] = useState<KsfNodeRef | null>(null);
   const o = s.outcome;
   // 假7 修：收入增/份额增改用求解器回显的真基线派生（与后端 meets 判定同口径），去写死 rev-100 / share-17 魔法基线；
   // 求解器未回显基线 → 诚实"—"（不臆造基线）。收入增 = (rev/base.rev−1)×100%；份额增 = share − base.share。
@@ -299,7 +392,7 @@ function SchemeCard({
   };
   return (
     <div className={styles.genCardWrap}>
-      {recommended && (
+      {recommended && upto(5) && (
         <span className={styles.genRecommend} data-testid={`recommend-badge-${s.no}`}>
           ★ {zh.sim.gen.recommend}
         </span>
@@ -318,13 +411,15 @@ function SchemeCard({
               ⛔ {zh.sim.gen.hardViol}：{s.hardViol.join("、")}
             </span>
           )}
-          <span className={styles.genScore} style={{ color: viol ? "var(--danger-txt)" : color }} data-testid={`scheme-score-${s.no}`}>
-            {viol ? "⛔" : s.scores.total}
-          </span>
+          {upto(3) && (
+            <span className={styles.genScore} style={{ color: viol ? "var(--danger-txt)" : color }} data-testid={`scheme-score-${s.no}`}>
+              {viol ? "⛔" : s.scores.total}
+            </span>
+          )}
           <span style={{ fontSize: 12, color: "var(--muted2)" }}>{open ? "▼ 收起" : "▸ 展开"}</span>
         </div>
 
-        <div className={`${styles.outcomeRow} mono`}>
+        <div className={`${styles.outcomeRow} mono`} data-testid={`gen-outcome-${s.no}`}>
           <span>
             收入增<b>{growthTxt}</b>
           </span>
@@ -342,53 +437,57 @@ function SchemeCard({
           </span>
         </div>
 
-        {open && (
+        {open && upto(3) && (
           <>
             <div className={styles.genBody}>
-              <div className={styles.genSec}>
-                <h5>{zh.sim.gen.meets}（vs 目标面板）</h5>
-                {MEET_KEYS.map((k) => {
-                  const ok = s.meets?.[k] ?? false;
-                  return (
-                    <div className={styles.meetRow} key={k} data-testid={`meet-${s.no}-${k}`}>
-                      <span>{zh.sim.gen.meetLabels[k]}</span>
-                      <span className="mono">{meetValue[k]}</span>
-                      <i>{meetTargetLabel[k]}</i>
-                      <b style={{ color: ok ? "var(--ok-txt)" : "var(--danger-txt)" }}>{ok ? "✓" : "✗"}</b>
-                    </div>
-                  );
-                })}
-              </div>
+              {upto(4) && (
+                <div className={styles.genSec}>
+                  <h5>{zh.sim.gen.meets}（vs 目标面板）</h5>
+                  {MEET_KEYS.map((k) => {
+                    const ok = s.meets?.[k] ?? false;
+                    return (
+                      <div className={styles.meetRow} key={k} data-testid={`meet-${s.no}-${k}`}>
+                        <span>{zh.sim.gen.meetLabels[k]}</span>
+                        <span className="mono">{meetValue[k]}</span>
+                        <i>{meetTargetLabel[k]}</i>
+                        <b style={{ color: ok ? "var(--ok-txt)" : "var(--danger-txt)" }}>{ok ? "✓" : "✗"}</b>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               <div className={styles.genSec}>
                 <h5>{zh.sim.gen.radar}</h5>
                 <RadarChart scores={s.scores} color={color} size={180} testId={`radar-${s.no}`} />
               </div>
-              <div className={styles.genSec}>
-                <h5>
-                  {zh.sim.gen.tradeoff}（{zh.sim.gen.gain} / {zh.sim.gen.give}）
-                </h5>
-                <div className={styles.gainGive}>
-                  {s.gain.map((g) => (
-                    <div key={g}>
-                      <span className={styles.gainTag}>{zh.sim.gen.gain}</span> {g}
-                    </div>
-                  ))}
-                  {s.give.map((g) => (
-                    <div key={g}>
-                      <span className={styles.giveTag}>{zh.sim.gen.give}</span> {g}
-                    </div>
-                  ))}
+              {upto(5) && (
+                <div className={styles.genSec}>
+                  <h5>
+                    {zh.sim.gen.tradeoff}（{zh.sim.gen.gain} / {zh.sim.gen.give}）
+                  </h5>
+                  <div className={styles.gainGive}>
+                    {s.gain.map((g) => (
+                      <div key={g}>
+                        <span className={styles.gainTag}>{zh.sim.gen.gain}</span> {g}
+                      </div>
+                    ))}
+                    {s.give.map((g) => (
+                      <div key={g}>
+                        <span className={styles.giveTag}>{zh.sim.gen.give}</span> {g}
+                      </div>
+                    ))}
+                  </div>
+                  {canAdopt && (
+                    <button className="btn sm primary" style={{ marginTop: 10 }} data-testid={`adopt-scheme-${s.no}`} onClick={onAdopt}>
+                      {zh.sim.gen.adopt}（路径 {s.pathKey}）
+                    </button>
+                  )}
                 </div>
-                {canAdopt && (
-                  <button className="btn sm primary" style={{ marginTop: 10 }} data-testid={`adopt-scheme-${s.no}`} onClick={onAdopt}>
-                    {zh.sim.gen.adopt}（路径 {s.pathKey}）
-                  </button>
-                )}
-              </div>
+              )}
             </div>
 
-            {/* PRD-IND §2.3-6：外部信号敏感性（s.extSensitivity 5×3） */}
-            {(s.extSensitivity?.length ?? 0) > 0 && (
+            {/* PRD-IND §2.3-6：外部信号敏感性（s.extSensitivity 5×3）——第 5 步「推荐与取舍」的论据。 */}
+            {upto(5) && (s.extSensitivity?.length ?? 0) > 0 && (
               <div style={{ marginTop: 8 }} data-testid={`extsens-${s.no}`}>
                 <h5 style={{ fontSize: 12, color: "var(--muted)", letterSpacing: 1, fontFamily: "var(--font-mono)" }}>{zh.sim.gen.extSens}</h5>
                 {s.extSensitivity!.map((e, i) => (
@@ -400,8 +499,8 @@ function SchemeCard({
               </div>
             )}
 
-            {/* PRD-IND §2.3-7：执行关键点 + 必须解决问题（结构化 n/rule/why/4 节点传导链）+ 硬违规清单 */}
-            {s.problems.length > 0 && (
+            {/* PRD-IND §2.3-7：执行关键点 + 必须解决问题（结构化 n/rule/why/4 节点传导链）+ 硬违规清单——第 5 步「推荐与取舍」的论据。 */}
+            {upto(5) && s.problems.length > 0 && (
               <div style={{ marginTop: 8 }}>
                 {s.focusKeys && (
                   <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }} data-testid={`focus-keys-${s.no}`}>
@@ -450,8 +549,10 @@ function SchemeCard({
         )}
       </div>
 
-      {/* audit.3：财务 KSF 图（audit/generate 共用同一组件，问题→KSF→财务指标 + 问题节点联动时序） */}
-      <KsfGraph testId="gen-ksf-graph" />
+      {/* audit.3：财务 KSF 图（audit/generate 共用同一组件，问题→KSF→财务指标 + 问题节点联动时序）。
+          WO-U3-DAG-SPLIT：点任意节点 →「凭什么」面板（来源+确定性投影规则·见 ksfNodeFacts）。 */}
+      <KsfGraph testId="gen-ksf-graph" onNodeInspect={setKsfInsp} />
+      <DagNodeInspector facts={ksfInsp ? ksfNodeFacts(ksfInsp) : null} onClose={() => setKsfInsp(null)} testId="dag-node-inspector" />
       {/* inference-process 横切：本次方案生成推演的编排过程 DAG */}
       <InferenceProcessPanel testId="inference-gen" solved />
     </div>
