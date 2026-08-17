@@ -190,7 +190,7 @@ describe("WO-SANDBOX-NAV-CONSOLIDATE · §B 可达侧（断言落在内容，不
     await user.click(within(bar).getByTestId("sandbox-attr-tab-process-wait"));
     // ⚠ 断言落在**该页特有的内容**：pw-summary 只在数据回来、模型建好之后才渲染 ——
     //   拿 `sandbox-attr-view-process-wait`（我自己造的壳）当判据就是「入口在、点了什么都没有」那个老坑。
-    expect(await screen.findByTestId("pw-summary", undefined, { timeout: 20000 })).toBeInTheDocument();
+    expect(await screen.findByTestId("pw-summary", undefined, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getByTestId("pw-root")).toBeInTheDocument();
     // 四态分组是这一页的主体（第五档「业务流程」没有它 —— 那一档只复用了检视面板）
     expect(screen.getByTestId("pw-dist")).toBeInTheDocument();
@@ -203,7 +203,7 @@ describe("WO-SANDBOX-NAV-CONSOLIDATE · §B 可达侧（断言落在内容，不
     expect(screen.queryByTestId("procurement-legs-root")).toBeNull();
 
     await user.click(within(bar).getByTestId("sandbox-attr-tab-procurement-legs"));
-    const root = await screen.findByTestId("procurement-legs-root", undefined, { timeout: 20000 });
+    const root = await screen.findByTestId("procurement-legs-root", undefined, { timeout: 8000 });
     expect(root).toBeInTheDocument();
     // 标题来自 workspace 下发的 ViewConfig（`view.title`）——证明这一档吃的是**同一份配置**，
     // 不是我在沙盘里现编了一个 view 对象塞进去。
