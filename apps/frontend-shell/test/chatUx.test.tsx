@@ -6,6 +6,8 @@
  *  A11 诚实层 scope 徽章：有才显示、缺则整格不出
  *  A12 诚实层降级理由：agent_degraded → notice 节点，reason 原值逐字
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -18,7 +20,7 @@ import { ThinkRow } from "@/components/QueryDock/ThinkRow";
 import { Timeline } from "@/components/QueryDock/Timeline";
 import { adaptSseEvents } from "@/sse/dshFrameAdapter";
 import { selectChatFlow, type AssistantBlock, type ChatNode, type ToolResultBlock } from "@/sse/chatFlowProjection";
-import type { StreamEvent, TaskStreamState } from "@/sse/taskStreamReducer";
+import { initialStreamState, taskStreamReducer, type StreamEvent, type TaskStreamState } from "@/sse/taskStreamReducer";
 
 const makeResult = (callId: string, name: string, subCalls: ToolResultBlock["subCalls"] = []): ToolResultBlock => ({
   kind: "tool-result",
@@ -258,5 +260,129 @@ describe("A17b N2 契约 Timeline 集成（stats 附加键 / agent_think·compac
     // think / compaction 经 ChatFlow 上屏
     expect(screen.getByTestId("think-row")).toBeInTheDocument();
     expect(screen.getByTestId("chat-compaction")).toHaveTextContent("Request was aborted");
+  });
+});
+
+/* ---------------------------------- A18 ---------------------------------- */
+
+describe("A18 coordinator.planned 兼容（集成线分栏 × N6 ChatFlow 互斥，审核方头号质疑）", () => {
+  it("coordinator.planned 到达 → 分栏渲染 + ChatFlow 不出 + 平铺双渲染零", () => {
+    const events: StreamEvent[] = [
+      {
+        id: "1",
+        event: "coordinator.planned",
+        data: { trigger: "t1", dispatches: [{ role: "supply_chain", agentId: "agent-sc", subQuestion: "库存够吗" }] },
+      },
+      { id: "2", event: "step.started", data: { stepId: "dispatch_0", type: "invoke_agent" } },
+      { id: "3", event: "step.completed", data: { stepId: "dispatch_0", type: "invoke_agent", outcome: "OK", durationMs: 5 } },
+      {
+        id: "4",
+        event: "step.completed",
+        data: {
+          stepId: "dispatch_0/narration-1",
+          type: "agent_narration",
+          text: "【供应链】先看库存",
+          role: "supply_chain",
+          roleLabel: "供应链",
+          iteration: 1,
+        },
+      },
+      // 平铺模式下会被 ChatFlow 消费的伪步——分栏模式必须抑制（双渲染比缺渲染更糟）
+      { id: "5", event: "step.completed", data: { stepId: "think-1-1-0", type: "agent_think", text: "推理" } },
+      { id: "6", event: "step.started", data: { stepId: "wf-1", type: "invoke_solver" } },
+      { id: "7", event: "step.completed", data: { stepId: "wf-1", type: "invoke_solver", outcome: "OK", durationMs: 3 } },
+    ];
+    // 全程过真 reducer（coordinator.planned case 落 state.coordinator，不手搓 state 抄近路）
+    let state = initialStreamState;
+    for (const frame of events) state = taskStreamReducer(state, { type: "event", frame });
+    expect(state.coordinator?.dispatches).toHaveLength(1);
+    render(<Timeline state={state} />);
+    // 分栏模式原生渲染
+    expect(screen.getByTestId("role-tracks")).toBeInTheDocument();
+    expect(screen.getByTestId("role-track-supply_chain")).toBeInTheDocument();
+    expect(screen.getByTestId("role-label-supply_chain")).toHaveTextContent("供应链");
+    expect(screen.getByTestId("role-subq-supply_chain")).toHaveTextContent("库存够吗");
+    // ChatFlow 整格不出（含 think/compaction 任何投影产物）
+    expect(screen.queryByTestId("chat-flow")).toBeNull();
+    expect(screen.queryByTestId("think-row")).toBeNull();
+    // 双渲染零：dispatch_0 与 ungrouped workflow 步全屏各只出现一次
+    expect(screen.getAllByTestId("step-dispatch_0")).toHaveLength(1);
+    expect(screen.getAllByTestId("step-wf-1")).toHaveLength(1);
+  });
+});
+
+/* ---------------------------------- A19 ---------------------------------- */
+
+describe("A19 接缝测试（SEAM-GATE：SSE→reducer→adapter→projection→ChatFlow 一竿到底）", () => {
+  // hist-multihop 黄金夹具全程喂真 reducer（含去重/状态机），经 Timeline 渲染——任一半漏即红
+  interface Envelope {
+    result: {
+      ok: boolean;
+      value: {
+        events: { event: { type: string; seq: number; time: number; data: Record<string, unknown> } }[];
+        projections: { values: Record<string, unknown> };
+      };
+    };
+  }
+  const env = JSON.parse(
+    readFileSync(join(process.cwd(), "test", "fixtures", "dsh", "hist-multihop.json"), "utf8"),
+  ) as Envelope;
+
+  /** POC/N2 映射（与 chatFlowProjection.test.ts A16 同款，测试自含防循环） */
+  const buildSse = (): StreamEvent[] => {
+    const out: StreamEvent[] = [];
+    let i = 0;
+    for (const f of env.result.value.events.map((e) => e.event)) {
+      const d = f.data;
+      if (f.type === "tool/call") {
+        out.push({ id: String(++i), event: "step.started", data: { stepId: d.callId, type: d.name, arguments: d.arguments } });
+      } else if (f.type === "tool/result") {
+        const r = (d.message as { content: { toolCallId: string; isError: boolean; content: { text?: string }[] }[] }).content[0]!;
+        out.push({
+          id: String(++i),
+          event: "step.completed",
+          data: { stepId: r.toolCallId, outcome: r.isError ? "ERROR" : "OK", text: r.content.map((c) => c.text ?? "").join("") },
+        });
+      } else if (f.type === "assistant/chunk" && (d.chunk as { type: string }).type === "text-delta") {
+        out.push({
+          id: String(++i),
+          event: "step.completed",
+          data: { stepId: `narration-${d.turn}-${d.step}`, type: "agent_narration", text: (d.chunk as { text: string }).text },
+        });
+      } else if (f.type === "assistant/chunk" && (d.chunk as { type: string }).type === "reasoning-delta") {
+        const c = d.chunk as { index: number; text: string };
+        if (c.text !== "") {
+          out.push({
+            id: String(++i),
+            event: "step.completed",
+            data: { stepId: `think-${d.turn}-${d.step}-${c.index}`, type: "agent_think", text: c.text },
+          });
+        }
+      }
+    }
+    // answer.final 附加键 stats = 夹具 projections.values（黄金三键原样）
+    out.push({ id: String(++i), event: "answer.final", data: { stats: env.result.value.projections.values } });
+    return out;
+  };
+
+  it("黄金流全程过 reducer 后同屏：工具树 6 根 + Think 行 ×7 + 统计条 93.3%", () => {
+    // ① SSE → taskStreamReducer（真状态机：append-only + 去重 + answer.final 落 state）
+    let state = initialStreamState;
+    for (const frame of buildSse()) state = taskStreamReducer(state, { type: "event", frame });
+    expect(state.status).toBe("completed");
+    // ② → Timeline（内部 adaptSseEvents → selectChatFlow → ChatFlow + TurnStatsBar）
+    const { container } = render(<Timeline state={state} />);
+    // 工具树 6 根（read_0..read_5）同屏
+    expect(screen.getByTestId("chat-flow")).toBeInTheDocument();
+    for (const callId of ["read_0", "read_1", "read_2", "read_3", "read_4", "read_5"]) {
+      expect(container.querySelector(`[data-chat-anchor-key="call:${callId}"]`)).not.toBeNull();
+    }
+    // Think 行 ×7（7 步各一块 reasoning）
+    expect(screen.getAllByTestId("think-row")).toHaveLength(7);
+    // 统计条同屏（黄金值：1 轮·7 步、命中率 93.3%）
+    expect(screen.getByTestId("turn-stats-rounds")).toHaveTextContent("1 轮·7 步");
+    expect(screen.getByTestId("turn-stats-cache")).toHaveTextContent("93.3%");
+    // 分栏不抢戏（非 Coordinator 任务 tracks 为空）
+    expect(screen.queryByTestId("role-tracks")).toBeNull();
   });
 });
