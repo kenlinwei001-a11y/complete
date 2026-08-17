@@ -178,17 +178,26 @@ const JARGON = [
   {
     /**
      * ══ 误伤排查的实测记录（2026-08-17，WO 明令「先 `--list` 逐条看再定正则」）══════
-     * 宽版正则（`/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/`，"全大写下划线"）两面合计命中 **48 条**，
-     * 逐条看完 48 条之后，**这条规则自己的前提被证伪了**：
-     *   **「全大写下划线」根本不度量「环境变量」—— 48 条里真·环境变量只有 3 条。**
+     * 宽版正则（`/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/`，"全大写下划线"）两面合计命中
+     * **53 条 / 31 个不同名字**（基线提交 `0ce67ff3`，即本单动文案之前的那棵树）。
+     * 逐条看完之后，**这条规则自己的前提被证伪了**：
+     *   **「全大写下划线」根本不度量「环境变量」—— 53 条里真·环境变量只有 3 条（2 个名字）。**
      * 形态（铁律 0.6 句式）：**「我用『长得像环境变量』当作『是环境变量』的证据，
-     * 而前者并不度量后者。」** 48 条实际是**三个不同的population**，修法各不相同：
+     * 而前者并不度量后者。」** 53 条实际是**三个不同的 population**，修法各不相同：
      *
-     *  | population | 例（实测原文） | 定性 | 该不该咬 |
-     *  |---|---|---|---|
-     *  | **产品语义的状态/枚举值** | `TICK_DRIVEN`（推演时钟态）· `PLAN_LOCKED`（409 码）· `IN_REVIEW`（审批态）· `SAT_SUN_OFF`（工作日口径，屏上紧跟中文解释）· `DERIVED_FROM_DOCUMENT`（溯源口径）· `CUSTOMS_BROKER`（清关段） | 用户读得懂、**读了能做决定** ⇒ 判据对它答得出来 | **不咬**（咬了这道门就会因噪声被关掉） |
-     *  | **内部常量/注册表名** | `SEG_REGISTRY` · `CHAIN_NODE_REGISTRY` · `BASE_REGISTRY` · `CHAIN_STAGES` · `PROCUREMENT_LEGS` · `RING_LAYOUT` · `RAMP_PROFILE` · `SOLVER_FIELD_ROLES` | 只存在于源码里的**容器名**，用户无从知道也无从行动 | **咬**（但它是**另一个形态**，见下一条 `内部常量名`） |
-     *  | **真·部署期环境变量** | `SEED_DEMO`（zh.ts:2649）· `OPTIMIZER_BASE_URL`（×2） | 运维配置 | **咬**（就是本条） |
+     *  | population | 条数 | 例（实测原文） | 定性 | 该不该咬 |
+     *  |---|---:|---|---|---|
+     *  | **产品语义的状态/枚举值** | **29** | `TICK_DRIVEN`(4)（推演时钟态）· `NO_CARRIER_OBJECTS`(4) · `NOT_TICK_DRIVEN`(3) · `IN_REVIEW`(2)（审批态）· `NOT_APPLIED`(2) · `PLAN_LOCKED`（409 码）· `SAT_SUN_OFF`（工作日口径，屏上紧跟中文解释）· `DERIVED_FROM_DOCUMENT`（溯源口径）· `CUSTOMS_BROKER`（清关段）· `OUT_OF_CATALOG` · `PENDING_APPROVAL` · `IN_PROGRESS` … | 用户读得懂、**读了能做决定** ⇒ 判据对它答得出来 | **不咬**（咬了这道门就会因噪声被关掉） |
+     *  | **内部常量/注册表名** | **21** | `CHAIN_NODE_REGISTRY`(6) · `BASE_REGISTRY`(4) · `SEG_REGISTRY`(3) · `CHAIN_STAGES` · `PROCUREMENT_LEGS` · `RING_LAYOUT` · `RAMP_PROFILE` · `SOLVER_FIELD_ROLES` · `BREAKING_CHANGE_WITH_LATEST_REFS` · `BATTERY_PROCESS_FLOW_RULES` · `DEMO_PROCESS_DEFINITIONS` | 只存在于源码里的**容器名**，用户无从知道也无从行动 | **咬**（但它是**另一个形态**，见下一条 `内部常量名`） |
+     *  | **真·部署期环境变量** | **3** | `SEED_DEMO`（zh.ts:2649）· `OPTIMIZER_BASE_URL`（×2） | 运维配置 | **咬**（就是本条） |
+     *
+     * ⚠ **本表原写「48 条」，2026-08-17 续跑独立复算订正为 53** —— 旧数是中途量的
+     *   （文案已改掉一部分），当成"改之前的存量"读会低估。**写死的数字天生带保质期**，
+     *   故此处连同**复现命令与基线提交**一起记，让下一个人能自己再算一遍：
+     *     把宽版正则临时注入本文件的 `JARGON` 首位 → 调 `analyze()` 走全扫描面 →
+     *     按 `form === "宽版全大写下划线"` 收集。⚠ 必须**复用本文件的 `analyze()`**，
+     *     另抄一份抽取器 = 两套真相，量出来的数不指向这道门。
+     *   同口径在**当前树**上是 **34 条 / 22 个名字**（文案改动清掉了 19 条）。
      *
      * ⛔ **没有把正则收紧到"只咬我改完的那几条"**（那是买绿）。名单**不是我手列的**，
      *    是**从仓库自己的两个真相源现算**出来的（见 `deployEnvNames()`）：
@@ -216,8 +225,23 @@ const JARGON = [
      * ⚠ `CATALOG` 刻意**不在**表里：实测 `OUT_OF_CATALOG` 是个状态码（"不在目录内"），
      *   收进来就会误伤 —— 中心词判据必须逐个对着实测样例验，不能凭语感拍。
      */
+    /**
+     * ══ 2026-08-17 续跑复核补 `RULES|DEFINITIONS` 两个词尾 ═══════════════════════
+     * 复核方法（不是眼睛扫的）：把「全大写下划线」宽版正则**临时注入这份 `JARGON`**
+     * 跑一遍 `analyze()`（复用同一份实现，不另抄），拿它的全量命中当**分母**，
+     * 逐条对照本条正则的命中当**分子**，差集就是"是容器名但本条咬不到"的那些。
+     * 基线提交 `0ce67ff3` 实测：宽版 53 条 / 31 个名字，其中容器名 21 条 / 11 个名字，
+     * 本条当时只咬得到 9 个名字 —— 漏的两个是
+     * **`BATTERY_PROCESS_FLOW_RULES`**（词尾 `_RULES`）与
+     * **`DEMO_PROCESS_DEFINITIONS`**（词尾 `_DEFINITIONS`，原表只有缩写 `_DEFS`）。
+     * 形态（铁律 0.6 句式）：**「我用『词尾表里有 `_DEFS`』当作『写全称 `_DEFINITIONS`
+     * 的那个也咬得到』的证据，而前者并不度量后者。」**
+     * ⚠ 补这两个词尾**不是为了把数字做好看**：这两条在**当前树上已经被文案改动清掉了**，
+     *   补进去**当前普查数一条不变**（实测 46 → 46），补的是**以后**再写一个
+     *   `XXX_RULES` 上屏时有没有人拦 —— 只堵已发生的那一条叫买绿，堵规则才算修。
+     */
     form: "内部常量名",
-    re: /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*_(REGISTRY|STAGES|LEGS|LAYOUT|PROFILE|ROLES|REFS|DEFS|TABLE|CONFIG)\b/,
+    re: /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*_(REGISTRY|STAGES|LEGS|LAYOUT|PROFILE|ROLES|REFS|DEFS|DEFINITIONS|RULES|TABLE|CONFIG)\b/,
     why: "源码里的常量/注册表名（用户无从知道也无从行动；换成业务说法或移进 title 悬浮）",
   },
 ];
@@ -564,6 +588,30 @@ CANARIES.push({
   src: `export const zh = { a: { s: "该物料不在目录内（OUT_OF_CATALOG），请先补目录再下单" } };`,
   expect: (h) => h.length === 0,
 });
+
+/**
+ * **必咬-10 · 词尾表补漏的回归钉**（2026-08-17 续跑）。
+ *
+ * 这两个名字是拿宽版正则做分母、逐条对差集**实测**出来的漏网（基线 `0ce67ff3`：
+ * `BATTERY_PROCESS_FLOW_RULES` 与 `DEMO_PROCESS_DEFINITIONS` 是容器名却咬不到，
+ * 因为原词尾表只有缩写 `_DEFS`、没有全称 `_DEFINITIONS`，也没有 `_RULES`）。
+ *
+ * ⚠ **为什么必须钉成金丝雀而不是只改正则**：那两条在当前树上已被文案改动清掉了 ⇒
+ *   普查数补前补后都是 46，**光看门的输出根本分辨不出这次收紧有没有生效**。
+ *   没有这两条断言，下一个人把词尾表改回去，门照样全绿、一个字都不说。
+ *   （本仓：写在注释里的纪律不是机制，写成断言才是。）
+ */
+for (const [nm, sample] of [
+  ["_RULES 全称词尾", "本页规则取自 BATTERY_PROCESS_FLOW_RULES，今天为空"],
+  ["_DEFINITIONS 全称词尾（原表只有缩写 _DEFS）", "流程清单来自 DEMO_PROCESS_DEFINITIONS 这张表"],
+]) {
+  CANARIES.push({
+    name: `必咬-10 [locale] 容器名词尾表补漏：${nm}`,
+    file: "apps/frontend-shell/src/locales/zh.ts",
+    src: `export const zh = { a: { s: ${JSON.stringify(sample)} } };`,
+    expect: (h) => h.some((x) => x.form === "内部常量名"),
+  });
+}
 
 for (const [form, sample] of FORM_LIVENESS) {
   CANARIES.push({
