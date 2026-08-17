@@ -189,14 +189,22 @@ describe("B · dependsOn 出厂数据（消费方此前从不触发）", () => {
 
     // 正对照：基础边仍在（workflow→solver）——证投影确实跑了，下面的 skill 边不是凭空造的。
     expect(rels.some((r) => r.fromKind === "workflow" && r.toKind === "solver" && r.relType === "invokes")).toBe(true);
-    // 接线产出①：种子 sop_meeting --dependsOn--> capacity_analysis 真落表（两端皆在册的 skill）。
-    expect(
-      rels.some(
-        (r) =>
-          r.fromKind === "skill" && r.fromKey === "sop_meeting" &&
-          r.relType === "dependsOn" && r.toKind === "skill" && r.toKey === "capacity_analysis",
-      ),
-    ).toBe(true);
+    // 接线产出①：种子里每条 kind=skill 的 dependsOn 都真落表（期望从种子现算，不手抄键名——
+    // 本体旧文曾把这条边记在 sop_meeting 头上，实测持有者是 capacity_action_draft，手抄键名必漂移）。
+    const seedDeps = skills.flatMap((s) =>
+      (s.dependsOn ?? []).filter((d) => d.kind === "skill").map((d) => ({ from: s.key, to: d.key })),
+    );
+    expect(seedDeps.length).toBeGreaterThanOrEqual(1);
+    for (const e of seedDeps) {
+      expect(
+        rels.some(
+          (r) =>
+            r.fromKind === "skill" && r.fromKey === e.from &&
+            r.relType === "dependsOn" && r.toKind === "skill" && r.toKey === e.to,
+        ),
+        `dependsOn 边 ${e.from}→${e.to} 未落 resource_relations`,
+      ).toBe(true);
+    }
     // 接线产出②：种子里 6 条非空 references 至少一条真落表（目标为在册 solver/workflow/rule）。
     expect(rels.some((r) => r.fromKind === "skill" && r.relType === "references")).toBe(true);
   });

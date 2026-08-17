@@ -102,7 +102,7 @@ export interface IntelligenceResourceRow {
   updatedAt: string;
 }
 
-/** resource_relations：资源间关系（reads/scopes/invokes/binds/includes）。 */
+/** resource_relations：资源间关系（reads/scopes/invokes/binds/includes/references/dependsOn·枚举真值在契约 RESOURCE_RELATION_TYPES）。 */
 export interface ResourceRelationRow {
   tenantId: string;
   fromKind: string;
