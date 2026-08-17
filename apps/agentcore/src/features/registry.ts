@@ -57,7 +57,7 @@ export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
   },
   {
     key: "view.project-sim",
-    name: "项目推演",
+    name: "接单可行性",
     level: "VIEW",
     defaultOn: true,
     bindings: { intents: ["capacity_feasibility"], solverKeys: ["capacity_forecast"], apiTags: ["project-sim"] },

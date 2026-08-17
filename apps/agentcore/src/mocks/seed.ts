@@ -879,7 +879,7 @@ export function seedSceneEntries(): SceneEntryConfig[] {
     {
       id: "scn_project_sim", tenantId: SEED_TENANT, viewKey: "project-sim", mode: "WORKFLOW_FIRST",
       uiHints: {
-        placeholder: "项目推演，如：常州基地 4680-NCM 未来六周需求加 20% 能不能接？",
+        placeholder: "接单可行性，如：常州基地 4680-NCM 未来六周需求加 20% 能不能接？",
         suggestedQuestions: ["常州基地 4680-NCM 未来六周需求加 20% 能不能接？"],
       },
       ...history("project-sim"),
