@@ -10,11 +10,24 @@
  * ── 字号档（实测，可复算：源码里 `font-size:` 与 `fontSize:` 逐处抽取）───────────────
  *    改前：`EdgeActivePanel.tsx` 内联 9 处 —— **12px×8 + 13px×1**，最小 12px；
  *          其中 **3 处是 12px 的 `<code>`**（等宽字在同 px 下视觉更小，是「字号过小」观感的主因）。
- *    改后：**13.5px×2（行主标题）· 12px×5（chip/正文）· 11.5px×4（系统键/元信息）· 11px×1（tag 徽标）**
- *    参照物口径：body 13.5 / label 11.5 / small 10 —— 本表与它同档。
- *    ⚠ **最小是 11px 不是 11.5px**：`.derivedTag` 是徽标不是正文，单列一档。
- *      这句话必须写准 —— 初稿此处写「没有任何一档低于 11.5px」，而实际有一处 10.5px，
- *      是**注释在替代码撒谎**；已把 tag 提到 11px 并把这一档如实写出来。
+ *    WO-DISRUPTION-CARDS 后：13.5px×2 · 12px×5 · 11.5px×4 · 11px×1，最小 11px。
+ *    **现在（2026-08-17 WO-SANDBOX-LAYOUT-HARNESS）：13.5px×2（行主标题）· 12px×10，最小 12px。**
+ *
+ *    ⚠ **11.5px×4 + 11px×1 这五处已全部提到 12px**，原因不是审美偏好，是**两道门同时咬**：
+ *      · `check-text-legibility.mjs` 的 **B 字号硬底 12px**（`FLOOR_PX`，非自由参数）——
+ *        本文件曾以 `0 → 5（+5）` 挂在它的红名单上；
+ *      · 新建的 `layout-legibility:check` 在**真浏览器**里量到 `sim-sandbox` 最小字号 11px，
+ *        低于同一个 12px 硬底（`.derivedTag` 与 `.rowMeta` 各一处渲染在该页上）。
+ *      两道门一静一动、各自独立地指向同一批规则 ⇒ 直接提到 12px，不申请豁免。
+ *      副作用（好的那种）：`.offMark` 的对比度也跟着达标了 ——
+ *      判据 `required = max(3.0, 72/S_eff)` 在 11.5px 要 6.26 而实测 6.05（红），
+ *      提到 12px 后只要 6.0，同一个颜色当场转绿。**字号不只是字号，它进对比度公式。**
+ *
+ *    ⚠ 参照物口径（body 13.5 / label 11.5 / small 10）**不再逐档照抄** ——
+ *      那是另一个产品的一屏，且它那几档装的是拉丁字母与数字，本页这几档装的是中文。
+ *      本仓自己的 12px 硬底可推导、有来历，优先级高于「跟参照物同档」。
+ *    ⚠ 本段历史教训照留：初稿此处写「没有任何一档低于 11.5px」，而实际有一处 10.5px，
+ *      是**注释在替代码撒谎**。改字号必须同步改这一段，否则下一个人会信注释不信代码。
  */
 
 .panel {
@@ -129,7 +142,7 @@
 .rowKeys {
   display: block;
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--muted);
   word-break: break-all;
@@ -138,7 +151,7 @@
 /* 数值列：系数/延迟。这两个数是这条边的身份（改哪条边就看它们），故等宽、不换行。 */
 .rowMeta {
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
   text-align: right;
@@ -155,14 +168,14 @@
   background: var(--panel);
   color: var(--muted);
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
 }
 .offMark {
   color: var(--danger-txt);
   white-space: nowrap;
   font-family: var(--font-sans);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 .note {
@@ -199,7 +212,7 @@
   padding: 3px 8px 3px 0;
 }
 .diff code {
-  font-size: 11.5px;
+  font-size: 12px;
 }
 .up {
   color: var(--danger-txt);
