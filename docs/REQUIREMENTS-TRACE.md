@@ -210,3 +210,17 @@ TS 允许少写形参实现接口，于是 mock 的**具体类型比契约窄**�
    - **全量**：30 个视图逐个核对三处名字（功能名 / 视图标题 / 页内大标题），**分歧 5 处**，定性四类。
    - **门已上线**：`name-consistency:check`（`scripts/check-name-consistency.mjs`）—— 不替仓主拍板「叫哪个名字」，只守「**不一致的必须登记过**」：存量挂 `DECLARED` 等裁决，新增未登记分歧一律红。本体 §8 `G-NAME-DUAL-LABEL`。
    - **待裁决 4 条**（每条已给推荐 + 连坐面）：🔴 `plan-generate` 导航标题 →「规划建议」（改 2 处）· 🟠 `risk` 功能名 →「产能推演」（改 4 处）· 🟢 `dash` 不改 · 🟢 `process-stuck` 不改（要动就另开 WO 拆键）。
+7. **接单组合优选页的「活系统」块要不要开门**（`G-GSIM-LIVE-FLAG-STALE` · WO-GSIM-COCKPIT-NL 2026-08-17 取证）
+   - **裁的是一件事**：`apps/datacore/src/features.ts:112` 的 `{ key: "view.global-sim.live", defaultOn: false }` —— **翻成 `true`，还是维持暗发**。
+   - **为什么现在才该裁**：这个开关当初关着的**行内理由写的是「真后端 `/b/v1/sim/compose` · `/a/v1/sim/scenarios` 端点未落 → defaultOff 不渲染避 404」，而这两个端点都已经落了** ——
+     `apps/agentcore/src/server.ts:2364`（+ `router/live-endpoints.ts`）与 `apps/datacore/src/app.ts:2535 / :2546 / :2553 / :2565`（含 `/compare` 与 `/:id/branch`）。**理由过期了，开关没跟着动。**
+   - **关着的后果**：页内 NL 框 `GlobalSimNlDock`（`GlobalSimView.tsx:590`，外面包着 `<Feature flag="view.global-sim.live">`）在**真部署态不渲染**；
+     而 mock 侧 `apps/frontend-shell/src/mocks/fixtures.ts:183` 是 `defaultOn: true` ⇒ **前端测试与 mock 里看得见、真部署看不见**。
+     ⚠️ 这正是「绿测试≠能用」的形态 —— **不要拿前端绿判定这块已交付**。
+   - **⚠️ 别误读成「这页问不了」**：共享问答坞 `QueryDock` 归 `shell.query-dock` 管，datacore `features.ts:36` 是 **`defaultOn: true`**
+     ⇒ 真部署态本页问答**在线，且上下文正确**（`pageContext.view === "global-sim"`，接缝证据 `test/gsim-cockpit-nl.seam.test.tsx`）。
+     所以本条裁的是「**页内那块活系统 NL/方案存比要不要露出**」，不是「这页能不能问」。
+   - **为什么不自己翻**：feature flag defaultOn 属产品/治理决策（CLAUDE.md 铁律 0.6 第 3 条明确点名的那一类），做错要返工且影响所有租户。
+   - **裁完即可派的单**（两条，互不依赖）：
+     ① `WO-GSIM-LIVE-OPENDOOR`：翻 `defaultOn` + 把那行**过期的行内理由**改掉（留着比没有更危险，会让下一个人以为端点还没落）+ 补一条真端点在位的接缝断言。
+     ② `WO-GSIM-LIVE-FLAG-REASON`（**无论怎么裁都该做**）：仅订正 `features.ts:112` 的行内理由使其与 ④ 的事实一致；维持暗发的话就把真实理由写清楚（是产品节奏，不是端点没落）。
