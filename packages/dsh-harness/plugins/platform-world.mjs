@@ -13,6 +13,7 @@
 
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { getAdjudicator } from './platform-governance.mjs'
+import { installStallLoopWatchdog } from './platform-watchdog.mjs'
 
 /** agent 级 system prompt section 的固定名/序（root persona 是 order 0，agent 追加其后）。 */
 export const AGENT_PERSONA_SECTION = 'platform:agent-persona'
@@ -157,4 +158,9 @@ export async function applySetupSpec(agentCtx, spec) {
       return next()
     })
   }
+
+  // --- N3 · STALL_LOOP 看门狗：scoped tools/post-execute 计数 + 两档升级 ---
+  // 与上方 pre-execute 治理闸同层同 scope（同 scopeTarget 分发模式）；cap 与出货 compose
+  // 同一 env 源（子进程 process.env.QOS_AGENT_LOOP_REPEAT_CAP），缺省禁用 = 零挂载。
+  installStallLoopWatchdog(agentCtx)
 }

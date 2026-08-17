@@ -139,6 +139,65 @@ describe("reassemble · turn/end → outcome", () => {
   });
 });
 
+describe("reassemble · N3 stall-loop 分类（C1-C3）", () => {
+  // N3 watchdog 的 turn/end abort cause 帧形（dsh-agent-loop index.js:575-580 实证）：
+  // data.reason = {kind:'aborted', reason:{kind:'stall-loop', tool, count, cap}}。
+  const stallTurnEnd = (cap: number): DshSessionEvent => ({
+    type: "turn/end",
+    data: { turn: 1, reason: { kind: "aborted", reason: { kind: "stall-loop", tool: "echo_tool", count: cap, cap } } },
+  });
+  const toolResult = (toolCallId: string, isError: boolean, text = "ok"): DshSessionEvent => ({
+    type: "tool/result",
+    data: { turn: 1, step: 1, message: { content: [{ type: "tool-result", toolCallId, content: [{ type: "text", text }], isError }] } },
+  });
+  const stallFrames = (cap: number) => [
+    toolCall("c1", "echo_tool", { text: "same" }),
+    toolResult("c1", false, "echo-1"),
+    toolCall("c2", "echo_tool", { text: "same" }),
+    toolResult("c2", true, "boom"), // 失败调用不进 provenance（loop.ts:644-656 仅 OK 调用同口径）
+    toolCall("c3", "echo_tool", { text: "same" }),
+    toolResult("c3", false, "echo-3"),
+    stallTurnEnd(cap),
+  ];
+
+  it("C1 合成帧流 → ok:true ∧ BUDGET_EXHAUSTED ∧ degraded STALL_LOOP ∧ 诚实块含 cap ∧ provenance 仅成功 callId", () => {
+    const r = reassembleDshRun(stallFrames(3), { newProvId: provIds });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.outcome).toBe("BUDGET_EXHAUSTED");
+    expect(r.degraded).toEqual({ reason: "STALL_LOOP" });
+    expect(r.answer.blocks[0]).toMatchObject({ type: "text" });
+    const header = (r.answer.blocks[0] as { markdown: string }).markdown;
+    expect(header).toContain("检测到无进度循环"); // 镜像 loop.ts:620-632 诚实头
+    expect(header).toContain("loopRepeatCap=3"); // cap 从帧 cause 取（reassemble 保纯不读 env）
+    expect(r.answer.provenance.map((p) => p.toolCallId)).toEqual(["c1", "c3"]); // c2 isError 排除
+    for (const p of r.answer.provenance) {
+      expect(p.outputPath).toBe("$");
+      expect(p.toolName).toBe("echo_tool");
+    }
+  });
+
+  it("C2 expectsSchema + stall-loop 帧流 → 仍 STALL_LOOP 降级（分类前置，非 ok:false 重组装拒绝）", () => {
+    const r = reassembleDshRun(stallFrames(3), { expectsSchema: { type: "object" } });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.outcome).toBe("BUDGET_EXHAUSTED");
+    expect(r.degraded).toEqual({ reason: "STALL_LOOP" });
+  });
+
+  it("C3 普通 aborted（cause.kind≠stall-loop）→ 仍 FAILED（分类不误吞）", () => {
+    const disposed: DshSessionEvent = {
+      type: "turn/end",
+      data: { turn: 1, reason: { kind: "aborted", reason: { kind: "disposed" } } },
+    };
+    const r = reassembleDshRun([toolCall("c1", "echo_tool", {}), disposed]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.outcome).toBe("FAILED");
+    expect(r.degraded).toBeUndefined();
+  });
+});
+
 describe("SSE 桥 createSseMapper", () => {
   it("tool/call → step.started {stepId=callId, type=name}（loop.ts:844 同形）", () => {
     expect(createSseMapper()(toolCall("call_1", "echo_tool", { a: 1 }))).toEqual({

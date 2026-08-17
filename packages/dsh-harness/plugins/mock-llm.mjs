@@ -2,8 +2,52 @@
 // 剧本默认：第一轮调 echo_tool，第二轮纯文本收尾 —— 与路 A 同一剧本。
 // S3 起支持 env MOCK_SCENARIO=final_answer：第一轮调 final_answer（blocks+provenance），
 // 第二轮文本收尾 —— 取证 scoped final_answer 注册过 wire。
+// N3 起支持 MOCK_SCENARIO=stall_loop / stall_loop_varying（watchdog 集成臂有界剧本）：
+//   stall_loop         = 8 轮**同参** echo_tool + 文本收尾（病态同签名循环，对位 native ③ 的 24 轮同参 query_objects）
+//   stall_loop_varying = 8 轮**每轮异参** echo_tool + 文本收尾（不误伤对照组：签名含入参，异参不累加）
+//   stall_loop_meta    = 8 轮**同参 final_answer** + 文本收尾（M2 补咬臂：meta 工具守卫
+//                        platform-watchdog.mjs:93 生效时 final_answer 同参重复不得触发环检测；
+//                        守卫 neuter 后同参 final_answer 达 cap ⇒ watchdog cancel ⇒ 断言红）
+// call id 用 requests.length 唯一化（帧流 callId 不复用）；剧本有界 ⇒ 负例/变异臂不等 120s 默认超时。
 export const name = 'mock-llm'
 export const inject = ['llm']
+
+const STALL_ROUNDS = 8
+
+function stallCallChunks(callId, args, name = 'echo_tool') {
+  return [
+    { type: 'block-start', index: 0, blockType: 'tool-call' },
+    { type: 'tool-call-delta', index: 0, id: callId, name, argumentsDelta: args },
+    { type: 'block-end', index: 0, block: { type: 'tool-call', id: callId, name, arguments: args } },
+    { type: 'usage', usage: { inputTokens: 10, outputTokens: 5 } },
+    { type: 'finish', reason: { kind: 'tool-calls' } },
+  ]
+}
+
+const stallTextChunks = [
+  { type: 'block-start', index: 0, blockType: 'text' },
+  { type: 'text-delta', index: 0, text: 'stall scenario done' },
+  { type: 'block-end', index: 0, block: { type: 'text', text: 'stall scenario done' } },
+  { type: 'usage', usage: { inputTokens: 20, outputTokens: 6 } },
+  { type: 'finish', reason: { kind: 'stop' } },
+]
+
+function stallScenarioChunks(scenario, round) {
+  if (round <= STALL_ROUNDS) {
+    if (scenario === 'stall_loop_meta') return stallCallChunks(`call_${round}`, metaStallArgs, 'final_answer')
+    const args = scenario === 'stall_loop' ? '{"text":"same"}' : `{"text":"vary-${round}"}`
+    return stallCallChunks(`call_${round}`, args)
+  }
+  if (round === STALL_ROUNDS + 1) return stallTextChunks
+  return null // 剧本耗尽
+}
+
+// stall_loop_meta 臂的 final_answer 入参：8 轮**同一份** blocks（同签名 ⇒ 守卫摘除即累加达 cap）。
+const metaStallArgs = JSON.stringify({
+  blocks: [{ type: 'text', markdown: 'meta stall same answer' }],
+  provenance: [],
+})
+
 
 const finalAnswerArgs = JSON.stringify({
   blocks: [{ type: 'text', markdown: 'structured answer via dsh final_answer' }],
@@ -47,7 +91,8 @@ const scriptEcho = [
 
 export function apply(ctx) {
   const requests = []
-  const script = process.env.MOCK_SCENARIO === 'final_answer' ? scriptFinalAnswer : scriptEcho
+  const scenario = process.env.MOCK_SCENARIO
+  const script = scenario === 'final_answer' ? scriptFinalAnswer : scriptEcho
   ctx.llm.registerAdapter(['mock'], {
     providerInfo: (provider) => ({ id: provider, name: provider }),
     providerRetryPolicy: () => undefined,
@@ -55,6 +100,12 @@ export function apply(ctx) {
     resolveModel: (provider, model) => ({ provider, id: model, name: model }),
     async *stream(options) {
       requests.push(options)
+      if (scenario === 'stall_loop' || scenario === 'stall_loop_varying' || scenario === 'stall_loop_meta') {
+        const chunks = stallScenarioChunks(scenario, requests.length)
+        if (!chunks) throw new Error('mock script exhausted')
+        for (const c of chunks) yield c
+        return
+      }
       const chunks = script.length ? script.shift() : null
       if (!chunks) throw new Error('mock script exhausted')
       for (const c of chunks) yield c

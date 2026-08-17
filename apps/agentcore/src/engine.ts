@@ -534,6 +534,7 @@ export class ExecutionEngine {
         ...dsh.result.answer,
         ...(dsh.result.stats ? { stats: dsh.result.stats } : {}),
       };
+      if (dsh.result.degraded?.reason === "STALL_LOOP") this.deps.metrics.agentLoopRepeat.inc(); // N3：对位 loop.ts:641（两 fork 互斥无双计）
       return {
         outcome: dsh.result.outcome,
         answer,
