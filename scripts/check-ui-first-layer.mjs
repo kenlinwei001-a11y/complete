@@ -205,19 +205,37 @@ const BASELINE = join(ROOT, "scripts/ui-first-layer-baseline.json");
 const SPEC = "docs/CONVENTION-ui-information-layering.md";
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * 扫描面
- * ⚠ 目录深度必须用 `-maxdepth` 语义逐层枚举，**不要用 git pathspec 的 `*`**：
+ * 扫描面（2026-08-18 · WO-GATE-ROSTER-SWEEP-2 · 闭断点 G-GATE-ROSTER-HANDCOPIED 本条）
+ *
+ * **旧形态（手抄名单）**：`SCAN_DIRS` 写死三个目录 + 深度上限（views 顶层 / views 二层 /
+ * pages/admin 一层）——「默认排除、纳入具名」。实测全仓 `apps/frontend-shell/src` 下
+ * 182 个 `.tsx`，旧面只问到 128 个：**`components/**`（44 个，含 Answer/QueryDock/Dag/
+ * CausalGraph/Provenance 等真上屏组件）· `pages/` 非 admin（7）· `src` 顶层（App.tsx/
+ * main.tsx）· `workspace/featureGate.tsx` 共 54 个文件从未被这门问过一句，于是永远绿**，
+ * 正是断点 G-GATE-ROSTER-HANDCOPIED 点名的「差集」。
+ * 形态（铁律 0.6 句式）：「我用『名单里那几个都合格』当作『所有该合格的都合格』的证据，
+ * 而前者并不度量后者。」判据一句话：「这个集合会随仓库演进而变吗？」—— `.tsx` 文件
+ * 集合天天在变 ⇒ 必须现算，不许手抄。
+ *
+ * **修法（与 check-screen-value-provenance 同一条）**：方向翻成「**默认纳入、例外具名**」——
+ * 扫描面 = `SCAN_ROOT` 下全部 `.tsx` **现算**（文件系统枚举，一个文件名都不手抄）。
+ * 明天在 `src/` 下任何位置新写一个上屏组件，自动进扫描面；要写死的是**排除判据**
+ * （`EXCLUDE_RE`，每条带理由、会被 review），不是纳入名单。
+ *
+ * ⚠ 枚举用 `readdirSync` 逐层走，**不要用 git pathspec 的 `*`**：
  *   实测 `git ls-files -- 'apps/frontend-shell/src/views/*.tsx'` 命中 **47**（`*` 跨 `/`，
  *   把 `views/sim/**` 也算进顶层），而真正的顶层只有 **11**。
  *   本仓 CLAUDE.md 铁律 0.5 第 5 条记的就是这类"命令本身会骗你"。
  * ═══════════════════════════════════════════════════════════════════════════ */
-const SCAN_DIRS = [
-  { dir: "apps/frontend-shell/src/views", depth: 1, label: "views 顶层" },
-  { dir: "apps/frontend-shell/src/views", depth: 2, onlyDepth: 2, label: "views 二层（含沙盘 sim/）" },
-  { dir: "apps/frontend-shell/src/pages/admin", depth: 1, label: "pages/admin" },
-];
-/** 扫描面规模下界（金丝雀）——真实数 95；掉到下界以下 ⇒ 枚举器坏了，不是文件没了。 */
-const MIN_FILES = 80;
+const SCAN_ROOT = "apps/frontend-shell/src";
+/**
+ * 排除判据（**例外具名**，每条带理由 —— 与「纳入具名」方向相反，这是刻意的）：
+ *  · 当前**为零条**：`src` 下 182 个 `.tsx` 全是屏上产物（views/pages/components/workspace/
+ *    顶层壳），没有该豁免的。哪天真有了（如纯逻辑渲染无关的 tsx），在这里具名并写清理由。
+ */
+const EXCLUDE_RE = [];
+/** 扫描面规模下界（金丝雀）——现算后实测 182；掉到下界以下 ⇒ 枚举器坏了，不是文件没了。 */
+const MIN_FILES = 150;
 
 /* ── 浮层 / 第二层 组件名（进了它的子树 = 不在第一层）───────────────────────── */
 const DEFER_COMPONENT_RE =
@@ -735,36 +753,24 @@ function listScanFiles(rev) {
       if (matchesScan(f)) out.push(f);
     }
   } else {
-    for (const s of SCAN_DIRS) {
-      const abs = join(ROOT, s.dir);
-      if (!existsSync(abs)) continue;
-      walkDir(abs, s.dir, s.onlyDepth ? 2 : 1, s.onlyDepth || 1, out);
-    }
+    walkDir(join(ROOT, SCAN_ROOT), SCAN_ROOT, out);
   }
   return [...new Set(out)].sort();
 }
 
+/** --rev 模式与工作目录模式**共用同一份归属判据**：`SCAN_ROOT` 下、`.tsx`、不命中 EXCLUDE_RE 具名例外。 */
 function matchesScan(f) {
-  const V = "apps/frontend-shell/src/views/";
-  const A = "apps/frontend-shell/src/pages/admin/";
-  if (f.startsWith(A)) return f.slice(A.length).split("/").length === 1;
-  if (f.startsWith(V)) {
-    const rest = f.slice(V.length).split("/");
-    return rest.length === 1 || rest.length === 2;
-  }
-  return false;
+  return f.startsWith(SCAN_ROOT + "/") && !EXCLUDE_RE.some((re) => re.test(f));
 }
 
-function walkDir(abs, rel, wantDepth, exactDepth, out, cur = 1) {
+/** 全递归收集 .tsx（深度不限 —— 深度白名单就是手抄名单的另一种写法，已随 SCAN_DIRS 一起退役）。 */
+function walkDir(abs, rel, out) {
   for (const e of readdirSync(abs)) {
     const p = join(abs, e);
     const r = `${rel}/${e}`;
     const st = statSync(p);
-    if (st.isDirectory()) {
-      if (cur < 2) walkDir(p, r, wantDepth, exactDepth, out, cur + 1);
-    } else if (e.endsWith(".tsx") && cur === exactDepth) {
-      out.push(r);
-    }
+    if (st.isDirectory()) walkDir(p, r, out);
+    else if (e.endsWith(".tsx") && matchesScan(r)) out.push(r);
   }
 }
 
@@ -1649,7 +1655,9 @@ function pageOf(f) {
   if (f.includes("/views/cleanroom/")) return "洁净室域（cleanroom）";
   if (f.includes("/views/graph/")) return "图谱域（graph）";
   if (f.includes("/pages/admin/")) return "管理台（admin）";
-  return "主视图（views 顶层）";
+  if (f.includes("/components/")) return "共享组件（components）";
+  if (f.includes("/pages/")) return "页面（pages 非 admin）";
+  return "主视图（views 顶层及 src 直属）";
 }
 function whyFor(r) {
   const bits = [];
