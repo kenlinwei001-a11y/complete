@@ -39,6 +39,7 @@
 | B2 | 「**都派**」 | ✅ | BEFE-A/B/C/D/E/F/G 七张全收编 |
 | B3 | 「不局限在推演沙盘，而是**整体系统**」 | ✅ | + REFERENCES-FAMILY：引用族 9 条 → 一个客户端 + 一块共享面板 |
 | B4 | 剩余 `POST /a/v1/process-instances` | 🟡 | **诚实挂账不接**：契约要 `tasks.min(1)`，而流程定义**零步骤字段** ⇒ 前端无数据源可填。前置是**步骤模板层**，⛔ 未派 |
+| B5 | `GET /a/v1/process-instances/{id}` 与 `POST …/{id}/advance` 前端各 **0** 消费方 —— 「流程实例建出来之后就看不见了」 | ✅ | 详情页 `views/process/ProcessInstanceDetailView.tsx`（当前站/各步状态/时间线/溯源，缺就不渲染）+ 深链路由 `process-instances/:instanceId`（**非 v/ 前缀**，原因见 App.tsx 注释）+ 双入口（卡点卡片 · 流程实例下钻行）；推进走**确认弹窗**（不许一点就推），事实表只问 gate 声明过的项。复验：`pnpm --filter frontend-shell exec vitest run test/process-instance-detail.seam.test.tsx`（8 用例：端到端刷新找回 · 确认纪律 · 反推实例 · 暗发/不存在分块 · **变异反证** · 卡点入口）。⚠ 与 B4 的分工：本行接的是「建完之后」，**创建链**仍挂账在 B4（步骤模板层未派，届时创建成功页加一行深链跳转即闭合） |
 
 ## C · 数据构建发动机 / 逆向数据推演 —— **第二版逐步复核**
 
