@@ -1,0 +1,37 @@
+/**
+ * 分层 DAG 节点上的三档文字（WO-U10-THREE-PAGES）。
+ *
+ * ⚠ **为什么字号写在 CSS 里而不是 `fontSize={…}` 属性上**（与 `RadarChart.module.css` 同源，
+ *   两处各写一遍是刻意的 —— 两个组件是两份实现，共用一句注释挡不住其中一份改回去）：
+ *   `check-text-legibility.mjs` 的扫描面是 **CSS 声明块 + TSX 内联 `style={{…}}`**，
+ *   **看不见 SVG 的表现属性**。本组件原先 `fontSize={10.5}` / `fontSize={9.5}`，
+ *   静态门的 `floor` 计数因此一直是 0，而真浏览器在 `/v/project-sim` 上量到最小字号 **9.5px**。
+ *   形态（CLAUDE.md 铁律 0.6 句式）：
+ *     > 「我用『静态门 floor=0』当作『这一页没有小字』的证据，而前者并不度量后者。」
+ *
+ * ⚠ `fill` 一律留在 TSX 属性上：`.nodeSub` 的 `var(--muted)` 与 `.stepBadge` 的 `n.color`
+ *   都是**逐节点动态值**（`n.color` 来自数据），搬进 CSS 既做不到也会让静态门去判一个
+ *   编译期不存在的颜色。字号是常量、颜色是变量 —— 只搬常量那一半。
+ *
+ * ⚠ 诚实边界：本组件的 `<svg>` 带 `viewBox`（用户坐标 W=1280）且 `width:100%`，
+ *   **容器窄于 1280 时字会被等比缩小**。两道门量的都是 `getComputedStyle().fontSize`
+ *   （＝这里声明的 px），**不是屏上的视觉大小** —— 这是两道门共同的盲区，不是本单引入的，
+ *   在交单报告里已写明。
+ */
+
+/** 节点主标签。原为 `fontSize={13}`，值不变，一并搬进来免得三档字号分居两处。 */
+.nodeLabel {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/** 节点副标签（原 10.5px）。12px = check-text-legibility.mjs 的 FLOOR_PX。 */
+.nodeSub {
+  font-size: 12px;
+}
+
+/** 当前步角标「本步」（原 9.5px）。 */
+.stepBadge {
+  font-size: 12px;
+  font-weight: 800;
+}

@@ -80,9 +80,18 @@
  * ⚠ 金丝雀只证明**工具没瞎**，**不证明扫描面选对**。故另有**独立口径**：
  *   量到的文本元素数 < `TEXT_ELS_FLOOR` ⇒ 判「页面没渲染出来」⇒ **RC=2**，而不是「合格」。
  *
+ * ══ `--survey` 的对账职责（WO-U10-THREE-PAGES 加 · 它守的是**表与屏的一致**）════
+ * 棘轮 `PAGES` 今天只守 1 页，另外 11 页是登记在册的真债 ——
+ * 于是「PRD §4 表的 U10 列写着什么」这件事**原本没有任何机器在守**。
+ * `--survey` 因此多担一条判据：**逐格把现算的 U10 判词与表里那一格对账，不一致即 RC=1**。
+ * 判据刻意是「对账」而不是「一律要求符合」：诚实登记为 `不符合` 的欠账不该把它染红
+ * （否则下一个人消红的最短路径是**改表**，那正是本仓最恨的那件事）。
+ * 两个方向都咬：表说符合而屏不符合 = 有人改坏了；表说不符合而屏已符合 = 修好了没回写。
+ *
  * ══ 退出码（三分）════════════════════════════════════════════════════════════
- *   0 干净 · 1 **真变坏 / 触底** · 2 **工具自己坏了**（含：渲染不出来、找不到浏览器、
- *   dev server 起不来、页面没稳定、独立口径不过）。
+ *   0 干净 · 1 **真变坏 / 触底 / `--survey` 表屏不一致** · 2 **工具自己坏了**
+ *   （含：渲染不出来、找不到浏览器、dev server 起不来、页面没稳定、独立口径不过、
+ *   PRD 表解析器金丝雀不中）。
  *
  * 本体登记：docs/SYSTEM-ONTOLOGY.md §7（门）· §8 G-LAYOUT-UNGATED。
  * 门账：scripts/gate-ledger.json。
@@ -91,6 +100,7 @@
  *   node scripts/check-layout-legibility.mjs             # 门
  *   node scripts/check-layout-legibility.mjs --report    # 只打印实测数，不判定
  *   node scripts/check-layout-legibility.mjs --selftest  # 金丝雀（不起 dev server，秒级）
+ *   node scripts/check-layout-legibility.mjs --survey    # 12 页 U10 普查 + 与 PRD §4 表逐格对账
  *   node scripts/check-layout-legibility.mjs --tighten   # 把基线收紧到本次实测（只许变好）
  *   node scripts/check-layout-legibility.mjs --update    # 重写基线（放宽也写；⚠ 非日常操作）
  *
@@ -203,6 +213,7 @@ const CANARY_BITE = `
   </div>
   <div class="wide">溢出块</div>
   <div class="clip"><div class="clipped">被裁死的溢出块</div></div>
+  <svg class="svgPane" width="120" height="40"><text class="svgTiny" x="10" y="24" font-size="8" fill="#333">盈利</text></svg>
 </div></main>`;
 
 /* 必不咬样例：同样的 `.opt` 行组，但**不包缩进壳** ⇒ 三行左边缘同一条竖线；字号 14px；无溢出。 */
@@ -236,6 +247,25 @@ async function runCanary(browser) {
     // 只断言总数 ≥2 证明不了「分得开」—— 那正是「把 415 合成一个数」的病。
     if (!(bite.overflowEls >= 2)) problems.push(`必咬样例的溢出元素没被数全（应 ≥2：一个够得着 + 一个够不着，量到 ${bite.overflowEls}）`);
     if (!(bite.overflowUnreachable >= 1)) problems.push(`必咬样例里被 overflow-x:hidden 裁死的那个「够不着」没被认出来（量到 ${bite.overflowUnreachable}）`);
+    /*
+     * ⚠ **回归金丝雀**（WO-U10-THREE-PAGES 实测抓出来的真缺陷，钉死免得改回去）：
+     *   SVG 元素的 `className` 是 `SVGAnimatedString` **对象**，不是字符串 ——
+     *   `String(el.className)` 出来是字面的 `"[object SVGAnimatedString]"`。
+     *   本仓三页最小字号的现场（雷达轴标签 / DAG 节点副/角标签）**全是 SVG `<text>`**，
+     *   于是门的报文一律打成 `<text.[object SVGAnimatedString]>`，**指不出选择器**。
+     *   样例里那个 `<text class="svgTiny" font-size="8">` 就是为这一条放的：
+     *   它必须以 `svgTiny` 出现在 `smallest` 里，出现成别的字样即判「门自己瞎了」。
+     */
+    const svgHit = (bite.smallest || []).find((s) => s.tag === "text");
+    if (!svgHit) {
+      problems.push(`必咬样例里的 SVG <text>（8px）没进 smallest —— 最小字号现场漏了 SVG 这一类。`);
+    } else if (svgHit.cls !== "svgTiny") {
+      problems.push(
+        `必咬样例里 SVG <text> 的类名抽成了「${svgHit.cls}」而不是「svgTiny」` +
+          `（多半是又用回了 el.className —— SVG 上它是 SVGAnimatedString 对象，` +
+          `报文会变成 [object SVGAnimatedString]，门就指不出选择器了）。`,
+      );
+    }
     if (!(bite.overflowEls > bite.overflowUnreachable)) {
       problems.push(
         `必咬样例的两个数没分开：总数 ${bite.overflowEls} 应**严格大于**够不着数 ${bite.overflowUnreachable}` +
@@ -332,6 +362,9 @@ const PAGES = [
 //     一天硬铺 12 页棘轮，产出的会是 12 个没人维护的装饰件。
 //   · **普查**跑满 12 页，是为了给 `docs/PRD-harness-ux-adoption.md` §4 的 **U10 列**
 //     逐格填**实测数**（那张表的规矩是「不许手数、以机器为准」）。
+//     ⚠ WO-U10-THREE-PAGES 起它**不只是打印**：普查完还要与表里那 12 格**逐格对账**，
+//       不一致即 RC=1（推导见本函数末尾「表 vs 现算 对账」那段）。
+//       否则「表里写着 12 格符合」这句话没有任何机器在守 —— 而那 11 页并不在棘轮里。
 //
 // 判据（三条全过才算「符合」，逐条都是本门已有的量，不新发明）：
 //   ① minFontPx ≥ 12        —— 与 FLOORS.minFontPx 同一个数、同一个来历
@@ -348,6 +381,27 @@ function u10Verdict(m) {
   if (!(m.overflowPx === 0)) bad.push(`横向溢出 ${m.overflowPx}px`);
   if (!(m.overflowUnreachable === 0)) bad.push(`够不着的元素 ${m.overflowUnreachable} 个`);
   return bad.length ? { state: "不符合", why: bad.join(" · ") } : { state: "符合", why: U10_RULE };
+}
+
+/**
+ * PRD §4 表里那 12 格 **U10 列的当前判词** —— `{ pageKey: "符合" | "不符合" | … }`。
+ * 与 `prdPageKeys()` 共用同一个 `parsePrdTable`（不另抄解析器）。
+ */
+function prdU10Cells() {
+  const md = readFileSync(join(ROOT, "docs", "PRD-harness-ux-adoption.md"), "utf8");
+  const prd = parsePrdTable(md);
+  const out = {};
+  for (const r of prd.rows) out[r.key] = r.cells.U10;
+  // 金丝雀：列解析器自证。表里必有 U10 这一列且沙盘那一格必有判词；
+  // 解析不到 ⇒ 报「工具坏了」，**不许**报「表里没有 U10」（铁律 0.6：否定结论必须附金丝雀命中证据）。
+  if (!prd.criteria.includes("U10") || !out["sim-sandbox"]) {
+    throw new ProbeBroken(
+      `U10 列解析器金丝雀不中：现算判据列 = [${prd.criteria.join(",")}]，` +
+        `sim-sandbox 的 U10 格解析为「${out["sim-sandbox"] ?? "（空）"}」。` +
+        `⇒ 判「解析器坏了」，不许报「表里没有 U10 列」。`,
+    );
+  }
+  return out;
 }
 
 function prdPageKeys() {
@@ -403,7 +457,15 @@ async function survey(browser, baseUrl) {
   for (const r of rows) tally[r.verdict.state]++;
   console.log(`\n合计：符合 ${tally.符合} · 不符合 ${tally.不符合} · 判不了 ${tally.判不了} · 不适用 ${tally.不适用}`);
   console.log(`\n不符合逐页理由（填进 PRD §4.1 用）：`);
-  for (const r of rows.filter((x) => x.verdict.state === "不符合")) console.log(`  · ${r.key}：${r.verdict.why}`);
+  for (const r of rows.filter((x) => x.verdict.state === "不符合")) {
+    // 「现场」= 最小字号那一档的实际元素（tag.class + 文本 + 坐标）。
+    // 没有它，报文只说「9px < 12」，人还得自己去翻是哪个组件 —— 那正是本仓说的「报了但指不出」。
+    const site = (r.m?.smallest || [])
+      .slice(0, 4)
+      .map((s) => `<${s.tag}${s.cls ? "." + s.cls : ""}>「${s.text}」@${s.at} ${s.fs}px`)
+      .join(" · ");
+    console.log(`  · ${r.key}：${r.verdict.why}${site ? `\n      现场：${site}` : ""}`);
+  }
   // 「溢出总数」与「真够不着」全程分开印，最后再显式对一次账 —— 防止读者把总数读成坏点数。
   const totOverflow = rows.reduce((a, r) => a + (r.m?.overflowEls || 0), 0);
   const totUnreach = rows.reduce((a, r) => a + (r.m?.overflowUnreachable || 0), 0);
@@ -411,7 +473,48 @@ async function survey(browser, baseUrl) {
     `\n溢出两个数（**分开报**，不许合成一个）：全 ${rows.length} 页合计溢出视口的元素 ${totOverflow} 个，` +
       `其中**真够不着的 ${totUnreach} 个**。前者只说明「要横滚才看得见」，后者才是丢内容。`,
   );
-  return { rows, broken, tally, totOverflow, totUnreach };
+
+  /* ═══ 表 vs 现算 对账（WO-U10-THREE-PAGES 加 · 这一条才是「机器先说话」的那一半）═══
+   *
+   * ⚠ **为什么必须有它** —— 不加它，本模式就是一台只会打印的机器：
+   *   `PAGES` 棘轮今天只守 1 页（`sim-sandbox`），另外 11 页是**登记在册的真债**
+   *   （`gate-roster-baseline.json:check-layout-legibility.mjs:PAGES`）。
+   *   于是「PRD §4 表的 U10 列写着 12 格符合」这句话，**没有任何机器在守**：
+   *   谁把某页字号改回 9px，表照旧写着「符合」，全仓 63 道门一道都不红。
+   *   形态（CLAUDE.md 铁律 0.6 句式）：
+   *     > 「我用『表里写着符合』当作『那一页现在符合』的证据，而前者并不度量后者。」
+   *   —— 与本文件 §合计行那条老账（「合计与表脱节，信哪一行都是错的」）**是同一个病**，
+   *   只是这次脱节的两头换成了「表」与「屏」。
+   *
+   * ⚠ **为什么判据是「对账」而不是「一律要求符合」**（这两者不一样，混了会造出假红）：
+   *   若判「有 不符合 就红」，那么一页**诚实登记为 不符合** 的欠账也会把本模式染红 ——
+   *   于是下一个人为了消红只有两条路：改字号（好）或**改表**（灾难）。
+   *   对账则只咬**表与屏不一致**：表说 不符合、屏也 不符合 ⇒ 绿（欠账照挂，不逼人买绿）；
+   *   表说 符合、屏是 不符合 ⇒ 红（有人把已修好的改坏了，或表当初就填错了）；
+   *   表说 不符合、屏已 符合 ⇒ 也红（**修好了没回写表**，同样是脱节，只是方向相反）。
+   *
+   * 退出码：不一致 ⇒ 调用方 **RC=1**（真违规）。渲染不出来仍走 RC=2（工具坏了），两者不许合并。
+   */
+  const prdCells = prdU10Cells();
+  const mismatches = [];
+  for (const r of rows) {
+    const claimed = prdCells[r.key];
+    const measured = r.verdict.state;
+    if (claimed === undefined) continue; // 名册与表同源，理论上不会走到；真走到了由 prdPageKeys 的金丝雀先报
+    if (measured === "判不了") continue; // 这一页已计入 broken ⇒ 走 RC=2 那条路，不在这里重复判
+    if (claimed !== measured) mismatches.push({ key: r.key, claimed, measured, why: r.verdict.why });
+  }
+  console.log(
+    `\n表 vs 现算 对账（PRD §4 表 U10 列 ${rows.length} 格 ⇄ 本次实测）：` +
+      `${mismatches.length ? `**不一致 ${mismatches.length} 格**` : "逐格一致 ✓"}`,
+  );
+  for (const x of mismatches) {
+    console.log(
+      `  · ${x.key}：表里写「${x.claimed}」，实测「${x.measured}」（${x.why}）` +
+        `\n      ${x.claimed === "符合" ? "⇒ 有人把它改坏了，或表当初就填错了 —— **先修页面**，不许改表买绿。" : "⇒ 修好了没回写表 —— 把该格改成「符合」并跑 check-sim-ux-criteria.mjs --tighten。"}`,
+    );
+  }
+  return { rows, broken, tally, totOverflow, totUnreach, mismatches };
 }
 
 function loadBaseline() {
@@ -510,7 +613,20 @@ async function main() {
         );
         return;
       }
-      console.log(`\n✓ 普查完整：${s.rows.length} 页全部渲染并量到（无 判不了）。可据此填 PRD §4 的 U10 列。`);
+      if (s.mismatches.length) {
+        // ⚠ 这是**真违规**（RC=1），不是「工具坏了」（RC=2）：机器量到了、且量到的与表说的不是一回事。
+        //   两者处置相反，故走两条不同的出口。见 `survey()` 里「表 vs 现算 对账」那段的推导。
+        console.error(
+          `\n✗ layout-legibility --survey 不通过：PRD §4 表的 U10 列有 ${s.mismatches.length} 格与实测不一致（逐格见上）。` +
+            `\n   表说「符合」而屏上不符合 ⇒ **修页面**（升字号 / 去溢出），不许改表买绿；` +
+            `\n   表说「不符合」而屏上已符合 ⇒ 回写该格并跑 \`node scripts/check-sim-ux-criteria.mjs --tighten\`。`,
+        );
+        process.exit(1);
+      }
+      console.log(
+        `\n✓ 普查完整：${s.rows.length} 页全部渲染并量到（无 判不了），` +
+          `且逐格与 PRD §4 表的 U10 列一致。可据此填 PRD §4 的 U10 列。`,
+      );
       process.exit(0);
     }
 

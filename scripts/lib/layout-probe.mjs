@@ -133,6 +133,20 @@ export function measureLayout(opts) {
     for (const n of el.childNodes) if (n.nodeType === 3) s += n.nodeValue;
     return s.trim();
   };
+  /**
+   * 元素的类名 —— **必须走 `getAttribute("class")`，不许用 `el.className`**。
+   *
+   * ⚠ 这一条是 WO-U10-THREE-PAGES 实测抓出来的真缺陷（不是风格问题）：
+   *   HTML 元素的 `className` 是字符串，而 **SVG 元素的 `className` 是 `SVGAnimatedString` 对象**，
+   *   `String(...)` 出来是字面的 `"[object SVGAnimatedString]"`。
+   *   于是本仓那三页最小字号的现场（雷达轴标签 / DAG 节点副标签，**全是 SVG `<text>`**）
+   *   在报文里一律打成 `<text.[object SVGAnimatedString]>` —— **门指不出是哪个选择器**，
+   *   人拿到报文还得自己去翻源码。
+   *   形态（CLAUDE.md 铁律 0.6 句式）：
+   *     > 「我用『报文里有个 cls 字段』当作『门点得出选择器』的证据，而前者并不度量后者。」
+   *   `getAttribute("class")` 对 HTML 与 SVG **是同一个语义**，两边都对。
+   */
+  const clsOf = (el) => (el.getAttribute && el.getAttribute("class")) || "";
 
   // ── M1 最小可见字号 ────────────────────────────────────────────────────────
   // 取数：遍历扫描根内**自身直接文本节点非空**的元素（不是 innerText —— 否则容器会替
@@ -176,7 +190,7 @@ export function measureLayout(opts) {
         smallest.push({
           fs: Math.round(x.fs * 100) / 100,
           tag: x.el.tagName.toLowerCase(),
-          cls: String(x.el.className || "").slice(0, 70),
+          cls: clsOf(x.el).slice(0, 70),
           text: x.t.slice(0, 28),
           at: `${Math.round(r.x)},${Math.round(r.y)}`,
         });
@@ -227,7 +241,7 @@ export function measureLayout(opts) {
     if (kids.length < 3) continue;
     const buckets = new Map();
     for (const k of kids) {
-      const key = `${k.tagName}.${String(k.className || "")}`;
+      const key = `${k.tagName}.${clsOf(k)}`;
       if (!buckets.has(key)) buckets.set(key, []);
       buckets.get(key).push(k);
     }
@@ -322,7 +336,7 @@ export function measureLayout(opts) {
     if (r.right > VW + 1 && r.width > 1) {
       const rec = {
         tag: el.tagName.toLowerCase(),
-        cls: String(el.className || "").slice(0, 70),
+        cls: clsOf(el).slice(0, 70),
         right: Math.round(r.right),
       };
       overflowEls.push(rec);
