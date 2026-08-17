@@ -88,36 +88,96 @@ describe("WO-WAITING-STATES-FE · §A 可达性（可达 ≠ 已注册·从 URL 
     expect(screen.getByTestId("pw-root")).toBeInTheDocument();
   });
 
-  it("可发现性：侧栏「归因与风险」组里有一条 /v/process-wait 链接，且没落进「其它」兜底桶", async () => {
-    renderApp("/v/dash");
-    const nav = await screen.findByTestId("nav-business");
-    const group = within(nav).getByTestId("nav-group-归因与风险");
-    const link = within(group).getByText(zh.processWait.title);
-    expect(link.closest("a")?.getAttribute("href")).toBe("/v/process-wait");
-    // 反向：「其它」组（若存在）不得含它 —— 可达但折叠在兜底桶里 = 用户找不到（同族病第四层）
-    const other = within(nav).queryByTestId("nav-group-其它");
-    if (other) expect(within(other).queryByText(zh.processWait.title)).toBeNull();
+  /**
+   * ⚠ **WO-SANDBOX-NAV-CONSOLIDATE 改判据（原文与改法都写在这里，免得下一个人以为是回归）**：
+   *
+   * 原断言是「沙盘开着（mock 默认）时侧栏『归因与风险』组里有一条 /v/process-wait 链接」。
+   * 本页此后**已收编进沙盘「归因」模式的档**（`SANDBOX_ATTRIBUTE_TAB_SPEC["process-wait"]`），
+   * 条目带上了 `consolidatedWhen: "sim.sandbox"` ⇒ 沙盘开着时它**故意**不单列
+   * （整组五项全隐藏 ⇒ 空组自动隐藏，这正是仓主要的「调整」）。
+   * 若照原样断言，等于把「收编成功」判成回归。
+   *
+   * 但**可发现性这件事一个字没让**，只是分成两问，两问都咬：
+   *   · 沙盘**关**（本页不受 sim.sandbox 门控）⇒ 侧栏条目照旧在，组也在（收编 ≠ 删除）；
+   *   · 沙盘**开** ⇒ 侧栏没有它，而沙盘里那一档点得到、点进去有内容 ——
+   *     后半句在 `sandbox-nav-consolidate.seam.test.tsx` §可达侧（断言落在 `pw-root` 真出现）。
+   * 两条合起来才是「入口没丢」；只留任一条都能被"删项了事"骗过去。
+   */
+  it("可发现性（沙盘关）：侧栏「归因与风险」组里有一条 /v/process-wait 链接，且没落进「其它」兜底桶", async () => {
+    db.tenantOverrides["sim.sandbox"] = false;
+    try {
+      renderApp("/v/dash");
+      const nav = await screen.findByTestId("nav-business");
+      // 金丝雀：override 真生效（沙盘入口消失），否则下面的断言是在"沙盘开着"的世界里跑、结论相反
+      const hrefs0 = Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href") ?? "");
+      expect(hrefs0, "sim.sandbox 关着，沙盘入口仍在 ⇒ override 没生效，本条是空转").not.toContain("/v/sim-sandbox");
+      const group = within(nav).getByTestId("nav-group-归因与风险");
+      const link = within(group).getByText(zh.processWait.title);
+      expect(link.closest("a")?.getAttribute("href")).toBe("/v/process-wait");
+      // 反向：「其它」组（若存在）不得含它 —— 可达但折叠在兜底桶里 = 用户找不到（同族病第四层）
+      const other = within(nav).queryByTestId("nav-group-其它");
+      if (other) expect(within(other).queryByText(zh.processWait.title)).toBeNull();
+    } finally {
+      delete db.tenantOverrides["sim.sandbox"];
+    }
   });
 
-  it("结构守卫：NAV_GROUPS 里它挂的是 kind:\"view\"（经后端下发；挂成 route 会变成绕过下发的死链且无 R3 守卫）", () => {
+  it("可发现性（沙盘开·收编态）：侧栏不再单列它，且**也没有掉进「其它」兜底桶**", async () => {
+    renderApp("/v/dash");
+    const nav = await screen.findByTestId("nav-business");
+    const hrefs = Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href") ?? "");
+    // 金丝雀：沙盘确实开着（不然这条在"沙盘关"的世界里跑，断言方向恰好反过来）
+    expect(hrefs, "沙盘入口不在侧栏 ⇒ 收编的前提不成立，本条是空转").toContain("/v/sim-sandbox");
+    expect(hrefs, "已收编进沙盘，却仍在侧栏单列 —— 重复入口").not.toContain("/v/process-wait");
+    // ⚠ 这一条比上一条更要命：只把它从分组里拿掉而不滤 leftover，它会**原地掉进「其它」桶**
+    //   （G-NAV-FALLBACK-BUCKET 本体），屏上"看起来收编了"，其实只是换了个更难找的地方。
+    const other = within(nav).queryByTestId("nav-group-其它");
+    if (other) {
+      const strays = Array.from(other.querySelectorAll("a")).map((a) => a.getAttribute("href") ?? "");
+      expect(strays, "收编键掉进「其它」兜底桶 —— 比单列还糟（单列至少找得到）").not.toContain("/v/process-wait");
+    }
+  });
+
+  it("结构守卫：NAV_GROUPS 里它挂的是 kind:\"view\" 且带 consolidatedWhen（经后端下发·收编时留回退条目）", () => {
     const items = NAV_GROUPS.flatMap((g) => g.items);
     const hit = items.filter((it) => it.key === "process-wait");
     expect(hit, "process-wait 在 NAV_GROUPS 里一条都没有").toHaveLength(1);
+    // 挂成 route 会绕过后端下发、也拿不到 view.options，且没有 R3 守卫
     expect(hit[0]!.kind).toBe("view");
+    // 条目**必须留着**：本页不受 sim.sandbox 门控，删了 = 沙盘关着的租户这一页从 IA 里蒸发
+    expect(
+      hit[0]!.kind === "view" ? hit[0]!.consolidatedWhen : undefined,
+      "条目没带 consolidatedWhen ⇒ 沙盘开着时它仍会单列（重复入口），组也不会自动隐藏",
+    ).toBe("sim.sandbox");
   });
 
+  /**
+   * ⚠ WO-SANDBOX-NAV-CONSOLIDATE：本条**必须在沙盘关着的世界里跑**，否则它变成一条恒真的空转 ——
+   * 沙盘开着时这一页本来就被收编、侧栏本来就没有它，那句 `hrefs.has(...) === false`
+   * 无论 entitlement 开还是关都成立 ⇒ 它就不再度量 R3 了。
+   * 形态正是本仓记过的「我用 X 当作 Y 的证据，而 X 并不度量 Y」：
+   * 拿"侧栏里没有它"当"功能关闭生效了"的证据，而前者此时另有原因。
+   */
   it("R3「功能关闭 = 不存在」：view.process-wait 关 → 入口消失**且**页面渲染不出来", async () => {
+    db.tenantOverrides["sim.sandbox"] = false; // 排除"收编"这个混淆因素，见上注
     db.tenantOverrides["view.process-wait"] = false;
-    const planner = ACCOUNTS.find((a) => a.username === "planner")!;
-    const ws = workspaceForAccount(planner, db.tenantOverrides, db.configVersion);
-    expect(ws.features).not.toContain("view.process-wait");
+    try {
+      const planner = ACCOUNTS.find((a) => a.username === "planner")!;
+      const ws = workspaceForAccount(planner, db.tenantOverrides, db.configVersion);
+      expect(ws.features).not.toContain("view.process-wait");
 
-    renderApp("/v/process-wait");
-    const nav = await screen.findByTestId("nav-business");
-    const hrefs = new Set(Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href")));
-    expect(hrefs.has("/v/process-wait"), "功能关着，入口仍在侧栏 —— 泄露了功能存在性（R3）").toBe(false);
-    expect(screen.queryByTestId("pw-root"), "功能关着，页面仍渲染得出来 —— 孤儿态（R3）").toBeNull();
-    delete db.tenantOverrides["view.process-wait"];
+      renderApp("/v/process-wait");
+      const nav = await screen.findByTestId("nav-business");
+      const hrefs = new Set(Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href")));
+      // 金丝雀：同组邻居（同样不受 sim.sandbox 门控、同样在沙盘关时单列）仍在 ⇒
+      // 「侧栏里没有本页」确实是 R3 关掉的结果，不是整组都不见了
+      expect(hrefs.has("/v/procurement-legs"), "沙盘关着而同组邻居也不在 ⇒ 本条的断言在空导航上跑").toBe(true);
+      expect(hrefs.has("/v/process-wait"), "功能关着，入口仍在侧栏 —— 泄露了功能存在性（R3）").toBe(false);
+      expect(screen.queryByTestId("pw-root"), "功能关着，页面仍渲染得出来 —— 孤儿态（R3）").toBeNull();
+    } finally {
+      delete db.tenantOverrides["view.process-wait"];
+      delete db.tenantOverrides["sim.sandbox"];
+    }
   });
 });
 

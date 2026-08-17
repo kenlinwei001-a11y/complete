@@ -54,7 +54,11 @@ const VIEW_KEY = "procurement-legs";
 const FEATURE_KEY = "view.procurement-legs";
 const NAV_LABEL = "采购四段腿分解"; // = 后端 BUILTIN_VIEWS 的 title（mock 逐字对齐）
 const NAV_GROUP = "归因与风险";
-/** 已知必中的同组邻居（金丝雀）：与本页同为 kind:"view"、同样不带 consolidatedWhen。 */
+/**
+ * 已知必中的同组邻居（金丝雀）：与本页同为 kind:"view"、同样带 `consolidatedWhen: "sim.sandbox"`
+ * （WO-SANDBOX-NAV-CONSOLIDATE 之后全组五项都带；此前它是"同样**不**带"的那一类）。
+ * 用途：凡是「侧栏里没有本页」这种否定断言，都要用它证明**不是整组都不见了**。
+ */
 const CANARY_SIBLING = "process-wait";
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -222,45 +226,89 @@ describe("WO-R9-NAVREACH · §B 可发现（可达 ≠ 可发现·不许落「�
     loginAs("planner");
   });
 
-  it("B1 · 侧栏「归因与风险」组里有一条 /v/procurement-legs 链接，且没落进「其它」兜底桶", async () => {
-    renderApp("/v/dash");
-    const nav = await screen.findByTestId("nav-business");
-    const group = within(nav).getByTestId(`nav-group-${NAV_GROUP}`);
-    const link = within(group).getByText(NAV_LABEL);
-    expect(link.closest("a")?.getAttribute("href")).toBe(`/v/${VIEW_KEY}`);
-    // 反向：可达但折叠在兜底桶里 = 用户找不到（同族病第四层）
-    const other = within(nav).queryByTestId("nav-group-其它");
-    if (other) expect(within(other).queryByText(NAV_LABEL)).toBeNull();
+  /**
+   * ⚠ **WO-SANDBOX-NAV-CONSOLIDATE 改判据（B1/B2/B4 三条，原文与改法写在这里）**：
+   *
+   * B1/B2 原本在**沙盘开着**（mock 默认）的世界里断言侧栏有这条链接；B4 原本断言
+   * 「本页**不在**收编表里，因为沙盘没有『采购分解』这个模式」。
+   * 那时这句话是对的 —— 沙盘里确实没有它的落点。本轮把它收编成了沙盘「归因」模式的
+   * **责任方档**（`SANDBOX_ATTRIBUTE_TAB_SPEC["procurement-legs"]`），前提于是消失：
+   * 收编表的 `where` 现在答得出「用户在沙盘里点哪里能到」。
+   *
+   * 可发现性一个字没让，只是分成两问、两问都咬：
+   *   · 沙盘**关**（本页不受 sim.sandbox 门控）⇒ 侧栏条目与「点得到」照旧（B1/B2）；
+   *   · 沙盘**开** ⇒ 侧栏不单列（B4'），而沙盘里那一档点进去有内容 ——
+   *     后半句在 `sandbox-nav-consolidate.seam.test.tsx` §可达侧（断言落在
+   *     `procurement-legs-root` 真出现，不是「按钮存在」）。
+   */
+  it("B1 · 沙盘关：侧栏「归因与风险」组里有一条 /v/procurement-legs 链接，且没落进「其它」兜底桶", async () => {
+    db.tenantOverrides["sim.sandbox"] = false;
+    try {
+      renderApp("/v/dash");
+      const nav = await screen.findByTestId("nav-business");
+      const hrefs0 = Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href") ?? "");
+      expect(hrefs0, "sim.sandbox 关着，沙盘入口仍在 ⇒ override 没生效，本条是空转").not.toContain("/v/sim-sandbox");
+      const group = within(nav).getByTestId(`nav-group-${NAV_GROUP}`);
+      const link = within(group).getByText(NAV_LABEL);
+      expect(link.closest("a")?.getAttribute("href")).toBe(`/v/${VIEW_KEY}`);
+      // 反向：可达但折叠在兜底桶里 = 用户找不到（同族病第四层）
+      const other = within(nav).queryByTestId("nav-group-其它");
+      if (other) expect(within(other).queryByText(NAV_LABEL)).toBeNull();
+    } finally {
+      delete db.tenantOverrides["sim.sandbox"];
+    }
   });
 
-  it("B2 · 用户真点得到：从驾驶舱出发，点侧栏那条链接 → 落到本页 URL", async () => {
+  it("B2 · 沙盘关：用户真点得到 —— 从驾驶舱出发，点侧栏那条链接 → 落到本页 URL", async () => {
     serveKit();
-    const { router } = renderApp("/v/dash");
-    const nav = await screen.findByTestId("nav-business");
-    const group = within(nav).getByTestId(`nav-group-${NAV_GROUP}`);
-    const anchor = within(group).getByText(NAV_LABEL).closest("a")!;
-    // 金丝雀：起点确实不在本页（否则"导航过去"这件事没被证明）
-    expect(router.state.location.pathname).toBe("/v/dash");
-    await router.navigate(anchor.getAttribute("href")!);
-    expect(router.state.location.pathname).toBe(`/v/${VIEW_KEY}`);
-    expect(await screen.findByTestId("procurement-legs-root")).toBeInTheDocument();
+    db.tenantOverrides["sim.sandbox"] = false;
+    try {
+      const { router } = renderApp("/v/dash");
+      const nav = await screen.findByTestId("nav-business");
+      const group = within(nav).getByTestId(`nav-group-${NAV_GROUP}`);
+      const anchor = within(group).getByText(NAV_LABEL).closest("a")!;
+      // 金丝雀：起点确实不在本页（否则"导航过去"这件事没被证明）
+      expect(router.state.location.pathname).toBe("/v/dash");
+      await router.navigate(anchor.getAttribute("href")!);
+      expect(router.state.location.pathname).toBe(`/v/${VIEW_KEY}`);
+      expect(await screen.findByTestId("procurement-legs-root")).toBeInTheDocument();
+    } finally {
+      delete db.tenantOverrides["sim.sandbox"];
+    }
   });
 
-  it("B3 · 结构守卫：NAV_GROUPS 里挂的是 kind:\"view\"（挂成 route 会绕过下发且无 R3 守卫）", () => {
+  it("B3 · 结构守卫：NAV_GROUPS 里挂的是 kind:\"view\" 且带 consolidatedWhen（挂成 route 会绕过下发且无 R3 守卫）", () => {
     const items = NAV_GROUPS.flatMap((g) => g.items);
     const hit = items.filter((it) => it.key === VIEW_KEY);
     expect(hit, `${VIEW_KEY} 在 NAV_GROUPS 里一条都没有 ⇒ 落「其它」兜底桶`).toHaveLength(1);
     expect(hit[0]!.kind).toBe("view");
+    expect(
+      hit[0]!.kind === "view" ? hit[0]!.consolidatedWhen : undefined,
+      `${VIEW_KEY} 的条目没带 consolidatedWhen ⇒ 沙盘开着时它仍会单列 = 重复入口`,
+    ).toBe("sim.sandbox");
   });
 
-  it("B4 · 不在收编表里（沙盘五模式里没有它 —— 进那张表 = 声明一条不存在的到达路径）", () => {
+  it("B4 · 在收编表里，且 where 答得出「点哪里能到」；沙盘开时侧栏确实不单列它", async () => {
+    const entry = CONSOLIDATED_INTO_SANDBOX[VIEW_KEY];
     expect(
-      CONSOLIDATED_INTO_SANDBOX[VIEW_KEY],
-      `${VIEW_KEY} 进了 CONSOLIDATED_INTO_SANDBOX，但沙盘没有「采购分解」这个模式 ——` +
-        `收编表的 where 要回答「用户在沙盘里点哪里能到」，答不出来就不许进那张表（那是免死金牌不是登记）`,
-    ).toBeUndefined();
-    // 金丝雀：收编表非空 ⇒ 上一条否定断言不是在空表上恒真
-    expect(Object.keys(CONSOLIDATED_INTO_SANDBOX).length, "收编表为空 ⇒ 上一条恒真（哑门）").toBeGreaterThan(0);
+      entry,
+      `${VIEW_KEY} 的导航条目带了 consolidatedWhen（沙盘开时会隐藏），却不在 CONSOLIDATED_INTO_SANDBOX 里 ——` +
+        `那就是「删入口了事」披了张皮：没有任何一处声明过它在沙盘里点哪能到，也没有门去验那条路还通不通`,
+    ).toBeTruthy();
+    expect(entry!.via, "本页经后端 BUILTIN_VIEWS(seed:true) 下发，不是专用 route").toBe("workspace.views");
+    // `where` 必须真写出到达路径（收编表的 ≥6 字判据由门守；这里咬它指向的是「归因」那个模式）
+    expect(entry!.where).toContain("归因");
+    // 屏上那一半：沙盘开着（mock 默认）⇒ 侧栏没有它，且没掉进「其它」兜底桶
+    renderApp("/v/dash");
+    const nav = await screen.findByTestId("nav-business");
+    const hrefs = Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href") ?? "");
+    expect(hrefs, "沙盘入口不在侧栏 ⇒ 收编前提不成立，本条是空转").toContain("/v/sim-sandbox");
+    expect(hrefs, "已收编，却仍在侧栏单列 —— 重复入口").not.toContain(`/v/${VIEW_KEY}`);
+    const other = within(nav).queryByTestId("nav-group-其它");
+    if (other) {
+      const strays = Array.from(other.querySelectorAll("a")).map((a) => a.getAttribute("href") ?? "");
+      expect(strays, "收编键掉进「其它」兜底桶 —— 比单列还糟").not.toContain(`/v/${VIEW_KEY}`);
+    }
   });
 
   it("B5 · 沙盘关着也照样在导航里（它不受 sim.sandbox 门控 —— 不许随沙盘一起蒸发）", async () => {
@@ -301,6 +349,12 @@ describe("WO-R9-NAVREACH · §D R3「功能关闭 = 不存在」（404 不是 40
     loginAs("planner");
   });
 
+  /**
+   * ⚠ WO-SANDBOX-NAV-CONSOLIDATE：本条**必须在沙盘关着的世界里跑**。
+   * 沙盘开着时本页本来就被收编、侧栏本来就没有它 ⇒ `hrefs.has(...) === false`
+   * 无论 entitlement 开还是关都成立，本条就不再度量 R3（拿"侧栏没有它"当"功能关闭生效"的证据，
+   * 而此时前者另有原因）。同组邻居那条金丝雀同理 —— 沙盘开着时它也不在侧栏。
+   */
   it("D1 · view.procurement-legs 关 → 侧栏入口消失**且**页面渲染不出来", async () => {
     // 先取基线：关之前它确实在（否则下面全是恒真的空转）
     const planner = ACCOUNTS.find((a) => a.username === "planner")!;
@@ -309,6 +363,7 @@ describe("WO-R9-NAVREACH · §D R3「功能关闭 = 不存在」（404 不是 40
       "关之前 feature 就不在 ⇒ 本条恒真（哑门）",
     ).toContain(FEATURE_KEY);
 
+    db.tenantOverrides["sim.sandbox"] = false; // 排除"收编"这个混淆因素，见上注
     db.tenantOverrides[FEATURE_KEY] = false;
     try {
       expect(workspaceForAccount(planner, db.tenantOverrides, db.configVersion).features).not.toContain(FEATURE_KEY);
@@ -322,6 +377,7 @@ describe("WO-R9-NAVREACH · §D R3「功能关闭 = 不存在」（404 不是 40
       expect(hrefs.has(`/v/${CANARY_SIBLING}`), "关一页把同组邻居也关掉了 ⇒ 绑定挂错").toBe(true);
     } finally {
       delete db.tenantOverrides[FEATURE_KEY];
+      delete db.tenantOverrides["sim.sandbox"];
     }
   });
 });

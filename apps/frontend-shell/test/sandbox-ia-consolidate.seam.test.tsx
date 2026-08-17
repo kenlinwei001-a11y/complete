@@ -211,12 +211,33 @@ describe("§件二 · 收编后的九个键：导航不单列，但路由仍可�
     expect(navRouteKeys.has("sim-sandbox"), "沙盘自己必须留在导航里").toBe(true);
   });
 
-  it("正向：五个沙盘子视图，一个都不在 NAV_GROUPS 的 kind:\"view\" 里（重复入口已消）", () => {
-    const strays = consolidated.filter((k) => navViewKeys.has(k));
+  /**
+   * ⚠ WO-SANDBOX-NAV-CONSOLIDATE 改判据：`kind:"view"` 条目现在有**两种**合法状态，
+   * 与 `kind:"route"` 的既有规则（见下一条）完全同构：
+   *   · **无条目** —— 该页随控制台的 entitlement 一起消失（五个沙盘子视图 requires:["sim.sandbox"]，
+   *     沙盘关 ⇒ 连 workspace.views 都没有它，没有可回退的东西）；
+   *   · **有条目 + `consolidatedWhen`** —— 该页**不受**那个 entitlement 门控（沙盘关着照样能打开），
+   *     故必须留一条回退入口，否则沙盘关的租户「沙盘没有 + 导航也没有」= 页面从 IA 里蒸发。
+   * 唯一非法的是第三态：**有条目却不带 `consolidatedWhen`** —— 那是真·重复入口，
+   * 且会让整组的收编承诺被掏空（`check-nav-group-coverage.mjs` 判据⑧a/⑨ 机械守同一件事）。
+   */
+  it("正向：收编键在 NAV_GROUPS 的 kind:\"view\" 里要么没有条目，要么带 consolidatedWhen（不许两头占）", () => {
+    const viewItems = NAV_GROUPS.flatMap((g) => g.items).filter(
+      (it): it is Extract<(typeof NAV_GROUPS)[number]["items"][number], { kind: "view" }> => it.kind === "view",
+    );
+    const strays = consolidated
+      .map((k) => viewItems.find((it) => it.key === k))
+      .filter((it): it is NonNullable<typeof it> => it !== undefined && it.consolidatedWhen === undefined)
+      .map((it) => it.key);
     expect(
       strays,
-      `这些键已收编进沙盘，却仍是导航里的平级视图条目 —— 重复入口：[${strays.join(", ")}]`,
+      `这些键已收编进沙盘，却仍是导航里**不带 consolidatedWhen** 的平级视图条目 —— 永不消失的重复入口：[${strays.join(", ")}]`,
     ).toEqual([]);
+    // 金丝雀：两种合法状态**都真的存在**（否则上面的过滤在单一形态上跑，另一种形态坏了也看不出来）
+    const withFallback = consolidated.filter((k) => viewItems.some((it) => it.key === k && it.consolidatedWhen !== undefined));
+    const withoutEntry = consolidated.filter((k) => !viewItems.some((it) => it.key === k));
+    expect(withFallback.length, "一个带 consolidatedWhen 的 view 收编项都没有 ⇒ 那一支形态没被覆盖").toBeGreaterThan(0);
+    expect(withoutEntry.length, "一个无条目的 view 收编项都没有 ⇒ 那一支形态没被覆盖").toBeGreaterThan(0);
   });
 
   it("正向：四个 static-route 收编页在 NAV_GROUPS 里**留着回退条目**，且带 consolidatedWhen（沙盘开则隐藏）", () => {
@@ -237,9 +258,17 @@ describe("§件二 · 收编后的九个键：导航不单列，但路由仍可�
     }
   });
 
-  it("反向：九个键的路由**仍然可达**（深链接不许断）", () => {
-    // 五个子视图走 `/v/:viewKey` 通用分发：mock/后端仍下发 ⇒ ViewPage 查得到 view + 拿得到 renderer。
-    const viaDispatch = consolidated.filter((k) => CONSOLIDATED_INTO_SANDBOX[k]!.via === "workspace.views");
+  it("反向：收编键的路由**仍然可达**（深链接不许断）", () => {
+    // 经后端下发的那批走 `/v/:viewKey` 通用分发：mock/后端仍下发 ⇒ ViewPage 查得到 view + 拿得到 renderer。
+    // WO-SANDBOX-NAV-CONSOLIDATE：`view-defs`（增量视图桶）与 `workspace.views`（BUILTIN_VIEWS 种子）
+    // 在**前端这一侧**走的是同一条分发路径，差别只在后端从哪张表派单（门脚本按 via 分开验那一半）。
+    // ⚠ `process-stuck` 是暗发页（`process.runtime` defaultOn:false）⇒ 默认 workspace 里没有它，
+    //   本条必须先把它开通，否则会把「暗发中」误判成「深链接断了」。
+    db.tenantOverrides["process.runtime"] = true;
+    const viaDispatch = consolidated.filter((k) => {
+      const via = CONSOLIDATED_INTO_SANDBOX[k]!.via;
+      return via === "workspace.views" || via === "view-defs";
+    });
     const ws = workspaceForAccount(
       ACCOUNTS.find((a) => a.username === "planner")!,
       db.tenantOverrides,
@@ -271,6 +300,7 @@ describe("§件二 · 收编后的九个键：导航不单列，但路由仍可�
     }
     // 两条路加起来必须盖住全表（漏一种 via 值 = 上面两个循环各自空转）
     expect(viaDispatch.length + viaRoute.length).toBe(consolidated.length);
+    delete db.tenantOverrides["process.runtime"];
   });
 });
 

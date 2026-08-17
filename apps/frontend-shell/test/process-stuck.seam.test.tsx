@@ -187,25 +187,50 @@ describe("WO-PROCESS-INSTANCE FE · §0 可达性（可达 ≠ 已注册）", ()
     expect(screen.getByTestId("stuck-step").textContent).toContain("信用超额审批");
   });
 
-  it("可发现性：侧栏「归因与风险」组里有一条 /v/process-stuck 链接，且没落进「其它」兜底桶", async () => {
-    renderApp("/v/dash");
-    const nav = await screen.findByTestId("nav-business");
-    const group = within(nav).getByTestId("nav-group-归因与风险");
-    const link = within(group).getByText("流程卡点");
-    expect(link.closest("a")?.getAttribute("href")).toBe("/v/process-stuck");
-    // 反向：「其它」组（若存在）不得含它 —— 可达但折叠在兜底桶里 = 用户找不到（G-NAV-FALLBACK-BUCKET）
-    const other = within(nav).queryByTestId("nav-group-其它");
-    if (other) expect(within(other).queryByText("流程卡点")).toBeNull();
+  /**
+   * ⚠ WO-SANDBOX-NAV-CONSOLIDATE 改判据：本页已收编进沙盘「归因」模式的**实例层档**，
+   * 条目带 `consolidatedWhen: "sim.sandbox"` ⇒ 沙盘开着时侧栏故意不单列。
+   * 侧栏这一半因此改成在**沙盘关**的世界里验（条目仍在 = 收编 ≠ 删除）；
+   * 沙盘开时的可达性由 `sandbox-nav-consolidate.seam.test.tsx` 验（点档 → 内容真出现）。
+   */
+  it("可发现性（沙盘关）：侧栏「归因与风险」组里有一条 /v/process-stuck 链接，且没落进「其它」兜底桶", async () => {
+    db.tenantOverrides["sim.sandbox"] = false;
+    try {
+      renderApp("/v/dash");
+      const nav = await screen.findByTestId("nav-business");
+      const hrefs0 = Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href") ?? "");
+      expect(hrefs0, "sim.sandbox 关着，沙盘入口仍在 ⇒ override 没生效，本条是空转").not.toContain("/v/sim-sandbox");
+      const group = within(nav).getByTestId("nav-group-归因与风险");
+      const link = within(group).getByText("流程卡点");
+      expect(link.closest("a")?.getAttribute("href")).toBe("/v/process-stuck");
+      // 反向：「其它」组（若存在）不得含它 —— 可达但折叠在兜底桶里 = 用户找不到（G-NAV-FALLBACK-BUCKET）
+      const other = within(nav).queryByTestId("nav-group-其它");
+      if (other) expect(within(other).queryByText("流程卡点")).toBeNull();
+    } finally {
+      delete db.tenantOverrides["sim.sandbox"];
+    }
   });
 
-  it("**不与 process-wait 混为一谈**：两条入口同组并存，各自指向自己的 URL", async () => {
-    renderApp("/v/dash");
-    const nav = await screen.findByTestId("nav-business");
-    const group = within(nav).getByTestId("nav-group-归因与风险");
-    // 模板层（这一类流程通常等什么）与实例层（这一张单此刻卡在哪）是两页；
-    // 合成一个入口 = 把合并单新立的 waitStateOrigin 诚实位在信息架构层抹掉。
-    expect(within(group).getByText("流程等待态").closest("a")?.getAttribute("href")).toBe("/v/process-wait");
-    expect(within(group).getByText("流程卡点").closest("a")?.getAttribute("href")).toBe("/v/process-stuck");
+  /**
+   * 上一轮裁决「`process-wait`（模板层）与 `process-stuck`（实例层）**不合并，但补双向入口**」——
+   * WO-SANDBOX-NAV-CONSOLIDATE **不推翻它**：收编之后它们仍是**两个**入口，只是入口的位置从
+   * 「侧栏两条链接」变成「沙盘归因模式下的两个档」。故本条两个世界都咬：
+   *   · 沙盘关 ⇒ 侧栏两条链接并存，各指各的 URL；
+   *   · 沙盘开 ⇒ 沙盘里两个档并存（在 `sandbox-nav-consolidate.seam.test.tsx` 里咬，
+   *     断言落在两档各自渲染出**自己那一页的内容**，不是两个按钮）。
+   * 合成一个入口 = 把合并单新立的 waitStateOrigin 诚实位在信息架构层抹掉。
+   */
+  it("**不与 process-wait 混为一谈**（沙盘关）：两条入口同组并存，各自指向自己的 URL", async () => {
+    db.tenantOverrides["sim.sandbox"] = false;
+    try {
+      renderApp("/v/dash");
+      const nav = await screen.findByTestId("nav-business");
+      const group = within(nav).getByTestId("nav-group-归因与风险");
+      expect(within(group).getByText("流程等待态").closest("a")?.getAttribute("href")).toBe("/v/process-wait");
+      expect(within(group).getByText("流程卡点").closest("a")?.getAttribute("href")).toBe("/v/process-stuck");
+    } finally {
+      delete db.tenantOverrides["sim.sandbox"];
+    }
   });
 });
 
@@ -214,27 +239,48 @@ describe("WO-PROCESS-INSTANCE FE · §0.5 结构守卫与 R3（暗发默认关�
     loginAs("planner");
   });
 
-  it("NAV_GROUPS 里它挂的是 kind:\"view\"（经后端下发；挂成 route 会绕过 R3 页面侧守卫）", () => {
+  it("NAV_GROUPS 里它挂的是 kind:\"view\" 且带 consolidatedWhen（经后端下发·收编时留回退条目）", () => {
     const items = NAV_GROUPS.flatMap((g) => g.items);
     const hit = items.filter((it) => it.key === "process-stuck");
     expect(hit, "process-stuck 在 NAV_GROUPS 里一条都没有").toHaveLength(1);
+    // 挂成 route 会绕过 R3 页面侧守卫（暗发键关着也手敲得进去）
     expect(hit[0]!.kind).toBe("view");
+    // WO-SANDBOX-NAV-CONSOLIDATE：条目**必须留着**（本页不受 sim.sandbox 门控），
+    // 靠 consolidatedWhen 在沙盘开着时隐藏 —— 删条目 = 沙盘关的租户这一页从 IA 里蒸发。
+    expect(
+      hit[0]!.kind === "view" ? hit[0]!.consolidatedWhen : undefined,
+      "条目没带 consolidatedWhen ⇒ 沙盘开着时它仍会单列（重复入口），「归因与风险」组也不会自动隐藏",
+    ).toBe("sim.sandbox");
   });
 
+  /**
+   * ⚠ WO-SANDBOX-NAV-CONSOLIDATE：本条**必须在沙盘关着的世界里跑**。
+   * 沙盘开着时这一页本来就被收编、侧栏本来就没有它 ⇒ 那句 `hrefs.has(...) === false`
+   * 无论暗发键开还是关都成立，本条就不再度量 R3 了（拿"侧栏没有它"当"功能关闭生效"的证据，
+   * 而此时前者另有原因）。沙盘开着那一侧的 R3 由 `sandbox-nav-consolidate.seam.test.tsx`
+   * 的「暗发键守卫」咬：`process.runtime` 关 ⇒ 沙盘里**不出现** process-stuck 那一档。
+   */
   it("R3「功能关闭 = 不存在」：**默认**（未开通）入口不在侧栏，且页面渲染不出来", async () => {
-    // ⚠ 这一条不设 override —— 验的就是 mock 的**默认**态与真实 demo 租户一致（暗发中）。
-    const planner = ACCOUNTS.find((a) => a.username === "planner")!;
-    const ws = workspaceForAccount(planner, db.tenantOverrides, db.configVersion);
-    expect(ws.features, "mock 默认把暗发键开着 ⇒ 演示态比生产态多一页（mock 在说谎）").not.toContain(
-      "process.runtime",
-    );
-    expect(ws.features).not.toContain("view.process-stuck");
+    // ⚠ 暗发键这一条不设 override —— 验的就是 mock 的**默认**态与真实 demo 租户一致（暗发中）。
+    db.tenantOverrides["sim.sandbox"] = false; // 只排除"收编"这个混淆因素，见上注
+    try {
+      const planner = ACCOUNTS.find((a) => a.username === "planner")!;
+      const ws = workspaceForAccount(planner, db.tenantOverrides, db.configVersion);
+      expect(ws.features, "mock 默认把暗发键开着 ⇒ 演示态比生产态多一页（mock 在说谎）").not.toContain(
+        "process.runtime",
+      );
+      expect(ws.features).not.toContain("view.process-stuck");
 
-    renderApp("/v/process-stuck");
-    const nav = await screen.findByTestId("nav-business");
-    const hrefs = new Set(Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href")));
-    expect(hrefs.has("/v/process-stuck"), "功能关着，入口仍在侧栏 —— 泄露了功能存在性（R3）").toBe(false);
-    expect(screen.queryByTestId("stuck-step"), "功能关着，页面仍渲染得出来 —— 孤儿态（R3）").toBeNull();
+      renderApp("/v/process-stuck");
+      const nav = await screen.findByTestId("nav-business");
+      const hrefs = new Set(Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href")));
+      // 金丝雀：同组邻居（不受暗发键控制、沙盘关时单列）仍在 ⇒ 「侧栏没有本页」确实是暗发键关掉的结果
+      expect(hrefs.has("/v/process-wait"), "沙盘关着而同组邻居也不在 ⇒ 本条的断言在空导航上跑").toBe(true);
+      expect(hrefs.has("/v/process-stuck"), "功能关着，入口仍在侧栏 —— 泄露了功能存在性（R3）").toBe(false);
+      expect(screen.queryByTestId("stuck-step"), "功能关着，页面仍渲染得出来 —— 孤儿态（R3）").toBeNull();
+    } finally {
+      delete db.tenantOverrides["sim.sandbox"];
+    }
   });
 });
 
