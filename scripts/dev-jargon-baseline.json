@@ -2,19 +2,18 @@
  "note": "docs/CONVENTION-ui-information-layering.md §3.3「开发的话不许上屏」棘轮。只数**会渲染出去的字**（JSX 文本 + 文案型属性字面量 + locale 面的全部非键名字面量），注释/变量名/testid 不算。",
  "spec": "docs/CONVENTION-ui-information-layering.md",
  "gate": "scripts/check-dev-jargon-onscreen.mjs",
- "total": 116,
+ "total": 95,
  "byForm": {
-  "未渲染md星号": 58,
+  "未渲染md星号": 46,
   "内部常量名": 19,
-  "接口路径": 19,
-  "实现细节标识符": 14,
-  "zod术语": 2,
+  "接口路径": 18,
+  "实现细节标识符": 8,
   "环境变量名": 2,
   "契约类型名": 2
  },
- "localeLiterals": 1818,
+ "localeLiterals": 1863,
  "files": {
-  "apps/frontend-shell/src/locales/zh.ts": 44,
+  "apps/frontend-shell/src/locales/zh.ts": 23,
   "apps/frontend-shell/src/pages/admin/AgentsPage.tsx": 2,
   "apps/frontend-shell/src/pages/admin/DataBuilderFlow.tsx": 1,
   "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx": 1,
@@ -44,10 +43,8 @@
  "filesByForm": {
   "apps/frontend-shell/src/locales/zh.ts": {
    "内部常量名": 3,
-   "实现细节标识符": 6,
-   "未渲染md星号": 30,
-   "接口路径": 3,
-   "zod术语": 2
+   "未渲染md星号": 18,
+   "接口路径": 2
   },
   "apps/frontend-shell/src/pages/admin/AgentsPage.tsx": {
    "接口路径": 2

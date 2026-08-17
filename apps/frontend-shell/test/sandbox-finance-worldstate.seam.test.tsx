@@ -288,7 +288,7 @@ describe("WO-FINANCE-WORLDSTATE · 沙盘下区的金额面板", () => {
     await waitFor(() => expect(screen.getByTestId("sandbox-impact-finance-caliber").textContent ?? "").toContain("100"));
   });
 
-  it("🔴 诚实位两向：`?` 记号常驻第一层 · 正文默认不渲染 · 打开后写明它与 finance_pnl 的分工", async () => {
+  it("🔴 诚实位两向：`?` 记号常驻第一层 · 正文默认不渲染 · 打开后写明它与真实损益的分工", async () => {
     const user = userEvent.setup();
     mount();
     await ready();
@@ -296,14 +296,27 @@ describe("WO-FINANCE-WORLDSTATE · 沙盘下区的金额面板", () => {
     expect(screen.queryByTestId("sandbox-impact-finance-gap")).toBeNull();
     const trigger = screen.getByTestId("info-impact-finance-gap");
     expect(trigger).toBeVisible();
-    // ② 打开后正文回来：既写清这块金额怎么来的，也仍然写明 `finance_pnl` 不吃世界态
-    //    （那条事实**没有过期**，本单一个字都没动它的签名）。
+    /**
+     * ② 打开后正文回来：既写清这块金额怎么来的，也仍然写明它与真实损益是两回事。
+     *
+     * ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK 改判据落点，**边界一个字没放宽**：
+     *   原断言咬的是屏上出现 `finance_pnl` 与 `不吃 worldId / sessionId` ——
+     *   那是**求解器名与函数签名**，决策者读了做不出任何决定（正是 dev-jargon 门那条判据）。
+     *   于是这条测试变成了「用一个不该上屏的标识符，去证明一条该上屏的诚实位还在」：
+     *   **它咬的是措辞，不是那条事实。** 措辞一改就红，而边界其实纹丝未动。
+     *   改法不是删断言，是把落点换成**那条事实的人话版**（分工仍必须被说出来）；
+     *   技术出处（`finance_pnl` 签名不吃 worldId/sessionId）移进 zh.ts 该段的代码注释。
+     */
     await user.hover(trigger);
     const body = await screen.findByTestId("sandbox-impact-finance-gap");
     const txt = body.textContent ?? "";
-    expect(txt).toContain("finance_pnl");
-    expect(txt).toContain("不吃 worldId / sessionId");
+    expect(txt).toContain("这个世界里花了多少钱");
+    expect(txt).toContain("本租户实际损益");
+    expect(txt).toContain("两回事");
     expect(txt).toContain("推演投影");
+    // 反向：求解器名/签名这类开发的话**不许**再出现在屏上
+    expect(txt).not.toContain("finance_pnl");
+    expect(txt).not.toContain("sessionId");
   });
 
   it("🔴 退回诚实缺口：求解器说 available:false ⇒ 给它的原话，**一个金额都不显示**", async () => {

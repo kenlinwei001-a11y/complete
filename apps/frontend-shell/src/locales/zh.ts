@@ -752,15 +752,26 @@ export const zh = {
         mismatch: "⚠ 下发条数 ≠ 上站座数 —— 本档漏画了流程，这不是「租户没有」而是渲染层掉了",
         disjointOk: "与链路节拍层 24 个冻结节点的键交集：0（两层同屏、不同模型）",
         disjointBroken: (keys: string) => `🔴 两层键集合出现交集：${keys} —— 有人把业务流程层揉进了链路节拍层`,
+        /**
+         * 出处（不上屏）：契约 `packages/contracts/src/process.ts` 文件头原话 ——
+         * 链路节拍层（24 条 `CHAIN_NODE_REGISTRY`）与业务流程层（65 条 `ProcessDefinition`）
+         * 「两层粒度不同，不能互相替代，也不能合并」。本档取数走
+         * `GET /a/v1/process-definitions`，选中态用 `processKey` 而非 `nodeId`。
+         */
         layersNote:
-          "契约 packages/contracts/src/process.ts 文件头原话：链路节拍层（24 条 CHAIN_NODE_REGISTRY）与业务流程层（65 条 ProcessDefinition）「两层粒度不同，不能互相替代，也不能合并」。那句话约束的是两个**数据模型**（不许互相顶替、不许揉成一张表），不是「不能同屏」。本档是画布上的另一个图层：自己的取数（GET /a/v1/process-definitions）、自己的检视面板、自己的选中态（processKey 而非 nodeId），只共用同一块画布区域与同一套档位按钮。左边那个交集数就是这条约束的机器判据 —— 它一旦非 0，说明两层真被揉了。",
-        stdDaysCaveat: "卡上的天数是**标准工期**（模板值），不是「此刻已经卡了多久」——运行态由 /instances 与 process_flow_time 回答，本档不答。",
+          "全链节拍层（24 个节点）与业务流程层（65 条流程）是两套不同粗细的模型：不能互相替代，也不能合并成一张表。" +
+          "但「不能合并」说的是数据，不是「不能放在一起看」——本档就是同一块画布上的另一个图层，" +
+          "自己取数、自己的检视面板、自己的选中态，只共用画布区域与档位按钮。" +
+          "左边那个交集数就是这条约束的看门狗：它一旦不为 0，说明两层真被揉到一起了。",
+        stdDaysCaveat:
+          "卡上的天数是标准工期（流程模板里的定义值），不是「此刻已经卡了多久」——" +
+          "「已经卡了多久」要点进单条流程看它的实例，本档不答。",
         unregisteredDomains: (keys: string) =>
           `⚠ 域登记册里查不到这些 domainKey：${keys} —— 单开一条线显示，不静默并进「其它」（静默并进会把「后端漏发」伪装成「前端没画」）`,
         laneUnregistered: "（域未登记）",
         laneStat: (count: number, days: number) => `${count} 站 · 标准工期合计 ${days}D`,
         stdDays: (d: number) => `标准 ${d}D`,
-        loading: "取业务流程台账中…（GET /a/v1/process-definitions）",
+        loading: "正在取业务流程台账…",
         errorTitle: "业务流程台账取不到 —— 下面是后端原话，本档不替它编一个解释：",
         empty: "端点返回了 0 条业务流程。这是「本租户没有流程台账」，不是「本档没画」——两者在屏上必须分得开。",
 
@@ -770,25 +781,64 @@ export const zh = {
            所以连线画虚线、并且当面说清楚"这条线不是流向"。删掉它，
            这张图就变成了"看着专业但顺序是编的"——派单原话说那比卡片墙更坏。 */
         orderBasisTitle: "线怎么连？",
+        /**
+         * 结构证明（不上屏）：取数端点 `GET /a/v1/process-definitions` 一条流程间的先后关系
+         * 都没下发 —— `ProcessDefinition` 是 zod `strictObject`，字段恰好是
+         * key/domainKey/name/ownerFunctionKey/stdDurationDays/waitKind/carrierTypeKey，
+         * 没有 predecessor/successor/stationIndex；`strictObject` 同时保证后端不可能多发一个
+         * 字段而前端没接到。线的上下次序取 `ProcessDomain.order`（契约原文「展示序」）。
+         */
         orderBasisDisplay:
-          "本图的连线是**虚线**，因为它不表示先后：取数端点 GET /a/v1/process-definitions 一条流程间的先后关系都没下发（ProcessDefinition 是 zod strictObject，字段恰好是 key/domainKey/name/ownerFunctionKey/stdDurationDays/waitKind/carrierTypeKey，没有 predecessor/successor/stationIndex——strictObject 同时保证后端不可能多发一个字段而前端没接到）。故本图退回**按域分线**：一条线 = 一个一级业务域，线的上下次序取端点下发的 ProcessDomain.order（契约对该字段的原文是「展示序」，是稳定排版序，不是业务先后），站的左右次序取域内 P## 升序。",
+          "连线画成虚线，是因为这批数据里根本没有「谁在谁前面」这件事 —— 流程之间的先后关系一条都没下发。" +
+          "所以本图退回按业务域分线：一条线 = 一个一级业务域；线的上下次序用的是台账给的展示序（稳定排版用，不是业务先后），" +
+          "站的左右次序按域内流程编号升序。换句话说：这张图告诉你「有哪些流程、各属哪个域」，不告诉你「先做哪个」。",
+        /**
+         * 两个反例的出处（不上屏）：2026-08-14 实测，见
+         * `apps/datacore/src/process/flow-rules.ts:83` 起那段「P42 为什么不在链 B 里」的订正
+         * （搜 `avgGapDaysToNext` 即到 −9.82 的出处）。
+         * ⚠ 有保质期：`flow-rules.ts` 的链定义一改，本句即过期，须重测而不是照抄。
+         */
         orderBasisWhyNotNumber:
-          "为什么不干脆按 P## 编号画箭头：**编号相邻 ≠ 先后**，两个实测反例都在 apps/datacore/src/process/flow-rules.ts 文件头——① 真实链「在制流转到质检」是 P43 → P47，中间跳过 P44/P45/P46；② 第一版把它写成 P42 → P43 → P47，真跑一遍 P42 的站间间隔是 −9.82 天（负数），机器当场抖出建模错误（工单下达是「伞」不是前一站）。把 P## 升序画成箭头 = 复现一个已被实测证伪的顺序。〔实测日期 2026-08-14 · 复验：读 apps/datacore/src/process/flow-rules.ts:83 起那段「P42 为什么不在链 B 里」的订正（搜 avgGapDaysToNext 即到 −9.82 的出处）；⚠ 有保质期：flow-rules.ts 的链定义一改，本句即过期，须重测而不是照抄。〕",
+          "为什么不干脆按流程编号画箭头：编号挨着并不等于先后。两个真实反例——" +
+          "① 真实的「在制流转到质检」链是 P43 → P47，中间跳过了 P44/P45/P46；" +
+          "② 曾经有人把它写成 P42 → P43 → P47，按这个顺序真算一遍，P42 到下一站的间隔是 −9.82 天（负数），" +
+          "当场暴露出建模错了——工单下达是罩在整段上的「伞」，不是前一站。" +
+          "所以按编号升序画箭头，等于把一个已经被数据推翻的顺序又画一遍。",
+        /**
+         * 出处与复验（不上屏）：真实站序在 `BATTERY_PROCESS_FLOW_RULES`
+         * （`apps/datacore/src/process/flow-rules.ts:104`），经 `process_flow_time` 求解器与
+         * `GET /a/v1/process-definitions/{key}/instances` 下发（带 flowKey + stationIndex），
+         * **不经本档这个端点**。覆盖的 9 条是 P25/P33/P34/P35/P41/P42/P43/P47/P51，
+         * 其中 2 条真多站：P33→P34→P35、P43→P47。
+         * 复验：curl /a/v1/process-definitions/P34/instances 看 flowKey/stationIndex，
+         *       再 curl /a/v1/process-definitions 看同样字段 —— 后者没有。
+         * 2026-08-14 现跑 = 6 条链 / 9 条流程。此前曾写「覆盖 8 条流程」，同日现跑订正为 9。
+         *
+         * ⚠ 保质期不再靠人记：两个数都挂了机器每次跑都核的赌注（上游一改当场红）。
+         * @stale-fact apps/datacore/src/process/flow-rules.ts /^    flowKey:/ ==6
+         * @stale-fact apps/datacore/src/process/flow-rules.ts /processKey: "P\d+"/ ==9
+         */
         orderBasisWhereReal:
-          "实测站序确实存在，但不在本档够得着的地方：BATTERY_PROCESS_FLOW_RULES（apps/datacore/src/process/flow-rules.ts:104）有 6 条链、覆盖 9 条流程（P25/P33/P34/P35/P41/P42/P43/P47/P51），其中只有 2 条是真多站（P33→P34→P35、P43→P47），经 process_flow_time 求解器与 GET /a/v1/process-definitions/{key}/instances 下发（带 flowKey + stationIndex），**不经本档这个端点**。复验探针：curl /a/v1/process-definitions/P34/instances 看 flowKey/stationIndex，再 curl /a/v1/process-definitions 看同样字段——后者没有。要在本图画出实测站序，需要 datacore 补一条下发，那在本单范围之外，故如实缺席、不编顺序顶上。〔实测日期 2026-08-14 · 复验：node -e \"import('./apps/datacore/dist/process/flow-rules.js').then(m=>console.log(m.BATTERY_PROCESS_FLOW_RULES.length, m.flowRuleCoveredProcessKeys()))\"，当日现跑 = 6 条链 / 9 条流程。⚠ 本句此前写「覆盖 8 条流程」，2026-08-14 现跑订正为 9（flowRuleCoveredProcessKeys 是端点/文档/测试共用的单一事实源，不许各数一遍）。⚠ 有保质期：规则表增删一条链即过期。〕",
+          "真实的站序是存在的，只是本页取不到：它由另一条链路算出来并随「单条流程的实例」下发，" +
+          "今天覆盖 6 条链、9 条流程，其中 2 条是真正的多站链。" +
+          "本页读的这份台账里没有这个字段，所以这里如实缺席 —— 不拿编号顺序编一个顶上。" +
+          "要在这张图上画出真实站序，得后端在本页这条取数里补下发，那是另一件事。",
         interchangeNote: (n: number) =>
-          `换乘站（双环）${n} 处：两条流程**共用同一个承载物**。⚠ 共用承载物只说明它们作用在同一个对象上，**不说明有先后、也不说明有依赖**（契约 process.ts 原文：P37 MPS 与 P40 APS 都落在 ProductionSchedule，「共用不是空壳」）。这是端点下发的字段里唯一一条真把两条流程连起来的关系，故画成换乘——不是因为它像先后。`,
+          `换乘站（双环）${n} 处：两条流程共用同一个承载物。⚠ 共用承载物只说明它们作用在同一个对象上，` +
+          `既不说明有先后，也不说明有依赖（例：主生产计划与高级排产都落在同一份生产排程上）。` +
+          `这是台账里唯一一条真把两条流程连起来的关系，所以画成换乘 —— 不是因为它像先后。`,
         interchangeNone:
           "本次下发里没有任何两条流程共用承载物 ⇒ 全图 0 个换乘站。这是「这批数据就没有」，不是「本档没画换乘」。",
         radiusNote:
-          "站圈大小 ∝ √标准工期，且按**本次下发的最大标准工期**归一 —— 是相对量不是绝对量，换一批数据圈会重新分布。",
+          "站圈大小随标准工期增长（按平方根缩放），并以本次取到的最大标准工期为满圈 —— " +
+          "是相对量不是绝对量，换一批数据圈会重新分布。",
         labelOverflow: (keys: string) =>
           `⚠ 分两层后仍有站名挤在一起：${keys} —— 如实标出来，不偷偷藏标签也不假装不挤（放大或点站看右栏读全名）`,
         lineNo: (n: number) => `${n} 号线`,
         legendTitle: "图例",
         legendStation: "站 = 一条业务流程（圈大小 ∝ 标准工期）",
         legendInterchange: "换乘站 = 与另一条流程共用承载物",
-        legendDashed: "虚线 = 同一条线上按展示序排列，**不是流向**",
+        legendDashed: "虚线 = 同一条线上按展示序排列，不是流向",
         legendFold: "折返 = 一条线太长换到下一行，线没有断",
         legendWaitKind: "站圈颜色 = 卡在哪一类等待（四态词表来自契约）",
         /** WO-PROCESS-CANVAS-LIVE 新增的两个图元。两者是**实线 vs 虚线**的对照，不是深浅之别。 */
@@ -893,17 +943,53 @@ export const zh = {
         },
         /** 判据源取不到（沙盘能力未开通 / 传导规则端点 404）——**不许**默认判成"全都不随节拍变"。 */
         liveConfigMissing:
-          "拿不到判据源（推演视图配置与传导规则清单），所以这一档**算不出来**哪些流程随节拍变 —— 这是「没查着」，不是「查了都不动」。两者在屏上必须分得开：后者会让人以为这个平台的流程全是静态的。",
+          "拿不到判据源（推演视图配置与传导规则清单），所以这一档算不出来哪些流程随节拍变 —— " +
+          "这是「没查着」，不是「查了都不动」。两者必须分得开：后者会让人以为这个平台的流程全是静态的。",
 
         /* ── 以下四条一律在 `?` 浮层里（第一层只留上面那一句结论 + 这个 `?` 记号）── */
+        /**
+         * 判据的技术出处与复验（不上屏）：
+         *  ① 随节拍变 = 该流程的承载类型出现在已发布传导规则的 source 或 target 一端
+         *     （`GET /a/v1/sim/propagation-rules`），且该类型在这个世界里真有物化对象
+         *     （`GET /a/v1/sim/view-config` 的 `nodeObjectIds`）；
+         *  ② 无承载对象 = 类型在规则两端里，但 0 个物化对象；
+         *  ③ 本层不随节拍变 = 类型不在规则两端集合里。第三档是**结构性**的：传导引擎
+         *     `propagateTick` 唯一的写法是写到规则 target 那一端的对象上，够不着的类型怎么推都不会动。
+         *
+         * 2026-08-14 实测：真后端种子下这三档是 9 / 0 / 56
+         * （65 条流程、64 种承载物、13 条传导规则、规则两端 11 种类型）。复验命令：
+         *   node -e "const s=require('fs').readFileSync('apps/datacore/src/seed.ts','utf8');
+         *   const b=s.slice(s.indexOf('const DEMO_PROCESS_DEFINITIONS'),s.indexOf('export async function seedDemoProcessLayer'));
+         *   const d=[...b.matchAll(/carrierTypeKey: \"([A-Za-z0-9_]+)\"/g)].map(m=>m[1]);
+         *   const r=s.slice(s.indexOf('const DEMO_PROPAGATION_RULES'),s.indexOf('export async function seedDemoPropagationRules'));
+         *   const t=new Set([...r.matchAll(/^\\s*(?:source|target)TypeKey: \"([A-Za-z0-9_]+)\"/gm)].map(m=>m[1]));
+         *   console.log(d.length, t.size, d.filter(x=>t.has(x)).length)"  ⇒ 当日现跑 `65 11 9`。
+         * ⚠ 有保质期：种子里增删任一条传导规则或流程定义即作废，须重跑不许照抄；
+         *   缺口登记在 docs/SYSTEM-ONTOLOGY.md §8 `G-PROCESS-TICK-COVERAGE`。
+         */
         liveBasis:
-          "判据（三档，全部现算，前端不写死任何类型名单）：① 随节拍变 = 该流程的承载类型出现在已发布传导规则的 source 或 target 一端（GET /a/v1/sim/propagation-rules），且这个世界里该类型真有物化对象（GET /a/v1/sim/view-config 的 nodeObjectIds）；② 无承载对象 = 承载类型在传导规则两端里，但该类型 0 个物化对象 —— 补数据即会动；③ 本层不随节拍变 = 承载类型不在传导规则两端集合里。第三档是**结构性**的，不是「今天恰好没变」：传导引擎 propagateTick 唯一的写法是写到规则 target 那一端的对象上，够不着的类型怎么推都不会动。站上的读数 = 该承载类型全部对象、全部状态变量的平均值（取平均而不是求和，是因为不同类型的对象数差两个数量级，求和会让「圈更大」只反映「对象更多」）。〔实测日期 2026-08-14 · 当日真后端种子下这三档是 9 / 0 / 56（65 条流程、64 种承载物、13 条传导规则、规则两端 11 种类型）。复验命令：`node -e \"const s=require('fs').readFileSync('apps/datacore/src/seed.ts','utf8');const b=s.slice(s.indexOf('const DEMO_PROCESS_DEFINITIONS'),s.indexOf('export async function seedDemoProcessLayer'));const d=[...b.matchAll(/carrierTypeKey: \\\"([A-Za-z0-9_]+)\\\"/g)].map(m=>m[1]);const r=s.slice(s.indexOf('const DEMO_PROPAGATION_RULES'),s.indexOf('export async function seedDemoPropagationRules'));const t=new Set([...r.matchAll(/^\\\\s*(?:source|target)TypeKey: \\\"([A-Za-z0-9_]+)\\\"/gm)].map(m=>m[1]));console.log(d.length, t.size, d.filter(x=>t.has(x)).length)\"` ⇒ 当日现跑 `65 11 9`。⚠ 有保质期：种子里增删任一条传导规则或流程定义即作废，须重跑不许照抄；缺口登记在 docs/SYSTEM-ONTOLOGY.md §8 `G-PROCESS-TICK-COVERAGE`。〕",
+          "这三档全部是现算的，前端没有写死任何名单：" +
+          "① 随节拍变 = 这条流程的承载物既被某条已发布的传导规则碰到，这个世界里又真有这类对象；" +
+          "② 无承载对象 = 规则碰得到它，但这个世界里一个这类对象都没有 —— 补上数据它就会动；" +
+          "③ 本层不随节拍变 = 没有任何一条传导规则碰得到它的承载物。" +
+          "第三档是结构性的，不是「今天恰好没变」：传导只会写到规则指向的那一端，够不着的东西怎么推都不会动。" +
+          "站上的读数是该承载物全部对象、全部状态变量的平均值 —— 取平均而不是求和，" +
+          "是因为不同类型的对象数能差上百倍，求和会让「圈更大」只反映「对象更多」。",
         liveLimit:
-          "⚠ 这个判据**测不出**的那件事，必须当面说：「本层不随节拍变」只说明**今天的传导图够不着它**，**不说明它本质上不该随节拍变**。举例：「年度情景测算」「关键成功要素梳理」确实不随日节拍变，而「物料平衡运行」「工单下达」**该随节拍变、只是还没有人给它建传导规则** —— 这两类今天落在同一档里。要把它们分开需要**建模判断**，而端点下发的字段里没有任何一位承载这个判断（ProcessDefinition 是 strictObject，字段就那九个；PropagationRule 里也没有）。所以这里如实报「够不着」，不拿一个算得出的数去冒充一个算不出的结论。",
+          "⚠ 这个判据测不出的那件事，必须当面说：「本层不随节拍变」只说明今天的传导图够不着它，" +
+          "不说明它本质上不该随节拍变。举例：「年度情景测算」「关键成功要素梳理」确实不随日节拍变，" +
+          "而「物料平衡运行」「工单下达」是该随节拍变、只是还没有人给它建传导规则 —— 这两类今天落在同一档里。" +
+          "要把它们分开需要人做建模判断，而台账里没有任何一个字段承载这个判断。" +
+          "所以这里如实报「够不着」，不拿一个算得出的数去冒充一个算不出的结论。",
         liveWaitKindStatic:
-          "⚠ 上面那条四态计数条（等人 / 等数据 / 等排期 / 等外部方）数的是 ProcessDefinition.waitKind —— **模板层**的分类，来自流程台账端点。推 tick 改的是世界态，改不到流程台账，所以那四个数一个都不会随节拍变。真正随节拍变的是「每一态里有几条这一拍动了」，写在上面那句总结的括号里。把这两族数混着读，会得出「等外部方 +3」这种今天永远为假的结论。",
+          "⚠ 上面那条四态计数条（等人 / 等数据 / 等排期 / 等外部方）数的是流程台账里登记的等待类型 —— " +
+          "那是模板层的分类。推一拍改的是这个推演世界的状态，改不到流程台账，所以那四个数一个都不会随节拍变。" +
+          "真正随节拍变的是「每一态里有几条这一拍动了」，写在上面那句总结的括号里。" +
+          "把这两族数混着读，会得出「等外部方 +3」这种今天永远为假的结论。",
         liveObserver:
-          "本档是**观察者**：会话由沙盘控制条创建、tick 也由它推进，本图只订阅同一份世界态缓存后重算。它不建会话、不发 tick、不写任何缓存 —— 否则屏上会出现两个世界，你在控制条上推的那一拍打不到这张图，而图照样在动（那是最难查的一类假象）。上面写出世界 id 与拍号，就是让你能当场核对看的是不是控制条上那个世界。",
+          "本档只是观察者：推演会话由沙盘控制条创建、拍子也由它推进，本图只跟着同一份世界状态重算。" +
+          "它不建会话、不推拍、不写缓存 —— 否则屏上会出现两个世界：你在控制条上推的那一拍打不到这张图，" +
+          "而图照样在动（那是最难查的一类假象）。上面写出世界编号与拍号，就是让你能当场核对看的是不是控制条上那个世界。",
         liveMovedKeys: (keys: string) => `这一拍动了的流程：${keys}`,
         liveDriveMismatch: "⚠ 三档条数之和 ≠ 端点下发条数 —— 分档漏了人或有人被数了两遍，这是分档实现的 bug，不是数据的事实。",
       },
@@ -930,8 +1016,20 @@ export const zh = {
         deltaMoved: (n: number, total: number) => `${n} / ${total} 项偏离基线`,
         deltaRest: (n: number) => `其余 ${n} 项（与基线同值）`,
         financeGapTitle: "这块金额是怎么来的 / 什么时候没有",
+        /**
+         * 技术出处（不上屏）：基线取本体真值（`FinancePlan.rolling` / `ARInvoice.amount`），
+         * 增量由 `Order.costPressure` / `Customer.receivablePressure` / `ARInvoice.overduePressure`
+         * 沿种子里的传导规则折算；换算除数随回包下发（非前端写死），产生压力的规则真 id 与系数一并回传。
+         * ⚠ 勿与求解器 `finance_pnl` 混：它读本体真值、签名不吃 worldId/sessionId ⇒ 同租户下施加任何扰动
+         *   都返回同一组数（那是它的正确行为）。本带金额走的是另一条通路 `finance_world_projection`。
+         */
         financeGapBody:
-          "**这是推演投影，不是实测值。** 基线取本体真值（FinancePlan 的 rolling / ARInvoice 的 amount），增量由**这个世界里**的成本压力（Order.costPressure）、回款压力（Customer.receivablePressure）、逾期压力（ARInvoice.overduePressure）沿种子里的传导规则折算：金额 = 基线 ×（1 + 压力 ÷ 换算除数），除数由后端随回包下发（不是前端写死的系数），产生这些压力的传导规则真 id 与真系数也一并回传，改种子系数这里跟着变。⚠️ **不要把它和 `finance_pnl` 搞混**：那个求解器读本体真值、其实现签名不吃 worldId / sessionId ⇒ 同一个租户下施加任何扰动它都返回同一组数 —— 那是它的正确行为（本单一个字没动它），只是它答不了「这个世界里花了多少钱」。本带的金额来自另一条通路 `finance_world_projection`。世界态为空 / 没有金额基线 / 该能力未开通时，这里**据实报缺**，绝不显示一个不动的 0。",
+          "这是推演投影，不是实测值。" +
+          "打底的数取自本体里的真值（财务滚动计划与应收账款金额），增量则由这个世界里的成本压力、" +
+          "回款压力、逾期压力沿传导规则折算出来：金额 = 基线 ×（1 + 压力 ÷ 换算除数）。" +
+          "换算除数由后端随结果一起给，不是前端写死的系数；产生这些压力的规则与系数也一并回传，改了系数这里会跟着变。" +
+          "⚠ 它回答的是「这个世界里花了多少钱」，与「本租户实际损益」是两回事，别混着读。" +
+          "世界态为空、没有金额基线、或该能力未开通时，这里据实报缺 —— 绝不显示一个不动的 0。",
         moneyTitle: "财务金额随扰动的变化",
         moneyQuestion: "这次扰动，钱上差多少",
         /** 口径**常驻第一层**（不是浮层里的一句话）：读者一眼要知道这不是实测数。 */
@@ -1039,7 +1137,8 @@ export const zh = {
         compareEmpty: "两个世界里读不到该落点的值 —— 如实说读不到，不用 0 冒充。",
         diff: (d: string) => `差异 B − A = ${d}`,
         r4:
-          "R4 红线：沙盘改的是推演会话的世界态，**不写本体真值**。「采纳」只创建 Action 草稿并进审批流（实测回 PENDING_APPROVAL），审批通过才由 Action 正门写真值。",
+          "红线：沙盘改的只是这个推演世界，不会写到真实数据上。" +
+          "「采纳」只生成一份待审批的行动草稿，审批通过之后才由正式流程去改真值。",
       },
       info: {
         /**
@@ -1117,16 +1216,26 @@ export const zh = {
          */
         kpiOrigin: "这批读数是哪来的",
         kpiOriginDerived:
-          "**合成·占位**：屏上这批数由前端按 `hash01(对象id|变量名)×100` 确定性派生，还没取到后端世界态。它是可复现的占位（R6），不是任何实测值 —— 全对象取均值必然收敛到 50，那是大数定律，不是各项压力恰好都在中位。推进一个 tick、施加一条扰动，或世界态事件触发重取之后，这个记号会换成「实测」。",
+          "合成·占位：这批数还没取到后端的世界状态，是前端按对象与变量名确定性算出来的占位值（同样输入必得同样结果）。" +
+          "它不是任何实测值 —— 全对象取均值必然收敛到 50，那是大数定律，不是各项压力恰好都在中位。" +
+          "推进一拍、施加一条扰动，或世界状态更新之后，这个记号会换成「实测」。",
         kpiOriginMeasured:
-          "**实测**：屏上这批数取自后端世界态（`GET /a/v1/sim/sessions/:id/world` 回包，或 tick / 扰动回包），不再是前端哈希占位。口径仍是 0–100 指数（见「读数量纲」）；它描述的是**这个推演会话里的模拟世界**，不是本体真值。（本条口径实测于 2026-08-13；复验：`pnpm --filter frontend-shell exec vitest run test/sandbox-world-origin.seam.test.tsx`）",
+          /* 口径出处（不上屏）：取自 `GET /a/v1/sim/sessions/:id/world` 回包，或 tick / 扰动回包。
+             本条口径 2026-08-13 实测；复验：
+             `pnpm --filter frontend-shell exec vitest run test/sandbox-world-origin.seam.test.tsx` */
+          "实测：这批数取自后端算出来的世界状态，不再是前端的占位值。" +
+          "口径仍是 0–100 指数（见「读数量纲」）；它描述的是这个推演会话里的模拟世界，不是真实数据。",
         /** WO-V4-PLAYS · 方案环里那点差异的口径（诚实位，常驻第一层 + `?` 出全文）。 */
         playCaliber: "平行世界之间的差异是怎么造出来的",
         playCaliberBody:
-          "从同一个检查点分支出来的子世界**逐字节相同**，不给它们各自一处差异，比对面板就永远是两列一样的数。差异来自一处**显式的确定性投影**（不是新真值源）：回补比例 = 该方案 `closesGap` ÷ 根因缺口（两者同量纲，比值无量纲，取自 `decision_play` 回包）；本次扰动在该状态变量上的实测效应 Δ = 扰动后值 − 扰动前值（两头都取后端回包）；方案世界 = 分支世界 + 一条 `delta = −Δ × 回补比例` 的扰动，经真端点施加、由引擎照常规整与传导。读作「这个方案按引擎自己给的 closesGap 能补掉缺口的这么多，于是在沙盘里把本次扰动的效应回补这么多」。它是**推演值**，不是实测值。",
+          "从同一个检查点分出来的几个子世界本来一模一样，不给它们各自一处差异，比对面板就永远是两列相同的数。" +
+          "差异来自一处写明的确定性折算，不是新造的真值：回补比例 = 这个方案能补掉的缺口 ÷ 根因缺口；" +
+          "本次扰动在该状态变量上的实际效应 = 扰动后值 − 扰动前值（两头都取后端回包）；" +
+          "方案世界 = 分支世界 + 一条「把这次扰动的效应按回补比例抵消掉」的扰动，经真接口施加、由引擎照常传导。" +
+          "读作「这个方案按引擎自己给的补缺口能力，在沙盘里把本次扰动的效应回补了这么多」。它是推演值，不是实测值。",
         kpiUnit: "读数量纲 · 0–100 指数",
-        kpiUnitGlobal: "全局态是**全对象、全状态变量**的均值，量纲为 0–100 指数（非百分比、非任何单一变量的原值）；越高越好。",
-        kpiUnitVar: "每个状态变量的读数是该变量在**全部已物化对象**上的均值，量纲为 0–100 指数（非百分比）。",
+        kpiUnitGlobal: "全局态是全部对象、全部状态变量的均值，是 0–100 的指数（不是百分比，也不是某一个变量的原值）；越高越好。",
+        kpiUnitVar: "每个状态变量的读数，是该变量在全部已建对象上的均值，是 0–100 的指数（不是百分比）。",
         /**
          * WO-SANDBOX-CANDIDATES-FE · 候选对策的浮层标题。
          * 第一层只放「拨哪个对象 / 拨哪个属性 / 从多少到多少 / 效果」；
