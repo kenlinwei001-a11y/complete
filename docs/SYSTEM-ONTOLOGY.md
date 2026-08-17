@@ -1379,6 +1379,46 @@ toType 是 Order」一句**字面为假**，实有 3 条；但其限定句「Ord
 `supplier_delay→material_shortage` · `material_shortage→model_supply_risk` ·
 `material_shortage→po_expedite` · `po_expedite→inspection_queue` · `model_supply_risk→order_shortage`
 
+### 展示名链路 · 状态变量单源表 → 两条读时投影 → 屏上人话名（WO-STATEVAR-DISPLAYNAME · 2026-08-17）
+
+上面那 35 条传导规则**声明**了 36 个状态变量（`sourceStateVar ∪ targetStateVar`），
+而这批名字此前在屏上**一律是裸键**（`loadIndex` / `demandLoad`）。
+
+**三分法判定 = 没接线**（不是「接了线没数据」，修法完全不同）。实测证据三条：
+- 本体侧：`loadIndex` 等在 `apps/datacore/src/synthetic/` **零命中**（金丝雀 `util` 命中 ⇒ 工具是好的）
+  —— 它们**不是 `PropertyDef`**，对象上不带这些值，`PROP_DISPLAY_NAMES` 自然也管不到它们；
+- 契约侧：`SandboxViewConfig.stateVars` 是 `string[]`，`PropagationRule` 只有
+  `sourceTypeName`/`targetTypeName`（**对象类型**的人话名，那一路早已接通且有数据）
+  —— **全链没有任何字段承载状态变量的名字**；
+- 前端侧：`EdgeActivePanel.tsx` 顶注当时如实写着「状态变量在全仓没有任何中文名」——
+  那是**诚实缺席**，缺的是真值源，不是渲染。
+
+链路（沿链路走，断点在接缝）：
+
+```
+STATE_VAR_DISPLAY_NAMES（apps/datacore/src/synthetic/battery.ts · 36 条 · 单一真值）
+  ↓ stateVarDisplayNames()（全平台唯一投影函数，两条路由共用，不许各抄一份）
+GET /a/v1/sim/view-config          → SandboxViewConfig.stateVarNames   （读时 join，不入库）
+GET /a/v1/sim/propagation-rules    → PropagationRulesResponse.stateVarNames（同上，口径逐字节相同）
+  ↓ stateVarLabel.ts（前端唯一消费路径 · 前端零中文名映射表）
+沙盘 KPI 逐变量读数 · 扰动落点下拉 · 导出表 · 传导边开关面板第一级 · 对照差异表
+```
+
+**四条口径（都是本仓治过多次的病的对策）**：
+- **读时投影，不入库**：存进 `sim_propagation_rule.doc` 会在改名后留下查无对证的旧名字；
+- **只收登记过的键**：查不到的变量**不进字典**（不填 `null`/空串/回填裸键）——
+  回填裸键会让前端分不出「名字恰好等于键」与「压根没名字」，"回落"也就无从如实标记；
+- **`.optional()` 不是 `.default({})`**：必填会逼着改全仓 17 个构造 `SandboxViewConfig` 的前端测试
+  （实测 `tsc` 报 17 处 TS2741），那些改动与本病灶无关；
+- **接线名一律不动**：`stateVars` / `PropagationRule.sourceStateVar` / 扰动请求体的 `targetStateVar`
+  /  testid 全部照旧是裸键 —— 补的是展示层，不是改名（改名会打断引擎、深链接与对账）。
+
+⛔ **刻意没做**：不把状态变量登记成 `PropertyDef`。它们只活在 `SimTickState.state[objectId][var]`，
+真对象上没有这一格；登记成属性会在对象详情/目录/喂 LLM 的属性清单里多出一批**永远空**的列
+（= 用本体断言一件假事），且 `ObjectTypeDef.stateVariables` 那个同名字段实测 94 类全空、
+`upsertType` 重建 def 时根本不抄它（见 §8 已登记的两道窄门）。这条由
+`statevar-display-name.seam.test.ts ⑥` 钉死：谁把它们登记成属性，那条断言当场红。
+
 ### 金额链路 · 世界态压力 → 财务金额（WO-FINANCE-WORLDSTATE · 2026-08-14 · 求解器见 §2.E `finance_world_projection`）
 
 上面那 13 条传导规则产出的是**压力指数**（无量纲）。**这条链把指数接到钱上**，是「财务指标随扰动动态变化」缺的那半。
@@ -1812,6 +1852,19 @@ R4 `SANDBOX_MODE_ORIGIN_VIEW` · R5 `CONSOLIDATED_INTO_SANDBOX` 的 `via:"static
 - **`function-signature:check` 求解器本体签名门（WO-69 P2·守 §2 OntologySignature·闭 §8 G-FUNCTION-SIGNATURE·收窄 G-SECURITY-COLUMN-LEVEL 的一刀切拒·R6/R13/R14）**：① **S5 实跑比对（头号）**——签名是**机器校验的事实**不是会过期的手写清单：门 `spawnSync` 真跑 `apps/datacore/test/ontology-signature.seam.test.ts` 并**显式判 `status !== 0`**（禁 `cmd | tail; echo $?` 假绿），测内以**插桩记录真实读取面**（拦 `repos.objects.listByType` 记类型层；把 `props` 换 `Proxy`——`get` 陷阱记真读属性、`ownKeys` 陷阱记 `"*"` 整体枚举哨兵；`WeakMap` 缓存包装保**同一性**，因 `concentrationRisk` 有 `cur === s` 比较，插桩污染被观测系统本身即假绿），断言 **观测 ⊆ 声明**（漏声明 = 守卫误放行 = 出错数字 → 红；过声明是安全方向，仅打印防腐烂）② **S6 不许自造命名**——签名内 `typeKey`/`propKeys`/`linkKeys` 必须在已发布本体解析得到 ③ **DRIL 派生非第二份手填清单**——`resource-projector.projectOntologySignature` 是 solver `inputSpec/outputSpec` 的**唯一生产者**，门断言逐 solver 深等且**无签名者必须无 `inputSpec`**（残值只可能来自第二份手抄），并钉死 `requiredProps` 方向（key=typeKey·曾与 `shape` 接反）· `scripts/check-function-signature.mjs`，`pnpm function-signature:check`。已并入 `pnpm gates`。**诚实边界**：记录器看得见「读了哪个属性」，看不见「值有没有进输出」——是**上界**（只会多记→更保守多拒，不会少记→不会误放行）。
 - **`object-interface:check` 对象接口一致性门（WO-69 P3·守 §2 ObjectInterface·闭 §8 G-NO-INTERFACE·R6/R9/R13）**：① **接缝实跑（头号）**——委派 `apps/datacore/test/object-interface.seam.test.ts`（真起 app·真发布本体·真被拦：S7 接口加第 4 条属性 → **全部** latest 实现者同时被拦｜S8 两接口对同一 propKey 要求互不相容 dataType → 发布期 `INTERFACE_PROPERTY_CONFLICT`，绝不静默取其一｜S9「谁实现了 X」返回完整集合 + 影响面），本脚本**真实捕获其退出码**（禁止 `cmd | tail; echo $?` 的假绿）② **R9 四方同步**——`object_interfaces` 必须在 repo 接口 + memory + pg + migrations/028 四处齐全 ③ **发布门真挂在链路上**——`ontology.ts publishVersion` 内必须调用 `assertInterfaceConformance`（门不在链路上 = 绿测试≠能用）④ **行为声明落真注册表**——种子接口 `functions[].solverKey` ⊆ SOLVER_KEYS 且必有 WO-69 P2 本体签名、`actions[].actionTypeKey` ⊆ 已注册 ActionType、每个实现者真长出接口要求的每条属性（S7 静态影子）⑤ **平台是扁平的**——本体层不得出现类型继承字段（组合优于继承）· `scripts/check-object-interface.mjs`，`pnpm object-interface:check`。已并入 `pnpm gates`。
 - **`ontology:check` 本体漂移门禁**（治理新增）：事件/求解器/文件锚点/钩子不漂 即 build 红 · `scripts/check-system-ontology.mjs`，`pnpm ontology:check`。
+- **状态变量展示名接缝门 SEAM（WO-STATEVAR-DISPLAYNAME·2026-08-17·守 §3「展示名链路」·test-backed 无新脚本）**：跨「单源表（数据半）× 两条读时投影（服务半）× 四处屏（展示半）」，**任一半漏即红**。
+  **数据+服务半** `apps/datacore/test/statevar-display-name.seam.test.ts`（6 用例·真 HTTP·真种子 `seedDemoPropagationRules`）：
+  ① 名字出现在**两条真接口响应里**（不是读源码常量）；
+  ② **两条路口径逐字节相同**（`toEqual` 对拍）——谁在某条路由里另抄一份映射，哪怕只差一个字，当场红；
+  ③ **诚实缺席**——经**真 POST 路由**建一条带未登记变量的边，断言该键**根本不在字典里**（不是 `null`/空串/回填裸键），同一响应里已登记的那个照常有名字（防"整个字典都空了"的假通过）；
+  ④ **覆盖金丝雀（机器先说话的那道门）**——种子声明的每一个状态变量都必须有名字：谁往 `seed.ts` 加一条带新变量的规则却忘了配中文名，**这里当场红**，而不是等有人截图问「这个 loadIndex 是啥」；金丝雀先断 `declared.length > 10`，否则差集恒空、门恒绿（装饰品）；
+  ⑤ **变异反证**——响应值**逐条 === 单源表的值**（不写死中文串：写死等于赌表不变，表一改测试就在测别的东西）；
+  ⑥ **单源不并存**——状态变量的键**不得**同时是本体属性（把"登记成 PropertyDef"那条路封上，见 §3 那条 ⛔）。
+  **展示半** `apps/frontend-shell/test/statevar-display-name.seam.test.tsx`（7 用例）：
+  ① **头号判据**——同一个变量换一版下发的词，**沙盘 KPI 屏上那个词跟着变**（断可见文本，不是断字段存在/函数被调用）；
+  ② 回落态**可断言**（`data-statevar-named=false` + 屏上显裸键）；③ 字典整个缺席 ⇒ 全部回落，页面照常可用（additive 可回退）；
+  ④ 扰动下拉显中文而 `option.value` 仍是**接线名**——这条一破，扰动会写到引擎不认识的键上，屏上看着变了下游一动不动（静默错答）。
+  **变异反证（2026-08-17 现跑）**：把 `SandboxView.tsx` 读名字那一步拆掉（`stateVarLabel(...)` → 裸 `{r.v}`）⇒ **RC=1**，红在 `expected 'loadIndex 40.5' to contain '负载指数'`，即**红在「屏上还是裸键」**，不是红在「组件不见了/函数不存在」；其余 5 条不依赖该步的用例保持绿 ⇒ 变异是**定向**的。还原后 7/7 绿。
 - **财务金额世态接缝门 SEAM（WO-FINANCE-WORLDSTATE·2026-08-14·守 §3「金额链路」·test-backed 无新脚本）**：跨「传导规则（数据半）× 投影求解器（引擎半）× 金额面板（展示半）」三段，**任一半漏即红**。
   **数据+引擎半** `apps/datacore/test/finance-worldstate.seam.test.ts`（10 用例·真 HTTP 全链：真建会话 → 真扰动路由 `POST …/perturbations` → 真 tick → 真调求解器；**不**直接写 `baseSnapshot`，那样测不到扰动写端这条缝）：
   ① **头号判据**——扰动前后金额 **≠** 且方向与压力一致（成本↑/毛利↓），并与恒等式 `projected == rolling×(1+压力÷divisor)` 对拍（**不写死数字**：写死等于赌种子不变，种子一改这条测试就在测别的东西）；
