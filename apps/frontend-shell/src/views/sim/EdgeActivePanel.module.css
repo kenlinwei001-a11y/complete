@@ -1,0 +1,217 @@
+/*
+ * WO-DISRUPTION-CARDS · 扰动因素（传导边）分类卡片的版面。
+ *
+ * 病灶（仓主截图）：35 条边一次全倒在屏上 —— **无分类 · 无栅格（勾选框不在一条竖线上） · 字号过小**。
+ * 三条对策各对应下面一段：`.chipbar`（分类切片）· `.row`（固定三段栅格）· 字号档（见下）。
+ *
+ * ⛔ **一个十六进制都不许写死**：本页在暗/亮/暖三套主题下渲染，写死色值就是三套里坏两套。
+ *    全部走 `styles/tokens.css` 的语义 token（`--txt` / `--muted` / `--line` / `--panel` …）。
+ *
+ * ── 字号档（改前实测最小 12px，且 `code` 在 12px 下更小；参照物 body 13.5 / label 11.5 / small 10）──
+ *    行主标题（人话名）  13.5px —— 这是用户真正在读的那一行
+ *    系统键（第二级）    11.5px + mono —— 给得起，但不与人话名抢
+ *    chip / 元信息       12px
+ *    **没有任何一档低于 11.5px**（改前是 12px 正文里塞 12px `code`，实际视觉更小）。
+ */
+
+.panel {
+  padding: 12px;
+  color: var(--txt);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.title {
+  font-size: 13.5px;
+}
+.headerRight {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+/* ── ① 分类切片：一屏只出一个域的那几行，从不一次全倒 ───────────────────────────── */
+.chipbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.chip {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chip:hover {
+  color: var(--txt);
+  border-color: var(--accent);
+}
+.chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+/* 选中态三路编码（色 + 底 + 边框）：只靠颜色在低对比主题下等于没表达。 */
+.chipOn {
+  color: var(--txt);
+  background: var(--primary-soft);
+  border-color: var(--accent);
+}
+/* chip 上的条数 —— 与域名同一个 chip 里，用等宽字避免不同域名把数字挤得高低不齐。 */
+.chipCount {
+  font-family: var(--font-mono);
+  margin-left: 6px;
+  opacity: 0.85;
+}
+
+/* 未归域那一片的说明（不解释就会被读成"系统漏了"）。 */
+.sliceNote {
+  color: var(--muted);
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+/* ── ② 固定三段栅格：勾选框 | 内容 | 数值，所有行的控件左边缘在同一条竖线上 ─────────── */
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.row {
+  display: grid;
+  /* 18px 勾选框列 · 1fr 内容列 · 数值列自适应但不换行 —— 三列各自对齐，长短标签不再互相拱歪。 */
+  grid-template-columns: 18px minmax(0, 1fr) max-content;
+  align-items: start;
+  column-gap: 10px;
+  padding: 7px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.row input[type="checkbox"] {
+  /* 与首行文字基线对齐：主标题 13.5px × 1.5 行高 ⇒ 往下压 3px 才落在字的视觉中线上。 */
+  margin: 3px 0 0;
+}
+/* 关掉的边**可见地降级而不是消失**（§3.3）：虚线 + 不透明度 + 下方显式"已关闭"三路。 */
+.rowOff {
+  border-bottom-style: dashed;
+  opacity: 0.72;
+}
+
+/* ── ③ 一行两级：人话名在上、系统键在下 ─────────────────────────────────────────── */
+.rowMain {
+  display: block;
+  font-size: 13.5px;
+  line-height: 1.5;
+  cursor: pointer;
+  word-break: break-word;
+}
+.rowArrow {
+  color: var(--muted);
+  margin: 0 4px;
+}
+/* 第二级：系统键。等宽 + 弱化 + 更小，但**给得住**（业务名与系统键都要，不用二选一）。 */
+.rowKeys {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+/* 数值列：系数/延迟。这两个数是这条边的身份（改哪条边就看它们），故等宽、不换行。 */
+.rowMeta {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  text-align: right;
+  padding-top: 2px;
+}
+/* 「算出来的」与「你能拨的」在视觉上分开：系数/延迟是本条边的**声明值**，
+   打上 tag 让人一眼看出它不是勾选框那种可拨的东西。 */
+.derivedTag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  line-height: 1.7;
+}
+.offMark {
+  color: var(--danger-txt);
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+}
+
+.note {
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+.error {
+  color: var(--danger-txt);
+  margin-top: 8px;
+}
+.verdict {
+  margin-top: 10px;
+}
+.verdictMuted {
+  color: var(--muted);
+}
+
+.diffWrap {
+  margin-top: 8px;
+  overflow-x: auto;
+}
+.diff {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+.diff th {
+  color: var(--muted);
+  text-align: left;
+  padding: 2px 8px 2px 0;
+  font-weight: 500;
+}
+.diff td {
+  padding: 3px 8px 3px 0;
+}
+.diff code {
+  font-size: 11.5px;
+}
+.up {
+  color: var(--danger-txt);
+}
+.down {
+  color: var(--ok-txt);
+}
+.flat {
+  color: var(--muted);
+}
+
+.apply {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}

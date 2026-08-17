@@ -155,6 +155,10 @@ describe("WO-ACTIVE-EDGE-UX · 前端接缝：从 workspace 到「关掉一条�
     expect(rowAfter.getAttribute("data-active")).toBe("false");
     expect(within(panel).getByTestId(`edge-active-project-sim-off-${EDGE_A}`).textContent).toContain("已关闭");
     // 另一条边**没被连坐**（证明关的是这一条，不是把整张表停了）。
+    // ⚠ WO-DISRUPTION-CARDS：面板按业务域分片后，一屏只渲染选中那一片 —— EDGE_B 在 fixture 里
+    //   属**未归域**那一片，故先切过去再断。判据一个字没松（仍是"另一条边仍开着"），
+    //   只是取到它之前多了一次真实的用户动作。
+    await user.click(within(panel).getByTestId("edge-active-project-sim-domain-__unassigned__"));
     expect(within(panel).getByTestId(`edge-active-project-sim-edge-${EDGE_B}`).getAttribute("data-active")).toBe("true");
 
     // 结论句必须是 CHANGED 那一支（有变化），不是"没变"的两种诚实缺席之一。
@@ -185,6 +189,12 @@ describe("WO-ACTIVE-EDGE-UX · 前端接缝：从 workspace 到「关掉一条�
       id, tenantId: "demo", key, sourceTypeKey: "T", sourceStateVar: "s", viaLinkKey: "l",
       targetTypeKey: "U", targetStateVar: "t", coefficient: 1, delayTicks: 0,
       combine: "sum" as const, decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null, status: "PUBLISHED" as const,
+      // WO-DISRUPTION-CARDS：域随边下发（分类卡片的分组依据）。本用例只验排序/开关，
+      // 故两条都给同一个域 —— 分组本身由 `disruption-cards.seam.test.tsx` 专门咬。
+      domainKey: "D01" as string | null, domainName: "经营规划与情景" as string | null,
+      // 类型人话名是**读时投影**（后端 join 本体）；本用例的类型是纯 fixture ⇒ 本体查不到 ⇒ null，
+      // 与真后端对未登记类型的行为一致（前端据此显裸键）。
+      sourceTypeName: null as string | null, targetTypeName: null as string | null,
     });
     const rows = buildEdgeRows([mk("b", "2"), mk("a", "1")], ["a"]);
     expect(rows.map((r) => r.key)).toEqual(["a", "b"]); // 全序（不靠上游碰巧有序）

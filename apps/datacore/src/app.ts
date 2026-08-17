@@ -2159,7 +2159,26 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/sim/propagation-rules", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.propagation");
     const published = (req.query as { published?: string })?.published !== "false";
-    return { items: await repos.sim.listPropagationRules(c.tenantId, published) };
+    const items = await repos.sim.listPropagationRules(c.tenantId, published);
+    /**
+     * WO-DISRUPTION-CARDS · 把**对象类型的人话名**投影上去（`Base` → 「生产基地」）。
+     *
+     * 屏上那两级标签（人话名在上、系统键在下）要的就是这个名字。三条口径：
+     *  · **读时 join，不入库**：名字的真值源是本租户此刻的本体 `ObjectType.displayName`。
+     *    存进 `sim_propagation_rule.doc` 会在类型改名后留下一个查无对证的旧名字。
+     *  · **随边下发，不让前端另取一次本体**：这个面板挂在 8 个推演页上，多一个 endpoint 依赖
+     *    会把全仓 29 个做部分 mock 的前端测试一起打红（实测过）。结构上少一条依赖边。
+     *  · **查不到就 `null`**：前端据此显裸键（`Base`），不渲染空白、不编一个名字（R13/R14）。
+     *    本体未物化的租户 ⇒ 全 `null` ⇒ 屏上全是裸键，仍可用，只是没那么好读。
+     */
+    const nameOf = new Map((await repos.ontologyTypes.list(c.tenantId)).map((t) => [t.key, t.displayName] as const));
+    return {
+      items: items.map((r) => ({
+        ...r,
+        sourceTypeName: nameOf.get(r.sourceTypeKey) ?? null,
+        targetTypeName: nameOf.get(r.targetTypeKey) ?? null,
+      })),
+    };
   });
   app.post("/a/v1/sim/propagation-rules", async (req, reply) => {
     const c = ctx(req); await requireSim(c, "sim.propagation");

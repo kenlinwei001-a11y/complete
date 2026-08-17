@@ -1938,6 +1938,13 @@ type MockPropRule = {
   coefficient: number; delayTicks: number; combine: "sum" | "max";
   decay: null; clamp: null; coefficientRef: null; cadenceNodeId: null;
   status: "DRAFT" | "PUBLISHED" | "RETIRED";
+  /**
+   * WO-DISRUPTION-CARDS · 这条边落在哪个业务域（屏上分类卡片的**唯一**分组依据）。
+   * 真后端由 `seed.ts resolveRuleDomain` 从流程承载物登记册**现算**后随边下发；
+   * mock 只是它的替身，**镜像形状不镜像算法**（mock 世界没有流程登记册可算）。
+   * `null` = 未归域（真后端里也真有这一态：target 不是任何流程的承载物）。
+   */
+  domainKey: string | null; domainName: string | null;
 };
 type MockPublishRequest = { id: string; ontologyVersion: number; status: "PENDING" | "APPROVED" | "REJECTED"; touchedDomains: string[]; signoffs: { domainKey: string; decision: string }[]; createdAt: string };
 
@@ -1982,6 +1989,10 @@ const MOCK_RULE_SEED: MockPropRule[] = [
     targetTypeKey: "Base", targetStateVar: "s2",
     coefficient: 0.85, delayTicks: 1, combine: "sum",
     decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null, status: "PUBLISHED",
+    // WO-DISRUPTION-CARDS：三条 mock 边**刻意落在两个不同的域 + 一条未归域**，
+    // 好让"点一个 chip 只出这一片的行"与"未归域单列"两条判据在 mock 世界里都跑得到。
+    // 三条全归一个域 = 切片测试永远是绿的（一片装下全部，等于没切）。
+    domainKey: "D10", domainName: "基地与仓储交付",
   },
 
   // ⚠ 合并 WO-BEFE-A × WO-ACTIVE-EDGE-UX 时收编：这两条原本住在**另一份** fixture
@@ -1993,11 +2004,15 @@ const MOCK_RULE_SEED: MockPropRule[] = [
     id: "simpr_mock_a", tenantId: "demo", key: "mock_a_to_b",
     sourceTypeKey: "TypeA", sourceStateVar: "s1", viaLinkKey: "linkAB", targetTypeKey: "TypeB", targetStateVar: "s1",
     coefficient: 0.5, delayTicks: 0, combine: "sum", decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null, status: "PUBLISHED",
+    domainKey: "D05", domainName: "采购与供应",
   },
   {
     id: "simpr_mock_b", tenantId: "demo", key: "mock_a_to_b_slow",
     sourceTypeKey: "TypeA", sourceStateVar: "s2", viaLinkKey: "linkAB", targetTypeKey: "TypeB", targetStateVar: "s2",
     coefficient: 0.25, delayTicks: 1, combine: "sum", decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null, status: "PUBLISHED",
+    // 第三条**故意未归域** —— 真后端里这一态是真实存在的（demo 实测 35 条里有 3 条），
+    // mock 里不造出来，屏上那条「未归域」分片就永远没有测试走过。
+    domainKey: null, domainName: null,
   },
 ];
 /** 传导边 fixture —— **派生视图**，真值源是 `MOCK_RULE_SEED`（合并时收编，见其尾部注释）。 */
@@ -2575,6 +2590,57 @@ function mockSolveFacilityLocation(a: Record<string, unknown>) {
  * 桩自己再编一份就把本单要治的病（同一概念两套词表）原样搬进 mock 层。
  */
 const MOCK_OPT_FAMILIES = ["facility_location", "min_cost_flow", "set_cover", "independent_set", "combinatorial_auction"] as const;
+
+/**
+ * mock 本体对象类型 —— **命名成 const 而不是内联在 handler 里**，是为了让
+ * `GET /a/v1/sim/propagation-rules` 的读时投影（类型人话名）与本 handler **共用同一份真值**。
+ * 抄一份中文名到那条路由上，就是本仓反复治的「第二套真相源」：改了这里、那边还显旧名。
+ */
+const MOCK_OBJECT_TYPES = [
+  {
+    key: "Base", displayName: "生产基地", domain: "factory", status: "ACTIVE",
+    sourceBindings: [{ connId: "conn-synth", dataset: "base" }],
+    properties: [
+      { propKey: "baseId", dataType: "string", isPrimaryKey: true, displayName: "基地编号" },
+      { propKey: "name", dataType: "string", isPrimaryKey: false, displayName: "基地名称" },
+      { propKey: "util", dataType: "number", isPrimaryKey: false, unit: "%", displayName: "产能利用率" },
+      { propKey: "gwh", dataType: "number", isPrimaryKey: false, unit: "GWh", displayName: "铭牌年产能" },
+      { propKey: "position", dataType: "enum", isPrimaryKey: false }, // 留白：与 kind 同值，业务语义待确认
+    ],
+  },
+  { key: "Model", displayName: "电池型号", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "model" }], properties: [{ propKey: "modelId", dataType: "string", isPrimaryKey: true, displayName: "型号编号" }, { propKey: "name", dataType: "string", displayName: "型号名称" }, { propKey: "chemistry", dataType: "string" }] },
+  { key: "Order", displayName: "销售订单", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "order" }], properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true, displayName: "订单号" }, { propKey: "cust", dataType: "string", displayName: "客户" }, { propKey: "qty", dataType: "number", displayName: "订单数量" }, { propKey: "due", dataType: "date", displayName: "交期" }] },
+  { key: "Line", displayName: "产线", domain: "capacity", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "line" }], properties: [{ propKey: "lineNo", dataType: "string", isPrimaryKey: true }, { propKey: "baseId", dataType: "ref", refToTypeKey: "Base" }, { propKey: "utilization", dataType: "number", unit: "%" }] },
+  { key: "Process", displayName: "工序", domain: "process", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "process" }], properties: [{ propKey: "procId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }] },
+  { key: "Customer", displayName: "客户", domain: "people", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "customer" }], properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "creditLimit", dataType: "number" }] },
+  // Phase 2 产品工程主数据域
+  { key: "ProductPlatform", displayName: "产品平台", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_platforms" }], properties: [{ propKey: "platformId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "category", dataType: "enum" }] },
+  { key: "ProductSeries", displayName: "产品系列", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_series" }], properties: [{ propKey: "seriesId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "category", dataType: "enum" }] },
+  { key: "ProductVersion", displayName: "产品版本", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_versions" }], properties: [{ propKey: "versionId", dataType: "string", isPrimaryKey: true }, { propKey: "versionCode", dataType: "string" }, { propKey: "status", dataType: "enum" }] },
+  { key: "BOMHeader", displayName: "BOM", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_bom_headers" }], properties: [{ propKey: "bomId", dataType: "string", isPrimaryKey: true }, { propKey: "bomCode", dataType: "string" }, { propKey: "bomLevel", dataType: "number" }] },
+  { key: "BOMDetail", displayName: "BOM明细", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_bom_details" }], properties: [{ propKey: "bomDetailId", dataType: "string", isPrimaryKey: true }, { propKey: "sequence", dataType: "number" }, { propKey: "quantity", dataType: "number" }] },
+  // 用户原话点名的例子：Material.leadTime → 「到货周期」（真后端 PROP_DISPLAY_NAMES["Material.leadTime"] 同值）。
+  // devPct 故意无中文名（口径不明·后端亦留白）→ 界面诚实显裸键 devPct。
+  { key: "Material", displayName: "物料", domain: "supply", status: "ACTIVE", sourceBindings: [{ connId: "conn-erp", dataset: "erp_materials" }], properties: [{ propKey: "matId", dataType: "string", isPrimaryKey: true, displayName: "物料标识" }, { propKey: "name", dataType: "string", displayName: "物料名称" }, { propKey: "unitPrice", dataType: "number", displayName: "单价" }, { propKey: "leadTime", dataType: "number", unit: "天", displayName: "到货周期" }, { propKey: "onHand", dataType: "number", displayName: "现货库存" }, { propKey: "devPct", dataType: "number" }] },
+  { key: "Supplier", displayName: "供应商", domain: "supply", status: "ACTIVE", sourceBindings: [{ connId: "conn-srm", dataset: "srm_suppliers" }], properties: [{ propKey: "supplierId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "rating", dataType: "enum" }] },
+  { key: "MaterialAlternative", displayName: "物料替代", domain: "supply", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_material_alts" }], properties: [{ propKey: "altId", dataType: "string", isPrimaryKey: true }, { propKey: "priority", dataType: "number" }, { propKey: "approvalStatus", dataType: "enum" }] },
+  { key: "Routing", displayName: "工艺路线", domain: "process", status: "ACTIVE", sourceBindings: [{ connId: "conn-mes", dataset: "mes_routings" }], properties: [{ propKey: "routingId", dataType: "string", isPrimaryKey: true }, { propKey: "routingCode", dataType: "string" }, { propKey: "operationCount", dataType: "number" }] },
+  { key: "Operation", displayName: "工序", domain: "process", status: "ACTIVE", sourceBindings: [{ connId: "conn-mes", dataset: "mes_operations" }], properties: [{ propKey: "operationId", dataType: "string", isPrimaryKey: true }, { propKey: "operationName", dataType: "string" }, { propKey: "standardTime", dataType: "number" }] },
+  { key: "ProcessCapabilityWindow", displayName: "工艺能力边界", domain: "process", status: "ACTIVE", sourceBindings: [{ connId: "conn-mes", dataset: "mes_process_capabilities" }], properties: [{ propKey: "capabilityId", dataType: "string", isPrimaryKey: true }, { propKey: "parameterName", dataType: "string" }, { propKey: "minValue", dataType: "number" }] },
+  { key: "QualityStandard", displayName: "质量标准", domain: "quality", status: "ACTIVE", sourceBindings: [{ connId: "conn-qms", dataset: "qms_standards" }], properties: [{ propKey: "standardId", dataType: "string", isPrimaryKey: true }, { propKey: "itemName", dataType: "string" }, { propKey: "targetValue", dataType: "number" }] },
+  { key: "InspectionCharacteristic", displayName: "检验特性", domain: "quality", status: "ACTIVE", sourceBindings: [{ connId: "conn-qms", dataset: "qms_inspection_chars" }], properties: [{ propKey: "charId", dataType: "string", isPrimaryKey: true }, { propKey: "charName", dataType: "string" }, { propKey: "inspectionType", dataType: "enum" }] },
+  { key: "ProductLineCapability", displayName: "产品产线能力", domain: "factory", status: "ACTIVE", sourceBindings: [{ connId: "conn-mes", dataset: "mes_product_line_cap" }], properties: [{ propKey: "capId", dataType: "string", isPrimaryKey: true }, { propKey: "capability", dataType: "enum" }, { propKey: "maxCapacity", dataType: "number" }] },
+  { key: "ProductEquipmentCapability", displayName: "产品设备能力", domain: "equip", status: "ACTIVE", sourceBindings: [{ connId: "conn-mes", dataset: "mes_product_equip_cap" }], properties: [{ propKey: "equipCapId", dataType: "string", isPrimaryKey: true }, { propKey: "capability", dataType: "enum" }, { propKey: "maxSpeed", dataType: "number" }] },
+  { key: "EngineeringChange", displayName: "工程变更", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_ecn" }], properties: [{ propKey: "changeId", dataType: "string", isPrimaryKey: true }, { propKey: "changeNumber", dataType: "string" }, { propKey: "changeType", dataType: "enum" }] },
+];
+/**
+ * `typeKey → displayName`（由上面那份**现算**，不是另抄一张表）。
+ * 消费方：`GET /a/v1/sim/propagation-rules` 的 `sourceTypeName`/`targetTypeName` 投影，
+ * 镜像真后端 `app.ts` 里那个 `nameOf` —— mock 与后端做同一件事，前端才测得到真行为。
+ */
+const MOCK_OBJECT_TYPE_DISPLAY_NAMES: ReadonlyMap<string, string> = new Map(
+  MOCK_OBJECT_TYPES.map((t) => [t.key, t.displayName] as const),
+);
 
 export const handlers = [
   // ── WO-BEFE-E · 优化模板池三条（datacore app.ts:3682 / :3689 / :3664）────────────
@@ -3441,43 +3507,7 @@ export const handlers = [
     // WO-SCHEMA-ZH：properties[].displayName 镜像真后端 PROP_DISPLAY_NAMES（synthetic/battery.ts 单一真值）——
     // mock 只是后端的替身，**不是第二份中文名来源**；真值改了这里跟着改（datacore seam 测试守真值那一侧）。
     // 故意保留若干**无 displayName** 的属性（如 Base.position / Material.devPct），用于验前端诚实回落裸键。
-    HttpResponse.json([
-      {
-        key: "Base", displayName: "生产基地", domain: "factory", status: "ACTIVE",
-        sourceBindings: [{ connId: "conn-synth", dataset: "base" }],
-        properties: [
-          { propKey: "baseId", dataType: "string", isPrimaryKey: true, displayName: "基地编号" },
-          { propKey: "name", dataType: "string", isPrimaryKey: false, displayName: "基地名称" },
-          { propKey: "util", dataType: "number", isPrimaryKey: false, unit: "%", displayName: "产能利用率" },
-          { propKey: "gwh", dataType: "number", isPrimaryKey: false, unit: "GWh", displayName: "铭牌年产能" },
-          { propKey: "position", dataType: "enum", isPrimaryKey: false }, // 留白：与 kind 同值，业务语义待确认
-        ],
-      },
-      { key: "Model", displayName: "电池型号", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "model" }], properties: [{ propKey: "modelId", dataType: "string", isPrimaryKey: true, displayName: "型号编号" }, { propKey: "name", dataType: "string", displayName: "型号名称" }, { propKey: "chemistry", dataType: "string" }] },
-      { key: "Order", displayName: "销售订单", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "order" }], properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true, displayName: "订单号" }, { propKey: "cust", dataType: "string", displayName: "客户" }, { propKey: "qty", dataType: "number", displayName: "订单数量" }, { propKey: "due", dataType: "date", displayName: "交期" }] },
-      { key: "Line", displayName: "产线", domain: "capacity", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "line" }], properties: [{ propKey: "lineNo", dataType: "string", isPrimaryKey: true }, { propKey: "baseId", dataType: "ref", refToTypeKey: "Base" }, { propKey: "utilization", dataType: "number", unit: "%" }] },
-      { key: "Process", displayName: "工序", domain: "process", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "process" }], properties: [{ propKey: "procId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }] },
-      { key: "Customer", displayName: "客户", domain: "people", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "customer" }], properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "creditLimit", dataType: "number" }] },
-      // Phase 2 产品工程主数据域
-      { key: "ProductPlatform", displayName: "产品平台", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_platforms" }], properties: [{ propKey: "platformId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "category", dataType: "enum" }] },
-      { key: "ProductSeries", displayName: "产品系列", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_series" }], properties: [{ propKey: "seriesId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "category", dataType: "enum" }] },
-      { key: "ProductVersion", displayName: "产品版本", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_versions" }], properties: [{ propKey: "versionId", dataType: "string", isPrimaryKey: true }, { propKey: "versionCode", dataType: "string" }, { propKey: "status", dataType: "enum" }] },
-      { key: "BOMHeader", displayName: "BOM", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_bom_headers" }], properties: [{ propKey: "bomId", dataType: "string", isPrimaryKey: true }, { propKey: "bomCode", dataType: "string" }, { propKey: "bomLevel", dataType: "number" }] },
-      { key: "BOMDetail", displayName: "BOM明细", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_bom_details" }], properties: [{ propKey: "bomDetailId", dataType: "string", isPrimaryKey: true }, { propKey: "sequence", dataType: "number" }, { propKey: "quantity", dataType: "number" }] },
-      // 用户原话点名的例子：Material.leadTime → 「到货周期」（真后端 PROP_DISPLAY_NAMES["Material.leadTime"] 同值）。
-      // devPct 故意无中文名（口径不明·后端亦留白）→ 界面诚实显裸键 devPct。
-      { key: "Material", displayName: "物料", domain: "supply", status: "ACTIVE", sourceBindings: [{ connId: "conn-erp", dataset: "erp_materials" }], properties: [{ propKey: "matId", dataType: "string", isPrimaryKey: true, displayName: "物料标识" }, { propKey: "name", dataType: "string", displayName: "物料名称" }, { propKey: "unitPrice", dataType: "number", displayName: "单价" }, { propKey: "leadTime", dataType: "number", unit: "天", displayName: "到货周期" }, { propKey: "onHand", dataType: "number", displayName: "现货库存" }, { propKey: "devPct", dataType: "number" }] },
-      { key: "Supplier", displayName: "供应商", domain: "supply", status: "ACTIVE", sourceBindings: [{ connId: "conn-srm", dataset: "srm_suppliers" }], properties: [{ propKey: "supplierId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "rating", dataType: "enum" }] },
-      { key: "MaterialAlternative", displayName: "物料替代", domain: "supply", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_material_alts" }], properties: [{ propKey: "altId", dataType: "string", isPrimaryKey: true }, { propKey: "priority", dataType: "number" }, { propKey: "approvalStatus", dataType: "enum" }] },
-      { key: "Routing", displayName: "工艺路线", domain: "process", status: "ACTIVE", sourceBindings: [{ connId: "conn-mes", dataset: "mes_routings" }], properties: [{ propKey: "routingId", dataType: "string", isPrimaryKey: true }, { propKey: "routingCode", dataType: "string" }, { propKey: "operationCount", dataType: "number" }] },
-      { key: "Operation", displayName: "工序", domain: "process", status: "ACTIVE", sourceBindings: [{ connId: "conn-mes", dataset: "mes_operations" }], properties: [{ propKey: "operationId", dataType: "string", isPrimaryKey: true }, { propKey: "operationName", dataType: "string" }, { propKey: "standardTime", dataType: "number" }] },
-      { key: "ProcessCapabilityWindow", displayName: "工艺能力边界", domain: "process", status: "ACTIVE", sourceBindings: [{ connId: "conn-mes", dataset: "mes_process_capabilities" }], properties: [{ propKey: "capabilityId", dataType: "string", isPrimaryKey: true }, { propKey: "parameterName", dataType: "string" }, { propKey: "minValue", dataType: "number" }] },
-      { key: "QualityStandard", displayName: "质量标准", domain: "quality", status: "ACTIVE", sourceBindings: [{ connId: "conn-qms", dataset: "qms_standards" }], properties: [{ propKey: "standardId", dataType: "string", isPrimaryKey: true }, { propKey: "itemName", dataType: "string" }, { propKey: "targetValue", dataType: "number" }] },
-      { key: "InspectionCharacteristic", displayName: "检验特性", domain: "quality", status: "ACTIVE", sourceBindings: [{ connId: "conn-qms", dataset: "qms_inspection_chars" }], properties: [{ propKey: "charId", dataType: "string", isPrimaryKey: true }, { propKey: "charName", dataType: "string" }, { propKey: "inspectionType", dataType: "enum" }] },
-      { key: "ProductLineCapability", displayName: "产品产线能力", domain: "factory", status: "ACTIVE", sourceBindings: [{ connId: "conn-mes", dataset: "mes_product_line_cap" }], properties: [{ propKey: "capId", dataType: "string", isPrimaryKey: true }, { propKey: "capability", dataType: "enum" }, { propKey: "maxCapacity", dataType: "number" }] },
-      { key: "ProductEquipmentCapability", displayName: "产品设备能力", domain: "equip", status: "ACTIVE", sourceBindings: [{ connId: "conn-mes", dataset: "mes_product_equip_cap" }], properties: [{ propKey: "equipCapId", dataType: "string", isPrimaryKey: true }, { propKey: "capability", dataType: "enum" }, { propKey: "maxSpeed", dataType: "number" }] },
-      { key: "EngineeringChange", displayName: "工程变更", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_ecn" }], properties: [{ propKey: "changeId", dataType: "string", isPrimaryKey: true }, { propKey: "changeNumber", dataType: "string" }, { propKey: "changeType", dataType: "enum" }] },
-    ]),
+    HttpResponse.json(MOCK_OBJECT_TYPES),
   ),
 
   // ---- 治理增量 §5 对象 360：按键取对象 ----
@@ -6737,7 +6767,22 @@ export const handlers = [
   // `GET /a/v1/sim/propagation-rules`（后端 app.ts:1860）：`published=false` 才看得到停用的边。
   http.get("*/a/v1/sim/propagation-rules", ({ request }) => {
     const publishedOnly = new URL(request.url).searchParams.get("published") !== "false";
-    return HttpResponse.json({ items: publishedOnly ? derivePublishedRules() : mockPropRules });
+    const items = publishedOnly ? derivePublishedRules() : mockPropRules;
+    /**
+     * WO-DISRUPTION-CARDS：镜像真后端那条路由的**读时投影**（`app.ts` 的 `nameOf` join）——
+     * 对象类型的人话名不入库，读的时候从本体现取。名字来源是**同一个 handler 下发的那份本体**
+     * （`GET /a/v1/ontology/object-types`），不是第二份中文名表：
+     * 查不到（如 `TypeA`/`TypeB` 这类纯 fixture 类型）⇒ `null` ⇒ 前端诚实显裸键，
+     * 这一态在 `disruption-cards.seam.test.tsx` 的两级标签用例里被正面咬。
+     */
+    const nameOf = MOCK_OBJECT_TYPE_DISPLAY_NAMES;
+    return HttpResponse.json({
+      items: items.map((r) => ({
+        ...r,
+        sourceTypeName: nameOf.get(r.sourceTypeKey) ?? null,
+        targetTypeName: nameOf.get(r.targetTypeKey) ?? null,
+      })),
+    });
   }),
   // `POST /a/v1/sim/propagation-rules`（后端 app.ts:1865）：id 由服务端铸（后端把它写在 body 展开之后，
   // 传进来的 id 恒被覆盖 —— 这里照做，否则 mock 会比后端"更能干"，把一个真缺口盖掉）。
@@ -6752,6 +6797,9 @@ export const handlers = [
       coefficient: Number(b.coefficient ?? 0), delayTicks: Number(b.delayTicks ?? 0),
       combine: "sum", decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null,
       status: b.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT",
+      // 租户自建的边**没有域**（与真后端一致：`resolveRuleDomain` 只认流程承载物，
+      // 建边请求体里也不接受 domainKey）⇒ 一律进「未归域」分片，不替它猜一个。
+      domainKey: null, domainName: null,
     };
     mockPropRules.push(rule);
     return HttpResponse.json(rule, { status: 201 });

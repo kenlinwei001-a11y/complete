@@ -36,6 +36,95 @@ export interface EdgeRowVM {
    * 消失了用户就不知道自己关了什么，也就无从把它拨回来。
    */
   dimmed: boolean;
+  /**
+   * 源对象类型的**人话名**（`生产基地`）—— 取自本体 `ObjectType.displayName`，
+   * 查不到就回落成类型 key 原文。⛔ **前端一个中文名都不许内联**（R14 零业务常数 +
+   * `G-GATE-ROSTER-HANDCOPIED`）：本仓 `fetchObjectTypes` 的注释原文就是
+   * 「前端**只消费 `displayName ?? propKey`**，不得内联任何中文名映射」。
+   */
+  sourceTypeName: string;
+  /** 目标对象类型的人话名（口径同上）。 */
+  targetTypeName: string;
+  /** 域 key（`D05`）；`null` = 未归域（target 不是任何流程的承载物）。 */
+  domainKey: string | null;
+  /** 域的人话名；`null` 同上。 */
+  domainName: string | null;
+}
+
+/**
+ * 一个域的切片（= 屏上的一个 chip + 它管的那些行）。
+ *
+ * ⛔ **`count` 必须从 `rows.length` 现算，不许另存一个数** —— 两个数就有两套真相，
+ * 而"chip 上写着 7 条、点开只有 5 行"正是本单要防的那种错（分类里凭空少掉边）。
+ */
+export interface DomainSliceVM {
+  /** 域 key；`null` = 未归域分片。 */
+  key: string | null;
+  /**
+   * 选中态与 testid 用的稳定串（`key` 或 `__unassigned__`）。
+   * 单独给一个是因为 `key` 可空，而"当前选中哪一片"必须是个**能相等比较的值** ——
+   * 拿 `null` 当选中值，就分不出「选中了未归域」与「什么都没选中」。
+   */
+  sliceId: string;
+  /** chip 上显示的名字。未归域用平台自有措辞，不编一个业务域名出来。 */
+  name: string;
+  /** 该域的边数 —— **恒等于 `rows.length`**（见上）。 */
+  count: number;
+  rows: EdgeRowVM[];
+}
+
+/** 未归域分片的 `sliceId`（不是域 key —— 它不是一个域）。 */
+export const UNASSIGNED_SLICE_ID = "__unassigned__";
+
+/** 未归域分片的 chip 名（**不是**某个业务域的名字，是"这些边的归属在数据里没定义"这句话）。 */
+export const UNASSIGNED_DOMAIN_LABEL = "未归域";
+/** 未归域分片的说明（屏上真渲染 —— 不解释就会被读成"系统漏了"）。 */
+export const UNASSIGNED_DOMAIN_DETAIL =
+  "这些边的目标对象类型不是任何业务流程的承载物，因此在数据里没有域归属。" +
+  "它们多是链路上的中间跳（压力从这里穿过去，落点在别的域）。这是数据的实情，不是漏填 —— 故单列一片，不塞进最近的那个域。";
+
+/**
+ * 边目录 → 按业务域切片（**分组依据只有一个：边自己带的 `domainKey`**）。
+ *
+ * ⛔ **前端不许存任何「规则→域」的对照表**（本体 §8 `G-GATE-ROSTER-HANDCOPIED`）：
+ * 手抄名单里没有的规则**永远绿、永远漏** —— 新增一条边忘了加进表里，它就从分类里消失，
+ * 而没有任何东西会报错。域由产出这批边的那一侧（`seed.ts resolveRuleDomain`）算好随边下发，
+ * 本函数只做 `groupBy`，一个业务判断都不做。
+ *
+ * 排序（R6 全序，同输入同屏）：域 key 升序，**未归域恒垫底**（它不是一个业务域，
+ * 混在字母序里会让人以为它和别的域平级）。
+ */
+export function buildDomainSlices(rows: readonly EdgeRowVM[]): DomainSliceVM[] {
+  const byKey = new Map<string, DomainSliceVM>();
+  const unassigned: EdgeRowVM[] = [];
+  for (const r of rows) {
+    if (r.domainKey === null) {
+      unassigned.push(r);
+      continue;
+    }
+    const cur = byKey.get(r.domainKey);
+    if (cur) cur.rows.push(r);
+    // 名字取这条边自带的那个；缺名就显 key 原文，**不编一个中文名**（诚实缺席）。
+    else byKey.set(r.domainKey, { key: r.domainKey, sliceId: r.domainKey, name: r.domainName ?? r.domainKey, count: 0, rows: [r] });
+  }
+  const slices = [...byKey.values()].sort((a, b) => a.sliceId.localeCompare(b.sliceId));
+  if (unassigned.length > 0) {
+    slices.push({ key: null, sliceId: UNASSIGNED_SLICE_ID, name: UNASSIGNED_DOMAIN_LABEL, count: 0, rows: unassigned });
+  }
+  // count 一律回填成 rows.length —— 这一行就是"两个数不许分家"在代码里的落点。
+  return slices.map((s) => ({ ...s, count: s.rows.length }));
+}
+
+/**
+ * 当前该选中哪个 chip（**受控回落**，不是每次渲染重算一个）。
+ *
+ * 为什么需要它：切片数量会随数据变（换租户、加边、后端只回 published）。
+ * 用户选中的那个域若在新数据里没有了，屏上不能变成"一个 chip 都没选中 ⇒ 一行都不显示"
+ * —— 那看起来和"这页坏了"一模一样。故：选中的还在就保持，不在就回落到第一片。
+ */
+export function resolveActiveSlice(slices: readonly DomainSliceVM[], picked: string | null): string | null {
+  if (slices.length === 0) return null;
+  return slices.some((s) => s.sliceId === picked) ? picked : slices[0]!.sliceId;
 }
 
 /**
@@ -45,7 +134,16 @@ export interface EdgeRowVM {
  * 但 `published=false` 那条路、mock、以及将来任何新的边来源都不保证——
  * 排序是这一屏的**语义**（用户按位置记住那一行），不能指望上游碰巧是对的。
  */
-export function buildEdgeRows(rules: readonly PropagationRule[], disabledRuleKeys: readonly string[]): EdgeRowVM[] {
+export function buildEdgeRows(
+  rules: readonly PropagationRule[],
+  disabledRuleKeys: readonly string[],
+  /**
+   * `对象类型 key → displayName`（来自 `GET /a/v1/ontology/object-types`）。
+   * **缺省空 Map ⇒ 人话名逐条回落成类型 key** —— 与本字段引入前逐字节同屏（additive 可回退），
+   * 也保证名字这一路取不回来时页面照常可用（"名字没取到"不该让开关面板整块消失）。
+   */
+  typeDisplayNames: ReadonlyMap<string, string> = new Map(),
+): EdgeRowVM[] {
   const off = new Set(disabledRuleKeys);
   return [...rules]
     .sort((a, b) => a.key.localeCompare(b.key) || a.id.localeCompare(b.id))
@@ -60,6 +158,14 @@ export function buildEdgeRows(rules: readonly PropagationRule[], disabledRuleKey
         delayTicks: r.delayTicks,
         active,
         dimmed: !active,
+        // `displayName ?? key`：查不到就显裸键，**不渲染空白、也不内联中文名映射**
+        // （`fetchObjectTypes` 注释立的同一条规矩）。
+        sourceTypeName: typeDisplayNames.get(r.sourceTypeKey) ?? r.sourceTypeKey,
+        targetTypeName: typeDisplayNames.get(r.targetTypeKey) ?? r.targetTypeKey,
+        // 域**直取后端下发的字段**，前端零加工、零对照表（`G-GATE-ROSTER-HANDCOPIED`）。
+        // `?? null`：老响应/租户自建边没有这两个字段 ⇒ 读作未归域，不 crash。
+        domainKey: r.domainKey ?? null,
+        domainName: r.domainName ?? null,
       };
     });
 }

@@ -114,6 +114,22 @@ export const PropagationRuleSchema = z.object({
    * 必须是同一次判断的产物** —— 分两处取，就有了"key 归 A 域、名字显示 B 域"的漂移空间。
    */
   domainName: z.string().nullable().default(null),
+  /**
+   * 源对象类型的**人话名**（`Base` → 「生产基地」），供屏上「人话名在上、系统键在下」那两级用。
+   *
+   * ⚠ **读时投影，不是入库字段**：`GET /a/v1/sim/propagation-rules` 每次从**本租户当下的本体**
+   * （`ObjectType.displayName`）现 join 后填上。种子/`POST` 存进去的恒是 `null`，读出来的才有值 ——
+   * 存一份进 doc 就会在类型改名后变成一个查无对证的旧名字（本仓治了多次的「第二套真相源」）。
+   *
+   * 为什么随边下发而不是让前端另取一次本体：本面板挂在 8 个推演页上，而**全仓 29 个前端测试
+   * 对 `@/api/endpoints` 做部分 mock** —— 给共享面板加一个 endpoint 依赖会把它们全部打红。
+   * 让这个面板只依赖一个响应，是结构上的减法，不只是省一次请求。
+   *
+   * `null` = 本体里查不到该类型（或本体尚未物化）⇒ 屏上**显裸键**，不渲染空白、不编名字。
+   */
+  sourceTypeName: z.string().nullable().default(null),
+  /** 目标对象类型的人话名（口径与 `sourceTypeName` 逐条相同）。 */
+  targetTypeName: z.string().nullable().default(null),
 });
 export type PropagationRule = z.infer<typeof PropagationRuleSchema>;
 
