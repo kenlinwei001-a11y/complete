@@ -110,7 +110,7 @@ export default function AgentsPage() {
           {keys.map((k) => {
             const latest = (agents ?? []).filter((a) => a.key === k).sort((a, b) => b.version - a.version)[0]!;
             return (
-              <button key={k} className="btn" style={{ width: "100%", marginBottom: 6, justifyContent: "flex-start", borderColor: selectedKey === k ? "var(--accent)" : undefined }} onClick={() => { setSelectedKey(k); setVersion(null); }}>
+              <button key={k} className="btn" style={{ width: "100%", marginBottom: 6, justifyContent: "flex-start", borderColor: selectedKey === k ? "var(--accent)" : undefined }} onClick={() => { setSelectedKey(k); setVersion(null); }} data-testid="agent-list-item">
                 <span className={`badge ${latest.status === "PUBLISHED" ? "green" : "amber"}`}>{latest.status}</span>
                 <span className="zh">{latest.name}</span>
               </button>

@@ -29,7 +29,7 @@ export default function McpPage() {
       <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 14, alignItems: "start" }}>
         <div className="panel">
           {(configs ?? []).map((c) => (
-            <button key={c.id} className="btn" style={{ width: "100%", marginBottom: 6, justifyContent: "flex-start", borderColor: selectedId === c.id ? "var(--accent)" : undefined }} onClick={() => { setSelectedId(c.id); setCreating(false); }}>
+            <button key={c.id} className="btn" style={{ width: "100%", marginBottom: 6, justifyContent: "flex-start", borderColor: selectedId === c.id ? "var(--accent)" : undefined }} onClick={() => { setSelectedId(c.id); setCreating(false); }} data-testid="mcp-list-item">
               <span className={`badge ${c.status === "ACTIVE" ? "green" : ""}`}>{c.status}</span>
               <span className="zh">{c.name}</span>
             </button>

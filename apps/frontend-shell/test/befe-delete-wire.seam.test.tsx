@@ -96,6 +96,23 @@ function expectDeleteHit(calls: Recorded[], frag: string): void {
   ).toContain("DELETE");
 }
 
+/**
+ * 「请求真发出且方法+路径都对」的等待版。
+ *
+ * ⚠ **断言顺序是刻意的**（2026-08-17 实测校正）：必须**先**判方法维、**再**判 handler 命中。
+ * 反过来写的话，把 `deleteAgent` 变异成 `POST` 时，MSW 的 `http.delete` 匹配不上 ⇒
+ * `handlerHits` 恒 0 ⇒ 用例先红在「handler 一次都没被走到」，**而真正的病因是方法不对**。
+ * 那样红是红了，但报错指向错的地方 —— 下一个人会去查 handler 注册，查不出问题。
+ * 工单点名要的是「测试必须红在**方法不对**」，故方法判据必须排在最前面。
+ */
+async function expectDeleteSent(calls: Recorded[], frag: string): Promise<void> {
+  await waitFor(() => {
+    expectRecorderAlive(calls);
+    expect(onPath(calls, frag).length, `${frag} 上一条请求都没发出`).toBeGreaterThan(0);
+  });
+  expectDeleteHit(calls, frag);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * 与真后端同口径的删除 handler
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -194,7 +211,7 @@ function installDeleteHandlers(): void {
   );
 }
 
-/** 打开确认弹窗（点第一颗「删除」），返回弹窗内的取值范围。 */
+/** 打开确认弹窗（点第一颗「删除」），返回弹窗根节点。 */
 async function openConfirm(user: ReturnType<typeof userEvent.setup>, testid: string): Promise<HTMLElement> {
   await user.click(await screen.findByTestId(testid));
   return await screen.findByRole("dialog");
@@ -203,6 +220,28 @@ async function openConfirm(user: ReturnType<typeof userEvent.setup>, testid: str
 const clickConfirm = async (user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement): Promise<void> => {
   await user.click(within(dialog).getByRole("button", { name: DELETE_COPY.confirmLabel }));
 };
+
+/**
+ * 取消 = 点那颗**写着「取消」**的按钮。
+ * ⚠ 不许用 `/取消|关闭/` 这种正则：弹窗右上角的 ✕ 的 aria-label 正是「关闭」，
+ * 两者一起命中 ⇒ `getByRole` 抛 "Found multiple elements"，用例红在选择器上而不是判据上
+ * （第一版就是这么红的 5 条）。`{ exact: true }` 的字符串匹配只咬「取消」那一颗。
+ */
+const clickCancel = async (user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement): Promise<void> => {
+  await user.click(within(dialog).getByRole("button", { name: "取消" }));
+};
+
+/** 按可见文本在某个列表族里选中一行（列表项都带 testid，避免误点到页面别处的同名控件）。 */
+async function pickFromList(
+  user: ReturnType<typeof userEvent.setup>,
+  listTestId: string,
+  text: string,
+): Promise<void> {
+  const items = await screen.findAllByTestId(listTestId);
+  const hit = items.find((el) => el.textContent?.includes(text));
+  expect(hit, `列表 ${listTestId} 里找不到含「${text}」的行（实际：${items.map((e) => e.textContent).join(" | ")}）`).toBeTruthy();
+  await user.click(hit!);
+}
 
 beforeEach(() => {
   loginAs("planner"); // roles 含 catalog_admin —— 五条 DELETE 后端都要 requireCatalogAdmin
@@ -227,19 +266,22 @@ describe("WO-BEFE-DELETE-WIRE ① DELETE /b/v1/agents/*", () => {
 
     renderApp("/admin/agents");
     // 先选中它（左栏按 key 分组，点进去才出编辑器）
-    await user.click(await screen.findByRole("button", { name: new RegExp(target!.name) }));
+    await pickFromList(user, "agent-list-item", target!.name);
     await screen.findByTestId("agent-editor");
 
     const dialog = await openConfirm(user, "agent-delete");
     await clickConfirm(user, dialog);
 
+    // 先判方法维（变异成 POST 时必须红在这里，而不是红在 handler 没命中）
+    await expectDeleteSent(reqLog, `/b/v1/agents/${id}`);
     await waitFor(() => expect(handlerHits.agent, "删除 handler 一次都没被走到").toBeGreaterThan(0));
-    expectRecorderAlive(reqLog);
-    expectDeleteHit(reqLog, `/b/v1/agents/${id}`);
 
     // 屏上真变：那条从左栏列表里消失（不是只看请求发出去了）
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: new RegExp(target!.name) }), "请求发了但列表里那条还在 ⇒ 用户看不到结果").toBeNull(),
+      expect(
+        screen.queryAllByTestId("agent-list-item").some((el) => el.textContent?.includes(target!.name)),
+        "请求发了但列表里那条还在 ⇒ 用户看不到结果",
+      ).toBe(false),
     );
   });
 
@@ -248,18 +290,18 @@ describe("WO-BEFE-DELETE-WIRE ① DELETE /b/v1/agents/*", () => {
     const target = db.agents.find((a) => refsOf("agent", a.id).length === 0)!;
 
     renderApp("/admin/agents");
-    await user.click(await screen.findByRole("button", { name: new RegExp(target.name) }));
+    await pickFromList(user, "agent-list-item", target.name);
     await screen.findByTestId("agent-editor");
 
     const dialog = await openConfirm(user, "agent-delete");
     // 取消（不确认）
-    await user.click(within(dialog).getByRole("button", { name: /取消|关闭/ }));
+    await clickCancel(user, dialog);
 
     expectRecorderAlive(reqLog); // 先自证记录器活着，否则下面的「零」是哑的
     expect(onPath(reqLog, `/b/v1/agents/${target.id}`).filter((c) => c.method === "DELETE"), "没点确认却发出了 DELETE ⇒ 二次确认形同虚设").toHaveLength(0);
     expect(handlerHits.agent, "没点确认却走到了删除 handler").toBe(0);
     // 且那条还在
-    expect(screen.getByRole("button", { name: new RegExp(target.name) })).toBeInTheDocument();
+    expect(screen.queryAllByTestId("agent-list-item").some((el) => el.textContent?.includes(target.name))).toBe(true);
   });
 
   it("①-C 有引用时后端 409 挡回，弹窗把引用方清单常驻显示（不是 toast 一闪而过），列表里那条仍在", async () => {
@@ -269,7 +311,7 @@ describe("WO-BEFE-DELETE-WIRE ① DELETE /b/v1/agents/*", () => {
     expect(target, "种子里找不到被引用的 agent ⇒ 409 这条路无从驱动").toBeTruthy();
 
     renderApp("/admin/agents");
-    await user.click(await screen.findByRole("button", { name: new RegExp(target!.name) }));
+    await pickFromList(user, "agent-list-item", target!.name);
     await screen.findByTestId("agent-editor");
 
     const dialog = await openConfirm(user, "agent-delete");
@@ -279,7 +321,7 @@ describe("WO-BEFE-DELETE-WIRE ① DELETE /b/v1/agents/*", () => {
     expect(err.textContent, "后端 409 的错误码没显示出来").toContain("REFERENCED");
     expect(err.textContent, "没把「具体谁在引用它」摊在屏上 ⇒ 用户不知道该去解除哪一条").toContain("存在引用");
     // 被拒 ⇒ 那条必须还在
-    expect(screen.getByRole("button", { name: new RegExp(target!.name) })).toBeInTheDocument();
+    expect(screen.queryAllByTestId("agent-list-item").some((el) => el.textContent?.includes(target!.name))).toBe(true);
   });
 });
 
@@ -305,9 +347,8 @@ describe("WO-BEFE-DELETE-WIRE ② DELETE /b/v1/workflows/*", () => {
     const dialog = await openConfirm(user, "wf-delete");
     await clickConfirm(user, dialog);
 
+    await expectDeleteSent(reqLog, `/b/v1/workflows/${id}`);
     await waitFor(() => expect(handlerHits.workflow).toBeGreaterThan(0));
-    expectRecorderAlive(reqLog);
-    expectDeleteHit(reqLog, `/b/v1/workflows/${id}`);
 
     await waitFor(() =>
       expect(
@@ -326,7 +367,7 @@ describe("WO-BEFE-DELETE-WIRE ② DELETE /b/v1/workflows/*", () => {
     await user.selectOptions(screen.getByLabelText("选择 workflow"), target.id);
 
     const dialog = await openConfirm(user, "wf-delete");
-    await user.click(within(dialog).getByRole("button", { name: /取消|关闭/ }));
+    await clickCancel(user, dialog);
 
     expectRecorderAlive(reqLog);
     expect(onPath(reqLog, "/b/v1/workflows/").filter((c) => c.method === "DELETE")).toHaveLength(0);
@@ -355,9 +396,8 @@ describe("WO-BEFE-DELETE-WIRE ③ DELETE /b/v1/skills/*", () => {
     const dialog = await openConfirm(user, "skill-delete");
     await clickConfirm(user, dialog);
 
+    await expectDeleteSent(reqLog, `/b/v1/skills/${id}`);
     await waitFor(() => expect(handlerHits.skill).toBeGreaterThan(0));
-    expectRecorderAlive(reqLog);
-    expectDeleteHit(reqLog, `/b/v1/skills/${id}`);
 
     await waitFor(() =>
       expect(
@@ -377,7 +417,7 @@ describe("WO-BEFE-DELETE-WIRE ③ DELETE /b/v1/skills/*", () => {
     await screen.findByTestId("skill-editor");
 
     const dialog = await openConfirm(user, "skill-delete");
-    await user.click(within(dialog).getByRole("button", { name: /取消|关闭/ }));
+    await clickCancel(user, dialog);
 
     expectRecorderAlive(reqLog);
     expect(onPath(reqLog, "/b/v1/skills/").filter((c) => c.method === "DELETE")).toHaveLength(0);
@@ -392,24 +432,44 @@ describe("WO-BEFE-DELETE-WIRE ③ DELETE /b/v1/skills/*", () => {
 describe("WO-BEFE-DELETE-WIRE ④ DELETE /b/v1/mcp-configs/*", () => {
   const reqLog = useRequestLog();
 
+  /**
+   * ⚠ 种子里**只有一条** MCP 配置（`mcp-demo`），且它被 `agt-explore` 引用
+   * （`mcpServers` 一支）⇒ 真后端会 409 挡回，驱动不了「删得掉」这条路。
+   * 故本组先种一条**无引用**的进 `db`（`resetMockDb` 每例回滚，不会串味）。
+   * 这不是测试作弊：它等价于用户自己新建了一个还没被任何 Agent 挂上的 MCP 配置，
+   * 正是「能删」的真实前提。被引用那条另由 ④-C 驱动 409。
+   */
+  const FRESH = {
+    id: "mcp-fresh",
+    tenantId: "t-demo",
+    name: "未被引用的 MCP 配置",
+    transport: { type: "streamable_http" as const, url: "https://mcp.fresh.example.com" },
+    status: "ACTIVE" as const,
+  };
+  beforeEach(() => {
+    db.mcpConfigs = [...db.mcpConfigs, { ...FRESH, tenantId: db.mcpConfigs[0]?.tenantId ?? "t-demo" }];
+  });
+
   it("④-A 点删除→确认 ⇒ 真发出 DELETE ⇒ 列表里那条真的没了", async () => {
     const user = userEvent.setup();
     const target = db.mcpConfigs.find((m) => refsOf("mcp-config", m.id).length === 0);
-    expect(target, "种子里找不到无引用的 mcp-config").toBeTruthy();
+    expect(target, "种子+夹具里都找不到无引用的 mcp-config ⇒ 夹具没生效").toBeTruthy();
     const id = target!.id;
 
     renderApp("/admin/mcp");
-    await user.click(await screen.findByRole("button", { name: new RegExp(target!.name) }));
+    await pickFromList(user, "mcp-list-item", target!.name);
 
     const dialog = await openConfirm(user, "mcp-delete");
     await clickConfirm(user, dialog);
 
+    await expectDeleteSent(reqLog, `/b/v1/mcp-configs/${id}`);
     await waitFor(() => expect(handlerHits.mcp).toBeGreaterThan(0));
-    expectRecorderAlive(reqLog);
-    expectDeleteHit(reqLog, `/b/v1/mcp-configs/${id}`);
 
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: new RegExp(target!.name) }), "请求发了但列表里那条还在").toBeNull(),
+      expect(
+        screen.queryAllByTestId("mcp-list-item").some((el) => el.textContent?.includes(target!.name)),
+        "请求发了但列表里那条还在",
+      ).toBe(false),
     );
   });
 
@@ -418,14 +478,32 @@ describe("WO-BEFE-DELETE-WIRE ④ DELETE /b/v1/mcp-configs/*", () => {
     const target = db.mcpConfigs.find((m) => refsOf("mcp-config", m.id).length === 0)!;
 
     renderApp("/admin/mcp");
-    await user.click(await screen.findByRole("button", { name: new RegExp(target.name) }));
+    await pickFromList(user, "mcp-list-item", target.name);
 
     const dialog = await openConfirm(user, "mcp-delete");
-    await user.click(within(dialog).getByRole("button", { name: /取消|关闭/ }));
+    await clickCancel(user, dialog);
 
     expectRecorderAlive(reqLog);
     expect(onPath(reqLog, "/b/v1/mcp-configs/").filter((c) => c.method === "DELETE")).toHaveLength(0);
     expect(handlerHits.mcp).toBe(0);
+  });
+
+  it("④-C 被 Agent 挂着的 MCP 配置 ⇒ 409 挡回，弹窗常驻显示引用方，列表里那条仍在", async () => {
+    const user = userEvent.setup();
+    // 种子里的 mcp-demo 被 agt-explore 的 mcpServers 挂着 —— 真种子里的真引用
+    const target = db.mcpConfigs.find((m) => refsOf("mcp-config", m.id).length > 0);
+    expect(target, "种子里找不到被引用的 mcp-config ⇒ 409 这条路无从驱动").toBeTruthy();
+
+    renderApp("/admin/mcp");
+    await pickFromList(user, "mcp-list-item", target!.name);
+
+    const dialog = await openConfirm(user, "mcp-delete");
+    await clickConfirm(user, dialog);
+
+    const err = await screen.findByTestId("mcp-delete-error");
+    expect(err.textContent).toContain("REFERENCED");
+    expect(err.textContent, "没把「具体谁在引用它」摊在屏上").toContain("存在引用");
+    expect(screen.queryAllByTestId("mcp-list-item").some((el) => el.textContent?.includes(target!.name))).toBe(true);
   });
 });
 
@@ -447,9 +525,8 @@ describe("WO-BEFE-DELETE-WIRE ⑤ DELETE /b/v1/scene-entries/*", () => {
     const dialog = await openConfirm(user, `scene-entry-${target.viewKey}-delete`);
     await clickConfirm(user, dialog);
 
+    await expectDeleteSent(reqLog, `/b/v1/scene-entries/${target.id}`);
     await waitFor(() => expect(handlerHits.scene).toBeGreaterThan(0));
-    expectRecorderAlive(reqLog);
-    expectDeleteHit(reqLog, `/b/v1/scene-entries/${target.id}`);
 
     await waitFor(() =>
       expect(screen.queryByTestId(`scene-entry-row-${target.viewKey}`), "请求发了但表里那条还在").toBeNull(),
@@ -464,7 +541,7 @@ describe("WO-BEFE-DELETE-WIRE ⑤ DELETE /b/v1/scene-entries/*", () => {
     await screen.findByTestId(`scene-entry-row-${target.viewKey}`);
 
     const dialog = await openConfirm(user, `scene-entry-${target.viewKey}-delete`);
-    await user.click(within(dialog).getByRole("button", { name: /取消|关闭/ }));
+    await clickCancel(user, dialog);
 
     expectRecorderAlive(reqLog);
     expect(onPath(reqLog, "/b/v1/scene-entries/").filter((c) => c.method === "DELETE")).toHaveLength(0);
