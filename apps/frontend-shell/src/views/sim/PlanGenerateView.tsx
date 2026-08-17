@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { z } from "zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlanGenerateOutputSchema, RiskTimelineOutputSchema, PLAN_GOAL_TARGETS, type PlanGenerateOutput } from "@platform/contracts";
@@ -144,7 +144,14 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
   const qc = useQueryClient();
   // 去电池锁死（R14）：经营目标初值取自 WorkspaceConfig（缓存同步读），DEFAULT_GOALS 仅兜底
   const [goals, setGoals] = useState<GoalsState>(() => ({ ...DEFAULT_GOALS, ...(qc.getQueryData<Workspace>(workspaceQueryKey)?.planGoals ?? {}) }));
-  const [openKey, setOpenKey] = useState<string | null>(null);
+  // 「推荐方案默认展开」是**派生默认值**，不是事后补开的副作用。
+  // 原实现用 useEffect 在 gen.data 到达后 setOpenKey，于是「展开」比「结果出现」晚一次渲染；
+  // 本页同屏还有第二个查询（riskTl）会再触发渲染，断言落在两次渲染之间就抓不到展开区里的东西
+  // ⇒ 同一棵树同一条命令时红时绿（实测 8 次里红 N 次，见交单记账）。
+  // 判据：`userPicked` 为 null 表示「用户还没表过态」，此时一律取推荐方案；表过态就完全听用户的
+  //（含用户主动收起推荐方案 → 存 "" 而不是 null，否则会被派生值立刻重新打开）。
+  // 这样「哪张卡是开的」只由当前数据决定，**没有任何时序参与**。
+  const [userPicked, setUserPicked] = useState<string | null>(null);
   const canAdopt = useFeature("act.adopt-to-draft");
   const action = useActionDraft();
   // WO-U2-STEPWISE-1 · 判据 U2：步骤态**真正驱动结果分段**（不是装饰步骤条）——
@@ -214,12 +221,12 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
   });
   const propagation = riskTl.data ? buildPropagation(riskTl.data) : null;
 
-  // 首批结果到达 → 默认展开推荐方案
-  useEffect(() => {
-    if (!gen.data || openKey !== null) return;
-    const rec = gen.data.schemes.find((s) => s.pathKey === gen.data!.recommend && s.hardViol.length === 0);
-    if (rec) setOpenKey(rec.no);
-  }, [gen.data, openKey]);
+  // 推荐方案（也是「用户没表态时默认展开的那张」）——纯派生，无副作用、无时序。
+  const recommendedNo =
+    gen.data?.schemes.find((s) => s.pathKey === gen.data!.recommend && s.hardViol.length === 0)?.no ?? null;
+  const openKey = userPicked === null ? recommendedNo : userPicked || null;
+  // 收起推荐方案时存 ""（表过态但没选任何一张），不存 null —— 存 null 会立刻被派生默认值重新打开。
+  const toggleOpen = (no: string) => setUserPicked(openKey === no ? "" : no);
 
   const adoptScheme = (s: Scheme) => {
     useSessionStore.getState().setSelectedObjects([
@@ -320,7 +327,7 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
                 scheme={s}
                 recommended={s.pathKey === gen.data!.recommend && s.hardViol.length === 0}
                 open={openKey === s.no}
-                onToggle={() => setOpenKey(openKey === s.no ? null : s.no)}
+                onToggle={() => toggleOpen(s.no)}
                 canAdopt={canAdopt}
                 onAdopt={() => adoptScheme(s)}
                 goals={goals}
