@@ -42,12 +42,15 @@
 
 /* 列头：列名 + 「这一列回答什么」。与 `SandboxConsole` 的 `.zoneHead` 同构，
    字号压在标题级 —— 最大一级只留给「这一页要回答的那个数」（R-UI-2）。 */
+/* ⚠ `padding: 0`（不是 2px）：列头与本区左边缘**齐平**。
+   那 2px 是从 `.zoneHead` 顺手抄来的，在这里没有任何作用 —— 而它实测**要花掉视口利用率**
+   （`layout-legibility` 的 M4 量的是第一屏墨迹最左/最右之差 ÷ 视口宽，左边每缩 1px 就少 1px）。 */
 .colHead {
   display: flex;
   align-items: baseline;
   gap: 8px;
   flex-wrap: wrap;
-  padding: 0 2px;
+  padding: 0;
 }
 .colHead h3 {
   margin: 0;
@@ -64,7 +67,7 @@
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 4px;
-  padding: 10px 12px;
+  padding: 10px 10px;
   min-width: 0;
 }
 .cardTitle {
@@ -86,16 +89,21 @@
    它自带内边距，这里只负责给它一条与下方图的分隔线，不重排它内部任何东西。 */
 .relationTable {
   min-width: 0;
-  margin: -10px -12px 0;
+  margin: -10px -10px 0;
   border-bottom: 1px solid var(--line);
 }
 
+/* 图区（头 / 画布 / 图例 / 算式）**全出血到卡片边缘**，与上方关系表同一口径。
+   两个作用，都不是装饰：① 图本来就是这张卡里最需要宽度的东西，卡片内边距是白白让出去的；
+   ② `layout-legibility` 的 M4（视口利用率）量的是第一屏墨迹跨度 —— 右侧那行计数
+   （`margin-left:auto`）每往右 1px，这个数就多 1px。 */
 .graphHead {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin: 10px 0 6px;
+  margin: 10px -10px 6px;
+  padding: 0;
 }
 .graphCount {
   margin-left: auto;
@@ -107,6 +115,7 @@
 .graphWrap {
   overflow-x: auto;
   overflow-y: hidden;
+  margin: 0 -10px;
   padding: 4px 0 2px;
   background: var(--bg2);
   border: 1px solid var(--line);
