@@ -527,9 +527,16 @@ export class ExecutionEngine {
           sketch: [],
         };
       }
+      // N2·D-2：dsh.result.stats 并入 answer 交叉类型（additive 运行时键；orchestrator:2187
+      // answer.final 整对象直发即自动带上，reducer :129 整对象落 state 零渲染副作用）。
+      // 失败路径（上方 :517-529）不造 stats；零 usage 帧时 reassemble 侧键整体不出。
+      const answer: AgentLoopResult["answer"] & { stats?: import("./dsh-runtime/reassemble.js").DshRunStats } = {
+        ...dsh.result.answer,
+        ...(dsh.result.stats ? { stats: dsh.result.stats } : {}),
+      };
       return {
         outcome: dsh.result.outcome,
-        answer: dsh.result.answer,
+        answer,
         run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement),
         sketch: dsh.result.sketch,
         ...(dsh.result.structured ? { structured: dsh.result.structured } : {}),

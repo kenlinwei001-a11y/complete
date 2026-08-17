@@ -20,8 +20,8 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { McpServerConfig } from "@platform/contracts";
 import {
+  createSseMapper,
   dshPublicToolName,
-  mapDshEventToSse,
   mapMcpConfig,
   runDshAgent,
   type DshSessionEvent,
@@ -212,9 +212,10 @@ describe("E6 · 三档 verdict 表（帧 → 外壳语义）", () => {
     { frame: { type: "request/context", data: { provider: "mock", model: "mock" } }, tier: 3 },
     { frame: { type: "session/created", data: { sessionId: "s" } }, tier: 3 },
   ];
-  it("tier1 帧可映射且形状正确；tier2/tier3 帧 mapDshEventToSse 返回 undefined", () => {
+  it("tier1 帧可映射且形状正确；tier2/tier3 帧 createSseMapper 返回 undefined", () => {
+    const mapOne = createSseMapper();
     for (const row of ROWS) {
-      const sse = mapDshEventToSse(row.frame);
+      const sse = mapOne(row.frame);
       if (row.tier === 1) {
         expect(sse, `tier1 ${row.frame.type} must map`).toBeDefined();
         expect(sse!.event).toBe(row.expect!.event);

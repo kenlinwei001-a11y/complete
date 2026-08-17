@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest";
 import {
   collectToolCalls,
   createSseMapper,
-  mapDshEventToSse,
   reassembleDshRun,
   type DshSessionEvent,
 } from "../src/dsh-runtime/reassemble.js";
@@ -140,9 +139,9 @@ describe("reassemble · turn/end → outcome", () => {
   });
 });
 
-describe("SSE 桥 mapDshEventToSse", () => {
+describe("SSE 桥 createSseMapper", () => {
   it("tool/call → step.started {stepId=callId, type=name}（loop.ts:844 同形）", () => {
-    expect(mapDshEventToSse(toolCall("call_1", "echo_tool", { a: 1 }))).toEqual({
+    expect(createSseMapper()(toolCall("call_1", "echo_tool", { a: 1 }))).toEqual({
       event: "step.started", payload: { stepId: "call_1", type: "echo_tool" },
     });
   });
@@ -151,16 +150,16 @@ describe("SSE 桥 mapDshEventToSse", () => {
       type: "tool/result",
       data: { turn: 1, step: 1, message: { content: [{ type: "tool-result", toolCallId: "call_1", content: [], isError: true }] } },
     };
-    expect(mapDshEventToSse(frame)).toEqual({ event: "step.completed", payload: { stepId: "call_1", status: "ERROR" } });
+    expect(createSseMapper()(frame)).toEqual({ event: "step.completed", payload: { stepId: "call_1", status: "ERROR" } });
   });
   it("assistant/chunk text-delta → agent_narration 伪 step；非文本 chunk → undefined", () => {
-    expect(mapDshEventToSse({ type: "assistant/chunk", data: { turn: 1, step: 2, chunk: { type: "text-delta", text: "想" } } }))
+    expect(createSseMapper()({ type: "assistant/chunk", data: { turn: 1, step: 2, chunk: { type: "text-delta", text: "想" } } }))
       .toEqual({ event: "step.completed", payload: { stepId: "narration-1-2", type: "agent_narration", text: "想" } });
-    expect(mapDshEventToSse({ type: "assistant/chunk", data: { turn: 1, step: 2, chunk: { type: "block-start", index: 0 } } })).toBeUndefined();
+    expect(createSseMapper()({ type: "assistant/chunk", data: { turn: 1, step: 2, chunk: { type: "block-start", index: 0 } } })).toBeUndefined();
   });
   it("turn/end、assistant/message 等不逐帧出 SSE（answer.final 由 runner 发）", () => {
-    expect(mapDshEventToSse(turnEnd("completed"))).toBeUndefined();
-    expect(mapDshEventToSse(assistantMessage("x"))).toBeUndefined();
+    expect(createSseMapper()(turnEnd("completed"))).toBeUndefined();
+    expect(createSseMapper()(assistantMessage("x"))).toBeUndefined();
   });
 });
 
