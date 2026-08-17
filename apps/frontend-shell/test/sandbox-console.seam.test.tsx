@@ -344,7 +344,9 @@ describe("§4 · 诚实位（本页新增的四条）", () => {
     const txt = (await screen.findByTestId("sc-chain-coverage")).textContent ?? "";
     expect(txt).toContain(`${CHAIN_STAGE_DESIGN_TARGET.stageCount} 段 ${CHAIN_STAGE_DESIGN_TARGET.nodeCount} 节点`);
     expect(txt).toContain(`${CHAIN_STAGES.length} 段`);
-    expect(txt).toContain(`${CHAIN_NODE_REGISTRY.length} 个静态在册节点`);
+    // ⚠ 2026-08-17 措辞改为人话（「静态在册」是实现说法）；咬的仍是**同一个现算数**，
+    //    仍然从 CHAIN_NODE_REGISTRY 取长度 ⇒ 册子一变这条断言跟着变，没有写死。
+    expect(txt).toContain(`在册节点 ${CHAIN_NODE_REGISTRY.length} 个`);
     // ⚠ 差额**不许**从 `chainStageCoverage` 自己算出来再拿去比对自己（那是同义反复，
     //   实测：把 missingNodeCount 直接改成 0 也不会红）。这里从**契约常数**独立算一遍。
     const expectMissingStages = CHAIN_STAGE_DESIGN_TARGET.stageCount - CHAIN_STAGES.length;
@@ -379,7 +381,9 @@ describe("§4 · 诚实位（本页新增的四条）", () => {
     }
     // 「为什么点不动」贴在控件旁的 `?` 里；徽标本体搬进诊断抽屉的调试区。两处都还在，一个字没删。
     await openInfo(user, "window");
-    expect(screen.getByTestId("sc-window-note").textContent ?? "").toContain("都没有时间窗入参");
+    // ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK 改措辞（「没有时间窗入参」是接口口径的说法）——
+    //    咬的仍是同一条事实：这两条取数都不接受时间窗，所以档位驱动不了任何取数。
+    expect(screen.getByTestId("sc-window-note").textContent ?? "").toContain("都不接受时间窗");
     await openDiag(user);
     expect(screen.getByTestId("sc-window-badge").textContent).toContain("无 ARGS");
   });
@@ -737,9 +741,17 @@ describe("§9 · WO-CONSOLE-CLEANUP：五笔欠账收口", () => {
     await user.click(screen.getByTestId("sc-tab-vars"));
     await openInfo(user, "inspect-evidence");
     const note = (await screen.findByTestId("sc-inspect-evidence-gap")).textContent ?? "";
-    expect(note, "必须点名是宿主这一份缺字段").toContain("evidence");
+    /**
+     * ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK 改判据落点，**这三条要证的事实一条没少**：
+     *   原断言咬 `evidence`（契约字段名）与 `ChainLossPayloadSchema`（zod 类型名）——
+     *   两者都是**不该上屏的开发话**，拿它们当探针 = 用违规内容证明合规内容还在。
+     *   落点换成人话版；字段名/类型名移进 SandboxConsole 那段的代码注释。
+     */
+    expect(note, "必须点名是宿主这一份缺字段").toContain("控制台这一份缺这个字段");
     expect(note, "必须把「不是引擎没给」说出来 —— 两件事修法完全不同").toContain("不是引擎没给");
-    expect(note, "必须给补齐路径").toContain("ChainLossPayloadSchema");
+    expect(note, "必须给补齐路径").toContain("在解析层把这个字段加回来");
+    // 反向：契约字段名/类型名不许再印回屏上
+    expect(note).not.toContain("ChainLossPayloadSchema");
   });
 
   // ── ② 诚实缺席节点 = 灰卡片，且形状与有数据卡分家 ───────────────────────────

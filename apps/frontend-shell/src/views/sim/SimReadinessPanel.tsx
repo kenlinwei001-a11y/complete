@@ -263,7 +263,7 @@ export function SimReadinessPanel({
              */}
             <InfoPopover topic="「重算未抛异常」证明了什么" testId="sim-cert-trial-meaning">
               <span data-testid="sim-cert-trial-meaning-body">
-                「通过」= 派生依赖图可拓扑排序（无环），**不代表这个世界已经推动过**。
+                「通过」只说明派生关系没有互相打转（无环），<b>不代表这个世界已经推动过</b>。
               </span>
             </InfoPopover>
             {/* #152 拆账：Trial Tick 曾长期**只跑派生**，`rulesFired` 一个合数把「传导零触发」盖得严严实实。

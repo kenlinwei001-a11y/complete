@@ -187,8 +187,8 @@ export default function ProcessStartFromTemplate() {
       <div className={styles.head}>
         <h4>按模板建一条流程实例</h4>
         <p className={styles.sub}>
-          步骤**逐条来自该流程的标准步骤模板**，界面一个步骤都不发明。没有步骤模板的流程，
-          这里会说清为什么，并且**不给启动按钮** —— 宁可少展示，不许造数。
+          步骤<b>逐条来自该流程的标准步骤模板</b>，界面一个步骤都不发明。没有步骤模板的流程，
+          这里会说清为什么，并且<b>不给启动按钮</b> —— 宁可少展示，不许造数。
         </p>
       </div>
 
@@ -227,7 +227,7 @@ export default function ProcessStartFromTemplate() {
       {/* ── 没有模板：说清楚 + 不给按钮（红线②）── */}
       {tpl.status === "ready" && !tpl.data.available ? (
         <div className={styles.absent} data-testid="start-no-template">
-          <strong>这条流程还没有步骤模板</strong>，因此**建不出实例** —— 建实例要求把步骤逐条给全，
+          <strong>这条流程还没有步骤模板</strong>，因此<b>建不出实例</b> —— 建实例要求把步骤逐条给全，
           而这条流程今天没有可依据的步骤来源。
           <br />
           <span data-testid="start-absent-reason">{tpl.data.absence?.reason}</span>
@@ -283,7 +283,7 @@ export default function ProcessStartFromTemplate() {
           {carriers.status === "ready" && carriers.data.length === 0 ? (
             <div className={styles.absent} data-testid="start-no-carrier">
               承载类型 <code>{tpl.data.carrierTypeKey}</code> 今天一条对象都没有，
-              因此**没有可以作用的具体对象**，建不出实例。这不是模板的问题 ——
+              因此<b>没有可以作用的具体对象</b>，建不出实例。这不是模板的问题 ——
               模板在（上面就是），缺的是这个类型的数据。
             </div>
           ) : null}

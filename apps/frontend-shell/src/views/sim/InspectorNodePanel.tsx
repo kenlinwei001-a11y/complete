@@ -171,7 +171,7 @@ function NodeConflictSection({ nodeId }: { nodeId: string }) {
       <h4 className={styles.sectionTitle} id="insp-cf-h">
         ⑤ 跨节点冲突 · 改这里会连累谁
         <small className={styles.sectionSub}>
-          编辑口径（人写的，非引擎下发）；**每条逐项附代码依据 file:line**，指不出依据的一条都没写
+          编辑口径（人写的，非引擎下发）；<b>每条都附了代码依据</b>，指不出依据的一条都没写
         </small>
       </h4>
       <ul className={styles.cfList}>
@@ -199,7 +199,7 @@ function NodeKpiSection({ live, state }: { live: NodeLiveView; state: LiveLoadSt
       <h4 className={styles.sectionTitle} id="insp-kpi-h">
         ③ 节点级流指标 · 引擎真值
         <small className={styles.sectionSub}>
-          全部来自 <code>chain_loss_attribution</code> 载荷 + S0 契约函数；接不到的指标**这一行根本不出现**，不填占位数字
+          全部由引擎算出并下发；接不到的指标<b>这一行根本不出现</b>，不填占位数字
         </small>
       </h4>
       {live.kpis.length === 0 ? (
@@ -254,8 +254,8 @@ function DrillEvidenceSection({ live, state }: { live: NodeLiveView; state: Live
       <h4 className={styles.sectionTitle} id="insp-ev-h">
         ④ R13 下钻证据 · 每个天数指回一个真对象的真字段
         <small className={styles.sectionSub}>
-          `drillValue` 是**该字段在仓储里的真值本身**（原单位·未换算）；换算成天数由引擎下发的换算式说清，
-          前端**原样透出、一个字不改**（改一个字这道门当场红）
+          下钻值是<b>该字段存着的真值本身</b>（原单位·未换算）；换算成天数由引擎给的换算式说清，
+          界面<b>原样透出、一个字不改</b>
           {live.anchorSo === null ? null : <> · 本次锚点单 <code>{live.anchorSo}</code></>}
         </small>
       </h4>
@@ -810,7 +810,7 @@ export function NodeInspectorView({
     return (
       <div className={styles.hostRoot} data-testid="node-inspector-root">
         <p className={styles.emptyNote} data-testid="node-inspector-empty">
-          <b>EMPTY</b>：`CHAIN_NODE_REGISTRY` 为空 —— 今天没有任何在册全链节点可检视，<b>不造占位节点</b>。
+          今天没有任何在册的全链节点可检视 —— 在册清单是空的，所以这里<b>不造一个占位节点</b>顶上。
         </p>
       </div>
     );
@@ -837,9 +837,9 @@ export function NodeInspectorView({
         </select>
         <small className={styles.hostNote} data-testid="node-inspector-source">
           {chrome === "embedded" ? (
-            <>清单源 <code>CHAIN_NODE_REGISTRY</code> · {nodes.length} 节点</>
+            <>在册节点 {nodes.length} 个</>
           ) : (
-            <>节点清单派生自 <code>CHAIN_NODE_REGISTRY</code>（contracts 单源 · 共 {nodes.length} 个在册节点），前端不另维护一份</>
+            <>节点清单来自契约里那份唯一的在册名单（共 {nodes.length} 个），界面不另维护一份</>
           )}
         </small>
         <small

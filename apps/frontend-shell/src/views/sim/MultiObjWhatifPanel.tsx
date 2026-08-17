@@ -154,7 +154,7 @@ function MultiObjWhatifInner() {
           style={{ fontSize: 12, margin: "4px 0 8px", padding: "6px 10px", borderRadius: 6, background: "rgba(192,57,43,.08)", border: "1px solid rgba(192,57,43,.35)", color: "var(--danger-txt)" }}
         >
           {notWired ? (
-            <>⚠ <b>优化器引擎（CP-SAT sidecar）未接入</b>——需设 <code>OPTIMIZER_BASE_URL</code> 并启动 <code>services/optimizer</code>。下方数值为空/0 表示<b>「尚未求解」</b>，<b>不是</b>真实推演结果。</>
+            <>⚠ <b>优化器引擎未接入</b>——本环境还没有连上求解服务。下方数值为空/0 表示<b>「尚未求解」</b>，<b>不是</b>真实推演结果。</>
           ) : (
             <>⚠ 求解失败：{solverErr.message}。下方数值非有效结果。</>
           )}

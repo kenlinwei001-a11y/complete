@@ -737,7 +737,7 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
 
       {reduced ? (
         <p className={styles.reducedNote} data-testid="transit-reduced-motion-note">
-          已检测到系统偏好「减少动态效果」：**不跑动画**，自动播放停用，改为静态标注（每辆车旁直接标出当日行程），可用步进逐日查看。
+          已检测到系统偏好「减少动态效果」：<b>不跑动画</b>，自动播放停用，改为静态标注（每辆车旁直接标出当日行程），可用步进逐日查看。
         </p>
       ) : null}
 
@@ -762,14 +762,14 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
           <b className={styles.absenceTitle}>节拍闸门 · EMPTY</b>
           {probes.cadence.loading ? (
             <p className={styles.emptyReason} data-testid="transit-cadence-fetching">
-              正在取 <code className={styles.objType}>GET /a/v1/objects?type=Cadence</code> —— 还没回来，此刻不下任何结论。
+              正在取节拍数据 —— 还没回来，此刻不下任何结论。
             </p>
           ) : (
             <p className={styles.emptyReason}>{cadenceAbsence.reason}</p>
           )}
           {probes.cadence.fetchError !== null ? (
             <p className={styles.emptyReason} data-testid="transit-cadence-fetch-error">
-              取数失败：{probes.cadence.fetchError} —— 判为**没拿到**（不是"本租户没有"），不画。
+              取数失败：{probes.cadence.fetchError} —— 判为<b>没拿到</b>（不是"本租户没有"），不画。
             </p>
           ) : null}
           <ul className={styles.reasonList}>
@@ -801,14 +801,11 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
       {/* ── 环上几何：站点坐标与区间弧取自线路图单源，三类批次三种图元 ──────── */}
       <div className={styles.ringWrap} data-testid="transit-segments" data-count={segments.length} data-drawn={segmentArcs.length}>
         <p className={styles.geomNote} data-testid="transit-geometry-source" data-source="chain-line-map">
-          站点坐标与区间弧取自线路图几何<b>单源</b> <code className={styles.objType}>chainLineMap.ts</code>
-          （同一个 <code className={styles.objType}>RING_LAYOUT</code> 椭圆 · 同一条 <code className={styles.objType}>ringAngle</code>{" "}
-          均分规则 · 同一个 <code className={styles.objType}>ringArcPath</code> 弧生成器 · 车按<b>弧长参数</b>定位，不是弦的线性插值）——
-          本层<b>不再自绘直线几何</b>，也不再算第二遍站点位置。
-          ⚠ 但<b>同一个环不等于同一套站</b>：线路图的站是引擎 <code className={styles.objType}>chain_loss_attribution</code>{" "}
-          的链路节点，本层的站是批次数据行自带的基地 / 工序 key —— 两者今天<b>没有共同的 id 维度</b>，
-          故同角度<b>不代表</b>同一个实体；要真正指到同一个点，需引擎给本层下发{" "}
-          <code className={styles.objType}>nodes</code>（本层 prop 已就位，等接线）。
+          站点坐标与区间弧与线路图<b>同源</b>：同一个椭圆环、同一条均分规则、同一个弧生成器，
+          车按弧长定位而不是两点之间直线插值 —— 本层<b>不再自绘几何</b>，也不再算第二遍站点位置。
+          ⚠ 但<b>同一个环不等于同一套站</b>：线路图的站是引擎给的链路节点，
+          本层的站是批次数据自带的基地 / 工序 —— 两者今天<b>没有共同的编号维度</b>，
+          所以<b>同角度不代表同一个实体</b>；要真正指到同一个点，需要引擎给本层下发站点清单。
         </p>
 
         {segments.length === 0 ? (
@@ -1061,18 +1058,14 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
           <b className={styles.absenceTitle}>{procurementBranch.label} · EMPTY</b>
           {procurementLoading ? (
             <p className={styles.emptyReason} data-testid="transit-procurement-fetching">
-              正在取{" "}
-              <code className={styles.objType}>
-                GET /a/v1/objects?type=PurchaseOrder|CustomsClearance|IncomingInspection
-              </code>{" "}
-              —— 还没回来，此刻不下任何结论。
+              正在取采购到货各段的数据 —— 还没回来，此刻不下任何结论。
             </p>
           ) : (
             <p className={styles.emptyReason}>{procurementBranch.reason}</p>
           )}
           {procurementFetchError !== null ? (
             <p className={styles.emptyReason} data-testid="transit-procurement-fetch-error">
-              取数失败：{procurementFetchError} —— 判为**没拿到**（不是"本租户没有"），不画。
+              取数失败：{procurementFetchError} —— 判为<b>没拿到</b>（不是"本租户没有"），不画。
             </p>
           ) : null}
           <ul className={styles.reasonList}>
@@ -1172,37 +1165,31 @@ export function TransitFlowView({ view, chrome = "full" }: Partial<ViewRendererP
         <small className={styles.hostNote} data-testid="transit-flow-host-source">
           {chrome === "embedded" ? (
             <>
-              批次自取 <code className={styles.objType}>/a/v1/objects?type=InterBaseTransfer|Shipment|WIPLot</code>；
-              判据自取 <code className={styles.objType}>Cadence|PurchaseOrder|CustomsClearance|IncomingInspection</code>
+              批次（基地间调拨 / 发运 / 在制）与判据（节拍 / 采购到货各段）均由本层自取
               （取不到显示空态 + 原因，<b>不补示意数据</b>）
             </>
           ) : (
             <>
-              批次数据由本层自取 <code className={styles.objType}>GET /a/v1/objects?type=InterBaseTransfer|Shipment|WIPLot</code>
-              ；节拍与采购段判据同样由本层自取{" "}
-              <code className={styles.objType}>Cadence|PurchaseOrder|CustomsClearance|IncomingInspection</code>
-              （七个在册对象类型 · 取不到就显示空态并给原因，<b>不补示意数据</b>）
+              批次数据（基地间调拨 / 发运 / 在制）由本层自取；节拍与采购到货各段的判据同样由本层自取
+              （共七类在册对象 · 取不到就显示空态并给原因，<b>不补示意数据</b>）
             </>
           )}
         </small>
         <small className={styles.hostNote} data-testid="transit-flow-host-nodes">
           {chrome === "embedded" ? (
             <>
-              <b>宿主不下发站点</b>（<code className={styles.objType}>nodes</code> 缺席）⇒ 站点现场发现；
-              <b>节拍改由图层自取对象库 </b>
-              <code className={styles.objType}>Cadence</code> 行（同为引擎侧，取到即点亮闸门、取不到按病因分档说明）；
-              几何已<b>与线路图同源</b>（<code className={styles.objType}>chainLineMap.ts</code> 的环 / 弧 / 弧长参数），
-              但两图<b>站点 key 宇宙不同</b>（链路节点 vs 基地·工序）⇒ <b>同角度不代表同一个实体</b>
+              <b>宿主不下发站点</b> ⇒ 站点由批次数据现场发现；
+              <b>节拍改由本层自取</b>（取到即点亮闸门、取不到按病因分档说明）；
+              几何已<b>与线路图同源</b>（同一个环 / 弧 / 弧长），
+              但两图<b>站点不是同一套</b>（链路节点 vs 基地·工序）⇒ <b>同角度不代表同一个实体</b>
             </>
           ) : (
             <>
-              独立视图形态下<b>宿主不下发站点</b>（<code className={styles.objType}>nodes</code> 缺席）⇒
-              站点从批次数据行自身字段现场发现；<b>但节拍不再"一律缺席"</b> ——
-              图层自取对象库 <code className={styles.objType}>Cadence</code> 行（
-              <code className={styles.objType}>synthetic/service.ts:712</code> 落库的那批，同为引擎侧承载），
-              取到即点亮闸门、取不到按病因分档说清是「没去取 / 读不成 / 本租户真没有」；几何取自线路图单源{" "}
-              <code className={styles.objType}>chainLineMap.ts</code>（同一个环、同一条均分规则、同一个弧生成器），
-              <b>但两图站点 key 今天没有共同的 id 维度</b>，同角度不代表同一个实体
+              独立视图形态下<b>宿主不下发站点</b> ⇒ 站点从批次数据自身的字段现场发现；
+              <b>但节拍不再"一律缺席"</b> —— 本层自取节拍数据（同为引擎侧承载），
+              取到即点亮闸门、取不到按病因分档说清是「没去取 / 读不成 / 本租户真没有」；
+              几何取自线路图（同一个环、同一条均分规则、同一个弧生成器），
+              <b>但两图的站今天没有共同的编号维度</b>，同角度不代表同一个实体
             </>
           )}
         </small>

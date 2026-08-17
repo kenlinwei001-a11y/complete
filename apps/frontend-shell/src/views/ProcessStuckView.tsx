@@ -249,7 +249,7 @@ export default function ProcessStuckView() {
       <div className={styles.head}>
         <h3>流程卡点 · 为什么现在卡住了</h3>
         <p className={styles.sub}>
-          每条 = 一个**正在跑**的流程实例此刻停在哪一步、为什么停、在等谁、等了多久。
+          每条 = 一张<b>正在跑</b>的单子此刻停在哪一步、为什么停、在等谁、等了多久。
           等待是流程的常态，不是故障；这里回答的是「卡在哪、找谁」。
         </p>
       </div>
@@ -289,12 +289,11 @@ export default function ProcessStuckView() {
           这一条数的是**本投影没算的**（产地 DERIVED_FROM_DOCUMENT）。两者不许相加。 */}
       {derivedStuckCount > 0 ? (
         <div className={styles.empty} data-testid="stuck-derived-note">
-          另有 <strong data-testid="stuck-derived-count">{derivedStuckCount}</strong> 条实例此刻同样卡着，
-          但**本页答不出它们卡在第几步** —— 它们是从既有单据<strong>反推</strong>出来的
-          （<code>origin=DERIVED_FROM_DOCUMENT</code>），单据上没有「第几步」这个事实，编一个步名就是造假。
+          另有 <strong data-testid="stuck-derived-count">{derivedStuckCount}</strong> 张单此刻同样卡着，
+          但<b>本页答不出它们卡在第几步</b> —— 它们是从既有单据<strong>反推</strong>出来的，
+          单据上没有「第几步」这个事实，编一个步名就是造假。
           <br />
-          要看这一批，走 <code>process_flow_time</code> 求解器或
-          <code>GET /a/v1/process-definitions/:key/instances</code>。
+          要看这一批，去「流程等待态」页点开对应流程，看它的实例。
         </div>
       ) : null}
 
@@ -327,8 +326,8 @@ export default function ProcessStuckView() {
             <>
               本次查询没有正在等待的流程实例。
               <br />
-              ⚠ 这**不等于**一切顺利：也可能是还没有流程实例数据 —— 平台自带的 65 条业务流程是
-              <strong>模板</strong>（<code>ProcessDefinition</code>），不是正在跑的单子。
+              ⚠ 这<b>不等于</b>一切顺利：也可能是还没有流程实例数据 —— 平台自带的 65 条业务流程是
+              <strong>模板</strong>，不是正在跑的单子。
             </>
           )}
         </div>

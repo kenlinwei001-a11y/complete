@@ -260,8 +260,7 @@ export function PhysicalTopologyView({
           {chrome === "full" ? <h3>物理拓扑 · 基地 × 产线 × 工序</h3> : null}
           <p className={styles.sub}>
             {stats.baseCount} 个基地 × {stats.processCount} 道工序 = {stats.cellCount} 格热力流水图。
-            基地轴派生自 <code>BASE_REGISTRY</code>（跨端单一来源），工序轴镜像自{" "}
-            <code>{PROCESS_CHAIN_SOURCE.file}</code> 的 <code>{PROCESS_CHAIN_SOURCE.symbol}</code>。
+            基地轴与工序轴都取自跨端唯一那份基地/工序登记册，界面不另维护一份。
           </p>
         </div>
         <div className={styles.zoomBar}>
@@ -294,10 +293,9 @@ export function PhysicalTopologyView({
               : `⚑ 格内 ${stats.realCells}/${stats.cellCount} 格已接真值，${stats.placeholderCells} 格仍含占位值（未接真实数据）`}
         </b>
         <p data-testid="phys-topo-banner-legend">
-          逐格标注来源，三档不许混同：<b>真值·对象聚合</b>（DataCore <code>EquipmentOEE</code> /{" "}
-          <code>Equipment</code> / <code>WIPLot</code> 服务端聚合，详情面板附算式）·<b>占位值</b>
-          （<code>seed={matrix.seed}</code> 确定性派生，<b>不是实测</b>）·<code>EMPTY</code>（算不出来就标空，
-          <b>不补 0</b>）。仅基地行首的 利用率 / 产能 / 产线数 / 瓶颈 是 <code>BASE_REGISTRY</code> 真值。
+          逐格标注来源，三档不许混同：<b>真值</b>（由后端按设备、在制等真实对象聚合，详情面板附算式）·
+          <b>占位值</b>（确定性派生的可复现占位，<b>不是实测</b>）·<b>算不出来</b>（就标空，<b>不补 0</b>）。
+          仅基地行首的 利用率 / 产能 / 产线数 / 瓶颈 取自基地登记册的真值。
         </p>
         <p data-testid="phys-topo-banner-stats">
           当前：真值度量 {stats.realMeasures} 项 · 占位度量 {stats.placeholderMeasures} 项 · EMPTY 度量{" "}
@@ -490,7 +488,7 @@ export function PhysicalTopologyView({
               </div>
               {hovered.isBottleneck ? (
                 <p className={styles.detailBn} data-testid="phys-topo-detail-bottleneck">
-                  ⚑ 该基地登记瓶颈落在本工序（<code>BASE_REGISTRY.bottleneck = {hoveredRow.bottleneck.equipmentType}</code>）
+                  ⚑ 该基地登记的瓶颈就落在本工序（{hoveredRow.bottleneck.equipmentType}）
                 </p>
               ) : null}
               {/* ⚠ 「计划工时利用率」≠ 行首「产能利用率」：前者 = Σ实际生产时间÷Σ计划生产时间（设备侧），
@@ -500,7 +498,7 @@ export function PhysicalTopologyView({
               <MeasureLine label="在制" m={hovered.wip} testId="phys-topo-detail-wip" />
               <MeasureLine label="节拍" m={hovered.takt} testId="phys-topo-detail-takt" />
               <hr className={styles.hr} />
-              <div className={styles.detailSection}>基地级真值（BASE_REGISTRY）</div>
+              <div className={styles.detailSection}>基地级真值（取自基地登记册）</div>
               <MeasureLine label="基地产能利用率" m={hoveredRow.util} testId="phys-topo-detail-base-util" />
               <MeasureLine label="名义产能" m={hoveredRow.gwh} testId="phys-topo-detail-base-gwh" />
               <MeasureLine label="产线数" m={hoveredRow.lines} testId="phys-topo-detail-base-lines" />
