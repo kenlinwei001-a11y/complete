@@ -35,8 +35,12 @@ pnpm start          # 手工起 JSON-RPC stdio 服务（正常由 agentcore spaw
 
 ## 已知限制（S2 裁决项）
 
-1. dsh mcp-client 的 serverName 预留是根级的：两个 agent 挂同名 MCP server 会撞
-   duplicate namespace。S2 在「根级共享连接池 + scoped 可见性过滤」与「会话后缀改名
-   （破坏 mcp__ 审计名）」之间选。
+1. ~~dsh mcp-client 的 serverName 预留是根级的~~ 【已销账 · WO-DSH-N4】裁决落地
+   「根级共享连接池 + scoped 可见性过滤」：plugins/mcp-client-tenant.mjs（vendor fork
+   自 dsh-mcp-client@0.1.0-rc.6，仅 D1/D2/D3 三处 diff，头部钉上游 sha256，
+   test/drift-check.mjs 防静默漂移）。池键 `${tenantId}\0${serverName}`：同 tenant 同名
+   共享一条连接，异 tenant 同名各起独立连接；mcp__ 审计名逐字节不变；无 tenantId 的
+   原生路径与上游逐字节等价（同名仍撞 duplicate namespace）。接缝证据：
+   test/namespace-tenant-seam.test.mjs（A0-A12，DSH_HARNESS=1 门控）。
 2. governance（ruleBindings → tools/pre-execute 裁决）走 harness 侧 answerer 插件 +
    带外通道回 agentcore，S2 实现；无 answerer 时 dsh fail-closed（默认拒），方向对我方有利。
