@@ -13,6 +13,7 @@ import EdgeActivePanel from "./sim/EdgeActivePanel";
 // 本页走 App.tsx 的专用 route，不经 ViewPage ⇒ 必须自己调 usePageView（理由见 shared.tsx 该函数注释）。
 import { ExportReportButton, usePageView } from "./sim/shared";
 import type { ProvenanceReport } from "./sim/exportProvenance";
+import { SolverStepBar, useSolverStep, type SolverStep } from "./sim/SolverStepBar";
 
 /**
  * 优化推演页（renderer=optimize-whatif·闭 G-12 前端半）——把 `optimize_whatif`（轨B·增量3）从"一个 Δ 数字"
@@ -127,6 +128,18 @@ interface OptWhatifOutput {
 }
 
 const fmt = (n: number | null | undefined): string => (typeof n === "number" && Number.isFinite(n) ? String(Math.round(n * 1000) / 1000) : "—");
+
+/**
+ * WO-U2-STEPWISE-1 · optimize_whatif 推演步骤契约（判据 U2：同一份结果按步展开·每步标 数据·求解器·规则）。
+ * 每步 = 求解器输出的**真实分段字段**（后端无 steps[]·前端按已有字段推导——契约判定与论据见 SolverStepBar 头注）。
+ * 步骤语义 = 求解链：入参 → 两次真解（baseline/perturbed 各一次 CP-SAT 重解）→ 比对判定（Δ/切换/可行性）→ 解读。
+ */
+const OW_STEPS: SolverStep[] = [
+  { key: "inputs", label: "入参与扰动", data: "模板族 + 基线 args + 扰动清单（data_override）+ seed 42", solver: "optimize_whatif", rule: "入参回显 · 两次求解同 seed 同模板族 ⇒ 目标值可比（本步无判定）" },
+  { key: "solve", label: "两次求解", data: "baselineSolution/baselineObjective + perturbedSolution/perturbedObjective", solver: "optimize_whatif", rule: "基线与扰动后局面各真解一次（CP-SAT sidecar · 同 seed 42 · 同输入同输出）" },
+  { key: "compare", label: "比对判定", data: "deltaObjective + feasible + conflictConstraints + 决策切换判定", solver: "optimize_whatif", rule: "Δ = 扰动后目标值 − 基线目标值；决策切换 = 开设集合排序后不同；约束冲突即不可行" },
+  { key: "explain", label: "解读", data: "explanation（求解器一句话说明）", solver: "optimize_whatif", rule: "求解器白话说明 · 原样透传（前端不改写）" },
+];
 
 /** 稳定 id（arcs 用 from-to 复合）。 */
 const itemId = (coll: string, item: Record<string, unknown>): string => (coll === "arcs" ? `${item.from}-${item.to}` : String(item.id ?? ""));
@@ -555,6 +568,9 @@ function EditableTable({ coll, rows, onEdit }: { coll: string; rows: Record<stri
 function DecisionResult({ out, family, baseArgs, perturbs }: { out: OptWhatifOutput; family: string; baseArgs: Record<string, unknown>; perturbs: { target: string; value: number }[] }) {
   const perturbLines = perturbs.map((p) => `${p.target}→${p.value}`);
   const solverBasis = [`模板族 ${family}`, "seed 42", perturbLines.length ? `扰动 ${perturbLines.join("，")}` : "扰动（未设）"];
+  // WO-U2-STEPWISE-1 · 判据 U2：步骤态**真正驱动结果分段**——每个结果段经 `upto(步号)` 闸，
+  // 点第 N 步 ⇒ 屏上的数只显示到第 N 步为止（默认末步 = 完整结果，与改前屏面一致）。
+  const { active: owStep, setActive: setOwStep, upto } = useSolverStep(OW_STEPS.length);
   const { baselineObjective, perturbedObjective, deltaObjective, feasible, conflictConstraints, explanation, baselineSolution, perturbedSolution } = out;
   const delta = typeof deltaObjective === "number" ? deltaObjective : null;
   const deltaColor = delta == null ? "var(--muted)" : delta > 0 ? "var(--amber)" : delta < 0 ? "var(--ok)" : "var(--muted)";
@@ -567,7 +583,15 @@ function DecisionResult({ out, family, baseArgs, perturbs }: { out: OptWhatifOut
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="ow-result">
-      {/* 决策切换横幅 / Δ */}
+      {/* 判据 U2 · 推演步骤条：点第 N 步 ⇒ 下方结果区只显示到第 N 步（分段闸 = upto）。 */}
+      <SolverStepBar steps={OW_STEPS} active={owStep} onSelect={setOwStep} testId="ow-steps" />
+      {/* 第 1 步 · 入参与扰动：本次求解的入参回执（优化解对这三样都敏感——复算三样必须一致）。 */}
+      <div style={{ fontSize: 12, color: "var(--muted2)" }} data-testid="ow-step-inputs">
+        入参回执：{solverBasis.join(" · ")}
+      </div>
+
+      {/* 决策切换横幅 / Δ —— 第 3 步「比对判定」（Δ 与切换判定都由两次求解比对得出）。 */}
+      {upto(3) && (
       <div
         className="panel"
         data-testid={switched ? "ow-switch-banner" : "ow-delta-banner"}
@@ -602,19 +626,25 @@ function DecisionResult({ out, family, baseArgs, perturbs }: { out: OptWhatifOut
           </Provenance>
         </span>
       </div>
+      )}
 
-      {/* 判据 U5：整屏结论的口径一句话说清（基线/扰动后两张卡的目标值同出一处）。 */}
+      {/* 判据 U5：整屏结论的口径一句话说清（基线/扰动后两张卡的目标值同出一处）——第 2 步「两次求解」。 */}
+      {upto(2) && (
       <div style={{ fontSize: 12, color: "var(--muted2)" }} data-testid="ow-objective-source">
         目标值出处：求解器 <span className="mono">optimize_whatif</span> · {solverBasis.join(" · ")}
       </div>
+      )}
 
-      {/* 基线 vs 扰动后 方案并排 */}
+      {/* 基线 vs 扰动后 方案并排 —— 第 2 步「两次求解」。 */}
+      {upto(2) && (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
         <SolutionCard testid="ow-baseline-card" title="基线方案" tag="改前" tagKind="base" family={family} args={baseArgs} solution={baselineSolution} objective={baselineObjective} feasible />
         <SolutionCard testid="ow-perturbed-card" title="扰动后方案" tag="改后" tagKind="pert" family={family} args={perturbedArgs} solution={perturbedSolution} objective={perturbedObjective} feasible={feasible} />
       </div>
+      )}
 
-      {/* 可行性 / 冲突约束（不可行时才展开） */}
+      {/* 可行性 / 冲突约束（不可行时才展开）—— 第 3 步「比对判定」。 */}
+      {upto(3) && (
       <div className="panel" data-testid="ow-feasibility" style={{ padding: "10px 12px" }}>
         <span style={{ fontSize: 12.5, color: "var(--muted)" }}>可行性 </span>
         <span className={`badge ${feasible ? "green" : "red"}`} data-testid="ow-feasible" data-feasible={feasible ? "1" : "0"}>{feasible ? "可行" : "不可行"}</span>
@@ -626,12 +656,15 @@ function DecisionResult({ out, family, baseArgs, perturbs }: { out: OptWhatifOut
           </div>
         )}
       </div>
+      )}
 
-      {/* 白话解读 */}
+      {/* 白话解读 —— 第 4 步「解读」。 */}
+      {upto(4) && (
       <div className="panel" data-testid="ow-explanation" style={{ padding: "12px 14px" }}>
         <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".05em", color: "var(--muted2)", marginBottom: 5 }}>一句话解读</div>
         <div style={{ fontSize: 13, color: "var(--txt)", lineHeight: 1.75 }}>{explanation || "—"}</div>
       </div>
+      )}
     </div>
   );
 }

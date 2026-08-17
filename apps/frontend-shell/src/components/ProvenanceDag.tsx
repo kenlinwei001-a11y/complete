@@ -367,10 +367,39 @@ function NodeProv({ node, children }: { node: DagNode; children: ReactNode }): J
   );
 }
 
-export function ProvenanceDag({ data }: { data: DagData | undefined }) {
+export function ProvenanceDag({ data, onNodeClick }: { data: DagData | undefined; onNodeClick?: (node: DagNode) => void }) {
   const nodes = data?.nodes ?? [];
   const edges = data?.edges ?? [];
   if (nodes.length === 0) return <div style={{ color: "var(--muted2)" }}>{zh.common.none}</div>;
+
+  /**
+   * WO-U3-DAG-SPLIT · 可选节点点击（**不外溢**：不传 onNodeClick 维持今天纯 hover 行为，
+   * cockpit 等其余消费方逐字节不变）。传了 → 节点行可点（cursor/role 只在有点击时加上），
+   * 点击选中该节点交给调用方开「凭什么」面板（risk 页接 DagNodeInspector）。
+   * stopPropagation：节点是嵌套渲染的（kpi 面板套 ksf 套 factor），不拦会一直冒泡到根。
+   * hover 溯源弹窗（NodeProv）照旧——hover 看「数从哪来」，click 看「凭什么这么判」，两件事不打架。
+   */
+  const clickOf = (n: DagNode, base?: React.CSSProperties) =>
+    onNodeClick
+      ? {
+          onClick: (e: React.MouseEvent) => {
+            e.stopPropagation();
+            onNodeClick(n);
+          },
+          role: "button" as const,
+          tabIndex: 0,
+          onKeyDown: (e: React.KeyboardEvent) => {
+            if (e.key === "Enter") {
+              e.stopPropagation();
+              onNodeClick(n);
+            }
+          },
+          "data-clickable": "1",
+          style: { ...base, cursor: "pointer" } as React.CSSProperties,
+        }
+      : base
+        ? { style: base }
+        : {};
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const childrenOf = (id: string): { node: DagNode; weight?: number }[] =>
@@ -389,7 +418,7 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
     const evid = kids.filter((k) => k.node.kind === "evidence");
     const subFactors = kids.filter((k) => k.node.kind !== "evidence");
     return (
-      <div key={factor.id} data-testid={`dag-node-${factor.id}`} data-kind="factor" style={{ paddingLeft: 14, borderLeft: "2px solid rgba(124,58,237,.4)" }}>
+      <div key={factor.id} data-testid={`dag-node-${factor.id}`} data-kind="factor" {...clickOf(factor, { paddingLeft: 14, borderLeft: "2px solid rgba(124,58,237,.4)" })}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span className="badge" style={{ background: "rgba(124,58,237,.18)", color: "#a78bfa" }}>{fmtPct(weight)}</span>
           <span>{factor.label}</span>
@@ -400,7 +429,7 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
         {evid.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4, paddingLeft: 12 }}>
             {evid.map(({ node: leaf }) => (
-              <span key={leaf.id} data-testid={`dag-node-${leaf.id}`} data-kind="evidence" className="badge" style={{ background: "var(--panel2,rgba(255,255,255,.04))", fontSize: 12 }}>
+              <span key={leaf.id} data-testid={`dag-node-${leaf.id}`} data-kind="evidence" className="badge" {...clickOf(leaf, { background: "var(--panel2,rgba(255,255,255,.04))", fontSize: 12 })}>
                 <NodeProv node={leaf}>{leaf.label} · {leaf.value}</NodeProv>
               </span>
             ))}
@@ -419,7 +448,7 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
   return (
     <div data-testid="provenance-dag" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {roots.map((kpi) => (
-        <div key={kpi.id} className="panel" data-testid={`dag-node-${kpi.id}`} data-kind="kpi" style={{ padding: 10, borderLeft: `3px solid ${STATUS_COLOR[kpi.status ?? ""] ?? "var(--muted2)"}` }}>
+        <div key={kpi.id} className="panel" data-testid={`dag-node-${kpi.id}`} data-kind="kpi" {...clickOf(kpi, { padding: 10, borderLeft: `3px solid ${STATUS_COLOR[kpi.status ?? ""] ?? "var(--muted2)"}` })}>
           {/* 第一层：KPI 越线根（实际 vs 目标 + 缺口） */}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span className="badge" style={{ background: STATUS_COLOR[kpi.status ?? ""] ?? undefined, color: "#fff" }}>{kpi.status}</span>
@@ -432,7 +461,7 @@ export function ProvenanceDag({ data }: { data: DagData | undefined }) {
           <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
             {childrenOf(kpi.id).map((child) =>
               child.node.kind === "ksf" ? (
-                <div key={child.node.id} data-testid={`dag-node-${child.node.id}`} data-kind="ksf" style={{ paddingLeft: 8, borderLeft: "2px solid rgba(76,144,240,.5)" }}>
+                <div key={child.node.id} data-testid={`dag-node-${child.node.id}`} data-kind="ksf" {...clickOf(child.node, { paddingLeft: 8, borderLeft: "2px solid rgba(76,144,240,.5)" })}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                     <span className="badge" style={{ background: "rgba(76,144,240,.18)", color: "#4C90F0" }}>KSF</span>
                     <b>{child.node.label}</b>

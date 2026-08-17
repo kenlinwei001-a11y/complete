@@ -1,0 +1,82 @@
+/* 判据 U2 · 共享步骤条。
+   ⚠ 零字面色值：全部走既有 token（与 DagNodeInspector.module.css 同一纪律——
+   本仓踩过写死 hex 只在暗色下能看的坑）；不设 font-size 新档，只复用 12 / 12.5 两级。 */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.track {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--line2);
+  background: var(--panel2);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.step:hover {
+  border-color: var(--accent);
+}
+
+/* 当前步：高亮（用户要知道自己停在哪一步）。 */
+.on {
+  border-color: var(--accent);
+  color: var(--accent-txt);
+  font-weight: 600;
+}
+
+/* 已展开的步（< active）：留在屏上的数属于这些步。 */
+.done {
+  color: var(--txt);
+}
+
+.no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+/* 当前步口径行：数据·求解器·规则（U2 判据第二半，缺一格这步就不成立）。 */
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.metaItem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.metaKey {
+  font-style: normal;
+  color: var(--muted2);
+  padding: 0 5px;
+  border-radius: 5px;
+  border: 1px solid var(--line2);
+  background: var(--panel2);
+  white-space: nowrap;
+}
