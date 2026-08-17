@@ -52,7 +52,8 @@ function gateToolBroken(e) {
 }
 
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -60,12 +61,58 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SERVER = "apps/agentcore/src/server.ts";
 const RESOURCES = "apps/agentcore/src/resources.ts";
 
-/** 必须被探针守住的发布路（新增一条发布路就该进这张表——表本身是可 review 的边界）。 */
-const GUARDED_PUBLISH_ROUTES = [
-  { label: "agent 发布", route: '"/b/v1/agents/:id/publish"' },
-  { label: "workflow 发布", route: '"/b/v1/workflows/:id/publish"' },
-  { label: "skill 发布", route: '"/b/v1/skills/:id/publish"', persistCall: "repos.skills.update" },
-];
+/**
+ * ══ WO-GATE-ROSTER-SWEEP 修（2026-08-16）· 名册从**手抄 3 条**改成**现算全部发布路** ══════
+ *
+ * **病**（本体 §8 `G-GATE-ROSTER-HANDCOPIED`）：这张表原文自陈
+ * 「新增一条发布路就该进这张表——表本身是可 review 的边界」，而这句话**恰恰是病灶**：
+ * 它把「谁该被守」的判定交给了人的记性。本门 D1 号称治「新增一条发布路忘了接探针」，
+ * 可**忘了接的那条同时也会忘了进这张表**，于是它一次都不会被问 —— 门只守住它记得的那 3 条。
+ *
+ * **形态**（CLAUDE.md 铁律 0.6 句式）：
+ *   **「我用『名单里那 3 条都接了探针』当作『每条发布路都被守住了』的证据，而前者并不度量后者。」**
+ *   这与本门文件头已经点名的那个病**一模一样**（"grep 得到 probeMissingRefs 有 2 个调用方
+ *   这个看起来很健康的数字，而它并不度量每条发布路都被守住了"）——
+ *   旧实现只是把同一个错从「数调用方」挪到了「数名单」。
+ *
+ * **实测差集**（2026-08-16，全部追到调用点的条件才下的结论，不是 grep 命中数）：
+ * `apps/agentcore/src/server.ts` 里 `app.post` 的发布路由共 **9 条**，名册只有 3 条。
+ * 逐条追过一层后，**至少 1 条是真洞**：
+ *   · `/api/v1/catalog/plans/:planId/publish` → `catalog/service.ts` 的 `publishPlan`
+ *     **确证携带规则引用**（`planStepRuleRefs(published.steps)` 并 `reportRefs` 上报 A），
+ *     却**从不调 `probeMissingRefs`** ⇒ 引用一条不存在的规则照样发布成功。
+ *     这正是 D1 要治的形态，而名单手抄让它从未被问过。
+ *   · `/b/v1/plan-builders/:id/publish` → `publishCanvas` → `publishPlan`，同路同病。
+ *   · `/b/v1/scenarios/:key/publish` 另有 `scenarioClosure` 闭合守卫（**不同机制，非缺口**）。
+ *   · `/api/v1/catalog/intents/:intentId/publish` / `/b/v1/mcp-configs/:id/publish` /
+ *     `/b/v1/scenarios/:key/publish-chain` —— 今天未测出携带 solver/rule/objectType 引用。
+ *
+ * **修法**：
+ *   ① 受检集合 = 从 `server.ts` **现算**全部 `app.post("…publish…")` 路由（名册不再决定问谁）；
+ *   ② `GUARDED_ROUTE_SPECS` 降级为**附加判据表**：只登记「这条路除了要有探针、还要满足什么」
+ *      （如 skill 路必须拦在 `repos.skills.update` 之前）。它是判据，不是受检集合；
+ *   ③ 未守的路进**棘轮基线** `scripts/ref-closure-baseline.json`，逐条带 `why`，**只降不升**；
+ *   ④ 现算路由数低于下界 ⇒ 报 **RC=2「工具坏了」**，不许报「每条发布路都守住了」。
+ *
+ * ⚠ **本门只让洞可见，没有把洞补上**：真正把 `probeMissingRefs` 接到 plan 发布路上要动
+ * `apps/agentcore/src`，超出 WO-GATE-ROSTER-SWEEP 的范围边界（纯门单）。
+ * 收口 = 接探针 → 删基线对应条目 → 跑 `--tighten`，额度当场收回。
+ */
+
+/** 发布路由的**现算判据**（形状而非名单）：`app.post("<路径含 publish>"`。 */
+const PUBLISH_ROUTE_RE = /app\.post\(\s*"([^"]*\/publish(?:-[a-z]+)?)"/g;
+/** 现算路由数下界（金丝雀）：低于它说明抽取器坏了 —— 集合塌陷 ⇒ 差集恒空 ⇒ 门恒绿。 */
+const MIN_PUBLISH_ROUTES = 5;
+
+/**
+ * **附加判据表**（判据，非受检集合）：某条路除「必须有探针」外还要满足的额外约束。
+ * 现算出的路由若不在此表，只受「必须有探针」这一条约束。
+ */
+const GUARDED_ROUTE_SPECS = {
+  '"/b/v1/skills/:id/publish"': { label: "skill 发布", persistCall: "repos.skills.update" },
+  '"/b/v1/agents/:id/publish"': { label: "agent 发布" },
+  '"/b/v1/workflows/:id/publish"': { label: "workflow 发布" },
+};
 
 const read = (rel) => {
   const p = join(ROOT, rel);
@@ -181,7 +228,22 @@ function silentCatches(region) {
 }
 
 /**
- * 唯一检测实现。返回 { violations: string[], toolBroken: string[] }。
+ * **现算**全部发布路由（本单的核心改动：名册不再决定问谁）。
+ * 返回带引号的 route 字面量数组（与 `sliceHandler` 的入参形状一致），去重且保持源码顺序。
+ */
+function livePublishRoutes(server) {
+  const out = [];
+  PUBLISH_ROUTE_RE.lastIndex = 0;
+  let m;
+  while ((m = PUBLISH_ROUTE_RE.exec(server)) !== null) {
+    const lit = `"${m[1]}"`;
+    if (!out.includes(lit)) out.push(lit);
+  }
+  return out;
+}
+
+/**
+ * 唯一检测实现。返回 { violations: string[], toolBroken: string[], routes: string[] }。
  * **金丝雀与主逻辑共用本函数** —— 改这里的判据，金丝雀自动跟着变。
  */
 function scan(raw) {
@@ -191,8 +253,20 @@ function scan(raw) {
   const server = stripComments(raw.server);
   const resources = stripComments(raw.resources);
 
-  // ① 每条发布路都必须调探针（不是"探针有几个调用方"，而是"每条路是否被守住"）
-  for (const { label, route, persistCall } of GUARDED_PUBLISH_ROUTES) {
+  // ① 每条发布路都必须调探针（不是"探针有几个调用方"，也不是"名单里那几条"，
+  //    而是**现算出来的每一条**是否被守住）。
+  const routes = livePublishRoutes(server);
+  if (routes.length < MIN_PUBLISH_ROUTES) {
+    toolBroken.push(
+      `现算只抽出 ${routes.length} 条发布路由（下界 ${MIN_PUBLISH_ROUTES}）—— 抽取器坏了，不是路由没了。` +
+        `集合塌陷会让差集恒空、门恒绿，那是失败的危险方向。`,
+    );
+    return { violations, toolBroken, routes: [] };
+  }
+  for (const route of routes) {
+    const spec = GUARDED_ROUTE_SPECS[route] ?? {};
+    const label = spec.label ?? route.replace(/"/g, "");
+    const persistCall = spec.persistCall;
     const body = sliceHandler(server, route);
     if (body === null) {
       toolBroken.push(`抽取不到发布 handler ${route}（route 字面量改了？文件挪了？）—— 报「工具坏了」，不报「没有违规」`);
@@ -201,7 +275,7 @@ function scan(raw) {
     if (!body.includes("probeMissingRefs(")) {
       violations.push(
         `D1 摘门：${label}（${route}）的 handler 里没有 probeMissingRefs( —— ` +
-          `该路可发布引用不存在的求解器/规则/对象类型（死路）。修：照另两条发布路补上探针调用。`,
+          `该路可发布引用不存在的求解器/规则/对象类型（死路）。修：照另几条发布路补上探针调用。`,
       );
       continue;
     }
@@ -242,7 +316,7 @@ function scan(raw) {
     }
   }
 
-  return { violations, toolBroken };
+  return { violations, toolBroken, routes };
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -333,41 +407,136 @@ function selftest(real) {
 /* ══════════════════════════════════════════════════════════════════════════
  * 主程序
  * ════════════════════════════════════════════════════════════════════════ */
-const server = read(SERVER);
-const resources = read(RESOURCES);
-if (server === null || resources === null) {
-  console.error(`✗ ref-closure:check：读不到被守文件（${SERVER} / ${RESOURCES}）—— 报「工具坏了」，不报「代码干净」`);
+const BASELINE = join(ROOT, "scripts/ref-closure-baseline.json");
+const BASELINE_NOTE =
+  "① 本文件是 `check-ref-closure.mjs` 的**未守发布路存量棘轮**。受检集合（问哪些发布路）由门**现算**" +
+  "（扫 server.ts 的 `app.post(\"…/publish\")`），本文件里一条路由都不当名单用 —— 名单一手抄，" +
+  "**忘了接探针的那条同时也会忘了进名单**，于是它一次都不会被问（本体 §8 G-GATE-ROSTER-HANDCOPIED）。" +
+  "② 每条必须写 `why`：**无理由白名单正是棘轮要治的病**，要说清「这条路凭什么今天可以没有探针」——" +
+  "是它压根不携带引用，还是它另有等价守卫，还是**它就是个真洞**（真洞必须写明代价）。" +
+  "③ `maxEntries` 恒等于 entries 条数；评审唯一必须拒绝的一行就是把它调大。" +
+  "④ `--tighten` **只删不加**：接上探针即收回额度；新增未守的发布路**不自动收编**，当场红。";
+
+function bail1(lines, hint) {
+  for (const m of lines) console.error(`  - ${m}`);
+  if (hint) console.error(hint);
   process.exit(1);
 }
-const real = { server, resources };
 
-// 1) 金丝雀（门自己会瞎）与 2) 真扫，先各自跑完再定性 —— 顺序不决定结论，证据才决定。
-const { failures: selftestFailures, vacuous } = selftest(real);
-const { violations, toolBroken } = scan(real);
-
-// 真违规是**主信号**：它存在时先报它（金丝雀空转往往正是"那条线已经被摘了"的副作用）。
-if (violations.length > 0) {
-  console.error(`✗ ref-closure:check 未通过（${violations.length} 条）：`);
-  for (const m of violations) console.error(`  - ${m}`);
-  if (vacuous.length > 0) {
-    console.error(`  · 附：${vacuous.length} 条金丝雀空转（目标片段已不在源码里——与上面的违规同源，非门失灵）`);
+function mainRefClosure() {
+  const argv = process.argv.slice(2);
+  const server = read(SERVER);
+  const resources = read(RESOURCES);
+  if (server === null || resources === null) {
+    // 读不到被守文件 = **工具没准备好**，不是代码有问题。旧版这里退 1，方向正好相反。
+    console.error(`⛔ ref-closure:check 工具坏了：读不到被守文件（${SERVER} / ${RESOURCES}）`);
+    console.error("   本次结论作废：**不许**读作「代码干净 / 每条发布路都守住了」。");
+    return 2;
   }
-  console.error("\n  → 复验：pnpm --filter agentcore test skill-ref-closure（接缝测试从 HTTP 发布端点驱动）");
-  process.exit(1);
+  const real = { server, resources };
+
+  // 1) 金丝雀（门自己会瞎）与 2) 真扫，先各自跑完再定性 —— 顺序不决定结论，证据才决定。
+  const { failures: selftestFailures, vacuous } = selftest(real);
+  const { violations, toolBroken, routes } = scan(real);
+
+  if (argv.includes("--census")) {
+    console.log(`· 现算发布路由 ${routes.length} 条（名册不再决定问谁）：`);
+    for (const r of routes) {
+      const body = sliceHandler(stripComments(server), r);
+      const guarded = body !== null && body.includes("probeMissingRefs(");
+      console.log(`    ${guarded ? "[已守]" : "[❗未守·旧名册够不着]"} ${r.replace(/"/g, "")}`);
+    }
+    return 0;
+  }
+
+  const base = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : null;
+  // 违规 id 用**路由字面量**，稳定且与行号无关。
+  const liveUnguarded = new Map();
+  for (const v of violations) {
+    const m = /（("[^"]+")）/.exec(v);
+    if (/^D1 摘门/.test(v) && m) liveUnguarded.set(m[1], v);
+  }
+  const otherViolations = violations.filter((v) => !(/^D1 摘门/.test(v) && /（"[^"]+"）/.test(v)));
+
+  if (argv.includes("--seed") || argv.includes("--tighten")) {
+    // 基线写入器四向金丝雀（与 buildBaselineDoc 共用同一份实现，不另抄）——
+    // 不过 ⇒ RC=2「门自己坏了」：写入器一坏会静默吞掉人手挂账的 why，
+    // 而 why 恰恰是棘轮唯一能被人审的部分，吞掉它等于把棘轮降级成白名单。
+    const bc = baselineDocCanary();
+    if (!bc.ok) {
+      console.error(`⛔ ref-closure:check 工具坏了：基线写入器金丝雀${bc.got}`);
+      console.error("   本次不写基线（写了会吞掉人手 why）。");
+      return 2;
+    }
+    const isTighten = argv.includes("--tighten");
+    const prev = base?.entries ?? {};
+    const next = {};
+    for (const [id] of liveUnguarded) {
+      if (isTighten && !(id in prev)) continue; // 新增未守的不自动收编（收编 = 买绿）
+      next[id] = prev[id] ?? { why: "【待人补】--seed 落的机器事实，尚未写明「这条路凭什么今天可以没有探针」。" };
+    }
+    // ⚠ `buildBaselineDoc(` 必须**内联在写入表达式里**：`baseline-writer-honesty:check` 判的是
+    //   「写的那一刻用没用共享写入器」，先赋值给中间变量再写会被判 HAND_ROLLED。
+    writeFileSync(
+      BASELINE,
+      JSON.stringify(buildBaselineDoc({
+        prev: base,
+        generatedBy: `node scripts/check-ref-closure.mjs ${isTighten ? "--tighten" : "--seed"}`,
+        prose: { note: BASELINE_NOTE },
+        computed: { entries: next, maxEntries: Object.keys(next).length, liveRouteCount: routes.length },
+      }), null, 2) + "\n",
+    );
+    console.log(`✓ 基线已写：${Object.keys(next).length} 条未守发布路（${isTighten ? "只删不加" : "首次建账"}）· 现算路由 ${routes.length} 条`);
+    return 0;
+  }
+
+  if (!base) {
+    console.error("⛔ ref-closure:check 工具坏了：找不到 scripts/ref-closure-baseline.json —— 棘轮基线是判据①的输入");
+    console.error("   先跑：node scripts/check-ref-closure.mjs --seed");
+    return 2;
+  }
+  const known = new Map(Object.entries(base.entries ?? {}));
+  const fails = [...otherViolations];
+  if (typeof base.maxEntries === "number" && base.maxEntries !== known.size) {
+    fails.push(`棘轮自洽：maxEntries=${base.maxEntries} ≠ entries 条数 ${known.size}（改额度必须是一处显眼 diff）`);
+  }
+  for (const [id, e] of known) {
+    if (!e || typeof e.why !== "string" || e.why.trim().length < 10) fails.push(`棘轮条目 ${id} 缺 why —— 无理由白名单正是棘轮要治的病`);
+  }
+  for (const [id, msg] of liveUnguarded) if (!known.has(id)) fails.push(`${msg}\n      （该路不在棘轮基线里 = **新增**未守发布路，当场红）`);
+  for (const id of known.keys()) {
+    if (!liveUnguarded.has(id)) fails.push(`棘轮松弛：基线仍挂着 ${id}，但现算它已被探针守住 —— 那是一张能随时退回去的免检名额，请跑 --tighten 收紧`);
+  }
+
+  if (fails.length > 0) {
+    console.error(`✗ ref-closure:check 未通过（${fails.length} 条）：`);
+    bail1(fails, "\n  → 复验：pnpm --filter agentcore test skill-ref-closure（接缝测试从 HTTP 发布端点驱动）");
+  }
+
+  // 到这里主扫描是"干净"的 —— 那么金丝雀与抽取器必须先自证可信，才准把"干净"读作"合规"。
+  if (selftestFailures.length > 0 || vacuous.length > 0) {
+    console.error("⛔ ref-closure:check 门自己瞎了（金丝雀未被咬 / 空转）——本次结论作废，不许读作「代码干净」：");
+    for (const f of [...selftestFailures, ...vacuous]) console.error(`  - ${f}`);
+    return 2;
+  }
+  if (toolBroken.length > 0) {
+    console.error("⛔ ref-closure:check 工具坏了（抽取不到被测对象）——不许读作「没有违规」：");
+    for (const m of toolBroken) console.error(`  - ${m}`);
+    return 2;
+  }
+
+  console.log(`· 金丝雀：${SELFTEST_TOTAL}/${SELFTEST_TOTAL} 变异全部被咬（摘探针 / 注释掉探针 / 空集放行 / 静默 catch / 抽取器失灵）—— 扫描器可信`);
+  console.log(
+    `· 发布路守护：**现算** ${routes.length} 条发布路由（非手抄名册）· 已守 ${routes.length - liveUnguarded.size} 条 · ` +
+      `未守 ${liveUnguarded.size} 条全部在棘轮基线内且各有 why，无新增、无松弛`,
+  );
+  console.log("\n✓ ref-closure:check 通过（现算发布路守护到位 · 两层 fail-open 均关死 · skill 路拦在落库之前）。");
+  return 0;
 }
 
-// 到这里主扫描是"干净"的 —— 那么金丝雀与抽取器必须先自证可信，才准把"干净"读作"合规"。
-if (selftestFailures.length > 0 || vacuous.length > 0) {
-  console.error("⛔ ref-closure:check 门自己瞎了（金丝雀未被咬 / 空转）——本次结论作废，不许读作「代码干净」：");
-  for (const f of [...selftestFailures, ...vacuous]) console.error(`  - ${f}`);
-  process.exit(1);
+/* ── 顶层兜底（Program 直接子语句）：未预期异常一律归 RC=2「工具坏了」，不是 RC=1「代码坏了」。 */
+try {
+  process.exit(mainRefClosure());
+} catch (e) {
+  gateToolBroken(e);
 }
-if (toolBroken.length > 0) {
-  console.error("⛔ ref-closure:check 工具坏了（抽取不到被测对象）——不许读作「没有违规」：");
-  for (const m of toolBroken) console.error(`  - ${m}`);
-  process.exit(1);
-}
-
-console.log(`· 金丝雀：${SELFTEST_TOTAL}/${SELFTEST_TOTAL} 变异全部被咬（摘探针 / 注释掉探针 / 空集放行 / 静默 catch / 抽取器失灵）—— 扫描器可信`);
-console.log(`· 发布路守护：${GUARDED_PUBLISH_ROUTES.map((g) => g.label).join(" / ")} 共 ${GUARDED_PUBLISH_ROUTES.length} 条，均已抽取到 handler`);
-console.log("\n✓ ref-closure:check 通过（三条发布路均接探针 · 两层 fail-open 均关死 · skill 路拦在落库之前）。");
