@@ -123,7 +123,7 @@ describe("WO-MOCKDC-SIGNATURE · asOfEpoch 承重：给不给行为不同（§13
 
     const pinned = await dc.ontology.queryObjects(A, "Base", {}, undefined, taskEpoch);
     const live = await dc.ontology.queryObjects(A, "Base", {});
-    const idsOf = (p: Awaited<ReturnType<typeof live>>): string[] =>
+    const idsOf = (p: typeof live): string[] => // merge 层销债：live 已 await，Awaited<ReturnType<…>> 是函数型语法误用（c4e2df8d8 携带债，tsc TS2344）
       (p.data as { items: Record<string, unknown>[] }).items.map((i) => String(i.objectId));
 
     expect(idsOf(pinned)).not.toContain("base_after_snapshot");
