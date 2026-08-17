@@ -13,6 +13,7 @@ import type {
   DataCoreClient,
   DataGenClient,
   DecisionClient,
+  EpochClient,
   IamClient,
   KbClient,
   KbHit,
@@ -25,6 +26,7 @@ import type {
   TimeseriesClient,
   ToolAuthCtx,
 } from "../tools/clients.js";
+import type { Expect, NoParamArityDrift } from "./signature-parity.js";
 import { cosine, pseudoEmbed } from "../util/embedding.js";
 import { hashSeed, prngFor } from "./prng.js";
 import { SEED_BASES, SEED_MODELS, SEED_ORDERS, type SeedBase, type SeedOrder } from "./seed.js";
@@ -1054,8 +1056,16 @@ export class MockPromptClient implements PromptClient {
   invalidatePromptTemplate(): void {}
 }
 
+/** 并发一致性 §13.1：任务级快照锚点 mock。 */
+export class MockEpochClient implements EpochClient {
+  async current(): Promise<{ epoch: number }> {
+    return { epoch: 1 };
+  }
+}
+
 export interface MockDataCore extends DataCoreClient {
   ontology: MockOntologyClient;
+  epoch: MockEpochClient;
   solver: MockSolverClient;
   rules: MockRuleEngineClient;
   action: MockActionClient;
@@ -1080,9 +1090,36 @@ export function createMockDataCore(): MockDataCore {
     kb: new MockKbClient(),
     timeseries: new MockTimeseriesClient(),
     catalog: new MockCatalogClient(),
-    epoch: { async current() { return { epoch: 1 }; } },
+    epoch: new MockEpochClient(),
     datagen: new MockDataGenClient(),
     sim: new MockSimClient(),
     prompts: new MockPromptClient(),
   };
 }
+
+/* ========================================================================= *
+ * WO-MOCKDC-SIGNATURE · 形参对齐守卫的**挂载点**
+ *
+ * 放在这里（而不是某个测试文件里）是有意的：`apps/agentcore/tsconfig.json` 的
+ * `include: ["src/**│*.ts"]` 覆盖本文件 ⇒ `pnpm --filter agentcore build` / `typecheck`
+ * 就是这道门，**不需要谁记得去跑一个专门的 lint**。
+ *
+ * 少写一个形参 ⇒ 编译期红，且错误消息直接点名是哪个方法：
+ *   `Type '"queryObjects"' does not satisfy the constraint 'true'.`
+ * 机制说明与「为什么 implements 挡不住」见 `signature-parity.ts` 顶部。
+ * ========================================================================= */
+export type MockDataCoreParamParity = [
+  Expect<NoParamArityDrift<MockOntologyClient, OntologyClient>>,
+  Expect<NoParamArityDrift<MockSolverClient, SolverClient>>,
+  Expect<NoParamArityDrift<MockRuleEngineClient, RuleEngineClient>>,
+  Expect<NoParamArityDrift<MockActionClient, ActionClient>>,
+  Expect<NoParamArityDrift<MockDecisionClient, DecisionClient>>,
+  Expect<NoParamArityDrift<MockIamClient, IamClient>>,
+  Expect<NoParamArityDrift<MockKbClient, KbClient>>,
+  Expect<NoParamArityDrift<MockTimeseriesClient, TimeseriesClient>>,
+  Expect<NoParamArityDrift<MockCatalogClient, CatalogClient>>,
+  Expect<NoParamArityDrift<MockEpochClient, EpochClient>>,
+  Expect<NoParamArityDrift<MockDataGenClient, DataGenClient>>,
+  Expect<NoParamArityDrift<MockSimClient, SimClient>>,
+  Expect<NoParamArityDrift<MockPromptClient, PromptClient>>,
+];
