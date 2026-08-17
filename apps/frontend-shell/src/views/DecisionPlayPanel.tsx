@@ -25,6 +25,8 @@ import {
   type ReasoningGraph,
   type ReasoningNode,
 } from "./sim/reasoningGraph";
+// WO-U10-THREE-PAGES · 判据 U10：版面字号硬底 12px。本面板只借它一个类，见该文件头。
+import dpStyles from "./DecisionPlayPanel.module.css";
 
 /**
  * WO-ORDER-JOURNEY · **决策推演面板**（`DecisionPlayView` 页面壳与各宿主页的就地嵌入，用的是这一份）。
@@ -1414,8 +1416,11 @@ function DecisionPlay({
             <thead>
               <tr>
                 <th>方案</th>
+                {/* 「↑优/↓优」记号：字号必须显式写在 dpStyles.thHint 里 ——
+                    裸 `<small>` 会吃浏览器默认的 `font-size: smaller`（12×0.8333 ⇒ 屏上 10px），
+                    而那一档静态门看不见（源码里没有「10px」这个数）。理由见该 CSS 文件头。 */}
                 {DIMS.map((d) => (
-                  <th key={d.key}>{d.label}<small style={{ color: "var(--muted2)", fontWeight: 400 }}> {d.better === "high" ? "↑优" : "↓优"}</small></th>
+                  <th key={d.key}>{d.label}<small className={dpStyles.thHint}>{d.better === "high" ? "↑优" : "↓优"}</small></th>
                 ))}
               </tr>
             </thead>
