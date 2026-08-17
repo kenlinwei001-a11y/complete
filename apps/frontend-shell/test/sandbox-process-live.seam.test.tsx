@@ -498,7 +498,17 @@ describe("§C 「本层不随节拍变」≠「无承载对象」≠ 留白（�
     await user.hover(screen.getByTestId("info-process-tick-drive"));
     const limit = await screen.findByTestId("spc-live-limit", undefined, { timeout: 20000 });
     expect(limit.textContent).toContain("不说明它本质上不该随节拍变");
-    expect(screen.getByTestId("spc-live-basis").textContent).toContain("propagateTick");
+    /**
+     * ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK 改判据落点，**边界一个字没放宽**：
+     *   原断言咬的是屏上出现 `propagateTick`（**引擎内部的函数名**）——
+     *   它要证的其实是「第三档是**结构性**的、不是今天恰好没变」这条事实还在。
+     *   拿函数名当探针 = 用一个不该上屏的标识符去证明一条该上屏的诚实位，
+     *   咬的是措辞不是事实。落点换成那条事实的人话版；函数名移进 zh.ts 该段的代码注释。
+     */
+    const basis = screen.getByTestId("spc-live-basis").textContent ?? "";
+    expect(basis).toContain("结构性");
+    expect(basis).toContain("够不着的东西怎么推都不会动");
+    expect(basis).not.toContain("propagateTick");
     // 四态计数条属**模板层**这件事也必须说出来（它就摆在会跳的读数旁边）
     expect(screen.getByTestId("spc-live-waitkind-static").textContent).toContain("模板层");
     expect(screen.getByTestId("spc-kindbar").getAttribute("data-tick-invariant")).toBe("1");
