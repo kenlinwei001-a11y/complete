@@ -212,9 +212,15 @@ export default function SandboxConfigPanel({
    * ⚠ 加载态显式说「…」而不是先显示 0：0 是一个**有意义的答案**（"一条都没有"），
    *   拿它当"还不知道"用，就是本仓反复治的静默错答形态。
    */
-  const appliedCount = sessionId ? (perturbationsQuery.isPending ? null : perturbationsQuery.data?.items.length ?? 0) : null;
-  const edgeCount = rulesQuery.isLoading ? null : full.edges.length;
-  const activeEdgeCount = rulesQuery.isLoading ? null : full.activeEdgeCount;
+  /**
+   * ⚠ 判据是 `isSuccess`，**不是** `!isPending` —— 这两者差着一个「取数失败」。
+   *   写成 `data?.items.length ?? 0`，请求一旦失败就会在屏上打出「已施加 **0** 条」：
+   *   那是**把「我不知道」说成了「一条都没有」**，正是本仓反复治的静默错答形态
+   *   （而且这一格最容易骗人：0 是个完全合理的值，没人会怀疑它）。
+   */
+  const appliedCount = perturbationsQuery.isSuccess ? perturbationsQuery.data.items.length : null;
+  const edgeCount = rulesQuery.isSuccess ? full.edges.length : null;
+  const activeEdgeCount = rulesQuery.isSuccess ? full.activeEdgeCount : null;
   const num = (v: number | null) => (v === null ? "—" : String(v));
 
   const panel = (

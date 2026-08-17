@@ -128,6 +128,8 @@ const SESSION_ID = "sims_collapse";
  *   §2「造一条新扰动 ⇒ 计数跟着变」当场红。桩成恒返 `{items: []}` 就测不到这件事了。
  */
 let perturbationStore: SimPerturbation[] = [];
+/** 置真 ⇒ 取清单这条请求失败。用来验「取不到数时横幅说什么」（见 §2 最后一例）。 */
+let perturbationsFail = false;
 let sessionDisabled: string[] = [];
 let capturedBase: TickState = {};
 
@@ -198,7 +200,10 @@ vi.mock("@/api/endpoints", () => ({
       curTick: 0,
     };
   }),
-  fetchSimPerturbations: vi.fn(async () => ({ items: [...perturbationStore] })),
+  fetchSimPerturbations: vi.fn(async () => {
+    if (perturbationsFail) throw new Error("取清单失败（本例故意的）");
+    return { items: [...perturbationStore] };
+  }),
   deleteSimPerturbation: vi.fn(),
   simTick: vi.fn(async (_id: string, n: number) => ({ curTick: n, state: capturedBase })),
   simWorld: vi.fn(async () => ({ tick: 0, state: capturedBase })),
@@ -236,6 +241,7 @@ const barText = () => screen.getByTestId("sandbox-config-bar").textContent ?? ""
 
 beforeEach(() => {
   perturbationStore = [];
+  perturbationsFail = false;
   sessionDisabled = [];
   capturedBase = {};
   patchFn.mockReset();
@@ -350,6 +356,24 @@ describe("§2 · 横幅上的三个数是**现算**的（写死的数在这一�
       screen.getByTestId("sandbox-config-bar-edges").textContent,
       "关一条边把「传导边总数」也减了 ⇒ 两个数被合成了一个，用户读不出「关掉了几条」",
     ).toBe("4");
+  });
+
+  it("🔴 取不到数时显示「—」而**不是「0」**（把「我不知道」说成「一条都没有」是静默错答）", async () => {
+    perturbationsFail = true;
+    mount();
+    await ready();
+
+    // 这一格最容易骗人：0 是个完全合理的值，屏上打出来没人会怀疑它。
+    // 判据因此咬死「必须是 —」，而不是「不等于某个数」。
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("sandbox-config-bar-applied").textContent,
+        "取数失败却在屏上打出一个具体的数 ⇒ 用户会把「查不到」读成「真的没有」",
+      ).toBe("—"),
+    );
+    // 🐤 反面：同一条横幅上**取数成功**的那两个数照常出，证明上面那个「—」
+    //    是这一格自己的取数结果，不是整条横幅都挂了。
+    expect(screen.getByTestId("sandbox-config-bar-edges").textContent).toBe("4");
   });
 });
 
