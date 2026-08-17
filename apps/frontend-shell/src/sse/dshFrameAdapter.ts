@@ -14,6 +14,18 @@
  *    tool/call→step.started{stepId=callId,type=name}、tool/result→step.completed、
  *    text-delta→step.completed{type:agent_narration}；agent_degraded/compaction 走
  *    orchestrator.ts:2177-2184 既有 G-9 伪步逃生舱，不新增事件名）
+ *
+ * N2→N6 跨单契约（n2-plan-full.md D-1/D-2/D-4/D-5，wire 字节级示例见其 29-33 行）：
+ *  - D-1 agent_think：step.completed{stepId:"think-<turn>-<step>-<chunk.index>",type:"agent_think",text}
+ *    → reasoning-delta chunk（index 从 stepId 解析，多块不互覆）；
+ *  - D-4 compaction 伪步对：step.started{type:"compaction"} → compaction-start；
+ *    step.completed{text:"已压缩 N 条/约 M tokens"}（无 outcome）→ compaction-summary；
+ *    step.completed{outcome:OK|ERROR,error时text=error原文} → compaction-end；
+ *  - D-5 键名换算：POC tool/result 映射用 status 键（selectStepRows 读 outcome 的现存缺陷），
+ *    isError 判定 outcome/status 双键都认，在本适配层消化；
+ *  - narration 落位：wire stepId=narration-<turn>-<step> 无 index（POC 简化），
+ *    夹具实证每步布局 reasoning@0/text@1，硬编码 index 0 会覆写 reasoning——
+ *    adaptSseEvents 按「该 (turn,step) 已见 max think index + 1」赋位（适配层推断，标注）。
  */
 import type { StreamEvent } from "@/sse/taskStreamReducer";
 
@@ -108,6 +120,7 @@ export type ChatEvent =
   | { kind: "command-run"; seq: number; time: number; commandId: string; name: string }
   | { kind: "command-done"; seq: number; time: number; commandId: string; doneKind: string; text?: string }
   | { kind: "compaction-start"; seq: number; time: number; compactionId: string; sourceCommandId?: string }
+  | { kind: "compaction-summary"; seq: number; time: number; compactionId: string; text: string }
   | { kind: "compaction-end"; seq: number; time: number; compactionId: string; error?: string };
 
 /** 诚实层补丁（additive；undefined 整格不出，照 Timeline「有才显示」成例） */
@@ -289,17 +302,27 @@ export function isWorkflowStepType(type: string): boolean {
 }
 
 const NARRATION_RE = /^narration-(\d+)-(\d+)$/;
+/** N2 D-1：think-<turn>-<step>-<chunk.index>（index 在 stepId 内，协议允许多 reasoning 块/步） */
+const THINK_RE = /^think-(\d+)-(\d+)-(\d+)$/;
+
+/** compaction 伪步 stepId="compaction-<id>" → 内部 compactionId（前缀剥离） */
+const compactionIdOf = (stepId: unknown): string => {
+  const s = String(stepId ?? "");
+  return s.startsWith("compaction-") ? s.slice("compaction-".length) : s;
+};
 
 /**
  * QOS SSE 事件 → 内部事件（不映射返回 null）。
  * SSE 帧无 seq：按到达序赋递增序号，投影排序键同源一致。
+ * narrationIndex：agent_narration 落位（wire 无 index，调用方按 max think index + 1 赋）。
  */
-export function adaptSseEvent(frame: StreamEvent, seq: number): ChatEvent | null {
+export function adaptSseEvent(frame: StreamEvent, seq: number, narrationIndex?: number): ChatEvent | null {
   const d = frame.data;
   const time = seq;
   switch (frame.event) {
     case "step.started": {
       const type = String(d.type ?? "");
+      if (type === "compaction") return { kind: "compaction-start", seq, time, compactionId: compactionIdOf(d.stepId) };
       if (type === "" || WORKFLOW_STEP_TYPES.has(type)) return null;
       return {
         kind: "tool-call",
@@ -314,6 +337,22 @@ export function adaptSseEvent(frame: StreamEvent, seq: number): ChatEvent | null
     }
     case "step.completed": {
       const type = String(d.type ?? "");
+      if (type === "agent_think") {
+        // N2 D-1：逐 delta 透传，index 从 stepId 解析（多块 reasoning 不互覆）
+        const m = THINK_RE.exec(String(d.stepId ?? ""));
+        const turn = m ? Number(m[1]) : 0;
+        const step = m ? Number(m[2]) : 0;
+        const index = m ? Number(m[3]) : 0;
+        return {
+          kind: "chunk",
+          turn,
+          step,
+          seq,
+          time,
+          chunk: { type: "reasoning-delta", index, text: String(d.text ?? "") },
+          ...(d.honesty === undefined ? {} : { honesty: d.honesty as HonestyPatch }),
+        };
+      }
       if (type === "agent_narration") {
         // 逐 delta 与整块两种粒度都正确：统一按 text-delta 累积（单块即整文）
         const m = NARRATION_RE.exec(String(d.stepId ?? ""));
@@ -325,7 +364,7 @@ export function adaptSseEvent(frame: StreamEvent, seq: number): ChatEvent | null
           step,
           seq,
           time,
-          chunk: { type: "text-delta", index: 0, text: String(d.text ?? "") },
+          chunk: { type: "text-delta", index: narrationIndex ?? 0, text: String(d.text ?? "") },
           ...(d.honesty === undefined ? {} : { honesty: d.honesty as HonestyPatch }),
         };
       }
@@ -334,15 +373,18 @@ export function adaptSseEvent(frame: StreamEvent, seq: number): ChatEvent | null
         return { kind: "notice", seq, time, reason: String(d.outcome ?? "") };
       }
       if (type === "compaction") {
-        const compactionId = String(d.compactionId ?? d.stepId ?? "");
-        const phase = String(d.phase ?? d.outcome ?? "");
-        if (phase === "start" || phase === "running") return { kind: "compaction-start", seq, time, compactionId };
+        // N2 D-4：summary 文本帧（无 outcome）与 outcome 收尾帧分离
+        const compactionId = compactionIdOf(d.stepId);
+        if (d.outcome === undefined) {
+          return { kind: "compaction-summary", seq, time, compactionId, text: String(d.text ?? "") };
+        }
+        const failed = d.outcome === "ERROR" || d.outcome === "FAILED";
         return {
           kind: "compaction-end",
           seq,
           time,
           compactionId,
-          ...(d.error === undefined ? {} : { error: String(d.error) }),
+          ...(failed ? { error: String(d.text ?? "") } : {}),
         };
       }
       if (type === "" || WORKFLOW_STEP_TYPES.has(type)) return null;
@@ -352,6 +394,7 @@ export function adaptSseEvent(frame: StreamEvent, seq: number): ChatEvent | null
         seq,
         time,
         content: d.text === undefined ? [] : [{ type: "text", text: String(d.text) }],
+        // D-5 键名换算：POC 用 status、native 用 outcome，双键都认（登记缺陷在适配层消化）
         isError: d.outcome === "ERROR" || d.outcome === "FAILED" || d.status === "ERROR" || d.status === "FAILED",
       };
     }
@@ -362,10 +405,25 @@ export function adaptSseEvent(frame: StreamEvent, seq: number): ChatEvent | null
 
 export function adaptSseEvents(events: StreamEvent[]): ChatEvent[] {
   const out: ChatEvent[] = [];
+  // narration 落位状态：每 (turn,step) 已见 max think index（wire narration 无 index，见头注）
+  const thinkMaxIndex = new Map<string, number>();
   let seq = 0;
   for (const e of events) {
-    const ev = adaptSseEvent(e, ++seq);
-    if (ev !== null) out.push(ev);
+    const d = e.data;
+    let narrationIndex: number | undefined;
+    if (e.event === "step.completed" && d.type === "agent_narration") {
+      const m = NARRATION_RE.exec(String(d.stepId ?? ""));
+      const key = `${m ? m[1] : "0"}:${m ? m[2] : "0"}`;
+      narrationIndex = (thinkMaxIndex.get(key) ?? -1) + 1;
+    }
+    const ev = adaptSseEvent(e, ++seq, narrationIndex);
+    if (ev !== null) {
+      if (ev.kind === "chunk" && ev.chunk.type === "reasoning-delta") {
+        const key = `${ev.turn}:${ev.step}`;
+        thinkMaxIndex.set(key, Math.max(thinkMaxIndex.get(key) ?? -1, ev.chunk.index ?? 0));
+      }
+      out.push(ev);
+    }
   }
   return out;
 }

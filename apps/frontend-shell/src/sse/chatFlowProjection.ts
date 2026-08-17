@@ -540,6 +540,8 @@ export type ChatNode =
         errorText?: string;
         commandDoneKind?: string;
         commandDoneText?: string;
+        /** N2 D-4 summary 文本帧原文（「已压缩 N 条/约 M tokens」；无帧不出） */
+        doneText?: string;
       };
     };
 
@@ -567,7 +569,10 @@ export function selectChatFlow(events: ChatEvent[]): ChatFlowProjection {
   const noticeNodes: ChatNode[] = [];
   const commandRuns = new Map<string, { seq: number; time: number; name: string }>();
   const commandDones = new Map<string, { doneKind: string; text?: string }>();
-  const compactions = new Map<string, { startSeq: number; time: number; sourceCommandId?: string; error?: string; ended: boolean }>();
+  const compactions = new Map<
+    string,
+    { startSeq: number; time: number; sourceCommandId?: string; error?: string; summaryText?: string; ended: boolean }
+  >();
 
   const boundaryOf = (turn: number, step: number): Boundary | undefined =>
     stepEnds.get(assistantKey(turn, step)) ?? turnEnds.get(turn);
@@ -669,6 +674,16 @@ export function selectChatFlow(events: ChatEvent[]): ChatFlowProjection {
           ended: false,
         });
         break;
+      case "compaction-summary": {
+        // N2 D-4 summary 文本帧（无 outcome 不收尾）：text 原文留存，可先于/后于 started 到达
+        const c = compactions.get(ev.compactionId);
+        if (c !== undefined) {
+          compactions.set(ev.compactionId, { ...c, summaryText: ev.text });
+        } else {
+          compactions.set(ev.compactionId, { startSeq: ev.seq, time: ev.time, summaryText: ev.text, ended: false });
+        }
+        break;
+      }
       case "compaction-end": {
         const c = compactions.get(ev.compactionId);
         if (c !== undefined) {
@@ -717,6 +732,7 @@ export function selectChatFlow(events: ChatEvent[]): ChatFlowProjection {
         ...(c.error === undefined ? {} : { errorText: c.error }),
         ...(done === undefined ? {} : { commandDoneKind: done.doneKind }),
         ...(done?.text === undefined ? {} : { commandDoneText: done.text }),
+        ...(c.summaryText === undefined ? {} : { doneText: c.summaryText }),
       },
     });
   }
@@ -761,7 +777,7 @@ export interface TurnStats {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens?: number;
-  /** dsh README billed-input 口径：cacheRead / (uncachedInput + cacheRead) */
+  /** dsh README billed-input 口径（N2 D-2）：cacheRead / (uncachedInput + cacheRead + cacheWrite) */
   cacheHitRate: number;
   pressureTokens?: number;
   contextWindow?: number;
@@ -773,7 +789,7 @@ export function selectTurnStats(source: TurnStatsSource): TurnStats | undefined 
   const u = source.tokenUsage;
   if (s?.turns === undefined || s.steps === undefined) return undefined;
   if (u?.uncachedInputTokens === undefined || u.outputTokens === undefined || u.cacheReadTokens === undefined) return undefined;
-  const billed = u.uncachedInputTokens + u.cacheReadTokens;
+  const billed = u.uncachedInputTokens + u.cacheReadTokens + (u.cacheWriteTokens ?? 0);
   return {
     turns: s.turns,
     steps: s.steps,

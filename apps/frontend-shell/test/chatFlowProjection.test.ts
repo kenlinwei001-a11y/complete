@@ -6,7 +6,8 @@
  *  - assistant/message 自带 settled content → 手工映射后与投影终态深比（A5 逐块层）；
  *  - tool/call ↔ tool/result 按 callId 配对（A1 树层）。
  * 合成帧仅用于：surfaceOp='replace' 复本（A7）、block-end 权威置换（A5b）、
- * 中断步排序倒置（A16 序断言）——夹具中无此三类实样本，如实标注。
+ * 中断步排序倒置（A16 序断言）、compaction 成功臂（A15b，E2 无黄金夹具）——夹具中无此类实样本，如实标注。
+ * A17 = N2→N6 跨单契约适配直测（agent_think / compaction 伪步对 D-4 / D-5 status→outcome 换算）。
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -14,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import {
   adaptDshFrame,
   adaptDshFrames,
+  adaptSseEvent,
   adaptSseEvents,
   type DshFrame,
 } from "@/sse/dshFrameAdapter";
@@ -294,6 +296,16 @@ describe("A13 统计条数据源（multihop projections 透传 + dsh README bill
     expect(selectTurnStats({})).toBeUndefined();
     expect(selectTurnStats({ sessionStats: { turns: 1, steps: 1 } })).toBeUndefined();
   });
+
+  it("cacheWrite 入分母（N2 D-2 口径 billed = uncached + cacheRead + cacheWrite）", () => {
+    // 夹具 cacheWriteTokens=0 咬不住分母项，合成正样本（标注：非黄金值）
+    const stats = selectTurnStats({
+      sessionStats: { turns: 1, steps: 2 },
+      tokenUsage: { uncachedInputTokens: 100, outputTokens: 10, cacheReadTokens: 100, cacheWriteTokens: 50 },
+    })!;
+    expect(stats.cacheHitRate).toBeCloseTo(100 / 250, 10);
+    expect(formatCacheHitRate(stats.cacheHitRate)).toBe("40.0%");
+  });
 });
 
 /* ---------------------------------- A15 ---------------------------------- */
@@ -315,6 +327,41 @@ describe("A15 compaction 生命周期（hist-compact4 中止态）", () => {
   it("command/done.kind=='error' 文案直出不改写", () => {
     expect(rows[0]!.data.commandDoneKind).toBe("error");
     expect(rows[0]!.data.commandDoneText).toBe("This operation was aborted");
+  });
+});
+
+describe("A15b compaction SSE 伪步对（N2 D-4 契约：started / summary 文本帧 / outcome 帧）", () => {
+  const sseRows = (frames: StreamEvent[]) =>
+    selectChatFlow(adaptSseEvents(frames)).nodes.filter((n): n is Extract<ChatNode, { kind: "compaction" }> => n.kind === "compaction");
+
+  it("中止臂（compact4 黄金对位）：outcome=ERROR → errorText 原文逐字，零「已压缩」文本", () => {
+    const rows = sseRows([
+      { id: "1", event: "step.started", data: { stepId: "compaction-c1", type: "compaction" } },
+      { id: "2", event: "step.completed", data: { stepId: "compaction-c1", type: "compaction", outcome: "ERROR", text: "Request was aborted" } },
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.data.phase).toBe("error");
+    expect(rows[0]!.data.errorText).toBe("Request was aborted");
+    expect(rows[0]!.data.doneText).toBeUndefined();
+  });
+
+  it("成功臂（合成，E2 无黄金夹具如实标注）：summary 文本逐字上屏 + outcome OK → done", () => {
+    const rows = sseRows([
+      { id: "1", event: "step.started", data: { stepId: "compaction-c2", type: "compaction" } },
+      { id: "2", event: "step.completed", data: { stepId: "compaction-c2", type: "compaction", text: "已压缩 12 条/约 3456 tokens" } },
+      { id: "3", event: "step.completed", data: { stepId: "compaction-c2", type: "compaction", outcome: "OK" } },
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.data.phase).toBe("done");
+    expect(rows[0]!.data.doneText).toBe("已压缩 12 条/约 3456 tokens");
+  });
+
+  it("仅 started → running 态（不收尾不编文案）", () => {
+    const rows = sseRows([{ id: "1", event: "step.started", data: { stepId: "compaction-c3", type: "compaction" } }]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.data.phase).toBe("running");
+    expect(rows[0]!.data.doneText).toBeUndefined();
+    expect(rows[0]!.data.errorText).toBeUndefined();
   });
 });
 
@@ -343,6 +390,16 @@ describe("A16 双粒度兼容：原始 dsh 帧流 vs QOS SSE 伪步流", () => {
           event: "step.completed",
           data: { stepId: `narration-${d.turn}-${d.step}`, type: "agent_narration", text: chunk.text },
         });
+      } else if (f.type === "assistant/chunk" && (d.chunk as { type: string }).type === "reasoning-delta") {
+        // N2 D-1 映射：text 非空 → think-<turn>-<step>-<chunk.index> 逐 delta 透传
+        const c = d.chunk as { index: number; text: string };
+        if (c.text !== "") {
+          out.push({
+            id: String(++i),
+            event: "step.completed",
+            data: { stepId: `think-${d.turn}-${d.step}-${c.index}`, type: "agent_think", text: c.text },
+          });
+        }
       }
     }
     return out;
@@ -374,6 +431,40 @@ describe("A16 双粒度兼容：原始 dsh 帧流 vs QOS SSE 伪步流", () => {
     expect(finalTextOf(sseNodes)).toBe(oracleText);
   });
 
+  it("两粒度终态 reasoning 一致（think 伪步按 stepId 含 index 键控累积 == block-end 整块 ×7）", () => {
+    // oracle = 夹具内 block-end 自带整 reasoning 块（与被测双路径互证，非循环）
+    const oracle = new Map<string, string>();
+    for (const { f } of chunkFrames(MULTIHOP_FRAMES, "block-end")) {
+      const c = f.data.chunk as { index: number; block: { type: string; text?: string } };
+      if (c.block.type !== "reasoning") continue;
+      const d = f.data as { turn: number; step: number };
+      oracle.set(`${d.turn}:${d.step}:${c.index}`, c.block.text ?? "");
+    }
+    expect(oracle.size).toBe(7);
+    const reasoningOf = (nodes: ChatNode[]) => {
+      const m = new Map<string, string>();
+      for (const n of assistantNodes(nodes)) {
+        n.data.blocks.forEach((b, i) => {
+          if (b.kind === "reasoning") m.set(`${n.data.turn}:${n.data.step}:${i}`, b.text);
+        });
+      }
+      return m;
+    };
+    expect(reasoningOf(rawNodes)).toEqual(oracle);
+    expect(reasoningOf(sseNodes)).toEqual(oracle);
+  });
+
+  it("合成双 reasoning 块：think stepId 含 index 键控，两块不互覆（N2 M2 对位）", () => {
+    const sse: StreamEvent[] = [
+      { id: "1", event: "step.completed", data: { stepId: "think-1-1-0", type: "agent_think", text: "甲块" } },
+      { id: "2", event: "step.completed", data: { stepId: "think-1-1-1", type: "agent_think", text: "乙块" } },
+      { id: "3", event: "step.completed", data: { stepId: "think-1-1-0", type: "agent_think", text: "续" } },
+    ];
+    const a = assistantNodes(selectChatFlow(adaptSseEvents(sse)).nodes)[0]!;
+    const reasoning = a.data.blocks.filter((b): b is Extract<AssistantBlock, { kind: "reasoning" }> => b.kind === "reasoning");
+    expect(reasoning.map((b) => b.text)).toEqual(["甲块续", "乙块"]);
+  });
+
   it("节点按 anchorSeq 升序（双粒度各自成立）", () => {
     for (const nodes of [rawNodes, sseNodes]) {
       const seqs = nodes.map((n) => n.anchorSeq);
@@ -397,5 +488,69 @@ describe("A16 双粒度兼容：原始 dsh 帧流 vs QOS SSE 伪步流", () => {
     const a = assistantNodes(nodes)[0]!;
     expect(a.data.status).toBe("interrupted");
     expect(a.anchorSeq).toBeCloseTo(29.1, 5);
+  });
+});
+
+/* ---------------------------------- A17 ---------------------------------- */
+
+describe("A17 N2 跨单契约适配直测（agent_think / compaction 伪步对 D-4 / D-5 键名换算）", () => {
+  it("agent_think → reasoning-delta chunk（stepId=think-<turn>-<step>-<index> 逐段解析）", () => {
+    const ev = adaptSseEvent(
+      { id: "1", event: "step.completed", data: { stepId: "think-1-2-3", type: "agent_think", text: "思" } },
+      1,
+    );
+    expect(ev).toEqual({ kind: "chunk", turn: 1, step: 2, seq: 1, time: 1, chunk: { type: "reasoning-delta", index: 3, text: "思" } });
+  });
+
+  it("compaction started → compaction-start（stepId 前缀剥离）", () => {
+    const ev = adaptSseEvent({ id: "1", event: "step.started", data: { stepId: "compaction-c9", type: "compaction" } }, 1);
+    expect(ev).toEqual({ kind: "compaction-start", seq: 1, time: 1, compactionId: "c9" });
+  });
+
+  it("compaction summary 文本帧 → compaction-summary（无 outcome 不收尾）", () => {
+    const ev = adaptSseEvent(
+      { id: "1", event: "step.completed", data: { stepId: "compaction-c9", type: "compaction", text: "已压缩 12 条/约 3456 tokens" } },
+      1,
+    );
+    expect(ev).toEqual({ kind: "compaction-summary", seq: 1, time: 1, compactionId: "c9", text: "已压缩 12 条/约 3456 tokens" });
+  });
+
+  it("compaction outcome 帧 → compaction-end（ERROR 时 error=text 原文逐字；OK 无 error）", () => {
+    const err = adaptSseEvent(
+      { id: "1", event: "step.completed", data: { stepId: "compaction-c9", type: "compaction", outcome: "ERROR", text: "Request was aborted" } },
+      1,
+    );
+    expect(err).toEqual({ kind: "compaction-end", seq: 1, time: 1, compactionId: "c9", error: "Request was aborted" });
+    const ok = adaptSseEvent(
+      { id: "2", event: "step.completed", data: { stepId: "compaction-c9", type: "compaction", outcome: "OK" } },
+      2,
+    );
+    expect(ok).toEqual({ kind: "compaction-end", seq: 2, time: 2, compactionId: "c9" });
+  });
+
+  it("D-5 换算：POC tool/result 用 status 键 → isError 消化（outcome/status 双键都认）", () => {
+    const byStatus = adaptSseEvent(
+      { id: "1", event: "step.completed", data: { stepId: "c1", type: "read", status: "ERROR", text: "boom" } },
+      1,
+    );
+    expect(byStatus).toMatchObject({ kind: "tool-result", isError: true });
+    const byOutcome = adaptSseEvent(
+      { id: "2", event: "step.completed", data: { stepId: "c1", type: "read", outcome: "ERROR", text: "boom" } },
+      2,
+    );
+    expect(byOutcome).toMatchObject({ kind: "tool-result", isError: true });
+  });
+
+  it("narration 落位 = 该 (turn,step) 已见 max think index + 1（wire 无 index，适配层推断标注）", () => {
+    // 夹具实证布局：每步 reasoning@0、text/tool-call@1 —— narration 硬编码 index 0 会覆写 reasoning
+    const sse: StreamEvent[] = [
+      { id: "1", event: "step.completed", data: { stepId: "think-1-7-0", type: "agent_think", text: "推理" } },
+      { id: "2", event: "step.completed", data: { stepId: "narration-1-7", type: "agent_narration", text: "正文" } },
+      { id: "3", event: "step.completed", data: { stepId: "think-1-7-0", type: "agent_think", text: "续" } },
+    ];
+    const a = assistantNodes(selectChatFlow(adaptSseEvents(sse)).nodes)[0]!;
+    expect(a.data.blocks.map((b) => b.kind)).toEqual(["reasoning", "text"]);
+    expect((a.data.blocks[0] as Extract<AssistantBlock, { kind: "reasoning" }>).text).toBe("推理续");
+    expect((a.data.blocks[1] as Extract<AssistantBlock, { kind: "text" }>).text).toBe("正文");
   });
 });

@@ -113,13 +113,13 @@ const AssistantNodeView = memo(function AssistantNodeView({
   );
 });
 
-/** compaction 生命周期行：中止/失败态直出 error 原值，成功态按 README 规格 */
+/** compaction 生命周期行：中止/失败态直出 error 原值；done 出 summary 文本帧原文（N2 D-4，无帧回退规格文案） */
 function CompactionRow({ node }: { node: Extract<ChatNode, { kind: "compaction" }> }) {
   const { data } = node;
   return (
     <div data-testid="chat-compaction" data-phase={data.phase} className="mono" style={{ fontSize: 11, color: "var(--muted2)", margin: "4px 0" }}>
       {data.phase === "running" && <span>正在压缩上下文…</span>}
-      {data.phase === "done" && <span>上下文已压缩</span>}
+      {data.phase === "done" && <span>{data.doneText ?? "上下文已压缩"}</span>}
       {data.phase === "error" && (
         <span>
           上下文压缩中止{data.errorText !== undefined ? `：${data.errorText}` : ""}

@@ -49,8 +49,11 @@ export function Timeline({ state }: { state: TaskStreamState }) {
     () => (tracks.length > 0 ? [] : steps.filter((s) => isWorkflowStepType(s.type))),
     [steps, tracks.length],
   );
-  // 统计条：answer.final 附加字段透传（缺则整格不出）
-  const stats = useMemo(() => selectTurnStats((state.answer ?? {}) as TurnStatsSource), [state.answer]);
+  // 统计条：answer.final 附加键 stats 透传（N2 D-2；缺则整格不出，不填假值）
+  const stats = useMemo(
+    () => selectTurnStats(((state.answer ?? {}) as { stats?: TurnStatsSource }).stats ?? {}),
+    [state.answer],
+  );
   const [stale, setStale] = useState(false);
 
   // 心跳超过 30s 无事件 → 「仍在执行…」

@@ -15,9 +15,10 @@ import { queryClient } from "@/store/queryClient";
 import { ChatFlow } from "@/components/QueryDock/ChatFlow";
 import { ToolCallTree } from "@/components/QueryDock/ToolCallTree";
 import { ThinkRow } from "@/components/QueryDock/ThinkRow";
+import { Timeline } from "@/components/QueryDock/Timeline";
 import { adaptSseEvents } from "@/sse/dshFrameAdapter";
 import { selectChatFlow, type AssistantBlock, type ChatNode, type ToolResultBlock } from "@/sse/chatFlowProjection";
-import type { StreamEvent } from "@/sse/taskStreamReducer";
+import type { StreamEvent, TaskStreamState } from "@/sse/taskStreamReducer";
 
 const makeResult = (callId: string, name: string, subCalls: ToolResultBlock["subCalls"] = []): ToolResultBlock => ({
   kind: "tool-result",
@@ -205,5 +206,57 @@ describe("A12 诚实层降级理由（agent_degraded → notice 节点）", () =
     const nodes = selectChatFlow(adaptSseEvents([plain])).nodes;
     render(<ChatFlow nodes={nodes} />);
     expect(screen.queryByTestId("chat-notice")).toBeNull();
+  });
+});
+
+/* ---------------------------------- A17b ---------------------------------- */
+
+describe("A17b N2 契约 Timeline 集成（stats 附加键 / agent_think·compaction 平铺过滤）", () => {
+  const baseState = {
+    status: "completed",
+    seenIds: {},
+    lastEventId: null,
+  } as const;
+
+  it("answer.final stats 附加键 → TurnStatsBar 上屏（1 轮·7 步 / 93.3%）", () => {
+    const state = {
+      ...baseState,
+      events: [],
+      answer: {
+        stats: {
+          sessionStats: { turns: 1, steps: 7, ttftMs: 21999 },
+          tokenUsage: { uncachedInputTokens: 3518, outputTokens: 973, cacheReadTokens: 49152, cacheWriteTokens: 0 },
+          contextPressure: { pressureTokens: 8104 },
+        },
+      } as unknown as TaskStreamState["answer"],
+    } as TaskStreamState;
+    render(<Timeline state={state} />);
+    expect(screen.getByTestId("turn-stats-rounds")).toHaveTextContent("1 轮·7 步");
+    expect(screen.getByTestId("turn-stats-cache")).toHaveTextContent("93.3%");
+  });
+
+  it("stats 键缺 → 统计条整格不出（不填假值）", () => {
+    const state = { ...baseState, events: [], answer: {} as TaskStreamState["answer"] } as TaskStreamState;
+    render(<Timeline state={state} />);
+    expect(screen.queryByTestId("turn-stats-bar")).toBeNull();
+  });
+
+  it("agent_think / compaction 伪步不进平铺 StepRowView（进 ChatFlow），workflow 步保留", () => {
+    const events: StreamEvent[] = [
+      { id: "1", event: "step.completed", data: { stepId: "think-1-7-0", type: "agent_think", text: "第一段思路" } },
+      { id: "2", event: "step.started", data: { stepId: "compaction-c1", type: "compaction" } },
+      { id: "3", event: "step.completed", data: { stepId: "compaction-c1", type: "compaction", outcome: "ERROR", text: "Request was aborted" } },
+      { id: "4", event: "step.started", data: { stepId: "wf-1", type: "invoke_solver" } },
+      { id: "5", event: "step.completed", data: { stepId: "wf-1", type: "invoke_solver", outcome: "OK", durationMs: 12 } },
+    ];
+    const state = { ...baseState, status: "streaming", events } as unknown as TaskStreamState;
+    render(<Timeline state={state} />);
+    // 平铺区只剩 workflow 步
+    expect(screen.queryByTestId("step-think-1-7-0")).toBeNull();
+    expect(screen.queryByTestId("step-compaction-c1")).toBeNull();
+    expect(screen.getByTestId("step-wf-1")).toBeInTheDocument();
+    // think / compaction 经 ChatFlow 上屏
+    expect(screen.getByTestId("think-row")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-compaction")).toHaveTextContent("Request was aborted");
   });
 });
