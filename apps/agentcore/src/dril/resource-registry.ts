@@ -8,6 +8,7 @@ import type { DataCoreClient, ObjectTypeDefSummary, ToolAuthCtx } from "../tools
 import type { FeatureGate } from "../features/gate.js";
 import { featureEnabled, intentAllowed, solverAllowed, type FeatureSet } from "../features/registry.js";
 import {
+  extractRelations,
   projectAgents,
   projectFields,
   projectIntents,
@@ -23,7 +24,7 @@ import {
 } from "./resource-projector.js";
 import { extractTieredTags } from "./tag-taxonomy.js";
 import { ResourceSearchEngine, extractContextObjectTypes, type Embedder } from "./search-engine.js";
-import { extractResourceRelations, relationsOf } from "./relations.js";
+import { relationsOf } from "./relations.js";
 import { overlayQuality } from "./quality.js";
 
 type OntologyType = { key: string; label?: string };
@@ -216,8 +217,11 @@ export class ResourceRegistryService {
     }));
 
     // WO-DRIL-P3 · 派生关系（resource_relations）。仅保留两端资源均在册的边（无死路·R13）。
+    // WO-SKILL-REFGRAPH-WIRE：抽取入口 = resource-projector 的 `extractRelations`（组合
+    // `extractResourceRelations` 的 workflow/agent 基础边 + Skill 的 references/dependsOn 引用边）——
+    // 此前这里直接调 `extractResourceRelations`，skill 引用边从未进过资源图（G-SKILL-REFGRAPH-DEAD-EXTRACTOR ①）。
     const present = new Set(rows.map((r) => `${r.kind}|${r.key}`));
-    const rels: ResourceRelationRow[] = extractResourceRelations({ workflows, agents, skills, rules: ruleSummaries })
+    const rels: ResourceRelationRow[] = extractRelations({ workflows, agents, skills, rules: ruleSummaries })
       .filter((r) => present.has(`${r.fromKind}|${r.fromKey}`) && present.has(`${r.toKind}|${r.toKey}`))
       .map((r) => ({ tenantId, ...r }));
 

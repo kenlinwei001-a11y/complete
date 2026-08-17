@@ -164,18 +164,18 @@ describe("B · dependsOn 出厂数据（消费方此前从不触发）", () => {
   });
 
   /**
-   * ⚠️ 诚实边界（**别把上一条读成"链路通了"**）。本仓有**两个**关系抽取器，名字近、职责重叠：
-   *   ① `dril/resource-projector.ts:296 extractRelations`      —— 认 skill.references/dependsOn，**零 src 调用方**
-   *      （金丝雀：同文件的 `projectSkills` 有 2 处 src 调用方 `dril/resource-registry.ts:17,188`；
-   *        `extractRelations` 只有它自己的定义行 —— 工具是好的，是它真没人调）。
-   *   ② `dril/relations.ts:44 extractResourceRelations`        —— **生产真用的那个**（`resource-registry.ts:220`），
+   * ✅ 历史诚实边界已闭（WO-SKILL-REFGRAPH-WIRE）。本仓曾有两个关系抽取器，名字近、职责重叠：
+   *   ① `dril/resource-projector.ts (extractRelations)`      —— 认 skill.references/dependsOn，曾**零 src 调用方**
+   *   ② `dril/relations.ts (extractResourceRelations)`        —— 曾唯一接在生产上（`resource-registry.ts` projectTenant），
    *      只做 workflow→solver/slice/rule 与 agent→skill，**整段不读 skill.references/dependsOn**。
-   * 故「补了种子数据」只闭合了 skill-lint 那半（上一个 describe 的第三条：发布门 lint 真吃到了 dependsOn），
-   * DRIL 资源图那半仍是 **没接线**（不是「接了线没数据」）—— 本体 §8 `G-SKILL-REFGRAPH-DEAD-EXTRACTOR` ①，
-   * 且本体 §2.H「Skill 资源投影（WO-SKILL-4）」那句「并写入 resource_relations（…references/dependsOn 关系）」**与代码不符**。
-   * 本条把这个诚实状态钉住：谁哪天把 ① 接上生产（或把 dependsOn 搬进 ②），本条会红 —— 那时请一并回写本体 §2.H/§8。
+   * 修法：② 仍是基础边的唯一出处，① 改为**组合** ② + skill 引用边，生产调用点从 ② 换成 ①
+   * （`resource-registry.ts` projectTenant 落 resource_relations 那一处）。
+   * 下面这条钉住的是**接线后的链路产出**：真跑 `GET /b/v1/resources` 触发 `projectTenant`，
+   * 断言 skill 的 references/dependsOn 边**真的落在 resource_relations 表里**——变异反证：
+   * 把 registry 那处的 `extractRelations(` 换回 `extractResourceRelations(`（= 摘掉本单接的线）→ 本条红，
+   * 且红在链路的产出变了，不是「函数不存在」。
    */
-  it("诚实边界 · 生产投影路径今天仍不产 skill→skill 的 dependsOn 边（钉住 G-SKILL-REFGRAPH-DEAD-EXTRACTOR ①）", async () => {
+  it("SEAM · 生产投影链路真把 skill 的 references/dependsOn 边落进 resource_relations（闭 G-SKILL-REFGRAPH-DEAD-EXTRACTOR ①）", async () => {
     const t = await createTestApp();
     const { skills, agents, workflows } = seedRegistry();
     for (const w of workflows) await t.repos.workflows.insert(w);
@@ -187,10 +187,18 @@ describe("B · dependsOn 出厂数据（消费方此前从不触发）", () => {
     expect(res.statusCode).toBe(200);
     const rels = await t.repos.resourceRelations.listByTenant(TENANT);
 
-    // 正对照：生产抽取器确实在干活（workflow→solver）——证下面那条 0 不是"投影压根没跑"。
+    // 正对照：基础边仍在（workflow→solver）——证投影确实跑了，下面的 skill 边不是凭空造的。
     expect(rels.some((r) => r.fromKind === "workflow" && r.toKind === "solver" && r.relType === "invokes")).toBe(true);
-    // 诚实事实：skill 的 references/dependsOn 一条都没进资源图。
-    expect(rels.filter((r) => r.fromKind === "skill" && (r.relType === "dependsOn" || r.relType === "references"))).toEqual([]);
+    // 接线产出①：种子 sop_meeting --dependsOn--> capacity_analysis 真落表（两端皆在册的 skill）。
+    expect(
+      rels.some(
+        (r) =>
+          r.fromKind === "skill" && r.fromKey === "sop_meeting" &&
+          r.relType === "dependsOn" && r.toKind === "skill" && r.toKey === "capacity_analysis",
+      ),
+    ).toBe(true);
+    // 接线产出②：种子里 6 条非空 references 至少一条真落表（目标为在册 solver/workflow/rule）。
+    expect(rels.some((r) => r.fromKind === "skill" && r.relType === "references")).toBe(true);
   });
 
   it("SEAM · 出厂种子过发布门的 lint（含 requirePublishedDeps 与依赖图环检测两条跨资源规则）", async () => {
