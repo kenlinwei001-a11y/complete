@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchOptTemplates, invokeSolver, retrieveOptTemplates, solveOptTemplate } from "@/api/endpoints";
 import type { ViewConfigVM } from "@/api/types";
@@ -252,6 +252,21 @@ function perturbTargets(baseline: Record<string, unknown>): { value: string; lab
   return out;
 }
 
+/**
+ * 输入防抖（判据 U1 的配套，与 what-if 页 `useDebounced` 同型）。
+ * 本页防抖取 **800ms**（what-if 是 300ms）——因为本页每次重演是**真 CP-SAT 两解**（基线+扰动），
+ * 实测 240 对指派规模 p95≈1.6s/次（见主组件头注实测表），防抖窗太短会把连击烧成 sidecar CPU。
+ * 防抖只推迟**发请求**，不推迟输入回显 —— 不是提交闸（「晚 800ms 自动更新」≠「不点永远不更新」）。
+ */
+function useDebounced<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
 export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
   usePageView("optimize-whatif");
   const initialFamily = (view?.layout as { family?: string } | undefined)?.family ?? "facility_location";
@@ -261,15 +276,11 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
     const d = FAMILY_DEFAULT_PERTURB[initialFamily];
     return d ? [{ ...d }] : [];
   });
-  // 已提交求解的入参（点「推演」才更新·支持二次推演：改后再点即重解）。
-  const [submitted, setSubmitted] = useState<{ family: string; baseline: Record<string, unknown>; perturbs: { target: string; value: number }[] } | null>(null);
-
   const onPickFamily = (k: string) => {
     setFamily(k);
     setBaseline(clone(FAMILY_EXAMPLE[k] ?? {}));
     const d = FAMILY_DEFAULT_PERTURB[k];
     setPerturbs(d ? [{ ...d }] : []);
-    setSubmitted(null);
   };
 
   const targets = useMemo(() => perturbTargets(baseline), [baseline]);
@@ -289,15 +300,31 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
   const addPerturb = () => setPerturbs((prev) => [...prev, { target: targets[0]?.value ?? "", value: targets[0]?.current ?? 0 }]);
   const removePerturb = (i: number) => setPerturbs((prev) => prev.filter((_, j) => j !== i));
 
-  const runSolve = () => setSubmitted({ family, baseline: clone(baseline), perturbs: clone(perturbs) });
+  /**
+   * ── 判据 U1「改输入即重演」（WO-U1-U8-SMALL · **实测后撤闸**）──
+   * 撤不撤，先量（真 CP-SAT sidecar `services/optimizer` 直接计时，60 次/档取 p50/p95；
+   * optimize_whatif 每次调用 = 基线解 + 扰动解 = **2 次** CP-SAT）：
+   *   页面示例 2×2（4 对指派）     单次 p95 4.6ms   → 每改一格 ≈ 9ms
+   *   演示规模 8×30（240 对）       单次 p95 805ms   → 每改一格 ≈ 1.6s
+   *   12×50（600 对）              单次 p95 1.8s    → 每改一格 ≈ 3.7s
+   *   压力上限 20×100（2000 对）    单次 p95 27.6s   → 每改一格 ≈ 55s
+   * 结论：本页运行点（内置示例 / 本体装配的演示规模）撤闸后流畅；55s 尾部只在手造 2000 对
+   * 基线 JSON 时出现，不是本页运行点。护栏 = 800ms 防抖（连击不烧 sidecar）+ react-query
+   * 以 key 取数：输入一变 key 即变，屏上永远只显示**最后落定那版入参**的解——
+   * 「改了输入、屏上还挂着上一次的解且分辨不出」这个 U1 点名的中间态**结构上不存在**。
+   */
+  const live = useMemo(() => ({ family, baseline, perturbs }), [family, baseline, perturbs]);
+  const inputs = useDebounced(live, 800);
+  /** 输入还没落定（用户正在改）时不许把上一版入参的解当成当前输入的解。 */
+  const settled = inputs === live;
 
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["a", "optimize_whatif", submitted?.family, JSON.stringify(submitted?.baseline), JSON.stringify(submitted?.perturbs)],
-    enabled: submitted != null && (submitted?.perturbs.length ?? 0) > 0,
+  const { data, isLoading, isFetching, isError, error } = useQuery({
+    queryKey: ["a", "optimize_whatif", inputs.family, JSON.stringify(inputs.baseline), JSON.stringify(inputs.perturbs)],
+    enabled: inputs.perturbs.length > 0 && inputs.perturbs.every((p) => p.target !== ""),
     retry: false,
     queryFn: async () => {
-      const perturbations = submitted!.perturbs.map((p) => ({ kind: "data_override", target: p.target, value: p.value }));
-      const res = await invokeSolver("optimize_whatif", { family: submitted!.family, args: submitted!.baseline, perturbations, seed: 42 });
+      const perturbations = inputs.perturbs.map((p) => ({ kind: "data_override", target: p.target, value: p.value }));
+      const res = await invokeSolver("optimize_whatif", { family: inputs.family, args: inputs.baseline, perturbations, seed: 42 });
       return res.data as OptWhatifOutput;
     },
   });
@@ -354,13 +381,13 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
    * 少写一样，拿到文档的人复算出来的最优方案就可能与附件里的不是同一个。
    */
   const buildReport = (): ProvenanceReport => {
-    const perturbLines = (submitted?.perturbs ?? perturbs).map((p) => `${p.target}→${p.value}`);
+    const perturbLines = inputs.perturbs.map((p) => `${p.target}→${p.value}`);
     return {
       docName: "优化推演",
       basis: [
-        `求解器 optimize_whatif · 模板族 ${submitted?.family ?? family}（seed 42·同输入同输出）`,
+        `求解器 optimize_whatif · 模板族 ${inputs.family}（seed 42·同输入同输出）`,
         perturbLines.length ? `扰动：${perturbLines.join("，")}` : "扰动：（未设）",
-        submitted ? "下表为已提交求解的那一版入参对应的解" : "尚未点「推演」——下表只反映输入，不含求解结果",
+        settled ? "下表为当前输入的解（改输入即自动重解·无提交闸）" : "输入改动尚未落定（防抖中）——下表仍是上一版入参的解",
         data ? `可行性 ${data.feasible ? "可行" : "不可行"}${data.status ? ` · 状态 ${data.status}` : ""}` : "本次无求解结果",
       ],
       sections: [
@@ -536,18 +563,19 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
               </div>
             );
           })}
-          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+          <div style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "center" }}>
             <button className="btn sm" data-testid="ow-perturb-add" onClick={addPerturb} disabled={targets.length === 0}>＋ 再加一条</button>
-            <button className="btn primary" data-testid="ow-solve" onClick={runSolve} disabled={perturbs.length === 0} style={{ marginLeft: "auto" }}>
-              推演 →
-            </button>
+            {/* 判据 U1：提交闸已撤（实测依据见主组件头注）——这里只剩**状态记号**，它不控制任何东西。 */}
+            <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted2)" }} data-testid="ow-live-state">
+              {!settled || isFetching ? "改动已收到，重解中…" : "已按当前输入解出（改任一参数即自动重解）"}
+            </span>
           </div>
           {perturbs.length === 0 && <div style={{ fontSize: 12, color: "var(--amber-txt)" }}>至少加一条推演（改一个参数）才能求解。</div>}
         </div>
       </div>
 
       {/* ③ 结果 · 决策怎么变 */}
-      {submitted && isLoading && <div className="empty-state" data-testid="ow-loading">{zh.common.loading}</div>}
+      {isLoading && <div className="empty-state" data-testid="ow-loading">{zh.common.loading}</div>}
 
       {unavailable && (
         <div className="empty-state" data-testid="ow-unavailable">
@@ -576,7 +604,7 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
         </div>
       )}
 
-      {data && !isError && submitted && <DecisionResult out={data} family={submitted.family} baseArgs={submitted.baseline} perturbs={submitted.perturbs} />}
+      {data && !isError && <DecisionResult out={data} family={inputs.family} baseArgs={inputs.baseline} perturbs={inputs.perturbs} />}
       {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。
           ⚠ 本页自己的 Δ 来自 CP-SAT 重解，**不由传导边驱动**；本面板给出的是同一租户传导世界的
           反事实差异，面板内文案已写明其口径与出处，不冒充本页优化结果的变化。 */}

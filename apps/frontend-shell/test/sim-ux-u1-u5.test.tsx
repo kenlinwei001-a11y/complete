@@ -24,7 +24,9 @@ describe("判据 U5 · global-sim 结论读数带出处", () => {
     renderApp("/v/global-sim");
 
     // 先等真求解结果出来（否则下面找不到读数会被误读成「没挂出处」）。
-    const readout = await screen.findByTestId("global-sim-readout", {}, { timeout: 8000 });
+    // 超时对齐全局 testTimeout(20s)：U1 撤闸后同套件 optimize-whatif 用例多了防抖窗，
+    // 三文件并行 + 高负载机上 8s 会被真实挤爆（2026-08-17 实测 load>20 时复现两次）。
+    const readout = await screen.findByTestId("global-sim-readout", {}, { timeout: 20000 });
 
     // ── 按期率 ────────────────────────────────────────────
     // 改前：`<b>{ontimeRate.toFixed(0)}%</b>` 一个裸数字，屏上没有一个字说它是谁算的。
@@ -59,10 +61,7 @@ describe("判据 U5 · optimize-whatif 目标值带出处", () => {
     loginAs("planner");
     renderApp("/v/optimize-whatif");
 
-    // 本页仍有「推演」提交闸（U1 未闭 —— 走真 CP-SAT，撤闸的重解成本要先测，本单诚实挂账）。
-    const run = await screen.findByTestId("ow-solve", {}, { timeout: 8000 });
-    await userEvent.click(run);
-
+    // U1 已闭（WO-U1-U8-SMALL：实测 p50/p95 后撤闸）——默认入参就位即自动求解，无需点按钮。
     const banner = await screen.findByTestId(/ow-(switch|delta)-banner/, {}, { timeout: 8000 });
 
     // ⚠ 反向判据先跑：改前屏上唯一的出处 `ow-family-source` 说的是**模板清单**，不是目标值。

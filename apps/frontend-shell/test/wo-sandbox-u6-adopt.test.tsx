@@ -200,7 +200,7 @@ describe("WO-U6-ADOPT · 四页「采纳结论」→ ActionDraft（判别字段 
     const { captured } = captureDrafts();
     loginAs("planner");
     renderApp("/v/optimize-whatif");
-    fireEvent.click(await screen.findByTestId("ow-solve"));
+    // U1 撤闸后无需点「推演」：默认入参就位即自动求解。
     // 屏上结论就位：决策切换 开f1→开f2，基线 114 / 扰动 132 / Δ+18（MSW 真·暴力最优）。
     await screen.findByTestId("ow-switch-banner");
     expect(screen.getByTestId("ow-delta-obj")).toHaveTextContent("+18");
