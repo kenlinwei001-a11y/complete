@@ -22,20 +22,20 @@ describe("WO-STEP-VOCAB-UPLIFT · 步骤词表只有一个家", () => {
   });
 
   it("validatePlanSteps 吃下 ExtendedPlanStepSchema.parse 出的 ExtraToolStep 三类（校验器吃的就是契约那个家）", () => {
-    const steps = ExtendedPlanStepSchema.parse([
+    const steps = [
       { id: "s1", type: "query_timeseries_agg", params: { metric: "oee", grain: "day" } },
       { id: "s2", type: "search_knowledge", params: { q: "换型 SOP" } },
       { id: "s3", type: "plan_slice", params: { sliceKey: "model_capacity_network" } },
       { id: "s4", type: "render_answer", params: { blocks: [] } },
-    ]);
+    ].map((s) => ExtendedPlanStepSchema.parse(s));
     // 结构合法的序列必须零错误（requireRenderAnswer 且末步是 render_answer）
     expect(validatePlanSteps(steps, { requireRenderAnswer: true })).toEqual([]);
   });
 
   it("反向：校验器仍咬真问题（前向引用必须报错 —— 证明上面那条绿不是「校验器被架空」）", () => {
-    const steps = ExtendedPlanStepSchema.parse([
+    const steps = [
       { id: "s1", type: "render_answer", params: { blocks: [{ markdown: "{{steps.s0.output.x}}" }] } },
-    ]);
+    ].map((s) => ExtendedPlanStepSchema.parse(s));
     const errs = validatePlanSteps(steps);
     expect(errs.some((e) => e.includes("不存在的步骤 s0"))).toBe(true);
   });
