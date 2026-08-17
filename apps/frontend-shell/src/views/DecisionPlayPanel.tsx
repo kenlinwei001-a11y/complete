@@ -11,6 +11,20 @@ import zh from "@/locales/zh";
 // WO-U7-U9-REST · 判据 U9：导出物自带出处与生成时间（共享件，一份实现多页挂载）。
 import { ExportReportButton } from "./sim/shared";
 import type { ProvenanceReport } from "./sim/exportProvenance";
+// WO-U3-DAG-DESIGN · 判据 U3：推演过程图 + 点节点看凭什么。
+// 图与（后续的）步骤条同源一份结构 —— 见 `sim/reasoningGraph.ts` 头注与 `docs/DESIGN-u2u3-structure.md`。
+import { LayeredDag } from "@/components/Dag/LayeredDag";
+import { DagNodeInspector } from "./sim/DagNodeInspector";
+import {
+  assertReasoningGraph,
+  findNode,
+  toDagEdges,
+  toDagNodeFacts,
+  toDagNodes,
+  type ReasoningEdge,
+  type ReasoningGraph,
+  type ReasoningNode,
+} from "./sim/reasoningGraph";
 
 /**
  * WO-ORDER-JOURNEY · **决策推演面板**（`DecisionPlayView` 页面壳与各宿主页的就地嵌入，用的是这一份）。
@@ -416,6 +430,184 @@ export function buildActionRows(out: DecisionPlayOutput): ActionRow[] {
     }
   }
   return rows;
+}
+
+/**
+ * ══ WO-U3-DAG-DESIGN · 判据 **U3**（过程图 + 点节点看凭什么）的本页结构 ══
+ *
+ * 仓主问「决策推演的 UX 调整了吗」时，这一页 U2/U3 两格都是「不符合」。
+ * U3 差的是**过程图**：这页从头到尾是一条真链，屏上却只有四块并列的面板，
+ * 「根因怎么变成这几个方案、方案怎么变成这一组推荐、哪条规则在盯着它」全靠读者自己脑补。
+ *
+ * ── 这一页的「过程」到底是什么（三问之一的答案）────────────────────────────
+ * **是求解链**，不是业务流程：
+ *   越线指标 →（`gap_attribution` 分摊）→ 根因 →（`decision_play` 生成）→ N 个候选方案
+ *   →（组合选取）→ 推荐组合 →（触发规则守着）→ 行动
+ * 每一环的数**都是引擎真值**（`out.rootCause` / `out.options[].provenance` /
+ * `out.recommendedPlan` / `out.triggers`），前端零臆造。
+ *
+ * ── 为什么必须画图而不是步骤条（三问之二的答案）──────────────────────────
+ * 中间那层是 **N 个并列候选方案**（真分叉：同一个根因派生出互不依赖的多个方案），
+ * 之后又**汇合**成一组推荐（`recommendedPlan.optionIds` 是候选的子集）。
+ * 步骤条把「N 个方案」压成一格 ⇒ 屏上看不出**哪几个进了推荐、哪几个没进、为什么**，
+ * 而那恰是决策者唯一要做的判断。`isLinearChain` 在这一页恒 `false`。
+ *
+ * ── 点一个节点要出什么（三问之三的答案）──────────────────────────────────
+ * 出**该环的来源与规则**。本页三档规则性质各不相同，**不许混**（诚实位）：
+ *  · 方案环 → 规则 = 引擎给的 `provenance.basis` 原文（前端不改写）＋ drill 下钻三元组；
+ *  · 触发环 → `thresholdSource === "rule.params"` ⇒ **真规则参数**（`ruleKey` 档，规则库里查得到）；
+ *              `trigger.default` ⇒ 引擎内置兜底阈值（`projection` 档）。**这是本页唯一的 `ruleKey` 档**，
+ *              标错会把用户支去规则库找一个不存在的键。
+ *  · 越线/根因/组合环 → 确定性投影规则（`projection`）。
+ *
+ * ── 触发规则怎么连线：**复用 `buildActionRows` 的对法，不另写一份** ──────────
+ * 规则↔方案的对法（引擎显式关联 → 标识符全等 → 首段同名且唯一 → 有歧义就拒绝合并）
+ * 已经在 `buildActionRows` 里逐条实现且写明「约定不是引擎保证」。这里**读它的产物**，
+ * 不重写判定 —— 重写一份必然与行动清单漂移，屏上两处对同一条规则给出两种说法（RL3）。
+ * 对不上任何方案的规则**照样上图**（`state:"dim"` + 诚实位说明），与行动清单
+ * 「对不上的规则自己独立成行（不许丢：那也是一条真行动）」逐字同义。
+ */
+function decisionPlayGraph(out: DecisionPlayOutput, rows: ActionRow[]): ReasoningGraph {
+  const rc = out.rootCause!;
+  const planned = new Set(out.recommendedPlan.optionIds);
+  const nodes: ReasoningNode[] = [];
+  const edges: ReasoningEdge[] = [];
+
+  // 层 0 · 越线指标（这条链的起点：指标没越线就没有决策可推）。
+  nodes.push({
+    key: "metric",
+    layer: 0,
+    label: `越线指标 ${rc.metricKey}`,
+    sub: `缺口 ${fmt(rc.gap)}${rc.unit}`,
+    verdict: `${rc.metricKey} 越线，缺口 ${fmt(rc.gap)}${rc.unit}`,
+    data: "rootCause.metricKey / rootCause.gap / rootCause.unit",
+    solver: "gap_attribution",
+    rule: "越线判定：指标实际值未达目标 ⇒ 缺口 > 0 ⇒ 进入决策推演（缺口 ≤ 0 时本页诚实空态，不编方案）",
+    ruleKind: "projection",
+    state: "fail",
+  });
+
+  // 层 1 · 根因（缺口沿本体反向分摊后的落点）。
+  nodes.push({
+    key: "root",
+    layer: 1,
+    label: `根因 ${rc.label}`,
+    sub: rc.factorId,
+    verdict: `根因「${rc.label}」`,
+    data: "rootCause.factorId / rootCause.label",
+    solver: "gap_attribution",
+    rule: "缺口沿本体反向逐层分摊到因素，取可行动的根因作为本次推演的起点（无根因 ⇒ 诚实空态）",
+    ruleKind: "projection",
+    inputs: [
+      { label: "根因因素", value: rc.factorId },
+      { label: "承接缺口", value: `${fmt(rc.gap)}${rc.unit}` },
+    ],
+    note: "根因由引擎给定；沙盘阻滞点入口若未传 factorId，引擎会静默回落到贡献最大的默认根因（横幅已写在脸上）。",
+  });
+  edges.push({ from: "metric", to: "root" });
+
+  // 层 2 · 候选方案 ×N（**真分叉**：同一根因派生出互不依赖的多个方案）。
+  for (const o of out.options) {
+    const key = `opt:${o.optionId}`;
+    nodes.push({
+      key,
+      layer: 2,
+      label: o.label,
+      sub: `补 ${fmt(o.closesGap)}${rc.unit} · 代价 ${fmt(o.cost)}`,
+      verdict: planned.has(o.optionId) ? "已进推荐组合" : "未进推荐组合",
+      data: "options[].closesGap / cost / cycleDays / risk / exposure / reversibility",
+      solver: "decision_play",
+      // 规则 = 引擎给的依据原文，**前端一个字不改写**（与导出物「依据」列同一出处）。
+      rule: `${o.provenance.kind} · ${o.provenance.basis}`,
+      ruleKind: "projection",
+      inputs: [
+        { label: "补缺口", value: `${fmt(o.closesGap)}${rc.unit}` },
+        { label: "代价", value: fmt(o.cost) },
+        { label: "周期", value: `${o.cycleDays} 天` },
+        { label: "下钻", value: `${o.provenance.drillType}[${o.provenance.drillId}] = ${o.provenance.drillValue}` },
+      ],
+      note:
+        o.sourceKind === "solver"
+          ? "来源 solver = 确定性求解（同输入同输出）。"
+          : "来源 agent = 策略推理·确定性生成（读真对象派生，**非**真 LLM 推理）——不是数据库事实。",
+      ...(planned.has(o.optionId) ? {} : { state: "dim" as const }),
+    });
+    edges.push({ from: "root", to: key });
+  }
+
+  // 层 3 · 推荐组合（**汇合**：候选的子集；只有进了组合的方案才连过来）。
+  nodes.push({
+    key: "plan",
+    layer: 3,
+    label: "推荐组合",
+    sub: `${out.recommendedPlan.optionIds.length} 项 · 补 ${fmt(out.recommendedPlan.totalClosesGap)}${rc.unit}`,
+    verdict: `合计补缺口 ${fmt(out.recommendedPlan.totalClosesGap)}${rc.unit} · 合计代价 ${fmt(out.recommendedPlan.totalCost)}`,
+    data: "recommendedPlan.optionIds / steps / totalClosesGap / totalCost",
+    solver: "decision_play",
+    rule: "组合选取：在候选方案中取一组使合计补缺口最大而代价可接受者；合计值为组内逐项相加（非重新求解）",
+    ruleKind: "projection",
+    formula: `合计补缺口 = Σ 组内方案 closesGap = ${fmt(out.recommendedPlan.totalClosesGap)}${rc.unit}`,
+    // ⚠ label 必须逐条唯一：`DagNodeInspector` 用 label 当 React key，重名会掉行（React 会警告
+    // 「two children with the same key」，而屏上只是**少一条**——不报错、看不出来）。
+    inputs: out.recommendedPlan.optionIds.map((id, i) => ({
+      label: `组内方案 ${i + 1}`,
+      value: out.options.find((o) => o.optionId === id)?.label ?? id,
+    })),
+  });
+  for (const id of out.recommendedPlan.optionIds) {
+    if (out.options.some((o) => o.optionId === id)) edges.push({ from: `opt:${id}`, to: "plan" });
+  }
+
+  // 层 4 · 触发规则（本页唯一的 `ruleKey` 档）。连线**复用行动清单的对法**，不另写判定。
+  const optionOfTrigger = new Map<string, string>();
+  for (const r of rows) {
+    if (r.trigger !== null && r.option !== null) optionOfTrigger.set(r.trigger.triggerId, r.option.optionId);
+  }
+  for (const t of out.triggers) {
+    const key = `trig:${t.triggerId}`;
+    const joinedOptionId = optionOfTrigger.get(t.triggerId);
+    const fromRuleParams = t.thresholdSource === "rule.params";
+    nodes.push({
+      key,
+      layer: 4,
+      /*
+       * ⚠ 节点名用**它盯的那个信号**，**不用** `t.action`。
+       * `t.action`（规则那侧的措辞）与方案 `label`（求解器那侧的措辞）说的是**同一个行动**，
+       * 措辞却不一样 —— 两个一起上屏正是 WO-UI-LAYERING 合并④⑤要治的那个病
+       * （仓主原话「为何不简化为 action list」）。行动的措辞只在**行动清单**里出现一次；
+       * 本层是「哪条规则在盯着它」，理应以规则/信号为名。
+       * 这条不是风格偏好：`ui-layering.seam` ④「同一个行动只出现一次」当场把它咬红过。
+       */
+      label: t.signalRef,
+      sub: `${t.op} ${fmt(t.threshold)}`,
+      verdict: t.fired ? "已触发" : "未到线",
+      data: "triggers[].signalRef / signalValue / op / threshold / fired",
+      solver: "decision_play",
+      rule: `${t.signalRef} ${t.op} ${fmt(t.threshold)}（当前 ${fmt(t.signalValue)}）`,
+      // ★ 诚实位：阈值来自规则参数 ⇒ 规则库里查得到、改得动；来自引擎兜底 ⇒ 不是规则库的键。
+      ruleKind: fromRuleParams ? "ruleKey" : "projection",
+      inputs: [
+        { label: "信号", value: t.signalRef },
+        { label: "当前值", value: fmt(t.signalValue) },
+        { label: "阈值", value: fmt(t.threshold) },
+      ],
+      note:
+        (fromRuleParams
+          ? "阈值取自规则参数（rule.params）—— 规则库里查得到、改得动、有版本。"
+          : "阈值是引擎内置兜底（trigger.default），规则库里没有这个键 —— 要改得先把它落成规则参数。") +
+        (joinedOptionId === undefined
+          ? " 这条规则没对上任何候选方案（引擎未给显式关联、标识符也对不上）⇒ 它在行动清单里自己独立成一行，不被丢掉。"
+          : " 它守着上游那个候选方案；规则↔方案的对法与行动清单同一处实现（约定不是引擎保证）。"),
+      ...(t.fired ? {} : { state: "dim" as const }),
+    });
+    if (joinedOptionId !== undefined) edges.push({ from: `opt:${joinedOptionId}`, to: key });
+  }
+
+  return assertReasoningGraph({
+    layerTitles: ["越线指标", "根因", "候选方案", "推荐组合", "触发规则"],
+    nodes,
+    edges,
+  });
 }
 
 /**
@@ -1015,6 +1207,12 @@ function DecisionPlay({
   const rc = rootCause!;
   const recSet = useMemo(() => new Set(recommendedPlan.optionIds), [recommendedPlan.optionIds]);
 
+  // WO-U3-DAG-DESIGN · 判据 U3：推演过程图。
+  // `rows` 与下方行动清单**读同一份** `buildActionRows(out)`（规则↔方案的对法只有一处实现，RL3）。
+  const graph = useMemo(() => decisionPlayGraph(out, buildActionRows(out)), [out]);
+  const [dagNodeKey, setDagNodeKey] = useState<string | null>(null);
+  const dagNode = dagNodeKey === null ? null : findNode(graph, dagNodeKey);
+
   // WO-DECISION-PLAY-FE-CONSUME：依据强度按 optionId 索引。**查不到 ⇒ undefined，不回落成 OBJECT**
   // （回落等于替引擎宣布「依据很硬」，正是本仓要治的那种「看着确凿」）。
   const evidenceById = useMemo(
@@ -1148,6 +1346,29 @@ function DecisionPlay({
         <div data-testid="dp-summary" style={{ fontSize: 12, color: "var(--muted)", marginTop: 6, lineHeight: 1.7 }}>{summary}</div>
       </div>
       </BlockConversable>
+
+      {/*
+        ── 推演过程图（判据 U3）──────────────────────────────────────────────
+        紧跟根因区：先让人看清**这一屏是怎么算出来的**，再看下面逐块的细节。
+        它比下面四块面板多说的那件事：**分叉与汇合** —— 一个根因派生出 N 个互不依赖的候选，
+        其中只有一个子集进了推荐组合。屏上四块并列面板看不出这层关系，图上一眼看得出。
+        点任一环 → 面板出该环的**来源与规则**（判据要的不是「点了有反应」）。
+      */}
+      <div className="panel" data-testid="dp-process-graph" style={{ overflowX: "auto" }}>
+        <div className="section-title">推演过程 · 点任一环看它凭什么</div>
+        <LayeredDag
+          nodes={toDagNodes(graph)}
+          edges={toDagEdges(graph)}
+          layerTitles={graph.layerTitles}
+          onNodeClick={(n) => setDagNodeKey(n.id)}
+          testId="dp-dag"
+        />
+      </div>
+      <DagNodeInspector
+        facts={dagNode === null ? null : toDagNodeFacts(dagNode)}
+        onClose={() => setDagNodeKey(null)}
+        testId="dag-node-inspector"
+      />
 
       {/* ── ② 方案卡区（点开看六维 + provenance 下钻）── */}
       <BlockConversable blockId="dp-options" blockType="decision-options" blockTitle="对症方案区" getData={optionsBlockData} getSelection={() => [rc.factorId]} provenanceRef="decision_play">

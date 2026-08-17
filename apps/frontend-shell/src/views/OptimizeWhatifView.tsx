@@ -13,7 +13,21 @@ import EdgeActivePanel from "./sim/EdgeActivePanel";
 // 本页走 App.tsx 的专用 route，不经 ViewPage ⇒ 必须自己调 usePageView（理由见 shared.tsx 该函数注释）。
 import { ExportReportButton, usePageView } from "./sim/shared";
 import type { ProvenanceReport } from "./sim/exportProvenance";
-import { SolverStepBar, useSolverStep, type SolverStep } from "./sim/SolverStepBar";
+import { SolverStepBar, useSolverStep } from "./sim/SolverStepBar";
+// WO-U3-DAG-DESIGN · 判据 U3：本页此前只有步骤条（U2），没有过程图。
+// 图与步骤条**同源**（`OW_GRAPH` 一份结构两种画法）—— 见 `reasoningGraph.ts` 头注与
+// `docs/DESIGN-u2u3-structure.md`。
+import { LayeredDag } from "@/components/Dag/LayeredDag";
+import { DagNodeInspector } from "./sim/DagNodeInspector";
+import {
+  assertReasoningGraph,
+  findNode,
+  toDagEdges,
+  toDagNodeFacts,
+  toDagNodes,
+  toSolverSteps,
+  type ReasoningGraph,
+} from "./sim/reasoningGraph";
 
 /**
  * 优化推演页（renderer=optimize-whatif·闭 G-12 前端半）——把 `optimize_whatif`（轨B·增量3）从"一个 Δ 数字"
@@ -130,16 +144,74 @@ interface OptWhatifOutput {
 const fmt = (n: number | null | undefined): string => (typeof n === "number" && Number.isFinite(n) ? String(Math.round(n * 1000) / 1000) : "—");
 
 /**
- * WO-U2-STEPWISE-1 · optimize_whatif 推演步骤契约（判据 U2：同一份结果按步展开·每步标 数据·求解器·规则）。
- * 每步 = 求解器输出的**真实分段字段**（后端无 steps[]·前端按已有字段推导——契约判定与论据见 SolverStepBar 头注）。
- * 步骤语义 = 求解链：入参 → 两次真解（baseline/perturbed 各一次 CP-SAT 重解）→ 比对判定（Δ/切换/可行性）→ 解读。
+ * WO-U2-STEPWISE-1 建 / WO-U3-DAG-DESIGN 改结构 · `optimize_whatif` 推演结构
+ * （判据 U2 步骤条 ＋ 判据 U3 过程图，**同一份结构两种画法**）。
+ *
+ * 每个节点 = 求解器输出的**真实分段字段**（后端无 `steps[]`·前端按已有字段推导——
+ * 契约判定与论据见 `SolverStepBar` 头注，防漂移机制见 `reasoningGraph.ts` 头注）。
+ *
+ * ── 为什么这一页必须画图，而不是只留步骤条（WO-U3-DAG-DESIGN 的裁决论据）──
+ * 本页真实求解链是 **入参 →（基线解 ∥ 扰动后解）→ 比对 → 解读**：
+ * 中间那一层是**两次互相独立的 CP-SAT 重解**，谁也不是谁的输入。
+ * 步骤条只能把它压成一格「两次求解」⇒ **屏上分辨不出这是两次独立求解**，
+ * 而「两次同 seed 同模板族所以可比」正是本页全部结论的立足点 —— 压掉它，
+ * 用户就没法判断 Δ 是真的还是求解器在飘。这就是 `isLinearChain(OW_GRAPH) === false`
+ * 的实际含义：**有分叉 ⇒ 步骤条不够，必须有图**。
  */
-const OW_STEPS: SolverStep[] = [
-  { key: "inputs", label: "入参与扰动", data: "模板族 + 基线 args + 扰动清单（data_override）+ seed 42", solver: "optimize_whatif", rule: "入参回显 · 两次求解同 seed 同模板族 ⇒ 目标值可比（本步无判定）" },
-  { key: "solve", label: "两次求解", data: "baselineSolution/baselineObjective + perturbedSolution/perturbedObjective", solver: "optimize_whatif", rule: "基线与扰动后局面各真解一次（CP-SAT sidecar · 同 seed 42 · 同输入同输出）" },
-  { key: "compare", label: "比对判定", data: "deltaObjective + feasible + conflictConstraints + 决策切换判定", solver: "optimize_whatif", rule: "Δ = 扰动后目标值 − 基线目标值；决策切换 = 开设集合排序后不同；约束冲突即不可行" },
-  { key: "explain", label: "解读", data: "explanation（求解器一句话说明）", solver: "optimize_whatif", rule: "求解器白话说明 · 原样透传（前端不改写）" },
-];
+const OW_GRAPH: ReasoningGraph = assertReasoningGraph({
+  layerTitles: ["入参与扰动", "两次求解", "比对判定", "解读"],
+  nodes: [
+    {
+      key: "inputs", layer: 0, label: "入参与扰动", sub: "模板族 · seed · 扰动清单",
+      data: "模板族 + 基线 args + 扰动清单（data_override）+ seed 42",
+      solver: "页面入参 · 未求解",
+      rule: "入参回显 · 两次求解同 seed 同模板族 ⇒ 目标值可比（本环无判定）",
+      ruleKind: "projection",
+      note: "优化解对「模板族 · seed · 扰动清单」三样都敏感：复算时三样必须一致，否则得到的不是同一个最优方案。",
+    },
+    {
+      key: "solve-baseline", layer: 1, label: "基线求解", sub: "改前局面真解一次",
+      data: "baselineSolution / baselineObjective",
+      solver: "optimize_whatif",
+      rule: "基线局面真解一次（CP-SAT sidecar · seed 42 · 同输入同输出）",
+      ruleKind: "projection",
+    },
+    {
+      key: "solve-perturbed", layer: 1, label: "扰动后求解", sub: "改后局面真解一次",
+      data: "perturbedSolution / perturbedObjective",
+      solver: "optimize_whatif",
+      rule: "扰动后局面**另解一次**（同 seed 同模板族 ⇒ 与基线可比；不是在基线解上改数）",
+      ruleKind: "projection",
+    },
+    {
+      key: "compare", layer: 2, label: "比对判定", sub: "Δ · 决策切换 · 可行性",
+      data: "deltaObjective + feasible + conflictConstraints",
+      solver: "optimize_whatif",
+      rule: "Δ = 扰动后目标值 − 基线目标值；决策切换 = 开设集合排序后不同；约束冲突即不可行",
+      ruleKind: "projection",
+      formula: "Δ = perturbedObjective − baselineObjective",
+    },
+    {
+      key: "explain", layer: 3, label: "解读", sub: "求解器一句话说明",
+      data: "explanation（求解器一句话说明）",
+      solver: "optimize_whatif",
+      rule: "求解器白话说明 · 原样透传（前端不改写、不总结）",
+      ruleKind: "projection",
+    },
+  ],
+  edges: [
+    // 分叉：同一组入参喂给两次**互相独立**的求解。
+    { from: "inputs", to: "solve-baseline" },
+    { from: "inputs", to: "solve-perturbed" },
+    // 汇合：Δ 与切换判定都要两次解都在才算得出来。
+    { from: "solve-baseline", to: "compare" },
+    { from: "solve-perturbed", to: "compare" },
+    { from: "compare", to: "explain" },
+  ],
+});
+
+/** U2 步骤条 = `OW_GRAPH` 的线性投影（**不是**另一份手写清单——手写两份必漂移，RL3）。 */
+const OW_STEPS = toSolverSteps(OW_GRAPH);
 
 /** 稳定 id（arcs 用 from-to 复合）。 */
 const itemId = (coll: string, item: Record<string, unknown>): string => (coll === "arcs" ? `${item.from}-${item.to}` : String(item.id ?? ""));
@@ -571,6 +643,9 @@ function DecisionResult({ out, family, baseArgs, perturbs }: { out: OptWhatifOut
   // WO-U2-STEPWISE-1 · 判据 U2：步骤态**真正驱动结果分段**——每个结果段经 `upto(步号)` 闸，
   // 点第 N 步 ⇒ 屏上的数只显示到第 N 步为止（默认末步 = 完整结果，与改前屏面一致）。
   const { active: owStep, setActive: setOwStep, upto } = useSolverStep(OW_STEPS.length);
+  // WO-U3-DAG-DESIGN · 判据 U3：点过程图上的一环 → 面板出该环的**来源与规则**。
+  const [dagNodeKey, setDagNodeKey] = useState<string | null>(null);
+  const dagNode = dagNodeKey === null ? null : findNode(OW_GRAPH, dagNodeKey);
   const { baselineObjective, perturbedObjective, deltaObjective, feasible, conflictConstraints, explanation, baselineSolution, perturbedSolution } = out;
   const delta = typeof deltaObjective === "number" ? deltaObjective : null;
   const deltaColor = delta == null ? "var(--muted)" : delta > 0 ? "var(--amber)" : delta < 0 ? "var(--ok)" : "var(--muted)";
@@ -589,6 +664,29 @@ function DecisionResult({ out, family, baseArgs, perturbs }: { out: OptWhatifOut
       <div style={{ fontSize: 12, color: "var(--muted2)" }} data-testid="ow-step-inputs">
         入参回执：{solverBasis.join(" · ")}
       </div>
+
+      {/*
+        判据 U3 · 推演过程图（与上面那条步骤条**同源** `OW_GRAPH`）。
+        它比步骤条多说的那一件事：中间层是**两个并列节点** —— 基线与扰动后是两次互相独立的求解，
+        步骤条压成一格就看不见了。点任一环 → 面板出该环的来源与规则。
+      */}
+      <div className="panel" data-testid="ow-process-graph" style={{ padding: "10px 12px", overflowX: "auto" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".05em", color: "var(--muted2)", marginBottom: 5 }}>
+          推演过程 · 点任一环看它凭什么
+        </div>
+        <LayeredDag
+          nodes={toDagNodes(OW_GRAPH)}
+          edges={toDagEdges(OW_GRAPH)}
+          layerTitles={OW_GRAPH.layerTitles}
+          onNodeClick={(n) => setDagNodeKey(n.id)}
+          testId="ow-dag"
+        />
+      </div>
+      <DagNodeInspector
+        facts={dagNode === null ? null : toDagNodeFacts(dagNode)}
+        onClose={() => setDagNodeKey(null)}
+        testId="dag-node-inspector"
+      />
 
       {/* 决策切换横幅 / Δ —— 第 3 步「比对判定」（Δ 与切换判定都由两次求解比对得出）。 */}
       {upto(3) && (
