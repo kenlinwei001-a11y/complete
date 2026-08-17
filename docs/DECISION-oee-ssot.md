@@ -213,3 +213,55 @@ node scripts/check-oee-ssot.mjs --explain apps/frontend-shell/src/views/capacity
 
 **诚实边界**：门量的是「屏上标没标」，**不量「三套口径该不该并存」**——后者就是本页要你裁的那件事。
 另有一类屏门看不见（属性名由后端运行时下发，如 `ProcessInspectPanel`），已写进门顶注，需靠接缝测试补。
+
+---
+
+## 8. 裁决已执行，执行到什么程度（2026-08-17 落地 · 2026-08-17/18 WO-OEE-SSOT-C 复核）
+
+**仓主裁决：选项 C —— ③ `EquipmentOEE` 日事实表当权威，①② 从它派生。** 执行单 = WO-OEE-UNIFY
+（提交链 `092c6635`→`24791ee1`→`b7774f1b`→`3298add3`，合并 `8d70bcdb` 入 `claude/verify-reclaim-6`）。
+
+### 8.1 落了什么（逐条对着 §4 选项 C 的清单）
+
+| §4 选项 C 说的 | 落没落 | 落点（file:line · 当前基线） |
+|---|---|---|
+| 新增派生 `oee_current ← agg(EquipmentOEE.oee)` 与 `oeeA/P/Q ← agg(availability/performance/quality)` | ✅ | 单一出处 `equipmentOeeAtomsDaily(equipId)`（`battery.ts:3500`，纯 hash·不占 rngTopo 流）；`Equipment` 四属性创建时同源派生（`battery.ts:3989`→`:3998-4001`）；事实行产出用**同一函数**（`battery.ts:4590`）⇒ ①③同源同数 |
+| 撤 `oee_daily_7d` 物化（写入方二） | ✅ | `BATTERY_TS_AGG_SPECS` 已无该规格（`battery.ts:2882-2885` 注释原位记账）；`oee:equip` 原始日序列保留作时序查询素材 |
+| 删播种期回填（写入方一） | ✅ | 已删（`battery.ts:4017-4019` 注释原位记账）⇒ `oee_current` **单一写入方** |
+| 引擎侧落点不动 | ✅ | `capacity.ts` `equipmentOee()` / `vle-oracle.ts` / `capacity-factors.ts` 落点仍 `oee_current`，`G-LEVER-BINDING-DRIFT` 修复全部继续有效 |
+| 修被证伪的反解说明（§1.2） | ✅ | `capacity-factors.ts` 保留原文作历史背景 + 2026-08-16 订正（同源派生后无需反解；反解误差 0.0901 → 实测 0.000619） |
+| §2 表的同屏混用两行 | ✅ | `factorOntology.ts` 圈号 ③ 改名「设备OEE（综合·oee_current·EquipmentOEE 事实表7日均值）」、④⑦ 标「③分解·事实表7日均值」；`PROP_DISPLAY_NAMES` 四个 OEE 中文名全部带「事实表7日均值」（`battery.ts:1930-1931`）——含门看不见的运行时下发屏 |
+| 先修 `physicalTopology.ts` 分页 18%（5460 行只拿 1000） | ❌ **未修，残账挂本体 §8** | 属 `views/sim/**` 边界（多 dev 在动），已登记不静默 |
+
+### 8.2 WO-OEE-SSOT-C 独立复核（不是照抄执行方结论，全部亲手重跑）
+
+**(a) 裁决前三个数复现（在 `092c6635` 树上，loader hook 直接 import 生产源码，金丝雀 A/B 先行）**：
+
+| 派单给的 | 本单实测 | 对账 |
+|---|---|---|
+| ①最差 `changzhou-formation-winding-E2` 0.769233 | 同机同款 0.769233（值域 0.7692..0.8976） | ✅ |
+| ②最差 `jinhua-slitting-winding-E1` 0.710781 | 同机同款 0.710781（值域 0.7108..0.8024） | ✅ |
+| ③最差 `xinyang-formation-coating-E1` 0.776429 | 同机同款 0.776429（值域 0.7764..0.8750） | ✅ |
+| 最差10台重叠 0/10 · 0/10 · 1/10 | 0/10 · 0/10 · 1/10 | ✅ |
+| \|②−①\| 逐台平均 0.0814 | mean 0.0814 · median 0.0821 · max 0.1666 | ✅ |
+| ①最差在②排 731/780 | 731/780（②最差在①排 637/780） | ✅ |
+
+**(b) 裁决后归一态复现（当前基线）**：三套口径最差设备**归到同一台** `xinyang-formation-coating-E1`；
+最差10台重叠 ①∩③=10/10、①∩②=9/10、②∩③=9/10；780/780 台四属性 === 事实行 7 日均值（round 3 截断容差内）；
+`oee_daily_7d` 规格不在；`oee:equip` 原始序列在。
+
+**(c) 接缝测试与变异反证（亲手重跑，非引用执行方报告）**：
+`apps/datacore/test/oee-ssot.seam.test.ts` S1–S5 全绿（RC=0）；**变异反证**：把 `oee_daily_7d` 规格临时加回
+⇒ S1–S4 当场红（RC=1，红在「`oee_current` 被时序覆写、与事实行均值脱钩」，不是「函数不存在」），S5 不受影响（它只验标注）；
+还原后 S1–S5 + `timeseries.test.ts` 共 10/10 绿。
+
+**(d) 复核中补的一处漏网**：`battery.ts:1088` 属性定义行注释仍写「时序 7d 加权物化」（与 2882 行撤除记账自相矛盾），
+已订正为「事实行 7 日均值·同源派生」（纯注释，行为零变化）。
+
+### 8.3 残账（如实登记，不静默）
+
+1. **`EquipmentOEE` 分页 18%**（5460 行只拿 1000，`views/sim/physicalTopology.ts`）：未修，归 sim/ 边界，本体 §8 已挂账。
+2. **测试注释里的旧数值**（`gap-attribution.test.ts:285-287`、`order-dependent-pick.seam.test.ts:272-273`）：是裁决前病灶的**历史记账**，
+   断言本身现算跟随新口径；留作判例不删。
+3. **聚合口径的人为规定**：事实表本身不规定跨日聚合口径，现派生统一为「7 日算术均值（round 3）」——
+   与事实行产出同函数同窗口，故 ①②③ 严格同源；将来若改窗口（如 30 日），只改 `equipmentOeeAtomsDaily` 一处即全链跟随。
