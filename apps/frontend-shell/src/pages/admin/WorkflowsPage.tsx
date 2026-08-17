@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { PlanStep, WorkflowDefinition } from "@platform/contracts";
 import {
+  deleteWorkflow,
   fetchAgents,
   fetchRules,
   fetchSolverRegistry,
@@ -14,6 +15,7 @@ import {
 } from "@/api/endpoints";
 import { ApiClientError } from "@/api/apiClient";
 import ReferencesPanel from "@/components/ReferencesPanel";
+import DeleteResourceButton from "./DeleteResourceButton";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
 import { filterSuggestions, templateSuggestions } from "./templateSuggest";
@@ -199,19 +201,33 @@ function WorkflowEditor({ workflow, onChanged }: { workflow: WorkflowDefinition;
         <span className="mono" style={{ fontSize: 12, color: "var(--muted2)" }}>
           v{workflow.version} · {workflow.status}
         </span>
-        {editable && (
-          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-            <button className="btn sm" disabled={runMut.isPending} onClick={() => runMut.mutate()} data-testid="wf-dry-run">
-              {runMut.isPending ? "试运行中…" : "试运行"}
-            </button>
-            <button className="btn sm" disabled={saveMut.isPending} onClick={() => saveMut.mutate()}>
-              {zh.common.save}
-            </button>
-            <button className="btn primary sm" disabled={publishMut.isPending} onClick={() => publishMut.mutate({ force: false })} data-testid="wf-publish">
-              {zh.common.publish}
-            </button>
-          </div>
-        )}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          {editable && (
+            <>
+              <button className="btn sm" disabled={runMut.isPending} onClick={() => runMut.mutate()} data-testid="wf-dry-run">
+                {runMut.isPending ? "试运行中…" : "试运行"}
+              </button>
+              <button className="btn sm" disabled={saveMut.isPending} onClick={() => saveMut.mutate()}>
+                {zh.common.save}
+              </button>
+              <button className="btn primary sm" disabled={publishMut.isPending} onClick={() => publishMut.mutate({ force: false })} data-testid="wf-publish">
+                {zh.common.publish}
+              </button>
+            </>
+          )}
+          {/* WO-BEFE-DELETE-WIRE（`DELETE /b/v1/workflows/:id`）。同 Agent：**不受 `editable` 限制**，
+              后端只看引用不看状态。流程的引用方是「把它当工具挂着的 Agent」
+              （`computeReferences` 的 `tools[kind=WORKFLOW]` 一支）。 */}
+          <DeleteResourceButton
+            label="流程"
+            name={`${workflow.name} v${workflow.version}`}
+            referenceKind="workflow"
+            referenceId={workflow.id}
+            testidPrefix="wf"
+            onDelete={() => deleteWorkflow(workflow.id)}
+            onDeleted={onChanged}
+          />
+        </div>
       </div>
 
       {runResult && <DryRunResult result={runResult} onClose={() => setRunResult(null)} />}

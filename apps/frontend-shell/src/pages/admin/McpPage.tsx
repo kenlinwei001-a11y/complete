@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { McpServerConfig } from "@platform/contracts";
-import { fetchMcpConfigs, saveMcpConfig, testMcpConnection } from "@/api/endpoints";
+import { deleteMcpConfig, fetchMcpConfigs, saveMcpConfig, testMcpConnection } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
 import ReferencesPanel from "@/components/ReferencesPanel";
+import DeleteResourceButton from "./DeleteResourceButton";
 import zh from "@/locales/zh";
 
 const t = zh.admin.mcp;
@@ -115,6 +116,20 @@ function McpEditor({ config, onChanged }: { config: McpServerConfig | null; onCh
             <button className="btn sm" disabled={testMut.isPending} onClick={() => testMut.mutate()} data-testid="mcp-test">
               {t.test}
             </button>
+          )}
+          {/* WO-BEFE-DELETE-WIRE（`DELETE /b/v1/mcp-configs/:id`）。新建态（config==null）没有 id 可删，
+              故与「连接测试」同条件渲染。MCP 配置的引用方有两支（`computeReferences`）：
+              挂了它的 Agent（`mcpServers`/`tools[kind=MCP]`）与调它的流程步骤（`steps.invoke_mcp_tool`）。 */}
+          {config && (
+            <DeleteResourceButton
+              label="MCP 配置"
+              name={config.name}
+              referenceKind="mcp-config"
+              referenceId={config.id}
+              testidPrefix="mcp"
+              onDelete={() => deleteMcpConfig(config.id)}
+              onDeleted={onChanged}
+            />
           )}
         </div>
         {/* WO-REFERENCES-FAMILY（`GET /b/v1/mcp-configs/:id/references`）：

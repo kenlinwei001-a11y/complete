@@ -2,9 +2,10 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SkillCompileResult, SkillDefinition } from "@platform/contracts";
 import { isWriteModeSkill } from "@platform/contracts";
-import { compileSkill, fetchSkills, fetchSkillSeedGate, publishSkill, saveSkill } from "@/api/endpoints";
+import { compileSkill, deleteSkill, fetchSkills, fetchSkillSeedGate, publishSkill, saveSkill } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
 import ReferencesPanel from "@/components/ReferencesPanel";
+import DeleteResourceButton from "./DeleteResourceButton";
 import zh from "@/locales/zh";
 import {
   parseDeadRefKeys,
@@ -160,6 +161,18 @@ function SkillEditor({ skill, onChanged }: { skill: SkillDefinition; onChanged: 
             </button>
           </>
         )}
+        {/* WO-BEFE-DELETE-WIRE（`DELETE /b/v1/skills/:id`）。同前两条不受 `editable` 限制。
+            技能的引用方是「挂了它的 Agent」（`computeReferences` 的 `skills` 一支）——
+            上面那块 `ReferencesPanel` 查的是同一个端点，故删除前看到的清单与被 409 挡回时列的是同一份。 */}
+        <DeleteResourceButton
+          label="技能"
+          name={`${skill.name} v${skill.version}`}
+          referenceKind="skill"
+          referenceId={skill.id}
+          testidPrefix="skill"
+          onDelete={() => deleteSkill(skill.id)}
+          onDeleted={onChanged}
+        />
       </div>
 
       {/* ① 治理属性：能不能写、要不要人批 */}
