@@ -1092,6 +1092,15 @@
       "page": "推演沙盘（sim）",
       "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 35 · deferred 4 · formula 0 · prose 0 · sizes 1）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
     },
+    "apps/frontend-shell/src/views/sim/ProcessGraphPanel.tsx": {
+      "first": 2,
+      "deferred": 0,
+      "formula": 0,
+      "prose": 0,
+      "sizes": 1,
+      "page": "推演沙盘（sim）",
+      "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 2 · deferred 0 · formula 0 · prose 0 · sizes 1）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
+    },
     "apps/frontend-shell/src/views/sim/ProcurementLegsView.tsx": {
       "first": 73,
       "deferred": 0,
