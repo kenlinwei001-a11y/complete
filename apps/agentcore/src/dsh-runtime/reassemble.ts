@@ -7,7 +7,9 @@
  *     provenance 的 toolName 从帧流里的 tool/call 记录回填（对位 loop.ts repos.toolCalls.get）；
  *   - 无 final_answer ⇒ 软收尾：最后一条 assistant/message 文本兜底（对位 lastText 分支）；
  *   - turn/end reason: completed→ANSWERED · max-tokens→BUDGET_EXHAUSTED · error/aborted→FAILED；
- *   - STALL_LOOP 不可重建（dsh 无环检测——E6 三档 verdict 的「放弃或外壳保留」项），不出。
+ *   - aborted 且 cause.kind==='stall-loop'（N3 watchdog cancel 落帧）⇒ 分类前置：
+ *     BUDGET_EXHAUSTED + degraded{STALL_LOOP} + 诚实降级块（镜像 loop.ts:620-632），
+ *     先于 expectsSchema/final_answer 分支（degrade 短路语义）；
  *   - expectsSchema 模式 ⇒ structured = final_answer raw input（对位 loop.ts:256）。
  */
 
@@ -45,7 +47,7 @@ export type ReassembledRun =
       answer: Answer;
       sketch: { toolName: string; inputSummary: string }[];
       structured?: Record<string, unknown>;
-      degraded?: { reason: "TIMEOUT" | "BUDGET_EXHAUSTED" };
+      degraded?: { reason: "TIMEOUT" | "BUDGET_EXHAUSTED" | "STALL_LOOP" };
     }
   | { ok: false; errors: string[] };
 
@@ -97,6 +99,78 @@ function turnEndReason(events: readonly DshSessionEvent[]): string | undefined {
   return undefined;
 }
 
+// ---------------------------------------------------------------------------
+// N3 · stall-loop 分类器（watchdog cancel 落帧 ⇒ STALL_LOOP 诚实降级重建）。
+// 帧形实证（dsh-agent-loop index.js:575-580/592-595）：cancel(cause) → abort signal →
+// turn/end data.reason = {kind:'aborted', reason:<cause 原样>}；watchdog 的 cause =
+// {kind:'stall-loop', tool, count, cap}（纯 JSON，过 session lossless-JSON 校验）。
+// ---------------------------------------------------------------------------
+
+export interface StallLoopCause {
+  kind: "stall-loop";
+  tool?: string;
+  count?: number;
+  cap?: number;
+}
+
+/** 最后一个 turn/end 若为 stall-loop abort 则返回其 cause；否则 undefined（普通 aborted/error 不误吞）。 */
+export function stallLoopCause(events: readonly DshSessionEvent[]): StallLoopCause | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (!e || e.type !== "turn/end") continue;
+    const reason = (e.data as Record<string, unknown> | undefined)?.reason;
+    if (typeof reason !== "object" || reason === null) return undefined;
+    if ((reason as Record<string, unknown>).kind !== "aborted") return undefined;
+    const inner = (reason as Record<string, unknown>).reason;
+    if (typeof inner !== "object" || inner === null) return undefined;
+    if ((inner as Record<string, unknown>).kind !== "stall-loop") return undefined;
+    return inner as StallLoopCause;
+  }
+  return undefined;
+}
+
+/** tool/result 帧的窄提取（成功判定仅供 stall-loop 诚实块的 provenance）。 */
+function successfulCallIds(events: readonly DshSessionEvent[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const e of events) {
+    if (e.type !== "tool/result" || typeof e.data !== "object" || e.data === null) continue;
+    const message = (e.data as Record<string, unknown>).message as
+      | { content?: { type?: string; toolCallId?: string; isError?: boolean }[] }
+      | undefined;
+    for (const b of message?.content ?? []) {
+      if (b?.type !== "tool-result" || typeof b.toolCallId !== "string") continue;
+      if (b.isError === true || seen.has(b.toolCallId)) continue;
+      seen.add(b.toolCallId);
+      out.push(b.toolCallId);
+    }
+  }
+  return out;
+}
+
+/**
+ * G-9 部分发现合成 · 镜像 loop.ts:588-604 synthesizePartialFindings 同口径
+ * （只复述工具查到什么，不下结论、不造数）：优先末次 assistant 文本，否则 sketch 去重复述，
+ * 再退固定兜底。reassemble 侧无 rollingNotes（dsh 帧流无对应物）——该档如实缺失。
+ */
+function synthesizePartialFindings(
+  events: readonly DshSessionEvent[],
+  sketch: { toolName: string; inputSummary: string }[],
+): string {
+  const lastText = lastAssistantText(events);
+  if (lastText.trim()) return lastText;
+  const lines: string[] = [];
+  const seen = new Set<string>();
+  for (const s of sketch) {
+    const key = `${s.toolName}｜${s.inputSummary}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    lines.push(`- 调用 ${s.toolName}（入参 ${s.inputSummary}）`);
+  }
+  if (lines.length === 0) return "（探索过程中未取得可复述的工具结果）";
+  return `已探索线索（仅复述调用轨迹，未形成最终结论）：\n${lines.join("\n")}`;
+}
+
 /**
  * 重组装主函数。事件顺序即 wire 顺序；只读不改。
  */
@@ -115,6 +189,34 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
     : "FAILED";
 
   const finalCall = [...calls].reverse().find((c) => c.name === "final_answer");
+
+  // N3 · stall-loop 分类前置（degrade 短路语义，先于 expectsSchema/final_answer 分支）：
+  // watchdog cancel 落帧 ⇒ outcome BUDGET_EXHAUSTED + degraded{STALL_LOOP}（对位 loop.ts:1182）
+  // + 诚实降级块（header 模板镜像 loop.ts:620-632，cap 从帧 cause 取——reassemble 保纯不读 env）
+  // + provenance 仅成功 callId 去重 outputPath "$"（loop.ts:644-656 同口径；失败/未答调用不进）。
+  const stall = stallLoopCause(events);
+  if (stall) {
+    const budgetNote = `反复以相同参数调用同一工具、未获新信息（环检测·loopRepeatCap=${stall.cap ?? "?"}）`;
+    const header = `[预算耗尽·诚实摘要] ⚠️ 检测到无进度循环：${budgetNote}——本次深问未能完全解答（已诚实终止，未烧尽预算）。以下为已探索到的线索：`;
+    const blocks: AnswerBlock[] = [
+      { type: "text", markdown: header },
+      { type: "text", markdown: synthesizePartialFindings(events, sketch) },
+    ];
+    const provenance: ProvenanceRef[] = successfulCallIds(events).map((toolCallId) => ({
+      id: newProvId(),
+      source: "TOOL_RESULT",
+      toolCallId,
+      toolName: toolNameByCallId.get(toolCallId) ?? "unknown",
+      outputPath: "$",
+    }));
+    return {
+      ok: true,
+      outcome: "BUDGET_EXHAUSTED",
+      answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics: scanBlocks(blocks) },
+      sketch,
+      degraded: { reason: "STALL_LOOP" },
+    };
+  }
 
   // expectsSchema 模式：raw input 直通 structured（对位 loop.ts:147/256）。
   if (opts.expectsSchema !== undefined) {
