@@ -129,7 +129,7 @@
 
 | 单号 | 断点 | 三形态 | 🚦范围边界（只碰） | 验收判据（断言落在什么上） | 画像 |
 |---|---|---|---|---|---|
-| **WO-BEFE-WILDCARD-CLAIM** | `G-SEAM-GATE-METHOD-BLIND` 残(乙) | 接了线接错地方 | `scripts/check-backend-frontend-seam.mjs`（`pathMatches` 与其调用方）· 该门的基线 json | 喂一条「前端 `/a/v1/rules/*` × 后端字面 `/a/v1/rules/evaluate`」**同方法**的样例，门必须判它**没被消费**（今天判「已接」）。变异反证：把判据改回旧口径 ⇒ 该样例重新变绿即证明判据真在起作用。存量冒领条目一次性入基线并逐条写 why，此后只降不升 | **轻** |
+| **WO-BEFE-WILDCARD-CLAIM** ✅ 已交单（2026-08-18 · `claude/handoff-wo-befe-wildcard-claim`） | `G-SEAM-GATE-METHOD-BLIND` 残(乙) | 接了线接错地方 | `scripts/check-backend-frontend-seam.mjs`（`pathMatches` 与其调用方）· 该门的基线 json | 喂一条「前端 `/a/v1/rules/*` × 后端字面 `/a/v1/rules/evaluate`」**同方法**的样例，门必须判它**没被消费**（今天判「已接」）。变异反证：把判据改回旧口径 ⇒ 该样例重新变绿即证明判据真在起作用。存量冒领条目一次性入基线并逐条写 why，此后只降不升 | **轻** |
 | **WO-GATE-ROSTER-SWEEP-2** | `G-GATE-ROSTER-HANDCOPIED` 剩余 13 处 | 接了线接错地方 | `scripts/gate-roster-baseline.json` · 各被点名门脚本的扫描面常量 · `docs/AUDIT-gate-roster-sweep.md` | 逐处要么改现算、要么同批加「名单 vs 现算」一致性断言；`gate-roster:check` 的 `roster` 债从 13 降到 N 并**只降不升**。头号那笔先做：`check-ui-first-layer.mjs:SCAN_DIRS` 差集 54 个 `.tsx`（`components/**` 整个在射程外）。**验收不是「门绿了」，是「拿一个原本在差集里的文件造一处真违规，门必须点名到 file:line」** | **轻** |
 | **WO-ONTO-STATUS-BACKFILL** | 本单测出（§8 有 95 个编号无状态标记） | 接了线没数据 | `docs/SYSTEM-ONTOLOGY.md` §8（**只加状态标记，不动编号、不动描述**） | 95 个无标记编号逐个补上 ✅/🔴/◑ 之一（补之前每个都要复核，不许照描述猜）；补完后 `dispatch-deficit.sh` 的「待写WO」数会跳变 —— **那个跳变本身就是验收证据**：它证明此前这个队列度量的对象不完整 | **轻** |
 | **WO-ONTO-DEDUPE** | 本单测出（13 个编号有重复行，最多的占 4 行） | — | `docs/SYSTEM-ONTOLOGY.md` §8 · `scripts/check-ontology-anchors.mjs` 的基线 | 每个编号在 §8 只留一行（保留信息最全的那行，旧行的独有内容并进去）；加一条断言「§8 编号行数 == 唯一编号数」。**验收落在断言上**：造一个重复编号 ⇒ 该断言必须当场红。跑 `check-ontology-anchors.mjs` 确认锚点未被删（基线键不许消失） | **轻** |
