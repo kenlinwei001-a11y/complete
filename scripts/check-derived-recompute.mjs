@@ -123,7 +123,10 @@
  * 本体登记：docs/SYSTEM-ONTOLOGY.md §7（门）· §8 `G-DERIVED-FORMULA-UNVERIFIED`（本门所闭断点）。
  * 门账：scripts/gate-ledger.json（同批登账，否则新门天然免疫 gate-ledger:check 治理）。
  * 用法：node scripts/check-derived-recompute.mjs   ·   pnpm derived-recompute:check
- *       node scripts/check-derived-recompute.mjs --update   （认账用 · 不是消红用）
+ *       node scripts/check-derived-recompute.mjs --update     （认账用 · 不是消红用）
+ *       node scripts/check-derived-recompute.mjs --selftest   （四条退出码路径起子进程机验：
+ *              干净=0 · 改公式=1 · 改值=1 · 求值器坏=2；**四条同时验**，只验前几条会把门
+ *              写坏成「兜底把真违规也吞成 2」的样子。不进 gates 链，人/CI 单独调。）
  */
 /* ── 退出码纪律 · 顶层兜底（WO-GATE-RC2-DISCIPLINE）─────────────────────────────
  * 本仓门的退出码是**三分**约定（docs/SOP-reviewer-claim-discipline.md §3）：
@@ -152,6 +155,7 @@ const DIST = join(ROOT, "apps/datacore/dist");
 const BASELINE = join(ROOT, "scripts/derived-recompute-baseline.json");
 const SYNTH_SERVICE_SRC = join(ROOT, "apps/datacore/src/synthetic/service.ts");
 const UPDATE = process.argv.includes("--update");
+const SELFTEST = process.argv.includes("--selftest");
 
 /** RC=2 统一出口：任何「我没能完成判定」的情形都走这里。 */
 function toolBroken(lines) {
@@ -159,6 +163,62 @@ function toolBroken(lines) {
   for (const l of lines) console.error(`  - ${l}`);
   console.error("   本次结论作废：**不许**读作「派生都对 / 无违规 / 通过」——本门这次什么都没证明。");
   process.exit(2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * `--selftest`：三条退出码路径**起子进程真跑**，把变异反证从「我记得跑过」变成
+ * 「机器现在就能再跑一遍」——这正是铁律 0.6 要的那种机制（机器先说话，不靠人想起来）。
+ * ⛔ 三条必须**同时**验，只验前两条会把门写坏成「兜底把真违规也吞成 2」的样子
+ *   （那是拿一个更糟的假绿换掉一个假红）。
+ * ⚠ 不进 `pnpm gates` 链（起 3 个子进程、每个都真跑一次派生管线），由人/CI 单独调。
+ * ═══════════════════════════════════════════════════════════════════════════ */
+if (SELFTEST) {
+  const { spawnSync } = await import("node:child_process");
+  const self = fileURLToPath(import.meta.url);
+  const cases = [
+    { name: "干净树", env: {}, want: 0, why: "没有任何注入时必须绿——否则是恒红门，比没有更糟" },
+    {
+      name: "M-FORMULA 改错公式",
+      env: { DERIVED_RECOMPUTE_MUTATE_FORMULA: "Metric.delta=actual - target - 1" },
+      want: 1,
+      why: "公式被改错 ⇒ 重算值与管线物化值分家，必须 RC=1 并点名 Metric.delta",
+      mustPrint: "Metric.delta",
+    },
+    {
+      name: "M-VALUE 改错值（公式不动）",
+      env: { DERIVED_RECOMPUTE_MUTATE_VALUE: "Metric.gapPct=+1" },
+      want: 1,
+      why: "实际存的值被改错 ⇒ 必须 RC=1（证判据 C 咬的是值不是公式）",
+      mustPrint: "Metric.gapPct",
+    },
+    {
+      name: "M-EVALUATOR 弄坏求值器",
+      env: { DERIVED_RECOMPUTE_BREAK_EVALUATOR: "1" },
+      want: 2,
+      why: "求值器算不出来 ⇒ 必须 RC=**2 而非 0**：「我没算出来」不许读成「都对」",
+      mustPrint: "门自己坏了",
+    },
+  ];
+  let bad = 0;
+  for (const c of cases) {
+    const r = spawnSync(process.execPath, [self], { env: { ...process.env, ...c.env }, encoding: "utf8" });
+    const out = `${r.stdout || ""}${r.stderr || ""}`;
+    const rcOk = r.status === c.want;
+    const printOk = !c.mustPrint || out.includes(c.mustPrint);
+    if (!rcOk || !printOk) {
+      bad++;
+      console.error(`  ✗ ${c.name}：RC=${r.status}（应为 ${c.want}）${printOk ? "" : ` · 报文里没出现「${c.mustPrint}」`}`);
+      console.error(`      判据：${c.why}`);
+    } else {
+      console.log(`  ✓ ${c.name}：RC=${r.status}${c.mustPrint ? ` · 报文含「${c.mustPrint}」` : ""}`);
+    }
+  }
+  if (bad) {
+    console.error(`\n✗ selftest：${bad} 条退出码路径不符 —— 本门的 RC 语义不可信，结论一律作废`);
+    process.exit(2);
+  }
+  console.log("\n✓ selftest：四条退出码路径全对（干净=0 · 改公式=1 · 改值=1 · 求值器坏=2）");
+  process.exit(0);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
