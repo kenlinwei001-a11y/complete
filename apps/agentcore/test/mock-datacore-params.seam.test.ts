@@ -310,6 +310,14 @@ describe("WO-MOCKDC-PARAMS §3 · 同族普查补齐的形参同样被用上", (
     expect(bTypes).not.toContain(TYPE);
   });
 
+  it("MockEpochClient.current 收下 ctx：epoch 按租户记（原本是 0 形参的对象字面量，门看不见）", async () => {
+    const dc = createMockDataCore();
+    expect((await dc.epoch.current(A)).epoch).toBe(1); // 缺省与转类前字节兼容
+    dc.epoch.setEpoch(A, 77);
+    expect((await dc.epoch.current(A)).epoch).toBe(77);
+    expect((await dc.epoch.current(B)).epoch).toBe(1); // ← ctx 真的被用上：推 A 不影响 B
+  });
+
   it("出厂种子行仍是租户无关夹具（诚实边界·G-MOCK-OVERCLAIM 已挂账，勿静默扩大）", async () => {
     const onto = new MockOntologyClient();
     const basesA = (await onto.queryObjects(A, "Base", {})).data as { total: number };

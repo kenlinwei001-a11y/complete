@@ -24,6 +24,16 @@ import { describe, expect, it } from "vitest";
  *   · POSITIVE：一个确定形参齐全的方法必须判 OK —— 判 MISSING 就是对照方法坏了；
  *   · MUTATION：把该方法在**内存里**砍掉一个形参重扫，必须判 MISSING —— 判 OK 也是对照方法坏了。
  * 金丝雀不中 ⇒ 报「工具坏了」，**不许**报「代码干净」。
+ *
+ * ── 诚实边界（本门查不到什么）────────────────────────────────────────────
+ * ① 只判**形参数量**，判不了**形参有没有被用上** —— 「补了签名然后不理它」= 把「收了不认」换成
+ *    「收了假装认」，比原状更坏，而本门对此完全看不见。那一半由
+ *    `mock-datacore-params.seam.test.ts` 的行为接缝＋变异反证咬。
+ * ② 只扫 `class … implements …`；**对象字面量实现看不见**（TS 结构化类型允许字面量少写形参）。
+ *    本文件对 `createMockDataCore()` 的返回体加了一条**形状**断言封堵这个盲区（见下），
+ *    但**测试文件里**临时拼的字面量替身仍在盲区外 —— 那是已知的、写在这里的洞，不是"已确认干净"。
+ * ③ 扫描面写死为上面两个文件；新增实现文件要手工加进 `IMPL_PATHS`（这也是一个已知洞：
+ *    「门只能证明它问过的那些是对的，证明不了该问的都问了」）。
  */
 
 const IFACE_PATH = fileURLToPath(new URL("../src/tools/clients.ts", import.meta.url));
@@ -177,6 +187,40 @@ describe("WO-MOCKDC-PARAMS 门 · DataCore 客户端实现的形参不许比接�
     const mutated = orig.replace(CANARY_SIGNATURE, CANARY_MUTATED);
     const row = scanArity(MOCK_PATH, mutated).find((r) => r.cls === "MockOntologyClient" && r.method === "getObject");
     expect(row?.verdict, "变异后仍判 OK ⇒ 本门检不出少形参，是装饰品").toBe("MISSING_PARAM");
+  });
+
+  /**
+   * 盲区封堵 —— **不是补一条断言，是把代码改成门看得见的形状**。
+   * 本门走 AST 只认 `class … implements …`；**对象字面量它看不见**。
+   * 实测踩到过：`createMockDataCore()` 里 `epoch: { async current() { … } }` 是个 0 形参的字面量方法，
+   * 而 `EpochClient.current(ctx)` 要 1 个 —— 全量扫描判「0 条异常」时它就躺在旁边。
+   * 修法是把它转成 `MockEpochClient implements EpochClient`（转完门自然咬得住），
+   * 并用这条断言钉住「以后也不许写回字面量」。
+   */
+  it("盲区封堵：createMockDataCore() 的每个客户端字段都必须是类实例，不许内联对象字面量（字面量本门看不见）", () => {
+    const sf = parse(MOCK_PATH);
+    let factory: ts.FunctionDeclaration | undefined;
+    ts.forEachChild(sf, (n) => {
+      if (ts.isFunctionDeclaration(n) && n.name?.text === "createMockDataCore") factory = n;
+    });
+    expect(factory, "找不到 createMockDataCore ⇒ 锚点坏了，不许静默跳过").toBeDefined();
+    const ret = factory!.body?.statements.find((s): s is ts.ReturnStatement => ts.isReturnStatement(s));
+    const obj = ret?.expression;
+    expect(obj && ts.isObjectLiteralExpression(obj), "createMockDataCore 不再直接 return 对象字面量 ⇒ 本断言的抽取失效").toBe(true);
+    const inline: string[] = [];
+    for (const prop of (obj as ts.ObjectLiteralExpression).properties) {
+      if (!ts.isPropertyAssignment(prop)) continue;
+      const init = prop.initializer;
+      const isLiteralWithMethods =
+        ts.isObjectLiteralExpression(init) &&
+        init.properties.some((p) => ts.isMethodDeclaration(p) || (ts.isPropertyAssignment(p) && (ts.isArrowFunction(p.initializer) || ts.isFunctionExpression(p.initializer))));
+      if (isLiteralWithMethods) inline.push(prop.name.getText(sf));
+    }
+    expect(
+      inline,
+      `这些字段是内联对象字面量而非类实例：[${inline.join(", ")}] —— ` +
+        `形参对照门走 AST 只认 class，字面量的形参少写多少都查不出来。请改成 \`class MockXxx implements XxxClient\`。`,
+    ).toEqual([]);
   });
 
   it("全量：mocks/clients.ts 与 tools/datacore-http.ts 的每个实现，形参数量 ≥ 接口声明", () => {

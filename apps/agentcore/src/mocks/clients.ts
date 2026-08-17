@@ -15,6 +15,7 @@ import type {
   DataCoreClient,
   DataGenClient,
   DecisionClient,
+  EpochClient,
   IamClient,
   KbClient,
   KbHit,
@@ -1216,6 +1217,29 @@ export class MockPromptClient implements PromptClient {
   }
 }
 
+/**
+ * WO-MOCKDC-PARAMS · epoch 客户端**从对象字面量转成类**（形状改动，不只是补形参）。
+ *
+ * 原样是 `epoch: { async current() { return { epoch: 1 }; } }` —— 一个 0 形参的**对象字面量**方法，
+ * 而接口 `EpochClient.current(ctx)` 要 1 个。它逃过了本单加的 `client-arity.gate`：
+ * 那道门走 AST 只看 `class … implements …`，**对象字面量它看不见**。
+ * 修法刻意不是"给字面量补个 `_ctx` 了事"，而是**把代码改成门看得见的形状** ——
+ * 消掉盲区本身，比在盲区里放一个正确答案更值钱（下一个人在这里写错时，机器会先说话）。
+ *
+ * `ctx` 真的被用上：epoch 按**租户**记（镜像 A 侧 `GET /a/v1/epoch/current` 的租户维），
+ * 缺省 1（与原字面量字节兼容，既有测试零回归），测试可 `setEpoch(ctx, n)` 单独推进某个租户。
+ */
+export class MockEpochClient implements EpochClient {
+  private readonly byTenant = new Map<string, number>();
+  /** 测试注入：把某租户的当前 epoch 推到 n（其他租户不受影响 —— 这就是 ctx 被用上的证据）。 */
+  setEpoch(ctx: ToolAuthCtx, n: number): void {
+    this.byTenant.set(ctx.tenantId, n);
+  }
+  async current(ctx: ToolAuthCtx): Promise<{ epoch: number }> {
+    return { epoch: this.byTenant.get(ctx.tenantId) ?? 1 };
+  }
+}
+
 export interface MockDataCore extends DataCoreClient {
   ontology: MockOntologyClient;
   solver: MockSolverClient;
@@ -1226,6 +1250,7 @@ export interface MockDataCore extends DataCoreClient {
   kb: MockKbClient;
   timeseries: MockTimeseriesClient;
   catalog: MockCatalogClient;
+  epoch: MockEpochClient;
   datagen: MockDataGenClient;
   sim: MockSimClient;
   prompts: MockPromptClient;
@@ -1242,7 +1267,7 @@ export function createMockDataCore(): MockDataCore {
     kb: new MockKbClient(),
     timeseries: new MockTimeseriesClient(),
     catalog: new MockCatalogClient(),
-    epoch: { async current() { return { epoch: 1 }; } },
+      epoch: new MockEpochClient(),
     datagen: new MockDataGenClient(),
     sim: new MockSimClient(),
     prompts: new MockPromptClient(),
