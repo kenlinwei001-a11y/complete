@@ -22,6 +22,11 @@
  * 只列一次、跳数标首达值）。MAX_HOPS=32 是**保险丝不是终止机制**：visited 已保证有限图终止，
  * 32 给本仓最深真链（3 跳）10× 余量；真触发 ⇒ truncated:true + unresolved 点名，不静默截断。
  *
+ * 语义边界（说清才不误导）：预览是**结构闭包**——「这条链通，就会波及」。引擎的运行期
+ * 值语义（propagateTick 的 `sourceVal===0` 跳过、clamp 撞顶、decay 归零）预览不模拟：
+ * 结构上可达但本次数值为 0 的目标仍会列出。这是**故意的保守方向**（多报 ≻ 漏报），
+ * 「预览与实际一致」验收在两者相等的世界里断言等式（测试 fixture 保证链上非零）。
+ *
  * 诚实位纪律（⛔ 不许空集冒充「没有波及」）：
  *   · 焦点不存在 / 公式或表达式解析失败 / 可达规则零实例（接了线没数据）/ 截断 ⇒ 全部进
  *     unresolved[] 并写明「什么追不到、缺什么」；
@@ -155,6 +160,10 @@ interface BfsNode {
 }
 
 const nodeKey = (n: BfsNode) => (n.member ? `${n.kind}:${n.id}.${n.member}` : `${n.kind}:${n.id}`);
+// 导航索引键：`\0` 分隔（linkKey / 对象 id 自身可含 `|`，撞键即假阴性——propagation.ts 同款）。
+// ⚠ 构建与所有查找必须同用本函数，不许各写一份字面量——曾因此回归（构建处 \0 / 查找处 |），
+// 6 例导航全落空；而字面 NUL 又会让 file/grep 把整文件判成二进制、回归藏住。两头都是铁律 0.6 活实例。
+const navKey = (linkKey: string, objectId: string) => `${linkKey}${objectId}`;
 
 export function previewChangeImpact(
   world: ChangeImpactWorld,
@@ -173,11 +182,11 @@ export function previewChangeImpact(
   for (const o of world.objects) {
     (objectsByType.get(o.typeKey) ?? objectsByType.set(o.typeKey, []).get(o.typeKey)!).push(o);
   }
-  const navOut = new Map<string, ChangeImpactLink[]>(); // `${linkKey}|${fromId}`
-  const navIn = new Map<string, ChangeImpactLink[]>(); // `${linkKey}|${toId}`
+  const navOut = new Map<string, ChangeImpactLink[]>(); // navKey(linkKey, fromId)
+  const navIn = new Map<string, ChangeImpactLink[]>(); // navKey(linkKey, toId)
   for (const l of world.links) {
-    const ko = `${l.linkKey}|${l.fromId}`;
-    const ki = `${l.linkKey}|${l.toId}`;
+    const ko = navKey(l.linkKey, l.fromId);
+    const ki = navKey(l.linkKey, l.toId);
     (navOut.get(ko) ?? navOut.set(ko, []).get(ko)!).push(l);
     (navIn.get(ki) ?? navIn.set(ki, []).get(ki)!).push(l);
   }
@@ -206,7 +215,10 @@ export function previewChangeImpact(
     arithDeps: string[]; // 算术型：同对象标识符（聚合型为空）
   }
   const derivedByType = new Map<string, CompiledDerived[]>();
-  const aggBySource = new Map<string, CompiledDerived[]>(); // `${sourceType}.${sourceProp}`
+  const aggBySource = new Map<string, CompiledDerived[]>(); // `${sourceType}.${sourceProp}` 与 `${sourceType}.${byField}`
+  // 聚合的值同时依赖 sourceProp、byField（匹配集）与目标主键（applyAggregate 同口径）——
+  // 三个键都要进索引，只索 sourceProp 会在「改 byField / 改目标主键」时假阴性（对抗审查实证）。
+  const aggByTargetPk = new Map<string, CompiledDerived[]>(); // `${targetType}.${primaryKey}`
   for (const t of world.derivedTypes) {
     for (const d of t.derived) {
       const agg = parseAggregate(d.formula);
@@ -236,8 +248,11 @@ export function previewChangeImpact(
       }
       (derivedByType.get(t.typeKey) ?? derivedByType.set(t.typeKey, []).get(t.typeKey)!).push(cd);
       if (cd.agg) {
-        const k = `${cd.agg.sourceType}.${cd.agg.sourceProp}`;
-        (aggBySource.get(k) ?? aggBySource.set(k, []).get(k)!).push(cd);
+        for (const k of [`${cd.agg.sourceType}.${cd.agg.sourceProp}`, `${cd.agg.sourceType}.${cd.agg.byField}`]) {
+          (aggBySource.get(k) ?? aggBySource.set(k, []).get(k)!).push(cd);
+        }
+        const pkKey = `${t.typeKey}.${t.primaryKey}`;
+        (aggByTargetPk.get(pkKey) ?? aggByTargetPk.set(pkKey, []).get(pkKey)!).push(cd);
       }
     }
   }
@@ -266,11 +281,11 @@ export function previewChangeImpact(
     for (const d of spec.deps) {
       if (!d.via) continue;
       if (d.direction === "out") {
-        for (const l of navIn.get(`${d.via}|${changedObjId}`) ?? []) {
+        for (const l of navIn.get(navKey(d.via, changedObjId)) ?? []) {
           if (typeOf(l.fromId) === spec.targetType) out.add(l.fromId);
         }
       } else {
-        for (const l of navOut.get(`${d.via}|${changedObjId}`) ?? []) {
+        for (const l of navOut.get(navKey(d.via, changedObjId)) ?? []) {
           if (typeOf(l.toId) === spec.targetType) out.add(l.toId);
         }
       }
@@ -310,9 +325,25 @@ export function previewChangeImpact(
     };
     walk(ast);
     const keys = new Set<string>();
+    const nestedPaths: string[] = [];
     for (const p of paths) {
-      if (p.length >= 2) keys.add(`${p[0]}.${p[1]}`);
-      else if (p.length === 1) for (const st of r.scopeObjectTypes) keys.add(`${st}.${p[0]}`);
+      if (p.length === 2) {
+        keys.add(`${p[0]}.${p[1]}`);
+        // resolveField（ruledsl :450）的前缀丢弃回退：`Order.qty` 直查失败即按 ["qty"] 查——
+        // 而 scheduler 按 scopeObjectTypes 逐类型求值 ⇒ 两段路径实际绑定到**每个 scope 类型**
+        // 的同名 prop。只索 `${p[0]}.${p[1]}` 会在多 scope / 首段类型∉scope 时假阴性（对抗审查实证）。
+        for (const st of r.scopeObjectTypes) keys.add(`${st}.${p[1]}`);
+      } else if (p.length === 1) {
+        for (const st of r.scopeObjectTypes) keys.add(`${st}.${p[0]}`);
+      } else if (p.length > 2) {
+        nestedPaths.push(p.join("."));
+      }
+    }
+    if (nestedPaths.length > 0) {
+      unresolved.push({
+        what: `rule:${r.key}`,
+        missing: `嵌套字段路径（${[...new Set(nestedPaths)].sort().join(", ")}）超出两段建模——该规则的波及判定可能不全`,
+      });
     }
     for (const k of keys) {
       (rulesByField.get(k) ?? rulesByField.set(k, []).get(k)!).push(r);
@@ -348,7 +379,7 @@ export function previewChangeImpact(
     if (!o) return;
     for (const r of propRulesBySource.get(`${o.typeKey}.${n.member}`) ?? []) {
       reachedPropRules.add(r.key);
-      for (const l of navOut.get(`${r.viaLinkKey}|${n.id}`) ?? []) {
+      for (const l of navOut.get(navKey(r.viaLinkKey, n.id)) ?? []) {
         if (typeOf(l.toId) !== r.targetTypeKey) continue;
         emit(
           { kind: "sv", id: l.toId, member: r.targetStateVar, hops: n.hops + 1 },
@@ -374,6 +405,7 @@ export function previewChangeImpact(
       }
     }
     // 聚合：该对象作为源，匹配目标主键（applyAggregate 同口径：标量相等或数组 includes）。
+    // 改的是 byField 时同走这里——当前世界的匹配集 = 改前依赖集（失去贡献的那批必在其中）。
     for (const cd of aggBySource.get(`${o.typeKey}.${n.member}`) ?? []) {
       const pk = primaryKeyOf.get(cd.typeKey) ?? "id";
       for (const t of objectsByType.get(cd.typeKey) ?? []) {
@@ -387,6 +419,14 @@ export function previewChangeImpact(
           `derived:${cd.typeKey}.${cd.propKey}`,
         );
       }
+    }
+    // 聚合目标侧：改的是目标主键 ⇒ 该目标自己的派生值重算（匹配集随 pk 变）。
+    for (const cd of aggByTargetPk.get(`${o.typeKey}.${n.member}`) ?? []) {
+      emit(
+        { kind: "op", id: n.id, member: cd.propKey, hops: n.hops + 1 },
+        "rederive",
+        `derived:${cd.typeKey}.${cd.propKey}`,
+      );
     }
     // DerivationSpec：dep 命中 ⇒ 反导航解析目标实例（resolveAffectedTargets 同语义）。
     for (const s of specsFor(o.typeKey, n.member)) {
@@ -533,7 +573,7 @@ export function previewChangeImpact(
         const o = objById.get(n.id);
         if (!o) return false;
         return (propRulesBySource.get(`${o.typeKey}.${n.member}`) ?? []).some(
-          (r) => (navOut.get(`${r.viaLinkKey}|${n.id}`) ?? []).some((l) => typeOf(l.toId) === r.targetTypeKey),
+          (r) => (navOut.get(navKey(r.viaLinkKey, n.id)) ?? []).some((l) => typeOf(l.toId) === r.targetTypeKey),
         );
       }
       if (n.kind === "op") {
@@ -588,13 +628,18 @@ export function recomputeStateVars(preview: ChangeImpactPreview): string[] {
 // ---------------------------------------------------------------------------
 
 export async function buildChangeImpactWorld(repos: Repos, tenantId: string): Promise<ChangeImpactWorld> {
-  const types = await repos.ontologyTypes.list(tenantId, (t) => t.status === "ACTIVE");
+  // 传导图物化**不过滤 status**——镜像 buildPropagationInputs（propagation-inputs.ts :72）：
+  // propagateTick 的 typeOf/idsByType 收全类型对象，非 ACTIVE 类型的对象与边在真传导图里，
+  // 预览少了它们 = recompute 桶假阴性（对抗审查实证：曾把派生族的 ACTIVE 过滤漏进图物化）。
+  const allTypes = await repos.ontologyTypes.list(tenantId);
   const objects: ChangeImpactObject[] = [];
-  for (const t of types) {
+  for (const t of allTypes) {
     for (const o of await repos.objects.listByType(tenantId, t.key)) {
       if (!o.mergedInto) objects.push({ id: o.id, typeKey: o.type, props: o.props });
     }
   }
+  // ACTIVE 过滤只留给派生族（runDerivations 走 listTypes=ACTIVE，ontology.ts :144/:864）。
+  const types = allTypes.filter((t) => t.status === "ACTIVE");
   const links = (await repos.links.list(tenantId)).map((l) => ({
     fromId: l.fromId,
     toId: l.toId,

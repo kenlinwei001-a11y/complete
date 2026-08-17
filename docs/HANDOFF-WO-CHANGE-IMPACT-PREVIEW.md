@@ -71,10 +71,10 @@
 
 | 文件 | 内容 |
 |---|---|
-| `apps/datacore/src/sim/change-impact.ts`（新建 630 行） | 模型层：`previewChangeImpact(world, focus)` 纯函数（无 React、无 I/O）+ `buildChangeImpactWorld(repos, tenantId)` 唯一装配处 |
+| `apps/datacore/src/sim/change-impact.ts`（新建 675 行） | 模型层：`previewChangeImpact(world, focus)` 纯函数（无 React、无 I/O）+ `buildChangeImpactWorld(repos, tenantId)` 唯一装配处 |
 | `packages/contracts/src/sim.ts`（+37 行） | `ChangeFocusSchema`（五态 discriminatedUnion）/ `ChangeImpactItemSchema` / `ChangeImpactPreviewSchema` / `ChangeImpactPreviewRequestSchema` |
 | `apps/datacore/src/app.ts`（+16 行） | 最小接线 `POST /a/v1/sim/change-impact-preview`（卫兵 `requireSim(c, "sim.propagation")`，纯只读） |
-| `apps/datacore/test/change-impact-preview.seam.test.ts`（新建 386 行） | 17 例验收测试 |
+| `apps/datacore/test/change-impact-preview.seam.test.ts`（新建 440 行） | 21 例验收测试（17 例验收 + 4 例对抗审查复发闸） |
 
 **设计要点与论据**：
 
@@ -88,10 +88,10 @@
 
 ## ③ T1–T5 实测输出原文
 
-**验收测试 17/17 全绿**（第三次运行，`VITEST_RC=0`）：
+**验收测试 21/21 全绿**（对抗审查修复轮后重跑，`VITEST_RC=0`）：
 
 ```
-✓ test/change-impact-preview.seam.test.ts (17 tests) 112037ms
+✓ test/change-impact-preview.seam.test.ts (21 tests) 65567ms
   ✓ 接线 > feature 关 ⇒ 404 FEATURE_NOT_FOUND（Entitlement 先于 authz）
   ✓ 预览与实际一致（传导族·真跑 propagateTick 差分）> 预览 recompute 集合 === 真跑 N tick 后实际变值集合
   ✓ 预览与实际一致（传导族）> 多跳正确：3 跳真链逐跳列出且跳数标对
@@ -99,8 +99,21 @@
   ✓ 环与保险丝 > 环检测 / MAX_HOPS=32 保险丝
   ✓ 诚实位 × 4（焦点不存在 / 零实例规则 / 真叶子 / 公式解析失败 / 表达式解析失败）
   ✓ rejudge/rewire/派生链/焦点五态 × 5
-  Tests  17 passed (17)
+  ✓ 对抗审查 REAL-BUG 复发闸 × 4（c①byField / c②目标主键 / f两段路径回退 / 装配器 DRAFT 物化）
+  Tests  21 passed (21)
 ```
+
+**对抗审查轮（impact-reviewer，a–k 全表）**：审查实证抖出 **3 个假阴性 REAL-BUG**——修复前的共同形态正是本单头注明令禁止的说谎诚实位：「items 空 + unresolved 空 = 谎称焦点确为叶子」：
+
+1. **REAL-BUG-c**：聚合依赖索引只索 `${sourceType}.${sourceProp}`，漏 `${sourceType}.${byField}` 与目标主键两键 ⇒ 改 `Order.bases`（byField）或 `Base.id`（目标主键）时预览报「无波及」，而 runDerivations 实际会重算 `Base.committedQty`。修：aggBySource 双键 + 新增 aggByTargetPk 索引与目标侧展开循环。
+2. **REAL-BUG-f**：两段规则路径（`Order.qty`，scope=[Line]）漏 ruledsl `resolveField` 的前缀丢弃回退——运行期实际读 `Line.qty`，预览只索 `Order.qty` ⇒ 漏报。修：`p.length===2` 时按 scopeObjectTypes 逐类型追加同名 prop 键；>2 段进 unresolved。
+3. **REAL-BUG-装配器**：`buildChangeImpactWorld` 误把 ACTIVE 过滤带进图物化，而 propagateTick 的物化（propagation-inputs）不过滤 status ⇒ DRAFT 类型实例在真传导图里、预览世界里没有。修：allTypes 物化对象/边，ACTIVE 过滤只留 derivedTypes（与 runDerivations 口径一致）。
+
+三处修复各有 1 条复发闸测试把守（机器先说话，不许重构悄悄回去）。审查其余维度 a/b/d/e/g/h/j/k OK、i OK-BUT-NOTE、d-NOTE（LinkType 存在性检查缺失，保守方向留 NOTE 不阻塞）。
+
+**修复轮自伤回归（诚实留痕）**：按审查建议把 navOut/navIn 键分隔符从 `|` 换成 `\0` 时，**只改了构建处、没改 4 处查找处**（当时文件混入字面 NUL 字节，`file` 判 "data"、grep 全盲，核对落空——铁律 0.6「先自证工具」活实例），全量跑 6 红（导航全落空）。修：收敛为唯一 `navKey()` 函数，构建与查找同用，头注写明「不许各写一份字面量」。重跑 21/21 绿。
+
+**首轮 17/17 绿的记录**（审查轮之前）：第三次运行 17/17，`VITEST_RC=0`。
 
 **T1 变异反证（红对地方）**：把 `expandStateVar` 的多跳展开拆掉（主循环插 `if (n.kind === "sv" && n.hops >= 1) continue;`），只跑多跳用例：
 
@@ -112,7 +125,7 @@ AssertionError: expected [ …(4) ] to include 'sv:obj_base_changzhou.loadIndex@
 
 红在**「预览漏了第 2 跳」**（断言原文点名缺 `@2`），不是「函数不存在」。变异已回退（`git status` 干净）。
 
-**T2 基线**：本单 diff **纯加性 1155 insertions / 0 deletions**（T4 证据见下），无共享可变状态被改 ⇒ 基线行为不可能漂移；邻接既有套件在本分支复跑 `seed-demo-propagation.test.ts` + `impact-propagation.seam.test.ts` = **2 文件 23/23 全绿**（`ADJACENT_RC=0`）。
+**T2 基线**：本单 diff **纯加性 1332 insertions / 0 deletions**（T4 证据见下），无共享可变状态被改 ⇒ 基线行为不可能漂移；邻接既有套件在本分支复跑 `seed-demo-propagation.test.ts` + `impact-propagation.seam.test.ts` = **2 文件 23/23 全绿**（`ADJACENT_RC=0`）。
 
 **T3 金丝雀**：见 §1.7（35 条规则由既有断言确认 / 3 跳链三枚 link key 金丝雀 / derivedProperties 假阴性教训）。测试内金丝雀：方向可达门同款链路取实例（`expect(links.length).toBeGreaterThan(0)` 先于预览断言）。
 
@@ -120,11 +133,11 @@ AssertionError: expected [ …(4) ] to include 'sv:obj_base_changzhou.loadIndex@
 
 ```
 apps/datacore/src/app.ts                           |  16 +
-apps/datacore/src/sim/change-impact.ts             | 630 +
-apps/datacore/test/change-impact-preview.seam.test.ts | 386 +
-docs/HANDOFF-WO-CHANGE-IMPACT-PREVIEW.md           |  86 +
+apps/datacore/src/sim/change-impact.ts             | 675 +
+apps/datacore/test/change-impact-preview.seam.test.ts | 440 +
+docs/HANDOFF-WO-CHANGE-IMPACT-PREVIEW.md           | 164 +
 packages/contracts/src/sim.ts                      |  37 +
-5 files changed, 1155 insertions(+)
+5 files changed, 1332 insertions(+), 0 deletions
 ```
 
 **T5 交单三条**：见本文件最后一条 commit 的提交信息（porcelain 空 / check-branch-base RC=0 / check-merge-conflict-markers RC=0）。

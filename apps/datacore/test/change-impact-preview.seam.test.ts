@@ -3,6 +3,7 @@ import { makeApp, ADMIN, seedBattery, debugUser } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
 import {
   previewChangeImpact,
+  buildChangeImpactWorld,
   CHANGE_IMPACT_MAX_HOPS,
   type ChangeImpactWorld,
 } from "../src/sim/change-impact.js";
@@ -382,5 +383,58 @@ describe("WO-CHANGE-IMPACT-PREVIEW · rejudge / rewire / 派生链（纯函数�
     const p2 = previewChangeImpact(w, { kind: "derivedProp", typeKey: "Empty", propKey: "e" });
     expect(p2.items).toEqual([]);
     expect(p2.unresolved.some((u) => u.missing.includes("无实例"))).toBe(true);
+  });
+});
+
+// ── 对抗审查（impact-reviewer）实证抖出的三个假阴性 REAL-BUG 的复发闸 ────────────
+// 三处的共性：修复前都输出「items空 + unresolved空」= 谎称「焦点确为叶子」——
+// 正是本单头注明令禁止的说谎诚实位。机器把守，不许重构悄悄回去。
+describe("WO-CHANGE-IMPACT-PREVIEW · 对抗审查 REAL-BUG 复发闸", () => {
+  // 实证 1b/1c 的世界形状（reviewer /tmp 脚本同款微世界）。
+  const aggWorld = (): ChangeImpactWorld => ({
+    objects: [
+      { id: "o1", typeKey: "Order", props: { qty: 2, bases: ["b1"] } },
+      { id: "b1", typeKey: "Base", props: { id: "b1" } },
+    ],
+    links: [], propagationRules: [], derivationSpecs: [], rules: [],
+    derivedTypes: [
+      { typeKey: "Base", primaryKey: "id", derived: [{ propKey: "committedQty", formula: "SUM(Order.qty BY bases)" }] },
+    ],
+  });
+
+  it("REAL-BUG-c①：改 byField（Order.bases）⇒ 匹配集变 ⇒ committedQty 必列出", () => {
+    const p = previewChangeImpact(aggWorld(), { kind: "prop", objectId: "o1", propKey: "bases" });
+    expect(hopTagged(p as PreviewBody)).toContain("op:b1.committedQty@1");
+  });
+
+  it("REAL-BUG-c②：改目标主键（Base.id）⇒ 自己的目标派生值必列出", () => {
+    const p = previewChangeImpact(aggWorld(), { kind: "prop", objectId: "b1", propKey: "id" });
+    expect(hopTagged(p as PreviewBody)).toContain("op:b1.committedQty@1");
+  });
+
+  it("REAL-BUG-f：两段路径首段类型∉scope ⇒ resolveField 前缀回退，实际判的是 scope 类型同名 prop", () => {
+    const w = baseWorld();
+    w.objects = [{ id: "l1", typeKey: "Line", props: { qty: 7 } }];
+    // scope=[Line] 写 "Order.qty"：运行期 scheduler 逐 scope 类型求值 + resolveField
+    // 丢弃首段回退 ⇒ 实际读的是 Line.qty。预览只索 Order.qty 即漏报（假阴性实证）。
+    w.rules = [{ key: "R1", expression: "Order.qty > 5", scopeObjectTypes: ["Line"] }];
+    const p = previewChangeImpact(w, { kind: "prop", objectId: "l1", propKey: "qty" });
+    expect(hopTagged(p as PreviewBody)).toContain("rule:R1@1");
+  });
+
+  it("REAL-BUG-装配器：非 ACTIVE 类型的对象也在预览世界里（传导图物化不过滤 status）", async () => {
+    const t = await makeApp();
+    // DRAFT 类型 + 实例 + 一条从它出发的传导规则。propagateTick 的图物化（propagation-inputs
+    // :72）不过滤 status ⇒ 真传导图里有它；预览世界若缺 ⇒ recompute 桶假阴性。
+    await t.repos.ontologyTypes.put({
+      id: "ot_ghost", tenantId: "demo", key: "Ghost", displayName: "草稿类型", domain: "x",
+      version: 1, status: "DRAFT", derivedProperties: [], sourceBindings: [],
+      properties: [{ propKey: "g", dataType: "number", isPrimaryKey: true }],
+    });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "g1", tenantId: "demo", type: "Ghost", props: { g: 1 } });
+    const world = await buildChangeImpactWorld(t.repos, "demo");
+    expect(world.objects.some((o) => o.id === "g1")).toBe(true);
+    // 且派生族的 ACTIVE 过滤仍然成立（DRAFT 类型的 derivedProperties 不进世界）。
+    expect(world.derivedTypes.some((d) => d.typeKey === "Ghost")).toBe(false);
   });
 });
