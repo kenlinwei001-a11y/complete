@@ -629,18 +629,28 @@ async function main() {
           viewports,
         };
       }
-      const doc = buildBaselineDoc({
-        prev: prevDoc,
-        generatedBy: `node scripts/check-layout-legibility.mjs ${wantUpdate ? "--update" : "--tighten"}`,
-        prose: {
-          note:
-            "版面门棘轮基线。每页每视口一组实测数，**只许变好**。" +
-            "`--tighten` 逐项取「更好的那个」；`--update` 会连放宽一起写下来，**不是日常操作**" +
-            "（本仓发生过 --update 悄悄抬基线买来一片绿）。阈值与取数方法见 scripts/check-layout-legibility.mjs 文件头。",
-        },
-        computed: { pages },
-      });
-      writeFileSync(BASELINE, `${JSON.stringify(doc, null, 2)}\n`);
+      // ⚠ `buildBaselineDoc(…)` **必须内联在 `writeFileSync` 的实参里**，不许先抽成 `const doc = …`。
+      //   这不是风格洁癖：`baseline-writer-honesty:check` 判的是「**写的那一刻**用没用共享写入器」，
+      //   而「文件顶部 import 了」证明不了「写的时候用了」（同一个符号可以被同名局部变量遮蔽）。
+      //   本单实测踩过：抽成 `const doc` 后该门当场判 HAND_ROLLED（RC=1），改成内联才绿。
+      writeFileSync(
+        BASELINE,
+        `${JSON.stringify(
+          buildBaselineDoc({
+            prev: prevDoc,
+            generatedBy: `node scripts/check-layout-legibility.mjs ${wantUpdate ? "--update" : "--tighten"}`,
+            prose: {
+              note:
+                "版面门棘轮基线。每页每视口一组实测数，**只许变好**。" +
+                "`--tighten` 逐项取「更好的那个」；`--update` 会连放宽一起写下来，**不是日常操作**" +
+                "（本仓发生过 --update 悄悄抬基线买来一片绿）。阈值与取数方法见 scripts/check-layout-legibility.mjs 文件头。",
+            },
+            computed: { pages },
+          }),
+          null,
+          2,
+        )}\n`,
+      );
       console.log(`\n✓ 基线已写入 ${BASELINE}（${wantUpdate ? "--update" : "--tighten"}）。`);
       await cleanup(browser, server);
       process.exit(0);
