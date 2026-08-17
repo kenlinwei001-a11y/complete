@@ -8,6 +8,14 @@ import { toolUse } from "../src/llm/mock.js";
 import { loadConfig } from "../src/config.js";
 import { computeResidualBudget } from "../src/router/orchestrator.js";
 import { BudgetTracker } from "../src/tools/budget.js";
+import {
+  STUB_DCP_SPEC,
+  STUB_FAKE_KEY,
+  startStubOpenAi,
+  stubDirectory,
+  stubProvider,
+  type StubRound,
+} from "./helpers-dsh-stub.js";
 
 /**
  * #88 SEAM · 「出货 compose 的那几行字节」→ 真 QOS 管线里的**真早停**。
@@ -196,7 +204,6 @@ describe("#88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（N3 看门狗·en
 
   function setHarnessEnv(loopEnv: Record<string, string>) {
     process.env.DSH_HARNESS = "1";
-    process.env.MOCK_SCENARIO = "stall_loop";
     process.env.DSH_HARNESS_DIR = HARNESS_DIR; // vitest cwd=apps/agentcore，缺省解析不到 packages/dsh-harness
     for (const k of LOOP_KEYS) delete process.env[k];
     for (const [k, v] of Object.entries(loopEnv)) process.env[k] = v;
@@ -211,7 +218,7 @@ describe("#88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（N3 看门狗·en
       version: 1,
       name: "echo_agent",
       description: "dsh ③′④′ 对位 agent",
-      model: "claude-opus-4-8",
+      model: STUB_DCP_SPEC, // 裁决 A：post-N1 engine 分叉强制 dcp spec（原 "claude-opus-4-8" 在 providers.ts:435 诚实抛）
       systemPrompt: "你是回声测试 agent。",
       tools: [{ kind: "BUILTIN", name: "echo_tool" }],
       ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
@@ -222,30 +229,46 @@ describe("#88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（N3 看门狗·en
     };
   }
 
+  /**
+   * 裁决 A · stub 剧本：8 轮**同签名** echo_tool（watchdog 看签名不看 mock——同 name+同 arguments
+   * 即同签名计数）+ 第 9 轮文本收尾。对位 mock-llm stall_loop 剧本的病态循环语义；
+   * cap 臂在第 3 轮（出货 cap）被 watchdog 打断 ⇒ stub 第 4 轮起收不到请求。
+   */
+  const STALL_USAGE = { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 };
+  const stallRound: StubRound = { toolCall: { name: "echo_tool", arguments: '{"text":"same"}' }, usage: STALL_USAGE };
+  const STALL_SCRIPT: StubRound[] = [...Array(8).fill({ ...stallRound, toolCall: { ...stallRound.toolCall } }), { text: "stub final answer", usage: STALL_USAGE }];
+
   async function runPathologicalDsh(loopEnv: Record<string, string>) {
     setHarnessEnv(loopEnv);
-    const t: TestApp = await createTestApp({});
-    await t.repos.agents.insert(echoAgentDef());
-    const emitted: { event: string; payload: unknown }[] = [];
-    const result = await t.deps.engine.runRegisteredAgent({
-      taskId: "task_dsh_stall",
-      agentId: "agt_echo",
-      version: "latest",
-      prompt: "把所有未结订单反复翻一遍给我个自由结论",
-      ctx: { tenantId: TENANT, userId: "user-planner", roles: ["planner"] },
-      nesting: { callChain: [], budget: new BudgetTracker(computeResidualBudget(loadConfig({ PORT: "0", LOG_LEVEL: "silent", ...loopEnv } as NodeJS.ProcessEnv))) },
-      emit: async (event, payload) => {
-        emitted.push({ event, payload });
-      },
+    const stub = await startStubOpenAi(STALL_SCRIPT.map((r) => ({ ...r })));
+    const t: TestApp = await createTestApp({
+      providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
     });
-    const echoStarts = emitted.filter(
-      (e) => e.event === "step.started" && (e.payload as { type?: string })?.type === "echo_tool",
-    );
-    return {
-      result,
-      echoStartCount: echoStarts.length,
-      loopRepeatMetric: t.metrics.agentLoopRepeat.get(),
-    };
+    try {
+      await t.repos.agents.insert(echoAgentDef());
+      const emitted: { event: string; payload: unknown }[] = [];
+      const result = await t.deps.engine.runRegisteredAgent({
+        taskId: "task_dsh_stall",
+        agentId: "agt_echo",
+        version: "latest",
+        prompt: "把所有未结订单反复翻一遍给我个自由结论",
+        ctx: { tenantId: TENANT, userId: "user-planner", roles: ["planner"] },
+        nesting: { callChain: [], budget: new BudgetTracker(computeResidualBudget(loadConfig({ PORT: "0", LOG_LEVEL: "silent", ...loopEnv } as NodeJS.ProcessEnv))) },
+        emit: async (event, payload) => {
+          emitted.push({ event, payload });
+        },
+      });
+      const echoStarts = emitted.filter(
+        (e) => e.event === "step.started" && (e.payload as { type?: string })?.type === "echo_tool",
+      );
+      return {
+        result,
+        echoStartCount: echoStarts.length,
+        loopRepeatMetric: t.metrics.agentLoopRepeat.get(),
+      };
+    } finally {
+      await stub.close();
+    }
   }
 
   it("③′ 出货 env（含 cap）+ DSH_HARNESS=1：病态同签名循环被 watchdog 在 cap 处打断（STALL_LOOP），不烧满 8 轮剧本", { timeout: 60_000 }, async () => {

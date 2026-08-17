@@ -6,7 +6,13 @@
  *
  * 驱动级：engine.runRegisteredAgent（真 fork 分叉 + 真 mapper + 真 stats 并入），
  * answer.final 由测试镜像 orchestrator.ts:2187 的「整对象直发 result.answer」发射（两臂同一行）。
- * dsh 臂 spawn packages/dsh-harness 子进程（MOCK_SCENARIO=final_answer 剧本）。
+ * dsh 臂 spawn packages/dsh-harness 子进程。
+ *
+ * 汇流 merge 层 · 裁决 A 改接：post-N1 engine 分叉强制 dcp spec + 生产 cordis.yml 无 mock-llm，
+ * on 臂从 MOCK_SCENARIO=final_answer（mock 剧本）改接 N1 provider-seam A3 既定缝
+ * （dcp:llmp_stub:kimi-k3 + providerDirectory stub + startStubOpenAi 首轮 final_answer 轮带 usage）。
+ * 覆盖语义 delta：少 mock 剧本、多 N1 env 注入路径；mock 剧本覆盖留 runner 级 POC E1/E2。
+ * off 臂与 A5/A6 断言逐字未动。
  */
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -15,6 +21,14 @@ import { createTestApp, TENANT, type TestApp } from "./helpers.js";
 import { toolUse } from "../src/llm/mock.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 import { createSseMapper, type DshSessionEvent } from "../src/dsh-runtime/index.js";
+import {
+  STUB_DCP_SPEC,
+  STUB_FAKE_KEY,
+  startStubOpenAi,
+  stubDirectory,
+  stubProvider,
+  type StubRound,
+} from "./helpers-dsh-stub.js";
 
 // apps/agentcore/test/ → 仓根 = ../../../
 const HARNESS_DIR = fileURLToPath(new URL("../../../packages/dsh-harness", import.meta.url));
@@ -50,7 +64,7 @@ const KNOWN_EVENTS = [
 
 const ctx = { tenantId: TENANT, userId: "user-planner", roles: ["planner"] };
 
-function agentDef(id: string): AgentDefinition {
+function agentDef(id: string, model = "claude-opus-4-8"): AgentDefinition {
   return {
     id,
     tenantId: TENANT,
@@ -58,7 +72,7 @@ function agentDef(id: string): AgentDefinition {
     version: 1,
     name: id,
     description: "N2 dual-run reconcile agent",
-    model: "claude-opus-4-8",
+    model,
     systemPrompt: "你是 N2 双跑对账 agent。",
     tools: [{ kind: "BUILTIN", name: "query_objects" }],
     ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
@@ -69,11 +83,18 @@ function agentDef(id: string): AgentDefinition {
   };
 }
 
-/** 与 packages/dsh-harness/plugins/mock-llm.mjs 的 finalAnswerArgs 同形（首轮 final_answer 收尾）。 */
+/** 与 mock-llm finalAnswerArgs 同形（首轮 final_answer 收尾）；on 臂 stub 剧本回同一形。 */
 const FINAL_ARGS = {
   blocks: [{ type: "text", markdown: "structured answer via dsh final_answer" }],
   provenance: [],
 };
+
+/** 裁决 A · on 臂 stub 剧本：首轮 final_answer 工具调用 + 文本收尾轮；两轮都带 usage（M8/A6 的 stats 键实证源）。 */
+const STUB_USAGE = { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 };
+const DUALRUN_SCRIPT: StubRound[] = [
+  { toolCall: { name: "final_answer", arguments: JSON.stringify(FINAL_ARGS) }, usage: STUB_USAGE },
+  { text: "stub final answer", usage: STUB_USAGE },
+];
 
 interface CapturedEvent {
   event: string;
@@ -81,9 +102,13 @@ interface CapturedEvent {
 }
 
 async function runArm(flag: "off" | "on"): Promise<{ t: TestApp; events: CapturedEvent[] }> {
-  const t = await createTestApp();
+  // 裁决 A：on 臂走 N1 既定缝（stub OpenAI 端点 + dcp 绑定矩阵 stub）；off 臂逐字未动。
+  const stub = flag === "on" ? await startStubOpenAi(DUALRUN_SCRIPT.map((r) => ({ ...r }))) : undefined;
+  const t = await createTestApp(
+    stub ? { providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never } : {},
+  );
   const agentId = `agt_dual_${flag}`;
-  await t.repos.agents.insert(agentDef(agentId));
+  await t.repos.agents.insert(agentDef(agentId, stub ? STUB_DCP_SPEC : "claude-opus-4-8"));
   const events: CapturedEvent[] = [];
   const emit = async (event: string, payload: unknown) => {
     events.push({ event, payload: payload as Record<string, unknown> });
@@ -91,7 +116,6 @@ async function runArm(flag: "off" | "on"): Promise<{ t: TestApp; events: Capture
   if (flag === "on") {
     process.env.DSH_HARNESS = "1";
     process.env.DSH_HARNESS_DIR = HARNESS_DIR;
-    process.env.MOCK_SCENARIO = "final_answer";
   }
   try {
     if (flag === "off") {
@@ -112,7 +136,7 @@ async function runArm(flag: "off" | "on"): Promise<{ t: TestApp; events: Capture
   } finally {
     delete process.env.DSH_HARNESS;
     delete process.env.DSH_HARNESS_DIR;
-    delete process.env.MOCK_SCENARIO;
+    if (stub) await stub.close();
   }
 }
 
