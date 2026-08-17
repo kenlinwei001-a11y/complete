@@ -1,33 +1,33 @@
 {
   "note": "版面门棘轮基线。每页每视口一组实测数，**只许变好**。`--tighten` 逐项取「更好的那个」；`--update` 会连放宽一起写下来，**不是日常操作**（本仓发生过 --update 悄悄抬基线买来一片绿）。阈值与取数方法见 scripts/check-layout-legibility.mjs 文件头。",
-  "generatedBy": "node scripts/check-layout-legibility.mjs --update",
+  "generatedBy": "node scripts/check-layout-legibility.mjs --tighten",
   "pages": {
     "sim-sandbox": {
       "route": "/v/sim-sandbox",
       "rootSelector": "main",
-      "why": "推演沙盘主页 —— 本门的样板页（WO-SANDBOX-LAYOUT-HARNESS 只铺一页）。",
+      "why": "推演沙盘主页 —— 本门的样板页（WO-SANDBOX-LAYOUT-HARNESS 只铺一页）。 ══ WO-SANDBOX-DENSITY（2026-08-17）· firstScreenCtrls 52 → 36 ══ 仓主原话「信息太多，第一层看不到重点」。三步降下来，每一步的机制不同，**不许混为一谈**：(1) 52→39：页根误挂页眉类 `.head`（`display:flex; justify-content:space-between`）把三块排成并排三列，改回竖排；同时把「已收编的原独立页」12 条深链接 `<a>` 从模式条正下方整块搬到页脚（索引不回答『现在怎么样』）。(2) 39→38：顶栏 `<ThemeToggle>` 与外壳顶栏那颗**重复**（同组件/同 localStorage/同 `<html data-theme>`，实拍相距 <260px），去重不是降层。(3) 38→36：左区动作条分两层——`推进 tick` 留第一层，`存档检查点`/`分支`/`采纳` 降进 `sandbox-more-actions`（入口常驻并带真计数）。 ══ 为什么停在 36，不继续压 ══ 逐控件普查（1440×900 · planner · mock，探针与本门共用同一份 `visible()`＋CTRL 选择器）：36 个里 **24 个属『不该压』**，逐条有主：模式条 5（这一屏问哪个问题的一等切换器，= 参照物 9 个分类 chip 的同构物，chip 必须常驻）· 画布档条 5（同上，画布的 chip 条）· 时窗 3＋`?`1（`sandbox-declutter.test.tsx:229` 记着另一张单的产品判断「结论式顶栏…时窗档位…留着」，**不由本单推翻，也不许靠改它的测试来买**）· 诚实位 `?` 4（导出/范围/KPI×2，静默降层=删除，记号必须可见）· 抽屉入口 2（诊断带真计数＋真实性标注，藏起来找不到的抽屉=把内容删了）· 治理横幅 CTA 1（`SandboxView.tsx` 判据③『给一条进抽屉看全的路』）· 图层开关 2（`sandbox-three-zone.seam` §3 白名单里的视图控件）· 导出 1。另 **6 个不在本单写入边界**（`clm-*` 缩放条 4＋图例 `?`1＋图例 summary 1，属 `ChainLineMapView.tsx`）。**剩下真可压的只有 6 个**：本单压了其中 3 个（净 −2，含入口 +1）；未压的 3 类各有主，见下『挂账』。⇒ 36 不是审美取的数，是「24 有主 + 6 越界 + 2 已换成入口 + 4 挂账」的算术结果。 ══ 代价（照实写，不粉饰）══ `采纳此推演结论`/`存档检查点`/`分支` 各多一次点击；缓解是入口写明「更多动作 · 3」且与 `推进 tick` 同排。 ══ 挂账（要压得再低，得先由这几条的所有者改判据，不是本单能定的）══ ① 方案环 2 个（`sandbox-plays-metric`/`-solve-btn`）——WO-V4-PLAYS 在 `SandboxView.tsx` 挂载点原文写「左区一等位置（**不套 `<details>`**）」；② 检视页签 2 个（`sc-tab-steps`/`sc-tab-vars`）——`变量输入` 档不依赖选中节点、是独立入口，无选中时收起会真丢一条路；③ 时窗 4 个——见上；④ `clm-*` 6 个——需 `ChainLineMapView` 的所有者出面。 ══ 参照物的口径：抄方法不抄数 ══ `docs/REF-config-page-ux.html` 的 9 个分类 chip / 一次 5–8 行，靠的是两条机制：**同类多项→chip 一次一组**（本页模式条与画布档条已是此形态）＋**不同类→分屏**（它的 `page_dash`/`page_cfg` 用 hidden 互斥）。它那 5–8 是**它自己的 IA** 的产物（整页无左侧导航、无治理横幅、无诚实位记号），直接设成本页阈值＝拿别人的合身当自己的合身，故本门对 firstScreenCtrls 仍**只做棘轮、不设绝对上限**。 ══ 折叠必须用 `display:none`，**不许用 `<details>`** ══ Chromium 141 实测：闭合 `<details>` 的子节点 `checkVisibility()` 为 false、命中测试打不到，但 `getBoundingClientRect()` **仍返回非零旧矩形** ⇒ 本门 `visible()`（计算样式＋非零矩形）把它们**当第一屏可见控件在数**。取证：52 里有 13 个正是闭合 `sandbox-consolidated-links`（`open===false`）的 12 条 `<a>` ＋ 1 个 summary。用 `<details>` 折叠＝屏上看不见、数上不降，两头落空。 ══ 顺带结清一条挂账：49→52 的 +3 到底是什么 ══ 收编单 `32f0022a` 认账时把 +3 归因给 WO-SANDBOX-NAV-CONSOLIDATE 的三个『归因』档，并留下疑问「三个档只在 attribute 模式渲染，为何默认屏（mode='now'）仍计入 +3」。**实测判定：不是那三个档。** 证据三条：① 本门探针 `renderAndMeasure` 全程**不点击**（只 login＋`history.pushState`），落地即默认模式；② 在 canonical 树上逐控件 dump，`modePane=null`、`attrTabsPresent=false`、`attrTabButtons=[]`、`activeMode=['sandbox-mode-now']` —— 三个档一个都没渲染；③ 真凶是同一个提交 `6d157c7b` 往 `CONSOLIDATED_PAGES` 里**追加的 3 条**（`process-wait`/`process-stuck`/`procurement-legs`，9→12），它们是闭合 `<details>` 里的 `<a>`，被本门按上一段那条机制计成可见。⇒ 该 +3 是**真内容增长 × 折叠计数机制**的合成，不是 `mode === 'attribute'` 条件失效（不存在那条 bug）。这 3 个随深链接索引整块搬到页脚后一并离开第一屏。",
       "viewports": {
         "1440x900": {
           "minFontPx": 12,
           "bodyFontPx": 13,
-          "firstScreenCtrls": 52,
+          "firstScreenCtrls": 36,
           "viewportUsePct": 79.7,
           "misalignedGroups": 0,
           "overflowPx": 0,
           "overflowEls": 0,
-          "textEls": 604,
-          "rowGroups": 14
+          "textEls": 601,
+          "rowGroups": 13
         },
         "1280x800": {
           "minFontPx": 12,
           "bodyFontPx": 13,
-          "firstScreenCtrls": 52,
+          "firstScreenCtrls": 36,
           "viewportUsePct": 77.1,
           "misalignedGroups": 0,
           "overflowPx": 0,
           "overflowEls": 0,
-          "textEls": 604,
-          "rowGroups": 14
+          "textEls": 601,
+          "rowGroups": 13
         }
       }
     }
