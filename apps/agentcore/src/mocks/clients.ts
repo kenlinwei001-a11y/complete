@@ -1056,7 +1056,8 @@ class MockCatalogClient implements CatalogClient {
     const items = (kind === "slices" ? slices : solvers).filter(
       (it) => !query || it.key.includes(query) || it.name.includes(query) || it.description.includes(query),
     );
-    return { items: items.slice(0, 20) };
+    // 同 A 侧 catalog.ts：带 query = agent 上下文预算截断 ≤20；无 query = 全量列表（管理台口径）。
+    return { items: query ? items.slice(0, 20) : items };
   }
   /**
    * A1 求解器全集注册表。
