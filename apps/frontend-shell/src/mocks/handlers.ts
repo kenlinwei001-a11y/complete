@@ -26,7 +26,7 @@ import {
 // DF.13 外协红线单一来源（C08）：触红线判定读契约，禁内联裸阈值。
 import { OUTSOURCE_REDLINE } from "@platform/contracts";
 // WO-ACTIVE-EDGE-UX：差值算法与"未知 key 不静默忽略"的判据一律走契约唯一实现，mock 不另写一份。
-import { diffTickStates, unknownPropagationRuleKeys, type PropagationRule } from "@platform/contracts";
+import { diffTickStates, unknownPropagationRuleKeys, type OntologyInvariantReport, type PropagationRule } from "@platform/contracts";
 // WO-PROCESS-INSTANCE：等待态词表单源（mock 也不许手抄一份五值数组）。
 import { PROCESS_TASK_WAIT_STATES } from "@platform/contracts";
 import type { RiskTimelineOutput } from "@platform/contracts";
@@ -2051,6 +2051,227 @@ export function resetMockOntologyRelations(): void {
   mockPublishRequests.clear();
   mockOntologyVersionSeq = 1;
   mockRelSeq = 0;
+}
+
+/**
+ * WO-ONTOLOGY-EDGE-TRICLASS · 本体**第三类边：不变式守卫**的 mock 侧求值。
+ *
+ * ⚠ **这是替身，不是第二套真相源** —— 真求值核在 `apps/datacore/src/ontology/invariants.ts`
+ *   （它用 A5 那套规则 DSL 真解析表达式；mock 侧不引 DSL，只镜像同一个比较形状
+ *   `实测量 > 容差 ⇒ 不成立`，因为目录里 8 条守卫的表达式全是这一形）。
+ *   两边**必须同名同条数**，这件事不靠人记：`test/ontology-invariants.seam.test.tsx` §事实锁
+ *   在运行时把本表的 key 集合与 datacore 那份目录源码里的 key 集合逐条对账 ——
+ *   后端加了一条而这里忘了加，机器当场报红。
+ *
+ * ⚠ 三条 mock 因果边里**本来就有真问题**（不是为测试摆拍的）：
+ *   `linkAB` 这条关系压根不在册（2 条边失联）、`seed_line_to_base` 与所经关系反向。
+ *   mock 世界里把这两态造出来，屏上「不成立」那一支才有测试真的走过。
+ */
+type MockInvariantCandidate = { kind: "STRUCTURAL_EDGE" | "CAUSAL_EDGE" | "OBJECT_TYPE"; key: string; amount: number; reason: string };
+interface MockInvariantSpec {
+  key: string;
+  name: string;
+  subject: MockInvariantCandidate["kind"];
+  factLabel: string;
+  factUnit: string | null;
+  aggregate: "COUNT" | "MAX";
+  tolerance: { param: string; label: string; defaultValue: number; unit: string | null };
+  candidates: () => MockInvariantCandidate[];
+}
+
+const MOCK_INVARIANT_SPECS: MockInvariantSpec[] = [
+  {
+    key: "causal_via_structural_edge_exists",
+    name: "因果边必须走一条在册的关系",
+    subject: "CAUSAL_EDGE",
+    factLabel: "所经关系已不在册的因果边条数",
+    factUnit: "条",
+    aggregate: "COUNT",
+    tolerance: { param: "allowedDanglingVia", label: "允许的失联条数", defaultValue: 0, unit: "条" },
+    candidates: () => {
+      const known = new Set(mockLinkTypes.map((l) => l.key));
+      return derivePublishedRules()
+        .filter((r) => !known.has(r.viaLinkKey))
+        .map((r) => ({ kind: "CAUSAL_EDGE" as const, key: r.key, amount: 1, reason: `所经关系「${r.viaLinkKey}」不在册` }));
+    },
+  },
+  {
+    key: "causal_direction_matches_structural_edge",
+    name: "因果边两端必须与所经关系同向",
+    subject: "CAUSAL_EDGE",
+    factLabel: "与所经关系方向不一致的因果边条数",
+    factUnit: "条",
+    aggregate: "COUNT",
+    tolerance: { param: "allowedDirectionMismatch", label: "允许的不一致条数", defaultValue: 0, unit: "条" },
+    candidates: () => {
+      const links = new Map(mockLinkTypes.map((l) => [l.key, l] as const));
+      const out: MockInvariantCandidate[] = [];
+      for (const r of derivePublishedRules()) {
+        const l = links.get(r.viaLinkKey);
+        if (!l) continue;
+        if (l.fromType === r.sourceTypeKey && l.toType === r.targetTypeKey) continue;
+        out.push({
+          kind: "CAUSAL_EDGE",
+          key: r.key,
+          amount: 1,
+          reason: `两端为 ${r.sourceTypeKey}→${r.targetTypeKey}，而所经关系「${r.viaLinkKey}」是 ${l.fromType}→${l.toType}`,
+        });
+      }
+      return out;
+    },
+  },
+  {
+    key: "structural_edge_endpoints_registered",
+    name: "关系两端的对象类型必须在册",
+    subject: "STRUCTURAL_EDGE",
+    factLabel: "端点类型查无此物的关系条数",
+    factUnit: "条",
+    aggregate: "COUNT",
+    tolerance: { param: "allowedMissingEndpoints", label: "允许的缺失条数", defaultValue: 0, unit: "条" },
+    candidates: () => {
+      const known = new Set(MOCK_OBJECT_TYPES.map((t) => t.key));
+      const out: MockInvariantCandidate[] = [];
+      for (const l of mockLinkTypes) {
+        const missing = [l.fromType, l.toType].filter((k) => !known.has(k));
+        if (missing.length > 0) out.push({ kind: "STRUCTURAL_EDGE", key: l.key, amount: 1, reason: `端点类型 ${missing.join("、")} 不在册` });
+      }
+      return out;
+    },
+  },
+  {
+    key: "causal_coefficient_within_ceiling",
+    name: "传导系数不得超过上限",
+    subject: "CAUSAL_EDGE",
+    factLabel: "传导系数绝对值的最大值",
+    factUnit: null,
+    aggregate: "MAX",
+    tolerance: { param: "coefficientCeiling", label: "系数上限", defaultValue: 1, unit: null },
+    candidates: () =>
+      derivePublishedRules().map((r) => ({ kind: "CAUSAL_EDGE" as const, key: r.key, amount: Math.abs(r.coefficient), reason: `传导系数 ${r.coefficient}` })),
+  },
+  {
+    key: "causal_delay_within_ceiling",
+    name: "传导延迟不得超过上限",
+    subject: "CAUSAL_EDGE",
+    factLabel: "传导延迟的最大节拍数",
+    factUnit: "拍",
+    aggregate: "MAX",
+    tolerance: { param: "delayCeiling", label: "延迟上限", defaultValue: 3, unit: "拍" },
+    candidates: () =>
+      derivePublishedRules().map((r) => ({ kind: "CAUSAL_EDGE" as const, key: r.key, amount: r.delayTicks, reason: `传导延迟 ${r.delayTicks} 拍` })),
+  },
+  {
+    key: "causal_edge_not_duplicated",
+    name: "同一对量之间不得有重复的因果边",
+    subject: "CAUSAL_EDGE",
+    factLabel: "与已有因果边完全重复的条数",
+    factUnit: "条",
+    aggregate: "COUNT",
+    tolerance: { param: "allowedDuplicates", label: "允许的重复条数", defaultValue: 0, unit: "条" },
+    candidates: () => {
+      const sorted = [...derivePublishedRules()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+      const seen = new Set<string>();
+      const out: MockInvariantCandidate[] = [];
+      for (const r of sorted) {
+        const sig = `${r.sourceTypeKey}.${r.sourceStateVar}|${r.viaLinkKey}|${r.targetTypeKey}.${r.targetStateVar}`;
+        if (seen.has(sig)) out.push({ kind: "CAUSAL_EDGE", key: r.key, amount: 1, reason: `与已有因果边重复：${sig}` });
+        seen.add(sig);
+      }
+      return out;
+    },
+  },
+  {
+    key: "object_type_assigned_to_domain",
+    name: "对象类型必须归入一个域",
+    subject: "OBJECT_TYPE",
+    factLabel: "尚未归域的对象类型个数",
+    factUnit: "个",
+    aggregate: "COUNT",
+    tolerance: { param: "allowedUnassignedTypes", label: "允许未归域的个数", defaultValue: 0, unit: "个" },
+    candidates: () =>
+      MOCK_OBJECT_TYPES.filter((t) => !t.domain || t.domain === "unassigned").map((t) => ({
+        kind: "OBJECT_TYPE" as const,
+        key: t.key,
+        amount: 1,
+        reason: "尚未归入任何域",
+      })),
+  },
+  {
+    key: "object_type_connected_by_structural_edge",
+    name: "对象类型必须至少连着一条关系",
+    subject: "OBJECT_TYPE",
+    factLabel: "没有任何关系相连的对象类型个数",
+    factUnit: "个",
+    aggregate: "COUNT",
+    tolerance: { param: "allowedIsolatedTypes", label: "允许孤立的个数", defaultValue: 0, unit: "个" },
+    candidates: () => {
+      const touched = new Set<string>();
+      for (const l of mockLinkTypes) {
+        touched.add(l.fromType);
+        touched.add(l.toType);
+      }
+      return MOCK_OBJECT_TYPES.filter((t) => !touched.has(t.key)).map((t) => ({
+        kind: "OBJECT_TYPE" as const,
+        key: t.key,
+        amount: 1,
+        reason: "没有任何关系与它相连",
+      }));
+    },
+  },
+];
+
+/** 违反者名单上限 —— 与后端同值；条数本身由实测量如实下发，此处只截名单。 */
+const MOCK_INVARIANT_PARTICIPANT_LIMIT = 20;
+
+// 返回类型钉在**契约**上（不是 `unknown`）：mock 少一个字段、多一个字段、枚举写错值，
+// 都在编译期红 —— 「替身与真身形状一致」这件事交给类型系统，不靠人对着看。
+function mockInvariantReport(overrides: Record<string, { tolerance?: number; enabled?: boolean }>): OntologyInvariantReport {
+  const items = MOCK_INVARIANT_SPECS.map((spec) => {
+    const cands = [...spec.candidates()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    const measured = spec.aggregate === "COUNT" ? cands.length : cands.length === 0 ? 0 : Math.max(...cands.map((c) => c.amount));
+    const ov = overrides[spec.key];
+    const toleranceValue = ov?.tolerance ?? spec.tolerance.defaultValue;
+    const enabled = ov?.enabled ?? true;
+    const violated = measured > toleranceValue;
+    const violatedAtDefault = measured > spec.tolerance.defaultValue;
+    const offenders = !violated
+      ? []
+      : (spec.aggregate === "COUNT" ? cands : cands.filter((c) => c.amount > toleranceValue))
+          .slice(0, MOCK_INVARIANT_PARTICIPANT_LIMIT)
+          .map((c) => ({ kind: c.kind, key: c.key, reason: c.reason }));
+    return {
+      key: spec.key,
+      name: spec.name,
+      subject: spec.subject,
+      // 后端由语法树渲染；目录 8 条守卫的表达式全是 `实测量 > 容差`，其成立方向即「不超过」。
+      guardText: `${spec.factLabel} 不超过 ${spec.tolerance.label}`,
+      measure: { label: spec.factLabel, value: measured, unit: spec.factUnit },
+      tolerance: {
+        param: spec.tolerance.param,
+        label: spec.tolerance.label,
+        value: toleranceValue,
+        defaultValue: spec.tolerance.defaultValue,
+        unit: spec.tolerance.unit,
+      },
+      enabled,
+      holds: !violated,
+      participants: offenders,
+      overridden: toleranceValue !== spec.tolerance.defaultValue || enabled !== true,
+      holdsAtDefault: !violatedAtDefault,
+      error: null,
+    };
+  });
+  const active = items.filter((i) => i.enabled);
+  return {
+    items,
+    passed: active.filter((i) => i.holds).length,
+    violated: active.filter((i) => !i.holds).length,
+    skipped: items.length - active.length,
+    flippedToViolate: active.filter((i) => i.holdsAtDefault && !i.holds).map((i) => i.key),
+    flippedToHold: active.filter((i) => !i.holdsAtDefault && i.holds).map((i) => i.key),
+    // 阻断与否由后端那**一个**模式常量决定，今天恒为「只标注不阻断」。
+    enforcement: { mode: "ANNOTATE_ONLY", blocking: false, wouldBlock: active.filter((i) => !i.holds).map((i) => i.key) },
+  };
 }
 let mockCpSeq = 0;
 export function resetMockSim(): void {
@@ -6880,6 +7101,14 @@ export const handlers = [
       },
     ]),
   ),
+  // WO-ONTOLOGY-EDGE-TRICLASS · 第三类边（不变式守卫）的体检：
+  //   GET  = 按目录原值体检；POST = 带**试算覆盖**体检（改容差 / 停用某条），一个字节都不落库。
+  // 真求值核在 datacore，本处只是同形状替身（见 `mockInvariantReport` 上方说明与事实锁）。
+  http.get("*/a/v1/ontology/invariants", () => HttpResponse.json(mockInvariantReport({}))),
+  http.post("*/a/v1/ontology/invariants/evaluate", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { overrides?: Record<string, { tolerance?: number; enabled?: boolean }> };
+    return HttpResponse.json(mockInvariantReport(body?.overrides ?? {}));
+  }),
   // `GET/POST /a/v1/ontology/publish-requests` + signoff（后端 app.ts:2860/2875/2879）。
   // 全域 APPROVE → 后端自动 `publishVersion`（app.ts:2891）；mock 同样在 APPROVED 时推进版本号，
   // 否则「会签通过了、快照没动」在屏上看不出区别。
