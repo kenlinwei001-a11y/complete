@@ -162,10 +162,15 @@ describe("WO-NAV-GATE · 业务视图归组守卫（不得落「其它」兜底�
    * 这条防的是一种很容易做出来的回归：IA 整理时把条目一删了事 ——
    * 沙盘开的租户看起来一切正常（东西在沙盘里），沙盘**关**的租户则是
    * 「沙盘没有 + 导航也没有」= 四个页从 IA 里蒸发，只剩手敲 URL 可达。
-   * 五个 `via:"workspace.views"` 的子视图不在本条射程：它们的 entitlement 本就 `requires: ["sim.sandbox"]`，
-   * 沙盘关 ⇒ 它们连下发都没有、`/v/<key>` 本来就 404 —— 没有可回退的东西（这是事实，不是豁免）。
+   * ⚠ **WO-SANDBOX-NAV-CONSOLIDATE 订正原文**：这里原本写「五个 `via:"workspace.views"` 的子视图
+   *   不在本条射程：它们的 entitlement 本就 `requires:["sim.sandbox"]`，沙盘关 ⇒ 连下发都没有」。
+   *   那句话对**那五个**仍然成立，但它把「via 的取值」当成了「有没有回退」的判据 —— 两者不是一回事。
+   *   本轮收编的三页（process-wait / procurement-legs / process-stuck）同样经后端下发，
+   *   却**不受** `sim.sandbox` 门控（沙盘关着照样能打开），所以它们**必须**回退。
+   *   ⇒ 判据改成落在**「导航条目带不带 `consolidatedWhen`」**上（那正是"条件收编"的显式声明），
+   *     而不是落在 `via` 上。形态：「我用 via 当作『有没有回退语义』的证据，而前者并不度量后者。」
    */
-  it("沙盘关：四个 static-route 收编页**回到**导航里（收编 ≠ 删除）", async () => {
+  it("沙盘关：所有**带回退声明**的收编页都回到导航里（收编 ≠ 删除）", async () => {
     db.tenantOverrides["sim.sandbox"] = false;
     try {
       loginAs("planner");
@@ -174,12 +179,31 @@ describe("WO-NAV-GATE · 业务视图归组守卫（不得落「其它」兜底�
       const hrefs = Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href") ?? "");
       // R3 暗发：沙盘自己必须消失（这同时也是本条的金丝雀 —— 它若还在，说明 override 没生效，下面全是空转）
       expect(hrefs, "sim.sandbox 关着，沙盘入口仍在 —— override 没生效，本条断言全是空转").not.toContain("/v/sim-sandbox");
-      const fallbackKeys = Object.entries(CONSOLIDATED_INTO_SANDBOX)
-        .filter(([, v]) => v.via === "static-route")
-        .map(([k]) => k);
-      expect(fallbackKeys.length, "static-route 收编项为空 ⇒ 本条恒真").toBeGreaterThan(0);
-      for (const key of fallbackKeys) {
+      // ① 专用 route 那一支：条目是 kind:"route" + consolidatedWhen
+      const routeFallback = NAV_GROUPS.flatMap((g) => g.items)
+        .filter((it) => it.kind === "route" && it.consolidatedWhen === "sim.sandbox")
+        .map((it) => it.key);
+      // ② 后端下发那一支：条目是 kind:"view" + consolidatedWhen。
+      //    暗发页（如 process-stuck，挂 process.runtime defaultOn:false）此刻本就不下发 ⇒
+      //    它不在导航里是 R3 正确行为，不是"蒸发"。故按 features 现算过滤，不写死名单。
+      const ws = workspaceForAccount(
+        ACCOUNTS.find((a) => a.username === "planner")!,
+        db.tenantOverrides,
+        db.configVersion,
+      );
+      const features = new Set(ws.features ?? []);
+      const viewFallback = NAV_GROUPS.flatMap((g) => g.items)
+        .filter((it) => it.kind === "view" && it.consolidatedWhen === "sim.sandbox")
+        .map((it) => it.key)
+        .filter((k) => features.has(`view.${k}`));
+      expect(routeFallback.length, "带 consolidatedWhen 的 route 条目为空 ⇒ 那一支恒真").toBeGreaterThan(0);
+      expect(viewFallback.length, "带 consolidatedWhen 的 view 条目为空 ⇒ 那一支恒真").toBeGreaterThan(0);
+      for (const key of [...routeFallback, ...viewFallback]) {
         expect(hrefs, `沙盘关着，/v/${key} 却也不在导航里 —— 这一页从 IA 里蒸发了（收编做成了删除）`).toContain(`/v/${key}`);
+      }
+      // 每一条回退键都必须同时在收编表里（两张表各写一半 = 门判据⑧f 治的病，这里在运行期再咬一次）
+      for (const key of [...routeFallback, ...viewFallback]) {
+        expect(CONSOLIDATED_INTO_SANDBOX[key], `${key} 带了 consolidatedWhen 却不在收编表里`).toBeTruthy();
       }
     } finally {
       delete db.tenantOverrides["sim.sandbox"];
