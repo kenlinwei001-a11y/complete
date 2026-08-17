@@ -7,6 +7,8 @@ import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { newId } from "../ids.js";
 // WO-CAPMAP-LIVE · 求解器全集替身（取自真实 /a/v1/solvers/registry 返回·替掉原来 3 条手写条目）。
 import { MOCK_SOLVER_REGISTRY } from "./solver-registry.js";
+// WO-MOCKDC-PARAMS：mock 的取消语义与 HTTP 实现同一个错误类型（499 SOLVER_CANCELLED），不自造第二套。
+import { DataCoreRequestCancelledError } from "../tools/clients.js";
 import type {
   ActionClient,
   CatalogClient,
@@ -142,7 +144,108 @@ function matchFilter(obj: Record<string, unknown>, filter: Record<string, unknow
   return true;
 }
 
+/**
+ * WO-MOCKDC-PARAMS · 一行对象的**多版本**存储（版本带写入时点 `epoch`）——
+ * 镜像真 DataCore `datacore/src/ontology.ts objectAsOf`（按 `epoch <= asOfEpoch` 回溯取值）。
+ * mock 没有 temporal/非 temporal 之分，故整行版本化（比真后端粗，但**时点维度真实存在**）。
+ */
+interface MockObjectVersion {
+  epoch: number;
+  props: Record<string, unknown>;
+}
+interface MockObjectRow {
+  id: string;
+  versions: MockObjectVersion[];
+}
+
+/**
+ * WO-MOCKDC-PARAMS · 出厂种子行（SEED_BASES/SEED_MODELS/SEED_ORDERS）的**诚实标记**：
+ * 它们是租户无关的夹具，任何 tenantId 都读得到 —— 真 DataCore 无此豁免（那边 `listByType` 全带 tenantId）。
+ * 保留豁免的理由：60+ 个测试文件用 15 个不同 tenantId 读这批种子，把种子绑到单一租户属另一张单的改动面。
+ * 只有经 `MockOntologyClient.putObjects(ctx, …)` 写进来的行才**归某个租户私有**，跨租户读不到。
+ * 该残余分叉已在 `docs/SYSTEM-ONTOLOGY.md` §8 `G-MOCK-OVERCLAIM` 下挂账，勿静默扩大。
+ */
+export const MOCK_FIXTURE_TENANT = "*";
+
 export class MockOntologyClient implements OntologyClient {
+  /**
+   * WO-MOCKDC-PARAMS · 租户私有对象存储：`tenantId → typeKey → id → 多版本行`。
+   *
+   * **病灶（本单要闭的）**：本类此前 `queryObjects` 漏第 5 形参 `asOfEpoch`、
+   * `listObjectTypeKeys`/`listObjectTypeDefs`/`queryMetaOntology` 漏 `ctx` ——
+   * TS 允许「少写形参」实现接口，于是 mock 的**具体类型比契约窄**，实质是**收了参数不认**：
+   *  · 漏 `asOfEpoch` ⇒ 执行器 `tools/executor.ts` 明明按 §13.1 注入了 taskEpoch
+   *    （`await this.taskSnapshotEpoch(ctx)` 作第 5 实参），到 mock 这里被丢弃 ⇒
+   *    「按时点读」在 mock 上恒等于「读当前」⇒ 任何 as-of 断言恒绿而真后端未必；
+   *  · 漏 `ctx` ⇒ mock 里根本不存在租户这一维度 ⇒ 跑在 mock 上的 R2（tenant_id everywhere）
+   *    断言测的是一个不认租户的世界。
+   *
+   * 落地语义（刻意贴近真 DataCore）：
+   *  · `asOfEpoch === undefined` → 读最新版本（活数据）；
+   *  · 给了 `asOfEpoch` → 取 `epoch <= asOfEpoch` 的**最新**版本；一个版本都没有 ⇒ 该行在那个时点尚不存在 ⇒ 不返回；
+   *  · `snapshotVersion` 追加 `@<asOfEpoch>` 后缀（与 `datacore/src/ontology.ts` 同形）——
+   *    使「时点读到底生效了没有」在 mock 上有**外部可见**证据，不是只能数行数。
+   */
+  private readonly tenantObjects = new Map<string, Map<string, Map<string, MockObjectRow>>>();
+
+  /**
+   * WO-MOCKDC-PARAMS · 以 `ctx` 的租户身份写入若干行（镜像 A 侧 `POST /a/v1/objects` 的租户归属）。
+   * `epoch` = 写入时点（缺省 0 = 与出厂种子同期）；同 id 重复写 = 追加一个新版本，供 as-of 回溯。
+   * 行 id 取 `objectId` → `id` → 类型主键属性 → `<type>_<序号>`（确定性，R6）。
+   */
+  putObjects(ctx: ToolAuthCtx, objectType: string, rows: Record<string, unknown>[], epoch = 0): void {
+    let byType = this.tenantObjects.get(ctx.tenantId);
+    if (!byType) {
+      byType = new Map();
+      this.tenantObjects.set(ctx.tenantId, byType);
+    }
+    let byId = byType.get(objectType);
+    if (!byId) {
+      byId = new Map();
+      byType.set(objectType, byId);
+    }
+    const pk = this.objectTypeDefs.find((t) => t.key === objectType)?.properties?.find((p) => p.isPrimaryKey)?.propKey;
+    for (const row of rows) {
+      const id = String(row.objectId ?? row.id ?? (pk ? row[pk] : undefined) ?? `${objectType}_${byId.size + 1}`);
+      const existing = byId.get(id);
+      if (existing) existing.versions.push({ epoch, props: { ...row } });
+      else byId.set(id, { id, versions: [{ epoch, props: { ...row } }] });
+    }
+  }
+
+  /** 该租户在 `asOfEpoch` 时点可见的行（`undefined` = 活数据读最新版本）。 */
+  private tenantRowsAsOf(ctx: ToolAuthCtx, objectType: string, asOfEpoch?: number): Record<string, unknown>[] {
+    const byId = this.tenantObjects.get(ctx.tenantId)?.get(objectType);
+    if (!byId) return [];
+    const out: Record<string, unknown>[] = [];
+    for (const row of byId.values()) {
+      const visible = row.versions.filter((v) => asOfEpoch === undefined || v.epoch <= asOfEpoch);
+      if (visible.length === 0) continue; // 该时点这行还不存在（≠ 被过滤掉）
+      const latest = visible.reduce((a, b) => (b.epoch >= a.epoch ? b : a));
+      out.push({ ...latest.props });
+    }
+    return out.sort((a, b) => (String(a.objectId ?? a.id ?? "") < String(b.objectId ?? b.id ?? "") ? -1 : 1));
+  }
+
+  /** 该租户私有存储里出现过的类型 key（R2：A 建的类型，B 连"有没有这个类型"都看不到）。 */
+  private tenantTypeKeys(ctx: ToolAuthCtx): string[] {
+    return [...(this.tenantObjects.get(ctx.tenantId)?.keys() ?? [])].sort();
+  }
+
+  /** 该租户私有类型的最简 def（属性由已写入行的键推出）——供 listObjectTypeDefs/listObjectTypes 同源使用。 */
+  private tenantTypeDefs(ctx: ToolAuthCtx): ObjectTypeDefSummary[] {
+    const known = new Set(this.objectTypeDefs.map((t) => t.key));
+    return this.tenantTypeKeys(ctx)
+      .filter((k) => !known.has(k))
+      .map((key) => {
+        const props = new Set<string>();
+        for (const row of this.tenantObjects.get(ctx.tenantId)?.get(key)?.values() ?? []) {
+          for (const v of row.versions) for (const p of Object.keys(v.props)) props.add(p);
+        }
+        return { key, displayName: key, domain: "tenant", status: "ACTIVE", properties: [...props].sort().map((propKey) => ({ propKey })) };
+      });
+  }
+
   /**
    * WO-RESOURCE-CATALOG-ONTOLOGY · 实例级可变本体定义（SEAM② 活投影探针：测试 push 新类型后
    * 下次 list/project 即可见——镜像 A 侧"建类型→已发布"语义）。每实例深拷贝，跨测试不串。
@@ -237,11 +340,18 @@ export class MockOntologyClient implements OntologyClient {
     return { sliceKey, version: 1 };
   }
 
+  /**
+   * WO-MOCKDC-PARAMS · 补齐第 5 形参 `asOfEpoch`（此前只实现到第 4 个 = 收了不认）。
+   * `ctx` 决定看得见哪些行（角色行级过滤 + **租户私有行只有本租户可见**）；
+   * `asOfEpoch` 决定看得见哪个**版本**（并把 `@<epoch>` 写进 snapshotVersion，与真 DataCore 同形）。
+   */
   async queryObjects(
     ctx: ToolAuthCtx,
     objectType: string,
     filter: Record<string, unknown>,
     limit?: number,
+    /** 并发一致性 §13.1：任务级快照读（执行器 `taskSnapshotEpoch(ctx)` 注入）。 */
+    asOfEpoch?: number,
   ): Promise<ToolPayload> {
     let rows: Record<string, unknown>[];
     if (objectType === "Base") {
@@ -256,9 +366,14 @@ export class MockOntologyClient implements OntologyClient {
     } else {
       rows = [];
     }
+    // R2：租户私有行只对写入它的租户可见（出厂种子行属 MOCK_FIXTURE_TENANT 夹具，见其注释里的诚实边界）。
+    rows = rows.concat(this.tenantRowsAsOf(ctx, objectType, asOfEpoch));
     rows = rows.filter((r) => matchFilter(r, filter));
     if (limit !== undefined) rows = rows.slice(0, Math.min(limit, 200));
-    return { data: { items: rows, total: rows.length }, snapshotVersion: SNAPSHOT };
+    return {
+      data: { items: rows, total: rows.length },
+      snapshotVersion: asOfEpoch === undefined ? SNAPSHOT : `${SNAPSHOT}@${asOfEpoch}`,
+    };
   }
 
   /**
@@ -298,7 +413,7 @@ export class MockOntologyClient implements OntologyClient {
     // 把 partial 挡在门外 —— 与 datacore/src/ontology.ts 那处同病）。undefined = 用解析器自己的默认。
     const accept = req.accept;
     const declared = objectRefDeclaredType(req.ref);
-    const typeKeys = req.types?.length ? [...new Set(req.types)] : declared ? [declared] : await this.listObjectTypeKeys();
+    const typeKeys = req.types?.length ? [...new Set(req.types)] : declared ? [declared] : await this.listObjectTypeKeys(ctx);
     const hits: ObjectRefHit[] = [];
     const attempts: ObjectRefAttempt[] = [];
     for (const objectType of [...typeKeys].sort()) {
@@ -359,8 +474,14 @@ export class MockOntologyClient implements OntologyClient {
     return { ok: violations.length === 0, violations };
   }
 
-  // Dogfooding P3：meta 问系统自己（mock）。
-  async queryMetaOntology(): Promise<{ total: number; byKind: Record<string, number> }> {
+  /**
+   * Dogfooding P3：meta 问系统自己（mock）。
+   * WO-MOCKDC-PARAMS · 补齐 `ctx`（此前 0 形参）。**诚实说明**：平台自我元模型是**全局**的，
+   * 返回值本就与租户无关（真 A 侧 `/a/v1/meta/*` 的租户维度体现在 `admin.meta-ontology`
+   * feature 门 + MetaAccessPolicy 角色白名单上，而不在计数上）——所以这里的 `_ctx` 不是"收了不认"，
+   * 是"这个方法确实没有按租户变化的东西"。mock 未复刻 feature 门/白名单，已挂账 G-MOCK-OVERCLAIM。
+   */
+  async queryMetaOntology(_ctx: ToolAuthCtx): Promise<{ total: number; byKind: Record<string, number> }> {
     return { total: 64, byKind: { SystemInvariant: 14, SystemBreakpoint: 8, SystemEvent: 27 } };
   }
   async getMetaBreakpoint(_ctx: ToolAuthCtx, id: string): Promise<unknown> {
@@ -373,22 +494,27 @@ export class MockOntologyClient implements OntologyClient {
   // B→A 探针：守卫已知类型全集 = 出厂基线（seed 引用面）∪ 目录投影同源 ACTIVE 集。
   // WO-RESOURCE-CATALOG-ONTOLOGY F1：discover 可见的类型（WorkOrder/MaterialBalance/OrderLine/WIPLot）
   // 必须过 query_objects UNKNOWN_TYPE 守卫，否则「看到 → 照名查被拒」断在接缝。排序保 R6 稳定输出。
-  async listObjectTypeKeys(): Promise<string[]> {
-    return [...new Set([...MOCK_GUARD_LEGACY_TYPE_KEYS, ...this.activeTypeDefs().map((t) => t.key)])].sort();
+  // WO-MOCKDC-PARAMS · 补齐 `ctx`（此前 0 形参 = 收了不认）：类型清单 = 出厂基线 ∪ 目录投影 ACTIVE 集
+  // ∪ **该租户私有写入过的类型** —— 于是 A 建的类型 B 连"有没有这个类型"都看不到（R2 在 mock 上真的成立）。
+  async listObjectTypeKeys(ctx: ToolAuthCtx): Promise<string[]> {
+    return [...new Set([...MOCK_GUARD_LEGACY_TYPE_KEYS, ...this.activeTypeDefs().map((t) => t.key), ...this.tenantTypeKeys(ctx)])].sort();
   }
   async listObjectTypes(ctx: ToolAuthCtx): Promise<{ key: string; label: string; domain: string; instanceCount: number }[]> {
-    // 与 listObjectTypeDefs 同源（MOCK_OBJECT_TYPE_DEFS·ACTIVE 子集）；count 取 mock 可见集，体现"空 vs 不存在"区分。
+    // 与 listObjectTypeDefs 同源（MOCK_OBJECT_TYPE_DEFS·ACTIVE 子集 + 租户私有类型）；count 取 mock 可见集，体现"空 vs 不存在"区分。
     const count = async (k: string) => ((await this.queryObjects(ctx, k, {})).data as { total: number }).total;
     const out: { key: string; label: string; domain: string; instanceCount: number }[] = [];
-    for (const t of this.activeTypeDefs()) {
+    for (const t of [...this.activeTypeDefs(), ...this.tenantTypeDefs(ctx)]) {
       out.push({ key: t.key, label: t.displayName ?? t.key, domain: t.domain ?? "unassigned", instanceCount: await count(t.key) });
     }
     return out;
   }
 
-  /** WO-RESOURCE-CATALOG-ONTOLOGY · 对象类型全量定义 mock（object_type/field 投影供给侧·ACTIVE 过滤镜像 A 侧）。 */
-  async listObjectTypeDefs(): Promise<ObjectTypeDefSummary[]> {
-    return this.activeTypeDefs();
+  /**
+   * WO-RESOURCE-CATALOG-ONTOLOGY · 对象类型全量定义 mock（object_type/field 投影供给侧·ACTIVE 过滤镜像 A 侧）。
+   * WO-MOCKDC-PARAMS · 补齐 `ctx`：租户私有类型的 def 一并投影（与 listObjectTypeKeys/listObjectTypes 同源）。
+   */
+  async listObjectTypeDefs(ctx: ToolAuthCtx): Promise<ObjectTypeDefSummary[]> {
+    return [...this.activeTypeDefs(), ...this.tenantTypeDefs(ctx)];
   }
 
   /** WO-RESOURCE-CATALOG-ONTOLOGY · type-semantics mock（field 投影的属性口径源·description/unit/dataType）。 */
@@ -449,7 +575,15 @@ export class MockOntologyClient implements OntologyClient {
 }
 
 export class MockSolverClient implements SolverClient {
-  async invoke(ctx: ToolAuthCtx, solverKey: string, args: Record<string, unknown>): Promise<ToolPayload> {
+  /**
+   * WO-MOCKDC-PARAMS · 补齐第 4 形参 `signal`（此前只实现到第 3 个 = 收了不认）。
+   * 不补的后果与 `asOfEpoch` 同族：**「取消」这个维度在 mock 上根本不存在** ⇒
+   * 任何「上游超时/客户端断开 → 求解调用被取消」的断言在 mock 上恒绿。
+   * 语义与 HTTP 实现同源：已 abort 的 signal ⇒ `DataCoreRequestCancelledError`（499 SOLVER_CANCELLED），
+   * 不塌缩成 DATACORE_UNAVAILABLE（见 `tools/datacore-http.ts` 的 `call`）。
+   */
+  async invoke(ctx: ToolAuthCtx, solverKey: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolPayload> {
+    if (signal?.aborted) throw new DataCoreRequestCancelledError(`DataCore solver ${solverKey} 已取消（上游超时或客户端断开）`);
     // WO-Phase3-B §3.2：本体查询引擎（mock 镜像真 datacore 输出形状·带逐行 provenance{typeKey,objId,linkPath}）。
     if (solverKey === "ontology_query") {
       const rootType = String(args.rootType ?? "Base");
@@ -702,18 +836,38 @@ export class MockRuleEngineClient implements RuleEngineClient {
    */
   readonly draftRuleKeys = new Set<string>();
   private readonly allRuleKeys = ["C01", "C02", "C03", "C04", "C05", "C06", "C08", "C09", "C10", "C11", "C13", "C15", "C16", "C18", "C21", "C22", "C23", "C24", "C26", "C27", "C28", "C29", "C30", "C31", "C32", "C33"];
-  // B→A 探针：出厂规则库已发布 key 全集（覆盖 seed workflow evaluate_rules 的 C03/C13 等）。
-  async listPublishedRuleKeys(): Promise<string[]> {
-    return this.allRuleKeys.filter((k) => !this.draftRuleKeys.has(k));
+  /**
+   * WO-MOCKDC-PARAMS · 租户私有已发布规则（`tenantId → key 集`）。
+   * 出厂 `allRuleKeys` 与 `MOCK_FIXTURE_TENANT` 同性质：租户无关的夹具（60+ 测试文件依赖）。
+   * 经 `publishRule(ctx, key)` 发布的规则则**归该租户私有** —— A 发布的 key，B 的
+   * `listPublishedRuleKeys` 里查不到（R2 在规则可引用性这条路上也真的成立）。
+   */
+  private readonly tenantPublishedRuleKeys = new Map<string, Set<string>>();
+  /** 测试/引导注入：以 `ctx` 的租户身份发布一条规则（镜像 A 侧 PUBLISH，租户归属随之）。 */
+  publishRule(ctx: ToolAuthCtx, key: string): void {
+    let own = this.tenantPublishedRuleKeys.get(ctx.tenantId);
+    if (!own) {
+      own = new Set();
+      this.tenantPublishedRuleKeys.set(ctx.tenantId, own);
+    }
+    own.add(key);
+  }
+  // B→A 探针：出厂规则库已发布 key 全集（覆盖 seed workflow evaluate_rules 的 C03/C13 等）
+  // WO-MOCKDC-PARAMS · 补齐 `ctx`（此前 0 形参 = 收了不认）：出厂集之后按**确定性顺序**追加该租户私有 key（R6）。
+  async listPublishedRuleKeys(ctx: ToolAuthCtx): Promise<string[]> {
+    const baseline = this.allRuleKeys.filter((k) => !this.draftRuleKeys.has(k));
+    const own = [...(this.tenantPublishedRuleKeys.get(ctx.tenantId) ?? [])].filter((k) => !baseline.includes(k)).sort();
+    return [...baseline, ...own];
   }
   // WO-DRIL-P1 · 规则元数据投影供给侧（mock）：已知规则给真描述，其余按 key 合成（description 非空门达标）。
-  async listPublishedRules(): Promise<import("../tools/clients.js").RuleSummary[]> {
+  // WO-MOCKDC-PARAMS · 补齐 `ctx`：key 集从 listPublishedRuleKeys(ctx) 派生，租户维度自然贯通（过滤语义无处漂移）。
+  async listPublishedRules(ctx: ToolAuthCtx): Promise<import("../tools/clients.js").RuleSummary[]> {
     const known: Record<string, { name: string; description: string; scope: string[]; severity: string; expression: string }> = {
       C03: { name: "产能上限约束", description: "需求增量超过产能上限（demandDelta>0.5）触发 BLOCK。", scope: ["Order", "Model"], severity: "BLOCK", expression: "Order.demandDelta > 0.5" },
       C08: { name: "外协比例红线", description: "外协比例超过阈值触发 WARN（保交付但提示风险）。", scope: ["Base"], severity: "WARN", expression: "outsourceRatio > threshold" },
       C13: { name: "客户信用额度", description: "客户信用额度已超限触发 BLOCK（禁止继续接单）。", scope: ["Customer", "Order"], severity: "BLOCK", expression: "creditExceeded == true" },
     };
-    const keys = await this.listPublishedRuleKeys();
+    const keys = await this.listPublishedRuleKeys(ctx);
     return keys.map((key) => {
       const k = known[key];
       return k
@@ -1050,8 +1204,16 @@ export class MockPromptClient implements PromptClient {
       ? { key, template: ov.template, source: "TENANT_OVERRIDE", version: ov.version }
       : { key, template: PLATFORM_PROMPT_DEFAULTS[key], source: "PLATFORM_DEFAULT", version: 0 };
   }
-  /** mock 无缓存（每次直读 overrides）；失效为 no-op（幂等无害·满足接口）。 */
-  invalidatePromptTemplate(): void {}
+  /**
+   * WO-MOCKDC-PARAMS · 失效台账：记录每次调用的 `tenantId`（`undefined` = 全清）。
+   * mock 无缓存（每次直读 overrides），行为上仍是 no-op —— 但**形参必须留痕**：
+   * 不留痕的话 `/b/v1/internal/invalidate` 钩子「按租户失效」到底传没传对，在 mock 上无从断言
+   * （补形参却不理它 = 把「收了不认」换成「收了假装认」，比原状更坏）。
+   */
+  readonly invalidated: (string | undefined)[] = [];
+  invalidatePromptTemplate(tenantId?: string): void {
+    this.invalidated.push(tenantId);
+  }
 }
 
 export interface MockDataCore extends DataCoreClient {
