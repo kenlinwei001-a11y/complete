@@ -10,7 +10,13 @@ import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
 import { AggregateRequestSchema, ObjectRefResolveRequestSchema, BuildRunBodySchema, BuildWorkflowStartBodySchema, ClockTickBodySchema, PlanSliceRequestSchema, CrossValidateRequestSchema, DataBuilderConfigSchema, ImportBundleBodySchema, MetaAccessPolicyBodySchema, PROMPT_KEYS, PLATFORM_PROMPT_DEFAULTS, PutPromptTemplateBodySchema, PutLlmBudgetBodySchema, RecordUsageBodySchema, PutCalendarBodySchema, ReconcileBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema, IngestModeSchema } from "@platform/contracts";
+import { OntologyInvariantEvaluateRequestSchema } from "@platform/contracts";
 import { validateOutputAgainstOntology } from "./ontology-validate.js";
+import {
+  assertOntologyInvariantsAllowPublish,
+  evaluateOntologyInvariants,
+  type OntologyGraphInput,
+} from "./ontology/invariants.js";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
 import type { BlobStore } from "./blob.js";
@@ -3174,6 +3180,48 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return { results, allPassed: results.every((r) => r.ok), failed: results.filter((r) => !r.ok) };
   });
 
+  // ---- WO-ONTOLOGY-EDGE-TRICLASS · 本体第三类边：不变式守卫（体检）-------------
+  //
+  // 本体关系此前只管两类边（结构边=有没有关系 / 因果边=变了多少），两类都只描述「有什么」。
+  // 这一组端点补上描述「必须成立什么」的那一类：守卫条件、实测量、容差、成立与否、违反者是谁。
+  //
+  // 两个端点同一个求值核，差别只在**试算覆盖**：
+  //   · GET  = 按目录原值体检（无覆盖）——这是"现在到底怎么样"的真值读数；
+  //   · POST = 带覆盖体检（改容差 / 停用某条）——**一个字节都不落库**，刷新即还原。
+  // 刻意不给写端点：改容差是**推演开关**，不是治理动作。治理动作（停用/下线）有宽限期、
+  // 有"仍被 N 处引用就拒绝"的 409 闸，两套语义并存不合并——合并会把"我想试试关掉它看看"
+  // 变成"我把它下线了"。
+  const ontologyGraphFor = async (tenantId: string): Promise<OntologyGraphInput> => {
+    const [types, links, rules] = await Promise.all([
+      repos.ontologyTypes.list(tenantId),
+      repos.ontologyLinks.list(tenantId),
+      repos.sim.listPropagationRules(tenantId, true),
+    ]);
+    return {
+      objectTypes: types.map((t) => ({ key: t.key, domain: t.domain })),
+      structuralEdges: links.map((l) => ({ key: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey })),
+      causalEdges: rules.map((r) => ({
+        key: r.key,
+        sourceTypeKey: r.sourceTypeKey,
+        sourceStateVar: r.sourceStateVar,
+        viaLinkKey: r.viaLinkKey,
+        targetTypeKey: r.targetTypeKey,
+        targetStateVar: r.targetStateVar,
+        coefficient: r.coefficient,
+        delayTicks: r.delayTicks,
+      })),
+    };
+  };
+  app.get("/a/v1/ontology/invariants", async (req) => {
+    const c = ctx(req);
+    return evaluateOntologyInvariants(await ontologyGraphFor(c.tenantId));
+  });
+  app.post("/a/v1/ontology/invariants/evaluate", async (req) => {
+    const c = ctx(req);
+    const body = parseBody(OntologyInvariantEvaluateRequestSchema, req.body ?? {});
+    return evaluateOntologyInvariants(await ontologyGraphFor(c.tenantId), body.overrides);
+  });
+
   // ---- 治理增量 §7.1 域 owner 会签发布请求 -----------------------------------
   app.post("/a/v1/ontology/publish-requests", async (req, reply) => {
     const c = ctx(req);
@@ -3187,6 +3235,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const touchedDomains = [...new Set(types.map((t) => t.domain).filter((d): d is string => !!d))];
     const links = await repos.ontologyLinks.list(c.tenantId);
     const impact = await governance.publishImpact(c, { types, links });
+    // 第三类边的闸：**今天恒放行**（产品尚未裁决"违反不变式该阻断什么"）。
+    // 接在这里而不是留一个待办，是为了让裁决落地时只需改求值核里那**一个**模式常量
+    // ——「留了接线位」与「留了一句 TODO」的区别就在于此处这一行真的在跑。
+    assertOntologyInvariantsAllowPublish(evaluateOntologyInvariants(await ontologyGraphFor(c.tenantId)));
     const rec = await governance.createPublishRequest(c, { ontologyVersion: ov, touchedDomains, impact, force: body.force });
     return reply.status(201).send(rec);
   });
