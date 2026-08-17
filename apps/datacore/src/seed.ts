@@ -216,7 +216,17 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
  *   现金 | Order.costPressure → Customer.receivablePressure → ARInvoice.overduePressure | 消耗
  *  - stateVars 非显式声明——view-config 自动从规则 source/target stateVar 派生（种了规则即非空）。
  */
-const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> = [
+/**
+ * ⚠ 类型里刨掉的那四个字段**不是"忘了写"，是三种不同的填法**（合起来看才对得上 `PropagationRule`）：
+ *  · `tenantId` —— 播种时按租户填（本数组是模板，不绑租户）；
+ *  · `domainKey` / `domainName` —— 由 `resolveRuleDomain()` **现算**后填
+ *    （`demoPropagationRulesWithDomain()`）。写在这 35 个字面量里就退回成手抄名单了，正是本单要治的病；
+ *  · `sourceTypeName` / `targetTypeName` —— **读时投影**，由 `GET /a/v1/sim/propagation-rules`
+ *    join 本租户本体填，入库恒 `null`（存进去会在类型改名后变成查无对证的旧名字）。
+ */
+const DEMO_PROPAGATION_RULES: ReadonlyArray<
+  Omit<PropagationRule, "tenantId" | "domainKey" | "domainName" | "sourceTypeName" | "targetTypeName">
+> = [
   // ① 订单需求压力 → 沿"订单属型号"边推到型号需求负载（即时，强相关）。
   {
     id: "simpr_demo_order_demand",
@@ -1058,7 +1068,13 @@ export function resolveRuleDomain(targetTypeKey: string): { domainKey: string | 
 
 /** demo 传导规则 + 现算出来的域（测试与播种**共用这一支**，不许各算一遍）。 */
 export function demoPropagationRulesWithDomain(): ReadonlyArray<Omit<PropagationRule, "tenantId">> {
-  return DEMO_PROPAGATION_RULES.map((r) => ({ ...r, ...resolveRuleDomain(r.targetTypeKey) }));
+  return DEMO_PROPAGATION_RULES.map((r) => ({
+    ...r,
+    ...resolveRuleDomain(r.targetTypeKey),
+    // 类型人话名**入库恒 null**：它是读时投影（路由 join 本体），存一份会在类型改名后变成旧名字。
+    sourceTypeName: null,
+    targetTypeName: null,
+  }));
 }
 
 /**
