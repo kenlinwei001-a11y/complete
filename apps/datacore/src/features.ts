@@ -108,8 +108,28 @@ export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
   { key: "opt.whatif", name: "优化 what-if", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { apiTags: ["opt-whatif"], solverKeys: ["optimize_whatif"] } },
   // WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用（暗发 defaultOff，依赖优化模板池）。
   { key: "opt.multiobj", name: "多目标 + 跨对象占用", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { solverKeys: ["multi_objective", "cross_object_occupancy"] } },
-  // 全局推演·活系统 NL/方案存比暗发门（R3）：真后端 /b/v1/sim/compose · /a/v1/sim/scenarios 端点未落 → defaultOff 不渲染避 404；WO-LIVE-SCENARIO 落后开门。核心（自由杠杆/矩阵/排产）不受此门·照常真出。
-  { key: "view.global-sim.live", name: "全局推演·活系统(NL/方案存比)", level: "BLOCK", defaultOn: false },
+  // 全局推演·活系统（NL 对话框 / 方案存·分支·横比）。**已毕业为默认开**（WO-GSIM-LIVE-FLAG-REASON·2026-08-17）。
+  //
+  // ⚠️ 本行注释此前写的是「真后端 /b/v1/sim/compose · /a/v1/sim/scenarios 端点未落 → defaultOff 不渲染避 404；
+  //    WO-LIVE-SCENARIO 落后开门」。那句话在 WO-LIVE-ENDPOINTS 落地之后就不成立了，却留在这里当了很久的路标 ——
+  //    下一个人读了会以为端点还没做，于是去重做一遍已经做好的东西。**留一句已不成立的理由比没有注释更坏。**
+  //    这一次是「落后开门」这句既有裁决的**执行**（前置条件已满足），不是新的产品决策。
+  //
+  // 前置条件（2026-08-17 亲手复核·端点全部有真处理体，非空壳/非 501/非恒抛）：
+  //   · POST /b/v1/sim/compose            → agentcore/src/server.ts（调真 portfolio·twoStage·三方案 → buildComposeNarrative）
+  //   · POST|GET /a/v1/sim/scenarios      → 本包 app.ts（存/列 gslive 七维 KPI 快照·发 sim.scenario_saved）
+  //   · GET  /a/v1/sim/scenarios/compare  → 本包 app.ts（按 ids 横比）
+  //   · POST /a/v1/sim/scenarios/:id/branch → 本包 app.ts（parentId 链）
+  //   四条 A 侧路由的第一句都是 `requireLive()` ⇒ 本 flag 关 = 404 FEATURE_NOT_FOUND（R3 先于 authz），开 = 真可用。
+  // 复验命令（两条都真跑过·RC=0，不是读代码读出来的）：
+  //   pnpm --filter datacore  exec vitest run test/live-scenarios-seam.test.ts
+  //   pnpm --filter agentcore exec vitest run test/live-endpoints-seam.test.ts
+  //
+  // ⚠️ defaultOn 只管 L1。demo（industry=battery-manufacturing）此前就已被 L2 模板抬开 —— 也就是说
+  //    「真部署那块看不见」对 demo **不成立**，对**无行业模板 / 模板不含本键**的租户才成立，这次翻的正是那一档。
+  //    投放意图同步改成 ga（scripts/feature-rollout.json）；dark-launch:check 的 A3/A4 会核对这两处一致。
+  // 核心（自由杠杆/矩阵/排产）不受此门·照常真出。
+  { key: "view.global-sim.live", name: "全局推演·活系统(NL/方案存比)", level: "BLOCK", defaultOn: true },
   { key: "opt.embedding-retrieval", name: "模板复用检索", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
   { key: "opt.evolve", name: "模板进化(离线)", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
   // WO-PROCESS-INSTANCE（R3 暗发·defaultOn:false·关=404 FEATURE_NOT_FOUND·先于 authz）：
