@@ -168,6 +168,15 @@ function StuckCard({ r }: { r: ProcessStuckReason }) {
           </dd>
         </div>
       </dl>
+
+      {/* WO-PROCESS-INSTANCE-UI · 深链入口①：卡点卡片 → 实例详情页（URL 带实例 id，刷新后仍在）。
+          「建完就消失」的反面从这张卡片开始 —— 此前 instanceId 屏上可见却无处可去。 */}
+      <Link
+        to={`/process-instances/${encodeURIComponent(r.instanceId)}`}
+        data-testid={`stuck-detail-${r.instanceId}`}
+      >
+        看这条实例的详情与推进 →
+      </Link>
     </li>
   );
 }

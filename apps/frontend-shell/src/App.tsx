@@ -96,6 +96,8 @@ const WhatIfView = lazy(() => import("@/views/WhatIfView"));
 const CleanroomAttrView = lazy(() => import("@/views/cleanroom/CleanroomAttrView"));
 // 优化 what-if 投影页（opt-template 系求解器·参数扰动看目标 Δ）：专用 route，直挂 renderer。
 const OptimizeWhatifView = lazy(() => import("@/views/OptimizeWhatifView"));
+// WO-PROCESS-INSTANCE-UI · 流程实例详情页（GET /a/v1/process-instances/:id 与 advance 的唯一生产消费方）。
+const ProcessInstanceDetailView = lazy(() => import("@/views/process/ProcessInstanceDetailView"));
 
 setAuthFailureHandler(() => {
   if (!window.location.pathname.startsWith("/login")) {
@@ -151,6 +153,14 @@ export const routes: RouteObject[] = [
       { path: "tasks/:taskId", element: lazyWrap(<TaskDetailPage />) },
       // 治理增量 §5：对象 360 页（溯源链终点）
       { path: "o/:typeKey/:objectKey", element: lazyWrap(<Object360Page />) },
+      // WO-PROCESS-INSTANCE-UI · 流程实例详情深链页（URL 带实例 id，刷新后仍在 —— 「建完就消失」的反面）。
+      // ⚠ 刻意**不**走 `v/` 前缀：参数化 route 若写成 `v/process-instance/:instanceId`，
+      //   f61（admin-nav-groups 测试）会把 `process-instance/:instanceId` 捕进 dedicatedRouteKeys，
+      //   「效果层」断言导航里有 `/v/process-instance/:instanceId` 这条字面量链接 ⇒ 恒红；
+      //   登记 ROUTE_NO_NAV 豁免也不行 —— 门判据④的正则只认静态段，参数化 route 进豁免表会误红 stale。
+      //   两门皆绿的唯一形态就是非 `v/` 前缀参数化 route（先例：`tasks/:taskId`、`o/:typeKey/:objectKey`）。
+      //   深链页不占导航位（挂载点候选 A · 与仓主 decision-play 裁决同构），入口在卡点卡片与实例下钻行。
+      { path: "process-instances/:instanceId", element: lazyWrap(<ProcessInstanceDetailView />) },
       admin("connections", <ConnectionsPage />),
       {
         path: "admin/connections/:connId/schema",

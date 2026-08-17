@@ -234,7 +234,14 @@ function InstancePanel({ processKey }: { processKey: string }) {
                 {m.rows.slice(0, 20).map((r) => (
                   <tr key={r.instanceKey} data-testid={`pw-inst-row-${r.instanceKey}`} data-still-in={r.stillIn}>
                     <td>
-                      <code>{r.carrierObjectId}</code>
+                      {/* WO-PROCESS-INSTANCE-UI · 深链入口②：反推实例行 → 实例详情页。
+                          详情端点不按产地过滤（反推实例也能查），故这批实例同样「建出来就能找回」。 */}
+                      <Link
+                        to={`/process-instances/${encodeURIComponent(r.instanceId)}`}
+                        data-testid={`pw-inst-detail-${r.instanceKey}`}
+                      >
+                        <code>{r.carrierObjectId}</code>
+                      </Link>
                     </td>
                     <td>{r.enteredAt}</td>
                     <td data-testid={`pw-inst-exit-${r.instanceKey}`}>{r.exitedAt ?? t.stillIn}</td>
