@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { PropagationRule, SandboxViewConfig, SimPerturbation, SimSession, TickState } from "@platform/contracts";
+import type { Perturbation, PropagationRule, SandboxViewConfig, SimSession, TickState } from "@platform/contracts";
 
 /**
  * ══ WO-SANDBOX-CONFIG-COLLAPSE · 配置面板折叠态门 ═══════════════════════════════
@@ -127,7 +127,7 @@ const SESSION_ID = "sims_collapse";
  * ⚠ 这是本门最要紧的一处设计：横幅上那个 N 如果被写死，或者只是渲染时抄下来的快照，
  *   §2「造一条新扰动 ⇒ 计数跟着变」当场红。桩成恒返 `{items: []}` 就测不到这件事了。
  */
-let perturbationStore: SimPerturbation[] = [];
+let perturbationStore: Perturbation[] = [];
 /** 置真 ⇒ 取清单这条请求失败。用来验「取不到数时横幅说什么」（见 §2 最后一例）。 */
 let perturbationsFail = false;
 let sessionDisabled: string[] = [];
@@ -191,7 +191,7 @@ vi.mock("@/api/endpoints", () => ({
       mode: body.mode,
       label: body.label,
       createdAt: "2026-08-17T00:00:00.000Z",
-    } as unknown as SimPerturbation;
+    } as unknown as Perturbation;
     // 后端**真的多了一条** —— 下一次 `fetchSimPerturbations` 就会读到它。
     perturbationStore = [...perturbationStore, p];
     return {
