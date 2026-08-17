@@ -78,6 +78,18 @@ const DisruptionRadiusView = lazy(() => import("@/views/DisruptionRadiusView"));
 const BANNER_GAP_PREVIEW = 3;
 
 /**
+ * WO-SANDBOX-DENSITY · 左区动作条**第二层**的名册（存档 / 分支 / 采纳）。
+ *
+ * 入口按钮上那个计数**从这张表算**，不手写一个数字 —— 与阻滞点 summary 的
+ * `sc-impjump-count` 同一条纪律：「summary 说几条，展开后逐条清单必须相等」。
+ * 两侧各数一遍迟早对不上（summary 说 3 条、点开是 2 条，谁也不会发现）。
+ * `sandbox-density.test.tsx` 拿**渲染后的真 DOM** 与入口上的 `data-count` 对账，
+ * 所以这张表写错了会当场红，不是靠人盯。
+ */
+const SANDBOX_SECONDARY_ACTIONS = ["sandbox-checkpoint-btn", "sandbox-branch-btn", "sandbox-adopt-btn"] as const;
+const SANDBOX_SECONDARY_ACTION_COUNT = SANDBOX_SECONDARY_ACTIONS.length;
+
+/**
  * 推演沙盘主决策页（增量 4 · R17「一页看全 数据→推演→溯源→动作→AI」· 配置驱动·零业务常数 R14）。
  *
  * ══ WO-SANDBOX-CONSOLE 改造：本页从「PmDag 单层拓扑 + 就绪雷达 + tick 控制条」变成**一页控制台** ══
@@ -404,6 +416,25 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
    */
   const [mode, setMode] = useState<SandboxMode>("now");
   const [scope, setScope] = useState<SandboxScope>(EMPTY_SANDBOX_SCOPE);
+
+  /**
+   * WO-SANDBOX-DENSITY · 左区动作条的**第二层**开关（默认收起）。
+   *
+   * 为什么这一层用 `display:none` 而**不用 `<details>`**（本单实测，不是照抄传说）：
+   * 闭合 `<details>` 的子节点在 Chromium 141 里 `checkVisibility()` 为 false、命中测试也打不到，
+   * 但 `getBoundingClientRect()` **仍返回非零旧矩形** —— 而版面门 `visible()` 的判据正是
+   * 「计算样式非 none/hidden/opacity0 ＋ 非零矩形」（`scripts/lib/layout-probe.mjs`）。
+   * ⇒ 用 `<details>` 折叠，门照样把折叠里的控件**当第一屏可见控件在数**，屏上看不见、数上不降。
+   * 取证：canonical 那一屏 52 个控件里有 12 个正是闭合 `<details>`（`sandbox-consolidated-links`，
+   * `open===false`）里的深链接 `<a>` —— 本单亲手逐控件 dump 复现，见交单报告①。
+   *
+   * ⚠ 不用条件渲染（`open ? <…/> : null`）的理由同样是实测出来的：
+   *   `sandbox-console.seam` / `befe-e-sim-checkpoint-rollback` / `sim-event-consumers` /
+   *   `ui-smoke-sandbox-p0.mjs` 共 4 处直接 `getByTestId('sandbox-checkpoint-btn')` 等再点，
+   *   条件渲染会让它们全红 —— 而那是**别人单的接线断言**，不由本单（只改版面）推翻。
+   *   `display:none` 保住 DOM ⇒ 接线断言照旧成立，版面由版面门去咬（机器分工，不是两头讨好）。
+   */
+  const [moreActionsOpen, setMoreActionsOpen] = useState(false);
 
   /**
    * ══ WO-U7-U9-REST · 判据 U7：把「我是哪一页」报给同屏问答 ══════════════════════
@@ -1622,12 +1653,21 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   ];
 
   return (
-    <div data-testid="sandbox-view" className={styles.head}>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
-        {/* 判据 U9：导出入口（第一层只留按钮 + ? 记号，口径进浮层 —— 共享件统一分层）。 */}
-        <ExportReportButton pageKey="sim-sandbox" build={buildExport} />
-      </div>
-      <SandboxModeSwitch mode={mode} onChange={setMode} scope={scope} />
+    /* WO-SANDBOX-DENSITY：根容器从 `styles.head` 换成 `consoleStyles.viewStack`。
+       `.head` 是**页眉一行**的类（flex 行 + space-between），当页根用会把
+       导出按钮 / 模式条 / 整个控制台排成并排三列 —— 实拍后果与理由见
+       `SandboxConsole.module.css` 的 `.viewStack` 注释。这里只换容器方向，
+       孩子一个没动、顺序一个没改。 */
+    <div data-testid="sandbox-view" className={consoleStyles.viewStack}>
+      <SandboxModeSwitch
+        mode={mode}
+        onChange={setMode}
+        scope={scope}
+        /* 判据 U9：导出入口（第一层只留按钮 + ? 记号，口径进浮层 —— 共享件统一分层）。
+           从**独立一行**并进模式条的右端：它一个人占一整行，而竖排之后那一行是整幅宽度，
+           为一个次级动作留一整行是第一层最贵的浪费。按钮本体一字未改。 */
+        exportSlot={<ExportReportButton pageKey="sim-sandbox" build={buildExport} />}
+      />
       {/* ══ 一次只渲染一个模式 ═══════════════════════════════════════════════════
           判据是另一屏**不在 DOM**，不是 hidden —— 故这里是**互斥的条件渲染**，
           不是「都挂上再藏一个」。`hidden` 只让人看不见：DOM 还在、请求照发、
@@ -1792,18 +1832,50 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
             data-testid="sandbox-controls"
             style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: 10 }}
           >
+            {/*
+              ── WO-SANDBOX-DENSITY · 动作条分两层（**降层，不是删除**）─────────────────
+              判据不是"哪个按钮好看"，是**此刻该做哪一件**：
+               · 第一层 = `推进 tick` —— 这一屏（「现状」）唯一"现在就该做"的动词；
+               · 第二层 = 存档 / 分支 / 采纳 —— 它们都**以"已经推过、已经看过结果"为前提**。
+                 tick=0、零扰动、零分支的默认屏上把三个终点动作平铺出来，正是仓主说的
+                 「第一层看不到重点」：四个同等权重的按钮，屏上没有任何东西告诉你先点哪个。
+              入口 `sandbox-more-actions-toggle` **常驻第一层并写明有几个**（藏起来找不到的
+              抽屉 = 把内容删了 —— 这条与顶栏诊断抽屉同一条纪律）。
+              代价照实说：`采纳此推演结论` 与 `存档检查点` 各多一次点击。
+            */}
             <button className="btn" data-testid="sandbox-tick-btn" disabled={!sessionId || ticking} onClick={onTick}>
               {ticking ? "推进中…" : "推进 tick"}
             </button>
-            <button className="btn sm" data-testid="sandbox-checkpoint-btn" disabled={!sessionId} onClick={onCheckpoint}>
-              存档检查点
+            <button
+              type="button"
+              className="btn sm"
+              data-testid="sandbox-more-actions-toggle"
+              aria-expanded={moreActionsOpen}
+              aria-controls="sandbox-more-actions"
+              data-count={String(SANDBOX_SECONDARY_ACTION_COUNT)}
+              onClick={() => setMoreActionsOpen((v) => !v)}
+            >
+              {moreActionsOpen ? "收起动作" : `更多动作 · ${SANDBOX_SECONDARY_ACTION_COUNT}`}
             </button>
-            <button className="btn sm" data-testid="sandbox-branch-btn" disabled={!sessionId || branching} onClick={onBranch}>
-              {branching ? "分支中…" : "分支（多场景对比）"}
-            </button>
-            <button className="btn sm primary" data-testid="sandbox-adopt-btn" disabled={!sessionId || adopt.isPending} onClick={onAdopt}>
-              {adopt.isPending ? "采纳中…" : "采纳此推演结论"}
-            </button>
+            <div
+              id="sandbox-more-actions"
+              data-testid="sandbox-more-actions"
+              data-open={moreActionsOpen ? "1" : "0"}
+              /* 行内 `display`（不是 CSS module 类）：vitest `css:false` ⇒ CSS module 在 jsdom 里被
+                 打桩成空对象，写进 `.module.css` 的折叠**测试里量不到**，本单自己的判据就成了摆设。
+                 行内样式 jsdom 认，故 `sandbox-density.test.tsx` 能真断言"默认收起"。 */
+              style={{ display: moreActionsOpen ? "flex" : "none", alignItems: "center", gap: 12, flexWrap: "wrap" }}
+            >
+              <button className="btn sm" data-testid="sandbox-checkpoint-btn" disabled={!sessionId} onClick={onCheckpoint}>
+                存档检查点
+              </button>
+              <button className="btn sm" data-testid="sandbox-branch-btn" disabled={!sessionId || branching} onClick={onBranch}>
+                {branching ? "分支中…" : "分支（多场景对比）"}
+              </button>
+              <button className="btn sm primary" data-testid="sandbox-adopt-btn" disabled={!sessionId || adopt.isPending} onClick={onAdopt}>
+                {adopt.isPending ? "采纳中…" : "采纳此推演结论"}
+              </button>
+            </div>
             <div style={{ flex: 1, minWidth: 160 }} data-testid="sandbox-timeline">
               <div className={styles.sub} style={{ marginBottom: 2 }}>
                 tick 时间轴（全局态轨迹 · 模拟态，采纳才经 Action 正门写真值 R4）
@@ -1856,6 +1928,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
         onScopeBaseIdsChange={(baseIds) => setScope((s) => ({ ...s, baseIds }))}
       />
       )}
+      {/* 页脚：已收编原独立页的深链接索引（第三层 —— 索引不是决策，见组件头）。 */}
+      <SandboxConsolidatedLinks />
     </div>
   );
 }
@@ -1868,10 +1942,11 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
  * 顶部模式切换条 + 跨模式上下文条（沙盘这一屏的**第一层**）。
  *
  * ── 分层（`docs/CONVENTION-ui-information-layering.md`）────────────────────────
- *  · **第一层**（不点就看见）：五个模式名 + 当前模式回答哪一问 + 当前范围读数。
+ *  · **第一层**（不点就看见）：五个模式名 + 当前模式回答哪一问 + 当前范围读数 + 导出入口。
  *    只有「名字 / 它是什么 / 一个读数」——没有公式、没有口径推导、没有明细。
- *  · **第二层**（一次点击）：「已收编的原独立页」折叠清单（深链接仍可达，见 `<details>`）。
- *  · 口径与诚实位（订单锚点 / 时窗为什么不在壳里）走 `title` 浮层与折叠区，不占第一层。
+ *  · **第三层**（页脚）：「已收编的原独立页」折叠索引 —— WO-SANDBOX-DENSITY 从本条搬到页脚
+ *    （`SandboxConsolidatedLinks`，内容一个字未动；为什么搬见那个组件的头注）。
+ *  · 口径与诚实位（订单锚点 / 时窗为什么不在壳里）走 `InfoPopover` 浮层，不占第一层。
  *
  * 仓主对这一屏的原话是「信息太多，第一层看不到重点」——**并完更挤 = 这次合并是负分**。
  * 故本条只加一行按钮 + 一行范围读数，其余一律降层。
@@ -1880,13 +1955,16 @@ function SandboxModeSwitch({
   mode,
   onChange,
   scope,
+  exportSlot,
 }: {
   mode: SandboxMode;
   onChange: (m: SandboxMode) => void;
   scope: SandboxScope;
+  /** 导出入口。并进本条右端，不再单占一整行（WO-SANDBOX-DENSITY）。 */
+  exportSlot?: React.ReactNode;
 }) {
   return (
-    <div className="panel" data-testid="sandbox-mode-switch" data-mode={mode} style={{ padding: 10, marginBottom: 10 }}>
+    <div className="panel" data-testid="sandbox-mode-switch" data-mode={mode} style={{ padding: 10 }}>
       {/* `role="group"` + `aria-pressed` 而不是 `tablist`/`tab`/`aria-selected`：
           ARIA 的 tab 必须能指向一个 `tabpanel`，而这里切的是**整屏**（另一屏根本不在 DOM），
           没有稳定的 panel id 可指。用 tab 语义会向读屏器承诺一个不存在的关系。
@@ -1915,6 +1993,10 @@ function SandboxModeSwitch({
             </button>
           </span>
         ))}
+        {/* 竖排之后这一行是整幅宽度，右端还空着 —— 导出并进来（原来它单占一整行）。 */}
+        {exportSlot ? (
+          <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center" }}>{exportSlot}</span>
+        ) : null}
       </div>
 
       {/* 当前模式回答哪一问（一句话，第一层唯一的说明性文字） */}
@@ -1951,28 +2033,47 @@ function SandboxModeSwitch({
         </span>
       </div>
 
-      {/*
-        第二层：已收编的原独立页 —— 默认折叠。
-        存在理由有二：① 深链接（书签 / 外部链接）仍然可达，这里让它**看得见**，
-        不是只有知道 URL 的人才进得去；② 沙盘对某些页只做了投影而非全量搬运
-        （`chain-impediments` 的阈值出处 / 未判定判据等四块，见 AUDIT §2）——
-        那些内容今天只在原独立页上，得留一条路过去。
-      */}
-      <details data-testid="sandbox-consolidated-links" style={{ marginTop: 6 }}>
-        <summary className={styles.sub} style={{ cursor: "pointer" }}>
-          已收编的原独立页（{CONSOLIDATED_PAGES.length} 个 · 深链接仍可达）
-        </summary>
-        <div className={styles.sub} style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
-          {CONSOLIDATED_PAGES.map((p) => (
-            /* `title` → `aria-label`：同上，原生 tooltip 一律不用；这句是"点哪里能到"的短提示，
-               读屏读得到即可，不需要一个不受控的悬浮框。 */
-            <a key={p.key} href={`/v/${p.key}`} data-testid={`sandbox-consolidated-${p.key}`} aria-label={`${p.label}：${p.where}`}>
-              {p.label}
-            </a>
-          ))}
-        </div>
-      </details>
     </div>
+  );
+}
+
+/**
+ * 已收编的原独立页 —— **深链接索引**（WO-SANDBOX-DENSITY 把它从第一层挪到页脚）。
+ *
+ * ── 存在理由（一条没变）───────────────────────────────────────────────────────
+ * ① 深链接（书签 / 外部链接）仍然可达，这里让它**看得见**，不是只有知道 URL 的人才进得去；
+ * ② 沙盘对某些页只做了投影而非全量搬运（`chain-impediments` 的阈值出处 / 未判定判据等四块，
+ *    见 AUDIT §2）—— 那些内容今天只在原独立页上，得留一条路过去。
+ *
+ * ── 为什么从模式条里搬到页脚（本单唯一的改动，内容一个字未动）──────────────────
+ * 它是**索引**，不是这一屏此刻要做的决策：既不回答「现在怎么样」也不回答「我要试什么」。
+ * 原位置在模式条正下方 ⇒ 稳稳占着第一层最贵的那一段。索引的常规位置就是页脚。
+ * 判据全都保持成立：`sandbox-consolidated-links` 还在、12 条 `<a>` 还在、默认仍折叠
+ * （`sandbox-ia-consolidate.seam` 的三条断言 —— 清单不漂移 / href 正确 / `open===false` —— 逐条照旧）。
+ *
+ * ⚠ 顺带记一条实测（本单的取证，不是推想 · 见交单报告①）：
+ *   闭合 `<details>` 的子节点在 Chromium 141 里 `checkVisibility()` 为 **false**、
+ *   命中测试打不到（点不着、也没画出来），但 `getBoundingClientRect()` **仍返回旧的非零矩形**。
+ *   版面门的 `visible()` 判据是「计算样式 + 非零矩形」⇒ 它把这 12 条**当成第一屏可见控件在数**。
+ *   也就是说 52 这个数里有 12 个是量出来的幻影。本单**不去改门**（不在范围内），
+ *   而是把这块整体搬离第一屏 —— 真幻影一起走，改后的数两侧都对得上。
+ */
+function SandboxConsolidatedLinks() {
+  return (
+    <details data-testid="sandbox-consolidated-links" style={{ marginTop: 6 }}>
+      <summary className={styles.sub} style={{ cursor: "pointer" }}>
+        已收编的原独立页（{CONSOLIDATED_PAGES.length} 个 · 深链接仍可达）
+      </summary>
+      <div className={styles.sub} style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+        {CONSOLIDATED_PAGES.map((p) => (
+          /* `title` → `aria-label`：原生 tooltip 一律不用；这句是"点哪里能到"的短提示，
+             读屏读得到即可，不需要一个不受控的悬浮框。 */
+          <a key={p.key} href={`/v/${p.key}`} data-testid={`sandbox-consolidated-${p.key}`} aria-label={`${p.label}：${p.where}`}>
+            {p.label}
+          </a>
+        ))}
+      </div>
+    </details>
   );
 }
 

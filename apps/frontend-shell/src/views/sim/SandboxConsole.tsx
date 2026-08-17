@@ -3,7 +3,8 @@ import { useInRouterContext, useNavigate } from "react-router-dom";
 import { BASE_REGISTRY, CHAIN_STAGES, type ChainImpedimentKind } from "@platform/contracts";
 import { runSolver } from "@/api/endpoints";
 import zh from "@/locales/zh";
-import { ThemeToggle } from "@/components/ThemeToggle";
+// WO-SANDBOX-DENSITY：`ThemeToggle` 的 import 随顶栏那颗一起去掉 ——
+// 外壳顶栏（pages/ShellLayout.tsx）常驻同一颗，本页再挂一颗是重复不是分层（见顶栏那处注释）。
 import { InfoPopover } from "@/components/InfoPopover";
 import { ChainLineMapView } from "./ChainLineMapView";
 import { deriveFamilyAnchors, fetchOrdersForFamilies, type FamilyAnchor } from "./chainFamilyLines";
@@ -493,7 +494,15 @@ export function SandboxConsole({
           {/* 徽标只是**记号**；「为什么」那句话的单一出处是顶栏时窗旁的 `?`（`sc-window-note`），
               这里不抄第二份 —— 抄了就是给它开一条会漂的分身。
               原来挂在这上面的 `title=` 属性也去掉了：规范 §2 明令禁止用原生 tooltip 充当浮层
-              （OS 绘制 · 恒在最上层 · 移开滞留），而那句话已经在 `?` 里，逐字都在。 */}
+              （OS 绘制 · 恒在最上层 · 移开滞留），而那句话已经在 `?` 里，逐字都在。
+
+              ⚠ WO-SANDBOX-DENSITY 试过把**时窗那排 `disabled` 按钮 + `?`** 也一起搬到这一档
+                （它们点不动、永远不会有值，占第一层四个控件位只为讲一句「这里本来该有个东西」，
+                而这句话在本档已有徽标 + `?` 两个更便宜的载体）。**没有落地**，理由是
+                `sandbox-declutter.test.tsx`「主屏留下的是决策者那一档」那条用例把
+                `sc-window-30D/60D/90D` 明确记成「结论式顶栏…时窗档位…留着」——
+                那是另一张单**记录在案的产品判断**，不在本单可改范围内（本单只改版面）。
+                想拿掉这 4 个控件，得先由该单的所有者改判据，不能由我改它的测试来买。 */}
           <span className={`${styles.badge} ${styles.badgeGap}`} data-testid="sc-window-badge">
             时窗无 ARGS
           </span>
@@ -530,7 +539,8 @@ export function SandboxConsole({
 
         {/* 时窗：设计稿有，但两个求解器都没有时间窗入参 ⇒ 禁用 + `?` 说明（不给假旋钮）。
             徽标本体（`sc-window-badge`）搬进诊断抽屉的「调试信息」区 —— 它是调试者的读物；
-            决策者在主屏需要知道的只是「这排按钮为什么点不动」，那句话挂在 `?` 上即可。 */}
+            决策者在主屏需要知道的只是「这排按钮为什么点不动」，那句话挂在 `?` 上即可。
+            ⚠ WO-SANDBOX-DENSITY 想把这一整组也降进抽屉但**没做**，为什么见抽屉那一档的注释。 */}
         <div className={styles.seg} role="group" aria-label="时窗（未接线）">
           {TIME_WINDOWS.map((w) => (
             <button key={w} type="button" disabled aria-pressed={w === "60D"} data-testid={`sc-window-${w}`}>
@@ -573,7 +583,11 @@ export function SandboxConsole({
             真实性标注
           </button>
         </div>
-        <ThemeToggle />
+        {/* WO-SANDBOX-DENSITY · 这里原本还有一颗 `<ThemeToggle />`。**去重，不是降层**：
+            外壳顶栏（`pages/ShellLayout.tsx`）已常驻同一颗（同一个组件、同一份 localStorage、
+            同一个 `<html data-theme>`），实拍 1440×900 屏上**同时出现两个 🌙**，相距不到 260px。
+            判据只有一条：删掉之后这个能力**一次点击仍然到得了**，且入口在每一页都可见 ——
+            成立，所以这是重复而非分层。（`theme-mode.test.tsx` 直接渲染 `ThemeToggle` 本体，不经本页。） */}
       </div>
 
       {/* ══ 诊断抽屉（默认关 · 关着时内部一个节点都不渲染）══════════════════════ */}
