@@ -24,10 +24,23 @@
 # 判据要点：**别数 agent，数 vitest。** 「6 个 agent」不是问题，「6 个都是重画像」才是。
 # 同一个数字（agent 数）在两种画像下含义相反，拿它当约束必然误判。
 #
+# ## 第三次事故：欠派队列的判据本身病了（2026-08-17 · WO-DISPATCH-DEFICIT-FIX）
+#
+# 「待派」旧判据 = **数台账里所有含未派标记的行** ⇒ 报「待派 3」。逐条查那 3 行：
+# 第 14 行是状态口径图例行、第 41 行是 B4 正文里提到该符号、第 151 行是章节标题
+# —— **一行都不是待派单**，真正可派的条目要用新判据才数得对。
+# 形态（铁律 0.6 句式）：**「我用『含该符号的行数』当作『待派单数』的证据，而前者并不度量后者。」**
+# 危害就是上一段那句老话的又一次兑现：一直喊「欠派 N 张」而队列其实是空的，
+# 喊多了就没人信，等于把机制做成噪声。
+# 新判据与金丝雀见下文「判据 ① 待派」注释。
+# ⚠️ 行文纪律：指代未派标记时**不写字面量**，一律用「该符号」称呼、用变量
+#    `UNASSIGNED_MARK` 拼构造 —— 本仓刚有 dev 在订正文字里写了字面标记，
+#    被自己的抽取器数进去，计数不降，靠重跑抽取器 14≠13 当场抓出。
+#
 # 退出码（本仓统一三分）：0 = 均衡；1 = 失衡（欠派或超派）；2 = **工具自己坏了**（不许据此说「调度正常」）。
 set -uo pipefail
 
-CORES=$(nproc 2>/dev/null || echo 0)
+CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 0)
 if [ "$CORES" -le 0 ]; then
   echo "⛔ 取不到核数 ⇒ 工具坏了，本次结论作废（不许读作「调度正常」）" >&2
   exit 2
@@ -57,8 +70,9 @@ count_matching() {
   local self=$$ ppid
   ppid=$(ps -o ppid= -p $$ 2>/dev/null | tr -d ' ')
   DD_PAT="$1" DD_ME="$self" DD_PAR="${ppid:-0}" \
-    ps -eo pid,ppid,args --no-headers 2>/dev/null | DD_PAT="$1" DD_ME="$self" DD_PAR="${ppid:-0}" awk '
+    ps -eo pid,ppid,args 2>/dev/null | DD_PAT="$1" DD_ME="$self" DD_PAR="${ppid:-0}" awk '
     BEGIN { pat = ENVIRON["DD_PAT"]; me = ENVIRON["DD_ME"]; par = ENVIRON["DD_PAR"] }
+    NR==1 && $1=="PID" { next }                        # 无 --no-headers 的平台（macOS）剥表头
     $1 == me || $1 == par || $2 == me || $2 == par { next }   # 自己 / 父 / 子 / 兄弟，全剔
     index($0, pat) > 0 { n++ }
     END { print n + 0 }
@@ -79,7 +93,7 @@ count_matching() {
 #        「不可能串命中 0 次」**照样通过** —— 分不清「正确地返回 0」和「永远返回 0」。实测中招。
 #   ② **必不中**：一个不可能存在的串必须数到 0。否则说明 index 恒真、什么都在「命中」，
 #      那种坏法会让所有超派判据同时误报。
-CANARY_ALIVE=$(ps -eo pid,ppid,args --no-headers 2>/dev/null | wc -l | tr -d ' ')
+CANARY_ALIVE=$(ps -eo pid,ppid,args 2>/dev/null | awk 'NR==1 && $1=="PID"{next} {n++} END{print n+0}')
 PID1=$(ps -p 1 -o args= 2>/dev/null | awk '{print $1}')
 CANARY_HIT=$(count_matching "${PID1:-__no_pid1__}")
 CANARY_NULL=$(count_matching "zzq-impossible-$$-canary-must-be-zero")
@@ -92,10 +106,10 @@ fi
 
 VITEST=$(count_matching "vitest")
 # datacore 的 vitest 才是重画像（4 核机上的真红线）。按工作目录判，不按 agent 身份判。
-HEAVY=$(ps -eo args --no-headers 2>/dev/null | grep -F 'vitest' | grep -v -F 'grep' | grep -c -F 'datacore' || true)
+HEAVY=$(ps -eo args 2>/dev/null | grep -F 'vitest' | grep -v -F 'grep' | grep -c -F 'datacore' || true)
 HEAVY=${HEAVY:-0}
-LOAD=$(awk '{printf "%.1f", $1}' /proc/loadavg 2>/dev/null || echo "?")
-LOAD_INT=$(awk '{print int($1)}' /proc/loadavg 2>/dev/null || echo 0)
+LOAD=$(awk '{printf "%.1f", $1}' /proc/loadavg 2>/dev/null || sysctl -n vm.loadavg 2>/dev/null | awk '{printf "%.1f", $2}' || echo "?")
+LOAD_INT=$(awk '{print int($1)}' /proc/loadavg 2>/dev/null || sysctl -n vm.loadavg 2>/dev/null | awk '{print int($2)}' || echo 0)
 
 # 画像上限（CLAUDE.md 铁律 2 判据 2）
 CAP_HEAVY=1
@@ -129,7 +143,7 @@ fi
 #    读起来像「调度正常」，而它其实什么都没查。
 #    形态：**「我用『探针退 0』当作『不欠派』的证据，而前者并不度量后者。」**
 #    自算三个队列，全部取自**落盘的真相源**（不是我脑子里的印象，重启也不丢）：
-#      ① 待派 = docs/REQUIREMENTS-TRACE.md 里标 ⛔ 的行
+#      ① 待派 = docs/REQUIREMENTS-TRACE.md「未派」章节里**未划掉**的列表项（判据演进见头注第三次事故）
 #      ② 待复验 = 已推但**未并进集成分支**的 handoff 分支（祖先关系判定，不看文件存在性）
 #      ③ 待写WO = 本体 §8 里标 🔴 未修 / ◑ 部分闭合的断点
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -137,9 +151,69 @@ TRACE="$ROOT_DIR/docs/REQUIREMENTS-TRACE.md"
 ONTO="$ROOT_DIR/docs/SYSTEM-ONTOLOGY.md"
 
 # ① 待派
+# ⚠️ **2026-08-17 订正（WO-DISPATCH-DEFICIT-FIX）**：旧判据 `grep -c 数所有含该符号的行` ⇒ 报「待派 3」，
+#    而那 3 行是状态口径图例行 / B4 正文提及 / 章节标题 —— 一行都不是单。
+#    新判据三要素，缺一不可：
+#      a. **在「未派」章节内**：含该符号的 `## ` 标题起，下一个 `## ` 标题止；
+#      b. **是列表项**：`N.` / `-` / `*` 起头（图例行、章节标题、正文提及天然被 a/b 排除）；
+#      c. **未划掉**：行内无 ~~删除线~~（已闭环回写的条目不算欠派）。
+UNASSIGNED_MARK=$(printf '\342\233\224')   # 该符号：变量拼构造，不写字面量（纪律见头注）
+
+# 单一实现：金丝雀与主逻辑共用它，不许各抄一份正则 —— 抄了就是装饰品（本仓实测过的形态）。
+count_pending_dispatches() {
+  local f="$1"
+  DD_MARK="$UNASSIGNED_MARK" awk '
+    BEGIN { mark = ENVIRON["DD_MARK"]; in_sec = 0; n = 0 }
+    /^## / {
+      if (in_sec) { in_sec = 0 }                 # 下一个二级标题 ⇒ 章节结束
+      else if (index($0, mark) > 0) { in_sec = 1 } # 含该符号的二级标题 ⇒ 进「未派」章节
+      next
+    }
+    in_sec && /^[[:space:]]*([0-9]+[.)]|[-*])[[:space:]]/ {
+      if (index($0, "~~") == 0) n++              # 未划掉的列表项才算待派
+    }
+    END { print n + 0 }
+  ' "$f"
+}
+
 Q_TODO=0
 if [ -f "$TRACE" ]; then
-  Q_TODO=$(grep -c '⛔' "$TRACE" 2>/dev/null || echo 0)
+  # ── 判据级金丝雀（每次运行都自证，与主逻辑共用同一个 count_pending_dispatches）──
+  # 样例**取自台账实物**，不手写：
+  #   图例行 = 状态口径那条引用行 · 章节标题 = 「未派」章节标题本身 ·
+  #   正文提及 = 表内提到该符号的一行 · 已划掉项 = 章节内第一条带删除线的列表项 ·
+  #   必中样例 = 已划掉项**剥掉删除线**的派生物 —— 它必须被数进去，同时自证 c 判据两态。
+  # 期望值恒为 **1**：必中那 1 条；其余 5 条（图例行/正文提及/章节标题/已划掉项/章节外列表项）一条都不许进。
+  CAN_LEGEND=$(grep -m1 "^> .*${UNASSIGNED_MARK}" "$TRACE" 2>/dev/null)
+  CAN_HEAD=$(grep -m1 "^## .*${UNASSIGNED_MARK}" "$TRACE" 2>/dev/null)
+  CAN_PROSE=$(grep -m1 "^| .*${UNASSIGNED_MARK}" "$TRACE" 2>/dev/null)
+  CAN_STRUCK=$(DD_MARK="$UNASSIGNED_MARK" awk '
+    /^## / { if (in_sec) exit; if (index($0, ENVIRON["DD_MARK"]) > 0) in_sec=1; next }
+    in_sec && /^[[:space:]]*[0-9]+[.)][[:space:]]/ && index($0, "~~") > 0 { print; exit }
+  ' "$TRACE" 2>/dev/null)
+  CAN_LIVE=$(printf '%s' "$CAN_STRUCK" | sed 's/~~//g')
+  if [ -z "$CAN_LEGEND" ] || [ -z "$CAN_HEAD" ] || [ -z "$CAN_PROSE" ] || [ -z "$CAN_STRUCK" ] || [ "$CAN_LIVE" = "$CAN_STRUCK" ]; then
+    echo "⛔ 待派金丝雀取样失败（图例行/章节标题/正文提及/已划掉项 有一样取不到）⇒ 工具坏了，待派本次算不出，不许读成 0" >&2
+    exit 2
+  fi
+  CAN_FIX=$(mktemp "${TMPDIR:-/tmp}/dd-canary.XXXXXX")
+  {
+    printf '# 判据金丝雀夹具（运行时生成即焚，非台账）\n'
+    printf '%s\n' "$CAN_LEGEND"     # 必不咬：图例行
+    printf '%s\n' "$CAN_PROSE"      # 必不咬：正文里提到该符号的行
+    printf '%s\n' "$CAN_HEAD"       # 必不咬：章节标题本身（进章节）
+    printf '%s\n' "$CAN_LIVE"       # 必中：章节内未划掉的列表项
+    printf '%s\n' "$CAN_STRUCK"     # 必不咬：章节内已划掉的列表项
+    printf '## 后续章节（夹具 terminator）\n'
+    printf '1. 章节外的未划掉列表项（必不咬：不在「未派」章节内）\n'
+  } > "$CAN_FIX"
+  CAN_GOT=$(count_pending_dispatches "$CAN_FIX")
+  rm -f "$CAN_FIX"
+  if [ "$CAN_GOT" != "1" ]; then
+    echo "⛔ 待派判据金丝雀不中 ⇒ 夹具应数 1 条、实测 ${CAN_GOT} 条。判据本身坏了，本次待派结论作废（不许读成 0）" >&2
+    exit 2
+  fi
+  Q_TODO=$(count_pending_dispatches "$TRACE")
 else
   echo "⛔ 找不到 $TRACE ⇒ **工具坏了**，待派队列本次算不出，不许读成 0" >&2
   exit 2
@@ -161,6 +235,11 @@ Q_VERIFY_UNKNOWN=0
 INTEG="origin/claude/verify-reclaim-6"
 if git -C "$ROOT_DIR" rev-parse --verify -q "$INTEG" >/dev/null 2>&1; then
   INTEG_TS=$(git -C "$ROOT_DIR" log -1 --format=%ct "$INTEG" 2>/dev/null || echo 0)
+  HANDOFFS=$(git -C "$ROOT_DIR" ls-remote origin 'refs/heads/claude/handoff-*' 2>/dev/null)
+  LS_RC=$?
+  if [ "$LS_RC" -ne 0 ]; then
+    echo "ℹ️  ls-remote 取远端分支失败（rc=${LS_RC}）⇒ 待复验队列**未评估**（不代表为 0；静默读成 0 就是假绿）"
+  else
   while read -r sha ref; do
     [ -z "$ref" ] && continue
     b="${ref#refs/heads/}"
@@ -172,26 +251,50 @@ if git -C "$ROOT_DIR" rev-parse --verify -q "$INTEG" >/dev/null 2>&1; then
     if [ "$TS" -ge "$INTEG_TS" ]; then
       Q_VERIFY=$(( Q_VERIFY + 1 )); Q_VERIFY_LIST="${Q_VERIFY_LIST} ${b}"
     fi
-  done < <(git -C "$ROOT_DIR" ls-remote origin 'refs/heads/claude/handoff-*' 2>/dev/null)
+  done <<< "$HANDOFFS"
+  fi
 else
   echo "ℹ️  取不到 $INTEG ⇒ 待复验队列**未评估**（不代表为 0）"
 fi
 
-# ③ 待写WO：本体 §8 里未闭的断点
+# ③ 待写WO：本体 §8 里未闭的断点 —— **判据限定在 §8 章节内**（`## 8.` 起、下一个 `## ` 止），
+#    不许全文 grep（别章提到同样状态词的行会混进来 —— 与判据 ① 修的是同一个病）。
+# ⚠️ **已知盲区（本单不修，但必须明说）**：§8 里有相当一批编号行**连状态标记都没有**，
+#    本判据永远看不见它们 —— 「待写WO = 13」不等于「全部未闭断点 = 13」。
+#    回填状态标记是 WO-ONTO-STATUS-BACKFILL 的活（另有 dev）。盲区行数这里**现算**打出来，
+#    不写死（写死必过期）。
 Q_GAP=0
-[ -f "$ONTO" ] && Q_GAP=$(grep -cE '🔴 *未修|◑ *部分闭合' "$ONTO" 2>/dev/null || echo 0)
+Q_GAP_ROWS=0
+Q_GAP_NOMARK=0
+if [ -f "$ONTO" ]; then
+  read -r Q_GAP Q_GAP_ROWS Q_GAP_NOMARK < <(awk '
+    /^## 8\./ { in8 = 1; next }
+    /^## / { if (in8) exit }
+    in8 && /^\| G-/ {
+      rows++
+      if ($0 ~ /🔴 *未修/ || $0 ~ /◑ *部分闭合/) open++
+      if (index($0,"🔴")==0 && index($0,"◑")==0 && index($0,"✅")==0 && \
+          index($0,"🟡")==0 && index($0,"⚪")==0 && index($0,"🔶")==0 && index($0,"🟢")==0) nomark++
+    }
+    END { print (open+0), (rows+0), (nomark+0) }
+  ' "$ONTO" 2>/dev/null)
+fi
 
-# 金丝雀：三个数至少有一个能算出非零，否则大概率是我抓错了文件
+# 金丝雀：三个数至少有一个能算出非零，否则大概率是我抓错了文件/正则
+# （判据 ① 的硬性金丝雀在上面已先行拦过；这里是三队列层面的软复核）
 if [ "$Q_TODO" -eq 0 ] && [ "$Q_VERIFY" -eq 0 ] && [ "$Q_GAP" -eq 0 ]; then
   echo "⚠️  三个队列同时算出 0 —— 先怀疑是我抓错了文件/正则，再信「真没活了」。"
-  echo "     复核：grep -c '⛔' $TRACE ; git ls-remote origin 'refs/heads/claude/handoff-*' | wc -l"
+  echo "     复核：手工数台账「未派」章节里未划掉的列表项（判据见本文件 count_pending_dispatches）"
 fi
 
 QUEUE=$(( Q_TODO + Q_VERIFY + Q_GAP ))
-echo "队列现算：待派 ${Q_TODO}（TRACE ⛔）· 待复验 ${Q_VERIFY}（已推未并）· 待写WO ${Q_GAP}（§8 未闭）= 合计 ${QUEUE}"
+echo "队列现算：待派 ${Q_TODO}（TRACE 未派章节·未划掉项）· 待复验 ${Q_VERIFY}（已推未并）· 待写WO ${Q_GAP}（§8 未闭）= 合计 ${QUEUE}"
 [ -n "$Q_VERIFY_LIST" ] && { echo "   待复验分支（前 10）："; for b in $Q_VERIFY_LIST; do echo "     · $b"; done | head -10; }
 [ "$Q_VERIFY_UNKNOWN" -gt 0 ] && echo "   ℹ️  另有 ${Q_VERIFY_UNKNOWN} 条远端分支本地无对象 ⇒ **判不了**（不计入，也不等于已收编）"
-echo "   ⚠️ 待复验用了时间闸（必要不充分）：推得早、至今没并的分支它看不见。"
+echo "   ⚠️ 待复验用了时间闸（必要不充分）：推得早、至今没并的分支它看不见；"
+echo "      反方向同样成立 —— 已 cherry-pick/squash 收编、但 tip 比集成分支尖端新的分支会被**多算**（祖先判据对摘并天然不成立）。"
+echo "   ⚠️ 待写WO 盲区：§8 共 ${Q_GAP_ROWS} 编号行，其中 ${Q_GAP_NOMARK} 行**无任何状态标记** ⇒ 队列永远看不见它们；"
+echo "      「待写WO ${Q_GAP}」不是「全部未闭断点 ${Q_GAP}」。回填状态标记归 WO-ONTO-STATUS-BACKFILL（另有 dev），本探针只报不修。"
 
 # 仓主定的硬线：**在跑 agent < 4 就必须触发推进**
 # ⚠️ **在跑 agent 数：本脚本量不了，两种启发式都实测失败，不许再猜第三种**
