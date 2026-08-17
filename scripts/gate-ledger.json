@@ -866,6 +866,21 @@
    },
    "notes": ""
   },
+  "check-ontology-s8-status.mjs": {
+   "alias": "onto-s8-status:check",
+   "binding": "GATES_CHAIN",
+   "guardedPaths": [
+    "docs/SYSTEM-ONTOLOGY.md"
+   ],
+   "escalation": "审核方",
+   "ontologyRef": "§7",
+   "provenRed": {
+    "kind": "MUTATION",
+    "evidence": "WO-ONTO-STATUS-BACKFILL 交单报告 T1/T3（2026-08-18 实跑原文）",
+    "note": "两连变异实跑：①摘掉 L2206 G-RULE-SCOPE-NO-CARRIER-C31 的标记 → RC=1 逐字点名「L2206 G-RULE-SCOPE-NO-CARRIER-C31」；②门自变异 MARK_RE 恒假 → RC=2 金丝雀②不中并拒绝产出结论。金丝雀与主判据共用同一份 scanLines/ID_ROW_RE/MARK_RE，不另抄正则。"
+   },
+   "notes": "守「§8 每个编号行必须带状态标记（三态之一）」——dispatch-deficit 待写WO 队列按标记抽取，无标记断点永远进不了队列。按整行抽标记，不做列切分（单元格内嵌竖线，实测列数 2/3/4/6/13 不等）。"
+  },
   "check-ontology-writeback.mjs": {
    "alias": null,
    "binding": "GATE_SH",
