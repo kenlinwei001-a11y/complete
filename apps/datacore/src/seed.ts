@@ -216,7 +216,17 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
  *   现金 | Order.costPressure → Customer.receivablePressure → ARInvoice.overduePressure | 消耗
  *  - stateVars 非显式声明——view-config 自动从规则 source/target stateVar 派生（种了规则即非空）。
  */
-const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> = [
+/**
+ * ⚠ 类型里刨掉的那四个字段**不是"忘了写"，是三种不同的填法**（合起来看才对得上 `PropagationRule`）：
+ *  · `tenantId` —— 播种时按租户填（本数组是模板，不绑租户）；
+ *  · `domainKey` / `domainName` —— 由 `resolveRuleDomain()` **现算**后填
+ *    （`demoPropagationRulesWithDomain()`）。写在这 35 个字面量里就退回成手抄名单了，正是本单要治的病；
+ *  · `sourceTypeName` / `targetTypeName` —— **读时投影**，由 `GET /a/v1/sim/propagation-rules`
+ *    join 本租户本体填，入库恒 `null`（存进去会在类型改名后变成查无对证的旧名字）。
+ */
+const DEMO_PROPAGATION_RULES: ReadonlyArray<
+  Omit<PropagationRule, "tenantId" | "domainKey" | "domainName" | "sourceTypeName" | "targetTypeName">
+> = [
   // ① 订单需求压力 → 沿"订单属型号"边推到型号需求负载（即时，强相关）。
   {
     id: "simpr_demo_order_demand",
@@ -990,11 +1000,89 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<Omit<PropagationRule, "tenantId">> =
 ];
 
 /**
+ * ══ WO-DISRUPTION-CARDS · 传导边 → 业务域（**唯一出处，屏上从它派生**）══════════════
+ *
+ * 病灶：推演页把 35 条传导边一次全倒在屏上，无分类。分组的依据其实一直在数据里 ——
+ * `DEMO_PROCESS_DEFINITIONS` 每条流程都带 `domainKey`(D01–D13) + `carrierTypeKey`（承载物类型），
+ * 而**种子作者当初选边时用的就是这条关系**，逐条写在注释里：
+ *   「承载物 MaterialBatch 即 P36」「承载物 CustomsClearance 即 P34」「承载物 MaintPlan 即 P50」
+ *   「承载物 Certification 即 P55」「全世界恰好一个：`Supplier`（P28 供应商准入与评估）」
+ * 本函数只是把那条**已经在用**的关系从注释搬进数据，**不是发明一套新的归类规则**。
+ *
+ * ── 口径：域 = **target 承载物**的域，不是 source ──────────────────────────────────
+ * 依据是种子自己的分节注释，不是本单的偏好：
+ *   `── D09 设备与维护 · 检修窗：基地负载 → 计划检修窗挤压 ──`  源 Base(D10) → 节名 D09 = target MaintPlan 的域
+ *   `── D10 基地与仓储交付 · 认证：型号需求负载 → 产线型号认证排队 ──` 源 Model(D04) → 节名 D10 = target Certification 的域
+ * 语义上也对：用户按域找一条边，找的是「它**影响**哪个域的活动」。
+ *
+ * ⛔ **不是照分节注释逐条硬编码**（那就是把手抄名单从前端搬到后端，病没治）。
+ *    这里是**现算**：新增一条规则，只要它的 target 是某流程的承载物，域自动就有；
+ *    忘了归域这件事在本设计里**不可能发生**。`test/sim-rule-domain.seam.test.ts` 咬死这一点。
+ *
+ * ── 实测：分节注释与本函数现算结果的两处**系统性分歧**（如实登记，不掩盖）────────────
+ * 18 条带 D 号分节的规则里，15 条与现算一致；3 条 + 1 条分歧，且**分歧方向都是注释更粗**：
+ *   · `demo_wo_release_to_quality_backlog` / `demo_wip_feed_to_defect_pressure` /
+ *     `demo_defect_to_exception_backlog` 落在节名 `D07 生产制造执行链` 下，
+ *     而 target（QualityLot / DefectRecord / ExceptionEvent）三个承载物都属 **D08 质量管理**。
+ *     那句节名写的是一条**跨域的链**（产线→工单→在制→缺陷→异常处置），不是一个域。
+ *   · `demo_customer_receivable_to_collection` 落在节名 `D03 销售与客户` 下，
+ *     而 target `OverdueRecord` 的承载流程属 **D11 财务与成本**。取 D11 顺带让它与
+ *     `demo_customer_receivable_to_invoice_overdue`（ARInvoice·同属 D11·**无分节注释**）归到一起，
+ *     比"一条逾期边在销售、另一条逾期边在财务"更能用。
+ * 取现算值 = 取**逐条可复算**的那个口径；注释那 4 处不改（它描述的是叙事链路，本来就没错）。
+ */
+/**
+ * ⚠ **必须惰性求值，不能写成模块级 IIFE**：本函数读的 `DEMO_PROCESS_DOMAINS`(§流程层) 与
+ * `DEMO_PROCESS_DEFINITIONS` 在本文件里声明在**它下面**，模块级立即执行会踩 `const` 的 TDZ
+ * ⇒ import 本模块即抛 `ReferenceError`（而不是等到播种时）。放函数里 = 首次调用时那两个 const 早已初始化。
+ */
+let ruleDomainByCarrier: ReadonlyMap<string, { key: string; name: string }> | null = null;
+function ruleDomainIndex(): ReadonlyMap<string, { key: string; name: string }> {
+  if (ruleDomainByCarrier) return ruleDomainByCarrier;
+  const nameOf = new Map(DEMO_PROCESS_DOMAINS.map((d) => [d.key, d.name] as const));
+  const m = new Map<string, { key: string; name: string }>();
+  for (const p of DEMO_PROCESS_DEFINITIONS) {
+    // 同一承载物被多条流程用时取**域 key 字典序最小**的那个 ⇒ 与流程数组顺序无关（R6 确定性）。
+    // demo 实测无此情形（35 条规则零 MULTI），此分支是防将来加流程时靠数组顺序碰运气。
+    const name = nameOf.get(p.domainKey);
+    if (name === undefined) continue; // 域登记册里没有的 domainKey：诚实跳过，不编一个名字出来
+    const cur = m.get(p.carrierTypeKey);
+    if (cur === undefined || p.domainKey < cur.key) m.set(p.carrierTypeKey, { key: p.domainKey, name });
+  }
+  ruleDomainByCarrier = m;
+  return m;
+}
+
+/**
+ * 一条传导边的域归属。**查不到 ⇒ `{null, null}`，绝不塞进"最近的那个域"**。
+ *
+ * demo 实测 3 条查不到，全部是**中间跳量纲**（target 不是任何流程的承载物）：
+ *   `Material`（供应商延迟→物料短缺）· `Process`（产线利用率→工序排队）· `Equipment`（工序排队→设备负荷）
+ * 其中 `Equipment` 那条，种子注释自己就写着「Equipment **不是任何流程的承载物**，它在这里是**中间跳**」
+ * —— 即：这 3 条"落不进任何域"是**数据的实情**，不是本函数没算出来。屏上单列「未归域」并说明。
+ */
+export function resolveRuleDomain(targetTypeKey: string): { domainKey: string | null; domainName: string | null } {
+  const hit = ruleDomainIndex().get(targetTypeKey);
+  return { domainKey: hit?.key ?? null, domainName: hit?.name ?? null };
+}
+
+/** demo 传导规则 + 现算出来的域（测试与播种**共用这一支**，不许各算一遍）。 */
+export function demoPropagationRulesWithDomain(): ReadonlyArray<Omit<PropagationRule, "tenantId">> {
+  return DEMO_PROPAGATION_RULES.map((r) => ({
+    ...r,
+    ...resolveRuleDomain(r.targetTypeKey),
+    // 类型人话名**入库恒 null**：它是读时投影（路由 join 本体），存一份会在类型改名后变成旧名字。
+    sourceTypeName: null,
+    targetTypeName: null,
+  }));
+}
+
+/**
  * 播 demo 的 sim 传导规则种子（幂等：固定 id + 直接 put 覆盖）。仅写 sim 仓储，不动合成。
  * 由 SEED_DEMO 启动路径在 seedDemoSynthetic 之后调用（本体已物化才有链路可挂）。
  */
 export async function seedDemoPropagationRules(repos: Repos): Promise<void> {
-  for (const r of DEMO_PROPAGATION_RULES) {
+  for (const r of demoPropagationRulesWithDomain()) {
     await repos.sim.putPropagationRule({ ...r, tenantId: DEMO_TENANT });
   }
 }

@@ -197,6 +197,11 @@ describe("WO-EDGE-PANEL-3PAGES · 三页的「关掉一条边看结果怎么变�
     //    一个写死的差值表、或一个「渲染出来就算数」的实现，都过不了这一条：
     //    它要求屏上的数**跟着关的是哪条边走**。
     await user.click(within(panel).getByTestId(`edge-active-order-chain-toggle-${EDGE_A}`)); // 拨回
+    // WO-DISRUPTION-CARDS：面板改成**按业务域分片**后，一屏只渲染选中那一片的行
+    //（35 条一次全倒是本单要治的病灶）。EDGE_B 在 fixture 里是**未归域**那一片
+    // ⇒ 要先切到那一片才拨得到它。这一步不是绕过判据，恰恰是**加了一层**：
+    // 它顺带证明「切到另一片之后，那一片的边照样拨得动、照样出差值」。
+    await user.click(within(panel).getByTestId("edge-active-order-chain-domain-__unassigned__"));
     await user.click(within(panel).getByTestId(`edge-active-order-chain-toggle-${EDGE_B}`)); // 改关另一条
     await waitFor(
       () => {

@@ -4,7 +4,23 @@ import type { SimCounterfactualResult } from "@platform/contracts";
 import { createSimSession, fetchPropagationRules, fetchSimSessions, fetchSimViewConfig, patchSimDisabledRules, simCounterfactual } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
 import { HintDot } from "./shared";
-import { buildDiffRows, buildEdgeRows, buildVerdict, deriveBaseSnapshot, pickProbeSession, PROBE_WORLD_PROVENANCE, PROBE_WORLD_PROVENANCE_DETAIL, toggleEdge } from "./edgeActiveModel";
+import {
+  buildDiffRows,
+  buildDomainSlices,
+  buildEdgeRows,
+  buildVerdict,
+  deriveBaseSnapshot,
+  pickProbeSession,
+  PROBE_WORLD_PROVENANCE,
+  PROBE_WORLD_PROVENANCE_DETAIL,
+  resolveActiveSlice,
+  toggleEdge,
+  UNASSIGNED_DOMAIN_DETAIL,
+  UNASSIGNED_SLICE_ID,
+} from "./edgeActiveModel";
+// 命名成 `css` 而不是惯用的 `s`：本文件已有 `const tid = (s: string) => …`，
+// 用 `s` 会被那个形参遮蔽 —— 遮蔽后类名读作 `undefined`，样式**静默全丢**（不报错）。
+import css from "./EdgeActivePanel.module.css";
 
 /**
  * ══ WO-ACTIVE-EDGE-UX · 推演边的 active 开关 + 关掉后的结果对照 ══
@@ -46,16 +62,42 @@ import { buildDiffRows, buildEdgeRows, buildVerdict, deriveBaseSnapshot, pickPro
  * **后端没有的一律不画**：没有任何端点回答"这条边贡献了多少百分比"，故本组件不显示归因占比。
  *
  * ── 对比度（WO-R9-CONTRAST 刚测出小字 CJK 在 4.52:1 下不可读）──────────────────
- * 本组件新增文字**正文最小 12px**；弱化色不低于 `#b6c3d4`（≈6.6:1）这一档。
+ * ⚠ **本段口径已被 WO-DISRUPTION-CARDS 改写，别照旧文读**：原文是「正文最小 12px；
+ *   弱化色不低于 `#b6c3d4`（≈6.6:1）」，那是**内联样式时代**的写法。现在颜色全部走
+ *   `EdgeActivePanel.module.css` 的语义 token（`--muted` / `--txt` / `--danger-txt` …），
+ *   对比度由主题的 token 定义负责，本组件不再自己钉死色值 —— 钉死的那一版在暗/亮/暖
+ *   三套主题里只有一套是对的。字号档位见该 CSS 文件顶注（现行最小 11px，用于 tag 徽标）。
  * 关掉的边用**虚线 + 降低不透明度到 0.72（不是 0.4）+ 显式"已关闭"文字标记**表达降级——
  * 只靠颜色/透明度表达状态在低对比下等于没表达，故文字标记是必须的那一路。
  */
 
-/** 关掉的边"可见地降级"而不是消失（§3.3）：三路编码（虚线 + 不透明度 + 文字标记），缺一路都不够。 */
-const DIM_OPACITY = 0.72;
-/** 弱化文字色下限（≈6.6:1）。比这更淡的灰在小字 CJK 上实测不可读，已被仓主截图点名过一次。 */
-const MUTED = "#b6c3d4";
-const TEXT = "#e8eef7";
+/**
+ * ══ WO-DISRUPTION-CARDS · 按业务域切片的卡片版面 ══════════════════════════════════
+ *
+ * 仓主看了推演页截图后的原话：「**按照卡片，建立不同扰动因素的分类展示**」。
+ * 改前病灶三条叠在一起：**35 条边一次全倒**（demo 租户实测）· **无栅格**（标签长短不一，
+ * 勾选框不在一条竖线上）· **字号过小**。三条各自的对策：
+ *   ① 分类切片 —— 每个业务域一个 chip（带条数），点一个只显示该域的行；
+ *   ② 固定三段栅格 `18px | 1fr | max-content`（见 `.row`），控件左边缘在同一条竖线上；
+ *   ③ 一行两级 —— 人话名 13.5px 在上、系统键 11.5px mono 在下（改前全屏最小 12px）。
+ *
+ * ── ⛔ 分组依据只有一个：边自己带的 `domainKey`（后端算好随边下发）───────────────
+ * 本文件**没有、也不许有**任何「哪条规则属于哪个域」的对照表。理由是本体 §8
+ * `G-GATE-ROSTER-HANDCOPIED`：手抄名单里没有的对象**永远绿、永远漏** —— 新增一条边
+ * 忘了加进表里，它就从分类里消失，而没有任何东西会报错。
+ * 域在 `apps/datacore/src/seed.ts` 的 `resolveRuleDomain` 里从**流程承载物登记册现算**
+ * （`carrierTypeKey → domainKey`），那是种子作者选边时本来就在用的关系。
+ *
+ * ── 人话名的出处（"不许编造"）─────────────────────────────────────────────────
+ * 对象类型的中文名取自本体 `ObjectType.displayName`（`GET /a/v1/ontology/object-types`），
+ * 查不到就**显裸键**。⚠ **状态变量（`loadIndex` / `demandLoad` …）在全仓没有任何中文名**
+ * —— 它们只作为字符串存在于传导规则里，本体的 `properties`/`derivedProperties` 都不含它们。
+ * 所以状态变量**只出现在第二级的系统键那一行**，第一级不给它编一个名字（R14 零业务常数）。
+ * 这是**诚实缺席**，补法见本单交单报告"没做的部分"。
+ */
+
+/** 未选中任何 chip 时的初始值：`null` ⇒ `resolveActiveSlice` 回落到第一片（不是"什么都不显示"）。 */
+const NO_SLICE_PICKED = null;
 
 export interface EdgeActivePanelProps {
   /**
@@ -76,11 +118,32 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
+  /** 当前选中的域切片（`DomainSliceVM.sliceId`）。`null` = 用户还没选过 ⇒ 回落到第一片。 */
+  const [pickedSlice, setPickedSlice] = useState<string | null>(NO_SLICE_PICKED);
+
   const rulesQuery = useQuery({
     queryKey: ["a", "sim-propagation-rules"],
     queryFn: () => fetchPropagationRules(true),
     staleTime: 60_000,
   });
+  /**
+   * 对象类型的中文名（`ObjectType.displayName`）**随边一起下发**，本面板不另打一次请求。
+   *
+   * ⚠ 这不是省一次请求那么简单 —— 初稿在这里加了 `useQuery(fetchObjectTypes)`，实测当场炸：
+   * 本组件挂在 8 个推演页上，而**全仓 29 个前端测试文件 `vi.mock("@/api/endpoints")` 做部分 mock**，
+   * 新增一个 endpoint 导入 ⇒ 它们全部报 `No "fetchObjectTypes" export is defined on the mock`。
+   * 挨个去补那 29 份 mock 是治标：下一个往共享面板加依赖的人还会再炸一次。
+   * 治本是**让这个面板只依赖一个响应** —— 类型名由 `GET /a/v1/sim/propagation-rules`
+   * 在**读时投影**（`app.ts` 那条路由 join 本租户本体），前端零加工、零额外依赖。
+   */
+  const typeDisplayNames = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of rulesQuery.data?.items ?? []) {
+      if (r.sourceTypeName) m.set(r.sourceTypeKey, r.sourceTypeName);
+      if (r.targetTypeName) m.set(r.targetTypeKey, r.targetTypeName);
+    }
+    return m;
+  }, [rulesQuery.data]);
   // 只有在本页没有自带会话时才去要会话列表——沙盘不该为了这个面板多发一次请求。
   const sessionsQuery = useQuery({
     queryKey: ["a", "sim-sessions"],
@@ -126,7 +189,11 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
     return s?.disabledRuleKeys ?? [];
   }, [sessionId, sessionsQuery.data, effectiveSessionId]);
   const disabled = pendingDisabled ?? result?.disabledRuleKeys ?? sessionDisabled ?? [];
-  const rows = useMemo(() => buildEdgeRows(rules, disabled), [rules, disabled]);
+  const rows = useMemo(() => buildEdgeRows(rules, disabled, typeDisplayNames), [rules, disabled, typeDisplayNames]);
+  /** 按业务域切片。**条数从 `rows` 现算**（`buildDomainSlices` 里 count = rows.length），不另存一个数。 */
+  const slices = useMemo(() => buildDomainSlices(rows), [rows]);
+  const activeSliceId = resolveActiveSlice(slices, pickedSlice);
+  const activeSlice = slices.find((x) => x.sliceId === activeSliceId) ?? null;
   const diffRows = useMemo(() => (result ? buildDiffRows(result.diffs) : []), [result]);
   const verdict = result ? buildVerdict(result) : null;
 
@@ -174,7 +241,7 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
 
   if (rulesQuery.isLoading) {
     return (
-      <section data-testid={tid("loading")} style={{ padding: 12, fontSize: 12, color: MUTED }}>
+      <section data-testid={tid("loading")} className={css.panel}>
         传导边加载中…
       </section>
     );
@@ -183,7 +250,7 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
   // 空面板比没有更糟——它让人以为这页支持而其实无边可关（WO §3.2）。
   if (rules.length === 0) {
     return (
-      <section data-testid={tid("no-edges")} style={{ padding: 12, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
+      <section data-testid={tid("no-edges")} className={css.panel}>
         本租户尚未发布任何传导边（<code>PropagationRule</code> · status=PUBLISHED 为 0 条），因此没有边可以关。
         建边入口：<code>POST /a/v1/sim/propagation-rules</code>。
       </section>
@@ -191,14 +258,24 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
   }
 
   return (
-    <section data-testid={tid("panel")} style={{ padding: 12, fontSize: 12, color: TEXT, lineHeight: 1.6 }}>
-      <header style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <strong style={{ fontSize: 13 }}>传导边 · 关掉看变化</strong>
+    <section data-testid={tid("panel")} className={css.panel}>
+      <header className={css.header}>
+        <strong className={css.title}>扰动因素 · 关掉看变化</strong>
         <HintDot label="传导边开关" testId={tid("hint")}>
           <div style={{ fontSize: 12, lineHeight: 1.7, maxWidth: 420 }}>
             <p>
               每一行是一条<b>传导边</b>：<code>源类型.状态变量 —(链路)→ 目标类型.状态变量</code>，
               带系数与延迟（tick）。数据源 <code>GET /a/v1/sim/propagation-rules</code>，前端零加工。
+            </p>
+            <p>
+              上面那排按钮按<b>业务域</b>分片，点一个只看那个域的边。域随边由后端下发
+              （从流程承载物登记册现算），<b>前端不存任何「规则→域」的对照表</b>——
+              存了它，新增一条边忘了登记就会从分类里悄悄消失。
+            </p>
+            <p>
+              第一行是<b>对象类型的业务名</b>（本体 <code>displayName</code>，查不到就显裸键）；
+              第二行是<b>系统键</b>。状态变量（如 <code>loadIndex</code>）在本体里<b>没有中文名可取</b>，
+              故只出现在系统键那一行——前端不给它编一个。
             </p>
             <p>
               关掉一条边 = <b>本次推演假装它不存在</b>，落在会话的 <code>disabledRuleKeys</code> 上。
@@ -212,118 +289,152 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
             </p>
           </div>
         </HintDot>
-        <span style={{ marginLeft: "auto", color: MUTED }} data-testid={tid("count")}>
+        <span className={css.headerRight} data-testid={tid("count")}>
           {rules.length} 条边 · 已关 {disabled.length}
         </span>
       </header>
 
+      {/*
+        ① 分类切片：每个业务域一个 chip（带**现算**的条数），点一个只显示该域的行。
+        ⛔ chip 的条数与下方真渲染的行数是**同一个数组的长度**（`slice.rows`）——
+           不是两个各自维护的数字，所以不可能出现"chip 写 7 条、点开只有 5 行"。
+      */}
+      <div className={css.chipbar} role="tablist" aria-label="按业务域筛选扰动因素" data-testid={tid("domains")}>
+        {slices.map((sl) => (
+          <button
+            key={sl.sliceId}
+            type="button"
+            role="tab"
+            aria-selected={sl.sliceId === activeSliceId}
+            className={sl.sliceId === activeSliceId ? `${css.chip} ${css.chipOn}` : css.chip}
+            data-testid={tid(`domain-${sl.sliceId}`)}
+            data-count={sl.count}
+            onClick={() => setPickedSlice(sl.sliceId)}
+          >
+            {sl.name}
+            <span className={css.chipCount}>{sl.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* 未归域不是"漏了"，是数据的实情 —— 不说清就会被读成系统出错。 */}
+      {activeSlice?.sliceId === UNASSIGNED_SLICE_ID && (
+        <p className={css.sliceNote} data-testid={tid("unassigned-note")}>
+          {UNASSIGNED_DOMAIN_DETAIL}
+        </p>
+      )}
+
       {/* 还没拨过开关时说明差值从哪来：本页自带世界 / 租户已有世界 / 拨了才就地开一个探针世界。 */}
       {!effectiveSessionId && (
-        <p data-testid={tid("no-session")} style={{ color: MUTED, margin: "0 0 8px" }}>
+        <p data-testid={tid("no-session")} className={css.note}>
           本页不持有推演世界，本租户当前也没有可推演的会话（<code>SimSession</code> 为 0 条）。
-          拨动任一开关时会**就地开一个探针世界**（tick0 由本体配置派生的占位值）来算差值。
+          拨动任一开关时会就地开一个探针世界（tick0 由本体配置派生的占位值）来算差值。
         </p>
       )}
       {/* R13 出处：拿占位世界算出来的差值只反映**边的结构影响**，不是实测量级 —— 必须标，不许含糊。
           记号文案取自 `edgeActiveModel` 的导出常量（**与产生这批数的那个函数同一个文件**），
           免得再出现"迁了实现、记号留在原文件"那种事（本单迁 `deriveBaseSnapshot` 时被门当场抓到过）。 */}
       {probeIsSynthetic && (
-        <p data-testid={tid("probe-origin")} style={{ color: MUTED, margin: "0 0 8px" }}>
+        <p data-testid={tid("probe-origin")} className={css.note}>
           <b>{PROBE_WORLD_PROVENANCE}</b>：{PROBE_WORLD_PROVENANCE_DETAIL}
           要在实测世界上对照，请在「推演沙盘」里建世界后再回到本页。
         </p>
       )}
 
-      <ul style={{ listStyle: "none", margin: 0, padding: 0 }} data-testid={tid("edges")}>
-        {rows.map((r) => (
+      {/*
+        ⚠ **只渲染选中那一片的行**（条件渲染，不是 CSS 隐藏、也不是 `<details>` 折叠）。
+        本仓已有 dev 在这条上栽过：`<details>` 折叠时子节点**照样在 DOM 里**，
+        于是"切片有效"的测试拿 DOM 存在性去判就永远是绿的。条件渲染让"不在这一片"
+        与"不在 DOM 里"变成同一件事 —— 判据与实现对齐，测试咬得住。
+      */}
+      <ul className={css.rows} data-testid={tid("edges")}>
+        {(activeSlice?.rows ?? []).map((r) => (
           <li
             key={r.key}
             data-testid={tid(`edge-${r.key}`)}
             data-active={r.active ? "true" : "false"}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "6px 4px",
-              // 三路降级编码：虚线边框 + 不透明度 + 下方显式"已关闭"文字（只靠色/透明度在低对比下等于没表达）
-              borderBottom: r.dimmed ? "1px dashed #6c7a8c" : "1px solid #2b3648",
-              opacity: r.dimmed ? DIM_OPACITY : 1,
-            }}
+            data-domain={r.domainKey ?? UNASSIGNED_SLICE_ID}
+            className={r.dimmed ? `${css.row} ${css.rowOff}` : css.row}
           >
+            {/* ② 三段栅格第 1 列：勾选框。所有行同列 ⇒ 左边缘落在同一条竖线上。 */}
             <input
               type="checkbox"
+              id={tid(`toggle-${r.key}`)}
               checked={r.active}
               disabled={busy}
               aria-label={`传导边 ${r.from} → ${r.to} 是否参与本次推演`}
               data-testid={tid(`toggle-${r.key}`)}
               onChange={(e) => void onToggle(r.key, e.target.checked)}
             />
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <code style={{ fontSize: 12 }}>{r.from}</code>
-              <span style={{ color: MUTED }}> —{r.viaLinkKey}→ </span>
-              <code style={{ fontSize: 12 }}>{r.to}</code>
-            </span>
+            {/* 第 2 列：③ 一行两级 —— 人话名在上（13.5px），系统键在下（11.5px mono）。 */}
+            <label className={css.rowMain} htmlFor={tid(`toggle-${r.key}`)}>
+              {r.sourceTypeName}
+              <span className={css.rowArrow}>→</span>
+              {r.targetTypeName}
+              <small className={css.rowKeys} data-testid={tid(`keys-${r.key}`)}>
+                {r.from} —{r.viaLinkKey}→ {r.to}
+              </small>
+            </label>
             {/*
+             * 第 3 列：系数/延迟 —— 这两个数是**边的声明值**（"算出来的"），
+             * 与第 1 列那个"你能拨的"开关在视觉上分开：等宽 + 弱化 + `声明值` tag。
              * 分层（R-UI-3）：原写作 `×0.5` —— 一个乘号是**算式**，规范点名要降浮层。
              * 但这两个数是这条边的身份（改哪条边就看它们），属第一层的「数值」。
-             * 故把乘号换成它本来的名字「系数」：算式记号降层，数值与名字留在第一层，
-             * 「系数与延迟是什么」的完整口径在同一块的 `?` 里（本页 header 那个）已给全。
+             * 故把乘号换成它本来的名字「系数」：算式记号降层，数值与名字留在第一层。
              */}
-            <span style={{ color: MUTED, whiteSpace: "nowrap" }}>
+            <span className={css.rowMeta}>
               系数 {r.coefficient} · 延迟 {r.delayTicks}
+              <span className={css.derivedTag}>声明值</span>
+              {r.dimmed && (
+                <span data-testid={tid(`off-${r.key}`)} className={css.offMark}>
+                  {" "}已关闭
+                </span>
+              )}
             </span>
-            {r.dimmed && (
-              <span data-testid={tid(`off-${r.key}`)} style={{ color: "#f0b7bd", whiteSpace: "nowrap" }}>
-                已关闭
-              </span>
-            )}
           </li>
         ))}
       </ul>
 
       {failure && (
-        <p data-testid={tid("error")} style={{ color: "#f0b7bd", marginTop: 8 }}>
+        <p data-testid={tid("error")} className={css.error}>
           对照跑失败：{failure}
         </p>
       )}
 
       {verdict && (
-        <div data-testid={tid("verdict")} style={{ marginTop: 10, color: verdict.kind === "CHANGED" ? TEXT : MUTED }}>
+        <div
+          data-testid={tid("verdict")}
+          className={verdict.kind === "CHANGED" ? css.verdict : `${css.verdict} ${css.verdictMuted}`}
+        >
           {verdict.text}
         </div>
       )}
 
       {diffRows.length > 0 && (
-        <div style={{ marginTop: 8, overflowX: "auto" }}>
-          <table data-testid={tid("diff")} style={{ borderCollapse: "collapse", fontSize: 12, width: "100%" }}>
+        <div className={css.diffWrap}>
+          <table data-testid={tid("diff")} className={css.diff}>
             <thead>
-              <tr style={{ color: MUTED, textAlign: "left" }}>
-                <th style={{ padding: "2px 8px 2px 0" }}>对象 · 状态变量</th>
-                <th style={{ padding: "2px 8px" }}>边开着</th>
-                <th style={{ padding: "2px 8px" }}>边关掉</th>
-                <th style={{ padding: "2px 8px" }}>变化</th>
+              <tr>
+                <th>对象 · 状态变量</th>
+                <th>边开着</th>
+                <th>边关掉</th>
+                <th>变化</th>
               </tr>
             </thead>
             <tbody>
               {diffRows.map((d) => (
                 <tr key={`${d.objectId}|${d.stateVar}`} data-testid={tid(`diff-${d.objectId}-${d.stateVar}`)}>
-                  <td style={{ padding: "2px 8px 2px 0" }}>
-                    <code style={{ fontSize: 12 }}>{d.objectId}</code>
-                    <span style={{ color: MUTED }}>.{d.stateVar}</span>
+                  <td>
+                    <code>{d.objectId}</code>
+                    <span className={css.flat}>.{d.stateVar}</span>
                   </td>
                   {/* `null` = 这一格在那一版世界里**根本没有**（≠ 值为 0）。两句话不同，屏上必须分得开；
                       而 `delta` 仍按引擎 `readVar` 的缺格读 0 约定算，所以变化量照样看得见。 */}
-                  <td style={{ padding: "2px 8px" }}>
-                    {d.baseline ?? <span style={{ color: MUTED }} title="该世界里没有这一格">无此格</span>}
-                  </td>
-                  <td style={{ padding: "2px 8px" }}>
-                    {d.counterfactual ?? <span style={{ color: MUTED }} title="该世界里没有这一格">无此格</span>}
-                  </td>
-                  <td
-                    style={{ padding: "2px 8px", color: d.direction === "up" ? "#f0b7bd" : d.direction === "down" ? "#8fd6c4" : MUTED }}
-                  >
+                  <td>{d.baseline ?? <span className={css.flat} title="该世界里没有这一格">无此格</span>}</td>
+                  <td>{d.counterfactual ?? <span className={css.flat} title="该世界里没有这一格">无此格</span>}</td>
+                  <td className={d.direction === "up" ? css.up : d.direction === "down" ? css.down : css.flat}>
                     {d.arrow} {d.deltaText}
-                    {d.relative !== null && <span style={{ color: MUTED }}> （{(d.relative * 100).toFixed(1)}%）</span>}
+                    {d.relative !== null && <span className={css.flat}> （{(d.relative * 100).toFixed(1)}%）</span>}
                   </td>
                 </tr>
               ))}
@@ -333,11 +444,11 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
       )}
 
       {effectiveSessionId && (
-        <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
+        <div className={css.apply}>
           <button type="button" className="btn" disabled={busy} data-testid={tid("apply")} onClick={() => void onApply()}>
             应用到本会话
           </button>
-          <span style={{ color: MUTED }}>
+          <span className={css.note}>
             「应用」把当前开关落到会话上（此后这个世界按"关掉"跑 tick）。本体里的规则发布态一个字节不动。
           </span>
         </div>
