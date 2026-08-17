@@ -310,10 +310,11 @@ describe("A3 · SEAM 端到端：engine 分叉 → 绑定矩阵解析 → env �
       const { PRODUCTION_DSH_HARNESS_PROVIDER } = await import("../src/config.js");
       const stub = await startStubOpenAi([...SCRIPT.map((r) => ({ ...r }))]);
       const prevHarnessDir = process.env.DSH_HARNESS_DIR;
+      const prevHarness = process.env.DSH_HARNESS;
       process.env.DSH_HARNESS_DIR = HARNESS_DIR;
+      process.env.DSH_HARNESS = "1"; // engine 守卫直读 process.env（D3 休眠门判据形态）
       try {
         const t = await createTestApp({
-          env: { DSH_HARNESS: "1" },
           providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), FAKE_KEY) as never,
         });
         const agentId = await makeBareAgent(t);
@@ -339,6 +340,8 @@ describe("A3 · SEAM 端到端：engine 分叉 → 绑定矩阵解析 → env �
       } finally {
         if (prevHarnessDir === undefined) delete process.env.DSH_HARNESS_DIR;
         else process.env.DSH_HARNESS_DIR = prevHarnessDir;
+        if (prevHarness === undefined) delete process.env.DSH_HARNESS;
+        else process.env.DSH_HARNESS = prevHarness;
         await stub.close();
       }
     },

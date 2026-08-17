@@ -494,7 +494,9 @@ export class ExecutionEngine {
     // 子进程路径（packages/dsh-harness），缺省关闭 = 下方 runAgentLoop 逐字节旧行为。
     // 动态 import：flag 关时 dsh 模块根本不加载。POC 验收专用；postcheck 规则后验
     // （下方 POST_CHECK 段）在此路径不外挂——验收对照的是 loop 本体语义。
-    if (cfg.DSH_HARNESS === "1") {
+    // 守卫必须直读 process.env.DSH_HARNESS：check-dsh-dormancy.mjs D3 判据只认
+    // 「条件里提到 process.env.DSH_HARNESS」的包裹块（cfg 转发会被判裸入口，门红）。
+    if (process.env.DSH_HARNESS === "1") {
       const { buildSessionSetup, mapSkill, runDshAgent } = await import("./dsh-runtime/index.js");
       const setup = buildSessionSetup({
         agent,
