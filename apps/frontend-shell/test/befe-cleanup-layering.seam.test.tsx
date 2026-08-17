@@ -105,7 +105,17 @@ describe("WO-BEFE-CLEANUP · UI 信息分层接缝（/admin/calendars 为落点�
     await user.hover(await screen.findByTestId("info-cal-net"));
     const body = await screen.findByTestId("info-body-cal-net");
     expect(body).toBeVisible();
-    expect(body.textContent, "净天数的口径没跟着降下来").toContain("netProductionDays");
+    /*
+     * ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK-ADMIN：原断言咬的是后端字段名 `netProductionDays`。
+     *   文案改说人话后该标识符已下屏（它是实现细节，业务人员读不懂、也据它做不出任何决定），
+     *   出处移进了 zh.ts 旁的代码注释。
+     * 断言随之改咬**口径本身**，且**比原来严**：
+     *   原来只要 `netProductionDays` 这一个标识符还在，公式被整段掏空也照样绿；
+     *   现在三个运算项（自然日 / 周末 / 调休补班）少任何一个都红。
+     */
+    expect(body.textContent, "净天数的口径没跟着降下来").toContain("自然日");
+    expect(body.textContent, "净天数的口径没跟着降下来").toContain("周末");
+    expect(body.textContent, "净天数的口径没跟着降下来").toContain("调休补班");
   });
 
   it("E 分层没碰坏接缝：改完照旧打真 URL + 真方法 —— PUT /a/v1/calendars/default", async () => {
