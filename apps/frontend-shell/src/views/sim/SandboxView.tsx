@@ -1622,12 +1622,21 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   ];
 
   return (
-    <div data-testid="sandbox-view" className={styles.head}>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
-        {/* 判据 U9：导出入口（第一层只留按钮 + ? 记号，口径进浮层 —— 共享件统一分层）。 */}
-        <ExportReportButton pageKey="sim-sandbox" build={buildExport} />
-      </div>
-      <SandboxModeSwitch mode={mode} onChange={setMode} scope={scope} />
+    /* WO-SANDBOX-DENSITY：根容器从 `styles.head` 换成 `consoleStyles.viewStack`。
+       `.head` 是**页眉一行**的类（flex 行 + space-between），当页根用会把
+       导出按钮 / 模式条 / 整个控制台排成并排三列 —— 实拍后果与理由见
+       `SandboxConsole.module.css` 的 `.viewStack` 注释。这里只换容器方向，
+       孩子一个没动、顺序一个没改。 */
+    <div data-testid="sandbox-view" className={consoleStyles.viewStack}>
+      <SandboxModeSwitch
+        mode={mode}
+        onChange={setMode}
+        scope={scope}
+        /* 判据 U9：导出入口（第一层只留按钮 + ? 记号，口径进浮层 —— 共享件统一分层）。
+           从**独立一行**并进模式条的右端：它一个人占一整行，而竖排之后那一行是整幅宽度，
+           为一个次级动作留一整行是第一层最贵的浪费。按钮本体一字未改。 */
+        exportSlot={<ExportReportButton pageKey="sim-sandbox" build={buildExport} />}
+      />
       {/* ══ 一次只渲染一个模式 ═══════════════════════════════════════════════════
           判据是另一屏**不在 DOM**，不是 hidden —— 故这里是**互斥的条件渲染**，
           不是「都挂上再藏一个」。`hidden` 只让人看不见：DOM 还在、请求照发、
@@ -1856,6 +1865,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
         onScopeBaseIdsChange={(baseIds) => setScope((s) => ({ ...s, baseIds }))}
       />
       )}
+      {/* 页脚：已收编原独立页的深链接索引（第三层 —— 索引不是决策，见组件头）。 */}
+      <SandboxConsolidatedLinks />
     </div>
   );
 }
@@ -1868,10 +1879,11 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
  * 顶部模式切换条 + 跨模式上下文条（沙盘这一屏的**第一层**）。
  *
  * ── 分层（`docs/CONVENTION-ui-information-layering.md`）────────────────────────
- *  · **第一层**（不点就看见）：五个模式名 + 当前模式回答哪一问 + 当前范围读数。
+ *  · **第一层**（不点就看见）：五个模式名 + 当前模式回答哪一问 + 当前范围读数 + 导出入口。
  *    只有「名字 / 它是什么 / 一个读数」——没有公式、没有口径推导、没有明细。
- *  · **第二层**（一次点击）：「已收编的原独立页」折叠清单（深链接仍可达，见 `<details>`）。
- *  · 口径与诚实位（订单锚点 / 时窗为什么不在壳里）走 `title` 浮层与折叠区，不占第一层。
+ *  · **第三层**（页脚）：「已收编的原独立页」折叠索引 —— WO-SANDBOX-DENSITY 从本条搬到页脚
+ *    （`SandboxConsolidatedLinks`，内容一个字未动；为什么搬见那个组件的头注）。
+ *  · 口径与诚实位（订单锚点 / 时窗为什么不在壳里）走 `InfoPopover` 浮层，不占第一层。
  *
  * 仓主对这一屏的原话是「信息太多，第一层看不到重点」——**并完更挤 = 这次合并是负分**。
  * 故本条只加一行按钮 + 一行范围读数，其余一律降层。
@@ -1880,13 +1892,16 @@ function SandboxModeSwitch({
   mode,
   onChange,
   scope,
+  exportSlot,
 }: {
   mode: SandboxMode;
   onChange: (m: SandboxMode) => void;
   scope: SandboxScope;
+  /** 导出入口。并进本条右端，不再单占一整行（WO-SANDBOX-DENSITY）。 */
+  exportSlot?: React.ReactNode;
 }) {
   return (
-    <div className="panel" data-testid="sandbox-mode-switch" data-mode={mode} style={{ padding: 10, marginBottom: 10 }}>
+    <div className="panel" data-testid="sandbox-mode-switch" data-mode={mode} style={{ padding: 10 }}>
       {/* `role="group"` + `aria-pressed` 而不是 `tablist`/`tab`/`aria-selected`：
           ARIA 的 tab 必须能指向一个 `tabpanel`，而这里切的是**整屏**（另一屏根本不在 DOM），
           没有稳定的 panel id 可指。用 tab 语义会向读屏器承诺一个不存在的关系。
@@ -1915,6 +1930,10 @@ function SandboxModeSwitch({
             </button>
           </span>
         ))}
+        {/* 竖排之后这一行是整幅宽度，右端还空着 —— 导出并进来（原来它单占一整行）。 */}
+        {exportSlot ? (
+          <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center" }}>{exportSlot}</span>
+        ) : null}
       </div>
 
       {/* 当前模式回答哪一问（一句话，第一层唯一的说明性文字） */}
@@ -1951,28 +1970,47 @@ function SandboxModeSwitch({
         </span>
       </div>
 
-      {/*
-        第二层：已收编的原独立页 —— 默认折叠。
-        存在理由有二：① 深链接（书签 / 外部链接）仍然可达，这里让它**看得见**，
-        不是只有知道 URL 的人才进得去；② 沙盘对某些页只做了投影而非全量搬运
-        （`chain-impediments` 的阈值出处 / 未判定判据等四块，见 AUDIT §2）——
-        那些内容今天只在原独立页上，得留一条路过去。
-      */}
-      <details data-testid="sandbox-consolidated-links" style={{ marginTop: 6 }}>
-        <summary className={styles.sub} style={{ cursor: "pointer" }}>
-          已收编的原独立页（{CONSOLIDATED_PAGES.length} 个 · 深链接仍可达）
-        </summary>
-        <div className={styles.sub} style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
-          {CONSOLIDATED_PAGES.map((p) => (
-            /* `title` → `aria-label`：同上，原生 tooltip 一律不用；这句是"点哪里能到"的短提示，
-               读屏读得到即可，不需要一个不受控的悬浮框。 */
-            <a key={p.key} href={`/v/${p.key}`} data-testid={`sandbox-consolidated-${p.key}`} aria-label={`${p.label}：${p.where}`}>
-              {p.label}
-            </a>
-          ))}
-        </div>
-      </details>
     </div>
+  );
+}
+
+/**
+ * 已收编的原独立页 —— **深链接索引**（WO-SANDBOX-DENSITY 把它从第一层挪到页脚）。
+ *
+ * ── 存在理由（一条没变）───────────────────────────────────────────────────────
+ * ① 深链接（书签 / 外部链接）仍然可达，这里让它**看得见**，不是只有知道 URL 的人才进得去；
+ * ② 沙盘对某些页只做了投影而非全量搬运（`chain-impediments` 的阈值出处 / 未判定判据等四块，
+ *    见 AUDIT §2）—— 那些内容今天只在原独立页上，得留一条路过去。
+ *
+ * ── 为什么从模式条里搬到页脚（本单唯一的改动，内容一个字未动）──────────────────
+ * 它是**索引**，不是这一屏此刻要做的决策：既不回答「现在怎么样」也不回答「我要试什么」。
+ * 原位置在模式条正下方 ⇒ 稳稳占着第一层最贵的那一段。索引的常规位置就是页脚。
+ * 判据全都保持成立：`sandbox-consolidated-links` 还在、12 条 `<a>` 还在、默认仍折叠
+ * （`sandbox-ia-consolidate.seam` 的三条断言 —— 清单不漂移 / href 正确 / `open===false` —— 逐条照旧）。
+ *
+ * ⚠ 顺带记一条实测（本单的取证，不是推想 · 见交单报告①）：
+ *   闭合 `<details>` 的子节点在 Chromium 141 里 `checkVisibility()` 为 **false**、
+ *   命中测试打不到（点不着、也没画出来），但 `getBoundingClientRect()` **仍返回旧的非零矩形**。
+ *   版面门的 `visible()` 判据是「计算样式 + 非零矩形」⇒ 它把这 12 条**当成第一屏可见控件在数**。
+ *   也就是说 52 这个数里有 12 个是量出来的幻影。本单**不去改门**（不在范围内），
+ *   而是把这块整体搬离第一屏 —— 真幻影一起走，改后的数两侧都对得上。
+ */
+function SandboxConsolidatedLinks() {
+  return (
+    <details data-testid="sandbox-consolidated-links" style={{ marginTop: 6 }}>
+      <summary className={styles.sub} style={{ cursor: "pointer" }}>
+        已收编的原独立页（{CONSOLIDATED_PAGES.length} 个 · 深链接仍可达）
+      </summary>
+      <div className={styles.sub} style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+        {CONSOLIDATED_PAGES.map((p) => (
+          /* `title` → `aria-label`：原生 tooltip 一律不用；这句是"点哪里能到"的短提示，
+             读屏读得到即可，不需要一个不受控的悬浮框。 */
+          <a key={p.key} href={`/v/${p.key}`} data-testid={`sandbox-consolidated-${p.key}`} aria-label={`${p.label}：${p.where}`}>
+            {p.label}
+          </a>
+        ))}
+      </div>
+    </details>
   );
 }
 
