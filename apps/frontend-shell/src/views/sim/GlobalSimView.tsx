@@ -18,6 +18,7 @@ import { MultiObjWhatifPanel } from "./MultiObjWhatifPanel";
 import { GlobalSimLevers, type LeverState, type FreeLever, type LeverCandidate, type LeverDeltaVM } from "./GlobalSimLevers";
 import { GlobalSimScenarioBar, type ScenarioSnapshotInput } from "./GlobalSimScenarioBar";
 import { ScheduleTable, type Transfer } from "./ScheduleTable";
+import GlobalSimOrderDrawer from "./GlobalSimOrderDrawer";
 import { CustomerImpactBar } from "./CustomerImpactBar";
 import EdgeActivePanel from "./EdgeActivePanel";
 import zh from "@/locales/zh";
@@ -42,11 +43,11 @@ import styles from "./GlobalSimView.module.css";
  * 每分配/被挤/矩阵值带 provenance（R13）；基地/型号/客户名来自真对象（R14·零焊死·debattery 门守）。
  */
 
-interface Prov { kind: string; drillType: string; drillId: string; drillField: string; drillValue: number }
+export interface Prov { kind: string; drillType: string; drillId: string; drillField: string; drillValue: number }
 // WO-SURFACE-7DIM · Scenario additively 携带 7 维 kpi（编排响应并列·经典 objectiveValues 不动）。
 interface Scenario { key: string; objectiveValues: { ontime: number; delay: number; changeover: number; fgInventory: number; cost: number }; servedCount: number; displacedCount: number; servedQty: number; kpi?: GlobalSimKpi }
-interface Alloc { item: string; kind: string; committed: boolean; base: string; baseName: string; window: number; windowStartDay?: number; qty: number; model?: string; delayDays: number; onTime: boolean; provenance: Prov }
-interface PortResult {
+export interface Alloc { item: string; kind: string; committed: boolean; base: string; baseName: string; window: number; windowStartDay?: number; qty: number; model?: string; delayDays: number; onTime: boolean; provenance: Prov }
+export interface PortResult {
   status: string; optimal: boolean; feasible: boolean; reconciled: boolean;
   allocation: Alloc[];
   displaced: { orderId: string; kind: string; qty: number; model: string; provenance: Prov }[];
@@ -160,12 +161,26 @@ const NON_DRILLABLE_NOTE: Record<string, string> = {
   wip: "在产承诺 · 预扣产能（非可细排订单）",
   forecast: "销售预测需求（未落订单 · 不可细排）",
 };
-function DrillAffordance({ kind, id, label, testId, prov }: { kind: string; id: string; label: string; testId: string; prov?: Prov }) {
+/**
+ * 判据 U8「看明细不换页」（WO-U1-U8-SMALL）：order 类下钻**不再是跳页 `<Link>`** ——
+ * 「想看细节 ⇒ 被带走 ⇒ 现场清零」正是判据点名的违反。改为按钮开同屏抽屉
+ * （`GlobalSimOrderDrawer`·数据=屏上这份联合解·同源勾稽）；跳页出口收进抽屉内
+ * （去 project-sim 做单项目试算 = 「做别的事」，判据明示不算违反）。
+ * wip/forecast 仍不可下钻（ProjectSim 池仅销售订单），诚实标注不空跳（WO-GLOBALSIM-DRILL-SEAM）。
+ */
+function DrillAffordance({ kind, id, label, testId, prov, onDrill }: { kind: string; id: string; label: string; testId: string; prov?: Prov; onDrill?: (id: string) => void }) {
   if (kind === "order") {
     return (
-      <Link className={styles.drillLink} to={`/v/project-sim?order=${encodeURIComponent(id)}`} data-testid={testId}>
+      <button
+        type="button"
+        className={styles.drillLink}
+        data-testid={testId}
+        title={prov ? provTitle(prov) : undefined}
+        style={{ background: "none", borderTop: "none", borderLeft: "none", borderRight: "none", cursor: "pointer", padding: 0, fontFamily: "inherit" }}
+        onClick={() => onDrill?.(id)}
+      >
         {label}
-      </Link>
+      </button>
     );
   }
   const note = NON_DRILLABLE_NOTE[kind] ?? "非可细排项（非销售订单）";
@@ -308,6 +323,8 @@ export default function GlobalSimView(_props: ViewRendererProps) {
   );
   const res = useLiveSolver<PortResult>("portfolio", args, (raw) => raw as PortResult, { confirmKeys: PORT_CONFIRM_ARG_KEYS });
   const d = res.data;
+  // 判据 U8（WO-U1-U8-SMALL）：订单明细抽屉的开合态——同一时刻至多一条单的明细在屏（受控展开态）。
+  const [drawerOrder, setDrawerOrder] = useState<string | null>(null);
   const adopt = useActionDraft();
   // D5 · 结果区与参数不一致时（用户选「否」/主动取消后）置灰 —— 红线：绝不让屏上结果与旁边显示的参数对不上。
   const staleStyle = res.isStale ? { opacity: 0.42, filter: "grayscale(1)" } : undefined;
@@ -937,7 +954,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                   <div key={x.orderId} className={`${styles.orderCard} ${styles.displaced}`} data-testid={`global-sim-displaced-${x.orderId}`} title={provTitle(x.provenance)}>
                     <strong>{x.orderId}</strong>（{x.kind === "forecast" ? "预测" : x.kind === "wip" ? "在产" : x.model}）<br />
                     <span className="amt">{fmt(x.qty, 0)}</span> 套 · 未获排
-                    <DrillAffordance kind={x.kind} id={x.orderId} label="进接单可行性细排 →" testId={`global-sim-drill-${x.orderId}`} prov={x.provenance} />
+                    <DrillAffordance kind={x.kind} id={x.orderId} label="未获排明细" testId={`global-sim-drill-${x.orderId}`} prov={x.provenance} onDrill={setDrawerOrder} />
                   </div>
                 )) : <span className={styles.empty}>全部需求项获排（无被挤）</span>}
               </div>
@@ -947,7 +964,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                   {d.frozen.map((f) => (
                     <div key={f.orderId} className={`${styles.orderCard} ${styles.frozen}`} data-testid={`global-sim-frozen-${f.orderId}`}>
                       <strong>{f.orderId}</strong>（固定·产能预扣）<br />{baseNameById.get(f.base) ?? f.base} · 窗口{f.window} · <span className="amt">{fmt(f.qty, 0)}</span> 套
-                      <Link className={styles.drillLink} to={`/v/project-sim?order=${encodeURIComponent(f.orderId)}`} data-testid={`global-sim-drill-${f.orderId}`}>进项目推演细排 →</Link>
+                      <button type="button" className={styles.drillLink} data-testid={`global-sim-drill-${f.orderId}`} style={{ background: "none", borderTop: "none", borderLeft: "none", borderRight: "none", cursor: "pointer", padding: 0, fontFamily: "inherit" }} onClick={() => setDrawerOrder(f.orderId)}>预扣明细</button>
                     </div>
                   ))}
                 </div>
@@ -992,7 +1009,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                   {/* ② 基地 + 产线（真数据·产线取该基地 PACK 成品线） */}
                   <td>{a.baseName}</td><td className="mono" data-testid={`global-sim-alloc-line-${a.item}`}>{lineNameOf(a.base)}</td><td className="num">{a.window}</td><td className="num">{fmt(a.qty, 0)}</td>
                   <td className={`num ${a.onTime ? styles.ok : styles.bad}`}>{a.onTime ? "按期" : fmt(a.delayDays, 0)}</td>
-                  <td><DrillAffordance kind={a.kind} id={a.item} label="细排 →" testId={`global-sim-alloc-drill-${a.item}`} prov={a.provenance} /></td>
+                  <td><DrillAffordance kind={a.kind} id={a.item} label="明细" testId={`global-sim-alloc-drill-${a.item}`} prov={a.provenance} onDrill={setDrawerOrder} /></td>
                 </tr>
               ))}
             </tbody>
@@ -1028,6 +1045,20 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       </div>
       {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。 */}
       <EdgeActivePanel pageKey="global-sim" />
+
+      {/* 判据 U8（WO-U1-U8-SMALL）：订单明细抽屉——看明细不换页；数据 = 屏上这份联合解（同源勾稽）。
+          跳页出口收在抽屉内（去 project-sim 单排试算 = 「做别的事」，判据明示不算违反）。 */}
+      {d && drawerOrder && (
+        <GlobalSimOrderDrawer
+          orderId={drawerOrder}
+          d={d}
+          baseNameById={baseNameById}
+          forecastStartIso={PORT_FORECAST_START}
+          snapshotVersion={res.snapshotVersion}
+          provTitle={provTitle}
+          onClose={() => setDrawerOrder(null)}
+        />
+      )}
     </div>
   );
 }

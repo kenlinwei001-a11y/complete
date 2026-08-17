@@ -8,7 +8,8 @@ import { loginAs, renderApp } from "./utils";
  *
  * 覆盖 DoD/SEAM：① 磨砂重设计骨架（Hero 产能占用矩阵 + 目标 segmented + 守恒台账）到位、诚实徽标；
  * ② 目标切换真消费 portfolio（切主目标 → 重求解 → 读数标签/主方案高亮随之切，非写死）；
- * ③ 双向下钻：全局分配/被挤单卡「进项目推演细排 →」跳 /v/project-sim?order=…；
+ * ③ 双向下钻：全局分配/被挤单卡开**同屏订单明细抽屉**（2026-08-17 U8 改判：看明细不换页——
+ *    旧「跳 /v/project-sim?order=…」正是判据点名的违反；跳页出口收进抽屉内·gs-drawer-goto-project）；
  * ④ 项目推演常驻「受全局主计划约束」条 + 跳回全局重排口 + ?order= 自动细排该单。
  *
  * 目标间「解真变」的 KILL-MOCK 判据由迁入本页的 MultiObjWhatifPanel 承担（改权重→被挤单翻转，
@@ -46,12 +47,17 @@ describe("global-sim · 磨砂重设计 + 全局在先 + 双向下钻", () => {
     expect(within(matrix).getAllByTestId(/global-sim-scen-row-/).length).toBeGreaterThanOrEqual(2);
   });
 
-  it("双向下钻：全局分配台账每行「细排 →」跳 /v/project-sim?order=…", async () => {
+  it("双向下钻：台账行「明细」开同屏抽屉（U8：看明细不换页）· 跳页出口收进抽屉内", async () => {
     loginAs("planner");
     renderApp("/v/global-sim");
     await screen.findByTestId("global-sim");
     const drill = await screen.findByTestId("global-sim-alloc-drill-SO-10001");
-    expect(drill).toHaveAttribute("href", "/v/project-sim?order=SO-10001");
+    // 改前是 <a href=/v/project-sim?order=…>（想看细节 ⇒ 被带走）；改后是按钮开抽屉。
+    expect(drill.tagName).toBe("BUTTON");
+    drill.click();
+    const drawer = await screen.findByTestId("global-sim-order-drawer");
+    expect(drawer.textContent).toContain("SO-10001");
+    expect(within(drawer).getByTestId("gs-drawer-goto-project")).toHaveAttribute("href", "/v/project-sim?order=SO-10001");
   });
 
   it("项目推演常驻「受全局主计划约束」条 + 回全局重排口；?order= 自动细排该单", async () => {

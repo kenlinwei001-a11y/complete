@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { server } from "./setup";
 import { loginAs, renderApp } from "./utils";
 
@@ -16,8 +16,9 @@ import { loginAs, renderApp } from "./utils";
  * 注入三类 item 的 portfolio 响应驱动接缝——正是真 datacore portfolio.ts 的输出口径（order/wip/forecast）。
  *
  * SEAM 四条：
- *  ① order(SO-xxx) → alloc/被挤下钻是指向 project-sim ?order=<so> 的链接（命中·现状不回归）；
- *  ② wip(WIP:…)  → 不产生指向 project-sim 的链接，改诚实标注（data-drill-blocked）；
+ *  ① order(SO-xxx) → alloc/被挤下钻**开同屏明细抽屉**（U8 改判后：看明细不换页——旧「跳 project-sim」
+ *     正是判据点名的违反；跳页出口收进抽屉内 gs-drawer-goto-project，仅 order 类有）；
+ *  ② wip(WIP:…)  → 不开抽屉也不产生指向 project-sim 的链接，改诚实标注（data-drill-blocked）；
  *  ③ forecast(FC:…) → 同上不空跳；
  *  ④ ProjectSim 收到无法匹配的 ?order=WIP:… → 渲诚实提示条 proj-order-notfound（不 silent）。
  * R13：每 item provenance 不丢（标注悬浮复用 provTitle）；口径差异 UI 显式（不装 1:1）。
@@ -69,10 +70,16 @@ describe("global-sim ↔ project-sim · 下钻接缝一致性（三源并集口�
     renderApp("/v/global-sim");
     await screen.findByTestId("global-sim");
 
-    // ① order(SO-xxx)：alloc 下钻是指向 project-sim ?order=<so> 的链接（命中·不回归）。
+    // ① order(SO-xxx)：alloc 下钻**不是链接、不带 href**（U8：看明细不换页）——点击开同屏明细抽屉，
+    //    抽屉内才有跳 project-sim 的「做别的事」出口（判据明示不算违反）。
     const orderDrill = await screen.findByTestId("global-sim-alloc-drill-SO-10001");
-    expect(orderDrill.tagName).toBe("A");
-    expect(orderDrill).toHaveAttribute("href", "/v/project-sim?order=SO-10001");
+    expect(orderDrill.tagName).toBe("BUTTON");
+    expect(orderDrill).not.toHaveAttribute("href");
+    orderDrill.click();
+    const drawer = await screen.findByTestId("global-sim-order-drawer");
+    expect(drawer.textContent).toContain("SO-10001");
+    expect(within(drawer).getByTestId("gs-drawer-goto-project")).toHaveAttribute("href", "/v/project-sim?order=SO-10001");
+    within(drawer).getByTestId("gs-drawer-close").click();
 
     // ② wip(WIP:…)：不产生指向 project-sim 的链接，改诚实标注（非 <a>·无 href·data-drill-blocked）。
     const wipDrill = await screen.findByTestId("global-sim-alloc-drill-WIP:WO-1");
