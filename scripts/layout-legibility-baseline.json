@@ -1,0 +1,35 @@
+{
+  "note": "版面门棘轮基线。每页每视口一组实测数，**只许变好**。`--tighten` 逐项取「更好的那个」；`--update` 会连放宽一起写下来，**不是日常操作**（本仓发生过 --update 悄悄抬基线买来一片绿）。阈值与取数方法见 scripts/check-layout-legibility.mjs 文件头。",
+  "generatedBy": "node scripts/check-layout-legibility.mjs --update",
+  "pages": {
+    "sim-sandbox": {
+      "route": "/v/sim-sandbox",
+      "rootSelector": "main",
+      "why": "推演沙盘主页 —— 本门的样板页（WO-SANDBOX-LAYOUT-HARNESS 只铺一页）。",
+      "viewports": {
+        "1440x900": {
+          "minFontPx": 12,
+          "bodyFontPx": 13,
+          "firstScreenCtrls": 52,
+          "viewportUsePct": 79.7,
+          "misalignedGroups": 0,
+          "overflowPx": 0,
+          "overflowEls": 0,
+          "textEls": 604,
+          "rowGroups": 14
+        },
+        "1280x800": {
+          "minFontPx": 12,
+          "bodyFontPx": 13,
+          "firstScreenCtrls": 52,
+          "viewportUsePct": 77.1,
+          "misalignedGroups": 0,
+          "overflowPx": 0,
+          "overflowEls": 0,
+          "textEls": 604,
+          "rowGroups": 14
+        }
+      }
+    }
+  }
+}
