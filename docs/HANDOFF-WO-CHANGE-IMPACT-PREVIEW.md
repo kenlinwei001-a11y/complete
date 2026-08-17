@@ -67,20 +67,85 @@
 
 ## ② 改法与论据
 
-（待补）
+**交付物**（全部新增/纯加性，0 删除）：
+
+| 文件 | 内容 |
+|---|---|
+| `apps/datacore/src/sim/change-impact.ts`（新建 630 行） | 模型层：`previewChangeImpact(world, focus)` 纯函数（无 React、无 I/O）+ `buildChangeImpactWorld(repos, tenantId)` 唯一装配处 |
+| `packages/contracts/src/sim.ts`（+37 行） | `ChangeFocusSchema`（五态 discriminatedUnion）/ `ChangeImpactItemSchema` / `ChangeImpactPreviewSchema` / `ChangeImpactPreviewRequestSchema` |
+| `apps/datacore/src/app.ts`（+16 行） | 最小接线 `POST /a/v1/sim/change-impact-preview`（卫兵 `requireSim(c, "sim.propagation")`，纯只读） |
+| `apps/datacore/test/change-impact-preview.seam.test.ts`（新建 386 行） | 17 例验收测试 |
+
+**设计要点与论据**：
+
+1. **焦点五态**（比工单三例多两态，均有实测依据）：`stateVar`（改扰动）/ `link`（关传导边）/ `derivedProp`（改派生公式）是工单点名的三态；`propagationRule`（改/停一条传导规则）是 §1.1 族的天然焦点；**`prop`（改一个普通对象属性）是实测中补的第五态**——没有它，rederive/rejudge 两桶没有真实触发场景（派生公式与规则表达式读的都是对象属性，不是 sim 状态变量），那就真是做样板了。
+2. **四桶**（对位参照物 recompute/rejudge/restate 三桶，按本仓实测五族映射）：`recompute`（传导规则沿 link 实例逐跳，镜像 propagateTick 的 navOut 导航与类型匹配）· `rederive`（两套派生：derivedProperties 聚合/算术 + DerivationSpec 反导航，后者**逐行镜像 ontology-core resolveAffectedTargets**：self dep⇒自身、direction=out⇒目标在 fromId 侧、in⇒toId 侧，含 `Type.*` 通配）· `rejudge`（规则表达式字段引用，含 `SUM()` 等 func 参数—— ruledsl 的 collectFieldPaths 只抽 cmp 直挂 field，会漏 func 参数，预览自行 walk AST）· `rewire`（link 焦点下吃这条边的规则与规格）。
+3. **跳数**：焦点 hop 0 不计，每经一条边 +1，BFS 首达最短跳数。环由 visited 集终止（环上节点只列一次、焦点不被回列——实测发现：初版测试把「焦点在 hop2 回列」当成期望，实现是对的、测试错了，已修正为三环链验证「真走完一整圈且恰两项」）。
+4. **MAX_HOPS=32 保险丝**：终止由 visited 保证（有限节点集），32 只是防御性上限；本仓最深真链 3 跳，32 给 10× 余量；参照物 MAX_DEPTH=256 是遍历上限（它不记跳数）。触发即 `truncated:true` + unresolved 点名断点，不静默。
+5. **诚实位**（⛔ 空集不冒充「没有波及」）：焦点不存在 / 派生公式解析失败 / 规则表达式解析失败（无法判定是否波及）/ 可达规则零实例（「接了线没数据」，只对本焦点可达的规则报，不全租户扫）/ 类型无实例 / 截断——全部进 `unresolved[]` 写明「什么追不到、缺什么」。`items` 空 + `unresolved` 空 = 焦点确为叶子（有专项测试把这一态与「算不出来」区分开）。
+6. **同一实现纪律**：聚合/算术公式解析复用 `ontology.ts` 的 `parseAggregate`/`evalArithmetic`（不另抄正则）；规则表达式复用 `ruledsl.parseExpression`。装配口径与 `buildPropagationInputs` 同源（对象非 mergedInto、规则只 PUBLISHED）。
+7. **与既有 `POST /a/v1/simulation/impact-analysis` 划界**：那条走 DerivationSpec recompute dryRun（栈B）；本条覆盖 sim 传导 + 两套派生 + 规则判定四族、按关系分桶带跳数——不重复（§1.6 排除项表）。
 
 ## ③ T1–T5 实测输出原文
 
-（待补）
+**验收测试 17/17 全绿**（第三次运行，`VITEST_RC=0`）：
+
+```
+✓ test/change-impact-preview.seam.test.ts (17 tests) 112037ms
+  ✓ 接线 > feature 关 ⇒ 404 FEATURE_NOT_FOUND（Entitlement 先于 authz）
+  ✓ 预览与实际一致（传导族·真跑 propagateTick 差分）> 预览 recompute 集合 === 真跑 N tick 后实际变值集合
+  ✓ 预览与实际一致（传导族）> 多跳正确：3 跳真链逐跳列出且跳数标对
+  ✓ 预览与实际一致（派生族·真跑 runDerivations 差分）> 预览 rederive 集合 === 实际变值集合
+  ✓ 环与保险丝 > 环检测 / MAX_HOPS=32 保险丝
+  ✓ 诚实位 × 4（焦点不存在 / 零实例规则 / 真叶子 / 公式解析失败 / 表达式解析失败）
+  ✓ rejudge/rewire/派生链/焦点五态 × 5
+  Tests  17 passed (17)
+```
+
+**T1 变异反证（红对地方）**：把 `expandStateVar` 的多跳展开拆掉（主循环插 `if (n.kind === "sv" && n.hops >= 1) continue;`），只跑多跳用例：
+
+```
+MUTANT_RC=1
+AssertionError: expected [ …(4) ] to include 'sv:obj_base_changzhou.loadIndex@2'
+    124|     expect(tagged).toContain(`sv:${baseId}.loadIndex@2`);
+```
+
+红在**「预览漏了第 2 跳」**（断言原文点名缺 `@2`），不是「函数不存在」。变异已回退（`git status` 干净）。
+
+**T2 基线**：本单 diff **纯加性 1155 insertions / 0 deletions**（T4 证据见下），无共享可变状态被改 ⇒ 基线行为不可能漂移；邻接既有套件在本分支复跑 `seed-demo-propagation.test.ts` + `impact-propagation.seam.test.ts` = **2 文件 23/23 全绿**（`ADJACENT_RC=0`）。
+
+**T3 金丝雀**：见 §1.7（35 条规则由既有断言确认 / 3 跳链三枚 link key 金丝雀 / derivedProperties 假阴性教训）。测试内金丝雀：方向可达门同款链路取实例（`expect(links.length).toBeGreaterThan(0)` 先于预览断言）。
+
+**T4 基线 diff 方向**（vs merge-base `2a1a412b`）：
+
+```
+apps/datacore/src/app.ts                           |  16 +
+apps/datacore/src/sim/change-impact.ts             | 630 +
+apps/datacore/test/change-impact-preview.seam.test.ts | 386 +
+docs/HANDOFF-WO-CHANGE-IMPACT-PREVIEW.md           |  86 +
+packages/contracts/src/sim.ts                      |  37 +
+5 files changed, 1155 insertions(+)
+```
+
+**T5 交单三条**：见本文件最后一条 commit 的提交信息（porcelain 空 / check-branch-base RC=0 / check-merge-conflict-markers RC=0）。
+
+**初跑失败与修正（诚实留痕，4 处）**：初跑 13/17。① `nodeKey` 对无 member 节点多一个尾点（`pr:r_ab.`）——实现 bug，修实现；② `/a/v1/derivations/run` 按设计返 202（测试断言写错 200）；③ 「feature 关⇒404」用 demo 租户测是**错的**——demo 经 L2 行业模板已把 sim.* 全开（seed.ts 注记早写着，只看 L1 defaultOn = 少追一层），改测无模板租户；④ 加 `prop` 焦点态后没重建 contracts dist，端点 zod 校验 `invalid_union` 返 500——重建即绿（「改代码必须重建 dist」的又一实例）。
 
 ## ④ 基线变化
 
-（待补）
+无。本单不碰 `views/sim/**`、无屏上改动 ⇒ `scripts/sim-ux-criteria-baseline.json` 无一格可翻，不 `--tighten`、不动判据表。
 
 ## ⑤ 与其他 dev 文件重叠
 
-（待补）
+- `apps/datacore/src/app.ts` / `packages/contracts/src/sim.ts`：近期有别的 dev 提交（`6160f33c` 扰动卡片化、`149909e9` 传导边业务域字段——均在集成线历史里，非并行冲突）；本单对这两个文件**纯加性**（新路由 + 新 schema），冲突面最小化。
+- `apps/frontend-shell/src/views/sim/**`：**未碰**（4 个 dev 在动，UI 另开单）。
+- `apps/datacore/src/sim/` 下既有文件（propagation.ts / propagation-inputs.ts / impact-analysis.ts）：未改一行，只新增 change-impact.ts。
 
 ## ⑥ 没做的部分 + 差什么 + 可派的具体单
 
-（待补）
+1. **UI 呈现**（用户明确指示另开单，views/sim/** 有 4 个 dev 在动）——可派 **WO-CHANGE-IMPACT-UI**：SandboxConsole/EdgeActivePanel 挂预览面板，调 `POST /a/v1/sim/change-impact-preview`，四桶分组渲染 + 跳数标注 + unresolved 诚实位上屏（⛔ 不许把 `items:[]` 渲染成「无波及」——须区分「叶子」与「unresolved 非空」）。模型层与接线本单已备齐，UI 单零后端依赖。
+2. **rejudge 桶的「实际一致」强判据**：规则重判定无持久化重算端点可差分（预览给的是结构引用面）。若要把 rejudge 也纳入集合比对，需规则求值器 dryRun 重判端点——可派 **WO-RULE-REJUDGE-DRYRUN**（evaluateExpression 已有，差一个「变更后 payload 重判 N 条规则」的只读端点）。
+3. **DerivationSpec 族 demo 零种子**（§1.4「接了线没数据」）：预览支持该族且有合成世界单测覆盖，但 demo 世界无实例可演示。种子归 seed.ts 所有者（本单边界外）——可派 **WO-DERIVATION-SPEC-DEMO-SEED**。
+4. **link 焦点下 DerivationSpec 目标给保守全集**（`expandSpec` 注释已注明）：结构改写后目标解析的精确差分静态不可判定，给全集并在 via 注明；精确化需要双世界（改前/改后）各解析一遍取对称差——可派 **WO-CHANGE-IMPACT-REWIRE-DIFF**（非阻塞，全集是诚实上界）。
+5. **规则参数变更焦点**（coefficientRef 的 ruleKey+paramKey）：改规则参数 ⇒ 引用它的传导规则系数重估，未纳入焦点五态——可派 **WO-CHANGE-IMPACT-PARAM-FOCUS**（模型层加第六态 + effectiveCoefficient 解析镜像）。
+
