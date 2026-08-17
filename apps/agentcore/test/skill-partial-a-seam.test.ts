@@ -209,6 +209,29 @@ describe("B · dependsOn 出厂数据（消费方此前从不触发）", () => {
     expect(rels.some((r) => r.fromKind === "skill" && r.relType === "references")).toBe(true);
   });
 
+  it("SEAM 反侧 · ontologyType 引用与悬挂依赖**不**产边（接线不许接出死路）", async () => {
+    const t = await createTestApp();
+    const { skills } = seedRegistry();
+    for (const s of skills) await t.repos.skills.insert(s);
+    // 金丝雀负例与主逻辑共用同一条生产链路：ontologyType 非资源图节点（真略过）+ 目标不在册（两端在册过滤）。
+    const weird = skillFixture({
+      key: "neg_canary",
+      references: [{ kind: "ontologyType", key: "Base", role: "context", required: true }],
+      dependsOn: [{ kind: "skill", key: "__NO_SUCH_SKILL__", role: "context", required: true }],
+    });
+    await t.repos.skills.insert(weird);
+
+    const res = await t.app.inject({ method: "GET", url: "/b/v1/resources", headers: H });
+    expect(res.statusCode).toBe(200);
+    const rels = await t.repos.resourceRelations.listByTenant(TENANT);
+    const fromWeird = rels.filter((r) => r.fromKind === "skill" && r.fromKey === "neg_canary");
+    // 变异反证：pushRef 若退回旧稿「ontologyType 改写成 slice」⇒ 这里出现 toKind=slice/toKey=Base 的悬挂边，本条红；
+    // registry 若摘掉两端在册过滤 ⇒ __NO_SUCH_SKILL__ 边落表，本条红。
+    expect(fromWeird).toEqual([]);
+    // 正对照：同一轮投影里正例边照常在（证上面的空不是「投影没跑」）。
+    expect(rels.some((r) => r.fromKind === "skill" && r.relType === "dependsOn")).toBe(true);
+  });
+
   it("SEAM · 出厂种子过发布门的 lint（含 requirePublishedDeps 与依赖图环检测两条跨资源规则）", async () => {
     const t = await createTestApp();
     const { skills } = seedRegistry();
