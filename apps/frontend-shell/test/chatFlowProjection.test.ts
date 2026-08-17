@@ -9,6 +9,7 @@
  * 中断步排序倒置（A16 序断言）——夹具中无此三类实样本，如实标注。
  */
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   adaptDshFrame,
@@ -40,7 +41,7 @@ interface Envelope {
 }
 
 const loadEnvelope = (name: string): Envelope =>
-  JSON.parse(readFileSync(new URL(`./fixtures/dsh/${name}.json`, import.meta.url), "utf8")) as Envelope;
+  JSON.parse(readFileSync(join(process.cwd(), "test", "fixtures", "dsh", `${name}.json`), "utf8")) as Envelope;
 
 const framesOf = (env: Envelope): DshFrame[] => env.result.value.events.map((e) => e.event);
 
@@ -78,7 +79,7 @@ describe("A1 工具树根序列与 callId 配对（hist-multihop 黄金流）", 
   it("根序列 callId 严格 == read_0..read_5，每根 name=='read'", () => {
     expect(roots.map((n) => n.root.callId)).toEqual(["read_0", "read_1", "read_2", "read_3", "read_4", "read_5"]);
     for (const n of roots) {
-      expect(n.root.kind).toBe("tool-result");
+      expect("kind" in n.root && n.root.kind).toBe("tool-result");
       expect((n.root as ToolResultBlock).call?.name).toBe("read");
     }
   });
@@ -103,7 +104,7 @@ describe("A1 工具树根序列与 callId 配对（hist-multihop 黄金流）", 
       // 配对不错配：call 侧 name/argsRaw 逐字保留
       expect(root.call?.argsRaw).toBe(call!.data.arguments);
       // result 侧 content 深相等、isError 布尔
-      const wire = (result!.data.message as { content: { content: unknown[]; isError: boolean }[] }).content[0];
+      const wire = (result!.data.message as { content: { content: unknown[]; isError: boolean }[] }).content[0]!;
       expect(root.content).toEqual(wire.content);
       expect(root.isError).toBe(false);
       expect(root.isError).toBe(wire.isError === true);
@@ -176,7 +177,7 @@ describe("A5 assistant/message 到达后投影 blocks == content 手工映射（
       { type: "assistant/chunk", seq: 5, time: 5, data: { turn: 1, step: 1, chunk: { type: "block-end", index: 1, block: { type: "tool-call", id: "tc9", name: "exec", arguments: "{\"a\":1}" } } } },
     ];
     const { nodes } = selectChatFlow(adaptDshFrames(synthetic));
-    const node = assistantNodes(nodes)[0];
+    const node = assistantNodes(nodes)[0]!;
     expect(node.data.blocks[0]).toEqual({ kind: "text", text: "整段权威文本" });
     expect(node.data.blocks[1]).toEqual({ kind: "tool-call", callId: "tc9", name: "exec", argsRaw: "{\"a\":1}" });
   });
@@ -329,7 +330,7 @@ describe("A16 双粒度兼容：原始 dsh 帧流 vs QOS SSE 伪步流", () => {
       if (f.type === "tool/call") {
         out.push({ id: String(++i), event: "step.started", data: { stepId: d.callId, type: d.name, arguments: d.arguments } });
       } else if (f.type === "tool/result") {
-        const r = (d.message as { content: { toolCallId: string; isError: boolean; content: { text?: string }[] }[] }).content[0];
+        const r = (d.message as { content: { toolCallId: string; isError: boolean; content: { text?: string }[] }[] }).content[0]!;
         out.push({
           id: String(++i),
           event: "step.completed",
