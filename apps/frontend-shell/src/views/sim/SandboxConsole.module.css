@@ -18,7 +18,52 @@
  *    实拍结论见 `.mid` 与 `.root` 各自的注：空白的真因是「容器被钉成固定高 + 内容短」，
  *    `flex: 1 1 0` 不但没堵住，它自己就是钉高的那一手。正解是三栏一律**按内容定高**。
  */
+/* ── WO-SANDBOX-LAYOUT-HARNESS · 版面尺寸令牌 ─────────────────────────────────
+ * 只管**尺寸**，不管颜色（颜色一律走 styles/tokens.css，本文件零硬编码色值，见文件头）。
+ * 全模块只有**一个**尺寸令牌，它治的是一条实测出来的病，数不是拍的：
+ *
+ * `--sbx-fs-body: 13px` —— 本模块此前把整页压到 12px。真浏览器实测（2026-08-17，
+ *   `/v/sim-sandbox`，1440×900 与 1280×800 两个视口逐元素量）：内容区 602 个可见文本元素里
+ *   **555 个是 12px（92.2%）**。仓主说的「字太小」指的就是这 92%。
+ *   13 这个数 **不是从参照物抄来的**（参照物正文是 13.5）—— 它是**本仓全局 body 自己的尺寸**
+ *   （`styles/global.css` 里 body 的那条声明）。也就是说本模块是**唯一**把正文压下去的地方，
+ *   改回 13 是回到本仓自己的正文尺寸，不是引进一个新数。
+ *
+ * ⚠ **为什么只有一个尺寸令牌，没有第二个「micro」** —— 这条是被门当场逼出来的，记下来免得改回去：
+ *   本单第一版另加了 `--sbx-fs-micro: 11px` 给 `<small>`。`check-ui-first-layer.mjs` 的
+ *   D3（规范 R-UI-2「一屏之内最多三级字号」）当场报 **2 → 4**：多出来的两档，一档是
+ *   micro，另一档是**我写在这段注释里的一个字面量**被抽取器当成了真声明
+ *   （注释里的散文被读成代码，与 css-token 门栽过的是同一个坑）。
+ *   ⇒ 正解是**不加档**：`<small>` 直接取正文尺寸。这样既去掉了浏览器默认值那条暗路，
+ *     又没有给这一页增加字号层级。
+ *
+ * ⚠ `<small>` 那条暗路是什么（实测，不是推想）：不显式写字号时浏览器默认 `small = 0.8333em`，
+ *   12 的父级算出 **10**，而这个 10 **在源码里没有任何一条 CSS 声明**。
+ *   于是 `check-text-legibility.mjs` 的 12px 硬底（**静态扫 CSS 声明**）实测报
+ *   **「B 低于 12px 0 条」且整门全绿**，同一时刻真浏览器在这一页量到 **12 个 10px 元素**
+ *   （`<small> / %`、`/ 吨`、`/ 套/天` —— 全是中文单位）。
+ *   形态（CLAUDE.md 铁律 0.6 句式）：
+ *     **「我用『CSS 里没有 <12px 的声明』当作『屏上没有 <12px 的字』的证据，而前者并不度量后者。」**
+ *   这正是 `layout-legibility:check` 存在的理由：静态门看**声明**，本门看**渲染结果**。
+ *
+ * 令牌写 `var(--x, 兜底)` 形态：`SandboxView.tsx` 用到本模块的 `.banner` 时**不在 `.root` 子树内**，
+ * 拿不到定义；兜底保证那里也是同一个值，而不是静默退回继承值。
+ *
+ * ⚠ 令牌声明**写进各自已有的块里**，不另起一个 `.root, .banner { }` 合并块 ——
+ *   本仓有测试用 `css.indexOf(".X {")` 取块再断言其内容
+ *   （`test/sandbox-console.seam.test.tsx` 的 `block()`）。多一个以 `.banner {` 开头的块，
+ *   那类查找会命中**错的那一个**，断言就在一个空壳上跑。属「同名不同物」的老坑。
+ */
+.root small,
+.banner small {
+  /* `<small>` 一律显式定尺寸（取正文尺寸，不另开一档 —— 见上「为什么只有一个尺寸令牌」）。
+     不写这条就走浏览器默认 `0.8333em`，随父级浮动，而浮动出来的值没有任何 CSS 声明可查。
+     已显式写了字号的 `.candLever small` 等（选择器更强）不受影响。 */
+  font-size: var(--sbx-fs-body, 13px);
+}
+
 .root {
+  --sbx-fs-body: 13px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -33,6 +78,8 @@
 
 /* ── 治理横幅（canEnterSimulation === false 才渲染；为 true 时整条不存在）──────── */
 .banner {
+  /* 本块**不在 `.root` 子树内**（`SandboxView.tsx` 单独用它），故令牌在此自带一份。 */
+  --sbx-fs-body: 13px;
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -42,7 +89,7 @@
   border-left: 3px solid var(--warn);
   border-radius: 4px;
   background: var(--panel2);
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   line-height: 1.55;
   color: var(--muted);
 }
@@ -55,7 +102,7 @@
   color: var(--muted);
 }
 .bannerGaps code {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--muted2);
 }
 
@@ -65,7 +112,7 @@
   border: 1px solid var(--line2);
   border-radius: 2px;
   color: var(--muted);
-  font: 600 12px var(--font-mono);
+  font: 600 var(--sbx-fs-body, 13px) var(--font-mono);
   padding: 4px 8px;
   cursor: pointer;
   letter-spacing: 0.05em;
@@ -99,11 +146,11 @@
   flex-wrap: wrap;
   padding: 6px 10px;
   border-bottom: 1px solid var(--line);
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   flex: none;
 }
 .diagHead b {
-  font: 700 12px var(--font-mono);
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
   letter-spacing: 0.12em;
   color: var(--txt);
 }
@@ -133,7 +180,7 @@
   padding: 6px 10px;
 }
 .logo {
-  font: 800 12px var(--font-sans);
+  font: 800 var(--sbx-fs-body, 13px) var(--font-sans);
   letter-spacing: 0.2em;
 }
 .logo i {
@@ -141,7 +188,7 @@
   font-style: normal;
 }
 .tag {
-  font: 600 12px/1.4 var(--font-mono);
+  font: 600 var(--sbx-fs-body, 13px)/1.4 var(--font-mono);
   padding: 4px 7px;
   border: 1px solid var(--line2);
   border-radius: 2px;
@@ -170,7 +217,7 @@
   background: none;
   border: 0;
   color: var(--muted);
-  font: 600 12px var(--font-mono);
+  font: 600 var(--sbx-fs-body, 13px) var(--font-mono);
   padding: 4px 8px;
   cursor: pointer;
   letter-spacing: 0.05em;
@@ -220,7 +267,7 @@
   background: var(--panel);
   color: inherit;
   text-decoration: none;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   cursor: pointer;
 }
 .impJumpRow:hover {
@@ -235,14 +282,14 @@
 }
 .impJumpMeta {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
 }
 .impJumpBadge {
   margin-left: auto;
   border: 1px solid var(--line2);
   border-radius: 4px;
   padding: 0 5px;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--muted);
 }
 .impJumpRow[data-degraded="1"] .impJumpBadge {
@@ -250,7 +297,7 @@
   border-color: var(--amber, #d89b28);
 }
 .impJumpJoin {
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--muted2);
 }
 .impJumpRow[data-join="NO_FACTOR_DIMENSION"] .impJumpJoin {
@@ -298,12 +345,12 @@
 }
 .impMeta b {
   display: block;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   letter-spacing: 0.06em;
 }
 .impMeta span {
   display: block;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--muted2);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -383,11 +430,11 @@
 }
 .zoneHead h2 {
   margin: 0;
-  font: 700 12px/1.4 var(--font-ui, inherit);
+  font: 700 var(--sbx-fs-body, 13px)/1.4 var(--font-ui, inherit);
   color: var(--txt);
 }
 .zoneQ {
-  font: 400 12px/1.4 var(--font-ui, inherit);
+  font: 400 var(--sbx-fs-body, 13px)/1.4 var(--font-ui, inherit);
   color: var(--muted2);
 }
 
@@ -402,7 +449,7 @@
 .zoneSection > summary {
   cursor: pointer;
   padding: 6px 10px;
-  font: 600 12px/1.5 var(--font-ui, inherit);
+  font: 600 var(--sbx-fs-body, 13px)/1.5 var(--font-ui, inherit);
   color: var(--muted);
   list-style-position: inside;
 }
@@ -455,14 +502,14 @@
   padding: 2px 0;
 }
 .deltaName {
-  font: 600 12px/1.4 var(--font-mono);
+  font: 600 var(--sbx-fs-body, 13px)/1.4 var(--font-mono);
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .deltaVals {
-  font: 400 12px/1.4 var(--font-mono);
+  font: 400 var(--sbx-fs-body, 13px)/1.4 var(--font-mono);
   color: var(--muted2);
   font-variant-numeric: tabular-nums;
 }
@@ -470,7 +517,7 @@
   color: var(--txt);
 }
 .deltaAmt {
-  font: 700 12px/1.4 var(--font-mono);
+  font: 700 var(--sbx-fs-body, 13px)/1.4 var(--font-mono);
   font-variant-numeric: tabular-nums;
   min-width: 48px;
   text-align: right;
@@ -554,7 +601,7 @@
 }
 .paneHead h2 {
   margin: 0;
-  font: 700 12px var(--font-mono);
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
   letter-spacing: 0.16em;
   color: var(--muted2);
   text-transform: uppercase;
@@ -594,7 +641,7 @@
   flex-wrap: wrap;
 }
 .dimHead b {
-  font: 700 12px var(--font-mono);
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
   letter-spacing: 0.14em;
   color: var(--muted2);
 }
@@ -612,7 +659,7 @@
   align-items: center;
   gap: 6px;
   padding: 2px 0;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   cursor: pointer;
 }
 .opt[data-disabled="1"] {
@@ -633,11 +680,11 @@
   white-space: nowrap;
 }
 .optSub {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--muted2);
 }
 .badge {
-  font: 700 12px/1.5 var(--font-mono);
+  font: 700 var(--sbx-fs-body, 13px)/1.5 var(--font-mono);
   padding: 1px 4px;
   border-radius: 2px;
   letter-spacing: 0.03em;
@@ -656,18 +703,18 @@
   color: var(--danger-txt);
 }
 .legendList {
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--muted);
   line-height: 1.7;
 }
 .note {
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--muted2);
   line-height: 1.5;
   margin: 6px 0 0;
 }
 .noteWarn {
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   line-height: 1.5;
   margin: 0;
   padding: 6px 8px;
@@ -720,7 +767,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--muted);
   cursor: pointer;
 }
@@ -799,20 +846,20 @@
   border-left-color: var(--danger);
 }
 .tierList b {
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
 }
 .tierList em {
   font-style: normal;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--muted);
   line-height: 1.5;
 }
 .tierList code {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--muted2);
 }
 .tierGlyph {
-  font: 700 12px var(--font-mono);
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--txt);
 }
 
@@ -843,12 +890,12 @@
   flex-wrap: wrap;
 }
 .laneName {
-  font: 700 12px var(--font-mono);
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
   letter-spacing: 0.16em;
   color: var(--muted2);
 }
 .laneStat {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--muted2);
 }
 .laneGrid {
@@ -885,13 +932,13 @@
 .nodeCardName {
   flex: 1;
   min-width: 0;
-  font: 600 12px var(--font-sans);
+  font: 600 var(--sbx-fs-body, 13px) var(--font-sans);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .nodeCardPct {
-  font: 800 12px var(--font-mono);
+  font: 800 var(--sbx-fs-body, 13px) var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--amber-txt);
 }
@@ -899,29 +946,29 @@
   color: var(--muted2);
 }
 .nodeCardTopStep {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .nodeCardFoot {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--muted2);
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
 }
 .nodeCardMore {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--accent-txt);
 }
 .nodeCardEmpty {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--danger-txt);
 }
 .laneEmptyRow {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--danger-txt);
   margin-top: 5px;
   line-height: 1.5;
@@ -929,7 +976,7 @@
 
 /* ── 「在册不在场」行（引擎既不产环节也不产 EMPTY 行的在册节点）──────────────── */
 .laneAbsentRow {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--muted);
   margin-top: 5px;
   line-height: 1.6;
@@ -940,7 +987,7 @@
   color: var(--txt);
 }
 .laneAbsentRow code {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--muted2);
 }
 
@@ -981,14 +1028,14 @@
 .emptyCardName {
   flex: 1;
   min-width: 0;
-  font: 600 12px var(--font-sans);
+  font: 600 var(--sbx-fs-body, 13px) var(--font-sans);
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .emptyCardKind {
-  font: 800 12px var(--font-mono);
+  font: 800 var(--sbx-fs-body, 13px) var(--font-mono);
   letter-spacing: 0.06em;
   color: var(--danger-txt);
   border: 1px solid var(--danger);
@@ -996,7 +1043,7 @@
   padding: 0 3px;
 }
 .emptyCardFoot {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--muted2);
 }
 .emptyCardFoot b {
@@ -1010,17 +1057,17 @@
   padding-top: 3px;
 }
 .emptyCardRow b {
-  font: 700 12px var(--font-mono);
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--muted);
 }
 .emptyCardRow em {
-  font: 12px/1.55 var(--font-sans);
+  font: var(--sbx-fs-body, 13px)/1.55 var(--font-sans);
   font-style: normal;
   color: var(--muted2);
   white-space: normal;
 }
 .emptyCardRow code {
-  font: 12px/1.5 var(--font-mono);
+  font: var(--sbx-fs-body, 13px)/1.5 var(--font-mono);
   color: var(--muted2);
   white-space: normal;
   word-break: break-all;
@@ -1042,7 +1089,7 @@
   border: 0;
   border-bottom: 2px solid transparent;
   color: var(--muted2);
-  font: 600 12px var(--font-mono);
+  font: 600 var(--sbx-fs-body, 13px) var(--font-mono);
   letter-spacing: 0.06em;
   padding: 6px 4px;
   cursor: pointer;
@@ -1052,7 +1099,7 @@
   border-bottom-color: var(--accent);
 }
 .sec {
-  font: 700 12px var(--font-mono);
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
   letter-spacing: 0.15em;
   color: var(--muted2);
   margin: 11px 0 5px;
@@ -1064,7 +1111,7 @@
 .stepTable {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
 }
 .stepTable td,
 .stepTable th {
@@ -1074,7 +1121,7 @@
   text-align: left;
 }
 .stepTable th {
-  font: 700 12px var(--font-mono);
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--muted2);
   letter-spacing: 0.08em;
 }
@@ -1082,12 +1129,12 @@
   opacity: 0.55;
 }
 .stepKind {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   white-space: nowrap;
   color: var(--muted);
 }
 .stepNum {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   text-align: right;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -1104,7 +1151,7 @@
   background: var(--amber);
 }
 .stepPct {
-  font: 700 12px var(--font-mono);
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -1118,11 +1165,11 @@
 }
 .kv dt {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
 }
 .kv dd {
   margin: 0;
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -1143,7 +1190,7 @@
 .railSection > summary {
   cursor: pointer;
   padding: 6px 9px;
-  font: 700 12px var(--font-mono);
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
   letter-spacing: 0.1em;
   color: var(--muted2);
   list-style: none;
@@ -1187,7 +1234,7 @@
   filter: brightness(1.3);
 }
 .paretoPct {
-  font: 700 12px var(--font-mono);
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
   text-align: center;
   margin-bottom: 2px;
   color: var(--amber-txt);
@@ -1198,7 +1245,7 @@
   background: var(--amber);
 }
 .paretoLabel {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--muted2);
   margin-top: 3px;
   line-height: 1.2;
@@ -1223,7 +1270,7 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  font: 700 12px var(--font-mono);
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
   letter-spacing: 0.1em;
   color: var(--muted2);
   flex-wrap: wrap;
@@ -1238,7 +1285,7 @@
   font-size: 14px;
 }
 .metricSub {
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--muted2);
   margin-top: 2px;
   line-height: 1.4;
@@ -1246,7 +1293,7 @@
 
 /* ── 状态行 ───────────────────────────────────────────────────────────────── */
 .stateLine {
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--muted);
   margin: 0;
   padding: 7px 9px;
@@ -1256,7 +1303,7 @@
   border-left: 3px solid var(--danger);
   background: var(--panel2);
   border-radius: 2px;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   line-height: 1.5;
   color: var(--muted);
   margin: 0;
@@ -1285,7 +1332,7 @@
   flex-wrap: wrap;
   gap: 8px;
   margin: 2px 0;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--muted);
 }
 .candHeadLine b {
@@ -1294,7 +1341,7 @@
 .candHeadLine i {
   font-style: normal;
   color: var(--muted2);
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
 }
 .candList {
   display: flex;
@@ -1310,7 +1357,7 @@
   border-radius: 6px;
   background: var(--panel);
   padding: 5px 8px;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
 }
 /* 旁路补偿（判据没动但下游产能真的变了）与前两族形态不同 —— 靠边框颜色区分，不靠深浅 */
 .candCard[data-effect="DOWNSTREAM_ONLY"] {
@@ -1333,13 +1380,13 @@
 .candProp small,
 .candMove small {
   color: var(--muted2);
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
 }
 .candLever b {
   font-family: var(--font-mono);
 }
 .candProp code {
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--muted);
 }
 .candMark {
@@ -1348,7 +1395,7 @@
 }
 .candElsewhere {
   font-style: normal;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--amber-txt, #d89b28);
   border: 1px solid var(--amber, #d89b28);
   border-radius: 4px;
@@ -1369,7 +1416,7 @@
   border: 1px solid var(--line2);
   border-radius: 4px;
   padding: 0 5px;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--muted);
 }
 .candMode[data-mode="PARTIAL"],
@@ -1384,7 +1431,7 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 3px;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--muted);
 }
 .candTag b {
@@ -1394,13 +1441,13 @@
   width: 100%;
   margin-top: 4px;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
 }
 .candDims th {
   text-align: right;
   font-weight: 400;
   color: var(--muted2);
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   padding: 1px 4px;
 }
 .candDims th:first-child {
@@ -1440,7 +1487,7 @@
   border-radius: 6px;
   background: var(--panel);
   padding: 5px 8px;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
 }
 /* 三态形状不同、不只靠深浅：NONE 是真结论（实线），UNAVAILABLE / NOT_RUN 是缺答（虚线） */
 .candNone[data-absence="UNAVAILABLE"],
@@ -1457,7 +1504,7 @@
   border: 1px solid var(--amber, #d89b28);
   border-radius: 4px;
   padding: 0 5px;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--amber-txt, #d89b28);
 }
 .candNoneTag[data-absence="NONE"] {
@@ -1480,13 +1527,13 @@
   margin: 3px 0 0;
   color: var(--muted2);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
 }
 .candGaps {
   margin: 3px 0 0;
   padding-left: 16px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   line-height: 1.5;
 }
 .candGapsHead {
@@ -1502,7 +1549,7 @@
   flex-wrap: wrap;
   gap: 8px;
   margin: 4px 0;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--muted);
 }
 .candSummarySep {
@@ -1513,7 +1560,7 @@
   border: 1px solid var(--line2);
   border-radius: 4px;
   padding: 0 5px;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
 }
 .candSummaryTag[data-absence="UNAVAILABLE"],
 .candSummaryTag[data-absence="NOT_RUN"] {
@@ -1522,7 +1569,7 @@
 }
 .candSummaryProbes {
   color: var(--muted2);
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
 }
 .candSummaryTrunc {
   color: var(--amber-txt, #d89b28);
@@ -1536,19 +1583,19 @@
 }
 .popSec b {
   display: block;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
 }
 .popSec i {
   display: block;
   font-style: normal;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
 }
 .popSec code {
   display: block;
   margin-top: 2px;
   word-break: break-all;
-  font-size: 12px;
+  font-size: var(--sbx-fs-body, 13px);
   color: var(--muted2);
 }
 .popNote {
@@ -1591,7 +1638,7 @@
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 1px 8px;
-  font: 12px var(--font-mono);
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--muted);
 }
 .processKindChip i {
@@ -1606,7 +1653,7 @@
 /* 流程键（P01…）—— 与节拍层卡片上那个百分比占同一个位置，但含义完全不同，故另起一个类：
    共用 `.nodeCardPct` 会让"占比"和"流程键"在样式上被当成一回事。 */
 .processKeyChip {
-  font: 700 12px var(--font-mono);
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
   color: var(--muted2);
   letter-spacing: 0.08em;
 }
@@ -1619,7 +1666,7 @@
   border-radius: 2px;
   margin-right: 4px;
   color: var(--bg);
-  font: 700 12px var(--font-sans);
+  font: 700 var(--sbx-fs-body, 13px) var(--font-sans);
   font-style: normal;
   vertical-align: -2px;
 }
