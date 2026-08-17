@@ -116,31 +116,90 @@ export const yearToMonth = (yearValue: number): number => r(yearValue * MONTH_SH
 // 供应评审产能线（step3 perBase · 万套/月）
 // ---------------------------------------------------------------------------
 
-const NAME_OF_BASE: Record<string, string> = Object.fromEntries(BASE_REGISTRY.map((b) => [b.baseId, b.name]));
-
 /**
- * 真后端 `sop.ts step3` 的 `perBase` 逐基地值（13 基地全量·万套/**月**·certFactor 同源）。
+ * 真后端 `sop.ts step3` 的 `perBase` **逐基地实测值表**（万套/**月**·certFactor 同源）。
  * 2026-08-15 实测；复验：`POST /a/v1/sop/versions/:id/advance {step:3}`（seed=42·scale S）。
  * 旧 mock 只有 5 行且是年量级聚合（88.0/52.3/46.0/38.3/143.3），
- * 现改为与真后端**同形同值**：Σ = 22.6839 = 真后端 `s3.sup` 字节一致。
- * `monthly` 之所以留名不改 —— 真后端契约里这个字段就叫 monthly 且就是月量级；
- * 病在值不在名，改名反而与后端契约脱钩（见本模块顶部「病灶」）。
+ * 现与真后端**同形同值**：Σ = 22.6839 = 真后端 `s3.sup` 字节一致。
+ *
+ * ── 这张表**只挂值，不挂身份**（WO-SOPSCALE-BASEREG 的全部要点）─────────────────
+ * key 必须是 `BASE_REGISTRY[].baseId`：**「有哪些基地」的唯一出处是册**，本表只回答
+ * 「册里的这个基地，实测月产能是多少」。此前它是一个自带 `baseId: "changzhou"` 的
+ * **独立 13 行名册**，与册重合纯属巧合 —— 册里加一个基地 / 改一个 id，它既不会跟着变、
+ * 也不会报错，就这么静默漂着（`boundary-singlesource:check` 判据④抓的正是这个形态）。
+ *
+ * ⚠️ 值一个都不许手改：它们是对着真后端实测出来的，不是估的。
+ * 册里新增基地 ⇒ **必须重新实测**补一条，**不许**照着邻居编一个数填上去 ——
+ * 编的那一刻，这份数据就从「实测」降级成「看起来像实测」，而它的注释还在替它作证。
  */
-export const SOP_PER_BASE_MONTHLY = [
-  { baseId: "changzhou", monthly: 3.7666, certFactor: 1 },
-  { baseId: "chengdu", monthly: 2.9992, certFactor: 1 },
-  { baseId: "xiamen", monthly: 2.9145, certFactor: 1 },
-  { baseId: "meishan", monthly: 2.1264, certFactor: 1 },
-  { baseId: "wuhan", monthly: 1.9558, certFactor: 1 },
-  { baseId: "hefei", monthly: 1.7772, certFactor: 1 },
-  { baseId: "jiangmen", monthly: 1.5826, certFactor: 0.6 },
-  { baseId: "xinyang", monthly: 1.3594, certFactor: 1 },
-  { baseId: "handan", monthly: 1.0323, certFactor: 1 },
-  { baseId: "zigong", monthly: 0.9031, certFactor: 0.6 },
-  { baseId: "zaozhuang", monthly: 0.803, certFactor: 0.6 },
-  { baseId: "jinhua", monthly: 0.7792, certFactor: 0.6 },
-  { baseId: "yangzhou", monthly: 0.6846, certFactor: 0.6 },
-].map((b) => ({ baseId: NAME_OF_BASE[b.baseId] ?? b.baseId, monthly: b.monthly, certFactor: b.certFactor }));
+const SOP_MEASURED_BY_BASE: Readonly<Record<string, { monthly: number; certFactor: number }>> = {
+  changzhou: { monthly: 3.7666, certFactor: 1 },
+  chengdu: { monthly: 2.9992, certFactor: 1 },
+  xiamen: { monthly: 2.9145, certFactor: 1 },
+  meishan: { monthly: 2.1264, certFactor: 1 },
+  wuhan: { monthly: 1.9558, certFactor: 1 },
+  hefei: { monthly: 1.7772, certFactor: 1 },
+  jiangmen: { monthly: 1.5826, certFactor: 0.6 },
+  xinyang: { monthly: 1.3594, certFactor: 1 },
+  handan: { monthly: 1.0323, certFactor: 1 },
+  zigong: { monthly: 0.9031, certFactor: 0.6 },
+  zaozhuang: { monthly: 0.803, certFactor: 0.6 },
+  jinhua: { monthly: 0.7792, certFactor: 0.6 },
+  yangzhou: { monthly: 0.6846, certFactor: 0.6 },
+};
+
+/**
+ * 册 × 实测值表的**覆盖率现算**（两侧都从现值现算，**不写死 13 这个数** ——
+ * 写死了，册里加一个基地时它照样绿，那就是「我用『条数对得上』当作『逐个盖住了』的证据」）。
+ *  · `missing` = 册里有、表里查不到值 ⇒ 新增了基地却没补实测值；
+ *  · `orphan`  = 表里有、册里没有 ⇒ 改了 id / 删了基地之后留下的死值。
+ *
+ * 下面那道派生闸（主逻辑）、`mock-scale-truth.seam.test.ts` 的覆盖率断言、以及该断言的金丝雀，
+ * **共用这一份实现** —— 各抄一份差集就是装饰品：改主逻辑时金丝雀拿旧的去测、照样绿（铁律 0.6）。
+ * 参数默认取现值，传参是给金丝雀喂已知必红的样例用的。
+ */
+export function sopPerBaseCoverageGaps(
+  registryIds: readonly string[] = BASE_REGISTRY.map((b) => b.baseId),
+  measured: Readonly<Record<string, unknown>> = SOP_MEASURED_BY_BASE,
+): { missing: string[]; orphan: string[] } {
+  return {
+    missing: registryIds.filter((id) => !Object.prototype.hasOwnProperty.call(measured, id)),
+    orphan: Object.keys(measured).filter((id) => !registryIds.includes(id)),
+  };
+}
+
+// 「要么跟着变、要么当场报错」—— 静默出 `undefined`/NaN 才是最坏的那条路：
+// Σ 变 NaN、屏上照样画出一张表，谁也不知道少了一个基地。故此处**当场抛**，且两侧一起报
+// （只报缺值的话，「改了一个 id」会被读成「少了个基地」，修法就会歪到补数据上去）。
+const PER_BASE_COVERAGE = sopPerBaseCoverageGaps();
+if (PER_BASE_COVERAGE.missing.length > 0 || PER_BASE_COVERAGE.orphan.length > 0) {
+  throw new Error(
+    "SOP_PER_BASE_MONTHLY 与 BASE_REGISTRY 对不上（基地身份的唯一出处是册，实测值表必须逐个盖住册）：\n" +
+      `  · 册里有、实测值表里查不到值的基地：[${PER_BASE_COVERAGE.missing.join(", ")}]\n` +
+      `  · 实测值表里有、册里没有的孤儿值：[${PER_BASE_COVERAGE.orphan.join(", ")}]\n` +
+      "  修法：新增基地 ⇒ 重新实测 step3 补一条（禁编数）；改/删 baseId ⇒ 同步改本表的 key。",
+  );
+}
+
+/**
+ * ③供应评审产能线 —— **由册驱动**：遍历 `BASE_REGISTRY`，按其 `baseId` 去查上面那张实测值表。
+ * 方向是「注册册驱动数据」，不是「数据驱动注册册」：条数、身份、中文名全部来自册，
+ * 本模块只提供「这个基地的实测值」。
+ *
+ * · 对外字段 `baseId` 落的是册里的**中文名** `b.name` —— 这是改动前就有的展示口径
+ *   （`SopBalanceView` 的 ③ 表直接把它当基地标签渲染），本单一个字节不动。
+ *   ⚠️ 附带查证：真后端 `sop.ts:209` 的 `perBase[].baseId` 其实是**拼音 id**（`computeRollup`
+ *   的 `Base.props.baseId`），中文名在它的 `base` 字段上 —— mock 与真后端在这个字段上口径不同。
+ *   这是**改动前就存在**的形状差异，改它会动各页读数，不在本单射程内，仅在此记一笔。
+ * · `monthly` 之所以留名不改 —— 真后端契约里这个字段就叫 monthly 且就是月量级；
+ *   病在值不在名，改名反而与后端契约脱钩（见本模块顶部「病灶」）。
+ * · 排序按月产能降序（大基地在前，与看板阅读顺序一致）。**显式排序**而非依赖手写行序：
+ *   册的行序是建厂/地理序、与产能序不同，两者别互相顶替。
+ */
+export const SOP_PER_BASE_MONTHLY = BASE_REGISTRY.map((b) => {
+  const measured = SOP_MEASURED_BY_BASE[b.baseId]!; // 上面的覆盖率闸已保证必有
+  return { baseId: b.name, monthly: measured.monthly, certFactor: measured.certFactor };
+}).sort((x, y) => y.monthly - x.monthly);
 
 /**
  * ②需求评审向导的缺省入参（`WorkspaceConfig.sopConfig.segments`）。
