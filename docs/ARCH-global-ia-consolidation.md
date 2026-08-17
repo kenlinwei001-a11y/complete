@@ -196,6 +196,78 @@
   反向 `CONSOLIDATED_INTO_SANDBOX --档--> workspace.views + getRenderer --> 页面内容`。
 - **不变量**：R3（暗发键关 = 功能不存在，收编后仍成立）；R14（档表配置驱动、零业务常数）。
 - **门禁**（§7）：`nav-group-coverage:check` 判据⑧f（两张表不许各写一半）与判据⑨（组承诺不许被掏空）；
-  退出码补齐三分（门自己瞎了 ⇒ RC=2）。
+  退出码补齐三分（门自己瞎了 ⇒ RC=2；**判负优先级见 §8.6，第一次修法把它写反了**）。
 - **断点**（§8）：新增 `G-GROUP-CONSOLIDATION-HOLLOWED`（✅ 已闭）；
   `G-NAV-FALLBACK-BUCKET` 补记第三个亚型（前两个亚型是逐键的，这个出在**组**这一层）。
+
+### 8.5 变异反证台账（2026-08-17 续跑亲手现跑，不是引用上一轮报告）
+
+**为什么整表重跑**：上一轮的结论写在被中断的会话里，而「报告说绿」不是「今天还绿」。
+本表每一行都是这次续跑亲手跑出来的退出码 / 红法，命令与判据一并留下，供复验方直接重放。
+
+| # | 变异（做了什么） | 期望 | 实测 | 关键报文 |
+|---|---|---|---|---|
+| M1 | 摘掉 `procurement-legs` 的 `consolidatedWhen` | 门 RC=1 且点名 | **RC=1** ✅ | 「本组的收编承诺正在被掏空：「归因与风险」组 —— sim.sandbox 开时本组还剩 **1** 项 … · view:procurement-legs」 |
+| M2 | `ConsolidatedViewTab` 只渲染空壳（`<Renderer>` 拿掉） | 可达侧红在**内容没出现** | **B0 仍绿 · B1–B4 红** ✅ | `Unable to find an element by: [data-testid="pw-summary"]` —— 不是「组件不见了」，正是要的那个红法 |
+| M4 | 拆掉档的 R3 双闸（`features` + `workspace.views` 两条判据） | C1 红 | **RC=1，仅 C1 红** ✅ | 「暗发键关着，沙盘里却点得进流程卡点 ⇒ 一次 IA 整理把暗发键作废了（R3）」 |
+| M7 | 打坏 `parseNavGroups`（成员正则去掉 `route` 一支） | 门 RC=**2** | **修前 RC=1 ❌ → 修后 RC=2** ✅ | 见 §8.6 —— 这条抖出一个真缺陷 |
+| M8 | 调换 `verdictExitCode` 里两个 `if` 的顺序 | 金丝雀点名 + RC=2 | **RC=2** ✅ | 「退出码判决写反了 —— verdictExitCode(2, 3) 期望 2，实得 1」 |
+
+复验命令（逐条可重放）：
+`node scripts/check-nav-group-coverage.mjs`（RC=0）·
+`pnpm --filter frontend-shell exec vitest run test/sandbox-nav-consolidate.seam.test.tsx`（12/12）·
+`pnpm --filter frontend-shell exec vitest run test/process-wait-stuck-link.seam.test.tsx`（4/4，既有双向入口未被改红）。
+
+### 8.6 续跑记账：M7 抖出的真缺陷 —— 门瞎了时退出码仍是 1
+
+**现象**：M7 让门自证瞎了（词法自检 3 条全红），但进程退 **1** 而不是 2；
+更糟的是同一次运行的 `fail` 段冒出一条**纯假阳性**：
+
+> ✗ 判据⑨ 豁免不许陈旧：`GROUP_CONSOLIDATION_EXEMPT["推演::sim-sandbox"]` 在 NAV_GROUPS 里找不到对应的「组::项」…… **删掉即可**。
+
+那条豁免登记**一个字都没错**，只是 route 项没被解析出来。而照
+`docs/SOP-reviewer-claim-discipline.md` §3 的三分表，RC=1 读作「真有问题，先修再说」——
+于是这道门会**指着人去删一条完全正确的登记**。
+
+**形态**（铁律 0.6 句式）：
+> **「我用『fail 非空』当作『被扫代码真有问题』的证据，而门瞎了时 fail 度量的是门，不是代码。」**
+
+与本文件上一轮已记的那条（「我用『每条豁免单独看都成立』当作『整组收编还在生效』的证据」）
+**是同一个形态换了对象**；也与门脚本顶部兜底注释里那条（「我用『进程非 0 退出』当作
+『代码有问题』的证据」）同源 —— 上一轮只把「未捕获异常」那一路修成了 2，
+**把「自检判负」这一路漏在原地**，所以修了一半等于没修。
+
+**修法两处，缺一不可**：
+① 判负优先级反过来 —— `gateBroken` 非空 ⇒ 一律 **2**，整次结论作废（**连同那段 fail**）。
+   真违规不会因此丢：门修好后原样再报一次，那时才是 RC=1。
+② 门瞎时那段 `fail` 的抬头从「── 被扫代码的问题 ──」改成
+   「── 以下是**本次扫描的产出，不是结论**（门已瞎，逐条都可能是假阳性；先修门再看）──」。
+   **退出码只有 CI 读，抬头才是人读的那一半**，只改一个等于只修一半读者。
+
+**机制（0.6 二级处置：机器先说话）**：判决从文件末尾一个三目表达式抽成
+`verdictExitCode(gateBrokenCount, failCount)` 单一出处，配四例金丝雀**直接喂函数本体**
+（不另抄一份三目 —— 抄了就是装饰品）：`(0,0)⇒0 · (0,3)⇒1 · (2,3)⇒2 · (2,0)⇒2`。
+第三例就是写错的那一格。M8 已实证它会咬。
+
+**牵连复核**：`node scripts/check-gate-exit-discipline.mjs` ⇒ RC=0（92 道门全守纪律，金丝雀 9/9）。
+
+### 8.7 顶回来一条：审核方给的那条线索是错的（追到调用点条件为止）
+
+派单里给的线索是 `SandboxConsole.tsx` 文件头那句
+「**第五档**的检视面板直接复用『流程等待态』那一页的既有组件」，据此推断
+「流程那一块的内容早就搬进沙盘了，本单只是登记一下」。**追下来两处都不成立**：
+
+1. **「第五档」指的不是本表的第五个模式**。`SANDBOX_MODES` 的第五个是 `radius`（影响半径）；
+   那句话里的第五档是 `CANVAS_MODES`（画布画法）的 `process`
+   —— `sandboxConsoleModel.ts` 的 `["metro","topo","chain","ontology","process"]`。
+   两张表**层级不同**（一个换问题、一个换同一问的画法），本来就不许混。
+2. **复用的那个组件不是那一页**。`ProcessInspectPanel` 在 `/v/process-wait` 里
+   只是**点开才出的下钻侧栏**（`views/process/ProcessWaitView.tsx` 里 `<ProcessInspectPanel processKey={selectedKey} …>`
+   那一处：由 `selectedKey` 非空才挂、且带 `onClose` —— **写符号不写行号，行号会漂**，见 CLAUDE.md 铁律 0.5 末条），
+   页面主体是 `ProcessWaitView` 自己（621 行 vs 面板 365 行）。
+   实测画布第五档的路径（`ProcessCanvasView` / `SandboxConsole`）里
+   **`pw-root` / `pw-summary` / `pw-dist` 一个都没有** —— 四态分组表、「等谁」、
+   到实例层的卡单计数与跳转，一条都不在第五档里。
+
+⇒ 本单不是「把已经搬完的登记一下」，是**真收编**。这条结论上一轮已写进
+`views/sim/sandboxModes.ts` 文件头，本次续跑**独立复核一遍并确认**，故在此备案而非推翻。

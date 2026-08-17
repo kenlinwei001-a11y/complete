@@ -110,7 +110,7 @@ export function describeSandboxScope(scope: SandboxScope): string {
 
 /**
  * ── 为什么加「档」这一层，而不是加第六个模式 ──────────────────────────────────
- * 仓主指着侧栏「归因与风险」组问「**为何导航栏还有这2个**」。实测根因不是漏配，是
+ * 仓主指着侧栏「归因与风险」组问「**为何导航栏还有这2个**」。**2026-08-17 实测**根因不是漏配，是
  * **整组的收编承诺被逐条豁免掏空**：本组原本两项都带 `consolidatedWhen: "sim.sandbox"`
  * （沙盘一开整组消失），后来三张单各加了一项、每一项都不带 —— 每条豁免单独看都成立
  * （「沙盘五模式里没有它，带了页面就不可达」），**合起来把整组掏空了**。
@@ -140,6 +140,16 @@ export function describeSandboxScope(scope: SandboxScope): string {
  * ⚠ **`process-wait` 与 `process-stuck` 不合并**（上一轮已裁决，本单不推翻）：
  *   模板层 vs 实例层，`waitStateOrigin` 的 `DEFINITION_TEMPLATE` vs `TASK_GATE` 分的正是这两者。
  *   它们进同一个模式**做两档**，各自渲染各自的整页，一个字都没揉在一起。
+ *
+ * ── 复验方式（上面每一句都可以亲手跑一遍，别只读注释）· 2026-08-17 实测 ────────────
+ *  · 组被掏空 / 已修好：`node scripts/check-nav-group-coverage.mjs` 的**判据⑨** ——
+ *    绿灯行会打印「`sim.sandbox` 开时剩 N 项」（今日实测「归因与风险」→ **0 项** = 承诺兑现）。
+ *    变异反证：摘掉任一页的 `consolidatedWhen` ⇒ RC=1 并逐条点名。
+ *  · 三页真收编、点进去有内容：
+ *    `pnpm --filter frontend-shell exec vitest run test/sandbox-nav-consolidate.seam.test.tsx`
+ *    （今日实测 12/12；§A 咬导航侧、§B 咬**内容出现**、§C 咬暗发键守卫）。
+ *  · 模板层/实例层未被合并：同文件 §B 的 B4 一例（切档时另一页的内容**不在 DOM 里**），
+ *    以及既有的 `test/process-wait-stuck-link.seam.test.tsx`（双向入口，今日实测 4/4）。
  */
 export const SANDBOX_ATTRIBUTE_TABS = ["cleanroom", "process-wait", "process-stuck", "procurement-legs"] as const;
 export type SandboxAttributeTab = (typeof SANDBOX_ATTRIBUTE_TABS)[number];
