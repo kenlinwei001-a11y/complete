@@ -7,11 +7,14 @@
  * ⛔ **一个十六进制都不许写死**：本页在暗/亮/暖三套主题下渲染，写死色值就是三套里坏两套。
  *    全部走 `styles/tokens.css` 的语义 token（`--txt` / `--muted` / `--line` / `--panel` …）。
  *
- * ── 字号档（改前实测最小 12px，且 `code` 在 12px 下更小；参照物 body 13.5 / label 11.5 / small 10）──
- *    行主标题（人话名）  13.5px —— 这是用户真正在读的那一行
- *    系统键（第二级）    11.5px + mono —— 给得起，但不与人话名抢
- *    chip / 元信息       12px
- *    **没有任何一档低于 11.5px**（改前是 12px 正文里塞 12px `code`，实际视觉更小）。
+ * ── 字号档（实测，可复算：源码里 `font-size:` 与 `fontSize:` 逐处抽取）───────────────
+ *    改前：`EdgeActivePanel.tsx` 内联 9 处 —— **12px×8 + 13px×1**，最小 12px；
+ *          其中 **3 处是 12px 的 `<code>`**（等宽字在同 px 下视觉更小，是「字号过小」观感的主因）。
+ *    改后：**13.5px×2（行主标题）· 12px×5（chip/正文）· 11.5px×4（系统键/元信息）· 11px×1（tag 徽标）**
+ *    参照物口径：body 13.5 / label 11.5 / small 10 —— 本表与它同档。
+ *    ⚠ **最小是 11px 不是 11.5px**：`.derivedTag` 是徽标不是正文，单列一档。
+ *      这句话必须写准 —— 初稿此处写「没有任何一档低于 11.5px」，而实际有一处 10.5px，
+ *      是**注释在替代码撒谎**；已把 tag 提到 11px 并把这一档如实写出来。
  */
 
 .panel {
@@ -152,7 +155,7 @@
   background: var(--panel);
   color: var(--muted);
   font-family: var(--font-sans);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.7;
 }
 .offMark {
