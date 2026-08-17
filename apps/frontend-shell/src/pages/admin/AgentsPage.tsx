@@ -342,7 +342,8 @@ function AgentOwnRuns({ agent }: { agent: AgentDefinition | null }) {
         {c.agentRunsTitle}
         <InfoPopover topic={zh.admin.layer.agentOwnRunsTopic} testId="agent-own-runs-source">
           <p>{c.agentRunsSubtitle}</p>
-          <p>读端：GET /b/v1/agents/:id/runs（与下方按任务聚合的那一段是两个读端，不是同一份数据换个过滤）。</p>
+          {/* 出处（工程师层，不上屏）：读端 GET /b/v1/agents/:id/runs —— 与下方按任务聚合那段是两个不同读端。 */}
+          <p>这一块数的是这个助手自己被叫起来的每一次运行；下方那一块按任务汇总。两块各取各的数，不是同一份数据换个筛选条件。</p>
         </InfoPopover>
       </div>
       {isLoading ? (
@@ -465,7 +466,10 @@ function TaskAgentRuns({ taskId }: { taskId: string }) {
         {c.taskRunsTitle}
         <InfoPopover topic={zh.admin.layer.agentTaskRunsTopic} testId="task-agent-runs-source">
           <p>{c.taskRunsSubtitle}</p>
-          <p>读端：GET /b/v1/queries/:taskId/agent-runs（复数）。按**任务**聚合，回答「这一次会诊叫了谁」。</p>
+          {/* 出处（工程师层，不上屏）：读端 GET /b/v1/queries/:taskId/agent-runs（复数）。 */}
+          <p>
+            这一块按<b>任务</b>汇总，回答「这一次会诊把哪些助手叫去了」—— 与上面按单个助手计数的那一块取数口径不同。
+          </p>
         </InfoPopover>
       </div>
       {isLoading ? (

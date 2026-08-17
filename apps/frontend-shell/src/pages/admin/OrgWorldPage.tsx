@@ -264,7 +264,7 @@ export default function OrgWorldPage() {
       <div className="panel" data-testid="org-resolve-panel">
         <div className="section-title">谁能批这一单</div>
         <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-          只回答「谁有权批」+「谁为什么批不了」。**不写任何真值** —— 要真派单仍走审批中心的 Action 审批链。
+          只回答「谁有权批」+「谁为什么批不了」。<b>只查不改，不落任何单据</b> —— 要真派单仍走审批中心的 Action 审批链。
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 8 }}>
           <label style={{ fontSize: 12 }}>

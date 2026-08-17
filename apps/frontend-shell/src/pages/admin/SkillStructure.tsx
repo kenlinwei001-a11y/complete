@@ -388,7 +388,7 @@ export function SkillCompileReport({
       {notImplemented.length > 0 && (
         <div className="muted" style={{ fontSize: 12, marginTop: 6 }} data-testid="skill-compile-not-implemented-note">
           ⚠️ {notImplemented.length} 段未实现（{notImplemented.map((s) => STAGE_LABEL[s.stage] ?? s.stage).join(" / ")}）——
-          本报告**不含**任何可分发运行时制品，上方推理图是未经优化的派生图。
+          本报告<b>不含</b>任何可分发运行时制品，上方推理图是未经优化的派生图。
         </div>
       )}
 
@@ -455,7 +455,8 @@ export function SkillCompileReport({
         <div style={{ marginTop: 12 }} data-testid="skill-compile-tools">
           <div className="section-title">派生工具（{result.ast.tools.length}）</div>
           <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
-            由引用 kind 与写模式**推导**得出（`source: derived`），不是作者声明的字段——每条标出推它的依据。
+            {/* 出处（工程师层，不上屏）：这些工具由 AST 的 `source: derived` 标出，非作者声明字段。 */}
+            由「这条技能引用了什么」和「是读还是写」<b>推导</b>得出，不是作者自己填的——每条都标出推它的依据。
           </div>
           {result.ast.tools.map((t) => (
             <div key={t.name} style={{ fontSize: 12, marginBottom: 3 }} data-testid="skill-compile-tool-row" data-tool-name={t.name}>
