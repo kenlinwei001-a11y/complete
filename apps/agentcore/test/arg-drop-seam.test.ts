@@ -18,7 +18,9 @@ describe("SEAM-ARG-DROP · CEO 种子数据半（slotNames × plan 模板 一致
       const intent = intentByKey.get(key);
       expect(intent, `缺 CEO 意图 ${key}`).toBeTruthy();
       const declared = new Set((intent!.slots ?? []).map((s) => s.name));
-      const plan = planById.get(intent!.planId)!;
+      // planId 在 Intent 契约上是可选的（草稿意图可以还没绑定 plan）；本用例断言的正是
+      // 「CEO 意图都已绑定 plan」，故此处断言非空是判据的一部分，不是掩盖。
+      const plan = planById.get(intent!.planId!)!;
       const invoke = (plan.steps as { type: string; params?: { args?: unknown } }[]).find((s) => s.type === "invoke_solver");
       const refs = invoke ? collectSlotRefs(invoke.params?.args ?? {}) : new Set<string>();
       for (const r of refs) {
@@ -30,7 +32,7 @@ describe("SEAM-ARG-DROP · CEO 种子数据半（slotNames × plan 模板 一致
   it("CONFIRMED-1 ceo_credit_exposure：custName 已声明为槽 + plan 映射 {{slots.custName}}", () => {
     const intent = intentByKey.get("ceo_credit_exposure")!;
     expect((intent.slots ?? []).map((s) => s.name)).toContain("custName");
-    const plan = planById.get(intent.planId)!;
+    const plan = planById.get(intent.planId!)!;
     const invoke = (plan.steps as { type: string; params: { args: unknown } }[]).find((s) => s.type === "invoke_solver")!;
     expect([...collectSlotRefs(invoke.params.args)]).toContain("custName");
     // 数据半 seam：credit 深问路由真解析出 custName（供该槽承接）。
@@ -44,7 +46,7 @@ describe("SEAM-ARG-DROP · CEO 种子数据半（slotNames × plan 模板 一致
     const names = (intent.slots ?? []).map((s) => s.name);
     expect(names).toContain("scopeObjectIds");
     expect(names).not.toContain("baseId"); // 修前的错名（路由发 scopeObjectIds → 会丢）
-    const plan = planById.get(intent.planId)!;
+    const plan = planById.get(intent.planId!)!;
     const invoke = (plan.steps as { type: string; params: { args: unknown } }[]).find((s) => s.type === "invoke_solver")!;
     expect([...collectSlotRefs(invoke.params.args)]).toContain("scopeObjectIds");
     // 数据半 seam：whatif 深问路由真发 scopeObjectIds（数组·供 json 槽承接）。

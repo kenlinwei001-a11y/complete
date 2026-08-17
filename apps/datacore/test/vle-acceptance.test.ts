@@ -38,7 +38,7 @@ describe("VLE 验收补齐 · VL2/VL4/VL5/VL7", { timeout: 120000 }, () => {
       evidence: { windowFrom: "2026-06-01", windowTo: "2026-06-30", nPairs: 30, mapeBefore: 12, simulatedMapeAfter: 9.5, bias: 0.2, flags: [] },
     };
     // 收敛保证：提案应用后 MAPE 改善（9.5 < 12）
-    expect(proposal.evidence.simulatedMapeAfter).toBeLessThan(proposal.evidence.mapeBefore);
+    expect(proposal.evidence!.simulatedMapeAfter).toBeLessThan(proposal.evidence!.mapeBefore);
     await t.repos.calibrationProposals.put(proposal);
 
     // 提案→批准(Action)→应用：参数版本+1、新值生效（学习回路闭合）

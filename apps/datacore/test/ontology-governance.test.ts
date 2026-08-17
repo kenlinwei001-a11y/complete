@@ -6,7 +6,9 @@ const J = <T>(r: { json: () => unknown }) => r.json() as T;
 async function get(t: TestApp, url: string, headers = ADMIN) {
   return t.app.inject({ method: "GET", url, headers });
 }
-async function post(t: TestApp, url: string, payload: unknown, headers = ADMIN) {
+// payload 不能标 unknown：赋不进 inject 的 InjectPayload，且会把重载解析歪掉，
+// 连带本文件所有 .statusCode/.json 报「不存在」。
+async function post(t: TestApp, url: string, payload: Record<string, unknown>, headers = ADMIN) {
   return t.app.inject({ method: "POST", url, headers, payload });
 }
 
@@ -282,7 +284,7 @@ describe("治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系", (
       const kind = row.group.kind;
       const matching = bases.filter((b) => String(b.props.kind ?? "") === kind && typeof b.props.util === "number");
       const expectedAvg = matching.reduce((a, b) => a + (b.props.util as number), 0) / matching.length;
-      expect(Math.abs(row.metrics.avg_util - Math.round(expectedAvg * 1e6) / 1e6)).toBeLessThan(1e-6);
+      expect(Math.abs(row.metrics.avg_util! - Math.round(expectedAvg * 1e6) / 1e6)).toBeLessThan(1e-6);
       expect(row.metrics.count_baseId).toBe(matching.length);
     }
     // fn 作用于非 number → 400

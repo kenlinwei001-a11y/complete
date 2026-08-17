@@ -53,12 +53,12 @@ describe("A5 · projectFdeNodes 确定性投影（L0）", () => {
     };
     const nodes = projectFdeNodes({ context: ctx });
     const byKey = Object.fromEntries(nodes.map((n) => [n.key, n]));
-    expect(byKey.comprehend.status).toBe("DONE"); // 倒推出了 plan
-    expect(byKey.closure.status).toBe("FAILED");
-    expect(byKey.closure.gapCode).toBe("CHAIN_BROKEN");
-    expect(byKey.generate.status).toBe("SKIPPED");
-    expect(byKey.publish.status).toBe("SKIPPED");
-    expect(byKey.launcher.status).toBe("SKIPPED");
+    expect(byKey.comprehend!.status).toBe("DONE"); // 倒推出了 plan
+    expect(byKey.closure!.status).toBe("FAILED");
+    expect(byKey.closure!.gapCode).toBe("CHAIN_BROKEN");
+    expect(byKey.generate!.status).toBe("SKIPPED");
+    expect(byKey.publish!.status).toBe("SKIPPED");
+    expect(byKey.launcher!.status).toBe("SKIPPED");
     expect(summarizeFdeNodes(nodes).failedAt).toBe("closure");
   });
 

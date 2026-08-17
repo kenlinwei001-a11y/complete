@@ -113,8 +113,8 @@ describe.skipIf(!SIDECAR)("WO-PORTFOLIO-OPTIMAL · 真 CP-SAT 联合最优组合
     const mo = g.scenarios.find((s) => s.key === "max_ontime")!;
     const mc = g.scenarios.find((s) => s.key === "min_cost")!;
     // 各目标值真算（非贴标签）。
-    expect(mo.objectiveValues.ontime).toBeGreaterThanOrEqual(mc.objectiveValues.ontime); // max_ontime 按期数 ≥
-    expect(mc.objectiveValues.cost).toBeLessThanOrEqual(mo.objectiveValues.cost);        // min_cost 代价 ≤
+    expect(mo.objectiveValues.ontime).toBeGreaterThanOrEqual(mc.objectiveValues.ontime!); // max_ontime 按期数 ≥
+    expect(mc.objectiveValues.cost).toBeLessThanOrEqual(mo.objectiveValues.cost!);        // min_cost 代价 ≤
     // 方案 objectiveValues 至少一对不字节相同（改目标→真漂移）。
     const sigs = g.scenarios.map((s) => JSON.stringify(s.objectiveValues));
     expect(new Set(sigs).size).toBeGreaterThan(1);

@@ -29,7 +29,9 @@ const factoryObj: ObjectInstance = {
   tenantId: "demo",
   type: "Factory",
   props: { fid: "F1", name: "星海工厂" },
-  origin: "MANUAL" as ObjectInstance["origin"],
+  // 原写 `"MANUAL" as ObjectInstance["origin"]` —— ObjectOrigin 是**判别联合对象**
+  // （domain.ts:375），不是字符串。那个 `as` 把类型错误整个盖住了，正是不该用 as 的样板。
+  origin: { type: "MANUAL" },
 };
 
 describe("DF.11 · 接地词表自本体自成长（deriveGroundingVocab）", () => {

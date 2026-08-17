@@ -159,7 +159,7 @@ describe("WO-A · Plan Builder backend", () => {
     const plan = await t.repos.plans.get(result.canvas.compiledPlanId as string);
     expect(plan).toBeDefined();
     expect(plan!.status).toBe("PUBLISHED");
-    expect(plan!.steps[plan!.steps.length - 1].type).toBe("render_answer");
+    expect(plan!.steps[plan!.steps.length - 1]!.type).toBe("render_answer");
   });
 
   it("admin.plan-builder 关闭时路由返回 404 FEATURE_NOT_FOUND", async () => {

@@ -124,8 +124,8 @@ describe("WO-QOS-ONTOLOGY-CONTEXT · GET /a/v1/ontology/type-semantics（口径�
     const c03 = after.types.find((x) => x.typeKey === "Order")!.rules.filter((r) => r.key === "C03");
     // 仅当前 PUBLISHED 版本（旧版 RETIRED 不出）→ 表达式已变
     expect(c03).toHaveLength(1);
-    expect(c03[0].expression).toBe("Order.demandDelta > 0.8");
-    expect(c03[0].severity).toBe("WARN");
+    expect(c03[0]!.expression!).toBe("Order.demandDelta > 0.8");
+    expect(c03[0]!.severity!).toBe("WARN");
     const actual = after.types.find((x) => x.typeKey === "Metric")!.props.find((p) => p.propKey === "actual")!;
     expect(actual.description).toBe("当期实际达成");
     expect(actual.unit).toBe("pct");

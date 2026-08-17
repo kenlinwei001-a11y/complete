@@ -153,7 +153,7 @@ describe("projectTrace · ⑦ cmp 抽取", () => {
     const trace = projectTrace(task(), p, [ok("llm_compose")], undefined, answer);
     const n7 = trace.nodes.find((n) => n.id === 7)!;
     expect(n7.cmp).toBeDefined();
-    expect(n7.cmp![0].n).toBe("加 2 夜班");
+    expect(n7.cmp![0]!.n).toBe("加 2 夜班");
 
     // 无该结构 → 不渲染 cmp（不写死 HTML 5 行）
     const plainAnswer: Answer = { trustLevel: "VERIFIED_WORKFLOW", blocks: [{ type: "text", markdown: "hi" }], provenance: [], unverifiedNumerics: false };

@@ -190,13 +190,13 @@ describe("WO-SANDBOX-D4 ② 库存 地点×时间序列（由 inventory_optimize
       // 起点 = 真 Material.onHand（不是任何默认值）
       expect(row.onHandStart).toBe(m.onHand);
       // 目标水位 = dailyUse×(leadTime+安全天) —— 与 inventory_optimize 同口径
-      expect(row.target).toBeCloseTo(m.dailyUse * (m.leadTime + 5), 4);
+      expect(row.target).toBeCloseTo(m.dailyUse! * (m.leadTime! + 5), 4);
       expect(row.series.length).toBe(ls.timeAxis.horizonDays + 1);
       expect(row.series[0]).toBe(m.onHand);
       // 逐日 = 上一日 − dailyUse + 当日到货（真 PurchaseOrder）
       for (let d = 1; d < row.series.length; d++) {
         const arrived = row.inbound.filter((ib) => ib.day === d).reduce((a, ib) => a + ib.qty, 0);
-        expect(row.series[d]!).toBeCloseTo(row.series[d - 1]! - m.dailyUse + arrived, 3);
+        expect(row.series[d]!).toBeCloseTo(row.series[d - 1]! - m.dailyUse! + arrived, 3);
       }
       // inbound 全部来自真 PurchaseOrder 对象（poId/qty/etaDay 一一对得上）
       for (const ib of row.inbound) {

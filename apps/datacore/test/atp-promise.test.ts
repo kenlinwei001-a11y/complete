@@ -93,10 +93,10 @@ describe("WO-ATP-PROMISE · 订单承诺（ATP/CTP）净室三源承诺", () => 
   it("SEAM 端到端·atp_check 读对象图：改 Line.max_capacity_day（产能）与 FG.qtyOnHand（库存）→ 重跑承诺随之变", async () => {
     const t: TestApp = await makeApp();
     // 受控最小对象图（净读三源；无其它 Line/FG/WO 干扰）
-    await t.repos.objects.put({ id: "obj_order_SOATP1", tenantId: "demo", type: "Order", props: { so: "SO-ATP-1", model: "4680-NCM", qty: 1000, due: "2026-06-14", bases: ["changzhou"], status: "OPEN" } });
-    await t.repos.objects.put({ id: "obj_fg_1", tenantId: "demo", type: "FinishedGoodsInventory", props: { fgId: "FG-1", model: "4680-NCM", qtyOnHand: 200, qtyReserved: 0 } });
-    await t.repos.objects.put({ id: "obj_wo_1", tenantId: "demo", type: "WorkOrder", props: { woId: "WO-1", modelId: "4680-NCM", qtyActual: 100, status: "生产中" } });
-    await t.repos.objects.put({ id: "obj_line_1", tenantId: "demo", type: "Line", props: { lineId: "L1", baseId: "changzhou", max_capacity_day: 100 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "obj_order_SOATP1", tenantId: "demo", type: "Order", props: { so: "SO-ATP-1", model: "4680-NCM", qty: 1000, due: "2026-06-14", bases: ["changzhou"], status: "OPEN" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "obj_fg_1", tenantId: "demo", type: "FinishedGoodsInventory", props: { fgId: "FG-1", model: "4680-NCM", qtyOnHand: 200, qtyReserved: 0 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "obj_wo_1", tenantId: "demo", type: "WorkOrder", props: { woId: "WO-1", modelId: "4680-NCM", qtyActual: 100, status: "生产中" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "obj_line_1", tenantId: "demo", type: "Line", props: { lineId: "L1", baseId: "changzhou", max_capacity_day: 100 } });
 
     // 基线：PARTIAL·可承接 700·承诺日 2026-06-17·卡口 产能
     const base = (await invokeSolver(t, "atp_check", { orderRef: "SO-ATP-1" }).then((r) => r.json())) as { data: Record<string, unknown> };
@@ -109,15 +109,15 @@ describe("WO-ATP-PROMISE · 订单承诺（ATP/CTP）净室三源承诺", () => 
     expect(bd.reduce((a, b) => a + b.qty, 0)).toBe(700);
 
     // 改产能颗粒（调高）→ 重跑 → CONFIRMED·可承接 1000·承诺日提前（引擎真读 Line·红咬）
-    await t.repos.objects.put({ id: "obj_line_1", tenantId: "demo", type: "Line", props: { lineId: "L1", baseId: "changzhou", max_capacity_day: 300 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "obj_line_1", tenantId: "demo", type: "Line", props: { lineId: "L1", baseId: "changzhou", max_capacity_day: 300 } });
     const capUp = (await invokeSolver(t, "atp_check", { orderRef: "SO-ATP-1" }).then((r) => r.json())) as { data: Record<string, unknown> };
     expect(capUp.data.committableQty).toBe(1000);
     expect(capUp.data.atpStatus).toBe("CONFIRMED");
     expect(Date.parse(capUp.data.promiseDate as string)).toBeLessThan(Date.parse(base.data.promiseDate as string));
 
     // 复位产能 + 改库存颗粒（现货抬满）→ 重跑 → CONFIRMED（库存翻转·引擎真读 FG·红咬）
-    await t.repos.objects.put({ id: "obj_line_1", tenantId: "demo", type: "Line", props: { lineId: "L1", baseId: "changzhou", max_capacity_day: 100 } });
-    await t.repos.objects.put({ id: "obj_fg_1", tenantId: "demo", type: "FinishedGoodsInventory", props: { fgId: "FG-1", model: "4680-NCM", qtyOnHand: 1000, qtyReserved: 0 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "obj_line_1", tenantId: "demo", type: "Line", props: { lineId: "L1", baseId: "changzhou", max_capacity_day: 100 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "obj_fg_1", tenantId: "demo", type: "FinishedGoodsInventory", props: { fgId: "FG-1", model: "4680-NCM", qtyOnHand: 1000, qtyReserved: 0 } });
     const stockUp = (await invokeSolver(t, "atp_check", { orderRef: "SO-ATP-1" }).then((r) => r.json())) as { data: Record<string, unknown> };
     expect(stockUp.data.committableQty).toBe(1000);
     expect(stockUp.data.atpStatus).toBe("CONFIRMED"); // PARTIAL→CONFIRMED 库存驱动翻转

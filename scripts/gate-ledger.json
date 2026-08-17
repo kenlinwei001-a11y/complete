@@ -1624,6 +1624,26 @@
       },
       "disposition": null,
       "notes": "闭 G-GATE-ROSTER-HANDCOPIED 的机制本体：新门里出现未定性的写死集合当场红，roster 债只降不升。全门定性表 docs/AUDIT-gate-roster-sweep.md。"
+    },
+    "check-typecheck-coverage.mjs": {
+      "alias": "typecheck-coverage:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/datacore/package.json",
+        "apps/agentcore/package.json",
+        "packages/contracts/package.json",
+        "apps/frontend-shell/package.json",
+        "apps/datacore/tsconfig.typecheck.json",
+        "apps/agentcore/tsconfig.typecheck.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§8:G-TYPECHECK-SKIPS-TESTS",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "WO-TEST-TYPECHECK-BLIND 三向变异，`--selftest` 每次运行现跑（2026-08-16）",
+        "note": "① 注入「测量坏了」（TYPECHECK_COVERAGE_FORCE_TOOL_BROKEN=1）⇒ RC=2 —— 报 1 会被读成「你的测试没被覆盖」，方向正好相反；② 注入「真有包没接线」（TYPECHECK_COVERAGE_MUTATE=1 改去量各包的 build 配置）⇒ RC=1，实测输出 `apps/datacore 0/291`、`apps/agentcore 0/175` —— **这不是模拟，是精确复现 2026-08-16 之前的真实状态**；③ 不注入 ⇒ RC=0。⚠️ 本门的判据刻意**不读 include/exclude**：本单栽的跟头正是「配置写了 ≠ 它生效了」—— datacore/agentcore 的 tsconfig.typecheck.json 早在提交 7302a0fc 就建好、注释写明要纳入 test/，而 package.json 的 typecheck 脚本从来指向 tsconfig.json，三周里 466 个测试文件一次没被检查过。故判据落在 `tsc --listFilesOnly` 的**程序文件全集**上（tsc 自己的口径）。⚠️ 反向金丝雀是保命的那一半：若 surfaceOf() 坏成恒返「全都在」，正向判据会全部通过、门报绿 —— 故每次运行都先验「各包 build 配置的面里**不该有**测试文件」，4 条真仓样例全中才继续。"
+      },
+      "notes": "守「typecheck 的扫描面必须真的包含测试目录」。建门缘由：2026-08-16 实测 datacore/agentcore 的 typecheck 从不看 test/，接上线当天抖出 354 个真类型错误（契约字段改名后 fixture 没跟上、缺必填字段、本地断言类型漏声明生产真会发的字段…），全部躺在正线上没人发现。形态（铁律 0.6 句式）：「我用『N 包 typecheck 绿』当作『测试文件也没类型错』的证据，而前者并不度量后者 —— 它连看都没看。」与铁律 0.6 已收录的第 4 条（改名要连断言一起改）同族但更底层：那条说的是类型系统**看不见字符串键**（能力边界），本条说的是类型系统**压根没被指向那些文件**（接线断了）。诚实边界：本门只保证测试文件**进了程序**，不保证它们的断言写得强 —— 断言强度归 coverage-blind:check 管；也不覆盖 `test/fixtures/*.json` 这类非 TypeScript 文件（本就不进类型面）。"
     }
   }
 }

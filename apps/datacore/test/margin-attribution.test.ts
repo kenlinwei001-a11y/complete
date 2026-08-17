@@ -24,11 +24,11 @@ describe("PRD-fde §8 Q3 · margin_attribution 求解器（毛利倒挂根因归
       properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true }, { propKey: "revenue", dataType: "number", isPrimaryKey: false }, { propKey: "rawCost", dataType: "number", isPrimaryKey: false }, { propKey: "yieldLoss", dataType: "number", isPrimaryKey: false }, { propKey: "fxCost", dataType: "number", isPrimaryKey: false }],
     });
     // 星辰：售 100,成本 85 → 毛利率 15% 不倒挂
-    await t.repos.objects.put({ id: "o_xc", tenantId: ctx.tenantId, type: "Order", props: { so: "星辰", revenue: 100, rawCost: 60, yieldLoss: 20, fxCost: 5 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_xc", tenantId: ctx.tenantId, type: "Order", props: { so: "星辰", revenue: 100, rawCost: 60, yieldLoss: 20, fxCost: 5 } });
     // 蓝海：售 100,成本 113 → 倒挂 -13%,原料(90)主驱动
-    await t.repos.objects.put({ id: "o_lh", tenantId: ctx.tenantId, type: "Order", props: { so: "蓝海", revenue: 100, rawCost: 90, yieldLoss: 15, fxCost: 8 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_lh", tenantId: ctx.tenantId, type: "Order", props: { so: "蓝海", revenue: 100, rawCost: 90, yieldLoss: 15, fxCost: 8 } });
     // 远景：售 80,成本 96 → 倒挂 -20%,原料(70)主驱动
-    await t.repos.objects.put({ id: "o_yj", tenantId: ctx.tenantId, type: "Order", props: { so: "远景", revenue: 80, rawCost: 70, yieldLoss: 20, fxCost: 6 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_yj", tenantId: ctx.tenantId, type: "Order", props: { so: "远景", revenue: 80, rawCost: 70, yieldLoss: 20, fxCost: 6 } });
   }
 
   it("拆成本→标倒挂→定主驱动→聚合根因：蓝海/远景倒挂,根因「原料涨价」拉穿 2 单", async () => {

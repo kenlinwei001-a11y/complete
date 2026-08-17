@@ -51,7 +51,7 @@ describe("WO-ORDERLINE · 订单拆行（纯核心·KILL-MOCK-RED）", () => {
       const models = ls.map((l) => String(l.model));
       expect(new Set(models).size).toBe(models.length);
       // 首行保原单 model（不破坏既有 order_for_model·additive）。
-      expect(String(ls[0].model)).toBe(o.model);
+      expect(String(ls[0]!.model!)).toBe(o.model);
     }
   });
 
@@ -69,7 +69,7 @@ describe("WO-ORDERLINE · 订单拆行（纯核心·KILL-MOCK-RED）", () => {
     const before = ls.reduce((a, l) => a + Number(l.qty), 0);
     expect(before).toBe(order.qty); // 拆分态勾稽成立
     // 改第一行 qty +100 → 头级 rollup 必变（若行级只是装饰、头级不由行 rollup，则此断言红）。
-    ls[0].qty = Number(ls[0].qty) + 100;
+    ls[0]!.qty! = Number(ls[0]!.qty!) + 100;
     const after = ls.reduce((a, l) => a + Number(l.qty), 0);
     expect(after).toBe(order.qty + 100);
     expect(after).not.toBe(before); // 头级真随行变
@@ -115,7 +115,9 @@ describe("WO-ORDERLINE · 端到端接缝（seed 落库 × 链路 × 24 单头�
     for (const ms of modelsBySo.values()) expect(new Set(ms).size).toBe(ms.length);
 
     // SEAM-3 端到端红咬：改一行 qty 落库 → 从仓储重算头级 rollup 变（行级是头级真拆分）。
-    const someLine = orderLines[0];
+    // 在这里一次性断言非空：不然 `{ ...someLine }` 展开的是 ObjectInstance|undefined，
+    // 每个字段都变成可选，整个对象就不再是合法 ObjectInstance（TS2345）。
+    const someLine = orderLines[0]!;
     const so = String(someLine.props.orderRef);
     const beforeRollup = orderLines.filter((l) => String(l.props.orderRef) === so).reduce((a, l) => a + Number(l.props.qty), 0);
     await t.repos.objects.put({ ...someLine, props: { ...someLine.props, qty: Number(someLine.props.qty) + 500 } });

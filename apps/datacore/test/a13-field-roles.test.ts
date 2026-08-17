@@ -15,8 +15,8 @@ describe("A13 · 地板语义确定化（resolveFieldRoles 纯函数，去 LLM�
   it("supplier_disruption_radius：rootType = 被引用最多的汇点（Supplier），无 LLM", () => {
     const r = resolveFieldRoles(CHAIN, "supplier_disruption_radius");
     expect(r.roles.rootType).toBe("Supplier"); // 命名命中 source + fanIn
-    expect(r.candidates.rootType[0]!.value).toBe("Supplier");
-    expect(r.candidates.rootType[0]!.signals.some((s) => s.startsWith("fanIn"))).toBe(true);
+    expect(r.candidates.rootType![0]!.value).toBe("Supplier");
+    expect(r.candidates.rootType![0]!.signals.some((s) => s.startsWith("fanIn"))).toBe(true);
   });
 
   it("R6 确定性：同 (types, solverKey) 字节一致", () => {
@@ -35,7 +35,7 @@ describe("A13 · 地板语义确定化（resolveFieldRoles 纯函数，去 LLM�
     const r = resolveFieldRoles(tie, "supplier_disruption_radius");
     expect(r.ambiguous).toBe(true); // top1/top2 同分 → 真歧义
     expect(r.roles.rootType).toBe("SupplierA"); // 字典序 top1 作确定性默认（非随机/LLM）
-    expect(r.candidates.rootType.map((c) => c.value)).toEqual(["SupplierA", "SupplierB"]);
+    expect(r.candidates.rootType!.map((c) => c.value)).toEqual(["SupplierA", "SupplierB"]);
   });
 
   it("shared_bottleneck：resourceType(有产能字段+被引用) + sharedByType(有需求字段+ref) + priorityField", () => {

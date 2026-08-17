@@ -35,6 +35,11 @@ interface RiskCard {
   series: number[];
   currentTightness: { value: number };
   mitigated?: { series: number[]; peak: number; appliedPlan: string; effectiveFrom: number };
+  /**
+   * WO-ADOPT-MITIGATION 加性披露（生产 `src/solvers/risk.ts:675` 仅在真有采纳时置键）。
+   * 本文件通篇断言它，却漏在这个本地接口上没声明 —— typecheck 看不见 test/ 时无人发现。
+   */
+  adoptedMitigation?: { planKey: string; eff: number; tn: number };
 }
 
 const riskTimeline = (t: TestApp, args: Record<string, unknown>, ctx: AuthCtx = SVC) =>
@@ -127,7 +132,7 @@ describe("SEAM · adopt_mitigation 派单必须是可执行的真单，否则诚
     const captured: Record<string, unknown>[] = [];
     const report = await buildReplay(t, captured).runTick("demo", PLAYBOOK, { tick: 1, date: "2026-07-06", seed: 42, scenarioEvents: ["risk_crossed"] });
     const draftId = report.executed[0]!.ref;
-    const draft = (await t.repos.actionDrafts.get("demo", draftId))!;
+    const draft = (await t.repos.actionDrafts.get("demo", draftId!))!;
 
     // 两步审批链真走完（planner 一审 + admin 终审），不是卡在 400/409。
     expect(draft.approvalSteps.map((s) => s.decision)).toEqual(["APPROVE", "APPROVE"]);

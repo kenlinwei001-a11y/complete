@@ -120,12 +120,15 @@ describe.skipIf(!SIDECAR)("轨B·R7 · 真 CP-SAT sidecar 端到端（OPTIMIZER_
       constraints: [{ terms: [{ var: "a", coef: 1 }, { var: "b", coef: 1 }], op: "==" as const, rhs: 1 }],
       method: "weighted" as const,
     };
-    const objs = () => [
-      { key: "rev", sense: "max" as const, terms: [{ var: "a", coef: 10 }, { var: "b", coef: 6 }] },
-      { key: "risk", sense: "min" as const, terms: [{ var: "a", coef: 9 }, { var: "b", coef: 1 }] },
+    // 显式标注返回类型（与生产 service.ts:5107 读的形状一致）：不标注时推断结果里没有 weight，
+    // 下面两行赋值就报 TS2339 —— 而 weight 正是本用例要验的那个变量。
+    type Objective = { key: string; sense: "max" | "min"; terms: { var: string; coef: number }[]; weight?: number };
+    const objs = (): Objective[] => [
+      { key: "rev", sense: "max", terms: [{ var: "a", coef: 10 }, { var: "b", coef: 6 }] },
+      { key: "risk", sense: "min", terms: [{ var: "a", coef: 9 }, { var: "b", coef: 1 }] },
     ];
-    const oa = objs(); oa[0].weight = 0.9; oa[1].weight = 0.1;
-    const ob = objs(); ob[0].weight = 0.1; ob[1].weight = 0.9;
+    const oa = objs(); oa[0]!.weight = 0.9; oa[1]!.weight = 0.1;
+    const ob = objs(); ob[0]!.weight = 0.1; ob[1]!.weight = 0.9;
     const ra = await t.services.solvers.invoke(ctx, "multi_objective", { ...base, objectives: oa });
     const rb = await t.services.solvers.invoke(ctx, "multi_objective", { ...base, objectives: ob });
     expect((ra.values as Record<string, number>).a).toBe(1);  // 营收优先

@@ -21,6 +21,11 @@ type GA = {
   causalEdges: { from: string; to: string; viaLinkKey: string }[];
   hypotheses?: { rootFactorId: string; rootFactorLabel: string; allocatedGap: number; share: number; severityKind: string }[];
   reconciled: boolean;
+  /**
+   * 逐层勾稽校验（生产 `src/solvers/service.ts:1872/1918` push 的形状）。
+   * 本文件多处断言它，却漏在这个本地类型上没声明 —— typecheck 看不见 test/ 时无人发现。
+   */
+  reconChecks: { depth: number; label: string; parentGap: number; sumChildren: number; residual: number; ok: boolean }[];
   severityKind: string;
 };
 
@@ -350,7 +355,7 @@ describe("WO-CEO-DATA-2 × WO-CEO-2-v2 · 接缝门", () => {
 
     // 勾稽：Σ子+residual=父（该基地对全局 gap 贡献）不破。
     expect(g.reconciled).toBe(true);
-    for (const rc of g.reconChecks as unknown as { parentGap: number; sumChildren: number; residual: number; ok: boolean }[]) {
+    for (const rc of g.reconChecks) {
       expect(rc.ok).toBe(true);
       expect(Math.abs(rc.sumChildren + rc.residual - rc.parentGap)).toBeLessThan(1e-4);
     }

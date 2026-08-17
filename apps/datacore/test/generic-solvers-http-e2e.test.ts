@@ -13,21 +13,21 @@ async function seedGraph(t: TestApp) {
   // 共享瓶颈 + 毛利：Proc / Ord
   await ot("Proc", [{ propKey: "procId", dataType: "string", isPrimaryKey: true }, { propKey: "capacity", dataType: "number" }]);
   await ot("Ord", [{ propKey: "so", dataType: "string", isPrimaryKey: true }, { propKey: "procRef", dataType: "ref", refToTypeKey: "Proc" }, { propKey: "qty", dataType: "number" }, { propKey: "prio", dataType: "number" }, { propKey: "revenue", dataType: "number" }, { propKey: "rawCost", dataType: "number" }]);
-  await t.repos.objects.put({ id: "o_p1", tenantId: "demo", type: "Proc", props: { procId: "化成", capacity: 10 } });
-  await t.repos.objects.put({ id: "o_o1", tenantId: "demo", type: "Ord", props: { so: "星辰", procRef: "化成", qty: 7, prio: 3, revenue: 100, rawCost: 120 } });
-  await t.repos.objects.put({ id: "o_o2", tenantId: "demo", type: "Ord", props: { so: "蓝海", procRef: "化成", qty: 8, prio: 2, revenue: 100, rawCost: 130 } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_p1", tenantId: "demo", type: "Proc", props: { procId: "化成", capacity: 10 } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_o1", tenantId: "demo", type: "Ord", props: { so: "星辰", procRef: "化成", qty: 7, prio: 3, revenue: 100, rawCost: 120 } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_o2", tenantId: "demo", type: "Ord", props: { so: "蓝海", procRef: "化成", qty: 8, prio: 2, revenue: 100, rawCost: 130 } });
   // 集中度 + 断供半径：Supplier / Material / Order / Customer
   await ot("Supplier", [{ propKey: "supId", dataType: "string", isPrimaryKey: true }]);
   await ot("Material", [{ propKey: "matId", dataType: "string", isPrimaryKey: true }, { propKey: "supplierRef", dataType: "ref", refToTypeKey: "Supplier" }]);
   await ot("Order", [{ propKey: "soId", dataType: "string", isPrimaryKey: true }, { propKey: "materialRef", dataType: "ref", refToTypeKey: "Material" }]);
   await ot("Customer", [{ propKey: "custId", dataType: "string", isPrimaryKey: true }, { propKey: "orderRef", dataType: "ref", refToTypeKey: "Order" }]);
-  await t.repos.objects.put({ id: "S1", tenantId: "demo", type: "Supplier", props: { supId: "华东电解液" } });
-  await t.repos.objects.put({ id: "M1", tenantId: "demo", type: "Material", props: { matId: "正极A", supplierRef: "华东电解液" } });
-  await t.repos.objects.put({ id: "M2", tenantId: "demo", type: "Material", props: { matId: "电解液B", supplierRef: "华东电解液" } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "S1", tenantId: "demo", type: "Supplier", props: { supId: "华东电解液" } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "M1", tenantId: "demo", type: "Material", props: { matId: "正极A", supplierRef: "华东电解液" } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "M2", tenantId: "demo", type: "Material", props: { matId: "电解液B", supplierRef: "华东电解液" } });
   const orders: [string, string][] = [["SO1", "正极A"], ["SO2", "电解液B"], ["SO3", "正极A"]];
-  for (const [so, mat] of orders) await t.repos.objects.put({ id: so, tenantId: "demo", type: "Order", props: { soId: so, materialRef: mat } });
+  for (const [so, mat] of orders) await t.repos.objects.put({ origin: { type: "MANUAL" }, id: so, tenantId: "demo", type: "Order", props: { soId: so, materialRef: mat } });
   const custs: [string, string][] = [["星辰", "SO1"], ["蓝海", "SO2"], ["远景", "SO3"]];
-  for (const [c, so] of custs) await t.repos.objects.put({ id: `c_${c}`, tenantId: "demo", type: "Customer", props: { custId: c, orderRef: so } });
+  for (const [c, so] of custs) await t.repos.objects.put({ origin: { type: "MANUAL" }, id: `c_${c}`, tenantId: "demo", type: "Customer", props: { custId: c, orderRef: so } });
 }
 
 const invoke = async (t: TestApp, key: string, args: Record<string, unknown>) =>

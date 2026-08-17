@@ -42,8 +42,8 @@ describe("传导核 propagateTick（SPEC §1 · 行业无关 R14）", () => {
     const r = rule({ coefficient: 0.5 });
     const { next, trace } = propagateTick(GRAPH, BASE, [r], [], 0);
     // b.risk += 0.5 × a.risk(10) = 5；a 不变（源态只读）。
-    expect(next.b.risk).toBe(5);
-    expect(next.a.risk).toBe(10);
+    expect(next.b!.risk).toBe(5);
+    expect(next.a!.risk).toBe(10);
     expect(trace).toEqual([
       { ruleKey: "PR_FEEDS", fromObjectId: "a", toObjectId: "b", amount: 5, viaLinkKey: "FEEDS" },
     ]);
@@ -52,25 +52,25 @@ describe("传导核 propagateTick（SPEC §1 · 行业无关 R14）", () => {
   it("② 改 coefficient → 输出随之变（配置驱动·改系数即改果）", () => {
     const out1 = propagateTick(GRAPH, BASE, [rule({ coefficient: 0.5 })], [], 0);
     const out2 = propagateTick(GRAPH, BASE, [rule({ coefficient: 0.9 })], [], 0);
-    expect(out1.next.b.risk).toBe(5);
-    expect(out2.next.b.risk).toBe(9);
-    expect(out2.next.b.risk).not.toBe(out1.next.b.risk);
+    expect(out1.next.b!.risk).toBe(5);
+    expect(out2.next.b!.risk).toBe(9);
+    expect(out2.next.b!.risk).not.toBe(out1.next.b!.risk);
   });
 
   it("③ delayTicks=2 → 贡献排进 pending，延迟 2 tick 到达（不在当前 tick 落地）", () => {
     const r = rule({ coefficient: 0.5, delayTicks: 2 });
     // tick0：computes 贡献 amount=5，arriveTick=0+2=2 排进 pending；b 当前不变。
     const t0 = propagateTick(GRAPH, BASE, [r], [], 0);
-    expect(t0.next.b.risk).toBe(0); // 延迟未到
+    expect(t0.next.b!.risk).toBe(0); // 延迟未到
     expect(t0.pending).toEqual([
       { arriveTick: 2, targetObjectId: "b", targetStateVar: "risk", amount: 5, ruleKey: "PR_FEEDS" },
     ]);
     // tick1：arriveTick===1 无 → 仍不落地（又排一条 arriveTick=3）。
     const t1 = propagateTick(GRAPH, t0.next, [r], t0.pending, 1);
-    expect(t1.next.b.risk).toBe(0);
+    expect(t1.next.b!.risk).toBe(0);
     // tick2：arriveTick===2 结算 → b.risk += 5 到达。
     const t2 = propagateTick(GRAPH, t1.next, [r], t1.pending, 2);
-    expect(t2.next.b.risk).toBe(5);
+    expect(t2.next.b!.risk).toBe(5);
   });
 
   it("④ 确定性 R6：同输入两次 toEqual（字节一致）", () => {
@@ -100,8 +100,8 @@ describe("传导核 propagateTick（SPEC §1 · 行业无关 R14）", () => {
     const r1 = rule({ id: "pr1", key: "PR_AB", sourceTypeKey: "TypeA", targetTypeKey: "TypeB", coefficient: 1 });
     const r2 = rule({ id: "pr2", key: "PR_BC", sourceTypeKey: "TypeB", targetTypeKey: "TypeC", coefficient: 1 });
     const { next } = propagateTick(graph, base, [r1, r2], [], 0);
-    expect(next.b.risk).toBe(10); // a→b 本 tick 生效
-    expect(next.c.risk).toBe(0); // b→c 读的是本 tick 的 b(=0)，绝不读 b 的未来值(10)
+    expect(next.b!.risk).toBe(10); // a→b 本 tick 生效
+    expect(next.c!.risk).toBe(0); // b→c 读的是本 tick 的 b(=0)，绝不读 b 的未来值(10)
   });
 
   it("⑥ 系数引用 rule.params（coefficientRef）：改 param 即改果（G-10 P1）", () => {
@@ -110,11 +110,11 @@ describe("传导核 propagateTick（SPEC §1 · 行业无关 R14）", () => {
     const params2: RuleParamLookup = { R_THRESH: { feedCoeff: 0.8 } };
     const out1 = propagateTick(GRAPH, BASE, [r], [], 0, params1);
     const out2 = propagateTick(GRAPH, BASE, [r], [], 0, params2);
-    expect(out1.next.b.risk).toBe(2); // 0.2 × 10（引用优先于内联 0.5）
-    expect(out2.next.b.risk).toBe(8); // 0.8 × 10（改 param 即改果）
+    expect(out1.next.b!.risk).toBe(2); // 0.2 × 10（引用优先于内联 0.5）
+    expect(out2.next.b!.risk).toBe(8); // 0.8 × 10（改 param 即改果）
     // 引用缺失 → 退回内联 coefficient(0.5)。
     const outFallback = propagateTick(GRAPH, BASE, [r], [], 0, {});
-    expect(outFallback.next.b.risk).toBe(5);
+    expect(outFallback.next.b!.risk).toBe(5);
   });
 
   it("combine=max：多入边取最大而非累加（确定性）", () => {
@@ -132,19 +132,19 @@ describe("传导核 propagateTick（SPEC §1 · 行业无关 R14）", () => {
     const base: TickState = { a1: { risk: 10 }, a2: { risk: 4 }, b: { risk: 0 } };
     const r = rule({ coefficient: 1, combine: "max" });
     const { next } = propagateTick(graph, base, [r], [], 0);
-    expect(next.b.risk).toBe(10); // max(10,4) 而非 sum(14)
+    expect(next.b!.risk).toBe(10); // max(10,4) 而非 sum(14)
   });
 
   it("clamp：贡献后夹到 [min,max]", () => {
     const r = rule({ coefficient: 10, clamp: { min: 0, max: 50 } });
     const { next } = propagateTick(GRAPH, BASE, [r], [], 0);
-    expect(next.b.risk).toBe(50); // 10×10=100 → clamp 50
+    expect(next.b!.risk).toBe(50); // 10×10=100 → clamp 50
   });
 
   it("decay：衰减系数 amp×(1−dist/den)，dist=1", () => {
     const r = rule({ coefficient: 1, decay: { window: 3, den: 2 } });
     const { next } = propagateTick(GRAPH, BASE, [r], [], 0);
     // factor = 1 − 1/2 = 0.5 → 0.5 × 10 = 5。
-    expect(next.b.risk).toBe(5);
+    expect(next.b!.risk).toBe(5);
   });
 });

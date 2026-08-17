@@ -123,7 +123,7 @@ describe("R1 · 工具返回 500 条对象（>8KB）", () => {
         scopeDeclaration: { objectTypes: ["Base"], toolNames: ["query_timeseries_agg"] },
       }),
     );
-    const huge = { data: { points: bigItems(400, 30), tsAgg: { aggRunId: "a", specKey: "s@v1", window: { start: "x", end: "y" }, rowsIn: 1 } } };
+    const huge = { data: { points: bigItems(400, 30), tsAgg: { aggRunId: "a", specKey: "s@v1", window: { start: "x", end: "y" }, rowsIn: 1 } }, snapshotVersion: "test-1" };
     t.dataCore.timeseries.aggQuery = async () => huge;
     t.llm.queueAgentTurn(
       {

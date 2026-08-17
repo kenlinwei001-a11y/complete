@@ -194,9 +194,9 @@ describe("WO-OPT-WHATIF-CLOSE · 问句 → optimize_whatif 真结论（SEAM）"
       { propKey: "bRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Site3" },
     ]));
     await t.repos.ontologyTypes.put(typeDef(tid, "Customer", [{ propKey: "custId", dataType: "string", isPrimaryKey: true }]));
-    await t.repos.objects.put({ id: "s1", tenantId: tid, type: "Site", props: { siteId: "s1", setupCost: 10 } });
-    await t.repos.objects.put({ id: "s2", tenantId: tid, type: "Site", props: { siteId: "s2", setupCost: 20 } });
-    await t.repos.objects.put({ id: "c1", tenantId: tid, type: "Customer", props: { custId: "c1" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "s1", tenantId: tid, type: "Site", props: { siteId: "s1", setupCost: 10 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "s2", tenantId: tid, type: "Site", props: { siteId: "s2", setupCost: 20 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "c1", tenantId: tid, type: "Customer", props: { custId: "c1" } });
 
     const out = await t.services.solvers.invoke(ctxOf(tid), "optimize_whatif", {
       family: "facility_location", autoBind: true,
@@ -221,7 +221,7 @@ describe("WO-OPT-WHATIF-CLOSE · 问句 → optimize_whatif 真结论（SEAM）"
     ]));
     await t.repos.ontologyTypes.put(typeDef(tid, "Customer", [{ propKey: "custId", dataType: "string", isPrimaryKey: true }]));
     await t.repos.ontologyTypes.put(typeDef(tid, "GhostOrder", [{ propKey: "goId", dataType: "string", isPrimaryKey: true }]));
-    await t.repos.objects.put({ id: "s1", tenantId: tid, type: "Site", props: { siteId: "s1", setupCost: 10 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "s1", tenantId: tid, type: "Site", props: { siteId: "s1", setupCost: 10 } });
 
     const out = await t.services.solvers.invoke(ctxOf(tid), "optimize_whatif", {
       family: "facility_location", autoBind: true,
@@ -252,10 +252,10 @@ describe("WO-OPT-WHATIF-CLOSE · 问句 → optimize_whatif 真结论（SEAM）"
       { propKey: "other", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Site" },
     ]));
     await t.repos.ontologyTypes.put(typeDef(tid, "Customer", [{ propKey: "custId", dataType: "string", isPrimaryKey: true }]));
-    await t.repos.objects.put({ id: "s1", tenantId: tid, type: "Site", props: { siteId: "s1", setupCost: 10 } });
-    await t.repos.objects.put({ id: "s2", tenantId: tid, type: "Site", props: { siteId: "s2", setupCost: 20 } });
-    await t.repos.objects.put({ id: "io1", tenantId: tid, type: "InternalOrder", props: { ioId: "io1", siteRef: "s1", other: "s2" } });
-    await t.repos.objects.put({ id: "c1", tenantId: tid, type: "Customer", props: { custId: "c1" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "s1", tenantId: tid, type: "Site", props: { siteId: "s1", setupCost: 10 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "s2", tenantId: tid, type: "Site", props: { siteId: "s2", setupCost: 20 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "io1", tenantId: tid, type: "InternalOrder", props: { ioId: "io1", siteRef: "s1", other: "s2" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "c1", tenantId: tid, type: "Customer", props: { custId: "c1" } });
 
     const out = await t.services.solvers.invoke(ctxOf(tid), "optimize_whatif", {
       family: "facility_location", autoBind: true,
@@ -306,7 +306,7 @@ describe("WO-OPT-WHATIF-CLOSE · 问句 → optimize_whatif 真结论（SEAM）"
       { propKey: "to", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Node" },
       { propKey: "shipCost", dataType: "number", isPrimaryKey: false },
     ]));
-    await t.repos.objects.put({ id: "n1", tenantId: tid, type: "Node", props: { nodeId: "n1", demandQty: 5 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "n1", tenantId: tid, type: "Node", props: { nodeId: "n1", demandQty: 5 } });
 
     const out = await t.services.solvers.invoke(ctxOf(tid), "optimize_whatif", {
       family: "min_cost_flow", autoBind: true,
@@ -329,7 +329,7 @@ describe("WO-OPT-WHATIF-CLOSE · 问句 → optimize_whatif 真结论（SEAM）"
       { propKey: "setupCost", dataType: "number", isPrimaryKey: false },
     ]));
     await t.repos.ontologyTypes.put(typeDef(tid, "Customer", [{ propKey: "custId", dataType: "string", isPrimaryKey: true }]));
-    await t.repos.objects.put({ id: "c1", tenantId: tid, type: "Customer", props: { custId: "c1" } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "c1", tenantId: tid, type: "Customer", props: { custId: "c1" } });
     // Site 类型已发布但**零实例**（选中的 s1 根本不存在）。
     const out = await t.services.solvers.invoke(ctxOf(tid), "optimize_whatif", {
       family: "facility_location", autoBind: true,

@@ -241,7 +241,8 @@ describe("S1 solvers", () => {
     const tgt = Math.min(96, cur + lift);
     // arrival-gap events every 14 days are the only 物料齐套 pulses with the seeded ontology
     const eventDays = [14, 28];
-    const cardEvents = (card.events as { type: string; day: number; factors: string[] }[]).filter((e) =>
+    // amp 生产真会发（risk.ts:302），本地断言类型漏了它 ⇒ 下面那行 e.amp 报 TS2339。
+    const cardEvents = (card.events as { type: string; day: number; factors: string[]; amp?: number }[]).filter((e) =>
       e.factors.includes("物料齐套"),
     );
     expect(cardEvents.map((e) => e.day)).toEqual(eventDays);
@@ -423,7 +424,8 @@ describe("S1 solvers", () => {
     const res = await invokeSolver(t, "plan_generate", {});
     const data = (res.json() as {
       data: {
-        schemes: { name: string; pathKey: string; scores: Record<string, number>; hardViol: string[] }[];
+        // no（壹/贰/叁）生产真会发（plan.ts:332），本地断言类型漏了它 ⇒ 下面 s.no 报 TS2339。
+        schemes: { no: string; name: string; pathKey: string; scores: Record<string, number>; hardViol: string[] }[];
         recommend: string;
         paths: { pathKey: string; outcome: Record<string, number>; scores: Record<string, number>; hardViol: string[] }[];
       };

@@ -146,6 +146,6 @@ describe("WO-SKILL-1 · Skill 工业级契约持久化", () => {
     const agentGet = await t.app.inject({ method: "GET", url: `/b/v1/agents/${agentId}`, headers: H });
     expect(agentGet.statusCode).toBe(200);
     const agent = agentGet.json() as { skills: { skillId: string; version: number | "latest"; arguments?: Record<string, unknown> }[] };
-    expect(agent.skills[0].arguments).toEqual({ weeks: 6 });
+    expect(agent.skills[0]!.arguments!).toEqual({ weeks: 6 });
   });
 });

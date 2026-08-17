@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createTestApp, ADMIN, type TestApp } from "./helpers.js";
+import type { RuleEngineClient } from "../src/tools/clients.js";
 
 /**
  * WO-SKILL-REFCLOSURE-A · 引用可校验门接上 skill 发布路（接缝驱动，SEAM-GATE）
@@ -67,7 +68,9 @@ describe("WO-SKILL-REFCLOSURE-A · skill 发布路的引用可校验门（接缝
     const keys = items.map((i: { key: string }) => i.key);
     expect(keys).toContain(REAL_SOLVER);
     expect(keys).not.toContain(DEAD_SOLVER);
-    expect(await t.dataCore.rules.listPublishedRuleKeys({ tenantId: "demo", userId: "u", roles: [] } as never)).toContain(REAL_RULE);
+    // 上转到接口：mock 的 listPublishedRuleKeys 漏了接口声明的 ctx 形参（src/mocks/clients.ts:706）。
+    const rules: RuleEngineClient = t.dataCore.rules;
+    expect(await rules.listPublishedRuleKeys({ tenantId: "demo", userId: "u", roles: [] })).toContain(REAL_RULE);
   });
 
   // ——————————————————— ① 死路引用 → 422 且未落库 ———————————————————

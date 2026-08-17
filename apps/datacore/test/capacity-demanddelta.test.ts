@@ -100,8 +100,8 @@ describe("PRD-CAP-DEMANDDELTA · capacity_forecast demandDelta + EMPTY guard", (
     const out = await forecast(t, { modelId: "4680-NCM", demandDelta: 0.1, weeks: 6 });
     const prov = out.provenance as Record<string, { formula: string; valueLabel: string }> | undefined;
     expect(prov).toBeTruthy();
-    expect(prov!.capWanP50.formula).toContain("weeklyCap");
-    expect(prov!.effectiveDemand.valueLabel).toContain("有效需求");
-    expect(prov!.gap.valueLabel).toContain("缺口比例");
+    expect(prov!.capWanP50!.formula).toContain("weeklyCap");
+    expect(prov!.effectiveDemand!.valueLabel).toContain("有效需求");
+    expect(prov!.gap!.valueLabel).toContain("缺口比例");
   });
 });

@@ -50,7 +50,7 @@ describe("接缝 · 沙盘检查点存档可读（欠账 #157）", () => {
     expect(items.every((c) => c.sessionId === sid)).toBe(true);
     expect(items.every((c) => c.tenantId === "demo")).toBe(true);
     // 存档时间是真时间戳，不是占位串。
-    expect(Number.isNaN(Date.parse(items[0].createdAt))).toBe(false);
+    expect(Number.isNaN(Date.parse(items[0]!.createdAt!))).toBe(false);
   });
 
   it("② 顺序即语义：tick 大的先存、tick 小的后存 → 列表按 tick 升序（咬死 memory 仓储的插入序）", async () => {
@@ -78,7 +78,7 @@ describe("接缝 · 沙盘检查点存档可读（欠账 #157）", () => {
     expect(items).toHaveLength(3);
     // tick 升序：两个 tick2 排在 tick8 之前 —— memory 的插入序会把「顶@8」排在中间，本条即红。
     expect(items.map((c) => c.tick)).toEqual([2, 2, 8]);
-    expect(items[2].label).toBe("顶@8");
+    expect(items[2]!.label!).toBe("顶@8");
     // 同 tick 内按 createdAt→id 定全序：先存的「锚@2」在后存的「回@2」之前。
     expect(items.slice(0, 2).map((c) => c.label)).toEqual(["锚@2", "回@2"]);
   });
@@ -94,8 +94,8 @@ describe("接缝 · 沙盘检查点存档可读（欠账 #157）", () => {
     // 只经 GET 拿 id —— 模拟前端「列清单 → 用户挑一条」，不复用 POST 的返回值。
     const items = (await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/checkpoints`, headers: ADMIN })).json().items as Cp[];
     const earliest = items[0];
-    expect(earliest.label).toBe("早");
-    const rb = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/rollback`, headers: ADMIN, payload: { checkpointId: earliest.id } });
+    expect(earliest!.label).toBe("早");
+    const rb = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/rollback`, headers: ADMIN, payload: { checkpointId: earliest!.id } });
     expect(rb.statusCode).toBe(200);
     expect(rb.json().curTick).toBe(2); // 世界真回到清单里那条档的 tick
     const world = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/world`, headers: ADMIN });
@@ -111,10 +111,10 @@ describe("接缝 · 沙盘检查点存档可读（欠账 #157）", () => {
     await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 5 } });
     const items = (await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/checkpoints`, headers: ADMIN })).json().items as Cp[];
     expect(items).toHaveLength(1);
-    const br = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/branch`, headers: ADMIN, payload: { checkpointId: items[0].id } });
+    const br = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/branch`, headers: ADMIN, payload: { checkpointId: items[0]!.id! } });
     expect(br.statusCode).toBe(201);
     // 子世界确实挂在**清单里那条**档上（不是当场新存的那个）——旧路径必须先 POST 一个新档才能分支。
-    expect(br.json().parentCheckpointId).toBe(items[0].id);
+    expect(br.json().parentCheckpointId).toBe(items[0]!.id!);
     expect(br.json().curTick).toBe(0);
   });
 

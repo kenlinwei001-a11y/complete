@@ -29,8 +29,8 @@ function shippedEnvOf(service: string): Record<string, string> {
   const svcIdx = lines.findIndex((l) => new RegExp(`^ {2}${service}:\\s*$`).test(l));
   expect(svcIdx, `docker-compose.yml 找不到 service ${service}`).toBeGreaterThanOrEqual(0);
   let envIdx = -1;
-  for (let i = svcIdx + 1; i < lines.length && !/^ {2}\S/.test(lines[i]); i++) {
-    if (/^ {4}environment:\s*$/.test(lines[i])) {
+  for (let i = svcIdx + 1; i < lines.length && !/^ {2}\S/.test(lines[i]!); i++) {
+    if (/^ {4}environment:\s*$/.test(lines[i]!)) {
       envIdx = i;
       break;
     }
@@ -38,14 +38,18 @@ function shippedEnvOf(service: string): Record<string, string> {
   expect(envIdx, `service ${service} 无 environment 块`).toBeGreaterThanOrEqual(0);
   const out: Record<string, string> = {};
   for (let i = envIdx + 1; i < lines.length; i++) {
-    if (!/^ {6}\S/.test(lines[i])) {
-      if (/^\s*(#.*)?$/.test(lines[i])) continue;
+    if (!/^ {6}\S/.test(lines[i]!)) {
+      if (/^\s*(#.*)?$/.test(lines[i]!)) continue;
       break;
     }
-    const m = lines[i].match(/^ {6}([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$/);
+    const m = lines[i]!.match(/^ {6}([A-Za-z_][A-Za-z0-9_]*):\s*(.*?)\s*$/);
     if (!m) continue;
-    const interp = m[2].match(/^\$\{[A-Za-z_][A-Za-z0-9_]*:-(.*)\}$/);
-    out[m[1]] = (interp ? interp[1] : m[2]).replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1").trim();
+    // 捕获组 1/2 在正则匹配成功时必然存在（两个组都不是可选的），但 TS 只知道 RegExpMatchArray
+    // 的下标返回 string|undefined，故显式取到局部变量再断言，别在表达式里到处撒 `!`。
+    const key = m[1]!;
+    const rawValue = m[2]!;
+    const interp = rawValue.match(/^\$\{[A-Za-z_][A-Za-z0-9_]*:-(.*)\}$/);
+    out[key] = (interp ? interp[1]! : rawValue).replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1").trim();
   }
   return out;
 }
@@ -60,7 +64,8 @@ const LOOP_KEYS = [
   "QOS_AGENT_RETRY_MAX_ATTEMPTS",
 ] as const;
 const SHIPPED_LOOP: Record<string, string> = Object.fromEntries(
-  LOOP_KEYS.filter((k) => SHIPPED[k] !== undefined).map((k) => [k, SHIPPED[k]]),
+  // filter 已排除 undefined，但 TS 的控制流跨不过 filter→map 的边界，故 map 里显式断言。
+  LOOP_KEYS.filter((k) => SHIPPED[k] !== undefined).map((k) => [k, SHIPPED[k]!]),
 );
 
 const OUT_OF_CATALOG = { candidates: [], outOfCatalog: true, extractedSlots: {} };

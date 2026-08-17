@@ -155,12 +155,12 @@ function viewFromRepos(t: Awaited<ReturnType<typeof makeApp>>): BindingOntologyV
 async function seedOccupancyOntology(t: Awaited<ReturnType<typeof makeApp>>, withContract: boolean) {
   await t.repos.ontologyTypes.put({ id: "ot_ord", tenantId: "co", key: "SalesOrder", displayName: "销售订单", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "soId", dataType: "string", isPrimaryKey: true }, { propKey: "rev", dataType: "number", isPrimaryKey: false }, { propKey: "pen", dataType: "number", isPrimaryKey: false }, { propKey: "q", dataType: "number", isPrimaryKey: false }, { propKey: "ctr", dataType: "string", isPrimaryKey: false }] });
   await t.repos.ontologyTypes.put({ id: "ot_line", tenantId: "co", key: "ProdLine", displayName: "产线", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "lineId", dataType: "string", isPrimaryKey: true }, { propKey: "cap", dataType: "number", isPrimaryKey: false }] });
-  await t.repos.objects.put({ id: "o1", tenantId: "co", type: "SalesOrder", props: { soId: "SO_1", rev: 100, pen: 5, q: 6, ctr: "K1" } });
-  await t.repos.objects.put({ id: "o2", tenantId: "co", type: "SalesOrder", props: { soId: "SO_2", rev: 60, pen: 80, q: 6, ctr: "K1" } });
-  await t.repos.objects.put({ id: "l1", tenantId: "co", type: "ProdLine", props: { lineId: "L1", cap: 6 } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o1", tenantId: "co", type: "SalesOrder", props: { soId: "SO_1", rev: 100, pen: 5, q: 6, ctr: "K1" } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o2", tenantId: "co", type: "SalesOrder", props: { soId: "SO_2", rev: 60, pen: 80, q: 6, ctr: "K1" } });
+  await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "l1", tenantId: "co", type: "ProdLine", props: { lineId: "L1", cap: 6 } });
   if (withContract) {
     await t.repos.ontologyTypes.put({ id: "ot_ctr", tenantId: "co", key: "SupplyContract", displayName: "供货合同", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "ctrId", dataType: "string", isPrimaryKey: true }, { propKey: "quota", dataType: "number", isPrimaryKey: false }] });
-    await t.repos.objects.put({ id: "k1", tenantId: "co", type: "SupplyContract", props: { ctrId: "K1", quota: 100 } });
+    await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "k1", tenantId: "co", type: "SupplyContract", props: { ctrId: "K1", quota: 100 } });
   }
 }
 
