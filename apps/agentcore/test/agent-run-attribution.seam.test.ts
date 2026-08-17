@@ -1,7 +1,7 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { AgentDefinition } from "@platform/contracts";
+import type { AgentDefinition, SkillDefinition } from "@platform/contracts";
 import { AgentRunRecordSchema } from "@platform/contracts";
 import { createTestApp, debugHeaders, PLANNER, submitQuery, TENANT, waitForTask, type TestApp } from "./helpers.js";
 import { toolUse } from "../src/llm/mock.js";
@@ -328,6 +328,57 @@ describe("WO-DSH-P2-UX · 内核标识写入对拍（A7）", () => {
     });
 
     const result = await runEngineOnce(t, "agt_kernel_native", "task_kernel_native");
+    expect(result.run.kernel).toBe("NATIVE");
+  });
+
+  /**
+   * A10（verifier 自加变异盲区销账）· BLOCK 早退构造点（engine.ts 分叉**前**那一处
+   * `emptyAgentRunRecord(..., DSH_HARNESS === "1" ? "EXTERNAL" : "NATIVE")`）的 kernel 值断言。
+   * 该点标的是「本会走哪个内核」（run 未真执行任何循环）——若静默烂成恒 NATIVE，
+   * flag-on 部署下屏上会把「本会走外部运行时」的运行说成「原生」= 说假话。
+   * mutation 反证：该点改恒 "NATIVE" ⇒ 下面 flag-on 臂必须红。
+   */
+  function blockSkill(): SkillDefinition {
+    return {
+      id: "skl_kernel_block",
+      tenantId: TENANT,
+      key: "kernel_block",
+      version: 1,
+      name: "Kernel Block",
+      summary: "测试用 Skill。当用户问内核预检问题时使用。不适用：非测试问题。",
+      body: "## 目的\n测试。\n## 适用边界\n适用：测试。不适用：其他。\n## 前置检查\n无。\n## 步骤\n1. 直接 final_answer。\n## 示例\n正例：问测试 → 返回答案。\n反例：无。\n## 失败处理\n无。\n## 输出要求\n按 Skill 策略输出。",
+      references: [{ kind: "rule", key: "KERNEL_PRE_BLOCK", role: "precondition", required: true }],
+      resources: [],
+      status: "PUBLISHED",
+    } as SkillDefinition;
+  }
+
+  /** 真走 skill 规则预检 BLOCK 早退（engine 级），返回 run。 */
+  async function runBlockedOnce(suffix: string) {
+    const t = await createTestApp();
+    await t.repos.skills.insert(blockSkill());
+    await t.repos.agents.insert(
+      agentDef({ id: `agt_kernel_block_${suffix}`, key: `kernel_block_${suffix}`, skills: [{ skillId: "skl_kernel_block", version: 1 }] }),
+    );
+    vi.spyOn(t.dataCore.rules, "evaluate").mockResolvedValue([
+      { ruleId: "KERNEL_PRE_BLOCK", passed: false, severity: "BLOCK", explanation: "预检命中", ruleVersion: 1 },
+    ]);
+    const result = await runEngineOnce(t, `agt_kernel_block_${suffix}`, `task_kernel_block_${suffix}`);
+    // 先钉死「真的走了 BLOCK 早退」——否则下面的 kernel 断言测的就不是那个构造点。
+    expect(result.answer.blocks.some((b) => b.type === "rule_violation" && b.ruleId === "KERNEL_PRE_BLOCK")).toBe(true);
+    expect(result.run.iterations.length).toBe(0); // 未真执行任何循环
+    return result;
+  }
+
+  it("A10 BLOCK 早退 · DSH_HARNESS=1 ⇒ kernel === \"EXTERNAL\"（本会走外部运行时，未真执行）", async () => {
+    process.env.DSH_HARNESS = "1"; // 注意：BLOCK 早退在分叉**之前**，不会真起 dsh 子进程
+    const result = await runBlockedOnce("on");
+    expect(result.run.kernel).toBe("EXTERNAL");
+  });
+
+  it("A10 对拍 · 同剧本 flag off ⇒ kernel === \"NATIVE\"", async () => {
+    delete process.env.DSH_HARNESS;
+    const result = await runBlockedOnce("off");
     expect(result.run.kernel).toBe("NATIVE");
   });
 });
