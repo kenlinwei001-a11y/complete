@@ -11,7 +11,9 @@ import {
   PLAN_TARGET_YEAR_WAN,
   SOP_PER_BASE_MONTHLY,
   SOP_SEG_MONTH_TARGET,
+  sopPerBaseCoverageGaps,
 } from "@/mocks/sopScale";
+import { BASE_REGISTRY } from "@platform/contracts";
 
 /**
  * WO-MOCK-SCALE-TRUTH · 判据：**mock 与真后端在同一指标上的量级不许差一个数量级**。
@@ -379,5 +381,65 @@ describe("WO-MOCK-SCALE-TRUTH · mock 与真后端量级判据", () => {
     // 手工搭一份"内联副本漂了"的样子（把 ess 改回旧锚以外的值），断言判据会认出不同。
     const drifted = src.map((row, i) => (i === 1 ? [row[0]! + 1, row[1], row[2]] : row));
     expect(drifted, "金丝雀：漂了一位的副本必须与唯一出处不等，否则本条断言恒真").not.toEqual(src);
+  });
+
+  // -------------------------------------------------------------------------
+  // L5 身份出处层：值有几份（L4）之外，**「有哪些基地」由谁说了算**
+  // -------------------------------------------------------------------------
+  /**
+   * **L4 咬不住这一类**：L4 咬的是「同一个值别有第二份」，咬不住「同一份**名册**别有第二份」。
+   * `SOP_PER_BASE_MONTHLY` 曾是一个自带 `baseId: "changzhou"` 的**独立 13 行名册** ——
+   * 值全对、量级全对（L1–L3 全绿），但它与 `BASE_REGISTRY` 重合**纯属巧合**：
+   * 册里加一个基地、或改一个 baseId，这份数据既不跟着变、也不报错，就静默漂着，
+   * 而 S&OP ③ 供应评审台从此少算/错算一个基地的产能，屏上照样画出一张齐整的表。
+   *
+   * **判据必须从两边现算，不许写死条数**：写死 `13` 的话，册里加第 14 个基地时
+   * 「13 === 13」照样成立、照样绿 —— 那就是「我用『条数对得上』当作『逐个盖住了』的证据」。
+   * 所以两侧都做差集：
+   *   · `missing`（册里有、实测值表查不到）⇒ 新增基地没补实测值；
+   *   · `orphan`（表里有、册里没有）⇒ 改了 id / 删了基地后留下的死值。
+   *
+   * **共用同一份实现**（铁律 0.6）：差集逻辑只在 `sopScale.ts` 的 `sopPerBaseCoverageGaps`
+   * 一处，本断言、它的金丝雀、以及模块自身那道「对不上就当场抛」的闸**都调它**。
+   * 在测试里另抄一份差集就是装饰品：改主逻辑时金丝雀拿旧的去测、照样绿。
+   */
+  it("L5 身份出处 · SOP_PER_BASE_MONTHLY 逐个盖住 BASE_REGISTRY，且无册外孤儿值（两侧现算·不写死条数）", () => {
+    // 金丝雀先跑（先自证工具，再报否定结论）：拿**已知必红**的两组喂同一个差集实现。
+    const canaryMissing = sopPerBaseCoverageGaps(["changzhou", "atlantis"], { changzhou: {} });
+    const canaryOrphan = sopPerBaseCoverageGaps(["changzhou"], { changzhou: {}, atlantis: {} });
+    expect(
+      canaryMissing,
+      `金丝雀①：册里有而表里没有的基地必须被报成 missing，实际 ${JSON.stringify(canaryMissing)}`,
+    ).toEqual({ missing: ["atlantis"], orphan: [] });
+    expect(
+      canaryOrphan,
+      `金丝雀②：表里有而册里没有的 id 必须被报成 orphan，实际 ${JSON.stringify(canaryOrphan)}`,
+    ).toEqual({ missing: [], orphan: ["atlantis"] });
+    // 反向金丝雀：完全对上的一对必须判空（否则是"恒红门"，同样没用）。
+    expect(
+      sopPerBaseCoverageGaps(["changzhou"], { changzhou: {} }),
+      "反向金丝雀：完全对上的一对必须无缺口，否则本判据恒红",
+    ).toEqual({ missing: [], orphan: [] });
+
+    // 主判据：现值两侧全对。⚠️ 一次断言收两侧 —— 拆成两条 expect 会在第一条就抛出，
+    // 「改了一个 id」（同时制造 missing + orphan）就只看得见前半截，修法会歪到补数据上去。
+    const gaps = sopPerBaseCoverageGaps();
+    expect(
+      gaps,
+      `S&OP ③ 供应线与 BASE_REGISTRY 对不上（基地身份的唯一出处是册）：\n` +
+        `  · 册里有、实测值表里查不到值的基地：[${gaps.missing.join(", ")}]\n` +
+        `  · 实测值表里有、册里没有的孤儿值：[${gaps.orphan.join(", ")}]`,
+    ).toEqual({ missing: [], orphan: [] });
+
+    // 派生方向也要咬住：条数与中文名都必须**来自册**（而不是恰好与册一样长）。
+    expect(
+      SOP_PER_BASE_MONTHLY.length,
+      "SOP_PER_BASE_MONTHLY 条数 ≠ BASE_REGISTRY 条数 ⇒ 它没在遍历册，又变回第二份名册了",
+    ).toBe(BASE_REGISTRY.length);
+    expect(
+      [...SOP_PER_BASE_MONTHLY.map((b) => b.baseId)].sort(),
+      "S&OP ③ 表的基地标签集 ≠ 册的中文名集 ⇒ 名字又被手抄了一份",
+      // 排序后比集合：③ 表按月产能降序、册按建厂/地理序，两者行序本就不同，比集合才是对的判据。
+    ).toEqual([...BASE_REGISTRY.map((b) => b.name)].sort());
   });
 });
