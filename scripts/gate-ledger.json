@@ -1506,7 +1506,8 @@
    "guardedPaths": [
     "apps/frontend-shell/src/views",
     "apps/frontend-shell/src/pages/admin",
-    "scripts/dev-jargon-baseline.json"
+    "scripts/dev-jargon-baseline.json",
+    "apps/frontend-shell/src/locales"
    ],
    "escalation": "审核方",
    "ontologyRef": "§7",
@@ -1515,7 +1516,7 @@
     "evidence": "补登账时变异实跑，并当场抓出一个真洞（2026-08-14 · 基线 b731b098）",
     "note": "补登账缘由同 dbui-flow-order：建于 WO-UI-LAYERING-BURNDOWN，建时漏登。变异反证过程中**抓出本门自己的一个假绿**，已同批修：往 DataBuilderPage.tsx 的真 JSX 里塞 **1** 条开发话（<div>strictObject 逐键核过</div>）⇒ 门 **RC=0 放行**，还照常打印「屏上开发话未新增」；塞 2 条才红。根因是**棘轮松弛** —— 基线记该文件 1 条，而它早被修干净、实测 0，差出来的 1 格成了谁都能用的**免检名额**；而 rows 只含有命中的文件，零命中文件根本不出现，所以正向遍历永远发现不了。形态：「我用『没有超过基线』当作『没有新增』的证据，而前者并不度量后者。」修法 = 反向遍历基线做松弛检测，基线 > 实测即 RC=1 并要求跑 --update 收紧（棘轮只降不升还不够，**降了必须当场收紧**，否则余量一格一格攒成免检额度）。收紧后（total 11→10）复验：塞 1 条 ⇒ RC=1 点名 L1089 \"strictObject\"，撤回 ⇒ RC=0。退出码纪律原文即合规（toolBroken + 顶层 try/catch + 金丝雀 6/6），gate-exit-discipline:check 未点名它。"
    },
-   "notes": "NONE（未接任何链）：守「给开发看的话不许上屏」。**关键设计：不 grep 源码文本**，而用 typescript 解析 JSX，只取真正会渲染出去的字（JSX 文本节点 · 文案型属性字面量 · 其中的模板串片段），注释/变量名/import/data-testid/className 一律不看 —— 全仓 grep WO 编号命中数百条但绝大多数在注释里，拿原始命中数当判据会得出「全仓到处是违规」这个恰好相反的结论，然后门因噪声太大被永久关掉。词表逐条对着派单 §3.3 原文抄：契约类型名 XxxSchema · strictObject · WO 编号 · PRD 区号 · 内部机制名（三页归一/自成长收编/厂商中立施工）· 实现细节标识符（zod/tsx/useQuery/useState/repo./msw）。诚实边界（不许读成「屏上已干净」）：① 经 locales/ 等变量**间接**上屏的测不出来（本门不跨文件解析，与 check-ui-first-layer 的 formula 判据同一个盲区）；② 词表是有限的，新的黑话形态要手工补进 JARGON，不会自己冒出来。另有扫描面下界 MIN_FILES 防「枚举器坏了报 0 违规」。"
+   "notes": "GATES_CHAIN（已接门链）：守「给开发看的话不许上屏」。**关键设计：不 grep 源码文本**，而用 typescript 解析 JSX，只取真正会渲染出去的字（JSX 文本节点 · 文案型属性字面量 · 其中的模板串片段），注释/变量名/import/data-testid/className 一律不看 —— 全仓 grep WO 编号命中数百条但绝大多数在注释里，拿原始命中数当判据会得出「全仓到处是违规」这个恰好相反的结论，然后门因噪声太大被永久关掉。词表逐条对着派单 §3.3 原文抄：契约类型名 XxxSchema · strictObject · WO 编号 · PRD 区号 · 内部机制名（三页归一/自成长收编/厂商中立施工）· 实现细节标识符（zod/tsx/useQuery/useState/repo./msw）。诚实边界（不许读成「屏上已干净」）：① 经 locales/ 等变量**间接**上屏的测不出来（本门不跨文件解析，与 check-ui-first-layer 的 formula 判据同一个盲区）；② 词表是有限的，新的黑话形态要手工补进 JARGON，不会自己冒出来。另有扫描面下界 MIN_FILES 防「枚举器坏了报 0 违规」。 ⚠ 2026-08-17 修账（WO-SCREEN-PLAINSPEAK-ADMIN 的 dev 顶回来的，属实）：本条此前 notes 开头写着「NONE（未接任何链）」而 binding 已是 GATES_CHAIN——**账里两处自相矛盾，而本门自己看不见**；且 guardedPaths 漏了 apps/frontend-shell/src/locales，而该门实扫 locale 面（自证下界 1200，实测 1863 条字面量）。⇒ 判据③只比「binding vs 现算调用方」、判据④只比「guardedPaths 里的路径存不存在」，**都不度量「guardedPaths 是否覆盖门实际扫描的面」**。形态（铁律 0.6）：「我用『账里填的路径都存在』当作『账里填全了』的证据，而前者并不度量后者。」这条盲区已登记，补判据属另一张单。"
   },
   "check-baseline-writer-honesty.mjs": {
    "alias": "baseline-writer-honesty:check",
