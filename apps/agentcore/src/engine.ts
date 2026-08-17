@@ -548,7 +548,10 @@ export class ExecutionEngine {
       // N2·D-2：dsh.result.stats 并入 answer 交叉类型（additive 运行时键；orchestrator:2187
       // answer.final 整对象直发即自动带上，reducer :129 整对象落 state 零渲染副作用）。
       // 失败路径（上方 :517-529）不造 stats；零 usage 帧时 reassemble 侧键整体不出。
-      const answer: AgentLoopResult["answer"] & { stats?: import("./dsh-runtime/reassemble.js").DshRunStats } = {
+      // 类型从上方已动态 import 的 runDshAgent 派生（dormancy D3：全仓只许一处 dsh-runtime 入口，
+      // 类型位 import("./dsh-runtime/reassemble.js") 会被判第二入口）。
+      type DshOkResult = Extract<Awaited<ReturnType<typeof runDshAgent>>["result"], { ok: true }>;
+      const answer: AgentLoopResult["answer"] & { stats?: DshOkResult["stats"] } = {
         ...dsh.result.answer,
         ...(dsh.result.stats ? { stats: dsh.result.stats } : {}),
       };
