@@ -365,7 +365,22 @@ describe("§2 · 第一层只放数值/状态/名字 —— 口径与整段说�
     // 向二：记号一开，原文回来
     await user.hover(screen.getByTestId("info-kpi-unit"));
     const note = await screen.findByTestId("sandbox-kpi-unit-note", undefined, { timeout: 10000 });
-    expect(note.textContent ?? "", "浮层里没有量纲 ⇒ 这是删除不是降层").toContain("0–100 指数");
+    /**
+     * ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK 随措辞更新，**咬的仍是同一条边界，一个字没放宽**。
+     * 原断言写死 `toContain("0–100 指数")`；本单把这段浮层文案改成人话时
+     * （`量纲为 0–100 指数` → `是 0–100 的指数`）插了一个「的」，断言当场变红。
+     *
+     * 这正是 CLAUDE.md 铁律 0.6 第 4 条点名的形态：
+     * **「我用『typecheck / build 全绿』当作『文案改全了』的证据，而前者并不度量后者 ——
+     *   旧措辞作为**期望串**存在的地方，类型系统一个都看不见。」**
+     * `pnpm -r typecheck` 与 `pnpm -r build` 对这一行**永远是绿的**，只有真跑这个文件才红。
+     *
+     * 改成正则而不是换一个写死的串：`的` 是可有可无的虚词，量纲本身（数域 `0–100` +
+     * 「指数」二字**紧挨着**）才是这条断言要守的东西。`\s*的?` 只放行虚词，
+     * **不允许两者被别的内容隔开** —— 拆成 `toContain("0–100")` + `toContain("指数")`
+     * 才是放宽（那样「0–100 分」配上别处一个「指数」也能蒙混过关）。
+     */
+    expect(note.textContent ?? "", "浮层里没有量纲 ⇒ 这是删除不是降层").toMatch(/0–100\s*的?指数/);
   }, 60000);
 
   /**

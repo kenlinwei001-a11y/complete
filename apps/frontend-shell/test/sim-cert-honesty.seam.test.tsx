@@ -202,7 +202,24 @@ describe("WO-CERT-HONESTY · 就绪认证面板口径（接缝：deriveCertifica
     expect(card.textContent ?? "", "这句还留在第一层 ⇒ 降层没做").not.toContain("不代表这个世界已经推动过");
     const meaning = await openInfo("sim-cert-trial-meaning");
     expect(meaning.textContent, "降层把这句降没了 —— 那是删除不是分层").toContain("不代表这个世界已经推动过");
-    expect(meaning.textContent).toContain("派生依赖图可拓扑排序");
+    /**
+     * ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK 改判据落点，**守的承诺一个字没放宽**。
+     *
+     * 原断言咬 `"派生依赖图可拓扑排序"` —— 「可拓扑排序」是图论术语，属 R-UI-4
+     * 点名的形态：判据「这句话用户读了能做什么决定？」对它答不出来。
+     * 现文案把**同一个数学事实**说成人话：「派生关系没有互相打转（**无环**）」。
+     * 「可拓扑排序」与「无环」在有向图上**是同一个命题**（DAG ⟺ 存在拓扑序），
+     * 所以这不是换个说法糊弄，是**等价改写**。
+     *
+     * ⛔ 判据必须仍然咬住那个**限定**（passed 只证明无环，不证明世界推得动），
+     * 否则这条断言就退化成「浮层里有字」。故两半都咬：
+     *   ① 「无环」这个事实本身还在（换成人话，不是删掉）；
+     *   ② 上一行已咬的限定「不代表这个世界已经推动过」还在。
+     */
+    expect(
+      meaning.textContent,
+      "「passed 只证明派生关系无环」这个口径被降没了 —— 那是删除不是分层",
+    ).toMatch(/无环|没有互相打转/);
     // 「派生图节点」那个数的口径同样在浮层里，原文一字不少。
     const nodes = await openInfo("sim-cert-trial-nodes-meaning");
     expect(nodes.textContent).toContain("派生依赖图规模");

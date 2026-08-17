@@ -683,11 +683,27 @@ describe("§4 · 下区影响带 —— 扰动 × 影响传播的**接缝**（SE
     // 第一层的可见记号（`?` 触发器）在
     const trigger = screen.getByTestId("info-impact-finance-gap");
     expect(trigger).toBeVisible();
-    // ② 打开后正文回来，且明写 finance_pnl 不吃世界态这件事（这是本单的三形态判定结论）
+    // ② 打开后正文回来，且明写「这个数是推演投影、不是本租户实际损益」这件事
     await user.hover(trigger);
     const body = await screen.findByTestId("sandbox-impact-finance-gap");
     const txt = body.textContent ?? "";
-    expect(txt).toContain("finance_pnl");
-    expect(txt).toContain("不吃 worldId / sessionId");
+    /**
+     * ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK 改判据落点，**守的承诺一个字没放宽**。
+     *
+     * 原断言咬的是 `"finance_pnl"` 与 `"不吃 worldId / sessionId"` —— 那是**求解器键名**
+     * 与**函数签名参数名**，属 R-UI-4 点名的开发话（用户读了做不出任何决定）。
+     * 本单把它们**移进代码注释**（`locales/zh.ts` 的 `financeGapBody` 上方那段注释，
+     * 原文「勿与求解器 `finance_pnl` 混：它读本体真值、签名不吃 worldId/sessionId」）
+     * ——**是移走不是删除**，工程师要查依然查得到，只是不再印在用户屏上。
+     *
+     * ⛔ 所以这里**不能**改成咬新措辞里的某个词就算完 —— 那样只是换个字符串。
+     * 判据必须落在**这条诚实位对用户的承诺**上，它有两半，缺一即红：
+     *   ① 这个数是**推演投影、不是实测值**；
+     *   ② 它与**本租户实际损益**是两回事（原文「别和 finance_pnl 搞混」的人话版）。
+     * 两半都在 ⇒ 用户拿到的信息与改写前**等价**；删掉任一半 ⇒ 这里当场红。
+     */
+    expect(txt, "没说清这是推演投影 ⇒ 用户会把它当实测损益读").toContain("推演投影");
+    expect(txt, "没说清「不是实测值」").toContain("不是实测值");
+    expect(txt, "没把它与「本租户实际损益」划清界限 ⇒ 原诚实位被删掉了，不是降层").toContain("实际损益");
   });
 });

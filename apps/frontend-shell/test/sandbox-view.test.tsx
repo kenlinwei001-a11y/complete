@@ -134,10 +134,20 @@ describe("增量4 · <SandboxView> 配置驱动（R14 两行业证）", () => {
     }
     // 向二：`?` 一开，原文回来（诚实位允许降层、绝不允许删除）。
     await user.hover(screen.getByTestId("info-kpi-unit"));
+    /**
+     * ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK 随措辞更新（`量纲为 0–100 指数` → `是 0–100 的指数`），
+     * **咬的仍是同一条边界，一个字没放宽**。`\s*的?` 只放行「的」这个虚词，
+     * 不允许数域与「指数」被别的内容隔开（拆成两个 `toContain` 才是放宽）。
+     * 形态见 CLAUDE.md 铁律 0.6 第 4 条：旧措辞作为**期望串**存在的地方，
+     * `typecheck` / `build` **永远看不见**，只有真跑这个文件才红。
+     * ⚠ 上面那条**向一**断言刻意仍写死 `"0–100 指数"`：它是「第一层不许出现」的
+     * `not.toContain`，放宽成正则会让它咬得**更多**（更严），但也会在措辞里出现
+     * 「0–100 的指数」时误判第一层不合规 —— 两向的判据方向相反，不能照抄同一个模式。
+     */
     expect(
       (await screen.findByTestId("sandbox-kpi-unit-note")).textContent ?? "",
       "浮层里也没有量纲 ⇒ 这不是降层，是删除（规范 §1 诚实位红线）",
-    ).toContain("0–100 指数");
+    ).toMatch(/0–100\s*的?指数/);
     // 就绪认证面板（L0-L4 stepper + canEnter + gaps + 雷达三轴）——现在住在诊断抽屉里。
     await openDiagnostics(user);
     await waitFor(() => expect(screen.getByTestId("sim-cert-level").textContent).toContain("L2"));
