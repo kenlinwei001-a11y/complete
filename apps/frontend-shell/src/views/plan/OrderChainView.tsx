@@ -25,6 +25,8 @@ import styles from "./PlanViews.module.css";
 // 本单一个字节都没改 `ChainLineMapView`）＋ 决策推演就地嵌入（与页面壳同一份实现）。
 import ChainLineMapView from "../sim/ChainLineMapView";
 import { DecisionPlayEmbed } from "../DecisionPlayPanel";
+// WO-EDGE-PANEL-3PAGES：横向要求「所有推演页都要能关掉一条传导边看结果怎么变」的共享件。
+import EdgeActivePanel from "../sim/EdgeActivePanel";
 
 // DF.3 单一来源：SEG 配色/价/利从 @platform/contracts SEG_REGISTRY 派生（与 datacore 同源）。
 const SEG_COLOR: Record<string, string> = Object.fromEntries(SEG_REGISTRY.map((s) => [s.seg, s.color]));
@@ -745,6 +747,29 @@ export default function OrderChainView({ view }: ViewRendererProps) {
 
       {/* inference-process 横切：订单全链推演的编排过程 DAG */}
       <InferenceProcessPanel testId="inference-order" solved />
+
+      {/* ── WO-EDGE-PANEL-3PAGES · 挂载点（本页判定「可挂」，论据写在这里，不在工单里）──────────
+          判据不是「它在名册里」（那只说明该问），是**这一页在业务上有没有可关的传导边**：
+           ① 本页在左导航「推演」组（`ShellLayout.tsx` NAV_GROUPS「推演」组的 kind:"view" 一列），
+              主面板自称「订单全链推演」，且已内嵌 `DecisionPlayEmbed` 方案对比 —— 它是推演页，
+              不是归因页（同文件里 `cleanroom-attr`/`disruption-radius` 归「归因与风险」组的那条判据
+              「答『现状为什么这样』还是『改一个假设会怎样』」，本页落在后者）。
+           ② demo 传导边里 **Order 是一等节点**，不是旁观者：`apps/datacore/src/seed.ts` 的
+              `Order.demandPressure → Model.demandLoad`（需求向）、`Model.costPressure → Order.costPressure`
+              （成本向）、`Model.supplyRisk → Order.shortageRisk`（供应向）、
+              `Order.costPressure → Customer.receivablePressure`（现金向）四条链都以 Order 为端点。
+              「关掉成本传导这一跳，订单侧的成本压力还剩多少」在本页是一句人话，不是硬套。
+          ⚠ 诚实边界（写在这里而不是屏上，屏上由面板自己的 `?` 说全）：本面板算的是**会话级反事实**
+             （`SimSession.disabledRuleKeys` × counterfactual 对照跑），它**不改**上方三关联判的结论 ——
+             那三判走的是 `order_fullchain` 求解器，不读传导边。两个问题相邻但不同源，故各自成块。
+          默认折叠：本页在 `check-ui-first-layer` 棘轮里（first=89 · deferred=6），`<details>` 让
+          面板内容落到第二层，与同页「地铁线路图」`oc-metro-details` 同一种处置，不往第一层堆。 */}
+      <details data-testid="oc-edge-details" style={{ marginTop: 10 }}>
+        <summary data-testid="oc-edge-summary" style={{ fontSize: 12.5, cursor: "pointer" }}>
+          关掉一条传导边，看这些数怎么变 ▸
+        </summary>
+        <EdgeActivePanel pageKey="order-chain" />
+      </details>
     </div>
   );
 }

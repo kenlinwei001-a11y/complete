@@ -1441,7 +1441,7 @@ toType 是 Order」一句**字面为假**，实有 3 条；但其限定句「Ord
 沿链路走：
 
 ```
-① 前端      EdgeActivePanel（`views/sim/EdgeActivePanel.tsx`·8 页共享一件）
+① 前端      EdgeActivePanel（`views/sim/EdgeActivePanel.tsx`·9 页共享一件·名册现算见下「门」段）
              边目录 ← GET /a/v1/sim/propagation-rules（**不过滤**：关掉的边要"可见地降级"不是消失）
 ② 拨开关     POST /a/v1/sim/sessions/:id/counterfactual  { n, disabledRuleKeys }（候选集，不落库）
 ③ 引擎       simAdvanceTicks(persist:false) ×2 —— 全规则一版、减去屏蔽集一版，**同一支算法**
@@ -1481,6 +1481,68 @@ R4 `SANDBOX_MODE_ORIGIN_VIEW` · R5 `CONSOLIDATED_INTO_SANDBOX` 的 `via:"static
 复验：`node scripts/check-edge-active-mounts.mjs`（今日实测 RC=0 · 名册 12 页 · 挂对 9 · 已知缺口 3）；
 `--census` 逐页打印它凭哪条判据进名册。**数字仍有保质期，但现在它由门现算**——
 与门的现跑输出不符时**以门为准**并当场回写本行。
+### 反事实链路 · 第二条（结构向）：会话级屏蔽**关系边** → 扇出改道或断链（WO-EDGE-PANEL-3PAGES · 2026-08-16）
+
+⚠️ **这是与上面那条并列的第二条反事实链路，不是它的一个分支** —— 关的是**两族不同的边**，
+读成同一件事就会以为「一处做了另一处也有了」，而它们在代码里没有任何共享路径：
+
+| | 上面那条（量级向） | 本条（结构向） |
+|---|---|---|
+| 关的是什么 | `PropagationRule` —— `源类型.状态变量 —链路→ 目标类型.状态变量`，带**系数与延迟** | **本体 ref 边** —— `引用方类型.引用字段`（`OTypeLite.properties[].refToTypeKey`） |
+| 承载物 | `SimSession.disabledRuleKeys`（落库） | 页面本地 state（**不落库、不落 URL**，只活在这一次查看里） |
+| 关掉之后变的是 | 下游**状态变量的取值**（`diffTickStates` 逐格差值） | **走到哪、波及谁** —— `radius` / `totalAffected` / 分层 DAG |
+| 有没有第二种结果 | 没有，只有"差多少" | **有两种**：**改道**（该层还有别的引用边 ⇒ 扇出改走那一条，波及**另一批**对象）／**断链**（只有这一条 ⇒ 链在此终止） |
+| 今天落在哪 | 9 个推演页（共享件 `EdgeActivePanel`） | **仅 `disruption-radius` 一页**（`views/DisruptionRadiusView.tsx`），因为只有它整页就是一条可断的链 |
+
+沿链路走（本条）：
+
+```
+① 倒推   deriveDisruptionLayers(types, rootType, disabledEdges)   ← 纯函数·确定性 R6
+          排序（type→viaField 字典序）**在过滤之前** ⇒「关掉首选 ⇒ 次选顶上」是确定的
+          ⚠ 这一行是本条最容易做错且**看不出来**的地方：写成「截断到第 i−1 跳」时
+            数照样变小、屏上无破绽，但**改道那一支永远不出现**
+② 求解   POST /a/v1/solvers/supplier_disruption_radius/invoke { rootType, rootId, layers }
+          `layers` 进 react-query 的 queryKey ⇒ 关一下开关即自动重解（不需要"再点一次运行"）
+③ 上屏   dr-radius / dr-total / dr-leaf / dr-fanout(LayeredDag) / dr-layer-* 全部随之换一批数
+```
+
+**R4 边界**：本条**不写任何东西**（本体里那条 ref 边一个字节不动），与 `disabledRuleKeys` 同属
+**R4-sim** 那条「反事实不碰真值」的纪律；差别只在承载物 —— 那条落 `sim_session` 行，本条连库都不落。
+
+**诚实位（一个数不许盖住两个事实 · 本条特有）**：链为空有两个完全不同的成因，屏上长得一样，
+**修法完全相反**（一个去建模、一个把开关拨回来）：① 本体本来就没有反向引用链（`dr-empty-no-layers`）；
+② **你自己把链上的边关断了**（`dr-empty-edges-cut`）。两个 testid 分开、文案分开。
+另有一条**本条特有**的诚实位：「已关 N 条 · 下方是假设关掉后的读数」徽标**必须留在第一层**
+（开关面板折起来也看得见）—— 否则用户会把反事实读数当成现状，那比看不到开关更坏。
+⚠️ 屏上刻意**不**写「反事实」三个字（那是判据表的口径词，不是给规划员看的话），
+「反事实」只留在代码注释与本体里；`check-dev-jargon-onscreen` 的词表今天咬不到它，
+所以这一条是**人手纪律**，不是机器保证 —— 如实记下这个边界，不许读成「机器守住了」。
+
+**接缝门**：`apps/frontend-shell/test/edge-panel-3pages.seam.test.tsx`（6 例）——
+断言的是「关掉一条边 ⇒ **屏上本页自己的读数**真的变了」（半径 2→1 · 波及 3→1 · 第一层换成另一类对象），
+不是「面板渲染出来了」。两个变异反证现跑：重算不吃开关 ⇒ 红在「数没变」；改成截断式 ⇒ 红在
+`expected [] to deeply equal [{ type: 'Warehouse' }]`。**两个都红在数上，不是红在面板上。**
+
+**门**：`scripts/check-edge-active-mounts.mjs`（挂载点静态可达，且必须挂在**主组件**里 ——
+挂进子组件 = 没跑出结果就看不见开关，本单初稿真踩过 3 处，是这道门当场抖出来的）。
+⚠️ **2026-08-16 WO-EDGE-PANEL-3PAGES 现跑订正 —— 本行原来那个「9 页」是个假数**：
+它是门里**手抄**的名单长度，而不是「该被问的页有几页」。名册改**现算**
+（`scripts/lib/sim-page-roster.mjs`，WO-INFER-PAGE-SSOT）后当场多问出 3 页
+（`cleanroom-attr` / `disruption-radius` / `order-chain`，此前**从未被这道门问过一次**）。
+今日实测：**现算名册 10 页 · 挂对 9 · 在册裁决 1**（`cleanroom-attr` 判**不适用**，
+理由与「差什么才能收」逐条登记在 `scripts/edge-active-mounts-baseline.json` 的
+`gaps.cleanroom-attr.why`）；棘轮基线 **3 → 1**（只降）。
+⚠️ 名册规模 10 是**本分支**的现算值；`WO-INFER-PAGE-SSOT` 的 `BUILTIN_VIEWS` 显式 `sim: true`
+并入后会长到 12（棘轮只拦缩水、不拦增长）。**数字有保质期，与门的现跑输出不符时以门为准并当场回写本行。**
+⚠️ **2026-08-14 WO-GATE-LEDGER-FIX 现跑订正**：本行原写「8 页」，而门内 `PAGES` 表**当时已是 9 条**
+—— 第 9 条 `risk-board` 是该单复核时补的（工单按 renderer key 取表，把它读成「风险看板」，
+而 workspace 真实下发的标题是「产能推演」），补了表却没回写本体，于是本体比门少数一页。
+⚠️ **上面这条 08-14 的订正本身，2026-08-16 又被证明只订对了一半**：它把「8」改成「9」，
+却仍然是在**手抄名单的长度**这个量上打转 —— 形态照铁律 0.6 句式：
+**「我用『门里那张表有几行』当作『该被问的页有几页』的证据，而前者并不度量后者。」**
+同一个病连犯两次（08-14 少数一页 · 08-16 少问三页），第二次的修法才是对的：**名册现算**。
+复验命令不变，但读法要换：看它打印的「现算名册 N 页 · 挂对 M · 已知缺口 K」，
+**不要**再去数门源码里有几行。
 ⚠️ 该门 **2026-08-14 之前从未登进 `scripts/gate-ledger.json`** —— 是 `gate-ledger:check` 判据①
 「无遗漏」当场抓出的唯一一条未登账门。后果不只是少一行账：`ontology-writeback:check` 的
 **G3-c「已建未接线」棘轮是在门账上现算的**，账里没有它 ⇒ 它对该棘轮**隐身**，
@@ -2083,6 +2145,7 @@ R4 `SANDBOX_MODE_ORIGIN_VIEW` · R5 `CONSOLIDATED_INTO_SANDBOX` 的 `via:"static
 | G-SPLITACCOUNT-PROMISE-ONLY | **拆账拆出去的那一半只剩一句承诺 ⇒ 「判不了 0」被读成「都验完了」**（WO-GATE-B-SPLITACCOUNT 2026-08-16 实测发现·整类）。**现场**：`docs/PRD-harness-ux-adoption.md` §2.1 把六条判据各拆成两半，可判的那半留在 §4 表里逐页判，不可判的那半挪进 §4.2 登记为 4 条 `B-x` 明账 —— 那张 120 格的表因此从「符合 17 · 判不了 57」变成「符合 60 · **判不了 0**」。**而在门 B 建成之前，那 4 条明账没有任何东西保证它 ① 还在 ② 有人认领 ③ 指向一个真实存在的受理方 ④ 有一张能派出去的单**：把 §4.2 整张表删掉、或把某条的「要判它得有什么」挖成 `—`，仓库照样全绿。**形态**（铁律 0.6 句式）：**「我用『判据表里判不了 0』当作『这条要求验完了』的证据，而前者并不度量后者。」** **这不是那一份 PRD 的个案**：凡把「做不到的那部分」**拆出去挂账**的做法都在射程内 —— 挂账本身是对的（诚实），但**挂账不等于可交付**，而账最危险的死法不是被推翻，是**没人注意到它没了**。**判据**：凡拆账，① 拆出去的每一条必须有编号、有认领的原判据、有点名的受理方、有一张归属非空的单；② 受理方必须**可解析地存在**（转给一个不存在的接收方 = 销账）；③ 覆盖率必须**自陈并被机器核对**（拦「门建好了 ⇒ 都验了」）。**已闭的部分**：`harness-ux-splitaccount:check` 七条判据把上述①②③ 全部机械化，并**真机检了 4 条里 B-2 的必要条件**（现算 3 个面板文件 0 个有「本体链」对位实现 ⇒ 账面理由属实）。**未闭的部分（故本条标 ◑ 部分闭合）**：B-1 / B-3 / B-4 的**内容面**今天仍无验收方式 —— 差真浏览器 harness（B-1 时延面 + B-4 的 U8 几何面）、差「事实 → 读取它的页面集合」注册表（B-3 的**前置**，没有它连该比哪两个数都列不出来）、差编排侧评测集（B-4 的 U7 内容面）。四张单已开在 PRD §5，门判据④ 盯着那张表。⚠️ **本条与 `G-GATE-ROSTER-HANDCOPIED` 同族不同灶**：那条是「门问的对象少了」，本条是「**门问的对象对，但那部分被合法地移出了门的射程**」—— 后者更难发现，因为文档上一切都写得清清楚楚。 |
 | G-GATE-ROSTER-HANDCOPIED | **门的名单是手抄的 ⇒ 漏掉的对象永远绿**（WO-HARNESS-UX-ADOPTION 2026-08-15 实测发现·整类）。**首个现场**：`scripts/check-edge-active-mounts.mjs` 的 `PAGES` 是**手抄的 9 条**（注释自陈「前 8 条来自工单 §1；第 9 条 risk-board 是复核时补的」），而「推演页」四源并集实测 **12 页** ⇒ `cleanroom-attr` / `disruption-radius` / `order-chain` **三页从未被那道门问过，于是永远绿**。**形态**（铁律 0.6 句式）：**「我用『名单里那几个都合格』当作『所有该合格的都合格』的证据，而前者并不度量后者。」****判据**：受检集合必须**现算**（从 route 表 / 注册册 / 文件系统枚举），写死名单则必须同批加一条「名单 vs 现算」的一致性断言。<br>**◑ 部分闭合（2026-08-16 · WO-GATE-ROSTER-SWEEP 全门普查后按实际写）**。已做三件：<br>① **机制本体已落地并接进 `pnpm gates`** —— `gate-roster:check`（§7 有条目）：全门现算普查 **83 道门 / 353 个顶层常量集合 / 71 个候选名册**，每条必须被人定性（`criteria` 38 · `computed` 18 · `roster` 15）并写 `why`，**新门里出现未定性的写死集合当场红**，`roster` 债只降不升。这就是铁律 0.6 要的「机器先说话」那一层 —— 此前本条只能靠人逐道门想起来。<br>② **修掉一处、且拿出了 A/B 假绿实证** —— `check-boundary-singlesource.mjs` 的内联 baseId 扫描面从**手抄 3 文件**改为 `SCAN_ROOTS` **全仓现算 612 个 `.ts/.tsx`**；同一棵树同一个变异，**旧脚本 RC=0 且打印「内联基地字面量 0（零容忍）」，新脚本 RC=1 点名到确切 file:line**。这道门的名单带**幸存者偏差**（当初照「已知有问题的那几个」抄，那 3 个修好后名单不变），是本病最毒的形态。存量 19 组进棘轮基线、逐条带 `why`。<br>③ **修掉第二处** —— `check-ref-closure.mjs` 的 `GUARDED_PUBLISH_ROUTES` 从**手抄 3 条发布路**改为**现算 `server.ts` 全部 9 条**，未守的进棘轮基线逐条带 `why`。**这一处是普查顺带测出真洞的**：`/api/v1/catalog/plans/:planId/publish` 携带规则引用（agentcore 的 catalog 服务里 `publishPlan` 调 `planStepRuleRefs` 并 `reportRefs` 上报 A）却**从不调 `probeMissingRefs`** ⇒ 引用一条不存在的规则照样发布成功；`/b/v1/plan-builders/:id/publish` 走 `publishCanvas`→`publishPlan` 同路同病。<br>**为什么仍是 ◑ 不是 ✅ —— 剩余 13 处 `roster` 债逐条在册**（`scripts/gate-roster-baseline.json`，每条写明差集与「差什么才能修」，全表见 `docs/AUDIT-gate-roster-sweep.md`）：`check-ui-first-layer.mjs:SCAN_DIRS`（**差集 54 个 `.tsx`**，`components/**` 整个在射程外，最大一笔）· `check-chain-scan-honesty.mjs:SCAN_TARGETS`（差集 11）· `check-boundary-singlesource.mjs:SEG_CONSUMERS`（差集 12，且 SEG 侧**根本没有全仓负向扫描**）· `check-edge-active-mounts.mjs:PAGES`（差集 3，已由 WO-INFER-PAGE-SSOT 在 `claude/handoff-wo-infer-page-ssot` 收口，该分支**尚未并入本基线**）· `check-outsource-redline.mjs:CONSUMERS`（差集 1）· `check-opt-template.mjs:CORES`（差集 1）· `check-deploy-governance.mjs:APPS`（差集 1）· `check-prd-coverage.mjs:TEST_DIRS`（差集 1）· `check-screen-value-provenance.mjs:SCAN_DIRS`（差集 3）· `check-object-interface.mjs:FOUR`（迁移文件维度会漂）· `check-ontology-slice-coverage.mjs:EXEMPT_TYPES`（豁免名单无棘轮无 `why`，同族不同病）· `check-verdict-rollup.mjs:FILES` 与 `check-dbui-flow-order.mjs:FILES`（今日差集 0，机制同病）。**⚠️ 还有一层普查覆盖不到、必须写明**：`gate-roster:check` 只扫**门源码的顶层常量**，函数体内的临时数组、`switch` 分支里的字符串、以及**基线 json 里的名册**一律看不见；元素少于 3 条的集合也不当名册看（实测漏掉 `check-debattery.mjs:ROOTS` 这类两元素扫描根）。**「我没找到」和「它不存在」是两个命题**，本条按前者写。<br>⚠️ 顺带记（沿用旧文）：三源（`BUILTIN_VIEWS` / `features.ts` VIEW 级 / `NAV_GROUPS` 推演组）对「哪些算推演页」**互不一致**，所以「现算」本身也要先定单一来源。 |
 | G-TYPECHECK-SKIPS-TESTS | **`typecheck` 全绿，而它连测试文件看都没看 —— 「配置写了」不等于「它生效了」**（WO-TEST-TYPECHECK-BLIND 2026-08-16 实测·假绿第 13 形态）。**病灶**：`apps/datacore` 与 `apps/agentcore` 的 `tsconfig.typecheck.json` 早在 `7302a0fc`（2026-08-13 · WO-R4「件一(1/2)」）就已建好，文件头注释白纸黑字写着「把 `test/` 纳入类型检查面」，而两包 `package.json` 的 `typecheck` 脚本**从来指向 `tsconfig.json`** —— 那次只把 `packages/contracts` 一个包接上了线（标题里的「1/2」正是自陈只做了一半），第二半的接线躺在分支 `claude/handoff-wo-typecheck-testblind` 上、被本人标注「[待裁·勿盲并]」而未并 —— 因为**光翻开关会当场变红**。于是三天里：配置在、注释在、意图在，**466 个测试文件一次都没被类型检查过**。接上线当天抖出 **354 个**真类型错误（datacore 272 + agentcore 82）：契约字段改名后 fixture 没跟上、`ObjectInstance.origin` 这类必填字段 91 处缺失、测试本地断言类型漏声明生产真会发的字段、`status: "RUNNING"` 这种枚举里根本不存在的值……全部躺在正线上没人发现。**形态（铁律 0.6 句式）**：**「我用『N 包 typecheck 绿』当作『测试文件也没类型错』的证据，而前者并不度量后者 —— 它连看都没看。」** 与铁律 0.6 已收录的第 4 条（改名要连断言一起改）**同族但更底层**：那条说的是类型系统**看不见字符串键**（能力边界），本条说的是类型系统**压根没被指向那些文件**（接线断了）。 | `<pkg>/package.json` 的 `typecheck` 脚本 ⊗ `<pkg>/tsconfig*.json` 的 `include` ⊗ `<pkg>/test/**`（被检查方） | ✅ **已修（WO-TEST-TYPECHECK-BLIND 2026-08-16）**：① 两包 `typecheck` 脚本改指 `tsconfig.typecheck.json`（build 用的 `tsconfig.json` 未动 —— 它靠 `rootDir:"src"` emit，混进 test 会 TS6059 并把测试吐进 dist）；② 因此暴露的 **354 个**类型错误**全部修完归零**，全部修在测试侧，**零生产源码改动**（`as any`/`@ts-ignore` 一处未用 —— 那是把「看不见」换成「假装看见了」）；③ 新门 `typecheck-coverage:check`（§7）现算断言「每个包的 typecheck 面真的含它的测试文件」，**判据落在 `tsc --listFilesOnly` 的程序文件全集上，刻意不读 `include`/`exclude`** —— 读配置去推断正是本断点栽的那个跟头。反向金丝雀（与主逻辑共用 `surfaceOf()`）每次运行先验「各包 build 配置的面里**不该有**测试文件」，锁死「测量坏成恒返全都在 ⇒ 正向判据全过 ⇒ 门报绿」这种坏法；变异反证三向机验 RC=0/1/2，其中「真有包没接线」一路实测输出 `datacore 0/291`、`agentcore 0/175`，**即本断点修复前的真实状态，非模拟**。 |
+| G-GATE-ROSTER-HANDCOPIED | **门的名单是手抄的 ⇒ 漏掉的对象永远绿**（WO-HARNESS-UX-ADOPTION 2026-08-15 实测发现·整类）。**现场**：`scripts/check-edge-active-mounts.mjs` 的 `PAGES` 是**手抄的 9 条**（注释自陈「前 8 条来自工单 §1；第 9 条 risk-board 是复核时补的」），而「推演页」四源并集实测 **12 页** ⇒ `cleanroom-attr` / `disruption-radius` / `order-chain` **三页从未被那道门问过，于是永远绿**。**形态**（铁律 0.6 句式）：**「我用『名单里那几个都合格』当作『所有该合格的都合格』的证据，而前者并不度量后者。」****这不是那一道门的个案**：凡把受检对象集合**写死在门里**的判据都在射程内 —— 门只能证明「它问过的那些是对的」，证明不了「该问的都问了」。**判据**：受检集合必须**现算**（从 route 表 / 注册册 / 文件系统枚举），写死名单则必须同批加一条「名单 vs 现算」的一致性断言。**已闭的第一步**：`sim-ux-criteria:check` 判据① 就是「枚举一致（现算 vs 表）」，专拦手抄漏页。⚠️ 顺带记：三源（`BUILTIN_VIEWS` / `features.ts` VIEW 级 / `NAV_GROUPS` 推演组）对「哪些算推演页」**互不一致**，所以「现算」本身也要先定单一来源。**◑ 部分闭合（2026-08-16）**：① 名册已改现算（`scripts/lib/sim-page-roster.mjs`，五条纳入判据 + 一条排除判据 + 三条交叉断言，`WO-INFER-PAGE-SSOT`）；② **它当场多问出的那 3 页已逐页出结论**（`WO-EDGE-PANEL-3PAGES`）：`order-chain` / `disruption-radius` **补挂**，`cleanroom-attr` 判**不适用**并把理由与「差什么才能收」写进棘轮基线的 `why`，棘轮 **3 → 1**。⚠️ **为什么仍是「部分」而不是「已闭」**：本条是**整类**病，不是那一道门的个案 —— 全仓其余把受检集合写死在门里的判据一个都还没查（判据：`grep -n "const PAGES\|const FILES\|const TARGETS" scripts/*.mjs` 一类的写死名单，逐条判「该不该现算」）。**只把发病的那一处治好就宣布闭合，正是本条自己警告的那个形态。**⚠️ 另记一条同源实测（2026-08-16）：本体 §3「反事实链路」那一行的「9 页」在 08-14 已被订正过一次（8→9），**而那次只订对了一半** —— 它仍在数手抄表的行数。同一个病在同一行连犯两次，第二次才换成现算。 |
 
 > **WO-CAPACITY-PAGE-100PCT 残口补闭（2026-07-30 · 「产能推演」页 100% 实证 LOOP · 台账 `docs/capacity-page-audit-ledger.md`）**
 > 三条**已标 ✅ 已闭**的断点在**真浏览器亲跑**下仍有可复现残口，本单补闭（均不新增对象类型/链路/事件/求解器，故金值不变）：
