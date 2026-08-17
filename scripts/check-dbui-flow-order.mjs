@@ -25,7 +25,7 @@
  *
  * 用法：`node scripts/check-dbui-flow-order.mjs`   RC: 0 通过 · 1 不合格 · 2 工具坏了
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -49,11 +49,33 @@ const MUST_FOLLOW = ["QuickSynthPanel", "WorkflowTimelinePanel", "GrowthConsoleP
 /** 给开发看的话（屏上出现即不合格）。 */
 const DEV_JARGON = ["三页归一", "自成长收编", "厂商中立"];
 
-const FILES = [
-  "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx",
-  "apps/frontend-shell/src/pages/admin/DataBuilderFlow.tsx",
-  "apps/frontend-shell/src/pages/admin/PromotePrecheckPanel.tsx",
-];
+/**
+ * 扫描面现算（WO-GATE-ROSTER-SWEEP-2，2026-08-18）：DataBuilder 流程族 = `pages/admin/` 下
+ * `DataBuilder|Promote` 前缀的全部 `.tsx`，**枚举现算，一个文件名都不手抄**。
+ * 旧形态写死 3 个文件 —— 族里明天新增 `DataBuilderXxx.tsx` 就永远在名单外、永远漏
+ * （断点 G-GATE-ROSTER-HANDCOPIED）。判据：这个集合随仓库演进而变 ⇒ 现算。
+ * 顺序判据①仍只咬 `DataBuilderPage.tsx`（isPage 语义不变），文案判据②扫全族。
+ */
+const SCAN_DIR = "apps/frontend-shell/src/pages/admin";
+const FAMILY_RE = /^(DataBuilder|Promote).*\.tsx$/;
+/** 族规模下界（金丝雀）——今日恰 3 个；塌到下界以下 ⇒ 枚举器/目录坏了，不是族没了。 */
+const MIN_FAMILY = 3;
+function listFamily(root) {
+  let entries;
+  try {
+    entries = readdirSync(resolve(root, SCAN_DIR));
+  } catch (e) {
+    toolBroken(`读不到扫描目录 ${SCAN_DIR}（${e?.message || e}）`, "是不是 cwd 不在仓库根？本门用 process.cwd() 解析相对路径。");
+  }
+  const out = entries.filter((f) => FAMILY_RE.test(f)).sort().map((f) => `${SCAN_DIR}/${f}`);
+  if (out.length < MIN_FAMILY) {
+    toolBroken(
+      `DataBuilder 流程族只枚举到 ${out.length} 个文件（下界 ${MIN_FAMILY}）——枚举塌陷。`,
+      `若族文件真被改名/挪走（不再匹配 ${FAMILY_RE}），同步改本门的 FAMILY_RE 与下界。`,
+    );
+  }
+  return out;
+}
 
 /**
  * **唯一实现**：给一份源码文本，剥掉注释后回「主流程挂载位置 / 其它面板位置 / 上屏违禁词」。
@@ -124,7 +146,8 @@ function main() {
   );
 
   let bad = 0;
-  for (const rel of FILES) {
+  const files = listFamily(root);
+  for (const rel of files) {
     let src;
     try {
       src = readFileSync(resolve(root, rel), "utf8");
@@ -133,7 +156,7 @@ function main() {
       // 与真违规撞码，把「门没跑起来」读成「仓库真有问题」。
       toolBroken(
         `读不到 ${rel}（${e?.message || e}）`,
-        "是不是 cwd 不在仓库根？本门用 process.cwd() 解析相对路径。文件真被删/改名了则须同步改 FILES。",
+        "是不是 cwd 不在仓库根？本门用 process.cwd() 解析相对路径。文件真被删/改名了则须同步改 FAMILY_RE。",
       );
     }
     const r = analyze(src);
