@@ -18,6 +18,8 @@ import EdgeActivePanel from "./sim/EdgeActivePanel";
 // 本页走 App.tsx 的专用 route，不经 ViewPage ⇒ 必须自己调 usePageView（理由见 shared.tsx 该函数注释）。
 import { ExportReportButton, usePageView } from "./sim/shared";
 import type { ProvenanceReport } from "./sim/exportProvenance";
+// WO-U6-ADOPT · 判据 U6（结论即动作）：采纳此假设 → 「对象数据变更」Action（既有 WIRED 分支）。
+import { AdoptAssumptionButton } from "./sim/AdoptSimConclusion";
 
 /**
  * 通用假设推演页（renderer=what-if）——把 `generic_inference` 求解器（G-5 通用 what-if）落地为一张交互页：
@@ -371,7 +373,7 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
 
       {/* ── 结果区 ── */}
       {assumptionReady && settled && result ? (
-        <WhatIfResult out={result} snapshotVersion={runQ.data?.snapshotVersion} assumption={{ typeKey, objectId, prop, value: debouncedValue }} />
+        <WhatIfResult out={result} snapshotVersion={runQ.data?.snapshotVersion} assumption={{ typeKey, objectId, prop, value: debouncedValue }} coercedValue={coercedValue} />
       ) : null}
 
       {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。
@@ -398,10 +400,13 @@ function WhatIfResult({
   out,
   snapshotVersion,
   assumption,
+  coercedValue,
 }: {
   out: GenericInferenceOutput;
   snapshotVersion?: string;
   assumption: { typeKey: string; objectId: string; prop: string; value: string };
+  /** 已按属性 dataType 类型强制的假设值（与屏上结果同源——采纳不许送未强制的原文）。 */
+  coercedValue: unknown;
 }) {
   const rows = out.rows ?? [];
   const assumptionLine = `${assumption.typeKey}/${assumption.objectId}.${assumption.prop} = ${assumption.value}`;
@@ -514,6 +519,25 @@ function WhatIfResult({
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* ══ 判据 U6「结论即动作」（WO-U6-ADOPT）══
+          本页的「采纳」语义不是登记结论，而是**把这份假设经审批改成真实数据**——
+          由既有 WIRED 的「对象数据变更」承载（patch 合并进对象 props + runDerivations），
+          与「不落库试算」的标注正好闭环：试算 → 采纳 → 审批 → 转正。
+          挂载在结果区内：结果随输入失效即卸载，结构上不存在「采纳到旧假设」。 */}
+      <div className="panel" data-testid="wi-adopt" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <AdoptAssumptionButton
+          testId="wi-adopt-assumption"
+          objectType={assumption.typeKey}
+          objectId={assumption.objectId}
+          prop={assumption.prop}
+          value={coercedValue}
+          assumptionLine={assumptionLine}
+        />
+        <span style={{ fontSize: 12, color: "var(--muted2)" }}>
+          上面是不落库试算；采纳后经审批把该属性真改为假设值（审批痕留 Action）。
+        </span>
       </div>
     </div>
   );

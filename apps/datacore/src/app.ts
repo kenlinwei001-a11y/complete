@@ -59,6 +59,7 @@ import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
+import { SimConclusionAdoptionPayloadSchema } from "@platform/contracts"; // WO-U6-ADOPT · 采纳推演结论 payload 契约
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
@@ -834,6 +835,63 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
         // targetRef 自证落了哪份台账——**刻意不使用 MO- 前缀**（那正是假单号形态）。
         return { ok: true, targetRef: `FC-ADOPT:${adoptionId}` };
+      }
+
+      // ── 采纳推演结论（WO-U6-ADOPT · 把 optimize-whatif / cleanroom-attr / disruption-radius
+      // 三页的推演结论落成一等公民台账对象 `SimConclusionAdoption`）──
+      // 语义裁决与「采纳产能预测结论」同一形态：落的是**结论本身**（判别字段+推演快照全字段），
+      // 不是开工单、不是改杠杆真值。what-if 页不走本分支（它的采纳=把假设改成真实数据，
+      // 由上面「对象数据变更」分支承载）。⛔ 不落兜底：兜底零写入，审批全绿而真值不动
+      // （G-ACTION-NOOP-EXEC 正是那个形态）。
+      if (draft.actionTypeKey === "采纳推演结论") {
+        // ① payload 必须过契约（source 判别联合·量纲逐字段标注）——不合即诚实失败，绝不猜值写下去。
+        const parsed = SimConclusionAdoptionPayloadSchema.safeParse(draft.payload);
+        if (!parsed.success) {
+          const issue = parsed.error.issues[0];
+          return {
+            ok: false,
+            error:
+              `采纳推演结论：payload 不合契约（${issue ? `${issue.path.join(".")}: ${issue.message}` : "unknown"}）——` +
+              `拒绝臆造写入。契约见 packages/contracts/src/actions.ts SimConclusionAdoptionPayloadSchema。`,
+          };
+        }
+        const p = parsed.data;
+        // ② 确定性 id（R6·无 Date.now/random）：由判别字段+快照派生 → 同一份结论重复采纳覆盖同 id（幂等不产重复）。
+        const disc =
+          p.source === "optimize-whatif"
+            ? [p.source, p.family, String(p.seed), JSON.stringify(p.perturbations)]
+            : p.source === "cleanroom-attr"
+              ? [p.source, p.analysis, p.primaryType, JSON.stringify(p.args)]
+              : [p.source, p.rootType, p.rootId, JSON.stringify(p.layers), JSON.stringify(p.disabledEdges)];
+        const adoptionId = `sc_${hashString([...disc, JSON.stringify(p.snapshot)].join("|")).toString(16)}`;
+        const objectId = `obj_simconclusionadoption_${adoptionId}`;
+        // ③ adoptedAt 取确定性时间锚 forecastStart（同 ForecastAdoption / adopt_mitigation 的禁 Date.now 纪律）。
+        const scParams = await solvers.getParams(draft.tenantId);
+        const adoptedAt = String(scParams.forecastStart ?? "").slice(0, 10);
+        // ④ 落台账对象：判别字段 + 推演快照**全字段原样**（payload 已过契约，量纲即契约标注的量纲）。
+        await repos.objects.put({
+          id: objectId,
+          tenantId: draft.tenantId,
+          type: "SimConclusionAdoption",
+          props: {
+            adoptionId,
+            source: p.source,
+            ...(p.source === "optimize-whatif"
+              ? { family: p.family, seed: p.seed, perturbations: p.perturbations }
+              : p.source === "cleanroom-attr"
+                ? { analysis: p.analysis, primaryType: p.primaryType, args: p.args }
+                : { rootType: p.rootType, rootId: p.rootId, layers: p.layers, disabledEdges: p.disabledEdges }),
+            snapshot: p.snapshot,
+            adoptedAt,
+            actionDraftId: draft.id,
+            status: "ACTIVE",
+          },
+          origin: { type: "ACTION", actionId: draft.id, source: p.source },
+        });
+        // ⑤ 派生重算：让下游切片/推演立刻读到新对象（与「对象数据变更」「采纳产能预测结论」同一套）。
+        await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
+        // targetRef 自证落了哪份台账——**刻意不使用 MO- 前缀**（那正是假单号形态 G-ACTION-NOOP-EXEC）。
+        return { ok: true, targetRef: `SIM-ADOPT:${adoptionId}` };
       }
 
       // ⛔ 最后兜底：**不再返回假 MO 号**。未在 ACTION_WIRING 里标 WIRED 的动作一律诚实失败/诚实标注，

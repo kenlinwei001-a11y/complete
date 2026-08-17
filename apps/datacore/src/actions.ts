@@ -61,6 +61,10 @@ export const ACTION_WIRING: Record<string, ActionWiring> = {
   //   选中订单时把可行性结论回 stamp 到 Order（app.ts domainExecutor 分支）。效果层断言（读回对象
   //   字段真变）见 test/action-adopt-forecast.seam.test.ts。
   采纳产能预测结论: "WIRED",
+  // ← 已接：推演页「采纳结论」（optimize-whatif / cleanroom-attr / disruption-radius）→
+  //   落 SimConclusionAdoption 台账对象（source 判别字段+推演快照全字段·app.ts domainExecutor 分支）。
+  //   效果层断言（审批→读回对象字段真变）见 test/action-adopt-sim-conclusion.seam.test.ts。
+  采纳推演结论: "WIRED",
   // —— 尚未接执行器：审批通过后不写任何真值（**欠账**，非「设计上无副作用」）——
   // ⚠️ 只剩这一条了。写清它写回意图的**真实出处**（上一版这里笼统写成"三条在 mapping.ts / decision-kernel 里
   //    都有写回意图"，对 `采纳经营方案` 是**事实错误**——它既不在 mapping.ts，kernel 也不派它。

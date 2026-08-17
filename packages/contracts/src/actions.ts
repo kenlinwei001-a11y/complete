@@ -412,6 +412,113 @@ export const ForecastAdoptionPayloadSchema = z.object({
 export type ForecastAdoptionPayload = z.infer<typeof ForecastAdoptionPayloadSchema>;
 
 // ---------------------------------------------------------------------------
+// WO-U6-ADOPT · 推演页「采纳结论」通用 payload 契约（actionTypeKey=采纳推演结论）
+// 把 what-if 之外三页（optimize-whatif / cleanroom-attr / disruption-radius）的推演结论
+// 落成可溯源台账对象 `SimConclusionAdoption`（S2 审批 → domainExecutor 真写入）。
+// what-if 页不接本型：它的「采纳」语义是把假设**改成真实数据**，由已 WIRED 的
+// 「对象数据变更」承载（patch 合并进对象 props + runDerivations）——两动作分工不重叠。
+//
+// ⚠️ 量纲纪律（G-LEVER-SNAPSHOT-UNIT-LIE 前科）：每个数值字段名/注释标出它装的量；
+// 三页结论形态不同 ⇒ 按 `source` 判别联合，各自快照逐字段标注，不许共用一个糊名 snapshot。
+// ---------------------------------------------------------------------------
+
+/** optimize-whatif：CP-SAT 决策比对的采纳（方案结构 + 目标值快照）。 */
+export const OptWhatifAdoptionPayloadSchema = z.object({
+  source: z.literal("optimize-whatif"),
+  /** 模板族 key（如 facility_location）。 */
+  family: z.string().min(1),
+  /** 求解 seed（复算坐标：同族同参同 seed 同解）。 */
+  seed: z.number().int(),
+  /** 扰动清单：target=collection.id.field；value 为该字段**原生量纲**的数值（随模板族：成本/权重/需求量…）。 */
+  perturbations: z.array(z.object({ target: z.string().min(1), value: z.number() })),
+  snapshot: z.object({
+    /** 基线目标值（量纲随模板族目标函数，如总成本合计；null=未解出）。 */
+    baselineObjective: z.number().nullable(),
+    /** 扰动后目标值（同基线量纲；null=未解出）。 */
+    perturbedObjective: z.number().nullable(),
+    /** Δ = 扰动后 − 基线（同量纲；null=未解出）。 */
+    deltaObjective: z.number().nullable(),
+    /** 扰动后是否可行。 */
+    feasible: z.boolean(),
+    /** 是否可证最优（内存态 InProc 恒 false；仅 CP-SAT 证到 OPTIMAL 才 true——不许写死）。 */
+    optimal: z.boolean().default(false),
+    /** 求解器状态原文（OPTIMAL/FEASIBLE/…）。 */
+    status: z.string().default(""),
+    /** 白话解读（求解器 explanation 原文，不改写）。 */
+    explanation: z.string().default(""),
+    /** 基线方案结构（求解器透传，字段随模板族）。 */
+    baselineSolution: z.record(z.string(), z.unknown()).optional(),
+    /** 扰动后方案结构（同上）。 */
+    perturbedSolution: z.record(z.string(), z.unknown()).optional(),
+  }),
+});
+export type OptWhatifAdoptionPayload = z.infer<typeof OptWhatifAdoptionPayloadSchema>;
+
+/** cleanroom-attr：净室归因诊断结论的登记（瓶颈/集中度/毛利倒挂三选一）。 */
+export const CleanroomAttrAdoptionPayloadSchema = z.object({
+  source: z.literal("cleanroom-attr"),
+  /** 分析块（= 三个净室求解器键）。 */
+  analysis: z.enum(["shared_bottleneck", "concentration_risk", "margin_attribution"]),
+  /** 主类型 key（倒推参数的起点类型）。 */
+  primaryType: z.string().min(1),
+  /** 倒推参数快照（复算坐标；由真对象类型结构倒推，非写死）。 */
+  args: z.record(z.string(), z.unknown()),
+  snapshot: z.object({
+    /** 求解器 summary 原文（不改写）。 */
+    summary: z.string().default(""),
+    /** 结论条数，单位 **条**（计数）。 */
+    findingCount: z.number().int().nonnegative(),
+    /** 结论明细：求解器输出行**原样**（逐行字段名即求解器原名，量纲随字段名——如 demand/capacity 为资源原生单位）。 */
+    findings: z.array(z.record(z.string(), z.unknown())),
+  }),
+});
+export type CleanroomAttrAdoptionPayload = z.infer<typeof CleanroomAttrAdoptionPayloadSchema>;
+
+/** disruption-radius：断供影响半径评估的登记（含边开关反事实条件）。 */
+export const DisruptionRadiusAdoptionPayloadSchema = z.object({
+  source: z.literal("disruption-radius"),
+  /** 断供来源类型 key。 */
+  rootType: z.string().min(1),
+  /** 断供来源对象标识。 */
+  rootId: z.string().min(1),
+  /** 本次反向扇出链（边开关作用后的实际链·复算坐标）。 */
+  layers: z.array(z.object({ type: z.string().min(1), viaField: z.string().min(1) })),
+  /** 本次关闭的关系边（反事实条件；空=全开）。 */
+  disabledEdges: z.array(z.string()).default([]),
+  snapshot: z.object({
+    /** 影响半径，单位 **层**（命中数>0 的层数·计数）。 */
+    radius: z.number().int().nonnegative(),
+    /** 波及对象总数，单位 **个**。 */
+    totalAffected: z.number().int().nonnegative(),
+    /** 叶层类型（最深非零层；null=无波及）。 */
+    leafType: z.string().nullable(),
+    /** 叶层敞口，单位 **个**。 */
+    leafCount: z.number().int().nonnegative(),
+    /** 逐层明细（count 单位 **个**，ids 为对象标识）。 */
+    layersDetail: z.array(
+      z.object({
+        type: z.string(),
+        viaField: z.string(),
+        /** 本层命中数，单位 **个**。 */
+        count: z.number().int().nonnegative(),
+        ids: z.array(z.string()),
+      }),
+    ),
+    /** 求解器 summary 原文（不改写）。 */
+    summary: z.string().default(""),
+  }),
+});
+export type DisruptionRadiusAdoptionPayload = z.infer<typeof DisruptionRadiusAdoptionPayloadSchema>;
+
+/** 推演结论采纳 payload（`采纳推演结论` · source 判别联合）。 */
+export const SimConclusionAdoptionPayloadSchema = z.discriminatedUnion("source", [
+  OptWhatifAdoptionPayloadSchema,
+  CleanroomAttrAdoptionPayloadSchema,
+  DisruptionRadiusAdoptionPayloadSchema,
+]);
+export type SimConclusionAdoptionPayload = z.infer<typeof SimConclusionAdoptionPayloadSchema>;
+
+// ---------------------------------------------------------------------------
 // §S3 调度器
 // ---------------------------------------------------------------------------
 

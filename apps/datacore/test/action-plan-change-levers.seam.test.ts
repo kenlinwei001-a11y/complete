@@ -241,6 +241,15 @@ function minimalPayloads(sopVersionId: string): Record<string, Record<string, un
       snapshot: { capWanP50: 42, capWanP90: 38, gapWan: 2, healthFactor: 0.9, ok: false, mainBn: "__census_probe__" },
     },
     流水线发布物化: { workflowId: "__census_probe__", nodeId: "n1", rows: [] },
+    // WO-U6-ADOPT 新增型。载荷形状照 `SimConclusionAdoptionPayloadSchema` 逐字段填（disruption-radius 变体），**不自创**。
+    采纳推演结论: {
+      source: "disruption-radius",
+      rootType: "Supplier",
+      rootId: "__census_probe__",
+      layers: [{ type: "Material", viaField: "supplierRef" }],
+      disabledEdges: [],
+      snapshot: { radius: 1, totalAffected: 1, leafType: "Material", leafCount: 1, layersDetail: [{ type: "Material", viaField: "supplierRef", count: 1, ids: ["__census_probe__"] }], summary: "普查探针" },
+    },
   };
 }
 
@@ -276,7 +285,7 @@ async function makeSopVersionAtExecMeeting(t: TestApp): Promise<string> {
 }
 
 /** 已知**确已接**真执行器的型（金丝雀基准·改这里等于改基准，请连同论据一起改）。 */
-const KNOWN_WIRED_CANARIES = ["对象数据变更", "采纳产能保障方案"];
+const KNOWN_WIRED_CANARIES = ["对象数据变更", "采纳产能保障方案", "采纳推演结论"];
 
 /**
  * 实测 golden：**跑出来的**、当前真正落在兜底线上的探针。

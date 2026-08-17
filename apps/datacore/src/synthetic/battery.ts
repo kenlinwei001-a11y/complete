@@ -3050,6 +3050,35 @@ export const BATTERY_ACTION_TYPES = [
     checkRules: [] as string[],
     approvalChain: [{ role: "admin" }],
   },
+  // WO-U6-ADOPT：推演页「采纳结论」通用动作（payload 契约见 contracts
+  // SimConclusionAdoptionPayloadSchema·source 判别联合·量纲逐字段标注）。审批通过 →
+  // domainExecutor 落 SimConclusionAdoption 台账对象（结论+快照全字段·真写入非兜底）。
+  // 覆盖 optimize-whatif / cleanroom-attr / disruption-radius 三页；what-if 页不接本型
+  // （它的采纳=把假设改成真实数据，走已 WIRED 的「对象数据变更」）。
+  {
+    key: "采纳推演结论",
+    name: "采纳推演结论",
+    paramsSchema: {
+      type: "object",
+      required: ["source", "snapshot"],
+      properties: {
+        source: { type: "string" },
+        family: { type: "string" },
+        seed: { type: "number" },
+        perturbations: { type: "array" },
+        analysis: { type: "string" },
+        primaryType: { type: "string" },
+        args: { type: "object" },
+        rootType: { type: "string" },
+        rootId: { type: "string" },
+        layers: { type: "array" },
+        disabledEdges: { type: "array" },
+        snapshot: { type: "object" },
+      },
+    },
+    checkRules: [] as string[],
+    approvalChain: [{ role: "admin" }],
+  },
   // Phase9B 对象级数据变更（逐字段替换数据）：经 Action 审批后落账，EXECUTED 时把 patch 合并进对象 props
   // 并重跑派生 → 之后 resolve_slice/invoke_solver 即「二次推演」反映新数据。绝不绕过审批直改真值。
   {

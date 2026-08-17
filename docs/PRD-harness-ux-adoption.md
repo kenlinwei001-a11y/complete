@@ -242,19 +242,19 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
 | 页 | U1 改输入即重演 | U2 分步标口径 | U3 DAG点节点 | U4 反事实开关 | U4b 排除项同图 | U5 结论标出处 | U6 结论即动作 | U7 同屏问答带上下文 | U8 看明细不换页 | U9 导出带口径 | U10 版面 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | 推演沙盘 `sim-sandbox` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
-| 项目推演 `project-sim` | **符合** | **符合** | **符合** | **符合** | 不符合 | **符合** | **不符合** | **符合** | **符合** | **符合** | **不符合** |
+| 项目推演 `project-sim` | **符合** | **符合** | **符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **符合** | **不符合** |
 | 全局项目推演 `global-sim` | **符合** | 不符合 | **不符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **不符合** | **符合** | **符合** |
 | 产能推演 `risk` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
 | 订单全链 `order-chain` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
 | 决策推演 `decision-play` | **符合** | **不符合** | **符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** | **不符合** |
-| 假设推演 `what-if` | **符合** | 不符合 | **不符合** | **符合** | 不适用 | **符合** | **不符合** | **符合** | **符合** | **符合** | **符合** |
-| 优化推演 `optimize-whatif` | **不符合** | **符合** | **符合** | **符合** | 不适用 | **符合** | **不符合** | **符合** | **符合** | **符合** | **符合** |
-| 归因 `cleanroom-attr` | **符合** | 不符合 | **不符合** | 不适用 | 不适用 | **符合** | **不符合** | **符合** | **符合** | **符合** | **符合** |
-| 影响半径 `disruption-radius` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **不符合** | **符合** | **符合** | **符合** | **符合** |
+| 假设推演 `what-if` | **符合** | 不符合 | **不符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 优化推演 `optimize-whatif` | **不符合** | **符合** | **符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 归因 `cleanroom-attr` | **符合** | 不符合 | **不符合** | 不适用 | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 影响半径 `disruption-radius` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
 | 方案生成 `plan-generate` | **符合** | **符合** | **符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** | **不符合** |
 | 月度规划 `sop-balance` | **不符合** | **不符合** | **不符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
 
-**合计（12 页 × 11 判据 = 132 格）：符合 93 · 不符合 31 · 不适用 8 · 判不了 0。**
+**合计（12 页 × 11 判据 = 132 格）：符合 100 · 不符合 25 · 不适用 7 · 判不了 0。**
 
 > **这一行的口径，以及它为什么只许有一行**（2026-08-17 解合并冲突时定死）：
 >
@@ -290,6 +290,19 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
 > 「排除一个因素」这个动作**在这一页上无处落脚**时才允许改判；只要页面上存在任何一个
 > 关掉之后读数会变的东西，就仍是 `不符合`（欠账），不是 `不适用`。
 > `cleanroom-attr` 的逐块取证在 §4.3，**三块拆开说**，不许一句盖住三个事实。
+
+> **本轮（WO-U6-ADOPT ＋ WO-SIM-ACTION-REAL 补登记）动了 5 格，全在 U6 列**，逐格写清去向，不许只报总数：
+>
+> | 页 | U6 改前 → 改后 | 凭什么 |
+> |---|---|---|
+> | `project-sim` | 不符合 → **符合** | WO-SIM-ACTION-REAL 早已接上（步骤⑥「采纳结论」→ ActionDraft「采纳产能预测结论」→ S2 → domainExecutor 落 ForecastAdoption），本格是**补登记**——表没跟上代码。接缝：`wo-sim-action-real.project-sim-adopt.test.tsx` ＋ `action-adopt-forecast.seam.test.ts` |
+> | `what-if` | 不符合 → **符合** | `wi-adopt-assumption`（`AdoptAssumptionButton`）→ 既有 WIRED「对象数据变更」：本页采纳语义 = 假设经审批**转成真值**（patch 合并 + runDerivations），零新增动作型 |
+> | `optimize-whatif` | 不符合 → **符合** | `ow-adopt-conclusion` → 新通用动作型「**采纳推演结论**」（contracts `SimConclusionAdoptionPayloadSchema` 判别联合）：族 + seed + 扰动清单 + 目标值/解快照落 `SimConclusionAdoption` 台账 |
+> | `cleanroom-attr` | 不符合 → **符合** | 三块诊断各一个采纳钮（`cr-bn/cr-cc/cr-ma-adopt-conclusion`）→ 同一动作型，`analysis` 判别字段区分三求解器键，`findings` = 求解器行原样 |
+> | `disruption-radius` | 不符合 → **符合** | `dr-adopt-conclusion` → 同一动作型：断供根 + 实际扇出链 + **关边清单随 payload 上送**（反事实条件不许藏），快照含逐层命中 |
+>
+> 接缝证据（前后端两半，读回走另一条路）：前端半 `wo-sandbox-u6-adopt.test.tsx`（4 测：点采纳 → 草稿真发出 · submit=true · payload=屏上那份，与 MSW 求解器真算输出逐字段比对）；
+> 后端半 `action-adopt-sim-conclusion.seam.test.ts`（6 测：审批 → domainExecutor 真写 → **列表端点**读回字段真变 · 契约拒绝零写入 · 变异反证红在「台账不存在」而非状态机）。
 
 > ⚠ **2026-08-17 表体修复（WO-U2-STEPWISE-1 / WO-U3-DAG-SPLIT 落地前置，dev A）**：
 > 本文件自 `3bbb49f9`（收编 edge-panel-3pages）起**带着两段未解的 merge 冲突标记**又过了 5 个 merge。
@@ -452,7 +465,7 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
     对应的机检也刻意落在**那个数字自己**的浮层上，不是「屏上出现过求解器名」。
 
 **U6 结论即动作**
-- **符合 8 页**：`sim-sandbox` · `global-sim` · `risk` · `plan-generate` · `sop-balance`（原判不变）＋
+- **符合 12 页（2026-08-17 全闭）**：`sim-sandbox` · `global-sim` · `risk` · `plan-generate` · `sop-balance`（原判不变）＋
   两格**从「判不了」落地**：
   - `order-chain` **符合**：`OrderChainView.tsx:10` `import { useActionDraft }` → `:874` `const adopt = useActionDraft()`
     → `:953` 「采纳结论 → 工单（C10 留痕）」按钮。上一版记「4 处，疑为字段名」——追一层就见真身。
@@ -460,11 +473,31 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
     → `/commit` → `:1539` 「已提交决策 → 派发 ActionDraft，进入 S2 审批链」。
     ⚠ 这一格探针报 **0** —— 因为它走的是 `decisions/commit` 而不是探针词表里的
     `useActionDraft|createActionDraft`。又一次「探针词表写窄」，与 §4.1 开头那两次同形态。
-- **不符合 4 页**：`what-if` · `optimize-whatif` · `cleanroom-attr` · `disruption-radius`（探针 0，追一层确认无）
-  ＋ `project-sim` **不符合**（**从「判不了」落地**）：全文 `ActionDraft|action-draft|actionTypeKey|adopt`
+- ~~**不符合 4 页**~~（已于 2026-08-16/17 全闭，见下）：`what-if` · `optimize-whatif` · `cleanroom-attr` · `disruption-radius`（当时探针 0，追一层确认无）
+  ＋ `project-sim` 当时亦 **不符合**（**从「判不了」落地**）：全文 `ActionDraft|action-draft|actionTypeKey|adopt`
   **0 命中**；唯一的「采纳」二字在 `ProjectSimView.tsx:1069` 的 `note:` 文案里
   （「结论可采纳为 Action（参数组合 + 推演快照写回）」）—— **屏上写着能采纳，代码里没有那条路**。
   这是本轮最值得单独记一笔的一格：**文案承诺了一个不存在的动作**，比干脆没有更糟。
+- ✅ **五格全闭（符合 12 页）**：
+  - `project-sim` 由 **WO-SIM-ACTION-REAL** 闭（步骤⑥「采纳结论」真发 actionTypeKey=采纳产能预测结论，
+    前端半 `wo-sim-action-real.project-sim-adopt.test.tsx` · 后端半 `action-adopt-forecast.seam.test.ts`）；
+    §5 P0「接上 / 撤文案二选一」按**接上**执行，`ProjectSimView.tsx` 那句承诺已兑现。
+  - 其余四页由 **WO-U6-ADOPT**（WO-SANDBOX-32CELLS）闭，一个通用新动作型 **`采纳推演结论`**
+    （contracts `SimConclusionAdoptionPayloadSchema` · source 判别联合三页 · 快照量纲逐字段注释）：
+    - `what-if` **符合**：本页「采纳」语义 = 把假设经审批**真改成数据**，由既有 WIRED 的「对象数据变更」承载
+      （patch 合并 + runDerivations），`wi-adopt-assumption`（`AdoptAssumptionButton`）。零新增动作型。
+    - `optimize-whatif` **符合**：`ow-adopt-conclusion` —— 方案快照（族 + seed + 扰动清单 + 目标值/解）落台账。
+    - `cleanroom-attr` **符合**：三块诊断各一个采纳钮（`cr-bn/cr-cc/cr-ma-adopt-conclusion`），
+      analysis 判别字段区分三求解器键，findings = 求解器行原样。
+    - `disruption-radius` **符合**：`dr-adopt-conclusion` —— 断供根 + 实际扇出链 + **关边清单随 payload 上送**
+      （反事实条件不许藏），快照含逐层命中。
+  - 审批后半链：`采纳推演结论` 经 S2 审批 → domainExecutor 真写 `SimConclusionAdoption` 台账对象
+    （确定性 id 幂等 · `targetRef=SIM-ADOPT:*` 非假 MO 号 · 不落兜底执行器）。
+    接缝测试：前端半 `wo-sandbox-u6-adopt.test.tsx`（4 测：点采纳 → 草稿真发出 + payload=屏上那份，
+    MSW 求解器真算输出逐字段比对）· 后端半 `action-adopt-sim-conclusion.seam.test.ts`
+    （6 测：审批 → 列表端点读回字段真变 + 契约拒绝零写入 + 变异反证红在「台账不存在」）。
+    ⚠ 早先 §5 对净室 4 页的顾虑（R2 租户语义）按此解：Action 草稿**天然租户内**（S2 审批链带 tid），
+    不是跨租户写入——顾虑是「硬补直写」的，而本单走的是审批链。
 
 **U7 同屏问答带本页上下文**（判据：经 `ViewPage` 分发 或 页面自己调 `usePageView`）
 - 先说清**这条不是「没接线」，是「接了线接错地方」**（铁律 0.5 三形态，修法完全不同）：
@@ -893,9 +926,12 @@ harness-ux-u7-u9），`tsc --noEmit` RC=0。默认末步=完整结果是零回�
 | **P3** | **`WO-R13-ONTOCHAIN-PANEL` · **B-2** 的充分条件（「本体链逐字齐全」）归 R13 溯源链验收** | 必要条件（对位实现在不在）门 B 判据⑤ 已机检，**今天实测 3 个面板 0 个有** ⇒ 现状是**不符合**而非判不了。要不要补这条实现属产品判断（补了才谈得上「逐字齐全」）。**先裁决补不补，再谈怎么验** | R13 线（先由审核方裁决补不补） |
 | **P3** | **`WO-QOS-PAGECTX-EVAL` · **B-4** 的 U7 内容面：编排侧评测集** | 「同屏问答答得对不对」要真跑一次编排 + 真模型，**这不是前端门能判的**，也不该混进 B-4 的 U8 那张 harness 单（两面缺的东西完全不同）。要一份评测集：问题 + 期望要素 + 判分口径，跑在 agentcore 侧 | 一张编排侧单（重画像：要真调模型或高保真 mock） |
 
-⚠ **本单刻意不排 U6 的优先级**：「结论即动作」在 `what-if`/`optimize-whatif`/`cleanroom-attr`/
+⚠ ~~**本单刻意不排 U6 的优先级**~~（**2026-08-17 已闭，此备裁作废**）：「结论即动作」在 `what-if`/`optimize-whatif`/`cleanroom-attr`/
 `disruption-radius` 四页缺失，但这四页是**净室通用页**（与租户本体无关），它们该不该产生 Action 草稿
 **是产品决策不是缺陷**——硬补会造出「在一个通用假设页上生成全租户 Action」这种更糟的东西。**登记备裁。**
+> **2026-08-17 裁决落地（WO-U6-ADOPT）**：当年的顾虑针对的是「**硬补直写**」；实际方案走的是 **S2 审批链**
+> ——Action 草稿天然带 tid、审批通过才由 domainExecutor 落租户内台账，不存在跨租户直写。
+> 四页各按其结论语义接上（`what-if` 复用「对象数据变更」，余三页走新通用动作型「采纳推演结论」），见 §4 U6 段。
 
 ### 5.1 「不符合」全量优先级表（2026-08-16 WO-SANDBOX-53CELLS 建 · 按**判据**排不按页排）
 
@@ -913,7 +949,7 @@ harness-ux-u7-u9），`tsc --noEmit` RC=0。默认末步=完整结果是零回�
 | **3** | **U5** 结论数字标出处 | 3 | **3** | 已有 `SnapshotBadge`/`<Provenance>` 两个共享件，逐页挂即可；难点只在**写对每页的口径**（谁算的·算在什么之上） | ✅ **3 页全闭** |
 | **4** | **U8** 看明细不换页 | 3 | **2 + 1**（两种病，修法不同） | ①「明细已取回却没渲染 / 只留一句『+N 更多』」⇒ 内联 `<details>` 就地展开（2 页）；②「下钻靠 `<Link>` 跳页」⇒ 要把目标页那段搬成抽屉，改动量大得多（1 页） | ✅ 做了①的 2 页 · `global-sim` 属②，挂账 |
 | **5** | **U4b** 排除项与主因同图 | 5 | **5**（若把 `EdgeActivePanel` 的关闭态投影进各页的图） | 让被 `disabledRuleKeys` 关掉的边**留在因果/传导图上并可见地降级**（虚线＋降透明度＋「已关闭」标记），而不是只活在独立面板里 | ⛔ 未做（见 §5.2；且它与 `WO-EDGE-PANEL-3PAGES` 在动的 `EdgeActivePanel` 有耦合面，**刻意避让**） |
-| **6** | **U6** 结论即动作 | 5 | **1 + 4** | `project-sim` 那格是**真缺陷**（文案承诺了不存在的动作，已排 P0）；其余 4 页是**净室通用页**，该不该产生 Action 属产品裁决，**不许硬补** | ⛔ 未做（1 格待裁接不接 · 4 格备裁） |
+| **6** | **U6** 结论即动作 | 5 | **1 + 4** | `project-sim` 那格是**真缺陷**（文案承诺了不存在的动作，已排 P0）；其余 4 页是**净室通用页**，该不该产生 Action 属产品裁决，**不许硬补** | ✅ **已闭（2026-08-17）**：`project-sim` 由 WO-SIM-ACTION-REAL 接上（本单补登记）；4 页由 WO-U6-ADOPT 经 S2 审批链接上——顾虑的「硬补直写」未发生，草稿天然租户内 |
 | **7** | **U1** 改输入即重演 | 3 | **1 + 2** | `what-if` 是纯前端撤闸（廉价）；`optimize-whatif` 走**真 CP-SAT**、`sop-balance` 的五个闸串的是 **S&OP 业务流程**（评审→平衡→定稿），两者撤闸前都得先量重解成本/先裁决语义 | ✅ 做了 `what-if` · 另 2 页挂账（见 §5.2） |
 | — | U7 / U9 / U4 | 13 | — | — | 🚦 **不归本单**（`WO-U7-U9-REST` / `WO-EDGE-PANEL-3PAGES`） |
 
@@ -934,8 +970,8 @@ U3 有 `LayeredDag`、U5 有 `<Provenance>`、U8 有 `<details>` 惯例，而「
 | **U1 × `sop-balance`** | 差一次**语义裁决**：那五个 `sop-run-1..5` 串的是 **S&OP 业务流程**（评审→平衡→定稿），不是「填完表再点一下」。撤掉它们等于取消流程节点 —— 这是产品决策不是缺陷 | **WO-U1-SOP-VERDICT**（先裁决）：请仓主定「月度规划的五步是流程节点还是提交闸」。若是流程节点，本格应从 `不符合` 改判为**不适用**并按判据⑥逐格登记理由；若是提交闸，再派前端单 |
 | **U8 × `global-sim`** | 差的是**把目标页那段搬成抽屉**：`drillLink` 跳的是 `/v/project-sim?order=…`，那是一整张页的功能。要做成「不换页」得先决定**抽屉里放哪一部分**（全量细排？还是只放该单的排产结果？） | **WO-U8-GLOBALSIM-DRAWER**（中画像·先出设计）：把「进项目推演细排」改成同屏抽屉，保留跳页作为「要做别的事」的出口（判据明写「切视角/交接不算违反」） |
 | **U4b × 5 页** | 差一个**决定**：`EdgeActivePanel` 今天是独立面板，要让排除项「留在图上」得把 `disabledRuleKeys` 的投影下沉到各页的图组件里。⚠ 该文件正被 `WO-EDGE-PANEL-3PAGES` 改动，**本单刻意避让** | **WO-U4B-ONGRAPH**（等 `WO-EDGE-PANEL-3PAGES` 收编后派）：在 `LayeredDag`/`PmDag` 上加一个「已关闭」态（虚线＋降透明度＋文字标记，复用 `EdgeActivePanel` 已有的三路编码），5 页统一挂 |
-| **U6 × `project-sim`** | 差一次**裁决**：`ProjectSimView.tsx:1069` 的文案写「结论可采纳为 Action」而代码里没有那条路。接上 / 撤文案二选一，**不许维持现状** | 已排 §5 P0（`WO-PROJSIM-U6`） |
-| **U6 × 净室 4 页** | 差一次**产品判断**：净室通用页该不该产生全租户 Action 草稿（R2 tenant 语义） | 登记备裁（§5 已写明不排优先级） |
+| **U6 × `project-sim`** | ~~差一次**裁决**~~ **已裁（接上）**：WO-SIM-ACTION-REAL 兑现了 `ProjectSimView.tsx` 那句「结论可采纳为 Action」——步骤⑥采纳钮真发 ActionDraft，双半接缝测试在案 | ✅ 闭（本单 WO-SANDBOX-32CELLS 补登记表格） |
+| **U6 × 净室 4 页** | ~~差一次**产品判断**~~ **已裁（接）**：走 S2 审批链而非直写，R2 顾虑不成立（草稿天然带 tid）；`what-if` 复用「对象数据变更」，余三页走新动作型「采纳推演结论」 | ✅ 闭（WO-U6-ADOPT，2026-08-17） |
 
 ---
 

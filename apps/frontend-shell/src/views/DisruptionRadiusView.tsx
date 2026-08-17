@@ -13,6 +13,8 @@ import type { ProvenanceReport } from "./sim/exportProvenance";
 import { DagNodeInspector, type DagNodeFacts } from "./sim/DagNodeInspector";
 // WO-EDGE-PANEL-3PAGES：横向要求「所有推演页都要能关掉一条传导边看结果怎么变」的共享件。
 import EdgeActivePanel from "./sim/EdgeActivePanel";
+// WO-U6-ADOPT · 判据 U6（结论即动作）：采纳断供评估 → 「采纳推演结论」Action（落台账真值）。
+import { AdoptSimConclusionButton } from "./sim/AdoptSimConclusion";
 
 /**
  * 断供影响半径投影页（renderer=disruption-radius）——把 `supplier_disruption_radius` 求解器
@@ -446,7 +448,7 @@ export default function DisruptionRadiusView(_props: { view?: ViewConfigVM }) {
       ) : runQ.isLoading || !runQ.data ? (
         <div className="empty-state">{zh.common.loading}</div>
       ) : (
-        <RadiusResult out={runQ.data} displayOf={displayOf} />
+        <RadiusResult out={runQ.data} displayOf={displayOf} layers={layers} disabledEdges={disabledEdges} />
       )}
 
       {/* ── WO-EDGE-PANEL-3PAGES · 共享面板挂载点（本页判定「可挂」，论据在此，不在工单里）──────
@@ -527,7 +529,7 @@ function fanoutNodeFacts(
 }
 
 /** 结果区：指标条 + 分层扇出 DAG + 逐层受冲击对象。改 rootId → out 变 → 全区随之变（纯投影）。 */
-function RadiusResult({ out, displayOf }: { out: RadiusOutput; displayOf: Map<string, string> }) {
+function RadiusResult({ out, displayOf, layers, disabledEdges }: { out: RadiusOutput; displayOf: Map<string, string>; layers: RadiusLayer[]; disabledEdges: string[] }) {
   const disp = (k: string) => displayOf.get(k) ?? k;
   // 判据 U3：点节点看凭什么（受控浮层 —— 同时满足 U8「看明细不换页」）。
   const [inspectId, setInspectId] = useState<string | null>(null);
@@ -677,6 +679,37 @@ function RadiusResult({ out, displayOf }: { out: RadiusOutput; displayOf: Map<st
       {/* 求解器 summary（诚实投影，不改写） */}
       <div className="panel" data-testid="dr-summary" style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.7 }}>
         {out.summary}
+      </div>
+
+      {/* ══ 判据 U6「结论即动作」（WO-U6-ADOPT）══
+          采纳 = 把这份断供影响评估（断供根 + 实际扇出链 + 反事实条件 + 逐层命中）落成
+          SimConclusionAdoption 台账（S2 审批 · domainExecutor 真写入，非兜底）。
+          快照就是屏上正在显示的这份：换来源/关边 → 求解重算 → 结果区整体换新，
+          结构上不存在「采纳到旧评估」。关着边采纳时，关边清单随 payload 上送——
+          审批人看到的是「这份评估是在关掉哪几条边的条件下算出来的」，不许藏。 */}
+      <div className="panel" data-testid="dr-adopt" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <AdoptSimConclusionButton
+          testId="dr-adopt-conclusion"
+          hint="采纳结论 → 生成「采纳推演结论」Action 草稿（断供评估快照 · 走 S2 审批 · 审批通过才落台账真值 R4）"
+          payload={{
+            source: "disruption-radius",
+            rootType: out.rootType,
+            rootId: out.rootId,
+            layers: layers.map((l) => ({ type: l.type, viaField: l.viaField })),
+            disabledEdges,
+            snapshot: {
+              radius: out.radius, // 层（计数）
+              totalAffected: out.totalAffected, // 个
+              leafType: out.leafType ?? null,
+              leafCount: out.leafCount, // 个
+              layersDetail: out.layers.map((l) => ({ type: l.type, viaField: l.viaField, count: l.count, ids: l.ids })),
+              summary: out.summary,
+            },
+          }}
+        />
+        <span style={{ fontSize: 12, color: "var(--muted2)" }}>
+          采纳 = 把这份评估（含本次关掉的关系边）落成可溯源台账，审批痕留 Action。
+        </span>
       </div>
     </>
   );

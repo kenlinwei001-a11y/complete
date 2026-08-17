@@ -8,6 +8,8 @@ import zh from "@/locales/zh";
 // 本页走 App.tsx 的专用 route，不经 ViewPage ⇒ 必须自己调 usePageView（理由见 shared.tsx 该函数注释）。
 import { ExportReportButton, usePageView } from "../sim/shared";
 import type { ProvenanceReport } from "../sim/exportProvenance";
+// WO-U6-ADOPT · 判据 U6（结论即动作）：采纳归因结论 → 「采纳推演结论」Action（落台账真值）。
+import { AdoptSimConclusionButton } from "../sim/AdoptSimConclusion";
 import {
   bottleneckCandidates,
   concentrationCandidates,
@@ -280,6 +282,26 @@ function BottleneckResult({ cand }: { cand: BottleneckCandidate }) {
           })}
         </div>
       )}
+      {/* ══ 判据 U6「结论即动作」（WO-U6-ADOPT）══：采纳 = 把这份瓶颈诊断（倒推参数 + 结论明细）
+          落成 SimConclusionAdoption 台账（S2 审批 · 真写入）。快照即屏上这份求解结果。 */}
+      <div data-testid="cr-bn-adopt" style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <AdoptSimConclusionButton
+          testId="cr-bn-adopt-conclusion"
+          hint="采纳结论 → 生成「采纳推演结论」Action 草稿（瓶颈诊断快照 · 走 S2 审批 · 审批通过才落台账真值 R4）"
+          payload={{
+            source: "cleanroom-attr",
+            analysis: "shared_bottleneck",
+            primaryType: cand.primary,
+            args: cand.args,
+            snapshot: {
+              summary: data.summary,
+              findingCount: data.bottlenecks.length, // 条（计数）
+              findings: data.bottlenecks, // 求解器行原样（demand/capacity 为资源原生单位）
+            },
+          }}
+        />
+        <span style={{ fontSize: 12, color: "var(--muted2)" }}>采纳 = 把这份诊断落成可溯源台账，审批痕留 Action。</span>
+      </div>
     </div>
   );
 }
@@ -391,6 +413,25 @@ function ConcentrationResult({ cand }: { cand: ConcentrationCandidate }) {
           </div>
         </>
       )}
+      {/* ══ 判据 U6「结论即动作」（WO-U6-ADOPT）══：采纳 = 把这份集中度诊断落成台账（S2 审批 · 真写入）。 */}
+      <div data-testid="cr-cc-adopt" style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <AdoptSimConclusionButton
+          testId="cr-cc-adopt-conclusion"
+          hint="采纳结论 → 生成「采纳推演结论」Action 草稿（隐性集中诊断快照 · 走 S2 审批 · 审批通过才落台账真值 R4）"
+          payload={{
+            source: "cleanroom-attr",
+            analysis: "concentration_risk",
+            primaryType: cand.primary,
+            args: cand.args,
+            snapshot: {
+              summary: data.summary,
+              findingCount: data.concentrations.length, // 条（计数）
+              findings: data.concentrations, // 求解器行原样（count 单位个）
+            },
+          }}
+        />
+        <span style={{ fontSize: 12, color: "var(--muted2)" }}>采纳 = 把这份诊断落成可溯源台账，审批痕留 Action。</span>
+      </div>
     </div>
   );
 }
@@ -546,6 +587,25 @@ function MarginResult({ cand }: { cand: MarginCandidate }) {
           </div>
         </>
       )}
+      {/* ══ 判据 U6「结论即动作」（WO-U6-ADOPT）══：采纳 = 把这份毛利倒挂诊断落成台账（S2 审批 · 真写入）。 */}
+      <div data-testid="cr-ma-adopt" style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <AdoptSimConclusionButton
+          testId="cr-ma-adopt-conclusion"
+          hint="采纳结论 → 生成「采纳推演结论」Action 草稿（毛利倒挂诊断快照 · 走 S2 审批 · 审批通过才落台账真值 R4）"
+          payload={{
+            source: "cleanroom-attr",
+            analysis: "margin_attribution",
+            primaryType: cand.primary,
+            args: cand.args,
+            snapshot: {
+              summary: data.summary,
+              findingCount: data.invertedCount, // 条（计数）
+              findings: data.inverted, // 求解器行原样（revenue/totalCost/margin 为财务原生单位）
+            },
+          }}
+        />
+        <span style={{ fontSize: 12, color: "var(--muted2)" }}>采纳 = 把这份诊断落成可溯源台账，审批痕留 Action。</span>
+      </div>
     </div>
   );
 }

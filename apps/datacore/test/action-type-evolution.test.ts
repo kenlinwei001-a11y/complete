@@ -62,8 +62,8 @@ describe("ActionType 可演进 · 向后兼容（additive 硬门）", () => {
     expect(actionTypeVersionOf(undefined)).toBe(1);
   });
 
-  it("平台现存 10 个内置 ActionType（真注册数据）全部 parse 通过——现存数据不被收紧打死", () => {
-    expect(BATTERY_ACTION_TYPES.length).toBe(11);
+  it("平台现存 12 个内置 ActionType（真注册数据）全部 parse 通过——现存数据不被收紧打死", () => {
+    expect(BATTERY_ACTION_TYPES.length).toBe(12);
     for (const t of BATTERY_ACTION_TYPES) {
       const parsed = ActionTypeSchema.parse(t);
       expect(parsed.key).toBe(t.key);

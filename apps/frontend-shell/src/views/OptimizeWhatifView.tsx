@@ -28,6 +28,8 @@ import {
   toSolverSteps,
   type ReasoningGraph,
 } from "./sim/reasoningGraph";
+// WO-U6-ADOPT · 判据 U6（结论即动作）：采纳这份优选方案 → 「采纳推演结论」Action（落台账真值）。
+import { AdoptSimConclusionButton } from "./sim/AdoptSimConclusion";
 
 /**
  * 优化推演页（renderer=optimize-whatif·闭 G-12 前端半）——把 `optimize_whatif`（轨B·增量3）从"一个 Δ 数字"
@@ -763,6 +765,38 @@ function DecisionResult({ out, family, baseArgs, perturbs }: { out: OptWhatifOut
         <div style={{ fontSize: 13, color: "var(--txt)", lineHeight: 1.75 }}>{explanation || "—"}</div>
       </div>
       )}
+
+      {/* ══ 判据 U6「结论即动作」（WO-U6-ADOPT）══
+          采纳 = 把屏上这份优选方案（模板族 + seed + 扰动清单 + 目标值/解快照）落成
+          SimConclusionAdoption 台账（S2 审批 · domainExecutor 真写入，非兜底）。
+          快照就是屏上正在显示的这份解（对应已提交的那版入参）——改输入后未再推演时，
+          本结果区整体失效卸载，结构上不存在「采纳到旧解」。 */}
+      <div className="panel" data-testid="ow-adopt" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <AdoptSimConclusionButton
+          testId="ow-adopt-conclusion"
+          hint="采纳结论 → 生成「采纳推演结论」Action 草稿（方案结构 + 目标值快照 · 走 S2 审批 · 审批通过才落台账真值 R4）"
+          payload={{
+            source: "optimize-whatif",
+            family,
+            seed: 42, // 与上面 queryFn 求解用的是同一个 seed（复算坐标）
+            perturbations: perturbs.map((p) => ({ target: p.target, value: p.value })),
+            snapshot: {
+              baselineObjective: baselineObjective ?? null, // 目标值（量纲随模板族目标函数）
+              perturbedObjective: perturbedObjective ?? null,
+              deltaObjective: deltaObjective ?? null,
+              feasible,
+              optimal: out.optimal === true, // 不写死：InProc 恒 false，跟字段走
+              status: out.status ?? "",
+              explanation: explanation ?? "",
+              ...(baselineSolution ? { baselineSolution } : {}),
+              ...(perturbedSolution ? { perturbedSolution } : {}),
+            },
+          }}
+        />
+        <span style={{ fontSize: 12, color: "var(--muted2)" }}>
+          采纳 = 把这份方案（含扰动与解快照）落成可溯源台账，审批痕留 Action。
+        </span>
+      </div>
     </div>
   );
 }
