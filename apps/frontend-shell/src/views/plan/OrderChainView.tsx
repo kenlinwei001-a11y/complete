@@ -7,6 +7,8 @@ import { runSolver, queryObjectsPaged } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { LayeredDag, type DagEdgeDef, type DagNodeDef } from "@/components/Dag/LayeredDag";
+// WO-SANDBOX-53CELLS · 判据 U3（点节点看凭什么）：本页两张图（ofc-dag / problem-dag）此前都没传 onNodeClick。
+import { DagNodeInspector, type DagNodeFacts } from "../sim/DagNodeInspector";
 import { useActionDraft } from "../sim/shared";
 import { Provenance } from "@/components/Provenance";
 import type { AffectedOrderRowVM, AffectedOrdersOutputVM } from "@/api/types";
@@ -343,7 +345,7 @@ function ProblemNarrativePanel({ group, categoryLabel }: { group: OrderProblemGr
         {zh.orderChain.narrScopeNote}
       </div>
       <div className={styles.inlineSubTitle}>{zh.orderChain.narrDagTitle}</div>
-      <ProblemDag group={group} />
+      <ProblemDag group={group} categoryLabel={categoryLabel} />
     </InlineDetailPanel>
   );
 }
@@ -870,9 +872,136 @@ type OFC = Omit<OrderFullchainOutput, "dag"> & {
 };
 const OFC_LAYER: Record<string, number> = { order: 0, network: 1, bom: 1, economics: 1, credit: 1, judge: 2, verdict: 3 };
 const OFC_LAYER_TITLES = ["订单", "建模链", "三关联判", "结论"];
+
+/**
+ * 判据 U3 · 业务建模链 DAG 的节点 →「凭什么」事实。
+ *
+ * **规则一栏取自后端真值 `judges.*.ruleRefs`**（`OrderDeliveryJudgeSchema` 等契约字段，C02/C06/C15…），
+ * 不是前端编的 —— 与下面「三判明细表」的规则列**同一个出处**，两处永远一致。
+ * 故本页 `ruleKind` 是 `ruleKey`（规则库里查得到），与净室页的 `projection` 不同档。
+ */
+function ofcNodeFacts(id: string, kind: string, label: string, data: OFC): DagNodeFacts {
+  const j = data.judges;
+  const capUnit = j.cap.unit ?? "套/周";
+  switch (id) {
+    case "net":
+      return {
+        title: "可产网络",
+        verdict: `周供给 P50 ${j.cap.packsPerWeekP50} · P90 ${j.cap.packsPerWeekP90}（${capUnit}）`,
+        src: "产能域 · 可产基地集合（求解器 order_fullchain 按型号认证矩阵实算）",
+        rule: j.cap.ruleRefs.join(" / "),
+        formula: "P90 = P50 × 0.9（保守下界，C02 判据用的就是它）",
+        inputs: [
+          { label: `周供给 P50（${capUnit}）`, value: String(j.cap.packsPerWeekP50) },
+          { label: `周供给 P90（${capUnit}）`, value: String(j.cap.packsPerWeekP90) },
+        ],
+      };
+    case "bom":
+      return {
+        title: "BOM 展开",
+        verdict: `${j.kit.material} 缺 ${j.kit.gapTon} 吨 · 最早齐套 ${j.kit.eta}`,
+        src: "物料域 · MRP 净需求（求解器 order_fullchain 逐物料实算）",
+        rule: j.kit.ruleRefs.join(" / "),
+        inputs: [
+          { label: "最严峻物料", value: j.kit.material },
+          { label: "现货缺口（吨）", value: String(j.kit.gapTon) },
+        ],
+      };
+    case "eco":
+      return {
+        title: "单价与细分",
+        verdict: `毛利 ${j.fin.marginPct}% vs 细分底线 ${j.fin.floorPct}%`,
+        src: `经营域 · 报价与细分底线（细分 ${data.kpis.segment}）`,
+        rule: j.fin.ruleRefs.join(" / "),
+        formula: j.fin.marginOk ? "毛利率 ≥ 细分底线 ⇒ 通过" : `需提价 ${j.fin.priceUpPct}% 达线`,
+        inputs: [
+          { label: "毛利率（%）", value: String(j.fin.marginPct) },
+          { label: "细分底线（%）", value: String(j.fin.floorPct) },
+        ],
+      };
+    case "cred":
+      return {
+        title: "信用档案",
+        verdict: j.fin.creditOk ? "信用额度内" : "信用占用超限",
+        src: "经营域 · 客户信用档案（占用率由求解器实算）",
+        rule: j.fin.ruleRefs.join(" / "),
+        formula: "信用占用率 ≤ 1 ⇒ 放行；> 1 ⇒ 直接阻断（优先级高于毛利闸）",
+        inputs: [{ label: "信用占用率", value: String(j.fin.creditUsedRatio) }],
+      };
+    case "jcap":
+      return {
+        title: "①交期判 · 产能",
+        verdict: j.cap.verdict,
+        src: "求解器 order_fullchain · 交期判",
+        rule: j.cap.ruleRefs.join(" / "),
+        formula: `周供给 P90 ${j.cap.packsPerWeekP90} vs 本单需求 ${j.cap.demand}（${capUnit}）`,
+        inputs: [
+          { label: `周供给 P90（${capUnit}）`, value: String(j.cap.packsPerWeekP90) },
+          { label: `本单需求（${capUnit}）`, value: String(j.cap.demand) },
+        ],
+        note: "⚠ 右边是整单量（Order.qty·套）按「一周内交完」折算来的，不是订单自带的周需求 —— 跨周交付的单据此判会偏保守。",
+      };
+    case "jkit":
+      return {
+        title: "②齐套判 · MRP",
+        verdict: j.kit.verdict,
+        src: "求解器 order_fullchain · 齐套判",
+        rule: j.kit.ruleRefs.join(" / "),
+        formula: `${j.kit.material} 现货缺口 ${j.kit.gapTon} 吨 ⇒ 最早齐套 ${j.kit.eta}`,
+        inputs: [{ label: "缺口（吨）", value: String(j.kit.gapTon) }, { label: "最早齐套", value: j.kit.eta }],
+      };
+    case "jfin":
+      return {
+        title: "③财务判 · 三闸",
+        verdict: j.fin.verdict,
+        src: "求解器 order_fullchain · 财务判（毛利 → 信用 → 现金 三闸串联）",
+        rule: j.fin.ruleRefs.join(" / "),
+        formula: "毛利率 ≥ 细分底线 ∧ 信用占用率 ≤ 1；任一不过即出条件",
+        inputs: [
+          { label: "毛利率（%）", value: String(j.fin.marginPct) },
+          { label: "底线（%）", value: String(j.fin.floorPct) },
+          { label: "信用占用率", value: String(j.fin.creditUsedRatio) },
+        ],
+      };
+    case "vrd":
+      return {
+        title: "统一结论",
+        verdict: data.verdict,
+        src: "求解器 order_fullchain · 三判汇总",
+        // 三判的规则并集 —— 统一结论是它们串出来的，只写一条会让用户找错环。
+        rule: [...j.fin.ruleRefs, ...j.cap.ruleRefs, ...j.kit.ruleRefs].join(" / "),
+        formula: "优先级：信用阻断 > 毛利提价 > 交期/齐套对冲",
+        inputs: [
+          { label: "①交期", value: j.cap.verdict },
+          { label: "②齐套", value: j.kit.verdict },
+          { label: "③财务", value: j.fin.verdict },
+        ],
+        note: data.conds.length > 0 ? `附加条件：${data.conds.join("；")}` : undefined,
+      };
+    default:
+      // 订单根节点（id = `order:<so>`）与任何后端新增节点走这一支。
+      return {
+        title: kind === "order" ? `订单 ${data.so}` : label,
+        verdict: `${data.kpis.qty} 套 · ${data.kpis.segment}`,
+        src: "本体对象 Order（真取自 /a/v1/objects，非写死清单）",
+        rule: "C10 场景字段完整性校验（订单入链前的前置闸）",
+        inputs: [
+          { label: "数量（套）", value: String(data.kpis.qty) },
+          { label: "细分", value: data.kpis.segment },
+        ],
+      };
+  }
+}
+/** 节点 id → 后端下发的 kind（真读 `data.dag.nodes`，不按 id 前缀猜）。 */
+function ofcKindOf(id: string, data: OFC): string {
+  return data.dag.nodes.find((n) => n.id === id)?.kind ?? "";
+}
+
 function OrderFullchainPanel() {
   const adopt = useActionDraft();
   const [so, setSo] = useState<string>("");
+  // 判据 U3：点节点看凭什么（受控浮层 —— 不导航离开，同时满足 U8）。
+  const [inspect, setInspect] = useState<DagNodeDef | null>(null);
   const { data: orders } = useQuery({
     queryKey: ["a", "objects", "Order", "ofc-selector"],
     queryFn: () => queryObjectsPaged("Order", 1, 100, {}),
@@ -923,8 +1052,19 @@ function OrderFullchainPanel() {
               {data.conds.map((c, i) => <li key={i}>{c}</li>)}
             </ul>
           )}
-          {/* 11 节点业务建模链 DAG */}
-          <LayeredDag nodes={nodes} edges={edges} layerTitles={OFC_LAYER_TITLES} testId="ofc-dag" />
+          {/* 11 节点业务建模链 DAG。
+              判据 U3 ·「有图但点了没反应」→ 真接到面板：`onNodeClick` 是 LayeredDag 的**可选** prop，
+              此前没传 ⇒ `onClick={() => onNodeClick?.(n)}` 静默什么都不做，而屏上分辨不出
+              （铁律 0.5 第三形态：接了线接错地方 —— 组件支持、页面没挂）。 */}
+          <LayeredDag nodes={nodes} edges={edges} layerTitles={OFC_LAYER_TITLES} testId="ofc-dag" onNodeClick={(n) => setInspect(n)} />
+          <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 4 }} data-testid="ofc-dag-hint">
+            点任一节点 → 看这一环的来源与所依规则。
+          </div>
+          <DagNodeInspector
+            facts={inspect ? ofcNodeFacts(inspect.id, ofcKindOf(inspect.id, data), inspect.label, data) : null}
+            onClose={() => setInspect(null)}
+            testId="ofc-node-inspect"
+          />
           {/* 三判明细表 */}
           <table className="cmp" data-testid="ofc-judges" style={{ marginTop: 8 }}>
             <thead><tr><th>关联判</th><th>结论</th><th>关键值</th><th>规则</th></tr></thead>
@@ -995,7 +1135,9 @@ function OrderFullchainPanel() {
 }
 
 /** 逐单根因 DAG（LayeredDag 四层：订单 → 判定 → 根因 → 对策） */
-function ProblemDag({ group }: { group: OrderProblemGroup }) {
+function ProblemDag({ group, categoryLabel }: { group: OrderProblemGroup; categoryLabel: string }) {
+  // 判据 U3：点节点看凭什么（受控浮层 —— 不导航离开）。
+  const [inspect, setInspect] = useState<string | null>(null);
   const nodes: DagNodeDef[] = [];
   const edges: DagEdgeDef[] = [];
   group.rootChains.forEach((chain, ci) => {
@@ -1007,5 +1149,47 @@ function ProblemDag({ group }: { group: OrderProblemGroup }) {
       prev = id;
     });
   });
-  return <LayeredDag nodes={nodes} edges={edges} layerTitles={CHAIN_TITLES} testId="problem-dag" />;
+  return (
+    <>
+      <LayeredDag nodes={nodes} edges={edges} layerTitles={CHAIN_TITLES} testId="problem-dag" onNodeClick={(n) => setInspect(n.id)} />
+      <DagNodeInspector
+        facts={inspect ? problemNodeFacts(inspect, group, categoryLabel) : null}
+        onClose={() => setInspect(null)}
+        testId="problem-node-inspect"
+      />
+    </>
+  );
+}
+
+/**
+ * 判据 U3 · 逐单根因链节点 →「凭什么」事实。
+ *
+ * ⚠ 这里的 `ruleKind` 是 **`projection`（确定性投影规则）而不是 `ruleKey`**，理由是实测出来的、
+ * 不是省事：`OrderRootChainSchema`（`packages/contracts/src/planviews.ts`）的 `layers[]`
+ * **只有 `kind` 与 `label` 两个字段，没有任何 ruleRef**。上面 `ofcNodeFacts` 那份能写 C02/C06/C15
+ * 是因为 `OrderDeliveryJudgeSchema` 等真带 `ruleRefs`。
+ * 在没有规则键的地方硬写一个规则键，就是把用户支去规则库里找一个不存在的东西 ——
+ * 所以这里如实写「四层链的投影规则」，并把「差一个 ruleRef 字段」记进交单报告的可派单里。
+ */
+function problemNodeFacts(nodeId: string, group: OrderProblemGroup, categoryLabel: string): DagNodeFacts {
+  const [ciStr, kind] = nodeId.split("-");
+  const chain = group.rootChains[Number(ciStr)];
+  const layer = chain?.layers.find((l) => l.kind === kind);
+  const kindLabel = LAYER_KIND_LABEL[(kind ?? "order") as LayerKind] ?? (kind ?? "");
+  return {
+    title: `${kindLabel} · ${layer?.label ?? nodeId}`,
+    verdict: chain ? `订单 ${chain.orderId} · ${categoryLabel}类问题` : undefined,
+    src: `求解器 affected_orders · problems[category=${group.category}].rootChains[orderId=${chain?.orderId ?? "—"}].layers[kind=${kind}]`,
+    rule: "根因链四层投影：order → judgement → rootCause → remedy，逐层由上一层推出；引擎推不出的单不入链（覆盖度另行披露）",
+    ruleKind: "projection",
+    inputs: [
+      { label: "本类涉及订单", value: `${group.orderCount} 单` },
+      { label: "推出根因链", value: `${group.rootChains.length} 单` },
+      { label: "涉及收入（亿）", value: String(group.financeImpact) },
+    ],
+    note:
+      group.rootChains.length < group.orderCount
+        ? `⚠ ${group.orderCount - group.rootChains.length} 单未推出根因链——那几单的结论不在本图上，别拿共性根因顶替。`
+        : `本类共性根因：${group.rootCauseSummary}`,
+  };
 }

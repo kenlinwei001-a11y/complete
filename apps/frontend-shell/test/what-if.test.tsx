@@ -12,8 +12,16 @@ import { queryClient } from "@/store/queryClient";
  * 求解器重算 → deltas 随之变（本页仅忠实投影）。对象/类型列表从真 REST 取，不写死。
  */
 
-/** 选一个对象类型 → 选第一个真对象 → 选属性 → 填假设值。返回 run 按钮。 */
-async function fillHypothesis(propKey: string, value: string): Promise<HTMLElement> {
+/**
+ * 选一个对象类型 → 选第一个真对象 → 选属性 → 填假设值。
+ *
+ * ⚠ **WO-SANDBOX-53CELLS 起本函数不再返回按钮，因为按钮没有了**（判据 U1「改输入即重演」）。
+ * 本页此前有一个 `wi-run` 提交闸：四项填完还得点它，`run()` 才命令式调求解器。
+ * 判据点名的正是那个东西，且它的失败模式最坏 ——
+ * **用户改完假设值不点，屏上还挂着上一次的结果，且分辨不出**。
+ * 改后假设直接进 `queryKey`，填完/改完即重算，所以调用方只管填、不管点。
+ */
+async function fillHypothesis(propKey: string, value: string): Promise<void> {
   const typeSelect = await screen.findByTestId("wi-type-select");
   fireEvent.change(typeSelect, { target: { value: "Base" } });
 
@@ -28,15 +36,13 @@ async function fillHypothesis(propKey: string, value: string): Promise<HTMLEleme
 
   fireEvent.change(screen.getByTestId("wi-prop-select"), { target: { value: propKey } });
   fireEvent.change(screen.getByTestId("wi-value-input"), { target: { value } });
-  return screen.getByTestId("wi-run") as HTMLElement;
 }
 
 describe("WO · 通用假设推演页 generic_inference", () => {
   it("C1 · 调真 solver 出 deltas：选对象/属性 + 假设值 → before/after 表 + 影响面计数", async () => {
     loginAs("planner");
     renderApp("/v/what-if");
-    const run = await fillHypothesis("util", "2"); // 数值属性 → 桩 after = 100*2 = 200 / 上游 900+200 = 1100
-    fireEvent.click(run);
+    await fillHypothesis("util", "2"); // 数值属性 → 桩 after = 100*2 = 200 / 上游 900+200 = 1100
 
     // 影响面计数（真 solver 输出：affectedObjects=2 · count=2）
     await screen.findByTestId("wi-result");
@@ -54,15 +60,14 @@ describe("WO · 通用假设推演页 generic_inference", () => {
   it("C2 · 改假设值 → deltas 变（求解器重算·前端纯投影）", async () => {
     loginAs("planner");
     renderApp("/v/what-if");
-    const run = await fillHypothesis("util", "2");
-    fireEvent.click(run);
+    await fillHypothesis("util", "2");
     const deltas = await screen.findByTestId("wi-deltas");
     expect(within(deltas).getByText("200")).toBeInTheDocument();
     expect(within(deltas).getByText("1100")).toBeInTheDocument();
 
     // 改假设值 2 → 5 → 重跑 → after 200→500 / 1100→1400（旧值消失）。
     fireEvent.change(screen.getByTestId("wi-value-input"), { target: { value: "5" } });
-    fireEvent.click(screen.getByTestId("wi-run"));
+    // ⚠ 这里**不点任何东西** —— 判据 U1 要的就是「改完即重演」。
     await waitFor(() => expect(within(screen.getByTestId("wi-deltas")).getByText("500")).toBeInTheDocument());
     const deltas2 = screen.getByTestId("wi-deltas");
     expect(within(deltas2).getByText("1400")).toBeInTheDocument();
@@ -88,8 +93,7 @@ describe("WO · 通用假设推演页 generic_inference", () => {
       ),
     );
     renderApp("/v/what-if");
-    const run = await fillHypothesis("util", "0.5");
-    fireEvent.click(run);
+    await fillHypothesis("util", "0.5");
 
     await screen.findByTestId("wi-result");
     expect(screen.getByTestId("wi-affected-count")).toHaveTextContent("3");
@@ -111,8 +115,7 @@ describe("WO · 通用假设推演页 generic_inference", () => {
       ),
     );
     renderApp("/v/what-if");
-    const run = await fillHypothesis("util", "99");
-    fireEvent.click(run);
+    await fillHypothesis("util", "99");
     expect(await screen.findByTestId("wi-empty")).toBeInTheDocument();
     expect(screen.queryByTestId("wi-deltas")).toBeNull();
     expect(screen.queryByTestId("wi-impact")).toBeNull();
@@ -136,7 +139,7 @@ describe("WO · 通用假设推演页 generic_inference", () => {
       ),
     );
     renderApp("/v/what-if");
-    fireEvent.click(await fillHypothesis("util", "99"));
+    await fillHypothesis("util", "99");
     const empty = await screen.findByTestId("wi-empty");
 
     // ① 结论 + 可见记号都在第一层
@@ -159,14 +162,46 @@ describe("WO · 通用假设推演页 generic_inference", () => {
     expect(body.textContent).toContain("诚实空态，不编造影响面");
   });
 
-  it("专用 route /v/what-if 可达 + 未选齐时推演按钮禁用（不空跑）", async () => {
+  /**
+   * 判据 **U1「改输入即重演」**（`docs/PRD-harness-ux-adoption.md` §2）。
+   *
+   * 这条**替换**了原来那条「未选齐时推演按钮禁用（不空跑）」——
+   * 原条断言的是提交闸的**禁用态**，而判据要的是提交闸**不存在**。
+   * 两者不可能同时成立，所以这不是把测试改松，是判据换了：
+   * 原条守的性质（未填齐不空跑）由本条的第二段照样咬住，只是判据从「按钮禁用」
+   * 换成了「求解器一次都没被调」—— 后者才是那句话真正想说的东西。
+   */
+  it("U1 · 提交闸不存在（无 wi-run），且未填齐时求解器一次都不调（不空跑）", async () => {
     loginAs("planner");
     cleanup();
     queryClient.clear();
+    let calls = 0;
+    server.use(
+      http.post("*/a/v1/solvers/generic_inference/invoke", () => {
+        calls += 1;
+        return HttpResponse.json({ data: { deltas: [], rows: [], affectedObjects: 0, count: 0, rootTypes: [] }, snapshotVersion: "ov-gi" });
+      }),
+    );
     renderApp("/v/what-if");
     expect(await screen.findByTestId("what-if")).toBeInTheDocument();
-    // 仅选类型、未选对象/属性/值 → run 禁用。
-    fireEvent.change(await screen.findByTestId("wi-type-select"), { target: { value: "Base" } });
-    expect(screen.getByTestId("wi-run")).toBeDisabled();
+    // ⚠ 必须先等表单真渲染出来再断言「按钮不在」——
+    // 类型列表还在加载时整块表单都不渲染，那时 `queryByTestId("wi-run")` **恒为 null**，
+    // 拿它当「提交闸没了」的证据是假绿（第一版就是这么写的，靠 `wi-live-state` 找不到才暴露）。
+    await screen.findByTestId("wi-type-select");
+
+    // ① 提交闸不存在 —— 判据 U1 的结构判据（「不存在必须先点某个按钮结果才更新的中间态」）。
+    expect(screen.queryByTestId("wi-run")).toBeNull();
+    // 屏上留的是**状态记号**（在算 / 已按当前假设算出），它不控制任何东西。
+    expect(screen.getByTestId("wi-live-state")).toBeInTheDocument();
+
+    // ② 仅选类型、未选对象/属性/值 → 不空跑（原条「按钮禁用」守的就是这个性质，换成直接咬调用次数）。
+    fireEvent.change(screen.getByTestId("wi-type-select"), { target: { value: "Base" } });
+    await waitFor(() => expect(screen.getByTestId("wi-object-select")).toBeInTheDocument());
+    expect(calls).toBe(0);
+    expect(screen.queryByTestId("wi-result")).toBeNull();
+
+    // ③ 金丝雀：填齐之后**不点任何东西**，求解器必须被调到 —— 否则上面两条会被一个「永远不调」的实现骗绿。
+    await fillHypothesis("util", "2");
+    await waitFor(() => expect(calls).toBeGreaterThan(0));
   });
 });

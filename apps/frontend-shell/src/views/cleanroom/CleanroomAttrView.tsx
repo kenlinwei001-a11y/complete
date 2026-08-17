@@ -192,6 +192,8 @@ function BottleneckResult({ cand }: { cand: BottleneckCandidate }) {
   if (isError || !data) return <SolverError testid="cr-bn-error" error={error} />;
 
   const downMap = new Map(data.downgraded.map((d) => [d.resourceId, d]));
+  // 判据 U8 的下钻数据：求解器早就回了 `contention[].sharers`，此前一行都没渲染（只显了个计数）。
+  const contentionMap = new Map(data.contention.map((c) => [c.resourceId, c.sharers]));
   /**
    * 判据 U9 · 导出物内容。`basis` 里必须带**倒推参数**：本页的求解器入参不是写死的，
    * 而是从真对象类型结构倒推出来的（`deriveArgs.ts`）——不写清用了哪组参数，
@@ -238,6 +240,7 @@ function BottleneckResult({ cand }: { cand: BottleneckCandidate }) {
             const over = b.demand - b.capacity;
             const pct = b.capacity > 0 ? Math.min(200, Math.round((b.demand / b.capacity) * 100)) : 100;
             const dg = downMap.get(b.resourceId);
+            const sharers = contentionMap.get(b.resourceId) ?? [];
             return (
               <div key={b.resourceId} data-testid={`cr-bn-row-${b.resourceId}`} className="panel" style={{ padding: "8px 10px", borderLeft: "3px solid var(--danger)" }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: 12 }}>
@@ -249,6 +252,24 @@ function BottleneckResult({ cand }: { cand: BottleneckCandidate }) {
                 <div style={{ height: 8, borderRadius: 5, background: "var(--line2)", overflow: "hidden", marginTop: 6 }}>
                   <div style={{ height: "100%", width: `${Math.min(100, pct)}%`, background: pct > 100 ? "var(--danger)" : "var(--amber)" }} />
                 </div>
+                {/* ══ 判据 U8「看明细不换页」 ══
+                    改前本页受控展开态命中 **0** —— 病不是「跳了页」，是**根本没有下钻**：
+                    屏上只有 `{sharerCount} 方争用` 这个数，而「**是哪几方**」这份明细
+                    （求解器 `contention[].sharers`）**已经取回来了却整个丢掉**。
+                    于是用户看到「4 方争用」之后无路可走，只能离开本页去别处查 —— 现场清零。
+                    改成内联受控展开：默认折叠（第一层密度不涨），点一下就地列出争用方，不导航。 */}
+                {sharers.length > 0 && (
+                  <details data-testid={`cr-bn-sharers-${b.resourceId}`} style={{ marginTop: 6 }}>
+                    <summary data-testid={`cr-bn-sharers-sum-${b.resourceId}`} style={{ fontSize: 12, color: "var(--muted2)", cursor: "pointer" }}>
+                      是哪 {sharers.length} 方在争 ▸
+                    </summary>
+                    <div data-testid={`cr-bn-sharers-body-${b.resourceId}`} style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                      {sharers.map((s) => (
+                        <span key={s} className="badge" style={{ fontSize: 12 }}>{s}</span>
+                      ))}
+                    </div>
+                  </details>
+                )}
                 {dg && (
                   <div data-testid={`cr-bn-downgraded-${b.resourceId}`} style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
                     降级：<b className="mono">{dg.objectId}</b>（{dg.sharedByType}）· {dg.reason}
@@ -495,6 +516,31 @@ function MarginResult({ cand }: { cand: MarginCandidate }) {
                   <span>毛利 <b className="mono" style={{ color: "var(--danger-txt)" }}>{fmt(r.margin)}</b>（{fmt(r.marginRate * 100)}%）</span>
                   {r.topDriver && <span className="badge red" style={{ fontSize: 12 }}>主驱动 {r.topDriver.label}</span>}
                 </div>
+                {/* 判据 U8：同上 —— 逐项成本拆解 `attribution[]` 求解器已回、此前整个丢掉，
+                    屏上只留一个「主驱动」徽标。用户要问「成本到底拆成哪几项、各占多少」时无路可走。
+                    就地展开（不导航），并显式说清占比的分母是**总成本**而不是营收，免得读成毛利率。 */}
+                {r.attribution.length > 0 && (
+                  <details data-testid={`cr-ma-attr-${r.id}`} style={{ marginTop: 6 }}>
+                    <summary data-testid={`cr-ma-attr-sum-${r.id}`} style={{ fontSize: 12, color: "var(--muted2)", cursor: "pointer" }}>
+                      成本拆成哪 {r.attribution.length} 项 ▸
+                    </summary>
+                    <div data-testid={`cr-ma-attr-body-${r.id}`} style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                      {r.attribution.map((a) => (
+                        <div key={a.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                          <span style={{ width: 120, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{a.label}</span>
+                          <div style={{ flex: 1, height: 6, borderRadius: 4, background: "var(--line2)", overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${Math.min(100, Math.round(a.share * 100))}%`, background: "var(--amber)" }} />
+                          </div>
+                          <b className="mono" style={{ flexShrink: 0 }}>{fmt(a.value)}</b>
+                          <span className="mono" style={{ width: 44, textAlign: "right", flexShrink: 0, color: "var(--muted2)" }}>
+                            {fmt(a.share * 100)}%
+                          </span>
+                        </div>
+                      ))}
+                      <div style={{ fontSize: 12, color: "var(--muted2)" }}>占比分母 = 总成本 {fmt(r.totalCost)}（不是营收——别读成毛利率）。</div>
+                    </div>
+                  </details>
+                )}
               </div>
             ))}
           </div>

@@ -9,6 +9,9 @@ import { fmt, useActionDraft } from "./shared";
 import { toastError } from "@/store/toastStore";
 import { Feature } from "@/workspace/featureGate";
 import { RecomputeConfirmDialog } from "@/components/RecomputeConfirmDialog";
+// WO-SANDBOX-53CELLS · 判据 U5（结论数字标出处）：本页此前全文无 SnapshotBadge/<Provenance>，
+// `provenance` 只出现在类型定义与 hover 的 title= 串里，屏上结论读数一个出处都没有。
+import { Provenance } from "@/components/Provenance";
 import { useLiveSolver } from "./useLiveSolver";
 import { MultiObjWhatifPanel } from "./MultiObjWhatifPanel";
 import { GlobalSimLevers, type LeverState, type FreeLever, type LeverCandidate, type LeverDeltaVM } from "./GlobalSimLevers";
@@ -762,13 +765,61 @@ export default function GlobalSimView(_props: ViewRendererProps) {
               <>
                 {/* D5：参数已改未重算 → 结果读数置灰（红线：结果绝不与旁边显示的参数不一致） */}
                 <div data-testid="global-sim-results" data-stale={res.isStale} style={staleStyle}>
+                {/* ══ 判据 U5「结论数字标出处」 ══
+                    改前本页**全文没有一处** `SnapshotBadge`/`<Provenance>`：`provenance` 二字只出现在
+                    `interface Prov` 与 hover 的 `title=` 字符串里，屏上的结论读数（按期率/总代价/被挤单）
+                    一个出处都没有。判据表因此记「不符合」。
+                    ⚠ 这里刻意**不新开第一层信息块**（本文件在 `ui-first-layer` 棘轮里 first=209，只降不升），
+                    而是把出处挂到**已有的那几个数字**上 —— `<Provenance>` 是 hover 浮层，计入 deferred。 */}
                 <div className={styles.readoutRow} data-testid="global-sim-readout">
-                  <div className={styles.readout}><b>{ontimeRate.toFixed(0)}%</b><span>按期率（{SCEN_LABEL[primary]}）</span></div>
+                  <div className={styles.readout}>
+                    <b>
+                      <Provenance
+                        testId="gs-ontime"
+                        src={`求解器 portfolio${res.snapshotVersion ? ` · 快照 ${res.snapshotVersion}` : ""}`}
+                        formula="按期率 = 该方案按期完成数 ÷ (获排单 + 被挤单)"
+                        inputs={[`目标：${SCEN_LABEL[primary]}`, `获排 ${primaryScen.servedCount}`, `被挤 ${primaryScen.displacedCount}`]}
+                        rule="确定性重算：同一批订单 + 同一组杠杆 + 同一个目标，重解结果逐字节一致"
+                        note="联合求解结果 —— 是算法在产能约束下试算出的最优方案，不是数据库里已发生的事实。"
+                      >
+                        {ontimeRate.toFixed(0)}%
+                      </Provenance>
+                    </b>
+                    <span>按期率（{SCEN_LABEL[primary]}）</span>
+                  </div>
                   {/* WO-UNIT-MEANING：后端 portfolio 已下发 cost.unit（"代价单位"=惩罚加权分·非货币），
                       前端此前未读 → 裸数字易被当成"元"。改读后端单源；缺则诚实留空不臆造。 */}
-                  <div className={styles.readout}><b>{fmt(d.cost.total, 0)}</b><span>总代价{d.cost.unit ? `（${d.cost.unit}·非货币）` : ""}</span></div>
+                  <div className={styles.readout}>
+                    <b>
+                      <Provenance
+                        testId="gs-cost"
+                        src={`求解器 portfolio · 目标函数${res.snapshotVersion ? ` · 快照 ${res.snapshotVersion}` : ""}`}
+                        formula="总代价 = 各目标项按权重加权求和（惩罚分，非货币）"
+                        inputs={[`目标：${SCEN_LABEL[primary]}`, ...(d.cost.unit ? [`量纲：${d.cost.unit}`] : [])]}
+                        rule="确定性重算：同一批订单 + 同一组杠杆 + 同一个目标，重解结果逐字节一致"
+                        note={d.cost.unit ? undefined : "后端本次未下发量纲字段——诚实留空，不臆造成「元」。"}
+                      >
+                        {fmt(d.cost.total, 0)}
+                      </Provenance>
+                    </b>
+                    <span>总代价{d.cost.unit ? `（${d.cost.unit}·非货币）` : ""}</span>
+                  </div>
                   {/* 换型指标统一走下方 7 维卡「换型(全链小时)」(= round(objectiveValues.changeover)·同值)·此处去重去误导「(分)」旧标签 */}
-                  <div className={styles.readout}><b>{primaryScen.displacedCount}</b><span>被挤单</span></div>
+                  <div className={styles.readout}>
+                    <b>
+                      <Provenance
+                        testId="gs-displaced"
+                        src={`求解器 portfolio · displaced${res.snapshotVersion ? ` · 快照 ${res.snapshotVersion}` : ""}`}
+                        formula="被挤单 = 产能排不下、被联合求解挤出决策集的订单条数"
+                        inputs={[`目标：${SCEN_LABEL[primary]}`, `获排 ${primaryScen.servedCount}`]}
+                        rule="确定性重算 · 产能台账守恒（一份产能只算一次）"
+                        note="逐单在下方「客户级影响」可查——这个数不对时，先核那张表里哪一单不该被挤。"
+                      >
+                        {primaryScen.displacedCount}
+                      </Provenance>
+                    </b>
+                    <span>被挤单</span>
+                  </div>
                   <div className={styles.readout}><b>{d.frozen.length}</b><span>固定单</span></div>
                 </div>
 
