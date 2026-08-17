@@ -95,8 +95,16 @@
  *    今日两者数值恰好相同（PlanTarget.period 是 `2026/2026-Q1…`，与 Metric.key `gm_rate…`
  *    交集为空 ⇒ 对齐分支从不触发；所有 % 指标的值都 >1 ⇒ 缩放分支从不触发），
  *    **是「今天碰巧相等」不是「结构上一致」**，故如实记在这里，不做成判据（那是另一张单）。
- *  · **不验前端 mock 里那份公式副本**（`apps/frontend-shell/src/mocks/fixtures.ts:796/800`
- *    各抄了一份 `derivations:[{propKey,formula}]`）。抄了两份就会漂，但该文件本单不碰。
+ *  · **不验前端 mock 里那份公式副本**（`apps/frontend-shell/src/mocks/fixtures.ts` 另抄了一份
+ *    `derivations:[{propKey,formula}]`）。⚠ **「本门现算 OPAQUE = 0 条」只对真后端成立** ——
+ *    实测（分类器与本门 `classify()` 同一套）：mock **11 条** × 真后端 **14 条**，
+ *    **交集只有 5 条**（这 5 条逐字节相同），mock 独有 **6 条**、真后端独有 **9 条**；
+ *    而 mock 独有的那 6 条里 **5 条不可机械求值**（中文散文 / `ts_agg` 时序聚合 /
+ *    求解器 key / 乘号是 U+00D7「×」而非 ASCII `*`），另有 **3 条挂在真后端根本不存在的
+ *    对象类型上**（`CapacityPyramid` / `CapacityForecast` / `ProcessCapacity`）。
+ *    逐条登记在 `scripts/derived-recompute-baseline.json` 的 `outOfScopeOpaque`（人手键，
+ *    带 `whyNotComputable`），**只登记不判红**：该文件本单不碰（多个 dev 在动），
+ *    做成硬判据会因无关改动假红。**「我没查」与「查了都对」是两个命题** —— 登记就是为了不让前者被读成后者。
  *
  * ══ 金丝雀（保命判据 · 与主逻辑**共用同一份实现**，不另抄一份）═══════════════════
  *  报「否定结论」（没有派生属性 / 都对得上 / 没有量纲问题）之前先自证工具是好的：
