@@ -18,7 +18,7 @@
  *       非 dcp spec 诚实抛（指明 spec）/ custom_http 拒 / anthropic kind 通过。
  *   A7  回归零扰：DSH_HARNESS 缺省 off 时旧路逐字节不变（既有套件绿即证，本文件不加断言）。
  *
- * 注：测试里的 key 是显式假值（"n1-seam-fake-key-…"），绝不写真凭据；泄凭扫描 grep 'sk-ojBl' 必须为 0。
+ * 注：测试里的 key 是显式假值（"n1-seam-fake-key-…"），绝不写真凭据；泄凭扫描（真凭据前缀模式 grep）必须为 0。
  */
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
