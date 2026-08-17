@@ -32,7 +32,18 @@
  * 把它算进来会让「换一个页面」和「改一次导航」在同一个数上互相污染。
  * ⇒ **本门绿不代表整屏没问题**，只代表内容区那部分没变坏。
  *
- * 用法见 `scripts/check-layout-legibility.mjs`。
+ * ══ 2026-08-18 扩（WO-GATE-B-BROWSER-HARNESS）：「只量几何」已过期 ════════════════
+ * 本文件现在共四个能力，页面装配（登录 / SPA 内导航 / 等版面稳定）只有一份
+ * （`openStablePage`），各能力共用 —— 装配抄两份就会漂移：
+ *   ① `measureLayout`        单时刻几何量测（字号 / 对齐 / 溢出 / 视口占用）—— `layout-legibility:check` 在用；
+ *   ② B-1 两时刻 DOM 快照比对（`probeInputReaction` + `snapshotDomInPage` 等）——
+ *      改一个输入、不点任何按钮，断言结果 DOM 在 N ms 内变了（PRD §4.2 的 B-1 = U1 时延面）；
+ *   ③ B-4·U8 遮挡判定（`measureOcclusionInPage` 等）——
+ *      「A 盖住了 B 的哪一部分」的 z-order × 矩形相交量（PRD §4.2 的 B-4 的 U8 几何面）；
+ *   ④ `openStablePage`       页面装配唯一实现。
+ * ②③ 的门 = `scripts/check-harness-ux-behavior.mjs`（`harness-ux-behavior:check`）。
+ *
+ * 用法见 `scripts/check-layout-legibility.mjs` 与 `scripts/check-harness-ux-behavior.mjs`。
  */
 
 import { existsSync } from "node:fs";
@@ -59,7 +70,15 @@ const CHROMIUM_ROOTS = [
   "/opt/pw-browsers",
   "/root/.cache/ms-playwright",
   process.env.HOME ? `${process.env.HOME}/.cache/ms-playwright` : null,
+  // macOS 上 playwright 的默认浏览器缓存位（本仓开发机实测路径）。
+  process.env.HOME ? `${process.env.HOME}/Library/Caches/ms-playwright` : null,
 ].filter(Boolean);
+
+// macOS 本机没装 playwright 浏览器时的兜底：直接用系统 Chrome（本单实测可用）。
+const CHROMIUM_APP_FALLBACKS = [
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+];
 
 const CHROMIUM_SUBS = [
   "chromium", // /opt/pw-browsers/chromium 是本容器预置的软链
@@ -77,6 +96,9 @@ export function findChromium() {
       const p = `${root}/${sub}`;
       if (existsSync(p)) return p;
     }
+  }
+  for (const p of CHROMIUM_APP_FALLBACKS) {
+    if (existsSync(p)) return p;
   }
   return null;
 }
@@ -438,12 +460,17 @@ export async function launchBrowser() {
 }
 
 /**
- * 打开一页、登录、SPA 内导航到目标路由、等版面稳定，再跑 `measureLayout`。
+ * 打开一页、登录、SPA 内导航到目标路由、等版面稳定 —— **页面装配的唯一实现**。
+ * `renderAndMeasure`（单时刻几何）与 B-1 行为探针（两时刻 DOM 快照比对）、
+ * B-4·U8 遮挡探针（z-order × 矩形相交）都走它 —— 登录/导航/稳定判定不许抄第二份，
+ * 抄了两份就会漂移（今天漂的是「等稳定」，明天漂的就是「量到的是不是同一页」）。
  *
  * ⚠ 「等版面稳定」不是 sleep 一个拍脑袋的秒数：连采两次，文本元素数**两次相同**才算稳
  *   （CLAUDE.md 铁律 1「凭一次快照下结论」的同源纪律）。超时仍不稳 ⇒ 抛 ProbeBroken ⇒ RC=2。
+ *
+ * 成功时返回**开着的 page**（调用方负责 close）；失败时自己先 close 再抛。
  */
-export async function renderAndMeasure(browser, spec) {
+export async function openStablePage(browser, spec) {
   const { baseUrl, route, viewport, rootSelector, login, settleMs = 900, stableTries = 20 } = spec;
   const page = await browser.newPage({ viewport });
   const pageErrors = [];
@@ -504,6 +531,20 @@ export async function renderAndMeasure(browser, spec) {
       );
     }
     stable.pageErrors = pageErrors.slice(0, 3);
+    return { page, stable, pageErrors };
+  } catch (e) {
+    await page.close().catch(() => {});
+    throw e;
+  }
+}
+
+/**
+ * 打开一页、登录、SPA 内导航到目标路由、等版面稳定，再跑 `measureLayout`。
+ * 装配逻辑在 `openStablePage`（唯一实现），本函数只多一步：量完把 page 关掉。
+ */
+export async function renderAndMeasure(browser, spec) {
+  const { page, stable } = await openStablePage(browser, spec);
+  try {
     return stable;
   } finally {
     await page.close().catch(() => {});
@@ -519,4 +560,369 @@ export async function measureHtml(browser, html, viewport, rootSelector = "body"
   } finally {
     await page.close().catch(() => {});
   }
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// 四 · B-1「同一页面两个时刻的 DOM 快照比对」（WO-GATE-B-BROWSER-HARNESS）
+//
+// 守的是 `docs/PRD-harness-ux-adoption.md` §4.2 的 **B-1 = U1 的时延面**：
+//   改一个输入、**不点任何按钮**，断言结果 DOM 在 N 毫秒内变了。
+// 「改输入即重演」的失败态有两种，本探针咬的是**行为**，不是源码形状：
+//   ① 存在提交闸（改完不点按钮，结果永远不变 —— 用户以为在看新结果，实际在看旧结果）；
+//   ② 输入根本没进求解入参 / queryKey（改了等于没改）。
+// 两者在源码里都能写得「看起来像接了」，只有渲染后改一下才知道 —— 这正是它被拆进 §4.2 的原因。
+//
+// ⚠ 本节所有 `*InPage` 函数都会被 `page.evaluate` **序列化后丢进浏览器**执行，
+//   一律**不许**引用本模块作用域里的任何标识符（引用了就是 ReferenceError）。
+// ⚠ 金丝雀与真页面**共用本节同一份实现**。不许另抄一份 —— 抄了金丝雀就是装饰品。
+// ───────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 浏览器侧：给扫描根内的可见 DOM 取一份**内容签名**（FNV-1a · 不是安全哈希，只为比对）。
+ * 签名料 = 每个「自身直接文本节点非空」的可见元素的 `序号:标签:文本`（文本截 60 字）
+ *        + 可见元素总数（结构变了但文本恰好一样时也能咬住，如整表重排）。
+ * 刻意**不**含输入控件自身的 value —— 我们要测的是「**结果** DOM 变没变」，
+ * 把被改的那个输入自己算进签名，会把「只有输入变了、结果没动」误判成「有反应」。
+ */
+export function snapshotDomInPage(opts) {
+  const root = opts.rootSelector ? document.querySelector(opts.rootSelector) : document.body;
+  if (!root) return { ok: false, reason: `扫描根未命中：${opts.rootSelector}` };
+  const visible = (el) => {
+    const cs = getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) === 0) return false;
+    const r = el.getBoundingClientRect();
+    return r.width >= 1 && r.height >= 1;
+  };
+  const entries = [];
+  let visibleEls = 0;
+  let i = 0;
+  for (const el of root.querySelectorAll("*")) {
+    if (!visible(el)) continue;
+    visibleEls++;
+    let t = "";
+    for (const n of el.childNodes) if (n.nodeType === 3) t += n.nodeValue;
+    t = t.trim();
+    if (!t) continue;
+    entries.push(`${i++}:${el.tagName.toLowerCase()}:${t.slice(0, 60)}`);
+  }
+  // FNV-1a 32bit
+  let h = 0x811c9dc5;
+  const feed = (s) => {
+    for (let k = 0; k < s.length; k++) {
+      h ^= s.charCodeAt(k);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+  };
+  feed(entries.join(""));
+  feed(`#${visibleEls}`);
+  return {
+    ok: true,
+    sig: `${h.toString(16)}:${entries.length}:${visibleEls}`,
+    textEls: entries.length,
+    visibleEls,
+    sample: entries.slice(0, 60),
+  };
+}
+
+/**
+ * 浏览器侧：在扫描根内挑一个**可编辑输入**并打上 `data-probe-target="1"` 标记，
+ * 返回它的身份与**要改成的新值**。挑选顺序：number 输入 → 其他文本输入 → select → textarea。
+ * 新值必须是**确定性的**（不许随机，不许读时钟 —— 本仓门不许依赖时钟随机性）：
+ *   数字 → 旧值 + 1；文本 → 末尾追加 "1"；select → 第一个与现值不同的 option。
+ */
+export function findEditableInputInPage(opts) {
+  const root = opts.rootSelector ? document.querySelector(opts.rootSelector) : document.body;
+  if (!root) return { ok: false, reason: `扫描根未命中：${opts.rootSelector}` };
+  const visible = (el) => {
+    const cs = getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) === 0) return false;
+    const r = el.getBoundingClientRect();
+    return r.width >= 1 && r.height >= 1;
+  };
+  const pool = [
+    ...root.querySelectorAll(
+      'input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=submit]):not([type=button]):not([type=range]):not([type=search])',
+    ),
+    ...root.querySelectorAll("select"),
+    ...root.querySelectorAll("textarea"),
+  ].filter((el) => visible(el) && !el.disabled && !el.readOnly);
+  // number 优先：改它触发重算的概率最高（业务输入大多是数字）。
+  pool.sort((a, b) => {
+    const na = a.tagName === "INPUT" && a.type === "number" ? 0 : 1;
+    const nb = b.tagName === "INPUT" && b.type === "number" ? 0 : 1;
+    return na - nb;
+  });
+  const el = pool[0];
+  if (!el) return { ok: true, found: false };
+  el.setAttribute("data-probe-target", "1");
+  const oldValue = el.value ?? "";
+  let newValue;
+  if (el.tagName === "SELECT") {
+    const opt = [...el.options].find((o) => o.value !== oldValue && !o.disabled);
+    if (!opt) return { ok: true, found: false, reason: "select 没有可切换的选项" };
+    newValue = opt.value;
+  } else if (el.tagName === "INPUT" && el.type === "number") {
+    const n = Number(oldValue);
+    newValue = String(Number.isFinite(n) ? n + 1 : 1);
+  } else {
+    newValue = `${oldValue}1`;
+  }
+  return {
+    ok: true,
+    found: true,
+    tag: el.tagName.toLowerCase(),
+    type: el.getAttribute("type") || "",
+    name: el.getAttribute("name") || "",
+    id: el.id || "",
+    aria: el.getAttribute("aria-label") || "",
+    cls: (el.getAttribute("class") || "").slice(0, 70),
+    oldValue: String(oldValue).slice(0, 40),
+    newValue: String(newValue).slice(0, 40),
+  };
+}
+
+/**
+ * 浏览器侧：把打了标记的输入改成新值，**走原生 setter + 冒泡事件**。
+ * ⚠ 直接 `el.value = v` 对 React 受控组件无效（React 的值跟踪器会把它吞掉），
+ *   必须走原型上的 setter 再派发 `input`/`change` —— 这是 React 官方测试工具的同款手法。
+ * 本函数**不点任何按钮**（B-1 的全部意义就在「不点按钮结果也该变」）。
+ */
+export function changeMarkedInputInPage(opts) {
+  const el = document.querySelector('[data-probe-target="1"]');
+  if (!el) return { ok: false, reason: "标记输入丢了（页面在两次 evaluate 之间重渲染了）" };
+  const proto =
+    el.tagName === "SELECT"
+      ? HTMLSelectElement.prototype
+      : el.tagName === "TEXTAREA"
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+  const desc = Object.getOwnPropertyDescriptor(proto, "value");
+  if (!desc?.set) return { ok: false, reason: "拿不到原生 value setter" };
+  desc.set.call(el, opts.newValue);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+  return { ok: true, applied: el.value === opts.newValue, now: el.value };
+}
+
+/** B-1 探针的默认判定时窗（毫秒）。为什么取 5000 见下方 probeInputReaction 的注释。 */
+export const REACTION_TIMEOUT_MS = 5000;
+
+/**
+ * Node 侧驱动：在**已打开的页面**上跑一次 B-1 探针 ——
+ * 快照 → 改一个输入（不点任何按钮）→ 轮询快照，直到签名变化或超过 `timeoutMs`。
+ *
+ * 返回（`status` 四态，门按态判定，不许合并）：
+ *   changed    结果 DOM 在 timeoutMs 内变了（附 latencyMs 与前后样本）
+ *   unchanged  超时仍没变 —— **提交闸 / 输入没接入参**的行为面证据
+ *   no-input   扫描根内找不到可编辑输入 —— 本页这条判据无处落脚（对账时按「未判」处理）
+ *   unstable   改输入**之前**签名就在自变（页面有自走时钟/轮询）—— 变了也没法归因，不许用来判
+ *
+ * ⚠ 时窗默认 5000ms 的理由：提交闸的失败态是「**永远**不变」，任何有限时窗都咬得住它；
+ *   时窗的唯一风险是**冤枉**正常的重算。mock 模式重算 = 本地同步计算 + react-query 失效重取，
+ *   实测全部 < 1s（见本单交单报告），取 5000 留了 5 倍以上余量，不是拍脑袋。
+ */
+export async function probeInputReaction(page, opts) {
+  const { rootSelector, timeoutMs = REACTION_TIMEOUT_MS, pollMs = 200 } = opts;
+  const s0 = await page.evaluate(snapshotDomInPage, { rootSelector });
+  if (!s0.ok) return { status: "unstable", reason: s0.reason };
+  await page.waitForTimeout(400);
+  const s1 = await page.evaluate(snapshotDomInPage, { rootSelector });
+  if (!s1.ok) return { status: "unstable", reason: s1.reason };
+  // 自变化检测：改输入之前签名就在变 ⇒ 「变了」不能归因到这次输入，整条判据在这一页无处落脚。
+  if (s0.sig !== s1.sig) {
+    return { status: "unstable", reason: "页面在改输入之前签名就在自变（自走时钟/轮询），变化无法归因" };
+  }
+  const input = await page.evaluate(findEditableInputInPage, { rootSelector });
+  if (!input.ok) return { status: "unstable", reason: input.reason };
+  if (!input.found) return { status: "no-input", reason: input.reason || "扫描根内没有可编辑输入" };
+  const applied = await page.evaluate(changeMarkedInputInPage, { newValue: input.newValue });
+  if (!applied.ok) return { status: "unstable", reason: applied.reason };
+  const t0 = Date.now();
+  let last = s1;
+  for (;;) {
+    await page.waitForTimeout(pollMs);
+    const cur = await page.evaluate(snapshotDomInPage, { rootSelector });
+    if (cur.ok && cur.sig !== s1.sig) {
+      return {
+        status: "changed",
+        latencyMs: Date.now() - t0,
+        input,
+        before: s1.sample,
+        after: cur.sample,
+        timeoutMs,
+      };
+    }
+    if (cur.ok) last = cur;
+    if (Date.now() - t0 >= timeoutMs) {
+      return { status: "unchanged", input, before: s1.sample, after: last.sample, timeoutMs };
+    }
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// 五 · B-4·U8「A 盖住了 B 的哪一部分」—— z-order × 矩形相交遮挡判定
+//
+// 守的是 `docs/PRD-harness-ux-adoption.md` §4.2 的 **B-4 的 U8 几何面**：
+//   悬停/点击在**原地**展开的浮层，几何上必须成立 ——
+//   它该盖住内容（这是浮层的本分），而**不许有别的东西反过来盖住它**（盖住 = 浮层白开）。
+// probe 此前只量元素**自身**的矩形，没有元素之间的遮挡关系；本节补的就是这个量：
+//   ① z-order：对浮层矩形内采样点逐个 `document.elementsFromPoint`，
+//      最上层元素必须属于浮层子树（不是比 z-index 数值 —— 比数值在堆叠上下文嵌套时会错，
+//      `elementsFromPoint` 给的是**真实绘制序**，浏览器自己算的，骗不了）；
+//   ② 矩形相交：浮层与每个可见文本元素的交集面积占比 = 「A 盖住了 B 的哪一部分」。
+// ───────────────────────────────────────────────────────────────────────────────
+
+/** 浮层触发器的候选选择器（`aria-expanded`/`aria-haspopup` 是本仓浮层组件的公开契约面）。 */
+export const OVERLAY_TRIGGER_SEL = "[aria-expanded], [aria-haspopup]";
+/** 浮层本体的候选选择器（本仓 `InfoPopover` 用 `role="tooltip"` + `.popover-surface`）。 */
+export const OVERLAY_SEL = '[role="tooltip"], [role="dialog"], [role="menu"], [role="listbox"], .popover-surface';
+
+/**
+ * 浏览器侧：列出扫描根内的浮层触发器候选（可见、未被 `data-probe-hover` 标记过），
+ * 逐个打上 `data-probe-hover="<i>"` 标记供 Node 侧 hover/click。
+ */
+export function findOverlayTriggersInPage(opts) {
+  const root = opts.rootSelector ? document.querySelector(opts.rootSelector) : document.body;
+  if (!root) return { ok: false, reason: `扫描根未命中：${opts.rootSelector}` };
+  const visible = (el) => {
+    const cs = getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) === 0) return false;
+    const r = el.getBoundingClientRect();
+    return r.width >= 1 && r.height >= 1;
+  };
+  const max = opts.max ?? 8;
+  const out = [];
+  let i = 0;
+  for (const el of root.querySelectorAll("[aria-expanded], [aria-haspopup]")) {
+    if (out.length >= max) break;
+    if (!visible(el)) continue;
+    if (el.hasAttribute("data-probe-hover")) continue;
+    el.setAttribute("data-probe-hover", String(i));
+    out.push({
+      sel: `[data-probe-hover="${i}"]`,
+      tag: el.tagName.toLowerCase(),
+      aria: (el.getAttribute("aria-label") || "").slice(0, 60),
+      text: (el.textContent || "").trim().slice(0, 30),
+      cls: (el.getAttribute("class") || "").slice(0, 60),
+    });
+    i++;
+  }
+  return { ok: true, triggers: out };
+}
+
+/**
+ * 浏览器侧：列出**当前可见**的浮层，各打一个 `data-probe-overlay="<sig>-<i>"` 标记。
+ * `sig` 由调用方传入（同一页面多次调用用不同 sig），Node 侧据此分出「新出现的浮层」。
+ */
+export function listVisibleOverlaysInPage(opts) {
+  const visible = (el) => {
+    const cs = getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) === 0) return false;
+    const r = el.getBoundingClientRect();
+    return r.width >= 1 && r.height >= 1;
+  };
+  const out = [];
+  let i = 0;
+  for (const el of document.querySelectorAll(
+    '[role="tooltip"], [role="dialog"], [role="menu"], [role="listbox"], .popover-surface',
+  )) {
+    if (!visible(el)) continue;
+    const mark = `${opts.sig}-${i}`;
+    el.setAttribute("data-probe-overlay", mark);
+    const r = el.getBoundingClientRect();
+    out.push({
+      sel: `[data-probe-overlay="${mark}"]`,
+      mark,
+      role: el.getAttribute("role") || "",
+      cls: (el.getAttribute("class") || "").slice(0, 60),
+      text: (el.textContent || "").trim().slice(0, 50),
+      rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+    });
+    i++;
+  }
+  return out;
+}
+
+/**
+ * 浏览器侧：量一个浮层的遮挡关系 —— **「A 盖住了 B 的哪一部分」的唯一实现**。
+ * 返回：
+ *   occludedBy  浮层矩形内被**别的元素**压在下面的采样点（z-order 维：浮层被盖 = 违规）
+ *   covers      浮层盖住了哪些可见文本元素、各盖住百分之几（矩形相交维：信息面回答）
+ *   outside     采样点落在视口外的个数（诚实位：那几个点没量，不是量了没问题）
+ */
+export function measureOcclusionInPage(opts) {
+  const ov = document.querySelector(opts.overlaySelector);
+  if (!ov) return { ok: false, reason: `浮层选择器未命中：${opts.overlaySelector}` };
+  const cs = getComputedStyle(ov);
+  const r = ov.getBoundingClientRect();
+  const clsOf = (el) => (el.getAttribute && el.getAttribute("class")) || "";
+  if (cs.display === "none" || cs.visibility === "hidden" || r.width < 1 || r.height < 1) {
+    return { ok: false, reason: "浮层不可见（量遮挡之前它先得是开着的）" };
+  }
+  // ── ① z-order 维：3×3 采样点，最上层元素必须属于浮层子树 ─────────────────
+  const occludedBy = [];
+  let samples = 0;
+  let outside = 0;
+  for (const fx of [0.15, 0.5, 0.85]) {
+    for (const fy of [0.15, 0.5, 0.85]) {
+      const x = r.left + r.width * fx;
+      const y = r.top + r.height * fy;
+      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) {
+        outside++;
+        continue;
+      }
+      samples++;
+      const stack = document.elementsFromPoint(x, y);
+      const top = stack[0];
+      const onTop = top && (top === ov || ov.contains(top));
+      if (!onTop) {
+        occludedBy.push({
+          at: `${Math.round(x)},${Math.round(y)}`,
+          by: `<${(top?.tagName || "?").toLowerCase()}${top ? "." + clsOf(top).slice(0, 50) : ""}>`,
+          byText: (top?.textContent || "").trim().slice(0, 40),
+        });
+      }
+    }
+  }
+  // ── ② 矩形相交维：浮层盖住了哪些可见文本元素（「A 盖住了 B 的哪一部分」）────────
+  const root = opts.rootSelector ? document.querySelector(opts.rootSelector) : document.body;
+  const covers = [];
+  if (root) {
+    for (const el of root.querySelectorAll("*")) {
+      if (el === ov || ov.contains(el) || el.contains(ov)) continue;
+      let t = "";
+      for (const n of el.childNodes) if (n.nodeType === 3) t += n.nodeValue;
+      t = t.trim();
+      if (!t) continue;
+      const ecs = getComputedStyle(el);
+      if (ecs.display === "none" || ecs.visibility === "hidden" || Number(ecs.opacity) === 0) continue;
+      const b = el.getBoundingClientRect();
+      if (b.width < 1 || b.height < 1) continue;
+      const ix = Math.max(0, Math.min(r.right, b.right) - Math.max(r.left, b.left));
+      const iy = Math.max(0, Math.min(r.bottom, b.bottom) - Math.max(r.top, b.top));
+      const inter = ix * iy;
+      if (inter <= 0) continue;
+      const pct = Math.round((inter / (b.width * b.height)) * 1000) / 10;
+      covers.push({
+        tag: el.tagName.toLowerCase(),
+        cls: clsOf(el).slice(0, 50),
+        text: t.slice(0, 40),
+        coverPct: pct,
+      });
+    }
+  }
+  covers.sort((a, b2) => b2.coverPct - a.coverPct);
+  return {
+    ok: true,
+    overlay: {
+      sel: opts.overlaySelector,
+      cls: clsOf(ov).slice(0, 60),
+      rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+    },
+    samples,
+    outside,
+    occludedBy,
+    covers: covers.slice(0, 10),
+    coveredEls: covers.length,
+  };
 }
