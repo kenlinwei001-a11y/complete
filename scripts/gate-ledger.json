@@ -1644,6 +1644,26 @@
         "note": "① 注入「测量坏了」（TYPECHECK_COVERAGE_FORCE_TOOL_BROKEN=1）⇒ RC=2 —— 报 1 会被读成「你的测试没被覆盖」，方向正好相反；② 注入「真有包没接线」（TYPECHECK_COVERAGE_MUTATE=1 改去量各包的 build 配置）⇒ RC=1，实测输出 `apps/datacore 0/291`、`apps/agentcore 0/175` —— **这不是模拟，是精确复现 2026-08-16 之前的真实状态**；③ 不注入 ⇒ RC=0。⚠️ 本门的判据刻意**不读 include/exclude**：本单栽的跟头正是「配置写了 ≠ 它生效了」—— datacore/agentcore 的 tsconfig.typecheck.json 早在提交 7302a0fc 就建好、注释写明要纳入 test/，而 package.json 的 typecheck 脚本从来指向 tsconfig.json，三周里 466 个测试文件一次没被检查过。故判据落在 `tsc --listFilesOnly` 的**程序文件全集**上（tsc 自己的口径）。⚠️ 反向金丝雀是保命的那一半：若 surfaceOf() 坏成恒返「全都在」，正向判据会全部通过、门报绿 —— 故每次运行都先验「各包 build 配置的面里**不该有**测试文件」，4 条真仓样例全中才继续。"
       },
       "notes": "守「typecheck 的扫描面必须真的包含测试目录」。建门缘由：2026-08-16 实测 datacore/agentcore 的 typecheck 从不看 test/，接上线当天抖出 354 个真类型错误（契约字段改名后 fixture 没跟上、缺必填字段、本地断言类型漏声明生产真会发的字段…），全部躺在正线上没人发现。形态（铁律 0.6 句式）：「我用『N 包 typecheck 绿』当作『测试文件也没类型错』的证据，而前者并不度量后者 —— 它连看都没看。」与铁律 0.6 已收录的第 4 条（改名要连断言一起改）同族但更底层：那条说的是类型系统**看不见字符串键**（能力边界），本条说的是类型系统**压根没被指向那些文件**（接线断了）。诚实边界：本门只保证测试文件**进了程序**，不保证它们的断言写得强 —— 断言强度归 coverage-blind:check 管；也不覆盖 `test/fixtures/*.json` 这类非 TypeScript 文件（本就不进类型面）。"
+    },
+    "check-claim-strength.mjs": {
+      "alias": "claim-strength:check",
+      "binding": "GATES_CHAIN",
+      "guardedPaths": [
+        "apps/frontend-shell/src/views/sim/*.tsx",
+        "apps/frontend-shell/src/views/sim/sandboxModes.ts",
+        "apps/frontend-shell/src/views/OptimizeWhatifView.tsx",
+        "apps/frontend-shell/src/views/DecisionPlayPanel.tsx",
+        "apps/frontend-shell/src/locales/zh.ts",
+        "scripts/claim-strength-registry.json"
+      ],
+      "escalation": "审核方",
+      "ontologyRef": "§7",
+      "provenRed": {
+        "kind": "MUTATION",
+        "evidence": "WO-OPTIMAL-WORDING 交单报告 ④节（docs/HANDOFF-wo-optimal-wording.md）",
+        "note": "建门当天实弹三条全中：M1 在扫描面新增带「全局最优」的 __mutation_probe.tsx ⇒ RC=1 点名该文件:行，删除复绿；M2 登记册清空 ⇒ RC=1 报 25 条命中全部无登记；M3 登记册整个删除 ⇒ RC=2 报「工具坏了，不是代码坏了」（真违规与工具故障两分没被吞）。另 --selftest 内置 12 条金丝雀/变异（与主逻辑共用 analyze()/judge()）：analyze 必咬 4（JSX 文本/title 属性/JSX 表达式三元/词表型 .ts）· 必不咬 3（注释与 testid 不算违规=本门活路 · 「优选/更划算」不咬 · 变量间接上屏=声明过的盲区）· judge 变异 5（无登记命中/登记无依据/solverField 不存在/死账漂移 各红 · 全对则绿）。金丝雀不中 ⇒ RC=2，绝不报「屏上干净」。"
+      },
+      "notes": "守的命题：屏上强承诺词（最优/最划算/最佳/最好的/保证）必须有东西撑着——仓主裁决「优选≠最优：无最优性保证的强承诺不上屏」的机制化。求解器双模现状（WO-OPTIMAL-WORDING ① 取证）：docker 态 CP-SAT 未设挂钟时限、optimal:true⟺cp_model.OPTIMAL（可证最优，有撑）；内存态 InProc 确定性贪心恒 FEASIBLE/optimal:false（启发式，无撑）⇒ 静态大字一律不许写死，允许的只有两类：①跟求解器自述字段（optimal）走的动态标注；②登记册 scripts/claim-strength-registry.json 里显式登记依据的字面量。判据 = analyze()（与 dev-jargon 门同一套 JSX 渲染位抽取 + 词表型 .ts 全字面量，注释/testid/变量名不看）× judge()（命中必须有同文件同片段登记；登记必须 backedBy≥20 字；solverField 若给则机械验证存在于 optimizer-client.ts；死账=登记了屏上没有的串 ⇒ 也红，登记册是对账表不是免检白名单）。「大字承诺+小字免责」不算豁免（WO 明令禁止）；否定句/释义句/技术名词照样要登记（verdict: negation/glossary/not-a-claim），让「为什么这句可以留」机器可查。退出码三分 0/1/2 + 顶层 try 是 Program 直接子语句（gate-exit-discipline 只认此形态）。诚实边界：经变量间接上屏的字面量看不见（金丝雀必不咬-3 钉死此边界）；mock 数值口径不查（WO 边界）；扫描面只覆盖推演相关页面。建门首扫：25 条命中全部登记（本单改掉 13 处无撑静态承诺，含 MultiObjWhatifPanel 写死「CP-SAT 可证最优」徽标——内存态那是谎话）。"
     }
   }
 }

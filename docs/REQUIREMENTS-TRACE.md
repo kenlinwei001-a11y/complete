@@ -86,6 +86,7 @@
 | E5 | 两页是否合并 / 移组 | ✅ **已裁决·已落**（WO-IA-E2E5E6） | **不合页**（类 vs 张两问正交），做双向入口：模板层每站行内「现在有 N 张单卡在这里 →」→ 实例层 `?proc=<key>` 过滤；实例层每张卡「这类流程通常在这站等什么 →」→ 模板层 `?focus=<key>` 行定位。验收接缝测试 `process-wait-stuck-link.seam.test.tsx`：**模板层计数 == 实例层过滤后实际条数**（非链接存在性）+ 计数拿不到摆「暂不可得」绝不摆 0 + focus 查无此站明说（P44 活样本） |
 | E6 | 「订单全链条推演与项目推演，**是否部分功能重复**？」 | ✅ **已裁决·已落**（WO-IA-E2E5E6） | 订单那个已改「订单进展与卡因」；本次改名：**项目推演→接单可行性 · 全局项目推演→接单组合优选 · plan-generate 导航标题→规划建议**（「优选」非「最优」：求解器无最优性保证，强承诺不上屏）；featureName 名册两键暂留旧名（与 agentcore 受检副本互锁，超出本单范围，见交单报告残留登记） |
 | E7 | 「是否修改为**订单状态**，且需要类似地铁线路图的 UX 展示进展？」 | ✅ | 单订单地铁图已接（复用组件零改动，锚 `data.so` 真实订单） |
+| E8 | E6 残留③：页内「最优」措辞与「优选非最优」裁决的张力 | ✅ **已闭**（WO-OPTIMAL-WORDING） | 求解器最优性先取证（docker CP-SAT 可证最优 / 内存态 InProc 贪心恒 `optimal:false`）→ 13 处无撑静态承诺改「优选」系 + 依据句；`MultiObjWhatifPanel` 写死「CP-SAT 可证最优」徽标改动态跟 `occ.data.optimal` 走（内存态那是谎话）；机制 = `claim-strength:check` 门（命中必须有登记依据，死账也红）+ `scripts/claim-strength-registry.json` 对账表（首扫 25 条命中全部登记）。复验：`node scripts/check-claim-strength.mjs` RC=0 · `--selftest` 12 条全中 |
 
 ## F · 产能推演可读性
 

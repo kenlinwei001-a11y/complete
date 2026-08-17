@@ -125,6 +125,15 @@ function GlobalSimNlDock({ sessionId }: { sessionId: string }) {
 
 const ALL_SCENARIOS = ["max_ontime", "min_cost", "min_changeover", "min_fg_inventory"] as const;
 const SCEN_LABEL: Record<string, string> = { max_ontime: "最多按期", min_cost: "最低代价", min_changeover: "最少换型", min_delay: "最小延误", min_fg_inventory: "最少成品库存" };
+
+// WO-OPTIMAL-WORDING · 最优性标注跟求解器自述走（optimal 字段是 sidecar/内存贪心的如实自述，见
+// datacore solvers/inproc-optimizer.ts「诚实红线」）：可证最优 ⟺ CP-SAT 证到 OPTIMAL；
+// FEASIBLE = 可行但未证最优（内存态确定性贪心恒落此态）——翻成人话，不甩英文状态词上屏。
+function optimalityLabel(d: { optimal: boolean; status: string }): string {
+  if (d.optimal) return "✓ 可证最优";
+  if (d.status === "FEASIBLE") return "可行解 · 未证最优";
+  return d.status;
+}
 const provTitle = (p: Prov) => `溯源 ${p.kind}：${p.drillType}.${p.drillField}[${p.drillId}] = ${p.drillValue}`;
 // 时间窗天数（每个时间窗 = 多少天）：对齐 datacore portfolio 求解器真实口径——
 // windowDays = coeff("windowDays", 14)，仓内无 PUBLISHED `portfolio_optimize_coeffs` 覆盖 → 引擎实跑缺省 14。
@@ -405,10 +414,10 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       {/* ① 顶栏 */}
       <div className={styles.header}>
         <div className={styles.titleBlock}>
-          <h2 title="接单组合优选：把全部项目（订单）、全部基地、各个时间段放在一起统一排产，一次算出全局更划算的组合——不是一个项目一个项目单独算再拼起来。底层机制仍是一次「联合求解」。">接单组合优选 · 决策驾驶舱（全局最优在先）</h2>
-          <p>把所有订单放在一起、在所有基地和时间窗上共享产能、不重复占用 → 一次算出全局最优。调节杠杆 / 勾选订单子集 / 切换目标 → 方案立即重算：产能占用图、KPI、排产安排、客户影响全链联动。</p>
+          <h2 title="接单组合优选：把全部项目（订单）、全部基地、各个时间段放在一起统一排产，一次算出全局更划算的组合——不是一个项目一个项目单独算再拼起来。底层机制仍是一次「联合求解」。">接单组合优选 · 决策驾驶舱（全局优选在先）</h2>
+          <p>把所有订单放在一起、在所有基地和时间窗上共享产能、不重复占用 → 一次联合求解，按所选目标（按期 / 延误 / 换型 / 库存 / 成本）在产能约束下比较出优选组合。调节杠杆 / 勾选订单子集 / 切换目标 → 方案立即重算：产能占用图、KPI、排产安排、客户影响全链联动。</p>
         </div>
-        <span className={styles.badge} title="这些数字是算法在满足产能约束下试算出来的最优方案（推演结果），不是数据库里已经发生的既有事实。" data-testid="global-sim-badge">推演结果 · 非数据库事实</span>
+        <span className={styles.badge} title="这些数字是算法在满足产能约束下、按所选目标比较后给出的优选方案（推演结果），不是数据库里已经发生的既有事实。" data-testid="global-sim-badge">推演结果 · 非数据库事实</span>
       </div>
 
       {/* ① 递进批次会话条（范围 / status / 已提交批次链） */}
@@ -416,7 +425,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         <span className={styles.batchScope} title={`规划期被切成若干个「时间窗」，每个时间窗 ${PORT_WINDOW_DAYS} 天（与后端求解器 windowDays 同口径）；产能占用与交付日都按时间窗结算。`}>范围：全 {matrix?.bases.length ?? "—"} 个基地 × {matrix?.windows.length ?? "—"} 个时间窗（每窗 {PORT_WINDOW_DAYS} 天）</span>
         <span>主方案：{SCEN_LABEL[primary]}</span>
         <span className={`${styles.batchStatus} ${d && !d.feasible ? styles.bad : ""}`} data-testid="global-sim-feasible" title="「可行」= 现有产能下所选订单全部都能排下、没有订单被挤掉；「有被挤单」= 产能不够，部分订单排不下（下方「被挤单」卡逐单可查）。">
-          {d ? (d.feasible ? "可行 · 全部订单都排下了" : `${d.status}${d.optimal ? "·可证最优" : ""} · 有被挤单`) : res.isFetching ? "求解中…" : "—"}
+          {d ? (d.feasible ? "可行 · 全部订单都排下了" : `${optimalityLabel(d)} · 有被挤单`) : res.isFetching ? "求解中…" : "—"}
         </span>
         <span className={styles.batchChain} data-testid="global-sim-batchchain" title="已在产 / 已排定的订单（在产承诺）会先占住对应基地和时间窗的产能；本轮推演把这部分产能视为已被占用、不再重复分配给别的订单。">
           已排定批次 · 先占产能（在产承诺）：
@@ -579,8 +588,8 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                 </button>
               ))}
             </div>
-            <span className={`${styles.miniConserve} ${d && !d.reconciled ? styles.bad : ""}`} data-testid="global-sim-verdict" title="「可证最优」= 算法已从数学上证明这是最好的方案；「产能台账守恒」= 每个基地每个时间窗排下去的量都没超过可用产能、也没有被重复占用（一份产能只算一次）。">
-              {d ? `${d.optimal ? "✓ 可证最优" : d.status} · 产能台账守恒${d.reconciled ? "通过" : "未通过"}` : res.isFetching ? "求解中…" : "—"}
+            <span className={`${styles.miniConserve} ${d && !d.reconciled ? styles.bad : ""}`} data-testid="global-sim-verdict" title="「可证最优」= 精确求解器已从数学上证明这是最好的方案；「可行解 · 未证最优」= 求解器给出了满足约束的方案、但未证明它是最好的（内存态确定性贪心恒落此态）；「产能台账守恒」= 每个基地每个时间窗排下去的量都没超过可用产能、也没有被重复占用（一份产能只算一次）。">
+              {d ? `${optimalityLabel(d)} · 产能台账守恒${d.reconciled ? "通过" : "未通过"}` : res.isFetching ? "求解中…" : "—"}
             </span>
           </div>
 
@@ -638,7 +647,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         {/* 右轨：磨砂卡① 联合求解配置 + 订单清单三态 */}
         <div>
           <div className={styles.glass}>
-            <span className={styles.grpLabel} title="联合求解：把下面勾选的订单放在一起、跨所有基地和时间窗统一排产，一次算出全局最划算的方案（不是一单一单单独算）。">[ 联合求解配置 ]</span>
+            <span className={styles.grpLabel} title="联合求解：把下面勾选的订单放在一起、跨所有基地和时间窗统一排产，一次求解、按所选目标比较出更划算的组合（不是一单一单单独算）。">[ 联合求解配置 ]</span>
 
             {/* ⑥ 对比方案（目标切换 = 多方案对比） */}
             <div className={styles.scenPicks} data-testid="global-sim-scens">
@@ -715,7 +724,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
               )}
               {levers.method === "lexicographic" && (
                 <div data-testid="global-sim-method-lexicographic">
-                  <div className={styles.leverHint}>调优先级（上=先·改序 → 分层最优换形）。</div>
+                  <div className={styles.leverHint}>调优先级（上=先·改序 → 分层优选换形）。</div>
                   {priority.map((k, i) => (
                     <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }} data-testid={`global-sim-priority-${k}`} data-rank={i}>
                       <span style={{ flex: 1, fontSize: 12 }}>{i + 1}. {OBJ_KNOB_LABEL[k as ObjKnobKey] ?? k}</span>

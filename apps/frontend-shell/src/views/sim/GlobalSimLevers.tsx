@@ -171,7 +171,7 @@ export function GlobalSimLevers({
             </button>
           ))}
         </div>
-        <div className={styles.leverHint}>加权=各目标线性合成；字典序=按序逐目标锁定；ε约束=主目标最优下约束次目标。</div>
+        <div className={styles.leverHint}>加权=各目标线性合成；字典序=按序逐目标锁定；ε约束=先锁主目标、再给次目标设上限。</div>
       </div>
 
       {/* 活②·自由杠杆区（portfolio levers[]·任意变量联合重解·preset 区之外并存） */}

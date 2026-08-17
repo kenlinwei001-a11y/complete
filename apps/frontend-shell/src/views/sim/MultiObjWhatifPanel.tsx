@@ -15,7 +15,8 @@ import styles from "./SimViews.module.css";
  * （营收=qty×unitPrice 真值 · 违约金=qty×优先级违约单价 · 换型=qty×换型单价，见 multiObjScenario.ts），
  * 按化学体系（NCM/LFP）建产线占用池 + 按客户建合同额度 → 喂**真** cross_object_occupancy 求解器。
  * 改权重滑杆 → optimize_whatif / cross_object_occupancy **后端真重算** → 占用矩阵 / 被挤订单 / 各目标 Δ **真变**
- * （前端只组装真输入，不做假过滤）。徽标诚实标「CP-SAT 可证最优（推演结果）」——绝不标「数据库事实」。
+ * （前端只组装真输入，不做假过滤）。徽标跟求解器自述走：CP-SAT 证到 OPTIMAL 才标「可证最优」，
+ * 内存态贪心（optimal:false）标「可行 · 未证最优」——绝不标「数据库事实」，也绝不写死「可证最优」。
  * `opt.multiobj` 关 → 整块不存在（R3）。
  */
 
@@ -107,7 +108,8 @@ function MultiObjWhatifInner() {
   const rowById = useMemo(() => new Map(scenario.rows.map((r) => [r.id, r])), [scenario]);
   const ov = occ.data?.objectiveValues ?? {};
   const delta = whatif.data?.deltaByObjective;
-  // KILL-MOCK-RED：优化器 CP-SAT sidecar 未接入时后端**显式抛「未接入」错**（service.ts）——面板须诚实披露，
+  // KILL-MOCK-RED：优化器求解失败/未接入时后端**显式抛错**（service.ts）——面板须诚实披露，
+  // （内存态兜底：InProc 确定性贪心返 FEASIBLE/optimal:false 真解，不抛错 —— 由徽标如实标注「未证最优」）。
   // 不能静默把空/0 当结果显示（0 会被误读为「真求解出来是 0」）。有任何求解错就披露。
   const solverErr = occ.error ?? whatif.error;
   const notWired = !!solverErr && /未接入|OPTIMIZER_BASE_URL|sidecar/i.test(solverErr.message);
@@ -117,8 +119,23 @@ function MultiObjWhatifInner() {
     <div className={styles.audCard} data-testid="multiobj-whatif">
       <div className={styles.audHead}>
         <strong>多目标 + 跨对象占用推演（真实订单簿）</strong>
-        <span className={styles.chip} title="决策变量在 CP-SAT 上求可证最优，非数据库既有事实" data-testid="multiobj-badge">
-          CP-SAT 可证最优 · 推演结果（非数据库事实）
+        {/* WO-OPTIMAL-WORDING · 徽标跟求解器自述（occ.data.optimal）走，不写死：
+            CP-SAT sidecar 证到 OPTIMAL → 「可证最优」；内存态确定性贪心恒 FEASIBLE/optimal:false
+            → 「可行 · 未证最优」。写死「可证最优」在内存态就是谎话（InProc 兜底返的是贪心解）。 */}
+        <span
+          className={styles.chip}
+          title={
+            occ.data?.optimal
+              ? "决策变量在 CP-SAT 上求到可证最优，非数据库既有事实"
+              : "求解器给出满足约束的可行解、但未证明它是最优（内存态为确定性贪心），非数据库既有事实"
+          }
+          data-testid="multiobj-badge"
+        >
+          {occ.data
+            ? occ.data.optimal
+              ? "CP-SAT 可证最优 · 推演结果（非数据库事实）"
+              : "优选解（可行 · 未证最优） · 推演结果（非数据库事实）"
+            : "推演结果（非数据库事实）"}
         </span>
       </div>
 
@@ -127,7 +144,7 @@ function MultiObjWhatifInner() {
       <div className={styles.noteInfo} data-testid="multiobj-input-disclosure" style={{ fontSize: 12, margin: "2px 0 6px" }}>
         ⓘ 订单簿为<b>本租户真实 Order</b>（真 so/数量/单价，与全局推演同源）；<b>营收 = 数量 × 单价</b>（真值）·
         <b>违约金 = 数量 × 优先级违约单价</b>·<b>换型成本 = 数量 × 换型单价</b>（后二者为推演口径系数，真实订单簿无此字段）。
-        产线按化学体系（NCM/LFP）建占用池、合同按客户建额度；下方由<b>真 cross_object_occupancy 求解器</b>计算，改权重→最优真漂移。
+        产线按化学体系（NCM/LFP）建占用池、合同按客户建额度；下方由<b>真 cross_object_occupancy 求解器</b>计算，改权重→优选真漂移。
       </div>
 
       {/* KILL-MOCK-RED：优化器未接入/求解失败 → 显式披露，绝不让空/0 冒充真实结果 */}
@@ -150,10 +167,10 @@ function MultiObjWhatifInner() {
         </div>
       ) : null}
 
-      {/* ① 各目标当前值 —— 真值口径（KILL-MOCK·带单位）：当前权重下「最优方案」的各目标值（营收 Σ获排 / 违约金 Σ被挤 /
+      {/* ① 各目标当前值 —— 真值口径（KILL-MOCK·带单位）：当前权重下「优选方案」的各目标值（营收 Σ获排 / 违约金 Σ被挤 /
           换型成本 Σ获排换型），随权重此消彼长。营收/违约金亿元、换型成本万元。 */}
       <div style={{ fontSize: 12, opacity: 0.7, margin: "6px 0 2px" }} data-testid="multiobj-objvalues-caption">
-        当前权重下<b>最优方案</b>的各目标值（<b>推演结果</b> · 带真实单位 · 随权重变）
+        当前权重下<b>优选方案</b>的各目标值（<b>推演结果</b> · 带真实单位 · 随权重变）
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", margin: "4px 0 8px" }} data-testid="multiobj-objvalues">
         {OBJ_KEYS.map((k) => (
@@ -228,7 +245,7 @@ function MultiObjWhatifInner() {
       {occ.data ? (
         <div className={styles.noteAmber} data-testid="multiobj-displaced-note" style={{ marginTop: 6 }}>
           在手 {scenario.orders.length} 单 · 化学体系产线容量覆盖率 60% → 被挤 {displacedCount} 单
-          {displacedCount ? `：${occ.data!.displaced.map((id) => rowById.get(id)?.id ?? id).join("、")}（产线容量/合同额度约束下的最优取舍，改权重可换人）` : "（当前权重下全部获排）"}
+          {displacedCount ? `：${occ.data!.displaced.map((id) => rowById.get(id)?.id ?? id).join("、")}（产线容量/合同额度约束下的优选取舍，改权重可换人）` : "（当前权重下全部获排）"}
         </div>
       ) : null}
       {whatif.error || occ.error ? <div className={styles.noteRed}>求解失败：{String((whatif.error || occ.error)?.message ?? "")}</div> : null}

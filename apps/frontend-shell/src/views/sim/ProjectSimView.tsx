@@ -232,10 +232,10 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
           fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.6,
         }}
       >
-        <span>⚠ 当前排程受<strong style={{ color: "var(--amber-txt)" }}>全局主计划</strong>约束——本页仅在既定框架内做单项目细排；跨订单的产能取舍以全局联合最优为准。</span>
+        <span>⚠ 当前排程受<strong style={{ color: "var(--amber-txt)" }}>全局主计划</strong>约束——本页仅在既定框架内做单项目细排；跨订单的产能取舍以「接单组合优选」页的全局联合方案为准。</span>
         <span style={{ marginLeft: "auto", display: "inline-flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
           {orderParam && <span data-testid="proj-from-global" style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent-txt)" }}>← 自全局页 {orderParam} 下钻</span>}
-          <Link to="/v/global-sim" data-testid="proj-goto-global-batch" style={{ color: "#6c7bf6", fontWeight: 600, textDecoration: "none", borderBottom: "1px dashed rgba(108,123,246,.55)" }}>把这批一起求全局最优 →</Link>
+          <Link to="/v/global-sim" data-testid="proj-goto-global-batch" style={{ color: "#6c7bf6", fontWeight: 600, textDecoration: "none", borderBottom: "1px dashed rgba(108,123,246,.55)" }}>把这批一起做组合优选 →</Link>
           <Link to="/v/global-sim" data-testid="proj-goto-global-reraise" style={{ color: "var(--accent-txt)", textDecoration: "none", borderBottom: "1px dashed rgba(76,144,240,.5)" }}>接不住？回全局重排 →</Link>
         </span>
       </div>
