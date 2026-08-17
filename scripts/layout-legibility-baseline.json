@@ -14,8 +14,9 @@
           "viewportUsePct": 79.7,
           "misalignedGroups": 0,
           "overflowPx": 0,
-          "textEls": 602,
-          "rowGroups": 15
+          "overflowEls": 0,
+          "textEls": 601,
+          "rowGroups": 14
         },
         "1280x800": {
           "minFontPx": 12,
@@ -24,8 +25,9 @@
           "viewportUsePct": 77.1,
           "misalignedGroups": 0,
           "overflowPx": 0,
-          "textEls": 602,
-          "rowGroups": 15
+          "overflowEls": 0,
+          "textEls": 601,
+          "rowGroups": 14
         }
       }
     }
