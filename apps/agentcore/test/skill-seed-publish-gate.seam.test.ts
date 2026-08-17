@@ -149,7 +149,10 @@ describe("WO-REFGATE-ENT · F14 · 出厂技能被同一道发布门补问一遍
   it("③ 注册表读不出来（抛错）→ REGISTRY_UNREACHABLE + 原因原文，**绝不**记 CLEAN（「我没找到」≠「它不存在」）", async () => {
     const repos = await seedSkillsIntoRepos();
     const dc = createMockDataCore();
-    dc.catalog.discover = async () => { throw new Error("ECONNREFUSED datacore:4001"); };
+    // WO-PUBLISH-REFPROBE 论域订正：探针的 solver 切面读 `solverRegistry`（求解器全集注册表），
+    // 不再读 `discover`（给模型看的候选清单）。桩必须打在探针**真读**的那张表上，
+    // 否则模拟不出"注册表不可用"，测试却因为"注册表健康 ⇒ CLEAN"而绿 —— 假绿。
+    dc.catalog.solverRegistry = async () => { throw new Error("ECONNREFUSED datacore:4001"); };
     const logs: CapturedLog[] = [];
 
     const report = await auditSeededSkills({ repos, dataCore: dc, tenantId: SEED_TENANT, logger: captureLogger(logs) });
@@ -163,7 +166,7 @@ describe("WO-REFGATE-ENT · F14 · 出厂技能被同一道发布门补问一遍
   it("③ 注册表返回空集 → REGISTRY_EMPTY，同样不是干净（第二层 fail-open：空集 ≠ 都合法）", async () => {
     const repos = await seedSkillsIntoRepos();
     const dc = createMockDataCore();
-    dc.catalog.discover = async () => ({ items: [] });
+    dc.catalog.solverRegistry = async () => ({ items: [] }); // 同上：桩挪到探针真读的那张表
     const report = await auditSeededSkills({ repos, dataCore: dc, tenantId: SEED_TENANT });
     expect(report.status).toBe<SeedSkillGateReport["status"]>("REGISTRY_EMPTY");
     expect(report.unavailableReason).toContain("空集");

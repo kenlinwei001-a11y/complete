@@ -62,9 +62,11 @@ const statusOf = async (t: TestApp, id: string): Promise<string | undefined> => 
 describe("WO-SKILL-REFCLOSURE-A · skill 发布路的引用可校验门（接缝：HTTP → 探针 → DataCore 注册表）", () => {
   // ——— 金丝雀：先自证 mock 注册表确实认得真 key、确实不认得假 key ———
   // 否则下面每一条"报 422"都可能只是因为注册表本身是空的（那测的就不是我要测的东西）。
-  it("金丝雀：mock 求解器目录含 capacity_forecast、不含假 key（否则本文件全部断言失去意义）", async () => {
+  it("金丝雀：mock 求解器全集注册表含 capacity_forecast、不含假 key（否则本文件全部断言失去意义）", async () => {
     const t = await createTestApp();
-    const { items } = await t.dataCore.catalog.discover({ tenantId: "demo", userId: "u", roles: [] } as never, "solvers");
+    // WO-PUBLISH-REFPROBE 论域订正：金丝雀必须验**探针真读的那张表**（`solverRegistry`）。
+    // 继续验 `discover` 就是"金丝雀站错岗"——它证明的是另一张表没瞎，而不是本文件依赖的那张。
+    const { items } = await t.dataCore.catalog.solverRegistry({ tenantId: "demo", userId: "u", roles: [] } as never);
     const keys = items.map((i: { key: string }) => i.key);
     expect(keys).toContain(REAL_SOLVER);
     expect(keys).not.toContain(DEAD_SOLVER);
@@ -160,6 +162,10 @@ describe("WO-SKILL-REFCLOSURE-A · skill 发布路的引用可校验门（接缝
     const t = await createTestApp();
     const id = await createSkill(t, "no_ref", []);
     let called = 0;
+    // WO-PUBLISH-REFPROBE 论域订正：探针的 solver 切面读 `solverRegistry`（求解器全集注册表）
+    // 而不再是 `discover`。两个都打桩——本条要断言的是"一次注册表都没查"，
+    // 只盯已经不被读的那个方法，这条会因为"桩根本没被碰"而恒绿（空跑）。
+    t.dataCore.catalog.solverRegistry = async () => { called++; return { items: [] }; };
     t.dataCore.catalog.discover = async () => { called++; return { items: [] }; };
     const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${id}/publish?force=true`, headers: H });
     expect(pub.statusCode).toBe(200);
@@ -171,21 +177,22 @@ describe("WO-SKILL-REFCLOSURE-A · skill 发布路的引用可校验门（接缝
     const t = await createTestApp();
     const id = await createSkill(t, "empty_registry", [{ kind: "solver", key: REAL_SOLVER, required: true }]);
     // 把注册表打成空集：旧 `if (known.size > 0)` 会跳过整段比对 ⇒ missing 恒空 ⇒ 发布成功。
-    t.dataCore.catalog.discover = async () => ({ items: [] });
+    // WO-PUBLISH-REFPROBE 论域订正后，探针的 solver 切面读 `solverRegistry`，故桩挪到这张表。
+    t.dataCore.catalog.solverRegistry = async () => ({ items: [] });
 
     const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${id}/publish?force=true`, headers: H });
 
     expect(pub.statusCode).toBe(503);
     const err = (pub.json() as { error: { code: string; message: string } }).error;
     expect(err.code).toBe("REF_PROBE_UNAVAILABLE");
-    expect(err.message).toContain("求解器目录"); // 说清是哪一步失败，不是笼统"探针失败"
+    expect(err.message).toContain("求解器全集注册表"); // 说清是哪一步失败，不是笼统"探针失败"
     expect(await statusOf(t, id)).toBe("DRAFT"); // 「我没找到」≠「它不存在」⇒ 不得放行
   });
 
   it("③ 第一层 fail-open：注册表**抛错** → 503 REF_PROBE_UNAVAILABLE 且带原始错因，未落库", async () => {
     const t = await createTestApp();
     const id = await createSkill(t, "broken_registry", [{ kind: "solver", key: REAL_SOLVER, required: true }]);
-    t.dataCore.catalog.discover = async () => { throw new Error("ECONNREFUSED datacore:4001"); };
+    t.dataCore.catalog.solverRegistry = async () => { throw new Error("ECONNREFUSED datacore:4001"); }; // 同上：桩挪到探针真读的那张表
 
     const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${id}/publish?force=true`, headers: H });
 

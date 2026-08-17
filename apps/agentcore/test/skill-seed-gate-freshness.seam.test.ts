@@ -148,15 +148,19 @@ describe("WO-SEEDGATE-FRESHNESS · 缺陷 A · 审计必须按请求现算，不
   it("A · 启动时 DataCore 没起来 → 恢复后越过 TTL 再问，必须给出 CLEAN（不再永久播报不可用）", async () => {
     const repos = await seedSkillsIntoRepos();
     const dc = createMockDataCore();
-    const healthy = dc.catalog.discover;
-    dc.catalog.discover = async () => { throw new Error("ECONNREFUSED datacore:4001"); };
+    // WO-PUBLISH-REFPROBE 论域订正后，探针的 solver 切面读的是 `solverRegistry`（求解器**全集**注册表）
+    // 而不再是 `discover`（给模型看的候选清单，论域缺 GENERIC 那 20 条、带 query 还 ≤20 截断）。
+    // 打桩必须跟着挪到探针真读的那张表上——桩打在探针不读的方法上，等于什么都没模拟，
+    // 而测试还会因为"注册表健康"而绿：这正是本仓一直在猎的假绿形态。
+    const healthy = dc.catalog.solverRegistry;
+    dc.catalog.solverRegistry = async () => { throw new Error("ECONNREFUSED datacore:4001"); };
 
     // 启动那一瞬：DataCore 还没起来
     const boot = await auditSeededSkills({ repos, dataCore: dc, tenantId: SEED_TENANT });
     expect(boot.status).not.toBe<SeedSkillGateReport["status"]>("CLEAN");
 
     // DataCore 起来了，运维隔 3 分钟回来看
-    dc.catalog.discover = healthy;
+    dc.catalog.solverRegistry = healthy;
     atClock(T_PLUS_3MIN);
     const after = await getFreshSeedSkillGateReport({ repos, dataCore: dc, tenantId: SEED_TENANT });
 
@@ -226,11 +230,12 @@ describe("WO-SEEDGATE-FRESHNESS · 缺陷 B · 病因与观测量必须对齐（
     return auditSeededSkills({ repos, dataCore: dc, tenantId: SEED_TENANT });
   }
 
+  // WO-PUBLISH-REFPROBE 论域订正：探针的 solver 切面读 `solverRegistry`，桩随之挪（理由见上一处注释）。
   const THROWS = (dc: ReturnType<typeof createMockDataCore>): void => {
-    dc.catalog.discover = async () => { throw new Error("ECONNREFUSED datacore:4001"); };
+    dc.catalog.solverRegistry = async () => { throw new Error("ECONNREFUSED datacore:4001"); };
   };
   const EMPTY = (dc: ReturnType<typeof createMockDataCore>): void => {
-    dc.catalog.discover = async () => ({ items: [] });
+    dc.catalog.solverRegistry = async () => ({ items: [] });
   };
 
   it("B · 注册表**抛错** → REGISTRY_UNREACHABLE + 上游原始错误原文（不吞、不改写）", async () => {

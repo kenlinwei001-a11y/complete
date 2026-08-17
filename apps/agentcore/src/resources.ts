@@ -21,7 +21,7 @@ export type ProbeScope = "solvers" | "rules" | "objectTypes";
 export type RefProbeUnavailableReason = "REGISTRY_ERROR" | "REGISTRY_EMPTY";
 
 const PROBE_SOURCE: Record<ProbeScope, string> = {
-  solvers: "求解器目录（DataCore catalog.discover(\"solvers\")）",
+  solvers: "求解器全集注册表（DataCore catalog.solverRegistry）",
   rules: "已发布规则库（DataCore rules.listPublishedRuleKeys）",
   objectTypes: "本体对象类型（DataCore ontology.listObjectTypeKeys）",
 };
@@ -116,7 +116,25 @@ export async function probeMissingRefs(
     objectTypes: [...new Set(refs.objectTypes ?? [])],
   };
   if (want.solverKeys.length > 0) {
-    const known = await knownKeys("solvers", async () => (await dataCore.catalog.discover(ctx, "solvers")).items.map((i) => i.key));
+    // WO-PUBLISH-REFPROBE · 论域订正（由 plan 发布路的**存量金丝雀当场报红逼出来的**，不是人想起来的）：
+    //
+    // 原读 `catalog.discover(ctx, "solvers")`。实测它**不度量"这个 key 能不能被引用"**：
+    //   ① 论域窄 —— A 侧 `discover` 只取 `[...SOLVER_CATALOG, ...COCKPIT_SOLVER_CATALOG]`
+    //      （实测 22+18=40），**整张 `GENERIC_SOLVER_CATALOG`（20 条）不在里面**；
+    //      而 `solverRegistry` 取 `ALL_SOLVER_CATALOG`（60），其 docstring 明写「与 `SOLVER_KEYS`
+    //      键集相等，catalog.test 守」「不做 ≤20 截断（治理页需全量）」。
+    //   ② 判据错位 —— 运行时能不能调，判据是 `SOLVER_KEYS`
+    //      （`apps/datacore/src/solvers/service.ts` 内 `SOLVER_KEYS.includes(solverKey)`），
+    //      `generic_inference` 在其中；而它在 `discover` 里查无此物。
+    //   ③ 用途本就不同 —— `discover` 的 docstring 自陈是「带关键词的发现（agent 上下文预算）」，
+    //      带 query 时还 `slice(0,20)`。它是**给模型看的候选清单**，不是存在性注册表。
+    //
+    // 实证后果（若不订正）：出厂计划 `ceo_whatif`（`invoke_solver generic_inference`）
+    // 在**生产**环境会被这道门当场判成"死路"而拒绝发布 —— 而它运行时明明跑得通。
+    // **一道会误杀正确计划的门，比没有门更坏**：它把人训练成绕过门。
+    //
+    // 订正只动"读哪张表"，不动 fail-closed 语义：读不出/空集仍抛 503（`knownKeys` 未变）。
+    const known = await knownKeys("solvers", async () => (await dataCore.catalog.solverRegistry(ctx)).items.map((i) => i.key));
     missing.solvers = want.solverKeys.filter((k) => !known.has(k));
   }
   if (want.ruleKeys.length > 0) {
