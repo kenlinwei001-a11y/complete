@@ -21,6 +21,77 @@
  * 否则就成了"注释替代码撒谎"（`EdgeActivePanel.module.css` 记着这条教训）。
  */
 
+/* ══ WO-SANDBOX-CONFIG-COLLAPSE · 折叠横幅 ═══════════════════════════════════
+ *
+ * 本段**只管折叠态**，上面那些（`.cfg` 两列比例 / 卡片 / 图 / 算式清单）一个字没动 ——
+ * 上一张单刚做完的展开态内容不在本单的写入边界里。
+ *
+ * ⚠ 真正把面板折起来的是 `SandboxConfigPanel.tsx` 里的**行内 `display`**，不是这里的类。
+ *   本文件只负责横幅长什么样。理由写在那个文件的头注：vitest `css:false` ⇒ CSS module
+ *   在 jsdom 里量不到，把折叠判据落在类名上，本单自己的测试就成了摆设。
+ * ⛔ 与本文件其余部分同一条：**一个十六进制都不许写死**，全部走 tokens 的语义变量。
+ */
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 横幅本身。收起时它是这一块在屏上仅剩的记号，故按「可点的一条」来做：
+   整条可点（不是只有右端一个小箭头 —— 小热区在 300px 窄栏里尤其难点）。 */
+.bar {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  width: 100%;
+  margin: 0;
+  padding: 7px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--txt);
+  font: 400 13px/1.5 var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.bar:hover {
+  border-color: var(--accent);
+}
+/* 键盘焦点必须看得见（整条是唯一入口，焦点丢了就没有别的路进去了）。 */
+.bar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.shell[data-open="1"] .bar {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.barTitle {
+  font: 700 13px/1.5 var(--font-sans);
+  color: var(--txt);
+}
+.barSep {
+  color: var(--line2);
+}
+/* 计数是**现算的真数**，用等宽数字排 —— 位数变化时横幅不抖。 */
+.barStat {
+  font: 400 13px/1.5 var(--font-sans);
+  color: var(--muted);
+}
+.barStat b {
+  color: var(--txt);
+  font-variant-numeric: tabular-nums;
+}
+/* 「展开/收起」推到最右：它是动作提示，不该混在三个数中间被读成第四个数。 */
+.barHint {
+  margin-left: auto;
+  font: 400 12px/1.5 var(--font-sans);
+  color: var(--accent-txt);
+}
+
 .cfg {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);

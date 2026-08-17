@@ -167,6 +167,24 @@ export interface SandboxConsoleProps {
    */
   configZone?: ReactNode;
   /**
+   * WO-SANDBOX-CONFIG-COLLAPSE · 配置面板**当前是否展开**（宿主持有那份 state）。
+   *
+   * 它决定的只有一件事：`.zones` 走**上下两行**还是回到 `300px | 1fr`。
+   *
+   * ── 为什么这一个布尔值就是「地铁图回不回得来」的开关 ──────────────────────────
+   * 上一张单让两区**都**占整行（`zoneFullRow`），于是画布被排到第二行、跟在整个左区之后。
+   * 真浏览器实测：画布区顶边 **1440×900 → 1453px · 1280×800 → 1472px**，全在折线以下。
+   * 收起时改回两栏 ⇒ 画布回到第一行右侧，顶边与左区同高 ⇒ 回到第一屏。
+   *
+   * ⚠ 这就是「折叠 ≠ 首屏」那条判据的落点：**只把面板收起来并不会把画布拉回来** ——
+   *   收起后左区仍有方案环 / 指挥台 / 控制条一路往下排，画布只要还在第二行就仍在折线以下。
+   *   故本单的验收判据是**直接量画布 top**，不是量控件数变少了多少。
+   *
+   * ⚠ 默认 `true` = **上一张单的行为**（传了 configZone 就整行），
+   *   六个不传 `configZone` 的直接挂载点更是一点没碰。
+   */
+  configExpanded?: boolean;
+  /**
    * WO-SANDBOX-V3 · **③下区内容 = 影响带**（PRD §1③）：逐节点指标影响 ＋ 财务指标随扰动的动态变化。
    *
    * 同样由宿主提供：这两半都要读**推演会话的世界态**（`sessionId` / `world` / `baseSnapshot`），
@@ -251,6 +269,7 @@ export function SandboxConsole({
   controlBar,
   inputZone,
   configZone,
+  configExpanded = true,
   impactZone,
   ontologyCanvas,
   rail = [],
@@ -674,10 +693,19 @@ export function SandboxConsole({
             `sandbox-three-zone.seam.test.tsx` 两向都咬：
             ① 默认**不渲染/不可见**；② 展开后**同一批 testid、同样的文本**全部回来。
           ══════════════════════════════════════════════════════════════════════ */}
-      <div className={styles.zones} data-testid="sandbox-zones">
+      {/*
+        `data-fullrow` 是**给判据看的那一份真相**：CSS module 的类名在 vitest（`css:false`）里
+        量不到，只断言 className 等于什么都证明不了。属性两边都读得到 —— jsdom 里能断言，
+        真浏览器里也就是它在驱动下面那两个 `zoneFullRow`（同一个布尔，不是第二份状态）。
+      */}
+      <div
+        className={styles.zones}
+        data-testid="sandbox-zones"
+        data-fullrow={configZone && configExpanded ? "1" : "0"}
+      >
         {/* ── ① 左区：扰动因素输入（**唯一输入区**）──────────────────────── */}
         <aside
-          className={configZone ? `${styles.zoneInput} ${styles.zoneFullRow}` : styles.zoneInput}
+          className={configZone && configExpanded ? `${styles.zoneInput} ${styles.zoneFullRow}` : styles.zoneInput}
           data-testid="sandbox-zone-input"
         >
           <div className={styles.zoneHead}>
@@ -810,7 +838,7 @@ export function SandboxConsole({
         {/* ── ② 主区：业务端到端路线图（`ChainLineMapView` 提为主画布；物理拓扑 /
                链路阶段 / 本体拓扑降为**主区内的档位**，不再与路线图平级抢位）──────── */}
         <section
-          className={configZone ? `${styles.zoneCanvas} ${styles.zoneFullRow}` : styles.zoneCanvas}
+          className={configZone && configExpanded ? `${styles.zoneCanvas} ${styles.zoneFullRow}` : styles.zoneCanvas}
           data-testid="sandbox-zone-canvas"
         >
         {/* ── 中：画布（一块画布多模式）─────────────────────────────────────── */}

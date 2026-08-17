@@ -350,6 +350,22 @@ const PAGES = [
     // 扫描根 = 外壳内容区。**不含左侧导航**：导航属 pages/ShellLayout.tsx，
     // 与本页不是同一个交付单元，算进来会让「换一个页面」与「改一次导航」在同一个数上互相污染。
     rootSelector: "main",
+    /**
+     * WO-SANDBOX-CONFIG-COLLAPSE · **首屏锚点 = 这一屏的主角**。
+     *
+     * 为什么单独立一项、不复用 `firstScreenCtrls`：控件数是**密度**，锚点是**位置**，
+     * 两者可以同时朝相反方向走。WO-SANDBOX-CONFIG-UX 实测就是这个形态 ——
+     * 控件 36→25（密度变好）而主画布被挤到折线以下（位置变坏），当时**没有任何一道门会红**。
+     * 形态（铁律 0.6 句式）：
+     *   > 「我用『第一屏控件数变少』当作『主画布在第一屏』的证据，而前者并不度量后者。」
+     *
+     * 选的是**区容器**（`sandbox-zone-canvas`）不是里面某张具体的图：画布有四个模式
+     * （地铁图/物理拓扑/链路阶段/本体拓扑），锚在模式上会让「换默认模式」这件无关的事把本项打红。
+     */
+    anchor: {
+      selector: '[data-testid="sandbox-zone-canvas"]',
+      label: "主画布区（地铁图所在的那一区）",
+    },
     login: { tenant: "demo", username: "planner", password: "demo1234" },
   },
 ];
@@ -667,6 +683,7 @@ async function main() {
           route: page.route,
           viewport: { width: vp.width, height: vp.height },
           rootSelector: page.rootSelector,
+          anchorSelector: page.anchor?.selector ?? null,
           login: page.login,
         });
         measured[page.id][vp.key] = r;
@@ -691,6 +708,15 @@ async function main() {
         const label = k === "overflowUnreachable" ? "其中·真够不着的" : `(参考) ${k}`;
         console.log(`  ${label.padEnd(22)}${cells}`);
       }
+      if (page.anchor) {
+        const cells = VIEWPORTS.map((v) => {
+          const a = measured[page.id][v.key].anchor;
+          const h = measured[page.id][v.key].viewport.h;
+          return (a?.found ? `${a.top}/${h}${a.inFirstScreen ? " ✓" : " ✗"}` : "没命中 ⇒RC2").padStart(11);
+        }).join("");
+        console.log(`  ${`首屏锚点 top/视口高`.padEnd(22)}${cells}`);
+        console.log(`  ↳ 锚点 = ${page.anchor.label}（\`${page.anchor.selector}\`）· 判据 top < 视口高。`);
+      }
       const anyOverflow = VIEWPORTS.some((v) => (measured[page.id][v.key].overflowEls || 0) > 0);
       if (anyOverflow) {
         console.log(
@@ -711,6 +737,39 @@ async function main() {
       for (const vp of VIEWPORTS) {
         const cur = measured[page.id][vp.key];
         const where = `${page.id} @ ${vp.key}`;
+
+        /**
+         * ①ʹ 首屏锚点（**绝对判据，不走棘轮，也不走 FLOORS**）。
+         *
+         * 不走 FLOORS 的原因：FLOORS 的阈值是常数，而本项的阈值是**视口高**（900 / 800 两档），
+         * 写成常数就必须挑一个，那样在另一个视口上量的就不是「第一屏」了。
+         *
+         * ⚠ **两种失败必须分开报**（这一条就是变异反证要咬的地方）：
+         *   · `found === false` ⇒ 锚点选择器没命中 ⇒ **RC=2「工具坏了」**，不是「版面不合格」。
+         *     画布真被删了也走这一支 —— 此时报「锚点不在首屏」会把「内容没了」误读成「排版靠下」，
+         *     两者处置方向相反。
+         *   · `found === true 且 top ≥ 视口高` ⇒ **RC=1**，这才是「主角被挤到折线以下」。
+         */
+        if (page.anchor) {
+          const a = cur.anchor;
+          if (!a || !a.found) {
+            toolBroken(
+              `${where} · 首屏锚点选择器没命中：${page.anchor.selector}（${page.anchor.label}）。`,
+              `⇒ 判「工具坏了 / 锚点元素不存在」，**不许**判成「锚点不在首屏」—— ` +
+                `前者是选择器过期或元素被删（改代码），后者是版面问题（改样式），处置方向相反。`,
+            );
+            return;
+          }
+          if (!a.inFirstScreen) {
+            failures.push(
+              `${where} · **${page.anchor.label}不在第一屏**：顶边 top = ${a.top}px ≥ 视口高 ${cur.viewport.h}px` +
+                `（要滚 ${a.top - cur.viewport.h + 1}px 才看得见它的第一个像素）。\n` +
+                `     判据：\`${page.anchor.selector}\` 的 getBoundingClientRect().top < 视口高。\n` +
+                `     ⚠ 元素**存在且已渲染**（height=${a.height}px）—— 这是位置问题，不是内容被删。`,
+            );
+          }
+        }
+
         // ① 绝对阈值
         for (const [key, f] of Object.entries(FLOORS)) {
           const v = cur[key];
