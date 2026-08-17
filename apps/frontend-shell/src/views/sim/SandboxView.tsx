@@ -1374,16 +1374,14 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                   value={effPStateVar}
                   onChange={(e) => setPStateVar(e.target.value)}
                 >
-                  {/* WO-STATEVAR-DISPLAYNAME：下拉显中文名，`value` 仍是裸键（提交给引擎的是接线名）。
-                      查不到名字的照旧显裸键 —— 下拉里没有第二行可放接线名，故用 `title` 兜住。 */}
-                  {(cfg.stateVars.length > 0 ? cfg.stateVars : [effPStateVar]).map((v) => {
-                    const lab = stateVarLabel(v, cfg.stateVarNames);
-                    return (
-                      <option key={v} value={v} title={lab.named ? `${lab.text}（状态变量 ${lab.key}）` : lab.key}>
-                        {lab.text}
-                      </option>
-                    );
-                  })}
+                  {/* WO-STATEVAR-DISPLAYNAME：下拉显中文名，`value` 仍是**裸键**（提交给引擎的是接线名）。
+                      查不到名字的照旧显裸键。⛔ 不挂原生 `title`（规范 §2 R-UI-3，见 KPI 那段注释）；
+                      接线名由 `value` 承载，测试与深链接都认它。 */}
+                  {(cfg.stateVars.length > 0 ? cfg.stateVars : [effPStateVar]).map((v) => (
+                    <option key={v} value={v}>
+                      {stateVarText(v, cfg.stateVarNames)}
+                    </option>
+                  ))}
                 </select>
 
                 <span className={styles.sub}>方式 / 幅度</span>
@@ -1887,7 +1885,11 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                  * ⚠ **testid 仍用裸键** `sandbox-kpi-${r.v}`：它是测试与深链接的接线名，
                  *   跟着中文名走会把全仓十余处 `getByTestId` 一起打红（改的是展示层，不是接线名）。
                  * ⚠ **不新增 DOM 节点**：本区受 KPI 分层/密度纪律约束（见上方长注释），
-                 *   多一个 span 会动到 declutter/density 两组用例数的判据。接线名改挂 `title`。
+                 *   多一个 span 会动到 declutter/density 两组用例数的判据。
+                 * ⚠ **接线名走 `aria-label`，不许用原生 `title`**（规范 §2 R-UI-3）：原生 tooltip 由操作系统
+                 *   绘制、永远画在最上层、移开后滞留，本仓 2026-08-10 真出过遮挡事故。
+                 *   初稿这里写的就是 `title`，被 `sandbox-ui-integrate.seam.test.tsx` 的原生 title 棘轮
+                 *   **当场抖出**（84→85）—— 机器先说话的又一例，不是人想起来的。
                  */
                 const cell = (r: { v: string; avg: number }) => {
                   const lab = stateVarLabel(r.v, cfg.stateVarNames);
@@ -1896,7 +1898,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                       key={r.v}
                       data-testid={`sandbox-kpi-${r.v}`}
                       data-statevar-named={lab.named ? "true" : "false"}
-                      title={lab.named ? `${lab.text}（状态变量 ${lab.key}）` : `状态变量 ${lab.key}：本体未登记中文名，显示接线名`}
+                      aria-label={lab.named ? `${lab.text}（状态变量 ${lab.key}）` : `状态变量 ${lab.key}：本体未登记中文名，显示接线名`}
                     >
                       {lab.text} <b data-testid={`sandbox-kpi-${r.v}-val`}>{r.avg.toFixed(1)}</b>
                     </span>

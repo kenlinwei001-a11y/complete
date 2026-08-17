@@ -449,11 +449,12 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
             <tbody>
               {diffRows.map((d) => (
                 <tr key={`${d.objectId}|${d.stateVar}`} data-testid={tid(`diff-${d.objectId}-${d.stateVar}`)}>
-                  {/* WO-STATEVAR-DISPLAYNAME：变量列改显人话名，接线名留在 `title` 里可查。
+                  {/* WO-STATEVAR-DISPLAYNAME：变量列改显人话名；接线名走 `aria-label`，
+                      ⛔ **不用原生 `title`**（规范 §2 R-UI-3：OS 绘制、恒在最上层、移开滞留）。
                       `<code>` 里的 objectId 不动 —— 那是 id，本来就该以原文示人。 */}
                   <td>
                     <code>{d.objectId}</code>
-                    <span className={css.flat} title={`状态变量 ${d.stateVar}`}>
+                    <span className={css.flat} aria-label={`状态变量 ${d.stateVar}`}>
                       .{d.stateVarName}
                     </span>
                   </td>
