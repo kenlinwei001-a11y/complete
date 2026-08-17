@@ -409,7 +409,10 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
             <>
               模板清单 · 后端权威 {authoritative.length} 个
               <InfoPopover topic={zh.opt.info.familySource} testId="ow-family-source-why">
-                <span data-testid="ow-family-source-body">模板族清单来自后端 /a/v1/opt/templates（{authoritative.length} 个 · 权威）</span>
+                {/* 出处（工程师层，不上屏）：读端 GET /a/v1/opt/templates。 */}
+                <span data-testid="ow-family-source-body">
+                  模板族清单由后端下发（{authoritative.length} 个 · 权威口径），不是前端写死的列表
+                </span>
               </InfoPopover>
             </>
           ) : templatesQuery.isLoading ? (
@@ -557,8 +560,11 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
           <div style={{ fontWeight: 600, color: "var(--txt)" }}>
             未接入最优化引擎
             <InfoPopover topic={zh.opt.info.unavailable} testId="ow-unavailable-how">
+              {/* 出处与接法（工程师层，不上屏）：optimize_whatif 需 CP-SAT sidecar（services/optimizer）；
+                  本地内存模式要设环境变量 OPTIMIZER_BASE_URL 并起 sidecar（见 DEPLOY.md），compose 态已自动接入。 */}
               <span data-testid="ow-unavailable-body">
-                optimize_whatif 需 CP-SAT sidecar（services/optimizer）。本地内存模式请设 <span className="mono">OPTIMIZER_BASE_URL</span> 并起 sidecar（见 DEPLOY.md）；compose 态已自动接入。诚实空态·不假渲 Δ。
+                这套环境还没有接上最优化引擎 —— 求解要靠它来算，所以这一页现在给不出方案。
+                需要由管理员在部署时接入；接上之前，这里<b>不会拿估算的数字充数</b>，宁可空着。
               </span>
             </InfoPopover>
           </div>

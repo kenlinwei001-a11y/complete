@@ -2,85 +2,9 @@
  "note": "docs/CONVENTION-ui-information-layering.md §3.3「开发的话不许上屏」棘轮。只数**会渲染出去的字**（JSX 文本 + 文案型属性字面量 + locale 面的全部非键名字面量），注释/变量名/testid 不算。",
  "spec": "docs/CONVENTION-ui-information-layering.md",
  "gate": "scripts/check-dev-jargon-onscreen.mjs",
- "total": 46,
- "byForm": {
-  "未渲染md星号": 27,
-  "接口路径": 9,
-  "内部常量名": 7,
-  "实现细节标识符": 2,
-  "环境变量名": 1
- },
+ "total": 0,
+ "byForm": {},
  "localeLiterals": 1863,
- "files": {
-  "apps/frontend-shell/src/locales/zh.ts": 23,
-  "apps/frontend-shell/src/pages/admin/AgentsPage.tsx": 2,
-  "apps/frontend-shell/src/pages/admin/DataBuilderFlow.tsx": 1,
-  "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx": 1,
-  "apps/frontend-shell/src/pages/admin/OntologyRelationsPage.tsx": 5,
-  "apps/frontend-shell/src/pages/admin/OrgWorldPage.tsx": 1,
-  "apps/frontend-shell/src/pages/admin/PromotePrecheckPanel.tsx": 1,
-  "apps/frontend-shell/src/pages/admin/SkillStructure.tsx": 2,
-  "apps/frontend-shell/src/pages/admin/SolversPage.tsx": 1,
-  "apps/frontend-shell/src/pages/admin/VirtualOpsTeamPanel.tsx": 1,
-  "apps/frontend-shell/src/pages/admin/WorkflowsPage.tsx": 2,
-  "apps/frontend-shell/src/views/OptimizeWhatifView.tsx": 2,
-  "apps/frontend-shell/src/views/RiskBoardView.tsx": 1,
-  "apps/frontend-shell/src/views/capacity/CapacityRampEnvelope.tsx": 1,
-  "apps/frontend-shell/src/views/plan/OrderChainView.tsx": 1,
-  "apps/frontend-shell/src/views/risk/DispositionOptionsPanel.tsx": 1
- },
- "filesByForm": {
-  "apps/frontend-shell/src/locales/zh.ts": {
-   "内部常量名": 3,
-   "未渲染md星号": 18,
-   "接口路径": 2
-  },
-  "apps/frontend-shell/src/pages/admin/AgentsPage.tsx": {
-   "接口路径": 2
-  },
-  "apps/frontend-shell/src/pages/admin/DataBuilderFlow.tsx": {
-   "未渲染md星号": 1
-  },
-  "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx": {
-   "未渲染md星号": 1
-  },
-  "apps/frontend-shell/src/pages/admin/OntologyRelationsPage.tsx": {
-   "接口路径": 3,
-   "实现细节标识符": 2
-  },
-  "apps/frontend-shell/src/pages/admin/OrgWorldPage.tsx": {
-   "未渲染md星号": 1
-  },
-  "apps/frontend-shell/src/pages/admin/PromotePrecheckPanel.tsx": {
-   "未渲染md星号": 1
-  },
-  "apps/frontend-shell/src/pages/admin/SkillStructure.tsx": {
-   "未渲染md星号": 2
-  },
-  "apps/frontend-shell/src/pages/admin/SolversPage.tsx": {
-   "内部常量名": 1
-  },
-  "apps/frontend-shell/src/pages/admin/VirtualOpsTeamPanel.tsx": {
-   "未渲染md星号": 1
-  },
-  "apps/frontend-shell/src/pages/admin/WorkflowsPage.tsx": {
-   "内部常量名": 2
-  },
-  "apps/frontend-shell/src/views/OptimizeWhatifView.tsx": {
-   "接口路径": 1,
-   "环境变量名": 1
-  },
-  "apps/frontend-shell/src/views/RiskBoardView.tsx": {
-   "接口路径": 1
-  },
-  "apps/frontend-shell/src/views/capacity/CapacityRampEnvelope.tsx": {
-   "内部常量名": 1
-  },
-  "apps/frontend-shell/src/views/plan/OrderChainView.tsx": {
-   "未渲染md星号": 1
-  },
-  "apps/frontend-shell/src/views/risk/DispositionOptionsPanel.tsx": {
-   "未渲染md星号": 1
-  }
- }
+ "files": {},
+ "filesByForm": {}
 }
