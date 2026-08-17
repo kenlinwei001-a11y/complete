@@ -78,6 +78,18 @@ const DisruptionRadiusView = lazy(() => import("@/views/DisruptionRadiusView"));
 const BANNER_GAP_PREVIEW = 3;
 
 /**
+ * WO-SANDBOX-DENSITY · 左区动作条**第二层**的名册（存档 / 分支 / 采纳）。
+ *
+ * 入口按钮上那个计数**从这张表算**，不手写一个数字 —— 与阻滞点 summary 的
+ * `sc-impjump-count` 同一条纪律：「summary 说几条，展开后逐条清单必须相等」。
+ * 两侧各数一遍迟早对不上（summary 说 3 条、点开是 2 条，谁也不会发现）。
+ * `sandbox-density.test.tsx` 拿**渲染后的真 DOM** 与入口上的 `data-count` 对账，
+ * 所以这张表写错了会当场红，不是靠人盯。
+ */
+const SANDBOX_SECONDARY_ACTIONS = ["sandbox-checkpoint-btn", "sandbox-branch-btn", "sandbox-adopt-btn"] as const;
+const SANDBOX_SECONDARY_ACTION_COUNT = SANDBOX_SECONDARY_ACTIONS.length;
+
+/**
  * 推演沙盘主决策页（增量 4 · R17「一页看全 数据→推演→溯源→动作→AI」· 配置驱动·零业务常数 R14）。
  *
  * ══ WO-SANDBOX-CONSOLE 改造：本页从「PmDag 单层拓扑 + 就绪雷达 + tick 控制条」变成**一页控制台** ══
@@ -404,6 +416,25 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
    */
   const [mode, setMode] = useState<SandboxMode>("now");
   const [scope, setScope] = useState<SandboxScope>(EMPTY_SANDBOX_SCOPE);
+
+  /**
+   * WO-SANDBOX-DENSITY · 左区动作条的**第二层**开关（默认收起）。
+   *
+   * 为什么这一层用 `display:none` 而**不用 `<details>`**（本单实测，不是照抄传说）：
+   * 闭合 `<details>` 的子节点在 Chromium 141 里 `checkVisibility()` 为 false、命中测试也打不到，
+   * 但 `getBoundingClientRect()` **仍返回非零旧矩形** —— 而版面门 `visible()` 的判据正是
+   * 「计算样式非 none/hidden/opacity0 ＋ 非零矩形」（`scripts/lib/layout-probe.mjs`）。
+   * ⇒ 用 `<details>` 折叠，门照样把折叠里的控件**当第一屏可见控件在数**，屏上看不见、数上不降。
+   * 取证：canonical 那一屏 52 个控件里有 12 个正是闭合 `<details>`（`sandbox-consolidated-links`，
+   * `open===false`）里的深链接 `<a>` —— 本单亲手逐控件 dump 复现，见交单报告①。
+   *
+   * ⚠ 不用条件渲染（`open ? <…/> : null`）的理由同样是实测出来的：
+   *   `sandbox-console.seam` / `befe-e-sim-checkpoint-rollback` / `sim-event-consumers` /
+   *   `ui-smoke-sandbox-p0.mjs` 共 4 处直接 `getByTestId('sandbox-checkpoint-btn')` 等再点，
+   *   条件渲染会让它们全红 —— 而那是**别人单的接线断言**，不由本单（只改版面）推翻。
+   *   `display:none` 保住 DOM ⇒ 接线断言照旧成立，版面由版面门去咬（机器分工，不是两头讨好）。
+   */
+  const [moreActionsOpen, setMoreActionsOpen] = useState(false);
 
   /**
    * ══ WO-U7-U9-REST · 判据 U7：把「我是哪一页」报给同屏问答 ══════════════════════
@@ -1801,18 +1832,50 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
             data-testid="sandbox-controls"
             style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: 10 }}
           >
+            {/*
+              ── WO-SANDBOX-DENSITY · 动作条分两层（**降层，不是删除**）─────────────────
+              判据不是"哪个按钮好看"，是**此刻该做哪一件**：
+               · 第一层 = `推进 tick` —— 这一屏（「现状」）唯一"现在就该做"的动词；
+               · 第二层 = 存档 / 分支 / 采纳 —— 它们都**以"已经推过、已经看过结果"为前提**。
+                 tick=0、零扰动、零分支的默认屏上把三个终点动作平铺出来，正是仓主说的
+                 「第一层看不到重点」：四个同等权重的按钮，屏上没有任何东西告诉你先点哪个。
+              入口 `sandbox-more-actions-toggle` **常驻第一层并写明有几个**（藏起来找不到的
+              抽屉 = 把内容删了 —— 这条与顶栏诊断抽屉同一条纪律）。
+              代价照实说：`采纳此推演结论` 与 `存档检查点` 各多一次点击。
+            */}
             <button className="btn" data-testid="sandbox-tick-btn" disabled={!sessionId || ticking} onClick={onTick}>
               {ticking ? "推进中…" : "推进 tick"}
             </button>
-            <button className="btn sm" data-testid="sandbox-checkpoint-btn" disabled={!sessionId} onClick={onCheckpoint}>
-              存档检查点
+            <button
+              type="button"
+              className="btn sm"
+              data-testid="sandbox-more-actions-toggle"
+              aria-expanded={moreActionsOpen}
+              aria-controls="sandbox-more-actions"
+              data-count={String(SANDBOX_SECONDARY_ACTION_COUNT)}
+              onClick={() => setMoreActionsOpen((v) => !v)}
+            >
+              {moreActionsOpen ? "收起动作" : `更多动作 · ${SANDBOX_SECONDARY_ACTION_COUNT}`}
             </button>
-            <button className="btn sm" data-testid="sandbox-branch-btn" disabled={!sessionId || branching} onClick={onBranch}>
-              {branching ? "分支中…" : "分支（多场景对比）"}
-            </button>
-            <button className="btn sm primary" data-testid="sandbox-adopt-btn" disabled={!sessionId || adopt.isPending} onClick={onAdopt}>
-              {adopt.isPending ? "采纳中…" : "采纳此推演结论"}
-            </button>
+            <div
+              id="sandbox-more-actions"
+              data-testid="sandbox-more-actions"
+              data-open={moreActionsOpen ? "1" : "0"}
+              /* 行内 `display`（不是 CSS module 类）：vitest `css:false` ⇒ CSS module 在 jsdom 里被
+                 打桩成空对象，写进 `.module.css` 的折叠**测试里量不到**，本单自己的判据就成了摆设。
+                 行内样式 jsdom 认，故 `sandbox-density.test.tsx` 能真断言"默认收起"。 */
+              style={{ display: moreActionsOpen ? "flex" : "none", alignItems: "center", gap: 12, flexWrap: "wrap" }}
+            >
+              <button className="btn sm" data-testid="sandbox-checkpoint-btn" disabled={!sessionId} onClick={onCheckpoint}>
+                存档检查点
+              </button>
+              <button className="btn sm" data-testid="sandbox-branch-btn" disabled={!sessionId || branching} onClick={onBranch}>
+                {branching ? "分支中…" : "分支（多场景对比）"}
+              </button>
+              <button className="btn sm primary" data-testid="sandbox-adopt-btn" disabled={!sessionId || adopt.isPending} onClick={onAdopt}>
+                {adopt.isPending ? "采纳中…" : "采纳此推演结论"}
+              </button>
+            </div>
             <div style={{ flex: 1, minWidth: 160 }} data-testid="sandbox-timeline">
               <div className={styles.sub} style={{ marginBottom: 2 }}>
                 tick 时间轴（全局态轨迹 · 模拟态，采纳才经 Action 正门写真值 R4）
