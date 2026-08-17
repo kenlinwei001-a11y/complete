@@ -6,6 +6,7 @@ import { ProvHoverArea, ProvMark } from "@/components/Provenance/ProvTrigger";
 import { GapCard } from "./GapCard";
 import { KitProcurementLegs } from "./KitProcurementLegs";
 import { buildKitOrderVMs, kitReadableRows } from "./kitProcurement";
+import { REF_RE } from "./refToken";
 import zh from "@/locales/zh";
 import styles from "./AnswerBlocks.module.css";
 
@@ -78,9 +79,7 @@ function TableBlockOrKit(props: {
   );
 }
 
-const REF_RE = /⟦ref:([^⟧]+)⟧/g;
-
-/** text：markdown + ⟦ref:provId⟧ → 上标引用角标 */
+/** text：markdown + ⟦ref:provId⟧ → 上标引用角标（REF_RE 见 ./refToken，会话页同源） */
 export function TextBlock({
   markdown,
   taskId,

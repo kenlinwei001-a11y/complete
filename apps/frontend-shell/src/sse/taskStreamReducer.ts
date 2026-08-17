@@ -78,6 +78,14 @@ export type StreamAction =
   | { type: "event"; frame: StreamEvent }
   | { type: "reset" };
 
+/**
+ * 诚实层可选附加字段（N6 CHATUX，additive，类型-only 增设，reducer 行为零变化）：
+ * step.completed / answer.final 载荷可携带 honesty / 统计透传字段；undefined 整格不出。
+ */
+export interface HonestyFields {
+  honesty?: { scope?: string; degradedReason?: string; provenance?: unknown };
+}
+
 export function isTerminalEvent(event: string): boolean {
   return event === "answer.final" || event === "task.failed" || event === "task.cancelled";
 }
