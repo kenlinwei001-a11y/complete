@@ -2,6 +2,11 @@ import { useSearchParams } from "react-router-dom";
 import type { ViewConfigVM } from "@/api/types";
 import { DecisionPlayPanel, readImpedimentEntry } from "./DecisionPlayPanel";
 import EdgeActivePanel from "./sim/EdgeActivePanel";
+// WO-U7-U9-REST · 判据 U7：本页走 App.tsx 专用 route（`v/decision-play`），不经 ViewPage
+// ⇒ 必须自己报到（机制详见 sim/shared.tsx 的 usePageView 头注）。
+// 挂在**壳**上而不是面板里：面板还被 OrderChainView / ChainImpedimentView 嵌入复用，
+// 嵌入态的「本页」是宿主页，不该由它把宿主的 view 键改成 decision-play。
+import { usePageView } from "./sim/shared";
 
 /**
  * 决策推演**页面壳**（renderer=decision-play）。
@@ -21,6 +26,7 @@ import EdgeActivePanel from "./sim/EdgeActivePanel";
  */
 export default function DecisionPlayView({ view }: { view?: ViewConfigVM }) {
   const [params] = useSearchParams();
+  usePageView("decision-play");
   const metricKey = params.get("metricKey") ?? ((view?.layout as { metricKey?: string } | undefined)?.metricKey ?? "");
   const factorId = params.get("factorId") ?? "";
   const impEntry = readImpedimentEntry(params);

@@ -8,7 +8,8 @@ import { useWorkspace, workspaceQueryKey } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import { toast, toastError } from "@/store/toastStore";
 import type { ViewRendererProps } from "../registry";
-import { fmt, useActionDraft } from "./shared";
+import { fmt, useActionDraft, ExportReportButton } from "./shared";
+import type { ProvenanceReport } from "./exportProvenance";
 import { Provenance } from "@/components/Provenance";
 import { SopReschedulePanel } from "./SopReschedulePanel";
 import EdgeActivePanel from "./EdgeActivePanel";
@@ -86,6 +87,46 @@ export default function SopBalanceView(_props: ViewRendererProps) {
   // V{n} = 同月版本按创建时间升序的序号（全局唯一徽章）
   const seq = v ? (versions.data ?? []).filter((x) => x.month === v.month).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)).findIndex((x) => x.id === v.id) + 1 : 1;
 
+  /**
+   * WO-U7-U9-REST · 判据 U9：导出物自带出处与生成时间。
+   * 这页不是单次求解而是**版本仓记录**（五步法状态机），出处 = 记录 id + 状态 + updatedAt ——
+   * 第三方拿这三个值回去查同一版本，才能对上屏上这份内容（版本会被 advance/patch 改写）。
+   * 未选中版本时各段留空 ⇒ 共享件渲染「诚实空态，不补编」（basis 非空照样可导出，空的是内容）。
+   */
+  const buildReport = (): ProvenanceReport => ({
+    docName: zh.sim.sop.title,
+    basis: [
+      `数据源 S&OP 版本仓（GET /a/v1/sop-versions · 记录 ${v?.id ?? "未选中"}）`,
+      `版本口径：月份 ${v?.month ?? "—"} · 状态 ${v ? STATUS_BADGE[v.status].label : "—"} · 更新于 ${v?.updatedAt ?? "—"}`,
+      `版本序号口径：V{n} = 同月版本按创建时间升序的序号（本页徽章同一口径）`,
+    ],
+    sections: [
+      {
+        heading: "版本概览",
+        head: ["项", "值"],
+        rows: v
+          ? [
+              ["月份", v.month],
+              ["状态", STATUS_BADGE[v.status].label],
+              ["版本序号", `V${seq}`],
+              ["供需平衡终值（supFinal）", v.supFinal ?? "—"],
+              ["创建于", v.createdAt],
+            ]
+          : [],
+      },
+      {
+        heading: "决议清单",
+        head: ["决议", "调整量"],
+        rows: (v?.resolutions ?? []).map((r) => [r.name, fmt(r.delta)]),
+      },
+      {
+        heading: "高管会议程",
+        head: ["来源", "议题"],
+        rows: (v?.agenda ?? []).map((a) => [a.source, a.title]),
+      },
+    ],
+  });
+
   return (
     <div data-testid="sop-view">
       <div className={styles.head}>
@@ -95,6 +136,7 @@ export default function SopBalanceView(_props: ViewRendererProps) {
             五步法：产品 → 需求 → 供应 → 财务 → 高管决策会 · 版本状态机 DRAFT → IN_REVIEW → EXEC_MEETING →（定稿 Action 审批）→ FINAL · 定稿后 C22 锁定，任何字段变更走计划版本变更 Action（409 PLAN_LOCKED）。
           </div>
         </div>
+        <ExportReportButton pageKey="sop-balance" build={buildReport} />
       </div>
 
       <div className={styles.sopGrid}>

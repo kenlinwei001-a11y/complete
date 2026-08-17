@@ -3,9 +3,9 @@
   "spec": "docs/CONVENTION-ui-information-layering.md",
   "gate": "scripts/check-ui-first-layer.mjs",
   "generatedFrom": "node scripts/check-ui-first-layer.mjs --tighten",
-  "fileCount": 123,
+  "fileCount": 122,
   "totals": {
-    "first": 5842,
+    "first": 5768,
     "formula": 49,
     "nativeTitle": 124
   },
@@ -616,13 +616,14 @@
       "why": "存量·规范落地前：第一层 66 个信息块；1 处口径/公式未降浮层（R-UI-3）"
     },
     "apps/frontend-shell/src/views/RiskBoardView.tsx": {
-      "first": 206,
+      "first": 205,
       "deferred": 83,
       "formula": 1,
       "prose": 5,
       "sizes": 3,
       "page": "主视图（views 顶层）",
-      "why": "WO-UI-LAYERING-BURNDOWN：字号 14 级→3 级（12/13/19，R-UI-2 达标）。first 227→206·deferred 27→83·formula 4→1·prose 17→5（多为他单在途改动，本单只动字号）。"
+      "why": "WO-UI-LAYERING-BURNDOWN：字号 14 级→3 级（12/13/19，R-UI-2 达标）。first 227→206·deferred 27→83·formula 4→1·prose 17→5（多为他单在途改动，本单只动字号）。WO-U7-U9-REST（2026-08-16）：totalFloor 289→288 合理删除落账——旧 risk-plan-export 导出 chip（页脚自称『含口径』却无时间戳无出处的那条）整个退役，换共享 ExportReportButton（第一层仍是一个按钮+一个 ? 记号，且新件自带 InfoPopover 口径浮层）；净少 1 块 = 旧 chip 上那段自称文案随函数一起删除，非静默降层。",
+      "totalFloor": 288
     },
     "apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx": {
       "first": 83,
@@ -979,15 +980,6 @@
       "page": "主视图（views 顶层）",
       "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 84 · deferred 0 · formula 0 · prose 0 · sizes 2）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
     },
-    "apps/frontend-shell/src/views/process/ProcessInstanceDetailView.tsx": {
-      "first": 73,
-      "deferred": 0,
-      "formula": 0,
-      "prose": 8,
-      "sizes": 3,
-      "page": "主视图（views 顶层）",
-      "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 73 · deferred 0 · formula 0 · prose 8 · sizes 3）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
-    },
     "apps/frontend-shell/src/views/process/ProcessWaitView.tsx": {
       "first": 80,
       "deferred": 1,
@@ -1129,8 +1121,8 @@
     }
   },
   "conserve": {
-    "total": 6899,
-    "files": 123,
+    "total": 6826,
+    "files": 122,
     "why": "D5 全局守恒下界 = 建账当时扫描面全体 Σ(first+deferred)，**含未登记文件**。度量对象是内容集合不是单个文件：搬家总量不变 ⇒ 不红；删除总量下降 ⇒ 红。"
   }
 }

@@ -95,11 +95,27 @@ function radiusHandler() {
 }
 
 /** 四页的挂载点：URL → 期望的 view 键 → 该页导出按钮的 testid（先出现的那一个）。 */
-const PAGES: { path: string; viewKey: string; exportTestId: string; handlers: () => RequestHandler[] }[] = [
+const PAGES: { path: string; viewKey: string; exportTestId: string; timeoutMs?: number; handlers: () => RequestHandler[] }[] = [
   { path: "/v/what-if", viewKey: "what-if", exportTestId: "export-report-what-if", handlers: () => [typesHandler([])] },
   { path: "/v/optimize-whatif", viewKey: "optimize-whatif", exportTestId: "export-report-optimize-whatif", handlers: () => [] },
   { path: "/v/cleanroom-attr", viewKey: "cleanroom-attr", exportTestId: "export-report-cleanroom-bottleneck", handlers: () => [typesHandler(CR_TYPES), bottleneckHandler()] },
   { path: "/v/disruption-radius", viewKey: "disruption-radius", exportTestId: "export-report-disruption-radius", handlers: () => [typesHandler(DR_TYPES), objectsHandler(), radiusHandler()] },
+  // WO-U7-U9-REST · 补上前一张单故意没做的两页（沙盘视图键定案 = sim-sandbox，论据见其 effect 头注）：
+  // sim-sandbox 与 decision-play 都是专用 route，同病同源（不经 ViewPage ⇒ setView 零调用）。
+  // 沙盘的 sim 端点走全局 mock（handlers.ts 自带 /a/v1/sim/*），decision_play 同理。
+  // 沙盘是全仓最重的页（lazy chunk + 自建会话 + 全套右栏面板），首跑实测 13s+ ⇒ 显式给足超时，
+  // 这不是「等它慢慢绿」：断言本身不变，只是加载时间本来就长。
+  { path: "/v/sim-sandbox", viewKey: "sim-sandbox", exportTestId: "export-report-sim-sandbox", timeoutMs: 60_000, handlers: () => [] },
+  { path: "/v/decision-play", viewKey: "decision-play", exportTestId: "export-report-decision-play", handlers: () => [] },
+  // WO-U7-U9-REST · U9 剩八页的另外六页：全是 ViewPage 分发页（U7 由 ViewPage 自己接对线，
+  // 这里一并断言只是顺手加 coverage），本单给它们各挂了共享 ExportReportButton（判据 U9）。
+  // 六页都是全应用渲染 + 真求解器 mock 的重页，超时给足（断言没松，只是加载本来就慢）。
+  { path: "/v/project-sim", viewKey: "project-sim", exportTestId: "export-report-project-sim", timeoutMs: 60_000, handlers: () => [] },
+  { path: "/v/global-sim", viewKey: "global-sim", exportTestId: "export-report-global-sim", timeoutMs: 60_000, handlers: () => [] },
+  { path: "/v/risk", viewKey: "risk", exportTestId: "export-report-risk", timeoutMs: 60_000, handlers: () => [] },
+  { path: "/v/order-chain", viewKey: "order-chain", exportTestId: "export-report-order-chain", timeoutMs: 60_000, handlers: () => [] },
+  { path: "/v/plan-generate", viewKey: "plan-generate", exportTestId: "export-report-plan-generate", timeoutMs: 60_000, handlers: () => [] },
+  { path: "/v/sop-balance", viewKey: "sop-balance", exportTestId: "export-report-sop-balance", timeoutMs: 60_000, handlers: () => [] },
 ];
 
 const SENTINEL = "__sentinel-not-a-real-view__";
@@ -121,7 +137,7 @@ describe("判据 U7 · 专用 route 的推演页必须把「我是哪一页」�
       await screen.findByTestId(p.exportTestId);
 
       expect(useSessionStore.getState().view).toBe(p.viewKey);
-    });
+    }, p.timeoutMs);
   }
 
   it("反向哨兵：哨兵值不会自己变回真键（证上面的断言不是恒真）", () => {
@@ -146,7 +162,7 @@ describe("判据 U9 · 每个推演页都能导出一份第三方可复算的文
       // 静默降层等于删除：口径降进浮层后，第一层必须留下那个可见记号。
       const infoId = p.exportTestId.replace("export-report-", "info-export-");
       expect(screen.getByTestId(infoId)).toBeInTheDocument();
-    });
+    }, p.timeoutMs);
   }
 
   it("拼出的文档同时含 生成时间 + 口径与出处 + 表格本体（逐字咬，不咬「有没有导出按钮」）", () => {

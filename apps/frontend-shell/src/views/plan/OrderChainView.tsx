@@ -15,7 +15,8 @@ import type { AffectedOrderRowVM, AffectedOrdersOutputVM } from "@/api/types";
 import type { ViewRendererProps } from "../registry";
 // WO-SCOPE-HONESTY-FE：三个求解器共用的「这次算的是谁」唯一实现（不在本页另做一套）。
 import { KitScopeBar, QuoteScopeBar, type KitScopeVM, type QuoteScopeVM } from "../ScopeHonesty";
-import { fmt, SnapshotBadge } from "../sim/shared";
+import { fmt, SnapshotBadge, ExportReportButton } from "../sim/shared";
+import type { ProvenanceReport } from "../sim/exportProvenance";
 import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
 import { InfoPopover } from "@/components/InfoPopover";
 import zh from "@/locales/zh";
@@ -404,6 +405,51 @@ export default function OrderChainView({ view }: ViewRendererProps) {
   if (isLoading || !data) return <div className="empty-state">{zh.common.loading}</div>;
   const { out, snapshotVersion } = data;
 
+  /**
+   * WO-U7-U9-REST · 判据 U9：导出物自带出处与生成时间。
+   * 复算三要素全进 basis：求解器 + 本体快照版本 + 基地筛选口径 ——
+   * 筛选值少写，第三方跑全量就复不出屏上这份裁剪后的清单。
+   */
+  const buildReport = (): ProvenanceReport => ({
+    docName: zh.orderChain.title,
+    basis: [
+      `求解器 affected_orders（本体快照 ${snapshotVersion} · 同输入同输出）`,
+      `基地筛选：${baseFilter || "全部"}（跨基地订单计入其首个关联风险基地）`,
+      `经营口径：营收 = 套数 × SEG_REGISTRY 参考单价（万元/套）÷ 1e4（亿）；毛利 = 营收 × 参考毛利率（估算口径，非财务记账数）`,
+    ],
+    sections: [
+      {
+        heading: "汇总",
+        head: ["项", "值"],
+        rows: [
+          [zh.orderChain.sumOrders, out.summary.orderCount],
+          [zh.orderChain.sumQty, out.summary.totalQty],
+          [zh.orderChain.sumCusts, out.summary.custCount],
+          [zh.orderChain.sumRevenue, fmt(out.summary.revenue)],
+        ],
+      },
+      {
+        heading: "受影响订单明细",
+        head: ["订单号", "客户", "应用细分", "型号", "数量（套）", "交期", "延误（天）", "关联风险基地"],
+        rows: out.rows.map((r) => [
+          r.so,
+          r.cust,
+          r.seg,
+          r.model,
+          r.qty,
+          r.due,
+          r.delay,
+          r.risks.map((k) => k.base).join("、"),
+        ]),
+      },
+      {
+        heading: "待解决问题归并",
+        head: ["分类", "问题", "涉及订单数", "涉及收入（亿）", "根因概述"],
+        rows: out.problems.map((p) => [categoryLabels[p.category] ?? p.category, p.title, p.orderCount, fmt(p.financeImpact), p.rootCauseSummary]),
+      },
+    ],
+  });
+
   // 经营数据看板：逐订单 econ 派生 → 按应用细分 / 风险基地聚合。
   // 产能=真订单量；营收/毛利=量×SEG_REGISTRY 参考单价/毛利率（可溯·估算口径·缺 SEG 数诚实 0）；库存无真源→下方诚实"—"。
   const empty = (): EconAgg => ({ cap: 0, sales: 0, gp: 0 });
@@ -446,6 +492,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
             <SnapshotBadge snapshotVersion={snapshotVersion} tool="affected_orders" />
           </div>
         </div>
+        <ExportReportButton pageKey="order-chain" build={buildReport} />
       </div>
 
       {/* ORD：订单全链推演（订单中心，order_fullchain 三判 + 统一结论 + 11 节点 DAG）。问题归并作超集保留在下方。 */}
