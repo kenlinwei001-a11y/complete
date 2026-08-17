@@ -148,6 +148,43 @@ TS 允许少写形参实现接口，于是 mock 的**具体类型比契约窄**�
 
 ---
 
+## J · 交付底座：发布门的完整性（WO-PUBLISH-REFPROBE · 2026-08-17）
+
+> 仓主原话：「**我需要完成一个可交付的系统，不是 demo 系统。**」
+> 这一条的具体形态：**发布出去的计划里挂着一条查无此物的规则，运行时才炸，
+> 而发布那一刻屏上说「发布成功」。**
+
+| # | 事实 | 状态 |
+|---|---|---|
+| J1 | `CatalogService.publishPlan` 确证携带规则引用（调 `planStepRuleRefs` 并 `reportRefs` 上报 A）**却从不调 `probeMissingRefs`** ⇒ 引用一条不存在 / 仍是 DRAFT 的规则，计划照样发布成功 | ✅ **已接线**。探针挂在 `publishPlan` **扼颈点**上（非路由），三个生产调用方一次全覆盖：`POST /api/v1/catalog/plans/:planId/publish` · `POST /b/v1/scenarios/:key/publish-chain` · `PlanBuilderService.publishCanvas`。只挂路由会把 `publish-chain` 留敞 = 把「接错地方」换个地方再犯一次 |
+| J2 | fail-open 还是 fail-closed | ✅ **裁决 fail-closed**，与另三条发布路同口径：确证缺失 → `422 PLAN_REF_UNRESOLVED`，位置在 `repos.plans.update` **之前** ⇒ **未落库**；注册表读不出 / 空集 → `503 REF_PROBE_UNAVAILABLE` 冒泡。**论据**：(a) 发布是低频、有人值守、可重试的动作，运行时是高频、无人值守、用户在等答案 —— 把错误从后者移到前者是纯赚；(b) 探针对「注册表不可用」已经 fail-closed，若对「确证缺失」反而 fail-open，就是**最不确定时拒绝、最确定时放行**的逻辑倒置；(c) 本仓凭据解析同为 fail-closed |
+| J3 | **存量影响（工单要求实测、不许推理）** | ✅ **实测过，而且实测把裁决改了**。第一遍扫全部 32 条种子计划：**24 条过不了门**。分两层定性：**(a) mock 保真缺口** —— agentcore mock 的 `discover("solvers")` 只有 **5 条**而真 A 侧 **40 条**；**(b) 一条真生产缺陷** —— `ceo_whatif` 引用的 `generic_inference` 在 A 侧 `SOLVER_KEYS`（运行时可调）里，却**不在** `discover("solvers")` 的论域里 ⇒ 若不订正，这道新门会在**生产**误杀一条跑得通的计划 |
+| J4 | 由 J3 逼出的**探针论域订正** | ✅ 探针 solver 切面由 `catalog.discover(ctx,"solvers")` 改读 `catalog.solverRegistry`。**证据三条**：① A 侧 `discover` 论域 = `[...SOLVER_CATALOG, ...COCKPIT_SOLVER_CATALOG]`（实测 22+18=40），**整张 `GENERIC_SOLVER_CATALOG`（20 条）不在里面**，带 query 时还 `slice(0,20)`；② 其 docstring 自陈用途是「带关键词的发现（agent 上下文预算）」——**给模型看的候选清单，不是存在性注册表**；③ `solverRegistry` 论域 = `ALL_SOLVER_CATALOG`，docstring 明写「与 `SOLVER_KEYS` 键集相等」「不做 ≤20 截断」。**形态**：「我用『能力发现目录』当作『求解器存在性注册表』的证据，而前者并不度量后者。」fail-closed 语义一字未动 |
+| J5 | 复验方式 | ✅ **接缝测试**（14 例全绿）`apps/agentcore/test/plan-publish-refprobe.seam.test.ts`：全部从 HTTP 端点打进去、逐条断言**落库与否**；含三条发布路各驱一次、反向金丝雀（正常引用必须 200）、注册表空集/抛错 → 503、**存量金丝雀**（全部种子计划的引用必须都能过门）、结构绊线。**变异反证实跑**：摘掉探针调用 → **7 条红，且红在「expected 200 to be 422」（死路被放行）而非「函数不存在」**，反向金丝雀仍绿 |
+| J6 | 顺带订正一条上游转述 | ✅ `G-GATE-ROSTER-HANDCOPIED` 原文写「`plan-builders` 发布走 `publishCanvas`→`publishPlan` **同路同病**」—— 实测**不准**：`publishCanvas` 有自己的前置 `validateRefs` 已调探针，只是探的是**画布 DSL 节点**而非**编译后 steps**，属「探得不全」，与「一点没探」修法不同。本体已回写 |
+
+**残留（⛔ 未派，别读成已闭）**：
+1. **探针 kind 覆盖仍是 3/7** —— 只校验 `solver`/`rule`/`ontologyType`；计划步骤里的 `resolve_slice.sliceKey`、
+   `create_action_draft.actionType` 等跨系统引用**今天仍无人校验**。（与 `ref-closure:check` 已登记的
+   `constraint`/`slice`/`workflow`/`agent` 四 kind 缺口同族。）
+2. **出厂种子计划从没走过发布门** —— 它们经 `repos.plans.insert` 旁路以 PUBLISHED 落库。
+   skill 侧有 `auditSeededSkills` 做启动期补问（`GET /b/v1/ops/skill-seed-gate` 诚实位），
+   **plan 侧没有对应物**。「门装上了」不等于「库里的东西都过了门」——这正是 WO-REFGATE-ENT · F14 的原病。
+   **可派的具体单**：`WO-SEED-PLAN-GATE-AUDIT` —— 照 `skill-publish-gate.ts` 的
+   `auditSeededSkills` / `writeSeedGateReport` / `getFreshSeedSkillGateReport` 三件套，
+   给 plan 做一份同构的启动期补问 + `GET /b/v1/ops/plan-seed-gate` 诚实位（六态口径照抄，
+   `NOT_RUN`/`REGISTRY_*`/`GATE_UNAVAILABLE` 都不算干净）。轻画像，只碰 `apps/agentcore/src/**`。
+3. **mock `catalog.discover("solvers")` 保真缺口未修** —— 仍 5 条 vs 真 A 侧 40 条。
+   论域订正后它已不在探针路径上，但 `server.ts` 的目录透传与 executor 的 `discover` 工具仍吃它，
+   ⇒ 内存模式下模型看到的求解器候选比生产少 8 倍。**可派的具体单**：`WO-MOCK-DISCOVER-PARITY` ——
+   让 mock 的 `discover("solvers")` 从 `MOCK_SOLVER_REGISTRY` 现算（而不是再手抄一份），
+   并按真 A 侧口径排除 `GENERIC_SOLVER_CATALOG` 那一档；配一条 parity 断言钉住条数
+   （同 `mock-solver-registry-parity` 的做法）。轻画像。
+   ⚠️ 这条本身就是 `G-GATE-ROSTER-HANDCOPIED` 的同族：mock 里那 5 条是**手抄名册**，
+   `mocks/clients.ts` 的注释已自陈「三条已逐条核对过真目录再加入」——**手抄就会漏，而漏掉的永远绿**。
+
+---
+
 ## ⛔ 未派（我欠的）
 
 1. **步骤模板层** —— B4 的前置
