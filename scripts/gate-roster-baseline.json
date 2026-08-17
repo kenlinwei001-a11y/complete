@@ -277,9 +277,17 @@
     "check-verdict-rollup.mjs:CAN": {
       "verdict": "criteria",
       "why": "裁定汇总的金丝雀样例（含 docs/CHECK-*.md 路径与期望符号）。判据本体：路径在这里是**样例数据**不是受检对象，受检对象是同文件的 FILES。"
+    },
+    "check-layout-legibility.mjs:FLOORS": {
+      "verdict": "criteria",
+      "why": "这是**判据本体**，不是受检对象集合：五个绝对阈值（minFontPx≥12 · bodyFontPx≥13 · overflowPx=0 · misalignedGroups=0 · overflowUnreachable=0）。凭什么它不随仓库演进而变：**12 不是自由参数** —— 它取自本仓 check-text-legibility.mjs 的 FLOOR_PX，而那个 12 是该门判据 A（required=max(3.0,72/S_eff)）与本仓调色板的**交点**（10px 要 7.2:1，而达到 7.2 需要的灰会比二级文本还亮 ⇒ 层级反转，故 10px 中文在本调色板内无解）。调色板变了那个交点自己会动，届时两道门一起改，而不是这里多一页少一页。另外四个是硬判据（横向滚动条 / 行不对齐 / 内容被裁死）—— 数值无歧义、与仓库规模无关。⚠ 刻意**不**照抄参照物 venture_twin_v2_7.html 的 body 13.5 / small 10：那是另一个产品的一屏，且它那几档装拉丁字母、本页这几档装中文。"
+    },
+    "check-layout-legibility.mjs:PAGES": {
+      "verdict": "roster",
+      "why": "**真债，照实登记**：本门棘轮守的页集合写死为 1 页（sim-sandbox）。**差集 = 11 页**（project-sim · global-sim · risk · order-chain · decision-play · what-if · optimize-whatif · cleanroom-attr · disruption-radius · plan-generate · sop-balance）。**该从哪儿现算**：`parsePrdTable()`（scripts/check-sim-ux-criteria.mjs）读 docs/PRD-harness-ux-adoption.md §4 表 —— 本门的 `--survey` 已经在用它现算这 12 页，**所以不是「算不出来」，是「故意只守一页」**：WO-SANDBOX-LAYOUT-HARNESS 的范围是「造尺子 + 用一页证明它有牙」，一天硬铺 12 页棘轮产出的会是 12 个没人维护的装饰件。**差什么才能修**：那 11 页里 3 页今天就卡在绝对下限上（plan-generate 9px · project-sim 9.5px · decision-play 10px，均为页内自有小字号）—— 先把这 3 页字号提到 12px，再 `--tighten` 把 12 页一次性种进基线，本条即可从 roster 降为 computed。**已加缓解措施**（该门守的命题原话：「写死则必须同批加一条『名单 vs 现算』的一致性断言」）：本门每次运行都断言 PAGES ⊆ 现算名册（有名册外的页 ⇒ RC=2），并**打印未进棘轮的 11 页页名** —— 「量到 ≠ 守住」这件事因此每次都被机器说出来，而不是沉默地待在源码里。"
     }
   },
-  "candidateCount": 69,
-  "rosterCount": 12,
+  "candidateCount": 71,
+  "rosterCount": 13,
   "ratchetHigh": 12
 }
