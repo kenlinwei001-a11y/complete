@@ -1,6 +1,6 @@
 name: gates
 
-# 治理门禁（不靠自觉）：每个 PR / push 必须五包构建+测试全绿，且全部本体/闭包/去电池/PRD 门禁通过。
+# 治理门禁（不靠自觉）：每个 PR / push 必须六包构建+测试全绿，且全部本体/闭包/去电池/PRD 门禁通过。
 # 仓主在 Settings → Branches 开启分支保护并勾选本 workflow（gates）为必过项 → 不绿合不进。
 #
 # WO-INTEGRATION-LOOP 修正两处**真实假绿风险**：
@@ -48,8 +48,8 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # 五包 build + 静态门 + 五包串行 test，全部经 gate.sh 显式捕获退出码（防假绿单一入口）
-      - name: Gate (build + 静态门 + 五包串行 test)
+      # 六包 build + 静态门 + 六包串行 test，全部经 gate.sh 显式捕获退出码（防假绿单一入口）
+      - name: Gate (build + 静态门 + 六包串行 test)
         run: bash scripts/gate.sh
 
       - name: Governance gates
