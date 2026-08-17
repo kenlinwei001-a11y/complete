@@ -48,13 +48,16 @@ export const ONTO_FACTORS: OntoFactor[] = [
   // 层1 设备
   { mark: "①", num: 1, layer: 1, name: "节拍 CT", op: "×" },
   { mark: "②", num: 2, layer: 1, name: "通道数", op: "×" },
-  { mark: "③", num: 3, layer: 1, name: "可用率 OEE-A", op: "×" },
-  { mark: "④", num: 4, layer: 1, name: "性能 OEE-P", op: "×" },
+  // WO-OEE-UNIFY 裁决 C 标注：③ 展示的是 bottleneck_matrix「设备OEE」= Equipment.oee_current
+  // = EquipmentOEE 日事实表 oee 的 7 日均值（综合 OEE），**不是**分解原子「可用率 OEE-A」——
+  // 旧名把综合值挂在原子名下（G-OEE-DUAL-TRUTH 同屏混用），已按仓主裁决改正并标明口径。
+  { mark: "③", num: 3, layer: 1, name: "设备OEE（综合·oee_current·EquipmentOEE 事实表7日均值）", op: "×" },
+  { mark: "④", num: 4, layer: 1, name: "③分解·性能 OEE-P（oeeP·事实表7日均值）", op: "×" },
   { mark: "⑧", num: 8, layer: 1, name: "利用率", op: "×" },
   { mark: "⑯", num: 16, layer: 1, name: "班次时长×班次", op: "×" },
   // 层2 工序
   { mark: "⑥", num: 6, layer: 2, name: "工序良率", op: "×" },
-  { mark: "⑦", num: 7, layer: 2, name: "质量 OEE-Q", op: "×" },
+  { mark: "⑦", num: 7, layer: 2, name: "③分解·质量 OEE-Q（oeeQ·事实表7日均值）", op: "×" },
   { mark: "⑨", num: 9, layer: 2, name: "良率爬坡", op: "×" },
   { mark: "⑰", num: 17, layer: 2, name: "在岗出勤/熟练", op: "×" },
   // 层3 产线

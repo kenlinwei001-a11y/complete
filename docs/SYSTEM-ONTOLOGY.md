@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 系统本体 · 平台自我元模型（"大脑"）
 
 > **这是平台的自我元模型——用平台自己的本体语言（对象类型 / 链路 / 规则 / 行动 / 检测 / 数据流）给平台自身建模。**
@@ -2249,3 +2250,5 @@ R4 `SANDBOX_MODE_ORIGIN_VIEW` · R5 `CONSOLIDATED_INTO_SANDBOX` 的 `via:"static
 2. **跨域切片 = 闭包门的验证对象**：尤其 `sys.orch.query_to_answer`（中枢链）与 `sys.ingest.build_closure`（构建链）——全链闭包门就是"这两条切片必须端到端通"。
 3. **域 = 影响分析的单位 + 权限/责任的边界**：一个需求先落到域 → 再沿域内切片定位 → 跨域节点提示涟漪范围。
 4. **可落库 dogfooding**：这些切片用平台自己的 `SliceSpec`(root→hops) 形态写 → 未来把系统本体注册为平台对象后，可用平台的 `executeSlice` 真去"切系统自己"、用规则引擎校验系统不变量、用推演做"改这个节点影响哪些切片"的 what-if。**用平台分析平台自身的闭环在此落地。**
+=======
+>>>>>>> origin/claude/handoff-wo-oee-unify

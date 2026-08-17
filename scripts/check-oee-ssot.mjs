@@ -13,6 +13,11 @@
  *
  * 三套两两「最差 10 台」名单重叠 **0/10 · 0/10 · 1/10** —— 不是精度差异，是**指向不同的设备**。
  *
+ * ✅ 2026-08-16 状态更新（WO-OEE-UNIFY · 仓主裁决 C）：三套口径已归一 —— ③ 事实表当权威，
+ * ①② 派生自它（单一写入方，`oee_daily_7d` 物化已撤，详见本体 §8 闭合段）。上表是**建门时的实测**，
+ * 保留作历史背景。本门命题不变：同屏 ≥2 套口径仍必须各自标明 —— 归一消除的是「数打架」，
+ * 不是「可以不标口径」。
+ *
  * **本门不替仓主选哪一套当权威**（那是 `docs/DECISION-oee-ssot.md` 要的裁决）。
  * 本门只守一条**无论选哪套都成立**的命题：
  *
@@ -109,15 +114,16 @@ function toolBroken(reason, detail) {
 /* ══ 口径注册表（单一来源 · 数值不入表，本表只声明「哪些串代表哪一套口径」）════════ */
 const CALIPERS = {
   NAMEPLATE: {
-    zh: "① 铭牌三原子（Equipment.oeeA×oeeP×oeeQ）",
+    zh: "① 设备三原子（Equipment.oeeA/oeeP/oeeQ）",
     // 触及锚：代码里读这三个原子，或屏上印出它们的业务名
     anchors: ["oeeA", "oeeP", "oeeQ", "OEE-A", "OEE-P", "OEE-Q", "OEE可用率", "OEE表现性", "OEE质量率"],
-    // 披露串：屏上出现它，用户才分得出「这个数是铭牌口径」
+    // 披露串：屏上出现它，用户才分得出「这个数是哪套口径」
     disclose: ["oeeA", "oeeP", "oeeQ", "铭牌"],
   },
   TS_SNAPSHOT: {
-    zh: "② 时序聚合快照（Equipment.oee_current · oee_daily_7d@v1）",
+    zh: "② 设备综合 OEE（Equipment.oee_current）",
     // `设备OEE` 是后端 bottleneck_matrix 的 BN 因子名，其值经 capacity.ts equipmentOee() 出 = oee_current
+    // （WO-OEE-UNIFY 裁决 C 后：oee_current = EquipmentOEE 事实表 7 日均值；原 oee_daily_7d@v1 物化已撤）
     anchors: ["oee_current", "设备OEE"],
     disclose: ["oee_current", "时序"],
   },
@@ -130,21 +136,10 @@ const CALIPERS = {
 const CALIPER_KEYS = Object.keys(CALIPERS);
 
 /* ══ 存量豁免（只许降不许升 · 每条必须写 why）════════════════════════════════════ */
-const LEGACY = {
-  "apps/frontend-shell/src/views/capacity/factorOntology.ts": {
-    why:
-      "本门建门当天（2026-08-16）扫出的**唯一**存量违规，且是一条真缺陷、不是误报：" +
-      "该文件 `ONTO_FACTORS` 行 51 把圈号 ③ 命名为「可用率 OEE-A」（口径①的**分解原子**），" +
-      "而 `BN_FACTOR_TO_MARK` 行 91 又把后端 `bottleneck_matrix` 的因子「设备OEE」映到**同一个** ③ —— " +
-      "后端那个数经 `apps/datacore/src/solvers/capacity.ts:264 equipmentOee()` 出，实为口径② `oee_current`。" +
-      "于是产能派生 DAG 第 1 层把「口径②的数」挂在「口径①的名」下，并与 ④性能OEE-P / ⑦质量OEE-Q 并排展示为乘法分解，" +
-      "而三者相乘不等于任何一个真 OEE（实测 demo seed42/S：jinhua-slitting-winding-E1 铭牌 0.860133 vs 时序 0.710781）。" +
-      "**修法必须动 `apps/frontend-shell/**` 与 ③ 的语义归属，属产品口径裁决的下游**，" +
-      "而 WO-OEE-SSOT 的范围边界是「只读 + 写文档 + 写门」，改前端不在本单授权内 —— " +
-      "故此处**如实挂账**而不是把判据放软（放软 = 拿假绿换红）。",
-    owner: "docs/DECISION-oee-ssot.md §4 裁决落地后的第一张后续 WO",
-  },
-};
+// 2026-08-16 WO-OEE-UNIFY：建门当天挂账的唯一一条（factorOntology.ts 圈号 ③ 名不副实）
+// 已随仓主裁决 C 落地修好（③ 改名标明「综合·oee_current·EquipmentOEE 事实表7日均值」，
+// ④⑦ 标「③分解·oeeP/oeeQ·事实表7日均值」），按棘轮同批删除——豁免清空，判据未放软。
+const LEGACY = {};
 const LEGACY_KEYS = new Set(Object.keys(LEGACY));
 
 /* ══ 扫描面 ════════════════════════════════════════════════════════════════════ */
