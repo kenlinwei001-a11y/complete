@@ -156,4 +156,12 @@ describe("buildSessionSetup", () => {
     const spec = buildSessionSetup({ agent: AGENT, agentSystemCore: "CORE", grantedToolNames: [] });
     expect(JSON.parse(JSON.stringify(spec))).toEqual(spec);
   });
+  // WO-DSH-N4 · A11：tenantId 端到端流向 —— buildSessionSetup 填充 = agent.tenantId，
+  // 且 JSON wire 往返后字段不丢（harness 侧 mcp namespace 池键的唯一来源；wire 形态机器核）。
+  it("fills tenantId from agent.tenantId and keeps it across the JSON wire roundtrip (A11)", () => {
+    const spec = buildSessionSetup({ agent: AGENT, agentSystemCore: "CORE", grantedToolNames: [] });
+    const wire = JSON.parse(JSON.stringify(spec)) as Record<string, unknown>;
+    expect(wire.tenantId).toBe("t1");
+    expect(wire.tenantId).toBe(AGENT.tenantId);
+  });
 });
