@@ -64,6 +64,7 @@ import {
   FRONTEND_SRC, ENDPOINTS_FILE, REGISTRY_FILE, APP_FILE,
 } from "./lib/fact-usage.mjs";
 import { parseRendererFiles, parseStaticRouteFiles } from "./lib/sim-page-roster.mjs";
+import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
 
 const ROOT = process.cwd();
 const BASELINE = join(ROOT, "scripts/fact-usage-baseline.json");
@@ -98,6 +99,11 @@ function main() {
     for (const b of canary.bad) console.error("   · " + b);
     process.exit(2);
   }
+
+  /* 基线写入器金丝雀（baseline-writer-honesty 判据③）：本门会写棘轮基线，
+   * 开跑前先证共享写入器没坏 —— 坏了 ⇒ RC=2，不许带着坏写入器产出任何结论。 */
+  const bc = baselineDocCanary();
+  if (!bc.ok) gateToolBroken(`基线写入器金丝雀不过（${bc.got}）`, `期望：${bc.want}`);
 
   const srcDir = join(ROOT, FRONTEND_SRC);
   if (!existsSync(srcDir) || !statSync(srcDir).isDirectory()) {
@@ -208,21 +214,31 @@ function main() {
 }
 
 function writeBaseline(now, r) {
-  writeFileSync(BASELINE, JSON.stringify({
-    _doc: [
-      "事实使用注册表的**规模棘轮**基线（WO-FACT-USAGE-REGISTRY · 门 scripts/check-fact-usage.mjs）。",
-      "这里存的是**下限**不是快照：注册表现算自前端 AST，条数只许涨不许跌。",
-      "跌 = 某个事实不再被任何页认领 ⇒ B-3 拿这份清单去比时，掉出去的那条永远绿。",
-      "有意收缩（页删了 / 读取位真撤了）走 `--tighten` 显式改账，不许静默。",
-    ],
-    min: now,
-    lastSeen: {
-      byKind: r.stats.byKind,
-      pages: r.stats.pages,
-      equalExpected: r.stats.equalExpected,
-      coverage: r.coverage,
+  // 基线写入只许走共享写入器（baseline-writer-honesty:check 判据②认「写入点实参里」的
+  // buildBaselineDoc 调用，抽成变量即判 HAND_ROLLED）：人手改过的 _doc / 人手新增的顶层键
+  // 逐字节留存（判据①②），min / lastSeen 是算出的字段永远覆盖 prev（判据④）。
+  const prev = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : null;
+  writeFileSync(BASELINE, JSON.stringify(buildBaselineDoc({
+    prev,
+    generatedBy: `node scripts/check-fact-usage.mjs ${has("--seed") ? "--seed" : "--tighten"}`,
+    prose: {
+      _doc: [
+        "事实使用注册表的**规模棘轮**基线（WO-FACT-USAGE-REGISTRY · 门 scripts/check-fact-usage.mjs）。",
+        "这里存的是**下限**不是快照：注册表现算自前端 AST，条数只许涨不许跌。",
+        "跌 = 某个事实不再被任何页认领 ⇒ B-3 拿这份清单去比时，掉出去的那条永远绿。",
+        "有意收缩（页删了 / 读取位真撤了）走 `--tighten` 显式改账，不许静默。",
+      ],
     },
-  }, null, 2) + "\n");
+    computed: {
+      min: now,
+      lastSeen: {
+        byKind: r.stats.byKind,
+        pages: r.stats.pages,
+        equalExpected: r.stats.equalExpected,
+        coverage: r.coverage,
+      },
+    },
+  }), null, 2) + "\n");
 }
 
 function printCensus(r, endpointMap) {

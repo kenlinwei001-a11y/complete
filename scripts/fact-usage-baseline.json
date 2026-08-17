@@ -6,19 +6,19 @@
     "有意收缩（页删了 / 读取位真撤了）走 `--tighten` 显式改账，不许静默。"
   ],
   "min": {
-    "facts": 454,
-    "multiScreenFacts": 64,
-    "pairs": 546,
+    "facts": 462,
+    "multiScreenFacts": 72,
+    "pairs": 824,
     "caliberDivergent": 6
   },
   "lastSeen": {
     "byKind": {
-      "solver": 148,
+      "solver": 151,
       "object": 49,
-      "rest": 257
+      "rest": 262
     },
     "pages": 80,
-    "equalExpected": 540,
+    "equalExpected": 818,
     "coverage": {
       "lexical": {
         "solver": 39,
@@ -28,8 +28,8 @@
       "ast": {
         "solver": 47,
         "object": 62,
-        "rest": 317,
-        "total": 426
+        "rest": 318,
+        "total": 427
       },
       "solverCovered": true,
       "objectCovered": true,
@@ -37,5 +37,6 @@
       "solverRatio": 1.205,
       "objectRatio": 3.444
     }
-  }
+  },
+  "generatedBy": "node scripts/check-fact-usage.mjs --tighten"
 }

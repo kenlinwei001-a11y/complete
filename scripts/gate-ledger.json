@@ -416,6 +416,27 @@
    "notes": "MANUAL 签字：本门为 WO 专项静态门，已有 npm 别名可手动跑；本体 §7 未宣称它已自动化，故保留手动不推翻任何已归档评审结论。触发时机：改动其 guardedPaths 覆盖的文件时，由该 WO 的 dev 手动跑。是否值得并入 gates 需评估 gate 时长成本（CI 约 28 分钟），该评估属 PRD §2.2 非目标，另立单。",
    "disposition": "MANUAL"
   },
+  "check-fact-usage.mjs": {
+   "alias": "fact-usage:check",
+   "binding": "GATES_CHAIN",
+   "guardedPaths": [
+    "apps/frontend-shell/src/App.tsx",
+    "apps/frontend-shell/src/api/endpoints.ts",
+    "apps/frontend-shell/src/pages/**",
+    "apps/frontend-shell/src/views/**",
+    "scripts/fact-usage-baseline.json",
+    "scripts/lib/fact-usage.mjs",
+    "scripts/lib/sim-page-roster.mjs"
+   ],
+   "escalation": "审核方",
+   "ontologyRef": "§7",
+   "provenRed": {
+    "kind": "MUTATION",
+    "evidence": "docs/AUDIT-fact-usage-registry.md §6（三条变异反证输出原文）+ 收尾单 T1 两发（拆登账 ⇒ gate-ledger:check 判据①红；账写 GATES_CHAIN 但未接链 ⇒ 判据③红）",
+    "note": "建门轮三条变异反证均当场红：A 类型导入重新入图 → RC=2「⑮ 闭包爆炸」；B 动态 import 重新入图 → RC=2「⑯ 把别的页读了什么记到本页头上」；C 基线上调模拟棘轮回退 → RC=1 并指明 --tighten 才是显式改账的路；还原后 RC=0。另有两次「金丝雀全中但扫描面/覆盖错了」被独立口径抓住：① 闭包爆炸（import type 把 registry 拖进 23 个页闭包各 104 文件）；② react-query mutate/isPending 伪事实 256 条（按「必须经 .data」结构判据修掉）。"
+   },
+   "notes": "守「事实 → 读取它的页面集合」注册表不退化（G-SPLITACCOUNT-PROMISE-ONLY 的 B-3 前置）。本门不判两屏值相不相等（归 WO-GATE-B-BROWSER-HARNESS），只守「该比哪两个数」这份清单不缩水。"
+  },
   "check-factlock-anchor.mjs": {
    "alias": "factlock-anchor:check",
    "binding": "GATES_CHAIN",
