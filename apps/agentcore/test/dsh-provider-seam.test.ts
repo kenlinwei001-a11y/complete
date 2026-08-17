@@ -42,6 +42,7 @@ const HARNESS_DIR = join(REPO_ROOT, "packages/dsh-harness");
 const ENGINE_SRC = join(REPO_ROOT, "apps/agentcore/src/engine.ts");
 const RUNNER_SRC = join(REPO_ROOT, "apps/agentcore/src/dsh-runtime/runner.ts");
 const CORDIS_YML = join(HARNESS_DIR, "cordis.yml");
+const CORDIS_POC_YML = join(HARNESS_DIR, "cordis.poc.yml");
 const GATE_SCRIPT = join(REPO_ROOT, "scripts/check-deploy-governance.mjs");
 
 const MODEL_ID = "kimi-k3";
@@ -220,10 +221,20 @@ describe("A1 · 生产 provider 单源常量与 mock 回退根除", () => {
 // ---------------------------------------------------------------------------
 
 describe("A2 · cordis.yml 生产形态与部署治理门", () => {
-  it("yml 含 platform-llm 且不含 mock-llm；真仓门绿；compose 缺 DSH_HARNESS_PROVIDER 行的镜像 ⇒ 门必红", () => {
+  it("yml 含 platform-llm 且不含 mock-llm；poc 专档含 mock-llm 反向锚定；真仓门绿；compose 缺 DSH_HARNESS_PROVIDER 行的镜像 ⇒ 门必红", () => {
     const yml = readFileSync(CORDIS_YML, "utf8");
-    expect(yml).toContain("platform-llm");
-    expect(yml).not.toContain("mock-llm");
+    expect(yml).toContain("- id: platform-llm");
+    // 条目语义（裁决 A 条件 6「不含 mock-llm 条目」）：条目 id 与插件引用双防，
+    // 注释里允许出现迁移说明文字（条目形态才注册适配器，注释不注册）。
+    expect(yml).not.toContain("- id: mock-llm");
+    expect(yml).not.toContain("mock-llm.mjs");
+
+    // 反向锚定（裁决 A 条件 6）：测试专档 cordis.poc.yml 必须含 mock-llm + echo-tool
+    // （E1/E2/smoke/stall 剧本的 fixture），防误删；生产档摘除即靠它兜底。
+    const pocYml = readFileSync(CORDIS_POC_YML, "utf8");
+    expect(pocYml).toContain("- id: mock-llm");
+    expect(pocYml).toContain("- id: echo-tool");
+    expect(pocYml).toContain("- id: platform-llm");
 
     // 正向：真仓门绿，且 DSH_HARNESS_PROVIDER 真进了扫描报告。
     const ok = spawnSync(process.execPath, [GATE_SCRIPT], { cwd: REPO_ROOT, encoding: "utf8" });

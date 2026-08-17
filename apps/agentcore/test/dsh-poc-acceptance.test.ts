@@ -51,15 +51,15 @@ describe("E1 · 配置驱动行为（request/header 为观测点）", () => {
     };
     const runA1 = await runDshAgent(
       { prompt: "p", setup: alpha, provider: "mock", model: "mock" },
-      { harnessDir: HARNESS_DIR, requestTimeoutMs: 30_000 },
+      { harnessDir: HARNESS_DIR, requestTimeoutMs: 30_000, cordisFile: "cordis.poc.yml" },
     );
     const runB = await runDshAgent(
       { prompt: "p", setup: beta, provider: "mock", model: "mock" },
-      { harnessDir: HARNESS_DIR, requestTimeoutMs: 30_000 },
+      { harnessDir: HARNESS_DIR, requestTimeoutMs: 30_000, cordisFile: "cordis.poc.yml" },
     );
     const runA2 = await runDshAgent(
       { prompt: "p", setup: alpha, provider: "mock", model: "mock" },
-      { harnessDir: HARNESS_DIR, requestTimeoutMs: 30_000 },
+      { harnessDir: HARNESS_DIR, requestTimeoutMs: 30_000, cordisFile: "cordis.poc.yml" },
     );
 
     const hA1 = requestHeaders(runA1.events)[0]!;
@@ -101,6 +101,7 @@ describe("E2 · 规则闸（PRE_CHECK deny ⇒ 执行计数 0 + 拦截入流）"
       {
         harnessDir: HARNESS_DIR,
         requestTimeoutMs: 30_000,
+        cordisFile: "cordis.poc.yml",
         env: { PLATFORM_GOV_DENY: "echo_tool", ECHO_COUNT_FILE: denyFile },
       },
     );
@@ -119,7 +120,7 @@ describe("E2 · 规则闸（PRE_CHECK deny ⇒ 执行计数 0 + 拦截入流）"
 
     const baseline = await runDshAgent(
       { prompt: "call echo_tool then answer", setup: { governance: GOV }, provider: "mock", model: "mock" },
-      { harnessDir: HARNESS_DIR, requestTimeoutMs: 30_000, env: { ECHO_COUNT_FILE: baseFile } },
+      { harnessDir: HARNESS_DIR, requestTimeoutMs: 30_000, cordisFile: "cordis.poc.yml", env: { ECHO_COUNT_FILE: baseFile } },
     );
     expect(echoCount(baseFile)).toBe(1);
     expect(baseline.result.ok).toBe(true);

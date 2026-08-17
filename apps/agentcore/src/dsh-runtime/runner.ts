@@ -22,6 +22,12 @@ export interface DshRunnerOptions {
   requestTimeoutMs?: number;
   /** 子进程环境增量（如 PLATFORM_GOV_DENY / ECHO_COUNT_FILE；与 process.env 合并）。 */
   env?: Record<string, string>;
+  /**
+   * WO-DSH-N1-PROVIDER · cordis 配置档文件名（additive·缺省 "cordis.yml" 既有调用方字节兼容）。
+   * 测试专档 "cordis.poc.yml"（= 生产内容 + mock-llm + echo-tool；E1/E2/smoke/stall 剧本用），
+   * 生产档只挂 platform-llm。
+   */
+  cordisFile?: string;
 }
 
 export interface DshRunInput {
@@ -47,17 +53,19 @@ function resolveHarnessDir(opts: DshRunnerOptions): string {
   const dir = opts.harnessDir
     ?? process.env.DSH_HARNESS_DIR
     ?? resolve(process.cwd(), "packages/dsh-harness");
-  if (!existsSync(join(dir, "cordis.yml"))) {
-    throw new Error(`dsh-harness cordis.yml not found under ${dir} (set DSH_HARNESS_DIR)`);
+  const cordisFile = opts.cordisFile ?? "cordis.yml";
+  if (!existsSync(join(dir, cordisFile))) {
+    throw new Error(`dsh-harness ${cordisFile} not found under ${dir} (set DSH_HARNESS_DIR)`);
   }
   return dir;
 }
 
 export async function runDshAgent(input: DshRunInput, opts: DshRunnerOptions = {}): Promise<DshRunOutput> {
   const harnessDir = resolveHarnessDir(opts);
+  const cordisFile = opts.cordisFile ?? "cordis.yml";
   const client = new HarnessClient({
     command: process.execPath,
-    args: [join(harnessDir, "node_modules/@deepseek-ai/dsh-sdk-jsonrpc-demo/lib/bin.js"), "cordis.yml"],
+    args: [join(harnessDir, "node_modules/@deepseek-ai/dsh-sdk-jsonrpc-demo/lib/bin.js"), cordisFile],
     cwd: harnessDir,
     requestTimeoutMs: opts.requestTimeoutMs ?? 120_000,
     env: { ...process.env, ...opts.env },
