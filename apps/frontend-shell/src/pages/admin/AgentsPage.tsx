@@ -35,6 +35,26 @@ function RefEmptyLink({ to, label, testid }: { to: string; label: string; testid
 
 const t = zh.admin.agents;
 
+/**
+ * WO-DSH-P2-UX（N5）· 内核徽标（契约 `AgentRunRecord.kernel`，additive optional）。
+ *
+ * 两态：`EXTERNAL` ⇒ amber 徽标「外部运行时」+ 浮层（未销账期文案含「环检测护栏待补」，D-3）；
+ * `NATIVE` 或**缺失** ⇒ 徽标「原生」+ 中性浮层。缺失 ≡ 原生是**可证的**（字段上线前休眠门 +
+ * 出货 compose 保证外部运行时恒关闭，D-4）——与归属「缺失=未知」**不同案**，绝不显示「未知」。
+ * 文件内私有组件（边界：不新建共享组件文件）。
+ */
+function KernelBadge({ kernel, testId }: { kernel?: "NATIVE" | "EXTERNAL"; testId: string }) {
+  const external = kernel === "EXTERNAL";
+  return (
+    <span data-testid={testId}>
+      <span className={external ? "badge amber" : "badge"}>{external ? c.kernelExternal : c.kernelNative}</span>
+      <InfoPopover topic={c.colKernel} testId={`${testId}-tip`}>
+        <p>{external ? c.kernelExternalTip : c.kernelNativeTip}</p>
+      </InfoPopover>
+    </span>
+  );
+}
+
 const BUILTIN_TOOLS = [
   "resolve_slice",
   "query_objects",
@@ -376,6 +396,8 @@ function AgentOwnRuns({ agent }: { agent: AgentDefinition | null }) {
                     <p>{zh.admin.layer.agentOriginBody}</p>
                   </InfoPopover>
                 </th>
+                {/* WO-DSH-P2-UX（N5）· 「内核」列：与「来源」「归属」正交的第三个事实——哪个内核跑的。 */}
+                <th>{c.colKernel}</th>
                 <th>{c.colVersion}</th>
                 <th>{c.colModel}</th>
                 <th>{c.colIterations}</th>
@@ -392,6 +414,9 @@ function AgentOwnRuns({ agent }: { agent: AgentDefinition | null }) {
                       字段缺失（本单上线前的旧记录）显示 "—"，不冒充「直接运行」。 */}
                   <td data-testid="own-run-origin">
                     {r.origin === "FANOUT" ? c.originFanout : r.origin === "ROOT" ? c.originRoot : c.originUnknown}
+                  </td>
+                  <td data-testid="own-run-kernel">
+                    <KernelBadge kernel={r.kernel} testId={`own-run-kernel-${r.id}`} />
                   </td>
                   <td className="mono" data-testid="own-run-version">
                     {r.agentVersion !== undefined ? `v${r.agentVersion}` : "—"}
@@ -613,6 +638,11 @@ function RunDetail({ item }: { item: QueryHistoryItem }) {
             {/* WO-AGENTRUN-ATTRIBUTION：这一行把「归得上还是归不上」落到**这一次运行**上，
                 而不是让用户拿横幅上的总述去猜。三态取自 run 记录本身，不做任何推断。 */}
             <RunAttribution run={run} />
+            {/* WO-DSH-P2-UX（N5）：内核与归属并排——归谁跑 ≠ 哪个内核跑，两个正交事实各占一行。 */}
+            <div className={styles.noteBody} data-testid="agent-run-kernel-row">
+              <span className={styles.statLabel}>{c.colKernel}：</span>
+              <KernelBadge kernel={run.kernel} testId="agent-run-kernel" />
+            </div>
             <div className={styles.stats} data-testid="agent-run-stats">
               <div className={styles.stat}>
                 <div className={styles.statLabel}>{c.ctxIterations}</div>

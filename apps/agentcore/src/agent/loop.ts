@@ -581,6 +581,9 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     ...attributionFields(opts.attribution),
     // WO-AGENTRUN-FANOUT-PERSIST · 编排位置同上（ROOT / FANOUT + 扇出它的步 id）。
     ...originFields(opts.placement),
+    // WO-DSH-P2-UX（N5）· 内核标识：runAgentLoop 永不在 dsh 分叉下执行
+    // （engine.ts `DSH_HARNESS=1` 分叉在进 loop 之前已返回），故此处恒为内置内核。
+    kernel: "NATIVE",
   });
 
   /**

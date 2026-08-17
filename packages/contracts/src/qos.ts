@@ -741,6 +741,26 @@ export type AgentRunAttribution = z.infer<typeof AgentRunAttributionSchema>;
 export const AgentRunOriginSchema = z.enum(["ROOT", "FANOUT"]);
 export type AgentRunOrigin = z.infer<typeof AgentRunOriginSchema>;
 
+/**
+ * WO-DSH-P2-UX（N5）· 一次运行由**哪个内核**执行（additive · optional）。
+ *
+ * 与 `attribution`（"归属到哪个 Agent"）是**两个正交的问题**，别合成一个
+ * （同 :729 明文纪律）：attribution 回答「归谁跑」，kernel 回答「在哪个内核上跑」——
+ * 一条 REGISTERED 的运行既可能跑在内置内核也可能走外部运行时（engine.ts
+ * `DSH_HARNESS=1` 休眠分叉），合成一个枚举就再也回答不了
+ * 「这个 Agent 的运行里几次走了外部运行时」。
+ *
+ * - `NATIVE`   ：内置 ReAct 循环（`agent/loop.ts runAgentLoop`，永不在 dsh 分叉下执行）。
+ * - `EXTERNAL` ：外部运行时（dsh harness 子进程路径，engine.ts 休眠分叉）。
+ * - **字段整体缺失**：本字段上线**之前**写的旧记录。此时缺失 ≡ `NATIVE` 是**可证的**而非
+ *   猜测 —— 休眠门（`scripts/check-dsh-dormancy.mjs` 判据①）机器守「部署面不设
+ *   DSH_HARNESS 真值」且出货 compose 显式 0 ⇒ 字段上线前的全部 run 记录必然产于内置内核。
+ *   与 `origin`「缺失 ≡ ROOT」（旧 UNIQUE 约束可证）同款可证链；
+ *   与 attribution 缺失=未知**不同案**——归属缺失无从判定（不可证），内核缺失可证。
+ */
+export const AgentRunKernelSchema = z.enum(["NATIVE", "EXTERNAL"]);
+export type AgentRunKernel = z.infer<typeof AgentRunKernelSchema>;
+
 export const AgentRunRecordSchema = z.object({
   id: z.string(), // run_
   taskId: z.string(),
@@ -769,6 +789,12 @@ export const AgentRunRecordSchema = z.object({
   agentVersion: z.number().int().optional(),
   /** 归属形态；缺失 = 本字段上线前的旧记录（未知，不等于 EXPLORATORY）。 */
   attribution: AgentRunAttributionSchema.optional(),
+  /**
+   * WO-DSH-P2-UX（N5）· 执行内核（NATIVE / EXTERNAL，additive optional）。
+   * 与 attribution 正交（归谁跑 ≠ 哪个内核跑）；缺失 = 本字段上线前的旧记录，
+   * 由休眠门 + 出货 compose 可证 ≡ NATIVE（见 AgentRunKernelSchema JSDoc 可证链）。
+   */
+  kernel: AgentRunKernelSchema.optional(),
   /** 运行落库时刻（列表按它倒序；此前 run 记录**没有任何时间字段**，只能靠 taskId 猜）。 */
   createdAt: IsoTime.optional(),
   // -------------------------------------------------------------------------

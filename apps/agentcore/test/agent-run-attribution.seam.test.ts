@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest";
-import type { AgentDefinition } from "@platform/contracts";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { AgentDefinition, SkillDefinition } from "@platform/contracts";
 import { AgentRunRecordSchema } from "@platform/contracts";
 import { createTestApp, debugHeaders, PLANNER, submitQuery, TENANT, waitForTask, type TestApp } from "./helpers.js";
 import { toolUse } from "../src/llm/mock.js";
+import { loadConfig } from "../src/config.js";
+import { computeResidualBudget } from "../src/router/orchestrator.js";
+import { BudgetTracker } from "../src/tools/budget.js";
 
 /**
  * WO-AGENTRUN-ATTRIBUTION · SEAM：一次运行归属到具体 Agent（`G-AGENTRUN-NO-AGENT-ATTRIBUTION` 可归属半边）。
@@ -89,6 +94,9 @@ describe("WO-AGENTRUN-ATTRIBUTION · 运行归属接缝", () => {
     expect(persisted!.tenantId).toBe(TENANT);
     expect(persisted!.attribution).toBe("REGISTERED");
     expect(persisted!.createdAt).toBeTruthy();
+    // WO-DSH-P2-UX（N5）· A6：native 路显式写内核标识 —— runAgentLoop 永不在 dsh 分叉下执行
+    // （engine.ts DSH_HARNESS=1 分叉在进 loop 之前已返回），故这里恒为 "NATIVE"。
+    expect(persisted!.kernel).toBe("NATIVE");
 
     // —— HTTP 读端：按 agent 能查到，且就是库里那条（id 对得上）——
     const res = await listRuns(t, "agt_attr_a");
@@ -244,5 +252,133 @@ describe("WO-AGENTRUN-ATTRIBUTION · 运行归属接缝", () => {
     const run = AgentRunRecordSchema.parse(res.json());
     expect(run.agentId).toBe("agt_both");
     expect(run.attribution).toBe("REGISTERED");
+  });
+});
+
+/**
+ * WO-DSH-P2-UX（N5）· A7 内核标识写入对拍（engine 级，DSH_HARNESS 休眠分叉两臂）。
+ *
+ *  - flag on（DSH_HARNESS=1）⇒ engine.ts 分叉走 dsh harness 子进程 ⇒ `run.kernel === "EXTERNAL"`；
+ *  - flag off（缺省休眠）⇒ 同入口落 native `runAgentLoop` ⇒ `run.kernel === "NATIVE"`。
+ *
+ * 对拍的是**同一个写入面**（`engine.ts emptyAgentRunRecord` 分叉两点 / `agent/loop.ts finishRun`），
+ * 前端徽标（agent-kernel-badge.test.tsx A1/A2）读的就是这里写下的值。
+ *
+ * env 卫生：engine fork 读的是**进程 env**（engine.ts `process.env.DSH_HARNESS`），
+ * createTestApp 的 env 只进 config 管不到这层 ⇒ 本 describe 显式 save/restore 进程 env
+ * （模式照 N3 deploy-governance-seam.test.ts :185-198）。
+ */
+describe("WO-DSH-P2-UX · 内核标识写入对拍（A7）", () => {
+  const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
+  const HARNESS_DIR = join(ROOT, "packages/dsh-harness");
+  const ENV_KEYS = ["DSH_HARNESS", "DSH_HARNESS_DIR", "MOCK_SCENARIO"] as const;
+  let savedEnv: Record<string, string | undefined>;
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+  });
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (savedEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = savedEnv[k];
+    }
+  });
+
+  /** engine 级直调 runRegisteredAgent（绕过 HTTP/编排层 —— 对拍的是引擎写入点本身）。 */
+  async function runEngineOnce(t: TestApp, agentId: string, taskId: string) {
+    return t.deps.engine.runRegisteredAgent({
+      taskId,
+      agentId,
+      version: "latest",
+      prompt: "看一下基地情况",
+      ctx: { tenantId: TENANT, userId: "user-planner", roles: ["planner"] },
+      nesting: {
+        callChain: [],
+        budget: new BudgetTracker(computeResidualBudget(loadConfig({ PORT: "0", LOG_LEVEL: "silent" } as NodeJS.ProcessEnv))),
+      },
+      emit: async () => {},
+    });
+  }
+
+  it("DSH_HARNESS=1 ⇒ dsh 分叉产出的 run.kernel === \"EXTERNAL\"", { timeout: 60_000 }, async () => {
+    process.env.DSH_HARNESS = "1";
+    process.env.DSH_HARNESS_DIR = HARNESS_DIR; // vitest cwd=apps/agentcore，缺省解析不到 packages/dsh-harness
+    delete process.env.MOCK_SCENARIO; // 缺省剧本：echo_tool 一轮 + 文本收尾
+    const t = await createTestApp();
+    // echo_tool 是 harness 侧世界插件（非 native BUILTIN），对 runtime 而言是 UNKNOWN（照 N3 对位形态）。
+    await t.repos.agents.insert(
+      agentDef({
+        id: "agt_kernel_dsh",
+        key: "kernel_dsh_agent",
+        tools: [{ kind: "BUILTIN", name: "echo_tool" }],
+        scopeDeclaration: { objectTypes: [], toolNames: ["echo_tool"] },
+      }),
+    );
+
+    const result = await runEngineOnce(t, "agt_kernel_dsh", "task_kernel_dsh");
+    expect(result.run.kernel).toBe("EXTERNAL");
+  });
+
+  it("flag off（缺省休眠）⇒ 同入口落 native 循环 run.kernel === \"NATIVE\"", async () => {
+    delete process.env.DSH_HARNESS;
+    const t = await createTestApp();
+    await t.repos.agents.insert(agentDef({ id: "agt_kernel_native", key: "kernel_native_agent" }));
+    t.llm.queueAgentTurn({ content: [toolUse("query_objects", { objectType: "Base", filter: {} })] });
+    t.llm.queueAgentTurn({
+      content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "内核测试回答。" }], provenance: [] })],
+    });
+
+    const result = await runEngineOnce(t, "agt_kernel_native", "task_kernel_native");
+    expect(result.run.kernel).toBe("NATIVE");
+  });
+
+  /**
+   * A10（verifier 自加变异盲区销账）· BLOCK 早退构造点（engine.ts 分叉**前**那一处
+   * `emptyAgentRunRecord(..., DSH_HARNESS === "1" ? "EXTERNAL" : "NATIVE")`）的 kernel 值断言。
+   * 该点标的是「本会走哪个内核」（run 未真执行任何循环）——若静默烂成恒 NATIVE，
+   * flag-on 部署下屏上会把「本会走外部运行时」的运行说成「原生」= 说假话。
+   * mutation 反证：该点改恒 "NATIVE" ⇒ 下面 flag-on 臂必须红。
+   */
+  function blockSkill(): SkillDefinition {
+    return {
+      id: "skl_kernel_block",
+      tenantId: TENANT,
+      key: "kernel_block",
+      version: 1,
+      name: "Kernel Block",
+      summary: "测试用 Skill。当用户问内核预检问题时使用。不适用：非测试问题。",
+      body: "## 目的\n测试。\n## 适用边界\n适用：测试。不适用：其他。\n## 前置检查\n无。\n## 步骤\n1. 直接 final_answer。\n## 示例\n正例：问测试 → 返回答案。\n反例：无。\n## 失败处理\n无。\n## 输出要求\n按 Skill 策略输出。",
+      references: [{ kind: "rule", key: "KERNEL_PRE_BLOCK", role: "precondition", required: true }],
+      resources: [],
+      status: "PUBLISHED",
+    } as SkillDefinition;
+  }
+
+  /** 真走 skill 规则预检 BLOCK 早退（engine 级），返回 run。 */
+  async function runBlockedOnce(suffix: string) {
+    const t = await createTestApp();
+    await t.repos.skills.insert(blockSkill());
+    await t.repos.agents.insert(
+      agentDef({ id: `agt_kernel_block_${suffix}`, key: `kernel_block_${suffix}`, skills: [{ skillId: "skl_kernel_block", version: 1 }] }),
+    );
+    vi.spyOn(t.dataCore.rules, "evaluate").mockResolvedValue([
+      { ruleId: "KERNEL_PRE_BLOCK", passed: false, severity: "BLOCK", explanation: "预检命中", ruleVersion: 1 },
+    ]);
+    const result = await runEngineOnce(t, `agt_kernel_block_${suffix}`, `task_kernel_block_${suffix}`);
+    // 先钉死「真的走了 BLOCK 早退」——否则下面的 kernel 断言测的就不是那个构造点。
+    expect(result.answer.blocks.some((b) => b.type === "rule_violation" && b.ruleId === "KERNEL_PRE_BLOCK")).toBe(true);
+    expect(result.run.iterations.length).toBe(0); // 未真执行任何循环
+    return result;
+  }
+
+  it("A10 BLOCK 早退 · DSH_HARNESS=1 ⇒ kernel === \"EXTERNAL\"（本会走外部运行时，未真执行）", async () => {
+    process.env.DSH_HARNESS = "1"; // 注意：BLOCK 早退在分叉**之前**，不会真起 dsh 子进程
+    const result = await runBlockedOnce("on");
+    expect(result.run.kernel).toBe("EXTERNAL");
+  });
+
+  it("A10 对拍 · 同剧本 flag off ⇒ kernel === \"NATIVE\"", async () => {
+    delete process.env.DSH_HARNESS;
+    const result = await runBlockedOnce("off");
+    expect(result.run.kernel).toBe("NATIVE");
   });
 });
