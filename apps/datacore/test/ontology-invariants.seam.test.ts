@@ -10,6 +10,23 @@ import {
   listOntologyInvariantKeys,
 } from "../src/ontology/invariants.js";
 import { parseExpression } from "../src/ruledsl.js";
+import { seedDemoPropagationRules } from "../src/seed.js";
+
+/**
+ * ⚠ 2026-08-17 审核方补：`makeApp()` 只跑 `seedDemo()`，**不种传导规则** ——
+ * 而生产在 `server.ts:80` 启动时另调一次 `seedDemoPropagationRules()`（`seed-cli.ts:36` 同）。
+ * 少这一步，本文件读 `/a/v1/sim/propagation-rules` 的两条用例拿到空表，
+ * dev 自己写的防空胜金丝雀「种子本体里一条因果边都没有 ⇒ 后面的比较全是空胜」当场开火（RC=1）。
+ * 那道金丝雀是对的、该留着 —— 错的是测试的世界比生产少了一块。
+ * 判据（铁律 0.5）：`seedDemoPropagationRules` 的调用方集合里**有 src**（server.ts / seed-cli.ts），
+ * 不是只有 test ⇒ 属「测试没铺到生产已有的那一步」，不是「生产也没有」。
+ * 同源写法见 `statevar-display-name.seam.test.ts` 的 `seededApp()`。
+ */
+async function seededApp(): Promise<TestApp> {
+  const t = await makeApp();
+  await seedDemoPropagationRules(t.repos);
+  return t;
+}
 
 /**
  * WO-ONTOLOGY-EDGE-TRICLASS · **本体第三类边（不变式守卫）的接缝门 —— 引擎侧**
@@ -52,7 +69,7 @@ const COEF = "causal_coefficient_within_ceiling";
 
 describe("① 实测量来自真种子本体，且与独立端点的读数对得上", () => {
   it("传导系数最大值 == 真传导规则表里算出来的最大值（跨端点交叉验证，非自洽）", async () => {
-    const t = await makeApp();
+    const t = await seededApp();
 
     // 独立口径：另一条端点把真规则表逐条下发，本测试自己算最大值。
     // 若两边不等，说明体检读的不是同一份本体 —— 这正是"绿测试≠能用"最常断的那个接缝。
@@ -67,7 +84,7 @@ describe("① 实测量来自真种子本体，且与独立端点的读数对得
   });
 
   it("守卫清单非空，且每条都真求了值（没有一条挂着「读不出来」）", async () => {
-    const t = await makeApp();
+    const t = await seededApp();
     const rep = await invariantsOf(t);
     expect(rep.items.map((i) => i.key).sort()).toEqual([...listOntologyInvariantKeys()].sort());
     // error 非空 = 那条守卫这次根本没算成 —— 一条都不许有，否则屏上是一片"读不出来"
@@ -76,7 +93,7 @@ describe("① 实测量来自真种子本体，且与独立端点的读数对得
   });
 
   it("守卫条件是**业务话**，且由表达式渲染而来（屏上不出现机器表达式）", async () => {
-    const t = await makeApp();
+    const t = await seededApp();
     const rep = await invariantsOf(t);
     const g = item(rep, COEF);
     // 渲染出来的那句话里必须同时含实测量与容差的业务话标签 —— 这就是"不会各说各话"的判据
@@ -90,7 +107,7 @@ describe("① 实测量来自真种子本体，且与独立端点的读数对得
 
 describe("② 接缝：把容差挪到实测值以下 ⇒ 该守卫由成立翻成不成立", () => {
   it("系数上限从目录原值降到实测值之下 ⇒ holds 翻转 + 翻转清单点名 + 违反者是真边", async () => {
-    const t = await makeApp();
+    const t = await seededApp();
     const before = await invariantsOf(t);
     const measured = item(before, COEF).measure.value;
     expect(item(before, COEF).holds, `前提：目录原值下这条本应成立（实测 ${measured}）`).toBe(true);
@@ -122,7 +139,7 @@ describe("② 接缝：把容差挪到实测值以下 ⇒ 该守卫由成立翻�
   });
 
   it("试算**不落库**：改完容差再读只读体检口，仍是目录原值那一版", async () => {
-    const t = await makeApp();
+    const t = await seededApp();
     const measured = item(await invariantsOf(t), COEF).measure.value;
     const after = await evaluateWith(t, { [COEF]: { tolerance: measured - 0.05 } });
     expect(item(after, COEF).holds).toBe(false);
@@ -133,7 +150,7 @@ describe("② 接缝：把容差挪到实测值以下 ⇒ 该守卫由成立翻�
   });
 
   it("停用一条 ⇒ 退出成立/不成立计数，但实测量照算（停用不让问题消失）", async () => {
-    const t = await makeApp();
+    const t = await seededApp();
     const base = await invariantsOf(t);
     const off = await evaluateWith(t, { [COEF]: { enabled: false } });
     const g = item(off, COEF);
@@ -146,7 +163,7 @@ describe("② 接缝：把容差挪到实测值以下 ⇒ 该守卫由成立翻�
   });
 
   it("同一份本体连算两次，结果逐字节一致（R6 确定性）", async () => {
-    const t = await makeApp();
+    const t = await seededApp();
     expect(JSON.stringify(await invariantsOf(t))).toBe(JSON.stringify(await invariantsOf(t)));
   });
 });
@@ -202,7 +219,7 @@ describe("④ 阻断开关：两个取值都测（只测一个必留暗坑）", 
   });
 
   it("端到端：本体里确有不成立的守卫时，发起发布会签仍然 201（今天一条都不拦）", async () => {
-    const t = await makeApp();
+    const t = await seededApp();
     const rep = await invariantsOf(t);
     expect(rep.enforcement.mode).toBe("ANNOTATE_ONLY");
     expect(rep.enforcement.blocking).toBe(false);
