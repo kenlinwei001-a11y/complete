@@ -23,6 +23,9 @@ import zh from "@/locales/zh";
 import { InfoPopover } from "@/components/InfoPopover";
 import { useFeature } from "@/workspace/featureGate";
 import { useWorkspace } from "@/workspace/useWorkspace";
+// WO-SANDBOX-NAV-CONSOLIDATE · 「归因」模式内被收编的三档走**与 ViewPage 同一条**分发路径
+// （registry 字符串键 → 懒加载组件），故不在本文件里另写三个 lazy import：那会绕过 R3 双闸。
+import { getRenderer } from "@/views/registry";
 import { TaskRun } from "@/components/QueryDock/TaskRun";
 import { PmDag, type PmDagNode } from "./PmDag";
 import { PerturbationTimeline, PERTURBATION_KINDS } from "./PerturbationTimeline";
@@ -38,9 +41,13 @@ import consoleStyles from "./SandboxConsole.module.css";
 import {
   describeSandboxScope,
   EMPTY_SANDBOX_SCOPE,
+  SANDBOX_ATTRIBUTE_DEFAULT_TAB,
+  SANDBOX_ATTRIBUTE_TABS,
+  SANDBOX_ATTRIBUTE_TAB_SPEC,
   SANDBOX_MODES,
   SANDBOX_MODE_LABEL,
   SANDBOX_MODE_QUESTION,
+  type SandboxAttributeTab,
   type SandboxMode,
   type SandboxScope,
 } from "./sandboxModes";
@@ -1979,10 +1986,14 @@ const CONSOLIDATED_PAGES: { key: string; label: string; where: string }[] = [
   { key: "node-inspector", label: "节点检视", where: "已在：右栏常驻面板 → 页签「变量输入」" },
   { key: "transit-flow", label: "在途与在制", where: "已在：线路图上的「在途批次图层」勾选框" },
   { key: "chain-impediments", label: "全链阻滞点", where: "已在：主屏统计条 + 逐条清单（阈值出处等四块仍只在原页）" },
-  { key: "cleanroom-attr", label: "净室归因", where: "已在：模式「归因」" },
+  { key: "cleanroom-attr", label: "净室归因", where: "已在：模式「归因」→ 档「净室归因」" },
   { key: "what-if", label: "假设推演", where: "已在：模式「试一手」" },
   { key: "optimize-whatif", label: "优化推演", where: "已在：模式「求最优」" },
   { key: "disruption-radius", label: "断供影响半径", where: "已在：模式「影响半径」" },
+  // WO-SANDBOX-NAV-CONSOLIDATE · 「归因与风险」组那三页（收编前它们把整组的收编承诺掏空了）
+  { key: "process-wait", label: "流程等待态", where: "已在：模式「归因」→ 档「流程等待态」" },
+  { key: "process-stuck", label: "流程卡点", where: "已在：模式「归因」→ 档「流程卡点」（暗发键关着时无此档）" },
+  { key: "procurement-legs", label: "采购四段腿分解", where: "已在：模式「归因」→ 档「采购四段腿」" },
 ];
 
 /**
@@ -1996,14 +2007,125 @@ const CONSOLIDATED_PAGES: { key: string; label: string; where: string }[] = [
  *  ③ `<Suspense>`：四个模式都是 `lazy` 进来的（不 lazy 就等于把四页的 JS 全塞进沙盘首屏）。
  */
 function SandboxModePane({ mode }: { mode: Exclude<SandboxMode, "now"> }) {
+  /**
+   * WO-SANDBOX-NAV-CONSOLIDATE · 「归因」模式的**档**（其余三模式今天各只有一档，故不出档条）。
+   * state 无条件声明（hook 顺序不许随 mode 变），只有 attribute 那一支会用到它。
+   */
+  const [attrTab, setAttrTab] = useState<SandboxAttributeTab>(SANDBOX_ATTRIBUTE_DEFAULT_TAB);
   return (
     <div data-testid={`sandbox-mode-pane-${mode}`} data-mode={mode}>
+      {mode === "attribute" ? <SandboxAttributePane tab={attrTab} onTab={setAttrTab} /> : null}
       <Suspense fallback={<div className="empty-state" data-testid={`sandbox-mode-loading-${mode}`}>加载{SANDBOX_MODE_LABEL[mode]}…</div>}>
-        {mode === "attribute" ? <CleanroomAttrView /> : null}
         {mode === "tryone" ? <WhatIfView /> : null}
         {mode === "optimize" ? <OptimizeWhatifView /> : null}
         {mode === "radius" ? <DisruptionRadiusView /> : null}
       </Suspense>
+    </div>
+  );
+}
+
+/**
+ * WO-SANDBOX-NAV-CONSOLIDATE · **「归因」模式的档条 + 档内容**。
+ *
+ * ── 这一段解决的问题（仓主原话：「为何导航栏还有这2个，我之前不是要求你调整吗」）──────
+ * 「归因与风险」组原设计是「沙盘一开整组消失」，后来被三张单**各自合理**的豁免逐条掏空。
+ * 删条目不是修法（那三条豁免注释警告的事是真的：删了项而没有替代入口 = 页面彻底不可达）。
+ * 唯一不违反红线的修法是**真收编**：这三页在沙盘里必须有用户点得到的入口，且点进去有内容。
+ *
+ * ── ⚠ 档内容为什么走 `workspace.views` 分发而不是 `lazy(() => import(...))` ─────────────
+ * 三页中 `process-stuck` 挂在**暗发键** `process.runtime`（`defaultOn:false` +
+ * `INCOMPLETE_DATA_DARK_LAUNCH_FEATURES`）。硬写一个 `lazy` import 就等于**把 R3 绕过去**：
+ * 关着的租户在导航里看不到它（后端不下发 ⇒ `viewByKey` 查不中），却能在沙盘里点进去 ——
+ * 那正是「功能关闭 = 不存在」被破坏的确切形态。
+ *
+ * 故这里**逐字复用 `ViewPage` 的分发路径**：
+ *   `features.includes("view.<key>")`（R3 第一闸）→ `workspace.views.find(key)`（第二闸）
+ *   → `getRenderer(view.renderer)` → `<Renderer view={…} />`。
+ * 于是「档在不在」与「导航项在不在」**吃的是同一个判据**，不可能一边有一边没有；
+ * 且 `view.options`（如采购页的分析窗）来自同一份 ViewConfig，不是我在这里现编一个。
+ * 判据不成立的档**整个不渲染按钮**（不是禁用按钮）—— 禁用按钮仍然泄露了功能存在性。
+ */
+function SandboxAttributePane({
+  tab,
+  onTab,
+}: {
+  tab: SandboxAttributeTab;
+  onTab: (t: SandboxAttributeTab) => void;
+}) {
+  const { data: workspace } = useWorkspace();
+  /**
+   * 此刻**真的到得了**的档。`component` 源恒在（净室通用页无 entitlement 闸）；
+   * `workspace-view` 源逐条过 R3 双闸 —— 与 `ViewPage` 同一判据，见组件头。
+   */
+  const tabs = SANDBOX_ATTRIBUTE_TABS.filter((t) => {
+    const spec = SANDBOX_ATTRIBUTE_TAB_SPEC[t];
+    if (spec.source === "component") return true;
+    const features = workspace?.features;
+    if (features && !features.includes(`view.${spec.originView}`)) return false;
+    return (workspace?.views ?? []).some((v) => v.key === spec.originView);
+  });
+  /** 选中的档被关掉（entitlement 变了）时回落到第一个可达档，而不是渲染一片空白。 */
+  const active = tabs.includes(tab) ? tab : (tabs[0] ?? SANDBOX_ATTRIBUTE_DEFAULT_TAB);
+  const spec = SANDBOX_ATTRIBUTE_TAB_SPEC[active];
+  return (
+    <>
+      {/* `role="group" + aria-pressed` 而非 tab/tabpanel：与上面模式条同一条理由（切的是整块内容，
+          没有稳定的 panel id 可指），也与 `SandboxConsole` 画布档条的既有做法一致。 */}
+      <div
+        className="panel"
+        data-testid="sandbox-attr-tabs"
+        data-active={active}
+        data-count={tabs.length}
+        style={{ padding: 8, marginBottom: 8 }}
+      >
+        <div role="group" aria-label="归因看哪一类对象" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {tabs.map((t) => (
+            <button
+              key={t}
+              type="button"
+              className={`btn sm${active === t ? " primary" : ""}`}
+              data-testid={`sandbox-attr-tab-${t}`}
+              aria-pressed={active === t}
+              aria-label={`${SANDBOX_ATTRIBUTE_TAB_SPEC[t].label}：${SANDBOX_ATTRIBUTE_TAB_SPEC[t].question}`}
+              onClick={() => onTab(t)}
+            >
+              {SANDBOX_ATTRIBUTE_TAB_SPEC[t].label}
+            </button>
+          ))}
+        </div>
+        <div className={styles.sub} data-testid="sandbox-attr-question" style={{ marginTop: 6 }}>
+          {spec.question}
+        </div>
+      </div>
+      <Suspense fallback={<div className="empty-state" data-testid="sandbox-attr-loading">加载{spec.label}…</div>}>
+        {spec.source === "component" ? <CleanroomAttrView /> : <ConsolidatedViewTab viewKey={spec.originView} />}
+      </Suspense>
+    </>
+  );
+}
+
+/**
+ * 一档 = 一整页原样搬进来（**内容不重画**，与四个模式的做法同一条纪律）。
+ * 分发逐字同构 `pages/ViewPage.tsx`：双闸 → `getRenderer` → `<Renderer view={…} />`。
+ * 这里**不**渲染 404/403 页 —— 判据不成立的档在上面就已经不出按钮了，落到这里只可能是
+ * 「刚好在切档的同一帧 entitlement 变了」，此时说一句实话比画一张 404 更准确。
+ */
+function ConsolidatedViewTab({ viewKey }: { viewKey: string }) {
+  const { data: workspace } = useWorkspace();
+  const view = (workspace?.views ?? []).find((v) => v.key === viewKey);
+  const renderer = view ? ((view.renderer ?? (view.layout?.renderer as string | undefined)) || undefined) : undefined;
+  const Renderer = getRenderer(renderer);
+  if (!view || !Renderer) {
+    return (
+      <div className="empty-state" data-testid={`sandbox-attr-unavailable-${viewKey}`}>
+        「{viewKey}」这一档此刻不可达（workspace 未下发该视图或渲染器未注册）——
+        不是空数据，是这条到达路径本身不成立。
+      </div>
+    );
+  }
+  return (
+    <div data-testid={`sandbox-attr-view-${viewKey}`}>
+      <Renderer view={{ ...view, renderer }} />
     </div>
   );
 }

@@ -21,9 +21,19 @@
  * 仓主对这一屏的原话是「信息太多，第一层看不到重点」；并完更挤 = 这次合并是负分。
  *
  * ⚠ 与画布模式（`sandboxConsoleModel.ts` 的 `CANVAS_MODES`）**不是一回事**，别混：
- *   · `CANVAS_MODES`（线路图 / 物理拓扑 / 链路阶段 / 本体拓扑）是「现状」这**一个**模式
- *     内部、中栏那块画布的四种画法 —— 换的是**同一问的画法**；
+ *   · `CANVAS_MODES`（线路图 / 物理拓扑 / 链路阶段 / 本体拓扑 / **业务流程**）是「现状」这
+ *     **一个**模式内部、中栏那块画布的画法 —— 换的是**同一问的画法**；
  *   · 本表换的是**问题本身**。层级不同，故两张表分开、不合并。
+ *
+ * ⚠ **2026-08-17 实测订正（WO-SANDBOX-NAV-CONSOLIDATE）**：本段原文写「**四种**画法」并逐个点名 ——
+ *   `CANVAS_MODES` 早已是**五档**（`sandboxConsoleModel.ts` 的
+ *   `["metro","topo","chain","ontology","process"]`，第五档 `process` 由 WO-SANDBOX-PROCESS-MODE 加入）。
+ *   写死枚举成员的注释天生带保质期，而这一条过期的后果是**真的**：审核方据「第五档」这个词
+ *   推断第五档指本表的 `radius`（影响半径），从而认为「流程那一块的内容早就搬进沙盘了」。
+ *   实测两者都不对 —— 「第五档」是 `CANVAS_MODES` 的 `process`，而它复用的是
+ *   `ProcessInspectPanel`（检视面板）＋ 同一个 `GET /a/v1/process-definitions` 端点，
+ *   **不是** `/v/process-wait` 那一页的主体（四态分组表 / 「等谁」 / 到实例层的卡单计数与跳转
+ *   一条都不在第五档里）。故本单不是「把已经搬完的登记一下」，是**真收编**（见下 §档）。
  */
 
 /** 模式序列 = 决策链顺序（顺序即表达，不许随手改）。 */
@@ -93,3 +103,99 @@ export const EMPTY_SANDBOX_SCOPE: SandboxScope = { baseIds: [] };
 export function describeSandboxScope(scope: SandboxScope): string {
   return scope.baseIds.length === 0 ? "全部基地" : `${scope.baseIds.length} 个基地：${scope.baseIds.join(" · ")}`;
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 模式内的「档」（WO-SANDBOX-NAV-CONSOLIDATE）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ── 为什么加「档」这一层，而不是加第六个模式 ──────────────────────────────────
+ * 仓主指着侧栏「归因与风险」组问「**为何导航栏还有这2个**」。实测根因不是漏配，是
+ * **整组的收编承诺被逐条豁免掏空**：本组原本两项都带 `consolidatedWhen: "sim.sandbox"`
+ * （沙盘一开整组消失），后来三张单各加了一项、每一项都不带 —— 每条豁免单独看都成立
+ * （「沙盘五模式里没有它，带了页面就不可达」），**合起来把整组掏空了**。
+ *
+ * 修法只有一条不违反红线的路：**把那三页真收编进沙盘**（删条目而无替代入口 = 页面不可达）。
+ * 收编的落点判定如下 —— 判据取「它回答哪一问」，与本表上方那条决策链对齐：
+ *
+ *   | 页                  | 它回答什么                          | 落点            |
+ *   |--------------------|-------------------------------------|-----------------|
+ *   | `process-wait`     | 这**类**流程通常在等哪一类东西       | 归因（模板层档） |
+ *   | `process-stuck`    | **这一张单**此刻卡在第几步、等谁      | 归因（实例层档） |
+ *   | `procurement-legs` | 这批料晚在哪一段、今天该打哪通电话    | 归因（责任方档） |
+ *
+ * 三页在 `ShellLayout.NAV_GROUPS` 里的既有注释各自都写着「它答的是『现状为什么这样』（归因）」——
+ * 这不是本单新造的分类，是把仓库自己已经写下的判断执行掉。
+ *
+ * ⚠ **为什么不新增模式**：`SANDBOX_MODES` 的顺序即产品表达（见本文件头）。这三页与
+ *   `cleanroom-attr` 回答的是**同一问**（为什么会这样），只是看的对象不同（链路损失 /
+ *   流程模板 / 流程实例 / 采购责任方）。同一问的不同对象 = **档**，不是新的一环 ——
+ *   插进决策链会把「五问」变成「八问」，而其中四问其实是同一问。
+ *
+ * ⚠ **与 `CANVAS_MODES` 仍然不是一回事**（本文件头那条硬约束一个字没改）：
+ *   · `CANVAS_MODES` 换的是**同一问的画法**（线路图/物理拓扑/链路阶段/本体拓扑/业务流程）；
+ *   · 本表换的是**同一问的对象**（看链路 / 看流程模板 / 看流程实例 / 看采购段）。
+ *   两者都在「模式之下」这一层，但一个换画法、一个换对象，故各自成表、不合并。
+ *
+ * ⚠ **`process-wait` 与 `process-stuck` 不合并**（上一轮已裁决，本单不推翻）：
+ *   模板层 vs 实例层，`waitStateOrigin` 的 `DEFINITION_TEMPLATE` vs `TASK_GATE` 分的正是这两者。
+ *   它们进同一个模式**做两档**，各自渲染各自的整页，一个字都没揉在一起。
+ */
+export const SANDBOX_ATTRIBUTE_TABS = ["cleanroom", "process-wait", "process-stuck", "procurement-legs"] as const;
+export type SandboxAttributeTab = (typeof SANDBOX_ATTRIBUTE_TABS)[number];
+
+/**
+ * 一档怎么取内容。**两种来源不许混**，因为它们的 R3 守卫机制不同：
+ *  · `component`      —— 直接懒加载组件（净室通用页那一类：`App.tsx` 专用 route，不经后端下发，
+ *                        人人可进、无 entitlement 闸）；
+ *  · `workspace-view` —— 走 `workspace.views` + `getRenderer` 的**同一条分发路径**（与 `ViewPage`
+ *                        逐字同构）。这条路把 R3 双闸（`features.includes("view.<key>")` +
+ *                        `workspace.views` 有没有它）原样带进沙盘 —— 于是「暗发键关着 ⇒ 沙盘里
+ *                        这一档整个不存在」是**结构保证**，不是我在这里手写一个 if。
+ *                        `process-stuck` 挂在 `process.runtime`（`defaultOn:false`）正是靠这条。
+ */
+export type SandboxTabSource = "component" | "workspace-view";
+
+export interface SandboxTabSpec {
+  readonly label: string;
+  /** 这一档回答哪一问（按钮 aria-label + 屏上副标题共用，措辞只有这一处）。 */
+  readonly question: string;
+  /** 这一档的**原独立页 view key**（= `ShellLayout.CONSOLIDATED_INTO_SANDBOX` 的键·门按此对账）。 */
+  readonly originView: string;
+  readonly source: SandboxTabSource;
+}
+
+/**
+ * 「归因」模式的四档。**顺序 = 从粗到细**：先看链路哪一段亏（`cleanroom`），
+ * 再看这类流程在等什么（模板层），再看具体哪一张单卡着（实例层），最后看该给谁打电话（责任方）。
+ * 顺序与 `SANDBOX_MODES` 同理写在这张表里、不在渲染处随手排；测试对着这张表咬顺序。
+ */
+export const SANDBOX_ATTRIBUTE_TAB_SPEC: Record<SandboxAttributeTab, SandboxTabSpec> = {
+  cleanroom: {
+    label: "净室归因",
+    question: "这条链的损失落在哪一段？（净室口径的全链归因）",
+    originView: "cleanroom-attr",
+    source: "component",
+  },
+  "process-wait": {
+    label: "流程等待态",
+    question: "这**类**流程通常在等哪一类东西？（模板层·四态分组）",
+    originView: "process-wait",
+    source: "workspace-view",
+  },
+  "process-stuck": {
+    label: "流程卡点",
+    question: "**这一张单**此刻卡在第几步、等谁、等了多久？（实例层·现场值）",
+    originView: "process-stuck",
+    source: "workspace-view",
+  },
+  "procurement-legs": {
+    label: "采购四段腿",
+    question: "这批料晚在哪一段、今天该打哪通电话？（责任方可归属的四段）",
+    originView: "procurement-legs",
+    source: "workspace-view",
+  },
+};
+
+/** 「归因」模式的默认档（= 收编之前那个模式唯一的那一页，行为向后兼容）。 */
+export const SANDBOX_ATTRIBUTE_DEFAULT_TAB: SandboxAttributeTab = "cleanroom";

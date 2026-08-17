@@ -81,7 +81,28 @@
  *                      e. `via:"static-route"` 的必须**留着** `kind:"route"` 回退条目（带 `consolidatedWhen`）——
  *                         那四页本身不受控制台的 entitlement 门控，条目删了 = 控制台一关它们就从 IA 里蒸发。
  *                    没有这四条，收编表就是一张免死金牌，跟「其它」兜底桶是同一种东西、只是名字好听。
+ *                    f. **两张表不许各写一半**：导航条目上的 `consolidatedWhen`（决定屏上何时隐藏）
+ *                       与收编表（声明到达路径还在）是同一件事的两半，只写前者 = 「删入口了事」披了张皮。
+ *   ⑨ 组的收编承诺不许被逐条豁免掏空（WO-SANDBOX-NAV-CONSOLIDATE）
+ *                    凡有成员带 `consolidatedWhen: X` 的导航组，其余成员要么也带 `consolidatedWhen: X`，
+ *                    要么在 `ShellLayout.GROUP_CONSOLIDATION_EXEMPT` 里逐条登记理由（≥10 字）。
+ *                    **①–⑧ 全是逐键判据**（这个键有没有入口 / 这个键的路通不通），
+ *                    没有一条问过「这一组合起来还成不成立」—— ⑨ 补的就是这一问。
  *
+ * ### 判据⑨ 的由来（真事，写在这里免得下次又被"这次不一样"骗过去）
+ *
+ * 「归因与风险」组原本两项都带 `consolidatedWhen: "sim.sandbox"` ⇒ 沙盘一开整组消失（空组自动隐藏）。
+ * 后来三张单**各往组里加了一项、每一项都不带**，理由都是「沙盘五模式里没有它，带了页面就不可达」——
+ * **每条豁免单独看都成立**（当时沙盘里确实没有落点）。合起来的效果是：这个本该消失的组
+ * 在沙盘开着时永远剩三项。仓主看到屏幕后问：**「为何导航栏还有这2个，我之前不是要求你调整吗？」**
+ * 更难看的是，`ShellLayout` 里那两条历史订正**每次只更新了数字**（「剩一项」→「剩两项」），
+ * 还各自写着「这是正确行为，不是漏配」—— 从没有人问过「这个数为什么不是零」。
+ *
+ * 形态（铁律 0.6 句式）：
+ *   **「我用『每条豁免单独看都成立』当作『整组收编还在生效』的证据，而前者并不度量后者。」**
+ * 同族 `G-GATE-ROSTER-HANDCOPIED`：每次加一项都合规，**累积效果无人度量**。
+ *
+
  * ③ 是这道门的保命判据。①②④⑤⑥⑦ 的解析都是「从 TS 源码里正则捞字面量」，
  * 一旦某侧被重构成解析不了的写法：那侧集合会**变小**——
  *   · mock/NAV_GROUPS 侧变小 → 差集变大 → **红**（失败安全）；
@@ -203,6 +224,14 @@ const CONSOLIDATED_FLOOR = 5;
 /** 收编表里必然含有的键（判据③ 金丝雀）。 */
 const CONSOLIDATED_CANARY = "chain-line-map";
 
+/* ── 判据⑨ 的下界与金丝雀（WO-SANDBOX-NAV-CONSOLIDATE）───────────────────────── */
+/** NAV_GROUPS 拆出的组数下界（当前 13）；拆组坏了会掉到 0 ⇒ 判据⑨ 一个组都不看、恒绿。 */
+const NAV_GROUP_FLOOR = 8;
+/** 判据⑨ 的金丝雀组：它必然存在、且必然是**带收编承诺**的那种（本单收编的就是它）。 */
+const NAV_GROUP_CANARY = "归因与风险";
+/** 金丝雀组的成员数下界（当前 5）；成员漏解析会让判据⑨ 把掏空读成完好。 */
+const NAV_GROUP_CANARY_ITEM_FLOOR = 5;
+
 const fail = [];
 /** 门自身的故障（与"被扫代码有问题"分开报——修法完全不同）。 */
 const gateBroken = [];
@@ -298,9 +327,21 @@ function parseDedicatedRoutes(strippedSrc) {
 }
 
 /**
- * NAV_GROUPS 的 `kind:"view"` 键。两种形态：
- *   A `{ kind: "view", key: "dash" }`
- *   B `["a","b",…].map((key) => ({ kind: "view" as const, key }))`
+ * NAV_GROUPS 的 `kind:"view"` 键。三种形态：
+ *   A  `{ kind: "view", key: "dash" }`
+ *   A' `{ kind: "view" as const, key: "process-wait", consolidatedWhen: "sim.sandbox" }`（WO-SANDBOX-NAV-CONSOLIDATE）
+ *   B  `["a","b",…].map((key) => ({ kind: "view" as const, key }))`
+ *
+ * ⚠ **形态 A' 是 2026-08-17 实测踩到的一个真「门瞎了」**：本函数上一版形态 A 的正则写作
+ *   `…key:\s*"([^"]+)"\s*\}` —— 锚到 `\}` 收尾。`kind:"view"` 条目此前恰好都只有 `kind`+`key`
+ *   两个字段，于是这个锚点一直成立；本轮给三条 view 条目加上 `consolidatedWhen` 之后，
+ *   `key` 后面还有字段 ⇒ **三个键当场从解析结果里消失**（25 → 22）。
+ *   后果不是报错，是**集合变小**：判据①（归组无遗漏）与⑧a（不许两头占）的差集一起变小 ⇒
+ *   更容易恒绿。route 项的正则早在 WO-ROUTE-NAV-COVERAGE 就因为同一个理由去掉了 `\}` 锚点
+ *   （见 `parseNavRouteKeys` 的注释），view 项**当时没有同步改**，这次才暴露。
+ *   ⇒ 订正：与 route 同款，key 之后不许再锚 `\}`；`[^{}]*?` 保证不跨对象边界（`.map` 形态的
+ *     `{ kind: "view" as const, key }` 里没有 `key: "…"`，且 `[^{}]` 挡住它跨出自己那对花括号）。
+ *   词法自检新增一条形态 A' 的样例，专防这一条再次退化。
  *
  * ⚠ 形态 B 的数组正则**必须**排掉 `{` `}` `[`（`[^[\]{}]*`）：items 数组里混入 route 对象后，
  *   宽松的 `[^\]]*` 会从**外层** `items: [` 起匹配到内层数组的 `]`，把 route 项的 label/feature 文案
@@ -308,9 +349,128 @@ function parseDedicatedRoutes(strippedSrc) {
  */
 function parseNavViewKeys(body) {
   const out = [];
-  for (const m of body.matchAll(/\{\s*kind:\s*"view"[^}]*?key:\s*"([^"]+)"\s*\}/g)) out.push(m[1]);
+  for (const m of body.matchAll(/\{\s*kind:\s*"view"[^{}]*?key:\s*"([^"]+)"/g)) out.push(m[1]);
   for (const m of body.matchAll(/\[([^[\]{}]*)\]\s*\.map\(\s*\(\s*key\s*\)\s*=>\s*\(\s*\{\s*kind:\s*"view"/g)) {
     for (const s of m[1].matchAll(/"([^"]+)"/g)) out.push(s[1]);
+  }
+  return out;
+}
+
+/**
+ * 判据⑨ 的被测集（WO-SANDBOX-NAV-CONSOLIDATE）：把 `NAV_GROUPS` 拆成
+ * `[{ title, items: [{ kind, key, consolidatedWhen }] }]`。
+ *
+ * 为什么必须**按组**拆，而不能复用上面那两个平铺的键抽取器：判据⑨ 要回答的问题是
+ * 「**这一组**里带 `consolidatedWhen` 的和不带的各有几个」——平铺之后组的边界就没了，
+ * 而「组被掏空」这件事只有在组这一层看得见。
+ * ⚠ 入参必须是**已去注释**的 `NAV_GROUPS` 数组体。
+ */
+function parseNavGroups(navBody) {
+  /** 先按深度切出每个顶层 `{ … }`（= 一个组）。`[` 也计深度，故 `items: [ … ]` 不会提前收尾。 */
+  const blocks = [];
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < navBody.length; i++) {
+    const ch = navBody[i];
+    if (ch === "{" || ch === "[") {
+      if (ch === "{" && depth === 0) start = i;
+      depth++;
+    } else if (ch === "}" || ch === "]") {
+      depth--;
+      if (ch === "}" && depth === 0 && start >= 0) {
+        blocks.push(navBody.slice(start, i + 1));
+        start = -1;
+      }
+    }
+  }
+  return blocks.map((blk) => {
+    const tm = /title:\s*(?:"([^"]*)"|(null))/.exec(blk);
+    const title = tm && tm[1] !== undefined ? tm[1] : null;
+    const items = [];
+    // 形态 A/A'/route：完整对象字面量（`.map` 形态的对象没有 `key: "字面量"`，在这里被跳过）
+    for (const m of blk.matchAll(/\{\s*kind:\s*"(view|route|admin)"[^{}]*\}/g)) {
+      const obj = m[0];
+      const k = /key:\s*"([^"]+)"/.exec(obj);
+      if (!k) continue;
+      const cw = /consolidatedWhen:\s*"([^"]+)"/.exec(obj);
+      items.push({ kind: m[1], key: k[1], consolidatedWhen: cw ? cw[1] : null });
+    }
+    // 形态 B：`[…].map((key) => ({ kind: "x" as const, key }))` —— 这一形态天然带不了 consolidatedWhen
+    for (const m of blk.matchAll(/\[([^[\]{}]*)\]\s*\.map\(\s*\(\s*key\s*\)\s*=>\s*\(\s*\{\s*kind:\s*"(view|route|admin)"/g)) {
+      for (const s of m[1].matchAll(/"([^"]+)"/g)) items.push({ kind: m[2], key: s[1], consolidatedWhen: null });
+    }
+    return { title, items };
+  });
+}
+
+/**
+ * 判据⑨ 的豁免表 `ShellLayout.GROUP_CONSOLIDATION_EXEMPT`：`"<组标题>::<项键>": "理由"`。
+ * 与 `parseRouteNoNav` 同形（键值都是字符串，理由可跨行），但**刻意不复用它**：
+ * 那张表的键是 route 键、这张表的键是 `组::项` 复合键，合成一个解析器会让两处的
+ * 「键必须真实存在」校验搅在一起。⚠ 入参必须是**已去注释**的对象体。
+ */
+function parseGroupExempt(body) {
+  const out = {};
+  for (const m of body.matchAll(/"([^"]+)"\s*:\s*"([^"]*)"/g)) out[m[1]] = m[2];
+  return out;
+}
+
+/** 判据⑨ 的豁免键形态（门与被测代码共用同一条拼法，两边各拼一次就会漂）。 */
+function groupExemptKey(groupTitle, itemKey) {
+  return `${groupTitle}::${itemKey}`;
+}
+
+/**
+ * 判据⑨ 的**主逻辑本体**（词法自检与真扫描共用这一个函数 —— 抄第二份就是装饰品）。
+ *
+ * 一组里只要有**任何一个**成员带 `consolidatedWhen: X`，这一组就对 X 做出了收编承诺：
+ * 「X 开着的时候，这一组该消失」。此时其余成员只有两种合法状态：
+ *   ① 也带 `consolidatedWhen: X`（一起被收编）；
+ *   ② 在 `GROUP_CONSOLIDATION_EXEMPT` 里逐条登记「为什么它不该被 X 收编」。
+ * 两者都不是 ⇒ 它就是那种「单独看合理、合起来把承诺掏空」的豁免，本函数把它逐条返回。
+ *
+ * ⚠ 一组里出现**两个不同**的 `consolidatedWhen` 值时，按「每个值各自成一条承诺」处理：
+ *   带 X 的成员对 Y 那条承诺同样算掏空（它在 Y 开着时不会消失）。今天仓里没有这种组，
+ *   但规则要先说清楚 —— 不然第一个这么写的人会发现门对它一声不吭。
+ *
+ * @returns `[{ key, kind, why }]` —— `why` 说的是"它相对哪一条承诺是掏空的"
+ */
+function hollowedOutMembers(group, exempt) {
+  const promises = [...new Set(group.items.map((it) => it.consolidatedWhen).filter((w) => w !== null))];
+  if (promises.length === 0) return [];
+  const out = [];
+  for (const it of group.items) {
+    const missing = promises.filter((p) => it.consolidatedWhen !== p);
+    if (missing.length === 0) continue;
+    if (exempt[groupExemptKey(group.title, it.key)] !== undefined) continue;
+    out.push({ key: it.key, kind: it.kind, missing });
+  }
+  return out;
+}
+
+/** 判据⑨ 报文里的那个数：`X` 开着时这一组屏上还剩几项（0 = 空组自动隐藏 = 承诺兑现）。 */
+function remainingWhenOn(group, when) {
+  return group.items.filter((it) => it.consolidatedWhen !== when).length;
+}
+
+/**
+ * 判据⑦/⑧b 供给侧：`service.ts` `VIEW_DEFS` 的**增量视图键**（不是 renderer 值）。
+ * 深度 0 = 视图键那一层（`arrayBlock(…, "{")` 已经把外层花括号剥掉）。
+ * 两种写法都要认：`"process-stuck": { … }` 与 `review: { … }`。
+ */
+function parseViewDefKeys(body) {
+  const out = [];
+  let depth = 0;
+  const re = /[{}[\]]|"([^"]+)"\s*:|([A-Za-z_$][\w$]*)\s*:/g;
+  let m;
+  while ((m = re.exec(body))) {
+    const t = m[0];
+    if (t === "{" || t === "[") depth++;
+    else if (t === "}" || t === "]") depth--;
+    else if (depth === 0) {
+      const k = m[1] ?? m[2];
+      if (k) out.push(k);
+    }
   }
   return out;
 }
@@ -398,12 +558,15 @@ function parseRendererValues(body) {
     { title: null, items: [{ kind: "view", key: "canary-view" }] },
     { title: "组", items: [
         { kind: "route" as const, key: "canary-route", label: "标签文案", feature: "feat.x" },
+        { kind: "view" as const, key: "canary-consolidated-view", consolidatedWhen: "feat.console" },
         ...["a1", "a2"].map((key) => ({ kind: "view" as const, key })),
         ...["p1"].map((key) => ({ kind: "admin" as const, key })),
     ] },
   `;
   const gotViews = parseNavViewKeys(SAMPLE_NAV);
-  const wantViews = ["canary-view", "a1", "a2"];
+  // ⚠ `canary-consolidated-view` 是形态 A' 的金丝雀：`key` 之后还有 `consolidatedWhen`。
+  //   上一版正则锚 `\}` 收尾时它**提不出来** —— 那正是 2026-08-17 让真实解析结果 25→22 的那个坏法。
+  const wantViews = ["canary-view", "canary-consolidated-view", "a1", "a2"];
   if (JSON.stringify(gotViews.slice().sort()) !== JSON.stringify(wantViews.slice().sort())) {
     gateBroken.push(
       `✗ 词法自检：parseNavViewKeys 提取结果不对 —— 期望 ${JSON.stringify(wantViews)}，实得 ${JSON.stringify(gotViews)}` +
@@ -480,6 +643,94 @@ function parseRendererValues(body) {
     );
   }
 
+  /* ── 判据⑨ 的词法自检（WO-SANDBOX-NAV-CONSOLIDATE）·必中 + 两侧必不咬 ──────────────
+   * 三个样例的**形状取自生产实物**（`ShellLayout.NAV_GROUPS` 真有的三种写法），
+   * 且全部喂给**主逻辑本体** `parseNavGroups` / `hollowedOutMembers`，不另抄一份正则。 */
+  const SAMPLE_GROUPS = `
+    { title: "必中组", items: [
+        { kind: "route" as const, key: "consolidated-a", label: "甲", consolidatedWhen: "feat.console" },
+        { kind: "view" as const, key: "consolidated-b", consolidatedWhen: "feat.console" },
+        { kind: "view" as const, key: "hollow-1" },
+        { kind: "route" as const, key: "hollow-2", label: "丙" },
+        ...["hollow-3"].map((key) => ({ kind: "view" as const, key })),
+    ] },
+    { title: "全带组", items: [
+        { kind: "view" as const, key: "all-a", consolidatedWhen: "feat.console" },
+        { kind: "route" as const, key: "all-b", label: "乙", consolidatedWhen: "feat.console" },
+    ] },
+    { title: "全不带组", items: [
+        { kind: "view", key: "none-a" },
+        ...["none-b", "none-c"].map((key) => ({ kind: "view" as const, key })),
+    ] },
+  `;
+  const gotGroups = parseNavGroups(SAMPLE_GROUPS);
+  const gotTitles = gotGroups.map((g) => g.title);
+  if (JSON.stringify(gotTitles) !== JSON.stringify(["必中组", "全带组", "全不带组"])) {
+    gateBroken.push(
+      `✗ 词法自检：parseNavGroups 拆组不对 —— 期望 ["必中组","全带组","全不带组"]，实得 ${JSON.stringify(gotTitles)}` +
+        `（拆组坏了 ⇒ 判据⑨ 看不见组边界，而「组被掏空」这件事只有在组这一层看得见）`,
+    );
+  }
+  const gotMemberCounts = gotGroups.map((g) => g.items.length);
+  if (JSON.stringify(gotMemberCounts) !== JSON.stringify([5, 2, 3])) {
+    gateBroken.push(
+      `✗ 词法自检：parseNavGroups 成员数不对 —— 期望 [5,2,3]，实得 ${JSON.stringify(gotMemberCounts)}` +
+        `（三种写法：完整对象 / 带 consolidatedWhen 的对象 / .map 形态，缺哪一种都会让判据⑨ 少看几项）`,
+    );
+  }
+  // 必中：五个成员里两个带 `feat.console`，另外三个既不带也没登记豁免 ⇒ 必须被逐条点名
+  const canaryHollow = hollowedOutMembers(gotGroups[0] ?? { title: null, items: [] }, {});
+  if (JSON.stringify(canaryHollow.map((h) => h.key)) !== JSON.stringify(["hollow-1", "hollow-2", "hollow-3"])) {
+    gateBroken.push(
+      `✗ 词法自检：判据⑨ **必中**样例没抓到 —— 期望 ["hollow-1","hollow-2","hollow-3"]，` +
+        `实得 ${JSON.stringify(canaryHollow.map((h) => h.key))}。抓不到 = 本门对「组的收编承诺被逐条豁免掏空」恒绿，` +
+        `正是它要治的那种东西。`,
+    );
+  }
+  // 必不咬 ①：全组同一个 `consolidatedWhen` ⇒ 收编承诺完整，不许报
+  if (hollowedOutMembers(gotGroups[1] ?? { title: null, items: [] }, {}).length !== 0) {
+    gateBroken.push(`✗ 词法自检：判据⑨ 对「全组都带同一个 consolidatedWhen」误报 —— 那是收编完整，不是掏空。`);
+  }
+  // 必不咬 ②：全组都没有 `consolidatedWhen` ⇒ 这个组根本没有收编承诺，不许报
+  if (hollowedOutMembers(gotGroups[2] ?? { title: null, items: [] }, {}).length !== 0) {
+    gateBroken.push(
+      `✗ 词法自检：判据⑨ 对「全组都没有 consolidatedWhen」误报 —— 没有承诺就谈不上掏空；` +
+        `这一侧误报会把全仓十几个普通分组一起判红，门当场没人信。`,
+    );
+  }
+  // 豁免登记之后必须闭嘴（否则「登记了理由」这件事等于没用）
+  const exemptAll = { "必中组::hollow-1": "理由一二三四五六七八九十", "必中组::hollow-2": "理由一二三四五六七八九十", "必中组::hollow-3": "理由一二三四五六七八九十" };
+  if (hollowedOutMembers(gotGroups[0] ?? { title: null, items: [] }, exemptAll).length !== 0) {
+    gateBroken.push(`✗ 词法自检：判据⑨ 对**已逐条登记豁免**的成员仍然报警 —— 豁免表形同虚设。`);
+  }
+
+  const SAMPLE_GROUP_EXEMPT = `
+    // "注释组::注释项": "注释里的不算",
+    "推演::sim-sandbox": "它就是那个控制台本身（理由可跨行
+        续写也不影响提取）",
+  `;
+  const gotGroupExempt = parseGroupExempt(stripComments(SAMPLE_GROUP_EXEMPT));
+  if (Object.keys(gotGroupExempt).join("|") !== "推演::sim-sandbox") {
+    gateBroken.push(
+      `✗ 词法自检：parseGroupExempt 提取结果不对 —— 期望键 ["推演::sim-sandbox"]，` +
+        `实得 ${JSON.stringify(Object.keys(gotGroupExempt))}（应做到：注释里的不算 / 复合键与跨行理由都提得出）`,
+    );
+  }
+
+  const SAMPLE_VIEWDEF_KEYS = `
+    "process-stuck": { title: "流程卡点", renderer: "process-stuck", layout: {} },
+    review: { title: "运营复盘", renderer: "review", layout: { apiTag: "history", nested: "must-not-count" } },
+    "graph-all": graphView("图谱·全景", { colorBy: "domain" }, { desc: "…" }),
+  `;
+  const gotViewDefKeys = parseViewDefKeys(SAMPLE_VIEWDEF_KEYS);
+  if (JSON.stringify(gotViewDefKeys) !== JSON.stringify(["process-stuck", "review", "graph-all"])) {
+    gateBroken.push(
+      `✗ 词法自检：parseViewDefKeys 提取结果不对 —— 期望 ["process-stuck","review","graph-all"]，` +
+        `实得 ${JSON.stringify(gotViewDefKeys)}（应做到：引号键与裸标识符键都提得出 / **嵌套 layout 里的键不许算作视图键** /` +
+        ` 函数调用形态的值也不影响取键）`,
+    );
+  }
+
   /* ── 判据④ 豁免表（ROUTE_NO_NAV）的词法自检（WO-IA-E2E5E6）───────────────────── */
   const SAMPLE_NONAV = `
     // "commented-key": "注释里的不算",
@@ -533,9 +784,14 @@ if (manifestSrc) {
 /* ---------- 判据⑦ 供给侧之二：service.ts VIEW_DEFS 的增量视图 renderer ---------- */
 const viewDefsSrc = read(VIEWDEFS);
 let viewDefRenderers = [];
+/** 判据⑧b（`via:"view-defs"` 那一支）的供给侧：增量视图桶的**键**（不是 renderer 值）。 */
+let viewDefKeys = [];
 if (viewDefsSrc) {
   const body = arrayBlock(stripComments(viewDefsSrc), localDeclOf("VIEW_DEFS"), `${VIEWDEFS} VIEW_DEFS`, "{");
-  if (body !== null) viewDefRenderers = parseRendererValues(body);
+  if (body !== null) {
+    viewDefRenderers = parseRendererValues(body);
+    viewDefKeys = parseViewDefKeys(body);
+  }
 }
 
 /* ---------- 判据⑦ 被测侧：registry.ts 的 registerRenderer 键 ---------- */
@@ -559,20 +815,35 @@ let navRouteKeys = [];
 let consolidated = [];
 /** WO-IA-E2E5E6 · 判据④ 豁免表（单一出处在 ShellLayout.ROUTE_NO_NAV，本门只解析对账）。 */
 let INTENTIONALLY_NO_NAV = {};
+/** WO-SANDBOX-NAV-CONSOLIDATE · 判据⑨ 的被测集（按组拆开的 NAV_GROUPS）与它的豁免表。 */
+let navGroups = [];
+let GROUP_EXEMPT = {};
 if (shellSrc) {
   const stripped = stripComments(shellSrc);
   const body = arrayBlock(stripped, declOf("NAV_GROUPS"), `${SHELL} NAV_GROUPS`);
   if (body !== null) {
     navViewKeys = parseNavViewKeys(body);
     navRouteKeys = parseNavRouteKeys(body);
+    navGroups = parseNavGroups(body);
   }
   const consBody = arrayBlock(stripped, declOf("CONSOLIDATED_INTO_SANDBOX"), `${SHELL} CONSOLIDATED_INTO_SANDBOX`, "{");
   if (consBody !== null) consolidated = parseConsolidated(consBody);
   const noNavBody = arrayBlock(stripped, declOf("ROUTE_NO_NAV"), `${SHELL} ROUTE_NO_NAV`, "{");
   if (noNavBody !== null) INTENTIONALLY_NO_NAV = parseRouteNoNav(noNavBody);
+  const grpExBody = arrayBlock(stripped, declOf("GROUP_CONSOLIDATION_EXEMPT"), `${SHELL} GROUP_CONSOLIDATION_EXEMPT`, "{");
+  if (grpExBody !== null) GROUP_EXEMPT = parseGroupExempt(grpExBody);
 }
+/** NAV_GROUPS 里带 `consolidatedWhen` 的 `kind:"view"` 条目 → 该开关（判据⑧a/⑧f 用）。 */
+const navViewConsolidatedWhen = new Map(
+  navGroups
+    .flatMap((g) => g.items)
+    .filter((it) => it.kind === "view" && it.consolidatedWhen !== null)
+    .map((it) => [it.key, it.consolidatedWhen]),
+);
 const consolidatedKeys = consolidated.map((c) => c.key);
 const consolidatedSet = new Set(consolidatedKeys);
+/** 判据⑧b 的 `via:"view-defs"` 那一支：增量视图桶的键集。 */
+const viewDefKeySet = new Set(viewDefKeys);
 
 /* ---------- 前端路由表：App.tsx 的专用静态 route ---------- */
 const appSrc = read(APP);
@@ -623,6 +894,43 @@ if (consolidatedKeys.length < CONSOLIDATED_FLOOR) {
     `✗ 判据③ 门自身没坏：${SHELL} 的 CONSOLIDATED_INTO_SANDBOX 只解析出 ${consolidatedKeys.length} 条（下界 ${CONSOLIDATED_FLOOR}）——` +
       ` 收编表读空只会让 ①④ **误红**（失败安全），但方向必须说对：是本门的解析器坏了，不是前端漏登记。` +
       ` 修门（parseConsolidated / 表的写法变了就同步改），别去给 NAV_GROUPS 加回九个重复入口。`,
+  );
+}
+/* ── 判据⑨ 的门自证（WO-SANDBOX-NAV-CONSOLIDATE）──────────────────────────────
+ * 三重：拆组下界 + 金丝雀组 + 「本仓此刻真有一条收编承诺」。
+ * 第三条最要紧：全仓一条 `consolidatedWhen` 都解析不到时，判据⑨ 会**恒绿** ——
+ * 屏幕上写着「组的收编承诺都完好」，其实是「一条承诺都没看见」。 */
+if (navGroups.length < NAV_GROUP_FLOOR) {
+  gateBroken.push(
+    `✗ 判据③ 门自身没坏：${SHELL} 的 NAV_GROUPS 只拆出 ${navGroups.length} 个组（下界 ${NAV_GROUP_FLOOR}）——` +
+      ` 拆组变空会让判据⑨ 一个组都不看、恒绿。修 parseNavGroups，别改被测代码。`,
+  );
+}
+{
+  const canaryGroup = navGroups.find((g) => g.title === NAV_GROUP_CANARY);
+  if (!canaryGroup) {
+    gateBroken.push(
+      `✗ 判据③ 门自身没坏：拆组结果里没有金丝雀组「${NAV_GROUP_CANARY}」` +
+        `（拆出 ${navGroups.length} 组：${navGroups.map((g) => g.title ?? "(无标题)").join(" / ")}）—— 解析器坏了。`,
+    );
+  } else if (canaryGroup.items.length < NAV_GROUP_CANARY_ITEM_FLOOR) {
+    gateBroken.push(
+      `✗ 判据③ 门自身没坏：金丝雀组「${NAV_GROUP_CANARY}」只解析出 ${canaryGroup.items.length} 项` +
+        `（下界 ${NAV_GROUP_CANARY_ITEM_FLOOR}）—— 成员漏解析会让判据⑨ 少看几项、把掏空读成完好。`,
+    );
+  }
+  const promiseCount = navGroups.filter((g) => g.items.some((it) => it.consolidatedWhen !== null)).length;
+  if (promiseCount === 0) {
+    gateBroken.push(
+      `✗ 判据③ 门自身没坏：全仓 NAV_GROUPS 里**一条 consolidatedWhen 都没解析到** ⇒ 判据⑨ 恒绿。` +
+        ` 这不是「没有组做过收编承诺」，是本门的 parseNavGroups 没读到它 —— 修门。`,
+    );
+  }
+}
+if (viewDefKeys.length < VIEWDEF_FLOOR) {
+  gateBroken.push(
+    `✗ 判据③ 门自身没坏：${VIEWDEFS} VIEW_DEFS 只解析出 ${viewDefKeys.length} 个视图键（下界 ${VIEWDEF_FLOOR}）——` +
+      ` 增量视图桶读空会让 ⑧b 的 \`via:"view-defs"\` 那一支**误红**（失败安全），但方向要说对：修门。`,
   );
 }
 if (viewDefRenderers.length < VIEWDEF_FLOOR) {
@@ -765,12 +1073,18 @@ for (const [k, why] of Object.entries(RENDERER_NO_PATH)) {
  *   c. 同理 `via:"static-route"` 的键必须在 `App.tsx` 仍有专用 route（删了 route = 深链接死）；
  *   d. **到达路径要写出来**（`where` ≥ 6 字）：写不出"点哪里"的收编，多半是没真收编。 */
 for (const { key, via, where } of consolidated) {
-  if (navSet.has(key)) {
+  if (navSet.has(key) && !navViewConsolidatedWhen.has(key)) {
     fail.push(
       `✗ 判据⑧a 收编不许两头占：CONSOLIDATED_INTO_SANDBOX["${key}"] 声明已收编，但它仍是 ${SHELL} 的\n` +
-        `    NAV_GROUPS 里一个 kind:"view" 条目。屏上结果 = 重复入口（控制台里一处 + 导航里一行）。\n` +
-        `    注：kind:"route" 条目**允许**同时存在，但必须带 consolidatedWhen（见判据⑧e）——\n` +
-        `        那是"控制台不在时的回退"，不是重复入口；kind:"view" 没有这种回退语义（它随 entitlement 一起消失）。`,
+        `    NAV_GROUPS 里一个**不带 consolidatedWhen** 的 kind:"view" 条目。\n` +
+        `    屏上结果 = 重复入口（控制台里一处 + 导航里一行，且导航那行永远不会消失）。\n` +
+        `    修法二选一：\n` +
+        `      ① 该页随控制台的 entitlement 一起消失（如沙盘五子视图 requires:["sim.sandbox"]）⇒ **删掉这个条目**；\n` +
+        `      ② 该页**不受**那个 entitlement 门控（关着也能打开）⇒ 条目照留，加\n` +
+        `         consolidatedWhen: "<控制台的 entitlement>"（开则隐藏、关则单列）——\n` +
+        `         这与 kind:"route" 的 ⑧e 是同一条规则，只是承载方式不同。\n` +
+        `    ⚠ 不许走第三条路（把条目留着不带 consolidatedWhen）：那正是「收编表里写着已收编、\n` +
+        `      屏上却永远还有一行」的确切形态。`,
     );
   }
   // ⑧e：`static-route` 的收编项必须**留着**回退条目 —— 删了，控制台一关那页就只剩手敲 URL。
@@ -802,6 +1116,24 @@ for (const { key, via, where } of consolidated) {
           `    前端所有跑 mock 的「路由仍可达」断言对它恒真（哑门），深链接真断了也没人报。`,
       );
     }
+  } else if (via === "view-defs") {
+    // WO-SANDBOX-NAV-CONSOLIDATE · 增量视图桶那一支（`process-stuck` 走这条：它刻意不进
+    // BUILTIN_VIEWS，否则 builtInViewFeatureDefs() 会照 featureKey 再注册一份 defaultOn:true
+    // 把暗发键 `process.runtime` 顶掉）。故这里验的是 VIEW_DEFS 而不是 BUILTIN_VIEWS。
+    if (!viewDefKeySet.has(key)) {
+      fail.push(
+        `✗ 判据⑧b 收编不许变黑洞：CONSOLIDATED_INTO_SANDBOX["${key}"] 声明经增量视图桶仍可达，\n` +
+          `    但 ${VIEWDEFS} 的 VIEW_DEFS 里已经没有它 —— \`/v/${key}\` 现在是 403/404。\n` +
+          `    ⚠ 别顺手把 via 改成 "workspace.views" 了事：那会让本门去查 BUILTIN_VIEWS，\n` +
+          `      而这个键**刻意不在**那张表里（进去就把它的暗发键顶成 defaultOn:true）。`,
+      );
+    }
+    if (!mockSet.has(key)) {
+      fail.push(
+        `✗ 判据⑧b 收编不许变黑洞：CONSOLIDATED_INTO_SANDBOX["${key}"] 不在 ${FIXTURES} 的 allViews 里 ——\n` +
+          `    前端所有跑 mock 的「路由仍可达」断言对它恒真（哑门），深链接真断了也没人报。`,
+      );
+    }
   } else if (via === "static-route") {
     if (!routeSet.has(key)) {
       fail.push(
@@ -811,8 +1143,83 @@ for (const { key, via, where } of consolidated) {
     }
   } else {
     fail.push(
-      `✗ 判据⑧ via 取值非法：CONSOLIDATED_INTO_SANDBOX["${key}"].via = "${via}"，只允许 "workspace.views" / "static-route"。\n` +
-        `    这两个值决定本门去验哪一侧；写错 = 两侧都不验，收编表当场变成免死金牌。`,
+      `✗ 判据⑧ via 取值非法：CONSOLIDATED_INTO_SANDBOX["${key}"].via = "${via}"，\n` +
+        `    只允许 "workspace.views"（BUILTIN_VIEWS seed:true）/ "view-defs"（service.ts 增量视图桶）/ "static-route"。\n` +
+        `    这三个值决定本门去验哪一侧；写错 = 三侧都不验，收编表当场变成免死金牌。`,
+    );
+  }
+}
+
+/* ---------- 判据⑧f 两张表不许各写一半（WO-SANDBOX-NAV-CONSOLIDATE）---------- *
+ * `consolidatedWhen`（写在导航条目上，决定**屏上何时隐藏**）与 `CONSOLIDATED_INTO_SANDBOX`
+ * （写在收编表里，声明**到达路径还在**）是同一件事的两半。只写一半各有一种死法：
+ *   · 只写 consolidatedWhen、不进收编表 ⇒ 条目会隐藏，但**没有任何人声明过它在控制台里到得了**，
+ *     也没有 ⑧b/⑧c 去验那条路还通不通 —— 这就是「删入口了事」披了张皮；
+ *   · 只进收编表、条目不带 consolidatedWhen ⇒ ⑧a 已经咬（重复入口）。
+ * 故这里补正向那一半。 */
+for (const [key, when] of navViewConsolidatedWhen) {
+  if (!consolidatedSet.has(key)) {
+    fail.push(
+      `✗ 判据⑧f 收编须两半齐：${SHELL} 的 NAV_GROUPS 里 kind:"view" 条目 "${key}" 带了\n` +
+        `    consolidatedWhen: "${when}"（= 声明「${when} 开着时我不该单列，因为我已在那个控制台里」），\n` +
+        `    但 CONSOLIDATED_INTO_SANDBOX 里**没有这个键**。\n` +
+        `    后果：${when} 开着的租户在导航里看不到它，而**没有任何一处声明过它在控制台里点哪能到**，\n` +
+        `    也没有 ⑧b/⑧c 去验那条到达路径还通不通 —— 「收编」和「把入口删了」在屏上一模一样。\n` +
+        `    修法：进 CONSOLIDATED_INTO_SANDBOX，写明 via（哪条机制仍可达）与 where（用户点哪里能到）。`,
+    );
+  }
+}
+
+/* ---------- 判据⑨ 组的收编承诺不许被逐条豁免掏空（WO-SANDBOX-NAV-CONSOLIDATE）---------- *
+ * ── 由来（真事·仓主原话）────────────────────────────────────────────────────────
+ * 「归因与风险」组原本两项都带 `consolidatedWhen: "sim.sandbox"` ⇒ 沙盘一开整组消失。
+ * 后来三张单**各往组里加了一项、每一项都不带**，理由都是「沙盘五模式里没有它，
+ * 带了页面就不可达」——**每条豁免单独看都成立**。合起来的效果是：这个本该消失的组
+ * 在沙盘开着时永远剩三项。仓主看到屏幕后问：**「为何导航栏还有这2个，我之前不是要求你调整吗？」**
+ *
+ * 形态（铁律 0.6 句式）：
+ *   **「我用『每条豁免单独看都成立』当作『整组收编还在生效』的证据，而前者并不度量后者。」**
+ * 同族病 `G-GATE-ROSTER-HANDCOPIED`：每次加一项都合规，**累积效果无人度量**。
+ * 既有判据①–⑧ 全是**逐键**判据（这个键有没有入口 / 这个键的路通不通），
+ * 没有任何一条问过「这一组合起来还成不成立」—— 判据⑨ 补的就是这一问。
+ *
+ * 豁免不是禁止，是**必须登记且带理由**：`ShellLayout.GROUP_CONSOLIDATION_EXEMPT`
+ * （单一出处在被测代码里，同 ROUTE_NO_NAV 的既有做法；门只解析对账）。 */
+const groupExemptUsed = new Set();
+for (const g of navGroups) {
+  const hollow = hollowedOutMembers(g, GROUP_EXEMPT);
+  for (const it of g.items) {
+    const k = groupExemptKey(g.title, it.key);
+    if (GROUP_EXEMPT[k] !== undefined) groupExemptUsed.add(k);
+  }
+  if (hollow.length === 0) continue;
+  const promises = [...new Set(g.items.map((it) => it.consolidatedWhen).filter((w) => w !== null))];
+  const remainText = promises.map((p) => `${p} 开时本组还剩 ${remainingWhenOn(g, p)} 项`).join(" · ");
+  fail.push(
+    `✗ 判据⑨ 本组的收编承诺正在被掏空：「${g.title}」组 —— ${remainText}（承诺兑现时该是 0 项 ⇒ 空组自动隐藏）。\n` +
+      `    这一组已经对 [${promises.join(", ")}] 做出收编承诺（有成员带 consolidatedWhen），\n` +
+      `    但下列成员既不带同一个 consolidatedWhen、也没有登记豁免：\n` +
+      hollow.map((h) => `      · ${h.kind}:${h.key}（相对承诺 ${h.missing.join("/")} 是掏空的）`).join("\n") +
+      `\n` +
+      `    ⚠ 单看每一条，"它不该被收编"多半是**对的**（沙盘里确实还没有它的落点）。\n` +
+      `      本判据要抓的正是这个：**每条都对，合起来把承诺掏空了**，而在此之前没有任何东西在看合起来的效果。\n` +
+      `    修法三选一（**不许**用第四种：删导航项了事 —— 删了而无替代入口 = 页面彻底不可达）：\n` +
+      `      ① 真收编：在那个控制台里给它一个用户点得到的落点，然后给条目加 consolidatedWhen；\n` +
+      `      ② 挪组：它与本组其余成员回答的不是同一类问题 ⇒ 归到别的组去（组是按"回答什么"分的）；\n` +
+      `      ③ 显式豁免：进 ${SHELL} 的 GROUP_CONSOLIDATION_EXEMPT，键 "${groupExemptKey(g.title, hollow[0].key)}"，\n` +
+      `         值写清「为什么它不该被这个开关收编」（≥10 字）。豁免会被本门打印出来，无处躺平。`,
+  );
+}
+// 豁免自身的两重约束（理由 + 不许陈旧）—— 与 ROUTE_NO_NAV / RENDERER_NO_PATH 同款纪律
+for (const [k, why] of Object.entries(GROUP_EXEMPT)) {
+  if (typeof why !== "string" || why.trim().length < 10) {
+    fail.push(`✗ 判据⑨ 豁免须有理由：GROUP_CONSOLIDATION_EXEMPT["${k}"] 的理由不足 10 字（"待定"/"TODO" 不是理由）。`);
+  }
+  if (!groupExemptUsed.has(k)) {
+    fail.push(
+      `✗ 判据⑨ 豁免不许陈旧：GROUP_CONSOLIDATION_EXEMPT["${k}"] 在 ${SHELL} 的 NAV_GROUPS 里找不到对应的「组::项」。\n` +
+        `    要么那一项已经删了/改了组，要么键写错了。陈旧豁免今天什么也不放行，\n` +
+        `    却会在下一次同名组合出现时**悄悄放过它** —— 删掉即可。`,
     );
   }
 }
@@ -831,9 +1238,16 @@ if (gateBroken.length > 0 || fail.length > 0) {
   console.error(
     `参考：后端 seeded=${seeded.length} · mock allViews=${mockKeys.length} · NAV_GROUPS view 键=${navSet.size}` +
       ` · NAV_GROUPS route 键=${navRouteSet.size} · App.tsx 专用 route=${routeSet.size}` +
-      ` · 已注册 renderer=${registeredRenderers.length} · 可达 renderer 并集=${rendererReachable.size}`,
+      ` · NAV_GROUPS 组数=${navGroups.length} · 已注册 renderer=${registeredRenderers.length}` +
+      ` · 可达 renderer 并集=${rendererReachable.size}`,
   );
-  process.exit(1);
+  /* ── 退出码三分（WO-SANDBOX-NAV-CONSOLIDATE 补齐）──────────────────────────────
+   * 本文件顶部的兜底注释早就写着「2 = 工具自己坏了（1 留给主判据明确判负那一条路径，
+   * 两者处置相反，不许合并）」，而这一行**一直把两者合并成 1** —— 门自己瞎了会被读成
+   * 「你的代码有问题」，方向正好相反（去改被测代码，而该改的是门）。
+   * 形态与顶部兜底那条同源：「我用『进程非 0 退出』当作『代码有问题』的证据。」
+   * 判负优先级：真违规存在 ⇒ 1（先修代码）；只有门坏了 ⇒ 2（先修门，本次结论作废）。 */
+  process.exit(fail.length > 0 ? 1 : 2);
 }
 const exemptNote =
   Object.keys(INTENTIONALLY_NO_NAV).length === 0
@@ -854,6 +1268,25 @@ console.log(
     `（mock allViews=${mockKeys.length} · NAV_GROUPS view 键=${navSet.size} · route 键=${navRouteSet.size}）\n` +
     `  ${consolidatedNote}`,
 );
+/* 判据⑨ 也必须留痕：哪些组做了收编承诺、承诺是否兑现、豁免了谁 —— 放行必须看得见（同 ROUTE_NO_NAV）。 */
+{
+  const promiseGroups = navGroups.filter((g) => g.items.some((it) => it.consolidatedWhen !== null));
+  const note = promiseGroups
+    .map((g) => {
+      const promises = [...new Set(g.items.map((it) => it.consolidatedWhen).filter((w) => w !== null))];
+      return promises.map((p) => `「${g.title}」→ ${p} 开时剩 ${remainingWhenOn(g, p)} 项`).join(" · ");
+    })
+    .join(" · ");
+  const ex =
+    Object.keys(GROUP_EXEMPT).length === 0
+      ? "无组豁免"
+      : `组豁免 ${Object.entries(GROUP_EXEMPT).map(([k, why]) => `${k}（${why}）`).join(" · ")}`;
+  console.log(
+    `✓ 判据⑨ 组收编承诺未被掏空：${promiseGroups.length} 个组做了收编承诺 —— ${note || "（无）"}\n` +
+      `  （剩 0 项 = 空组自动隐藏 = 承诺兑现；剩 N>0 项且那 N 项在下面的豁免表里逐条有理由，也算兑现）\n` +
+      `  ${ex}`,
+  );
+}
 console.log(
   `✓ 判据⑦ 渲染器可达：${REGISTRY} 的 ${registeredRenderers.length} 个 registerRenderer 键，` +
     `每个都至少有一条路径渲染得到（后端派单 ${new Set([...seededRenderers, ...viewDefRenderers]).size} 个 renderer` +

@@ -41,7 +41,28 @@ const CONFIG_VERSION_TTL_MS = 5 * 60_000;
 //   （sim-sandbox：entitlement 关 → 入口消失 + 进去 404，R3「功能关闭 = 不存在」不泄露存在性，语义一字未动）。
 //   不带 feature 的路由页没有页面侧 Guard，本就人人可进，无可泄露。
 type NavItemRef =
-  | { kind: "view" | "admin"; key: string }
+  | {
+      kind: "view";
+      key: string;
+      /**
+       * WO-SANDBOX-NAV-CONSOLIDATE · **收编开关**（语义与 route 变体那个**逐字相同**：开则隐藏）。
+       *
+       * 为什么 `kind:"view"` 也要有这一条（上一版只有 route 变体有）：
+       * 收编表 `CONSOLIDATED_INTO_SANDBOX` 里原来那五个子视图的 entitlement 本就
+       * `requires: ["sim.sandbox"]` —— 沙盘关 ⇒ 它们连 `workspace.views` 都不下发，
+       * **不存在「沙盘关着但这五个还在」的状态**，故那五个是**无条件**收编（表里有即滤掉）。
+       * 而本轮收编的三页（`process-wait` / `procurement-legs` / `process-stuck`）
+       * **不受 `sim.sandbox` 门控**（沙盘关着它们照样下发、照样能打开）。若也按无条件滤掉，
+       * 沙盘关着的租户就会「沙盘没有 + 导航也没有」= 三个页从 IA 里蒸发 ——
+       * 那正是本单硬红线禁止的「删导航项了事」。
+       *
+       * ⇒ 判据：**带 `consolidatedWhen` = 条件收编**（那个开关开着才隐藏，关着照旧单列）；
+       *   **不带 = 无条件收编**（只可能用于随同一个 entitlement 一起消失的键）。
+       *   两者的对账在 `scripts/check-nav-group-coverage.mjs` 判据⑧a/⑧f。
+       */
+      consolidatedWhen?: string;
+    }
+  | { kind: "admin"; key: string }
   | {
       kind: "route";
       /** App.tsx 里 `{ path: "v/<key>" }` 的静态段（= 链接 `/v/<key>`·门按此对账）。 */
@@ -88,12 +109,17 @@ type NavItemRef =
  *  · `workspace.views`：后端 `view-manifest.BUILTIN_VIEWS`(seed:true) 派单 → `App.tsx` 的
  *    `{ path: "v/:viewKey" }` 通用分发 → `ViewPage` 查 `workspace.views` 拿 renderer。
  *    ⇒ **后端不许停派**，停派 = `/v/<key>` 当场 404（件四结论，见 AUDIT §4）。
+ *  · `view-defs`：后端 `synthetic/service.ts` 的 `VIEW_DEFS` **增量视图桶**（不进 `BUILTIN_VIEWS`、
+ *    不进 `scenarioSeed.views`）。`process-stuck` 走这条：它的控制键是引擎级暗发键
+ *    `process.runtime` 而不是 `view.<key>`，进 `BUILTIN_VIEWS` 会被 `builtInViewFeatureDefs()`
+ *    照 featureKey 再注册一份 `defaultOn:true`，**把暗发当场顶掉**（见 service.ts 该行的长注释）。
  *  · `static-route`：`App.tsx` 的 `{ path: "v/<静态段>" }`，静态段先于 `:viewKey` 匹配，免下发即可达。
- * 门按 `via` 分别验：前者验后端仍派单，后者验 route 仍存在。写错 `via` 会被门当场咬住。
+ * 门按 `via` 分别验：前两者验后端仍派单（一个查 `BUILTIN_VIEWS(seed:true)`、一个查 `VIEW_DEFS`），
+ * 后者验 route 仍存在。写错 `via` 会被门当场咬住。
  */
 export const CONSOLIDATED_INTO_SANDBOX: Record<
   string,
-  { via: "workspace.views" | "static-route"; where: string }
+  { via: "workspace.views" | "view-defs" | "static-route"; where: string }
 > = {
   // ── 五个沙盘子视图（原「推演」组平级入口）──────────────────────────────────
   // 这五个的 entitlement 本就 `requires: ["sim.sandbox"]`（见 mocks/fixtures.ts 与后端 view-manifest.ts）：
@@ -109,10 +135,60 @@ export const CONSOLIDATED_INTO_SANDBOX: Record<
   // 与上面五个的关键差别：这四个页**不受 `sim.sandbox` 门控**（人人可进）。
   // 故它们在 NAV_GROUPS 里的条目**保留**，只是带 `consolidatedWhen: "sim.sandbox"` ——
   // 沙盘开 → 隐藏（已在沙盘里）；沙盘关 → 照旧单列（否则这四个页会随沙盘一起从 IA 里蒸发）。
-  "cleanroom-attr": { via: "static-route", where: "沙盘模式切换 →「归因」（沙盘关则回退为导航单列）" },
+  "cleanroom-attr": { via: "static-route", where: "沙盘模式切换 →「归因」→ 档「净室归因」（沙盘关则回退为导航单列）" },
   "what-if": { via: "static-route", where: "沙盘模式切换 →「试一手」（沙盘关则回退为导航单列）" },
   "optimize-whatif": { via: "static-route", where: "沙盘模式切换 →「求最优」（沙盘关则回退为导航单列）" },
   "disruption-radius": { via: "static-route", where: "沙盘模式切换 →「影响半径」（沙盘关则回退为导航单列）" },
+  // ── 三个「归因与风险」组的后端下发页（WO-SANDBOX-NAV-CONSOLIDATE）────────────────
+  // 收进沙盘「归因」模式的**档**（同一问、不同对象：链路损失 / 流程模板 / 流程实例 / 采购段），
+  // 档表在 `views/sim/sandboxModes.ts` 的 `SANDBOX_ATTRIBUTE_TAB_SPEC`（那张表的 `originView`
+  // 就是本表的键，两侧由测试对账，不许各写一半）。
+  // 与上面四页的关键差别：它们经**后端下发**（kind:"view"），不是专用 route ——
+  // 故回退条目也是 kind:"view" + `consolidatedWhen`，见 NAV_GROUPS「归因与风险」组。
+  "process-wait": {
+    via: "workspace.views",
+    where: "沙盘模式「归因」→ 档「流程等待态」（沙盘关则回退为导航单列）",
+  },
+  "procurement-legs": {
+    via: "workspace.views",
+    where: "沙盘模式「归因」→ 档「采购四段腿」（沙盘关则回退为导航单列）",
+  },
+  // ⚠ `view-defs` 不是 `workspace.views` 的同义词，别顺手改：`process-stuck` 刻意**不进**
+  //   `BUILTIN_VIEWS`（进了就把暗发键 `process.runtime` 顶成 defaultOn:true），见表头 `via` 说明。
+  "process-stuck": {
+    via: "view-defs",
+    where: "沙盘模式「归因」→ 档「流程卡点」（暗发键关着时该档整个不出现·沙盘关则回退为导航单列）",
+  },
+};
+
+/**
+ * WO-SANDBOX-NAV-CONSOLIDATE · **组收编承诺的显式豁免表**（判据⑨ 的唯一豁免源）。
+ *
+ * ── 它治什么病（本单的由来）──────────────────────────────────────────────────
+ * 「归因与风险」组原本两项都带 `consolidatedWhen: "sim.sandbox"` ⇒ 沙盘一开整组消失。
+ * 后来三张单**各往组里加了一项、每一项都不带** `consolidatedWhen`，理由都是
+ * 「沙盘五模式里没有它，带了页面就不可达」——**每条豁免单独看都成立**，
+ * 合起来却把整组的收编承诺掏空了：沙盘开着时这个本该消失的组永远剩三项。
+ * 形态（铁律 0.6 句式）：
+ *   **「我用『每条豁免单独看都成立』当作『整组收编还在生效』的证据，而前者并不度量后者。」**
+ * 错不在任何一条豁免，错在**没有任何东西在看合起来的效果**。判据⑨ 就是那个"看合起来"的东西。
+ *
+ * ── 规则 ──────────────────────────────────────────────────────────────────────
+ * 凡有成员带 `consolidatedWhen: X` 的导航组，其余成员**要么也带 `consolidatedWhen: X`，
+ * 要么在本表里逐条登记「为什么它不该被 X 收编」**。新增未登记的豁免 ⇒ 门 RC=1。
+ * 键的形态：`"<组标题>::<项键>"`；值 = 理由（≥10 字，"待定/TODO" 不算理由）。
+ * 陈旧豁免（那一项已经带上 `consolidatedWhen`，或那一项已从组里删掉）同样 RC=1 ——
+ * 留着等于给下一个真缺口预留后门（同 `ROUTE_NO_NAV` / `RENDERER_NO_PATH` 的既有纪律）。
+ */
+export const GROUP_CONSOLIDATION_EXEMPT: Record<string, string> = {
+  // 沙盘自己不可能被自己收编 —— 它就是那个控制台。带上 consolidatedWhen 等于「沙盘开着时把沙盘入口藏掉」。
+  "推演::sim-sandbox": "它就是被收编进去的那个控制台本身；收编自己在逻辑上不成立（沙盘开着反而必须看得见入口）",
+  // 下面四条是**独立场景**（各自的求解器、各自的一整页），不是沙盘的模式或档。
+  // 判据不是"能不能塞进去"，是"它回答的是不是沙盘那五问之一"——这四个都不是。
+  "推演::project-sim": "独立场景：项目级推演有自己的求解器与整页流程，不是沙盘五问之一；收进去只会把沙盘撑爆",
+  "推演::global-sim": "独立场景：全局推演有自己的求解器与整页流程，不是沙盘五问之一；收进去只会把沙盘撑爆",
+  "推演::risk": "独立场景：风险看板有自己的数据面与整页流程，不是沙盘五问之一；收进去只会把沙盘撑爆",
+  "推演::order-chain": "独立场景：订单全链有自己的求解器与整页流程，不是沙盘五问之一；收进去只会把沙盘撑爆",
 };
 
 // WO-SWEEP-03-NAV-GROUP（导航分组防漂移）：export 供 f61 结构守卫——NAV_GROUPS 的 admin 键须覆盖全部 ADMIN_PAGES，
@@ -187,39 +263,49 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   // WO-ROUTE-NAV-COVERAGE：归因/影响面两页此前**零导航提及**——只能手敲 URL 才进得去。
   // 不并进「推演」组：它们回答的不是"改一个假设会怎样"（推演），而是"现状为什么这样 / 波及多大"（归因）。
   // WO-SANDBOX-IA-CONSOLIDATE：归因/影响半径**二者**已收编进沙盘模式切换，故同带 `consolidatedWhen`。
-  // ⚠ WO-MERGE-11 订正：原文写「沙盘开时本组两项全隐藏 ⇒ 空组自动隐藏」，那是本组只有两项时的事实。
-  //    WO-WAITING-STATES-FE 往本组加了第三项 `process-wait`，而它**没有**被收编进沙盘
-  //    （沙盘五模式 = 现状/归因/试一手/求最优/影响半径，见 `views/sim/sandboxModes.ts`，其中没有流程等待），
-  //    所以它**不能**带 `consolidatedWhen` —— 带了就是把它唯一的入口在沙盘开时删掉，页面直接不可达。
-  //    ⇒ 沙盘开时本组剩「流程等待」一项，组**不再**自动隐藏。这是正确行为，不是漏配。
-  //    ⚠ WO-R9-NAVREACH 再订正一次同一句：本组现有**四项**，`procurement-legs`（采购四段腿分解）
-  //      与 `process-wait` 同理不带 `consolidatedWhen` ⇒ 沙盘开时本组剩**两项**（不是一项）。
+  //
+  // ⚠⚠ WO-SANDBOX-NAV-CONSOLIDATE（本轮）· **上面那两条订正记的是同一个病，而它们记的方向是错的**。
+  //    历史原文（已删）逐条写着：「WO-MERGE-11 订正：沙盘开时本组剩『流程等待』一项，组不再自动隐藏，
+  //    **这是正确行为，不是漏配**」→「WO-R9-NAVREACH 再订正一次同一句：本组现有四项…剩两项（不是一项）」。
+  //    仓主看到屏幕后的原话是：**「为何导航栏还有这2个，我之前不是要求你调整吗？」**
+  //    ⇒ 那两条订正每次都只更新了**数字**（一项 → 两项），从没问过「这个数为什么不是零」。
+  //    形态（铁律 0.6 句式）：**「我用『每条豁免单独看都成立』当作『整组收编还在生效』的证据。」**
+  //    三条豁免（process-wait / procurement-legs / process-stuck）**每一条的理由都是真的** ——
+  //    当时沙盘里确实没有它们的落点，带上 `consolidatedWhen` 就是把唯一入口删掉、页面不可达。
+  //    真正缺的不是第四条豁免，是**给它们在沙盘里造一个落点**。本轮做的就是这件事：
+  //    三页收进沙盘「归因」模式的三个**档**（`views/sim/sandboxModes.ts` 的
+  //    `SANDBOX_ATTRIBUTE_TAB_SPEC`），于是三条豁免的前提消失，`consolidatedWhen` 可以带上了。
+  //    ⇒ **沙盘开时本组五项全隐藏 ⇒ 空组自动隐藏**（回到原设计）；沙盘关时五项全在（收编 ≠ 删除）。
+  //    机器那一半：`scripts/check-nav-group-coverage.mjs` 判据⑨ —— 组里再出现未登记的豁免即 RC=1，
+  //    报文点明「本组的收编承诺正在被掏空：X 开时本组还剩 N 项」。这条以后不靠人想起来。
   {
     title: "归因与风险",
     items: [
       // WO-WAITING-STATES-FE：流程等待态（需求 §20）——回答「为什么这个流程现在卡住了」。
-      // 归此组不归「推演」：它答的是「现状为什么这样」（归因），不是「改一个假设会怎样」（推演），
-      // 与同组两页同一判据。kind:"view" 而非 route —— 它经后端 BUILTIN_VIEWS 下发（租户本体数据 + R3 级联）。
-      { kind: "view" as const, key: "process-wait" },
+      // 归此组不归「推演」：它答的是「现状为什么这样」（归因），不是「改一个假设会怎样」（推演）。
+      // kind:"view" 而非 route —— 它经后端 BUILTIN_VIEWS 下发（租户本体数据 + R3 级联）。
+      // WO-SANDBOX-NAV-CONSOLIDATE：已收编为沙盘「归因」模式的**模板层档**，故带 consolidatedWhen；
+      // 条目**保留**（本页不受 sim.sandbox 门控）—— 沙盘关 ⇒ 照旧单列，不让页跟着沙盘蒸发。
+      { kind: "view" as const, key: "process-wait", consolidatedWhen: "sim.sandbox" },
       // WO-R9-NAVREACH：采购四段腿分解（「该找谁」页）——回答「这批料晚在哪一段、今天该打哪通电话」。
-      // 归此组不归「推演」：与同组两页同一判据 —— 它答的是「现状为什么这样」（归因），
-      // 不是「改一个假设会怎样」（推演）。kind:"view" 而非 route —— 它经后端 BUILTIN_VIEWS 下发
+      // kind:"view" 而非 route —— 它经后端 BUILTIN_VIEWS 下发
       // （租户本体数据 + R3 级联 + `view.options` 只有 ViewConfig 这条路送得到，见后端该行注释）。
-      // 不带 consolidatedWhen：沙盘五模式里没有它（见 views/sim/sandboxModes.ts），
-      // 带了就是把它唯一的入口在沙盘开时删掉 —— 与 process-wait 同一条理由。
-      { kind: "view" as const, key: "procurement-legs" },
+      // WO-SANDBOX-NAV-CONSOLIDATE：已收编为沙盘「归因」模式的**责任方档**（同上，条目保留做回退）。
+      { kind: "view" as const, key: "procurement-legs", consolidatedWhen: "sim.sandbox" },
       // WO-PROCESS-INSTANCE：流程卡点（**实例层**）——与 `process-wait` 是**两页**，不是重复入口：
       //   · `process-wait`（模板层）答「这**类**流程通常在等哪一类东西」（65 条定义的 waitKind，平均值）；
       //   · `process-stuck`（实例层）答「**这一张单**此刻卡在第几步、等谁、等了多久」（现场值）。
       // 合并单 WO-R9-PROCESS-MERGE 新立的 `waitStateOrigin` 诚实位分的正是这两者
       // （`DEFINITION_TEMPLATE` vs `TASK_GATE`），把它们并成一个入口就等于把那条诚实位在 IA 层抹掉。
-      // 同组不同项、同为归因（答「现状为什么这样」），故与 process-wait 相邻而不合并。
+      // ⇒ **收编后它们仍是两个入口**（沙盘里的两个档），这条裁决本轮一个字没动。
       //
       // kind:"view"（不是 route）：它经后端下发（`synthetic/service.ts` 增量视图桶），
       // 且必须有 R3 页面侧守卫 —— `process.runtime` 是暗发键（defaultOn:false +
       // INCOMPLETE_DATA_DARK_LAUNCH_FEATURES），挂成 route 会变成「关着也手敲得进去」。
-      // 不带 `consolidatedWhen`：沙盘五模式里没有流程卡点，带上就是把它唯一入口在沙盘开时删掉。
-      { kind: "view" as const, key: "process-stuck" },
+      // ⚠ 收编后 R3 守卫**没有丢**：沙盘里那一档走的是与 `ViewPage` 逐字同构的双闸分发
+      //   （features 有没有 `view.process-stuck` + `workspace.views` 有没有它），
+      //   暗发键关着时**连档位按钮都不渲染**（不是禁用按钮 —— 禁用同样泄露存在性）。
+      { kind: "view" as const, key: "process-stuck", consolidatedWhen: "sim.sandbox" },
       { kind: "route" as const, key: "cleanroom-attr", label: "净室归因", consolidatedWhen: "sim.sandbox" },
       { kind: "route" as const, key: "disruption-radius", label: "断供影响半径", consolidatedWhen: "sim.sandbox" },
     ],
@@ -290,7 +376,26 @@ function UnifiedNav({
    * 那正是 `G-NAV-FALLBACK-BUCKET` 这个断点本身，比单列还糟（单列至少找得到）。
    * 故过滤放在最前面，一次盖住分组与兜底两条路。
    */
-  const views = allViews.filter((it) => !CONSOLIDATED_INTO_SANDBOX[it.viewKey ?? it.key]);
+  /**
+   * WO-SANDBOX-NAV-CONSOLIDATE · **条件收编**：`consolidatedWhen` 开着才算收编。
+   *
+   * 这张 Map 必须在 `views` 过滤**之前**算好，理由与上一段一模一样：条件收编的键若只从
+   * 分组循环里 `return null`，`leftover` 会照单全收 ⇒ 原地掉进「其它」兜底桶。
+   * 一次过滤盖住分组与兜底两条路 —— 这是本文件最容易漏、漏了后果最直接的一行。
+   */
+  const conditionalConsolidation = new Map(
+    NAV_GROUPS.flatMap((g) => g.items)
+      .filter((it): it is Extract<NavItemRef, { kind: "view" }> => it.kind === "view" && it.consolidatedWhen !== undefined)
+      .map((it) => [it.key, it.consolidatedWhen!] as const),
+  );
+  const views = allViews.filter((it) => {
+    const key = it.viewKey ?? it.key;
+    const when = conditionalConsolidation.get(key);
+    // 条件收编：开关**开**着 ⇒ 已在控制台里 ⇒ 不单列；关着 ⇒ 条目照旧（不让页跟着控制台蒸发）。
+    if (when !== undefined) return !featureOn(workspace, when);
+    // 无条件收编：只用于随同一个 entitlement 一起消失的键（那五个沙盘子视图）。
+    return !CONSOLIDATED_INTO_SANDBOX[key];
+  });
   const viewByKey = new Map(views.map((it) => [it.viewKey ?? it.key, it]));
   const adminByPath = new Map(adminPages.map((p) => [p.path, p]));
   const usedViews = new Set<string>();
