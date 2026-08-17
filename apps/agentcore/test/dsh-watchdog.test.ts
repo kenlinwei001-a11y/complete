@@ -34,7 +34,7 @@ describe("N3 · runner 级 stall_loop 剧本（B1-B4）", () => {
 
   it("B1 正例：stall_loop + cap=3 → abort cause=stall-loop ∧ STALL_LOOP 降级 ∧ tool/call===3", { timeout: INTEGRATION_TIMEOUT }, async () => {
     const run = await runDshAgent(
-      { prompt: "p", setup: {}, provider: "mock", model: "mock" },
+      { prompt: "p", setup: { tenantId: "t1" }, provider: "mock", model: "mock" },
       { harnessDir: HARNESS_DIR, requestTimeoutMs: 30_000, env: { MOCK_SCENARIO: "stall_loop", [CAP_KEY]: "3" } },
     );
     const end = turnEndFrame(run.events);
@@ -66,7 +66,7 @@ describe("N3 · runner 级 stall_loop 剧本（B1-B4）", () => {
 
   it("B2 异参对照（不误伤）：stall_loop_varying + cap=3 → 无 stall-loop ∧ ANSWERED ∧ tool/call===8", { timeout: INTEGRATION_TIMEOUT }, async () => {
     const run = await runDshAgent(
-      { prompt: "p", setup: {}, provider: "mock", model: "mock" },
+      { prompt: "p", setup: { tenantId: "t1" }, provider: "mock", model: "mock" },
       { harnessDir: HARNESS_DIR, requestTimeoutMs: 30_000, env: { MOCK_SCENARIO: "stall_loop_varying", [CAP_KEY]: "3" } },
     );
     const end = turnEndFrame(run.events);
@@ -82,7 +82,7 @@ describe("N3 · runner 级 stall_loop 剧本（B1-B4）", () => {
 
   it("B3 自定义 cap=4（≠缺省 3）：cause.cap===4 ∧ tool/call===4 —— cap 由 env 驱动非硬编码", { timeout: INTEGRATION_TIMEOUT }, async () => {
     const run = await runDshAgent(
-      { prompt: "p", setup: {}, provider: "mock", model: "mock" },
+      { prompt: "p", setup: { tenantId: "t1" }, provider: "mock", model: "mock" },
       { harnessDir: HARNESS_DIR, requestTimeoutMs: 30_000, env: { MOCK_SCENARIO: "stall_loop", [CAP_KEY]: "4" } },
     );
     const end = turnEndFrame(run.events);
@@ -95,7 +95,7 @@ describe("N3 · runner 级 stall_loop 剧本（B1-B4）", () => {
 
   it("B4 无 cap env → 无 stall-loop ∧ tool/call===8 ∧ ANSWERED（opt-in 缺省禁用，对位 loop.ts:533）", { timeout: INTEGRATION_TIMEOUT }, async () => {
     const run = await runDshAgent(
-      { prompt: "p", setup: {}, provider: "mock", model: "mock" },
+      { prompt: "p", setup: { tenantId: "t1" }, provider: "mock", model: "mock" },
       { harnessDir: HARNESS_DIR, requestTimeoutMs: 30_000, env: { MOCK_SCENARIO: "stall_loop" } },
     );
     const end = turnEndFrame(run.events);
@@ -115,7 +115,7 @@ describe("N3 · runner 级 stall_loop 剧本（B1-B4）", () => {
     //   守卫 neuter（META_TOOLS.has 摘除）⇒ 同参 final_answer 累加，第 3 轮 n>=cap=3 ⇒
     //   watchdog cancel ⇒ tool/call 帧停 3、turn/end 落 stall-loop、本测红 —— 咬的是变异本身。
     const run = await runDshAgent(
-      { prompt: "p", setup: {}, provider: "mock", model: "mock" },
+      { prompt: "p", setup: { tenantId: "t1" }, provider: "mock", model: "mock" },
       { harnessDir: HARNESS_DIR, requestTimeoutMs: 30_000, env: { MOCK_SCENARIO: "stall_loop_meta", [CAP_KEY]: "3" } },
     );
     const end = turnEndFrame(run.events);
