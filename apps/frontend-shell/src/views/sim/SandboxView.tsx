@@ -138,6 +138,8 @@ const SANDBOX_SECONDARY_ACTION_COUNT = SANDBOX_SECONDARY_ACTIONS.length;
 // 用户看到的差值会对不上账（这正是本仓「第二套真相源」那条老账的形态）。
 export { deriveBaseSnapshot, hash01 } from "./edgeActiveModel";
 import { deriveBaseSnapshot, hash01 } from "./edgeActiveModel";
+// WO-STATEVAR-DISPLAYNAME：状态变量中文名的**唯一**消费路径（本文件零中文名映射表）
+import { stateVarLabel, stateVarText } from "./stateVarLabel";
 
 /**
  * ══ WO-V4-HONEST-ORIGIN（PRD-sandbox-v4 §2.1 / §4.3）· 屏上这批读数**是哪来的** ══════════
@@ -703,8 +705,12 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
         },
         {
           heading: "逐状态变量均值（0–100 · 全对象）",
-          head: ["状态变量", "均值"],
+          // WO-STATEVAR-DISPLAYNAME：导出表**两列都给** —— 人看的中文名 + 接线名。
+          // 导出件常被拿去对账/回贴进工单，只给中文名会让人查不回是哪个变量；
+          // 只给裸键就是屏上那个老病搬进了文件。未登记中文名的行，第一列如实回落裸键。
+          head: ["状态变量", "接线名", "均值"],
           rows: (cfg?.stateVars ?? []).map((v) => [
+            stateVarText(v, cfg?.stateVarNames),
             v,
             objs.length ? (objs.reduce((a, o) => a + (world[o]?.[v] ?? 0), 0) / objs.length).toFixed(1) : "—",
           ]),
@@ -1368,11 +1374,16 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                   value={effPStateVar}
                   onChange={(e) => setPStateVar(e.target.value)}
                 >
-                  {(cfg.stateVars.length > 0 ? cfg.stateVars : [effPStateVar]).map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
+                  {/* WO-STATEVAR-DISPLAYNAME：下拉显中文名，`value` 仍是裸键（提交给引擎的是接线名）。
+                      查不到名字的照旧显裸键 —— 下拉里没有第二行可放接线名，故用 `title` 兜住。 */}
+                  {(cfg.stateVars.length > 0 ? cfg.stateVars : [effPStateVar]).map((v) => {
+                    const lab = stateVarLabel(v, cfg.stateVarNames);
+                    return (
+                      <option key={v} value={v} title={lab.named ? `${lab.text}（状态变量 ${lab.key}）` : lab.key}>
+                        {lab.text}
+                      </option>
+                    );
+                  })}
                 </select>
 
                 <span className={styles.sub}>方式 / 幅度</span>
@@ -1868,11 +1879,29 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                 );
                 const first = ranked.slice(0, FIRST_LAYER_KPIS);
                 const rest = ranked.slice(FIRST_LAYER_KPIS);
-                const cell = (r: { v: string; avg: number }) => (
-                  <span key={r.v} data-testid={`sandbox-kpi-${r.v}`}>
-                    {r.v} <b data-testid={`sandbox-kpi-${r.v}-val`}>{r.avg.toFixed(1)}</b>
-                  </span>
-                );
+                /**
+                 * WO-STATEVAR-DISPLAYNAME：读数标签改显**中文业务名**（`loadIndex` → 「负载指数」）。
+                 * 名字来自后端 `view-config.stateVarNames`（单源在 battery.ts），前端零映射表。
+                 * 查不到 ⇒ `stateVarLabel` 回落裸键并置 `named=false`，据此打 `data-statevar-named`
+                 * —— 回落态因此可被断言，而不是"看上去差不多"。
+                 * ⚠ **testid 仍用裸键** `sandbox-kpi-${r.v}`：它是测试与深链接的接线名，
+                 *   跟着中文名走会把全仓十余处 `getByTestId` 一起打红（改的是展示层，不是接线名）。
+                 * ⚠ **不新增 DOM 节点**：本区受 KPI 分层/密度纪律约束（见上方长注释），
+                 *   多一个 span 会动到 declutter/density 两组用例数的判据。接线名改挂 `title`。
+                 */
+                const cell = (r: { v: string; avg: number }) => {
+                  const lab = stateVarLabel(r.v, cfg.stateVarNames);
+                  return (
+                    <span
+                      key={r.v}
+                      data-testid={`sandbox-kpi-${r.v}`}
+                      data-statevar-named={lab.named ? "true" : "false"}
+                      title={lab.named ? `${lab.text}（状态变量 ${lab.key}）` : `状态变量 ${lab.key}：本体未登记中文名，显示接线名`}
+                    >
+                      {lab.text} <b data-testid={`sandbox-kpi-${r.v}-val`}>{r.avg.toFixed(1)}</b>
+                    </span>
+                  );
+                };
                 return (
                   <>
                     {first.map(cell)}

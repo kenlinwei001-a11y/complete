@@ -655,9 +655,12 @@ export const SandboxViewConfigSchema = z.object({
    * 字典里出现 `loadIndex: "loadIndex"` 会让前端分不出「名字恰好等于键」与「压根没名字」，
    * 屏上也就无从把"这是回落"如实标出来。缺席 = 明确的"没有名字"。
    *
-   * 缺省 `{}` ⇒ 与本字段引入前**逐字节同屏**（additive · 可回退 RL9）：全部回落裸键，页面照常可用。
+   * ⚠ **`.optional()` 而不是 `.default({})`**：本字段与它上面的 `nodeObjectIds` 是同一类**后补的投影**，
+   * 必填会逼着改全仓 **17 个**构造本配置字面量的前端测试（实测 `tsc` 报 17 处 TS2741）——
+   * 那些改动与本单要治的病一行关系都没有，纯属把契约的形状变化转嫁成无关返工。
+   * 缺省 `undefined` ⇒ 与本字段引入前**逐字节同屏**（additive · 可回退 RL9）：全部回落裸键，页面照常可用。
    */
-  stateVarNames: z.record(z.string(), z.string()).default({}),
+  stateVarNames: z.record(z.string(), z.string()).optional(),
 });
 export type SandboxViewConfig = z.infer<typeof SandboxViewConfigSchema>;
 
@@ -674,7 +677,10 @@ export type SandboxViewConfig = z.infer<typeof SandboxViewConfigSchema>;
  */
 export const PropagationRulesResponseSchema = z.object({
   items: z.array(PropagationRuleSchema),
-  /** 口径与 `SandboxViewConfig.stateVarNames` **逐条相同**（同一张后端单源表，同一个投影函数）。 */
-  stateVarNames: z.record(z.string(), z.string()).default({}),
+  /**
+   * 口径与 `SandboxViewConfig.stateVarNames` **逐条相同**（同一张后端单源表，同一个投影函数）。
+   * 同样取 `.optional()`：前端 mock 里大量 `{ items: [...] }` 的桩响应不必为此逐个补字段。
+   */
+  stateVarNames: z.record(z.string(), z.string()).optional(),
 });
 export type PropagationRulesResponse = z.infer<typeof PropagationRulesResponseSchema>;

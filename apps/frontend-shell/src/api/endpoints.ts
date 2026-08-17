@@ -64,6 +64,7 @@ import type {
   Perturbation,
   PerturbationKind,
   PropagationRule, // WO-BEFE-E · 传导规则清单（契约已有，前端不重定义）
+  PropagationRulesResponse, // WO-STATEVAR-DISPLAYNAME · 上者的响应信封（多带 stateVarNames 字典）
   SimSession,
   SimCertification,
   SimCheckpoint,
@@ -722,8 +723,10 @@ export const fetchSimSessions = () => api.a<{ items: SimSession[] }>("/a/v1/sim/
  * 这是"边"这个概念在前端的**唯一**来源——此前全仓只有 `SimReadinessPanel` 数了个数
  * （`propagationCount`），没有任何一页把边本身画出来给人看，更别说开关。
  */
+// 响应形状用契约里的 `PropagationRulesResponse`（含 WO-STATEVAR-DISPLAYNAME 的 `stateVarNames`
+// 状态变量中文名字典）——不在前端另写一遍内联形状（contracts-only-shared）。
 export const fetchPropagationRules = (published: boolean) =>
-  api.a<{ items: PropagationRule[] }>(`/a/v1/sim/propagation-rules?published=${published ? "true" : "false"}`);
+  api.a<PropagationRulesResponse>(`/a/v1/sim/propagation-rules?published=${published ? "true" : "false"}`);
 /**
  * 改本会话屏蔽的边（**会话世界态，不是本体真值** ⇒ 不经 Action 审批；R4-sim）。
  * ⚠ 这**不是** `PropagationRule.status`：那个是全租户持久发布态，改它要走 R4 正门，且一改就没法对照。
