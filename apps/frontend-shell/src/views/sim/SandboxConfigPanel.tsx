@@ -200,7 +200,11 @@ export default function SandboxConfigPanel({ inputCards, relationTable, focusNod
               扰动它<b>不会沿本体链路扩散</b>，下游读数一格都不会动。换一个落点或量纲，这里会画出它的下游。
             </p>
           ) : (
-            <RelationGraphCanvas graph={shown} focusNodeKey={focusNodeKey} />
+            <>
+              <RelationGraphCanvas graph={shown} focusNodeKey={focusNodeKey} />
+              {/* 算式**可见**（不是悬停才出）—— 参照物那句「公式与依据均可见」的我们这一侧。 */}
+              <EdgeFormulaList edges={shown.edges} />
+            </>
           )}
 
           {/* 下游读数 —— 「关掉一条边 ⇒ 这个数当场变小」的落点（验收判据要求断言落在**数**上）。 */}
@@ -338,7 +342,17 @@ function RelationNodeBox({ placed, focused }: { placed: Placed; focused: boolean
   );
 }
 
-/** 一条边。`<title>` 里放**算式** —— 悬停即见，不占版面（分层：算式是第二层）。 */
+/**
+ * 一条边。
+ *
+ * ⛔ **不许用 `<title>`（SVG 的或 HTML 的都不许）** —— 这不是风格偏好，是本仓的一条既有棘轮：
+ *   `sandbox-ui-integrate.seam.test.tsx` §2③-2 断言「SVG `<title>` 恒为 0 · 原生 title 只降不升」，
+ *   来历是 2026-08-10 环形图上悬停提示**滞留遮挡**那次事故。本单初稿把算式塞进 `<title>`，
+ *   被该门当场报红（`expected 3 to be +0`）——**机器先说话，不是人想起来**（铁律 0.6）。
+ *   算式因此改成图下方的**可见清单**（见 `EdgeFormulaList`）。
+ *   ⇒ 这一改反而更贴参照物：它那句「公式与依据**均可见**」本来就不是悬停才出的东西。
+ *   无障碍读法走 `aria-label`（读屏能念，不产生悬停浮层）。
+ */
 function RelationEdgePath({ edge, a, b }: { edge: RelationEdgeVM; a: Placed; b: Placed }) {
   const x1 = a.x + NODE_W;
   const y1 = a.y + NODE_H / 2;
@@ -352,16 +366,45 @@ function RelationEdgePath({ edge, a, b }: { edge: RelationEdgeVM; a: Placed; b: 
       stroke={edge.active ? "var(--line2)" : "var(--danger)"}
       strokeWidth={1.5}
       style={{ strokeDasharray: edge.active ? "none" : "3 3" }}
+      aria-label={`${edge.formula}${edge.active ? "" : " · 本次推演已关掉"}`}
       data-testid={`sandbox-config-edge-${edge.key}`}
       data-active={edge.active ? "true" : "false"}
-    >
-      {/* 算式在这里第一次真正出现在屏上。表里是参数（系数/延迟），这里是它们还原成的那个算术。 */}
-      <title>
-        {edge.formula}
-        {edge.coefficientFromRule ? "（系数取自规则表参数，屏上这个数只是内联回落值）" : ""}
-        {edge.cadenceNodeId ? `（过节拍闸门 ${edge.cadenceNodeId}，到点才放行）` : ""}
-        {edge.active ? "" : " · 本次推演已关掉"}
-      </title>
-    </path>
+    />
+  );
+}
+
+/**
+ * 算式清单 —— **本单要害缺口的落点**。
+ *
+ * 改前屏上这条边的位置写的是 `系数 0.35 · 延迟 1 tick`：那是**把公式写成了参数**，
+ * 读者读不出这条边在说什么。参照物每条边都给一句能读的算式（「商机=线索×市场转化率」），
+ * 差距就在这一行。
+ *
+ * ⚠ 它是**还原**不是编造，出处记号与全文在上方那个 `?` 里（`RELATION_FORMULA_PROVENANCE`）。
+ * ⚠ 状态变量只能显系统键 —— 本体里没有它们的中文名（后端欠账，已挂账）。
+ */
+function EdgeFormulaList({ edges }: { edges: readonly RelationEdgeVM[] }) {
+  if (edges.length === 0) return null;
+  return (
+    <ul className={css.formulaList} data-testid="sandbox-config-formulas">
+      {edges.map((e) => (
+        <li key={e.key} className={css.formulaRow} data-testid={`sandbox-config-formula-${e.key}`} data-active={e.active ? "true" : "false"}>
+          <code className={css.formulaText}>{e.formula}</code>
+          {e.coefficientFromRule && (
+            <span className={css.formulaTag} data-testid={`sandbox-config-formula-ref-${e.key}`}>
+              系数取自规则表参数（屏上这个数只是内联回落值）
+            </span>
+          )}
+          {e.cadenceNodeId !== null && (
+            <span className={css.formulaTag}>过节拍闸门 {e.cadenceNodeId} · 到点才放行</span>
+          )}
+          {!e.active && (
+            <span className={css.formulaOff} data-testid={`sandbox-config-formula-off-${e.key}`}>
+              本次推演已关掉
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }

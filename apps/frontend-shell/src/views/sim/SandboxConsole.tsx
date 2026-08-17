@@ -145,6 +145,28 @@ export interface SandboxConsoleProps {
    */
   inputZone?: ReactNode;
   /**
+   * WO-SANDBOX-CONFIG-UX · **左区顶部的「配置面板」**（扰动因素 × 本体关系**同屏**）。
+   *
+   * 仓主原话三句：「所有推演的功能都需要借鉴这个设计 UX」（指
+   * `docs/REF-config-page-ux.html` 的**配置页 tab**）·「核心是扰动因素输入与本体关系非常清晰，
+   * 直接体现」·「按照不同的域的卡片来配置」。落成一句可验收的话就是：
+   * **同一屏上左边拨扰动、右边是本体关系（含图），改任一侧另一侧当场变。**
+   *
+   * ⚠ 它**必须在左区之内**，不是第四个区 —— PRD §1① 的「唯一输入区」不是本单能改的，
+   *   而 `sandbox-three-zone.seam.test.tsx` §3 把这条钉成了等号断言（主区/下区的输入控件集合
+   *   **等于**白名单）。把带 `<select>` 的配置面板摆去别处，那条断言当场红，且它红得对。
+   *
+   * ── 传了它，左区就**放宽到整行**（不传 = 今天的 300px 两栏，逐字节不变）──────────
+   * 理由不是"宽点好看"：本面板内部自己是两列（扰动 | 本体关系），塞进 300px 会把右列的
+   * 关系表 + 图挤成一条缝 —— 那等于没做。故 `.zones` 在有配置面板时改走**上下两行**：
+   * 输入区整行在上（内部两列），画布整行在下。画布因此也从 `1fr − 300px` 变成整行，
+   * 只会更宽、不会更窄。
+   *
+   * ⚠ **默认值 = 今天的行为**（与本组件 `scopeBaseIds` 受控/非受控二合一同一条纪律）：
+   *   六个不传本 prop 直接挂载本组件的门，走的仍是原来那条路，一个字都不用改。
+   */
+  configZone?: ReactNode;
+  /**
    * WO-SANDBOX-V3 · **③下区内容 = 影响带**（PRD §1③）：逐节点指标影响 ＋ 财务指标随扰动的动态变化。
    *
    * 同样由宿主提供：这两半都要读**推演会话的世界态**（`sessionId` / `world` / `baseSnapshot`），
@@ -228,6 +250,7 @@ export function SandboxConsole({
   banner,
   controlBar,
   inputZone,
+  configZone,
   impactZone,
   ontologyCanvas,
   rail = [],
@@ -653,11 +676,18 @@ export function SandboxConsole({
           ══════════════════════════════════════════════════════════════════════ */}
       <div className={styles.zones} data-testid="sandbox-zones">
         {/* ── ① 左区：扰动因素输入（**唯一输入区**）──────────────────────── */}
-        <aside className={styles.zoneInput} data-testid="sandbox-zone-input">
+        <aside
+          className={configZone ? `${styles.zoneInput} ${styles.zoneFullRow}` : styles.zoneInput}
+          data-testid="sandbox-zone-input"
+        >
           <div className={styles.zoneHead}>
             <h2>{zh.sim.sandbox.zones.inputTitle}</h2>
             <span className={styles.zoneQ}>{zh.sim.sandbox.zones.inputQuestion}</span>
           </div>
+
+          {/* WO-SANDBOX-CONFIG-UX · 配置面板（扰动 | 本体关系 同屏两列）——
+              左区的**第一块**：它就是这一屏要人干的那件事，摆在任何折叠块之前。 */}
+          {configZone}
 
           {/* 扰动输入 —— 这一区的**主角**，左区唯一不折叠的一块（PRD §1①）。 */}
           {inputZone}
@@ -779,7 +809,10 @@ export function SandboxConsole({
 
         {/* ── ② 主区：业务端到端路线图（`ChainLineMapView` 提为主画布；物理拓扑 /
                链路阶段 / 本体拓扑降为**主区内的档位**，不再与路线图平级抢位）──────── */}
-        <section className={styles.zoneCanvas} data-testid="sandbox-zone-canvas">
+        <section
+          className={configZone ? `${styles.zoneCanvas} ${styles.zoneFullRow}` : styles.zoneCanvas}
+          data-testid="sandbox-zone-canvas"
+        >
         {/* ── 中：画布（一块画布多模式）─────────────────────────────────────── */}
         <main className={`${styles.pane} ${styles.canvasPaneStretch}`} data-testid="sc-canvas-pane">
           <div className={styles.paneHead}>

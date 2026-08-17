@@ -37,6 +37,9 @@ import EdgeActivePanel from "./EdgeActivePanel";
 import { SimComparePanel } from "./SimComparePanel";
 import { SandboxConsole, type SandboxConsoleRailSection } from "./SandboxConsole";
 import { SandboxImpactBand } from "./SandboxImpactBand"; // WO-SANDBOX-V3 · ③下区影响带（本文件是它唯一的生产调用方）
+// WO-SANDBOX-CONFIG-UX · 扰动因素 × 本体关系 同屏配置面板（本文件是它唯一的生产调用方）
+import SandboxConfigPanel from "./SandboxConfigPanel";
+import { relationNodeKey } from "./sandboxRelationGraph";
 import consoleStyles from "./SandboxConsole.module.css";
 import {
   describeSandboxScope,
@@ -486,6 +489,20 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     staleTime: Infinity,
     retry: false,
   });
+  /**
+   * WO-SANDBOX-CONFIG-UX · 本会话上**已落盘**的传导边屏蔽集（关系图的唯一真相源）。
+   *
+   * 取自会话本身而不是 `EdgeActivePanel` 的内部候选集 —— 理由写在 `configZone` 那段注释里
+   * （候选集是"还在试"的中间态，拿它画图 = 画一个数据库里不存在的世界）。
+   * `EdgeActivePanel` 的「应用到本会话」会 `patchSimDisabledRules` 后让 `["a","sim-sessions"]`
+   * 失效，本 memo 随之重算 ⇒ 图重画。**这条线是真接的，不是只在测试里通。**
+   *
+   * `?? []`：老会话文档没有这个字段（契约上是 `.optional()`）⇒ 读作"一条都没关"，不 crash。
+   */
+  const sessionDisabledRuleKeys = useMemo(
+    () => sessionsQuery.data?.items.find((s) => s.id === sessionId)?.disabledRuleKeys ?? [],
+    [sessionsQuery.data, sessionId],
+  );
   const worldQuery = useQuery<WorldSnapshot>({
     queryKey: ["a", "sim-world", sessionId ?? ""],
     // WO-V4-HONEST-ORIGIN：**真取回来的**那一份盖 `MEASURED` 章。占位那一份由 `init` 盖 `DERIVED`。
@@ -1298,8 +1315,15 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
    *   `sc-rail-perturbation`（那层 `<details>` 的 testid）随之消失 —— 它是**容器**的 id，
    *   不是内容的 id；内容的 id 全在。
    */
-  const inputZone = (
-    <div className={styles.panel} data-testid="sandbox-input-zone-body">
+  /**
+   * ⚠ **WO-SANDBOX-CONFIG-UX 把这一块从 `inputZone` 提出来，交给配置面板的左列第一卡。**
+   *   块内 testid 与文案**一个字未改**（D4 守恒：允许换位置与层，不允许删除），
+   *   而且它仍在 `sandbox-zone-input` 之内（配置面板挂在左区里）——
+   *   `sandbox-three-zone.seam.test.tsx` §3 那条「扰动输入整套在左区」照旧成立。
+   *   换位置的理由只有一条：它必须与**本体关系**并排，否则「拨一下看关系怎么变」
+   *   在屏上连不起来（这正是本单的头号命题）。
+   */
+  const perturbationForm = (
         <div data-testid="sandbox-perturbation">
           {!canPerturb ? (
             <div className={styles.sub} data-testid="sandbox-perturbation-unavailable">
@@ -1428,7 +1452,10 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
             </>
           )}
         </div>
+  );
 
+  const inputZone = (
+    <div className={styles.panel} data-testid="sandbox-input-zone-body">
         {/*
           ── WO-V4-PLAYS · 方案环（PRD-sandbox-v4 §3.3）──────────────────────────────
           左区一等位置（**不套 `<details>`**）。它是「拨完扰动之后要干的那件事」，
@@ -1453,6 +1480,59 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
         */}
         <SimCommanderDock sessionId={sessionId} curTick={curTick} />
     </div>
+  );
+
+  /**
+   * ── WO-SANDBOX-CONFIG-UX · 配置面板（**扰动因素 × 本体关系 同屏**）────────────────
+   *
+   * 左列两卡 —— **两种形态不同的扰动输入，故各占一卡**（同构才切 chip，见
+   * `SandboxConfigPanel` 文件头的分域判据）：
+   *   ① 「要施加什么」= 带 类型/落点/量纲/方式/幅度/持续 的**六行表单**；
+   *   ② 「已经施加了什么」= **时间轴泳道**（每条扰动一根条，可点开、可删、可看生效窗口）。
+   * 两者形状完全不同：把时间轴压成表单的第七行，或把表单塞进泳道，都读不通。
+   * 这正是 `docs/REF-config-page-ux.html` 左栏三张卡（表格 / 角色卡+时间格 / 简表）的同一条判据。
+   *
+   * 右列 = `EdgeActivePanel`（**一个字不改**整块传入）＋ 紧接其下的关系图。
+   * 那 35 条传导边是**同构**的（每条都是「源.量纲 →系数/延迟→ 目标.量纲 + 一个开关」）
+   * ⇒ chip 切片是对的，本单不动它。
+   *
+   * ── 焦点 = 扰动落点（这就是「改任一侧另一侧当场变」的左→右那一路）─────────────
+   * 落点对象 id → 它的对象类型（`perturbTargets` 里那一份，**不另查一次**）→ `类型.量纲`。
+   * 换落点或换量纲，右边的图当场换成另一张（另一条链的下游）。
+   *
+   * ── `disabledRuleKeys` 的单一真相源 = **会话**（不是面板的内部候选集）──────────────
+   * `EdgeActivePanel` 拨开关时只发对照请求、**不落会话**（它自己的注释：「用户还在试，
+   * 试的过程不该改会话」），点「应用到本会话」才 `patchSimDisabledRules` 并让
+   * `["a","sim-sessions"]` 失效。图画的是**这个世界**，所以读会话上那一份 ——
+   * 拿没落盘的候选集画图，屏上就会出现一个数据库里并不存在的世界。
+   * ⚠ 代价照实说：从"拨开关"到"图重画"之间隔着一次「应用到本会话」。要做到零点击联动，
+   *   得把候选集提到宿主（`EdgeActivePanel` 加一个 `onPendingChange`）—— 那个文件本单不碰，
+   *   已挂账（见交单报告「没做的部分」）。
+   */
+  const configZone = (
+    <SandboxConfigPanel
+      inputCards={[
+        {
+          id: "perturbation",
+          title: "要施加什么",
+          hint: "选一个落点对象与它的一个量纲，给出施加方式与幅度。施加只作用在当前 tick，推进 tick 时才沿本体链路扩散。",
+          node: perturbationForm,
+        },
+        {
+          id: "applied",
+          title: "已经施加了什么",
+          hint: "每条扰动一根时间条：什么时候起效、持续多久、此刻还在不在生效期。点开可看落点与量纲，也可以撤掉。",
+          node: <PerturbationTimeline sessionId={sessionId} curTick={curTick} />,
+        },
+      ]}
+      relationTable={<EdgeActivePanel pageKey="sandbox" sessionId={sessionId} />}
+      focusNodeKey={
+        canPerturb && effPStateVar !== ""
+          ? relationNodeKey(perturbTargets.find((t) => t.id === effPObject)?.typeKey ?? "", effPStateVar)
+          : null
+      }
+      disabledRuleKeys={sessionDisabledRuleKeys}
+    />
   );
 
   // ── 左区折叠区：决策者用得上的几样（多场景对比 / AI 指挥台 / 企业状态 / 快照分叉）─────
@@ -1883,14 +1963,19 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
               <HeatStrip series={history} threshold={70} />
             </div>
           </div>
-          <PerturbationTimeline sessionId={sessionId} curTick={curTick} />
-          {/* WO-ACTIVE-EDGE-UX 挂载点：沙盘是唯一自己持有推演会话的页，故把本会话 id 传下去 ——
-              开关直接作用在**这个世界**上（其余推演页不持有会话，面板自行回落到最近一个可推演会话）。 */}
-          <EdgeActivePanel pageKey="sandbox" sessionId={sessionId} />
+          {/*
+            ⚠ WO-SANDBOX-CONFIG-UX：**扰动时间轴与传导边面板都搬去了配置面板**（见上 `configZone`），
+              不在这里重复渲染 —— 同一个 `sandbox-perturbation-timeline` / `edge-active-sandbox-panel`
+              渲染两遍会让 `getByTestId` 直接抛"找到多个"，用户也会看到两个互不同步的实例。
+              搬的理由：它们分别是「已施加的扰动」与「本体关系」，而本单的命题是这两件事必须与
+              「要施加什么」**并排同屏**。testid 与组件入参一个字未改（D4：换位置不换内容）。
+            */}
           </>
         }
         // WO-SANDBOX-V3 · ① 左区：扰动因素输入（唯一输入区）
         inputZone={inputZone}
+        // WO-SANDBOX-CONFIG-UX · 左区顶部：扰动因素 × 本体关系 同屏配置面板
+        configZone={configZone}
         /**
          * WO-SANDBOX-V3 · ③ 下区：影响带（PRD §1③）。
          *

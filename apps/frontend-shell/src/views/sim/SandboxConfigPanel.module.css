@@ -128,6 +128,45 @@
   gap: 5px;
 }
 
+/* ── 算式清单 ──────────────────────────────────────────────────────────────
+   本单要害缺口的落点：改前这个位置写的是「系数 0.35 · 延迟 1 tick」（把公式写成了参数）。
+   ⚠ 它**不是**悬停浮层：本仓有一条既有棘轮「SVG <title> 恒为 0 · 原生 title 只降不升」
+     （2026-08-10 悬停提示滞留遮挡那次事故立的），本单初稿塞进 <title> 被它当场报红。 */
+.formulaList {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.formulaRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 3px 6px;
+  border-left: 2px solid var(--line2);
+  background: var(--bg2);
+  border-radius: 0 3px 3px 0;
+}
+.formulaRow[data-active="false"] {
+  border-left-color: var(--danger);
+}
+.formulaText {
+  font: 400 12px/1.6 var(--font-mono);
+  color: var(--txt);
+  word-break: break-word;
+}
+.formulaTag,
+.formulaOff {
+  font: 400 12px/1.6 var(--font-sans);
+  color: var(--muted);
+}
+.formulaOff {
+  color: var(--danger-txt);
+}
+
 /* 下游读数：这一行的两个数就是「关掉一条边 ⇒ 当场变小」的落点，故留在第一层。 */
 .reach {
   margin: 8px 0 0;
