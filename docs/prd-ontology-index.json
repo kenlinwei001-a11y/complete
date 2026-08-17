@@ -1306,11 +1306,14 @@
         "apps/agentcore/dist/mocks/seed.js",
         "packages/bundle/headless/README.md",
         "packages/contracts/dist/index.js",
+        "packages/contracts/src/planviews.ts",
+        "scripts/check-harness-ux-splitaccount.mjs",
         "scripts/check-sim-ux-criteria.mjs",
         "scripts/edge-active-mounts-baseline.json",
         "scripts/gate-ledger-baseline.json",
         "scripts/gate.sh",
-        "scripts/lib/baseline-doc.mjs"
+        "scripts/lib/baseline-doc.mjs",
+        "scripts/lib/sim-page-roster.mjs"
       ],
       "brokenArtifacts": [
         "packages/bundle/headless/README.md"
@@ -3291,7 +3294,8 @@
       "PRD-aop-annual-scenario-1to1.md"
     ],
     "packages/contracts/src/planviews.ts": [
-      "PRD-aop-annual-scenario-1to1.md"
+      "PRD-aop-annual-scenario-1to1.md",
+      "PRD-harness-ux-adoption.md"
     ],
     "apps/datacore/src/timeseries.ts": [
       "PRD-attainment-base-daily-timeseries.md",
@@ -3607,6 +3611,9 @@
     "packages/contracts/dist/index.js": [
       "PRD-harness-ux-adoption.md"
     ],
+    "scripts/check-harness-ux-splitaccount.mjs": [
+      "PRD-harness-ux-adoption.md"
+    ],
     "scripts/check-sim-ux-criteria.mjs": [
       "PRD-harness-ux-adoption.md"
     ],
@@ -3618,6 +3625,9 @@
       "PRD-skill-crossreview.md"
     ],
     "scripts/lib/baseline-doc.mjs": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "scripts/lib/sim-page-roster.mjs": [
       "PRD-harness-ux-adoption.md"
     ],
     "apps/datacore/src/solvers/chain-impediment.ts": [
