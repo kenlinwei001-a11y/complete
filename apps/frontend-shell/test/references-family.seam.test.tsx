@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { checkedTree, factHits } from "./factlock";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
 
@@ -223,11 +224,17 @@ describe("WO-REFERENCES-FAMILY ② 「同一份实现」的可证伪判据", () 
     expect(within(mcpBody).getByTestId("references-none-mcp-config-mcp-demo").textContent).toBe(SHARED_NONE);
   });
 
-  it("②-B 结构证据：面板只有一份实现文件，各页只 import 不自持客户端", () => {
-    const panel = readRepoFile("../src/components/ReferencesPanel.tsx");
-    // 金丝雀：先抓一个**已知必在**的串；抓不到说明读法坏了，下面的「不存在」全部不可信。
-    expect(panel, "金丝雀未中 ⇒ 读法坏了").toContain("REFERENCES_COPY");
-    expect(panel).toContain(SHARED_NONE);
+  it("②-B 结构证据：面板只有一份实现，各页只 import 不自持客户端", () => {
+    /*
+     * ⚠ 2026-08-16 WO-FACTLOCK-TRIAGE：「面板只有**一份**实现」这个命题，原写法用
+     * 「`ReferencesPanel.tsx` 这个文件里有 `REFERENCES_COPY`」来代理 —— 它度量不了「只有一份」：
+     * 有人复制一份到 `components/references/Panel2.tsx`，原写法照绿；
+     * 反过来面板搬去子目录，原写法当场假红（`G-FACTLOCK-POSITION-ANCHOR` 两个方向）。
+     * 现在直接扫整棵树数**份数**：`toHaveLength(1)` 才是「只有一份实现」这句话本身。
+     */
+    const fe = checkedTree("apps/frontend-shell/src", "REFERENCES_COPY", 100);
+    expect(factHits(fe, "REFERENCES_COPY"), "共享文案不是恰好一份实现 ⇒ 同一概念又长出第二套").toHaveLength(1);
+    expect(factHits(fe, SHARED_NONE), "共享空态文案零生产使用点").not.toEqual([]);
 
     for (const page of [
       "../src/pages/admin/SkillsPage.tsx",
@@ -248,14 +255,26 @@ describe("WO-REFERENCES-FAMILY ② 「同一份实现」的可证伪判据", () 
       expect(src, `${page} 自己拼了 /references URL ⇒ 绕开了共享客户端`).not.toContain("}/references`");
     }
 
-    const eps = readRepoFile("../src/api/endpoints.ts");
-    expect(eps, "金丝雀未中 ⇒ 读法坏了").toContain("fetchReferences");
+    /*
+     * 同上，四条一并整树化。这里整树化让**否定**那两条变得更强而不是更弱：
+     * 原写法只看 `endpoints.ts` 一个文件 —— 有人把 `export const fetchRuleReferences`
+     * 写进 `api/rules.ts`，原写法照绿；整树扫才真的是「全族只有一个客户端」。
+     * 而它们的金丝雀（`fetchReferences`）也随之整树化，与否定结论**同扫描面** ——
+     * 金丝雀扫 A 面、结论扫 B 面，正是 CLAUDE.md 铁律 0.6 的原形态。
+     */
+    expect(
+      factHits(fe, /(?:queryFn|mutationFn):\s*fetchReferences\b|\bfetchReferences\s*\(/),
+      "fetchReferences 零生产调用方（只有声明/只有 import = 没接线）",
+    ).not.toEqual([]);
     // 全族只有一个客户端：不许再出现 `fetchXxxReferences` 这种一 kind 一函数的写法。
-    expect(eps, "又长出了单 kind 专用客户端").not.toContain("export const fetchRuleReferences");
-    expect(eps, "又长出了单 kind 专用客户端").not.toContain("export const fetchSolverReferences");
+    expect(factHits(fe, "export const fetchRuleReferences"), "又长出了单 kind 专用客户端").toEqual([]);
+    expect(factHits(fe, "export const fetchSolverReferences"), "又长出了单 kind 专用客户端").toEqual([]);
     // URL 必须是模板串（`+` 拼接会被 befe-seam 抽取器切碎 ⇒ 接了线仍报零调用）。
-    expect(eps).toContain("/b/v1/agents/${encodeURIComponent(id)}/references`");
-    expect(eps).toContain("/a/v1/ontology/slices/${encodeURIComponent(id)}/references`");
+    expect(factHits(fe, "/b/v1/agents/${encodeURIComponent(id)}/references`"), "agent 引用反查 URL 没接").not.toEqual([]);
+    expect(
+      factHits(fe, "/a/v1/ontology/slices/${encodeURIComponent(id)}/references`"),
+      "本体切片引用反查 URL 没接",
+    ).not.toEqual([]);
   });
 });
 
@@ -284,17 +303,28 @@ describe("WO-REFERENCES-FAMILY ③ 诚实位：「查不出来」不许塌成「
 
 describe("WO-REFERENCES-FAMILY ④ 不许为消红而接：scene-entry 故意留在基线", () => {
   it("④-A 后端实现写死恒空 ⇒ 前端接上去也只是一块永远 0 的面板，故不接（判据在后端源码，不是我说的）", () => {
-    const backend = readRepoFile("../../../apps/agentcore/src/resources.ts");
-    expect(backend.length, "resources.ts 读到了空内容——路径漂了").toBeGreaterThan(1000);
-    // 金丝雀：先抓一个**已知必在**的符号，抓不到说明读法坏了而不是代码变了。
-    expect(backend, "金丝雀未中 ⇒ 读法坏了").toContain("export async function computeReferences");
+    /*
+     * ⚠ 2026-08-16 WO-FACTLOCK-TRIAGE：判据从两个写死文件搬到**两棵源码树**（`./factlock`，剥注释）。
+     * 要锁的是「**后端至今没有 scene-entry 分支**」与「**前端至今没有它的客户端**」——
+     * 两句话都与代码住在哪个文件无关，而整树扫让这两条**否定结论**变得更强：
+     * 原写法只看 `resources.ts` / `endpoints.ts` 各一个文件，分支挪去同包别的文件就查不到了。
+     * 金丝雀随之同扫描面（`checkedTree` 内建四条），不再是「金丝雀扫 A 面、结论扫 B 面」。
+     *
+     * ⚠ 诚实位：原先还有一条 `expect(backend).toContain("scene-entry：无被引用方")`。
+     * 实测那句话**只存在于注释里**（`apps/agentcore/src/resources.ts:279` 的行注释），
+     * 原写法不剥注释所以是绿的 —— 剥注释后它在可执行代码里 0 命中。
+     * 那是「命中注释当成命中代码」的老坑，不是本条要锁的事实，故撤掉；
+     * 「后端没有该分支」由下面那条否定断言承担，比它硬。
+     */
+    const backend = checkedTree("apps/agentcore/src", "export async function computeReferences", 50);
     // 判据：`computeReferences` 里**没有** `kind === "scene-entry"` 的分支 —— 它落到函数末尾直接返回空数组。
-    expect(backend, "后端补了 scene-entry 分支 ⇒ 本条豁免作废，该接上了").not.toContain('kind === "scene-entry"');
-    expect(backend).toContain("scene-entry：无被引用方");
+    expect(factHits(backend, 'kind === "scene-entry"'), "后端补了 scene-entry 分支 ⇒ 本条豁免作废，该接上了").toEqual([]);
 
     // 因此前端**不许**有它的客户端分支（有 = 造了一个死函数把红消掉）。
-    const eps = readRepoFile("../src/api/endpoints.ts");
-    expect(eps, "金丝雀未中 ⇒ 读法坏了").toContain("REFERENCE_SOURCES");
-    expect(eps, "给恒空端点造了个死客户端 ⇒ 把死端点换成死函数").not.toContain("/b/v1/scene-entries/${encodeURIComponent(id)}/references");
+    const fe = checkedTree("apps/frontend-shell/src", "REFERENCE_SOURCES", 100);
+    expect(
+      factHits(fe, "/b/v1/scene-entries/${encodeURIComponent(id)}/references"),
+      "给恒空端点造了个死客户端 ⇒ 把死端点换成死函数",
+    ).toEqual([]);
   });
 });

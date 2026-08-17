@@ -455,6 +455,28 @@ export function findExpectSites(code, maskIn) {
     if (!chain) continue;
     const matcherOpen = close + 1 + chain[0].length - 1;
     const matcherClose = matchParen(mask, matcherOpen);
+    /**
+     * 探针 = 匹配器的**第一个顶层实参**，不是 `(` 与 `)` 之间的整段原文。
+     *
+     * ⚠ 2026-08-16 实测的静默漏报（WO-FACTLOCK-TRIAGE）：原写法直接 `slice` 括号内全文，
+     * 于是 prettier 的多行尾逗号会让探针带上一个 `,`：
+     *     expect(pg, `033 建了 ${table}…`).toContain(
+     *       `new PgStore(pool, "${table}")`,     ← 这个尾逗号
+     *     );
+     * `probeIsSymbol` 的三条外壳正则（`^"…"$` / `^\`…\`$` / `^/…/[a-z]*$`）全部要求**整串**
+     * 就是一个字面量，带上 `,` 一条都不匹配 ⇒ 判「不是代码符号」⇒ **整个站点被跳过**。
+     * 实测后果：`process-flow-time.seam.test.ts:354` 的 `repo/pg.ts` 落点锚一直没被咬中，
+     * 而它 4 行之下**一模一样形态**的 `repo/memory.ts` 落点（单行、无尾逗号）被咬中了 ——
+     * 同一个 `it`、同一条仓规、同一种病，一个报一个不报。
+     *
+     * 照 CLAUDE.md 铁律 0.6 的句式：
+     *   **「我用『括号里的整段原文』当作『探针实参』的证据，而前者并不度量后者
+     *     —— 只要 prettier 换了行，两者就不是一回事。」**
+     * 这个坑 12 条金丝雀一条都没照到：它们全是**单行、单实参、无尾逗号**的手写样例，
+     * 与生产格式化后的真实形状**交集为空**（同铁律 0.5 判据 #6「生产实参与测试实参交集为空」）。
+     * 故同时补金丝雀 C7（尾逗号形态），与主逻辑共用本函数。
+     */
+    const matcherArgs = matcherClose > 0 ? splitTopLevel(code, mask, matcherOpen + 1, matcherClose) : [];
     sites.push({
       index: m.index,
       line: code.slice(0, m.index).split("\n").length,
@@ -462,7 +484,7 @@ export function findExpectSites(code, maskIn) {
       message: (args[1] ?? "").trim(),
       negated: /\bnot\b/.test(chain[1]),
       matcher: chain[2],
-      probeRaw: matcherClose > 0 ? code.slice(matcherOpen + 1, matcherClose).trim() : "",
+      probeRaw: (matcherArgs[0] ?? "").trim(),
       text: code.slice(m.index, matcherClose > 0 ? matcherClose + 1 : close + 1),
     });
   }
@@ -684,6 +706,20 @@ expect(readRepo(derivePath)).toContain("CHAIN_STAGES.filter");`,
     id: "C6·toMatch + 正则符号探针",
     src: `const src = readFileSync(join(HERE, "../src/opsteam/replay.ts"), "utf8");
 expect(src).toMatch(/deriveCadenceAbsence\\(\\s*\\{/);`,
+    min: 1,
+  },
+  {
+    /**
+     * 2026-08-16 WO-FACTLOCK-TRIAGE 补：**prettier 多行尾逗号**形态。
+     * 逐字取自 `apps/datacore/test/process-flow-time.seam.test.ts:352-357` 的真实格式化结果 ——
+     * 这条形态此前被静默跳过（见 `findExpectSites` 里 `probeRaw` 的顶注病历）。
+     * 前 6 条金丝雀全是单行无尾逗号的手写样例，对这个坑天然免疫。
+     */
+    id: "C7·多行尾逗号（prettier 格式化后的真实形状）",
+    src: `const pg = await readFile(join(REPO_APP, "src/repo/pg.ts"), "utf8");
+expect(pg, \`033 建了 \${table}，但 repo/pg.ts 没有它的 PgStore 落点 ⇒ pg 模式启动即炸\`).toContain(
+  \`new PgStore(pool, "\${table}")\`,
+);`,
     min: 1,
   },
 ];

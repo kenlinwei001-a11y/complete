@@ -1,5 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -10,6 +9,7 @@ import { ApproverResolutionSchema, DecisionGraphSchema, type SandboxViewConfig }
 import { fetchOrgAuthorities, fetchOrgChart, fetchOrgDelegations, launchScenario } from "@/api/endpoints";
 import SandboxView from "@/views/sim/SandboxView";
 import { db } from "@/mocks/db";
+import { checkedTree, factHits } from "./factlock";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
 
@@ -51,31 +51,26 @@ const readRepoFile = (rel: string): string => readFileSync(fileURLToPath(new URL
  *
  * 复验命令（与本函数同义）：
  *   grep -rn '<CausalGraphPanel source={{ kind: "decision"' apps/frontend-shell/src
+ *
+ * ── 2026-08-16 WO-FACTLOCK-TRIAGE 改：**扫描/剥注释/命中判据一律下沉到 `./factlock`** ──────
+ * 原实现自己走了一遍 `readdirSync` + 裸 `includes`，与 `./factlock` 是**同一概念的第二套实现**，
+ * 且缺了关键一步：**不剥注释**。于是它只堵住了「搬家假红」，没堵住「注释假绿」——
+ * 在源码里留一句 `// TODO: 接 publishScenarioChain` 就能把删掉的接线盖成绿的，
+ * 而那正是 `./factlock` 顶注记的 `buildCadenceGates` 病样（命中的是注释与 import 行）。
+ * 现在两者共用一份实现：改判据只有一处可改，金丝雀（`checkedTree` 内建四条）也就不会变成装饰品。
  */
-function findInSrc(fragment: string): string[] {
+function findInSrc(fragment: string | RegExp): string[] {
   /*
-   * ⚠ 这里的相对路径**必须经变量**传给 `new URL`，不许写成字面量（2026-08-14 实测踩过）：
-   * Vite 的 `assetImportMetaUrl` 转换只认**静态字面量**形式的 `new URL("…", import.meta.url)`，
-   * 认出来就把它重写成资源 URL（http scheme）⇒ `fileURLToPath` 当场抛
-   * `TypeError: The URL must be of scheme file`。上面 `readRepoFile` 一直没事，
-   * 正是因为它收的是形参 `rel`（非字面量），静态分析看不出来。
-   * 复验：把下面的 `REL` 内联成字面量，本例即抛 scheme 错。
+   * `checkedTree` 自带四条金丝雀（扫描面下界 / 已知必中 / 注释不算代码 / 代码没被当注释吃掉），
+   * 任何一条挂了当场红的是「工具坏了」，不是「事实没了」—— 见 `./factlock` 顶注。
+   * knownHit 取本文件必用的 `<CausalGraphPanel`：它同时是下面那条金丝雀断言的探针，
+   * 一处坏两处一起红，不会出现「金丝雀绿而主判据瞎」。
    */
-  const REL = "../src/";
-  const SRC_DIR = fileURLToPath(new URL(REL, import.meta.url));
-  const hits: string[] = [];
-  const walk = (dir: string) => {
-    for (const ent of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-      const full = join(dir, ent.name);
-      if (ent.isDirectory()) walk(full);
-      else if (/\.(ts|tsx)$/.test(ent.name) && readFileSync(full, "utf8").includes(fragment)) {
-        hits.push(relative(SRC_DIR, full));
-      }
-    }
-  };
-  walk(SRC_DIR);
-  return hits;
+  return factHits(checkedTree("apps/frontend-shell/src", "<CausalGraphPanel", 100), fragment);
 }
+
+/** 正则版（用法形探针要它：`queryFn: fn` 与 `fn(` 两种形态一次收）。 */
+const findInSrcRe = (re: RegExp): string[] => findInSrc(re);
 
 /**
  * 请求日志 —— 走 **MSW 生命周期事件**（`server.events.on("request:start")`），**不**替换任何 handler。
@@ -669,10 +664,12 @@ describe("WO-BEFE-D ④ 场景（launch / closure / publish-chain）", () => {
       expect(eps, `endpoints.ts 里没有 ${frag}`).toContain(frag);
     }
     // 有 api 函数 ≠ 有人调它（只有 test 引用 = 已排练，不是已实现）——逐个指出生产调用方。
-    expect(readRepoFile("../src/components/ScenarioLauncher/useScenarioLaunch.ts")).toContain("launchScenario(card.sNo");
-    const scenes = readRepoFile("../src/pages/admin/ScenesPage.tsx");
-    expect(scenes).toContain("publishScenarioChain");
-    expect(scenes).toContain("fetchScenarioClosure");
+    // ⚠ 这几条原本写死 `readRepoFile("<某个文件>")`，与下面 `findInSrc` 的顶注自相矛盾：
+    //    同一个 it 里一半按文件扫、一半按文件名钉。按文件名钉的那一半会被搬家打断（假红），
+    //    而 `readRepoFile` 不剥注释、注释里提一嘴就当作有调用（假绿）。现全部改走 `findInSrc`。
+    expect(findInSrc("launchScenario(card.sNo"), "场景卡启动零生产调用方").not.toHaveLength(0);
+    expect(findInSrc("publishScenarioChain("), "发布全链零生产调用方").not.toHaveLength(0);
+    expect(findInSrc("fetchScenarioClosure("), "链路闭合查询零生产调用方").not.toHaveLength(0);
     /*
      * ⚠ 这两条**按文件扫，不按文件名钉**（见 `findInSrc` 的注释：写死路径会被搬家打断）。
      * 金丝雀先证扫描法没坏：一个必中的片段命中非空 ⇒ 下面的「没有生产调用方」才可信。
@@ -683,11 +680,19 @@ describe("WO-BEFE-D ④ 场景（launch / closure / publish-chain）", () => {
     expect(findInSrc("<CausalGraphPanel"), "金丝雀未中 ⇒ src 扫描坏了，下面的「没有生产调用方」全部不可信").not.toHaveLength(0);
     expect(findInSrc('<CausalGraphPanel source={{ kind: "sim"'), "沙盘因果图没有任何生产调用方（只有 test 引用 = 已排练，不是已实现）").not.toHaveLength(0);
     expect(findInSrc('<CausalGraphPanel source={{ kind: "decision"'), "决策台账因果图没有任何生产调用方（只有 test 引用 = 已排练，不是已实现）").not.toHaveLength(0);
-    const growth = readRepoFile("../src/pages/admin/GrowthCockpitPage.tsx");
-    for (const fn of ["probeGrowth", "submitGrowthTicket", "verifyGrowthTicket"]) expect(growth).toContain(fn);
-    const org = readRepoFile("../src/pages/admin/OrgWorldPage.tsx");
+    /*
+     * 同上：改走 `findInSrc`。探针取**用法形**不取裸名 —— 裸名咬不掉 `export const probeGrowth = (`
+     * 这个**声明**，于是「有声明」被读作「有调用」（只有声明 = 没接线）；`import { … }` 那行同理。
+     * 两种用法都收：react-query 传引用（本仓 `queryFn: fetchOrgChart` 实测就是这个形态，
+     * 裸调用形 `fetchOrgChart(` 全仓 **0 命中**，只按调用形写会得到一条恒红断言）与直接调用。
+     */
+    const wired = (fn: string): string[] =>
+      findInSrcRe(new RegExp(`(?:queryFn|mutationFn):\\s*${fn}\\b|\\b${fn}\\s*\\(`));
+    for (const fn of ["probeGrowth", "submitGrowthTicket", "verifyGrowthTicket"]) {
+      expect(wired(fn), `${fn} 零生产调用方（只有声明/只有 import = 没接线）`).not.toHaveLength(0);
+    }
     for (const fn of ["fetchOrgChart", "fetchOrgAuthorities", "fetchOrgDelegations", "setOrgAvailability", "resolveApprovers"]) {
-      expect(org).toContain(fn);
+      expect(wired(fn), `${fn} 零生产调用方（只有声明/只有 import = 没接线）`).not.toHaveLength(0);
     }
     // 路由与导航都得有它，否则页面只能手敲 URL（G-NAV-FALLBACK-BUCKET 的形态）
     expect(readRepoFile("../src/App.tsx")).toContain('path: "admin/org"');

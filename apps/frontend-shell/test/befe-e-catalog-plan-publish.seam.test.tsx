@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -7,6 +5,7 @@ import { http, HttpResponse } from "msw";
 import { createIntent, fetchPlans } from "@/api/endpoints";
 import { db } from "@/mocks/db";
 import { PACKAGE_ID } from "@/mocks/ids";
+import { checkedTree, factHits } from "./factlock";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
 
@@ -34,8 +33,6 @@ import { server } from "./setup";
  * 非 DRAFT 改/发 → 409 `INVALID_STATE`；步骤不以 `render_answer` 收尾 → 400 `PLAN_VALIDATION_ERROR`。
  * 桩放宽了，"发不出去时屏上说什么"这一支就永远测不到，而那正是用户最常撞的墙。
  */
-
-const readRepoFile = (rel: string): string => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 
 /**
  * 造一个 **DRAFT** 意图并选中它（计划区的编辑动作只对 DRAFT 意图开放 —— `editable` 判据）。
@@ -202,17 +199,36 @@ describe("WO-BEFE-E ② 执行计划改 / 发（PUT …/plans/:id · POST …/pl
     expect(putHits, "JSON 都没解析成功还发了请求 ⇒ 把本地错误推给了后端").toBe(0);
   });
 
-  it("②-F 不是死组件：`PlanEditor` 真的挂在 CatalogPage，两条 URL 真在 endpoints.ts 里", () => {
-    const page = readRepoFile("../src/pages/admin/CatalogPage.tsx");
-    expect(page.length, "CatalogPage.tsx 读到了空内容——路径漂了，先修路径再看结论").toBeGreaterThan(1000);
-    expect(page).toContain("<PlanEditor plan=");
-    expect(page).toContain("publishPlan");
-    expect(page).toContain("updatePlan");
-
-    const eps = readRepoFile("../src/api/endpoints.ts");
-    // 金丝雀：先抓一个**已知必在**的同族 URL；抓不到说明读法坏了，而不是端点没接。
-    expect(eps, "金丝雀未中 ⇒ 读法坏了，下面的「不存在」全部不可信").toContain("/b/v1/catalog/packages/${packageId}/plans");
-    expect(eps).toContain("/b/v1/catalog/plans/${encodeURIComponent(planId)}`");
-    expect(eps).toContain("/b/v1/catalog/plans/${encodeURIComponent(planId)}/publish`");
+  it("②-F 不是死组件：`PlanEditor` 真有挂载点，两条 URL 真有生产调用方", () => {
+    /*
+     * ⚠ 判据从「某个**写死文件**的文本里有某串」搬到**整棵前端源码树**（`./factlock`，剥注释后）。
+     * 原写法 `readRepoFile("../src/pages/admin/CatalogPage.tsx").toContain("publishPlan")`
+     * 两个方向都会给错信号（本仓 `G-FACTLOCK-POSITION-ANCHOR`）：
+     *   · **假红**：把计划区连同 publish/update 装配抽进子组件 —— 能力一行没少，纯粹搬家，这条当场红；
+     *   · **假绿**：`readRepoFile` **不剥注释**，在 CatalogPage.tsx 里留一句 `// TODO: publishPlan`
+     *     就能把删掉的接线盖住 —— 本仓「提及 ≠ 调用」那条老坑。
+     * 「组件真的挂在页上」另有更硬的其人：②-A…②-E 全是 `renderApp` 端到端真跑，
+     * 组件没挂上时 `getByTestId` 当场就找不到。此处只补「不是死代码」的静态盘点。
+     */
+    const fe = checkedTree("apps/frontend-shell/src", "<PlanEditor plan=", 100);
+    expect(factHits(fe, "<PlanEditor plan="), "PlanEditor 没有任何生产挂载点 ⇒ 死组件").not.toEqual([]);
+    /*
+     * 探针取**调用形** `publishPlan(`，不取裸名 —— 两个理由，都实测过：
+     *   ① 裸名咬不掉声明：`export const publishPlan = (planId: string) =>` 自己就含裸名，
+     *      于是「有声明」被读作「有调用」（假绿第 9 形态：只有声明 = 没接线）；
+     *   ② 裸名会撞上同前缀的**另一个函数**：本仓真有 `publishPlanBuilder` / `updatePlanBuilder`，
+     *      裸名探针把它们也算进来 ⇒ 拿一个不度量本事实的数当证据。
+     * 调用形两个问题都躲开：`publishPlan(` 咬不中 `publishPlan = (`，也咬不中 `publishPlanBuilder(`。
+     */
+    expect(factHits(fe, "publishPlan("), "publishPlan 零生产调用方（只有声明 = 没接线）").not.toEqual([]);
+    expect(factHits(fe, "updatePlan("), "updatePlan 零生产调用方（只有声明 = 没接线）").not.toEqual([]);
+    // 两条 URL 同理：锁「在不在前端生产代码里」，不锁「在 endpoints.ts 这个文件里」——
+    // URL 常量搬去 `api/catalog.ts` 之类的分文件是无害重构，本仓也没有任何门要求它住在 endpoints.ts
+    // （`check-backend-frontend-seam.mjs` 的主流程走 `frontendProdFiles()` **整棵树**，不是单文件）。
+    expect(factHits(fe, "/b/v1/catalog/plans/${encodeURIComponent(planId)}`"), "计划改写 URL 没接").not.toEqual([]);
+    expect(
+      factHits(fe, "/b/v1/catalog/plans/${encodeURIComponent(planId)}/publish`"),
+      "计划发布 URL 没接",
+    ).not.toEqual([]);
   });
 });

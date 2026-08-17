@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import * as contracts from "@platform/contracts";
 import {
   ApprovalLimitSchema,
   ApprovalMatterSchema,
@@ -218,20 +219,48 @@ describe("WO-ORG-WORLD ③ 单源：扩既有 Principal，未新造 Person", () 
     expect([...PRINCIPAL_KINDS].sort()).toEqual(["org", "person", "role"]);
   });
 
-  it("契约包里不存在平行身份类型（PersonSchema/EmployeeSchema/StaffSchema…）·带金丝雀", async () => {
-    const idx = await readFile(join(REPO_APP, "../../packages/contracts/src/org-world.ts"), "utf8");
-    // 金丝雀：先证明「我这个正则真能在这份文件里咬到东西」，再报否定结论。
-    // 不中 ⇒ 报「工具坏了」，不许报「没有平行类型」。
-    const canary = /export const (\w+)Schema/g;
-    const declared = [...idx.matchAll(canary)].map((m) => m[1]!);
-    expect(declared.length).toBeGreaterThan(0); // ← 金丝雀命中证据
-    expect(declared).toContain("OrgPrincipal"); // ← 已知必中样例
+  it("契约包里不存在平行身份类型（PersonSchema/EmployeeSchema/StaffSchema…）·带金丝雀", () => {
+    /*
+     * ⚠ 2026-08-16 WO-FACTLOCK-TRIAGE 改：判据从「`packages/contracts/src/org-world.ts`
+     * **这个文件的文本**」搬到**契约包的导出面**（`import * as contracts`）。
+     *
+     * 原写法把 it 名里说的「契约**包**里不存在」缩成了「**这一个文件**里不存在」，
+     * 两个方向都错（本仓 `G-FACTLOCK-POSITION-ANCHOR`）：
+     *   · **假绿**：有人在 `packages/contracts/src/person.ts` 里加一个 `PersonSchema`，
+     *     原写法一个字都读不到，照绿 —— 而那正是这条断言唯一想拦的事；
+     *   · **假红**：`OrgPrincipalSchema` 搬去别的契约文件（纯搬家），金丝雀当场不中，
+     *     整条 it 报「工具坏了」。
+     * 照 CLAUDE.md 铁律 0.6 的句式：
+     *   **「我用『某串在 org-world.ts 里』当作『契约包没有平行身份类型』的证据，
+     *     而前者并不度量后者。」**
+     * 导出面判据与文件位置无关，且**严格更宽**：整包 83 个源文件的 schema 都在里面
+     * （实测导出面 > 100 个 `*Schema`，五个禁用名一个都不在）。
+     */
+    const declared = Object.keys(contracts)
+      .filter((k) => k.endsWith("Schema"))
+      .map((k) => k.slice(0, -"Schema".length));
+    // 金丝雀：导出面塌了（比如 barrel 没 build）会让下面的「不存在」恒真 ⇒ 先自证。
+    expect(declared.length, "契约包导出面只有寥寥几个 Schema ⇒ 读法坏了，下面的「不存在」全部不可信").toBeGreaterThan(100);
+    expect(declared, "金丝雀：已知必中的 OrgPrincipal 不在导出面 ⇒ 读法坏了").toContain("OrgPrincipal");
     // 否定结论（有金丝雀背书）：没有任何平行身份类型
     for (const forbidden of ["Person", "Employee", "Staff", "User", "Headcount"]) {
-      expect(declared).not.toContain(forbidden);
+      expect(declared, `契约包导出了平行身份类型 ${forbidden}Schema ⇒ 又造了第二份身份`).not.toContain(forbidden);
     }
-    // 且 OrgPrincipal 必须由 PrincipalSchema.extend 产出（源码级证据，不靠记性）
-    expect(idx).toContain("PrincipalSchema.extend(");
+    /*
+     * 且 OrgPrincipal 必须由 `PrincipalSchema.extend` 产出 —— 判据落在**结构指纹**上。
+     * 原写法是 `expect(idx).toContain("PrincipalSchema.extend(")`，两处不度量：
+     *   ① 串搬个文件就假红（同上）；
+     *   ② 它咬不住「是**谁**在 extend」—— 同一个文件里任何**别的** schema
+     *      调一次 `PrincipalSchema.extend(` 它也绿，而 OrgPrincipal 可以是手抄的。
+     * `.extend()` 保留基 schema 的**键序前缀**，手抄一份平行 z.object 极难复现该前缀序，
+     * 且即便复现也已是「抄了一份」—— 这条断言把「扩」与「抄」真正分开。
+     */
+    const baseKeys = Object.keys(PrincipalSchema.shape);
+    expect(baseKeys.length, "基类型零字段 ⇒ 拿空集比空集，证明不了任何事").toBeGreaterThan(0);
+    expect(
+      Object.keys(OrgPrincipalSchema.shape).slice(0, baseKeys.length),
+      "OrgPrincipalSchema 的键序前缀不等于 PrincipalSchema ⇒ 不是 .extend() 出来的，是手抄的第二份身份",
+    ).toEqual(baseKeys);
   });
 
   it("组织种子复用既有 synthetic Principal 的部门 id，不为同一实体造第二行·带金丝雀", async () => {
