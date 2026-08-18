@@ -1,0 +1,41 @@
+{
+  "_doc": [
+    "事实使用注册表的**规模棘轮**基线（WO-FACT-USAGE-REGISTRY · 门 scripts/check-fact-usage.mjs）。",
+    "这里存的是**下限**不是快照：注册表现算自前端 AST，条数只许涨不许跌。",
+    "跌 = 某个事实不再被任何页认领 ⇒ B-3 拿这份清单去比时，掉出去的那条永远绿。",
+    "有意收缩（页删了 / 读取位真撤了）走 `--tighten` 显式改账，不许静默。"
+  ],
+  "min": {
+    "facts": 454,
+    "multiScreenFacts": 64,
+    "pairs": 546,
+    "caliberDivergent": 6
+  },
+  "lastSeen": {
+    "byKind": {
+      "solver": 148,
+      "object": 49,
+      "rest": 257
+    },
+    "pages": 80,
+    "equalExpected": 540,
+    "coverage": {
+      "lexical": {
+        "solver": 39,
+        "object": 18,
+        "total": 57
+      },
+      "ast": {
+        "solver": 47,
+        "object": 62,
+        "rest": 317,
+        "total": 426
+      },
+      "solverCovered": true,
+      "objectCovered": true,
+      "ok": true,
+      "solverRatio": 1.205,
+      "objectRatio": 3.444
+    }
+  }
+}
