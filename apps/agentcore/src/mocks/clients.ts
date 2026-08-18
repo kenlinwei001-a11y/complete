@@ -196,6 +196,17 @@ export class MockOntologyClient implements OntologyClient {
   }
 
   /**
+   * WO-MOCKDC-PARAMS-INCREMENT · 租户私有行的**行标识**（同 id 多版本解析的归组键）。
+   * 取 `objectId` → `id` → 该类型主键属性；一个都解析不出 ⇒ `null`（不可标识的行不参与
+   * 版本归组——把解析不出 id 的行全折进同一个键，等于把它们错当成同一行的多个版本）。
+   */
+  private tenantRowId(objectType: string, row: Record<string, unknown>): string | null {
+    const pk = this.objectTypeDefs.find((t) => t.key === objectType)?.properties?.find((p) => p.isPrimaryKey)?.propKey;
+    const id = row.objectId ?? row.id ?? (pk ? row[pk] : undefined);
+    return id === undefined || id === null ? null : String(id);
+  }
+
+  /**
    * ACTIVE 子集（镜像 A 侧 listTypes 服务端过滤）= 出厂共享集 ∪ **本租户**私有增量。
    * `ctx` 在这里是**承重**的：换一个 tenantId，私有增量就看不见（R2）。
    */
@@ -320,14 +331,35 @@ export class MockOntologyClient implements OntologyClient {
       rows = [];
     }
     // 租户私有行：R2 只看本租户（换 tenantId 即看不见）；§13.1 再按 asOfEpoch 裁时点。
-    for (const e of this.tenantRows.get(ctx.tenantId) ?? []) {
-      if (e.typeKey !== objectType) continue;
-      if (asOfEpoch !== undefined && e.atEpoch > asOfEpoch) continue;
-      rows.push({ ...e.row });
+    // WO-MOCKDC-PARAMS-INCREMENT · **同 id 多版本解析**（镜像真 DataCore `objectAsOf` 按
+    // `epoch <= asOfEpoch` 回溯取最新版）：扁平历史里同一行 id 写多次 = 该行的新版本，
+    // 不是另一行 —— 归组取「时点内 epoch 最大」的一版；不给时点 ⇒ 最新版（活数据）。
+    // 改前：同 id 写两次读回两条重复行，「后写覆盖先写」这个维度在 mock 上不存在。
+    {
+      const versions = new Map<string, Record<string, unknown>>();
+      const anonymous: Record<string, unknown>[] = [];
+      for (const e of this.tenantRows.get(ctx.tenantId) ?? []) {
+        if (e.typeKey !== objectType) continue;
+        if (asOfEpoch !== undefined && e.atEpoch > asOfEpoch) continue;
+        const id = this.tenantRowId(objectType, e.row);
+        if (id === null) {
+          anonymous.push({ ...e.row });
+          continue;
+        }
+        // epoch 由 bumpEpoch 单调进位 ⇒ 同 id 后写者 epoch 更大，直接覆盖即取到最新版。
+        versions.set(id, { ...e.row });
+      }
+      rows.push(...versions.values(), ...anonymous);
     }
     rows = rows.filter((r) => matchFilter(r, filter));
     if (limit !== undefined) rows = rows.slice(0, Math.min(limit, 200));
-    return { data: { items: rows, total: rows.length }, snapshotVersion: SNAPSHOT };
+    return {
+      data: { items: rows, total: rows.length },
+      // WO-MOCKDC-PARAMS-INCREMENT · 时点可见性：带了 asOfEpoch 就把「读到的是哪个时点的快照」
+      // 写进 snapshotVersion（与真 DataCore `ontology.ts` 的 `${snapshot}@${asOfEpoch}` 同形）——
+      // 「时点读生效了没有」由此有外部可见证据，不是只能数行数。
+      snapshotVersion: asOfEpoch === undefined ? SNAPSHOT : `${SNAPSHOT}@${asOfEpoch}`,
+    };
   }
 
   /**
