@@ -147,7 +147,8 @@
   grid-template-areas:
     "label track num"
     "prov  prov  prov"
-    "reason reason reason";
+    "reason reason reason"
+    "chain chain chain";
   align-items: center;
   gap: 4px 8px;
   padding: 6px 8px;
@@ -547,7 +548,8 @@
   grid-template-columns: 1fr auto;
   grid-template-areas:
     "label value"
-    "source source";
+    "source source"
+    "chain chain";
   gap: 2px 8px;
   align-items: baseline;
   padding: 6px 8px;
@@ -683,6 +685,54 @@
 .evReason {
   color: var(--muted);
   font-size: 12px;
+}
+
+/* 本体链开关 + 行内展开区（WO-R13-ONTOCHAIN-PANEL · 三区块共用） */
+.chainBtn {
+  font: inherit;
+  font-size: 12px;
+  color: var(--accent-txt);
+  background: var(--bg2);
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 1px 8px;
+  cursor: pointer;
+  justify-self: start;
+  align-self: flex-start;
+}
+.chainBtn:hover:not(:disabled) {
+  background: var(--hover-tint-strong);
+}
+.chainBtn[aria-expanded="true"] {
+  border-color: var(--accent);
+}
+.chainBox {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.wfChain {
+  grid-area: chain;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.kpiChain {
+  grid-area: chain;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.evChain {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
 }
 
 /* ⑤ 跨节点冲突 */
