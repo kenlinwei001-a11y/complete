@@ -79,24 +79,25 @@ import {
 import { newPlanBuilderCanvas } from "./planBuilderFixtures";
 import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
 import { BUILD_PIPELINE_KINDS, factoryPipeline, pipelineOrder, resolvePipeline } from "./pipelineFixtures";
+// WO-MOCK-FE-REGISTRY-PARITY · 求解器词表单一出处（61 条全集镜像 + 两个消费方的派生口径）。
+// MOCK_SOLVER_REGISTRY = 发现页展示子集（从全集派生，非手抄）；MOCK_KNOWN_SOLVER_KEYS =
+// 发布探针词表（现算 = 真后端 probeMissingRefs 的 discover 论域 scenario+cockpit）。
+import { MOCK_KNOWN_SOLVER_KEYS, MOCK_SOLVER_REGISTRY } from "./solverRegistry";
 // WO-WAITING-STATES-FE · 流程等待态 fixture（过契约 schema 的真种子子集，见该文件头三重防漂移机制）
 import { PROCESS_DEFINITIONS_RESPONSE, processInspectFixture, processInstancesFixture, processStepTemplateFixture } from "./processWaitFixtures";
 import { historyBundleFor, LIVED_WATERMARK } from "./livedInFixtures";
 
 /**
- * C5 求解器目录（`GET /a/v1/solvers/registry` 的 mock 数据源）——**提升为模块级单一来源**。
+ * C5 求解器目录（`GET /a/v1/solvers/registry` 的 mock 数据源）——**单一出处在 `./solverRegistry`**。
  *
- * 为何不再内联在那一个 handler 里：`POST /b/v1/skills/:id/publish` 的引用存在性探针
- * （真后端 `probeMissingRefs`·`apps/agentcore/src/resources.ts`）要拿"哪些求解器真的注册了"
- * 来判死路。若在探针那边另抄一份 key 清单，就是本仓治过的老病——**同一事实两份词表**，
- * 谁改一边另一边照绿（`sideEffect` 三套词表 → 判定永不触发，假绿第 6 例）。故两处共用本常量。
+ * WO-MOCK-FE-REGISTRY-PARITY 前情：这里曾内联手抄 4 条当「注册表」，两个消费方共用——
+ * 发现页给子集尚可辩称「代表性」，但 `POST /b/v1/skills/:id/publish` 的引用存在性探针
+ * （真后端 `probeMissingRefs`·`apps/agentcore/src/resources.ts` 的论域 = A 侧
+ * `discover("solvers")` = scenario+cockpit 40 条）拿 4 条手抄清单判死路，双向都错：
+ * 真注册的 kit_readiness 等被误判 422（太严），GENERIC 档 selection_optimize 反被放行（太松）。
+ * 现状：发现页子集 `MOCK_SOLVER_REGISTRY` 与探针词表 `MOCK_KNOWN_SOLVER_KEYS` 都从
+ * `./solverRegistry` 的 61 条全集镜像**派生/现算**， parity 测试把键集与 A 侧 catalog.ts 对拍。
  */
-const MOCK_SOLVER_REGISTRY = [
-  { key: "capacity_forecast", name: "产能推演", description: "给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。", argHints: { modelId: "型号 ID", qty: "需求量", weeks: "周数" }, domain: "plan", outputShape: ["capWanP50", "capWanP90", "gap", "ok"] },
-  { key: "bottleneck_matrix", name: "瓶颈矩阵", description: "按基地×工序输出瓶颈强度矩阵，定位约束工序。", argHints: { baseId: "基地 ID" }, domain: "plan", outputShape: ["matrix"] },
-  { key: "selection_optimize", name: "组合最优化", description: "通用 0/1 选择最优化（CP-SAT 可证最优）：预算约束下选价值最大子集。", argHints: { items: "候选项", budget: "预算上限" }, domain: "generic", outputShape: ["selected", "totalValue"] },
-  { key: "order_fullchain", name: "订单全链推演", description: "逐单三关联判（交期/齐套/财务三闸）+ 统一结论（可接/提价X%接/不建议接）。", argHints: { so: "订单号" }, domain: "decision", outputShape: ["verdict", "chain"] },
-] as const;
 
 /** 引用模式增量 §2.3：规则被引用反查（mock：agent ruleKeys + 计划步骤 evaluate_rules） */
 function ruleReferences(ruleKey: string): { kind: string; key: string; name?: string; via: string }[] {
@@ -3639,8 +3640,8 @@ export const handlers = [
   http.get("*/a/v1/data-health", () => HttpResponse.json(DATA_HEALTH)),
 
   // ---- solver ----
-  // C5 求解器目录（只读发现页数据源）：真后端来自 /a/v1/solvers/registry（注册表 feature 过滤）。mock 给代表性子集。
-  // 数据源见模块顶部 MOCK_SOLVER_REGISTRY（与 skill 发布引用探针共用同一份，勿在此内联另一份）。
+  // C5 求解器目录（只读发现页数据源）：真后端来自 /a/v1/solvers/registry（注册表 feature 过滤）。
+  // mock 给展示子集——从 `./solverRegistry` 的 61 条全集镜像按策展 key 派生（非手抄，勿在此内联另一份）。
   http.get("*/a/v1/solvers/registry", () => HttpResponse.json({ solvers: MOCK_SOLVER_REGISTRY })),
   /**
    * WO-L7A 求解器**决策问题类目**登记表（`GET /a/v1/solvers/categories`）。
@@ -3649,8 +3650,9 @@ export const handlers = [
    * （`packages/contracts/src/solver-taxonomy.ts:49`）—— 与真后端 `apps/datacore/src/app.ts:2844`
    * 读的是同一份常量，不在此另抄一份中文标签（抄了就是"同一事实两份词表"）。
    *
-   * 成员 key 是 mock 侧的代表性子集（真后端论域 59 条，mock 的 `MOCK_SOLVER_REGISTRY` 只有 4 条），
-   * 故 `total` 报的是 mock 论域大小、`uncategorized` 报 mock 里没归类的那些——
+   * 成员 key 是 mock 侧的展示子集（真后端论域 61 条全集，mock 发现页只展 4 条策展位——
+   * 子集从 `./solverRegistry` 全集镜像派生，非手抄），
+   * 故 `total` 报的是 mock 展示论域大小、`uncategorized` 报展示位里没归类的那些——
    * **空数组 = 无漏网**，与真后端同口径地诚实亮出，不藏。
    */
   http.get("*/a/v1/solvers/categories", () => {
@@ -6215,12 +6217,17 @@ export const handlers = [
    * 覆盖范围同真后端：只探 solver / rule / ontologyType 三种 kind，且只探 `required !== false` 的；
    * references 与 dependsOn 一起探。constraint/slice/workflow/agent 今天两侧都无人校验，别在此补——
    * mock 比真后端严会造出"本地红、线上绿"的反向假信号。
+   *
+   * solver 词表 = `MOCK_KNOWN_SOLVER_KEYS`（`./solverRegistry` 现算 40 条 =
+   * 真后端 `probeMissingRefs` 走的 `discover("solvers")` 论域 scenario+cockpit）。
+   * WO-MOCK-FE-REGISTRY-PARITY 前曾拿发现页 4 条展示子集判存在性——真注册的
+   * kit_readiness 被误判死路、GENERIC 档 selection_optimize 反被放行，双向皆错。
    */
   http.post("*/b/v1/skills/:id/publish", ({ params }) => {
     const s = db.skills.find((x) => x.id === params.id);
     if (!s) return err(404, "NOT_FOUND", "Skill 不存在");
     const crossRefs = [...(s.references ?? []), ...(s.dependsOn ?? [])].filter((r) => r.required !== false);
-    const solverKeys = new Set(MOCK_SOLVER_REGISTRY.map((x) => x.key as string));
+    const solverKeys = MOCK_KNOWN_SOLVER_KEYS;
     const ruleKeys = new Set(db.rules.map((r) => r.key));
     const objectTypes = new Set(GRAPH.nodes.map((n) => n.key));
     const dead = [
@@ -6349,7 +6356,7 @@ export const handlers = [
   /**
    * F14 出厂技能门审计诚实位（`GET /b/v1/ops/skill-seed-gate`）。
    *
-   * mock 给 `CLEAN`：本地 fixture 里的种子技能引用都在 `MOCK_SOLVER_REGISTRY` / `db.rules` / `GRAPH` 里
+   * mock 给 `CLEAN`：本地 fixture 里的种子技能引用都在 `MOCK_KNOWN_SOLVER_KEYS` / `db.rules` / `GRAPH` 里
    * （与上方 publish 探针同一份判据），确实审得干净。
    * ⚠️ 不给 `NOT_RUN`：那会让"未审计"成为 mock 模式的常态，看久了就把灰色徽标读成正常——
    * 四态各有各的含义，mock 该给的是它真实对应的那一态。另三态的渲染由测试直接构造响应驱动。
