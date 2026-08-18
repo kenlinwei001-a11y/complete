@@ -154,6 +154,10 @@
       "verdict": "criteria",
       "why": "门账处置枚举（WIRE/MANUAL/FOLD/DELETE），与 PRD-gate-ledger §4.1 一字对应。判据本体：它定义合法取值，改它 = 改治理规范，不随门的数量而变。"
     },
+    "check-harness-ux-behavior.mjs:LOGIN": {
+      "verdict": "criteria",
+      "why": "mock 模式 dev server 的演示登录凭据（demo/planner/demo1234），与 CLAUDE.md「演示账号」一节一字对应。判据本体而非受检对象集合：它是探针进页的门票，三个值由仓级演示账号约定钉死，不随页面数/门数演进；改它 = 改那份约定本身，届时全仓演示链路一起改。"
+    },
     "check-lever-landing-exists.mjs:CANARIES": {
       "verdict": "criteria",
       "why": "拨杆落点存在性的金丝雀（含 Material.leadTime —— 曾被 grep 误报 0 命中、实际存在的那一条）。判据本体，且它钉住的正是「工具会骗你」这个坑。"
@@ -287,7 +291,7 @@
       "why": "**真债，照实登记**：本门棘轮守的页集合写死为 1 页（sim-sandbox）。**差集 = 11 页**（project-sim · global-sim · risk · order-chain · decision-play · what-if · optimize-whatif · cleanroom-attr · disruption-radius · plan-generate · sop-balance）。**该从哪儿现算**：`parsePrdTable()`（scripts/check-sim-ux-criteria.mjs）读 docs/PRD-harness-ux-adoption.md §4 表 —— 本门的 `--survey` 已经在用它现算这 12 页，**所以不是「算不出来」，是「故意只守一页」**：WO-SANDBOX-LAYOUT-HARNESS 的范围是「造尺子 + 用一页证明它有牙」，一天硬铺 12 页棘轮产出的会是 12 个没人维护的装饰件。**差什么才能修**：那 11 页里 3 页今天就卡在绝对下限上（plan-generate 9px · project-sim 9.5px · decision-play 10px，均为页内自有小字号）—— 先把这 3 页字号提到 12px，再 `--tighten` 把 12 页一次性种进基线，本条即可从 roster 降为 computed。**已加缓解措施**（该门守的命题原话：「写死则必须同批加一条『名单 vs 现算』的一致性断言」）：本门每次运行都断言 PAGES ⊆ 现算名册（有名册外的页 ⇒ RC=2），并**打印未进棘轮的 11 页页名** —— 「量到 ≠ 守住」这件事因此每次都被机器说出来，而不是沉默地待在源码里。"
     }
   },
-  "candidateCount": 71,
+  "candidateCount": 72,
   "rosterCount": 13,
   "ratchetHigh": 12
 }

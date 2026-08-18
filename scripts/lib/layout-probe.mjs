@@ -471,12 +471,18 @@ export async function launchBrowser() {
  * 成功时返回**开着的 page**（调用方负责 close）；失败时自己先 close 再抛。
  */
 export async function openStablePage(browser, spec) {
-  const { baseUrl, route, viewport, rootSelector, login, settleMs = 900, stableTries = 20 } = spec;
+  const { baseUrl, route, viewport, rootSelector, login, settleMs = 900, stableTries = 90 } = spec;
   const page = await browser.newPage({ viewport });
   const pageErrors = [];
   page.on("pageerror", (e) => pageErrors.push(String(e).slice(0, 200)));
   try {
-    await page.goto(baseUrl, { waitUntil: "networkidle", timeout: 45_000 });
+    // ⚠ 不用 `networkidle`：vite dev 的模块加载 + HMR 长连让它在重机上 45s 都等不到
+    //   （本单在 macOS 上实测 page.goto 超时）。真正的「渲染出来了没有」由下面的
+    //   稳定循环保证（textEls ≥ 下限 且 两次采样相同），goto 只要拿到文档壳就够。
+    //   stableTries 默认 90（≈81s）是为 vite **冷启动**的按需编译留的 ——
+    //   本单实测冷编译首渲染要 35s+（trace：39 采 textEls=1 → 第 40 采 266）；
+    //   正常情况下 2–3 采就稳，默认值只在页面真不渲染时才付代价。
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
     if (login) {
       await page.fill("#login-tenant", login.tenant).catch(() => {});
       await page.fill("#login-username", login.username);
@@ -579,10 +585,17 @@ export async function measureHtml(browser, html, viewport, rootSelector = "body"
 
 /**
  * 浏览器侧：给扫描根内的可见 DOM 取一份**内容签名**（FNV-1a · 不是安全哈希，只为比对）。
- * 签名料 = 每个「自身直接文本节点非空」的可见元素的 `序号:标签:文本`（文本截 60 字）
- *        + 可见元素总数（结构变了但文本恰好一样时也能咬住，如整表重排）。
+ * 签名料（三路，缺一路就会漏一整类「结果变了」）：
+ *   ① 每个「自身直接文本节点非空」的可见元素的 `序号:标签:文本`（文本截 60 字）；
+ *   ② 可见元素总数（结构变了但文本恰好一样时也能咬住，如整表重排）；
+ *   ③ **SVG `<path>` 的 `d` 属性**（截 80 字 × 前 40 条）—— 本仓大量「结果」是画出来的
+ *      折线/雷达/传导图，改输入后**图形重画了但文本一个字母都没变**（本单实测：
+ *      改 sim-sandbox 的「指标」下拉，文本签名纹丝不动，而结论区的图确实重绘了）。
+ *      没有③，纯文本签名会把「图变了」误判成「什么都没变」—— 又一例
+ *      「我用 X 当作 Y 的证据，而 X 并不度量 Y」。
  * 刻意**不**含输入控件自身的 value —— 我们要测的是「**结果** DOM 变没变」，
  * 把被改的那个输入自己算进签名，会把「只有输入变了、结果没动」误判成「有反应」。
+ * 诚实边界：`<canvas>` 画的结果签名够不着（位图不进 DOM），真遇到只能换采样面。
  */
 export function snapshotDomInPage(opts) {
   const root = opts.rootSelector ? document.querySelector(opts.rootSelector) : document.body;
@@ -594,11 +607,15 @@ export function snapshotDomInPage(opts) {
     return r.width >= 1 && r.height >= 1;
   };
   const entries = [];
+  const paths = [];
   let visibleEls = 0;
   let i = 0;
   for (const el of root.querySelectorAll("*")) {
     if (!visible(el)) continue;
     visibleEls++;
+    if (el.tagName.toLowerCase() === "path" && paths.length < 40) {
+      paths.push((el.getAttribute("d") || "").slice(0, 80));
+    }
     let t = "";
     for (const n of el.childNodes) if (n.nodeType === 3) t += n.nodeValue;
     t = t.trim();
@@ -606,29 +623,47 @@ export function snapshotDomInPage(opts) {
     entries.push(`${i++}:${el.tagName.toLowerCase()}:${t.slice(0, 60)}`);
   }
   // FNV-1a 32bit
-  let h = 0x811c9dc5;
-  const feed = (s) => {
+  const fnv = (s, h) => {
     for (let k = 0; k < s.length; k++) {
       h ^= s.charCodeAt(k);
       h = Math.imul(h, 0x01000193) >>> 0;
     }
+    return h;
   };
-  feed(entries.join(""));
-  feed(`#${visibleEls}`);
+  const hashOf = (arr) => fnv(arr.join(""), 0x811c9dc5).toString(16);
+  const textSig = hashOf(entries);
+  const pathSig = hashOf(paths);
+  let h = 0x811c9dc5;
+  h = fnv(entries.join(""), h);
+  h = fnv(paths.join(""), h);
+  h = fnv(`#${visibleEls}:${paths.length}`, h);
   return {
     ok: true,
-    sig: `${h.toString(16)}:${entries.length}:${visibleEls}`,
+    sig: `${h.toString(16)}:${entries.length}:${visibleEls}:${paths.length}`,
+    textSig,
+    pathSig,
     textEls: entries.length,
     visibleEls,
+    pathEls: paths.length,
     sample: entries.slice(0, 60),
+    // 完整逐元素清单（带序号前缀，可按位对齐做 diff）—— 只在调用方要了才给，
+    // 因为轮询路径上每次都要序列化几百条字符串，能省则省。
+    entries: opts.withEntries ? entries : undefined,
   };
 }
 
 /**
- * 浏览器侧：在扫描根内挑一个**可编辑输入**并打上 `data-probe-target="1"` 标记，
- * 返回它的身份与**要改成的新值**。挑选顺序：number 输入 → 其他文本输入 → select → textarea。
+ * 浏览器侧：在扫描根内挑出**至多 `max` 个**可编辑输入并逐个打上 `data-probe-target="<i>"` 标记，
+ * 返回它们的身份与**各自要改成的新值**。排序：number 输入 → 其他文本输入 → select → checkbox → textarea。
  * 新值必须是**确定性的**（不许随机，不许读时钟 —— 本仓门不许依赖时钟随机性）：
- *   数字 → 旧值 + 1；文本 → 末尾追加 "1"；select → 第一个与现值不同的 option。
+ *   数字 → 旧值 + 1；文本 → 末尾追加 "1"；select → 第一个与现值不同的 option；
+ *   **checkbox → 取反**（手势是 `el.click()` —— toggle 一个复选框就是「改这个输入的值」，
+ *   与「点提交按钮」是两回事。本仓 sim-sandbox 的 16 个传导边开关全是 checkbox，
+ *   把它排除在外，那一页就只剩一个不切数的「指标」下拉 —— 本单实测）。
+ * ⚠ 为什么要多个而不是一个：一页有多个输入时，第一个可能是**不驱动重算**的
+ *   （本单实测 sim-sandbox 第一个候选是「指标」下拉 —— 它切的是图不是数）。
+ *   只试一个就把「这个输入不驱动」误判成「这一页有提交闸」。逐个试，
+ *   「全部试过都不变」才是「提交闸/没接入参」的合格证据。
  */
 export function findEditableInputInPage(opts) {
   const root = opts.rootSelector ? document.querySelector(opts.rootSelector) : document.body;
@@ -644,6 +679,7 @@ export function findEditableInputInPage(opts) {
       'input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=submit]):not([type=button]):not([type=range]):not([type=search])',
     ),
     ...root.querySelectorAll("select"),
+    ...root.querySelectorAll("input[type=checkbox]"),
     ...root.querySelectorAll("textarea"),
   ].filter((el) => visible(el) && !el.disabled && !el.readOnly);
   // number 优先：改它触发重算的概率最高（业务输入大多是数字）。
@@ -652,44 +688,62 @@ export function findEditableInputInPage(opts) {
     const nb = b.tagName === "INPUT" && b.type === "number" ? 0 : 1;
     return na - nb;
   });
-  const el = pool[0];
-  if (!el) return { ok: true, found: false };
-  el.setAttribute("data-probe-target", "1");
-  const oldValue = el.value ?? "";
-  let newValue;
-  if (el.tagName === "SELECT") {
-    const opt = [...el.options].find((o) => o.value !== oldValue && !o.disabled);
-    if (!opt) return { ok: true, found: false, reason: "select 没有可切换的选项" };
-    newValue = opt.value;
-  } else if (el.tagName === "INPUT" && el.type === "number") {
-    const n = Number(oldValue);
-    newValue = String(Number.isFinite(n) ? n + 1 : 1);
-  } else {
-    newValue = `${oldValue}1`;
+  const max = opts.max ?? 4;
+  const out = [];
+  for (let idx = 0; idx < pool.length && out.length < max; idx++) {
+    const el = pool[idx];
+    let oldValue, newValue, gesture = "set";
+    if (el.tagName === "INPUT" && el.type === "checkbox") {
+      oldValue = String(el.checked);
+      newValue = String(!el.checked);
+      gesture = "toggle";
+    } else {
+      oldValue = el.value ?? "";
+      if (el.tagName === "SELECT") {
+        const opt = [...el.options].find((o) => o.value !== oldValue && !o.disabled);
+        if (!opt) continue; // 没有可切换的选项 ⇒ 这个候选没法用，看下一个
+        newValue = opt.value;
+      } else if (el.tagName === "INPUT" && el.type === "number") {
+        const n = Number(oldValue);
+        newValue = String(Number.isFinite(n) ? n + 1 : 1);
+      } else {
+        newValue = `${oldValue}1`;
+      }
+    }
+    el.setAttribute("data-probe-target", String(out.length));
+    out.push({
+      index: out.length,
+      gesture,
+      tag: el.tagName.toLowerCase(),
+      type: el.getAttribute("type") || "",
+      name: el.getAttribute("name") || "",
+      id: el.id || "",
+      aria: el.getAttribute("aria-label") || "",
+      cls: (el.getAttribute("class") || "").slice(0, 70),
+      oldValue: String(oldValue).slice(0, 40),
+      newValue: String(newValue).slice(0, 40),
+    });
   }
-  return {
-    ok: true,
-    found: true,
-    tag: el.tagName.toLowerCase(),
-    type: el.getAttribute("type") || "",
-    name: el.getAttribute("name") || "",
-    id: el.id || "",
-    aria: el.getAttribute("aria-label") || "",
-    cls: (el.getAttribute("class") || "").slice(0, 70),
-    oldValue: String(oldValue).slice(0, 40),
-    newValue: String(newValue).slice(0, 40),
-  };
+  if (!out.length) return { ok: true, found: false };
+  return { ok: true, found: true, inputs: out };
 }
 
 /**
- * 浏览器侧：把打了标记的输入改成新值，**走原生 setter + 冒泡事件**。
+ * 浏览器侧：把第 `index` 个打了标记的输入改成新值，**走原生 setter + 冒泡事件**。
  * ⚠ 直接 `el.value = v` 对 React 受控组件无效（React 的值跟踪器会把它吞掉），
  *   必须走原型上的 setter 再派发 `input`/`change` —— 这是 React 官方测试工具的同款手法。
  * 本函数**不点任何按钮**（B-1 的全部意义就在「不点按钮结果也该变」）。
  */
 export function changeMarkedInputInPage(opts) {
-  const el = document.querySelector('[data-probe-target="1"]');
-  if (!el) return { ok: false, reason: "标记输入丢了（页面在两次 evaluate 之间重渲染了）" };
+  const el = document.querySelector(`[data-probe-target="${opts.index ?? 0}"]`);
+  if (!el) return { ok: false, reason: `标记输入 ${opts.index ?? 0} 丢了（页面在两次 evaluate 之间重渲染了）` };
+  // checkbox 的「改值」手势就是点它自己 —— toggle 复选框 ≠ 点提交按钮。
+  // `el.click()` 走真实事件链（React 对 checkbox 听的正是 click/change）。
+  if (el.tagName === "INPUT" && el.type === "checkbox") {
+    const want = opts.newValue === "true";
+    if (el.checked !== want) el.click();
+    return { ok: true, applied: el.checked === want, now: String(el.checked) };
+  }
   const proto =
     el.tagName === "SELECT"
       ? HTMLSelectElement.prototype
@@ -721,42 +775,189 @@ export const REACTION_TIMEOUT_MS = 5000;
  *   时窗的唯一风险是**冤枉**正常的重算。mock 模式重算 = 本地同步计算 + react-query 失效重取，
  *   实测全部 < 1s（见本单交单报告），取 5000 留了 5 倍以上余量，不是拍脑袋。
  */
+/**
+ * Node 侧纯函数：把「签名变了」归因成 **changed**（结果真变了）还是 **echo**（只是输入回显）。
+ *
+ * 为什么需要它（2026-08-18 实测 `optimize-whatif`）：改基线表数字 100→101，
+ * 屏上唯一的变化是一个 `span.mono` 把那个数**原样照抄**了一遍 —— 求解器一下都没跑，
+ * 但「DOM 变了」字面成立。把这种回显当成「改输入即重演」，会把带提交闸的页误判成
+ * 「修好没回写」。**输入回显 ≠ 结果重演**，必须分开记账。
+ *
+ * 判法（全部用快照自己的分量，不看页面语义）：
+ *   · SVG path 签名变了 / 文本元素个数变了 / 同位标签变了 ⇒ changed（结构或图变了，回显做不到）；
+ *   · 逐位对齐后的**全部**文本修改都是「旧文本===旧输入值 ∧ 新文本===新输入值」⇒ echo；
+ *   · 其余 ⇒ changed。
+ * 证据不全（没采 entries）⇒ 保守归 changed（回显是豁免，豁免必须举证）。
+ *
+ * @returns {"changed"|"unchanged"|"echo"}
+ */
+export function classifyReaction(before, after, oldValue, newValue) {
+  if (!before?.ok || !after?.ok) return "changed";
+  if (after.sig === before.sig) return "unchanged";
+  if (after.pathSig !== before.pathSig || (after.pathEls ?? 0) !== (before.pathEls ?? 0)) return "changed";
+  const b = before.entries ?? null;
+  const a = after.entries ?? null;
+  if (!b || !a) return "changed"; // 没采逐元素清单 ⇒ 无法证明是回显 ⇒ 按真变化
+  if (b.length !== a.length) return "changed"; // 元素增删 = 真变化
+  const mods = [];
+  for (let i = 0; i < b.length; i++) {
+    if (b[i] === a[i]) continue;
+    const bt = b[i].split(":");
+    const at = a[i].split(":");
+    if (bt[1] !== at[1]) return "changed"; // 同位标签都换了 = 结构变化
+    mods.push({ from: bt.slice(2).join(":"), to: at.slice(2).join(":") });
+  }
+  if (!mods.length) return "changed"; // 签名变了而逐位文本全同（可见计数等变化）⇒ 真变化
+  const ov = String(oldValue).slice(0, 60);
+  const nv = String(newValue).slice(0, 60);
+  return mods.every((m) => m.from === ov && m.to === nv) ? "echo" : "changed";
+}
+
+/**
+ * Node 侧纯函数：在**新扫出来的候选清单**里对回最初那份清单里的同一个输入。
+ * 为什么需要它（2026-08-18 实测 order-chain）：标记是 `findEditableInputInPage` 打的
+ * DOM 属性，而探针在每个候选前要做稳定化（最多 ~6s）+ 上一候选的轮询（最多 5s），
+ * 期间页面一旦重渲染把节点整个换掉，标记就随旧节点一起没了 —— 拿最初的序号去查
+ * `[data-probe-target]` 必落空。修法不是「当初多打几个标」，是**每次动手前用同一实现
+ * 重扫重打标**，再按稳定身份对回原候选：
+ *   ① 身份串（tag|type|name|id|aria）+ 旧值全等 ⇒ 最硬；
+ *   ② 仅身份串全等 ⇒ 值被上一手势合法改过（checkbox toggle 后还没还原）；
+ *   ③ 同序号 ⇒ 兜底（同一扫描实现同一排序，序号大概率仍对得上）。
+ * @returns {object|null} 新清单里对应的那条候选（带新鲜 index/newValue/oldValue）
+ */
+export function matchCandidate(freshInputs, cand) {
+  if (!Array.isArray(freshInputs) || !cand) return null;
+  const idOf = (c) => `${c.tag}|${c.type}|${c.name}|${c.id}|${c.aria}`;
+  const exact = freshInputs.find((c) => idOf(c) === idOf(cand) && c.oldValue === cand.oldValue);
+  if (exact) return exact;
+  const byId = freshInputs.find((c) => idOf(c) === idOf(cand));
+  if (byId) return byId;
+  return freshInputs[cand.index] ?? null;
+}
+
 export async function probeInputReaction(page, opts) {
-  const { rootSelector, timeoutMs = REACTION_TIMEOUT_MS, pollMs = 200 } = opts;
-  const s0 = await page.evaluate(snapshotDomInPage, { rootSelector });
-  if (!s0.ok) return { status: "unstable", reason: s0.reason };
-  await page.waitForTimeout(400);
-  const s1 = await page.evaluate(snapshotDomInPage, { rootSelector });
-  if (!s1.ok) return { status: "unstable", reason: s1.reason };
-  // 自变化检测：改输入之前签名就在变 ⇒ 「变了」不能归因到这次输入，整条判据在这一页无处落脚。
-  if (s0.sig !== s1.sig) {
-    return { status: "unstable", reason: "页面在改输入之前签名就在自变（自走时钟/轮询），变化无法归因" };
-  }
-  const input = await page.evaluate(findEditableInputInPage, { rootSelector });
-  if (!input.ok) return { status: "unstable", reason: input.reason };
-  if (!input.found) return { status: "no-input", reason: input.reason || "扫描根内没有可编辑输入" };
-  const applied = await page.evaluate(changeMarkedInputInPage, { newValue: input.newValue });
-  if (!applied.ok) return { status: "unstable", reason: applied.reason };
-  const t0 = Date.now();
-  let last = s1;
-  for (;;) {
+  const { rootSelector, timeoutMs = REACTION_TIMEOUT_MS, pollMs = 200, baseStableTries = 15 } = opts;
+
+  // ── 稳定化：签名**两次连续相同**才算稳（不是只采一次就改输入）────────────────
+  // ⚠ 第一版只采一次基准就改输入，实测栽在 sim-sandbox 上：
+  //   openStablePage 的「稳定」看的是 textEls **计数**，计数稳了内容还在到货
+  //   （懒加载 chunk / react-query 后继查询），于是基准快照撞上晚到的内容 ⇒ 误报
+  //   「页面自变、无法归因」。修法与 openStablePage 同源：**等它真稳**，等不到才报 unstable。
+  // ⚠ **每个候选各自重新稳定化**：上一候选（尤其 checkbox toggle）可能合法地留下一个新稳态
+  //   （对照结果面板还开着），不许拿最初那次基准去套它 —— 归因只看「这次改之前 vs 这次改之后」。
+  const stabilize = async () => {
+    let prev = null;
+    for (let i = 0; i < baseStableTries; i++) {
+      const cur = await page.evaluate(snapshotDomInPage, { rootSelector, withEntries: true });
+      if (!cur.ok) return { error: cur.reason };
+      if (prev && prev.sig === cur.sig) return { snap: cur };
+      prev = cur;
+      await page.waitForTimeout(400);
+    }
+    return {
+      error: `基准快照在 ${baseStableTries} 次采样（≈${Math.round((baseStableTries * 400) / 1000)}s）内签名未稳定 —— 页面有自走时钟/轮询，变化无法归因到输入`,
+    };
+  };
+
+  const base0 = await stabilize();
+  if (base0.error) return { status: "unstable", reason: base0.error };
+
+  const found = await page.evaluate(findEditableInputInPage, { rootSelector, max: opts.maxInputs ?? 4 });
+  if (!found.ok) return { status: "unstable", reason: found.reason };
+  if (!found.found) return { status: "no-input", reason: "扫描根内没有可编辑输入" };
+
+  // 每次动手前重扫重打标再改：标记是最初那次 find 打的 DOM 属性，而候选与候选之间
+  // 隔着稳定化（最多 ~6s）与轮询（最多 5s），页面一旦重渲染换掉节点，旧标记就落空
+  // （2026-08-18 实测 order-chain 第 3 个候选）。重扫用同一实现，按稳定身份对回原候选。
+  const applyFresh = async (cand, value) => {
+    const refind = await page.evaluate(findEditableInputInPage, { rootSelector, max: opts.maxInputs ?? 4 });
+    const fresh = refind.ok && refind.found ? matchCandidate(refind.inputs, cand) : null;
+    const eff = fresh ?? cand;
+    const res = await page.evaluate(changeMarkedInputInPage, {
+      index: eff.index,
+      newValue: value !== undefined ? value : eff.newValue,
+    });
+    return { res, eff };
+  };
+
+  const tried = [];
+  let firstChanged = null;
+  let lastSnap = base0.snap;
+  let seenChanged = false;
+  let seenStill = false;
+  for (const input of found.inputs) {
+    // 每个候选各自重新稳定化（见上 ⚠）；稳不了 = 无法归因 = RC=2 那一侧的事。
+    const st = tried.length === 0 ? base0 : await stabilize();
+    if (st.error) return { status: "unstable", reason: `试第 ${tried.length + 1} 个输入前：${st.error}`, tried };
+    const before = st.snap;
+
+    const { res: applied, eff } = await applyFresh(input);
+    if (!applied.ok) return { status: "unstable", reason: applied.reason, tried };
+    // 「改不动」（React 拒收 / min-max 钳住）≠「改了没变」（提交闸）—— 前者根本没完成
+    // 这次实验，不许计入「不变」的证据，换下一个候选。
+    if (!applied.applied) {
+      tried.push({ ...input, outcome: "apply-failed", result: `apply-failed(现为 ${applied.now})` });
+      continue;
+    }
+    const t0 = Date.now();
+    let hit = null;
+    for (;;) {
+      await page.waitForTimeout(pollMs);
+      const cur = await page.evaluate(snapshotDomInPage, { rootSelector, withEntries: true });
+      if (cur.ok && cur.sig !== before.sig) {
+        hit = cur;
+        break;
+      }
+      if (cur.ok) lastSnap = cur;
+      if (Date.now() - t0 >= timeoutMs) break;
+    }
+    const latencyMs = Date.now() - t0;
+    // 回显（输入值被原样照抄到屏上）≠ 重演 —— 归因分三态，echo 归「没重演」那一侧。
+    // 归因用**实际打进去的那对值**（eff —— 重扫后值可能已被合法改过）。
+    const outcome = hit ? classifyReaction(before, hit, eff.oldValue, eff.newValue) : "unchanged";
+    tried.push({
+      ...input,
+      outcome,
+      result: hit ? `${outcome}(${latencyMs}ms)` : "unchanged",
+      latencyMs: hit ? latencyMs : undefined,
+    });
+    if (outcome === "changed") {
+      seenChanged = true;
+      if (!firstChanged) firstChanged = { input, latencyMs, before, after: hit };
+    } else {
+      seenStill = true; // echo 与 unchanged 同属「没重演」那一侧的证据
+    }
+    // 还原旧值再试下一个（还原走同一条原生 setter 路径；checkbox 就是再点一次自己 —— 不点任何按钮）。
+    // 同样先重扫重打标：上一手势后的轮询期间页面也可能又渲染过。
+    await applyFresh(input, eff.oldValue);
     await page.waitForTimeout(pollMs);
-    const cur = await page.evaluate(snapshotDomInPage, { rootSelector });
-    if (cur.ok && cur.sig !== s1.sig) {
-      return {
-        status: "changed",
-        latencyMs: Date.now() - t0,
-        input,
-        before: s1.sample,
-        after: cur.sample,
-        timeoutMs,
-      };
-    }
-    if (cur.ok) last = cur;
-    if (Date.now() - t0 >= timeoutMs) {
-      return { status: "unchanged", input, before: s1.sample, after: last.sample, timeoutMs };
-    }
+    // 两类证据都齐了（既有真重演的、也有改了不变的）⇒ 后面的候选不影响判定，提前收。
+    if (seenChanged && seenStill) break;
   }
+
+  const appliedAny = tried.some((t) => t.outcome !== "apply-failed");
+  if (!appliedAny) {
+    return { status: "no-input", reason: `候选输入全部改不动（${tried.map((t) => t.result).join(" · ")}）`, tried, timeoutMs };
+  }
+  if (firstChanged) {
+    return {
+      status: "changed",
+      latencyMs: firstChanged.latencyMs,
+      input: firstChanged.input,
+      tried,
+      before: firstChanged.before.sample,
+      after: firstChanged.after.sample,
+      timeoutMs,
+    };
+  }
+  return {
+    status: "unchanged",
+    input: found.inputs[0],
+    tried,
+    before: base0.snap.sample,
+    after: lastSnap.sample,
+    timeoutMs,
+  };
 }
 
 // ───────────────────────────────────────────────────────────────────────────────

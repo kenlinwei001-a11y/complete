@@ -32,29 +32,44 @@
  *
  * ══ B-1 的判法 = 与 PRD §4 表 U1 列**逐格对账**（不是「一律要求符合」）══════════
  * 与 `layout-legibility --survey` 的 U10 对账同一个道理（推导见那个文件）：
- *   表说 `符合`、屏上改了输入结果也变 ⇒ 绿；表说 `符合` 而屏上**不变** ⇒ 红（有人改坏了）；
- *   表说 `不符合`、屏上也不变 ⇒ 绿（**诚实登记的欠账不染红**，否则下一个人消红的最短路径是改表）；
- *   表说 `不符合` 而屏上已变 ⇒ 红（修好了没回写表，同样是脱节，方向相反而已）。
+ *   表说 `符合`、屏上有输入改了结果真变 ⇒ 绿；表说 `符合` 而试过的输入**全不变** ⇒ 红（有人改坏了）；
+ *   表说 `不符合`、屏上**仍有输入改了不变**（陈旧窗口仍在）⇒ 绿（**诚实登记的欠账不染红**）；
+ *   表说 `不符合` 而试过的输入**全都真变** ⇒ 红（闸确实没了 = 修好了没回写表，方向相反的脱节）。
+ * 两条归因纪律（都是 2026-08-18 真页面实测逼出来的）：
+ *   · **输入回显 ≠ 结果重演**：改值后唯一变化是屏上把那个数原样照抄（echo），归「没重演」一侧
+ *     （`classifyReaction`，optimize-whatif 基线表实测：不区分它，带闸页会被误判「修好没回写」）；
+ *   · **混合证据照实记**：一页可以「主流程有闸 ∧ 另有实时区（如共享传导边面板）」——
+ *     对「不符合」格，闸的存在由「仍有输入改了不变」证明，实时区不妨碍欠账属实。
  * 页内探不到可编辑输入 ⇒ 本页这条**未判**（如实报，不算红也不算绿 ——
  * 但**全部 12 页都未判** ⇒ RC=2：探针一个输入都够不着 ⇒ 是探针坏了，不是页面干净）。
  *
- * ══ B-4·U8 的判法 ════════════════════════════════════════════════════════════
+ * ══ B-4·U8 的判法 = 与 PRD §4.2.3 遮挡登记表**对账**（与 B-1 对 U1 列同一个道理）═══════
  * 逐页找浮层触发器（`[aria-expanded]`/`[aria-haspopup]`，本仓浮层组件的公开契约面），
  * 先悬停、无浮层再点击；**出现**浮层就量遮挡（`measureOcclusionInPage`，与金丝雀同一份）：
- *   · 浮层矩形内 3×3 采样点，任一采样点最上层元素不属于浮层子树 ⇒ **红**（浮层被压住）；
+ *   · 浮层矩形内 3×3 采样点，任一采样点最上层元素不属于浮层子树 ⇒ 浮层被压住；
  *   · 浮层盖住了哪些文本元素、各盖住百分之几 ⇒ **照实打印**（「A 盖住了 B 的哪一部分」）。
  * 触发后无浮层 ⇒ 记「内联展开或无浮层」，**不红**（U8 的合法形态之一就是原地内联展开）。
+ * 被压住的处置按 §4.2.3 登记表对账：
+ *   · 屏上被压 + 表里登记 `不符合` ⇒ 绿（**诚实登记的欠账不染红**，登记行必须写清去向）；
+ *   · 屏上被压 + 表里**没有** ⇒ 红（新遮挡：要么修 z-index/堆叠上下文，要么显式登记）；
+ *   · 屏上无压 / 触发器没了 + 表里登记着 ⇒ 红（**修好没回写 / 登记指向空气**，逼销账）。
+ *   登记键 = `页::触发器 aria 标签`全等匹配 —— 文案改了门当场红，**登记不许无声腐烂**。
  * 12 页合计一个触发器都找不到 / 一个浮层都开不出来 ⇒ RC=2
  * （代码里明明有 `InfoPopover`，一个都触发不到 ⇒ 是探针坏了）。
  *
  * ══ 金丝雀（每次运行先跑 · 与主逻辑共用同一份 lib 函数，不另抄）═════════════════
  *   必咬①：改输入即变的页（`oninput` 直接改结果文本）⇒ 必须探到 changed；
  *   必咬②：提交闸的页（结果只在点按钮时变）⇒ 必须探到 unchanged，且对账「符合」格必须判红；
+ *   必咬②b：纯回显页（输入值被原样照抄）⇒ 必须归因为 echo 并归入「没重演」一侧；
+ *   判据单元：合成 tried 清单四向（混合证据对不符合放行 / 全变对不符合判红 /
+ *     全不变对符合判红 / 混合对符合放行）；
  *   必咬③：被高压住的浮层（overlay z-1 上盖一个 z-2 的块）⇒ 必须报出 occludedBy 且判红；
- *   必不咬：置顶浮层（z-99）⇒ 一个 occludedBy 都不许报，且 covers 必须量到被盖元素。
+ *   必不咬：置顶浮层（z-99）⇒ 一个 occludedBy 都不许报，且 covers 必须量到被盖元素；
+ *   对账⑤：同一 judgeOcclusion 三向 —— 登记遮挡不红 / 未登记遮挡必红 / 修好没回写必红；
+ *   解析⑥：§4.2.3 样例表必须解析出 1 条登记（解析器瞎了 ⇒ RC=2，不许报「零欠账」）。
  *
  * ══ 退出码（三分）════════════════════════════════════════════════════════════
- *   0 干净 · 1 **对账不一致 / 浮层真被压住** · 2 **工具自己坏了**
+ *   0 干净 · 1 **对账不一致 / 未登记的浮层遮挡 / 登记脱节（修好没回写·指向空气）** · 2 **工具自己坏了**
  *   （渲染不出来 · 金丝雀不过 · 独立口径不过：0 页可判 / 0 个触发器 / 0 个浮层）。
  *
  * 本体登记：docs/SYSTEM-ONTOLOGY.md §7（门）· §8 G-SPLITACCOUNT-PROMISE-ONLY（B-1/B-4·U8 收口）。
@@ -132,37 +147,50 @@ export function judgeReaction(pageId, result, cell) {
     // 探针没法归因 = 这一页本次没查成。如实上抛，由调用方决定（真页面上这是 RC=2 的事）。
     return { fail: null, note: `${where}：探针无法归因（${result.reason}）`, unstable: true };
   }
-  const changed = result.status === "changed";
-  const lat = changed ? `（${result.latencyMs}ms 内变了）` : `（${result.timeoutMs}ms 内没变）`;
-  const inp = result.input
-    ? `输入 <${result.input.tag}${result.input.type ? ` type=${result.input.type}` : ""}` +
-      `${result.input.name ? ` name=${result.input.name}` : ""}${result.input.aria ? ` aria=「${result.input.aria}」` : ""}> ` +
-      `${result.input.oldValue} → ${result.input.newValue}`
-    : "";
-  if (cell === "符合" && changed) {
-    return { fail: null, note: `${where}：表=符合 · 屏=改输入即变 ${lat} ⇒ 一致 ✓ ${inp}` };
-  }
-  if (cell === "符合" && !changed) {
+  const fmtInp = (t) =>
+    `<${t.tag}${t.type ? ` type=${t.type}` : ""}${t.name ? ` name=${t.name}` : ""}${t.aria ? ` aria=「${t.aria}」` : ""}> ` +
+    `${t.oldValue}→${t.newValue}`;
+  const tried = result.tried ?? [];
+  const changedOnes = tried.filter((t) => t.outcome === "changed");
+  const stillOnes = tried.filter((t) => t.outcome === "unchanged" || t.outcome === "echo");
+  const inp = tried.length
+    ? `试过 ${tried.length} 个输入：${tried.map((t) => `${fmtInp(t)} ⇒ ${t.result}`).join(" · ")}`
+    : result.input
+      ? `输入 ${fmtInp(result.input)}`
+      : "";
+  const lat = changedOnes.length ? `（首个 ${result.latencyMs}ms 内变了）` : `（各等 ${result.timeoutMs}ms 没变）`;
+
+  if (cell === "符合") {
+    if (changedOnes.length) {
+      const mixed = stillOnes.length ? `\n      ↳ 另有 ${stillOnes.length} 个输入改了不变（展示型/未接线候选，不构成提交闸证据）` : "";
+      return { fail: null, note: `${where}：表=符合 · 屏=改输入即变 ${lat} ⇒ 一致 ✓ ${inp}${mixed}` };
+    }
     return {
       fail:
-        `${where}：表说 U1 **符合**（改输入即重演），而真浏览器里改了 ${inp}，` +
-        `不点任何按钮等 ${result.timeoutMs}ms，结果 DOM **没变** —— ` +
+        `${where}：表说 U1 **符合**（改输入即重演），而真浏览器里${inp}，` +
+        `不点任何按钮各等 ${result.timeoutMs}ms，结果 DOM **一次都没变**（输入回显不算重演）—— ` +
         `存在提交闸或输入没进求解入参（用户改完不点，以为看到新结果，实际在看旧结果）。` +
         `\n     ⇒ 先修页面（把输入接进入参 / 去掉提交闸），不许改表买绿。`,
       note: "",
     };
   }
-  if (cell === "不符合" && !changed) {
-    return {
-      fail: null,
-      note: `${where}：表=不符合 · 屏=改输入不变 ${lat} ⇒ **欠账属实**（登记在册，不染红）${inp}`,
-    };
-  }
-  if (cell === "不符合" && changed) {
+  if (cell === "不符合") {
+    // 欠账格的行为面证据 = **陈旧窗口仍在**：至少一个输入改了而结果不变（echo = 只有回显，同样算不变）。
+    // 全试过都真变了 ⇒ 闸确实没了 ⇒ 「修好没回写」才成立。
+    if (stillOnes.length) {
+      const live = changedOnes.length
+        ? `\n      ↳ 页内另有实时区：${changedOnes.map((t) => `${fmtInp(t)} ${t.latencyMs}ms 即变`).join(" · ")} —— 不改变「主流程有闸」的欠账事实`
+        : "";
+      return {
+        fail: null,
+        note: `${where}：表=不符合 · 屏=陈旧窗口仍在（${stillOnes.length} 个输入改了不变/仅回显）⇒ **欠账属实**（登记在册，不染红）${inp}${live}`,
+      };
+    }
     return {
       fail:
-        `${where}：表说 U1 **不符合**，而真浏览器里改 ${inp} 后结果 DOM ${lat} —— ` +
-        `修好了没回写表。⇒ 把 §4 表该页 U1 格改成「符合」并跑 check-sim-ux-criteria.mjs --tighten。`,
+        `${where}：表说 U1 **不符合**，而真浏览器里改 ${inp} 后结果 DOM 每次都真变了 ${lat} —— ` +
+        `试过的输入**没有一个**留在旧值窗口 ⇒ 提交闸确实没了，是修好了没回写表。` +
+        `⇒ 把 §4 表该页 U1 格改成「符合」并跑 check-sim-ux-criteria.mjs --tighten。`,
       note: "",
     };
   }
@@ -172,11 +200,19 @@ export function judgeReaction(pageId, result, cell) {
 
 /**
  * B-4·U8 遮挡判据：浮层**不许被别的元素压住**；盖住别人是浮层的本分，照实报。
- * @returns {{fail:string|null, note:string}}
+ * 判法 = 与 PRD §4.2.3 的 U8 遮挡登记表**对账**（与 B-1 对 U1 列对账同一个道理）：
+ *   屏上被压 + 表里登记 `不符合` ⇒ 绿（**诚实登记的欠账不染红**，否则消红的最短路径是改表）；
+ *   屏上被压 + 表里**没有** ⇒ 红（新遮挡，必须修页面或显式登记 —— 登记要写给出去向）；
+ *   屏上无遮挡 + 表里登记了 `不符合` ⇒ 红（**修好了没回写**，脱节的方向相反而已）。
+ * @returns {{fail:string|null, note:string, debtKey:string|null, occluded:boolean}}
  */
-export function judgeOcclusion(pageId, trigger, occ) {
+export function judgeOcclusion(pageId, trigger, occ, debtRegistry) {
   const where = `${pageId} · B-4·U8（浮层遮挡）`;
-  if (!occ.ok) return { fail: null, note: `${where}：浮层量测没做成（${occ.reason}）` };
+  // debtLabel：同名触发器在同页出现多次时带「#N」序号（文档序，scanOverlays 现算）——
+  // 否则一笔登记会把两个同名触发器一起盖住，修了一个另一个就失锚。
+  const label = trigger ? (trigger.debtLabel || (trigger.aria || trigger.text || "").trim()) : "";
+  const debtKey = trigger ? `${pageId}::${label}` : null;
+  if (!occ.ok) return { fail: null, note: `${where}：浮层量测没做成（${occ.reason}）`, debtKey, occluded: false };
   const ov = occ.overlay;
   const head = `浮层 <${ov.sel}> rect=${ov.rect.w}×${ov.rect.h}@${ov.rect.x},${ov.rect.y}`;
   if (occ.occludedBy.length > 0) {
@@ -184,11 +220,34 @@ export function judgeOcclusion(pageId, trigger, occ) {
       .slice(0, 4)
       .map((p) => `${p.at} 被 ${p.by}「${p.byText}」压住`)
       .join(" · ");
+    if (debtKey && debtRegistry?.has(debtKey)) {
+      return {
+        fail: null,
+        note:
+          `${where}：${head} 被压 ${occ.occludedBy.length}/${occ.samples} 点（${pts}）` +
+          `\n      ⇒ **欠账属实**（已登记 PRD §4.2.3，去向见表；不染红）`,
+        debtKey,
+        occluded: true,
+      };
+    }
     return {
       fail:
         `${where}：${head} —— 浮层**被别的元素压住了**（${occ.occludedBy.length}/${occ.samples} 个采样点）：${pts}。` +
-        `\n     浮层被盖住 = 浮层白开（用户点开却看不全）。⇒ 修 z-index / 堆叠上下文，不许豁免。`,
+        `\n     浮层被盖住 = 浮层白开（用户点开却看不全），且 PRD §4.2.3 **没有登记**这一笔。` +
+        `\n     ⇒ 修 z-index / 堆叠上下文；确需挂账就显式登记 §4.2.3 并写清去向。**不许豁免。**`,
       note: "",
+      debtKey,
+      occluded: true,
+    };
+  }
+  if (debtKey && debtRegistry?.has(debtKey)) {
+    return {
+      fail:
+        `${where}：§4.2.3 登记「${label}」的浮层被压（不符合），而真浏览器里它**已无遮挡** —— ` +
+        `修好了没回写。⇒ 删掉 §4.2.3 那一行（销账也要显式）。`,
+      note: "",
+      debtKey,
+      occluded: false,
     };
   }
   const covers = occ.covers
@@ -201,6 +260,8 @@ export function judgeOcclusion(pageId, trigger, occ) {
       `${where}：${head} · 采样 ${occ.samples} 点全在浮层子树（无遮挡）✓` +
       `${occ.outside ? ` · ${occ.outside} 点在视口外未量` : ""}` +
       `${covers ? `\n      ↳ 它盖住了 ${occ.coveredEls} 个文本元素（「A 盖住了 B 的哪一部分」）：${covers}` : " · 没盖到任何文本元素"}`,
+    debtKey,
+    occluded: false,
   };
 }
 
@@ -231,6 +292,21 @@ const CANARY_GATED = `
     document.getElementById("go").addEventListener("click", () => {
       const v = document.getElementById("dem").value;
       document.getElementById("result").textContent = "合计： " + (Number(v) * 2) + " 吨";
+    });
+  </script>
+</main>`;
+
+/* 必咬②b：纯回显（oninput 只把输入值原样抄进一个 span —— 求解器一下都没跑）。
+ * 2026-08-18 实测 optimize-whatif 的真形状：改基线表数字，屏上唯一变化是一个 span 照抄那个数。
+ * 探针必须归因为 echo 并归入「没重演」那一侧 —— 输入回显 ≠ 结果重演。 */
+const CANARY_ECHO = `
+<main>
+  <label>基线量 <input id="dem" type="number" value="100"></label>
+  <div>当前基线：<span id="echo">100</span></div>
+  <div id="result">合计： 100 吨</div>
+  <script>
+    document.getElementById("dem").addEventListener("input", (e) => {
+      document.getElementById("echo").textContent = e.target.value;
     });
   </script>
 </main>`;
@@ -289,6 +365,41 @@ async function runCanary(browser) {
     if (j2b.fail) problems.push(`必咬②对「表=不符合」的诚实登记欠账误判红 —— 会逼人去改表买绿`);
   }
 
+  // ── 必咬②b：纯回显页必须归因为 echo（归入「没重演」一侧），不许当成「改输入即重演」──
+  const r2b = await withHtmlPage(browser, CANARY_ECHO, (page) =>
+    probeInputReaction(page, { rootSelector: "main", timeoutMs: 1200, pollMs: 100 }),
+  );
+  if (!(r2b.status === "unchanged" && r2b.tried?.[0]?.outcome === "echo")) {
+    problems.push(
+      `必咬②b（纯回显页）没归因为 echo（status=${r2b.status} outcome=${r2b.tried?.[0]?.outcome ?? "?"}）—— ` +
+        `回显会被当成重演，带提交闸的页会被误判「修好没回写」（2026-08-18 optimize-whatif 实测过的坑）`,
+    );
+  } else {
+    const j2c = judgeReaction("canary-echo", r2b, "不符合");
+    if (j2c.fail) problems.push(`必咬②b 回显页对「表=不符合」格误判红 —— 回显不是「闸已修好」的证据`);
+    const j2d = judgeReaction("canary-echo", r2b, "符合");
+    if (!j2d.fail) problems.push(`必咬②b 回显页对「表=符合」格没判红 —— 回显被当成了重演`);
+  }
+
+  // ── 判据单元向（不起页面，喂合成 tried 清单给**同一个** judgeReaction）──────────
+  const mk = (outcome) => ({
+    tag: "input", type: "number", name: "", aria: "",
+    oldValue: "100", newValue: "101",
+    outcome, result: outcome === "changed" ? "changed(200ms)" : outcome,
+    latencyMs: outcome === "changed" ? 200 : undefined,
+  });
+  const mixed = { status: "changed", latencyMs: 200, timeoutMs: 5000, tried: [mk("unchanged"), mk("changed")] };
+  const allChanged = { status: "changed", latencyMs: 200, timeoutMs: 5000, tried: [mk("changed"), mk("changed")] };
+  const allStill = { status: "unchanged", timeoutMs: 5000, tried: [mk("unchanged"), mk("echo")] };
+  if (judgeReaction("unit", mixed, "不符合").fail)
+    problems.push(`判据单元：混合证据（有输入改了不变）对「不符合」格误判红 —— 会把「主流程仍有闸、另有实时区」的页逼去改表`);
+  if (!judgeReaction("unit", allChanged, "不符合").fail)
+    problems.push(`判据单元：试过的输入全部真变的页对「不符合」格没判红 —— 「修好没回写」漏牙`);
+  if (!judgeReaction("unit", allStill, "符合").fail)
+    problems.push(`判据单元：全不变（含回显）的页对「符合」格没判红 —— 提交闸会放行`);
+  if (judgeReaction("unit", mixed, "符合").fail)
+    problems.push(`判据单元：混合证据（有真变的）对「符合」格误判红`);
+
   // ── 必咬③：被压住的浮层必须报出 occludedBy 且判红 ─────────────────────────
   const o1 = await withHtmlPage(browser, CANARY_OCCLUDED, (page) =>
     page.evaluate(measureOcclusionInPage, { overlaySelector: "#ov", rootSelector: "main" }),
@@ -319,12 +430,75 @@ async function runCanary(browser) {
     if (j4.fail) problems.push(`必不咬置顶浮层被判据误判红：${j4.fail}`);
   }
 
+  // ── 对账语义⑤（§4.2.3 登记表三向，喂给**同一个** judgeOcclusion）──────────────
+  //   ⑤a 屏上被压 + 表里登记了 ⇒ 不许红（欠账属实；判红 = 逼人删登记买绿）
+  //   ⑤b 屏上被压 + 表里没登记 ⇒ 必须红（登记表不许成免死金牌）
+  //   ⑤c 屏上无压 + 表里登记了 ⇒ 必须红（修好没回写；不咬 = 登记表无声腐烂）
+  if (o1.ok && o1.occludedBy.length > 0 && o2.ok && o2.occludedBy.length === 0) {
+    const reg5 = new Map([["pg5::被压触发器", { page: "pg5", label: "被压触发器", verdict: "不符合", why: "样例" }]]);
+    const j5a = judgeOcclusion("pg5", { aria: "被压触发器", text: "" }, o1, reg5);
+    if (j5a.fail) problems.push(`对账语义⑤a：已登记的遮挡被判红 —— 会逼人删登记买绿（${j5a.fail.slice(0, 80)}）`);
+    const j5b = judgeOcclusion("pg5", { aria: "没登记的触发器", text: "" }, o1, reg5);
+    if (!j5b.fail) problems.push(`对账语义⑤b：未登记的遮挡没判红 —— 登记表成了免死金牌`);
+    const j5c = judgeOcclusion("pg5", { aria: "被压触发器", text: "" }, o2, reg5);
+    if (!j5c.fail) problems.push(`对账语义⑤c：登记了而屏上已无遮挡（修好没回写）没判红 —— 登记表会无声腐烂`);
+  }
+
+  // ── 解析器金丝雀⑥：§4.2.3 登记表解析（与主逻辑同一个 parseU8DebtRegistry）──────
+  const md6 = [
+    "#### 4.2.3 U8 遮挡登记",
+    "",
+    "| 页 | 触发器（aria 标签） | 判定 | 去向 |",
+    "|---|---|---|---|",
+    "| `what-if` | 这一页怎么用 | 不符合 | 去修 z-index |",
+    "",
+    "### 4.3 下一节",
+    "| `what-if` | 不该被收到的行 | x | x |",
+  ].join("\n");
+  const reg6 = parseU8DebtRegistry(md6);
+  if (!(reg6.size === 1 && reg6.has("what-if::这一页怎么用") && reg6.get("what-if::这一页怎么用").verdict === "不符合")) {
+    problems.push(
+      `解析器金丝雀⑥：§4.2.3 样例应解析出 1 条「what-if::这一页怎么用=不符合」，` +
+        `实得 ${reg6.size} 条（${[...reg6.keys()].join(",") || "空"}）⇒ 判「登记表解析器坏了」。`,
+    );
+  }
+
   return { problems, r1, r2, o1, o2 };
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-// PRD §4 表：名册 + U1 判词（现读不手抄 · 解析器自带金丝雀）
+// PRD §4 表：名册 + U1 判词 + §4.2.3 U8 遮挡欠账登记（现读不手抄 · 解析器自带金丝雀）
 // ───────────────────────────────────────────────────────────────────────────────
+
+/**
+ * PRD §4.2.3「U8 遮挡登记表」解析 —— 与 B-1 的 U1 列对账是同一个道理：欠账要**显式登记**，
+ * 门按对账语义判（登记的不符合 ⇒ 绿放行但照实印；屏上被压而表里没登记 ⇒ 红；
+ * 登记了而屏上已修好 ⇒ 红，逼回写销账）。
+ * 键 = `页::触发器标签`（标签 = 触发器的 aria-label，**全等匹配** —— 文案一改登记就失配、
+ * 门当场红，这是刻意的：**登记不许无声腐烂**，改名必须连登记表一起改）。
+ * 章节不存在 ⇒ 空表（全部修好时这是合法终态，不是异常）。
+ * @returns {Map<string, {page:string, label:string, verdict:string, why:string}>}
+ */
+export function parseU8DebtRegistry(md) {
+  const lines = md.split("\n");
+  const i = lines.findIndex((l) => l.trim().startsWith("#### 4.2.3"));
+  const reg = new Map();
+  if (i < 0) return reg;
+  for (let j = i + 1; j < lines.length; j++) {
+    const l = lines[j];
+    if (/^#{1,4}\s/.test(l.trim())) break; // 下一个同级或更高级标题 = 本节结束
+    if (!l.trim().startsWith("|")) continue;
+    const cs = l.replace(/^\|/, "").replace(/\|\s*$/, "").split("|").map((s) => s.replace(/\*\*/g, "").trim());
+    if (cs.length < 3) continue;
+    const page = (cs[0].match(/`([a-z0-9-]+)`/) ?? [])[1];
+    if (!page) continue; // 表头 / 分隔行
+    const label = cs[1].trim();
+    if (!label || label === "触发器") continue;
+    reg.set(`${page}::${label}`, { page, label, verdict: cs[2], why: cs[3] ?? "" });
+  }
+  return reg;
+}
+
 function prdRosterAndU1() {
   const md = readFileSync(join(ROOT, "docs", "PRD-harness-ux-adoption.md"), "utf8");
   const prd = parsePrdTable(md);
@@ -339,7 +513,7 @@ function prdRosterAndU1() {
         `sim-sandbox 的 U1 格 = 「${u1["sim-sandbox"] ?? "（空）"}」。⇒ 判「解析器坏了」。`,
     );
   }
-  return { keys, u1 };
+  return { keys, u1, u8Debt: parseU8DebtRegistry(md) };
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -371,7 +545,9 @@ async function startDevServer() {
   }
   const child = spawn(
     "node",
-    [join(cwd, "node_modules", "vite", "bin", "vite.js"), "--port", String(port), "--strictPort"],
+    // ⚠ 必须 `--host 127.0.0.1`：vite 默认绑 `localhost`，在 macOS 上它解析成 ::1（IPv6），
+    //   于是 `waitForServer(http://127.0.0.1:…)` 永远等不到 —— 本单实测踩过，RC=2 了一次。
+    [join(cwd, "node_modules", "vite", "bin", "vite.js"), "--port", String(port), "--strictPort", "--host", "127.0.0.1"],
     { cwd, env: { ...process.env, VITE_MOCK: "1" }, stdio: ["ignore", "pipe", "pipe"], detached: true },
   );
   let log = "";
@@ -394,19 +570,28 @@ async function startDevServer() {
 // ───────────────────────────────────────────────────────────────────────────────
 // U8 逐页浮层扫描
 // ───────────────────────────────────────────────────────────────────────────────
-async function scanOverlays(page, pageId) {
+async function scanOverlays(page, pageId, debtRegistry) {
   const notes = [];
   const failures = [];
-  const found = await page.evaluate(findOverlayTriggersInPage, { rootSelector: ROOT_SEL, max: 8 });
-  if (!found.ok) return { notes: [`${pageId} · U8：触发器扫描失败（${found.reason}）`], failures, triggers: 0, overlays: 0 };
+  // 上限 12 而不是 8：登记在 §4.2.3 的触发器若排在扫描上限之外，会被误判成「登记指向空气」。
+  const found = await page.evaluate(findOverlayTriggersInPage, { rootSelector: ROOT_SEL, max: 12 });
+  if (!found.ok)
+    return { notes: [`${pageId} · U8：触发器扫描失败（${found.reason}）`], failures, triggers: 0, overlays: 0, matchedDebt: new Set(), debtConfirmed: 0 };
   const triggers = found.triggers;
   let overlaysSeen = 0;
+  let debtConfirmed = 0;
   let sigCounter = 0;
+  const matchedDebt = new Set();
+  const labelSeen = new Map(); // 同名触发器序号（文档序 1 起）—— 登记键与 §4.2.3 表全靠它消歧
   // 基线浮层集（页面加载完就开着的，不算「触发出来的」）
   const base = await page.evaluate(listVisibleOverlaysInPage, { sig: `b${pageId}` });
   const baseMarks = new Set(base.map((o) => o.mark));
   for (const t of triggers) {
-    const label = `<${t.tag}>「${t.aria || t.text}」`;
+    const baseLabel = (t.aria || t.text || "").trim();
+    const ord = (labelSeen.get(baseLabel) ?? 0) + 1;
+    labelSeen.set(baseLabel, ord);
+    t.debtLabel = ord > 1 ? `${baseLabel}#${ord}` : baseLabel;
+    const label = `<${t.tag}>「${t.debtLabel}」`;
     let overlay = null;
     // 先悬停（InfoPopover 的契约就是悬停展开）
     await page.hover(t.sel).catch(() => {});
@@ -424,18 +609,32 @@ async function scanOverlays(page, pageId) {
       overlay = fresh[0];
       overlaysSeen++;
       const occ = await page.evaluate(measureOcclusionInPage, { overlaySelector: overlay.sel, rootSelector: ROOT_SEL });
-      const j = judgeOcclusion(pageId, t, occ);
+      const j = judgeOcclusion(pageId, t, occ, debtRegistry);
+      if (j.debtKey && debtRegistry?.has(j.debtKey)) {
+        matchedDebt.add(j.debtKey);
+        if (j.occluded && !j.fail) debtConfirmed++;
+      }
       if (j.fail) failures.push(`触发器 ${label} 开出的 ${j.fail}`);
       else notes.push(`触发器 ${label} 开出的 ${j.note}`);
     } else {
       notes.push(`${pageId} · U8：触发器 ${label} 悬停+点击后无浮层 ⇒ 内联展开或无浮层（U8 合法形态之一，不判红）`);
+      // 没开出浮层也可能是「登记了的那笔」—— 触发器在而浮层没开，登记照样算遇到
+      // （没浮层可压 ⇒ 谈不上遮挡；若它登记在册 ⇒ 走「修好没回写」同款判据，逼销账）。
+      const dk = `${pageId}::${t.debtLabel}`;
+      if (debtRegistry?.has(dk)) {
+        matchedDebt.add(dk);
+        failures.push(
+          `${pageId} · B-4·U8：§4.2.3 登记「${dk.split("::")[1]}」的浮层被压（不符合），` +
+            `而真浏览器里这个触发器**根本没开出浮层** —— 登记与实况脱节。⇒ 销账（删那一行）或查明浮层为何不开。`,
+        );
+      }
     }
     // 收场：Esc + 挪走鼠标，免得浮层串到下一个触发器的量测里
     await page.keyboard.press("Escape").catch(() => {});
     await page.mouse.move(2, 2).catch(() => {});
     await page.waitForTimeout(250);
   }
-  return { notes, failures, triggers: triggers.length, overlays: overlaysSeen };
+  return { notes, failures, triggers: triggers.length, overlays: overlaysSeen, matchedDebt, debtConfirmed };
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -461,11 +660,13 @@ async function main() {
     console.log(
       `✓ 金丝雀双侧通过 —— 必咬①改输入即变探到 changed（${canary.r1.latencyMs}ms）· ` +
         `必咬②提交闸探到 unchanged 且对「符合」格判红、对「不符合」格放行 · ` +
+        `必咬②b纯回显归因为 echo 并按「没重演」判 · 判据单元四向（混合/全变×符合/不符合）· ` +
         `必咬③被压浮层报出 ${canary.o1.occludedBy?.length ?? "?"}/${canary.o1.samples ?? "?"} 个被压采样点并判红 · ` +
-        `必不咬置顶浮层 0 误报且盖住了 ${canary.o2.coveredEls ?? "?"} 个文本元素。`,
+        `必不咬置顶浮层 0 误报且盖住了 ${canary.o2.coveredEls ?? "?"} 个文本元素 · ` +
+        `对账⑤三向（登记遮挡放行 / 未登记遮挡判红 / 修好没回写判红）· 解析⑥§4.2.3 登记表。`,
     );
     if (wantSelftest) {
-      console.log("✓ --selftest 通过（金丝雀四向：B-1 双向 + U8 双向）。");
+      console.log("✓ --selftest 通过（金丝雀八向：B-1 双向 + 回显归因 + 判据单元 + U8 双向 + 对账三向 + 登记表解析）。");
       await browser.close().catch(() => {});
       process.exit(0);
     }
@@ -480,7 +681,7 @@ async function main() {
       console.log(`· 已起前端 dev server（VITE_MOCK=1）：${baseUrl}`);
     }
 
-    const { keys, u1 } = prdRosterAndU1();
+    const { keys, u1, u8Debt } = prdRosterAndU1();
     const targets = onlyPages ?? keys;
     if (onlyPages) {
       const alien = onlyPages.filter((k) => !keys.includes(k));
@@ -489,9 +690,13 @@ async function main() {
     } else {
       console.log(`· 页名册 ${keys.length} 页现读自 PRD §4 表（不手抄）：${keys.join(", ")}`);
     }
+    if (u8Debt.size) {
+      console.log(`· §4.2.3 U8 遮挡欠账登记 ${u8Debt.size} 笔在册（对账：欠账属实放行 · 未登记遮挡判红 · 修好没回写判红）`);
+    }
 
     const failures = [];
-    const tally = { judged: 0, noInput: 0, unstable: 0, triggers: 0, overlays: 0 };
+    const tally = { judged: 0, noInput: 0, unstable: 0, triggers: 0, overlays: 0, debtConfirmed: 0 };
+    const matchedDebt = new Set();
     for (const key of targets) {
       console.log(`\n── ${key}（/v/${key} · 扫描根 \`${ROOT_SEL}\`）──`);
       let ctx;
@@ -524,10 +729,12 @@ async function main() {
         if (j.fail) failures.push(j.fail);
         else console.log(`  ${j.note}`);
 
-        // ── B-4·U8：浮层 z-order × 矩形相交遮挡判定 ──────────────────────────
-        const u8 = await scanOverlays(page, key);
+        // ── B-4·U8：浮层 z-order × 矩形相交遮挡判定（对 §4.2.3 登记表对账）────────
+        const u8 = await scanOverlays(page, key, u8Debt);
         tally.triggers += u8.triggers;
         tally.overlays += u8.overlays;
+        tally.debtConfirmed += u8.debtConfirmed;
+        for (const k of u8.matchedDebt) matchedDebt.add(k);
         for (const n of u8.notes) console.log(`  ${n}`);
         for (const f of u8.failures) failures.push(f);
         if (!u8.triggers) console.log(`  ${key} · U8：页内无浮层触发器候选（[aria-expanded]/[aria-haspopup]）`);
@@ -536,10 +743,22 @@ async function main() {
       }
     }
 
+    // ── §4.2.3 登记指向空气：扫过的页里，登记了却没遇到的触发器 ⇒ 红（登记不许无声腐烂）
+    const scannedPages = new Set(targets);
+    for (const [k, d] of u8Debt) {
+      if (scannedPages.has(d.page) && !matchedDebt.has(k)) {
+        failures.push(
+          `${d.page} · B-4·U8：§4.2.3 登记了「${d.label}」的浮层遮挡，但这一页扫遍触发器也没遇到它 —— ` +
+            `登记指向空气（触发器改名/删了却没销账）。⇒ 把那一行改成现名，或删掉销账。`,
+        );
+      }
+    }
+
     // ── 独立口径（金丝雀证明不了的那一半：扫描面到底够没够着东西）─────────────
     console.log(
       `\n══ 合计：B-1 判了 ${tally.judged} 页 · 未判（无可编辑输入）${tally.noInput} 页 · ` +
-        `U8 触发器 ${tally.triggers} 个 · 开出浮层 ${tally.overlays} 个 ══`,
+        `U8 触发器 ${tally.triggers} 个 · 开出浮层 ${tally.overlays} 个` +
+        `${u8Debt.size ? ` · §4.2.3 欠账 ${tally.debtConfirmed}/${u8Debt.size} 笔照单属实` : ""} ══`,
     );
     if (!onlyPages) {
       if (tally.judged === 0) {
@@ -564,7 +783,12 @@ async function main() {
 
     await cleanup(browser, server);
     if (wantReport) {
-      console.log(`\n· --report：只打印实测，不判定（上述不一致若存在也未计红）。`);
+      if (failures.length) {
+        console.log(`\n· --report 实测到 ${failures.length} 条不一致（本模式不计红，照实印出）：`);
+        for (const f of failures) console.log(`   - ${f}`);
+      } else {
+        console.log(`\n· --report：只打印实测，不判定（本次未测到不一致）。`);
+      }
       process.exit(0);
     }
     if (failures.length) {
@@ -573,13 +797,15 @@ async function main() {
       console.error(
         `\n   B-1 对账不一致：表说符合而屏上不变 ⇒ 修页面（输入接进入参/去提交闸）；` +
           `表说不符合而屏上已变 ⇒ 回写 §4 表该格并跑 check-sim-ux-criteria.mjs --tighten。` +
-          `\n   U8 浮层被压：修 z-index / 堆叠上下文。两类的共同点：**不许改表买绿**。`,
+          `\n   U8 浮层被压：修 z-index / 堆叠上下文；确需挂账 ⇒ 显式登记 PRD §4.2.3 并写清去向；` +
+          `修好了 ⇒ 删登记行销账。两类的共同点：**不许改表买绿，也不许登记烂账**。`,
       );
       process.exit(1);
     }
     console.log(
       `\n✓ harness-ux-behavior 通过（B-1 对账 ${tally.judged} 页逐格一致 · ` +
-        `U8 浮层 ${tally.overlays} 个无一被压 · 时窗 ${REACTION_TIMEOUT_MS}ms）。`,
+        `U8 浮层 ${tally.overlays} 个无未登记遮挡` +
+        `${u8Debt.size ? ` · §4.2.3 欠账 ${tally.debtConfirmed}/${u8Debt.size} 笔照单属实` : ""} · 时窗 ${REACTION_TIMEOUT_MS}ms）。`,
     );
     process.exit(0);
   } catch (e) {
