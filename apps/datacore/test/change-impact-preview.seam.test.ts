@@ -424,11 +424,18 @@ describe("WO-CHANGE-IMPACT-PREVIEW · 对抗审查 REAL-BUG 复发闸", () => {
 
   it("REAL-BUG-装配器：非 ACTIVE 类型的对象也在预览世界里（传导图物化不过滤 status）", async () => {
     const t = await makeApp();
-    // DRAFT 类型 + 实例 + 一条从它出发的传导规则。propagateTick 的图物化（propagation-inputs
+    // 非 ACTIVE 类型 + 实例 + 一条从它出发的传导规则。propagateTick 的图物化（propagation-inputs
     // :72）不过滤 status ⇒ 真传导图里有它；预览世界若缺 ⇒ recompute 桶假阴性。
+    // ⚠ 2026-08-17 审核方改：原写 status:"DRAFT" —— **`ObjectTypeDef.status` 只有
+    // `"ACTIVE" | "RETIRED"` 两个值**（`domain.ts:296/443`），"DRAFT" 是非法值，tsc 报 TS2322。
+    // 追一层确认不是类型写窄了：全仓写 `status:"DRAFT"` 的 5 处**全是别的制品**
+    // （`OntologyDraft` 建模草稿 · `ActionDraft` · `DataBuilderAgent`），没有一处是本体类型。
+    // 本用例要的语义是「**非 ACTIVE**」，`RETIRED` 就是合法的非 ACTIVE 值，命题一字不变。
+    // 这条红在 handoff 分支上**就已存在**（该分支的 domain.ts 同为两值），
+    // 交单报告给了 VITEST_RC=0 21/21 却**没跑 typecheck** ——「测试绿 ≠ 类型对」的又一实例。
     await t.repos.ontologyTypes.put({
-      id: "ot_ghost", tenantId: "demo", key: "Ghost", displayName: "草稿类型", domain: "x",
-      version: 1, status: "DRAFT", derivedProperties: [], sourceBindings: [],
+      id: "ot_ghost", tenantId: "demo", key: "Ghost", displayName: "已下线类型", domain: "x",
+      version: 1, status: "RETIRED", derivedProperties: [], sourceBindings: [],
       properties: [{ propKey: "g", dataType: "number", isPrimaryKey: true }],
     });
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "g1", tenantId: "demo", type: "Ghost", props: { g: 1 } });
