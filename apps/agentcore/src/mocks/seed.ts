@@ -1104,6 +1104,13 @@ export function seedRegistry(now = new Date().toISOString()): {
         properties: { conclusion: { type: "string" }, actions: { type: "array", items: { type: "object" } } },
       },
       references: [{ kind: "workflow", key: "sop_balance_wf", role: "context", required: true }],
+      // WO-SKILL-DEPENDSON-COVER · 供给侧两栏各有上游：「可供给量」口径出自产能分析，
+      // 「物料缺口」出自齐套分析（见本技能 body 步骤 2）——纪要技能是这两个结论的下游消费者。
+      // 两个目标出厂均 PUBLISHED（capacity_analysis / supply_chain_mgmt），过发布门 requirePublishedDeps=true。
+      dependsOn: [
+        { kind: "skill", key: "capacity_analysis", role: "context", required: true },
+        { kind: "skill", key: "supply_chain_mgmt", role: "context", required: true },
+      ],
     },
     {
       id: "skl_seed_risk_analysis", tenantId: SEED_TENANT, key: "risk_analysis", version: 1,
@@ -1148,6 +1155,9 @@ export function seedRegistry(now = new Date().toISOString()): {
         properties: { conclusion: { type: "string" }, topRisks: { type: "array", items: { type: "object" } } },
       },
       references: [{ kind: "solver", key: "risk_timeline", role: "context", required: true }],
+      // WO-SKILL-DEPENDSON-COVER · 风险画像三维度之首「产能利用率」（body 步骤 1）的口径出自产能分析——
+      // 本技能是它的下游解读层。目标 capacity_analysis 出厂即 PUBLISHED，过发布门 requirePublishedDeps=true。
+      dependsOn: [{ kind: "skill", key: "capacity_analysis", role: "context", required: true }],
     },
     {
       id: "skl_seed_supply_chain", tenantId: SEED_TENANT, key: "supply_chain_mgmt", version: 1,
@@ -1235,6 +1245,9 @@ export function seedRegistry(now = new Date().toISOString()): {
         properties: { conclusion: { type: "string" }, rootCause: { type: "string" } },
       },
       references: [{ kind: "solver", key: "yield_diagnosis", role: "context", required: true }],
+      // WO-SKILL-DEPENDSON-COVER · 波动归因五维度（人/机/料/法/环，body 步骤 2）之「料」以物料齐套结论为输入——
+      // 本技能是齐套分析的下游。目标 supply_chain_mgmt 出厂即 PUBLISHED，过发布门 requirePublishedDeps=true。
+      dependsOn: [{ kind: "skill", key: "supply_chain_mgmt", role: "context", required: true }],
     },
     {
       id: "skl_seed_mcp_guide", tenantId: SEED_TENANT, key: "mcp_integration", version: 1,
@@ -1340,14 +1353,18 @@ export function seedRegistry(now = new Date().toISOString()): {
       // 不是「满足某条规则」（全篇没有任何规则口径）。改成 kind:"rule" 会把「哪个求解器」这个信息丢掉，
       // 且得凭空发明一条并不存在的规则 key。执行点见 engine.ts `unmetSolverPreconditions` + loadSkill 门。
       references: [{ kind: "solver", key: "capacity_forecast", role: "precondition", required: true }],
-      // WO-SKILL-PARTIAL-A · 出厂唯一的 `dependsOn` 数据。
+      // WO-SKILL-PARTIAL-A 补了出厂第一条 `dependsOn`；WO-SKILL-DEPENDSON-COVER（2026-08-18）把覆盖扩到 4/7（多数）。
       // 此前全仓 7 个种子技能 `dependsOn` **0 条**（`grep -c dependsOn apps/agentcore/src/mocks/seed.ts` = 0），
-      // 于是三个真实消费方——skill-lint 的引用合法性(:302)/可解析性(:306)/依赖图环检测(:309) 与
-      // DRIL 关系投影(`dril/resource-projector.ts:334`)——**接了线但从没触发**（≠ 没接线，修法是补数据不是接线）。
-      // 唯一咬过它的是 `test/dril-registry.test.ts:190` 里手搓的 skill_a→skill_b，即「只有 test 引用 = 已排练」。
-      // 语义：本技能的步骤 1「读推演结论与关键因子」正是 capacity_analysis 的产物，据此依赖它（且它出厂即 PUBLISHED，
-      // 满足发布门 requirePublishedDeps=true）。
-      dependsOn: [{ kind: "skill", key: "capacity_analysis", role: "context", required: true }],
+      // 于是三个真实消费方——skill-lint 的引用合法性/可解析性/依赖图环检测 与
+      // DRIL 关系投影(`dril/resource-projector.ts` extractRelations)——**接了线但从没触发**（≠ 没接线，修法是补数据不是接线）。
+      // 语义：本技能的步骤 1「读推演结论与关键因子」正是 capacity_analysis 的产物；其适用边界又明写
+      // 「已有推演结论（capacity_forecast / risk_timeline 输出）」——risk_analysis 是 risk_timeline 的解读层，
+      // 故同时依赖两者（两个目标出厂均 PUBLISHED，满足发布门 requirePublishedDeps=true）。
+      // 依赖图保持无环：capacity_action_draft → {capacity_analysis, risk_analysis}，risk_analysis → capacity_analysis。
+      dependsOn: [
+        { kind: "skill", key: "capacity_analysis", role: "context", required: true },
+        { kind: "skill", key: "risk_analysis", role: "context", required: true },
+      ],
     },
   ];
   const agents: AgentDefinition[] = [
