@@ -130,6 +130,10 @@
    "verdict": "criteria",
    "why": "检索金值：问句→应命中的求解器键。判据本体（golden fixture）——它定义「检索算不算准」，现算化即自证循环（拿检索结果去定义检索标准）。"
   },
+  "check-fact-usage.mjs:EXCLUDE_DIRS": {
+   "verdict": "computed",
+   "why": "（WO-ROSTER-REG-2 补登）遍历过滤输入常量，不是受检名单：受检对象集合（屏上事实读取位所在的 .ts/.tsx）由 FRONTEND_SRC 递归遍历现算，本表只按目录用途剔除四类非生产源树（mocks=MSW 假数据、locales/styles/assets 无事实读取位）。与 check-chain-node-singlesource.mjs:SKIP_DIRS 同形（先例同判 computed）。四个名字是前端分层约定，加页加事实不动它；真要变只有一种情形——引入新一类非生产目录约定，那是对扫描面定义的有意修订（改判据作用域），不是名单漂移。"
+  },
   "check-factlock-anchor.mjs:MUST_BITE": {
    "verdict": "criteria",
    "why": "必咬样例（病样原文逐字取自真实提交 e639a6c2^）。判据本体：它定义「什么叫事实锁失效」。里面的 apps/x/src/V.tsx 是合成路径，不是仓内文件。"
@@ -137,6 +141,10 @@
   "check-factlock-anchor.mjs:MUST_NOT_BITE": {
    "verdict": "criteria",
    "why": "必不中样例（修法样板 / 反向断言不许被咬）。判据本体，与必咬侧成对——只做必中侧的金丝雀证明不了工具没在乱咬。"
+  },
+  "check-file-truncation.mjs:PROTECTED_PATTERNS": {
+   "verdict": "criteria",
+   "why": "（WO-ROSTER-REG-2 补登）受保护清单 = 「哪类文件被一次提交清空算事故」的治理定义，不是「现存哪些文件」的枚举：三条 glob 按类别圈定（本体单文件 / 全部 PRD / 全部门基线），同类新成员（新 PRD、新门基线）被 * 自动覆盖、不靠加条目，故不随仓库演进而变。无可现算的单一来源——从「现存文件」现算会变成「有什么就护什么」的同义反复（与 check-cockpit-widgets.mjs:REQUIRED_WIDGET_TYPES 同形）。真史金丝雀（3298add3 必须咬在 SYSTEM-ONTOLOGY 上）把最要害一条钉死，删了当场 RC=2。扩保护类（如 HANDOFF/AUDIT 文档）是新的治理裁决，走改门流程，不算名单漂移。"
   },
   "check-function-signature.mjs:need": {
    "verdict": "computed",
@@ -299,7 +307,7 @@
    "why": "四包 src 全递归（datacore/agentcore/frontend-shell/contracts）= 全仓源码面，无名单外盲区；与 outsource-redline:SCAN_ROOTS 同一现算形态（目录稳定、文件不手抄）。"
   }
  },
- "candidateCount": 74,
+ "candidateCount": 76,
  "rosterCount": 7,
  "ratchetHigh": 7
 }
