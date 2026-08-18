@@ -8,6 +8,7 @@ import type { OntologyService } from "./ontology.js";
 import { newId } from "./ids.js";
 import { invalidState, notFound, validationError } from "./errors.js";
 import { reconcileIntake, type ExistingTypeField } from "./databuilder/prototype-intake.js";
+import { promptTemplateOverride } from "./prompts.js";
 
 const SUGGEST_SYSTEM = `你是本体建模助手。输入为数据集字段画像、跨数据集外键候选与该租户已发布的本体摘要。
 原则：已有本体能映射的不新建（MAP_TO_EXISTING 优先，existingTypeKey 必填）；每个建议必须可追溯到具体字段（sourceField）；
@@ -207,13 +208,17 @@ export class ModelingService {
       displayName: t.displayName,
       properties: t.properties.map((p) => p.propKey),
     }));
+    // OC6（G-PROMPT-KEYS-CONFIG-ONLY 接线）：modeling 键真进 LLM 请求体——租户 override 替换硬编码
+    // 默认指令；无 override → SUGGEST_SYSTEM（R6 字节兼容）。⚠️ 勿与 purpose:"modeling" 混：
+    // 那是用途绑定（选哪个模型），这里是提示词模板（用哪段指令）。
+    const system = (await promptTemplateOverride(this.repos, ctx.tenantId, "modeling")) ?? SUGGEST_SYSTEM;
     const suggestion = await this.llm.parseStructured({
       model: this.model,
       maxTokens: 8192,
       // LLM Provider 增量 §1.3：A3 建模建议走用途绑定（modeling）
       tenantId: ctx.tenantId,
       purpose: "modeling",
-      system: SUGGEST_SYSTEM,
+      system,
       messages: [
         {
           role: "user",
