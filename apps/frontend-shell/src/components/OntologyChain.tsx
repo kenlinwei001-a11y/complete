@@ -52,6 +52,14 @@ function Leg({ label, testId, present, children }: { label: string; testId: stri
   );
 }
 
+/**
+ * ⚠ children 早求值陷阱（2026-08-18 三个接入方各自踩中后收进组件修）：
+ * JSX children 在**创建元素时**就求值——`<Leg present={false}>{o!.type}</Leg>` 会在
+ * `o!.type` 上先抛 TypeError，`present` 分支挡的是渲染、挡不住求值。
+ *  ⇒ 三段内容一律写成 `present ? (...) : null` 的条件表达式：缺载时根本不构造那段 JSX，
+ *    调用方直接传 `null` 即可拿到「后端未下发」诚实位，不需要任何空壳哨兵。
+ */
+
 export function OntologyChainView({
   conclusion,
   chain,
@@ -73,35 +81,43 @@ export function OntologyChainView({
         本体链 · {conclusion}
       </div>
       <Leg label="对象" testId={`${testId}-object`} present={objectPresent}>
-        <b className="mono">
-          {o!.type}
-          {o!.id ? `.${o!.id}` : ""}
-          {o!.field ? `.${o!.field}` : ""}
-        </b>
-        {o!.label ? <span>「{o!.label}」</span> : null}
-        {o!.value !== undefined && o!.value !== null ? (
-          <span data-testid={`${testId}-object-value`}>
-            {" "}
-            = <b>{o!.value}</b>
-            {o!.unit ? <em style={{ color: "var(--muted2)" }}> {o!.unit}</em> : null}
-          </span>
+        {objectPresent && o ? (
+          <>
+            <b className="mono">
+              {o.type}
+              {o.id ? `.${o.id}` : ""}
+              {o.field ? `.${o.field}` : ""}
+            </b>
+            {o.label ? <span>「{o.label}」</span> : null}
+            {o.value !== undefined && o.value !== null ? (
+              <span data-testid={`${testId}-object-value`}>
+                {" "}
+                = <b>{o.value}</b>
+                {o.unit ? <em style={{ color: "var(--muted2)" }}> {o.unit}</em> : null}
+              </span>
+            ) : null}
+          </>
         ) : null}
       </Leg>
       <Leg label="边" testId={`${testId}-edge`} present={edgePresent}>
-        <code>{chain.edge}</code>
+        {edgePresent ? <code>{chain.edge}</code> : null}
       </Leg>
       <Leg label="规则/公式" testId={`${testId}-rule`} present={rulePresent}>
-        {r!.formula ? <code data-testid={`${testId}-rule-formula`}>{r!.formula}</code> : null}
-        {r!.ruleKey ? (
-          <span data-testid={`${testId}-rule-key`} style={{ marginLeft: r!.formula ? 6 : 0 }}>
-            规则 <b className="mono">{r!.ruleKey}</b>
-            {r!.ruleParamKey ? <span style={{ color: "var(--muted2)" }}>（参数 {r!.ruleParamKey}）</span> : null}
-          </span>
-        ) : null}
-        {r!.solverKey ? (
-          <span data-testid={`${testId}-rule-solver`} style={{ marginLeft: 6, color: "var(--muted2)" }}>
-            求解器 {r!.solverKey}
-          </span>
+        {rulePresent && r ? (
+          <>
+            {r.formula ? <code data-testid={`${testId}-rule-formula`}>{r.formula}</code> : null}
+            {r.ruleKey ? (
+              <span data-testid={`${testId}-rule-key`} style={{ marginLeft: r.formula ? 6 : 0 }}>
+                规则 <b className="mono">{r.ruleKey}</b>
+                {r.ruleParamKey ? <span style={{ color: "var(--muted2)" }}>（参数 {r.ruleParamKey}）</span> : null}
+              </span>
+            ) : null}
+            {r.solverKey ? (
+              <span data-testid={`${testId}-rule-solver`} style={{ marginLeft: 6, color: "var(--muted2)" }}>
+                求解器 {r.solverKey}
+              </span>
+            ) : null}
+          </>
         ) : null}
       </Leg>
       {chain.snapshotVersion ? (
