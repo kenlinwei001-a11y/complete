@@ -25,9 +25,10 @@
 # 同一个数字（agent 数）在两种画像下含义相反，拿它当约束必然误判。
 #
 # 退出码（本仓统一三分）：0 = 均衡；1 = 失衡（欠派或超派）；2 = **工具自己坏了**（不许据此说「调度正常」）。
+# 2026-08-18 记账（macOS 回退链）：CORES 走 nproc→`sysctl -n hw.ncpu`→0；LOAD 走 /proc/loadavg→`sysctl -n vm.loadavg`（输出 `{ a b c }` 取第 1 数）→"?"/0 兜底语义不变；ps 去 `--no-headers` 改 `=` 空表头（GNU/BSD 通用）；队列②远端可用 DD_REMOTE 覆盖（默认 origin 不变）。
 set -uo pipefail
 
-CORES=$(nproc 2>/dev/null || echo 0)
+CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 0)
 if [ "$CORES" -le 0 ]; then
   echo "⛔ 取不到核数 ⇒ 工具坏了，本次结论作废（不许读作「调度正常」）" >&2
   exit 2
@@ -57,7 +58,7 @@ count_matching() {
   local self=$$ ppid
   ppid=$(ps -o ppid= -p $$ 2>/dev/null | tr -d ' ')
   DD_PAT="$1" DD_ME="$self" DD_PAR="${ppid:-0}" \
-    ps -eo pid,ppid,args --no-headers 2>/dev/null | DD_PAT="$1" DD_ME="$self" DD_PAR="${ppid:-0}" awk '
+    ps -eo pid= -o ppid= -o args= 2>/dev/null | DD_PAT="$1" DD_ME="$self" DD_PAR="${ppid:-0}" awk '
     BEGIN { pat = ENVIRON["DD_PAT"]; me = ENVIRON["DD_ME"]; par = ENVIRON["DD_PAR"] }
     $1 == me || $1 == par || $2 == me || $2 == par { next }   # 自己 / 父 / 子 / 兄弟，全剔
     index($0, pat) > 0 { n++ }
@@ -79,7 +80,7 @@ count_matching() {
 #        「不可能串命中 0 次」**照样通过** —— 分不清「正确地返回 0」和「永远返回 0」。实测中招。
 #   ② **必不中**：一个不可能存在的串必须数到 0。否则说明 index 恒真、什么都在「命中」，
 #      那种坏法会让所有超派判据同时误报。
-CANARY_ALIVE=$(ps -eo pid,ppid,args --no-headers 2>/dev/null | wc -l | tr -d ' ')
+CANARY_ALIVE=$(ps -eo pid= -o ppid= -o args= 2>/dev/null | wc -l | tr -d ' ')
 PID1=$(ps -p 1 -o args= 2>/dev/null | awk '{print $1}')
 CANARY_HIT=$(count_matching "${PID1:-__no_pid1__}")
 CANARY_NULL=$(count_matching "zzq-impossible-$$-canary-must-be-zero")
@@ -92,10 +93,10 @@ fi
 
 VITEST=$(count_matching "vitest")
 # datacore 的 vitest 才是重画像（4 核机上的真红线）。按工作目录判，不按 agent 身份判。
-HEAVY=$(ps -eo args --no-headers 2>/dev/null | grep -F 'vitest' | grep -v -F 'grep' | grep -c -F 'datacore' || true)
+HEAVY=$(ps -eo args= 2>/dev/null | grep -F 'vitest' | grep -v -F 'grep' | grep -c -F 'datacore' || true)
 HEAVY=${HEAVY:-0}
-LOAD=$(awk '{printf "%.1f", $1}' /proc/loadavg 2>/dev/null || echo "?")
-LOAD_INT=$(awk '{print int($1)}' /proc/loadavg 2>/dev/null || echo 0)
+LOAD=$(awk '{printf "%.1f", $1}' /proc/loadavg 2>/dev/null || sysctl -n vm.loadavg 2>/dev/null | awk '{gsub(/[{}]/, ""); printf "%.1f", $1}' || echo "?")
+LOAD_INT=$(awk '{print int($1)}' /proc/loadavg 2>/dev/null || sysctl -n vm.loadavg 2>/dev/null | awk '{gsub(/[{}]/, ""); print int($1)}' || echo 0)
 
 # 画像上限（CLAUDE.md 铁律 2 判据 2）
 CAP_HEAVY=1
@@ -159,6 +160,7 @@ Q_VERIFY=0
 Q_VERIFY_LIST=""
 Q_VERIFY_UNKNOWN=0
 INTEG="origin/claude/verify-reclaim-6"
+DD_REMOTE="${DD_REMOTE:-origin}"
 if git -C "$ROOT_DIR" rev-parse --verify -q "$INTEG" >/dev/null 2>&1; then
   INTEG_TS=$(git -C "$ROOT_DIR" log -1 --format=%ct "$INTEG" 2>/dev/null || echo 0)
   while read -r sha ref; do
@@ -172,7 +174,7 @@ if git -C "$ROOT_DIR" rev-parse --verify -q "$INTEG" >/dev/null 2>&1; then
     if [ "$TS" -ge "$INTEG_TS" ]; then
       Q_VERIFY=$(( Q_VERIFY + 1 )); Q_VERIFY_LIST="${Q_VERIFY_LIST} ${b}"
     fi
-  done < <(git -C "$ROOT_DIR" ls-remote origin 'refs/heads/claude/handoff-*' 2>/dev/null)
+  done < <(git -C "$ROOT_DIR" ls-remote "$DD_REMOTE" 'refs/heads/claude/handoff-*' 2>/dev/null)
 else
   echo "ℹ️  取不到 $INTEG ⇒ 待复验队列**未评估**（不代表为 0）"
 fi
