@@ -146,3 +146,59 @@ Tests 3 failed | 2 passed (5)
 - 动手后（本分支）：`b8198d73` 本单提交 / `11dcab9b` / `4c14e115`（后两条为集成线既有提交）。
 - 冲突面实测：`git diff 1c29a532..origin/claude/verify-reclaim-6 --stat -- handlers.ts mocks/ catalog.ts`
   **空**——集成线新推进的 53 个提交未碰本单同片区（沙盘单未落 handlers.ts）。
+
+## 7. 修单纪要（2026-08-18 · 三份独立复验「退（小修）」后修单）
+
+**换基**：分支 rebase 到 `claude/handoff-wo-publish-refprobe` tip `ea86916e1`。
+派单假设「refprobe 在集成分叉点之前/之上」与实测拓扑不符——双方共同祖先是
+`d9d71faa5`，refprobe 自分叉点起仅 6 提交，本分支基线在其之前 178 提交。
+普通 rebase 会把 180 个提交重放到旧基线上（实测第 3 个即在
+`docs/PRD-harness-ux-adoption.md` 撞冲突，当即 `--abort`）。两单文件零交叠
+（refprobe 6 提交只碰 agentcore + docs），故用
+`git rebase --onto ea86916e1 1c29a5329` 只重放本单 2 个提交：**零冲突**。
+换基完整性核验：本单 4 个自有文件 rebase 前后逐字节相同（`git diff f9a48aac8 HEAD -- <files>` 空），
+handlers.ts 补丁内容逐行一致（仅 hunk 偏移/index 行不同）；
+`apps/datacore/src/catalog.ts` 两基线逐字节相同（61 条注册表不受 178 提交影响）。
+
+**修单四件**（代码提交 `202617614`）：
+
+1. **字段照抄真侧**：复验点名 8 处，逐字段 diff 实测**6 处真漂移**，已全部照抄
+   catalog.ts 现值——argHints 4 处（capacity_forecast 补 base / kit_readiness 补
+   base·fromDay·toDay 并更正 orders 文案 / quote_margin 全量 4 键 / risk_timeline
+   改 base·factor·horizon）+ description 2 处（gap_attribution 改 Metric.gap /
+   quote_margin 改真 BOM 长文）。复验点名的另 2 处（ontology_query :1312、
+   process_flow_time :1594 的 argHints）经 61 条全量逐字段 diff **实测无漂移**
+   （值已逐字相等），未动；§6 全量对拍把它们一并纳入长效看守。仓内无当初的
+   机械抽取脚本（scripts/ 下只有 check-solver-* 门脚本），故手工照抄 + 测试钉死。
+2. **字段级对拍（§6）**：parity 测试新增一节，对 61 条全量的
+   name/description/argHints 与 catalog.ts 文本抽取值逐字相等；沿用该测试既有
+   skipString/balanced/splitTopLevel 抽取机制（抽取出错一律抛「工具坏了」），
+   金丝雀点名 4 条展示位 + 退点①全部点位。覆盖诚实声明写进头注：只对拍这三字段。
+3. **探针论域对齐 61**：`MOCK_KNOWN_SOLVER_KEYS` 删 `pool!=="generic"` 过滤 =
+   全集 61（对齐 refprobe 改后的 `resources.ts` probeMissingRefs：discover(40) →
+   catalog.solverRegistry 全集）；parity §4 断言改全集一侧、金丝雀反转（generic 档
+   selection_optimize/generic_inference **必须**在词表）；行为 seam ②
+   selection_optimize 期望 422 → **200**；handlers.ts / solverRegistry.ts / 两测试
+   头注里「排除 generic」「discover 论域 40」措辞全部改写，钉死理由
+   「论域 = 运行时真判据 SOLVER_KEYS 全集，generic_inference 在其中，旧 40 论域
+   误杀出厂计划 ceo_whatif」。
+4. **头注失实句改诚实**：原句「条目元数据一律取自全集，改真后端描述这里跟着对拍红」
+   在②落地前是假的；现改写为写实版——61 条全量 name/description/argHints 三字段
+   逐字对拍，answersQuestions/tags/outputShape **暂无**逐字对拍（不夸大）。
+
+**自验证据**：
+
+- vitest（修后终跑，committed 态）：两文件 **10/10 绿**（parity 6 + 行为 4）。
+- 变异反证 a：kit_readiness description 加两字 → §6 当场红且点名
+  `条目 kit_readiness 的 name/description/argHints 与 catalog.ts 逐字不等`；
+  还原后 porcelain 干净。
+- 变异反证 b：process_flow_time pool generic→scenario → §3 当场红且点名
+  （extra 含 "process_flow_time"）。⚠ 与派单预期「§3/§4 红」有一处出入：
+  新 §4 论域 = 全集（不按 pool 过滤），pool 翻转不改变键集 ⇒ §4 正确保持绿；
+  漂移由 §3 捕获点名，判据意图（抓得住、点得名）达成。
+- 换基后一致性：refprobe 探针 `resources.ts` 内 `probeMissingRefs` 现读
+  `catalog.solverRegistry`（其注释明写论域订正三条理由）；`catalog.ts` 的
+  `ALL_SOLVER_CATALOG` = SOLVER+GENERIC+COCKPIT 三档并集，`selection_optimize`
+  在 GENERIC 档（catalog.ts:165）且在运行时判据 `SOLVER_KEYS`
+  （solvers/service.ts:319）⇒ refprobe 论域下真后端对 selection_optimize 不再 422，
+  行为 seam ② 的 200 期望与真后端同向。
