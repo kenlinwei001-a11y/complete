@@ -163,3 +163,70 @@ datacore seed/features、PRD 文档；未改任何字段名（只补 `@unit` 注
 2. **§2b 的 20s 超时预算在高负载共享机上不够用**（测试体裸跑 ~6.3s，负载下 24–75s）。
    差什么：要么给该 `it` 显式提 timeout（改测试配置，超出本单边界），要么接受它只在正常负载机器上
    跑默认超时 —— 留审核方定夺，本单未动。
+
+## ⑦ 复验方补记（审核方 2026-08-18 · 所审 tip `4b72def1b`，补记落在 `d7cdd9105` 之上）
+
+以下内容全部在审核方独立 worktree 亲手现算/现跑，非转述交单方结论。
+
+### ② 值级门注册表 12→14：门账与现实的分叉成因（红①的完整病史）
+
+`check-unit-value-provenance.mjs`（值级量纲门）的注册表**现算自契约 `@unit`**，只收「名字量纲唯一」的字段
+（同名声明有的带 `@unit` 有的不带 ⇒ 整名剔除）。用门脚本导出的 `buildUnitRegistry()` 对两版契约各跑一遍：
+
+- **merge-base（`955b8ca7`）契约**：注册表 **12 项**，`capWanP50/capWanP90` 在 **dropped** 名单 ——
+  `CapacityForecastSnapshot`（actions.ts）与 `CapacityForecastOutput`（solvers.ts）有 `@unit`，
+  而 `ForecastAdoptionSnapshot`（WO-SIM-ACTION-REAL 2026-08-16 新增）**漏写** `@unit`
+  ⇒ 「有的带有的不带」⇒ 两个名字被整名踢出注册表。
+- **本分支 HEAD**：注册表 **14 项**，`capWanP50=万套/窗口`、`capWanP90=万套/窗口` 在册。
+
+**分叉成因**：本体 §7 `unit-value-provenance` 门账写明「注册表 **14 项**」，棘轮基线
+（`scripts/unit-value-provenance-baseline.json`：`handlers.ts=8 / schedule.ts=1 / vle.ts=2`）也是按
+**14 项态**落账的（建门时 `ForecastAdoptionSnapshot` 尚不存在，`capWanP50` 全部声明都有 `@unit`）。
+WO-SIM-ACTION-REAL 新增该 schema 漏 `@unit` ⇒ 注册表悄悄掉回 12 项 ⇒ 那 7 处赋值点实测数跌破基线
+⇒ 门靠**松弛检测**（基线高于实测 = 免检名额 = 红）一直在红，但**对本病最核心的字段视而不见**这件事本身
+没有任何一行红字点名 —— **门是红的，可红的原因（字段被踢出注册表）没人落盘**。这就是「静默失明」：
+不是门绿灯撒谎，而是红灯挂在那儿没人把病因查到底。
+
+本分支补回 `@unit` 后：实测数恰好回到基线 8/1/2（7 处重新纳入 UNPROVEN 统计、逐处与基线对平，
+**零新增红**）——证明基线数字本来就是为「capWanP50/P90 在册」这个世界写的，红①是把被解除的武装装回去，
+不是新设防。口径「万套/窗口」与 `CapacityForecastSnapshotSchema`（actions.ts:275/277）、
+`CapacityForecastOutput`（solvers.ts:118/123）逐字相同，且与 `G-LEVER-SNAPSHOT-UNIT-LIE` 病史定性相容
+（病史是值被错塞，字段真口径从来是万套/窗口；WO-SIM-ACTION-REAL 本体补记⑤也亲笔核过
+「capWanP50/P90 万套每窗口」——本单是把那次人工核对结论落成机器可读标注）。
+
+### ④ 复验方两条变异反证（原文输出）
+
+**变异 a（规则④豁免真生效）**：把 §2b 必咬金丝雀 `'keyProps: ["segment", "p50", "demandPct"],'`
+改成规则④应豁免形态 `'const STALE_MUT_SAMPLE = ["segment", "p50", "demandPct"];'`：
+
+```
+RC=1  × §2b · 改名漏改断言…零处把 `p50`/`p90` 当数据键用…
+     → 活 keyProps 清单（2026-08-15 真事故形态）不许被规则④放行: expected false to be true
+```
+
+`judgeLine` 真从 true 翻成 false ⇒ 豁免判定在判定路径上，不是装饰。已 `git checkout --` 还原。
+
+**变异 b（裸字面量当场红）**：把 `keyprops-ontology-parity.seam.test.ts` 的反样本从
+`STALE_KEYPROPS_SAMPLE` 常量改回裸字面量 `mk(["segment", "p50", "demandPct"])`，跑 §2b（前端测试文件，
+扫描面含 `apps/agentcore/test`）：
+
+```
+RC=1  FAIL §2b … 旧分位名仍被当数据键使用（改名漏改的第 4 次）：
+  apps/agentcore/test/keyprops-ontology-parity.seam.test.ts:383  const stale = renderOntologySemanticContext(mk(["segment", "p50", "demandPct"]), semantics);
+```
+
+门跨 app 精确咬中变异行 ⇒ 红②两半（规则④ + 反样本常量化）互为咬合，缺任一半全链红。
+已还原，两次变异后 `git status --porcelain` 均为空。
+
+### ⑤ 两门 + typecheck 实测 RC 表（复验方亲跑）
+
+| 项 | RC | 归因 |
+|---|---|---|
+| `node scripts/check-quantile-field-naming.mjs` | **0** | 金丝雀 4/4，16 分位字段名量纲唯一。同脚本对 merge-base 契约复算：`undeclared: capWanP50@actions.ts:378, capWanP90@actions.ts:380`（红）⇒ **集成线今天该门是红的，本分支修绿** |
+| `node scripts/check-unit-value-provenance.mjs` | **1（红·既有债）** | 红 3 项：sopScale.ts 新增 2（`rollingWanPerMonthP90`/`lastActual`）+ fixtures/simSolvers 松弛。**逐项证为既有债**：三处文件本分支未碰，merge-base 态用同一 `analyze()` 复算 UNPROVEN 集合逐字节相同（diff 为空）；且 merge-base 态**还多 3 项松弛**（handlers 8>4 / schedule 1>0 / vle 2>0，即②的注册表分叉）——本分支把这 3 项修平，**净减红**。剩余 3 项红归后续单 |
+| `pnpm -r typecheck`（宽面） | 2 | 唯一 error：`apps/agentcore/test/mockdc-signature.seam.test.ts(126) TS2344` —— 修复提交 **`af39ceefb` 已在集成线**（本分支基点落后集成线 127 提交所致），与本 diff 无关，merge 后自愈。`@platform/contracts` RC=0、`frontend-shell` RC=0 |
+| vitest `quantile-unit-onscreen.seam.test.tsx` | **0**（8/8） | 复验方正常负载窗口一次全绿（含 §2b 全扫 16.8s 完赛），与交单方「正常负载机器 20s 内跑得完」的判断互证 |
+| vitest `keyprops-ontology-parity.seam.test.ts` | **0**（11/11） | STALE 常量形态下假名塌块断言照常咬 |
+
+merge 风险：merge-base `955b8ca7`，落后集成线 **127** 提交；`git merge-tree --write-tree` 干跑 **RC=0 零冲突**
+（集成线未碰 `ForecastAdoptionSnapshot` 区段，与 merge-base 逐字相同，已核）。
