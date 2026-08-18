@@ -377,7 +377,11 @@ describe("§4 · 接缝驱动（测链路不测函数：清单 → prompt → �
 
     // ② 旧假名（历史病样，逐字取自 2026-08-15 修掉的那一行）：白名单一个都对不上
     //    ⇒ renderTypeBlock 渲染 0 行 ⇒ 整块返 null ⇒ 模型拿不到值、屏上少一段解释，**且不报错**。
-    const stale = renderOntologySemanticContext(mk(["segment", "p50", "demandPct"]), semantics);
+    //    ⚠ 旧名必须以「反样本常量」形态出现（quantile §2b 门规则④：只豁免 STALE 命名的纯字面量数组常量）——
+    //       裸字面量数组与活 keyProps 清单在语法上分不开，散写旧名会被门当活数据键咬；
+    //       「这是反样本」必须写成代码结构上的事实，不是门去猜。
+    const STALE_KEYPROPS_SAMPLE = ["segment", "p50", "demandPct"];
+    const stale = renderOntologySemanticContext(mk(STALE_KEYPROPS_SAMPLE), semantics);
     expect(stale, "假名清单竟然也渲出了口径 ⇒ 白名单语义变了，本门的病理前提已不成立，须重写").not.toContain("万套/年");
     expect(stale, "假名清单必须让口径块整块塌掉（这正是「不报错所以没人发现」的机理）").not.toContain("demandWanPerYearP50");
   });
