@@ -1,7 +1,7 @@
 # HANDOFF · WO-PROMPT-KEY-LINT —— LLM 摘要语义审查接进发布门（建议式·不阻断）
 
 **分支** `claude/handoff-wo-prompt-key-lint` · **画像 中** · 闭断点 `G-PROMPT-KEYS-CONFIG-ONLY` 的 `skill_summary_lint` 一支
-**基线**：开自集成线 tip `955b8ca7`（开工时 0 落后）；交单前已 rebase 到集成线最新 tip（含 WO-PROMPT-KEYS-WIRE 的三键接线，零文件冲突），`check-branch-base` RC=0。
+**基线**：开自集成线 tip `955b8ca7`（开工时 0 落后）；交单前已 rebase 到集成线最新 tip `10a026a4`（含 WO-PROMPT-KEYS-WIRE 的三键接线），冲突**仅** `docs/SYSTEM-ONTOLOGY.md` §8 断点行一处（WIRE 与我改同一行，已合并双方内容解为「四键全闭 ✅」，其余 7 文件干净套用），rebase 后 `check-branch-base` RC=0（落后 0）。
 
 ## ① 实测数（自己跑的，非转述）
 
@@ -64,7 +64,9 @@ AssertionError: expected '你是意图分类器。把用户问句映射到候选
 
 **T4 · 基线没动**：未碰 `scripts/gate-ledger.json`、任何 baseline JSON、`package.json`（`grep -c '"gates"'` 无需——没改）；contracts 改动为 additive 可选字段（非改名非收紧）；棘轮类文件零接触。`git diff --name-only 955b8ca7..HEAD` 仅上述 7 文件。
 
-**T5 · 交单前三条**：`git status --porcelain` 空（本条 commit 后）· `check-branch-base.mjs HEAD` RC=0 · `check-merge-conflict-markers.mjs` RC=0（2161 文件零标记·金丝雀 7/7）。
+**T5 · 交单前三条**（rebase 后复测）：`git status --porcelain` 空 · `check-branch-base.mjs HEAD` RC=0（落后 0）· `check-merge-conflict-markers.mjs` RC=0。
+
+**rebase 后 7 文件复跑**（tip `10a026a4` 之上，全绿）：skill-summary-review 26 · skill-eval-gate 5 · prompt-defaults-wiring 15 · skill-ref-closure.seam 13 · skill-partial-a-seam **12** · skill-contract 3 · skill-lint 14。⚠️ skill-partial-a-seam 由 T2 时的 11 → 12：rebase 带进来的集成线新提交给该文件加了 1 例（非本单改动，本单没碰该文件）。
 
 ## ③+ 真机验收（fde-delivery：亲手用一遍，非测试绿冒充）
 
@@ -83,7 +85,7 @@ AssertionError: expected '你是意图分类器。把用户问句映射到候选
 
 - 我碰的文件最近 5 提交全部来自已收编的 reclaim 批次（`dc9c8b85`/`ef5778df` 等），无在跑 dev 同碰。
 - **WO-PROMPT-KEYS-WIRE**（批次 01·同碰提示词键）：开工时远端无此分支，交单前**已并入集成线**（`254bd334`）——它接 `extraction`/`modeling`/`answer_compose` 三键（datacore `modeling.ts`/`ruledocs.ts`/`app.ts`/`prompts.ts` + agentcore `orchestrator.ts`/`execute-plan.ts` + 测试 + 本体回写），**与我的 7 文件零重叠**，且明确把 `skill_summary_lint` 留给本单（其提交注「3 键已接线·skill_summary_lint 挂账待裁决」）。本单已 rebase 到它之上，满足「它先落地、我在其上做」。
-- 断点行 `G-PROMPT-KEYS-CONFIG-ONLY` 现态：4 键全闭（WIRE 3 键 + 本单 1 键），行状态 ◑ 的剩余叙事以本体为准。
+- 断点行 `G-PROMPT-KEYS-CONFIG-ONLY` 现态：**4 键全闭，行状态已置 ✅ 已闭合**（rebase 冲突即此行——WIRE 版「三键已接·本键挂账」与本单版「本键已闭·三键挂账」互补，已合并为双方内容俱在的单行）。
 
 ## ⑥ 没做的部分 + 差什么才能做
 
