@@ -61,8 +61,8 @@
 |---|---|---|---|---|---|
 | 1 | `G-SEAM-GATE-METHOD-BLIND` 残余(甲)<br>客户端函数是死代码 | 🔴 未修 | **✅ 已闭未回写** | ~~没接线~~ 已接线 | `fetchProcessInstance`/`advanceProcessInstance` 今有生产调用方 `apps/frontend-shell/src/views/process/ProcessInstanceDetailView.tsx` 第 163/312 行，且该视图**真被路由挂载**（`apps/frontend-shell/src/App.tsx` 第 163 行 `process-instances/:instanceId`）。提交 `dc998e41`。金丝雀：同法查 `fetchStuckProcesses` 命中 2 处 ⇒ 工具没坏 |
 | 2 | `G-SEAM-GATE-METHOD-BLIND` 残余(乙)<br>通配段冒领 | 🔴 未修 | **仍成立** | 接了线接错地方（判据少一维） | `scripts/check-backend-frontend-seam.mjs` 的 `pathMatches` 第 706 行仍是 `if (be[i] === "*" \|\| fe[i] === "*") continue;` —— 前端 `${id}` 归一出的 `*` 仍会吃掉后端字面子路由 |
-| 3 | `G-ACTION-NOOP-EXEC` | ◑ 部分闭合 | **仍成立（◑）· 数字过期** | 接了线接错地方（剩余型无落点） | `node scripts/check-action-wiring.mjs` 今日 RC=0：**11 型 = WIRED 10 · NO_WRITE 0 · NOT_IMPLEMENTED 1**。§8 写的是「10 型 = WIRED 9 · NOT_IMPLEMENTED 1」⇒ 分母分子都涨了一个，描述过期 |
-| 4 | `G-ADOPT-SCHEME-NO-CARRIER` | 🔴 未修 | **仍成立** | **没接线**（缺的是承载对象，不是执行器） | `apps/datacore/src/actions.ts` 第 80 行 `采纳经营方案: "NOT_IMPLEMENTED"`，理由已签在 `NOT_IMPLEMENTED_RATIONALE`（同文件第 160 行）。这就是 #3 里那唯一一个 NOT_IMPLEMENTED |
+| 3 | `G-ACTION-NOOP-EXEC` | ◑ 部分闭合 | ~~仍成立（◑）· 数字过期~~ **2026-08-18 已全闭**（WO-ADOPT-SCHEME-CARRIER：11 型 = WIRED 11 · NO_WRITE 0 · NOT_IMPLEMENTED 0） | 接了线接错地方（剩余型无落点） | `node scripts/check-action-wiring.mjs` 今日 RC=0：**11 型 = WIRED 10 · NO_WRITE 0 · NOT_IMPLEMENTED 1**。§8 写的是「10 型 = WIRED 9 · NOT_IMPLEMENTED 1」⇒ 分母分子都涨了一个，描述过期 |
+| 4 | `G-ADOPT-SCHEME-NO-CARRIER` | 🔴 未修 | ~~仍成立~~ **2026-08-18 已闭**（WO-ADOPT-SCHEME-CARRIER：scheme_adoptions 台账 + 执行器 + AOP 读端 + 接缝测试 · tip `184c19c0`） | **没接线**（缺的是承载对象，不是执行器） | `apps/datacore/src/actions.ts` 第 80 行 `采纳经营方案: "NOT_IMPLEMENTED"`，理由已签在 `NOT_IMPLEMENTED_RATIONALE`（同文件第 160 行）。这就是 #3 里那唯一一个 NOT_IMPLEMENTED |
 | 5 | `G-PLAN-CHANGE-NO-LEVER` | ◑ 部分闭合 | **仍成立（◑）** | 接了线接错地方 | `apps/datacore/src/app.ts` 第 580 行带 levers 走 `applyLeverWrites`；第 583–596 行无 levers 时诚实失败。二分结构未变 |
 | 6 | `G-C08-EXPR-PARAM-SPLIT` | 🔴 未修 | **✅ 已闭未回写** | ~~没接线~~ 已接线 | DSL 已支持 `params.<名>` 操作数（`apps/datacore/src/ruledsl.ts` 第 10/39/318/491 行，取不到即抛错、**不静默回退**）；发布/编辑期**双向**闭包校验 `assertValidExpression`（`apps/datacore/src/rules.ts` 第 26 行）接在创建第 225 行 / 更新第 268 行 / HTTP 路由 `apps/datacore/src/app.ts` 第 4406 行。**提交 `aba33841` 的标题原文就写着「闭 G-C08-EXPR-PARAM-SPLIT」** |
 | 7 | `G-SKILL-REFGRAPH-DEAD-EXTRACTOR` ①<br>死抽取器 | 🔴 未修 | **仍成立** | **没接线**（零 src 调用方） | `grep -rn extractRelations apps/*/src packages/*/src` 只命中它自己的定义行 `apps/agentcore/src/dril/resource-projector.ts` 第 365 行。金丝雀：同条件查 `lintSkill` 命中 3 处 src 引用 ⇒ 工具没坏 |
@@ -242,3 +242,4 @@
 6. **`G-ACTION-NOOP-EXEC` 与 `G-ADOPT-SCHEME-NO-CARRIER` 的关系没有在 §8 里理顺**：
    前者 ◑ 的**唯一**剩余项就是后者（`check-action-wiring.mjs` 报的那 1 个 NOT_IMPLEMENTED）。
    两行各自成立但读起来像两笔账，收编 `WO-ADOPT-SCHEME-CARRIER` 时应一并合并。
+   ✅ **2026-08-18 已照此执行**：收编时两笔账合并——`G-ACTION-NOOP-EXEC` ✅ 全闭、`G-ADOPT-SCHEME-NO-CARRIER` ✅ 已修并注明合并关系（合并时按仓主要求点名 `WO-ONTO-DEDUPE`）。

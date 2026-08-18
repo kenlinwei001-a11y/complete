@@ -109,7 +109,19 @@ export class PlanService {
       value: num(t.props.value),
       targetRef: t.id, // 溯源：与 S&OP 平衡台同一目标对象
     }));
-    return { scenarios, triggers, decomposition };
+    // WO-ADOPT-SCHEME-CARRIER · 方案采纳台账读端（G-ADOPT-SCHEME-NO-CARRIER 收口）：
+    // 本年度 ACTIVE 至多一条（写时不变量，执行器侧先置旧 SUPERSEDED），找到即下发；
+    // 从未采纳 ⇒ 字段缺省（additive optional，同 capexScenario 先例）。tenantId 不下发。
+    const activeAdoption = (await this.repos.schemeAdoptions.list(ctx.tenantId))
+      .find((a) => a.year === y && a.status === "ACTIVE");
+    return {
+      scenarios,
+      triggers,
+      decomposition,
+      ...(activeAdoption
+        ? { schemeAdoption: (({ tenantId: _drop, ...view }) => view)(activeAdoption) }
+        : {}),
+    };
   }
 
   /**

@@ -65,6 +65,7 @@ import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
+import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-SCHEME-CARRIER · 采纳经营方案 payload 契约（量纲逐字段标注）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
@@ -844,6 +845,74 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
         // targetRef 自证落了哪份台账——**刻意不使用 MO- 前缀**（那正是假单号形态）。
         return { ok: true, targetRef: `FC-ADOPT:${adoptionId}` };
+      }
+
+      // ── 采纳经营方案（WO-ADOPT-SCHEME-CARRIER · G-ADOPT-SCHEME-NO-CARRIER 收口）──
+      // 断点原文：「点采纳→草稿→审批→EXECUTED 全链绿，但没有一个对象承载『方案被采纳』这件事」。
+      // 语义裁决：「采纳经营方案」= 公司级年度拍板的**审批留痕台账**（与 Decision 台账同族），
+      // 落专用 doc-jsonb 表 scheme_adoptions（037 迁移·R9 四处同改），**不走 repos.objects**——
+      // plan_generate 不读任何本体对象，塞进 objects 只会冒充「可被推演关联的实体」（断点论据①）。
+      // 它**不是**改杠杆真值（「采纳产能保障方案」的事），也**不是**开单据（臆造单据 = 假 MO 号），
+      // 更**不得**覆盖 PLAN_GOAL_TARGETS 基线（业务裁定·targets 只作拍板快照留痕对账）。
+      if (draft.actionTypeKey === "采纳经营方案") {
+        // ① payload 必须过契约（contracts SchemeAdoptionPayloadSchema·量纲逐字段 @unit）——
+        //    不合即诚实失败，绝不猜一个值写下去（写错真值比不写危险）。
+        const parsed = SchemeAdoptionPayloadSchema.safeParse(draft.payload);
+        if (!parsed.success) {
+          const issue = parsed.error.issues[0];
+          return {
+            ok: false,
+            error:
+              `采纳经营方案：payload 不合契约（${issue ? `${issue.path.join(".")}: ${issue.message}` : "unknown"}）——` +
+              `拒绝臆造写入。契约见 packages/contracts/src/scheme-adoption.ts SchemeAdoptionPayloadSchema。`,
+          };
+        }
+        const p = parsed.data;
+        // ② 确定性锚（R6·禁 Date.now/random）：year 缺省取 forecastStart 的年份，adoptedAt 取其日期。
+        const fcParams = await solvers.getParams(draft.tenantId);
+        const forecastStart = String(fcParams.forecastStart ?? "");
+        const year = p.year ?? Number(forecastStart.slice(0, 4));
+        if (!Number.isInteger(year) || year <= 0) {
+          return {
+            ok: false,
+            error:
+              `采纳经营方案：规划年度解不出（payload 未传 year，且 forecastStart「${forecastStart}」取不出有效年份）——` +
+              `拒绝把台账挂到一个猜的年度上。请传 year 或修正求解器参数 forecastStart。`,
+          };
+        }
+        // ③ 确定性 adoptionId：year|schemeNo|pathKey|outcome 全字段哈希派生 → 同方案重复采纳覆盖同 id（幂等不产重复）。
+        const adoptionId = `sa_${hashString(
+          [year, p.schemeNo, p.pathKey, p.scheme.outcome.rev, p.scheme.outcome.gm, p.scheme.outcome.share,
+            p.scheme.outcome.turns, p.scheme.outcome.cash, p.scheme.outcome.capex].join("|"),
+        ).toString(16)}`;
+        // ④ 单源不并存：同 (tenantId, year) 旧的 ACTIVE 采纳先置 SUPERSEDED，
+        //    使"至多一条 ACTIVE"成为**写时不变量**——读侧（AOP 细化读端）无需在多条里挑。
+        //    同方案重复采纳（同 adoptionId）跳过，由下面 put 整体覆盖（幂等）。
+        const existing = await repos.schemeAdoptions.list(draft.tenantId);
+        for (const rec of existing) {
+          if (rec.adoptionId === adoptionId) continue;
+          if (rec.year !== year || rec.status !== "ACTIVE") continue;
+          await repos.schemeAdoptions.put({ ...rec, status: "SUPERSEDED" });
+        }
+        // ⑤ 落台账：方案快照 + 目标快照**全字段原样**（payload 已过契约，量纲即契约标注的量纲）。
+        await repos.schemeAdoptions.put({
+          id: adoptionId,
+          tenantId: draft.tenantId,
+          adoptionId,
+          year,
+          schemeNo: p.schemeNo,
+          pathKey: p.pathKey,
+          schemeName: p.scheme.name,
+          outcome: p.scheme.outcome,
+          scores: p.scheme.scores,
+          hardViol: p.scheme.hardViol,
+          targets: p.targets,
+          adoptedAt: forecastStart.slice(0, 10),
+          actionDraftId: draft.id,
+          status: "ACTIVE",
+        });
+        // targetRef 自证落了哪份台账——**刻意不使用 MO- 前缀**（那正是假单号形态）。
+        return { ok: true, targetRef: `SCHEME-ADOPT:${adoptionId}` };
       }
 
       // ⛔ 最后兜底：**不再返回假 MO 号**。未在 ACTION_WIRING 里标 WIRED 的动作一律诚实失败/诚实标注，
