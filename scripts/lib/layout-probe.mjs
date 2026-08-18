@@ -479,6 +479,13 @@ export async function openStablePage(browser, spec) {
   const page = await browser.newPage({ viewport });
   const pageErrors = [];
   page.on("pageerror", (e) => pageErrors.push(String(e).slice(0, 200)));
+  // 在飞请求台账 —— 「版面稳定」的第三条判据（见下「三次采样相同」段）。
+  // 用 Set 尺寸做真相源（不用 started/finished 计数差：监听器挂在 goto 之前，
+  // 早于此的请求会让计数差失真，Set 不会）。
+  const inflight = new Set();
+  page.on("request", (r) => inflight.add(r.url()));
+  page.on("requestfinished", (r) => inflight.delete(r.url()));
+  page.on("requestfailed", (r) => inflight.delete(r.url()));
   try {
     await page.goto(baseUrl, { waitUntil: "networkidle", timeout: 45_000 });
     if (login) {
@@ -504,18 +511,27 @@ export async function openStablePage(browser, spec) {
     //   于是两次采样当然相同，量到 `textEls=1` 却被判成「稳定」，差一点就拿一个空壳的数当基线。
     //   救回来的是**独立口径**（textEls 下限），不是稳定性判据。
     //   故这里把两条合成一条：**既要 ≥ 下限、又要与上一次相同**才算稳。
+    //
+    // ⚠ 2026-08-18 再加第三条：**在飞请求必须为 0**（WO-GATE-B-BROWSER-HARNESS 实测）。
+    //   「空壳静止」还有一个一层楼上的版本：sim-sandbox 在 1280×800 下分**两波**到达 ——
+    //   t≈4s 先到 266 个文本元素（静止、且 ≥ 下限 12 ⇒ 旧两条全过），t≈6s 第二波才到 630。
+    //   高载机器上两波间隔 > 1 个采样间隔时，旧判据把 266 当稳定态收下，整页量数全是错的
+    //   （bodyFontPx 12/13 错、C2 守恒误报「疑似删内容」）。
+    //   实测同一条轨迹的在飞请求数：266 期间恒 ≥2，真稳定（630）后恒 0 ——
+    //   「在飞=0」把这个陷阱**确定性**地堵死，不靠加采样次数赌波间隔。
     let last = null;
     let stable = null;
     const trace = [];
     for (let i = 0; i < stableTries; i++) {
       const cur = await page.evaluate(measureLayout, { rootSelector });
-      trace.push(cur.ok ? `textEls=${cur.textEls}` : `未命中(${cur.reason})`);
+      trace.push(cur.ok ? `textEls=${cur.textEls}/在飞${inflight.size}` : `未命中(${cur.reason})`);
       if (
         cur.ok &&
         cur.textEls >= TEXT_ELS_FLOOR &&
         last?.ok &&
         last.textEls === cur.textEls &&
-        last.firstScreenCtrls === cur.firstScreenCtrls
+        last.firstScreenCtrls === cur.firstScreenCtrls &&
+        inflight.size === 0
       ) {
         stable = cur;
         break;
@@ -528,7 +544,9 @@ export async function openStablePage(browser, spec) {
         last?.ok && last.textEls < TEXT_ELS_FLOOR
           ? `独立口径不过：量到文本元素 ${last.textEls} < 下限 ${TEXT_ELS_FLOOR} ⇒ 页面没真渲染出来。` +
             `此时报「版面合格」正是假绿，故判「工具坏了」。`
-          : `版面在 ${stableTries} 次采样内未稳定。`;
+          : inflight.size > 0
+            ? `版面在 ${stableTries} 次采样内未稳定（末次仍有 ${inflight.size} 个请求在飞 —— 内容还在路上，不是页面坏了就是机器太慢）。`
+            : `版面在 ${stableTries} 次采样内未稳定。`;
       throw new ProbeBroken(
         `${why}\n   采样轨迹：${trace.join(" → ")}` +
           `${pageErrors.length ? `\n   页面异常：${pageErrors[0]}` : ""}`,
@@ -663,12 +681,15 @@ export async function probeDomChange(page, spec) {
   const before = await page.evaluate(snapshotDom, { rootSelector });
   if (!before.ok) throw new ProbeBroken(`B-1 快照根未命中（动作前）：${before.reason}`);
   let after = before;
-  const t0 = Date.now();
   try {
     await act(page);
   } catch (e) {
     throw new ProbeBroken(`B-1 改输入的动作执行失败（门够不到它要改的输入）：${String(e?.message || e).split("\n")[0]}`);
   }
+  // ⚠ 时钟从「输入改完」起算，不从「act 开始」起算：act 自身的耗时（高载机器上
+  //   playwright 的可操作性等待实测可到 3s+）不是页面的反应时间，算进去会把
+  //   「机器慢」误判成「页面不响应」（本单实测栽到过一次，10s 动作超时撞线）。
+  const t0 = Date.now();
   for (;;) {
     after = await page.evaluate(snapshotDom, { rootSelector });
     if (!after.ok) throw new ProbeBroken(`B-1 快照根未命中（动作后）：${after.reason}`);
