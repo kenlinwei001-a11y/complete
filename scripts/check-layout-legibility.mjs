@@ -497,8 +497,11 @@ const PAGES = [
         act: async (page) => {
           // 「范围」是折叠段（原生 <details>，子节点仍在 DOM）；先点 <summary> 展开
           // 才点得到复选框。展开动的是 <summary>、改的是 <input> —— 全程无按钮。
-          await page.locator('[data-testid="sc-scope-summary"]').click({ timeout: 10_000 });
-          await page.locator('[data-testid="sc-base-changzhou"]').click({ timeout: 10_000 });
+          // ⚠ 点击超时给 30s 是**环境余量**不是判据放水：高载机器上 playwright 的
+          //   可操作性等待实测 3.1s（本机载荷 700+），而 B-1 的反应时限从「输入改完」
+          //   才起算（见 probeDomChange），这里的快慢不影响那条判据。
+          await page.locator('[data-testid="sc-scope-summary"]').click({ timeout: 30_000 });
+          await page.locator('[data-testid="sc-base-changzhou"]').click({ timeout: 30_000 });
         },
       },
       occlusion: {
