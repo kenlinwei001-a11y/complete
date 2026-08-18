@@ -27,7 +27,7 @@
 >    两者定性不同、修法不同，**必须拆开说**。这条戒律自己犯了它警告的病：
 >    拿一个笼统数字盖住两个不同事实。
 >    ✅ **2026-08-09 晚已闭**：收编 `WO-SKILL-PARTIAL-A` 后 `dependsOn` 从 **0 → 1 条**
->    （`mocks/seed.ts:1350` `sop_meeting --dependsOn--> capacity_analysis`），
+>    （`mocks/seed.ts:1350` `capacity_action_draft --dependsOn--> capacity_analysis`），
 >    「接了线没数据」这一态在该字段上**已消除**。
 >    ⚠️ 这个数是被 `skill-compiler.seam.test.ts` 的金丝雀**当场报红逼出来的**，不是人想起来的——
 >    该断言原写死 `toBe(0)`，合并后变红，逐层追到提交 `0b49b75a` 确认是有意补种子、不是回归，才改的数。
