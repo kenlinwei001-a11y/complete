@@ -17,6 +17,7 @@ import type {
 import { SKILL_REFERENCE_KINDS } from "@platform/contracts";
 import type { McpServerConfig, OntologySignature, ResourceInputOutput } from "@platform/contracts";
 import type { ObjectTypeDefSummary, RuleSummary } from "../tools/clients.js";
+import { extractResourceRelations } from "./relations.js";
 
 /**
  * WO-DRIL-P1 · Resource Projector（PRD-decision-resource-intelligence-layer §6.3）。
@@ -353,7 +354,7 @@ export function projectFields(sources: FieldSource[]): FieldResource[] {
   return out;
 }
 
-/** 派生关系（写 resource_relations）：workflow→solver/slice(invokes)·agent→skill(binds)·agent→objectType 略。 */
+/** 派生关系（写 resource_relations）：workflow→solver/slice/rule · agent→skill · skill→references/dependsOn。 */
 export interface DerivedRelation {
   fromKind: string;
   fromKey: string;
@@ -362,32 +363,27 @@ export interface DerivedRelation {
   toKey: string;
 }
 
+const cmpRel = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * WO-SKILL-REFGRAPH-WIRE · 生产投影链路的**唯一**关系抽取入口（闭 `G-SKILL-REFGRAPH-DEAD-EXTRACTOR` ①）。
+ *
+ * 病史（假绿第 9 形态原型）：本函数曾**零 src 调用方**——实现有、测试有且绿，生产链路却走
+ * `relations.ts` 的 `extractResourceRelations`（不读 `skill.references/dependsOn`），于是 skill 引用边
+ * 一条都没进过资源图，测试咬的是函数不是链路。
+ *
+ * 修法 = **组合而非复抄**：基础边（workflow→solver/slice/rule · agent→skill）的唯一出处仍是
+ * `extractResourceRelations`（含去重 + 确定性序），本函数在其上叠加 Skill 工业级引用边。
+ * 两份 workflow/agent 抽取逻辑并存必然漂移——本函数旧版就是复抄的，漏了 `evaluate_rules→rule`
+ * 与去重排序；调用方 `dril/resource-registry.ts`（projectTenant 落 resource_relations）。
+ */
 export function extractRelations(input: {
   workflows: WorkflowDefinition[];
   agents: AgentDefinition[];
   skills: SkillDefinition[];
   rules: RuleSummary[];
 }): DerivedRelation[] {
-  const out: DerivedRelation[] = [];
-  for (const w of input.workflows) {
-    for (const st of w.steps) {
-      const p = (st.params ?? {}) as { solverKey?: string; sliceKey?: string };
-      if (st.type === "invoke_solver" && p.solverKey) {
-        out.push({ fromKind: "workflow", fromKey: w.key, relType: "invokes", toKind: "solver", toKey: p.solverKey });
-      }
-      if (st.type === "resolve_slice" && p.sliceKey) {
-        out.push({ fromKind: "workflow", fromKey: w.key, relType: "includes", toKind: "slice", toKey: p.sliceKey });
-      }
-    }
-  }
-  const skillById = new Map(input.skills.map((s) => [s.id, s.key] as const));
-  const skillByKey = new Map(input.skills.map((s) => [s.key, s] as const));
-  for (const a of input.agents) {
-    for (const sk of a.skills) {
-      const key = skillById.get(sk.skillId);
-      if (key) out.push({ fromKind: "agent", fromKey: a.key, relType: "binds", toKind: "skill", toKey: key });
-    }
-  }
+  const out: DerivedRelation[] = [...extractResourceRelations(input)];
   // WO-SKILL-4：Skill 工业级引用 → 派生资源关系（precondition/postcheck/context/dependsOn）。
   for (const s of input.skills) {
     const pushRef = (ref: { kind: string; key: string }, relType: string) => {
@@ -402,5 +398,22 @@ export function extractRelations(input: {
     for (const ref of s.references ?? []) pushRef(ref, "references");
     for (const dep of s.dependsOn ?? []) pushRef(dep, "dependsOn");
   }
-  return out;
+  // 合并后整体去重 + 确定性排序（R6：同投影同关系集字节一致，与 extractResourceRelations 内部同口径）。
+  const seen = new Set<string>();
+  const uniq: DerivedRelation[] = [];
+  for (const r of out) {
+    const pk = `${r.fromKind}|${r.fromKey}|${r.relType}|${r.toKind}|${r.toKey}`;
+    if (seen.has(pk)) continue;
+    seen.add(pk);
+    uniq.push(r);
+  }
+  uniq.sort(
+    (a, b) =>
+      cmpRel(a.fromKind, b.fromKind) ||
+      cmpRel(a.fromKey, b.fromKey) ||
+      cmpRel(a.relType, b.relType) ||
+      cmpRel(a.toKind, b.toKind) ||
+      cmpRel(a.toKey, b.toKey),
+  );
+  return uniq;
 }

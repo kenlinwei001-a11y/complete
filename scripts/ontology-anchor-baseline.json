@@ -19,7 +19,7 @@
     "apps/agentcore/src/dril/relations.ts::extractResourceRelations",
     "apps/agentcore/src/dril/relations.ts::resolve_slice",
     "apps/agentcore/src/dril/resource-projector.ts::extractRelations",
-    "apps/agentcore/src/dril/resource-registry.ts::extractResourceRelations",
+    "apps/agentcore/src/dril/resource-registry.ts::extractRelations",
     "apps/agentcore/src/dril/resource-registry.ts::get",
     "apps/agentcore/src/dril/resource-registry.ts::projectSkills",
     "apps/agentcore/src/engine.ts::skillWriteMode",

@@ -58,8 +58,11 @@ export const ResourceQualitySchema = z.object({
 });
 export type ResourceQuality = z.infer<typeof ResourceQualitySchema>;
 
-/** 资源关系（§6.2 resource_relations）：reads/scopes/invokes/binds/includes。 */
-export const RESOURCE_RELATION_TYPES = ["reads", "scopes", "invokes", "binds", "includes"] as const;
+/** 资源关系（§6.2 resource_relations）：reads/scopes/invokes/binds/includes/references/dependsOn。
+ *  WO-SKILL-REFGRAPH-WIRE：补 references/dependsOn —— Skill 工业级引用（`skill.references/dependsOn`）
+ *  经 `extractRelations` 派生落 resource_relations（此前枚举缺这两个值，接线后 resource.relations 回填
+ *  会被契约校验判非法）。additive 扩枚举，不改既有五个值的语义。 */
+export const RESOURCE_RELATION_TYPES = ["reads", "scopes", "invokes", "binds", "includes", "references", "dependsOn"] as const;
 export type ResourceRelationType = (typeof RESOURCE_RELATION_TYPES)[number];
 export const ResourceRelationSchema = z.object({
   relType: z.enum(RESOURCE_RELATION_TYPES),
