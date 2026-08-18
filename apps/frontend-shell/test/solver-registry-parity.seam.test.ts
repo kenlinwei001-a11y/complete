@@ -213,7 +213,8 @@ describe("WO-MOCK-FE-REGISTRY-PARITY · 前端 mock 求解器词表与真 A 侧�
     // 逐字段等于全集镜像（剥掉 mock 内部 pool）——是「同一份条目的投影」，不是第二份手抄
     for (const s of served) {
       const src = MOCK_SOLVER_REGISTRY_FULL.find((it) => it.key === s.key)!;
-      const { pool: _pool, ...want } = src;
+      const want: Record<string, unknown> = { ...src };
+      delete want.pool; // pool 是 mock 内部归属字段，不下发（真后端响应里没有它）
       expect(s, `发现页条目 ${s.key} 与全集镜像不一致 ⇒ 有人在响应路上另抄了一份`).toEqual(want);
     }
     // mock 模块内派生件与 HTTP 下发同源（防「模块一套、handler 一套」）
