@@ -1755,6 +1755,38 @@
    },
    "notes": "MANUAL：本门是**派单/交单流程**的两个卡点（开工步骤 2 + 交单 T5 各跑一次），不是仓库内容门，故不入 gates 串——入串会让每次 gate 去解远端引用、离线即 RC=2 假红。用法 `node scripts/check-branch-base.mjs <分支> [--onto=<集成线>] [--max=N]`，默认 onto = origin/claude/verify-reclaim-6、阈值 200。RC 三分：0 基线够新 · 1 太老须先 rebase · 2 工具坏了（不许读作没问题）。 ⚠ guardedPaths 的语义在本门上与别的门不同，写明免得被读错：本门守的是**分支的分叉点**、不是仓库里的文件，所以这里填的是「改了它就必须重跑本门」的两份东西——门自己的实现，以及派单头里那张写死集成线名字的分支表（集成线换名而这两处不同步，本门会拿旧的 onto 去量，量得越准错得越彻底）。",
    "disposition": "MANUAL"
+  },
+  "check-file-truncation.mjs": {
+   "alias": "file-truncation:check",
+   "binding": "GATES_CHAIN",
+   "guardedPaths": [
+    "docs/SYSTEM-ONTOLOGY.md",
+    "docs/PRD-*.md",
+    "scripts/*-baseline.json",
+    "scripts/file-truncation-exemptions.json"
+   ],
+   "escalation": "审核方",
+   "ontologyRef": "§7",
+   "provenRed": {
+    "kind": "MUTATION",
+    "evidence": "WO-ONTO-TRUNCATE-GUARD 交单报告 T1（docs/HANDOFF-wo-onto-truncate-guard.md）",
+    "note": "双向实证：① 真史金丝雀——把事故提交 3298add3（本体 2127 删 0 增、写成空 blob）喂进同一份 scanCommit 必须咬在 docs/SYSTEM-ONTOLOGY.md；正常小改 2e94e7ff（4增4删）必须不咬。② T1 实弹变异——真把本体截成 50 行提交，门 RC=1 点名『大文件截断：2270→50 行，剩余比 2.2%』；加带理由豁免转绿、理由 <20 字 RC=2、基线 ref 缺失 RC=2，全部实测。阈值（old≥100 ∧ 剩余比≤0.2）非拍脑袋：926 个历史样本分布里唯事故命中，整文件重写（new≈old）与小文件合法收紧（old≤89）均被排除——工单队列里的『少 50%』单阈值会误报那两次合法收紧，照铁律 0.5 以实测顶回。"
+   },
+   "notes": "守的命题：受保护文件（本体 + PRD + 基线册）不许被一次提交清空/截没——2026-08-17 事故 3298add3 提交信息写『已回写』而 diff 把 2127 行本体写成空 blob，『提交信息说了什么』不度量『文件真变了什么』，判据只落行数比。扫描区间默认 merge-base(HEAD, 集成线)..HEAD 逐提交审（合并按第一父），不只看 HEAD~1——区间中段的事故会被后续合法提交盖过去。两条独立判据：new=0（清空/整删，任何大小）⇒ 红；old≥100 且剩余比≤0.2 ⇒ 红。唯一放行路是 file-truncation-exemptions.json 里同 (commit,path) 的 ≥20 字理由豁免。诚实边界：在集成线上跑时区间为空（它是收编前的拦门不是考古工具，考古用 --range）；rename 花括号形态不匹配（本仓受保护清单未出现过）。金丝雀 16 条与主逻辑共用同一份 judge()/scanCommit()。"
+  },
+  "check-fact-usage.mjs": {
+   "alias": "fact-usage:check",
+   "binding": "NONE",
+   "guardedPaths": [
+    "scripts/lib/fact-usage.mjs",
+    "scripts/fact-usage-baseline.json",
+    "apps/frontend-shell/src/views",
+    "apps/frontend-shell/src/pages"
+   ],
+   "escalation": "审核方",
+   "disposition": "WIRE",
+   "evidence": "WO-FACT-USAGE-REGISTRY 交单：注册表由 scripts/lib/fact-usage.mjs 现算（AST，不手抄名单），B-3 解锁 824 组 pairs。",
+   "notes": "NONE（未接任何链）：守「事实使用注册表不退化」——事实条数 / 跨≥2屏事实条数 / 跨屏对数 三个数只许涨不许跌（相对 scripts/fact-usage-baseline.json）。⛔ 本门**一个字都不判「两屏的值相不相等」**，那归 WO-GATE-B-BROWSER-HARNESS；把它的绿读成 B-3 已闭是形态「我用『注册表建好了』当作『B-3 验完了』的证据」。D1 金丝雀不中一律 RC=2 报「工具坏了」，不许报「注册表没变化」。 ⚠ 2026-08-17 审核方补登：本门由 WO-FACT-USAGE-REGISTRY 新建，但**该单没有同批登账** —— 它自己那条 handoff 分支上 gate-ledger 只有 90 条、不含本键，即该分支交单时 gate-ledger:check 就是红的。合并干净所以一路无人拦，直到与 WO-ONTO-TRUNCATE-GUARD 并线后才被咬出。形态：「我用『合并没冲突』当作『两边都合规』的证据，而前者并不度量后者。」本次只补账、**未接 gates 链**（binding=NONE 是实测现算值，不是意愿）；要接链是另一步，需先跑通它自己的 --selftest 并确认不拖慢门链。"
   }
  }
 }
