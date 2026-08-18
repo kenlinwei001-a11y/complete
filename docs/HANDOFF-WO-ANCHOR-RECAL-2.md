@@ -252,3 +252,59 @@ apps/frontend-shell/src/views/sim/ProjectSimView.tsx 中已不存在」（L2203/
 - 未跑 vitest / pnpm build；git 全程 SSH 一次性 URL。
 - 校准证据基 = 776b7d33e 的 src。d89b81393 并入 quantile/r13 后 src 有移动，TOL ±40 吸收小漂；
   **并线后需重跑一次门**，若出新 LINE_DRIFT 再走一遍 `--update` + ⑪同款审计即可。
+
+---
+
+# 基线换键（2026-08-19 · 裁决授权原地续做）
+
+## ⑯ 换键 diff 原文（手工编辑，恰好 -2/+2，tolerance 40 与其余字节零动）
+
+```diff
+@@ -14,7 +14,6 @@
+-    "apps/agentcore/src/catalog/service.ts::ExtraToolStepSchema",
+@@ -85,7 +84,6 @@
+-    "apps/agentcore/src/workflow/executor.ts::ExtraToolStep",
+@@ -280,6 +278,8 @@
++    "packages/contracts/src/skill-compile.ts::ExtraToolStep",
++    "packages/contracts/src/skill-compile.ts::ExtraToolStepSchema",
+```
+
+新键落在字典序正确位置（`qos.ts::path` 与 `slice-layers.ts` 之间，`ExtraToolStep` 前于
+`ExtraToolStepSchema`），JSON 校验通过，verified 键数 291→291（-2+2）。
+**这不是买绿**：旧键登记的符号位置已被 WO-STEP-VOCAB-UPLIFT 搬走（⑨节已核实新家
+`skill-compile.ts:109/:116` 真实存在），基线追上重锚事实 = 认账。
+
+## ⑰ 换键后金丝雀（先金丝雀后门绿，按序执行）
+
+改坏 `skill-compile.ts:116 (ExtraToolStep)` → `(ExtraToolStepZZZ)` ⇒ 门当场红且点名：
+
+```
+- [SYMBOL_GONE] 本体 L401 §## 3. 关系图谱（链路 = 模块间关系） symbol `ExtraToolStepZZZ`
+  在 packages/contracts/src/skill-compile.ts 中已不存在（被改名/删除）—— 语义漂移，--update 不代劳，须人判新锚点
+```
+
+还原后门恢复绿（下方 2 连跑即还原后状态）。
+
+## ⑱ 终态：2 连跑 RC=0，输出逐字一致
+
+```
+· 本体锚点：共 601 个 `file:line`
+· 已校准（带 (symbol) 可机器核）：321 个 · 容差 ±40 行
+· 未校准存量：75 条 / 基线 89 条
+· 已补 (symbol) 4 个文件的锚点（可 `--update` 收紧基线落账）
+· import 行护栏：实查 581/601 条 · 坏锚点 0 条 · 金丝雀 26/26 全中（检测逻辑活着）
+  ⚠️ 另有 20 条**未受本护栏覆盖**（非"已确认干净"）：其中 20 条是裸文件名锚点路径不唯一
+  （无 (symbol)·按既有设计记入未校准存量、不为此报红）；补上 (symbol) 或写全仓根相对路径即可纳入护栏。
+
+✓ 本体锚点校准门通过（已校准锚点均指向其声称的 symbol；未校准存量未回潮）。
+```
+
+RC1=0 · RC2=0 · `diff` 两次输出为空（逐字一致）。
+口径注记：未校准存量 75 < 基线 89（本单补 symbol 降了 14 条，棘轮允许方向）；
+「收紧落账」提示是信息性输出、非红——收紧属另一动作，本单未做。
+
+## ⑲ 完整性回执
+
+- `scripts/gate-ledger.json` 零字节（全程未碰任何 `--update` 类全局再生成）。
+- 本单累计改动文件 = `docs/SYSTEM-ONTOLOGY.md` + `scripts/ontology-anchor-baseline.json` + 本报告，三者之外零触碰。
+- 「校准证据基 776b7d33e，并线 d89b81393 后需重跑门」注记保留（见⑮末条）。
