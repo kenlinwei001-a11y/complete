@@ -75,8 +75,11 @@
  *  · 判据③ 的受理方登记表是**写死的**（`RECEIVERS`）—— 新受理方必须同批登记，
  *    否则「出口栏没点名任何已登记的受理方」会红。**这是刻意的**：让「随手写一个新去处」
  *    这件事必须过一次人眼，而不是静悄悄多出一个没人核过的接收方。
- *  · 判据⑤ 的面板文件来自 §4.1 的 U3「**符合**」段（不含「不符合」段，那里提到的
- *    `LayeredDag.tsx` 是共享组件不是面板）。抽不出 ⇒ **RC=2**，不是「没有面板」。
+ *  · 判据⑤ 的面板文件来自 §4.1 的 U3「**符合**」段（不含「不符合」段），再按**角色**收窄：
+ *    只数解析路径落在 `src/views/` 下的页面级组件 —— 共享渲染件（`components/` 下，如
+ *    `LayeredDag.tsx`）即便被闭格叙事以叙述性引用带进「符合」段也不是面板，不入数
+ *    （WO-SPLITACCOUNT-B2-BASELINE：原代理「只取符合段」已被 U3 闭格叙事击穿，此为把
+ *    本注释自陈的意图机械化）。抽不出 ⇒ **RC=2**，不是「没有面板」。
  *
  * 本体登记：docs/SYSTEM-ONTOLOGY.md §7（门）· §8 G-SPLITACCOUNT-PROMISE-ONLY。
  * 门账：scripts/gate-ledger.json。
@@ -89,7 +92,8 @@
  *   node scripts/check-harness-ux-splitaccount.mjs --seed            # 首次建账
  *   node scripts/check-harness-ux-splitaccount.mjs --tighten         # 重记基线（销账/改绑必须显式）
  */
-import { readFileSync, existsSync, writeFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, readdirSync, statSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
@@ -256,8 +260,10 @@ export function parseSplitAccounts(md) {
 
   /*
    * §4.1 的 U3「**符合**」段里点名的**面板文件**（判据⑤ 的扫描面，**现算不手抄**）。
-   * 刻意只取「符合」那一段：「不符合」段提到的 `LayeredDag.tsx` 是共享组件不是面板，
-   * 收进来会把「共享组件里没有本体链」误当成「某个面板里没有」。
+   * 两道收窄叠加：①此处刻意只取「符合」那一段（「不符合」段的组件名不进扫描面）；
+   * ②`computeChain` 按角色再剔 —— 只数解析到 `src/views/` 下的文件（共享渲染件如
+   * `LayeredDag.tsx` 即便被闭格叙事带进「符合」段也只是叙述性引用，不是面板，
+   * 收进来会把「共享组件里没有本体链」误当成「某个面板里没有」、并稀释分母）。
    */
   const sec41 = section(md, "### 4.1") ?? "";
   const u3 = sec41.split(/\*\*U3\s/)[1] ?? "";
@@ -398,15 +404,24 @@ function findFile(root, base) {
 }
 
 /**
- * @returns {{panels:number, withChain:number, files:Array<{base:string,path:string|null,chain:boolean}>}}
+ * @returns {{panels:number, withChain:number, files:Array<{base:string,path:string|null,counted:boolean,chain:boolean}>}}
  */
 export function computeChain(panelFiles, root, readText) {
   const files = panelFiles.map((base) => {
     const path = findFile(root, base);
-    const chain = path ? CHAIN_MARK.test(stripComments(readText(path))) : false;
-    return { base, path, chain };
+    /* 判据⑤ 扫描面按角色收窄（WO-SPLITACCOUNT-B2-BASELINE）：**面板 = 解析路径落在
+     * `src/views/` 下的页面级组件**。共享渲染件（`components/` 下，如 `LayeredDag.tsx`）
+     * 在「符合」段只是闭格叙事的叙述性引用（病灶坐标/渲染件清单），不是面板 —— 原代理
+     * 「只取符合段」已被 U3 闭格叙事击穿（该组件现出现在符合段），此处把门头注释自陈的
+     * 意图机械化。解析不到（改名/删除/移出 views/）同样不入数 ⇒ 现算读数当场变 ⇒
+     * 与基线对不上 ⇒ 门红（「移出扫描面必咬」的变异实录见该单 HANDOFF）。
+     * 路径证成（2026-08-18 现算 5 文件）：4 个真面板全在 `views/sim/`，唯一共享件在
+     * `components/Dag/` —— 「只数 views/」恰好保留 4 剔 1，零误伤。 */
+    const counted = path !== null && /[\\/]views[\\/]/.test(path);
+    const chain = counted && path ? CHAIN_MARK.test(stripComments(readText(path))) : false;
+    return { base, path, counted, chain };
   });
-  return { panels: files.length, withChain: files.filter((f) => f.chain).length, files };
+  return { panels: files.filter((f) => f.counted).length, withChain: files.filter((f) => f.chain).length, files };
 }
 
 /* ═══════════════════ 金丝雀（与主判据共用上面那两个函数）══════════════════════ */
@@ -523,6 +538,28 @@ export function canaries() {
   const bd = baselineDocCanary();
   if (!bd.ok) bad.push(`⑧基线写入器：${bd.got}`);
 
+  /* ⑨判据⑤ 扫描面按角色收窄（WO-SPLITACCOUNT-B2-BASELINE）—— 与主流程**共用同一个
+   *      computeChain**：造一棵假树，两个组件名一个解析到 `views/`、一个解析到
+   *      `components/`，只有前者入数。少了这条，角色收窄这条新规则本身退化（正则写反、
+   *      误伤 views/）没有任何东西先说话。 */
+  {
+    const fakeRoot = mkdtempSync(join(tmpdir(), "splitaccount-canary9-"));
+    try {
+      mkdirSync(join(fakeRoot, "views"), { recursive: true });
+      mkdirSync(join(fakeRoot, "components"), { recursive: true });
+      writeFileSync(join(fakeRoot, "views", "FakePanel.tsx"), "export const a = 1;");
+      writeFileSync(join(fakeRoot, "components", "FakeShared.tsx"), "export const b = 2;");
+      const c9 = computeChain(["FakePanel.tsx", "FakeShared.tsx"], fakeRoot, (p) => readFileSync(p, "utf8"));
+      const panel = c9.files.find((f) => f.base === "FakePanel.tsx");
+      const shared = c9.files.find((f) => f.base === "FakeShared.tsx");
+      if (!(c9.panels === 1 && panel?.counted === true && shared?.counted === false)) {
+        bad.push(`⑨扫描面角色收窄：views/FakePanel 应入数、components/FakeShared 应剔（实得 panels=${c9.panels} panel.counted=${panel?.counted} shared.counted=${shared?.counted}）`);
+      }
+    } finally {
+      rmSync(fakeRoot, { recursive: true, force: true });
+    }
+  }
+
   return { ok: bad.length === 0, bad };
 }
 
@@ -570,7 +607,7 @@ function main() {
     console.error("   ⛔ 不许把本次结果读作「明账都在册」。");
     process.exit(2);
   }
-  console.log("✅ 金丝雀 8/8（必中账 · 必不中账六处逐条对位 · 共享组件不许混进面板文件 · 受理方存在性 · 自指接线 · 判据⑤方向 · 剥注释双向 · 基线写入器）");
+  console.log("✅ 金丝雀 9/9（必中账 · 必不中账六处逐条对位 · 共享组件不许混进面板文件 · 受理方存在性 · 自指接线 · 判据⑤方向 · 剥注释双向 · 基线写入器 · 判据⑤扫描面角色收窄）");
   if (flag("--selftest")) { console.log("（--selftest：只跑金丝雀，未比对仓库内容）"); return; }
 
   /* ── 现算三个输入源 ────────────────────────────────────────────────────── */

@@ -38,7 +38,7 @@
     }
   },
   "chain": {
-    "panels": 3,
+    "panels": 4,
     "withChain": 0
   }
 }
