@@ -15,6 +15,8 @@ const ConfigSchema = z.object({
   SERVICE_TOKEN: z.string().optional(),
   /** Model specs: plain model id (default provider) or "providerKey:model" (amends QOS-PRD §6). */
   QOS_CLASSIFIER_MODEL: z.string().default("claude-haiku-4-5"),
+  /** WO-PROMPT-KEY-LINT · 摘要语义审查（门禁一·语义补·建议式）的 LLM 选型（结构化判定·非推理，用便宜档，同 classifier 分层语义）。 */
+  QOS_SKILL_SUMMARY_REVIEW_MODEL: z.string().default("claude-haiku-4-5"),
   QOS_AGENT_MODEL: z.string().default("claude-opus-4-8"),
   /** Default provider for plain model specs: anthropic | openai | tenant provider key. */
   QOS_DEFAULT_LLM_PROVIDER: z.string().default("anthropic"),

@@ -263,6 +263,27 @@ export const SkillAttachmentSchema = z.object({
 });
 export type SkillAttachment = z.infer<typeof SkillAttachmentSchema>;
 
+/**
+ * WO-PROMPT-KEY-LINT · LLM 摘要语义审查留痕（additive·**建议式·不阻断发布**）。
+ *
+ * 断点 `G-PROMPT-KEYS-CONFIG-ONLY` 的 `skill_summary_lint` 一支：该键此前只活在配置表里，
+ * src 零消费方。接线形态 = 发布门「门禁一·语义补」（结构 lint → 引用闭合 → 本审查 → 评测门），
+ * verdict **不进 422 阻断判据**（R6：发布门阻断路径 100% 确定性），只落留痕——
+ * 本字段即留痕本体（pg 为 JSONB 整对象序列化，additive 零迁移）。
+ * 判定逻辑与 R6 论据见 `apps/agentcore/src/skill-summary-review.ts` 头注。
+ */
+export const SkillSummaryReviewSchema = z.object({
+  /** PASS=合格 · ISSUES=有具体问题 · UNPARSEABLE=LLM 输出不可解析 · UNAVAILABLE=LLM 调用失败（后两档是诚实位，绝不读成「通过」）。 */
+  verdict: z.enum(["PASS", "ISSUES", "UNPARSEABLE", "UNAVAILABLE"]),
+  issues: z.array(z.string()),
+  /** 生效模板来源：租户 override 接管 / 平台默认流入（本键无更详硬编码兜底，平台默认即执行提示词）。 */
+  templateSource: z.enum(["TENANT_OVERRIDE", "PLATFORM_DEFAULT"]),
+  templateVersion: z.number().int(),
+  model: z.string(),
+  reviewedAt: z.string(),
+});
+export type SkillSummaryReview = z.infer<typeof SkillSummaryReviewSchema>;
+
 export const SkillDefinitionSchema = z.object({
   id: z.string(), // skl_
   tenantId: z.string(),
@@ -304,6 +325,8 @@ export const SkillDefinitionSchema = z.object({
    * 归一后注入 `AgentBudget.maxRoundTrips`；只收紧不放宽。缺省 = 平台预算，行为逐字节不变。
    */
   maxBudgetRounds: z.number().int().positive().optional(),
+  /** WO-PROMPT-KEY-LINT（additive）：最近一次 LLM 摘要语义审查留痕（建议式·发布时随门运行；DRAFT 从未审查过则无此字段）。 */
+  summaryReview: SkillSummaryReviewSchema.optional(),
 });
 export type SkillDefinition = z.infer<typeof SkillDefinitionSchema>;
 

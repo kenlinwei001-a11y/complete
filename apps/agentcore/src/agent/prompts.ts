@@ -1,4 +1,4 @@
-import type { PromptKey, QueryTask, SessionContext, SkillDefinition } from "@platform/contracts";
+import type { PromptKey, QueryTask, ResolvedPrompt, SessionContext, SkillDefinition } from "@platform/contracts";
 import type { PromptClient, ToolAuthCtx } from "../tools/clients.js";
 import { selectSkills, type Embedder } from "./skill-router.js";
 
@@ -236,17 +236,35 @@ ${catalog}`;
  * - 客户端缺失 / A 不可达 / 任何错误 → undefined（消费方兜底硬编码·**绝不阻断查询**）；
  * - source=PLATFORM_DEFAULT（无租户 override）→ undefined（保持 AgentCore 硬编码·R6 字节兼容）；
  * - source=TENANT_OVERRIDE 且非空 → 返回该模板文本（admin 真配了才生效·灭漂移）。
+ *
+ * WO-PROMPT-KEY-LINT：本函数改为 `resolvePromptTemplate` 的**薄包装**（只取 `.template`）——
+ * 「只采纳 TENANT_OVERRIDE」这条判据只允许存在一份（抄一份就是装饰品：改主判据时另一份
+ * 拿旧的去测、照样绿）；需要 source/version 留痕的消费方（摘要语义审查）用下方完整版。
  */
 export async function resolvePromptOverride(
   prompts: PromptClient | undefined,
   ctx: ToolAuthCtx,
   key: PromptKey,
 ): Promise<string | undefined> {
+  return (await resolvePromptTemplate(prompts, ctx, key))?.template;
+}
+
+/**
+ * WO-PROMPT-KEY-LINT：`resolvePromptOverride` 的完整形态——同一判据、返回**完整** ResolvedPrompt
+ * （含 source/version，供审查留痕标注「生效的是哪一版模板」）。
+ * 语义与薄包装逐字一致：仅 TENANT_OVERRIDE 且非空白才返回值，其余（无客户端 / PLATFORM_DEFAULT /
+ * 抛错 / 空白）一律 undefined（fail-open·绝不阻断）。
+ */
+export async function resolvePromptTemplate(
+  prompts: PromptClient | undefined,
+  ctx: ToolAuthCtx,
+  key: PromptKey,
+): Promise<ResolvedPrompt | undefined> {
   if (!prompts?.getPromptTemplate) return undefined;
   try {
     const resolved = await prompts.getPromptTemplate(ctx, key);
     if (resolved && resolved.source === "TENANT_OVERRIDE" && resolved.template.trim()) {
-      return resolved.template;
+      return resolved;
     }
     return undefined;
   } catch {
