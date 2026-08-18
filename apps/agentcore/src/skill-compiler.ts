@@ -35,11 +35,13 @@ import { BUILTIN_TOOLS, FINAL_ANSWER_TOOL, LOAD_SKILL_TOOL } from "./tools/regis
  * - **Optimizer（PRD §4.4）**：拓扑排序 / 并行分组 / 死节点剪除 / 常量折叠 / 预算下推 —— 全未做。
  * - **SkillRuntimePackage + 签名（PRD §4.5 / §6）**：`.skill` 包格式、digest、manifest、验签 —— 全未做，
  *   归 WO-SKILL-PACKAGE。
- * - **RG 组的跨系统引用探针（PRD §4.2 / §4.3）**：`probeMissingRefs`（`apps/agentcore/src/resources.ts:11`）
- *   今天接在 workflow 发布（`server.ts:1008`）与 agent 发布（`server.ts:690`）两条路上，**skill 这条路没接**，
- *   且它自身 fail-open。把它接进编译器的 Validator 并改成发布期 fail-closed 是**另一张单**
- *   （PRD §4.3.1 明确要求「拔掉 DataCore 后 publish 必须红」+ 变异反证），本切片不碰——
- *   故 `kind` 为 rule/constraint/solver/slice/ontologyType/workflow/agent 的引用**今天不校验是否真实存在**，
+ * - **RG 组的跨系统引用探针（PRD §4.2 / §4.3）**：`probeMissingRefs`（`apps/agentcore/src/resources.ts`）
+ *   今天已接三条发布路：workflow / agent / skill。skill 路 2026-08-09（WO-SKILL-REFCLOSURE-A）接线，
+ *   后经 WO-REFGATE-ENT 把判据抽进 `skill-publish-gate.ts` 的 `runSkillPublishGate`，
+ *   发布路由与启动期种子审计**共用同一份实现**；探针自身亦已 fail-closed
+ *   （注册表读不出/空集 → 抛 `RefProbeUnavailableError` → 503；死引用 → 422 SKILL_REF_UNRESOLVED 且未落库）。
+ *   本编译切片仍**不**在编译期做该校验——`compileSkill` 是确定性纯函数（R6·零 I/O），探针属发布期职责；
+ *   故 `kind` 为 rule/constraint/solver/slice/ontologyType/workflow/agent 的引用在**编译产物**里不带存在性结论，
  *   这一点在诊断里以 `RG-NOT-WIRED` info 显式说出来，不静默略过。
  */
 
@@ -182,7 +184,8 @@ export function validateSkillAst(
     });
   }
 
-  // —— RG-NOT-WIRED：跨系统引用可达性今天不校验，必须说出来（诚实边界，不静默略过）——
+  // —— RG-NOT-WIRED：本编译切片是确定性纯函数（R6·零 I/O），跨系统引用存在性不在编译期校验；
+  //    发布期由发布门守住（fail-closed），此处只把「编译产物不带存在性结论」说出来（诚实边界，不静默略过）——
   const unprobed = [...ast.ontology, ...ast.rules, ...ast.slices, ...ast.solvers, ...ast.agents, ...ast.workflows];
   if (unprobed.length > 0) {
     diagnostics.push({
@@ -190,8 +193,10 @@ export function validateSkillAst(
       severity: "info",
       path: "/references",
       message:
-        `${unprobed.length} 条非 skill 引用未做存在性校验：引用探针 probeMissingRefs 今天只接在 workflow / agent ` +
-        "发布路上，skill 这条路没接，且其自身 fail-open。接线 + 改发布期 fail-closed 属另一张单（PRD §4.3.1）。",
+        `${unprobed.length} 条非 skill 引用在本编译切片内未做存在性校验——编译器是确定性纯函数（R6·零 I/O），` +
+        "存在性校验在发布期：POST /b/v1/skills/:id/publish 经 runSkillPublishGate 调 probeMissingRefs" +
+        "（2026-08-09 WO-SKILL-REFCLOSURE-A 起 fail-closed：注册表读不出/空集 → 503 REF_PROBE_UNAVAILABLE；" +
+        "死引用 → 422 SKILL_REF_UNRESOLVED 且未落库）。",
       evidence: unprobed.map((r) => `${r.kind}:${r.key}`).sort().join(","),
     });
   }
@@ -207,8 +212,9 @@ function stageReports(hasError: boolean): SkillCompileStageReport[] {
       stage: "validate",
       status: hasError ? "FAILED" : "OK",
       note:
-        "复用既有 lintSkill（skill-lint.ts:234）+ 工具注册表反查 + 图/引用对账。" +
-        "**未含**跨系统引用可达性探针（probeMissingRefs 未接 skill 路，见 RG-NOT-WIRED 诊断）。",
+        "复用既有 lintSkill（skill-lint.ts 的 lintSkill）+ 工具注册表反查 + 图/引用对账。" +
+        "跨系统引用存在性探针不在编译切片内（纯函数零 I/O）——发布期由 skill-publish-gate.ts 的 " +
+        "runSkillPublishGate 调 probeMissingRefs 守住（fail-closed，见 RG-NOT-WIRED 诊断）。",
     },
     graph: { stage: "graph", status: "OK", note: "AST → SkillReasoningGraph（纯函数·分层拓扑·未经优化）" },
     optimize: {
