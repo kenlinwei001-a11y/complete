@@ -42,7 +42,7 @@
  * 消费判据的金丝雀是**双向**的：既验「已知存在的名字必须命中」，也验「已知不存在的名字必须不中」——
  * 一个恒真的匹配器会把所有缺口藏起来、一个恒假的会把全仓报成缺口，单向金丝雀两者都测不出来。
  *
- * 用法：node scripts/check-backend-frontend-seam.mjs [--update] [--seed] [--verbose]
+ * 用法：node scripts/check-backend-frontend-seam.mjs [--update] [--seed] [--verbose] [--explain-method] [--explain-wildcard] [--mutate=<形态>]
  *   （无参 = 判定；--seed = 首次建账，基线已存在则拒绝；--update = 收紧基线，只减不增；--verbose = 列缺口明细）
  * 本体登记：docs/SYSTEM-ONTOLOGY.md §7（门 `befe-seam:check`）· §8（断点 `G-BE-FE-SEAM-DEAD`）。
  */
@@ -111,6 +111,8 @@ const VERBOSE = argv.has("--verbose");
 /** `--explain-method`：现算「旧口径（只比路径）判已接、新口径（方法+路径）判零调用」的差集，逐条打印。
  *  这就是口径升级那一次抬基线的**证据本体**——不是我说新增 N 条全是存量，是它现场算给你看。 */
 const EXPLAIN_METHOD = argv.has("--explain-method");
+/** `--explain-wildcard`：现算「宽松通配判已接、严格通配判零调用」的差集 + 动作选择子兜底生效面（WO-BEFE-WILDCARD-CLAIM）。 */
+const EXPLAIN_WILDCARD = argv.has("--explain-wildcard");
 /** `--mutate=<形态>`：变异反证自检（喂一条已知必红的样例，门若不红即为装饰品）。见文件尾《变异反证》。 */
 const MUTATE = [...argv].find((a) => a.startsWith("--mutate="))?.slice("--mutate=".length) ?? "";
 
@@ -678,19 +680,53 @@ export function extractRewritePrefixes(serverSrc) {
 /**
  * 「这条后端端点有前端调用方吗」——**唯一**判据实现（主逻辑 / 金丝雀 / 变异反证共用，不许各抄一份）。
  *
- * 新口径 = **方法 + 路径**。方法未知的路径沿用旧口径（对该路径所有方法一律算已接），
+ * 口径 = **方法 + 路径 + 严格通配**。方法未知的路径沿用旧口径（对该路径所有方法一律算已接），
  * 理由见 `extractFrontendCalls` 顶注的诚实边界：把「我不知道方法」当成「零调用」会造幻觉缺口。
+ *
+ * 第二判「动作选择子兜底」（WO-BEFE-WILDCARD-CLAIM）：严格通配判不上时，若该前端调用
+ * 在整个路由注册表里**没有任何同方法的严格归属**（参数化或字面同形路由），它的整段通配
+ * 可能不是开放 id 而是**动作选择子** —— 标本 `decideCalibrationProposal(id, decision: "approve" | "rollback")`
+ * （endpoints.ts:1045）：`/a/v1/calibration/proposals/${id}/${decision}` 的真消费对象就是
+ * approve/rollback 两条**字面**动作路由，但那个闭集联合类型静态抽取看不见。
+ * 此时按旧宽松口径给利益存疑 —— 与「方法未知沿用旧口径」同一条保守哲学：
+ * 把「我看不见」当成「零调用」造出来的是幻觉缺口，比失明更糟。
+ * ⚠ 残余失明半径（诚实边界）：归属只看注册表 —— 后端若压根没开 `:param` 兄弟路由，
+ *   一个开放 id 通配在形状上与动作选择子无从区分，仍会冒领字面动作路由。
+ *   这一片每次运行上屏（`--explain-wildcard`），不许只留汇总数字。
+ * `beRoutes` 不传 ⇒ 只判第一判（金丝雀的小样例走这里；传了全注册表才启用兜底）。
  */
-export function routeConsumedByMethod(route, feCalls, feUnknownPaths) {
-  return route.aliases.some(
+export function routeConsumedByMethod(route, feCalls, feUnknownPaths, beRoutes = null) {
+  const strict = route.aliases.some(
     (a) =>
       feCalls.some((c) => c.method === route.method && pathMatches(c.path, a)) ||
       [...feUnknownPaths].some((p) => pathMatches(p, a)),
   );
+  if (strict) return true;
+  if (!beRoutes) return false;
+  return route.aliases.some(
+    (a) =>
+      feCalls.some((c) => c.method === route.method && !hasStrictHome(c.method, c.path, beRoutes) && pathMatchesLax(c.path, a)) ||
+      [...feUnknownPaths].some((p) => !hasStrictHome(route.method, p, beRoutes) && pathMatchesLax(p, a)),
+  );
+}
+
+/** 该前端路径在注册表里有没有**同方法的严格归属**（参数化路由或字面同形路由）。 */
+export function hasStrictHome(method, fePath, beRoutes) {
+  return beRoutes.some((b) => b.method === method && b.aliases.some((a) => pathMatches(fePath, a)));
+}
+
+/** 「动作选择子兜底」的生效面 = 通配口径的残余失明半径（报告诚实位与 `--explain-wildcard` 共用此函数）。 */
+export function homelessWildcardCalls(feCalls, feUnknownPaths, beRoutes) {
+  const calls = new Set();
+  for (const c of feCalls) if (c.path.includes("*") && !hasStrictHome(c.method, c.path, beRoutes)) calls.add(`${c.method} ${c.path}`);
+  const unknown = new Set();
+  const methods = [...new Set(beRoutes.map((b) => b.method))];
+  for (const p of feUnknownPaths) if (p.includes("*") && !methods.some((m) => hasStrictHome(m, p, beRoutes))) unknown.add(p);
+  return { calls, unknown };
 }
 
 /**
- * 旧口径 = **只比路径**（本次口径升级前的判据）。
+ * 旧口径 = **只比路径**（方法口径升级前的判据；通配语义跟随 `pathMatches` 现行严格口径）。
  * 保留它**只有一个用途**：现算「口径升级暴露了哪几条」这个差集，让「新增 N 条全是存量」
  * 有机器给出的证据，而不是靠交单人一句话。**它不再参与判负。**
  */
@@ -698,8 +734,62 @@ export function routeConsumedByPathOnly(route, fePaths) {
   return route.aliases.some((a) => [...fePaths].some((fe) => pathMatches(fe, a)));
 }
 
-/** 路径匹配：段数相同，逐段 wildcard 兼容。 */
+/**
+ * 通配口径升级前的消费判据（方法+路径，但通配是**旧的宽松语义**——整段 `*` 吃任何段）。
+ * 保留它**只有一个用途**：现算「通配收紧暴露了哪几条」这个差集（`--explain-wildcard` 的证据本体）。
+ * **它不参与判负** —— 拿它当判据就是把残(乙)请回来。
+ */
+export function routeConsumedByWildcardLax(route, feCalls, feUnknownPaths) {
+  return route.aliases.some(
+    (a) =>
+      feCalls.some((c) => c.method === route.method && pathMatchesLax(c.path, a)) ||
+      [...feUnknownPaths].some((p) => pathMatchesLax(p, a)),
+  );
+}
+
+/**
+ * 2026-08-16 之前的完整旧判据（只比路径 + 宽松通配）。
+ * 唯一用途：给「两维合力暴露」那一桶做归因（方法失明 ∧ 通配冒领共同藏住的那批）。不参与判负。
+ */
+export function routeConsumedByPathOnlyLax(route, fePaths) {
+  return route.aliases.some((a) => [...fePaths].some((fe) => pathMatchesLax(fe, a)));
+}
+
+/**
+ * 路径匹配（**对称严格通配** · WO-BEFE-WILDCARD-CLAIM 收紧）：
+ *   · 段数相同，逐段比；字面等（含 `"*"` === `"*"`）即过；
+ *   · 整段 `*` **只吃整段 `*` 或段内 glob** —— 不吃字面段，两个方向都不吃。
+ *     残(乙)标本：前端 ``/a/v1/rules/${id}`` 归一成 `/a/v1/rules/*`，旧实现 `be[i]==="*"||fe[i]==="*"` 即放行，
+ *     于是把后端**字面**子路由 `/a/v1/rules/evaluate` 一并判「已接」——那次靠方法差异顶出来只是运气，
+ *     **同方法**同形冒领全盲。反向同构（同一次收紧一起治）：前端字面 `/b/v1/scenarios/manage`
+ *     把 `GET /b/v1/scenarios/:key` 冒领掉（它运行时只打 manage 那条静态路由，Fastify 静态优先于参数）。
+ *   · 段内 glob（`sess-*`）对字面段按正则；对整段 `*` 是其子集，放行。
+ */
 export function pathMatches(fePath, bePath) {
+  const fe = fePath.split("/"), be = bePath.split("/");
+  if (fe.length !== be.length) return false;
+  for (let i = 0; i < fe.length; i++) {
+    if (fe[i] === be[i]) continue;                        // 字面等（含整段 "*" === "*"）
+    if (fe[i] === "*" || be[i] === "*") {
+      const other = fe[i] === "*" ? be[i] : fe[i];
+      if (other.includes("*")) continue;                  // 段内 glob 是参数段的子集
+      return false;                                       // 整段通配 **不吃字面段**（残(乙)）
+    }
+    if (fe[i].includes("*")) {
+      const re = new RegExp("^" + fe[i].split("*").map((x) => x.replace(/[.+^${}()|[\]\\]/g, "\\$&")).join(".*") + "$");
+      if (re.test(be[i])) continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+/**
+ * 旧的宽松通配（残(乙)修复前的语义）：整段 `*` 吃任何段。
+ * **唯二合法用途**：① `routeConsumedByMethod` 的「动作选择子」兜底；② `routeConsumedByWildcardLax` 现算差集。
+ * 任何新代码不许拿它当消费判据。
+ */
+export function pathMatchesLax(fePath, bePath) {
   const fe = fePath.split("/"), be = bePath.split("/");
   if (fe.length !== be.length) return false;
   for (let i = 0; i < fe.length; i++) {
@@ -1093,6 +1183,59 @@ function canaries(ctx) {
     return { ok, got: `折成GET=${asGet} · 进未知集=${calls.unknown.has("/a/v1/__canary_unk__")} · POST判已接=${post}`, want: "false / true / true" };
   });
 
+  /* ── C17 族 · 通配口径（WO-BEFE-WILDCARD-CLAIM · 闭残(乙)）─────────────────────
+   * 每一条都对着残(乙) 的实测标本或其反向同构，与主逻辑共用同一个 routeConsumedByMethod。 */
+
+  // C17 通配冒领字面子路由必判负（残(乙) 的**同方法**形态 —— 当初靠方法差异顶出来只是运气）
+  add("wildcard/通配冒领字面必判负", "整段通配若仍吃字面段 ⇒ 前端 `${id}` 把后端字面动作子路由一并判「已接」，同方法冒领全盲（残乙复发）", () => {
+    const beId = { method: "PUT", norm: "/a/v1/__wc/rules/*", aliases: ["/a/v1/__wc/rules/*"] };
+    const beEval = { method: "PUT", norm: "/a/v1/__wc/rules/evaluate", aliases: ["/a/v1/__wc/rules/evaluate"] };
+    const { calls, unknown } = extractFrontendCalls('api.a(`/a/v1/__wc/rules/${id}`, { method: "PUT" });');
+    const beRoutes = [beId, beEval];
+    const claimEval = routeConsumedByMethod(beEval, calls, unknown, beRoutes);
+    const claimId = routeConsumedByMethod(beId, calls, unknown, beRoutes);
+    const laxWouldClaim = routeConsumedByWildcardLax(beEval, calls, unknown);
+    const ok = claimEval === false && claimId === true && laxWouldClaim === true;
+    return {
+      ok,
+      got: `字面路由=${claimEval}（须 false）· 参数路由=${claimId}（须 true）· 旧宽松口径对同一样例=${laxWouldClaim}（须 true，否则样例失效）`,
+      want: "false / true / true",
+    };
+  });
+
+  // C17b 反向同构：前端**字面**段不许冒领后端参数路由（真标本：`/b/v1/scenarios/manage` 冒领 `GET /b/v1/scenarios/:key`）
+  add("wildcard/字面冒领参数必判负", "反向冒领若放行 ⇒ 前端调 manage 字面粉由就把 `:key` 参数路由判「已接」，单条读取端点的缺口继续隐身", () => {
+    const beKey = { method: "GET", norm: "/a/v1/__wc/things/*", aliases: ["/a/v1/__wc/things/*"] };
+    const beManage = { method: "GET", norm: "/a/v1/__wc/things/manage", aliases: ["/a/v1/__wc/things/manage"] };
+    const { calls, unknown } = extractFrontendCalls('api.a("/a/v1/__wc/things/manage");');
+    const beRoutes = [beKey, beManage];
+    const claimKey = routeConsumedByMethod(beKey, calls, unknown, beRoutes);
+    const claimManage = routeConsumedByMethod(beManage, calls, unknown, beRoutes);
+    const laxWouldClaim = routeConsumedByWildcardLax(beKey, calls, unknown);
+    const ok = claimKey === false && claimManage === true && laxWouldClaim === true;
+    return {
+      ok,
+      got: `参数路由=${claimKey}（须 false）· 字面路由=${claimManage}（须 true）· 旧宽松口径对同一样例=${laxWouldClaim}（须 true，否则样例失效）`,
+      want: "false / true / true",
+    };
+  });
+
+  // C17c 动作选择子兜底**双向**（防过紧：calibration 那种真接线不许被报成缺口；防兜底过宽：有了参数归属就不许再认领字面）
+  add("wildcard/动作选择子兜底双向", "兜底丢了 ⇒ `decideCalibrationProposal` 那类真接线被报成幻觉缺口；兜底不看归属 ⇒ 残乙换个形状复发。两个方向缺一不可", () => {
+    const beApprove = { method: "POST", norm: "/a/v1/__wc/proposals/approve", aliases: ["/a/v1/__wc/proposals/approve"] };
+    const beParam = { method: "POST", norm: "/a/v1/__wc/proposals/*", aliases: ["/a/v1/__wc/proposals/*"] };
+    const { calls, unknown } = extractFrontendCalls('api.a(`/a/v1/__wc/proposals/${decision}`, { body: {} });');
+    const homeless = routeConsumedByMethod(beApprove, calls, unknown, [beApprove]);              // 无参数归属 ⇒ 兜底认领
+    const homed = routeConsumedByMethod(beApprove, calls, unknown, [beApprove, beParam]);        // 有参数归属 ⇒ 不许再认领字面
+    const paramItself = routeConsumedByMethod(beParam, calls, unknown, [beApprove, beParam]);    // 参数路由本身必须判已接
+    const ok = homeless === true && homed === false && paramItself === true;
+    return {
+      ok,
+      got: `无归属兜底=${homeless}（须 true）· 有归属后认领字面=${homed}（须 false）· 参数路由本身=${paramItself}（须 true）`,
+      want: "true / false / true",
+    };
+  });
+
   return list;
 }
 
@@ -1126,6 +1269,37 @@ const MUTATIONS = {
     feSrc: `export const x = () => api.a<{ ok: boolean }>("${MUTANT_PATH}", { body: {} });`,
     mustBeRed: false,
     usePathOnly: true,
+  },
+  /* ── 通配口径（WO-BEFE-WILDCARD-CLAIM · 残(乙)）：bePath/beExtra 支持多路由注入（归属判断需要全注册表视角）── */
+  "wildcard-claim": {
+    why: "后端有 `PUT …/:id` 与 `PUT …/evaluate` 两条 · 前端只 PUT 通配 `${id}` ⇒ 通配冒领字面子路由（**同方法**，方法口径救不了），**必须红**——这一条红不了，残(乙)等于没修",
+    beMethod: "PUT",
+    bePath: `${MUTANT_PATH}/evaluate`,
+    beExtra: [{ method: "PUT", path: `${MUTANT_PATH}/:id` }],
+    feSrc: `export const x = (id: string) => api.a<{ ok: boolean }>(\`${MUTANT_PATH}/\${id}\`, { method: "PUT" });`,
+    mustBeRed: true,
+  },
+  "wildcard-param-match": {
+    why: "后端 `PUT …/:id` · 前端 PUT 通配 `${id}` ⇒ **必须绿**（防恒假：严格通配把真接线的参数路由也报成缺口，门同样是坏的）",
+    beMethod: "PUT",
+    bePath: `${MUTANT_PATH}/:id`,
+    feSrc: `export const x = (id: string) => api.a<{ ok: boolean }>(\`${MUTANT_PATH}/\${id}\`, { method: "PUT" });`,
+    mustBeRed: false,
+  },
+  "wildcard-action-selector": {
+    why: "后端只有字面动作路由 `POST …/approve`（无 `:param` 兄弟）· 前端 POST `…/\${decision}` ⇒ 动作选择子兜底，**必须绿**（防过紧：calibration 那种真接线被报成幻觉缺口）",
+    beMethod: "POST",
+    bePath: `${MUTANT_PATH}/proposals/approve`,
+    feSrc: `export const x = (id: string, decision: string) => api.a<{ ok: boolean }>(\`${MUTANT_PATH}/proposals/\${decision}\`, { body: {} });`,
+    mustBeRed: false,
+  },
+  "wildcard-literal-claim": {
+    why: "后端有 `GET …/:key` 与 `GET …/manage` 两条 · 前端只 GET 字面 manage ⇒ 字面段冒领参数路由（`/b/v1/scenarios/manage` 冒领 `:key` 的同构复现），**必须红**",
+    beMethod: "GET",
+    bePath: `${MUTANT_PATH}/:key`,
+    beExtra: [{ method: "GET", path: `${MUTANT_PATH}/manage` }],
+    feSrc: `export const x = () => api.a<{ ok: boolean }>("${MUTANT_PATH}/manage");`,
+    mustBeRed: true,
   },
 };
 
@@ -1214,7 +1388,11 @@ function main() {
     process.exit(2);
   }
   if (mutation) {
-    backendRoutes.push({ method: mutation.beMethod, path: MUTANT_PATH, norm: MUTANT_PATH, line: 0, file: "«变异反证·合成端点»" });
+    const bePath = mutation.bePath ?? MUTANT_PATH;
+    backendRoutes.push({ method: mutation.beMethod, path: bePath, norm: normalizePath(bePath), line: 0, file: "«变异反证·合成端点»" });
+    for (const x of mutation.beExtra ?? []) {
+      backendRoutes.push({ method: x.method, path: x.path, norm: normalizePath(x.path), line: 0, file: "«变异反证·合成端点·同族»" });
+    }
     prodTexts.push(scanText("«变异反证·合成前端».ts", mutation.feSrc));
   }
 
@@ -1264,7 +1442,7 @@ function main() {
   }
   // 诚实位**现算**，不写死。写死是假绿第 11 形态：加了金丝雀而分组计数不动，屏上照旧「5/5」。
   // （原文这里硬编码「词法 2 · SSE 抽取 3 · 路由 5 · 消费判据 3」= 13，而总数已经是 14 —— 就是这个病，已实测。）
-  const GROUP_LABEL = { lex: "词法", emit: "SSE 抽取", route: "路由", consume: "消费判据" };
+  const GROUP_LABEL = { lex: "词法", emit: "SSE 抽取", route: "路由", consume: "消费判据", wildcard: "通配" };
   const byGroup = new Map();
   for (const c of canaryResults) {
     const g = c.name.split("/")[0];
@@ -1296,18 +1474,28 @@ function main() {
     if (!beByKey.has(key)) beByKey.set(key, { ...r, aliases });
   }
   const routeGaps = [];
-  const methodExposed = [];      // 旧口径判「已接」、新口径判「零调用」的那批 = 本次口径升级**暴露的存量**
+  // 暴露存量的**归因分桶**（三代判据对照，互斥，优先级 = 暴露它的那次收紧）：
+  //   wildcardExposed —— 上一代判据（方法+宽松通配）仍判「已接」⇒ 是**通配收紧**把它照出来的（WO-BEFE-WILDCARD-CLAIM）；
+  //   methodExposed   —— 方法维暴露：路径严格匹配还在、方法对不上（WO-SEAM-GATE-METHOD）；
+  //   bothBlindExposed—— 两维合力：单看哪一代判据都「已接」，只有「只比路径+宽松通配」的远古判据才认领它。
+  const methodExposed = [];
+  const wildcardExposed = [];
+  const bothBlindExposed = [];
   let exemptCount = 0;
+  const beRoutesList = [...beByKey.values()];   // 全注册表视角：动作选择子兜底与归属判断用（同一批对象，金丝雀/变异反证也走它）
   // `--mutate=path-only-blind` 刻意把判据换回**旧口径**——这是失明本身的复现，不是可用配置。
   const consumed = (r) =>
-    mutation?.usePathOnly ? routeConsumedByPathOnly(r, fePaths) : routeConsumedByMethod(r, feCalls, feUnknownPaths);
+    mutation?.usePathOnly ? routeConsumedByPathOnly(r, fePaths) : routeConsumedByMethod(r, feCalls, feUnknownPaths, beRoutesList);
   for (const [key, r] of [...beByKey].sort()) {
     if (exemptReason(r.norm)) { exemptCount++; continue; }
     if (!consumed(r)) {
       routeGaps.push({ key, file: r.file, line: r.line });
-      if (routeConsumedByPathOnly(r, fePaths)) methodExposed.push({ key, file: r.file, line: r.line });
+      if (routeConsumedByWildcardLax(r, feCalls, feUnknownPaths)) wildcardExposed.push({ key, file: r.file, line: r.line });
+      else if (routeConsumedByPathOnly(r, fePaths)) methodExposed.push({ key, file: r.file, line: r.line });
+      else if (routeConsumedByPathOnlyLax(r, fePaths)) bothBlindExposed.push({ key, file: r.file, line: r.line });
     }
   }
+  const wildcardHomeless = homelessWildcardCalls(feCalls, feUnknownPaths, beRoutesList);
 
   // ── 棘轮基线 ──
   const emptyBase = { version: 1, note: "", sseFields: [], endpoints: [] };
@@ -1364,6 +1552,14 @@ function main() {
         ` —— 逐条见 \`--explain-method\`。这些**不是新增违规**，是此前隐身的存量。`,
     );
   }
+  // ── 通配口径（WO-BEFE-WILDCARD-CLAIM）：收紧判据 + 残余失明半径，两个数字都上屏 ──
+  console.log(
+    `· 通配口径（WO-BEFE-WILDCARD-CLAIM）：整段通配只吃通配/段内 glob（不吃字面段，两个方向都不吃）` +
+      ` · 无同方法参数归属的通配按「动作选择子」兜底旧宽松口径（残余失明半径 ${wildcardHomeless.calls.size + wildcardHomeless.unknown.size} 条，逐条见 \`--explain-wildcard\`）` +
+      (wildcardExposed.length
+        ? ` · ⚠ 收紧暴露的**存量** ${wildcardExposed.length} 条（宽松通配判「已接」⇒ 严格通配判「零调用」）—— 逐条见 \`--explain-wildcard\`，不是新增违规`
+        : ""),
+  );
   console.log(
     `· 散文位剔除（欠账 #174）：前端生产代码里判为散文的字符串 ${proseStrings} 条，其中写着 /a|b|api/v1/ 路由的归一路径 ${prosePaths.size} 条` +
       ` —— 一律**不**计作调用方；其中 ${proseOnlyPaths.length} 条无任何真 URL 串佐证${proseOnlyPaths.length ? `（${proseOnlyPaths.join(" , ")}）` : ""}。`,
@@ -1401,6 +1597,20 @@ function main() {
     for (const p of [...feUnknownPaths].sort()) console.log(`  ${p}`);
     console.log(`  合计 ${feUnknownPaths.size} 条`);
   }
+  if (EXPLAIN_WILDCARD) {
+    console.log("\n— 通配收紧暴露的存量（上一代判据「方法+宽松通配」判已接 · 现行判据判零调用 · WO-BEFE-WILDCARD-CLAIM）—");
+    for (const g of wildcardExposed) console.log(`  ${g.key}  ←  ${g.file}:${g.line}`);
+    console.log(`  合计 ${wildcardExposed.length} 条`);
+    console.log("\n— 两维合力暴露的存量（方法失明 ∧ 通配冒领共同藏住；只有远古判据「只比路径+宽松通配」才认领）—");
+    for (const g of bothBlindExposed) console.log(`  ${g.key}  ←  ${g.file}:${g.line}`);
+    console.log(`  合计 ${bothBlindExposed.length} 条`);
+    console.log("\n— 动作选择子兜底生效面（无同方法参数归属的通配调用 = 通配口径的残余失明半径）—");
+    console.log("  ⚠ 这一片是**刻意**的利益存疑（标本：decideCalibrationProposal 的 decision 闭集联合类型静态看不见）；");
+    console.log("    后端若没开 :param 兄弟路由，开放 id 通配与动作选择子形状上无从区分 —— 冒领在这一片里仍可能发生，如实上屏。");
+    for (const k of [...wildcardHomeless.calls].sort()) console.log(`  ${k}`);
+    for (const p of [...wildcardHomeless.unknown].sort()) console.log(`  ${p}（方法未知）`);
+    console.log(`  合计 ${wildcardHomeless.calls.size + wildcardHomeless.unknown.size} 条`);
+  }
 
   const fails = [];
   for (const f of newSse) {
@@ -1424,12 +1634,12 @@ function main() {
 
   if (mutation) {
     // 变异反证的判据**只看那一条合成端点**：整仓其它存量红不红与本次自检无关。
-    const mutKey = `${mutation.beMethod} ${MUTANT_PATH}`;
+    const mutKey = `${mutation.beMethod} ${normalizePath(mutation.bePath ?? MUTANT_PATH)}`;
     const bitten = newEp.includes(mutKey);
     const ok = mutation.mustBeRed ? bitten : !bitten;
     console.log(`\n— 变异反证 \`--mutate=${MUTATE}\` —`);
     console.log(`  形态：${mutation.why}`);
-    console.log(`  注入：后端 \`${mutKey}\` · 前端 \`${mutation.feSrc}\``);
+    console.log(`  注入：后端 \`${mutKey}\`${mutation.beExtra?.length ? `（同族 ${mutation.beExtra.map((x) => `${x.method} ${normalizePath(x.path)}`).join(" , ")}）` : ""} · 前端 \`${mutation.feSrc}\``);
     console.log(`  结果：门${bitten ? "**咬住了**" : "没咬"}（期望${mutation.mustBeRed ? "咬住" : "不咬"}）`);
     if (ok) {
       console.log(`✓ 变异反证通过 —— 这道门对该形态是**活的**，不是装饰品。`);
