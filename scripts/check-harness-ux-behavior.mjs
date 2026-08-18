@@ -46,7 +46,9 @@
  * ══ B-4·U8 的判法 = 与 PRD §4.2.3 遮挡登记表**对账**（与 B-1 对 U1 列同一个道理）═══════
  * 逐页找浮层触发器（`[aria-expanded]`/`[aria-haspopup]`，本仓浮层组件的公开契约面），
  * 先悬停、无浮层再点击；**出现**浮层就量遮挡（`measureOcclusionInPage`，与金丝雀同一份）：
- *   · 浮层矩形内 3×3 采样点，任一采样点最上层元素不属于浮层子树 ⇒ 浮层被压住；
+ *   · 浮层矩形内 3×3 采样点，任一采样点最上层元素不属于浮层子树 ⇒ 浮层被压住
+ *     （被压点带九宫格分区名 + 压人元素矩形 + 被压区域包围盒 —— WO-U8-OCCLUSION-GRID
+ *      把 B 线 fdd19a43d 的更细粒度纯加性并入，判据/对账语义不动）；
  *   · 浮层盖住了哪些文本元素、各盖住百分之几 ⇒ **照实打印**（「A 盖住了 B 的哪一部分」）。
  * 触发后无浮层 ⇒ 记「内联展开或无浮层」，**不红**（U8 的合法形态之一就是原地内联展开）。
  * 被压住的处置按 §4.2.3 登记表对账：
@@ -63,8 +65,12 @@
  *   必咬②b：纯回显页（输入值被原样照抄）⇒ 必须归因为 echo 并归入「没重演」一侧；
  *   判据单元：合成 tried 清单四向（混合证据对不符合放行 / 全变对不符合判红 /
  *     全不变对符合判红 / 混合对符合放行）；
- *   必咬③：被高压住的浮层（overlay z-1 上盖一个 z-2 的块）⇒ 必须报出 occludedBy 且判红；
- *   必不咬：置顶浮层（z-99）⇒ 一个 occludedBy 都不许报，且 covers 必须量到被盖元素；
+ *   必咬③：被高压住的浮层（overlay z-1 上盖一个 z-2 的块）⇒ 必须报出 occludedBy 且判红，
+ *     且每个被压点必须带**九宫格分区名**（cell）与压人元素矩形（byRect），
+ *     occludedRect 聚合包围盒必须命中夹具真值（WO-U8-OCCLUSION-GRID，B 线粒度纯加性并入）；
+ *   方位变异：遮挡块只压浮层**右下角**一个采样点 ⇒ 报告必须说出且只说出「右下」，
+ *     说错分区（行/列算反、张冠李戴）即红；
+ *   必不咬：置顶浮层（z-99）⇒ 一个 occludedBy 都不许报，且 covers 必须量到被盖元素（带其矩形）；
  *   对账⑤：同一 judgeOcclusion 三向 —— 登记遮挡不红 / 未登记遮挡必红 / 修好没回写必红；
  *   解析⑥：§4.2.3 样例表必须解析出 1 条登记（解析器瞎了 ⇒ RC=2，不许报「零欠账」）。
  *
@@ -216,15 +222,20 @@ export function judgeOcclusion(pageId, trigger, occ, debtRegistry) {
   const ov = occ.overlay;
   const head = `浮层 <${ov.sel}> rect=${ov.rect.w}×${ov.rect.h}@${ov.rect.x},${ov.rect.y}`;
   if (occ.occludedBy.length > 0) {
+    // 读数加细（WO-U8-OCCLUSION-GRID，纯加性）：旧读数（坐标 at / 压人元素 by / byText / N/M 点）
+    // 原样保留，追加 B 线粒度的九宫格分区名 cell 与被压区域包围盒 occludedRect。
     const pts = occ.occludedBy
       .slice(0, 4)
-      .map((p) => `${p.at} 被 ${p.by}「${p.byText}」压住`)
+      .map((p) => `${p.at}${p.cell ? `（${p.cell}）` : ""} 被 ${p.by}「${p.byText}」压住`)
       .join(" · ");
+    const area = occ.occludedRect
+      ? `（被压区域 ≈ ${occ.occludedRect.w}×${occ.occludedRect.h}@${occ.occludedRect.x},${occ.occludedRect.y}）`
+      : "";
     if (debtKey && debtRegistry?.has(debtKey)) {
       return {
         fail: null,
         note:
-          `${where}：${head} 被压 ${occ.occludedBy.length}/${occ.samples} 点（${pts}）` +
+          `${where}：${head} 被压 ${occ.occludedBy.length}/${occ.samples} 点（${pts}）${area}` +
           `\n      ⇒ **欠账属实**（已登记 PRD §4.2.3，去向见表；不染红）`,
         debtKey,
         occluded: true,
@@ -232,7 +243,7 @@ export function judgeOcclusion(pageId, trigger, occ, debtRegistry) {
     }
     return {
       fail:
-        `${where}：${head} —— 浮层**被别的元素压住了**（${occ.occludedBy.length}/${occ.samples} 个采样点）：${pts}。` +
+        `${where}：${head} —— 浮层**被别的元素压住了**（${occ.occludedBy.length}/${occ.samples} 个采样点）${area}：${pts}。` +
         `\n     浮层被盖住 = 浮层白开（用户点开却看不全），且 PRD §4.2.3 **没有登记**这一笔。` +
         `\n     ⇒ 修 z-index / 堆叠上下文；确需挂账就显式登记 §4.2.3 并写清去向。**不许豁免。**`,
       note: "",
@@ -328,6 +339,15 @@ const CANARY_TOPMOST = `
   <div id="ov" style="position:absolute;left:40px;top:40px;width:320px;height:160px;z-index:99;background:#fff;border:1px solid #999">浮层正文：口径说明一段</div>
 </main>`;
 
+/* 方位变异（WO-U8-OCCLUSION-GRID）：遮挡块**只压浮层右下角一个采样点** ——
+ * 报告必须说出且只说出「右下」。咬「少报/多报/报成不存在的格」；
+ * 「行/列序号互换」由必咬③的逐点方位映射咬（右下角在对角线上，转置后仍是右下，本夹具咬不到互换）。 */
+const CANARY_OCCLUDED_CORNER = `
+<main style="position:relative">
+  <div id="ov" style="position:absolute;left:40px;top:40px;width:240px;height:160px;z-index:1;background:#fff;border:1px solid #999">浮层正文：口径说明一段</div>
+  <div id="cov" style="position:absolute;left:200px;top:150px;width:200px;height:200px;z-index:2;background:#ddd">只压右下角的块</div>
+</main>`;
+
 async function withHtmlPage(browser, html, fn) {
   const page = await browser.newPage({ viewport: VIEWPORT });
   try {
@@ -411,6 +431,86 @@ async function runCanary(browser) {
     }
     const j3 = judgeOcclusion("canary-occluded", null, o1);
     if (!j3.fail) problems.push(`必咬③量到了被压采样点，判据却没判红 —— 门没牙`);
+    // ── 新维度断言（WO-U8-OCCLUSION-GRID）：九宫格分区名 + byRect + occludedRect ──
+    // 夹具几何：cov 块（left:100 top:80 240×160 z-2）相对浮层（left:40 top:40）右移 60、下移 40，
+    // 恰好压住中列/右列 × 中行/下行 4 个采样点。断言写成**相对几何**（夹具在视口里的绝对原点
+    // 受 body margin/外边距折叠影响，绝对坐标断言会咬错对象 —— 本单实测踩过）：
+    // 分区集合、byRect 宽高与相对偏移、occludedRect 落在压人块内部，全都与原点无关。
+    const CELLS9 = ["左上", "上中", "右上", "左中", "正中", "右中", "左下", "下中", "右下"];
+    const badCell = o1.occludedBy.filter((p) => !CELLS9.includes(p.cell));
+    if (badCell.length) {
+      problems.push(
+        `必咬③被压点的九宫格分区名缺失/非法：${badCell.map((p) => `${p.at}=${p.cell ?? "（无）"}`).join(" · ")} —— 新维度没落地`,
+      );
+    }
+    const wantCells = ["正中", "右中", "下中", "右下"];
+    const gotCells = o1.occludedBy.map((p) => p.cell);
+    if (!(o1.occludedBy.length === 4 && wantCells.every((c) => gotCells.includes(c)))) {
+      problems.push(
+        `必咬③被压点方位集合应是 4 点 ${wantCells.join("/")}（cov 压住浮层中右一片到右下），` +
+          `实得 ${o1.occludedBy.length} 点：${gotCells.join("/") || "空"} —— 分区定位说错方位`,
+      );
+    }
+    // 逐点方位映射：集合断言对「行/列序号互换」不敏感（本夹具 4 点恰好转置对称，本单实测
+    // 互换变异体曾因此漏网）—— 必须逐点咬：x 最大的被压点必须在右列（右中），
+    // y 最大的必须在下行（下中）；互换变异体会把两者对调，当场红。
+    const xOf = (p) => Number(p.at.split(",")[0]);
+    const yOf = (p) => Number(p.at.split(",")[1]);
+    const rightmost = o1.occludedBy.reduce((a, p) => (xOf(p) > xOf(a) ? p : a));
+    const bottommost = o1.occludedBy.reduce((a, p) => (yOf(p) > yOf(a) ? p : a));
+    if (rightmost.cell !== "右中") {
+      problems.push(`必咬③逐点映射：最右被压点（${rightmost.at}）必须是「右中」，实得「${rightmost.cell}」—— 行/列算反了`);
+    }
+    if (bottommost.cell !== "下中") {
+      problems.push(`必咬③逐点映射：最下被压点（${bottommost.at}）必须是「下中」，实得「${bottommost.cell}」—— 行/列算反了`);
+    }
+    const ovr = o1.overlay.rect;
+    const badRect = o1.occludedBy.filter(
+      (p) =>
+        !p.byRect ||
+        p.byRect.w !== 240 ||
+        p.byRect.h !== 160 ||
+        p.byRect.x - ovr.x !== 60 || // cov.left(100) − ov.left(40)
+        p.byRect.y - ovr.y !== 40, //   cov.top(80) − ov.top(40)
+    );
+    if (badRect.length) {
+      problems.push(
+        `必咬③被压点的 byRect 应是压人块矩形（240×160 · 相对浮层右 60 下 40），` +
+          `实得 ${badRect.map((p) => `${p.at}→${JSON.stringify(p.byRect ?? null)}`).join(" · ")} —— 压人元素矩形没量对`,
+      );
+    }
+    // occludedRect = 被压采样点包围盒，必须落在压人块矩形内部（B 线 coverRect 的语义）。
+    const ar = o1.occludedRect;
+    const br0 = o1.occludedBy[0]?.byRect;
+    if (
+      !(
+        ar &&
+        br0 &&
+        ar.w > 0 &&
+        ar.h > 0 &&
+        ar.x >= br0.x &&
+        ar.y >= br0.y &&
+        ar.x + ar.w <= br0.x + br0.w &&
+        ar.y + ar.h <= br0.y + br0.h
+      )
+    ) {
+      problems.push(
+        `必咬③ occludedRect（被压采样点包围盒）应存在且落在压人块内部，实得 ${JSON.stringify(ar ?? null)}（压人块 ${JSON.stringify(br0 ?? null)}）`,
+      );
+    }
+  }
+
+  // ── 方位变异向：只压右下角的遮挡，报告必须说出且只说出「右下」───────────────
+  const o3 = await withHtmlPage(browser, CANARY_OCCLUDED_CORNER, (page) =>
+    page.evaluate(measureOcclusionInPage, { overlaySelector: "#ov", rootSelector: "main" }),
+  );
+  if (!o3.ok) problems.push(`方位变异（只压右下角）量测没做成：${o3.reason}`);
+  else if (!(o3.occludedBy.length === 1 && o3.occludedBy[0].cell === "右下")) {
+    problems.push(
+      `方位变异：遮挡块只压浮层右下角一个采样点，报告必须说出且只说出「右下」，实得 ` +
+        `${o3.occludedBy.length} 点（${o3.occludedBy.map((p) => `${p.at}=${p.cell ?? "（无）"}`).join(" · ") || "空"}）—— ` +
+        `分区定位说错方位（行/列序号算反或张冠李戴都会被这一向咬住）`,
+    );
   }
 
   // ── 必不咬：置顶浮层一个被压点都不许报，且「盖住了谁」必须量到 ─────────────
@@ -425,6 +525,11 @@ async function runCanary(browser) {
     const hit = o2.covers.find((c) => c.text.includes("被浮层盖住"));
     if (!hit) {
       problems.push(`必不咬样例里浮层明明盖着「被浮层盖住的底层文本」，covers 却没量到 —— 「A 盖住了 B 的哪一部分」这一维瞎了`);
+    } else if (!(hit.rect && hit.rect.w > 0 && hit.rect.h > 0)) {
+      problems.push(
+        `必不咬 covers 条目缺被盖元素矩形 rect（实得 ${JSON.stringify(hit.rect ?? null)}）—— ` +
+          `WO-U8-OCCLUSION-GRID 的加性维度没落地`,
+      );
     }
     const j4 = judgeOcclusion("canary-topmost", null, o2);
     if (j4.fail) problems.push(`必不咬置顶浮层被判据误判红：${j4.fail}`);
@@ -463,7 +568,7 @@ async function runCanary(browser) {
     );
   }
 
-  return { problems, r1, r2, o1, o2 };
+  return { problems, r1, r2, o1, o2, o3 };
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -661,12 +766,14 @@ async function main() {
       `✓ 金丝雀双侧通过 —— 必咬①改输入即变探到 changed（${canary.r1.latencyMs}ms）· ` +
         `必咬②提交闸探到 unchanged 且对「符合」格判红、对「不符合」格放行 · ` +
         `必咬②b纯回显归因为 echo 并按「没重演」判 · 判据单元四向（混合/全变×符合/不符合）· ` +
-        `必咬③被压浮层报出 ${canary.o1.occludedBy?.length ?? "?"}/${canary.o1.samples ?? "?"} 个被压采样点并判红 · ` +
-        `必不咬置顶浮层 0 误报且盖住了 ${canary.o2.coveredEls ?? "?"} 个文本元素 · ` +
+        `必咬③被压浮层报出 ${canary.o1.occludedBy?.length ?? "?"}/${canary.o1.samples ?? "?"} 个被压采样点并判红` +
+        `（方位 ${canary.o1.occludedBy?.map((p) => p.cell).join("/") ?? "?"} · byRect/occludedRect 精确命中夹具真值）· ` +
+        `方位变异向只压右下角报出且只报出「${canary.o3?.occludedBy?.[0]?.cell ?? "?"}」· ` +
+        `必不咬置顶浮层 0 误报且盖住了 ${canary.o2.coveredEls ?? "?"} 个文本元素（covers 带被盖元素矩形）· ` +
         `对账⑤三向（登记遮挡放行 / 未登记遮挡判红 / 修好没回写判红）· 解析⑥§4.2.3 登记表。`,
     );
     if (wantSelftest) {
-      console.log("✓ --selftest 通过（金丝雀八向：B-1 双向 + 回显归因 + 判据单元 + U8 双向 + 对账三向 + 登记表解析）。");
+      console.log("✓ --selftest 通过（金丝雀九向：B-1 双向 + 回显归因 + 判据单元 + U8 双向 + 方位变异 + 对账三向 + 登记表解析）。");
       await browser.close().catch(() => {});
       process.exit(0);
     }

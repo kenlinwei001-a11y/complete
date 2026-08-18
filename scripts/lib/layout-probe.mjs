@@ -1047,9 +1047,20 @@ export function listVisibleOverlaysInPage(opts) {
 /**
  * 浏览器侧：量一个浮层的遮挡关系 —— **「A 盖住了 B 的哪一部分」的唯一实现**。
  * 返回：
- *   occludedBy  浮层矩形内被**别的元素**压在下面的采样点（z-order 维：浮层被盖 = 违规）
- *   covers      浮层盖住了哪些可见文本元素、各盖住百分之几（矩形相交维：信息面回答）
- *   outside     采样点落在视口外的个数（诚实位：那几个点没量，不是量了没问题）
+ *   occludedBy  浮层矩形内被**别的元素**压在下面的采样点（z-order 维：浮层被盖 = 违规）。
+ *               每个被压点除坐标 `at` / 压人元素 `by` / `byText` 外，还报（WO-U8-OCCLUSION-GRID
+ *               纯加性并入，源自 B 线 fdd19a43d 的 measureOcclusion）：
+ *               · `cell`   —— 该点在浮层矩形里的**九宫格分区名**
+ *                 （左上/上中/右上/左中/正中/右中/左下/下中/右下）；
+ *               · `byRect` —— 压人元素（栈顶）的像素矩形（相对视口）；
+ *   occludedRect 全部被压采样点的包围盒（B 线 coverRect 维度的 A 线对应物；
+ *               口径 = **采样点**包围盒，不是精确遮挡区域；无被压点时为 null）；
+ *   covers      浮层盖住了哪些可见文本元素、各盖住百分之几（矩形相交维：信息面回答）。
+ *               条目追加 `rect`（被盖元素自身矩形）—— 同样是 B 线粒度的纯加性并入；
+ *   outside     采样点落在视口外的个数（诚实位：那几个点没量，不是量了没问题）。
+ * ⚠ 加性边界：采样网格仍是 3×3、判据逻辑/对账语义不动 —— B 线的网格密度参数化
+ *   （stepX/Y = max(4, w/40, h/30)）**不并入**：它会改变 samples 总数，从而改变
+ *   judgeOcclusion 的「N/M 点」读数与 §4.2.3 对账语义，那是替换不是加性。
  */
 export function measureOcclusionInPage(opts) {
   const ov = document.querySelector(opts.overlaySelector);
@@ -1064,6 +1075,22 @@ export function measureOcclusionInPage(opts) {
   const occludedBy = [];
   let samples = 0;
   let outside = 0;
+  // 九宫格分区名册（中文自然阅读序：四角列+行「左上/右下」，边中点方向在前「上中/下中/左中/右中」，
+  // 中心「正中」）—— B 线 cells 维度的 A 线落法。
+  // 行/列序号取自**真实采样点**在浮层矩形里的相对位置（与 B 线同一个公式），
+  // 不按循环下标推 —— 采样点真在哪一格就报哪一格。
+  const cellOf = (cx, cy) =>
+    cx === 1 && cy === 1
+      ? "正中"
+      : cx === 1
+        ? `${["上", "中", "下"][cy]}中` // 上中 / 下中
+        : cy === 1
+          ? `${["左", "中", "右"][cx]}中` // 左中 / 右中
+          : `${["左", "中", "右"][cx]}${["上", "中", "下"][cy]}`; // 四角：左上/右上/左下/右下
+  let occMinX = Infinity;
+  let occMinY = Infinity;
+  let occMaxX = -Infinity;
+  let occMaxY = -Infinity;
   for (const fx of [0.15, 0.5, 0.85]) {
     for (const fy of [0.15, 0.5, 0.85]) {
       const x = r.left + r.width * fx;
@@ -1077,11 +1104,22 @@ export function measureOcclusionInPage(opts) {
       const top = stack[0];
       const onTop = top && (top === ov || ov.contains(top));
       if (!onTop) {
+        const cx = Math.min(2, Math.floor(((x - r.left) / r.width) * 3));
+        const cy = Math.min(2, Math.floor(((y - r.top) / r.height) * 3));
+        const br = top ? top.getBoundingClientRect() : null;
         occludedBy.push({
           at: `${Math.round(x)},${Math.round(y)}`,
+          cell: cellOf(cx, cy),
           by: `<${(top?.tagName || "?").toLowerCase()}${top ? "." + clsOf(top).slice(0, 50) : ""}>`,
           byText: (top?.textContent || "").trim().slice(0, 40),
+          byRect: br
+            ? { x: Math.round(br.x), y: Math.round(br.y), w: Math.round(br.width), h: Math.round(br.height) }
+            : null,
         });
+        if (x < occMinX) occMinX = x;
+        if (y < occMinY) occMinY = y;
+        if (x > occMaxX) occMaxX = x;
+        if (y > occMaxY) occMaxY = y;
       }
     }
   }
@@ -1109,6 +1147,7 @@ export function measureOcclusionInPage(opts) {
         cls: clsOf(el).slice(0, 50),
         text: t.slice(0, 40),
         coverPct: pct,
+        rect: { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) },
       });
     }
   }
@@ -1123,6 +1162,14 @@ export function measureOcclusionInPage(opts) {
     samples,
     outside,
     occludedBy,
+    occludedRect: occludedBy.length
+      ? {
+          x: Math.round(occMinX),
+          y: Math.round(occMinY),
+          w: Math.round(occMaxX - occMinX),
+          h: Math.round(occMaxY - occMinY),
+        }
+      : null,
     covers: covers.slice(0, 10),
     coveredEls: covers.length,
   };
