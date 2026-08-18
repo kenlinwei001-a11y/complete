@@ -27,6 +27,8 @@ import {
 } from "./inspectorModel";
 // 求解器 key 取既有单源（`chainLineMap.ts` 已为前端登记过一次）——本文件不再写第二遍那个字符串。
 import { CHAIN_LOSS_SOLVER_KEY } from "./chainLineMap";
+// WO-R13-ONTOCHAIN-PANEL · 共享本体链组件：三段全部由本面板从响应字段透传。
+import { OntologyChainView, type OntologyChainData } from "@/components/OntologyChain";
 import { SEMANTICS_ORIGIN_NOTE, chainNodeSemantics, chainNodeSemanticsCoverage } from "./chainNodeSemantics";
 import styles from "./InspectorNodePanel.module.css";
 
@@ -85,10 +87,43 @@ function CarrierTag({ carrier }: { carrier: InspectorVariable["carrier"] }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // ① 五段耗时瀑布
 // ══════════════════════════════════════════════════════════════════════════════
+/** 本体链展开开关的集合切换（④ 证据行 / ③ KPI 行共用）。 */
+function toggleKey(set: ReadonlySet<string>, key: string): ReadonlySet<string> {
+  const next = new Set(set);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  return next;
+}
+
+/**
+ * 缺载段直接传 `null`：`OntologyChainView` 的三段内容是条件构造（present 为假时不构造那段 JSX），
+ * null ⇒ 组件渲染「后端未下发」+ `data-present="0"` 诚实位（早年求值崩点已在组件内修掉）。
+ */
+
 function WaterfallRow({ b, leadDays }: { b: WaterfallBucket; leadDays: number }) {
+  const [chainOpen, setChainOpen] = useState(false);
   const width = b.days !== null && leadDays > 0 ? Math.max((b.days / leadDays) * 100, 0.6) : 0;
   // `data-days` 刻意**不四舍五入**：门要断言「Δ等待 == Δ(everyDays)/2」这种精确机理，
   // 预先舍掉的那点误差会把判据松成"大概对"，而"大概对"正是本仓要根治的验收姿势。
+  //
+  // WO-R13-ONTOCHAIN-PANEL · 瀑布桶的本体链：
+  // 查过 inspectorModel 的 buildNodeLiveView / computeInspectorReadout —— 瀑布桶的 stepIds
+  // 来自本面板输入（占位构造器派生），引擎 evidence[] 的 stepId 是引擎侧段 id，
+  // 两者之间**没有现成映射**（kind 只是五值聚合桶，不是逐对象键）。
+  // ⇒ 对象段 / 边段传 null 并在 gaps 里写明缺什么；规则段只带实际求解器 key，不编公式。
+  const wfChain: OntologyChainData = {
+    object: null, // 缺载 ⇒ 组件渲染「后端未下发」诚实位
+    edge: null,
+    rule: { solverKey: CHAIN_LOSS_SOLVER_KEY },
+    gaps: [
+      "瀑布桶为五段聚合（按 kind 分桶）：chain_loss_attribution 响应不带桶级对象/派生边 ⇒ 对象段与边段后端未下发；逐段的对象→边→公式链见下方 ④ 下钻证据。",
+      ...(b.provenance === "LIVE"
+        ? []
+        : [
+            `本桶天数口径为「${PROVENANCE_LABEL[b.provenance]}」，不是引擎真值 ⇒ 规则段只标算出该口径数据的求解器，不冒充逐字段换算式。`,
+          ]),
+    ],
+  };
   return (
     <li
       className={styles.wfRow}
@@ -126,6 +161,26 @@ function WaterfallRow({ b, leadDays }: { b: WaterfallBucket; leadDays: number })
           {b.absenceReason}
         </small>
       ) : null}
+      <div className={styles.wfChain}>
+        <button
+          type="button"
+          className={styles.chainBtn}
+          data-testid={`insp-wf-chain-btn-${b.kind}`}
+          aria-expanded={chainOpen}
+          onClick={() => setChainOpen((v) => !v)}
+        >
+          本体链 {chainOpen ? "▾ 收起" : "▸ 展开"}
+        </button>
+        {chainOpen ? (
+          <div className={styles.chainBox}>
+            <OntologyChainView
+              conclusion={`${b.label} ${b.days === null ? "EMPTY" : fmtDays(b.days)}`}
+              chain={wfChain}
+              testId={`ontologyChain-wf-${b.kind}`}
+            />
+          </div>
+        ) : null}
+      </div>
     </li>
   );
 }
@@ -194,6 +249,7 @@ function NodeConflictSection({ nodeId }: { nodeId: string }) {
 
 /** ③ 节点级流指标 —— 只出引擎接得到的行；接不到就**不显示**（绝不填设计稿里那些编的数）。 */
 function NodeKpiSection({ live, state }: { live: NodeLiveView; state: LiveLoadState }) {
+  const [openChains, setOpenChains] = useState<ReadonlySet<string>>(new Set());
   return (
     <section className={styles.section} data-testid="insp-kpi" aria-labelledby="insp-kpi-h" data-kpi-count={String(live.kpis.length)}>
       <h4 className={styles.sectionTitle} id="insp-kpi-h">
@@ -208,13 +264,42 @@ function NodeKpiSection({ live, state }: { live: NodeLiveView; state: LiveLoadSt
         </p>
       ) : (
         <ul className={styles.kpiList}>
-          {live.kpis.map((k) => (
-            <li key={k.kpiId} className={styles.kpiRow} data-testid={`insp-kpi-${k.kpiId}`} data-value={k.value}>
-              <span className={styles.kpiLabel}>{k.label}</span>
-              <b className={styles.kpiValue}>{k.value}</b>
-              <small className={styles.kpiSource}>{k.source}</small>
-            </li>
-          ))}
+          {live.kpis.map((k) => {
+            const chainOpen = openChains.has(k.kpiId);
+            // WO-R13-ONTOCHAIN-PANEL：KPI 是多段聚合读数，响应不带 KPI 级对象/派生边
+            // ⇒ 对象段与边段传 null + gaps 明说；规则段只带实际求解器 key。
+            const kpiChain: OntologyChainData = {
+              object: null, // 缺载 ⇒ 组件渲染「后端未下发」诚实位
+              edge: null,
+              rule: { solverKey: CHAIN_LOSS_SOLVER_KEY },
+              gaps: [
+                "节点级流指标为本节点多段的聚合读数：chain_loss_attribution 响应不带 KPI 级对象/派生边 ⇒ 对象段与边段后端未下发；逐段的对象→边→公式链见下方 ④ 下钻证据。",
+              ],
+            };
+            return (
+              <li key={k.kpiId} className={styles.kpiRow} data-testid={`insp-kpi-${k.kpiId}`} data-value={k.value}>
+                <span className={styles.kpiLabel}>{k.label}</span>
+                <b className={styles.kpiValue}>{k.value}</b>
+                <small className={styles.kpiSource}>{k.source}</small>
+                <div className={styles.kpiChain}>
+                  <button
+                    type="button"
+                    className={styles.chainBtn}
+                    data-testid={`insp-kpi-chain-btn-${k.kpiId}`}
+                    aria-expanded={chainOpen}
+                    onClick={() => setOpenChains((s) => toggleKey(s, k.kpiId))}
+                  >
+                    本体链 {chainOpen ? "▾ 收起" : "▸ 展开"}
+                  </button>
+                  {chainOpen ? (
+                    <div className={styles.chainBox}>
+                      <OntologyChainView conclusion={`${k.label} ${k.value}`} chain={kpiChain} testId={`ontologyChain-kpi-${k.kpiId}`} />
+                    </div>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
@@ -243,6 +328,7 @@ function liveGapReason(live: NodeLiveView, state: LiveLoadState): string {
  */
 function DrillEvidenceSection({ live, state }: { live: NodeLiveView; state: LiveLoadState }) {
   const rows: readonly ChainLossEvidenceRow[] = live.evidence;
+  const [openChains, setOpenChains] = useState<ReadonlySet<string>>(new Set());
   return (
     <section
       className={styles.section}
@@ -305,6 +391,42 @@ function DrillEvidenceSection({ live, state }: { live: NodeLiveView; state: Live
                 </small>
               )}
               <small className={styles.evSolver}>算出它的求解器：{e.solverKey}</small>
+              {/* WO-R13-ONTOCHAIN-PANEL · 本体链：对象/边/规则三段全部透传本行响应字段，零编造。
+                  derivationEdge 为空串（锚点自身对象）⇒ 边段传 null，由共享组件渲染「后端未下发」。 */}
+              <div className={styles.evChain}>
+                <button
+                  type="button"
+                  className={styles.chainBtn}
+                  data-testid={`insp-drill-chain-btn-${e.stepId}`}
+                  aria-expanded={openChains.has(e.stepId)}
+                  onClick={() => setOpenChains((s) => toggleKey(s, e.stepId))}
+                >
+                  本体链 {openChains.has(e.stepId) ? "▾ 收起" : "▸ 展开"}
+                </button>
+                {openChains.has(e.stepId) ? (
+                  <div className={styles.chainBox}>
+                    <OntologyChainView
+                      conclusion={`${e.label} ${fmtDays(e.days)}`}
+                      chain={{
+                        object: {
+                          type: e.drillType,
+                          id: e.drillId,
+                          field: e.drillField,
+                          value: e.drillValue,
+                          unit: e.drillUnit,
+                        },
+                        edge: e.derivationEdge === "" ? null : e.derivationEdge,
+                        rule: { formula: e.conversion, solverKey: e.solverKey },
+                        gaps:
+                          e.derivationEdge === ""
+                            ? ["derivationEdge 为空串（锚点自身对象，无派生边）⇒ 边段按后端未下发呈现。"]
+                            : [],
+                      }}
+                      testId={`ontologyChain-drill-${e.stepId}`}
+                    />
+                  </div>
+                ) : null}
+              </div>
             </li>
           ))}
         </ul>

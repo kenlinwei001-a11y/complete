@@ -690,8 +690,9 @@ describe("§8 · WO-CHAIN-24 SEAM：新增节点三处同时在场", () => {
  *
  * 五条各咬一处**接缝**（不是各半 unit）：
  *  ① 宿主把已取回的载荷传下去 ⇒ 右栏那次自取**当场消失**（数请求次数，不是读代码）。
- *     同时把「传下去会丢什么」钉死：`ChainLossPayloadSchema` 今天 strip 掉 `evidence[]` ——
- *     哪天有人把它补进 schema，这条断言当场红，逼着一起改屏上那段说明（而不是留一句过期的话）。
+ *     代价账已闭环（2026-08-18 WO-R13-ONTOCHAIN-PANEL）：`ChainLossPayloadSchema` 已声明
+ *     `evidence[]`，宿主传下去不再丢证据；本组两条断言当时按设计当场红、现已翻成咬「带着走」，
+ *     屏上那段说明同步从「缺字段」翻成「已接通」（旧态原文见 git 历史）。
  *  ② 诚实缺席节点在画布上是**灰卡片**且与有数据卡**形状不同**：
  *     `data-card-shape` 两值互异 + 两者不共用任何 class + CSS 里 `.emptyCard` 真有 `clip-path`
  *     而 `.nodeCard` 没有。只调颜色深浅过不了这道门。
@@ -720,37 +721,41 @@ describe("§9 · WO-CONSOLE-CLEANUP：五笔欠账收口", () => {
     expect(screen.getByTestId("node-inspector-live-cost").textContent ?? "").toContain("未发第二次请求");
   });
 
-  it("① 代价钉死：宿主那一份被 ChainLossPayloadSchema **剥掉 evidence[]**，且屏上当面说明这件事", () => {
-    // 拿**真抓下来的**带证据载荷过一遍前端读取层，证明 strip 是真的发生（不是我猜的）
+  it("① 代价已闭环：宿主那一份经 ChainLossPayloadSchema **带着 evidence[]** 传下去（WO-R13 翻转本绊线）", () => {
+    // 拿**真抓下来的**带证据载荷过一遍前端读取层，证明证据一条不少地活着（不是我猜的）
     const raw = JSON.parse(readFileSync(join(FIX, "chain-loss-live-evidence.json"), "utf8")) as Record<string, unknown>;
     delete raw.__fixture_provenance;
     expect((raw.evidence as unknown[]).length, "取证 fixture 必须真带 evidence，否则本条恒真").toBeGreaterThan(20);
     const parsed = ChainLossPayloadSchema.parse(raw) as Record<string, unknown>;
     expect(
       "evidence" in parsed,
-      "ChainLossPayloadSchema 已经声明 evidence[] ⇒ 宿主传下去不再丢证据 ⇒ SandboxConsole 里那段" +
-        "「R13 证据在控制台里是空的」说明已经过期，必须一起改（这条断言就是为了逼你改它）",
-    ).toBe(false);
+      "ChainLossPayloadSchema 必须声明 evidence[]（WO-R13-ONTOCHAIN-PANEL ① 已补）——" +
+        "谁把它从 schema 里拿掉，宿主传下去就重新丢证据，这条断言当场红",
+    ).toBe(true);
+    expect(
+      (parsed.evidence as unknown[]).length,
+      "evidence 透传条数一条不许少（剥键退化成剥行也不行）",
+    ).toBe((raw.evidence as unknown[]).length);
     expect("empty" in parsed, "empty[] 是声明过的，必须活着").toBe(true);
   });
 
-  it("① 屏上把这笔代价说清楚（不是悄悄丢一块功能）", async () => {
+  it("① 屏上把「证据已接通」说清楚（从「缺字段」翻成「已接通」，话必须在屏上交代）", async () => {
     const user = userEvent.setup();
     mount();
     await ready();
     await user.click(screen.getByTestId("sc-tab-vars"));
     await openInfo(user, "inspect-evidence");
+    // 第一层结论句也必须跟着翻（WO-SANDBOX-DECLUTTER：诚实位可降层、不可删，第一层要留记号）
+    expect((await screen.findByTestId("sc-inspect-evidence-gap-brief")).textContent ?? "").toContain("已接通");
     const note = (await screen.findByTestId("sc-inspect-evidence-gap")).textContent ?? "";
     /**
-     * ⚠ 2026-08-17 WO-SCREEN-PLAINSPEAK 改判据落点，**这三条要证的事实一条没少**：
-     *   原断言咬 `evidence`（契约字段名）与 `ChainLossPayloadSchema`（zod 类型名）——
-     *   两者都是**不该上屏的开发话**，拿它们当探针 = 用违规内容证明合规内容还在。
-     *   落点换成人话版；字段名/类型名移进 SandboxConsole 那段的代码注释。
+     * 判据落点纪律同翻转前（2026-08-17 WO-SCREEN-PLAINSPEAK）：咬人话，不咬契约字段名/类型名。
+     * 2026-08-18 WO-R13-ONTOCHAIN-PANEL 翻转内容：证据已随宿主这一份接通，
+     * 屏上必须交代「带着走 + 与独立检视页同源」，否则老用户会以为面板悄悄换了数据源。
      */
-    expect(note, "必须点名是宿主这一份缺字段").toContain("控制台这一份缺这个字段");
-    expect(note, "必须把「不是引擎没给」说出来 —— 两件事修法完全不同").toContain("不是引擎没给");
-    expect(note, "必须给补齐路径").toContain("在解析层把这个字段加回来");
-    // 反向：契约字段名/类型名不许再印回屏上
+    expect(note, "必须说清宿主这一份现在带着证据走").toContain("原样带着它");
+    expect(note, "必须说清与独立节点检视页是同一份来源").toContain("同一份来源");
+    // 反向：契约字段名/类型名不许印上屏
     expect(note).not.toContain("ChainLossPayloadSchema");
   });
 

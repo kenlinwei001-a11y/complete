@@ -1360,6 +1360,31 @@
   flex-direction: column;
   gap: 4px;
 }
+/* WO-R13-ONTOCHAIN-PANEL ② · 阻滞点的本体链开关 + 弹层（零硬编码颜色，全走 token） */
+.impChain {
+  margin: 0 0 4px 10px;
+}
+.impChainBtn {
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 1px 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: var(--sbx-fs-body, 13px);
+  cursor: pointer;
+}
+.impChainBtn[aria-expanded="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.impChainPanel {
+  margin-top: 4px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--panel2);
+}
 .candBlock {
   margin: 0 0 4px 10px;
   padding-left: 8px;

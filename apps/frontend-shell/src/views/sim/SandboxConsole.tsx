@@ -23,7 +23,9 @@ import { ProcessCanvasView } from "./ProcessCanvasView";
  */
 import { ProcessInspectPanel } from "@/views/process/ProcessInspectPanel";
 import { PLACEHOLDER_SEED_DEFAULT } from "./physicalTopology";
-import { type ChainLossPayload } from "./chainLineMap";
+import { CHAIN_LOSS_SOLVER_KEY, type ChainLossPayload } from "./chainLineMap";
+// WO-R13-ONTOCHAIN-PANEL · 共享本体链组件：三段全部由本文件从响应字段透传，零编造。
+import { OntologyChainView, type OntologyChainData } from "@/components/OntologyChain";
 import {
   buildChainImpedimentModel,
   CANDIDATE_ABSENCE_LABEL,
@@ -261,6 +263,11 @@ export function SandboxConsole({
   const [mode, setMode] = useState<CanvasMode>("metro");
   /** 诊断抽屉：**默认关**，且关着时内部一个节点都不渲染（见 `diagnostics` 的注）。 */
   const [diagOpen, setDiagOpen] = useState(false);
+  /**
+   * WO-R13-ONTOCHAIN-PANEL ③ · 顶栏结论（前置期 · 流动效率）的本体链展开态。
+   * 同诊断抽屉的纪律：**默认关，关着时面板一个节点都不渲染**（不是 hidden）。
+   */
+  const [topChainOpen, setTopChainOpen] = useState(false);
   const openDiagnostics = useCallback(() => setDiagOpen(true), []);
   /** 懒挂载 + 挂了不卸：切模式不重取数、不丢缩放态（设计稿三块 `.cv` 同时在 DOM 里同理）。 */
   const [mounted, setMounted] = useState<Set<CanvasMode>>(() => new Set<CanvasMode>(["metro"]));
@@ -461,6 +468,8 @@ export function SandboxConsole({
   }, [board]);
 
   const totals = loss?.totals ?? null;
+  /** WO-R13 ③ · 顶栏结论的本体链数据（纯派生：`buildTopConclusionChain` 是模块级纯函数，见文件尾）。 */
+  const topChain = useMemo(() => buildTopConclusionChain(loss), [loss]);
   const model = imp.status === "ready" ? imp.model : null;
   /** 选中类阻滞点落在哪些 stage 上（dim 联动的唯一判据，见 `stagesOfKind` 的诚实边界注）。 */
   const dimStages = useMemo(() => (dimKind === null ? new Set<string>() : stagesOfKind(model, dimKind)), [model, dimKind]);
@@ -585,6 +594,19 @@ export function SandboxConsole({
         <span className={`${styles.tag} ${styles.tagHot}`} data-testid="sc-leadtime">
           前置期 {fmtDays(totals?.leadTimeDays ?? null)}D · 增值 {fmtFlowEff(totals?.flowEfficiency ?? null)}
         </span>
+        {/* WO-R13-ONTOCHAIN-PANEL ③ · 这条结论「凭什么」的本体链开关。
+            硬约束①：`type="button"`（主区/下区的输入控件白名单门按等号断言，
+            只放行非输入元素；本开关在顶栏，同样只用非提交按钮保持全文件一个纪律）。 */}
+        <button
+          type="button"
+          className={styles.diagBtn}
+          data-testid="sc-topchain-toggle"
+          aria-expanded={topChainOpen}
+          aria-controls="sc-topchain-panel"
+          onClick={() => setTopChainOpen((v) => !v)}
+        >
+          本体链
+        </button>
         {/* 诊断抽屉入口：**折叠也必须看得见**，且带真计数（藏起来找不到的抽屉 = 把内容删了） */}
         <button
           type="button"
@@ -612,6 +634,19 @@ export function SandboxConsole({
             判据只有一条：删掉之后这个能力**一次点击仍然到得了**，且入口在每一页都可见 ——
             成立，所以这是重复而非分层。（`theme-mode.test.tsx` 直接渲染 `ThemeToggle` 本体，不经本页。） */}
       </div>
+
+      {/* ══ WO-R13-ONTOCHAIN-PANEL ③ · 顶栏结论的本体链面板（默认关 · 关着时一个节点都不渲染）══
+          数据全部来自宿主已取回的那份 chain_loss_attribution 载荷（`loss`）——
+          守恒/口径数字屏上已有（下区 Pareto 的 `sc-pareto-note`），这里不复制口径文案。 */}
+      {topChainOpen ? (
+        <section className={styles.diagPanel} id="sc-topchain-panel" data-testid="sc-topchain-panel">
+          <OntologyChainView
+            conclusion={`前置期 ${fmtDays(totals?.leadTimeDays ?? null)}D · 增值 ${fmtFlowEff(totals?.flowEfficiency ?? null)}`}
+            chain={topChain}
+            testId="sc-topchain"
+          />
+        </section>
+      ) : null}
 
       {/* ══ 诊断抽屉（默认关 · 关着时内部一个节点都不渲染）══════════════════════ */}
       {diagOpen ? (
@@ -1437,11 +1472,135 @@ function JumpList({
               {handoff.join.status === "JOINED" ? "已对到因子" : `未对到因子 · 只带 ${handoff.join.carried.join(" / ")}`}
             </span>
           </a>
+          {/* WO-R13-ONTOCHAIN-PANEL ② · 每条阻滞点的本体链开关。
+              与候选区同一条硬约束：**必须是 `<a>` 的兄弟节点，不许嵌进 `<a>`**
+              （按钮嵌进链接里既是非法 HTML，又会把"点开关"变成"点了跳走"）。
+              上面那个 `<a>` 的 href / onClick / testid 一个属性都没动。 */}
+          <ImpedimentChainLeg im={im} />
           <CandidateBlock im={im} />
         </div>
       ))}
     </div>
   );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-R13-ONTOCHAIN-PANEL · 结论 ⇐ 本体链（对象 → 边 → 规则/公式 三段）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ② **一条阻滞点的本体链开关 + 弹层**。
+ *
+ * 三段全部来自 `chain_impediments` 响应（契约 `packages/contracts/src/chain-sim.ts` 的
+ * `ChainImpediment`），本组件零编造、零换算：
+ *  · 对象 = `locus`（objectType/objectId/label）随行判定依据的实测值
+ *    （`evidence.metricValue` + `evidence.unit`，原值原单位，不换算）；
+ *  · 边   = `evidence.derivationEdge`（契约里是 optional —— 没下发就传 `null`，
+ *    组件渲染诚实缺位，gaps 里写明缺的是哪个字段）；
+ *  · 规则 = `evidence.ruleKey` / `ruleParamKey` / `solverKey`；
+ *    `ruleKey` 为 null ⇒ 规则段**整体**交组件的诚实位（只给一个求解器名会把
+ *    「谁算的依据」冒充成「哪条规则判的」），gaps 写「规则码未下发」。
+ *
+ * 开关硬约束：`<button type="button">`（主区/下区输入控件白名单门按**等号**断言，
+ * `input/select/textarea/button[type=submit]` 之外一律不许出现）。
+ */
+function ImpedimentChainLeg({ im }: { im: ImpedimentVM }) {
+  const [open, setOpen] = useState(false);
+  const chain: OntologyChainData = {
+    object: {
+      type: im.locus.objectType,
+      id: im.locus.objectId,
+      label: im.locus.label,
+      value: im.evidence.metricValue,
+      unit: im.evidence.unit,
+    },
+    edge: im.evidence.derivationEdge,
+    rule:
+      im.evidence.ruleKey === null
+        ? null
+        : {
+            ruleKey: im.evidence.ruleKey,
+            ruleParamKey: im.evidence.ruleParamKey ?? undefined,
+            solverKey: im.evidence.solverKey,
+          },
+    gaps: [
+      ...(im.evidence.ruleKey === null ? ["规则码未下发：判定依据里没有规则码，规则段如实缺位（不拿求解器名冒充规则）。"] : []),
+      ...(im.evidence.derivationEdge === null ? ["派生边未下发：判定依据里没有派生边字段值，边段如实缺位。"] : []),
+    ],
+  };
+  return (
+    <div className={styles.impChain}>
+      <button
+        type="button"
+        className={styles.impChainBtn}
+        data-testid={`sc-imp-chain-${im.impedimentId}`}
+        aria-expanded={open}
+        aria-controls={`sc-imp-chain-panel-${im.impedimentId}`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        本体链
+      </button>
+      {open ? (
+        <div
+          className={styles.impChainPanel}
+          id={`sc-imp-chain-panel-${im.impedimentId}`}
+          data-testid={`sc-imp-chain-panel-${im.impedimentId}`}
+        >
+          <OntologyChainView
+            conclusion={`${im.kindLabel} · ${im.locus.objectType}「${im.locus.label}」`}
+            chain={chain}
+            testId={`sc-imp-chain-view-${im.impedimentId}`}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * ③ **顶栏结论（前置期 · 流动效率）的本体链数据** —— 模块级纯函数，输入只有宿主那份载荷。
+ *
+ * 接线判据一句话：**只有响应里真有的字段才接**。
+ *  · 对象：锚点订单 = `anchor.so`（响应真有）。类型「Order」取自响应 `anchor.selection`
+ *    的原文语义（「锚点订单 = Order 按 so 字典序第一张 …」—— 引擎自己说的），
+ *    `anchor.selection` 原文随 gaps 上屏供复核，前端不改写。
+ *  · 边：这条结论是**全链聚合**，不经单条派生边 ⇒ `null`。
+ *    响应里真有的是 `evidence[].derivationEdge`（WO-R13 ① 补齐 schema 后随宿主载荷到手）——
+ *    把它们**去重后逐条列进 gaps**（原值透出，不聚合成一条假边）。
+ *  · 规则：只有实际求解器 key（载荷里没有规则码/公式字段）⇒ gaps 写明缺什么。
+ *  · 守恒与分母口径屏上已有（下区 `sc-pareto-note`），这里**不复制口径文案**，只互指。
+ */
+function buildTopConclusionChain(loss: ChainLossPayload | null): OntologyChainData {
+  if (loss === null) {
+    return {
+      object: null,
+      edge: null,
+      rule: { solverKey: CHAIN_LOSS_SOLVER_KEY },
+      gaps: ["载荷未回：这份结论由线路图模式取回后全页共用同一份，到手前对象段与边段如实缺位（不拿占位冒充）。"],
+    };
+  }
+  const gaps: string[] = [];
+  const so = loss.anchor?.so;
+  if (so === undefined) gaps.push("锚点订单未下发：响应没有锚点字段，对象段如实缺位。");
+  if (loss.anchor?.selection !== undefined) gaps.push(`锚点选取口径（响应原文）：${loss.anchor.selection}`);
+  const evRows = loss.evidence ?? [];
+  if (loss.evidence === undefined) {
+    gaps.push("下钻证据未随载荷下发 ⇒ 这条聚合结论实际走过哪些派生边无从列出（不是零条，是没给）。");
+  } else {
+    const edges = [...new Set(evRows.map((r) => r.derivationEdge))];
+    gaps.push(
+      `这条结论是全链 ${evRows.length} 个环节的聚合，不经单条派生边 ⇒ 边段如实缺位；` +
+        `本次载荷实际走过的派生边共 ${edges.length} 条（原值逐条如下，逐环节的「对象→边→规则」见右栏节点检视的下钻证据）：`,
+    );
+    for (const e of edges) gaps.push(`派生边：${e === "" ? "（空串 = 锚点自身对象）" : e}`);
+  }
+  gaps.push("规则码与公式原文未下发：该载荷没有这两个字段，规则段只标算出它的求解器；守恒与分母口径见下区损失构成区的说明。");
+  return {
+    object: so === undefined ? null : { type: "Order", id: so },
+    edge: null,
+    rule: { solverKey: CHAIN_LOSS_SOLVER_KEY },
+    gaps,
+  };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1848,42 +2007,40 @@ function stagesOfKind(model: ChainImpedimentModel | null, kind: ChainImpedimentK
 }
 
 /**
- * WO-CONSOLE-CLEANUP ① 的**代价当面说**。
+ * WO-CONSOLE-CLEANUP ① 的代价说明 —— **2026-08-18 已由 WO-R13-ONTOCHAIN-PANEL ① 闭环**。
  *
- * ── 这条注释记的是一次实测，不是推理 ─────────────────────────────────────────
- * 把宿主已取回的载荷传给右栏（`lossPayload`）确实把第二次 `chain_loss_attribution` 消掉了，
- * 但**同时消掉了 R13 下钻三元组**：宿主手里那一份是经 `chainLineMap.ts` 的
- * `ChainLossPayloadSchema` 解析过的，而那个 schema **没有声明 `evidence[]`** ——
- * zod 的 `object` 是 strip 语义，未声明的键**当场被剥掉**。
- * 实测（`fixtures/chain-loss-live-evidence.json` 过一遍该 schema）：`evidence` 26 条 → 解析后**键都不在了**；
- * `empty[]` 因为在 schema 里声明了，原样活着。
+ * ── 这笔账的来龙去脉（旧账原文见 git 历史，这里只留结论）─────────────────────
+ * 旧事实：宿主手里那份载荷经 `chainLineMap.ts` 的 `ChainLossPayloadSchema` 解析，
+ * 而那个 schema 当时**没有声明 `evidence[]`** ⇒ zod strip 语义把下钻证据当场剥掉，
+ * 面板那句「本节点没有下钻证据」说的是宿主这一份缺字段，不是引擎没给。
  *
- * 于是面板里那句「本节点没有下钻证据」在控制台里说的是**宿主这一份缺这个字段**，
- * 不是引擎没给 —— 两件事修法完全不同，不许混为一谈（"接了线没数据" ≠ "没接线"）。
- * 那句话由 `InspectorNodePanel` 出，本单不许碰那个文件，所以把真相**贴在它旁边**。
+ * 新事实（本单改的）：`ChainLossPayloadSchema` 已补上 `evidence[]`（行 schema 复用
+ * `inspectorModel.ts` 已导出的那一份）。宿主注入的 `lossPayload` 因此**带着证据**到达
+ * `InspectorNodePanel` —— 该面板本就用声明了 evidence 的读取层
+ * （`NodeSemanticPayloadSchema`）解析注入载荷，故控制台里的下钻证据与独立页
+ * `/v/node-inspector` 自取的**同一份来源**，两边说的是同一件事。
+ * （面板本体由另一张单在改，本文件只改这段注释/文案；传参一行没动。）
  *
- * 补齐路径是**一行**：`ChainLossPayloadSchema` 里加上 `evidence`。该文件在本单
- * 🚦「绝对不碰」清单里，故留给下一张单；加上之后本文件**一行都不用改**，证据自动回来。
- * 独立页 `/v/node-inspector` 仍走自取（拿的是原始响应），证据照常，零回归。
+ * ⚠ 接缝门联动：`sandbox-console.seam.test.tsx` §9① 那两条断言（「schema 确实剥掉
+ *   evidence」+ 屏上旧文案）是它自己的注释明写的**到期绊线**，本单落地后当场红 ——
+ *   红得对；同单集成时已按绊线注释的设计翻转成咬「带着走 + 屏上『已接通』」。
  *
- * 门：`sandbox-console.seam §9` 咬死「该 schema 今天确实剥掉 evidence」+「屏上这句话在」——
- * 哪天有人把 schema 补上了，那条断言当场红，逼着把这段文案一起改掉（而不是留一句过期的话）。
+ * 屏上这块保留（不是删除）：它现在说的是「证据已接通」这件**新**事实 ——
+ * 从「缺字段」翻到「已接通」若没有一句话在屏上交代，老用户会以为面板换了数据源。
  */
 function InspectorEvidenceGapNote() {
   return (
     // WO-SANDBOX-DECLUTTER（规范 §1「诚实位可降层、不可删，且第一层要留记号」）：
-    // 第一层只留一句**结论**（这一栏的 R13 证据是空的、原因不在引擎），完整取证进 `?`。
+    // 第一层只留一句**结论**（下钻证据已随宿主这一份接通），完整来龙去脉进 `?`。
     <p className={styles.noteWarn} data-testid="sc-inspect-evidence-gap-brief">
-      <b>下钻证据为空 —— 是宿主这一份载荷缺字段，不是引擎没给。</b>
+      <b>下钻证据已接通 —— 宿主这一份载荷现在带着它传给右栏。</b>
       <InfoPopover topic={zh.sim.sandbox.info.inspectorEvidence} testId="inspect-evidence" align="right">
         <span data-testid="sc-inspect-evidence-gap">
-      <b>本栏复用控制台已经取回的那一份数据（不再自取第二次）。代价照实说：</b>
-      控制台这一份在解析时把「下钻证据」这个字段丢掉了 ——
-      所以下面「下钻证据」在<b>控制台里</b>是空的。
-      面板那句「本节点没有下钻证据」说的是<b>控制台这一份缺这个字段</b>，<b>不是引擎没给</b>。
-      诚实缺席行原样都在。
-      要补齐，需要在解析层把这个字段加回来（那是另一件事）；加上后本页一行不改、证据自动回来。
-      独立的节点检视页自取原始数据，证据照常。
+      <b>本栏复用控制台已经取回的那一份数据（不再自取第二次）。</b>
+      此前控制台这一份在解析时会把「下钻证据」字段丢掉，这里只能标注「缺字段、不是引擎没给」；
+      现在解析层已把这个字段补回来，宿主这一份<b>原样带着它</b>传给右栏 ——
+      控制台里的下钻证据与独立的节点检视页（自取原始数据）<b>同一份来源</b>，两边说的是同一件事。
+      诚实缺席行自始至终原样都在。
         </span>
       </InfoPopover>
     </p>
