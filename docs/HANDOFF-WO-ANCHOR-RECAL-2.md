@@ -164,3 +164,91 @@ RC=1（三次运行逐字一致）。留红 = 57 LINE_DRIFT + 3 SYMBOL_ONLY_IN_C
 - git 网络全程 SSH 一次性 URL（fetch / push），未改 remote。
 - 未跑 vitest / pnpm build / 任何 `--update` 类全局再生成。
 - 派前查远端：`claude/handoff-wo-anchor-recal-2` 不存在（无撞车）。
+
+---
+
+# 扩权续做（2026-08-18 · 复验转修单模式）
+
+扩权后已执行：3 条语义重锚 + 25 处裸锚点补 symbol + `--update` 纯行号回写（57 条 LINE_DRIFT）。
+**终态 RC=1，残余红仅 2 条 ANCHOR_DELETED，唯一消红路 = 动基线 ⇒ 按硬约束二次停手，基线未动。**
+
+## ⑨ 3 条 SYMBOL_ONLY_IN_COMMENT 重锚证据表
+
+| 本体行 | 旧锚 → 新锚 | 核实证据（亲手 grep/sed） |
+|---|---|---|
+| L401 | `apps/agentcore/src/workflow/executor.ts:19 (ExtraToolStep)` → `packages/contracts/src/skill-compile.ts:116 (ExtraToolStep)` | 新家 L116 `export type ExtraToolStep = z.infer<typeof ExtraToolStepSchema>;`；旧文件全文件仅注释 13/17/18 命中（WO-STEP-VOCAB-UPLIFT 已迁出，头注历史叙述保留未动） |
+| L1870 | `apps/agentcore/src/catalog/service.ts:28 (ExtraToolStepSchema)` → `packages/contracts/src/skill-compile.ts:109 (ExtraToolStepSchema)` | 新家 L109 `export const ExtraToolStepSchema = z.object({`；旧文件仅注释 21/23 命中 |
+| L2246 | 同上（§8 G-STEP-VOCAB-SPLIT-TWO-HOMES 行内第二处） | 同上 |
+
+## ⑩ 8 条 UNVERIFIED_GROWTH 处置：25 处裸锚点补 symbol 证据表
+
+逐条打开指向文件核内容属实后补全 `path:line (symbol)`（无一条「对不上」）：
+
+| 裸锚（旧） | 新锚 | 核实证据 |
+|---|---|---|
+| `tools/executor.ts:106` ×2（L2330 散文+链路格） | `apps/agentcore/src/tools/executor.ts:106 (taskSnapshotEpoch)` | L103-106 `taskSnapshotEpoch` 内 `await this.deps.dataCore.epoch.current(ctx)` —— §13.1 首读捕获逐字相符 |
+| `executor.ts:378`（L2330） | `apps/agentcore/src/tools/executor.ts:378 (taskSnapshotEpoch)` | L378 `await this.taskSnapshotEpoch(ctx)` 作为 `queryObjects` 第 5 实参（asOfEpoch）传入。**归属判定**：workflow/executor.ts:378 是无关 provenance 代码，内容核实指向 tools/executor.ts |
+| `server.ts:2265`（L2330） | `apps/agentcore/src/server.ts:2293 (solver.invoke)` | L2293 `deps.dataCore.solver.invoke(a, key, body.args, cancel.signal)` —— 取消 signal 真实传递点；:2265 已漂成 zod parse 行 |
+| `dril/resource-registry.ts:115`（L2330） | `apps/agentcore/src/dril/resource-registry.ts:115 (projectTenant)` | L115 `rules.listPublishedRules(ctx)`；所在方法 `projectTenant` 定义于 L94 |
+| `ProjectSimView.tsx:862` ×2（L2203/2204） | `apps/frontend-shell/src/views/sim/ProjectSimView.tsx:939 (DynamicLeverPanel)` | L939 `<DynamicLeverPanel` 真 usage（import 行 L21 被护栏排除）；:862 已漂成无关表格行 |
+| `apps/datacore/src/app.ts:4345 (/a/v1/action-drafts/:id/decision)` ×5（L2076/2124/2127/2131/2135） | `apps/datacore/src/app.ts:4500 (actions.approve)` | 路由注册现 4493，handler L4500 `actions.approve(...)`；原括号是路由串（含 `/` 不可作 symbol），改指 handler 真实 symbol |
+| `apps/datacore/src/app.ts:4244 (/a/v1/action-drafts/:id/submit)` ×5（同上 5 行） | `apps/datacore/src/app.ts:4394 (actions.submit)` | 路由现 4392，L4394 全文件唯一 `actions.submit` |
+| `apps/datacore/src/app.ts:4778 (/a/v1/process-instances)` ×4（L2124/2127/2131/2135） | `apps/datacore/src/app.ts:5119 (processRuntime.create)` | 路由现 5115，L5119 全文件唯一 `processRuntime.create` |
+| `app.ts:354`（L130） | `apps/datacore/src/app.ts:482 (ActionService)` | L482 `new ActionService(repos, rules, outbox, notifications, metrics)` 构造点属实（散文「未传 metrics」为存量叙述，未动） |
+| `app.ts:772`（L2237） | `apps/datacore/src/app.ts:1482 (mustAdminOrService)` | L1482 定义处 `const mustAdminOrService = (c: AuthCtx) => {`；:772 已漂成无关 ForecastAdoption 代码 |
+| `service.ts:5866` ×2（L2224/2226） | `apps/datacore/src/solvers/service.ts:5866 (pathKey)` | 行号未漂：L5866-5867 `pathKey` 消费方逐字相符 |
+
+各键计数效果：`app.ts` 12→10 · `apps/datacore/src/app.ts` 16→2 · `service.ts` 9→7 · `ProjectSimView.tsx` 2→0 ·
+`tools/executor.ts` 2→0 · `executor.ts` 1→0 · `server.ts` 1→0 · `dril/resource-registry.ts` 1→0 ——
+8 条 GROWTH 全消，且全部为「补 symbol 降存量」（棘轮允许方向），基线未动。
+
+## ⑪ --update diff 逐 hunk 核查结论
+
+`git diff docs/SYSTEM-ONTOLOGY.md`：44 行变动（22 hunk 内）。自动审计两遍：
+
+1. **无白名单审计**：对每对旧/新行断言 ①锚点 (path, symbol) 序列逐字相等 ②剥掉全部锚点后正文逐字节相等
+   ⇒ 15 行被标记——与我亲手编辑的 15 行（14 组替换）**逐一对应，零多零少**。
+2. **白名单核销审计**：把 28 处手工替换（3 重锚 + 25 补 symbol）逐一核销后再跑同一断言 ⇒
+   **FULL PASS**：其余 29 行全部为锚点语法内纯行号数字变化，symbol/文件路径/锚文本/正文零变动。
+
+`--update` 无越权改写，无需还原任何 hunk。
+
+## ⑫ 终态与二次停手（硬约束触发）
+
+终态门 RC=1，残余红**仅** 2 条：
+
+```
+- [ANCHOR_DELETED] 基线中的已校准锚点消失了：apps/agentcore/src/catalog/service.ts::ExtraToolStepSchema
+- [ANCHOR_DELETED] 基线中的已校准锚点消失了：apps/agentcore/src/workflow/executor.ts::ExtraToolStep
+```
+
+成因：⑨重锚后旧 `path::symbol` 键从本体消失（symbol 已迁 contracts，旧位置任何带旧键的锚点都只会红
+SYMBOL_GONE/COMMENT），而基线仍登记旧键（已核实 **d89b81393 的基线与 776b7d33e 逐字相同**，旧键仍在）。
+`--update` 自身也在落基线前被 dropped-keys 防线拒绝（exit 1、未写基线）——与设计一致。
+
+**唯一消红路 = 基线换键**（删 2 旧键、加 2 新 contracts 键），硬约束「基线 JSON 零字节」⇒ 二次停手。
+处置建议：派一张「基线换键」微单（diff = 删 2 行加 2 行，本报告⑨节即重锚证据），换键后门即 RC=0。
+
+## ⑬ 金丝雀（变异反证）
+
+亲手改坏：`ProjectSimView.tsx:939 (DynamicLeverPanel)` → `(DynamicLeverPanelZZZ)` ⇒
+门当场新增 2 条 `[SYMBOL_GONE]` 逐字点名「symbol `DynamicLeverPanelZZZ` 在
+apps/frontend-shell/src/views/sim/ProjectSimView.tsx 中已不存在」（L2203/L2204）⇒ 还原 ⇒
+再跑与终态输出逐字一致。门对真漂移的检测活着（另证：自带金丝雀 26/26 每轮全中）。
+
+## ⑭ 冲突点名（dependson-cover 并线提示回执）
+
+- 我的 diff **未触** §8 `G-SKILL-REFGRAPH-DEAD-EXTRACTOR` 行本体（现 L2245）。
+- 唯一交集：L2258（`G-RENDERER-UNREGISTERED` 行，散文中引用了该 ID）上有 4 处 `--update` 行号重写
+  （PORT_TRANSFERS :3084→:3332 · transferId :4791→:4897 · rngShip :4236→:4342 · wipLots :4409→:4515）。
+- dependson-cover 的追加位置（L2245 行尾）与我重锚的 L2246（G-STEP-VOCAB 行）相邻不同行，并线机械解。
+- 新 tip d89b81393 的本体 delta 在 L1926（quantile 门登记，§7），与我 44 行变动零交集。
+
+## ⑮ 确定性与完整性回执
+
+- 终态门连跑 3 次输出逐字一致（含金丝雀还原后 1 次）。
+- `scripts/ontology-anchor-baseline.json` / `scripts/gate-ledger.json` **零字节改动**
+  （git porcelain 仅 `docs/SYSTEM-ONTOLOGY.md` + 本报告）。
+- 未跑 vitest / pnpm build；git 全程 SSH 一次性 URL。
+- 校准证据基 = 776b7d33e 的 src。d89b81393 并入 quantile/r13 后 src 有移动，TOL ±40 吸收小漂；
+  **并线后需重跑一次门**，若出新 LINE_DRIFT 再走一遍 `--update` + ⑪同款审计即可。
