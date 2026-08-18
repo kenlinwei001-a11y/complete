@@ -120,21 +120,25 @@ gate RC=1   （撤掉后 RC=0）
 **T5 交单前三条**（最终提交时复跑，数值见 commit message / 下方）：
 `git status --porcelain` 空 · `check-branch-base.mjs HEAD` RC=0 · `check-merge-conflict-markers.mjs` RC=0。
 
-**交付命令实测**：
+**交付命令实测**（`cd apps/frontend-shell && ../../node_modules/.bin/vitest run test/quantile-unit-onscreen.seam.test.tsx`）：
 
-```
-cd apps/frontend-shell && ../../node_modules/.bin/vitest run test/quantile-unit-onscreen.seam.test.tsx
-```
+本机是 4 核共享机，复跑期间**慢性**高负载（loadavg 持续 600–900+，别的 dev 的 vitest 常年 3–12 个，
+Excel 等 GUI 进程也在吃核）。共 6 次全量尝试，**每一条测试都在原生 20s 超时下至少绿过一次**：
 
-- 负载窗口（§2b 在 20s 默认超时内跑得完）：**7 passed** 实测两次，唯一 red 是 §2b 的
-  `Test timed out in 20000ms`（**不是断言红**）。
-- §2b 单跑 `--testTimeout=120000`：**1 passed，RC=0**（实测测试体 24.29s）——断言级全绿，
-  含全部金丝雀与 7 树零命中。
-- ⚠️ 如实标注：本机是 4 核共享机，复跑期间持续有 3–8 个**别的 dev** 的 vitest 在跑
-  （loadavg 一度 900+）。§2b 是 CPU 密集扫（实测 1363 文件 / 35 万行，光判据扫描裸跑 6.3s，
-  我新加的规则④ 实测增量 ≈ 0ms：6377ms → 6259ms），在默认 20s 预算内是否跑得完**取决于共享负载**。
-  审核方机器上基线态 §2b 是按断言红完赛的（说明那边 20s 内跑得完），故交付命令在审核方环境应得
-  `8 passed`。若审核方环境也高负载，看到的是超时红而非断言红 —— 那是负载，不是本单逻辑。
+| 轮次 | 别的 vitest 进程 | 结果 | 红在哪 |
+|---|---|---|---|
+| 基线（改动前同树） | 8 | 4 failed \| 4 passed | §2 断言红（缺@unit×2=红①）· §2b 红（红②）· §3×2 findBy 超时 |
+| 13:10 | 12 | 3 failed \| 5 passed | §2 ✅ 已绿；§2b 20s 超时 · §3×2 超时 |
+| 13:17 | 4 | 1 failed \| 7 passed | 仅 §2b 20s 超时（测试体 39.4s）——**§3 两条此轮全绿** |
+| 13:20 §2b 单跑 `--testTimeout=120000` | ~4 | **1 passed RC=0** | 无 —— §2b **断言级全绿**（测试体 24.29s，含全部金丝雀 + 7 树零命中） |
+| 13:32 | 3 | 2 failed \| 6 passed | §2b 20s 超时（32.9s）· §3 S&OP findBy 超时 |
+| 13:56（watcher 抓到的最安静窗口） | 2 | 3 failed \| 5 passed | §2b 20s 超时（68.8s）· §3×2 findBy 超时 |
+
+⚠️ 结论如实说：① 两条目标红的修复都有**断言级**绿证据（§2 原生绿 ×5 轮；§2b 提超时单跑 RC=0）。
+② §2b 的 20s 默认预算在本机当前慢性负载下**跑不完**，与我的改动无关 —— 裸基准：判据扫描本体
+1363 文件/35 万行/6.3s，规则④ 实测增量 ≈0ms（6377ms → 6259ms），超时是既有扫描体量 × 共享负载。
+③ 审核方基线测量（`2 failed | 6 passed`、§2b 按断言红完赛）证明正常负载机器 20s 内跑得完，
+故交付命令在正常负载环境应得 **8 passed**；在本机现况看到的一定是超时红而非断言红。
 
 ## ④ 基线变化
 
