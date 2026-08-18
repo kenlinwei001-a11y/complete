@@ -40,7 +40,7 @@ function gateToolBroken(e) {
 }
 
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { assertDistFresh } from "./dist-freshness.mjs";
@@ -71,14 +71,23 @@ assertDistFresh(need.map(([, rel]) => rel), { gate: "object-interface:check" });
 const problems = [];
 
 // --- ② R9 四方同步 ---------------------------------------------------------
+// 迁移维按**内容**现算（WO-GATE-ROSTER-SWEEP-2，2026-08-18）：迁移编号会随并线搬家
+// （本表就搬过一次：原分支 028 撞 canonical 的 028_perturbations，被 check-migration-numbering
+// 判红后改到 032）——写死编号 = 手抄名单（G-GATE-ROSTER-HANDCOPIED），下次搬家门就拿
+// 「文件不存在」报假红。故：谁建 object_interfaces 表谁就是迁移维，编号不问。
+const MIGRATION_RE = /CREATE TABLE IF NOT EXISTS object_interfaces/;
+const MIGRATIONS_DIR = "apps/datacore/migrations";
+const migHits = readdirSync(fileURLToPath(abs(MIGRATIONS_DIR)))
+  .filter((f) => f.endsWith(".sql"))
+  .map((f) => `${MIGRATIONS_DIR}/${f}`)
+  .filter((rel) => MIGRATION_RE.test(read(rel) ?? ""))
+  .sort();
+if (migHits.length > 1) problems.push(`R9 四方同步·migration 维现算命中 ${migHits.length} 份建表迁移（${migHits.join(" · ")}）——同一张表只许一份 CREATE TABLE`);
 const FOUR = [
   ["repo 接口", "apps/datacore/src/repo/repo.ts", /objectInterfaces\s*:\s*Store<ObjectInterfaceRecord>/],
   ["memory 仓储", "apps/datacore/src/repo/memory.ts", /objectInterfaces\s*:\s*new MemStore\(\)/],
   ["pg 仓储", "apps/datacore/src/repo/pg.ts", /objectInterfaces\s*:\s*new PgStore\(pool,\s*"object_interfaces"\)/],
-  // ⚠ 编号 032 而非原分支上的 028：canonical 已有 `028_perturbations.sql`，撞号被
-  // `check-migration-numbering.mjs` 当场判红（迁移号是执行顺序的唯一表达）。并线时按该门的
-  // 「给后到的那个改成尚未占用的编号」改到 032（当时 datacore 最大号 031）。
-  ["migration", "apps/datacore/migrations/032_object_interfaces.sql", /CREATE TABLE IF NOT EXISTS object_interfaces/],
+  ["migration", migHits[0] ?? `${MIGRATIONS_DIR}/(现算零命中：没有迁移建 object_interfaces 表)`, MIGRATION_RE],
 ];
 for (const [label, rel, re] of FOUR) {
   const src = read(rel);

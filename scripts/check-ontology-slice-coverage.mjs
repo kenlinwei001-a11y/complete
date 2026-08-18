@@ -47,25 +47,21 @@ function fail(msg) {
 assertDistFresh(["apps/datacore/dist"], { gate: "ontology-slice-coverage:check" });
 
 // 平台配置/元类型、审计/日志类型、Dogfooding 元层：合法地不在业务切片中。
-const EXEMPT_TYPES = new Set([
-  // 平台配置/元类型
-  "FeatureConfig",
-  "Tenant",
-  "User",
-  "LlmProvider",
-  "LlmPurposeBinding",
-  "PromptTemplate",
-  "ConfigBundle",
-  "SystemObjectType",
-  // 审计/日志类型
-  "OutboxEvent",
-  "Notification",
-  "IdempotencyRecord",
-  // Dogfooding 元层
-  "SystemInvariant",
-  "SystemBreakpoint",
-  "SystemGate",
-]);
+// ── 豁免名单大改（WO-GATE-ROSTER-SWEEP-2，2026-08-18）────────────────────────────
+// 旧形态：14 条手抄豁免（平台配置 8 · 审计日志 3 · Dogfooding 元层 3）。实测**全部 14 条
+// 不在本门宇宙的已发布类型里**（battery+extended 共 94 个类型，零个平台/元类型）——
+// 即整份名单今天豁免了「无」，是纯死账；而明天谁把 SystemInvariant 之类种进电池本体，
+// 它会**自动免切片覆盖**。豁免绝不该自动生效（现算豁免 = 自动豁免，同样是错的方向）。
+// 故照普查处方落四条机器纪律（断点 G-GATE-ROSTER-HANDCOPIED 本条收口）：
+//   ① 死账当场清零（下面这份名单现在是空的）；
+//   ② 每条豁免必须带 ≥20 字理由（机器断言，写不出理由的豁免就是不该豁免）；
+//   ③ 死账断言：豁免类型不在已发布类型里 ⇒ 红（类型删了/改名了，豁免不许留下来当幽灵）；
+//   ④ 条数上限 EXEMPT_CAP 只降不升：新增豁免必然顶破上限 ⇒ 红 ⇒ 抬上限是个显眼 diff，
+//      review 时必须能说出为什么。
+/** 豁免类型 → 理由（≥20字）。当前**零条**（14 条死账已于 2026-08-18 清零）。 @type {Map<string, string>} */
+const EXEMPT_TYPES = new Map([]);
+/** 豁免条数上限（只降不升）。抬它 = 显眼 diff，须附带「为什么这个类型合法地无切片」的人工裁决。 */
+const EXEMPT_CAP = 0;
 
 const { batteryObjectTypes, batteryLinkTypes, batteryBuiltinSlices } = await import(join(DIST, "synthetic/battery.js"));
 const { extendedObjectTypes } = await import(join(DIST, "synthetic/battery-extended.js"));
@@ -92,6 +88,15 @@ const slices = [...batteryBuiltinSlices(), ...batteryCoverageSlices()].map((s) =
 }));
 
 const categories = batteryDataCategories();
+
+// ── 豁免名单三断言（在算覆盖率之前先审名单本身；机器盯名单，不靠人记得）─────────────
+if (EXEMPT_TYPES.size > EXEMPT_CAP) {
+  fail(`豁免名单 ${EXEMPT_TYPES.size} 条 > 上限 ${EXEMPT_CAP} —— 上限只降不升：新增豁免必须先把理由摆进 review（抬 EXEMPT_CAP 是个显眼 diff）。`);
+}
+for (const [k, why] of EXEMPT_TYPES) {
+  if (!why || why.length < 20) fail(`豁免类型 ${k} 无理由或理由不足 20 字 —— 写不出理由的豁免就是不该豁免。`);
+  if (!types.some((t) => t.key === k)) fail(`豁免类型 ${k} 是**死账**：不在已发布类型（battery+extended）里 —— 类型已删/改名，豁免不许留下当幽灵（它会豁免未来某个同名类型）。摘掉它。`);
+}
 
 const fieldReport = computeFieldCoverage(types, links, slices);
 const catReport = computeCategoryCoverage(types, categories);

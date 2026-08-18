@@ -20,7 +20,17 @@ function gateToolBroken(e) {
 
 
 import fs from "node:fs";
-const FILES=["docs/CHECK-SPEC-AUT.md","docs/CHECK-DSL-CMP.md","docs/CHECK-RT-GOV.md","docs/CHECK-MIG-XR.md"];
+import os from "node:os";
+import path from "node:path";
+/* 扫描面现算（WO-GATE-ROSTER-SWEEP-2，2026-08-18）：docs/CHECK-*.md 全量枚举，一个文件名都不手抄。
+ * 判据：「这个集合会随仓库演进而变吗？」—— 明天新增一份判定档案（CHECK-新域.md）就该自动进汇总，
+ * 手抄名单会让它永远不进、永远漏。旧形态写死 4 份，正撞上断点 G-GATE-ROSTER-HANDCOPIED。
+ * 注意 `CHECKLIST-skill-4209.md` 不匹配（前缀是 CHECKLIST- 不是 CHECK-），刻意排除——它是清单不是判定档案。 */
+const FILES = fs.readdirSync("docs").filter((f) => /^CHECK-.*\.md$/.test(f)).sort().map((f) => `docs/${f}`);
+if (FILES.length < 4) {
+  console.error(`⛔ 门自己瞎了：docs/CHECK-*.md 只枚举到 ${FILES.length} 份（下界 4）——枚举塌陷，不是档案没了。`);
+  process.exit(2);
+}
 const ID_RE=/^[A-Z][A-Za-z0-9]*(-[A-Za-z0-9.]+)*$/;
 const SYMS=["✅","🔗","⚠️","❌","⛔","◐"];
 function cells(l){const t=l.trim(); if(!(t.startsWith("|")&&t.endsWith("|")))return null;
@@ -79,4 +89,6 @@ console.log(`  🔗 接线不全 ${g["🔗"]}  ${(g["🔗"]/den*100).toFixed(1)}
 console.log(`  ⚠️/◐ 只有test/部分 ${g["⚠️"]+g["◐"]}  ${((g["⚠️"]+g["◐"])/den*100).toFixed(1)}%`);
 console.log(`  ❌ 无承载物 ${g["❌"]}  ${(g["❌"]/den*100).toFixed(1)}%`);
 if(g._noVerdict){console.log("\n未定档行：");for(const r of rows.filter(r=>!r.v))console.log(`  ${r.f}:${r.line}  ${r.id}`);}
-fs.writeFileSync("/tmp/claude-0/-home-user-complete/3f5e96d7-59cd-5a3f-aa1a-9551fc6f8f15/scratchpad/verdict-rows.json",JSON.stringify(rows));
+// 调试快照（best-effort）：原写死原作者容器 scratchpad 路径，换台机器必 ENOENT 把门砸成 RC=2（假「工具坏了」）。
+// 快照只是排查副产物，写不出不影响判定 —— 改放 os.tmpdir() 并吞掉写入失败（WO-GATE-ROSTER-SWEEP-2 修）。
+try { fs.writeFileSync(path.join(os.tmpdir(), "verdict-rows.json"), JSON.stringify(rows)); } catch { /* 快照写不出 ≠ 门坏了 */ }

@@ -8,9 +8,9 @@
  *  1) 零业务常数（R14）：优化引擎/绑定层作用域文件（services/optimizer/server.py 的 5 核心 model +
  *     apps/datacore/src/solvers/opt-binding.ts + optimizer-client.ts 的 5 核心接口）不得出现**行业实体名**
  *     （电池/基地/产线/工厂/诊所/社区/仓库/门店…）的硬编码字符串字面量——行业是 OntologyBinding 绑进来的内容。
- *  2) requiredRoles 齐备：契约 opt-template.ts 的 family 枚举里，增量1 落地的 5 核心
- *     （facility_location/min_cost_flow/set_cover/independent_set/combinatorial_auction）必须在
- *     opt-binding.ts 的 bindToSolverArgs 里有对应 case（= 每族要求的 role 映射存在）。
+ *  2) requiredRoles 齐备：契约 opt-template.ts 的 family 枚举与 opt-binding.ts bindToSolverArgs 的
+ *     case 集**双方都从源码现算**（WO-GATE-ROSTER-SWEEP-2），断言精确划分「枚举 = 落地 case ⊔
+ *     NOT_YET_BOUND」——落地族必有 requiredRoles 映射，未接线族必须在名单里，名单 stale 当场红。
  *  3) 派生留痕：THIRD-PARTY-NOTICES.md 含 LIC4（CDLA 取派生 Results）。
  *
  * 用法：node scripts/check-opt-template.mjs
@@ -68,13 +68,48 @@ for (const rel of SCOPE_FILES) {
   }
 }
 
-// ── 2) requiredRoles 齐备：5 核心在契约枚举 + 绑定层均落地 ─────────────────────
-const CORES = ["facility_location", "min_cost_flow", "set_cover", "independent_set", "combinatorial_auction"];
+// ── 2) requiredRoles 齐备：落地族在契约枚举 + 绑定层精确划分 ─────────────────────
+// 扫描面现算（WO-GATE-ROSTER-SWEEP-2，2026-08-18）：旧形态 CORES 写死「增量1 的 5 核心」，
+// 后续 WO 落地 cross_object_occupancy 时名单没跟上 —— 它的 case 从此无人断言
+// （断点 G-GATE-ROSTER-HANDCOPIED：名单外的条目永远绿、永远漏）。
+// 故两个集合都从源码现算，一个名字都不手抄进断言：
+//   · 契约枚举 = opt-template.ts 的 OptTemplateFamilySchema z.enum 块解析；
+//   · 落地族 CORES = opt-binding.ts bindToSolverArgs 的 case 块解析（有 case 才算落地，
+//     落地就必须有 requiredRoles 映射 —— 这正是本判据要守的）。
+// NOT_YET_BOUND 是**唯一**保留的名单（契约已声明、模板池尚未接线的族），但它被精确划分断言
+// 锁死：枚举 = CORES ⊔ NOT_YET_BOUND。任一方向 stale 当场红 —— 落地了没从名单摘掉 ⇒ 交集非空红；
+// 契约加了新族两边都没登记 ⇒ 划分不守红。名单从此由机器盯着，不靠人记得回来改。
+const NOT_YET_BOUND = ["assignment", "scheduling", "knapsack", "packing", "multi_objective", "custom"];
 const contract = read("packages/contracts/src/opt-template.ts");
 const binding = read("apps/datacore/src/solvers/opt-binding.ts");
+function parseEnum(src) {
+  const m = /OptTemplateFamilySchema\s*=\s*z\.enum\(\[([\s\S]*?)\]\)/.exec(src || "");
+  return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : [];
+}
+function parseCases(src) {
+  return [...new Set([...(src || "").matchAll(/case\s+"([^"]+)"/g)].map((x) => x[1]))].sort();
+}
+const enumFamilies = parseEnum(contract);
+const CORES = parseCases(binding);
+// 解析自证（铁律 0.6：报结论前先拿已知必中样例自证工具）——塌陷 ⇒ RC=2，不许报「齐备」。
+if (!contract || enumFamilies.length === 0 || !enumFamilies.includes("facility_location")) {
+  console.error("⛔ check-opt-template.mjs 契约枚举解析塌陷（opt-template.ts 的 z.enum 块解析不到已知族 facility_location）⇒ 工具坏了，本次结论作废。");
+  process.exit(2);
+}
+if (!binding || CORES.length === 0 || !CORES.includes("facility_location")) {
+  console.error("⛔ check-opt-template.mjs 绑定 case 解析塌陷（opt-binding.ts 解析不到已知 case facility_location）⇒ 工具坏了，本次结论作废。");
+  process.exit(2);
+}
 for (const fam of CORES) {
-  if (contract && !contract.includes(`"${fam}"`)) fail.push(`契约 opt-template.ts family 枚举缺 ${fam}`);
-  if (binding && !new RegExp(`case\\s+"${fam}"`).test(binding)) fail.push(`opt-binding.ts bindToSolverArgs 缺 case "${fam}"（requiredRoles 映射）`);
+  if (!enumFamilies.includes(fam)) fail.push(`opt-binding.ts 有 case "${fam}"，但契约 opt-template.ts family 枚举没有它 —— 绑定层漂移（接了契约不认识的族）`);
+}
+for (const fam of NOT_YET_BOUND) {
+  if (CORES.includes(fam)) fail.push(`"${fam}" 在 opt-binding.ts 已有 case（已落地），却仍挂在 NOT_YET_BOUND 名单里 —— 名单 stale，摘掉它`);
+  if (!enumFamilies.includes(fam)) fail.push(`NOT_YET_BOUND 的 "${fam}" 不在契约枚举里 —— 名单成了幽灵账（族已删除/改名），同步名单`);
+}
+for (const fam of enumFamilies) {
+  if (!CORES.includes(fam) && !NOT_YET_BOUND.includes(fam))
+    fail.push(`契约枚举新族 "${fam}" 既无 binding case 也未登记 NOT_YET_BOUND —— 精确划分被破：落地它就加 case，暂不落地就登记名单（划分断言会让名单 stale 当场红）`);
 }
 
 // ── 3) 派生留痕（LIC4） ──────────────────────────────────────────────────────
@@ -82,10 +117,10 @@ const notices = read("THIRD-PARTY-NOTICES.md");
 if (!notices) fail.push("缺 THIRD-PARTY-NOTICES.md");
 else if (!notices.includes("LIC4")) fail.push("THIRD-PARTY-NOTICES.md 缺 LIC4（CDLA 取派生 Results）");
 
-console.log(`· opt-template：5 核心 ${CORES.length} · 作用域文件 ${SCOPE_FILES.length}+sidecar · 违规 ${fail.length}`);
+console.log(`· opt-template：落地族 ${CORES.length}（现算）· 契约枚举 ${enumFamilies.length} · 未接线名单 ${NOT_YET_BOUND.length} · 作用域文件 ${SCOPE_FILES.length}+sidecar · 违规 ${fail.length}`);
 if (fail.length) {
   console.error("\n✗ opt-template:check 未过（R14 零业务常数 / requiredRoles / 派生留痕）：");
   for (const f of fail) console.error(`  - ${f}`);
   process.exit(1);
 }
-console.log("✓ opt-template:check 通过（抽象引擎/绑定层零行业实体名 · 5 核心 requiredRoles 齐 · LIC4 派生留痕在）。");
+console.log("✓ opt-template:check 通过（抽象引擎/绑定层零行业实体名 · 落地族 requiredRoles 齐（现算划分）· LIC4 派生留痕在）。");
