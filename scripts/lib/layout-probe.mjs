@@ -32,6 +32,33 @@
  * 把它算进来会让「换一个页面」和「改一次导航」在同一个数上互相污染。
  * ⇒ **本门绿不代表整屏没问题**，只代表内容区那部分没变坏。
  *
+ * ══ 2026-08-18 增量（WO-GATE-B-BROWSER-HARNESS）：两条**时序/遮挡**能力 ════════
+ * 本体断点 `G-SPLITACCOUNT-PROMISE-ONLY` 复核订正后的真实缺口（「差 harness」已过期，
+ * harness 就是本文件）。在本文件上加的，不是新造 harness：
+ *
+ *  · **B-1 两时刻 DOM 快照比对** —— `snapshotDom`（浏览器内取快照）+
+ *    `diffDomSnapshots`（纯函数逐行比对）+ `probeDomChange`（改一个输入、
+ *    **不点任何按钮**，轮询断言「结果 DOM 在 N ms 内变了/没变」）。
+ *    快照口径：文档序逐元素一行 `深度|tag#testid.cls|状态属性|直接文本`；
+ *    状态属性 = 表单元素的 value/checked + 一小撮 ARIA/data 状态位（见函数内清单）。
+ *    ⚠ 比对是**多重集合**语义：两行完全相同的内容互换顺序判「没变」——
+ *    用户眼里那本来就不是变化；要咬「顺序」的门请另立口径，别把它塞进这里。
+ *    ⚠ 快照根必须选**结果区**（如「影响带」），避开时钟/动画区 ——
+ *    含时钟的根每次采样都不同，「变了」恒真，判据失效。
+ *
+ *  · **B-4·U8 「A 盖住了 B 的哪一部分」** —— `measureOcclusion`（浏览器内）+
+ *    `probeOcclusion`（Node 侧包装）。判定走 `document.elementsFromPoint`：
+ *    它原生就是「z-order × 命中测试」，不是拿两个矩形算相交 ——
+ *    矩形相交答的是「有没有重叠」，本探针答的是「**目标矩形上哪些采样点的
+ *    最上层元素不是目标自己**」，并按遮挡者分组报出：盖住百分之几、
+ *    盖住的是哪块区域（九宫格方位 + coverRect 像素框）、是谁盖的。
+ *    ⚠ 口径边界（写死，免得改回去）：`pointer-events:none` 的浮层
+ *    `elementsFromPoint` 打不到 ⇒ 判「没盖住」。这不是漏洞是定义：
+ *    点都点不穿的层不挡交互；纯视觉遮挡（透明遮罩）不在本探针射程。
+ *
+ * 两条能力的金丝雀与真页面接线**共用这几个函数本尊**（金丝雀走 `probeHtml`
+ * 喂一段 HTML 进同一个浏览器、跑同一个函数），不许另抄一份判定逻辑。
+ *
  * 用法见 `scripts/check-layout-legibility.mjs`。
  */
 
@@ -438,12 +465,16 @@ export async function launchBrowser() {
 }
 
 /**
- * 打开一页、登录、SPA 内导航到目标路由、等版面稳定，再跑 `measureLayout`。
+ * 打开一页、登录、SPA 内导航到目标路由、等版面稳定 —— **然后把活着的 page 交给调用方**。
  *
  * ⚠ 「等版面稳定」不是 sleep 一个拍脑袋的秒数：连采两次，文本元素数**两次相同**才算稳
  *   （CLAUDE.md 铁律 1「凭一次快照下结论」的同源纪律）。超时仍不稳 ⇒ 抛 ProbeBroken ⇒ RC=2。
+ *
+ * 拆出本函数的来历（WO-GATE-B-BROWSER-HARNESS）：B-1/B-4·U8 两条探针要在**同一个
+ * 已稳定的页面会话**上接着操作（改输入 / 采遮挡点），而 `renderAndMeasure` 量完就关页。
+ * 调用方拿 `ctx.page` 跑完自己的探针后**必须自己 `ctx.page.close()`**。
  */
-export async function renderAndMeasure(browser, spec) {
+export async function openStablePage(browser, spec) {
   const { baseUrl, route, viewport, rootSelector, login, settleMs = 900, stableTries = 20 } = spec;
   const page = await browser.newPage({ viewport });
   const pageErrors = [];
@@ -504,18 +535,296 @@ export async function renderAndMeasure(browser, spec) {
       );
     }
     stable.pageErrors = pageErrors.slice(0, 3);
-    return stable;
-  } finally {
+    return { page, measurement: stable };
+  } catch (e) {
+    // 打开/稳定化失败时 page 是本函数的私有资源，自己关；成功后归调用方关。
     await page.close().catch(() => {});
+    throw e;
+  }
+}
+
+/**
+ * 打开一页、登录、SPA 内导航到目标路由、等版面稳定，再跑 `measureLayout`。
+ * 行为与 `openStablePage` 完全同源（它就是 `openStablePage` + 量完关页）。
+ */
+export async function renderAndMeasure(browser, spec) {
+  const ctx = await openStablePage(browser, spec);
+  try {
+    return ctx.measurement;
+  } finally {
+    await ctx.page.close().catch(() => {});
   }
 }
 
 /** 金丝雀专用：直接给一段 HTML 渲染并量，走**同一份** `measureLayout`。 */
 export async function measureHtml(browser, html, viewport, rootSelector = "body") {
+  return probeHtml(browser, html, viewport, (page) => page.evaluate(measureLayout, { rootSelector }));
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// 四 · B-1 两时刻 DOM 快照比对（WO-GATE-B-BROWSER-HARNESS）
+// ───────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 浏览器内：把 `rootSelector` 下的 DOM 拍成一组**确定性文本行**（文档序、逐元素一行）。
+ *
+ * ⚠ 这个函数会被 `page.evaluate` 序列化进浏览器，**不许引用模块作用域标识符**。
+ *
+ * 每行格式：`深度|tag#data-testid.class|状态属性|直接文本`。
+ *   · 「直接文本」= 元素自己的文本节点（不替子孙背锅，与 measureLayout 的 ownText 同口径）；
+ *   · 「状态属性」= 表单元素的 value/checked + 下方 STATE_ATTRS 清单里存在的位 ——
+ *     没有它，「复选框被勾掉」这种**属性态**变化在快照里不可见；
+ *   · 类名走 `getAttribute("class")`（SVG 的 className 是 SVGAnimatedString 对象，
+ *     见 measureLayout 里 clsOf 的注释，同一坑不踩第二次）。
+ *
+ * 比对语义见 `diffDomSnapshots`：多重集合，**行序不参与**。
+ */
+export function snapshotDom(opts) {
+  const rootSel = opts?.rootSelector;
+  const root = rootSel ? document.querySelector(rootSel) : document.body;
+  if (!root) return { ok: false, reason: `快照根未命中：${rootSel}` };
+  // 状态位清单（只记**存在**的）：折叠开合 / 按压选中 / 计数徽标 / 禁用态。
+  // 清单刻意短 —— 每加一个属性都要能说出「哪类真实变化没它就漏」。
+  const STATE_ATTRS = ["open", "aria-expanded", "aria-pressed", "aria-selected", "data-open", "data-count", "disabled"];
+  const clsOf = (el) => (el.getAttribute && el.getAttribute("class")) || "";
+  const ownText = (el) => {
+    let s = "";
+    for (const n of el.childNodes) if (n.nodeType === 3) s += n.nodeValue;
+    return s.trim();
+  };
+  const lines = [];
+  const walk = (el, depth) => {
+    const tag = el.tagName.toLowerCase();
+    const testid = el.getAttribute && el.getAttribute("data-testid");
+    const cls = clsOf(el).slice(0, 40);
+    let state = "";
+    if (tag === "input") state = `type=${el.getAttribute("type") || ""},checked=${el.checked},value=${el.value}`;
+    else if (tag === "select" || tag === "textarea") state = `value=${el.value}`;
+    const attrs = [];
+    for (const a of STATE_ATTRS) if (el.hasAttribute && el.hasAttribute(a)) attrs.push(`${a}=${el.getAttribute(a)}`);
+    if (attrs.length) state = `${state}${state ? "," : ""}${attrs.join(",")}`;
+    const t = ownText(el).slice(0, 60);
+    lines.push(
+      `${depth}|${tag}${testid ? `#${testid}` : ""}${cls ? `.${cls}` : ""}` +
+        `${state ? `|${state}` : ""}${t ? `|${t}` : ""}`,
+    );
+    for (const k of el.children) walk(k, depth + 1);
+  };
+  walk(root, 0);
+  return { ok: true, count: lines.length, lines };
+}
+
+/**
+ * 纯函数（Node 侧，可进 vitest）：比两份 `snapshotDom` 的结果。
+ *
+ * 多重集合语义：逐行计次数，两边次数不同的行就是变化。⚠ **行序不参与** ——
+ * 两行完全相同的内容互换位置判「没变」（用户眼里那本来就不是变化）；
+ * 但「新增一行与既有行逐字相同的内容」会因为**次数**变了而被咬住。
+ * 任一侧快照 `!ok` ⇒ `degraded:true` 且 `changed:true`（比不了不许说「没变」，
+ * 那正是「我没找到 ⇒ 它不存在」的病；调用方应先把 `!ok` 升级成 ProbeBroken）。
+ */
+export function diffDomSnapshots(a, b) {
+  if (!a?.ok || !b?.ok) {
+    return {
+      changed: true,
+      degraded: true,
+      reason: `有一侧快照不可用（before.ok=${!!a?.ok} after.ok=${!!b?.ok}）——比不了，不许读作「没变」。`,
+      added: [],
+      removed: [],
+    };
+  }
+  const tally = new Map();
+  for (const l of a.lines) tally.set(l, (tally.get(l) || 0) + 1);
+  const added = [];
+  for (const l of b.lines) {
+    const c = tally.get(l) || 0;
+    if (c === 0) added.push(l);
+    else tally.set(l, c - 1);
+  }
+  const removed = [];
+  for (const [l, c] of tally) for (let i = 0; i < c; i++) removed.push(l);
+  return { changed: added.length > 0 || removed.length > 0, degraded: false, added, removed, beforeCount: a.count, afterCount: b.count };
+}
+
+/**
+ * Node 侧驱动：**改一个输入（不点任何按钮），断言结果 DOM 在 `timeoutMs` 内变了/没变**。
+ *
+ *   · `act(page)` 由调用方给（改输入的动作；本函数不规定怎么改）；
+ *   · 轮询用同一份 `snapshotDom` + `diffDomSnapshots`，命中即返回 `elapsedMs`；
+ *   · 快照根未命中 / act 抛错 ⇒ `ProbeBroken`（门找不到它要操作的东西 = 工具坏了，
+ *     与「扫描根未命中」同一条处置线），**绝不**读作「页面没变」。
+ *
+ * 返回 `{ changed, elapsedMs, diff, before, after }` —— `diff.added/removed`
+ * 就是「哪里变了」的行级证据，报文不许只说「变了/没变」。
+ */
+export async function probeDomChange(page, spec) {
+  const { rootSelector, act, timeoutMs = 5000, pollMs = 100 } = spec;
+  if (typeof act !== "function") throw new ProbeBroken("probeDomChange 缺 act(page) —— 门没说清要改哪个输入。");
+  const before = await page.evaluate(snapshotDom, { rootSelector });
+  if (!before.ok) throw new ProbeBroken(`B-1 快照根未命中（动作前）：${before.reason}`);
+  let after = before;
+  const t0 = Date.now();
+  try {
+    await act(page);
+  } catch (e) {
+    throw new ProbeBroken(`B-1 改输入的动作执行失败（门够不到它要改的输入）：${String(e?.message || e).split("\n")[0]}`);
+  }
+  for (;;) {
+    after = await page.evaluate(snapshotDom, { rootSelector });
+    if (!after.ok) throw new ProbeBroken(`B-1 快照根未命中（动作后）：${after.reason}`);
+    const diff = diffDomSnapshots(before, after);
+    const elapsedMs = Date.now() - t0;
+    if (diff.changed) return { changed: true, elapsedMs, diff, before, after };
+    if (elapsedMs >= timeoutMs) return { changed: false, elapsedMs, diff, before, after };
+    await page.waitForTimeout(pollMs);
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────────
+// 五 · B-4·U8 遮挡判定：「A 盖住了 B 的哪一部分」（WO-GATE-B-BROWSER-HARNESS）
+// ───────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 浏览器内：量「`targetSelector` 这个目标**被谁、盖住了哪一块**」。
+ *
+ * 判定不走「两个矩形算相交」—— 那只能答「有没有重叠」，答不了「谁在上面」。
+ * 走 `document.elementsFromPoint(x, y)`：它原生就是 **z-order × 命中测试**，
+ * 返回该点上**从最顶层往下**的元素栈。目标矩形上撒采样网格，
+ * 逐点问「最上层是不是目标自己（或目标的子孙）」：不是 ⇒ 这一点被盖住了，
+ * 盖住它的就是栈顶那个元素。按遮挡者分组汇总：
+ *   · `pct` —— 该遮挡者盖住的采样点占比；
+ *   · `cells` —— 盖在目标的哪个**九宫格方位**（上/中/下 × 左/中/右）；
+ *   · `coverRect` —— 被盖采样点的像素包围盒（相对视口）。
+ *
+ * ⚠ 口径边界（见文件头）：`pointer-events:none` 的层打不到 ⇒ 不算盖（点不穿 = 不挡交互）。
+ * ⚠ 采样是离散的：比网格步长还细的遮挡条会漏。步长 ≈ 目标宽/40、高/30（≥4px），
+ *   对「浮层/抽屉挡不挡」这个量级的问题足够；要审 1px 描边请换工具。
+ */
+export function measureOcclusion(opts) {
+  const targetSel = opts?.targetSelector;
+  const el = targetSel ? document.querySelector(targetSel) : null;
+  if (!el) return { ok: false, reason: `遮挡目标未命中：${targetSel}` };
+  // 先把目标**瞬时**滚进视口（behavior 默认 auto，无动画、不等待）。
+  // 不做这一步，「目标在视口外 ⇒ 采样 0 点」会与「没被盖」混为一谈 ——
+  // 而「在视口外」根本不是「没遮挡」的证据（本单实测：sim-sandbox 主画布在
+  // 1440×900 下位于 y=1454，不滚一下连问都问不了）。
+  el.scrollIntoView({ block: "center", inline: "nearest" });
+  const r = el.getBoundingClientRect();
+  if (r.width < 1 || r.height < 1) {
+    return { ok: false, reason: `遮挡目标不可见（矩形 ${Math.round(r.width)}×${Math.round(r.height)}）：${targetSel}` };
+  }
+  const clsOf = (n) => (n.getAttribute && n.getAttribute("class")) || "";
+  const VW = window.innerWidth;
+  const VH = window.innerHeight;
+  const stepX = Math.max(4, r.width / 40);
+  const stepY = Math.max(4, r.height / 30);
+  const ROWS = ["上", "中", "下"];
+  const COLS = ["左", "中", "右"];
+  const byOccluder = new Map();
+  let sampled = 0;
+  let skipped = 0;
+  for (let y = r.top + stepY / 2; y < r.bottom; y += stepY) {
+    for (let x = r.left + stepX / 2; x < r.right; x += stepX) {
+      if (x < 0 || y < 0 || x >= VW || y >= VH) {
+        skipped++;
+        continue;
+      }
+      sampled++;
+      const stack = document.elementsFromPoint(x, y);
+      const top = stack && stack[0];
+      if (!top) continue;
+      if (top === el || el.contains(top)) continue; // 最上层是目标自己/其子孙 ⇒ 没被盖
+      const cy = Math.min(2, Math.floor(((y - r.top) / r.height) * 3));
+      const cx = Math.min(2, Math.floor(((x - r.left) / r.width) * 3));
+      // 存「行×3+列」的序号而不是标签 —— 标签按码点排序会出「上/下/中」这种错序
+      // （本单实测被金丝雀当场咬住：上右/下右/中右），按序号排才是阅读序。
+      const cellIdx = cy * 3 + cx;
+      let rec = byOccluder.get(top);
+      if (!rec) {
+        const or = top.getBoundingClientRect();
+        rec = {
+          tag: top.tagName.toLowerCase(),
+          id: top.id || "",
+          testid: (top.getAttribute && top.getAttribute("data-testid")) || "",
+          cls: clsOf(top).slice(0, 60),
+          rect: { x: Math.round(or.x), y: Math.round(or.y), w: Math.round(or.width), h: Math.round(or.height) },
+          pts: 0,
+          cells: new Set(),
+          minX: Infinity,
+          minY: Infinity,
+          maxX: -Infinity,
+          maxY: -Infinity,
+        };
+        byOccluder.set(top, rec);
+      }
+      rec.pts++;
+      rec.cells.add(cellIdx);
+      if (x < rec.minX) rec.minX = x;
+      if (y < rec.minY) rec.minY = y;
+      if (x > rec.maxX) rec.maxX = x;
+      if (y > rec.maxY) rec.maxY = y;
+    }
+  }
+  if (sampled === 0) return { ok: false, reason: `遮挡目标完全在视口外（采样 0 点）：${targetSel}` };
+  let covered = 0;
+  const occluders = [...byOccluder.values()]
+    .map((o) => {
+      covered += o.pts;
+      return {
+        tag: o.tag,
+        id: o.id,
+        testid: o.testid,
+        cls: o.cls,
+        rect: o.rect,
+        pts: o.pts,
+        pct: Math.round((o.pts / sampled) * 1000) / 10,
+        cells: [...o.cells]
+          .sort((a, b) => a - b)
+          .map((i) => {
+            const cy = Math.floor(i / 3);
+            const cx = i % 3;
+            return cx === 1 && cy === 1 ? "正中" : `${ROWS[cy]}${COLS[cx]}`;
+          }),
+        coverRect: {
+          x: Math.round(o.minX),
+          y: Math.round(o.minY),
+          w: Math.round(o.maxX - o.minX),
+          h: Math.round(o.maxY - o.minY),
+        },
+      };
+    })
+    .sort((a, b) => b.pts - a.pts);
+  return {
+    ok: true,
+    target: {
+      selector: targetSel,
+      rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+    },
+    sampled,
+    skipped,
+    coveredPts: covered,
+    coverPct: Math.round((covered / sampled) * 1000) / 10,
+    occluders,
+  };
+}
+
+/** Node 侧包装：在活着的 page 上跑 `measureOcclusion`，目标未命中 ⇒ ProbeBroken。 */
+export async function probeOcclusion(page, spec) {
+  const m = await page.evaluate(measureOcclusion, { targetSelector: spec.targetSelector });
+  if (!m.ok) throw new ProbeBroken(`B-4·U8 遮挡探针：${m.reason}`);
+  return m;
+}
+
+/**
+ * 金丝雀共用入口：喂一段 HTML 进同一个浏览器，把活着的 page 交给 `fn(page)` 跑探针。
+ * 金丝雀与真页面**走同一批 probe 函数**（probeDomChange / probeOcclusion / measureLayout），
+ * 靠的就是这个入口 —— 不许在金丝雀里另抄判定逻辑（抄了就是装饰品，CLAUDE.md 铁律 0.6）。
+ */
+export async function probeHtml(browser, html, viewport, fn) {
   const page = await browser.newPage({ viewport });
   try {
     await page.setContent(html, { waitUntil: "load" });
-    return await page.evaluate(measureLayout, { rootSelector });
+    return await fn(page);
   } finally {
     await page.close().catch(() => {});
   }

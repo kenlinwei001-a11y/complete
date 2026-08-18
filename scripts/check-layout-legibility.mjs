@@ -89,9 +89,21 @@
  * 两个方向都咬：表说符合而屏不符合 = 有人改坏了；表说不符合而屏已符合 = 修好了没回写。
  *
  * ══ 退出码（三分）════════════════════════════════════════════════════════════
- *   0 干净 · 1 **真变坏 / 触底 / `--survey` 表屏不一致** · 2 **工具自己坏了**
+ *   0 干净 · 1 **真变坏 / 触底 / `--survey` 表屏不一致 / 时序·遮挡探针判回归** · 2 **工具自己坏了**
  *   （含：渲染不出来、找不到浏览器、dev server 起不来、页面没稳定、独立口径不过、
- *   PRD 表解析器金丝雀不中）。
+ *   PRD 表解析器金丝雀不中、探针够不到它要操作的输入/目标）。
+ *
+ * ══ 时序/遮挡探针（WO-GATE-B-BROWSER-HARNESS · 与几何量测同一页面会话）══════════
+ * 本体断点 `G-SPLITACCOUNT-PROMISE-ONLY` 复核订正后的两条真实缺口，落成每页可选的
+ * `probes` 配置（取数口径见 `scripts/lib/layout-probe.mjs` 文件头 2026-08-18 增量段）：
+ *   · **B-1 `domChange`** —— 改一个输入、**不点任何按钮**，断言结果 DOM 在
+ *     `timeoutMs` 内变了（两时刻 DOM 快照比对）。判的是「输入还真的驱动结果」：
+ *     改了没反应 = 输入区与结果区之间的接线断了 = 回归（RC=1）。
+ *   · **B-4·U8 `occlusion`** —— z-order × 命中测试（`elementsFromPoint` 采样网格）
+ *     答「目标被谁、盖住了哪一块」（九宫格方位 + coverRect + pct），不是布尔「有没有重叠」。
+ * ⚠ 探针选择器失配（输入/目标不在了）一律 ProbeBroken ⇒ RC=2 ——
+ *   与「扫描根未命中」同一条线：门够不到它要查的东西，只许说「我没查出来」。
+ * 金丝雀与真接线**共用同一批 probe 函数**（金丝雀走 `probeHtml` 喂 HTML 进同一个浏览器）。
  *
  * 本体登记：docs/SYSTEM-ONTOLOGY.md §7（门）· §8 G-LAYOUT-UNGATED。
  * 门账：scripts/gate-ledger.json。
@@ -133,8 +145,12 @@ import {
   TEXT_ELS_FLOOR,
   ProbeBroken,
   launchBrowser,
+  openStablePage,
   renderAndMeasure,
   measureHtml,
+  probeDomChange,
+  probeOcclusion,
+  probeHtml,
 } from "./lib/layout-probe.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -232,6 +248,52 @@ const CANARY_CLEAN = `
   <p>正文一段</p>
 </main>`;
 
+/* ── B-1 金丝雀样例（WO-GATE-B-BROWSER-HARNESS）────────────────────────────────
+ * 必咬：输入带 input listener，改它的值 ⇒ `#out` 的 DOM **必须**变。
+ *   样例形状取自生产实物：sim-sandbox 的「改范围复选框 ⇒ 影响带重取数重渲」，
+ *   这里缩成「改文本框 ⇒ 结果区改写」。inline script 就是真页面的 listener 替身。
+ *   ⚠ 样例里不许出现反引号与模板占位（整个样例是模板字符串，见 CANARY_BITE 注释）。 */
+const CANARY_REACT = `
+<main>
+  <input id="src" type="text" value="">
+  <div id="out"><p>结果：（空）</p></div>
+  <script>
+    document.getElementById("src").addEventListener("input", function (e) {
+      document.getElementById("out").innerHTML = "<p>结果：" + e.target.value + "</p>";
+    });
+  </script>
+</main>`;
+
+/* 必不咬：输入**没有** listener ⇒ 改它的值，`#out` 一个字都不许变。
+ * 没有这一侧，「diff 恒报变」的弱判定照样绿（本单的变异反证 M-B1 就是这条）。 */
+const CANARY_DEAD = `
+<main>
+  <input id="src" type="text" value="">
+  <div id="out"><p>结果：（恒定）</p></div>
+</main>`;
+
+/* ── B-4·U8 金丝雀样例 ───────────────────────────────────────────────────────
+ * 必咬：300×300 的目标，右列 100px 被 `#veil` 严格盖住（z-index 5）。
+ *   期望：coverPct ≈ 33（右列三分之一）、遮挡者指认 #veil、方位恰好「上右/中右/下右」、
+ *   coverRect 落在右列 —— 四条合起来才证明探针答的是「哪一部分」，不是布尔。
+ * 必不咬：同一张台子不放 veil ⇒ 一个采样点都不许报被盖。 */
+const CANARY_VEIL = `
+<style>
+ body{margin:0}
+ #stage{position:relative;width:300px;height:300px}
+ #target{position:absolute;left:0;top:0;width:300px;height:300px;background:#cdf}
+ #veil{position:absolute;left:200px;top:0;width:100px;height:300px;background:#333;z-index:5}
+</style>
+<div id="stage"><div id="target">目标区</div><div id="veil"></div></div>`;
+
+const CANARY_UNVEIL = `
+<style>
+ body{margin:0}
+ #stage{position:relative;width:300px;height:300px}
+ #target{position:absolute;left:0;top:0;width:300px;height:300px;background:#cdf}
+</style>
+<div id="stage"><div id="target">目标区</div></div>`;
+
 async function runCanary(browser) {
   const vp = { width: 1440, height: 900 };
   const bite = await measureHtml(browser, CANARY_BITE, vp, "main");
@@ -282,7 +344,69 @@ async function runCanary(browser) {
     if (clean.overflowEls > 0) problems.push(`必不咬样例被误报溢出元素（${clean.overflowEls}）`);
     if (clean.overflowUnreachable > 0) problems.push(`必不咬样例被误报「够不着」（${clean.overflowUnreachable}）`);
   }
-  return { problems, bite, clean };
+
+  /* ── B-1 金丝雀（与真接线共用 probeDomChange 本尊）────────────────────────
+   * 必咬：改带 listener 的输入 ⇒ 结果 DOM 必须报「变了」，且 diff 里看得见新文本
+   *   （只断 changed=true 不断 diff 内容，报文可以空喊「变了」而指不出哪里变）。
+   * 必不咬：改没 listener 的输入 ⇒ 必须报「没变」（快照有自噪声时这一侧当场红）。 */
+  const react = await probeHtml(browser, CANARY_REACT, vp, (page) =>
+    probeDomChange(page, {
+      rootSelector: "#out",
+      timeoutMs: 2000,
+      pollMs: 50,
+      act: (p) => p.fill("#src", "产能"),
+    }),
+  );
+  if (!react.changed) {
+    problems.push("B-1 必咬样例：改了带 listener 的输入，结果 DOM 却报「没变」—— 快照/比对/轮询链路断了。");
+  } else {
+    const joined = react.diff.added.join("\n");
+    if (!joined.includes("结果") || !joined.includes("产能")) {
+      problems.push(
+        `B-1 必咬样例报了「变了」但 diff 证据不对（added 前两条：${react.diff.added.slice(0, 2).join(" / ") || "空"}）` +
+          `—— 「变了」不许空喊，必须指得出哪几行。`,
+      );
+    }
+  }
+  const dead = await probeHtml(browser, CANARY_DEAD, vp, (page) =>
+    probeDomChange(page, {
+      rootSelector: "#out",
+      timeoutMs: 600,
+      pollMs: 50,
+      act: (p) => p.fill("#src", "x"),
+    }),
+  );
+  if (dead.changed) {
+    problems.push(
+      `B-1 必不咬样例被误报「变了」（added：${dead.diff.added.slice(0, 2).join(" / ")}）—— 快照里混进了不该有的噪声。`,
+    );
+  }
+
+  /* ── B-4·U8 金丝雀（与真接线共用 probeOcclusion / measureOcclusion 本尊）────
+   * 必咬四条合起来才证明答的是「哪一部分」：盖了多少（pct≈33）、谁盖的（#veil）、
+   * 盖在哪（方位恰好右列三格 + coverRect 落在右列）。只断「coverPct>0」是布尔，
+   * 那正是本单要消灭的判据形态。 */
+  const veil = await probeHtml(browser, CANARY_VEIL, vp, (page) => probeOcclusion(page, { targetSelector: "#target" }));
+  if (!(veil.coverPct >= 28 && veil.coverPct <= 40)) {
+    problems.push(`U8 必咬样例：右列被盖应 ≈33%，报 coverPct=${veil.coverPct}。`);
+  }
+  const topOcc = veil.occluders[0];
+  if (!topOcc || topOcc.id !== "veil") {
+    problems.push(`U8 必咬样例没指认遮挡者 #veil（报到：${veil.occluders.map((o) => o.id || o.tag).join(",") || "空"}）。`);
+  } else {
+    if (!(topOcc.coverRect.x >= 195)) {
+      problems.push(`U8 必咬样例的 coverRect 不对：被盖的是右列（x≥200），报 x=${topOcc.coverRect.x}。`);
+    }
+    const wantCells = ["上右", "中右", "下右"];
+    if (JSON.stringify(topOcc.cells) !== JSON.stringify(wantCells)) {
+      problems.push(`U8 必咬样例的方位不对：应恰好是 ${wantCells.join("/")}，报 ${topOcc.cells.join("/") || "空"}。`);
+    }
+  }
+  const unveil = await probeHtml(browser, CANARY_UNVEIL, vp, (page) => probeOcclusion(page, { targetSelector: "#target" }));
+  if (unveil.coverPct !== 0 || unveil.occluders.length !== 0) {
+    problems.push(`U8 必不咬样例被误报遮挡（coverPct=${unveil.coverPct} · occluders=${unveil.occluders.length}）。`);
+  }
+  return { problems, bite, clean, react, dead, veil, unveil };
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -351,8 +475,94 @@ const PAGES = [
     // 与本页不是同一个交付单元，算进来会让「换一个页面」与「改一次导航」在同一个数上互相污染。
     rootSelector: "main",
     login: { tenant: "demo", username: "planner", password: "demo1234" },
+    /* 时序/遮挡探针（WO-GATE-B-BROWSER-HARNESS）—— 两个接线点都是**本页真有的
+     * 输入→结果链路**，不是为门造的摆设（本单在真页面上实测通过，见交单报告）：
+     *  · domChange：勾掉「范围 · 基地 · 常州」复选框（<input type=checkbox>，
+     *    全程不点任何按钮）⇒ 它驱动 chain_impediments 以 baseIds 重取数
+     *    （`SandboxConsole.tsx` 的 impArgs → mock simSolvers 对 baseIds 真过滤，
+     *    实测 baseIds=changzhou 时 total 15→13）⇒ 影响带先落回「—」再填新数。
+     *    快照根选**结果区**（sandbox-zone-impact），不含被改的那个输入本身 ——
+     *    否则「输入自己的 value 变了」会把判据刷成恒真。
+     *    timeoutMs=8000 的标定：本机（载荷 700+）实测两次 589ms / 1675ms，
+     *    容器只会更快；取 8000 是给高载机器留 4 倍余量，不是拍脑袋。
+     *  · occlusion：主画布 sc-canvas-pane 静止态不许被任何东西盖住（上限 0%）。
+     *    探针内部先把目标瞬时滚进视口再采样（本页 1440×900 下画布位于
+     *    视口外 y≈1454 —— 不滚，「在视口外」会被误读成「没被盖」）。 */
+    probes: {
+      domChange: {
+        label: "范围 · 基地「常州」复选框（input 勾选，非按钮）",
+        rootSelector: '[data-testid="sandbox-zone-impact"]',
+        timeoutMs: 8000,
+        pollMs: 100,
+        act: async (page) => {
+          // 「范围」是折叠段（原生 <details>，子节点仍在 DOM）；先点 <summary> 展开
+          // 才点得到复选框。展开动的是 <summary>、改的是 <input> —— 全程无按钮。
+          await page.locator('[data-testid="sc-scope-summary"]').click({ timeout: 10_000 });
+          await page.locator('[data-testid="sc-base-changzhou"]').click({ timeout: 10_000 });
+        },
+      },
+      occlusion: {
+        label: "主画布（sc-canvas-pane）静止态",
+        targetSelector: '[data-testid="sc-canvas-pane"]',
+        maxCoverPct: 0,
+      },
+    },
   },
 ];
+
+/**
+ * 在一个**已稳定**的页面会话上跑该页的时序/遮挡探针。
+ * 返回 `{ notes, failures }`：notes 进报告（含行级证据），failures 进判定（RC=1）。
+ * 选择器失配 / act 执行不了 ⇒ ProbeBroken（RC=2），不在这里降级成「回归」。
+ */
+async function runPageProbes(page, probes, where) {
+  const notes = [];
+  const failures = [];
+  if (probes?.domChange) {
+    const p = probes.domChange;
+    const r = await probeDomChange(page, p);
+    if (!r.changed) {
+      failures.push(
+        `${where} · B-1 响应性回归：改了输入（${p.label}），结果 DOM（${p.rootSelector}）` +
+          `在 ${p.timeoutMs}ms 内一个字都没变（前后各 ${r.before.count}/${r.after.count} 行，逐行一致）。` +
+          `输入不再驱动结果 = 输入区与结果区之间的接线断了。`,
+      );
+    } else {
+      const plus = (r.diff.added[0] || "").split("|").pop() || "";
+      const minus = (r.diff.removed[0] || "").split("|").pop() || "";
+      notes.push(
+        `${where} · B-1 ✓ 改输入（${p.label}）后结果 DOM ${r.elapsedMs}ms 内变化` +
+          `（限 ${p.timeoutMs}ms）：新增 ${r.diff.added.length} 行 / 消失 ${r.diff.removed.length} 行` +
+          `；行级证据：+「${plus.slice(0, 40)}」 −「${minus.slice(0, 40)}」。`,
+      );
+    }
+  }
+  if (probes?.occlusion) {
+    const p = probes.occlusion;
+    const max = p.maxCoverPct ?? 0;
+    const m = await probeOcclusion(page, p);
+    if (m.coverPct > max) {
+      const who = m.occluders
+        .slice(0, 4)
+        .map(
+          (o) =>
+            `<${o.tag}${o.testid ? `#${o.testid}` : o.id ? `#${o.id}` : o.cls ? `.${o.cls.split(" ")[0]}` : ""}>` +
+            ` 盖住 ${o.pct}%（方位 ${o.cells.join("、")} · 被盖区域 ${o.coverRect.x},${o.coverRect.y} ${o.coverRect.w}×${o.coverRect.h}px）`,
+        )
+        .join("；");
+      failures.push(
+        `${where} · B-4·U8 遮挡回归：${p.label}（${p.targetSelector}）被盖住 ${m.coverPct}%（上限 ${max}%，` +
+          `采样 ${m.sampled} 点）：${who}`,
+      );
+    } else {
+      notes.push(
+        `${where} · B-4·U8 ✓ ${p.label}（${p.targetSelector}）未被任何东西盖住` +
+          `（采样 ${m.sampled} 点 · 覆盖 ${m.coverPct}% ≤ 上限 ${max}%）。`,
+      );
+    }
+  }
+  return { notes, failures };
+}
 
 // ───────────────────────────────────────────────────────────────────────────────
 // U10「版面」逐页普查（--survey）
@@ -585,6 +795,12 @@ async function main() {
         `必不咬：最小字号 ${canary.clean.minFontPx}px · 溢出 ${canary.clean.overflowPx}px · ` +
         `参差 ${canary.clean.misalignedGroups} 组 · 溢出元素 ${canary.clean.overflowEls} 个。`,
     );
+    console.log(
+      `✓ 金丝雀（时序/遮挡）双侧通过 —— B-1 必咬：改输入后 ${canary.react.elapsedMs}ms 报「变了」` +
+        `（+${canary.react.diff.added.length}/-${canary.react.diff.removed.length} 行）· 必不咬：死输入报「没变」；` +
+        `U8 必咬：右列被盖报 coverPct=${canary.veil.coverPct}% · 遮挡者 #${canary.veil.occluders[0]?.id} · ` +
+        `方位 ${canary.veil.occluders[0]?.cells?.join("/")} · 必不咬：无遮挡报 ${canary.unveil.coverPct}%。`,
+    );
     if (wantSelftest) {
       console.log("✓ --selftest 通过（金丝雀双侧 + 基线写入器四向）。");
       await browser.close().catch(() => {});
@@ -659,17 +875,34 @@ async function main() {
 
     const prevDoc = loadBaseline();
     const measured = {};
+    const probeNotes = [];
+    const probeFailures = [];
     for (const page of PAGES) {
       measured[page.id] = {};
-      for (const vp of VIEWPORTS) {
-        const r = await renderAndMeasure(browser, {
+      for (let vi = 0; vi < VIEWPORTS.length; vi++) {
+        const vp = VIEWPORTS[vi];
+        const spec = {
           baseUrl,
           route: page.route,
           viewport: { width: vp.width, height: vp.height },
           rootSelector: page.rootSelector,
           login: page.login,
-        });
-        measured[page.id][vp.key] = r;
+        };
+        if (vi === 0 && page.probes) {
+          // 第一个视口：保持页面会话活着，量完几何**在同一页上**接着跑时序/遮挡探针 ——
+          // 探针量的是「这页此时的行为」，另开一页量出来的不是同一个对象。
+          const ctx = await openStablePage(browser, spec);
+          try {
+            measured[page.id][vp.key] = ctx.measurement;
+            const pr = await runPageProbes(ctx.page, page.probes, `${page.id} @ ${vp.key}`);
+            probeNotes.push(...pr.notes);
+            probeFailures.push(...pr.failures);
+          } finally {
+            await ctx.page.close().catch(() => {});
+          }
+        } else {
+          measured[page.id][vp.key] = await renderAndMeasure(browser, spec);
+        }
       }
     }
 
@@ -700,13 +933,20 @@ async function main() {
       }
     }
 
+    // 时序/遮挡探针的结果与几何量测并排印 —— 它们量的是同一页同一会话，证据也该在同一份报告里。
+    if (probeNotes.length || probeFailures.length) {
+      console.log(`\n── 时序/遮挡探针（B-1 两时刻 DOM 比对 · B-4·U8 遮挡判定）──`);
+      for (const n of probeNotes) console.log(`  ${n}`);
+      for (const f of probeFailures) console.log(`  ✗ ${f}`);
+    }
+
     if (wantReport) {
       await cleanup(browser, server);
       process.exit(0);
     }
 
     // ── 判定 ────────────────────────────────────────────────────────────────
-    const failures = [];
+    const failures = [...probeFailures]; // B-1/B-4·U8 探针的回归与几何判据走同一个 RC=1 出口
     for (const page of PAGES) {
       for (const vp of VIEWPORTS) {
         const cur = measured[page.id][vp.key];
