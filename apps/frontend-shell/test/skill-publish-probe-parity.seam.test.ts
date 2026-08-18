@@ -9,12 +9,16 @@ import { ACCOUNTS } from "@/mocks/fixtures";
  * `handlers.ts` 的 `MOCK_SOLVER_REGISTRY` 曾是**手抄 4 条**（capacity_forecast /
  * bottleneck_matrix / selection_optimize / order_fullchain），而 `POST /b/v1/skills/:id/publish`
  * 的引用存在性探针拿它当「哪些求解器真的注册了」判死路。真后端探针
- * （`probeMissingRefs` · apps/agentcore/src/resources.ts）的论域 = A 侧
- * `discover("solvers")` = `SOLVER_CATALOG + COCKPIT_SOLVER_CATALOG`（本单实测 22+18=40 条，
- * feature 全开口径）。于是手抄 4 条**两个方向都错**：
- *   · 太严：技能引用 `kit_readiness`（真 40 条之一）→ mock 误判 422 死路，真后端放行；
- *   · 太松：技能引用 `selection_optimize`（GENERIC 档，**不在** discover 论域）
- *     → mock 放行，真后端 422。「本地绿、线上红」正是本仓明令禁止的反向假信号
+ * （`probeMissingRefs` · apps/agentcore/src/resources.ts）的论域经 WO-PUBLISH-REFPROBE
+ * 订正 = A 侧 `catalog.solverRegistry` = **全集 61 条（含 GENERIC 档）**——判据钉死在
+ * 运行时真判据 `SOLVER_KEYS.includes()`（`apps/datacore/src/solvers/service.ts`），
+ * generic 档的 `generic_inference` / `selection_optimize` 都是合法 key；旧
+ * `discover("solvers")` 40 论域（scenario+cockpit）会把出厂计划 `ceo_whatif`
+ * （invoke_solver generic_inference）误判死路——会误杀正确计划的门比没有门更坏。
+ * 于是手抄 4 条**两个方向都错**：
+ *   · 太严：技能引用 `kit_readiness`（真注册之一）→ mock 误判 422 死路，真后端放行；
+ *   · 太松：技能引用词表外**真不存在**的 solver → mock 放行，真后端 422。
+ *     「本地绿、线上红」正是本仓明令禁止的反向假信号
  *     （mock 可以松的方向仅限「真后端本就更松」，这里恰恰相反）。
  *
  * ── 本测试咬的是链路 ──────────────────────────────────────────────────────────
@@ -51,7 +55,7 @@ describe("WO-MOCK-FE-REGISTRY-PARITY · skill 发布探针与真后端同论域�
     expect(s.status).toBe("DRAFT");
   });
 
-  it("① 引用真 40 条之一（kit_readiness·旧手抄 4 条没有）→ 不再误判死路：200 + 落库 PUBLISHED", async () => {
+  it("① 引用真注册之一（kit_readiness·旧手抄 4 条没有）→ 不再误判死路：200 + 落库 PUBLISHED", async () => {
     seedSkillReferencing("kit_readiness");
     const { status, body } = await publish("skl-action");
     expect(
@@ -62,13 +66,15 @@ describe("WO-MOCK-FE-REGISTRY-PARITY · skill 发布探针与真后端同论域�
     expect(db.skills.find((x) => x.id === "skl-action")!.status, "发布成功必须落库").toBe("PUBLISHED");
   });
 
-  it("② 引用 GENERIC 档（selection_optimize·不在真 discover 论域）→ 同真后端拒：422 + 未落库", async () => {
+  it("② 引用 GENERIC 档（selection_optimize·WO-PUBLISH-REFPROBE 后已是合法 key）→ 同真后端放行：200 + 落库", async () => {
     seedSkillReferencing("selection_optimize");
     const { status, body } = await publish("skl-action");
-    expect(status, "mock 不得比真后端松：真探针论域不含 GENERIC 档，本地放行 = 本地绿线上红").toBe(422);
-    expect(body.error?.code).toBe("SKILL_REF_UNRESOLVED");
-    expect(body.error?.message).toContain("selection_optimize");
-    expect(db.skills.find((x) => x.id === "skl-action")!.status, "被拒不得落库").toBe("DRAFT");
+    expect(
+      { status, code: body.error?.code ?? null },
+      "refprobe 论域（=运行时真判据 SOLVER_KEYS 全集）下 selection_optimize 是合法 key——mock 拒它 = 比真后端严 = 本地红线上绿的反向假信号",
+    ).toEqual({ status: 200, code: null });
+    expect(body.status).toBe("PUBLISHED");
+    expect(db.skills.find((x) => x.id === "skl-action")!.status, "发布成功必须落库").toBe("PUBLISHED");
   });
 
   it("③ 引用真不存在的 solver → 仍 422（探针没被修成无脑放行）", async () => {

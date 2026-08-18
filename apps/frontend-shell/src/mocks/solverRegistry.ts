@@ -6,10 +6,13 @@
  * selection_optimize / order_fullchain）当 `GET /a/v1/solvers/registry` 的数据源，
  * 且 `POST /b/v1/skills/:id/publish` 的引用存在性探针拿同一份 4 条判
  * 「哪些求解器真的注册了」。真后端探针（`probeMissingRefs` ·
- * apps/agentcore/src/resources.ts）的论域 = A 侧 `discover("solvers")` =
- * `SOLVER_CATALOG + COCKPIT_SOLVER_CATALOG`（22+18=40），于是手抄 4 条双向都错：
- * 太严（kit_readiness 等 36 条真注册求解器被误判死路）且太松（selection_optimize
- * 是 GENERIC 档、不在真探针论域，mock 却放行 ⇒ 本地绿线上红）。
+ * apps/agentcore/src/resources.ts）的论域经 WO-PUBLISH-REFPROBE 订正后为
+ * A 侧 `catalog.solverRegistry` = **全集 61 条**（含 GENERIC 档）——判据钉死在
+ * 运行时真判据 `SOLVER_KEYS.includes()`（`apps/datacore/src/solvers/service.ts`），
+ * generic 档的 `generic_inference` 在其中；若仍按旧 `discover("solvers")` 论域
+ * （scenario+cockpit 40 条）判，出厂计划 `ceo_whatif` 会被误杀。手抄 4 条则双向都错：
+ * 太严（kit_readiness 等真注册求解器被误判死路）且太松（词表外真不存在的 key 反被放行
+ * ⇒ 本地绿线上红）。
  *
  * ── 数据来源（非手写）────────────────────────────────────────────────────────
  * 与 agentcore 侧 `apps/agentcore/src/mocks/solver-registry.ts`（WO-MOCK-DISCOVER-PARITY
@@ -23,11 +26,16 @@
  * ── 两个消费方的取数口径（都在本文件派生，不许回 handlers.ts 另抄）─────────────
  *   ① 发现页 `GET /a/v1/solvers/registry`：`MOCK_SOLVER_REGISTRY` =
  *     展示位策展 4 条从全集**派生**（`SOLVER_DISCOVERY_DISPLAY_KEYS` 只是「展示哪几条」
- *     的选择，不是存在性判据；条目元数据一律取自全集，改真后端描述这里跟着对拍红）。
- *   ② 发布探针：`MOCK_KNOWN_SOLVER_KEYS` = 全集里 `pool !== "generic"` 的 key 集
- *     （现算 40 条）——与真后端 `probeMissingRefs` 的 discover 论域同口径。
- *     ⚠ 不能拿 `domain !== "generic"` 当判据：GENERIC 档里混着 domain:"decision" 的
- *     `process_flow_time`（实测例外），必须按 `pool` 目录归属判。
+ *     的选择，不是存在性判据；条目元数据一律取自全集——parity 测试对 **61 条全量**的
+ *     `name` / `description` / `argHints` 三字段与 catalog.ts 文本**逐字对拍**，
+ *     改真后端这三个字段这里当场红；answersQuestions/tags/outputShape 是注册表返回的
+ *     镜像但**暂无**逐字对拍，别把头注读成「全字段都钉死了」）。
+ *   ② 发布探针：`MOCK_KNOWN_SOLVER_KEYS` = **全集 61 条 key 集**（现算，不过滤）——
+ *     口径 = WO-PUBLISH-REFPROBE 订正后真后端 `probeMissingRefs` 走的
+ *     `catalog.solverRegistry` 论域，其存在性判据与运行时真判据 `SOLVER_KEYS` 同集
+ *     （catalog.test 守「注册表键集 === SOLVER_KEYS」）。⚠ 不许再加 `pool !== "generic"`
+ *     过滤：GENERIC 档（含 `generic_inference` / `selection_optimize`）在运行时判据里
+ *     是合法 key，滤掉 = mock 比真后端严 ⇒ 本地红线上绿的反向假信号。
  */
 
 /** Mock 求解器注册表条目（形状 = 真 `GET /a/v1/solvers/registry` 的 item + mock 内部 pool 归属）。 */
@@ -36,7 +44,8 @@ export interface MockSolverRegistryItem {
   /**
    * 该 key 在 A 侧**哪一个目录**（`apps/datacore/src/catalog.ts`）：
    * `SOLVER_CATALOG` → "scenario" · `COCKPIT_SOLVER_CATALOG` → "cockpit" · `GENERIC_SOLVER_CATALOG` → "generic"。
-   * 真 A 侧 `discover("solvers")` 的论域 = scenario + cockpit（不含 generic 档）。
+   * 仅作归属记录（parity §3 对拍用）；发布探针词表**不按它过滤**——WO-PUBLISH-REFPROBE 后
+   * 真后端探针论域 = 全集（含 generic 档），见 `MOCK_KNOWN_SOLVER_KEYS` 头注。
    * mock 内部字段，**不随响应下发**（真后端响应里没有它）。
    */
   pool: "scenario" | "cockpit" | "generic";
@@ -243,7 +252,8 @@ export const MOCK_SOLVER_REGISTRY_FULL: readonly MockSolverRegistryItem[] = [
     "argHints": {
       "modelId": "型号 ID",
       "qty": "需求量",
-      "weeks": "周数"
+      "weeks": "周数",
+      "base": "基地（可选·不给=全网合计 scope:ALL；也认 baseId/baseName）"
     },
     "domain": "plan",
     "answersQuestions": [
@@ -867,7 +877,7 @@ export const MOCK_SOLVER_REGISTRY_FULL: readonly MockSolverRegistryItem[] = [
     "key": "gap_attribution",
     "pool": "cockpit",
     "name": "深度反向缺口归因",
-    "description": "总目标缺口(Metric.target−Metric.actual)→沿本体反向多跳结构分摊(gap 单位·每层 Σ子+residual=父gap 硬勾稽)到基地×订单×瓶颈叶，再沿 caused_by 因果边继续溯(占比)到地缘/决策终点，产 ~20 叶子原子因素表 + residual。叶级贡献由真颗粒对象值派生(改颗粒→归因变)。回答『总缺口沿链路一路归到哪些最终根因、各占多少、每叶证据是什么』。",
+    "description": "总目标缺口(Metric.gap)→沿本体反向多跳结构分摊(gap 单位·每层 Σ子+residual=父gap 硬勾稽)到基地×订单×瓶颈叶，再沿 caused_by 因果边继续溯(占比)到地缘/决策终点，产 ~20 叶子原子因素表 + residual。叶级贡献由真颗粒对象值派生(改颗粒→归因变)。回答『总缺口沿链路一路归到哪些最终根因、各占多少、每叶证据是什么』。",
     "argHints": {
       "metricKey": "目标指标 key(缺省取最严重越线者)"
     },
@@ -1032,7 +1042,10 @@ export const MOCK_SOLVER_REGISTRY_FULL: readonly MockSolverRegistryItem[] = [
     "name": "物料齐套",
     "description": "逐单算齐套率（含在途按 ETA），输出缺料与建议。",
     "argHints": {
-      "orders": "订单+物料数据"
+      "orders": "订单+物料数据（直传则跳过引擎取数）",
+      "base": "基地（可选·不给=全网 scope.mode:ALL；也认 baseId/baseName）",
+      "fromDay": "分析窗起点（默认 1）",
+      "toDay": "分析窗终点（默认 14）"
     },
     "domain": "plan",
     "answersQuestions": [
@@ -1668,10 +1681,12 @@ export const MOCK_SOLVER_REGISTRY_FULL: readonly MockSolverRegistryItem[] = [
     "key": "quote_margin",
     "pool": "scenario",
     "name": "接单毛利",
-    "description": "BOM 成本四项分解 + 毛利率对比细分底线。",
+    "description": "按客户与型号取真 BOM（BOMHeader/BOMDetail）与真单价，四项分解毛利率并对比细分底线；输出带 scope 说明算的是谁。",
     "argHints": {
-      "price": "报价",
-      "bom": "BOM"
+      "custName": "客户（客户名或下单品牌名）",
+      "modelId": "型号（缺省取该客户主力型号）",
+      "price": "报价（缺省取该客户该型号在手单加权均价）",
+      "bom": "BOM（直传则按 EXPLICIT 口径算，不查库）"
     },
     "domain": "plan",
     "answersQuestions": [
@@ -1699,8 +1714,9 @@ export const MOCK_SOLVER_REGISTRY_FULL: readonly MockSolverRegistryItem[] = [
     "name": "风险时间线",
     "description": "按日推演风险时序（越线点/根因链）。",
     "argHints": {
-      "baseId": "基地 ID",
-      "days": "天数"
+      "base": "基地（可选·不给=全网 scope:ALL；也认 baseId/baseName）",
+      "factor": "风险因素（可选·不给=该基地全因素）",
+      "horizon": "推演天数（默认 30；也认 days）"
     },
     "domain": "plan",
     "answersQuestions": [
@@ -1994,10 +2010,12 @@ export const MOCK_SOLVER_REGISTRY: readonly Omit<MockSolverRegistryItem, "pool">
 
 /**
  * 发布探针词表（`POST /b/v1/skills/:id/publish` 的「哪些求解器真的注册了」）：
- * 全集里 `pool !== "generic"` 的 key 集，**现算**——口径 = 真后端 `probeMissingRefs`
- * 走的 `discover("solvers")` 论域（scenario + cockpit，feature 全开）。模块加载时算一次，
- * 全集变它跟着变；加求解器只改 A 侧，parity 测试红在「缺/多哪个 key」。
+ * **全集 61 条 key 集，现算、不过滤**——口径 = WO-PUBLISH-REFPROBE 订正后真后端
+ * `probeMissingRefs` 走的 `catalog.solverRegistry` 论域（`apps/agentcore/src/resources.ts`），
+ * 与运行时真判据 `SOLVER_KEYS.includes()` 同集（generic 档的 `generic_inference` 在其中，
+ * 旧 discover 40 论域会把出厂计划 `ceo_whatif` 误杀——一道会误杀正确计划的门比没有门更坏）。
+ * 模块加载时算一次，全集变它跟着变；加求解器只改 A 侧，parity 测试红在「缺/多哪个 key」。
  */
 export const MOCK_KNOWN_SOLVER_KEYS: ReadonlySet<string> = new Set(
-  MOCK_SOLVER_REGISTRY_FULL.filter((s) => s.pool !== "generic").map((s) => s.key),
+  MOCK_SOLVER_REGISTRY_FULL.map((s) => s.key),
 );

@@ -17,11 +17,13 @@ import { join } from "node:path";
  * ── 病灶 ──────────────────────────────────────────────────────────────────────
  * `handlers.ts` 曾内联手抄 4 条 `MOCK_SOLVER_REGISTRY`，一身二役：
  *   · 发现页 `GET /a/v1/solvers/registry` 数据源（子集尚可辩称「代表性」）；
- *   · `POST /b/v1/skills/:id/publish` 引用存在性探针的「哪些求解器真的注册了」——
- *     真后端 `probeMissingRefs` 的论域 = A 侧 `discover("solvers")` =
- *     `SOLVER_CATALOG + COCKPIT_SOLVER_CATALOG`（本单实测 22+18=40），
- *     拿 4 条手抄清单判死路 ⇒ 真注册的 kit_readiness 误判 422、GENERIC 档
- *     selection_optimize 反被放行，双向皆错（行为证据见
+ *   · `POST /b/v1/skills/:id/publish` 引用存在性探针的「哪些求解器真的注册了」。
+ *     真后端 `probeMissingRefs` 的论域经 WO-PUBLISH-REFPROBE 订正 =
+ *     A 侧 `catalog.solverRegistry` = **全集（含 GENERIC 档）**，与运行时真判据
+ *     `SOLVER_KEYS.includes()` 同集（generic 档的 `generic_inference` 是合法 key，
+ *     旧 `discover("solvers")` 40 论域会把出厂计划 `ceo_whatif` 误判死路）。
+ *     拿 4 条手抄清单判死路 ⇒ 真注册的 kit_readiness 误判 422、词表外真不存在的
+ *     key 反被放行，双向皆错（行为证据见
  *     `skill-publish-probe-parity.seam.test.ts`，本文件不重复造那份行为探针）。
  *
  * ── 判据形态 ──────────────────────────────────────────────────────────────────
@@ -37,9 +39,17 @@ import { join } from "node:path";
  *   §2 mock 全集 == A 侧三档并集（61）。
  *   §3 每条 pool 归属 == A 侧目录归属（`process_flow_time` 在 GENERIC 档却
  *      domain:"decision" —— 这条实测例外判死了「拿 domain 当论域判据」的捷径）。
- *   §4 发布探针词表 == A 侧 discover 论域现算集（scenario+cockpit，**排除 generic 档**）。
+ *   §4 发布探针词表 == A 侧**全集**现算集（三档并集 61，**含 generic 档**——
+ *      WO-PUBLISH-REFPROBE 后真探针读 `catalog.solverRegistry`，与运行时真判据
+ *      `SOLVER_KEYS` 同集；谁把 generic 过滤加回来这里当场红）。
  *   §5 发现页 seam：真打 `GET /a/v1/solvers/registry`，下发的恰是策展 4 条且逐字段
  *      等于全集镜像里的同 key 条目（派生，不是第二份手抄）；categories 端点论域同源。
+ *   §6 字段级对拍（复验退点①的永不再犯机制）：61 条全量的 `name` / `description` /
+ *      `argHints` 与 catalog.ts 文本抽取值**逐字相等**——mock 镜像当初就是抽自 stale
+ *      真侧才漂了 6 处（capacity_forecast/kit_readiness/quote_margin/risk_timeline 的
+ *      argHints + gap_attribution/quote_margin 的 description），键集对拍看不见字段
+ *      内容漂移，这一节把它钉死。覆盖范围诚实声明：只对拍这三字段，
+ *      answersQuestions/tags/outputShape 不在本节论域。
  */
 
 // ---------------------------------------------------------------------------
@@ -104,13 +114,31 @@ interface CatalogPools {
   generic: string[];
 }
 
+/** §6 字段级对拍的真侧值（catalog.ts 文本抽取，已按 TS 字符串语义反转义）。 */
+interface CatalogFields {
+  name: string;
+  description: string;
+  argHints: Record<string, string>;
+}
+
+/** 把抽到的 TS 字符串字面量本体反转义成运行期值（只支持双引号串；抽到模板串/单引号串 = 工具坏了，报出来）。 */
+function unquote(raw: string, where: string): string {
+  try {
+    return JSON.parse(`"${raw}"`) as string;
+  } catch {
+    throw new Error(`抽取器坏了：${where} 的字符串字面量无法反转义（前 60 字符：${raw.slice(0, 60)}）`);
+  }
+}
+
 /**
- * 从 catalog.ts 文本现算三档键集。
+ * 从 catalog.ts 文本现算三档键集 + 每条目的 name/description/argHints。
  * 抽不出来时抛错（**工具坏了**），绝不返回空集冒充「目录为空」。
  */
-function extractCatalogPools(): CatalogPools {
+function extractCatalog(): { pools: CatalogPools; fields: Map<string, CatalogFields> } {
   const text = stripComments(readFileSync(join(REPO_ROOT, CATALOG_SRC), "utf8"));
-  const one = (decl: string): string[] => {
+  const pools: CatalogPools = { scenario: [], cockpit: [], generic: [] };
+  const fields = new Map<string, CatalogFields>();
+  const one = (decl: string, pool: keyof CatalogPools): void => {
     const m = new RegExp(`export const ${decl}[^=]*=`).exec(text);
     if (!m) throw new Error(`抽取器坏了：catalog.ts 里找不到 export const ${decl}`);
     const openIdx = text.indexOf("[", m.index + m[0].length);
@@ -118,15 +146,35 @@ function extractCatalogPools(): CatalogPools {
     const body = balanced(text, openIdx, "[", "]");
     if (!body) throw new Error(`抽取器坏了：${decl} 数组体配平失败`);
     const entries = splitTopLevel(body);
-    const keys = entries.map((e) => {
+    for (const e of entries) {
       const km = /key:\s*"([^"]+)"/.exec(e);
       if (!km) throw new Error(`抽取器坏了：${decl} 有条目抽不出 key（条目头 80 字符：${e.slice(0, 80)}）`);
-      return km[1]!;
-    });
-    if (keys.length === 0) throw new Error(`抽取器坏了：${decl} 抽出 0 条`);
-    return keys;
+      const key = km[1]!;
+      pools[pool].push(key);
+      const str = (field: string): string => {
+        const fm = new RegExp(`${field}:\\s*"((?:[^"\\\\]|\\\\.)*)"`).exec(e);
+        if (!fm) throw new Error(`抽取器坏了：${decl} 条目 ${key} 抽不出 ${field}（条目头 80 字符：${e.slice(0, 80)}）`);
+        return unquote(fm[1]!, `${decl} 条目 ${key}.${field}`);
+      };
+      let argHints: Record<string, string> = {};
+      const ah = new RegExp(`argHints:\\s*\\{`).exec(e);
+      if (ah) {
+        const ahOpen = e.indexOf("{", ah.index);
+        const ahBody = balanced(e, ahOpen, "{", "}");
+        if (!ahBody) throw new Error(`抽取器坏了：${decl} 条目 ${key} 的 argHints 配平失败`);
+        argHints = Object.fromEntries(
+          [...ahBody.matchAll(/"?([A-Za-z0-9_]+)"?:\s*"((?:[^"\\]|\\.)*)"/g)]
+            .map((p) => [p[1]!, unquote(p[2]!, `${decl} 条目 ${key}.argHints.${p[1]}`)]),
+        );
+      }
+      fields.set(key, { name: str("name"), description: str("description"), argHints });
+    }
+    if (pools[pool].length === 0) throw new Error(`抽取器坏了：${decl} 抽出 0 条`);
   };
-  return { scenario: one("SOLVER_CATALOG"), cockpit: one("COCKPIT_SOLVER_CATALOG"), generic: one("GENERIC_SOLVER_CATALOG") };
+  one("SOLVER_CATALOG", "scenario");
+  one("COCKPIT_SOLVER_CATALOG", "cockpit");
+  one("GENERIC_SOLVER_CATALOG", "generic");
+  return { pools, fields };
 }
 
 const diff = (want: Set<string>, got: Set<string>) => ({
@@ -144,8 +192,7 @@ async function getJson(path: string): Promise<Record<string, any>> {
 // ---------------------------------------------------------------------------
 
 describe("WO-MOCK-FE-REGISTRY-PARITY · 前端 mock 求解器词表与真 A 侧集合对拍", () => {
-  const pools = extractCatalogPools();
-  const aSideUniverse = new Set([...pools.scenario, ...pools.cockpit]); // discover 论域（现算，不写死 40）
+  const { pools, fields: aSideFields } = extractCatalog();
   const aSideFull = new Set([...pools.scenario, ...pools.cockpit, ...pools.generic]); // 全集（现算，不写死 61）
 
   it("§1 金丝雀：抽取器没瞎（已知必中 key + 各档非空 + 档间不相交）", () => {
@@ -183,18 +230,22 @@ describe("WO-MOCK-FE-REGISTRY-PARITY · 前端 mock 求解器词表与真 A 侧�
     }
   });
 
-  it("§4 发布探针词表 == A 侧 discover 论域现算集（scenario+cockpit，排除 generic 档）", () => {
-    const { missing, extra } = diff(aSideUniverse, new Set(MOCK_KNOWN_SOLVER_KEYS));
+  it("§4 发布探针词表 == A 侧全集现算集（61·含 generic 档，论域=运行时真判据 SOLVER_KEYS）", () => {
+    const { missing, extra } = diff(aSideFull, new Set(MOCK_KNOWN_SOLVER_KEYS));
     expect(
-      { missing, extra, mockCount: MOCK_KNOWN_SOLVER_KEYS.size, aSideCount: aSideUniverse.size },
-      "探针词表与真后端 probeMissingRefs 的 discover 论域对不上——缺/多哪个 key 见 missing/extra",
-    ).toEqual({ missing: [], extra: [], mockCount: aSideUniverse.size, aSideCount: aSideUniverse.size });
-    // 反向金丝雀：过滤真的在滤（把「滤了什么」显式命名，免得报错只剩一堆差集）
+      { missing, extra, mockCount: MOCK_KNOWN_SOLVER_KEYS.size, aSideCount: aSideFull.size },
+      "探针词表与真后端 probeMissingRefs 的 solverRegistry 全集论域对不上——缺/多哪个 key 见 missing/extra",
+    ).toEqual({ missing: [], extra: [], mockCount: aSideFull.size, aSideCount: aSideFull.size });
+    // 反向金丝雀：generic 档**必须**在词表里（WO-PUBLISH-REFPROBE 后运行时判据 SOLVER_KEYS 含
+    // generic_inference/selection_optimize；谁把 pool!=="generic" 过滤加回来，这两条当场红）
     expect(MOCK_KNOWN_SOLVER_KEYS.has("kit_readiness"), "scenario 档 kit_readiness 必须在探针词表里").toBe(true);
-    expect(MOCK_KNOWN_SOLVER_KEYS.has("selection_optimize"), "generic 档不该进探针词域").toBe(false);
     expect(
-      MOCK_SOLVER_REGISTRY_FULL.some((it) => it.key === "selection_optimize"),
-      "金丝雀：selection_optimize 必须在全集里（不在 ⇒ 是全集缺，不是探针滤对了）",
+      MOCK_KNOWN_SOLVER_KEYS.has("selection_optimize"),
+      "generic 档 selection_optimize 必须在探针词表里（运行时 SOLVER_KEYS 含它；滤掉=mock 比真后端严）",
+    ).toBe(true);
+    expect(
+      MOCK_KNOWN_SOLVER_KEYS.has("generic_inference"),
+      "generic 档 generic_inference 必须在探针词表里（出厂计划 ceo_whatif 引用它，旧 40 论域会误杀）",
     ).toBe(true);
   });
 
@@ -228,5 +279,23 @@ describe("WO-MOCK-FE-REGISTRY-PARITY · 前端 mock 求解器词表与真 A 侧�
       (cats.categories as { solverKeys: string[] }[]).flatMap((c) => c.solverKeys).sort(),
       "categories 成员并集必须恰好覆盖展示子集",
     ).toEqual([...SOLVER_DISCOVERY_DISPLAY_KEYS].sort());
+  });
+
+  it("§6 字段级对拍：61 条全量的 name/description/argHints 与 catalog.ts 文本逐字相等", () => {
+    // 金丝雀：4 条展示位 + 修单①的 6 处漂移点必须都在真侧抽取结果里（缺 = 抽取器坏了，不许读作「字段干净」）
+    for (const k of [
+      "capacity_forecast", "kit_readiness", "quote_margin", "gap_attribution", // 4 条展示位/退点描述位
+      "risk_timeline", "ontology_query", "process_flow_time", // 退点①点名的其余 argHints 位
+    ]) {
+      expect(aSideFields.has(k), `工具坏了：catalog.ts 抽取结果缺 ${k}`).toBe(true);
+    }
+    for (const it of MOCK_SOLVER_REGISTRY_FULL) {
+      const want = aSideFields.get(it.key);
+      expect(want, `工具坏了：mock 全集的 ${it.key} 在 A 侧抽取结果里查无此 key（§2 应先红）`).toBeDefined();
+      expect(
+        { key: it.key, name: it.name, description: it.description, argHints: it.argHints },
+        `条目 ${it.key} 的 name/description/argHints 与 catalog.ts 逐字不等 ⇒ mock 镜像字段漂移（改哪边想清楚：真侧改了镜像跟抄，镜像乱改这里挡）`,
+      ).toEqual({ key: it.key, ...want });
+    }
   });
 });

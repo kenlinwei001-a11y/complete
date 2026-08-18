@@ -81,7 +81,8 @@ import { accountFromAuth, db, tokenFor, type MockTask } from "./db";
 import { BUILD_PIPELINE_KINDS, factoryPipeline, pipelineOrder, resolvePipeline } from "./pipelineFixtures";
 // WO-MOCK-FE-REGISTRY-PARITY · 求解器词表单一出处（61 条全集镜像 + 两个消费方的派生口径）。
 // MOCK_SOLVER_REGISTRY = 发现页展示子集（从全集派生，非手抄）；MOCK_KNOWN_SOLVER_KEYS =
-// 发布探针词表（现算 = 真后端 probeMissingRefs 的 discover 论域 scenario+cockpit）。
+// 发布探针词表（现算 61 条全集 = 真后端 probeMissingRefs 经 WO-PUBLISH-REFPROBE 订正后的
+// catalog.solverRegistry 论域，与运行时真判据 SOLVER_KEYS 同集，含 GENERIC 档）。
 import { MOCK_KNOWN_SOLVER_KEYS, MOCK_SOLVER_REGISTRY } from "./solverRegistry";
 // WO-WAITING-STATES-FE · 流程等待态 fixture（过契约 schema 的真种子子集，见该文件头三重防漂移机制）
 import { PROCESS_DEFINITIONS_RESPONSE, processInspectFixture, processInstancesFixture, processStepTemplateFixture } from "./processWaitFixtures";
@@ -92,9 +93,10 @@ import { historyBundleFor, LIVED_WATERMARK } from "./livedInFixtures";
  *
  * WO-MOCK-FE-REGISTRY-PARITY 前情：这里曾内联手抄 4 条当「注册表」，两个消费方共用——
  * 发现页给子集尚可辩称「代表性」，但 `POST /b/v1/skills/:id/publish` 的引用存在性探针
- * （真后端 `probeMissingRefs`·`apps/agentcore/src/resources.ts` 的论域 = A 侧
- * `discover("solvers")` = scenario+cockpit 40 条）拿 4 条手抄清单判死路，双向都错：
- * 真注册的 kit_readiness 等被误判 422（太严），GENERIC 档 selection_optimize 反被放行（太松）。
+ * （真后端 `probeMissingRefs`·`apps/agentcore/src/resources.ts` 的论域，经
+ * WO-PUBLISH-REFPROBE 订正 = A 侧 `catalog.solverRegistry` 全集 61 条、含 GENERIC 档）
+ * 拿 4 条手抄清单判死路，双向都错：
+ * 真注册的 kit_readiness 等被误判 422（太严），词表外真不存在的 key 反被放行（太松）。
  * 现状：发现页子集 `MOCK_SOLVER_REGISTRY` 与探针词表 `MOCK_KNOWN_SOLVER_KEYS` 都从
  * `./solverRegistry` 的 61 条全集镜像**派生/现算**， parity 测试把键集与 A 侧 catalog.ts 对拍。
  */
@@ -6218,10 +6220,11 @@ export const handlers = [
    * references 与 dependsOn 一起探。constraint/slice/workflow/agent 今天两侧都无人校验，别在此补——
    * mock 比真后端严会造出"本地红、线上绿"的反向假信号。
    *
-   * solver 词表 = `MOCK_KNOWN_SOLVER_KEYS`（`./solverRegistry` 现算 40 条 =
-   * 真后端 `probeMissingRefs` 走的 `discover("solvers")` 论域 scenario+cockpit）。
+   * solver 词表 = `MOCK_KNOWN_SOLVER_KEYS`（`./solverRegistry` 现算 61 条全集 =
+   * 真后端 `probeMissingRefs` 经 WO-PUBLISH-REFPROBE 订正后走的 `catalog.solverRegistry`
+   * 论域，与运行时真判据 `SOLVER_KEYS` 同集——GENERIC 档是合法 key，不许按 pool 过滤）。
    * WO-MOCK-FE-REGISTRY-PARITY 前曾拿发现页 4 条展示子集判存在性——真注册的
-   * kit_readiness 被误判死路、GENERIC 档 selection_optimize 反被放行，双向皆错。
+   * kit_readiness 被误判死路、词表外真不存在的 key 反被放行，双向皆错。
    */
   http.post("*/b/v1/skills/:id/publish", ({ params }) => {
     const s = db.skills.find((x) => x.id === params.id);
