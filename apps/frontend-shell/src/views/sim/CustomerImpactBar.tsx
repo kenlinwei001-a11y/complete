@@ -21,7 +21,7 @@ import styles from "./GlobalSimView.module.css";
  * ② G-UI-2 · 每单显示交付基地 + 产线（真 Line 对象·经 lineNameOf 派生·非占位）。
  */
 
-export interface OrderVM { id: string; cust: string; model: string; qty: number; due: string; base?: string; homeBase?: string }
+export interface OrderVM { id: string; cust: string; model: string; qty: number; due: string; base?: string; homeBase?: string; objId?: string }
 export interface DisplacedVM { orderId: string; kind: string; qty: number; model?: string }
 
 /** 应用细分标签取自 SEG_REGISTRY（单一来源·非内联·R14）。 */
@@ -39,6 +39,27 @@ function segKeyOfCust(cust: string): "pas" | "ess" | "com" {
 interface ImpactRow {
   orderId: string; cust: string; model: string; qty: number;
   segLabel: string; segColor: string; deliverTo: string; deliverLine: string; impactYi: number; traceable: boolean;
+  /** 被挤单的本体对象 id（`repos.objects` 主键·非 so）与整单量——协调加产杠杆映射的两个输入。 */
+  objId?: string; totalQty: number;
+}
+
+/**
+ * WO-PLAN-CHANGE-LEVER-MAP · 协调加产的**真域映射**（G-PLAN-CHANGE-NO-LEVER 收编①）。
+ *
+ * 「协调产能承接以消减被挤影响」此前只是 payload 里的 `intent` 字符串——不是任何对象的属性，
+ * 审批通过后零落点（诚实失败）。真映射 = `Order.outsourceRatio`（注册杠杆·LEVER_PROP_META 在册·
+ * C08 红线/vle 扫描真消费）：**联合解挤不出的那部分量转外协**，外协占比 = 被挤套数 ÷ 整单套数
+ * （0–1 比率·与 LEVER_PROP_META `kind:"ratio"` 同轴·封顶 1 = 整单外协）。
+ * 两个输入都来自真数据：被挤量 = portfolio 联合解 displaced.qty，整单量 = 真 Order 对象 qty。
+ *
+ * 诚实边界：反查不到真 Order 对象（objId/totalQty 缺）或被挤量为 0 ⇒ **不发 levers**，
+ * 落回既有的诚实失败（EXECUTOR_NOT_IMPLEMENTED·列出收到的键）——绝不猜一个值写下去。
+ */
+function coordLevers(r: ImpactRow): { objectType: string; objectId: string; prop: string; value: number }[] {
+  if (!r.objId || !(r.totalQty > 0) || !(r.qty > 0)) return [];
+  const ratio = Math.min(1, Math.round((r.qty / r.totalQty) * 1e4) / 1e4);
+  if (!(ratio > 0)) return [];
+  return [{ objectType: "Order", objectId: r.objId, prop: "outsourceRatio", value: ratio }];
 }
 
 export function CustomerImpactBar({ displaced, orders, lineNameOf, sessionId }: { displaced: DisplacedVM[]; orders: OrderVM[]; lineNameOf?: (baseId: string) => string; sessionId?: string }) {
@@ -48,12 +69,16 @@ export function CustomerImpactBar({ displaced, orders, lineNameOf, sessionId }: 
   const [preview, setPreview] = useState<ImpactRow | null>(null);
   const confirmCoordinate = (r: ImpactRow) => {
     // plan_change 非 global-sim payload → **必带 versionId + reason**（后端 paramsSchema required·缺则 VALIDATION_ERROR）。
+    // WO-PLAN-CHANGE-LEVER-MAP：带上真杠杆映射（见 coordLevers 头注）→ 审批通过后走 applyLeverWrites 真落库，
+    // 不再诚实失败。判据在 payload **形状**（{objectId,prop,value}），不在 source/intent 串。
+    const levers = coordLevers(r);
     adopt.mutate({
       actionTypeKey: "plan_change",
       payload: {
         intent: "coordinate_capacity", orderId: r.orderId, cust: r.cust, seg: r.segLabel, qty: r.qty, impactYi: r.impactYi,
         versionId: `global-sim-impact:${sessionId ?? "anon"}:${r.orderId}`,
         reason: `协调加产：为 ${r.orderId}（${r.cust}）协调产能以消减被挤单影响`,
+        ...(levers.length ? { levers } : {}),
       },
     });
     setPreview(null);
@@ -82,6 +107,9 @@ export function CustomerImpactBar({ displaced, orders, lineNameOf, sessionId }: 
           deliverLine: lineNameOf && homeBase ? lineNameOf(homeBase) : "—",
           impactYi: Math.round((qty * priceWanOf(segKey)) / 1e4 * 1000) / 1000,
           traceable: !!o, // 可溯真 order（反查命中）
+          // 协调加产杠杆映射输入：本体对象 id（非 so）+ 整单量（分母）。
+          objId: o?.objId,
+          totalQty: Number(o?.qty ?? 0),
         };
       })
       .sort((a, b) => b.impactYi - a.impactYi || a.orderId.localeCompare(b.orderId));

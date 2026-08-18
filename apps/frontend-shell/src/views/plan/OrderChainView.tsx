@@ -1160,8 +1160,37 @@ function OrderFullchainPanel() {
               <tr><td>③财务·经营</td><td>{data.judges.fin.verdict}</td><td className="mono">毛利 {data.judges.fin.marginPct}% vs 底线 {data.judges.fin.floorPct}%</td><td className="mono">{data.judges.fin.ruleRefs.join("/")}</td></tr>
             </tbody>
           </table>
+          {/*
+            WO-PLAN-CHANGE-LEVER-MAP · order-chain 结论的**真域映射**（G-PLAN-CHANGE-NO-LEVER 收编②）。
+            此前 payload 只有 `{so, verdict}` —— verdict 不是任何对象的属性，审批通过后零落点（诚实失败）。
+            现把**引擎自己在 conds 里点名的数值型对冲手段**翻译成注册杠杆（判据在 payload 形状
+            `{objectId,prop,value}`，不在 source 串）：
+              ① 交期判「紧张」（周供给 P90 < 本单需求·conds 原文「需夜班/外协对冲」）
+                 → `Order.outsourceRatio` = 未覆盖占比 (demand−P90)/demand（0–1·与 LEVER_PROP_META ratio 同轴，
+                    C08 红线/vle 扫描真消费）；
+              ② 财务判「需提价 N%」（verdict 原文「提价N%接」）
+                 → `Order.unitPrice` × (1+N/100)（真单价属性·派生 `Order.value = qty×unitPrice` 随之重算）。
+            诚实边界（不映射、落回既有诚实失败，绝不猜值）：
+              · 「可接」无任何附加条件 —— 无真值需改（承诺/移出 OPEN 集是 GlobalSimPlanExecutor 的语义，
+                非本杠杆写入器）；· 信用阻断「需先收款/降额」—— 收款是事件不是拨杆，把 creditUsedRatio
+                改小 = 伪造财务事实；· 齐套判缺料 —— 缺口在 MaterialBalance（吨），与 Order/Material
+                无可换算的数值映射。
+          */}
           <button className="btn sm" data-testid="ofc-adopt" style={{ marginTop: 8 }} disabled={adopt.isPending}
-            onClick={() => adopt.mutate({ actionTypeKey: "plan_change", payload: { versionId: `order-chain:${data.so}`, reason: data.summary, so: data.so, verdict: data.verdict } })}>
+            onClick={() => {
+              const orderObj = (orders?.items ?? []).find((o) => String(o.props.so) === data.so);
+              const levers: { objectType: string; objectId: string; prop: string; value: number }[] = [];
+              const cap = data.judges.cap;
+              if (orderObj && cap.demand > 0 && cap.packsPerWeekP90 < cap.demand) {
+                levers.push({ objectType: "Order", objectId: orderObj.id, prop: "outsourceRatio", value: Math.round(((cap.demand - cap.packsPerWeekP90) / cap.demand) * 1e4) / 1e4 });
+              }
+              const fin = data.judges.fin;
+              const unitPrice = Number(orderObj?.props.unitPrice ?? 0);
+              if (orderObj && !fin.marginOk && fin.priceUpPct > 0 && unitPrice > 0) {
+                levers.push({ objectType: "Order", objectId: orderObj.id, prop: "unitPrice", value: Math.round(unitPrice * (1 + fin.priceUpPct / 100) * 1e4) / 1e4 });
+              }
+              adopt.mutate({ actionTypeKey: "plan_change", payload: { versionId: `order-chain:${data.so}`, reason: data.summary, so: data.so, verdict: data.verdict, ...(levers.length ? { levers } : {}) } });
+            }}>
             采纳结论 → 工单（C10 留痕）
           </button>
 

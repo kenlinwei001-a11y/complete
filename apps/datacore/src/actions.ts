@@ -40,13 +40,15 @@ export const ACTION_WIRING: Record<string, ActionWiring> = {
   计划版本变更: "WIRED",
   对象数据变更: "WIRED",
   流水线发布物化: "WIRED",
-  // plan_change 一个 key 承载**三条形态不同**的生产者，执行期按 payload 二次判定（WO-ACTION-NOOP-EXEC 实测）：
+  // plan_change 一个 key 承载**多条形态不同**的生产者，执行期按 payload 二次判定（WO-ACTION-NOOP-EXEC 实测）：
   //   ① source==="global-sim"（`GlobalSimView.tsx:354`）→ GlobalSimPlanExecutor 真回灌基线；
-  //   ② 带真本体属性杠杆 `payload.levers[{objectType,objectId,prop,value}]`
-  //      （`RiskBoardView.tsx adoptScenario()` 发的 `LiveScenario.apply`）→ **本单接上**：与
-  //      `采纳产能保障方案` 同一套写入器落成属性真值 + runDerivations；
-  //   ③ 其余四条生产者（order-chain 结论 / coordinate_capacity 协调加产 / global-sim-scenario KPI 快照 /
-  //      sim_sandbox 结论）payload 里**没有任何可写的杠杆** → 诚实失败（理由随错误吐出）。
+  //   ② 带真本体属性杠杆 `payload.levers[{objectType,objectId,prop,value}]` → 与
+  //      `采纳产能保障方案` 同一套写入器落成属性真值 + runDerivations。**三条生产者**发这种形态：
+  //      `RiskBoardView.tsx adoptScenario()`（LiveScenario.apply）· WO-PLAN-CHANGE-LEVER-MAP 新接的
+  //      `OrderChainView.tsx` 采纳结论（交期紧张→Order.outsourceRatio / 需提价→Order.unitPrice）与
+  //      `CustomerImpactBar.tsx` 协调加产（被挤占比→Order.outsourceRatio）；
+  //   ③ 仍无杠杆的形态（global-sim-scenario KPI 快照 / sim_sandbox 结论 / order-chain「可接无条件」）
+  //      → 诚实失败（理由随错误吐出）。
   //      其中 sim_sandbox 两条的 payload 自带 `patch.simulated: true`：把模拟态结论直接写成真值
   //      恰是 PRD-enterprise-decision-twin §4.1 明令禁止的「仿真世界回流真实世界」——
   //      这条诚实失败是**正确行为**，不是欠账（见本体 §8 G-PLAN-CHANGE-NO-LEVER）。
@@ -394,9 +396,9 @@ export const BUILTIN_ACTION_EFFECTS: Record<string, ActionEffectSpec> = {
       //    没有分支 → 落 MockActionExecutor，审批通过后实际零回写」——**两处都已不成立**，
       //    而一条**在说谎的回写声明**比没有声明更危险（影响分析会照它答「批准这个不会动任何真值」）。
       "非 global-sim 的 plan_change **按 payload 形态二分**（上列三条 writes 均带 source==='global-sim' 条件，只覆盖 global-sim 那一支）：" +
-        "① 带 `levers[{objectType,objectId,prop,value}]` 者（风险看板「采纳风险处置方案」）**真写本体属性真值** —— " +
+        "① 带 `levers[{objectType,objectId,prop,value}]` 者（风险看板「采纳风险处置方案」· WO-PLAN-CHANGE-LEVER-MAP 新接的 order-chain 结论与协调加产）**真写本体属性真值** —— " +
         "但**目标 objectType/propKey 由 payload 在运行期决定**，本 schema 的 `objectType` 要求具体 typeKey，静态声明表达不了，故只能记在此处（保持 coverage=PARTIAL，绝不以 COMPLETE 假装完整）；" +
-        "② 不带 levers 者（order-chain 结论 / coordinate_capacity / global-sim-scenario KPI 快照 / sim_sandbox 结论）**零回写且诚实失败**（`EXECUTOR_NOT_IMPLEMENTED` + 具体缺口），" +
+        "② 不带 levers 者（global-sim-scenario KPI 快照 / sim_sandbox 结论 / order-chain「可接无条件」等无杠杆形态）**零回写且诚实失败**（`EXECUTOR_NOT_IMPLEMENTED` + 具体缺口），" +
         "**不再**返回 MO 形态假单号（兜底早已从 MockActionExecutor 换成 UnwiredActionExecutor）。见本体 §8 G-PLAN-CHANGE-NO-LEVER。",
     ],
   },

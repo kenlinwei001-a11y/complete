@@ -303,7 +303,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
   const orderList = useMemo(() => (orders.data?.items ?? []).map((o) => {
     // ② G-UI-2·home 基地 = 首个可产基地 id（真数据·非占位）；base 保留原（数组时逗号串·仅回显兜底）。
     const homeBase = Array.isArray(o.props.bases) ? String((o.props.bases as unknown[])[0] ?? "") : String(o.props.bases ?? o.props.base ?? "");
-    return { id: String(o.props.so ?? o.id), cust: String(o.props.cust ?? "—"), model: String(o.props.model ?? "—"), qty: Number(o.props.qty ?? 0), due: String(o.props.due ?? "—"), base: String(o.props.bases ?? o.props.base ?? "—"), homeBase, businessType: String(o.props.businessType ?? ""), early: o.props.early === true };
+    // WO-PLAN-CHANGE-LEVER-MAP：`id` 维持业务键（so·列表/路由沿用），另带 `objId` = 本体对象主键
+    //（协调加产的 plan_change 杠杆 {objectId,…} 要的是它——applyLeverWrites 按对象 id 回仓储取对象）。
+    return { id: String(o.props.so ?? o.id), objId: o.id, cust: String(o.props.cust ?? "—"), model: String(o.props.model ?? "—"), qty: Number(o.props.qty ?? 0), due: String(o.props.due ?? "—"), base: String(o.props.bases ?? o.props.base ?? "—"), homeBase, businessType: String(o.props.businessType ?? ""), early: o.props.early === true };
   }), [orders.data]);
 
   // ② G-UI-2·真 Line 对象（每基地代表产线 = PACK 线·成品下线·非占位）：订单/客户级展开显示 base + line 真数据。

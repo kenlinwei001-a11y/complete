@@ -114,6 +114,12 @@ describe("WO-GLOBALSIM-SUITE · ⑥ G-UI-3 客户卡 → 真项目详情路由�
     expect(String(draftBody!.payload!.versionId)).toContain("SO-10001");
     expect(typeof draftBody!.payload!.reason).toBe("string");
     expect(String(draftBody!.payload!.reason).length).toBeGreaterThan(0);
+    // WO-PLAN-CHANGE-LEVER-MAP：草稿必须带**真域映射 levers**（判据在 payload 形状 {objectId,prop,value}）——
+    // 被挤 1500 套 ÷ 整单 1420 套（mock ORDERS·ord-001）= 1.0563 → 封顶 1（整单外协）。
+    // 缺了它，后端 applyLeverWrites 进不去，草稿落回诚实失败（G-PLAN-CHANGE-NO-LEVER 回潮）。
+    expect(draftBody!.payload!.levers).toEqual([
+      { objectType: "Order", objectId: "ord-001", prop: "outsourceRatio", value: 1 },
+    ]);
   });
 });
 

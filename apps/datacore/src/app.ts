@@ -590,8 +590,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         if (levers.kind !== "ABSENT") {
           return applyLeverWrites(draft, levers, "采纳风险处置方案(plan_change)", "PLAN-CHANGE-LEVER");
         }
-        // ③ 其余形态（order-chain 结论 / coordinate_capacity / global-sim-scenario KPI 快照 / sim_sandbox 结论）
-        //    payload 里没有任何可写的杠杆 → **不得**借 plan_change 的 WIRED 之名假装写了 → 诚实失败并说清为什么。
+        // ③ 其余形态（global-sim-scenario KPI 快照 / sim_sandbox 结论 / order-chain「可接无条件」等
+        //    无杠杆形态）payload 里没有任何可写的杠杆 → **不得**借 plan_change 的 WIRED 之名假装写了 → 诚实失败并说清为什么。
+        //    ⚠️ 2026-08-18 就地回写（WO-PLAN-CHANGE-LEVER-MAP）：order-chain 结论与协调加产两条生产者
+        //    已带上真域映射 levers（交期紧张→Order.outsourceRatio / 提价→Order.unitPrice / 被挤占比→外协），
+        //    它们走上面 ② 的 applyLeverWrites 真落库，不再落到本分支。
         const p = draft.payload as Record<string, unknown>;
         const patch = (p.patch ?? {}) as Record<string, unknown>;
         const simulated = patch.simulated === true;

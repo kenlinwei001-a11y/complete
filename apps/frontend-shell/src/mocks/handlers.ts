@@ -5743,7 +5743,9 @@ export const handlers = [
           judges: {
             cap: { verdict: "可达", packsPerWeekP50: 1400, packsPerWeekP90: 1260, demand: 800, ruleRefs: ["C02", "C03"], unit: "套/周" },
             kit: { verdict: "缺料", material: "三元正极", gapTon: 654, eta: "2026-06-28", ruleRefs: ["C06", "C16"] },
-            fin: { verdict: "需提价3%", marginPct: 11, floorPct: 14, creditUsedRatio: 0.8, priceUpPct: 3, ruleRefs: ["C15", "C13", "C18"] },
+            // marginOk/creditOk 是 OrderFinanceJudgeSchema 的**必填**布尔（真后端 financeJudge 恒下发）——
+            // mock 此前漏了这两键（WO-PLAN-CHANGE-LEVER-MAP 补齐）：前端采纳映射读 marginOk 决定要不要发提价杠杆。
+            fin: { verdict: "需提价3%", marginPct: 11, floorPct: 14, marginOk: false, creditUsedRatio: 0.8, creditOk: true, priceUpPct: 3, ruleRefs: ["C15", "C13", "C18"] },
           },
           conds: ["毛利率 11% < 细分底线 14%（C15），提价 3% 达线", "三元正极 缺口 654 吨（C06），最早齐套 2026-06-28"],
           dag: {
