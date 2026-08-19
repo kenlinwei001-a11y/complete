@@ -337,5 +337,511 @@
     "slots.ts": 3,
     "solvers/extended.ts": 1,
     "solvers/service.ts": 5
+  },
+  "contents": {
+    "ed521e15e16d30f9": {
+      "file": "apps/datacore/src/ontology-core.ts",
+      "label": "本体 L78 `ontology-core.ts:534`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "0bc67cb92efecd17": {
+      "file": "apps/datacore/src/synthetic/battery.ts",
+      "label": "本体 L96 `battery.ts:169`",
+      "count": 2,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "d778099e268e0628": {
+      "file": "apps/datacore/src/app.ts",
+      "label": "本体 L127 `app.ts:290`",
+      "count": 2,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "7489757b5149c9d7": {
+      "file": "apps/datacore/src/app.ts",
+      "label": "本体 L130 `app.ts:354`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "3c1bc57742e578a2": {
+      "file": "contracts/llm.ts",
+      "label": "本体 L174 `contracts/llm.ts:205`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "4abe686f22d49f9b": {
+      "file": "contracts/impact-analysis.ts",
+      "label": "本体 L289 `contracts/impact-analysis.ts:132`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "55ac5020f7dafdb5": {
+      "file": "apps/datacore/src/app.ts",
+      "label": "本体 L434 `app.ts:3024`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "7c54df868ccf311a": {
+      "file": "apps/datacore/src/databuilder/comprehend.ts",
+      "label": "本体 L443 `databuilder/comprehend.ts:149`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "694a7a399c009c6c": {
+      "file": "apps/agentcore/src/agent/loop.ts",
+      "label": "本体 L455 `apps/agentcore/src/agent/loop.ts:881`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "f1c731d33f592c25": {
+      "file": "apps/agentcore/src/agent/loop.ts",
+      "label": "本体 L456 `apps/agentcore/src/agent/loop.ts:307`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "b1a84825caf44bb9": {
+      "file": "apps/agentcore/src/agent/reflect.ts",
+      "label": "本体 L457 `apps/agentcore/src/agent/reflect.ts:73`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "b4be4c33fd71a6f2": {
+      "file": "apps/agentcore/src/agent/reflect.ts",
+      "label": "本体 L460 `reflect.ts:30`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "67f537ab77842831": {
+      "file": "loop.ts",
+      "label": "本体 L462 `loop.ts:372`",
+      "count": 2,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "ef19c1a7960d2f74": {
+      "file": "apps/agentcore/src/router/orchestrator.ts",
+      "label": "本体 L465 `orchestrator.ts:202`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "0cee4ecf07e804c8": {
+      "file": "apps/agentcore/src/features/gate.ts",
+      "label": "本体 L467 `apps/agentcore/src/features/gate.ts:90`",
+      "count": 2,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "22d5c5e31ef8ee09": {
+      "file": "registry.ts",
+      "label": "本体 L468 `registry.ts:104`",
+      "count": 2,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "0c34dfec9b626aab": {
+      "file": "apps/datacore/src/seed.ts",
+      "label": "本体 L469 `apps/datacore/src/seed.ts:63`",
+      "count": 2,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "5c9820da2c5f2cbf": {
+      "file": "apps/datacore/src/seed-cli.ts",
+      "label": "本体 L470 `seed-cli.ts:38`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "6da05c974f412118": {
+      "file": "loop.ts",
+      "label": "本体 L474 `loop.ts:182`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "267c9d8d3df22ae7": {
+      "file": "apps/datacore/src/solvers/service.ts",
+      "label": "本体 L541 `solvers/service.ts:475`",
+      "count": 2,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "0ad1580792c6f469": {
+      "file": "impact-analysis.ts",
+      "label": "本体 L1364 `impact-analysis.ts:240`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "0716b4a612a7a975": {
+      "file": "finance-world.ts",
+      "label": "本体 L1486 `finance-world.ts:146`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "e4bff3093b32d4af": {
+      "file": "apps/datacore/src/calibration/service.ts",
+      "label": "本体 L1760 `calibration/service.ts:681`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "b5ad8707dc378bb5": {
+      "file": "planviews.ts",
+      "label": "本体 L1767 `planviews.ts:416`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "502afaece542be24": {
+      "file": "apps/datacore/src/app.ts",
+      "label": "本体 L1836 `app.ts:950`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "b7fafcb39dbdc264": {
+      "file": "apps/agentcore/src/router/slots.ts",
+      "label": "本体 L1880 `slots.ts:307`",
+      "count": 3,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "829c3b99b298afa2": {
+      "file": "apps/datacore/src/app.ts",
+      "label": "本体 L2076 `apps/datacore/src/app.ts:4345`",
+      "count": 5,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "0c3e167faf21cf1b": {
+      "file": "apps/datacore/src/app.ts",
+      "label": "本体 L2076 `apps/datacore/src/app.ts:4244`",
+      "count": 5,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "4b1b8a9dd097c91d": {
+      "file": "apps/datacore/src/app.ts",
+      "label": "本体 L2125 `apps/datacore/src/app.ts:4778`",
+      "count": 6,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "9290fd6affdaa100": {
+      "file": "apps/datacore/src/solvers/service.ts",
+      "label": "本体 L2154 `solvers/service.ts:1424-1427`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "631f8ea57e2b0160": {
+      "file": "apps/datacore/src/solvers/risk.ts",
+      "label": "本体 L2158 `risk.ts:337`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "aaa35380d349d0d1": {
+      "file": "apps/frontend-shell/src/pages/admin/LlmProvidersPage.tsx",
+      "label": "本体 L2163 `LlmProvidersPage.tsx:474`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "548f21fd8642536a": {
+      "file": "apps/datacore/src/databuilder/service.ts",
+      "label": "本体 L2164 `databuilder/service.ts:74`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "2c1c6f97be00cf39": {
+      "file": "apps/datacore/src/solvers/capacity.ts",
+      "label": "本体 L2168 `capacity.ts:151`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "48abeacd3f53358e": {
+      "file": "apps/datacore/src/solvers/service.ts",
+      "label": "本体 L2168 `solvers/service.ts:4059`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "f11c151bab6fd949": {
+      "file": "apps/datacore/src/solvers/capacity.ts",
+      "label": "本体 L2168 `capacity.ts:592`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "0ad6e7ea0f2a4122": {
+      "file": "apps/datacore/src/solvers/extended.ts",
+      "label": "本体 L2168 `solvers/extended.ts:156`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "4a6c5a02fb6dc3ca": {
+      "file": "apps/datacore/src/solvers/service.ts",
+      "label": "本体 L2175 `solvers/service.ts:622`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "1e903c2a38b77008": {
+      "file": "service.ts",
+      "label": "本体 L2176 `service.ts:808-812`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "c2265a500a9a3ea8": {
+      "file": "apps/agentcore/src/router/domain-resolver.ts",
+      "label": "本体 L2199 `domain-resolver.ts:80`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "739a2dc80c5194ff": {
+      "file": "loop.ts",
+      "label": "本体 L2199 `loop.ts:881`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "5da3615f569bc466": {
+      "file": "apps/agentcore/src/router/l2-decompose.ts",
+      "label": "本体 L2199 `router/l2-decompose.ts:32`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "f01ad526c3cab66b": {
+      "file": "apps/frontend-shell/src/views/sim/ProjectSimView.tsx",
+      "label": "本体 L2204 `ProjectSimView.tsx:862`",
+      "count": 2,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "1521f85c6d40ddda": {
+      "file": "apps/frontend-shell/src/views/capacity/factorOntology.ts",
+      "label": "本体 L2206 `factorOntology.ts:47-74`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "a9f4f57d0c59cd64": {
+      "file": "apps/agentcore/src/agent/sim-planner.ts",
+      "label": "本体 L2208 `sim-planner.ts:28-93`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "81592d7c50280eb9": {
+      "file": "apps/frontend-shell/src/views/sim/GlobalSimLevers.tsx",
+      "label": "本体 L2208 `GlobalSimLevers.tsx:14`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "ac5a66758004b23f": {
+      "file": "packages/contracts/src/global-sim.ts",
+      "label": "本体 L2208 `global-sim.ts:84`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "664ef09876f60a72": {
+      "file": "apps/agentcore/src/agent/sim-planner.ts",
+      "label": "本体 L2208 `sim-planner.ts:14-17`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "897fba7b527d5e45": {
+      "file": "apps/datacore/src/app.ts",
+      "label": "本体 L2209 `app.ts:1228-1496`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "745867590865fae8": {
+      "file": "packages/contracts/src/sim.ts",
+      "label": "本体 L2209 `sim.ts:59`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "ad95f7dda59eb0a0": {
+      "file": "apps/datacore/src/app.ts",
+      "label": "本体 L2209 `app.ts:1235`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "9b9b3a88b0aef149": {
+      "file": "service.ts",
+      "label": "本体 L2215 `service.ts:1334-1352`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "fce737be39ed3715": {
+      "file": "service.ts",
+      "label": "本体 L2215 `service.ts:1340`",
+      "count": 3,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "2074dcfe342cdcc4": {
+      "file": "apps/datacore/src/synthetic/battery.ts",
+      "label": "本体 L2215 `battery.ts:778`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "4e6e17b9bda5517e": {
+      "file": "apps/datacore/src/synthetic/battery.ts",
+      "label": "本体 L2215 `battery.ts:3373`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "505037635af81da8": {
+      "file": "service.ts",
+      "label": "本体 L2216 `service.ts:820`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "fbe0841feee4176d": {
+      "file": "service.ts",
+      "label": "本体 L2225 `service.ts:5866`",
+      "count": 2,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "b476148d69c07ab3": {
+      "file": "apps/datacore/src/app.ts",
+      "label": "本体 L2226 `app.ts:403`",
+      "count": 2,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "01334c2519cbd84e": {
+      "file": "anthropic.ts",
+      "label": "本体 L2234 `anthropic.ts:95`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "366885119e63bfd8": {
+      "file": "apps/agentcore/src/llm/providers.ts",
+      "label": "本体 L2234 `providers.ts:347`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "6ad30603ad38cd17": {
+      "file": "engine.ts",
+      "label": "本体 L2237 `engine.ts:313`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "6b10b2f49fac3dde": {
+      "file": "apps/datacore/src/app.ts",
+      "label": "本体 L2238 `app.ts:772`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "a3bfb4ddbaf1829e": {
+      "file": "apps/datacore/src/decision/kernel.ts",
+      "label": "本体 L2262 `decision/kernel.ts:129-131`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "b8fd5179636071f0": {
+      "file": "apps/datacore/src/app.ts",
+      "label": "本体 L2263 `apps/datacore/src/app.ts:1405`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "4c8b04843d25b4f7": {
+      "file": "apps/datacore/src/app.ts",
+      "label": "本体 L2263 `apps/datacore/src/app.ts:1410`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "d563dd2b0f62a568": {
+      "file": "apps/frontend-shell/src/pages/admin/FeaturesPage.tsx",
+      "label": "本体 L2325 `FeaturesPage.tsx:232`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "7dc392d0ae84ab6d": {
+      "file": "service.ts",
+      "label": "本体 L2325 `service.ts:1864`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "941c22a78f2e529b": {
+      "file": "packages/contracts/src/feature-names.ts",
+      "label": "本体 L2325 `feature-names.ts:28-32`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "fa53a48c520d9a2c": {
+      "file": "apps/agentcore/src/tools/executor.ts",
+      "label": "本体 L2331 `tools/executor.ts:106`",
+      "count": 2,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "f92a6e77984ad363": {
+      "file": "executor.ts",
+      "label": "本体 L2331 `executor.ts:378`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "c6c3aa9369eb1cd2": {
+      "file": "server.ts",
+      "label": "本体 L2331 `server.ts:2265`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "347f102e17dc561d": {
+      "file": "apps/agentcore/src/dril/resource-registry.ts",
+      "label": "本体 L2331 `dril/resource-registry.ts:115`",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（ontology-anchors:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    }
   }
 }

@@ -56,6 +56,7 @@ function gateToolBroken(e) {
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { contentKey, reconcileContents, buildContentsSegment, conservationCanary } from "./lib/ratchet-conservation.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -354,6 +355,12 @@ if (!canary.ok) {
   console.error(`  金丝雀 ${canary.hits}/${canary.total} 命中 —— 修好 importStatementLines / isDefinitionLine 再跑。`);
   process.exit(2);
 }
+// D5/D6 内容对账金丝雀（共享实现 scripts/lib/ratchet-conservation.mjs 本体，不另抄一份比较逻辑）
+const consCanary = conservationCanary();
+if (!consCanary.ok) {
+  console.error("⛔ **门自己坏了**：D5/D6 内容对账金丝雀不过 —— " + consCanary.got + "（期望：" + consCanary.want + "）。");
+  process.exit(2);
+}
 if (canaryOnly) {
   console.log(`✓ 金丝雀全中：${canary.hits}/${canary.total}（import 行判定 ${CANARY_IMPORT_EXPECT.length} 例 + 定义处判定 ${CANARY_DEF_EXPECT.length} 例）`);
   console.log(`  命中样例：合成样例第 1/4/5/6/7/8/9 行判为 import 行；第 10/11/12/19 行判为非 import（含动态 import 与本地 export{}）。`);
@@ -502,6 +509,33 @@ for (const a of anchors) {
   }
 }
 
+// ── D5/D6 内容键（未校准锚点侧；共享实现 scripts/lib/ratchet-conservation.mjs）────────
+// 已校准锚点天然内容键化（`path::symbol`，消失有 ANCHOR_DELETED 防线）——D5/D6 已内蕴。
+// 未校准锚点只按**目标文件计数**：同数调包（删掉指向第 12 行的、新写一条指向第 340 行的，
+// 计数不变）在纯计数棘轮下恒绿 —— 这正是 G-RATCHET-NEWFILE-BLIND 在本门的形态。
+// 内容键 = 目标文件 + **目标行的代码文本**（行号只作无法解析时的兜底部分）：
+//   · 行号漂移但指向的代码没变（TOL 吸收的日常编辑）⇒ 键不变 ⇒ 不红；
+//   · 指向的内容换了（调包/搬指别行）⇒ 键变 ⇒ D6 红且点名。
+function unverifiedKey(a) {
+  let target = null;
+  if (a.resolved && a.line >= 1 && a.line <= (a.fileLines ?? 0)) {
+    target = codeOf(linesOf(a.resolved)[a.line - 1] ?? "").trim() || null;
+  }
+  return contentKey("U", a.resolved ?? a.path, target ?? `L${a.line}`);
+}
+const unverifiedEntries = unverified.map((a) => ({
+  key: unverifiedKey(a),
+  file: a.resolved ?? a.path,
+  label: `本体 L${a.docLine} \`${a.raw}\``,
+  a,
+}));
+
+if (process.argv.includes("--entries-json")) {
+  // 诊断/迁移用：dump 未校准锚点的内容键条目后退出（不进比对、不写任何文件）
+  process.stdout.write(JSON.stringify(unverifiedEntries.map(({ key, file, label }) => ({ key, file, label })), null, 2) + "\n");
+  process.exit(0);
+}
+
 // --- --update：机械类（LINE_DRIFT）回写 markdown；语义类拒绝代劳 ------------------
 if (update) {
   const drifted = problems.filter((p) => p.auto && typeof p.fix === "number");
@@ -557,7 +591,18 @@ if (update) {
   }
   writeFileSync(
     BASELINE,
-    JSON.stringify({ tolerance: TOL, verified: verifiedKeys, unverified: sortObj(unverifiedCounts) }, null, 2) + "\n",
+    JSON.stringify(
+      {
+        tolerance: TOL,
+        verified: verifiedKeys,
+        unverified: sortObj(unverifiedCounts),
+        // D5/D6：未校准锚点逐条内容键（守恒对账段）。--update 是唯一授权落账命令；
+        // 人手写过的 why 逐字节沿用（buildContentsSegment 保证），消失的键不残留。
+        contents: buildContentsSegment(unverifiedEntries, prev?.contents ?? null, "ontology-anchors:check"),
+      },
+      null,
+      2,
+    ) + "\n",
   );
   console.log(
     `✓ 锚点基线已更新：已校准锚点 ${verifiedKeys.length} 个 · 未校准存量 ${unverified.length} 条（${Object.keys(unverifiedCounts).length} 个文件）`,
@@ -582,6 +627,17 @@ for (const a of unverified) curUnverified[a.path] = (curUnverified[a.path] ?? 0)
 const vanished = [...baseVerified].filter((k) => !curVerifiedKeys.has(k));
 // 未校准锚点只许降不许升；新出现的文件锚点必须带 (symbol)。
 const grown = Object.entries(curUnverified).filter(([p, n]) => n > (baseUnverified[p] ?? 0));
+
+// ── D5 全局守恒 + D6 unlisted 落账（共享实现 scripts/lib/ratchet-conservation.mjs）────
+// grown（按文件计数）照判不变 —— 既有红签名不动。recon 补的是计数棘轮看不见的病：
+// 「同数调包」—— 计数没涨、但锚点指向的内容换了（搬指别行/别段）⇒ unmatched ⇒ D6 红。
+// contents 段缺失（老基线）⇒ notEstablished，D5/D6 不红，行为与旧版逐字节一致。
+const recon = reconcileContents({
+  gate: "ontology-anchors:check",
+  contents: baseline.contents,
+  current: unverifiedEntries,
+  tightenCmd: "node scripts/check-ontology-anchors.mjs --update",
+});
 
 console.log(`· 本体锚点：共 ${anchors.length} 个 \`file:line\``);
 console.log(`· 已校准（带 (symbol) 可机器核）：${curVerifiedKeys.size} 个 · 容差 ±${TOL} 行`);
@@ -619,6 +675,14 @@ for (const p of problems) fails.push(`[${p.kind}] 本体 L${p.a.docLine} §${p.a
 for (const k of vanished) fails.push(`[ANCHOR_DELETED] 基线中的已校准锚点消失了：${k} —— 不许为了变绿删锚点（本体锚点是"大脑的索引"）`);
 for (const [p, n] of grown)
   fails.push(`[UNVERIFIED_GROWTH] 新增未校准锚点：\`${p}\` 现 ${n} 处 > 基线 ${baseUnverified[p] ?? 0} 处 —— 新锚点必须写成 \`path:line (symbol)\``);
+// D6 同数调包：计数没涨（UNVERIFIED_GROWTH 不红）但内容键对不上基线 ⇒ 红且点名。
+// 已被 UNVERIFIED_GROWTH 点名的路径不重复报（那条红已覆盖其超额锚点，签名不动）。
+if (!recon.notEstablished) {
+  recon.unmatched.forEach((u, i) => {
+    if ((curUnverified[u.a.path] ?? 0) > (baseUnverified[u.a.path] ?? 0)) return;
+    fails.push("[UNVERIFIED_SWAP] " + recon.fails[i]);
+  });
+}
 
 if (fails.length) {
   console.error("\n✗ 本体锚点校准门未通过：");
