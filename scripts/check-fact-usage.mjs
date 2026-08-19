@@ -14,7 +14,7 @@
  * `WO-GATE-B-BROWSER-HARNESS`。本门只守「该比哪两个数」这份清单不缩水、每条说得出依据。
  * 形态提醒（铁律 0.6）：**「我用『注册表建好了』当作『B-3 验完了』的证据」** —— 那是两件事。
  *
- * ══ 判据（四条，同时成立才 RC=0）═══════════════════════════════════════════════
+ * ══ 判据（五条，同时成立才 RC=0）═══════════════════════════════════════════════
  *   D1 **抽取器没瞎**（先于一切）：金丝雀逐条全中（条数现算自 `CANARY_IDS`，不写死）+ **独立词面口径逐族对总数**
  *      （AST 认出的 solver/object 调用位数 ≥ 剥注释后的词面数）。任一不成立 ⇒ **RC=2**，
  *      报「工具坏了」，**不许**报「注册表没变化 / 仓库很干净」。
@@ -25,6 +25,16 @@
  *      一条说不出依据的记录 = 手抄名单的等价物，必须红。
  *   D4 **口径分家清单不许静默缩小**：`CALIBER-DIVERGENT`（同源同字段不同 args）条数也上棘轮。
  *      它是「7 日 vs 14 日」那类分叉的清单；悄悄变少通常意味着**某一屏的读取位没被认出来**。
+ *   D5 **改名膨胀对账**（WO-FACT-USAGE-RENAME-INFLATION）：对账粒度从「键」升到「内容」。
+ *      D2 的度量单位是**四个总数**，键级身份它看不见：源码里把某个事实键**改名** =
+ *      旧键消失（missing 不红）+ 新键出现（算作增长放行）⇒ 总量静默膨胀/换手而门照绿。
+ *      故基线另记 `factKeys` 段（事实键 → **内容签名** = 族/字段路径/页集合/args 口径的哈希，
+ *      **不含源键名本身**）：现算出现「消失键 + 新增键」且**内容签名一致**的对 ⇒ 判红点名
+ *      「疑似改名：旧键 X → 新键 Y」，必须显式 `--tighten` 重记基线，不许静默放行。
+ *      正常新增（无同签名消失键）与正常删除（无同签名新增键）**不红**，既有行为不变。
+ *      基线无 `factKeys` 段（老形态）⇒ 本条**不红**，显式报「未建账」，建账走 `--tighten`。
+ *      ⚠ 与 `scripts/lib/ratchet-conservation.mjs`（待并分支 bcce72f00 的 reconcileContents）
+ *      同一范式的本地最小版：内容键对账 + 未建账不红 + --tighten 显式落账。并线后可换共享实现。
  *
  *   收紧基线：`--tighten`（只许把三个数改大 / 把 `CALIBER-DIVERGENT` 改成实测值）。
  *   `--seed` 首次建账（基线已存在则拒绝）。`--census` 打印全量注册表（给审计文档用）。
@@ -59,6 +69,7 @@ function gateToolBroken(what, hint) {
 
 import { readdirSync, readFileSync, existsSync, writeFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import {
   loadTs, parseEndpointsModule, buildPageRoster, computeFactUsage, factUsageCanary,
   FRONTEND_SRC, ENDPOINTS_FILE, REGISTRY_FILE, APP_FILE,
@@ -73,6 +84,71 @@ const has = (f) => argv.includes(f);
 
 /** 只收生产 UI 源（`mocks/` 是 MSW 假数据源，进来会把 fixture 当成屏上读取）。 */
 const EXCLUDE_DIRS = new Set(["mocks", "locales", "styles", "assets"]);
+
+/* ── D5 改名膨胀对账（WO-FACT-USAGE-RENAME-INFLATION）──────────────────────────
+ * 与 ratchet-conservation 同一范式的本地最小版（该共享 lib 在待并分支 bcce72f00 上，
+ * 本单开工时不在线内，禁 import；并线后可把这两函数换成 reconcileContents 实现）。
+ * 内容签名刻意**不含源键名**：改名只动键名 ⇒ 签名不变 ⇒ 「消失键+新增键」成对现形。 */
+
+/** 事实的内容签名 = 族 / 字段路径 / 页集合 / args 口径 的哈希（**不含源键名本身**）。 */
+function factContentSig(f) {
+  return createHash("sha256")
+    .update([f.kind, f.path, f.pages.slice().sort().join(" "), f.argsSigs.slice().sort().join(" ")].join("|"))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+/**
+ * D5 对账本体：基线 factKeys 段 ↔ 现算事实集。
+ * @param {object|null} baseKeys  基线 factKeys 段（{ [事实键]: 内容签名 }；null/undefined = 未建账）
+ * @param {Array} currentFacts    现算 r.facts
+ * @returns {{notEstablished:boolean, pairs:Array<{oldKey,newKey,sig}>, missingOnly:string[], addedOnly:string[]}}
+ *   pairs = 疑似改名对（签名一致 ⇒ 红）；missingOnly/addedOnly = 正常删除/正常新增（不红，归 D2 管）。
+ */
+function reconcileRenamePairs(baseKeys, currentFacts) {
+  if (!baseKeys || typeof baseKeys !== "object") {
+    return { notEstablished: true, pairs: [], missingOnly: [], addedOnly: [] };
+  }
+  const cur = new Map(currentFacts.map((f) => [f.fact, factContentSig(f)]));
+  const missing = Object.keys(baseKeys).filter((k) => !cur.has(k));
+  const addedPool = [];
+  for (const [k, sig] of cur) if (!(k in baseKeys)) addedPool.push({ key: k, sig });
+  const pairs = [];
+  const missingOnly = [];
+  for (const oldKey of missing) {
+    const i = addedPool.findIndex((a) => a.sig === baseKeys[oldKey]);
+    if (i >= 0) {
+      pairs.push({ oldKey, newKey: addedPool[i].key, sig: baseKeys[oldKey] });
+      addedPool.splice(i, 1);
+    } else missingOnly.push(oldKey);
+  }
+  return { notEstablished: false, pairs, missingOnly, addedOnly: addedPool.map((a) => a.key) };
+}
+
+/** D5 金丝雀 —— 喂的是 `reconcileRenamePairs`/`factContentSig` 本体，不另抄一份。 */
+function renamePairCanary() {
+  const mk = (key, pages) => ({ fact: `solver:${key}#cards[].tightness`, kind: "solver", path: "cards[].tightness", pages: pages ?? ["alpha", "beta"], argsSigs: ["horizon"] });
+  const oldF = mk("risk_timeline");
+  const base = { [oldF.fact]: factContentSig(oldF) };
+  // ① 纯改名（路径/页/args 全同，只有键名变）⇒ 必须判出「旧键 → 新键」一对
+  const ren = reconcileRenamePairs(base, [mk("risk_timeline_v2")]);
+  if (ren.pairs.length !== 1 || ren.pairs[0].oldKey !== oldF.fact || ren.pairs[0].newKey !== "solver:risk_timeline_v2#cards[].tightness") {
+    return { ok: false, got: `①纯改名未判出对：${JSON.stringify(ren)}` };
+  }
+  // ② 正常新增（旧键仍在，多长一条）⇒ 不许误判改名
+  const add = reconcileRenamePairs(base, [oldF, mk("brand_new_solver")]);
+  if (add.pairs.length !== 0 || add.addedOnly.length !== 1) return { ok: false, got: `②正常新增被误判：${JSON.stringify(add)}` };
+  // ③ 正常删除（旧键消失、无同签名新键）⇒ 不许误判改名（归 D2 规模棘轮管）
+  const del = reconcileRenamePairs(base, []);
+  if (del.pairs.length !== 0 || del.missingOnly.length !== 1) return { ok: false, got: `③正常删除被误判：${JSON.stringify(del)}` };
+  // ④ 键名变了**内容也变了**（页集合不同）⇒ 不是改名对，按删除+新增各归各路
+  const mv = reconcileRenamePairs(base, [mk("risk_timeline_v2", ["alpha"])]);
+  if (mv.pairs.length !== 0 || mv.missingOnly.length !== 1 || mv.addedOnly.length !== 1) return { ok: false, got: `④改名兼改内容被误判成纯改名：${JSON.stringify(mv)}` };
+  // ⑤ 未建账（老基线）⇒ notEstablished，不红
+  const ne = reconcileRenamePairs(null, [oldF]);
+  if (!ne.notEstablished) return { ok: false, got: `⑤未建账未识别：${JSON.stringify(ne)}` };
+  return { ok: true };
+}
 
 function collectFiles(dir, out, base) {
   for (const ent of readdirSync(dir, { withFileTypes: true })) {
@@ -104,6 +180,11 @@ function main() {
    * 开跑前先证共享写入器没坏 —— 坏了 ⇒ RC=2，不许带着坏写入器产出任何结论。 */
   const bc = baselineDocCanary();
   if (!bc.ok) gateToolBroken(`基线写入器金丝雀不过（${bc.got}）`, `期望：${bc.want}`);
+
+  /* D5 改名对账金丝雀（与 reconcileRenamePairs 共用本体）：坏了 ⇒ RC=2，
+   * 不许带着一双「看不见改名」的眼睛产出「注册表没退化」的结论。 */
+  const rp = renamePairCanary();
+  if (!rp.ok) gateToolBroken(`D5 改名对账金丝雀不过（${rp.got}）`);
 
   const srcDir = join(ROOT, FRONTEND_SRC);
   if (!existsSync(srcDir) || !statSync(srcDir).isDirectory()) {
@@ -173,7 +254,7 @@ function main() {
       process.exit(1);
     }
     writeBaseline(now, r);
-    console.log("✅ 棘轮已收紧：" + JSON.stringify(now));
+    console.log("✅ 棘轮已收紧：" + JSON.stringify(now) + ` · factKeys ${r.facts.length} 键已重记（D5 改名对账账）`);
     process.exit(0);
   }
 
@@ -196,6 +277,19 @@ function main() {
   }
   if (noWhy.length) {
     fail.push(`D3 依据链为空 ${noWhy.length} 条（说不出在哪个 file:line 读的 = 手抄名单的等价物）：\n        ` + noWhy.slice(0, 8).join("\n        "));
+  }
+
+  /* ── D5 改名膨胀对账：粒度从「键」升到「内容」────────────────────────────────
+   * D2 的四个总数看不见键级换手：旧键消失不红、新键出现算增长放行 ⇒ 改名静默膨胀照绿。
+   * 签名一致（族/路径/页/args 全同，只有键名变）的「消失+新增」对 ⇒ 红，--tighten 显式重记。 */
+  const d5 = reconcileRenamePairs(base.factKeys, r.facts);
+  if (d5.notEstablished) {
+    console.error("⚠ D5 改名对账**未建账**（基线无 factKeys 段，老形态基线）——本轮不判；建账走 `node scripts/check-fact-usage.mjs --tighten`。");
+  }
+  for (const p of d5.pairs) {
+    fail.push(`D5 疑似改名：旧键 \`${p.oldKey}\` → 新键 \`${p.newKey}\`（内容签名一致 ${p.sig}：族/字段路径/页集合/args 口径全同，只有源键名变了）。` +
+      `\n        键级总数看不见这次换手：旧键消失不红、新键出现算增长放行 ⇒ 注册表身份静默换手而门照绿。` +
+      `\n        若确属有意改名，跑 \`node scripts/check-fact-usage.mjs --tighten\` 显式重记基线；否则把源码里的键名改回去。`);
   }
 
   if (fail.length) {
@@ -227,10 +321,13 @@ function writeBaseline(now, r) {
         "这里存的是**下限**不是快照：注册表现算自前端 AST，条数只许涨不许跌。",
         "跌 = 某个事实不再被任何页认领 ⇒ B-3 拿这份清单去比时，掉出去的那条永远绿。",
         "有意收缩（页删了 / 读取位真撤了）走 `--tighten` 显式改账，不许静默。",
+        "factKeys 段（WO-FACT-USAGE-RENAME-INFLATION）：事实键 → 内容签名（族/字段路径/页集合/args，**不含源键名**）。",
+        "改名 = 消失键+新增键且签名一致 ⇒ 门判红点名，须 `--tighten` 显式重记；签名不含键名，故改名必现形。",
       ],
     },
     computed: {
       min: now,
+      factKeys: Object.fromEntries(r.facts.map((f) => [f.fact, factContentSig(f)])),
       lastSeen: {
         byKind: r.stats.byKind,
         pages: r.stats.pages,
