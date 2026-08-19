@@ -42,6 +42,11 @@ import { join } from "node:path";
 const CORE = "apps/datacore/src/sim/propagation.ts";
 const SIM_DIR = "apps/datacore/src/sim";
 const TEST = "apps/datacore/test/sim-propagation.test.ts";
+/* 扫描面自证的独立口径分母（2026-08-19 · WO-GATE-SCAN-SURFACE-CENSUS）：
+ * SIM_DIR 递归 .ts 总量下界 —— 当日现算 5，取 3（~60%）。
+ * scanDir 对不存在的目录**静默 return**（见下），SIM_DIR 一改名 R14 扫描就真空变绿；
+ * 塌到下界以下 ⇒ 报「工具坏了」RC=2，不许读作「零业务常数合规」。 */
+const MIN_SIM_TS_FILES = 3;
 const fail = [];
 const ok = (m) => console.log(`  ok  ${m}`);
 
@@ -91,12 +96,14 @@ const INDUSTRY_TOKENS = [
   "常州", "合肥", "西安", "宜宾", "溧阳", "化成", "涂布", "卷绕", "分切", "老化",
   "4680", "刀片", "Supplier", "Factory", "锂电", "电芯", "电池",
 ];
+let simTsScanned = 0;
 const scanDir = (dir) => {
   if (!existsSync(dir)) return;
   for (const e of readdirSync(dir)) {
     const p = join(dir, e);
     if (statSync(p).isDirectory()) { scanDir(p); continue; }
     if (!/\.ts$/.test(p)) continue;
+    simTsScanned++;
     const txt = readFileSync(p, "utf8");
     for (const tok of INDUSTRY_TOKENS) {
       if (txt.includes(tok)) fail.push(`R14 零业务常数违反：${p} 出现行业实体名 "${tok}"`);
@@ -104,7 +111,13 @@ const scanDir = (dir) => {
   }
 };
 scanDir(SIM_DIR);
-if (!fail.some((f) => f.includes("R14"))) ok(`R14 零业务常数：${SIM_DIR} 无行业实体名`);
+console.log(`  · R14 扫描面：${SIM_DIR} ${simTsScanned} 个 .ts（下界 ${MIN_SIM_TS_FILES}，已过 ⇒ 射程没塌）`);
+if (simTsScanned < MIN_SIM_TS_FILES) {
+  console.error(`⛔ 门自己瞎了：R14 扫描面 ${SIM_DIR} 只扫到 ${simTsScanned} 个 .ts（下界 ${MIN_SIM_TS_FILES}）—— 目录改名/枚举断了，不是「行业实体名清零」。`);
+  console.error("   本次结论作废：**不许**读作「R14 零业务常数合规」。");
+  process.exit(2);
+}
+if (!fail.some((f) => f.includes("R14"))) ok(`R14 零业务常数：${SIM_DIR} ${simTsScanned} 个 .ts（扫描面下界 ${MIN_SIM_TS_FILES}，已过）无行业实体名`);
 
 // 1) test-backed：跑传导单测（系数×延迟正确 + 改系数即改果 + delay 到达 + 改 param 即改果）。
 if (existsSync(TEST)) {

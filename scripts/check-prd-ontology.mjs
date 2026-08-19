@@ -61,6 +61,17 @@ const prdFiles = readdirSync(DOCS_DIR)
   .filter((f) => f.startsWith("PRD-") && f.endsWith(".md"))
   .sort();
 
+/* 扫描面自证的独立口径分母（2026-08-19 · WO-GATE-SCAN-SURFACE-CENSUS）：
+ * docs/PRD-*.md 总量下界 —— 当日现算 138，取 ~62%。
+ * 语料塌到下界以下 ⇒ 枚举/过滤坏了（目录改名、前缀判断失手），此时「全部 PRD 无悬空引用」
+ * 是**真空绿**。报「工具坏了」RC=2，不许读作「PRD 库结构化合规」。 */
+const MIN_PRD_FILES = 85;
+if (prdFiles.length < MIN_PRD_FILES) {
+  console.error(`⛔ 门自己瞎了：PRD 语料只枚举到 ${prdFiles.length} 份（下界 ${MIN_PRD_FILES}）—— 枚举器坏了，不是 PRD 没了。`);
+  console.error("   本次结论作废：**不许**读作「无悬空引用 / 本体引用已入图」。");
+  process.exit(2);
+}
+
 /** 抽取 §0《本体引用与影响》段落：从含"本体引用"的标题到下一个 "## " 标题。 */
 function extractOntologySection(text) {
   const lines = text.split("\n");
@@ -141,7 +152,7 @@ writeFileSync(INDEX_OUT, JSON.stringify(artifact, null, 2) + "\n");
 const withSection = Object.values(index).filter((p) => p.hasOntologyRef).length;
 const totalArtifacts = new Set(Object.values(index).flatMap((p) => p.artifacts)).size;
 const totalBroken = Object.values(index).reduce((n, p) => n + p.brokenArtifacts.length, 0);
-console.log(`· PRD 语料：${prdFiles.length} 篇；含《本体引用》§0：${withSection} 篇`);
+console.log(`· PRD 语料：${prdFiles.length} 篇（扫描面下界 ${MIN_PRD_FILES}，已过 ⇒ 射程没塌）；含《本体引用》§0：${withSection} 篇`);
 console.log(`· 制品锚点（PRD→实现文件）：${totalArtifacts} 个唯一文件${totalBroken ? `；其中 ${totalBroken} 处已失效（告警）` : "（全部存在）"}`);
 const multiDoc = Object.values(byArtifact).filter((v) => v.length > 1).length;
 console.log(`· 制品↔需求双向：实现文件→PRD 反查已入图（${Object.keys(byArtifact).length} 个文件；其中 ${multiDoc} 个被多篇 PRD 文档化）`);

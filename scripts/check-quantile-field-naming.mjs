@@ -50,6 +50,12 @@ import { pathToFileURL } from "node:url";
 /** 契约扫描根（单一来源：跨包共享的形状只许在这里定义）。 */
 const CONTRACT_DIR = "packages/contracts/src";
 
+/* 扫描面自证的独立口径分母（2026-08-19 · WO-GATE-SCAN-SURFACE-CENSUS）：
+ * CONTRACT_DIR 递归 .ts 总量下界 —— 当日现算 86，取 ~58%。
+ * 塌到下界以下 ⇒ collectSources 枚举断了（目录改名/过滤失手），
+ * 「0 冲突 · 0 裸名」就是真空绿。报「工具坏了」RC=2，不许读作「契约分位命名干净」。 */
+const MIN_SOURCE_FILES = 50;
+
 /**
  * 分位字段判据：名字**以**分位标记结尾（可带 `At<天数>` 后缀）。
  * 命中例：`p50` `capWanP50` `packsP50At30` `cumCapWanP90` `deliveryP90`
@@ -237,9 +243,15 @@ function main() {
   );
 
   const dir = resolve(process.cwd(), CONTRACT_DIR);
-  const r = analyze(collectSources(dir));
+  const sources = collectSources(dir);
+  if (sources.length < MIN_SOURCE_FILES) {
+    console.error(`⛔ 门自己瞎了：契约扫描面只枚举到 ${sources.length} 个 .ts（下界 ${MIN_SOURCE_FILES}）—— 枚举器坏了，不是契约文件没了。`);
+    console.error("   本次结论作废：**不许**读作「分位字段命名干净 / 零冲突」。");
+    process.exit(2);
+  }
+  const r = analyze(sources);
 
-  console.log(`\n扫描 ${CONTRACT_DIR} → 分位字段 ${r.fields.length} 个：`);
+  console.log(`\n扫描 ${CONTRACT_DIR} → ${sources.length} 个源文件（下界 ${MIN_SOURCE_FILES}，已过 ⇒ 射程没塌）· 分位字段 ${r.fields.length} 个：`);
   for (const f of r.fields) console.log(`   ${f.name.padEnd(18)} ${String(f.unit ?? "—").padEnd(12)} ${f.file}:${f.line}`);
 
   let bad = 0;

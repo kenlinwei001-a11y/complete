@@ -59,6 +59,11 @@ if (!notices) {
 const CODE_DIRS = ["apps", "packages", "services", "scripts"];
 const SKIP = new Set(["node_modules", "dist", ".git", "coverage", ".turbo", "build"]);
 const CODE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|py)$/;
+/* 扫描面自证的独立口径分母（2026-08-19 · WO-GATE-SCAN-SURFACE-CENSUS）：
+ * 4 根递归代码文件总量下界 —— 当日现算 1588，取 ~60%。
+ * walk 对读不到的目录**静默 return**（见下 try/catch），面一塌「违规 0」就是真空绿。
+ * 塌到下界以下 ⇒ 报「工具坏了」RC=2，不许读作「许可证合规」。 */
+const MIN_CODE_FILES = 950;
 const codeFiles = [];
 const walk = (relDir) => {
   let entries;
@@ -71,6 +76,11 @@ const walk = (relDir) => {
   }
 };
 for (const d of CODE_DIRS) if (existsSync(abs(d))) walk(d);
+if (codeFiles.length < MIN_CODE_FILES) {
+  console.error(`⛔ 门自己瞎了：代码面只枚举到 ${codeFiles.length} 个文件（下界 ${MIN_CODE_FILES}）—— walk 静默 return 了（目录改名/权限），不是「违规清零」。`);
+  console.error("   本次结论作废：**不许**读作「无 Gurobi 指纹 / 无训练管线 / 许可证合规」。");
+  process.exit(2);
+}
 
 const SELF = "scripts/check-solver-license.mjs"; // 本门自身含指纹字符串，排除
 
@@ -107,7 +117,7 @@ for (const rel of codeFiles) {
   }
 }
 
-console.log(`· solver-license：扫描 ${codeFiles.length} 代码文件 · NOTICES ${notices ? "在" : "缺"} · 违规 ${fail.length}`);
+console.log(`· solver-license：扫描 ${codeFiles.length} 代码文件（扫描面下界 ${MIN_CODE_FILES}，已过 ⇒ 射程没塌） · NOTICES ${notices ? "在" : "缺"} · 违规 ${fail.length}`);
 
 if (fail.length) {
   console.error("\n✗ solver-license:check 未过（许可证合规 / 不训练红线）：");
