@@ -20,8 +20,8 @@ import { useLiveSolver } from "./useLiveSolver";
 // 见 `reasoningGraph.ts` 头注；本页**不另建**一套。
 import { ProcessGraphPanel } from "./ProcessGraphPanel";
 // WO-U2-STEPWISE-2 · 判据 U2（分步标口径）。步骤契约**投影自本页同一份 `GS_GRAPH`**，不另写一份。
+// ⚠ `InfoPopover` 已在本文件顶部导入（`WO-U4B-U1-U8-SIM` 收编时加的），本单不再重复导入。
 import { SolverStepBar, useSolverStep } from "./SolverStepBar";
-import { InfoPopover } from "@/components/InfoPopover";
 import { assertReasoningGraph, toSolverSteps, type ReasoningGraph } from "./reasoningGraph";
 import { MultiObjWhatifPanel } from "./MultiObjWhatifPanel";
 import { GlobalSimLevers, type LeverState, type FreeLever, type LeverCandidate, type LeverDeltaVM } from "./GlobalSimLevers";
