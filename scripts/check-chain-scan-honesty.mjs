@@ -1120,29 +1120,42 @@ if (isUpdate) {
   const seg5 = buildContentsSegment(h5entries, baseline.contentsH5 ?? null, "chain-scan-honesty:check/H5");
   for (const k of Object.keys(seg5)) if (!baseline.contentsH5?.[k]) seg5[k].why = "";
   const seg8 = buildContentsSegment(h8entries, baseline.contentsH8 ?? null, "chain-scan-honesty:check/H8");
-  const doc = buildBaselineDoc({
-    prev: baselineExists ? baseline : null,
-    prose: {
-      note:
-        "chain-scan-honesty:check 的 H5 业务名棘轮。key = 文件 + 声明原文 sha256 前 16 位（不是行号——行号会漂）；" +
-        "文案一改哈希即变 ⇒ 豁免当场失效、门重新红。maxExemptions 必须恒等于条数（加一条 = 一处显眼 diff）；只降不升。",
-      noteLiteral:
-        "H8 字面量阈值棘轮：阈值源 source==='literal' 的判据条数，只降不升。literal 不是罪 —— 它在规则表达式里、" +
-        "可审计、改规则即改判定；但它比 param 僵（要改表达式而非旋钮），故存量记账、新增被挡。迁往 params 即可收窄。",
-    },
-    computed: {
-      // ⚠ 计的是**命中条数**不是 key 数：同一行出现两个业务名（`化成柜位/老化库位`）时
-      //   两条命中共用一个 key（key = 原文哈希），若按 key 数记基线，复跑时 4 > 3 会假红。
-      maxExemptions: hits.length,
-      maxLiteralThresholds: literalRows.length,
-      literalThresholds: literalRows,
-      contentsH5: seg5,
-      contentsH8: seg8,
-    },
-  });
   // exemptions 旧账簿已被 contentsH5 取代 —— 单一账簿，双写必漂（人手理由今后只写在 contentsH5.why）。
-  delete doc.exemptions;
-  writeFileSync(BASELINE, JSON.stringify(doc, null, 2) + "\n");
+  // 在 **prev 侧**摘除（buildBaselineDoc 会 `...prev` 全摊开，产出 doc 上再 delete 已晚）；
+  // ⚠ buildBaselineDoc 必须**内联在 writeFileSync 实参里** —— 抽成 `const doc = …` 再写，
+  //   baseline-writer-honesty:check 判 HAND_ROLLED（该门头注自己点名了这种形态；本处实测踩过）。
+  const prevSansExemptions = (() => {
+    if (!baselineExists) return null;
+    const { exemptions: _droppedLegacyLedger, ...rest } = baseline;
+    return rest;
+  })();
+  writeFileSync(
+    BASELINE,
+    JSON.stringify(
+      buildBaselineDoc({
+        prev: prevSansExemptions,
+        prose: {
+          note:
+            "chain-scan-honesty:check 的 H5 业务名棘轮。key = 文件 + 声明原文 sha256 前 16 位（不是行号——行号会漂）；" +
+            "文案一改哈希即变 ⇒ 豁免当场失效、门重新红。maxExemptions 必须恒等于条数（加一条 = 一处显眼 diff）；只降不升。",
+          noteLiteral:
+            "H8 字面量阈值棘轮：阈值源 source==='literal' 的判据条数，只降不升。literal 不是罪 —— 它在规则表达式里、" +
+            "可审计、改规则即改判定；但它比 param 僵（要改表达式而非旋钮），故存量记账、新增被挡。迁往 params 即可收窄。",
+        },
+        computed: {
+          // ⚠ 计的是**命中条数**不是 key 数：同一行出现两个业务名（`化成柜位/老化库位`）时
+          //   两条命中共用一个 key（key = 原文哈希），若按 key 数记基线，复跑时 4 > 3 会假红。
+          maxExemptions: hits.length,
+          maxLiteralThresholds: literalRows.length,
+          literalThresholds: literalRows,
+          contentsH5: seg5,
+          contentsH8: seg8,
+        },
+      }),
+      null,
+      2,
+    ) + "\n",
+  );
   console.log(`✓ 棘轮基线已写：H5 ${h5entries.length} 条 · H8 ${h8entries.length} 条（H5 每条须补 ≥${MIN_REASON} 字理由（contentsH5.why），否则门红）。`);
   process.exit(0);
 }
