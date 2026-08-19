@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   PROCESS_TASK_WAIT_STATE_META,
   tasksFromStepTemplate,
@@ -332,6 +333,15 @@ export default function ProcessStartFromTemplate() {
         <div className={styles.ok} data-testid="start-created">
           已建实例 <code data-testid="start-created-id">{created.data.instance.id}</code>，
           共 <strong data-testid="start-created-count">{created.data.tasks.length}</strong> 步：
+          {/* WO-PROCESS-START-DEEPLINK · 深链入口③：建完实例一键进详情页。
+              与卡点页（ProcessStuckView）/反推实例行（ProcessWaitView）同一路由写法，
+              详情页地址带实例 id，刷新/转发仍可打开。 */}
+          <Link
+            to={`/process-instances/${encodeURIComponent(created.data.instance.id)}`}
+            data-testid="start-created-link"
+          >
+            查看实例详情 →
+          </Link>
           <ol className={styles.steps}>
             {created.data.tasks.map((t) => (
               <li key={t.id} className={styles.step} data-testid="start-created-task" data-seq={t.seq}>
