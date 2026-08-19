@@ -263,8 +263,12 @@
    "why": "金丝雀双向样例用的环境变量名（必中/必不中的固定测试输入），与主判据共用实现；仓库新增环境变量不需要它跟进。判据本体。"
   },
   "check-dev-jargon-onscreen.mjs:SCAN": {
-   "verdict": "roster",
-   "why": "**真债（本单新暴露）**：扫描根写死 views/+pages/admin/+locales 等 10 条，漏 components/** 与 pages 非 admin——开发口径词写进共享组件就永远扫不到，与 ui-first-layer:SCAN_DIRS 同病。修法已立成例：SCAN_ROOT=apps/frontend-shell/src 全递归+EXCLUDE_RE 例外具名。留给后续单（本单只修到 7 处，这处与 typecheck-coverage 一并登记）。"
+   "verdict": "computed",
+   "why": "（原 roster·WO-GATE-ROSTER-SWEEP-3 收口）jsx 面已改为 apps/frontend-shell/src 单根全递归（views/pages/components/… 凡 .tsx 皆进面），locales 独立面保留。目录集合是「源码根」这一稳定判据，不手抄文件/子目录名单；与 oee-ssot:SCREEN_ROOTS 同一现算形态。扩面新暴露的存量（QueryDock 的 VITE_MOCK 横幅）已照本门棘轮纪律登进 dev-jargon-baseline.json，只降不升。"
+  },
+  "check-dev-jargon-onscreen.mjs:SCAN_SKIP_DIRS": {
+   "verdict": "computed",
+   "why": "（WO-GATE-ROSTER-SWEEP-3 新增）全递归时的构建产物/依赖跳过表（node_modules/dist/build）。它是现算的输入参数，不是受检对象集合——受检文件由 SCAN 根递归遍历得出；与 chain-node-singlesource:SKIP_DIRS 同定性。"
   },
   "check-edge-active-mounts.mjs:two": {
    "verdict": "criteria",
@@ -295,7 +299,7 @@
    "why": "四包 src 全递归（datacore/agentcore/frontend-shell/contracts）= 全仓源码面，无名单外盲区；与 outsource-redline:SCAN_ROOTS 同一现算形态（目录稳定、文件不手抄）。"
   }
  },
- "candidateCount": 73,
+ "candidateCount": 74,
  "rosterCount": 7,
  "ratchetHigh": 7
 }
