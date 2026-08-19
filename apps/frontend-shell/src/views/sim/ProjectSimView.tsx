@@ -916,7 +916,17 @@ function StepBody({
       {/* WO-SIM-ACTION-REAL：兑现 DAG fc 节点那句「结论可采纳为 Action」——采纳 = 参数组合 + 推演快照
           造「采纳产能预测结论」草稿走 S2 审批，审批通过落 ForecastAdoption 台账对象（+选中订单回 stamp）。
           不直改任何真值（R4）；D5：结果对应旧参数时不许采纳（与全局页同一纪律）。 */}
-      <AdoptConclusionButton out={out} mode={mode} modelId={modelId} totalQty={totalQty} weeks={weeks} isStale={isStale} orderSo={orderSo} />
+      {/* ⚠ 2026-08-19 审核方补：本页此前**没有**过 `act.adopt-to-draft` 熵限门，
+          而 PlanGenerateView / PlanAuditView / DynamicLeverPanel / WhatIfView 四处都过。
+          实测该特性在 `apps/datacore/src/features.ts` 是 **ACTION 级**声明（defaultOn: true）
+          ⇒ 关掉它时本页仍显示采纳入口 = 与其余四页不一致，且 base_manager 的演示语义不成立。
+          ⚠ **这只补上了客户端一致性，不是安全边界** —— 实测后端 `POST /a/v1/action-drafts`
+          （app.ts 该路由体内零 requireFeature/assertFeature）**完全不拦**该特性，
+          即关掉 flag 后直接打接口仍可建草稿。那是更大的一条，已登记本体 §8
+          `G-ENTITLEMENT-ACTION-LEVEL-CLIENT-ONLY`，归专单（改公开 API 行为，需全量回归）。 */}
+      <Feature flag="act.adopt-to-draft">
+        <AdoptConclusionButton out={out} mode={mode} modelId={modelId} totalQty={totalQty} weeks={weeks} isStale={isStale} orderSo={orderSo} />
+      </Feature>
       {/* 规则即引用 P2：求解器真评估的规则闸门（PASS/WARN/BLOCK），改规则即改此处结论 */}
       <EvaluatedRules rules={out.evaluatedRules} ruleSetVersion={out.ruleSetVersion} />
       {/* PRD-IND-model §4.4-⑥：缺口时显示对症对策表（acts，方案库，i18n 下发零写死），与下方 what-if 滑杆并存 */}
