@@ -59,10 +59,8 @@ describe("判据 U5 · optimize-whatif 目标值带出处", () => {
     loginAs("planner");
     renderApp("/v/optimize-whatif");
 
-    // 本页仍有「推演」提交闸（U1 未闭 —— 走真 CP-SAT，撤闸的重解成本要先测，本单诚实挂账）。
-    const run = await screen.findByTestId("ow-solve", {}, { timeout: 8000 });
-    await userEvent.click(run);
-
+    // ⚠ 原文「本页仍有『推演』提交闸（U1 未闭）」**已过期**：`WO-U4B-U1-U8-SIM` 撤了那道闸
+    // （`queryKey` 改挂实时入参 + 300ms 防抖），本页不再需要点任何按钮就出结果。
     const banner = await screen.findByTestId(/ow-(switch|delta)-banner/, {}, { timeout: 8000 });
 
     // ⚠ 反向判据先跑：改前屏上唯一的出处 `ow-family-source` 说的是**模板清单**，不是目标值。

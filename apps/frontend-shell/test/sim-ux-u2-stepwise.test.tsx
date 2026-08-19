@@ -111,9 +111,9 @@ describe("WO-U2-STEPWISE-1 · optimize-whatif：步骤态真正驱动结果分�
   it("U2-C4 · 推演后切步：第 1 步只剩入参回执；第 2 步两次求解（方案卡）出现、Δ 未出；第 3 步 Δ/可行性出现、解读未出", async () => {
     loginAs("planner");
     renderApp("/v/optimize-whatif");
-    fireEvent.click(await screen.findByTestId("ow-solve"));
+    // WO-U4B-U1-U8 · 判据 U1：`ow-solve` 提交闸已撤 ⇒ 不点按钮，预置扰动就位即自动求解。
     // 默认末步 = 完整结果（与改前屏面一致）：决策切换横幅 + Δ+18 + 双卡 + 可行性 + 解读全在。
-    await screen.findByTestId("ow-switch-banner");
+    await screen.findByTestId("ow-switch-banner", {}, { timeout: 8000 });
     expect(screen.getByTestId("ow-delta-obj")).toHaveTextContent("+18");
     expect(screen.getByTestId("ow-baseline-card")).toHaveTextContent("114");
     expect(screen.getByTestId("ow-explanation")).toBeInTheDocument();

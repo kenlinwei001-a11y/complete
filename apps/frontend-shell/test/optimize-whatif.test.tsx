@@ -14,11 +14,9 @@ describe("WO-OPTIMIZE-WHATIF-FE · 优化推演页（决策比对）", () => {
   it("C1 · 推演（f1 开设成本 100→150）→ 决策切换 开f1→开f2 + 基线114/扰动132 + Δ+18", async () => {
     loginAs("planner");
     renderApp("/v/optimize-whatif");
-    // 结构化输入 + 预置扰动就位 → 直接推演。
-    fireEvent.click(await screen.findByTestId("ow-solve"));
-
+    // WO-U4B-U1-U8 · 判据 U1：提交闸已撤，**不点任何按钮**——预置扰动就位即自动求解。
     // 决策切换横幅（f1 变贵后最优改开 f2）。
-    const banner = await screen.findByTestId("ow-switch-banner");
+    const banner = await screen.findByTestId("ow-switch-banner", {}, { timeout: 8000 });
     expect(banner).toHaveTextContent("开 f1 → 开 f2");
     // Δ = 132 − 114 = +18。
     expect(screen.getByTestId("ow-delta-obj")).toHaveTextContent("+18");
@@ -32,14 +30,13 @@ describe("WO-OPTIMIZE-WHATIF-FE · 优化推演页（决策比对）", () => {
   it("C2 · 二次推演（改扰动 150→110）→ 决策不再切换（仍开 f1）+ Δ+10（真重解·有牙）", async () => {
     loginAs("planner");
     renderApp("/v/optimize-whatif");
-    fireEvent.click(await screen.findByTestId("ow-solve"));
-    expect(await screen.findByTestId("ow-switch-banner")).toBeInTheDocument();
+    expect(await screen.findByTestId("ow-switch-banner", {}, { timeout: 8000 })).toBeInTheDocument();
 
-    // 把 f1 开设成本改为 110（<切换阈值）→ 再推演 → 继续开 f1 更划算（124<132）→ 无切换。
+    // 把 f1 开设成本改为 110（<切换阈值）→ 继续开 f1 更划算（124<132）→ 无切换。
+    // WO-U4B-U1-U8 · 判据 U1：**改完不点任何东西**，防抖窗口过后自动重解。
     fireEvent.change(screen.getByTestId("ow-perturb-value-0"), { target: { value: "110" } });
-    fireEvent.click(screen.getByTestId("ow-solve"));
 
-    await waitFor(() => expect(screen.getByTestId("ow-delta-obj")).toHaveTextContent("+10"));
+    await waitFor(() => expect(screen.getByTestId("ow-delta-obj")).toHaveTextContent("+10"), { timeout: 8000 });
     // 决策不变 → 切换横幅消失（换成 delta 横幅）；扰动后仍是 f1 方案·总成本 124。
     expect(screen.queryByTestId("ow-switch-banner")).not.toBeInTheDocument();
     expect(screen.getByTestId("ow-delta-banner")).toBeInTheDocument();
@@ -54,8 +51,7 @@ describe("WO-OPTIMIZE-WHATIF-FE · 优化推演页（决策比对）", () => {
       ),
     );
     renderApp("/v/optimize-whatif");
-    fireEvent.click(await screen.findByTestId("ow-solve"));
-    const un = await screen.findByTestId("ow-unavailable");
+    const un = await screen.findByTestId("ow-unavailable", {}, { timeout: 8000 });
     expect(un).toHaveTextContent("未接入最优化引擎");
     // 诚实：绝不渲染假决策比对结果。
     expect(screen.queryByTestId("ow-result")).not.toBeInTheDocument();
