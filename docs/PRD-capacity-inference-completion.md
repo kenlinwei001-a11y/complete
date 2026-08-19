@@ -53,8 +53,8 @@
 - **兼容**：无 scope 时 = 现全局行为（不回归）；R6 确定性/R13 provenance/勾稽 Σ子+residual=父 全保持。
 
 ### F1 · 每基地前瞻产能推演（+30/60/90d·新）
-- **数据多已就绪**：`capacity_forecast`（已有·per-base P50/P90/gap/bottleneck·我实测 gap 89520/常州 tightness 91）+ `Order.due`（未来订单排期）+ `DemandSegment.p50`（销售预测）。
-- **新增**：per-base 前瞻投影——对 horizon∈{30,60,90} 各算：可用产能（capacity_forecast）vs 在产订单占用（WorkOrder/OPEN Order 到期铺开）vs 未来订单（Order.due 落在窗内）vs 销售预测（DemandSegment.p50 摊到窗）→ 四线对比 + 缺口/富余标记。
+- **数据多已就绪**：`capacity_forecast`（已有·per-base P50/P90/gap/bottleneck·我实测 gap 89520/常州 tightness 91）+ `Order.due`（未来订单排期）+ `DemandSegment.demandWanPerYearP50`（销售预测）。
+- **新增**：per-base 前瞻投影——对 horizon∈{30,60,90} 各算：可用产能（capacity_forecast）vs 在产订单占用（WorkOrder/OPEN Order 到期铺开）vs 未来订单（Order.due 落在窗内）vs 销售预测（DemandSegment.demandWanPerYearP50 摊到窗）→ 四线对比 + 缺口/富余标记。
 - 可作 `capacity_forecast` 的 `horizonDays` 多值扩展，或新 `base_capacity_outlook` 求解器（读同源对象·R6）。前端每基地卡片加前瞻子面板（三档 tab）。
 
 ### P1 · 行动计划逐日推演过程（新）
@@ -65,7 +65,7 @@
 ## §4 SEAM 验收（接缝驱动·活系统亲验·非各半绿）
 1. **D1+E1 组合**：生成全基地 equipment 后，`gap_attribution({scope:{baseId:"hefei"}})` → 断言返回**合肥专属树**·L2 设备OEE 瓶颈叶**非空**（drillValue=合肥真设备 oee_current）·勾稽 Σ子+residual=父·每叶 provenance 可溯。**活系统 curl 亲验**（我复验必跑）。
 2. **D2**：`scope:{baseId:"合肥"}` 与 `"hefei"` 返回同树（归一生效）。
-3. **F1**：`base_capacity_outlook({baseId, horizon:90})` → 四线（产能/在产/未来单/预测）齐 + 缺口标记 · 改 Order.due/DemandSegment.p50 → 前瞻真变（非写死）。
+3. **F1**：`base_capacity_outlook({baseId, horizon:90})` → 四线（产能/在产/未来单/预测）齐 + 缺口标记 · 改 Order.due/DemandSegment.demandWanPerYearP50 → 前瞻真变（非写死）。
 4. 四包全绿 + 金值同步（对象数）+ 本体回写。
 
 ---
