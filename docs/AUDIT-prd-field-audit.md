@@ -208,3 +208,13 @@ PRD-seam-arg-drop-audit。
 
 **本文与基线 `audit` 键的分工**：本文按 PRD 粒度（87 份三态），基线 `audit` 键按门的未判定键粒度
 （36 条 kind 标注）。同一审计的两个投影，结论一致。
+
+## 7. 复验记录（2026-08-19）
+
+- 门 RC：合并前 `node scripts/check-prd-data-grounding.mjs` → **RC=0**（违规 0 / 未判定 36 /
+  金丝雀 5+11 全中）；合并 `audit` 键后复跑 → **RC=0**（同上，逐字一致）。
+- 零字节纪律：`scripts/check-prd-data-grounding.mjs` 与 `scripts/gate-ledger.json` 全程未触碰
+  （`git diff` 为空）；棘轮值 ratchetHigh=0 / maxExemptions=0 未动；exemptions/adjudicated 保持空。
+- 基线 diff 形态：纯新增信息键 `audit`（244 行），对既有四键的唯一机械改动是
+  `"exemptions": []` 行尾补逗号。
+- 旧分支迁移：**0 条**（8ed7727b6 内容已全量在基线树上，见 §0）。
