@@ -80,6 +80,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
+import { contentKey, reconcileContents, buildContentsSegment, conservationCanary } from "./lib/ratchet-conservation.mjs";
 
 const ROOT = process.cwd();
 const BASELINE_PATH = join(ROOT, "scripts", "coverage-blind-baseline.json");
@@ -1089,6 +1090,9 @@ const SRC_PATH_RE = /^(?:apps\/[^/]+\/src\/|packages\/[^/]+\/src\/)/;
 // ────────────────────────────────────────────────────────────────────────────
 const canaryFail = runCanaries();
 if (canaryFail.length) toolBroken("内嵌金丝雀不符（检测器实现坏了）", canaryFail.join("\n"));
+// D5/D6 内容对账金丝雀（共享实现 scripts/lib/ratchet-conservation.mjs 本体，不另抄）
+const consCanary = conservationCanary();
+if (!consCanary.ok) toolBroken("D5/D6 内容对账金丝雀不过", `  ${consCanary.got}\n  期望：${consCanary.want}`);
 
 const testFiles = gitLs(TEST_GLOBS).filter((f) => TEST_PATH_RE.test(f));
 // 扫描面自证：pathspec 一旦坏掉（本仓踩过 4 次），这里会是 0 或极小
@@ -1199,6 +1203,41 @@ const seen = new Set(hits.map((h) => h.key));
 const novel = hits.filter((h) => !baseKeys.has(h.key));
 const vanished = [...baseKeys].filter((k) => !seen.has(k));
 
+/* ── D5 全局守恒 + D6 unlisted 落账（共享实现 scripts/lib/ratchet-conservation.mjs）────
+ * 指纹含文件 ⇒ 同一条盲点从文件 A 搬到文件 B（测试搬家/文件改名）会被当成「基线外新增」
+ * 假红 —— 内容没变、总量没变。内容键剔掉文件部分（it 标题 + 检测器 + 目标符号）：
+ *   · 搬家 ⇒ 内容键跨文件认领基线剩余槽 ⇒ 守恒不红（D5）；
+ *   · 真新盲点 / 改了内容 / 同键堆量 ⇒ 无槽可认 ⇒ 红且点名（D6，与旧 novel 判据同集）。
+ * contents 段缺失（老基线）⇒ notEstablished，判据退化为纯指纹比对（与旧版逐字节一致）。
+ * 纪律：contents 段同样**只删不增** —— --update 不收新槽，红的内容没有「塞进基线」的逃生路。 */
+const cbKey = (h) => contentKey("CB", h.title, h.detector, h.symbol);
+const cbEntries = hits.map((h) => ({ key: cbKey(h), file: h.file, label: `[${h.detector}] ${h.symbol} · it: ${h.title}`, h }));
+const recon = reconcileContents({
+  gate: "coverage-blind:check",
+  contents: baseline.contents,
+  current: cbEntries,
+  tightenCmd: "（本门棘轮只降不升：新增盲点必须修，没有落账入口）",
+});
+let novelEff = novel; // 真·新增（指纹基线外 且 内容键无槽可认）
+let movedViaContent = []; // 指纹基线外但内容键认领成功 = 跨文件搬家（D5 守恒，不红）
+if (!recon.notEstablished) {
+  const un = new Set(recon.unmatched.map((u) => u.h));
+  novelEff = hits.filter((h) => un.has(h));
+  movedViaContent = novel.filter((h) => !un.has(h));
+}
+
+if (ARGS.has("--entries-json")) {
+  // 诊断/迁移用：dump 内容键条目后退出（不进比对、不写任何文件）
+  process.stdout.write(
+    JSON.stringify(
+      cbEntries.map((en) => ({ key: en.key, file: en.file, label: en.label, fingerprint: en.h.key, listed: baseKeys.has(en.h.key) })),
+      null,
+      2,
+    ) + "\n",
+  );
+  process.exit(0);
+}
+
 const byDetector = {};
 for (const h of hits) byDetector[h.detector] = (byDetector[h.detector] || 0) + 1;
 
@@ -1263,10 +1302,12 @@ if (SEED) {
         note:
           "覆盖率盲区棘轮基线（假绿第 12 形态：测试咬的是「机制通不通」，对覆盖率全盲 —— 32% 与 100% 同色）。" +
           "本表是**存量清单**，不是逃生舱：`--update` 只删不增，新增盲点一律红。" +
-          "指纹刻意不含行号（file :: it 标题 :: 检测器 :: 目标符号），行号一漂全表失配会让门退化成噪声。",
+          "指纹刻意不含行号（file :: it 标题 :: 检测器 :: 目标符号），行号一漂全表失配会让门退化成噪声。" +
+          "contents 段 = D5/D6 内容键（剔文件部分）：搬家守恒不红，新内容/调包红。",
         seededAt: new Date().toISOString().slice(0, 10),
         gate: "scripts/check-coverage-blind.mjs",
         entries,
+        contents: buildContentsSegment(cbEntries, null, "coverage-blind:check"),
       },
       null,
       2,
@@ -1281,10 +1322,22 @@ if (UPDATE) {
   const next = { ...baseline, entries: {} };
   for (const k of baseKeys) if (seen.has(k)) next.entries[k] = baseline.entries[k];
   const removed = baseKeys.size - Object.keys(next.entries).length;
-  if (novel.length) {
-    console.error(`\n✗ --update 拒绝：有 ${novel.length} 条基线外新增盲点。棘轮只许下降，不许把红的塞进基线。`);
-    for (const h of novel.slice(0, 20)) console.error(`  - ${h.file}:${h.line} [${h.detector}] ${h.symbol}`);
+  if (novelEff.length) {
+    console.error(`\n✗ --update 拒绝：有 ${novelEff.length} 条基线外新增盲点。棘轮只许下降，不许把红的塞进基线。`);
+    for (const h of novelEff.slice(0, 20)) console.error(`  - ${h.file}:${h.line} [${h.detector}] ${h.symbol}`);
     process.exit(1);
+  }
+  // contents 段同一纪律：只删（内容已消失的槽）不增；搬家的槽保留（内容还在，只是换了文件）；
+  // 数量也只许缩不许涨（同键堆量不许借 --update 落账）。
+  if (baseline.contents && typeof baseline.contents === "object") {
+    const curCount = new Map();
+    for (const en of cbEntries) curCount.set(en.key, (curCount.get(en.key) ?? 0) + 1);
+    const cnext = {};
+    for (const [k, meta] of Object.entries(baseline.contents)) {
+      const cur = curCount.get(k) ?? 0;
+      if (cur > 0) cnext[k] = { ...meta, count: Math.min(Number.isInteger(meta?.count) && meta.count > 0 ? meta.count : 1, cur) };
+    }
+    next.contents = cnext;
   }
   next.updatedAt = new Date().toISOString().slice(0, 10);
   writeFileSync(BASELINE_PATH, JSON.stringify(next, null, 2) + "\n");
@@ -1296,10 +1349,14 @@ if (vanished.length) {
   console.log(`\n· 可收紧：${vanished.length} 条基线条目已消失（跑 \`node scripts/check-coverage-blind.mjs --update\` 落账）`);
   for (const k of vanished.slice(0, 10)) console.log(`    - ${k}`);
 }
+if (movedViaContent.length) {
+  console.log(`\n· D5 守恒：${movedViaContent.length} 条指纹基线外但内容键已登记（跨文件搬家，内容总量守恒）⇒ 不红：`);
+  for (const h of movedViaContent.slice(0, 10)) console.log(`    - ${h.file}:${h.line} [${h.detector}] ${h.symbol}`);
+}
 
-if (novel.length) {
-  console.error(`\n✗ coverage-blind:check 未通过：${novel.length} 条**基线外**覆盖率盲点（假绿第 12 形态）`);
-  for (const h of novel) {
+if (novelEff.length) {
+  console.error(`\n✗ coverage-blind:check 未通过：${novelEff.length} 条**基线外**覆盖率盲点（假绿第 12 形态）`);
+  for (const h of novelEff) {
     console.error(`  - ${h.file}:${h.line}  [${h.detector}] ${h.symbol}`);
     console.error(`      it: ${h.title}`);
     if (h.detail) console.error(`      ${h.detail}`);
