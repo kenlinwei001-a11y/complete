@@ -4371,6 +4371,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(ActionDraftSchema, req.body);
     const key = body.actionTypeKey ?? body.actionType;
     if (!key) throw validationError("actionTypeKey required");
+    // WO-ENTITLEMENT-ACTION-SERVER-GATE · ACTION 级 entitlement 闸，**必须排在 authz.require 之前**。
+    // 关掉的功能 = 不存在 → 404 FEATURE_NOT_FOUND（不是 403）；对无权限用户同样是 404，
+    // 否则 403 会泄漏「这个功能存在，只是你没权限」。按 actionTypeKey 逐类型判（见 features.ts
+    // ACTION_TYPE_FEATURE：本路由是全部动作类型共用的唯一创建入口，整条路由当闸会过度杀伤）。
+    // 闭 G-ENTITLEMENT-ACTION-LEVEL-CLIENT-ONLY 的服务端一半；接缝测试 test/entitlement-action-level.seam.test.ts。
+    await features.requireForActionType(c.tenantId, key);
     await authz.require(c, "ACTION_TYPE", key, "EXECUTE");
     // A6 列级（属性级）安全：对象数据变更是**唯一**的用户态对象写路径（R4 真值经 Action）。
     // patch 命中不可写属性 → 此处即 403 PROPERTY_FORBIDDEN，草稿根本不创建（值绝不落库），

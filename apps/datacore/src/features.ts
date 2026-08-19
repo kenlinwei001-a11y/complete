@@ -300,6 +300,39 @@ export const VIEW_FEATURE_MAP: Record<string, string> = {
   "process-stuck": "process.runtime",
 };
 
+/**
+ * WO-ENTITLEMENT-ACTION-SERVER-GATE · **ActionType → 控制它的 ACTION 级特性**（服务端 entitlement 闸的映射表）。
+ *
+ * ── 为什么需要这张表（不是拿整条路由当闸）──────────────────────────────────
+ * ACTION 级特性控制的是「某个业务动作能不能发起」，而 `POST /a/v1/action-drafts` 是**全部**动作类型
+ * 共用的**唯一**创建入口。拿整条路由当闸 ⇒ 关一个 `act.*` 会把不相干的动作类型一起打死（过度杀伤）。
+ * 所以闸必须落在 **actionTypeKey 这一维**上，语义与 `requireByBinding` 一致：
+ * **表里没登记的 actionTypeKey 不受 entitlement 控制**（untagged routes are not entitlement-controlled）。
+ *
+ * ── 收录判据：**该 actionTypeKey 的生产者是否「独家」在这道 flag 门后** ────────────
+ * 只有独家的才收 —— 否则关掉 flag 会连带打死没过这道门的入口，那不是补闸是砸路。
+ * 2026-08-19 逐个入口追证（前端 `actionTypeKey` 全量 grep + 每处所在 `<Feature>`/`useFeature` 上下文）：
+ *
+ * | actionTypeKey | 生产者 | 独家? | 收录 |
+ * |---|---|---|---|
+ * | `采纳产能预测结论`   | `ProjectSimView.tsx:1047`（`<Feature flag="act.adopt-to-draft">` 内） | ✓ | ✅ |
+ * | `采纳经营方案`       | `PlanGenerateView.tsx:236`（`canAdopt` 门内） | ✓ | ✅ |
+ * | `采纳产能保障方案`   | `DynamicLeverPanel.tsx:267` 的默认 `adoptActionTypeKey`（面板内自带 `<Feature>` 门） | ✓ | ✅ |
+ * | `AOP情景拍板`        | `AnnualScenarioView.tsx:124`（`act.aop-finalize` + `catalog_admin` 门内） | ✓ | ✅ |
+ * | `plan_change`        | 同一 flag 门内 3 处 **＋ 门外 7 处**（`RiskBoardView:1618` / `OrderChainView:1225` / `GlobalSimScenarioBar:80` / `CustomerImpactBar:52` / `GlobalSimView:667` / `SandboxView:1085` / `SandboxPlaysPanel:278`） | ✗ | ⛔ 不收 |
+ * | `对象数据变更`       | `WhatIfView.tsx:605`（门内）**＋ 它是 R4「真值经 Action」的通用对象写路径**（`battery.ts:3033/3048/3049` 注册在 ObjectType 上） | ✗ | ⛔ 不收 |
+ *
+ * ⚠ `plan_change` / `对象数据变更` 两条**故意不收**，不是漏了：把它们收进来 = 关掉「采纳为草稿」
+ * 会顺手关掉全局推演采纳、风险看板采纳、订单链采纳，乃至平台唯一的用户态对象写路径。
+ * 要闭合这两条得先在前端把「采纳」类入口与通用动作类型拆开（另立单），本表**不替产品做那个决定**。
+ */
+export const ACTION_TYPE_FEATURE: Record<string, string> = {
+  采纳产能预测结论: "act.adopt-to-draft",
+  采纳经营方案: "act.adopt-to-draft",
+  采纳产能保障方案: "act.adopt-to-draft",
+  AOP情景拍板: "act.aop-finalize",
+};
+
 const byKey = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
 
 export const featureNotFound = () => new AppError("FEATURE_NOT_FOUND", "feature not found", 404);
@@ -472,6 +505,24 @@ export class FeatureService {
     for (const def of bound) {
       if (!features.includes(def.key)) throw featureNotFound();
     }
+  }
+
+  /**
+   * WO-ENTITLEMENT-ACTION-SERVER-GATE · **ACTION 级 entitlement 闸**（服务端）。
+   *
+   * 铁律「Entitlement 先于 authz：功能关闭 = 不存在 → 404 `FEATURE_NOT_FOUND`」在 ACTION 这一层
+   * 此前**只有客户端在拦**（前端 `<Feature>` 隐藏按钮）—— 那是 UX 级，不是 entitlement：
+   * 关掉 flag 后 `curl POST /a/v1/action-drafts` 照样建草稿、照样落真值（本体 §8
+   * `G-ENTITLEMENT-ACTION-LEVEL-CLIENT-ONLY`）。本方法就是那道缺失的服务端闸。
+   *
+   * 调用点必须排在**任何角色判定之前**（`authz.require` / `requireAdmin` 之前）：
+   * 关掉的功能对无权限用户也应该是 **404**，不是 403 —— 403 会泄漏「这个功能存在，只是你没权限」。
+   */
+  async requireForActionType(tenantId: string, actionTypeKey: string): Promise<void> {
+    const featureKey = ACTION_TYPE_FEATURE[actionTypeKey];
+    if (!featureKey) return; // 未登记的 ActionType 不受 entitlement 控制（同 requireByBinding 的 untagged 语义）
+    const { features } = await this.resolve(tenantId);
+    if (!features.includes(featureKey)) throw featureNotFound();
   }
 
   private async validateKeys(tenantId: string, overrides: Record<string, boolean>): Promise<void> {
