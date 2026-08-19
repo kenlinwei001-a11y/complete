@@ -594,3 +594,50 @@ describe("WO-U2-STEPWISE-2 · disruption-radius：步骤态真正驱动结果分
     expect(screen.getByTestId("dr-layer-count-0")).toHaveTextContent("2 个");
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// order-chain（订单全链）：步骤 = 筛选与取数 → 一次求解(三个并列产物) → 经营估算
+//
+// ⚠ 只有三步是**实测逼出来的**：`affected_orders` 的输出白名单
+//   （`apps/datacore/src/solvers/service.ts:516`）里 rows / summary / problems 同出一次求解、
+//   互不为输入 ⇒ 它们是**并列产物**，摊成三步就是画一条不存在的因果链。
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("WO-U2-STEPWISE-2 · order-chain：步骤态真正驱动结果分段", () => {
+  it("U2-OC-1 · 三步逐层收：第 2 步没有经营看板、第 1 步连 8 单汇总与明细表都没有；切回末步全回来", async () => {
+    loginAs("planner");
+    renderApp("/v/order-chain");
+    await screen.findByTestId("oc-econ-table");
+
+    // 默认末步 = 完整结果（改前屏面）。
+    for (let n = 1; n <= 3; n++) expect(screen.getByTestId(`oc-steps-step-${n}`)).toBeInTheDocument();
+    expect(screen.getByTestId("oc-steps-meta-solver")).toHaveTextContent("前端投影");
+    expect(screen.getByTestId("oc-sum-orders")).toHaveTextContent("8");
+    expect(screen.getByTestId("oc-detail-table")).toBeInTheDocument();
+    expect(screen.getByTestId("oc-problems")).toBeInTheDocument();
+
+    // 第 2 步口径行：如实写「3 个并列产物」，不挑一个冒充全层。
+    fireEvent.click(screen.getByTestId("oc-steps-step-2"));
+    expect(screen.getByTestId("oc-steps-meta-solver")).toHaveTextContent("affected_orders");
+    expect(screen.getByTestId("oc-steps-meta-rule")).toHaveTextContent("互不为输入");
+
+    // ── 第 2 步：求解产物都在，经营估算（第 3 步）退场 ──
+    await waitFor(() => expect(screen.queryByTestId("oc-econ-table")).toBeNull());
+    expect(screen.queryByTestId("oc-econ-footnote")).toBeNull();
+    expect(screen.getByTestId("oc-sum-orders")).toHaveTextContent("8");
+
+    // ── 第 1 步「筛选与取数」：连 8 单汇总、明细表、问题卡全退场，只剩筛选器 ──
+    fireEvent.click(screen.getByTestId("oc-steps-step-1"));
+    await waitFor(() => expect(screen.queryByTestId("oc-sum-orders")).toBeNull());
+    expect(screen.queryByTestId("oc-detail-table")).toBeNull();
+    expect(screen.queryByTestId("oc-problems")).toBeNull();
+    expect(screen.queryAllByTestId(/^oc-row-/)).toHaveLength(0); // ← 逐单的数一条不剩
+    expect(screen.getByTestId("oc-base-filter")).toBeInTheDocument();
+
+    // ── 切回末步：全部回来 ──
+    fireEvent.click(screen.getByTestId("oc-steps-step-3"));
+    await screen.findByTestId("oc-econ-table");
+    expect(screen.getByTestId("oc-sum-orders")).toHaveTextContent("8");
+    expect(screen.getAllByTestId(/^oc-row-/).length).toBeGreaterThan(0);
+  });
+});

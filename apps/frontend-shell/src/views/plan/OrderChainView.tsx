@@ -9,6 +9,8 @@ import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { LayeredDag, type DagEdgeDef, type DagNodeDef } from "@/components/Dag/LayeredDag";
 // WO-SANDBOX-53CELLS · 判据 U3（点节点看凭什么）：本页两张图（ofc-dag / problem-dag）此前都没传 onNodeClick。
 import { DagNodeInspector, type DagNodeFacts } from "../sim/DagNodeInspector";
+// WO-U2-STEPWISE-2 · 判据 U2（分步标口径）：步骤态真正驱动结果分段（不是挂一条装饰步骤条）。
+import { SolverStepBar, useSolverStep, type SolverStep } from "../sim/SolverStepBar";
 import { useActionDraft } from "../sim/shared";
 import { Provenance } from "@/components/Provenance";
 import type { AffectedOrderRowVM, AffectedOrdersOutputVM } from "@/api/types";
@@ -354,6 +356,43 @@ function ProblemNarrativePanel({ group, categoryLabel }: { group: OrderProblemGr
 }
 
 /** 订单全链聚合（renderer=order-chain，§7.16）：affected_orders 扩展输出消费面 */
+/**
+ * WO-U2-STEPWISE-2 · 判据 **U2** 的步骤契约（本页无 `ReasoningGraph`，故按 `SolverStep` 直写）。
+ *
+ * ⚠ **只有三步，是实测逼出来的，不是偷工**：`affected_orders` 的输出白名单
+ * （`apps/datacore/src/solvers/service.ts:516`）是
+ * `["baseId","affected","total","count","columns","rows","fallback","problems","summary"]`
+ * —— `rows` / `summary` / `problems` **同出一次求解、互不为输入**，是**并列产物**不是三步。
+ * 把它们摊成三步会画出一条不存在的因果链（「先有明细才有问题归类」是假的），
+ * 那正是判据 U2 点名要排除的装饰。故第 2 步如实写「本层 3 个并列产物」，
+ * 与共享投影 `toSolverSteps` 处理并列层的写法同一条纪律（有损投影必须写在脸上）。
+ *
+ * 真正**在求解之后**的只有第 3 步：经营看板由前端拿 `rows[]` × 参考单价投影，非求解器输出。
+ */
+const OC_STEPS: SolverStep[] = [
+  {
+    key: "scope",
+    label: "筛选与取数",
+    data: "base 筛选值 + 本体快照 snapshotVersion",
+    solver: "页面入参 · 未求解",
+    rule: "时窗 [T−7, T+14] 内、风险基地命中的订单；跨基地订单计入其首个关联风险基地",
+  },
+  {
+    key: "solve",
+    label: "一次求解 · 三个并列产物",
+    data: "rows[]（so/cust/seg/model/qty/due/delay/risks）∥ summary（orderCount/totalQty/custCount/revenue）∥ problems[]（category/…）",
+    solver: "affected_orders",
+    rule: "本层 3 个产物同出一次求解、互不为输入，规则逐个不同（明细逐单 · 汇总求和 · 问题按 category 归并）——步骤条压不进一句话",
+  },
+  {
+    key: "econ",
+    label: "经营估算",
+    data: "由 rows[] 投影（seg 参考单价 segPrice · 参考毛利率 segMargin）",
+    solver: "前端投影 · 非求解器输出",
+    rule: "营收(亿) = 套数 × 参考单价(万元/套) ÷ 1e4；毛利 = 营收 × 参考毛利率；缺参考值取 0 不臆造 —— 估算数，不是财务记账数",
+  },
+];
+
 export default function OrderChainView({ view }: ViewRendererProps) {
   // 去电池锁死 8a（R14）：问题分类标签 + 产品段配色由 ViewConfig.layout 声明，常量仅兜底
   const categoryLabels = (view.layout?.categoryLabels as Record<string, string> | undefined) ?? CATEGORY_LABEL;
@@ -372,6 +411,11 @@ export default function OrderChainView({ view }: ViewRendererProps) {
    */
   const selectedObjects = useSessionStore((s) => s.selectedObjects);
   const inCtx = (so: string) => selectedObjects.some((o) => o.objectType === "Order" && o.objectId === `ord-${so}`);
+  /**
+   * 判据 U2 步骤态。默认末步 = 完整结果（与改前屏面逐字节一致 ⇒ 存量测试零回归）。
+   * `upto(n)` 是本页唯一分段闸：点第 N 步 ⇒ 屏上的数只显示到第 N 步为止。
+   */
+  const { active: ocStep, setActive: setOcStep, upto } = useSolverStep(OC_STEPS.length);
 
   const { data, isLoading } = useQuery({
     queryKey: ["b", "affected-orders", { base: baseFilter }],
@@ -544,7 +588,15 @@ export default function OrderChainView({ view }: ViewRendererProps) {
       */}
       <KitQuoteScopePanel baseFilter={baseFilter} rows={allData?.out.rows ?? []} />
 
-      {/* 财务影响汇总条 */}
+      {/* ── 判据 U2 · 分步推演（步骤态**真正驱动**下面各块的分段）─────────────────────
+          ⚠ 上面那块「这次算的是谁」走的是**另一个求解器**（齐套 / 报价），不在本条求解链上，
+          故不受本步骤条闸控 —— 把别人的链圈进来才是编。 */}
+      <div className="panel" style={{ marginBottom: 14 }} data-testid="oc-steps-panel">
+        <SolverStepBar steps={OC_STEPS} active={ocStep} onSelect={setOcStep} testId="oc-steps" />
+      </div>
+
+      {/* 财务影响汇总条。U2 分段闸：summary 是第 2 步那次求解的并列产物之一。 */}
+      {upto(2) && (
       <div className={styles.sumBar} data-testid="oc-summary">
         <div className={simStyles.kpi}>
           <b data-testid="oc-sum-orders">{out.summary.orderCount}</b>
@@ -580,8 +632,11 @@ export default function OrderChainView({ view }: ViewRendererProps) {
           <span>{zh.orderChain.sumRevenue}</span>
         </div>
       </div>
+      )}
 
-      {/* 经营数据看板 econTable（PRD-IND-order-aggregate §4.5-A）：产能/库存/在制/原料/营收/毛利按细分聚合 */}
+      {/* 经营数据看板 econTable（PRD-IND-order-aggregate §4.5-A）：产能/库存/在制/原料/营收/毛利按细分聚合。
+          U2 分段闸：它是第 3 步「经营估算」——前端拿 rows[] × 参考单价投影，比求解器输出**晚一步**。 */}
+      {upto(3) && (
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span>{zh.orderChain.econSection}</span>
@@ -650,8 +705,10 @@ export default function OrderChainView({ view }: ViewRendererProps) {
         {/* 假3 披露脚注（抄 OrderAggView）：营收/毛利经 SEG 参考价勾稽（估算口径·可溯）；库存诚实"—"。 */}
         <div className={simStyles.noteInfo} data-testid="oc-econ-footnote">{zh.orderChain.econFootnote}</div>
       </div>
+      )}
 
-      {/* 受影响订单明细 */}
+      {/* 受影响订单明细。U2 分段闸：rows[] 是第 2 步那次求解的并列产物之一。 */}
+      {upto(2) && (
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="section-title">
           {zh.orderChain.detailSection}（{baseFilter || "全部风险基地"}）
@@ -754,8 +811,11 @@ export default function OrderChainView({ view }: ViewRendererProps) {
           {zh.orderChain.caliber}
         </div>
       </div>
+      )}
 
-      {/* 待解决问题卡区（4 类归并） */}
+      {/* 待解决问题卡区（4 类归并）。U2 分段闸：problems[] 是第 2 步那次求解的并列产物之一
+          （与 rows / summary 同层 —— 它不是「明细之后」算出来的，摊成两步就是编因果）。 */}
+      {upto(2) && (
       <div className="panel">
         <div className="section-title">{zh.orderChain.problemSection}</div>
         <div className={styles.probGrid} data-testid="oc-problems">
@@ -791,6 +851,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
           })}
         </div>
       </div>
+      )}
 
       {/* inference-process 横切：订单全链推演的编排过程 DAG */}
       <InferenceProcessPanel testId="inference-order" solved />
