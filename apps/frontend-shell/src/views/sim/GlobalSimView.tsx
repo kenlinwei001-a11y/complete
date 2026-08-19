@@ -21,6 +21,7 @@ import { useLiveSolver } from "./useLiveSolver";
 import { ProcessGraphPanel } from "./ProcessGraphPanel";
 // WO-U2-STEPWISE-2 · 判据 U2（分步标口径）。步骤契约**投影自本页同一份 `GS_GRAPH`**，不另写一份。
 import { SolverStepBar, useSolverStep } from "./SolverStepBar";
+import { InfoPopover } from "@/components/InfoPopover";
 import { assertReasoningGraph, toSolverSteps, type ReasoningGraph } from "./reasoningGraph";
 import { MultiObjWhatifPanel } from "./MultiObjWhatifPanel";
 import { GlobalSimLevers, type LeverState, type FreeLever, type LeverCandidate, type LeverDeltaVM } from "./GlobalSimLevers";
@@ -763,13 +764,21 @@ export default function GlobalSimView(_props: ViewRendererProps) {
           ⚠ 不是装饰条：点第 N 步 ⇒ 屏上的数只显示到第 N 步为止（闸见各块 `upto(…)`）。 */}
       <div className={styles.glass} data-testid="global-sim-steps-panel">
         <SolverStepBar steps={GS_STEPS} active={gsStep} onSelect={setGsStep} testId="gs-steps" />
-        {/* 第 1 步的产物 = 这次联合求解读进去的那一整组入参（少一样得到的就是另一份排产）。 */}
+        {/* 第 1 步的产物 = 这次联合求解读进去的那组入参。
+            ⚠ 第一层只留**数值与名字**（主目标 / 两个单数）；方法与固定产能这两项本就在上方
+            杠杆区可见，此处不复述（规范 §1：第一层不堆重复项）。 */}
         <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6 }} data-testid="gs-step-inputs">
-          主目标 <span className="mono">{primary}</span> · 参与订单{" "}
-          <b data-testid="gs-step-inputs-orders">{orderIds.length}</b> 单 · 固定{" "}
-          <b data-testid="gs-step-inputs-frozen">{frozenOrderIds.length}</b> 单 · 方法{" "}
-          <span className="mono">{levers.method ?? "weighted"}</span> · 固定产能口径{" "}
-          <span className="mono">{levers.frozenCapacityMode ?? "reserve"}</span>
+          <span className="mono">{primary}</span>
+          {" · 参与 "}<b data-testid="gs-step-inputs-orders">{orderIds.length}</b>
+          {" · 固定 "}<b data-testid="gs-step-inputs-frozen">{frozenOrderIds.length}</b>
+          {/* 规范 §1：「复算这一屏要带哪些入参」是成段说明（凭什么这么算），降浮层；
+              第一层留 `?` 记号 —— 降层不是删除。 */}
+          <InfoPopover topic="复算这一屏要带哪些入参" testId="gs-step-inputs-why">
+            <span data-testid="gs-step-inputs-why-body">
+              复算这一屏必须带齐这一整组入参：订单三态（参与 / 固定 / 排除）、主目标、方法与权重、
+              固定产能处理方式、全部杠杆。少一样得到的就是另一份排产，不是同一次求解的复现。
+            </span>
+          </InfoPopover>
         </div>
       </div>
 
