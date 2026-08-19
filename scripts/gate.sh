@@ -36,7 +36,7 @@ preflight() {
   [ -d "$root/node_modules" ] || missing+=("根 node_modules")
   # 正金丝雀：vitest 是 TEST 段真正要调的那个二进制，缺了整段测试恒假红。
   [ -x "$root/node_modules/.bin/vitest" ] || missing+=("node_modules/.bin/vitest")
-  for p in packages/contracts packages/llm-adapters apps/datacore apps/agentcore apps/frontend-shell; do
+  for p in packages/contracts packages/llm-adapters packages/dsh-harness apps/datacore apps/agentcore apps/frontend-shell; do
     [ -d "$root/$p/node_modules" ] || missing+=("$p/node_modules")
   done
   # 负金丝雀：一个**必然存在**的路径若也报缺，说明判据本身坏了（如 root 解析错），
@@ -52,7 +52,7 @@ preflight() {
     echo "   ⚠️ 这**不是**「不得并线」——本次什么都没验，结论作废。RC=2"
     exit 2
   fi
-  echo "✓ 前置自证：node_modules ×6 + vitest 二进制均在位（缺任一即 RC=2「门坏了」而非 RC=1「代码坏了」）"
+  echo "✓ 前置自证：node_modules ×7 + vitest 二进制均在位（缺任一即 RC=2「门坏了」而非 RC=1「代码坏了」）"
 }
 preflight
 
@@ -133,16 +133,19 @@ run "ontology-writeback:check" node scripts/check-ontology-writeback.mjs
 
 # TEST 段专用：成功时也必须**逐包点名**。
 #
-# 包数 = 5，不是长期口口相传的"四包"：除 datacore/agentcore/frontend-shell/@platform/contracts 外，
-# @platform/llm-adapters 也有 17 个真测试（在 src/ 内联，不在 test/ 目录，故一直被漏数）。
+# 包数 = 6，不是长期口口相传的"四包"：除 datacore/agentcore/frontend-shell/@platform/contracts 外，
+# @platform/llm-adapters 也有 17 个真测试（在 src/ 内联，不在 test/ 目录，故一直被漏数）；
+# @platform/dsh-harness 自 WO-DSH-P0-CI (N0) 起有 test 脚本（test/run.mjs 三段式：
+# smoke + node --test 发现面 + drift-check），产出单行哨兵 HARNESS_TESTS_OK 计入点名——
+# harness 无 test 脚本时被 pnpm -r 静默跳过，正是本段点名要灭的假绿形态。
 #
 # 为何单列（第二层假绿·真实踩过的报告盲区）：run() 成功分支只 `tail -3`，四包串行跑完
 # 只剩最后一包的汇总，看不出前三包到底跑没跑。`pnpm -r test` 确实会因任一包失败而整体非 0，
 # 但"某包 test 脚本被删/改名 → 该包被静默跳过"同样是 RC=0——「看不见它跑过」正是上次假绿的成因。
 # 故此处断言汇总行数 ≥ EXPECT_PKGS：少一包即红，并把实际点名打出来。
-EXPECT_PKGS=5
+EXPECT_PKGS=6
 run_test() {
-  echo "───── TEST (五包·串行) ─────"
+  echo "───── TEST (六包·串行) ─────"
   local out rc roll cnt
   # datacore 勿并发多 vitest（CLAUDE.md LOOP 纪律）→ workspace-concurrency=1
   out="$(pnpm -r --workspace-concurrency=1 test 2>&1)"; rc=$?   # ★ 先捕获退出码，绝不经管道
@@ -153,7 +156,7 @@ run_test() {
   #   剥码比设 NO_COLOR 更稳：不依赖下游工具是否尊重该环境变量。
   local plain
   plain="$(printf '%s\n' "$out" | sed -E $'s/\x1b\\[[0-9;]*[A-Za-z]//g')"
-  roll="$(printf '%s\n' "$plain" | grep -E "Tests[[:space:]]+[0-9]+[[:space:]]+(passed|failed)|Tests[[:space:]]+no tests")"
+  roll="$(printf '%s\n' "$plain" | grep -E "Tests[[:space:]]+[0-9]+[[:space:]]+(passed|failed)|Tests[[:space:]]+no tests|HARNESS_TESTS_OK")"
   cnt="$(printf '%s\n' "$roll" | grep -c . )"
   if [ $rc -ne 0 ]; then
     # ⛔ 与 run() 同一处教训（**TEST 段才是真正踩到的那处**）：窄过滤器遇到 teardown 期未捕获异步错误
@@ -164,18 +167,30 @@ run_test() {
     # 各包分隔行（`/path/apps/xxx:`）能指认是哪个包退的码——全绿却红时这是第一手线索。
     echo "$out" | grep -E "^/.*/(apps|packages)/[^:]+:$" | head -10
     echo "$out" | tail -40
-    echo "❌ TEST (五包·串行) RC=${rc}"
-    FAILED+=("TEST (五包·串行)")
+    echo "❌ TEST (六包·串行) RC=${rc}"
+    FAILED+=("TEST (六包·串行)")
     return
   fi
   echo "· 逐包点名（每包一行汇总）："
   echo "$roll" | sed 's/^/  /'
   if [ "$cnt" -lt "$EXPECT_PKGS" ]; then
-    echo "❌ TEST (五包·串行) 只有 ${cnt}/${EXPECT_PKGS} 包产出测试汇总 —— 有包被静默跳过（test 脚本缺失/改名？），RC=0 不算通过"
+    echo "❌ TEST (六包·串行) 只有 ${cnt}/${EXPECT_PKGS} 包产出测试汇总 —— 有包被静默跳过（test 脚本缺失/改名？），RC=0 不算通过"
     FAILED+=("TEST 逐包点名 ${cnt}/${EXPECT_PKGS}")
     return
   fi
-  echo "✅ TEST (五包·串行) RC=0（${cnt}/${EXPECT_PKGS} 包全部点名）"
+  # PRD 原文机器核：「输出含 dsh-harness 且绿」= 包段落头在 ∧ 哨兵在 ∧ RC=0。
+  # 段落头形态 = pnpm 递归输出的 `> @platform/dsh-harness@<ver> test <path>` 行。
+  if ! printf '%s\n' "$plain" | grep -qE "@platform/dsh-harness@[0-9][^ ]* test "; then
+    echo "❌ TEST (六包·串行) 输出缺 @platform/dsh-harness 包段落头 —— harness 未进入 pnpm -r test 递归面（RC=0 不算通过）"
+    FAILED+=("TEST dsh-harness 段落头缺失")
+    return
+  fi
+  if ! printf '%s\n' "$roll" | grep -q "HARNESS_TESTS_OK"; then
+    echo "❌ TEST (六包·串行) 点名缺 HARNESS_TESTS_OK 哨兵 —— harness 绿但看不见（哨兵被删/改名？），RC=0 不算通过"
+    FAILED+=("TEST HARNESS_TESTS_OK 哨兵缺失")
+    return
+  fi
+  echo "✅ TEST (六包·串行) RC=0（${cnt}/${EXPECT_PKGS} 包全部点名，dsh-harness 段落头+哨兵在）"
 }
 
 if [ "${1:-}" != "--no-test" ]; then
