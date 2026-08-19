@@ -19,7 +19,9 @@ import { useLiveSolver } from "./useLiveSolver";
 // WO-U3-DAG-REST · 判据 U3（过程图 + 点节点看凭什么）—— 结构与画法与样板两页同源，
 // 见 `reasoningGraph.ts` 头注；本页**不另建**一套。
 import { ProcessGraphPanel } from "./ProcessGraphPanel";
-import { assertReasoningGraph, type ReasoningGraph } from "./reasoningGraph";
+// WO-U2-STEPWISE-2 · 判据 U2（分步标口径）。步骤契约**投影自本页同一份 `GS_GRAPH`**，不另写一份。
+import { SolverStepBar, useSolverStep } from "./SolverStepBar";
+import { assertReasoningGraph, toSolverSteps, type ReasoningGraph } from "./reasoningGraph";
 import { MultiObjWhatifPanel } from "./MultiObjWhatifPanel";
 import { GlobalSimLevers, type LeverState, type FreeLever, type LeverCandidate, type LeverDeltaVM } from "./GlobalSimLevers";
 import { GlobalSimScenarioBar, type ScenarioSnapshotInput } from "./GlobalSimScenarioBar";
@@ -177,6 +179,16 @@ const GS_GRAPH: ReasoningGraph = assertReasoningGraph({
     { from: "displaced", to: "customer" },
   ],
 });
+
+/**
+ * WO-U2-STEPWISE-2 · 判据 **U2** 的步骤契约 —— **投影自 `GS_GRAPH`，不手写第二份**。
+ *
+ * 四步 = 图的四层：入参与杠杆 → 联合求解 → 解的三个面 → 读数与结论。
+ * 第 3 层是**并列层**（获排 ∥ 被挤 ∥ 产能台账，同一次解的三个互补切片），
+ * `toSolverSteps` 会如实写「本层 3 个并列环，规则逐环不同 ⇒ 在过程图上点各环看」，
+ * **不挑一个节点的规则冒充全层**（有损投影必须写在脸上·见 reasoningGraph.ts 头注）。
+ */
+const GS_STEPS = toSolverSteps(GS_GRAPH);
 
 /** ⑤ 方法旋钮目标键（与求解器 objectiveValues 同口径·中文标签）。 */
 const OBJ_KNOB_KEYS = ["ontime", "cost", "changeover", "delay", "fgInventory"] as const;
@@ -442,6 +454,11 @@ function heatColor(util: number): string {
 type OrderState = "in" | "frozen" | "excluded";
 
 export default function GlobalSimView(_props: ViewRendererProps) {
+  /**
+   * 判据 U2 步骤态。**默认末步 = 完整结果**（与改前屏面逐字节一致 ⇒ 存量测试零回归）。
+   * `upto(n)` 是本页**唯一分段闸**：下面每一块结果都经它决定渲染与否。
+   */
+  const { active: gsStep, setActive: setGsStep, upto } = useSolverStep(GS_STEPS.length);
   const orders = useQuery({ queryKey: ["a", "objects", { type: "Order", view: "global-sim" }], queryFn: () => searchObjects("Order", "") });
   const orderList = useMemo(() => (orders.data?.items ?? []).map((o) => {
     // ② G-UI-2·home 基地 = 首个可产基地 id（真数据·非占位）；base 保留原（数组时逗号串·仅回显兜底）。
@@ -741,13 +758,31 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         <ExportReportButton pageKey="global-sim" build={buildReport} />
       </div>
 
+      {/* ── 判据 U2 · 分步推演（步骤态**真正驱动**下面整屏的分段）───────────────────
+          摆在读数之前：先说清「这一屏分几步算出来的」，再让用户停在任一步只看那一步的数。
+          ⚠ 不是装饰条：点第 N 步 ⇒ 屏上的数只显示到第 N 步为止（闸见各块 `upto(…)`）。 */}
+      <div className={styles.glass} data-testid="global-sim-steps-panel">
+        <SolverStepBar steps={GS_STEPS} active={gsStep} onSelect={setGsStep} testId="gs-steps" />
+        {/* 第 1 步的产物 = 这次联合求解读进去的那一整组入参（少一样得到的就是另一份排产）。 */}
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6 }} data-testid="gs-step-inputs">
+          主目标 <span className="mono">{primary}</span> · 参与订单{" "}
+          <b data-testid="gs-step-inputs-orders">{orderIds.length}</b> 单 · 固定{" "}
+          <b data-testid="gs-step-inputs-frozen">{frozenOrderIds.length}</b> 单 · 方法{" "}
+          <span className="mono">{levers.method ?? "weighted"}</span> · 固定产能口径{" "}
+          <span className="mono">{levers.frozenCapacityMode ?? "reserve"}</span>
+        </div>
+      </div>
+
       {/* ① 递进批次会话条（范围 / status / 已提交批次链） */}
       <div className={styles.batchBar} data-testid="global-sim-batchbar">
         <span className={styles.batchScope} title={`规划期被切成若干个「时间窗」，每个时间窗 ${PORT_WINDOW_DAYS} 天（与后端求解器 windowDays 同口径）；产能占用与交付日都按时间窗结算。`}>范围：全 {matrix?.bases.length ?? "—"} 个基地 × {matrix?.windows.length ?? "—"} 个时间窗（每窗 {PORT_WINDOW_DAYS} 天）</span>
         <span>主方案：{SCEN_LABEL[primary]}</span>
+        {/* U2 分段闸：可行/最优判定是图上 `solve` 节点（layer 1 = 第 2 步）读的 feasible/optimal/status。 */}
+        {upto(2) && (
         <span className={`${styles.batchStatus} ${d && !d.feasible ? styles.bad : ""}`} data-testid="global-sim-feasible" title="「可行」= 现有产能下所选订单全部都能排下、没有订单被挤掉；「有被挤单」= 产能不够，部分订单排不下（下方「被挤单」卡逐单可查）。">
           {d ? (d.feasible ? "可行 · 全部订单都排下了" : `${optimalityLabel(d)} · 有被挤单`) : res.isFetching ? "求解中…" : "—"}
         </span>
+        )}
         <span className={styles.batchChain} data-testid="global-sim-batchchain" title="已在产 / 已排定的订单（在产承诺）会先占住对应基地和时间窗的产能；本轮推演把这部分产能视为已被占用、不再重复分配给别的订单。">
           已排定批次 · 先占产能（在产承诺）：
           {committedBatches.length
@@ -909,12 +944,19 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                 </button>
               ))}
             </div>
+            {/* U2 分段闸：最优性 + 守恒判定同属图上 `solve` 节点（layer 1 = 第 2 步）。 */}
+            {upto(2) && (
             <span className={`${styles.miniConserve} ${d && !d.reconciled ? styles.bad : ""}`} data-testid="global-sim-verdict" title="「可证最优」= 精确求解器已从数学上证明这是最好的方案；「可行解 · 未证最优」= 求解器给出了满足约束的方案、但未证明它是最好的（内存态确定性贪心恒落此态）；「产能台账守恒」= 每个基地每个时间窗排下去的量都没超过可用产能、也没有被重复占用（一份产能只算一次）。">
               {d ? `${optimalityLabel(d)} · 产能台账守恒${d.reconciled ? "通过" : "未通过"}` : res.isFetching ? "求解中…" : "—"}
             </span>
+            )}
           </div>
 
-          {matrix ? (
+          {/* U2 分段闸：占用矩阵是图上 `matrix` 节点（layer 3 = 第 4 步「读数与结论」），
+              由 `capacityLedger`（第 3 步）派生 ⇒ 比台账**晚一步**出。
+              ⚠ 闸在**最外层**：停在前几步时连「加载中…」空态也不许出 —— 那句话会把
+              「这一步还没算到」说成「在加载」，是两个不同的命题（诚实位）。 */}
+          {!upto(4) ? null : matrix ? (
             <div className={styles.matrixWrap} data-testid="global-sim-heatmatrix">
               <table className={styles.heatMatrix}>
                 <thead>
@@ -1100,6 +1142,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
             {d && primaryScen && (
               <>
                 {/* D5：参数已改未重算 → 结果读数置灰（红线：结果绝不与旁边显示的参数不一致） */}
+                {/* U2 分段闸：这一整块是图上 layer 3「读数与结论」（按期率 / 总代价 / 被挤单读数 +
+                    方案比对矩阵 + 权衡句）—— 第 4 步才出。 */}
+                {upto(4) && (
                 <div data-testid="global-sim-results" data-stale={res.isStale} style={staleStyle}>
                 {/* ══ 判据 U5「结论数字标出处」 ══
                     改前本页**全文没有一处** `SnapshotBadge`/`<Provenance>`：`provenance` 二字只出现在
@@ -1201,6 +1246,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                   </div>
                 )}
                 </div>
+                )}
 
                 <div className={styles.actions}>
                   <button className={styles.btnPrimary} data-testid="global-sim-solve" disabled={res.isFetching} onClick={() => setNonce((n) => n + 1)} title="按当前的杠杆、勾选订单和目标，重新做一次全局联合排产。">
@@ -1216,8 +1262,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
             {res.error ? <div className={styles.noteRed}>求解失败：{String(res.error?.message ?? "")}</div> : null}
           </div>
 
-          {/* 磨砂卡② 被挤单 / 固定单卡（双向下钻） */}
-          {d && (
+          {/* 磨砂卡② 被挤单 / 固定单卡（双向下钻）。
+              U2 分段闸：被挤单是图上 `displaced` 节点（layer 2 = 第 3 步「解的三个面」）。 */}
+          {d && upto(3) && (
             <div className={styles.glass}>
               <span className={styles.grpLabel}>[ 被挤单 / 固定单 · 接单可行性细排 ]</span>
               <div className={styles.cardGrid} data-testid="global-sim-displaced">
@@ -1249,8 +1296,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         </div>
       </div>
 
-      {/* ⑤ 排产安排表（电芯段→在途→Pack段·优先消费求解器真 schedule[]·无则回退 InterBaseTransfer JOIN） */}
-      {d && (
+      {/* ⑤ 排产安排表（电芯段→在途→Pack段·优先消费求解器真 schedule[]·无则回退 InterBaseTransfer JOIN）。
+          U2 分段闸：排产安排逐条来自 `allocation[]` = 图上 `alloc` 节点（layer 2 = 第 3 步）。 */}
+      {d && upto(3) && (
         <ScheduleTable
           allocation={d.allocation}
           schedule={d.schedule}
@@ -1270,8 +1318,10 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         </div>
       )}
 
-      {/* 联合分配台账 + 共享产能守恒台账（全宽磨砂卡） */}
-      {d && (
+      {/* 联合分配台账 + 共享产能守恒台账（全宽磨砂卡）。
+          U2 分段闸：分配台账 = `alloc` 节点、守恒台账 = `ledger` 节点，
+          两者同属 layer 2「解的三个面」⇒ 第 3 步出。 */}
+      {d && upto(3) && (
         <div className={styles.glass}>
           <span className={styles.grpLabel}>[ 联合分配台账 · 主方案 {SCEN_LABEL[primary]}（基地 × 时间窗 · 悬停查看数据来源） ]</span>
           <table className={styles.gtable} data-testid="global-sim-alloc">
@@ -1310,7 +1360,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       )}
 
       {/* ⑦ 底栏客户级影响（被挤单→真客户名+细分+交付地+产线+影响额·⑥ 卡 click → 真项目详情·协调加产预览→确认→草稿） */}
-      {d && <CustomerImpactBar displaced={d.displaced} orders={orderList} lineNameOf={lineNameOf} sessionId={sessionId} />}
+      {/* U2 分段闸：客户级影响是图上 `customer` 节点（layer 3 = 第 4 步「读数与结论」）——
+          它由第 3 步的被挤单**再联本体对象**得出，故比被挤单卡晚一步。 */}
+      {d && upto(4) && <CustomerImpactBar displaced={d.displaced} orders={orderList} lineNameOf={lineNameOf} sessionId={sessionId} />}
 
       {/* 活③·方案存 / 分支 / 横比（decision_play 范式）——暗发门控：真后端 /a/v1/sim/scenarios 未落时不渲染(R3·避 404·mock 态 on) */}
       {d && <Feature flag="view.global-sim.live"><GlobalSimScenarioBar getSnapshot={getSnapshot} /></Feature>}

@@ -100,3 +100,72 @@ describe("WO-U2-STEPWISE-2 · what-if：步骤态真正驱动结果分段", () =
     expect(screen.getByTestId("wi-affected-count")).toHaveTextContent("2");
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// global-sim（全局项目推演）：步骤 = GS_GRAPH 四层
+//   入参与杠杆 → 联合求解 → 解的三个面（获排∥被挤∥台账）→ 读数与结论
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("WO-U2-STEPWISE-2 · global-sim：步骤态真正驱动结果分段", () => {
+  it("U2-GS-1 · 四步齐 + 末步口径行三要素；默认末步 = 完整结果（占用矩阵/读数/台账全在）", async () => {
+    loginAs("planner");
+    renderApp("/v/global-sim");
+    await screen.findByTestId("global-sim-ledger");
+
+    for (let n = 1; n <= 4; n++) expect(screen.getByTestId(`gs-steps-step-${n}`)).toBeInTheDocument();
+    // 末步（读数与结论）是**并列层**（按期率 ∥ 占用矩阵 ∥ 客户级影响）⇒ 如实写「本层 3 个并列环」。
+    expect(screen.getByTestId("gs-steps-meta-data")).toHaveTextContent("objectiveValues.ontime");
+    expect(screen.getByTestId("gs-steps-meta-solver")).toHaveTextContent("portfolio");
+    expect(screen.getByTestId("gs-steps-meta-rule")).toHaveTextContent("并列环");
+
+    // 默认末步 = 完整结果。
+    expect(screen.getByTestId("global-sim-readout")).toBeInTheDocument();
+    expect(screen.getAllByTestId(/^global-sim-heat-/).length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId(/^global-sim-ledger-/).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("global-sim-verdict")).toHaveTextContent("守恒");
+
+    // 第 2 步「联合求解」的口径行 = 单节点三要素（status/feasible/optimal · portfolio）。
+    fireEvent.click(screen.getByTestId("gs-steps-step-2"));
+    expect(screen.getByTestId("gs-steps-meta-data")).toHaveTextContent("feasible");
+    expect(screen.getByTestId("gs-steps-meta-solver")).toHaveTextContent("portfolio");
+  });
+
+  it("U2-GS-2 · 切步 ⇒ 数真的不在了：第 3 步没有占用率格与按期率、第 2 步连守恒台账也没有；切回末步全回来", async () => {
+    loginAs("planner");
+    renderApp("/v/global-sim");
+    await screen.findByTestId("global-sim-ledger");
+
+    // 末步先记下两个**具体的数**：占用率格数 与 守恒台账行数。
+    const heatCount = screen.getAllByTestId(/^global-sim-heat-/).length;
+    const ledgerCount = screen.getAllByTestId(/^global-sim-ledger-/).length;
+    expect(heatCount).toBeGreaterThan(0);
+    expect(ledgerCount).toBeGreaterThan(0);
+
+    // ── 第 3 步「解的三个面」：台账/分配还在，读数与占用矩阵退场 ──
+    fireEvent.click(screen.getByTestId("gs-steps-step-3"));
+    await waitFor(() => expect(screen.queryByTestId("global-sim-readout")).toBeNull());
+    expectNoneByPrefix(/^global-sim-heat-/); // ← 占用率的数全不在了（变异时它们还在 ⇒ 本条红）
+    expect(screen.queryByTestId("global-sim-results")).toBeNull();
+    expect(screen.getAllByTestId(/^global-sim-ledger-/)).toHaveLength(ledgerCount);
+    expect(screen.getByTestId("global-sim-verdict")).toBeInTheDocument();
+
+    // ── 第 2 步「联合求解」：三个面全退场，只剩判定（可行/最优/守恒） ──
+    fireEvent.click(screen.getByTestId("gs-steps-step-2"));
+    await waitFor(() => expect(screen.queryByTestId("global-sim-ledger")).toBeNull());
+    expectNoneByPrefix(/^global-sim-ledger-/);
+    expect(screen.queryByTestId("global-sim-alloc")).toBeNull();
+    expect(screen.getByTestId("global-sim-verdict")).toHaveTextContent("守恒");
+
+    // ── 第 1 步「入参与杠杆」：判定也退场，只剩这次求解读进去的那组入参 ──
+    fireEvent.click(screen.getByTestId("gs-steps-step-1"));
+    await waitFor(() => expect(screen.queryByTestId("global-sim-verdict")).toBeNull());
+    expect(screen.queryByTestId("global-sim-feasible")).toBeNull();
+    expect(screen.getByTestId("gs-step-inputs")).toHaveTextContent("max_ontime");
+
+    // ── 切回末步：全部回来，且**数量逐个对得上**（不是渲了个空壳） ──
+    fireEvent.click(screen.getByTestId("gs-steps-step-4"));
+    await screen.findByTestId("global-sim-readout");
+    expect(screen.getAllByTestId(/^global-sim-heat-/)).toHaveLength(heatCount);
+    expect(screen.getAllByTestId(/^global-sim-ledger-/)).toHaveLength(ledgerCount);
+  });
+});
