@@ -210,6 +210,83 @@ describe("判据 U4b · project-sim：被挤出图的基地与上图的基地同
   });
 });
 
+describe("判据 U4b · risk：没被任何因素解释掉的那块缺口与主因同图", () => {
+  /**
+   * 「被排除项」在归因树上的形态**不是**"某个被关掉的因素"，而是**未解释残差**：
+   * 引擎逐层硬勾稽 `Σ子 + residual = 父gap`，`residual` 就是分摊不到任何因素头上的那部分。
+   * 改前这张树**只画被解释的那几支** ⇒ 读者把「订单 + 设备OEE + 物料」读成缺口的**全部**。
+   * ⚠ 残差是**后端一直在下发**的（契约 `GapAttributionLevelSchema.residual` 必填 +
+   *   `reconChecks[].residual` 逐基地），前端类型此前整个没声明 ⇒ 没人消费。
+   *   这是「接了线没消费」，**不是**「后端没给」——实测 demo 租户
+   *   `POST /a/v1/solvers/gap_attribution/invoke` 回 `residualPct=12`、`levels[0].residual=3.336`。
+   */
+  it("U4b-C6 · 该基地缺口 13.8 里有 1.66 无人认领 → 残差**画在同一棵树上**并写明它不是一个因素", async () => {
+    const BASE = "信阳";
+    server.use(
+      // 风险卡桩：不打它，`/v/risk` 上根本没有卡可点（形状抄自 `capacity-page-100pct.test.tsx`）。
+      http.post("*/a/v1/solvers/risk_timeline/invoke", () =>
+        HttpResponse.json({
+          data: {
+            horizon: 30, threshold: 85, planRows: [],
+            cards: [{
+              base: BASE, baseId: "xinyang", factor: "物流时长", peak: 98, crossDay: 1,
+              currentTightness: { value: 92, live: true },
+              series: [92, 93, 94, 95, 96, 97, 98, 98, 98, 98, 98, 98], events: [], affectedOrders: [],
+            }],
+          },
+          snapshotVersion: "ov-risk",
+        }),
+      ),
+      http.post("*/a/v1/solvers/gap_attribution/invoke", () =>
+        HttpResponse.json({
+          data: {
+            rootMetric: { key: "k_out", name: "产出缺口", unit: "万套", target: 100, actual: 72.2, gap: 27.8 },
+            totalGap: 27.8,
+            levels: [
+              { depth: 1, label: "基地", residual: 3.336, nodes: [{ id: `base:${BASE}`, factor: `基地 ${BASE}`, contribution: 13.8196, share: 0.497, unit: "万套" }] },
+              {
+                depth: 2, label: "订单/瓶颈", residual: 2.9357,
+                nodes: [
+                  { id: "order:A", factor: "订单积压", contribution: 8.0, share: 0.58, unit: "万套", path: ["k_out", `base:${BASE}`, "order:A"] },
+                  { id: "oee:B", factor: "设备OEE", contribution: 4.1612, share: 0.30, unit: "万套", path: ["k_out", `base:${BASE}`, "oee:B"] },
+                ],
+              },
+            ],
+            // ★ 逐基地残差**只在 reconChecks 里**（`levels[1].residual` 是全部基地加总，拿它会大好几倍）。
+            reconChecks: [
+              { depth: 1, label: "基地", parentGap: 27.8, sumChildren: 24.464, residual: 3.336, ok: true },
+              { depth: 2, label: `基地 ${BASE} 内`, parentGap: 13.8196, sumChildren: 12.1612, residual: 1.6584, ok: true },
+            ],
+            reconciled: true,
+            residualPct: 12,
+            summary: "结构归因 2 层",
+          },
+          snapshotVersion: "ov-ga",
+        }),
+      ),
+    );
+    loginAs("planner");
+    renderApp("/v/risk");
+    await userEvent.click(await screen.findByTestId(`risk-card-${BASE}`, {}, { timeout: 15_000 }));
+
+    const dag = await screen.findByTestId("provenance-dag", {}, { timeout: 15_000 });
+    // 判据①：主因与残差**同树** —— 两个被解释的因素在，残差也在（并列，不是替换）。
+    expect(within(dag).getByTestId("dag-node-order:A")).toBeInTheDocument();
+    const residual = within(dag).getByTestId(`dag-node-base:${BASE}:residual`);
+    expect(residual).toHaveAttribute("data-excluded", "true");
+    // 残差量取的是**本基地那一条**（1.6584），不是全部基地加总（2.9357）——取错会大 1.8 倍。
+    expect(residual.textContent).toContain("1.6584");
+    expect(residual.textContent).not.toContain("2.9357");
+    // 判据②：理由可见，且明说"它不是一个因素"（否则用户会去找"未解释残差"这个根因）。
+    const why = within(dag).getByTestId(`dag-residual-why-base:${BASE}:residual`);
+    expect(why.textContent).toContain("没有分摊到任何因素");
+    expect(why).toBeVisible();
+    // 它与"因素"在结构上分得开（不是画成又一个 factor）。
+    expect(residual).toHaveAttribute("data-kind", "residual");
+    expect(within(dag).getByTestId("dag-node-order:A")).toHaveAttribute("data-kind", "factor");
+  });
+});
+
 describe("判据 U1 · optimize-whatif：改输入即重演（提交闸已撤）", () => {
   it("U1-C1 · 改扰动值后**不点任何按钮** → 屏上 Δ 从 +18 变成 +10", async () => {
     loginAs("planner");
