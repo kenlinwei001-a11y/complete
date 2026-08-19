@@ -119,7 +119,7 @@ function gateToolBroken(e) {
 }
 
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
 import { join } from "node:path";
@@ -144,12 +144,31 @@ assertDistFresh([CONTRACTS_DIST], { gate: "chain-scan-honesty:check" });
 /** 规则真值源模块（**唯一**的规则内容出处；本门不抄任何一条规则）。 */
 const CONTRACTS = await import(pathToFileURL(join(ROOT, CONTRACTS_DIST)).href);
 
-/** 扫描面 = 全链扫描输出的产出链：判定器本体 + 喂它 metricValue 的读回层 + IO 聚合半。 */
+/** 扫描面 = 全链扫描输出的产出链：判定器本体 + 喂它 metricValue 的读回层 + IO 聚合半。
+ * ⚠ 本名册被「名单 vs 现算」一致性断言机器锁死（判据 H9 · WO-GATE-ROSTER-SWEEP-3）：
+ *    凡**现算**出的产数处（构造/直出 ChainImpediment 回包的文件）都必须已在册，
+ *    漏登记当场 RC=1 点名 file:line —— 名册不再能悄悄落后于现实。 */
 const SCAN_TARGETS = [
   { file: "apps/datacore/src/solvers/chain-impediment.ts", role: "判定器本体（回包每个数字的产地）" },
   { file: "packages/contracts/src/process-capacity.ts", role: "硬容量读回层（喂 parallelThroughput）" },
   // 聚合/IO 半：只取 `chainImpediments` 方法体（service.ts 有 4000+ 行，整文件扫会淹没在无关代码里）
   { file: "apps/datacore/src/solvers/service.ts", role: "IO 聚合半", method: "chainImpediments" },
+];
+/**
+ * 「产链路数字的地方」的**现算判据**（H9 用）：源码（剥注释）里真构造/直出 ChainImpediment 回包
+ * —— 含 `ChainImpedimentSchema.parse(` 或调用 `detectChainImpediments(`。
+ * 实测 2026-08-19 全仓命中恰 2 文件（chain-impediment.ts · service.ts），均在 SCAN_TARGETS。
+ * ⚠ 诚实边界：这条判据认的是「构造点」两种写法；换个写法产数（如手拼对象字面量再 as ChainImpediment）
+ *    仍可能漏 —— 那需要按赋值目标类型解析，属中等工作量判据设计，登记在案不是已守住。
+ */
+const PRODUCER_TOKENS = ["ChainImpedimentSchema.parse(", "detectChainImpediments("];
+/** H9 现算的扫描根（生产+mock 源码面；`**/mocks/**` 除外 —— 那是合成 fixture，判据本体性质，不是产数处）。 */
+const PRODUCER_SCAN_ROOTS = [
+  "apps/datacore/src",
+  "apps/agentcore/src",
+  "packages/contracts/src",
+  "packages/llm-adapters/src",
+  "apps/frontend-shell/src",
 ];
 /** 回包构造区锚点（H2 区域层 / H4）。少于 `MIN_REGIONS` 个 ⇒ 门自己瞎了。 */
 const REGION_ANCHORS = ["ChainImpedimentSchema.parse(", "thresholdRow = {", "caveat ??= {", "unresolved = (reason: string) => ({"];
@@ -885,6 +904,39 @@ if (isSelftestOnly) process.exit(0);
 /* ---------- 判据逐条跑 ---------- */
 const fail = [];
 const hits = []; // H5 棘轮候选
+
+/* ---------- H9 名单 vs 现算：产数处必须都在扫描面名册里（WO-GATE-ROSTER-SWEEP-3）----------
+ * SCAN_TARGETS 只钉「册内文件被扫」钉不住「新产数处没登记」—— 后者正是 roster 门守的病
+ * （不在名单里的对象永远绿）。现算：PRODUCER_SCAN_ROOTS 全遍历，剥注释后含 PRODUCER_TOKENS
+ * 任一即计为产数处（mocks 除外：合成 fixture 不是产数处）。漏登记 ⇒ RC=1 点名 file:line。 */
+{
+  const targetFiles = new Set(SCAN_TARGETS.map((t) => t.file));
+  const producers = [];
+  const walk = (abs, rel) => {
+    if (!existsSync(abs)) return;
+    for (const e of readdirSync(abs, { withFileTypes: true })) {
+      if (e.name === "node_modules" || e.name === "dist" || e.name === "build" || e.name === "mocks") continue;
+      const p = join(abs, e.name);
+      const r = `${rel}/${e.name}`;
+      if (e.isDirectory()) walk(p, r);
+      else if (/\.(ts|tsx)$/.test(e.name)) producers.push(r);
+    }
+  };
+  for (const root0 of PRODUCER_SCAN_ROOTS) walk(join(ROOT, root0), root0);
+  for (const f of producers.sort()) {
+    if (targetFiles.has(f)) continue;
+    const code = stripComments(read(f));
+    for (const tok of PRODUCER_TOKENS) {
+      const at = code.indexOf(tok);
+      if (at < 0) continue;
+      fail.push(
+        `H9 产数处未登记：${f}:${lineOf(code, at)} 含 \`${tok}\`（构造/直出 ChainImpediment 回包）但不在 SCAN_TARGETS 名册里\n` +
+          `        —— 名单 vs 现算双向锁：新产数处须同批登记进 SCAN_TARGETS，否则它的裸字面量零看护（名册落后于现实 = 这门只在守昨天）。`,
+      );
+      break;
+    }
+  }
+}
 
 // H1 判据表零数值
 for (const t of tables) {
