@@ -2141,6 +2141,56 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return { ok: true, event: event || "(all)", invalidated };
   });
 
+  // -----------------------------------------------------------------------
+  // WO-DSH-E2E · L2 真规则缝：dsh harness platform-governance 插件（http 模式）的
+  // 裁决端点。薄包 `deps.dataCore.rules.evaluate`——与 native POST_CHECK 同一客户端
+  // （engine.ts ruleBindings 后验段），不是第二份规则逻辑。
+  //
+  // 入参形态 = 插件 http 载荷 {tool, arguments, governance}（plugins/platform-governance.mjs）；
+  // 语义：ruleBindings.ruleKeys 逐条求值，有 !passed ∧ severity BLOCK ⇒ {decision:"deny",
+  // reason: 真 verdict 文案（ruleId: explanation）}，余 ⇒ {decision:"allow"}。
+  // 规则引擎异常 ⇒ 向上抛（错误处理 5xx）——fail-closed 转 deny 全在插件侧，本端点不吞。
+  // payload = queryText（人读留痕）+ 工具实参平铺：pre-execute 裁决的业务载荷就是工具实参
+  // （对位 native POST_CHECK 的 {answerText} 形态）；queryText-only 则面向业务字段的规则
+  // 表达式恒不可达，deny 语义造不出。
+  // 鉴权 = requireServiceToken（服务间单一实现，与 /metrics、/b/v1/internal/* 同口径）；
+  // ctx = 服务间形态（datacore llmproviders 先例）：dsh 治理载荷不携 tenantId
+  // （DshGovernanceSpec = ruleBindings + scopeObjectTypes），缺省 "platform" 服务身份，
+  // 不冒充任何租户用户；body.tenantId 为预留透传位。
+  // -----------------------------------------------------------------------
+  app.post("/b/v1/governance/adjudicate", async (req) => {
+    requireServiceToken(req);
+    const body = (req.body ?? {}) as {
+      tool?: unknown;
+      arguments?: unknown;
+      governance?: { ruleBindings?: { ruleKeys?: string[] | "ALL_APPLICABLE" } };
+      tenantId?: unknown;
+    };
+    if (typeof body.tool !== "string" || typeof body.governance !== "object" || body.governance === null) {
+      throw new HttpError(400, "VALIDATION_ERROR", "adjudicate 载荷需 {tool: string, arguments, governance}");
+    }
+    const ruleKeys = body.governance.ruleBindings?.ruleKeys;
+    if (!(Array.isArray(ruleKeys) || ruleKeys === "ALL_APPLICABLE")) {
+      throw new HttpError(400, "VALIDATION_ERROR", "governance.ruleBindings.ruleKeys 需 string[] | \"ALL_APPLICABLE\"");
+    }
+    const ctx = {
+      tenantId: typeof body.tenantId === "string" ? body.tenantId : "platform",
+      userId: "svc:dsh-governance",
+      roles: ["service"],
+    };
+    const args = body.arguments;
+    const payload = {
+      queryText: `${body.tool} ${JSON.stringify(args ?? {})}`,
+      ...(args !== null && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {}),
+    };
+    const verdicts = await deps.dataCore.rules.evaluate(ctx, ruleKeys, payload);
+    const blocking = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
+    if (blocking.length > 0) {
+      return { decision: "deny", reason: blocking.map((v) => `${v.ruleId}: ${v.explanation}`).join("; ") };
+    }
+    return { decision: "allow" };
+  });
+
   app.put("/b/v1/llm/bindings", async (req) => {
     const a = await auth(req);
     requireRole(a, "catalog_admin");
