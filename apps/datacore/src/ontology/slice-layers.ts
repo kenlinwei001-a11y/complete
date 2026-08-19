@@ -176,9 +176,10 @@ export function projectSliceLayers(input: SliceLayerInput): SliceLayersResponse 
 
   const drafts: Record<SliceLayerId, LayerDraft> = {
     // ── ① 业务场景 ────────────────────────────────────────────────────────────
-    // 承载物 reportedRefs 已接线（app.ts:2375 → governance.sliceReferences），但上游
-    // AgentCore 的 refs/report.ts 只产 rule 引用、从不产 kind:"slice" ⇒ 恒空。
-    // 这是「接了线没数据」而不是「没接线」——修法是补 producer，不是造承载物。
+    // 承载物 reportedRefs 已接线（app.ts → governance.sliceReferences）；产出端
+    // G-SLICE-REF-PRODUCER-EMPTY 已修（WO-SLICE-REF-REPORTER）：AgentCore 发布
+    // workflow/plan 时把 resolve_slice 步的 sliceKey 以 kind:"slice" 一并上报。
+    // 此层仍 absent 的语义 = 本租户确无已发布资源引用本切片（不是「缺上报方」）。
     business_scenario: {
       carrier: "reported_refs（B→A 引用上报）→ governance.sliceReferences",
       unit: "个",
@@ -187,11 +188,11 @@ export function projectSliceLayers(input: SliceLayerInput): SliceLayersResponse 
         .map((r) => ({ key: r.key, label: r.key, group: r.refKind, detail: r.where }))
         .sort((a, b) => by(a.key, b.key)),
       absentReason:
-        "承载物在（GET …/slices/{key}/references 已接线），但 AgentCore 侧 refs/report.ts 只上报 rule 引用、从不产出 kind:\"slice\" ⇒ 反查恒空。缺的是上报方，不是切片。",
+        "本租户尚无已发布 workflow/scene 经 resolve_slice 步引用本切片（上报路已通：发布 workflow/plan 时 refs/report.ts 会把 sliceKey 以 kind:\"slice\" 上报到 reported_refs）。",
     },
     // ── ② 决策意图 ────────────────────────────────────────────────────────────
-    // 同①。AgentCore 的 dril/relations.ts 其实真算出了 workflow--includes-->slice，
-    // 但那份关系图不回写 DataCore ⇒ A 侧反查依旧为空（接了线接错地方）。
+    // 同①：产出端已修（plan 发布同样上报 resolve_slice 出向引用），
+    // dril/relations.ts 算出的 workflow--includes-->slice 边随发布回流 DataCore。
     decision_intent: {
       carrier: "reported_refs.refKind ∈ {plan, intent, agent}",
       unit: "个",
@@ -200,7 +201,7 @@ export function projectSliceLayers(input: SliceLayerInput): SliceLayersResponse 
         .map((r) => ({ key: r.key, label: r.key, group: r.refKind, detail: r.where }))
         .sort((a, b) => by(a.key, b.key)),
       absentReason:
-        "AgentCore dril/relations.ts 已算出 workflow→slice 的引用关系，但不回写 DataCore 的 reported_refs ⇒ A 侧反查取不到（关系算在了 B 侧，没有回流）。",
+        "本租户尚无已发布 plan/intent/agent 引用本切片（plan 发布路已把 resolve_slice 的 sliceKey 上报回流；intent/agent 经 plan 间接关联）。",
     },
     // ── ③ 对象（executeSlice 已带出） ─────────────────────────────────────────
     object: {
