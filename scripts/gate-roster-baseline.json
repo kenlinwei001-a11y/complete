@@ -23,12 +23,12 @@
    "why": "本单 ① 后已降级为**正向断言名册**：只答「这 3 个绑定必须由 BASE_REGISTRY.map 派生」（判据，随架构变不随内容变）。「谁内联了」这一半——即真正的受检对象集合——已改为 SCAN_ROOTS 全仓现算，名册不再决定扫谁。另有死账断言逼它跟着现实走。"
   },
   "check-boundary-singlesource.mjs:SEG_CONSUMERS": {
-   "verdict": "roster",
-   "why": "**差集 12**：实测全仓有 16 个文件引用 SEG_REGISTRY，名册只列 4 个。更要害的是 SEG 这一半**只有正向断言、没有全仓负向扫描**——「某文件内联了 seg 价/利/色但压根不引用 SEG_REGISTRY」这一形态今天一个都扫不到（BASE 那一半本单已改成现算，SEG 尚未）。**差什么才能修**：SEG_REGISTRY 的值是价格/毛利/颜色三类，缺一个像 baseId 那样稳定可判的字面量形状；要先在契约里给 SEG 值定一个可机检的形状（如统一走 segColor()/segPrice() 取值函数），才有得扫。属契约改动，动 packages/**，超出本单纯门单的范围边界。"
+   "verdict": "criteria",
+   "why": "（原 roster·WO-GATE-ROSTER-SWEEP-3 收口）名册已扩到现算全集 16 个并被判据②b 机器锁死：现算消费方（SCAN_ROOTS 全遍历·剥注释·含 SEG_REGISTRY token）⊆ 名册，漏登记当场 RC=1 点名 file:line；死账由判据②反向咬。即普查处方第二种修法「名单 vs 现算一致性断言」。残留诚实边界（不是本键的债）：「不引用册而直接内联 seg 价/利/色」的负向扫描需契约给 SEG 值定可机检形状（segPrice() 类取值函数），属 packages/** 契约改动，超门单范围。"
   },
   "check-boundary-singlesource.mjs:PLAN_GOAL_CONSUMERS": {
-   "verdict": "roster",
-   "why": "**差集 0（今天）**：实测引用 PLAN_GOAL_TARGETS 的文件恰为名册这 3 个。但机制与 SEG 同病——只有正向断言、无全仓负向扫描，新增一个内联目标阈值的文件永远不会被问。**差什么才能修**：同 SEG_CONSUMERS，需要先给目标阈值定可机检的字面量形状（阈值是纯数字，比 baseId 难判得多，裸扫会把无关的同值数字全误伤）。"
+   "verdict": "criteria",
+   "why": "（原 roster·WO-GATE-ROSTER-SWEEP-3 收口）现算消费方恰为名册这 3 个（差集 0），且判据③b 双向锁已落地：新增引用 PLAN_GOAL_TARGETS 的文件不登记即 RC=1 点名 file:line。与 SEG_CONSUMERS 同一条机器锁，名册不再能悄悄落后于现实。负向扫描（内联阈值数字）的诚实边界同 SEG 条。"
   },
   "check-boundary-singlesource.mjs:SCAN_ROOTS": {
    "verdict": "computed",
