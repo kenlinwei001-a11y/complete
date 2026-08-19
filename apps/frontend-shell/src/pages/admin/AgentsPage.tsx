@@ -38,7 +38,8 @@ const t = zh.admin.agents;
 /**
  * WO-DSH-P2-UX（N5）· 内核徽标（契约 `AgentRunRecord.kernel`，additive optional）。
  *
- * 两态：`EXTERNAL` ⇒ amber 徽标「外部运行时」+ 浮层（未销账期文案含「环检测护栏待补」，D-3）；
+ * 两态：`EXTERNAL` ⇒ amber 徽标「外部运行时」+ 浮层（D-3 已销账：N3 STALL_LOOP 看门狗落 dsh 路，
+ * 环检测护栏在案，缺口标注按登记移除）；
  * `NATIVE` 或**缺失** ⇒ 徽标「原生」+ 中性浮层。缺失 ≡ 原生是**可证的**（字段上线前休眠门 +
  * 出货 compose 保证外部运行时恒关闭，D-4）——与归属「缺失=未知」**不同案**，绝不显示「未知」。
  * 文件内私有组件（边界：不新建共享组件文件）。
