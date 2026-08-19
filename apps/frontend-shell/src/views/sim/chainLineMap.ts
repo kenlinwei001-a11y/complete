@@ -54,6 +54,10 @@ import {
   type LossAttribution,
 } from "@platform/contracts";
 import { z } from "zod";
+// WO-R13-ONTOCHAIN-PANEL ① · 证据行 schema 复用 `inspectorModel.ts` 已导出的那一份
+// （该文件本就声明 evidence/empty 且字段按求解器实物形状；单向依赖，无循环：
+//  inspectorModel.ts 只 import @platform/contracts 与 zod，不回import本文件）。
+import { ChainLossEvidenceRowSchema } from "./inspectorModel";
 
 // ══════════════════════════════════════════════════════════════════════════════
 // § 1 · 引擎载荷的解析（形状照 S0 冻结契约，不另发明一套）
@@ -86,6 +90,18 @@ export type ChainLossEmptyRow = z.infer<typeof ChainLossEmptyRowSchema>;
 export const ChainLossPayloadSchema = z.object({
   nodes: z.array(ChainNodeSchema),
   attribution: z.array(LossAttributionSchema),
+  /**
+   * WO-R13-ONTOCHAIN-PANEL ① · **补上 `evidence[]`**（本单的官方注释点名补齐路径）。
+   * 此前本 schema 没声明它 ⇒ zod strip 语义把宿主载荷的下钻证据当场剥掉
+   * （`SandboxConsole.tsx` 的 InspectorEvidenceGapNote 记的就是这笔账）。
+   * 行 schema 复用 `inspectorModel.ts` 的 `ChainLossEvidenceRowSchema`（同一求解器输出，
+   * 两处只读各要的列）；`empty[]` 仍用本文件上面的宽松行 schema（两侧字段集不同，
+   * 各自按自己用到的列声明，这是两文件一贯的做法）。
+   * ⚠ 补上之后 `sandbox-console.seam.test.tsx` §9① 那条「schema 确实剥掉 evidence」的
+   *   断言**按它自己的注释设计当场红**（「哪天有人把 schema 补上了，那条断言当场红，
+   *   逼着把这段文案一起改掉」）—— 同单集成时已按约翻转成咬「带着走 + 条数不少」。
+   */
+  evidence: z.array(ChainLossEvidenceRowSchema).optional(),
   empty: z.array(ChainLossEmptyRowSchema).optional(),
   totals: z
     .object({

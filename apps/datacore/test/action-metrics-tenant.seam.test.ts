@@ -52,7 +52,8 @@ describe("SEAM · Action 埋点租户维（另开端点，且不得成为第二�
     });
     expect((okApproved.json() as { status: string }).status).toBe("EXECUTED");
 
-    // ② 失败侧：采纳经营方案（未接执行器 → 诚实失败 EXECUTION_FAILED）
+    // ② 失败侧：采纳经营方案 + 刻意不合契约的载荷（WO-ADOPT-SCHEME-CARRIER 已接线该型，
+    //    失败产地 = 真分支的契约拒绝「payload 不合契约」，不再落兜底线 → 仍诚实失败 EXECUTION_FAILED）
     const badDraft = await t.app.inject({
       method: "POST",
       url: "/a/v1/action-drafts",
@@ -68,7 +69,7 @@ describe("SEAM · Action 埋点租户维（另开端点，且不得成为第二�
     });
     expect(
       (badApproved.json() as { status: string }).status,
-      "本用例依赖『采纳经营方案』未接执行器；它若已接线，请换一个 NOT_IMPLEMENTED 的 key 重写本例",
+      "本用例依赖契约拒绝的诚实失败（payload 不合契约 → EXECUTION_FAILED）；载荷若哪天变合法，请换一份仍非法的载荷或改用无 levers 的 plan_change 重写本例",
     ).toBe("EXECUTION_FAILED");
 
     // ---- 租户端点：该租户自己的明细 + 稳定率 ------------------------------------------

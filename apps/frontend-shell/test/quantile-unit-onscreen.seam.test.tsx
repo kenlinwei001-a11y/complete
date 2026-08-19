@@ -205,8 +205,11 @@ describe("§2b · 改名漏改断言：旧名不许作为数据键留在任何�
   const OLD_AS_DATA_KEY = /(?:\.|["'`]|:\s*["'`])p(?:50|90)\b/;
 
   /**
-   * 两类**合法**用法，按语法上下文排除（不是按文件名开白名单 ——
-   * 白名单迟早被例外吃光，而上下文规则对**新文件**照样生效，这才拦得住下一次）：
+   * 合法用法按**语法上下文**排除（不是按文件名开白名单 ——
+   * 白名单迟早被例外吃光，而上下文规则对**新文件**照样生效，这才拦得住下一次）。
+   * 现四条：① DOM 测试钩子（选择器不是数据键）· ② 缺席断言（写出旧名是它的工作）·
+   * ③ 检索关键词表（用户会打出来的字，见下）· ④ 反样本常量（见下）。
+   * ①② 原文：
    *  ① DOM 测试钩子：`testId="p50"` / `data-testid="kpi-p50"` —— 是选择器不是数据键；
    *  ② **缺席断言**：`expect(data.p50).toBeUndefined()` —— 它正是「旧名已消失」的证据，
    *     写出旧名是它的工作。咬它等于罚这道机制自己。
@@ -229,8 +232,27 @@ describe("§2b · 改名漏改断言：旧名不许作为数据键留在任何�
   const stripKeywordTables = (line: string): string =>
     line.replace(/\b(?:keywords|synonyms|aliases)\s*:\s*\[[^\]]*\]/g, (m) => " ".repeat(m.length));
 
+  /**
+   * ④ **反样本常量**（2026-08-18，WO-QUANTILE-UNIT-TWO-REDS）：
+   * `const STALE_KEYPROPS_SAMPLE = ["segment", "p50", "demandPct"];` —— 旧名以**显式命名的反样本清单**
+   * 形态出现，唯一用途是喂给「白名单遇到旧名必须整块塌掉」的断言（② 缺席断言的输入端；
+   * 实物：`keyprops-ontology-parity.seam.test.ts` 的历史病样，它**必须是旧名**，改成新名那条测试就失去意义）。
+   * 为什么必须命名常量、不能豁免裸字面量数组：裸数组与**活**数据键清单在语法上无法区分
+   * （`keyProps: ["segment", "p50"]` 正是 2026-08-15 真事故的形态），靠「附近有 `.not.toContain`」
+   * 之类的距离规则区分 = 真违规写在否定断言旁边就被放过 —— 距离不是语法结构。
+   * 故「这是反样本」必须写成代码结构事实：**const 名自带 STALE + 初始化式是纯字符串字面量数组**，
+   * 门认常量定义的那一段，不必猜意图。本规则对新文件照样生效（认结构不认文件名）。
+   * 豁免粒度同 ③：**抹段不抹行**，同行数组外的真数据键照样咬；数组只认纯字符串字面量，
+   * 混入任何表达式（如 `[seg.p50]`）整段不豁免。
+   * ⚠ 放行口子如实记账：谁把**活**数据键清单命名成 STALE_* 谁就能绕过 —— 那是标识符撒谎，
+   *   与本门全家赖以成立的「名字不撒谎」前提同级，不是本规则能管的层。
+   */
+  const STALE_SAMPLE_DECL = /\bconst\s+[A-Za-z0-9_$]*STALE[A-Za-z0-9_$]*\s*=\s*\[(?:\s*["'][^"'\n]*["']\s*,?)+\]/g;
+  const stripStaleSampleDecls = (line: string): string =>
+    line.replace(STALE_SAMPLE_DECL, (m) => " ".repeat(m.length));
+
   const judgeLine = (line: string): boolean =>
-    OLD_AS_DATA_KEY.test(stripKeywordTables(line)) && !DOM_HOOK.test(line) && !ABSENCE_ASSERT.test(line);
+    OLD_AS_DATA_KEY.test(stripStaleSampleDecls(stripKeywordTables(line))) && !DOM_HOOK.test(line) && !ABSENCE_ASSERT.test(line);
 
   it("src + test 全扫（剥注释）：零处把 `p50`/`p90` 当数据键用；显示标签/测试钩子/缺席断言不误伤", () => {
     // ── 金丝雀（必咬 3 条）：三次真事故各取一行原文形态 ──
@@ -241,7 +263,7 @@ describe("§2b · 改名漏改断言：旧名不许作为数据键留在任何�
       'provenance: { drillType: "DemandSegment", drillField: "p50", drillValue: 20 },', // ④ 自洽假绿那类
     ]) expect(judgeLine(bad), `必咬却没咬：${bad}`).toBe(true);
 
-    // ── 金丝雀（必不咬 3 类）：大写显示标签 · DOM 钩子 · 缺席断言 ──
+    // ── 金丝雀（必不咬 4 类）：大写显示标签 · DOM 钩子 · 缺席断言 · 反样本常量 ──
     for (const ok of [
       'expect(summary).toContain("P90");',
       '<span>需求 P50(万套/月)</span>',
@@ -249,9 +271,15 @@ describe("§2b · 改名漏改断言：旧名不许作为数据键留在任何�
       'testId="p90"',
       'expect(data.p50, "裸 `p50` 回潮").toBeUndefined();',
       '{ tag: "Prediction", keywords: ["预测", "forecast", "p50", "p90", "capWanP50"] },', // 检索关键词≠数据键
+      'const STALE_KEYPROPS_SAMPLE = ["segment", "p50", "demandPct"];', // 反样本常量（规则④）：旧名必须失败是它的工作
     ]) expect(judgeLine(ok), `误伤合法用法：${ok}`).toBe(false);
     // ⚠ 关键词表这条豁免**只免这一种语法上下文**，不许顺手把同行的真数据键也放过：
     expect(judgeLine('{ keywords: ["预测"], drillField: "p50" }'), "关键词表豁免被放宽成了整行免检").toBe(true);
+    // ⚠ 规则④ 的豁免同样只免「STALE 常量的纯字面量数组段」——以下三形态必须照样咬，
+    //    否则规则④就是把门变哑而不是变准（只验必不咬 = 只证明了门变哑）：
+    expect(judgeLine('keyProps: ["segment", "p50", "demandPct"],'), "活 keyProps 清单（2026-08-15 真事故形态）不许被规则④放行").toBe(true);
+    expect(judgeLine("const STALE_KEYS = [seg.p50];"), "数组里混表达式 = 不是纯字面量反样本，不许豁免").toBe(true);
+    expect(judgeLine('const STALE_SAMPLE = ["a"]; x.p50'), "STALE 段外的同行真数据键照样咬（抹段不抹行）").toBe(true);
 
     // 金丝雀：只写在注释里的旧名不算回潮（证明剥注释这一步没坏）
     expect(commentOnlyCanary('drillField: "p50"').filter(([, s]) => s.split("\n").some(judgeLine))).toEqual([]);

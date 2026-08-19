@@ -12,6 +12,7 @@ import { useWorkspace } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { Provenance } from "@/components/Provenance";
+import { OntologyChainView, type OntologyChainData } from "@/components/OntologyChain";
 import { RuleRef } from "@/components/RuleRef";
 import { EvaluatedRules } from "@/components/EvaluatedRules";
 import type { ViewRendererProps } from "../registry";
@@ -493,6 +494,7 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
                   onOpenBn={() => setBnOpen(true)}
                   isStale={forecast.isStale}
                   orderSo={selectedOrderSo}
+                  snapshotVersion={forecast.snapshotVersion}
                 />
               </div>
 
@@ -555,6 +557,8 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
       {dagNode && out && (
         <DagNodeDrawer
           detail={dagNodeDetail(dagNode, out, modelId, Number((out as Record<string, unknown>).qty ?? qty), driverFactors)}
+          chain={dagNodeChain(dagNode, out)}
+          snapshotVersion={forecast.snapshotVersion}
           onClose={() => setDagNode(null)}
         />
       )}
@@ -582,6 +586,7 @@ function StepBody({
   onOpenBn,
   isStale,
   orderSo,
+  snapshotVersion,
 }: {
   step: number;
   out: CapacityForecastOutput;
@@ -594,8 +599,12 @@ function StepBody({
   isStale?: boolean;
   /** 选中销售订单的 so（下钻细排场景）；采纳结论时随 payload 上送回 stamp。 */
   orderSo?: string | null;
+  /** WO-R13-ONTOCHAIN-PANEL：复算基线快照（本体链弹层随行透出）。 */
+  snapshotVersion?: string | null;
 }) {
   const totalQty = Number((out as Record<string, unknown>).qty ?? qty);
+  // WO-R13-ONTOCHAIN-PANEL：判定条旁「本体链」弹层开关。
+  const [chainOpen, setChainOpen] = useState(false);
 
   if (step === 1) {
     if (mode === "batch" && out.batchRows) {
@@ -869,11 +878,41 @@ function StepBody({
 
   // ⑥ 结论与对策 + 动态杠杆（DynamicLeverPanel · generic_inference 真重算）
   const okColor = out.ok ? "var(--ok)" : "var(--danger)";
+  const verdictText =
+    mode === "batch" ? (out.ok ? zh.sim.proj.batchOk : zh.sim.proj.batchGap(fmt(out.gap))) : out.ok ? "✓ 产能可满足" : `✗ 缺口 ${fmt(out.gap)} 万套`;
+  /**
+   * WO-R13-ONTOCHAIN-PANEL：判定结论的本体链 —— 三段全部由后端响应真值透传：
+   *   ① 对象：选中订单（Order.so）否则型号（Model）——面板既有状态，非编造；
+   *   ② 边：默认粒度响应**不带**派生边（byProcessModel[].provenance 需 granularity=process-model）→ null + gaps 挂账；
+   *   ③ 规则/公式：响应 provenance 的公式原文（ok 时取 capWanP50，缺口时取 gap）+ 求解器 key。
+   * 逐条规则闸门（PASS/WARN/BLOCK）屏上已有 EvaluatedRules，链内只指一句、不重复造。
+   */
+  const verdictChain: OntologyChainData = {
+    object: orderSo ? { type: "Order", id: orderSo } : { type: "Model", id: modelId },
+    edge: null,
+    rule: {
+      formula: (out.ok ? out.provenance?.capWanP50 : out.provenance?.gap)?.formula,
+      solverKey: "capacity_forecast",
+    },
+    snapshotVersion: snapshotVersion ?? null,
+    gaps: [
+      "默认粒度响应不带派生边；byProcessModel[].provenance 需 granularity=process-model，已挂账后端单",
+      "逐条规则闸门（PASS/WARN/BLOCK）见下方规则评估区，链内不重复列出",
+    ],
+  };
   return (
     <div data-testid="pm-step6">
       <div className={styles.okBar} style={{ borderColor: okColor, color: okColor }} data-testid="proj-verdict-bar">
-        {mode === "batch" ? (out.ok ? zh.sim.proj.batchOk : zh.sim.proj.batchGap(fmt(out.gap))) : out.ok ? "✓ 产能可满足" : `✗ 缺口 ${fmt(out.gap)} 万套`}
+        {verdictText}
       </div>
+      <button type="button" className="btn sm" style={{ marginTop: 6 }} data-testid="proj-verdict-chain-btn" onClick={() => setChainOpen(true)}>
+        本体链
+      </button>
+      {chainOpen && (
+        <Modal title="本体链 · 结论溯源" onClose={() => setChainOpen(false)} width={560}>
+          <OntologyChainView conclusion={verdictText} chain={verdictChain} testId="proj-verdict-chain" />
+        </Modal>
+      )}
       {/* WO-SIM-ACTION-REAL：兑现 DAG fc 节点那句「结论可采纳为 Action」——采纳 = 参数组合 + 推演快照
           造「采纳产能预测结论」草稿走 S2 审批，审批通过落 ForecastAdoption 台账对象（+选中订单回 stamp）。
           不直改任何真值（R4）；D5：结果对应旧参数时不许采纳（与全局页同一纪律）。 */}
@@ -901,11 +940,14 @@ function StepBody({
       )}
       <div className={styles.threeKpiRow}>
         <div className={styles.kpi} data-testid="kpi-p50">
-          {/* 可信赖的推演（R13）：结论数字六要素溯源 */}
+          {/* 可信赖的推演（R13）：结论数字六要素溯源。
+              WO-R13-ONTOCHAIN-PANEL：formula 优先取后端响应 provenance 真值串
+              （capacity.ts 下发 capWanP50.formula）；响应缺该键（如 mock 未覆盖）时
+              才退回既有编辑口径内联串 —— 生产路径后端字段优先，绝不弃用。 */}
           <Provenance
             testId="p50"
             src="聚合求解器"
-            formula="P50 = Σ可产基地 Σ周(周产能 × 爬坡曲线 × 检修窗 × 认证系数)"
+            formula={out.provenance?.capWanP50?.formula ?? "P50 = Σ可产基地 Σ周(周产能 × 爬坡曲线 × 检修窗 × 认证系数)"}
             inputs={["可产基地", "爬坡曲线", "检修窗", "认证系数"]}
             rule="C01/C02"
           >
@@ -917,7 +959,7 @@ function StepBody({
           <Provenance
             testId="p90"
             src="IoT/SCADA 数据健康度"
-            formula={`P90 = P50 × 健康度系数 ${out.healthFactor}`}
+            formula={out.provenance?.capWanP90?.formula ?? `P90 = P50 × 健康度系数 ${out.healthFactor}`}
             inputs={["P50", "数据新鲜度→健康度系数"]}
             rule="C09"
             note="IoT 延迟时健康度系数自动下调，置信度随之削弱"
@@ -927,7 +969,19 @@ function StepBody({
           <span>P90（× 健康度 {out.healthFactor}）</span>
         </div>
         <div className={styles.kpi} data-testid="kpi-demand">
-          <b>{fmt(totalQty)}</b>
+          {/* 需求 KPI 与后端 provenance 语义对应：本卡显示的是场景有效需求（qty 显式路径）
+              ⇒ 对 effectiveDemand；其缺（纯订单簿口径）才对 baselineDemand。后端未下发时不补编，
+              保持今天的裸数字渲染。 */}
+          {(() => {
+            const demProv = out.provenance?.effectiveDemand ?? out.provenance?.baselineDemand;
+            return demProv ? (
+              <Provenance testId="demand" src="结构化预测场景 / 订单簿" formula={demProv.formula} inputs={["需求量", "需求增量 demandDelta"]}>
+                <b>{fmt(totalQty)}</b>
+              </Provenance>
+            ) : (
+              <b>{fmt(totalQty)}</b>
+            );
+          })()}
           <span>需求(万套)</span>
         </div>
       </div>
@@ -1201,8 +1255,60 @@ function dagNodeDetail(
   return { title: id, src: "—" };
 }
 
-/** 节点详情抽屉：六要素一行一列展开 + 规则两跳（RuleRef）。 */
-function DagNodeDrawer({ detail, onClose }: { detail: DagDetail; onClose: () => void }) {
+/**
+ * WO-R13-ONTOCHAIN-PANEL：DAG 节点的本体链 —— 能从响应真值对上的段用真值，对不上的诚实缺位：
+ *  - 对象/边：默认粒度响应无对象级、边级 provenance（byProcessModel[].provenance 需
+ *    granularity=process-model，本面板今天不传该参）→ 缺位 + gaps 挂账；
+ *  - 规则/公式：agg/fc 节点对响应 provenance 的公式键（真值）；bn 节点对 evaluatedRules 的
+ *    C03 规则码（响应真评估）；其余节点引擎未下发 → 缺位。
+ * 既有六要素表（dagNodeDetail）是编辑口径静态映射，保留不删（其它判据在用），链段旁 gaps 注明口径。
+ * （缺载段直传 null：OntologyChainView 缺载段条件构造，null ⇒ 「后端未下发」诚实位。）
+ */
+function dagNodeChain(id: string, out: CapacityForecastOutput): OntologyChainData {
+  const staticNote =
+    "该节点六要素为编辑口径静态映射（dagNodeDetail），引擎未下发逐节点链；对象级/边级 provenance 需 granularity=process-model（byProcessModel[].provenance），已挂账后端单";
+  switch (id) {
+    case "agg":
+      return {
+        object: null,
+        edge: null,
+        rule: { formula: out.provenance?.capWanP50?.formula, solverKey: "capacity_forecast" },
+        gaps: [staticNote],
+      };
+    case "fc":
+      return {
+        object: null,
+        edge: null,
+        rule: { formula: (out.ok ? out.provenance?.capWanP50 : out.provenance?.gap)?.formula, solverKey: "capacity_forecast" },
+        gaps: [staticNote],
+      };
+    case "bn": {
+      const c03 = (out.evaluatedRules ?? []).find((r) => r.key === "C03");
+      return {
+        object: null,
+        edge: null,
+        rule: c03 ? { ruleKey: "C03", solverKey: "capacity_forecast" } : null,
+        gaps: [staticNote, "瓶颈矩阵为独立求解（bottleneck_matrix），其响应无 provenance 公式段；规则码取本次 capacity_forecast 响应 evaluatedRules 的 C03 真评估"],
+      };
+    }
+    default:
+      return { object: null, edge: null, rule: null, gaps: [staticNote] };
+  }
+}
+
+/** 节点详情抽屉：六要素一行一列展开 + 规则两跳（RuleRef）+ 底部本体链段（WO-R13-ONTOCHAIN-PANEL）。 */
+function DagNodeDrawer({
+  detail,
+  chain,
+  snapshotVersion,
+  onClose,
+}: {
+  detail: DagDetail;
+  /** 本体链三段（dagNodeChain 装配；缺段为 null，gaps 已写明口径）。 */
+  chain: OntologyChainData;
+  snapshotVersion?: string | null;
+  onClose: () => void;
+}) {
   return (
     <Modal title={`🔍 ${detail.title}`} onClose={onClose} width={560}>
       <div data-testid="dag-node-drawer">
@@ -1253,6 +1359,11 @@ function DagNodeDrawer({ detail, onClose }: { detail: DagDetail; onClose: () => 
             )}
           </tbody>
         </table>
+        {/* WO-R13-ONTOCHAIN-PANEL：抽屉底部本体链段 —— 上方六要素为编辑口径静态映射（保留），
+            此处为后端响应真值能拼出的链；拼不出的段诚实缺位，口径差异见链内 gaps。 */}
+        <div style={{ marginTop: 10, borderTop: "1px solid var(--line2)", paddingTop: 8 }}>
+          <OntologyChainView conclusion={detail.title} chain={{ ...chain, snapshotVersion: snapshotVersion ?? null }} testId="dag-node-chain" />
+        </div>
         <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted2)" }}>信任 = 出处 + 推导可当场亮出（R13）</div>
       </div>
     </Modal>

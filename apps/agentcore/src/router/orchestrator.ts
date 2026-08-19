@@ -2236,16 +2236,24 @@ export class Orchestrator {
     executor: GuardedToolExecutor,
     model: string,
   ): Promise<void> {
-    void auth; // executor 已挟带 OBO ctx（makeExecutor(taskId, auth, budget)）→ 无需二次透传
     // 综合失败时要能把「真没绑 provider」与「绑了但打不通」分开报（见 execute-plan classifySynthFailure）——
     // 故把真实可用性判定传下去，而不是让下游猜。从不抛（providerAvailable 内部已兜住）。
     const hasLlmProvider = await this.deps.llmSettings.providerAvailable(task.tenantId, "agent", model);
+    // WO-PROMPT-KEYS-WIRE（G-PROMPT-KEYS-CONFIG-ONLY 接线）：answer_compose 同 classifier 接线语义——
+    // 先读 DataCore 可配模板（OBO·TTL60s 缓存·fail-open·只采纳 TENANT_OVERRIDE），admin 真配了才替换
+    // 综合指令头（灭漂移）；无配置 / A 不可达 / 非 admin 403 → undefined → 兜底硬编码（R6·绝不阻断）。
+    const composeInstructionOverride = await resolvePromptOverride(
+      this.deps.engine.deps.dataCore.prompts,
+      auth,
+      "answer_compose",
+    );
     const result = await executePlan(plan, {
       executor,
       llm: this.deps.engine.deps.llm,
       model,
       tenantId: task.tenantId,
       hasLlmProvider,
+      composeInstructionOverride,
       emit: (e, p) => this.deps.events.emit(taskId, e, p).then(() => undefined),
     });
 

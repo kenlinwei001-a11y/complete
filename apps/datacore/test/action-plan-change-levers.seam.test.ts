@@ -225,6 +225,10 @@ function minimalPayloads(sopVersionId: string): Record<string, Record<string, un
     plan_change: { versionId: "census:probe", reason: "普查探针（无杠杆形态）" },
     AOP情景拍板: { scenarioKey: "__census_probe__", year: 2026 },
     校准参数变更: { proposalId: "__census_probe__", mode: "approve" },
+    // WO-ADOPT-SCHEME-CARRIER 后：该型已接真执行器（app.ts SCHEME-ADOPT 分支），这份残缺载荷
+    // **进真分支**、被 SchemeAdoptionPayloadSchema 拒收（错误含「payload 不合契约」）→
+    // 普查把它数进「进真分支」组，不再落兜底线。载荷保持残缺不动：普查判的是落哪条线，
+    // 契约拒绝同样是「进了真分支」的证据（判别标记 EXECUTOR_NOT_IMPLEMENTED 只在兜底线产出）。
     采纳经营方案: { schemeNo: "壹", scheme: {}, targets: {} },
     定稿月度计划版本: { versionId: sopVersionId, snapshot: {} },
     计划版本变更: { versionId: sopVersionId, reason: "普查探针" },
@@ -289,8 +293,13 @@ const KNOWN_WIRED_CANARIES = ["对象数据变更", "采纳产能保障方案"];
  *    回读 `Equipment.oee_current` 逐字段咬住。
  *    ⇒ **「落兜底线」是 (型 × 载荷形态) 的属性，不是型的属性。** 这正是 `G-PLAN-CHANGE-NO-LEVER`
  *      要表达的东西，也是本仓「N 型没接」这个说法每轮都错的根源：它把一个二维事实压成了一维。
+ *
+ * 2026-08-18 实跑更新（WO-ADOPT-SCHEME-CARRIER 接线后）：`采纳经营方案` 已接真执行器
+ * （app.ts SCHEME-ADOPT 分支，合法载荷落 scheme_adoptions 台账），普查喂的残缺载荷
+ * 进真分支被契约拒绝（「payload 不合契约」），机器数出的兜底线回到 **1** 个 = `plan_change`
+ * （仍只是它的「无杠杆形态」这个条件成员）。本数组按机器输出据实改，不是照源码推算。
  */
-const EXPECTED_FALLBACK = ["plan_change", "采纳经营方案"];
+const EXPECTED_FALLBACK = ["plan_change"];
 
 describe("兜底线普查 · 「还剩几型审批通过后什么都不写」由机器数，不由人推算", () => {
   it("逐型真推过 domainExecutor，落兜底线者必须恰好等于登记在案的那一组", async () => {
@@ -352,12 +361,14 @@ describe("兜底线普查 · 「还剩几型审批通过后什么都不写」由
   }, 300000);
 });
 
-describe("采纳经营方案 · 域映射缺失 ⇒ 诚实失败（**不是**忘了接·勿改成 NO_WRITE 洗白）", () => {
-  it("审批后诚实失败，且错误里带得出「为什么今天写不了」的四条论据", async () => {
+describe("采纳经营方案 · 契约拒绝 ⇒ 诚实失败（**拒绝臆造写入**，非法载荷不得进台账）", () => {
+  it("契约不过的载荷 → 审批后诚实失败（「payload 不合契约」），且 scheme_adoptions 台账零条", async () => {
     const t = await makeApp();
     await seedBattery(t);
 
-    // 载荷照抄 `PlanGenerateView.tsx adoptScheme()`。
+    // 载荷刻意残缺（scheme.scores 缺六维、targets 缺 hard 开关）：WO-ADOPT-SCHEME-CARRIER 接线后，
+    // 它进 app.ts SCHEME-ADOPT 真分支，被 SchemeAdoptionPayloadSchema 当场拒收——这是**契约拒绝**的
+    // 诚实失败，不是兜底线的 EXECUTOR_NOT_IMPLEMENTED（该型已 WIRED，「域映射缺失」一说不复存在）。
     const done = await submitAndApprove(t, "采纳经营方案", {
       schemeNo: "壹",
       pathKey: "P2",
@@ -365,13 +376,18 @@ describe("采纳经营方案 · 域映射缺失 ⇒ 诚实失败（**不是**忘
       targets: { revGrowthPct: 18, gmFloor: 0.155, sharePts: 12, turnsFloor: 6, capexCap: 30, cashFloor: 40 },
     });
     expect(done.status).toBe("EXECUTION_FAILED");
-    expect(done.executionResult.error).toContain("EXECUTOR_NOT_IMPLEMENTED");
-    // 「没接」与「为什么没接」是两件事，处置也不同（排单去接 vs 先立域映射）。错误必须说得出后者。
-    expect(done.executionResult.error).toContain("域映射缺失");
-    expect(done.executionResult.error).toContain("PLAN_GOAL_TARGETS");
+    expect(done.executionResult.error).toContain("payload 不合契约");
+    expect(done.executionResult.error).toContain("拒绝臆造写入");
+    // 据实反向咬死：失败理由不再是「未接执行器」——若哪天它重新出现，说明真分支被 bypass 回了兜底线。
+    expect(done.executionResult.error).not.toContain("EXECUTOR_NOT_IMPLEMENTED");
+    // ★ 本条用例的保留价值：非法载荷**一个字节都不许写进台账**。
+    expect(
+      await t.repos.schemeAdoptions.list("demo"),
+      "契约不过的载荷却落进了 scheme_adoptions 台账 —— 「拒绝臆造写入」的红线被突破",
+    ).toEqual([]);
   }, 120000);
 
-  it("硬约束（业务已裁定·勿改）：采纳动作**绝不覆盖**经营目标基线 —— 审批前后 plan_generate 输出逐字节相同", async () => {
+  it("硬约束（业务已裁定·勿改）：采纳动作**绝不覆盖**经营目标基线 —— 真落台账后 plan_generate 输出逐字节相同", async () => {
     const t = await makeApp();
     await seedBattery(t);
 
@@ -379,19 +395,32 @@ describe("采纳经营方案 · 域映射缺失 ⇒ 诚实失败（**不是**忘
     const before = await t.app.inject({ method: "POST", url: "/a/v1/solvers/plan_generate/invoke", headers: ADMIN, payload: { args: {} } });
     expect(before.statusCode, before.body).toBeLessThan(300);
 
+    // 载荷按 SchemeAdoptionPayloadSchema 逐字段填全——本例现在**真的执行**（接线前它停在诚实失败，
+    // 「基线未动」是空转断言；执行器活着且真写台账，「不写回基线」这条裁定才真在被检验）。
     const done = await submitAndApprove(t, "采纳经营方案", {
       schemeNo: "叁",
       pathKey: "P5",
-      scheme: { name: "进取", outcome: { rev: 610, gm: 0.142, share: 0.24, turns: 5.4, cash: 31, capex: 44 }, scores: {}, hardViol: ["C15"] },
+      year: 2026,
+      scheme: {
+        name: "进取",
+        outcome: { rev: 610, gm: 0.142, share: 0.24, turns: 5.4, cash: 31, capex: 44 },
+        scores: { profit: 61, scale: 72, cash: 55, growth: 80, stability: 48, total: 63 },
+        hardViol: ["C15"],
+      },
       // 刻意送一组**与基线完全不同**的目标：若执行器哪天偷偷把 targets 写回基线，本例立刻变红。
-      targets: { revGrowthPct: 99, gmFloor: 0.99, sharePts: 99, turnsFloor: 99, capexCap: 999, cashFloor: 999 },
+      targets: { revGrowthPct: 99, gmFloor: 0.99, sharePts: 99, turnsFloor: 99, capexCap: 999, cashFloor: 999, hard: { gm: true, cash: true, capex: true } },
     });
-    expect(done.status).toBe("EXECUTION_FAILED");
+    expect(done.status, `采纳执行未成功：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
+    // 效果层自证：台账真落了一条（否则下面的「基线未动」重新沦为空转断言）。
+    expect(
+      (await t.repos.schemeAdoptions.list("demo")).length,
+      "采纳已 EXECUTED 但 scheme_adoptions 台账没有记录 —— 写路径断了",
+    ).toBe(1);
 
     const after = await t.app.inject({ method: "POST", url: "/a/v1/solvers/plan_generate/invoke", headers: ADMIN, payload: { args: {} } });
     expect(
       JSON.stringify((after.json() as { data: unknown }).data),
-      "采纳动作改动了经营目标基线 —— 违反业务硬裁定「目标不能改」（actions.ts ACTION_WIRING 采纳经营方案 条）",
+      "采纳动作改动了经营目标基线 —— 违反业务硬裁定「目标不能改」（scheme-adoption.ts 契约头注：targets 只供对账，没有任何写回基线的路径）",
     ).toBe(JSON.stringify((before.json() as { data: unknown }).data));
   }, 120000);
 });

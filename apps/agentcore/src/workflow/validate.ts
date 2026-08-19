@@ -1,6 +1,7 @@
-import type { AgentDefinition, WorkflowDefinition } from "@platform/contracts";
+import type { AgentDefinition, ExtendedPlanStep, WorkflowDefinition } from "@platform/contracts";
 import type { Repos } from "../persistence/repos.js";
-import type { ExtendedPlanStep } from "./executor.js";
+// WO-STEP-VOCAB-UPLIFT：ExtendedPlanStep 直接吃契约层单一出处（不再经 executor.js 转手）。
+// 本文件的 validatePlanSteps 是合法步骤集合的唯一校验函数 —— 它的形参类型就是契约里那个家。
 
 const STEP_REF_RE = /\{\{\s*steps\.([\w-]+)\.output[^}]*\}\}/g;
 

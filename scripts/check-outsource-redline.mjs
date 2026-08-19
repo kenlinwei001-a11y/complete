@@ -12,12 +12,14 @@
  * 用户在界面上看到「红线 20%」，引擎按 20% 拦，规则库里却写着 30% —— 规则与推演各说各话，
  * 而**四包测试全绿**：每一半各自自洽，没有任何一条测试跨过接缝去对齐这个数。
  *
- * 本门四条断言（任一不满足即红）：
+ * 本门五条断言（任一不满足即红）：
  *   ① 契约单源锚点在（`OUTSOURCE_REDLINE.maxRatio` 可解析）——锚点失效即红，不许门空跑通过；
  *   ② 合成耦合不变量：植入越线样本 > 红线，合规桶上界 < 红线（否则 C08 退化成哑弹或全量误报）；
  *   ③ 每个登记消费端必须**引用契约 token**（口头单源不算，得真 import）；
  *   ④ 裸字面量哨兵：除契约单源文件外，`apps/<pkg>/src` + `packages/contracts/src` 里凡与 C08/外协相关的行，
  *      不得出现红线形状的裸字面量（0.2/0.22/0.25/0.3 或 20%/22%/25%/30%）。
+ *   ⑤ 名册一致性：现算全仓引用方 ⊆ CONSUMERS——手抄名册漏登记的那个文件就是下次漂移的种子
+ *      （标本：livedin.ts 曾长期漏登记）。
  *
  * 关于测试目录：**有意不扫**。测试必须能自由 republish 别的阈值（如收紧到 0.1）来证明"改红线→判定翻转"，
  * 把测试也一刀切禁字面量会逼出假绿。接缝由 `rules-p3-payload-11solvers.test.ts` 的 C08 翻转用例守。
@@ -72,7 +74,7 @@ const SOURCE_OF_TRUTH = "packages/contracts/src/base-registry.ts";
 
 /**
  * 登记消费端：必须引用契约 token（断言③）。
- * 新增 C08 消费方 → 加到这里；漏登记的那个就是下次不一致的种子。
+ * 新增 C08 消费方 → 加到这里；漏登记的那个就是下次不一致的种子（断言⑤现算盯着，漏了即红）。
  */
 const CONSUMERS = [
   ["apps/datacore/src/synthetic/battery.ts", "规则库 C08 表达式 + what-if outsourceMax + 合成越线样本", /expression:\s*outsourceRedlineViolationExpr\(/],
@@ -89,6 +91,7 @@ const CONSUMERS = [
   ["apps/frontend-shell/src/mocks/planFixtures.ts", "季度滚动事件文案「外协过渡（≤N%）」", /outsourceRedlinePct\(\)/],
   ["apps/frontend-shell/src/locales/zh.ts", "i18n 用户可见文案「已达 C08 红线 N%」", /outsourceRedlinePct\(\)/],
   ["apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx", "外协杠杆上限兜底", /OUTSOURCE_REDLINE\.maxRatio/],
+  ["packages/contracts/src/livedin.ts", "契约知识库问答里的红线百分数/版本史（曾漏登记，断言⑤抖出）", /outsourceRedlinePct\(/],
 ];
 
 /** 契约 token：出现任一即视为"从单源派生"。 */
@@ -236,6 +239,28 @@ for (const file of scanned) {
         `② 表达式 → \`outsourceRedlineViolationExpr()\`（引擎口径 \`>\`）或 \`outsourceRedlineConstraintExpr(subject)\`（文档口径 \`<=\`）；` +
         `③ 文案里的百分数 → \`outsourceRedlinePct()\`。` +
         `确属另一业务含义（周转率/观测值/有意不同的待审批候选）→ 本行或上一行加 \`redline-allow：<理由>\`。`,
+    );
+  }
+}
+
+// ── 断言⑤ 名册 vs 现算一致性（WO-GATE-ROSTER-SWEEP-2，2026-08-18）────────────────
+// CONSUMERS 是手抄名册 —— 断点 G-GATE-ROSTER-HANDCOPIED 的标本：`packages/contracts/src/livedin.ts`
+// 曾长期引用契约 token 却不在名册里（13 个登记 vs 全仓现算 14 个引用方），名册外的那个就是下次漂移的种子。
+// 形态（铁律 0.6 句式）：「我用『名册里的都派生了』当作『所有消费方都派生了』的证据，而前者并不度量后者。」
+// 故：现算全仓引用方（剥注释后命中 CONTRACT_TOKENS，排除单源自身），**必须 ⊆ 名册**；漏登记即红。
+// 反方向（名册 ⊄ 现算）由断言③覆盖——登记了却不再引用 token 当场判红。
+{
+  const registered = new Set(CONSUMERS.map(([f]) => f));
+  const unregistered = [];
+  for (const file of scanned) {
+    if (relative(".", file) === SOURCE_OF_TRUTH) continue;
+    if (!CONTRACT_TOKENS.test(stripComments(read(file)))) continue;
+    if (!registered.has(file)) unregistered.push(file);
+  }
+  for (const f of unregistered) {
+    fails.push(
+      `断言⑤ ${f} 的**代码里**引用了契约 token，却未登记进 CONSUMERS —— 名册漏登记（G-GATE-ROSTER-HANDCOPIED）。` +
+        `它的派生绑定点从此无人断言。修：把它加进 CONSUMERS 并给出该处绑定点的 derivePattern。`,
     );
   }
 }

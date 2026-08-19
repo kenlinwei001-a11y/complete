@@ -7,7 +7,7 @@ import {
   type SkillDefinition,
   type SkillReference,
 } from "./agentcore.js";
-import { OnErrorSchema, type PlanStep } from "./qos.js";
+import { OnErrorSchema, PlanStepSchema, TemplateValueSchema, type PlanStep } from "./qos.js";
 
 /**
  * WO-SKILL-COMPILER-S1 · 技能编译流水线的 **S1 最小垂直切片**（`docs/PRD-skill-compiler-registry.md` §4）。
@@ -80,6 +80,48 @@ export const SkillCompileDiagnosticSchema = z.object({
   evidence: z.string().optional(),
 });
 export type SkillCompileDiagnostic = z.infer<typeof SkillCompileDiagnosticSchema>;
+
+// ---------------------------------------------------------------------------
+// 步骤词表 · 单一出处（WO-STEP-VOCAB-UPLIFT）
+// ---------------------------------------------------------------------------
+
+/**
+ * 「合法执行步骤」集合的**唯一的家**（本体 §8 `G-STEP-VOCAB-SPLIT-TWO-HOMES` 的根治）。
+ *
+ * 病史：该集合曾分居两处——`PlanStepSchema`（`qos.ts` 闭合判别联合，跨包可见）+
+ * `ExtraToolStepSchema`（原 `apps/agentcore/src/catalog/service.ts`，agentcore 本地、
+ * 跨包不可见），该文件自述为 "CONTRACT GAP workaround"。危害：任何跨包消费方照
+ * 「合法步骤 = `PlanStep`」建模，用这三类步骤的技能**解析即失败**。
+ *
+ * 本段把 `ExtraToolStepSchema` **原形状上提**进契约层，与 `PlanStepSchema` 合成
+ * 跨包可见的 `ExtendedPlanStepSchema` 单一出处；agentcore 侧（catalog / executor /
+ * validatePlanSteps）一律改吃本导出，不许再留本地副本（留副本 = 分裂固化）。
+ *
+ * 三类 ExtraToolStep（`query_timeseries_agg` / `search_knowledge` / `plan_slice`）是
+ * **真实可执行**步骤：执行器 `apps/agentcore/src/workflow/executor.ts` 的 generic tool
+ * dispatch 分支真在分发它们。
+ *
+ * 咬这条的断言：
+ *   - `packages/contracts/test/skill-compile.test.ts`「ExtendedPlanStepSchema 单一出处」组；
+ *   - `apps/agentcore/test/step-vocab-single-home.test.ts`（agentcore 的 AnyPlanStepSchema
+ *     必须**引用相等**于本导出 —— 谁再造第二份 schema 谁当场红）。
+ */
+export const ExtraToolStepSchema = z.object({
+  id: z.string(),
+  type: z.enum(["query_timeseries_agg", "search_knowledge", "plan_slice"]),
+  params: z.record(z.string(), TemplateValueSchema),
+  onError: OnErrorSchema.optional(),
+  timeoutMs: z.number().int().optional(),
+});
+export type ExtraToolStep = z.infer<typeof ExtraToolStepSchema>;
+
+/**
+ * 合法执行步骤的完整集合 = `PlanStep`（qos.ts 闭合判别联合）∪ `ExtraToolStep`（本文件）。
+ * 生产校验器 `validatePlanSteps`（`apps/agentcore/src/workflow/validate.ts`）的形参类型
+ * 就是本类型；任何消费方要校验步骤，**必须调 `validatePlanSteps`**，不许自写第二套判别。
+ */
+export const ExtendedPlanStepSchema = z.union([PlanStepSchema, ExtraToolStepSchema]);
+export type ExtendedPlanStep = z.infer<typeof ExtendedPlanStepSchema>;
 
 // ---------------------------------------------------------------------------
 // AST
@@ -155,11 +197,12 @@ export const SkillAstExecutionSchema = z.object({
    *
    * ⛔ **单一来源在函数，不在类型（审核方 2026-08-09 补裁 · 违反即返工）** ⛔
    * 合法步骤集合的唯一真源 = **`validatePlanSteps` 实际接受的那个集合**，
-   * 今天是 `ExtendedPlanStep = PlanStep | ExtraToolStep`（`apps/agentcore/src/workflow/executor.ts:27`），
+   * 即 `ExtendedPlanStep = PlanStep | ExtraToolStep`（**WO-STEP-VOCAB-UPLIFT 起单一出处 =
+   * 本文件的 `ExtendedPlanStepSchema`**，agentcore 侧只 re-export、不再持有本地副本），
    * **不是** `PlanStep` 这个闭合判别联合本身。
    *
    * 为什么不能钉 `PlanStep[]`（原裁决曾如此、已改判）：
-   * `ExtraToolStepSchema`（`apps/agentcore/src/catalog/service.ts:27`）里的
+   * `ExtraToolStepSchema`（已上提至本文件，见上「步骤词表 · 单一出处」段）里的
    * `query_timeseries_agg` / `search_knowledge` / `plan_slice` 是**真实可执行**的步骤类型
    * （执行器 `apps/agentcore/src/workflow/executor.ts:136-138` 真在分发它们）。钉成 `PlanStep[]` 会让
    * 用这三类步骤的技能**解析即失败**，并逼 PRD §4.2 GR-STEPS 那条「直接调用 `validatePlanSteps`」去 cast ——
@@ -171,8 +214,12 @@ export const SkillAstExecutionSchema = z.object({
    * 咬这条的断言：`packages/contracts/test/skill-compile.test.ts`「ExtraToolStep 那侧的步骤必须编得过」
    * 与 `apps/agentcore/test/skill-compiler.seam.test.ts` ⑨ —— 谁把元素钉回 `PlanStep`，这两条当场红。
    *
-   * ⚠️ 合法步骤集合今天**分居两处**（`PlanStep` 在 contracts、`ExtraToolStep` 在 agentcore），
-   * 跨包消费方看不见 agentcore 那半 —— 已登记本体 §8 `G-STEP-VOCAB-SPLIT-TWO-HOMES`，修法=上提进 contracts。
+   * ⚠️ 合法步骤集合曾**分居两处**（`PlanStep` 在 contracts、`ExtraToolStep` 在 agentcore），
+   * 跨包消费方看不见 agentcore 那半 —— 本体 §8 `G-STEP-VOCAB-SPLIT-TWO-HOMES`，
+   * **已由 WO-STEP-VOCAB-UPLIFT 根治**（`ExtraToolStepSchema` 上提进本文件合成
+   * `ExtendedPlanStepSchema` 单一出处）。元素仍保持 `unknown` 透传不钉类型：
+   * 校验权在函数 `validatePlanSteps`（agentcore 侧），contracts 不能反向依赖 agentcore，
+   * 故「不钉 + 调唯一校验函数」的纪律不变。
    */
   steps: z.array(z.unknown()),
   /** `false` = 契约上还没有这个字段（今天恒 false）。 */

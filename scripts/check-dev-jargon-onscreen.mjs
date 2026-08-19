@@ -643,13 +643,19 @@ function runCanaries() {
  * 逐层枚举，**不用 pathspec 通配**（CLAUDE.md 铁律 0.5 判据 #5：含通配的 pathspec
  * 不当目录前缀用，含通配的那种恒 0 命中 ⇒ 会得出「全仓干净」这个恰好相反的结论）。
  * `mode` 决定抽取器走哪条路：`jsx` 只取会渲染的 JSX 位置；`locale` 取全部字面量。
+ *
+ * 2026-08-19 · WO-GATE-ROSTER-SWEEP-3 改**现算**：jsx 面从手抄 2 个子目录
+ * （views + pages/admin —— 漏 components/** 与 pages 非 admin，共享组件里写黑话永远扫不到）
+ * 改成 `src` **单根全递归**：凡 `src/**` 下的 .tsx 都进面，目录集合不再手抄。
+ * locales 仍是独立面（整份文件就是词表，抽取口径不同），jsx 面显式跳过它。
  */
 const SCAN = [
-  { dir: "apps/frontend-shell/src/views", exts: [".tsx"], mode: "jsx" },
-  { dir: "apps/frontend-shell/src/pages/admin", exts: [".tsx"], mode: "jsx" },
-  // 2026-08-17 补：屏上文案 100% 住在这里，而门原来看不见它（见文件头 A1）
+  { dir: "apps/frontend-shell/src", exts: [".tsx"], mode: "jsx", skip: /[\\/]locales[\\/]/ },
+  // 屏上文案 100% 住在这里（见文件头 A1）；locale 模式取全部非键名字面量
   { dir: "apps/frontend-shell/src/locales", exts: [".ts", ".tsx"], mode: "locale" },
 ];
+/** 全递归时**不**进的目录（构建产物/依赖——不是源码）。 */
+const SCAN_SKIP_DIRS = new Set(["node_modules", "dist", "build"]);
 const MIN_FILES = 80;
 /**
  * **扫描面自证的独立口径分母**（金丝雀堵不住的那个洞，见文件头）。
@@ -661,17 +667,23 @@ const MIN_LOCALE_LITERALS = 1200;
 
 function listFiles() {
   const out = [];
-  const walk = (abs, rel, depth, ent) => {
+  // 全递归（不设深度上限 —— components/QueryDock/ChatFlow.tsx 这类两层嵌套也必须进面）
+  const walk = (abs, rel, ent) => {
     if (!existsSync(abs)) return;
     for (const e of readdirSync(abs)) {
       const p = join(abs, e);
       const r = `${rel}/${e}`;
       if (statSync(p).isDirectory()) {
-        if (depth < 2) walk(p, r, depth + 1, ent);
-      } else if (ent.exts.some((x) => e.endsWith(x))) out.push({ file: r, mode: ent.mode });
+        if (SCAN_SKIP_DIRS.has(e)) continue;
+        if (ent.skip && ent.skip.test(r + "/")) continue;
+        walk(p, r, ent);
+      } else if (ent.exts.some((x) => e.endsWith(x))) {
+        if (ent.skip && ent.skip.test(r)) continue;
+        out.push({ file: r, mode: ent.mode });
+      }
     }
   };
-  for (const d of SCAN) walk(join(ROOT, d.dir), d.dir, 1, d);
+  for (const d of SCAN) walk(join(ROOT, d.dir), d.dir, d);
   return out.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
 }
 

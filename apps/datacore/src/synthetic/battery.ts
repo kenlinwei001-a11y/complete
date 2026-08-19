@@ -1085,7 +1085,7 @@ const equipmentProps: PropertyDef[] = [
   { propKey: "oeeA", dataType: "number", isPrimaryKey: false },
   { propKey: "oeeP", dataType: "number", isPrimaryKey: false },
   { propKey: "oeeQ", dataType: "number", isPrimaryKey: false },
-  { propKey: "oee_current", dataType: "number", isPrimaryKey: false }, // OEE 当前快照（时序 7d 加权物化，baseDerived.oeeIndex 依赖）——全建模对齐（R12）
+  { propKey: "oee_current", dataType: "number", isPrimaryKey: false }, // OEE 当前快照（= EquipmentOEE 事实行 7 日均值·equipmentOeeAtomsDaily 同源派生，baseDerived.oeeIndex 依赖）——全建模对齐（R12）
   // SA-6：设备台账字段（R12 全建模对齐）
   { propKey: "equipment_code", dataType: "string", isPrimaryKey: false, searchable: true },
   { propKey: "equipment_type", dataType: "enum", isPrimaryKey: false }, // 涂布机 | 辊压机 | 分切机 | 卷绕机 | 装配线 | 注液机 | 化成柜 | 老化库 | PACK线

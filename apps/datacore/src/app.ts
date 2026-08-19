@@ -10,7 +10,13 @@ import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
 import { AggregateRequestSchema, ObjectRefResolveRequestSchema, BuildRunBodySchema, BuildWorkflowStartBodySchema, ClockTickBodySchema, PlanSliceRequestSchema, CrossValidateRequestSchema, DataBuilderConfigSchema, ImportBundleBodySchema, MetaAccessPolicyBodySchema, PROMPT_KEYS, PLATFORM_PROMPT_DEFAULTS, PutPromptTemplateBodySchema, PutLlmBudgetBodySchema, RecordUsageBodySchema, PutCalendarBodySchema, ReconcileBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema, IngestModeSchema } from "@platform/contracts";
+import { OntologyInvariantEvaluateRequestSchema } from "@platform/contracts";
 import { validateOutputAgainstOntology } from "./ontology-validate.js";
+import {
+  assertOntologyInvariantsAllowPublish,
+  evaluateOntologyInvariants,
+  type OntologyGraphInput,
+} from "./ontology/invariants.js";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
 import type { BlobStore } from "./blob.js";
@@ -59,6 +65,7 @@ import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
 import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
 import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
+import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-SCHEME-CARRIER · 采纳经营方案 payload 契约（量纲逐字段标注）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
@@ -68,6 +75,8 @@ import { firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type P
 import { buildPropagationInputs } from "./sim/propagation-inputs.js";
 import { ImpactAnalysisRequestSchema } from "@platform/contracts"; // WO-IMPACT-PROPAGATION · 影响传播统一入口（栈B传播 × 栈A世界隔离）
 import { analyzeImpact } from "./sim/impact-analysis.js";
+import { ChangeImpactPreviewRequestSchema } from "@platform/contracts"; // WO-CHANGE-IMPACT-PREVIEW · 变更传播预览（分桶+跳数+诚实位）
+import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact.js";
 import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
 // WO-STATEVAR-DISPLAYNAME：推演状态变量中文名的**唯一**投影口（单源表在 battery.ts，两条路由共用此函数）
 import { stateVarDisplayNames } from "./synthetic/battery.js";
@@ -836,6 +845,74 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
         // targetRef 自证落了哪份台账——**刻意不使用 MO- 前缀**（那正是假单号形态）。
         return { ok: true, targetRef: `FC-ADOPT:${adoptionId}` };
+      }
+
+      // ── 采纳经营方案（WO-ADOPT-SCHEME-CARRIER · G-ADOPT-SCHEME-NO-CARRIER 收口）──
+      // 断点原文：「点采纳→草稿→审批→EXECUTED 全链绿，但没有一个对象承载『方案被采纳』这件事」。
+      // 语义裁决：「采纳经营方案」= 公司级年度拍板的**审批留痕台账**（与 Decision 台账同族），
+      // 落专用 doc-jsonb 表 scheme_adoptions（037 迁移·R9 四处同改），**不走 repos.objects**——
+      // plan_generate 不读任何本体对象，塞进 objects 只会冒充「可被推演关联的实体」（断点论据①）。
+      // 它**不是**改杠杆真值（「采纳产能保障方案」的事），也**不是**开单据（臆造单据 = 假 MO 号），
+      // 更**不得**覆盖 PLAN_GOAL_TARGETS 基线（业务裁定·targets 只作拍板快照留痕对账）。
+      if (draft.actionTypeKey === "采纳经营方案") {
+        // ① payload 必须过契约（contracts SchemeAdoptionPayloadSchema·量纲逐字段 @unit）——
+        //    不合即诚实失败，绝不猜一个值写下去（写错真值比不写危险）。
+        const parsed = SchemeAdoptionPayloadSchema.safeParse(draft.payload);
+        if (!parsed.success) {
+          const issue = parsed.error.issues[0];
+          return {
+            ok: false,
+            error:
+              `采纳经营方案：payload 不合契约（${issue ? `${issue.path.join(".")}: ${issue.message}` : "unknown"}）——` +
+              `拒绝臆造写入。契约见 packages/contracts/src/scheme-adoption.ts SchemeAdoptionPayloadSchema。`,
+          };
+        }
+        const p = parsed.data;
+        // ② 确定性锚（R6·禁 Date.now/random）：year 缺省取 forecastStart 的年份，adoptedAt 取其日期。
+        const fcParams = await solvers.getParams(draft.tenantId);
+        const forecastStart = String(fcParams.forecastStart ?? "");
+        const year = p.year ?? Number(forecastStart.slice(0, 4));
+        if (!Number.isInteger(year) || year <= 0) {
+          return {
+            ok: false,
+            error:
+              `采纳经营方案：规划年度解不出（payload 未传 year，且 forecastStart「${forecastStart}」取不出有效年份）——` +
+              `拒绝把台账挂到一个猜的年度上。请传 year 或修正求解器参数 forecastStart。`,
+          };
+        }
+        // ③ 确定性 adoptionId：year|schemeNo|pathKey|outcome 全字段哈希派生 → 同方案重复采纳覆盖同 id（幂等不产重复）。
+        const adoptionId = `sa_${hashString(
+          [year, p.schemeNo, p.pathKey, p.scheme.outcome.rev, p.scheme.outcome.gm, p.scheme.outcome.share,
+            p.scheme.outcome.turns, p.scheme.outcome.cash, p.scheme.outcome.capex].join("|"),
+        ).toString(16)}`;
+        // ④ 单源不并存：同 (tenantId, year) 旧的 ACTIVE 采纳先置 SUPERSEDED，
+        //    使"至多一条 ACTIVE"成为**写时不变量**——读侧（AOP 细化读端）无需在多条里挑。
+        //    同方案重复采纳（同 adoptionId）跳过，由下面 put 整体覆盖（幂等）。
+        const existing = await repos.schemeAdoptions.list(draft.tenantId);
+        for (const rec of existing) {
+          if (rec.adoptionId === adoptionId) continue;
+          if (rec.year !== year || rec.status !== "ACTIVE") continue;
+          await repos.schemeAdoptions.put({ ...rec, status: "SUPERSEDED" });
+        }
+        // ⑤ 落台账：方案快照 + 目标快照**全字段原样**（payload 已过契约，量纲即契约标注的量纲）。
+        await repos.schemeAdoptions.put({
+          id: adoptionId,
+          tenantId: draft.tenantId,
+          adoptionId,
+          year,
+          schemeNo: p.schemeNo,
+          pathKey: p.pathKey,
+          schemeName: p.scheme.name,
+          outcome: p.scheme.outcome,
+          scores: p.scheme.scores,
+          hardViol: p.scheme.hardViol,
+          targets: p.targets,
+          adoptedAt: forecastStart.slice(0, 10),
+          actionDraftId: draft.id,
+          status: "ACTIVE",
+        });
+        // targetRef 自证落了哪份台账——**刻意不使用 MO- 前缀**（那正是假单号形态）。
+        return { ok: true, targetRef: `SCHEME-ADOPT:${adoptionId}` };
       }
 
       // ⛔ 最后兜底：**不再返回假 MO 号**。未在 ACTION_WIRING 里标 WIRED 的动作一律诚实失败/诚实标注，
@@ -2195,6 +2272,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     await repos.sim.putPropagationRule(r);
     return reply.status(201).send(r);
   });
+  /**
+   * WO-CHANGE-IMPACT-PREVIEW · 变更传播预览（纯只读）。
+   * 改扰动/关传导边/改派生公式**按下去之前**看到波及面：四桶（recompute 传导 /
+   * rederive 派生 / rejudge 规则重判 / rewire 结构改写）+ 逐跳计数 + unresolved 诚实位
+   * （⛔ 空集不冒充「没有波及」）。语义依据与跳数保险丝论据见 sim/change-impact.ts 头注。
+   * 与 POST /a/v1/simulation/impact-analysis 划界：那条走 DerivationSpec recompute dryRun
+   * （栈B），本条覆盖 sim 传导 + 两套派生 + 规则判定四族、按关系分桶带跳数——不重复。
+   */
+  app.post("/a/v1/sim/change-impact-preview", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const body = ChangeImpactPreviewRequestSchema.parse(req.body ?? {});
+    const world = await buildChangeImpactWorld(repos, c.tenantId);
+    return previewChangeImpact(world, body.focus);
+  });
   // 增量 4：沙盘视图配置——由租户**本体 + 传导规则派生**（零业务常数 R14：节点/边/状态变量全来自
   // 租户自己的本体，换行业=换本体内容不改代码）。前端 5 屏从此渲染。
   app.get("/a/v1/sim/view-config", async (req) => {
@@ -3185,6 +3276,48 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return { results, allPassed: results.every((r) => r.ok), failed: results.filter((r) => !r.ok) };
   });
 
+  // ---- WO-ONTOLOGY-EDGE-TRICLASS · 本体第三类边：不变式守卫（体检）-------------
+  //
+  // 本体关系此前只管两类边（结构边=有没有关系 / 因果边=变了多少），两类都只描述「有什么」。
+  // 这一组端点补上描述「必须成立什么」的那一类：守卫条件、实测量、容差、成立与否、违反者是谁。
+  //
+  // 两个端点同一个求值核，差别只在**试算覆盖**：
+  //   · GET  = 按目录原值体检（无覆盖）——这是"现在到底怎么样"的真值读数；
+  //   · POST = 带覆盖体检（改容差 / 停用某条）——**一个字节都不落库**，刷新即还原。
+  // 刻意不给写端点：改容差是**推演开关**，不是治理动作。治理动作（停用/下线）有宽限期、
+  // 有"仍被 N 处引用就拒绝"的 409 闸，两套语义并存不合并——合并会把"我想试试关掉它看看"
+  // 变成"我把它下线了"。
+  const ontologyGraphFor = async (tenantId: string): Promise<OntologyGraphInput> => {
+    const [types, links, rules] = await Promise.all([
+      repos.ontologyTypes.list(tenantId),
+      repos.ontologyLinks.list(tenantId),
+      repos.sim.listPropagationRules(tenantId, true),
+    ]);
+    return {
+      objectTypes: types.map((t) => ({ key: t.key, domain: t.domain })),
+      structuralEdges: links.map((l) => ({ key: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey })),
+      causalEdges: rules.map((r) => ({
+        key: r.key,
+        sourceTypeKey: r.sourceTypeKey,
+        sourceStateVar: r.sourceStateVar,
+        viaLinkKey: r.viaLinkKey,
+        targetTypeKey: r.targetTypeKey,
+        targetStateVar: r.targetStateVar,
+        coefficient: r.coefficient,
+        delayTicks: r.delayTicks,
+      })),
+    };
+  };
+  app.get("/a/v1/ontology/invariants", async (req) => {
+    const c = ctx(req);
+    return evaluateOntologyInvariants(await ontologyGraphFor(c.tenantId));
+  });
+  app.post("/a/v1/ontology/invariants/evaluate", async (req) => {
+    const c = ctx(req);
+    const body = parseBody(OntologyInvariantEvaluateRequestSchema, req.body ?? {});
+    return evaluateOntologyInvariants(await ontologyGraphFor(c.tenantId), body.overrides);
+  });
+
   // ---- 治理增量 §7.1 域 owner 会签发布请求 -----------------------------------
   app.post("/a/v1/ontology/publish-requests", async (req, reply) => {
     const c = ctx(req);
@@ -3198,6 +3331,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const touchedDomains = [...new Set(types.map((t) => t.domain).filter((d): d is string => !!d))];
     const links = await repos.ontologyLinks.list(c.tenantId);
     const impact = await governance.publishImpact(c, { types, links });
+    // 第三类边的闸：**今天恒放行**（产品尚未裁决"违反不变式该阻断什么"）。
+    // 接在这里而不是留一个待办，是为了让裁决落地时只需改求值核里那**一个**模式常量
+    // ——「留了接线位」与「留了一句 TODO」的区别就在于此处这一行真的在跑。
+    assertOntologyInvariantsAllowPublish(evaluateOntologyInvariants(await ontologyGraphFor(c.tenantId)));
     const rec = await governance.createPublishRequest(c, { ontologyVersion: ov, touchedDomains, impact, force: body.force });
     return reply.status(201).send(rec);
   });

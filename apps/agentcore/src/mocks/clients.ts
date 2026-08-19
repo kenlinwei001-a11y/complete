@@ -1027,26 +1027,37 @@ class MockCatalogClient implements CatalogClient {
       { key: "model_capacity_network", name: "型号可产基地网络", description: "型号→可产基地子图", argHints: { modelId: "型号 ID" }, domain: "product" },
       { key: "base_risk_profile", name: "基地风险画像", description: "基地风险画像子图", argHints: { baseId: "基地 ID" }, domain: "plan" },
     ];
-    // WO-REFGATE-ENT · F14 实测抓出的 mock 保真缺口（由新加的启动期种子审计**第一次跑就报出来**）：
-    // 出厂 Skill 种子引用 risk_timeline / kit_readiness / yield_diagnosis，三者在**真** DataCore 目录里
-    // 都在（`apps/datacore/src/catalog.ts:51/59/63`），但 mock 的 discover 只列了 2 个 ⇒
-    // 无 DATACORE_BASE_URL 的内存模式下，出厂技能会被判成"引用未注册求解器"。
+    // WO-MOCK-DISCOVER-PARITY · 病灶（本单实测）：此前这里**手抄 5 条**（capacity_forecast /
+    // affected_orders / risk_timeline / kit_readiness / yield_diagnosis），而真 A 侧
+    // `discover("solvers")` 的论域 = `SOLVER_CATALOG + COCKPIT_SOLVER_CATALOG`（catalog.ts，
+    // 本单实测 22+18=40 条）——候选少 8 倍，模型在内存模式下选不出本来能选的求解器，
+    // 且测试完全看不出来（mock 返回什么，测试就以为世界是什么样：
+    // 「我用『mock 返回了东西』当作『mock 返回的是对的东西』的证据」）。
     //
-    // 这是「我用 mock 目录当作 DataCore 注册表的证据，而 mock 目录并不度量它」——照铁律 0.6 记账。
-    // 判据（新增 mock 求解器时照此自检）：**mock 的 discover 必须覆盖出厂种子引用到的每一个 solver key，
-    // 且每个 key 必须在 `apps/datacore/src/catalog.ts` 里确有其人**（否则就是拿 mock 掩盖真死路引用，
-    // 恰好把这道门变成装饰品）。三条已逐条核对过真目录再加入。
-    const solvers: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] = [
-      { key: "capacity_forecast", name: "产能推演", description: "推演产能满足度 P50/P90/缺口", argHints: { modelId: "型号 ID", qty: "需求量" }, domain: "plan" },
-      { key: "affected_orders", name: "受影响订单", description: "扰动→受影响订单清单", argHints: { baseId: "基地 ID" }, domain: "plan" },
-      { key: "risk_timeline", name: "风险时间线", description: "按日推演风险时序（越线点/根因链）。", argHints: { baseId: "基地 ID", days: "天数" }, domain: "plan" },
-      { key: "kit_readiness", name: "物料齐套", description: "逐单算齐套率（含在途按 ETA），输出缺料与建议。", argHints: { orders: "订单+物料数据" }, domain: "plan" },
-      { key: "yield_diagnosis", name: "良率诊断", description: "2σ 滑窗突变检测 + 根因候选按时间贴近度排序。", argHints: { processKey: "工序", series: "良率时序" }, domain: "plan" },
-    ];
+    // 修法（照抄真 A 侧口径，不自定义）：
+    //  ① 候选集**从 MOCK_SOLVER_REGISTRY 现算**，不许再手抄名单（断点 G-GATE-ROSTER-HANDCOPIED：
+    //     名单里没有的东西永远绿、永远漏）；
+    //  ② 论域 = 每条目的 `pool` 归属 ∈ {scenario, cockpit} —— 整张 GENERIC_SOLVER_CATALOG 不在内
+    //     （A 侧 docstring 自陈该档是「agent 上下文预算」候选清单，不进 QOS 场景 discover；
+    //     ⚠ 不能拿 `domain !== "generic"` 当判据：generic 档里混着 domain:"decision" 的
+    //     `process_flow_time`，目录归属 ≠ domain）；
+    //  ③ 带 query 时 slice(0,20)（同 A 侧 catalog.ts「agent 上下文预算」截断；无 query 全量）。
+    // 钉死：`test/mock-discover-parity.test.ts` 现算两侧**键集合相等**——A 侧加一个求解器而
+    // 本注册表不动 ⇒ 红在「缺哪个 key」，不是「数量不等」。
+    const solvers = MOCK_SOLVER_REGISTRY.filter((it) => it.pool !== "generic").map((it) => ({
+      key: it.key,
+      name: it.name,
+      description: it.description,
+      argHints: it.argHints,
+      ...(it.domain ? { domain: it.domain } : {}),
+      ...(it.answersQuestions ? { answersQuestions: it.answersQuestions } : {}),
+      ...(it.tags ? { tags: it.tags } : {}),
+    }));
     const items = (kind === "slices" ? slices : solvers).filter(
       (it) => !query || it.key.includes(query) || it.name.includes(query) || it.description.includes(query),
     );
-    return { items: items.slice(0, 20) };
+    // 同 A 侧 catalog.ts：带 query = agent 上下文预算截断 ≤20；无 query = 全量列表（管理台口径）。
+    return { items: query ? items.slice(0, 20) : items };
   }
   /**
    * A1 求解器全集注册表。

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SchemeAdoptionSchema } from "./scheme-adoption.js";
 
 // ---------------------------------------------------------------------------
 // 前端剩余视图增量 PRD §0/§7.14–7.22 契约（计划域 / 映射表 / 校准 / 健康度 / 图谱配置）
@@ -70,6 +71,14 @@ export const AopResponseSchema = z.object({
       targetRef: z.string().optional(),
     }),
   ),
+  /**
+   * WO-ADOPT-SCHEME-CARRIER · 本年度现役「方案采纳台账」（G-ADOPT-SCHEME-NO-CARRIER 的读端）。
+   * additive optional（与 capexScenario 同一先例）：该年度从未采纳过方案 ⇒ 整个字段缺省。
+   * 同 (tenant, year) 至多一条 ACTIVE 是**写时不变量**（执行器先置旧 SUPERSEDED），
+   * 故读端直接给一条、不给数组——没有"在多条里挑"就没有挑错的余地。
+   * tenantId 不下发（本响应全文无 tenantId 先例；调用方本来就只能读到自己的租户）。
+   */
+  schemeAdoption: SchemeAdoptionSchema.omit({ tenantId: true }).optional(),
 });
 export type AopResponse = z.infer<typeof AopResponseSchema>;
 

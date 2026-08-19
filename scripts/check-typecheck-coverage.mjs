@@ -68,7 +68,7 @@
  *   node scripts/check-typecheck-coverage.mjs --report    （打印每包的面内测试文件数）
  *   node scripts/check-typecheck-coverage.mjs --selftest  （变异反证：双向机验退出码）
  */
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, relative, resolve, sep } from "node:path";
 
@@ -110,25 +110,60 @@ if (process.env.TYPECHECK_COVERAGE_FORCE_TOOL_BROKEN === "1") {
 const MUTATE = process.env.TYPECHECK_COVERAGE_MUTATE === "1";
 
 // ────────────────────────────────────────────────────────────────────────────
-// §1 待查包 —— 从 pnpm workspace 的实际布局取，不写死清单
+// §1 待查包 —— 从 pnpm workspace 的实际布局**现算**，不写死清单
 // ────────────────────────────────────────────────────────────────────────────
 /**
- * `buildConfig` 是**反向金丝雀**与变异注入共用的那份「已知不含 test」的配置。
- * 它不是猜的：这些包的 build 都靠 `rootDir: "src"` emit，混进 test 会当场 TS6059。
+ * WO-GATE-ROSTER-SWEEP-3：本表原是手抄 5 条 —— 新加一个 package 不进清单就永远不被本门问到
+ * （本体 §8 G-GATE-ROSTER-HANDCOPIED）。现改为现算：
+ *   ① 包目录 = `pnpm-workspace.yaml` 的 packages globs 展开（只认 `<dir>/*` 单层形态，
+ *      别的形态**报工具坏了**而不是猜 —— 猜错了门会恒绿）；
+ *   ② 无 package.json 的目录跳过（工作区 glob 里的非包目录，如实打印）；
+ *   ③ `buildConfig` = 该包 **build 脚本**真正 `-p` 的那份配置（反向金丝雀用的
+ *     「已知不含 test 的配置」），与 typecheck 配置**同名 ⇒ null**：
+ *     那意味着 build 与 typecheck 共用一份配置（llm-adapters 的实测形态），
+ *     不存在「已知不含 test 的独立配置」，编一个反而是假证据。
  */
-const PACKAGES = [
-  { name: "@platform/contracts", dir: "packages/contracts", buildConfig: "tsconfig.json" },
-  { name: "@platform/llm-adapters", dir: "packages/llm-adapters", buildConfig: null },
-  { name: "datacore", dir: "apps/datacore", buildConfig: "tsconfig.json" },
-  { name: "agentcore", dir: "apps/agentcore", buildConfig: "tsconfig.json" },
-  { name: "frontend-shell", dir: "apps/frontend-shell", buildConfig: "tsconfig.build.json" },
-];
+const WORKSPACE_YAML = "pnpm-workspace.yaml";
+/** 现算面下界（金丝雀 · 失败的危险方向）：实测 2026-08-19 为 5 个有 typecheck 面的包。 */
+const MIN_PACKAGES = 5;
 
-/**
- * `llm-adapters` 的 `buildConfig` 是 `null` —— **诚实标注，不是遗漏**：
- * 它的测试就写在 `src/*.test.ts` 里（没有独立 `test/` 目录），build 与 typecheck 共用一份配置，
- * 所以它**没有**「已知不含 test 的配置」可当反向金丝雀。给它编一个反而是假证据。
- */
+function workspacePackages() {
+  const yaml = readFileSync(join(ROOT, WORKSPACE_YAML), "utf8");
+  const globs = [];
+  let inPackages = false;
+  for (const line of yaml.split("\n")) {
+    if (/^packages:\s*$/.test(line)) { inPackages = true; continue; }
+    if (inPackages) {
+      const m = /^\s+-\s+"([^"]+)"\s*$/.exec(line) || /^\s+-\s+'([^']+)'\s*$/.exec(line);
+      if (m) { globs.push(m[1]); continue; }
+      if (/^\S/.test(line)) break; // 下一个顶层键
+    }
+  }
+  if (globs.length === 0) toolBroken(`${WORKSPACE_YAML} 里解析不出 packages globs —— 现算面塌陷，不是"没有包"`);
+  const out = [];
+  const skipped = [];
+  for (const g of globs) {
+    if (!/^[\w.-]+\/\*$/.test(g)) toolBroken(`不支持的 glob 形态「${g}」（只认 <dir>/* 单层）——不许猜，猜错了门恒绿`);
+    const parent = join(ROOT, g.slice(0, -2));
+    if (!existsSync(parent)) continue;
+    for (const e of readdirSync(parent, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue;
+      const dir = `${g.slice(0, -2)}/${e.name}`;
+      const pjPath = join(ROOT, dir, "package.json");
+      if (!existsSync(pjPath)) { skipped.push(`${dir}（无 package.json）`); continue; }
+      let pj;
+      try { pj = JSON.parse(readFileSync(pjPath, "utf8")); } catch (err) { toolBroken(`${dir}/package.json 解析失败`, String(err?.message || err)); }
+      // `tsconfigOfScript` 声明在 §2（函数声明提升，这里直接调）：脚本指哪儿就量哪儿。
+      const typecheckCfg = tsconfigOfScript(pj?.scripts?.typecheck);
+      let buildConfig = tsconfigOfScript(pj?.scripts?.build);
+      if (buildConfig && buildConfig === typecheckCfg) buildConfig = null; // 共用一份配置 ⇒ 无独立反向金丝雀
+      out.push({ name: pj?.name ?? dir, dir, typecheckCfg, buildConfig, hasTypecheck: typeof pj?.scripts?.typecheck === "string" });
+    }
+  }
+  return { packages: out.sort((a, b) => (a.dir < b.dir ? -1 : 1)), skipped };
+}
+
+const { packages: PACKAGES, skipped: SKIPPED_DIRS } = workspacePackages();
 
 // ────────────────────────────────────────────────────────────────────────────
 // §2 测量：这个包的 typecheck 脚本，实际把哪些文件收进了程序
@@ -282,32 +317,36 @@ function selftest() {
 function main() {
   if (SELFTEST) return selftest();
 
+  // 现算面下界自证：枚举塌陷 ⇒ 报「工具坏了」，不许报「已覆盖」。
+  if (PACKAGES.length < MIN_PACKAGES) {
+    toolBroken(`现算只枚举到 ${PACKAGES.length} 个包（下界 ${MIN_PACKAGES}）—— workspace 解析坏了，不是"没有包要查"`);
+  }
+
   const canaryEvidence = runReverseCanary();
 
   const violations = [];
   const rows = [];
+  for (const dirNote of SKIPPED_DIRS) rows.push(`  ${dirNote.padEnd(24)} （跳过：不是包）`);
   for (const pkg of PACKAGES) {
     const pjPath = join(ROOT, pkg.dir, "package.json");
     if (!existsSync(pjPath)) toolBroken(`${pkg.dir}/package.json 不存在`);
-    let pj;
-    try {
-      pj = JSON.parse(readFileSync(pjPath, "utf8"));
-    } catch (e) {
-      toolBroken(`${pkg.dir}/package.json 解析失败`, String(e?.message || e));
-    }
-    const script = pj?.scripts?.typecheck;
-    if (!script) {
-      violations.push({ pkg: pkg.dir, why: "package.json 没有 typecheck 脚本 —— 这个包的类型面无人看守" });
+    const tests = testFilesOf(pkg.dir);
+    if (!pkg.hasTypecheck) {
+      // 无 typecheck 脚本：有测试文件 ⇒ 真违规（类型面无人看守）；无测试文件 ⇒ 无物可守，如实跳过。
+      if (tests.length > 0) {
+        violations.push({ pkg: pkg.dir, why: `package.json 没有 typecheck 脚本，但该包有 ${tests.length} 个测试文件 —— 它们的类型面无人看守` });
+      } else {
+        rows.push(`  ${pkg.dir.padEnd(24)} ${"（无 typecheck 脚本）".padEnd(26)} 无测试文件，跳过`);
+      }
       continue;
     }
     // 变异注入：改去量 build 配置（已知不含 test）⇒ 门必须报红
-    const cfg = MUTATE && pkg.buildConfig ? pkg.buildConfig : tsconfigOfScript(script);
+    const cfg = MUTATE && pkg.buildConfig ? pkg.buildConfig : pkg.typecheckCfg;
     if (!cfg) {
-      violations.push({ pkg: pkg.dir, why: `typecheck 脚本里解析不出 tsconfig：${script}` });
+      violations.push({ pkg: pkg.dir, why: `typecheck 脚本里解析不出 tsconfig：${pkg.name}` });
       continue;
     }
 
-    const tests = testFilesOf(pkg.dir);
     if (tests.length === 0) {
       rows.push(`  ${pkg.dir.padEnd(24)} ${String(cfg).padEnd(26)} 无测试文件，跳过`);
       continue;

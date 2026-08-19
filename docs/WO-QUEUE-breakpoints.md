@@ -61,8 +61,8 @@
 |---|---|---|---|---|---|
 | 1 | `G-SEAM-GATE-METHOD-BLIND` 残余(甲)<br>客户端函数是死代码 | 🔴 未修 | **✅ 已闭未回写** | ~~没接线~~ 已接线 | `fetchProcessInstance`/`advanceProcessInstance` 今有生产调用方 `apps/frontend-shell/src/views/process/ProcessInstanceDetailView.tsx` 第 163/312 行，且该视图**真被路由挂载**（`apps/frontend-shell/src/App.tsx` 第 163 行 `process-instances/:instanceId`）。提交 `dc998e41`。金丝雀：同法查 `fetchStuckProcesses` 命中 2 处 ⇒ 工具没坏 |
 | 2 | `G-SEAM-GATE-METHOD-BLIND` 残余(乙)<br>通配段冒领 | 🔴 未修 | **仍成立** | 接了线接错地方（判据少一维） | `scripts/check-backend-frontend-seam.mjs` 的 `pathMatches` 第 706 行仍是 `if (be[i] === "*" \|\| fe[i] === "*") continue;` —— 前端 `${id}` 归一出的 `*` 仍会吃掉后端字面子路由 |
-| 3 | `G-ACTION-NOOP-EXEC` | ◑ 部分闭合 | **仍成立（◑）· 数字过期** | 接了线接错地方（剩余型无落点） | `node scripts/check-action-wiring.mjs` 今日 RC=0：**11 型 = WIRED 10 · NO_WRITE 0 · NOT_IMPLEMENTED 1**。§8 写的是「10 型 = WIRED 9 · NOT_IMPLEMENTED 1」⇒ 分母分子都涨了一个，描述过期 |
-| 4 | `G-ADOPT-SCHEME-NO-CARRIER` | 🔴 未修 | **仍成立** | **没接线**（缺的是承载对象，不是执行器） | `apps/datacore/src/actions.ts` 第 80 行 `采纳经营方案: "NOT_IMPLEMENTED"`，理由已签在 `NOT_IMPLEMENTED_RATIONALE`（同文件第 160 行）。这就是 #3 里那唯一一个 NOT_IMPLEMENTED |
+| 3 | `G-ACTION-NOOP-EXEC` | ◑ 部分闭合 | ~~仍成立（◑）· 数字过期~~ **2026-08-18 已全闭**（WO-ADOPT-SCHEME-CARRIER：11 型 = WIRED 11 · NO_WRITE 0 · NOT_IMPLEMENTED 0） | 接了线接错地方（剩余型无落点） | `node scripts/check-action-wiring.mjs` 今日 RC=0：**11 型 = WIRED 10 · NO_WRITE 0 · NOT_IMPLEMENTED 1**。§8 写的是「10 型 = WIRED 9 · NOT_IMPLEMENTED 1」⇒ 分母分子都涨了一个，描述过期 |
+| 4 | `G-ADOPT-SCHEME-NO-CARRIER` | 🔴 未修 | ~~仍成立~~ **2026-08-18 已闭**（WO-ADOPT-SCHEME-CARRIER：scheme_adoptions 台账 + 执行器 + AOP 读端 + 接缝测试 · tip `184c19c0`） | **没接线**（缺的是承载对象，不是执行器） | `apps/datacore/src/actions.ts` 第 80 行 `采纳经营方案: "NOT_IMPLEMENTED"`，理由已签在 `NOT_IMPLEMENTED_RATIONALE`（同文件第 160 行）。这就是 #3 里那唯一一个 NOT_IMPLEMENTED |
 | 5 | `G-PLAN-CHANGE-NO-LEVER` | ◑ 部分闭合 | **仍成立（◑）** | 接了线接错地方 | `apps/datacore/src/app.ts` 第 580 行带 levers 走 `applyLeverWrites`；第 583–596 行无 levers 时诚实失败。二分结构未变 |
 | 6 | `G-C08-EXPR-PARAM-SPLIT` | 🔴 未修 | **✅ 已闭未回写** | ~~没接线~~ 已接线 | DSL 已支持 `params.<名>` 操作数（`apps/datacore/src/ruledsl.ts` 第 10/39/318/491 行，取不到即抛错、**不静默回退**）；发布/编辑期**双向**闭包校验 `assertValidExpression`（`apps/datacore/src/rules.ts` 第 26 行）接在创建第 225 行 / 更新第 268 行 / HTTP 路由 `apps/datacore/src/app.ts` 第 4406 行。**提交 `aba33841` 的标题原文就写着「闭 G-C08-EXPR-PARAM-SPLIT」** |
 | 7 | `G-SKILL-REFGRAPH-DEAD-EXTRACTOR` ①<br>死抽取器 | 🔴 未修 | **仍成立** | **没接线**（零 src 调用方） | `grep -rn extractRelations apps/*/src packages/*/src` 只命中它自己的定义行 `apps/agentcore/src/dril/resource-projector.ts` 第 365 行。金丝雀：同条件查 `lintSkill` 命中 3 处 src 引用 ⇒ 工具没坏 |
@@ -129,7 +129,7 @@
 
 | 单号 | 断点 | 三形态 | 🚦范围边界（只碰） | 验收判据（断言落在什么上） | 画像 |
 |---|---|---|---|---|---|
-| **WO-BEFE-WILDCARD-CLAIM** | `G-SEAM-GATE-METHOD-BLIND` 残(乙) | 接了线接错地方 | `scripts/check-backend-frontend-seam.mjs`（`pathMatches` 与其调用方）· 该门的基线 json | 喂一条「前端 `/a/v1/rules/*` × 后端字面 `/a/v1/rules/evaluate`」**同方法**的样例，门必须判它**没被消费**（今天判「已接」）。变异反证：把判据改回旧口径 ⇒ 该样例重新变绿即证明判据真在起作用。存量冒领条目一次性入基线并逐条写 why，此后只降不升 | **轻** |
+| **WO-BEFE-WILDCARD-CLAIM** ✅ 已交单（2026-08-18 · `claude/handoff-wo-befe-wildcard-claim`） | `G-SEAM-GATE-METHOD-BLIND` 残(乙) | 接了线接错地方 | `scripts/check-backend-frontend-seam.mjs`（`pathMatches` 与其调用方）· 该门的基线 json | 喂一条「前端 `/a/v1/rules/*` × 后端字面 `/a/v1/rules/evaluate`」**同方法**的样例，门必须判它**没被消费**（今天判「已接」）。变异反证：把判据改回旧口径 ⇒ 该样例重新变绿即证明判据真在起作用。存量冒领条目一次性入基线并逐条写 why，此后只降不升 | **轻** |
 | **WO-GATE-ROSTER-SWEEP-2** | `G-GATE-ROSTER-HANDCOPIED` 剩余 13 处 | 接了线接错地方 | `scripts/gate-roster-baseline.json` · 各被点名门脚本的扫描面常量 · `docs/AUDIT-gate-roster-sweep.md` | 逐处要么改现算、要么同批加「名单 vs 现算」一致性断言；`gate-roster:check` 的 `roster` 债从 13 降到 N 并**只降不升**。头号那笔先做：`check-ui-first-layer.mjs:SCAN_DIRS` 差集 54 个 `.tsx`（`components/**` 整个在射程外）。**验收不是「门绿了」，是「拿一个原本在差集里的文件造一处真违规，门必须点名到 file:line」** | **轻** |
 | **WO-ONTO-STATUS-BACKFILL** | 本单测出（§8 有 95 个编号无状态标记） | 接了线没数据 | `docs/SYSTEM-ONTOLOGY.md` §8（**只加状态标记，不动编号、不动描述**） | 95 个无标记编号逐个补上 ✅/🔴/◑ 之一（补之前每个都要复核，不许照描述猜）；补完后 `dispatch-deficit.sh` 的「待写WO」数会跳变 —— **那个跳变本身就是验收证据**：它证明此前这个队列度量的对象不完整 | **轻** |
 | **WO-ONTO-DEDUPE** | 本单测出（13 个编号有重复行，最多的占 4 行） | — | `docs/SYSTEM-ONTOLOGY.md` §8 · `scripts/check-ontology-anchors.mjs` 的基线 | 每个编号在 §8 只留一行（保留信息最全的那行，旧行的独有内容并进去）；加一条断言「§8 编号行数 == 唯一编号数」。**验收落在断言上**：造一个重复编号 ⇒ 该断言必须当场红。跑 `check-ontology-anchors.mjs` 确认锚点未被删（基线键不许消失） | **轻** |
@@ -242,3 +242,4 @@
 6. **`G-ACTION-NOOP-EXEC` 与 `G-ADOPT-SCHEME-NO-CARRIER` 的关系没有在 §8 里理顺**：
    前者 ◑ 的**唯一**剩余项就是后者（`check-action-wiring.mjs` 报的那 1 个 NOT_IMPLEMENTED）。
    两行各自成立但读起来像两笔账，收编 `WO-ADOPT-SCHEME-CARRIER` 时应一并合并。
+   ✅ **2026-08-18 已照此执行**：收编时两笔账合并——`G-ACTION-NOOP-EXEC` ✅ 全闭、`G-ADOPT-SCHEME-NO-CARRIER` ✅ 已修并注明合并关系（合并时按仓主要求点名 `WO-ONTO-DEDUPE`）。

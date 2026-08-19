@@ -18,71 +18,247 @@
     "   **本门作者已用独立实现抽样复核全部 5 条**（真值源 94 类型/825 属性，与审计方运行态 94 类型一致），",
     "   逐条属性表读回结论一致，且「真名」主张亦复核通过（minutes / delta·gapPct / cadenceKind）。"
   ],
-  "ratchetHigh": 7,
-  "maxExemptions": 7,
-  "adjudicated": [
-    "PRD-capacity-live-cockpit.md#REF:Base.weeklyCap",
-    "PRD-capacity-live-cockpit.md#REF:Material.coverage",
-    "PRD-capacity-inference-completion.md#REF:Metric.gap",
-    "PRD-lever-binding-drift.md#REF:ChangeoverMatrix.changeoverMin",
-    "PRD-sandbox-redesign.md#REF:Order.changeoverMin"
-  ],
-  "exemptions": [
-    {
-      "key": "PRD-sandbox-redesign.md#VAR:06caab0f7841171e",
-      "prd": "docs/PRD-sandbox-redesign.md",
-      "line": 364,
-      "code": "PDG-6",
-      "kind": "待修",
-      "why": "**这就是本门的立门案例本身**（A6）。判据「改 `SEG_REGISTRY` 一个值 → 结论真跟着变」只咬后半段：`SEG_REGISTRY` 确有数据，但「这条线属于哪几个 seg」这层归属不存在（本门实测 `Line` 仅 11 个属性，无任何 seg 归属字段），前半段不成立时该判据**无法失败**。修法不是删判据，是补一句「前置：线→seg 归属关系存在」并给该前置一条能红的判据。挂账而非立即红，是因为修它要动 PRD 正文与沙盘数据两半，属另一张单。"
-    },
-    {
-      "key": "PRD-simulation-sandbox.md#VAR:20207e562d88b168",
-      "prd": "docs/PRD-simulation-sandbox.md",
-      "line": 213,
-      "code": "PDG-6",
-      "kind": "待修",
-      "why": "同 A6 形态：「编辑某 `PropagationRule` 系数 0.85→0.6 发布→同一沙盘传导结果随之变」未声明前置。前置应是「该 `PropagationRule` 实例存在且真被传导引擎读取」——前置不成立时此判据同样无法失败。属同族债，随 A6 一并修。"
-    },
-    {
-      "key": "PRD-capacity-live-cockpit.md#REF:Base.weeklyCap",
-      "prd": "docs/PRD-capacity-live-cockpit.md",
-      "line": 72,
-      "code": "PDG-4A",
-      "kind": "待修",
-      "why": "已裁定（WO-PRD-FIELD-AUDIT + 本门作者独立复核）：`Base` 实有 22 属性（baseId/name/kind/util/bottleneck/gwh/formationCapDaily/agingCapDaily/…），**无 `weeklyCap`**；产能类真名是 `gwh`/`formationCapDaily`/`agingCapDaily`。原文以现状口吻写「`targetType/targetProp` **传**产能目标（`Base.weeklyCap`…）」。修法 = 改成真实属性名或标为本 PRD 新增。"
-    },
-    {
-      "key": "PRD-capacity-live-cockpit.md#REF:Material.coverage",
-      "prd": "docs/PRD-capacity-live-cockpit.md",
-      "line": 174,
-      "code": "PDG-4A",
-      "kind": "待修",
-      "why": "已裁定：`Material` 实有 19 属性，**无 `coverage`**；且同名字段在 `MaterialBalance` 上也不存在（该类型只有 matBalId/material/unit/netDemandTon/ltaPct/gapTon/etaDate）⇒ **类型名可能也写错了**。要命的是这条是某 SEAM-GATE 的**验收判据本身**（「改一个 `Process×Model` 的 `Material.coverage` → …」）——**改无可改，这道门今天写不出来**，正是本门 PDG-6 要治的「判据无法失败」同族。"
-    },
-    {
-      "key": "PRD-capacity-inference-completion.md#REF:Metric.gap",
-      "prd": "docs/PRD-capacity-inference-completion.md",
-      "line": 75,
-      "code": "PDG-4A",
-      "kind": "待修",
-      "why": "已裁定：`Metric` 实有 16 属性（含派生 `delta`/`gapPct`），**无 `gap`** —— **命名漂移**，真名是 `delta` 或 `gapPct`。原文以现状口吻写进「链路」定义（`Metric.gap → 结构反向分摊 → CausalFactor`），链路描述里的错名会一路传染下游实现。"
-    },
-    {
-      "key": "PRD-lever-binding-drift.md#REF:ChangeoverMatrix.changeoverMin",
-      "prd": "docs/PRD-lever-binding-drift.md",
-      "line": 233,
-      "code": "PDG-4A",
-      "kind": "待修",
-      "why": "已裁定：`ChangeoverMatrix` 实有 6 属性 `pairId/fromModel/toModel/**minutes**/hours/lineId`，**无 `changeoverMin`**（真名 `minutes`）。该 PRD 把它诊断为「双重死」并归因于「`capacity.ts` 全文不出现 `ChangeoverMatrix`」，**漏了一层：属性名本身就是错的**，而且**数据其实有 30 条实例**——定性从「没数据」翻转为「名字写错」，修法完全不同（铁律 0.5 三分法）。"
-    },
-    {
-      "key": "PRD-sandbox-redesign.md#REF:Order.changeoverMin",
-      "prd": "docs/PRD-sandbox-redesign.md",
-      "line": 375,
-      "code": "PDG-4A",
-      "kind": "待修",
-      "why": "已裁定：`Order` 实有 16 属性 + 1 派生，**无 `changeoverMin`**。原文以现状口吻断言取值「**C22** `Order.changeoverMin`=120」，而**同仓 `docs/PRD-sandbox-a2.md` 已明写它「无对象承载而 UNRESOLVED」——两份 PRD 自相矛盾**。修法 = 以 a2 的诚实表述为准改写本处。"
-    }
-  ]
+  "ratchetHigh": 0,
+  "maxExemptions": 0,
+  "adjudicated": [],
+  "exemptions": [],
+  "audit": {
+    "wo": "WO-PRD-FIELD-AUDIT-REOPEN",
+    "date": "2026-08-19",
+    "doc": "docs/AUDIT-prd-field-audit.md",
+    "note": [
+      "本键是信息级标注，门脚本不读（门只读 ratchetHigh/maxExemptions/adjudicated/exemptions 四键）。",
+      "kind 三态与豁免同词表：真缺口=判据前提未声明的真缺陷（PRD 粒度）；误报=原文自带数据安排或提案/自认语境；覆盖不到=仿真/契约/规则命名空间或度量口径外。",
+      "36 条未判定键逐条人工读原文定性：误报 16、覆盖不到 20、真缺口 0 ⇒ adjudicated 无需新增（裁定表只收真缺陷），棘轮不动。",
+      "11 份真缺口是 PRD 粒度结论（判据依赖在场数据但未声明前提），不对应任何未判定键，故只登记在 prdDataPreconditionGaps。"
+    ],
+    "undecidedKeyFindings": [
+      {
+        "key": "PRD-UPGRADE-decision-sandbox-v2.md#REF:Base.load",
+        "kind": "覆盖不到",
+        "why": "§2.2④ 现状描述「三条边全部指向 Base.load」：仿真状态变量速记，非本体属性；旧审计（AUDIT-prd-field-grounding §6.1）已复核其不在本体真值源。"
+      },
+      {
+        "key": "PRD-UPGRADE-decision-sandbox-v2.md#REF:Supplier.deliveryDelay",
+        "kind": "覆盖不到",
+        "why": "§3.1.4 补边提案表（供应行）中的仿真状态变量链速记；补边=补种子属提案语境，门真值源不含仿真命名空间。"
+      },
+      {
+        "key": "PRD-UPGRADE-decision-sandbox-v2.md#REF:Material.available",
+        "kind": "覆盖不到",
+        "why": "§3.1.4 补边提案表（供应行）仿真状态变量链速记，提案语境+仿真命名空间，非本体属性断言。"
+      },
+      {
+        "key": "PRD-UPGRADE-decision-sandbox-v2.md#REF:Order.shortage",
+        "kind": "覆盖不到",
+        "why": "§3.1.4 补边提案表（供应行）仿真状态变量链速记，提案语境+仿真命名空间，非本体属性断言。"
+      },
+      {
+        "key": "PRD-UPGRADE-decision-sandbox-v2.md#REF:Line.downtime",
+        "kind": "覆盖不到",
+        "why": "§3.1.4 补边提案表（产能行）仿真状态变量链速记，提案语境+仿真命名空间，非本体属性断言。"
+      },
+      {
+        "key": "PRD-UPGRADE-decision-sandbox-v2.md#REF:Base.capacity",
+        "kind": "覆盖不到",
+        "why": "§3.1.4 补边提案表（产能行）仿真状态变量链速记，提案语境+仿真命名空间，非本体属性断言。"
+      },
+      {
+        "key": "PRD-UPGRADE-decision-sandbox-v2.md#REF:Order.lateRisk",
+        "kind": "覆盖不到",
+        "why": "§3.1.4 补边提案表（交付行）仿真状态变量链速记，提案语境+仿真命名空间，非本体属性断言。"
+      },
+      {
+        "key": "PRD-UPGRADE-decision-sandbox-v2.md#REF:Shipment.leadTime",
+        "kind": "覆盖不到",
+        "why": "§3.1.4 补边提案表（交付行）仿真状态变量链速记，提案语境+仿真命名空间，非本体属性断言。"
+      },
+      {
+        "key": "PRD-UPGRADE-decision-sandbox-v2.md#REF:Order.otd",
+        "kind": "覆盖不到",
+        "why": "§3.1.4 补边提案表（交付行）仿真状态变量链速记，提案语境+仿真命名空间，非本体属性断言。"
+      },
+      {
+        "key": "PRD-UPGRADE-decision-sandbox-v2.md#REF:Material.price",
+        "kind": "覆盖不到",
+        "why": "§3.1.4 补边提案表（成本行）仿真状态变量链速记，提案语境+仿真命名空间，非本体属性断言。"
+      },
+      {
+        "key": "PRD-UPGRADE-decision-sandbox-v2.md#REF:Order.cost",
+        "kind": "覆盖不到",
+        "why": "§3.1.4 补边提案表（成本行）仿真状态变量链速记，提案语境+仿真命名空间，非本体属性断言。"
+      },
+      {
+        "key": "PRD-attainment-base-daily-timeseries.md#REF:Base.attainment_daily",
+        "kind": "误报",
+        "why": "§0 链路「（可选）TsAgg 物化 Base.attainment_daily」：本 PRD 自提议新建的物化字段，提案语境而非在场断言。"
+      },
+      {
+        "key": "PRD-capacity-feasibility-demanddelta-fix.md#REF:DemandSegment.p50",
+        "kind": "误报",
+        "why": "备选签署项 (a) 提议口径「若用户认定…则采（a)」：提案语境；且该 PRD 的 §6.1③ 自带全零诚实路径判据。"
+      },
+      {
+        "key": "PRD-cockpit-capacity-1to1-parity.md#REF:DemandSegment.p50",
+        "kind": "误报",
+        "why": "§3.1 绿地新增 DemandSegment 类型的形状声明，p50 是本 PRD 自建字段，非对既有本体的断言。"
+      },
+      {
+        "key": "PRD-data-backfill.md#REF:Shipment.eta",
+        "kind": "误报",
+        "why": "D5 行划线自我更正「~~Shipment.eta~~ → Shipment.etaDay 已存在…我先前按 eta 查，名字错了」：作者已自认改名。"
+      },
+      {
+        "key": "PRD-de-battery-multitenant-config.md#REF:Base.props",
+        "kind": "误报",
+        "why": "「基地坐标→Base.props.lat/lon（本体补属性）」：提案语境 + 运行期 props-bag 访问路径，非本体属性断言。"
+      },
+      {
+        "key": "PRD-goal-metric-owner-spine.md#REF:Metric.miss",
+        "kind": "误报",
+        "why": "§0 声明本 PRD 新增 Metric 一等对象形状 {…delta, miss…}：新对象字段提案，非在场断言。"
+      },
+      {
+        "key": "PRD-lever-binding-drift.md#REF:Line.__ghost_prop__",
+        "kind": "误报",
+        "why": "§5 变异反证故意注入的幽灵字段（门 M2 就该对它报红），是测试样例不是字段主张。"
+      },
+      {
+        "key": "PRD-opt-whatif-data.md#REF:Base.fieldMappings",
+        "kind": "误报",
+        "why": "BINDINGS.Base.fieldMappings 是代码 Map 结构的成员访问路径（金值讨论），不是本体属性引用。"
+      },
+      {
+        "key": "PRD-sandbox-metro-ops.md#REF:ARInvoice.invoiceDate",
+        "kind": "误报",
+        "why": "§4.3 逐字引用引擎 missingInputs 登记，并明写「今天算不出来……直到那三个字段真被建模」：缺失自认。"
+      },
+      {
+        "key": "PRD-sandbox-metro-ops.md#REF:FinanceAccount.period",
+        "kind": "误报",
+        "why": "§4.3 逐字引用引擎 missingInputs 登记，「直到那三个字段真被建模」：缺失自认，非断言在场。"
+      },
+      {
+        "key": "PRD-sandbox-metro-ops.md#REF:PurchaseOrder.paymentTermDays",
+        "kind": "误报",
+        "why": "§4.3 逐字引用引擎 missingInputs 登记，「直到那三个字段真被建模」：缺失自认，非断言在场。"
+      },
+      {
+        "key": "PRD-sandbox-redesign.md#REF:Customer.tier",
+        "kind": "误报",
+        "why": "§A.3 缺口表自认字段缺失并已立单到 PRD-data-backfill D2，是缺口登记不是在场断言。"
+      },
+      {
+        "key": "PRD-sandbox-redesign.md#REF:MaintPlan.start",
+        "kind": "误报",
+        "why": "§A.3 缺口表自认字段缺失并已立单到 PRD-data-backfill D3，是缺口登记不是在场断言。"
+      },
+      {
+        "key": "PRD-sandbox-redesign.md#REF:Base.capexWan",
+        "kind": "误报",
+        "why": "§A.3 缺口表自认字段缺失并已立单到 PRD-data-backfill D4，是缺口登记不是在场断言。"
+      },
+      {
+        "key": "PRD-enterprise-decision-twin.md#SIM:SimTickState.state",
+        "kind": "覆盖不到",
+        "why": "§承载体盘点表引用 TS 契约类型 SimTickState 的字段（②档契约/仿真命名空间），门明示不核此档。"
+      },
+      {
+        "key": "PRD-enterprise-decision-twin.md#SIM:SimSession.base_snapshot",
+        "kind": "覆盖不到",
+        "why": "§承载体盘点表引用 TS 契约类型 SimSession 的字段（②档契约/仿真命名空间），门明示不核此档。"
+      },
+      {
+        "key": "PRD-enterprise-decision-twin.md#SIM:ObjectTypeDef.stateVariables",
+        "kind": "覆盖不到",
+        "why": "写入被吞 bug 取证引用 domain.ts 契约字段 stateVariables，TS 契约档非本体真值源范围。"
+      },
+      {
+        "key": "PRD-harness-ux-adoption.md#SIM:EdgeActivePanel.module",
+        "kind": "误报",
+        "why": "EdgeActivePanel.module 是 CSS module 文件名被正则误捕（②档语境词触发），不是 Type.field 引用。"
+      },
+      {
+        "key": "PRD-harness-ux-adoption.md#SIM:PropagationRule.status",
+        "kind": "覆盖不到",
+        "why": "§本体触及表引用契约层 PropagationRule.status（只读语境），②档非本体真值源范围，门信息级提示。"
+      },
+      {
+        "key": "PRD-ontoflow-v2-unified-modeling.md#SIM:ObjectTypeDef.stateVariables",
+        "kind": "覆盖不到",
+        "why": "规划表引用拟加的契约字段 stateVariables[]，TS 契约档提案语境，非本体属性。"
+      },
+      {
+        "key": "PRD-sim-scope-local.md#SIM:SimInitWizard.tsx",
+        "kind": "误报",
+        "why": "SimInitWizard.tsx 是文件名被正则误捕，不是 Type.field 形式的本体引用。"
+      },
+      {
+        "key": "PRD-sandbox-a2.md#SCOPE:Batch.idleDays",
+        "kind": "覆盖不到",
+        "why": "逐字引规则 C28 的注入键（BATTERY_RULE_SCOPES 规则命名空间，PDG-8 信息级）；规则侧漂移已由 WO-RULE-SCOPE-DROP 修复。"
+      },
+      {
+        "key": "PRD-scenario-launcher.md#SCOPE:Scenario.targetView",
+        "kind": "覆盖不到",
+        "why": "本 PRD 绿地新建 Scenario 一等对象的字段设计（规则域键归档，信息级），真值源自然尚无。"
+      },
+      {
+        "key": "PRD-scenario-launcher.md#SCOPE:Scenario.riskLevel",
+        "kind": "覆盖不到",
+        "why": "本 PRD 绿地新建 Scenario 一等对象的字段设计（riskLevel 分流），规则域键归档信息级。"
+      },
+      {
+        "key": "PRD-skill-migration.md#SCOPE:Scenario.targetView",
+        "kind": "覆盖不到",
+        "why": "§对照表引 AgentCore SCENARIO_CATALOG 的 Scenario 字段（「今天最接近的物」），不在 DataCore 本体真值源。"
+      }
+    ],
+    "prdDataPreconditionGaps": [
+      {
+        "prd": "PRD-WO-LIVE-DISPOSITION",
+        "why": "红咬③「每个 shortfall>0 的行 steps≥1」在零 shortfall 行时 vacuous 通过；红咬①杠杆依赖 Material.onHand/leadTime 在场，全文无数据前置声明。"
+      },
+      {
+        "prd": "PRD-addendum-llm-providers-and-references",
+        "why": "L5「改 C08 阈值→绑定 agent 60s 内用新值」：C08 与绑定关系不在场时判据空转；L6 同依赖 planRef 意图与计划版本。"
+      },
+      {
+        "prd": "PRD-addendum-ontology-governance",
+        "why": "G7「常州命中基地…czmgr 搜不到其他基地」依赖种子多基地+角色数据；G8「avg(util) 与手算一致」依赖带 pos/util 对象在场。"
+      },
+      {
+        "prd": "PRD-agent-react-harness",
+        "why": "验收3「排产问句→轨迹真出现 invoke_solver+数字全⟦ref⟧」依赖求解器与业务数据在场，头号判据无数据声明。"
+      },
+      {
+        "prd": "PRD-capacity-live-cockpit",
+        "why": "DoD「点常州基地卡→拨滑杆看产能 deltas 真变」依赖常州基地与产能数据在场，无前置声明。"
+      },
+      {
+        "prd": "PRD-deterministic-cross-domain",
+        "why": "SEAM-1「风控员例→并行 3 solver·装配三域答案+各⟦ref⟧」依赖三域求解器在真实数据上产出可引用数字。"
+      },
+      {
+        "prd": "PRD-global-sim-live-upgrade",
+        "why": "DoD「拨自由杠杆看七维 KPI 真变→采纳走审批→下一轮读真变」依赖联合推演数据链在场。"
+      },
+      {
+        "prd": "PRD-multi-intent-L2-L3-coupled-solving",
+        "why": "SEAM-L3-守恒依赖 capacityLedger 数据在场（reconChecks 逐格守恒），无前置声明。"
+      },
+      {
+        "prd": "PRD-multi-intent-orchestration",
+        "why": "SEAM-1 风控员例依赖 yield_diagnosis+affected_orders+margin_attribution 三类业务数据在场。"
+      },
+      {
+        "prd": "PRD-qos-cross-domain-unified",
+        "why": "SEAM-Q2/SEAM-1 依赖 Q2 例三域求解器在真实数据上产出，无数据前置声明。"
+      },
+      {
+        "prd": "PRD-seam-arg-drop-audit",
+        "why": "端到端 SEAM 测（实体深问→答案只含该实体）依赖实体数据在场；Phase1 台账依赖注册表内容。"
+      }
+    ]
+  }
 }

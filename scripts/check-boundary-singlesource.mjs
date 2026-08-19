@@ -51,6 +51,8 @@
  *      （名册只减不增会烂成"历史遗迹"，这条逼它跟着现实走）。
  *   ⑤ **扫描面下界自证**：扫到的文件数低于下界 ⇒ 报 **RC=2「工具坏了」**，
  *      **不许**报「内联 0」—— 集合变空则差集恒空、门恒绿，那是失败的危险方向。
+ *   ⑥ **双向锁**（WO-GATE-ROSTER-SWEEP-3）：SEG/PLAN_GOAL 名册与「现算消费方集合」互相钉死 ——
+ *      现算多出名册外的新消费方 ⇒ RC=1 点名 file:line（判据②b/③b）。名册不再能悄悄落后于现实。
  *
  * 用法：
  *   node scripts/check-boundary-singlesource.mjs            # 门（0 干净 / 1 有违规 / 2 工具坏了）
@@ -98,13 +100,30 @@ const CONSUMERS = [
   { file: "apps/frontend-shell/src/mocks/simSolvers.ts", binding: "MOCK_BASES" },
 ];
 // DF.3 SEG 单一来源消费端：均须引用 SEG_REGISTRY（防 SEG 价/利/色内联回潮）。
+// ⚠ 本名册与「现算消费方集合」**双向锁死**（WO-GATE-ROSTER-SWEEP-3 · 判据②b）：
+//    现算（SCAN_ROOTS 全遍历 · 剥注释 · 含 SEG_REGISTRY token）⇒ 必须已在名册，
+//    漏登记当场 RC=1 点名 file:line；名册成员不再引用 ⇒ 判据② 死账断言咬出。
+//    故新增/摘除一个消费方必须同批改名册 —— 名册不再能悄悄落后于现实。
 const SEG_CONSUMERS = [
-  "apps/datacore/src/synthetic/battery.ts",
+  "apps/agentcore/src/growth/data-boundary.ts",
+  "apps/datacore/src/solvers/decision-info.ts",
   "apps/datacore/src/solvers/risk.ts",
-  "apps/frontend-shell/src/views/plan/OrderChainView.tsx",
+  "apps/datacore/src/solvers/service.ts",
+  "apps/datacore/src/synthetic/battery.ts",
+  "apps/datacore/src/synthetic/ceo-dataset.ts",
+  "apps/frontend-shell/src/mocks/handlers.ts",
+  "apps/frontend-shell/src/mocks/planFixtures.ts",
   "apps/frontend-shell/src/mocks/simSolvers.ts",
+  "apps/frontend-shell/src/mocks/sopScale.ts",
+  "apps/frontend-shell/src/views/DashboardView.tsx",
+  "apps/frontend-shell/src/views/RiskBoardView.tsx",
+  "apps/frontend-shell/src/views/plan/OrderChainView.tsx",
+  "apps/frontend-shell/src/views/risk/ExposurePanel.tsx",
+  "apps/frontend-shell/src/views/sim/CustomerImpactBar.tsx",
+  "packages/contracts/src/chain-sim.ts",
 ];
 // DF.4 规划目标阈值单一来源消费端：均须引用 PLAN_GOAL_TARGETS（防三处目标阈值漂移回潮）。
+// 与 SEG_CONSUMERS 同一条双向锁（判据③b）。
 const PLAN_GOAL_CONSUMERS = [
   "apps/datacore/src/synthetic/battery.ts",
   "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx",
@@ -338,6 +357,31 @@ function main() {
       if (!new RegExp(token).test(stripComments(src))) {
         fails.push(`${label} ${file}：未从 ${token} 派生（疑内联回潮；若该文件已不再是消费方，请从名册里删掉——留着就是死账）`);
       }
+    }
+  }
+
+  /* ── 判据②b/③b：现算消费方 ⊆ 名册（**名单 vs 现算** 一致性断言 · WO-GATE-ROSTER-SWEEP-3）──
+   * 名册只钉「成员必须引用」钉不住「新增消费方没登记」—— 后者正是 roster 门守的病
+   * （不在名单里的对象永远绿）。这里反向现算：扫描面内凡剥注释后含 token 的文件
+   * （单一来源册本身除外——那里是定义），都必须已在名册。漏登记 ⇒ RC=1 点名 file:line。
+   * ⚠ 这只锁「引用了册的消费方不漏登」；「压根不引用册、直接内联 seg 价/利/色」的负向扫描
+   *    仍依赖 SEG 值的可机检形状（契约改动，超本门范围）—— 诚实边界，不是已守住。 */
+  for (const [label, list, token] of [
+    ["②b SEG", SEG_CONSUMERS, "SEG_REGISTRY"],
+    ["③b PLAN_GOAL", PLAN_GOAL_CONSUMERS, "PLAN_GOAL_TARGETS"],
+  ]) {
+    const tokenRe = new RegExp(token);
+    for (const file of files) {
+      if (file === REGISTRY_FILE) continue; // 册本身：那里的 token 是定义不是消费
+      if (list.includes(file)) continue;
+      const code = stripComments(read(file));
+      const at = code.search(tokenRe);
+      if (at < 0) continue;
+      const line = code.slice(0, at).split("\n").length;
+      fails.push(
+        `${label} 现算消费方未登记：${file}:${line} 引用了 ${token} 但不在名册里\n` +
+          `    —— 名册与现算双向锁：新增消费方须同批登记进 ${label.endsWith("SEG") ? "SEG_CONSUMERS" : "PLAN_GOAL_CONSUMERS"}（名册落后于现实 = 这门只在守昨天）。`,
+      );
     }
   }
 

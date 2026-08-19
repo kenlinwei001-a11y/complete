@@ -78,6 +78,7 @@ import { lintSkill, classifySkillEvalCases, type SkillLintTarget } from "./skill
 import { compileSkill } from "./skill-compiler.js";
 // WO-REFGATE-ENT · F14：发布门判据的单一实现（本路由与 main.ts 启动期种子审计共用）。
 import { getFreshSeedSkillGateReport, runSkillPublishGate } from "./skill-publish-gate.js";
+import { runSkillSummaryReview } from "./skill-summary-review.js";
 import { seedScenarios } from "./scenarios-catalog.js";
 import { ensureScenarioPackageSeed } from "./mocks/seed.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
@@ -1448,7 +1449,19 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         throw new HttpError(422, "SKILL_EVAL_FAILED", `skill_quality 评测未全过（通过率 ${run.passRate}，${skillCases.length} 用例）；修用例或 force=true 审计豁免`);
       }
     }
-    const published = { ...skill, status: "PUBLISHED" as const };
+    // WO-PROMPT-KEY-LINT · 门禁一·语义补「LLM 摘要语义审查」（**建议式·不阻断**）：
+    // 位置 = 全部阻断判据（结构 lint + 引用闭合 + 评测门）通过之后、落库之前——
+    // 被 422 拒掉的发布不跑审查（不浪费 LLM 调用；lint 失败 ⇒ composeRequests 为零是机器判据）。
+    // verdict **不进 422 判据**（R6：阻断路径 100% 确定性），只落留痕（skill 行 summaryReview
+    // 字段 + 本响应）；LLM 抛错/不可解析落 UNAVAILABLE/UNPARSEABLE 诚实档，同样不阻断。
+    // 设计论据全文见 `skill-summary-review.ts` 头注。
+    const summaryReview = await runSkillSummaryReview(skill, {
+      llm: deps.llm,
+      prompts: deps.dataCore.prompts,
+      ctx: a,
+      model: deps.config.QOS_SKILL_SUMMARY_REVIEW_MODEL,
+    });
+    const published = { ...skill, status: "PUBLISHED" as const, summaryReview };
     await deps.repos.skills.update(published);
     // DF-5（Wave3 数据流闭环）：B 栈技能发布 → B 侧 outbox 领域事件 → /b/v1/outbox → 前端 F1 轮询失效
     // agent-editor 技能绑定下拉（同 workflow/agent/intent/scenario.published 一致模式·补 skill 缺口·TR2/3）。
@@ -1473,11 +1486,14 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.post("/b/v1/skills/lint", async (req) => {
     const a = await auth(req);
     requireCatalogAdmin(a);
-    const body = req.body as Partial<SkillLintTarget> & { id?: string };
+    const body = req.body as Partial<SkillLintTarget> & { id?: string; name?: string };
     let target: SkillLintTarget;
+    // WO-PROMPT-KEY-LINT：摘要语义审查（?review=1）需要技能名进 inputs；两条路各自取名。
+    let skillName = "";
     if (body.id) {
       const skill = await deps.repos.skills.get(body.id);
       if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${body.id}`);
+      skillName = skill.name;
       // ⚠️ 此前这里只摘 `{summary, body, resources}` 三项 → WO-SKILL-3 的工业级契约规则
       //   （inputSchema/outputSchema 形状 · references/dependsOn 合法性与可解析性 · 依赖图环）
       //   在**编辑器干跑**这条路上从不参评：编辑器报「lint 通过」，同一个 skill 到发布门（:1246 传了全量 + ctx）
@@ -1493,6 +1509,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
         ...(skill.dependsOn ? { dependsOn: skill.dependsOn } : {}),
       };
     } else {
+      skillName = body.name ?? "";
       target = {
         summary: body.summary ?? "",
         body: body.body ?? "",
@@ -1505,7 +1522,18 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     }
     // 干跑同样需要 ctx.allSkills（跨资源规则缺 ctx 时 `return []` = 恒过）；但**不**传 requirePublishedDeps
     //   —— 草稿态预览不该因依赖还没发布就报错（skill-lint.ts:32-33 的既定语义），发布门那半才收紧。
-    return lintSkill(target, {}, { allSkills: await deps.repos.skills.listByTenant(a.tenantId) });
+    const lint = lintSkill(target, {}, { allSkills: await deps.repos.skills.listByTenant(a.tenantId) });
+    // WO-PROMPT-KEY-LINT：`?review=1` opt-in 追加 LLM 摘要语义审查（门禁一·语义补的 DRAFT 预览半）——
+    // 编写者在发布前就能看到语义裁决；**additive**（不带参数响应逐字节不变·零回归·也不打 LLM）。
+    const { review } = req.query as { review?: string };
+    if (review === "1") {
+      const summaryReview = await runSkillSummaryReview(
+        { name: skillName, summary: target.summary },
+        { llm: deps.llm, prompts: deps.dataCore.prompts, ctx: a, model: deps.config.QOS_SKILL_SUMMARY_REVIEW_MODEL },
+      );
+      return { ...lint, summaryReview };
+    }
+    return lint;
   });
 
   // ---- WO-SKILL-ORCHESTRATOR-S1 · Skill Graph 编排（PRD-skill-runtime-orchestrator §3.4）----

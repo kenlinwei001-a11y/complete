@@ -1,4 +1,4 @@
-import type { Answer, AnswerBlock, ClaimVerdict, ConsistencyCheck, CrossValidateRequest, CrossValidateResponse, OnError, PlanStep, ProvenanceRef, ResolvedRef, RuleVerdict, ValidationTrace } from "@platform/contracts";
+import type { Answer, AnswerBlock, ClaimVerdict, ConsistencyCheck, CrossValidateRequest, CrossValidateResponse, ExtendedPlanStep, ProvenanceRef, ResolvedRef, RuleVerdict, ValidationTrace } from "@platform/contracts";
 import { ErrorCodes } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type { LlmClient } from "../llm/types.js";
@@ -10,21 +10,15 @@ import { scanBlocks } from "../util/numerics.js";
 import { resolveTemplate, TemplateResolutionError, type TemplateScope } from "../util/template.js";
 
 /**
- * Additive step types (A8.4 query_timeseries_agg / S4.1 search_knowledge).
- * CONTRACT GAP workaround: contracts PlanStepSchema is a closed discriminated
- * union without these two read tools; since packages/contracts must not change,
- * we widen the executor input locally. The steps are fully isomorphic to the
- * other tool steps and run through the generic GuardedToolExecutor dispatch.
+ * WO-STEP-VOCAB-UPLIFT：步骤词表已合成一个家 —— `ExtendedPlanStep = PlanStep | ExtraToolStep`
+ * 的**单一出处在契约层**（`packages/contracts/src/skill-compile.ts` 的
+ * `ExtendedPlanStepSchema`；本体 §8 `G-STEP-VOCAB-SPLIT-TWO-HOMES` 根治）。
+ * 本行只是 re-export 以保既有 import 路径（`./workflow/executor.js`）不断；
+ * **不许**在本包再定义第二份 `ExtraToolStep` / `ExtendedPlanStep`（留副本 = 分裂固化）。
+ * 三类 ExtraToolStep（query_timeseries_agg / search_knowledge / plan_slice）与其余 tool 步
+ * 完全同构，走下方 generic GuardedToolExecutor dispatch。
  */
-export interface ExtraToolStep {
-  id: string;
-  type: "query_timeseries_agg" | "search_knowledge" | "plan_slice";
-  params: Record<string, unknown>;
-  onError?: OnError;
-  timeoutMs?: number;
-}
-
-export type ExtendedPlanStep = PlanStep | ExtraToolStep;
+export type { ExtendedPlanStep } from "@platform/contracts";
 
 const SOLVER_TIMEOUT_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 10_000;

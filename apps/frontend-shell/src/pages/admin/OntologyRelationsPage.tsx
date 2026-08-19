@@ -1,14 +1,17 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { OntologyInvariantOverride } from "@platform/contracts";
 import {
   createLinkType,
   createPropagationRule,
   createPublishRequest,
   deprecateOntologyElement,
+  evaluateOntologyInvariants,
   fetchDomains,
   fetchElementReferences,
   fetchMappingRegistries,
   fetchObjectTypes,
+  fetchOntologyInvariants,
   fetchOntologyVersions,
   fetchPropagationRules,
   fetchPublishRequests,
@@ -256,6 +259,23 @@ export default function OntologyRelationsPage() {
     },
     onError: toastError,
   });
+
+  // ── 不变式（第三类边）：试算覆盖 ────────────────────────────────────────────
+  //
+  // 覆盖只活在这个 state 里，**不落库**（这是推演开关不是治理动作，见下方那一段的注释）。
+  // 无覆盖走只读体检口、有覆盖走试算口：两条路各有各的用处，不合并成"永远 POST"——
+  // 那样只读口就成了没有生产调用方的死端点。
+  const [invOverrides, setInvOverrides] = useState<Record<string, OntologyInvariantOverride>>({});
+  const invDirty = Object.keys(invOverrides).length > 0;
+  const invariants = useQuery({
+    queryKey: ["a", "ontology-invariants", invOverrides],
+    queryFn: () => (invDirty ? evaluateOntologyInvariants(invOverrides) : fetchOntologyInvariants()),
+  });
+  const inv = invariants.data;
+  const setInvOverride = (key: string, patch: OntologyInvariantOverride) =>
+    setInvOverrides((s) => ({ ...s, [key]: { ...s[key], ...patch } }));
+  /** 守卫键 → 业务话名（翻转清单里显示名字而不是键；取不到就显裸键，不编一个）。 */
+  const invName = (key: string) => inv?.items.find((i) => i.key === key)?.name ?? key;
 
   const typeOptions = (types.data ?? []).map((t) => t.key);
   const cfg = viewCfg.data;
@@ -576,6 +596,165 @@ export default function OntologyRelationsPage() {
         把「生效因果边」的条数数成两条，反而更难看清哪条在起作用。
         <br />
         要真正修改或停用一条已有因果边，需要先补上系统侧的修改能力；在那之前，这一页只能新建。
+      </div>
+
+      {/* ═══════════ 不变式（第三类边）═══════════
+        WO-ONTOLOGY-EDGE-TRICLASS · 前两类边**一个字都没动**（见文件头「两种边，别混」）。
+
+        ── 为什么是第三类，而不是把前两类重排 ──────────────────────────────────
+        结构边答「有没有关系」、因果边答「变了多少」，两者都在描述**有什么**。
+        这一类描述的是**必须成立什么**：一条跨若干元素的守卫条件，为真即体检不通过，
+        并能指出是**谁**违反了它。三者语义互不覆盖，故并列三类而非合并。
+
+        ── 这一屏的数据从哪来（不许前端自带清单）────────────────────────────────
+        守卫清单、守卫条件的业务话渲染、实测量、容差原值，**全部后端下发**
+        （`fetchOntologyInvariants` / `evaluateOntologyInvariants`）。
+        前端自带一份的后果是：后端目录一改它就静默过期，而没有任何机器会说话。
+
+        ── 「改容差 / 停用」在这里是**试算**，不是治理动作 ───────────────────────
+        上面结构边与对象类型那两处的「停用/下线」是治理动作：有宽限期、有「仍被 N 处
+        引用就拒绝」的 409 闸、要会签发布。这一段的开关是**推演开关**：本地、即时、可逆、
+        一个字节都不落库，刷新即还原。两套刻意分开写、分开措辞 ——
+        合并会把「我想试试把这条守卫关掉看看谁会红」变成「我把这条守卫下线了」。
+      */}
+      <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>不变式 · 体检守卫</h3>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8, lineHeight: 1.7 }}>
+        第三类边：前两类说「有什么」，这一类说「<b>必须成立什么</b>」—— 条件为真即体检通过，不成立时逐条点名是谁违反的。
+        <br />
+        这里改容差、停开关都只是<b>试算</b>：立刻重算给你看，但不落库、不进会签，刷新页面即还原。
+        与上面结构边的「停用/下线」不是一回事，那一套是要走会签的治理动作。
+      </div>
+
+      <div className="panel" data-testid="orel-inv-summary" style={{ marginBottom: 10, display: "flex", gap: 18, flexWrap: "wrap", fontSize: 12, alignItems: "center" }}>
+        <span data-testid="orel-inv-passed">成立 {inv ? inv.passed : "—"}</span>
+        <span data-testid="orel-inv-violated" style={{ color: inv && inv.violated > 0 ? "var(--danger)" : undefined }}>
+          不成立 {inv ? inv.violated : "—"}
+        </span>
+        <span data-testid="orel-inv-skipped" className="muted">
+          未参与体检 {inv ? inv.skipped : "—"}
+        </span>
+        {/* 阻断裁决未下 ⇒ 如实说「只标注」，并把「真拦会拦掉几条」先算给人看。 */}
+        <span data-testid="orel-inv-enforcement">
+          {inv?.enforcement.blocking
+            ? `不成立会拦住发布（${inv.enforcement.wouldBlock.length} 条）`
+            : `不成立只标注、不拦任何动作${inv ? `；若改为拦住发布，会拦下 ${inv.enforcement.wouldBlock.length} 条` : ""}`}
+        </span>
+        {invDirty && (
+          <button className="btn sm" data-testid="orel-inv-reset" onClick={() => setInvOverrides({})}>
+            全部还原
+          </button>
+        )}
+      </div>
+
+      {/* 「改了容差，谁翻了」的直答 —— 不让用户自己在表里前后比对。 */}
+      {inv && (inv.flippedToViolate.length > 0 || inv.flippedToHold.length > 0) && (
+        <div className="panel" data-testid="orel-inv-flips" style={{ marginBottom: 10, fontSize: 12, lineHeight: 1.7 }}>
+          {inv.flippedToViolate.length > 0 && (
+            <div data-testid="orel-inv-flip-violate">
+              因你这次的改动，<b>由成立转为不成立</b>：{inv.flippedToViolate.map((k) => invName(k)).join("、")}
+            </div>
+          )}
+          {inv.flippedToHold.length > 0 && (
+            <div data-testid="orel-inv-flip-hold">
+              因你这次的改动，<b>由不成立转为成立</b>：{inv.flippedToHold.map((k) => invName(k)).join("、")}
+            </div>
+          )}
+        </div>
+      )}
+
+      {inv && inv.items.length === 0 && <div className="empty-state">暂无不变式</div>}
+      {inv && inv.items.length > 0 && (
+        <table className="cmp" data-testid="orel-inv-table" style={{ width: "100%", marginBottom: 8 }}>
+          <thead>
+            <tr>
+              <th>守卫</th>
+              <th>守卫条件</th>
+              <th style={{ width: 110 }}>实测</th>
+              <th style={{ width: 150 }}>容差</th>
+              <th style={{ width: 90 }}>当前</th>
+              <th style={{ width: 110 }}>参与体检</th>
+            </tr>
+          </thead>
+          <tbody>
+            {inv.items.map((it) => {
+              const tone = !it.enabled ? "var(--muted)" : it.holds ? "var(--ok)" : "var(--danger)";
+              return (
+                <Fragment key={it.key}>
+                  <tr data-testid={`orel-inv-${it.key}`}>
+                    <td>
+                      {it.name}
+                      {it.overridden && (
+                        <span className="muted" data-testid={`orel-inv-overridden-${it.key}`} style={{ marginLeft: 6 }}>
+                          （试算中）
+                        </span>
+                      )}
+                    </td>
+                    <td data-testid={`orel-inv-guard-${it.key}`}>{it.guardText}</td>
+                    <td data-testid={`orel-inv-measure-${it.key}`}>
+                      {it.measure.value}
+                      {it.measure.unit ?? ""}
+                    </td>
+                    <td>
+                      <input
+                        data-testid={`orel-inv-tolerance-${it.key}`}
+                        type="number"
+                        step="any"
+                        aria-label={`${it.name}的${it.tolerance.label}`}
+                        value={it.tolerance.value}
+                        onChange={(e) => setInvOverride(it.key, { tolerance: Number(e.target.value) })}
+                        style={{ width: 74 }}
+                      />
+                      <span className="muted" style={{ marginLeft: 4 }}>
+                        {it.tolerance.unit ?? ""}
+                      </span>
+                    </td>
+                    <td data-testid={`orel-inv-status-${it.key}`} style={{ color: tone }}>
+                      {it.error ? "读不出来" : it.holds ? "成立" : "不成立"}
+                    </td>
+                    <td>
+                      <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+                        <input
+                          data-testid={`orel-inv-enabled-${it.key}`}
+                          type="checkbox"
+                          aria-label={`${it.name}参与体检`}
+                          checked={it.enabled}
+                          onChange={(e) => setInvOverride(it.key, { enabled: e.target.checked })}
+                        />
+                        <span className="muted">{it.enabled ? "参与" : "已停"}</span>
+                      </label>
+                    </td>
+                  </tr>
+                  {/* 违反者逐条点名 —— 只说「有 3 条不合规」而不说是哪三条，用户下一步就断了。 */}
+                  {it.enabled && !it.holds && it.participants.length > 0 && (
+                    <tr data-testid={`orel-inv-offenders-${it.key}`}>
+                      <td colSpan={6} className="muted" style={{ fontSize: 12, lineHeight: 1.7 }}>
+                        违反的是：
+                        {it.participants.map((p) => (
+                          <span key={`${p.kind}-${p.key}`} style={{ marginRight: 10 }}>
+                            <b className="mono">{p.key}</b>（{p.reason}）
+                          </span>
+                        ))}
+                      </td>
+                    </tr>
+                  )}
+                  {it.error && (
+                    <tr data-testid={`orel-inv-error-${it.key}`}>
+                      <td colSpan={6} className="muted" style={{ fontSize: 12 }}>
+                        这条守卫这次没能算出来：{it.error}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      <div className="muted" data-testid="orel-inv-honesty" style={{ fontSize: 12, marginBottom: 18, lineHeight: 1.7 }}>
+        ⚠ 停用一条守卫<b>不会让问题消失</b>，只是这一轮不体检它 —— 实测值照算、照显示。
+        <br />
+        ⚠ 违反时目前<b>只标红，不拦任何动作</b>（发布、采纳都照常）。「该拦什么」还没定；定下来之前，
+        这里先把「真要拦会拦下哪几条」如实算给你看。
       </div>
 
       {/* ═══════════ 关系两端的对象类型 · 弃用流程 ═══════════ */}

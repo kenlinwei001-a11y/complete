@@ -123,6 +123,8 @@ import { WorkspaceSchema } from "./types";
 import type { ProcessDefinitionsResponse, ProcessInstancesResponse } from "@/views/process/processWait";
 // WO-V4-INSPECT · 流程节点检视响应契约（前端不重定义·R1 contracts-only-shared）
 import type { ProcessInspectResponse } from "@platform/contracts";
+// WO-ONTOLOGY-EDGE-TRICLASS · 本体第三类边（不变式守卫）契约 —— 前端不重定义，也不自带清单
+import type { OntologyInvariantOverride, OntologyInvariantReport } from "@platform/contracts";
 
 // ---------------- A · DataCore ----------------
 
@@ -2257,6 +2259,19 @@ export const retireOntologyElement = (kind: "link" | "type", key: string) =>
   kind === "link"
     ? api.a<{ key: string; status: "RETIRED" }>(`/a/v1/ontology/links/${encodeURIComponent(key)}/retire`, { method: "POST", body: {} })
     : api.a<{ key: string; status: "RETIRED" }>(`/a/v1/ontology/types/${encodeURIComponent(key)}/retire`, { method: "POST", body: {} });
+
+// ── 不变式守卫（本体第三类边）─────────────────────────────────────────────────
+// 前两类边只描述「有什么」（结构边=有没有关系 / 因果边=变了多少），这一类描述「必须成立什么」。
+//
+// ⚠ **不许在前端另存一份不变式清单**：清单、表达式、容差原值、业务话渲染，全部由后端下发。
+//   前端自带一份的后果是它在后端目录一改时**静默过期**，而没有任何机器会说话。
+// ⚠ 这里的「改容差 / 停用」是**试算**：走 POST 求值端点（请求体带覆盖），**不落库**，刷新即还原。
+//   它与结构边/对象类型那套「停用/下线」治理动作（有宽限期、有"仍被 N 处引用就拒绝"的 409 闸）
+//   是两回事，两套入口刻意分开写，别合并。
+export const fetchOntologyInvariants = () => api.a<OntologyInvariantReport>("/a/v1/ontology/invariants");
+
+export const evaluateOntologyInvariants = (overrides: Record<string, OntologyInvariantOverride>) =>
+  api.a<OntologyInvariantReport>("/a/v1/ontology/invariants/evaluate", { method: "POST", body: { overrides } });
 
 /** 引用反查（治理增量 §7.4）：这条边今天被谁引用着。下线前的前置检查。 */
 export interface ElementReferenceVM {

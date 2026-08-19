@@ -48,6 +48,12 @@ export interface ExecutePlanCtx {
    * 不传 ⇒ 保守当作「有」（既有调用方零回归；此时失败会归入 MODEL_MISSING/RATE_LIMITED/CALL_FAILED 而非诬告没绑）。
    */
   hasLlmProvider?: boolean;
+  /**
+   * WO-PROMPT-KEYS-WIRE（G-PROMPT-KEYS-CONFIG-ONLY 接线）：answer_compose 键的租户 override 模板文本
+   * （orchestrator 经 resolvePromptOverride 只采纳 TENANT_OVERRIDE·fail-open 取得）。非空 → 替换综合指令头；
+   * 缺省/空白 → 硬编码默认（R6 字节兼容）。⟦ref:N⟧ 数字红线硬约束恒定追加，非模板一部分（租户改模板删不掉）。
+   */
+  composeInstructionOverride?: string;
 }
 
 export interface ExecutePlanResult {
@@ -235,10 +241,15 @@ export async function executePlan(plan: ComposePlan, ctx: ExecutePlanCtx): Promi
   let synthCount = 0;
   let synthFail: { kind: SynthFailKind; detail: string } | undefined;
   try {
+    // WO-PROMPT-KEYS-WIRE（G-PROMPT-KEYS-CONFIG-ONLY 接线）：answer_compose 键真进 LLM 请求体——
+    // 租户 override 替换硬编码综合指令头；无 override → 硬编码默认（与改造前逐字节一致·R6）。
+    // 「硬约束」段（数字红线 ⟦ref:N⟧）恒定追加，不属于可被模板替换的指令头。
+    const ov = ctx.composeInstructionOverride?.trim();
+    const synthHead = ov ? `${ov}\n` : "你是组合路径综合器。";
     synthText = await ctx.llm.compose({
       model: ctx.model,
       instruction:
-        `你是组合路径综合器。综合以下 ${ordered.length} 个求解器步骤的产物，产出【${plan.synthesizeBlocks.join("】【")}】结论。` +
+        `${synthHead}综合以下 ${ordered.length} 个求解器步骤的产物，产出【${plan.synthesizeBlocks.join("】【")}】结论。` +
         `硬约束：综合步**不得自行编造任何数字**；每个业务数字必须以 ⟦ref:N⟧ 标注其来自第 N 步产物（N 从 0 起，对应输入 inputs[N]）。`,
       inputs,
       tenantId: ctx.tenantId,
