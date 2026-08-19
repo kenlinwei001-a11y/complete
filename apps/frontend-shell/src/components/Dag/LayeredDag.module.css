@@ -27,6 +27,53 @@
   opacity: 0.35;
 }
 
+/*
+  判据 U4b · 被排除项：**可见地降级**，不是消失。
+  0.62 而不是 `.dim` 的 0.35 —— 判据要的是「还看得清被排除的是谁」，
+  压到 0.35 等于只留一团灰影，与"从图上消失"在实用上没区别。
+*/
+.excluded {
+  opacity: 0.62;
+}
+
+.excludedTag {
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--muted2);
+  letter-spacing: 0.5px;
+}
+
+.excludedLegend {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.excludedLegend li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+/* 虚线小样：与图上被排除节点的边框同一路编码（虚线），让图例与图对得上。 */
+.excludedSwatch {
+  flex: none;
+  width: 14px;
+  height: 0;
+  border-top: 1.4px dashed var(--muted2);
+  transform: translateY(-3px);
+}
+
+.excludedWhy {
+  color: var(--muted2);
+}
+
 .label {
   font-size: 12px;
   font-weight: 600;
