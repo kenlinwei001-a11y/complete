@@ -1214,13 +1214,56 @@ function ProblemDag({ group, categoryLabel }: { group: OrderProblemGroup; catego
   const edges: DagEdgeDef[] = [];
   group.rootChains.forEach((chain, ci) => {
     let prev: string | null = null;
-    chain.layers.forEach((layer, li) => {
-      const id = `${ci}-${layer.kind}`;
-      nodes.push({ id, layer: li, label: layer.label, sub: li > 0 ? chain.orderId : undefined, color: CHAIN_COLORS[li] });
+    /*
+      ⚠ 层号**按 kind 取**，不按数组下标 —— 与 `deriveProblemNarrative:184` 那句
+      「按 kind 取层（不按下标——下标顺序变了就会张冠李戴）」同一条纪律。
+      改前这里用的是 `forEach((layer, li) => … layer: li)`：某一单缺「判定」时，
+      它的「根因」会被摆到判定列，屏上读成"这单的判定是 XX"——**张冠李戴且看不出来**。
+    */
+    LAYER_KINDS.forEach((kind, li) => {
+      const layer = chain.layers.find((l) => l.kind === kind);
+      const id = `${ci}-${kind}`;
+      if (layer) {
+        nodes.push({ id, layer: li, label: layer.label, sub: li > 0 ? chain.orderId : undefined, color: CHAIN_COLORS[li] });
+      } else {
+        /*
+          判据 U4b · 这一单**缺**的那一层：留在图上并可见地降级，不是把后面几层往前挪。
+          缺一层是求解器的诚实缺席（`deriveProblemNarrative` 已把它写进 gaps），
+          图上却看不出来 —— 于是"话"说了缺口、"图"装作完整，两者对不上。
+        */
+        nodes.push({
+          id,
+          layer: li,
+          label: LAYER_KIND_LABEL[kind],
+          sub: chain.orderId,
+          state: "excluded",
+          excludedReason: "求解器未给出这一层",
+        });
+      }
       if (prev) edges.push({ from: prev, to: id });
       prev = id;
     });
   });
+  /*
+    判据 U4b · **没推出根因链的那几单**。
+    改前它们只活在两处文字里：`deriveProblemNarrative` 的 gaps，与节点面板里那句
+    「⚠ N 单未推出根因链——**那几单的结论不在本图上**，别拿共性根因顶替」——
+    页面自己逐字承认了它们不在图上，这正是判据 U4b 点名的那件事本身。
+    ⛔ 只有**数**、没有 orderId：契约 `OrderProblemGroupSchema` 给的是 `orderCount`（数）
+      与 `rootChains[]`（有链的那几单），**被排除单的 id 后端没下发**。
+      故这里画一个**聚合**的被排除节点、标注真实条数，不编造 id 也不假装逐单可点。
+  */
+  const unchained = group.orderCount - group.rootChains.length;
+  if (unchained > 0) {
+    nodes.push({
+      id: "unchained",
+      layer: 0,
+      label: `${unchained} 单`,
+      sub: `共 ${group.orderCount} 单`,
+      state: "excluded",
+      excludedReason: "求解器未推出根因链，不在本图上",
+    });
+  }
   return (
     <>
       <LayeredDag nodes={nodes} edges={edges} layerTitles={CHAIN_TITLES} testId="problem-dag" onNodeClick={(n) => setInspect(n.id)} />
@@ -1244,10 +1287,44 @@ function ProblemDag({ group, categoryLabel }: { group: OrderProblemGroup; catego
  * 所以这里如实写「四层链的投影规则」，并把「差一个 ruleRef 字段」记进交单报告的可派单里。
  */
 function problemNodeFacts(nodeId: string, group: OrderProblemGroup, categoryLabel: string): DagNodeFacts {
+  // 判据 U4b · 被排除的那一聚合节点也要点得开（否则图上多了个灰块、点开却是空的）。
+  if (nodeId === "unchained") {
+    const n = group.orderCount - group.rootChains.length;
+    return {
+      title: `未推出根因链 · ${n} 单`,
+      verdict: `本类 ${group.orderCount} 单里有 ${n} 单没有根因链`,
+      src: `求解器 affected_orders · problems[category=${group.category}].orderCount 与 rootChains.length 之差`,
+      rule: "覆盖度 = rootChains.length ÷ orderCount；引擎推不出根因链的单不入链，按差值如实计数",
+      ruleKind: "projection",
+      formula: `${group.orderCount} 单 − ${group.rootChains.length} 单 = ${n} 单`,
+      inputs: [
+        { label: "本类涉及订单", value: `${group.orderCount} 单` },
+        { label: "推出根因链", value: `${group.rootChains.length} 单` },
+      ],
+      note:
+        "⛔ 这几单的**订单号后端没有下发**（契约 `OrderProblemGroupSchema` 只给 orderCount 与 rootChains[]）——" +
+        "所以这里只画得出条数，画不出是哪几单。别拿本类共性根因顶替它们的结论。",
+    };
+  }
   const [ciStr, kind] = nodeId.split("-");
   const chain = group.rootChains[Number(ciStr)];
   const layer = chain?.layers.find((l) => l.kind === kind);
   const kindLabel = LAYER_KIND_LABEL[(kind ?? "order") as LayerKind] ?? (kind ?? "");
+  // 判据 U4b · 某一单**缺**的那一层：说清是"引擎没给"，不是"页面没画"。
+  if (chain && !layer) {
+    return {
+      title: `${kindLabel} · 求解器未给出`,
+      verdict: `订单 ${chain.orderId} 的「${kindLabel}」这一层缺席`,
+      src: `求解器 affected_orders · problems[category=${group.category}].rootChains[orderId=${chain.orderId}].layers —— 该链里没有 kind=${kind} 这一项`,
+      rule: "根因链四层按 kind 对位渲染；缺哪一层就在哪一层标缺席，**不把后面几层往前挪**（挪了会张冠李戴）",
+      ruleKind: "projection",
+      inputs: [
+        { label: "该单已有层", value: chain.layers.map((l) => LAYER_KIND_LABEL[l.kind]).join(" → ") || "—" },
+        { label: "缺席层", value: kindLabel },
+      ],
+      note: "诚实缺席：这一层是引擎没推出来，不是前端没渲染。要补得去看求解器为什么这一跳推不出。",
+    };
+  }
   return {
     title: `${kindLabel} · ${layer?.label ?? nodeId}`,
     verdict: chain ? `订单 ${chain.orderId} · ${categoryLabel}类问题` : undefined,
