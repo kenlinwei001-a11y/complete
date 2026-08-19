@@ -504,12 +504,30 @@ export class ExecutionEngine {
     // 守卫必须直读 process.env.DSH_HARNESS：check-dsh-dormancy.mjs D3 判据只认
     // 「条件里提到 process.env.DSH_HARNESS」的包裹块（cfg 转发会被判裸入口，门红）。
     if (process.env.DSH_HARNESS === "1") {
-      const { buildSessionSetup, mapSkill, runDshAgent } = await import("./dsh-runtime/index.js");
+      const { buildSessionSetup, mapMcpConfig, mapSkill, runDshAgent } = await import("./dsh-runtime/index.js");
+      // WO-MCP-FORWARD · additive 转发（静默丢字段同族病第四例）：agent.mcpServers 非空时
+      // 经 mapMcpConfig 逐个映射进 setup——serverName 白名单校验 + 映射期解密注入（安全注记
+      // 同 setup-spec.ts mapMcpConfig：明文仅过本机父子进程 stdio wire，不落日志）；凭据行缺失/
+      // 解不出 = fail-closed 抛错（mapMcpConfig credentialRef unresolvable），不静默降级为无凭据
+      // 连接。空/缺省 = 零 mcpServers 键（既有 `...(x ? {...} : {})` 散布形态），逐字节旧行为。
+      // 解密件在块内动态取：全部改动收在本分叉块，flag 关时零加载。
+      const mcpServers: ReturnType<typeof mapMcpConfig>[] = [];
+      if (agent.mcpServers.length > 0) {
+        const { decryptSecret } = await import("./crypto.js");
+        for (const ref of agent.mcpServers) {
+          const mcpConfig = await this.deps.repos.mcpConfigs.get(ref.mcpConfigId);
+          if (!mcpConfig) throw new Error(`dsh mcp forward: mcp config not found: ${ref.mcpConfigId}`);
+          const credRow = mcpConfig.credentialRef ? await this.deps.repos.credentials.get(mcpConfig.credentialRef) : undefined;
+          const secret = credRow ? decryptSecret(credRow.ciphertext, cfg.CREDENTIAL_KEY) : undefined;
+          mcpServers.push(mapMcpConfig(mcpConfig, () => secret));
+        }
+      }
       const setup = buildSessionSetup({
         agent,
         agentSystemCore: AGENT_SYSTEM_CORE,
         grantedToolNames: tools.map((t) => t.name),
         skills: skills.map((s) => mapSkill(s)),
+        ...(mcpServers.length ? { mcpServers } : {}),
         ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
       });
       // WO-DSH-N1-PROVIDER：model spec（dcp:{providerId}:{modelId}）不再原样当 wire model——
