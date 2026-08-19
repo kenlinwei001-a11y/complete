@@ -117,9 +117,23 @@ describe("判据 U4b · disruption-radius：半径外那一侧与半径内同图
     */
     await userEvent.click(excluded);
     const panel = await screen.findByTestId("dr-node-inspect");
+    /*
+      ── 这条断言的来历，照实留账（我一度想把它改弱，审核方改对了实现）──────────────
+      初版断在 body 上找「半径外」⇒ 全量套件里红。我当时读成「断言写错了」，
+      打算改去查 `<Modal title>`。**审核方的判断才是对的**：红在正确的地方，
+      暴露的是实现的真缺口 —— 分类词只在标题里，面板**正文**读下来答不出
+      「它落在哪一侧」，而判据 U4b 要的理由必须**一行自足**。
+      于是实现改成 `verdict: "半径外 · 这一次已关掉这条关系边"`（`DisruptionRadiusView.tsx:556` 段），
+      本断言**恢复成强的那一版**（断在正文上），不再退让。
+      形态（铁律 0.6）：**「我用『断言红了』当作『断言写错了』的证据，而前者并不度量后者」** ——
+      测试红的时候，先问它是不是在替我说真话。
+    */
     expect(panel.textContent).toContain("半径外");
     // 「改道/断链」与「被关掉」两种成因必须分得开（同族戒律：一个数盖住两个事实）。
     expect(panel.textContent).toContain("这一次已关掉这条关系边");
+    // `assertDagNodeFacts` 要求来源与规则同时在（缺一它在渲染时就抛）——这两条同时锁住那道生产期断言。
+    expect(within(panel).getByTestId("dr-node-inspect-src")).toBeInTheDocument();
+    expect(within(panel).getByTestId("dr-node-inspect-rule")).toBeInTheDocument();
   });
 
   it("U4b-C1-反证 · 变异：把被排除项从节点集里过滤掉 ⇒ 红在「图上只剩入选项」，不是红在「组件不见了」", () => {
