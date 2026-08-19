@@ -15,13 +15,17 @@
  *     （PRD §3.1「节点类型 ↔ 今日派发的一一对应」）。契约测试逐条断言映射目标是**真的**
  *     `PlanStepSchema` 判别值 —— 任何一边改名，测试当场红，两套词表漂不起来。
  *
- * ── 诚实边界（S1 未做的，显式 NOT_IMPLEMENTED，绝不静默跳过）────────────────────
- *   · 已实现节点 kind 仅 `skill` / `solver`（`IMPLEMENTED_NODE_KINDS`）。其余 kind 留枚举位，
- *     编译期返回 `NOT_IMPLEMENTED` 并点名是哪个节点、哪个 kind。
+ * ── 诚实边界（未实现的，显式 NOT_IMPLEMENTED，绝不静默跳过）────────────────────
+ *   · 已实现节点 kind：`skill` / `solver` / `render`（`IMPLEMENTED_NODE_KINDS`；
+ *     render 由 WO-GRAPH-FANOUT-W2 实现，调度器 dispatch 在 `skill-orchestrator.ts`）。
+ *     其余 kind 留枚举位，编译期返回 `NOT_IMPLEMENTED` 并点名是哪个节点、哪个 kind。
  *   · 边 kind `cond`（条件边 + 确定性 guard，PRD §3.3-2）未实现 → 编译期 NOT_IMPLEMENTED。
- *   · **R11「图须以 render 节点收口」本切片不校验** —— 因为 `render` 本身还是 NOT_IMPLEMENTED，
- *     此时强制 render 可达 = 任何 S1 图都无法编译。这是**已知未覆盖门**，不是"已经守住了"，
- *     已登记本体 §8 `G-SKILL-GRAPH-NO-RENDER-CLOSURE`。
+ *   · **R11「图须以 render 节点收口」已强制（WO-GRAPH-FANOUT-W2）**：render 节点可实现之后，
+ *     `compileGraph` 断言「入口到 render 至少一条可达路径」，否则 `RENDER_CLOSURE_MISSING`
+ *     拒发并点名入口与悬空终点。线性来源（execution.steps / legacy plan.steps）没有
+ *     render_answer 收尾时，由 `chainGraphFromPlanSteps` 合成一个收尾 render 节点
+ *     （`AUTO_RENDER_NODE_ID`，语义 = executor 的兜底答案）并在结果里以
+ *     `renderClosure: "synthesized"` **披露**——不静默。本体 §8 `G-SKILL-GRAPH-NO-RENDER-CLOSURE` 由本单闭合。
  */
 import { z } from "zod";
 import { OnErrorSchema, PlanStepSchema, TemplateValueSchema, type PlanStep } from "./qos.js";
@@ -46,10 +50,11 @@ export const SkillGraphNodeKindSchema = z.enum(SKILL_GRAPH_NODE_KINDS);
 export type SkillGraphNodeKind = z.infer<typeof SkillGraphNodeKindSchema>;
 
 /**
- * S1 真正能跑的节点 kind。其余一律编译期 NOT_IMPLEMENTED。
+ * 真正能跑的节点 kind。其余一律编译期 NOT_IMPLEMENTED。
  * 加一个 kind 到这里 = 承诺 `skill-orchestrator.ts` 里有对应 dispatch 分支且有 SEAM 覆盖。
+ * `render` 由 WO-GRAPH-FANOUT-W2 落（R11 收口校验同单一并落地）。
  */
-export const IMPLEMENTED_NODE_KINDS = ["skill", "solver"] as const;
+export const IMPLEMENTED_NODE_KINDS = ["skill", "solver", "render"] as const;
 export type ImplementedNodeKind = (typeof IMPLEMENTED_NODE_KINDS)[number];
 
 /**
@@ -163,17 +168,27 @@ export const SKILL_GRAPH_COMPILE_ERROR_CODES = [
   "CYCLIC_INVOCATION",
   "NOT_IMPLEMENTED",
   "GRAPH_INVALID",
+  /** R11（WO-GRAPH-FANOUT-W2）：入口到 render 节点无可达路径 —— 拒发并点名。 */
+  "RENDER_CLOSURE_MISSING",
 ] as const;
 export type SkillGraphCompileErrorCode = (typeof SKILL_GRAPH_COMPILE_ERROR_CODES)[number];
 
 /**
- * 编译一张图 → 确定性分层执行计划。
+ * 纯拓扑层（WO-GRAPH-FANOUT-W2 抽出共用）：id 查重 / 悬空边 / 环检测 / Kahn 分层 / 前驱表。
  *
- * 确定性（R6 红线）：分层与层内顺序**只由声明序决定**。同一张图重复编译，`layers[]` 逐字节一致。
+ * **全仓唯一的拓扑分层实现**——`compileGraph`（发布期全门：kind 门 + 本拓扑 + R11 收口门）与
+ * `apps/agentcore/src/workflow/executor.ts`（线性步骤的链式退化执行序）都走这里；
+ * 消费方**不许**再写第二份 Kahn/DFS（第二份 = 两套拓扑语义迟早漂移）。
+ *
+ * 输入刻意是**无 kind 的**最小形状（`{id}` 节点 + `{from,to}` 边）：拓扑正误与节点语义无关。
+ * 确定性（R6 红线）：分层与层内顺序**只由声明序决定**。同一份输入重复编译，`layers[]` 逐字节一致。
  * 实现上层内顺序取 `nodes[]` 下标序，不用 Map 迭代序，也不做字典序排序。
  */
-export function compileGraph(graph: SkillGraph): CompileGraphResult {
-  const nodes = graph.nodes;
+export function topoLayers(input: {
+  nodes: readonly { id: string }[];
+  edges: readonly { from: string; to: string }[];
+}): CompileGraphResult {
+  const { nodes, edges } = input;
   const order = new Map<string, number>();
   for (let i = 0; i < nodes.length; i++) {
     const n = nodes[i]!;
@@ -183,33 +198,8 @@ export function compileGraph(graph: SkillGraph): CompileGraphResult {
     order.set(n.id, i);
   }
 
-  // —— 诚实边界：未实现的节点/边 kind 显式拒绝，绝不静默跳过 ——
-  const implementedNodes: ReadonlySet<string> = new Set<string>(IMPLEMENTED_NODE_KINDS);
-  for (const n of nodes) {
-    if (!implementedNodes.has(n.kind)) {
-      return {
-        ok: false,
-        code: "NOT_IMPLEMENTED",
-        message: `节点「${n.id}」的 kind=${n.kind} 尚未实现（S1 仅实现 ${IMPLEMENTED_NODE_KINDS.join("/")}）——诚实拒绝，不静默跳过`,
-      };
-    }
-    if (n.determinism !== undefined && n.determinism !== determinismOf(n.kind)) {
-      return {
-        ok: false,
-        code: "GRAPH_INVALID",
-        message: `节点「${n.id}」声明 determinism=${n.determinism}，与 kind=${n.kind} 派生值 ${determinismOf(n.kind)} 不符`,
-      };
-    }
-  }
-  const implementedEdges: ReadonlySet<string> = new Set<string>(IMPLEMENTED_EDGE_KINDS);
-  for (const e of graph.edges) {
-    if (!implementedEdges.has(e.kind)) {
-      return {
-        ok: false,
-        code: "NOT_IMPLEMENTED",
-        message: `边「${e.from}→${e.to}」的 kind=${e.kind} 尚未实现（S1 仅实现 ${IMPLEMENTED_EDGE_KINDS.join("/")}）——诚实拒绝，不静默跳过`,
-      };
-    }
+  // —— 悬空边 / 自环校验（kind 门在 compileGraph 里先行，拓扑层只管形状）——
+  for (const e of edges) {
     if (!order.has(e.from)) {
       return { ok: false, code: "GRAPH_INVALID", message: `边引用了不存在的节点：${e.from}` };
     }
@@ -234,7 +224,7 @@ export function compileGraph(graph: SkillGraph): CompileGraphResult {
     pred.set(n.id, []);
   }
   const seenEdge = new Set<string>();
-  for (const e of graph.edges) {
+  for (const e of edges) {
     const k = `${e.from}\u0000${e.to}`;
     if (seenEdge.has(k)) continue; // seq + parallel 平行重边 → 语义上同一条依赖，去重后不影响拓扑
     seenEdge.add(k);
@@ -307,6 +297,84 @@ export function compileGraph(graph: SkillGraph): CompileGraphResult {
   const predecessors: Record<string, string[]> = {};
   for (const n of nodes) {
     predecessors[n.id] = (pred.get(n.id) ?? []).slice().sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+  }
+
+  return { ok: true, entry, layers, predecessors };
+}
+
+/**
+ * 编译一张图 → 确定性分层执行计划（发布期全门：kind 门 → 拓扑层 → R11 收口门）。
+ *
+ * 确定性（R6 红线）：分层与层内顺序**只由声明序决定**。同一张图重复编译，`layers[]` 逐字节一致。
+ * R11（WO-GRAPH-FANOUT-W2）：入口到 render 节点须至少一条可达路径，否则 `RENDER_CLOSURE_MISSING`
+ * 拒发并点名入口节点与悬空终点（无后继且非 render 的节点）。拓扑事实（分层/前驱）全部委托
+ * `topoLayers`——本函数只加「kind 语义门」与「收口语义门」，不复制拓扑实现。
+ */
+export function compileGraph(graph: SkillGraph): CompileGraphResult {
+  const nodes = graph.nodes;
+
+  // —— ① kind 门：未实现的节点/边 kind 显式拒绝，绝不静默跳过 ——
+  const implementedNodes: ReadonlySet<string> = new Set<string>(IMPLEMENTED_NODE_KINDS);
+  for (const n of nodes) {
+    if (!implementedNodes.has(n.kind)) {
+      return {
+        ok: false,
+        code: "NOT_IMPLEMENTED",
+        message: `节点「${n.id}」的 kind=${n.kind} 尚未实现（已实现 ${IMPLEMENTED_NODE_KINDS.join("/")}）——诚实拒绝，不静默跳过`,
+      };
+    }
+    if (n.determinism !== undefined && n.determinism !== determinismOf(n.kind)) {
+      return {
+        ok: false,
+        code: "GRAPH_INVALID",
+        message: `节点「${n.id}」声明 determinism=${n.determinism}，与 kind=${n.kind} 派生值 ${determinismOf(n.kind)} 不符`,
+      };
+    }
+  }
+  const implementedEdges: ReadonlySet<string> = new Set<string>(IMPLEMENTED_EDGE_KINDS);
+  for (const e of graph.edges) {
+    if (!implementedEdges.has(e.kind)) {
+      return {
+        ok: false,
+        code: "NOT_IMPLEMENTED",
+        message: `边「${e.from}→${e.to}」的 kind=${e.kind} 尚未实现（已实现 ${IMPLEMENTED_EDGE_KINDS.join("/")}）——诚实拒绝，不静默跳过`,
+      };
+    }
+  }
+
+  // —— ② 拓扑层：查重 / 悬空边 / 环 / 分层 / 前驱（唯一实现，见 topoLayers）——
+  const topo = topoLayers({ nodes, edges: graph.edges });
+  if (!topo.ok) return topo;
+  const { entry, layers, predecessors } = topo;
+
+  // —— ③ R11 收口门：自入口沿后继 BFS，够不到任何 render 节点即拒发并点名 ——
+  {
+    const renderIds = new Set(nodes.filter((n) => n.kind === "render").map((n) => n.id));
+    const succ = new Map<string, string[]>();
+    for (const n of nodes) succ.set(n.id, []);
+    for (const e of graph.edges) succ.get(e.from)?.push(e.to);
+    const reached = new Set<string>();
+    const queue = [...entry];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      if (reached.has(cur)) continue;
+      reached.add(cur);
+      for (const s of succ.get(cur) ?? []) queue.push(s);
+    }
+    if (![...renderIds].some((id) => reached.has(id))) {
+      const dangling = nodes
+        .filter((n) => (succ.get(n.id) ?? []).length === 0 && n.kind !== "render")
+        .map((n) => n.id);
+      return {
+        ok: false,
+        code: "RENDER_CLOSURE_MISSING",
+        message:
+          `R11：入口 [${entry.join(", ")}] 到 render 节点无可达路径——拒发。` +
+          (dangling.length > 0
+            ? `悬空终点（无后继且非 render）：[${dangling.join(", ")}]；请把它们接到 render 节点收口。`
+            : `图中没有 render 节点；请补一个 render 节点收口。`),
+      };
+    }
   }
 
   return { ok: true, entry, layers, predecessors };
@@ -415,6 +483,19 @@ export const PLAN_STEP_TYPE_TO_NODE_KIND: Readonly<Record<string, SkillGraphNode
   );
 
 /**
+ * 线性链没有 render 收尾时合成节点的固定 id（WO-GRAPH-FANOUT-W2 · R11）。
+ * 双下划线前缀 = 保留位，与手写节点撞名即 GRAPH_INVALID（不许静默覆盖作者节点）。
+ */
+export const AUTO_RENDER_NODE_ID = "__auto_render";
+
+/**
+ * 合成收尾 render 的文案 = executor 串行循环「全程无 render_answer」的兜底答案
+ * （`apps/agentcore/src/workflow/executor.ts` 的 fallback 与本常量**同一份**， executor 从本包引用，
+ * 不许复制——两处置底文案漂移就是两套口径）。
+ */
+export const GRAPH_FALLBACK_ANSWER_MARKDOWN = "工作流执行完成。";
+
+/**
  * 线性步骤 → **链式退化图**（PRD §3.2）。
  *
  * 入参刻意是**放宽**的 `SkillExecutionStep`（`type: string`）而不是闭合的 `PlanStep`：
@@ -425,10 +506,15 @@ export const PLAN_STEP_TYPE_TO_NODE_KIND: Readonly<Record<string, SkillGraphNode
  *
  * 保守：一律编成全 seq 链，**不做隐式并行推断**（今天的 steps 不带依赖信息，任何自动分组都是猜；
  * 「更快但偶尔错」是本仓最贵的错法）。想并行必须显式写 `execution.graph` 的 parallel 边。
+ *
+ * R11 收口（WO-GRAPH-FANOUT-W2）：链里没有 render 节点时，在末尾**合成**一个收尾 render
+ * （`AUTO_RENDER_NODE_ID`，blocks = 兜底文案 `GRAPH_FALLBACK_ANSWER_MARKDOWN`，
+ * 与 executor 今天的「无 render_answer 就回兜底答案」语义逐字节一致），
+ * 并在返回里以 `renderClosure: "synthesized"` **披露**——合成收口不装成作者声明。
  */
 export function chainGraphFromPlanSteps(
   steps: (SkillExecutionStep | PlanStep)[],
-): { ok: true; graph: SkillGraph } | { ok: false; code: SkillGraphCompileErrorCode; message: string } {
+): { ok: true; graph: SkillGraph; renderClosure: "declared" | "synthesized" } | { ok: false; code: SkillGraphCompileErrorCode; message: string } {
   const nodes: SkillGraphNode[] = [];
   for (const s of steps) {
     const kind = PLAN_STEP_TYPE_TO_NODE_KIND[s.type];
@@ -454,7 +540,27 @@ export function chainGraphFromPlanSteps(
   for (let i = 1; i < nodes.length; i++) {
     edges.push({ from: nodes[i - 1]!.id, to: nodes[i]!.id, kind: "seq" });
   }
-  return { ok: true, graph: { nodes, edges, maxParallelNodes: DEFAULT_MAX_PARALLEL } };
+
+  let renderClosure: "declared" | "synthesized" = "declared";
+  if (!nodes.some((n) => n.kind === "render")) {
+    if (nodes.some((n) => n.id === AUTO_RENDER_NODE_ID)) {
+      return {
+        ok: false,
+        code: "GRAPH_INVALID",
+        message: `步骤 id「${AUTO_RENDER_NODE_ID}」与合成收尾 render 的保留 id 撞名 —— 请改名（不许静默覆盖作者节点）`,
+      };
+    }
+    if (nodes.length > 0) {
+      nodes.push({
+        id: AUTO_RENDER_NODE_ID,
+        kind: "render",
+        params: { blocks: [{ type: "text", markdown: GRAPH_FALLBACK_ANSWER_MARKDOWN }] },
+      });
+      edges.push({ from: nodes[nodes.length - 2]!.id, to: AUTO_RENDER_NODE_ID, kind: "seq" });
+      renderClosure = "synthesized";
+    }
+  }
+  return { ok: true, graph: { nodes, edges, maxParallelNodes: DEFAULT_MAX_PARALLEL }, renderClosure };
 }
 
 export type CompileExecutionResult =
@@ -466,6 +572,12 @@ export type CompileExecutionResult =
       entry: string[];
       layers: SkillGraphLayer[];
       predecessors: Record<string, string[]>;
+      /**
+       * R11 收口来源（WO-GRAPH-FANOUT-W2）：`declared` = 图里作者自己写了 render 节点；
+       * `synthesized` = 线性来源没有 render，由 `chainGraphFromPlanSteps` 合成兜底收尾。
+       * 消费方（调度器/路由）必须把这个披露透传到结果里，不许吞掉。
+       */
+      renderClosure: "declared" | "synthesized";
     }
   | { ok: false; code: SkillGraphCompileErrorCode; message: string; cycle?: string[]; source?: ExecutionSource };
 
@@ -481,6 +593,7 @@ export function compileExecution(input: {
 }): CompileExecutionResult {
   let source: ExecutionSource;
   let graph: SkillGraph;
+  let renderClosure: "declared" | "synthesized" = "declared";
 
   if (input.execution?.graph) {
     source = "execution.graph";
@@ -490,11 +603,13 @@ export function compileExecution(input: {
     const chained = chainGraphFromPlanSteps(input.execution.steps);
     if (!chained.ok) return { ...chained, source };
     graph = chained.graph;
+    renderClosure = chained.renderClosure;
   } else if (input.legacyPlanSteps && input.legacyPlanSteps.length > 0) {
     source = "legacy.plan.steps";
     const chained = chainGraphFromPlanSteps(input.legacyPlanSteps);
     if (!chained.ok) return { ...chained, source };
     graph = chained.graph;
+    renderClosure = chained.renderClosure;
   } else {
     return {
       ok: false,
@@ -507,7 +622,7 @@ export function compileExecution(input: {
 
   const compiled = compileGraph(graph);
   if (!compiled.ok) return { ...compiled, source };
-  return { ok: true, source, graph, entry: compiled.entry, layers: compiled.layers, predecessors: compiled.predecessors };
+  return { ok: true, source, graph, entry: compiled.entry, layers: compiled.layers, predecessors: compiled.predecessors, renderClosure };
 }
 
 /**
