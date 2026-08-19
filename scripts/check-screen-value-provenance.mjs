@@ -67,6 +67,7 @@ function gateToolBroken(what, hint) {
 import { readdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
+import { contentKey, reconcileContents, buildContentsSegment, conservationCanary } from "./lib/ratchet-conservation.mjs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -281,6 +282,11 @@ const CANARIES = [
   }
   if (bad.length) gateToolBroken("金丝雀不中 ⇒ **门自己瞎了**：\n   · " + bad.join("\n   · "));
 }
+{
+  // D5/D6 内容对账金丝雀（与 reconcileContents 共用本体，不另抄）
+  const cc = conservationCanary();
+  if (!cc.ok) gateToolBroken(`D5/D6 内容对账金丝雀不过（${cc.got}）`, `期望：${cc.want}`);
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * 扫描面
@@ -336,11 +342,14 @@ if (argv.includes("--update")) {
   const prev = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : null;
   const exempt = {};
   for (const v of violations) exempt[v.file] = prev?.exempt?.[v.file] || { why: "TODO：写清楚为什么这个文件的合成数值今天可以不带来源记号（空 why 会被门判红）" };
+  // D5/D6 内容段：豁免文件逐条来源点的文件无关内容键（代码片段哈希；搬家不改键）
+  const curEntries = violations.flatMap((v) => v.hits.map((h) => ({ key: contentKey(h.text), file: v.file, label: h.text })));
+  const contents = buildContentsSegment(curEntries, prev?.contents, "screen-value-provenance:check");
   writeFileSync(BASELINE, JSON.stringify(buildBaselineDoc({
     prev,
     generatedBy: "node scripts/check-screen-value-provenance.mjs --update",
-    prose: { note: "screen-value-provenance 棘轮基线：存量「含合成数值来源点却零来源记号」的具名豁免，只许降不许升。每条必须写 why。键 = 仓库相对文件路径。" },
-    computed: { exempt },
+    prose: { note: "screen-value-provenance 棘轮基线：存量「含合成数值来源点却零来源记号」的具名豁免，只许降不许升。每条必须写 why。键 = 仓库相对文件路径。contents 段 = 逐条来源点的内容键（D5 守恒 + D6 落账）。" },
+    computed: { exempt, contents },
   }), null, 2) + "\n");
   console.log(`已写基线：豁免 ${Object.keys(exempt).length} 条（${BASELINE}）`);
   process.exit(0);
@@ -352,10 +361,34 @@ try { baseline = JSON.parse(readFileSync(BASELINE, "utf8")); } catch (e) { gateT
 if (!baseline || typeof baseline.exempt !== "object" || baseline.exempt === null) gateToolBroken("基线结构不对（缺 `exempt` 对象）");
 const exempt = baseline.exempt;
 
+/* ── D5 全局守恒 + D6 unlisted 落账（共享实现 scripts/lib/ratchet-conservation.mjs）──────
+ * 内容键 = 来源点代码片段哈希（文件无关：同一段派生代码搬到别的文件不改键）。
+ *  · 未豁免文件里的违规，若其全部来源点都能在 contents 段认领到名额 ⇒ 搬家（D5 守恒），不红；
+ *  · 认领不到 ⇒ 新内容，D1 红（本条即 D6：新文件/新来源点都不免检）；
+ *  · 豁免文件的来源点全仓消失 ⇒ D2 过期豁免红；只是搬走（别处认领）⇒ 不红。 */
+const curEntries = violations.flatMap((v) => v.hits.map((h) => ({ key: contentKey(h.text), file: v.file, label: h.text })));
+const recon = reconcileContents({
+  gate: "screen-value-provenance:check",
+  contents: baseline.contents ?? null,
+  current: curEntries,
+  tightenCmd: "node scripts/check-screen-value-provenance.mjs --update",
+});
+const unmatchedLeft = new Map();
+for (const u of recon.unmatched) unmatchedLeft.set(u.file + " " + u.key, (unmatchedLeft.get(u.file + " " + u.key) ?? 0) + 1);
+const take = (file, h) => {
+  const k = file + " " + contentKey(h.text);
+  const n = unmatchedLeft.get(k) ?? 0;
+  if (n > 0) { unmatchedLeft.set(k, n - 1); return true; }
+  return false;
+};
+
 const fail = [];
 const used = new Set();
 for (const v of violations) {
   const e = exempt[v.file];
+  // D5：未豁免文件，但全部来源点都是「从豁免文件搬来的已知内容」⇒ 守恒，不红；
+  // 有任一条认领不到名额（新内容 / 同键堆量）⇒ 落下面 D1 红（本条即 D6：新文件不免检）
+  if (!e && !recon.notEstablished && v.hits.length > 0 && !v.hits.some((h) => take(v.file, h))) continue;
   if (!e) {
     fail.push(
       `D1 屏上数值无来源记号：${v.file}\n` +
@@ -378,6 +411,12 @@ for (const v of violations) {
 for (const f of Object.keys(exempt)) {
   if (used.has(f)) continue;
   const cur = rows.find((r) => r.file === f);
+  // D5：该文件的来源点内容只是**搬走**了（在别的文件被认领，不在 missing 里）⇒ 不是过期豁免，不红
+  if (!recon.notEstablished && !cur) {
+    const mineMissing = recon.missing.filter((m) => m.meta?.file === f).length;
+    const mineTotal = Object.values(baseline.contents ?? {}).filter((m) => m?.file === f).reduce((a, m) => a + (m.count ?? 1), 0);
+    if (mineTotal > 0 && mineMissing === 0) continue; // 内容全被别处认领 = 搬家 ⇒ 守恒不红
+  }
   const why = !cur
     ? `${f} 已不含任何合成数值来源点（或文件已删/改名）`
     : `${f} 现在有 ${cur.markers.length} 条来源记号，不再是违规`;
