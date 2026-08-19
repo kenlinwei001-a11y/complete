@@ -297,9 +297,17 @@
   "check-unit-value-provenance.mjs:SCAN_ROOTS": {
    "verdict": "computed",
    "why": "四包 src 全递归（datacore/agentcore/frontend-shell/contracts）= 全仓源码面，无名单外盲区；与 outsource-redline:SCAN_ROOTS 同一现算形态（目录稳定、文件不手抄）。"
+  },
+  "check-graph-runtime.mjs:TERRITORY_FILES": {
+   "verdict": "criteria",
+   "why": "PRD-skill-runtime-orchestrator §3.4 点名的三处扇出落点文件 + GraphScheduler 本体，是判据本体而非名单缓存：新增扇出点位的人必须把文件加进来并过定性裁决，门的设计意图就是逼这个动作而不是跟着仓库自动长大。"
+  },
+  "check-graph-runtime.mjs:FANOUT_REGISTRY": {
+   "verdict": "criteria",
+   "why": "三处扇出的定性裁决表（收编/分工登记 + why）：这是 WO-GRAPH-FANOUT-W2 经评审的裁决结果本身，改定性等于改裁决，必须过评审而不是随手扩。门另有反向锁（实现里出现未登记 id 即红、登记缺标记即红），名册无法悄悄落后于实现。"
   }
  },
- "candidateCount": 74,
+ "candidateCount": 76,
  "rosterCount": 0,
  "ratchetHigh": 0
 }

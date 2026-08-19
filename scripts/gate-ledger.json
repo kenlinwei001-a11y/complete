@@ -1819,6 +1819,26 @@
     "note": "守的不变量：§8 每个断点编号只占一行（编号行数 == 唯一编号数）。来历：WO-BREAKPOINT-TRIAGE 实测 §8 有 13 个编号各占 2 行以上（G-GATE-ROSTER-HANDCOPIED 占 4 行），同编号几行各写各的状态、最老行留已证伪的判负理由——『断点闭没闭』要靠人脑并集。WO-ONTO-DEDUPE 已逐组判「同一笔账/子缺口」收口，本门守「不许再长回来」：同一编号要记第二笔，要么并入既有行，要么拆成 编号-1/编号-2 显式子项。坑两条（门头注有全文）：§8 单元格内嵌管道符列数不等 ⇒ 按整行行首抽编号不做列切分；行文写状态字面序列会被派单抽取器数进去 ⇒ 条目措辞刻意避开。"
    },
    "notes": ""
+  },
+  "check-graph-runtime.mjs": {
+   "alias": "graph-runtime:check",
+   "binding": "GATES_CHAIN",
+   "guardedPaths": [
+    "packages/contracts/src/skill-graph.ts",
+    "packages/contracts/dist/skill-graph.js",
+    "apps/agentcore/src/workflow/executor.ts",
+    "apps/agentcore/src/router/multi-route.ts",
+    "apps/agentcore/src/router/orchestrator.ts",
+    "apps/agentcore/src/skill-orchestrator.ts"
+   ],
+   "escalation": "审核方",
+   "ontologyRef": "docs/SYSTEM-ONTOLOGY.md §8 G-SERIAL-GRAPH-EXECUTION / G-SKILL-GRAPH-NO-RENDER-CLOSURE",
+   "provenRed": {
+    "kind": "MUTATION",
+    "evidence": "WO-GRAPH-FANOUT-W2 变异实录 2026-08-19：物理摘除 compileGraph 的 R11 收口门并重建 contracts dist 后，本门 RC=1 点名「G1a：无 render 节点的手写图被放行——R11 收口门不在位」；contracts skill-graph.test.ts 同变异 2 红；恢复后门 RC=0、测试 25/25 绿（红→恢复→绿闭环）",
+    "note": "金丝雀（合法图放行/抽边分层变/合成披露）与主判据共用同一 dist 实现；金丝雀红退 2 不退 1"
+   },
+   "notes": "判据：G1 R11 拒发点名/线性合成收口披露/菱形真拓扑+R6（动态·contracts dist，assertDistFresh 前置）；G2 executor 接 topoLayers 唯一拓扑层且兜底文案共享常量；G3 三处扇出 FANOUT-REG 登记制（territory 内每个 Promise.all/allSettled 前 12 行须有标记，登记集合恰为三键）；G4 render 执行侧锚点。W2 验收②落点。"
   }
  }
 }
