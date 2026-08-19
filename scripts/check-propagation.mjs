@@ -111,12 +111,12 @@ const scanDir = (dir) => {
   }
 };
 scanDir(SIM_DIR);
-console.log(`  · R14 扫描面：${SIM_DIR} ${simTsScanned} 个 .ts（下界 ${MIN_SIM_TS_FILES}，已过 ⇒ 射程没塌）`);
 if (simTsScanned < MIN_SIM_TS_FILES) {
   console.error(`⛔ 门自己瞎了：R14 扫描面 ${SIM_DIR} 只扫到 ${simTsScanned} 个 .ts（下界 ${MIN_SIM_TS_FILES}）—— 目录改名/枚举断了，不是「行业实体名清零」。`);
   console.error("   本次结论作废：**不许**读作「R14 零业务常数合规」。");
   process.exit(2);
 }
+console.log(`  · R14 扫描面：${SIM_DIR} ${simTsScanned} 个 .ts（下界 ${MIN_SIM_TS_FILES}，已过 ⇒ 射程没塌）`);
 if (!fail.some((f) => f.includes("R14"))) ok(`R14 零业务常数：${SIM_DIR} ${simTsScanned} 个 .ts（扫描面下界 ${MIN_SIM_TS_FILES}，已过）无行业实体名`);
 
 // 1) test-backed：跑传导单测（系数×延迟正确 + 改系数即改果 + delay 到达 + 改 param 即改果）。

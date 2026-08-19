@@ -82,7 +82,26 @@
 
 ## 三、变异反证（验收判据：扫描面改窄 ⇒ RC=2 报工具坏，不是变绿）
 
-实录见末节「变异实录」。每处变异做完即还原，`git status` porcelain 净。
+每处变异做完即还原（`git checkout --`），还原后 `git status --porcelain` 净。三处不同门：
+
+### 变异 1 · check-solver-license（CODE_DIRS 4 根砍成 1 根）
+
+- 手法：`CODE_DIRS = ["apps","packages","services","scripts"]` → `["services"]`
+- 结果：**RC=2**（非绿）——`⛔ 门自己瞎了：代码面只枚举到 2 个文件（下界 950）—— walk 静默 return 了…不是「违规清零」`
+- 还原后复跑 RC=0（1588 文件，下界 950 已过）
+
+### 变异 2 · check-view-reachable（ROOT 砍成子目录）
+
+- 手法：`ROOT = "apps/frontend-shell/src"` → `"apps/frontend-shell/src/views/sim"`
+- 结果：**RC=2**（非绿）——`⛔ 门自己瞎了：扫描面只枚举到 56 个源文件（下界 155）—— walk 断了…`
+- 还原后复跑 RC=0（257 文件，下界 155 已过）
+
+### 变异 3 · check-propagation（SIM_DIR 改成不存在的目录名）
+
+- 手法：`SIM_DIR = "apps/datacore/src/sim"` → `"apps/datacore/src/sim-renamed"`
+- 结果：**RC=2**（非绿）——`⛔ 门自己瞎了：R14 扫描面 …只扫到 0 个 .ts（下界 3）—— 目录改名/枚举断了…`
+- 此变异直接钉死本单要治的形态：旧代码 `scanDir` 对不存在目录**静默 return**，R14 会真空变绿；且在 vitest 块**之前**退出（秒回，不跑测试套件）
+- 还原后复跑 RC=1（存量红照旧：Temporal Trust + R14 两条内容判负，与本单无关）
 
 ## 四、铁纪律遵守声明
 
