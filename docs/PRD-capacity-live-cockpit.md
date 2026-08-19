@@ -69,7 +69,7 @@
 
 ### 3.2 三段"活"能力落点
 
-- **活能力①·原子因子活推演**（WO-CAPLIVE-1 引擎 + WO-CAPLIVE-2 前端）：`DynamicLeverPanel` 参数化后挂进 RiskDetailPanel，`targetType/targetProp` 传产能目标（`Base.weeklyCap` 或 `Process` 级），`scopeObjectIds` 传该基地×型号的真对象实例 → 杠杆集从**深化后的原子因子**反推、拖动 `generic_inference` 真重算。
+- **活能力①·原子因子活推演**（WO-CAPLIVE-1 引擎 + WO-CAPLIVE-2 前端）：`DynamicLeverPanel` 参数化后挂进 RiskDetailPanel，`targetType/targetProp` 传产能目标（`Base.formationCapDaily`/`Base.agingCapDaily`——`capacity.ts` 共享产能真读的基地日产能属性——或 `Process` 级），`scopeObjectIds` 传该基地×型号的真对象实例 → 杠杆集从**深化后的原子因子**反推、拖动 `generic_inference` 真重算。
 - **活能力②·人机对话**（WO-LIVE-NL 共享）：产能页新增真 NL 框（替 QaPanel 假 NL 或并存），问句 → orchestrator 识别产能 what-if 意图 → 路由 `generic_inference`/`gap_attribution(scope)`/`capacity_forecast` → 叙述带溯源。
 - **活能力③·方案存/分支/比对**（WO-LIVE-SCENARIO 共享 + WO-CAPLIVE-2 前端）：拨动结果存为 `SimCheckpoint`（solve-mode·`state`=jsonb{apply,kpis,provenance}）→ 分支变体 → `decision_play` 范式横比矩阵 → 一键采纳走 `adopt_mitigation`/`plan_change` Action。
 

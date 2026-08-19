@@ -19,23 +19,14 @@
     "   逐条属性表读回结论一致，且「真名」主张亦复核通过（minutes / delta·gapPct / cadenceKind）。"
   ],
   "ratchetHigh": 7,
-  "maxExemptions": 5,
+  "maxExemptions": 4,
   "adjudicated": [
-    "PRD-capacity-live-cockpit.md#REF:Base.weeklyCap",
     "PRD-capacity-live-cockpit.md#REF:Material.coverage",
     "PRD-capacity-inference-completion.md#REF:Metric.gap",
     "PRD-lever-binding-drift.md#REF:ChangeoverMatrix.changeoverMin",
     "PRD-sandbox-redesign.md#REF:Order.changeoverMin"
   ],
   "exemptions": [
-    {
-      "key": "PRD-capacity-live-cockpit.md#REF:Base.weeklyCap",
-      "prd": "docs/PRD-capacity-live-cockpit.md",
-      "line": 72,
-      "code": "PDG-4A",
-      "kind": "待修",
-      "why": "已裁定（WO-PRD-FIELD-AUDIT + 本门作者独立复核）：`Base` 实有 22 属性（baseId/name/kind/util/bottleneck/gwh/formationCapDaily/agingCapDaily/…），**无 `weeklyCap`**；产能类真名是 `gwh`/`formationCapDaily`/`agingCapDaily`。原文以现状口吻写「`targetType/targetProp` **传**产能目标（`Base.weeklyCap`…）」。修法 = 改成真实属性名或标为本 PRD 新增。"
-    },
     {
       "key": "PRD-capacity-live-cockpit.md#REF:Material.coverage",
       "prd": "docs/PRD-capacity-live-cockpit.md",
