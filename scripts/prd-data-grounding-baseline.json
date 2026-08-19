@@ -19,7 +19,7 @@
     "   逐条属性表读回结论一致，且「真名」主张亦复核通过（minutes / delta·gapPct / cadenceKind）。"
   ],
   "ratchetHigh": 7,
-  "maxExemptions": 7,
+  "maxExemptions": 6,
   "adjudicated": [
     "PRD-capacity-live-cockpit.md#REF:Base.weeklyCap",
     "PRD-capacity-live-cockpit.md#REF:Material.coverage",
@@ -28,14 +28,6 @@
     "PRD-sandbox-redesign.md#REF:Order.changeoverMin"
   ],
   "exemptions": [
-    {
-      "key": "PRD-sandbox-redesign.md#VAR:06caab0f7841171e",
-      "prd": "docs/PRD-sandbox-redesign.md",
-      "line": 364,
-      "code": "PDG-6",
-      "kind": "待修",
-      "why": "**这就是本门的立门案例本身**（A6）。判据「改 `SEG_REGISTRY` 一个值 → 结论真跟着变」只咬后半段：`SEG_REGISTRY` 确有数据，但「这条线属于哪几个 seg」这层归属不存在（本门实测 `Line` 仅 11 个属性，无任何 seg 归属字段），前半段不成立时该判据**无法失败**。修法不是删判据，是补一句「前置：线→seg 归属关系存在」并给该前置一条能红的判据。挂账而非立即红，是因为修它要动 PRD 正文与沙盘数据两半，属另一张单。"
-    },
     {
       "key": "PRD-simulation-sandbox.md#VAR:20207e562d88b168",
       "prd": "docs/PRD-simulation-sandbox.md",
