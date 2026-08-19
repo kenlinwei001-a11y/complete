@@ -19,21 +19,12 @@
     "   逐条属性表读回结论一致，且「真名」主张亦复核通过（minutes / delta·gapPct / cadenceKind）。"
   ],
   "ratchetHigh": 7,
-  "maxExemptions": 3,
+  "maxExemptions": 2,
   "adjudicated": [
-    "PRD-capacity-inference-completion.md#REF:Metric.gap",
     "PRD-lever-binding-drift.md#REF:ChangeoverMatrix.changeoverMin",
     "PRD-sandbox-redesign.md#REF:Order.changeoverMin"
   ],
   "exemptions": [
-    {
-      "key": "PRD-capacity-inference-completion.md#REF:Metric.gap",
-      "prd": "docs/PRD-capacity-inference-completion.md",
-      "line": 75,
-      "code": "PDG-4A",
-      "kind": "待修",
-      "why": "已裁定：`Metric` 实有 16 属性（含派生 `delta`/`gapPct`），**无 `gap`** —— **命名漂移**，真名是 `delta` 或 `gapPct`。原文以现状口吻写进「链路」定义（`Metric.gap → 结构反向分摊 → CausalFactor`），链路描述里的错名会一路传染下游实现。"
-    },
     {
       "key": "PRD-lever-binding-drift.md#REF:ChangeoverMatrix.changeoverMin",
       "prd": "docs/PRD-lever-binding-drift.md",

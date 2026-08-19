@@ -72,7 +72,7 @@
 
 ## §5《本体引用与影响》（铁律0）
 - **对象类型**：`Equipment`/`EquipmentOEE`（D1 全基地铺开）· `Base`(§B·displayName 归一源) · `Order`(bases/due) · `Metric`(seg_attain_ess·归因目标) · `CausalFactor`(因果叶) · `DemandSegment`(p50 预测) · `WorkOrder`(在产)。
-- **链路**：**归因链**（§3）`Metric.gap → 结构反向分摊(Order→基地→设备OEE/物料瓶颈) → CausalFactor`；本 PRD 补 D1（设备叶数据源）+ E1（base 作用域旁路）。**产能推演链** `capacity_forecast(per-base) → 前瞻投影(F1)`。
+- **链路**：**归因链**（§3）`Metric.delta → 结构反向分摊(Order→基地→设备OEE/物料瓶颈) → CausalFactor`（`Metric` 无 `gap` 属性——缺口真名是 `delta`（=actual−target），相对口径为派生 `gapPct`）；本 PRD 补 D1（设备叶数据源）+ E1（base 作用域旁路）。**产能推演链** `capacity_forecast(per-base) → 前瞻投影(F1)`。
 - **事件**：`gap.attributed`（已有·scope 版复用）；F1 无新事件（同步查询）。
 - **不变量**：R6 确定性（equipment 哈希派生·前瞻无时钟）· R13 provenance（每叶/每日行动可溯）· R14（设备数/系数非内联·走 BASE_REGISTRY/SolverParam）· 勾稽（Σ子+residual=父 gap 不破）。
 - **断点**：**新登 G-CAPACITY-BASE-DATA**（Equipment/OEE 仅常州→逐基地 OEE 根因不可用·D1 闭）+ **G-GAP-SCOPE**（gap_attribution 无 base×factor 作用域·E1 闭）。回写 §2E（求解器 scope）+ §8（两断点）+ §4（Equipment 数据流全基地）。
