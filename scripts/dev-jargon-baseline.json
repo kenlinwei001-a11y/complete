@@ -1,5 +1,5 @@
 {
- "note": "docs/CONVENTION-ui-information-layering.md §3.3「开发的话不许上屏」棘轮。只数**会渲染出去的字**（JSX 文本 + 文案型属性字面量 + locale 面的全部非键名字面量），注释/变量名/testid 不算。",
+ "note": "docs/CONVENTION-ui-information-layering.md §3.3「开发的话不许上屏」棘轮。只数**会渲染出去的字**（JSX 文本 + 文案型属性字面量 + locale 面的全部非键名字面量），注释/变量名/testid 不算。 contents 段（2026-08-19 · WO-RATCHET-CONSERVATION-SWEEP）= 逐条命中的**文件无关内容键**（形态+命中原文；D5 全局守恒 + D6 unlisted 落账）：搬家不改键不红；现算有而本段无 ⇒ 红且点名（新文件不免检、同数调包必现形）。",
  "spec": "docs/CONVENTION-ui-information-layering.md",
  "gate": "scripts/check-dev-jargon-onscreen.mjs",
  "total": 1,
@@ -13,6 +13,15 @@
  "filesByForm": {
   "apps/frontend-shell/src/components/QueryDock/QueryDock.tsx": {
    "环境变量名": 1
+  }
+ },
+ "contents": {
+  "60a397e9590bead6": {
+   "file": "apps/frontend-shell/src/components/QueryDock/QueryDock.tsx",
+   "label": "[环境变量名] VITE_MOCK",
+   "count": 1,
+   "origin": "auto",
+   "why": "机器落账（dev-jargon:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
   }
  }
 }

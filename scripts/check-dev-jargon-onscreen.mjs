@@ -93,6 +93,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { createRequire } from "node:module";
+import { contentKey, reconcileContents, buildContentsSegment, conservationCanary } from "./lib/ratchet-conservation.mjs";
 
 const require = createRequire(import.meta.url);
 const ROOT = process.cwd();
@@ -729,6 +730,8 @@ function main() {
 
   // 金丝雀先跑，任何模式都跑
   const cf = runCanaries();
+  const cc = conservationCanary(); // D5/D6 内容对账金丝雀（与 reconcileContents 共用本体）
+  if (!cc.ok) cf.push(`D5/D6 内容对账金丝雀不过：${cc.got}（期望：${cc.want}）`);
   if (cf.length) {
     console.error("⛔ 门自己瞎了 —— 金丝雀不中，**不许**据此报「屏上没有开发话」：");
     cf.forEach((f) => console.error("   · " + f));
@@ -813,6 +816,11 @@ function main() {
   }
 
   if (has("--update")) {
+    const prev = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : null;
+    // D5/D6 内容段：逐条命中的文件无关内容键（形态+命中原文）。只降不升 —— 消失的键不残留。
+    const curEntries = [];
+    for (const r of rows) for (const h of r.hits) curEntries.push({ key: contentKey(h.form, h.match), file: r.file, label: `[${h.form}] ${h.match}` });
+    const contents = buildContentsSegment(curEntries, prev?.contents, "dev-jargon:check");
     const out = {
       note: `${SPEC} §3.3「开发的话不许上屏」棘轮。只数**会渲染出去的字**（JSX 文本 + 文案型属性字面量 + locale 面的全部非键名字面量），注释/变量名/testid 不算。`,
       spec: SPEC,
@@ -829,6 +837,7 @@ function main() {
           return [r.file, m];
         })
       ),
+      contents,
     };
     writeFileSync(BASELINE, JSON.stringify(out, null, 1) + "\n");
     console.log(`✅ 基线已写：${rows.length} 个文件 / ${total} 条 → ${relative(ROOT, BASELINE)}`);
@@ -842,6 +851,32 @@ function main() {
     process.exit(2);
   }
 
+  // ── D5 全局守恒 + D6 unlisted 落账（共享实现 scripts/lib/ratchet-conservation.mjs）──────
+  // 内容键 = 形态 + 命中原文（文件无关：把同一句话搬到别的文件不改键）。
+  //  · 搬家：源文件名额空出、目标文件同键认领 ⇒ D5 守恒，不红（旧行为：目标文件 0→N 红 + 源文件松弛红）；
+  //  · 现算有而 contents 无 ⇒ D6 红且点名：新文件不免检，同数调包（删旧黑话堆新黑话）也现形；
+  //  · 基线有而现算无（全仓都找不到）⇒ 松弛红（免检名额，同旧逻辑语义，粒度从文件收到内容）。
+  const curEntries = [];
+  for (const r of rows) for (const h of r.hits) curEntries.push({ key: contentKey(h.form, h.match), file: r.file, label: `[${h.form}] ${h.match}` });
+  const recon = reconcileContents({
+    gate: "dev-jargon:check",
+    contents: base.contents ?? null,
+    current: curEntries,
+    tightenCmd: "node scripts/check-dev-jargon-onscreen.mjs --update",
+  });
+  // 未匹配名额按 (文件,键) 记账，供下面把「哪几条命中是没落账的」挑出来
+  const unmatchedLeft = new Map();
+  for (const u of recon.unmatched) {
+    const k = u.file + " " + u.key;
+    unmatchedLeft.set(k, (unmatchedLeft.get(k) ?? 0) + 1);
+  }
+  const isUnmatched = (file, h) => {
+    const k = file + " " + contentKey(h.form, h.match);
+    const n = unmatchedLeft.get(k) ?? 0;
+    if (n > 0) { unmatchedLeft.set(k, n - 1); return true; }
+    return false;
+  };
+
   // ── 松弛检测：基线**高于**实测 = 一个免检名额（2026-08-14 变异反证当场抓出）──────────
   // 实测经过：往 DataBuilderPage.tsx 的真 JSX 里塞 **1** 条开发话 ⇒ 门 **RC=0 放行**；
   // 塞 2 条才红。原因：基线记 `DataBuilderPage.tsx: 1`，而该文件早被修干净、实测 0 ——
@@ -849,11 +884,18 @@ function main() {
   // 形态（铁律 0.6 句式）：**「我用『没有超过基线』当作『没有新增』的证据，而前者并不度量后者。」**
   // ⇒ 棘轮只降不升还不够，**降了就必须当场收紧**，否则余量会一格一格攒成免检额度。
   // 注意 `rows` 只含**有命中**的文件，零命中的文件根本不出现在里面 —— 所以必须反向遍历基线。
+  // 2026-08-19（WO-RATCHET-CONSERVATION-SWEEP）：建了 contents 段后松弛按**内容**判 ——
+  // 全仓都找不到那条内容才算松弛；搬到别的文件（D5 matched）不算。
   const actual = new Map(rows.map((r) => [r.file, r.hits.length]));
   const slack = [];
-  for (const [f, b] of Object.entries(base.files ?? {})) {
-    const a = actual.get(f) ?? 0;
-    if (a < b) slack.push(`${f}：基线 ${b} > 实测 ${a} ⇒ 余 ${b - a} 格免检名额`);
+  if (recon.notEstablished) {
+    for (const [f, b] of Object.entries(base.files ?? {})) {
+      const a = actual.get(f) ?? 0;
+      if (a < b) slack.push(`${f}：基线 ${b} > 实测 ${a} ⇒ 余 ${b - a} 格免检名额`);
+    }
+  } else {
+    for (const m of recon.missing)
+      slack.push(`${m.meta?.file ?? "?"}：基线内容「${m.meta?.label ?? m.key}」全仓实测已不存在 ⇒ 余 ${m.meta?.count ?? 1} 格免检名额`);
   }
   if (slack.length) {
     console.error(`❌ dev-jargon:check 棘轮松弛（${slack.length} 个文件）——**这不是通过**\n`);
@@ -884,7 +926,8 @@ function main() {
   const fails = [];
   for (const r of rows) {
     const b = base.files[r.file] ?? 0;
-    if (r.hits.length > b) {
+    // 老基线（无 contents 段）：原行为原样，一行不改
+    if (recon.notEstablished ? r.hits.length > b : b > 0 && r.hits.length > b) {
       const now = formsOf(r.hits);
       const was = base.filesByForm?.[r.file] ?? {};
       const grew = Object.keys(now).filter((f) => now[f] > (was[f] ?? 0));
@@ -897,6 +940,18 @@ function main() {
         `${r.file} 屏上开发话 ${b} → ${r.hits.length}［${head}］：\n      ` +
           pick.slice(0, 5).map((h) => `L${h.line} "${h.match}"（${h.why}）`).join("\n      ")
       );
+    }
+    if (!recon.notEstablished) {
+      // D6 unlisted：现算有而基线 contents 无的命中逐条点名 ——
+      // 未登记文件的新内容（匹配上的搬家内容不在此列），或登记文件里「计数没涨但内容换了」的调包。
+      const newHits = r.hits.filter((h) => isUnmatched(r.file, h));
+      const numericAlreadyRed = b > 0 && r.hits.length > b;
+      if (newHits.length && !numericAlreadyRed) {
+        fails.push(
+          `${r.file} 屏上开发话现算有而基线 contents 无（D6 unlisted，${newHits.length} 条）：\n      ` +
+            newHits.slice(0, 5).map((h) => `L${h.line} "${h.match}"（${h.why}）`).join("\n      ")
+        );
+      }
     }
   }
 
