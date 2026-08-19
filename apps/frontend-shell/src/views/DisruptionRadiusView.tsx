@@ -11,6 +11,8 @@ import { ExportReportButton, usePageView } from "./sim/shared";
 import type { ProvenanceReport } from "./sim/exportProvenance";
 // WO-SANDBOX-53CELLS · 判据 U3（点节点看凭什么）：本页有图（dr-fanout）但此前没传 onNodeClick ⇒ 点了没反应。
 import { DagNodeInspector, type DagNodeFacts } from "./sim/DagNodeInspector";
+// WO-U2-STEPWISE-2 · 判据 U2（分步标口径）：步骤态真正驱动结果分段（不是挂一条装饰步骤条）。
+import { SolverStepBar, useSolverStep, type SolverStep } from "./sim/SolverStepBar";
 // WO-EDGE-PANEL-3PAGES：横向要求「所有推演页都要能关掉一条传导边看结果怎么变」的共享件。
 import EdgeActivePanel from "./sim/EdgeActivePanel";
 
@@ -184,6 +186,44 @@ interface RadiusOutput {
   leafCount: number;
   summary: string;
 }
+
+/**
+ * WO-U2-STEPWISE-2 · 判据 **U2** 的步骤契约（本页无 `ReasoningGraph`，故按 `SolverStep` 直写）。
+ *
+ * 四步逐条对着**本页真实的求解链**写，`data` 一律是真字段名（不是白话）——
+ * 字段没了/改名了引用当场断，屏上当场看得出（对冲机制见 `sim/SolverStepBar.tsx` 头注）。
+ * 规则原文与 `fanoutNodeFacts`（判据 U3 的节点面板）**同源同字**：同一环在两处不许有两种说法。
+ */
+const DR_STEPS: SolverStep[] = [
+  {
+    key: "chain",
+    label: "链路倒推",
+    data: "rootType / rootId / layers[]（type + viaField）",
+    solver: "前端倒推 deriveDisruptionLayers（未求解）",
+    rule: "沿「谁引用我」逐层下探；同层多个候选按 类型名→字段名 字典序取第一个；被关掉的关系边跳过（同本体同来源重跑一致）",
+  },
+  {
+    key: "fanout",
+    label: "逐层扇出",
+    data: "layers[].count（逐层命中数）",
+    solver: "supplier_disruption_radius",
+    rule: "本层命中 = { o ∈ 该层类型 | o.viaField ∈ 上一层命中集 }；命中 0 即停止下探（断链是结论，不是取数失败）",
+  },
+  {
+    key: "radius",
+    label: "半径与敞口",
+    data: "radius / totalAffected / leafType / leafCount / summary",
+    solver: "supplier_disruption_radius",
+    rule: "半径 = 命中数 > 0 的层数；波及总数 = Σ 各层命中数；叶层 = 最后一个命中 > 0 的层",
+  },
+  {
+    key: "detail",
+    label: "逐层明细",
+    data: "layers[].ids[]（受冲击对象 id）",
+    solver: "supplier_disruption_radius",
+    rule: "逐层列出受冲击对象 id；首屏 12 个，其余就地展开（不导航）",
+  },
+];
 
 const CHIP_CAP = 12;
 /** 受冲击对象 chip 的样式（首屏 12 个与「就地展开」里的其余若干共用一份，两处分家会长歪）。 */
@@ -629,6 +669,11 @@ function RadiusResult({
   /** 判据 U4b · 半径外那一侧（`deriveExcludedHops` 现算，非本组件推断）。 */
   excludedHops: readonly ExcludedHopVM[];
 }) {
+  /**
+   * 判据 U2 步骤态。默认末步 = 完整结果（与改前屏面逐字节一致 ⇒ 存量测试零回归）。
+   * `upto(n)` 是本页唯一分段闸：点第 N 步 ⇒ 屏上的数只显示到第 N 步为止。
+   */
+  const { active: drStep, setActive: setDrStep, upto } = useSolverStep(DR_STEPS.length);
   const disp = (k: string) => displayOf.get(k) ?? k;
   // 判据 U3：点节点看凭什么（受控浮层 —— 同时满足 U8「看明细不换页」）。
   const [inspectId, setInspectId] = useState<string | null>(null);
@@ -695,7 +740,16 @@ function RadiusResult({
 
   return (
     <>
-      {/* 指标条：半径 / 波及总数 / 叶层敞口 */}
+      {/* ── 判据 U2 · 分步推演（步骤态**真正驱动**下面各块的分段）─────────────────────
+          第 1 步的产物 = 上方选择区那条「反向扇出链」（`dr-chain`，本体倒推的真结果），
+          所以这里不再复述一遍 —— 同一个事实在屏上只留一个出处（RL3）。 */}
+      <div className="panel" data-testid="dr-steps-panel">
+        <SolverStepBar steps={DR_STEPS} active={drStep} onSelect={setDrStep} testId="dr-steps" />
+      </div>
+
+      {/* 指标条：半径 / 波及总数 / 叶层敞口。
+          U2 分段闸：这三个数是第 3 步「半径与敞口」的产物（radius / totalAffected / leafCount）。 */}
+      {upto(3) && (
       <div className="panel" data-testid="dr-metrics" style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
         <Metric label="影响半径" value={`${out.radius} 层`} testId="dr-radius" tone={out.radius > 0 ? "warn" : "muted"} />
         <Metric label="波及对象总数" value={String(out.totalAffected)} testId="dr-total" tone="warn" />
@@ -706,9 +760,10 @@ function RadiusResult({
           tone={leafLayer && leafLayer.count > 0 ? "danger" : "muted"}
         />
       </div>
+      )}
 
       {/* 半径 0 诚实提示：来源无下游波及。 */}
-      {out.radius === 0 && (
+      {out.radius === 0 && upto(3) && (
         <div className="panel" data-testid="dr-zero-radius" style={{ borderLeft: "3px solid var(--line2)" }}>
           <div style={{ fontSize: 12.5, color: "var(--muted)" }}>
             断供「<b>{out.rootId}</b>」未波及任何下游对象（半径 0）——无对象在第一层引用该来源。诚实报，不编扩散。
@@ -716,7 +771,8 @@ function RadiusResult({
         </div>
       )}
 
-      {/* 分层扇出 DAG */}
+      {/* 分层扇出 DAG。U2 分段闸：图上每层的命中数 = 第 2 步「逐层扇出」的产物（layers[].count）。 */}
+      {upto(2) && (
       <div className="panel" data-testid="dr-dag">
         <div className="section-title">分层扇出（断供根 → 逐层扩散 · 叶层敞口高亮）</div>
         <div style={{ overflowX: "auto" }}>
@@ -728,6 +784,7 @@ function RadiusResult({
           点任一节点 → 看这一层的来源字段与判定规则。
         </div>
       </div>
+      )}
 
       <DagNodeInspector
         facts={inspectId ? fanoutNodeFacts(inspectId, out, disp, leafIdx, excludedHops) : null}
@@ -735,7 +792,9 @@ function RadiusResult({
         testId="dr-node-inspect"
       />
 
-      {/* 逐层受冲击对象（叶层 = 敞口） */}
+      {/* 逐层受冲击对象（叶层 = 敞口）。
+          U2 分段闸：逐条 id 是第 4 步「逐层明细」的产物（layers[].ids），比命中数晚一步。 */}
+      {upto(4) && (
       <div className="panel" data-testid="dr-layers">
         <div className="section-title">逐层受冲击对象</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -798,11 +857,14 @@ function RadiusResult({
           ))}
         </div>
       </div>
+      )}
 
-      {/* 求解器 summary（诚实投影，不改写） */}
+      {/* 求解器 summary（诚实投影，不改写）。U2 分段闸：它讲的就是半径与敞口那一层（第 3 步）。 */}
+      {upto(3) && (
       <div className="panel" data-testid="dr-summary" style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.7 }}>
         {out.summary}
       </div>
+      )}
     </>
   );
 }

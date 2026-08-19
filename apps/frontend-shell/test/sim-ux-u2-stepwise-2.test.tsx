@@ -492,3 +492,105 @@ describe("WO-U2-STEPWISE-2 · sop-balance：步骤态真正驱动结果分段（
     expect(screen.getByTestId("sop-kpi-gap")).toBeInTheDocument();
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// disruption-radius（影响半径）：步骤 = 链路倒推 → 逐层扇出 → 半径与敞口 → 逐层明细
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** 本体：Supplier ← Material(supplierRef) ← Order(materialRef) ← Customer(orderRef)。 */
+const DR_TYPES = [
+  { key: "Supplier", displayName: "供应商", status: "ACTIVE", properties: [{ propKey: "supplierId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }] },
+  { key: "Material", displayName: "物料", status: "ACTIVE", properties: [{ propKey: "matId", dataType: "string", isPrimaryKey: true }, { propKey: "supplierRef", dataType: "ref", refToTypeKey: "Supplier" }] },
+  { key: "Order", displayName: "销售订单", status: "ACTIVE", properties: [{ propKey: "soId", dataType: "string", isPrimaryKey: true }, { propKey: "materialRef", dataType: "ref", refToTypeKey: "Material" }] },
+  { key: "Customer", displayName: "客户", status: "ACTIVE", properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true }, { propKey: "orderRef", dataType: "ref", refToTypeKey: "Order" }] },
+];
+const DR_OBJECTS: Record<string, { id: string; type: string; props: Record<string, unknown> }[]> = {
+  Supplier: [{ id: "sup_1", type: "Supplier", props: { supplierId: "华东电解液", name: "华东电解液" } }],
+  Material: [
+    { id: "m1", type: "Material", props: { matId: "正极A", supplierRef: "华东电解液" } },
+    { id: "m2", type: "Material", props: { matId: "电解液B", supplierRef: "华东电解液" } },
+  ],
+  Order: [
+    { id: "o1", type: "Order", props: { soId: "SO1", materialRef: "正极A" } },
+    { id: "o2", type: "Order", props: { soId: "SO2", materialRef: "电解液B" } },
+  ],
+  Customer: [{ id: "c1", type: "Customer", props: { custId: "CUST1", orderRef: "SO1" } }],
+};
+const DR_PK: Record<string, string> = { Supplier: "supplierId", Material: "matId", Order: "soId", Customer: "custId" };
+
+/** 忠实迷你引擎（与 `disruption-radius.test.tsx` 同口径：按 args 现算，不按 rootId 写死）。 */
+function drSolve(args: { rootType: string; rootId: string; layers: { type: string; viaField: string }[] }) {
+  let frontier = new Set<string>([args.rootId]);
+  const result: { type: string; viaField: string; count: number; ids: string[] }[] = [];
+  let radius = 0;
+  for (const layer of args.layers) {
+    const objs = DR_OBJECTS[layer.type] ?? [];
+    const pk = DR_PK[layer.type];
+    const hit = objs.filter((o) => frontier.has(String(o.props[layer.viaField] ?? "")));
+    const ids = hit.map((o) => String((pk ? o.props[pk] : undefined) ?? o.id)).sort();
+    result.push({ type: layer.type, viaField: layer.viaField, count: ids.length, ids });
+    if (ids.length > 0) radius += 1;
+    frontier = new Set(ids);
+    if (ids.length === 0) break;
+  }
+  const leaf = result[result.length - 1];
+  const totalAffected = result.reduce((s, l) => s + l.count, 0);
+  return {
+    rootType: args.rootType, rootId: args.rootId, layers: result, radius, totalAffected,
+    leafType: leaf?.type ?? null, leafCount: leaf?.count ?? 0,
+    summary: `断供「${args.rootId}」影响半径 ${radius} 层、波及 ${totalAffected} 个对象；叶层 ${leaf?.type ?? "—"} ${leaf?.count ?? 0} 个`,
+  };
+}
+
+describe("WO-U2-STEPWISE-2 · disruption-radius：步骤态真正驱动结果分段", () => {
+  it("U2-DR-1 · 四步逐层收：第 3 步没有逐层明细、第 2 步没有半径 3 层、第 1 步连扇出图都没有", async () => {
+    loginAs("planner");
+    server.use(
+      http.get("*/a/v1/ontology/object-types", () => HttpResponse.json(DR_TYPES)),
+      http.get("*/a/v1/objects", ({ request }) => {
+        const type = new URL(request.url).searchParams.get("type") ?? "";
+        const items = DR_OBJECTS[type] ?? [];
+        return HttpResponse.json({ items, total: items.length });
+      }),
+      http.post("*/a/v1/solvers/supplier_disruption_radius/invoke", async ({ request }) => {
+        const body = (await request.json().catch(() => ({}))) as { args?: { rootType: string; rootId: string; layers: { type: string; viaField: string }[] } };
+        return HttpResponse.json({ data: drSolve(body.args!), snapshotVersion: "ov-dr" });
+      }),
+    );
+    renderApp("/v/disruption-radius");
+    await screen.findByTestId("dr-layers");
+
+    // 默认末步 = 完整结果（改前屏面）。
+    for (let n = 1; n <= 4; n++) expect(screen.getByTestId(`dr-steps-step-${n}`)).toBeInTheDocument();
+    expect(screen.getByTestId("dr-steps-meta-data")).toHaveTextContent("layers[].ids");
+    expect(screen.getByTestId("dr-steps-meta-solver")).toHaveTextContent("supplier_disruption_radius");
+    expect(screen.getByTestId("dr-radius")).toHaveTextContent("3 层");
+    expect(screen.getByTestId("dr-total")).toHaveTextContent("5");
+    expect(screen.getByTestId("dr-layer-count-0")).toHaveTextContent("2 个");
+
+    // ── 第 3 步「半径与敞口」：半径/波及还在，逐层明细退场 ──
+    fireEvent.click(screen.getByTestId("dr-steps-step-3"));
+    await waitFor(() => expect(screen.queryByTestId("dr-layers")).toBeNull());
+    expect(screen.queryByTestId("dr-layer-count-0")).toBeNull();
+    expect(screen.getByTestId("dr-radius")).toHaveTextContent("3 层");
+
+    // ── 第 2 步「逐层扇出」：半径 3 层与波及 5 个都退场，扇出图还在 ──
+    fireEvent.click(screen.getByTestId("dr-steps-step-2"));
+    await waitFor(() => expect(screen.queryByTestId("dr-radius")).toBeNull());
+    expect(screen.queryByTestId("dr-total")).toBeNull();
+    expect(screen.queryAllByText(/波及 5 个对象/)).toHaveLength(0); // ← 具体的数不在了
+    expect(screen.getByTestId("dr-fanout")).toBeInTheDocument();
+
+    // ── 第 1 步「链路倒推」：扇出图也退场，只剩上方那条倒推出来的链 ──
+    fireEvent.click(screen.getByTestId("dr-steps-step-1"));
+    await waitFor(() => expect(screen.queryByTestId("dr-dag")).toBeNull());
+    expect(screen.queryByTestId("dr-fanout")).toBeNull();
+    expect(screen.getByTestId("dr-chain")).toHaveTextContent("supplierRef");
+
+    // ── 切回末步：全部回来 ──
+    fireEvent.click(screen.getByTestId("dr-steps-step-4"));
+    await screen.findByTestId("dr-layers");
+    expect(screen.getByTestId("dr-radius")).toHaveTextContent("3 层");
+    expect(screen.getByTestId("dr-layer-count-0")).toHaveTextContent("2 个");
+  });
+});
