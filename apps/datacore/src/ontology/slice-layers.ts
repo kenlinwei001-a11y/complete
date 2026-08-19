@@ -69,6 +69,30 @@ export interface SliceLayerInput {
 const ARG_CANDIDATE_CAP = 8;
 
 /**
+ * WO-SLICE-REQUIRED-ARGS：切片占位符正则与 `ontology-core.ts` resolveTemplate 一字不差
+ * （口径单源，改一处必同改）。整串锚定 —— 占位符必须占满整个值，`"SO-{{args.x}}"` 这类
+ * 拼接串 resolveTemplate 不解 ⇒ 这里也不算需参（与执行期行为严格一致，宁漏勿谎）。
+ */
+export const SLICE_ARG_PLACEHOLDER = /^\{\{\s*args\.([\w]+)\s*\}\}$/;
+
+/**
+ * 从 `spec.root.selector` 抽出该切片声明的试切参数名（byKey + filter 值），去重字典序。
+ * 纯函数（R6）：清单投影 / 缺参诊断共用这一条，保证「徽标说的需参」与「诊断说的需参」同源。
+ * 注意 hop.filter 的占位符 executeSlice 也解（matchFilter 走同一 resolveTemplate），但本函数
+ * 只扫 root.selector —— 与既有 diagnoseEmptyGraph 口径一致；种子切片实测 hop 占位符为零。
+ */
+export function sliceRequiredArgs(spec: SliceLayerInput["spec"]): string[] {
+  const found: string[] = [];
+  const scan = (raw: unknown): void => {
+    const m = typeof raw === "string" ? SLICE_ARG_PLACEHOLDER.exec(raw) : null;
+    if (m) found.push(m[1] as string);
+  };
+  if (spec.root.selector.byKey !== undefined) scan(spec.root.selector.byKey);
+  for (const raw of Object.values(spec.root.selector.filter ?? {})) scan(raw);
+  return uniqSorted(found);
+}
+
+/**
  * 判定「子图为什么是空的」——**空子图不是「这些层没数据」**（WO-SLICE-16-LAYERS 复核发现）。
  *
  * 实测（2026-08-10 · demo 租户 · 真后端 4093 端口逐条跑完 98 条切片）：无参调用时 **86 条非空 / 12 条空**，
@@ -85,8 +109,8 @@ function diagnoseEmptyGraph(
   rootObjectTotal: number,
   rootObjectSamples: SliceLayerInput["rootObjectSamples"],
 ): SliceEmptyGraph {
-  // 占位符正则与 ontology-core.ts:596 resolveTemplate 一字不差（口径单源，改一处必同改）。
-  const PLACEHOLDER = /^\{\{\s*args\.([\w]+)\s*\}\}$/;
+  // 占位符正则 = 模块级 SLICE_ARG_PLACEHOLDER（口径单源，与 resolveTemplate 一字不差）。
+  const PLACEHOLDER = SLICE_ARG_PLACEHOLDER;
   // 占位符所在的**位置**要记住：filter 的 key 就是 root 对象上的属性名，byKey 则取 objectKey。
   // 只记参数名不记位置，就没法回答「这个参数该填什么」——那正是缺参诊断最有用的一半。
   const argSource = new Map<string, { from: "prop"; propKey: string } | { from: "objectKey" }>();

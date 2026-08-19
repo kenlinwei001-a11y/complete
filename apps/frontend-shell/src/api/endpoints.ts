@@ -1706,7 +1706,7 @@ export const createEvalCase = (body: {
 }) => api.b<EvalCase>("/b/v1/evals", { method: "POST", body });
 
 /** 本体切片清单（治理：切片=可追溯子图 root→hops）。 */
-export interface SliceSummary { sliceKey: string; version: number; rootType: string; hops: number; linkKeys: string[]; maxNodes?: number; fixtures: number }
+export interface SliceSummary { sliceKey: string; version: number; rootType: string; hops: number; linkKeys: string[]; maxNodes?: number; fixtures: number; requiredArgs?: string[] }
 export const fetchSlices = () => api.a<SliceSummary[]>("/a/v1/ontology/slices");
 
 /** C7 切片编辑器：root+targets 经规划器自动求最短路径（root→hops），复用既有 planSlice（A3.3，确定性图算法）。 */

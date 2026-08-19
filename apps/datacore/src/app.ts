@@ -87,7 +87,7 @@ import { selfCheckGaps } from "./databuilder/selfcheck.js";
 import type { BuildPlan, ClosurePolicy, SliceLayersResponse } from "@platform/contracts";
 import { buildSliceIndex, lookupReusable, lookupReusableByQuestion } from "./ontology/slice-index.js";
 import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
-import { projectSliceLayers } from "./ontology/slice-layers.js"; // WO-SLICE-16-LAYERS · 切片十六层只读投影
+import { projectSliceLayers, sliceRequiredArgs } from "./ontology/slice-layers.js"; // WO-SLICE-16-LAYERS · 切片十六层只读投影；WO-SLICE-REQUIRED-ARGS · 摘要需参抽取（同一口径）
 // WO-V4-INSPECT · 业务流程节点检视只读投影（纯函数·零 IO·十六层复用上面那份 projectSliceLayers）
 import { adhocCarrierSliceKey, adhocCarrierSliceSpec, projectProcessInspect } from "./process/inspect.js";
 import { generateRefbaseOntology, refbaseNodeCount, refbaseDigest } from "./ontology/refbase.js";
@@ -4281,15 +4281,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/ontology/slices", async (req) => {
     const specs = await repos.sliceSpecs.list(ctx(req).tenantId);
     return specs
-      .map((s) => ({
-        sliceKey: s.sliceKey,
-        version: s.version,
-        rootType: s.spec.root.typeKey,
-        hops: s.spec.paths.reduce((n, p) => n + p.length, 0),
-        linkKeys: [...new Set(s.spec.paths.flat().map((p) => p.linkKey))],
-        maxNodes: s.spec.maxNodes,
-        fixtures: s.spec.contractFixtures?.length ?? 0,
-      }))
+      .map((s) => {
+        // WO-SLICE-REQUIRED-ARGS：摘要投影加性带出 requiredArgs（root selector 声明的试切参数，
+        // 与缺参诊断同一抽取口径 sliceRequiredArgs）。**只在需参时才带这个键** —— 不需参的切片
+        // 响应逐字节不变（契约加性缺省），既有消费方零影响。
+        const requiredArgs = sliceRequiredArgs(s.spec);
+        return {
+          sliceKey: s.sliceKey,
+          version: s.version,
+          rootType: s.spec.root.typeKey,
+          hops: s.spec.paths.reduce((n, p) => n + p.length, 0),
+          linkKeys: [...new Set(s.spec.paths.flat().map((p) => p.linkKey))],
+          maxNodes: s.spec.maxNodes,
+          fixtures: s.spec.contractFixtures?.length ?? 0,
+          ...(requiredArgs.length > 0 ? { requiredArgs } : {}),
+        };
+      })
       .sort((a, b) => (a.sliceKey < b.sliceKey ? -1 : 1));
   });
   // §3 声明式切片：注册 + 执行（A6 逐跳剪枝、参数化、截断）。

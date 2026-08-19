@@ -2574,8 +2574,10 @@ function scenarioCapGain(apply: { value: number }[]): number {
 }
 
 // WO-SLICE-GOVERNANCE-FULL：切片治理 mock 状态（stateful → promote 后徽标翻转、编辑器预填一致）。
-const mockSliceGov: Record<string, { rootType: string; fixtures: number }> = {
-  model_capacity_network: { rootType: "Model", fixtures: 1 },
+// WO-SLICE-REQUIRED-ARGS：requiredArgs 忠实复刻真后端清单投影 —— 需参切片才带这个键
+// （真种子：order_fulfillment_360 等 4 条 root selector 写 {{args.so}}/{{args.key}}）。
+const mockSliceGov: Record<string, { rootType: string; fixtures: number; requiredArgs?: string[] }> = {
+  model_capacity_network: { rootType: "Model", fixtures: 1, requiredArgs: ["so"] },
   base_risk_profile: { rootType: "Base", fixtures: 0 },
 };
 function mockSliceFixture(rootType: string) {
@@ -2603,7 +2605,7 @@ function mockSliceGraph(sliceKey: string) {
 }
 /** 测试用：复位切片治理 mock 状态（模块级状态跨用例复用，beforeEach 调用避免顺序耦合）。 */
 export function __resetSliceGovMock(): void {
-  mockSliceGov.model_capacity_network = { rootType: "Model", fixtures: 1 };
+  mockSliceGov.model_capacity_network = { rootType: "Model", fixtures: 1, requiredArgs: ["so"] };
   mockSliceGov.base_risk_profile = { rootType: "Base", fixtures: 0 };
 }
 
@@ -3608,8 +3610,10 @@ export const handlers = [
 
   http.get("*/a/v1/ontology/slices", () =>
     HttpResponse.json(
+      // requiredArgs 与真后端同行为：需参才带键（加性缺省 ⇒ 不需参行逐字节不变）。
       Object.entries(mockSliceGov).map(([sliceKey, v]) => ({
         sliceKey, version: 1, rootType: v.rootType, hops: 1, linkKeys: ["model_producible_at"], maxNodes: 200, fixtures: v.fixtures,
+        ...(v.requiredArgs && v.requiredArgs.length > 0 ? { requiredArgs: v.requiredArgs } : {}),
       })),
     ),
   ),

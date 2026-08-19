@@ -147,6 +147,18 @@ export default function SlicesPage() {
                   >
                     {expanded === s.sliceKey ? "▾ " : "▸ "}{s.sliceKey}
                   </button>
+                  {/* WO-SLICE-REQUIRED-ARGS（G-SLICE-ROOT-ARGS-UNDISCOVERABLE）：root selector 声明了
+                      {{args.X}} 的切片不给参解不出子图 —— 清单上必须一眼能看出来，不需参的不标。 */}
+                  {(s.requiredArgs?.length ?? 0) > 0 && (
+                    <span
+                      className="badge blue"
+                      data-testid={`slice-reqargs-${s.sliceKey}`}
+                      style={{ marginLeft: 6 }}
+                      title={`试切需带参数：${s.requiredArgs!.map((a) => `args.${a}`).join("、")}`}
+                    >
+                      需参数：{s.requiredArgs!.join("、")}
+                    </span>
+                  )}
                 </td>
                 <td className="mono">v{s.version}</td>
                 <td><span className="badge">{s.rootType}</span></td>
