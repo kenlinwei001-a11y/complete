@@ -82,10 +82,12 @@ describe("WO-U2-STEPWISE-2 · what-if：步骤态真正驱动结果分段", () =
     expect(screen.getAllByText("1100").length).toBeGreaterThan(0);
 
     // ── 第 3 步「读数」：影响面计数在，逐行明细（第 4 步）退场 ──
+    // ⚠ **这一条刻意排在最前**：变异反证（`upto` 改恒真）要求红在「那个数还在」，
+    //   而不是红在「某个组件还在」。所以第一条断言咬的就是**屏上那个具体的数 1100**。
     fireEvent.click(screen.getByTestId("wi-steps-step-3"));
-    await waitFor(() => expect(screen.queryByTestId("wi-deltas")).toBeNull());
+    await waitFor(() => expect(screen.queryAllByText("1100")).toHaveLength(0)); // ← 具体的数不在了
+    expect(screen.queryByTestId("wi-deltas")).toBeNull();
     expectNoneByPrefix(/^wi-after-/);
-    expect(screen.queryAllByText("1100")).toHaveLength(0); // ← 具体的数不在了（变异时它还在 ⇒ 本条红）
     expect(screen.getByTestId("wi-affected-count")).toHaveTextContent("2");
 
     // ── 第 2 步「两条推演路」：连影响面读数也退场，只剩求解基准回执 ──
@@ -248,15 +250,16 @@ describe("WO-U2-STEPWISE-2 · cleanroom-attr：三档各自的步骤态真正驱
     expect(screen.getByTestId("cr-bn-steps-meta-rule")).toHaveTextContent("优先级");
 
     // ── 第 3 步「瓶颈与争用」：瓶颈的数还在，降级结论退场 ──
+    // ⚠ 第一条咬**屏上那句具体的结论文字**（变异反证要红在这里，不是红在「组件还在」）。
     fireEvent.click(screen.getByTestId("cr-bn-steps-step-3"));
-    await waitFor(() => expect(screen.queryByTestId("cr-bn-downgraded-Furnace-01")).toBeNull());
-    expect(screen.queryAllByText(/优先级最低/)).toHaveLength(0);
+    await waitFor(() => expect(screen.queryAllByText(/优先级最低/)).toHaveLength(0));
+    expect(screen.queryByTestId("cr-bn-downgraded-Furnace-01")).toBeNull();
     expect(screen.getByTestId("cr-bn-row-Furnace-01")).toHaveTextContent("138");
 
     // ── 第 2 步「共享瓶颈求解」：连需求 138 也退场，只剩求解回执 ──
     fireEvent.click(screen.getByTestId("cr-bn-steps-step-2"));
-    await waitFor(() => expect(screen.queryByTestId("cr-bn-row-Furnace-01")).toBeNull());
-    expect(screen.queryAllByText("138")).toHaveLength(0); // ← 具体的数不在了
+    await waitFor(() => expect(screen.queryAllByText("138")).toHaveLength(0)); // ← 具体的数不在了
+    expect(screen.queryByTestId("cr-bn-row-Furnace-01")).toBeNull();
     expect(screen.getByTestId("cr-bn-summary")).toHaveTextContent("1 个共享瓶颈");
 
     // ── 第 1 步「参数倒推」：回执也退场，只剩这次真正用的那组倒推参数 ──
@@ -387,9 +390,10 @@ describe("WO-U2-STEPWISE-2 · decision-play：步骤态真正驱动结果分段"
     expect(screen.getByTestId("dp-narrowed-pct")).toHaveTextContent("21.94%");
 
     // ── 第 3 步「候选方案」：连收窄 21.94% 也退场，方案六维还在 ──
+    // ⚠ 第一条咬**那个具体的数 21.94%**（变异反证要红在这里）。
     fireEvent.click(screen.getByTestId("dp-steps-step-3"));
-    await waitFor(() => expect(screen.queryByTestId("dp-narrowed-pct")).toBeNull());
-    expect(screen.queryAllByText(/21\.94/)).toHaveLength(0); // ← 具体的数不在了
+    await waitFor(() => expect(screen.queryAllByText(/21\.94/)).toHaveLength(0)); // ← 具体的数不在了
+    expect(screen.queryByTestId("dp-narrowed-pct")).toBeNull();
     expect(screen.getByTestId("dp-matrix-opt-backup-cert-closesGap")).toHaveTextContent("3.2%");
 
     // ── 第 2 步「根因」：方案的数退场，根因还在 ──
@@ -578,10 +582,11 @@ describe("WO-U2-STEPWISE-2 · disruption-radius：步骤态真正驱动结果分
     expect(screen.getByTestId("dr-radius")).toHaveTextContent("3 层");
 
     // ── 第 2 步「逐层扇出」：半径 3 层与波及 5 个都退场，扇出图还在 ──
+    // ⚠ 第一条咬**那句带数的结论「波及 5 个对象」**（变异反证要红在这里）。
     fireEvent.click(screen.getByTestId("dr-steps-step-2"));
-    await waitFor(() => expect(screen.queryByTestId("dr-radius")).toBeNull());
+    await waitFor(() => expect(screen.queryAllByText(/波及 5 个对象/)).toHaveLength(0)); // ← 具体的数不在了
+    expect(screen.queryByTestId("dr-radius")).toBeNull();
     expect(screen.queryByTestId("dr-total")).toBeNull();
-    expect(screen.queryAllByText(/波及 5 个对象/)).toHaveLength(0); // ← 具体的数不在了
     expect(screen.getByTestId("dr-fanout")).toBeInTheDocument();
 
     // ── 第 1 步「链路倒推」：扇出图也退场，只剩上方那条倒推出来的链 ──
