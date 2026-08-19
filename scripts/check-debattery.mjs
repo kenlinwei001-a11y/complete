@@ -173,6 +173,12 @@ const DATA_BASELINE = "scripts/frontend-data-baseline.json";
 const DATA_ALLOW = "hardcoded-data-allow";
 const MIN_ROWS = 3;
 const MIN_NUMS = 6;
+/* 扫描面自证的独立口径分母（2026-08-19 · WO-GATE-SCAN-SURFACE-CENSUS）：
+ * MIN_SCAN_FILES   —— 探测器 A（内联业务常数）面 = ROOTS 两目录递归 .ts/.tsx，当日现算 154，取 ~58%。
+ * MIN_DATA_SCAN_FILES —— 探测器 B（写死数据表）面 = DATA_ROOTS 剔 mocks/test，当日现算 241，取 ~60%。
+ * 任一面塌到下界以下 ⇒ 枚举器/目录坏了，报「工具坏了」RC=2 —— 不许读作「视图没写死业务常数」。 */
+const MIN_SCAN_FILES = 90;
+const MIN_DATA_SCAN_FILES = 145;
 
 /** 从 `= [` / `= {` 处起做括号配平，返回块文本与结束行号（粗略跳过字符串与注释）。 */
 function balancedBlock(src, openIdx) {
@@ -242,6 +248,11 @@ if (canaryHits.length !== 1 || canaryHits[0].name !== "CMP") {
 }
 
 const files = ROOTS.flatMap(walk).sort();
+if (files.length < MIN_SCAN_FILES) {
+  console.error(`⛔ 门自己瞎了：探测器 A 扫描面只枚举到 ${files.length} 个文件（下界 ${MIN_SCAN_FILES}）——枚举器/目录坏了，不是「视图真的没文件」。`);
+  console.error("   本次结论作废：**不许**读作「没有新增内联业务常数」。");
+  process.exit(2);
+}
 const counts = {};
 const detail = {};
 for (const f of files) {
@@ -256,6 +267,11 @@ for (const f of files) {
 const dataFiles = DATA_ROOTS.flatMap(walk)
   .filter((f) => !/[\\/]mocks[\\/]/.test(f) && !/\.test\./.test(f) && !/__tests__/.test(f))
   .sort();
+if (dataFiles.length < MIN_DATA_SCAN_FILES) {
+  console.error(`⛔ 门自己瞎了：探测器 B 扫描面只枚举到 ${dataFiles.length} 个文件（下界 ${MIN_DATA_SCAN_FILES}）——枚举器/目录坏了，不是「写死数据表清零了」。`);
+  console.error("   本次结论作废：**不许**读作「前端没有写死数据表」。");
+  process.exit(2);
+}
 const dataCounts = {};
 const dataDetail = {};
 for (const f of dataFiles) {
@@ -282,7 +298,7 @@ for (const [f, c] of Object.entries(counts)) {
 const shrunk = Object.entries(baseline).filter(([f, b]) => (counts[f] ?? 0) < b);
 
 const total = Object.values(counts).reduce((a, b) => a + b, 0);
-console.log(`· 扫描 ${files.length} 文件（${ROOTS.join(" + ")}）`);
+console.log(`· 扫描 ${files.length} 文件（${ROOTS.join(" + ")}）（扫描面下界 ${MIN_SCAN_FILES}，已过 ⇒ 射程没塌）`);
 console.log(`· 内联业务常数命中：${total}（${Object.keys(counts).length} 文件）；基线 ${Object.values(baseline).reduce((a, b) => a + b, 0)}`);
 if (shrunk.length) console.log(`· 已收窄 ${shrunk.length} 文件（迁移成果，可 \`pnpm debattery:check --update\` 收紧基线）`);
 
@@ -307,7 +323,7 @@ for (const [f, c] of Object.entries(dataCounts)) {
 const dataShrunk = Object.entries(dataBaseline).filter(([f, b]) => (dataCounts[f] ?? 0) < b);
 const dataTotal = Object.values(dataCounts).reduce((a, b) => a + b, 0);
 
-console.log(`\n· 前端写死数据表扫描：${dataFiles.length} 文件（${DATA_ROOTS.join(" + ")}，排除 mocks/ 与 test）`);
+console.log(`\n· 前端写死数据表扫描：${dataFiles.length} 文件（${DATA_ROOTS.join(" + ")}，排除 mocks/ 与 test）（扫描面下界 ${MIN_DATA_SCAN_FILES}，已过）`);
 console.log(`· 金丝雀：命中 ${canaryHits.length} 条（探测器 B 与主扫描共用同一实现，工具已自证）`);
 console.log(`· 命中：${dataTotal}（${Object.keys(dataCounts).length} 文件）；基线 ${Object.values(dataBaseline).reduce((a, b) => a + b, 0)}`);
 if (dataShrunk.length) console.log(`· 已收窄 ${dataShrunk.length} 文件（可 --update 收紧基线）`);

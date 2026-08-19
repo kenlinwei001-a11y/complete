@@ -97,6 +97,18 @@ function walk(dir) {
 }
 for (const r of SRC_ROOTS) walk(join(ROOT, r));
 
+/* 扫描面自证的独立口径分母（2026-08-19 · WO-GATE-SCAN-SURFACE-CENSUS）：
+ * byBase 索引的全仓文件总量下界 —— 当日现算 1803（7 根，剔 node_modules/dist/.git/coverage/worktrees），取 ~60%。
+ * 索引塌到下界以下 ⇒ walk 断了（如某根被改名后静默 catch），锚点会成批「解析不到」——
+ * 那是**工具坏了**（RC=2），不许读作「锚点全失效」那种内容红，更不许在任何路径上读作绿。 */
+const MIN_INDEX_FILES = 1080;
+const indexedFiles = [...byBase.values()].reduce((a, arr) => a + arr.length, 0);
+if (indexedFiles < MIN_INDEX_FILES) {
+  console.error(`⛔ 门自己瞎了：全仓文件索引只建了 ${indexedFiles} 条（下界 ${MIN_INDEX_FILES}）—— walk 断了，不是仓里文件没了。`);
+  console.error("   本次结论作废：**不许**读作「锚点有效 / 锚点失效」—— 本门这次什么都没证明。");
+  process.exit(2);
+}
+
 /** 路径解析：优先按仓根相对路径；否则按 basename 唯一后缀匹配。返回 {rel} | {ambiguous:[]} | null */
 function resolvePath(p) {
   if (existsSync(join(ROOT, p))) return { rel: p };
@@ -586,6 +598,7 @@ console.log(
   `· import 行护栏：实查 ${importScanned.length}/${anchors.length} 条 · 坏锚点 ` +
     `${problems.filter((p) => p.kind === "IMPORT_LINE_ANCHOR").length} 条 · 金丝雀 ${canary.hits}/${canary.total} 全中（检测逻辑活着）`,
 );
+console.log(`· 扫描面自证：全仓文件索引 ${indexedFiles} 条（下界 ${MIN_INDEX_FILES}）⇒ 射程没塌`);
 if (notScanned) {
   console.log(
     `  ⚠️ 另有 ${notScanned} 条**未受本护栏覆盖**（非"已确认干净"）：其中 ${blindAmbiguous} 条是裸文件名锚点路径不唯一` +

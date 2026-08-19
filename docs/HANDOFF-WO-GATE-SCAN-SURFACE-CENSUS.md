@@ -55,7 +55,7 @@
 
 | 门 | 扫描面 | 现算 | 新下界 | 改前 RC | 改后 RC |
 |---|---|---|---|---|---|
-| check-debattery | ROOTS(views+pages/admin) 递归 .ts/.tsx | 154 | `MIN_SCAN_FILES=90` | 1（存量红） | 1 |
+| check-debattery | ROOTS(views+pages/admin) 递归 .ts/.tsx ＋ DATA_ROOTS(frontend/src 剔 mocks/test) | 154 ＋ 241 | `MIN_SCAN_FILES=90` ＋ `MIN_DATA_SCAN_FILES=145` | 1（存量红） | 1 |
 | check-migration-numbering | apps/*/migrations 下 .sql | 52（2 目录） | `MIN_SQL_FILES=30` | 0 | 0 |
 | check-ontology-anchors | SRC_ROOTS(7 根） 全文件索引 byBase | 1803 | `MIN_INDEX_FILES=1080` | 1（存量红） | 1 |
 | check-outsource-redline | SCAN_ROOTS(4 src 根） 递归 .ts/.tsx | 634 | `MIN_SCAN_FILES=380` | 0 | 0 |

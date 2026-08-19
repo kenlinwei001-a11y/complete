@@ -113,6 +113,12 @@ const SCAN_ROOTS = [
   "packages/contracts/src",
 ];
 
+/* 扫描面自证的独立口径分母（2026-08-19 · WO-GATE-SCAN-SURFACE-CENSUS）：
+ * 4 根递归 .ts/.tsx 总量下界 —— 当日现算 634，取 ~60%。
+ * 塌到下界以下 ⇒ walk/根目录坏了，报「工具坏了」RC=2 —— 不许读作「无裸字面量回潮」。
+ * （既有的 `scanned.length === 0` 检查走 fails→exit(1)，只拦全塌；本下界拦部分塌陷且 RC 归类正确。） */
+const MIN_SCAN_FILES = 380;
+
 /** 与 C08/外协相关的行才判定（避免把无关的 0.2 全网误伤）。 */
 const RELEVANT_LINE = /C08|外协|outsource/i;
 /** 红线形状的裸字面量：0.2 / 0.20 / 0.22 / 0.25 / 0.3 / 0.30，或 20% / 22% / 25% / 30%。 */
@@ -220,6 +226,11 @@ function walk(dir, out = []) {
 }
 
 const scanned = SCAN_ROOTS.flatMap((r) => walk(r));
+if (scanned.length < MIN_SCAN_FILES) {
+  console.error(`⛔ 门自己瞎了：扫描面只枚举到 ${scanned.length} 个源文件（下界 ${MIN_SCAN_FILES}）—— walk/扫描根坏了，不是「仓里文件没了」。`);
+  console.error("   本次结论作废：**不许**读作「消费端全部派生、无裸字面量回潮」。");
+  process.exit(2);
+}
 if (scanned.length === 0) {
   fails.push("断言④ 扫描到 0 个源文件 —— 扫描根失效（目录搬家？），本门等于空跑。");
 }
@@ -276,7 +287,7 @@ if (fails.length > 0) {
 }
 console.log(
   `· outsource-redline：C08 红线单源 = OUTSOURCE_REDLINE.maxRatio(${currentRatio}) · ` +
-    `${CONSUMERS.length} 个消费端全部派生 · ${scanned.length} 个源文件无裸字面量回潮 · 合成耦合不变量成立。`,
+    `${CONSUMERS.length} 个消费端全部派生 · ${scanned.length} 个源文件无裸字面量回潮（扫描面下界 ${MIN_SCAN_FILES}，已过 ⇒ 射程没塌） · 合成耦合不变量成立。`,
 );
 console.log(
   "⚠ 诚实边界：本门只扫源码。规则 DSL 尚不支持 expression 引用 params → 运行时改了 expression 而没改 " +

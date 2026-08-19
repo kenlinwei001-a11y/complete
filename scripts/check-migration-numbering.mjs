@@ -138,6 +138,12 @@ if (dirs.length === 0) {
   process.exit(1);
 }
 
+/* 扫描面自证的独立口径分母（2026-08-19 · WO-GATE-SCAN-SURFACE-CENSUS）：
+ * 全仓 migrations 目录下的 .sql 总量下界 —— 当日现算 52（2 目录），取 ~58%。
+ * dirs 非空但 .sql 总量塌到下界以下 ⇒ 枚举过滤坏了（如 .sql 后缀判断失手），
+ * 报「工具坏了」RC=2 —— 不许读作「没有撞号」。 */
+const MIN_SQL_FILES = 30;
+
 let totalFiles = 0;
 let totalDupGroups = 0;
 
@@ -219,7 +225,13 @@ for (const rel of dirs) {
   );
 }
 
-console.log(`· 迁移号唯一门：扫描 ${dirs.length} 个 migrations 目录 · 共 ${totalFiles} 个迁移文件 · 撞号组 ${totalDupGroups}`);
+if (totalFiles < MIN_SQL_FILES) {
+  console.error(`⛔ 门自己瞎了：全部 migrations 目录只枚举到 ${totalFiles} 个 .sql（下界 ${MIN_SQL_FILES}）——枚举/过滤坏了，不是「迁移文件没了」。`);
+  console.error("   本次结论作废：**不许**读作「编号唯一、无撞号」。");
+  process.exit(2);
+}
+
+console.log(`· 迁移号唯一门：扫描 ${dirs.length} 个 migrations 目录 · 共 ${totalFiles} 个迁移文件（下界 ${MIN_SQL_FILES}，已过 ⇒ 射程没塌） · 撞号组 ${totalDupGroups}`);
 for (const line of info) console.log(line);
 
 if (fail.length) {
