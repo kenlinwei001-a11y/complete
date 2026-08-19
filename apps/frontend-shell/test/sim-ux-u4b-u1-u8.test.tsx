@@ -108,6 +108,18 @@ describe("判据 U4b · disruption-radius：半径外那一侧与半径内同图
     expect(why.textContent).toContain("本次已关掉这条关系边");
     // 理由是**可见文本**，不是 title/aria 里藏着的（判据要"看得见"）。
     expect(why).toBeVisible();
+
+    /*
+      ── 被排除节点**点得开**，且面板真答得出「为什么不在半径里」──────────────────
+      ⚠ 这条不是锦上添花：`DagNodeInspector` 在渲染时会跑 `assertDagNodeFacts`
+        （缺 `src` 或 `rule` 直接抛）。没有这次点击，本单新加的那几个 facts 分支
+        **只有真人点到才会炸** —— 那正是「接了线没验」。
+    */
+    await userEvent.click(excluded);
+    const panel = await screen.findByTestId("dr-node-inspect");
+    expect(panel.textContent).toContain("半径外");
+    // 「改道/断链」与「被关掉」两种成因必须分得开（同族戒律：一个数盖住两个事实）。
+    expect(panel.textContent).toContain("这一次已关掉这条关系边");
   });
 
   it("U4b-C1-反证 · 变异：把被排除项从节点集里过滤掉 ⇒ 红在「图上只剩入选项」，不是红在「组件不见了」", () => {
