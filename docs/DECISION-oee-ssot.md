@@ -231,7 +231,7 @@ node scripts/check-oee-ssot.mjs --explain apps/frontend-shell/src/views/capacity
 | 引擎侧落点不动 | ✅ | `capacity.ts` `equipmentOee()` / `vle-oracle.ts` / `capacity-factors.ts` 落点仍 `oee_current`，`G-LEVER-BINDING-DRIFT` 修复全部继续有效 |
 | 修被证伪的反解说明（§1.2） | ✅ | `capacity-factors.ts` 保留原文作历史背景 + 2026-08-16 订正（同源派生后无需反解；反解误差 0.0901 → 实测 0.000619） |
 | §2 表的同屏混用两行 | ✅ | `factorOntology.ts` 圈号 ③ 改名「设备OEE（综合·oee_current·EquipmentOEE 事实表7日均值）」、④⑦ 标「③分解·事实表7日均值」；`PROP_DISPLAY_NAMES` 四个 OEE 中文名全部带「事实表7日均值」（`battery.ts:1930-1931`）——含门看不见的运行时下发屏 |
-| 先修 `physicalTopology.ts` 分页 18%（5460 行只拿 1000） | ❌ **未修，残账挂本体 §8** | 属 `views/sim/**` 边界（多 dev 在动），已登记不静默 |
+| 先修 `physicalTopology.ts` 分页 18%（5460 行只拿 1000） | ❌ **未修，残账挂本体 §8 `G-OBJECTS-QUERY-1000-CAP`** | 伤口在 `app.ts`/`ontology.ts` 查询层（≤1000 截断），不在 sim 屏——该屏已绕走 `/objects/aggregate`（服务端全量读），屏上数不假；2026-08-19 复核补齐挂账 |
 
 ### 8.2 WO-OEE-SSOT-C 独立复核（不是照抄执行方结论，全部亲手重跑）
 
@@ -260,7 +260,7 @@ node scripts/check-oee-ssot.mjs --explain apps/frontend-shell/src/views/capacity
 
 ### 8.3 残账（如实登记，不静默）
 
-1. **`EquipmentOEE` 分页 18%**（5460 行只拿 1000，`views/sim/physicalTopology.ts`）：未修，归 sim/ 边界，本体 §8 已挂账。
+1. **`EquipmentOEE` 分页 18%**（5460 行只拿 1000）：未修，但定性已订正——伤口在 `app.ts`/`ontology.ts` 查询层（`GET /a/v1/objects` 写死 1000 · `objects/query` limit≤1000），**不在** `views/sim/**`；物理拓扑屏已绕走 `POST /a/v1/objects/aggregate`（服务端全量读，屏上数不假）。2026-08-19 复核时本体 §8 实无挂账（上一版本节称「已挂账」不实），已补登 `G-OBJECTS-QUERY-1000-CAP`。
 2. **测试注释里的旧数值**（`gap-attribution.test.ts:285-287`、`order-dependent-pick.seam.test.ts:272-273`）：是裁决前病灶的**历史记账**，
    断言本身现算跟随新口径；留作判例不删。
 3. **聚合口径的人为规定**：事实表本身不规定跨日聚合口径，现派生统一为「7 日算术均值（round 3）」——
