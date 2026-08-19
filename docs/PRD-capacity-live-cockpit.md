@@ -171,7 +171,7 @@ interface ByProcessModelRow {
 
 **🚦范围边界·只碰**：`apps/datacore/src/solvers/capacity.ts`（computeRollup 加 per-工序×型号-物料颗粒·`byProcessModel`）· `apps/datacore/src/solvers/risk.ts`（bottleneck 因子枚举扩）· `apps/datacore/src/solvers/service.ts`（`LEVER_FACTOR_PROPS:230-235` 扩 + `discoverLevers` grain 作用域 + `gapAttribution` 已支持 scope 不改算法）· `packages/contracts/src/solvers.ts`（`CapacityForecastOutputSchema` additive `byProcessModel` + `ForecastArgs.granularity`）· 新 `packages/contracts/src/capacity-factors.ts`（`CapacityFactorBinding` 20 因子绑定单源）。
 **禁碰**：任何前端文件、agentcore、`recompute` 数学内核（`ontology-core.ts`）。
-**SEAM-GATE（datacore 内·变异反证非重言）**：`capacity-atom-factor.test.ts`——改一个 `Process×Model` 的 `Material.coverage`/`Process.yield_baseline` → `capacity_forecast.byProcessModel` 对应格真变 + `discoverLevers` 反推出该原子因子且敏感度非零；改坏因子绑定→红咬。
+**SEAM-GATE（datacore 内·变异反证非重言）**：`capacity-atom-factor.test.ts`——改一个 `Process×Model` 的 `MaterialBalance.coverage`/`Process.yield_baseline` → `capacity_forecast.byProcessModel` 对应格真变 + `discoverLevers` 反推出该原子因子且敏感度非零；改坏因子绑定→红咬。
 **handoff 分支**：`claude/handoff-wo-caplive-atom`。
 
 ### WO-CAPLIVE-2-COCKPIT（前端整单 · 1 fresh dev · owns RiskBoardView）

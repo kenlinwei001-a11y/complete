@@ -19,22 +19,13 @@
     "   逐条属性表读回结论一致，且「真名」主张亦复核通过（minutes / delta·gapPct / cadenceKind）。"
   ],
   "ratchetHigh": 7,
-  "maxExemptions": 4,
+  "maxExemptions": 3,
   "adjudicated": [
-    "PRD-capacity-live-cockpit.md#REF:Material.coverage",
     "PRD-capacity-inference-completion.md#REF:Metric.gap",
     "PRD-lever-binding-drift.md#REF:ChangeoverMatrix.changeoverMin",
     "PRD-sandbox-redesign.md#REF:Order.changeoverMin"
   ],
   "exemptions": [
-    {
-      "key": "PRD-capacity-live-cockpit.md#REF:Material.coverage",
-      "prd": "docs/PRD-capacity-live-cockpit.md",
-      "line": 174,
-      "code": "PDG-4A",
-      "kind": "待修",
-      "why": "已裁定：`Material` 实有 19 属性，**无 `coverage`**；且同名字段在 `MaterialBalance` 上也不存在（该类型只有 matBalId/material/unit/netDemandTon/ltaPct/gapTon/etaDate）⇒ **类型名可能也写错了**。要命的是这条是某 SEAM-GATE 的**验收判据本身**（「改一个 `Process×Model` 的 `Material.coverage` → …」）——**改无可改，这道门今天写不出来**，正是本门 PDG-6 要治的「判据无法失败」同族。"
-    },
     {
       "key": "PRD-capacity-inference-completion.md#REF:Metric.gap",
       "prd": "docs/PRD-capacity-inference-completion.md",
