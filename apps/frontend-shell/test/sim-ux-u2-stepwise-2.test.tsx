@@ -323,3 +323,93 @@ describe("WO-U2-STEPWISE-2 · cleanroom-attr：三档各自的步骤态真正驱
     expect(screen.getByTestId("cr-ma-inv-Product-9")).toHaveTextContent("-28");
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// decision-play（决策推演）：步骤 = 图的五层
+//   越线指标 → 根因 → 候选方案 → 推荐组合 → 触发规则
+// ⚠ 这是**推演过程**分几步算，不是「事情分几步做」——判据 U2 显式排除后者。
+// ══════════════════════════════════════════════════════════════════════════════
+
+const DP_OPTIONS = [
+  { optionId: "opt-backup-cert", factorId: "cf-upstream-cut", label: "缩短备份供应商认证周期", sourceKind: "solver",
+    closesGap: 3.2, cost: 248, cycleDays: 112, risk: 0.25, exposure: 0.23, reversibility: 0.8,
+    provenance: { kind: "求解器", basis: "BackupSupplierPool.certWeeks", drillType: "BackupSupplierPool", drillId: "pool-cathode", drillValue: 16 } },
+  { optionId: "opt-lta-clause", factorId: "cf-upstream-cut", label: "长协加价格联动条款", sourceKind: "agent",
+    closesGap: 4.1, cost: 90, cycleDays: 30, risk: 0.2, exposure: 0.075, reversibility: 0.9,
+    provenance: { kind: "策略推理", basis: "LongTermAgreement.priceLinked", drillType: "LongTermAgreement", drillId: "lta-lfp-cylk", drillValue: 0 } },
+];
+const DP_PAYLOAD = {
+  rootCause: { factorId: "cf-upstream-cut", label: "上游减供", metricKey: "seg_attain_ess", gap: 27.8, unit: "%" },
+  options: DP_OPTIONS,
+  matrix: DP_OPTIONS.map((o) => ({
+    optionId: o.optionId, label: o.label,
+    dims: { closesGap: o.closesGap, cost: o.cost, cycleDays: o.cycleDays, risk: o.risk, exposure: o.exposure, reversibility: o.reversibility },
+  })),
+  triggers: [
+    { triggerId: "trig-backup-cert", signalRef: "licarb_pct_cum", signalValue: 14.29, op: ">", threshold: 12, fired: true, action: "启动备份供应商认证", thresholdSource: "trigger.default" },
+  ],
+  recommendedPlan: {
+    planId: "plan-cf-upstream-cut", optionIds: ["opt-lta-clause", "opt-backup-cert"],
+    steps: [
+      { phase: "即刻", action: "长协加价格联动条款", optionRef: "opt-lta-clause" },
+      { phase: "本季", action: "缩短备份供应商认证周期", optionRef: "opt-backup-cert" },
+    ],
+    totalClosesGap: 6.1, totalCost: 338,
+  },
+  sandboxNarrowing: { beforeGap: 27.8, afterGap: 21.7, narrowedPct: 21.94, ticks: 0 },
+  // ⚠ 摘要刻意**不复述收窄百分比**：本用例要咬的「具体的数」是 21.94%，
+  //   若摘要里也印一份，它在根因区（第 2 步）里存活 ⇒ 全屏文本断言会把闸咬成假红，
+  //   看着像「闸没生效」，其实是同一个数在屏上有两个出处。固定量只留一处。
+  summary: "根因「上游减供」→ 2 方案比对·推荐组合 2 项补 6.1%",
+};
+
+describe("WO-U2-STEPWISE-2 · decision-play：步骤态真正驱动结果分段", () => {
+  it("U2-DP-1 · 五步逐层收：第 4 步没有触发规则行、第 3 步没有收窄 21.94%、第 2 步没有方案 3.2%、第 1 步连根因都没有", async () => {
+    loginAs("planner");
+    server.use(http.post("*/a/v1/solvers/decision_play/invoke", () => HttpResponse.json({ data: DP_PAYLOAD, snapshotVersion: "ov-dp" })));
+    renderApp("/v/decision-play");
+    await screen.findByTestId("dp-root-cause");
+
+    // 默认末步 = 完整结果（改前屏面）：五层的数全在。
+    for (let n = 1; n <= 5; n++) expect(screen.getByTestId(`dp-steps-step-${n}`)).toBeInTheDocument();
+    expect(screen.getByTestId("dp-root-gap")).toHaveTextContent("27.8%");
+    expect(screen.getByTestId("dp-matrix-opt-backup-cert-closesGap")).toHaveTextContent("3.2%");
+    expect(screen.getByTestId("dp-narrowed-pct")).toHaveTextContent("21.94%");
+    expect(screen.getByTestId("dp-action-opt-backup-cert")).toBeInTheDocument();
+
+    // ── 第 4 步「推荐组合」：收窄读数还在，逐条触发规则退场 ──
+    fireEvent.click(screen.getByTestId("dp-steps-step-4"));
+    await waitFor(() => expect(screen.queryByTestId("dp-action-opt-backup-cert")).toBeNull());
+    expect(screen.getByTestId("dp-narrowed-pct")).toHaveTextContent("21.94%");
+
+    // ── 第 3 步「候选方案」：连收窄 21.94% 也退场，方案六维还在 ──
+    fireEvent.click(screen.getByTestId("dp-steps-step-3"));
+    await waitFor(() => expect(screen.queryByTestId("dp-narrowed-pct")).toBeNull());
+    expect(screen.queryAllByText(/21\.94/)).toHaveLength(0); // ← 具体的数不在了
+    expect(screen.getByTestId("dp-matrix-opt-backup-cert-closesGap")).toHaveTextContent("3.2%");
+
+    // ── 第 2 步「根因」：方案的数退场，根因还在 ──
+    fireEvent.click(screen.getByTestId("dp-steps-step-2"));
+    await waitFor(() => expect(screen.queryByTestId("dp-matrix")).toBeNull());
+    expect(screen.queryByTestId("dp-options")).toBeNull();
+    expect(screen.getByTestId("dp-root-gap")).toHaveTextContent("27.8%");
+
+    // ── 第 1 步「越线指标」：连根因都退场，只剩这条链的起点（哪个指标越线、缺口多少） ──
+    fireEvent.click(screen.getByTestId("dp-steps-step-1"));
+    await waitFor(() => expect(screen.queryByTestId("dp-root-cause")).toBeNull());
+    // 承载根因结论的两个元素（缺口读数 + 摘要）都不在了。
+    // ⚠ 这里**不做全屏文本断言**：推演过程图（判据 U3）一直挂着，它的节点标签本就写着
+    //   「根因 上游减供 / 缺口 27.8%」——那是**这条链的地图**，不是这一步的读数。
+    //   分段闸管的是「读数」，不是「地图」；拿地图上的字去咬闸会得出「闸没生效」的假红。
+    expect(screen.queryByTestId("dp-root-gap")).toBeNull();
+    expect(screen.queryByTestId("dp-summary")).toBeNull();
+    expect(screen.queryAllByText(/2 方案比对/)).toHaveLength(0);
+    expect(screen.getByTestId("dp-step-inputs-gap")).toHaveTextContent("27.8%");
+
+    // ── 切回末步：全部回来 ──
+    fireEvent.click(screen.getByTestId("dp-steps-step-5"));
+    await screen.findByTestId("dp-action-opt-backup-cert");
+    expect(screen.getByTestId("dp-narrowed-pct")).toHaveTextContent("21.94%");
+    expect(screen.getByTestId("dp-matrix-opt-backup-cert-closesGap")).toHaveTextContent("3.2%");
+  });
+});

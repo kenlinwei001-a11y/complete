@@ -21,10 +21,13 @@ import {
   toDagEdges,
   toDagNodeFacts,
   toDagNodes,
+  toSolverSteps,
   type ReasoningEdge,
   type ReasoningGraph,
   type ReasoningNode,
 } from "./sim/reasoningGraph";
+// WO-U2-STEPWISE-2 · 判据 U2（分步标口径）。步骤契约**投影自上面那张同一份图**，不手写第二份。
+import { SolverStepBar, useSolverStep } from "./sim/SolverStepBar";
 // WO-U10-THREE-PAGES · 判据 U10：版面字号硬底 12px。本面板只借它一个类，见该文件头。
 import dpStyles from "./DecisionPlayPanel.module.css";
 
@@ -1212,6 +1215,14 @@ function DecisionPlay({
   // WO-U3-DAG-DESIGN · 判据 U3：推演过程图。
   // `rows` 与下方行动清单**读同一份** `buildActionRows(out)`（规则↔方案的对法只有一处实现，RL3）。
   const graph = useMemo(() => decisionPlayGraph(out, buildActionRows(out)), [out]);
+  /**
+   * WO-U2-STEPWISE-2 · 判据 U2 步骤契约 —— **同一份 `graph` 的另一种画法**（投影，不是第二份事实）。
+   * 五步 = 图的五层：越线指标 → 根因 → 候选方案 → 推荐组合 → 触发规则。
+   * ⚠ 这是**推演过程**分几步算，不是「事情分几步做」——判据 U2 显式排除后者。
+   * `upto(n)` 是本页唯一分段闸：点第 N 步 ⇒ 屏上的数只显示到第 N 步为止。默认末步 = 完整结果。
+   */
+  const dpSteps = useMemo(() => toSolverSteps(graph), [graph]);
+  const { active: dpStep, setActive: setDpStep, upto } = useSolverStep(dpSteps.length);
   const [dagNodeKey, setDagNodeKey] = useState<string | null>(null);
   const dagNode = dagNodeKey === null ? null : findNode(graph, dagNodeKey);
 
@@ -1336,7 +1347,19 @@ function DecisionPlay({
       {/* ── ⑥ 落点自己的解法（只在锚了落点时出现·WO-ORDER-JOURNEY）── */}
       {out.locusPlay === undefined ? null : <LocusPlayBlock lp={out.locusPlay} />}
 
-      {/* ── ① 根因区 ── */}
+      {/* ── 判据 U2 · 分步推演（步骤态**真正驱动**下面五块的分段）───────────────────── */}
+      <div className="panel" data-testid="dp-steps-panel">
+        <SolverStepBar steps={dpSteps} active={dpStep} onSelect={setDpStep} testId="dp-steps" />
+        {/* 第 1 步的产物 = 这条链的起点：哪个指标越了线、缺口多少（没越线就没有决策可推）。 */}
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6 }} data-testid="dp-step-inputs">
+          越线指标 <span className="mono">{rc.metricKey}</span> · 缺口{" "}
+          <b className="mono" data-testid="dp-step-inputs-gap">{fmt(rc.gap)}{rc.unit}</b>
+        </div>
+      </div>
+
+      {/* ── ① 根因区 ──
+          U2 分段闸：根因是图上 `root` 节点（layer 1 = 第 2 步）—— 缺口沿本体反向分摊之后才有它。 */}
+      {upto(2) && (
       <BlockConversable blockId="dp-root-cause" blockType="decision-root-cause" blockTitle={`决策根因「${rc.label}」`} getData={rootBlockData} getSelection={() => [rc.factorId]} provenanceRef="gap_attribution">
       <div className="panel" data-testid="dp-root-cause" style={{ borderLeft: "3px solid var(--danger)" }}>
         <div className="section-title">根因</div>
@@ -1348,6 +1371,7 @@ function DecisionPlay({
         <div data-testid="dp-summary" style={{ fontSize: 12, color: "var(--muted)", marginTop: 6, lineHeight: 1.7 }}>{summary}</div>
       </div>
       </BlockConversable>
+      )}
 
       {/*
         ── 推演过程图（判据 U3）──────────────────────────────────────────────
@@ -1372,7 +1396,9 @@ function DecisionPlay({
         testId="dag-node-inspector"
       />
 
-      {/* ── ② 方案卡区（点开看六维 + provenance 下钻）── */}
+      {/* ── ② 方案卡区（点开看六维 + provenance 下钻）──
+          U2 分段闸：候选方案是图上 layer 2（第 3 步）—— 同一根因派生出的**并列**方案（真分叉）。 */}
+      {upto(3) && (
       <BlockConversable blockId="dp-options" blockType="decision-options" blockTitle="对症方案区" getData={optionsBlockData} getSelection={() => [rc.factorId]} provenanceRef="decision_play">
       <div className="panel" data-testid="dp-options">
         <div className="section-title">对症方案（{options.length}）· 点开看六维 + 为何做 / 何用 / 为何有用</div>
@@ -1400,14 +1426,17 @@ function DecisionPlay({
         ) : null}
       </div>
       </BlockConversable>
+      )}
 
       {/* ── 被挡下的方案（诚实位·`options` 空时这就是屏上唯一的答案）── */}
-      {omitted.length === 0 ? null : <OmittedOptionsBlock omitted={omitted} hasOptions={options.length > 0} />}
+      {omitted.length === 0 || !upto(3) ? null : <OmittedOptionsBlock omitted={omitted} hasOptions={options.length > 0} />}
 
       {/* ── 可以直接动手的候选（与上面的方案**不是一回事**，刻意不并表）── */}
-      {out.impedimentPlays === undefined ? null : <ImpedimentPlaysBlock plays={out.impedimentPlays} />}
+      {out.impedimentPlays === undefined || !upto(3) ? null : <ImpedimentPlaysBlock plays={out.impedimentPlays} />}
 
-      {/* ── ③ 比对矩阵（行=方案·列=六维·最优列高亮）── */}
+      {/* ── ③ 比对矩阵（行=方案·列=六维·最优列高亮）──
+          U2 分段闸：矩阵逐行逐维读的就是候选方案自己的六维 ⇒ 与候选同层（第 3 步）。 */}
+      {upto(3) && (
       <BlockConversable blockId="dp-matrix" blockType="decision-matrix" blockTitle="方案比对矩阵" getData={matrixBlockData} getSelection={() => [rc.factorId]} provenanceRef="decision_play">
       <div className="panel" data-testid="dp-matrix">
         <div className="section-title">比对矩阵 · 每列最优高亮</div>
@@ -1458,14 +1487,18 @@ function DecisionPlay({
         </div>
       </div>
       </BlockConversable>
+      )}
 
-      {/* ── ④ 行动清单（原「触发规则」+「推荐组合」合成一张·一行一个行动）── */}
+      {/* ── ④ 行动清单（原「触发规则」+「推荐组合」合成一张·一行一个行动）──
+          U2 分段闸在块内**分两层**：推荐组合的收窄读数 = layer 3（第 4 步）；
+          逐条触发规则 = layer 4（第 5 步）。这一块本身从第 4 步起出。 */}
       <ActionList
         out={out}
         metricKey={metricKey}
         recommendedPlan={recommendedPlan}
         sandboxNarrowing={sandboxNarrowing}
         rc={rc}
+        upto={upto}
       />
     </div>
   );
@@ -1485,12 +1518,15 @@ function ActionList({
   recommendedPlan,
   sandboxNarrowing,
   rc,
+  upto,
 }: {
   out: DecisionPlayOutput;
   metricKey: string;
   recommendedPlan: DPPlan;
   sandboxNarrowing: DPNarrowing;
   rc: NonNullable<DecisionPlayOutput["rootCause"]>;
+  /** 判据 U2 分段闸（唯一出处 = `useSolverStep.upto`）。 */
+  upto: (stepNo: number) => boolean;
 }) {
   const t = zh.decisionPlay.actions;
   const rows = useMemo(() => buildActionRows(out), [out]);
@@ -1508,13 +1544,17 @@ function ActionList({
   // 筛选项**从数据现算**：状态档只出真实存在的那几档（引擎某次一条规则都没给时不摆空按钮）。
   const stateOpts = (["FIRED", "NOT_FIRED", "NO_RULE"] as ActionState[]).filter((s) => rows.some((r) => r.state === s));
 
+  // U2 分段闸：整块是「推荐组合」这一层（第 4 步）的产物 —— 前三步还没算到它。
+  if (!upto(4)) return null;
+
   return (
     <div className="panel" data-testid="dp-plan">
       <div className="section-title">
         {t.title} · {t.countHint(rows.length, firedCount)}
       </div>
 
-      {rows.length === 0 ? (
+      {/* U2 分段闸：逐条触发规则是图上 layer 4（第 5 步）—— 规则挂在候选方案之下，比推荐组合晚一层。 */}
+      {!upto(5) ? null : rows.length === 0 ? (
         <div className="empty-state" data-testid="dp-actions-empty" style={{ padding: 20, fontSize: 12 }}>
           {t.empty}
         </div>
