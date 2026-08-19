@@ -1178,13 +1178,12 @@ function RiskDetailPanel({
       {/* WO-CAPLIVE-2 活能力③ · 方案存/分支/横比（decision_play 范式·复用沙盘存档语义·一键采纳走 Action 审批）。 */}
       <CapacityScenarioPanel baseId={baseIdForScope} live={liveState} />
 
-      {/* 两栏（.rk-two）：左对症方案 + 推演链（mitigation_select 真求解器）· 右对话态 QA（同源真数据 R6）。 */}
-      <div className={styles.rkTwo}>
-        <MitigationCards base={card.base} factor={card.factor} tightness={card.peak} threshold={threshold} rootCauseFactors={rootCauseFactors} />
-        <QaPanel card={card} threshold={threshold} />
-      </div>
+      {/* 对症方案 + 推演链（mitigation_select 真求解器）。
+          WO-CAPLIVE-QAPANEL-RETIRE：原右栏 QaPanel（关键词正则假 NL）已摘除——同屏问答入口只留下方
+          CapacityLiveDialog 真 NL 一个（断点 G-CAPACITY-DEAD-BI 残留口闭合）。 */}
+      <MitigationCards base={card.base} factor={card.factor} tightness={card.peak} threshold={threshold} rootCauseFactors={rootCauseFactors} />
 
-      {/* WO-CAPLIVE-2 活能力② · 人机对话（真 NL·经 orchestrator·替 QaPanel 正则假 NL）。 */}
+      {/* WO-CAPLIVE-2 活能力② · 人机对话（真 NL·经 orchestrator·本屏唯一问答入口，替 QaPanel 正则假 NL 已落地）。 */}
       <CapacityLiveDialog baseId={baseIdForScope} baseName={card.base} factor={rcFactor ?? card.factor} />
     </div>
   );
@@ -1893,56 +1892,11 @@ function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors 
 }
 
 /**
- * 对话态 QA（右栏 · 两态同源 R6）：预设问 + 追问框，答案**确定性派生自本卡已取的真求解器输出**
- * （affectedOrders / crossDay / peak / factor），非另起 LLM、非伪造——与嵌入态同一批真数据同源。
+ * WO-CAPLIVE-QAPANEL-RETIRE：原「对话态 QA」QaPanel（`/客户|谁/.test` 关键词正则假 NL）已整体摘除——
+ * 同屏问答入口由 CapacityLiveDialog（真 NL·经 orchestrator）唯一承担（断点 G-CAPACITY-DEAD-BI 残留口闭合）。
+ * 摘除的是**入口**不是数据：原面板答案数字派生自本卡 risk_timeline 真值，那些真值仍由
+ * 决策信息两块（ExposurePanel / DoNothingPanel）与 CapacityLiveDialog 带溯源呈现。
  */
-function QaPanel({ card, threshold }: { card: RiskCard; threshold: number }) {
-  const [ans, setAns] = useState<string>(zh.risk.qa.intro);
-  const [input, setInput] = useState("");
-  const orders = (card.affectedOrders ?? []) as Record<string, unknown>[];
-  const custs = [...new Set(orders.map((o) => String(o.cust ?? "")).filter(Boolean))];
-  const sos = orders.map((o) => String(o.so ?? "")).filter(Boolean);
-
-  const answer = (q: string): string => {
-    if (/客户|谁/.test(q)) return custs.length ? `受威胁客户 ${custs.length} 家：${custs.join("、")}（源：受影响订单去重）。` : "该基地当前无关联受影响客户（受影响订单为空）。";
-    if (/订单|批/.test(q)) return sos.length ? `受影响订单 ${sos.length} 批：${sos.slice(0, 8).join("、")}${sos.length > 8 ? " 等" : ""}。` : "该基地当前无在产订单落入越线传导窗口。";
-    if (/为什么|原因|越线/.test(q)) return `${card.factor} ${card.crossDay != null ? `预计 T+${card.crossDay} 越线（阈值 ${threshold}）` : "窗口内暂不越线"}；峰值张力 ${Math.round(card.peak)}。`;
-    if (/最坏|后果|影响/.test(q)) return `最坏后果：${custs.length} 家客户 / ${sos.length} 批订单受影响${card.crossDay != null ? `，最早 T+${card.crossDay} 越线` : ""}。`;
-    return `已知本卡真值：峰值 ${Math.round(card.peak)} · ${card.crossDay != null ? `T+${card.crossDay} 越线` : "不越线"} · 受威胁客户 ${custs.length} · 订单 ${sos.length} 批。可问：影响哪些客户 / 哪些订单 / 为什么越线 / 最坏后果。`;
-  };
-  const presets = ["影响哪些客户？", "哪些订单受影响？", "为什么会越线？", "最坏后果是什么？"];
-
-  return (
-    <div>
-      {/* 假NL 修：诚实标"预设快答·非智能问答"——入口是关键词匹配非自然语言理解/LLM；答案数字仍派生自本卡真求解器输出。 */}
-      <div className={styles.wfT} style={{ color: "var(--c-capacity-txt)" }}>{zh.risk.qa.title}</div>
-      <div className={styles.qaChips}>
-        {presets.map((q) => (
-          <button key={q} className={styles.qaChip} data-testid={`qa-chip-${q}`} onClick={() => setAns(answer(q))}>{q}</button>
-        ))}
-      </div>
-      <div className={styles.rkAns} data-testid="risk-qa-answer">{ans}</div>
-      <div className={styles.rkAsk}>
-        <input
-          value={input}
-          data-testid="risk-qa-input"
-          placeholder={zh.risk.qa.placeholder}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && input.trim()) { setAns(answer(input)); setInput(""); } }}
-        />
-        <button data-testid="risk-qa-ask" onClick={() => { if (input.trim()) { setAns(answer(input)); setInput(""); } }}>{zh.risk.qa.ask}</button>
-      </div>
-      {/* WO-UI-DECLUTTER-TOP3：诚实位「这不是智能问答」降进 `?` 浮层，
-          第一层留 `?` 记号（规范 §1：静默降层等于删除 —— 记号不能省）。 */}
-      <div data-testid="risk-qa-disclosure" style={{ marginTop: 6, fontSize: 12, color: "var(--muted2)", lineHeight: 1.5 }}>
-        <InfoPopover topic={zh.risk.info.qa} testId="risk-qa-disclosure-info">
-          <p>{zh.risk.qa.disclosure}</p>
-          <p>{zh.risk.qa.intro}</p>
-        </InfoPopover>
-      </div>
-    </div>
-  );
-}
 
 function HistoricalCasesSection() {
   const { data } = useQuery({
