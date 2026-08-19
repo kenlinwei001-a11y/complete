@@ -12,7 +12,8 @@ import { loginAs, renderApp } from "./utils";
  * 断言面 A1-A5（A8 = agent-admin-console.test.tsx 既有全例绿，不在此文件）：
  *  A1 两态·原生：默认 fixture（run 记录无 kernel 字段）⇒ 列表每行与 RunDetail 都显示「原生」；
  *  A2 两态·外部：契约同源 fixture 带 `kernel:"EXTERNAL"` ⇒ 徽标「外部运行时」；
- *  A3 tooltip 未销账期文案：外部态浮层含「环检测护栏待补」逐字，原生态浮层**不含**（防串态）；
+ *  A3 tooltip 销账后文案：外部态浮层**不含**「环检测护栏待补」（N3 STALL_LOOP 看门狗已落 dsh 路，
+ *     缺口标注按登记移除），且浮层真开着（含外部口径逐字）；原生态浮层同不含（防串态）；
  *  A4 缺失≡原生：显式无 kernel 字段记录 ⇒ 显示「原生」且绝不显示「未知」（与归属三态**不同案**——
  *     归属缺失不可证只能未知；内核缺失由休眠门+出货 compose 可证 ≡ 原生）；
  *  A5 契约同源：fixture 一律 schema.parse；负向臂 `kernel:"dsh"`（非法枚举）被 schema 当场拒，
@@ -22,7 +23,7 @@ import { loginAs, renderApp } from "./utils";
  * 当场过一遍再交 MSW —— 「mock 能过 schema」⇒「mock 形状 = 真后端形状」。
  *
  * 变异反证（M1/M1′/M4/M5）：KernelBadge 恒取 "EXTERNAL" ⇒ A1 红；恒取 "NATIVE" ⇒ A2 红；
- * locale 外部浮层删「环检测护栏待补」⇒ A3 红；缺失态改显示「未知」⇒ A4 红。
+ * locale 外部浮层**回添**「环检测护栏待补」（销账后陈词回潮）⇒ A3 红；缺失态改显示「未知」⇒ A4 红。
  */
 
 /** 契约同源的 run 记录骨架（**刻意无 kernel 字段** = 字段上线前的旧记录形态）。 */
@@ -98,13 +99,15 @@ describe("WO-DSH-P2-UX · AgentsPage 内核徽标", () => {
     expect(cells[0]!.textContent).not.toContain("原生");
   });
 
-  it("A3 外部态浮层：含「环检测护栏待补」逐字（未销账期文案，N3 销账尾差登记在案）", async () => {
+  it("A3 外部态浮层：销账后文案**不含**「环检测护栏待补」（N3 销账尾差收口·缺口标注已移除）", async () => {
     const user = userEvent.setup();
     useAgentRuns([AgentRunRecordSchema.parse({ ...BASE_RUN, id: "run-kernel-ext", kernel: "EXTERNAL" })]);
     const own = await openExploreAgentOwnRuns(user);
     await user.click(within(own).getByTestId("info-own-run-kernel-run-kernel-ext-tip"));
     const body = await screen.findByTestId("info-body-own-run-kernel-run-kernel-ext-tip");
-    expect(body.textContent).toContain("环检测护栏待补");
+    // 浮层真开着、说的是外部口径（不是空层）——先证「层在」再证「陈词已走」。
+    expect(body.textContent).toContain("本次运行由外部运行时执行");
+    expect(body.textContent).not.toContain("环检测护栏待补"); // 销账后陈词回潮 ⇒ 本行红（变异反证 M4′）
     expect(body.className).toContain("popover-surface"); // 规范 §2：受控 DOM 浮层，非原生 title
   });
 
