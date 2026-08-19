@@ -162,7 +162,7 @@ const SCAN_TARGETS = [
  *    仍可能漏 —— 那需要按赋值目标类型解析，属中等工作量判据设计，登记在案不是已守住。
  */
 const PRODUCER_TOKENS = ["ChainImpedimentSchema.parse(", "detectChainImpediments("];
-/** H9 现算的扫描根（生产+mock 源码面；`**/mocks/**` 除外 —— 那是合成 fixture，判据本体性质，不是产数处）。 */
+/** H9 现算的扫描根（生产+mock 源码面；mocks/ 目录除外 —— 那是合成 fixture，判据本体性质，不是产数处）。 */
 const PRODUCER_SCAN_ROOTS = [
   "apps/datacore/src",
   "apps/agentcore/src",
