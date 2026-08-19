@@ -17,7 +17,10 @@ import { ImpactAnalysisPanel } from "./sim/ImpactAnalysisPanel";
 // WO-U3-DAG-REST · 判据 U3（过程图 + 点节点看凭什么）。结构与画法都与样板两页同源，
 // 见 `sim/reasoningGraph.ts` 头注 —— 本页**不另建**一套。
 import { ProcessGraphPanel } from "./sim/ProcessGraphPanel";
-import { assertReasoningGraph, type ReasoningGraph } from "./sim/reasoningGraph";
+import { assertReasoningGraph, toSolverSteps, type ReasoningGraph } from "./sim/reasoningGraph";
+// WO-U2-STEPWISE-2 · 判据 U2（分步标口径）。步骤契约**投影自本页同一份 `WI_GRAPH`**，
+// 不另写一份 —— 两份会漂移，屏上两处对同一环给出两种说法（见 reasoningGraph.ts 头注 RL3）。
+import { SolverStepBar, useSolverStep } from "./sim/SolverStepBar";
 import EdgeActivePanel from "./sim/EdgeActivePanel";
 // WO-HARNESS-UX-GAP-1 · 判据 U7（同屏问答知道自己在哪一页）+ U9（导出物自带出处与生成时间）。
 // 本页走 App.tsx 的专用 route，不经 ViewPage ⇒ 必须自己调 usePageView（理由见 shared.tsx 该函数注释）。
@@ -199,6 +202,16 @@ const WI_GRAPH: ReasoningGraph = assertReasoningGraph({
   ],
 });
 
+/**
+ * WO-U2-STEPWISE-2 · 判据 **U2** 的步骤契约 —— **投影自 `WI_GRAPH`，不手写第二份**。
+ *
+ * 四步 = 图的四层：设定假设 → 两条推演路 → 读数 → 逐行明细。
+ * 每步的 数据·求解器·规则 逐字来自图上节点（字段名不许改写成白话：字段漂移时引用当场断）。
+ * 第 2 层是**并列层**（两条世界语义不同的路），`toSolverSteps` 会如实写「本层 2 个并列环，
+ * 规则逐环不同 ⇒ 在过程图上点各环看」——**不挑一个节点的规则冒充全层**。
+ */
+const WI_STEPS = toSolverSteps(WI_GRAPH);
+
 /*
  * 判据 U1 的输入防抖已提到 `@/lib/useDebounced`（`optimize-whatif` 撤闸时要用同一个行为）。
  * 本文件原有的私有实现逐字节等价，只是换了位置 —— 行为不变，理由见该文件头注。
@@ -206,6 +219,12 @@ const WI_GRAPH: ReasoningGraph = assertReasoningGraph({
 
 export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
   usePageView("what-if");
+  /**
+   * 判据 U2 步骤态。**默认末步 = 完整结果**（与改前屏面逐字节一致 ⇒ 存量测试零回归）。
+   * `upto(n)` 是本页**唯一分段闸**：结果区每一段都经它决定渲染与否，
+   * 任何段不许自行判断 `active`（绕开 = 步骤条退化成装饰，变异反证也咬不到）。
+   */
+  const { active: wiStep, setActive: setWiStep, upto } = useSolverStep(WI_STEPS.length);
   const [typeKey, setTypeKey] = useState<string>("");
   const [objectId, setObjectId] = useState<string>("");
   const [prop, setProp] = useState<string>("");
@@ -446,6 +465,32 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
         )}
       </div>
 
+      {/* ── 判据 U2 · 分步推演（步骤态**真正驱动**下面结果区的分段）───────────────
+          ⚠ 它不是装饰条：点第 N 步 ⇒ 屏上的数只显示到第 N 步为止（闸见各段 `upto(…)`）。 */}
+      <div className="panel" data-testid="wi-steps-panel">
+        <SolverStepBar steps={WI_STEPS} active={wiStep} onSelect={setWiStep} testId="wi-steps" />
+        {/* 第 1 步的产物 = 这次推演读进去的那份假设（入参回执，真值回显，不是重复表单）。 */}
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6 }} data-testid="wi-step-inputs">
+          假设 · <span className="mono">{typeKey || "—"}</span> / <span className="mono">{objectId || "—"}</span>
+          <span> 的 </span>
+          <span className="mono">{prop || "—"}</span> = <span className="mono">{value.trim() || "—"}</span>
+          {currentValue === undefined ? null : <span>（原值 <span className="mono">{fmtVal(currentValue)}</span>）</span>}
+        </div>
+        {/* 第 2 步的产物 = 两条路各自的**求解基准**（谁算的 · 算在什么之上）。
+            ⚠ 只写这一步真拿得到的东西：`snapshotVersion` 是 `generic_inference` 的后端真回执；
+            第二条路的读数在第 3 步才出（它的面板此刻还没挂），故这里**只报它的求解器与世界语义，不报结果**。 */}
+        {upto(2) && (
+          <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 4 }} data-testid="wi-step-solve">
+            <span className="mono">generic_inference</span> · 快照{" "}
+            <span className="mono" data-testid="wi-step-solve-snapshot">{runQ.data?.snapshotVersion ?? "—"}</span>
+            <span> · 无世界（当前快照上前向重算）</span>
+            <span> ∥ </span>
+            <span className="mono">impact-analysis</span>
+            <span> · 世界隔离（两条路互不为输入）</span>
+          </div>
+        )}
+      </div>
+
       {/* ── 判据 U3 · 推演过程图 ──────────────────────────────────────────────
           摆在两个出口**之间**：往上是假设，往下是两条路各自的读数。
           它比上下两块多说的那件事：两条路**世界语义不同、互不为输入** ——
@@ -456,6 +501,9 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
           上面那个按钮走 `generic_inference`（无世界、单个裸计数）；这里走
           `POST /a/v1/simulation/impact-analysis`（世界隔离 + 对象/流程/决策/KPI 四维 + 诚实标记）。
           两个出口共用上面同一张表单 —— 用户不必把假设填两遍。 */}
+      {/* U2 分段闸：这个面板给的是**第 3 步「读数」**那一层的数（四维分项 = 图上 `dims` 节点，layer 2）。
+          停在第 1/2 步时它整块退场 —— 那两步还没算到「读数」这一层。 */}
+      {upto(3) && (
       <div className="panel" data-testid="wi-impact-panel">
         {/* 标题只留**名字**；括号里那串「世界隔离 · 四维分项」说的是这一格**怎么算的**，
             是口径不是名字（规范 §1 / R-UI-3）—— 连同「跟上面那个按钮差在哪」一起降浮层。 */}
@@ -471,6 +519,7 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
         </div>
         <ImpactAnalysisPanel change={impactChange} />
       </div>
+      )}
 
       {/* ── 结果区 ── */}
       {assumptionReady && settled && result ? (
@@ -492,6 +541,8 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
             unit: currentProp?.unit,
             oldValue: currentValue,
           }}
+          // WO-U2-STEPWISE-2 · 判据 U2 分段闸（唯一出处 = `useSolverStep.upto`）。
+          upto={upto}
         />
       ) : null}
 
@@ -622,10 +673,13 @@ function WhatIfResult({
   out,
   snapshotVersion,
   assumption,
+  upto,
 }: {
   out: GenericInferenceOutput;
   snapshotVersion?: string;
   assumption: Assumption;
+  /** 判据 U2 分段闸（唯一出处 = `useSolverStep.upto`）：本区每一段经它决定渲染与否。 */
+  upto: (stepNo: number) => boolean;
 }) {
   const rows = out.rows ?? [];
   const assumptionLine = `${assumption.typeKey}/${assumption.objectId}.${assumption.prop} = ${assumption.value}`;
@@ -654,7 +708,9 @@ function WhatIfResult({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="wi-result">
-      {/* 影响面计数 —— 判据 U5：每个结论数字都指名道姓说出谁算的、算在什么之上。 */}
+      {/* 影响面计数 —— 判据 U5：每个结论数字都指名道姓说出谁算的、算在什么之上。
+          U2 分段闸：这一格是图上 `scope` 节点（layer 2 = 第 3 步「读数」）的产物。 */}
+      {upto(3) && (
       <div className="panel" data-testid="wi-impact">
         <div className="section-title">
           ② 影响面
@@ -698,8 +754,11 @@ function WhatIfResult({
         {/* 判据 U6「结论即动作」：动作就摆在结论旁边，参数由这份结论直接带过去（见组件头注）。 */}
         <AdoptHypothesisButton assumption={assumption} out={out} snapshotVersion={snapshotVersion} assumptionLine={assumptionLine} />
       </div>
+      )}
 
-      {/* before / after deltas 表 */}
+      {/* before / after deltas 表。
+          U2 分段闸：逐行明细是图上 `deltas` 节点（layer 3 = 第 4 步），比影响面计数**晚一步**。 */}
+      {upto(4) && (
       <div className="panel" data-testid="wi-deltas">
         <div className="section-title">
           ③ 下游 before → after（{rows.length}）
@@ -744,6 +803,7 @@ function WhatIfResult({
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 }
