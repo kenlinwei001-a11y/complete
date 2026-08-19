@@ -554,7 +554,13 @@ function fanoutNodeFacts(
       const disabled = h.reason === "disabled";
       return {
         title: `半径外 · ${disp(h.type)}`,
-        verdict: disabled ? "这一次已关掉这条关系边" : "上游改道或断链，倒推没走到这一跳",
+        // ⚠ 2026-08-19 审核方修：分类词「半径外」原先只在 Modal **标题**里，
+        // 而 `data-testid={testId}` 挂在 Modal **body** 上 ⇒ 读 body 全文读不到分类，
+        // 「被排除项带理由」这件事在**面板正文里是不完整的**（要抬头看标题才知道它为什么在这）。
+        // 判据 U4b 要的是「排除项同图 **且带理由**」——理由必须一行自足：先说它落在哪一侧，再说为什么。
+        verdict: disabled
+          ? "半径外 · 这一次已关掉这条关系边"
+          : "半径外 · 上游改道或断链，倒推没走到这一跳",
         src: `本体对象 ${h.type} 的 ${h.viaField} 字段（与入选跳同一张本体 ref 图，非另一份数据）`,
         rule: disabled
           ? "本次查看的关系边开关：该边被跳过 ⇒ 同层次选顶上（改道）或链在此终止（断链）"
