@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { applyPerturbationToState, type Perturbation, type SandboxViewConfig, type TickState } from "@platform/contracts";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
+import SandboxView from "@/views/sim/SandboxView";
 
 /**
  * WO-U2-STEPWISE-2 · 判据 **U2**（推演过程分步可见 · 每步标 数据·求解器·规则）——剩余 9 页。
@@ -697,5 +700,112 @@ describe("WO-U2-STEPWISE-2 · risk-board：步骤态真正驱动结果分段", (
     await screen.findByTestId(`risk-card-${base}`);
     expect(screen.getByTestId(`risk-peak-${base}`)).toHaveTextContent(peakText);
     expect(screen.getByTestId("risk-kpi-orders")).toBeInTheDocument();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// sim-sandbox（推演沙盘）：步骤 = 会话与配置 → 施加扰动 → 世界传播 → 影响带读数
+//
+// 走**真 endpoints + MSW 拦真 URL**（与 `sandbox-perturbation.seam.test.tsx` 同一套：
+// 世界态改写直接调契约里的 `applyPerturbationToState` —— 桩不自己写一套「大概是这样改」）。
+// ══════════════════════════════════════════════════════════════════════════════
+
+const SB_CFG: SandboxViewConfig = {
+  tenantId: "tenant-u2",
+  nodeTypes: ["TypeA", "TypeB"],
+  nodeObjectIds: { TypeA: ["obj_a1"], TypeB: ["obj_b1"] },
+  linkTypes: ["FEEDS"],
+  stateVars: ["load", "risk"],
+  radarDims: [{ key: "structure", label: "结构" }, { key: "knowledge", label: "知识" }, { key: "behavior", label: "行为" }],
+  screens: ["pipeline", "entity", "readiness", "init", "sandbox"],
+  propagationCount: 1,
+};
+
+function installSbHandlers(): void {
+  let world: TickState = {};
+  server.use(
+    http.post("*/a/v1/sim/sessions", async ({ request }) => {
+      const body = (await request.json()) as { baseSnapshot?: TickState; scope?: Record<string, unknown> };
+      world = JSON.parse(JSON.stringify(body.baseSnapshot ?? {})) as TickState;
+      return HttpResponse.json(
+        { id: "sims_u2", tenantId: "demo", baseSnapshot: world, scope: body.scope ?? {}, status: "READY", curTick: 0, parentCheckpointId: null, createdAt: "2026-08-10T00:00:00.000Z" },
+        { status: 201 },
+      );
+    }),
+    http.get("*/a/v1/sim/sessions/:id/world", () => HttpResponse.json({ tick: 0, state: world })),
+    http.get("*/a/v1/sim/sessions", () => HttpResponse.json({ items: [] })),
+    http.post("*/a/v1/sim/sessions/:id/perturbations", async ({ request }) => {
+      const body = (await request.json()) as Record<string, unknown>;
+      const p = {
+        id: "simpert_u2", tenantId: "demo", sessionId: "sims_u2",
+        kind: body.kind, targetObjectId: body.targetObjectId, targetStateVar: body.targetStateVar,
+        startTick: 0, durationTicks: (body.durationTicks ?? null) as number | null,
+        magnitude: Number(body.magnitude), mode: (body.mode ?? "set") as "set" | "delta" | "scale",
+        label: String(body.label), createdAt: "2026-08-10T00:00:00.000Z",
+      } as unknown as Perturbation;
+      world = applyPerturbationToState(world, p);
+      return HttpResponse.json({ perturbation: p, curTick: 0, state: world }, { status: 201 });
+    }),
+    http.get("*/a/v1/sim/sessions/:id/certification", () =>
+      HttpResponse.json({ error: { code: "FEATURE_NOT_FOUND", message: "off", requestId: "r" } }, { status: 404 }),
+    ),
+  );
+}
+
+describe("WO-U2-STEPWISE-2 · sim-sandbox：步骤态真正驱动结果分段", () => {
+  it("U2-SB-1 · 四步逐层收：第 3 步没有影响带、第 2 步没有全局态读数、第 1 步连扰动前后值都没有", async () => {
+    const user = userEvent.setup();
+    installSbHandlers();
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <SandboxView injectedConfig={SB_CFG} />
+      </QueryClientProvider>,
+    );
+    await screen.findByTestId("sandbox-view");
+    await screen.findByTestId("sandbox-perturbation");
+
+    // 施加一条真扰动（真 endpoints + 真 URL），让第 2/3 步各自有真值可看。
+    await user.selectOptions(screen.getByTestId("sandbox-perturbation-object"), "obj_a1");
+    await user.selectOptions(screen.getByTestId("sandbox-perturbation-statevar"), "load");
+    await user.selectOptions(screen.getByTestId("sandbox-perturbation-mode"), "delta");
+    const mag = screen.getByTestId("sandbox-perturbation-magnitude");
+    await user.clear(mag);
+    await user.type(mag, "40");
+    await user.click(screen.getByTestId("sandbox-perturbation-apply-btn"));
+    await screen.findByTestId("sandbox-perturbation-last");
+
+    // 默认末步 = 完整结果（改前屏面）。
+    for (let n = 1; n <= 4; n++) expect(screen.getByTestId(`sb-steps-step-${n}`)).toBeInTheDocument();
+    expect(screen.getByTestId("sb-steps-meta-solver")).toHaveTextContent("impact-analysis");
+    const kpiText = screen.getByTestId("sandbox-kpi-global-val").textContent ?? "";
+    const deltaText = screen.getByTestId("sandbox-perturbation-last-delta").textContent ?? "";
+    expect(kpiText.length).toBeGreaterThan(0);
+    expect(deltaText).toContain("→");
+    expect(screen.getByTestId("sandbox-impact-band")).toBeInTheDocument();
+
+    // ── 第 3 步「世界传播」：影响带退场，全局态读数还在 ──
+    fireEvent.click(screen.getByTestId("sb-steps-step-3"));
+    await waitFor(() => expect(screen.queryByTestId("sandbox-impact-band")).toBeNull());
+    expect(screen.getByTestId("sandbox-kpi-global-val")).toHaveTextContent(kpiText);
+
+    // ── 第 2 步「施加扰动」：连全局态那个数也退场，扰动前后值还在 ──
+    fireEvent.click(screen.getByTestId("sb-steps-step-2"));
+    await waitFor(() => expect(screen.queryByTestId("sandbox-kpi-global-val")).toBeNull());
+    expect(screen.queryByTestId("sandbox-kpis")).toBeNull();
+    expect(screen.queryByTestId("sandbox-kpi-origin")).toBeNull();
+    expect(screen.getByTestId("sandbox-perturbation-last-delta")).toHaveTextContent(deltaText);
+
+    // ── 第 1 步「会话与配置」：扰动前后值也退场，左区输入控件**照常可用**（闸的是数不是控件） ──
+    fireEvent.click(screen.getByTestId("sb-steps-step-1"));
+    await waitFor(() => expect(screen.queryByTestId("sandbox-perturbation-last")).toBeNull());
+    expect(screen.queryByTestId("sandbox-perturbation-last-delta")).toBeNull();
+    expect(screen.getByTestId("sandbox-perturbation-object")).toBeInTheDocument();
+    expect(screen.getByTestId("sandbox-perturbation-apply-btn")).toBeInTheDocument();
+
+    // ── 切回末步：全部回来 ──
+    fireEvent.click(screen.getByTestId("sb-steps-step-4"));
+    await screen.findByTestId("sandbox-impact-band");
+    expect(screen.getByTestId("sandbox-kpi-global-val")).toHaveTextContent(kpiText);
+    expect(screen.getByTestId("sandbox-perturbation-last-delta")).toHaveTextContent(deltaText);
   });
 });
