@@ -2425,6 +2425,16 @@ export class Orchestrator {
         resolvedRefs: dedupeRefs(resolvedRefs),
         completedAt: new Date().toISOString(),
       });
+      // G-9：有界终止降级 → 复用 step.completed 伪 step（不新增 PRD §8.2 事件名）区分"超时/预算降级"vs"正常探索"。
+      // 必早于 answer.final（前端 TaskDetailPage 已 filter step.completed，零改）。
+      if (result.degraded) {
+        await this.deps.events.emit(taskId, "step.completed", {
+          stepId: newId("degrade"),
+          type: "agent_degraded",
+          outcome: result.degraded.reason,
+          durationMs: budget.elapsedMs(),
+        });
+      }
       await this.deps.events.emit(taskId, "answer.final", result.answer);
       this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
       await this.recordExperience(taskId);
@@ -2676,6 +2686,16 @@ export class Orchestrator {
         resolvedRefs: dedupeRefs(resolvedRefs),
         completedAt: new Date().toISOString(),
       });
+      // G-9：有界终止降级 → 复用 step.completed 伪 step（不新增 PRD §8.2 事件名）区分"超时/预算降级"vs"正常探索"。
+      // 必早于 answer.final（前端 TaskDetailPage 已 filter step.completed，零改）。
+      if (result.degraded) {
+        await this.deps.events.emit(task.id, "step.completed", {
+          stepId: newId("degrade"),
+          type: "agent_degraded",
+          outcome: result.degraded.reason,
+          durationMs: budget.elapsedMs(),
+        });
+      }
       await this.deps.events.emit(task.id, "answer.final", result.answer);
       this.deps.metrics.tasksTotal.inc({ path: "AGENT", status: "COMPLETED" });
       await this.recordExperience(task.id);
