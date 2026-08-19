@@ -276,7 +276,22 @@ export function PerturbationTimeline({ sessionId, curTick }: PerturbationTimelin
           {lanes.map((lane) => (
             <div className={styles.ptlLane} key={lane.key} data-testid={`ptl-lane-${lane.objectId}-${lane.stateVar}`}>
               <div className={styles.ptlLaneName}>
-                {/* 第一层「名字」：落点是什么。口径说明不在这里。 */}
+                {/*
+                 * 第一层「名字」：落点是什么。口径说明不在这里。
+                 *
+                 * ── 系统键坐标位 · 显式声明（WO-STATEVAR-DISPLAYNAME 复验修单，2026-08-19 复核）──
+                 * 这一行 `objectId.stateVar` **刻意保留裸键**，与 `EdgeActivePanel` 第二级系统键行
+                 * （`<small className={css.rowKeys}>`）同一形态，依据三条（都是读上下文实证，不是推断）：
+                 *  ① 泳道名是**坐标**不是业务标签：分组键（`U+0000` 连接）、testid
+                 *    （`ptl-lane-${objectId}-${stateVar}`）与这一行三者同一份裸键对 ——
+                 *    它是机器地址的人读形，改了名三者就分叉；
+                 *  ② `objectId` 那一半**全仓没有任何展示名真值源**（类型有 `sourceTypeName`，
+                 *    对象实例 id 没有）——坐标对的一半永远不可译，只译另一半会得到
+                 *    `obj_a1.负载指数` 这种半中半键的混排，比全裸键更难读；
+                 *  ③ 人话名并非没有：**施加扰动下拉的落点选项**已经走 `stateVarText`
+                 *    （`SandboxView.tsx` 扰动表单段，单源同在 battery.ts）——理解路径在入口侧，
+                 *    本行回答的是「落在哪个坐标」。
+                 */}
                 <b>{lane.objectId}</b>
                 <span>.{lane.stateVar}</span>
                 {lane.activeNow >= 2 && (

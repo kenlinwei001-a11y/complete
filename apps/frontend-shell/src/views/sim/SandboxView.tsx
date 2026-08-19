@@ -2022,6 +2022,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
             world={world}
             curTick={curTick}
             stateVars={cfg.stateVars}
+            stateVarNames={cfg.stateVarNames}
           />
         }
         // 旧主屏本体 PmDag 拓扑 → 画布第四模式

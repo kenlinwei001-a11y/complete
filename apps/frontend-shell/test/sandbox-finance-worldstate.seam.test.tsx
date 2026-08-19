@@ -36,6 +36,12 @@ const CFG: SandboxViewConfig = {
   nodeObjectIds: { MaterialBatch: ["mb_001", "mb_002"] },
   linkTypes: ["feeds"],
   stateVars: STATE_VARS,
+  /**
+   * WO-STATEVAR-DISPLAYNAME 复验修单：字典随 view-config 下发（读时投影 · 单源在 battery.ts）。
+   * 这里只登记 `costPressure` 一条 —— 压力行断言要从**本字典现取**期望名，不许写死：
+   * 写死等于赌桩不变，换名那条判据（屏上 textContent 跟着下发名变）就废了。
+   */
+  stateVarNames: { costPressure: "成本压力" },
   radarDims: [{ key: "structure", label: "结构" }],
   screens: ["sandbox"],
   propagationCount: 13,
@@ -275,6 +281,24 @@ describe("WO-FINANCE-WORLDSTATE · 沙盘下区的金额面板", () => {
     // 反向：可用时**不许**同时出现缺口记号（两个都渲染是最难看的形态）。
     expect(screen.queryByTestId("sandbox-impact-finance-unavailable")).toBeNull();
     expect(screen.queryByTestId("sandbox-impact-finance-failed")).toBeNull();
+  });
+
+  it("🔴 压力行第一级名字走下发字典：换下发名 ⇒ 屏上 textContent 跟着变（WO-STATEVAR-DISPLAYNAME 复验修单）", async () => {
+    mount();
+    await ready();
+    const p = OUT_OK.pressures[0]!;
+    const row = await screen.findByTestId(`sandbox-impact-finance-pressure-${p.objectType}-${p.stateVar}`);
+    /**
+     * 期望名从 **CFG 现取**（与本文件「金额从回包现算比对」同一条纪律）：
+     * 把 CFG.stateVarNames 里那个词换掉，这条断言的期望就跟着换 —— 它咬的是
+     * 「屏上那串 = 下发的那串」，不是某一版措辞。屏上**不许**再出现裸键本身。
+     */
+    const want = CFG.stateVarNames![p.stateVar]!;
+    const name = within(row).getByLabelText(`${p.objectType}.${p.stateVar}`);
+    expect(name.textContent ?? "").toContain(`${p.objectType}.${want}`);
+    expect(name.textContent ?? "").not.toContain(p.stateVar);
+    // 回落态可断言：查到了名字 ⇒ named=true（掐断字典传递 ⇒ 回裸键 + named=false，本条当场红）。
+    expect(name.getAttribute("data-statevar-named")).toBe("true");
   });
 
   it("🔴 口径**常驻第一层**：不 hover、不点开就在，且说明这是推演不是实测", async () => {

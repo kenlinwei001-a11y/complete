@@ -8,6 +8,7 @@ import { InfoPopover } from "@/components/InfoPopover";
 import { runSolver } from "@/api/endpoints";
 import zh from "@/locales/zh";
 import { ImpactAnalysisPanel } from "./ImpactAnalysisPanel";
+import { stateVarLabel } from "./stateVarLabel";
 import styles from "./SandboxConsole.module.css";
 
 /**
@@ -90,6 +91,11 @@ export interface SandboxImpactBandProps {
   curTick: number;
   /** 这个世界承载的状态变量名（`SandboxViewConfig.stateVars`，本体派生 · R14 零业务常数）。 */
   stateVars: string[];
+  /**
+   * 状态变量裸键 → 中文业务名字典（`SandboxViewConfig.stateVarNames`，读时投影 · 单源在 battery.ts）。
+   * 透传给 `FinanceProjectionPanel`（金额压力行第一级名字的 stateVar 段靠它翻译）。缺省 ⇒ 回落裸键。
+   */
+  stateVarNames?: Readonly<Record<string, string>>;
 }
 
 /** 全对象均值。口径与顶栏读数**同一条**（`SandboxView` 的 `sandbox-kpi-*`），本文件不另立一套。 */
@@ -242,6 +248,11 @@ export interface FinanceProjectionPanelProps {
   worldId: string | null;
   /** 当前 tick —— 进 queryKey：tick 一推进，金额必须跟着重取，否则屏上是上一拍的钱。 */
   curTick: number;
+  /**
+   * 状态变量裸键 → 中文业务名字典（view-config 的 `stateVarNames`，单源在 battery.ts）。
+   * 缺省 `undefined` ⇒ 逐条回落裸键，与本 prop 引入前**逐字节同屏**（additive 可回退）。
+   */
+  stateVarNames?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -250,7 +261,7 @@ export interface FinanceProjectionPanelProps {
  * **一个系数都不在前端**：金额、Δ、换算除数、传导链系数全部来自回包。
  * 前端只做三件事：格式化、分层（第一层结论 / 第二层明细）、以及在拿不到数时**据实报缺**。
  */
-export function FinanceProjectionPanel({ worldId, curTick }: FinanceProjectionPanelProps) {
+export function FinanceProjectionPanel({ worldId, curTick, stateVarNames }: FinanceProjectionPanelProps) {
   const q = useQuery({
     // tick 进 key：不进的话 tick 推进后 react-query 命中旧缓存 ⇒ 屏上金额停在上一拍（静默错答）。
     queryKey: ["finance-world-projection", worldId, curTick],
@@ -444,6 +455,15 @@ export function FinanceProjectionPanel({ worldId, curTick }: FinanceProjectionPa
             {out.pressures.map((p) => {
               const id = `${p.objectType}-${p.stateVar}`;
               const equal = p.weighting === "EQUAL";
+              /**
+               * WO-STATEVAR-DISPLAYNAME 复验修单：第一级名字的 stateVar 段此前直接渲裸键
+               * （`costPressure` 等三个都在后端 36 条登记里，本组件却从不消费 `stateVarNames` —— 漏网）。
+               * 接法照 `EdgeActivePanel` / `SandboxView` KPI 段：字典经 prop 传入、`stateVarLabel` 这一条
+               * 消费路径解析，查不到 ⇒ 回落裸键并置 `named=false`（`data-statevar-named` 让回落态可断言）。
+               * ⚠ testid 仍用裸键（本单自立纪律：改的是展示层，不是接线名）；接线名走 `aria-label`，
+               *   不挂原生 `title`（规范 §2 R-UI-3）。
+               */
+              const lab = stateVarLabel(p.stateVar, stateVarNames);
               return (
                 <li
                   key={id}
@@ -453,8 +473,12 @@ export function FinanceProjectionPanel({ worldId, curTick }: FinanceProjectionPa
                   data-carriers={p.carriers}
                   data-universe={p.universe}
                 >
-                  <span style={PROV_NAME}>
-                    {p.objectType}.{p.stateVar}
+                  <span
+                    style={PROV_NAME}
+                    data-statevar-named={lab.named ? "true" : "false"}
+                    aria-label={`${p.objectType}.${lab.key}`}
+                  >
+                    {p.objectType}.{lab.text}
                   </span>
                   <span style={PROV_VALUE} data-testid={`sandbox-impact-finance-pressure-${id}-value`}>
                     {p.value.toFixed(2)}
@@ -530,6 +554,7 @@ export function SandboxImpactBand({
   world,
   curTick,
   stateVars,
+  stateVarNames,
 }: SandboxImpactBandProps) {
   const deltas = useMemo(() => deriveStateVarDeltas(baseWorld, world, stateVars), [baseWorld, world, stateVars]);
   const moved = deltas === null ? [] : deltas.filter(isMoved);
@@ -560,7 +585,7 @@ export function SandboxImpactBand({
          * 诚实位 `?`（`impact-finance-gap`）随面板一起挪进来 —— 它解释的正是这块金额，
          * 挂在下面那块指数差分的头上属于挂错地方（记号要贴着它说明的那个东西）。
          */}
-        <FinanceProjectionPanel worldId={sessionId} curTick={curTick} />
+        <FinanceProjectionPanel worldId={sessionId} curTick={curTick} stateVarNames={stateVarNames} />
 
         {/* ②-b 世界态指数差分（原有·一字未改） */}
         <div className={styles.zoneHead}>
