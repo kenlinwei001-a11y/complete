@@ -1561,7 +1561,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     // `graph` 是 `execution.graph` 的便捷简写（老调用形态，向后兼容）。
     const body = SkillGraphRunBody.parse(req.body ?? {});
     const execution = body.execution ?? (body.graph ? { graph: body.graph } : undefined);
-    const scheduler = new GraphScheduler({ repos: deps.repos, dataCore: deps.dataCore });
+    const scheduler = new GraphScheduler({ repos: deps.repos, dataCore: deps.dataCore, metrics: deps.metrics });
     try {
       // R2 tenant_id everywhere：节点内所有仓储读取经 a.tenantId 过滤。
       return await scheduler.run(

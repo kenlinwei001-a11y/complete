@@ -3,10 +3,11 @@
  *
  * WO-SKILL-ORCHESTRATOR-S1 切片：**按层执行 · 同层并发 · 数据沿边流动**。
  *
- * ── 与既有线性执行器的关系（本单不改它）────────────────────────────────────────
- * `workflow/executor.ts:104` 是 `for (const step of input.steps)` 逐个 await 的**线性**执行器。
- * 本文件不动它、不替换它，只在旁边加**图调度**：拓扑波前 + 同层并发。
- * PRD §3.4 的「三处扇出收编」属 W2 单，本切片不做（诚实边界，见文末 §未做）。
+ * ── 与既有线性执行器的关系（WO-GRAPH-FANOUT-W2 已接线）───────────────────────────
+ * `workflow/executor.ts` 的线性步骤循环复用本仓**唯一拓扑实现** `topoLayers`
+ * （全 seq 链 → 每层一个节点 → 执行序与旧串行循环逐字节一致，PRD §10 A1）。
+ * 本文件是图调度运行侧：拓扑波前 + 同层有界并发 + render 收口节点执行（R11）。
+ * multi-route / Coordinator 两处扇出为**分工登记**（FANOUT-REG 标记），理由见文末 §未做。
  *
  * ── 数据沿边流动的强制机制（本单存在的意义）────────────────────────────────────
  * 节点 params 用的是**既有**模板语法 `{{steps.<nodeId>.output.<path>}}`，由**既有**
@@ -22,7 +23,10 @@ import {
   ancestorsOf,
   compileExecution,
   ErrorCodes,
+  type Answer,
+  type AnswerBlock,
   type ExecutionSource,
+  type ProvenanceRef,
   type SkillExecution,
   type SkillExecutionStep,
   type SkillGraph,
@@ -31,12 +35,14 @@ import {
 } from "@platform/contracts";
 import type { DataCoreClient, ToolAuthCtx } from "./tools/clients.js";
 import type { Repos } from "./persistence/repos.js";
+import type { Metrics } from "./metrics.js";
 import { resolveTemplate, TemplateResolutionError, type TemplateScope } from "./util/template.js";
+import { scanBlocks } from "./util/numerics.js";
 // 裁决 v3 约束①：步骤形状的**单一来源是这个函数，不是某个闭合类型名**。
 // 它实际接受 `ExtendedPlanStep = PlanStep | ExtraToolStep`（后者含 query_timeseries_agg /
 // search_knowledge / plan_slice 三个真实可执行类型）。任何消费方校验步骤都必须走它。
 import { validatePlanSteps } from "./workflow/validate.js";
-import type { ExtendedPlanStep } from "./workflow/executor.js";
+import { summarizeSolverOutput, type ExtendedPlanStep } from "./workflow/executor.js";
 
 export interface GraphNodeResult {
   nodeId: string;
@@ -62,6 +68,12 @@ export interface GraphRunResult {
    * `legacy.plan.steps`（旧路）。**回落 legacy 一旦静默，这个特性就等于没做而测试照绿。**
    */
   source: ExecutionSource;
+  /**
+   * R11 收口来源披露（WO-GRAPH-FANOUT-W2）：declared = 作者自己写了 render；
+   * synthesized = 线性来源没有 render_answer，契约层合成了兜底收尾（__auto_render）。
+   * 透传自 compileExecution，不许吞——合成收口装成作者声明 = 又一处静默。
+   */
+  renderClosure: "declared" | "synthesized";
   layers: SkillGraphLayer[];
   nodeResults: GraphNodeResult[];
   status: "COMPLETED" | "FAILED";
@@ -70,6 +82,8 @@ export interface GraphRunResult {
 export interface GraphSchedulerDeps {
   repos: Repos;
   dataCore: DataCoreClient;
+  /** 可选：render 节点扫到未溯源数值时打标（与 executor 同一口径 WORKFLOW 路径）。 */
+  metrics?: Metrics;
 }
 
 export class SkillGraphCompileError extends Error {
@@ -152,6 +166,8 @@ export class GraphScheduler {
       // 同层并发，但**并发度有上限**（PRD §3.4：不许无上限）。分批 = 简单可靠的有界并发。
       for (let i = 0; i < layer.nodeIds.length; i += concurrency) {
         const batch = layer.nodeIds.slice(i, i + concurrency);
+        // FANOUT-REG: graph-scheduler-wave —— 三处扇出之①（PRD §3.4）：拓扑波前同层并发、
+        // 有界分批。全仓 fan-out 点位登记表由 scripts/check-graph-runtime.mjs G3 看护。
         const settled = await Promise.allSettled(
           batch.map(async (id): Promise<GraphNodeResult> => {
             const node = byId.get(id)!;
@@ -205,6 +221,7 @@ export class GraphScheduler {
       tenantId: auth.tenantId,
       // 判据 #1：走了哪一路，逐次说出来。不许静默回落。
       source: compiled.source,
+      renderClosure: compiled.renderClosure,
       layers: compiled.layers,
       nodeResults,
       status: nodeResults.some((r) => r.status === "FAILED") ? "FAILED" : "COMPLETED",
@@ -266,7 +283,9 @@ export class GraphScheduler {
       const output =
         ctx.node.kind === "skill"
           ? await this.runSkillNode(ctx.auth, resolvedParams)
-          : await this.runSolverNode(ctx.auth, resolvedParams);
+          : ctx.node.kind === "render"
+            ? this.runRenderNode(ctx, resolvedParams)
+            : await this.runSolverNode(ctx.auth, resolvedParams);
       return { ...base, status: "COMPLETED", output, resolvedParams };
     } catch (e) {
       const err = e as { code?: string; message?: string };
@@ -326,13 +345,117 @@ export class GraphScheduler {
     const payload = await this.deps.dataCore.solver.invoke(auth, solverKey, args);
     return { solverKey, data: payload.data, snapshotVersion: payload.snapshotVersion };
   }
+
+  /**
+   * `render` 节点（WO-GRAPH-FANOUT-W2 · R11 收口的执行侧）：把解析后的 blocks 投成 Answer。
+   *
+   * 与 executor 的 render_answer **同一份渲染语义**（同一 Answer 词表、同一 scanBlocks 未溯源
+   * 数值闸、同一 summarizeSolverOutput 投影——不许造第二份渲染器）；三处刻意不同：
+   *  · 溯源引用叫 `fromNode`（图词表），且**必须在本节点可见祖先集里**——边 = 可见性授权，
+   *    引用没边连过来的节点直接 FAILED，与模板解析同一条纪律；
+   *  · provenance id 确定性 `prov_<nodeId>_<块下标>`（R6：同一张图跑两次 nodeResults 逐字节
+   *    一致，`newId` 的随机后缀会把字节等价当场打碎）；
+   *  · toolCallId 标 `graph-node:<fromNode>`——图节点不经 GuardedToolExecutor，没有真
+   *    toolCallId，诚实标注来源而不是伪造一个。
+   */
+  private runRenderNode(ctx: NodeRunContext, resolvedParams: Record<string, unknown>): Answer {
+    const rawBlocks = resolvedParams.blocks;
+    if (!Array.isArray(rawBlocks)) {
+      throw Object.assign(
+        new Error(`render 节点「${ctx.node.id}」缺少 params.blocks（数组）——收口节点必须声明要渲染什么`),
+        { code: ErrorCodes.VALIDATION_ERROR },
+      );
+    }
+    const provenance: ProvenanceRef[] = [];
+    const blocks: AnswerBlock[] = [];
+
+    for (let i = 0; i < rawBlocks.length; i++) {
+      const tpl = rawBlocks[i] as { fromNode?: string; type?: string } & Record<string, unknown>;
+      const { fromNode, ...rest } = tpl;
+      // R6 确定性 provenance id（见 docstring）。
+      const provId = `prov_${ctx.node.id}_${i}`;
+      if (fromNode !== undefined) {
+        if (!ctx.visibleFrom.includes(fromNode)) {
+          throw Object.assign(
+            new Error(
+              `render 节点「${ctx.node.id}」的 blocks[${i}] 声明 fromNode=${fromNode}，但它不在本节点可见祖先集 ` +
+                `[${ctx.visibleFrom.join(", ") || "（无）"}] 里——引用图上没有边连过来的节点是不允许的`,
+            ),
+            { code: ErrorCodes.VALIDATION_ERROR },
+          );
+        }
+        provenance.push({
+          id: provId,
+          toolCallId: `graph-node:${fromNode}`,
+          toolName: "graph-node",
+          outputPath: typeof rest.outputPath === "string" ? rest.outputPath : "$.data",
+          source: "TOOL_RESULT",
+        });
+      }
+      const type = rest.type as string;
+      if (type === "text") {
+        blocks.push({ type: "text", markdown: String(rest.markdown ?? "") });
+      } else if (type === "table") {
+        blocks.push({
+          type: "table",
+          columns: (rest.columns as string[]) ?? [],
+          rows: ((rest.rows as (string | number | null)[][]) ?? []).map((row) =>
+            row.map((c) => (c === null || typeof c === "number" ? c : String(c))),
+          ),
+          provId,
+        });
+      } else if (type === "kpi") {
+        blocks.push({
+          type: "kpi",
+          label: String(rest.label ?? ""),
+          value: String(rest.value ?? ""),
+          ...(rest.unit !== undefined ? { unit: String(rest.unit) } : {}),
+          provId,
+        });
+      } else if (type === "rule_violation") {
+        blocks.push({
+          type: "rule_violation",
+          ruleId: String(rest.ruleId ?? ""),
+          severity: String(rest.severity ?? ""),
+          explanation: String(rest.explanation ?? ""),
+          provId,
+        });
+      } else if (type === "action_draft") {
+        blocks.push({
+          type: "action_draft",
+          draftId: String(rest.draftId ?? ""),
+          actionType: String(rest.actionType ?? ""),
+          summary: String(rest.summary ?? ""),
+        });
+      } else if (type === "solver_summary") {
+        // 与 executor 同一投影：求解器真实输出 → KPI/表/规则依据块（不写死任何业务数字）。
+        blocks.push(...summarizeSolverOutput(rest.output, provId));
+      } else {
+        throw Object.assign(
+          new Error(`render 节点「${ctx.node.id}」的 blocks[${i}] type=${String(type)} 不在 AnswerBlock 词表里`),
+          { code: ErrorCodes.VALIDATION_ERROR },
+        );
+      }
+    }
+
+    const unverified = scanBlocks(blocks);
+    if (unverified) {
+      // 与 executor 同口径：打标不阻断（§5.5）。
+      this.deps.metrics?.unverifiedNumerics.inc({ path: "WORKFLOW" });
+    }
+    return { trustLevel: "VERIFIED_WORKFLOW", blocks, provenance, unverifiedNumerics: unverified };
+  }
 }
 
 /**
- * ── 本切片明确未做（诚实边界，勿当已完成）────────────────────────────────────────
- *  · 三处扇出收编（executor.ts 线性 / multi-route.ts 多域 / Coordinator）—— PRD §3.4，属 W2 单。
+ * ── 本文件明确未做（诚实边界，勿当已完成）────────────────────────────────────────
+ *  · multi-route.ts 多域 Promise.all 与 Coordinator 角色扇出：WO-GRAPH-FANOUT-W2 定为
+ *    **分工登记**（FANOUT-REG 标记 + graph-runtime:check 门看护），不收编进 GraphScheduler——
+ *    理由（provenance 需 GuardedToolExecutor toolCallIds / 角色归因赖串行步指针直到 W3
+ *    role-by-node）见 docs/HANDOFF-WO-GRAPH-FANOUT-W2.md。
  *  · 取消到底（AbortSignal 透传到 solver.invoke 第 4 参）—— PRD §5，属 W3 单。
  *  · 按题型预算 / RuntimeContext 统一工厂 / progress 事件 —— PRD §4/§6，属 W3 单。
  *  · dependsOn 编译期内联展开 —— PRD §8.1，属 W4 单。
- *  · rule/agent/human/slice/render/mcp/compose 节点 —— 编译期 NOT_IMPLEMENTED 显式拒绝。
+ *  · rule/agent/human/slice/mcp/compose 节点 —— 编译期 NOT_IMPLEMENTED 显式拒绝
+ *    （render 已由 WO-GRAPH-FANOUT-W2 实现，见 runRenderNode）。
  */

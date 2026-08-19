@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { seedRegistry } from "../src/mocks/seed.js";
+import { GraphScheduler } from "../src/skill-orchestrator.js";
+import type { DataCoreClient } from "../src/tools/clients.js";
 import { ADMIN, createTestApp, debugHeaders, type TestApp } from "./helpers.js";
 
 /**
@@ -25,6 +27,8 @@ interface GraphRunResponse {
   runId: string;
   tenantId: string;
   source: string;
+  /** R11 收口披露（WO-GRAPH-FANOUT-W2）：declared / synthesized。 */
+  renderClosure: string;
   status: string;
   layers: { index: number; nodeIds: string[] }[];
   nodeResults: {
@@ -49,10 +53,11 @@ async function runGraph(body: unknown, user = ADMIN): Promise<{ statusCode: numb
 }
 
 /**
- * 两层图：
+ * 三层图（WO-GRAPH-FANOUT-W2 起带 R11 render 收口）：
  *   层0  skill 节点   → 载入真实种子技能 `capacity_analysis`（seed.ts:1018 skl_seed_capacity）
  *                       它**真的**声明了 references[{kind:"solver", key:"capacity_forecast"}]
  *   层1  solver 节点  → solverKey 来自 `{{steps.load.output.solverKeys[0]}}`，即**第一层的产物**
+ *   层2  render 节点  → 收口（R11），solver_summary 投影第二层产物，fromNode=solve
  *
  * 边就是这条数据的通道。掐掉边 → 第二层解析不到 → FAILED（见「变异反证」用例）。
  */
@@ -67,8 +72,21 @@ const TWO_LAYER_GRAPH = {
         args: { modelId: "4680-NCM", weeks: 8, demandDelta: 0.2 },
       },
     },
+    {
+      id: "out",
+      kind: "render",
+      params: {
+        blocks: [
+          { type: "text", markdown: "产能测算结果" },
+          { type: "solver_summary", output: "{{steps.solve.output.data}}", fromNode: "solve" },
+        ],
+      },
+    },
   ],
-  edges: [{ from: "load", to: "solve", kind: "seq" }],
+  edges: [
+    { from: "load", to: "solve", kind: "seq" },
+    { from: "solve", to: "out", kind: "seq" },
+  ],
 };
 
 describe("SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输出", () => {
@@ -81,8 +99,11 @@ describe("SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输�
     expect(body.layers).toEqual([
       { index: 0, nodeIds: ["load"] },
       { index: 1, nodeIds: ["solve"] },
+      { index: 2, nodeIds: ["out"] },
     ]);
     expect(body.status).toBe("COMPLETED");
+    // R11 收口披露：作者自己写了 render → declared
+    expect(body.renderClosure).toBe("declared");
 
     const load = body.nodeResults.find((r) => r.nodeId === "load")!;
     const solve = body.nodeResults.find((r) => r.nodeId === "solve")!;
@@ -113,6 +134,28 @@ describe("SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输�
     // —— 边 = 可见性授权：第二层能看见第一层，正是因为有这条边 ——
     expect(solve.visibleFrom).toEqual(["load"]);
     expect(load.visibleFrom).toEqual([]);
+
+    // ★ R11 收口执行侧（WO-GRAPH-FANOUT-W2）：render 节点**真的**把上游产物投成了 Answer ——
+    //   solver_summary 块来自 `{{steps.solve.output.data}}`（第二层产物），不是静态文案。
+    const out = body.nodeResults.find((r) => r.nodeId === "out")!;
+    expect(out.status).toBe("COMPLETED");
+    expect(out.visibleFrom).toEqual(["solve", "load"]); // ancestorsOf 近端优先传递闭包序
+    const answer = out.output as {
+      trustLevel: string;
+      blocks: { type: string; provId?: string }[];
+      provenance: { id: string; toolCallId: string; toolName: string }[];
+      unverifiedNumerics: boolean;
+    };
+    expect(answer.trustLevel).toBe("VERIFIED_WORKFLOW");
+    expect(answer.blocks.length).toBeGreaterThan(1); // text + solver_summary 投影块
+    expect(answer.blocks.some((b) => b.type === "text")).toBe(true);
+    // 投影块真的吃到了求解器输出：capWanP50 是数字 ⇒ 投影里有 KPI/表块（不是空投影）
+    expect(answer.blocks.some((b) => b.type === "kpi" || b.type === "table")).toBe(true);
+    // 溯源诚实标注：图节点不经 GuardedToolExecutor，toolCallId 标 graph-node: 前缀；
+    // provId 确定性（R6：同图两次跑 nodeResults 逐字节一致靠它）
+    expect(answer.provenance).toEqual([
+      { id: "prov_out_1", toolCallId: "graph-node:solve", toolName: "graph-node", outputPath: "$.data", source: "TOOL_RESULT" },
+    ]);
   });
 
   it("变异反证（掐掉边）：同一张图删掉边 → 第二层拿不到第一层输出 → FAILED", async () => {
@@ -153,8 +196,13 @@ describe("SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输�
           { id: "b", kind: "skill", params: { skillKey: "capacity_analysis" } },
           // c 引用的是 b，但边只有 a→c。b 与 c 之间无边。
           { id: "c", kind: "solver", params: { solverKey: "{{steps.b.output.solverKeys[0]}}" } },
+          // R11 收口（W2）：c→out；c 失败时 out 被毒化 SKIPPED，不影响本用例判据。
+          { id: "out", kind: "render", params: { blocks: [{ type: "text", markdown: "x" }] } },
         ],
-        edges: [{ from: "a", to: "c", kind: "seq" }],
+        edges: [
+          { from: "a", to: "c", kind: "seq" },
+          { from: "c", to: "out", kind: "seq" },
+        ],
       },
     });
     expect(res.statusCode).toBe(200);
@@ -180,10 +228,13 @@ describe("SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输�
           { id: "load", kind: "skill", params: { skillKey: "capacity_analysis" } },
           { id: "solveA", kind: "solver", params: { solverKey: "{{steps.load.output.solverKeys[0]}}", args: { modelId: "4680-NCM", weeks: 8 } } },
           { id: "solveB", kind: "solver", params: { solverKey: "{{steps.load.output.solverKeys[0]}}", args: { modelId: "4680-NCM", weeks: 12 } } },
+          { id: "out", kind: "render", params: { blocks: [{ type: "text", markdown: "汇总" }] } },
         ],
         edges: [
           { from: "load", to: "solveA", kind: "parallel" },
           { from: "load", to: "solveB", kind: "parallel" },
+          { from: "solveA", to: "out", kind: "seq" },
+          { from: "solveB", to: "out", kind: "seq" },
         ],
         maxParallelNodes: 2,
       },
@@ -193,6 +244,7 @@ describe("SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输�
     expect(body.layers).toEqual([
       { index: 0, nodeIds: ["load"] },
       { index: 1, nodeIds: ["solveA", "solveB"] },
+      { index: 2, nodeIds: ["out"] },
     ]);
     for (const id of ["solveA", "solveB"]) {
       const n = body.nodeResults.find((r) => r.nodeId === id)!;
@@ -320,17 +372,24 @@ describe("SEAM · Skill.execution 对名裁决：执行来源在响应里可见"
     expect(body.nodeResults.find((r) => r.nodeId === "solve")!.resolvedParams?.solverKey).toBe("capacity_forecast");
   });
 
-  it("execution.steps（新路·线性，元素就是 PlanStep）→ source=execution.steps 且编成 seq 链", async () => {
+  it("execution.steps（新路·线性，元素就是 PlanStep）→ source=execution.steps 且编成 seq 链 + R11 合成收口披露", async () => {
     const res = await runGraph({ execution: { steps: [...LEGACY_STEPS, { id: "p2", type: "invoke_solver", params: { solverKey: "capacity_forecast", args: { modelId: "4680-NCM", weeks: 12 } } }] } });
     expect(res.statusCode).toBe(200);
     const body = res.json() as GraphRunResponse;
     expect(body.source).toBe("execution.steps");
-    // 保守链式退化：两层各一个（不做隐式并行推断）
+    // 保守链式退化：两层各一个（不做隐式并行推断）+ 末尾合成 render 收口层（W2·R11）
     expect(body.layers).toEqual([
       { index: 0, nodeIds: ["p1"] },
       { index: 1, nodeIds: ["p2"] },
+      { index: 2, nodeIds: ["__auto_render"] },
     ]);
     expect(body.status).toBe("COMPLETED");
+    // 合成收口必须披露（不装成作者声明），且语义 = executor 兜底答案
+    expect(body.renderClosure).toBe("synthesized");
+    const tail = body.nodeResults.find((r) => r.nodeId === "__auto_render")!;
+    expect(tail.status).toBe("COMPLETED");
+    const tailAnswer = tail.output as { blocks: { type: string; markdown?: string }[] };
+    expect(tailAnswer.blocks).toEqual([{ type: "text", markdown: "工作流执行完成。" }]);
   });
 
   it("★ 只给 legacy plan.steps → source=legacy.plan.steps（回落**可见**，不静默）", async () => {
@@ -339,6 +398,7 @@ describe("SEAM · Skill.execution 对名裁决：执行来源在响应里可见"
     const body = res.json() as GraphRunResponse;
     expect(body.source).toBe("legacy.plan.steps");
     expect(body.status).toBe("COMPLETED");
+    expect(body.renderClosure).toBe("synthesized");
   });
 
   it("★ 三路皆空 → 422，不是「跑通了但什么都没做」", async () => {
@@ -391,4 +451,115 @@ describe("SEAM · Skill.execution 对名裁决：执行来源在响应里可见"
     expect(res.statusCode).toBe(200);
     expect((res.json() as GraphRunResponse).source).toBe("execution.graph");
   });
+});
+
+/**
+ * R11（WO-GRAPH-FANOUT-W2）在 **HTTP 层**的落点：
+ * 手写图不带 render 收口 → 422 RENDER_CLOSURE_MISSING 并**点名**；
+ * render 节点的 fromNode 必须是可见祖先 —— 渲染侧与模板解析同一条「边 = 可见性授权」纪律。
+ */
+describe("SEAM · R11 render 收口（拒发点名 / fromNode 可见性）", () => {
+  it("手写图没有 render → 422 RENDER_CLOSURE_MISSING，点名入口与悬空终点", async () => {
+    const res = await runGraph({
+      graph: {
+        nodes: [
+          { id: "load", kind: "skill", params: { skillKey: "capacity_analysis" } },
+          { id: "solve", kind: "solver", params: { solverKey: "capacity_forecast" } },
+        ],
+        edges: [{ from: "load", to: "solve", kind: "seq" }],
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    const err = res.json() as { error: { code: string; message: string } };
+    expect(err.error.code).toBe("RENDER_CLOSURE_MISSING");
+    expect(err.error.message).toContain("load");
+    expect(err.error.message).toContain("solve");
+  });
+
+  it("render 声明的 fromNode 不在可见祖先集 → 该节点 FAILED（没边连过来就不许溯源到它）", async () => {
+    const res = await runGraph({
+      graph: {
+        nodes: [
+          { id: "s1", kind: "solver", params: { solverKey: "capacity_forecast", args: { modelId: "4680-NCM", weeks: 8 } } },
+          { id: "s2", kind: "solver", params: { solverKey: "capacity_forecast", args: { modelId: "4680-NCM", weeks: 8 } } },
+          // out 只与 s1 有边；却声明 fromNode: s2 —— 没边连过来就不许溯源到它
+          { id: "out", kind: "render", params: { blocks: [{ type: "kpi", label: "x", value: "ok", fromNode: "s2" }] } },
+        ],
+        edges: [{ from: "s1", to: "out", kind: "seq" }],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as GraphRunResponse;
+    const out = body.nodeResults.find((r) => r.nodeId === "out")!;
+    expect(out.status).toBe("FAILED");
+    expect(out.error?.code).toBe("VALIDATION_ERROR");
+    expect(out.error?.message).toContain("s2");
+    expect(body.status).toBe("FAILED");
+  });
+});
+
+/**
+ * A2（PRD §10）：扇出执行序**真的拓扑** —— 同层真并发，屏障证明，不靠墙钟。
+ *
+ * 为什么用屏障不用耗时断言：本机负载可以很高，墙钟断言会假性红；屏障与负载无关——
+ * 真并发必会合，假并发（串行化变异）必不合。变异反证天然成立：把调度器的波前并发改成
+ * 逐个 await，第一个 barrier_probe 永远等不到第二个开始 → BARRIER_TIMEOUT → 红。
+ */
+describe("SEAM · 菱形扇出同层真并发（屏障会合，串行化即红）", () => {
+  it("diamond：b1/b2 两个并行分支同时在跑（屏障会合），render 汇收", async () => {
+    let arrived = 0;
+    let release!: () => void;
+    const both = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const barrierDataCore = {
+      solver: {
+        invoke: async (_auth: unknown, solverKey: string) => {
+          if (solverKey === "barrier_probe") {
+            arrived += 1;
+            if (arrived >= 2) release();
+            await Promise.race([
+              both,
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("BARRIER_TIMEOUT：同层节点未真并发（串行化变异检出）")), 8000),
+              ),
+            ]);
+          }
+          return { data: { solverKey, ok: true } };
+        },
+      },
+    };
+    const scheduler = new GraphScheduler({
+      repos: t.repos,
+      dataCore: barrierDataCore as unknown as DataCoreClient,
+    });
+    const result = await scheduler.run(
+      { tenantId: "t1", userId: "u1", roles: ["catalog_admin"] },
+      {
+        execution: {
+          graph: {
+            nodes: [
+              { id: "entry", kind: "solver", params: { solverKey: "plain" } },
+              { id: "b1", kind: "solver", params: { solverKey: "barrier_probe" } },
+              { id: "b2", kind: "solver", params: { solverKey: "barrier_probe" } },
+              { id: "out", kind: "render", params: { blocks: [{ type: "text", markdown: "done" }] } },
+            ],
+            edges: [
+              { from: "entry", to: "b1", kind: "parallel" },
+              { from: "entry", to: "b2", kind: "parallel" },
+              { from: "b1", to: "out", kind: "seq" },
+              { from: "b2", to: "out", kind: "seq" },
+            ],
+            maxParallelNodes: 4,
+          },
+        },
+      },
+      { runId: "run_barrier" },
+    );
+    // 拓扑序：diamond 三层，并行分支同层
+    expect(result.layers.map((l) => l.nodeIds)).toEqual([["entry"], ["b1", "b2"], ["out"]]);
+    expect(result.status).toBe("COMPLETED");
+    // 屏障确实被两个分支都到达过（不是只跑了一个）
+    expect(arrived).toBe(2);
+  }, 20000);
 });
