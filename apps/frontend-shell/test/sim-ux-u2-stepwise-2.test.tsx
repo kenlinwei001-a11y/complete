@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { loginAs, renderApp } from "./utils";
+import { server } from "./setup";
 
 /**
  * WO-U2-STEPWISE-2 · 判据 **U2**（推演过程分步可见 · 每步标 数据·求解器·规则）——剩余 9 页。
@@ -167,5 +169,157 @@ describe("WO-U2-STEPWISE-2 · global-sim：步骤态真正驱动结果分段", (
     await screen.findByTestId("global-sim-readout");
     expect(screen.getAllByTestId(/^global-sim-heat-/)).toHaveLength(heatCount);
     expect(screen.getAllByTestId(/^global-sim-ledger-/)).toHaveLength(ledgerCount);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// cleanroom-attr（净室归因）：三档三个求解器 ⇒ **三条步骤契约**，各投影自本档的图
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** 确定性对象类型集（与 `cleanroom-attr.test.tsx` 同源：覆盖三求解器所需结构）。 */
+const CR_TYPES = [
+  { key: "Furnace", displayName: "化成柜", domain: "capacity", status: "ACTIVE", properties: [{ propKey: "furnaceId", dataType: "string", isPrimaryKey: true }, { propKey: "capacity", dataType: "number", isPrimaryKey: false }] },
+  { key: "Job", displayName: "在制任务", domain: "capacity", status: "ACTIVE", properties: [{ propKey: "jobId", dataType: "string", isPrimaryKey: true }, { propKey: "furnaceRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Furnace" }, { propKey: "qty", dataType: "number", isPrimaryKey: false }, { propKey: "priority", dataType: "number", isPrimaryKey: false }] },
+  { key: "Customer", displayName: "客户", domain: "people", status: "ACTIVE", properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true }, { propKey: "orderRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Order" }] },
+  { key: "Order", displayName: "订单", domain: "product", status: "ACTIVE", properties: [{ propKey: "orderId", dataType: "string", isPrimaryKey: true }, { propKey: "supplierRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Supplier" }] },
+  { key: "Supplier", displayName: "供应商", domain: "supply", status: "ACTIVE", properties: [{ propKey: "supplierId", dataType: "string", isPrimaryKey: true }] },
+  { key: "Product", displayName: "产品", domain: "product", status: "ACTIVE", properties: [{ propKey: "prodId", dataType: "string", isPrimaryKey: true }, { propKey: "revenue", dataType: "number", isPrimaryKey: false }, { propKey: "rawCost", dataType: "number", isPrimaryKey: false }, { propKey: "laborCost", dataType: "number", isPrimaryKey: false }] },
+];
+
+function renderCleanroom(): void {
+  loginAs("planner");
+  server.use(
+    http.get("*/a/v1/ontology/object-types", () => HttpResponse.json(CR_TYPES)),
+    http.post("*/a/v1/solvers/shared_bottleneck/invoke", async ({ request }) => {
+      const { args } = (await request.json()) as { args: Record<string, string> };
+      const rt = args.resourceType;
+      return HttpResponse.json({
+        data: {
+          bottlenecks: [{ resourceType: rt, resourceId: `${rt}-01`, capacity: 100, demand: 138, sharerCount: 3 }],
+          contention: [{ resourceId: `${rt}-01`, sharers: ["a", "b", "c"] }],
+          downgraded: [{ resourceId: `${rt}-01`, sharedByType: args.sharedByType, objectId: "c", reason: "优先级最低" }],
+          summary: `1 个共享瓶颈,3 张单争用,1 张被降级 · ${rt}`,
+        },
+        snapshotVersion: "ov-cr",
+      });
+    }),
+    http.post("*/a/v1/solvers/concentration_risk/invoke", async ({ request }) => {
+      const { args } = (await request.json()) as { args: { startType: string; path: { toType: string }[] } };
+      const rootType = args.path[args.path.length - 1]!.toType;
+      const top = { rootType, rootId: `${rootType}-hub`, dependents: ["c1", "c2", "c3"], count: 3 };
+      return HttpResponse.json({
+        data: { concentrations: [top], topExposure: top, summary: `1 个隐性集中单点（${rootType}）,最大敞口 ${top.count} 个依赖方` },
+        snapshotVersion: "ov-cr",
+      });
+    }),
+    http.post("*/a/v1/solvers/margin_attribution/invoke", async ({ request }) => {
+      const { args } = (await request.json()) as { args: { targetType: string; costFields: { field: string; label?: string }[] } };
+      const driver = args.costFields[0]!.label ?? args.costFields[0]!.field;
+      return HttpResponse.json({
+        data: {
+          inverted: [{ id: `${args.targetType}-9`, revenue: 100, totalCost: 128, margin: -28, marginRate: -0.28, topDriver: { label: driver, value: 80, share: 0.625 }, attribution: [{ label: driver, value: 80, share: 0.625 }] }],
+          rootDrivers: [{ label: driver, invertedCount: 1, totalValue: 80 }],
+          invertedCount: 1,
+          summary: `1 个目标毛利倒挂；根因主驱动 ${driver}（拉穿 1 个）`,
+        },
+        snapshotVersion: "ov-cr",
+      });
+    }),
+  );
+  renderApp("/v/cleanroom-attr");
+}
+
+describe("WO-U2-STEPWISE-2 · cleanroom-attr：三档各自的步骤态真正驱动结果分段", () => {
+  it("U2-CR-1 · 共享瓶颈档：第 3 步没有降级结论、第 2 步连需求 138 都没有；切回末步全回来", async () => {
+    renderCleanroom();
+    const res = await screen.findByTestId("cr-bn-result");
+
+    // 默认末步 = 完整结果（改前屏面）：瓶颈行真值 138/100 + 降级结论都在。
+    for (let n = 1; n <= 4; n++) expect(screen.getByTestId(`cr-bn-steps-step-${n}`)).toBeInTheDocument();
+    expect(within(res).getByTestId("cr-bn-row-Furnace-01")).toHaveTextContent("138");
+    expect(within(res).getByTestId("cr-bn-downgraded-Furnace-01")).toHaveTextContent("优先级最低");
+    // 末步口径行三要素（逐字来自图上 `downgraded` 节点）。
+    expect(screen.getByTestId("cr-bn-steps-meta-data")).toHaveTextContent("downgraded[]");
+    expect(screen.getByTestId("cr-bn-steps-meta-solver")).toHaveTextContent("shared_bottleneck");
+    expect(screen.getByTestId("cr-bn-steps-meta-rule")).toHaveTextContent("优先级");
+
+    // ── 第 3 步「瓶颈与争用」：瓶颈的数还在，降级结论退场 ──
+    fireEvent.click(screen.getByTestId("cr-bn-steps-step-3"));
+    await waitFor(() => expect(screen.queryByTestId("cr-bn-downgraded-Furnace-01")).toBeNull());
+    expect(screen.queryAllByText(/优先级最低/)).toHaveLength(0);
+    expect(screen.getByTestId("cr-bn-row-Furnace-01")).toHaveTextContent("138");
+
+    // ── 第 2 步「共享瓶颈求解」：连需求 138 也退场，只剩求解回执 ──
+    fireEvent.click(screen.getByTestId("cr-bn-steps-step-2"));
+    await waitFor(() => expect(screen.queryByTestId("cr-bn-row-Furnace-01")).toBeNull());
+    expect(screen.queryAllByText("138")).toHaveLength(0); // ← 具体的数不在了
+    expect(screen.getByTestId("cr-bn-summary")).toHaveTextContent("1 个共享瓶颈");
+
+    // ── 第 1 步「参数倒推」：回执也退场，只剩这次真正用的那组倒推参数 ──
+    fireEvent.click(screen.getByTestId("cr-bn-steps-step-1"));
+    await waitFor(() => expect(screen.queryByTestId("cr-bn-summary")).toBeNull());
+    expect(screen.getByTestId("cr-bn-step-inputs")).toHaveTextContent("Furnace");
+
+    // ── 切回末步：全部回来 ──
+    fireEvent.click(screen.getByTestId("cr-bn-steps-step-4"));
+    await screen.findByTestId("cr-bn-row-Furnace-01");
+    expect(screen.getByTestId("cr-bn-row-Furnace-01")).toHaveTextContent("138");
+    expect(screen.getByTestId("cr-bn-downgraded-Furnace-01")).toBeInTheDocument();
+  });
+
+  it("U2-CR-2 · 隐性集中度档（三步）：第 2 步没有最大敞口 3；切回末步它回来", async () => {
+    renderCleanroom();
+    fireEvent.click(await screen.findByTestId("cr-tab-concentration"));
+    await screen.findByTestId("cr-cc-result");
+
+    for (let n = 1; n <= 3; n++) expect(screen.getByTestId(`cr-cc-steps-step-${n}`)).toBeInTheDocument();
+    expect(screen.getByTestId("cr-cc-top-count")).toHaveTextContent("3");
+    expect(screen.getByTestId("cr-cc-steps-meta-solver")).toHaveTextContent("concentration_risk");
+
+    // 第 2 步「多跳反向聚合」：敞口读数（第 3 步）退场。
+    fireEvent.click(screen.getByTestId("cr-cc-steps-step-2"));
+    await waitFor(() => expect(screen.queryByTestId("cr-cc-top-count")).toBeNull());
+    expect(screen.queryByTestId("cr-cc-top")).toBeNull();
+    expect(screen.getByTestId("cr-cc-summary")).toHaveTextContent("最大敞口");
+
+    // 第 1 步「依赖链倒推」：求解回执退场，只剩这次走的那条链。
+    fireEvent.click(screen.getByTestId("cr-cc-steps-step-1"));
+    await waitFor(() => expect(screen.queryByTestId("cr-cc-summary")).toBeNull());
+    expect(screen.getByTestId("cr-cc-step-inputs")).toHaveTextContent("supplierRef");
+
+    fireEvent.click(screen.getByTestId("cr-cc-steps-step-3"));
+    await screen.findByTestId("cr-cc-top-count");
+    expect(screen.getByTestId("cr-cc-top-count")).toHaveTextContent("3");
+  });
+
+  it("U2-CR-3 · 毛利倒挂档：第 3 步没有根因表与成本拆项、第 2 步连毛利 -28 都没有；切回末步全回来", async () => {
+    renderCleanroom();
+    fireEvent.click(await screen.findByTestId("cr-tab-margin"));
+    const res = await screen.findByTestId("cr-ma-result");
+
+    for (let n = 1; n <= 4; n++) expect(screen.getByTestId(`cr-ma-steps-step-${n}`)).toBeInTheDocument();
+    expect(within(res).getByTestId("cr-ma-inv-Product-9")).toHaveTextContent("-28");
+    expect(within(res).getByTestId("cr-ma-driver-count-rawCost")).toHaveTextContent("1");
+
+    // ── 第 3 步「倒挂判定」：倒挂目标的数还在，根因聚合与成本拆项退场 ──
+    fireEvent.click(screen.getByTestId("cr-ma-steps-step-3"));
+    await waitFor(() => expect(screen.queryByTestId("cr-ma-drivers")).toBeNull());
+    expect(screen.queryByTestId("cr-ma-driver-count-rawCost")).toBeNull();
+    expect(screen.queryByTestId("cr-ma-attr-Product-9")).toBeNull();
+    expect(screen.getByTestId("cr-ma-inv-Product-9")).toHaveTextContent("-28");
+
+    // ── 第 2 步「逐目标拆成本」：连毛利 -28 也退场 ──
+    fireEvent.click(screen.getByTestId("cr-ma-steps-step-2"));
+    await waitFor(() => expect(screen.queryByTestId("cr-ma-inv-Product-9")).toBeNull());
+    expect(screen.getByTestId("cr-ma-summary")).toHaveTextContent("毛利倒挂");
+
+    // ── 第 1 步「参数倒推」：只剩营收/成本项字段名 ──
+    fireEvent.click(screen.getByTestId("cr-ma-steps-step-1"));
+    await waitFor(() => expect(screen.queryByTestId("cr-ma-summary")).toBeNull());
+    expect(screen.getByTestId("cr-ma-step-inputs")).toHaveTextContent("rawCost");
+
+    fireEvent.click(screen.getByTestId("cr-ma-steps-step-4"));
+    await screen.findByTestId("cr-ma-drivers");
+    expect(screen.getByTestId("cr-ma-inv-Product-9")).toHaveTextContent("-28");
   });
 });

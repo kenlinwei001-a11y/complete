@@ -11,7 +11,10 @@ import type { ProvenanceReport } from "../sim/exportProvenance";
 // WO-U3-DAG-REST · 判据 U3（过程图 + 点节点看凭什么）。结构与画法与样板两页同源
 // （见 `views/sim/reasoningGraph.ts` 头注）——本页**不另建**一套。
 import { ProcessGraphPanel } from "../sim/ProcessGraphPanel";
-import { assertReasoningGraph, type ReasoningGraph } from "../sim/reasoningGraph";
+import { assertReasoningGraph, toSolverSteps, type ReasoningGraph } from "../sim/reasoningGraph";
+// WO-U2-STEPWISE-2 · 判据 U2（分步标口径）。本页三档各一个求解器、各一张图 ⇒ **各一条步骤契约**，
+// 全部投影自该档自己的 `ReasoningGraph`（不手写第二份·见 reasoningGraph.ts 头注 RL3）。
+import { SolverStepBar, useSolverStep } from "../sim/SolverStepBar";
 import {
   bottleneckCandidates,
   concentrationCandidates,
@@ -369,6 +372,12 @@ function BottleneckResult({ cand }: { cand: BottleneckCandidate }) {
     queryFn: async () => (await invokeSolver("shared_bottleneck", cand.args)).data as BottleneckOut,
     retry: false,
   });
+  /**
+   * 判据 U2 步骤契约（投影自本档的 `bottleneckGraph`）：参数倒推 → 共享瓶颈求解 → 瓶颈与争用 → 降级判定。
+   * ⚠ hook 必须在早退之前调 —— 早退分支（加载中/求解失败）里没有步骤条，但 hook 顺序不许变。
+   */
+  const bnSteps = useMemo(() => toSolverSteps(bottleneckGraph(cand)), [cand]);
+  const { active: bnStep, setActive: setBnStep, upto } = useSolverStep(bnSteps.length);
   if (isLoading) return <div className="empty-state">{zh.common.loading}</div>;
   if (isError || !data) return <SolverError testid="cr-bn-error" error={error} />;
 
@@ -410,8 +419,21 @@ function BottleneckResult({ cand }: { cand: BottleneckCandidate }) {
         共享瓶颈 · <span className="mono">{cand.args.sharedByType}</span> 争用 <span className="mono">{cand.args.resourceType}</span>
         <ExportReportButton pageKey="cleanroom-bottleneck" build={buildReport} />
       </div>
-      <div data-testid="cr-bn-summary" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>{data.summary}</div>
-      {data.bottlenecks.length === 0 ? (
+      {/* 判据 U2 · 分步推演（步骤态**真正驱动**下面结果分段：点第 N 步 ⇒ 数只显示到第 N 步为止）。 */}
+      <SolverStepBar steps={bnSteps} active={bnStep} onSelect={setBnStep} testId="cr-bn-steps" />
+      {/* 第 1 步的产物 = 这次真正用的那组**倒推参数**（参数换了结论跟着换，故必须逐字上屏）。 */}
+      <div style={{ fontSize: 12, color: "var(--muted2)", margin: "6px 0 10px" }} data-testid="cr-bn-step-inputs">
+        倒推参数 · 资源 <span className="mono">{cand.args.resourceType}</span> · 共享者{" "}
+        <span className="mono">{cand.args.sharedByType}</span> · 产能字段{" "}
+        <span className="mono">{cand.args.capacityField}</span> · 需求字段{" "}
+        <span className="mono">{cand.args.demandField}</span>
+      </div>
+      {/* U2 分段闸：求解回执（summary）是图上 `solve` 节点（layer 1 = 第 2 步）的产物。 */}
+      {upto(2) && (
+        <div data-testid="cr-bn-summary" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>{data.summary}</div>
+      )}
+      {/* U2 分段闸：瓶颈条目与争用方是 layer 2「瓶颈与争用」⇒ 第 3 步才出。 */}
+      {!upto(3) ? null : data.bottlenecks.length === 0 ? (
         <div className="empty-state" data-testid="cr-bn-empty" style={{ padding: 20, fontSize: 12 }}>
           无瓶颈：所选资源上"需求和 ≤ 产能"或无 ≥2 争用者（真值·非编造）。
         </div>
@@ -451,7 +473,8 @@ function BottleneckResult({ cand }: { cand: BottleneckCandidate }) {
                     </div>
                   </details>
                 )}
-                {dg && (
+                {/* U2 分段闸：降级判定是 layer 3（第 4 步）—— 它要先有瓶颈、再有争用方才算得出来（图上是汇合点）。 */}
+                {dg && upto(4) && (
                   <div data-testid={`cr-bn-downgraded-${b.resourceId}`} style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
                     降级：<b className="mono">{dg.objectId}</b>（{dg.sharedByType}）· {dg.reason}
                   </div>
@@ -516,6 +539,9 @@ function ConcentrationResult({ cand }: { cand: ConcentrationCandidate }) {
     queryFn: async () => (await invokeSolver("concentration_risk", cand.args)).data as ConcOut,
     retry: false,
   });
+  /** 判据 U2 步骤契约（投影自 `concentrationGraph`）：依赖链倒推 → 多跳反向聚合 → 敞口读数。 */
+  const ccSteps = useMemo(() => toSolverSteps(concentrationGraph(cand)), [cand]);
+  const { active: ccStep, setActive: setCcStep, upto } = useSolverStep(ccSteps.length);
   if (isLoading) return <div className="empty-state">{zh.common.loading}</div>;
   if (isError || !data) return <SolverError testid="cr-cc-error" error={error} />;
 
@@ -544,8 +570,22 @@ function ConcentrationResult({ cand }: { cand: ConcentrationCandidate }) {
         隐性集中单点 · 终端根 <span className="mono">{cand.rootType}</span>
         <ExportReportButton pageKey="cleanroom-concentration" build={buildReport} />
       </div>
-      <div data-testid="cr-cc-summary" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>{data.summary}</div>
-      {!top || data.concentrations.length === 0 ? (
+      {/* 判据 U2 · 分步推演（点第 N 步 ⇒ 数只显示到第 N 步为止）。 */}
+      <SolverStepBar steps={ccSteps} active={ccStep} onSelect={setCcStep} testId="cr-cc-steps" />
+      {/* 第 1 步的产物 = 这次真正走的那条**依赖链**（换一条链就是换一个根，故必须逐跳上屏）。 */}
+      <div style={{ fontSize: 12, color: "var(--muted2)", margin: "6px 0 10px" }} data-testid="cr-cc-step-inputs">
+        依赖链 · <span className="mono">{cand.args.startType}</span>
+        {cand.args.path.map((h) => (
+          <span key={`${h.viaField}-${h.toType}`}> —<span className="mono">{h.viaField}</span>→ <span className="mono">{h.toType}</span></span>
+        ))}
+        <span> · 最少依赖方 <span className="mono">{cand.args.minDependents}</span></span>
+      </div>
+      {/* U2 分段闸：求解回执（summary）= 图上 `solve` 节点（layer 1 = 第 2 步）。 */}
+      {upto(2) && (
+        <div data-testid="cr-cc-summary" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>{data.summary}</div>
+      )}
+      {/* U2 分段闸：敞口读数（最大敞口根 + 逐根条形）是 layer 2 ⇒ 第 3 步才出。 */}
+      {!upto(3) ? null : !top || data.concentrations.length === 0 ? (
         <div className="empty-state" data-testid="cr-cc-empty" style={{ padding: 20, fontSize: 12 }}>
           无隐性集中：无根被 ≥2 个起点隐性依赖（真值·非编造）。
         </div>
@@ -627,6 +667,9 @@ function MarginResult({ cand }: { cand: MarginCandidate }) {
     queryFn: async () => (await invokeSolver("margin_attribution", cand.args)).data as MarginOut,
     retry: false,
   });
+  /** 判据 U2 步骤契约（投影自 `marginGraph`）：参数倒推 → 逐目标拆成本 → 倒挂判定 → 根因聚合。 */
+  const maSteps = useMemo(() => toSolverSteps(marginGraph(cand)), [cand]);
+  const { active: maStep, setActive: setMaStep, upto } = useSolverStep(maSteps.length);
   if (isLoading) return <div className="empty-state">{zh.common.loading}</div>;
   if (isError || !data) return <SolverError testid="cr-ma-error" error={error} />;
 
@@ -666,13 +709,27 @@ function MarginResult({ cand }: { cand: MarginCandidate }) {
         毛利倒挂根因 · 目标 <span className="mono">{cand.args.targetType}</span>
         <ExportReportButton pageKey="cleanroom-margin" build={buildReport} />
       </div>
-      <div data-testid="cr-ma-summary" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>{data.summary}</div>
-      {data.invertedCount === 0 ? (
+      {/* 判据 U2 · 分步推演（点第 N 步 ⇒ 数只显示到第 N 步为止）。 */}
+      <SolverStepBar steps={maSteps} active={maStep} onSelect={setMaStep} testId="cr-ma-steps" />
+      {/* 第 1 步的产物 = 这次真正用的**营收字段与成本项字段**（少认一个成本项，毛利就会算高）。 */}
+      <div style={{ fontSize: 12, color: "var(--muted2)", margin: "6px 0 10px" }} data-testid="cr-ma-step-inputs">
+        倒推参数 · 目标 <span className="mono">{cand.args.targetType}</span> · 营收{" "}
+        <span className="mono">{cand.args.revenueField}</span> · 成本项{" "}
+        <span className="mono">{cand.args.costFields.map((c) => c.field).join(" , ")}</span> · 阈值{" "}
+        <span className="mono">{cand.args.marginThreshold}</span>
+      </div>
+      {/* U2 分段闸：求解回执（summary）= 图上 `solve` 节点（layer 1 = 第 2 步）。 */}
+      {upto(2) && (
+        <div data-testid="cr-ma-summary" style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>{data.summary}</div>
+      )}
+      {/* U2 分段闸：倒挂判定 = layer 2（第 3 步）；根因聚合与成本拆项 = layer 3（第 4 步）。 */}
+      {!upto(3) ? null : data.invertedCount === 0 ? (
         <div className="empty-state" data-testid="cr-ma-empty" style={{ padding: 20, fontSize: 12 }}>
           无倒挂：所选目标毛利率均达阈值（真值·非编造）。
         </div>
       ) : (
         <>
+          {upto(4) && (<>
           <div className="section-title" style={{ fontSize: 12, marginTop: 4 }}>根因主驱动成本项（跨 {data.invertedCount} 个倒挂目标聚合）</div>
           <div style={{ overflowX: "auto" }}>
             <table className="cmp" data-testid="cr-ma-drivers" style={{ minWidth: 380 }}>
@@ -690,6 +747,7 @@ function MarginResult({ cand }: { cand: MarginCandidate }) {
               </tbody>
             </table>
           </div>
+          </>)}
 
           <div className="section-title" style={{ fontSize: 12, marginTop: 12 }}>倒挂目标明细</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -704,7 +762,8 @@ function MarginResult({ cand }: { cand: MarginCandidate }) {
                 {/* 判据 U8：同上 —— 逐项成本拆解 `attribution[]` 求解器已回、此前整个丢掉，
                     屏上只留一个「主驱动」徽标。用户要问「成本到底拆成哪几项、各占多少」时无路可走。
                     就地展开（不导航），并显式说清占比的分母是**总成本**而不是营收，免得读成毛利率。 */}
-                {r.attribution.length > 0 && (
+                {/* U2 分段闸：成本拆项 `attribution[]` 是 layer 3（第 4 步），与根因聚合同层。 */}
+                {r.attribution.length > 0 && upto(4) && (
                   <details data-testid={`cr-ma-attr-${r.id}`} style={{ marginTop: 6 }}>
                     <summary data-testid={`cr-ma-attr-sum-${r.id}`} style={{ fontSize: 12, color: "var(--muted2)", cursor: "pointer" }}>
                       成本拆成哪 {r.attribution.length} 项 ▸
