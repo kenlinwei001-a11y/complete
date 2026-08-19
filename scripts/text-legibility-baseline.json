@@ -1,5 +1,5 @@
 {
- "note": "WO-R9-CONTRAST 的存量棘轮（断点 G-TEXT-ILLEGIBLE-SMALL-CJK）。site = 判据 A（尺寸加权对比度 required=max(3, 72/S_eff)）不达标的声明数；floor = 判据 B（字号硬底 <12px）的声明数。两者只降不升；零违规的文件不进基线（新增即红）。判据 C（令牌矩阵）无基线，必须绿。 每条 why 必须说明「为什么现在不修」；本单里绝大多数是本门诚实边界①的已知误报（文字压在彩色实心块上，静态判不了底色）。",
+ "note": "WO-R9-CONTRAST 的存量棘轮（断点 G-TEXT-ILLEGIBLE-SMALL-CJK）。site = 判据 A（尺寸加权对比度 required=max(3, 72/S_eff)）不达标的声明数；floor = 判据 B（字号硬底 <12px）的声明数。两者只降不升；零违规的文件不进基线（新增即红）。判据 C（令牌矩阵）无基线，必须绿。 每条 why 必须说明「为什么现在不修」；本单里绝大多数是本门诚实边界①的已知误报（文字压在彩色实心块上，静态判不了底色）。 contents 段（2026-08-19 · WO-RATCHET-CONSERVATION-SWEEP）= 逐条违规的**文件无关内容键**（D5 全局守恒 + D6 unlisted 落账）：搬家不改键不红；现算有而本段无 ⇒ 红且点名（新文件不免检、同数调包必现形）。建账时 SandboxConsole.module.css 的基线 site=1 实测已为 0（既有松弛，非本单消账对象），contents 只登记现算存在的 14 条。",
  "gate": "scripts/check-text-legibility.mjs",
  "generatedFrom": "node scripts/check-text-legibility.mjs --update",
  "criterion": {
@@ -64,6 +64,92 @@
    "site": 1,
    "floor": 0,
    "why": "L746 `.bnCell` 用近黑 `#0c1118` 12px/700 —— 它是**热力格**（34×22 实心色块）里的反相读数，底色由组件按值注入（`heatColor()` 返回的 hex）。【本门诚实边界①的已知误报】判据 A 拿「该主题所有表面令牌里最差的那一个」当底色，而这几处文字并不落在页面表面上，是压在**彩色实心块**上（真浏览器实测该屏对应元素达标）。静态源码里不存在「这段字最终落在哪块颜色上」这个事实，所以本门只能偏保守地多报 —— 登记在此而不是把判据放宽：放宽会同时放掉真违规。"
+  }
+ },
+ "contents": {
+  "2d9d34b45894f7bf": {
+   "file": "apps/frontend-shell/src/pages/Object360Page.tsx",
+   "label": "L44 style={{…}} 12px/400 #fff → light 1<6@--bg2 · warm 1<6@--bg2",
+   "count": 2,
+   "origin": "auto",
+   "why": "机器落账（text-legibility:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+  },
+  "6ce71d32c52d782f": {
+   "file": "apps/frontend-shell/src/pages/admin/AgentsPage.module.css",
+   "label": "L200 .arrow 12px/400 var(--line2) → dark 1.45<6@--panel-glass · light 1.38<6@--panel2 · warm 1.16<6@--panel2",
+   "count": 1,
+   "origin": "auto",
+   "why": "机器落账（text-legibility:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+  },
+  "29d15f2305aaf9ac": {
+   "file": "apps/frontend-shell/src/views/RiskBoardView.module.css",
+   "label": "L392 .rkAsk button 12px/400 var(--on-accent) → light 1<6@--bg2 · warm 1<6@--bg2",
+   "count": 1,
+   "origin": "auto",
+   "why": "机器落账（text-legibility:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+  },
+  "068c8b269a3ca9d1": {
+   "file": "apps/frontend-shell/src/views/RiskBoardView.tsx",
+   "label": "L1755 style={{…}} 12px/400 var(--ink, #e8b54a) → dark 5.65<6@--panel-glass · light 1.66<6@--panel2 · warm 1.68<6@--panel2",
+   "count": 1,
+   "origin": "auto",
+   "why": "机器落账（text-legibility:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+  },
+  "9722eb0cea7e371b": {
+   "file": "apps/frontend-shell/src/views/RiskBoardView.tsx",
+   "label": "L1837 style={{…}} 12px/400 #0a1f12 → dark 1.19<6@--panel2",
+   "count": 2,
+   "origin": "auto",
+   "why": "机器落账（text-legibility:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+  },
+  "6a9ffb819ffa0f2a": {
+   "file": "apps/frontend-shell/src/views/process/ProcessStartFromTemplate.module.css",
+   "label": "L103 .primary 13px/400 var(--on-accent) → light 1<5.54@--bg2 · warm 1<5.54@--bg2",
+   "count": 1,
+   "origin": "auto",
+   "why": "机器落账（text-legibility:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+  },
+  "ea46cccb2442c2b7": {
+   "file": "apps/frontend-shell/src/views/process/ProcessWaitView.module.css",
+   "label": "L145 .distSeg 12px/400 var(--on-accent) → light 1<6@--bg2 · warm 1<6@--bg2",
+   "count": 1,
+   "origin": "auto",
+   "why": "机器落账（text-legibility:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+  },
+  "b0e6eca3c63a5b0a": {
+   "file": "apps/frontend-shell/src/views/process/ProcessWaitView.module.css",
+   "label": "L176 .mark 16px/700 var(--on-accent) → light 1<3.5@--bg2 · warm 1<3.5@--bg2",
+   "count": 1,
+   "origin": "auto",
+   "why": "机器落账（text-legibility:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+  },
+  "2484632d415b6cad": {
+   "file": "apps/frontend-shell/src/views/sim/GlobalSimView.module.css",
+   "label": "L162 .pin 12px/400 #fff → light 1<6@--bg2 · warm 1<6@--bg2",
+   "count": 1,
+   "origin": "auto",
+   "why": "机器落账（text-legibility:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+  },
+  "e6c77b5c8ffffc48": {
+   "file": "apps/frontend-shell/src/views/sim/GlobalSimView.module.css",
+   "label": "L202 .btnPrimary 12.5px/600 var(--on-accent) → light 1<5.76@--bg2 · warm 1<5.76@--bg2",
+   "count": 1,
+   "origin": "auto",
+   "why": "机器落账（text-legibility:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+  },
+  "6e9bd01e18ae0a96": {
+   "file": "apps/frontend-shell/src/views/sim/GlobalSimView.module.css",
+   "label": "L356 .batchChip 12px/400 var(--nav-active-txt) → warm 1<6@--bg2",
+   "count": 1,
+   "origin": "auto",
+   "why": "机器落账（text-legibility:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+  },
+  "eec7eeba58e82c40": {
+   "file": "apps/frontend-shell/src/views/sim/SimViews.module.css",
+   "label": "L819 .bnCell 12px/700 #0c1118 → dark 1.3<4.67@--panel2",
+   "count": 1,
+   "origin": "auto",
+   "why": "机器落账（text-legibility:check）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
   }
  }
 }

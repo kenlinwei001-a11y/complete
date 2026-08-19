@@ -135,6 +135,7 @@ function gateToolBroken(e) {
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
+import { contentKey, reconcileContents, buildContentsSegment, conservationCanary } from "./lib/ratchet-conservation.mjs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -535,12 +536,14 @@ export function analyzeAll(themes, extraSources = []) {
     return { broken: `扫描面只枚举到 css ${cssFiles.length}（下界 ${MIN_CSS_FILES}）/ tsx ${tsxFiles.length}（下界 ${MIN_TSX_FILES}）` };
 
   const perFile = new Map();
-  const bump = (f, k, item) => {
-    if (!perFile.has(f)) perFile.set(f, { site: 0, floor: 0, unjudged: 0, siteItems: [], floorItems: [] });
+  const bump = (f, k, item, key) => {
+    if (!perFile.has(f)) perFile.set(f, { site: 0, floor: 0, unjudged: 0, siteItems: [], floorItems: [], siteKeys: [], floorKeys: [] });
     const e = perFile.get(f);
     e[k]++;
     if (k === "site" && e.siteItems.length < 40) e.siteItems.push(item);
     if (k === "floor" && e.floorItems.length < 40) e.floorItems.push(item);
+    // 键数组不封顶：D5/D6 对账要的是**逐条**内容身份，截断会让第 41 条起的内容免税
+    e[k === "site" ? "siteKeys" : "floorKeys"].push({ key, label: item });
   };
 
   const sources = [
@@ -552,11 +555,11 @@ export function analyzeAll(themes, extraSources = []) {
   for (const [f, raw, scanner] of sources) {
     if (raw == null) continue;
     const { units, sizes, unjudged } = scanner(f, raw);
-    if (!perFile.has(f)) perFile.set(f, { site: 0, floor: 0, unjudged: 0, siteItems: [], floorItems: [] });
+    if (!perFile.has(f)) perFile.set(f, { site: 0, floor: 0, unjudged: 0, siteItems: [], floorItems: [], siteKeys: [], floorKeys: [] });
     perFile.get(f).unjudged += unjudged;
 
-    // 判据 B（字号硬底）
-    for (const s of sizes) if (s.size < FLOOR_PX) bump(f, "floor", `L${s.line} ${s.sel.slice(0, 50)} = ${s.size}px`);
+    // 判据 B（字号硬底）—— 内容键只含「选择器 + 字号」（文件无关：搬家不改键，D5/D6 用）
+    for (const s of sizes) if (s.size < FLOOR_PX) bump(f, "floor", `L${s.line} ${s.sel.slice(0, 50)} = ${s.size}px`, contentKey("B", s.sel, String(s.size)));
 
     // 判据 A（尺寸加权对比度）—— 三套主题各判一次，任一主题红即计一条
     for (const u of units) {
@@ -567,7 +570,7 @@ export function analyzeAll(themes, extraSources = []) {
         const r = judgeUnit({ color: c, backgrounds: surfacesOf(vars), sizePx: u.size, weight: u.weight });
         if (r?.red) bad.push(`${theme} ${r.got}<${r.need}@${r.worst}`);
       }
-      if (bad.length) bump(f, "site", `L${u.line} ${u.sel.slice(0, 44)} ${u.size}px/${u.weight} ${u.color.slice(0, 26)} → ${bad.join(" · ")}`);
+      if (bad.length) bump(f, "site", `L${u.line} ${u.sel.slice(0, 44)} ${u.size}px/${u.weight} ${u.color.slice(0, 26)} → ${bad.join(" · ")}`, contentKey("A", u.sel, String(u.size), String(u.weight), u.color));
     }
   }
   return { perFile };
@@ -807,12 +810,60 @@ function gate() {
   }
   const base = loadBaseline();
 
+  /* ── D5 全局守恒 + D6 unlisted 落账（共享实现 scripts/lib/ratchet-conservation.mjs）──
+   * 度量单位从「文件」上提到「内容」：每条违规有文件无关的内容键（选择器+字号+字重+色）。
+   *  · 未登记文件里的违规，若其内容键在基线 contents 段有**同文件名额耗尽后空出的**名额
+   *    ⇒ 搬家（D5 守恒），不红也不记改善；
+   *  · 现算内容键在 contents 段无名额 ⇒ D6 红、逐条点名 —— 新文件不免检，
+   *    老文件里「删旧堆新、计数不变」的调包也在本条现形。
+   * 基线无 contents 段（老账）⇒ 退回纯文件棘轮并明说「未建账」（建账走 --update）。 */
+  const curEntries = [];
+  for (const [file, e] of res.perFile) {
+    for (const k of e.siteKeys) curEntries.push({ key: k.key, file, label: k.label, kind: "site" });
+    for (const k of e.floorKeys) curEntries.push({ key: k.key, file, label: k.label, kind: "floor" });
+  }
+  const recon = reconcileContents({
+    gate: "text-legibility:check",
+    contents: base.contents ?? null,
+    current: curEntries,
+    tightenCmd: "node scripts/check-text-legibility.mjs --update",
+  });
+  // 未匹配条目按文件归堆：未登记文件只红「未匹配」的那部分（匹配上的 = 搬来的已知内容）；
+  // 已登记文件保持原数值棘轮，未匹配条目另按 D6 逐条点名（同数调包在数值棘轮下恒绿）。
+  const unmatchedByFile = new Map();
+  for (const u of recon.unmatched) {
+    if (!unmatchedByFile.has(u.file)) unmatchedByFile.set(u.file, []);
+    unmatchedByFile.get(u.file).push(u);
+  }
+
   const fails = [...mx.fails];
   const rows = [];
   for (const [file, e] of [...res.perFile].sort()) {
     const r = { file, ...e };
     rows.push(r);
-    fails.push(...judgeRatchet(r, base.files[file]));
+    const b = base.files[file];
+    if (recon.notEstablished) {
+      fails.push(...judgeRatchet(r, b)); // 老基线（无 contents 段）：原行为原样
+      continue;
+    }
+    if (b) {
+      fails.push(...judgeRatchet(r, b)); // 数值棘轮不动（总量增长照样红）
+      // D6 同数调包：本文件未匹配上的内容逐条点名
+      for (const u of unmatchedByFile.get(file) ?? []) fails.push(recon.fails[recon.unmatched.indexOf(u)]);
+    } else {
+      // 未登记文件：只对**未匹配**的违规计数（匹配上的 = 从登记文件搬来的已知内容，D5 守恒不红）
+      const um = unmatchedByFile.get(file) ?? [];
+      if (um.length) {
+        const r2 = {
+          file,
+          site: um.filter((x) => x.kind === "site").length,
+          floor: um.filter((x) => x.kind === "floor").length,
+          siteItems: um.filter((x) => x.kind === "site").map((x) => x.label),
+          floorItems: um.filter((x) => x.kind === "floor").map((x) => x.label),
+        };
+        fails.push(...judgeRatchet(r2, undefined));
+      }
+    }
   }
 
   if (fails.length) {
@@ -832,6 +883,10 @@ function gate() {
   console.log(`✅ text-legibility:check 通过 —— ${rows.length} 个前端源文件`);
   console.log(`   判据 C 令牌矩阵：${mx.rows.length} 对（三套主题）全部 ≥ ${mx.need.toFixed(2)}:1 @${FLOOR_PX}px`);
   console.log(`   存量（棘轮基线 ${Object.keys(base.files).length} 条）：A 不达标声明 ${tot} · B 低于 ${FLOOR_PX}px ${totF} · 静态判不了 ${totU}（诚实边界②③）`);
+  if (recon.notEstablished)
+    console.log(`   ⚠ 基线缺 contents 段（D5/D6 未建账，本轮回退纯文件棘轮）—— 跑 \`node scripts/check-text-legibility.mjs --update\` 建账`);
+  else
+    console.log(`   D5/D6 内容对账：登记内容键 ${Object.keys(base.contents).length} 条 · 现算 ${curEntries.length} 条全部匹配（搬家不红 · 新内容/调包必红）`);
   return 0;
 }
 
@@ -844,7 +899,8 @@ function main() {
   const val = (f) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : null; };
 
   // ── 金丝雀先跑，任何模式都跑（含 --update：不许拿一个瞎了的门去写基线）──────
-  const canaryFails = [...runCanaries(), ...runRatchetCanaries()];
+  const cc = conservationCanary(); // D5/D6 内容对账金丝雀（与 reconcileContents 共用本体）
+  const canaryFails = [...runCanaries(), ...runRatchetCanaries(), ...(cc.ok ? [] : [`D5/D6 内容对账金丝雀不过：${cc.got}（期望：${cc.want}）`])];
   if (canaryFails.length) {
     console.error("⛔ 门自己瞎了 —— 金丝雀不中，**不许**据此报「代码干净 / 文字都读得了」：");
     canaryFails.forEach((f) => console.error("   · " + f));
@@ -938,6 +994,14 @@ function main() {
       const old = prev?.files?.[file];
       files[file] = { site: e.site, floor: e.floor, why: old?.why || whyFor(file, e) };
     }
+    // D5/D6 内容段：逐条违规的文件无关内容键（搬家不改键）。只降不升 —— 消失的键不残留。
+    const curEntries = [];
+    for (const [file, e] of [...res.perFile].sort()) {
+      if (!e.site && !e.floor) continue;
+      for (const k of e.siteKeys) curEntries.push({ key: k.key, file, label: k.label });
+      for (const k of e.floorKeys) curEntries.push({ key: k.key, file, label: k.label });
+    }
+    const contents = buildContentsSegment(curEntries, prev?.contents, "text-legibility:check");
     // 基线写入器四向金丝雀（与 buildBaselineDoc 共用同一份实现，不另抄）——
     // 原实现 note 无条件落常量、且不摊开 prev ⇒ 人手挂账与人手新增顶层键都会被 --update 吞掉。
     // ⚠ criterion 是**算出来的**（K / FLOOR_PX / BOLD_GAIN 随门参数走），故进 computed 不进 prose：
@@ -966,6 +1030,7 @@ function main() {
             floor: Object.values(files).reduce((a, f) => a + f.floor, 0),
           },
           files,
+          contents,
         },
       }), null, 1) + "\n"
     );
