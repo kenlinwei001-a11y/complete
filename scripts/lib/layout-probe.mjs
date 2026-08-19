@@ -344,12 +344,48 @@ export function measureLayout(opts) {
     }
   }
 
+  // ── M9 首屏锚点：**这一屏的主角到底在不在第一屏** ──────────────────────────
+  // 取数：`opts.anchorSelector` 命中的元素的 `getBoundingClientRect().top`（相对视口，可为负）。
+  //
+  // ⚠ 为什么必须**单独量它**，而不能拿上面任何一项代替（这是本项存在的全部理由）：
+  //   `firstScreenCtrls` 降了**不度量**「主角回到第一屏了」—— 把一块内容折叠起来，
+  //   控件数当场变好，而被它挤下去的那块画布仍然在折线以下。两者是两个命题：
+  //     > 「我用『第一屏控件数变少』当作『主画布回到第一屏』的证据，而前者并不度量后者。」
+  //   （CLAUDE.md 铁律 0.6 句式。WO-SANDBOX-CONFIG-UX 实测过这个形态：控件 36→25 而画布落到折线以下。）
+  //
+  // ⚠ **`found` 与 `top` 必须分开报，不许合成一个数**（同 overflowEls / overflowUnreachable 那条）：
+  //   选择器没命中时若回一个 `top = Infinity`，调用方会把「画布被删了」读成「画布太靠下」——
+  //   两者处置方向相反（前者是回归/工具坏了，后者是版面问题）。故命中与否是**独立的布尔**。
+  //   这正是变异反证要求「红在 top 超视口、不是红在组件不见了」的机器侧保障。
+  let anchor = null;
+  if (opts.anchorSelector) {
+    const el = root.querySelector(opts.anchorSelector) || document.querySelector(opts.anchorSelector);
+    if (!el) {
+      anchor = { found: false, selector: opts.anchorSelector };
+    } else {
+      const r = el.getBoundingClientRect();
+      anchor = {
+        found: true,
+        selector: opts.anchorSelector,
+        // 与本文件其它各项共用同一个 `visible()`，不另抄一份判据。
+        visible: visible(el),
+        top: Math.round(r.top),
+        bottom: Math.round(r.bottom),
+        height: Math.round(r.height),
+        // 判据本体：**顶边落在第一屏之内**。`top < VH` 就是工单那句话，一字不改。
+        inFirstScreen: r.top < VH,
+      };
+    }
+  }
+
   // ── 独立口径（金丝雀证明不了的那一半）────────────────────────────────────
   // 金丝雀只证明**工具没瞎**，不证明**扫描面选对了**。故另给一个与五项判据无关的总数：
   // 量到的文本元素数。少于下限 ⇒ 页面根本没渲染出来 ⇒ 调用方必须判 RC=2 而不是「合格」。
   return {
     ok: true,
     viewport: { w: VW, h: VH },
+    anchor,
+    anchorTop: anchor && anchor.found ? anchor.top : null,
     textEls: texts.length,
     minFontPx: texts.length ? Math.round(minFontPx * 100) / 100 : null,
     bodyFontPx,
@@ -389,6 +425,9 @@ export const METRICS = [
   //   它与 `overflowUnreachable` 是**两个数**，报告里永远分开印：
   //   总数只许降（横滚才看得见 ≠ 好用），真够不着的另有绝对上限 0。
   { key: "overflowEls", dir: "down", label: "溢出视口的元素数(总)" },
+  // ⚠ 只对**声明了锚点的页**产出（其余页该键为 null ⇒ 棘轮与基线写入两处都会跳过，
+  //   见调用方 `typeof !== "number" → continue`）。方向 `down` = 主角只许离首屏顶更近。
+  { key: "anchorTop", dir: "down", label: "首屏锚点距视口顶(px)" },
 ];
 
 /**
@@ -444,7 +483,7 @@ export async function launchBrowser() {
  *   （CLAUDE.md 铁律 1「凭一次快照下结论」的同源纪律）。超时仍不稳 ⇒ 抛 ProbeBroken ⇒ RC=2。
  */
 export async function renderAndMeasure(browser, spec) {
-  const { baseUrl, route, viewport, rootSelector, login, settleMs = 900, stableTries = 20 } = spec;
+  const { baseUrl, route, viewport, rootSelector, anchorSelector = null, login, settleMs = 900, stableTries = 20 } = spec;
   const page = await browser.newPage({ viewport });
   const pageErrors = [];
   page.on("pageerror", (e) => pageErrors.push(String(e).slice(0, 200)));
@@ -477,14 +516,17 @@ export async function renderAndMeasure(browser, spec) {
     let stable = null;
     const trace = [];
     for (let i = 0; i < stableTries; i++) {
-      const cur = await page.evaluate(measureLayout, { rootSelector });
+      const cur = await page.evaluate(measureLayout, { rootSelector, anchorSelector });
       trace.push(cur.ok ? `textEls=${cur.textEls}` : `未命中(${cur.reason})`);
       if (
         cur.ok &&
         cur.textEls >= TEXT_ELS_FLOOR &&
         last?.ok &&
         last.textEls === cur.textEls &&
-        last.firstScreenCtrls === cur.firstScreenCtrls
+        last.firstScreenCtrls === cur.firstScreenCtrls &&
+        // 锚点还在移动 ⇒ 版面没停稳。少了这一条，`anchorTop` 可能量在某个中间态上
+        //（本项的判据是「顶边落没落进第一屏」，差几十像素就换结论，不能拿中间态定案）。
+        last.anchorTop === cur.anchorTop
       ) {
         stable = cur;
         break;

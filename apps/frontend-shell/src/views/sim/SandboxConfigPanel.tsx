@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchPropagationRules } from "@/api/endpoints";
+import { fetchPropagationRules, fetchSimPerturbations } from "@/api/endpoints";
 import { InfoPopover } from "@/components/InfoPopover";
 import {
   buildRelationGraph,
@@ -54,6 +54,32 @@ import css from "./SandboxConfigPanel.module.css";
  *
  * ⚠ 焦点量纲**不在任何传导规则上**时，本组件明说「扰动它不会沿本体链路扩散」而不是画个空图 ——
  *   空图与"图没加载出来"在屏上长得一模一样，那是本仓反复治的静默错答形态。
+ *
+ * ══ WO-SANDBOX-CONFIG-COLLAPSE（2026-08-17 追加，**上文一个字未改**）══════════════
+ *
+ * 上一张单做对了「同屏」，但**代价是画布（地铁图）与 tick 控制条整体被挤到折线以下**：
+ * 真浏览器实测（`check-layout-legibility.mjs`），改前主画布区顶边
+ * **1440×900 → top=1453px · 1280×800 → top=1472px**，要滚半屏多才看得见第一个像素。
+ * 仓主裁决：**配置面板默认收起成一条，点开才展开；地铁图留在首屏当主角。**
+ * ⇒ 本单**不推翻上文任何内容**（关系图 / 算式清单 / 双向联动 / 原生量派生量全部保留），
+ *   只改**默认展开态**与**它在首屏的占位**。
+ *
+ * ── 折叠为什么只能用行内 `display`（三条路两条是坑，邻单 WO-SANDBOX-DENSITY 已实测）──
+ *  · `<details>/<summary>` ⛔ —— Chromium 141 实测：闭合 `<details>` 的子节点
+ *    `getBoundingClientRect()` **仍返回非零旧矩形**，版面门的 `visible()` 照数
+ *    ⇒ 折了等于没折，门上一个控件都不少（取证记在 `layout-legibility-baseline.json` 的 `why` 里）。
+ *  · **条件渲染**（不满足就不 render）⛔ —— 会把别的单已落地的 `getByTestId(...)` 再点击的
+ *    断言全打红（`sandbox-config-ux.seam.test.tsx` 有 15 例是这个形态）。
+ *    且它顶了本仓 D4 守恒：**允许降层，不允许删除** —— 折叠不是删除，内容仍须在 DOM 里。
+ *  · **CSS module 类名** ⛔ —— vitest 配置 `css:false` ⇒ 类名在 jsdom 里量不到，
+ *    本单自己的判据就成了摆设（`SandboxView.tsx` 的 `sandbox-more-actions` 记着同一条）。
+ *  · **行内 `style={{display}}`** ✅ —— 唯一同时满足「门数得对」「别人的断言不红」「自己测得到」。
+ *
+ * ── 横幅上的三个数**一律现算，不许写死**（本仓专治「手抄名单」：名单里没有的永远绿、永远漏）──
+ *   已施加 N ← `["a","sim-perturbations", sessionId]`（**与 `PerturbationTimeline` 同一个
+ *     queryKey 同一支 queryFn** ⇒ 零额外请求、零新增 mock 面，且施加/撤销后宿主一失效它就跟着变）；
+ *   传导边 M / 启用 K ← `buildRelationGraph(rules, disabledRuleKeys)` 的 `edges.length` /
+ *     `activeEdgeCount`，与图上那两个数**同一个来源**（各算一份迟早对不上）。
  */
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -104,13 +130,42 @@ export interface SandboxConfigPanelProps {
    *   （代价诚实写在交单报告：拨开关到图重画之间隔着一次「应用到本会话」。）
    */
   disabledRuleKeys: readonly string[];
+  /**
+   * 推演会话 id —— **只用来现算横幅上那个「已施加 N 条」**（与 `PerturbationTimeline` 共用缓存）。
+   * `null` ⇒ 还没会话，横幅上那一格显示 `—` 而不是 `0`：
+   * 「还没有会话」与「有会话但一条都没施加」是两件事，写成同一个 `0` 就是静默错答。
+   */
+  sessionId?: string | null;
+  /**
+   * 折叠态（**受控**，宿主持有）。默认 `false` = 收起成一条横幅。
+   *
+   * ⚠ 为什么不放本组件内部 `useState`：`SandboxConsole` 的**分栏方式**要跟着它变
+   *   （展开 = 上下两行给面板让宽 · 收起 = 回到 `300px | 1fr`，画布因此回到第一屏）。
+   *   state 藏在本组件里，那边就读不到，只能再存一份 —— 两份状态迟早对不上。
+   *
+   * ⚠ 不传 ⇒ **恒展开且不出横幅**（= 上一张单的行为，逐字节不变）。
+   *   §4 变异反证那两例直接挂载本组件、不传这两个 prop，一个字都不用改。
+   */
+  open?: boolean;
+  onToggle?: () => void;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // § 组件
 // ══════════════════════════════════════════════════════════════════════════════
 
-export default function SandboxConfigPanel({ inputCards, relationTable, focusNodeKey, disabledRuleKeys }: SandboxConfigPanelProps) {
+export default function SandboxConfigPanel({
+  inputCards,
+  relationTable,
+  focusNodeKey,
+  disabledRuleKeys,
+  sessionId = null,
+  open,
+  onToggle,
+}: SandboxConfigPanelProps) {
+  /** 不受控（宿主没传 `open`）⇒ 恒展开、不出横幅 = 上一张单的行为。 */
+  const collapsible = open !== undefined;
+  const expanded = open ?? true;
   /**
    * **与 `EdgeActivePanel` 共用同一个 queryKey 与同一支 queryFn** ⇒ 零额外请求、零新增 mock 面。
    * （那个组件的文件头记着一次实测教训：给共享面板加一个新 endpoint 依赖，会把全仓 29 个
@@ -133,14 +188,53 @@ export default function SandboxConfigPanel({ inputCards, relationTable, focusNod
     return m;
   }, [rules]);
 
+  /**
+   * 横幅上的「已施加 N 条」—— **与 `PerturbationTimeline` 同 key 同 fn**（共享缓存）。
+   * 宿主在施加/撤销后 `invalidateQueries(["a","sim-perturbations", sessionId])`
+   * （`SandboxView.tsx` 两处），故这个数**会跟着真实数据变**，不是渲染时抄下来的快照。
+   */
+  const perturbationsQuery = useQuery({
+    queryKey: ["a", "sim-perturbations", sessionId ?? ""],
+    queryFn: () => fetchSimPerturbations(sessionId as string),
+    enabled: collapsible && !!sessionId,
+    staleTime: 5_000,
+  });
+
   const full = useMemo(() => buildRelationGraph(rules, disabledRuleKeys, typeDisplayNames), [rules, disabledRuleKeys, typeDisplayNames]);
   const reach = useMemo(() => (focusNodeKey ? downstreamReach(full, focusNodeKey) : null), [full, focusNodeKey]);
   const shown = useMemo(() => (focusNodeKey ? focusSubgraph(full, focusNodeKey) : full), [full, focusNodeKey]);
   /** 焦点在本体里、但没有任何传导规则碰它 —— 必须明说（见文件头）。 */
   const focusOffGraph = focusNodeKey !== null && reach !== null && !reach.found;
 
-  return (
-    <div className={css.cfg} data-testid="sandbox-config-panel">
+  /**
+   * 横幅上的三个数 —— **全部现算**（写死一个，新增一条扰动/一条边它就开始撒谎）。
+   *
+   * ⚠ 加载态显式说「…」而不是先显示 0：0 是一个**有意义的答案**（"一条都没有"），
+   *   拿它当"还不知道"用，就是本仓反复治的静默错答形态。
+   */
+  /**
+   * ⚠ 判据是 `isSuccess`，**不是** `!isPending` —— 这两者差着一个「取数失败」。
+   *   写成 `data?.items.length ?? 0`，请求一旦失败就会在屏上打出「已施加 **0** 条」：
+   *   那是**把「我不知道」说成了「一条都没有」**，正是本仓反复治的静默错答形态
+   *   （而且这一格最容易骗人：0 是个完全合理的值，没人会怀疑它）。
+   */
+  const appliedCount = perturbationsQuery.isSuccess ? perturbationsQuery.data.items.length : null;
+  const edgeCount = rulesQuery.isSuccess ? full.edges.length : null;
+  const activeEdgeCount = rulesQuery.isSuccess ? full.activeEdgeCount : null;
+  const num = (v: number | null) => (v === null ? "—" : String(v));
+
+  const panel = (
+    <div
+      className={css.cfg}
+      data-testid="sandbox-config-panel"
+      id="sandbox-config-body"
+      /**
+       * ⛔ 折叠**只能**走行内 `display`，三条替代路都实测过是坑（见文件头 WO-…-COLLAPSE 那段）。
+       * ⚠ 展开值必须写 `grid` 而不是留空/`block`：`.cfg` 本身就是两列 grid，
+       *   写成 `block` 会把「同屏两列」这件事在展开态悄悄拆掉（上一张单的验收判据当场失效）。
+       */
+      style={collapsible ? { display: expanded ? "grid" : "none" } : undefined}
+    >
       {/* ── 左列：扰动因素输入（异构各占一卡，同时可见）──────────────────────── */}
       <div className={css.col} data-testid="sandbox-config-input-col">
         <div className={css.colHead}>
@@ -220,6 +314,45 @@ export default function SandboxConfigPanel({ inputCards, relationTable, focusNod
           )}
         </section>
       </div>
+    </div>
+  );
+
+  if (!collapsible) return panel;
+
+  return (
+    <div className={css.shell} data-testid="sandbox-config-shell" data-open={expanded ? "1" : "0"}>
+      {/*
+        ── 折叠横幅 ──────────────────────────────────────────────────────────────
+        它**不是装饰条**：收起时它是这一整块在屏上留下的全部记号，所以必须自己说清
+        「里面有什么、有多少」—— 只写「扰动配置 ▸」等于把内容藏进一个看不出份量的抽屉。
+        （本仓 D4：降层必须留一句「这里有话要说」，且那句话要带**真计数**。）
+
+        ⚠ 用 `<button>` 不用 `<summary>`：`<summary>` 只在 `<details>` 里有语义，
+          而 `<details>` 这条路已被实测否掉（闭合子节点矩形仍非零 ⇒ 版面门照数）。
+      */}
+      <button
+        type="button"
+        className={css.bar}
+        data-testid="sandbox-config-bar"
+        aria-expanded={expanded}
+        aria-controls="sandbox-config-body"
+        onClick={onToggle}
+      >
+        <span className={css.barTitle}>要施加什么</span>
+        <span className={css.barSep} aria-hidden="true">｜</span>
+        <span className={css.barStat}>
+          已施加 <b data-testid="sandbox-config-bar-applied">{num(appliedCount)}</b> 条
+        </span>
+        <span className={css.barSep} aria-hidden="true">｜</span>
+        <span className={css.barStat}>
+          传导边 <b data-testid="sandbox-config-bar-edges">{num(edgeCount)}</b> 条（其中启用{" "}
+          <b data-testid="sandbox-config-bar-active">{num(activeEdgeCount)}</b> 条）
+        </span>
+        <span className={css.barHint} data-testid="sandbox-config-bar-hint">
+          {expanded ? "收起 ▴" : "展开配置 ▾"}
+        </span>
+      </button>
+      {panel}
     </div>
   );
 }

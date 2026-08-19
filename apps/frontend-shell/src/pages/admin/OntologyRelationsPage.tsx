@@ -283,10 +283,21 @@ export default function OntologyRelationsPage() {
   return (
     <div data-testid="ontology-relations-page">
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>本体关系</h2>
-      <div className="muted" style={{ fontSize: 12, marginBottom: 12, lineHeight: 1.7 }}>
-        两种边分开管：<b>结构边</b>（A 与 B 有没有关系、几对几）是图谱骨架；<b>因果边</b>（A 的某个量变了 B 跟着变多少）是推演的边。
-        <br />
-        关掉一条<b>因果边</b>，沙盘推演结果真的会变；关掉一条<b>结构边</b>不会 —— 两者的「启停」不是一回事，不合成一个开关。
+      {/* 分层规范 §1：第一层只放「数值 / 状态 / 名字」，成段口径说明降浮层。
+          ⚠ 降层不是删除 —— 两段原文一字未改，只是从常驻第一层挪进 `?` 浮层，
+          点开即见（诚实位允许降到浮层，绝不允许删除）。 */}
+      <div className="muted" style={{ fontSize: 12, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+        <span>两种边分开管：</span>
+        <b>结构边</b>
+        <span>·</span>
+        <b>因果边</b>
+        <InfoPopover topic="两种边有什么不同" testId="orel-edge-kinds">
+          <div style={{ lineHeight: 1.7 }}>
+            两种边分开管：<b>结构边</b>（A 与 B 有没有关系、几对几）是图谱骨架；<b>因果边</b>（A 的某个量变了 B 跟着变多少）是推演的边。
+            <br />
+            关掉一条<b>因果边</b>，沙盘推演结果真的会变；关掉一条<b>结构边</b>不会 —— 两者的「启停」不是一回事，不合成一个开关。
+          </div>
+        </InfoPopover>
       </div>
 
       {/* 接缝读数：这三个数由本页的写操作真实驱动，用户点完就能看见它变 */}
@@ -430,9 +441,14 @@ export default function OntologyRelationsPage() {
           · `?` 浮层放**凭什么**（口径推导式 · 后端 9 处投影掉 deprecation 的机制 · 「不是 bug」的判断依据）。
         `?` 触发器常驻可见 = 规范 §1 要求的降层记号（静默降层等于删除）。
       */}
-      <div className="muted" data-testid="orel-link-honesty" style={{ fontSize: 12, marginBottom: 18, lineHeight: 1.7 }}>
-        ⚠ 状态列含本次会话尚未发布的改动，刷新页面后会退回已发布快照 —— 这是如实标注，不是显示 bug。
-        <InfoPopover topic={zh.admin.layer.relStatusTopic} testId="orel-link-honesty">
+      {/* 分层规范 §1 + §3：诚实位**记号**留在第一层（降层不等于删除），成段口径进浮层。
+          ⚠ 同时修一个真缺陷：原先 `orel-link-honesty` 这个 testId 同时挂在外层 div 与
+          InfoPopover 上 —— 重复 testId 会让 getByTestId 抛「found multiple elements」，
+          且两者语义不同（一个是记号、一个是浮层）。现拆成 -mark / -popover 两个。 */}
+      <div className="muted" data-testid="orel-link-honesty" style={{ fontSize: 12, marginBottom: 18, display: "flex", alignItems: "center", gap: 6 }}>
+        <span data-testid="orel-link-honesty-mark">⚠ 状态列含未发布改动</span>
+        <InfoPopover topic={zh.admin.layer.relStatusTopic} testId="orel-link-honesty-popover">
+          <p>状态列含本次会话尚未发布的改动，刷新页面后会退回已发布快照 —— 这是如实标注，不是显示 bug。</p>
           <p>{zh.admin.layer.relStatusBody}</p>
           <p className="mono" style={{ fontSize: 12 }}>
             snapshot.linkTypes[].deprecation ⊕ session write-back
@@ -590,12 +606,21 @@ export default function OntologyRelationsPage() {
        *  真·启停需后端补 PUT/PATCH /a/v1/sim/propagation-rules/:id（后端单）。
        *  复验探针：grep -n 'id: newId("simpr")' apps/datacore/src/app.ts
        */}
-      <div className="muted" data-testid="orel-rule-honesty" style={{ fontSize: 12, marginBottom: 18, lineHeight: 1.7 }}>
-        ⚠ 因果边今天<b>只能新建，改不了、也停不掉</b>：每次保存都会被当成一条全新的边收下，覆盖不掉已有的那条。
-        所以这里<b>不提供</b>「停用已有边」的开关 —— 真提供了，也只会多出一条一模一样的边，
-        把「生效因果边」的条数数成两条，反而更难看清哪条在起作用。
-        <br />
-        要真正修改或停用一条已有因果边，需要先补上系统侧的修改能力；在那之前，这一页只能新建。
+      {/* 分层规范 §1 + §3：诚实位**记号**（一句结论）留第一层，整段「为什么」进浮层。
+          原文一字未删，只是从常驻第一层挪进 `?` —— 降层不是删除。 */}
+      <div className="muted" data-testid="orel-rule-honesty" style={{ fontSize: 12, marginBottom: 18, display: "flex", alignItems: "center", gap: 6 }}>
+        <span data-testid="orel-rule-honesty-mark">
+          ⚠ 因果边今天<b>只能新建</b>
+        </span>
+        <InfoPopover topic="为什么改不了、也停不掉" testId="orel-rule-honesty-popover">
+          <div style={{ lineHeight: 1.7 }}>
+            因果边今天<b>只能新建，改不了、也停不掉</b>：每次保存都会被当成一条全新的边收下，覆盖不掉已有的那条。
+            所以这里<b>不提供</b>「停用已有边」的开关 —— 真提供了，也只会多出一条一模一样的边，
+            把「生效因果边」的条数数成两条，反而更难看清哪条在起作用。
+            <br />
+            要真正修改或停用一条已有因果边，需要先补上系统侧的修改能力；在那之前，这一页只能新建。
+          </div>
+        </InfoPopover>
       </div>
 
       {/* ═══════════ 不变式（第三类边）═══════════
