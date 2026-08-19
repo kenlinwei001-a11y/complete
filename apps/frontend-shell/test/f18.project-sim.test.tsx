@@ -38,11 +38,17 @@ describe("F18 · 项目推演（project-sim）分批 + 六步 stepper + DAG", ()
     expect(screen.getByTestId("batch-ok-0")).toHaveTextContent("✓ 按期");
     expect(screen.getByTestId("batch-ok-1")).toHaveTextContent("✗ 缺");
 
-    // ④ 逐级聚合：合计行展示 P50 与 P90 = P50 × healthFactor（0.93）
+    // ④ 逐级聚合：合计行第一层留 P50 / P90 两个结论数（规范 §1：数字不上浮层）；
+    //    「P90 = P50 × healthFactor」是公式（R-UI-3）→ 降 `?` 浮层（C' 同判据：浮层默认不可见，hover 才出）。
     await user.click(screen.getByTestId("pm-step-chip-4"));
     const total = await screen.findByTestId("pm-step4-total");
-    expect(total).toHaveTextContent("P90 = P50 ×");
-    expect(total).toHaveTextContent("0.93");
+    expect(total).toHaveTextContent("P50");
+    expect(total).toHaveTextContent("P90");
+    expect(screen.queryByTestId("info-body-pm-step4-p90")).toBeNull();
+    await user.hover(screen.getByTestId("info-pm-step4-p90"));
+    const p90body = await screen.findByTestId("info-body-pm-step4-p90");
+    expect(p90body).toHaveTextContent("P90 = P50 ×");
+    expect(p90body).toHaveTextContent("0.93");
 
     // DAG 随步骤点亮：step4 →「本步」在聚合求解器；瓶颈求解器（st=5）未点亮（透明度 0.28）
     expect(screen.getByTestId("pm-dag-current-agg")).toBeInTheDocument();

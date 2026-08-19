@@ -771,13 +771,13 @@
    "why": "存量·规范落地前：第一层 5 个信息块｜2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：此变化由本分支线既有提交带入（门在 merge-base 上已红，非本单制造）；按派单前置 3.3 如实登基线，落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。\n2026-08-19 WO-U4B-U1-U8-SIM · 判据 U4b「排除项与主因同图」要求把**被排除项**留在图上并写清为什么，这两样按规范 §1 的准入清单属第一层可放的「名字」与「状态」（不是口径/公式/明细，故未违反 R-UI-2/3）。已按门的提示先做内容压缩：图例整条压成一个文本节点、虚线小样改 `::before`、`ProvenanceDag` 残差行由四块压成两块、`GlobalSimView` 两段诚实位降进 `InfoPopover`（该文件因此已回到基线）。剩下这几块**无可再沉**——再沉就等于把「被排除的是谁」藏进折叠区，而判据原文明写那不算数。故照门自己的提示「确无可沉内容时更新基线并写 why」登账。"
   },
   "apps/frontend-shell/src/views/sim/ProjectSimView.tsx": {
-   "first": 126,
-   "deferred": 36,
-   "formula": 10,
-   "prose": 4,
+   "first": 127,
+   "deferred": 45,
+   "formula": 0,
+   "prose": 0,
    "sizes": 4,
    "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 126 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；10 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）"
+   "why": "2026-08-19 WO-UI-LAYERING-BURNDOWN 治理：formula 10→0、prose 4→0（约束横幅/副标题/DAG提示/批次口径/收敛口径/P90推导/效果列口径降 InfoPopover；检修窗·认证系数「×」改「系数 N」数值留第一层）。first 126→127、deferred 36→45：差值是 6 个 InfoPopover 的 topic 各计一次（D1 结构化改造豁免：first↑ 仅在 deferred 同时↑ 时放行）。R-UI-4：副标题「debounce 300ms·竞态最后发出者胜」开发话改说人话。"
   },
   "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx": {
    "first": 9,
