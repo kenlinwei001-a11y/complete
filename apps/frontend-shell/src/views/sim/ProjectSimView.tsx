@@ -1121,7 +1121,37 @@ function buildDag(
         color: "#54B5C4",
         st: 2,
       }))
-      .concat(folded > 0 ? [{ id: "bm", label: `+${folded} 基地`, sub: "见步骤②", color: "#54B5C4", st: 2 }] : []),
+      /*
+        判据 U4b · **被挤出这张图的那几个基地**。
+        改前这里是 `{ id:"bm", label:"+N 基地", sub:"见步骤②" }` —— 一个把人支去别处的
+        死路占位：屏上既看不出被挤掉的是**谁**，也看不出**为什么**是它们被挤掉。
+        现在它留在同一张图上、可见地降级（虚线 + ✕ 已排除 + 图下逐条理由），
+        名字与产能取自 `out.perBaseRows` 真值 —— 前端不编一个基地出来。
+      */
+      .concat(
+        folded > 0
+          ? [
+              {
+                id: "bm",
+                label: `${folded} 个基地未上图`,
+                sub: `共 ${out.perBaseRows.length} 个`,
+                color: "#54B5C4",
+                st: 2,
+                excluded: true,
+                /*
+                  ⚠ 理由必须写**真的那个口径**：`perBaseRows` 由求解器按 **baseId 字典序**产出
+                  （`apps/datacore/src/solvers/capacity.ts:487` `[...cert.entries()].sort(...)`），
+                  本页 `slice(0,6)` 前**不重排** —— 所以这是"取前 6 个"，**不是**"取产能最大的 6 个"。
+                  写成"按产能降序"会让用户以为没上图的都是小基地，而实际可能恰好相反。
+                */
+                excludedReason: `本图只画求解器返回的前 6 个（按基地 id 字典序，非按产能大小）；未上图：${out.perBaseRows
+                  .slice(6)
+                  .map((r) => r.base)
+                  .join("、")}`,
+              },
+            ]
+          : [],
+      ),
     factors.map<PmDagNode>((f) => ({ id: f.id, label: f.label, sub: f.sub, color: "#9D8BF0", st: 3 })),
     [
       { id: "agg", label: "聚合求解器", sub: `Σ基地 Σ周 → P50 ${fmt(out.capWanP50)} 万套`, color: "#C470B8", st: 4 },
@@ -1226,11 +1256,14 @@ function dagNodeDetail(
         note: "下拉直接读 Model 对象（真连模式与实际数据一致 · 去写死列表）",
       };
     case "bm":
+      // 判据 U4b · 被挤出图的那几个基地：点开要答得出「是谁、为什么」，不能只说"见步骤②"。
       return {
-        title: "折叠基地",
-        verdict: "其余基地见步骤②",
-        src: "产能域 · 基地对象",
-        note: "DAG 仅展开前 6 个可产基地，其余在步骤②全量列出",
+        title: `未上图的基地 · ${Math.max(0, out.perBaseRows.length - 6)} 个`,
+        verdict: out.perBaseRows.slice(6).map((r) => r.base).join("、") || "—",
+        src: "求解器 capacity_forecast · perBaseRows[6:]（真值直取，非另算一份）",
+        rule: "本图每层最多画 6 个基地；perBaseRows 由求解器按 baseId 字典序产出，本页 slice 前不重排 ⇒ 这是「前 6 个」，不是「产能最大的 6 个」",
+        inputs: [`可产基地总数 ${out.perBaseRows.length} 个`, `上图 ${Math.min(6, out.perBaseRows.length)} 个`],
+        note: "它们并没有被排除出**求解**——上面的 P50/P90 与瓶颈都含这几个基地，只是没画进这张图。步骤②有全量表。",
       };
     case "agg":
       return {

@@ -35,3 +35,38 @@
   font-size: 12px;
   font-weight: 800;
 }
+
+/*
+  判据 U4b · 被排除项的理由清单（紧贴图下·与图同一块）。
+  字号 12px = `check-text-legibility.mjs` 的 FLOOR_PX，不许再往下调。
+*/
+.excludedLegend {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.excludedLegend li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+/* 虚线小样：与图上被排除节点的边框同一路编码，让图例与图对得上。 */
+.excludedSwatch {
+  flex: none;
+  width: 14px;
+  height: 0;
+  border-top: 1.4px dashed var(--muted2);
+  transform: translateY(-3px);
+}
+
+.excludedWhy {
+  color: var(--muted2);
+}

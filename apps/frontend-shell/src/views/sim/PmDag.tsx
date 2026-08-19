@@ -18,6 +18,31 @@ export interface PmDagNode {
   color: string;
   /** 所属步骤（①–⑥）：当前步 ≥ st 时点亮 */
   st: number;
+  /**
+   * 判据 U4b · 这个节点代表的是**被排除/被挤掉**的那一批（虚线 + 降级 + 文字标记 + 图下理由）。
+   *
+   * ⚠ 与 `lit`（步骤未点亮）**语义不同，不许互相顶替**：`lit=false` 是"这一步还没走到"，
+   * `excluded=true` 是"它被挤出了这张图讲的那个结论"。两者屏上都发淡，混了会把
+   * "还没算到"读成"被排除了"。故 `excluded` 另走虚线 + 文字，不只压透明度。
+   */
+  excluded?: boolean;
+  /** 判据 U4b · 为什么被排除（`excluded` 时必给，由 `assertPmExcludedHasReason` 咬死）。 */
+  excludedReason?: string;
+}
+
+/**
+ * 判据 U4b 的生产期断言（与 `LayeredDag.assertExcludedHasReason` 同源）：
+ * 标了 excluded 却没理由 ⇒ 抛。失败模式在屏上看不出来，所以不能只写在测试里。
+ */
+export function assertPmExcludedHasReason(layers: readonly PmDagNode[][]): readonly PmDagNode[][] {
+  for (const arr of layers) {
+    for (const n of arr) {
+      if (n.excluded && !n.excludedReason?.trim()) {
+        throw new Error(`PmDag 节点 ${n.id} 标了 excluded 却没给 excludedReason —— 判据 U4b 要「谁」也要「为什么」`);
+      }
+    }
+  }
+  return layers;
 }
 
 // 借鉴 HTML 项目推演：给 DAG 足够画布（全宽、更高、节点更大可读）。
@@ -42,6 +67,8 @@ export function PmDag({
   /** 点 DAG 节点 → 抽屉看判定/推导/输入/规则（#3 可点穿）。 */
   onNodeClick?: (id: string) => void;
 }) {
+  assertPmExcludedHasReason(layers);
+  const excludedNodes = layers.flat().filter((n) => n.excluded);
   const pos = new Map<string, { x: number; y: number; w: number }>();
   const meta = new Map<string, PmDagNode>();
   layers.forEach((arr, li) => {
@@ -175,6 +202,9 @@ export function PmDag({
             data-testid={`${testId}-node-${n.id}`}
             data-lit={lit ? "1" : "0"}
             data-st={n.st}
+            /* 判据 U4b 的机检落点：理由跟着节点走（页面别处另写一句 ⇒ 图上仍看不出为什么灰，且两处必漂）。 */
+            data-excluded={n.excluded ? "true" : undefined}
+            data-excluded-reason={n.excluded ? n.excludedReason : undefined}
             style={{ cursor: onNodeClick ? "pointer" : "default" }}
             onClick={() => { if (!movedRef.current) onNodeClick?.(n.id); }}
           >
@@ -185,9 +215,24 @@ export function PmDag({
               height={NH}
               rx={9}
               fill={`${n.color}14`}
-              stroke={n.color}
+              stroke={n.excluded ? "var(--muted2)" : n.color}
               strokeWidth={lit ? 1.6 : 1}
+              /* 虚线走内联 style：判据落在计算样式上（同 RelationGraphCanvas 头注的实测结论）。 */
+              style={{ strokeDasharray: n.excluded ? "4 3" : "none" }}
             />
+            {/* 只靠颜色/虚线表达状态，在低对比主题下等于没表达 ⇒ 文字那一路是必须的。 */}
+            {n.excluded && (
+              <text
+                x={p.x + p.w / 2 - 6}
+                y={p.y - NH / 2 + 12}
+                textAnchor="end"
+                className={styles.nodeSub}
+                fill="var(--muted2)"
+                data-testid={`${testId}-excluded-${n.id}`}
+              >
+                ✕ 已排除
+              </text>
+            )}
             {/* 三档字号一律在 PmDag.module.css 里，**不许改回 `fontSize={…}` 属性**
                 —— 静态门看不见 SVG 表现属性，理由见该 CSS 文件头。 */}
             <text x={p.x} y={p.y - 7} textAnchor="middle" className={styles.nodeLabel} fill="var(--txt)">
@@ -211,6 +256,22 @@ export function PmDag({
         );
       })}
       </svg>
+      {/*
+        判据 U4b 的「**为什么**」那一半 —— 与图同一块，不是折叠区、不是点开才出。
+        节点框塞不下一句理由，而判据要的正是「看得见被排除的是谁、为什么」。
+        ⛔ 不许改成 `<details>`（本仓实测闭合态子节点仍返回非零旧矩形，屏上看不见、版面门数上不降）。
+      */}
+      {excludedNodes.length > 0 && (
+        <ul className={styles.excludedLegend} data-testid={`${testId}-excluded-legend`}>
+          {excludedNodes.map((n) => (
+            <li key={n.id} data-testid={`${testId}-excluded-why-${n.id}`}>
+              <span className={styles.excludedSwatch} aria-hidden="true" />
+              <b>{n.label}</b>
+              <span className={styles.excludedWhy}>{n.excludedReason}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
