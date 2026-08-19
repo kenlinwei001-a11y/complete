@@ -122,6 +122,7 @@ function gateToolBroken(e) {
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
+import { contentKey, reconcileContents, buildContentsSegment, conservationCanary } from "./lib/ratchet-conservation.mjs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { assertDistFresh } from "./dist-freshness.mjs";
@@ -881,6 +882,9 @@ const ctx = {
 
 /* ---------- 金丝雀先跑：门瞎了与代码脏了必须分开报（修法完全不同） ---------- */
 const blind = selftest(ctx);
+// D5/D6 内容对账金丝雀（共享实现 scripts/lib/ratchet-conservation.mjs 本体，不另抄）
+const consCanary = conservationCanary();
+if (consCanary.ok === false) blind.push(`D5/D6 内容对账金丝雀不过：${consCanary.got}（期望：${consCanary.want}）`);
 if (blind.length > 0) {
   console.error("⛔ 门自己瞎了（不是「代码干净」）—— chain-scan-honesty:check 无法给出有效结论：");
   for (const b of blind) console.error(`  - ${b}`);
@@ -1070,6 +1074,39 @@ const sha = (s) => createHash("sha256").update(s).digest("hex").slice(0, 16);
 const keyOf = (h) => `${h.file}#${sha(h.text)}`;
 const MIN_REASON = 10;
 
+/* ── D5/D6 内容键（共享实现 scripts/lib/ratchet-conservation.mjs）──────────────────
+ * H5 旧键 = 文件+原文哈希 ⇒ 业务名从文件 A 搬到文件 B 会被当成「新增」假红（内容没变，
+ * 总量没变）。内容键剔掉文件：搬家 ⇒ 跨文件认领 ⇒ 守恒不红；换新词/改文案 ⇒ 键变 ⇒ D6 红。
+ * H8 旧判据只有条数棘轮 ⇒ 同数调包（95 改成 96，条数不变）恒绿。内容键 =
+ * bindingId+ruleKey+metricPath+value：集合对账，调包当场点名。 */
+const h5entries = hits.map((h) => ({
+  key: contentKey("H5", h.token, h.text),
+  file: h.file,
+  label: `${h.token} @ L${h.line}: ${h.text}`,
+  h,
+}));
+const h8entries = literalRows.map((r) => ({
+  key: contentKey("H8", r.bindingId, r.ruleKey, r.metricPath, r.value),
+  file: RULE_REGISTRY_FILE, // 阈值字面量的产地在规则库（battery.ts），不是判据声明表
+  label: `${r.bindingId}(${r.ruleKey}=${r.value})`,
+  r,
+}));
+
+if (argv.includes("--entries-json")) {
+  // 诊断/迁移用：dump 内容键条目后退出（不进比对、不写任何文件）
+  process.stdout.write(
+    JSON.stringify(
+      {
+        h5: h5entries.map((en) => ({ key: en.key, file: en.file, label: en.label, legacyKey: keyOf(en.h) })),
+        h8: h8entries.map((en) => ({ key: en.key, file: en.file, label: en.label })),
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  process.exit(0);
+}
+
 const baselineExists = existsSync(BASELINE);
 const baseline = baselineExists ? JSON.parse(readFileSync(BASELINE, "utf8")) : { maxExemptions: 0, exemptions: {} };
 if (isUpdate) {
@@ -1077,59 +1114,84 @@ if (isUpdate) {
   // 本基线有 **两个**归人手的散文键（note / noteLiteral），原实现两个都无条件落常量。
   const bc = baselineDocCanary();
   if (!bc.ok) gateToolBroken(`基线写入器金丝雀不过（${bc.got}）；期望：${bc.want}`);
-  const exemptions = {};
-  for (const h of hits) {
-    const k = keyOf(h);
-    exemptions[k] = baseline.exemptions?.[k] ?? { file: h.file, token: h.token, reason: "" };
-  }
-  writeFileSync(
-    BASELINE,
-    JSON.stringify(
-      buildBaselineDoc({
-        prev: baselineExists ? baseline : null,
-        prose: {
-          note:
-            "chain-scan-honesty:check 的 H5 业务名棘轮。key = 文件 + 声明原文 sha256 前 16 位（不是行号——行号会漂）；" +
-            "文案一改哈希即变 ⇒ 豁免当场失效、门重新红。maxExemptions 必须恒等于条数（加一条 = 一处显眼 diff）；只降不升。",
-          noteLiteral:
-            "H8 字面量阈值棘轮：阈值源 source==='literal' 的判据条数，只降不升。literal 不是罪 —— 它在规则表达式里、" +
-            "可审计、改规则即改判定；但它比 param 僵（要改表达式而非旋钮），故存量记账、新增被挡。迁往 params 即可收窄。",
-        },
-        computed: {
-          // ⚠ 计的是**命中条数**不是 key 数：同一行出现两个业务名（`化成柜位/老化库位`）时
-          //   两条命中共用一个 key（key = 原文哈希），若按 key 数记基线，复跑时 4 > 3 会假红。
-          maxExemptions: hits.length,
-          exemptions,
-          maxLiteralThresholds: literalRows.length,
-          literalThresholds: literalRows,
-        },
-      }),
-      null,
-      2,
-    ) + "\n",
-  );
-  console.log(`✓ 棘轮基线已写：${Object.keys(exemptions).length} 条豁免（每条须补 ≥${MIN_REASON} 字理由，否则门红）。`);
+  // D5/D6 落账段：人手 why 逐字节沿用（buildContentsSegment 保证）；H5 **新落账**的键
+  // why 置空 ⇒ 门红「豁免无理由」直到人手补 ≥10 字理由 —— 与旧实现 reason:"" 同级纪律，
+  // 不许让 --update 变成「不问理由直接洗绿」的按钮。
+  const seg5 = buildContentsSegment(h5entries, baseline.contentsH5 ?? null, "chain-scan-honesty:check/H5");
+  for (const k of Object.keys(seg5)) if (!baseline.contentsH5?.[k]) seg5[k].why = "";
+  const seg8 = buildContentsSegment(h8entries, baseline.contentsH8 ?? null, "chain-scan-honesty:check/H8");
+  const doc = buildBaselineDoc({
+    prev: baselineExists ? baseline : null,
+    prose: {
+      note:
+        "chain-scan-honesty:check 的 H5 业务名棘轮。key = 文件 + 声明原文 sha256 前 16 位（不是行号——行号会漂）；" +
+        "文案一改哈希即变 ⇒ 豁免当场失效、门重新红。maxExemptions 必须恒等于条数（加一条 = 一处显眼 diff）；只降不升。",
+      noteLiteral:
+        "H8 字面量阈值棘轮：阈值源 source==='literal' 的判据条数，只降不升。literal 不是罪 —— 它在规则表达式里、" +
+        "可审计、改规则即改判定；但它比 param 僵（要改表达式而非旋钮），故存量记账、新增被挡。迁往 params 即可收窄。",
+    },
+    computed: {
+      // ⚠ 计的是**命中条数**不是 key 数：同一行出现两个业务名（`化成柜位/老化库位`）时
+      //   两条命中共用一个 key（key = 原文哈希），若按 key 数记基线，复跑时 4 > 3 会假红。
+      maxExemptions: hits.length,
+      maxLiteralThresholds: literalRows.length,
+      literalThresholds: literalRows,
+      contentsH5: seg5,
+      contentsH8: seg8,
+    },
+  });
+  // exemptions 旧账簿已被 contentsH5 取代 —— 单一账簿，双写必漂（人手理由今后只写在 contentsH5.why）。
+  delete doc.exemptions;
+  writeFileSync(BASELINE, JSON.stringify(doc, null, 2) + "\n");
+  console.log(`✓ 棘轮基线已写：H5 ${h5entries.length} 条 · H8 ${h8entries.length} 条（H5 每条须补 ≥${MIN_REASON} 字理由（contentsH5.why），否则门红）。`);
   process.exit(0);
 }
 
+/* ── D5 全局守恒 + D6 unlisted 落账（共享实现 scripts/lib/ratchet-conservation.mjs）────
+ * contentsH5/contentsH8 段存在 ⇒ 内容对账：搬家（同键换文件）守恒不红；新内容/同数调包 ⇒ 红且点名。
+ * 段缺失（老基线）⇒ notEstablished，走旧逻辑逐字节原样（不在红绿路径上静默补账）。 */
+const recon5 = reconcileContents({
+  gate: "chain-scan-honesty:check/H5",
+  contents: baseline.contentsH5,
+  current: h5entries,
+  tightenCmd: "node scripts/check-chain-scan-honesty.mjs --update",
+});
+const recon8 = reconcileContents({
+  gate: "chain-scan-honesty:check/H8",
+  contents: baseline.contentsH8,
+  current: h8entries,
+  tightenCmd: "node scripts/check-chain-scan-honesty.mjs --update",
+});
+
 const exempted = [];
 const newHits = [];
-for (const h of hits) {
-  const e = baseline.exemptions?.[keyOf(h)];
-  if (e) exempted.push({ h, e });
-  else newHits.push(h);
-}
-for (const h of newHits) {
-  fail.push(
-    `H5 业务名棘轮：${h.file}:${h.line} 新增内联行业业务名 \`${h.token}\`（词表自 BASE_REGISTRY 派生）\n` +
-      `        ${h.text}\n` +
-      `        —— 业务名必须来自对象库/册；确有必要保留请 \`node scripts/check-chain-scan-honesty.mjs --update\` 登账并写 ≥${MIN_REASON} 字理由。`,
-  );
-}
-for (const { h, e } of exempted) {
-  if (typeof e.reason !== "string" || e.reason.trim().length < MIN_REASON) {
+if (recon5.notEstablished) {
+  // 老基线（无 contentsH5 段）：旧逻辑原样
+  for (const h of hits) {
+    const e = baseline.exemptions?.[keyOf(h)];
+    if (e) exempted.push({ h, reason: e.reason });
+    else newHits.push(h);
+  }
+  for (const h of newHits) {
     fail.push(
-      `H5 豁免无理由：${h.file}:${h.line} \`${h.token}\` 的豁免理由不足 ${MIN_REASON} 字（当前 "${e.reason ?? ""}"）\n` +
+      `H5 业务名棘轮：${h.file}:${h.line} 新增内联行业业务名 \`${h.token}\`（词表自 BASE_REGISTRY 派生）\n` +
+        `        ${h.text}\n` +
+        `        —— 业务名必须来自对象库/册；确有必要保留请 \`node scripts/check-chain-scan-honesty.mjs --update\` 登账并写 ≥${MIN_REASON} 字理由。`,
+    );
+  }
+} else {
+  // 内容对账：matched（含跨文件搬家认领）= 守恒不红；unmatched = 新内容/调包 ⇒ D6 红且点名
+  const un = new Set(recon5.unmatched.map((u) => u.h));
+  for (const en of h5entries) {
+    if (un.has(en.h)) newHits.push(en.h);
+    else exempted.push({ h: en.h, reason: baseline.contentsH5?.[en.key]?.why ?? "" });
+  }
+  for (const f of recon5.fails) fail.push("[H5] " + f);
+}
+for (const { h, reason } of exempted) {
+  if (typeof reason !== "string" || reason.trim().length < MIN_REASON) {
+    fail.push(
+      `H5 豁免无理由：${h.file}:${h.line} \`${h.token}\` 的豁免理由不足 ${MIN_REASON} 字（当前 "${reason ?? ""}"）\n` +
         `        —— 无理由白名单等于把门关掉，本门只接受**写清楚为什么**的棘轮。`,
     );
   }
@@ -1144,6 +1206,8 @@ if (typeof baseline.maxLiteralThresholds === "number" && literalRows.length > ba
       `        —— 新判据的阈值请用 \`params.<名>\`（改旋钮即改判定），而不是写进表达式字面量。`,
   );
 }
+// H8 同数调包：条数没涨（上面的计数棘轮不红）但内容键对不上基线 ⇒ D6 红且点名
+if (!recon8.notEstablished) for (const f of recon8.fails) fail.push("[H8] " + f);
 
 /* ---------- 报告 ---------- */
 console.log(
