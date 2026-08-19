@@ -699,13 +699,13 @@
    "why": "存量·规范落地前：第一层 21 个信息块；字号 5 级 > 3（R-UI-2）"
   },
   "apps/frontend-shell/src/views/sim/GlobalSimView.tsx": {
-   "first": 209,
-   "deferred": 29,
-   "formula": 3,
-   "prose": 17,
+   "first": 211,
+   "deferred": 41,
+   "formula": 0,
+   "prose": 0,
    "sizes": 3,
    "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 209 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；3 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）"
+   "why": "2026-08-19 WO-UI-LAYERING-BURNDOWN 治理：formula 3→0、prose 17→0（整屏 intro/旧参数解释/三类画像/L3联动机理/矩阵图例/方法·ε·交期口径/权衡口径/台账读法 降 InfoPopover；范围条「基地×时间窗」改「基地·时间窗」、台账标签「×」去掉；诚实标注主体留第一层·口径降浮层）。first 209→211、deferred 29→41：差值是 12 个 InfoPopover 的 topic 各计一次（D1 结构化改造豁免：first↑ 仅在 deferred 同时↑ 时放行）。R-UI-4：「methodScenario」「committedBatches」「opt.multiobj」「portfolio」契约字段名/开发话下屏。"
   },
   "apps/frontend-shell/src/views/sim/InspectorNodePanel.tsx": {
    "first": 111,

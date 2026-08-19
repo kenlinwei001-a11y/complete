@@ -752,7 +752,10 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       <div className={styles.header}>
         <div className={styles.titleBlock}>
           <h2 title="接单组合优选：把全部项目（订单）、全部基地、各个时间段放在一起统一排产，一次算出全局更划算的组合——不是一个项目一个项目单独算再拼起来。底层机制仍是一次「联合求解」。">接单组合优选 · 决策驾驶舱（全局优选在先）</h2>
-          <p>把所有订单放在一起、在所有基地和时间窗上共享产能、不重复占用 → 一次联合求解，按所选目标（按期 / 延误 / 换型 / 库存 / 成本）在产能约束下比较出优选组合。调节杠杆 / 勾选订单子集 / 切换目标 → 方案立即重算：产能占用图、KPI、排产安排、客户影响全链联动。</p>
+          {/* 规范 §1/R-UI-3：整段「怎么算」说明降 `?` 浮层；第一层留页名 + 诚实徽标。 */}
+          <InfoPopover topic="这一屏怎么算" testId="gs-intro">
+            把所有订单放在一起、在所有基地和时间窗上共享产能、不重复占用 → 一次联合求解，按所选目标（按期 / 延误 / 换型 / 库存 / 成本）在产能约束下比较出优选组合。调节杠杆 / 勾选订单子集 / 切换目标 → 方案立即重算：产能占用图、KPI、排产安排、客户影响全链联动。
+          </InfoPopover>
         </div>
         <span className={styles.badge} title="这些数字是算法在满足产能约束下、按所选目标比较后给出的优选方案（推演结果），不是数据库里已经发生的既有事实。" data-testid="global-sim-badge">推演结果 · 非数据库事实</span>
         {/* 判据 U9：导出入口（第一层只留按钮 + ? 记号，口径进浮层 —— 共享件统一分层）。 */}
@@ -784,7 +787,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
 
       {/* ① 递进批次会话条（范围 / status / 已提交批次链） */}
       <div className={styles.batchBar} data-testid="global-sim-batchbar">
-        <span className={styles.batchScope} title={`规划期被切成若干个「时间窗」，每个时间窗 ${PORT_WINDOW_DAYS} 天（与后端求解器 windowDays 同口径）；产能占用与交付日都按时间窗结算。`}>范围：全 {matrix?.bases.length ?? "—"} 个基地 × {matrix?.windows.length ?? "—"} 个时间窗（每窗 {PORT_WINDOW_DAYS} 天）</span>
+        <span className={styles.batchScope} title={`规划期被切成若干个「时间窗」，每个时间窗 ${PORT_WINDOW_DAYS} 天（与后端求解器 windowDays 同口径）；产能占用与交付日都按时间窗结算。`}>范围：{matrix?.bases.length ?? "—"} 基地 · {matrix?.windows.length ?? "—"} 时间窗（每窗 {PORT_WINDOW_DAYS} 天）</span>
         <span>主方案：{SCEN_LABEL[primary]}</span>
         {/* U2 分段闸：可行/最优判定是图上 `solve` 节点（layer 1 = 第 2 步）读的 feasible/optimal/status。 */}
         {upto(2) && (
@@ -821,7 +824,14 @@ export default function GlobalSimView(_props: ViewRendererProps) {
           data-testid="global-sim-stale-banner"
           style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
         >
-          <span>⚠ 参数已改 · 当前结果对应旧参数（你的改动已保留，未被丢弃；下方结果与产能矩阵仍是上一组参数算出来的）。</span>
+          {/* ⚠ d5d4 测试断言本横幅含「参数已改 · 当前结果对应旧参数」—— 前缀一个字不许动；
+              后半句解释（改动去哪了）按 R-UI-3 降 `?` 浮层。 */}
+          <span>
+            ⚠ 参数已改 · 当前结果对应旧参数
+            <InfoPopover topic="旧参数意味着什么" testId="gs-stale-info">
+              你的改动已保留，未被丢弃；下方结果与产能矩阵仍是上一组参数算出来的，点「按新参数重算」后全链更新。
+            </InfoPopover>
+          </span>
           <button className={styles.btnPrimary} data-testid="global-sim-stale-recompute" onClick={res.recompute}>
             按新参数重算
           </button>
@@ -830,7 +840,13 @@ export default function GlobalSimView(_props: ViewRendererProps) {
 
       {/* WO-W5 · 业务类型勾选筛选（乘/商/储）+ 分口径经营场景（勾选 → 后端在收窄世界真重解·矩阵/KPI 真变） */}
       <div className={styles.glass} data-testid="global-sim-business-type">
-        <span className={styles.grpLabel}>[ 业务类型（{(["passenger", "commercial", "storage"] as BusinessType[]).map((t) => BUSINESS_TYPE_LABEL[t]).join(" / ")}）· 勾选筛选后联合推演 ]</span>
+        <span className={styles.grpLabel}>
+          [ 业务类型（{(["passenger", "commercial", "storage"] as BusinessType[]).map((t) => BUSINESS_TYPE_LABEL[t]).join(" / ")}）· 勾选筛选后联合推演 ]
+          {/* 规范 §1/R-UI-3：三类画像与勾选口径是「凭什么」，降 `?` 浮层；第一层留表格数值。 */}
+          <InfoPopover topic="三类画像与勾选口径" testId="gs-bt-info">
+            {BUSINESS_TYPE_LABEL.passenger}：产能不足 + 销售预测远大于实际订单（预测虚高·缺口最大）+ 部分客户需提前交付 · {BUSINESS_TYPE_LABEL.commercial}：产能空闲 + 订单波动大（CV 最高）· {BUSINESS_TYPE_LABEL.storage}：产能 ~95% 稳定。勾选 → 后端只对选中类订单+预测联合重解、产能作用域收窄到该类可产基地（矩阵/KPI/客户级影响全链真变·非展示层过滤）。
+          </InfoPopover>
+        </span>
         <div className={styles.scenPicks} data-testid="global-sim-bt-filter">
           <span className={styles.textMuted} style={{ fontSize: 12 }}>勾选筛选（空 = 全类型）：</span>
           {(["passenger", "commercial", "storage"] as BusinessType[]).map((t) => (
@@ -870,16 +886,19 @@ export default function GlobalSimView(_props: ViewRendererProps) {
             </tbody>
           </table>
         )}
-        <div className={styles.summary}>
-          {BUSINESS_TYPE_LABEL.passenger}：产能不足 + 销售预测远大于实际订单（预测虚高·缺口最大）+ 部分客户需提前交付 · {BUSINESS_TYPE_LABEL.commercial}：产能空闲 + 订单波动大（CV 最高）· {BUSINESS_TYPE_LABEL.storage}：产能 ~95% 稳定。
-          勾选 → 后端只对选中类订单+预测联合重解、产能作用域收窄到该类可产基地（矩阵/KPI/客户级影响全链真变·非展示层过滤）。
-        </div>
+        {/* 三类画像与勾选口径已并入上方 grpLabel 的 `gs-bt-info` 浮层（只移不删）。 */}
       </div>
 
       {/* WO-L3-TRANSFER · L3 耦合联动推演：拖转拨量 → 交期 / 需外协 整条链在同一次 portfolio 守恒解内实时联动（非独立测算拼接） */}
       <div className={styles.glass} data-testid="global-sim-l3-transfer">
-        <span className={styles.grpLabel} title="转拨量 = 把产能预先划拨、预占某个目标基地的净产能。拖动滑杆：目标基地可用产能减少 → 其它订单被挤下或延后（交期）→ 联合解算不下的量成为真残差（需外协）。三者在同一次守恒求解内联动传导，不是分开算再拼——这正是 L3 耦合联合求解。">
-          [ L3 耦合联动推演 · 转拨量 → 交期 / 外协（整条链一次守恒解 · 实时联动） ]
+        <span className={styles.grpLabel}>
+          [ L3 耦合联动推演 · 转拨联动 ]
+          {/* 规范 §1/R-UI-3：联动机理说明（原 title + 原底部 summary 合并）降 `?` 浮层；
+              第一层留三段联动读数（转拨量 / 按期率 / 残差外协 全是数值）。R-UI-4：原文
+              「committedBatches」「portfolio」是契约字段名/开发话，浮层里改说人话。 */}
+          <InfoPopover topic="转拨联动机理" testId="gs-l3-info">
+            转拨量 = 把产能预先划拨、预占目标基地的净产能（作为在产承诺入参参与求解）。拖动滑杆：目标基地可用产能减少 → 其它订单被挤下或延后（交期传导）→ 联合解算不下的量成为真残差（需外协）。三者全在同一次全局守恒解内联动求定（Σ 分配 ≤ 净产能·逐格守恒），不是分开算再拼——这正是 L3 耦合联合求解。残差的外协/加班细分见本页人机对话的「L3 耦合联合求解」路径。
+          </InfoPopover>
         </span>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", margin: "8px 0" }} data-testid="global-sim-transfer-controls">
           <span style={{ fontSize: 12 }}>转入基地（预占其净产能）：</span>
@@ -907,9 +926,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
           <div className={styles.readout}><b data-testid="global-sim-transfer-chain-delayed">{d ? delayedAllocCount : "—"}</b><span>② 延后单</span></div>
           <div className={styles.readout}><b data-testid="global-sim-transfer-chain-residual" className={displacedQty > 0 ? styles.bad : styles.ok}>{d ? fmt(displacedQty, 0) : "—"}</b><span>③ 残差→需外协(套)</span></div>
         </div>
-        <div className={styles.summary}>
-          拖动转拨量 → 目标基地净产能被预占（committedBatches）→ 该基地他单被挤/延后（交期传导）+ 联合解算不下的<b>真残差</b>成为需外协量——全在<b>同一次 portfolio 守恒解</b>内联动求定（Σ 分配 ≤ 净产能·逐格守恒），非独立测算再拼接。残差的外协/加班细分见人机对话「L3 耦合联合求解」路径。
-        </div>
+        {/* 联动机理说明已并入上方 grpLabel 的 `gs-l3-info` 浮层（只移不删）。 */}
       </div>
 
       {/* 活①·人机对话（内嵌 NL 框·compose 路径叙述）——暗发门控：真后端 /b/v1/sim/compose 未落时不渲染(R3·避 404·mock 态 on) */}
@@ -939,7 +956,14 @@ export default function GlobalSimView(_props: ViewRendererProps) {
 
         {/* ③ 中央 Hero：产能占用矩阵 + 目标 segmented + 守恒 ✓（D5：参数已改未重算 → 置灰，不与旁边参数对不上） */}
         <div className={styles.glass} data-testid="global-sim-hero" data-stale={res.isStale} style={staleStyle}>
-          <span className={styles.grpLabel} title="每个格子 = 某基地在某个时间窗的产能占用率（已排产量 ÷ 可用产能）；颜色越暖代表越接近满载。鼠标悬停格子可查看该数字的数据来源（溯源）。">[ 产能占用矩阵 · 基地 × 时间窗 · 悬停格子查看数据来源 ]</span>
+          <span className={styles.grpLabel}>
+            [ 产能占用矩阵 · 每基地每时间窗 ]
+            {/* 规范 §1/R-UI-3：格子含义 + 颜色图例（原 title + 原底部 summary 合并）降 `?` 浮层；
+                第一层留矩阵数值本身。 */}
+            <InfoPopover topic="矩阵与颜色怎么读" testId="gs-matrix-info">
+              每格 = 某基地在某时间窗的产能占用率（已排产量 ÷ 可用产能）。颜色 冷蓝→暖红 表示占用率档位（&lt;50% / &lt;80% / &lt;95% / 满载）；「满」= 产能被排满的挤压点，订单在此被挤下（下方「客户级影响」逐单可查）。悬停单元格可查看产能 / 订单的数据来源（溯源）。
+            </InfoPopover>
+          </span>
           <div className={styles.heroTools}>
             <div className={styles.segmented} data-testid="global-sim-objective">
               {ALL_SCENARIOS.map((k) => (
@@ -1006,9 +1030,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                   ))}
                 </tbody>
               </table>
-              <div className={styles.summary}>
-                颜色 冷蓝→暖红 表示产能占用率（&lt;50% / &lt;80% / &lt;95% / 满载）·「满」= 产能被排满的挤压点，订单在此被挤下（下方「客户级影响」逐单可查）· 悬停单元格可查看产能 / 订单的数据来源。
-              </div>
+              {/* 颜色图例已并入上方 grpLabel 的 `gs-matrix-info` 浮层（只移不删）。 */}
             </div>
           ) : (
             <div className={styles.empty}>{res.isFetching ? "求解中…" : "加载订单与产能中…"}</div>
@@ -1069,8 +1091,14 @@ export default function GlobalSimView(_props: ViewRendererProps) {
 
             {/* ⑤ G-VAR-3 · 方法旋钮（左轨切方法·此处调该法参数 → 后端按对应方法真重解 methodScenario·结果真变） */}
             <div style={{ marginTop: 12 }} data-testid="global-sim-method-knobs" data-method={levers.method}>
-              <span className={styles.grpLabel}>[ 求解方法旋钮 · {METHOD_LABEL2[levers.method] ?? levers.method}（改旋钮 → 引擎按对应方法真重解） ]</span>
-              <div className={styles.leverHint} style={{ marginBottom: 6 }}>方法在左轨「优先级 · 多目标求解方法」切换；此处调该方法参数 → 下方 methodScenario 联合方案真变（非旋钮空转）。</div>
+              <span className={styles.grpLabel}>
+                [ 求解方法旋钮 · {METHOD_LABEL2[levers.method] ?? levers.method}（改旋钮 → 引擎按对应方法真重解） ]
+                {/* 规范 §1/R-UI-3：「旋钮在哪切、动了会怎样」是操作说明，降 `?` 浮层。
+                    R-UI-4：原文「methodScenario」是契约字段名，浮层里改说人话。 */}
+                <InfoPopover topic="方法旋钮怎么用" testId="gs-method-info">
+                  方法在左轨「优先级 · 多目标求解方法」切换；此处调该方法参数 → 下方联合方案读数真变（引擎按对应方法真重解，非旋钮空转）。
+                </InfoPopover>
+              </span>
 
               {levers.method === "weighted" && (
                 <div data-testid="global-sim-method-weighted">
@@ -1085,7 +1113,10 @@ export default function GlobalSimView(_props: ViewRendererProps) {
               )}
               {levers.method === "epsilon" && (
                 <div data-testid="global-sim-method-epsilon">
-                  <div className={styles.leverHint}>为次目标设上界（收紧 → 主目标让位·分配真变）。空 = 不约束。</div>
+                  {/* 规范 §1/R-UI-3：上界语义是操作说明，降 `?` 浮层；第一层留各次目标输入框。 */}
+                  <InfoPopover topic="次目标上界怎么用" testId="gs-epsilon-info">
+                    为次目标设上界（收紧 → 主目标让位·分配真变）。空 = 不约束。
+                  </InfoPopover>
                   {(["delay", "changeover", "cost", "fgInventory"] as const).map((k) => (
                     <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
                       <span style={{ flex: "0 0 76px", fontSize: 12 }}>{OBJ_KNOB_LABEL[k]} ≤</span>
@@ -1121,7 +1152,13 @@ export default function GlobalSimView(_props: ViewRendererProps) {
             {/* ④ G-VAR-2 · 目标 vs 最终可达交期推演（真求解产物·仅设了最终交期时出） */}
             {d?.dueComparison && d.dueComparison.length > 0 && (
               <div style={{ marginTop: 12 }} data-testid="global-sim-duecompare">
-                <span className={styles.grpLabel}>[ 目标 vs 最终可达交期推演（每订单·真求解·非写死） ]</span>
+                <span className={styles.grpLabel}>
+                  [ 目标 vs 最终可达交期推演 ]
+                  {/* 规范 §1/R-UI-3：列口径（目标/可达/差怎么定义）降 `?` 浮层；第一层留每单读数。 */}
+                  <InfoPopover topic="列口径" testId="gs-duecompare-info">
+                    目标交期 = 订单原始交期；可达交期 = 联合求解真实排产交付日（含两阶段在途）；差 = 可达 − 目标（正 = 晚于目标）。设最终交期放宽最晚可排窗 → 引擎在更晚窗真承接（而非被挤）·非写死。
+                  </InfoPopover>
+                </span>
                 <table className={styles.gtable}>
                   <thead><tr><th>订单</th><th style={{ textAlign: "right" }}>目标(天)</th><th style={{ textAlign: "right" }}>最终(天)</th><th style={{ textAlign: "right" }}>可达(天)</th><th style={{ textAlign: "right" }}>差(天)</th><th>达最终</th></tr></thead>
                   <tbody>
@@ -1137,7 +1174,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                     ))}
                   </tbody>
                 </table>
-                <div className={styles.summary}>目标交期 = 订单原始交期；可达交期 = 联合求解真实排产交付日（含两阶段在途）；差 = 可达 − 目标（正 = 晚于目标）。设最终交期放宽最晚可排窗 → 引擎在更晚窗真承接（而非被挤）·非写死。</div>
+                {/* 列口径已并入上方 grpLabel 的 `gs-duecompare-info` 浮层（只移不删）。 */}
               </div>
             )}
 
@@ -1251,7 +1288,11 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                     {/* WO-UNIT-MEANING 真 bug 修：换型口径为**全链小时**（contracts/global-sim.ts:16 单位红线「不残留分钟」·
                         与本页 :720「换型(全链小时)」同源），此处原误标「分」→ 错单位比缺单位更误导，改「小时」。 */}
                     按期 {tradeoff.dOntime >= 0 ? "+" : ""}{fmt(tradeoff.dOntime, 0)} 单 · 换型 {tradeoff.dChg >= 0 ? "+" : ""}{fmt(tradeoff.dChg, 0)} 小时。
-                    {tradeoff.dCost > 0 ? "多按期以更高代价换取（数字取自求解器真值·非估算）。" : "当前主方案代价不高于最低代价方案。"}
+                    {tradeoff.dCost > 0 ? "多按期以更高代价换取" : "当前主方案代价不高于最低代价方案。"}
+                    {/* 规范 §1/R-UI-3：「数字哪来的」是口径，降 `?` 浮层；第一层留权衡结论与差值。 */}
+                    <InfoPopover topic="权衡数字口径" testId="gs-tradeoff-info">
+                      数字取自求解器真值·非估算：代价差为正 = 主方案比最低代价方案多花这些代价，换来按期单数与换型小时的变化。
+                    </InfoPopover>
                   </div>
                 )}
                 </div>
@@ -1322,8 +1363,13 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       {d && (d.mockNotes?.length ?? 0) > 0 && (
         <div className={styles.noteRed} data-testid="global-sim-mocknotes">
           {/* §3.3「开发的话不许上屏」：原文印着工单编号「WO-DATA 未落」——那是内部排期，
-              用户读了做不了任何决定。诚实位本身（哪些供给用了兜底）一个字没删，只把编号移进本注释。 */}
-          诚实标注 · 两阶段网络供给用了兜底数据（真距离 / 供芯派生尚未接真）：{d.mockNotes!.join("；")}
+              用户读了做不了任何决定。诚实位本身（哪些供给用了兜底）一个字没删，只把编号移进本注释。
+              规范 §4.2：诚实位主体留第一层（它会改变用户对整页读数的信任度），口径说明降 `?` 浮层。 */}
+          诚实标注 · 两阶段网络供给用了兜底数据：
+          <InfoPopover topic="兜底的是哪几段" testId="gs-mocknotes-info">
+            兜底段：真距离 / 供芯派生尚未接真——这些段的供给数字是兜底推算，不是实测接入；其余段为真数据。
+          </InfoPopover>
+          {d.mockNotes!.join("；")}
         </div>
       )}
 
@@ -1332,7 +1378,13 @@ export default function GlobalSimView(_props: ViewRendererProps) {
           两者同属 layer 2「解的三个面」⇒ 第 3 步出。 */}
       {d && upto(3) && (
         <div className={styles.glass}>
-          <span className={styles.grpLabel}>[ 联合分配台账 · 主方案 {SCEN_LABEL[primary]}（基地 × 时间窗 · 悬停查看数据来源） ]</span>
+          <span className={styles.grpLabel}>
+            [ 联合分配台账 · 主方案 {SCEN_LABEL[primary]} ]
+            {/* 规范 §1/R-UI-3：行列含义降 `?` 浮层；第一层留台账数值。 */}
+            <InfoPopover topic="台账怎么读" testId="gs-alloc-info">
+              每行 = 一个需求项排到了哪个基地、哪条产线、哪个时间窗；行级悬停查看数据来源（溯源）。
+            </InfoPopover>
+          </span>
           <table className={styles.gtable} data-testid="global-sim-alloc">
             <thead><tr><th>需求项</th><th>来源</th><th>基地</th><th title="② 产线（该基地 PACK 成品线·真 Line 对象）">产线</th><th>窗口</th><th style={{ textAlign: "right" }}>量(套)</th><th style={{ textAlign: "right" }}>延误(天)</th><th /></tr></thead>
             <tbody>
@@ -1351,7 +1403,13 @@ export default function GlobalSimView(_props: ViewRendererProps) {
           {/* 判据 U8 · 台账里点「看明细」也**就地**展开在台账下方，不跳走。 */}
           {drillInput && drill?.from === "alloc" && <OrderDrillPanel input={drillInput} onClose={closeDrill} />}
 
-          <span className={styles.grpLabel} style={{ marginTop: 14 }} title="逐格核对：每个基地每个时间窗的「已排产量」都不超过「可用净产能」，确保一份产能只被用一次、没有重复占用。">[ 共享产能守恒台账 · 逐格「已排产量 ≤ 可用产能」· 无重复占用 ]</span>
+          <span className={styles.grpLabel} style={{ marginTop: 14 }}>
+            [ 共享产能守恒台账 ]
+            {/* 规范 §1/R-UI-3：守恒校验口径（原 title）降 `?` 浮层；第一层留逐格数值 + ✓/✗。 */}
+            <InfoPopover topic="守恒台账怎么读" testId="gs-ledger-info">
+              逐格核对：每个基地每个时间窗的「已排产量」都不超过「可用净产能」，确保一份产能只被用一次、没有重复占用；守恒列 ✓/✗ 即该格校验结果。
+            </InfoPopover>
+          </span>
           <table className={styles.gtable} data-testid="global-sim-ledger">
             <thead><tr><th>基地</th><th>窗口</th><th style={{ textAlign: "right" }}>净产能</th><th style={{ textAlign: "right" }}>已分配</th><th>守恒</th></tr></thead>
             <tbody>
@@ -1378,7 +1436,8 @@ export default function GlobalSimView(_props: ViewRendererProps) {
 
       {/* 迁入：多目标 + 跨对象占用联合 what-if（本是全局能力） */}
       <div className={`${styles.glass} ${styles.migrated}`}>
-        <span className={styles.grpLabel}>[ 多目标联合 what-if · 跨对象占用（opt.multiobj） ]</span>
+        {/* R-UI-4：原标签尾巴「（opt.multiobj）」是租户开关键名——开发的话不上屏，只留能力名。 */}
+        <span className={styles.grpLabel}>[ 多目标联合 what-if · 跨对象 ]</span>
         <MultiObjWhatifPanel />
       </div>
       {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。 */}
