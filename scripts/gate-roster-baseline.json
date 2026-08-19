@@ -23,12 +23,12 @@
    "why": "本单 ① 后已降级为**正向断言名册**：只答「这 3 个绑定必须由 BASE_REGISTRY.map 派生」（判据，随架构变不随内容变）。「谁内联了」这一半——即真正的受检对象集合——已改为 SCAN_ROOTS 全仓现算，名册不再决定扫谁。另有死账断言逼它跟着现实走。"
   },
   "check-boundary-singlesource.mjs:SEG_CONSUMERS": {
-   "verdict": "roster",
-   "why": "**差集 12**：实测全仓有 16 个文件引用 SEG_REGISTRY，名册只列 4 个。更要害的是 SEG 这一半**只有正向断言、没有全仓负向扫描**——「某文件内联了 seg 价/利/色但压根不引用 SEG_REGISTRY」这一形态今天一个都扫不到（BASE 那一半本单已改成现算，SEG 尚未）。**差什么才能修**：SEG_REGISTRY 的值是价格/毛利/颜色三类，缺一个像 baseId 那样稳定可判的字面量形状；要先在契约里给 SEG 值定一个可机检的形状（如统一走 segColor()/segPrice() 取值函数），才有得扫。属契约改动，动 packages/**，超出本单纯门单的范围边界。"
+   "verdict": "criteria",
+   "why": "（原 roster·WO-GATE-ROSTER-SWEEP-3 收口）名册已扩到现算全集 16 个并被判据②b 机器锁死：现算消费方（SCAN_ROOTS 全遍历·剥注释·含 SEG_REGISTRY token）⊆ 名册，漏登记当场 RC=1 点名 file:line；死账由判据②反向咬。即普查处方第二种修法「名单 vs 现算一致性断言」。残留诚实边界（不是本键的债）：「不引用册而直接内联 seg 价/利/色」的负向扫描需契约给 SEG 值定可机检形状（segPrice() 类取值函数），属 packages/** 契约改动，超门单范围。"
   },
   "check-boundary-singlesource.mjs:PLAN_GOAL_CONSUMERS": {
-   "verdict": "roster",
-   "why": "**差集 0（今天）**：实测引用 PLAN_GOAL_TARGETS 的文件恰为名册这 3 个。但机制与 SEG 同病——只有正向断言、无全仓负向扫描，新增一个内联目标阈值的文件永远不会被问。**差什么才能修**：同 SEG_CONSUMERS，需要先给目标阈值定可机检的字面量形状（阈值是纯数字，比 baseId 难判得多，裸扫会把无关的同值数字全误伤）。"
+   "verdict": "criteria",
+   "why": "（原 roster·WO-GATE-ROSTER-SWEEP-3 收口）现算消费方恰为名册这 3 个（差集 0），且判据③b 双向锁已落地：新增引用 PLAN_GOAL_TARGETS 的文件不登记即 RC=1 点名 file:line。与 SEG_CONSUMERS 同一条机器锁，名册不再能悄悄落后于现实。负向扫描（内联阈值数字）的诚实边界同 SEG 条。"
   },
   "check-boundary-singlesource.mjs:SCAN_ROOTS": {
    "verdict": "computed",
@@ -59,12 +59,16 @@
    "why": "同上，遍历跳过表。受检集合由 SCANNED_TREES 遍历现算。"
   },
   "check-chain-scan-honesty.mjs:SCAN_TARGETS": {
-   "verdict": "roster",
-   "why": "**差集 11**：写死 3 个扫描目标，而全仓引用 ChainImpediment 的文件实测 14 个（含 solvers/impediment-options.ts、decision/causal-graph.ts 这类同样产数字的地方）。门只问那 3 个，别处塞裸阈值一样绿。**差什么才能修**：需要先定「哪些文件算『产链路数字的地方』」这个判据——不能简单地把 14 个全扫（前端 mock 与视图层出现字面量是正常的），得按「是否写入 ChainImpedimentSchema 字段」来判，这要求解析赋值目标而不只是文件引用。属中等工作量的判据设计，本单未排。"
+   "verdict": "criteria",
+   "why": "（WO-GATE-ROSTER-SWEEP-3 定性收口）旧债的「差什么才能修」已落地为 H9 一致性断言：凡含生产锚点（`ChainImpedimentSchema.parse(` / `detectChainImpediments(`，即「写入 ChainImpedimentSchema 字段」的可机检代理）的文件必须落在 SCAN_TARGETS.files 里，否则 RC=1 带 file:line；扫描面 PRODUCER_SCAN_ROOTS 五包 src 全递归现算，实测生产者恰 2 个且都在名册。名单由机器盯着 ⇒ 判据本体化。诚实残余：锚点表 PRODUCER_TOKENS 本身是判据——绕过这两个锚点另开生产路径时，必须同批把新锚点加进词表（新口径=显眼 diff），这正是本门要的语义。"
   },
   "check-chain-scan-honesty.mjs:NUMERIC_OUTPUT_KEYS": {
    "verdict": "criteria",
    "why": "被判「不许裸字面量」的数值输出字段名。判据本体：它定义诚实性的作用域，改它 = 改规范。"
+  },
+  "check-chain-scan-honesty.mjs:PRODUCER_SCAN_ROOTS": {
+   "verdict": "computed",
+   "why": "（WO-GATE-ROSTER-SWEEP-3 新增·H9 的扫描面）五包 src 全递归（datacore/agentcore/contracts/llm-adapters/frontend-shell）= 全仓 TS 源码面；node_modules/dist/build/mocks 由遍历规则本身排除，不靠手抄豁免。目录集合稳定、文件名不手抄，与 SCREEN_ROOTS / unit-value-provenance:SCAN_ROOTS 同一现算形态。"
   },
   "check-chain-scan-honesty.mjs:JS_RESERVED": {
    "verdict": "criteria",
@@ -105,10 +109,6 @@
   "check-dbui-flow-order.mjs:MUST_FOLLOW": {
    "verdict": "criteria",
    "why": "DataBuilder 流程面板的**规范顺序**（QuickSynth→WorkflowTimeline→GrowthConsole→InPlaceApproval）。判据本体：顺序是规范规定的，现算化等于「代码怎么排就算对」。"
-  },
-  "check-deploy-governance.mjs:APPS": {
-   "verdict": "roster",
-   "why": "**差集 1**：名册列 2 个 config.ts（agentcore/datacore），实测仓内有 3 个 —— apps/datacore/src/calibration/config.ts 从未被部署治理门问过。**差什么才能修**：需要先裁定「calibration/config.ts 算不算一个需要治理的部署配置」（它是标定子模块的配置，未必需要同等的 env 治理约束）——这是**产品/治理裁决**不是门能自己定的，故本单不擅自扩面。裁定后改成现算 apps/*/src/**/config.ts 即可。"
   },
   "check-dril-quality.mjs:need": {
    "verdict": "computed",
@@ -151,8 +151,8 @@
    "why": "这是**判据本体**，不是受检对象集合：五个绝对阈值（minFontPx≥12 · bodyFontPx≥13 · overflowPx=0 · misalignedGroups=0 · overflowUnreachable=0）。凭什么它不随仓库演进而变：**12 不是自由参数** —— 它取自本仓 check-text-legibility.mjs 的 FLOOR_PX，而那个 12 是该门判据 A（required=max(3.0,72/S_eff)）与本仓调色板的**交点**（10px 要 7.2:1，而达到 7.2 需要的灰会比二级文本还亮 ⇒ 层级反转，故 10px 中文在本调色板内无解）。调色板变了那个交点自己会动，届时两道门一起改，而不是这里多一页少一页。另外四个是硬判据（横向滚动条 / 行不对齐 / 内容被裁死）—— 数值无歧义、与仓库规模无关。⚠ 刻意**不**照抄参照物 venture_twin_v2_7.html 的 body 13.5 / small 10：那是另一个产品的一屏，且它那几档装拉丁字母、本页这几档装中文。"
   },
   "check-layout-legibility.mjs:PAGES": {
-   "verdict": "roster",
-   "why": "**真债，照实登记**：本门棘轮守的页集合写死为 1 页（sim-sandbox）。**差集 = 11 页**（project-sim · global-sim · risk · order-chain · decision-play · what-if · optimize-whatif · cleanroom-attr · disruption-radius · plan-generate · sop-balance）。**该从哪儿现算**：`parsePrdTable()`（scripts/check-sim-ux-criteria.mjs）读 docs/PRD-harness-ux-adoption.md §4 表 —— 本门的 `--survey` 已经在用它现算这 12 页，**所以不是「算不出来」，是「故意只守一页」**：WO-SANDBOX-LAYOUT-HARNESS 的范围是「造尺子 + 用一页证明它有牙」，一天硬铺 12 页棘轮产出的会是 12 个没人维护的装饰件。**差什么才能修**：那 11 页里 3 页今天就卡在绝对下限上（plan-generate 9px · project-sim 9.5px · decision-play 10px，均为页内自有小字号）—— 先把这 3 页字号提到 12px，再 `--tighten` 把 12 页一次性种进基线，本条即可从 roster 降为 computed。**已加缓解措施**（该门守的命题原话：「写死则必须同批加一条『名单 vs 现算』的一致性断言」）：本门每次运行都断言 PAGES ⊆ 现算名册（有名册外的页 ⇒ RC=2），并**打印未进棘轮的 11 页页名** —— 「量到 ≠ 守住」这件事因此每次都被机器说出来，而不是沉默地待在源码里。"
+   "verdict": "criteria",
+   "why": "（原 roster·WO-GATE-ROSTER-SWEEP-3 定性收口）名册 vs 现算一致性断言已在门内（sweep-1/2 期落地）：PAGES 出现现算名册外的页即 RC=2，且每次运行打印未进棘轮的 11 页页名——「量到 ≠ 守住」每跑必说，不沉默。PAGES 剩下的语义是「严格棘轮守哪几页」的**范围判据**（随排期/架构变，不随内容变）；差集 11 页（project-sim 等）由 --survey 的表屏对账盯住（PRD U10 格列词与实测不一致即 RC=1，两个方向都咬）。升级路径照旧：3 页卡下限的字号提到 12px 后 --tighten 把 12 页一次性种进基线，本条即可降 computed。"
   },
   "check-lever-landing-exists.mjs:CANARIES": {
    "verdict": "criteria",
@@ -267,8 +267,12 @@
    "why": "金丝雀双向样例用的环境变量名（必中/必不中的固定测试输入），与主判据共用实现；仓库新增环境变量不需要它跟进。判据本体。"
   },
   "check-dev-jargon-onscreen.mjs:SCAN": {
-   "verdict": "roster",
-   "why": "**真债（本单新暴露）**：扫描根写死 views/+pages/admin/+locales 等 10 条，漏 components/** 与 pages 非 admin——开发口径词写进共享组件就永远扫不到，与 ui-first-layer:SCAN_DIRS 同病。修法已立成例：SCAN_ROOT=apps/frontend-shell/src 全递归+EXCLUDE_RE 例外具名。留给后续单（本单只修到 7 处，这处与 typecheck-coverage 一并登记）。"
+   "verdict": "computed",
+   "why": "（原 roster·WO-GATE-ROSTER-SWEEP-3 收口）jsx 面已改为 apps/frontend-shell/src 单根全递归（views/pages/components/… 凡 .tsx 皆进面），locales 独立面保留。目录集合是「源码根」这一稳定判据，不手抄文件/子目录名单；与 oee-ssot:SCREEN_ROOTS 同一现算形态。扩面新暴露的存量（QueryDock 的 VITE_MOCK 横幅）已照本门棘轮纪律登进 dev-jargon-baseline.json，只降不升。"
+  },
+  "check-dev-jargon-onscreen.mjs:SCAN_SKIP_DIRS": {
+   "verdict": "computed",
+   "why": "（WO-GATE-ROSTER-SWEEP-3 新增）全递归时的构建产物/依赖跳过表（node_modules/dist/build）。它是现算的输入参数，不是受检对象集合——受检文件由 SCAN 根递归遍历得出；与 chain-node-singlesource:SKIP_DIRS 同定性。"
   },
   "check-edge-active-mounts.mjs:two": {
    "verdict": "criteria",
@@ -290,16 +294,12 @@
    "verdict": "criteria",
    "why": "（WO-GATE-ROSTER-SWEEP-2 新设）契约已声明、模板池未接线的族名单——但被精确划分断言锁死：枚举=落地 case⊔NOT_YET_BOUND，落地没摘/新增没登记/族删了变幽灵，三个方向 stale 都当场 RC=1。名单由机器盯着 ⇒ 判据本体化。"
   },
-  "check-typecheck-coverage.mjs:PACKAGES": {
-   "verdict": "roster",
-   "why": "**真债（本单新暴露）**：包清单写死 14 条，新加一个 package 不进清单就永远不被 typecheck 覆盖率门问到。修法明确：从 pnpm-workspace.yaml 的 packages globs 现算并交叉断言。留给后续单。"
-  },
   "check-unit-value-provenance.mjs:SCAN_ROOTS": {
    "verdict": "computed",
    "why": "四包 src 全递归（datacore/agentcore/frontend-shell/contracts）= 全仓源码面，无名单外盲区；与 outsource-redline:SCAN_ROOTS 同一现算形态（目录稳定、文件不手抄）。"
   }
  },
  "candidateCount": 74,
- "rosterCount": 7,
- "ratchetHigh": 7
+ "rosterCount": 0,
+ "ratchetHigh": 0
 }
