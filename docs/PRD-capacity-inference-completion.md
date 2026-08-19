@@ -53,8 +53,8 @@
 - **兼容**：无 scope 时 = 现全局行为（不回归）；R6 确定性/R13 provenance/勾稽 Σ子+residual=父 全保持。
 
 ### F1 · 每基地前瞻产能推演（+30/60/90d·新）
-- **数据多已就绪**：`capacity_forecast`（已有·per-base P50/P90/gap/bottleneck·我实测 gap 89520/常州 tightness 91）+ `Order.due`（未来订单排期）+ `DemandSegment.p50`（销售预测）。
-- **新增**：per-base 前瞻投影——对 horizon∈{30,60,90} 各算：可用产能（capacity_forecast）vs 在产订单占用（WorkOrder/OPEN Order 到期铺开）vs 未来订单（Order.due 落在窗内）vs 销售预测（DemandSegment.p50 摊到窗）→ 四线对比 + 缺口/富余标记。
+- **数据多已就绪**：`capacity_forecast`（已有·per-base P50/P90/gap/bottleneck·我实测 gap 89520/常州 tightness 91）+ `Order.due`（未来订单排期）+ `DemandSegment.demandWanPerYearP50`（销售预测）。
+- **新增**：per-base 前瞻投影——对 horizon∈{30,60,90} 各算：可用产能（capacity_forecast）vs 在产订单占用（WorkOrder/OPEN Order 到期铺开）vs 未来订单（Order.due 落在窗内）vs 销售预测（DemandSegment.demandWanPerYearP50 摊到窗）→ 四线对比 + 缺口/富余标记。
 - 可作 `capacity_forecast` 的 `horizonDays` 多值扩展，或新 `base_capacity_outlook` 求解器（读同源对象·R6）。前端每基地卡片加前瞻子面板（三档 tab）。
 
 ### P1 · 行动计划逐日推演过程（新）
@@ -65,14 +65,14 @@
 ## §4 SEAM 验收（接缝驱动·活系统亲验·非各半绿）
 1. **D1+E1 组合**：生成全基地 equipment 后，`gap_attribution({scope:{baseId:"hefei"}})` → 断言返回**合肥专属树**·L2 设备OEE 瓶颈叶**非空**（drillValue=合肥真设备 oee_current）·勾稽 Σ子+residual=父·每叶 provenance 可溯。**活系统 curl 亲验**（我复验必跑）。
 2. **D2**：`scope:{baseId:"合肥"}` 与 `"hefei"` 返回同树（归一生效）。
-3. **F1**：`base_capacity_outlook({baseId, horizon:90})` → 四线（产能/在产/未来单/预测）齐 + 缺口标记 · 改 Order.due/DemandSegment.p50 → 前瞻真变（非写死）。
+3. **F1**：`base_capacity_outlook({baseId, horizon:90})` → 四线（产能/在产/未来单/预测）齐 + 缺口标记 · 改 Order.due/DemandSegment.demandWanPerYearP50 → 前瞻真变（非写死）。
 4. 四包全绿 + 金值同步（对象数）+ 本体回写。
 
 ---
 
 ## §5《本体引用与影响》（铁律0）
 - **对象类型**：`Equipment`/`EquipmentOEE`（D1 全基地铺开）· `Base`(§B·displayName 归一源) · `Order`(bases/due) · `Metric`(seg_attain_ess·归因目标) · `CausalFactor`(因果叶) · `DemandSegment`(p50 预测) · `WorkOrder`(在产)。
-- **链路**：**归因链**（§3）`Metric.gap → 结构反向分摊(Order→基地→设备OEE/物料瓶颈) → CausalFactor`；本 PRD 补 D1（设备叶数据源）+ E1（base 作用域旁路）。**产能推演链** `capacity_forecast(per-base) → 前瞻投影(F1)`。
+- **链路**：**归因链**（§3）`Metric.delta → 结构反向分摊(Order→基地→设备OEE/物料瓶颈) → CausalFactor`（`Metric` 无 `gap` 属性——缺口真名是 `delta`（=actual−target），相对口径为派生 `gapPct`）；本 PRD 补 D1（设备叶数据源）+ E1（base 作用域旁路）。**产能推演链** `capacity_forecast(per-base) → 前瞻投影(F1)`。
 - **事件**：`gap.attributed`（已有·scope 版复用）；F1 无新事件（同步查询）。
 - **不变量**：R6 确定性（equipment 哈希派生·前瞻无时钟）· R13 provenance（每叶/每日行动可溯）· R14（设备数/系数非内联·走 BASE_REGISTRY/SolverParam）· 勾稽（Σ子+residual=父 gap 不破）。
 - **断点**：**新登 G-CAPACITY-BASE-DATA**（Equipment/OEE 仅常州→逐基地 OEE 根因不可用·D1 闭）+ **G-GAP-SCOPE**（gap_attribution 无 base×factor 作用域·E1 闭）。回写 §2E（求解器 scope）+ §8（两断点）+ §4（Equipment 数据流全基地）。

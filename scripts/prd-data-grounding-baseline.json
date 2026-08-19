@@ -18,71 +18,8 @@
     "   **本门作者已用独立实现抽样复核全部 5 条**（真值源 94 类型/825 属性，与审计方运行态 94 类型一致），",
     "   逐条属性表读回结论一致，且「真名」主张亦复核通过（minutes / delta·gapPct / cadenceKind）。"
   ],
-  "ratchetHigh": 7,
-  "maxExemptions": 7,
-  "adjudicated": [
-    "PRD-capacity-live-cockpit.md#REF:Base.weeklyCap",
-    "PRD-capacity-live-cockpit.md#REF:Material.coverage",
-    "PRD-capacity-inference-completion.md#REF:Metric.gap",
-    "PRD-lever-binding-drift.md#REF:ChangeoverMatrix.changeoverMin",
-    "PRD-sandbox-redesign.md#REF:Order.changeoverMin"
-  ],
-  "exemptions": [
-    {
-      "key": "PRD-sandbox-redesign.md#VAR:06caab0f7841171e",
-      "prd": "docs/PRD-sandbox-redesign.md",
-      "line": 364,
-      "code": "PDG-6",
-      "kind": "待修",
-      "why": "**这就是本门的立门案例本身**（A6）。判据「改 `SEG_REGISTRY` 一个值 → 结论真跟着变」只咬后半段：`SEG_REGISTRY` 确有数据，但「这条线属于哪几个 seg」这层归属不存在（本门实测 `Line` 仅 11 个属性，无任何 seg 归属字段），前半段不成立时该判据**无法失败**。修法不是删判据，是补一句「前置：线→seg 归属关系存在」并给该前置一条能红的判据。挂账而非立即红，是因为修它要动 PRD 正文与沙盘数据两半，属另一张单。"
-    },
-    {
-      "key": "PRD-simulation-sandbox.md#VAR:20207e562d88b168",
-      "prd": "docs/PRD-simulation-sandbox.md",
-      "line": 213,
-      "code": "PDG-6",
-      "kind": "待修",
-      "why": "同 A6 形态：「编辑某 `PropagationRule` 系数 0.85→0.6 发布→同一沙盘传导结果随之变」未声明前置。前置应是「该 `PropagationRule` 实例存在且真被传导引擎读取」——前置不成立时此判据同样无法失败。属同族债，随 A6 一并修。"
-    },
-    {
-      "key": "PRD-capacity-live-cockpit.md#REF:Base.weeklyCap",
-      "prd": "docs/PRD-capacity-live-cockpit.md",
-      "line": 72,
-      "code": "PDG-4A",
-      "kind": "待修",
-      "why": "已裁定（WO-PRD-FIELD-AUDIT + 本门作者独立复核）：`Base` 实有 22 属性（baseId/name/kind/util/bottleneck/gwh/formationCapDaily/agingCapDaily/…），**无 `weeklyCap`**；产能类真名是 `gwh`/`formationCapDaily`/`agingCapDaily`。原文以现状口吻写「`targetType/targetProp` **传**产能目标（`Base.weeklyCap`…）」。修法 = 改成真实属性名或标为本 PRD 新增。"
-    },
-    {
-      "key": "PRD-capacity-live-cockpit.md#REF:Material.coverage",
-      "prd": "docs/PRD-capacity-live-cockpit.md",
-      "line": 174,
-      "code": "PDG-4A",
-      "kind": "待修",
-      "why": "已裁定：`Material` 实有 19 属性，**无 `coverage`**；且同名字段在 `MaterialBalance` 上也不存在（该类型只有 matBalId/material/unit/netDemandTon/ltaPct/gapTon/etaDate）⇒ **类型名可能也写错了**。要命的是这条是某 SEAM-GATE 的**验收判据本身**（「改一个 `Process×Model` 的 `Material.coverage` → …」）——**改无可改，这道门今天写不出来**，正是本门 PDG-6 要治的「判据无法失败」同族。"
-    },
-    {
-      "key": "PRD-capacity-inference-completion.md#REF:Metric.gap",
-      "prd": "docs/PRD-capacity-inference-completion.md",
-      "line": 75,
-      "code": "PDG-4A",
-      "kind": "待修",
-      "why": "已裁定：`Metric` 实有 16 属性（含派生 `delta`/`gapPct`），**无 `gap`** —— **命名漂移**，真名是 `delta` 或 `gapPct`。原文以现状口吻写进「链路」定义（`Metric.gap → 结构反向分摊 → CausalFactor`），链路描述里的错名会一路传染下游实现。"
-    },
-    {
-      "key": "PRD-lever-binding-drift.md#REF:ChangeoverMatrix.changeoverMin",
-      "prd": "docs/PRD-lever-binding-drift.md",
-      "line": 233,
-      "code": "PDG-4A",
-      "kind": "待修",
-      "why": "已裁定：`ChangeoverMatrix` 实有 6 属性 `pairId/fromModel/toModel/**minutes**/hours/lineId`，**无 `changeoverMin`**（真名 `minutes`）。该 PRD 把它诊断为「双重死」并归因于「`capacity.ts` 全文不出现 `ChangeoverMatrix`」，**漏了一层：属性名本身就是错的**，而且**数据其实有 30 条实例**——定性从「没数据」翻转为「名字写错」，修法完全不同（铁律 0.5 三分法）。"
-    },
-    {
-      "key": "PRD-sandbox-redesign.md#REF:Order.changeoverMin",
-      "prd": "docs/PRD-sandbox-redesign.md",
-      "line": 375,
-      "code": "PDG-4A",
-      "kind": "待修",
-      "why": "已裁定：`Order` 实有 16 属性 + 1 派生，**无 `changeoverMin`**。原文以现状口吻断言取值「**C22** `Order.changeoverMin`=120」，而**同仓 `docs/PRD-sandbox-a2.md` 已明写它「无对象承载而 UNRESOLVED」——两份 PRD 自相矛盾**。修法 = 以 a2 的诚实表述为准改写本处。"
-    }
-  ]
+  "ratchetHigh": 0,
+  "maxExemptions": 0,
+  "adjudicated": [],
+  "exemptions": []
 }
