@@ -322,10 +322,12 @@ describe("WO-BEFE-D ① 组织世界（/a/v1/org 五条）", () => {
     delete db.tenantOverrides["org.world"];
     renderApp("/admin/org");
     // 给守卫足够时间加载 workspace 后再判定；页面本体出现 = featureKey 守卫没接上
-    await waitFor(() => expect(screen.queryByText("加载中…")).toBeNull(), { timeout: 5000 }).catch(() => undefined);
+    // ⚠ 2026-08-19 WO-TIMEOUT-5000-SWEEP：等待预算 5s→20s（共享机高负载假红，同型见 c9ff5936f）；判据未动。
+    await waitFor(() => expect(screen.queryByText("加载中…")).toBeNull(), { timeout: 20000 }).catch(() => undefined);
     await waitFor(() => expect(screen.queryByTestId("org-world-page")).toBeNull());
     expect(screen.queryByTestId("org-chart-panel")).toBeNull();
-  });
+    // 整条墙钟预算同理上调（WO-TIMEOUT-5000-SWEEP）：renderApp+懒加载链路在共享机负载下会超全局 20s。
+  }, 60000);
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -698,5 +700,7 @@ describe("WO-BEFE-D ④ 场景（launch / closure / publish-chain）", () => {
     expect(readRepoFile("../src/App.tsx")).toContain('path: "admin/org"');
     expect(readRepoFile("../src/pages/adminRegistry.ts")).toContain('path: "org"');
     expect(readRepoFile("../src/pages/ShellLayout.tsx")).toContain('"actions", "org"');
-  });
+    // 整条墙钟预算上调（WO-TIMEOUT-5000-SWEEP）：本条虽为同步静态扫描，共享机负载=4 时事件循环
+    // 被饿死，实测「Test timed out in 20000ms」整测试预算耗尽（非断言失败）——同 edge-active 半修回红签名。
+  }, 60000);
 });

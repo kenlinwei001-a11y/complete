@@ -90,7 +90,8 @@ describe("WO-SIM-ACTION-REAL · 项目推演⑥ 采纳结论 → ActionDraft（�
     const qtyInput = screen.getByLabelText("需求(万套)");
     fireEvent.change(qtyInput, { target: { value: "55" } });
     await user.click(screen.getByTestId("pm-step-chip-6"));
-    await waitFor(() => expect(screen.getByTestId("kpi-demand")).toHaveTextContent("55"), { timeout: 5000 });
+    // ⚠ 2026-08-19 WO-TIMEOUT-5000-SWEEP：等待预算 5s→20s（共享机高负载假红，同型见 c9ff5936f）；判据未动。
+    await waitFor(() => expect(screen.getByTestId("kpi-demand")).toHaveTextContent("55"), { timeout: 20000 });
     const btn = await screen.findByTestId("pm-adopt-conclusion");
     await waitFor(() => expect(btn).not.toBeDisabled());
     await user.click(btn);
@@ -100,5 +101,6 @@ describe("WO-SIM-ACTION-REAL · 项目推演⑥ 采纳结论 → ActionDraft（�
     expect(p.demandWan).toBe(55);
     const expected = mockCapacityForecast({ modelId: "4680-NCM", qty: 55, weeks: 6 }) as { capWanP50: number };
     expect((p.snapshot as Record<string, unknown>).capWanP50).toBe(expected.capWanP50);
-  });
+    // 整条墙钟预算同理上调（WO-TIMEOUT-5000-SWEEP）：renderApp+懒加载链路在共享机负载下会超全局 20s。
+  }, 60000);
 });

@@ -166,13 +166,15 @@ describe("WO-EDGE-PANEL-3PAGES · 三页的「关掉一条边看结果怎么变�
     renderApp("/v/order-chain");
 
     // 面板默认折叠在 `<details>` 里（本页在 check-ui-first-layer 棘轮内，不许往第一层堆）。
-    const summary = await screen.findByTestId("oc-edge-summary", {}, { timeout: 5000 });
+    // ⚠ 2026-08-19 WO-TIMEOUT-5000-SWEEP：findBy 预算 5s→20s（共享机高负载下 5s 等不到懒加载 chunk，
+    //   同型假红见 edge-active 调查 c9ff5936f）；判据一个字未动，只抬等待预算。
+    const summary = await screen.findByTestId("oc-edge-summary", {}, { timeout: 20000 });
     await user.click(summary);
 
     // 渲染层：面板真出现，且列的是 MSW 真响应里的边（不是写死的占位行）。
     // ⚠ 这一段是**变异反证的对照组**：把重算那一步拆掉后，本段仍然全绿 ——
     //   于是下面那段红的时候，红的原因只能是「数没出来/没变」，不可能是「面板不见了」。
-    const panel = await screen.findByTestId("edge-active-order-chain-panel", {}, { timeout: 5000 });
+    const panel = await screen.findByTestId("edge-active-order-chain-panel", {}, { timeout: 20000 });
     expect(within(panel).getByTestId("edge-active-order-chain-count").textContent).toContain("3 条边");
     const rowA = within(panel).getByTestId(`edge-active-order-chain-edge-${EDGE_A}`);
     expect(rowA.textContent).toContain("TypeA.s1"); // 源/目标/链路/系数逐字段直取 PropagationRule
@@ -183,7 +185,7 @@ describe("WO-EDGE-PANEL-3PAGES · 三页的「关掉一条边看结果怎么变�
     // 交互层：拨一下开关（不点任何「再运行一次」）。
     // MSW fixture：TypeB#0.s1 基线 30，关掉 EDGE_A 后 30 − 0.5×60 = 0 ⇒ Δ = −30，方向 ↓。
     await user.click(within(panel).getByTestId(`edge-active-order-chain-toggle-${EDGE_A}`));
-    const diff = await within(panel).findByTestId("edge-active-order-chain-diff", {}, { timeout: 5000 });
+    const diff = await within(panel).findByTestId("edge-active-order-chain-diff", {}, { timeout: 20000 });
     const cellA = within(diff).getByTestId("edge-active-order-chain-diff-TypeB#0-s1");
     expect(cellA.textContent).toContain("↓");
     expect(cellA.textContent).toContain("−30");
@@ -210,12 +212,13 @@ describe("WO-EDGE-PANEL-3PAGES · 三页的「关掉一条边看结果怎么变�
         expect(cellB.textContent).toContain("↓");
         expect(cellB.textContent).toContain("−10");
       },
-      { timeout: 5000 },
+      { timeout: 20000 },
     );
     // 且上一次那一格**不再变化**（证明关的是这一条，不是把整张表停了）。
     expect(within(panel).queryByTestId("edge-active-order-chain-diff-TypeB#0-s1")).toBeNull();
     expect(within(panel).getByTestId("edge-active-order-chain-verdict").textContent).toContain("发生变化");
-  });
+    // 整条墙钟预算同理上调（WO-TIMEOUT-5000-SWEEP）：renderApp+懒加载链路在共享机负载下会超全局 20s。
+  }, 60000);
 
   // ── ③ 纯模型：关掉一条关系边 ⇒ **改道**（不是简单截断）、且确定性 ─────────────────────
   it("🔴 模型 disruption-radius：关掉首选边 ⇒ 倒推改走次选边（不是截断），同输入同输出", () => {
