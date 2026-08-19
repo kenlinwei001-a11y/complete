@@ -1,5 +1,5 @@
 import type { Answer, AnswerBlock, ClaimVerdict, ConsistencyCheck, CrossValidateRequest, CrossValidateResponse, ExtendedPlanStep, ProvenanceRef, ResolvedRef, RuleVerdict, ValidationTrace } from "@platform/contracts";
-import { ErrorCodes } from "@platform/contracts";
+import { ErrorCodes, GRAPH_FALLBACK_ANSWER_MARKDOWN, topoLayers } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type { LlmClient } from "../llm/types.js";
 import type { Metrics } from "../metrics.js";
@@ -101,7 +101,26 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
   });
   const cancelled = (reason: string): WorkflowResult => ({ status: "CANCELLED", reason, stepOutputs });
 
-  for (const step of input.steps) {
+  // ── WO-GRAPH-FANOUT-W2：执行序改由**全仓唯一拓扑实现** `topoLayers` 给出 ────────────────
+  // 线性 steps → 全 seq 链（声明序）→ 每层恰一个节点 → 展开后的执行序与旧
+  // `for (const step of input.steps)` **逐字节一致**（PRD §10 A1，无隐式并行推断）。
+  // 换来的真行为差异只有一条：步骤 id 重复以前在循环里**静默互相覆盖**（后者盖前者的
+  // stepOutputs/stepAudits），现在在进循环前就被 GRAPH_INVALID 点名拒掉 ——
+  // 静默覆盖 = 数据错而测试照绿，属于「拒掉并点名」而不是行为退化。
+  const stepById = new Map<string, ExtendedPlanStep>();
+  for (const s of input.steps) stepById.set(s.id, s);
+  const topo = topoLayers({
+    nodes: input.steps.map((s) => ({ id: s.id })),
+    edges: input.steps.slice(1).map((s, i) => ({ from: input.steps[i]!.id, to: s.id })),
+  });
+  if (!topo.ok) {
+    // 链式构造下唯一可能是 id 重复（边是我们自己编的，不可能悬空/成环）——如实透出名与因。
+    return failed(topo.code, `工作流步骤拓扑非法：${topo.message}`);
+  }
+  const orderedSteps: ExtendedPlanStep[] = [];
+  for (const layer of topo.layers) for (const id of layer.nodeIds) orderedSteps.push(stepById.get(id)!);
+
+  for (const step of orderedSteps) {
     const started = Date.now();
     await deps.emit("step.started", { stepId: step.id, type: step.type });
 
@@ -328,9 +347,11 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
   }
 
   // No render_answer step (standalone workflows): synthesize a summary answer from outputs.
+  // 文案常量在 contracts（GRAPH_FALLBACK_ANSWER_MARKDOWN）——图链合成收尾 render 用的也是它，
+  // 两处置底文案只许这一个家。
   return completed({
     trustLevel,
-    blocks: [{ type: "text", markdown: "工作流执行完成。" }],
+    blocks: [{ type: "text", markdown: GRAPH_FALLBACK_ANSWER_MARKDOWN }],
     provenance: [],
     unverifiedNumerics: false,
   });

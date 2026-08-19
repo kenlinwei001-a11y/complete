@@ -2607,6 +2607,11 @@ export class Orchestrator {
       }
       return this.deps.events.emit(taskId, e, payload).then(() => undefined);
     };
+    // FANOUT-REG: coordinator-role-fanout —— 三处扇出之③（PRD §3.4），WO-GRAPH-FANOUT-W2 定为
+    // **分工登记不收编**：上方 `emitWithRole` 的角色归因靠 `current` 指针由 `step.started` **串行**
+    // 推导（「R6 确定·无并发歧义」）——一旦把角色步骤并行化，旁白归属立即错乱（"供应链在查什么"
+    // 可能贴到生产头上）。真并行须等 W3 role-by-node（PRD §3.5-b：节点自带身份，不靠「当前串行步」
+    // 推导）落地后随 GraphScheduler 一并收编。点位由 scripts/check-graph-runtime.mjs G3 看护。
     const result = await this.deps.engine.runWorkflowSteps({
       taskId,
       steps,

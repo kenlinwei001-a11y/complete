@@ -207,6 +207,11 @@ export async function runParallelRoutes(
   });
 
   // 并行执行各域 solver（无依赖·组内并发·R7 单失败不塌）。产物顺序按 routes 声明稳定（R6·⟦ref:N⟧ 对齐）。
+  // FANOUT-REG: multi-route-parallel-solvers —— 三处扇出之②（PRD §3.4），WO-GRAPH-FANOUT-W2 定为
+  // **分工登记不收编**：本扇出的每路产物需要 GuardedToolExecutor 的真 toolCallId 做 provenance
+  // （⟦ref:N⟧ 对齐 → 溯源落 Answer），GraphScheduler 的图节点不经 GuardedToolExecutor、给不出真
+  // toolCallId；且 coupled-pair 的「诚实标·未链式传导」叙事与本扇出耦合。收编会同时扯断这两样，
+  // 故保留原位并登记，由 scripts/check-graph-runtime.mjs G3 看护点位清单。
   const products: DomainProduct[] = await Promise.all(
     routes.map(async (route): Promise<DomainProduct> => {
       const run = await ctx.executor.run("invoke_solver", { solverKey: route.solverKey, args: route.args });
