@@ -52,21 +52,12 @@
   line-height: 1.6;
 }
 
-.excludedLegend li {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-/* 虚线小样：与图上被排除节点的边框同一路编码，让图例与图对得上。 */
-.excludedSwatch {
-  flex: none;
+/* 虚线小样走 `::before`（不占信息块）：与图上被排除节点的边框同一路编码，让图例与图对得上。 */
+.excludedLegend li::before {
+  content: "";
+  display: inline-block;
   width: 14px;
-  height: 0;
+  margin-right: 6px;
   border-top: 1.4px dashed var(--muted2);
   transform: translateY(-3px);
-}
-
-.excludedWhy {
-  color: var(--muted2);
 }

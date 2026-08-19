@@ -36,8 +36,13 @@
   opacity: 0.62;
 }
 
+/*
+  ⚠ 12px 是 `check-text-legibility.mjs` 的 FLOOR_PX，**不许再往下调**。
+  初稿写的 10px 被 `ui-first-layer:check` 的 D3 棘轮当场咬出来
+  （字号层级 1 → 2 · R-UI-2）—— 机器先说话，不是人想起来。
+*/
 .excludedTag {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   fill: var(--muted2);
   letter-spacing: 0.5px;
@@ -55,23 +60,14 @@
   line-height: 1.6;
 }
 
-.excludedLegend li {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-/* 虚线小样：与图上被排除节点的边框同一路编码（虚线），让图例与图对得上。 */
-.excludedSwatch {
-  flex: none;
+/* 左侧那条虚线小样走 `::before`（**不占一个信息块**）：与图上被排除节点的边框同一路编码，让图例与图对得上。 */
+.excludedLegend li::before {
+  content: "";
+  display: inline-block;
   width: 14px;
-  height: 0;
+  margin-right: 6px;
   border-top: 1.4px dashed var(--muted2);
   transform: translateY(-3px);
-}
-
-.excludedWhy {
-  color: var(--muted2);
 }
 
 .label {

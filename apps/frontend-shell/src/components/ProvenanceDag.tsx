@@ -250,7 +250,13 @@ export function gapAttributionToBaseRootCause(ga: GapAttrOutput | undefined, bas
       contribution: rc.residual,
       share: shareOfBase,
       unit: baseNode.unit ?? rm.unit,
-      excludedReason: "这部分缺口没有分摊到任何因素上（引擎逐层勾稽后诚实承认的未解释量）",
+      /*
+        ⚠ 第一层只留**短句**（规范 §1：成段口径属浮层，第一层留可见记号）。
+        完整口径（硬勾稽 Σ子+residual=父gap · 可解释比系数 · "残差大说明归因缺维度"）
+        在点开的节点面板里（`RiskBoardView.dagNodeFacts` 的 `residual` 分支）——
+        **降层不是删除**，这里这一句就是那个记号。
+      */
+      excludedReason: "没有分摊到任何因素上",
     });
     edges.push({ from: baseId, to: rid, weight: shareOfBase, kind: "residual" });
   }
@@ -497,17 +503,17 @@ export function ProvenanceDag({ data, onNodeClick }: { data: DagData | undefined
             opacity: 0.82,
           })}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            <span className="badge" style={{ background: "var(--panel2)", color: "var(--muted2)", border: "1px dashed var(--muted2)" }}>
-              {fmtPct(weight)}
-            </span>
-            <span style={{ color: "var(--muted)" }}>✕ {factor.label}</span>
-            <span style={{ fontSize: 12, color: "var(--muted2)" }}>
-              <NodeProv node={factor}>{factor.sub ?? `${factor.value}`}</NodeProv>
-            </span>
+          {/*
+            ⚠ 压成两块（标签行 + 理由行），不是四块 —— 初稿那种 badge/名字/数值分家的写法被
+            `ui-first-layer:check` 的 D1 棘轮咬出「纯往第一层堆」（15 → 19）。
+            数值仍挂 `<NodeProv>`（溯源浮层），理由仍是**可见文本**（判据 U4b 的"为什么"那一半）。
+          */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", color: "var(--muted)" }}>
+            ✕ {factor.label}
+            <NodeProv node={factor}>{factor.sub ?? `${factor.value}`}</NodeProv>
           </div>
           {factor.excludedReason && (
-            <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.6, marginTop: 2 }} data-testid={`dag-residual-why-${factor.id}`}>
+            <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.6 }} data-testid={`dag-residual-why-${factor.id}`}>
               {factor.excludedReason}
             </div>
           )}

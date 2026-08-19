@@ -263,12 +263,9 @@ export function PmDag({
       */}
       {excludedNodes.length > 0 && (
         <ul className={styles.excludedLegend} data-testid={`${testId}-excluded-legend`}>
+          {/* 整条压成一个文本节点 —— 理由同 `LayeredDag` 的同名图例（D1 棘轮咬「纯往第一层堆」）。 */}
           {excludedNodes.map((n) => (
-            <li key={n.id} data-testid={`${testId}-excluded-why-${n.id}`}>
-              <span className={styles.excludedSwatch} aria-hidden="true" />
-              <b>{n.label}</b>
-              <span className={styles.excludedWhy}>{n.excludedReason}</span>
-            </li>
+            <li key={n.id} data-testid={`${testId}-excluded-why-${n.id}`}>{`✕ ${n.label} · ${n.excludedReason}`}</li>
           ))}
         </ul>
       )}

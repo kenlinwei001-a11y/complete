@@ -1,4 +1,6 @@
 import { Fragment, useCallback, useMemo, useState } from "react";
+// 判据 U8 明细面板里的两条**成段诚实位**降进浮层（规范 §1 · `check-ui-first-layer` D2b）。
+import { InfoPopover } from "@/components/InfoPopover";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { BASE_REGISTRY, BUSINESS_TYPE_LABEL, objectiveHeader } from "@platform/contracts";
@@ -398,15 +400,28 @@ function OrderDrillPanel({ input, onClose }: { input: OrderDrillInput; onClose: 
           ))}
         </div>
       ) : (
+        /*
+          ⚠ 第一层只留**短结论 + 一个 `?`**，成段解释进浮层（规范 §1 · `check-ui-first-layer` D2b
+          咬 ≥24 字的成段说明）。初稿两段话直接摊在第一层，被该门当场咬出
+          「第一层长说明串 17 → 19」——**降层不是删除**，记号留在第一层。
+        */
         <div style={{ fontSize: 12, color: "var(--muted2)" }} data-testid="global-sim-drill-empty">
-          这一单在订单台账、排产结果、产能台账里都查不到明细——诚实空态，不编造细排。
+          查不到明细
+          <InfoPopover topic="为什么这一单没有明细" testId="global-sim-drill-empty-why">
+            <span>这一单在订单台账、排产结果、产能台账里都查不到明细——诚实空态，不编造细排。</span>
+          </InfoPopover>
         </div>
       )}
-      {/* 诚实位：没排产行 ≠ 数据没取到。两者屏上长得一样、含义完全相反，必须分开说。 */}
+      {/* 诚实位：没排产行 ≠ 数据没取到。两者屏上长得一样、含义完全相反，必须分开说（成段解释在 `?` 里）。 */}
       {!row && (
-        <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6, lineHeight: 1.7 }} data-testid="global-sim-drill-norow">
-          求解器没有给这一单排产行（`schedule[]` 里没有它）——所以这里没有 Pack 落点与交付日。
-          这不是取数失败，正是"未获排"本身。
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6 }} data-testid="global-sim-drill-norow">
+          无排产行 · 未获排
+          <InfoPopover topic="没有 Pack 落点与交付日是怎么回事" testId="global-sim-drill-norow-why">
+            <span>
+              求解器没有给这一单排产行（schedule[] 里没有它）——所以这里没有 Pack 落点与交付日。
+              这不是取数失败，正是「未获排」本身。
+            </span>
+          </InfoPopover>
         </div>
       )}
     </div>

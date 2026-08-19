@@ -192,11 +192,13 @@ export function LayeredDag({
       {excludedNodes.length > 0 && (
         <ul className={styles.excludedLegend} data-testid={`${testId}-excluded-legend`}>
           {excludedNodes.map((n) => (
-            <li key={n.id} data-testid={`${testId}-excluded-why-${n.id}`}>
-              <span className={styles.excludedSwatch} aria-hidden="true" />
-              <b>{n.label}</b>
-              <span className={styles.excludedWhy}>{n.excludedReason}</span>
-            </li>
+            /*
+              ⚠ 整条压成**一个**文本节点（不是 swatch + `<b>` + `<span>` 三块）。
+              初稿那种写法被 `ui-first-layer:check` 的 D1 棘轮咬出「纯往第一层堆」
+              （第一层信息块 3 → 6）。判据 U4b 要的是「看得见谁、为什么」——
+              那是**一句话**，不是三个信息块；拆成三块既不增信息也踩规范。
+            */
+            <li key={n.id} data-testid={`${testId}-excluded-why-${n.id}`}>{`✕ ${n.label} · ${n.excludedReason}`}</li>
           ))}
         </ul>
       )}
