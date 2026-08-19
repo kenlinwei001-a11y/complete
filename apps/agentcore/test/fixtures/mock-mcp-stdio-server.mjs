@@ -9,10 +9,8 @@
 import { writeFileSync } from "node:fs";
 
 const recordPath = process.argv[2];
-writeFileSync(
-  recordPath,
-  JSON.stringify({ credential: process.env.MCP_CREDENTIAL ?? null, argv: process.argv.slice(2) }),
-);
+const record = { credential: process.env.MCP_CREDENTIAL ?? null, argv: process.argv.slice(2), toolCalls: [] };
+writeFileSync(recordPath, JSON.stringify(record));
 
 function respond(id, result) {
   process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\n");
@@ -51,6 +49,9 @@ process.stdin.on("data", (chunk) => {
         ],
       });
     } else if (msg.method === "tools/call") {
+      // L3 降级穿透臂用：每次真执行落记录（pre-execute deny 臂断言零执行 / stall 臂断言计数=cap）。
+      record.toolCalls.push({ name: msg.params?.name ?? null, arguments: msg.params?.arguments ?? null });
+      writeFileSync(recordPath, JSON.stringify(record));
       respond(msg.id, { content: [{ type: "text", text: String(msg.params?.arguments?.text ?? "") }] });
     } else {
       respond(msg.id, {});
