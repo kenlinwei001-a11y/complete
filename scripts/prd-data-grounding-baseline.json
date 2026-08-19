@@ -19,7 +19,7 @@
     "   逐条属性表读回结论一致，且「真名」主张亦复核通过（minutes / delta·gapPct / cadenceKind）。"
   ],
   "ratchetHigh": 7,
-  "maxExemptions": 6,
+  "maxExemptions": 5,
   "adjudicated": [
     "PRD-capacity-live-cockpit.md#REF:Base.weeklyCap",
     "PRD-capacity-live-cockpit.md#REF:Material.coverage",
@@ -28,14 +28,6 @@
     "PRD-sandbox-redesign.md#REF:Order.changeoverMin"
   ],
   "exemptions": [
-    {
-      "key": "PRD-simulation-sandbox.md#VAR:20207e562d88b168",
-      "prd": "docs/PRD-simulation-sandbox.md",
-      "line": 213,
-      "code": "PDG-6",
-      "kind": "待修",
-      "why": "同 A6 形态：「编辑某 `PropagationRule` 系数 0.85→0.6 发布→同一沙盘传导结果随之变」未声明前置。前置应是「该 `PropagationRule` 实例存在且真被传导引擎读取」——前置不成立时此判据同样无法失败。属同族债，随 A6 一并修。"
-    },
     {
       "key": "PRD-capacity-live-cockpit.md#REF:Base.weeklyCap",
       "prd": "docs/PRD-capacity-live-cockpit.md",
