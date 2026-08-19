@@ -46,10 +46,24 @@ import {
 // WO-BEFE-WIRE-3：影响传播端点的**入参校验走契约本尊**（与 datacore app.ts 同一个 schema）——
 // mock 自己再写一套 if 判空，就是"同一份契约两套解释"，两边迟早分家。
 import { ImpactAnalysisRequestSchema, type ImpactAnalysisResponse } from "@platform/contracts";
+// WO-INTERFACE-ADMIN-UI：upsert 的 400 文案镜像后端 `formatInterfaceViolations`（同一份 contracts 实现，不自己拼串）。
+import { formatInterfaceViolations } from "@platform/contracts";
 // WO-BEFE-D：组织世界 mock —— **判定逻辑不在此重写**，走 orgFixtures 里那份复用
 // contracts `evaluateLimit`/`delegationActive` 的解析器（与真后端同一份实现，见该文件顶注纪律①）。
 import { ApprovalMatterSchema, DecisionGraphSchema, type DecisionGraph } from "@platform/contracts";
 import { orgChartMock, orgState, resetOrgState, resolveApproversMock, ORG_AUTHORITIES, ORG_DELEGATIONS, ORG_LIMITS } from "./orgFixtures";
+// WO-INTERFACE-ADMIN-UI：对象接口 mock —— 同纪律：判定走 contracts 同一份 checkInterfaceConformance/
+// checkInterfaceIntegrity，数据照抄 battery.ts 种子（对齐锚点见 interfaceFixtures.ts 头注）。
+import {
+  getMockInterface,
+  listMockInterfaces,
+  mockInterfaceConformance,
+  mockInterfaceImplementers,
+  publishMockInterface,
+  resetMockInterfaces,
+  retireMockInterface,
+  upsertMockInterface,
+} from "./interfaceFixtures";
 import {
   ACCOUNTS,
   BASES,
@@ -2078,6 +2092,7 @@ export function resetMockOntologyRelations(): void {
   mockPublishRequests.clear();
   mockOntologyVersionSeq = 1;
   mockRelSeq = 0;
+  resetMockInterfaces(); // WO-INTERFACE-ADMIN-UI：对象接口 store 同为模块态，不复位会跨用例串味
 }
 
 /**
@@ -7117,6 +7132,49 @@ export const handlers = [
     if (!u.searchParams.get("elementKind") || !key) return err(400, "VALIDATION_ERROR", "elementKind 与 key 必填");
     const refs = mockElementRefs(key);
     return HttpResponse.json({ refs, total: refs.length });
+  }),
+
+  // ── WO-INTERFACE-ADMIN-UI · 对象接口（后端 app.ts「WO-69 P3 · 对象接口」段 7 条路由的镜像）──────
+  // 判定（一致性/完整性）走 contracts 同一份实现；装配语义镜像 ObjectInterfaceService（锚点见 interfaceFixtures 头注）。
+  // ⚠ 路由注册顺序有讲究：`/conformance` 字面量必须先于 `/:key` 参数路由 —— MSW 先匹配先赢，
+  //   反过来摆的话 `conformance` 会被当成一个叫 "conformance" 的接口 key（真后端 Fastify 静态优先，不会错）。
+  http.get("*/a/v1/ontology/interfaces", ({ request }) => {
+    const allVersions = new URL(request.url).searchParams.get("allVersions") === "1";
+    return HttpResponse.json(listMockInterfaces(allVersions));
+  }),
+  http.get("*/a/v1/ontology/interfaces/conformance", () => HttpResponse.json(mockInterfaceConformance())),
+  http.post("*/a/v1/ontology/interfaces", async ({ request }) => {
+    const b = (await request.json()) as Parameters<typeof upsertMockInterface>[0];
+    const r = upsertMockInterface(b);
+    if (!r.ok) {
+      // 镜像后端 upsert 的 400：接口自身完整性写入时就兑现（checkInterfaceIntegrity 同一份 contracts 实现）。
+      return err(400, "VALIDATION_ERROR", `接口定义不合法（${r.violations.length} 项）：${formatInterfaceViolations(r.violations)}`);
+    }
+    return HttpResponse.json(r.record, { status: 201 });
+  }),
+  http.get("*/a/v1/ontology/interfaces/:key", ({ params, request }) => {
+    const key = decodeURIComponent(String(params.key));
+    const v = new URL(request.url).searchParams.get("version");
+    const rec = getMockInterface(key, v ? Number(v) : undefined);
+    if (!rec) return err(404, "NOT_FOUND", `对象接口 '${key}' 不存在`);
+    return HttpResponse.json(rec);
+  }),
+  http.post("*/a/v1/ontology/interfaces/:key/publish", ({ params }) => {
+    const key = decodeURIComponent(String(params.key));
+    const r = publishMockInterface(key);
+    if (!r.ok) return err(r.status, r.status === 404 ? "NOT_FOUND" : r.status === 409 ? "INVALID_STATE" : "VALIDATION_ERROR", r.message);
+    return HttpResponse.json(r.record);
+  }),
+  http.post("*/a/v1/ontology/interfaces/:key/retire", ({ params }) => {
+    const key = decodeURIComponent(String(params.key));
+    const r = retireMockInterface(key);
+    if (!r.ok) return err(r.status, r.status === 404 ? "NOT_FOUND" : "INVALID_STATE", r.message);
+    return HttpResponse.json(r.record);
+  }),
+  http.get("*/a/v1/ontology/interfaces/:key/implementers", ({ params, request }) => {
+    const key = decodeURIComponent(String(params.key));
+    const v = new URL(request.url).searchParams.get("version");
+    return HttpResponse.json(mockInterfaceImplementers(key, v ? Number(v) : undefined));
   }),
   // `GET /a/v1/ontology/versions`（后端 app.ts:2932）：**唯一**带 `deprecation` 的只读口。
   http.get("*/a/v1/ontology/versions", () =>

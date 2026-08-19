@@ -91,6 +91,8 @@ export const zh = {
     quarantine: "隔离区",
     notifications: "通知中心",
     domains: "域管理",
+    // WO-INTERFACE-ADMIN-UI · 对象接口管理台（WO-69 P3 的前端面：建/改/发 + 发布门反馈）
+    interfaces: "对象接口",
     // WO-BEFE-A · 本体关系编辑器（结构边 + 因果边 + 发布会签）。
     ontologyRelations: "本体关系",
     evals: "Agent 评测",

@@ -100,6 +100,10 @@ import type {
   OrgPrincipal,
   DecisionGraph,
   GapReport,
+  // WO-INTERFACE-ADMIN-UI · 对象接口管理台（契约已有，前端不重定义 —— contracts-only-shared）
+  ObjectInterface,
+  ObjectInterfaceInput,
+  InterfaceViolation,
 } from "@platform/contracts";
 import { ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 真实世界 worldId 单源（前端不许再写一个 "REAL" 字面量）
 import { api } from "./apiClient";
@@ -2259,6 +2263,78 @@ export const retireOntologyElement = (kind: "link" | "type", key: string) =>
   kind === "link"
     ? api.a<{ key: string; status: "RETIRED" }>(`/a/v1/ontology/links/${encodeURIComponent(key)}/retire`, { method: "POST", body: {} })
     : api.a<{ key: string; status: "RETIRED" }>(`/a/v1/ontology/types/${encodeURIComponent(key)}/retire`, { method: "POST", body: {} });
+
+// ── 对象接口（ObjectInterface · WO-69 P3 定义/发布门已在后端，WO-INTERFACE-ADMIN-UI 补前端管理台）──────
+// 后端路由面：`apps/datacore/src/app.ts`「WO-69 P3 · 对象接口」段（7 条）。
+// ⚠ 路径纪律同上方 `deprecateOntologyElement`：每条端点各写各的**字面量**段，不许 ternary/模板拼段
+//   （拼段归一化成 `interfaces/*​/*` 会冒领同形状未接端点，让 befe-seam 门误摘基线——2026-08-14 实测踩过）。
+
+/** 接口清单。缺省每 key 只回最新一条；`allVersions` = 全版本（开闭：多版本共存）。 */
+export const fetchObjectInterfaces = (opts?: { allVersions?: boolean }) =>
+  api.a<ObjectInterface[]>(`/a/v1/ontology/interfaces${opts?.allVersions ? "?allVersions=1" : ""}`);
+
+/** 取某 key 的一条记录（缺省 = 最新已发布版；`version` 指定看历史版本——pin 住的实现者跟的是它）。 */
+export const fetchObjectInterface = (key: string, version?: number) =>
+  api.a<ObjectInterface>(
+    `/a/v1/ontology/interfaces/${encodeURIComponent(key)}${version !== undefined ? `?version=${version}` : ""}`,
+  );
+
+/**
+ * 创建 / 演进接口（后端 `ObjectInterfaceService.upsert`：已 PUBLISHED 的 key 不原地改、**新开 DRAFT 版本**；
+ * 草稿则原地覆盖）。接口自身完整性在写入时就兑现：声明的 ActionType 未注册 / solverKey 不在签名注册表
+ * ⇒ 400 逐条点名（`formatInterfaceViolations`），调用方必须把 message 原样上屏。
+ */
+export const upsertObjectInterface = (input: ObjectInterfaceInput) =>
+  api.a<ObjectInterface>("/a/v1/ontology/interfaces", { method: "POST", body: input });
+
+/** DRAFT → PUBLISHED（发布后该版本不可原地改，只能新开版本）。完整性不过 ⇒ 400 逐条点名。 */
+export const publishObjectInterface = (key: string) =>
+  api.a<ObjectInterface>(`/a/v1/ontology/interfaces/${encodeURIComponent(key)}/publish`, { method: "POST", body: {} });
+
+/** PUBLISHED → RETIRED（实现者仍挂着则下次本体发布被点名要求显式迁移，不静默失效）。 */
+export const retireObjectInterface = (key: string) =>
+  api.a<ObjectInterface>(`/a/v1/ontology/interfaces/${encodeURIComponent(key)}/retire`, { method: "POST", body: {} });
+
+/**
+ * **发布门预览**（只读）：`GET …/interfaces/conformance` 与发布门 `assertInterfaceConformance`
+ * 共用同一把尺子（`ontology.ts interfaceViolations` → contracts `checkInterfaceConformance`），
+ * 只是不改任何东西。返回的每条 violation 点名到 类型→接口@版本→propKey/actionTypeKey/solverKey。
+ */
+export const fetchInterfaceConformance = () =>
+  api.a<{ ok: boolean; violations: InterfaceViolation[] }>("/a/v1/ontology/interfaces/conformance");
+
+/**
+ * 「谁实现了 X + 改它会波及什么」报告（S9）。
+ *
+ * ⚠ 本类型是**镜像**：真值源 `InterfaceImplementersReport` 在 `apps/datacore/src/ontology-governance.ts`
+ * （服务层装配，不在 contracts）；R1 禁止前端 import 后端源码，故在此复刻形状并对齐锚点
+ * （versions / implementers[].pinnedVersion / impact.migrationRequired）。后端改形状时此处跟着改。
+ */
+export interface InterfaceImplementersReportVM {
+  interfaceKey: string;
+  interface?: ObjectInterface;
+  versions: { version: number; status: string; implementerCount: number }[];
+  implementers: {
+    typeKey: string;
+    displayName: string;
+    domain?: string;
+    pinnedVersion: number | "latest";
+    resolvedVersion?: number;
+    conformant: boolean;
+    violations: InterfaceViolation[];
+  }[];
+  impact: {
+    objectTypes: string[];
+    actions: string[];
+    functions: { solverKey: string; ontologySignature?: unknown; registered: boolean }[];
+    views: { id: string; role?: string }[];
+    migrationRequired: { typeKey: string; missing: string[] }[];
+  };
+}
+export const fetchInterfaceImplementers = (key: string, version?: number) =>
+  api.a<InterfaceImplementersReportVM>(
+    `/a/v1/ontology/interfaces/${encodeURIComponent(key)}/implementers${version !== undefined ? `?version=${version}` : ""}`,
+  );
 
 // ── 不变式守卫（本体第三类边）─────────────────────────────────────────────────
 // 前两类边只描述「有什么」（结构边=有没有关系 / 因果边=变了多少），这一类描述「必须成立什么」。
