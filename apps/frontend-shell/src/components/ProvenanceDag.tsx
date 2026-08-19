@@ -17,7 +17,14 @@ import type { GapScope } from "@platform/contracts";
 
 export interface DagNode {
   id: string;
-  kind: "kpi" | "ksf" | "factor" | "evidence";
+  /**
+   * `residual` = 判据 U4b 的被排除项：**这一层没被任何因素解释掉的那部分缺口**。
+   *
+   * 它不是"另一个因素"，所以不能画成 `factor`（画成 factor 就等于给它编了一个因素名）；
+   * 但它也**必须上图** —— 只画被解释的那几支，读者会把「这几个因素」读成「缺口的全部」，
+   * 而实测 demo 租户 `residualPct=12`（27.8 里有 3.336 没人认领）。
+   */
+  kind: "kpi" | "ksf" | "factor" | "evidence" | "residual";
   label: string;
   sub?: string;
   value?: number;
@@ -35,6 +42,11 @@ export interface DagNode {
   drillValue?: number; // 该字段真值（改它→弹窗"当前值"跟着变·C2 铁律）
   provenanceSynthetic?: boolean; // 合成源诚实标灰（地缘/矿价无真源·不冒充 DB 实测）
   basis?: string; // 设定依据/出处（部分因果节点带·如 BackupSupplierPool.certWeeks）
+  /**
+   * 判据 U4b · 为什么这一支是"被排除/未解释"的（`kind==="residual"` 时必给）。
+   * 只把残差画上去、不说它是什么，读者会把它当成又一个因素名。
+   */
+  excludedReason?: string;
 }
 
 /** provenance 字段（求解器输出）→ DagNode 溯源字段（前端弹窗读）。仅搬运真值，不构造叙事。 */
@@ -81,7 +93,22 @@ export interface GapAttrNode {
 }
 export interface GapAttrOutput {
   rootMetric: { key: string; name: string; unit: string; target?: number; actual?: number; gap: number };
-  levels?: { depth: number; label: string; nodes: GapAttrNode[] }[];
+  /**
+   * `residual` = 本层未解释残差（契约 `GapAttributionLevelSchema.residual`，**必填字段**）。
+   * ⚠ 它此前在本前端类型里**整个缺席** —— 后端逐层都在下发，前端类型没声明 ⇒ 没人消费 ⇒
+   *   树上只画得出被解释的那几支。这是「接了线没消费」，不是「后端没给」：
+   *   实测 `POST /a/v1/solvers/gap_attribution/invoke`（demo 租户）回包
+   *   `levels[0].residual=3.336 / totalGap=27.8 / residualPct=12`。
+   */
+  levels?: { depth: number; label: string; nodes: GapAttrNode[]; residual?: number }[];
+  /**
+   * 逐层（含**逐基地**）勾稽记录（契约 `GapReconCheckSchema`）。
+   * 基地级残差只在这里有：`{depth:2, label:"基地 handan 内", parentGap, sumChildren, residual}`
+   * —— `levels[1].residual` 是**全部基地加总**，拿它当某一个基地的残差会大好几倍。
+   */
+  reconChecks?: { depth: number; label: string; parentGap: number; sumChildren: number; residual: number; ok?: boolean }[];
+  /** 顶层 residual 占 totalGap 比（C6·诚实 <15%）。 */
+  residualPct?: number;
   causalEdges?: { from: string; to: string; viaLinkKey?: string }[];
   atomicLeaves?: { id: string; factor: string; contribution: number; unit?: string; share?: number }[];
   /**
@@ -197,6 +224,35 @@ export function gapAttributionToBaseRootCause(ga: GapAttrOutput | undefined, bas
       edges.push({ from: c.id, to: ev, weight: c.share, kind: "drill" });
     }
     if (c.id.startsWith("material:")) materialId = c.id;
+  }
+
+  /*
+    ══ 判据 U4b · 本基地缺口里**没被任何因素解释掉**的那一块 ══════════════════════
+    改前这张树只画被解释的那几支 ⇒ 读者把「订单 + 设备OEE + 物料」读成缺口的**全部**，
+    而实测 demo 租户里 `基地 handan 内` 的 13.8196 有 **1.6584 无人认领**（12%）。
+    「被排除项与主因同图」要的就是这一块：它留在图上、可见地降级、并写清为什么。
+
+    ⚠ 残差取 `reconChecks` 里**本基地那一条**（`depth=2 · label 含 baseId`），
+      **不能**用 `levels[1].residual` —— 那是全部基地加总（实测 2.9357 vs 本基地 1.6584）。
+    ⚠ 取不到就**不画**：宁可少一个节点，也不拿一个算出来的差值冒充引擎的勾稽结论。
+  */
+  const baseKey = baseId.startsWith("base:") ? baseId.slice(5) : baseId;
+  const rc = (ga.reconChecks ?? []).find((r) => r.depth === 2 && r.label.includes(baseKey));
+  if (rc && rc.residual > 0) {
+    const rid = `${baseId}:residual`;
+    const shareOfBase = rc.parentGap > 0 ? rc.residual / rc.parentGap : undefined;
+    nodes.push({
+      id: rid,
+      kind: "residual",
+      label: "未解释残差",
+      sub: `${rc.residual}${baseNode.unit ?? rm.unit}${shareOfBase != null ? ` · 占本基地 ${fmtPct(shareOfBase)}` : ""}`,
+      value: rc.residual,
+      contribution: rc.residual,
+      share: shareOfBase,
+      unit: baseNode.unit ?? rm.unit,
+      excludedReason: "这部分缺口没有分摊到任何因素上（引擎逐层勾稽后诚实承认的未解释量）",
+    });
+    edges.push({ from: baseId, to: rid, weight: shareOfBase, kind: "residual" });
   }
 
   // ── WO-FACTOR-SCOPE-SINGLESOURCE · 因子细分层（depth 3·`path` 指名父节点）───────────────────
@@ -417,6 +473,47 @@ export function ProvenanceDag({ data, onNodeClick }: { data: DagData | undefined
     const kids = childrenOf(factor.id);
     const evid = kids.filter((k) => k.node.kind === "evidence");
     const subFactors = kids.filter((k) => k.node.kind !== "evidence");
+    /*
+      ══ 判据 U4b · 未解释残差这一支 ══════════════════════════════════════════════
+      它与"因素"是两种东西，屏上必须分得开：
+        · 因素 —— 有名字、能下钻、能对症下药；
+        · 残差 —— **没有**名字，正是"归不到任何因素头上"的那部分。
+      所以它①走虚线边框（与因素的实线区分）②带"未解释"文字标记
+      ③把理由写在同一行（不是 hover 才出、不是折叠区）。
+      ⛔ 不许把它画成 `factor` —— 画成因素就等于给它编了一个因素名，
+         读者会去找"未解释残差"这个根因，而它根本不存在。
+    */
+    if (factor.kind === "residual") {
+      return (
+        <div
+          key={factor.id}
+          data-testid={`dag-node-${factor.id}`}
+          data-kind="residual"
+          data-excluded="true"
+          data-excluded-reason={factor.excludedReason}
+          {...clickOf(factor, {
+            paddingLeft: 14,
+            borderLeft: "2px dashed var(--muted2)",
+            opacity: 0.82,
+          })}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <span className="badge" style={{ background: "var(--panel2)", color: "var(--muted2)", border: "1px dashed var(--muted2)" }}>
+              {fmtPct(weight)}
+            </span>
+            <span style={{ color: "var(--muted)" }}>✕ {factor.label}</span>
+            <span style={{ fontSize: 12, color: "var(--muted2)" }}>
+              <NodeProv node={factor}>{factor.sub ?? `${factor.value}`}</NodeProv>
+            </span>
+          </div>
+          {factor.excludedReason && (
+            <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.6, marginTop: 2 }} data-testid={`dag-residual-why-${factor.id}`}>
+              {factor.excludedReason}
+            </div>
+          )}
+        </div>
+      );
+    }
     return (
       <div key={factor.id} data-testid={`dag-node-${factor.id}`} data-kind="factor" {...clickOf(factor, { paddingLeft: 14, borderLeft: "2px solid rgba(124,58,237,.4)" })}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

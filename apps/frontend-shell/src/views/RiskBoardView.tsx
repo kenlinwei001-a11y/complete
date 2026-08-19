@@ -1263,6 +1263,23 @@ function dagNodeFacts(node: DagNode, scopeBaseId: string): DagNodeFacts {
         ],
         note: "系数为 PUBLISHED RuleEntry.params（改系数即改归因·≠正向推演）；节点级 share 分摊为确定性投影。",
       };
+    // 判据 U4b · 未解释残差：点开要说清「它不是一个因素」，否则用户会去规则库里找"未解释残差"这个根因。
+    case "residual":
+      return {
+        title: "未解释残差（不是一个因素）",
+        verdict: `${node.value}${node.unit ?? ""}${shareTxt ? ` · ${shareTxt}` : ""}`,
+        src: `${src} · reconChecks[depth=2, label="基地 …内"].residual（引擎逐层勾稽的诚实承认量）`,
+        rule: "硬勾稽 Σ子贡献 + residual = 父 gap；分摊不到任何因素上的那部分即 residual，可解释比见规则键 gap_attribution_coeffs（结构层缺省 0.88）",
+        ruleKind: "projection",
+        formula: "残差 = 本基地缺口 − Σ 本基地各因素贡献",
+        inputs: [
+          ...(shareTxt ? [{ label: "占本基地缺口", value: shareTxt }] : []),
+          { label: "残差量", value: `${node.value ?? "—"}${node.unit ?? ""}` },
+        ],
+        note:
+          "它没有名字、也下钻不到对象 —— 这正是它的含义：这部分缺口今天归不到任何已建模的因素头上。" +
+          "残差偏大说明归因模型缺了维度，不是某个因素算错了。",
+      };
     case "evidence": {
       const drill = [node.drillType, node.drillId, node.drillField].filter(Boolean).join(".");
       return {
