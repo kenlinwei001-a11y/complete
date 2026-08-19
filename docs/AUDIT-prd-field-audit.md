@@ -14,7 +14,7 @@
   「PRD 里 `Type.field` 引用是否真存在于本体真值源」，产出 7 处字段不存在 → 已全部修复清零（burndown）。
 - **本文是同一断点族（G-PRD-DATA-UNGROUNDED）的另一维**：审的是「PRD 验收判据是否声明了数据前置
   （判据依赖的数据从哪来、不在场时怎么办）」。两文互补不重叠；grounding 文的 7 处修复属于
-  「字段引用准确性」，本文的 12 份真缺口属于「判据数据前提缺席」。
+  「字段引用准确性」，本文的 11 份真缺口属于「判据数据前提缺席」。
 - **旧分支打捞结论**：`claude/handoff-wo-prd-field-audit` @ `8ed7727b6` 的
   `docs/AUDIT-prd-field-grounding.md`（494 行）与基线树（531 行）逐行 diff，基线版 = 旧版全文 +
   过期横幅（WO-RECLAIM-DOCS 收编标记）。**可迁移条目 = 0**，无需任何「迁移自 8ed7727b6」标注。
@@ -121,7 +121,7 @@ G-PRD-DATA-UNGROUNDED 要登记的病。
 | PRD-plan-generate-1to1 | 误报 | 同上「数据走管线、前端零写死」出处声明 |
 | PRD-prototype-intake-databuilder | 误报 | DoD「上传原型→抽数据表…未解析块诚实列出」「对账 4 类 action 人确认」= 数据安排 |
 | PRD-qos-cross-domain-unified | **真缺口** | SEAM-Q2/SEAM-1 依赖 Q2 例三域求解器在真实数据上产出（哪些订单延误），无数据前置声明 |
-| PRD-query-orchestration-service | **真缺口** | A1-A4 依赖具名数据在场（常州基地路径A命中/订单 affected_orders 出表/C03 规则/4680-NCM 型号/provenance）；B2 依赖多基地行级过滤数据；全文无数据前置声明 |
+| PRD-query-orchestration-service | 误报 | line 24 明写「Mock 需加载 §7.6 的种子数据，保证验收用例（§12）可端到端跑通」；§7.6「Mock 种子数据（电池制造场景包，必须内置）」逐一枚举 12 基地/6 型号/20 订单/规则 C03·C08·C13/常州行级过滤——判据对着必须内置的确定性夹具跑，数据出处有声明（复验指正：此前漏读 §7.6，初判真缺口系误分） |
 | PRD-rules-as-references | 误报 | 验收②「零未定义：/rules 含全部被引用码」③「零空过：退役 ruleKey→门禁红/诚实标规则缺失」= 数据在册性判据 |
 | PRD-sandbox-a2 | 误报 | H6「规则在册（事实层）」H7「溯源可达」+§3.1 实测口径——判据表自带事实源列 |
 | PRD-sandbox-metro-semantics | 误报 | §4 时序可算性三级判据逐数据源列字段有无（Shipment 只有 etaDay 不画车；Cadence 无数据→EMPTY）——教科书级数据前置讨论 |
@@ -170,25 +170,25 @@ G-PRD-DATA-UNGROUNDED 要登记的病。
 
 | 态 | 份数 | 占比（87） |
 |---|---|---|
-| 真缺口 | **12** | 13.8% |
-| 误报 | **47** | 54.0% |
+| 真缺口 | **11** | 12.6% |
+| 误报 | **48** | 55.2% |
 | 覆盖不到 | **28** | 32.2% |
 
-**真缺口 12 份清单**：PRD-WO-LIVE-DISPOSITION · PRD-addendum-llm-providers-and-references ·
+**真缺口 11 份清单**：PRD-WO-LIVE-DISPOSITION · PRD-addendum-llm-providers-and-references ·
 PRD-addendum-ontology-governance · PRD-agent-react-harness · PRD-capacity-live-cockpit ·
 PRD-deterministic-cross-domain · PRD-global-sim-live-upgrade · PRD-multi-intent-L2-L3-coupled-solving ·
-PRD-multi-intent-orchestration · PRD-qos-cross-domain-unified · PRD-query-orchestration-service ·
+PRD-multi-intent-orchestration · PRD-qos-cross-domain-unified ·
 PRD-seam-arg-drop-audit。
 
-**12 份真缺口的共同形态**：验收判据以「在 demo 租户/种子数据上跑一遍」为隐含前提
-（具名实体：常州基地、4680-NCM、C08、capacityLedger、⟦ref⟧ 引用数字），但没有任何一句
+**11 份真缺口的共同形态**：验收判据以「在 demo 租户/种子数据上跑一遍」为隐含前提
+（具名实体：常州基地、Material.onHand、capacityLedger、⟦ref⟧ 引用数字），但没有任何一句
 「若这些数据不在场，判据如何处置」。它们**不是**「字段不存在」病（grounding 门管的那个），
 而是「判据前提不声明」病。修法统一且轻量：每份在验收章补一句数据前置声明
 （依赖哪些种子/注册表内容；缺席时判据阻塞还是 N/A），属文档补丁，零代码。
 
 **对 G-PRD-DATA-UNGROUNDED 断点的总结论**：「约 80 份零数据前置讨论」的原始估计，
-逐份打开后实际为 **12 份真缺口（13.8%）**。54% 是关键词度量失手（误报），32% 在度量口径外。
-断点应当保留但**重述口径**：从「80 份」收敛为「12 份判据前提未声明」。
+逐份打开后实际为 **11 份真缺口（12.6%）**。55.2% 是关键词度量失手（误报），32.2% 在度量口径外。
+断点应当保留但**重述口径**：从「80 份」收敛为「11 份判据前提未声明」。
 
 ## 6. 基线并入方案与结构冲突分析（重要）
 
@@ -201,7 +201,7 @@ PRD-seam-arg-drop-audit。
    （11 覆盖不到 + 14 误报 + 7 PDG-7 命名空间提示 + 4 PDG-8 规则域提示，详见基线文件 `audit` 键）。
    ⇒ **无需向 `adjudicated` 添任何键**（adjudicated 只收「判为真缺陷」的 key），
    结构冲突**没有实际触发**。
-3. 因此并入方式是**纯新增信息键** `"audit"`（携带本 36 条的 key/kind/why + 本 12 份真缺口 PRD 的
+3. 因此并入方式是**纯新增信息键** `"audit"`（携带本 36 条的 key/kind/why + 本 11 份真缺口 PRD 的
    文档级登记），四个门禁键一律不动：ratchetHigh=0、maxExemptions=0、adjudicated=[]、exemptions=[]。
 4. **若未来某条 PDG-5 键被人工判为真缺陷**，则必须二选一（届时是真实停点，本次未到）：
    修 PRD 使 key 消失（推荐），或破棘轮加豁免（工单禁止）。本次 36 条无一落入此分支。
@@ -218,3 +218,7 @@ PRD-seam-arg-drop-audit。
 - 基线 diff 形态：纯新增信息键 `audit`（244 行），对既有四键的唯一机械改动是
   `"exemptions": []` 行尾补逗号。
 - 旧分支迁移：**0 条**（8ed7727b6 内容已全量在基线树上，见 §0）。
+- 勘误（2026-08-19 复验退回一件）：PRD-query-orchestration-service 初判真缺口系误分——
+  其 line 24 + §7.6 明列「必须内置」的 Mock 种子包（12 基地/6 型号/20 订单/C03·C08·C13/常州行级过滤），
+  已按 v3 判据改判误报；真缺口 12→11、误报 47→48。复验方抽查其余 8 份未抽真缺口同类扫描零命中，
+  孤例性成立。改后复跑门 RC=0 不变。

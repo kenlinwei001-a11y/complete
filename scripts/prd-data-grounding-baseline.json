@@ -30,7 +30,7 @@
       "本键是信息级标注，门脚本不读（门只读 ratchetHigh/maxExemptions/adjudicated/exemptions 四键）。",
       "kind 三态与豁免同词表：真缺口=判据前提未声明的真缺陷（PRD 粒度）；误报=原文自带数据安排或提案/自认语境；覆盖不到=仿真/契约/规则命名空间或度量口径外。",
       "36 条未判定键逐条人工读原文定性：误报 16、覆盖不到 20、真缺口 0 ⇒ adjudicated 无需新增（裁定表只收真缺陷），棘轮不动。",
-      "12 份真缺口是 PRD 粒度结论（判据依赖在场数据但未声明前提），不对应任何未判定键，故只登记在 prdDataPreconditionGaps。"
+      "11 份真缺口是 PRD 粒度结论（判据依赖在场数据但未声明前提），不对应任何未判定键，故只登记在 prdDataPreconditionGaps。"
     ],
     "undecidedKeyFindings": [
       {
@@ -254,10 +254,6 @@
       {
         "prd": "PRD-qos-cross-domain-unified",
         "why": "SEAM-Q2/SEAM-1 依赖 Q2 例三域求解器在真实数据上产出，无数据前置声明。"
-      },
-      {
-        "prd": "PRD-query-orchestration-service",
-        "why": "A1-A4 依赖具名数据（常州基地/订单/C03/4680-NCM/provenance）；B2 依赖多基地行级过滤数据。"
       },
       {
         "prd": "PRD-seam-arg-drop-audit",
