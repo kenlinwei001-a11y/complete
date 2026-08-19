@@ -53,6 +53,8 @@ export function wireDeps(base: {
   skillResources?: SkillResourceReader;
   /** LLM Provider 增量：A 侧 provider/绑定目录 */
   providerDirectory?: DataCoreProviderDirectory;
+  /** §2.3/§2.4：注入自定义引用上报端口（测试用；缺省按 config 派生，未配服务间凭证 = 不上报）。 */
+  reportRefs?: RefReporter;
   /** #92：注入自定义配额端口（测试用；缺省按 config 派生 Http/Noop）。 */
   llmBudget?: LlmBudgetPort;
 }): AppDeps {
@@ -94,7 +96,7 @@ export function wireDeps(base: {
     llmSettings,
     llmBudget,
   });
-  const reportRefs = makeRefReporter(base.config);
+  const reportRefs = base.reportRefs ?? makeRefReporter(base.config);
   const catalog = new CatalogService(base.repos, reportRefs);
   const planBuilder = new PlanBuilderService(base.repos, catalog, base.dataCore, engine, events);
   const evals = new EvalService({ repos: base.repos, orchestrator, engine });
