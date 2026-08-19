@@ -242,20 +242,49 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
 
 | 页 | U1 改输入即重演 | U2 分步标口径 | U3 DAG点节点 | U4 反事实开关 | U4b 排除项同图 | U5 结论标出处 | U6 结论即动作 | U7 同屏问答带上下文 | U8 看明细不换页 | U9 导出带口径 | U10 版面 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 推演沙盘 `sim-sandbox` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
-| 项目推演 `project-sim` | **符合** | **符合** | **符合** | **符合** | 不符合 | **符合** | **不符合** | **符合** | **符合** | **符合** | **符合** |
-| 全局项目推演 `global-sim` | **符合** | 不符合 | **符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **不符合** | **符合** | **符合** |
-| 产能推演 `risk` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
-| 订单全链 `order-chain` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
-| 决策推演 `decision-play` | **符合** | **不符合** | **符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
-| 假设推演 `what-if` | **符合** | 不符合 | **符合** | **符合** | 不适用 | **符合** | **不符合** | **符合** | **符合** | **符合** | **符合** |
-| 优化推演 `optimize-whatif` | **不符合** | **符合** | **符合** | **符合** | 不适用 | **符合** | **不符合** | **符合** | **符合** | **符合** | **符合** |
-| 归因 `cleanroom-attr` | **符合** | 不符合 | **符合** | 不适用 | 不适用 | **符合** | **不符合** | **符合** | **符合** | **符合** | **符合** |
-| 影响半径 `disruption-radius` | **符合** | 不符合 | **符合** | **符合** | 不符合 | **符合** | **不符合** | **符合** | **符合** | **符合** | **符合** |
+| 推演沙盘 `sim-sandbox` | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 项目推演 `project-sim` | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 全局项目推演 `global-sim` | **符合** | **符合** | **符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 产能推演 `risk` | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 订单全链 `order-chain` | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 决策推演 `decision-play` | **符合** | **符合** | **符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 假设推演 `what-if` | **符合** | **符合** | **符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 优化推演 `optimize-whatif` | **符合** | **符合** | **符合** | **符合** | 不适用 | **符合** | **不符合** | **符合** | **符合** | **符合** | **符合** |
+| 归因 `cleanroom-attr` | **符合** | **符合** | **符合** | 不适用 | 不适用 | **符合** | **不符合** | **符合** | **符合** | **符合** | **符合** |
+| 影响半径 `disruption-radius` | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **不符合** | **符合** | **符合** | **符合** | **符合** |
 | 方案生成 `plan-generate` | **符合** | **符合** | **符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
-| 月度规划 `sop-balance` | **不符合** | **不符合** | **符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 月度规划 `sop-balance` | **不符合** | **符合** | **符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
 
-**合计（12 页 × 11 判据 = 132 格）：符合 102 · 不符合 22 · 不适用 8 · 判不了 0。**
+**合计（12 页 × 11 判据 = 132 格）：符合 120 · 不符合 4 · 不适用 8 · 判不了 0。**
+
+> ⚠ **2026-08-19 这一行是「三条并行交单」的并集，第三次了 —— 逐格并，别取任一方**：
+> `WO-U6-ACTION-FROM-CONCLUSION`（U6 列 2 格）→ 104；`WO-U4B-U1-U8-SIM`（U4b/U1/U8 共 7 格）→ 111；
+> `WO-U2-STEPWISE-2`（**U2 列 9 格**）**从 102 平行开出**，自己算出 **111**。
+> **三个数（104 / 111 / 111）各只算了自己那一半，取任一方都是错的**；逐格并集后由门现算 = **120**。
+> 三单**零格对撞**（U6 列 · U4b/U1/U8 列 · U2 列，两两不相交），冲突只落在合计行与基线文件上。
+> 形态（铁律 0.6）与前两次一模一样，没再重犯的原因仍然只有一个：
+> **rebase 把三边摆在同一屏上，是机器先说话**，不是谁想起来了。
+
+> ⚠ **2026-08-19 这一行又是「两条并行交单」的并集，第二次了 —— 照 §4 那条既有戒律逐格并，别取任一方**：
+> `WO-U6-ACTION-FROM-CONCLUSION`（U6 列 2 格：`project-sim`/`what-if`）先落地把合计写成 **104**；
+> `WO-U4B-U1-U8-SIM`（U4b 5 格 + U1 1 格 + U8 1 格）**从 104 之前的 102 平行开出**，自己算出 **109**。
+> **104 与 109 都只算了自己那一半，取任一方都是错的**；逐格并集后现算 = **111**（门实测同值）。
+> 形态（铁律 0.6）与 2026-08-17 那次**一模一样**，故本次没再重犯的原因只有一个：
+> rebase 时冲突把两边**摆在了同一屏上**，是机器先说话。两单**零格对撞**（U6 列 vs U4b/U1/U8 列，不相交）。
+
+> ⚠ **`WO-U4B-U1-U8-SIM` 翻正 7 格**（在 104 基础上 → 111），逐格与门实测一致：
+> **U4b 5 格**（`sim-sandbox` · `project-sim` · `risk` · `order-chain` · `disruption-radius`）·
+> **U1 1 格**（`optimize-whatif`）· **U8 1 格**（`global-sim`）。机检见
+> `apps/frontend-shell/test/sim-ux-u4b-u1-u8.test.tsx`（11 例）与
+> `test/sandbox-config-ux.seam.test.tsx` §5（2 例）。
+>
+> ⚠ **本单派的第 8 格 `sop-balance` × U1 被顶回来，故意没改**（连同它的理由一并留账，见 §4.1 U1）：
+> 那五个 `sop-run-N` **不是提交闸**，是 `advanceSopVersion` 这个 **POST 变更**推进 S&OP
+> 版本的业务流程节点（评审→平衡→定稿），且 `sop-run-1` 的 payload 是 `{}`（**一个输入都不带**），
+> 第 5 步还带治理闸（`s4.pass !== true` 即 `disabled`）。把它们撤掉等于让每敲一个键就写一次业务台账。
+> 判据 §4.1 自己那条「沙盘『推进一格 tick』不算提交闸 —— 那是推演语义本身，不是『填完表再点一下』」
+> 是同一条道理。**建议改判「不适用」并按判据⑥登记理由，但那是产品裁决、不该由 dev 顺手改表**，
+> 故本单只挂账不动格（§5 `WO-U1-SOP-VERDICT` 仍然成立，且现在带着上面这份取证）。
 
 > ⚠ **2026-08-17 这一行由「解两条并行交单的冲突」重算，两笔账必须分开读**：
 > `WO-U3-DAG-REST`（U3 列 4 格：`global-sim`/`what-if`/`cleanroom-attr`/`sop-balance`）与
@@ -301,7 +330,13 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
 >   **历史版本的数不再堆在这一行下面** —— 堆着就会有人拿旧行当现状；
 >   版本流水见紧接着的「逐轮改动逐格登记」与各轮 WO 的去向表。
 
-> **五轮改动逐格登记（方向全部 不符合 → 符合，棘轮只升不降，无一格反向）**：
+> **六轮改动逐格登记（方向全部 不符合 → 符合，棘轮只升不降，无一格反向）**：
+> - **2026-08-19 WO-U6-ACTION-FROM-CONCLUSION（2 格，全在 U6 列，逐格取证见 §4.8）**：
+>   U6 `project-sim`（**账面过期**：`WO-SIM-ACTION-REAL` 已接线并有两半接缝测试，本单亲手重跑全绿，
+>   **零改码只改账**）· U6 `what-if`（本单接线 → `对象数据变更`，两半接缝新建）。
+>   ⚠ 同列另 3 格（`optimize-whatif`/`cleanroom-attr`/`disruption-radius`）**未动**，
+>   且本单顶回了原先给这 4 页写的「净室通用页与租户本体无关」这条备裁理由（实测不成立，见 §4.8），
+>   换成逐页各自的**真**理由重新挂账（§5.2）——**两笔账必须分开读**。
 > - **2026-08-17 WO-U3-DAG-REST（4 格，逐格实现与测试见 §4.7）**：U3 `global-sim`/`what-if`/`cleanroom-attr`/`sop-balance`
 >   —— **U3 列自此 12 页全绿**（不符合 0）。四格全部是**接线**（共享结构已在，只差投影 + 挂载点），
 >   不是造功能：上一单 `WO-U3-DAG-DESIGN` 给这四页开的「缺后端派生边 / 缺产品裁决 / 无分段语义」三条挂账，
@@ -379,9 +414,30 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
   `sim-sandbox` 无任何提交闸（探针命中 0），杠杆/开关变更即重算。
   ⚠ **沙盘「推进一格 tick」不算提交闸** —— 那是**时间前进**（推演语义本身），不是「填完表再点一下」。
   这两者长得像，混了会把一个正确实现判红。
-- **不符合 2 页**：
-  `optimize-whatif` `OptimizeWhatifView.tsx` `queryKey` 挂 `submitted` + `enabled: submitted != null` ·
-  `sop-balance` `SopBalanceView.tsx:391/501/594/660/754` **五个** `sop-run-N` 提交按钮。
+- ✅ **`optimize-whatif` 于 2026-08-19 `WO-U4B-U1-U8-SIM` 闭**（不符合 → 符合）：
+  病灶是**形态③「接了线接错地方」** —— `queryKey` 本来就挂着入参，**但挂的是 `submitted`**
+  （只有点「推演」才更新的快照）+ `enabled: submitted != null`。修法是把 `queryKey` 改挂
+  **实时入参**（`useDebounced` 300ms，与 `what-if` 共用 `lib/useDebounced.ts` 一份实现），
+  `ow-solve` 那颗按钮**结构上删除**；同时补 `ow-rerun-state` 诚实位：防抖窗口内/求解在途时
+  屏上明写「重算中 · 下面还是上一版的解」。
+  ⚠ **重解成本这一条要照实读**（§5 `WO-U1-OPT-COST` 原问的那个数）：本单实测内存态
+  `POST /a/v1/solvers/optimize_whatif/invoke`、页面自带 5 个 `FAMILY_EXAMPLE` 实参各 20 次 ——
+  p50 **5.6–8.8ms**。但这五个数量的是**「未接入最优化引擎」那条 400 拒绝路**
+  （内存态无 CP-SAT sidecar），**不是** CP-SAT 的真实求解耗时；后者要 `OPTIMIZER_BASE_URL`
+  起 sidecar 才量得到，本环境没有，故**照实说没量到**，不拿这五个数冒充「CP-SAT 很快」。
+  （金丝雀：同一脚本同一台服务打 `capacity_forecast` 得 **HTTP 200 / 68ms** ⇒ 链路是活的，
+  那 5 个 400 是真的 400，不是工具坏了。）撤闸之所以仍然安全，靠的是**防抖 + 在途诚实位**这两件，
+  不是「它应该很快」这个假设。
+- **不符合 1 页**：
+  `sop-balance` `SopBalanceView.tsx:551/661/754/820/914` **五个** `sop-run-N` 按钮。
+  ⚠ **`WO-U4B-U1-U8-SIM` 顶回了这一格该翻正的判断，理由如下（取证已做，裁决未做）**：
+  这五颗按钮**不是提交闸**，是 `advanceSopVersion(id, step, payload)` 这个 **POST 变更**
+  推进 S&OP 版本的**业务流程节点**（评审→平衡→定稿）；`sop-run-1` 的 payload 是 `{}`
+  （**一个输入都不带**，撤它等于删一个流程节点而不是撤一道闸），第 5 步还带治理闸
+  （`s4.pass !== true` ⇒ `disabled`）。撤掉它们 = **每敲一个键就写一次业务台账**。
+  这与本条判据自己那句「沙盘『推进一格 tick』不算提交闸 —— 那是推演语义本身，
+  不是『填完表再点一下』」是同一条道理。**建议改判「不适用」并按判据⑥登记理由**，
+  但那是产品裁决、不该由 dev 顺手改表 ⇒ §5 `WO-U1-SOP-VERDICT` 仍然成立，且现在带着这份取证。
 - ✅ **`what-if` 于 2026-08-16 WO-SANDBOX-53CELLS 闭**（不符合 → 符合）：`wi-run` 提交闸**已删**，
   假设四维直接进 `queryKey`（`["a","what-if","infer",typeKey,objectId,prop,value]`），改任一项即重调求解器。
   自由文本框配 300ms 防抖 —— **防抖不是提交闸**：它只推迟发请求、不推迟输入回显，
@@ -394,11 +450,25 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
   共享步骤条 `views/sim/SolverStepBar.tsx`（`SolverStep{data,solver,rule}` 三要素强制声明 +
   `useSolverStep` 的 `upto` **唯一分段闸**，默认末步=完整结果），两页步骤态真正驱动结果分段。
   逐格实现、测试与变异反证见 §4.6。
-- 其余 9 页 **不符合**（`sop-balance` 的再评估见 §4.6「没做的格」）。其中两格**从「判不了」落地**，靠的是 §2.1 给 U2 补的那句排除：
-  - `sop-balance`：探针命中 10 处，但逐处读下来全是 `sop-run-1..5` 串起来的 **S&OP 业务流程**
-    （评审→平衡→定稿），是「事情分几步做」不是「这个数分几步算出来的」⇒ **不符合**。
-  - `decision-play`：`DecisionPlayPanel.tsx:104` `steps: DPStep[]` / `:342` `recommendedPlan.steps` ——
-    那是**行动计划**的步骤（引擎按 `cycleDays` 排的执行顺序），同样不是推演过程 ⇒ **不符合**。
+- ✅ **其余 9 页于 2026-08-19 `WO-U2-STEPWISE-2` 全闭**（不符合 → 符合）：`sim-sandbox` / `global-sim` /
+  `risk-board` / `order-chain` / `decision-play` / `what-if` / `cleanroom-attr` / `disruption-radius` /
+  `sop-balance`。九页共用同一个分段闸（`useSolverStep` 的 `upto`），**默认停在末步 ⇒ 改前屏面逐字节一致**；
+  逐页步骤契约、字段出处与变异反证见 §4.8。
+  - 其中 **5 页的契约直接投影自该页已有的 `ReasoningGraph`**（`toSolverSteps`）——
+    U2 与 U3 因此共用一份事实，不存在「步骤条与过程图对同一环给出两种说法」的漂移。
+  - 另 **4 页无 `ReasoningGraph`**（`sim-sandbox` / `risk-board` / `order-chain` / `disruption-radius`），
+    按 `SolverStep` 直写，`data` 一律写**真字段名**（取自契约 schema 或求解器输出白名单，见 §4.8 逐条出处）。
+- ⚠ **下面两条是历史判定，2026-08-19 已被推翻，照实留账**（它们当时的**理由**并不错，错在把理由当成了结论）：
+  - `sop-balance`：原判「探针命中 10 处全是 `sop-run-1..5` 的 S&OP 业务流程（评审→平衡→定稿）⇒ 不符合」。
+    ⇒ **形态（铁律 0.6）：「我用『那五个按钮是业务流程步骤』当作『本页没有推演过程』的证据，
+    而前者并不度量后者。」** 真推演链写在同一个文件里（`SOP_GRAPH`，边逐条取自 `apps/datacore/src/sop.ts` 实测）：
+    ②→③→④→⑤→顶栏读数。落地的步骤条与那五个按钮**三条可验的分水岭**：
+    ① ①② 合成一格（业务流程里是两个按钮）；② 多一层业务流程没有的「顶栏结论读数」；
+    ③ 切步只改**读数**，五个按钮一个不动、照常可点。三条都有断言（§4.8 `U2-SOP-1`）。
+  - `decision-play`：原判「`steps: DPStep[]` / `recommendedPlan.steps` 是行动计划步骤 ⇒ 不符合」。
+    那两个字段确实是行动计划，**但本页落地的步骤条一个都没用它们** —— 用的是
+    `decisionPlayGraph` 的五层（越线指标→根因→候选方案→推荐组合→触发规则），
+    即 U3 那张过程图的同一份结构。「页面上存在行动计划步骤」不度量「页面没有推演步骤」。
 
 **U3 过程图 + 点节点看凭什么**（判据：有图 ∧ 节点点击真接到面板 ∧ 面板含 来源 与 规则）
 - **符合 2 页**（两格均从「判不了」落地）：
@@ -455,12 +525,29 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
     `scripts/edge-active-mounts-baseline.json` 的 `gaps.cleanroom-attr.why`（不是空挂账）。
 
 **U4b 排除项同图**
-- **不符合 5 页**（有图，但排除项没画进去）：`sim-sandbox` · `project-sim` · `risk` · `order-chain` ·
-  `disruption-radius`。`EdgeActivePanel` 是**独立面板**（`views/sim/EdgeActivePanel.tsx`），
-  不是画在因果/传导图上的一层；参考件 `:4218` 的图例把 `excluded` 与 `factor`/`rootcause` **并列在同一张图**。
-  （`DisruptionRadiusView.tsx:268` 确有 `state:"dim"`，但那标的是「本层 count=0 断链」，
-  不是「被反事实排除的因素」——两者都叫「灰掉」，语义完全不同，不许混。）
+- ✅ **5 页于 2026-08-19 `WO-U4B-U1-U8-SIM` 全闭**（不符合 → 符合）。⚠ 五页的「排除项」**各不相同**，
+  不是一套机制套五遍 —— 硬套一套就会在某几页画出一张与该页语义无关的图：
+
+  | 页 | 这一页的「被排除项」是什么 | 真值出处（**后端已有**，非前端编） |
+  |---|---|---|
+  | `sim-sandbox` | 被会话反事实关掉的**传导边** | `buildRelationGraph(rules, disabledRuleKeys)` → `active:false` 留在图上 |
+  | `disruption-radius` | 落在**半径外**的那几跳（`disabled` 改道/关闭 · `unreached` 上游断链） | `deriveDisruptionLayers` 全开链 vs 本次链的差集（真本体 ref 图） |
+  | `order-chain` | **没推出根因链**的那几单 + 每单**缺席的那一层** | `problems[].orderCount − rootChains.length`；`rootChains[].layers` 按 kind 对位 |
+  | `project-sim` | 被 `slice(0,6)` **挤出图**的那几个基地 | `capacity_forecast.perBaseRows[6:]`（**按 baseId 字典序**，非按产能） |
+  | `risk` | **未解释残差**（分摊不到任何因素头上的那块缺口） | `gap_attribution.reconChecks[depth=2].residual`（逐基地那一条） |
+
+  ⚠ **`sim-sandbox` 这一格是「表过期」，不是本单新做的**：原文写「`EdgeActivePanel` 是独立面板，
+  不是画在因果/传导图上的一层」——那句话在写的时候属实，但 `WO-SANDBOX-CONFIG-COLLAPSE`
+  把关系图搬进 `SandboxConfigPanel` 之后就过期了（关掉的边虚线 + `--danger` 描边 + 图例
+  「已关掉的边（本次推演假装它不存在）」+ 算式清单里可见的「本次推演已关掉」）。
+  形态（铁律 0.6）：**「我用『那份分析当时的结论』当作『今天的实现是什么』的证据，而前者并不度量后者。」**
+  修法是**补一道门**（`sandbox-config-ux.seam.test.tsx` §5），不是改实现。
+  ⚠ `risk` 那一格同源但病因相反：残差**后端逐层一直在下发**，是**前端类型里根本没声明这个字段** ⇒
+  没人消费。属「接了线没消费」，不是「后端没给」。
 - **不适用 7 页**：见 §4.3。
+  （`DisruptionRadiusView.tsx:268` 那个 `state:"dim"` 标的是「本层 count=0 断链」，
+  **不是**「被排除的因素」——两者都叫「灰掉」，语义完全不同，本单因此给 `LayeredDag`
+  另加了 `excluded` 态而**没有**复用 `dim`。）
 - `decision-play` 的那格**从「判不了」落地**：上一版记「本单未逐行读该面板」；本轮读了 ——
   `DecisionPlayPanel.tsx` 全文 `excluded|排除` **0 命中**，且该页无因果图 ⇒ 归入「不适用」。
 
@@ -498,11 +585,15 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
     → `/commit` → `:1539` 「已提交决策 → 派发 ActionDraft，进入 S2 审批链」。
     ⚠ 这一格探针报 **0** —— 因为它走的是 `decisions/commit` 而不是探针词表里的
     `useActionDraft|createActionDraft`。又一次「探针词表写窄」，与 §4.1 开头那两次同形态。
-- **不符合 4 页**：`what-if` · `optimize-whatif` · `cleanroom-attr` · `disruption-radius`（探针 0，追一层确认无）
-  ＋ `project-sim` **不符合**（**从「判不了」落地**）：全文 `ActionDraft|action-draft|actionTypeKey|adopt`
+- **⇩ 以下两段是 2026-08-19 之前的现状，`WO-U6-ACTION-FROM-CONCLUSION` 后已变，逐格去向见 §4.9。**
+  两格现已翻正为**符合**（`project-sim` · `what-if`），本列现状 = **符合 10 页 · 不符合 3 页**。
+- ~~**不符合 4 页**：`what-if`~~ · `optimize-whatif` · `cleanroom-attr` · `disruption-radius`（探针 0，追一层确认无）
+  ＋ ~~`project-sim` **不符合**（**从「判不了」落地**）：全文 `ActionDraft|action-draft|actionTypeKey|adopt`
   **0 命中**；唯一的「采纳」二字在 `ProjectSimView.tsx:1069` 的 `note:` 文案里
-  （「结论可采纳为 Action（参数组合 + 推演快照写回）」）—— **屏上写着能采纳，代码里没有那条路**。
-  这是本轮最值得单独记一笔的一格：**文案承诺了一个不存在的动作**，比干脆没有更糟。
+  （「结论可采纳为 Action（参数组合 + 推演快照写回）」）—— **屏上写着能采纳，代码里没有那条路**。~~
+  ⚠ **`project-sim` 这一段自 `WO-SIM-ACTION-REAL` 落地起即已过期**（代码接上了，账面没跟着改）——
+  留着是账不是现状，现状见 §4.9。**「屏上写着能采纳、代码里没那条路」现在反过来了：
+  代码里有那条路、账面上写着没有。** 两者都是「文档与代码脱节」，只是方向相反。
 
 **U7 同屏问答带本页上下文**（判据：经 `ViewPage` 分发 或 页面自己调 `usePageView`）
 - 先说清**这条不是「没接线」，是「接了线接错地方」**（铁律 0.5 三形态，修法完全不同）：
@@ -536,9 +627,18 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
   `SandboxConsole.tsx:1310` 的 `JumpList onOpen={navigate}` 是**阻滞点交接**（把这条阻滞点交给另一张页去处置），
   `ProjectSimView.tsx:232/233/251` 的 `<Link to="/v/global-sim">` 文案是「把这批一起求全局最优 →」
   「接不住？回全局重排 →」—— 都是**切视角/交接**，不是「想看细节被带走」。
-- **不符合 1 页**：
-  - `global-sim` —— `GlobalSimView.tsx:153/851` `<Link className={styles.drillLink} to="/v/project-sim?order=…">进项目推演细排 →`。
-    **类名逐字就叫 `drillLink`**：下钻本身是靠跳页实现的，正是这条判据点名的那件事。（本单未动，仍排 §5 P1。）
+- ✅ **`global-sim` 于 2026-08-19 `WO-U4B-U1-U8-SIM` 闭**（不符合 → 符合）：
+  改前唯一的下钻手段是 `<Link className={styles.drillLink} to="/v/project-sim?order=…">进项目推演细排 →`
+  ——**类名逐字就叫 `drillLink`**，下钻本身靠跳页实现，正是这条判据点名的那件事。
+  改后**两个 affordance 并列**：「看明细」就地展开页内 `OrderDrillPanel`（被挤单 / 固定单 /
+  分配台账三处挂载），「去项目推演页 ↗」**保留**跳页 —— 判据原文写明「跳去另一张页做别的事
+  （交接/切视角）不算违反」，删了反而丢功能，错的是「只有它」。
+  面板里每个字段都指得到本页已有的真值（`orderList` 订单台账 · `schedule[]` 排产行 ·
+  `displaced[]`/`frozen[]` · `capacityLedger[]` 落点占用），取不到的**明写「求解器没给这一单排产行」**，
+  不填占位数字 —— 这一页最容易的错法是给被挤单编一个"预计交付日"，而它恰恰是因为没排上才被挤的。
+  ⚠ §5 原写的 `WO-U8-GLOBALSIM-DRAWER`「要先决定抽屉里放哪一部分（全量细排？）」这个悬念
+  **本单已就地回答**：放的是**这一单自己**的可行性事实（身份 / 被挤量 / 落点 / 交付日 / 落点产能），
+  不是把 `project-sim` 整页搬过来。
 - ✅ **`cleanroom-attr` / `disruption-radius` 于 2026-08-16 WO-SANDBOX-53CELLS 闭**（不符合 → 符合）。
   这两页的病与 `global-sim` **不同**（那是跳走，这是没有），修法也不同 ——
   它们的病是「**求解器早就把明细回来了，页面一行都没渲染**」，于是屏上出现一个数之后**无路可走**：
@@ -1114,6 +1214,137 @@ harness-ux-u7-u9），`tsc --noEmit` RC=0。默认末步=完整结果是零回�
   `viewBox`（用户坐标 W=1280）且 `width:100%`，容器窄于 1280 时字会被**等比缩小** ——
   这是两道门共同的盲区，不是本单引入的，但必须写明：**「computed 12px」不蕴含「屏上 12px」**。
 
+### 4.9 WO-U6-ACTION-FROM-CONCLUSION 真改了哪 2 格（2026-08-19 · U6 列 5 格现算 → 翻正 2 · 余 3）
+
+**改前现算**（`node scripts/check-sim-ux-criteria.mjs`）：U6 列 5 格不符合 ——
+`project-sim` · `what-if` · `optimize-whatif` · `cleanroom-attr` · `disruption-radius`，
+合计行 `符合 102 · 不符合 22 · 不适用 8 · 判不了 0`，门现算「符合 102（基线 102）」两个口径一致。
+**改后**：`符合 104 · 不符合 20 · 不适用 8 · 判不了 0`（和仍 = 132），门现算「符合 104」。
+
+| 格 | 改前 → 改后 | 凭什么（**亲手跑过**，不是读出来的） |
+|---|---|---|
+| `project-sim` | 不符合 → **符合** | **本格零改码，只改账** —— §4.1 那段「`ActionDraft\|actionTypeKey\|adopt` 0 命中·文案承诺了一个不存在的动作」在 `WO-SIM-ACTION-REAL` 落地时就已过期。现状：`ProjectSimView.tsx:1017` `AdoptConclusionButton` → `useActionDraft` → `actionTypeKey:"采纳产能预测结论"`，挂在⑥结论区**主渲染路径**（`:919`，紧挨 `proj-verdict-bar`），`isStale` 时禁用（旧参数的结论不许采纳）。两半接缝均已在册且本单**重跑全绿**：`apps/frontend-shell/test/wo-sim-action-real.project-sim-adopt.test.tsx` 2/2 · `apps/datacore/test/action-adopt-forecast.seam.test.ts` 4/4（审批后回**列表端点**读 `ForecastAdoption` 台账，字段逐个 = 采纳的快照） |
+| `what-if` | 不符合 → **符合** | **本单接线**：`WhatIfView.tsx` 新增 `AdoptHypothesisButton` → `actionTypeKey:"对象数据变更"`，`payload.patch = { [用户选中的 propKey]: 过 coerce 的假设值 }`，`reason` 带本次影响面结论，`impact/provenance` 带结论快照与求解器+快照版本。**两处挂载**：有 deltas 的结论区，以及「该假设无下游影响」的诚实空态（后者也是结论，且是最适合直接下手的那种）。接缝两半：`test/wo-u6-what-if-adopt.test.tsx` 3/3 · `apps/datacore/test/action-adopt-hypothesis.seam.test.ts` 4/4 |
+| `optimize-whatif` | **不符合（未动）** | 结论 = 「模板族 + 基线入参 + 扰动 → 目标值 Δ / 决策切换 / 可行性」。扰动 `{target,value}` 的 `target` 是 **opt-template 基线入参里的一条路径**，既不是本体对象属性（无 `objectId/prop` 落点），也不是校准提案（`校准参数变更` 要求先有一条 PENDING 的 `CalibrationProposal`，由 MAPE 证据产生，与扰动无关）。**今天没有语义正确的落点**，见 §5.2 |
+| `cleanroom-attr` | **不符合（未动）** | 三块的结论都是**归因分解**：`shared_bottleneck` 给瓶颈资源与共享方、`concentration_risk` 给过度集中的根、`margin_attribution` 给倒挂项目与驱动因子。**三块都不提议任何值** —— 「扩容到多少」「换成谁」是求解器没算、页面也没显示的东西。硬接就得由前端替用户挑一个值，那正是本仓明令禁止的臆造。见 §5.2 |
+| `disruption-radius` | **不符合（未动）** | 结论 = 「影响半径 N 层 · 波及 M 个对象 · 逐层清单」的**影响面**，同样**不提议任何值**（页面上唯一可拨的是关系边开关，那是反事实开关 U4，不是待采纳的方案）。见 §5.2 |
+
+**⚠ 本单顶回了 §5 给这 4 页写的那条备裁理由（照铁律 0.5 追了一层，实测不成立）**
+
+原文（§5「⚠ 本单刻意不排 U6 的优先级」那段）写：这四页是「**净室通用页（与租户本体无关）**」，
+硬补会造出「在一个通用假设页上生成**全租户** Action」这种更糟的东西。**前半句在 `what-if` 上是错的**：
+
+| 原文断言 | 实测 |
+|---|---|
+| 「与租户本体无关」 | `WhatIfView.tsx` 的类型列表来自 `GET /a/v1/ontology/object-types`、对象列表来自 `GET /a/v1/objects?type=` —— **两个都是该租户自己的本体与真对象**，`ctx(req)` 逐请求取 tenantId |
+| 「会生成**全租户** Action」 | `POST /a/v1/action-drafts` 同样走 `ctx(req)` ⇒ 草稿天然落在发起人自己的租户里（R2）。**跨租户那条路不存在，不需要靠「不做」来防** |
+| （未提及的那道门） | `app.ts assertObjectPatchWritable` 在**建草稿时**就把 `patch` 逐属性过 A6 列级 authz，命中不可写属性直接 403 `PROPERTY_FORBIDDEN`、草稿根本不创建；执行期 `assertDraftPatchWritableAtExecute` 用发起人存档角色再复校一次 |
+
+形态（铁律 0.6）：**「我用『这页是通用实现』当作『它的数据与租户无关』的证据，而前者并不度量后者。」**
+⇒ `what-if` 这一格从来不是「产品裁决」，是**一条没接的线**（三形态里的「没接线」，修法是接线）。
+
+**但另三页不因此一起翻** —— 它们卡的是**另一件事**：结论里没有任何
+「改哪个对象的哪个属性成什么值」的落点，与租户语义无关。
+原文用一句「四页同因」盖住了两个不同的事实，正是本文件反复记账的那个老病，故上表**逐格拆开说**。
+
+**量纲核对表（`what-if` 采纳链 · 屏上显示值 → payload 字段 → 落库值三者同轴）**
+
+前科 `G-LEVER-SNAPSHOT-UNIT-LIE`：无量纲的张力峰值（0–100）被塞进 `capWanP50`（万套/窗口），
+屏上不显示所以肉眼看不见，门也守不住。**本链在结构上不可能复现该病**，因为它没有「换个名字装进去」这一步：
+
+| 屏上显示值 | payload 字段 | 落库值 | 量纲 | 同轴？ |
+|---|---|---|---|---|
+| 属性下拉 `wi-prop-select` 的 `util（number · %）`＋假设值输入框 `wi-value-input` 的 `2` | `payload.patch.util = 2`（**number**，过页内同一份 `coerce`） | `Base.props.util = 2` | **%**（本体 `PropertyDef.unit`） | ✅ **同一个 propKey 从头到尾**，无映射 |
+| 属性下拉里那个 `%` 标记 | `payload.propUnit = "%"` | 不落库（只作审批期可读） | % | ✅ 与 `patch` 那一格同源 |
+| 「当前 88%」（`wi-value-input` 标签里的现值） | `payload.oldValue = 88` | 不落库（纯记录性） | **%**（与 `patch` 同 propKey） | ✅ |
+| `wi-affected-count` 受影响对象 `2` | `payload.impact.affectedObjects = 2` | 不落库 | **个**（计数·无量纲） | ✅ 独立字段，**不与带量纲的 `patch` 共用任何键** |
+| `wi-delta-count` 派生字段变化 `2` | `payload.impact.changedDerivedFields = 2` | 不落库 | **处**（计数·无量纲） | ✅ 同上 |
+| `SnapshotBadge` 的快照版本 | `payload.provenance.snapshotVersion` | 不落库 | —（版本串） | ✅ |
+
+机检钉死这张表的三条断言（缺一即红）：`patch` 的键集**恰好** `["util"]`（不多不少）·
+`typeof patch.util === "number"`（串号入库会让下游派生算术全变 NaN）· `propUnit === "%"`；
+后端半再断言落库后 `after.util === 假设值` 且 `after.name / after.baseId` **未被顺手改掉**、
+`impact/propUnit/source` **未渗进对象 props**。
+
+**变异反证（T1 · 亲手跑，原文见交单报告）**：把「把结论参数塞进 payload」那一步拆掉
+（`patch: { [prop]: coerced }` → `patch: {}`）⇒ 3/3 全红，且红在**参数不见了**这件事上 ——
+头号用例的失败原文是 `AssertionError: patch 必须恰好带用户选中的那一格，不多不少: expected [] to deeply equal [ 'util' ]`，
+**不是**「按钮不存在」。还原后 3/3 复绿。
+
+---
+
+### 4.8 WO-U2-STEPWISE-2 真改了哪 9 格（2026-08-19 · U2 列收尾 · 逐格字段出处 + 变异反证）
+
+**改前/改后**（`node scripts/check-sim-ux-criteria.mjs` 现算，非手数）：
+U2 列 **符合 3 → 12**（12 页全绿）；全表**合计 符合 111 → 120 · 不符合 13 → 4**（不适用 8 / 判不了 0 不变）。
+基线 `scripts/sim-ux-criteria-baseline.json` 由 `--tighten` **收紧**写入（9 格全是「基线松于实测」方向，
+不是 `--update` 消红）。
+
+> ⚠ **这一行的两笔账必须分开读（第 3 次同形态，照 §4.4 那条老账的写法留证）**：
+> 本单从 `5f39608d` 开出时表上是 **102**，自己算出 **111**。开工期间**另有两单从同一分叉点平行落地**：
+> `WO-U6-ACTION-FROM-CONCLUSION`（U6 列 2 格 → 104）与 `WO-U4B-U1-U8-SIM`（U4b/U1/U8 共 7 格 → 111）。
+> 三单都碰了合计行与同一份基线文件，`what-if` / `disruption-radius` 等行更是**三单各改一列**。
+> **三个数（本单 111 / U6 单 104 / U4b 单 111）各只算了自己那一半，取任一方都是错的** ——
+> 本单**两次 rebase 逐格并集**重解（同一行上 U2 与 U6 / U4b 同时为「符合」），再由门**现算**得 **120**，
+> 手写的 120 与门算的 120 对上才落笔。形态（铁律 0.6）：
+> 「我用『我这一单改完之后的合计』当作『表里现在是什么』的证据，而前者并不度量后者。」
+> **本单没重犯的机制不是自觉，是 rebase 冲突把三边摆在同一屏上 —— 机器先说话。**
+
+**共享件零改动**：`SolverStepBar.tsx` / `reasoningGraph.ts` 一个字节没动，九页只是**调用方**。
+**默认末步 = 完整结果** ⇒ 九页改前屏面逐字节一致，存量用例零回归。
+
+| 页 | 步数 | 步骤契约来源 | 分段闸闸住的「那个数」 |
+|---|---|---|---|
+| `what-if` | 4 | `toSolverSteps(WI_GRAPH)` | 逐行 `rows[]` after 值（1100）· 影响面计数 · 四维分项面板 |
+| `global-sim` | 4 | `toSolverSteps(GS_GRAPH)` | 占用率热力格 · 按期率/总代价读数 · 守恒台账 · 客户级影响 |
+| `cleanroom-attr` | 4/3/4 | 三档各投影自 `bottleneckGraph`/`concentrationGraph`/`marginGraph` | 需求 138 · 降级结论 · 最大敞口 3 · 毛利 −28 · 根因表与成本拆项 |
+| `decision-play` | 5 | `toSolverSteps(decisionPlayGraph(out, rows))` | 方案六维 3.2% · 收窄 21.94% · 逐条触发规则行 |
+| `sop-balance` | 5 | `toSolverSteps(SOP_GRAPH)` | 顶栏六卡 · 可供给 22.7 · 现金垫 · 终版供给 |
+| `disruption-radius` | 4 | 直写 `DR_STEPS`（`RadiusOutput` 字段） | 半径 3 层 · 波及 5 个对象 · 逐层受冲击 id |
+| `order-chain` | 3 | 直写 `OC_STEPS`（`affected_orders` 输出白名单） | 8 单汇总 · 逐单明细行 · 经营看板营收/毛利 |
+| `risk-board` | 5 | 直写 `RK_STEPS`（`RiskTimelineOutputSchema`/`RiskCardSchema`） | 风险卡整批 · 峰值/越线日 · 影响面 KPI · 处置计划表 |
+| `sim-sandbox` | 4 | 直写 `SB_STEPS`（会话/扰动/tick/impact-analysis 四个真端点） | 扰动前后全局态 · 顶栏世界态读数 · 影响带 |
+
+**两条「不许编」的实测判定，逐条留证**（都是「少一步」而不是「多凑一步」）：
+- **`order-chain` 只有 3 步**：`affected_orders` 的输出白名单
+  （`apps/datacore/src/solvers/service.ts` 的 `affected_orders: [...]`）里 `rows` / `summary` / `problems`
+  **同出一次求解、互不为输入** ⇒ 它们是**并列产物**。摊成三步会画出一条不存在的因果链
+  （「先有明细才有问题归类」是假的），那正是判据 U2 点名要排除的装饰。故第 2 步如实写
+  「本层 3 个并列产物」，与 `toSolverSteps` 处理并列层的写法同一条纪律。
+- **并列层一律写「本层 N 个并列环，规则逐环不同 ⇒ 在过程图上点各环看」**（`what-if` 第 2 步 /
+  `global-sim` 第 3、4 步 / `order-chain` 第 2 步）——**不挑第一个节点的规则冒充全层**。
+  「损失了什么」比「看起来完整」重要。
+
+**变异反证（WO 硬要求 · 2026-08-19 亲手跑过，非推演）**：
+把 `views/sim/SolverStepBar.tsx` 里 `useSolverStep` 的 `upto` 改成恒真（`upto: () => true`），
+`test/sim-ux-u2-stepwise-2.test.tsx` **13 例中 11 例转红**，且**全部红在「切到第 N 步之后那个数还在」**：
+- `what-if`：`AssertionError: expected [ <td class="mono" …> ] to have a length of +0 but got 1`
+  —— 切到第 3 步后，**逐行表里那个装着 1100 的 `<td>` 还在屏上**（`:88` 的 `queryAllByText("1100")`）。
+- `cleanroom-attr` 瓶颈档：`expected [ <div …><b …></b></div> ] to have a length of +0 but got 1`
+  —— 切到第 3 步后，**「优先级最低」那句降级结论还在**（`:255`）。
+- 其余 9 例同形态，逐条红在各自的「第 N+1 步产物仍然可见」那一行
+  （`global-sim-readout` / `cr-cc-top-count` / `cr-ma-drivers` / `dp-action-*` / `sop-kpi-bar` /
+  `dr-layers` / `oc-econ-table` / `risk-plan-panel` / `sandbox-impact-band`）。
+- **剩下 2 例保持绿**（`U2-WI-1` / `U2-GS-1`）——它们咬的是**步骤条存在 + 口径行三要素 + 默认末步**，
+  与分段闸无关。**这两例绿恰恰是证据**：变异只杀掉了「分段」这一件事，没有把整个文件打红
+  （若它们也红，说明我的用例咬的是「代码还在不在」而不是「闸有没有效」）。
+- 反证后已把 `upto` 逐字节还原（`git diff` 对该文件为空），全量复跑 **17/17 绿**
+  （含 WO-U2-STEPWISE-1 的 4 例样板，证明未回归）。
+
+**`sop-balance` 这一格是本单最该被复验的一格** —— 它是 §4.6 评估后**暂缓**的那格，本单把它翻正。
+三条分水岭全部有断言（`U2-SOP-1`）：① 步骤条第 1 步写着「①②」，把业务流程的**两个按钮合成一格**；
+② 末步「顶栏结论读数」业务流程里根本没有这一步；③ 切步全程 `sop-step-chip-1..5` 五个按钮
+逐个仍在 DOM 且可点 —— **闸住的是读数，不是按钮**。
+
+**诚实位（写在这里，不在屏上）**：
+- 有 4 页的分段闸咬的是「承载那个数的元素」而非全屏文本，因为**同一个数在屏上有第二个合法出处**
+  （如 `sop-balance` 的供给数在 ③ 面板里也印着一份、`decision-play` 的根因在 U3 过程图的节点标签上）。
+  过程图是**这条链的地图**，不归分段闸管；拿地图上的字去咬闸会得出「闸没生效」的**假红**。
+  这一条在用例里逐处写了注释，免得下一个人照全屏文本改断言。
+- `order-chain` 的「这次算的是谁」块走 `kit_readiness`/`quote_margin`、`risk-board` 的「订单聚合」tab 走
+  `affected_orders`、`sim-sandbox` 的左区输入控件 —— **都不在本页那条求解链上，故不受本页步骤闸控**。
+  把别人的链圈进来闸，是另一种编。
+
 ---
 
 ## 5 · 优先级
@@ -1150,9 +1381,16 @@ harness-ux-u7-u9），`tsc --noEmit` RC=0。默认末步=完整结果是零回�
 | **P3** | **~~`WO-R13-ONTOCHAIN-PANEL` · B-2 的充分条件（「本体链逐字齐全」）归 R13 溯源链验收~~ ✅ 已闭（WO-R13-ONTOCHAIN-PANEL，2026-08-18）** | 仓主裁决「补」⇒ 三面板本体链已落地：对象/边/规则三段逐结论接线，缺段诚实位（后端未下发 + gaps 写明缺因），接缝测试 + 变异反证咬死；门 B 判据⑤ 现算 5 面板 3 有链 ⇒ 账面理由不成立 ⇒ B-2 核销出表，判据⑥ `--tighten` 重记基线。余额（`DagNodeInspector` / `LayeredDag` 链化）另立挂账 WO | ~~R13 线~~ 已交付 |
 | **P3** | **`WO-QOS-PAGECTX-EVAL` · **B-4** 的 U7 内容面：编排侧评测集** | 「同屏问答答得对不对」要真跑一次编排 + 真模型，**这不是前端门能判的**，也不该混进 B-4 的 U8 那张 harness 单（两面缺的东西完全不同）。要一份评测集：问题 + 期望要素 + 判分口径，跑在 agentcore 侧 | 一张编排侧单（重画像：要真调模型或高保真 mock） |
 
-⚠ **本单刻意不排 U6 的优先级**：「结论即动作」在 `what-if`/`optimize-whatif`/`cleanroom-attr`/
+~~⚠ **本单刻意不排 U6 的优先级**：「结论即动作」在 `what-if`/`optimize-whatif`/`cleanroom-attr`/
 `disruption-radius` 四页缺失，但这四页是**净室通用页**（与租户本体无关），它们该不该产生 Action 草稿
-**是产品决策不是缺陷**——硬补会造出「在一个通用假设页上生成全租户 Action」这种更糟的东西。**登记备裁。**
+**是产品决策不是缺陷**——硬补会造出「在一个通用假设页上生成全租户 Action」这种更糟的东西。**登记备裁。**~~
+
+⚠ **2026-08-19 `WO-U6-ACTION-FROM-CONCLUSION` 顶回上面这条，逐条实测见 §4.9，结论分两半：**
+- `what-if` **不是备裁，是没接的线** —— 「与租户本体无关」这个前提实测不成立（该页读的就是本租户的
+  真本体与真对象），担心的「全租户 Action」也不存在（`ctx(req)` 天然隔离 + A6 列级 authz 建草稿时就拦）。
+  已接线闭格（→ `对象数据变更`）。
+- 另 3 页**仍不排优先级，但换了理由**：卡的不是租户语义，是**结论里没有任何「改哪个对象的哪个属性成什么值」的落点**。
+  逐页真理由与可派的下一步见 §5.2。**这两笔账必须分开读**——原文一句「四页同因」盖住了两个不同的事实。
 
 ### 5.1 「不符合」全量优先级表（2026-08-16 WO-SANDBOX-53CELLS 建 · 按**判据**排不按页排）
 
@@ -1170,7 +1408,7 @@ harness-ux-u7-u9），`tsc --noEmit` RC=0。默认末步=完整结果是零回�
 | **3** | **U5** 结论数字标出处 | 3 | **3** | 已有 `SnapshotBadge`/`<Provenance>` 两个共享件，逐页挂即可；难点只在**写对每页的口径**（谁算的·算在什么之上） | ✅ **3 页全闭** |
 | **4** | **U8** 看明细不换页 | 3 | **2 + 1**（两种病，修法不同） | ①「明细已取回却没渲染 / 只留一句『+N 更多』」⇒ 内联 `<details>` 就地展开（2 页）；②「下钻靠 `<Link>` 跳页」⇒ 要把目标页那段搬成抽屉，改动量大得多（1 页） | ✅ 做了①的 2 页 · `global-sim` 属②，挂账 |
 | **5** | **U4b** 排除项与主因同图 | 5 | **5**（若把 `EdgeActivePanel` 的关闭态投影进各页的图） | 让被 `disabledRuleKeys` 关掉的边**留在因果/传导图上并可见地降级**（虚线＋降透明度＋「已关闭」标记），而不是只活在独立面板里 | ⛔ 未做（见 §5.2；且它与 `WO-EDGE-PANEL-3PAGES` 在动的 `EdgeActivePanel` 有耦合面，**刻意避让**） |
-| **6** | **U6** 结论即动作 | 5 | **1 + 4** | `project-sim` 那格是**真缺陷**（文案承诺了不存在的动作，已排 P0）；其余 4 页是**净室通用页**，该不该产生 Action 属产品裁决，**不许硬补** | ⛔ 未做（1 格待裁接不接 · 4 格备裁） |
+| **6** | **U6** 结论即动作 | 5 | **1 + 4** | `project-sim` 那格是**真缺陷**（文案承诺了不存在的动作，已排 P0）；其余 4 页是**净室通用页**，该不该产生 Action 属产品裁决，**不许硬补** | ✅ **2 格已闭（2026-08-19 `WO-U6-ACTION-FROM-CONCLUSION`）**：`project-sim`（`WO-SIM-ACTION-REAL` 早已接线，本轮复核改账）· `what-if`（本轮接进既有 `对象数据变更`）。⚠ 本行「其余 4 页…属产品裁决」**有一半是错的**：`what-if` 的备裁理由（净室页与租户本体无关）实测不成立，它是**没接的线**不是待裁决（§4.9）。余 3 格仍未做，但**理由已换**（不是租户语义，是结论里没有可写的落点），逐页可派单见 §5.2 |
 | **7** | **U1** 改输入即重演 | 3 | **1 + 2** | `what-if` 是纯前端撤闸（廉价）；`optimize-whatif` 走**真 CP-SAT**、`sop-balance` 的五个闸串的是 **S&OP 业务流程**（评审→平衡→定稿），两者撤闸前都得先量重解成本/先裁决语义 | ✅ 做了 `what-if` · 另 2 页挂账（见 §5.2） |
 | — | U7 / U9 / U4 | 13 | — | — | 🚦 **不归本单**（`WO-U7-U9-REST` / `WO-EDGE-PANEL-3PAGES`） |
 
@@ -1191,8 +1429,11 @@ U3 有 `LayeredDag`、U5 有 `<Provenance>`、U8 有 `<details>` 惯例，而「
 | **U1 × `sop-balance`** | 差一次**语义裁决**：那五个 `sop-run-1..5` 串的是 **S&OP 业务流程**（评审→平衡→定稿），不是「填完表再点一下」。撤掉它们等于取消流程节点 —— 这是产品决策不是缺陷 | **WO-U1-SOP-VERDICT**（先裁决）：请仓主定「月度规划的五步是流程节点还是提交闸」。若是流程节点，本格应从 `不符合` 改判为**不适用**并按判据⑥逐格登记理由；若是提交闸，再派前端单 |
 | **U8 × `global-sim`** | 差的是**把目标页那段搬成抽屉**：`drillLink` 跳的是 `/v/project-sim?order=…`，那是一整张页的功能。要做成「不换页」得先决定**抽屉里放哪一部分**（全量细排？还是只放该单的排产结果？） | **WO-U8-GLOBALSIM-DRAWER**（中画像·先出设计）：把「进项目推演细排」改成同屏抽屉，保留跳页作为「要做别的事」的出口（判据明写「切视角/交接不算违反」） |
 | **U4b × 5 页** | 差一个**决定**：`EdgeActivePanel` 今天是独立面板，要让排除项「留在图上」得把 `disabledRuleKeys` 的投影下沉到各页的图组件里。⚠ 该文件正被 `WO-EDGE-PANEL-3PAGES` 改动，**本单刻意避让** | **WO-U4B-ONGRAPH**（等 `WO-EDGE-PANEL-3PAGES` 收编后派）：在 `LayeredDag`/`PmDag` 上加一个「已关闭」态（虚线＋降透明度＋文字标记，复用 `EdgeActivePanel` 已有的三路编码），5 页统一挂 |
-| **U6 × `project-sim`** | 差一次**裁决**：`ProjectSimView.tsx:1069` 的文案写「结论可采纳为 Action」而代码里没有那条路。接上 / 撤文案二选一，**不许维持现状** | 已排 §5 P0（`WO-PROJSIM-U6`） |
-| **U6 × 净室 4 页** | 差一次**产品判断**：净室通用页该不该产生全租户 Action 草稿（R2 tenant 语义） | 登记备裁（§5 已写明不排优先级） |
+| ~~**U6 × `project-sim`**~~ | ✅ **2026-08-19 已闭**（`WO-SIM-ACTION-REAL` 接的线，`WO-U6-ACTION-FROM-CONCLUSION` 复核并改账）。⚠ 本行原写「代码里没有那条路」**在写下之后就过期了**，账面拖了若干轮才对上 —— 逐格取证见 §4.9 | ~~`WO-PROJSIM-U6`~~ 已交付 |
+| ~~**U6 × `what-if`**~~ | ✅ **2026-08-19 已闭**（`WO-U6-ACTION-FROM-CONCLUSION`）：接进既有的 `对象数据变更`，`patch` 由屏上假设直接带过去。原挂在「净室 4 页」名下的备裁理由**实测不成立**，见 §4.9 | ~~备裁~~ 已交付 |
+| **U6 × `optimize-whatif`** | 差一个**落点**（不是差裁决）：扰动 `{target,value}` 的 `target` 是 opt-template 基线入参里的一条路径，**既不是本体对象属性**（无 `objectId/prop`），**也不是校准提案**（`校准参数变更` 要求先有一条由 MAPE 证据产生的 PENDING `CalibrationProposal`）。今天硬接只能塞进一个语义不符的 ActionType | **WO-U6-OPTWHATIF-CARRIER**（中画像·先裁语义再接线）：先定「采纳一组扰动」到底是什么 —— ① 把扰动值写回该 opt-template 的**已保存基线**（要先有「基线可保存」这件事，今天没有）；② 落一条 `OptWhatifAdoption` 台账（参数组合 + 目标值 Δ + 决策切换）留审批痕，与 `采纳产能预测结论` 同族。②的改动量小得多且不臆造任何真值，建议先做② |
+| **U6 × `cleanroom-attr`** | 差的是**结论与动作之间的那一步**：三块的输出都是**归因分解**，**不提议任何值**（「扩容到多少 / 换成谁」求解器没算、屏上也没显示）。硬接就得由前端替用户挑一个值 = 臆造 | **WO-U6-CLEANROOM-PLAY**（重画像·引擎侧先出方案）：让三个求解器各自多产出一段**可采纳的处置候选**（带 `{objectType,objectId,prop,value}` 形状的杠杆行，与 `discoverLevers` 同形），前端才谈得上采纳。⚠ 引擎不出候选之前，**前端这一格做不了**，别派前端单 |
+| **U6 × `disruption-radius`** | 同上（结论是影响面，不提议任何值）；且本页可拨的只有关系边开关，那是 U4 反事实开关，**不是待采纳的方案** | **WO-U6-DISRUPTION-VERDICT**（轻画像·先裁决）：请仓主定「一次影响半径评估该不该留审批痕」。若该留 ⇒ 落 `DisruptionAssessment` 台账（根对象 + 半径 + 波及清单 + 快照版本），与 `采纳产能预测结论` 同族；若不该 ⇒ 本格应从 `不符合` 改判为**不适用**并按判据⑥登记理由（⚠ 改判「不适用」的判据写死在 §4 表下：只有当「采纳」这个动作在这一页上**无处落脚**时才允许，不许拿它消红） |
 
 ---
 

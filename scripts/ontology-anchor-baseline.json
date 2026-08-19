@@ -136,6 +136,7 @@
     "apps/datacore/src/decision/kernel.ts::get",
     "apps/datacore/src/decision/record-materialize.ts::RECORD_MATERIALIZE_TEMPLATES",
     "apps/datacore/src/domain.ts::ActionTypeRecord",
+    "apps/datacore/src/features.ts::FEATURE_REGISTRY",
     "apps/datacore/src/features.ts::process.runtime",
     "apps/datacore/src/graphmeta.ts::AGENT_SEEDS",
     "apps/datacore/src/mapping.ts::buildMappingRows",

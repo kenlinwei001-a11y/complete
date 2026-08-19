@@ -10,25 +10,25 @@
         "1440x900": {
           "minFontPx": 12,
           "bodyFontPx": 13,
-          "firstScreenCtrls": 38,
+          "firstScreenCtrls": 39,
           "viewportUsePct": 79.6,
           "misalignedGroups": 0,
           "overflowPx": 0,
           "overflowEls": 0,
           "anchorTop": 319,
-          "textEls": 585,
+          "textEls": 594,
           "rowGroups": 13
         },
         "1280x800": {
           "minFontPx": 12,
           "bodyFontPx": 13,
-          "firstScreenCtrls": 37,
+          "firstScreenCtrls": 38,
           "viewportUsePct": 77,
           "misalignedGroups": 0,
           "overflowPx": 0,
           "overflowEls": 0,
           "anchorTop": 319,
-          "textEls": 585,
+          "textEls": 594,
           "rowGroups": 13
         }
       }

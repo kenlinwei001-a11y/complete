@@ -11,6 +11,8 @@ import { ExportReportButton, usePageView } from "./sim/shared";
 import type { ProvenanceReport } from "./sim/exportProvenance";
 // WO-SANDBOX-53CELLS · 判据 U3（点节点看凭什么）：本页有图（dr-fanout）但此前没传 onNodeClick ⇒ 点了没反应。
 import { DagNodeInspector, type DagNodeFacts } from "./sim/DagNodeInspector";
+// WO-U2-STEPWISE-2 · 判据 U2（分步标口径）：步骤态真正驱动结果分段（不是挂一条装饰步骤条）。
+import { SolverStepBar, useSolverStep, type SolverStep } from "./sim/SolverStepBar";
 // WO-EDGE-PANEL-3PAGES：横向要求「所有推演页都要能关掉一条传导边看结果怎么变」的共享件。
 import EdgeActivePanel from "./sim/EdgeActivePanel";
 
@@ -101,6 +103,58 @@ export function deriveDisruptionLayers(
   return layers;
 }
 
+/**
+ * ══ 判据 U4b · 这一次**没进半径**的那几跳（"半径外"那一侧）══
+ *
+ * 判据原文要的是「被排除的因素**留在图上并可见地降级**，不是从图上消失」。
+ * 本页此前只画"半径内"那一条链：关掉一条关系边之后，被挤掉的那一跳**从 DAG 上整个消失**，
+ * 屏上只剩一句折在 `<details>` 里的文字「全开时这条链是 …」——
+ * 影响半径天然有「在半径内 / 在半径外」两侧，**只画一侧等于只答了一半**。
+ *
+ * ── 两种"在半径外"，成因不同、修法不同，屏上必须分得开（一个数盖住两个事实是本仓的老病）──
+ *  · `disabled`  —— 用户**亲手关掉**了这条关系边（这一次假装它不传导）；
+ *  · `unreached` —— 这条边没被关，但**上游已经断了/改道了**，倒推根本没走到这里。
+ * 混成一句「不在图上」，用户就分不清该去把开关拨回来（前者）还是去看上游哪一跳断了（后者）。
+ *
+ * ⛔ 本函数**不查任何接口、不造任何对象**：两个入参都是本页已有的真值 ——
+ * `fullLayers` = 全开时由**真本体 ref 图**倒推的链，`layers` = 这一次实际用的链。
+ * 差集就是被排除项本身，没有第二套真相源。
+ */
+export interface ExcludedHopVM {
+  key: string;
+  type: string;
+  viaField: string;
+  /** 它本该落在第几跳（0-based，对齐 `fullLayers` 的下标）。`null` = 不在全开链上（用户关的是别处一条边）。 */
+  hopIndex: number | null;
+  reason: "disabled" | "unreached";
+}
+
+export function deriveExcludedHops(
+  fullLayers: readonly RadiusLayer[],
+  layers: readonly RadiusLayer[],
+  disabledEdges: ReadonlySet<string>,
+): ExcludedHopVM[] {
+  const active = new Set(layers.map((l) => edgeKeyOf(l)));
+  const out: ExcludedHopVM[] = [];
+  const seen = new Set<string>();
+  // ① 全开链上、这一次却不在活动链上的那几跳。
+  fullLayers.forEach((l, i) => {
+    const key = edgeKeyOf(l);
+    if (active.has(key) || seen.has(key)) return;
+    seen.add(key);
+    out.push({ key, type: l.type, viaField: l.viaField, hopIndex: i, reason: disabledEdges.has(key) ? "disabled" : "unreached" });
+  });
+  // ② 用户关掉、但根本不在全开链上的那几条（换过来源类型后留下的残留开关等）——
+  //    照样要看得见：关了一条自己都找不到的边，比没关更让人困惑。
+  for (const key of [...disabledEdges].sort()) {
+    if (active.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    const [type = key, viaField = ""] = key.split(".");
+    out.push({ key, type, viaField, hopIndex: null, reason: "disabled" });
+  }
+  return out;
+}
+
 /** 可作断供根的类型 = 有非空反向扇出链（被 ≥1 类型 ref）。按链长降序（reach 大者优先）、tie-break key 字典序。 */
 export function disruptionRootCandidates(types: OTypeLite[]): OTypeLite[] {
   return types
@@ -132,6 +186,44 @@ interface RadiusOutput {
   leafCount: number;
   summary: string;
 }
+
+/**
+ * WO-U2-STEPWISE-2 · 判据 **U2** 的步骤契约（本页无 `ReasoningGraph`，故按 `SolverStep` 直写）。
+ *
+ * 四步逐条对着**本页真实的求解链**写，`data` 一律是真字段名（不是白话）——
+ * 字段没了/改名了引用当场断，屏上当场看得出（对冲机制见 `sim/SolverStepBar.tsx` 头注）。
+ * 规则原文与 `fanoutNodeFacts`（判据 U3 的节点面板）**同源同字**：同一环在两处不许有两种说法。
+ */
+const DR_STEPS: SolverStep[] = [
+  {
+    key: "chain",
+    label: "链路倒推",
+    data: "rootType / rootId / layers[]（type + viaField）",
+    solver: "前端倒推 deriveDisruptionLayers（未求解）",
+    rule: "沿「谁引用我」逐层下探；同层多个候选按 类型名→字段名 字典序取第一个；被关掉的关系边跳过（同本体同来源重跑一致）",
+  },
+  {
+    key: "fanout",
+    label: "逐层扇出",
+    data: "layers[].count（逐层命中数）",
+    solver: "supplier_disruption_radius",
+    rule: "本层命中 = { o ∈ 该层类型 | o.viaField ∈ 上一层命中集 }；命中 0 即停止下探（断链是结论，不是取数失败）",
+  },
+  {
+    key: "radius",
+    label: "半径与敞口",
+    data: "radius / totalAffected / leafType / leafCount / summary",
+    solver: "supplier_disruption_radius",
+    rule: "半径 = 命中数 > 0 的层数；波及总数 = Σ 各层命中数；叶层 = 最后一个命中 > 0 的层",
+  },
+  {
+    key: "detail",
+    label: "逐层明细",
+    data: "layers[].ids[]（受冲击对象 id）",
+    solver: "supplier_disruption_radius",
+    rule: "逐层列出受冲击对象 id；首屏 12 个，其余就地展开（不导航）",
+  },
+];
 
 const CHIP_CAP = 12;
 /** 受冲击对象 chip 的样式（首屏 12 个与「就地展开」里的其余若干共用一份，两处分家会长歪）。 */
@@ -173,6 +265,14 @@ export default function DisruptionRadiusView(_props: { view?: ViewConfigVM }) {
   const layers = useMemo(() => deriveDisruptionLayers(types, rootType, disabledSet), [types, rootType, disabledSet]);
   /** 全开时的原链 —— 只用来算「关掉之后跟原来比少了/换了什么」，不参与求解。 */
   const fullLayers = useMemo(() => deriveDisruptionLayers(types, rootType), [types, rootType]);
+  /**
+   * 判据 U4b · 这一次落在**半径外**的那几跳（见 `deriveExcludedHops` 头注）。
+   * 它们要和入选的那条链**画在同一张 DAG 上**并可见地降级 —— 不是另起一块、更不是折叠区。
+   */
+  const excludedHops = useMemo(
+    () => deriveExcludedHops(fullLayers, layers, disabledSet),
+    [fullLayers, layers, disabledSet],
+  );
   /**
    * 开关列表 = 当前链上的每一跳 ∪ 已被关掉的那几条。
    * **关掉的边不从列表里消失，只标记为已关闭** —— 消失了用户就不知道自己关了什么、也拨不回来
@@ -446,7 +546,7 @@ export default function DisruptionRadiusView(_props: { view?: ViewConfigVM }) {
       ) : runQ.isLoading || !runQ.data ? (
         <div className="empty-state">{zh.common.loading}</div>
       ) : (
-        <RadiusResult out={runQ.data} displayOf={displayOf} />
+        <RadiusResult out={runQ.data} displayOf={displayOf} excludedHops={excludedHops} />
       )}
 
       {/* ── WO-EDGE-PANEL-3PAGES · 共享面板挂载点（本页判定「可挂」，论据在此，不在工单里）──────
@@ -484,7 +584,39 @@ function fanoutNodeFacts(
   out: RadiusOutput,
   disp: (k: string) => string,
   leafIdx: number,
+  excludedHops: readonly ExcludedHopVM[] = [],
 ): DagNodeFacts {
+  // 判据 U4b · 被排除节点也要点得开：只把它留在图上、点开却是一句「—」，
+  // 用户仍然答不出"为什么它不在半径里"。
+  if (nodeId.startsWith("X")) {
+    const h = excludedHops.find((x) => `X${x.key}` === nodeId);
+    if (h) {
+      const disabled = h.reason === "disabled";
+      return {
+        title: `半径外 · ${disp(h.type)}`,
+        // ⚠ 2026-08-19 审核方修：分类词「半径外」原先只在 Modal **标题**里，
+        // 而 `data-testid={testId}` 挂在 Modal **body** 上 ⇒ 读 body 全文读不到分类，
+        // 「被排除项带理由」这件事在**面板正文里是不完整的**（要抬头看标题才知道它为什么在这）。
+        // 判据 U4b 要的是「排除项同图 **且带理由**」——理由必须一行自足：先说它落在哪一侧，再说为什么。
+        verdict: disabled
+          ? "半径外 · 这一次已关掉这条关系边"
+          : "半径外 · 上游改道或断链，倒推没走到这一跳",
+        src: `本体对象 ${h.type} 的 ${h.viaField} 字段（与入选跳同一张本体 ref 图，非另一份数据）`,
+        rule: disabled
+          ? "本次查看的关系边开关：该边被跳过 ⇒ 同层次选顶上（改道）或链在此终止（断链）"
+          : "倒推逐层下探：上一跳已被排除或命中 0 ⇒ 本跳不可达，不再下探",
+        ruleKind: "projection",
+        formula: `${h.type}.${h.viaField}（全开链第 ${h.hopIndex === null ? "—" : h.hopIndex + 1} 跳）`,
+        inputs: [
+          { label: "引用字段", value: `${h.type}.${h.viaField}` },
+          { label: "全开链位置", value: h.hopIndex === null ? "不在全开链上" : `第 ${h.hopIndex + 1} 跳` },
+        ],
+        note: disabled
+          ? "本体里那条引用关系一个字节没动 —— 把上面的开关拨回来，这一跳就会重新进半径。"
+          : "要让它重新进半径，先看**上游**哪一跳被关掉或命中 0：本跳自己没有被关。",
+      };
+    }
+  }
   if (nodeId === "__root") {
     return {
       title: `断供根 · ${disp(out.rootType)}`,
@@ -527,7 +659,21 @@ function fanoutNodeFacts(
 }
 
 /** 结果区：指标条 + 分层扇出 DAG + 逐层受冲击对象。改 rootId → out 变 → 全区随之变（纯投影）。 */
-function RadiusResult({ out, displayOf }: { out: RadiusOutput; displayOf: Map<string, string> }) {
+function RadiusResult({
+  out,
+  displayOf,
+  excludedHops,
+}: {
+  out: RadiusOutput;
+  displayOf: Map<string, string>;
+  /** 判据 U4b · 半径外那一侧（`deriveExcludedHops` 现算，非本组件推断）。 */
+  excludedHops: readonly ExcludedHopVM[];
+}) {
+  /**
+   * 判据 U2 步骤态。默认末步 = 完整结果（与改前屏面逐字节一致 ⇒ 存量测试零回归）。
+   * `upto(n)` 是本页唯一分段闸：点第 N 步 ⇒ 屏上的数只显示到第 N 步为止。
+   */
+  const { active: drStep, setActive: setDrStep, upto } = useSolverStep(DR_STEPS.length);
   const disp = (k: string) => displayOf.get(k) ?? k;
   // 判据 U3：点节点看凭什么（受控浮层 —— 同时满足 U8「看明细不换页」）。
   const [inspectId, setInspectId] = useState<string | null>(null);
@@ -564,13 +710,46 @@ function RadiusResult({ out, displayOf }: { out: RadiusOutput; displayOf: Map<st
       ts.push(disp(l.type));
       prevId = id;
     });
+    /*
+      判据 U4b ·「半径外」那一侧挂**同一张图**上。
+      挂点 = 它本该所在的那一跳（`hopIndex`）的**上游节点** —— 于是屏上读出来是
+      「走到这一跳时，X 被排除、Y 顶上了」，而不是把被排除项堆在图外某处。
+      ⚠ 层号与入选跳**同层**（`hopIndex + 1`），不另开一层：判据要的是"同图"，
+        另开一层等于又画了第二张图。
+    */
+    excludedHops.forEach((h) => {
+      const id = `X${h.key}`;
+      const layer = h.hopIndex === null ? 1 : h.hopIndex + 1;
+      ns.push({
+        id,
+        layer,
+        label: disp(h.type),
+        sub: `via ${h.viaField}`,
+        state: "excluded",
+        excludedReason:
+          h.reason === "disabled" ? "本次已关掉这条关系边" : "上游改道/断链，未走到这一跳",
+      });
+      const from = h.hopIndex === null || h.hopIndex === 0 ? "__root" : `L${h.hopIndex - 1}`;
+      // 上游那一跳这一次可能根本不存在（链变短了）⇒ 只在挂得上时连线，
+      // 连一条端点不存在的边 `LayeredDag` 会静默 `return null`，图上就成了孤点。
+      if (ns.some((n) => n.id === from)) es.push({ from, to: id });
+    });
     return { nodes: ns, edges: es, titles: ts };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [out, leafIdx]);
+  }, [out, leafIdx, excludedHops]);
 
   return (
     <>
-      {/* 指标条：半径 / 波及总数 / 叶层敞口 */}
+      {/* ── 判据 U2 · 分步推演（步骤态**真正驱动**下面各块的分段）─────────────────────
+          第 1 步的产物 = 上方选择区那条「反向扇出链」（`dr-chain`，本体倒推的真结果），
+          所以这里不再复述一遍 —— 同一个事实在屏上只留一个出处（RL3）。 */}
+      <div className="panel" data-testid="dr-steps-panel">
+        <SolverStepBar steps={DR_STEPS} active={drStep} onSelect={setDrStep} testId="dr-steps" />
+      </div>
+
+      {/* 指标条：半径 / 波及总数 / 叶层敞口。
+          U2 分段闸：这三个数是第 3 步「半径与敞口」的产物（radius / totalAffected / leafCount）。 */}
+      {upto(3) && (
       <div className="panel" data-testid="dr-metrics" style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
         <Metric label="影响半径" value={`${out.radius} 层`} testId="dr-radius" tone={out.radius > 0 ? "warn" : "muted"} />
         <Metric label="波及对象总数" value={String(out.totalAffected)} testId="dr-total" tone="warn" />
@@ -581,9 +760,10 @@ function RadiusResult({ out, displayOf }: { out: RadiusOutput; displayOf: Map<st
           tone={leafLayer && leafLayer.count > 0 ? "danger" : "muted"}
         />
       </div>
+      )}
 
       {/* 半径 0 诚实提示：来源无下游波及。 */}
-      {out.radius === 0 && (
+      {out.radius === 0 && upto(3) && (
         <div className="panel" data-testid="dr-zero-radius" style={{ borderLeft: "3px solid var(--line2)" }}>
           <div style={{ fontSize: 12.5, color: "var(--muted)" }}>
             断供「<b>{out.rootId}</b>」未波及任何下游对象（半径 0）——无对象在第一层引用该来源。诚实报，不编扩散。
@@ -591,7 +771,8 @@ function RadiusResult({ out, displayOf }: { out: RadiusOutput; displayOf: Map<st
         </div>
       )}
 
-      {/* 分层扇出 DAG */}
+      {/* 分层扇出 DAG。U2 分段闸：图上每层的命中数 = 第 2 步「逐层扇出」的产物（layers[].count）。 */}
+      {upto(2) && (
       <div className="panel" data-testid="dr-dag">
         <div className="section-title">分层扇出（断供根 → 逐层扩散 · 叶层敞口高亮）</div>
         <div style={{ overflowX: "auto" }}>
@@ -603,14 +784,17 @@ function RadiusResult({ out, displayOf }: { out: RadiusOutput; displayOf: Map<st
           点任一节点 → 看这一层的来源字段与判定规则。
         </div>
       </div>
+      )}
 
       <DagNodeInspector
-        facts={inspectId ? fanoutNodeFacts(inspectId, out, disp, leafIdx) : null}
+        facts={inspectId ? fanoutNodeFacts(inspectId, out, disp, leafIdx, excludedHops) : null}
         onClose={() => setInspectId(null)}
         testId="dr-node-inspect"
       />
 
-      {/* 逐层受冲击对象（叶层 = 敞口） */}
+      {/* 逐层受冲击对象（叶层 = 敞口）。
+          U2 分段闸：逐条 id 是第 4 步「逐层明细」的产物（layers[].ids），比命中数晚一步。 */}
+      {upto(4) && (
       <div className="panel" data-testid="dr-layers">
         <div className="section-title">逐层受冲击对象</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -673,11 +857,14 @@ function RadiusResult({ out, displayOf }: { out: RadiusOutput; displayOf: Map<st
           ))}
         </div>
       </div>
+      )}
 
-      {/* 求解器 summary（诚实投影，不改写） */}
+      {/* 求解器 summary（诚实投影，不改写）。U2 分段闸：它讲的就是半径与敞口那一层（第 3 步）。 */}
+      {upto(3) && (
       <div className="panel" data-testid="dr-summary" style={{ fontSize: 12.5, color: "var(--muted)", lineHeight: 1.7 }}>
         {out.summary}
       </div>
+      )}
     </>
   );
 }

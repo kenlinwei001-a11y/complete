@@ -15,7 +15,9 @@ import { SopReschedulePanel } from "./SopReschedulePanel";
 // WO-U3-DAG-REST · 判据 U3（过程图 + 点节点看凭什么）——结构与画法与样板两页同源
 // （见 `reasoningGraph.ts` 头注）；本页**不另建**一套。
 import { ProcessGraphPanel } from "./ProcessGraphPanel";
-import { assertReasoningGraph, type ReasoningGraph } from "./reasoningGraph";
+import { assertReasoningGraph, toSolverSteps, type ReasoningGraph } from "./reasoningGraph";
+// WO-U2-STEPWISE-2 · 判据 U2（分步标口径）。步骤契约**投影自本页同一份 `SOP_GRAPH`**，不另写一份。
+import { SolverStepBar, useSolverStep } from "./SolverStepBar";
 import EdgeActivePanel from "./EdgeActivePanel";
 import zh from "@/locales/zh";
 import { InfoPopover } from "@/components/InfoPopover";
@@ -158,6 +160,19 @@ const SOP_GRAPH: ReasoningGraph = assertReasoningGraph({
     // ⚠ 故意**没有** s1 的出边：`sop.step3` 不读 `s1.boundaryDeltaWanPerMonth`（实测）。
   ],
 });
+
+/**
+ * WO-U2-STEPWISE-2 · 判据 **U2** 的步骤契约 —— **投影自 `SOP_GRAPH`，不手写第二份**。
+ *
+ * ⛔ **它不是屏上那五个业务流程按钮**（判据 U2 显式排除「评审→平衡→定稿」这类步骤）。
+ * 三条一眼可验的分水岭，任一条不成立就说明我拿业务流程冒充了推演过程：
+ *  ① **分组不同**：五步法是 ①②③④⑤ 五个独立按钮；本步骤条第 1 步把 **①② 合成一格**
+ *    （它们同为「评审输入」层，且 ① 对下游**没有出边**——见 `SOP_GRAPH` 头注的后端实测）。
+ *  ② **多一层业务流程里没有的**：第 5 步「顶栏结论读数」不对应任何按钮，
+ *    它是那六个数字**本身**，正是判据要问的「这个数分几步算出来的」。
+ *  ③ **闸的是读数不是按钮**：切步只改变屏上**哪些数看得见**，五步法按钮一个不动、照常可点。
+ */
+const SOP_STEPS = toSolverSteps(SOP_GRAPH);
 
 /** S&OP 月度平衡台（renderer=sop-balance，增量 §7.12）：六卡 KPI 条 + 五步法 + 定稿走 Action + C22 锁定 */
 export default function SopBalanceView(_props: ViewRendererProps) {
@@ -350,6 +365,22 @@ function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; 
   const s4 = v.steps.s4 as { pass?: boolean; violations?: string[] } | undefined;
   const step5Blocked = s4 !== undefined && s4.pass !== true;
 
+  /**
+   * 判据 U2 步骤态（**推演过程**，与上面那个业务流程 `step` 是两个互不相干的状态）。
+   * 默认末步 = 完整结果（与改前屏面逐字节一致 ⇒ 存量测试零回归）。
+   * `upto(n)` 是本页唯一分段闸：点第 N 步 ⇒ 顶栏那六个数只显示到第 N 步为止。
+   */
+  const { active: sopStep, setActive: setSopStep, upto } = useSolverStep(SOP_STEPS.length);
+  /** 逐层真值（全部读 `v.steps.*` 的真实字段，缺则显 —— 不臆造）。 */
+  const chain = {
+    s1: v.steps.s1 as { boundaryDeltaWanPerMonth?: number } | undefined,
+    s2: v.steps.s2 as { total?: { rolling?: number } } | undefined,
+    s3: v.steps.s3 as { sup?: number; gap?: number; flagged?: boolean } | undefined,
+    s4: v.steps.s4 as { gmRoll?: number; cashCushion?: number; pass?: boolean } | undefined,
+    s5: v.steps.s5 as { supFinal?: number; resolutions?: unknown[] } | undefined,
+  };
+  const num = (x: number | undefined): string => (x == null ? "—" : fmt(x));
+
   const jumpToAgenda = (segKey: string) => {
     setStep(5);
     setHighlightSeg(segKey);
@@ -375,7 +406,31 @@ function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; 
         )}
       </div>
 
-      <SopKpiBar v={v} liveResolutions={!locked && v.status !== "EXEC_MEETING" ? resolutions : null} />
+      {/* ── 判据 U2 · 分步推演（步骤态**真正驱动**顶栏六个数的分段）─────────────────
+          ⚠ 这是「这六个数分几步算出来的」，不是「事情分几步做」——后者是下面那排五步法按钮，
+          本步骤条一个字都不碰它们（判据 U2 显式排除业务流程步骤）。 */}
+      <div data-testid="sop-steps-panel" style={{ marginTop: 10 }}>
+        <SolverStepBar steps={SOP_STEPS} active={sopStep} onSelect={setSopStep} testId="sop-steps" />
+        {/* 逐步揭示**该层自己的真值**（读 `v.steps.*`，缺则显「—」，不臆造）。 */}
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6, display: "flex", gap: 14, flexWrap: "wrap" }} data-testid="sop-chain-readout">
+          <span data-testid="sop-chain-s2">需求P50 <b>{num(chain.s2?.total?.rolling)}</b></span>
+          {upto(2) && <span data-testid="sop-chain-s3">可供给 <b>{num(chain.s3?.sup)}</b></span>}
+          {upto(3) && <span data-testid="sop-chain-s4">现金垫 <b>{num(chain.s4?.cashCushion)}</b></span>}
+          {upto(4) && <span data-testid="sop-chain-s5">终版供给 <b>{num(chain.s5?.supFinal)}</b></span>}
+          {/* 规范 §1：「哪一步喂哪一步、哪一步喂不到」是成段说明（凭什么这么算），降浮层；
+              第一层留 `?` 记号 —— 降层不是删除。这条诚实位尤其不许省：① 是条**死路**。 */}
+          <InfoPopover topic="这几步之间谁喂谁" testId="sop-chain-why">
+            <span data-testid="sop-chain-why-body">
+              后端实测的喂法：② 需求 → ③ 供应 → ④ 财务 → ⑤ 决议；顶栏缺口是汇合点（需求来自 ②、
+              供给来自 ⑤，未跑 ⑤ 时回落 ③）。⚠ ① 产品评审是条死路：③ 不读它的边界变化量，
+              自己重算可供给 —— 改 ① 不会让顶栏「可供给」动。
+            </span>
+          </InfoPopover>
+        </div>
+      </div>
+
+      {/* U2 分段闸：顶栏六卡是图上 layer 4「顶栏结论读数」——链走完才有它们（第 5 步）。 */}
+      {upto(5) && <SopKpiBar v={v} liveResolutions={!locked && v.status !== "EXEC_MEETING" ? resolutions : null} />}
 
       {/* 判据 U3 · 推演过程图 —— 紧跟 KPI 条：上面六张卡各是一个结论数字，
           这张图说的是**那六个数分别由哪几步算出来、哪一步喂哪一步**。

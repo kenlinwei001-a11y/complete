@@ -5,6 +5,7 @@ import { fetchObjectTypes, queryObjectsPaged, invokeSolver } from "@/api/endpoin
 import { toastError } from "@/store/toastStore";
 import type { ViewConfigVM } from "@/api/types";
 import zh from "@/locales/zh";
+import { useDebounced } from "@/lib/useDebounced";
 import { InfoPopover } from "@/components/InfoPopover";
 // WO-SANDBOX-53CELLS · 判据 U5（结论数字标出处）：本页 deltas 表与影响面计数此前全是裸数字。
 import { Provenance } from "@/components/Provenance";
@@ -16,11 +17,15 @@ import { ImpactAnalysisPanel } from "./sim/ImpactAnalysisPanel";
 // WO-U3-DAG-REST · 判据 U3（过程图 + 点节点看凭什么）。结构与画法都与样板两页同源，
 // 见 `sim/reasoningGraph.ts` 头注 —— 本页**不另建**一套。
 import { ProcessGraphPanel } from "./sim/ProcessGraphPanel";
-import { assertReasoningGraph, type ReasoningGraph } from "./sim/reasoningGraph";
+import { assertReasoningGraph, toSolverSteps, type ReasoningGraph } from "./sim/reasoningGraph";
+// WO-U2-STEPWISE-2 · 判据 U2（分步标口径）。步骤契约**投影自本页同一份 `WI_GRAPH`**，
+// 不另写一份 —— 两份会漂移，屏上两处对同一环给出两种说法（见 reasoningGraph.ts 头注 RL3）。
+import { SolverStepBar, useSolverStep } from "./sim/SolverStepBar";
 import EdgeActivePanel from "./sim/EdgeActivePanel";
 // WO-HARNESS-UX-GAP-1 · 判据 U7（同屏问答知道自己在哪一页）+ U9（导出物自带出处与生成时间）。
 // 本页走 App.tsx 的专用 route，不经 ViewPage ⇒ 必须自己调 usePageView（理由见 shared.tsx 该函数注释）。
-import { ExportReportButton, usePageView } from "./sim/shared";
+import { ExportReportButton, usePageView, useActionDraft } from "./sim/shared";
+import { useFeature } from "@/workspace/featureGate";
 import type { ProvenanceReport } from "./sim/exportProvenance";
 
 /**
@@ -65,6 +70,25 @@ interface ObjectType {
   displayName: string;
   domain?: string;
   properties: TypeProp[];
+}
+
+/**
+ * 屏上这一刻的假设 —— 结果区与「采纳」按钮读的是**同一个对象**，不各存一份。
+ * `value` 是给人看的原串（渲染 `assumptionLine` 用），`coerced` 是给机器写的强制类型值
+ * （落进 ActionDraft 的 `patch`）；两者同源于一次输入，只是用途不同。
+ */
+interface Assumption {
+  typeKey: string;
+  objectId: string;
+  prop: string;
+  /** 输入框里的原串（展示用） */
+  value: string;
+  /** 过了 `coerce` 的值（number 属性 → number）—— 落库写的是这个 */
+  coerced: unknown;
+  /** `prop` 这一格的量纲（本体 PropertyDef.unit·后端下发，缺则无） */
+  unit?: string;
+  /** 世界里现在的值（纯记录性：与 `coerced` 同一个 propKey，故同轴同量纲） */
+  oldValue?: unknown;
 }
 
 const fmtVal = (v: unknown): string => {
@@ -179,24 +203,28 @@ const WI_GRAPH: ReasoningGraph = assertReasoningGraph({
 });
 
 /**
- * 输入防抖（判据 U1 的配套，不是可选优化）。
+ * WO-U2-STEPWISE-2 · 判据 **U2** 的步骤契约 —— **投影自 `WI_GRAPH`，不手写第二份**。
  *
- * 撤掉提交闸后「假设值」是个自由文本框：不防抖 ⇒ 每敲一个键发一次求解，
- * 用户打 `1200` 会连发 `1` `12` `120` `1200` 四次，中间三次都是**没意义的假设**。
- * 防抖只推迟**发请求**，不推迟输入回显 —— 屏上的值一直是用户刚敲的那个，
- * 所以它**不是提交闸**（提交闸的定义是「不点某个东西结果永远不更新」，与「晚 300ms 更新」是两件事）。
+ * 四步 = 图的四层：设定假设 → 两条推演路 → 读数 → 逐行明细。
+ * 每步的 数据·求解器·规则 逐字来自图上节点（字段名不许改写成白话：字段漂移时引用当场断）。
+ * 第 2 层是**并列层**（两条世界语义不同的路），`toSolverSteps` 会如实写「本层 2 个并列环，
+ * 规则逐环不同 ⇒ 在过程图上点各环看」——**不挑一个节点的规则冒充全层**。
  */
-function useDebounced<T>(value: T, ms: number): T {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setV(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return v;
-}
+const WI_STEPS = toSolverSteps(WI_GRAPH);
+
+/*
+ * 判据 U1 的输入防抖已提到 `@/lib/useDebounced`（`optimize-whatif` 撤闸时要用同一个行为）。
+ * 本文件原有的私有实现逐字节等价，只是换了位置 —— 行为不变，理由见该文件头注。
+ */
 
 export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
   usePageView("what-if");
+  /**
+   * 判据 U2 步骤态。**默认末步 = 完整结果**（与改前屏面逐字节一致 ⇒ 存量测试零回归）。
+   * `upto(n)` 是本页**唯一分段闸**：结果区每一段都经它决定渲染与否，
+   * 任何段不许自行判断 `active`（绕开 = 步骤条退化成装饰，变异反证也咬不到）。
+   */
+  const { active: wiStep, setActive: setWiStep, upto } = useSolverStep(WI_STEPS.length);
   const [typeKey, setTypeKey] = useState<string>("");
   const [objectId, setObjectId] = useState<string>("");
   const [prop, setProp] = useState<string>("");
@@ -437,6 +465,32 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
         )}
       </div>
 
+      {/* ── 判据 U2 · 分步推演（步骤态**真正驱动**下面结果区的分段）───────────────
+          ⚠ 它不是装饰条：点第 N 步 ⇒ 屏上的数只显示到第 N 步为止（闸见各段 `upto(…)`）。 */}
+      <div className="panel" data-testid="wi-steps-panel">
+        <SolverStepBar steps={WI_STEPS} active={wiStep} onSelect={setWiStep} testId="wi-steps" />
+        {/* 第 1 步的产物 = 这次推演读进去的那份假设（入参回执，真值回显，不是重复表单）。 */}
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6 }} data-testid="wi-step-inputs">
+          假设 · <span className="mono">{typeKey || "—"}</span> / <span className="mono">{objectId || "—"}</span>
+          <span> 的 </span>
+          <span className="mono">{prop || "—"}</span> = <span className="mono">{value.trim() || "—"}</span>
+          {currentValue === undefined ? null : <span>（原值 <span className="mono">{fmtVal(currentValue)}</span>）</span>}
+        </div>
+        {/* 第 2 步的产物 = 两条路各自的**求解基准**（谁算的 · 算在什么之上）。
+            ⚠ 只写这一步真拿得到的东西：`snapshotVersion` 是 `generic_inference` 的后端真回执；
+            第二条路的读数在第 3 步才出（它的面板此刻还没挂），故这里**只报它的求解器与世界语义，不报结果**。 */}
+        {upto(2) && (
+          <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 4 }} data-testid="wi-step-solve">
+            <span className="mono">generic_inference</span> · 快照{" "}
+            <span className="mono" data-testid="wi-step-solve-snapshot">{runQ.data?.snapshotVersion ?? "—"}</span>
+            <span> · 无世界（当前快照上前向重算）</span>
+            <span> ∥ </span>
+            <span className="mono">impact-analysis</span>
+            <span> · 世界隔离（两条路互不为输入）</span>
+          </div>
+        )}
+      </div>
+
       {/* ── 判据 U3 · 推演过程图 ──────────────────────────────────────────────
           摆在两个出口**之间**：往上是假设，往下是两条路各自的读数。
           它比上下两块多说的那件事：两条路**世界语义不同、互不为输入** ——
@@ -447,6 +501,9 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
           上面那个按钮走 `generic_inference`（无世界、单个裸计数）；这里走
           `POST /a/v1/simulation/impact-analysis`（世界隔离 + 对象/流程/决策/KPI 四维 + 诚实标记）。
           两个出口共用上面同一张表单 —— 用户不必把假设填两遍。 */}
+      {/* U2 分段闸：这个面板给的是**第 3 步「读数」**那一层的数（四维分项 = 图上 `dims` 节点，layer 2）。
+          停在第 1/2 步时它整块退场 —— 那两步还没算到「读数」这一层。 */}
+      {upto(3) && (
       <div className="panel" data-testid="wi-impact-panel">
         {/* 标题只留**名字**；括号里那串「世界隔离 · 四维分项」说的是这一格**怎么算的**，
             是口径不是名字（规范 §1 / R-UI-3）—— 连同「跟上面那个按钮差在哪」一起降浮层。 */}
@@ -462,16 +519,140 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
         </div>
         <ImpactAnalysisPanel change={impactChange} />
       </div>
+      )}
 
       {/* ── 结果区 ── */}
       {assumptionReady && settled && result ? (
-        <WhatIfResult out={result} snapshotVersion={runQ.data?.snapshotVersion} assumption={{ typeKey, objectId, prop, value: debouncedValue }} />
+        <WhatIfResult
+          out={result}
+          snapshotVersion={runQ.data?.snapshotVersion}
+          assumption={{
+            typeKey,
+            objectId,
+            prop,
+            value: debouncedValue,
+            // ⚠ 采纳那条路要写进 `patch` 的是**强制过类型的**值，不是输入框里那串字符：
+            // `patch: { 转速: "1200" }` 会把一个数值属性写成字符串，之后所有派生算术当场变 NaN。
+            // 复用页内**同一份** `coerce`（上面那条自动重演的路也用它）—— 两条出口口径分家，
+            // 就会出现「屏上算的是数、落库落的是串」这种屏上看不出来的错。
+            coerced: coercedValue,
+            // 量纲：取本体 PropertyDef.unit（后端下发·缺则 undefined，前端不臆造）。
+            // 它与 `patch` 写进去的那个属性是**同一个 propKey**，所以屏上标的量纲就是落库那一格的量纲。
+            unit: currentProp?.unit,
+            oldValue: currentValue,
+          }}
+          // WO-U2-STEPWISE-2 · 判据 U2 分段闸（唯一出处 = `useSolverStep.upto`）。
+          upto={upto}
+        />
       ) : null}
 
       {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。
           ⚠ 必须挂在**主组件**里、且不进 `ran && result` 那个条件：挂进结果区 = 没跑过推演就看不见开关，
           而"先关掉一条边再看结果"恰恰是最常见的用法（本单初稿真踩过这一下，收编前自查抓出）。 */}
       <EdgeActivePanel pageKey="what-if" />
+    </div>
+  );
+}
+
+/**
+ * ══ 判据 U6「结论即动作」· 采纳该假设 → `对象数据变更` ActionDraft ══
+ *
+ * ── 为什么是 `对象数据变更`，而不是新造一个动作类型（先追一层再动手）──────────────
+ * 这一页的假设**形状**就是 `对象数据变更` 的 payload 形状，一一对上，没有翻译层：
+ *   屏上「把 `<对象>` 的 `<属性>` 改成 `<值>`」 ≡ `{ objectId, patch: { [prop]: value } }`
+ *   （后端 `app.ts` 该分支：合并进 `obj.props` → `origin: MANUAL` → `runDerivations()`）。
+ * 而这一页此前**唯一缺的就是这条路**：屏上第一层写着「不落库、纯试算」——那句话是真的，
+ * 但它同时意味着用户看完 before/after 之后**无处可去**，只能记下参数换一张页面重填一遍。
+ * R4「真值经 Action」已经规定了对象写入只有审批这一条路；本按钮接的正是那条既有的路。
+ *
+ * ── ⚠ 顶回 §5/§5.2 登记的那条「备裁」理由（照铁律 0.5 追了一层，实测不成立）────────
+ * 原文（`docs/PRD-harness-ux-adoption.md` §5:1153）写：这四页是「**净室通用页（与租户本体无关）**」，
+ * 硬补会造出「在一个通用假设页上生成**全租户** Action」。**前半句在本页上是错的**：
+ * 本页的类型列表来自 `GET /a/v1/ontology/object-types`、对象列表来自 `GET /a/v1/objects?type=`，
+ * 两个都是**该租户自己的本体与真对象**（`ctx(req)` 逐请求取 tenantId）——
+ * 「页面是通用实现」与「数据与租户无关」是两件事，前者不度量后者。
+ * 后半句的担心也已有现成的门挡着，不需要靠「不做」来防：
+ *   · `POST /a/v1/action-drafts` 走 `ctx(req)`，草稿天然落在发起人自己的租户里（R2）；
+ *   · `assertObjectPatchWritable` 在**建草稿时**就逐属性过 A6 列级 authz，命中不可写属性直接 403
+ *     `PROPERTY_FORBIDDEN`、草稿根本不创建；执行期 `assertDraftPatchWritableAtExecute` 再复校一次
+ *     （堵「先建草稿、后收紧策略」的时间窗）。
+ * 所以本页这一格不是「产品裁决」，是一条**没接的线**。另三页的情况与本页不同，见交单报告。
+ *
+ * ── 反 `G-ACTION-NOOP-EXEC`（空 payload 假绿）────────────────────────────────
+ * `patch` 里那一格**就是用户选的那个 propKey、填的那个值**（过同一份 `coerce`），
+ * 不是空表单、不是重填、不是只带一句结论文案的空壳。接缝断言见
+ * `test/wo-u6-what-if-adopt.test.tsx`（前端半：payload 逐字段 = 屏上那份）与
+ * `apps/datacore/test/action-adopt-hypothesis.seam.test.ts`（后端半：审批后**换一条路**读回对象，
+ * 属性真的变了 + 派生真的重算了）。
+ */
+function AdoptHypothesisButton({
+  assumption,
+  out,
+  snapshotVersion,
+  assumptionLine,
+}: {
+  assumption: Assumption;
+  out: GenericInferenceOutput;
+  snapshotVersion?: string;
+  assumptionLine: string;
+}) {
+  const canAdopt = useFeature("act.adopt-to-draft");
+  const adopt = useActionDraft();
+  if (!canAdopt) return null;
+  const unitTxt = assumption.unit ? ` ${assumption.unit}` : "";
+  const onAdopt = (): void => {
+    adopt.mutate({
+      actionTypeKey: "对象数据变更",
+      payload: {
+        source: "what-if",
+        objectType: assumption.typeKey,
+        objectId: assumption.objectId,
+        // ★ 结论带过去的那一格：键 = 用户选的 propKey，值 = 用户填的假设值（已过 coerce）。
+        //   量纲 = `propUnit`（同一个 propKey 的本体量纲）—— 写进去的那一格和屏上标的那一格是同一格。
+        patch: { [assumption.prop]: assumption.coerced },
+        /** `patch` 里那唯一一格的量纲（本体 PropertyDef.unit）；无量纲属性则不下发，不臆造。 */
+        ...(assumption.unit ? { propUnit: assumption.unit } : {}),
+        /** 变更前值：纯记录性，后端不拿它计算；与 `patch` 同 propKey ⇒ 同轴同量纲。 */
+        ...(assumption.oldValue === undefined ? {} : { oldValue: assumption.oldValue }),
+        // paramsSchema 的必填项。写的是**这次采纳时屏上那份结论**，让审批人看得见「他是看着什么数点的」。
+        reason:
+          `通用假设推演采纳：${assumptionLine}${unitTxt}` +
+          ` —— 前向重算影响 ${out.affectedObjects} 个对象、${out.count} 处派生字段` +
+          `（求解器 generic_inference${snapshotVersion ? ` · 快照 ${snapshotVersion}` : ""}）`,
+        /**
+         * 结论快照。⚠ 两项都是**计数（个/处·无量纲）**，与上面 `patch` 里那个带量纲的属性值
+         * 分处不同字段、不共用任何键 —— 前科 `G-LEVER-SNAPSHOT-UNIT-LIE` 正是把一个无量纲的数
+         * 塞进了一个有量纲的字段名下，屏上看不出、审批人照着假数签了字。
+         */
+        impact: {
+          affectedObjects: out.affectedObjects,
+          changedDerivedFields: out.count,
+          rootTypes: out.rootTypes ?? [],
+        },
+        provenance: { solver: "generic_inference", snapshotVersion: snapshotVersion ?? null },
+      },
+    });
+  };
+  return (
+    <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      <button
+        type="button"
+        className="btn sm primary"
+        data-testid="wi-adopt-hypothesis"
+        disabled={adopt.isPending}
+        onClick={onAdopt}
+      >
+        {adopt.isPending ? "生成草稿中…" : "采纳该假设（→ Action 审批）"}
+      </button>
+      {/* 第一层只留动作本身 + 一个记号；「采纳之后到底会发生什么」是成段口径，降浮层（R-UI-3）。 */}
+      <InfoPopover topic="采纳后会发生什么" testId="wi-adopt">
+        <span data-testid="wi-adopt-body">
+          采纳 = 把这一屏的假设原样造成一张「对象数据变更」审批草稿：写哪个对象、改哪个属性、改成什么值，
+          都直接取屏上这份假设，你不必再去别处重填一遍。草稿进 S2 审批，**审批通过之后**才把这个值写进真实数据
+          并重跑下游派生；在那之前真实数据一个字节都不动（这一页本身仍然是不落库的试算）。
+          若这个属性在你的权限下不可写，建草稿这一步就会被挡下并告诉你哪一格不可写，不会静默丢字段。
+        </span>
+      </InfoPopover>
     </div>
   );
 }
@@ -492,10 +673,13 @@ function WhatIfResult({
   out,
   snapshotVersion,
   assumption,
+  upto,
 }: {
   out: GenericInferenceOutput;
   snapshotVersion?: string;
-  assumption: { typeKey: string; objectId: string; prop: string; value: string };
+  assumption: Assumption;
+  /** 判据 U2 分段闸（唯一出处 = `useSolverStep.upto`）：本区每一段经它决定渲染与否。 */
+  upto: (stepNo: number) => boolean;
 }) {
   const rows = out.rows ?? [];
   const assumptionLine = `${assumption.typeKey}/${assumption.objectId}.${assumption.prop} = ${assumption.value}`;
@@ -515,13 +699,18 @@ function WhatIfResult({
             </span>
           </InfoPopover>
         </div>
+        {/* 判据 U6：「无下游影响」**也是一个结论**，而且是最适合直接下手的那种（改了不波及别人）。
+            把按钮只挂在有 deltas 的那一支，会让用户在这一支无处可去——判据卡的正是这件事。 */}
+        <AdoptHypothesisButton assumption={assumption} out={out} snapshotVersion={snapshotVersion} assumptionLine={assumptionLine} />
       </div>
     );
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="wi-result">
-      {/* 影响面计数 —— 判据 U5：每个结论数字都指名道姓说出谁算的、算在什么之上。 */}
+      {/* 影响面计数 —— 判据 U5：每个结论数字都指名道姓说出谁算的、算在什么之上。
+          U2 分段闸：这一格是图上 `scope` 节点（layer 2 = 第 3 步「读数」）的产物。 */}
+      {upto(3) && (
       <div className="panel" data-testid="wi-impact">
         <div className="section-title">
           ② 影响面
@@ -562,9 +751,14 @@ function WhatIfResult({
             <div style={{ fontSize: 12, color: "var(--muted)" }}>假设根类型</div>
           </div>
         </div>
+        {/* 判据 U6「结论即动作」：动作就摆在结论旁边，参数由这份结论直接带过去（见组件头注）。 */}
+        <AdoptHypothesisButton assumption={assumption} out={out} snapshotVersion={snapshotVersion} assumptionLine={assumptionLine} />
       </div>
+      )}
 
-      {/* before / after deltas 表 */}
+      {/* before / after deltas 表。
+          U2 分段闸：逐行明细是图上 `deltas` 节点（layer 3 = 第 4 步），比影响面计数**晚一步**。 */}
+      {upto(4) && (
       <div className="panel" data-testid="wi-deltas">
         <div className="section-title">
           ③ 下游 before → after（{rows.length}）
@@ -609,6 +803,7 @@ function WhatIfResult({
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 }

@@ -575,3 +575,65 @@ describe("§4 · 变异反证：拆掉联动，必须红在「改了边但图没
     expect(screen.queryByTestId("sandbox-config-graph-svg")).toBeNull();
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+describe("§5 · 判据 U4b（WO-U4B-U1-U8-SIM）：被关掉的边**留在图上并带理由**", () => {
+  /**
+   * ── 为什么本页这一格是「**已经符合**」而不是「本单做的」───────────────────────
+   * `docs/PRD-harness-ux-adoption.md` §4 表长期把 `sim-sandbox` 的 U4b 记为**不符合**，
+   * 理由写的是「`EdgeActivePanel` 是独立面板，不是画在因果/传导图上的一层」。
+   * 那句话在**当时**属实，但 `WO-SANDBOX-CONFIG-COLLAPSE` 把关系图搬进本面板之后就过期了：
+   * `buildRelationGraph(rules, disabledRuleKeys, …)` 让关掉的边 `active:false` **留在图上**，
+   * `RelationEdgePath` 给它虚线 + `--danger` 描边 + `aria-label` 补「本次推演已关掉」，
+   * `EdgeFormulaList` 再补一条**可见文字**「本次推演已关掉」，图例里还有并列的一条
+   * 「已关掉的边（本次推演假装它不存在）」。
+   * 形态（铁律 0.6）：**「我用『那份 §4 分析当时的结论』当作『今天的实现是什么』的证据，
+   * 而前者并不度量后者」** —— 表是人写的、会过期。所以本单不改实现，只**补一道门**，
+   * 让这一格以后由机器说话。
+   *
+   * 判据两条缺一不可（与本单其余 U4b 用例同形态）：
+   *   ① 被排除项**真的还在同一张图里**（不是从图上消失）；
+   *   ② 它**带排除理由**（看得见"为什么"，不是只有一根灰线）。
+   */
+  it("U4b-C5 · 关掉 `b_to_c`：该边仍在图上、标 `data-active=false`、且屏上有可见的「本次推演已关掉」", async () => {
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <SandboxConfigPanel
+          inputCards={[{ id: "probe", title: "探针", hint: "U4b", node: <span>x</span> }]}
+          relationTable={<span data-testid="probe-table">表</span>}
+          focusNodeKey={null}
+          disabledRuleKeys={["b_to_c"]}
+        />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("sandbox-config-graph-svg")).toBeTruthy());
+
+    // ── 判据①：被关掉的那条边**还在同一张图里**（同一个 svg 容器内），只是降级 ──
+    const svg = screen.getByTestId("sandbox-config-graph-svg");
+    const off = within(svg).getByTestId("sandbox-config-edge-b_to_c");
+    expect(off, "关掉的边从图上消失了 ⇒ 用户不知道自己关了什么").toBeTruthy();
+    expect(off.getAttribute("data-active")).toBe("false");
+    // 入选的边仍并列在同一张图上（"同图"要的是两者并列，不是把入选项换成被排除项）。
+    expect(within(svg).getByTestId("sandbox-config-edge-a_to_b").getAttribute("data-active")).toBe("true");
+    // 降级走**计算样式**上的虚线，不是类名（类名判据骗得过，线型骗不过）。
+    expect(off.style.strokeDasharray, "只改了颜色没改线型 ⇒ 低对比主题下等于没表达").not.toBe("none");
+
+    // ── 判据②：**理由可见**（不是只有一根灰线，也不是只藏在 aria/title 里）──
+    const why = screen.getByTestId("sandbox-config-formula-off-b_to_c");
+    expect(why.textContent).toContain("本次推演已关掉");
+    expect(why).toBeVisible();
+    // 图例把「已关掉的边」与其余编码**并列**登记（参照件那张六色图例的我们这一侧）。
+    expect(screen.getByTestId("sandbox-config-graph-legend").textContent).toContain("已关掉的边");
+  });
+
+  it("U4b-C5-反向哨兵 · 一条都没关时屏上不该出现「已关掉」（证上一条不是恒真）", async () => {
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <SandboxConfigPanel inputCards={[]} relationTable={<span />} focusNodeKey={null} disabledRuleKeys={[]} />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("sandbox-config-graph-svg")).toBeTruthy());
+    expect(screen.queryByTestId("sandbox-config-formula-off-b_to_c")).toBeNull();
+    expect(screen.getByTestId("sandbox-config-edge-b_to_c").getAttribute("data-active")).toBe("true");
+  });
+});

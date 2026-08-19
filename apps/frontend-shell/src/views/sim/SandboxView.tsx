@@ -37,6 +37,8 @@ import EdgeActivePanel from "./EdgeActivePanel";
 import { SimComparePanel } from "./SimComparePanel";
 import { SandboxConsole, type SandboxConsoleRailSection } from "./SandboxConsole";
 import { SandboxImpactBand } from "./SandboxImpactBand"; // WO-SANDBOX-V3 · ③下区影响带（本文件是它唯一的生产调用方）
+// WO-U2-STEPWISE-2 · 判据 U2（分步标口径）：步骤态真正驱动结果分段（不是挂一条装饰步骤条）。
+import { SolverStepBar, useSolverStep, type SolverStep } from "./SolverStepBar";
 // WO-SANDBOX-CONFIG-UX · 扰动因素 × 本体关系 同屏配置面板（本文件是它唯一的生产调用方）
 import SandboxConfigPanel from "./SandboxConfigPanel";
 import { relationNodeKey } from "./sandboxRelationGraph";
@@ -395,7 +397,51 @@ function SimGovernanceBanner({
  *  取 3 与规范 §2 R-UI-2「一屏最多三级」同源 —— 第一层要能一眼扫完，不是把表搬上来。 */
 const FIRST_LAYER_KPIS = 3;
 
+/**
+ * WO-U2-STEPWISE-2 · 判据 **U2** 的步骤契约（本页无 `ReasoningGraph`，故按 `SolverStep` 直写）。
+ *
+ * 四步 = 本页真实的那条推演链（逐条对着本文件里发请求的那几处写，`data` 一律真字段名）：
+ *   建会话与配置 → 施加扰动（落在当前 tick） → 推进 tick（沿本体链路扩散） → 影响带读数。
+ * ⚠ 这不是「操作分几步做」：闸住的是**屏上的数**（全局态读数 / 扰动前后值 / 影响带 delta），
+ * 不是左区那些输入控件 —— 输入区全程可用，任何一步都能改。
+ */
+const SB_STEPS: SolverStep[] = [
+  {
+    key: "session",
+    label: "会话与配置",
+    data: "SimSession.id / cfg.stateVars / scope.baseIds",
+    solver: "页面入参 · 未求解",
+    rule: "整页推演跑在被隔离的推演世界里（worldId = SimSession.id）；沙盘是模拟态，采纳才经 Action 正门写真值",
+  },
+  {
+    key: "perturb",
+    label: "施加扰动",
+    data: "perturbations[]（kind / objectType / stateVar / mode / value）+ 全局态 before → after",
+    solver: "POST /a/v1/sim/sessions/{id}/perturbations",
+    rule: "扰动落在**当前 tick**（不推进时间）；填了持续 tick 数的到期自动回退",
+  },
+  {
+    key: "tick",
+    label: "世界传播",
+    data: "world.state（逐对象状态变量）/ curTick / worldOrigin",
+    solver: "POST /a/v1/sim/sessions/{id}/tick",
+    rule: "每 tick 沿本体链路把扰动扩散到下游；origin=MEASURED 是后端算的世界态、DERIVED 是合成占位——两者不许混读",
+  },
+  {
+    key: "impact",
+    label: "影响带读数",
+    data: "impact-analysis 响应（deltas / basis.divisor / worldStateSource / worldObjectCount）",
+    solver: "POST /a/v1/simulation/impact-analysis",
+    rule: "投影口径（basis.kind = PROJECTION），不是实测值；世界态出处与对象数常驻第一层",
+  },
+];
+
 export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
+  /**
+   * 判据 U2 步骤态。默认末步 = 完整结果（与改前屏面逐字节一致 ⇒ 存量测试零回归）。
+   * `upto(n)` 是本页唯一分段闸：点第 N 步 ⇒ 屏上的数只显示到第 N 步为止。
+   */
+  const { active: sbStep, setActive: setSbStep, upto } = useSolverStep(SB_STEPS.length);
   const cfgQuery = useQuery({
     queryKey: ["a", "sim", "view-config"],
     queryFn: fetchSimViewConfig,
@@ -1459,7 +1505,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                 。沙盘是<b>模拟态</b>，采纳才经 Action 正门写真值（R4）。
               </div>
 
-              {lastPerturbation && (
+              {/* U2 分段闸：「最近一次扰动 + 全局态 before→after」是第 2 步「施加扰动」的产物。 */}
+              {lastPerturbation && upto(2) && (
                 <div
                   className={styles.sub}
                   data-testid="sandbox-perturbation-last"
@@ -1790,6 +1837,13 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           这是刻意的取舍，不是漏改格式。 */}
       {mode !== "now" ? <SandboxModePane mode={mode} /> : null}
       {mode !== "now" ? null : (
+      <>
+      {/* ── 判据 U2 · 分步推演（步骤态**真正驱动**顶栏读数 / 扰动回执 / 影响带的分段）─────
+          第 1 步的产物 = 左区那整块会话与配置（已在屏上，不再复述一遍）。
+          ⚠ 闸住的是**数**不是控件：任何一步左区输入都照常可用。 */}
+      <div data-testid="sandbox-steps-panel">
+        <SolverStepBar steps={SB_STEPS} active={sbStep} onSelect={setSbStep} testId="sb-steps" />
+      </div>
       <SandboxConsole
         /**
          * WO-SANDBOX-DECLUTTER · **主屏唯一保留的治理信号**。
@@ -1819,6 +1873,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
          */
         topTags={
           <>
+            {/* U2 分段闸：顶栏这一整条是第 3 步「世界传播」的读数（world.state / curTick / origin）。
+                停在第 1/2 步时它整条退场 —— 那两步还没推进过时间，屏上不该挂着一份世界态。 */}
+            {upto(3) && (
             <span
               data-testid="sandbox-kpis"
               style={{ display: "flex", gap: 8, alignItems: "center", font: "600 12px var(--font-mono)" }}
@@ -1951,6 +2008,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                 </span>
               </InfoPopover>
             </span>
+            )}
           </>
         }
         // 旧主屏 tick 控制条：推进 / 存档 / 分支 / 采纳 / tick 时间轴 heat（整块搬来，行为不变）
@@ -2038,7 +2096,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
          * 在此之前 `ImpactAnalysisPanel` 只挂在「试一手」模式手填的假设上（形态③「接了线接错地方」，
          * 取证见 `SandboxImpactBand.tsx` 文件头）。沙盘「现状」屏此前零渲染它。
          */
+        // U2 分段闸：影响带是第 4 步（impact-analysis 的 deltas / basis / 世界态出处）——链走完才有它。
         impactZone={
+          !upto(4) ? null : (
           <SandboxImpactBand
             sessionId={sessionId}
             change={lastPerturbation?.change ?? null}
@@ -2047,6 +2107,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
             curTick={curTick}
             stateVars={cfg.stateVars}
           />
+          )
         }
         // 旧主屏本体 PmDag 拓扑 → 画布第四模式
         ontologyCanvas={
@@ -2067,6 +2128,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
         scopeBaseIds={scope.baseIds}
         onScopeBaseIdsChange={(baseIds) => setScope((s) => ({ ...s, baseIds }))}
       />
+      </>
       )}
       {/* 页脚：已收编原独立页的深链接索引（第三层 —— 索引不是决策，见组件头）。 */}
       <SandboxConsolidatedLinks />

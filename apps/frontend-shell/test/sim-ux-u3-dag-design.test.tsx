@@ -152,8 +152,8 @@ describe("WO-U3-DAG-DESIGN · optimize-whatif：并列的两次求解，步骤�
   async function openOptimizeWhatifGraph(): Promise<void> {
     loginAs("planner");
     renderApp("/v/optimize-whatif");
-    fireEvent.click(await screen.findByTestId("ow-solve"));
-    await screen.findByTestId("ow-process-graph");
+    // WO-U4B-U1-U8 · 判据 U1：`ow-solve` 提交闸已撤，改任一入参即重算 ⇒ 这里不再点任何按钮。
+    await screen.findByTestId("ow-process-graph", {}, { timeout: 8000 });
   }
 
   it("U3D-C5 · 两次求解是**两个并列节点**，规则各不相同（基线 vs 扰动后各解一次）", async () => {

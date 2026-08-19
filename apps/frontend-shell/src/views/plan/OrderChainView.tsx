@@ -9,6 +9,8 @@ import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { LayeredDag, type DagEdgeDef, type DagNodeDef } from "@/components/Dag/LayeredDag";
 // WO-SANDBOX-53CELLS · 判据 U3（点节点看凭什么）：本页两张图（ofc-dag / problem-dag）此前都没传 onNodeClick。
 import { DagNodeInspector, type DagNodeFacts } from "../sim/DagNodeInspector";
+// WO-U2-STEPWISE-2 · 判据 U2（分步标口径）：步骤态真正驱动结果分段（不是挂一条装饰步骤条）。
+import { SolverStepBar, useSolverStep, type SolverStep } from "../sim/SolverStepBar";
 import { useActionDraft } from "../sim/shared";
 import { Provenance } from "@/components/Provenance";
 import type { AffectedOrderRowVM, AffectedOrdersOutputVM } from "@/api/types";
@@ -354,6 +356,43 @@ function ProblemNarrativePanel({ group, categoryLabel }: { group: OrderProblemGr
 }
 
 /** 订单全链聚合（renderer=order-chain，§7.16）：affected_orders 扩展输出消费面 */
+/**
+ * WO-U2-STEPWISE-2 · 判据 **U2** 的步骤契约（本页无 `ReasoningGraph`，故按 `SolverStep` 直写）。
+ *
+ * ⚠ **只有三步，是实测逼出来的，不是偷工**：`affected_orders` 的输出白名单
+ * （`apps/datacore/src/solvers/service.ts:516`）是
+ * `["baseId","affected","total","count","columns","rows","fallback","problems","summary"]`
+ * —— `rows` / `summary` / `problems` **同出一次求解、互不为输入**，是**并列产物**不是三步。
+ * 把它们摊成三步会画出一条不存在的因果链（「先有明细才有问题归类」是假的），
+ * 那正是判据 U2 点名要排除的装饰。故第 2 步如实写「本层 3 个并列产物」，
+ * 与共享投影 `toSolverSteps` 处理并列层的写法同一条纪律（有损投影必须写在脸上）。
+ *
+ * 真正**在求解之后**的只有第 3 步：经营看板由前端拿 `rows[]` × 参考单价投影，非求解器输出。
+ */
+const OC_STEPS: SolverStep[] = [
+  {
+    key: "scope",
+    label: "筛选与取数",
+    data: "base 筛选值 + 本体快照 snapshotVersion",
+    solver: "页面入参 · 未求解",
+    rule: "时窗 [T−7, T+14] 内、风险基地命中的订单；跨基地订单计入其首个关联风险基地",
+  },
+  {
+    key: "solve",
+    label: "一次求解 · 三个并列产物",
+    data: "rows[]（so/cust/seg/model/qty/due/delay/risks）∥ summary（orderCount/totalQty/custCount/revenue）∥ problems[]（category/…）",
+    solver: "affected_orders",
+    rule: "本层 3 个产物同出一次求解、互不为输入，规则逐个不同（明细逐单 · 汇总求和 · 问题按 category 归并）——步骤条压不进一句话",
+  },
+  {
+    key: "econ",
+    label: "经营估算",
+    data: "由 rows[] 投影（seg 参考单价 segPrice · 参考毛利率 segMargin）",
+    solver: "前端投影 · 非求解器输出",
+    rule: "营收(亿) = 套数 × 参考单价(万元/套) ÷ 1e4；毛利 = 营收 × 参考毛利率；缺参考值取 0 不臆造 —— 估算数，不是财务记账数",
+  },
+];
+
 export default function OrderChainView({ view }: ViewRendererProps) {
   // 去电池锁死 8a（R14）：问题分类标签 + 产品段配色由 ViewConfig.layout 声明，常量仅兜底
   const categoryLabels = (view.layout?.categoryLabels as Record<string, string> | undefined) ?? CATEGORY_LABEL;
@@ -372,6 +411,11 @@ export default function OrderChainView({ view }: ViewRendererProps) {
    */
   const selectedObjects = useSessionStore((s) => s.selectedObjects);
   const inCtx = (so: string) => selectedObjects.some((o) => o.objectType === "Order" && o.objectId === `ord-${so}`);
+  /**
+   * 判据 U2 步骤态。默认末步 = 完整结果（与改前屏面逐字节一致 ⇒ 存量测试零回归）。
+   * `upto(n)` 是本页唯一分段闸：点第 N 步 ⇒ 屏上的数只显示到第 N 步为止。
+   */
+  const { active: ocStep, setActive: setOcStep, upto } = useSolverStep(OC_STEPS.length);
 
   const { data, isLoading } = useQuery({
     queryKey: ["b", "affected-orders", { base: baseFilter }],
@@ -544,7 +588,15 @@ export default function OrderChainView({ view }: ViewRendererProps) {
       */}
       <KitQuoteScopePanel baseFilter={baseFilter} rows={allData?.out.rows ?? []} />
 
-      {/* 财务影响汇总条 */}
+      {/* ── 判据 U2 · 分步推演（步骤态**真正驱动**下面各块的分段）─────────────────────
+          ⚠ 上面那块「这次算的是谁」走的是**另一个求解器**（齐套 / 报价），不在本条求解链上，
+          故不受本步骤条闸控 —— 把别人的链圈进来才是编。 */}
+      <div className="panel" style={{ marginBottom: 14 }} data-testid="oc-steps-panel">
+        <SolverStepBar steps={OC_STEPS} active={ocStep} onSelect={setOcStep} testId="oc-steps" />
+      </div>
+
+      {/* 财务影响汇总条。U2 分段闸：summary 是第 2 步那次求解的并列产物之一。 */}
+      {upto(2) && (
       <div className={styles.sumBar} data-testid="oc-summary">
         <div className={simStyles.kpi}>
           <b data-testid="oc-sum-orders">{out.summary.orderCount}</b>
@@ -580,8 +632,11 @@ export default function OrderChainView({ view }: ViewRendererProps) {
           <span>{zh.orderChain.sumRevenue}</span>
         </div>
       </div>
+      )}
 
-      {/* 经营数据看板 econTable（PRD-IND-order-aggregate §4.5-A）：产能/库存/在制/原料/营收/毛利按细分聚合 */}
+      {/* 经营数据看板 econTable（PRD-IND-order-aggregate §4.5-A）：产能/库存/在制/原料/营收/毛利按细分聚合。
+          U2 分段闸：它是第 3 步「经营估算」——前端拿 rows[] × 参考单价投影，比求解器输出**晚一步**。 */}
+      {upto(3) && (
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span>{zh.orderChain.econSection}</span>
@@ -650,8 +705,10 @@ export default function OrderChainView({ view }: ViewRendererProps) {
         {/* 假3 披露脚注（抄 OrderAggView）：营收/毛利经 SEG 参考价勾稽（估算口径·可溯）；库存诚实"—"。 */}
         <div className={simStyles.noteInfo} data-testid="oc-econ-footnote">{zh.orderChain.econFootnote}</div>
       </div>
+      )}
 
-      {/* 受影响订单明细 */}
+      {/* 受影响订单明细。U2 分段闸：rows[] 是第 2 步那次求解的并列产物之一。 */}
+      {upto(2) && (
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="section-title">
           {zh.orderChain.detailSection}（{baseFilter || "全部风险基地"}）
@@ -754,8 +811,11 @@ export default function OrderChainView({ view }: ViewRendererProps) {
           {zh.orderChain.caliber}
         </div>
       </div>
+      )}
 
-      {/* 待解决问题卡区（4 类归并） */}
+      {/* 待解决问题卡区（4 类归并）。U2 分段闸：problems[] 是第 2 步那次求解的并列产物之一
+          （与 rows / summary 同层 —— 它不是「明细之后」算出来的，摊成两步就是编因果）。 */}
+      {upto(2) && (
       <div className="panel">
         <div className="section-title">{zh.orderChain.problemSection}</div>
         <div className={styles.probGrid} data-testid="oc-problems">
@@ -791,6 +851,7 @@ export default function OrderChainView({ view }: ViewRendererProps) {
           })}
         </div>
       </div>
+      )}
 
       {/* inference-process 横切：订单全链推演的编排过程 DAG */}
       <InferenceProcessPanel testId="inference-order" solved />
@@ -1214,13 +1275,56 @@ function ProblemDag({ group, categoryLabel }: { group: OrderProblemGroup; catego
   const edges: DagEdgeDef[] = [];
   group.rootChains.forEach((chain, ci) => {
     let prev: string | null = null;
-    chain.layers.forEach((layer, li) => {
-      const id = `${ci}-${layer.kind}`;
-      nodes.push({ id, layer: li, label: layer.label, sub: li > 0 ? chain.orderId : undefined, color: CHAIN_COLORS[li] });
+    /*
+      ⚠ 层号**按 kind 取**，不按数组下标 —— 与 `deriveProblemNarrative:184` 那句
+      「按 kind 取层（不按下标——下标顺序变了就会张冠李戴）」同一条纪律。
+      改前这里用的是 `forEach((layer, li) => … layer: li)`：某一单缺「判定」时，
+      它的「根因」会被摆到判定列，屏上读成"这单的判定是 XX"——**张冠李戴且看不出来**。
+    */
+    LAYER_KINDS.forEach((kind, li) => {
+      const layer = chain.layers.find((l) => l.kind === kind);
+      const id = `${ci}-${kind}`;
+      if (layer) {
+        nodes.push({ id, layer: li, label: layer.label, sub: li > 0 ? chain.orderId : undefined, color: CHAIN_COLORS[li] });
+      } else {
+        /*
+          判据 U4b · 这一单**缺**的那一层：留在图上并可见地降级，不是把后面几层往前挪。
+          缺一层是求解器的诚实缺席（`deriveProblemNarrative` 已把它写进 gaps），
+          图上却看不出来 —— 于是"话"说了缺口、"图"装作完整，两者对不上。
+        */
+        nodes.push({
+          id,
+          layer: li,
+          label: LAYER_KIND_LABEL[kind],
+          sub: chain.orderId,
+          state: "excluded",
+          excludedReason: "求解器未给出这一层",
+        });
+      }
       if (prev) edges.push({ from: prev, to: id });
       prev = id;
     });
   });
+  /*
+    判据 U4b · **没推出根因链的那几单**。
+    改前它们只活在两处文字里：`deriveProblemNarrative` 的 gaps，与节点面板里那句
+    「⚠ N 单未推出根因链——**那几单的结论不在本图上**，别拿共性根因顶替」——
+    页面自己逐字承认了它们不在图上，这正是判据 U4b 点名的那件事本身。
+    ⛔ 只有**数**、没有 orderId：契约 `OrderProblemGroupSchema` 给的是 `orderCount`（数）
+      与 `rootChains[]`（有链的那几单），**被排除单的 id 后端没下发**。
+      故这里画一个**聚合**的被排除节点、标注真实条数，不编造 id 也不假装逐单可点。
+  */
+  const unchained = group.orderCount - group.rootChains.length;
+  if (unchained > 0) {
+    nodes.push({
+      id: "unchained",
+      layer: 0,
+      label: `${unchained} 单`,
+      sub: `共 ${group.orderCount} 单`,
+      state: "excluded",
+      excludedReason: "求解器未推出根因链，不在本图上",
+    });
+  }
   return (
     <>
       <LayeredDag nodes={nodes} edges={edges} layerTitles={CHAIN_TITLES} testId="problem-dag" onNodeClick={(n) => setInspect(n.id)} />
@@ -1244,10 +1348,44 @@ function ProblemDag({ group, categoryLabel }: { group: OrderProblemGroup; catego
  * 所以这里如实写「四层链的投影规则」，并把「差一个 ruleRef 字段」记进交单报告的可派单里。
  */
 function problemNodeFacts(nodeId: string, group: OrderProblemGroup, categoryLabel: string): DagNodeFacts {
+  // 判据 U4b · 被排除的那一聚合节点也要点得开（否则图上多了个灰块、点开却是空的）。
+  if (nodeId === "unchained") {
+    const n = group.orderCount - group.rootChains.length;
+    return {
+      title: `未推出根因链 · ${n} 单`,
+      verdict: `本类 ${group.orderCount} 单里有 ${n} 单没有根因链`,
+      src: `求解器 affected_orders · problems[category=${group.category}].orderCount 与 rootChains.length 之差`,
+      rule: "覆盖度 = rootChains.length ÷ orderCount；引擎推不出根因链的单不入链，按差值如实计数",
+      ruleKind: "projection",
+      formula: `${group.orderCount} 单 − ${group.rootChains.length} 单 = ${n} 单`,
+      inputs: [
+        { label: "本类涉及订单", value: `${group.orderCount} 单` },
+        { label: "推出根因链", value: `${group.rootChains.length} 单` },
+      ],
+      note:
+        "⛔ 这几单的**订单号后端没有下发**（契约 `OrderProblemGroupSchema` 只给 orderCount 与 rootChains[]）——" +
+        "所以这里只画得出条数，画不出是哪几单。别拿本类共性根因顶替它们的结论。",
+    };
+  }
   const [ciStr, kind] = nodeId.split("-");
   const chain = group.rootChains[Number(ciStr)];
   const layer = chain?.layers.find((l) => l.kind === kind);
   const kindLabel = LAYER_KIND_LABEL[(kind ?? "order") as LayerKind] ?? (kind ?? "");
+  // 判据 U4b · 某一单**缺**的那一层：说清是"引擎没给"，不是"页面没画"。
+  if (chain && !layer) {
+    return {
+      title: `${kindLabel} · 求解器未给出`,
+      verdict: `订单 ${chain.orderId} 的「${kindLabel}」这一层缺席`,
+      src: `求解器 affected_orders · problems[category=${group.category}].rootChains[orderId=${chain.orderId}].layers —— 该链里没有 kind=${kind} 这一项`,
+      rule: "根因链四层按 kind 对位渲染；缺哪一层就在哪一层标缺席，**不把后面几层往前挪**（挪了会张冠李戴）",
+      ruleKind: "projection",
+      inputs: [
+        { label: "该单已有层", value: chain.layers.map((l) => LAYER_KIND_LABEL[l.kind]).join(" → ") || "—" },
+        { label: "缺席层", value: kindLabel },
+      ],
+      note: "诚实缺席：这一层是引擎没推出来，不是前端没渲染。要补得去看求解器为什么这一跳推不出。",
+    };
+  }
   return {
     title: `${kindLabel} · ${layer?.label ?? nodeId}`,
     verdict: chain ? `订单 ${chain.orderId} · ${categoryLabel}类问题` : undefined,

@@ -1,4 +1,6 @@
-import { useCallback, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
+// 判据 U8 明细面板里的两条**成段诚实位**降进浮层（规范 §1 · `check-ui-first-layer` D2b）。
+import { InfoPopover } from "@/components/InfoPopover";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { BASE_REGISTRY, BUSINESS_TYPE_LABEL, objectiveHeader } from "@platform/contracts";
@@ -17,7 +19,10 @@ import { useLiveSolver } from "./useLiveSolver";
 // WO-U3-DAG-REST · 判据 U3（过程图 + 点节点看凭什么）—— 结构与画法与样板两页同源，
 // 见 `reasoningGraph.ts` 头注；本页**不另建**一套。
 import { ProcessGraphPanel } from "./ProcessGraphPanel";
-import { assertReasoningGraph, type ReasoningGraph } from "./reasoningGraph";
+// WO-U2-STEPWISE-2 · 判据 U2（分步标口径）。步骤契约**投影自本页同一份 `GS_GRAPH`**，不另写一份。
+// ⚠ `InfoPopover` 已在本文件顶部导入（`WO-U4B-U1-U8-SIM` 收编时加的），本单不再重复导入。
+import { SolverStepBar, useSolverStep } from "./SolverStepBar";
+import { assertReasoningGraph, toSolverSteps, type ReasoningGraph } from "./reasoningGraph";
 import { MultiObjWhatifPanel } from "./MultiObjWhatifPanel";
 import { GlobalSimLevers, type LeverState, type FreeLever, type LeverCandidate, type LeverDeltaVM } from "./GlobalSimLevers";
 import { GlobalSimScenarioBar, type ScenarioSnapshotInput } from "./GlobalSimScenarioBar";
@@ -176,6 +181,16 @@ const GS_GRAPH: ReasoningGraph = assertReasoningGraph({
   ],
 });
 
+/**
+ * WO-U2-STEPWISE-2 · 判据 **U2** 的步骤契约 —— **投影自 `GS_GRAPH`，不手写第二份**。
+ *
+ * 四步 = 图的四层：入参与杠杆 → 联合求解 → 解的三个面 → 读数与结论。
+ * 第 3 层是**并列层**（获排 ∥ 被挤 ∥ 产能台账，同一次解的三个互补切片），
+ * `toSolverSteps` 会如实写「本层 3 个并列环，规则逐环不同 ⇒ 在过程图上点各环看」，
+ * **不挑一个节点的规则冒充全层**（有损投影必须写在脸上·见 reasoningGraph.ts 头注）。
+ */
+const GS_STEPS = toSolverSteps(GS_GRAPH);
+
 /** ⑤ 方法旋钮目标键（与求解器 objectiveValues 同口径·中文标签）。 */
 const OBJ_KNOB_KEYS = ["ontime", "cost", "changeover", "delay", "fgInventory"] as const;
 type ObjKnobKey = (typeof OBJ_KNOB_KEYS)[number];
@@ -264,12 +279,41 @@ const NON_DRILLABLE_NOTE: Record<string, string> = {
   wip: "在产承诺 · 预扣产能（非可细排订单）",
   forecast: "销售预测需求（未落订单 · 不可细排）",
 };
-function DrillAffordance({ kind, id, label, testId, prov }: { kind: string; id: string; label: string; testId: string; prov?: Prov }) {
+/**
+ * ══ 判据 U8「看明细不换页」· 本页此前的病灶就在这个组件里 ═══════════════════════
+ *
+ * 改前：唯一的下钻手段是 `<Link to="/v/project-sim?order=…">进项目推演细排 →`
+ * ——**类名逐字就叫 `drillLink`**，下钻本身是靠跳页实现的。
+ * 判据点名的正是这件事：「想看细节 ⇒ 被带走 ⇒ 现场清零」
+ * （刚调了一整屏杠杆/场景，跳一次全没了，回来还得重调）。
+ *
+ * 改后：**两个 affordance 并列，各答各的问题**——
+ *  · 「看明细」= 就地展开（`onInspect`，本页内 `OrderDrillPanel`）⇒ 判据要的那一半；
+ *  · 「去项目推演页」= **保留**跳页，但明说它是"去做别的事"。判据原文写得很清楚：
+ *    「跳去另一张页做别的事（交接/切视角）**不算违反**」——所以这条出口不该删，
+ *    删了反而丢功能；错的是"只有它"。
+ */
+function DrillAffordance({
+  kind, id, label, testId, prov, onInspect,
+}: { kind: string; id: string; label: string; testId: string; prov?: Prov; onInspect?: (id: string) => void }) {
   if (kind === "order") {
     return (
-      <Link className={styles.drillLink} to={`/v/project-sim?order=${encodeURIComponent(id)}`} data-testid={testId}>
-        {label}
-      </Link>
+      <span style={{ display: "inline-flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+        {onInspect && (
+          <button
+            type="button"
+            className={styles.drillLink}
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit" }}
+            data-testid={`${testId}-inspect`}
+            onClick={() => onInspect(id)}
+          >
+            {label}
+          </button>
+        )}
+        <Link className={styles.drillLink} to={`/v/project-sim?order=${encodeURIComponent(id)}`} data-testid={testId}>
+          去项目推演页 ↗
+        </Link>
+      </span>
     );
   }
   const note = NON_DRILLABLE_NOTE[kind] ?? "非可细排项（非销售订单）";
@@ -282,6 +326,118 @@ function DrillAffordance({ kind, id, label, testId, prov }: { kind: string; id: 
     >
       {note}
     </span>
+  );
+}
+
+/** `OrderDrillPanel` 要的那几样——全部是**本页已经拿到**的真值，本组件不另调任何接口。 */
+export interface OrderDrillInput {
+  orderId: string;
+  /** 订单台账那一行（`GET /a/v1/objects?type=Order` 投影，见 `orderList`）。查不到 ⇒ null，照实说。 */
+  order: { id: string; cust: string; model: string; qty: number; due: string; base: string; businessType: string } | null;
+  /** 求解器排产行（`schedule[]` 里 orderId 命中的那一行）。没有 ⇒ null（= 这一单根本没排上）。 */
+  row: { packBase: string; packWindow: number; deliverDay: number; transitDays: number; freightCost: number; status: string } | null;
+  /** 被挤单那一条（`displaced[]`）。 */
+  displaced: { qty: number; kind: string; model?: string } | null;
+  /** 固定单那一条（`frozen[]`）。 */
+  frozen: { base: string; window: number; qty: number } | null;
+  /** 该单落点基地×窗口的产能占用（`capacityLedger` 命中格）——"被谁挤掉的"落在这里。 */
+  ledger: { baseId: string; window: number; cap: number; allocated: number } | null;
+  baseNameOf: (id: string) => string;
+}
+
+/**
+ * ══ 判据 U8「看明细不换页」· `global-sim` 的就地明细 ══════════════════════════
+ *
+ * 判据要的是「点一条结论能**就地**展开明细，不跳走」。本面板因此是**内联展开**
+ * （不是路由、不是新页），关掉即恢复原样，杠杆/场景一格不动。
+ *
+ * ⛔ **每一个数都必须能指到本页已有的真字段**（见 `OrderDrillInput` 逐字段注释）：
+ *   订单台账 → `orderList`（真 Order 对象）· 排产 → `schedule[]` · 被挤 → `displaced[]` ·
+ *   固定 → `frozen[]` · 产能占用 → `capacityLedger[]`。
+ *   取不到的一律**明说"求解器没给"**，不填占位数字 —— 这一页最容易的错法是给被挤单
+ *   编一个"预计交付日"，而它恰恰是因为没排上才被挤的。
+ *
+ * ⛔ 不用 `<details>`：本仓实测闭合态子节点 `getBoundingClientRect()` 仍返回非零旧矩形，
+ *   屏上看不见、版面门数上不降，两头落空。折叠一律走行内 `display`（这里是条件渲染）。
+ */
+function OrderDrillPanel({ input, onClose }: { input: OrderDrillInput; onClose: () => void }) {
+  const { orderId, order, row, displaced, frozen, ledger, baseNameOf } = input;
+  const rows: { k: string; v: string }[] = [];
+  if (order) {
+    rows.push({ k: "客户", v: order.cust });
+    rows.push({ k: "型号", v: order.model });
+    rows.push({ k: "数量", v: `${order.qty} 套` });
+    rows.push({ k: "交期", v: order.due });
+    rows.push({ k: "归属基地", v: order.base });
+    if (order.businessType) rows.push({ k: "业务类型", v: order.businessType });
+  }
+  if (frozen) {
+    rows.push({ k: "固定占位", v: `${baseNameOf(frozen.base)} · 窗口 ${frozen.window} · ${frozen.qty} 套（产能预扣）` });
+  }
+  if (displaced) {
+    rows.push({ k: "被挤量", v: `${displaced.qty} 套 · 未获排` });
+  }
+  if (row) {
+    rows.push({ k: "Pack 落点", v: `${baseNameOf(row.packBase)} · 完工窗 ${row.packWindow}` });
+    rows.push({ k: "交付日", v: `第 ${row.deliverDay} 天（含在途 ${row.transitDays} 天）` });
+    rows.push({ k: "运费", v: String(row.freightCost) });
+    rows.push({ k: "排产状态", v: row.status });
+  }
+  if (ledger) {
+    const util = ledger.cap > 0 ? Math.round((ledger.allocated / ledger.cap) * 100) : null;
+    rows.push({
+      k: "落点产能",
+      v: `${baseNameOf(ledger.baseId)} 窗口 ${ledger.window}：已占 ${ledger.allocated} / 上限 ${ledger.cap}${util != null ? `（${util}%）` : ""}`,
+    });
+  }
+  return (
+    <div
+      className="panel"
+      data-testid="global-sim-drill-panel"
+      data-order={orderId}
+      style={{ marginTop: 10, borderLeft: "3px solid var(--accent)" }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <b data-testid="global-sim-drill-panel-title">接单可行性细排 · {orderId}</b>
+        <button className="btn sm" style={{ marginLeft: "auto" }} data-testid="global-sim-drill-close" onClick={onClose}>
+          收起
+        </button>
+      </div>
+      {rows.length > 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "3px 12px", fontSize: 12.5 }}>
+          {rows.map((r) => (
+            <Fragment key={r.k}>
+              <span style={{ color: "var(--muted2)" }}>{r.k}</span>
+              <span data-testid={`global-sim-drill-f-${r.k}`}>{r.v}</span>
+            </Fragment>
+          ))}
+        </div>
+      ) : (
+        /*
+          ⚠ 第一层只留**短结论 + 一个 `?`**，成段解释进浮层（规范 §1 · `check-ui-first-layer` D2b
+          咬 ≥24 字的成段说明）。初稿两段话直接摊在第一层，被该门当场咬出
+          「第一层长说明串 17 → 19」——**降层不是删除**，记号留在第一层。
+        */
+        <div style={{ fontSize: 12, color: "var(--muted2)" }} data-testid="global-sim-drill-empty">
+          查不到明细
+          <InfoPopover topic="为什么这一单没有明细" testId="global-sim-drill-empty-why">
+            <span>这一单在订单台账、排产结果、产能台账里都查不到明细——诚实空态，不编造细排。</span>
+          </InfoPopover>
+        </div>
+      )}
+      {/* 诚实位：没排产行 ≠ 数据没取到。两者屏上长得一样、含义完全相反，必须分开说（成段解释在 `?` 里）。 */}
+      {!row && (
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6 }} data-testid="global-sim-drill-norow">
+          无排产行 · 未获排
+          <InfoPopover topic="没有 Pack 落点与交付日是怎么回事" testId="global-sim-drill-norow-why">
+            <span>
+              求解器没有给这一单排产行（schedule[] 里没有它）——所以这里没有 Pack 落点与交付日。
+              这不是取数失败，正是「未获排」本身。
+            </span>
+          </InfoPopover>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -299,6 +455,11 @@ function heatColor(util: number): string {
 type OrderState = "in" | "frozen" | "excluded";
 
 export default function GlobalSimView(_props: ViewRendererProps) {
+  /**
+   * 判据 U2 步骤态。**默认末步 = 完整结果**（与改前屏面逐字节一致 ⇒ 存量测试零回归）。
+   * `upto(n)` 是本页**唯一分段闸**：下面每一块结果都经它决定渲染与否。
+   */
+  const { active: gsStep, setActive: setGsStep, upto } = useSolverStep(GS_STEPS.length);
   const orders = useQuery({ queryKey: ["a", "objects", { type: "Order", view: "global-sim" }], queryFn: () => searchObjects("Order", "") });
   const orderList = useMemo(() => (orders.data?.items ?? []).map((o) => {
     // ② G-UI-2·home 基地 = 首个可产基地 id（真数据·非占位）；base 保留原（数组时逗号串·仅回显兜底）。
@@ -437,6 +598,41 @@ export default function GlobalSimView(_props: ViewRendererProps) {
     return m;
   }, [d]);
 
+  /**
+   * ══ 判据 U8「看明细不换页」· 就地展开的那一单 ═════════════════════════════════
+   * `from` 记的是**从哪一块点开的**：面板就渲染在那一块下面（"就地"的字面意思）。
+   * 只留一个全局面板、渲染在页尾，点被挤单却要滚到页尾去看，等于换了个方式把人带走。
+   */
+  const [drill, setDrill] = useState<{ id: string; from: "card" | "alloc" } | null>(null);
+  const openDrillCard = useCallback((id: string) => setDrill({ id, from: "card" }), []);
+  const openDrillAlloc = useCallback((id: string) => setDrill({ id, from: "alloc" }), []);
+  const closeDrill = useCallback(() => setDrill(null), []);
+
+  /**
+   * 明细面板的入参装配 —— **只从本页已有的真值里取**，一个字段都不另调接口、不编造。
+   * 每一路取不到就给 `null`，由面板显式说"求解器没给"（诚实缺席 ≠ 取数失败）。
+   */
+  const drillInput = useMemo<OrderDrillInput | null>(() => {
+    if (!drill) return null;
+    const id = drill.id;
+    const order = orderList.find((o) => o.id === id) ?? null;
+    const row = (d?.schedule ?? []).find((r) => r.orderId === id) ?? null;
+    const dis = (d?.displaced ?? []).find((x) => x.orderId === id) ?? null;
+    const frz = (d?.frozen ?? []).find((f) => f.orderId === id) ?? null;
+    // 落点格：优先按排产行的 Pack 落点找；没有排产行（= 未获排）就按固定单的占位格找。
+    const at = row ? { baseId: row.packBase, window: row.packWindow } : frz ? { baseId: frz.base, window: frz.window } : null;
+    const ledger = at ? ((d?.capacityLedger ?? []).find((c) => c.baseId === at.baseId && c.window === at.window) ?? null) : null;
+    return {
+      orderId: id,
+      order: order ? { id: order.id, cust: order.cust, model: order.model, qty: order.qty, due: order.due, base: order.base, businessType: order.businessType } : null,
+      row: row ? { packBase: row.packBase, packWindow: row.packWindow, deliverDay: row.deliverDay, transitDays: row.transitDays, freightCost: row.freightCost, status: row.status } : null,
+      displaced: dis ? { qty: dis.qty, kind: dis.kind, model: dis.model } : null,
+      frozen: frz ? { base: frz.base, window: frz.window, qty: frz.qty } : null,
+      ledger,
+      baseNameOf: (b: string) => baseNameById.get(b) ?? b,
+    };
+  }, [drill, orderList, d, baseNameById]);
+
   // WO-GSLIVE-1-COCKPIT · 活②：候选杠杆自结果**按占用率反推**（瓶颈基地在先·R14 目标自真结果非内联）。
   const leverCandidates = useMemo<LeverCandidate[]>(() => {
     if (!d) return [];
@@ -563,13 +759,39 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         <ExportReportButton pageKey="global-sim" build={buildReport} />
       </div>
 
+      {/* ── 判据 U2 · 分步推演（步骤态**真正驱动**下面整屏的分段）───────────────────
+          摆在读数之前：先说清「这一屏分几步算出来的」，再让用户停在任一步只看那一步的数。
+          ⚠ 不是装饰条：点第 N 步 ⇒ 屏上的数只显示到第 N 步为止（闸见各块 `upto(…)`）。 */}
+      <div className={styles.glass} data-testid="global-sim-steps-panel">
+        <SolverStepBar steps={GS_STEPS} active={gsStep} onSelect={setGsStep} testId="gs-steps" />
+        {/* 第 1 步的产物 = 这次联合求解读进去的那组入参。
+            ⚠ 第一层只留**数值与名字**（主目标 / 两个单数）；方法与固定产能这两项本就在上方
+            杠杆区可见，此处不复述（规范 §1：第一层不堆重复项）。 */}
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6 }} data-testid="gs-step-inputs">
+          <span className="mono">{primary}</span>
+          {" · 参与 "}<b data-testid="gs-step-inputs-orders">{orderIds.length}</b>
+          {" · 固定 "}<b data-testid="gs-step-inputs-frozen">{frozenOrderIds.length}</b>
+          {/* 规范 §1：「复算这一屏要带哪些入参」是成段说明（凭什么这么算），降浮层；
+              第一层留 `?` 记号 —— 降层不是删除。 */}
+          <InfoPopover topic="复算这一屏要带哪些入参" testId="gs-step-inputs-why">
+            <span data-testid="gs-step-inputs-why-body">
+              复算这一屏必须带齐这一整组入参：订单三态（参与 / 固定 / 排除）、主目标、方法与权重、
+              固定产能处理方式、全部杠杆。少一样得到的就是另一份排产，不是同一次求解的复现。
+            </span>
+          </InfoPopover>
+        </div>
+      </div>
+
       {/* ① 递进批次会话条（范围 / status / 已提交批次链） */}
       <div className={styles.batchBar} data-testid="global-sim-batchbar">
         <span className={styles.batchScope} title={`规划期被切成若干个「时间窗」，每个时间窗 ${PORT_WINDOW_DAYS} 天（与后端求解器 windowDays 同口径）；产能占用与交付日都按时间窗结算。`}>范围：全 {matrix?.bases.length ?? "—"} 个基地 × {matrix?.windows.length ?? "—"} 个时间窗（每窗 {PORT_WINDOW_DAYS} 天）</span>
         <span>主方案：{SCEN_LABEL[primary]}</span>
+        {/* U2 分段闸：可行/最优判定是图上 `solve` 节点（layer 1 = 第 2 步）读的 feasible/optimal/status。 */}
+        {upto(2) && (
         <span className={`${styles.batchStatus} ${d && !d.feasible ? styles.bad : ""}`} data-testid="global-sim-feasible" title="「可行」= 现有产能下所选订单全部都能排下、没有订单被挤掉；「有被挤单」= 产能不够，部分订单排不下（下方「被挤单」卡逐单可查）。">
           {d ? (d.feasible ? "可行 · 全部订单都排下了" : `${optimalityLabel(d)} · 有被挤单`) : res.isFetching ? "求解中…" : "—"}
         </span>
+        )}
         <span className={styles.batchChain} data-testid="global-sim-batchchain" title="已在产 / 已排定的订单（在产承诺）会先占住对应基地和时间窗的产能；本轮推演把这部分产能视为已被占用、不再重复分配给别的订单。">
           已排定批次 · 先占产能（在产承诺）：
           {committedBatches.length
@@ -731,12 +953,19 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                 </button>
               ))}
             </div>
+            {/* U2 分段闸：最优性 + 守恒判定同属图上 `solve` 节点（layer 1 = 第 2 步）。 */}
+            {upto(2) && (
             <span className={`${styles.miniConserve} ${d && !d.reconciled ? styles.bad : ""}`} data-testid="global-sim-verdict" title="「可证最优」= 精确求解器已从数学上证明这是最好的方案；「可行解 · 未证最优」= 求解器给出了满足约束的方案、但未证明它是最好的（内存态确定性贪心恒落此态）；「产能台账守恒」= 每个基地每个时间窗排下去的量都没超过可用产能、也没有被重复占用（一份产能只算一次）。">
               {d ? `${optimalityLabel(d)} · 产能台账守恒${d.reconciled ? "通过" : "未通过"}` : res.isFetching ? "求解中…" : "—"}
             </span>
+            )}
           </div>
 
-          {matrix ? (
+          {/* U2 分段闸：占用矩阵是图上 `matrix` 节点（layer 3 = 第 4 步「读数与结论」），
+              由 `capacityLedger`（第 3 步）派生 ⇒ 比台账**晚一步**出。
+              ⚠ 闸在**最外层**：停在前几步时连「加载中…」空态也不许出 —— 那句话会把
+              「这一步还没算到」说成「在加载」，是两个不同的命题（诚实位）。 */}
+          {!upto(4) ? null : matrix ? (
             <div className={styles.matrixWrap} data-testid="global-sim-heatmatrix">
               <table className={styles.heatMatrix}>
                 <thead>
@@ -922,6 +1151,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
             {d && primaryScen && (
               <>
                 {/* D5：参数已改未重算 → 结果读数置灰（红线：结果绝不与旁边显示的参数不一致） */}
+                {/* U2 分段闸：这一整块是图上 layer 3「读数与结论」（按期率 / 总代价 / 被挤单读数 +
+                    方案比对矩阵 + 权衡句）—— 第 4 步才出。 */}
+                {upto(4) && (
                 <div data-testid="global-sim-results" data-stale={res.isStale} style={staleStyle}>
                 {/* ══ 判据 U5「结论数字标出处」 ══
                     改前本页**全文没有一处** `SnapshotBadge`/`<Provenance>`：`provenance` 二字只出现在
@@ -1023,6 +1255,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                   </div>
                 )}
                 </div>
+                )}
 
                 <div className={styles.actions}>
                   <button className={styles.btnPrimary} data-testid="global-sim-solve" disabled={res.isFetching} onClick={() => setNonce((n) => n + 1)} title="按当前的杠杆、勾选订单和目标，重新做一次全局联合排产。">
@@ -1038,8 +1271,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
             {res.error ? <div className={styles.noteRed}>求解失败：{String(res.error?.message ?? "")}</div> : null}
           </div>
 
-          {/* 磨砂卡② 被挤单 / 固定单卡（双向下钻） */}
-          {d && (
+          {/* 磨砂卡② 被挤单 / 固定单卡（双向下钻）。
+              U2 分段闸：被挤单是图上 `displaced` 节点（layer 2 = 第 3 步「解的三个面」）。 */}
+          {d && upto(3) && (
             <div className={styles.glass}>
               <span className={styles.grpLabel}>[ 被挤单 / 固定单 · 接单可行性细排 ]</span>
               <div className={styles.cardGrid} data-testid="global-sim-displaced">
@@ -1047,7 +1281,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                   <div key={x.orderId} className={`${styles.orderCard} ${styles.displaced}`} data-testid={`global-sim-displaced-${x.orderId}`} title={provTitle(x.provenance)}>
                     <strong>{x.orderId}</strong>（{x.kind === "forecast" ? "预测" : x.kind === "wip" ? "在产" : x.model}）<br />
                     <span className="amt">{fmt(x.qty, 0)}</span> 套 · 未获排
-                    <DrillAffordance kind={x.kind} id={x.orderId} label="进接单可行性细排 →" testId={`global-sim-drill-${x.orderId}`} prov={x.provenance} />
+                    <DrillAffordance kind={x.kind} id={x.orderId} label="看明细" testId={`global-sim-drill-${x.orderId}`} prov={x.provenance} onInspect={openDrillCard} />
                   </div>
                 )) : <span className={styles.empty}>全部需求项获排（无被挤）</span>}
               </div>
@@ -1057,18 +1291,23 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                   {d.frozen.map((f) => (
                     <div key={f.orderId} className={`${styles.orderCard} ${styles.frozen}`} data-testid={`global-sim-frozen-${f.orderId}`}>
                       <strong>{f.orderId}</strong>（固定·产能预扣）<br />{baseNameById.get(f.base) ?? f.base} · 窗口{f.window} · <span className="amt">{fmt(f.qty, 0)}</span> 套
-                      <Link className={styles.drillLink} to={`/v/project-sim?order=${encodeURIComponent(f.orderId)}`} data-testid={`global-sim-drill-${f.orderId}`}>进项目推演细排 →</Link>
+                      {/* 判据 U8：固定单此前也只有一条 `<Link>` 跳页 —— 同样补就地展开，跳页保留为"去做别的事"的出口。 */}
+                      <DrillAffordance kind="order" id={f.orderId} label="看明细" testId={`global-sim-drill-${f.orderId}`} onInspect={openDrillCard} />
                     </div>
                   ))}
                 </div>
               )}
+
+              {/* 判据 U8 · **就地**展开：面板渲染在被点那一块的正下方，路由一个字节不动。 */}
+              {drillInput && drill?.from === "card" && <OrderDrillPanel input={drillInput} onClose={closeDrill} />}
             </div>
           )}
         </div>
       </div>
 
-      {/* ⑤ 排产安排表（电芯段→在途→Pack段·优先消费求解器真 schedule[]·无则回退 InterBaseTransfer JOIN） */}
-      {d && (
+      {/* ⑤ 排产安排表（电芯段→在途→Pack段·优先消费求解器真 schedule[]·无则回退 InterBaseTransfer JOIN）。
+          U2 分段闸：排产安排逐条来自 `allocation[]` = 图上 `alloc` 节点（layer 2 = 第 3 步）。 */}
+      {d && upto(3) && (
         <ScheduleTable
           allocation={d.allocation}
           schedule={d.schedule}
@@ -1088,8 +1327,10 @@ export default function GlobalSimView(_props: ViewRendererProps) {
         </div>
       )}
 
-      {/* 联合分配台账 + 共享产能守恒台账（全宽磨砂卡） */}
-      {d && (
+      {/* 联合分配台账 + 共享产能守恒台账（全宽磨砂卡）。
+          U2 分段闸：分配台账 = `alloc` 节点、守恒台账 = `ledger` 节点，
+          两者同属 layer 2「解的三个面」⇒ 第 3 步出。 */}
+      {d && upto(3) && (
         <div className={styles.glass}>
           <span className={styles.grpLabel}>[ 联合分配台账 · 主方案 {SCEN_LABEL[primary]}（基地 × 时间窗 · 悬停查看数据来源） ]</span>
           <table className={styles.gtable} data-testid="global-sim-alloc">
@@ -1102,11 +1343,13 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                   {/* ② 基地 + 产线（真数据·产线取该基地 PACK 成品线） */}
                   <td>{a.baseName}</td><td className="mono" data-testid={`global-sim-alloc-line-${a.item}`}>{lineNameOf(a.base)}</td><td className="num">{a.window}</td><td className="num">{fmt(a.qty, 0)}</td>
                   <td className={`num ${a.onTime ? styles.ok : styles.bad}`}>{a.onTime ? "按期" : fmt(a.delayDays, 0)}</td>
-                  <td><DrillAffordance kind={a.kind} id={a.item} label="细排 →" testId={`global-sim-alloc-drill-${a.item}`} prov={a.provenance} /></td>
+                  <td><DrillAffordance kind={a.kind} id={a.item} label="看明细" testId={`global-sim-alloc-drill-${a.item}`} prov={a.provenance} onInspect={openDrillAlloc} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {/* 判据 U8 · 台账里点「看明细」也**就地**展开在台账下方，不跳走。 */}
+          {drillInput && drill?.from === "alloc" && <OrderDrillPanel input={drillInput} onClose={closeDrill} />}
 
           <span className={styles.grpLabel} style={{ marginTop: 14 }} title="逐格核对：每个基地每个时间窗的「已排产量」都不超过「可用净产能」，确保一份产能只被用一次、没有重复占用。">[ 共享产能守恒台账 · 逐格「已排产量 ≤ 可用产能」· 无重复占用 ]</span>
           <table className={styles.gtable} data-testid="global-sim-ledger">
@@ -1126,7 +1369,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       )}
 
       {/* ⑦ 底栏客户级影响（被挤单→真客户名+细分+交付地+产线+影响额·⑥ 卡 click → 真项目详情·协调加产预览→确认→草稿） */}
-      {d && <CustomerImpactBar displaced={d.displaced} orders={orderList} lineNameOf={lineNameOf} sessionId={sessionId} />}
+      {/* U2 分段闸：客户级影响是图上 `customer` 节点（layer 3 = 第 4 步「读数与结论」）——
+          它由第 3 步的被挤单**再联本体对象**得出，故比被挤单卡晚一步。 */}
+      {d && upto(4) && <CustomerImpactBar displaced={d.displaced} orders={orderList} lineNameOf={lineNameOf} sessionId={sessionId} />}
 
       {/* 活③·方案存 / 分支 / 横比（decision_play 范式）——暗发门控：真后端 /a/v1/sim/scenarios 未落时不渲染(R3·避 404·mock 态 on) */}
       {d && <Feature flag="view.global-sim.live"><GlobalSimScenarioBar getSnapshot={getSnapshot} /></Feature>}
