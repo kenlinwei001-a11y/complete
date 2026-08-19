@@ -106,10 +106,6 @@
    "verdict": "criteria",
    "why": "DataBuilder 流程面板的**规范顺序**（QuickSynth→WorkflowTimeline→GrowthConsole→InPlaceApproval）。判据本体：顺序是规范规定的，现算化等于「代码怎么排就算对」。"
   },
-  "check-deploy-governance.mjs:APPS": {
-   "verdict": "roster",
-   "why": "**差集 1**：名册列 2 个 config.ts（agentcore/datacore），实测仓内有 3 个 —— apps/datacore/src/calibration/config.ts 从未被部署治理门问过。**差什么才能修**：需要先裁定「calibration/config.ts 算不算一个需要治理的部署配置」（它是标定子模块的配置，未必需要同等的 env 治理约束）——这是**产品/治理裁决**不是门能自己定的，故本单不擅自扩面。裁定后改成现算 apps/*/src/**/config.ts 即可。"
-  },
   "check-dril-quality.mjs:need": {
    "verdict": "computed",
    "why": "门自己要 import 的 dist 产物清单（跑前的依赖自证：缺了就报「工具没准备好」）。这是**门的依赖**，不是受检对象集合——受检对象是运行时从 agentcore 真实注册表读回的技能。"
@@ -299,7 +295,7 @@
    "why": "四包 src 全递归（datacore/agentcore/frontend-shell/contracts）= 全仓源码面，无名单外盲区；与 outsource-redline:SCAN_ROOTS 同一现算形态（目录稳定、文件不手抄）。"
   }
  },
- "candidateCount": 74,
+ "candidateCount": 73,
  "rosterCount": 7,
  "ratchetHigh": 7
 }
