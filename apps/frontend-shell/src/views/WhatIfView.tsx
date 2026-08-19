@@ -5,6 +5,7 @@ import { fetchObjectTypes, queryObjectsPaged, invokeSolver } from "@/api/endpoin
 import { toastError } from "@/store/toastStore";
 import type { ViewConfigVM } from "@/api/types";
 import zh from "@/locales/zh";
+import { useDebounced } from "@/lib/useDebounced";
 import { InfoPopover } from "@/components/InfoPopover";
 // WO-SANDBOX-53CELLS · 判据 U5（结论数字标出处）：本页 deltas 表与影响面计数此前全是裸数字。
 import { Provenance } from "@/components/Provenance";
@@ -198,22 +199,10 @@ const WI_GRAPH: ReasoningGraph = assertReasoningGraph({
   ],
 });
 
-/**
- * 输入防抖（判据 U1 的配套，不是可选优化）。
- *
- * 撤掉提交闸后「假设值」是个自由文本框：不防抖 ⇒ 每敲一个键发一次求解，
- * 用户打 `1200` 会连发 `1` `12` `120` `1200` 四次，中间三次都是**没意义的假设**。
- * 防抖只推迟**发请求**，不推迟输入回显 —— 屏上的值一直是用户刚敲的那个，
- * 所以它**不是提交闸**（提交闸的定义是「不点某个东西结果永远不更新」，与「晚 300ms 更新」是两件事）。
+/*
+ * 判据 U1 的输入防抖已提到 `@/lib/useDebounced`（`optimize-whatif` 撤闸时要用同一个行为）。
+ * 本文件原有的私有实现逐字节等价，只是换了位置 —— 行为不变，理由见该文件头注。
  */
-function useDebounced<T>(value: T, ms: number): T {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setV(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return v;
-}
 
 export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
   usePageView("what-if");
