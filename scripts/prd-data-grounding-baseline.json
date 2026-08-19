@@ -18,19 +18,8 @@
     "   **本门作者已用独立实现抽样复核全部 5 条**（真值源 94 类型/825 属性，与审计方运行态 94 类型一致），",
     "   逐条属性表读回结论一致，且「真名」主张亦复核通过（minutes / delta·gapPct / cadenceKind）。"
   ],
-  "ratchetHigh": 7,
-  "maxExemptions": 1,
-  "adjudicated": [
-    "PRD-sandbox-redesign.md#REF:Order.changeoverMin"
-  ],
-  "exemptions": [
-    {
-      "key": "PRD-sandbox-redesign.md#REF:Order.changeoverMin",
-      "prd": "docs/PRD-sandbox-redesign.md",
-      "line": 375,
-      "code": "PDG-4A",
-      "kind": "待修",
-      "why": "已裁定：`Order` 实有 16 属性 + 1 派生，**无 `changeoverMin`**。原文以现状口吻断言取值「**C22** `Order.changeoverMin`=120」，而**同仓 `docs/PRD-sandbox-a2.md` 已明写它「无对象承载而 UNRESOLVED」——两份 PRD 自相矛盾**。修法 = 以 a2 的诚实表述为准改写本处。"
-    }
-  ]
+  "ratchetHigh": 0,
+  "maxExemptions": 0,
+  "adjudicated": [],
+  "exemptions": []
 }

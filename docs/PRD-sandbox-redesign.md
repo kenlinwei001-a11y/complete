@@ -372,7 +372,7 @@
 
 我在 A5 实测后把 literal 棘轮基线写成 **3**，依据是那一次扫描输出的 `thresholds[]` 里有 3 条
 `source:"literal"`（C05=95% · C28=90天 · C06=0吨）。门建好之后自报基线 **4**，多出的一条是
-`CONGESTION.CAPACITY.order-changeover` → **C22** `Order.changeoverMin`=120。
+`CONGESTION.CAPACITY.order-changeover` → **C22** `Order.changeoverMin`=120（`Order.changeoverMin` **无对象承载**：它不是 `Order` 的对象属性，运行期由 changeover_sequence 求解器算出逐单换型分钟，该绑定因此恒 UNKNOWN——同仓 `PRD-sandbox-a2.md` 已按 UNRESOLVED 如实记账，`chain-impediment.ts` C22 绑定注释同）。
 
 差别的原因：**门是静态扫全部绑定，我数的是一次运行实际命中的绑定。**
 那次数据里没有换型堵点，C22 这条绑定压根没进输出 —— 于是它在我的计数里隐身。
