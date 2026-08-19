@@ -38,11 +38,11 @@
 | B1 | 「**彻查**所有后端有功能、前端没有的情况还有哪些」 | ✅ | 建 `befe-seam:check`；零调用 **196 → 128** |
 | B2 | 「**都派**」 | ✅ | BEFE-A/B/C/D/E/F/G 七张全收编 |
 | B3 | 「不局限在推演沙盘，而是**整体系统**」 | ✅ | + REFERENCES-FAMILY：引用族 9 条 → 一个客户端 + 一块共享面板 |
-| B4 | 剩余 `POST /a/v1/process-instances` | 🟡 | **诚实挂账不接**：契约要 `tasks.min(1)`，而流程定义**零步骤字段** ⇒ 前端无数据源可填。前置是**步骤模板层**，⛔ 未派 |
+| B4 | 剩余 `POST /a/v1/process-instances` | ~~🟡~~ ✅（2026-08-19 同行订正 · WO-TRACE-LEDGER-WRITEBACK） | **本行原判「前置是**步骤模板层**，⛔ 未派」已过期**：前置已交付（契约 `process-step-template.ts` + `tasksFromStepTemplate()` + 前端 `ProcessStartFromTemplate.tsx`），创建链已接、接缝实测 7/7 走通（证据见下一条 B4 的 ✅ 行）。⚠ 本行曾与下行并存互相矛盾（一行 🟡⛔未派、一行 ✅ 已接）—— 正是 B4a 行记过的形态「新增一行不等于旧行作废」，两行须对齐到同一真相，本次同批订正 |
 | B5 | 屏上承诺的 Action 要真接上（WO-SIM-ACTION-REAL：「我需要完成一个可交付的系统，不是 demo 系统」⇒ 对假承诺的处置是**接上，不是撤文案**） | ✅ | 项目推演屏 DAG fc 节点「结论可采纳为 Action」原零接线（金丝雀自证后四个 Action 符号 0 命中）→ 步骤⑥「采纳结论」真接既有 S2 链：ActionDraft（参数组合+量纲核对过的推演快照）→ 审批 → domainExecutor 新分支**真落 ForecastAdoption 台账对象** + 选中订单回 stamp（targetRef 用 `FC-ADOPT:` 不用假 MO 号）；头号验收 = 审批后**另一条路读回**字段逐值对拍（datacore seam 4/4 + 前端 2/2），变异反证真红（拆写入 → 「expected [] to have a length of 1 but got +0」）；剩 `采纳经营方案` 一型 NOT_IMPLEMENTED（本体 G-ACTION-NOOP-EXEC 已回写 ◑ 部分闭合） |
 | B4 | 剩余 `POST /a/v1/process-instances` | ✅ | **前置已补、线已接、接缝已驱动通**。前置（步骤模板层）落地：契约 `process-step-template.ts` + 表 + 种子 + 读端点 `GET /a/v1/process-definitions/{key}/step-template`；`tasks.min(1)` **一个字未放宽**，改的是步骤从**模板**来。前端 `views/process/ProcessStartFromTemplate.tsx`（挂 `/v/process-stuck` 页内）经契约 `tasksFromStepTemplate()`（前后端共用的唯一一处转换）折出 `tasks` 再 POST。**实测**：`apps/datacore/test/process-instance-wire.seam.test.ts` 走界面同形链路 ①模板 → ②`GET /a/v1/objects?type=<carrierTypeKey>`（按钮的渲染前提）→ ③转换 → ④POST → ⑤`GET …/{id}` **读回**，7 条有模板的流程**全部走通**且读回步数 == 模板步数（P25/2步/对象9 · P34/2/1 · P35/2/20 · P41/3/17 · P42/2/20 · P43/2/20 · P51/2/20）；变异反证 RC=1。前端侧 `test/process-start-from-template.seam.test.tsx` 8/8 绿 |
 | B4a | 同族两条：`POST …/{id}/advance`、`GET …/{id}` | ✅ | **2026-08-17 实测收口 —— 本行原判「生产消费方为 0」已过期**（`WO-PROCESS-INSTANCE-UI` 收编后）。现算：`advanceProcessInstance` → `views/process/ProcessInstanceDetailView.tsx:12`(import) / `:163`(调用)；`fetchProcessInstance` → 同文件 `:12` / `:312`(queryFn)；路由已注册 `App.tsx:163` `process-instances/:instanceId`。金丝雀（必中）：同法查 `fetchObjectTypes` = **30 处** ⇒ grep 没瞎。⚠ **本行与 B5 曾并存且互相矛盾**（B5 判 ✅ 已接、本行判 🟡 仍欠），根因是收编后只更新了 B5 一行、没回来收本行 —— 形态：**「我用『新加了一行说已接』当作『旧那行不再成立的记录已被撤销』的证据，而前者并不度量后者」**。两行讲同一件事时，**新增一行不等于旧行作废**，必须同批回写。 |
-| B5 | `GET /a/v1/process-instances/{id}` 与 `POST …/{id}/advance` 前端各 **0** 消费方 —— 「流程实例建出来之后就看不见了」 | ✅ | 详情页 `views/process/ProcessInstanceDetailView.tsx`（当前站/各步状态/时间线/溯源，缺就不渲染）+ 深链路由 `process-instances/:instanceId`（**非 v/ 前缀**，原因见 App.tsx 注释）+ 双入口（卡点卡片 · 流程实例下钻行）；推进走**确认弹窗**（不许一点就推），事实表只问 gate 声明过的项。复验：`pnpm --filter frontend-shell exec vitest run test/process-instance-detail.seam.test.tsx`（8 用例：端到端刷新找回 · 确认纪律 · 反推实例 · 暗发/不存在分块 · **变异反证** · 卡点入口）。⚠ 与 B4 的分工：本行接的是「建完之后」，**创建链**仍挂账在 B4（步骤模板层未派，届时创建成功页加一行深链跳转即闭合） |
+| B5 | `GET /a/v1/process-instances/{id}` 与 `POST …/{id}/advance` 前端各 **0** 消费方 —— 「流程实例建出来之后就看不见了」 | ✅ | 详情页 `views/process/ProcessInstanceDetailView.tsx`（当前站/各步状态/时间线/溯源，缺就不渲染）+ 深链路由 `process-instances/:instanceId`（**非 v/ 前缀**，原因见 App.tsx 注释）+ 双入口（卡点卡片 · 流程实例下钻行）；推进走**确认弹窗**（不许一点就推），事实表只问 gate 声明过的项。复验：`pnpm --filter frontend-shell exec vitest run test/process-instance-detail.seam.test.tsx`（8 用例：端到端刷新找回 · 确认纪律 · 反推实例 · 暗发/不存在分块 · **变异反证** · 卡点入口）。⚠ 与 B4 的分工：本行接的是「建完之后」，**创建链**分工见 B4 行（⚠ 本注原写「步骤模板层未派」已过期 —— B4 已 ✅ 收口、接缝 7/7，2026-08-19 WO-TRACE-LEDGER-WRITEBACK 同批订正；原注所提「创建成功页加一行深链跳转」**实测未落**：`ProcessStartFromTemplate.tsx` 成功块只展示实例 id 与步骤、零 `to=`/`href`，是否补跳转移交派单方裁决） |
 
 ## C · 数据构建发动机 / 逆向数据推演 —— **第二版逐步复核**
 
@@ -187,9 +187,12 @@ TS 允许少写形参实现接口，于是 mock 的**具体类型比契约窄**�
 
 ## ⛔ 未派（我欠的）
 
-1. **步骤模板层** —— B4 的前置
+> **2026-08-19 记账回写（WO-TRACE-LEDGER-WRITEBACK）**：本节曾同时躺着**两份清单**（一份 #2–#5 已划线、#1 未划；另一份 #1 已划线、#2–#5 未划）—— 正是「新增一行不等于旧行作废」的整节版。经对集成线 `914d0289b` 内容级逐条重审，**#1–#5 实际均已交付**，合并为一份清单对齐到同一真相；#6 仍阻塞等仓主裁，原样保留一行未动。
+
+1. ~~**步骤模板层** —— B4 的前置~~ ✅ **已交付并已接线**（证据见上方 B4 的 ✅ 行：契约 `process-step-template.ts` + 表 + 种子 + 读端点 `GET /a/v1/process-definitions/{key}/step-template`，前端 `ProcessStartFromTemplate.tsx` 经 `tasksFromStepTemplate()` 折出 `tasks` 再 POST，接缝实测 7/7 走通、读回步数 == 模板步数，变异反证 RC=1）。**旧注「改由 B4a 接棒：`advance`/实例详情仍无前端消费方」今日亦过期** —— B4a/B5 两行已于 2026-08-17 实测收口（`ProcessInstanceDetailView` 已挂路由 `process-instances/:instanceId`），同批订正。
 2. ~~**13 类需求卡片补齐** —— C10~~ ✅ **已闭**（见上 C10 行）。13 类全部上屏，跨系统 7 类如实标「查不到」不摆 0；两侧接缝测试各自钉死。**未派的其实只是这条记账没回写**，功能本身在 `6ddf76f6`/`2242f9bc`/`dac4b1d2` 就已落地 —— 队列与代码脱节了一轮
-3. ~~**`STALE-8` 正则盲区**（实测漏 6 条：带点 slug 与非 `view.` 前缀）~~ ✅ **2026-08-16 WO-STALE-REGEX-BLIND 收单** —— ⚠️ **本条自己就是一条过时声明**：那两类盲区**早在 2026-08-15 的 `8244c82b`（WO-STALE-TEXT-SWEEP）就已修好**（变异反证 M1/M2 逐条复现：把 `FEATURE_KEY` 改窄回去，金丝雀当场点名抽不到 `view.graph.persp.all` / `qos.agent-fallback` / `view.project-sim.whatif`，RC=2）。真正还在的是**更深一层**：本门的扫描范围（`apps/frontend-shell/src` + `apps/*/src` + `packages/*/src`）**里没有 `scripts/` ⇒ 门看不见自己**，而它自己的文件头与《做不到的部分》写满「今天全仓 N 条 / 实测命中 N 行」这类自称现状的计数 —— 实测 **6 个数字已变假**（`@stale-fact` 生产记号「0 条」实为 **11** · 基线赌注「6 条」实为 **0** · CONFIRMED-STALE「两条」实为 **0** · 注释命中「147 行」实为 **63** · 字面量命中「14 行」实为 **13**），而门 RC=0 报绿。已新增第三层判据 **STALE-9/10（门自述层，无豁免段无棘轮）**：`@stale-self <口径名> <op><n>` 赌在门每次运行现算的 17 个口径上，现挂 9 条；⑩ 逐**句**判（同句无日期戳也无赌注即红）。六条过时自述**逐条改对、零条进基线**，基线五个水位一字未动（37/37 · 11/11）。**遗留另立单**：⑧ 的 `VIEW_TITLE_SLOTS` 仍要求 `key` 与 `name`/`title` **紧邻**，实测放宽后多抽到 29 个键并暴露 3 条真分叉（`aop-base` 亿/万 · `oee-trend` 14 日/7日 · `aop` 年度规划（旧）/年度规划）—— 修它必须动 `apps/**`，超出本单 🚦 边界
+3. ~~**`STALE-8` 正则盲区**（实测漏 6 条：带点 slug 与非 `view.` 前缀）~~ ✅ **2026-08-16 WO-STALE-REGEX-BLIND 收单** —— ⚠️ **本条自己就是一条过时声明**：那两类盲区**早在 2026-08-15 的 `8244c82b`（WO-STALE-TEXT-SWEEP）就已修好**（变异反证 M1/M2 逐条复现：把 `FEATURE_KEY` 改窄回去，金丝雀当场点名抽不到 `view.graph.persp.all` / `qos.agent-fallback` / `view.project-sim.whatif`，RC=2）。真正还在的是**更深一层**：本门的扫描范围（`apps/frontend-shell/src` + `apps/*/src` + `packages/*/src`）**里没有 `scripts/` ⇒ 门看不见自己**，而它自己的文件头与《做不到的部分》写满「今天全仓 N 条 / 实测命中 N 行」这类自称现状的计数 —— 实测 **6 个数字已变假**（`@stale-fact` 生产记号「0 条」实为 **11** · 基线赌注「6 条」实为 **0** · CONFIRMED-STALE「两条」实为 **0** · 注释命中「147 行」实为 **63** · 字面量命中「14 行」实为 **13**），而门 RC=0 报绿。已新增第三层判据 **STALE-9/10（门自述层，无豁免段无棘轮）**：`@stale-self <口径名> <op><n>` 赌在门每次运行现算的 17 个口径上，现挂 9 条；⑩ 逐**句**判（同句无日期戳也无赌注即红）。六条过时自述**逐条改对、零条进基线**，基线五个水位一字未动（37/37 · 11/11）。残留未闭项**不随本条划线**，拆为下方显式子项保留（2026-08-19 WO-TRACE-LEDGER-WRITEBACK）
+   - ⛔ **残留子项（未闭·不划线）**：⑧ 的 `VIEW_TITLE_SLOTS` 仍要求 `key` 与 `name`/`title` **紧邻**，实测放宽后多抽到 29 个键并暴露 3 条真分叉（`aop-base` 亿/万 · `oee-trend` 14 日/7日 · `aop` 年度规划（旧）/年度规划）—— 修它必须动 `apps/**`，超出 WO-STALE-REGEX-BLIND 🚦 边界，**仍待另立单**
 4. ~~**`sandboxConsoleModel.ts:709` 过时文案**（写着已被删除的 `worstMbal`）~~ ✅ **本条记账本身已过期（WO-STALE-TEXT-4 · 2026-08-16 实测）**：
    2026-08-15 提交 `75f0adfe` 已修，`REQUIREMENTS-TRACE` 漏改这一行。今天该文件里 `worstMbal` 只剩 **2 处**（`:713`/`:715`），
    两处都在那条 **2026-08-15 订正块**里，原文就写着「**符号已不存在** …… 已被 WO-DYNAMIC-DRILL-RESOLVE 整个删除」
@@ -219,12 +222,6 @@ TS 允许少写形参实现接口，于是 mock 的**具体类型比契约窄**�
    ③ 剥注释扫全 `agentcore/src` 的 `Type.prop` 面 · ④ **接缝**：真跑 `projectNavigationSlice → renderNavigationSlice`
    断言名字确实到达 prompt，并驱动 `renderOntologySemanticContext` 断言「真名渲得出口径、假名让整块塌成 null」。
    **修 40 处文案是一次性的，这个文件才是机制 —— 下次改名是机器先说话。**
-1. ~~**步骤模板层** —— B4 的前置~~ ✅ **已交付并已接线**（见 B4 行；接缝实测 7/7 走通）。
-   **改由 B4a 接棒**：同族的 `advance` / 实例详情两条仍无前端消费方，卡在导航信息架构（仓主决策）
-2. **13 类需求卡片补齐** —— C10
-3. **`STALE-8` 正则盲区**（实测漏 6 条：带点 slug 与非 `view.` 前缀）
-4. **`sandboxConsoleModel.ts:709` 过时文案**（写着已被删除的 `worstMbal`）
-5. **agentcore 3 处 stale 文案** —— `navigation-slice.ts` 把已不存在的 `p50` 当关键属性**喂给 LLM**（⚠️ 不报错，只是模型拿不到值）
 6. **mock 与真后端 S&OP 量级差 4–12 倍**（改它=改值，只报不动）
 
 ## 🔶 等你裁决
