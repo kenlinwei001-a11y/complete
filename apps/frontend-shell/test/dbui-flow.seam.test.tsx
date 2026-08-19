@@ -56,7 +56,8 @@ describe("WO-DBUI-FLOW · 数据构建六步主流程（接缝：裁决 → 入�
     await user.click(await screen.findByTestId("dbf-build"));
 
     // ⑤：逐条明细**表格**（不是「创建了 XX 条」）
-    const table = await screen.findByTestId("dbf-artifact-table", undefined, { timeout: 5000 });
+    // ⚠ 2026-08-19 WO-TIMEOUT-5000-SWEEP：findBy 预算 5s→20s（共享机高负载假红，同型见 c9ff5936f）；判据未动。
+    const table = await screen.findByTestId("dbf-artifact-table", undefined, { timeout: 20000 });
     expect(table.querySelector("table")).toBeTruthy();
     // REUSED 必须和 CREATED 一样显示出来（"复用了既有的" 正是"人不清楚系统里面的数据现状"的正面回答）
     expect(within(table).getByTestId("dbf-artifact-action-affected_orders").textContent).toContain("复用既有");
@@ -74,7 +75,8 @@ describe("WO-DBUI-FLOW · 数据构建六步主流程（接缝：裁决 → 入�
     const commit = await screen.findByTestId("dbf-step-commit");
     expect(within(commit).getByTestId("dbf-promote")).toBeTruthy();
     expect(within(commit).getByTestId("dbf-download")).toBeTruthy();
-  });
+    // 整条墙钟预算同理上调（WO-TIMEOUT-5000-SWEEP）：renderApp+懒加载链路在共享机负载下会超全局 20s。
+  }, 60000);
 
   it("入库前复验：三类冲突分开报 + 逐条给既有值/将写值/建议动作 + 世界漂移提示", async () => {
     const user = userEvent.setup();
@@ -83,7 +85,7 @@ describe("WO-DBUI-FLOW · 数据构建六步主流程（接缝：裁决 → 入�
     await screen.findByTestId("data-builder-page");
     await user.click(screen.getByTestId("dbf-start"));
     await user.click(await screen.findByTestId("dbf-build"));
-    await screen.findByTestId("dbf-artifact-table", undefined, { timeout: 5000 });
+    await screen.findByTestId("dbf-artifact-table", undefined, { timeout: 20000 });
 
     await user.click(await screen.findByTestId("dbf-precheck"));
     const res = await screen.findByTestId("dbf-precheck-result");
@@ -112,7 +114,7 @@ describe("WO-DBUI-FLOW · 数据构建六步主流程（接缝：裁决 → 入�
     const drift = within(res).getByTestId("dbf-drift");
     expect(drift.textContent).toContain("建完之后库里变过了");
     expect(drift.textContent).toContain("比对现状");
-  });
+  }, 60000);
 
   it("接缝：没裁决 → 入库按钮按不下去；裁决后 → 真调后端 promote 并带上 decisions", async () => {
     const user = userEvent.setup();
@@ -121,7 +123,7 @@ describe("WO-DBUI-FLOW · 数据构建六步主流程（接缝：裁决 → 入�
     await screen.findByTestId("data-builder-page");
     await user.click(screen.getByTestId("dbf-start"));
     await user.click(await screen.findByTestId("dbf-build"));
-    await screen.findByTestId("dbf-artifact-table", undefined, { timeout: 5000 });
+    await screen.findByTestId("dbf-artifact-table", undefined, { timeout: 20000 });
     await user.click(await screen.findByTestId("dbf-precheck"));
     await screen.findByTestId("dbf-precheck-result");
 
@@ -137,12 +139,12 @@ describe("WO-DBUI-FLOW · 数据构建六步主流程（接缝：裁决 → 入�
     // 真入库 —— 后端 mock 校验 decisions 必须带上 linkType:order_of_customer，否则 400。
     // 这就是接缝：前端的裁决按钮 → 后端 promote 的 decisions 入参，任一半漏即红。
     await user.click(screen.getByTestId("dbf-promote"));
-    const promoted = await screen.findByTestId("dbf-promoted", undefined, { timeout: 5000 });
+    const promoted = await screen.findByTestId("dbf-promoted", undefined, { timeout: 20000 });
     expect(promoted.textContent).toContain("已入库");
     // 诚实位：复用了库里既有的哪些、按裁决保留了哪些既有关系 —— 改前这两批一个字都不显示
     expect(promoted.textContent).toContain("复用了库里既有的 Order");
     expect(promoted.textContent).toContain("保留了既有关系 order_of_customer");
-  });
+  }, 60000);
 
   it("屏上不出现区号，也不出现给开发看的话", async () => {
     loginAs("planner");

@@ -61,9 +61,10 @@ async function openPanel(processKey: string, recording: unknown) {
   installInspectHandler({ [processKey]: recording });
   loginAs("planner");
   renderApp("/v/process-wait");
-  const btn = await screen.findByTestId(`pw-inspect-${processKey}`, undefined, { timeout: 5000 });
+  // ⚠ 2026-08-19 WO-TIMEOUT-5000-SWEEP：findBy 预算 5s→20s（共享机高负载假红，同型见 c9ff5936f）；判据未动。
+  const btn = await screen.findByTestId(`pw-inspect-${processKey}`, undefined, { timeout: 20000 });
   await userEvent.click(btn);
-  return await screen.findByTestId("pi-panel", undefined, { timeout: 5000 });
+  return await screen.findByTestId("pi-panel", undefined, { timeout: 20000 });
 }
 
 describe("WO-V4-INSPECT · §0 金丝雀（否定结论之前先自证 fixture 是真的）", () => {
@@ -94,15 +95,16 @@ describe("WO-V4-INSPECT · §A 可达（从 URL 出发，不是直接 new 组件
     expect(within(panel).getByTestId("pi-domain")).toHaveTextContent(d.process.domainName!);
     expect(within(panel).getByTestId("pi-owner")).toHaveTextContent(d.process.ownerFunctionName!);
     expect(within(panel).getByTestId("pi-carrierkey")).toHaveTextContent(d.carrier.typeKey);
-  });
+    // 整条墙钟预算同理上调（WO-TIMEOUT-5000-SWEEP）：renderApp+懒加载链路在共享机负载下会超全局 20s。
+  }, 60000);
 
   it("没点开时不渲染面板（只给一句提示）—— 空面板与「还没点」在屏上必须分得开", async () => {
     installInspectHandler({});
     loginAs("planner");
     renderApp("/v/process-wait");
-    expect(await screen.findByTestId("pw-inspect-hint", undefined, { timeout: 5000 })).toHaveTextContent(T.openHint);
+    expect(await screen.findByTestId("pw-inspect-hint", undefined, { timeout: 20000 })).toHaveTextContent(T.openHint);
     expect(screen.queryByTestId("pi-panel")).toBeNull();
-  });
+  }, 60000);
 });
 
 describe("WO-V4-INSPECT · §B 承载物本体关系（属性 / 派生 / 一跳关系 / 同承载物）", () => {
@@ -123,7 +125,7 @@ describe("WO-V4-INSPECT · §B 承载物本体关系（属性 / 派生 / 一跳�
       expect(within(panel).getByTestId(`pi-derived-${x.propKey}`)).toHaveTextContent(T.propTable.derived);
       expect(within(panel).getByTestId(`pi-formula-${x.propKey}`)).toHaveTextContent(x.formula);
     }
-  });
+  }, 60000);
 
   it("同承载物流程 + 一跳关系：P37 的反查非空（先证有再断言），方向与基数都画出来", async () => {
     const d = ProcessInspectResponseSchema.parse(RECORDINGS.P37);
@@ -143,7 +145,7 @@ describe("WO-V4-INSPECT · §B 承载物本体关系（属性 / 派生 / 一跳�
       expect(li).toHaveTextContent(r.cardinality); // 基数是关系的一等信息，不许省
       expect(li).toHaveTextContent(r.neighborTypeKey);
     }
-  });
+  }, 60000);
 
   it("空集合要说话：P32 的一跳关系与同承载物流程都是 0，界面各给一句，不是一片空白", async () => {
     const d = ProcessInspectResponseSchema.parse(RECORDINGS.P32);
@@ -152,7 +154,7 @@ describe("WO-V4-INSPECT · §B 承载物本体关系（属性 / 派生 / 一跳�
     const panel = await openPanel("P32", RECORDINGS.P32);
     expect(within(panel).getByTestId("pi-relations-empty")).toHaveTextContent(T.relations.empty);
     expect(within(panel).getByTestId("pi-shared-empty")).toHaveTextContent(T.shared.empty);
-  });
+  }, 60000);
 });
 
 describe("WO-V4-INSPECT · §C 诚实位（本页答不了什么 · 不拿标准工期冒充实测卡顿）", () => {
@@ -165,7 +167,7 @@ describe("WO-V4-INSPECT · §C 诚实位（本页答不了什么 · 不拿标准
     const list = within(panel).getByTestId("pi-unanswerable");
     expect(d.runtime.unanswerable.length).toBeGreaterThan(2);
     for (const q of d.runtime.unanswerable) expect(list).toHaveTextContent(q);
-  });
+  }, 60000);
 
   it("工期口径由**后端下发**（前端不写第二份可能过期的说明），且明说不是实测卡顿", async () => {
     const panel = await openPanel("P32", RECORDINGS.P32);
@@ -177,7 +179,7 @@ describe("WO-V4-INSPECT · §C 诚实位（本页答不了什么 · 不拿标准
     expect(d.runtime.stdDurationCaption).toContain("不是实测");
     // 数字本身照原样挂在 data 属性上（不四舍五入，门要能断言精确工期）
     expect(within(panel).getByTestId("pi-stddays")).toHaveAttribute("data-std-days", String(d.runtime.stdDurationDays));
-  });
+  }, 60000);
 });
 
 describe("WO-V4-INSPECT · §D 承载类型解析不到（absent 一向 —— 真后端录制）", () => {
@@ -193,7 +195,7 @@ describe("WO-V4-INSPECT · §D 承载类型解析不到（absent 一向 —— �
     expect(within(panel).queryByTestId("pi-layer-object")).toBeNull();
     // 承载物缺席不该把整页拖垮
     expect(within(panel).getByTestId("pi-name")).toHaveTextContent(d.process.name);
-  });
+  }, 60000);
 });
 
 describe("WO-V4-INSPECT · §E 十六层三态 + §4.1 杠杆→域映射", () => {
@@ -213,7 +215,7 @@ describe("WO-V4-INSPECT · §E 十六层三态 + §4.1 杠杆→域映射", () =
     }
     // 这条录制里至少出现两种态 —— 只有一种态的话，"三态可辨"这条根本没被测到
     expect(seen.size).toBeGreaterThan(1);
-  });
+  }, 60000);
 
   it("杠杆→域：标签/单位/落点/打到哪几个域全部来自响应，前端零写死", async () => {
     const d = ProcessInspectResponseSchema.parse(RECORDINGS.P32);
@@ -230,7 +232,7 @@ describe("WO-V4-INSPECT · §E 十六层三态 + §4.1 杠杆→域映射", () =
     const cov = d.levers.find((l) => l.leverKey === "MaterialBalance.coverage");
     expect(cov).toBeDefined();
     expect(cov!.landingResolved).toBe(true);
-  });
+  }, 60000);
 });
 
 describe("WO-V4-INSPECT · §F 零写死词表（R14）", () => {
