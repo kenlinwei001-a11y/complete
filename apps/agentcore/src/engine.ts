@@ -814,6 +814,7 @@ export class ExecutionEngine {
         onResolvedRef: opts.onResolvedRef,
         crossValidate: (req) => this.deps.dataCore.ontology.crossValidate(opts.ctx, req),
         runAgentStep: async (params) => {
+          const agentStepT0 = Date.now(); // WO77：降级帧 durationMs 计时起点（仅审计时长·不入答案/溯源）
           const r = await this.runRegisteredAgent({
             taskId: opts.taskId,
             agentId: params.agentId,
@@ -844,6 +845,25 @@ export class ExecutionEngine {
           // 不吞异常：与编排层三处顶层 insert（`orchestrator.ts` 的 runPathB / runRolePathB / runSceneAgent）同姿势。写失败就让它响，
           // 静默 catch 会把「落库坏了」伪装成「这个 Agent 没跑过」——正是本单要修的那种病。
           await this.deps.repos.agentRuns.insert(r.run);
+          // ★★ WO77 · 静默丢字段族第三例（G-9 降级冒泡）★★
+          // 此前这里只 `return { structured, answer }` —— `r.degraded`（子 run 有界终止降级置位·loop.ts degrade
+          // 唯一诚实出口）被**整个丢弃**：计量说降级了（agentLoopRepeat 已 +1）、汇总答案里带着子 agent 的诚实
+          // 降级块，唯独 SSE 帧流缺 step.completed{type:"agent_degraded"} 伪帧（前端/审计无感知）。
+          // 同族先例：orchestrator.ts runPathB 的 G-9 发射块（result.degraded → agent_degraded 伪 step）。
+          // 归属子 agentId + 扇出 stepId 原值（前端分栏/审计认 agent·非 newId 匿名）；outcome 取 reason 原值逐字。
+          // 发射点=子 run 完成即帧 ⇒ 必早于 executor 对父步的 step.completed{type:"invoke_agent"}
+          //（executor.ts 在 runAgentStep 返回后才 emitDone）与 answer.final（G-9 硬次序）。
+          // 纯增量：非降级子 run 零帧·流逐字节不变；不 inc 计量（loop.ts degrade 已计·不双计）；
+          // 不改 structured/answer 一个字节；不抛异常（emit 失败随调用链上抛·与 insert 同姿势不静默 catch）。
+          if (r.degraded) {
+            await opts.emit("step.completed", {
+              stepId: params.stepId,
+              agentId: params.agentId,
+              type: "agent_degraded",
+              outcome: r.degraded.reason,
+              durationMs: Date.now() - agentStepT0,
+            });
+          }
           return { structured: r.structured, answer: r.answer };
         },
       },
