@@ -65,6 +65,11 @@ const ROOT = process.cwd();
 const CONTRACT_DIR = "packages/contracts/src";
 /** 扫描树：两系统 src + 契约自身（契约里也会写值，如默认值/示例）。 */
 const SCAN_ROOTS = ["apps/datacore/src", "apps/agentcore/src", "apps/frontend-shell/src", "packages/contracts/src"];
+/* 扫描面自证的独立口径分母（2026-08-19 · WO-GATE-SCAN-SURFACE-CENSUS）：
+ * 4 根递归 .ts/.tsx 总量下界 —— 当日现算 634，取 ~60%。
+ * 单根整个消失时 collectSources 会 throw（有兜底），但**部分塌陷**（过滤失手/子树跳过）
+ * 无任何信号 ⇒ 「UNPROVEN 0 新增」会是真空绿。塌到下界以下 ⇒ toolBroken RC=2。 */
+const MIN_SOURCE_FILES = 380;
 const BASELINE = resolve(ROOT, "scripts/unit-value-provenance-baseline.json");
 const BASELINE_NOTE =
   "值级量纲棘轮（G-LEVER-SNAPSHOT-UNIT-LIE）。逐文件记 UNPROVEN 条数，只许降不许升；" +
@@ -284,6 +289,8 @@ function main() {
   if (registry.size === 0) toolBroken("契约里一个带 @unit 的量纲唯一字段都没扫到（注册表为空）");
 
   const sources = SCAN_ROOTS.flatMap((r) => collectSources(resolve(ROOT, r)));
+  if (sources.length < MIN_SOURCE_FILES)
+    toolBroken(`扫描面只枚举到 ${sources.length} 个 .ts/.tsx（下界 ${MIN_SOURCE_FILES}）—— 枚举部分塌陷，不是「全仓量纲都有凭据」`);
   const r = analyze(registry, sources);
 
   console.log(`\n注册表（名字量纲唯一 · 现算自契约 @unit）${registry.size} 项：`);
@@ -293,6 +300,7 @@ function main() {
     for (const d of dropped) console.log(`   ${d.name.padEnd(24)} ${d.at.length} 处声明`);
   }
   console.log(`\n量纲赋值点 ${r.sites.length} 处：有凭 ${r.sites.length - r.unproven.length} · UNPROVEN ${r.unproven.length}`);
+  console.log(`  （扫描面 ${sources.length} 个源文件，下界 ${MIN_SOURCE_FILES}，已过 ⇒ 射程没塌）`);
 
   if (process.argv.includes("--update")) {
     const prev = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : null;

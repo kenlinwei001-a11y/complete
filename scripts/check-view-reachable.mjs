@@ -64,6 +64,10 @@ import { join, relative, resolve, dirname } from "node:path";
 const ROOT = "apps/frontend-shell/src";
 const VIEWS = join(ROOT, "views");
 const EXT = [".ts", ".tsx"];
+/* 扫描面自证的独立口径分母（2026-08-19 · WO-GATE-SCAN-SURFACE-CENSUS）：
+ * ROOT 递归 .ts/.tsx（剔 test/spec）总量下界 —— 当日现算 257，取 ~60%。
+ * 面塌到下界以下 ⇒ walk/根目录坏了，「孤儿 0 个」是真空绿 —— 报「工具坏了」RC=2。 */
+const MIN_SRC_FILES = 155;
 
 /** 递归收集 dir 下的 .ts/.tsx（跳过测试与样式）。 */
 function walk(dir, acc = []) {
@@ -76,6 +80,11 @@ function walk(dir, acc = []) {
 }
 
 const allSrc = walk(ROOT);
+if (allSrc.length < MIN_SRC_FILES) {
+  console.error(`⛔ 门自己瞎了：扫描面只枚举到 ${allSrc.length} 个源文件（下界 ${MIN_SRC_FILES}）—— walk 断了，不是「前端真的没文件」。`);
+  console.error("   本次结论作废：**不许**读作「每个视图模块都有生产调用方」。");
+  process.exit(2);
+}
 const viewFiles = allSrc.filter((f) => f.startsWith(VIEWS + "/"));
 
 /** 把一个 import 说明符解析成仓内文件路径（解析不出返回 null —— 第三方包/裸模块）。 */
@@ -125,7 +134,7 @@ for (const f of allSrc) {
 
 const orphans = viewFiles.map((f) => relative(process.cwd(), f)).filter((f) => !referenced.has(f)).sort();
 
-console.log(`· 视图模块 ${viewFiles.length} 个 · 被 src 引用 ${viewFiles.length - orphans.length} 个 · 孤儿 ${orphans.length} 个`);
+console.log(`· 视图模块 ${viewFiles.length} 个 · 被 src 引用 ${viewFiles.length - orphans.length} 个 · 孤儿 ${orphans.length} 个（扫描面 ${allSrc.length} 文件，下界 ${MIN_SRC_FILES}，已过 ⇒ 射程没塌）`);
 
 if (orphans.length) {
   console.error("\n✗ 视图可达门未通过 —— 下列模块**零生产调用方**（实现再全、测试再绿，也没有任何路由渲染得到它）：");

@@ -267,6 +267,16 @@ else {
     }
   };
   EMIT_SRC_DIRS.forEach(walkTs);
+  /* 扫描面自证的独立口径分母（2026-08-19 · WO-GATE-SCAN-SURFACE-CENSUS）：
+   * EMIT_SRC_DIRS 递归 .ts（剔 test）总量下界 —— 当日现算 291，取 ~60%。
+   * walkTs 对不存在的目录静默 return；面塌而 emitted 恰好非 0 时旧金丝雀拦不住，
+   * 故在文件数这一层先卡：塌到下界以下 ⇒ 报「工具坏了」RC=2，不许读作「emit 全部已登记」。 */
+  const MIN_TS_FILES = 175;
+  if (tsFiles.length < MIN_TS_FILES) {
+    console.error(`⛔ 门自己瞎了：emit 扫描面只枚举到 ${tsFiles.length} 个 .ts（下界 ${MIN_TS_FILES}）—— walkTs 断了，不是「代码里没有发射端」。`);
+    console.error("   本次结论作废：**不许**读作「emit 未登记 0 个 / 事件全部在册」。");
+    process.exit(2);
+  }
   // 跨文件常量表：全仓 `export const X = "a.b"` —— 供 const-import 形态解析（scheduler 引 rule-scope 那种）。
   const externConsts = new Map();
   for (const f of tsFiles)
@@ -316,6 +326,7 @@ else {
   console.log(
     `· 事件（发射端）：真 emit ${emitted.size} 个 · §4 未登记 ${emitUnregistered.length} 个（棘轮基线 ${MAX_EMIT_UNREGISTERED}，只降不升）`,
   );
+  console.log(`  └ 扫描面：${tsFiles.length} 个 .ts（下界 ${MIN_TS_FILES}，已过 ⇒ 射程没塌）`);
   console.log(`  └ 解析形态：${formStr}`);
   // 取证用：`ONTOLOGY_DUMP_EMITS=1 node scripts/check-system-ontology.mjs` 打印全量事件名清单
   //（改抽取器时对账「新认出了哪些」用，属诚实位的一部分：清单现算，不写死）。
