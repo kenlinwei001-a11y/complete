@@ -641,3 +641,61 @@ describe("WO-U2-STEPWISE-2 · order-chain：步骤态真正驱动结果分段", 
     expect(screen.getAllByTestId(/^oc-row-/).length).toBeGreaterThan(0);
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// risk-board（产能推演）：步骤 = 窗口与入参 → 逐日张力推演 → 越线判定 → 影响面与排序 → 处置计划
+// 逐步字段取自 `RiskTimelineOutputSchema` / `RiskCardSchema`（contracts 契约，非白话）。
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("WO-U2-STEPWISE-2 · risk-board：步骤态真正驱动结果分段", () => {
+  it("U2-RK-1 · 五步逐层收：第 4 步没有处置表、第 3 步没有影响面、第 2 步没有越线日、第 1 步连卡都没有", async () => {
+    loginAs("planner");
+    renderApp("/v/risk");
+    const cards = await screen.findAllByTestId(/^risk-card-/, {}, { timeout: 15_000 });
+    const base = (cards[0]!.getAttribute("data-testid") ?? "").replace("risk-card-", "");
+
+    // 默认末步 = 完整结果（改前屏面）。
+    for (let n = 1; n <= 5; n++) expect(screen.getByTestId(`rk-steps-step-${n}`)).toBeInTheDocument();
+    expect(screen.getByTestId("rk-steps-meta-data")).toHaveTextContent("planRows[]");
+    expect(screen.getByTestId("rk-steps-meta-solver")).toHaveTextContent("risk_timeline");
+    expect(screen.getByTestId("risk-kpi-bases")).toBeInTheDocument();
+    expect(screen.getByTestId("risk-kpi-earliest")).toBeInTheDocument();
+    expect(screen.getByTestId("risk-kpi-orders")).toBeInTheDocument();
+    expect(screen.getByTestId(`risk-peak-${base}`)).toBeInTheDocument();
+    const peakText = screen.getByTestId(`risk-peak-${base}`).textContent ?? "";
+    expect(peakText.length).toBeGreaterThan(0);
+
+    // ── 第 4 步「影响面与排序」：处置计划表退场 ──
+    fireEvent.click(screen.getByTestId("rk-steps-step-4"));
+    await waitFor(() => expect(screen.queryByTestId("risk-plan-panel")).toBeNull());
+    expect(screen.getByTestId("risk-kpi-orders")).toBeInTheDocument();
+
+    // ── 第 3 步「越线判定」：影响面两个 KPI 退场，越线日还在 ──
+    fireEvent.click(screen.getByTestId("rk-steps-step-3"));
+    await waitFor(() => expect(screen.queryByTestId("risk-kpi-orders")).toBeNull());
+    expect(screen.queryByTestId("risk-kpi-custs")).toBeNull();
+    expect(screen.getByTestId("risk-kpi-earliest")).toBeInTheDocument();
+    expect(screen.getByTestId(`risk-peak-${base}`)).toBeInTheDocument();
+
+    // ── 第 2 步「逐日张力推演」：连卡面那个峰值/越线日的数也退场，卡还在 ──
+    fireEvent.click(screen.getByTestId("rk-steps-step-2"));
+    await waitFor(() => expect(screen.queryByTestId(`risk-peak-${base}`)).toBeNull());
+    expect(screen.queryByTestId("risk-kpi-earliest")).toBeNull();
+    expect(screen.queryAllByText(peakText)).toHaveLength(0); // ← 那个具体的数不在了
+    expect(screen.getByTestId(`risk-card-${base}`)).toBeInTheDocument();
+    expect(screen.getByTestId("risk-kpi-bases")).toBeInTheDocument();
+
+    // ── 第 1 步「窗口与入参」：卡整批退场，只剩窗口 chip ──
+    fireEvent.click(screen.getByTestId("rk-steps-step-1"));
+    await waitFor(() => expect(screen.queryByTestId(`risk-card-${base}`)).toBeNull());
+    expect(screen.queryAllByTestId(/^risk-card-/)).toHaveLength(0);
+    expect(screen.queryByTestId("risk-kpi-bases")).toBeNull();
+    expect(screen.getByTestId("risk-window-30")).toBeInTheDocument();
+
+    // ── 切回末步：全部回来 ──
+    fireEvent.click(screen.getByTestId("rk-steps-step-5"));
+    await screen.findByTestId(`risk-card-${base}`);
+    expect(screen.getByTestId(`risk-peak-${base}`)).toHaveTextContent(peakText);
+    expect(screen.getByTestId("risk-kpi-orders")).toBeInTheDocument();
+  });
+});

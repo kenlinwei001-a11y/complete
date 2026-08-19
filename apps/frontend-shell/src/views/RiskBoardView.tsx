@@ -37,6 +37,8 @@ import { DoNothingPanel } from "./risk/DoNothingPanel";
 import { DispositionOptionsPanel } from "./risk/DispositionOptionsPanel";
 import { ProvenanceDag, gapAttributionToBaseRootCause, type GapAttrOutput, type DagData, type DagNode } from "@/components/ProvenanceDag";
 import { DagNodeInspector, type DagNodeFacts } from "./sim/DagNodeInspector";
+// WO-U2-STEPWISE-2 · 判据 U2（分步标口径）：步骤态真正驱动结果分段（不是挂一条装饰步骤条）。
+import { SolverStepBar, useSolverStep, type SolverStep } from "./sim/SolverStepBar";
 import { matchRiskFactorToRootCause } from "@/config/riskFactorTaxonomy";
 // WO-FACTOR-SCOPE-SINGLESOURCE：因子作用域的**值**类型走契约品牌类型（裸 string 赋不进来 → 词表错配编译期红）。
 import type { CausalFactorId, RefinableFactor } from "@platform/contracts";
@@ -136,6 +138,52 @@ function tierColor(v: number | null | undefined, threshold: number): string {
  * WO-DATAMODE-UNIFY-PROVENANCE：合成种子底料（card.provenanceSynthetic）走诚实灰徽章「合成·未接实测」，
  * 绝不显「实测/LIVE」（KILL-MOCK-RED·铁律 0.4·用户裁定选项c=接受诚实的灰）。数字仍是真求解器输出（可展示）。
  */
+/**
+ * WO-U2-STEPWISE-2 · 判据 **U2** 的步骤契约（本页无 `ReasoningGraph`，故按 `SolverStep` 直写）。
+ *
+ * 五步逐条对着 `risk_timeline` 的**契约字段**写（`packages/contracts/src/solvers.ts`
+ * `RiskTimelineOutputSchema` / `RiskCardSchema`），`data` 一律真字段名 ——
+ * 字段没了/改名了引用当场断，屏上当场看得出。
+ * ⚠ 「订单聚合」那个 tab 走的是**另一个求解器**（`affected_orders`），不在本条链上，故不受本闸控。
+ */
+const RK_STEPS: SolverStep[] = [
+  {
+    key: "scope",
+    label: "窗口与入参",
+    data: "horizon（30/60/90 天）+ apply[]（杠杆推演 overlay）+ threshold",
+    solver: "页面入参 · 未求解",
+    rule: "换窗口即重解；apply 为空 = 基线（等同现状），非空 = 含 N 项杠杆推演的反事实",
+  },
+  {
+    key: "series",
+    label: "逐日张力推演",
+    data: "cards[]（base / factor / currentTightness / series / factorSeries / events）",
+    solver: "risk_timeline",
+    rule: "由该因素实测当前张力起锚 + 确定性前瞻（爬坡 + 真事件脉冲）逐日推演；无实测源的因素标估算，不冒充实测",
+  },
+  {
+    key: "cross",
+    label: "越线判定",
+    data: "cards[].peak / cards[].crossDay / threshold",
+    solver: "risk_timeline",
+    rule: "峰值张力 = max(逐日张力 series)；越线日 = 首个张力 ≥ 阈值之日（张力口径 0–100，越高越紧）",
+  },
+  {
+    key: "exposure",
+    label: "影响面与排序",
+    data: "cards[].affectedOrders / cards[].otd / cards[].exposure.rank / exposureOrder",
+    solver: "risk_timeline",
+    rule: "按影响面排序、零敞口沉底；缺 exposureOrder 时回落数组序并明说，前端不自造一套排序",
+  },
+  {
+    key: "plan",
+    label: "处置计划",
+    data: "planRows[]（每基地主因素首选方案 + 备份 + 反提时点）",
+    solver: "risk_timeline",
+    rule: "每基地主因素首选方案 + 峰值 ≥ 90 出备份 + 14 天内反提 S&OP；按越线日前置排启动",
+  },
+];
+
 export default function RiskBoardView(_props: ViewRendererProps) {
   // 交互态：H=推演窗口 30/60/90 天；riskTab=瓶颈视角/订单聚合 两态互斥；openBase=内联展开基地（非 modal）。
   const [horizon, setHorizon] = useState(30);
@@ -155,6 +203,11 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   // 可切回求解器数组序（越线日↑→张力↓）。两个序都留着，因为它们回答的是两个不同的问题
   // （"谁最快出事" vs "出事落在谁身上"），把其中一个藏起来就是替用户做了他该做的判断。
   const [orderMode, setOrderMode] = useState<"exposure" | "solver">("exposure");
+  /**
+   * 判据 U2 步骤态。默认末步 = 完整结果（与改前屏面逐字节一致 ⇒ 存量测试零回归）。
+   * `upto(n)` 是本页唯一分段闸：点第 N 步 ⇒ 屏上的数只显示到第 N 步为止。
+   */
+  const { active: rkStep, setActive: setRkStep, upto } = useSolverStep(RK_STEPS.length);
 
   const { data, isLoading } = useQuery({
     queryKey: ["a", "risk-timeline", { horizon }],
@@ -314,13 +367,21 @@ export default function RiskBoardView(_props: ViewRendererProps) {
         </div>
       </div>
 
-      {/* rk-kpi 条：5 指标（值全源自真 risk_timeline/bottleneck）。 */}
+      {/* ── 判据 U2 · 分步推演（步骤态**真正驱动**下面 KPI 条 / 卡面 / 处置表的分段）───────
+          第 1 步的产物 = 上面那排窗口 chip（30/60/90）与阈值，已在屏上，不再复述一遍。 */}
+      <div data-testid="risk-steps-panel" style={{ margin: "0 0 10px" }}>
+        <SolverStepBar steps={RK_STEPS} active={rkStep} onSelect={setRkStep} testId="rk-steps" />
+      </div>
+
+      {/* rk-kpi 条：5 指标（值全源自真 risk_timeline/bottleneck）。
+          U2 分段闸：五个指标**逐个挂在它自己那一层** —— 基地数/因素点来自逐日推演（第 2 步）、
+          最早越线日来自越线判定（第 3 步）、订单与客户来自影响面（第 4 步）。 */}
       <div className={styles.rkKpi} data-testid="risk-kpi">
-        <RkK testId="risk-kpi-bases" value={String(cards.length)} label="风险基地" color="#E0626C" />
-        <RkK testId="risk-kpi-factorpts" value={String(riskFactorPoints)} label="风险因素点" color="var(--c-solver)" />
-        <RkK testId="risk-kpi-orders" value={allOrders.size > 0 ? String(allOrders.size) : "—"} label="受影响订单(批)" color="var(--c-forecast)" />
-        <RkK testId="risk-kpi-custs" value={allCusts.size > 0 ? String(allCusts.size) : "—"} label="涉及客户" color="var(--c-capacity)" />
-        <RkK testId="risk-kpi-earliest" value={earliestCross != null ? `T+${earliestCross}` : "—"} label="最早越线日" color="var(--c-solver)" />
+        {upto(2) && <RkK testId="risk-kpi-bases" value={String(cards.length)} label="风险基地" color="#E0626C" />}
+        {upto(2) && <RkK testId="risk-kpi-factorpts" value={String(riskFactorPoints)} label="风险因素点" color="var(--c-solver)" />}
+        {upto(4) && <RkK testId="risk-kpi-orders" value={allOrders.size > 0 ? String(allOrders.size) : "—"} label="受影响订单(批)" color="var(--c-forecast)" />}
+        {upto(4) && <RkK testId="risk-kpi-custs" value={allCusts.size > 0 ? String(allCusts.size) : "—"} label="涉及客户" color="var(--c-capacity)" />}
+        {upto(3) && <RkK testId="risk-kpi-earliest" value={earliestCross != null ? `T+${earliestCross}` : "—"} label="最早越线日" color="var(--c-solver)" />}
       </div>
 
       {/* 订单聚合 tab → 经营聚合表 + 订单明细（真 affected_orders·无源列诚实空态）。 */}
@@ -366,7 +427,9 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                 : "本次响应未返回 exposureOrder（契约中为 optional）→ 只能按越线日序展示，前端不自造影响面排序。"}
             </span>
           </div>
-          {/* rk-grid：每基地一卡（整卡点击展开·无独立 CTA）。因素 chip 来自 bottleneck 真值。 */}
+          {/* rk-grid：每基地一卡（整卡点击展开·无独立 CTA）。因素 chip 来自 bottleneck 真值。
+              U2 分段闸：卡本身是第 2 步「逐日张力推演」的产物（cards[]）——第 1 步只有入参，没有卡。 */}
+          {upto(2) && (
           <div className={styles.rkGrid}>
             {displayCards.map((card) => {
               const selected = selectedObjects.some((o) => o.label === card.base) || openBase === card.base;
@@ -413,6 +476,8 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                   {synth && (
                     <span className={styles.rkSynth} data-testid={`risk-datamode-${card.base}`}>合成·未接实测</span>
                   )}
+                  {/* U2 分段闸：峰值/越线日是第 3 步「越线判定」的产物（peak / crossDay）。 */}
+                  {upto(3) && (
                   <div className={styles.rkCM}>
                     <span className={styles.rkPeak} data-testid={`risk-peak-${card.base}`} style={{ color: peakColor }}>
                       <Provenance
@@ -434,6 +499,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                     </span>
                     <span className={styles.rkUnit}>{card.crossDay != null ? "最早越线" : `峰值张力（${TIGHTNESS_METRIC.hint}）`}</span>
                   </div>
+                  )}
                   {chips.length > 0 && (
                     <div className={styles.rkChips} data-testid={`risk-chips-${card.base}`}>
                       {chips.map((ch) => {
@@ -463,11 +529,13 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                   </div>
                   {/* WO-DECISION-INFO-FE ① · 卡面影响面摘要（"这事有多大、落在谁身上"——此前整块没渲染）。
                       三分支各不相同，**不许合并**：缺席=未知 / 零敞口=一等结论 / 有敞口=真数字。 */}
-                  <CardExposureLine card={card} />
+                  {/* U2 分段闸：影响面摘要是第 4 步（affectedOrders / otd / exposure.rank）。 */}
+                  {upto(4) && <CardExposureLine card={card} />}
                 </div>
               );
             })}
           </div>
+          )}
 
           {/* 内联详情（非 modal）：逐因素时间轴 + 对症方案 + 对话态 QA。 */}
           {openCard && (
@@ -488,7 +556,8 @@ export default function RiskBoardView(_props: ViewRendererProps) {
           {/* 处置计划表：按越线日前置排启动·采纳经审批下发工单。导出最终规划（前端生成独立浅色 HTML 文档下载）。
               WO-LIVE-DISPOSITION：① 「⚙ 生成/重算行动计划」触发按钮（吃 boardLive.apply → 后端真重算）；
               ② 每行可点开 → DispositionDetailPanel 逐 step 推导过程 + provenance（R13）。 */}
-          {(planRows.length ?? 0) > 0 && (
+          {/* U2 分段闸：处置计划表是第 5 步（planRows[]）——链走完才有它。 */}
+          {(planRows.length ?? 0) > 0 && upto(5) && (
             <div className={styles.rkDet} style={{ marginTop: 14 }} data-testid="risk-plan-panel">
               <div className={styles.rkDetH}>
                 <b>
