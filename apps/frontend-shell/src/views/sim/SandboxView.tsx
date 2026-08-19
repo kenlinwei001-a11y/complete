@@ -442,6 +442,23 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
 
   /**
+   * ══ WO-SANDBOX-CONFIG-COLLAPSE · 配置面板折叠态（**默认收起**）══════════════════
+   *
+   * 仓主裁决：**配置面板默认收起成一条，点开才展开；地铁图留在首屏当主角。**
+   * 上一张单（CONFIG-UX）把「扰动 × 本体关系」并成同屏两列是对的，但它占满整行 ⇒
+   * 画布被排到第二行。真浏览器实测顶边 **1440×900→1453px · 1280×800→1472px**，全在折线以下。
+   *
+   * ── 这份 state 为什么在**宿主**而不在面板里 ────────────────────────────────
+   * 它有**两个消费方**：面板自己（横幅 + 行内 `display`）与 `SandboxConsole`（分栏方式）。
+   * 藏在面板内部，控制台就只能再存一份 —— 两份状态迟早对不上（本仓「两套真相源」老坑）。
+   *
+   * ⚠ 默认 `false` 是**产品裁决**（仓主原话），不是我为了让版面门变绿挑的数。
+   *   门只是把这个裁决钉住：画布 top ≥ 视口高即红（`check-layout-legibility.mjs` 首屏锚点）。
+   */
+  const [configOpen, setConfigOpen] = useState(false);
+  const toggleConfig = useCallback(() => setConfigOpen((v) => !v), []);
+
+  /**
    * ══ WO-U7-U9-REST · 判据 U7：把「我是哪一页」报给同屏问答 ══════════════════════
    * 本页走 App.tsx 专用 route（`v/sim-sandbox` → SimSandboxGuard），不经 `ViewPage`
    * ⇒ `setView` 在这里一次都不会被调到，问答答的是上一页残值（病机详见
@@ -1541,6 +1558,11 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           : null
       }
       disabledRuleKeys={sessionDisabledRuleKeys}
+      /* WO-SANDBOX-CONFIG-COLLAPSE：折叠态受控（宿主持有，见上 `configOpen` 头注）＋
+         横幅上「已施加 N 条」要的会话 id（面板与 `PerturbationTimeline` 共用同一条查询缓存）。 */
+      sessionId={sessionId}
+      open={configOpen}
+      onToggle={toggleConfig}
     />
   );
 
@@ -2007,6 +2029,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
         inputZone={inputZone}
         // WO-SANDBOX-CONFIG-UX · 左区顶部：扰动因素 × 本体关系 同屏配置面板
         configZone={configZone}
+        // WO-SANDBOX-CONFIG-COLLAPSE · 收起时回到 `300px | 1fr` ⇒ 画布回第一屏（见 console 那侧的头注）
+        configExpanded={configOpen}
         /**
          * WO-SANDBOX-V3 · ③ 下区：影响带（PRD §1③）。
          *

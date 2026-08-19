@@ -230,9 +230,24 @@ function mount() {
   );
 }
 
+/**
+ * ⚠ WO-SANDBOX-CONFIG-COLLAPSE 起，配置面板**默认收起成一条横幅**（仓主裁决：地铁图留首屏）。
+ *   故本 helper 多做一件事：**把它点开**。本文件其余 15 例的断言一个字没改 ——
+ *   它们验的是「展开后这一屏长什么样」，而那件事本单一点没动。
+ *
+ * ⚠ 这里**必须真的点**，不许改成"直接渲染展开态"的后门：
+ *   走后门就等于生产走一条路、测试验另一条路（本仓「生产实参与测试实参交集为空」那类假绿）。
+ *   点不动 ⇒ 下面 15 例集体红，这正是要的信号。
+ */
 const ready = async () => {
   await screen.findByTestId("sandbox-console");
   await screen.findByTestId("sandbox-config-panel");
+  const bar = await screen.findByTestId("sandbox-config-bar");
+  // 🐤 金丝雀：先证明"它此刻确实是收起的"。若哪天默认态被改回展开，这里不中 ⇒
+  //   报「前提变了」而不是闷头点一下把它**关上**（那会让下面 15 例全红，且红得莫名其妙）。
+  expect(bar.getAttribute("aria-expanded"), "配置面板默认态不是收起 ⇒ 本 helper 的前提变了").toBe("false");
+  await userEvent.setup().click(bar);
+  await waitFor(() => expect(bar.getAttribute("aria-expanded")).toBe("true"));
   await waitFor(() => expect(screen.getByTestId("sandbox-config-graph-svg")).toBeTruthy());
 };
 
@@ -310,7 +325,14 @@ describe("§0 · 纯模型：算式是**还原**不是编造，原生/派生判�
 
 // ══════════════════════════════════════════════════════════════════════════════
 describe("§1 · 同屏：扰动输入与本体关系在**同一视口内**（不是两个 tab、不是两个路由）", () => {
-  it("两侧同属左区、同在一个配置面板里，且都是**不点就看见**（不套 `<details>`）", async () => {
+  /**
+   * ⚠ 标题原文是「都是**不点就看见**」。WO-SANDBOX-CONFIG-COLLAPSE 之后这句话不再成立 ——
+   *   配置面板默认收起，要点一下横幅。**照实改标题**，不许留着旧标题让 `ready()` 偷偷替它点开：
+   *   那样测试名就在替代码撒谎（本仓「注释/标题替代码撒谎」那条老账）。
+   *   仍然成立、且本例真正在守的是后半句：**展开后一个 `<details>` 都不许有** ——
+   *   否则就是"展开了还要再展开一次"，等于折了两层。
+   */
+  it("两侧同属左区、同在一个配置面板里；展开后不套任何 `<details>`（折一层，不许折两层）", async () => {
     mount();
     await ready();
 

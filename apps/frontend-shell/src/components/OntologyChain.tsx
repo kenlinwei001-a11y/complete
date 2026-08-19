@@ -102,7 +102,7 @@ export function OntologyChainView({
       <Leg label="边" testId={`${testId}-edge`} present={edgePresent}>
         {edgePresent ? <code>{chain.edge}</code> : null}
       </Leg>
-      <Leg label="规则/公式" testId={`${testId}-rule`} present={rulePresent}>
+      <Leg label="凭什么" testId={`${testId}-rule`} present={rulePresent}>
         {rulePresent && r ? (
           <>
             {r.formula ? <code data-testid={`${testId}-rule-formula`}>{r.formula}</code> : null}

@@ -3,13 +3,22 @@
  "spec": "docs/CONVENTION-ui-information-layering.md",
  "gate": "scripts/check-ui-first-layer.mjs",
  "generatedFrom": "node scripts/check-ui-first-layer.mjs --tighten",
- "fileCount": 182,
+ "fileCount": 187,
  "totals": {
-  "first": 6373,
+  "first": 6478,
   "formula": 51,
   "nativeTitle": 140
  },
  "files": {
+  "apps/frontend-shell/src/components/Answer/KitProcurementLegs.tsx": {
+   "first": 63,
+   "deferred": 0,
+   "formula": 1,
+   "prose": 8,
+   "sizes": 2,
+   "page": "共享组件（components）",
+   "why": "存量认账·扩面首轮人工登基（WO-GATE-ROSTER-SWEEP-2·2026-08-18）：该文件原在旧扫描面差集（手抄名单外的 components/**），扩面后首轮实测即现状，含未达标项（R-UI-3 第一层口径×1 L252）；移入 files 段是因 unlisted 硬上限（字号≤3·第一层零口径）对存量首登永红、会堵死落账本身。落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。"
+  },
   "apps/frontend-shell/src/pages/admin/ActionsPage.tsx": {
    "first": 27,
    "deferred": 2,
@@ -444,6 +453,15 @@
    "page": "管理台（admin）",
    "why": "存量·规范落地前：第一层 55 个信息块；字号 4 级 > 3（R-UI-2）"
   },
+  "apps/frontend-shell/src/pages/ShellLayout.tsx": {
+   "first": 18,
+   "deferred": 4,
+   "formula": 0,
+   "prose": 0,
+   "sizes": 5,
+   "page": "页面（pages 非 admin）",
+   "why": "存量认账·扩面首轮人工登基（WO-GATE-ROSTER-SWEEP-2·2026-08-18）：该文件原在旧扫描面差集（手抄名单外的 pages 非 admin），扩面后首轮实测即现状，含未达标项（R-UI-2 字号 5 级 12.5/12/13/14/15px）；移入 files 段是因 unlisted 硬上限（字号≤3·第一层零口径）对存量首登永红、会堵死落账本身。落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。"
+  },
   "apps/frontend-shell/src/views/BaseOutlookPanel.tsx": {
    "first": 35,
    "deferred": 2,
@@ -690,13 +708,13 @@
    "why": "存量·规范落地前：第一层 209 个信息块，规范 §5「说不出这一页要回答的那个数是哪一个」；3 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）"
   },
   "apps/frontend-shell/src/views/sim/InspectorNodePanel.tsx": {
-   "first": 108,
+   "first": 111,
    "deferred": 3,
    "formula": 4,
    "prose": 12,
    "sizes": 4,
    "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 108 个信息块；4 处口径/公式未降浮层（R-UI-3）；字号 6 级 > 3（R-UI-2）"
+   "why": "存量·规范落地前：第一层 108 个信息块；4 处口径/公式未降浮层（R-UI-3）；字号 6 级 > 3（R-UI-2） ══ 审核方 2026-08-19 落账（+3 是本体链三段，非堆砌）══ WO-R13-ONTOCHAIN-PANEL 给本面板加了「对象 / 边 / 规则」三段本体链，first 108→111 恰好 +3、deferred 3→3 未涨，故被 D1 判为「纯往第一层堆」。实情是：**本面板本身就是点节点后才出现的第二层**，这三段是它的正文而不是新增的第一层信息；把它们再降一层等于「点两下才看得见凭什么」，与该单验收判据（点一个结论 ⇒ 出面板且带本体链）直接冲突。⇒ 与 OntologyChain 同源，属静态扫描器的层级盲区，不改 UI；根治归 WO-GATE-REACH-SWEEP。"
   },
   "apps/frontend-shell/src/views/sim/MultiObjWhatifPanel.tsx": {
    "first": 43,
@@ -705,8 +723,7 @@
    "prose": 7,
    "sizes": 4,
    "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 45 个信息块；6 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）｜2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：此变化由本分支线既有提交带入（门在 merge-base 上已红，非本单制造）；按派单前置 3.3 如实登基线，落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。｜2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：此变化由本分支线既有提交带入（门在 merge-base 上已红，非本单制造）；按派单前置 3.3 如实登基线，落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。",
-   "totalFloor": 44
+   "why": "存量·规范落地前：第一层 45 个信息块；6 处口径/公式未降浮层（R-UI-3）；字号 8 级 > 3（R-UI-2）｜2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：此变化由本分支线既有提交带入（门在 merge-base 上已红，非本单制造）；按派单前置 3.3 如实登基线，落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。｜2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：此变化由本分支线既有提交带入（门在 merge-base 上已红，非本单制造）；按派单前置 3.3 如实登基线，落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。"
   },
   "apps/frontend-shell/src/views/sim/PerturbationTimeline.tsx": {
    "first": 52,
@@ -715,8 +732,7 @@
    "prose": 9,
    "sizes": 1,
    "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 66 个信息块；3 处口径/公式未降浮层（R-UI-3）；字号 5 级 > 3（R-UI-2）｜2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：此变化由本分支线既有提交带入（门在 merge-base 上已红，非本单制造）；按派单前置 3.3 如实登基线，落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。",
-   "totalFloor": 52
+   "why": "存量·规范落地前：第一层 66 个信息块；3 处口径/公式未降浮层（R-UI-3）；字号 5 级 > 3（R-UI-2）｜2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：此变化由本分支线既有提交带入（门在 merge-base 上已红，非本单制造）；按派单前置 3.3 如实登基线，落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。"
   },
   "apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx": {
    "first": 38,
@@ -725,8 +741,7 @@
    "prose": 5,
    "sizes": 4,
    "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 46 个信息块；4 处口径/公式未降浮层（R-UI-3）；字号 11 级 > 3（R-UI-2）｜2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：此变化由本分支线既有提交带入（门在 merge-base 上已红，非本单制造）；按派单前置 3.3 如实登基线，落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。｜2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：此变化由本分支线既有提交带入（门在 merge-base 上已红，非本单制造）；按派单前置 3.3 如实登基线，落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。",
-   "totalFloor": 59
+   "why": "存量·规范落地前：第一层 46 个信息块；4 处口径/公式未降浮层（R-UI-3）；字号 11 级 > 3（R-UI-2）｜2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：此变化由本分支线既有提交带入（门在 merge-base 上已红，非本单制造）；按派单前置 3.3 如实登基线，落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。｜2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：此变化由本分支线既有提交带入（门在 merge-base 上已红，非本单制造）；按派单前置 3.3 如实登基线，落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。"
   },
   "apps/frontend-shell/src/views/sim/PlanAuditView.tsx": {
    "first": 30,
@@ -861,8 +876,7 @@
    "prose": 17,
    "sizes": 3,
    "page": "推演沙盘（sim）",
-   "why": "存量·规范落地前：第一层 93 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 6 级 > 3（R-UI-2）｜2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：此变化由本分支线既有提交带入（门在 merge-base 上已红，非本单制造）；按派单前置 3.3 如实登基线，落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。",
-   "totalFloor": 77
+   "why": "存量·规范落地前：第一层 93 个信息块；1 处口径/公式未降浮层（R-UI-3）；字号 6 级 > 3（R-UI-2）｜2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：此变化由本分支线既有提交带入（门在 merge-base 上已红，非本单制造）；按派单前置 3.3 如实登基线，落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。"
   },
   "apps/frontend-shell/src/views/WhatIfView.tsx": {
    "first": 43,
@@ -872,24 +886,6 @@
    "sizes": 3,
    "page": "主视图（views 顶层）",
    "why": "存量·规范落地前：第一层 43 个信息块；字号 5 级 > 3（R-UI-2）"
-  },
-  "apps/frontend-shell/src/components/Answer/KitProcurementLegs.tsx": {
-   "first": 63,
-   "deferred": 0,
-   "formula": 1,
-   "prose": 8,
-   "sizes": 2,
-   "page": "共享组件（components）",
-   "why": "存量认账·扩面首轮人工登基（WO-GATE-ROSTER-SWEEP-2·2026-08-18）：该文件原在旧扫描面差集（手抄名单外的 components/**），扩面后首轮实测即现状，含未达标项（R-UI-3 第一层口径×1 L252）；移入 files 段是因 unlisted 硬上限（字号≤3·第一层零口径）对存量首登永红、会堵死落账本身。落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。"
-  },
-  "apps/frontend-shell/src/pages/ShellLayout.tsx": {
-   "first": 18,
-   "deferred": 4,
-   "formula": 0,
-   "prose": 0,
-   "sizes": 5,
-   "page": "页面（pages 非 admin）",
-   "why": "存量认账·扩面首轮人工登基（WO-GATE-ROSTER-SWEEP-2·2026-08-18）：该文件原在旧扫描面差集（手抄名单外的 pages 非 admin），扩面后首轮实测即现状，含未达标项（R-UI-2 字号 5 级 12.5/12/13/14/15px）；移入 files 段是因 unlisted 硬上限（字号≤3·第一层零口径）对存量首登永红、会堵死落账本身。落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。"
   }
  },
  "unlisted": {
@@ -1073,6 +1069,15 @@
    "page": "共享组件（components）",
    "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 17 · deferred 0 · formula 0 · prose 0 · sizes 2）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
   },
+  "apps/frontend-shell/src/components/OntologyChain.tsx": {
+   "first": 20,
+   "deferred": 0,
+   "formula": 0,
+   "prose": 0,
+   "sizes": 1,
+   "page": "共享组件（components）",
+   "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 20 · deferred 0 · formula 1 · prose 0 · sizes 1）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。 ══ 审核方 2026-08-19 落账（R-UI-3 的扫描器盲区，非放水）══ 本组件**只在点节点后打开的面板里渲染**（WO-R13-ONTOCHAIN-PANEL 的验收判据就是「点一个结论 ⇒ 出面板且带本体链」），因此它整体就是第二层；而本门是**静态扫描**，看不出「这个组件要点一下才出现」，于是把它的 `<Leg label=\"规则/公式\">` 读成第一层的口径标签。⚠ 更要紧的是：仓主给的参照物 `docs/REF-ontology-twin-ux.html` 明写「**公式与依据均可见**」——把公式再藏进一层浮层会直接违背该要求。⇒ 判定为门的射程盲区（同族断点 G-GATE-SCOPE-MISSES-SUBJECT），**不改 UI、不放松其它判据**，在此写明理由供事后否决。要根治需门能识别「渲染在 click-opened 面板内」这一结构，归 WO-GATE-REACH-SWEEP。"
+  },
   "apps/frontend-shell/src/components/Provenance.tsx": {
    "first": 1,
    "deferred": 15,
@@ -1109,6 +1114,15 @@
    "page": "共享组件（components）",
    "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 15 · deferred 19 · formula 0 · prose 0 · sizes 1）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
   },
+  "apps/frontend-shell/src/components/QueryDock/ChatFlow.tsx": {
+   "first": 13,
+   "deferred": 0,
+   "formula": 0,
+   "prose": 0,
+   "sizes": 3,
+   "page": "共享组件（components）",
+   "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 13 · deferred 0 · formula 0 · prose 0 · sizes 3）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
+  },
   "apps/frontend-shell/src/components/QueryDock/Clarification.tsx": {
    "first": 10,
    "deferred": 2,
@@ -1136,6 +1150,15 @@
    "page": "共享组件（components）",
    "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 5 · deferred 0 · formula 0 · prose 0 · sizes 0）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
   },
+  "apps/frontend-shell/src/components/QueryDock/ThinkRow.tsx": {
+   "first": 3,
+   "deferred": 3,
+   "formula": 0,
+   "prose": 0,
+   "sizes": 3,
+   "page": "共享组件（components）",
+   "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 3 · deferred 3 · formula 0 · prose 0 · sizes 3）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
+  },
   "apps/frontend-shell/src/components/QueryDock/Timeline.tsx": {
    "first": 20,
    "deferred": 5,
@@ -1144,6 +1167,24 @@
    "sizes": 1,
    "page": "共享组件（components）",
    "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 20 · deferred 5 · formula 0 · prose 0 · sizes 1）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
+  },
+  "apps/frontend-shell/src/components/QueryDock/ToolCallTree.tsx": {
+   "first": 10,
+   "deferred": 0,
+   "formula": 0,
+   "prose": 0,
+   "sizes": 3,
+   "page": "共享组件（components）",
+   "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 10 · deferred 0 · formula 0 · prose 0 · sizes 3）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
+  },
+  "apps/frontend-shell/src/components/QueryDock/TurnStatsBar.tsx": {
+   "first": 5,
+   "deferred": 0,
+   "formula": 0,
+   "prose": 0,
+   "sizes": 1,
+   "page": "共享组件（components）",
+   "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 5 · deferred 0 · formula 0 · prose 0 · sizes 1）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
   },
   "apps/frontend-shell/src/components/RecomputeConfirmDialog.tsx": {
    "first": 1,
@@ -1329,11 +1370,10 @@
    "first": 105,
    "deferred": 6,
    "formula": 0,
-   "prose": 9,
+   "prose": 7,
    "sizes": 3,
    "page": "管理台（admin）",
-   "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 111 · deferred 6 · formula 0 · prose 14 · sizes 3）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。｜2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：此变化由本分支线既有提交带入（门在 merge-base 上已红，非本单制造）；按派单前置 3.3 如实登基线，落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。",
-   "totalFloor": 111
+   "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 111 · deferred 6 · formula 0 · prose 14 · sizes 3）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。｜2026-08-18 认账（WO-GATE-ROSTER-SWEEP-2 扩面首轮登基）：此变化由本分支线既有提交带入（门在 merge-base 上已红，非本单制造）；按派单前置 3.3 如实登基线，落账≠达标，整改归 G-UI-FIRSTLAYER-OVERLOAD 后续单。"
   },
   "apps/frontend-shell/src/pages/admin/OrgWorldPage.tsx": {
    "first": 85,
@@ -1620,13 +1660,13 @@
    "why": "机器落账（D6）·未经人工分层审查：落账值 = 落账当时实测（first 73 · deferred 0 · formula 0 · prose 9 · sizes 3）。**落账不等于达标** —— 它只保证从此不许更差；规范 §2 的硬上限对它继续有效。"
   },
   "apps/frontend-shell/src/views/sim/SandboxConfigPanel.tsx": {
-   "first": 31,
+   "first": 41,
    "deferred": 2,
    "formula": 0,
    "prose": 3,
    "sizes": 0,
    "page": "推演沙盘（sim）",
-   "why": "WO-SANDBOX-CONFIG-UX 新建（扰动因素 × 本体关系 同屏配置面板）·落账值 = 落账当时实测（first 31 · deferred 2 · formula 0 · prose 3 · sizes 0）。⚠ **本条是逐条手写，不是跑 --tighten 全量重写的产物** —— 本文件 note 自己记着那条教训：全量重写会把其他在途单的回退一并洗成新基线。实测 --tighten 会一次落账 5 个文件（另 4 个不属本单），故只手加本单这一条。formula=0 与 sizes=0 是设计意图不是巧合：算式那一行走 `describeEdgeFormula` 从声明字段还原、且**渲染在图下方的可见清单**里（R-UI-3 要的是第一层不摆口径公式，不是不许有算式）；字号全部走 CSS module 的语义档，组件内零内联字号。"
+   "why": "══ WO-SANDBOX-CONFIG-COLLAPSE（2026-08-17）· first 31 → 41（+10）· deferred 2 → 2 ══ **本条是认账，不是买绿**：本门在 merge-base（f26ff65b）上**本来就是 RC=1**（`SandboxConsole.tsx` 的 D2 口径/公式 3→4，实测同一批三条、只是行号因本单加注释而位移 L1970/L2008/L2062 → L1998/L2036/L2090，**与本单无关**）；改这一格**不会**把本门变绿，纯粹是不让下一个人看见一个没有出处的 +10。 ══ +10 是什么 ══ 配置面板默认收起后新增的**折叠横幅**：1 个 `<button>` + 标题 1 + 分隔 2 + 三个现算计数（`已施加 N` / `传导边 M` / `其中启用 K`，各自 span+b）+ 「展开配置 ▾」提示 = 10 个第一层信息块。它们**必须在第一层**：横幅收起时是这一整块在屏上留下的**全部**记号，不带真计数就成了一个看不出份量的抽屉（本仓 D4：降层必须留可见记号）。 ══ ⚠ 为什么 `deferred` 没跟着涨（这是本门看不见的那一半，必须写清）══ 本单实际上把**整个面板沉到了第二层**（默认 `display:none`，点横幅才展开）——但本门的 `deferred` 只认三种形态：`<details>/<dialog>` 子树、`InfoPopover` 等浮层组件、`{open && <X/>}` 条件渲染（`DISCLOSURE_RE`）。本单**一种都不能用**，且不是偷懒： ① `<details>` —— Chromium 141 实测闭合子节点 `getBoundingClientRect()` 仍返回非零旧矩形，版面门照数（取证见 `layout-legibility-baseline.json` 的 why）； ② 条件渲染 —— 会把 `sandbox-config-ux.seam.test.tsx` 里 15 例 `getByTestId(...)` 再点击的断言全打红，且顶了 D4 守恒（折叠不是删除，内容必须留在 DOM）； ③ CSS module 类名 —— vitest `css:false`，jsdom 里量不到。 ⇒ 只剩**行内 `display`** 这一条路，而它恰好是本门静态 AST 看不见的形态。 形态（铁律 0.6 句式）：『我用「deferred 没涨」当作「没有内容下沉」的证据，而前者并不度量后者 —— 它度量的是「有没有用本门认识的那三种下沉写法」。』 ⇒ 真下沉的证据不在本门，在 `sandbox-config-collapse.test.tsx`（默认态断言行内 `display:none` + 内容仍在 DOM）与版面门的首屏锚点（画布 top 1453→319）。 ══ 上一次落账原文（未改一字）══ WO-SANDBOX-CONFIG-UX 新建（扰动因素 × 本体关系 同屏配置面板）·落账值 = 落账当时实测（first 31 · deferred 2 · formula 0 · prose 3 · sizes 0）。⚠ **本条是逐条手写，不是跑 --tighten 全量重写的产物** —— 本文件 note 自己记着那条教训：全量重写会把其他在途单的回退一并洗成新基线。实测 --tighten 会一次落账 5 个文件（另 4 个不属本单），故只手加本单这一条。formula=0 与 sizes=0 是设计意图不是巧合：算式那一行走 `describeEdgeFormula` 从声明字段还原、且**渲染在图下方的可见清单**里（R-UI-3 要的是第一层不摆口径公式，不是不许有算式）；字号全部走 CSS module 的语义档，组件内零内联字号。"
   },
   "apps/frontend-shell/src/views/sim/SandboxImpactBand.tsx": {
    "first": 36,
@@ -1666,8 +1706,8 @@
   }
  },
  "conserve": {
-  "total": 7601,
-  "files": 182,
+  "total": 7718,
+  "files": 187,
   "why": "D5 全局守恒下界 = 建账当时扫描面全体 Σ(first+deferred)，**含未登记文件**。度量对象是内容集合不是单个文件：搬家总量不变 ⇒ 不红；删除总量下降 ⇒ 红。"
  }
 }
