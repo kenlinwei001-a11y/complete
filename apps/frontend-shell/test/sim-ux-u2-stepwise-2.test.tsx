@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
 
@@ -411,5 +412,83 @@ describe("WO-U2-STEPWISE-2 · decision-play：步骤态真正驱动结果分段"
     await screen.findByTestId("dp-action-opt-backup-cert");
     expect(screen.getByTestId("dp-narrowed-pct")).toHaveTextContent("21.94%");
     expect(screen.getByTestId("dp-matrix-opt-backup-cert-closesGap")).toHaveTextContent("3.2%");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// sop-balance（月度规划）：步骤 = SOP_GRAPH 五层
+//   ①② 评审输入 → ③ 供应评审 → ④ 财务整合 → ⑤ 决议回灌 → 顶栏结论读数
+//
+// ⚠ 本页是上一单（WO-U2-STEPWISE-1）评估后**暂缓**的那一格，理由是「五步按钮 = 业务流程」。
+//   那个理由对**按钮**成立，但不度量本页有没有推演过程 —— `SOP_GRAPH`（WO-U3-DAG-REST 落地，
+//   边逐条取自 `apps/datacore/src/sop.ts` 实测）证明推演链是真的。本用例逐条咬三条分水岭：
+//   ① 步骤条把 ①② 合成一格（业务流程里它们是两个按钮）；
+//   ② 多一层业务流程没有的「顶栏结论读数」；
+//   ③ 切步只改**读数**，五步法按钮一个不动、照常可点。
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("WO-U2-STEPWISE-2 · sop-balance：步骤态真正驱动结果分段（且不是那五个业务按钮）", () => {
+  it("U2-SOP-1 · 五步逐层收：第 4 步没有顶栏六卡、第 1 步连可供给都没有；五步法按钮全程不受影响", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/sop-balance");
+
+    // 建版本 → 跑 ① ② ③（让 s2/s3 有真值）。
+    await user.click(await screen.findByTestId("sop-create"));
+    await screen.findByTestId("sop-kpi-bar");
+    await user.click(screen.getByTestId("sop-run-1"));
+    await screen.findByTestId("sop-s1-table");
+    await user.click(screen.getByTestId("sop-step-chip-2"));
+    await user.click(await screen.findByTestId("sop-run-2"));
+    await screen.findByTestId("sop-s2-table");
+    await user.click(screen.getByTestId("sop-step-chip-3"));
+    await user.click(await screen.findByTestId("sop-run-3"));
+    await screen.findByTestId("sop-gap");
+
+    // ── 分水岭①：步骤条 5 步，且第 1 步一格盖住业务流程的 ① 与 ② 两个按钮 ──
+    for (let n = 1; n <= 5; n++) expect(screen.getByTestId(`sop-steps-step-${n}`)).toBeInTheDocument();
+    expect(screen.getByTestId("sop-steps-step-1")).toHaveTextContent("①②");
+    // ── 分水岭②：末步是「顶栏结论读数」——业务流程里没有这一步 ──
+    expect(screen.getByTestId("sop-steps-step-5")).toHaveTextContent("读数");
+    expect(screen.getByTestId("sop-steps-meta-solver")).toHaveTextContent("S&OP");
+
+    // 默认末步 = 完整结果：顶栏六卡在，链上读数也在。
+    expect(screen.getByTestId("sop-kpi-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("sop-kpi-gap")).toBeInTheDocument();
+    expect(screen.getByTestId("sop-chain-s3")).toHaveTextContent("22.7");
+
+    // ── 第 4 步「⑤ 决议回灌」：顶栏那六个结论数字整块退场 ──
+    // ⚠ 这里咬**承载那个数的元素**而不是全屏文本：同一个供给/缺口数在下方 ③ 面板的
+    //   `sop-gap` 里也印着一份（那是③自己的读数，不归顶栏这一层管）。
+    //   拿全屏文本去咬会把「另一处合法的同名数」读成「闸没生效」——假红。
+    fireEvent.click(screen.getByTestId("sop-steps-step-4"));
+    await waitFor(() => expect(screen.queryByTestId("sop-kpi-bar")).toBeNull());
+    expect(screen.queryByTestId("sop-kpi-gap")).toBeNull();
+    expect(screen.queryByTestId("sop-kpi-demand")).toBeNull();
+    expect(screen.getByTestId("sop-chain-s5")).toBeInTheDocument();
+
+    // ── 第 3 步「④ 财务整合」：⑤ 的终版供给退场 ──
+    fireEvent.click(screen.getByTestId("sop-steps-step-3"));
+    await waitFor(() => expect(screen.queryByTestId("sop-chain-s5")).toBeNull());
+    expect(screen.getByTestId("sop-chain-s4")).toBeInTheDocument();
+
+    // ── 第 2 步「③ 供应评审」：④ 的现金垫退场，可供给还在 ──
+    fireEvent.click(screen.getByTestId("sop-steps-step-2"));
+    await waitFor(() => expect(screen.queryByTestId("sop-chain-s4")).toBeNull());
+    expect(screen.getByTestId("sop-chain-s3")).toHaveTextContent("22.7");
+
+    // ── 第 1 步「①② 评审输入」：连可供给 22.7 也退场，只剩需求 P50 ──
+    fireEvent.click(screen.getByTestId("sop-steps-step-1"));
+    await waitFor(() => expect(screen.queryByTestId("sop-chain-s3")).toBeNull());
+    expect(screen.getByTestId("sop-chain-s2")).toBeInTheDocument();
+
+    // ── 分水岭③：切步全程，五步法业务按钮一个没少、还能点 ──
+    for (let n = 1; n <= 5; n++) expect(screen.getByTestId(`sop-step-chip-${n}`)).toBeInTheDocument();
+    expect(screen.getByTestId("sop-step3")).toBeInTheDocument();
+
+    // ── 切回末步：顶栏六卡回来 ──
+    fireEvent.click(screen.getByTestId("sop-steps-step-5"));
+    await screen.findByTestId("sop-kpi-bar");
+    expect(screen.getByTestId("sop-kpi-gap")).toBeInTheDocument();
   });
 });
