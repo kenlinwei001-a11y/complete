@@ -36,6 +36,7 @@ function gateToolBroken(e) {
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { contentKey, reconcileContents, buildContentsSegment, conservationCanary } from "./lib/ratchet-conservation.mjs";
 
 const ROOTS = ["apps/frontend-shell/src/views", "apps/frontend-shell/src/pages/admin"];
 const BASELINE = "scripts/debattery-baseline.json";
@@ -126,7 +127,11 @@ function scan(file) {
   const hits = [];
   codeLines.forEach((line, i) => {
     if ((rawLines[i] ?? "").includes("debattery-allow")) return;
-    if (TOKEN_RE.test(line)) hits.push({ n: i + 1, text: (rawLines[i] ?? "").trim().slice(0, 90) });
+    if (TOKEN_RE.test(line)) {
+      const text = (rawLines[i] ?? "").trim().slice(0, 90);
+      // 内容键只含行文本（文件无关：同一行搬到别的文件不改键，D5/D6 用）
+      hits.push({ n: i + 1, text, key: contentKey("A", text) });
+    }
   });
   return hits;
 }
@@ -228,7 +233,8 @@ function scanDataTables(source) {
     const rows = topLevelRows(block);
     const nums = (block.match(/(?<![\w$.])-?\d+(?:\.\d+)?/g) ?? []).length;
     if (rows >= MIN_ROWS && nums >= MIN_NUMS) {
-      hits.push({ n: source.slice(0, m.index).split("\n").length, name: m[1], rows, nums });
+      // 内容键 = 表名+行数+数值个数（文件无关；行号不进键 —— 行号会漂）
+      hits.push({ n: source.slice(0, m.index).split("\n").length, name: m[1], rows, nums, key: contentKey("B", m[1], String(rows), String(nums)) });
     }
   }
   return hits;
@@ -244,6 +250,13 @@ const canaryHits = scanDataTables(CANARY_SRC);
 if (canaryHits.length !== 1 || canaryHits[0].name !== "CMP") {
   console.error("✗ **门自己坏了**：探测器 B 的金丝雀没命中（期望 1 条 CMP，实得 " + JSON.stringify(canaryHits) + "）。");
   console.error("  报「前端没有写死数据」是不成立的 —— 先修探测器，不许把工具坏了当成代码干净。");
+  process.exit(2);
+}
+
+// D5/D6 内容对账金丝雀（与 reconcileContents 共用本体，不另抄）
+const cc = conservationCanary();
+if (!cc.ok) {
+  console.error("⛔ **门自己坏了**：D5/D6 内容对账金丝雀不过 —— " + cc.got + "（期望：" + cc.want + "）。");
   process.exit(2);
 }
 
@@ -279,20 +292,59 @@ for (const f of dataFiles) {
   if (hits.length > 0) { dataCounts[f] = hits.length; dataDetail[f] = hits; }
 }
 
+// 诊断：dump 现算条目（含内容键）—— 迁移/审计用，不改变红绿
+if (process.argv.includes("--entries-json")) {
+  const dump = (d) => Object.entries(d).flatMap(([f, hs]) => hs.map((h) => ({ key: h.key, file: f, label: h.text ?? `const ${h.name} —— ${h.rows} 行 × ${h.nums} 个数值字面量` })));
+  console.log(JSON.stringify({ A: dump(detail), B: dump(dataDetail) }, null, 1));
+  process.exit(0);
+}
+
 const update = process.argv.includes("--update");
 if (update) {
-  writeFileSync(BASELINE, JSON.stringify(counts, null, 2) + "\n");
-  writeFileSync(DATA_BASELINE, JSON.stringify(dataCounts, null, 2) + "\n");
+  // D5/D6：基线 = { files: 文件→计数（数值棘轮）, contents: 逐条内容键（守恒对账） }
+  const prevA = existsSync(BASELINE) ? readBaselineDoc(BASELINE) : null;
+  const prevB = existsSync(DATA_BASELINE) ? readBaselineDoc(DATA_BASELINE) : null;
+  const entriesA = Object.entries(detail).flatMap(([f, hs]) => hs.map((h) => ({ key: h.key, file: f, label: h.text })));
+  const entriesB = Object.entries(dataDetail).flatMap(([f, hs]) => hs.map((h) => ({ key: h.key, file: f, label: `const ${h.name} —— ${h.rows} 行 × ${h.nums} 个数值字面量` })));
+  writeFileSync(BASELINE, JSON.stringify({ files: counts, contents: buildContentsSegment(entriesA, prevA?.contents, "debattery:check/A") }, null, 2) + "\n");
+  writeFileSync(DATA_BASELINE, JSON.stringify({ files: dataCounts, contents: buildContentsSegment(entriesB, prevB?.contents, "debattery:check/B") }, null, 2) + "\n");
   console.log(`✓ debattery 基线已更新：${Object.keys(counts).length} 文件 / ${Object.values(counts).reduce((a, b) => a + b, 0)} 命中。`);
   console.log(`✓ 前端写死数据表基线已更新：${Object.keys(dataCounts).length} 文件 / ${Object.values(dataCounts).reduce((a, b) => a + b, 0)} 命中。`);
   process.exit(0);
 }
 
-const baseline = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : {};
+// 基线格式：新 = { files: {文件→计数}, contents: {内容键→…} }；旧 = 平的 {文件→计数}（读时兼容，写时只写新格式）
+function readBaselineDoc(path) {
+  const j = JSON.parse(readFileSync(path, "utf8"));
+  if (j && typeof j === "object" && j.files && typeof j.files === "object") return j;
+  return { files: j && typeof j === "object" ? j : {}, contents: null }; // 旧格式：无 contents 段（未建账）
+}
+const baselineDoc = existsSync(BASELINE) ? readBaselineDoc(BASELINE) : { files: {}, contents: null };
+const baseline = baselineDoc.files;
+
+// ── D5 全局守恒 + D6 unlisted 落账（共享实现 scripts/lib/ratchet-conservation.mjs）──────
+// 未登记文件只红「未匹配」的命中（匹配上的 = 从登记文件搬来的已知内容，守恒不红）；
+// 登记文件数值棘轮照走，未匹配命中另按 D6 点名（同数调包在数值棘轮下恒绿）。
+const reconA = reconcileContents({
+  gate: "debattery:check/A",
+  contents: baselineDoc.contents,
+  current: Object.entries(detail).flatMap(([f, hs]) => hs.map((h) => ({ key: h.key, file: f, label: h.text }))),
+  tightenCmd: "node scripts/check-debattery.mjs --update",
+});
+const unmatchedA = new Map();
+for (const u of reconA.unmatched) unmatchedA.set(u.file + " " + u.key, (unmatchedA.get(u.file + " " + u.key) ?? 0) + 1);
+const newHitsOf = (f, hs) =>
+  reconA.notEstablished ? hs : hs.filter((h) => { const k = f + " " + h.key; const n = unmatchedA.get(k) ?? 0; if (n > 0) { unmatchedA.set(k, n - 1); return true; } return false; });
+
 const regressions = [];
 for (const [f, c] of Object.entries(counts)) {
   const base = baseline[f] ?? 0;
-  if (c > base) regressions.push({ f, c, base });
+  const newHits = newHitsOf(f, detail[f] ?? []);
+  // 数值棘轮：登记文件总量增长照旧红；
+  // 未登记文件只对**未匹配**条数比基线（匹配上的 = 搬来的已知内容，D5 守恒不红）；同数调包按 D6 红
+  const eff = reconA.notEstablished || f in baseline ? c : newHits.length;
+  if (eff > base) regressions.push({ f, c: eff, base, show: f in baseline ? detail[f] : newHits });
+  else if (!reconA.notEstablished && f in baseline && newHits.length > 0) regressions.push({ f, c: newHits.length, base, show: newHits, d6: true });
 }
 // 已清零但基线仍记的（迁移成果，提示收紧）
 const shrunk = Object.entries(baseline).filter(([f, b]) => (counts[f] ?? 0) < b);
@@ -305,8 +357,8 @@ if (shrunk.length) console.log(`· 已收窄 ${shrunk.length} 文件（迁移成
 if (regressions.length) {
   console.error("\n✗ 去电池锁死门禁未通过（视图/页内联了新的业务常数 → 违反 R14）：");
   for (const r of regressions) {
-    console.error(`  - ${r.f}：${r.c} 命中（基线 ${r.base}）`);
-    for (const h of detail[r.f].slice(0, 4)) console.error(`      L${h.n}: ${h.text}`);
+    console.error(`  - ${r.f}：${r.c} 命中（基线 ${r.base}）${r.d6 ? "【D6 内容调包：计数没涨但内容换了】" : ""}`);
+    for (const h of (r.show ?? []).slice(0, 4)) console.error(`      L${h.n}: ${h.text}`);
   }
   console.error("\n  修法：把业务常数移到 ViewConfig.layout / WorkspaceConfig / 对象库 / i18n；必须保留的兜底加 // debattery-allow。");
   process.exit(1);
@@ -314,11 +366,26 @@ if (regressions.length) {
 console.log("\n✓ 去电池锁死门禁通过（无新增内联业务常数；存量见基线，随迁移收窄）。");
 
 /* ── 探测器 B 的棘轮与报告 ───────────────────────────────────────────────── */
-const dataBaseline = existsSync(DATA_BASELINE) ? JSON.parse(readFileSync(DATA_BASELINE, "utf8")) : {};
+const dataBaselineDoc = existsSync(DATA_BASELINE) ? readBaselineDoc(DATA_BASELINE) : { files: {}, contents: null };
+const dataBaseline = dataBaselineDoc.files;
+const reconB = reconcileContents({
+  gate: "debattery:check/B",
+  contents: dataBaselineDoc.contents,
+  current: Object.entries(dataDetail).flatMap(([f, hs]) => hs.map((h) => ({ key: h.key, file: f, label: `const ${h.name} —— ${h.rows} 行 × ${h.nums} 个数值字面量` }))),
+  tightenCmd: "node scripts/check-debattery.mjs --update",
+});
+const unmatchedB = new Map();
+for (const u of reconB.unmatched) unmatchedB.set(u.file + " " + u.key, (unmatchedB.get(u.file + " " + u.key) ?? 0) + 1);
+const newDataHitsOf = (f, hs) =>
+  reconB.notEstablished ? hs : hs.filter((h) => { const k = f + " " + h.key; const n = unmatchedB.get(k) ?? 0; if (n > 0) { unmatchedB.set(k, n - 1); return true; } return false; });
+
 const dataReg = [];
 for (const [f, c] of Object.entries(dataCounts)) {
   const base = dataBaseline[f] ?? 0;
-  if (c > base) dataReg.push({ f, c, base });
+  const newHits = newDataHitsOf(f, dataDetail[f] ?? []);
+  const eff = reconB.notEstablished || f in dataBaseline ? c : newHits.length;
+  if (eff > base) dataReg.push({ f, c: eff, base, show: f in dataBaseline ? dataDetail[f] : newHits });
+  else if (!reconB.notEstablished && f in dataBaseline && newHits.length > 0) dataReg.push({ f, c: newHits.length, base, show: newHits, d6: true });
 }
 const dataShrunk = Object.entries(dataBaseline).filter(([f, b]) => (dataCounts[f] ?? 0) < b);
 const dataTotal = Object.values(dataCounts).reduce((a, b) => a + b, 0);
@@ -331,8 +398,8 @@ if (dataShrunk.length) console.log(`· 已收窄 ${dataShrunk.length} 文件（�
 if (dataReg.length) {
   console.error("\n✗ 前端写死业务数据门禁未通过（仓主 2026-08-09 裁定二：只补真数据，不做 mock）：");
   for (const r of dataReg) {
-    console.error(`  - ${r.f}：${r.c} 处（基线 ${r.base}）`);
-    for (const h of dataDetail[r.f].slice(0, 4)) {
+    console.error(`  - ${r.f}：${r.c} 处（基线 ${r.base}）${r.d6 ? "【D6 内容调包：计数没涨但内容换了】" : ""}`);
+    for (const h of (r.show ?? []).slice(0, 4)) {
       console.error(`      L${h.n}: const ${h.name} —— ${h.rows} 行 × ${h.nums} 个数值字面量`);
     }
   }

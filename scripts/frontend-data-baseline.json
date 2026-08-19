@@ -1,25 +1,267 @@
 {
-  "apps/frontend-shell/src/App.tsx": 1,
-  "apps/frontend-shell/src/components/InferenceProcessDag.tsx": 3,
-  "apps/frontend-shell/src/locales/zh.ts": 1,
-  "apps/frontend-shell/src/pages/ShellLayout.tsx": 2,
-  "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx": 2,
-  "apps/frontend-shell/src/pages/adminRegistry.ts": 1,
-  "apps/frontend-shell/src/views/DashboardView.tsx": 1,
-  "apps/frontend-shell/src/views/OptimizeWhatifView.tsx": 2,
-  "apps/frontend-shell/src/views/capacity/CapacityDerivationDag.tsx": 1,
-  "apps/frontend-shell/src/views/capacity/factorOntology.ts": 2,
-  "apps/frontend-shell/src/views/graph/forceLayout.ts": 1,
-  "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx": 1,
-  "apps/frontend-shell/src/views/plan/GeoMapView.tsx": 1,
-  "apps/frontend-shell/src/views/plan/OrderChainView.tsx": 1,
-  "apps/frontend-shell/src/views/sim/PlanAuditView.tsx": 1,
-  "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": 2,
-  "apps/frontend-shell/src/views/sim/ProjectSimView.tsx": 1,
-  "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx": 1,
-  "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": 2,
-  "apps/frontend-shell/src/views/sim/chainLineMap.ts": 2,
-  "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts": 1,
-  "apps/frontend-shell/src/views/sim/inspectorModel.ts": 1,
-  "apps/frontend-shell/src/views/sim/physicalTopology.ts": 3
+  "files": {
+    "apps/frontend-shell/src/App.tsx": 1,
+    "apps/frontend-shell/src/components/InferenceProcessDag.tsx": 3,
+    "apps/frontend-shell/src/locales/zh.ts": 1,
+    "apps/frontend-shell/src/pages/ShellLayout.tsx": 2,
+    "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx": 2,
+    "apps/frontend-shell/src/pages/adminRegistry.ts": 1,
+    "apps/frontend-shell/src/views/DashboardView.tsx": 1,
+    "apps/frontend-shell/src/views/OptimizeWhatifView.tsx": 2,
+    "apps/frontend-shell/src/views/capacity/CapacityDerivationDag.tsx": 1,
+    "apps/frontend-shell/src/views/capacity/factorOntology.ts": 2,
+    "apps/frontend-shell/src/views/graph/forceLayout.ts": 1,
+    "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx": 1,
+    "apps/frontend-shell/src/views/plan/GeoMapView.tsx": 1,
+    "apps/frontend-shell/src/views/plan/OrderChainView.tsx": 1,
+    "apps/frontend-shell/src/views/sim/PlanAuditView.tsx": 1,
+    "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": 2,
+    "apps/frontend-shell/src/views/sim/ProjectSimView.tsx": 1,
+    "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx": 1,
+    "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": 2,
+    "apps/frontend-shell/src/views/sim/chainLineMap.ts": 2,
+    "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts": 1,
+    "apps/frontend-shell/src/views/sim/inspectorModel.ts": 1,
+    "apps/frontend-shell/src/views/sim/physicalTopology.ts": 3
+  },
+  "contents": {
+    "cf6469c05acc2214": {
+      "file": "apps/frontend-shell/src/App.tsx",
+      "label": "const routes —— 3 行 × 9 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "99413684e05e5a60": {
+      "file": "apps/frontend-shell/src/components/InferenceProcessDag.tsx",
+      "label": "const NODES —— 11 行 × 30 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "b2904d382d630ac6": {
+      "file": "apps/frontend-shell/src/components/InferenceProcessDag.tsx",
+      "label": "const EDGES —— 14 行 × 26 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "66519eeccd1fcdda": {
+      "file": "apps/frontend-shell/src/components/InferenceProcessDag.tsx",
+      "label": "const EDGE_STYLE —— 6 行 × 7 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "fe7828de5466f24a": {
+      "file": "apps/frontend-shell/src/locales/zh.ts",
+      "label": "const zh —— 24 行 × 430 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "830718e16c2eb33d": {
+      "file": "apps/frontend-shell/src/pages/ShellLayout.tsx",
+      "label": "const NAV_GROUPS —— 14 行 × 14 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "676e09d2aaafc96c": {
+      "file": "apps/frontend-shell/src/pages/ShellLayout.tsx",
+      "label": "const NAV_ICON_PATHS —— 27 行 × 437 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "f2280429d29ef7ef": {
+      "file": "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx",
+      "label": "const badges —— 6 行 × 6 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "588dd46b4ef37bf0": {
+      "file": "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx",
+      "label": "const WF_LIVE_OPTIONS —— 6 行 × 9 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "72ca7b8fb4fb3a4d": {
+      "file": "apps/frontend-shell/src/pages/adminRegistry.ts",
+      "label": "const ADMIN_PAGES —— 47 行 × 14 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "1d91f57a9a8ed780": {
+      "file": "apps/frontend-shell/src/views/DashboardView.tsx",
+      "label": "const MODULE_LINKS —— 7 行 × 6 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "34f1b6bbe33a8526": {
+      "file": "apps/frontend-shell/src/views/OptimizeWhatifView.tsx",
+      "label": "const FAMILY_EXAMPLE —— 6 行 × 34 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "1b31d05a63ce121a": {
+      "file": "apps/frontend-shell/src/views/OptimizeWhatifView.tsx",
+      "label": "const numStyle —— 9 行 × 7 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "d5b6bbfdb89aa1e4": {
+      "file": "apps/frontend-shell/src/views/capacity/CapacityDerivationDag.tsx",
+      "label": "const LAYER_SPEC —— 7 行 × 6 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "812014ae947d14a1": {
+      "file": "apps/frontend-shell/src/views/capacity/factorOntology.ts",
+      "label": "const ONTO_LAYERS —— 7 行 × 6 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "14fb6ac23ed441ea": {
+      "file": "apps/frontend-shell/src/views/capacity/factorOntology.ts",
+      "label": "const ONTO_FACTORS —— 21 行 × 50 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "10337293a44e1987": {
+      "file": "apps/frontend-shell/src/views/graph/forceLayout.ts",
+      "label": "const DEFAULT_PARAMS —— 8 行 × 7 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "77dcc4772cad280d": {
+      "file": "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx",
+      "label": "const option —— 7 行 × 18 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "d0f00f2b1982ba6d": {
+      "file": "apps/frontend-shell/src/views/plan/GeoMapView.tsx",
+      "label": "const BASE_COORDS —— 14 行 × 26 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "df043ae0743e51d5": {
+      "file": "apps/frontend-shell/src/views/plan/OrderChainView.tsx",
+      "label": "const OFC_LAYER —— 7 行 × 7 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "1ca00c10079a2aab": {
+      "file": "apps/frontend-shell/src/views/sim/PlanAuditView.tsx",
+      "label": "const FIELD_GROUPS —— 4 行 × 11 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "8a4ba7bed65691ea": {
+      "file": "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx",
+      "label": "const GOAL_FIELDS —— 7 行 × 6 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "58aa5ae33148d0fc": {
+      "file": "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx",
+      "label": "const meetValue —— 7 行 × 8 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "f8923996b1be6708": {
+      "file": "apps/frontend-shell/src/views/sim/ProjectSimView.tsx",
+      "label": "const layers —— 7 行 × 18 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "eecc55e4e3d23001": {
+      "file": "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx",
+      "label": "const stages —— 5 行 × 31 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "243c3e54e7da2f88": {
+      "file": "apps/frontend-shell/src/views/sim/SopBalanceView.tsx",
+      "label": "const DEFAULT_SEGMENTS —— 4 行 × 9 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "51619db9fe731f18": {
+      "file": "apps/frontend-shell/src/views/sim/SopBalanceView.tsx",
+      "label": "const cards —— 7 行 × 7 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "4a935eb8ae776443": {
+      "file": "apps/frontend-shell/src/views/sim/chainLineMap.ts",
+      "label": "const METRO_LAYOUT —— 22 行 × 53 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "76598d509397018b": {
+      "file": "apps/frontend-shell/src/views/sim/chainLineMap.ts",
+      "label": "const RING_LAYOUT —— 11 行 × 14 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "b92d93add7cdddcc": {
+      "file": "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts",
+      "label": "const CHAIN_NODE_SEMANTICS —— 13 行 × 45 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "8909707ab2075154": {
+      "file": "apps/frontend-shell/src/views/sim/inspectorModel.ts",
+      "label": "const variables —— 16 行 × 112 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "e73ae74f6a94a279": {
+      "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
+      "label": "const PLACEHOLDER_RANGES —— 4 行 × 6 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "7071e1b0a2719ced": {
+      "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
+      "label": "const HEAT_BAND_LABEL —— 6 行 × 6 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    },
+    "15c53f6b180b83a9": {
+      "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
+      "label": "const REAL_DATA_ENTRYPOINTS —— 7 行 × 12 个数值字面量",
+      "count": 1,
+      "origin": "auto",
+      "why": "机器落账（debattery:check/B）：**落账 ≠ 达标**，本条的首次登记值 = 落账当时的实测值；从下一次起受 D5/D6 内容对账 —— 内容换掉即红，搬家（换文件不换内容）不红。"
+    }
+  }
 }
