@@ -141,7 +141,7 @@ WO-QUEUE-breakpoints-2 记载的第二例「✅→🔴 状态回滚」：回写�
 | `check-system-ontology` | 0 | 0 | 邻门复跑无回归 |
 | `check-ontology-writeback` | **1** | **1** | **既有红，非本单造成**：`check-name-consistency` 在 pnpm gates 而 §7 未登记——基线提交复跑同红（该门在 HEAD 的 §7 确无条目，仅 §8 行内提及）。不替别人登记（无其 provenRed 证据 = 编造），如实照报 |
 | `check-gate-ledger` | **2** | **2** | **环境性既有**：本 worktree 未构建 datacore/agentcore dist，27 条 dist guardedPaths 无从核；stash 对照实验（无本单改动）同报 27 条逐字一致。内容判据四项（无遗漏/无幽灵/binding 现算一致/escalation 合法）均过 |
-| `check-ontology-anchors` | **1** | **1** | **既有红，本单零新增**：base/HEAD 各 40 个唯一锚点红，集合完全相等（按 `文件:行号(symbol)` 键对拍，与本体行号无关）；原始红行数 62→50 是因被删旧副本带走了同一批漂移锚点的重复引用。本单未触源码，LINE_DRIFT 无一可归于我 ⇒ 未动 `--update`（派单授权仅限「我造成的漂移」，没有就是没有） |
+| `check-ontology-anchors` | **1** | **1** | **既有红**：LINE_DRIFT/SYMBOL_ONLY 按 `文件:行号(symbol)` 键对拍 base=HEAD=40 条全等（原始红行 62→50 是被删旧副本带走重复引用）；UNVERIFIED_GROWTH base 8 条 → HEAD 4 条（均为 base 子集）。**复验抓到 1 条本单新增 UVG 已修**：回滚实录段裸引 `validate.ts:72` 无 symbol，复验退回后补成 `:72 (validatePlanSteps)`（见本 HANDOFF 之后的修复提交），修后全类红集合对 base 零新增。本单未触源码，LINE_DRIFT 无一可归于我 ⇒ 未动 `--update`（派单授权仅限「我造成的漂移」，没有就是没有） |
 
 ## 8. merge-tree 干跑
 
@@ -153,9 +153,11 @@ git merge-tree --write-tree 7c52b9b4280f9ccfd60e3abfb2bd70bc9b2a1c05 HEAD
 ## 9. 并发与边界注记
 
 - **anchor-recal2 分支（@ccbe76f3a，本体锚点行号校准）** 与本单同碰 `docs/SYSTEM-ONTOLOGY.md`
-  但只动锚点行号：本单删/并了 §8 的 20+2 行，**会使该分支校准对象的下游行号整体前移 ~19 行**
+  但只动锚点行号：本单删/并了 §8 的 20+2 行，**会使该分支校准对象的下游行号整体前移（实测文档总行数 -20）**
   （§8 区内锚点除外——它按 `(symbol)` 机器核，行号漂移在 ±40 容差内不红，超容差的按它自己的
   --update 流程走）。两方无内容冲突（merge-tree 干净），收编顺序不影响正确性。
+  并线次序建议（复验方已落账认可）：**本单先并**——拦门早并早保护，且本单 dedupe 语义不可重放、
+  anchor-recal2 的行号校准机械可重放。
 - **停手上报情形触发数：0**（未碰 §8 以外正文作语义改动——§7 一条目续写属派单明令的门账回写；
   旧副本独有信息全部拿得准；status 红无代码侧真回归；远端分支无撞车）。
 - 判据二的默认基线 `origin/claude/verify-reclaim-6`：本 worktree 已 fetch 到 tip `7c52b9b42`。
