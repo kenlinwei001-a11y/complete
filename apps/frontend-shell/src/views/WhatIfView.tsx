@@ -20,7 +20,8 @@ import { assertReasoningGraph, type ReasoningGraph } from "./sim/reasoningGraph"
 import EdgeActivePanel from "./sim/EdgeActivePanel";
 // WO-HARNESS-UX-GAP-1 · 判据 U7（同屏问答知道自己在哪一页）+ U9（导出物自带出处与生成时间）。
 // 本页走 App.tsx 的专用 route，不经 ViewPage ⇒ 必须自己调 usePageView（理由见 shared.tsx 该函数注释）。
-import { ExportReportButton, usePageView } from "./sim/shared";
+import { ExportReportButton, usePageView, useActionDraft } from "./sim/shared";
+import { useFeature } from "@/workspace/featureGate";
 import type { ProvenanceReport } from "./sim/exportProvenance";
 
 /**
@@ -65,6 +66,25 @@ interface ObjectType {
   displayName: string;
   domain?: string;
   properties: TypeProp[];
+}
+
+/**
+ * 屏上这一刻的假设 —— 结果区与「采纳」按钮读的是**同一个对象**，不各存一份。
+ * `value` 是给人看的原串（渲染 `assumptionLine` 用），`coerced` 是给机器写的强制类型值
+ * （落进 ActionDraft 的 `patch`）；两者同源于一次输入，只是用途不同。
+ */
+interface Assumption {
+  typeKey: string;
+  objectId: string;
+  prop: string;
+  /** 输入框里的原串（展示用） */
+  value: string;
+  /** 过了 `coerce` 的值（number 属性 → number）—— 落库写的是这个 */
+  coerced: unknown;
+  /** `prop` 这一格的量纲（本体 PropertyDef.unit·后端下发，缺则无） */
+  unit?: string;
+  /** 世界里现在的值（纯记录性：与 `coerced` 同一个 propKey，故同轴同量纲） */
+  oldValue?: unknown;
 }
 
 const fmtVal = (v: unknown): string => {
@@ -465,13 +485,134 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
 
       {/* ── 结果区 ── */}
       {assumptionReady && settled && result ? (
-        <WhatIfResult out={result} snapshotVersion={runQ.data?.snapshotVersion} assumption={{ typeKey, objectId, prop, value: debouncedValue }} />
+        <WhatIfResult
+          out={result}
+          snapshotVersion={runQ.data?.snapshotVersion}
+          assumption={{
+            typeKey,
+            objectId,
+            prop,
+            value: debouncedValue,
+            // ⚠ 采纳那条路要写进 `patch` 的是**强制过类型的**值，不是输入框里那串字符：
+            // `patch: { 转速: "1200" }` 会把一个数值属性写成字符串，之后所有派生算术当场变 NaN。
+            // 复用页内**同一份** `coerce`（上面那条自动重演的路也用它）—— 两条出口口径分家，
+            // 就会出现「屏上算的是数、落库落的是串」这种屏上看不出来的错。
+            coerced: coercedValue,
+            // 量纲：取本体 PropertyDef.unit（后端下发·缺则 undefined，前端不臆造）。
+            // 它与 `patch` 写进去的那个属性是**同一个 propKey**，所以屏上标的量纲就是落库那一格的量纲。
+            unit: currentProp?.unit,
+            oldValue: currentValue,
+          }}
+        />
       ) : null}
 
       {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。
           ⚠ 必须挂在**主组件**里、且不进 `ran && result` 那个条件：挂进结果区 = 没跑过推演就看不见开关，
           而"先关掉一条边再看结果"恰恰是最常见的用法（本单初稿真踩过这一下，收编前自查抓出）。 */}
       <EdgeActivePanel pageKey="what-if" />
+    </div>
+  );
+}
+
+/**
+ * ══ 判据 U6「结论即动作」· 采纳该假设 → `对象数据变更` ActionDraft ══
+ *
+ * ── 为什么是 `对象数据变更`，而不是新造一个动作类型（先追一层再动手）──────────────
+ * 这一页的假设**形状**就是 `对象数据变更` 的 payload 形状，一一对上，没有翻译层：
+ *   屏上「把 `<对象>` 的 `<属性>` 改成 `<值>`」 ≡ `{ objectId, patch: { [prop]: value } }`
+ *   （后端 `app.ts` 该分支：合并进 `obj.props` → `origin: MANUAL` → `runDerivations()`）。
+ * 而这一页此前**唯一缺的就是这条路**：屏上第一层写着「不落库、纯试算」——那句话是真的，
+ * 但它同时意味着用户看完 before/after 之后**无处可去**，只能记下参数换一张页面重填一遍。
+ * R4「真值经 Action」已经规定了对象写入只有审批这一条路；本按钮接的正是那条既有的路。
+ *
+ * ── ⚠ 顶回 §5/§5.2 登记的那条「备裁」理由（照铁律 0.5 追了一层，实测不成立）────────
+ * 原文（`docs/PRD-harness-ux-adoption.md` §5:1153）写：这四页是「**净室通用页（与租户本体无关）**」，
+ * 硬补会造出「在一个通用假设页上生成**全租户** Action」。**前半句在本页上是错的**：
+ * 本页的类型列表来自 `GET /a/v1/ontology/object-types`、对象列表来自 `GET /a/v1/objects?type=`，
+ * 两个都是**该租户自己的本体与真对象**（`ctx(req)` 逐请求取 tenantId）——
+ * 「页面是通用实现」与「数据与租户无关」是两件事，前者不度量后者。
+ * 后半句的担心也已有现成的门挡着，不需要靠「不做」来防：
+ *   · `POST /a/v1/action-drafts` 走 `ctx(req)`，草稿天然落在发起人自己的租户里（R2）；
+ *   · `assertObjectPatchWritable` 在**建草稿时**就逐属性过 A6 列级 authz，命中不可写属性直接 403
+ *     `PROPERTY_FORBIDDEN`、草稿根本不创建；执行期 `assertDraftPatchWritableAtExecute` 再复校一次
+ *     （堵「先建草稿、后收紧策略」的时间窗）。
+ * 所以本页这一格不是「产品裁决」，是一条**没接的线**。另三页的情况与本页不同，见交单报告。
+ *
+ * ── 反 `G-ACTION-NOOP-EXEC`（空 payload 假绿）────────────────────────────────
+ * `patch` 里那一格**就是用户选的那个 propKey、填的那个值**（过同一份 `coerce`），
+ * 不是空表单、不是重填、不是只带一句结论文案的空壳。接缝断言见
+ * `test/wo-u6-what-if-adopt.test.tsx`（前端半：payload 逐字段 = 屏上那份）与
+ * `apps/datacore/test/action-adopt-hypothesis.seam.test.ts`（后端半：审批后**换一条路**读回对象，
+ * 属性真的变了 + 派生真的重算了）。
+ */
+function AdoptHypothesisButton({
+  assumption,
+  out,
+  snapshotVersion,
+  assumptionLine,
+}: {
+  assumption: Assumption;
+  out: GenericInferenceOutput;
+  snapshotVersion?: string;
+  assumptionLine: string;
+}) {
+  const canAdopt = useFeature("act.adopt-to-draft");
+  const adopt = useActionDraft();
+  if (!canAdopt) return null;
+  const unitTxt = assumption.unit ? ` ${assumption.unit}` : "";
+  const onAdopt = (): void => {
+    adopt.mutate({
+      actionTypeKey: "对象数据变更",
+      payload: {
+        source: "what-if",
+        objectType: assumption.typeKey,
+        objectId: assumption.objectId,
+        // ★ 结论带过去的那一格：键 = 用户选的 propKey，值 = 用户填的假设值（已过 coerce）。
+        //   量纲 = `propUnit`（同一个 propKey 的本体量纲）—— 写进去的那一格和屏上标的那一格是同一格。
+        patch: { [assumption.prop]: assumption.coerced },
+        /** `patch` 里那唯一一格的量纲（本体 PropertyDef.unit）；无量纲属性则不下发，不臆造。 */
+        ...(assumption.unit ? { propUnit: assumption.unit } : {}),
+        /** 变更前值：纯记录性，后端不拿它计算；与 `patch` 同 propKey ⇒ 同轴同量纲。 */
+        ...(assumption.oldValue === undefined ? {} : { oldValue: assumption.oldValue }),
+        // paramsSchema 的必填项。写的是**这次采纳时屏上那份结论**，让审批人看得见「他是看着什么数点的」。
+        reason:
+          `通用假设推演采纳：${assumptionLine}${unitTxt}` +
+          ` —— 前向重算影响 ${out.affectedObjects} 个对象、${out.count} 处派生字段` +
+          `（求解器 generic_inference${snapshotVersion ? ` · 快照 ${snapshotVersion}` : ""}）`,
+        /**
+         * 结论快照。⚠ 两项都是**计数（个/处·无量纲）**，与上面 `patch` 里那个带量纲的属性值
+         * 分处不同字段、不共用任何键 —— 前科 `G-LEVER-SNAPSHOT-UNIT-LIE` 正是把一个无量纲的数
+         * 塞进了一个有量纲的字段名下，屏上看不出、审批人照着假数签了字。
+         */
+        impact: {
+          affectedObjects: out.affectedObjects,
+          changedDerivedFields: out.count,
+          rootTypes: out.rootTypes ?? [],
+        },
+        provenance: { solver: "generic_inference", snapshotVersion: snapshotVersion ?? null },
+      },
+    });
+  };
+  return (
+    <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      <button
+        type="button"
+        className="btn sm primary"
+        data-testid="wi-adopt-hypothesis"
+        disabled={adopt.isPending}
+        onClick={onAdopt}
+      >
+        {adopt.isPending ? "生成草稿中…" : "采纳该假设（→ Action 审批）"}
+      </button>
+      {/* 第一层只留动作本身 + 一个记号；「采纳之后到底会发生什么」是成段口径，降浮层（R-UI-3）。 */}
+      <InfoPopover topic="采纳后会发生什么" testId="wi-adopt">
+        <span data-testid="wi-adopt-body">
+          采纳 = 把这一屏的假设原样造成一张「对象数据变更」审批草稿：写哪个对象、改哪个属性、改成什么值，
+          都直接取屏上这份假设，你不必再去别处重填一遍。草稿进 S2 审批，**审批通过之后**才把这个值写进真实数据
+          并重跑下游派生；在那之前真实数据一个字节都不动（这一页本身仍然是不落库的试算）。
+          若这个属性在你的权限下不可写，建草稿这一步就会被挡下并告诉你哪一格不可写，不会静默丢字段。
+        </span>
+      </InfoPopover>
     </div>
   );
 }
@@ -495,7 +636,7 @@ function WhatIfResult({
 }: {
   out: GenericInferenceOutput;
   snapshotVersion?: string;
-  assumption: { typeKey: string; objectId: string; prop: string; value: string };
+  assumption: Assumption;
 }) {
   const rows = out.rows ?? [];
   const assumptionLine = `${assumption.typeKey}/${assumption.objectId}.${assumption.prop} = ${assumption.value}`;
@@ -515,6 +656,9 @@ function WhatIfResult({
             </span>
           </InfoPopover>
         </div>
+        {/* 判据 U6：「无下游影响」**也是一个结论**，而且是最适合直接下手的那种（改了不波及别人）。
+            把按钮只挂在有 deltas 的那一支，会让用户在这一支无处可去——判据卡的正是这件事。 */}
+        <AdoptHypothesisButton assumption={assumption} out={out} snapshotVersion={snapshotVersion} assumptionLine={assumptionLine} />
       </div>
     );
   }
@@ -562,6 +706,8 @@ function WhatIfResult({
             <div style={{ fontSize: 12, color: "var(--muted)" }}>假设根类型</div>
           </div>
         </div>
+        {/* 判据 U6「结论即动作」：动作就摆在结论旁边，参数由这份结论直接带过去（见组件头注）。 */}
+        <AdoptHypothesisButton assumption={assumption} out={out} snapshotVersion={snapshotVersion} assumptionLine={assumptionLine} />
       </div>
 
       {/* before / after deltas 表 */}
