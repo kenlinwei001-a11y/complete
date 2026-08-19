@@ -19,20 +19,11 @@
     "   逐条属性表读回结论一致，且「真名」主张亦复核通过（minutes / delta·gapPct / cadenceKind）。"
   ],
   "ratchetHigh": 7,
-  "maxExemptions": 2,
+  "maxExemptions": 1,
   "adjudicated": [
-    "PRD-lever-binding-drift.md#REF:ChangeoverMatrix.changeoverMin",
     "PRD-sandbox-redesign.md#REF:Order.changeoverMin"
   ],
   "exemptions": [
-    {
-      "key": "PRD-lever-binding-drift.md#REF:ChangeoverMatrix.changeoverMin",
-      "prd": "docs/PRD-lever-binding-drift.md",
-      "line": 233,
-      "code": "PDG-4A",
-      "kind": "待修",
-      "why": "已裁定：`ChangeoverMatrix` 实有 6 属性 `pairId/fromModel/toModel/**minutes**/hours/lineId`，**无 `changeoverMin`**（真名 `minutes`）。该 PRD 把它诊断为「双重死」并归因于「`capacity.ts` 全文不出现 `ChangeoverMatrix`」，**漏了一层：属性名本身就是错的**，而且**数据其实有 30 条实例**——定性从「没数据」翻转为「名字写错」，修法完全不同（铁律 0.5 三分法）。"
-    },
     {
       "key": "PRD-sandbox-redesign.md#REF:Order.changeoverMin",
       "prd": "docs/PRD-sandbox-redesign.md",
