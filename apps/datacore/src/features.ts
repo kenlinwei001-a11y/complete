@@ -300,6 +300,52 @@ export const VIEW_FEATURE_MAP: Record<string, string> = {
   "process-stuck": "process.runtime",
 };
 
+/**
+ * WO-ENTITLEMENT-SERVER-SIDE · **ActionType key → 受控 ACTION 级功能**（服务端闸的查找表）。
+ *
+ * ── 为什么需要这张表（断点 G-ENTITLEMENT-ACTION-LEVEL-CLIENT-ONLY）──────────────
+ * ACTION 级特性此前**只有客户端拦**（`useFeature` / `<Feature>` 隐藏按钮），服务端
+ * `POST /a/v1/action-drafts` 一道 entitlement 闸都没有 ⇒ 关掉 flag 后直接打接口照样建草稿。
+ * 隐藏按钮是 **UX 级**，不是 entitlement —— 铁律写的是「功能关闭 = 不存在 → 404 FEATURE_NOT_FOUND」，
+ * 那必须由服务端给。本表就是服务端那道闸的查找依据。
+ *
+ * ── 为什么是「按 actionTypeKey 查」而不是「整条路由一刀切」────────────────────
+ * `POST /a/v1/action-drafts` 是**所有**动作类型的共用入口（对象数据变更 / 定稿月度计划版本 /
+ * 计划版本变更 / 采纳类 …）。整条路由绑一个 flag ⇒ 关掉「采纳为草稿」会顺带把「定稿计划版本」
+ * 也打成 404，那是把 entitlement 的粒度做丢了。故闸落在**动作类型**这一级。
+ *
+ * ── 为什么不复用 `FeatureDef.bindings`（先追了一层才决定）───────────────────────
+ * 契约 `bindings` 的形状是 `{ intents | solverKeys | apiTags }`（packages/contracts/src/features.ts），
+ * 三个都不是「动作类型」这个命名空间：`intents` 在 AgentCore 是 **QOS 意图键**
+ * （`features/registry.ts intentAllowed` → `router/orchestrator.ts`），把 actionTypeKey 塞进去
+ * 就是让两个命名空间在同一个字段里打架。故仿**同文件**已有的 `VIEW_FEATURE_MAP`
+ * （viewKey → 受控功能）另立一张同形状的表 —— 不是第二套机制，解析仍走同一个 `resolve()`。
+ *
+ * ── 收录判据（不许凭感觉加）────────────────────────────────────────────────
+ * 只收「该动作类型的语义**就是**某个 ACTION 级 flag 本身」的键。反面：
+ *   · `对象数据变更` **不收** —— 它是 R4「用户态对象写入的唯一路径」（app.ts POST /a/v1/action-drafts
+ *     注释），被 what-if 采纳、行内编辑、管理面共用；绑到「采纳为草稿」上 ⇒ 关掉采纳会连带
+ *     把所有对象写入打成 404，语义错。
+ *   · `定稿月度计划版本` / `计划版本变更` / `校准参数变更` **不收** —— 注册表里没有对应的 ACTION 级 flag，
+ *     硬绑等于凭空发明一个产品开关。
+ * 未登记的动作类型**不受 entitlement 控制**（与 `requireByBinding` 对「无 binding 路由」的处置同口径）。
+ */
+export const ACTION_TYPE_FEATURE_MAP: Record<string, string> = {
+  // act.adopt-to-draft「采纳为草稿」—— 把推演/体检/风险结论落成审批草稿的全部动作类型。
+  // 前端同门入口（读到哪个 actionTypeKey 就登记哪个，不猜）：
+  //   PlanGenerateView → 采纳经营方案 · ProjectSimView → 采纳产能预测结论 ·
+  //   DynamicLeverPanel（默认 adoptActionTypeKey）→ 采纳产能保障方案 ·
+  //   PlanAuditView / GlobalSim / Sandbox / OrderChain / RiskBoard 情景采纳 → plan_change ·
+  //   RiskBoardView 处置方案采纳 → adopt_mitigation（前端 mock 注册表本就把它写成该 flag 的 binding）。
+  plan_change: "act.adopt-to-draft",
+  adopt_mitigation: "act.adopt-to-draft",
+  采纳经营方案: "act.adopt-to-draft",
+  采纳产能预测结论: "act.adopt-to-draft",
+  采纳产能保障方案: "act.adopt-to-draft",
+  // act.aop-finalize「AOP 情景拍板」—— 唯一入口 AnnualScenarioView，前端同门，1:1。
+  AOP情景拍板: "act.aop-finalize",
+};
+
 const byKey = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
 
 export const featureNotFound = () => new AppError("FEATURE_NOT_FOUND", "feature not found", 404);
@@ -462,6 +508,21 @@ export class FeatureService {
   async enabled(tenantId: string, featureKey: string): Promise<boolean> {
     const { features } = await this.resolve(tenantId);
     return features.includes(featureKey);
+  }
+
+  /**
+   * WO-ENTITLEMENT-SERVER-SIDE · Entitlement middleware: ActionType 级闸 ——
+   * 受控 ACTION 功能对**本请求租户**关闭 ⇒ 404 FEATURE_NOT_FOUND（**先于 authz**：
+   * 功能关闭 = 不存在，403 会泄露「它存在只是你没权限」，那正是本闸要否掉的语义）。
+   *
+   * 租户维（铁律 tenant_id everywhere）：`tenantId` 必须来自请求上下文 `req.authCtx.tenantId`，
+   * 解析走 `resolve(tenantId)`（L1 默认 → L2 行业模板 → L3 租户 override → cascade requires），
+   * 不读任何全局常量 —— 同一个动作在 A 租户 404、B 租户 201 是**正确**行为。
+   */
+  async requireActionType(tenantId: string, actionTypeKey: string): Promise<void> {
+    const featureKey = ACTION_TYPE_FEATURE_MAP[actionTypeKey];
+    if (featureKey === undefined) return; // 未登记的动作类型不受 entitlement 控制（同 requireByBinding 的无 binding 口径）
+    if (!(await this.enabled(tenantId, featureKey))) throw featureNotFound();
   }
 
   /** Entitlement middleware: route tag / solverKey lookup → 404 when bound feature is off. */
