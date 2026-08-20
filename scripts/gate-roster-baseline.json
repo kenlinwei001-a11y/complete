@@ -8,7 +8,7 @@
   },
   "check-arg-drop-seam.mjs:ROUTER_EMITS": {
    "verdict": "computed",
-   "why": "CEO 路由可解析的过滤实体表，单一来源 = apps/agentcore/src/router/ceo-route.ts（门头注已声明「改路由解析须同步本表」）。**实测差集 0**：ceo-route.ts 里出现的 ceo_* intent 恰为 11 个，与本表逐个对上、无名单外也无死账。判为 computed 而非 roster 的理由：门另有动态半（读 agentcore dist 真种子逐 intent 比对），漏登记的 intent 会在动态半暴露。"
+   "why": "CEO 路由可解析的过滤实体表，单一来源 = apps/agentcore/src/router/ceo-route.ts。**键集已现算化**（WO-GATE-REACH-SWEEP 断言⓪）：门真读 ceo-route.ts 的 CEO_INTENT_KEYS 与本表键集双向求差，漏登记/死账当场 RC=1，金丝雀用真源码变异自证（注入假键必被咬）。实体清单（值）仍人工派生——ArgsFrom 条件赋值静态证不了，由断言①动态半（真种子逐 intent 比对）兜底。"
   },
   "check-arg-drop-seam.mjs:PROJECT_BASE_EMITS": {
    "verdict": "computed",
@@ -297,9 +297,21 @@
   "check-unit-value-provenance.mjs:SCAN_ROOTS": {
    "verdict": "computed",
    "why": "四包 src 全递归（datacore/agentcore/frontend-shell/contracts）= 全仓源码面，无名单外盲区；与 outsource-redline:SCAN_ROOTS 同一现算形态（目录稳定、文件不手抄）。"
+  },
+  "check-fact-usage.mjs:EXCLUDE_DIRS": {
+   "verdict": "criteria",
+   "why": "「哪些目录不算生产 UI 源」是这道门的定义本身：mocks 是 MSW 假数据源、locales/styles/assets 不承载屏上事实读取，收进来会把 fixture 当证据。全仓没有第二个真相源可供现算——现算化 = 拿被测物定义判据（自证循环）。将来若新设同类目录（如 fixtures），由人显式判进本表，这正是「判据由人改」的含义，不是漏检。"
+  },
+  "check-file-truncation.mjs:PROTECTED_PATTERNS": {
+   "verdict": "criteria",
+   "why": "「哪些文件绝不许截断」是这道门立的保护判据：本体、PRD、棘轮基线三类。没有独立真相源可现算——本门就是该判据的登记处，改它 = 改规范本身。新增受保护文件类（如新的契约档案）是人修订判据的动作，须显式改表并过评审，不该由机器从被护对象自己推出来。"
+  },
+  "check-gate-reach.mjs:VERDICTS": {
+   "verdict": "criteria",
+   "why": "差集定性三分（POINTER/EXTRACTOR-BLIND/EXTRACTOR-SHAPE）是门的判据本体——它定义「合法的定性结论有哪些」，由门的语义决定，不随仓库演进而变；没有独立真相源可现算。"
   }
  },
- "candidateCount": 74,
+ "candidateCount": 77,
  "rosterCount": 0,
  "ratchetHigh": 0
 }

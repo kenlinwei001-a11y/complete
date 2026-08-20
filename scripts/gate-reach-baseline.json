@@ -1,0 +1,58 @@
+{
+ "note": "射程差集定性账（G-GATE-SCOPE-MISSES-SUBJECT）。机器现算每道门「声称（台账 guardedPaths）vs 实际（源码扫描面）」的双向差集；差集条目逐条由人定性（POINTER 责任指针 / EXTRACTOR-BLIND 抽取器边界 / EXTRACTOR-SHAPE 同义异形），没有 REAL-GAP 定性 —— 真缺口只能修门，落账买绿 = 把假绿制度化。entryCount/ratchetHigh 只降不升。",
+ "gate": "scripts/check-gate-reach.mjs",
+ "ontologyRef": "§7 · G-GATE-SCOPE-MISSES-SUBJECT",
+ "generatedBy": "node scripts/check-gate-reach.mjs --update",
+ "entries": {
+  "check-agent-config-complete.mjs|gap|apps/datacore/src/mapping.ts": {
+   "verdict": "POINTER",
+   "why": "台账写的是证据链下游消费方——门头原文「mapping.ts:57 → buildMappingRows → GET /a/v1/ontology/mapping → 图谱映射表 kind=agent 行」是红时的排查路径；门的检测对象是 graphmeta 的 AGENT_SEEDS（apps/datacore/src/graphmeta.ts 经 dist 桥在射程内）。mapping.ts 在源码中只出现于这一行门头描述，门本就不该读它。"
+  },
+  "check-lever-binding-drift.mjs|gap|apps/datacore/src/solvers/capacity.ts": {
+   "verdict": "POINTER",
+   "why": "capacity.ts 只出现在门头对一例历史漂移落点的描述「⑩ 瓶颈工序 → Line.utilization（capacity.ts:112 读的是 Process.utilization，落点挂错对象类型）」——那是病灶档案指针（红时去那改），门实际读 contracts capacity-factors 的 src+dist（均在射程）。台账记它是「这行红了找谁」，不是扫描对象。"
+  },
+  "check-migration-numbering.mjs|undeclared|apps/**/migrations": {
+   "verdict": "EXTRACTOR-SHAPE",
+   "why": "抽取器从门「枚举 apps/* 下各包的 migrations 目录」逻辑得到 glob 形态 apps/**/migrations，与台账已登记的两条具体目录（apps/datacore/migrations/** + apps/agentcore/migrations/**）同义同范围——仓里恰好只有这两个包有 migrations。不是漏登，是同一射程的两种写法；将来第三个包加 migrations，台账该跟着加（届时本条会复活成差集逼人对账）。"
+  },
+  "check-oee-ssot.mjs|gap|apps/datacore/src/solvers/capacity.ts": {
+   "verdict": "POINTER",
+   "why": "门头「诚实边界」原文写明：「只扫前端屏文件。后端把两套口径算进同一个响应（capacity.ts:264 的 oeeAvg 经 equipmentOee 出，却无条件标 prop:oee_current）本门**不覆盖**——那是 §5 建议的后续单。」capacity.ts 是门自己在诚实边界里指认的责任主体指针（后端口径混算的病灶住所），刻意不在射程；台账记它=红时去哪改，非扫描对象。"
+  },
+  "check-oee-ssot.mjs|gap|apps/datacore/src/synthetic/battery.ts": {
+   "verdict": "POINTER",
+   "why": "门头「诚实边界」原文写明：「Equipment 的四个 OEE 属性中文名（battery.ts PROP_DISPLAY_NAMES：oeeA→OEE可用率 · oeeP→OEE表现性 · oeeQ→OEE质量率 · oee_current→OEE）经 withPropDisplayNames → REST 下发，前端文件里没有任何字面量……这一半只能靠接缝测试或后端侧的门接住。」battery.ts 是运行时下发链路的责任主体指针，静态门结构上读不到它，台账记它=那一半证据住哪。"
+  },
+  "check-oee-ssot.mjs|gap|docs/DECISION-oee-ssot.md": {
+   "verdict": "POINTER",
+   "why": "DECISION 文档是 OEE 口径单一来源决策的**档案**，台账指向它=「裁决依据住哪」；门读的是 contracts/前端的口径实现与屏上数字。文档内容由人维护，门扫它既无判据也无必要——红时人去该文档对裁决，这就是责任指针语义。"
+  },
+  "check-oee-ssot.mjs|gap|packages/contracts/src/capacity-factors.ts": {
+   "verdict": "POINTER",
+   "why": "门头「诚实边界」原文声明「只扫前端屏文件」（SCREEN_ROOTS 只含 frontend-shell 的 views/pages/components），契约层 OEE 因子定义不在本门射程；capacity-factors.ts 的契约侧一致性由 lever-binding-drift 门守（其门头原文「capacity-factors 的 src+dist」均在它射程）。台账记它=口径定义的责任指针，红时去契约这处改。"
+  },
+  "check-ontology-s8-dedupe.mjs|gap|scripts/check-ontology-s8-dedupe.mjs": {
+   "verdict": "POINTER",
+   "why": "台账把门自己列进 guardedPaths=「这行红了找这道门」的责任指针。门名在源码中只出现于门头与两条日志串（grep 实测 3 处全在注释/输出），门不读自己——它守的不变量是 §8 断点编号唯一，检测对象 docs/SYSTEM-ONTOLOGY.md 在射程内。"
+  },
+  "check-outsource-redline.mjs|gap|docs/SYSTEM-ONTOLOGY.md": {
+   "verdict": "POINTER",
+   "why": "SYSTEM-ONTOLOGY.md 在源码中只出现于注释引用（「断点 G-C08-EXPR-PARAM-SPLIT，见 SYSTEM-ONTOLOGY §8」等三处），门扫的是四棵 src 树里 redline 的 params/expression 形态（均在射程）。台账指向本体=断点档案指针：红线的语义裁决住本体，门只管代码形态不越线。"
+  },
+  "check-ref-closure.mjs|gap|apps/agentcore/src/skill-lint.ts": {
+   "verdict": "POINTER",
+   "why": "门的判据对象是 server.ts/resources.ts 三条发布路 handler 体内有没有 probeMissingRefs(（均在射程）。skill-lint.ts 是历史病灶「skill 发布路没接探针」的涉事模块指针——红时去那边核对 skill 侧引用抽取；门读它既无判据（判据在 handler 体）也无必要。"
+  },
+  "check-ref-closure.mjs|gap|apps/agentcore/test/skill-ref-closure.seam.test.ts": {
+   "verdict": "POINTER",
+   "why": "该 seam 测试是本门判据的**行为层互补**（门守静态形态、测试守运行时行为），台账记它=「行为证据住哪」的指针。门刻意不读测试文件——本仓纪律「绿测试≠能用」，门与测试互为冗余而非互相扫描。"
+  },
+  "check-sim-readiness.mjs|gap|apps/datacore/test/sim-certification.test.ts": {
+   "verdict": "POINTER",
+   "why": "门头原文「运行时行为由 apps/datacore/test/sim-certification.test.ts 覆盖」——台账记它=行为证据指针；门读的是 certification.ts 与 app.ts 的接线形态（均在射程），测试文件是运行时验证的住所，不是本静态门的扫描对象。"
+  }
+ },
+ "entryCount": 12,
+ "ratchetHigh": 12
+}
