@@ -67,7 +67,7 @@ import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow�
 import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
 import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-SCHEME-CARRIER · 采纳经营方案 payload 契约（量纲逐字段标注）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type TickState } from "@platform/contracts";
+import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
 import { firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type UnresolvedCadenceGate } from "./sim/propagation.js";
 // 传导相入参（图/范围/规则参数/节拍闸门）的**唯一装配处**——本文件不许再装配第二遍。
@@ -1872,6 +1872,68 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // WO-LIVE-ENDPOINTS：活方案快照复用 SimSession 承载（scope.snapshotKind 标记），非沙盘会话——从沙盘列表滤除（不污染沙盘 UI）。
     return { items: (await repos.sim.listSessions(c.tenantId)).filter((s) => !(s.scope as { snapshotKind?: string })?.snapshotKind) };
   });
+
+  // ── 会话生命周期迁移：PAUSED / ENDED（WO-SIMSESSION-BIZ-REUSE）──────────────────────────
+  // 契约枚举 `SimSessionStatus` 早已含 PAUSED/ENDED（contracts/sim.ts），但此前**没有任何置位路径**
+  // —— 本段补上。业务页（产能/GlobalSim/ProjectSim）的方案生命周期一律复用 `setSimSessionStatus`
+  // 这**同一个**实现，不许在各自 scope 里另造 paused/closed 字段（各写各的 ⇒ 两套语义必漂移）。
+  /** 合法迁移表（唯一真相源）：ENDED 终态；PAUSED 只从 READY/RUNNING 进、只向 RUNNING/ENDED 出。 */
+  const SIM_STATUS_TRANSITIONS: Record<SimSessionStatus, readonly SimSessionStatus[]> = {
+    DRAFT: ["ENDED"],
+    READY: ["PAUSED", "ENDED"],
+    RUNNING: ["PAUSED", "ENDED"],
+    PAUSED: ["RUNNING", "ENDED"],
+    ENDED: [],
+  };
+  /**
+   * 会话状态迁移的**唯一**实现（通用 `/sessions/:id/status` 与业务页路由共用——「走接缝，不各写各的」就是这一行）。
+   * 非法迁移一律 409 明说，绝不静默忽略（静默 = 用户以为暂停了而世界还在走——正是「绿测试≠能用」的温床）。
+   */
+  const setSimSessionStatus = async (c: AuthCtx, s: SimSession, target: SimSessionStatus): Promise<SimSession> => {
+    const allowed = SIM_STATUS_TRANSITIONS[s.status] ?? [];
+    if (!allowed.includes(target)) {
+      throw new AppError(
+        "INVALID_SIM_STATUS_TRANSITION",
+        `会话 ${s.id} 不能从 ${s.status} 迁到 ${target}` +
+          `（${s.status} 允许的去向：${allowed.length > 0 ? allowed.join("/") : "无——ENDED 是终态"}）。`,
+        409,
+      );
+    }
+    const from = s.status;
+    s.status = target;
+    await repos.sim.putSession(s);
+    await outbox.emit(c.tenantId, "sim.session_status_changed", { sessionId: s.id, from, status: target });
+    return s;
+  };
+  /**
+   * 世界可写判据（**唯一**实现·WO-SIMSESSION-BIZ-REUSE 退修①）：PAUSED/ENDED = 世界冻结。
+   * 「暂停不是标签，是世界真的不走**也不许改**」——凡改世界线/会话世界配置的入口一律过本闸，
+   * 上闸全集（两路枚举交叉核对：putTickState/deleteTicksAfter/putSession 调用点 + 会话级路由清单）：
+   *   tick（推进）· /act 与 POST/DELETE /perturbations（世界态写入/扰动记录增删）·
+   *   rollback（deleteTicksAfter 回卷世界线）· disabled-rules（改写 sim_session 自己那一行的世界配置）。
+   * 刻意**不上闸**（各附理由，防下一个人"顺手补闸"把信息藏起来）：
+   *   · counterfactual —— `persist:false`，`putTickState`/`putSession`/`emit` 一次都不调，零写入；
+   *   · checkpoint —— 对**冻结态**拍只读快照，世界线一个字节不动（冻结时存档完全相干）；
+   *   · branch —— 从冻结/终态世界派生**新**会话，父世界不动；这正是 ENDED 的逃逸口，闸死=终态成死锁；
+   *   · 全部 GET —— 只读。
+   */
+  const assertSimSessionWritable = (s: SimSession, op: string): void => {
+    if (s.status === "PAUSED" || s.status === "ENDED") {
+      throw new AppError(
+        "INVALID_SIM_STATUS_TRANSITION",
+        `会话 ${s.id} 处于 ${s.status}，世界冻结，拒绝 ${op}。` +
+          (s.status === "PAUSED" ? "先经 PATCH …/status 迁回 RUNNING 恢复。" : "ENDED 是终态，只可 branch 出新会话。"),
+        409,
+      );
+    }
+  };
+  app.patch("/a/v1/sim/sessions/:id/status", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id); // R2：别租户 404
+    const body = parseBody(z.object({ status: z.enum(["PAUSED", "ENDED", "RUNNING"]) }), req.body);
+    await setSimSessionStatus(c, s, body.status);
+    return { id: s.id, status: s.status, curTick: s.curTick };
+  });
   app.get("/a/v1/sim/sessions/:id/world", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
@@ -2008,6 +2070,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/sim/sessions/:id/tick", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.propagation");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
+    // PAUSED/ENDED 不许推进（WO-SIMSESSION-BIZ-REUSE）：暂停不是标签，是世界真的不走；ENDED 终态不可复活。
+    assertSimSessionWritable(s, "tick");
     const n = Math.max(1, Math.floor(Number((req.body as { n?: number })?.n ?? 1)));
     // PUBLISHED only，**再减去本会话屏蔽的边**（WO-ACTIVE-EDGE-UX 的引擎接缝就是这一行）。
     // `disabledRuleKeys` 为空 ⇒ `partitionPropagationRules` 原样返回 ⇒ 与本单引入前逐字节相同（RL9）。
@@ -2059,6 +2123,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.patch("/a/v1/sim/sessions/:id/disabled-rules", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.propagation"); // R3 entitlement 先于 authz
     const s = await getSimOr404(c, (req.params as { id: string }).id); // R2：别租户的会话 404
+    assertSimSessionWritable(s, "改屏蔽边"); // 世界冻结 ⇒ 其推演配置也冻结（退修①枚举上闸）
     const body = parseBody(z.object({ disabledRuleKeys: z.array(z.string()) }), req.body);
     const published = await listPublishedPropRules(c);
     const unknown = unknownPropagationRuleKeys(body.disabledRuleKeys, published);
@@ -2154,6 +2219,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/sim/sessions/:id/act", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
+    assertSimSessionWritable(s, "施加扰动"); // 退修①：/act 经 simApplyAtCurrentTick→putTickState 真落库，冻结世界必须拒
     const b = req.body as { objectId: string; stateVar: string; value: number };
     // `/act` = 一条 `mode:"set"` / `durationTicks:null` 的扰动（PRD §3.1.2 判据 1：null = 永久 = 今天 /act 的行为）。
     // 走与 `POST /perturbations` **同一个施加实现**，故「逐字节同结果」是结构上成立的，不靠两处代码碰巧一样。
@@ -2172,6 +2238,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/sim/sessions/:id/perturbations", async (req, reply) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
+    assertSimSessionWritable(s, "建扰动"); // 退修①：createPerturbation + 已生效者立即 putTickState，冻结世界必须拒
     const body = (req.body ?? {}) as Record<string, unknown>;
     // `safeParse` 而非裸 `parse`：ZodError 身上没有 `statusCode`，会被兜底错误处理器（app.ts:833）
     // 判成 **500 INTERNAL_ERROR** —— 把「用户填错了」报成「服务器坏了」，且进 error 日志。
@@ -2200,6 +2267,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.delete("/a/v1/sim/sessions/:id/perturbations/:pid", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
+    assertSimSessionWritable(s, "删扰动"); // 退修①：扰动记录属会话世界配置，冻结世界必须拒
     // 删的是**扰动记录**，不回滚世界态（回滚走 checkpoint/rollback —— 那是既有的、有语义的回退口，
     // 在这里再造一个"撤销"就是第二套真相源）。
     const ok = await repos.sim.deletePerturbation(c.tenantId, s.id, (req.params as { pid: string }).pid);
@@ -2250,6 +2318,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/sim/sessions/:id/rollback", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.checkpoint");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
+    assertSimSessionWritable(s, "rollback"); // 退修①：deleteTicksAfter 回卷世界线，是真写不是读
     const cp = await repos.sim.getCheckpoint(c.tenantId, String((req.body as { checkpointId?: string })?.checkpointId));
     if (!cp || cp.sessionId !== s.id) throw notFound("checkpoint not found");
     await repos.sim.deleteTicksAfter(c.tenantId, s.id, cp.tick);
@@ -2759,7 +2828,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     round6(apply.reduce((acc, a) => { const v = Number.isFinite(Number(a.value)) ? Number(a.value) : 1; return acc + Math.max(0, (0.8 * 0.5 + v * 0.5) - 0.8); }, 0));
   const liveSnap = (s: SimSession) => {
     const sc = s.scope as unknown as LiveScope;
-    return { id: s.id, baseId: sc.baseId, name: sc.name, parentId: sc.parentId ?? undefined, apply: sc.apply, kpis: sc.kpis, createdAt: s.createdAt };
+    // status 为 WO-SIMSESSION-BIZ-REUSE 增补（additive·RL9）：方案生命周期对前端可见，不再是安静的字节。
+    return { id: s.id, baseId: sc.baseId, name: sc.name, parentId: sc.parentId ?? undefined, apply: sc.apply, kpis: sc.kpis, status: s.status, createdAt: s.createdAt };
   };
   app.post("/a/v1/sim/live-scenarios", async (req, reply) => {
     const c = ctx(req); await requireLive(c);
@@ -2795,6 +2865,26 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       rows.push({ scenarioId: s.id, name: sc.name, cells: { capGain, cost }, ruleFlag });
     }
     return { dims: [{ key: "capGain", label: "产能增益" }, { key: "cost", label: "外协代价" }], rows };
+  });
+
+  // ── 产能页方案生命周期（WO-SIMSESSION-BIZ-REUSE · 三业务页选定 capacity 接线）──────────────
+  // pause/end **复用 SimSession 状态机接缝**（`setSimSessionStatus` 唯一实现 ⇒ putSession + 事件 +
+  // 迁移校验全部只有一份），不在 `LiveScope` 里另造 paused/closed 字段 —— 「各写各的」两套语义必漂移。
+  // 选型理由（为什么是产能页而非 GlobalSim/ProjectSim）见 docs/HANDOFF-wo-simsession-biz-reuse.md。
+  const getLiveSnapOr404 = async (c: AuthCtx, id: string): Promise<SimSession> => {
+    const s = await repos.sim.getSession(c.tenantId, id);
+    if (!s || snapKind(s) !== "live") throw notFound("live scenario not found"); // R2 + 防拿沙盘会话/gslive 快照当产能方案操作
+    return s;
+  };
+  app.post("/a/v1/sim/live-scenarios/:id/pause", async (req) => {
+    const c = ctx(req); await requireLive(c);
+    const s = await setSimSessionStatus(c, await getLiveSnapOr404(c, (req.params as { id: string }).id), "PAUSED");
+    return liveSnap(s);
+  });
+  app.post("/a/v1/sim/live-scenarios/:id/end", async (req) => {
+    const c = ctx(req); await requireLive(c);
+    const s = await setSimSessionStatus(c, await getLiveSnapOr404(c, (req.params as { id: string }).id), "ENDED");
+    return liveSnap(s);
   });
 
   // ---- A4 ontology + objects --------------------------------------------------------
