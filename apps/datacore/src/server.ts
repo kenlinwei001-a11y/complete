@@ -9,6 +9,7 @@ import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
 import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoOrgWorld, seedDemoEntitlements, DEMO_TENANT } from "./seed.js";
+import { seedDemoDerivationSpecs } from "./seed-derivation-specs.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -93,6 +94,11 @@ async function main(): Promise<void> {
       phase("seed:entitlements");
       await seedDemoEntitlements(repos);
       logger.info("SEED_DEMO=1: lit up demo QOS dark-launch features (dril/critic/free-llm/coordinator/compose)");
+      // WO-SLICE-DERIV-EMPTY：编译 demo 派生溯源规格（G-DERIVSPEC-EMPTY · 不接 seed.ts，
+      // 挂在播撒序列尾部）。排在合成之后：规格公式引用本体类型/属性，本体先物化才编译得对。
+      phase("seed:derivation-specs");
+      const nSpecs = await seedDemoDerivationSpecs(repos, services.ontologyCore, services.governance, adminCtx);
+      logger.info(`SEED_DEMO=1: compiled ${nSpecs} demo derivation specs (evidence layer non-empty)`);
     }
   } finally {
     readiness.seeding = false; // 预热完成（成/败均放行 → /readyz 落到 bootstrap 检查·失败则 main().catch 退出）
