@@ -4371,6 +4371,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(ActionDraftSchema, req.body);
     const key = body.actionTypeKey ?? body.actionType;
     if (!key) throw validationError("actionTypeKey required");
+    // WO-ENTITLEMENT-SERVER-SIDE（闭 G-ENTITLEMENT-ACTION-LEVEL-CLIENT-ONLY）：
+    // ACTION 级 entitlement **先于 authz** —— 功能关闭 = 不存在 → 404 FEATURE_NOT_FOUND。
+    // 顺序不许与下一行对调：先跑 authz 则无权限用户拿到 403，等于告诉他「这功能存在，只是你没权限」，
+    // 而铁律要的是「它不存在」。闸按 actionTypeKey 查（features.ts ACTION_TYPE_FEATURE_MAP），
+    // 租户维取自请求上下文 c.tenantId（非全局常量）；未登记的动作类型不受控、逐字节现行为。
+    await features.requireActionType(c.tenantId, key);
     await authz.require(c, "ACTION_TYPE", key, "EXECUTE");
     // A6 列级（属性级）安全：对象数据变更是**唯一**的用户态对象写路径（R4 真值经 Action）。
     // patch 命中不可写属性 → 此处即 403 PROPERTY_FORBIDDEN，草稿根本不创建（值绝不落库），
