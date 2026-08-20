@@ -1851,7 +1851,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       {/* ⚠ U2 步骤条**不在这里** —— 它已并进上面 `SandboxModeSwitch` 的模式钮那一行
           （`stepsSlot`，见该 prop 的头注：单独成块要吃 91px，把仓主亲自裁决过的
           「地铁图留在首屏当主角」顶掉 319→410px）。分段闸 `upto()` 仍在本文件里，
-          闸的是**数**不是控件。 */
+          闸的是**数**不是控件。 */}
       <SandboxConsole
         /**
          * WO-SANDBOX-DECLUTTER · **主屏唯一保留的治理信号**。
