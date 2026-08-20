@@ -381,9 +381,11 @@ export type RiskTimelineOutput = z.infer<typeof RiskTimelineOutputSchema>;
 
 /**
  * audit_timeline 输出（PRD-plan-audit-1to1 §2②）——每审计项按 kind 出 90 天逐日 series。
- * 诚实边界（轨M 增量2·真推演 not 假推演·KILL-MOCK-RED）：series/peak/crossDay 是按 kind 名 `hashString` 确定性派生的
- * **形状投影**（SolverContext 无逐日审计口径实测时序源）→ `dataMode` 恒 MOCK + `provenanceSynthetic:true` + `note` 披露，
- * 绝不裸渲染当实测真值（前端据此显"估算/合成"）。接入真时序/真求解器后可升 LIVE（→ audit_timeline 数据半待补）。
+ * 诚实边界（轨M 增量2·真推演 not 假推演·KILL-MOCK-RED）：无真源的 kind 的 series/peak/crossDay 仍是按 kind 名
+ * `hashString` 确定性派生的**形状投影** → `dataMode` 标 MOCK + `provenanceSynthetic:true` + `note` 披露，
+ * 绝不裸渲染当实测真值（前端据此显"估算/合成"）。
+ * WO-AUDIT-TIMELINE-LIVESOURCE：有真 A8 日序列源的 kind（见 `AUDIT_KIND_LIVE_SOURCES` 单一出处·实测匹配才收编）
+ * 改由真 tsPoints 逐日派生 → `dataMode:"LIVE"` + `source` 披露真源（改 kind 名不再改变 series——series 只随真源数据变）。
  */
 export const AuditTimelineOutputSchema = z
   .object({
@@ -399,6 +401,12 @@ export const AuditTimelineOutputSchema = z
     provenanceSynthetic: z.boolean(),
     // 人读披露：为何是估算而非实测。
     note: z.string().optional(),
+    /**
+     * WO-AUDIT-TIMELINE-LIVESOURCE（加性·optional·R13 可溯源）：`dataMode:"LIVE"` 时的真源披露——
+     * series 由哪条 A8 日序列（seriesKey）的哪个量纲字段（measure）派生、覆盖多少天（days）。
+     * MOCK 路径（无真源 kind）不出现本字段，保持既有披露形态逐字节不变。
+     */
+    source: z.object({ seriesKey: z.string(), measure: z.string(), days: z.number().int() }).optional(),
     events: z.array(RiskEventSchema),
     affectedOrders: z.array(AffectedOrderSchema).optional(),
   })
