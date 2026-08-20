@@ -889,11 +889,46 @@ export function judgeRenameResidue(decls, literals) {
  * 故新捕获组取**整键**（`view.dash`）—— 加宽判据时必须同时问「这个键还唯一吗」。
  */
 const FEATURE_KEY = String.raw`[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+`;
+
+/**
+ * ⚠ **2026-08-20 · 第三处槽位盲区：`key` 与 `title` 之间隔了别的属性就抽不到（WO-STALE-TEXT-FAMILY）**
+ *
+ * ── 病灶（逐条实测，不是推想）──────────────────────────────────────────────────
+ * 上面两轮补的是**键的形状**（前缀 / 分段）。今天实测到的是**槽位的形状**：四条槽位正则
+ * 全都要求 `key` 与 `name`/`title` **紧邻**（`key:\s*"…"\s*,\s*title:`），而仪表盘 widget
+ * 的写法是 `{ key: "aop-base", type: "kpi", title: "AOP 基准营收 (亿)", unit: "亿", … }` ——
+ * 中间隔着一个 `type:` ⇒ **一条都抽不到**。
+ * 这批 widget 恰恰是本门最该守的那种「一个概念两份真相源」：
+ * 后端种子 `apps/datacore/src/synthetic/service.ts` 的 `DASH_LAYOUT` 与
+ * 前端 mock `apps/frontend-shell/src/mocks/fixtures.ts` **各存一份标题**，改一份漏一份就分叉。
+ * 而它们真分叉过：`aop-base` 曾是「亿」vs「万」（差 4 个数量级）、`oee-trend` 曾是
+ * 「14 日」vs「7 日」—— 两条都靠人肉发现（WO-TITLE-DIVERGENCE 修的），本门当时一声不吭。
+ *
+ * 形态（CLAUDE.md 铁律 0.6 句式）：
+ *   **「我用『键的形状放开了』当作『这类分叉抽得到了』的证据，而前者并不度量后者 ——
+ *     键对了，槽位的形状仍然把它挡在外面。」**
+ *
+ * ── 为什么**另开一个命名空间**，而不是把 `view-title` 那条直接放宽 ──────────────
+ * 亲手试过直接放宽：多抽到 29 个键，**报出 3 条"分叉"，逐条追下去 3 条全是概念撞名**：
+ *   · `orders` —— 驾驶舱 KPI 卡「在手订单」 vs 沙盘推演时间线的行 `PropagationTimeline.tsx`「波及订单」；
+ *   · `order`  —— 视图 slug `order`「订单台账」 vs 驾驶舱模块直达卡 `DashboardView.tsx`「接单可行性」（route 指向 `/v/project-sim`）；
+ *   · `aop`    —— 故意留着演示"该视图类型暂不支持"的旧直链「年度规划（旧）」 vs 模块直达卡「年度规划」。
+ * 三条都是**不同结构里恰好同名的裸 slug**，判它们分叉就是诬告 —— 正是本文件上一轮
+ * 已经付过学费的那条戒律（「加宽判据时必须同时问『这个键还唯一吗』」）。
+ * 故判据落在**结构标记**上：`key` 之后紧跟 `type:`（widget 独有的形状）才进 `widget-title` 桶。
+ * 三条撞名的裸 slug 一个都没有 `type:` ⇒ 一条都不会进来（2026-08-20 实测 0 条误报）。
+ * 真 widget 键现算 27 个（@stale-self truth.widgetKeys ==27）、其中 20 个被 ≥2 个真相源登记
+ * （@stale-self truth.widgetKeysMultiSource ==20），从此都在门下面。
+ * **宁可漏，不可诬**：`widget-title` 与 `view-title` 是两个桶，widget 与视图同名也不会互相判分叉。
+ */
+const WIDGET_MID = String.raw`(?:[a-zA-Z][\w]*\s*:\s*(?:"[^"]*"|'[^']*'|-?[\d.]+|true|false)\s*,\s*){0,8}`;
 const VIEW_TITLE_SLOTS = [
   { ns: "feature-name", re: new RegExp(String.raw`key:\s*"(${FEATURE_KEY})"\s*,\s*name:\s*"([^"]+)"`, "g") },
   { ns: "feature-name", re: new RegExp(String.raw`featureKey:\s*"(${FEATURE_KEY})"\s*,\s*featureName:\s*"([^"]+)"`, "g") },
   { ns: "view-title", re: /key:\s*"([a-z0-9-]+)"\s*,\s*title:\s*"([^"]+)"/g },
   { ns: "view-title", re: /"([a-z0-9-]+)":\s*\{\s*[\r\n]?\s*title:\s*"([^"]+)"/g },
+  // widget 槽位：`key` → `type`（结构标记）→ 可隔若干简单属性 → `title`
+  { ns: "widget-title", re: new RegExp(String.raw`key:\s*"([a-z0-9-]+)"\s*,\s*type:\s*"[a-z][a-z-]*"\s*,\s*${WIDGET_MID}title:\s*"([^"]+)"`, "g") },
 ];
 const camelToKebab = (s) => s.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 
@@ -1176,6 +1211,15 @@ function featureKeySlotCanary() {
     '  { featureKey: "view.project-sim.whatif", featureName: "What-if 调参" },', // 盲区③：两者兼有
     '  { key: "finance_pnl", name: "量价本利科目表" },', // 必不咬：求解器键（不带点）
     '  { key: "order-chain", name: "订单进展与卡因" }];', // 必不咬：裸视图 slug（不带点）
+    // ── 盲区④（2026-08-20 补）：`key` 与 `title` 之间隔了别的属性 ────────────────
+    // ⚠ **样例形状逐字取自生产实物**（本仓硬性纪律：手写的单行样例可能与真实的多段写法交集为空）：
+    //    下面三条分别抄自 `datacore/synthetic/service.ts` 的 DASH_LAYOUT（单行 widget）、
+    //    `frontend-shell/mocks/fixtures.ts` 的 oee-trend（多行 widget，`type` 与 `title` 之间隔着注释）、
+    //    以及 `PropagationTimeline.tsx` / `DashboardView.tsx` 那两条**撞名但不是 widget** 的结构。
+    '  const W = [{ key: "aop-base", type: "kpi", title: "AOP 基准营收 (亿)", unit: "亿" },',
+    '    { key: "oee-trend", type: "chart", span: 2, chartKind: "line", title: "OEE 14 日趋势" },',
+    '    { key: "orders", title: "波及订单", window: "D+1" },', // 必不咬：无 type ⇒ 不是 widget（沙盘时间线的行）
+    '    { key: "aop", route: "/v/annual-scenario", title: "年度规划" }];', // 必不咬：无 type ⇒ 不是 widget（模块直达卡）
   ].join("\n");
   const seen = new Set();
   for (const { ns, re } of VIEW_TITLE_SLOTS) {
@@ -1191,6 +1235,20 @@ function featureKeySlotCanary() {
   }
   // 捕获整键（含前缀）：否则 `view.x` 与 `qos.x` 会并成一个桶，凭空造出假分叉
   if (seen.has("feature-name:dash")) bad.push("⑧功能键：捕获组只取了 `view.` 之后那截 —— 不同前缀的同名键会并桶，造出假分叉");
+
+  // ── 盲区④的两向金丝雀（跑的是**同一份 `VIEW_TITLE_SLOTS`**，一个字都不另抄）──────
+  for (const want of ["widget-title:aop-base", "widget-title:oee-trend"]) {
+    if (!seen.has(want)) {
+      bad.push(`⑧widget 槽位必咬：抽不到「${want}」—— \`key\` 与 \`title\` 之间隔了属性就瞎，后端种子×前端 mock 两份标题的分叉从此无人守`);
+    }
+  }
+  for (const never of ["widget-title:orders", "widget-title:aop"]) {
+    if (seen.has(never)) {
+      bad.push(`⑧widget 槽位必不咬：没有 \`type:\` 的「${never}」被当成 widget 卷进来了 —— 那是沙盘时间线的行 / 模块直达卡，与 widget 只是撞名，判它分叉就是诬告`);
+    }
+  }
+  // 命名空间必须真分开：widget 与视图同名时不许并桶（并了就会拿 widget 的标题去判视图分叉）
+  if (seen.has("view-title:aop-base")) bad.push("⑧widget 槽位：widget 键漏进了 `view-title` 桶 —— 两个命名空间没分开，同名即假分叉");
   return bad;
 }
 
@@ -1799,6 +1857,10 @@ function main() {
         "marks.scannedFiles": markSweep.files,
         "truth.renameDecls": truth.decls.length,
         "truth.viewSlugs": truth.registry.size,
+        // widget 槽位（2026-08-20 补的盲区④）的两个口径：抽到多少个 widget 键、其中多少个
+        // 被 ≥2 个真相源同时登记 —— 后者才是「真有可能查出分叉」的那一批，也是这条槽位存在的理由。
+        "truth.widgetKeys": [...truth.registry.keys()].filter((k) => k.startsWith("widget-title:")).length,
+        "truth.widgetKeysMultiSource": [...truth.registry].filter(([k, v]) => k.startsWith("widget-title:") && v.length >= 2).length,
         "truth.literals": truth.literals.length,
         "facts.materializedTypes": materializedTypes?.size ?? 0,
         "baseline.exemptions": baseline.exemptions.length,
@@ -1816,7 +1878,15 @@ function main() {
     if (onscreen.files < 50) blind.push(`屏上层只扫到 ${onscreen.files} 个源文件（<50）—— 扫描根 ${SCAN_ROOT} 是不是没读到？`);
     if (onscreen.literalHits < 5) blind.push(`屏上层只抽到 ${onscreen.literalHits} 处字面量断言（<5）—— 剥注释器或断言正则坏了，不是屏上干净了`);
     if (truth.registry.size < 20) blind.push(`视图标题真相源只抽到 ${truth.registry.size} 个 slug（<20）—— ⑧ 这一层等于没开`);
-    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==15
+    // widget 槽位的扫描规模下限（同源于上面那条）：抽到 0 个 ⇒ 报「工具坏了」，
+    // **不许**报「widget 标题没分叉」—— 后者正是本门自己在治的「我没找到 ≠ 它不存在」。
+    if (live["truth.widgetKeys"] < 10) {
+      blind.push(`⑧ widget 槽位只抽到 ${live["truth.widgetKeys"]} 个键（<10）—— \`key:…,type:…,title:\` 这条正则坏了，不是仪表盘没有 widget 了`);
+    }
+    if (live["truth.widgetKeysMultiSource"] < 5) {
+      blind.push(`⑧ widget 槽位里被 ≥2 真相源登记的只有 ${live["truth.widgetKeysMultiSource"]} 个（<5）—— 只剩单边就查不出分叉，这条槽位等于没开`);
+    }
+    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==17
     //    ⇒ 这个数不再是传说，它由本门每次现算并对账）。抽到 0 条 ⇒ 报「工具坏了」，
     //    **不许**报「全仓记号都通过」—— 那正是本门自己在治的那种「我没找到 ≠ 它不存在」。
     if (markSweep.files < 100) blind.push(`⑥b 记号扫描只走到 ${markSweep.files} 个源文件（<100）—— srcRoots 是不是没读到？`);
@@ -2067,7 +2137,7 @@ try {
  *        `frontend-shell/locales/zh.ts` ×2 · `frontend-shell/views/sim/sandboxConsoleModel.ts` ×6）。
  *        WO-STALE-TEXT-SWEEP 当天就补上了生产实例，而这句自述留在原地 ——
  *        **它把「已经在用」写成了「还没在用」，方向正好相反**。
- *        赌注：@stale-self marks.production ==15
+ *        赌注：@stale-self marks.production ==17
  *      · 原文写「`runBaselineFactChecks` 那条今天有 6 条真数据，挂在两条 CONFIRMED-STALE 上」。
  *        **实为 0 条赌注、0 条 CONFIRMED-STALE**（存量已被后续单改完，基线只剩
  *        7 条 UNMARKED + 4 条 FALSE-POSITIVE）。
@@ -2075,8 +2145,11 @@ try {
  *        赌注：@stale-self baseline.confirmedStale ==0
  *    ⇒ 今天的真实分工是：**记号路径已在生产**（2026-08-16 现算 11 条；后续单陆续补挂，
  *      2026-08-17 WO-SCREEN-PLAINSPEAK 共补 3 条生产赌注（`processWait.honesty.cannotAnswer`
- *      的「9 条反推得出」+ `sim…orderBasisWhereReal` 的「6 条链 / 9 条流程」），12 → 15，
- *      @stale-self marks.production ==15）、
+ *      的「9 条反推得出」+ `sim…orderBasisWhereReal` 的「6 条链 / 9 条流程」），12 → 15；
+ *      2026-08-20 WO-STALE-TEXT-FAMILY 再补 2 条 —— 那两条补的是**方向**不是数量：
+ *      `sandboxConsoleModel.ts` 原有的三条赌注全在赌「新的在」，没有一条赌「旧的没了」，
+ *      于是「删内容冒充修好」这条路一直敞着；补上后 15 → 17，
+ *      @stale-self marks.production ==17）、
  *      **基线赌注路径今天 0 条数据**（@stale-self baseline.factChecks ==0；属「接了线没数据」，
  *      不是「没接线」——`runBaselineFactChecks` 仍被主流程无条件调用）。
  *    ⇒ 复验命令：`node scripts/check-stale-claims.mjs`（末行直接打印这三个现算值）。
@@ -2096,8 +2169,16 @@ try {
  * 10. **⑧ 的 locale↔slug 桥只认 camelCase→kebab-case 的精确相等**。`quarter`（真 slug
  *    `quarterly-rolling`）、`geo`（真 slug `geo-map`）、`calib` 这类都对不上 ⇒ **一个字都不说**。
  *    宁可漏，不可诬：猜一个映射然后据此判人，比不判更坏。
- * 11. **⑧ 把 `title` 与 `featureName` 分成两个命名空间**，所以它**看不见**「视图标题与功能名之间
- *    该不该一致」这类跨概念问题 —— 那需要产品口径，不是机器判据。
+ * 11. **⑧ 把 `title` / `featureName` / widget 标题分成三个命名空间**，所以它**看不见**「视图标题与
+ *    功能名之间该不该一致」这类跨概念问题 —— 那需要产品口径，不是机器判据。
+ *    同理 `widget-title` 与 `view-title` 同名也不互判（`orders` 既是 KPI 卡也是沙盘时间线的行）。
+ * 11b. **⑧ 的三条槽位仍是"形状匹配"，不是解析器**。widget 那条认的是
+ *    `key: "…", type: "…", …, title: "…"` 这个**书写顺序**：把 `title` 写到 `key` 前面、
+ *    或中间插一个嵌套对象（`query: { … }`）再写 `title`，本门就抽不到了。
+ *    今天现算 `truth.widgetKeys` 27 个键、其中 `truth.widgetKeysMultiSource` 20 个被 ≥2 个真相源
+ *    同时登记（@stale-self truth.widgetKeys ==27 · @stale-self truth.widgetKeysMultiSource ==20）——
+ *    **这两个数由本门每次运行现算并对账**：有人换了写法导致抽不到，门当场红，而不是安静漏掉。
+ *    覆盖面就这么大，不粉饰：要根治得上 AST，那是另一张单。
  * 12. **本门不碰后端注释与 `docs/`**：⑤ 只扫 `apps/frontend-shell/src`（屏上文案的所在地），
  *    ⑦⑧ 扫 `apps/<pkg>/src` + `packages/<pkg>/src`（真相源的所在地），两者都不进 `docs/`。
  *
