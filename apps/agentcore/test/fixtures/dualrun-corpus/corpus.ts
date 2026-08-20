@@ -214,7 +214,7 @@ function answerSkillRounds(o: ClassOpts & { n: number; blocks?: AnswerBlock[]; p
   };
 }
 
-/** deny_pre · 前置 deny：dsh 臂首次调用（final_answer）即被治理桥拒；native 臂 POST_CHECK 替换。 */
+/** deny_pre · 前置 deny：dsh 臂首次调用（final_answer）即被治理桥拒；双臂终答 = engine 出口 POST_CHECK 替换（W1 起同码）。 */
 function denyPre(o: ClassOpts & { ruleId: string }): DualRunTask {
   const explanation = `拒绝口径（${o.id}）：命中出厂规则前置拦截，按声明口径拒绝。`;
   const blocks = [RV(o.ruleId, explanation, "prov_post_check")];
@@ -237,7 +237,7 @@ function denyPre(o: ClassOpts & { ruleId: string }): DualRunTask {
   };
 }
 
-/** deny_mid · 中段 deny：dsh 臂 load_skill 成功后 final_answer 被拒；native 臂同形 + POST_CHECK。 */
+/** deny_mid · 中段 deny：dsh 臂 load_skill 成功后 final_answer 被拒；双臂终答 = POST_CHECK 替换（W1 起同码）。 */
 function denyMid(o: ClassOpts & { ruleId: string }): DualRunTask {
   const explanation = `拒绝口径（${o.id}）：命中出厂规则中段拦截，按声明口径拒绝。`;
   const blocks = [RV(o.ruleId, explanation, "prov_post_check")];
@@ -264,7 +264,7 @@ function denyMid(o: ClassOpts & { ruleId: string }): DualRunTask {
   };
 }
 
-/** deny_all · 全 deny：dsh 臂每次工具调用皆被拒；native 臂多规则 POST_CHECK 全 BLOCK。 */
+/** deny_all · 全 deny：dsh 臂每次工具调用皆被拒；双臂终答 = 多规则 POST_CHECK 全 BLOCK（W1 起同码）。 */
 function denyAll(o: ClassOpts & { ruleIds: [string, string] }): DualRunTask {
   const blocks = o.ruleIds.map((r, i) =>
     RV(r, `拒绝口径（${o.id}）之${"甲乙"[i]}：命中出厂规则全量拦截，按声明口径拒绝。`, "prov_post_check"));

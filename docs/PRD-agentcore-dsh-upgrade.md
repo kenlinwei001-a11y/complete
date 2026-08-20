@@ -126,7 +126,7 @@ AgentCore 外壳：租户/鉴权/entitlement/审计/persistence/规则引擎/wor
 | `tools[BUILTIN/MCP]` + `scopeDeclaration.toolNames` | 允许表 = scope∪授予∪{final_answer, load_skill}，只加不减 | ✅ E2 | — |
 | `skills[]` + `arguments` 默认值 | skills 映射 + `load_skill` 过 wire | ✅（S3 缝） | scope 语义：仅允许表内可调，越界 deny |
 | `ruleBindings` **PRE_CHECK** | `tools/pre-execute` 闸 → deny 即 `tool/result isError` | ✅ E2（deny 计数 0/基线 1） | — |
-| `ruleBindings` **POST_CHECK / BOTH** | 对面有 `tools/post-execute` 瀑布，**POC 未接** | ⛔ 缺口 | **WO-DSH-P1-MAP**：接 post-execute → 同一裁决网桥；验收=POC E2 对位副本（POST 段 deny 可观测、execute 已发生的诚实标注） |
+| `ruleBindings` **POST_CHECK / BOTH** | 对面有 `tools/post-execute` 瀑布，**POC 未接** | ✅ 已销（WO-DSH-PROD-READY W1，2026-08-20） | 落法偏离原 WO-DSH-P1-MAP 设想：不桥进 post-execute 瀑布，改在 engine 出口提共享闭包 `applyPostChecks` 双臂同码（语义单源，零漂移；见 DECISION-dsh-fusion §11）。验收=`dsh-postcheck.seam` 4 臂 + mutation 反证 + dualrun50 deny 族 12 条逐字节收敛 |
 | `tools[WORKFLOW]` 引用 | 对面无 workflow 概念 | ⛔ 缺口 | **WO-DSH-P1-MAP**：workflow 工具经 BUILTIN 桥暴露，仍由我方引擎执行；验收=跨系统 SEAM 用例（dsh 触发 → 我方 workflow 真跑 → 结果回帧） |
 | `budget`（steps/seconds/tokens） | turn budget | ⚠ 部分 | 与前置 B 的 watchdog 同批（环检测=第三层，超时=第一层，互不顶账） |
 | `provenancePolicy/writeMode` 拒绝语义 | 重组装侧严校验（AnswerBlockSchema 单源） | ✅ S3 同口径 | — |

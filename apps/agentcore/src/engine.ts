@@ -399,7 +399,9 @@ export class ExecutionEngine {
       agentVersion: agent.version,
     };
 
-    const skills = [];
+    // W1 注：显式标注 SkillDefinition[]——applyPostChecks 闭包在本行之后、push 完成之前捕获
+    // skills，TS 对「演进式 let/const []」遇闭包早引用会放弃推断（TS7005），标注为零行为改动。
+    const skills: SkillDefinition[] = [];
     for (const s of agent.skills) {
       // §2.1：skill 引用缺省 latest（执行时解析）；§2.2：留痕含 skill 版本（L8）
       const skill = await this.resolveSkill(agent.tenantId, s.skillId, s.version ?? "latest");
@@ -497,11 +499,78 @@ export class ExecutionEngine {
     // Phase8：生产可启用 LLM 滚动摘要（QOS_ROLLING_SUMMARY_LLM=1）；缺省确定性拼接。
     const summarizer = cfg.QOS_ROLLING_SUMMARY_LLM === "1" ? llmRollingSummarizer(this.deps.llm, model, agent.tenantId) : undefined;
 
+    // WO-DSH-PROD-READY · W1：两段 postcheck 后验（Skill 规则引用后验 + ruleBindings
+    // POST_CHECK）提为共享闭包——DSH 分叉与原生循环**同一出口**过同一份后验，不许另抄一份
+    // （此前「postcheck 不外挂 DSH 路径」正是两条返回路径各写返回的漂移代价：同一条 agent
+    // 配置，选原生被规则拦、选 DSH 直接放行 = 治理语义按内核分裂）。只判 ANSWERED——
+    // FAILED/BLOCKED 早退无答案可验，天然不过后验。
+    const applyPostChecks = async (result: AgentLoopResult): Promise<AgentLoopResult> => {
+      // WO-SKILL-2 · Skill 规则引用后验：postcheck BLOCK → 替换为 rule_violation（在 agent.ruleBindings POST_CHECK 之前）
+      const postRuleKeys = skillRuleRefs(skills, "postcheck");
+      if (postRuleKeys.length > 0 && result.outcome === "ANSWERED") {
+        const answerText = result.answer.blocks
+          .map((b) => (b.type === "text" ? b.markdown : ""))
+          .filter(Boolean)
+          .join("\n");
+        try {
+          const verdicts = await this.deps.dataCore.rules.evaluate(opts.ctx, postRuleKeys, { answerText });
+          for (const v of verdicts) {
+            if (v.ruleVersion !== undefined) {
+              opts.onResolvedRef?.({ kind: "rule", key: v.ruleId, version: v.ruleVersion });
+            }
+          }
+          if (verdicts.some((v) => !v.passed && v.severity === "BLOCK")) {
+            return { ...result, answer: ruleViolationAnswer(verdicts) };
+          }
+        } catch {
+          // fail-open
+        }
+      }
+
+      // ruleBindings POST_CHECK: BLOCK violation → replace answer with violation explanation
+      const mode = agent.ruleBindings.mode;
+      if ((mode === "POST_CHECK" || mode === "BOTH") && result.outcome === "ANSWERED") {
+        const answerText = result.answer.blocks
+          .map((b) => (b.type === "text" ? b.markdown : ""))
+          .filter(Boolean)
+          .join("\n");
+        try {
+          const verdicts = await this.deps.dataCore.rules.evaluate(opts.ctx, agent.ruleBindings.ruleKeys, {
+            answerText,
+          });
+          for (const v of verdicts) {
+            if (v.ruleVersion !== undefined) {
+              opts.onResolvedRef?.({ kind: "rule", key: v.ruleId, version: v.ruleVersion });
+            }
+          }
+          const blocking = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
+          if (blocking.length > 0) {
+            const answer: Answer = {
+              trustLevel: "AGENT_EXPLORATORY",
+              blocks: blocking.map((v) => ({
+                type: "rule_violation",
+                ruleId: v.ruleId,
+                severity: v.severity,
+                explanation: v.explanation,
+                provId: "prov_post_check",
+              })),
+              provenance: [],
+              unverifiedNumerics: false,
+            };
+            return { ...result, answer };
+          }
+        } catch {
+          /* post-check best effort: rules engine unavailable does not break the answer */
+        }
+      }
+      return result;
+    };
+
     // -----------------------------------------------------------------------
     // WO-DSH-POC-S4 · 路 B（dsh harness）**休眠分叉**：走 JSON-RPC 子进程路径
     // （packages/dsh-harness），缺省关闭 = 下方 runAgentLoop 逐字节旧行为。
-    // 动态 import：条件不成立时 dsh 模块根本不加载。POC 验收专用；postcheck 规则后验
-    // （下方 POST_CHECK 段）在此路径不外挂——验收对照的是 loop 本体语义。
+    // 动态 import：条件不成立时 dsh 模块根本不加载。postcheck 规则后验经上方
+    // applyPostChecks 共享闭包在成功出口挂载（WO-DSH-PROD-READY W1 起双路同验）。
     // WO-AGENT-KERNEL-SELECT · 分叉条件升级（env 单源 → per-agent 优先）：
     //   agent.kernel 显式值优先（"EXTERNAL" 选 DSH；"NATIVE" 显式钉原生，env 翻不走）；
     //   字段缺失才回落进程 env DSH_HARNESS=1（POC 验收全局开关，既有通路零 delta）。
@@ -581,18 +650,22 @@ export class ExecutionEngine {
       // 类型从上方已动态 import 的 runDshAgent 派生（dormancy D3：全仓只许一处 dsh-runtime 入口，
       // 类型位 import("./dsh-runtime/reassemble.js") 会被判第二入口）。
       type DshOkResult = Extract<Awaited<ReturnType<typeof runDshAgent>>["result"], { ok: true }>;
-      const answer: AgentLoopResult["answer"] & { stats?: DshOkResult["stats"] } = {
-        ...dsh.result.answer,
-        ...(dsh.result.stats ? { stats: dsh.result.stats } : {}),
-      };
       if (dsh.result.degraded?.reason === "STALL_LOOP") this.deps.metrics.agentLoopRepeat.inc(); // N3：对位 loop.ts:641（两 fork 互斥无双计）
-      return {
+      // W1：成功出口过共享 postcheck 闭包——与原生路径同一份后验，治理语义不按内核分裂。
+      // stats 回声与治理替换**正交**：后验 BLOCK 换掉的是答案内容，token/轮次等运行观测回声
+      // 不随答案一起消失（对拍驱动 A4 锚「dsh 臂必带 stats」不按后验结果分支）——
+      // 故 stats 在闭包**之后**重挂，而不是编进待后验的 answer。
+      const checked = await applyPostChecks({
         outcome: dsh.result.outcome,
-        answer,
+        answer: dsh.result.answer,
         run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, "EXTERNAL"),
         sketch: dsh.result.sketch,
         ...(dsh.result.structured ? { structured: dsh.result.structured } : {}),
         ...(dsh.result.degraded ? { degraded: dsh.result.degraded } : {}),
+      });
+      return {
+        ...checked,
+        answer: { ...checked.answer, ...(dsh.result.stats ? { stats: dsh.result.stats } : {}) } as AgentLoopResult["answer"] & { stats?: DshOkResult["stats"] },
       };
     }
 
@@ -672,65 +745,8 @@ export class ExecutionEngine {
         }),
     });
 
-    // WO-SKILL-2 · Skill 规则引用后验：postcheck BLOCK → 替换为 rule_violation（在 agent.ruleBindings POST_CHECK 之前）
-    const postRuleKeys = skillRuleRefs(skills, "postcheck");
-    if (postRuleKeys.length > 0 && result.outcome === "ANSWERED") {
-      const answerText = result.answer.blocks
-        .map((b) => (b.type === "text" ? b.markdown : ""))
-        .filter(Boolean)
-        .join("\n");
-      try {
-        const verdicts = await this.deps.dataCore.rules.evaluate(opts.ctx, postRuleKeys, { answerText });
-        for (const v of verdicts) {
-          if (v.ruleVersion !== undefined) {
-            opts.onResolvedRef?.({ kind: "rule", key: v.ruleId, version: v.ruleVersion });
-          }
-        }
-        if (verdicts.some((v) => !v.passed && v.severity === "BLOCK")) {
-          return { ...result, answer: ruleViolationAnswer(verdicts) };
-        }
-      } catch {
-        // fail-open
-      }
-    }
-
-    // ruleBindings POST_CHECK: BLOCK violation → replace answer with violation explanation
-    const mode = agent.ruleBindings.mode;
-    if ((mode === "POST_CHECK" || mode === "BOTH") && result.outcome === "ANSWERED") {
-      const answerText = result.answer.blocks
-        .map((b) => (b.type === "text" ? b.markdown : ""))
-        .filter(Boolean)
-        .join("\n");
-      try {
-        const verdicts = await this.deps.dataCore.rules.evaluate(opts.ctx, agent.ruleBindings.ruleKeys, {
-          answerText,
-        });
-        for (const v of verdicts) {
-          if (v.ruleVersion !== undefined) {
-            opts.onResolvedRef?.({ kind: "rule", key: v.ruleId, version: v.ruleVersion });
-          }
-        }
-        const blocking = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
-        if (blocking.length > 0) {
-          const answer: Answer = {
-            trustLevel: "AGENT_EXPLORATORY",
-            blocks: blocking.map((v) => ({
-              type: "rule_violation",
-              ruleId: v.ruleId,
-              severity: v.severity,
-              explanation: v.explanation,
-              provId: "prov_post_check",
-            })),
-            provenance: [],
-            unverifiedNumerics: false,
-          };
-          return { ...result, answer };
-        }
-      } catch {
-        /* post-check best effort: rules engine unavailable does not break the answer */
-      }
-    }
-    return result;
+    // W1：原生出口与 DSH 出口共用上方 applyPostChecks 闭包（两段后验单源，禁漂移）。
+    return applyPostChecks(result);
   }
 
   /** Workflow-as-tool execution for agents (nested; shares the top-level budget). */
