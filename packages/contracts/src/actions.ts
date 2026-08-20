@@ -145,6 +145,20 @@ export const ActionTypeSchema = z.object({
   approvalChain: z.array(z.object({ role: z.string() })).min(1).max(3),
   /** SA：本类型显式允许发起人自审（细粒度，覆盖租户策略）。默认 undefined=随租户策略。 */
   selfApproveAllowed: z.boolean().optional(),
+  /**
+   * 主目标对象类型 key（= OntologyType.typeKey · WO-ACTIONTYPE-TARGET · G-ACTIONTYPE-NO-TARGET）。
+   * 动作→对象类型的**归因键**：没有它，「这个对象类型上能做哪些动作」只能按全本体计数
+   * （`app.ts assembleCertification` 的 scopeActions 曾被迫如此，注释自述"算不出来才退而求其次"）。
+   * **取 `.optional()` 而非必填**，与 `version` 同一硬约束：既有内置 ActionType 与库里已落的
+   * `action_types` 行都没有此字段，收紧成必填会让现存数据 parse 失败。
+   * 缺省语义：`undefined` ≡ **不可静态归因**（≠ "无目标"）——三种真实情形：
+   *   ① 目标由 payload 运行期决定（如 `对象数据变更` 的 objectType、`采纳产能保障方案` 逐 lever 的 objectType）；
+   *   ② 主目标是多类型（如 `plan_change` 的 WorkOrder/Order/InterBaseTransfer，见其 `effects` PARTIAL 声明）；
+   *   ③ 写的根本不是本体对象（AOP 情景 / solver 参数 / S&OP 版本记录 / scheme_adoptions 台账）。
+   * 消费方判据：LOCAL 作用域只数 `targetTypeKey` 命中的动作；`undefined` 的不计入也不可冒充计入
+   * （空集不许冒充"没问题"——不可归因必须作为不可归因可见）。
+   */
+  targetTypeKey: z.string().min(1).optional(),
   /** 副作用/回写声明（additive·optional）。缺省 = 本类型尚未声明（≠ 声明为"无副作用"）。 */
   effects: ActionEffectSpecSchema.optional(),
 });

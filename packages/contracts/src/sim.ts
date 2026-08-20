@@ -618,7 +618,16 @@ export const SimCertificationSchema = z.object({
       key: z.string(),
       kind: z.enum(["DERIVATION", "ACTION", "PROPAGATION"]),
       source: z.string(),
+      /** ACTION 条目的归因键（WO-ACTIONTYPE-TARGET）：本动作的主目标对象类型。
+       *  `null` = 不可静态归因（≠ 无目标；三情形见 `ActionTypeSchema.targetTypeKey` 注释），
+       *  前端**不许**把 null 渲染成「无目标」。optional 之由同 `trialTick.derivationNodes`
+       *  （前端 7 处字面量构造）；非 ACTION 条目不下发。 */
+      targetTypeKey: z.string().nullable().optional(),
     })),
+    /** scope 内**不可静态归因**的 ActionType 数（`targetTypeKey` 缺省 · WO-ACTIONTYPE-TARGET）。
+     *  LOCAL 认证里它们不计入 `actions.present`（计入就是冒充可归因），但必须作为不可归因**可见**——
+     *  「这个类型上 0 个可归因动作」与「这个类型没问题」在屏上必须分得出。optional 之由同上。 */
+    unattributedActions: z.number().int().optional(),
   }),
   canEnterSimulation: z.boolean(), // = L4 ∧ trialTick.passed ∧ closure.gatePassed
   gaps: z.array(z.object({ gapCode: z.string(), ref: z.string(), detail: z.string() })), // 缺件诚实清单
