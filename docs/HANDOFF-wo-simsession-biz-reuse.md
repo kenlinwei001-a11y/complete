@@ -76,6 +76,50 @@
 
 ## 遗留 / 说明
 
-- 新事件 `sim.session_status_changed`：产出发事件，前端 `eventInvalidation` 未订阅（本单禁区不含前端接线；列表回执已由 `liveSnap.status` 直读覆盖，不依赖事件）。
-- `/act` 与 `counterfactual` 不对 PAUSED/ENDED 设闸：`/act` 是模拟态标量写入（不推进 tick），`counterfactual` 是不落库的对照跑（persist:false）——挡它们会藏信息，刻意不挡。
+- 新事件 `sim.session_status_changed`：产出发事件，前端 `eventInvalidation` 未订阅（本单禁区不含前端接线；列表回执已由 `liveSnap.status` 直读覆盖，不依赖事件）。**已登记本体 §4**（见退修轮退项 2）。
 - GlobalSim（gslive）与 ProjectSim 两页的 pause/end 未接——工单要求选一页；另两页如需接，复用同一个 `setSimSessionStatus` 即可，不许各写各的。
+
+---
+
+## 退修轮（2026-08-20 · 复验退 2 条，原地修）
+
+### 退项 1 · 「暂停」只冻结时间没冻结世界 ⇒ 已上真闸
+
+复验探针实测属实：PAUSED 下 `/act` HTTP 200 且 `simApplyAtCurrentTick→putTickState` **真落库**；`/perturbations` 同路 201 真入库。初版 HANDOFF「挡了反藏信息」的后半是错的，认账。
+
+**修法**（采纳复验方建议的真闸路线）：新增共享可写判据 `assertSimSessionWritable(s, op)`（`app.ts:1920`，PAUSED/ENDED ⇒ 409 `INVALID_SIM_STATUS_TRANSITION` 点名 op），与 `setSimSessionStatus` 同为唯一实现。tick 原内联守卫改调本闸（`app.ts:2074`）。
+
+**上闸全集枚举**（两路交叉核对，非单次 grep 命中数：① `putTickState`/`deleteTicksAfter`/`putSession` 全调用点 ② `app.*("/a/v1/sim/sessions…"` 全路由清单，逐条定性）：
+
+| 入口 | 写路径 | 闸 |
+|---|---|---|
+| `POST /:id/tick` | simAdvanceTicks persist→putTickState + putSession | ✅ `app.ts:2074` |
+| `PATCH /:id/disabled-rules` | putSession（sim_session 自己那行的世界配置） | ✅ `app.ts:2126` |
+| `POST /:id/act` | simApplyAtCurrentTick→putTickState | ✅ `app.ts:2222` |
+| `POST /:id/perturbations` | createPerturbation + 已生效者 putTickState | ✅ `app.ts:2241` |
+| `DELETE /:id/perturbations/:pid` | deletePerturbation（扰动记录=世界配置） | ✅ `app.ts:2270` |
+| `POST /:id/rollback` | deleteTicksAfter + putSession（回卷世界线） | ✅ `app.ts:2320` |
+| `POST /:id/counterfactual` | persist:false 零写入（复验确认，**不上闸**） | ⛔ 刻意不闸 |
+| `POST /:id/checkpoint` | createCheckpoint=冻结态只读快照，世界线不动 | ⛔ 刻意不闸 |
+| `POST /:id/branch` | 派生**新**会话，父世界不动——ENDED 的逃逸口 | ⛔ 刻意不闸 |
+| `POST /sessions` / 全部 GET | 创建/只读 | ⛔ 不闸 |
+
+**测试**（`sim-session-lifecycle.seam.test.ts` 退修① describe，5 条，oracle 全钉字面量）：
+- `PAUSED：/act 409 且世界字节零变化；/perturbations 409 且扰动记录零增长`（world 读回 `o1.risk` 仍 0.5、`listPerturbations` 长度 0）
+- `ENDED：/act 409…；/perturbations 409…（终态拒写）`
+- `恢复 RUNNING 后 /act 真放行：世界态 0.5→0.99 真落库`（独立通路 `repos.sim.getTickState` 读回，非只比状态码）
+- `上闸全集金丝雀（PAUSED）`：tick/disabled-rules/rollback/DELETE perturbation 各 409 + 刻意不闸的 counterfactual 200、checkpoint 201（双向锁死枚举，未来新增写入口漏闸即红）
+- `ENDED 逃逸口不上闸：branch…201，父世界字节不动`
+
+**变异反证 R1**：`assertSimSessionWritable` 条件前加 `false &&`（共享闸置空）→ 恰好 5 条红（上述 ②① 两条 tick 409 + 退修① PAUSED/ENDED/金丝雀三条），关键输出清一色 `AssertionError: expected 200 to be 409`。还原：cp 备份回 + `grep -c MUTATION-R1`=0 + `diff -q` CLEAN。
+
+**回归**：`npx vitest run test/sim-session-lifecycle.seam.test.ts test/sim-session.test.ts test/sim-perturbation.test.ts test/live-scenarios-seam.test.ts test/sim-act-close.seam.test.ts test/edge-active-counterfactual.test.ts --maxWorkers=1` → **RC=0，6 文件 58 测试全过**（邻域含扰动/act/对照跑三件套）。typecheck RC=0。vitest 水位探测 0 进程。
+
+### 退项 2 · 新事件未回写本体 §4 ⇒ 已登记
+
+`sim.session_status_changed` 补登 `docs/SYSTEM-ONTOLOGY.md` §4 事件表（`:1820`，L-sim 行；缓存标签列如实写 sim-sessions/live-scenarios，备注列明写「**前端未订阅**（2026-08-20 登记时实测 eventInvalidation.ts 无本事件）…订阅接线另立单」）。棘轮基线 `MAX_EMIT_UNREGISTERED=21` **未动**。
+
+**门证据**（`node scripts/check-system-ontology.mjs`，显式捕 RC）：
+- 修复前（本分支）：`§4 未登记 22 个 > 棘轮基线 21` RC=1；`ONTOLOGY_DUMP_EMITS=1` 全量清单确认 22 个里 `sim.session_status_changed` 是我加的、`ts.late_arrival` 为集成线既存（我本分支 = 集成线 tip + 本单一个提交，emit 只加了这一个）。
+- 修复后：`§4 未登记 21 个（棘轮基线 21）`，`✓ 系统本体与代码一致`，**RC=0**。
+- **口径差异归属**：复验方报「集成线 24 → 试并后 25」，本 worktree 实测为「修复前 22 → 修复后 21」（计数 22 = 21 基线存量含 ts.late_arrival + 我的 1 个）。两边都指向同一事实：超出的那一格是我引入的，修完回到基线。差值（24 vs 22）疑为复验侧 tip/口径不同，非本单债务；集成线既存存量（21 个，含 ts.late_arrival/action.*/sop.* 等）非我本单引入，棘轮纪律「只降不升」，我未抬。

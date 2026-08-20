@@ -19,7 +19,7 @@ const BASE = { o1: { risk: 0.5 }, o2: { risk: 0.2 } };
 const enableSim = (t: TestApp) =>
   t.app.inject({
     method: "PUT", url: "/a/v1/tenants/demo/features", headers: ADMIN,
-    payload: { overrides: { "sim.sandbox": true, "sim.propagation": true } },
+    payload: { overrides: { "sim.sandbox": true, "sim.propagation": true, "sim.checkpoint": true, "sim.branch": true } },
   });
 
 const createSession = async (t: TestApp, base: Record<string, unknown> = BASE): Promise<string> => {
@@ -122,6 +122,109 @@ describe("WO-SIMSESSION-BIZ-REUSE ① · PAUSED/ENDED 真实置位路径（路�
     });
     expect(fresh.statusCode).toBe(404);
     expect(fresh.json().error.code).toBe("FEATURE_NOT_FOUND");
+    await t.app.close();
+  });
+});
+
+describe("WO-SIMSESSION-BIZ-REUSE 退修① · 世界冻结：全部写入口过 assertSimSessionWritable 唯一闸", () => {
+  const PERT = { kind: "capacity_loss", targetObjectId: "o1", targetStateVar: "risk", magnitude: 0.9, durationTicks: null, mode: "set", label: "停机" };
+  const world = async (t: TestApp, sid: string) =>
+    (await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/world`, headers: ADMIN })).json();
+
+  it("PAUSED：/act 409 且世界字节零变化；/perturbations 409 且扰动记录零增长", async () => {
+    const t = await makeApp();
+    await enableSim(t);
+    const sid = await createSession(t);
+    await patchStatus(t, sid, "PAUSED");
+    const act = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/act`, headers: H, payload: { objectId: "o1", stateVar: "risk", value: 0.99 } });
+    expect(act.statusCode).toBe(409);
+    expect(act.json().error.code).toBe("INVALID_SIM_STATUS_TRANSITION");
+    // 落库字节零变化（独立通路：world 读回还是建会话时的字面量）
+    const w = await world(t, sid);
+    expect(w.tick).toBe(0);
+    expect(w.state.o1.risk).toBe(0.5);
+    const pert = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/perturbations`, headers: H, payload: PERT });
+    expect(pert.statusCode).toBe(409);
+    expect(pert.json().error.code).toBe("INVALID_SIM_STATUS_TRANSITION");
+    expect((await t.repos.sim.listPerturbations("demo", sid)).length).toBe(0); // 记录零增长
+    await t.app.close();
+  });
+
+  it("ENDED：/act 409 且世界字节零变化；/perturbations 409 且扰动记录零增长（终态拒写）", async () => {
+    const t = await makeApp();
+    await enableSim(t);
+    const sid = await createSession(t);
+    await patchStatus(t, sid, "ENDED");
+    const act = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/act`, headers: H, payload: { objectId: "o1", stateVar: "risk", value: 0.99 } });
+    expect(act.statusCode).toBe(409);
+    expect(act.json().error.code).toBe("INVALID_SIM_STATUS_TRANSITION");
+    const w = await world(t, sid);
+    expect(w.state.o1.risk).toBe(0.5);
+    const pert = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/perturbations`, headers: H, payload: PERT });
+    expect(pert.statusCode).toBe(409);
+    expect((await t.repos.sim.listPerturbations("demo", sid)).length).toBe(0);
+    await t.app.close();
+  });
+
+  it("恢复 RUNNING 后 /act 真放行：世界态 0.5 → 0.99 真落库（真行为，不是只比状态码）", async () => {
+    const t = await makeApp();
+    await enableSim(t);
+    const sid = await createSession(t);
+    await patchStatus(t, sid, "PAUSED");
+    await patchStatus(t, sid, "RUNNING");
+    const act = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/act`, headers: H, payload: { objectId: "o1", stateVar: "risk", value: 0.99 } });
+    expect(act.statusCode).toBe(200);
+    // 独立通路读回落库字节（绕过响应回显）
+    const ts = await t.repos.sim.getTickState("demo", sid, 0);
+    expect(ts!.state.o1?.risk).toBe(0.99);
+    await t.app.close();
+  });
+
+  it("上闸全集金丝雀（PAUSED）：tick / disabled-rules / rollback / DELETE perturbation 各 409；刻意不上闸的 counterfactual 200 · checkpoint 201", async () => {
+    const t = await makeApp();
+    await enableSim(t);
+    const sid = await createSession(t);
+    // 暂停前备好后续断言要用的实体：一条扰动 + 一个检查点
+    const created = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/perturbations`, headers: H, payload: PERT });
+    expect(created.statusCode).toBe(201);
+    const pid = created.json().perturbation.id as string;
+    const cp = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/checkpoint`, headers: H, payload: { label: "cp0" } });
+    expect(cp.statusCode).toBe(201);
+    const cpId = cp.json().id as string;
+    await patchStatus(t, sid, "PAUSED");
+    // 上闸全集（枚举见 app.ts assertSimSessionWritable 注释，两路交叉核对得出）
+    for (const [method, url, payload] of [
+      ["POST", `/a/v1/sim/sessions/${sid}/tick`, { n: 1 }],
+      ["PATCH", `/a/v1/sim/sessions/${sid}/disabled-rules`, { disabledRuleKeys: [] }],
+      ["POST", `/a/v1/sim/sessions/${sid}/rollback`, { checkpointId: cpId }],
+      ["DELETE", `/a/v1/sim/sessions/${sid}/perturbations/${pid}`, {}],
+    ] as const) {
+      const r = await t.app.inject({ method, url, headers: H, payload });
+      expect(r.statusCode, `${method} ${url}`).toBe(409);
+      expect(r.json().error.code).toBe("INVALID_SIM_STATUS_TRANSITION");
+    }
+    // 被拒后世界一个字节不动：扰动记录仍 1 条、curTick 仍 0
+    expect((await t.repos.sim.listPerturbations("demo", sid)).length).toBe(1);
+    expect((await t.repos.sim.getSession("demo", sid))!.curTick).toBe(0);
+    // 刻意不上闸：counterfactual（persist:false 零写入）照常出对照；checkpoint（冻结态只读快照）照常存档
+    const cf = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/counterfactual`, headers: H, payload: {} });
+    expect(cf.statusCode).toBe(200);
+    const cp2 = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/checkpoint`, headers: H, payload: { label: "cp-paused" } });
+    expect(cp2.statusCode).toBe(201);
+    await t.app.close();
+  });
+
+  it("ENDED 逃逸口不上闸：branch 从终态世界派生新会话 201，父世界字节不动", async () => {
+    const t = await makeApp();
+    await enableSim(t);
+    const sid = await createSession(t);
+    const cp = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/checkpoint`, headers: H, payload: { label: "cpE" } });
+    const cpId = cp.json().id as string;
+    await patchStatus(t, sid, "ENDED");
+    const br = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/branch`, headers: H, payload: { checkpointId: cpId } });
+    expect(br.statusCode).toBe(201);
+    expect(br.json().status).toBe("READY");
+    expect(await persistedStatus(t, sid)).toBe("ENDED"); // 父世界纹丝不动
     await t.app.close();
   });
 });
