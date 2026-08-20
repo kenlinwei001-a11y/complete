@@ -8,9 +8,32 @@
   gap: 6px;
 }
 
+/* 密排（`dense`）：整条并进模式条那一行的空白段，**自身不新增一行高度**。
+   ⚠ `flex-wrap: nowrap` 是判据不是审美：一旦换行，这条就又多占 27px，
+   首屏锚点当场回到 410 —— 那正是本形态要修的病。窄视口下宁可让模式条那一行
+   自己去 wrap（它本来就是 `flexWrap: wrap`），也不许本条内部折行。 */
+.dense {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
 .track {
   display: flex;
   flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dense .track {
+  flex-wrap: nowrap;
+}
+
+/* 密排时口径行在浮层里，恢复竖排以便阅读（浮层 max-width 380px）。 */
+.dense .meta,
+:global(.popover-surface) .meta {
+  flex-direction: column;
   gap: 6px;
 }
 

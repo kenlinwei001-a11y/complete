@@ -781,7 +781,22 @@ describe("WO-U2-STEPWISE-2 · sim-sandbox：步骤态真正驱动结果分段", 
 
     // 默认末步 = 完整结果（改前屏面）。
     for (let n = 1; n <= 4; n++) expect(screen.getByTestId(`sb-steps-step-${n}`)).toBeInTheDocument();
-    expect(screen.getByTestId("sb-steps-meta-solver")).toHaveTextContent("impact-analysis");
+
+    /* ── U2 判据第二半 · 口径行「数据·求解器·规则」**两向都咬** ────────────────────
+       本页的步骤条是**密排**（`dense`）：整条并进模式钮那一行，口径行降进 `?` 浮层。
+       为什么降：竖排时它自己占 48px、连带整块 91px，把仓主亲自裁决过的
+       「地铁图留在首屏当主角」顶掉（首屏锚点 319 → 410px，版面门棘轮实测报红）。
+
+       ⚠ 降层**不是删除**（规范 §1 红线），所以这里必须两向都断言，缺一向都能被绕过：
+         · 只断言「浮层里有」⇒ 第一层那份留着照样绿 ⇒ 证不出真降下去了；
+         · 只断言「第一层没有」⇒ 把口径整段删掉也绿 ⇒ 那是删内容冒充降层。 */
+    expect(screen.queryByTestId("sb-steps-meta")).toBeNull(); // ① 第一层不再含口径正文
+    fireEvent.focus(screen.getByTestId("info-sb-steps-meta")); // 记号是真 <button>，键盘也到得了
+    expect(screen.getByTestId("sb-steps-meta-solver")).toHaveTextContent("impact-analysis"); // ② 浮层里含，原文未删
+    expect(screen.getByTestId("sb-steps-meta-data")).toHaveTextContent("impact-analysis 响应");
+    expect(screen.getByTestId("sb-steps-meta-rule")).toHaveTextContent("PROJECTION");
+    fireEvent.blur(screen.getByTestId("info-sb-steps-meta"));
+    expect(screen.queryByTestId("sb-steps-meta")).toBeNull(); // 收起后确实卸载（不是 hidden）
     const kpiText = screen.getByTestId("sandbox-kpi-global-val").textContent ?? "";
     const deltaText = screen.getByTestId("sandbox-perturbation-last-delta").textContent ?? "";
     expect(kpiText.length).toBeGreaterThan(0);

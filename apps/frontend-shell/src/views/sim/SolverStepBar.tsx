@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { InfoPopover } from "@/components/InfoPopover";
 import styles from "./SolverStepBar.module.css";
 
 /**
@@ -71,52 +72,107 @@ export function SolverStepBar({
   active,
   onSelect,
   testId = "solver-step-bar",
+  dense = false,
 }: {
   steps: SolverStep[];
   active: number;
   onSelect: (stepNo: number) => void;
   testId?: string;
+  /**
+   * **单行密排**（口径行降进 `?` 浮层）。默认 `false` ⇒ 其余 8 页逐字节不变。
+   *
+   * 为什么要这个开关（`sim-sandbox` 实测逼出来的，不是审美）：本条竖排时占 **81px**
+   * （步骤钮 27 + 间隙 6 + 口径行 48），单独成块还要吃掉一个 10px 行间隙 ⇒ 共 **91px**。
+   * 而该页的首屏锚点（`sandbox-zone-canvas` 的 top）是仓主**亲自裁决过**的判据 ——
+   * 「配置面板默认收起成一条，点开才展开；地铁图留在首屏当主角」。
+   * 本条一挂上去，锚点 **319 → 410px**，版面门棘轮当场报红（三次采样同值，非抖动）。
+   * ⇒ 密排把这 91px 压成 **0**：步骤钮并进模式条那一行的空白段（那行本就 27px 高、
+   * 右端空着约 685px），口径行整段进浮层。
+   *
+   * ⚠ 这是**降层不是删除**（规范 §1 红线）：`数据 · 求解器 · 规则` 三项原文一字不改搬进
+   * `InfoPopover`，第一层留可见 `?` 记号，testid（`{testId}-meta-*`）逐个保留。
+   * 对应测试改成**两向都咬**：浮层里含、且第一层不再含 —— 既证明没删、也证明真降下去了。
+   */
+  dense?: boolean;
 }) {
   const cur = steps[active - 1];
+  /** 当前步的「数据·求解器·规则」—— 密排与竖排**共用这一份**，不许各写一份（漂移即说谎）。 */
+  const meta = cur ? (
+    <span className={styles.meta} data-testid={`${testId}-meta`}>
+      <span className={styles.metaItem} data-testid={`${testId}-meta-data`}>
+        <i className={styles.metaKey}>数据</i>
+        {cur.data}
+      </span>
+      <span className={styles.metaItem} data-testid={`${testId}-meta-solver`}>
+        <i className={styles.metaKey}>求解器</i>
+        <span className="mono">{cur.solver}</span>
+      </span>
+      <span className={styles.metaItem} data-testid={`${testId}-meta-rule`}>
+        <i className={styles.metaKey}>规则</i>
+        {cur.rule}
+      </span>
+    </span>
+  ) : null;
+
+  if (dense) {
+    return (
+      <span className={styles.dense} data-testid={testId}>
+        <span className={styles.track} role="group" aria-label="推演步骤">
+          {steps.map((s, i) => (
+            <StepButton key={s.key} s={s} n={i + 1} active={active} onSelect={onSelect} testId={testId} />
+          ))}
+        </span>
+        {/* U2 判据第二半：每步能看到它的 数据·求解器·规则（降进浮层，第一层留可见记号）。
+            ⚠ 判据写在 `cur` 上而不是 `meta` 上：`meta` 是由 `cur` 派生的 JSX，
+            类型系统看不出「meta 非空 ⇒ cur 非空」这层关系。 */}
+        {cur ? (
+          <InfoPopover topic={`第 ${active} 步「${cur.label}」的数据 · 求解器 · 规则`} testId={`${testId}-meta`}>
+            {meta}
+          </InfoPopover>
+        ) : null}
+      </span>
+    );
+  }
+
   return (
     <div className={styles.wrap} data-testid={testId}>
       <div className={styles.track} role="group" aria-label="推演步骤">
-        {steps.map((s, i) => {
-          const n = i + 1;
-          const state = n < active ? "done" : n === active ? "on" : "todo";
-          return (
-            <button
-              key={s.key}
-              type="button"
-              data-testid={`${testId}-step-${n}`}
-              data-step-key={s.key}
-              data-state={state}
-              className={`${styles.step} ${state === "on" ? styles.on : state === "done" ? styles.done : ""}`}
-              onClick={() => onSelect(n)}
-            >
-              <span className={styles.no}>{n}</span>
-              {s.label}
-            </button>
-          );
-        })}
+        {steps.map((s, i) => (
+          <StepButton key={s.key} s={s} n={i + 1} active={active} onSelect={onSelect} testId={testId} />
+        ))}
       </div>
       {/* U2 判据第二半：每步能看到它的 数据·求解器·规则（当前步口径行）。 */}
-      {cur && (
-        <div className={styles.meta} data-testid={`${testId}-meta`}>
-          <span className={styles.metaItem} data-testid={`${testId}-meta-data`}>
-            <i className={styles.metaKey}>数据</i>
-            {cur.data}
-          </span>
-          <span className={styles.metaItem} data-testid={`${testId}-meta-solver`}>
-            <i className={styles.metaKey}>求解器</i>
-            <span className="mono">{cur.solver}</span>
-          </span>
-          <span className={styles.metaItem} data-testid={`${testId}-meta-rule`}>
-            <i className={styles.metaKey}>规则</i>
-            {cur.rule}
-          </span>
-        </div>
-      )}
+      {meta}
     </div>
+  );
+}
+
+/** 步骤钮 —— 密排与竖排共用同一份实现（抄两份就会在改一处时悄悄漂移）。 */
+function StepButton({
+  s,
+  n,
+  active,
+  onSelect,
+  testId,
+}: {
+  s: SolverStep;
+  n: number;
+  active: number;
+  onSelect: (stepNo: number) => void;
+  testId: string;
+}) {
+  const state = n < active ? "done" : n === active ? "on" : "todo";
+  return (
+    <button
+      type="button"
+      data-testid={`${testId}-step-${n}`}
+      data-step-key={s.key}
+      data-state={state}
+      className={`${styles.step} ${state === "on" ? styles.on : state === "done" ? styles.done : ""}`}
+      onClick={() => onSelect(n)}
+    >
+      <span className={styles.no}>{n}</span>
+      {s.label}
+    </button>
   );
 }

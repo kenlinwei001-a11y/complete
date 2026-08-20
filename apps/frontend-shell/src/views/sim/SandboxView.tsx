@@ -1825,6 +1825,16 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
            从**独立一行**并进模式条的右端：它一个人占一整行，而竖排之后那一行是整幅宽度，
            为一个次级动作留一整行是第一层最贵的浪费。按钮本体一字未改。 */
         exportSlot={<ExportReportButton pageKey="sim-sandbox" build={buildExport} />}
+        /* 判据 U2 · 分步推演（步骤态**真正驱动**顶栏读数 / 扰动回执 / 影响带的分段）。
+           第 1 步的产物 = 左区那整块会话与配置（已在屏上，不再复述一遍）。
+           ⚠ 闸住的是**数**不是控件：任何一步左区输入都照常可用。
+           ⚠ 只在 `mode === "now"` 挂：另外四个模式走 `SandboxModePane`，各有自己的推演链，
+              把本页的四步契约挂上去就是张冠李戴。 */
+        stepsSlot={
+          mode !== "now" ? null : (
+            <SolverStepBar dense steps={SB_STEPS} active={sbStep} onSelect={setSbStep} testId="sb-steps" />
+          )
+        }
       />
       {/* ══ 一次只渲染一个模式 ═══════════════════════════════════════════════════
           判据是另一屏**不在 DOM**，不是 hidden —— 故这里是**互斥的条件渲染**，
@@ -1838,12 +1848,10 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       {mode !== "now" ? <SandboxModePane mode={mode} /> : null}
       {mode !== "now" ? null : (
       <>
-      {/* ── 判据 U2 · 分步推演（步骤态**真正驱动**顶栏读数 / 扰动回执 / 影响带的分段）─────
-          第 1 步的产物 = 左区那整块会话与配置（已在屏上，不再复述一遍）。
-          ⚠ 闸住的是**数**不是控件：任何一步左区输入都照常可用。 */}
-      <div data-testid="sandbox-steps-panel">
-        <SolverStepBar steps={SB_STEPS} active={sbStep} onSelect={setSbStep} testId="sb-steps" />
-      </div>
+      {/* ⚠ U2 步骤条**不在这里** —— 它已并进上面 `SandboxModeSwitch` 的模式钮那一行
+          （`stepsSlot`，见该 prop 的头注：单独成块要吃 91px，把仓主亲自裁决过的
+          「地铁图留在首屏当主角」顶掉 319→410px）。分段闸 `upto()` 仍在本文件里，
+          闸的是**数**不是控件。 */
       <SandboxConsole
         /**
          * WO-SANDBOX-DECLUTTER · **主屏唯一保留的治理信号**。
@@ -2158,12 +2166,28 @@ function SandboxModeSwitch({
   onChange,
   scope,
   exportSlot,
+  stepsSlot,
 }: {
   mode: SandboxMode;
   onChange: (m: SandboxMode) => void;
   scope: SandboxScope;
   /** 导出入口。并进本条右端，不再单占一整行（WO-SANDBOX-DENSITY）。 */
   exportSlot?: React.ReactNode;
+  /**
+   * 判据 U2 的步骤条（密排）。**并进模式钮那一行的空白段，不新增一行高度。**
+   *
+   * 为什么非这么放不可（实测数，不是审美）：步骤条竖排时占 **81px**
+   * （步骤钮 27 + 间隙 6 + 口径行 48），单独成块还要吃掉一个 10px 的行间隙 ⇒ 共 **91px**。
+   * 而本页首屏锚点（`sandbox-zone-canvas` 的 top）是仓主**亲自裁决过**的判据 ——
+   * 「配置面板默认收起成一条，点开才展开；地铁图留在首屏当主角」。
+   * 步骤条一挂上去，锚点 **319 → 410px**，版面门棘轮当场报红（三次采样同值，非抖动）。
+   *
+   * 模式钮那一行本来就是 **27px 高、右端空着约 685px**（五个模式钮止于 x≈640，
+   * 导出起于 x≈1325），步骤钮 4 个约 396px —— 塞得下且**行高不变** ⇒ 这 91px 归零。
+   * 口径行（数据·求解器·规则）整段进 `InfoPopover`，第一层留可见 `?` 记号
+   * （**降层不是删除** —— 规范 §1 红线）。
+   */
+  stepsSlot?: React.ReactNode;
 }) {
   return (
     <div className="panel" data-testid="sandbox-mode-switch" data-mode={mode} style={{ padding: 10 }}>
@@ -2195,6 +2219,18 @@ function SandboxModeSwitch({
             </button>
           </span>
         ))}
+        {/* 判据 U2 · 分步推演的步骤条 —— 并进本行空白段（见 `stepsSlot` 头注：那 91px 归零靠它）。
+            竖分隔是**结构表达**：左边是「这一屏问哪个问题」（模式），右边是「同一份结果看到第几步」（步骤），
+            两者不是一条链上的相邻环，挨着摆而不划开会被读成九个并列 tab。 */}
+        {stepsSlot ? (
+          <span
+            data-testid="sandbox-steps-panel"
+            style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}
+          >
+            <span aria-hidden style={{ width: 1, alignSelf: "stretch", background: "var(--line2)", margin: "0 2px" }} />
+            {stepsSlot}
+          </span>
+        ) : null}
         {/* 竖排之后这一行是整幅宽度，右端还空着 —— 导出并进来（原来它单占一整行）。 */}
         {exportSlot ? (
           <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center" }}>{exportSlot}</span>
