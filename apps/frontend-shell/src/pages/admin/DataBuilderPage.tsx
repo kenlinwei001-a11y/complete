@@ -8,6 +8,8 @@ import { fetchBuildJobs, fetchDataBuilders, runDataBuilder, fetchActionDrafts, d
 import DataBuilderFlow from "./DataBuilderFlow";
 import { useQuickLaunch } from "@/components/ScenarioLauncher/useScenarioLaunch";
 import { ValidationTracePanel } from "@/components/Answer/ValidationTracePanel";
+// WO-UI-FIRSTLAYER-BURNDOWN-2 · 规范 §2 R-UI-3 规定的浮层唯一实现（「别每页各做一套」）。
+import { InfoPopover } from "@/components/InfoPopover";
 import { toastError, toast } from "@/store/toastStore";
 
 /**
@@ -210,8 +212,17 @@ function ArtifactDiffCard({ a }: { a: ProducedArtifact }) {
         <div style={{ color: "var(--c-capacity-txt,#36BFA5)" }}>+ {after}</div>
       </div>
       {draft && (
+        /*
+         * WO-UI-FIRSTLAYER-BURNDOWN-2 · 规范 §1：第一层只放「数值 / 状态 / 名字」。
+         * 「⏳ 逐产物 HITL」是**状态**（这张卡还没生效）⇒ 留第一层；
+         * 冒号后面「到哪去批、批完怎样、走的是哪条写入通道」是**机制说明** ⇒ 降进浮层。
+         * 一个字都没删，第一层留着 `?` 记号（规范 §1「静默降层等于删除」的那条红线）。
+         */
         <div style={{ fontSize: 12, color: "var(--amber-txt,#DD9551)", marginTop: 2 }}>
-          ⏳ 逐产物 HITL：待页顶「待审批补齐」就地批复后该模块生效（R4 真值经 Action）。
+          ⏳ 逐产物 HITL
+          <InfoPopover topic="⏳ 逐产物 HITL" testId={`dbp-hitl-${a.kind}-${a.key}`}>
+            <span>待页顶「待审批补齐」就地批复后该模块生效（R4 真值经 Action）。</span>
+          </InfoPopover>
         </div>
       )}
     </div>
@@ -429,8 +440,17 @@ function InferenceButton({ run }: { run: StoryBuildRun }) {
       (run.closureReport && !run.closureReport.gatePassed ? "CLOSURE_GATE_FAILED" : undefined) ??
       (run.scaffoldReceipt && !run.scaffoldReceipt.fullChainOk ? "CHAIN_BROKEN" : "UNKNOWN");
     return (
+      /*
+       * WO-UI-FIRSTLAYER-BURNDOWN-2 · 规范 §2 R-UI-4「开发的话不上屏」：
+       * 括号里原印着「守"绿测试≠能用"」—— 那是**本仓内部叫法**（规范 §2 十三类形态里的
+       * 「内部机制名」那一条），用户读了做不出任何决定。结论（不可达 + 断在哪个码）留第一层，
+       * 「接下来该干什么」降进浮层，第一层留 `?` 记号。**一个字都没删，只是换了层。**
+       */
       <div data-testid={`sbr-inference-${run.id}`} style={{ fontSize: 12, color: "var(--danger-txt,#E5484D)" }}>
-        ⛔ 推演当前不可达：断在 <b data-testid={`sbr-inference-gap-${run.id}`}>{code}</b>（先补齐缺口/工单，守"绿测试≠能用"）
+        ⛔ 推演当前不可达：断在 <b data-testid={`sbr-inference-gap-${run.id}`}>{code}</b>
+        <InfoPopover topic="推演当前不可达" testId={`dbp-unreachable-${run.id}`}>
+          <span>先补齐缺口/工单，守"绿测试≠能用"</span>
+        </InfoPopover>
       </div>
     );
   }
@@ -1296,7 +1316,13 @@ export default function DataBuilderPage() {
                   >
                     {r.status === "PENDING_INPUT" ? "待补录" : r.status}
                   </span>
-                  <span style={{ flex: 1, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.script}</span>
+                  {/*
+                   * WO-UI-FIRSTLAYER-BURNDOWN-2 · 规范 §2 R-UI-2「一屏之内最多三级字号」。
+                   * 本页改前 4 级（15 / 13 / 12.5 / 12），而 12.5 **全页只此一处** ——
+                   * 它与 12 在屏上分不出，却实打实占掉一整级配额。归到 12 ⇒ 三级
+                   * （15 页标题 / 13 次级 / 12 正文）。12px 是版面门字号硬底，不再往下压。
+                   */}
+                  <span style={{ flex: 1, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.script}</span>
                   <span style={{ fontSize: 12, color: "var(--muted)" }}>{r.createdAt.slice(0, 19).replace("T", " ")}</span>
                 </div>
                 {open && pendingInput && (
