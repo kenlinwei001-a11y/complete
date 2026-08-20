@@ -1,6 +1,8 @@
 import type { Answer, AnswerBlock, ComposePlan, ProvenanceRef } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type { LlmClient } from "../llm/types.js";
+// WO-GRAPH-EXEC-CONSOLIDATE：分层扇出调度**收编到唯一实现**（原本文件自写一份组内 Promise.all 循环）。
+import { runLayeredGraph } from "../skill-orchestrator.js";
 import type { GuardedToolExecutor } from "../tools/executor.js";
 
 /**
@@ -10,7 +12,9 @@ import type { GuardedToolExecutor } from "../tools/executor.js";
  *  - 复用 path-A 的 invoke 通道——orchestrator 传入 `makeExecutor(taskId, auth, budget)` 产出的 `GuardedToolExecutor`，
  *    `executor.run("invoke_solver", {solverKey, args})` 直达 DataCore 求解器（OBO 透传），**全程不经 `runAgentLoop`**
  *    （这是与 path-B 的分水岭：组合命中题绝不落 agent 盲选多跳）。
- *  - 按 `parallelGroup` 升序：**同组并发**（`Promise.all`·无依赖）·**组间串行**（后组 argsFrom 依赖前组产物）。
+ *  - 按 `parallelGroup` 升序：**同组并发**（无依赖）·**组间串行**（后组 argsFrom 依赖前组产物）。
+ *    调度骨架已收编到 `skill-orchestrator.ts` 的 `runLayeredGraph`（仓内唯一实现·WO-GRAPH-EXEC-CONSOLIDATE），
+ *    本文件不再自写并发循环；**失败不掐下游**的 continue 语义仍留在本文件（见 executePlan 内注）。
  *  - **动态接线在服务端做·不经 LLM**：每步执行前把 `argsFrom{fromStep,outputPath,toArg}` 从上游产物按 outputPath 取值填入本步 args。
  *  - 全步跑完 → 汇总各步 {data, provenance} → **调一次 LLM `compose`** 综合产 `synthesizeBlocks`。无 provider → 诚实确定性兜底（不假装 LLM）。
  *
@@ -181,45 +185,57 @@ export async function executePlan(plan: ComposePlan, ctx: ExecutePlanCtx): Promi
   const products = new Map<string, StepProduct>();
   // parallelGroup 升序（组间串行·后组依赖前组产物）。
   const groups = [...new Set(plan.steps.map((s) => s.parallelGroup))].sort((a, b) => a - b);
-
-  for (const g of groups) {
-    // 组内按 stepId 稳定排序（R6·汇总顺序确定·并发无序副作用无害）。
-    const groupSteps = plan.steps
+  const stepById = new Map(plan.steps.map((s) => [s.stepId, s]));
+  // 组 → 层：组内按 stepId 稳定排序（R6·汇总顺序确定·并发无序副作用无害）。
+  const layers = groups.map((g) =>
+    plan.steps
       .filter((s) => s.parallelGroup === g)
-      .sort((a, b) => (a.stepId < b.stepId ? -1 : a.stepId > b.stepId ? 1 : 0));
+      .sort((a, b) => (a.stepId < b.stepId ? -1 : a.stepId > b.stepId ? 1 : 0))
+      .map((s) => s.stepId),
+  );
 
-    const groupResults = await Promise.all(
-      groupSteps.map(async (step): Promise<StepProduct> => {
-        const args: Record<string, unknown> = { ...step.args };
-        // 动态接线：从已完成上游产物按 outputPath 取值填入本步 args[toArg]（服务端做·不经 LLM）。
-        for (const wire of step.argsFrom) {
-          const up = products.get(wire.fromStep);
-          if (!up) continue;
-          const v = readOutputPath(up.data, wire.outputPath);
-          if (v != null) args[wire.toArg] = v;
-        }
-        const run = await ctx.executor.run("invoke_solver", { solverKey: step.solverKey, args });
-        const { data, snapshotVersion } = extractData(run.payload);
-        await ctx.emit?.("step.completed", {
-          stepId: step.stepId,
-          type: "compose_step",
-          outcome: `${step.solverKey}:${run.outcome}`,
-          durationMs: run.durationMs,
-        });
-        return {
-          stepId: step.stepId,
-          solverKey: step.solverKey,
-          toolCallId: run.toolCallId,
-          ok: run.ok,
-          outcome: run.outcome,
-          data,
-          ...(snapshotVersion ? { snapshotVersion } : {}),
-          args,
-        };
-      }),
-    );
-    for (const r of groupResults) products.set(r.stepId, r);
-  }
+  // WO-GRAPH-EXEC-CONSOLIDATE 收编：原先这里自写一遍「组升序 → 组内 Promise.all → 组间串行」，
+  // 与 `skill-orchestrator.ts` / `multi-route.ts` 各写一遍**同一个循环**。现统一走
+  // `runLayeredGraph`（仓内唯一调度实现），本文件只保留自己的**语义**：
+  //  · `onNodeThrow:"propagate"` ≡ 原 `Promise.all`（`executor.run` 契约上从不抛，真抛的是 emit 之类，上抛是对的）；
+  //  · **无 `isSkipped`/毒化** ⇒ 失败**不掐下游**（continue 语义·原样）：某步 ok=false 时它的 data 为空，
+  //    下游 `argsFrom` 的 `readOutputPath` 取不到值就不填（`if (v != null)`），下游照跑。
+  //    这与 GraphScheduler 的「毒化后继」**正相反**，是收编时最容易改坏的一处，故显式写在这里。
+  //  · `settle` 在**整批 await 之后**才落账 ⇒ 同组步骤互相看不见对方产物（组内无依赖·与原逐字节一致）。
+  await runLayeredGraph<StepProduct>({
+    layers,
+    onNodeThrow: "propagate",
+    settle: (stepId, r) => products.set(stepId, r),
+    runNode: async (stepId): Promise<StepProduct> => {
+      const step = stepById.get(stepId)!;
+      const args: Record<string, unknown> = { ...step.args };
+      // 动态接线：从已完成上游产物按 outputPath 取值填入本步 args[toArg]（服务端做·不经 LLM）。
+      for (const wire of step.argsFrom) {
+        const up = products.get(wire.fromStep);
+        if (!up) continue;
+        const v = readOutputPath(up.data, wire.outputPath);
+        if (v != null) args[wire.toArg] = v;
+      }
+      const run = await ctx.executor.run("invoke_solver", { solverKey: step.solverKey, args });
+      const { data, snapshotVersion } = extractData(run.payload);
+      await ctx.emit?.("step.completed", {
+        stepId: step.stepId,
+        type: "compose_step",
+        outcome: `${step.solverKey}:${run.outcome}`,
+        durationMs: run.durationMs,
+      });
+      return {
+        stepId: step.stepId,
+        solverKey: step.solverKey,
+        toolCallId: run.toolCallId,
+        ok: run.ok,
+        outcome: run.outcome,
+        data,
+        ...(snapshotVersion ? { snapshotVersion } : {}),
+        args,
+      };
+    },
+  });
 
   // 汇总：按 plan.steps 声明顺序稳定排列（供 ⟦ref:N⟧ 索引对齐）。
   const ordered: StepProduct[] = plan.steps.map((s) => products.get(s.stepId)).filter((p): p is StepProduct => Boolean(p));
