@@ -49,12 +49,15 @@ async function runGraph(body: unknown, user = ADMIN): Promise<{ statusCode: numb
 }
 
 /**
- * 两层图：
+ * 两层**工作**节点 + 一个 render 收口节点：
  *   层0  skill 节点   → 载入真实种子技能 `capacity_analysis`（seed.ts:1018 skl_seed_capacity）
  *                       它**真的**声明了 references[{kind:"solver", key:"capacity_forecast"}]
  *   层1  solver 节点  → solverKey 来自 `{{steps.load.output.solverKeys[0]}}`，即**第一层的产物**
+ *   层2  render 节点  → R11 全链闭包：图必须以 render 收口，否则 `compileGraph` 拒绝编译
+ *                       （WO-SKILL-GRAPH-RENDER-CLOSURE。此前 render 还是 NOT_IMPLEMENTED，
+ *                        故这一层是那一单之后才**能**写出来的。）
  *
- * 边就是这条数据的通道。掐掉边 → 第二层解析不到 → FAILED（见「变异反证」用例）。
+ * 边就是这条数据的通道。掐掉边 → 下游解析不到 → FAILED（见「变异反证」用例）。
  */
 const TWO_LAYER_GRAPH = {
   nodes: [
@@ -67,8 +70,12 @@ const TWO_LAYER_GRAPH = {
         args: { modelId: "4680-NCM", weeks: 8, demandDelta: 0.2 },
       },
     },
+    { id: "answer", kind: "render", params: { blocks: [] } },
   ],
-  edges: [{ from: "load", to: "solve", kind: "seq" }],
+  edges: [
+    { from: "load", to: "solve", kind: "seq" },
+    { from: "solve", to: "answer", kind: "seq" },
+  ],
 };
 
 describe("SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输出", () => {
@@ -81,6 +88,7 @@ describe("SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输�
     expect(body.layers).toEqual([
       { index: 0, nodeIds: ["load"] },
       { index: 1, nodeIds: ["solve"] },
+      { index: 2, nodeIds: ["answer"] },
     ]);
     expect(body.status).toBe("COMPLETED");
 
@@ -116,8 +124,19 @@ describe("SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输�
   });
 
   it("变异反证（掐掉边）：同一张图删掉边 → 第二层拿不到第一层输出 → FAILED", async () => {
-    // 唯一改动：edges 置空。节点、params、模板引用一字不改。
-    const res = await runGraph({ graph: { ...TWO_LAYER_GRAPH, edges: [] } });
+    // 唯一改动：掐掉 `load → solve` 这一条边。节点、params、模板引用一字不改。
+    // ⚠ 不能把 edges 整个置空 —— 那样图就没有任何一条链汇进 render，会先被 R11 在**编译期**拒掉（422），
+    //   于是本用例断言的「运行期拿不到上游产物」根本轮不到发生（红对地方 ≠ 红了就行）。
+    //   故改成：两个工作节点各自直连 render，只有它们**之间**那条边没了。
+    const res = await runGraph({
+      graph: {
+        ...TWO_LAYER_GRAPH,
+        edges: [
+          { from: "load", to: "answer", kind: "seq" },
+          { from: "solve", to: "answer", kind: "seq" },
+        ],
+      },
+    });
     expect(res.statusCode).toBe(200);
     const body = res.json() as GraphRunResponse;
 
@@ -153,8 +172,15 @@ describe("SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输�
           { id: "b", kind: "skill", params: { skillKey: "capacity_analysis" } },
           // c 引用的是 b，但边只有 a→c。b 与 c 之间无边。
           { id: "c", kind: "solver", params: { solverKey: "{{steps.b.output.solverKeys[0]}}" } },
+          { id: "d", kind: "render", params: { blocks: [] } },
         ],
-        edges: [{ from: "a", to: "c", kind: "seq" }],
+        // R11 收口：a→c→d 与 b→d 两条链都汇进 render；但 b 与 c 之间**依然没有边**，
+        // 本用例要咬的就是这一点（收口不等于「谁都能读谁」）。
+        edges: [
+          { from: "a", to: "c", kind: "seq" },
+          { from: "c", to: "d", kind: "seq" },
+          { from: "b", to: "d", kind: "seq" },
+        ],
       },
     });
     expect(res.statusCode).toBe(200);
@@ -180,10 +206,14 @@ describe("SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输�
           { id: "load", kind: "skill", params: { skillKey: "capacity_analysis" } },
           { id: "solveA", kind: "solver", params: { solverKey: "{{steps.load.output.solverKeys[0]}}", args: { modelId: "4680-NCM", weeks: 8 } } },
           { id: "solveB", kind: "solver", params: { solverKey: "{{steps.load.output.solverKeys[0]}}", args: { modelId: "4680-NCM", weeks: 12 } } },
+          { id: "out", kind: "render", params: { blocks: [] } },
         ],
         edges: [
           { from: "load", to: "solveA", kind: "parallel" },
           { from: "load", to: "solveB", kind: "parallel" },
+          // 两个兄弟都汇进 render —— R11 要的是**每条链**都收口，不是「有个 render 就行」
+          { from: "solveA", to: "out", kind: "seq" },
+          { from: "solveB", to: "out", kind: "seq" },
         ],
         maxParallelNodes: 2,
       },
@@ -193,6 +223,7 @@ describe("SEAM · 两层 Skill Graph：第二层真的拿到了第一层的输�
     expect(body.layers).toEqual([
       { index: 0, nodeIds: ["load"] },
       { index: 1, nodeIds: ["solveA", "solveB"] },
+      { index: 2, nodeIds: ["out"] },
     ]);
     for (const id of ["solveA", "solveB"]) {
       const n = body.nodeResults.find((r) => r.nodeId === id)!;
@@ -307,9 +338,14 @@ describe("SEAM · R6 确定性 + R2 租户隔离 + 鉴权", () => {
  * 判据 #1：走了哪一路，响应里必须说得出来 ——「静默回落 legacy」= 功能等于没做而测试照绿。
  */
 describe("SEAM · Skill.execution 对名裁决：执行来源在响应里可见", () => {
-  const LEGACY_STEPS = [
-    { id: "p1", type: "invoke_solver", params: { solverKey: "capacity_forecast", args: { modelId: "4680-NCM", weeks: 8 } } },
-  ];
+  const SOLVE_STEP = { id: "p1", type: "invoke_solver", params: { solverKey: "capacity_forecast", args: { modelId: "4680-NCM", weeks: 8 } } };
+  /**
+   * 收口步。**不是为了让测试变绿而加的** —— 真实 QOS 执行计划本就必须以 `render_answer` 收尾
+   * （`workflow/validate.ts:97` 发布期强制），而 `render_answer` 正映射到 `render` 节点
+   * ⇒ 一份**合法的**线性计划链化之后天然满足 R11。链化后过不了 R11 的 steps[]，本来就发布不了。
+   */
+  const RENDER_STEP = { id: "p9", type: "render_answer", params: { blocks: [] } };
+  const LEGACY_STEPS = [SOLVE_STEP, RENDER_STEP];
 
   it("execution.graph（新路·图）→ source=execution.graph 且真跑出结果", async () => {
     const res = await runGraph({ execution: { graph: TWO_LAYER_GRAPH } });
@@ -321,14 +357,24 @@ describe("SEAM · Skill.execution 对名裁决：执行来源在响应里可见"
   });
 
   it("execution.steps（新路·线性，元素就是 PlanStep）→ source=execution.steps 且编成 seq 链", async () => {
-    const res = await runGraph({ execution: { steps: [...LEGACY_STEPS, { id: "p2", type: "invoke_solver", params: { solverKey: "capacity_forecast", args: { modelId: "4680-NCM", weeks: 12 } } }] } });
+    // render_answer 必须是**最后一步**（`validatePlanSteps:89` 的既有规则），故收口步排在 p2 之后。
+    const res = await runGraph({
+      execution: {
+        steps: [
+          SOLVE_STEP,
+          { id: "p2", type: "invoke_solver", params: { solverKey: "capacity_forecast", args: { modelId: "4680-NCM", weeks: 12 } } },
+          RENDER_STEP,
+        ],
+      },
+    });
     expect(res.statusCode).toBe(200);
     const body = res.json() as GraphRunResponse;
     expect(body.source).toBe("execution.steps");
-    // 保守链式退化：两层各一个（不做隐式并行推断）
+    // 保守链式退化：每层一个（不做隐式并行推断）
     expect(body.layers).toEqual([
       { index: 0, nodeIds: ["p1"] },
       { index: 1, nodeIds: ["p2"] },
+      { index: 2, nodeIds: ["p9"] },
     ]);
     expect(body.status).toBe("COMPLETED");
   });
@@ -372,9 +418,12 @@ describe("SEAM · Skill.execution 对名裁决：执行来源在响应里可见"
 
   it("★ 约束①真接线：线性路上 validatePlanSteps 的语义错真的会拦（不是只写在注释里）", async () => {
     // 悬空步骤引用 —— 这是 validatePlanSteps 的判据，不是 zod 结构地板能看见的
+    // 带上收口步，好让图先过 R11 —— 否则会先被 RENDER_CLOSURE_MISSING 拦下，
+    // 本用例要证的「validatePlanSteps 真接了线」就轮不到发生（红对地方 ≠ 红了就行）。
     const res = await runGraph({
       planSteps: [
         { id: "p1", type: "invoke_solver", params: { solverKey: "capacity_forecast", args: { m: "{{steps.ghost.output.x}}" } } },
+        RENDER_STEP,
       ],
     });
     expect(res.statusCode).toBe(422);

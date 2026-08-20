@@ -42,7 +42,11 @@ import { resolveTemplate, TemplateResolutionError, type TemplateScope } from "./
 // 它实际接受 `ExtendedPlanStep = PlanStep | ExtraToolStep`（后者含 query_timeseries_agg /
 // search_knowledge / plan_slice 三个真实可执行类型）。任何消费方校验步骤都必须走它。
 import { validatePlanSteps } from "./workflow/validate.js";
-import type { ExtendedPlanStep } from "./workflow/executor.js";
+// `render` 节点复用**线性执行器同一个** `renderAnswer`（PRD §3.1「复用今天 executor 的同一 switch 体」）。
+// 另写一个「图专用渲染器」= 两条路会渐渐渲染出不一样的答案，而两边测试各自全绿。
+import { renderAnswer, type ExtendedPlanStep, type StepAudit } from "./workflow/executor.js";
+import type { Metrics } from "./metrics.js";
+import type { Answer } from "@platform/contracts";
 
 export interface GraphNodeResult {
   nodeId: string;
@@ -57,6 +61,14 @@ export interface GraphNodeResult {
   resolvedParams?: Record<string, unknown>;
   /** 该节点可见的上游节点（= 它的祖先集，按声明序）。 */
   visibleFrom?: string[];
+  /**
+   * 工具审计留痕（供下游 `render` 节点产 provenance，R13）。
+   * ⚠ 诚实边界：`ToolPayload`（`contracts/common.ts:18`）只有 `{data, snapshotVersion}`，
+   * **没有 toolCallId** —— 故 solver 节点这里给不出真的 toolCallId，
+   * `renderAnswer` 会按它既有的兜底填 `"unknown"`。这是**既存**的形状缺口，不是本单新造的，
+   * 也不假装已经有了；要补得先给 `SolverClient.invoke` 的返回加上 toolCallId。
+   */
+  audit?: StepAudit;
 }
 
 export interface GraphRunResult {
@@ -76,6 +88,12 @@ export interface GraphRunResult {
 export interface GraphSchedulerDeps {
   repos: Repos;
   dataCore: DataCoreClient;
+  /**
+   * `render` 节点要的：`renderAnswer` 内部会在扫出未溯源数值时打点
+   * （`metrics.unverifiedNumerics`）。复用既有渲染实现就得把它的依赖一起带上，
+   * 少带 = 只能另写一个「不打点的渲染器」= 第二套实现。
+   */
+  metrics: Metrics;
 }
 
 export class SkillGraphCompileError extends Error {
@@ -96,6 +114,13 @@ interface NodeRunContext {
   layer: number;
   scope: TemplateScope;
   visibleFrom: string[];
+  /**
+   * 祖先节点的**原始产物**与**审计留痕**（同样只装祖先的，与 `scope.steps` 一个口径）。
+   * `render` 节点要靠它们生成 provenance —— 没有边连过来的节点，它的数既进不了模板，
+   * 也进不了溯源，两处一致。
+   */
+  visibleOutputs: Record<string, unknown>;
+  visibleAudits: Record<string, StepAudit>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -236,6 +261,8 @@ export class GraphScheduler {
 
     /** 已完成节点的产物：nodeId -> output。**注意这里不直接当作用域**，见下面 scopeFor。 */
     const outputs = new Map<string, unknown>();
+    /** 已完成节点的审计留痕：nodeId -> StepAudit。`render` 节点据此产 provenance（R13）。 */
+    const audits = new Map<string, StepAudit>();
     const results = new Map<string, GraphNodeResult>();
     /** 被上游 FAIL 掐断的节点（及其后继）。 */
     const poisoned = new Set<string>();
@@ -253,7 +280,25 @@ export class GraphScheduler {
         const node = byId.get(id)!;
         const visibleFrom = ancestorsOf(id, compiled.predecessors);
         const scope = this.scopeFor(visibleFrom, outputs, opts);
-        return this.runNode({ auth, node, layer: layerOf.get(id) ?? 0, scope, visibleFrom });
+        // `render` 节点靠祖先的**原始产物 + 审计留痕**产 provenance（R13）。
+        // 同样只装祖先的，与 `scope.steps` 一个口径：没有边连过来的节点，
+        // 它的数既进不了模板，也进不了溯源 —— 两处不许各有各的可见性。
+        const visibleOutputs: Record<string, unknown> = {};
+        const visibleAudits: Record<string, StepAudit> = {};
+        for (const a of visibleFrom) {
+          if (outputs.has(a)) visibleOutputs[a] = outputs.get(a);
+          const au = audits.get(a);
+          if (au) visibleAudits[a] = au;
+        }
+        return this.runNode({
+          auth,
+          node,
+          layer: layerOf.get(id) ?? 0,
+          scope,
+          visibleFrom,
+          visibleOutputs,
+          visibleAudits,
+        });
       },
       isSkipped: (id) => poisoned.has(id),
       skipped: (id) => ({
@@ -273,6 +318,8 @@ export class GraphScheduler {
       settle: (id, r) => {
         if (r.status === "COMPLETED") {
           outputs.set(id, r.output);
+          // 审计与产物同批落账，供下游 render 取用（不另开第二条时序）
+          if (r.audit) audits.set(id, r.audit);
         } else if (byId.get(id)!.onError !== "SKIP") {
           // onError=FAIL（缺省）→ 毒化全部后继（与今天 executor 的 SKIP 语义互补）
           this.poisonDescendants(id, graph, poisoned);
@@ -356,11 +403,31 @@ export class GraphScheduler {
     }
 
     try {
-      const output =
-        ctx.node.kind === "skill"
-          ? await this.runSkillNode(ctx.auth, resolvedParams)
-          : await this.runSolverNode(ctx.auth, resolvedParams);
-      return { ...base, status: "COMPLETED", output, resolvedParams };
+      // 派发按 kind 显式三分。**不要写成二选一的三元表达式** —— 新增 kind 时
+      // 「忘了加分支」会被静默归到 else 那一路（本仓最贵的错法之一）。
+      // 编译期 `IMPLEMENTED_NODE_KINDS` 已挡掉其余 kind，故 default 只可能是两者不同步时到达。
+      switch (ctx.node.kind) {
+        case "skill": {
+          const output = await this.runSkillNode(ctx.auth, resolvedParams);
+          return { ...base, status: "COMPLETED", output, resolvedParams };
+        }
+        case "solver": {
+          const { output, audit } = await this.runSolverNode(ctx.auth, resolvedParams);
+          return { ...base, status: "COMPLETED", output, resolvedParams, audit };
+        }
+        case "render": {
+          const output = this.runRenderNode(ctx, resolvedParams);
+          return { ...base, status: "COMPLETED", output, resolvedParams };
+        }
+        default:
+          throw Object.assign(
+            new Error(
+              `节点「${ctx.node.id}」kind=${ctx.node.kind} 过了编译期 IMPLEMENTED_NODE_KINDS 却没有派发分支 —— ` +
+                `契约与调度器不同步（加 kind 到 IMPLEMENTED_NODE_KINDS 就是承诺这里有分支）`,
+            ),
+            { code: "NODE_DISPATCH_MISSING" },
+          );
+      }
     } catch (e) {
       const err = e as { code?: string; message?: string };
       return {
@@ -410,14 +477,68 @@ export class GraphScheduler {
    * 不在 S1 范围。不传 = 现行为（不可取消），与 `tools/executor.ts:401` 今天的状态一致，
    * 不假装已经做了。
    */
-  private async runSolverNode(auth: ToolAuthCtx, params: Record<string, unknown>): Promise<unknown> {
+  private async runSolverNode(
+    auth: ToolAuthCtx,
+    params: Record<string, unknown>,
+  ): Promise<{ output: unknown; audit: StepAudit }> {
     const solverKey = params.solverKey;
     if (typeof solverKey !== "string" || solverKey.length === 0) {
       throw Object.assign(new Error("solver 节点缺少 params.solverKey"), { code: ErrorCodes.VALIDATION_ERROR });
     }
     const args = (params.args ?? {}) as Record<string, unknown>;
     const payload = await this.deps.dataCore.solver.invoke(auth, solverKey, args);
-    return { solverKey, data: payload.data, snapshotVersion: payload.snapshotVersion };
+    return {
+      output: { solverKey, data: payload.data, snapshotVersion: payload.snapshotVersion },
+      // toolName 必须逐字是 "invoke_solver"：`renderAnswer` 靠它决定走 `enrichProvenance`
+      // 那条富化路（`executor.ts` 同一判断），写别的名字会静默降级成 `{source:"TOOL_RESULT"}`。
+      audit: {
+        toolCallId: "unknown", // 见 GraphNodeResult.audit 头注：ToolPayload 里没有它
+        toolName: "invoke_solver",
+        ...(payload.snapshotVersion ? { snapshotVersion: payload.snapshotVersion } : {}),
+      },
+    };
+  }
+
+  /**
+   * `render` 节点（R11 收口点）· PRD §3.1 表：`render` ↔ 今日 `render_answer`。
+   *
+   * ── 语义边界 ────────────────────────────────────────────────────────────────
+   * · **输入**：`params.blocks` —— 与今日 `render_answer` 步骤**逐字段同构**的
+   *   `AnswerBlockTemplate[]`。块里用同一套 `{{steps.<nodeId>.output...}}` 语法引用上游产物，
+   *   由**同一个** `resolveTemplate` 在本节点的**祖先作用域**上求值（`runNode` 里已统一做完）。
+   *   ⇒ 没有边连过来的节点，render **引用不到**：R11 的「链要汇进 render」与
+   *      「数据只沿边流动」是同一件事的两面，不是两条各管各的规则。
+   * · **输出**：一个 `Answer`（`{trustLevel, blocks, provenance, unverifiedNumerics}`）——
+   *   就是 QOS 的答案信封。消费方 = 本路由的 REST 响应（`POST /b/v1/skill-graphs/run`
+   *   的 `nodeResults[].output`）；接进 SSE `answer` 帧 / 前端 renderer 分发属**后续单**，
+   *   本单没做，**不假装做了**（见文末「未做」）。
+   * · **一张图几个**：恰好一个，由 `compileGraph` 的 R11 校验保证（见
+   *   `skill-graph.ts assertRenderClosure` 头注：多个 render ⇒ 哪个才是答案没有答案）。
+   *
+   * ── trustLevel 为什么钉死 VERIFIED_WORKFLOW ──────────────────────────────────
+   * 编译期 `IMPLEMENTED_NODE_KINDS` 只放行 `skill`/`solver`/`render`，
+   * 三者 `determinismOf` 全是 `PURE`（`agent`/`compose` 那两个 LLM kind today 编译即拒）
+   * ⇒ 今天能编译出来的图**按构造不含 LLM 节点**，等价于线性侧的 Path A。
+   * ⚠ 这条推理**依赖「LLM kind 仍未实现」这个前提**：放开 `agent`/`compose` 的那一单
+   *   必须回来把它改成按 `execution.mode` / 节点 determinism 派生，否则这里会开始说谎。
+   */
+  private runRenderNode(ctx: NodeRunContext, params: Record<string, unknown>): Answer {
+    const blocks = params.blocks;
+    if (!Array.isArray(blocks)) {
+      throw Object.assign(
+        new Error(
+          `render 节点「${ctx.node.id}」缺少 params.blocks（应为 AnswerBlockTemplate[]，与今日 render_answer 步骤同构）`,
+        ),
+        { code: ErrorCodes.VALIDATION_ERROR },
+      );
+    }
+    return renderAnswer(
+      blocks as Record<string, unknown>[],
+      ctx.visibleAudits,
+      "VERIFIED_WORKFLOW",
+      this.deps.metrics,
+      ctx.visibleOutputs,
+    );
   }
 }
 
@@ -441,5 +562,10 @@ export class GraphScheduler {
  *  · 取消到底（AbortSignal 透传到 solver.invoke 第 4 参）—— PRD §5，属 W3 单。
  *  · 按题型预算 / RuntimeContext 统一工厂 / progress 事件 —— PRD §4/§6，属 W3 单。
  *  · dependsOn 编译期内联展开 —— PRD §8.1，属 W4 单。
- *  · rule/agent/human/slice/render/mcp/compose 节点 —— 编译期 NOT_IMPLEMENTED 显式拒绝。
+ *  · rule/agent/human/slice/mcp/compose 节点 —— 编译期 NOT_IMPLEMENTED 显式拒绝。
+ *    （`render` 已于 WO-SKILL-GRAPH-RENDER-CLOSURE 落地，故从本行移出。）
+ *  · **`render` 产出的 `Answer` 只回在本路由的 JSON 响应里**：接进 SSE `answer` 帧 /
+ *    前端 renderer 分发**没做**。判据：`grep -rn "skill-graphs/run" apps/frontend-shell/src` 零命中
+ *    （本体 §8 `G-BE-FE-SEAM-DEAD` 记的就是这一条）。「图能产出答案」≠「屏上看得见答案」。
+ *  · solver 节点的 `toolCallId` 恒 `"unknown"` —— `ToolPayload` 里没有这个字段（既存缺口，非本单新造）。
  */

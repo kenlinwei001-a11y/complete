@@ -69,7 +69,11 @@ export type WorkflowResult =
   | { status: "FAILED"; error: { code: string; message: string; stepId?: string }; stepOutputs: Record<string, unknown> }
   | { status: "CANCELLED"; reason: string; stepOutputs: Record<string, unknown> };
 
-interface StepAudit {
+/**
+ * 步骤审计留痕。**导出**是给图调度器（`skill-orchestrator.ts` 的 `render` 节点）用的：
+ * 它必须喂给 `renderAnswer` 同样形状的审计表，才能复用同一个渲染实现（不造第二套渲染器）。
+ */
+export interface StepAudit {
   toolCallId: string;
   toolName: string;
   snapshotVersion?: string;
@@ -349,8 +353,15 @@ function deriveBlockOutputPath(type: string, tpl: Record<string, unknown>): stri
   return undefined;
 }
 
-/** render_answer: AnswerBlockTemplate → AnswerBlock[], each fromStep → generated ProvenanceRef. */
-function renderAnswer(
+/**
+ * render_answer: AnswerBlockTemplate → AnswerBlock[], each fromStep → generated ProvenanceRef.
+ *
+ * **导出是刻意的**：图调度器的 `render` 节点（`skill-orchestrator.ts runRenderNode`）直接调它。
+ * PRD-skill-runtime-orchestrator §3.1「节点派发复用今天 executor 的同一 switch 体」——
+ * 线性 `render_answer` 与图 `render` 节点必须是**同一个渲染实现**，
+ * 否则两条路会渐渐渲染出不一样的答案，而两边测试各自全绿。
+ */
+export function renderAnswer(
   blockTemplates: Record<string, unknown>[],
   stepAudits: Record<string, StepAudit>,
   trustLevel: "VERIFIED_WORKFLOW" | "AGENT_EXPLORATORY",
