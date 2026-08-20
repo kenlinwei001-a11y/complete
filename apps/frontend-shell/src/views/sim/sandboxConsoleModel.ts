@@ -731,6 +731,23 @@ export function fmtFlowEff(frac: number | null | undefined): string {
  *          @stale-fact apps/datacore/src/synthetic/battery-extended.ts /drillId: "DYNAMIC-MBAL"/ ==1
  *          @stale-fact apps/datacore/src/synthetic/battery-extended.ts /drillType: "MaterialBalance"/ ==3
  *
+ *          ⚠ **2026-08-20 补的是这三条赌注缺的那一向**（WO-STALE-TEXT-FAMILY）：
+ *          上面三条赌的全是「**新的在**」（新出处存在 · 占位仍是通配 · 落点仍是 3 张），
+ *          **一条都没赌「旧的没了」**。只咬一向的后果是具体的：把上面这整段订正删掉、
+ *          或者哪天有人又把那个已删符号写回文案里，三条赌注**全都照样通过** ——
+ *          「删内容冒充修好」与「过时文案复活」这两条路都是敞开的。
+ *          下面两条把计数**钉死**（`==`，不是 `>=`），于是两个方向同时红：
+ *            · 本文件现有 2 处（就是上面 713/715 那两行讲历史的话）。**再塞回去 ⇒ 3 ⇒ 红**；
+ *              把这段订正整个删掉 ⇒ 0 ⇒ 同样红。历史记账被钉在原地，不许悄悄消失。
+ *            · 上游 `battery-extended.ts` 现有 3 处，**全部在注释里**（2026-08-20 用本仓剥注释器
+ *              实测：可执行代码里 **0 处**；同趟扫描的金丝雀 `resolveDynamicDrill` 命中 4 处，
+ *              它若也是 0 就是工具坏了不是代码干净）。那边一旦有人把符号写回**代码**，计数必涨 ⇒ 红。
+ *          ⚠ 正则写成 `worst[M]bal` 而不是直接写那个名字，是为了让记号自己**不被自己数进去** ——
+ *            否则这条赌注一挂上，它赌的那个计数就当场被它自己改掉，永远对不上。
+ *
+ *          @stale-fact apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts /worst[M]bal/ ==2
+ *          @stale-fact apps/datacore/src/synthetic/battery-extended.ts /worst[M]bal/ ==3
+ *
  * ③ **`stage`** —— 粗，但**真能带**（本体 `G-IMPEDIMENT-LOSS-NOJOIN` 记的也是这一维）。
  *    故本层把 stage 带过去做粗筛，并当面说清它是段级精度、不是因子级。
  *

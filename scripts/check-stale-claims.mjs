@@ -1886,7 +1886,7 @@ function main() {
     if (live["truth.widgetKeysMultiSource"] < 5) {
       blind.push(`⑧ widget 槽位里被 ≥2 真相源登记的只有 ${live["truth.widgetKeysMultiSource"]} 个（<5）—— 只剩单边就查不出分叉，这条槽位等于没开`);
     }
-    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==15
+    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==17
     //    ⇒ 这个数不再是传说，它由本门每次现算并对账）。抽到 0 条 ⇒ 报「工具坏了」，
     //    **不许**报「全仓记号都通过」—— 那正是本门自己在治的那种「我没找到 ≠ 它不存在」。
     if (markSweep.files < 100) blind.push(`⑥b 记号扫描只走到 ${markSweep.files} 个源文件（<100）—— srcRoots 是不是没读到？`);
@@ -2137,7 +2137,7 @@ try {
  *        `frontend-shell/locales/zh.ts` ×2 · `frontend-shell/views/sim/sandboxConsoleModel.ts` ×6）。
  *        WO-STALE-TEXT-SWEEP 当天就补上了生产实例，而这句自述留在原地 ——
  *        **它把「已经在用」写成了「还没在用」，方向正好相反**。
- *        赌注：@stale-self marks.production ==15
+ *        赌注：@stale-self marks.production ==17
  *      · 原文写「`runBaselineFactChecks` 那条今天有 6 条真数据，挂在两条 CONFIRMED-STALE 上」。
  *        **实为 0 条赌注、0 条 CONFIRMED-STALE**（存量已被后续单改完，基线只剩
  *        7 条 UNMARKED + 4 条 FALSE-POSITIVE）。
@@ -2145,8 +2145,11 @@ try {
  *        赌注：@stale-self baseline.confirmedStale ==0
  *    ⇒ 今天的真实分工是：**记号路径已在生产**（2026-08-16 现算 11 条；后续单陆续补挂，
  *      2026-08-17 WO-SCREEN-PLAINSPEAK 共补 3 条生产赌注（`processWait.honesty.cannotAnswer`
- *      的「9 条反推得出」+ `sim…orderBasisWhereReal` 的「6 条链 / 9 条流程」），12 → 15，
- *      @stale-self marks.production ==15）、
+ *      的「9 条反推得出」+ `sim…orderBasisWhereReal` 的「6 条链 / 9 条流程」），12 → 15；
+ *      2026-08-20 WO-STALE-TEXT-FAMILY 再补 2 条 —— 那两条补的是**方向**不是数量：
+ *      `sandboxConsoleModel.ts` 原有的三条赌注全在赌「新的在」，没有一条赌「旧的没了」，
+ *      于是「删内容冒充修好」这条路一直敞着；补上后 15 → 17，
+ *      @stale-self marks.production ==17）、
  *      **基线赌注路径今天 0 条数据**（@stale-self baseline.factChecks ==0；属「接了线没数据」，
  *      不是「没接线」——`runBaselineFactChecks` 仍被主流程无条件调用）。
  *    ⇒ 复验命令：`node scripts/check-stale-claims.mjs`（末行直接打印这三个现算值）。
