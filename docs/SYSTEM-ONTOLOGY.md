@@ -171,7 +171,7 @@
 - **FeatureConfig / DynamicFeature / FeatureAudit**：功能开通（entitlement）· `features.ts`。
 - **PromptTemplate（OC6）/ LlmBudget（OC7）/ FactoryCalendar（OC9）/ WritebackEcho（OC5）· 运营完备性平台配置**：① OC6 平台内置提示词配置化（平台默认 `PLATFORM_PROMPT_DEFAULTS` + 租户 override，`resolvePrompt` 生效；`GET/PUT /a/v1/prompt-templates`,migration018）；② OC7 LLM 成本配额（租户 token 软/硬线 → 降级/拒，`GET/PUT/record /a/v1/llm-budgets`,migration019）；③ OC9 工厂日历（净生产窗口扣减：周末+节假日/检修扣除、加班日补回，春节周用例；`/a/v1/calendars/:key{,/net-window}`,migration020）；④ OC5 写回回声抑制（Action 写回登记→源回流对账：同值 `ECHO_SUPPRESSED`/异值 `writeback.divergence`(L5) 告警；`/a/v1/writeback-echoes{,/reconcile}`,migration021）。`contracts/{prompt-template,llm-budget,factory-calendar,writeback-echo}.ts`,仓储四处。
 - **ConfigBundle / ImportJob（OC3 环境间配置迁移 + 跨系统 Saga · execution-semantics §3）**：导出本租户配置（首维=featureOverrides，entitlement=可售包形态）为 `ConfigBundle`（带 `platformSchemaVersion`）→ 另一环境导入跑 **Saga 状态机**：`VALIDATING`(schemaVersion major 兼容 + 未知键拒)→`DRY_RUN_OK`(diff vs 目标,冲突=changed)→`APPLYING_A`(DataCore featureOverrides)→`APPLYING_B`(AgentCore,注入客户端)→`COMMITTED`；B 失败→`COMPENSATING`(回滚 A 到导入前)→`COMPENSATED`（Saga 一致）。冲突策略 SKIP/OVERWRITE/FAIL · `config-bundle.ts ConfigBundleService` · `GET/POST /a/v1/config-bundles/{export,import}`(admin) · `import_jobs`(migration017,R9 四处) · `bundle_import` 执行锁。`contracts/config-bundle.ts`。
-- **LlmProvider / LlmPurposeBinding**：LLM 供应商 + **用途绑定矩阵**（6 用途 classifier/agent/extraction/modeling/template_gen/compose）· `contracts/llm.ts:205`。
+- **LlmProvider / LlmPurposeBinding**：LLM 供应商 + **用途绑定矩阵**（7 用途 classifier/agent/extraction/modeling/template_gen/compose/comprehend）· `packages/contracts/src/llm.ts:216 (LlmPurposeSchema)`。
 - **Notification / OutboxEvent / IdempotencyRecord**：通知中心 / 事件出箱 / 幂等 · `outbox.ts`。
 - **KbDoc / KbChunk**：知识库（索引/检索）· `kb.ts`。
 - **ElementRef / ReportedRef**：引用图谱（rule/skill/workflow/plan/agent/mcp/intent 的出向引用）· `refs.ts`。
@@ -782,7 +782,7 @@ Tenant --隔离--> 一切读写/事件/缓存键    FeatureConfig --门控(先�
 Policy(A6) --行级过滤--> {query_objects, executeSlice, solver 读出}
 Policy(A6) --列级投影--> {queryObjects/listVisibleForAggregate/getObject, executeSlice 子图节点, SolverService.loadContext}
 Policy(A6) --列级写门--> {对象数据变更 Action 提交(app.ts assertObjectPatchWritable) + 执行期复校} --拒绝--> PROPERTY_FORBIDDEN
-LlmPurposeBinding --路由--> { classifier:QOS分类 · agent:路径B · extraction:规则抽取/构建 · modeling:建模建议 · template_gen:行业模板 · compose:llm_compose }   ⚠ 用途枚举写死、不可扩展；model 下拉依赖先选 provider
+LlmPurposeBinding --路由--> { classifier:QOS分类 · agent:路径B · extraction:规则抽取/构建 · modeling:建模建议 · template_gen:行业模板 · compose:llm_compose · comprehend:故事脚本意图解析→全栈倒推 }   ⚠ 用途枚举写死、不可扩展；model 下拉依赖先选 provider
 OutboxEvent --驱动--> EventSubscription(§4) --失效--> 前端缓存
 ```
 
