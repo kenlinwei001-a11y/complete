@@ -2,6 +2,8 @@ import type { ProcessWaitKind, PropagationRule } from "@platform/contracts";
 import { ProcessDefinitionSchema, ProcessDomainSchema } from "@platform/contracts";
 import type { Repos } from "./repo/repo.js";
 import { AuthService } from "./auth.js";
+import { AuthzService } from "./authz.js";
+import { OntologyCoreService } from "./ontology-core.js";
 import type { AuthCtx } from "./domain.js";
 import type { SyntheticService } from "./synthetic/service.js";
 import { seedOrgWorld } from "./org/seed.js";
@@ -182,6 +184,68 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
   // 轨L 增量2：demo 本体经真建模链产出（rawDataset→deriveModeling→确定性策展PATCH→publish→materialize），
   // provenance（R13）因果真实——类型 sourceBindings 真由 publish 读真 rawDataset 算出，非短路直注。
   await synthetic.runJob(ctx, { industry: "battery-manufacturing", scale: "S", seed: 42, livedIn, viaModelingChain: false });
+}
+
+/**
+ * WO-DERIVSPEC-SEED（闭 §8 `G-DERIVSPEC-EMPTY` + `G-DERIVED-FORMULA-UNVERIFIED` 残口②）：
+ * 给 demo 租户播 `DerivationSpec` 种子 —— 经**真编译链** `OntologyCoreService.compileSpecs`
+ * （parse → deps 缓存 → 环检查 → put），不走捷径直注记录。
+ *
+ * 病灶：demo 世界有 14 条 `derivedProperties`（legacy `runDerivations` 物化值），
+ * 而第二种派生机制 `derivation_specs` 表的唯一写入方是 REST 端点
+ * `POST /a/v1/ontology/derivation-specs`（app.ts compileSpecs 路由），无任何种子路径调它
+ * ⇒ demo 恒 0 条，三处消费点（app.ts 认证装配 / process-inspect ⑭ / slices ⑭证据层）恒空。
+ *
+ * 选路（工单二选一）：**补种子**，不退役。理由 = 可造性已自证（对账实验：
+ * 14 条 legacy 公式里 **9 条**可无损译成 §2 DSL 且与物化值逐实例对账 ≤1e-9 精确一致）；
+ * 退役摘除会把 ⑭证据层唯一的派生溯源输入与 impact-analysis 的传播闭包输入一起拆掉。
+ *
+ * 9 条怎么选出来的（另 5 条为什么不种 —— 诚实边界，不是漏）：
+ *  · **除法两条不种**（`MaterialBalance.coverage` / `Metric.gapPct`）：§2 DSL 求值器
+ *    `decimalRound` 每个二元运算压 4 位定点，而 legacy `runDerivations` 末端 `round(v,6)`，
+ *    除法结果在第 5 位小数上分叉（实测 coverage 差 ~2e-5、gapPct 差 ~3e-3）——种了就会导致
+ *    recompute 用 4 位值覆盖 6 位物化值，**对不上账的种子比没有更糟**。
+ *  · **Base 三条 BY-field 聚合不种**（orderCount/committedQty/oeeIndex）：legacy 聚合按
+ *    源对象字段匹配（`BY bases`/`BY baseId`），§2 DSL 聚合只能沿**链路实例**单跳导航，
+ *    而 Base↔Order、Base↔Equipment 之间没有直接链路类型 ⇒ 不可译。
+ *  · 这 5 条仍由 `derived-recompute:check` 门覆盖（它验的是 legacy 管线自身一致性）。
+ *  · Model 两条聚合**可译**：`model_demanded_by_order` 真链路（Model→Order 影响向逆边，
+ *    service.ts 种子）与 legacy `BY model` 字段匹配同集 —— 实测逐实例对账一致。
+ *
+ * 不变量：
+ *  - R6 确定性：specKey 固定 ⇒ 记录 id `dspec_<specKey>` 固定、无时钟字段；重播幂等覆盖。
+ *  - 只写 `derivation_specs` 表，**不碰对象**（compileSpecs 本身不物化值）⇒ SY1 字节一致基线不受影响。
+ *  - 排在 seedDemoSynthetic 之后：extractDeps 要解析 `model_demanded_by_order` 链路类型（随合成种子注册）。
+ */
+export const DEMO_DERIVATION_SPECS: ReadonlyArray<{
+  specKey: string;
+  targetType: string;
+  targetProp: string;
+  formula: string;
+}> = [
+  // ── 自属性算术（7 条 · 与 legacy derivedProperties 同式，逐实例对账 ≤1e-9）──────
+  { specKey: "order_value", targetType: "Order", targetProp: "value", formula: "this.qty * this.unitPrice" },
+  { specKey: "demandseg_revenue_wan", targetType: "DemandSegment", targetProp: "revenueWan", formula: "this.demandWanPerYearP50 * this.priceWan" },
+  { specKey: "demandseg_margin_wan", targetType: "DemandSegment", targetProp: "marginWan", formula: "this.demandWanPerYearP50 * this.priceWan * this.marginPct / 100" },
+  { specKey: "metric_delta", targetType: "Metric", targetProp: "delta", formula: "this.actual - this.target" },
+  { specKey: "sopver_gap", targetType: "SopVersionRow", targetProp: "gap", formula: "this.demand - this.supply" },
+  { specKey: "transfer_eta_day", targetType: "InterBaseTransfer", targetProp: "etaDay", formula: "this.dispatchDay + this.transitDays" },
+  { specKey: "fginv_qty_available", targetType: "FinishedGoodsInventory", targetProp: "qtyAvailable", formula: "this.qtyOnHand - this.qtyReserved" },
+  // ── 沿真链路的聚合（2 条 · model_demanded_by_order 与 legacy BY model 同集）──────
+  { specKey: "model_total_demand", targetType: "Model", targetProp: "totalDemand", formula: "SUM(out(model_demanded_by_order).qty)" },
+  { specKey: "model_order_count", targetType: "Model", targetProp: "orderCount", formula: "COUNT(out(model_demanded_by_order))" },
+];
+
+/**
+ * SEED_DEMO=1 → 播 demo 租户 DerivationSpec 种子（紧随 seedDemoSynthetic；两条播种路径
+ * server.ts / seed-cli.ts **必须同步**调用，理由同 seedDemoProcessLayer 注释）。
+ */
+export async function seedDemoDerivationSpecs(repos: Repos): Promise<void> {
+  const ctx: AuthCtx = { tenantId: DEMO_TENANT, userId: `usr_${DEMO_TENANT}_admin`, roles: ["admin"], attributes: {} };
+  const core = new OntologyCoreService(repos, new AuthzService(repos));
+  const versions = await repos.ontologyVersions.list(DEMO_TENANT);
+  const ov = versions.length > 0 ? Math.max(...versions.map((v) => v.version)) : 0;
+  await core.compileSpecs(ctx, ov, [...DEMO_DERIVATION_SPECS]);
 }
 
 /**

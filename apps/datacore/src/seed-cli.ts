@@ -8,7 +8,7 @@ import { createPgRepos } from "./repo/pg.js";
 import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoOrgWorld, seedDemoEntitlements } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoDerivationSpecs, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoOrgWorld, seedDemoEntitlements } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -33,6 +33,10 @@ async function main(): Promise<void> {
   if (config.SEED_DEMO === "1") {
     await seedDemoSynthetic(services.synthetic, adminCtx);
     logger.info("generated battery-manufacturing synthetic dataset (seed 42)");
+    // WO-DERIVSPEC-SEED（与 server.ts 的启动播种路径**必须同步**，理由同流程层注释）：
+    // 紧随合成（extractDeps 要解析随合成注册的链路类型）。
+    await seedDemoDerivationSpecs(repos);
+    logger.info("seeded demo derivation specs (derivation_specs non-empty)");
     await seedDemoPropagationRules(repos);
     logger.info("seeded demo sim propagation rules (sandbox non-empty)");
     // WO-Q0 业务流程层（与 server.ts 的启动播种路径**必须同步**——两条播种路径漂了，

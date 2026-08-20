@@ -8,7 +8,7 @@ import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
-import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoOrgWorld, seedDemoEntitlements, DEMO_TENANT } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoDerivationSpecs, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoOrgWorld, seedDemoEntitlements, DEMO_TENANT } from "./seed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -75,6 +75,11 @@ async function main(): Promise<void> {
       phase("seed:synthetic");
       logger.info("SEED_DEMO=1: generating battery-manufacturing synthetic dataset (seed 42)");
       await seedDemoSynthetic(services.synthetic, adminCtx);
+      // WO-DERIVSPEC-SEED：合成世界物化后播 DerivationSpec 种子（闭 G-DERIVSPEC-EMPTY；
+      // extractDeps 依赖随合成注册的链路类型，必须排在合成之后）。
+      phase("seed:derivation-specs");
+      await seedDemoDerivationSpecs(repos);
+      logger.info("SEED_DEMO=1: seeded demo derivation specs (derivation_specs non-empty)");
       // 沙盘消"空世界"（审计 §3.5）：本体物化后播 sim 传导规则种子（确定性 R6，正交于电池合成）。
       phase("seed:propagation-rules");
       await seedDemoPropagationRules(repos);
