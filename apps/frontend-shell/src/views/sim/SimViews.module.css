@@ -119,11 +119,19 @@
 .audCard.sug {
   border-left-color: var(--ok);
 }
+/*
+ * WO-UI-FIRSTLAYER-BURNDOWN-2 · 同 `.okBar`，但这条是**半像素**档：12.5px。
+ * 它与 12px 在屏上分不出来，却实打实占掉 R-UI-2 三级配额里的一整级。
+ * 消费方实测 3 个（`grep -rln "styles.audHead" apps/frontend-shell/src`）：
+ * `PlanAuditView` · `SopReschedulePanel` · `MultiObjWhatifPanel` ——
+ * **三个的第四级恰好都只是它**（改前 12.5/12/16/17 与 12.5/12/18/21），归 12 后三个同时降到三级。
+ * 一行 CSS 结清三处 R-UI-2 违规，且零视觉代价。
+ */
 .audHead {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12.5px;
+  font-size: 12px;
 }
 .audWhy {
   font-size: 12px;
@@ -318,11 +326,22 @@
   color: var(--accent-txt);
   background: rgba(76, 144, 240, 0.1);
 }
+/*
+ * WO-UI-FIRSTLAYER-BURNDOWN-2 · 规范 §2 R-UI-2「一屏之内最多三级字号
+ * （主数值 / 标题与标签 / 辅助说明），最大一级只给这一页要回答的那个数」。
+ *
+ * 唯一消费方是 `ProjectSimView.tsx`（`grep -rln "styles.okBar" apps/frontend-shell/src`
+ * 实测 **1 个文件**），它改前四级：21 `.kpi b`（P50/P90/需求三个 KPI ＝ 本页那个数）·
+ * 16 `.head h3`（页标题）· **13 本条** · 12 正文。13 与 12 之间这半档没有信息量 ——
+ * 本条的强调本来就由 `font-weight:700` ＋ 1.5px 描边 ＋ 语义色扛着，不靠字号。
+ * 归 12 ⇒ 三级（21 / 16 / 12），且视觉权重一点没丢。
+ * ⚠ 12px 是版面门的字号硬底，到此为止，不再往下压。
+ */
 .okBar {
   border: 1.5px solid;
   border-radius: 9px;
   padding: 9px 14px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   margin: 10px 0;
 }

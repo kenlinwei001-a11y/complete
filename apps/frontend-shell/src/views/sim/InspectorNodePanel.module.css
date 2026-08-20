@@ -35,9 +35,16 @@
   gap: 8px;
   min-width: 0;
 }
+/*
+ * WO-UI-FIRSTLAYER-BURNDOWN-2 · 规范 §2 R-UI-2「一屏最多三级字号，最大一级只给本页那个数」。
+ * 本面板改前是 **4 级**（26 / 15 / 13 / 12）：`.flowValue` 26px 是本页要回答的那个数（保留），
+ * 而 `.title` 15px 与 `.sectionTitle` 13px 都只是**标题与标签**这同一级 —— 分成两级没有信息量。
+ * 故 `.title` 15 → 13，与段标题同级 ⇒ 三级（26 主数值 / 13 标题标签 / 12 辅助说明）。
+ * ⚠ 12px 是版面门的字号硬底（FLOORS），本文件一处都不许压到它以下。
+ */
 .title {
   margin: 0;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--txt);
 }
@@ -116,16 +123,28 @@
   flex-direction: column;
   gap: 8px;
 }
+/*
+ * 段标题：改前是 `column`（标题一行、口径说明另一行，两行都在第一层）。
+ * 口径说明已降进 `InfoPopover`（规范 §2 R-UI-3），第一层只剩标题 ＋ 一个 `?` 记号，
+ * 故改为 `row` 让记号贴在标题右侧 —— 记号必须**看得见**，否则就是静默降层（§1 红线）。
+ */
 .sectionTitle {
   margin: 0;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
   font-size: 13px;
   font-weight: 700;
   color: var(--txt);
 }
+.sectionHeading {
+  min-width: 0;
+}
+/* 浮层正文里的口径说明（不再出现在第一层）。 */
 .sectionSub {
+  display: block;
   font-weight: 400;
   font-size: 12px;
   color: var(--muted2);
