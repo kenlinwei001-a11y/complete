@@ -57,11 +57,12 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["Material", "MaterialBatch", "MaterialBalance", "BOMHeader", "BOMDetail", "MaterialAlternative"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
-      key: "procurement", displayName: "采购与供应商", description: "供应商主数据、采购订单、清关记录、在途批次、长期协议、备份供应商池与跨基地调拨（到货延误/缺料/断供备份/跨基地余缺调剂推演）。",
+      key: "procurement", displayName: "采购与供应商", description: "供应商主数据、采购订单、清关记录、在途批次、长期协议、备份供应商池、外协批次与跨基地调拨（到货延误/缺料/断供备份/外协良率/跨基地余缺调剂推演）。",
       // WO-SANDBOX-D2：CustomsClearance（清关）归采购类目——责任方是清关行，属采购组织协调面。
       // 到货检验 IncomingInspection **不**归这里，归 quality_compliance（责任方是自家质量部）——
       // 本单的整个意义就是"按责任方分"，两段挂同一个类目就等于又把责任糊在一起。恰归一类（守 duplicateTypes==[]）。
-      typeKeys: ["Supplier", "PurchaseOrder", "CustomsClearance", "Shipment", "LongTermAgreement", "BackupSupplierPool", "InterBaseTransfer"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "rest_api", "file_upload"],
+      // WO-RULE-SCOPE-TRIAD：Outsource（外协批次）归采购类目——责任方是外协供应商，与清关同理（组织协调面）。
+      typeKeys: ["Supplier", "PurchaseOrder", "CustomsClearance", "Shipment", "LongTermAgreement", "BackupSupplierPool", "InterBaseTransfer", "Outsource"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "rest_api", "file_upload"],
     },
     {
       key: "quality_compliance", displayName: "质量与合规", description: "质量标准、检验特性、到货检验（IQC）、质检批次/检验结果/缺陷记录、数据源健康度与产品认证（合规/碳护照前置）。",

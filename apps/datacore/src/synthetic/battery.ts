@@ -2194,6 +2194,9 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "Supplier.deliveryDate": "最近交货日期", "Supplier.poNumber": "最近采购单号",
   "MaterialBatch.batchId": "批次号", "MaterialBatch.matId": "物料", "MaterialBatch.qty": "批次数量",
   "MaterialBatch.ageDays": "库龄天数", "MaterialBatch.idleDays": "呆滞天数",
+  // WO-RULE-SCOPE-TRIAD：外协批次（C31 外协质量门承载）
+  "Outsource.outsourceId": "外协批次号", "Outsource.matId": "物料", "Outsource.supplierId": "外协供应商",
+  "Outsource.qty": "外协数量", "Outsource.yieldRate": "实测良率", "Outsource.minYieldRate": "合同最低良率",
   "PurchaseOrder.poId": "采购单号", "PurchaseOrder.matId": "物料", "PurchaseOrder.qty": "采购数量",
   "PurchaseOrder.etaDay": "到货天", "PurchaseOrder.delayed": "是否延迟",
   // WO-SANDBOX-D2 采购段四段日戳 + 责任方
@@ -2614,6 +2617,8 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "model_has_cert", fromTypeKey: "Model", toTypeKey: "Certification", cardinality: "N:N" }, // factory（认证）
     { key: "customer_has_invoice", fromTypeKey: "Customer", toTypeKey: "ARInvoice", cardinality: "N:N" }, // commercial（应收）
     { key: "material_has_batch", fromTypeKey: "Material", toTypeKey: "MaterialBatch", cardinality: "N:N" }, // supply（批次）
+    // WO-RULE-SCOPE-TRIAD：Material → Outsource（外协批次·C31 承载类型接入本体图）
+    { key: "material_has_outsource", fromTypeKey: "Material", toTypeKey: "Outsource", cardinality: "1:N" }, // supply（外协）
     { key: "material_supplied_by_po", fromTypeKey: "Material", toTypeKey: "PurchaseOrder", cardinality: "N:N" }, // supply（采购）
     // WO-SANDBOX-D2：采购段按责任方可分解的三条链路（这一单谁供的 / 谁清的关 / 谁检的货）。
     { key: "po_from_supplier", fromTypeKey: "PurchaseOrder", toTypeKey: "Supplier", cardinality: "N:1" }, // supply（采购责任方）
@@ -3205,12 +3210,12 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   C28: ["MaterialBatch"], // 原 "Batch"；MaterialBatch.idleDays 满覆盖，改名后 C28 立刻真评估出判定
   C29: ["Order"],
   C30: ["Process"],
-  // ⚠️ C31 **故意保持原样**：`Outsource.yieldRate < Outsource.minYieldRate` 的承载类型**本体里真的没有**
-  //（近似数据 `Material.outsourceYield` 字段名对不上，且 `minYieldRate` 全仓无任何对象承载；
-  // 求解器 outsourcing_split 也已显式判 NOT_APPLICABLE、拒绝伪造良率数）。
-  // 这是「真缺对象类型」，不是「打错名」——**硬塞一个近似类型就是把缺口伪装成已修**。
-  // 它现在会被 `rule-scope.ts` 判成 reason=NO_CARRIER 并每轮扫描发一条 `rule.scope_unresolved`，
-  // 即：缺口从「没人知道」变成「机器每轮都在喊」。详见 WO 交接的 C31 判定。
+  // ✅ C31 **承载类型已补建**（WO-RULE-SCOPE-TRIAD·闭 §8 G-RULE-SCOPE-NO-CARRIER-C31）：
+  // `Outsource` 外协批次类型（battery-extended.ts `extendedObjectTypes` + 每物料 1 批实例），
+  // yieldRate 真值源 = Material.outsourceYield（同一物理量单一来源），minYieldRate = 合同底线配置。
+  // 作用域键 `Outsource` 字面值不变，但它**现在是真类型键**了 —— C31 从「rule-scope.ts 判 NO_CARRIER、
+  // 每轮扫描发 rule.scope_unresolved」变成真评估：sep_film 批（0.91 < 0.92）真产出一条 BLOCK 判定。
+  // （此前 WO-RULE-SCOPE-DROP 刻意保持原样：本体 94 类零候选，硬塞近似类型 = 把缺口伪装成已修。）
   C31: ["Outsource"],
   C32: ["Customer"],
   C33: ["Order"],
