@@ -2466,8 +2466,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const slices = allSlices.filter((s) => typeKeys.has(s.spec.root.typeKey));
     // observability：被 ≥1 切片 root 覆盖的对象集合。
     const coveredTypeKeys = new Set(allSlices.map((s) => s.spec.root.typeKey));
-    // writeback ActionType：scope 内（checkRules/scope 暂无显式 targetType → 全本体动作均视作可写本体）。
-    const scopeActions = allActions; // ActionType 无 targetTypeKey 字段，按全本体计数（§2.2 writeback=ActionType 计数）
+    // writeback ActionType：按 `targetTypeKey` 归因（G-ACTIONTYPE-NO-TARGET 已补该字段）。
+    // 改前注释自述「ActionType 无 targetTypeKey 字段，按全本体计数」——那是算不出来的退而求其次：
+    // LOCAL 认证问的是「这个类型能不能进推演」，拿全本体动作数充数等于永远答"能"。
+    // 现在：LOCAL 只数可归因到 scope 内类型的动作；`targetTypeKey` 缺省（不可静态归因，
+    // 契约注释三种情形）的不计入、也不许冒充计入——它们在 `unattributedActions` 里**作为不可归因可见**。
+    const scopeActions =
+      scopeKind === "LOCAL" && target
+        ? allActions.filter((a) => a.targetTypeKey !== undefined && typeKeys.has(a.targetTypeKey))
+        : allActions;
+    const unattributedActions = allActions.filter((a) => a.targetTypeKey === undefined).length;
 
     // ── 投影 closure（复用 validateClosure，唯一允许的 closure 校验器）────────────
     const plan: BuildPlan = {
@@ -2572,7 +2580,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         typeKey: d.targetType, propKey: d.targetProp,
         sourceVars: d.deps.map((dep) => `${dep.typeKey}.${dep.prop}`), present: true,
       })),
-      actions: scopeActions.map((a) => ({ key: a.key, targetTypeKey: null })),
+      actions: scopeActions.map((a) => ({ key: a.key, targetTypeKey: a.targetTypeKey ?? null })),
+      unattributedActions,
       slices: slices.map((s) => ({ key: s.sliceKey })),
       propagationRules: propRules.map((p) => ({
         key: p.key, sourceTypeKey: p.sourceTypeKey, sourceStateVar: p.sourceStateVar,
@@ -4634,7 +4643,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { id } = req.params as { id: string };
     return actions.audit(ctx(req), id);
   });
-  app.get("/a/v1/action-types", async (req) => actions.listTypes(ctx(req)));
+  app.get("/a/v1/action-types", async (req) => {
+    // G-ACTIONTYPE-NO-TARGET 读端：按主目标对象类型反查动作（「这个类型上能做哪些动作」的 answer 路径）。
+    // 不过滤时语义一字不动（全量列表）；过滤即归因查询，不走 create 响应自证。
+    const q = (req.query ?? {}) as { targetTypeKey?: string };
+    const all = await actions.listTypes(ctx(req));
+    return q.targetTypeKey ? all.filter((t) => t.targetTypeKey === q.targetTypeKey) : all;
+  });
   app.post("/a/v1/action-types", async (req, reply) => {
     const c = ctx(req);
     if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
@@ -4642,6 +4657,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       z.object({
         key: z.string().min(1),
         name: z.string().min(1),
+        // G-ACTIONTYPE-NO-TARGET：zod 默认 object 会**静默剥掉**未声明键——这里不声明，
+        // 租户写的 targetTypeKey 会被无声丢掉（又一个"静默"）。缺省语义见契约注释（不可静态归因）。
+        targetTypeKey: z.string().min(1).optional(),
         paramsSchema: z.record(z.string(), z.unknown()).default({}),
         checkRules: z.array(z.string()).default([]),
         approvalChain: z.array(z.object({ role: z.string() })).min(1).max(3),
