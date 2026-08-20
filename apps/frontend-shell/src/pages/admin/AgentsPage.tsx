@@ -748,6 +748,9 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
     name: agent.name,
     description: agent.description,
     model: agent.model,
+    // WO-AGENT-KERNEL-SELECT：缺省（字段缺失）≡ 原生——可证（内核标识上线前外部运行时开关恒关闭：
+    // 休眠门机器守 + 出货 compose 显式 0，同 zh kernelNativeTip 可证链），故两态即可，不画「未设置」第三态。
+    kernel: agent.kernel ?? ("NATIVE" as const),
     systemPrompt: agent.systemPrompt,
     tools: agent.tools,
     ruleBindings: agent.ruleBindings,
@@ -826,6 +829,18 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
         <input value={form.description} disabled={!editable} aria-label="描述" style={{ flex: 1 }} onChange={(e) => set("description", e.target.value)} />
       </div>
       <div style={{ fontSize: 12, color: "var(--muted,#999)", marginBottom: 10 }}>留空则该 Agent 跟随「用途绑定矩阵」的 agent 用途模型（与矩阵保持一致）；选具体模型即按 Agent 覆盖。</div>
+
+      {/* WO-AGENT-KERNEL-SELECT · 运行内核（契约 AgentDefinition.kernel，与引擎分叉守卫同源）。
+          显式 NATIVE = 钉原生（进程级 DSH_HARNESS=1 POC 开关也翻不走）；EXTERNAL = 本 Agent 走
+          DSH 外部运行时。改动只影响**新**运行，历史运行实际内核以运行列表「内核」列为准。 */}
+      <div className="section-title">运行内核</div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 4 }}>
+        <select value={form.kernel} disabled={!editable} aria-label="运行内核" className="mono" style={{ minWidth: 220 }} onChange={(e) => set("kernel", e.target.value as "NATIVE" | "EXTERNAL")}>
+          <option value="NATIVE">原生内核</option>
+          <option value="EXTERNAL">DSH（外部运行时）</option>
+        </select>
+      </div>
+      <div style={{ fontSize: 12, color: "var(--muted,#999)", marginBottom: 10 }}>DSH = 已验收的外部运行时（全仓缺省休眠，按 Agent 开通）；仅对新运行生效，历史运行以「内核」列为准。</div>
 
       <div className="section-title">系统提示词</div>
       <textarea className="mono" style={{ width: "100%", minHeight: 110, fontSize: 12, marginBottom: 10 }} disabled={!editable} value={form.systemPrompt} aria-label="系统提示词" onChange={(e) => set("systemPrompt", e.target.value)} />
