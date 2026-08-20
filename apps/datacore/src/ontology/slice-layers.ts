@@ -68,6 +68,45 @@ export interface SliceLayerInput {
 /** 候选值上限：第一层不该堆一屏值，够点一下就行（多的让人自己填）。 */
 const ARG_CANDIDATE_CAP = 8;
 
+// 占位符正则与 ontology-core.ts resolveTemplate 一字不差（口径单源，改一处必同改）。
+const PLACEHOLDER = /^\{\{\s*args\.([\w]+)\s*\}\}$/;
+
+type ArgSource = { from: "prop"; propKey: string } | { from: "objectKey" };
+
+/**
+ * 扫描 root selector（byKey + filter）里的全部 `{{args.X}}` 占位符，返回参数名与其**位置**
+ * （filter 的 key 就是 root 对象上的属性名，byKey 则取 objectKey）。只记参数名不记位置，
+ * 就没法回答「这个参数该填什么」——那正是缺参诊断最有用的一半。
+ * WO-SLICE-DERIV-EMPTY：本扫描同时供 ①空图诊断 ②GET /a/v1/ontology/slices 摘要的
+ * requiredArgs 下发 —— 两处共用这一份实现，不许各抄一份正则（抄了就是装饰品）。
+ */
+function scanRequiredArgs(spec: SliceLayerInput["spec"]): { names: string[]; sources: Map<string, ArgSource> } {
+  const sources = new Map<string, ArgSource>();
+  const scan = (raw: unknown, source: ArgSource): string[] => {
+    const m = typeof raw === "string" ? PLACEHOLDER.exec(raw) : null;
+    if (!m) return [];
+    const name = m[1] as string;
+    if (!sources.has(name)) sources.set(name, source);
+    return [name];
+  };
+  const found = [
+    ...(spec.root.selector.byKey !== undefined ? scan(spec.root.selector.byKey, { from: "objectKey" }) : []),
+    ...Object.entries(spec.root.selector.filter ?? {}).flatMap(([propKey, raw]) => scan(raw, { from: "prop", propKey })),
+  ];
+  return { names: uniqSorted(found), sources };
+}
+
+/**
+ * 这条切片的 root selector 声明了哪些 `{{args.X}}` 试切参数（字典序，R6 确定性）。
+ * 供列表摘要下发：「这条切片要参数」不该要点进详情才发现（G-SLICE-ROOT-ARGS-UNDISCOVERABLE）。
+ * 入参形态与 SliceSpecRecord["spec"] 结构一致（仅读 root.selector）。
+ */
+export function requiredSliceArgs(spec: {
+  root: { selector: { byKey?: unknown; filter?: Record<string, unknown> } };
+}): string[] {
+  return scanRequiredArgs(spec as SliceLayerInput["spec"]).names;
+}
+
 /**
  * 判定「子图为什么是空的」——**空子图不是「这些层没数据」**（WO-SLICE-16-LAYERS 复核发现）。
  *
@@ -78,30 +117,17 @@ const ARG_CANDIDATE_CAP = 8;
  *     给 `{"so":"SO-3391"}` 立刻解出 531 节点 / 570 边 / 9 类型 ⇒ **缺的是参数，不是数据**。
  *   - 8 条 `coverage_*` 切片的 root 类型在本租户零对象 ⇒ **缺的是数据**。
  * 把这两种和「层没数据」搅成一个「无」，就是审计 §1.2 那个误判的翻版。
+ *
+ * WO-SLICE-DERIV-EMPTY：本函数导出复用到 POST …/slices/{key}/resolve —— 空子图在
+ * resolve 响应上也要机器可分辨（reason + missingArgs + argCandidates），不许只回 nodes:[]。
  */
-function diagnoseEmptyGraph(
+export function diagnoseEmptyGraph(
   spec: SliceLayerInput["spec"],
   args: Record<string, unknown>,
   rootObjectTotal: number,
   rootObjectSamples: SliceLayerInput["rootObjectSamples"],
 ): SliceEmptyGraph {
-  // 占位符正则与 ontology-core.ts:596 resolveTemplate 一字不差（口径单源，改一处必同改）。
-  const PLACEHOLDER = /^\{\{\s*args\.([\w]+)\s*\}\}$/;
-  // 占位符所在的**位置**要记住：filter 的 key 就是 root 对象上的属性名，byKey 则取 objectKey。
-  // 只记参数名不记位置，就没法回答「这个参数该填什么」——那正是缺参诊断最有用的一半。
-  const argSource = new Map<string, { from: "prop"; propKey: string } | { from: "objectKey" }>();
-  const scan = (raw: unknown, source: { from: "prop"; propKey: string } | { from: "objectKey" }): string[] => {
-    const m = typeof raw === "string" ? PLACEHOLDER.exec(raw) : null;
-    if (!m) return [];
-    const name = m[1] as string;
-    if (!argSource.has(name)) argSource.set(name, source);
-    return [name];
-  };
-  const found = [
-    ...(spec.root.selector.byKey !== undefined ? scan(spec.root.selector.byKey, { from: "objectKey" }) : []),
-    ...Object.entries(spec.root.selector.filter ?? {}).flatMap(([propKey, raw]) => scan(raw, { from: "prop", propKey })),
-  ];
-  const requiredArgs = uniqSorted(found);
+  const { names: requiredArgs, sources: argSource } = scanRequiredArgs(spec);
   const missingArgs = requiredArgs.filter((a) => args[a] === undefined || args[a] === "");
 
   /** 真值候选：从真对象上读，不编。确定性 —— 先按 objectKey 字典序，再去重取前 CAP 个。 */

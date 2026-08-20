@@ -9,6 +9,7 @@ import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoOrgWorld, seedDemoEntitlements } from "./seed.js";
+import { seedDemoDerivationSpecs } from "./seed-derivation-specs.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -44,6 +45,9 @@ async function main(): Promise<void> {
     logger.info("seeded organization world (departments/roles/persons + authorities/limits/delegation)");
     await seedDemoEntitlements(repos);
     logger.info("lit up demo QOS dark-launch features (dril/critic/free-llm/coordinator/compose)");
+    // WO-SLICE-DERIV-EMPTY 派生溯源规格（与 server.ts 播种路径**必须同步**，理由同上）。
+    const nSpecs = await seedDemoDerivationSpecs(repos, services.ontologyCore, services.governance, adminCtx);
+    logger.info(`compiled ${nSpecs} demo derivation specs (evidence layer non-empty)`);
   }
   await repos.close();
 }
