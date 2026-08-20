@@ -418,11 +418,33 @@
  */
 .zones {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  /* ══ WO-SANDBOX-3COL（2026-08-20 · 仓主指令）· 三栏：扰动 | 画布 50% | 指标 ══════
+   * 仓主原话：「附件截屏的 5 个子页面，需要占整体页面 50% 的大小，然后把扰动因素全部
+   * 放在左侧，指标放在右侧」。
+   *
+   * ⇒ `1fr 2fr 1fr` = **25% / 50% / 25%**：中栏（5 个画布档位：线路图 / 物理拓扑 /
+   * 链路阶段 / 本体拓扑 / 业务流程）恰好占一半，两侧各占四分之一。
+   * 为什么用 `fr` 不用 `50%`：`gap` 会从百分比里再扣一次，写死 50% 实际拿不到一半；
+   * `fr` 分的是**扣掉 gap 之后**的剩余空间，2/(1+2+1) 才是真的 50%。
+   *
+   * ⚠ 影响带（③ 指标区）从**独立的第三行**移进本栅格当第三栏 —— 这是本次唯一的 DOM 移动。
+   * 三区互不嵌套的判据不受影响：`.zones` 是容器，不是那三个区之一。
+   */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
   gap: 6px;
   /* 两区各自按内容定高（理由与 `.mid` 那条同源：stretch 会把矮的那区拉出一段空白）。 */
   align-items: start;
   flex: 0 1 auto;
+}
+/* 窄屏塌成一栏（三栏各 ~25% 时，任何一栏低于 ~280px 都装不下表单/图例）。 */
+@media (max-width: 1400px) {
+  .zones {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  }
+  /* 中屏：指标区回到整行（仍在栅格内，只是跨两列） */
+  .zoneImpact {
+    grid-column: 1 / -1;
+  }
 }
 @media (max-width: 1100px) {
   .zones {
