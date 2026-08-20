@@ -44,7 +44,7 @@
 - 变异反证（均实录真红→恢复绿）：
   - **变异 A（接回错源）**：注入改读 `seriesKey:"output:line"` ⇒ `npx vitest run test/yield-series-source.seam.test.ts --maxWorkers=1 -t "接缝主判据"` **RC=1**，`AssertionError: expected 'EMPTY' to be 'LIVE'`。恢复后绿。
   - **变异 B（截断序列 <37 天）**：注入阈值 37→91（90 天也被判不足）⇒ 同命令 **RC=1**，同断言红。恢复后绿（恢复态全量 5 例绿见下）。
-- 相关回归（恢复变异后一次跑）：`npx vitest run test/yield-series-source.seam.test.ts test/solvers-extended.test.ts test/rules-p3-payload-11solvers.test.ts test/timeseries.test.ts --maxWorkers=1` ⇒ 结果见下方最终汇报（后台任务，日志 /tmp/yield-regression.log）。
+- 相关回归（恢复变异后一次跑）：`npx vitest run test/yield-series-source.seam.test.ts test/solvers-extended.test.ts test/rules-p3-payload-11solvers.test.ts test/timeseries.test.ts --maxWorkers=1` ⇒ **RC=0**，`Test Files 4 passed (4) / Tests 34 passed (34)`（日志 /tmp/yield-regression.log；含恢复变异后的接缝门 5 例复绿）。
 - 既有单测行为注：`solvers-extended.test.ts:67` 的常数序列（0.95 恒值）能检出断点，靠的是 FP 残差使 `sd≈1e-17>0`（node 复算实录：i=30 即触发，breakpoint day=31）——本单新测试不依赖该巧合，一律种 ±0.001 显式噪声。
 
 ## 5. 本体回写
@@ -53,4 +53,5 @@
 
 ## 6. merge-tree 自测 / porcelain
 
-见最终汇报（命令 + RC 实录）。
+- 重fetch 集成分支后：`git merge-tree --write-tree HEAD origin/claude/verify-reclaim-6 > /tmp/yield-mergetree.out 2>&1; echo $?` ⇒ **RC=0**（干净；集成线 tip 仍为基线 e1694f00，本分支直线领先）。
+- `git status --porcelain` 收尾净（见最终汇报）。
