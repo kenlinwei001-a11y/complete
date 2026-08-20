@@ -5550,6 +5550,62 @@ export class SolverService {
     }
   }
 
+  /**
+   * WO-YIELD-SERIES-TS-SOURCE（闭 G-YIELD-SERIES-SOURCE-MISMATCH）· yield_diagnosis 的 series 真源接线。
+   *
+   * 真源 = A8 时序 `yield:process`（`synthetic/battery.ts` tsGenerators → `synthetic/service.ts generateHistory`
+   * 落 `repos.tsPoints`：HISTORY_DAYS=90 天 × Process 实体 · grain=day）——**不是**对象层 QualityLot
+   * （取证复核：全库仅 20 个不同日期、逐基地 8–14 天，喂不动 `yieldDiagnosis` 里
+   * `for (let i = 30; i + 7 <= sorted.length; i++)` 的突变检测循环；接它会把诚实的 EMPTY 降级成
+   * `dataMode:"LIVE"` + `breakpoint:undefined` 的假"查过没异常"）。
+   *
+   * 接线点选在 **async 入口**（invoke / runWithParams）而非 `deriveExtendedArgs`（同步纯函数·摸不到 tsPoints）。
+   * 过滤维 = (`processKey` → `Process.name`，`baseName` → `Base.name`/`baseId` → `Process.baseId`)；
+   * 同 (基地,工序) 多实体（多条产线的同名工序）同日取**均值**（确定性：ISO 日期字典序 = 时序）。
+   *
+   * 诚实边界（不许把 EMPTY 降级成假 LIVE）：序列 **<37 天**（突变检测循环能进入的最小长度：i 从 30 起且
+   * i+7 ≤ len ⇒ len ≥ 37）→ **不注入** → `yieldDiagnosis` 原样返 `dataMode:"EMPTY"` + note
+   * （extended.ts 行内警告原样保留）。调用方直传 `series` → 不注入（加性 R6，四条调用路行为不变）。
+   * series origin === "SYNTHETIC"（demo 合成种子）→ 注入 `provenanceSynthetic:true` 随输出披露，
+   * 合成时序不冒充实测（G-DATAMODE-PROVENANCE-LEAK 同款两维正交：dataMode 标 LIVE=真算了，provenance 标合成）。
+   */
+  private async injectYieldDiagnosisSeries(tenantId: string, args: Record<string, unknown>): Promise<void> {
+    if (args.series !== undefined) return; // 调用方直传优先（加性）
+    const processKey = str(args.processKey, "涂布");
+    const baseName = str(args.baseName);
+    let baseId: string | undefined;
+    if (baseName !== "") {
+      const hit = (await this.repos.objects.listByType(tenantId, "Base")).find(
+        (b) => str(b.props.name) === baseName || str(b.props.baseId) === baseName,
+      );
+      if (!hit) return; // 基地解析不到 → 不注入（保 EMPTY 诚实位，不拿全域冒充该基地）
+      baseId = str(hit.props.baseId);
+    }
+    const processes = (await this.repos.objects.listByType(tenantId, "Process")).filter(
+      (p) => str(p.props.name) === processKey && (baseId === undefined || str(p.props.baseId) === baseId),
+    );
+    if (processes.length === 0) return; // 无此工序 → 不注入（EMPTY）
+    const series = (await this.repos.tsSeries.list(tenantId, (s) => s.seriesKey === "yield:process"))[0];
+    if (!series) return; // 时序子系统无该序列（未播种/VALIDATION_LITE 跳 TS）→ 不注入（EMPTY）
+    const entityIds = processes.map((p) => str(p.props.processId, p.id)).sort();
+    const points = await this.repos.tsPoints.list(tenantId, series.id, { entityIds });
+    const byDay = new Map<string, { sum: number; n: number }>();
+    for (const p of points) {
+      const y = p.values.yield;
+      if (typeof y !== "number" || !Number.isFinite(y)) continue;
+      const day = p.ts.slice(0, 10);
+      const acc = byDay.get(day) ?? { sum: 0, n: 0 };
+      acc.sum += y;
+      acc.n += 1;
+      byDay.set(day, acc);
+    }
+    const days = [...byDay.keys()].sort();
+    // 突变检测循环进入下限 = 37 天（i 从 30 起、i+7 ≤ len）。不足 ⇒ 不注入，序列不足基地保持 dataMode:EMPTY。
+    if (days.length < 37) return;
+    args.series = days.map((d, i) => ({ day: i, yield: round(byDay.get(d)!.sum / byDay.get(d)!.n, 4) }));
+    if ((series as { origin?: string }).origin === "SYNTHETIC") args.provenanceSynthetic = true;
+  }
+
   /** S1 修订：以指定参数版本（或显式参数集）运行 —— 同输入同参数版本同输出。 */
   async runWithParams(
     tenantId: string,
@@ -5557,6 +5613,8 @@ export class SolverService {
     args: Record<string, unknown>,
     opts?: { paramsVersion?: number; params?: SolverParamsShape },
   ): Promise<Record<string, unknown>> {
+    // WO-YIELD-SERIES-TS-SOURCE：yield_diagnosis 的 series 从 A8 时序真源预注入（详见该方法头注）。
+    if (solverKey === "yield_diagnosis") await this.injectYieldDiagnosisSeries(tenantId, args);
     // WO-DATACORE-LAZY-SOLVER-CONTEXT：flag 开时透传 solverKey → 按需裁剪核心类型（关则不传·全量·逐字节现行为）。
     const lazy = await this.lazyContextEnabled(tenantId);
     const c = await this.loadContext(tenantId, undefined, {
@@ -5733,6 +5791,8 @@ export class SolverService {
     // 轨B·增量3 optimize_whatif：扰动重解（先于 loadContext 拦截，复用 5 核心求解，FUS1 走 sidecar）。
     if (solverKey === "optimize_whatif") return this.optimizeWhatif(ctx, args);
     // WO-CAPLIVE-1-ATOM：capacity_forecast granularity:'process-model' 需 Material（层4 ∩ 物料齐套）→ 载扩展数据。
+    // WO-YIELD-SERIES-TS-SOURCE：yield_diagnosis 的 series 从 A8 时序真源预注入（async 入口·同步 compute 摸不到 tsPoints）。
+    if (solverKey === "yield_diagnosis") await this.injectYieldDiagnosisSeries(ctx.tenantId, args);
     // WO-DATACORE-LAZY-SOLVER-CONTEXT：flag 开时透传 solverKey → 按需裁剪核心类型（关则不传·全量·逐字节现行为）。
     const lazy = await this.lazyContextEnabled(ctx.tenantId);
     const c = await this.loadContext(ctx.tenantId, visibleOrders, {

@@ -372,7 +372,10 @@ export function yieldDiagnosis(args: Record<string, unknown>) {
         .map((e) => ({ ...e, distance: Math.abs(e.day - breakpoint!.day) }))
         .sort((a, b) => a.distance - b.distance)
     : [];
-  return { breakpoint, candidates, dataMode: "LIVE", ruleRefs: ["C30"] };
+  // WO-YIELD-SERIES-TS-SOURCE：series 由 SolverService 从 A8 时序 `yield:process` 注入时，若该序列 origin 为
+  // SYNTHETIC（demo 合成种子），args 带 provenanceSynthetic:true —— 此处透传披露：dataMode:LIVE 只表示"真算了"，
+  // 合成 provenance 不冒充实测（两维正交·G-DATAMODE-PROVENANCE-LEAK 同口径）。调用方直传 series 不带该键 → 不出现（加性）。
+  return { breakpoint, candidates, dataMode: "LIVE", ...(args.provenanceSynthetic === true ? { provenanceSynthetic: true } : {}), ruleRefs: ["C30"] };
 }
 
 // S13 maintenance_stagger：冲突=检修周∈交付高峰top3；±4 周内选负荷最低周；间隔≥26、同组同周≤3。
