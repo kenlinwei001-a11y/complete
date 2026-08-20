@@ -2114,6 +2114,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
             world={world}
             curTick={curTick}
             stateVars={cfg.stateVars}
+            stateVarNames={cfg.stateVarNames}
           />
           )
         }

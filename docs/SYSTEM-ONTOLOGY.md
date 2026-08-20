@@ -1446,8 +1446,9 @@ GET /a/v1/sim/propagation-rules    → PropagationRulesResponse.stateVarNames（
 
 ⛔ **刻意没做**：不把状态变量登记成 `PropertyDef`。它们只活在 `SimTickState.state[objectId][var]`，
 真对象上没有这一格；登记成属性会在对象详情/目录/喂 LLM 的属性清单里多出一批**永远空**的列
-（= 用本体断言一件假事），且 `ObjectTypeDef.stateVariables` 那个同名字段实测 94 类全空、
-`upsertType` 重建 def 时根本不抄它（见 §8 已登记的两道窄门）。这条由
+（= 用本体断言一件假事），且 `ObjectTypeDef.stateVariables` 那个同名字段实测 94 类全空
+（「接了线没数据」——`upsertType` 早已是 `{ ...input }` 摊开写法、落得了库，
+§8 G-UPSERTTYPE-DROPS-FIELDS 已闭·2026-08-18 复核；battery.ts 注释 c4e2df8d8 有逐句订正）。这条由
 `statevar-display-name.seam.test.ts ⑥` 钉死：谁把它们登记成属性，那条断言当场红。
 
 ### 金额链路 · 世界态压力 → 财务金额（WO-FINANCE-WORLDSTATE · 2026-08-14 · 求解器见 §2.E `finance_world_projection`）
