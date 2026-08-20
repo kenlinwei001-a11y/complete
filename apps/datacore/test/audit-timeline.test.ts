@@ -117,6 +117,9 @@ describe("WO-AUDIT-TIMELINE-LIVESOURCE · 真源接线（产销 LIVE · 其余 M
     const t: TestApp = await makeApp();
     await seedBattery(t);
     const src = AUDIT_KIND_LIVE_SOURCES["产销"]!;
+    // 复验退修钉常数：契约映射表取值本身入断言——此前 oracle 从被测实现消费的**同一映射表**读 target/k，
+    // 变异 k:200→201 时 oracle 与被测实现一起漂、咬不住；现字面钉死（公式同步内联字面量），映射表常数变异 ⇒ 本测红。
+    expect(src).toMatchObject({ seriesKey: "attainment:base", measure: "attainment", target: 1, k: 200 });
     // 独立重算：绕过求解器，直接读仓储真点按映射表公式投影（oracle 与被测实现不共享代码路径）。
     const series = (await t.repos.tsSeries.list("demo", (s) => s.seriesKey === src.seriesKey))[0];
     expect(series, "种子应含 attainment:base 序列").toBeTruthy();
@@ -135,7 +138,8 @@ describe("WO-AUDIT-TIMELINE-LIVESOURCE · 真源接线（产销 LIVE · 其余 M
     const dates = [...byDate.keys()].sort().slice(-90);
     const oracle = dates.map((d) => {
       const e = byDate.get(d)!;
-      return Math.min(97, Math.max(40, Math.round(40 + (src.target - e.sum / e.n) * src.k)));
+      // 公式常数内联字面量（target=1·k=200·显示带 [40,97]）：oracle 与被测实现零共享取值路径。
+      return Math.min(97, Math.max(40, Math.round(40 + (1 - e.sum / e.n) * 200)));
     });
     const out = (await (await invokeSolver(t, "audit_timeline", { kind: "产销" })).json() as { data: { series: number[] } }).data;
     expect(out.series).toEqual(oracle);

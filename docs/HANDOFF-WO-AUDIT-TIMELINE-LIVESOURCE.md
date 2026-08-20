@@ -119,3 +119,9 @@ MERGETREE_RC=0
 - LIVE 半窗口 ≤90 天受种子历史长度约束（`historyDays=90`）；真世界 CONNECTOR 源天数任意，窗口取 `min(horizon, n)`。
 - 其余 8 kind 的 MOCK 哈希投影**一行未动**（门⑤ 字面量仍在 MOCK 分支）；将来任一种类补到真日序列，只需在 `AUDIT_KIND_LIVE_SOURCES` 加一行（target/k 须在该表注释里写标定依据）。
 - `forecast_dev:model` 为 tick 粒度未收编；若未来补日粒度物化，可按同一映射表机制评估收编。
+
+## 10 · 复验退修记录（2026-08-20）
+
+- **退**：A3 oracle 数据通路独立（直读仓储重算 ✅），但投影参数 `src.target`/`src.k` 从被测实现消费的**同一映射表**读取——复验方亲手变异 contracts `k:200→201` + 重建 dist ⇒ A3 仍绿，咬不住映射表常数本身（oracle 与被测实现一起漂）。
+- **修**（`apps/datacore/test/audit-timeline.test.ts` A3·行级）：重算前钉住映射表常数字面量 `expect(src).toMatchObject({ seriesKey:"attainment:base", measure:"attainment", target:1, k:200 })`，oracle 公式常数同步内联字面量（target=1·k=200·显示带 [40,97]）——契约取值本身入断言，oracle 与被测实现零共享取值路径。
+- **自验**：① 变异 `k:200→201` + `pnpm --filter @platform/contracts build` ⇒ A3 **红**（RC=1·失败点正是 toMatchObject 钉）② 恢复 k=200 重建 ⇒ `npx vitest run test/audit-timeline.test.ts` **9/9 绿**（FINAL_RC=0·Duration 51.76s·跑前水位探针 vitest=2·load 37.71/87.02/265.57，水位回落故未降级 maxWorkers）③ commit+push 同分支。
