@@ -296,13 +296,25 @@ function main() {
 
   if (process.argv.includes("--update")) {
     const prev = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, "utf8")) : null;
-    const doc = buildBaselineDoc({
-      prev,
-      generatedBy: "node scripts/check-unit-value-provenance.mjs --update",
-      prose: { note: BASELINE_NOTE, gate: "scripts/check-unit-value-provenance.mjs", ontologyRef: "§7 · G-LEVER-SNAPSHOT-UNIT-LIE" },
-      computed: { total: r.unproven.length, files: r.byFile },
-    });
-    writeFileSync(BASELINE, JSON.stringify(doc, null, 1) + "\n");
+    // ⚠ `buildBaselineDoc(…)` **必须内联在 `writeFileSync` 的实参里**，不许先抽成 `const doc = …`。
+    //   这不是风格洁癖：`baseline-writer-honesty:check` 判的是「**写的那一刻**用没用共享写入器」，
+    //   而「文件顶部 import 了」证明不了「写的时候用了」（同一个符号可以被同名局部变量遮蔽）。
+    //   本文件原先就是抽成 `const doc` 的写法 ⇒ 该门自 `dfd53cdf`（WO-SNAPSHOT-UNIT-LIE）起
+    //   一直 RC=1 红在集成线上，无人认领；2026-08-20 审核方复验 WO-U2-DENSE-ANCHOR 时顺手查出并改正。
+    //   `check-layout-legibility.mjs` 里同一处早有这段注释，本文件当时没照抄 —— 纪律写在别的文件里不是机制。
+    writeFileSync(
+      BASELINE,
+      JSON.stringify(
+        buildBaselineDoc({
+          prev,
+          generatedBy: "node scripts/check-unit-value-provenance.mjs --update",
+          prose: { note: BASELINE_NOTE, gate: "scripts/check-unit-value-provenance.mjs", ontologyRef: "§7 · G-LEVER-SNAPSHOT-UNIT-LIE" },
+          computed: { total: r.unproven.length, files: r.byFile },
+        }),
+        null,
+        1,
+      ) + "\n",
+    );
     console.log(`✅ 基线已写：${Object.keys(r.byFile).length} 个文件 / ${r.unproven.length} 条 → ${relative(ROOT, BASELINE)}`);
     process.exit(0);
   }
