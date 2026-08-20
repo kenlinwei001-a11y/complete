@@ -816,6 +816,8 @@ export class SyntheticService {
     // WO-SANDBOX-D2：采购段两段新承载（清关仅进口单有 → 条数 < PO 数；到货检验每单必检 → 条数 == PO 数）。
     await putAll("CustomsClearance", ext.customsClearances, "clearanceId");
     await putAll("IncomingInspection", ext.incomingInspections, "inspectionId");
+    // WO-RULE-SCOPE-TRIAD：外协批次（C31 承载·每物料 1 批 ⇒ 8 条）。
+    await putAll("Outsource", ext.outsources, "outsourceId");
     await putAll("CarbonFactor", ext.carbonFactors, "factorId");
     await putAll("FinanceAccount", ext.financeAccounts, "accId");
     await putAll("FinanceMetric", ext.financeMetrics, "metricId");
@@ -1071,6 +1073,9 @@ export class SyntheticService {
     for (const cc of ext.customsClearances) await putLink(`lnk_pocc_${P(cc).clearanceId}`, "po_customs_cleared_by", oid("PurchaseOrder", P(cc).poId), oid("CustomsClearance", P(cc).clearanceId));
     // WO-SANDBOX-D2 · quality（到货检验）: PurchaseOrder → IncomingInspection（每单必检）
     for (const ii of ext.incomingInspections) await putLink(`lnk_poii_${P(ii).inspectionId}`, "po_inspected_by", oid("PurchaseOrder", P(ii).poId), oid("IncomingInspection", P(ii).inspectionId));
+    // WO-RULE-SCOPE-TRIAD · supply（外协）: Material → Outsource（os.matId）——外协批次接入本体图，
+    // 无此边则 Outsource 成孤岛切片（slice-connectivity 门会拦）。
+    for (const os of ext.outsources) await putLink(`lnk_mos_${P(os).outsourceId}`, "material_has_outsource", oid("Material", P(os).matId), oid("Outsource", P(os).outsourceId));
     // supply（碳因子）: Material → CarbonFactor（kind=material 时 key=matId）
     for (const cf of ext.carbonFactors) if (P(cf).kind === "material") await putLink(`lnk_mcf_${P(cf).factorId}`, "material_carbon", oid("Material", P(cf).key), oid("CarbonFactor", P(cf).factorId));
     // factory（能耗）: Base → EnergyMeter（em.baseId）

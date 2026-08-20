@@ -90,6 +90,42 @@
  * 本类把页根改回**竖排**：一行是一层，宽度给足。
  * ⚠ 不去改 `.head` 本身：那个类另有 19 个页面在用，改它等于把本页的账记到别人头上。
  */
+/* ══ WO-SANDBOX-QUIET（2026-08-20 · 仓主指令）· 说明性文字全部收进悬停 ══════════
+ *
+ * 仓主原话：「所有说明性文字（如截屏，都用 icon 替代）…目前太多说明性文字，密密麻麻」，
+ * 追加确认：「连诚实位记号也一并去掉、只在悬停时出现 —— 需要」。
+ *
+ * ⚠ 本条**主动降低了诚实位的可见性**，是仓主明示裁决，不是我的优化。已在本体记账
+ *（G-UI-FIRSTLAYER-OVERLOAD 行内「诚实位可见性主动降级」）。风险照实写在这里：
+ * 本仓有过病历 —— 顶栏 16 个读数全落在 49.5–50.4（`hash01(id|var)×100` 的必然结果），
+ * 同屏别处有「合成数据」徽标而这批没有，读者只会把没记号的那批读成实测。
+ * 记号淡出后，**这个风险在纯鼠标未悬停的那一刻是真实存在的**。
+ *
+ * ⛔ 但有两条**不许一起降**（降了就不是「视觉降噪」而是「删可达性」）：
+ *   ① 记号仍在 DOM、仍是真 `<button>`、仍在无障碍树里 —— 读屏器照读；
+ *   ② `:focus-visible` 必须让它**立刻现形** —— 键盘 Tab 过去看得见自己停在哪，
+ *      否则键盘用户会在一串隐形按钮里迷路。这不是折衷，是 `opacity:0` 与
+ *      `display:none` 的本质区别：前者仍可聚焦，后者不可 —— 选前者正是为了这个。
+ *
+ * 只作用于沙盘这一屏（`.viewStack` 后代选择器），其余页面逐字节不变。
+ */
+.viewStack :global(.info-trigger-quiet),
+.viewStack button[data-testid^="info-"] {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+/* 悬停到「它所解释的那个东西」的整行/整块时现形——不要求精准指到 14px 的圆点上。 */
+.viewStack *:hover > span > button[data-testid^="info-"],
+.viewStack *:hover > button[data-testid^="info-"],
+.viewStack span:hover > button[data-testid^="info-"] {
+  opacity: 0.85;
+}
+/* 键盘可达：Tab 到就现形（见上 ② —— 这一条不许删）。 */
+.viewStack button[data-testid^="info-"]:focus-visible,
+.viewStack button[data-testid^="info-"][aria-expanded="true"] {
+  opacity: 1;
+}
+
 .viewStack {
   display: flex;
   flex-direction: column;
@@ -418,11 +454,33 @@
  */
 .zones {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  /* ══ WO-SANDBOX-3COL（2026-08-20 · 仓主指令）· 三栏：扰动 | 画布 50% | 指标 ══════
+   * 仓主原话：「附件截屏的 5 个子页面，需要占整体页面 50% 的大小，然后把扰动因素全部
+   * 放在左侧，指标放在右侧」。
+   *
+   * ⇒ `1fr 2fr 1fr` = **25% / 50% / 25%**：中栏（5 个画布档位：线路图 / 物理拓扑 /
+   * 链路阶段 / 本体拓扑 / 业务流程）恰好占一半，两侧各占四分之一。
+   * 为什么用 `fr` 不用 `50%`：`gap` 会从百分比里再扣一次，写死 50% 实际拿不到一半；
+   * `fr` 分的是**扣掉 gap 之后**的剩余空间，2/(1+2+1) 才是真的 50%。
+   *
+   * ⚠ 影响带（③ 指标区）从**独立的第三行**移进本栅格当第三栏 —— 这是本次唯一的 DOM 移动。
+   * 三区互不嵌套的判据不受影响：`.zones` 是容器，不是那三个区之一。
+   */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
   gap: 6px;
   /* 两区各自按内容定高（理由与 `.mid` 那条同源：stretch 会把矮的那区拉出一段空白）。 */
   align-items: start;
   flex: 0 1 auto;
+}
+/* 窄屏塌成一栏（三栏各 ~25% 时，任何一栏低于 ~280px 都装不下表单/图例）。 */
+@media (max-width: 1400px) {
+  .zones {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  }
+  /* 中屏：指标区回到整行（仍在栅格内，只是跨两列） */
+  .zoneImpact {
+    grid-column: 1 / -1;
+  }
 }
 @media (max-width: 1100px) {
   .zones {

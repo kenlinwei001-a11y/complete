@@ -61,7 +61,8 @@ async function reachStepTwo() {
   await user.type(script, "常州基地产能紧张，影响订单交期与客户信用");
   await user.click(screen.getByTestId("dbf-start"));
 
-  const needs = await screen.findByTestId("dbf-needs", undefined, { timeout: 5000 });
+  // ⚠ 2026-08-19 WO-TIMEOUT-5000-SWEEP：findBy 预算 5s→20s（共享机高负载假红，同型见 c9ff5936f）；判据未动。
+  const needs = await screen.findByTestId("dbf-needs", undefined, { timeout: 20000 });
   // 金丝雀：真截到了回执才往下比；截不到 = 探针坏了，不许读成「没差异」
   await waitFor(() => expect(cap.get(), "没截到干跑回执 —— 后面的比对全是空转").toBeTruthy());
   const receipt = cap.get()!;
@@ -106,7 +107,8 @@ describe("WO-DBUI-13-NEEDS · 第 ② 步逐类清点（接缝：干跑回执 �
       const heading = within(needs).getByTestId(`dbf-need-label-${kind}`);
       expect(heading.textContent, `${kind} 的类名没用人话`).toBe(label);
     }
-  });
+    // 整条墙钟预算同理上调（WO-TIMEOUT-5000-SWEEP）：renderApp+懒加载链路在共享机负载下会超全局 20s。
+  }, 60000);
 
   it("§2 每一类都**说得出话**：结论非空 —— 13 个空标题不算「显示了 13 类」", async () => {
     const { needs } = await reachStepTwo();
@@ -122,7 +124,7 @@ describe("WO-DBUI-13-NEEDS · 第 ② 步逐类清点（接缝：干跑回执 �
     }
     // 不许所有类都是同一句话（那等于什么都没说）
     expect(new Set(verdicts).size).toBeGreaterThan(1);
-  });
+  }, 60000);
 
   it("§3 【要害】查不到的那几类**明说查不到**，不渲染成 0（0 会被读成「不缺」）", async () => {
     const { needs, receipt } = await reachStepTwo();
@@ -152,7 +154,7 @@ describe("WO-DBUI-13-NEEDS · 第 ② 步逐类清点（接缝：干跑回执 �
       expect(detail.textContent).toContain("现状查不到");
       expect(detail.textContent).not.toContain("本次新建");
     }
-  });
+  }, 60000);
 
   /*
    * §4 的三类样本**全部由回执自己挑**（「有复用的那一类」「代码类」「本次用不到的那一类」），
@@ -185,7 +187,7 @@ describe("WO-DBUI-13-NEEDS · 第 ② 步逐类清点（接缝：干跑回执 �
     const unusedCard = within(needs).getByTestId(`dbf-need-${unused!.kind}`);
     expect(unusedCard.getAttribute("data-needed")).toBe("0");
     expect(within(unusedCard).getByTestId(`dbf-need-verdict-${unused!.kind}`).textContent).toContain("本次用不到");
-  });
+  }, 60000);
 
   it("§5 「缺几个」在第一层，「缺哪几个」点开才看 —— 明细确实挂在折叠里", async () => {
     const { needs, receipt } = await reachStepTwo();
@@ -203,7 +205,7 @@ describe("WO-DBUI-13-NEEDS · 第 ② 步逐类清点（接缝：干跑回执 �
     // 点开之后逐条可见，且每条都带现状
     const toCreate = grp!.items.find((i) => i.status === "TO_CREATE")!;
     expect(within(detail).getByTestId(`dbf-need-item-${grp!.kind}-${toCreate.key}`).textContent).toContain("本次新建");
-  });
+  }, 60000);
 
   /**
    * §6【本单要害·WO-BUILDPLAN-13CARDS】**后端回了几类，屏上就得有几张卡**。
@@ -234,5 +236,5 @@ describe("WO-DBUI-13-NEEDS · 第 ② 步逐类清点（接缝：干跑回执 �
       const card = within(needs).getByTestId(`dbf-need-${g.kind}`);
       expect(card.getAttribute("data-needed"), `${g.kind} 卡上的「需几个」与回执对不上`).toBe(String(g.needed));
     }
-  });
+  }, 60000);
 });

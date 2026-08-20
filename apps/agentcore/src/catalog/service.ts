@@ -12,7 +12,7 @@ import {
 } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type { Repos } from "../persistence/repos.js";
-import { planStepRuleRefs, type RefReporter } from "../refs/report.js";
+import { planStepRuleRefs, planStepSliceRefs, type RefReporter } from "../refs/report.js";
 import { HttpError } from "../router/orchestrator.js";
 import { validatePlanSteps } from "../workflow/validate.js";
 
@@ -271,13 +271,14 @@ export class CatalogService {
     const published: ExecutionPlan = { ...plan, status: "PUBLISHED" };
     await this.repos.plans.update(published);
     const impact = await this.planImpact(published);
-    // §2.3：plan 出向规则引用上报 A（影响面反查事实源）
+    // §2.3 + §2.4：plan 出向引用上报 A（影响面反查事实源；resolve_slice→slice 同上路，
+    // 闭 G-SLICE-REF-PRODUCER-EMPTY 的 plan 半 —— 十六层②决策意图 认 refKind=plan）
     const pkg = await this.repos.packages.get(plan.packageId);
-    const ruleRefs = planStepRuleRefs(published.steps);
-    if (this.reportRefs && pkg && ruleRefs.length > 0) {
+    const refs = [...planStepRuleRefs(published.steps), ...planStepSliceRefs(published.steps)];
+    if (this.reportRefs && pkg && refs.length > 0) {
       void this.reportRefs(pkg.tenantId, {
         source: { kind: "plan", key: published.key, name: published.key },
-        refs: ruleRefs,
+        refs,
       });
     }
     return { ...published, impact };

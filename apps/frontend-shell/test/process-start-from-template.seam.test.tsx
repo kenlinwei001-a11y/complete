@@ -120,6 +120,14 @@ describe("WO-STEP-TEMPLATE-LAYER FE · 接缝①：按模板建实例，body 逐
       expect(created[i]!.textContent, `第 ${s.seq} 步`).toContain(s.name);
       expect(within(created[i]!).getByText(s.ownerFunctionKey)).toBeTruthy();
     }
+
+    // ── WO-PROCESS-START-DEEPLINK · 成功块必须带详情页深链 ──
+    // id 不另造：直接读屏上 `start-created-id` 渲染出来的那个（它来自 mock 的 POST 回包），
+    // 链接的 href 必须逐字节指向 `/process-instances/<那个 id>`（与两处既有入口同一路由写法）。
+    const instanceId = screen.getByTestId("start-created-id").textContent!;
+    expect(instanceId.length).toBeGreaterThan(0);
+    const link = screen.getByTestId("start-created-link") as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe(`/process-instances/${encodeURIComponent(instanceId)}`);
   });
 
   it("变异反证：模板步名改一个字 ⇒ 上面那条 `toEqual` 必然不成立（证明它咬的是模板不是常量）", async () => {

@@ -6,14 +6,20 @@ import { BATTERY_ACTION_TYPES } from "../src/synthetic/battery.js";
  * WO-ACTION-NOOP-EXEC · 非 global-sim 的 `plan_change` **按 payload 形态二分**（G-ACTION-NOOP-EXEC 续接）。
  *
  * ── 病灶与本单改动 ───────────────────────────────────────────────────────────
- * `plan_change` 一个 key 承载六条生产者，此前只有 `source:"global-sim"` 一条有真执行器，
+ * `plan_change` 一个 key 承载多条生产者，此前只有 `source:"global-sim"` 一条有真执行器，
  * 其余**一律诚实失败**。实测（WO-ACTION-NOOP-EXEC）发现这一刀切错了半边：
  * 风险看板「采纳风险处置方案」（`RiskBoardView.tsx adoptScenario()`）发的
  * `payload.levers = LiveScenario.apply`，其契约就是 `{objectType,objectId,prop,value}[]` ——
  * **与 `采纳产能保障方案` 的杠杆同形**，也就是说它一直带着一份可直接落库的真值写入指令，
- * 却因为 source 不叫 global-sim 而被判「未实现」。本单据此二分：
+ * 却因为 source 不叫 global-sim 而被判「未实现」。据此二分：
  *   · 带 levers → 真写本体属性 + runDerivations（与 `采纳产能保障方案` **同一份**写入器）；
  *   · 不带 levers → 仍诚实失败，但错误里说清**为什么**（模拟态结论 / 无落点），欠账可读。
+ *
+ * ── 2026-08-18（WO-PLAN-CHANGE-LEVER-MAP）────────────────────────────────────
+ * 带 levers 的生产者从 1 条 → **3 条**：order-chain 结论（交期紧张→Order.outsourceRatio /
+ * 需提价→Order.unitPrice）与协调加产（被挤占比→Order.outsourceRatio）带上了真域映射，
+ * 由下方「★ 主判据③④」逐字段回读咬住；「变异反证」用例把同一载荷摘掉 levers，
+ * 证明它**当场回到诚实失败**（判据在 payload 形状，不在生产者身份）。
  *
  * ── 本测的头号判据（写死在这里防回潮）─────────────────────────────────────────
  * **审批后回仓储查那个对象，属性必须真的变成了拨定值。**
@@ -95,6 +101,18 @@ async function firstEquipment(t: TestApp): Promise<{ id: string; oee: number }> 
   return { id: e.id, oee: Number(e.props.oee_current) };
 }
 
+/**
+ * 取种子锚单 SO-3391（`order_fullchain` 契约头注的实测锚单·WO-PLAN-CHANGE-LEVER-MAP 新增）。
+ * 从 **API 回读**（不走仓储内部接口）——与前端生产者拿到的是同一条路的同一对象。
+ */
+async function anchorOrder(t: TestApp): Promise<{ id: string; so: string; qty: number; unitPrice: number }> {
+  const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Order&pageSize=500", headers: ADMIN });
+  const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
+  const hit = items.find((o) => String(o.props.so) === "SO-3391");
+  expect(hit, "种子里应有 SO-3391（order_fullchain 契约锚单）——没有 ⇒ 本测的种子前提变了").toBeTruthy();
+  return { id: hit!.id, so: "SO-3391", qty: Number(hit!.props.qty), unitPrice: Number(hit!.props.unitPrice) };
+}
+
 describe("plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败", () => {
   it("金丝雀（先自证检查手法）：`对象数据变更` 走同一套「审批→回读核对」必须看得见真值变化", async () => {
     const t = await makeApp();
@@ -164,11 +182,14 @@ describe("plan_change（非 global-sim）· 按 payload 形态二分：带杠杆
     expect(Number(await readProp(t, "Equipment", eq.id, "oee_current"))).toBeCloseTo(eq.oee, 6);
   }, 120000);
 
-  it("诚实边界②：order-chain 结论（只有 verdict·无杠杆）→ 失败且点名「没有 levers 落点」", async () => {
+  it("诚实边界②：order-chain 结论的无杠杆形态（「可接」无附加条件 / 生产者反查不到对象）→ 失败且点名「没有 levers 落点」", async () => {
     const t = await makeApp();
     await seedBattery(t);
 
-    // 载荷照抄 `OrderChainView.tsx` 的「采纳结论 → 工单」按钮。
+    // ⚠️ 2026-08-18 更新（WO-PLAN-CHANGE-LEVER-MAP）：OrderChainView 在**有数值对冲项**时会带 levers
+    //    （见下方主判据③）；本用例喂的是它仍合法的**无杠杆形态**——判据在 payload 形状不在生产者身份：
+    //    「可接」无条件 / 信用阻断（收款是事件不是拨杆·不映射）/ 反查不到 Order 对象时，生产者仍发这个形状，
+    //    诚实失败**仍是正确行为**。
     const done = await submitAndApprove(t, "plan_change", {
       versionId: "order-chain:SO-00001",
       reason: "全链判定：可接",
@@ -180,6 +201,97 @@ describe("plan_change（非 global-sim）· 按 payload 形态二分：带杠杆
     expect(done.executionResult.error).toContain("levers");
     // 错误里必须把收到的键列出来——审批人据此判断"是生产者少发了字段"还是"这一型本来就没落点"。
     expect(done.executionResult.error).toContain("verdict");
+  }, 120000);
+
+  it("★ 主判据③（WO-PLAN-CHANGE-LEVER-MAP）：order-chain 结论带真域映射 levers → Order 属性逐字段真落库 + 派生重算", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const ord = await anchorOrder(t);
+
+    // 生产者算术逐式复刻（`OrderChainView.tsx` 采纳按钮）：
+    //   交期判「紧张」→ Order.outsourceRatio = (demand − P90)/demand；财务判「需提价8%」→ unitPrice × 1.08。
+    // P90 锚 = 2520（contracts OrderDeliveryJudgeSchema 头注·seed 42·SO-3391：可产基地 4 × 700 × 0.9）。
+    const p90 = 2520;
+    expect(ord.qty, "契约锚变了：SO-3391 qty 应大于 P90 锚 2520，否则『交期紧张』场景不成立").toBeGreaterThan(p90);
+    const outsource = Math.round(((ord.qty - p90) / ord.qty) * 1e4) / 1e4;
+    const newPrice = Math.round(ord.unitPrice * 1.08 * 1e4) / 1e4;
+    expect(newPrice).not.toBe(ord.unitPrice);
+    expect(outsource).toBeGreaterThan(0);
+
+    // 载荷逐字照抄新生产者（WO-PLAN-CHANGE-LEVER-MAP 后形态·两条 cond 同时成立的案例）。
+    const done = await submitAndApprove(t, "plan_change", {
+      versionId: `order-chain:${ord.so}`,
+      reason: `订单 ${ord.so}（4680-NCM·${ord.qty}）结论：提价8%接；周供给 P90 ${p90} 套/周 < 本单需求 ${ord.qty} 套（按整单落单周折算·C02），需夜班/外协对冲`,
+      so: ord.so,
+      verdict: "提价8%接",
+      levers: [
+        { objectType: "Order", objectId: ord.id, prop: "outsourceRatio", value: outsource },
+        { objectType: "Order", objectId: ord.id, prop: "unitPrice", value: newPrice },
+      ],
+    });
+    expect(done.status, `执行未成功：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
+
+    // ★ 效果层·逐字段相等（红 = 回到「审批通过但什么都没写」）。
+    expect(
+      Number(await readProp(t, "Order", ord.id, "outsourceRatio")),
+      "order-chain 采纳后 Order.outsourceRatio 未落库 —— 杠杆映射空转",
+    ).toBe(outsource);
+    expect(Number(await readProp(t, "Order", ord.id, "unitPrice")), "提价杠杆未落库").toBe(newPrice);
+    // 派生重算证据：Order.value = qty × unitPrice（orderDerived）必须跟着变 —— 证明 runDerivations 真跑了。
+    expect(
+      Number(await readProp(t, "Order", ord.id, "value")),
+      "unitPrice 落库但派生 Order.value 没重算 —— runDerivations 没跑（与 prng.round 同式对拍）",
+    ).toBe(Math.round(ord.qty * newPrice * 1e6) / 1e6);
+
+    expect(done.executionResult.targetRef).toContain("PLAN-CHANGE-LEVER");
+    expect(String(done.executionResult.targetRef)).not.toMatch(/^MO-\d{4}/);
+  }, 120000);
+
+  it("★ 主判据④（WO-PLAN-CHANGE-LEVER-MAP）：协调加产 intent:coordinate_capacity 带 levers → Order.outsourceRatio 真落库", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const ord = await anchorOrder(t);
+
+    // 生产者算术逐式复刻（`CustomerImpactBar.tsx coordLevers`）：外协占比 = 被挤套数 ÷ 整单套数，封顶 1。
+    const displaced = Math.floor(ord.qty / 3);
+    const ratio = Math.min(1, Math.round((displaced / ord.qty) * 1e4) / 1e4);
+    expect(ratio).toBeGreaterThan(0);
+
+    // 载荷逐字照抄 `CustomerImpactBar.tsx confirmCoordinate`（WO-PLAN-CHANGE-LEVER-MAP 后形态）。
+    const done = await submitAndApprove(t, "plan_change", {
+      intent: "coordinate_capacity", orderId: ord.so, cust: "广汽集团", seg: "乘用车",
+      qty: displaced, impactYi: Math.round(((displaced * 1.8) / 1e4) * 1000) / 1000,
+      versionId: `global-sim-impact:sess-9:${ord.so}`,
+      reason: `协调加产：为 ${ord.so}（广汽集团）协调产能以消减被挤单影响`,
+      levers: [{ objectType: "Order", objectId: ord.id, prop: "outsourceRatio", value: ratio }],
+    });
+    expect(done.status, `执行未成功：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
+    expect(
+      Number(await readProp(t, "Order", ord.id, "outsourceRatio")),
+      "协调加产采纳后 Order.outsourceRatio 未落库 —— 杠杆映射空转",
+    ).toBe(ratio);
+    expect(done.executionResult.targetRef).toContain("PLAN-CHANGE-LEVER");
+    expect(String(done.executionResult.targetRef)).not.toMatch(/^MO-\d{4}/);
+  }, 120000);
+
+  it("变异反证（摘掉 lever 映射 ⇒ 回到诚实失败）：同一协调加产载荷摘掉 levers → EXECUTION_FAILED 且点名 levers", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const ord = await anchorOrder(t);
+    const before = Number(await readProp(t, "Order", ord.id, "outsourceRatio"));
+
+    // 主判据④的载荷**原样摘掉 levers 键**（= 生产者退回旧形态）——必须回到诚实失败，且真值零动。
+    const done = await submitAndApprove(t, "plan_change", {
+      intent: "coordinate_capacity", orderId: ord.so, cust: "广汽集团", seg: "乘用车",
+      qty: 100, impactYi: 0.02,
+      versionId: `global-sim-impact:sess-10:${ord.so}`,
+      reason: `协调加产：为 ${ord.so}（广汽集团）协调产能以消减被挤单影响`,
+    });
+    expect(done.status).toBe("EXECUTION_FAILED");
+    expect(done.executionResult.error).toContain("EXECUTOR_NOT_IMPLEMENTED");
+    expect(done.executionResult.error).toContain("levers");
+    expect(done.executionResult.error).toContain("intent"); // 收到的键照实列出
+    expect(Number(await readProp(t, "Order", ord.id, "outsourceRatio")), "诚实失败却写了真值").toBe(before);
   }, 120000);
 
   it("原子性：杠杆行缺 value → 拒绝臆造写入，且**一个字节都不写**", async () => {

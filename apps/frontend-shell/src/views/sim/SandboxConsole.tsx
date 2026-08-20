@@ -1203,8 +1203,6 @@ export function SandboxConsole({
           )}
         </aside>
         </section>
-      </div>
-
       {/* ══ ③ 下区：影响带（PRD §1③）════════════════════════════════════════════
           「试了之后，哪里变了、值多少钱」。从粗到细三块：
             汇总条（四个计数 ＋ 流动效率）→ 阻滞点逐条（折叠）→ 逐节点指标影响 ＋ 财务动态。 */}
@@ -1415,6 +1413,7 @@ export function SandboxConsole({
           </p>
         ) : null}
       </section>
+      </div>
     </div>
   );
 }
