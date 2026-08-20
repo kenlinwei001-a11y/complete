@@ -49,8 +49,16 @@ const ctx = { tenantId: TENANT, userId: "user-planner", roles: ["planner"] };
 const N2_SRC = readFileSync(fileURLToPath(new URL("./dsh-dualrun-reconcile.test.ts", import.meta.url)), "utf8");
 function literalArray(name: string): string[] {
   const m = N2_SRC.match(new RegExp(`${name}[^=]*=\\s*\\[([\\s\\S]*?)\\]`));
+  // ⚠ `m` 与 `m[1]` 要分开判：正则整体没命中 ⇒ 源文件里根本没这个常量（单源守卫该报的那件事）；
+  //    命中而捕获组为空 ⇒ 正则写错了。两者处置方向不同，合成一句会把「工具坏了」读成「源没这个符号」。
   if (!m) throw new Error(`单源守卫：${name} 在 dsh-dualrun-reconcile.test.ts 中未找到`);
-  return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+  const body = m[1];
+  if (body === undefined) throw new Error(`单源守卫：${name} 命中但捕获组为空 —— 是这里的正则坏了，不是源缺符号`);
+  const out = [...body.matchAll(/"([^"]+)"/g)].map((x) => x[1]).filter((v): v is string => v !== undefined);
+  // 金丝雀：单源白名单不可能是空的。抽出 0 条 ⇒ 报「工具坏了」，不许静默返回 []
+  // （那会让下游所有基于该白名单的断言变成恒真）。
+  if (out.length === 0) throw new Error(`单源守卫：${name} 抽出 0 条 ⇒ 抽取器坏了，不是白名单空了`);
+  return out;
 }
 const ALLOWED_PSEUDO_TYPES = literalArray("ALLOWED_PSEUDO_TYPES");
 const SHRUNK_PSEUDO_TYPES = ALLOWED_PSEUDO_TYPES.filter((t) => t !== "final_answer" && t !== "load_skill");
@@ -277,11 +285,19 @@ function checkArmAnchors(task: DualRunTask, flag: "off" | "on", arm: ArmProducts
     expect(its.length).toBe(task.expect.nativeIterations.length);
     its.forEach((it, i) => {
       const anchor = task.expect.nativeIterations[i];
+      // ⚠ 显式断言锚点存在，不用 `!` 抹掉 —— 上一行刚断言过 `its.length === nativeIterations.length`，
+      //    但那是**另一个**命题：长度相等不保证逐个下标取得到（数组可含空洞）。
+      //    锚点缺失时这里必须**当场红并指出是第几轮**，而不是在下一行报一个看不懂的 undefined。
+      expect(anchor, `第 ${i} 轮缺锚点（nativeIterations 长度对得上但取不到该下标）`).toBeDefined();
+      if (!anchor) return;
       expect(it.toolCalls.length).toBe(anchor.calls.length);
       it.toolCalls.forEach((c, j) => {
-        expect(c.toolName).toBe(anchor.calls[j].toolName);
-        expect(c.outcome).toBe(anchor.calls[j].outcome);
-        if (anchor.calls[j].input !== undefined) expect(c.input).toEqual(anchor.calls[j].input);
+        const ec = anchor.calls[j];
+        expect(ec, `第 ${i} 轮第 ${j} 个工具调用缺锚点`).toBeDefined();
+        if (!ec) return;
+        expect(c.toolName).toBe(ec.toolName);
+        expect(c.outcome).toBe(ec.outcome);
+        if (ec.input !== undefined) expect(c.input).toEqual(ec.input);
         expect(c.toolCallId).toMatch(/^tc_/);
         expect(c.durationMs).toBeGreaterThanOrEqual(0);
       });
@@ -384,7 +400,7 @@ describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（50 任务）", () => {
     expect(DUALRUN_CORPUS.some((t) => turnsOf(t) === 1)).toBe(true);
     expect(DUALRUN_CORPUS.some((t) => turnsOf(t) === 2)).toBe(true);
     expect(DUALRUN_CORPUS.some((t) => turnsOf(t) === 5)).toBe(true);
-    expect(DUALRUN_CORPUS.some((t) => t.native.turns.filter((tn) => typeof tn !== "function" && tn.content.some((b) => b.type === "tool_use" && b.name === "load_skill")).length === 3)).toBe(true);
+    expect(DUALRUN_CORPUS.some((t) => t.native.turns.filter((tn) => typeof tn === "object" && tn.content.some((b) => b.type === "tool_use" && b.name === "load_skill")).length === 3)).toBe(true);
     // provenance 形态 + 多块形态
     expect(DUALRUN_CORPUS.some((t) => (t.expect.answer.provenance?.length ?? 0) > 0)).toBe(true);
     expect(DUALRUN_CORPUS.some((t) => t.expect.answer.blocks.some((b) => b.type === "table"))).toBe(true);
