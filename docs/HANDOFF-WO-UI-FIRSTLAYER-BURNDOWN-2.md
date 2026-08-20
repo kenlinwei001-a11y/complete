@@ -339,7 +339,55 @@ typecheck 报真红后靠 rebase 收尾才拆开。本单加导入前先 `grep -
 
 ---
 
-## ⑩ 交单前三条
+## ⑩ 已 rebase 到集成线当前 tip，并**在新底上重验一遍**
+
+分叉点原落后集成线 **59 个提交**，故收尾时 `git rebase origin/claude/verify-reclaim-6` —— **零冲突**。
+
+先查过重叠面再动手（`git log 9945e77c..origin/... --name-only -- <本单 5 个代码/基线文件>`）：
+**这 59 个提交对我碰的代码文件与基线文件零改动**，唯一交集是 `docs/SYSTEM-ONTOLOGY.md`
+（那 59 个提交里有十来条本体回写）。rebase 后复核：我的回写仍在（`grep -c` = 2，两行同步），
+旧错误说法零裸残留（`grep -c "须整批动）$"` = 0），文件行数 2461 = 上游行数（没把别人的删行顶回来）。
+
+**新底上重跑全套（真 RC，全部 `cmd > log; echo $?` 单独取）**：
+
+```
+pnpm install --prefer-offline                         → OK
+pnpm --filter @platform/contracts build     RC=0
+pnpm --filter @platform/llm-adapters build  RC=0
+pnpm --filter frontend-shell typecheck      RC=0
+node scripts/check-ui-first-layer.mjs       RC=0
+vitest 批 1（12 文件）                       RC=0   104 例
+vitest 批 2（16 文件）                       RC=0    55 例
+                                            合计 28 文件 · 159 例全绿
+```
+
+> ⚠ 门的「存量总量」在 rebase 后从 6530 变成 **6535** —— 那 **+5 是上游那 59 个提交带来的**，
+> 不是本单。本单自己的账（`InspectorNodePanel` −10）一分没变，门仍 RC=0。
+> 如实记这一笔，免得下一个人拿 6530 去对账对不上。
+
+### T2 · 本单**没碰**的东西有没有被弄红 —— `lint` 是红的，但**不是我的**
+
+```
+$ pnpm --filter frontend-shell lint    LINT_RC=1    ✖ 44 problems (37 errors, 7 warnings)
+```
+
+**逐条核过，44 条全在本单未碰的文件里**（判据不是「我觉得不是我的」，是文件名求交集）：
+
+```
+本单改动文件（git diff --name-only origin/claude/verify-reclaim-6...HEAD）= 8 个
+lint 报错文件 = 34 个
+两者交集 = **0**
+金丝雀：抽取器能从 lint 输出里抓到已知必中的 test/ui-layering.seam.test.tsx ✓
+        （抓不到就报「工具坏了」，不许报「没有 lint 错误」）
+```
+
+典型两条：`test/ui-layering.seam.test.tsx:3` 的 `'within' is defined but never used`、
+`test/wo-r13-ontochain-sandbox.seam.test.tsx:90` 的 `'loadLoss' is defined but never used` ——
+都是集成线上的既存红。**本单一条 lint 红都没制造，也一条都没顺手修**（3.8：边界外的红不是我的）。
+
+---
+
+## ⑪ 交单前三条
 
 ```
 $ git status --porcelain                          → 空
