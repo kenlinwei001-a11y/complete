@@ -66,7 +66,7 @@ import { streamTaskEvents } from "./api/sse.js";
 import { BudgetTracker } from "./tools/budget.js";
 import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
 import { parseCapacityFeasibilityVariant } from "./agent/sim-planner.js";
-import { agentRuleRefs, planStepRuleRefs } from "./refs/report.js";
+import { agentRuleRefs, planStepRuleRefs, planStepSliceRefs } from "./refs/report.js";
 import { detectBreakingSchemaChange } from "./workflow/compat.js";
 import { applyListQuery, assertRetireOrDelete, computeReferences, probeMissingRefs, requireCatalogAdmin, type ListQuery } from "./resources.js";
 import { classifyGap, FILL } from "./growth/probe.js";
@@ -1221,10 +1221,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
     const published = { ...wf, status: "PUBLISHED" as const, updatedAt: new Date().toISOString() };
     await deps.repos.workflows.update(published);
-    // §2.3：workflow 出向规则引用上报 A
-    const wfRuleRefs = planStepRuleRefs(published.steps);
-    if (deps.reportRefs && wfRuleRefs.length > 0) {
-      void deps.reportRefs(a.tenantId, { source: { kind: "workflow", key: published.key, name: published.name }, refs: wfRuleRefs });
+    // §2.3 + §2.4：workflow 出向引用上报 A（evaluate_rules→rule + resolve_slice→slice，
+    // 后者闭 G-SLICE-REF-PRODUCER-EMPTY —— 切片反查/十六层①② 的事实源）
+    const wfRefs = [...planStepRuleRefs(published.steps), ...planStepSliceRefs(published.steps)];
+    if (deps.reportRefs && wfRefs.length > 0) {
+      void deps.reportRefs(a.tenantId, { source: { kind: "workflow", key: published.key, name: published.name }, refs: wfRefs });
     }
     await emitDomainEvent(a.tenantId, "workflow.published", { id: published.id, key: published.key });
     // 前端消费形态 { ok, ...workflow }（SPA WorkflowsPage 读 r.ok / r.errors）；§2.3 附 impact
