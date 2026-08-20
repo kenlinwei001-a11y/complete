@@ -220,7 +220,7 @@ describe("WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（
     ]);
   }, 120000);
 
-  it("§B2 🔴 反面判据（红线 1）：D01 经营规划 与 D02 外部信号**整域**必须是「本层不随节拍变」", async () => {
+  it("§B2 🔴 反面判据（红线 1）：D01 经营规划 与 D02 外部信号**整域**、及 D04 除 P22 外的战略/工程周期 7 条，必须是「本层不随节拍变」", async () => {
     const t = await makeApp();
     await seedBattery(t);
     await seedDemoPropagationRules(t.repos);
@@ -233,6 +233,17 @@ describe("WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（
     const d01d02 = [...tri.byKey.entries()].filter(([, v]) => v.domainKey === "D01" || v.domainKey === "D02");
     expect(d01d02.length).toBe(11); // 先证明这两域真有 11 条（否则"全都不随节拍变"是因为一条都没数到）
     expect(d01d02.filter(([, v]) => v.drive !== "NOT_TICK_DRIVEN").map(([k]) => k)).toEqual([]);
+
+    // 红线 1b（WO-PROCESS-TICK-EDGES-3 机器化）：本体红线原文还有后半句 ——
+    //   「同理拒绝 D04 产品平台/系列规划（60/30 天战略周期，与 D01 同类）」。
+    // 此前只有 D01/D02 机器化，D04 这句靠人记 —— 本单实测 18 条「有对象无入边」时发现
+    // P20/P21 是**唯一结构上有可用入边**的两条（model_belongs_to_series / series_belongs_to_platform
+    // 各 6 条真实例），差点就补了边；挡住它的正是这句没机器化的红线。故把它机器化：
+    // D04 里除 P22（Model，档 1/2 已点亮、不在红线内）外的 7 条战略/工程周期流程必须整批
+    // NOT_TICK_DRIVEN。将来谁给平台/系列/版本/BOM/ECN/工艺造日节拍边，机器当场红，不再靠人记。
+    const d04strategic = [...tri.byKey.entries()].filter(([k, v]) => v.domainKey === "D04" && k !== "P22");
+    expect(d04strategic.length).toBe(7); // P20/P21/P23/P24/P25/P26/P27（先证明真数到了 7 条）
+    expect(d04strategic.filter(([, v]) => v.drive !== "NOT_TICK_DRIVEN").map(([k]) => k)).toEqual([]);
 
     // 同一条判据的正面：真正的执行域必须**不是**整域全黑（否则上面那条靠"全世界都黑"也能绿）。
     for (const dom of ["D03", "D05", "D07", "D08", "D09", "D10"]) {
