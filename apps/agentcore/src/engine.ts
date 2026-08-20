@@ -504,12 +504,30 @@ export class ExecutionEngine {
     // 守卫必须直读 process.env.DSH_HARNESS：check-dsh-dormancy.mjs D3 判据只认
     // 「条件里提到 process.env.DSH_HARNESS」的包裹块（cfg 转发会被判裸入口，门红）。
     if (process.env.DSH_HARNESS === "1") {
-      const { buildSessionSetup, mapSkill, runDshAgent } = await import("./dsh-runtime/index.js");
+      const { buildSessionSetup, mapMcpConfig, mapSkill, runDshAgent } = await import("./dsh-runtime/index.js");
+      // WO-MCP-FORWARD · additive 转发（静默丢字段同族病第四例）：agent.mcpServers 非空时
+      // 经 mapMcpConfig 逐个映射进 setup——serverName 白名单校验 + 映射期解密注入（安全注记
+      // 同 setup-spec.ts mapMcpConfig：明文仅过本机父子进程 stdio wire，不落日志）；凭据行缺失/
+      // 解不出 = fail-closed 抛错（mapMcpConfig credentialRef unresolvable），不静默降级为无凭据
+      // 连接。空/缺省 = 零 mcpServers 键（既有 `...(x ? {...} : {})` 散布形态），逐字节旧行为。
+      // 解密件在块内动态取：全部改动收在本分叉块，flag 关时零加载。
+      const mcpServers: ReturnType<typeof mapMcpConfig>[] = [];
+      if (agent.mcpServers.length > 0) {
+        const { decryptSecret } = await import("./crypto.js");
+        for (const ref of agent.mcpServers) {
+          const mcpConfig = await this.deps.repos.mcpConfigs.get(ref.mcpConfigId);
+          if (!mcpConfig) throw new Error(`dsh mcp forward: mcp config not found: ${ref.mcpConfigId}`);
+          const credRow = mcpConfig.credentialRef ? await this.deps.repos.credentials.get(mcpConfig.credentialRef) : undefined;
+          const secret = credRow ? decryptSecret(credRow.ciphertext, cfg.CREDENTIAL_KEY) : undefined;
+          mcpServers.push(mapMcpConfig(mcpConfig, () => secret));
+        }
+      }
       const setup = buildSessionSetup({
         agent,
         agentSystemCore: AGENT_SYSTEM_CORE,
         grantedToolNames: tools.map((t) => t.name),
         skills: skills.map((s) => mapSkill(s)),
+        ...(mcpServers.length ? { mcpServers } : {}),
         ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
       });
       // WO-DSH-N1-PROVIDER：model spec（dcp:{providerId}:{modelId}）不再原样当 wire model——
@@ -796,6 +814,7 @@ export class ExecutionEngine {
         onResolvedRef: opts.onResolvedRef,
         crossValidate: (req) => this.deps.dataCore.ontology.crossValidate(opts.ctx, req),
         runAgentStep: async (params) => {
+          const agentStepT0 = Date.now(); // WO77：降级帧 durationMs 计时起点（仅审计时长·不入答案/溯源）
           const r = await this.runRegisteredAgent({
             taskId: opts.taskId,
             agentId: params.agentId,
@@ -826,6 +845,25 @@ export class ExecutionEngine {
           // 不吞异常：与编排层三处顶层 insert（`orchestrator.ts` 的 runPathB / runRolePathB / runSceneAgent）同姿势。写失败就让它响，
           // 静默 catch 会把「落库坏了」伪装成「这个 Agent 没跑过」——正是本单要修的那种病。
           await this.deps.repos.agentRuns.insert(r.run);
+          // ★★ WO77 · 静默丢字段族第三例（G-9 降级冒泡）★★
+          // 此前这里只 `return { structured, answer }` —— `r.degraded`（子 run 有界终止降级置位·loop.ts degrade
+          // 唯一诚实出口）被**整个丢弃**：计量说降级了（agentLoopRepeat 已 +1）、汇总答案里带着子 agent 的诚实
+          // 降级块，唯独 SSE 帧流缺 step.completed{type:"agent_degraded"} 伪帧（前端/审计无感知）。
+          // 同族先例：orchestrator.ts runPathB 的 G-9 发射块（result.degraded → agent_degraded 伪 step）。
+          // 归属子 agentId + 扇出 stepId 原值（前端分栏/审计认 agent·非 newId 匿名）；outcome 取 reason 原值逐字。
+          // 发射点=子 run 完成即帧 ⇒ 必早于 executor 对父步的 step.completed{type:"invoke_agent"}
+          //（executor.ts 在 runAgentStep 返回后才 emitDone）与 answer.final（G-9 硬次序）。
+          // 纯增量：非降级子 run 零帧·流逐字节不变；不 inc 计量（loop.ts degrade 已计·不双计）；
+          // 不改 structured/answer 一个字节；不抛异常（emit 失败随调用链上抛·与 insert 同姿势不静默 catch）。
+          if (r.degraded) {
+            await opts.emit("step.completed", {
+              stepId: params.stepId,
+              agentId: params.agentId,
+              type: "agent_degraded",
+              outcome: r.degraded.reason,
+              durationMs: Date.now() - agentStepT0,
+            });
+          }
           return { structured: r.structured, answer: r.answer };
         },
       },

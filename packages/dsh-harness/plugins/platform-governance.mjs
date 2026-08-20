@@ -36,11 +36,17 @@ export function apply(ctx, config = {}) {
     const url = config.url ?? process.env.PLATFORM_GOV_URL
     if (!url) throw new Error('platform-governance http mode requires config.url or PLATFORM_GOV_URL')
     const timeoutMs = config.timeoutMs ?? 5000
+    // WO-DSH-E2E（additive）：裁决端点守 x-service-token（agentcore requireServiceToken 单源），
+    // 服务间凭据取 config.serviceToken ?? env PLATFORM_GOV_TOKEN；缺省不发头（旧部署零行为差）。
+    const serviceToken = config.serviceToken ?? process.env.PLATFORM_GOV_TOKEN
     setAdjudicator(async (call, governance) => {
       try {
         const res = await fetch(url, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: {
+            'content-type': 'application/json',
+            ...(serviceToken ? { 'x-service-token': serviceToken } : {}),
+          },
           body: JSON.stringify({ tool: call.name, arguments: call.arguments, governance }),
           signal: AbortSignal.timeout(timeoutMs),
         })

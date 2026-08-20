@@ -1,0 +1,44 @@
+# WO-DSH-E2E · L2 专档 cordis.l2.yml（@platform/dsh-harness）——**真链路三实测试档**。
+# 与生产档 cordis.yml 唯一差异：platform-governance 从 mock 档换 http 档（真规则缝）。
+# url/token 不落盘：url 取 env PLATFORM_GOV_URL、服务间凭据取 env PLATFORM_GOV_TOKEN
+# （插件 additive 支持，缺 token 则不发 x-service-token 头），均由 runner opts.env 注入。
+# 生产档/poc 档逐字不动；本档只被 apps/agentcore/test/dsh-e2e-real-triad.test.ts 引用
+# （runner opts.cordisFile 指入）。
+
+- id: platform-sdk-server
+  name: './plugins/platform-sdk-server.mjs'
+
+- id: platform-governance
+  name: './plugins/platform-governance.mjs'
+  config:
+    mode: 'http'
+
+- id: llm
+  name: '@deepseek-ai/dsh-llm'
+
+- id: session
+  name: '@deepseek-ai/dsh-session'
+
+- id: system-prompt
+  name: '@deepseek-ai/dsh-system-prompt'
+  config:
+    persona: 'platform dsh harness (POC S1)'
+
+- id: tools
+  name: '@deepseek-ai/dsh-tools'
+
+- id: skill
+  name: '@deepseek-ai/dsh-skill'
+
+- id: agent
+  name: '@deepseek-ai/dsh-agent'
+
+- id: agent-loop
+  name: '@deepseek-ai/dsh-agent-loop'
+  config:
+    agents: []
+
+# 生产形态 LLM 适配器桥（与生产档同款）：路由 'platform'，连接事实逐 run 经 runner
+# opts.env 注入（PLATFORM_LLM_API/BASE_URL/MODEL/API_KEY）。
+- id: platform-llm
+  name: './plugins/platform-llm.mjs'

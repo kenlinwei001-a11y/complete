@@ -239,6 +239,20 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
     //   📌 由此暴露一个真实的口径粗糙处（已另记欠账，非本次修）：外协前置期是**全局最大**，
     //      不区分要外协的是什么物料 —— 一家电解液进口商的 12 天，会被用作电芯外协的前置期。
     //      「保守」与「答非所问」只隔一层，将来要按物料/供应关系收窄。
+    // ── 登记 #4（WO104·2026-08-19·oee-unify 裁决C 口径变更）────────────────────────────────
+    //   本次**没有新增加性键**，变的是**老字段的值**：26898 → 26680（**-218 字节**）· f677f796… → eb3de36e…。
+    //
+    //   ⚠️ 这不是回归，是 oee-unify 8d70bcdbc「OEE 三套口径归一·裁决 C 落地」的**有意口径变更**
+    //      （与登记 #2/#3 同类，故修法=重登记、非回滚）：battery.ts `Equipment.oee_current` 口径
+    //      由 rngTopo 铭牌派生 + oee_daily_7d 时序物化覆写，改为 EquipmentOEE 日事实表 7 日均值
+    //      （equipmentOeeAtomsDaily/meanOfDaily，单一写入方）。risk.ts:157-159 liveTightness 读
+    //      oee_current → tensionSeries → cards[].series/peak 毫级数值变化，十进制串净短 218B。
+    //
+    //   ✅ 归属取证（实跑探针·非推断，/tmp/dsh-wo104-evidence/ 全套留档）：
+    //      同一剥离器在尖（fe34e452c）上重跑 dump，与参照 dump-tip.json 逐字节 cmp 一致；
+    //      deepdiff-report.txt 记 274 叶差**全部**为 OEE 派生数值/因子排序/阈值过滤，
+    //      无 leadTime/transitDays/供应商字段改动；risk.ts/decision-info.ts 在引入区间 byte-identical
+    //      （git diff --quiet 实证，2cf8a1e2a..fe34e452c）。
     const ADDITIVE_KEYS = [
       "otdBatch", // WO-SANDBOX-D4（顶层）
       "otd", // WO-SANDBOX-D4（逐卡）
@@ -269,12 +283,12 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
     const { ruleSetVersion, ...numeric } = data as Record<string, unknown>;
     const stripped = stripAdditive(JSON.parse(JSON.stringify(numeric))) as Record<string, unknown>;
     const numericJson = JSON.stringify(stripped);
-    expect(numericJson.length, "剥掉已登记的加性新键后长度仍变 —— 说明动的是老字段，不是加字段").toBe(26898);
+    expect(numericJson.length, "剥掉已登记的加性新键后长度仍变 —— 说明动的是老字段，不是加字段").toBe(26680);
     expect(
       createHash("sha256").update(numericJson).digest("hex"),
       "无采纳记录时 risk_timeline 的**推演数值**与上线前不再逐字节一致（R6 向后兼容被破）——" +
         "先按上面的归属取证定位是哪一笔改动，确认是有意的口径变更后再更新金值，不要直接改数",
-    ).toBe("f677f7965f7a58b376ed95cc87cc6c604e5686a1b61882da5340db3d7f8983fa");
+    ).toBe("eb3de36e2980600a2ed4f443583f0d4dd2ca5d611ad4b1f364f3980ca012e7c7");
     // 加性键必须**真的在**（否则本条会退化成"剥了个不存在的键"，白白放行未来的真回归）。
     expect(Object.keys(numeric), "D4 的 otdBatch 必须在顶层出现，否则 ADDITIVE_KEYS 已过期").toContain("otdBatch");
     expect(Object.keys(numeric), "WO-DECISION-INFO 的 exposureOrder 必须在顶层出现，否则 ADDITIVE_KEYS 已过期").toContain("exposureOrder");

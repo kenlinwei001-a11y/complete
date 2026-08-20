@@ -387,7 +387,12 @@ export function adaptSseEvent(frame: StreamEvent, seq: number, narrationIndex?: 
           ...(failed ? { error: String(d.text ?? "") } : {}),
         };
       }
-      if (type === "" || WORKFLOW_STEP_TYPES.has(type)) return null;
+      if (WORKFLOW_STEP_TYPES.has(type)) return null;
+      // WO-ADAPTER-TOOLSETTLE（静默丢字段族第 5 例）：dsh 映射 tool/result 只出 status 键、
+      // 无 type（reassemble createSseMapper）——无 type 但有 status ⇒ 工具结果帧，落入下方
+      // 既有发射（isError 双键原样消化，D-5 本意即在适配层换算）；无 type 且无 status ⇒
+      // 未知帧形，维持丢弃（防御，不冒充工具结果）。native 帧恒带 type，本路径对其不可达。
+      if (type === "" && d.status === undefined) return null;
       return {
         kind: "tool-result",
         callId: String(d.stepId),
