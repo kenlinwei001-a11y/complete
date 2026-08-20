@@ -21,21 +21,34 @@
  *       mock 侧**真派发 MSW handler**（不是读常量），拿的是屏上真会收到的那个回包。
  *       ⇒ 冻结基准过期这条路本门根本不存在。
  *    ② **守的是倍数区间，不是数量级**：数量级窗（10 倍）会放过 2 倍、4 倍的偏差，
- *       而 2 倍在经营盘面上照样是错的 —— 本门实测到的最大真差异就落在 2.3×/3.9× 这一档，
- *       数量级窗一条都咬不到（实测：seam 测试今天全绿，而下面 J1 的 6 行是红的）。
+ *       而 2 倍在经营盘面上照样是错的 —— 本门实测到的真差异恰好全落在那一档
+ *       （2.33× / 3.89× / 3.06× / 4.28×），数量级窗一条都咬不到：
+ *       **实测 2026-08-20：那道接缝测试今天全绿，而本门的 B 档 18 行是红的。**
  *
  * ══ 三层判据（对应 WO §4.1 的三档定性 —— 混为一谈就会修错地方）═══════════════
- *   **J1 · 同口径对拍**（两边算的是同一个东西 ⇒ 比值该 ≈ 登记值）
- *        真差异登记在此。今天 21 行 ratio=1.0000（WO-MOCK-SCALE-TRUTH 已对齐），
- *        6 行是**真差异**（供需归因的侧/叶分摊），逐行登记实测比值。
+ *   **J0 · 同口径全量对拍**（两边算的是同一个东西 ⇒ 比值该 ≈ 登记值）
+ *        ⚠ **受检对象集合是现算的，不是手抄的**：= 两侧回包**归一后数值叶路径的交集**
+ *        （`numericLeaves(normalize(payload))`，2026-08-20 实测 **112 条**）。
+ *        谁往任一侧加一个 S&OP 的量，它**自动**进受检面 —— 这正是 `gate-roster:check`
+ *        守的那条命题（「门只能证明它**问过的那些**是对的，证明不了**该问的都问了**」）。
+ *        不在 `EXPECTED` 例外表里的路径，期望比值一律 **1**（两侧该相等）。
+ *        今天：A 档 91 行 ratio≈1（WO-MOCK-SCALE-TRUTH 已对齐）· **B 档 18 行是真差异**
+ *        （供需归因的侧/叶分摊）· C 档 3 行是一边没有数。
  *   **J2 · 跨口径关系保真**（两边算的**不是**同一个东西 ⇒ 比值本来就不是 1）
  *        年 ÷ 月 = 13.72、年缺口 ÷ 月缺口 = 15.47、含/不含 certFactor = 1.1396 …
  *        **这批就是台账那句「12 倍」真正对应的东西** —— 它是**同屏并列的年/月口径差**，
  *        **两侧各自都是这个数**，不是 mock 与真后端之间的差。
  *        本层守的是「这个关系在两侧保持一致」：谁把年行「顺手」压成月量级，这层当场红。
- *   **J3 · 一边没有数**（占位 / 缺叶 ⇒ 那不叫「量级差」）
- *        逐叶做集合差：真后端有、mock 没有的叶（今天：`capacity_gap`）登记在案，
- *        新增缺失即红。**不许**把「一边没有数」算成一个倍数糊过去。
+ *   **J3 · 一侧独有**（占位 / 缺叶 ⇒ 那不叫「量级差」）
+ *        归一后只在一侧出现的数值叶做集合差。真后端有、mock 没有 = **mock 这边没有数**
+ *        （今天：`capacity_gap` 整叶 · 勾稽校验行 3 vs 1），逐条登记，新增即红。
+ *        **不许**把「一边没有数」算成一个倍数糊过去。
+ *
+ * ══ ⚠ 比之前必须先归一身份（本门开发时当场栽过的那一脚）═══════════════════════
+ * 按数组**下标**比两侧 = 「我用『它们在数组里的位置相同』当作『它们是同一个东西』的证据」。
+ * 实测：两侧 `s2.rows` / `s3.perBase` / `drivers` 的**排序规则各不相同**，
+ * 一次下标比凭空造出 **24 条假差异**（50 条越界里 24 条是假的），把真差异淹掉。
+ * 归一规则见 `ARRAY_KEYS`，金丝雀 C7 拿生产实物钉住它是活的。
  *
  * ══ 裕度怎么定的（区间不许拍脑袋定宽 —— 定得够宽等于没门）═══════════════════
  * 统一 **±1%**，两侧都有实测证据：
@@ -51,14 +64,15 @@
  *
  * ══ 退出码三分（默认失败方向必须是「我没查出来」）═══════════════════════════
  *   0 = 各项倍数都在登记区间内
- *   1 = **真违规**：某项跑出区间（点名 + 现算值 + 区间），或 J3 出现新的缺叶
- *   2 = **工具坏了**：取不到 mock 或真后端的数 / 金丝雀不中 / 子进程崩了 / 登记项在回包里找不到
+ *   1 = **真违规**：某项跑出区间（点名 + 现算值 + 区间），或 J3 出现未登记的一侧独有量
+ *   2 = **工具坏了**：取不到 mock 或真后端的数 / 金丝雀不中 / 子进程崩了 / 判据项在回包里找不到
  * ⚠ 取不到数**必须** RC=2。报 RC=0 就是把「我没查出来」读成「一切正常」。
  *
- * ══ 金丝雀（与主逻辑共用同一份实现，不许另抄）═══════════════════════════════
+ * ══ 金丝雀（8 条 · 与主逻辑共用同一份实现，不许另抄）═════════════════════════
  * 金丝雀喂的全是**生产实物**：历史真值（367.9 / 22.6839）、今天真回包里的路径、
- * 今天真缺的那一叶。它们跑的是 `ratioVerdict` / `pick` / `leafGap` / `PAYLOAD_RE`
- * ——**主判据用的就是这几个函数**，改坏主逻辑金丝雀当场不中。
+ * 今天真缺的那一叶、两侧真实不同的排序。它们跑的是
+ * `ratioVerdict` / `pick` / `leafGap` / `PAYLOAD_RE` / `normalize` / `numericLeaves`
+ * ——**主判据用的就是这几个函数**，改坏主逻辑金丝雀当场不中（M3b/M5 变异反证逐条实证）。
  *
  * 用法：
  *   node scripts/check-mock-backend-scale.mjs            # 门
@@ -181,6 +195,101 @@ export function leafGap(realIds, mockIds) {
 /** 归因叶 id 归一：真后端 `seg_bias:dseg-2` 与 mock `seg_bias:ess` 是同一族，按族名比。 */
 export const leafFamily = (id) => String(id).split(":")[0];
 
+/* ── 身份归一（J0 的前提 · 主逻辑与金丝雀 C7 共用）─────────────────────────────
+ *
+ * ⚠️ **按数组下标比两侧，本身就是本仓一再踩的那个坑**：
+ * 「我用『它们在数组里的位置相同』当作『它们是同一个东西』的证据，而前者并不度量后者。」
+ * 实测（2026-08-20，本门开发时当场抖出）：
+ *   · `s2.rows`   —— 真后端按 key 字母序（com/ess/pas），mock 按业务序（pas/ess/com）
+ *                    ⇒ 下标比会得出「乘用车 14.52 vs 4.47 = 3.25 倍」这种**完全是假的**结论；
+ *   · `s3.perBase` —— 真后端按 baseId 字母序，mock 按月产能降序 ⇒ 13 个基地逐个错位；
+ *   · `sdg.supplySide.drivers` —— 两侧头一条分别是 material_gap / oee_loss ⇒ 同上。
+ * 一次下标比会凭空造出 **24 条假差异**（实测），把 6 条真差异淹掉。
+ *
+ * 故：先把数组按**自然身份**归一成对象，再逐路径比。归一键各族不同，逐族写明理由。
+ */
+export const ARRAY_KEYS = [
+  { path: "s2.rows", by: (row) => String(row.key), why: "细分 key（com/ess/pas）两侧同名，是它的自然身份" },
+  { path: "sopVersionRows", by: (row) => String(row.ver), why: "版本号 V1/V3/V5/V7 两侧同名" },
+  { path: "finance.pnl", by: (row) => String(row.subject), why: "科目名（收入/销售成本/毛利）两侧同名" },
+  { path: "sdg.reconChecks", by: (row) => String(row.label), why: "勾稽校验行的 label 是它的自然身份（两侧不同名 ⇒ 归一后各自独有，正是要暴露的事实）" },
+  /* 归因叶：**按族名归一并聚合**，不按单叶配对。
+   * 理由（实测逼出来的，不是设计洁癖）：真后端的 `seg_bias` 族有 **3 条**（dseg-1/2/3，逐细分），
+   * mock 只有 **1 条**（`seg_bias:ess`）。两侧的叶 id 里**没有共享身份**
+   * （真后端带对象 id `dseg-2`，mock 带细分 key `ess`），硬配对只会配错 ——
+   * 第一版按族名取「最后一条」，当场造出 `seg_bias.contribution 125.5570×` 这种假数。
+   * 故：族内 `contribution` **求和**后再比（两侧都良定义），并把 `count` 一起比 ——
+   * 族里少了几条，`count` 那一行会说话（那是「一边没有数」，不是量级差）。
+   * `share` / `driverValue` / `provenance.drillValue` 只在**族内独苗**时才可比，
+   * 多条时留空、不进交集（宁可不比，也不上一条会说谎的）。 */
+  {
+    path: "sdg.demandSide.drivers",
+    fold: true,
+    why: "族名聚合：两侧叶 id 无共享身份（真后端 seg_bias:dseg-2 / mock seg_bias:ess），硬配对必配错；族内求和后可比",
+  },
+  { path: "sdg.supplySide.drivers", fold: true, why: "同上" },
+  {
+    path: "s3.perBase",
+    // 两侧的 `baseId` 字段**装的不是同一个东西**：真后端是拼音 id（changzhou），
+    // mock 落的是册里的中文名（常州）—— `sopScale.ts` 的注释原文就写明了这处形状差异。
+    // 故不能拿 baseId 当身份；改按**月产能降序的名次**归一（两侧是同一组 13 个值，排完序逐位对齐）。
+    rank: (rows) => [...rows].sort((a, b) => Number(b.monthly) - Number(a.monthly)),
+    why: "两侧 baseId 字段装的不是同一个东西（拼音 id vs 中文名），故按月产能降序名次归一",
+  },
+];
+
+/** 把数组按自然身份归一成对象（数组下标从此不参与比对）。主逻辑与金丝雀 C7 共用这一份。 */
+export function normalize(payload) {
+  const out = JSON.parse(JSON.stringify(payload ?? {}));
+  for (const spec of ARRAY_KEYS) {
+    const segs = spec.path.split(".");
+    const leaf = segs.pop();
+    let cur = out;
+    for (const s of segs) cur = cur?.[s];
+    const arr = cur?.[leaf];
+    if (!Array.isArray(arr)) continue;
+    if (spec.rank) {
+      cur[leaf] = Object.fromEntries(spec.rank(arr).map((row, i) => [`#${i + 1}`, row]));
+    } else if (spec.fold) {
+      const byFam = new Map();
+      for (const row of arr) {
+        const f = leafFamily(row.id);
+        if (!byFam.has(f)) byFam.set(f, []);
+        byFam.get(f).push(row);
+      }
+      cur[leaf] = Object.fromEntries(
+        [...byFam.entries()].map(([f, rows]) => {
+          const folded = {
+            contribution: rows.reduce((a, r) => a + Number(r.contribution ?? 0), 0),
+            count: rows.length,
+          };
+          // 族内独苗才带下钻证据 —— 多条时这些字段没有良定义的两侧对应物，留空不比。
+          if (rows.length === 1) {
+            if (typeof rows[0].driverValue === "number") folded.driverValue = rows[0].driverValue;
+            if (typeof rows[0].share === "number") folded.share = rows[0].share;
+          }
+          return [f, folded];
+        }),
+      );
+    } else {
+      cur[leaf] = Object.fromEntries(arr.map((row) => [spec.by(row), row]));
+    }
+  }
+  return out;
+}
+
+/** 枚举一棵对象里所有**有限数**叶子的点分路径。主逻辑与金丝雀 C8 共用这一份。 */
+export function numericLeaves(obj, prefix = "", acc = new Map()) {
+  if (obj === null || obj === undefined) return acc;
+  if (typeof obj === "number") {
+    if (Number.isFinite(obj) && prefix) acc.set(prefix, obj);
+    return acc;
+  }
+  if (typeof obj !== "object") return acc;
+  for (const [k, v] of Object.entries(obj)) numericLeaves(v, prefix ? `${prefix}.${k}` : k, acc);
+  return acc;
+}
+
 /* ════════════════════════════════════════════════════════════════════════════
  * 1 · 子进程探针（`--probe-mock` / `--probe-real`）
  *
@@ -260,8 +369,9 @@ async function probeMock() {
     demandYearTotal: scale.DEMAND_YEAR_TOTAL_WAN,
     demandYearRevenue: scale.DEMAND_YEAR_REVENUE_YI,
     sopVersionRows: scale.SOP_VERSION_ROWS,
-    aopBaseRev: scale.AOP_BASE_REVENUE_YI,
-    supplyV7: scale.SUPPLY_V7_WAN,
+    // 形状与真后端 `cockpit_kpi` 回包对齐（同名同层），否则 J0 的交集会因**嵌套层级不同**
+    // 而把两侧本来对得上的量判成「只有一侧有」—— 那是拿形状差冒充数据差。
+    kpi: { supplyV7: scale.SUPPLY_V7_WAN, aopBaseRev: scale.AOP_BASE_REVENUE_YI },
     finance: scale.FINANCE_PNL_YEAR,
     sdg: sdg?.data ?? null,
     audit: { score: audit.score, verdict: audit.verdict },
@@ -354,50 +464,98 @@ const MOCK = runProbe("--probe-mock", "mock 侧");
 const REAL = runProbe("--probe-real", "真后端侧");
 
 /* ════════════════════════════════════════════════════════════════════════════
- * 3 · 登记表（比值取自 2026-08-20 两侧现算实测；裕度统一 ±1%，理由见文件头）
+ * 3 · 登记表
+ *
+ * ⚠ **受检对象集合是现算的，不是手抄的**（`gate-roster:check` 守的正是这条：
+ *   「一道门只能证明它**问过的那些**是对的，证明不了**该问的都问了**」）。
+ *   J0 的对象集合 = 两侧回包归一后**数值叶路径的交集** —— 谁往任一侧加一个 S&OP 的量，
+ *   它**自动**进入受检面；不在下面任何一张表里 ⇒ 默认按「两侧该相等」判，不达标即红。
+ *   下面这三张表登记的都是**判据本体**（期望比值 / 豁免规则 / 已知缺叶），不是对象名册。
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/** J1 · 同口径对拍：两边算的是同一个东西 ⇒ 比值该等于登记值。 */
-const J1 = [
-  // ── 量轴 · 月（万套/月）· WO-MOCK-SCALE-TRUTH 已对齐，登记 1.0000 ──
-  { id: "planVersion.dem", label: "计划版本 需求合计（万套/月）", m: "planVersion.dem", r: "planVersion.dem", ratio: 1, tier: "A" },
-  { id: "planVersion.seg_pas", label: "计划版本 乘用车（万套/月）", m: "planVersion.seg_pas", r: "planVersion.seg_pas", ratio: 1, tier: "A" },
-  { id: "planVersion.seg_ess", label: "计划版本 储能（万套/月）", m: "planVersion.seg_ess", r: "planVersion.seg_ess", ratio: 1, tier: "A" },
-  { id: "planVersion.seg_com", label: "计划版本 商用车（万套/月）", m: "planVersion.seg_com", r: "planVersion.seg_com", ratio: 1, tier: "A" },
-  { id: "planVersion.sup", label: "计划版本 供给（万套/月·不含认证折算）", m: "planVersion.sup", r: "planVersion.sup", ratio: 1, tier: "A" },
-  { id: "s2.total.target", label: "S&OP ② 需求评审 目标合计（万套/月）", m: "s2.total.target", r: "s2.total.target", ratio: 1, tier: "A" },
-  { id: "s2.total.rolling", label: "S&OP ② 需求评审 滚动合计（万套/月）", m: "s2.total.rolling", r: "s2.total.rolling", ratio: 1, tier: "A" },
-  { id: "s3.sup", label: "S&OP ③ 供应评审 供给合计（万套/月·含认证折算）", m: "s3.sup", r: "s3.sup", ratio: 1, tier: "A" },
-  { id: "s3.gap", label: "S&OP ③ 产销缺口（万套/月）", m: "s3.gap", r: "s3.gap", ratio: 1, tier: "A" },
-  { id: "s3.dem", label: "S&OP ③ 需求（万套/月）", m: "s3.dem", r: "s3.dem", ratio: 1, tier: "A" },
-  { id: "planTargetMonth", label: "计划目标（月 2026-06·万套/月）", m: "planTargetMonth", r: "planTargetMonth", ratio: 1, tier: "A" },
-  // ── 量轴 · 年（万套/年）──
-  { id: "planTargetYear", label: "计划目标（年 2026·万套/年·供给侧）", m: "planTargetYear", r: "planTargetYear", ratio: 1, tier: "A" },
-  { id: "demandYearTotal", label: "Σ 细分年需求 P50（万套/年·需求侧）", m: "demandYearTotal", r: "demandYearTotal", ratio: 1, tier: "A" },
-  { id: "sopRow.V7.demand", label: "S&OP 版本演进 V7 需求（万套/年）", m: "sopVersionRows.[3].demand", r: "sopVersionRows.[3].demand", ratio: 1, tier: "A" },
-  { id: "sopRow.V7.supply", label: "S&OP 版本演进 V7 供给（万套/年）", m: "sopVersionRows.[3].supply", r: "sopVersionRows.[3].supply", ratio: 1, tier: "A" },
-  { id: "supplyV7", label: "驾驶舱 supplyV7（万套/年）", m: "supplyV7", r: "kpi.supplyV7", ratio: 1, tier: "A" },
-  { id: "sdg.totalGap", label: "供需归因 总缺口（万套/年）", m: "sdg.totalGap", r: "sdg.totalGap", ratio: 1, tier: "A" },
-  // ── 钱轴 · 年（亿元/年）· 刻意**不**跟着量轴缩 ──
-  { id: "finance.rev.rolling", label: "财务 收入 rolling（亿元/年）", m: "finance.pnl.[0].rolling", r: "finance.pnl.[0].rolling", ratio: 1, tier: "A" },
-  { id: "finance.rev.budget", label: "财务 收入 budget（亿元/年）", m: "finance.pnl.[0].budget", r: "finance.pnl.[0].budget", ratio: 1, tier: "A" },
-  { id: "finance.gm.rolling", label: "财务 毛利 rolling（亿元/年）", m: "finance.pnl.[2].rolling", r: "finance.pnl.[2].rolling", ratio: 1, tier: "A" },
-  { id: "aopBaseRev", label: "驾驶舱 基准情景年营收（亿元/年）", m: "aopBaseRev", r: "kpi.aopBaseRev", ratio: 1, tier: "A" },
+/**
+ * **期望比值例外表**（比值 ≠ 1 的那些）。不在表里的路径，期望比值一律 **1**。
+ * 每条 = 一处**已知的真差异**，值取自 2026-08-20 两侧现算实测，必须写 `why`。
+ * ⚠ 这张表是「已知欠账」，**不是**「这样就对了」——见文件头「诚实边界」。
+ */
+const EXPECTED = {
+  // ── 供需失衡归因：总缺口两侧都是 81（对上了），**但怎么分下去两侧相反** ──────
+  //    mock 的侧分摊是写死的比例（handlers.ts 的 G×0.704 / G×0.141），真后端是真算的。
+  //    后果：mock 判「需求端主导 70%」，真后端判「供给端主导 64.5%」——**相反的根因**。
+  "sdg.demandSide.contribution": { ratio: 2.3313, why: "mock 写死 G×0.704 vs 真后端从 DemandSegment 偏差+在手订单真算" },
+  "sdg.demandSide.share": { ratio: 1.9817, why: "同上，share 是 contribution ÷ G 的派生" },
+  "sdg.demandSide.pct": { ratio: 2.3179, why: "同上，pct 是 share 取整（取整让它与 share 的比值略不同）" },
+  "sdg.supplySide.contribution": { ratio: 0.2568, why: "mock 写死 G×0.141 vs 真后端从 OEE+物料+产能真算 ⇒ 真后端是 mock 的 3.89 倍" },
+  "sdg.supplySide.share": { ratio: 0.2182, why: "同上派生" },
+  "sdg.supplySide.pct": { ratio: 0.2555, why: "同上派生" },
+  "sdg.residual": { ratio: 1.037, why: "残差 = G − 两侧贡献；两侧贡献都错而残差恰好接近，是巧合不是对上了" },
+  "sdg.residualPct": { ratio: 1.0667, why: "同上派生（取整）" },
+  // ── 归因叶（族聚合后）──────────────────────────────────────────────────────
+  "sdg.demandSide.drivers.seg_bias.contribution": { ratio: 3.0565, why: "mock 只对储能一条细分算偏差；真后端逐细分三条（dseg-1/2/3）求和 15.6714" },
+  "sdg.demandSide.drivers.seg_bias.count": { ratio: 0.3333, why: "**一边没有数**：mock 1 条叶 vs 真后端 3 条（缺乘用车/商用车的预测偏差叶）。补它=改值，本单只报不动" },
+  "sdg.demandSide.drivers.order_backlog.contribution": { ratio: 1.0366, why: "两侧同族同量级，差异随上层侧分摊一起漂" },
+  "sdg.demandSide.drivers.order_backlog.driverValue": { ratio: 4.2812, why: "在手订单**存量**下钻值：mock 108.4 万套 vs 真后端 25.32 万套（同名同单位，真差异）" },
+  "sdg.demandSide.drivers.order_backlog.share": { ratio: 0.4446, why: "族内占比，随 contribution 与侧合计一起漂" },
+  "sdg.supplySide.drivers.material_gap.contribution": { ratio: 0.5014, why: "mock 由写死侧合计取余得 8 vs 真后端真算 15.9557" },
+  "sdg.supplySide.drivers.material_gap.share": { ratio: 1.9527, why: "族内占比派生" },
+  "sdg.supplySide.drivers.oee_loss.contribution": { ratio: 0.1536, why: "mock 由写死侧合计 ×0.3 得 3.4 vs 真后端真算 22.1341" },
+  "sdg.supplySide.drivers.oee_loss.share": { ratio: 0.6018, why: "族内占比派生" },
+  "sdg.supplySide.drivers.oee_loss.driverValue": {
+    ratio: 0.0132,
+    why:
+      "⚠ **这一条不是量级差，是量纲放错了栏**：两侧 `unit` 都写「万套」，" +
+      "而 mock 那一栏放的是 **OEE 比值 0.84（0–1）**、真后端放的是 **63.84 万套**。" +
+      "说成「差 76 倍」就会去改值，正确的修法是改那一栏放什么。登记比值只为把它钉住不再漂。",
+  },
+  // ── S&OP ② 三线对照的「上期实绩」──────────────────────────────────────────
+  "s2.rows.pas.lastActual": { ratio: 0, zero: "real", why: "**一边没有数**：真后端新建版本没有上期实绩（恒 0），mock 用年实绩按月权重折算填了值" },
+  "s2.rows.ess.lastActual": { ratio: 0, zero: "real", why: "同上" },
+  "s2.rows.com.lastActual": { ratio: 0, zero: "real", why: "同上" },
+};
 
-  /* ── B 档 · **真差异**（口径相同、量级不同）——供需归因的侧/叶分摊 ──────────
-   * 总缺口两侧都是 81（A 档已对上），**但它怎么分下去两侧完全不同**：
-   * mock 的侧分摊是**写死的比例**（`handlers.ts` 的 `G*0.704` / `G*0.141`），
-   * 真后端是**从 DemandSegment 偏差 / OEE / 物料 / 产能真算**出来的。
-   * 后果不是「数不好看」而是**两边给出相反的根因**：
-   *   mock 判「需求端主导 70%」，真后端判「供给端主导 65%」。
-   * 既有接缝测试只比 `totalGap` ⇒ 这一族它一条都咬不到（今天全绿）。
-   * 本门把每一行的**现算比值**登记下来：它再漂，机器先说话。 */
-  { id: "sdg.demandSide", label: "供需归因 需求端贡献（万套/年）", m: "sdg.demandSide.contribution", r: "sdg.demandSide.contribution", ratio: 2.3313, tier: "B" },
-  { id: "sdg.supplySide", label: "供需归因 供给端贡献（万套/年）", m: "sdg.supplySide.contribution", r: "sdg.supplySide.contribution", ratio: 0.2568, tier: "B" },
-  { id: "sdg.residual", label: "供需归因 残差（万套/年）", m: "sdg.residual", r: "sdg.residual", ratio: 1.037, tier: "B" },
-  { id: "sdg.leaf.segbias", label: "供需归因 需求端头号叶 预测偏差（万套/年）", m: "sdg.demandSide.drivers.[0].contribution", r: "sdg.demandSide.drivers.[0].contribution", ratio: 3.5699, tier: "B" },
-  { id: "sdg.leaf.backlog", label: "供需归因 在手订单叶 贡献（万套/年）", m: "sdg.demandSide.drivers.[1].contribution", r: "sdg.demandSide.drivers.[1].contribution", ratio: 1.0366, tier: "B" },
-  { id: "sdg.leaf.backlog.driver", label: "供需归因 在手订单叶 下钻值（万套/年）", m: "sdg.demandSide.drivers.[1].driverValue", r: "sdg.demandSide.drivers.[1].driverValue", ratio: 4.2812, tier: "B" },
+/** 人读标签（只影响报告可读性，不参与判定）。 */
+const LABELS = {
+  "planVersion.dem": "计划版本 需求合计（万套/月）",
+  "planVersion.sup": "计划版本 供给（万套/月·不含认证折算）",
+  "s2.total.target": "S&OP ② 需求评审 目标合计（万套/月）",
+  "s3.sup": "S&OP ③ 供应评审 供给合计（万套/月·含认证折算）",
+  "s3.gap": "S&OP ③ 产销缺口（万套/月）",
+  planTargetYear: "计划目标（年 2026·万套/年·供给侧）",
+  planTargetMonth: "计划目标（月 2026-06·万套/月）",
+  demandYearTotal: "Σ 细分年需求 P50（万套/年·需求侧）",
+  "sdg.totalGap": "供需归因 总缺口（万套/年）",
+  "kpi.supplyV7": "驾驶舱 supplyV7（万套/年）",
+  "kpi.aopBaseRev": "驾驶舱 基准情景年营收（亿元/年）",
+  "finance.pnl.收入.rolling": "财务 收入 rolling（亿元/年）",
+  "audit.score": "计划体检 得分",
+};
+
+/**
+ * **一侧独有**的路径：不进交集，故不参与倍数判定。
+ * 但「真后端有、mock 没有」是**一边没有数**（修法与量级差完全不同），必须登记，只减不增。
+ */
+const ONLY_REAL_KNOWN = [
+  { re: /^sdg\.supplySide\.drivers\.capacity_gap\./, why: "mock 整叶不存在。handlers.ts 注释写的理由「Line.capacityDaily 未落」**今天已过期** —— 同 seed 下真后端算得出该叶（6.3101 万套/年）。补它=改值，本单只报不动" },
+  { re: /^kpi\.(revAttainPct|utilPeak|cashCushion)$/, why: "驾驶舱另外三个 KPI 不在本门 S&OP 射程内（本门只取 supplyV7 / aopBaseRev 两个 S&OP 量）" },
+  {
+    re: /^sdg\.reconChecks\.(需求端内|供给端内|总（需求端\+供给端\+residual）)\./,
+    why:
+      "**勾稽校验行两侧不同构**：真后端 3 条（需求端内 / 供给端内 / 总），mock 只有 1 条且叫「Σ子=父」" +
+      "⇒ 两侧无共享身份，本门不硬配对（配错比不配更糟）。屏上的后果：mock 只能说「总数配平了」，" +
+      "说不了「需求端内部配平了没有」。属**一边没有数**，补它=改 mock，本单只报不动。",
+  },
+];
+/** mock 独有：本门探针多取的派生量 + 族内独苗才有的下钻证据，不构成缺口。 */
+const ONLY_MOCK_KNOWN = [
+  { re: /^(supplyBaseline|demandYearRevenue)$/, why: "mock 侧的派生量（Σ perBase / 需求侧年营收锚），真后端不以同名字段下发；其对应量已分别由 s3.sup 与 finance 覆盖" },
+  { re: /^sdg\.reconChecks\.Σ子=父\./, why: "见 ONLY_REAL_KNOWN 里同族条目：两侧勾稽校验行不同构、不同名，本门不硬配对" },
+  {
+    re: /^sdg\.demandSide\.drivers\.seg_bias\.(driverValue|share)$/,
+    why:
+      "族聚合规则的产物，不是缺口：`seg_bias` 族在 mock 侧是**独苗**（只算储能）故带下钻证据，" +
+      "真后端有 3 条（逐细分）故按规则不带族级下钻证据（多条时它没有良定义的两侧对应物）。" +
+      "族本身的差异已由 `seg_bias.contribution`（3.0565×）与 `seg_bias.count`（1 vs 3）两行守着。",
+  },
 ];
 
 /**
@@ -407,24 +565,27 @@ const J1 = [
  *    **两侧各自都有**，不是 mock 与真后端之间的差。
  */
 const J2 = [
-  { id: "year_over_month.demand", label: "版本演进 V7 需求(年) ÷ ② 需求合计(月)", num: ["sopVersionRows.[3].demand", "sopVersionRows.[3].demand"], den: ["s2.total.target", "s2.total.target"], ratio: 13.7178 },
-  { id: "year_over_month.gap", label: "供需归因 总缺口(年) ÷ ③ 产销缺口(月)", num: ["sdg.totalGap", "sdg.totalGap"], den: ["s3.gap", "s3.gap"], ratio: 15.4696 },
-  { id: "certfactor.sup", label: "计划版本 供给(不含认证折算) ÷ ③ 供给(含认证折算)", num: ["planVersion.sup", "planVersion.sup"], den: ["s3.sup", "s3.sup"], ratio: 1.1396 },
-  { id: "demand_over_supply.year", label: "需求侧年口径 ÷ 供给侧年口径", num: ["demandYearTotal", "demandYearTotal"], den: ["planTargetYear", "planTargetYear"], ratio: 1.1639 },
-  { id: "year_over_month.target", label: "计划目标(年) ÷ 计划目标(月 2026-06)", num: ["planTargetYear", "planTargetYear"], den: ["planTargetMonth", "planTargetMonth"], ratio: 11.5401 },
+  { id: "year_over_month.demand", label: "版本演进 V7 需求(年) ÷ ② 需求合计(月)", num: "sopVersionRows.V7.demand", den: "s2.total.target", ratio: 13.7178 },
+  { id: "year_over_month.gap", label: "供需归因 总缺口(年) ÷ ③ 产销缺口(月)", num: "sdg.totalGap", den: "s3.gap", ratio: 15.4696 },
+  { id: "certfactor.sup", label: "计划版本 供给(不含认证折算) ÷ ③ 供给(含认证折算)", num: "planVersion.sup", den: "s3.sup", ratio: 1.1396 },
+  { id: "demand_over_supply.year", label: "需求侧年口径 ÷ 供给侧年口径", num: "demandYearTotal", den: "planTargetYear", ratio: 1.1639 },
+  { id: "year_over_month.target", label: "计划目标(年) ÷ 计划目标(月 2026-06)", num: "planTargetYear", den: "planTargetMonth", ratio: 11.5401 },
 ];
 
-/**
- * J3 · 一边没有数（占位 / 缺叶）。**不是量级差，修法完全不同**，故单列。
- * 今天的存量：真后端供给端有 `capacity_gap` 叶（6.3101 万套 · 占该侧 14.2%），
- * mock 侧**整叶不存在** —— `handlers.ts` 注释写的理由是「Line.capacityDaily 未落·忠于 demo 种子」，
- * 而**同一颗 seed 下真后端算得出这一叶** ⇒ 那个理由今天已经不成立（属实测订正，见对照表文档）。
- * 本门只守「不许再多缺一叶」，不替产品决定要不要补 —— 补它=改值，本单不动。
- */
-const J3_KNOWN_MISSING = ["capacity_gap"];
+/* ════════════════════════════════════════════════════════════════════════════
+ * 4 · 归一 + 现算受检面
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+const NM = normalize(MOCK);
+const NR = normalize(REAL);
+const mLeaves = numericLeaves(NM);
+const rLeaves = numericLeaves(NR);
+const both = [...rLeaves.keys()].filter((p) => mLeaves.has(p)).sort();
+const onlyReal = [...rLeaves.keys()].filter((p) => !mLeaves.has(p)).sort();
+const onlyMock = [...mLeaves.keys()].filter((p) => !rLeaves.has(p)).sort();
 
 /* ════════════════════════════════════════════════════════════════════════════
- * 4 · 金丝雀（与主逻辑共用同一批函数 · 不中即「门自己坏了」exit 2）
+ * 5 · 金丝雀（与主逻辑共用同一批函数 · 不中即「门自己坏了」exit 2）
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 function canaries() {
@@ -434,35 +595,35 @@ function canaries() {
   // C1 判据双向：历史真值必须判红，同量级一对必须判绿
   add("ratio/判据双向（生产实物：改前 367.9 vs 真后端 22.6839）", "恒绿的判据把所有偏差藏起来、恒红的把干净读成脏 —— 单向金丝雀两种坏法都测不出", () => {
     const red = bandVerdict("金丝雀·改前 Σ perBase", 367.9, 22.6839, 1);
-    const green = bandVerdict("金丝雀·今天 Σ perBase", pick(MOCK, "s3.sup"), pick(REAL, "s3.sup"), 1);
+    const green = bandVerdict("金丝雀·今天 s3.sup", pick(NM, "s3.sup"), pick(NR, "s3.sup"), 1);
     return { ok: red.ok === false && /16\.2\d+ 倍/.test(red.reason) && green.ok === true, got: `红=${!red.ok}（${red.reason}） · 绿=${green.ok}`, want: "红且点名 16.2x / 绿" };
   });
 
   // C2 真后端抽取：已知必中的路径必须取到有限数
   add("pick/真后端回包（已知必中 s3.sup + sdg.totalGap）", "抽空了 ⇒ 每一行都读作「取不到」或恒 0 ⇒ 门要么恒 2 要么恒绿，两种都不能报「量级一致」", () => {
-    const a = pick(REAL, "s3.sup");
-    const b = pick(REAL, "sdg.totalGap");
+    const a = pick(NR, "s3.sup");
+    const b = pick(NR, "sdg.totalGap");
     return { ok: Number.isFinite(a) && a > 0 && Number.isFinite(b) && b > 0, got: `s3.sup=${a} · sdg.totalGap=${b}`, want: "两者都是正有限数" };
   });
 
   // C3 mock 抽取：MSW 真派发的回包里，已知必中的路径必须取到
   add("pick/mock 回包（已知必中 s3.sup + sdg.demandSide）", "mock 侧抽空 ⇒ 门会把「我没派发到 handler」读成「mock 和后端一致」", () => {
-    const a = pick(MOCK, "s3.sup");
-    const b = pick(MOCK, "sdg.demandSide.contribution");
+    const a = pick(NM, "s3.sup");
+    const b = pick(NM, "sdg.demandSide.contribution");
     return { ok: Number.isFinite(a) && a > 0 && Number.isFinite(b) && b > 0, got: `s3.sup=${a} · sdg.demandSide=${b}`, want: "两者都是正有限数" };
   });
 
   // C4 叶集合差：今天已知真后端有、mock 没有的那一叶必须被差集抓到
   add("leafGap/差集（已知：真后端有 capacity_gap、mock 没有）", "差集坏了 ⇒ 「一边没有数」被静默吞掉，而它的修法与「量级差」完全不同", () => {
-    const realIds = (pick(REAL, "sdg.supplySide.drivers") ?? []).map((d) => leafFamily(d.id));
-    const mockIds = (pick(MOCK, "sdg.supplySide.drivers") ?? []).map((d) => leafFamily(d.id));
+    const realIds = Object.keys(pick(NR, "sdg.supplySide.drivers") ?? {});
+    const mockIds = Object.keys(pick(NM, "sdg.supplySide.drivers") ?? {});
     const g = leafGap(realIds, mockIds);
     return { ok: g.missingOnMock.includes("capacity_gap"), got: `真后端叶=[${realIds}] · mock 叶=[${mockIds}] · 缺=[${g.missingOnMock}]`, want: "缺集合含 capacity_gap" };
   });
 
   // C5 「取不到」必须归 missing，不许被读成「这一项没问题」
   add("pick+ratio/取不到即 missing（不许静默判绿）", "取不到读成 0 或 undefined 再判绿 = 把「我没查出来」写成「一切正常」，本仓最贵的那种假绿", () => {
-    const v = pick(REAL, "s3.__no_such_field_canary__");
+    const v = pick(NR, "s3.__no_such_field_canary__");
     const verdict = bandVerdict("金丝雀·不存在的路径", v, 1, 1);
     return { ok: v === undefined && verdict.missing === true && verdict.ok === false, got: `pick=${v} · missing=${verdict.missing} · ok=${verdict.ok}`, want: "undefined / missing=true / ok=false" };
   });
@@ -472,6 +633,28 @@ function canaries() {
     const hit = extractPayload('noise\n<<<SCALE-JSON>>>{"a":1}\nmore');
     const miss = extractPayload("完全没有负载的一段输出");
     return { ok: hit && hit.a === 1 && miss === null, got: `命中=${JSON.stringify(hit)} · 不该命中=${JSON.stringify(miss)}`, want: '{"a":1} / null' };
+  });
+
+  /* C7 身份归一：**这条是本门最贵的一条金丝雀**。
+   * 按下标比会凭空造出 24 条假差异（实测），把 6 条真差异淹掉。
+   * 判据取自**生产实物**：真后端 s2.rows 首行是 com(4.47)、mock 首行是 pas(14.52)；
+   * 归一后 `s2.rows.pas` 两侧必须都是 14.52 —— 归一坏了这条当场不中。 */
+  add("normalize/身份归一（生产实物：两侧 s2.rows 排序不同）", "按下标比 = 「我用『它们在数组里的位置相同』当作『它们是同一个东西』的证据」，实测凭空造出 24 条假差异", () => {
+    const rawMockFirst = pick(MOCK, "s2.rows.[0].key");
+    const rawRealFirst = pick(REAL, "s2.rows.[0].key");
+    const mPas = pick(NM, "s2.rows.pas.target");
+    const rPas = pick(NR, "s2.rows.pas.target");
+    return {
+      ok: rawMockFirst !== rawRealFirst && Number.isFinite(mPas) && Number.isFinite(rPas) && Math.abs(mPas / rPas - 1) < 0.01,
+      got: `原始首行 mock=${rawMockFirst} / 真后端=${rawRealFirst}（不同即证明下标不可信）· 归一后 s2.rows.pas.target ${mPas} vs ${rPas}`,
+      want: "两侧原始首行不同，且归一后同名细分对得上",
+    };
+  });
+
+  // C8 受检面下界：枚举器一坏集合就变空 ⇒ 交集恒空 ⇒ 门恒绿且一声不吭
+  add("numericLeaves/受检面下界（现算，不写死名册）", "枚举器坏了 ⇒ 受检面变空 ⇒ 门恒报「全部在区间内」，而它一个量都没比", () => {
+    const ok = both.length >= 80 && mLeaves.size >= 80 && rLeaves.size >= 80;
+    return { ok, got: `mock 叶 ${mLeaves.size} · 真后端叶 ${rLeaves.size} · 交集 ${both.length}`, want: "三者都 ≥ 80（今天实测 112 交集）" };
   });
 
   return list;
@@ -492,90 +675,103 @@ if (brokenCanaries.length) {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
- * 5 · 判定
+ * 6 · 判定
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-const j1 = J1.map((row) => ({ row, v: bandVerdict(row.label, pick(MOCK, row.m), pick(REAL, row.r), row.ratio) }));
+/** J0 · 全量同口径对拍（对象集合现算）。 */
+const j0 = both.map((path) => {
+  const exp = EXPECTED[path];
+  const m = mLeaves.get(path);
+  const r = rLeaves.get(path);
+  if (exp && exp.zero === "real") {
+    // 「真后端恒 0、mock 有值」不是倍数问题，是一边没有数 —— 登记后按「真后端仍为 0」判。
+    return { path, m, r, exp, v: { label: path, mock: m, real: r, ratio: NaN, ok: r === 0, missing: false, lo: 0, hi: 0, reason: r === 0 ? `${path}：真后端仍为 0（一边没有数·已登记）` : `${path}：真后端不再是 0（现算 ${r}）⇒ 登记的「一边没有数」已过期，请改判据` } };
+  }
+  return { path, m, r, exp, v: bandVerdict(LABELS[path] ?? path, m, r, exp ? exp.ratio : 1) };
+});
 
 const j2 = J2.map((row) => {
-  const mNum = pick(MOCK, row.num[0]);
-  const mDen = pick(MOCK, row.den[0]);
-  const rNum = pick(REAL, row.num[1]);
-  const rDen = pick(REAL, row.den[1]);
+  const mNum = pick(NM, row.num);
+  const mDen = pick(NM, row.den);
+  const rNum = pick(NR, row.num);
+  const rDen = pick(NR, row.den);
   const mSide = typeof mNum === "number" && typeof mDen === "number" && mDen !== 0 ? mNum / mDen : undefined;
   const rSide = typeof rNum === "number" && typeof rDen === "number" && rDen !== 0 ? rNum / rDen : undefined;
-  // 两侧各自的跨口径比值，都必须落在登记区间；再比两侧是否一致。
   const vMock = bandVerdict(`${row.label} · mock 侧`, mSide, 1, row.ratio, "登记比值");
   const vReal = bandVerdict(`${row.label} · 真后端侧`, rSide, 1, row.ratio, "登记比值");
   const vCross = bandVerdict(`${row.label} · 两侧一致`, mSide, rSide, 1);
   return { row, mSide, rSide, vs: [vMock, vReal, vCross] };
 });
 
-const realLeafIds = (pick(REAL, "sdg.supplySide.drivers") ?? []).map((d) => leafFamily(d.id));
-const mockLeafIds = (pick(MOCK, "sdg.supplySide.drivers") ?? []).map((d) => leafFamily(d.id));
-const gap = leafGap(realLeafIds, mockLeafIds);
-const j3New = gap.missingOnMock.filter((id) => !J3_KNOWN_MISSING.includes(id));
-const j3Fixed = J3_KNOWN_MISSING.filter((id) => !gap.missingOnMock.includes(id));
+/** J3 · 一侧独有的路径：真后端有 mock 没有 = 一边没有数（未登记即红）。 */
+const j3NewReal = onlyReal.filter((p) => !ONLY_REAL_KNOWN.some((k) => k.re.test(p)));
+const j3NewMock = onlyMock.filter((p) => !ONLY_MOCK_KNOWN.some((k) => k.re.test(p)));
 
-/* ── 取不到数 ⇒ RC=2（这一条必须在判红之前，否则「我没查出来」会被写成「你违规了」）── */
-const missing = [...j1.map((x) => x.v), ...j2.flatMap((x) => x.vs)].filter((v) => v.missing);
+/* ── 取不到数 ⇒ RC=2（必须在判红之前，否则「我没查出来」会被写成「你违规了」）── */
+const missing = [...j0.map((x) => x.v), ...j2.flatMap((x) => x.vs)].filter((v) => v.missing);
 if (missing.length) {
-  console.error("⛔ 有登记项在两侧回包里取不到数 —— 本次结论作废（**不许**读作「量级一致」）：");
+  console.error("⛔ 有判据项在两侧回包里取不到数 —— 本次结论作废（**不许**读作「量级一致」）：");
   for (const v of missing) console.error(`  · ${v.reason}`);
-  console.error("   多半是两侧的回包形状改了（字段改名 / 接口换路），先修登记表的取值路径再下结论。");
+  console.error("   多半是两侧的回包形状改了（字段改名 / 接口换路），先修取值路径再下结论。");
   process.exit(2);
 }
 
 /* ── 报告 ── */
 const fmt = (n) => (typeof n === "number" ? (Number.isInteger(n) ? String(n) : n.toFixed(4)) : String(n));
+const tier = (x) => (x.exp ? (x.exp.zero ? "C" : "B") : "A");
 
 if (argv.has("--json")) {
-  console.log(JSON.stringify({ mock: MOCK, real: REAL, j1: j1.map((x) => ({ id: x.row.id, tier: x.row.tier, ...x.v })), j2: j2.map((x) => ({ id: x.row.id, mSide: x.mSide, rSide: x.rSide, vs: x.vs })), j3: { ...gap, known: J3_KNOWN_MISSING } }, null, 1));
+  console.log(JSON.stringify({ mock: MOCK, real: REAL, j0: j0.map((x) => ({ path: x.path, tier: tier(x), ...x.v })), j2: j2.map((x) => ({ id: x.row.id, mSide: x.mSide, rSide: x.rSide, vs: x.vs })), onlyReal, onlyMock }, null, 1));
   process.exit(0);
 }
 
 if (argv.has("--table")) {
-  console.log("| # | 指标 | mock 值 | 真后端值 | 倍数（现算） | 登记区间 | 定性 |");
+  console.log("| # | 指标（现算路径） | mock 值 | 真后端值 | 倍数（现算） | 登记区间 | 定性 |");
   console.log("|---|---|---|---|---|---|---|");
   let i = 0;
-  for (const { row, v } of j1) {
-    const tier = row.tier === "A" ? "量级同·口径同（已对齐）" : "**量级不同但口径相同 ⇒ 真差异**";
-    console.log(`| ${++i} | ${row.label} | ${fmt(v.mock)} | ${fmt(v.real)} | ${fmt(v.ratio)}× | [${fmt(v.lo)}, ${fmt(v.hi)}] | ${tier} |`);
+  const TIER_TEXT = { A: "量级同·口径同（已对齐）", B: "**量级不同但口径相同 ⇒ 真差异**", C: "**一边没有数**（不是量级差）" };
+  for (const x of j0) {
+    if (tier(x) === "A" && !LABELS[x.path]) continue; // A 档只列有标签的代表行，其余进汇总数
+    const label = LABELS[x.path] ? `${LABELS[x.path]}<br>\`${x.path}\`` : `\`${x.path}\``;
+    console.log(`| ${++i} | ${label} | ${fmt(x.m)} | ${fmt(x.r)} | ${Number.isFinite(x.v.ratio) ? `${fmt(x.v.ratio)}×` : "—"} | ${Number.isFinite(x.v.lo) && x.v.hi ? `[${fmt(x.v.lo)}, ${fmt(x.v.hi)}]` : "—"} | ${TIER_TEXT[tier(x)]} |`);
   }
   for (const { row, mSide, rSide } of j2) {
     console.log(`| ${++i} | ${row.label} | ${fmt(mSide)}× | ${fmt(rSide)}× | ${fmt(mSide / rSide)}×（两侧之比） | [${fmt(band(row.ratio)[0])}, ${fmt(band(row.ratio)[1])}] | **口径不同**（两侧各自都是这个数，不是 mock↔后端的差） |`);
   }
-  for (const id of gap.missingOnMock) {
-    const d = (pick(REAL, "sdg.supplySide.drivers") ?? []).find((x) => leafFamily(x.id) === id);
-    console.log(`| ${++i} | 供需归因 供给端叶 \`${id}\` | **整叶不存在** | ${fmt(d?.contribution)}（万套/年） | — | **一边没有数**（不是量级差） |`);
+  for (const p of onlyReal) {
+    const k = ONLY_REAL_KNOWN.find((x) => x.re.test(p));
+    console.log(`| ${++i} | \`${p}\` | **不存在** | ${fmt(rLeaves.get(p))} | — | — | **一边没有数**${k ? "（已登记）" : "（**未登记**）"} |`);
   }
   process.exit(0);
 }
 
-console.log(`· 金丝雀 ${canaryResults.length}/${canaryResults.length} 全中（判据双向 1 · 两侧抽取 2 · 叶差集 1 · 取不到即 missing 1 · 回包正则 1）——两侧的数都真取到了，下面的结论才有资格被相信。`);
+const nA = j0.filter((x) => tier(x) === "A").length;
+const nB = j0.filter((x) => tier(x) === "B").length;
+const nC = j0.filter((x) => tier(x) === "C").length;
+console.log(`· 金丝雀 ${canaryResults.length}/${canaryResults.length} 全中（判据双向 1 · 两侧抽取 2 · 叶差集 1 · 取不到即 missing 1 · 回包正则 1 · **身份归一 1** · 受检面下界 1）——两侧的数都真取到了，下面的结论才有资格被相信。`);
 console.log(`· 两侧均**现算**：mock = 真派发 MSW handler + 模块图求值 · 真后端 = datacore 内存起服 + seedBattery(seed=42, scale=S) 真跑五步与求解器。`);
+console.log(`· **受检面现算，不是手抄名册**：mock 数值叶 ${mLeaves.size} · 真后端 ${rLeaves.size} · **交集 ${both.length} 全部逐条比过**（A 档 ${nA} · B 档真差异 ${nB} · C 档一边没有数 ${nC}）。`);
 
-const j1Bad = j1.filter((x) => !x.v.ok);
+const j0Bad = j0.filter((x) => !x.v.ok);
 const j2Bad = j2.flatMap((x) => x.vs).filter((v) => !v.ok);
-console.log(`· J1 同口径对拍：${J1.length} 行（A 档已对齐 ${J1.filter((r) => r.tier === "A").length} 行 · B 档真差异 ${J1.filter((r) => r.tier === "B").length} 行）· **越界 ${j1Bad.length} 行**`);
+console.log(`· J0 同口径对拍：${both.length} 行 · **越界 ${j0Bad.length} 行**`);
 console.log(`· J2 跨口径关系保真：${J2.length} 组 × 3 判据 · **越界 ${j2Bad.length} 条**`);
-console.log(`· J3 一边没有数：真后端供给端叶 [${realLeafIds}] · mock 侧 [${mockLeafIds}] · 缺 [${gap.missingOnMock}]（已登记 [${J3_KNOWN_MISSING}]）· **新增缺失 ${j3New.length} 条**`);
-if (j3Fixed.length) {
-  console.log(`· ✅ 有人把缺的那一叶补上了：${j3Fixed.join(" , ")} → 请把它从 J3_KNOWN_MISSING 摘掉（只减不增）。`);
-}
+console.log(`· J3 一侧独有：真后端独有 ${onlyReal.length} 条（未登记 ${j3NewReal.length}）· mock 独有 ${onlyMock.length} 条（未登记 ${j3NewMock.length}）`);
 
 if (argv.has("--verbose")) {
-  for (const { row, v } of j1) console.log(`    ${v.ok ? "✓" : "✗"} [${row.tier}] ${v.reason}`);
+  for (const x of j0) console.log(`    ${x.v.ok ? "✓" : "✗"} [${tier(x)}] ${x.v.reason}`);
   for (const { row, mSide, rSide } of j2) console.log(`    · ${row.label}：mock ${fmt(mSide)}× vs 真后端 ${fmt(rSide)}×（登记 ${fmt(row.ratio)}×）`);
+  for (const p of onlyReal) console.log(`    · 仅真后端有：${p} = ${fmt(rLeaves.get(p))}`);
+  for (const p of onlyMock) console.log(`    · 仅 mock 有：${p} = ${fmt(mLeaves.get(p))}`);
 }
 
-if (j1Bad.length || j2Bad.length || j3New.length) {
+if (j0Bad.length || j2Bad.length || j3NewReal.length || j3NewMock.length) {
   console.error(`\n✗ mock-backend-scale:check 未通过：`);
-  for (const { row, v } of j1.filter((x) => !x.v.ok)) {
-    console.error(`  - [J1 ${row.tier}] ${v.reason}`);
+  for (const x of j0Bad) {
+    console.error(`  - [J0 ${tier(x)}] ${x.v.reason}`);
     console.error(
-      `      → 两侧算的是**同一个东西**，比值该是登记的 ${fmt(row.ratio)}×。现在不是了 ⇒ 有一侧动过。` +
-        `\n        修：先判是哪一侧动的（真后端动 ⇒ 这是真的口径演进，更新登记比值并写明理由；` +
+      `      → 两侧算的是**同一个东西**，比值该是 ${x.exp ? `登记的 ${fmt(x.exp.ratio)}×（${x.exp.why}）` : "1×（默认：两侧该相等）"}。` +
+        `\n        修：先判是哪一侧动的（真后端动 ⇒ 真的口径演进，更新 EXPECTED 并写明 why；` +
         `\n            mock 动 ⇒ 多半是把值改回了旧量级）。**不许**为了买绿把区间放宽。`,
     );
   }
@@ -586,12 +782,16 @@ if (j1Bad.length || j2Bad.length || j3New.length) {
         `\n        它变了说明有人把年行压成了月量级（或反过来）—— 那是把对的改错。`,
     );
   }
-  for (const id of j3New) {
-    console.error(`  - [J3] 真后端有、mock 没有的新缺叶：\`${id}\``);
-    console.error(`      → **一边没有数 ≠ 量级差**，修法不同：要么补这一叶，要么在 J3_KNOWN_MISSING 里登记并写明理由。`);
+  for (const p of j3NewReal) {
+    console.error(`  - [J3] 真后端有、mock 没有的**未登记**量：\`${p}\` = ${fmt(rLeaves.get(p))}`);
+    console.error(`      → **一边没有数 ≠ 量级差**，修法不同：要么补上，要么进 ONLY_REAL_KNOWN 并写明 why。`);
+  }
+  for (const p of j3NewMock) {
+    console.error(`  - [J3] mock 有、真后端没有的**未登记**量：\`${p}\` = ${fmt(mLeaves.get(p))}`);
+    console.error(`      → mock 在提供一个真后端不产出的量（G-MOCK-OVERCLAIM 同族）。要么删，要么进 ONLY_MOCK_KNOWN 并写明 why。`);
   }
   process.exit(1);
 }
 
-console.log(`\n✓ mock-backend-scale:check 通过：J1 ${J1.length} 行、J2 ${J2.length} 组、J3 缺叶 ${gap.missingOnMock.length} 条，全部在登记区间/名单内。`);
+console.log(`\n✓ mock-backend-scale:check 通过：J0 ${both.length} 行、J2 ${J2.length} 组、J3 一侧独有 ${onlyReal.length + onlyMock.length} 条，全部在登记区间/名单内。`);
 console.log(`  （诚实边界：本门守的是「登记的比值不许漂」，**不判定这些比值本身对不对** —— 对不对是产品/数据决策，见 docs/MOCK-BACKEND-SCALE.md。）`);
