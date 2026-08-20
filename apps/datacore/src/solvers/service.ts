@@ -22,6 +22,8 @@ import type { OutboxService } from "../outbox.js";
 import type { SolverArtifact, SolverGenDraft } from "@platform/contracts";
 import { capacityForecast, computeByProcessModel, computeRollup, curveMult, patchCapacityContext, type ForecastArgs } from "./capacity.js";
 import { CAPACITY_FACTOR_BINDINGS, matchesGrain, type FactorGrain } from "@platform/contracts";
+// WO-AUDIT-TIMELINE-LIVESOURCE：审计口径 → A8 真日序列源映射（单一出处·loadContext 按需加载 audit_ts_daily）。
+import { AUDIT_KIND_LIVE_SOURCES } from "@platform/contracts";
 import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatrix, counterfactualTimeline, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
 import { capexScenario, type CapexScenarioArgs } from "./capex.js";
@@ -445,6 +447,13 @@ const DECISION_INFO_SOLVERS = new Set(["risk_timeline", "counterfactual_timeline
  * 其余 13 个扩展求解器不载这三样 → 与本单上线前逐字节一致（R6 向后兼容）。
  */
 const COMMERCE_GRAPH_SOLVERS = new Set(["quote_margin"]);
+
+/**
+ * WO-AUDIT-TIMELINE-LIVESOURCE · 需要「A8 真日序列（tsPoints）」的求解器（**按需加载**·照 ADOPTION_AWARE_SOLVERS 写法）。
+ * 只有 `audit_timeline` 要按 `AUDIT_KIND_LIVE_SOURCES`（contracts 单一出处）把真源日序列载进 `ctx.auditTsDaily`。
+ * 不加载 → 字段空对象 → 全部 kind 走 MOCK 哈希投影（与本单上线前逐字节一致·向后兼容 R6·诚实披露不冒充 LIVE）。
+ */
+const AUDIT_TS_SOLVERS = new Set(["audit_timeline"]);
 
 export const SOLVER_REQUIRED_TYPES: Record<string, readonly CoreSolverObjectType[]> = {
   // capacity_rollup：computeRollup 设备→工序→产线→基地 金字塔——只读这 4 类（无 certByModel/订单/健康/检修）。
@@ -5260,6 +5269,8 @@ export class SolverService {
       withDecisionInfo?: boolean;
       /** WO-R8-RECLAIM-ENGINE · 商业图（收编自 handoff-wo-reclaim-engine，与 authCtx 加性并存）。 */
       withCommerceGraph?: boolean;
+      /** WO-AUDIT-TIMELINE-LIVESOURCE · 仅 audit_timeline：按 AUDIT_KIND_LIVE_SOURCES 载 A8 真日序列进 ctx。 */
+      withAuditTs?: boolean;
       /** WO-69 P1 列级：带上调用者身份 → 求解器上下文与读投影同约束（不可读列不进求解器）。 */
       authCtx?: AuthCtx;
     },
@@ -5377,6 +5388,24 @@ export class SolverService {
     // 且 withExtended 已载过时不重复打仓储（保住两单各自的按需加载意图）。
     const bomHeaders = opts?.withExtended ? bomHeadersExt : bomHeadersCommerce;
     const bomDetails = opts?.withExtended ? bomDetailsExt : bomDetailsCommerce;
+    // WO-AUDIT-TIMELINE-LIVESOURCE · A8 真日序列**按需加载**（仅 audit_timeline·其余求解器一次 ts 仓储都不打）。
+    // 映射表 = contracts `AUDIT_KIND_LIVE_SOURCES`（单一出处·引擎零 if 链）；序列没播种/点为空 → 键缺席 →
+    // auditTimeline 对该 kind 走 MOCK 哈希投影 + 诚实披露（绝不冒充 LIVE）。点按 (date,entityId) 升序（R6）。
+    const auditTsDaily: SolverContext["auditTsDaily"] = {};
+    if (opts?.withAuditTs) {
+      const seriesKeys = [...new Set(Object.values(AUDIT_KIND_LIVE_SOURCES).map((s) => s.seriesKey))].sort();
+      for (const seriesKey of seriesKeys) {
+        const series = (await this.repos.tsSeries.list(tenantId, (s) => s.seriesKey === seriesKey))[0];
+        if (!series) continue; // 未播种 → 键缺席（诚实无源）
+        const src = Object.values(AUDIT_KIND_LIVE_SOURCES).find((s) => s.seriesKey === seriesKey)!;
+        const rows = await this.repos.tsPoints.list(tenantId, series.id);
+        const points = rows
+          .map((p) => ({ entityId: p.entityId, date: p.ts.slice(0, 10), value: num(p.values[src.measure], NaN) }))
+          .filter((p) => Number.isFinite(p.value))
+          .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.entityId < b.entityId ? -1 : a.entityId > b.entityId ? 1 : 0));
+        if (points.length > 0) auditTsDaily[seriesKey] = { measure: src.measure, origin: series.origin, points };
+      }
+    }
     const orderCustomerLinks = orderCustLinkRows
       .slice()
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) // R6 确定性
@@ -5428,6 +5457,7 @@ export class SolverService {
       bomDetails: sortById(bomDetails),
       rules,
       ruleSetVersion,
+      auditTsDaily,
     };
   }
 
@@ -5537,6 +5567,8 @@ export class SolverService {
       withDecisionInfo: DECISION_INFO_SOLVERS.has(solverKey),
       // WO-QUOTE-MARGIN-CUSTOMER：真 BOM + 订单客户归属边只给 quote_margin 载（按需·不全表扫）。
       withCommerceGraph: COMMERCE_GRAPH_SOLVERS.has(solverKey),
+      // WO-AUDIT-TIMELINE-LIVESOURCE：A8 真日序列只给 audit_timeline 载（按需·其余求解器零 ts 仓储调用）。
+      withAuditTs: AUDIT_TS_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
     });
     const params =
@@ -5711,6 +5743,8 @@ export class SolverService {
       withDecisionInfo: DECISION_INFO_SOLVERS.has(solverKey),
       // WO-QUOTE-MARGIN-CUSTOMER：真 BOM + 订单客户归属边只给 quote_margin 载（按需·不全表扫）。
       withCommerceGraph: COMMERCE_GRAPH_SOLVERS.has(solverKey),
+      // WO-AUDIT-TIMELINE-LIVESOURCE：A8 真日序列只给 audit_timeline 载（按需·其余求解器零 ts 仓储调用）。
+      withAuditTs: AUDIT_TS_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
       authCtx: ctx, // A6 列级：用户发起的求解走列级投影（S3 —— 求解器不是列级安全的绕行口）
     });

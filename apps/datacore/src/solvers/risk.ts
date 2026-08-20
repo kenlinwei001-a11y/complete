@@ -1,5 +1,7 @@
 import { round, hashString } from "../prng.js";
 import { SEG_REGISTRY, deriveDisposition, deriveDispositionOptions, type DispositionOptions, type Exposure } from "@platform/contracts";
+// WO-AUDIT-TIMELINE-LIVESOURCE：审计口径 → A8 真日序列源映射的**单一出处**在 contracts（引擎零 if 链·R14）。
+import { AUDIT_KIND_LIVE_SOURCES, type AuditKindLiveSource } from "@platform/contracts";
 // WO-DECISION-INFO：决策三块（影响面 / 不作为后果 / 方案代价证据）的派生半。
 import {
   assignExposureRanks,
@@ -1006,43 +1008,101 @@ function buildRiskPlanRows(
  * audit / generate 视图 · 每审计项独立时序（audit_timeline，确定性 R6）：按 kind（产销/毛利/齐套/现金/份额/
  * 爬坡/外协/capex23/struct）出 90 天逐日传导度 series——4 阶段（事件窗→约束越线→波及订单→财务击穿）锚点
  * 分段线性 + 固定 hashN 微抖动 + clamp[40,97]，越线日/峰值。**与产能推演 risk_timeline 同款逐日交互**（前端共用组件）。
- * 形状由 kind 名 hash 确定性派生（R14 无 per-kind 业务常数），阈值取 params.risk.threshold。args: { kind, horizon=90 }。
+ *
+ * WO-AUDIT-TIMELINE-LIVESOURCE（断点 G-AUDIT-TIMELINE-HASH-PROJECTION 数据半）：
+ * 形状曾 100% 由 `hashString(kind)` 派生（同一 kind 恒同一条线·改 kind 名线就变·与真实数据无关）。
+ * 现按 contracts `AUDIT_KIND_LIVE_SOURCES`（单一出处·语义+粒度+量纲实测匹配才收编）分两半：
+ *   · 有真 A8 日序列源的 kind（当前实测只有「产销」→ attainment:base）→ series 由真 tsPoints 逐日派生
+ *     （同日跨基地均值 → 短差×k 投影进传导度显示带）→ dataMode:LIVE + source 披露真源；
+ *     **series 只随真源数据变，kind 名完全不参与**（改 kind 名 ⇒ series 不变）。
+ *   · 无真源的 kind（毛利/齐套/现金/份额/爬坡/外协/capex23/struct）→ 保持既有 MOCK 哈希投影 +
+ *     dataMode:MOCK + provenanceSynthetic + note 诚实披露，绝不冒充 LIVE、也不硬造数据源。
+ * 阈值取 params.risk.threshold。args: { kind, horizon=90 }。
  */
 export function auditTimeline(c: SolverContext, args: Record<string, unknown>): Record<string, unknown> {
   const kind = str(args.kind, "struct");
   const horizon = Math.max(30, Math.floor(num(args.horizon, 90)));
   const threshold = c.params.risk.threshold;
   const h = hashString(kind);
-  const peakDay = 16 + (h % 40);
-  const peakVal = clamp(threshold + 2 + (h % 12), 40, 97);
-  const base = 48 + (h % 10);
-  const series: number[] = [];
-  for (let d = 0; d < horizon; d++) {
-    const ramp = d <= peakDay ? base + (peakVal - base) * (d / Math.max(1, peakDay)) : peakVal - (peakVal - base) * 0.4 * ((d - peakDay) / Math.max(1, horizon - peakDay));
-    const jitter = (hashString(`${kind}:${d}`) % 7) - 3;
-    series.push(round(clamp(ramp + jitter, 40, 97), 0));
+
+  // ── LIVE 半：真源日序列（仅当映射表收编该 kind 且 ctx 真载到了点）──────────────────────────
+  // series = f(真 tsPoints) —— kind 名不出现在任何一处派生里（验收判据：同一时序数据换 kind 名请求，series 逐字节相同）。
+  const liveSrc = (AUDIT_KIND_LIVE_SOURCES as Partial<Record<string, AuditKindLiveSource>>)[kind];
+  const ts = liveSrc ? c.auditTsDaily?.[liveSrc.seriesKey] : undefined;
+
+  let series: number[];
+  let peakDay: number;
+  let repBase: string;
+  let liveMeta: { src: AuditKindLiveSource; days: number; provenanceSynthetic: boolean } | null = null;
+  const baseIds = c.bases.map((b) => str(b.props.baseId)).sort();
+  if (liveSrc && ts && ts.points.length > 0) {
+    // 逐日全实体（基地）算术均值 → 取最近 horizon 天真窗口（只有真数据的日子·绝不臆造补齐）。
+    const sumByDate = new Map<string, { sum: number; n: number }>();
+    for (const p of ts.points) {
+      const e = sumByDate.get(p.date) ?? { sum: 0, n: 0 };
+      e.sum += p.value;
+      e.n += 1;
+      sumByDate.set(p.date, e);
+    }
+    const dates = [...sumByDate.keys()].sort().slice(-horizon);
+    // 短差 → 传导度投影：tension = 40 + (target − 实测) × k，clamp 进既有显示带 [40,97]
+    // （系数/目标锚均在 contracts 映射表·R14 引擎零业务常数；标定依据见表注释）。
+    series = dates.map((d) => {
+      const e = sumByDate.get(d)!;
+      return clamp(round(40 + (liveSrc.target - e.sum / e.n) * liveSrc.k, 0), 40, 97);
+    });
+    peakDay = series.indexOf(Math.max(...series));
+    // 代表基地不再按 kind 哈希选 —— 取窗口内**真均值最差**（达成率最低）的基地（同差按 baseId 升序·R6），
+    // 使当日事件/受影响订单也挂在真数据驱动的基地上。
+    const sumByBase = new Map<string, { sum: number; n: number }>();
+    for (const p of ts.points) {
+      if (!dates.includes(p.date)) continue;
+      const e = sumByBase.get(p.entityId) ?? { sum: 0, n: 0 };
+      e.sum += p.value;
+      e.n += 1;
+      sumByBase.set(p.entityId, e);
+    }
+    repBase = [...sumByBase.entries()]
+      .filter(([b]) => baseIds.includes(b))
+      .sort((a, b) => a[1].sum / a[1].n - (b[1].sum / b[1].n) || (a[0] < b[0] ? -1 : 1))[0]?.[0] ?? "";
+    liveMeta = { src: liveSrc, days: series.length, provenanceSynthetic: ts.origin === "SYNTHETIC" };
+  } else {
+    // ── MOCK 半：无真源 kind 的既有哈希形状投影（一行不动·诚实披露）──────────────────────────
+    const peakVal = clamp(threshold + 2 + (h % 12), 40, 97);
+    const base = 48 + (h % 10);
+    peakDay = 16 + (h % 40);
+    series = [];
+    for (let d = 0; d < horizon; d++) {
+      const ramp = d <= peakDay ? base + (peakVal - base) * (d / Math.max(1, peakDay)) : peakVal - (peakVal - base) * 0.4 * ((d - peakDay) / Math.max(1, horizon - peakDay));
+      const jitter = (hashString(`${kind}:${d}`) % 7) - 3;
+      series.push(round(clamp(ramp + jitter, 40, 97), 0));
+    }
+    // PRD §5：复用 risk_timeline 的 events/affectedOrders 引擎——按 kind hash 选代表基地（确定性 R6）。
+    repBase = baseIds.length > 0 ? baseIds[h % baseIds.length]! : "";
   }
   const crossIdx = series.findIndex((v) => v >= threshold);
   const stages = [
     { d: Math.max(2, peakDay - 14), label: "事件窗" },
     { d: peakDay, label: "约束越线" },
-    { d: Math.min(horizon - 1, peakDay + 7), label: "波及订单" },
-    { d: Math.min(horizon - 1, peakDay + 18), label: "财务击穿" },
+    { d: Math.min(series.length - 1, peakDay + 7), label: "波及订单" },
+    { d: Math.min(series.length - 1, peakDay + 18), label: "财务击穿" },
   ];
-  // PRD §5：复用 risk_timeline 的 events/affectedOrders 引擎——按 kind hash 选代表基地（确定性 R6），
   // 使每审计项逐日轴也带当日事件 + 受影响订单（与产能推演同款悬停详情）。
-  const baseIds = c.bases.map((b) => str(b.props.baseId)).sort();
-  const repBase = baseIds.length > 0 ? baseIds[h % baseIds.length]! : "";
   const events = repBase ? riskEvents(c, repBase, horizon) : [];
   const orders = repBase ? affectedOrders(c, { baseId: repBase, day: crossIdx < 0 ? horizon : crossIdx, peak: Math.max(...series) }).affected : [];
   return {
     kind, series, stages, peak: Math.max(...series), crossDay: crossIdx < 0 ? null : crossIdx, threshold,
-    // 轨M 增量2（audit_timeline 去哈希诚实标·KILL-MOCK-RED）：series/peak/crossDay 是按 kind 名 hashString 确定性派生的
-    // **形状投影**（SolverContext 无逐日审计口径实测时序源）→ dataMode 恒 MOCK + provenanceSynthetic 披露，绝不裸渲染当
-    // 实测真值（前端据此显"估算/合成"，不把恒越线红当真）。真时序/真求解器接入后可升 LIVE（audit_timeline 数据半待补）。
-    dataMode: "MOCK",
-    provenanceSynthetic: true,
-    note: "逐日 series/峰值/越线日为按审计口径名确定性派生的形状投影（无逐日实测时序源）·估算非实测——不裸渲染当真值",
+    // 轨M 增量2（audit_timeline 去哈希诚实标·KILL-MOCK-RED）：无真源 kind 的 series/peak/crossDay 仍是按 kind 名
+    // hashString 确定性派生的**形状投影** → dataMode 恒 MOCK + provenanceSynthetic 披露，绝不裸渲染当实测真值
+    // （前端据此显"估算/合成"，不把恒越线红当真）。
+    // WO-AUDIT-TIMELINE-LIVESOURCE：有真源 kind 升 LIVE——series 由 A8 真日序列逐日派生（source 披露真源·R13），
+    // provenance 维照 tsSeries.origin 如实标（demo 合成世界 SYNTHETIC → true·不谎报"实测"）。
+    dataMode: liveMeta ? "LIVE" : "MOCK",
+    provenanceSynthetic: liveMeta ? liveMeta.provenanceSynthetic : true,
+    note: liveMeta
+      ? `逐日 series/峰值/越线日由 A8 实测日序列 ${liveMeta.src.seriesKey}（${liveMeta.src.measure}·${liveMeta.days} 天）派生——真源时序，非 kind 名哈希投影`
+      : "逐日 series/峰值/越线日为按审计口径名确定性派生的形状投影（无逐日实测时序源）·估算非实测——不裸渲染当真值",
+    ...(liveMeta ? { source: { seriesKey: liveMeta.src.seriesKey, measure: liveMeta.src.measure, days: liveMeta.days } } : {}),
     events: events.map((e) => ({ type: e.type, day: e.day, amp: e.amp, factors: e.factors, ...(e.tag ? { tag: e.tag } : {}), ...(e.obj ? { obj: e.obj } : {}), ...(e.desc ? { desc: e.desc } : {}), ...(e.src ? { src: e.src } : {}) })),
     affectedOrders: orders,
   };
