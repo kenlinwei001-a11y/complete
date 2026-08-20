@@ -190,6 +190,18 @@ export class UnwiredActionExecutor implements ActionExecutor {
   }
 }
 
+/**
+ * ⛔ **假单号产地 —— 自 WO-ACTION-EXECUTOR-CARRIERS 起，`apps/datacore/src` 里零接线**。
+ *
+ * 保留它**不是**为了留一条退路，而是为了让测试能拿它当**反面基准**
+ * （`test/action-noop-exec.seam.test.ts` 用它证明「这就是当年那个假单号长什么样」）。
+ * 它返回 `MO-2026-${hash}`：形态与真工单号一模一样，于是「审批通过但一个字节没写」
+ * 在界面与审计里**无法分辨**，会被当成事实沉淀进决策。
+ *
+ * 判据（`test/action-executor-carriers.seam.test.ts` §E 机器守着）：
+ * **`new MockActionExecutor()` 在 `src/app.ts` 与 `src/actions.ts` 里必须出现 0 次。**
+ * 要兜底就用 `UnwiredActionExecutor`（显式失败 / 显式标注无写入），不许用这个。
+ */
 export class MockActionExecutor implements ActionExecutor {
   async execute(draft: ActionDraft): Promise<{ ok: boolean; targetRef: string }> {
     return { ok: true, targetRef: `MO-2026-${String(1000 + (hashString(draft.id) % 9000))}` };
@@ -508,7 +520,21 @@ function validateParams(schema: Record<string, unknown>, payload: Record<string,
  * transitions emit action.* events through the C-2 outbox.
  */
 export class ActionService {
-  private executor: ActionExecutor = new MockActionExecutor();
+  /**
+   * 执行器**字段默认值** —— 只在「构造了 ActionService 却没调 `setExecutor`」这条路径上生效。
+   *
+   * ⚠️ 此处此前是 `new MockActionExecutor()`（WO-ACTION-EXECUTOR-CARRIERS 实测换掉）。
+   * 生产链路上它**当前不可达**：`buildApp()` 构造完立刻 `actions.setExecutor(domainExecutor)`。
+   * 据实定性：**这是埋雷，不是活 bug**。但默认值的意义恰恰是「谁忘了设，就按这个来」——
+   * 让「忘了设」的后果是**一张形态与真 MO 一模一样的假工单号**，是把最难发现的失败模式设成了缺省：
+   * 审批链全绿、审计留痕齐全、targetRef 看着像真的，而真值一个字节没动。
+   * 缺省的失败方向必须是「我没写」，不是「我写了（其实没有）」。
+   *
+   * `UnwiredActionExecutor` 按 `ACTION_WIRING` 分流：内置已注册型 → 诚实失败；
+   * 租户自注册键 → `ok:true` 但 `targetRef` 自证 `NO_WRITE:<key>`（**绝不产出 MO 形态字符串**）。
+   * 守卫：`test/action-executor-carriers.seam.test.ts` §D（不 setExecutor 直接跑，断言不回假单号）。
+   */
+  private executor: ActionExecutor = new UnwiredActionExecutor();
   private retryDelaysMs = [50, 100, 200];
   /**
    * Action 三段埋点注册表。`app.ts` 构造处传入 app 级 Metrics → 埋点直接汇入 `/metrics` 输出

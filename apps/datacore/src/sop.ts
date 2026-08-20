@@ -422,7 +422,15 @@ export class SopService {
     return { targetRef: v.id };
   }
 
-  /** 「计划版本变更」Action EXECUTED → FINAL 版本的唯一合法字段变更路径（非 S&OP 版本 → null，回落 mock）。 */
+  /**
+   * 「计划版本变更」Action EXECUTED → FINAL 版本的唯一合法字段变更路径。
+   *
+   * ⚠️ 本注释原文是「非 S&OP 版本 → null，**回落 mock**」——**该语义 2026-08-20 已废**
+   * （WO-ACTION-EXECUTOR-CARRIERS）。`null` 现在**不再**意味着"交给兜底执行器处理"：
+   * 调用方 `app.ts domainExecutor` 的 `计划版本变更` 分支收到 null 后**当场诚实失败**，
+   * 并在错误里把定性说清（「引用的承载对象不存在」，≠「本型没接执行器」）。
+   * 改这里的返回语义前先读那一段注释：穿透回兜底线会让一个**已接线**的型冒充「没接线」。
+   */
   async applyChangeAction(tenantId: string, draft: ActionDraft): Promise<{ targetRef: string } | null> {
     const versionId = String(draft.payload.versionId ?? "");
     const v = await this.repos.sopVersions.get(tenantId, versionId);
