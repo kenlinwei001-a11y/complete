@@ -2174,8 +2174,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   // WO-ENGINE-2 件二·半边A：检查点**列表读端**。仓储三处（repo.ts 接口 / memory.ts / pg.ts）早就写好了
   // `listCheckpoints`，但 24 条 `/a/v1/sim/*` 路由里从没有人开这个口 —— 病根在 route 层，不在前端。
-  // 后果：`sim.checkpoint_saved` 事件没有可失效的缓存（前端无列表可读），回滚/分支只能靠调用方自己记
-  // checkpointId。开此路由后该事件才具备真接线条件（前端 useQuery 属 WO-1/WO-4 边界，不在本单）。
+  // 接线状态（2026-08-20 · WO-EVENT-SUB-CLOSURE）：本路由 + 前端 checkpointsQuery（WO-BEFE-E）齐备，
+  // `sim.checkpoint_saved` 已真接线（EVENT_INVALIDATES → ["a","sim-checkpoints"] 前缀失效），
+  // `sim.*` 六事件自此全部有真消费方。
   // ⚠️ R9 双实现一致性：排序**必须**落在本层，不能指望两个仓储各自 ORDER BY —— 它们今天就不一致：
   // `repo/pg.ts:103` 是 `ORDER BY tick`（且 tick 相同时次序由 DB 任意决定，非全序），
   // 而 `repo/memory.ts:70` **一个 sort 都没有**（Map 插入序）。沙盘的常规动作正好会踩中这个分叉：

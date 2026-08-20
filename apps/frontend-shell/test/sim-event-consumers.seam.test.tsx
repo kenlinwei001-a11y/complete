@@ -36,11 +36,15 @@ import SandboxView from "@/views/sim/SandboxView";
 
 // ── 本门自己的"服务端"（可在组件不知情时被改动，用于模拟另一个标签页的动作）──────────
 type Sess = { id: string; tenantId: string; baseSnapshot: Record<string, unknown>; scope: Record<string, unknown>; status: string; curTick: number; parentCheckpointId: string | null; createdAt: string };
+type Cp = { id: string; sessionId: string; tenantId: string; tick: number; label: string; createdAt: string };
 let sessions: Sess[] = [];
 let worlds: Record<string, { tick: number; state: Record<string, Record<string, number>> }> = {};
+/** 服务端存档（按会话）；WO-EVENT-SUB-CLOSURE 加的「另一个标签页存了档」模拟位。 */
+let checkpoints: Record<string, Cp[]> = {};
 /** 服务端被打了几次（用于证明"没发事件就没有重取"，而不是靠肉眼看屏）。 */
 let sessionListHits = 0;
 let worldHits = 0;
+let checkpointHits = 0;
 
 function installHandlers() {
   server.use(
@@ -62,6 +66,12 @@ function installHandlers() {
       worldHits += 1;
       const id = String((params as { id: string }).id);
       return HttpResponse.json(worlds[id] ?? { tick: 0, state: {} });
+    }),
+    // WO-EVENT-SUB-CLOSURE：存档清单读端（WO-ENGINE-2 开的路由），本门自己的存档 store。
+    http.get("*/a/v1/sim/sessions/:id/checkpoints", ({ params }) => {
+      checkpointHits += 1;
+      const id = String((params as { id: string }).id);
+      return HttpResponse.json({ items: checkpoints[id] ?? [] });
     }),
     // 就绪认证：本门不测它，给个形状合法的最小回包即可（失败只会让右栏少一块，不影响断言）。
     http.get("*/a/v1/sim/sessions/:id/certification", () =>
@@ -121,8 +131,10 @@ async function waitForMainWorld() {
 beforeEach(() => {
   sessions = [];
   worlds = {};
+  checkpoints = {};
   sessionListHits = 0;
   worldHits = 0;
+  checkpointHits = 0;
   installHandlers();
 });
 afterEach(() => cleanup());
@@ -243,5 +255,47 @@ describe("WO-L4B · sim.* 事件 → 前端真消费方（效果层：断言屏�
         "本地分支后世界列表没多出子世界 —— 修前它只落在 useState(branchId)，刷新即丢",
       ).toBeInTheDocument(),
     );
+  });
+
+  /**
+   * ══ WO-EVENT-SUB-CLOSURE · 最后一个 sim.* 缺口的效果层闭环 ══
+   * 咬的是「`sim.checkpoint_saved` 到达 ⇒ 存档清单**真的重取、屏上真的多出那一档**」——
+   * 不是「订阅函数被注册了」。发起方本页本来就不靠这条事件（onCheckpoint 本地失效），
+   * 它管的是**另一个标签页/另一个用户**存的档。
+   */
+  it("⑤ sim.checkpoint_saved → 存档清单真重取、别的标签页存的档真的出现在屏上", async () => {
+    mount();
+    await waitForMainWorld();
+    // 起跑线：本门的服务端里一张存档都没有 ⇒ 屏上是诚实空态。
+    await waitFor(() =>
+      expect(screen.getByTestId("sandbox-checkpoints-empty")).toHaveTextContent("还没有存档"),
+    );
+
+    // 另一个标签页（或另一个用户）存了一档：服务端多了一条，本页尚不知情。
+    checkpoints["sims_main"] = [
+      { id: "simcp_x1", sessionId: "sims_main", tenantId: "demo", tick: 3, label: "tick3", createdAt: "2026-08-20T00:00:00.000Z" },
+    ];
+
+    // ★ 前置（文件头 ②）：没发事件 ⇒ 不重取，屏上仍是空态 —— 否则下面的断言证明不了是事件的功劳。
+    const hitsBefore = checkpointHits;
+    await new Promise((r) => setTimeout(r, 50));
+    expect(
+      screen.queryByTestId("sandbox-checkpoint-simcp_x1"),
+      "还没发事件，新存档就已经在屏上了 —— 说明它是被别的机制刷出来的，本门的断言不成立",
+    ).toBeNull();
+    expect(checkpointHits, "没发事件就发生了重取 —— 事件链路的断言前提不成立").toBe(hitsBefore);
+
+    // ★ 事件到达（真实链路里由 useDomainEventStream 轮询 /a/v1/outbox 后调用同一个函数）。
+    invalidateForEvent("sim.checkpoint_saved");
+
+    // ★ 效果层断言：真的重取了，且那一档**真的出现在 DOM 里**，tick 来自服务端不是前端猜的。
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("sandbox-checkpoint-simcp_x1"),
+        "发了 sim.checkpoint_saved 但存档清单没刷出那一档 —— 事件发了没人收，别的标签页存的档永远看不见",
+      ).toBeInTheDocument(),
+    );
+    expect(checkpointHits, "没有发生真重取（GET …/checkpoints 没被打）——那行是从哪变出来的？").toBeGreaterThan(hitsBefore);
+    expect(screen.getByTestId("sandbox-checkpoint-tick-simcp_x1")).toHaveTextContent("tick 3");
   });
 });

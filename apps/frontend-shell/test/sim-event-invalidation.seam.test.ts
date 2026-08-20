@@ -99,7 +99,7 @@ describe("A10 接缝 · sim.* 事件 → 前端查询键真失效", () => {
       expect(reason.length, `${event} 的缺口理由是空的`).toBeGreaterThan(10);
       expect(EVENT_INVALIDATES[event], `${event} 既接了线又记在缺口台账，自相矛盾`).toBeUndefined();
     }
-    // 今天的实测基线：7 处 emit / 6 个不同事件名 ⇒ **5 接线 + 1 缺口**。
+    // 今天的实测基线：7 处 emit / 6 个不同事件名 ⇒ **6 接线 + 0 缺口**。
     // 数变了说明 emit 侧动过 —— 停下来重新判断消费方，别让它悄悄漂过去。
     // 变更史：
     //   6/5/4 → 7/6/5（WO-P0 · 2026-08-09 新增 `sim.perturbation_created` emit，按本门要求
@@ -108,13 +108,16 @@ describe("A10 接缝 · sim.* 事件 → 前端查询键真失效", () => {
     //                  扰动清单读端真进了 TanStack Query（PerturbationTimeline 的 listQuery），
     //                  前任写死的出台账条件达成 ⇒ `sim.perturbation_created` 转真接线。
     //                  **emit 处数与事件名数都没动** —— 本单一行 emit 都没加，只补消费方）。
+    //   缺口 1 → 0（WO-EVENT-SUB-CLOSURE · 2026-08-20：出台账三条件逐条达成 —— 读端路由
+    //                  WO-ENGINE-2 件二（08-13）+ 真缓存 WO-BEFE-E 的 checkpointsQuery
+    //                  + agentcore 登记（本单）⇒ `sim.checkpoint_saved` 转真接线，台账清空。
+    //                  **emit 侧同样一行没动**，7/6 不变）。
     const emitted = emittedSimEvents();
     expect(emitted.length, "datacore sim.* emit 处数变了，重新核消费方").toBe(7);
     expect(new Set(emitted).size, "datacore sim.* 事件名数变了，重新核消费方").toBe(6);
-    expect(Object.keys(SIM_EVENT_GAPS).length).toBe(1);
-    // 唯一剩下的缺口是 checkpoint（成因是**后端没开列表路由**，不是前端没接）——写死它，
-    // 免得哪天有人把别的事件悄悄塞回台账当挡箭牌。
-    expect(Object.keys(SIM_EVENT_GAPS).sort()).toEqual(["sim.checkpoint_saved"]);
+    // 台账今日为空（机制保留）：哪天它又长出条目，每条必须有理由（上面的循环守着），
+    // 且不允许拿台账当「悄悄不接线」的挡箭牌 —— 新增 emit 而不接线也不记账 ⇒ 测试④红。
+    expect(Object.keys(SIM_EVENT_GAPS).length, "缺口台账应为空：最后一个缺口 sim.checkpoint_saved 已闭环").toBe(0);
   });
 
   /**
@@ -204,5 +207,42 @@ describe("A10 接缝 · sim.* 事件 → 前端查询键真失效", () => {
       [...registered].sort(),
       "前端接线的 sim.* 与 agentcore 登记的对不上——事件→标签的单一来源在后端，必须同步",
     ).toEqual([...wiredInFrontend].sort());
+  });
+
+  /**
+   * ══ WO-EVENT-SUB-CLOSURE（2026-08-20）· 最后一个 sim.* 缺口闭环 ══
+   * 与前几条同款纪律：咬**副作用**（真 query 被标脏）不咬「订阅函数被调过」，键锚在
+   * SandboxView 源码真实字面量上，事件名拼错的反证必须什么都不失效。
+   */
+  it("⑫ sim.checkpoint_saved → 存档清单 query 真失效（跨标签页收到别的用户存的档）", () => {
+    // 真 key 尾带 sessionId（SandboxView 的 checkpointsQuery），前缀失效必须能盖住。
+    const cpKey = [...SIM_CONSUMER_KEYS.simCheckpoints, "sims_abc"];
+    queryClient.setQueryData(cpKey, { items: [] });
+    expect(queryClient.getQueryState(cpKey)?.isInvalidated).toBe(false);
+
+    invalidateForEvent("sim.checkpoint_saved");
+
+    expect(
+      queryClient.getQueryState(cpKey)?.isInvalidated,
+      "存档事件到达但存档清单没失效——别的标签页/别的用户存的档，本页永远看不见（本单要闭的就是这个）",
+    ).toBe(true);
+  });
+
+  it("⑬ checkpoint 接线的防漂移锚 + 拼错事件名反证", () => {
+    const view = readRepoFile("../src/views/sim/SandboxView.tsx");
+    expect(view.length, "SandboxView.tsx 读到了空内容——路径漂了").toBeGreaterThan(1000);
+    // 视图侧真实字面量（改了这行而不改失效表 → 本条红）。
+    expect(view).toContain(`queryKey: ["a", "sim-checkpoints", sessionId ?? ""]`);
+    // 表侧锚点必须与之同源。
+    expect(SIM_CONSUMER_KEYS.simCheckpoints).toEqual(["a", "sim-checkpoints"]);
+    // 且这个前缀确实是 sim.checkpoint_saved 走的那条标签映射出来的。
+    expect(EVENT_INVALIDATES["sim.checkpoint_saved"]).toContain("sim-checkpoints");
+    // 反证：事件名拼错一个字母 → 什么都不失效（证咬的是真事件名，不是任意字符串）。
+    const cpKey = [...SIM_CONSUMER_KEYS.simCheckpoints, "sims_abc"];
+    queryClient.setQueryData(cpKey, { items: [] });
+    for (const bad of ["sim.checkpoint_save", "sim.checkpoints_saved", "sim_checkpoint_saved"]) {
+      invalidateForEvent(bad);
+    }
+    expect(queryClient.getQueryState(cpKey)?.isInvalidated).toBe(false);
   });
 });

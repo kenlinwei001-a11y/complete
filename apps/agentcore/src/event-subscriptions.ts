@@ -120,8 +120,11 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   // `sim-world` 一并失效：同一处理器在 emit 前对**已在当前 tick 生效**的扰动走
   // `simApplyAtCurrentTick` → `putTickState`（app.ts:1624），世界态真的变了。
   { event: "sim.perturbation_created", producer: "推演沙盘·施加/排期一条扰动（POST /a/v1/sim/sessions/:id/perturbations · app.ts:1626）", tier: "IN_SESSION", invalidates: ["sim-perturbations", "sim-world"] },
-  // sim.checkpoint_saved **仍不登记**：datacore 没有列出检查点的路由（listCheckpoints 仓储层写好了，但 route 层从不调用），
-  // 前端无列表可缓存。理由与解法逐条记在 frontend-shell/src/store/eventInvalidation.ts 的 SIM_EVENT_GAPS。
+  // sim.checkpoint_saved（WO-EVENT-SUB-CLOSURE · 2026-08-20 补登记）：此前不登记的理由已全消 ——
+  // datacore 读端 GET /a/v1/sim/sessions/:id/checkpoints 已开（WO-ENGINE-2 件二），
+  // 前端真缓存 = SandboxView 的 checkpointsQuery `["a","sim-checkpoints",sessionId]`（WO-BEFE-E），
+  // 存档/回滚都经它出。本条登记后 `sim.*` 六事件全部闭环（frontend SIM_EVENT_GAPS 台账今日为空）。
+  { event: "sim.checkpoint_saved", producer: "推演沙盘·存档检查点（POST /a/v1/sim/sessions/:id/checkpoint）", tier: "IN_SESSION", invalidates: ["sim-checkpoints"] },
   // ── L19 业务流程实例环（WO-FLOWTIME）───────────────────────────────────────────
   // 生产者：`apps/datacore/src/process/reconstruct.ts reconstructAndPersist()`，由求解器
   // `process_flow_time` 与端点 `GET /a/v1/process-definitions/:key/instances` 两处调用。
