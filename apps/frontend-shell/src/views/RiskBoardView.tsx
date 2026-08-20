@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RiskTimelineOutput } from "@platform/contracts";
 import { RiskTimelineOutputSchema, BottleneckMatrixOutputSchema, SEG_REGISTRY, TIGHTNESS_METRIC, formatTightness } from "@platform/contracts";
@@ -1067,6 +1067,17 @@ function RiskDetailPanel({
     },
     [onLiveStateChange],
   );
+  // WO-CAPACITY-QAPANEL-REAL-NL · 「模板问答」→「真对话」的**那条路**。
+  // 只在本面板自己挂的 wrapper 里找输入框（不满屏 querySelector），且**不改 CapacityLiveDialog 一个字**
+  // ——那条线已落地，本单的范围边界明写不许碰它。
+  // jsdom 不实现 scrollIntoView（`undefined`）⇒ 必须先探再调，否则测试里抛 TypeError 把真断言掩掉。
+  const liveDialogRef = useRef<HTMLDivElement | null>(null);
+  const focusLiveDialog = useCallback(() => {
+    const host = liveDialogRef.current;
+    if (!host) return;
+    if (typeof host.scrollIntoView === "function") host.scrollIntoView({ block: "center", behavior: "smooth" });
+    host.querySelector("input")?.focus();
+  }, []);
   const baseDag: DagData | undefined = gapAttributionToBaseRootCause(ga, card.base);
   // 结构/因果根因因素标签（供 CI-b「对症根因」对齐·真出处=同一 gap_attribution 投影）。
   const rootCauseFactors = (baseDag?.nodes ?? []).filter((n) => n.kind === "factor").map((n) => n.label);
@@ -1247,14 +1258,18 @@ function RiskDetailPanel({
       {/* WO-CAPLIVE-2 活能力③ · 方案存/分支/横比（decision_play 范式·复用沙盘存档语义·一键采纳走 Action 审批）。 */}
       <CapacityScenarioPanel baseId={baseIdForScope} live={liveState} />
 
-      {/* 两栏（.rk-two）：左对症方案 + 推演链（mitigation_select 真求解器）· 右对话态 QA（同源真数据 R6）。 */}
+      {/* 两栏（.rk-two）：左对症方案 + 推演链（mitigation_select 真求解器）· 右卡内模板问答（关键词匹配·非对话）。 */}
       <div className={styles.rkTwo}>
         <MitigationCards base={card.base} factor={card.factor} tightness={card.peak} threshold={threshold} rootCauseFactors={rootCauseFactors} />
-        <QaPanel card={card} threshold={threshold} />
+        <QaPanel card={card} threshold={threshold} onEscalate={focusLiveDialog} />
       </div>
 
-      {/* WO-CAPLIVE-2 活能力② · 人机对话（真 NL·经 orchestrator·替 QaPanel 正则假 NL）。 */}
-      <CapacityLiveDialog baseId={baseIdForScope} baseName={card.base} factor={rcFactor ?? card.factor} />
+      {/* WO-CAPLIVE-2 活能力② · 人机对话（真 NL·经 orchestrator）。
+          WO-CAPACITY-QAPANEL-REAL-NL：外层 ref 只做「模板问答 → 这里」的落点（滚动 + 转焦点），
+          `CapacityLiveDialog` 本身一个字没动（它已落地，本单不碰）。 */}
+      <div ref={liveDialogRef}>
+        <CapacityLiveDialog baseId={baseIdForScope} baseName={card.base} factor={rcFactor ?? card.factor} />
+      </div>
     </div>
   );
 }
@@ -1978,36 +1993,85 @@ function MitigationCards({ base, factor, tightness, threshold, rootCauseFactors 
   );
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * WO-CAPACITY-QAPANEL-REAL-NL · 本框的第一层文案（短语·非说明）。
+ * 说明性的整句一律在 `?` 浮层里（规范 R-UI-3：口径不进第一层），这里只留「名字 / 状态」。
+ * ═══════════════════════════════════════════════════════════════════════════ */
+/** 种类记号：屏上一眼分清「这不是下面那个对话框」。第一层唯一必须常驻的记号。 */
+const QA_KIND_MARK = "📋 模板问答 · 非对话";
+/** 没匹配上时的**状态**（不是答案）。旧实现在这一支返回一句伪装成答案的兜底文，正是本单要治的病。 */
+const QA_MISS_TEXT = "这句没匹配上模板";
+/** 没匹配上时告诉用户本框认哪几个词（短语·非成段说明）。 */
+const QA_MISS_HINT = "只认：客户/订单/越线/后果";
+/** 通往真对话的那条路（点它 → 下方真对话滚进视野并接管焦点）。 */
+const QA_ESCALATE_TEXT = "转到下方真对话";
+
+/** 本框一次问答的结果三态：`idle` 还没问 · `hit` 匹配上了 · `miss` **没匹配上**（不许冒充答案）。 */
+type QaResult = { state: "idle" | "hit" | "miss"; text: string };
+
 /**
- * 对话态 QA（右栏 · 两态同源 R6）：预设问 + 追问框，答案**确定性派生自本卡已取的真求解器输出**
- * （affectedOrders / crossDay / peak / factor），非另起 LLM、非伪造——与嵌入态同一批真数据同源。
+ * 卡内模板问答（右栏）—— **关键词匹配，不是对话**。
+ *
+ * ── 它是什么、为什么不改成真 LLM 路（WO-CAPACITY-QAPANEL-REAL-NL 的取舍）────────────
+ * 本框回答的四问（哪些客户 / 哪些订单 / 为什么越线 / 最坏后果）全部由**浏览器里已经有的那份**
+ * 真求解器输出（`card.affectedOrders` / `crossDay` / `peak` / `factor`）确定性派生：零网络、零延迟、
+ * 同输入同输出。把它改走 `askCapacityLive` 那条真 NL 路**会更差且答不上来**——
+ * 后端 `classifyCapacityQuestion` 对「影响哪些客户？」判 `isWhatIf=false`（句中无数字）→
+ * 落到 `gap_attribution` 结构反向归因，回的是根因分摊叙述，**里面没有客户名单**。
+ * 所以本单选「诚实降级」而非「换心」：不让它假装是对话，而不是让它去顶替一条它顶不了的路。
+ *
+ * ── 那病灶到底在哪（本单真正改掉的东西）──────────────────────────────────────────
+ * 不在「用了正则」，在**匹配不上时它撒谎**：旧兜底支返回
+ * 「已知本卡真值：峰值 96 · T+5 越线 …可问：…」——一句**读起来像答案**的话。
+ * 用户把真问题（如「化成良率降到 92% 产能少多少」）打进这个框，拿到这句，
+ * 而 30px 之下就是能真答的对话框，他**无从判断自己那句被理解了没有**。
+ * 现在：匹配上 → 原样作答（一个字没改）；匹配不上 → 明说「没匹配上」并给出转真对话的按钮。
+ *
+ * @param onEscalate 交给下方真对话（由 `RiskDetailPanel` 提供·滚动 + 转焦点·不改 CapacityLiveDialog 一个字）。
  */
-function QaPanel({ card, threshold }: { card: RiskCard; threshold: number }) {
-  const [ans, setAns] = useState<string>(zh.risk.qa.intro);
+function QaPanel({ card, threshold, onEscalate }: { card: RiskCard; threshold: number; onEscalate: () => void }) {
+  const [ans, setAns] = useState<QaResult>({ state: "idle", text: zh.risk.qa.intro });
   const [input, setInput] = useState("");
   const orders = (card.affectedOrders ?? []) as Record<string, unknown>[];
   const custs = [...new Set(orders.map((o) => String(o.cust ?? "")).filter(Boolean))];
   const sos = orders.map((o) => String(o.so ?? "")).filter(Boolean);
 
-  const answer = (q: string): string => {
-    if (/客户|谁/.test(q)) return custs.length ? `受威胁客户 ${custs.length} 家：${custs.join("、")}（源：受影响订单去重）。` : "该基地当前无关联受影响客户（受影响订单为空）。";
-    if (/订单|批/.test(q)) return sos.length ? `受影响订单 ${sos.length} 批：${sos.slice(0, 8).join("、")}${sos.length > 8 ? " 等" : ""}。` : "该基地当前无在产订单落入越线传导窗口。";
-    if (/为什么|原因|越线/.test(q)) return `${card.factor} ${card.crossDay != null ? `预计 T+${card.crossDay} 越线（阈值 ${threshold}）` : "窗口内暂不越线"}；峰值张力 ${Math.round(card.peak)}。`;
-    if (/最坏|后果|影响/.test(q)) return `最坏后果：${custs.length} 家客户 / ${sos.length} 批订单受影响${card.crossDay != null ? `，最早 T+${card.crossDay} 越线` : ""}。`;
-    return `已知本卡真值：峰值 ${Math.round(card.peak)} · ${card.crossDay != null ? `T+${card.crossDay} 越线` : "不越线"} · 受威胁客户 ${custs.length} · 订单 ${sos.length} 批。可问：影响哪些客户 / 哪些订单 / 为什么越线 / 最坏后果。`;
+  // 四条模板逐字保持原答案（本单不许把已能回答的问题弄丢）；变的只有**兜底那一支**。
+  const answer = (q: string): QaResult => {
+    if (/客户|谁/.test(q)) return { state: "hit", text: custs.length ? `受威胁客户 ${custs.length} 家：${custs.join("、")}（源：受影响订单去重）。` : "该基地当前无关联受影响客户（受影响订单为空）。" };
+    if (/订单|批/.test(q)) return { state: "hit", text: sos.length ? `受影响订单 ${sos.length} 批：${sos.slice(0, 8).join("、")}${sos.length > 8 ? " 等" : ""}。` : "该基地当前无在产订单落入越线传导窗口。" };
+    if (/为什么|原因|越线/.test(q)) return { state: "hit", text: `${card.factor} ${card.crossDay != null ? `预计 T+${card.crossDay} 越线（阈值 ${threshold}）` : "窗口内暂不越线"}；峰值张力 ${Math.round(card.peak)}。` };
+    if (/最坏|后果|影响/.test(q)) return { state: "hit", text: `最坏后果：${custs.length} 家客户 / ${sos.length} 批订单受影响${card.crossDay != null ? `，最早 T+${card.crossDay} 越线` : ""}。` };
+    // ⚠ 这一支**不许**返回任何读起来像答案的句子。诚实位纪律：「我没懂你这句」和「一切顺利」在屏上必须分得开。
+    return { state: "miss", text: QA_MISS_TEXT };
   };
   const presets = ["影响哪些客户？", "哪些订单受影响？", "为什么会越线？", "最坏后果是什么？"];
+  const missed = ans.state === "miss";
 
   return (
-    <div>
-      {/* 假NL 修：诚实标"预设快答·非智能问答"——入口是关键词匹配非自然语言理解/LLM；答案数字仍派生自本卡真求解器输出。 */}
-      <div className={styles.wfT} style={{ color: "var(--c-capacity-txt)" }}>{zh.risk.qa.title}</div>
+    <div className={styles.qaTpl} data-testid="risk-qa-panel">
+      {/* 第一层只留**种类记号**（短语）；「预设快答（关键词匹配·非智能问答）· 同源求解器」这句完整口径
+          降进下方 `?` 浮层（规范 §1：允许降到浮层、绝不允许删除，且第一层留可见记号）。 */}
+      <div className={styles.wfT}>
+        <span className={styles.qaKind} data-testid="risk-qa-kind">{QA_KIND_MARK}</span>
+      </div>
       <div className={styles.qaChips}>
         {presets.map((q) => (
           <button key={q} className={styles.qaChip} data-testid={`qa-chip-${q}`} onClick={() => setAns(answer(q))}>{q}</button>
         ))}
       </div>
-      <div className={styles.rkAns} data-testid="risk-qa-answer">{ans}</div>
+      <div
+        className={missed ? `${styles.rkAns} ${styles.qaMiss}` : styles.rkAns}
+        data-testid="risk-qa-answer"
+        data-qa-state={ans.state}
+      >
+        {ans.text}
+      </div>
+      {missed && (
+        <div className={styles.rkCF} data-testid="risk-qa-unmatched" style={{ marginTop: 6 }}>
+          <span>{QA_MISS_HINT}</span>
+        </div>
+      )}
       <div className={styles.rkAsk}>
         <input
           value={input}
@@ -2018,10 +2082,15 @@ function QaPanel({ card, threshold }: { card: RiskCard; threshold: number }) {
         />
         <button data-testid="risk-qa-ask" onClick={() => { if (input.trim()) { setAns(answer(input)); setInput(""); } }}>{zh.risk.qa.ask}</button>
       </div>
+      {/* 进真对话的那条路——常驻（不只在没匹配上时才出现：**能不能问**不该取决于上一句问得巧不巧）。 */}
+      <div>
+        <button type="button" className={styles.qaEsc} data-testid="risk-qa-escalate" onClick={onEscalate}>{QA_ESCALATE_TEXT}</button>
+      </div>
       {/* WO-UI-DECLUTTER-TOP3：诚实位「这不是智能问答」降进 `?` 浮层，
           第一层留 `?` 记号（规范 §1：静默降层等于删除 —— 记号不能省）。 */}
       <div data-testid="risk-qa-disclosure" style={{ marginTop: 6, fontSize: 12, color: "var(--muted2)", lineHeight: 1.5 }}>
         <InfoPopover topic={zh.risk.info.qa} testId="risk-qa-disclosure-info">
+          <p>{zh.risk.qa.title}</p>
           <p>{zh.risk.qa.disclosure}</p>
           <p>{zh.risk.qa.intro}</p>
         </InfoPopover>

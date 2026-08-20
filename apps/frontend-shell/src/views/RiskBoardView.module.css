@@ -349,6 +349,47 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* ── WO-CAPACITY-QAPANEL-REAL-NL · 模板问答 ≠ 真对话，**外观必须分得开** ───────────
+ * 病灶：本页同屏并列两个「聊天框」——上面那个是关键词匹配（QaPanel），下面那个是真 NL
+ * （CapacityLiveDialog，经 orchestrator 走真求解器），而两者用的是**同一批 class**
+ * （.qaChips/.qaChip/.rkAsk/.rkAns），连标题都同以 💬 开头。于是用户把真问题打进上面那个框，
+ * 拿到一句看着像答案的兜底文，**无从判断自己那句到底被理解了没有**。
+ * 对策：真对话保持原观感不动（那条线已落地，不碰），只把模板框改成「工具」观感——
+ * 虚线边 + 静音底 + 第一层一个种类记号，一眼分得清哪个是对话、哪个是查表。
+ * 全部走 token，不写死十六进制（页面在暗/亮/暖三套主题下渲染）。 */
+.qaTpl {
+  border: 1px dashed var(--line2);
+  border-radius: 9px;
+  padding: 10px 11px;
+  background: var(--hover-tint);
+}
+/* 第一层的**可见记号**（规范 §1：诚实位可降浮层，但第一层必须留记号，静默降层等于删除）。 */
+.qaKind {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px dashed var(--line2);
+  background: var(--panel2);
+  color: var(--muted2);
+}
+/* 没匹配上时的答案框：**不许**长得像一条答案（旧实现在这里返回一句伪装成答案的兜底文）。 */
+.qaMiss {
+  border-style: dashed;
+  border-color: var(--warn-txt);
+  color: var(--warn-txt);
+}
+/* 模板框里唯一通往下方真对话的出口（点它 → 真对话滚进视野并接管焦点）。 */
+.qaEsc {
+  margin-top: 8px;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--c-capacity);
+  background: transparent;
+  color: var(--c-capacity-txt);
+  cursor: pointer;
+}
 /* 人机对话（对话态·同源求解器 R6）：qa-chips 预设问 + 答案区 + 追问框。 */
 .qaChips {
   display: flex;
