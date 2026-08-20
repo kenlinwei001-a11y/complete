@@ -121,7 +121,7 @@ export function extractBatteryGraph(): BatteryGraph {
   // 类型域映射：BATTERY_TYPE_DOMAIN 表 + 内联 domain 两源。
   const domBody = balancedAfter(text, /export const BATTERY_TYPE_DOMAIN[^=]*=\s*/, "{", "}", "BATTERY_TYPE_DOMAIN");
   const domainOf = new Map<string, string>();
-  for (const m of domBody.matchAll(/(\w+)\s*:\s*"([^"]+)"/g)) domainOf.set(m[1], m[2]!);
+  for (const m of domBody.matchAll(/(\w+)\s*:\s*"([^"]+)"/g)) domainOf.set(m[1]!, m[2]!);
   if (domainOf.size < 10) throw new Error(`抽取器坏了：BATTERY_TYPE_DOMAIN 只抽出 ${domainOf.size} 条`);
 
   const otBody = balancedAfter(text, /export function batteryObjectTypes\(\)[^{]*\{[\s\S]*?return\s*/, "[", "]", "batteryObjectTypes return 数组");
