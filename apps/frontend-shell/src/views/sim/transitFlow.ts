@@ -420,7 +420,16 @@ export function deriveProcurementBranch(input: ProcurementAbsenceInput = {}): Ab
     if (legUsable > 0) usableLegs.push(probe.leg);
   }
 
-  const cause = classifyAbsence(fetched, usable);
+  /**
+   * 四段腿是**一条链**（契约 PROCUREMENT_LEGS 顺序即物流顺序）：只凑齐其中几段 ≠
+   * 「采购段已可画」—— 屏上画的是整条支线，半条链上屏就是夸大。故 PRESENT 只在
+   * 四段全覆盖时成立；部分覆盖按缺席三档判（`probe.usable` 仍如实计数，只是不进
+   * PRESENT 那一档）。尖上实证：mock 的 CustomsClearance 已返合法行（WO-STEP-TEMPLATE-LAYER），
+   * 旧判据 `usable > 0 ⇒ PRESENT` 让「仅清关一段可画」点亮实况块、缺席块从 DOM 消失。
+   */
+  const coveredLegs = new Set(usableLegs);
+  const chainComplete = PROCUREMENT_LEG_PROBES.every((probe) => coveredLegs.has(probe.leg));
+  const cause = classifyAbsence(fetched, chainComplete ? usable : 0);
   const base = { key: "procurement", label: "采购在途支线", probe: { fetched, usable } };
 
   if (cause === "PRESENT") {
@@ -457,7 +466,10 @@ export function deriveProcurementBranch(input: ProcurementAbsenceInput = {}): Ab
       ...base,
       status: "EMPTY",
       cause,
-      reason: `取回了 ${fetched ?? 0} 条采购段行，但没有一条日戳齐全 —— 不是没查，是查回来的行画不出腿。`,
+      reason:
+        usable > 0
+          ? `取回了 ${fetched ?? 0} 条采购段行：${[...coveredLegs].join(" / ")} 日戳齐全，但四段腿（${PROCUREMENT_LEGS.join(" → ")}）没凑齐 —— 链不全，整条支线不画，缺的逐条见下。`
+          : `取回了 ${fetched ?? 0} 条采购段行，但没有一条日戳齐全 —— 不是没查，是查回来的行画不出腿。`,
       evidence: [...missing].sort(),
       unblockedBy: "修数据：按上面每条缺字段原因回到种子侧补齐日戳（**不要**再接一条线，线已经通了）。",
     };
