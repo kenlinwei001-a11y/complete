@@ -339,31 +339,87 @@ describe("E · 假单号产地普查：`MockActionExecutor` 不得出现在任�
   const SRC = ["../src/app.ts", "../src/actions.ts"] as const;
   const readSrc = (rel: string) => readFileSync(new URL(rel, import.meta.url), "utf8");
 
-  it("金丝雀先自证扫描器没瞎，再报否定结论", () => {
-    // 金丝雀：拿一个**确知存在**的样例跑同一份实现。不中 ⇒ 报「扫描器坏了」，不许报「代码干净」。
-    const actionsSrc = readSrc("../src/actions.ts");
-    expect(
-      /export class MockActionExecutor/.test(actionsSrc),
-      "⛔ 金丝雀不中：连 `MockActionExecutor` 的类声明都没扫到 ⇒ **扫描器/路径坏了**，" +
-        "本 describe 的任何「未发现」结论一律作废，不许读作「代码干净」。",
-    ).toBe(true);
+  /**
+   * **必须剥注释再扫** —— 这一步是本条自己踩出来的坑，原样记下：
+   * 第一版直接扫原文，改完接线后**照样红 3 条**，命中的全是我为这次改动写的
+   * 「此处此前是 `new MockActionExecutor()`」这类**注释里的提及**。
+   * 形态（CLAUDE.md 铁律 0.6 句式）：**「我用『源文件里出现这个串』当作『代码里接了这条线』的证据，
+   * 而前者并不度量后者」** —— 提及 ≠ 接线。不剥注释的话，这道守卫会因为「有人写了一句解释」而假红，
+   * 假红几次之后它就会被人删掉，等于自废。
+   *
+   * 字符串感知（不是简单正则）：`//` 出现在字符串字面量里（如 `"https://…"`）时若按注释处理，
+   * 会把该行后半截连同可能的真违规一起吃掉 —— 那是**假绿**方向的错，比假红危险。
+   * 保留换行以维持行号（报违规要能给出 file:line）。
+   */
+  const stripComments = (src: string): string => {
+    let out = "";
+    let i = 0;
+    type S = "CODE" | "LINE" | "BLOCK" | "SQ" | "DQ" | "TPL";
+    let s: S = "CODE";
+    while (i < src.length) {
+      const c = src[i]!;
+      const n = src[i + 1];
+      if (s === "CODE") {
+        if (c === "/" && n === "/") { s = "LINE"; i += 2; continue; }
+        if (c === "/" && n === "*") { s = "BLOCK"; i += 2; continue; }
+        if (c === "'") s = "SQ";
+        else if (c === '"') s = "DQ";
+        else if (c === "`") s = "TPL";
+        out += c; i++; continue;
+      }
+      if (s === "LINE") { if (c === "\n") { s = "CODE"; out += c; } i++; continue; }
+      if (s === "BLOCK") { if (c === "*" && n === "/") { s = "CODE"; i += 2; continue; } if (c === "\n") out += c; i++; continue; }
+      // 字符串态：原样保留，处理转义。
+      if (c === "\\") { out += c + (n ?? ""); i += 2; continue; }
+      if ((s === "SQ" && c === "'") || (s === "DQ" && c === '"') || (s === "TPL" && c === "`")) s = "CODE";
+      out += c; i++;
+    }
+    return out;
+  };
 
-    // 反向金丝雀：确知存在的**接线**样例（兜底诚实执行器）必须被同一份实现扫到。
+  /** 主逻辑：在**已剥注释**的源码上逐行找接线。金丝雀与主判据共用这一份，不许各抄一份。 */
+  const scanWiring = (src: string, rel: string): string[] => {
+    const hits: string[] = [];
+    stripComments(src)
+      .split("\n")
+      .forEach((line, i) => {
+        if (/new MockActionExecutor\s*\(/.test(line)) hits.push(`${rel}:${i + 1}: ${line.trim()}`);
+      });
+    return hits;
+  };
+
+  it("金丝雀先自证扫描器没瞎（正反两侧 + 剥注释真的在剥），再报否定结论", () => {
+    // ① 必咬：**代码位**的一条接线必须被 `scanWiring` 咬到。
+    const positive = "const x = 1;\nconst e = new MockActionExecutor();\n";
     expect(
-      /new UnwiredActionExecutor\(\)/.test(readSrc("../src/app.ts")),
-      "⛔ 反向金丝雀不中：`new UnwiredActionExecutor()` 没扫到 ⇒ 扫描面选错了文件。",
+      scanWiring(positive, "<canary>"),
+      "⛔ 金丝雀不中：连一条明写的 `new MockActionExecutor()` 都没咬到 ⇒ **扫描器坏了**，" +
+        "本 describe 的任何「未发现」结论一律作废，不许读作「代码干净」。",
+    ).toHaveLength(1);
+
+    // ② 必不咬：**注释位**的同一个串必须被剥掉（否则一句解释就能把这道守卫变成噪声）。
+    const commented = "// new MockActionExecutor()\n/* new MockActionExecutor() */\n/**\n * new MockActionExecutor()\n */\n";
+    expect(
+      scanWiring(commented, "<canary>"),
+      "⛔ 剥注释没生效：注释里的提及被当成了接线 ⇒ 本守卫会因为『有人写了句解释』而假红。",
+    ).toEqual([]);
+
+    // ③ 必不咬（字符串态不许被误剥）：含 `//` 的字符串后面的真违规必须仍被咬到。
+    const urlLine = 'const u = "https://example.invalid"; const e = new MockActionExecutor();\n';
+    expect(
+      scanWiring(urlLine, "<canary>"),
+      "⛔ 字符串里的 `//` 被当成注释起点 ⇒ 该行后半截被吃掉，真违规会被漏掉（**假绿方向**）。",
+    ).toHaveLength(1);
+
+    // ④ 扫描面自证：确知存在的真接线样例（诚实兜底执行器）必须在**目标文件**里找得到。
+    expect(
+      /new UnwiredActionExecutor\(\)/.test(stripComments(readSrc("../src/app.ts"))),
+      "⛔ 扫描面金丝雀不中：`new UnwiredActionExecutor()` 在 app.ts 的代码位没找到 ⇒ 读错文件或剥注释吃掉了真代码。",
     ).toBe(true);
   });
 
-  it("主判据：两份 src 里 `new MockActionExecutor()` 出现 0 次", () => {
-    const hits: string[] = [];
-    for (const rel of SRC) {
-      readSrc(rel)
-        .split("\n")
-        .forEach((line, i) => {
-          if (/new MockActionExecutor\s*\(/.test(line)) hits.push(`${rel}:${i + 1}: ${line.trim()}`);
-        });
-    }
+  it("主判据：两份 src 的**代码位**里 `new MockActionExecutor()` 出现 0 次", () => {
+    const hits = SRC.flatMap((rel) => scanWiring(readSrc(rel), rel));
     expect(
       hits,
       "⛔ 假单号产地又被接回 src 接线：`MockActionExecutor` 回的是 `MO-2026-${hash}` —— " +
@@ -372,8 +428,12 @@ describe("E · 假单号产地普查：`MockActionExecutor` 不得出现在任�
         "不是「回个看起来成功的假单号」。\n命中：\n" + hits.join("\n"),
     ).toEqual([]);
 
-    // 该类本身**刻意保留**（测试用它作反面基准，见 `action-noop-exec.seam.test.ts`），只是不许再接进 src 接线。
-    expect(/export class MockActionExecutor/.test(readSrc("../src/actions.ts"))).toBe(true);
+    // 该类本身**刻意保留**（测试拿它作反面基准，见 `action-noop-exec.seam.test.ts`），只是不许再接进 src 接线。
+    expect(
+      /export class MockActionExecutor/.test(stripComments(readSrc("../src/actions.ts"))),
+      "`MockActionExecutor` 类被删了 —— 本条要守的是「不许接线」，不是「不许存在」；" +
+        "删掉它会让 `action-noop-exec.seam.test.ts` 失去反面基准。",
+    ).toBe(true);
   });
 });
 

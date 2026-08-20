@@ -125,7 +125,9 @@ import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
 import {
   ActionService,
-  MockActionExecutor,
+  // ⚠️ `MockActionExecutor` **刻意不再 import**（WO-ACTION-EXECUTOR-CARRIERS）：它是
+  //    `MO-2026-${hash}` 假工单号的产地，本文件已无任何合法用途；留着 import 等于把雷放在手边。
+  //    该类本身仍导出，供测试作反面基准（`test/action-noop-exec.seam.test.ts`）。
   UnwiredActionExecutor,
   GlobalSimPlanExecutor,
   planChangeIsWired,
@@ -522,9 +524,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   ruleScan.setCalibrationHook(async (tenantId, entityId) => calibration.onCalibrationRequired(tenantId, entityId));
   // M11 §1: tick 聚合后配对 + 元闭环（在 RULE_SCAN 之前 —— C12 命中即有新配对可消费）
   simclock.setCalibrationTicker(async (tenantId) => calibration.onTick(tenantId));
-  // S2 写回适配器：领域 Action（AOP情景拍板 / 校准参数变更）真实落库，其余走 Mock。
-  const mockExecutor = new MockActionExecutor();
+  // S2 写回适配器：领域 Action 真实落库；**任何**落不到真分支的一律走诚实执行器。
   // G-ACTION-NOOP-EXEC：未接线动作走**诚实执行器**（未实现即 ok:false），不再返回 MO 形态的假单号。
+  //
+  // ⚠️ 这里此前还有一行 `const mockExecutor = new MockActionExecutor();`，被当作
+  // `GlobalSimPlanExecutor` 的 fallback 传下去（WO-ACTION-EXECUTOR-CARRIERS 实测拆除）。
+  // 它当时**不可达** —— `domainExecutor` 只在 `planChangeIsWired(payload)` 为真时才把 draft 交给
+  // `globalSimExecutor`，而后者内部的 fallback 条件恰好是同一个谓词的反面。据实定性：
+  // **那是埋雷，不是活 bug**。但「两个谓词恰好同义」不是不变量，谁动一边雷就响；
+  // 而响的形态是最难发现的那种（审批链全绿 + targetRef 形态与真 MO 一模一样，真值零动）。
+  // 既有门 `action-wiring:check` 断言③ 只扫 `domainExecutor` **函数体内**的 `return mockExecutor.execute(`，
+  // 扫不到「构造实参」这个位置 —— 「门 RC=0」不度量「被守的东西干净」。守卫见
+  // `test/action-executor-carriers.seam.test.ts` §E。
   const unwiredExecutor = new UnwiredActionExecutor();
   // WO-GSIM-5-ACTION · 全局项目推演「采纳→回灌」真实执行器（G-DECISION 行动半 / G-LOOP-FEEDBACK）。
   const globalSimExecutor = new GlobalSimPlanExecutor(
@@ -535,7 +546,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         await ontology.runDerivations({ tenantId: tid, userId: "system:action", roles: ["admin"], attributes: {} });
       },
     },
-    mockExecutor,
+    // fallback：**诚实执行器**，不是假单号产地（见上方注释）。
+    unwiredExecutor,
   );
   /**
    * WO-ACTION-NOOP-EXEC · **本体属性杠杆写入器（唯一实现）**——`采纳产能保障方案` 与
@@ -621,9 +633,40 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         const r = await sop.applyFinalizeAction(draft.tenantId, draft);
         return { ok: true, targetRef: r.targetRef };
       }
-      if (draft.actionTypeKey === "计划版本变更" && typeof draft.payload.versionId === "string") {
+      // ── 计划版本变更（WO-ACTION-EXECUTOR-CARRIERS · 堵「已接线的型冒充没接线」）──
+      // 病灶（本单实测复现）：本分支此前带两道守卫、且**任一不满足就穿透**到末尾的 unwiredExecutor，
+      // 于是审批人收到的是「动作类型「计划版本变更」**尚未接入真实执行器**」——
+      // **这句话是假的**：执行器就在下面一行（`sop.applyChangeAction` 真改 S&OP 版本 inputs，
+      // 且 `ACTION_WIRING` 里本型标的就是 WIRED）。更糟的是它把处置指向了相反方向：
+      // 审批人会去排一张「写执行器」的单，而真缺口是「生产者发的 versionId 指不到任何版本」。
+      // 穿透是**当年有意设计的**（`sop.ts applyChangeAction` 头注原文：「非 S&OP 版本 → null，回落 mock」），
+      // 只是那时的兜底叫 mock（回假单号）；后来兜底换成诚实执行器，这条穿透没跟着改，
+      // 于是「回个假单号」变成了「说一句假话」——形态变了，误导没变。
+      //
+      // 纪律（WO §5.3）：三种「不工作」必须在错误信息里**可分辨**，因为修法方向相反 ——
+      //   ① 生产者少发/发错字段 ⇒ 改前端；② 引用的承载对象不存在 ⇒ 查数据；③ 本型没有落点 ⇒ 改本体。
+      // 故本分支**必定返回**，绝不再穿透到兜底线。
+      if (draft.actionTypeKey === "计划版本变更") {
+        const versionId = draft.payload.versionId;
+        if (typeof versionId !== "string" || versionId.trim() === "") {
+          return {
+            ok: false,
+            error:
+              `计划版本变更：payload 缺 \`versionId\`（收到的键：` +
+              `${Object.keys(draft.payload ?? {}).join("/") || "（空）"}）——**这是生产者少发了字段**，` +
+              `不是本型没有执行器（执行器是 sop.applyChangeAction，已接线且本型标 WIRED）。` +
+              `修法在发起方：补上要变更的 S&OP 版本 id。`,
+          };
+        }
         const r = await sop.applyChangeAction(draft.tenantId, draft);
         if (r) return { ok: true, targetRef: r.targetRef };
+        return {
+          ok: false,
+          error:
+            `计划版本变更：S&OP 版本「${versionId}」在本租户仓储里**解不出**——**这是引用的承载对象不存在**，` +
+            `不是本型没有执行器。拒绝把变更落到一个猜的版本上（写错真值比不写危险）。` +
+            `修法在数据：确认该版本 id 属于本租户且未被删除。`,
+        };
       }
       // Phase9B 对象级数据变更：审批通过后把 patch 合并进对象 props（origin→MANUAL 标记人工改），
       // 再重跑派生 → 之后 resolve_slice/invoke_solver 即「二次推演」。Action 审计=完整溯源。
