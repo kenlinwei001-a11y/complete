@@ -38,12 +38,15 @@ provenance 形态任务 = unknown 引用形态（两臂同引未解析 id ⇒ to
 2. dsh 臂**真强制证据**（wire 级）：`stub.requests[声明位].body` 含
    `mock rule engine: tool <名> denied by ruleBindings PRE_CHECK`——治理桥 mock 模式
    真 deny 的回注逐字可见（上一轮的 isError 工具结果进入下一轮请求消息）；
-3. native 臂**真强制证据**：answer 由规则强制点产出——deny_pre/mid/all = POST_CHECK 替换
-   （provId `prov_post_check` 锚），deny_prefork = skill precondition 预检
+3. 双臂**真强制证据**：deny_pre/mid/all = POST_CHECK 替换（provId `prov_post_check` 锚）——
+   WO-DSH-PROD-READY W1 起双臂在 engine 出口共用 applyPostChecks 闭包，强制点**逐字节同码**
+   （evidence 2b「dsh 无 POST_CHECK 外挂」自此作废）；deny_prefork = skill precondition 预检
    （provId `prov_skill_rule_check` 锚 + 零迭代早退）；
 4. **强制点位置差登记为固有不对称（不进断言）**：native 无 ruleBindings PRE_CHECK 执行点
-   （蓝图 evidence 2a），dsh 无 POST_CHECK 外挂（evidence 2b）；deny_prefork 的 skill 预检
-   在分叉**之前**，两臂对称经过（dsh 臂零 spawn，反向哨兵）。
+   （蓝图 evidence 2a）——仅存的不对称；POST_CHECK 侧 W1 已销账（见 item 3）。
+   deny_prefork 的 skill 预检在分叉**之前**，两臂对称经过（dsh 臂零 spawn，反向哨兵）。
+   stats 回声与治理替换正交：dsh 臂 answer 被 POST_CHECK 替换后 stats 键仍必须在
+   （A4 stats 锚不按后验结果分支）。
 
 ### A3 · SSE 事件名序列
 N2 形态继承：双臂 emit 序列（测试镜像 orchestrator:2187 补 answer.final）→ 剥 answer.final
@@ -79,8 +82,9 @@ A5 子集（语料声明 6 条：每类至少一 + 长上下文 + 多轮 + prove
 证明比对器不把噪声当差集。
 
 ## 3. 固有不对称登记（D-7 对齐，不冒充对称）
-1. native 无 ruleBindings PRE_CHECK 执行点 / dsh 无 POST_CHECK 外挂 ⇒ A2 只断言最终文案 + 两臂各自
-   真强制证据，强制点位置不进断言。
+1. native 无 ruleBindings PRE_CHECK 执行点 ⇒ A2 只断言最终文案 + 两臂各自
+   真强制证据，强制点位置不进断言。POST_CHECK 外挂差已销账（WO-DSH-PROD-READY W1：
+   双臂共用 engine 出口 applyPostChecks 闭包，evidence 2b 作废）。
 2. skill precondition 预检在分叉前 ⇒ deny_prefork 类 dsh 臂零 spawn（反向哨兵），kernel 为 flag 态值。
 3. 两臂工具集物理不同（dsh meta-only vs native builtin）⇒ 语料两臂同用 meta 剧本保 parity；
    真工具对账物理不可达，L1 不声明该覆盖。

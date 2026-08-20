@@ -432,3 +432,28 @@ D3 词法判据不受影响（守卫仍字面直读 `process.env.DSH_HARNESS`，
 - 缓冲事实（不是豁免）：① PUT/PUBLISH 走 `requireCatalogAdmin` 且 PUBLISHED 版本不可变
   （改动必留新版本轨迹）；② run 归因 `run.kernel` 逐条落库，事后可审计「哪些运行真走了外部运行时」；
   ③ 前端选择器词表与归因同词（NATIVE/EXTERNAL），不给「配置了但没生效」留歧义。
+
+## 11 · 补遗（2026-08-20）· WO-DSH-PROD-READY W1：POST_CHECK 后验挂 DSH 路径（最大语义差销账）
+
+**变化**：`PRD-agentcore-dsh-upgrade.md:129` 登记的 ⛔ 缺口「ruleBindings POST_CHECK / BOTH
+POC 未接」销账——但**落法不是**原计划的 WO-DSH-P1-MAP（harness `tools/post-execute` 瀑布 +
+裁决网桥）。实际落法更保守：`engine.ts` 把两段 postcheck 后验（Skill 规则引用后验 +
+ruleBindings POST_CHECK）提为 `runRegisteredAgent` 内共享闭包 `applyPostChecks`，DSH 成功出口
+与原生出口**逐字节同码**过同一份后验。理由：后验语义单源优于桥进子进程瀑布（桥 = 在子进程里
+再实现一份裁决，两份实现必漂；这正是本仓「不许另抄一份」铁律的同族病）。
+
+**语义钉**：
+- 只判 `outcome === "ANSWERED"`；reassemble 拒绝（FAILED 早退）无答案可验，不过后验。
+- stats 回声（N2·D-2）与治理替换**正交**：后验 BLOCK 换掉的是答案内容，token/轮次等运行
+  观测回声不随答案消失——stats 在闭包之后重挂（对拍驱动 A4 锚「dsh 臂必带 stats」不按
+  后验结果分支）。
+- fail-open 语义双臂一致：rules 引擎抛错 ⇒ 放行（不把后验故障变成答案故障）。
+
+**机器证据**：`dsh-postcheck.seam.test.ts` 4 臂（POST_CHECK BLOCK 替换 / 通过放行且后验真跑 /
+skill postcheck 引用 BLOCK / fail-open）+ mutation 反证（DSH 出口绕过后验 ⇒ ①②③ 红）+
+dualrun50 58/58（deny_pre/mid/all 12 条此前靠白名单容忍的语料现双臂逐字节收敛，
+RECONCILIATION evidence 2b 作废）+ D3 门/selftest 绿。
+
+**对 §3 前置条件的意义**：本项不等于「flag 可翻」——W3 审计（`/tmp/dsh-prod-ready-evidence/
+w3-precondition-audit.md`）另发现 F-1：生产档 cordis.yml 的 platform-governance 仍 mock
+allow-all，DSH 路径 PRE_CHECK 静默失效，建议升为第四条前置，处置另案。
