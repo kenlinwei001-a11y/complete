@@ -1,5 +1,7 @@
 import type { Answer, AnswerBlock, MultiIntentPlan, ProvenanceRef } from "@platform/contracts";
 import { newId } from "../ids.js";
+// WO-GRAPH-EXEC-CONSOLIDATE：分层扇出调度**收编到唯一实现**（原本文件自写一份 Promise.all 扇出）。
+import { runLayeredGraph } from "../skill-orchestrator.js";
 import type { GuardedToolExecutor } from "../tools/executor.js";
 import { DETERMINISTIC_PREFERENCE_THRESHOLD, type DomainRoute } from "./domain-resolver.js";
 
@@ -207,8 +209,21 @@ export async function runParallelRoutes(
   });
 
   // 并行执行各域 solver（无依赖·组内并发·R7 单失败不塌）。产物顺序按 routes 声明稳定（R6·⟦ref:N⟧ 对齐）。
-  const products: DomainProduct[] = await Promise.all(
-    routes.map(async (route): Promise<DomainProduct> => {
+  //
+  // WO-GRAPH-EXEC-CONSOLIDATE 收编：原先这里自写 `Promise.all(routes.map(...))`，与
+  // `skill-orchestrator.ts` / `execute-plan.ts` 各写一遍同一个调度循环。现统一走 `runLayeredGraph`
+  // （仓内唯一实现），本函数只保留自己的语义：
+  //  · **单层**（各域彼此无依赖·无边）+ **不设并发上限**（整层一批 ≡ 原 `Promise.all`·≤MAX_DOMAINS=5）；
+  //  · `onNodeThrow:"propagate"` ≡ 原 `Promise.all` 的首个 reject 上抛；
+  //  · **无毒化**（R7「单失败不塌」）—— 某域 `ok=false` 只落成该域产物的诚实标「未计算 + 原因」，
+  //    **绝不**波及其余域。这与 GraphScheduler 的「毒化后继」正相反，是收编时最会咬人的一处。
+  //  · 节点 id 用**下标**而非 `route.domain`：domain 可能重复（⑤LLM 多意图的 intentKey 不保证唯一），
+  //    用 domain 当键会静默吞掉同名域的产物。
+  const scheduled = await runLayeredGraph<DomainProduct>({
+    layers: [routes.map((_, i) => String(i))],
+    onNodeThrow: "propagate",
+    runNode: async (id): Promise<DomainProduct> => {
+      const route = routes[Number(id)]!;
       const run = await ctx.executor.run("invoke_solver", { solverKey: route.solverKey, args: route.args });
       const { data, snapshotVersion } = extractData(run.payload);
       await ctx.emit?.("step.completed", {
@@ -226,8 +241,10 @@ export async function runParallelRoutes(
         data,
         ...(snapshotVersion ? { snapshotVersion } : {}),
       };
-    }),
-  );
+    },
+  });
+  // 按 routes 声明序回排（R6·⟦ref:N⟧ 与 provenance[N] 对齐）。
+  const products: DomainProduct[] = routes.map((_, i) => scheduled.get(String(i))!);
 
   const answer = assembleMultiDomainAnswer(products, coupledPairs);
 

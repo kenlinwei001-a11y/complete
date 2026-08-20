@@ -3,10 +3,16 @@
  *
  * WO-SKILL-ORCHESTRATOR-S1 切片：**按层执行 · 同层并发 · 数据沿边流动**。
  *
- * ── 与既有线性执行器的关系（本单不改它）────────────────────────────────────────
- * `workflow/executor.ts:104` 是 `for (const step of input.steps)` 逐个 await 的**线性**执行器。
- * 本文件不动它、不替换它，只在旁边加**图调度**：拓扑波前 + 同层并发。
- * PRD §3.4 的「三处扇出收编」属 W2 单，本切片不做（诚实边界，见文末 §未做）。
+ * ── 与既有线性执行器的关系 ──────────────────────────────────────────────────────
+ * `workflow/executor.ts` 的 `for (const step of input.steps)` 是逐个 await 的**线性**执行器。
+ * 本文件不动它、不替换它（理由见文末 §未收编），只在旁边加**图调度**：拓扑波前 + 同层并发。
+ *
+ * ── WO-GRAPH-EXEC-CONSOLIDATE（2026-08-20）：扇出调度已收编 ────────────────────
+ * 本文件下方的 `runLayeredGraph` 现在是 **agentcore 里唯一的多单元并发派发实现**。
+ * `router/execute-plan.ts`（组内 Promise.all）与 `router/multi-route.ts`（多域 Promise.all）
+ * 原各自写了一遍同一个调度循环，现均已**删除自己的循环**改调本核心（不是包一层）。
+ * 并发派发站点数由 `test/graph-exec-consolidate.seam.test.ts` 现算并具名断言 ——
+ * 再写第 N 套，机器先说话。
  *
  * ── 数据沿边流动的强制机制（本单存在的意义）────────────────────────────────────
  * 节点 params 用的是**既有**模板语法 `{{steps.<nodeId>.output.<path>}}`，由**既有**
@@ -92,6 +98,94 @@ interface NodeRunContext {
   visibleFrom: string[];
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 分层扇出调度核心（WO-GRAPH-EXEC-CONSOLIDATE 收编点）
+// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * **仓内唯一的多单元并发派发实现**。收编前 agentcore 有三处各写一遍同一个循环：
+ *  · `skill-orchestrator.ts`  层内 `Promise.allSettled` 分批（本文件·原 GraphScheduler.run 内联）
+ *  · `router/execute-plan.ts` 按 `parallelGroup` 升序·组内 `Promise.all`·组间串行
+ *  · `router/multi-route.ts`  单层 `Promise.all` 跑各域 solver
+ * 三处的**调度骨架完全相同**（分层 → 层内并发 → 层间串行 → 按声明序落账），
+ * 差的只是**两件事**，而这两件恰恰是本收编真正会咬人的地方：
+ *
+ * ① **一个分支失败时另几个怎么办**（`settle` 回调决定）
+ *    · GraphScheduler：毒化后继（`poisonDescendants`）——失败节点的下游整棵子树 SKIPPED
+ *    · executePlan / runParallelRoutes：**继续**——失败只体现在该单元产物的 `ok=false`，
+ *      下游 `argsFrom` 取不到值就不填（`if (v != null)`），兄弟与下游照跑
+ *    ⚠️ 这两条语义**不可互换**：把 continue 换成 poison，多域分路里一个 solver 挂掉就会
+ *    吞掉其余域的诚实产出（违反 multi-route 的 R7「单失败不塌」）。故**策略留在调用方**，
+ *    核心只管调度骨架 —— 这正是三处能合而语义零变的原因。
+ *
+ * ② **节点抛异常时整体上抛还是转成产物**（`onNodeThrow`）
+ *    · `"propagate"` ≡ 旧 `Promise.all`：首个 reject 直接上抛（executePlan / runParallelRoutes
+ *      逐字节沿用——它们的 `executor.run` 契约上**从不抛**（`tools/executor.ts` 顶注：
+ *      "Client exceptions wrapped as { ok:false, payload:{ error } } — never thrown"），
+ *      真抛出来的只可能是 `emit` 之类的编排层异常，那时上抛才是对的）
+ *    · `"capture"` ≡ 旧 `Promise.allSettled`：转成 NODE_UNCAUGHT 产物（GraphScheduler 沿用）
+ *
+ * 落账顺序恒为**批内声明序**（不是完成序）——R6 确定性：网络抖动不改输出字节。
+ */
+export interface LayeredDispatchSpec<T> {
+  /** 分层：每层一组可并发的单元 id；**层间严格串行**（后层可见前层落账）。 */
+  layers: readonly (readonly string[])[];
+  /** 单元执行体。 */
+  runNode: (nodeId: string) => Promise<T>;
+  /** 层内并发上限；省略/≤0 ⇒ 整层一批（等价旧 `Promise.all(all.map(...))` 的无上限并发）。 */
+  concurrency?: number;
+  /** 见上 ②。 */
+  onNodeThrow: "propagate" | "capture";
+  /** `onNodeThrow:"capture"` 必给：把 reject 理由转成产物。 */
+  captureThrow?: (nodeId: string, reason: unknown) => T;
+  /**
+   * 见上 ①。**一批跑完后按批内声明序**逐个调用；副作用（记上游输出、毒化后继）都在这里做。
+   * 因为它在整批 await 之后才跑，同批单元互相看不见对方的落账（组内无依赖的前提）。
+   */
+  settle?: (nodeId: string, result: T) => void;
+  /** 返回 true ⇒ 该单元**不执行** `runNode`，直接取 `skipped()` 产物（毒化传播）。 */
+  isSkipped?: (nodeId: string) => boolean;
+  /** `isSkipped` 命中时的产物。 */
+  skipped?: (nodeId: string) => T;
+}
+
+/**
+ * 分层扇出执行（**本仓唯一的图/扇出调度实现**）。
+ *
+ * ⛔ 要再写一个 `Promise.all(nodes.map(...))` 之前先读这里：
+ * `graph-exec-consolidate.seam.test.ts` 现算 agentcore src 里的并发派发站点数并逐个具名断言，
+ * 新增一处未登记的就当场变红并点名文件 —— 这道数就是为了不让「四套」变回「五套」。
+ */
+export async function runLayeredGraph<T>(spec: LayeredDispatchSpec<T>): Promise<Map<string, T>> {
+  const out = new Map<string, T>();
+  const limit = spec.concurrency !== undefined && spec.concurrency > 0 ? spec.concurrency : Number.POSITIVE_INFINITY;
+  for (const layer of spec.layers) {
+    const size = Number.isFinite(limit) ? (limit as number) : Math.max(1, layer.length);
+    for (let i = 0; i < layer.length; i += size) {
+      const batch = layer.slice(i, i + size);
+      const tasks = batch.map(async (id): Promise<T> => {
+        // 毒化判定放在**任务体内**（与收编前一致）：整批任务同步起跑，故同批互不影响，
+        // 而前批/前层的 settle 已经跑完 ⇒ 上游失败对本批可见。
+        if (spec.isSkipped?.(id) === true) return spec.skipped!(id);
+        return spec.runNode(id);
+      });
+      let values: T[];
+      if (spec.onNodeThrow === "propagate") {
+        values = await Promise.all(tasks); // ≡ 收编前的 Promise.all：首个 reject 整体上抛
+      } else {
+        const settled = await Promise.allSettled(tasks); // ≡ 收编前的 Promise.allSettled
+        values = settled.map((s, k) => (s.status === "fulfilled" ? s.value : spec.captureThrow!(batch[k]!, s.reason)));
+      }
+      for (let k = 0; k < batch.length; k++) {
+        const id = batch[k]!;
+        const v = values[k]!;
+        out.set(id, v);
+        spec.settle?.(id, v);
+      }
+    }
+  }
+  return out;
+}
+
 export class GraphScheduler {
   constructor(private readonly deps: GraphSchedulerDeps) {}
 
@@ -148,45 +242,44 @@ export class GraphScheduler {
 
     const concurrency = Math.max(1, graph.maxParallelNodes);
 
-    for (const layer of compiled.layers) {
-      // 同层并发，但**并发度有上限**（PRD §3.4：不许无上限）。分批 = 简单可靠的有界并发。
-      for (let i = 0; i < layer.nodeIds.length; i += concurrency) {
-        const batch = layer.nodeIds.slice(i, i + concurrency);
-        const settled = await Promise.allSettled(
-          batch.map(async (id): Promise<GraphNodeResult> => {
-            const node = byId.get(id)!;
-            if (poisoned.has(id)) {
-              return { nodeId: id, kind: node.kind, layer: layer.index, status: "SKIPPED", error: { code: "UPSTREAM_FAILED", message: "上游节点失败，本节点未执行" } };
-            }
-            const visibleFrom = ancestorsOf(id, compiled.predecessors);
-            const scope = this.scopeFor(visibleFrom, outputs, opts);
-            return this.runNode({ auth, node, layer: layer.index, scope, visibleFrom });
-          }),
-        );
-        for (let k = 0; k < batch.length; k++) {
-          const id = batch[k]!;
-          const s = settled[k]!;
-          const node = byId.get(id)!;
-          const r: GraphNodeResult =
-            s.status === "fulfilled"
-              ? s.value
-              : {
-                  nodeId: id,
-                  kind: node.kind,
-                  layer: layer.index,
-                  status: "FAILED",
-                  error: { code: "NODE_UNCAUGHT", message: s.reason instanceof Error ? s.reason.message : String(s.reason) },
-                };
-          results.set(id, r);
-          if (r.status === "COMPLETED") {
-            outputs.set(id, r.output);
-          } else if (node.onError !== "SKIP") {
-            // onError=FAIL（缺省）→ 毒化全部后继（与今天 executor 的 SKIP 语义互补）
-            this.poisonDescendants(id, graph, poisoned);
-          }
+    // 调度骨架已收编进 `runLayeredGraph`（本文件上方·仓内唯一实现）；此处只留**本路独有的语义**：
+    // 毒化后继（`settle`）+ 上游失败即跳过（`isSkipped`）+ 未捕获异常转产物（`captureThrow`）。
+    // 层内**有上限**并发（PRD §3.4：不许无上限）由 `concurrency` 表达，分批行为与收编前逐字节一致。
+    const scheduled = await runLayeredGraph<GraphNodeResult>({
+      layers: compiled.layers.map((l) => l.nodeIds),
+      concurrency,
+      onNodeThrow: "capture",
+      runNode: async (id) => {
+        const node = byId.get(id)!;
+        const visibleFrom = ancestorsOf(id, compiled.predecessors);
+        const scope = this.scopeFor(visibleFrom, outputs, opts);
+        return this.runNode({ auth, node, layer: layerOf.get(id) ?? 0, scope, visibleFrom });
+      },
+      isSkipped: (id) => poisoned.has(id),
+      skipped: (id) => ({
+        nodeId: id,
+        kind: byId.get(id)!.kind,
+        layer: layerOf.get(id) ?? 0,
+        status: "SKIPPED",
+        error: { code: "UPSTREAM_FAILED", message: "上游节点失败，本节点未执行" },
+      }),
+      captureThrow: (id, reason) => ({
+        nodeId: id,
+        kind: byId.get(id)!.kind,
+        layer: layerOf.get(id) ?? 0,
+        status: "FAILED",
+        error: { code: "NODE_UNCAUGHT", message: reason instanceof Error ? reason.message : String(reason) },
+      }),
+      settle: (id, r) => {
+        if (r.status === "COMPLETED") {
+          outputs.set(id, r.output);
+        } else if (byId.get(id)!.onError !== "SKIP") {
+          // onError=FAIL（缺省）→ 毒化全部后继（与今天 executor 的 SKIP 语义互补）
+          this.poisonDescendants(id, graph, poisoned);
         }
-      }
-    }
+      },
+    });
+    for (const [id, r] of scheduled) results.set(id, r);
 
     // 按**声明序**归并（R6）——不是完成序。
     const nodeResults = graph.nodes.map(
@@ -329,8 +422,22 @@ export class GraphScheduler {
 }
 
 /**
- * ── 本切片明确未做（诚实边界，勿当已完成）────────────────────────────────────────
- *  · 三处扇出收编（executor.ts 线性 / multi-route.ts 多域 / Coordinator）—— PRD §3.4，属 W2 单。
+ * ── §未收编：还剩哪一套，以及为什么（诚实边界，勿当已完成）──────────────────────
+ *
+ * **`workflow/executor.ts` 的线性执行器（本仓仅存的第二套）—— 本单实测判定「今天收不动」**，
+ * 三条具体阻碍（不是"风险大"这种话，是机器可核的差异）：
+ *  ① **早退带值**：它在循环中途 `return completed(answer)` 至少三处（工具 DENIED → 返回权限文案答案；
+ *     `evaluate_rules` 出 BLOCK 裁决 → 返回违规答案；`render_answer` → 返回渲染答案）。
+ *     分层调度器的契约是「跑完整层」，**表达不了「跑到一半就带着一个成品答案退出、后面的步一个都不跑」**。
+ *  ② **步间共享可变作用域**：`scope.steps` 直接指向 `stepOutputs` 这一个对象，第 i 步能读到第 i-1 步刚写的值；
+ *     GraphScheduler 的作用域是**按祖先集现搭**的（`scopeFor(visibleFrom, …)`，无边即读不到）。
+ *     线性执行器的既有工作流**依赖**"前面所有步都可见"，换成祖先可见性会让它们批量报 TEMPLATE_RESOLUTION_ERROR。
+ *  ③ **步类型不重合**：线性侧 8 类（含 llm_compose / invoke_agent / invoke_mcp_tool / render_answer 等），
+ *     图侧只实现 skill / solver 两类，其余在编译期显式 NOT_IMPLEMENTED。且它有 4 个生产调用方
+ *     （`engine.runWorkflowSteps` ← path-A / Coordinator 多角色扇出 / plan-builder / server 工作流试跑）。
+ * ⇒ 收它是**重写线性执行器**，不是收编调度骨架；应单独立单，先补 ①②③ 三项语义再谈。
+ *
+ * ── 其余明确未做 ──────────────────────────────────────────────────────────────
  *  · 取消到底（AbortSignal 透传到 solver.invoke 第 4 参）—— PRD §5，属 W3 单。
  *  · 按题型预算 / RuntimeContext 统一工厂 / progress 事件 —— PRD §4/§6，属 W3 单。
  *  · dependsOn 编译期内联展开 —— PRD §8.1，属 W4 单。
