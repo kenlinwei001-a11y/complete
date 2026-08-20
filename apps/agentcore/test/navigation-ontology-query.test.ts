@@ -40,7 +40,12 @@ describe("WO-Phase3-B · Agent query_ontology 工具（本体遍历查询·带 p
     for (const prov of p.provenance) {
       expect(prov.typeKey).toBe("Order");
       expect(prov.objId).toMatch(/^obj_order_/);
-      expect(prov.linkPath).toEqual(["model_producible_at:in", "order_for_model:in"]);
+      // WO-MOCK-ENGINE-PARITY：linkPath 不再是写死旧路——与真引擎同图同 BFS 现算。
+      // 真侧今日 Base→Order 最短路径走 model_demanded_by_order（tie-break：linkKey 字典序
+      // "model_demanded_by_order" < "order_for_model"；语义校验见 mock-engine-parity.test.ts §4，
+      // 那里两侧现算集合相等，此处只钉「不再返回 P1 之前那条旧路」+ 每条 linkPath 确实是图上的路）。
+      expect(prov.linkPath).toEqual(["model_producible_at:in", "model_demanded_by_order:out"]);
+      expect(prov.linkPath).not.toContain("order_for_model:in");
     }
     expect(p.queryPlan.hops.length).toBe(2);
   });
