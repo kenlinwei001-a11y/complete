@@ -677,6 +677,29 @@
    },
    "notes": "闭 G-MIGRATION-NUMBER-COLLISION（欠账 #74）：迁移号是执行顺序的唯一表达，而撞号时文件名互不相同 ⇒ git 合并零冲突、零信号。追一层读迁移器坐实真实后果：schema_migrations 的键是**完整文件名**，故同号文件**全都会跑**（非覆盖），顺序由裸 .sort() 的字典序偶然决定；且老库跳过已跑的（按并线时间）、新库全量重跑（按字典序），两者顺序可相反。跨文件顺序依赖在本仓真实存在（ts_points 由 002_addendum.sql 建表、由 007_lived_in.sql ALTER），且 pg 模式启动即自动迁移、无人工确认环节。存量双 013 入 KNOWN_DUPLICATES 显式基线（两文件纯 CREATE TABLE IF NOT EXISTS 且表集合不相交 ⇒ 顺序等价，属碰巧无害那类；无法靠改名清理，因改名会让新名字在所有已部署库上重跑）。"
   },
+  "check-mock-backend-scale.mjs": {
+   "alias": null,
+   "binding": "NONE",
+   "guardedPaths": [
+    "apps/frontend-shell/src/mocks/sopScale.ts",
+    "apps/frontend-shell/src/mocks/simSolvers.ts",
+    "apps/frontend-shell/src/mocks/handlers.ts",
+    "apps/datacore/src/sop.ts",
+    "apps/datacore/src/solvers/capacity.ts",
+    "apps/datacore/src/solvers/plan.ts",
+    "apps/datacore/src/synthetic/battery.ts",
+    "docs/MOCK-BACKEND-SCALE.md"
+   ],
+   "escalation": "审核方",
+   "ontologyRef": null,
+   "provenRed": {
+    "kind": "MUTATION",
+    "evidence": "WO-MOCK-SOP-SCALE · 2026-08-20 · 四条变异反证逐条实跑（改前/改后 RC 与报文原文见 docs/MOCK-BACKEND-SCALE.md §5）",
+    "note": "M1 把 B 档真差异行 sdg.demandSide 的登记比值 2.3313 改成 1.0 ⇒ **RC=1** 且点名「mock 57 vs 真后端 24.4501 ⇒ **现算 2.3313 倍**，越出登记区间 [0.9900, 1.0100]」（计数随变异而动 ⇒ 信号是真的，不是写死的）。 M2 把 s3.sup 的真后端取值路径指向不存在的字段 ⇒ **RC=2**「有登记项在两侧回包里取不到数 —— 本次结论作废（不许读作『量级一致』）」，**不是** RC=0。 M3 把**主抽取正则** PAYLOAD_RE 改成永不匹配 ⇒ **RC=2**「mock 侧 探针没吐出可解析的回包 ⇒ 工具坏了，不是代码坏了」。 M3b 把**共用取值实现** pick() 改坏 ⇒ **RC=2**，且被 **4 条金丝雀当场点名**（判据双向 / 真后端抽取 / mock 抽取 / 叶差集）—— 金丝雀与主逻辑共用 ratioVerdict/pick/leafGap/PAYLOAD_RE 同一份实现，不是各抄一份的装饰品。 M4 干净态 ⇒ **RC=0**（J1 27 行 · J2 5 组×3 判据 · J3 缺叶 1 条，全在登记区间/名单内）。 金丝雀命中证据（否定结论必附）：拿 WO-MOCK-SCALE-TRUTH 修掉的**历史真值**跑同一个 bandVerdict —— 「mock 367.9 vs 真后端 22.6839 ⇒ **现算 16.2186 倍**」判红；同一函数对今天的 22.6839 vs 22.6839 判绿（反向金丝雀·防恒红门）。"
+   },
+   "notes": "**NONE 签字**：本门刻意不接 pnpm gates 链 —— 它要起两个子进程（datacore 内存起服 + seedBattery(seed=42,scale=S) 真跑 S&OP 五步；MSW handler 真派发），单跑约 12–15 秒，属中画像；而 gates 链已约 28 分钟，属 PRD-gate-ledger §2.2 非目标。WO-MOCK-SOP-SCALE 的 🚦 范围边界也明确不含 package.json，故本单不加 npm 别名（加别名 = 改 package.json）。触发时机：**改动 guardedPaths 覆盖的任一文件时手动跑**（node scripts/check-mock-backend-scale.mjs）。是否值得并入 gates（或与既有 mock-scale-truth.seam.test.ts 合并为一件）需评估 gate 时长成本，另立单。⚠ 与 mock-fidelity:check 分工不同、不重叠：那道门守「mock 声称的路由/链路方向/widget 文案，真后端有没有」（**结构**维），本门守「同一个指标两侧读数的**倍数**」（**量**维）。",
+   "disposition": "WIRE"
+  },
   "check-mock-fidelity.mjs": {
    "alias": "mock-fidelity:check",
    "binding": "GATES_CHAIN",
