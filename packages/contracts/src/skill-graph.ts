@@ -15,13 +15,19 @@
  *     （PRD §3.1「节点类型 ↔ 今日派发的一一对应」）。契约测试逐条断言映射目标是**真的**
  *     `PlanStepSchema` 判别值 —— 任何一边改名，测试当场红，两套词表漂不起来。
  *
- * ── 诚实边界（S1 未做的，显式 NOT_IMPLEMENTED，绝不静默跳过）────────────────────
- *   · 已实现节点 kind 仅 `skill` / `solver`（`IMPLEMENTED_NODE_KINDS`）。其余 kind 留枚举位，
+ * ── 诚实边界（未做的，显式 NOT_IMPLEMENTED，绝不静默跳过）──────────────────────
+ *   · 已实现节点 kind 为 `skill` / `solver` / `render`（`IMPLEMENTED_NODE_KINDS`）。其余 kind 留枚举位，
  *     编译期返回 `NOT_IMPLEMENTED` 并点名是哪个节点、哪个 kind。
  *   · 边 kind `cond`（条件边 + 确定性 guard，PRD §3.3-2）未实现 → 编译期 NOT_IMPLEMENTED。
- *   · **R11「图须以 render 节点收口」本切片不校验** —— 因为 `render` 本身还是 NOT_IMPLEMENTED，
- *     此时强制 render 可达 = 任何 S1 图都无法编译。这是**已知未覆盖门**，不是"已经守住了"，
- *     已登记本体 §8 `G-SKILL-GRAPH-NO-RENDER-CLOSURE`。
+ *
+ * ── R11「图须以 render 节点收口」：**已校验**（WO-SKILL-GRAPH-RENDER-CLOSURE）─────────
+ *   ⚠ 本段曾长期写着「R11 本切片不校验」——那是 S1 当年**诚实的挂账**：`render` 节点自身还是
+ *   NOT_IMPLEMENTED，强制 render 可达会让任何图都编译不出来（实测：当时全仓 16 张能编译的图
+ *   **16 张全废**）。该挂账已随本单**同时**了结：`render` 节点落地（`IMPLEMENTED_NODE_KINDS` +
+ *   `skill-orchestrator.ts runRenderNode`）⊕ `compileGraph` 补上 R11 校验。
+ *   本体 §8 `G-SKILL-GRAPH-NO-RENDER-CLOSURE` 已随之改为已闭。
+ *   **判据见 `assertRenderClosure` 的头注（那里写明为什么是「每个入口都要够得着 render」
+ *   而不是「有 render 就行」）。**
  */
 import { z } from "zod";
 import { OnErrorSchema, PlanStepSchema, TemplateValueSchema, type PlanStep } from "./qos.js";
@@ -46,10 +52,12 @@ export const SkillGraphNodeKindSchema = z.enum(SKILL_GRAPH_NODE_KINDS);
 export type SkillGraphNodeKind = z.infer<typeof SkillGraphNodeKindSchema>;
 
 /**
- * S1 真正能跑的节点 kind。其余一律编译期 NOT_IMPLEMENTED。
+ * 真正能跑的节点 kind。其余一律编译期 NOT_IMPLEMENTED。
  * 加一个 kind 到这里 = 承诺 `skill-orchestrator.ts` 里有对应 dispatch 分支且有 SEAM 覆盖。
+ * `render` 于 WO-SKILL-GRAPH-RENDER-CLOSURE 落地（dispatch = `GraphScheduler.runRenderNode`，
+ * 复用 `workflow/executor.ts renderAnswer` 同一实现，不造第二套渲染器）。
  */
-export const IMPLEMENTED_NODE_KINDS = ["skill", "solver"] as const;
+export const IMPLEMENTED_NODE_KINDS = ["skill", "solver", "render"] as const;
 export type ImplementedNodeKind = (typeof IMPLEMENTED_NODE_KINDS)[number];
 
 /**
@@ -149,6 +157,12 @@ export type CompileGraphResult =
       layers: SkillGraphLayer[];
       /** 每个节点的直接前驱（按声明序）—— 调度器据此建模板作用域（边 = 可见性授权）。 */
       predecessors: Record<string, string[]>;
+      /**
+       * R11 收口点：本图**唯一**的 `render` 节点 id。
+       * 调度器据此知道「哪个节点的产物才是这张图的答案」——不必自己再判一次，
+       * 也就不会出现「两个 render，静默取其中一个」这种会说谎的诚实位。
+       */
+      renderNodeId: string;
     }
   | {
       ok: false;
@@ -163,8 +177,99 @@ export const SKILL_GRAPH_COMPILE_ERROR_CODES = [
   "CYCLIC_INVOCATION",
   "NOT_IMPLEMENTED",
   "GRAPH_INVALID",
+  /**
+   * R11 全链闭包违规：图没有以 `render` 节点收口。
+   * **刻意不并进 `GRAPH_INVALID`** —— 它是一条有名有姓的不变量（R11），
+   * 混进通用桶里，测试就只能断言「反正红了」，而分不清红的是不是 R11 那一条。
+   */
+  "RENDER_CLOSURE_MISSING",
 ] as const;
 export type SkillGraphCompileErrorCode = (typeof SKILL_GRAPH_COMPILE_ERROR_CODES)[number];
+
+/**
+ * R11「全链闭包」——图必须以 `render` 节点收口（PRD-skill-runtime-orchestrator §0.4-R11）。
+ *
+ * ── 判据为什么是「**每个入口**都够得着 render」而不是「图里有 render 就行」──────────────
+ * PRD 原话是「至少一条从入口到 `render` 节点的可达路径」。**照字面直译会得到一道没有牙的门**，
+ * 原因是一条 DAG 的性质：**任何节点沿前驱回溯必然终止于某个入度 0 的节点** ⇒
+ * **DAG 里每个节点都可从入口集到达**。于是「render 可达」≡「render 存在」，
+ * 「孤立的 render 节点」（自己入度 0、没有任何工作流进来）会**恒真通过** ——
+ * 而那恰恰是最典型的没收口：求解器算完的东西一个都没流进答案里。
+ *
+ * 故取 R11 的**名字**（「**全**链闭包」）为准：**每一条工作链都必须汇进 render**，
+ * 即每个入口节点都要有一条到 `render` 的有向路径。这也正对应线性侧既有的
+ * 「`render_answer` 必须是最后一步」（`workflow/validate.ts:89`）——那条规则同样是在说
+ * 「所有步骤都在 render 之前」，而不是「计划里有个 render 就行」。
+ *
+ * ── 诚实边界（本单**未**覆盖的更强形态）────────────────────────────────────────
+ * 本判据**不**拒绝「汇进了 render、但同时还挂了条死支线」的图，例如
+ * `a --> r(render)` ⊕ `a --> b(solver)`：入口只有 `a`，`a` 够得着 `r` ⇒ 通过，
+ * 但 `b` 的产物没有任何去处（更强的判据是「**每个 sink 都必须是 render**」）。
+ * 该形态是**已知未覆盖**，不是已经守住了；PRD 未要求，本单不擅自加严。
+ *
+ * ── 一张图允许几个 render ────────────────────────────────────────────────────
+ * **恰好一个。** 多个 render 意味着「哪个产物才是这张图的答案」没有答案，
+ * 实现只能静默挑一个（按声明序）——那就是本仓最贵的那种错：信号是真的，但它不指向被断言的对象。
+ * 线性侧的同义规则是「`render_answer` 必须是最后一步」⇒ 一条计划里只可能有一个生效的 render。
+ * ⚠ 将来 `cond` 边落地后（今天 NOT_IMPLEMENTED），「互斥分支各自收口」会成为合法形态，
+ *   届时本条须放宽为「每条可达分支恰好一个」——**改 `cond` 的那一单必须回来改这里**。
+ */
+function assertRenderClosure(
+  nodes: readonly SkillGraphNode[],
+  succ: ReadonlyMap<string, string[]>,
+  entry: readonly string[],
+): { ok: true; renderNodeId: string } | { ok: false; code: SkillGraphCompileErrorCode; message: string } {
+  const inventory = nodes.map((n) => `${n.id}(${n.kind})`).join(", ");
+  const renders = nodes.filter((n) => n.kind === "render").map((n) => n.id);
+
+  if (renders.length === 0) {
+    return {
+      ok: false,
+      code: "RENDER_CLOSURE_MISSING",
+      // 「说清是哪张图、缺什么」：SkillGraph 契约上没有 id 字段，故用节点清单指认这张图。
+      message:
+        `R11 全链闭包：本图没有任何 \`render\` 节点，无法收口 —— 图的节点为 [${inventory}]。` +
+        `请补一个 kind="render" 的节点，并让每条工作链都有边汇进它（它就是这张图的答案产出点）。`,
+    };
+  }
+  if (renders.length > 1) {
+    return {
+      ok: false,
+      code: "GRAPH_INVALID",
+      message:
+        `R11 全链闭包：本图有 ${renders.length} 个 \`render\` 节点 [${renders.join(", ")}]，` +
+        `「哪个产物才是这张图的答案」就没有答案了 —— 一张图只允许一个 render 收口点。` +
+        `（图的节点为 [${inventory}]）`,
+    };
+  }
+
+  const renderNodeId = renders[0]!;
+  // 从每个入口正向走，看够不够得着那个 render。
+  const unclosed: string[] = [];
+  for (const e of entry) {
+    const seen = new Set<string>([e]);
+    const queue = [e];
+    let reached = false;
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      if (cur === renderNodeId) { reached = true; break; }
+      for (const nxt of succ.get(cur) ?? []) {
+        if (!seen.has(nxt)) { seen.add(nxt); queue.push(nxt); }
+      }
+    }
+    if (!reached) unclosed.push(e);
+  }
+  if (unclosed.length > 0) {
+    return {
+      ok: false,
+      code: "RENDER_CLOSURE_MISSING",
+      message:
+        `R11 全链闭包：入口节点 [${unclosed.join(", ")}] 没有任何一条有向路径能走到 render 节点「${renderNodeId}」 —— ` +
+        `这条链上的产物进不了答案，等于白算。请补边把它接进收口链路。（图的节点为 [${inventory}]）`,
+    };
+  }
+  return { ok: true, renderNodeId };
+}
 
 /**
  * 编译一张图 → 确定性分层执行计划。
@@ -309,7 +414,13 @@ export function compileGraph(graph: SkillGraph): CompileGraphResult {
     predecessors[n.id] = (pred.get(n.id) ?? []).slice().sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
   }
 
-  return { ok: true, entry, layers, predecessors };
+  // —— R11 全链闭包：**放在最后一道**。
+  //    次序是有讲究的：环 / 未实现 kind / 悬空边 / 重复 id 这些结构病先报，
+  //    否则一张有环又没 render 的图会报「缺 render」，把真正的病因盖掉。
+  const closure = assertRenderClosure(nodes, succ, entry);
+  if (!closure.ok) return { ok: false, code: closure.code, message: closure.message };
+
+  return { ok: true, entry, layers, predecessors, renderNodeId: closure.renderNodeId };
 }
 
 // ---------------------------------------------------------------------------
@@ -466,6 +577,8 @@ export type CompileExecutionResult =
       entry: string[];
       layers: SkillGraphLayer[];
       predecessors: Record<string, string[]>;
+      /** R11 收口点（本图唯一的 render 节点 id）——调度器据此取「这张图的答案」。 */
+      renderNodeId: string;
     }
   | { ok: false; code: SkillGraphCompileErrorCode; message: string; cycle?: string[]; source?: ExecutionSource };
 
@@ -507,7 +620,15 @@ export function compileExecution(input: {
 
   const compiled = compileGraph(graph);
   if (!compiled.ok) return { ...compiled, source };
-  return { ok: true, source, graph, entry: compiled.entry, layers: compiled.layers, predecessors: compiled.predecessors };
+  return {
+    ok: true,
+    source,
+    graph,
+    entry: compiled.entry,
+    layers: compiled.layers,
+    predecessors: compiled.predecessors,
+    renderNodeId: compiled.renderNodeId,
+  };
 }
 
 /**
