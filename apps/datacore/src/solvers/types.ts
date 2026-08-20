@@ -311,6 +311,16 @@ export interface SolverContext {
   // 使合成数据绝不冒充 LIVE/实测（闭 G-DATAMODE-PROVENANCE-LEAK）。optional：缺省（测试直构 ctx / 无合成源）
   // 视为"全非合成"→ 现行行为不变（向后兼容 R6）。
   isSynthProvenance?: (o: ObjectInstance) => boolean;
+  /**
+   * WO-AUDIT-TIMELINE-LIVESOURCE · A8 真日序列（**按需加载**·service.ts 仅 `audit_timeline` 载·其余求解器零成本）。
+   * seriesKey → { measure, origin, points[{entityId,date,value}] }（day grain·点按 (date,entityId) 升序·R6）。
+   * 映射表（哪些审计 kind 有真源）不在引擎里写死——单一出处 = contracts `AUDIT_KIND_LIVE_SOURCES`。
+   * 缺键 / 点为空 = 该 kind 无真源 → auditTimeline 走 MOCK 哈希投影 + 诚实披露（绝不冒充 LIVE·不硬造源）。
+   */
+  auditTsDaily?: Record<
+    string,
+    { measure: string; origin?: "SYNTHETIC" | "CONNECTOR"; points: { entityId: string; date: string; value: number }[] }
+  >;
 }
 
 export function num(v: unknown, fallback = 0): number {

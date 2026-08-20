@@ -322,6 +322,19 @@ export class OntologyService {
       })),
       interfaces,
       actionTypeKeys: actionTypes.map((a) => a.key),
+      // WO-INTERFACE-ACTIONTYPE-DEEPVAL（残口②）：深校验视图 —— targetTypeKey 归因键 +
+      // paramsSchema.properties 键集投影，发布门据此判「绑定的行动在本类型上兑不兑现得了」。
+      // paramsSchema 形状不可读（无 properties 对象）→ paramKeys 省略 = 形状未知 → 跳过参数对表（诚实缺省）。
+      actionTypes: actionTypes.map((a) => {
+        const props = (a.paramsSchema as { properties?: unknown } | undefined)?.properties;
+        const paramKeys =
+          props && typeof props === "object" && !Array.isArray(props) ? Object.keys(props) : undefined;
+        return {
+          key: a.key,
+          ...(a.targetTypeKey ? { targetTypeKey: a.targetTypeKey } : {}),
+          ...(paramKeys ? { paramKeys } : {}),
+        };
+      }),
       // WO-69 P2 兑现点：`functions` 校验用的是**真求解器签名注册表**，不是一份手抄清单。
       solverSignatures: SOLVER_ONTOLOGY_SIGNATURES,
     });
