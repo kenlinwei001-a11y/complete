@@ -19,7 +19,9 @@ import { seedRegistry } from "../src/mocks/seed.js";
  *
  * 数据依据（实测，非推测）：`apps/agentcore/src/mocks/seed.ts` 的出厂 skill
  *   - `references` 7 条种子、其中 6 条非空 → **可用作断言依据**
- *   - `dependsOn`  0 条            → **不可用**（那条链今天没数据，拿它断言等于断言空集）
+ *   - `dependsOn`  6 条边 / 4 个技能持有（2026-08-18 WO-SKILL-DEPENDSON-COVER 自 1 条扩覆，4/7 = 多数）
+ *     → 环检测与引用解析分支有真数据驱动；环的**拒绝**断言在 `skill-dependson-cover.seam.test.ts`
+ *     （环不许种进生产 seed——那会炸启动审计与正常发布流，故环只在测试里构造）。
  */
 
 const H = { "x-debug-user": ADMIN, "content-type": "application/json" };
@@ -45,11 +47,14 @@ describe("WO-SKILL-COMPILER-S1 · SEAM：真实种子技能 → HTTP compile →
     expect(skills.length).toBe(7);
     expect(withRefs.length).toBe(6);
     // `dependsOn`：本单写这条断言时全仓 **0 条**（「接了线没数据」，见 CLAUDE.md 铁律 0.5）。
-    // 2026-08-09 收编 WO-SKILL-PARTIAL-A 后变成 **1 条**（`mocks/seed.ts:1350`
-    // sop_meeting --dependsOn--> capacity_analysis）——本金丝雀当场报红，审核方逐层追到
+    // 2026-08-09 收编 WO-SKILL-PARTIAL-A 后变成 **1 条**（`mocks/seed.ts`
+    // capacity_action_draft --dependsOn--> capacity_analysis）——本金丝雀当场报红，审核方逐层追到
     // 那个提交（`0b49b75a`）确认是**有意补的种子**、不是回归，才改的这个数。
+    // 2026-08-18 WO-SKILL-DEPENDSON-COVER 扩覆：**4 个**技能持有 dependsOn（共 6 条边，全部指向
+    // PUBLISHED 目标、图无环；4/7 = 多数技能有边）——同样是有意补数据（本体 §8 `G-SKILL-REFGRAPH-DEAD-EXTRACTOR` ②），
+    // 逐条业务语义见 seed.ts 各边的注释。
     // ⚠️ 下次这个数再变，同样先查提交再改断言，不许直接改数把红压掉。
-    expect(skills.filter((s) => (s.dependsOn ?? []).length > 0).length).toBe(1);
+    expect(skills.filter((s) => (s.dependsOn ?? []).length > 0).length).toBe(4);
   });
 
   it("① 每个出厂技能：graph 的节点集合 === 它 references[] 声明的资源（逐个技能对账，一条都不许漏或多）", async () => {
