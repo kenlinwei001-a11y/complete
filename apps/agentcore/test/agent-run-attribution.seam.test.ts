@@ -352,6 +352,53 @@ describe("WO-DSH-P2-UX · 内核标识写入对拍（A7）", () => {
     expect(result.run.kernel).toBe("NATIVE");
   });
 
+  // ── WO-AGENT-KERNEL-SELECT · per-agent 内核选择（AgentDefinition.kernel）─────────
+  // 语义钉：agent 显式配置优先于进程 env；字段缺失才回落 env 分叉（上面两臂 = 缺省对拍，
+  // 本组三臂逐字复用其剧本，只改 kernel 字段与 env 组合——红的只能是 per-agent 判据本身）。
+
+  it("agent.kernel=\"EXTERNAL\" + env 关 ⇒ 走 dsh 分叉 run.kernel === \"EXTERNAL\"", { timeout: 60_000 }, async () => {
+    delete process.env.DSH_HARNESS; // 进程级开关关着——分叉若发生，只能来自 agent 配置
+    process.env.DSH_HARNESS_DIR = HARNESS_DIR;
+    delete process.env.MOCK_SCENARIO;
+    const stub = await startStubOpenAi([
+      { toolCall: { name: "final_answer", arguments: JSON.stringify({ blocks: [{ type: "text", markdown: "内核测试回答。" }], provenance: [] }) }, usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
+      { text: "stub final answer", usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
+    ]);
+    const t = await createTestApp({
+      providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+    });
+    try {
+      await t.repos.agents.insert(
+        agentDef({
+          id: "agt_kernel_peragent_dsh",
+          key: "kernel_peragent_dsh",
+          kernel: "EXTERNAL",
+          model: STUB_DCP_SPEC,
+          tools: [{ kind: "BUILTIN", name: "echo_tool" }],
+          scopeDeclaration: { objectTypes: [], toolNames: ["echo_tool"] },
+        }),
+      );
+
+      const result = await runEngineOnce(t, "agt_kernel_peragent_dsh", "task_kernel_peragent_dsh");
+      expect(result.run.kernel).toBe("EXTERNAL");
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it("agent.kernel=\"NATIVE\" 显式 + DSH_HARNESS=1 ⇒ 显式配置压过 env，落 native run.kernel === \"NATIVE\"", async () => {
+    process.env.DSH_HARNESS = "1"; // env 开着——agent 显式 NATIVE 若被 env 翻走，本臂当场红
+    const t = await createTestApp();
+    await t.repos.agents.insert(agentDef({ id: "agt_kernel_pin_native", key: "kernel_pin_native", kernel: "NATIVE" }));
+    t.llm.queueAgentTurn({ content: [toolUse("query_objects", { objectType: "Base", filter: {} })] });
+    t.llm.queueAgentTurn({
+      content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "内核测试回答。" }], provenance: [] })],
+    });
+
+    const result = await runEngineOnce(t, "agt_kernel_pin_native", "task_kernel_pin_native");
+    expect(result.run.kernel).toBe("NATIVE");
+  });
+
   /**
    * A10（verifier 自加变异盲区销账）· BLOCK 早退构造点（engine.ts 分叉**前**那一处
    * `emptyAgentRunRecord(..., DSH_HARNESS === "1" ? "EXTERNAL" : "NATIVE")`）的 kernel 值断言。
@@ -374,12 +421,12 @@ describe("WO-DSH-P2-UX · 内核标识写入对拍（A7）", () => {
     } as SkillDefinition;
   }
 
-  /** 真走 skill 规则预检 BLOCK 早退（engine 级），返回 run。 */
-  async function runBlockedOnce(suffix: string) {
+  /** 真走 skill 规则预检 BLOCK 早退（engine 级），返回 run。kernel 实参 = WO-AGENT-KERNEL-SELECT per-agent 臂。 */
+  async function runBlockedOnce(suffix: string, kernel?: "NATIVE" | "EXTERNAL") {
     const t = await createTestApp();
     await t.repos.skills.insert(blockSkill());
     await t.repos.agents.insert(
-      agentDef({ id: `agt_kernel_block_${suffix}`, key: `kernel_block_${suffix}`, skills: [{ skillId: "skl_kernel_block", version: 1 }] }),
+      agentDef({ id: `agt_kernel_block_${suffix}`, key: `kernel_block_${suffix}`, skills: [{ skillId: "skl_kernel_block", version: 1 }], ...(kernel ? { kernel } : {}) }),
     );
     vi.spyOn(t.dataCore.rules, "evaluate").mockResolvedValue([
       { ruleId: "KERNEL_PRE_BLOCK", passed: false, severity: "BLOCK", explanation: "预检命中", ruleVersion: 1 },
@@ -401,5 +448,11 @@ describe("WO-DSH-P2-UX · 内核标识写入对拍（A7）", () => {
     delete process.env.DSH_HARNESS;
     const result = await runBlockedOnce("off");
     expect(result.run.kernel).toBe("NATIVE");
+  });
+
+  it("A10 BLOCK 早退 · agent.kernel=\"EXTERNAL\" + env 关 ⇒ kernel === \"EXTERNAL\"（WO-AGENT-KERNEL-SELECT per-agent 臂）", async () => {
+    delete process.env.DSH_HARNESS; // BLOCK 早退在分叉之前；env 关着，kernel 值只能来自 agent 配置
+    const result = await runBlockedOnce("peragent", "EXTERNAL");
+    expect(result.run.kernel).toBe("EXTERNAL");
   });
 });

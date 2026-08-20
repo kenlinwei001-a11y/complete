@@ -414,3 +414,21 @@ POC 报告 §5 对照表写「闭包 | 38 包在独立目录，agentcore 零侵�
 > **并进来的是一台已经装好、没通电的机器；本单做的是把闸刀锁上，并写清三把钥匙分别在谁手里。**
 > 锁是 `scripts/check-dsh-dormancy.mjs`（**已接进 `pnpm gates`，每次 gate/CI 真跑**），
 > 钥匙是 §3 的三条前置条件。
+
+---
+
+## 10 · 补遗（2026-08-20）· WO-AGENT-KERNEL-SELECT：per-agent 激活路径开通
+
+**变化**：`AgentDefinition.kernel`（additive 可选字段）把「走不走 DSH」从进程级 env 单源升级为
+**agent 显式配置优先、缺省回落 env**。分叉守卫（`engine.ts`）改为
+`agent.kernel === "EXTERNAL" || (agent.kernel === undefined && process.env.DSH_HARNESS === "1")`，
+D3 词法判据不受影响（守卫仍字面直读 `process.env.DSH_HARNESS`，门 + selftest 全绿）。
+
+**诚实登记（门的新盲区，不许当成「仍被门全包住」）**：
+- D1/D3 守的是**仓内部署面与源码面**；`agent.kernel` 住在 **DB 里的 agent 定义**，
+  任何 catalog admin 经管理台 PUT 即可开通单 agent 的 DSH——**此路径两门都看不见**。
+- 因此 §3 三条前置条件的约束面**自动延展**：在任何真实租户把某 agent 置 `kernel=EXTERNAL`，
+  等同于对该 agent 翻 flag，前置 A/B/C 须逐条销账（缺省 ≡ NATIVE，seed 12 agent 零改动即全原生）。
+- 缓冲事实（不是豁免）：① PUT/PUBLISH 走 `requireCatalogAdmin` 且 PUBLISHED 版本不可变
+  （改动必留新版本轨迹）；② run 归因 `run.kernel` 逐条落库，事后可审计「哪些运行真走了外部运行时」；
+  ③ 前端选择器词表与归因同词（NATIVE/EXTERNAL），不给「配置了但没生效」留歧义。

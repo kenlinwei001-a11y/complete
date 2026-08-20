@@ -179,8 +179,8 @@ function emptyAgentRunRecord(
   // WO-AGENTRUN-FANOUT-PERSIST：同理——被会诊扇出的子 agent 若在规则预检就被 BLOCK，那也是**它真跑过一次**
   // （零迭代但确有位置），照样得带上 FANOUT 落库，否则「这个 Agent 跑了几次」会漏掉被拦下的那些。
   placement?: AgentRunPlacementInput,
-  // WO-DSH-P2-UX（N5）：内核标识。dsh 分叉两点恒 "EXTERNAL"；分叉前 BLOCK 早退点传 flag 态值
-  // （`DSH_HARNESS === "1" ? "EXTERNAL" : "NATIVE"`，与分叉同一表达式）——标的是「本会走哪个内核」，
+  // WO-DSH-P2-UX（N5）：内核标识。dsh 分叉两点恒 "EXTERNAL"；分叉前 BLOCK 早退点传有效内核值
+  //（WO-AGENT-KERNEL-SELECT：agent.kernel 显式优先 / 缺省回落 env，与分叉守卫同一表达式）——标的是「本会走哪个内核」，
   // 该 run 未真执行任何循环，**不许**读成「真在 dsh 上跑过」（R13 不造数纪律）。
   kernel?: AgentRunKernel,
 ): AgentRunRecord {
@@ -427,9 +427,10 @@ export class ExecutionEngine {
           return {
             outcome: "ANSWERED",
             answer: ruleViolationAnswer(verdicts),
-            // WO-DSH-P2-UX（N5）：此早退点在 dsh 分叉**之前**——标「本会走哪个内核」（flag 态值，
-            // 与下方分叉同一表达式），该 run 未真执行任何循环，不许读成「真在 dsh 上跑过」。
-            run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, process.env.DSH_HARNESS === "1" ? "EXTERNAL" : "NATIVE"),
+            // WO-DSH-P2-UX（N5）：此早退点在 dsh 分叉**之前**——标「本会走哪个内核」，
+            // 该 run 未真执行任何循环，不许读成「真在 dsh 上跑过」。
+            // WO-AGENT-KERNEL-SELECT：与下方分叉守卫**同一表达式**（agent 显式优先，缺省回落 env）。
+            run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, agent.kernel === "EXTERNAL" || (agent.kernel === undefined && process.env.DSH_HARNESS === "1") ? "EXTERNAL" : "NATIVE"),
             sketch: [],
           };
         }
@@ -497,13 +498,17 @@ export class ExecutionEngine {
     const summarizer = cfg.QOS_ROLLING_SUMMARY_LLM === "1" ? llmRollingSummarizer(this.deps.llm, model, agent.tenantId) : undefined;
 
     // -----------------------------------------------------------------------
-    // WO-DSH-POC-S4 · 路 B（dsh harness）**休眠分叉**：仅 DSH_HARNESS=1 时走 JSON-RPC
-    // 子进程路径（packages/dsh-harness），缺省关闭 = 下方 runAgentLoop 逐字节旧行为。
-    // 动态 import：flag 关时 dsh 模块根本不加载。POC 验收专用；postcheck 规则后验
+    // WO-DSH-POC-S4 · 路 B（dsh harness）**休眠分叉**：走 JSON-RPC 子进程路径
+    // （packages/dsh-harness），缺省关闭 = 下方 runAgentLoop 逐字节旧行为。
+    // 动态 import：条件不成立时 dsh 模块根本不加载。POC 验收专用；postcheck 规则后验
     // （下方 POST_CHECK 段）在此路径不外挂——验收对照的是 loop 本体语义。
+    // WO-AGENT-KERNEL-SELECT · 分叉条件升级（env 单源 → per-agent 优先）：
+    //   agent.kernel 显式值优先（"EXTERNAL" 选 DSH；"NATIVE" 显式钉原生，env 翻不走）；
+    //   字段缺失才回落进程 env DSH_HARNESS=1（POC 验收全局开关，既有通路零 delta）。
+    //   归因点（上方 BLOCK 早退 :432 与分叉内两点）用**同一表达式**，禁抽公共变量——
     // 守卫必须直读 process.env.DSH_HARNESS：check-dsh-dormancy.mjs D3 判据只认
-    // 「条件里提到 process.env.DSH_HARNESS」的包裹块（cfg 转发会被判裸入口，门红）。
-    if (process.env.DSH_HARNESS === "1") {
+    // 「条件里提到 process.env.DSH_HARNESS」的包裹块（cfg 转发/间接变量会被判裸入口，门红·mut14 血账）。
+    if (agent.kernel === "EXTERNAL" || (agent.kernel === undefined && process.env.DSH_HARNESS === "1")) {
       const { buildSessionSetup, mapMcpConfig, mapSkill, runDshAgent } = await import("./dsh-runtime/index.js");
       // WO-MCP-FORWARD · additive 转发（静默丢字段同族病第四例）：agent.mcpServers 非空时
       // 经 mapMcpConfig 逐个映射进 setup——serverName 白名单校验 + 映射期解密注入（安全注记
