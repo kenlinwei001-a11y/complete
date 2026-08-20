@@ -61,12 +61,13 @@ interface LlmClient {
 | `modeling` | A3 建模建议 | structuredOutput |
 | `template_gen` | A7 行业模板生成 | structuredOutput |
 | `compose` | workflow llm_compose 步骤 | （无硬要求） |
+| `comprehend` | 数据构建发动机：故事脚本意图解析→全栈倒推（听懂任意业务语言；缺则确定性关键词地板） | structuredOutput |
 
 每次 LLM 调用的审计记录补 `{providerId, modelId}`；指标 `qos_llm_tokens_total` 增加 `provider` 标签。
 
 ## 1.4 中台页面 /admin/llm-providers（tenant_admin）
 
-Provider 列表（kind 徽章/状态/模型数/近 7 日 token 用量）→ 编辑器：连接参数、**密钥输入框（write-only，保存后显示 `••• 已配置` + "更换"）**、模型清单管理（增删行 + 能力勾选）、**连接测试按钮**（发一条最小请求，返回延迟与可用模型探测结果）、降级目标选择。第二个 Tab：**用途绑定矩阵**（6 用途 × provider/model 下拉，能力不满足的选项禁用并注明缺什么）。
+Provider 列表（kind 徽章/状态/模型数/近 7 日 token 用量）→ 编辑器：连接参数、**密钥输入框（write-only，保存后显示 `••• 已配置` + "更换"）**、模型清单管理（增删行 + 能力勾选）、**连接测试按钮**（发一条最小请求，返回延迟与可用模型探测结果）、降级目标选择。第二个 Tab：**用途绑定矩阵**（7 用途 × provider/model 下拉，能力不满足的选项禁用并注明缺什么）。
 
 ---
 

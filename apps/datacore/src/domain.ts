@@ -1181,7 +1181,7 @@ export interface LlmProviderRecord {
 export interface LlmPurposeBindingRecord {
   id: string; // llmb_{purpose}
   tenantId: string;
-  purpose: string; // classifier|agent|extraction|modeling|template_gen|compose
+  purpose: string; // classifier|agent|extraction|modeling|template_gen|compose|comprehend
   providerId: string;
   modelId: string;
   /** WO-QOS-NOREASON「关推理」：ON → 解析期若绑定模型为推理型，改用同 provider 非推理兄弟（存 JSONB doc·无需迁移）。 */
