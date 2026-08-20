@@ -14,7 +14,8 @@
  *
  * green→red 有牙：把某 CEO intent 的 slot 删掉（如 ceo_credit_exposure 去 custName）→ 断言① 红；把 credit_exposure 还原成
  *   `?? customers[0]` 首客户静默默认 → 断言② 红。ROUTER_EMITS 表的单一来源 = `apps/agentcore/src/router/ceo-route.ts`
- *   的 *ArgsFrom / resolveCeoRoute（路由解析出哪些实体·人工派生并在此登记·改路由解析须同步本表）。
+ *   的 *ArgsFrom / resolveCeoRoute —— **键集由断言⓪现算比对**（路由加 intent 不登记 ⇒ 当场红）；
+ *   每个 intent 的实体清单仍人工派生登记（ArgsFrom 条件赋值静态证不了），由断言①动态半兜底。
  *
  * 用法：node scripts/check-arg-drop-seam.mjs（先 pnpm -r build 或至少 build agentcore）。
  * 本体登记：docs/SYSTEM-ONTOLOGY.md §5 R-ARG-FIDELITY · §7 门 arg-drop-seam:check · §8 G-ARG-DROP-SEAM。
@@ -42,6 +43,7 @@ function gateToolBroken(e) {
 
 import { readFileSync } from "node:fs";
 import { assertDistFresh } from "./dist-freshness.mjs";
+import { extractRosters } from "./lib/roster-hardcode.mjs";
 
 const root = new URL("../", import.meta.url);
 const abs = (rel) => new URL(rel, root);
@@ -61,6 +63,7 @@ const { collectSlotRefs } = await import(distTemplate.href);
 /**
  * 路由可解析的**过滤实体**集（单一来源 = ceo-route.ts *ArgsFrom / resolveCeoRoute）。
  * 只列会 scope 答案的实体键；常量键（mode/targetType/targetProp/topK 由专门映射直接注入·非实体）不列。
+ * **键集不再手抄对齐**：断言⓪从 ceo-route.ts 的 CEO_INTENT_KEYS 现算比对，漏登记/死账当场红。
  */
 const ROUTER_EMITS = {
   ceo_root_cause: ["metricKey", "factorId"],
@@ -75,6 +78,79 @@ const ROUTER_EMITS = {
   ceo_whatif: ["scopeObjectIds", "factors"],
   ceo_capacity_threshold: ["modelId", "weeks"],
 };
+
+// ── 断言⓪ 名册键集现算核对（WO-GATE-REACH-SWEEP 加）────────────────────────────
+// ROUTER_EMITS 的**键集**（哪些 CEO intent 被登记）声明「单一来源 = ceo-route.ts」，
+// 但本门此前**从未读过那个文件** —— 键集靠人肉对齐（G-GATE-ROSTER-HANDCOPIED ×
+// G-GATE-SCOPE-MISSES-SUBJECT 双形态叠加：名册写死 + 被守对象不在扫描面里）。
+// 路由侧新增一个 intent 而不同步本表 ⇒ 它永远绿 —— 金丝雀结构上无从知道。
+// 故键集改为**现算比对**：从 ceo-route.ts 的 `CEO_INTENT_KEYS` 抽出真键集，
+// 与 ROUTER_EMITS 的键集双向求差，任一方向有差即真红（RC=1）；
+// 抽不出来（改名/挪动/枚举塌陷）即工具坏（RC=2），**不许**读作「名册没漂」。
+// 每个 intent 的**实体清单**（值）仍是人工派生登记 —— 它由 *ArgsFrom 函数体动态拼出
+// （`if (orderRef) args.orderRef = …` 条件赋值），静态抽取证不了「哪些键会真出现」，
+// 这一半继续靠断言①的动态半兜底（真种子逐 intent 比对）。键集漂 vs 实体清单漂，
+// 机器各管一半，谁也不许假装全管。
+const CEO_ROUTE_SRC = "apps/agentcore/src/router/ceo-route.ts";
+
+/** 唯一实现：从 ceo-route.ts 源码现算 CEO_INTENT_KEYS 键集（主判据与金丝雀共用）。 */
+function ceoIntentKeysFrom(src) {
+  const r = extractRosters(src).find((x) => x.name === "CEO_INTENT_KEYS" && x.kind === "set");
+  if (!r) return null;
+  const keys = new Set(r.strings.filter((s) => /^ceo_/.test(s)));
+  return keys.size ? keys : null;
+}
+
+/** 唯一实现：现算键集 vs 登记键集的双向差（主判据与金丝雀共用）。 */
+function rosterDrift(computedKeys, registeredKeys) {
+  return {
+    missing: [...computedKeys].filter((k) => !registeredKeys.has(k)), // 路由有、门没登记 ⇒ 永远绿
+    dead: [...registeredKeys].filter((k) => !computedKeys.has(k)), // 门登记了、路由已删 ⇒ 死账
+  };
+}
+
+const ceoRouteSrc = readFileSync(abs(CEO_ROUTE_SRC), "utf8");
+
+// 金丝雀（铁律 0.6 · 与主判据共用 ceoIntentKeysFrom / rosterDrift，样例 = **真源码**变异）：
+//  ① 真源码抽出的键集下界自证（<5 ⇒ 枚举塌陷，报工具坏，不报「名册没漂」）；
+//  ② 往真源码的 Set 里注入一个假键 ⇒ 同一套差集逻辑必须当场咬出它（咬不出 = 门瞎了）；
+//  ③ 变异锚点本身失效（replace 没咬到）同样报工具坏 —— 「我没找到」和「它不存在」是两个命题。
+const computedKeys = ceoIntentKeysFrom(ceoRouteSrc);
+{
+  const ANCHOR = '"ceo_metric",';
+  const mutated = ceoRouteSrc.replace(ANCHOR, `${ANCHOR} "ceo_canary_fake",`);
+  const mutatedKeys = mutated !== ceoRouteSrc ? ceoIntentKeysFrom(mutated) : null;
+  const canaryDrift = mutatedKeys ? rosterDrift(mutatedKeys, new Set(Object.keys(ROUTER_EMITS))) : null;
+  const canaryBad =
+    !computedKeys || computedKeys.size < 5 ? `CEO_INTENT_KEYS 只抽到 ${computedKeys?.size ?? 0} 个键（下界 5）—— 枚举塌陷`
+    : mutated === ceoRouteSrc ? `变异锚点 ${ANCHOR} 在 ceo-route.ts 里没咬到 —— 金丝雀失效`
+    : !mutatedKeys?.has("ceo_canary_fake") ? "注入的假键没被抽取器抽出 —— 抽取器瞎了"
+    : !(canaryDrift.missing.length === 1 && canaryDrift.missing[0] === "ceo_canary_fake") ? "注入的假键没被差集逻辑咬出 —— 检测逻辑瞎了"
+    : null;
+  if (canaryBad) {
+    console.error(`⛔ 门自己瞎了（断言⓪金丝雀）：${canaryBad}。`);
+    console.error("   本次结论作废：**不许**读作「ROUTER_EMITS 与 ceo-route.ts 对齐」——本门这次没查成。");
+    process.exit(2);
+  }
+}
+
+// 主判据：键集双向差任一非空即真红。
+{
+  const { missing, dead } = rosterDrift(computedKeys, new Set(Object.keys(ROUTER_EMITS)));
+  if (missing.length) {
+    fails.push(
+      `断言⓪ 名册漏登记：ceo-route.ts 的 CEO_INTENT_KEYS 有 ${missing.map((k) => `「${k}」`).join("、")}，` +
+        `而 ROUTER_EMITS 没登记 —— 这条 intent 的丢参检查**从未被执行过**（写死名册形态：不在名单里的永远绿）。` +
+        `修：在 ROUTER_EMITS 补登记它的路由可解析实体集（及必要的 EXEMPT 豁免理由）。`,
+    );
+  }
+  if (dead.length) {
+    fails.push(
+      `断言⓪ 名册死账：ROUTER_EMITS 登记的 ${dead.map((k) => `「${k}」`).join("、")} 已不在 ceo-route.ts 的 CEO_INTENT_KEYS 里` +
+        ` —— 守着一条不存在的路由。修：从 ROUTER_EMITS/EXEMPT 删除，或把路由加回去。`,
+    );
+  }
+}
 
 /**
  * 显式豁免表：路由发但**合法地**不作 slot（求解器全域 by design·无 scope 维 / 或独立未接线 seam）——**每条带理由**（防悄悄豁免真断裂）。

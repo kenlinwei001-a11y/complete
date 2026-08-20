@@ -87,7 +87,7 @@ import { selfCheckGaps } from "./databuilder/selfcheck.js";
 import type { BuildPlan, ClosurePolicy, SliceLayersResponse } from "@platform/contracts";
 import { buildSliceIndex, lookupReusable, lookupReusableByQuestion } from "./ontology/slice-index.js";
 import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
-import { projectSliceLayers } from "./ontology/slice-layers.js"; // WO-SLICE-16-LAYERS · 切片十六层只读投影
+import { projectSliceLayers, requiredSliceArgs, diagnoseEmptyGraph } from "./ontology/slice-layers.js"; // WO-SLICE-16-LAYERS · 切片十六层只读投影（+WO-SLICE-DERIV-EMPTY 导出的空图诊断/参数扫描，与投影共用同一份实现）
 // WO-V4-INSPECT · 业务流程节点检视只读投影（纯函数·零 IO·十六层复用上面那份 projectSliceLayers）
 import { adhocCarrierSliceKey, adhocCarrierSliceSpec, projectProcessInspect } from "./process/inspect.js";
 import { generateRefbaseOntology, refbaseNodeCount, refbaseDigest } from "./ontology/refbase.js";
@@ -157,7 +157,7 @@ import { OpsReplayService } from "./opsteam/replay.js";
 import { poolSnapshot } from "./opsteam/pools.js";
 import { OpsScheduleSchema } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
-import type { AuthCtx, ObjectInstance } from "./domain.js";
+import type { AuthCtx, ObjectInstance, SliceSpecRecord } from "./domain.js";
 import { mulberry32, hashString, randInt } from "./prng.js";
 import { DeriveDecisionFieldsRequestSchema, RecordMaterializeRequestSchema, CeoDatasetGenerateRequestSchema } from "@platform/contracts"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生 · WO-CEO-DATA-supply · 真源记录颗粒级物化 · WO-CEO-DATA-2
 import { AdvanceProcessInstanceRequestSchema, CreateProcessInstanceRequestSchema } from "@platform/contracts"; // WO-PROCESS-INSTANCE · 流程运行时（建实例/推进；body 只收**外部事实**，不收 status —— 状态机不交给调用方）
@@ -2217,8 +2217,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   // WO-ENGINE-2 件二·半边A：检查点**列表读端**。仓储三处（repo.ts 接口 / memory.ts / pg.ts）早就写好了
   // `listCheckpoints`，但 24 条 `/a/v1/sim/*` 路由里从没有人开这个口 —— 病根在 route 层，不在前端。
-  // 后果：`sim.checkpoint_saved` 事件没有可失效的缓存（前端无列表可读），回滚/分支只能靠调用方自己记
-  // checkpointId。开此路由后该事件才具备真接线条件（前端 useQuery 属 WO-1/WO-4 边界，不在本单）。
+  // 接线状态（2026-08-20 · WO-EVENT-SUB-CLOSURE）：本路由 + 前端 checkpointsQuery（WO-BEFE-E）齐备，
+  // `sim.checkpoint_saved` 已真接线（EVENT_INVALIDATES → ["a","sim-checkpoints"] 前缀失效），
+  // `sim.*` 六事件自此全部有真消费方。
   // ⚠️ R9 双实现一致性：排序**必须**落在本层，不能指望两个仓储各自 ORDER BY —— 它们今天就不一致：
   // `repo/pg.ts:103` 是 `ORDER BY tick`（且 tick 相同时次序由 DB 任意决定，非全序），
   // 而 `repo/memory.ts:70` **一个 sort 都没有**（Map 插入序）。沙盘的常规动作正好会踩中这个分叉：
@@ -2465,8 +2466,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const slices = allSlices.filter((s) => typeKeys.has(s.spec.root.typeKey));
     // observability：被 ≥1 切片 root 覆盖的对象集合。
     const coveredTypeKeys = new Set(allSlices.map((s) => s.spec.root.typeKey));
-    // writeback ActionType：scope 内（checkRules/scope 暂无显式 targetType → 全本体动作均视作可写本体）。
-    const scopeActions = allActions; // ActionType 无 targetTypeKey 字段，按全本体计数（§2.2 writeback=ActionType 计数）
+    // writeback ActionType：按 `targetTypeKey` 归因（G-ACTIONTYPE-NO-TARGET 已补该字段）。
+    // 改前注释自述「ActionType 无 targetTypeKey 字段，按全本体计数」——那是算不出来的退而求其次：
+    // LOCAL 认证问的是「这个类型能不能进推演」，拿全本体动作数充数等于永远答"能"。
+    // 现在：LOCAL 只数可归因到 scope 内类型的动作；`targetTypeKey` 缺省（不可静态归因，
+    // 契约注释三种情形）的不计入、也不许冒充计入——它们在 `unattributedActions` 里**作为不可归因可见**。
+    const scopeActions =
+      scopeKind === "LOCAL" && target
+        ? allActions.filter((a) => a.targetTypeKey !== undefined && typeKeys.has(a.targetTypeKey))
+        : allActions;
+    const unattributedActions = allActions.filter((a) => a.targetTypeKey === undefined).length;
 
     // ── 投影 closure（复用 validateClosure，唯一允许的 closure 校验器）────────────
     const plan: BuildPlan = {
@@ -2571,7 +2580,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         typeKey: d.targetType, propKey: d.targetProp,
         sourceVars: d.deps.map((dep) => `${dep.typeKey}.${dep.prop}`), present: true,
       })),
-      actions: scopeActions.map((a) => ({ key: a.key, targetTypeKey: null })),
+      actions: scopeActions.map((a) => ({ key: a.key, targetTypeKey: a.targetTypeKey ?? null })),
+      unattributedActions,
       slices: slices.map((s) => ({ key: s.sliceKey })),
       propagationRules: propRules.map((p) => ({
         key: p.key, sourceTypeKey: p.sourceTypeKey, sourceStateVar: p.sourceStateVar,
@@ -4302,6 +4312,48 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return ontologyCore.recompute(c, body.changes);
   });
 
+  // WO-SLICE-DERIV-EMPTY · §2.4 派生值留痕读取（溯源弹窗数据源，G-DERIVSPEC-EMPTY 的另一半）：
+  // derivation_value_runs 此前**只写不读**（ontology-core.ts recompute 是唯一写点，零读取路由）——
+  // 「派生 inputs 快照来源」必须取得到才算接上。空结果诚实分态：「规格在、还没重算过」
+  // 与「规格不存在/已退役」是两件事，不许都读成一个空数组（会说谎的诚实位）。
+  app.get("/a/v1/ontology/derivation-specs/:specKey/value-runs", async (req) => {
+    const c = ctx(req);
+    const { specKey } = req.params as { specKey: string };
+    const q = req.query as { objectId?: string; limit?: string };
+    const limit = Math.min(Math.max(1, Number(q.limit ?? 50) || 50), 200);
+    const runs = await repos.derivationValueRuns.list(
+      c.tenantId,
+      (r) => r.specKey === specKey && (q.objectId === undefined || r.objectId === q.objectId),
+    );
+    // 确定性序（R6）：ranAt 倒序（最新在前），同刻按 id 字典序。
+    const sorted = [...runs].sort((a, b) => (a.ranAt < b.ranAt ? 1 : a.ranAt > b.ranAt ? -1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const items = sorted.slice(0, limit).map((r) => ({
+      id: r.id,
+      specKey: r.specKey,
+      objectId: r.objectId,
+      targetProp: r.targetProp,
+      value: r.value,
+      inputs: r.inputs,
+      epoch: r.epoch,
+      ranAt: r.ranAt,
+      ...(r.warnings?.length ? { warnings: r.warnings } : {}),
+    }));
+    const activeSpec = (await repos.derivationSpecs.list(c.tenantId, (s) => s.specKey === specKey && s.status === "ACTIVE"))[0];
+    return {
+      specKey,
+      specStatus: activeSpec ? ("ACTIVE" as const) : ("NOT_FOUND" as const),
+      total: runs.length,
+      items,
+      ...(items.length === 0
+        ? {
+            emptyReason: activeSpec
+              ? "该派生规格尚未触发过重算 —— inputs 快照只在 recompute 实际写值时产生（没有重算就没有快照，这不是故障）。"
+              : "该派生规格不存在或已 RETIRED —— 取不到是因为没有这规格，不是「算出来是空」。",
+          }
+        : {}),
+    };
+  });
+
   // generic-inference 通用 what-if（PRD-generic-inference / G-5 8e）：行业无关——给定"假设某对象属性=新值"，
   // 用本体派生规格(A4)前向重算受影响派生属性，返回 before/after，**不落真值**(R4，dryRun 无副作用)。
   app.post("/a/v1/inference/whatif", async (req) => {
@@ -4332,6 +4384,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         linkKeys: [...new Set(s.spec.paths.flat().map((p) => p.linkKey))],
         maxNodes: s.spec.maxNodes,
         fixtures: s.spec.contractFixtures?.length ?? 0,
+        // WO-SLICE-DERIV-EMPTY（G-SLICE-ROOT-ARGS-UNDISCOVERABLE）：「这条切片要参数」
+        // 在列表页就要看得出来 —— 加性下发 root selector 声明的 {{args.X}}（无参切片 = []）。
+        // 与空图诊断共用同一份占位符扫描（slice-layers.ts requiredSliceArgs，口径单源）。
+        requiredArgs: requiredSliceArgs(s.spec),
       }))
       .sort((a, b) => (a.sliceKey < b.sliceKey ? -1 : 1));
   });
@@ -4399,13 +4455,43 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     await governance.indexSliceRefs(c, rec);
     return reply.status(201).send({ sliceKey: rec.sliceKey, version: rec.version });
   });
+  /**
+   * WO-SLICE-DERIV-EMPTY：空子图诊断的装配（POST …/resolve 用；GET …/layers 路由内有同形态
+   * 的既有装配，两者最终都汇入 slice-layers.ts 的同一份 diagnoseEmptyGraph —— 口径单源在
+   * 诊断函数与占位符扫描上，装配层不改 layers 既有路径以降低共享仓改动面）。
+   * 只在子图为空时调用（非空路径零额外开销）。样本上限防大租户全表拉取。
+   * 显示键与 executeSlice 的 byKey 匹配口径同源（objectKey ?? props[pk] ?? id）：
+   * 候选值必须是**填进去真能解出子图的那个值**，优先业务主键（SO-3391）而非内部 id。
+   */
+  const emptyGraphDiagnosis = async (
+    c: AuthCtx,
+    spec: SliceSpecRecord["spec"],
+    args: Record<string, unknown>,
+  ) => {
+    const ROOT_SAMPLE_CAP = 200;
+    const rootObjects = await repos.objects.listByType(c.tenantId, spec.root.typeKey);
+    const types = await ontology.listTypes(c);
+    const rootPkProp = types.find((t) => t.key === spec.root.typeKey)?.properties.find((p) => p.isPrimaryKey)?.propKey;
+    const rootObjectSamples = rootObjects.slice(0, ROOT_SAMPLE_CAP).map((o) => ({
+      objectKey: String(o.objectKey ?? (rootPkProp !== undefined ? o.props[rootPkProp] : undefined) ?? o.id),
+      props: o.props,
+    }));
+    return diagnoseEmptyGraph(spec, args, rootObjects.length, rootObjectSamples);
+  };
+
   app.post("/a/v1/ontology/slices/:sliceKey/resolve", async (req) => {
     const c = ctx(req);
     const { sliceKey } = req.params as { sliceKey: string };
     const body = parseBody(z.object({ args: z.record(z.string(), z.unknown()).default({}) }), req.body);
     const spec = await ontologyCore.getSliceSpec(c, sliceKey);
     if (!spec) throw notFound(`slice ${sliceKey}`);
-    return ontologyCore.executeSlice(c, spec.spec, body.args);
+    const out = await ontologyCore.executeSlice(c, spec.spec, body.args);
+    // WO-SLICE-DERIV-EMPTY（G-SLICE-EMPTYGRAPH-MISREAD 残留面）：空子图在**本接口**上也要
+    // 机器可分辨 —— 「算出来是空（缺参/零对象/无匹配）」与「没解出来」不许都读成 nodes:[]。
+    // 加性下发 empty 诊断块，与 /layers 端点共用同一份 diagnoseEmptyGraph（口径单源）。
+    if (out.nodes.length > 0) return out;
+    const empty = await emptyGraphDiagnosis(c, spec.spec, body.args);
+    return { ...out, empty };
   });
 
   // ---- S2 action approval ----------------------------------------------------
@@ -4557,7 +4643,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { id } = req.params as { id: string };
     return actions.audit(ctx(req), id);
   });
-  app.get("/a/v1/action-types", async (req) => actions.listTypes(ctx(req)));
+  app.get("/a/v1/action-types", async (req) => {
+    // G-ACTIONTYPE-NO-TARGET 读端：按主目标对象类型反查动作（「这个类型上能做哪些动作」的 answer 路径）。
+    // 不过滤时语义一字不动（全量列表）；过滤即归因查询，不走 create 响应自证。
+    const q = (req.query ?? {}) as { targetTypeKey?: string };
+    const all = await actions.listTypes(ctx(req));
+    return q.targetTypeKey ? all.filter((t) => t.targetTypeKey === q.targetTypeKey) : all;
+  });
   app.post("/a/v1/action-types", async (req, reply) => {
     const c = ctx(req);
     if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
@@ -4565,6 +4657,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       z.object({
         key: z.string().min(1),
         name: z.string().min(1),
+        // G-ACTIONTYPE-NO-TARGET：zod 默认 object 会**静默剥掉**未声明键——这里不声明，
+        // 租户写的 targetTypeKey 会被无声丢掉（又一个"静默"）。缺省语义见契约注释（不可静态归因）。
+        targetTypeKey: z.string().min(1).optional(),
         paramsSchema: z.record(z.string(), z.unknown()).default({}),
         checkRules: z.array(z.string()).default([]),
         approvalChain: z.array(z.object({ role: z.string() })).min(1).max(3),

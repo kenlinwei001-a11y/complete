@@ -84,6 +84,12 @@ export interface CertScope {
   actions: ActionRef[];
   slices: SliceRef[];
   propagationRules: PropagationRuleRef[];
+  /**
+   * scope 内**不可静态归因**的 ActionType 数（`targetTypeKey` 缺省 · WO-ACTIONTYPE-TARGET）。
+   * 它们不进 `actions[]` 的 LOCAL 计数（进就是在冒充可归因），但必须**作为不可归因可见**——
+   * 空集不许冒充"没问题"（缺省语义三情形见契约 `ActionTypeSchema.targetTypeKey` 注释）。
+   */
+  unattributedActions?: number;
   /** §4 needed 计数（本体声明的应有数）—— present 计数从上面数组数。
    *  ⚠ 原有 `stateVars` 已删（WO-CERT-HONESTY ①）：装配方 `app.ts` 给它的表达式与 `derivationRules`
    *  **逐字节相同**，它从来不是一个独立的应有数。留着就是一个名不副实的入参。 */
@@ -250,12 +256,14 @@ export function deriveCertification(
   //    并由前端按 kind 分组显示（行动 N · 传导 N · 派生 N），不拿一个名词盖三样东西。
   // 评审遗留修：source 不再用占位 `FULFILLS r_<type>_<prop>`，改投影派生的**真实依赖源变量**（sourceVars，
   // 派生公式所依赖的状态变量）——知道每个将进入态从哪来（R13 可溯源；数据可溯原则）。
-  const entering: { key: string; kind: "DERIVATION" | "ACTION" | "PROPAGATION"; source: string }[] = [];
+  // WO-ACTIONTYPE-TARGET：ACTION 条目带 `targetTypeKey`（归因键·null = 不可静态归因）——
+  // 「这个动作会改哪类对象」在屏上答得出；null 不许被渲染成"无目标"（缺省语义见契约注释）。
+  const entering: { key: string; kind: "DERIVATION" | "ACTION" | "PROPAGATION"; source: string; targetTypeKey?: string | null }[] = [];
   for (const d of scope.derivations) {
     const source = d.sourceVars.length > 0 ? `派生自 ${d.sourceVars.join("·")}` : `派生 ${d.typeKey}.${d.propKey}（无声明依赖）`;
     entering.push({ key: `${d.typeKey}.${d.propKey}`, kind: "DERIVATION", source });
   }
-  for (const a of scope.actions) entering.push({ key: a.key, kind: "ACTION", source: `ACTION ${a.key}` });
+  for (const a of scope.actions) entering.push({ key: a.key, kind: "ACTION", source: `ACTION ${a.key}`, targetTypeKey: a.targetTypeKey });
   for (const p of scope.propagationRules) entering.push({ key: p.key, kind: "PROPAGATION", source: `PROPAGATION ${p.key}` });
 
   // ── §7 诚实门：canEnterSimulation = L4 ∧ trialTick.passed ∧ closure.gatePassed ────
@@ -339,7 +347,7 @@ export function deriveCertification(
       at: trial.at,
       error: trial.error,
     },
-    worldCompleteness: { pct: wcPct, ...wc, stateVarKeys, entering },
+    worldCompleteness: { pct: wcPct, ...wc, stateVarKeys, entering, unattributedActions: scope.unattributedActions },
     canEnterSimulation,
     gaps: out,
     computedAt: scope.computedAt,

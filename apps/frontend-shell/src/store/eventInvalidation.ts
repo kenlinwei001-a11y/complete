@@ -47,6 +47,10 @@ const LABEL_TO_KEYS: Record<string, readonly (readonly string[])[]> = {
   //   ["a","sim-perturbations", sessionId]   PerturbationTimeline.tsx listQuery
   // 真 key 尾带 sessionId，靠前缀失效盖住（与 sim-world 同款）。
   "sim-perturbations": [["a", "sim-perturbations"]],
+  // WO-EVENT-SUB-CLOSURE：存档清单（SandboxView 的 checkpointsQuery，WO-BEFE-E 建的缓存）。
+  //   ["a","sim-checkpoints", sessionId]   SandboxView.tsx checkpointsQuery
+  // 真 key 尾带 sessionId，靠前缀失效盖住（与 sim-world / sim-perturbations 同款）。
+  "sim-checkpoints": [["a", "sim-checkpoints"]],
   // WO-FLOWTIME · 流程实例与站间流转时长。
   // 真消费方 = `views/process/ProcessWaitView.tsx` 的 `InstancePanel`：
   //   ["a","process-instances", processKey]   useQuery（下钻面板）
@@ -72,6 +76,8 @@ export const SIM_CONSUMER_KEYS = {
   simWorld: ["a", "sim-world"],
   /** PerturbationTimeline · 扰动清单/时间轴；真 key 尾带 sessionId，同样靠前缀失效盖住。 */
   simPerturbations: ["a", "sim-perturbations"],
+  /** SandboxView · 存档清单（WO-BEFE-E 的 checkpointsQuery）；真 key 尾带 sessionId，前缀失效盖住。 */
+  simCheckpoints: ["a", "sim-checkpoints"],
 } as const;
 
 /**
@@ -89,29 +95,21 @@ export const SIM_CONSUMER_KEYS = {
  * `sim.session_created` / `sim.branched` / `sim.tick_completed` **三条转为真接线**，
  * 见 EVENT_INVALIDATES。
  *
- * 只剩 `sim.checkpoint_saved` 仍是缺口，且它的成因与那三条**不同类**：
- * 不是"前端没接"，是**后端根本没有可读的列表路由**（详见下方理由）。
+ * ── WO-EVENT-SUB-CLOSURE（2026-08-20）：本台账**今日为空** ──────────────────────────
+ * 最后一条 `sim.checkpoint_saved` 已按前任写死的出台账条件逐条达成后转出：
+ *   ① 后端读端 `GET /a/v1/sim/sessions/:id/checkpoints` —— WO-ENGINE-2 件二（2026-08-13）已开；
+ *   ② 前端真缓存 —— WO-BEFE-E 的 `checkpointsQuery`（`["a","sim-checkpoints",sessionId]`，
+ *      SandboxView「存档与回滚」格）早已挂载，本单之前它只靠发起方本地失效，跨标签页收不到；
+ *   ③ agentcore event-subscriptions 同步登记 —— 本单补上。
+ * 三件齐备 ⇒ 硬接不再是假接线，本条挪进 EVENT_INVALIDATES 接 `["sim-checkpoints"]`。
+ * ⚠ 台账机制**保留**：今后新增 `sim.*` emit 而当天没有可失效的缓存，先登记进本台账
+ *   并写清「为什么今天不接线」（`sim-event-invalidation.seam` 测试④⑤守着：要么接线要么记账）。
  */
 export const SIM_EVENT_GAPS: Record<string, string> = { // hardcoded-data-allow —— 缺口台账（散文），非业务数据：值是「今天为什么不接线」的说明文字，探测器 B 数到的数字全部来自其中的 file:line 引用。
-  "sim.checkpoint_saved":
-    "【2026-08-13 · WO-ENGINE-2 件二更新：后端读端已开，缺口从「后端没路由」转为「前端没接」】" +
-    "旧账（2026-08-09）记的是**后端读端缺失**：仓储三处写好了 listCheckpoints（接口 repo/repo.ts · " +
-    "repo/memory.ts · repo/pg.ts），但 route 层从不调用它。**该半边已修**：WO-ENGINE-2 开了 " +
-    "GET /a/v1/sim/sessions/:id/checkpoints（datacore app.ts·requireSim 'sim.checkpoint' 门 + 会话 404 校验）。" +
-    "⚠️ 旧账的复验命令（`grep -rn listCheckpoints apps/datacore/src | grep -v '/repo/'` 期望 app.ts 零命中）" +
-    "**自开路由那一刻起即失效**——这正是「开路由与改台账必须同一个人一起做」的原因：" +
-    "拆两个人做，第二个人会读到一条与代码矛盾的病历。" +
-    "今日仍是缺口的**唯一**原因：前端没有 checkpoints useQuery，故没有可失效的缓存，硬接 = 假接线。" +
-    "出台账条件（沿用前任定的、不放软）：前端把该路由接成真 useQuery（存档列表 / 从任意检查点回滚·分支）" +
-    "并在 agentcore event-subscriptions 同步登记后，把本条挪进 EVENT_INVALIDATES 接 ['sim-checkpoints']。" +
-    "该前端接线属 WO-1/WO-4 边界，不在 WO-ENGINE-2 内。",
-  // WO-P0 合入：sim.branched 已被 WO-L4B 真接线（见 EVENT_INVALIDATES），故不再是缺口，此处不重列。
-  // ── WO-SIM-PERTURB-TIMELINE（2026-08-10）：`sim.perturbation_created` 已出台账 ──────────
-  // 前任（WO-SIM-ACT-CLOSE）在这里写的缺口理由是**准确**的：读端零调用方 ⇒ 没有缓存可失效 ⇒
-  // 此刻接线 = 假接线。它给的出台账条件也写死了 ——「等扰动清单真进 TanStack Query
-  // （并在 agentcore event-subscriptions 同步登记）后，把本条从台账挪进 EVENT_INVALIDATES」。
-  // 本单两件都做了：`views/sim/PerturbationTimeline.tsx` 的 listQuery 是那个缓存，
-  // agentcore 的登记也补了，故按它自己定的条件出台账。**不是**把理由改软了放它过去。
+  // ── 历史留档（理由原文已随条目出台账而移除，来龙去脉见上方头注与 git 历史）──────────────
+  // · sim.session_created / sim.branched / sim.tick_completed —— WO-L4B（2026-08-09）接线转出；
+  // · sim.perturbation_created —— WO-SIM-PERTURB-TIMELINE（2026-08-10）先读端后事件转出；
+  // · sim.checkpoint_saved —— WO-EVENT-SUB-CLOSURE（2026-08-20）三件齐备转出（见头注）。
 };
 
 /**
@@ -172,6 +170,13 @@ export const EVENT_INVALIDATES: Record<string, readonly string[]> = { // hardcod
   //    无法只对"已生效"那半失效 ⇒ 这种情况下的重取是一次空跑。
   //    两害相权取"多一次重取"，不取"屏上停在一个已经不对的世界"。
   "sim.perturbation_created": ["sim-perturbations", "sim-world"],
+  // ── WO-EVENT-SUB-CLOSURE（2026-08-20）：存档检查点 —— 最后一个 sim.* 缺口闭环 ─────────
+  // 存档（datacore app.ts POST …/:id/checkpoint）→ 那个会话的存档清单多一行。
+  // 出台账三条件（读端路由 WO-ENGINE-2 · 真缓存 WO-BEFE-E checkpointsQuery · 本登记）逐条达成后才接，
+  // 接之前它在 SIM_EVENT_GAPS 里记了 11 天——不是偷懒，是此前硬接 = 假接线。
+  // 发起方本页不等这条事件（onCheckpoint 里本地失效），它管的是**别的标签页/别的用户**。
+  // ⚠ 若将来把 checkpointsQuery 删了/改了 queryKey，本条退化成假接线，必须挪回 SIM_EVENT_GAPS 台账。
+  "sim.checkpoint_saved": ["sim-checkpoints"],
 };
 
 /** 失效一个领域事件下游的所有引用方缓存（响应式 Loop 的"自动更新"）。 */

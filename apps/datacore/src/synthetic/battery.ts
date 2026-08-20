@@ -3054,10 +3054,20 @@ export const BATTERY_ACTION_TYPES = [
   {
     key: "adopt_mitigation",
     name: "采纳处置方案",
+    // G-ACTIONTYPE-NO-TARGET：执行器唯一写 `AdoptedMitigation` 对象（app.ts adopt_mitigation 分支④）→ 可静态归因。
+    targetTypeKey: "AdoptedMitigation",
     paramsSchema: { type: "object", required: ["base", "factor", "planKey"], properties: { base: { type: "string" }, factor: { type: "string" }, planKey: { type: "string" } } },
     checkRules: [] as string[],
     approvalChain: [{ role: "planner" }, { role: "admin" }],
   },
+  // targetTypeKey 缺省 = **不可静态归因**（契约注释三种情形），本数组内逐型归属：
+  //  · plan_change —— 主目标多类型（global-sim 支写 WorkOrder/Order/InterBaseTransfer，见
+  //    BUILTIN_ACTION_EFFECTS 的 PARTIAL 声明；levers 支目标由 payload 运行期决定）；
+  //  · 对象数据变更 —— objectType 由 payload 运行期决定；流水线发布物化 —— typeKey 由工作流定义决定；
+  //  · 采纳产能保障方案 —— 逐 lever 自带 objectType（多类型、运行期决定）；
+  //  · AOP情景拍板 / 校准参数变更 / 定稿月度计划版本 / 计划版本变更 / 采纳经营方案 ——
+  //    写的不是本体对象（情景 / solver 参数 / S&OP 版本记录 / scheme_adoptions 台账）。
+  // 单值字段给它们钉任何一个 typeKey 都是在撒谎；不可归因必须作为不可归因可见。
   {
     key: "plan_change",
     name: "计划变更",
@@ -3139,6 +3149,9 @@ export const BATTERY_ACTION_TYPES = [
   {
     key: "采纳产能预测结论",
     name: "采纳产能预测结论",
+    // G-ACTIONTYPE-NO-TARGET：执行器落 `ForecastAdoption` 台账对象为主写（Order 回 stamp 是选中订单时的
+    // 条件性次写）→ 主目标可静态归因。
+    targetTypeKey: "ForecastAdoption",
     paramsSchema: {
       type: "object",
       required: ["modelId", "mode", "demandWan", "snapshot"],

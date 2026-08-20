@@ -7,6 +7,17 @@ import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { newId } from "../ids.js";
 // WO-CAPMAP-LIVE · 求解器全集替身（取自真实 /a/v1/solvers/registry 返回·替掉原来 3 条手写条目）。
 import { MOCK_SOLVER_REGISTRY } from "./solver-registry.js";
+// WO-MOCK-ENGINE-PARITY · 镜像本体图 + slice-planner/query-engine 移植件（ontology_query 路径现算·禁写死）。
+import {
+  MOCK_ONTOLOGY_LINKS,
+  MockNoQueryPlanError,
+  assertMockOntologyClosure,
+  hopsToQueryPlanHops,
+  matchQueryFilter,
+  planMockOntologyPaths,
+  type MockQueryFilter,
+  type OntologyPathHop,
+} from "./ontology-graph.js";
 // WO-MOCKDC-SIGNATURE：取消语义与生产同一个错误类型（值导入，非 type-only）。
 import { DataCoreRequestCancelledError } from "../tools/clients.js";
 import type {
@@ -535,23 +546,169 @@ export class MockSolverClient implements SolverClient {
   async invoke(ctx: ToolAuthCtx, solverKey: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolPayload> {
     if (signal?.aborted) throw new DataCoreRequestCancelledError(`求解调用已取消：${solverKey}`);
     // WO-Phase3-B §3.2：本体查询引擎（mock 镜像真 datacore 输出形状·带逐行 provenance{typeKey,objId,linkPath}）。
+    // ★ WO-MOCK-ENGINE-PARITY ①（闭 §8 G-AGENTCORE-MOCK-DIVERGED-FROM-ENGINE）：
+    //   修前这里把 linkPath **写死**成 P1 之前的旧路 `["model_producible_at:in","order_for_model:in"]`
+    //   （任何 rootType≠sel.type 都返回同一条），而真引擎从运行时本体图 BFS 现算 ——
+    //   A 侧加 `model_demanded_by_order` 后真侧 Base→Order 已改走它（tie-break 字典序胜出），
+    //   mock 停在旧路，咬 mock 的测试恒绿（「测试证明了 mock 等于 mock」）。
+    //   现改为：路径/方向/落点/usedSliceKeys/summary **全部从镜像本体图现算**（ontology-graph.ts），
+    //   镜像图与 battery.ts 的漂移由 test/mock-engine-parity.test.ts 照出。
+    //   诚实边界：行数据是代表性实例池（Order/Base/Model 三池），池外类型 0 实例（诚实空行）；
+    //   overrides（what-if 重算）mock 无 recompute 引擎 → 诚实报缺抛 NO_QUERY_PLAN，不伪造 deltas。
     if (solverKey === "ontology_query") {
+      if (Array.isArray(args.overrides) && (args.overrides as unknown[]).length > 0)
+        throw new MockNoQueryPlanError("mock 不支持 overrides 假设重算（无 recompute 引擎·诚实报缺不伪造 deltas）");
       const rootType = String(args.rootType ?? "Base");
-      const select = Array.isArray(args.select) ? (args.select as { type: string; fields: string[] }[]) : [{ type: "Order", fields: ["so", "qty"] }];
-      const sel = select[0]!;
-      const linkPath = rootType === sel.type ? [] : ["model_producible_at:in", "order_for_model:in"];
-      const orders = [
-        { so: "SO-0001", qty: 1200 },
-        { so: "SO-0002", qty: 800 },
-      ];
-      const rows = orders.map((o) => Object.fromEntries(sel.fields.map((f) => [`${sel.type}.${f}`, (o as Record<string, unknown>)[f]])));
+      type QSelect = { type: string; fields: string[]; aggregate?: "sum" | "count" | "avg" | "max"; groupBy?: string };
+      const select = Array.isArray(args.select) ? (args.select as QSelect[]) : [{ type: "Order", fields: ["so", "qty"] }];
+      const selectTypes = [...new Set(select.map((s) => s.type))];
+      assertMockOntologyClosure(rootType, selectTypes); // R12 闭包（真侧 NoQueryPlanError 同口径）
+      const targetTypes = selectTypes.filter((t) => t !== rootType);
+      const rootFilter = Array.isArray(args.rootFilter) ? (args.rootFilter as MockQueryFilter[]) : [];
+
+      // mock 世界代表性实例池（objId 形态与既有消费方兼容；池外类型 = 0 实例·诚实空行）。
+      const pools: Record<string, { id: string; props: Record<string, unknown> }[]> = {
+        Base: SEED_BASES.map((b) => ({ id: b.objectId, props: { ...b } })),
+        Model: SEED_MODELS.map((m) => ({ id: m.objectId, props: { ...m } })),
+        Order: [
+          { id: "obj_order_SO-0001", props: { so: "SO-0001", qty: 1200 } },
+          { id: "obj_order_SO-0002", props: { so: "SO-0002", qty: 800 } },
+        ],
+      };
+      // rootFilter：与真侧同口径先预选根、零匹配即抛；mock 只守「有无匹配」语义，不按根剪枝行数据（代表性池）。
+      if (rootFilter.length > 0) {
+        const rootPool = pools[rootType];
+        if (!rootPool) throw new MockNoQueryPlanError(`mock 无 ${rootType} 实例池，rootFilter 无法求值（诚实报缺）`);
+        const matched = rootPool.filter((r) => rootFilter.every((f) => matchQueryFilter(r.props[f.field], f.op, f.value)));
+        if (matched.length === 0) throw new MockNoQueryPlanError(`rootFilter 无匹配根对象（${rootType}）`);
+      }
+
+      // ① 路径：显式 hops 优先（逐跳校验 R12 闭包），否则镜像图 BFS 最短路 —— 全部现算，无一写死。
+      type HopStep = OntologyPathHop & { filter?: MockQueryFilter[] };
+      let pathSet: HopStep[][] = [];
+      let sliceKey: string | null = null;
+      const explicitHops = Array.isArray(args.hops)
+        ? (args.hops as { linkKey: string; direction: "forward" | "backward"; targetType?: string; filter?: MockQueryFilter[] }[])
+        : [];
+      if (explicitHops.length > 0) {
+        try {
+          sliceKey = planMockOntologyPaths(rootType, targetTypes).sliceKey; // best-effort（真侧显式 hops 时亦尝试 planSlice）
+        } catch {
+          sliceKey = null;
+        }
+        let cur = rootType;
+        const steps: HopStep[] = [];
+        for (const h of explicitHops) {
+          const lt = MOCK_ONTOLOGY_LINKS.find((l) => l.linkKey === h.linkKey);
+          if (!lt) throw new MockNoQueryPlanError(`linkKey ${h.linkKey} 不在本体中`);
+          const dir = h.direction === "forward" ? ("out" as const) : ("in" as const);
+          const toType = dir === "out" ? lt.toTypeKey : lt.fromTypeKey;
+          const fromType = dir === "out" ? lt.fromTypeKey : lt.toTypeKey;
+          if (fromType !== cur) throw new MockNoQueryPlanError(`hop ${h.linkKey}:${h.direction} 起点 ${fromType} 与当前类型 ${cur} 不接（链路断裂 R12）`);
+          if (h.targetType && h.targetType !== toType) throw new MockNoQueryPlanError(`hop ${h.linkKey}:${h.direction} 落点应为 ${toType}，声明 ${h.targetType} 不符`);
+          steps.push({ linkKey: h.linkKey, direction: dir, toType, ...(h.filter ? { filter: h.filter } : {}) });
+          cur = toType;
+        }
+        pathSet = [steps];
+      } else {
+        const planned = planMockOntologyPaths(rootType, targetTypes);
+        sliceKey = planned.sliceKey;
+        pathSet = targetTypes.map((t) => planned.paths.get(t)!);
+      }
+
+      // 类型级 linkPath 映射（首达即定，与真侧 linkPathByType 同语义）。
+      const linkPathByType = new Map<string, string[]>();
+      linkPathByType.set(rootType, []);
+      for (const steps of pathSet) {
+        const acc: string[] = [];
+        for (const s of steps) {
+          acc.push(`${s.linkKey}:${s.direction}`);
+          if (!linkPathByType.has(s.toType)) linkPathByType.set(s.toType, [...acc]);
+        }
+      }
+      // 每类型后置过滤集（rootFilter + 各 hop.filter）。
+      const postFilterByType = new Map<string, MockQueryFilter[]>();
+      if (rootFilter.length > 0) postFilterByType.set(rootType, rootFilter);
+      for (const steps of pathSet)
+        for (const s of steps) if (s.filter) postFilterByType.set(s.toType, [...(postFilterByType.get(s.toType) ?? []), ...s.filter]);
+
+      // ② 组织 rows / columns / provenance / 聚合（逐字段与真侧 ④ 同式）。
+      const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+      const rows: Record<string, unknown>[] = [];
+      const columns: string[] = [];
+      const provenance: { typeKey: string; objId: string; linkPath: string[] }[] = [];
+      const aggregation: string[] = [];
+      const pushCol = (c: string) => {
+        if (!columns.includes(c)) columns.push(c);
+      };
+      for (const sel of select) {
+        const filters = postFilterByType.get(sel.type);
+        const nodes = (pools[sel.type] ?? [])
+          .filter((n) => !filters || filters.every((f) => matchQueryFilter(n.props[f.field], f.op, f.value)))
+          .sort((a, b) => a.id.localeCompare(b.id)); // R6 稳定序
+        const lp = linkPathByType.get(sel.type) ?? [];
+        if (sel.aggregate) {
+          const field = sel.fields[0];
+          const groups = new Map<string, { id: string; props: Record<string, unknown> }[]>();
+          for (const n of nodes) {
+            const gk = sel.groupBy ? String(n.props[sel.groupBy] ?? "") : "__all__";
+            (groups.get(gk) ?? groups.set(gk, []).get(gk)!).push(n);
+          }
+          const aggCol = `${sel.type}.${sel.aggregate}(${field ?? "*"})`;
+          aggregation.push(aggCol);
+          if (sel.groupBy) pushCol(`${sel.type}.${sel.groupBy}`);
+          pushCol(aggCol);
+          for (const gk of [...groups.keys()].sort()) {
+            const members = groups.get(gk)!;
+            let value: number;
+            if (sel.aggregate === "count") value = members.length;
+            else {
+              const nums = members.map((m) => Number(m.props[field ?? ""])).filter((v) => Number.isFinite(v));
+              if (sel.aggregate === "sum") value = nums.reduce((s, v) => s + v, 0);
+              else if (sel.aggregate === "avg") value = nums.length > 0 ? nums.reduce((s, v) => s + v, 0) / nums.length : 0;
+              else value = nums.length > 0 ? Math.max(...nums) : 0; // max
+            }
+            const row: Record<string, unknown> = { [aggCol]: round6(value) };
+            if (sel.groupBy) row[`${sel.type}.${sel.groupBy}`] = gk === "__all__" ? null : gk;
+            rows.push(row);
+            for (const m of members) provenance.push({ typeKey: sel.type, objId: m.id, linkPath: lp });
+          }
+        } else {
+          for (const f of sel.fields) pushCol(`${sel.type}.${f}`);
+          for (const n of nodes) {
+            const row: Record<string, unknown> = {};
+            for (const f of sel.fields) row[`${sel.type}.${f}`] = n.props[f];
+            rows.push(row);
+            provenance.push({ typeKey: sel.type, objId: n.id, linkPath: lp });
+          }
+        }
+      }
+      // orderBy + limit（与真侧同式：已投影列排序·数值优先·tie 0 → slice）。
+      const orderBy = args.orderBy as { field: string; direction: "asc" | "desc" } | undefined;
+      if (orderBy) {
+        const col = columns.includes(orderBy.field) ? orderBy.field : (columns.find((c) => c.endsWith(`.${orderBy.field}`)) ?? orderBy.field);
+        const sign = orderBy.direction === "desc" ? -1 : 1;
+        rows.sort((a, b) => {
+          const an = Number(a[col]);
+          const bn = Number(b[col]);
+          const cmp = Number.isFinite(an) && Number.isFinite(bn) ? an - bn : String(a[col] ?? "").localeCompare(String(b[col] ?? ""));
+          return cmp !== 0 ? sign * cmp : 0;
+        });
+      }
+      const limit = typeof args.limit === "number" ? args.limit : undefined;
+      const limited = limit !== undefined ? rows.slice(0, limit) : rows;
+
+      const primaryTarget = targetTypes[0] ?? rootType;
+      const primarySteps = pathSet.find((p) => p[p.length - 1]?.toType === primaryTarget) ?? pathSet[0] ?? [];
       return {
         data: {
-          rows,
-          columns: sel.fields.map((f) => `${sel.type}.${f}`),
-          provenance: orders.map((o) => ({ typeKey: sel.type, objId: `obj_order_${o.so}`, linkPath })),
-          queryPlan: { usedSliceKeys: [`biz.plan.${rootType.toLowerCase()}__${sel.type.toLowerCase()}`], hops: linkPath.map((h) => ({ linkKey: h.split(":")[0], direction: "backward", toType: sel.type })), aggregation: [] },
-          summary: `${rootType} 遍历 → ${rows.length} 行`,
+          rows: limited,
+          columns,
+          provenance,
+          queryPlan: { usedSliceKeys: sliceKey ? [sliceKey] : [], hops: hopsToQueryPlanHops(primarySteps), aggregation },
+          summary: `${rootType} 遍历 ${pathSet.reduce((m, p) => Math.max(m, p.length), 0)} 跳 → ${limited.length} 行（${select
+            .map((s) => (s.aggregate ? `${s.type}.${s.aggregate}(${s.fields[0] ?? "*"})` : s.type))
+            .join(", ")}）`,
         },
         snapshotVersion: SNAPSHOT,
       };
@@ -569,13 +726,14 @@ export class MockSolverClient implements SolverClient {
       //   会让 scenario-forced-extract.seam「两问句 P50 必须不同」这条真接缝悄悄失守。
       //   归一走 contracts `normalizeObjectRefKey`（与 A 侧同一份规则·不自写第三套剥前缀）。
       const baseArg = normalizeObjectRefKey(args.base, "Base").toLowerCase() || undefined;
-      const baseGwh = model
+      const scopedBases = model
         ? SEED_BASES.filter(
             (b) =>
               model.bases.includes(b.name) &&
               (!baseArg || b.objectId.toLowerCase().includes(baseArg) || b.name.toLowerCase().includes(baseArg)),
-          ).reduce((s, b) => s + b.gwh, 0)
-        : 20;
+          )
+        : [];
+      const baseGwh = model ? scopedBases.reduce((s, b) => s + b.gwh, 0) : 20;
       const delta = Number(args.demandDelta ?? 0);
       const capWanP50 = Math.round(baseGwh * (1 + rnd() * 0.1) * 10) / 10;
       const capWanP90 = Math.round(capWanP50 * (0.85 + rnd() * 0.1) * 10) / 10;
@@ -600,6 +758,12 @@ export class MockSolverClient implements SolverClient {
           mainBn: mainBottleneck,
           ok: gap <= 0,
           dataMode: "MOCK",
+          // WO-MOCK-ENGINE-PARITY ②：补契约必填三键（CapacityForecastOutputSchema 非 optional：
+          // healthFactor/perBaseRows/pendingCertList）——修前 mock 缺它们，按契约消费的前端在
+          // mock 世界拿到 undefined 而测试照绿。perBaseRows 与 baseGwh 同一 scopedBases 现算（不改口径）。
+          healthFactor: 0.93,
+          perBaseRows: scopedBases.map((b) => ({ base: b.name, weeklyCap: b.gwh, certFactor: 1.0, maintWeek: null, bottleneck: b.bottleneck, tightness: b.util, cumTotal: b.gwh })),
+          pendingCertList: [],
           // PRD-CAP-DEMANDDELTA：per-field provenance 供 executor  richer provenance。
           provenance: {
             capWanP50: { formula: "Σ_base weeklyCap × certFactor × curveMult(周)", valueLabel: "P50 产能（万套/窗口）" },
@@ -639,10 +803,17 @@ export class MockSolverClient implements SolverClient {
       return {
         data: {
           baseId: args.baseId,
+          // WO-MOCK-ENGINE-PARITY ②（G-MOCK-OVERCLAIM 方向判对：mock 对齐真后端）：
+          // 修前 mock 回 `orders`（真侧 affectedOrders 返回里**没有**这个字段，qos-f-entitlement 还把
+          // 它当契约断言「既有字段不变」——mock 声称而真后端不提供的教科书例）；同时缺真侧必发的
+          // `affected`/`total`/`fallback`。现对齐真侧单基地分支形状（risk.ts affectedOrders 返回字面量），
+          // delay/impact/dueDay 为代表性定值（mock 不算风险参数）。
+          affected: orders.map((o) => ({ so: o.so, cust: o.cust, model: o.model, qty: o.qty, due: o.due, dueDay: 180, delay: 3, impact: 0.5 })),
+          total: orders.length,
           count: orders.length,
           columns: ["so", "cust", "model", "qty", "due"],
           rows: orders.map((o) => [o.so, o.cust, o.model, o.qty, o.due]),
-          orders,
+          fallback: false,
           problems,
         },
         snapshotVersion: SNAPSHOT,
@@ -675,6 +846,12 @@ export class MockSolverClient implements SolverClient {
           triggers: [],
           recommendedPlan,
           sandboxNarrowing: { beforeGap: 27.8, afterGap: round1(27.8 - recommendedPlan.totalClosesGap), narrowedPct: round1((recommendedPlan.totalClosesGap / 27.8) * 100), ticks: 3 },
+          // WO-MOCK-ENGINE-PARITY ②：补真侧必发三键（service.ts:3795+ 每次调用都构造）——
+          // 修前 mock 缺它们，前端若在 mock 世界开发读这三键会拿到 undefined 而测试照绿。
+          // 空数组/空账 = 诚实空态（mock 无判据册与依据树）；locusPlay 为真侧条件键（仅传 locusType+locusId 时出现），mock 不落。
+          optionsOmitted: [],
+          optionsEvidence: [],
+          impedimentPlays: { joined: [], scanned: 0, joinedCount: 0, candidateCount: 0, noPlayReason: "mock 无阻滞点判据册（诚实报缺）" },
           summary: `根因「${factorId}」的 ${options.length} 个方案与推荐组合`,
         },
         snapshotVersion: SNAPSHOT,
@@ -707,6 +884,8 @@ export class MockSolverClient implements SolverClient {
         return {
           data: {
             baselineObjective, perturbedObjective, deltaObjective,
+            // WO-MOCK-ENGINE-PARITY ②：补真侧声明形状里的 deltaByObjective（opt-whatif.ts:175 逐目标 Δ）。
+            deltaByObjective: { objective: deltaObjective },
             feasible: true, conflictConstraints: [],
             explanation: `扰动 ${perts.length} 条 → 目标 ${baselineObjective} → ${perturbedObjective}（Δ=${deltaObjective}）`,
             baselineSolution: { openFacilities: [baseWin.id], objective: baselineObjective, optimal: true },
@@ -717,7 +896,8 @@ export class MockSolverClient implements SolverClient {
         };
       }
       // 装配不出（无选中/未支持族）→ 诚实报缺（orchestrator 落回 path-B·不伪造）。
-      return { data: { applicable: false, missingRoles: ["selection（无选中决策对象）"], feasible: false, baselineObjective: null, perturbedObjective: null, deltaObjective: null, conflictConstraints: [], summary: "optimize_whatif 装配报缺——诚实落回" }, snapshotVersion: SNAPSHOT };
+      // WO-MOCK-ENGINE-PARITY ②：补 explanation（真侧 applicable:false 分支带，service.ts:4803）。
+      return { data: { applicable: false, missingRoles: ["selection（无选中决策对象）"], feasible: false, baselineObjective: null, perturbedObjective: null, deltaObjective: null, conflictConstraints: [], explanation: "装配报缺：缺角色支撑 selection（不伪造系数·诚实落回）", summary: "optimize_whatif 装配报缺——诚实落回" }, snapshotVersion: SNAPSHOT };
     }
     // G-1：20 场景目录的其余求解器（cert_schedule/kit_readiness/… 见 SOLVER_KEYS）在 mock 侧
     // 返回代表性确定性载荷，使路径A 工作流的 invoke_solver 步骤完成而不抛 unknown solver；

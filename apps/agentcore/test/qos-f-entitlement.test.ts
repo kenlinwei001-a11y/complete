@@ -141,8 +141,11 @@ describe("Feature entitlement enforcement (entitlement PRD §4/§5)", () => {
       payload: { args: { baseId: "base_changzhou" } },
     });
     expect(res.statusCode).toBe(200);
-    const data = (res.json() as { data: { orders: unknown[]; problems: { category: string; orderCount: number; rootChains: { layers: { kind: string }[] }[] }[] } }).data;
-    expect(Array.isArray(data.orders)).toBe(true); // 既有字段不变
+    // WO-MOCK-ENGINE-PARITY：改断 `data.affected`（真侧单基地分支必发）——旧断言读的 `data.orders`
+    // 是 mock 私自多发的字段（真侧 affectedOrders 返回里没有），把它当「既有字段」断言 = 咬 mock 自洽。
+    const data = (res.json() as { data: { affected: unknown[]; total: number; problems: { category: string; orderCount: number; rootChains: { layers: { kind: string }[] }[] }[] } }).data;
+    expect(Array.isArray(data.affected)).toBe(true); // 真侧口径字段（risk.ts affectedOrders）
+    expect(data.total).toBe(data.affected.length);
     expect(data.problems.length).toBeGreaterThan(0);
     for (const p of data.problems) {
       expect(["DELIVERY", "MARGIN", "KIT", "CREDIT"]).toContain(p.category);

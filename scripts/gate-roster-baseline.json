@@ -12,7 +12,7 @@
     },
     "check-arg-drop-seam.mjs:ROUTER_EMITS": {
       "verdict": "computed",
-      "why": "CEO 路由可解析的过滤实体表，单一来源 = apps/agentcore/src/router/ceo-route.ts（门头注已声明「改路由解析须同步本表」）。**实测差集 0**：ceo-route.ts 里出现的 ceo_* intent 恰为 11 个，与本表逐个对上、无名单外也无死账。判为 computed 而非 roster 的理由：门另有动态半（读 agentcore dist 真种子逐 intent 比对），漏登记的 intent 会在动态半暴露。"
+      "why": "CEO 路由可解析的过滤实体表，单一来源 = apps/agentcore/src/router/ceo-route.ts。**键集已现算化**（WO-GATE-REACH-SWEEP 断言⓪）：门真读 ceo-route.ts 的 CEO_INTENT_KEYS 与本表键集双向求差，漏登记/死账当场 RC=1，金丝雀用真源码变异自证（注入假键必被咬）。实体清单（值）仍人工派生——ArgsFrom 条件赋值静态证不了，由断言①动态半（真种子逐 intent 比对）兜底。"
     },
     "check-backend-frontend-seam.mjs:MUTATIONS": {
       "verdict": "criteria",
@@ -152,7 +152,7 @@
     },
     "check-fact-usage.mjs:EXCLUDE_DIRS": {
       "verdict": "criteria",
-      "why": "扫描面排除的目录**语义类**（mocks/locales/styles/assets），不是需要与某处保持同步的名册。它回答的是「哪些目录天然不承载事实断言」——mock 是假数据、locales 是文案、styles/assets 是资源。这条判断不随仓库演进而变；仓里新增一个 mock 目录时该门本就不该跟着改这张表，而应由目录**性质**决定。现算化没有可用的单一来源（没有任何地方声明「这些目录不承载事实」），硬现算只能反过来拿被扫的目录集合定义排除集 = 自证循环。⇒ 判据本体。2026-08-20 审核方收编 WO-SPLITACCOUNT-B-CLOSE 时定性（该单实测：这两条在 base 上同样红、且文件同 blob，属既存未定性，非该单引入）。"
+      "why": "扫描面排除的目录**语义类**（mocks/locales/styles/assets），不是需要与某处保持同步的名册。它回答的是「哪些目录天然不承载事实断言」——mock 是假数据、locales 是文案、styles/assets 是资源。这条判断不随仓库演进而变；仓里新增一个 mock 目录时该门本就不该跟着改这张表，而应由目录**性质**决定。现算化没有可用的单一来源（没有任何地方声明「这些目录不承载事实」），硬现算只能反过来拿被扫的目录集合定义排除集 = 自证循环。⇒ 判据本体。2026-08-20 审核方收编 WO-SPLITACCOUNT-B-CLOSE 时定性（该单实测：这两条在 base 上同样红、且文件同 blob，属既存未定性，非该单引入）。 ‖ 【另一单独立定性·同结论】「哪些目录不算生产 UI 源」是这道门的定义本身：mocks 是 MSW 假数据源、locales/styles/assets 不承载屏上事实读取，收进来会把 fixture 当证据。全仓没有第二个真相源可供现算——现算化 = 拿被测物定义判据（自证循环）。将来若新设同类目录（如 fixtures），由人显式判进本表，这正是「判据由人改」的含义，不是漏检。"
     },
     "check-factlock-anchor.mjs:MUST_BITE": {
       "verdict": "criteria",
@@ -164,7 +164,7 @@
     },
     "check-file-truncation.mjs:PROTECTED_PATTERNS": {
       "verdict": "criteria",
-      "why": "受截断保护的文件**通配模式**（docs/SYSTEM-ONTOLOGY.md · docs/PRD-*.md · scripts/*-baseline.json），不是文件名册。三条里两条是 glob，新增 PRD 与新增基线**自动进保护范围**，不需要人来同步——这正是它不该现算的理由：现算出一份具体文件清单反而会在新文件落地那一刻失效。它定义的是「哪一类文件被截断属于事故」这个判断，不随仓库演进而变。⇒ 判据本体。2026-08-20 审核方收编 WO-SPLITACCOUNT-B-CLOSE 时定性（既存未定性，文件同 blob，非该单引入）。"
+      "why": "受截断保护的文件**通配模式**（docs/SYSTEM-ONTOLOGY.md · docs/PRD-*.md · scripts/*-baseline.json），不是文件名册。三条里两条是 glob，新增 PRD 与新增基线**自动进保护范围**，不需要人来同步——这正是它不该现算的理由：现算出一份具体文件清单反而会在新文件落地那一刻失效。它定义的是「哪一类文件被截断属于事故」这个判断，不随仓库演进而变。⇒ 判据本体。2026-08-20 审核方收编 WO-SPLITACCOUNT-B-CLOSE 时定性（既存未定性，文件同 blob，非该单引入）。 ‖ 【另一单独立定性·同结论】「哪些文件绝不许截断」是这道门立的保护判据：本体、PRD、棘轮基线三类。没有独立真相源可现算——本门就是该判据的登记处，改它 = 改规范本身。新增受保护文件类（如新的契约档案）是人修订判据的动作，须显式改表并过评审，不该由机器从被护对象自己推出来。"
     },
     "check-function-signature.mjs:need": {
       "verdict": "computed",
@@ -173,6 +173,10 @@
     "check-gate-ledger.mjs:DISPOSITIONS": {
       "verdict": "criteria",
       "why": "门账处置枚举（WIRE/MANUAL/FOLD/DELETE），与 PRD-gate-ledger §4.1 一字对应。判据本体：它定义合法取值，改它 = 改治理规范，不随门的数量而变。"
+    },
+    "check-gate-reach.mjs:VERDICTS": {
+      "verdict": "criteria",
+      "why": "差集定性三分（POINTER/EXTRACTOR-BLIND/EXTRACTOR-SHAPE）是门的判据本体——它定义「合法的定性结论有哪些」，由门的语义决定，不随仓库演进而变；没有独立真相源可现算。"
     },
     "check-harness-ux-splitaccount.mjs:EVIDENCE_ABSENT_CANARY": {
       "verdict": "criteria",
@@ -189,6 +193,14 @@
     "check-lever-landing-exists.mjs:CANARIES": {
       "verdict": "criteria",
       "why": "拨杆落点存在性的金丝雀（含 Material.leadTime —— 曾被 grep 误报 0 命中、实际存在的那一条）。判据本体，且它钉住的正是「工具会骗你」这个坑。"
+    },
+    "check-mock-backend-scale.mjs:ARRAY_KEYS": {
+      "verdict": "criteria",
+      "why": "**身份归一规则表**：逐个数组写明「这个数组按什么字段算同一个东西」（s2.rows 按 key · finance.pnl 按 subject · sdg.*.drivers 按叶族名并聚合 · s3.perBase 按月产能降序名次 —— 后者是因为两侧 baseId 字段装的不是同一个东西：真后端拼音 id、mock 中文名）。它定义的是**怎么比**，不是**比哪些**——受检对象集合由 numericLeaves(normalize(payload)) **现算**（今天 112 条交集），谁往任一侧加一个量都自动进受检面，本表不用跟进。**漏登一个数组的失败方向是安全的**：没归一的数组会按下标比，两侧排序不同就当场判红（噪声型假红），**不会**静默变绿——这正是本门要求的默认失败方向。金丝雀 C7 拿生产实物（两侧 s2.rows 首行分别是 pas/com）钉住归一是活的。"
+    },
+    "check-mock-backend-scale.mjs:J2": {
+      "verdict": "criteria",
+      "why": "**跨口径关系判据**：每条是一个人给的判断「这两个量算的不是同一个东西（年÷月 / 含不含认证折算 / 需求侧÷供给侧），它们的比值该是 X」。这种对应关系**机器推不出来**——回包里没有任何字段说明「谁和谁是跨口径的一对」，自动配对在本仓已实测不可靠（同源教训见 check-mock-fidelity.mjs 顶注「本门不做条目集合差集的自动配对」）。**它不是覆盖面的唯一来源，所以漏登不会造成盲区**：J2 每一对的**两个成员各自**都已在 J0 的 112 条现算交集里被逐条对拍过，J2 只是把它们的关系再显式钉一层（防「有人为了消灭屏上那个 12 倍，把年行压成月量级」）。即：这里少写一对，J0 照样会在成员级报出漂移——这就是本门要求的『名单 vs 现算 一致性断言』。"
     },
     "check-mock-fidelity.mjs:LINK_SHAPES": {
       "verdict": "criteria",
@@ -309,17 +321,9 @@
     "check-verdict-rollup.mjs:CAN": {
       "verdict": "criteria",
       "why": "裁定汇总的金丝雀样例（含 docs/CHECK-*.md 路径与期望符号）。判据本体：路径在这里是**样例数据**不是受检对象，受检对象是同文件的 FILES。"
-    },
-    "check-mock-backend-scale.mjs:ARRAY_KEYS": {
-      "verdict": "criteria",
-      "why": "**身份归一规则表**：逐个数组写明「这个数组按什么字段算同一个东西」（s2.rows 按 key · finance.pnl 按 subject · sdg.*.drivers 按叶族名并聚合 · s3.perBase 按月产能降序名次 —— 后者是因为两侧 baseId 字段装的不是同一个东西：真后端拼音 id、mock 中文名）。它定义的是**怎么比**，不是**比哪些**——受检对象集合由 numericLeaves(normalize(payload)) **现算**（今天 112 条交集），谁往任一侧加一个量都自动进受检面，本表不用跟进。**漏登一个数组的失败方向是安全的**：没归一的数组会按下标比，两侧排序不同就当场判红（噪声型假红），**不会**静默变绿——这正是本门要求的默认失败方向。金丝雀 C7 拿生产实物（两侧 s2.rows 首行分别是 pas/com）钉住归一是活的。"
-    },
-    "check-mock-backend-scale.mjs:J2": {
-      "verdict": "criteria",
-      "why": "**跨口径关系判据**：每条是一个人给的判断「这两个量算的不是同一个东西（年÷月 / 含不含认证折算 / 需求侧÷供给侧），它们的比值该是 X」。这种对应关系**机器推不出来**——回包里没有任何字段说明「谁和谁是跨口径的一对」，自动配对在本仓已实测不可靠（同源教训见 check-mock-fidelity.mjs 顶注「本门不做条目集合差集的自动配对」）。**它不是覆盖面的唯一来源，所以漏登不会造成盲区**：J2 每一对的**两个成员各自**都已在 J0 的 112 条现算交集里被逐条对拍过，J2 只是把它们的关系再显式钉一层（防「有人为了消灭屏上那个 12 倍，把年行压成月量级」）。即：这里少写一对，J0 照样会在成员级报出漂移——这就是本门要求的『名单 vs 现算 一致性断言』。"
     }
   },
-  "candidateCount": 79,
+  "candidateCount": 80,
   "rosterCount": 0,
   "ratchetHigh": 0
 }
