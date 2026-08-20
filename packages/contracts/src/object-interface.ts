@@ -76,10 +76,18 @@ export const InterfacePropertyRequirementSchema = z.object({
 });
 export type InterfacePropertyRequirement = z.infer<typeof InterfacePropertyRequirementSchema>;
 
-/** 接口要求的一个行动绑定（行为继承 · S2 ActionType key）。 */
+/**
+ * 接口要求的一个行动绑定（行为继承 · S2 ActionType key）。
+ *
+ * WO-INTERFACE-ACTIONTYPE-DEEPVAL（残口②·additive）：`paramKeys` 声明「这个行动在本接口语义下
+ * 至少要有哪些参数」——发布门拿它与被绑定 ActionType 的 `paramsSchema.properties` 键集对表，
+ * 缺键即 `INTERFACE_ACTION_PARAM_MISMATCH` 拒绝发布并点名。省略 = 不声明参数要求（零回归）。
+ */
 export const InterfaceActionRequirementSchema = z.object({
   actionTypeKey: z.string().min(1),
   required: z.boolean().default(true),
+  /** 接口语义要求的参数键（对 ActionType.paramsSchema.properties 的最低要求，additive）。 */
+  paramKeys: z.array(z.string().min(1)).optional(),
 });
 export type InterfaceActionRequirement = z.infer<typeof InterfaceActionRequirementSchema>;
 
@@ -147,6 +155,8 @@ export type InterfaceViolationCode =
   | "INTERFACE_PROPERTY_CONFLICT"
   | "INTERFACE_ACTION_MISSING"
   | "INTERFACE_ACTION_UNKNOWN"
+  | "INTERFACE_ACTION_TARGET_MISMATCH"
+  | "INTERFACE_ACTION_PARAM_MISMATCH"
   | "INTERFACE_FUNCTION_UNKNOWN"
   | "INTERFACE_FUNCTION_UNSATISFIED";
 
@@ -180,12 +190,30 @@ export interface ConformanceSolverView {
   reads?: { typeKey: string; propKeys?: string[] }[];
 }
 
+/**
+ * 校验输入：ActionType 深校验视图（WO-INTERFACE-ACTIONTYPE-DEEPVAL·残口②）。
+ * 与被绑定 ActionType 的实际定义对表用的最小面：
+ *  · `targetTypeKey` —— WO-ACTIONTYPE-TARGET 归因键。`undefined` = 不可静态归因（契约缺省语义），
+ *    **不可归因不许冒充可归因** → 跳过目标对齐校验（诚实：不知道 ≠ 相符）。
+ *  · `paramKeys` —— `paramsSchema.properties` 的键集投影。`undefined` = 形状未知 → 跳过参数校验。
+ */
+export interface ConformanceActionTypeView {
+  key: string;
+  targetTypeKey?: string;
+  paramKeys?: string[];
+}
+
 export interface ConformanceInput {
   types: ConformanceTypeView[];
   /** 本租户全部接口记录（含各版本）。 */
   interfaces: ObjectInterface[];
   /** 已注册 ActionType key 集合（行为继承的真实性校验）。 */
   actionTypeKeys?: string[];
+  /**
+   * 已注册 ActionType 深校验视图（残口②：注册性 + 签名对齐都在发布门兑现）。
+   * 提供时优先于 `actionTypeKeys`（后者只有"注册与否"一层）。
+   */
+  actionTypes?: ConformanceActionTypeView[];
   /** 已签名求解器 → 签名（WO-69 P2 单一来源）。**不在表内 = 该求解器不存在或读取面未知 → RED**。 */
   solverSignatures?: Record<string, ConformanceSolverView>;
 }
@@ -292,6 +320,13 @@ export function checkInterfaceConformance(input: ConformanceInput): InterfaceVio
     // 派生属性走数值管线 → 视为 number（既是真值来源，也不许被当成 string 冒充）
     for (const dp of t.derivedPropKeys ?? []) if (!propIndex.has(dp)) propIndex.set(dp, "number");
     const boundActions = new Set((t.actions ?? []).map((a) => a.actionTypeKey));
+    // 残口②深校验注册表：有 actionTypes 视图用它（含签名面），否则退到裸 key 集合（只判注册性）。
+    const actionIndex = new Map((input.actionTypes ?? []).map((a) => [a.key, a]));
+    const knownActions = input.actionTypes
+      ? new Set(input.actionTypes.map((a) => a.key))
+      : input.actionTypeKeys
+        ? new Set(input.actionTypeKeys)
+        : undefined;
 
     // 2) 跨接口冲突（同 propKey 被多个接口要求 → 必须存在能同时满足两侧的 dataType）
     const byProp = new Map<string, { iface: ObjectInterface; req: InterfacePropertyRequirement }[]>();
@@ -355,6 +390,20 @@ export function checkInterfaceConformance(input: ConformanceInput): InterfaceVio
       }
 
       for (const a of iface.actions ?? []) {
+        // 残口②a · 注册性在发布门兑现（修前只在接口写入时由 checkInterfaceIntegrity 把守，
+        // 发布门自身不查——接口落库后注册表漂移 / 绕过 service 直写仓储 都能带病进快照）。
+        // 不论 required 与否都查：接口声明了一个不存在的行为，本身就是撒谎。
+        if (knownActions && !knownActions.has(a.actionTypeKey)) {
+          out.push({
+            code: "INTERFACE_ACTION_UNKNOWN",
+            typeKey: t.key,
+            interfaceKey: iface.key,
+            interfaceVersion: iface.version,
+            actionTypeKey: a.actionTypeKey,
+            message: `类型 ${t.key} 实现的 ${iface.key}@v${iface.version} 声明行动 '${a.actionTypeKey}'，但它未注册为 ActionType（接口引用了不存在的行为 → 拒绝发布）`,
+          });
+          continue; // 未注册 → 无从深校验签名
+        }
         if (a.required === false) continue;
         if (!boundActions.has(a.actionTypeKey)) {
           out.push({
@@ -365,6 +414,42 @@ export function checkInterfaceConformance(input: ConformanceInput): InterfaceVio
             actionTypeKey: a.actionTypeKey,
             message: `类型 ${t.key} 声明实现 ${iface.key}@v${iface.version}，但未绑定必需行动 '${a.actionTypeKey}'`,
           });
+          continue; // 没绑定 → 签名对齐无从谈起（缺失已点名）
+        }
+        // 残口②b · 签名深校验：绑了不算数，绑的那个 ActionType 得真能在本类型上兑现。
+        const view = actionIndex.get(a.actionTypeKey);
+        if (!view) continue;
+        // targetTypeKey 对齐（WO-ACTIONTYPE-TARGET 归因键）：声明了归因目标且不是本类型
+        // ⇒ 这个行动绑在本类型上是假的（执行后写的是别的类型）。`undefined` = 不可静态归因 → 跳过。
+        if (view.targetTypeKey !== undefined && view.targetTypeKey !== t.key) {
+          out.push({
+            code: "INTERFACE_ACTION_TARGET_MISMATCH",
+            typeKey: t.key,
+            interfaceKey: iface.key,
+            interfaceVersion: iface.version,
+            actionTypeKey: a.actionTypeKey,
+            message:
+              `类型 ${t.key} 为兑现 ${iface.key}@v${iface.version} 绑定了行动 '${a.actionTypeKey}'，` +
+              `但该 ActionType 的归因目标类型是 '${view.targetTypeKey}' 而非 '${t.key}'——绑定是假的，拒绝发布`,
+          });
+        }
+        // 参数形状对表：接口声明的 paramKeys 必须落在 ActionType.paramsSchema.properties 键集内。
+        // view.paramKeys undefined = 形状未知 → 跳过（不知道 ≠ 相符，也不许冒充不符）。
+        if (a.paramKeys && a.paramKeys.length > 0 && view.paramKeys) {
+          const have = new Set(view.paramKeys);
+          const missing = a.paramKeys.filter((k) => !have.has(k)).sort();
+          if (missing.length > 0) {
+            out.push({
+              code: "INTERFACE_ACTION_PARAM_MISMATCH",
+              typeKey: t.key,
+              interfaceKey: iface.key,
+              interfaceVersion: iface.version,
+              actionTypeKey: a.actionTypeKey,
+              message:
+                `类型 ${t.key} 绑定的行动 '${a.actionTypeKey}'（${iface.key}@v${iface.version} 要求）` +
+                `参数形状不符：接口语义要求参数 {${a.paramKeys.join(",")}}，但 ActionType 的 paramsSchema 未声明 {${missing.join(",")}}`,
+            });
+          }
         }
       }
 
