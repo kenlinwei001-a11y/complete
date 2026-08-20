@@ -44,7 +44,7 @@ const PURPOSE_LABEL: Record<LlmPurpose, string> = {
 /**
  * /admin/llm-providers（LLM Provider 增量 §1.4，tenant_admin）：
  * Tab1 Provider 列表（kind 徽章/状态/模型数/token 用量）+ 编辑器（write-only 密钥、
- * 模型清单 + 能力勾选、连接测试、降级目标）；Tab2 用途绑定矩阵（6 用途 ×
+ * 模型清单 + 能力勾选、连接测试、降级目标）；Tab2 用途绑定矩阵（7 用途 ×
  * provider/model 下拉，能力不满足的选项禁用并注明缺什么）。
  */
 export default function LlmProvidersPage() {
@@ -565,7 +565,7 @@ function BudgetPanel() {
   );
 }
 
-/** Tab2：用途绑定矩阵（6 用途 × provider/model；tools 缺失 → agent 用途选项禁用并注明）。 */
+/** Tab2：用途绑定矩阵（7 用途 × provider/model；tools 缺失 → agent 用途选项禁用并注明）。 */
 function BindingMatrix({ providers }: { providers: LlmProviderVM[] }) {
   const queryClient = useQueryClient();
   const { data } = useQuery({ queryKey: ["a", "llm-bindings"], queryFn: fetchLlmBindings });
