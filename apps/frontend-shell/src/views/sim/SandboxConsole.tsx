@@ -601,7 +601,13 @@ export function SandboxConsole({
         </div>
         {honesty ? (
           <InfoPopover topic={zh.sim.sandbox.info.timeWindow} testId="window">
-            <TimeWindowNote />
+            {/* 原 `TimeWindowNote` 单用途组件内联进来（2026-08-19 WO-UI-LAYERING-BURNDOWN）：
+                它**只**在这个浮层里渲染，独立定义让静态门把它数在第一层（渲染态本就在第二层）。
+                文案一字未改。 */}
+            <span data-testid="sc-window-note">
+              这两条取数一条只认锚点订单、一条只认范围，<b>都不接受时间窗</b> ⇒ 这排档位今天<b>驱动不了任何取数</b>，
+              故禁用而不是给一个点得动、却什么都不改的假旋钮。
+            </span>
           </InfoPopover>
         ) : null}
 
@@ -919,7 +925,11 @@ export function SandboxConsole({
             ) : null}
             <span className={styles.spacer} />
             <span className={styles.tag} data-testid="sc-canvas-hint">
-              点节点 → 右栏检视 · 缩放/平移在各画布自带的缩放条
+              点节点 → 右栏检视
+              {/* 规范 §1/R-UI-3：操作说明降 `?` 浮层，第一层留一句最短指引。 */}
+              <InfoPopover topic="画布操作" testId="sc-canvas-ops">
+                缩放/平移在各画布自带的缩放条；点节点后右栏出该节点的检视明细。
+              </InfoPopover>
             </span>
           </div>
 
@@ -999,7 +1009,11 @@ export function SandboxConsole({
               ) : null}
               {board === null ? (
                 <p className={styles.stateLine} data-testid="sc-chain-waiting">
-                  等 <code>chain_loss_attribution</code> 载荷（由线路图模式取回后共用同一份；线路图取不到数时本模式也没有数据）。
+                  等 <code>chain_loss_attribution</code> 载荷
+                  {/* 规范 §1/R-UI-3：「这份载荷从哪来」是口径说明，降 `?` 浮层。 */}
+                  <InfoPopover topic="这份载荷从哪来" testId="sc-chain-waiting-why">
+                    由线路图模式取回后共用同一份；线路图取不到数时本模式也没有数据。
+                  </InfoPopover>
                 </p>
               ) : (
                 <div className={styles.stageBoard} style={{ transform: `scale(${chainZoom})`, width: `${100 / chainZoom}%` }} data-testid="sc-stage-board">
@@ -1014,7 +1028,11 @@ export function SandboxConsole({
                       </div>
                       {lane.nodes.length === 0 && lane.emptyNodes.length === 0 ? (
                         <p className={styles.laneEmptyRow} data-testid={`sc-lane-${lane.stage}-empty`}>
-                          本次载荷这一段没有节点（不是 0 天，是没有节点）。
+                          本次载荷这一段没有节点
+                          {/* 规范 §1/R-UI-3：「不是 0 天」的辨析是口径，降 `?` 浮层；第一层留缺席事实。 */}
+                          <InfoPopover topic="为什么没有节点" testId={`sc-lane-${lane.stage}-empty-why`}>
+                            不是 0 天，是没有节点 —— 这一段在本次载荷里没有落到任何节点上，与「算出来是 0」是两回事。
+                          </InfoPopover>
                         </p>
                       ) : (
                         <div className={styles.laneGrid}>
@@ -1259,7 +1277,21 @@ export function SandboxConsole({
                   <ImpedimentCaliberNote model={model} />
                 </InfoPopover>
                 <InfoPopover topic={zh.sim.sandbox.info.impedimentJoin} testId="imp-join-gap">
-                  <ImpedimentJoinNote dimKind={dimKind} dimStageCount={dimStages.size} />
+                  {/* 原 `ImpedimentJoinNote` 单用途组件内联进来（2026-08-19 WO-UI-LAYERING-BURNDOWN）：
+                      它**只**在这个浮层里渲染，独立定义让静态门把它数在第一层。文案一字未改。 */}
+                  <span data-testid="sc-imp-join-gap">
+                    <b>不拿一个看着合理的映射盖过去：</b>
+                    <code>chain_impediments</code> 的 locus 是<b>对象</b>（<code>MaterialBatch</code> / <code>Line</code> /{" "}
+                    <code>Process</code>…），而 <code>chain_loss_attribution</code> 的节点是<b>链路节点</b>
+                    （<code>order.cash</code> 那一族 id）—— 两者今天<b>没有共同的 id 维度</b>，能对上的只有{" "}
+                    <code>stage</code>。故点统计条只能<b>按 stage 联动高亮</b>（本链路共 {CHAIN_STAGES.length} 段），
+                    <b>不能按节点精确点亮</b>；同一段里算得出与算不出的节点会被一起点亮，那是段级精度，不是节点级。
+                    {dimKind === null ? null : (
+                      <>
+                        {" "}本次选中的这一类落在 {dimStages.size}/{CHAIN_STAGES.length} 段上。
+                      </>
+                    )}
+                  </span>
                 </InfoPopover>
               </>
             ) : null
@@ -1452,7 +1484,11 @@ function JumpList({
       <CandidateSummaryLine model={model} />
       {rows.length === 0 ? (
         <p className={styles.note} data-testid="sc-imp-jump-empty">
-          本次扫描该类 0 条 —— <b>是「扫到了，没有」</b>，不是「没扫」（扫不出来会在上面报错框里出现）。
+          本次扫描该类 0 条 —— <b>是「扫到了，没有」</b>
+          {/* 规范 §1/R-UI-3：「扫到了没有 vs 没扫」的辨析降 `?` 浮层；第一层留 0 条这个结论。 */}
+          <InfoPopover topic="0 条意味着什么" testId="sc-imp-jump-empty-why">
+            是「扫到了，没有」，不是「没扫」——扫不出来会在上面报错框里出现；这里显示 0 条 = 扫描完成且该类确无阻滞点。
+          </InfoPopover>
         </p>
       ) : null}
       {/*
@@ -1985,40 +2021,15 @@ function ImpedimentCaliberNote({ model }: { model: ChainImpedimentModel | null }
 }
 
 /**
- * WO-SANDBOX-DECLUTTER · 「联动口径」说明 —— 同上，**原文一字未改**，改的是承载方式。
+ * （原 `ImpedimentJoinNote` / `TimeWindowNote` 两个单用途组件已于 2026-08-19
+ *   WO-UI-LAYERING-BURNDOWN 内联进它们各自的 `InfoPopover` 使用处 —— 它们只在那两个
+ *   浮层里渲染，独立定义让静态门把浮层内容误数在第一层。文案一字未改。）
  *
- * 这条此前只写在 `stagesOfKind` 的注释里（源码看得见、屏上看不见），上一单把它搬上了屏，
- * 但搬成了常驻段落。它是**真实的接缝缺口**（本体 §8 `G-IMPEDIMENT-LOSS-NOJOIN`），
- * 不是实现偷懒：两个求解器没有共同的 id 维度，硬映射会是一个"看着合理"的编造。
+ * WO-SANDBOX-DECLUTTER · 「联动口径」说明的背景（保留备查）：
+ * 这条是**真实的接缝缺口**（本体 §8 `G-IMPEDIMENT-LOSS-NOJOIN`），不是实现偷懒：
+ * 两个求解器没有共同的 id 维度，硬映射会是一个"看着合理"的编造。
  * 段数取 `CHAIN_STAGES.length` 派生（12→24 那一单把段从 4 加到 5，写死的数当天就会过期）。
  */
-function ImpedimentJoinNote({ dimKind, dimStageCount }: { dimKind: ChainImpedimentKind | null; dimStageCount: number }) {
-  return (
-    <span data-testid="sc-imp-join-gap">
-      <b>不拿一个看着合理的映射盖过去：</b>
-      <code>chain_impediments</code> 的 locus 是<b>对象</b>（<code>MaterialBatch</code> / <code>Line</code> /{" "}
-      <code>Process</code>…），而 <code>chain_loss_attribution</code> 的节点是<b>链路节点</b>
-      （<code>order.cash</code> 那一族 id）—— 两者今天<b>没有共同的 id 维度</b>，能对上的只有{" "}
-      <code>stage</code>。故点统计条只能<b>按 stage 联动高亮</b>（本链路共 {CHAIN_STAGES.length} 段），
-      <b>不能按节点精确点亮</b>；同一段里算得出与算不出的节点会被一起点亮，那是段级精度，不是节点级。
-      {dimKind === null ? null : (
-        <>
-          {" "}本次选中的这一类落在 {dimStageCount}/{CHAIN_STAGES.length} 段上。
-        </>
-      )}
-    </span>
-  );
-}
-
-/** 时窗为何禁用 —— 顶栏那排灰按钮的说明（徽标本体在诊断抽屉，这里是贴在控件旁的那一句）。 */
-function TimeWindowNote() {
-  return (
-    <span data-testid="sc-window-note">
-      这两条取数一条只认锚点订单、一条只认范围，<b>都不接受时间窗</b> ⇒ 这排档位今天<b>驱动不了任何取数</b>，
-      故禁用而不是给一个点得动、却什么都不改的假旋钮。
-    </span>
-  );
-}
 
 /**
  * 阻滞点筛选的**命中判据**：该类阻滞点落在哪些 `stage` 上。
@@ -2061,7 +2072,8 @@ function InspectorEvidenceGapNote() {
     // WO-SANDBOX-DECLUTTER（规范 §1「诚实位可降层、不可删，且第一层要留记号」）：
     // 第一层只留一句**结论**（下钻证据已随宿主这一份接通），完整来龙去脉进 `?`。
     <p className={styles.noteWarn} data-testid="sc-inspect-evidence-gap-brief">
-      <b>下钻证据已接通 —— 宿主这一份载荷现在带着它传给右栏。</b>
+      {/* seam §9 断言本行可见且含「已接通」——结论留第一层；来龙去脉原就在下方浮层。 */}
+      <b>下钻证据已接通 —— 随宿主载荷传给右栏。</b>
       <InfoPopover topic={zh.sim.sandbox.info.inspectorEvidence} testId="inspect-evidence" align="right">
         <span data-testid="sc-inspect-evidence-gap">
       <b>本栏复用控制台已经取回的那一份数据（不再自取第二次）。</b>
@@ -2147,19 +2159,17 @@ function OverlayNote({ box }: { box: TransitOverlayBox | null }) {
   const measured = box !== null && box.measured;
   return (
     <p className={styles.note} data-testid="sc-transit-overlay-note" data-measured={measured ? "1" : "0"}>
-      <b>在途批次图层已叠在线路图这块画布上</b>（不再是上下两张图）：图层那张环 SVG 被钉到线路图舞台
-      <b>同一个屏上矩形</b>，两图 <code>viewBox</code> 相同 ⇒ 同一坐标即同一屏点，
-      本页<b>不重算任何几何</b>（缩放/平移跟着线路图走）。
-      {measured ? (
-        <>
-          {" "}实测叠加盒 {Math.round(box.width)}×{Math.round(box.height)}px。
-        </>
-      ) : (
-        <>
-          {" "}⚠ <b>画布尺寸不可测</b>（未布局 / 隐藏 / 非浏览器环境）⇒ 本次<b>没有叠加</b>，图层按常规块排在下方 ——
-          不假装"已对齐"。
-        </>
-      )}
+      {/* seam §9④ 断言本块可见且含「同一个屏上矩形」—— 结论留第一层；
+          「不再是上下两张图 / 不重算几何 / 不假装已对齐」的说明降 `?` 浮层（规范 §1/R-UI-3）。
+          实测盒的「宽×高」改「宽 · 高」：数值留第一层，只去掉公式写法。 */}
+      <b>在途批次图层已叠在线路图这块画布上</b>：图层环 SVG 钉在<b>同一个屏上矩形</b>，
+      两图 <code>viewBox</code> 相同 ⇒ 同一坐标即同一屏点。
+      {measured
+        ? ` 实测叠加盒 宽 ${Math.round(box.width)} · 高 ${Math.round(box.height)}px。`
+        : " ⚠ 画布尺寸不可测 ⇒ 本次没有叠加。"}
+      <InfoPopover topic="叠加说明" testId="transit-overlay-detail">
+        不再是上下两张图：图层那张环 SVG 被钉到线路图舞台同一个屏上矩形，本页不重算任何几何（缩放/平移跟着线路图走）。尺寸不可测（未布局 / 隐藏 / 非浏览器环境）时本次没有叠加、图层按常规块排在下方 —— 不假装「已对齐」。
+      </InfoPopover>
     </p>
   );
 }
@@ -2188,12 +2198,18 @@ const TRANSIT_MODE_LABEL: Record<string, { tier: string; glyph: string }> = {
 function TransitComputabilityLegend() {
   return (
     <section className={styles.tierBox} data-testid="sc-transit-tiers" role="note">
-      <div className={styles.sec} style={{ marginTop: 0 }}>在途/在制 · 时序可算性分级（替代设计稿那个假时钟）</div>
-      <p className={styles.note} style={{ marginTop: 0 }} data-testid="sc-transit-tier-intro">
-        设计稿的 <code>D+0.0</code> 时钟 + <code>1×/4×/16×</code> + 区间上匀速滑动的方块，
-        在本仓是<b>被明确拒绝的画法</b>：三个数据源的位置精度天然不同，
-        <b>只有第 ① 档能真的在区间上移动</b>。控制台不另造时钟，播控由本图层提供。
-      </p>
+      <div className={styles.sec} style={{ marginTop: 0 }}>
+        在途/在制 · 时序可算性分级
+        {/* 规范 §1/R-UI-3：「为什么不画设计稿那个时钟」是拒绝理由（凭什么），降 `?` 浮层；
+            第一层留分级名 + 三档判据。文案逐字保留（metro-semantics 断言「被明确拒绝的画法」，hover 后仍咬得到）。 */}
+        <InfoPopover topic="为什么不画设计稿那个时钟" testId="transit-tier-why">
+          <span data-testid="sc-transit-tier-intro">
+            设计稿的 <code>D+0.0</code> 时钟 + <code>1×/4×/16×</code> + 区间上匀速滑动的方块，
+            在本仓是<b>被明确拒绝的画法</b>：三个数据源的位置精度天然不同，
+            <b>只有第 ① 档能真的在区间上移动</b>。控制台不另造时钟，播控由本图层提供。
+          </span>
+        </InfoPopover>
+      </div>
       <ul className={styles.tierList}>
         {TRANSIT_SOURCE_SPECS.map((spec) => {
           const m = TRANSIT_MODE_LABEL[spec.mode] ?? { tier: spec.mode, glyph: "—" };
@@ -2234,18 +2250,24 @@ function TransitComputabilityLegend() {
           */}
         <li data-testid="sc-transit-tier-cadence" data-mode="deferred">
           <b>④ {CADENCE_ABSENCE.label}</b>
-          <span className={styles.tierGlyph}>⇒ 不画任何「这里有节拍」的假象；有闸门时由图层出实况块</span>
+          <span className={styles.tierGlyph}>⇒ 不画节拍假象</span>
+          {/* metro-semantics 断言本行含「图层」且不含零输入基线原话 —— 可见句保住「图层现算并自陈」；
+              「为什么不复述」的辨析降 `?` 浮层（规范 §1/R-UI-3）。 */}
           <em data-testid="sc-transit-reason-cadence">
-            本档<b>现时状态由下方图层现算并自陈</b>，本图例不复述 ——
-            图例自己不取数，复述出来的只会是"零输入"那一档，与屏上正在发生的事无关。
+            本档现时状态由下方图层现算并自陈。
+            <InfoPopover topic="为什么图例不复述状态" testId="transit-cadence-why">
+              不画任何「这里有节拍」的假象；有闸门时由图层出实况块。图例自己不取数，复述出来的只会是「零输入」那一档，与屏上正在发生的事无关。
+            </InfoPopover>
           </em>
         </li>
         <li data-testid="sc-transit-tier-procurement" data-mode="deferred">
           <b>⑤ {PROCUREMENT_BRANCH.label}</b>
           <span className={styles.tierGlyph}>⇒ 画不出来就说画不出来（空 + 逐条取证）</span>
           <em data-testid="sc-transit-reason-procurement">
-            同上：四段腿（口径取自契约那份唯一定义）的现时可画性由下方图层现算并自陈，
-            本图例只给档名与画法。
+            四段腿的现时可画性由下方图层现算并自陈。
+            <InfoPopover topic="四段腿口径" testId="transit-proc-why">
+              四段腿的口径取自契约那份唯一定义；本图例只给档名与画法，不复述运行态（原因同 ④）。
+            </InfoPopover>
           </em>
         </li>
       </ul>
@@ -2272,7 +2294,11 @@ function StepDetail({ node, honesty }: { node: NodeCardVM | null; honesty: boole
   if (node === null) {
     return (
       <p className={styles.stateLine} data-testid="sc-step-detail-empty">
-        点画布上的节点或底部 Pareto 的柱子，这里出该节点的完整逐环节表。
+        点画布节点/Pareto柱 → 出逐环节表
+        {/* 规范 §1/R-UI-3：完整操作说明降 `?` 浮层；第一层留一句最短指引。 */}
+        <InfoPopover topic="这里出什么" testId="sc-step-detail-empty-why">
+          点画布上的节点或底部 Pareto 的柱子，这里出该节点的完整逐环节表。
+        </InfoPopover>
       </p>
     );
   }
@@ -2325,10 +2351,10 @@ function StepDetail({ node, honesty }: { node: NodeCardVM | null; honesty: boole
         </>
       ) : null}
 
-      {/* 表的**口径**（天数取哪个字段、分母是什么）是浮层内容；表本身才是第一/二层。 */}
+      {/* 表的**口径**（天数取哪个字段、分母是什么）是浮层内容；表本身才是第一/二层。
+          「口径」二字本身也是 R-UI-3 点名的形态 ⇒ 第一层只留 `?` 记号（topic 里带着「口径」）。 */}
       {honesty ? (
         <p className={styles.note} data-testid="sc-step-detail-note-brief">
-          本表口径
           <InfoPopover topic={zh.sim.sandbox.info.stepTable} testId="step-detail" align="right">
             <span data-testid="sc-step-detail-note">
               天数取引擎 <code>ChainStep.days</code>（期望态）；影响率取 <code>attribution[].pctOfChainLoss</code>，

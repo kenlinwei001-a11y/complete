@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BUSINESS_TYPE_LABEL, BusinessTypeSchema } from "@platform/contracts";
 
@@ -434,8 +434,15 @@ describe("§3 · 在途/在制 时序可算性分级（替代设计稿那个假�
       }
       expect(t, "图例得指明现时状态归谁说").toMatch(/图层/);
     }
-    // 明说"设计稿那个时钟被拒绝"，别让下一个人再照着画一遍
-    expect(screen.getByTestId("sc-transit-tier-intro").textContent ?? "").toContain("被明确拒绝的画法");
+    // 明说"设计稿那个时钟被拒绝"，别让下一个人再照着画一遍。
+    // 2026-08-19 WO-UI-LAYERING-BURNDOWN：这段拒绝理由按 R-UI-3 降进 `?` 浮层（文案逐字未改），
+    // 断言跟着改成「hover 出浮层后咬同一句话」—— 降层不是删除，浮层里必须还咬得到。
+    expect(screen.queryByTestId("info-body-transit-tier-why")).toBeNull();
+    fireEvent.mouseOver(screen.getByTestId("info-transit-tier-why"));
+    const tierWhy = await screen.findByTestId("info-body-transit-tier-why");
+    expect(tierWhy.textContent ?? "").toContain("被明确拒绝的画法");
+    // testId 也跟着浮层走（sc-transit-tier-intro 现在在浮层正文里）。
+    expect(tierWhy.querySelector("[data-testid='sc-transit-tier-intro']")).not.toBeNull();
   });
 
   it("控制台**不另造时钟**：画布工具条里没有 D+ 读数 / 倍速档（播控只由图层提供）", async () => {

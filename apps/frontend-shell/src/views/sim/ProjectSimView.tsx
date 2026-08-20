@@ -12,6 +12,7 @@ import { useWorkspace } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
 import { Provenance } from "@/components/Provenance";
+import { InfoPopover } from "@/components/InfoPopover";
 import { OntologyChainView, type OntologyChainData } from "@/components/OntologyChain";
 import { RuleRef } from "@/components/RuleRef";
 import { EvaluatedRules } from "@/components/EvaluatedRules";
@@ -272,7 +273,13 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
           fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.6,
         }}
       >
-        <span>⚠ 当前排程受<strong style={{ color: "var(--amber-txt)" }}>全局主计划</strong>约束——本页仅在既定框架内做单项目细排；跨订单的产能取舍以「接单组合优选」页的全局联合方案为准。</span>
+        <span>
+          ⚠ 当前排程受<strong style={{ color: "var(--amber-txt)" }}>全局主计划</strong>约束
+          {/* 规范 §1/R-UI-3：「约束意味着什么」是解释不是结论，降 `?` 浮层；第一层留状态 + 记号。 */}
+          <InfoPopover topic="全局主计划约束意味着什么" testId="pm-constraint-info">
+            本页仅在既定框架内做单项目细排；跨订单的产能取舍以「接单组合优选」页的全局联合方案为准。
+          </InfoPopover>
+        </span>
         <span style={{ marginLeft: "auto", display: "inline-flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
           {orderParam && <span data-testid="proj-from-global" style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent-txt)" }}>← 自全局页 {orderParam} 下钻</span>}
           <Link to="/v/global-sim" data-testid="proj-goto-global-batch" style={{ color: "#6c7bf6", fontWeight: 600, textDecoration: "none", borderBottom: "1px dashed rgba(108,123,246,.55)" }}>把这批一起做组合优选 →</Link>
@@ -303,7 +310,12 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
         <div>
           <h3>{zh.sim.proj.title}</h3>
           <div className={styles.sub} data-testid="proj-sub">
-            全局主计划框架内的细排 —— 一个型号即一个项目级模拟：①场景解析 → ②可产基地收敛 → ③驱动因子装载 → ④逐级聚合P50 → ⑤瓶颈定位 → ⑥结论与对策；任何参数变更即重算（debounce 300ms · 竞态最后发出者胜）。
+            全局主计划框架内的细排
+            {/* 规范 §1/R-UI-3：六步流水与重算机制是「这一页怎么算」的解释，降 `?` 浮层；
+                第一层留名字。⚠ nav-ia-rename-e6 断言本行含「全局主计划框架内的细排」，前缀不许动。 */}
+            <InfoPopover topic="这一页怎么算" testId="pm-sub-info">
+              一个型号即一个项目级模拟：①场景解析 → ②可产基地收敛 → ③驱动因子装载 → ④逐级聚合P50 → ⑤瓶颈定位 → ⑥结论与对策；任何参数变更即自动重算（稍作停顿后触发，以最后一次改动为准）。
+            </InfoPopover>
           </div>
         </div>
         {/* 判据 U9：导出入口（第一层只留按钮 + ? 记号，口径进浮层 —— 共享件统一分层）。 */}
@@ -500,9 +512,14 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
 
               {/* 常显 DAG 面板（§7.13）：六层固定，随步骤点亮 */}
               <div className="panel" data-testid="pm-dag-panel">
-                <div className="section-title">{zh.sim.proj.dagTitle}</div>
+                <div className="section-title">
+                  {zh.sim.proj.dagTitle}
+                  {/* 规范 §1/R-UI-3：「点节点能看什么」是操作说明/凭什么，降 `?` 浮层。 */}
+                  <InfoPopover topic="这张图怎么看" testId="pm-dag-info">
+                    点击任一节点 → 看该步的判定逻辑 / 推导公式 / 输入数据（含来源·新鲜度） / 关联规则。
+                  </InfoPopover>
+                </div>
                 <PmDag {...buildDag(out, mode, qty, weeks, modelId, batches, driverFactors)} step={step} onNodeClick={setDagNode} />
-                <div className={styles.noteInfo}>点击任一节点 → 看该步的判定逻辑 / 推导公式 / 输入数据(含来源·新鲜度) / 关联规则。</div>
               </div>
             </div>
           )}
@@ -510,7 +527,7 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
       </div>
 
       {bnOpen && (
-        <Modal title={`${zh.sim.proj.bnMatrix} · 基地×7因素`} onClose={() => setBnOpen(false)} width={720}>
+        <Modal title={`${zh.sim.proj.bnMatrix} · 各基地 · 7 类因素`} onClose={() => setBnOpen(false)} width={720}>
           <div data-testid="bn-matrix-modal">
             {bnMatrix.isLoading && <div className="empty-state">{zh.common.loading}</div>}
             {bnMatrix.data && (
@@ -646,7 +663,13 @@ function StepBody({
               <td>
                 <b>{fmt(totalQty)}</b>
               </td>
-              <td colSpan={5}>净生产窗口 = 交付日 − 地址物流时长（物料/物流域）· 每批按「累计需求 ≤ 累计P90」校验</td>
+              <td colSpan={5}>
+                {/* 规范 §1/R-UI-3：净窗口算式与逐批校验口径是「凭什么」，降 `?` 浮层；
+                    第一层留各批的数值列（周数 / 累计 / ✓✗ 结论就在上面行里）。 */}
+                <InfoPopover topic="批次净窗口与校验口径" testId="pm-batch-caliber">
+                  净生产窗口 = 交付日 − 地址物流时长（物料/物流域）；每批按「累计需求 ≤ 累计P90」校验。
+                </InfoPopover>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -712,7 +735,8 @@ function StepBody({
               <td>
                 {r.certFactor < 1 ? (
                   <span className="badge amber" data-testid={`cert-pending-${r.base}`}>
-                    {zh.sim.proj.certPending} ×{r.certFactor}
+                    {/* 系数值是结论性数字（规范 §1 第一层留数值），只把「×」的公式写法换成「系数」。 */}
+                    {zh.sim.proj.certPending} · 系数 {r.certFactor}
                   </span>
                 ) : (
                   "量产 1.0"
@@ -735,7 +759,11 @@ function StepBody({
             <tr>
               <td colSpan={3} style={{ color: "var(--accent-txt)" }} data-testid="pm-step2-converge">
                 收敛：型号 <b className="mono">{modelId}</b> 仅在 <b className="mono">{out.producibleCount}</b>/
-                <b className="mono">{out.totalBases}</b> 个基地可产（按化学体系 × 基地业态推演）
+                <b className="mono">{out.totalBases}</b> 个基地可产
+                {/* 规范 §1/R-UI-3：收敛判定口径降 `?` 浮层；第一层留 N/总数 这个结论。 */}
+                <InfoPopover topic="可产判定口径" testId="pm-converge-info">
+                  按化学体系 × 基地业态推演：型号化学体系与基地业态不匹配、或对应产线未铺/未认证的基地判为不可产（上方灰色行逐基地给原因）。
+                </InfoPopover>
               </td>
             </tr>
           )}
@@ -770,8 +798,9 @@ function StepBody({
                   <b>{r.base}</b>
                 </td>
                 <td>前 4 周 0.88→1.0</td>
-                <td>{r.maintWeek != null ? `第 ${r.maintWeek} 周（×0.72）` : "—"}</td>
-                <td>{r.certFactor < 1 ? `×${r.certFactor}（认证中）` : "×1.0"}</td>
+                {/* 系数值是结论性数字（第一层留数值），只去掉「×」公式写法。 */}
+                <td>{r.maintWeek != null ? `第 ${r.maintWeek} 周（系数 0.72）` : "—"}</td>
+                <td>{r.certFactor < 1 ? `系数 ${r.certFactor}（认证中）` : "系数 1.0"}</td>
               </tr>
             ))}
           </tbody>
@@ -809,8 +838,13 @@ function StepBody({
                 <b>合计</b>
               </td>
               <td colSpan={2} data-testid="pm-step4-total">
-                P50 <b className="mono">{fmt(out.capWanP50)}</b> 万套 · P90 = P50 × <b className="mono">{out.healthFactor}</b> ={" "}
+                {/* 规范 §1：第一层留结论性数字（P50 / P90 两个值）；「P90 怎么从 P50 推出来」
+                    是公式（R-UI-3），降 `?` 浮层 —— 数字不上浮层、公式不上第一层。 */}
+                P50 <b className="mono">{fmt(out.capWanP50)}</b> 万套 · P90{" "}
                 <b className="mono">{fmt(out.capWanP90)}</b> 万套
+                <InfoPopover topic="P90 推导口径" testId="pm-step4-p90">
+                  P90 = P50 × <b className="mono">{out.healthFactor}</b>（数据健康度系数，C09：IoT/MES/QMS 驱动因子新鲜度联动）。
+                </InfoPopover>
               </td>
             </tr>
           </tbody>
@@ -935,7 +969,13 @@ function StepBody({
           <thead>
             <tr>
               <th>{zh.sim.proj.actsTitle}</th>
-              <th>效果（场景求解器口径）</th>
+              <th>
+                效果
+                {/* 规范 §1/R-UI-3：「效果列是什么口径」降 `?` 浮层，列头只留名字。 */}
+                <InfoPopover topic="效果列口径" testId="pm-acts-caliber">
+                  效果列为场景求解器口径：同一组场景输入下由求解器真跑得出的预期变化。
+                </InfoPopover>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -976,7 +1016,9 @@ function StepBody({
           >
             <b style={{ color: "var(--c-forecast-txt)" }}>{fmt(out.capWanP90)}</b>
           </Provenance>
-          <span>P90（× 健康度 {out.healthFactor}）</span>
+          {/* 规范 §1/R-UI-3：健康度系数的「×」推导已在上方 Provenance 浮层（formula 含真值），
+              第一层标签只留名字与量纲，与 kpi-p50 对称。 */}
+          <span>P90 累计产能(万套)</span>
         </div>
         <div className={styles.kpi} data-testid="kpi-demand">
           {/* 需求 KPI 与后端 provenance 语义对应：本卡显示的是场景有效需求（qty 显式路径）
