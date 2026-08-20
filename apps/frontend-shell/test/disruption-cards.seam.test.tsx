@@ -68,7 +68,10 @@ describe("WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片", () => {
   it("🔴 分组：每个 chip 的条数 == 数据里该域的边数；chip 集合 == 数据里的域集合（零写死）", async () => {
     loginAs("planner");
     renderApp(`/v/${PAGE}`);
-    const panel = await screen.findByTestId(tid("panel"), {}, { timeout: 5000 });
+    // ⚠ 2026-08-19（WO-edge-active-red-investigate）：与 edge-active.seam.test.tsx 同签名同根因 ——
+    //   共享机高负载下懒加载 chunk 首次 transform 的墙钟超 5s 预算 ⇒ 「找不到 panel」假红。
+    //   判据（屏上必须出现什么）未动，只把等待预算调到本仓通行档 20s，整测试预算 60s。
+    const panel = await screen.findByTestId(tid("panel"), {}, { timeout: 20000 });
     const expected = await domainCountsFromData();
 
     const bar = within(panel).getByTestId(tid("domains"));
@@ -84,14 +87,14 @@ describe("WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片", () => {
       const key = chip.getAttribute("data-testid")!.replace(tid("domain-"), "");
       expect(`${key}:${chip.textContent?.replace(/\D+/g, "")}`).toBe(`${key}:${expected.get(key)}`);
     }
-  });
+  }, 60000);
 
   // ── ② 切片有效：点一个 chip 只出那一片的行（可见性 + DOM 双判据）───────────────────
   it("🔴 切片：点某个域的 chip ⇒ 只出该域的行；别的域的行既不可见、也不在 DOM 里", async () => {
     const user = userEvent.setup();
     loginAs("planner");
     renderApp(`/v/${PAGE}`);
-    const panel = await screen.findByTestId(tid("panel"), {}, { timeout: 5000 });
+    const panel = await screen.findByTestId(tid("panel"), {}, { timeout: 20000 });
     const { items } = await fetchPropagationRules(true);
 
     const bar = within(panel).getByTestId(tid("domains"));
@@ -119,14 +122,14 @@ describe("WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片", () => {
         expect(within(panel).queryByTestId(tid(`edge-${k}`))).toBeNull();
       }
     }
-  });
+  }, 60000);
 
   // ── ③ 拨动仍生效：分类之后关掉一条边，**结果的数**变了 ────────────────────────────
   it("🔴 拨动：切片之后关掉一条边 ⇒ 差值表出现带方向与量级的数（断的是数，不是勾选框）", async () => {
     const user = userEvent.setup();
     loginAs("planner");
     renderApp(`/v/${PAGE}`);
-    const panel = await screen.findByTestId(tid("panel"), {}, { timeout: 5000 });
+    const panel = await screen.findByTestId(tid("panel"), {}, { timeout: 20000 });
     const { items } = await fetchPropagationRules(true);
 
     /**
@@ -152,7 +155,7 @@ describe("WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片", () => {
 
     await user.click(within(panel).getByTestId(tid(`toggle-${target!.key}`)));
 
-    const diff = await within(panel).findByTestId(tid("diff"), {}, { timeout: 5000 });
+    const diff = await within(panel).findByTestId(tid("diff"), {}, { timeout: 20000 });
     // 🔴 判据落在**数**上：至少一格带方向记号 + 一个非零量级。
     // 断"勾选框 checked 变了"只证明受控组件没坏，证明不了"关掉这条边真的改变了推演结果"。
     const bodyText = diff.textContent ?? "";
@@ -165,7 +168,7 @@ describe("WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片", () => {
     const row = within(panel).getByTestId(tid(`edge-${target!.key}`));
     expect(row.getAttribute("data-active")).toBe("false");
     expect(within(panel).getByTestId(tid(`off-${target!.key}`)).textContent).toContain("已关闭");
-  });
+  }, 60000);
 
   // ── ④ 变异反证：拆掉域字段 ⇒ 分组必须红在「条数对不上」───────────────────────────
   it("变异反证：抹掉 domainKey ⇒ 分片塌成一片「未归域」，与真数据的分片对不上（不是组件不见了）", async () => {
@@ -225,7 +228,7 @@ describe("WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片", () => {
   it("🔴 两级标签：行主标题是对象类型的业务名，第二行是系统键；类型名取自本体 displayName（查不到显裸键）", async () => {
     loginAs("planner");
     renderApp(`/v/${PAGE}`);
-    const panel = await screen.findByTestId(tid("panel"), {}, { timeout: 5000 });
+    const panel = await screen.findByTestId(tid("panel"), {}, { timeout: 20000 });
     const { items } = await fetchPropagationRules(true);
 
     // 取一条 source/target 在本体 mock 里**有** displayName 的边（`Line`→`Base`）。
@@ -257,5 +260,5 @@ describe("WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片", () => {
     await userEvent.setup().click(within(panel).getByTestId(tid(`domain-${otherSlice}`)));
     const rawRow = within(panel).getByTestId(tid(`edge-${unnamed!.key}`));
     expect(rawRow.querySelector("label")?.textContent).toContain("TypeA");
-  });
+  }, 60000);
 });

@@ -126,7 +126,12 @@ describe("WO-ACTIVE-EDGE-UX · 前端接缝：从 workspace 到「关掉一条�
     //   三份 fixture 已收成一个源（`MOCK_RULE_SEED`，见 handlers.ts 该常量尾部注释），
     //   条数因此 2 → **3**（本单 2 条 + BEFE-A 的 seed_line_to_base 1 条）。
     //   数的仍是"面板列出了几条真边"，判据一个字没松。
-    const panel = await screen.findByTestId("edge-active-project-sim-panel", {}, { timeout: 5000 });
+    // ⚠ 2026-08-19 线级红定性（WO-edge-active-red-investigate）：此条在共享机（load≈490、多 vitest 并发）
+    //   上以「Unable to find edge-active-project-sim-panel」同签名红 —— 实测不是没接线/没数据：
+    //   同一文件仅把两处 findByTestId 预算 5s→20s 即全绿（RC=0），面板/边行/差异全部逐字断言通过。
+    //   红因 = 懒加载 chunk 首次 transform + 真渲染的墙钟超过 5s 预算；判据（屏上必须出现什么）一个字没动，
+    //   只把等待预算调到本仓 renderApp 类接缝测试的通行档（15s/20s 为主，见 disruption-cards 等同族）。
+    const panel = await screen.findByTestId("edge-active-project-sim-panel", {}, { timeout: 20000 });
     expect(within(panel).getByTestId("edge-active-project-sim-count").textContent).toContain("3 条边");
     const rowA = within(panel).getByTestId(`edge-active-project-sim-edge-${EDGE_A}`);
     // 边的字段来自真 `PropagationRule`：源/目标/链路/系数/延迟，前端零加工。
@@ -145,7 +150,7 @@ describe("WO-ACTIVE-EDGE-UX · 前端接缝：从 workspace 到「关掉一条�
 
     // 差异表真的出来了，且**带方向和量级**（不是只标个"变了"）。
     // MSW fixture：TypeB#0.s1 基线 30，关掉这条边后 30 − 0.5×60 = 0 ⇒ Δ = −30，方向 ↓。
-    const diff = await within(panel).findByTestId("edge-active-project-sim-diff", {}, { timeout: 5000 });
+    const diff = await within(panel).findByTestId("edge-active-project-sim-diff", {}, { timeout: 20000 });
     const cell = within(diff).getByTestId("edge-active-project-sim-diff-TypeB#0-s1");
     expect(cell.textContent).toContain("↓");
     expect(cell.textContent).toContain("−30");
@@ -163,7 +168,9 @@ describe("WO-ACTIVE-EDGE-UX · 前端接缝：从 workspace 到「关掉一条�
 
     // 结论句必须是 CHANGED 那一支（有变化），不是"没变"的两种诚实缺席之一。
     expect(within(panel).getByTestId("edge-active-project-sim-verdict").textContent).toContain("发生变化");
-  });
+    // 整条墙钟预算同理上调：全局 testTimeout=20s 在共享机负载下不够这条真导航+真交互链路
+    // （实测同签名红两次分别炸在 findBy 5s 与整测试 20s）；60000 是本仓接缝测试通行档之一。
+  }, 60000);
 
   // ── ④ 「没变」的两种成因必须分开说（同一个数盖住两个不同事实 = 本仓的老病）─────────
   it("🔴 诚实位：差值为空时，「这条边本来就没触发」与「关了它没影响」给出不同结论句", () => {
