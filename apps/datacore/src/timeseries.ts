@@ -11,7 +11,7 @@ import type { Repos } from "./repo/repo.js";
 import type { AuthzService } from "./authz.js";
 import type { OutboxService } from "./outbox.js";
 import { newId } from "./ids.js";
-import { notFound, validationError } from "./errors.js";
+import { notFound, validationError, seriesColumnRestricted } from "./errors.js";
 import { round } from "./prng.js";
 import { primaryKeyProp } from "./ontology.js";
 
@@ -385,6 +385,66 @@ export class TimeseriesService {
 
   // -- A8.4 aggregate query (the ONLY read path; never returns raw rows) ---------
 
+  /**
+   * WO-COLUMN-SECURITY-TAIL · 残口③ 收口 —— **时序测点值的列级（属性级）闸**。
+   *
+   * ─ 修前的行为 ────────────────────────────────────────────────────────────────
+   * `aggQuery` 只继承**实体级**行策略（`authz.require` + `rowAllowed`），测点值一律照出。
+   * 于是「看不到 Line.utilization」的角色只要改问 `util:line` 这条 series，同一个数照样拿得到 ——
+   * 时序是列级安全的一条完整绕行通道（本体 §8 G-SECURITY-COLUMN-LEVEL 残口③）。
+   *
+   * ─ 「seriesKey→属性无干净映射」这句诊断的实测订正 ────────────────────────────────
+   * 本体原文说"无干净映射"。实测**有两条干净映射**，而且都取自仓内既有真表（不手抄第二份清单）：
+   *  ① **聚合规约的落点**（头号·真映射）：`ts_agg_specs` 里 `seriesKey` 相同、`status=ACTIVE` 的规约
+   *     自带 `output:{objectType, property}` —— 那就是这条 series 的值最终写进哪个 `type.prop`
+   *     （种子实例：`util:line` → `Line.utilization`、`yield:process` → `Process.yield_baseline`）。
+   *  ② **measureField 本身就是属性**：`series.measureFields` ∩ 该类型已发布属性全集。
+   * 两条求并 = 该 series 的**本体属性读取面**。
+   *
+   * ─ 判定（与 `columnSignatureGate` 同构·缺省一律偏拒）────────────────────────────
+   *  · 调用者在 `series.entityType` 上无列级约束 → **零成本返回**（不多读一行·逐字节现行为）。
+   *  · 读取面 ∩ 不可读属性 ≠ ∅ → **403 拒**（不返空点集：空集会被读成"这段时间没数据"）。
+   *  · 读取面**算不出来**（无 ACTIVE 规约 + measureFields 一个都不在属性全集里）→ **403 拒**。
+   *    未知 ≠ 安全 —— 与 P2 签名守卫「无签名即拒」同一条纪律。
+   *
+   * 判据全部复用 `authz.decide()` / `propReadable()`（并集语义与对象读写路径同一份·不另造第二套匹配）。
+   */
+  private async assertSeriesColumnReadable(ctx: AuthCtx, series: TsSeriesRecord): Promise<void> {
+    const d = await this.authz.decide(ctx, "OBJECT_TYPE", series.entityType, "READ");
+    // 不 allowed 的情形交给紧随其后的 `authz.require`（403 FORBIDDEN），不在此伪装成列级问题。
+    if (!d.allowed || !d.columnRestricted) return; // 快路径：admin / 无列级策略 → 逐字节现行为
+    const surface = new Set<string>();
+    // ① 聚合规约的落点（该 series 的值真正写进的 type.prop）。
+    const specs = await this.repos.tsAggSpecs.list(
+      ctx.tenantId,
+      (s) => s.seriesKey === series.seriesKey && s.status === "ACTIVE",
+    );
+    for (const s of specs) if (s.output.objectType === series.entityType) surface.add(s.output.property);
+    // ② measureField 本身就是该类型的已发布属性。
+    const tdef = (
+      await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === series.entityType && t.status === "ACTIVE")
+    )[0];
+    if (tdef) {
+      const universe = new Set([
+        ...tdef.properties.map((p) => p.propKey),
+        ...(tdef.derivedProperties ?? []).map((p) => p.propKey),
+      ]);
+      for (const f of series.measureFields) if (universe.has(f)) surface.add(f);
+    }
+    if (surface.size === 0) {
+      throw seriesColumnRestricted(
+        series.seriesKey,
+        series.entityType,
+        ["<读取面未知>"],
+        `既无 status=ACTIVE 的聚合规约把它落到 ${series.entityType} 的属性上，` +
+          `measureFields [${series.measureFields.join(", ")}] 也都不在该类型已发布属性全集内 ⇒ ` +
+          `无法证明这条 series 不暴露被禁列。未知不等于安全`,
+      );
+    }
+    const denied = [...surface].filter((p) => !this.authz.propReadable(d, p)).sort();
+    if (denied.length > 0) throw seriesColumnRestricted(series.seriesKey, series.entityType, denied);
+  }
+
   async aggQuery(ctx: AuthCtx, input: QueryTimeseriesAggInput): Promise<{ points: { entityId: string; bucket: string; value: number }[] }> {
     const series = await this.seriesByKey(ctx.tenantId, input.seriesKey);
     if (!series) throw notFound(`series ${input.seriesKey}`);
@@ -399,6 +459,9 @@ export class TimeseriesService {
       throw validationError(`window spans ${bucketCount} buckets (>120) — use a coarser grain`);
     }
 
+    // A6 列级（属性级）· WO-COLUMN-SECURITY-TAIL 残口③：**先于**行过滤判列级
+    //（先于是刻意的：列级不通过时连"这个实体有没有数据"都不该泄漏）。
+    await this.assertSeriesColumnReadable(ctx, series);
     // A6: entity-level row policy inherited from the bound object type.
     const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", series.entityType, "READ");
     const index = await this.objectIndex(ctx.tenantId, series.entityType);
