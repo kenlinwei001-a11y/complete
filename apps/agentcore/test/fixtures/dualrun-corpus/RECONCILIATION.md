@@ -23,6 +23,15 @@
 反向哨兵（deny_prefork 类）：`stub.requests.length === 0` 且 kernel === "EXTERNAL"
 （分叉前预检早退点 :432 的 flag 态值语义——标「本会走哪个内核」，未真 spawn）。
 
+**EMPTY 空块类第 3 条条件豁免（W2 批1，dr50-by/bz/ca 三条）**：纯空答案
+（blocks:[] / 空 markdown 块 / 空白软收尾）结构上不可能携带 marker，强留第 3 条
+等于判这类任务死刑；空答案 ≠ 没发车。豁免谓词（driver `markerSentinelExempt`）
+= 语料显式置位 ∧ expect.answer 序列化确无本任务 id（结构复核，误置不生效）；
+A0 闸双恰护栏「豁免 ⇔ 无 marker」+ 豁免任务 prompt 必含 id。豁免期发车事实由
+互补证据链锁定（缺一即红）：dsh 臂 ①②不变 + stats/sessionStats turns/steps 锚（A4）
++ **wire 首请求体含本任务 id**（顶替 marker 的剧本身份职能）；native 臂 token 锚
+100/50×轮数（ScriptedLlmClient 只按真消费记账）+ 迭代锚。豁免面锁死 EMPTY 类，不可外溢。
+
 ## 2. 四面断言
 
 ### A1 · Answer 结构（逐字节）
@@ -32,6 +41,9 @@ blocks 类型序列逐项等 + 每块全字段逐字节等 + trustLevel/provenan
 声明映射集：provenance[].toolCallId（两臂各自生成 → 归一占位）。
 provenance 形态任务 = unknown 引用形态（两臂同引未解析 id ⇒ toolName "unknown" 两臂一致；
 真对象溯源的诚实断言属 L5，本层只保接缝保真）。
+EMPTY 空块类（W2 批1）同此面：零块数组、空 markdown 串、空白串均逐字节等
+（两臂 final_answer 校验同一 zod 形——无 .min(1)，空形态天然可账）；
+G4 超长输出同此面（≥32KB 长文深度等 = 比对器自身压力测试）。
 
 ### A2 · 拒绝口径（deny 类 ≥10 条：deny_pre / deny_mid / deny_all / deny_prefork）
 1. 双臂最终 Answer 拒绝文案**逐字节等**（A1 同一条断言覆盖）；
@@ -77,7 +89,7 @@ meta-only 语料下两臂非伪步序列均空（load_skill/final_answer 两臂�
   不进字节断言（A5 确定性同样豁免）。
 
 ### A5 · 确定性
-A5 子集（语料声明 6 条：每类至少一 + 长上下文 + 多轮 + provenance）同臂连跑两遍，
+A5 子集（语料声明 7 条：每类至少一 + 长上下文 + 多轮 + provenance + 空块混排）同臂连跑两遍，
 四面产物过**同一比对器同臂变体**（kernel 期望同值、其余同口径）必须全绿——
 证明比对器不把噪声当差集。
 
@@ -98,12 +110,26 @@ A5 子集（语料声明 6 条：每类至少一 + 长上下文 + 多轮 + prove
 7. 角色路（runRolePathB）/场景路（runSceneAgent）STALL_LOOP 两条语料槽（跨单回执）：
    本树 orchestrator 仅 :2179 一处 agent_degraded 发射，两处 degraded 静默缝 WO 未落线
    ⇒ 语料留 gated 槽（`GATED_SLOTS`），driver 鸣报 skipped，不冒充覆盖。
+8. **缝观察（纯空 stop 的 outcome 分歧；裁决候选，不进断言，W2 批1 实证）**：native 臂
+   纯空文本轮走 `lastText || "（探索模式未能产出回答）"` 软收尾 ⇒ outcome ANSWERED；
+   dsh 臂 pi-ai 适配器对「stop + 零内容块」判 EMPTY_RESPONSE 错误
+   （dsh-llm-pi-ai/lib/index.js mapStopReason：`message.content.length === 0` ⇒ kind:error，
+   注释自述「空消息会让 turn 无可行动内容静默终结，故归类为可重试失败」），
+   turn/end reason=error ⇒ reassemble outcome FAILED（answer 块面巧合同形——兜底文案
+   两臂逐字同——但 outcome 与 run 记录分歧）。W2 批1 dr50-ca 故取空白串 `" "` 形态
+   （适配器侧合法内容块，两臂 ANSWERED 逐字节可账）。纯空 stop 究竟属「harness 适配器
+   过度防卫」还是「native 过宽」，是缺陷候选：留 team-lead 裁决，本层如实登记、不拿
+   语料形态掩饰、不进白名单。
 
-## 4. 语料构成（50 条 + 2 gated）
+## 4. 语料构成（56 条 + 2 gated）
 - 内容源：20 条 = SCENARIO_CATALOG triggerQuestion（执行通道不借 evals——蓝图 evidence 5）；
-  30 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮 load_skill；
+  36 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮 load_skill；
   多轮：1/2/5 次 LLM 往返；拒绝混合：deny_pre 前置 / deny_mid 中段 / deny_all 全 deny /
-  deny_prefork 分叉前）。
+  deny_prefork 分叉前）+ W2 批1 扩面 6 条：G1 EMPTY 空块类 4（dr50-by 空 blocks /
+  dr50-bz 空 markdown 块 / dr50-ca 空白软收尾 / dr50-cb 空块混排）+ G4 超长输出 2
+  （dr50-cc ≥32KB markdown 块 / dr50-cd ≥32KB 软收尾长文——确定性填充、零裸数、携带 marker）。
 - 每条 = 数据对 {native 臂 mock 队列剧本，dsh 臂 stub 剧本（+PLATFORM_GOV_DENY 声明），
-  期望值声明（answer / native 迭代锚 / native token 锚 / dsh stats 锚 / deny wire 证据位）}。
-- 自检闸（driver 首条 it）：总数 50、deny ≥10、四维覆盖全到位、A5 子集 ∈ 语料、gated 槽在册。
+  期望值声明（answer / native 迭代锚 / native token 锚 / dsh stats 锚 / deny wire 证据位 /
+  EMPTY 豁免位）}。
+- 自检闸（driver 首条 it）：总数 56、deny ≥10、四维覆盖全到位、A5 子集 ∈ 语料、
+  EMPTY 豁免位双恰（豁免 ⇔ 期望答案无 marker；豁免任务 prompt 必含 id）、gated 槽在册。
