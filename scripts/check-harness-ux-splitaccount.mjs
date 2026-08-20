@@ -744,15 +744,23 @@ const FAKE_ONTOLOGY = "…不变量 R13 结论可溯源…";
 const FAKE_WO_ALL_FOUND = (wo) => ({ found: wo === "WO-CANARY-HARNESS" || wo === "WO-CANARY-R13", via: "canary" });
 /** 同上，但 `WO-CANARY-R13` 查无此单 —— 判据⑧ 必须咬在 B-2 上。 */
 const FAKE_WO_R13_MISSING = (wo) => ({ found: wo === "WO-CANARY-HARNESS", via: "canary" });
-/** 金丝雀基线：含结案记录 B-5，供判据⑨e（结案记录只许增不许减）用。 */
-const FAKE_BASELINE = {
-  accounts: {
-    "B-1": { us: ["U1"], receivers: ["门 B（本门 · 真浏览器那一面尚未具备）"] },
-    "B-2": { us: ["U3"], receivers: ["R13 溯源链（本体不变量）"] },
-  },
-  closures: { "B-5": ["WO-CANARY-DONE"] },
-  chain: { panels: 1, withChain: 0 },
-};
+/**
+ * 金丝雀基线（含结案记录，供判据⑥⑨e 的棘轮用）。
+ *
+ * ⚠ **现算自 `CANARY_MD_OK`，刻意不手抄**（2026-08-20 改）：手抄一份 fixture 出来，
+ * 它会和金丝雀样例**各自漂移** —— 改了样例忘了改 fixture，②必中就会莫名其妙报 ⑥ 销账，
+ * 于是下一个人为了让它绿而去改 fixture，金丝雀就被驯化了。
+ * 而且这段现算走的**就是 `--tighten` 写基线时那段代码的同一形状**，
+ * 顺带证明「tighten 出来的基线，judge 认」。
+ */
+const FAKE_BASELINE = (() => {
+  const p = parseSplitAccounts(CANARY_MD_OK);
+  const accounts = {};
+  for (const a of p.accounts) accounts[a.id] = { us: a.us, receivers: RECEIVERS.filter((r) => r.re.test(a.need)).map((r) => r.name) };
+  const closures = {};
+  for (const c of p.closures) closures[c.id] = c.wos;
+  return { accounts, closures, chain: { panels: 1, withChain: 0 } };
+})();
 
 export function canaries() {
   const bad = [];

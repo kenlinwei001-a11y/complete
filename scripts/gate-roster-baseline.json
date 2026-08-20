@@ -297,9 +297,13 @@
   "check-unit-value-provenance.mjs:SCAN_ROOTS": {
    "verdict": "computed",
    "why": "四包 src 全递归（datacore/agentcore/frontend-shell/contracts）= 全仓源码面，无名单外盲区；与 outsource-redline:SCAN_ROOTS 同一现算形态（目录稳定、文件不手抄）。"
+  },
+  "check-harness-ux-splitaccount.mjs:EVIDENCE_ABSENT_CANARY": {
+   "verdict": "criteria",
+   "why": "（WO-SPLITACCOUNT-B-CLOSE 2026-08-20 新设）**反向金丝雀样例，不是受检对象名册**——它是一个刻意造出来的、必须在仓里查不到的工单号，用来自证 `git grep` 没在乱报（报 0 命中前先自证工具，铁律 0.6）。它不随仓库演进而变：新增任何工单、分支、文件都不该让它变得「存在」；真存在了恰恰说明工具坏了，门当场 RC=2。之所以写成碎片数组 `[\"WO\",\"SPLITACCOUNT\",…].join(\"-\")` 而不是一个字面量，是因为写成整串它就**存在于门自己的源码里**、`git grep` 一扫命中自己 ⇒ 反向金丝雀永远报「grep 在乱报」⇒ 门永远 RC=2（2026-08-20 实测栽过一次，当场复现）。与先例 check-agent-config-complete.mjs:CANARIES 同族。"
   }
  },
- "candidateCount": 74,
+ "candidateCount": 75,
  "rosterCount": 0,
  "ratchetHigh": 0
 }
