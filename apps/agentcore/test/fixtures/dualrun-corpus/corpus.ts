@@ -1,5 +1,5 @@
 /**
- * WO-DSH-E2E · L1 双跑语料（50 任务 + 2 gated 槽）——纯数据，零 IO。
+ * WO-DSH-E2E · L1 双跑语料（56 任务 + 2 gated 槽）——纯数据，零 IO。
  *
  * 对账口径单源 = 同目录 RECONCILIATION.md（team-lead 2026-08-19 重定义：
  * scalar + kernel 唯一白名单 + native 迭代锚 + dsh stats 对齐）。摘要：
@@ -65,6 +65,15 @@ export interface DualRunTask {
     denyWire?: { requestIndex: number; reason: string }[];
     /** deny_prefork：分叉前预检早退 ⇒ dsh 零 spawn（反向哨兵）。 */
     dshZeroSpawn?: boolean;
+    /**
+     * EMPTY 空块类专用：发车哨兵第 3 条（answer 含任务 marker）条件豁免位。
+     * 仅当 expect.answer 结构上不可能携带 marker（空 blocks / 空 markdown / 空白软收尾）
+     * 才允许置 true；driver 谓词会结构性复核（豁免位 ∧ 期望值确无 marker 才跳过，
+     * 且 A0 闸断言「豁免 ⇔ 期望答案无 marker」双恰），误置不会静默放水。
+     * 豁免时的替代发车证据：dsh 臂 wire 首请求体含本任务 prompt（prompt 必含 id，
+     * A0 闸同断）+ stats/sessionStats 锚；native 臂 token/迭代锚（mock 按消费记账）。
+     */
+    skipMarkerSentinel?: boolean;
   };
 }
 
@@ -133,6 +142,14 @@ const longPrompt = (q: string, id: string): string => {
   let p = `${q}\n\n${filler}`;
   while (p.length < 4096) p += filler;
   return p;
+};
+
+/** 超长输出填充（确定性；≥32KB = G4 长输出档）。全段零裸数（scanBlocks 护栏），携带任务 marker。 */
+const longMarkdown = (id: string): string => {
+  const para = `【${id}】超长输出确定性填充段：锂电产销运营口径铺陈，订单产能物料现金流逐条展开，供双跑字节比对压力测试。\n\n`;
+  let m = para;
+  while (m.length < 32768) m += para;
+  return m;
 };
 
 const skill = (key: string, taskId: string, preRuleKeys?: string[]): CorpusSkill => ({
@@ -210,6 +227,127 @@ function answerSkillRounds(o: ClassOpts & { n: number; blocks?: AnswerBlock[]; p
       ],
       nativeTokens: { input: 100 * (o.n + 1), output: 50 * (o.n + 1) },
       dshStats: stats(o.n + 2),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// W2 批1 构造器：G1 EMPTY 空块类 + G4 超长输出
+// （机制依据：两臂 final_answer 校验同一 zod 形——loop.ts FinalAnswerSchema 与
+//  reassemble.ts FinalAnswerInputSchema 均 blocks:z.array(...) 无 .min(1)、
+//  text 块 markdown:z.string() 无 .min(1)；软收尾兜底文案两臂逐字同 =
+//  `lastText || "（探索模式未能产出回答）"`。空块/空串天然逐字节可账。）
+// ---------------------------------------------------------------------------
+
+/** answer · EMPTY 空块：final_answer blocks:[]（kimi 系模型真实吐空块形态）。答案无 marker ⇒ 豁免位。 */
+function answerEmptyBlocks(o: ClassOpts): DualRunTask {
+  const args = { blocks: [], provenance: [] };
+  return {
+    id: o.id, cls: "answer", source: o.source, prompt: o.prompt,
+    skills: [], ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    dsh: { rounds: [rFa(args), rTx(`收尾 ${o.id}`)] },
+    native: { turns: [nFa(args)] },
+    expect: {
+      answer: expectAnswer([]),
+      nativeIterations: [{ calls: [] }],
+      nativeTokens: { input: 100, output: 50 },
+      dshStats: stats(2),
+      skipMarkerSentinel: true,
+    },
+  };
+}
+
+/** answer · EMPTY 空串：final_answer 单 text 块 markdown:""（空串过同一 zod 形）。答案无 marker ⇒ 豁免位。 */
+function answerEmptyMarkdown(o: ClassOpts): DualRunTask {
+  const args = { blocks: [T("")], provenance: [] };
+  return {
+    id: o.id, cls: "answer", source: o.source, prompt: o.prompt,
+    skills: [], ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    dsh: { rounds: [rFa(args), rTx(`收尾 ${o.id}`)] },
+    native: { turns: [nFa(args)] },
+    expect: {
+      answer: expectAnswer([T("")]),
+      nativeIterations: [{ calls: [] }],
+      nativeTokens: { input: 100, output: 50 },
+      dshStats: stats(2),
+      skipMarkerSentinel: true,
+    },
+  };
+}
+
+/** answer · EMPTY 近空白软收尾：纯文本轮给空白串（零可见内容软收尾形态）。
+ *  ⚠ 为何不是纯空串：dsh 臂 pi-ai 适配器对「stop + 零内容块」判 EMPTY_RESPONSE 错误
+ *  （dsh-llm-pi-ai mapStopReason：message.content.length===0 ⇒ kind:error），
+ *  turn/end reason=error ⇒ outcome FAILED，而 native 臂纯空串走 lastText||兜底 仍 ANSWERED
+ *  ——纯空软收尾的 outcome 两臂结构性分歧（缝观察登记见 RECONCILIATION §3 #8，裁决候选，
+ *  本层不拿白名单吞）。空白串 " " 在适配器侧是合法内容块（stop 正常完成），
+ *  保留「无可见内容软收尾」语义且两臂逐字节可账。答案无 marker ⇒ 豁免位。 */
+function answerEmptySoft(o: ClassOpts): DualRunTask {
+  const t = " ";
+  return {
+    id: o.id, cls: "answer", source: o.source, prompt: o.prompt,
+    skills: [], ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    dsh: { rounds: [rTx(t)] },
+    native: { turns: [nTx(t)] },
+    expect: {
+      answer: expectAnswer([T(t)]),
+      nativeIterations: [],
+      nativeTokens: { input: 100, output: 50 },
+      dshStats: stats(1),
+      skipMarkerSentinel: true,
+    },
+  };
+}
+
+/** answer · EMPTY 混排：空块+正常块同列（正常块携带 marker ⇒ 哨兵保留，证明空块不炸哨兵）。 */
+function answerEmptyMixed(o: ClassOpts): DualRunTask {
+  const blocks = [T(""), T(`【${o.id}】空块混排形态：首块为空串、本块携带任务 marker。`)];
+  const args = { blocks, provenance: [] };
+  return {
+    id: o.id, cls: "answer", source: o.source, prompt: o.prompt,
+    skills: [], ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    dsh: { rounds: [rFa(args), rTx(`收尾 ${o.id}`)] },
+    native: { turns: [nFa(args)] },
+    expect: {
+      answer: expectAnswer(blocks),
+      nativeIterations: [{ calls: [] }],
+      nativeTokens: { input: 100, output: 50 },
+      dshStats: stats(2),
+    },
+  };
+}
+
+/** answer · G4 超长输出：final_answer 单 text 块 ≥32KB 确定性长文（比对器深度等 + wire 大单帧解析压测）。 */
+function answerLongMarkdown(o: ClassOpts): DualRunTask {
+  const blocks = [T(longMarkdown(o.id))];
+  const args = { blocks, provenance: [] };
+  return {
+    id: o.id, cls: "answer", source: o.source, prompt: o.prompt,
+    skills: [], ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    dsh: { rounds: [rFa(args), rTx(`收尾 ${o.id}`)] },
+    native: { turns: [nFa(args)] },
+    expect: {
+      answer: expectAnswer(blocks),
+      nativeIterations: [{ calls: [] }],
+      nativeTokens: { input: 100, output: 50 },
+      dshStats: stats(2),
+    },
+  };
+}
+
+/** answer · G4 超长软收尾：纯文本轮给 ≥32KB 长文（lastText 兜底路径的长文形态）。 */
+function answerLongSoft(o: ClassOpts): DualRunTask {
+  const t = longMarkdown(o.id);
+  return {
+    id: o.id, cls: "answer", source: o.source, prompt: o.prompt,
+    skills: [], ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    dsh: { rounds: [rTx(t)] },
+    native: { turns: [nTx(t)] },
+    expect: {
+      answer: expectAnswer([T(t)]),
+      nativeIterations: [],
+      nativeTokens: { input: 100, output: 50 },
+      dshStats: stats(1),
     },
   };
 }
@@ -395,10 +533,18 @@ export const DUALRUN_CORPUS: DualRunTask[] = [
   denyAll({ id: "dr50-bv", source: "synthetic", prompt: "合成题 bv：全量拒绝口径三。", ruleIds: ["RULE-DUALRUN-ALL-VA", "RULE-DUALRUN-ALL-VB"] }),
   denyPrefork({ id: "dr50-bw", source: "scenario", prompt: SQ("S06"), ruleId: "RULE-DUALRUN-FORK-W" }),
   denyPrefork({ id: "dr50-bx", source: "synthetic", prompt: "合成题 bx：分叉前预检拒绝。", ruleId: "RULE-DUALRUN-FORK-X" }),
+  // ---- W2 批1：G1 EMPTY 空块类 4 条 + G4 超长输出 2 条（全合成；prompt 含 id，
+  //      供豁免任务的 dsh wire 首请求替代哨兵锚定「消费的是本任务输入」） ----
+  answerEmptyBlocks({ id: "dr50-by", source: "synthetic", prompt: "合成题 by（dr50-by）：空块形态应答口径。" }),
+  answerEmptyMarkdown({ id: "dr50-bz", source: "synthetic", prompt: "合成题 bz（dr50-bz）：空串块形态应答口径。" }),
+  answerEmptySoft({ id: "dr50-ca", source: "synthetic", prompt: "合成题 ca（dr50-ca）：空文本软收尾形态。" }),
+  answerEmptyMixed({ id: "dr50-cb", source: "synthetic", prompt: "合成题 cb（dr50-cb）：空块混排形态。" }),
+  answerLongMarkdown({ id: "dr50-cc", source: "synthetic", prompt: "合成题 cc（dr50-cc）：超长输出形态。" }),
+  answerLongSoft({ id: "dr50-cd", source: "synthetic", prompt: "合成题 cd（dr50-cd）：超长软收尾形态。" }),
 ];
 
-/** A5 确定性子集（同臂连跑两遍过同一比对器）：每类至少一 + 长上下文 + provenance + 多轮。 */
-export const A5_SUBSET: readonly string[] = ["dr50-ac", "dr50-ad", "dr50-an", "dr50-ag", "dr50-bk", "dr50-bs"];
+/** A5 确定性子集（同臂连跑两遍过同一比对器）：每类至少一 + 长上下文 + provenance + 多轮 + 空块混排。 */
+export const A5_SUBSET: readonly string[] = ["dr50-ac", "dr50-ad", "dr50-an", "dr50-ag", "dr50-bk", "dr50-bs", "dr50-cb"];
 
 /**
  * 跨单回执 gated 槽（蓝图末行：角色路/场景路 STALL_LOOP 各一）。
