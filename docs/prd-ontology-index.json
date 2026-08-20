@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-17",
+  "generatedAt": "2026-08-20",
   "ontology": {
     "invariants": [
       "R1",
@@ -573,11 +573,7 @@
         "packages/dsh-harness/README.md",
         "packages/dsh-harness/cordis.yml"
       ],
-      "brokenArtifacts": [
-        "apps/agentcore/test/dsh-poc-acceptance.test.ts",
-        "packages/dsh-harness/README.md",
-        "packages/dsh-harness/cordis.yml"
-      ]
+      "brokenArtifacts": []
     },
     "PRD-aop-annual-scenario-1to1.md": {
       "hasOntologyRef": true,
@@ -1304,6 +1300,12 @@
       ],
       "artifacts": [
         "apps/agentcore/dist/mocks/seed.js",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/sop.ts",
+        "apps/datacore/test/action-adopt-forecast.seam.test.ts",
+        "apps/datacore/test/action-adopt-hypothesis.seam.test.ts",
+        "apps/frontend-shell/test/sim-ux-u4b-u1-u8.test.tsx",
+        "apps/frontend-shell/test/wo-sim-action-real.project-sim-adopt.test.tsx",
         "packages/bundle/headless/README.md",
         "packages/contracts/dist/index.js",
         "packages/contracts/src/planviews.ts",
@@ -1313,9 +1315,12 @@
         "scripts/gate-ledger-baseline.json",
         "scripts/gate.sh",
         "scripts/lib/baseline-doc.mjs",
-        "scripts/lib/sim-page-roster.mjs"
+        "scripts/lib/layout-probe.mjs",
+        "scripts/lib/sim-page-roster.mjs",
+        "scripts/sim-ux-criteria-baseline.json"
       ],
       "brokenArtifacts": [
+        "apps/agentcore/dist/mocks/seed.js",
         "packages/bundle/headless/README.md"
       ]
     },
@@ -2061,6 +2066,7 @@
         "apps/datacore/src/timeseries.ts",
         "apps/frontend-shell/src/views/sim/SandboxView.tsx",
         "packages/contracts/src/base-registry.ts",
+        "packages/contracts/src/chain-sim.ts",
         "scripts/gate-ledger.json"
       ],
       "brokenArtifacts": []
@@ -2225,7 +2231,10 @@
         "G-11",
         "G-9"
       ],
-      "artifacts": [],
+      "artifacts": [
+        "apps/datacore/src/seed.ts",
+        "apps/datacore/src/sim/propagation.ts"
+      ],
       "brokenArtifacts": []
     },
     "PRD-skill-compiler-registry.md": {
@@ -3055,6 +3064,7 @@
       "PRD-chain-24nodes.md",
       "PRD-cli-full-coverage.md",
       "PRD-demo-lightup-2.md",
+      "PRD-harness-ux-adoption.md",
       "PRD-impediments-reachable.md",
       "PRD-inference-line.md",
       "PRD-lever-binding-drift.md",
@@ -3508,10 +3518,12 @@
     ],
     "apps/datacore/src/seed.ts": [
       "PRD-empty-tenant-bootstrap.md",
-      "PRD-ontology-7elements.md"
+      "PRD-ontology-7elements.md",
+      "PRD-simulation-sandbox.md"
     ],
     "apps/datacore/src/sop.ts": [
       "PRD-empty-tenant-bootstrap.md",
+      "PRD-harness-ux-adoption.md",
       "PRD-node-semantics.md",
       "PRD-semantics-singlesource.md"
     ],
@@ -3605,6 +3617,18 @@
     "apps/agentcore/dist/mocks/seed.js": [
       "PRD-harness-ux-adoption.md"
     ],
+    "apps/datacore/test/action-adopt-forecast.seam.test.ts": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "apps/datacore/test/action-adopt-hypothesis.seam.test.ts": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "apps/frontend-shell/test/sim-ux-u4b-u1-u8.test.tsx": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "apps/frontend-shell/test/wo-sim-action-real.project-sim-adopt.test.tsx": [
+      "PRD-harness-ux-adoption.md"
+    ],
     "packages/bundle/headless/README.md": [
       "PRD-harness-ux-adoption.md"
     ],
@@ -3627,7 +3651,13 @@
     "scripts/lib/baseline-doc.mjs": [
       "PRD-harness-ux-adoption.md"
     ],
+    "scripts/lib/layout-probe.mjs": [
+      "PRD-harness-ux-adoption.md"
+    ],
     "scripts/lib/sim-page-roster.mjs": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "scripts/sim-ux-criteria-baseline.json": [
       "PRD-harness-ux-adoption.md"
     ],
     "apps/datacore/src/solvers/chain-impediment.ts": [
@@ -3906,6 +3936,7 @@
       "PRD-sandbox-a10.md",
       "PRD-sandbox-metro-ops.md",
       "PRD-sandbox-multiplan.md",
+      "PRD-sandbox-redesign.md",
       "PRD-stale-claims.md"
     ],
     "apps/datacore/test/chain-scan-honesty.test.ts": [
@@ -3938,6 +3969,7 @@
     ],
     "apps/datacore/src/sim/propagation.ts": [
       "PRD-sandbox-redesign.md",
+      "PRD-simulation-sandbox.md",
       "PRD-stale-claims.md"
     ],
     "apps/frontend-shell/src/views/sim/SandboxView.tsx": [

@@ -149,6 +149,44 @@ describe("SEAM · ACTION 级 entitlement 的服务端半（关闭 = 不存在 �
     expect(adopt.statusCode, adopt.body).toBe(201);
   });
 
+  it("T8 · ACTION 级 flag **全表**逐条有归属（不许抽样；新增 ACTION flag 必须当场分诊）", async () => {
+    // 本条把交单报告里那张「ACTION 级 flag → 写入路由 → 有没有闸」的表**变成机器可查的**。
+    // 病灶来历：断点原文自陈「该结论只对 act.adopt-to-draft 逐步取证过，其余未逐条核」——
+    // 抽样得出的结论对没抽到的那些**什么都不证明**。故这里对全表下断言。
+    //
+    // 三类归属，缺一类就说明有人加了 ACTION flag 却没想过服务端闸：
+    //   A 本单补闸  = 在 ACTION_TYPE_FEATURE_MAP 的值集合里
+    //   B 无服务端路由 = 纯客户端行为（前端本地算/本地下载），没有可补的闸
+    //   C 早已有闸  = 本单之前就有服务端 entitlement 判定
+    const GATED_BY_THIS_WO = new Set(Object.values(ACTION_TYPE_FEATURE_MAP));
+    const NO_SERVER_ROUTE = new Set([
+      // MappingOverlay.tsx: exportCsv/exportHtml = downloadBlob(buildMappingCsv(rows))，纯浏览器侧
+      "act.export",
+      // PlanAuditView.tsx: applyFix = setForm({...form, ...item.fix.patch})，纯本地表单改写（改完才重检）
+      "act.plan-audit.apply-fix",
+    ]);
+    const ALREADY_GATED = new Set([
+      // app.ts 两处 features.enabled("data-import.record-materialize") → featureNotFound()
+      "data-import.record-materialize",
+    ]);
+
+    const actionKeys = FEATURE_REGISTRY.filter((f) => f.level === "ACTION").map((f) => f.key);
+    // 金丝雀：抽取面自证（口径若塌成 0，下面的 for 循环会空转全绿 —— 空集不许冒充「没问题」）。
+    expect(actionKeys, "ACTION 级一个都抽不出来 ⇒ 抽取口径坏了，不许读作「全都有归属」").toContain("act.adopt-to-draft");
+    expect(actionKeys.length).toBeGreaterThanOrEqual(5);
+
+    const orphan = actionKeys.filter(
+      (k) => !GATED_BY_THIS_WO.has(k) && !NO_SERVER_ROUTE.has(k) && !ALREADY_GATED.has(k),
+    );
+    expect(
+      orphan,
+      `这些 ACTION 级 flag 没有任何服务端 entitlement 归属：${orphan.join(", ")}\n` +
+        `新增 ACTION flag 时必须三选一并在此登记：① 有写入路由 ⇒ 进 ACTION_TYPE_FEATURE_MAP 补闸；` +
+        `② 纯客户端行为 ⇒ 进 NO_SERVER_ROUTE 并注明证据 file:function；③ 已有闸 ⇒ 进 ALREADY_GATED 并注明挂载点。\n` +
+        `「前端隐藏了按钮」不是归属 —— 那是 UX 级，不是 entitlement（G-ENTITLEMENT-ACTION-LEVEL-CLIENT-ONLY）。`,
+    ).toEqual([]);
+  });
+
   it("T7 · 台账自洽：表里每个 featureKey 都真在注册表里、且都是 ACTION 级（防拼错键 → 闸静默恒开）", async () => {
     const byKey = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
     const entries = Object.entries(ACTION_TYPE_FEATURE_MAP);
