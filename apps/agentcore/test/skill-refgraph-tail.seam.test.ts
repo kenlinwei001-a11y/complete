@@ -90,11 +90,18 @@ describe("WO-SKILL-REFGRAPH-TAIL · §A 引用可校验门（③）在 skill 发
 
   /**
    * T1 · **本单变异反证的靶点**。
+   *
+   * ⚠️ 这里刻意走 `?force=true`：force 豁免的是**质量门**（lint / 评测用例数与覆盖），
+   * 于是这条路上**唯一还能产出 422 的就是引用门本身** —— 判据不被别的门冒充。
+   * 不加 force 会踩本仓的老坑：把 fail-open 改回去之后，请求被**下游评测门**接手拦下，
+   * 红的原文变成 `expected 'SKILL_EVAL_INSUFFICIENT' to be 'SKILL_REF_UNRESOLVED'`
+   * —— 那句话证明的是"另一道门顺手挡了一下"，而不是"这道门放行了"（实测原文见交单报告）。
+   *
    * 变异方式：把 `apps/agentcore/src/server.ts` skills.publish 里
    * `if (blocking) throw new HttpError(422, blocking.code, blocking.message)`
-   * 改回 fail-open（缺引用只 `app.log.warn` 然后继续往下走）。
+   * 改回 fail-open（`SKILL_REF_UNRESOLVED` 只 `req.log.warn` 然后继续往下走）。
    * 期望的红：`expected 200 to be 422` + `expected 'PUBLISHED' to be 'DRAFT'`
-   * —— 红在「**放行了**」（状态码与落库状态），**不是**红在「函数不存在 / 抛异常」。
+   * —— 红在「**放行了**」（状态码 + 真落了库），**不是**红在「函数不存在 / 抛异常」。
    */
   it("T1 · 引用不存在的资源 → 422 SKILL_REF_UNRESOLVED，报文点名缺的那个 key，且未落库", async () => {
     const t = await createTestApp();
@@ -102,16 +109,27 @@ describe("WO-SKILL-REFGRAPH-TAIL · §A 引用可校验门（③）在 skill 发
       references: [{ kind: "solver", key: DEAD_SOLVER, role: "context", required: true }] satisfies Ref[],
     });
 
-    const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${id}/publish`, headers: H });
+    const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${id}/publish?force=true`, headers: H });
 
-    // ① 放行与否
+    // ① 放行与否（fail-open 回潮时这一条先红）
     expect(pub.statusCode).toBe(422);
+    // ② 「返回 422」与「真没落库」是两个命题（fail-open 回潮时这一条同样红）
+    expect(await statusOf(t, id)).toBe("DRAFT");
     const err = (pub.json() as { error: { code: string; message: string } }).error;
-    // ② 是引用门拦的，不是评测门/lint 门顺手拦的（判据不许被别的门冒充）
+    // ③ 是引用门拦的（force 已吃掉 lint/评测两道，冒充不了）
     expect(err.code).toBe("SKILL_REF_UNRESOLVED");
-    // ③ 点名缺哪个引用 —— 「记个日志放行」与「拒绝并说清缺什么」是两个命题
+    // ④ 点名缺哪个引用 —— 「记个日志放行」与「拒绝并说清缺什么」是两个命题
     expect(err.message).toContain(DEAD_SOLVER);
-    // ④ 「返回 422」与「真没落库」也是两个命题
+  });
+
+  it("T1' · 不加 force 的常规发布路同守（force 只是把判据隔离出来，不是唯一入口）", async () => {
+    const t = await createTestApp();
+    const id = await createSkill(t, "tail_dead_ref_noforce", {
+      references: [{ kind: "solver", key: DEAD_SOLVER, role: "context", required: true }] satisfies Ref[],
+    });
+    const pub = await t.app.inject({ method: "POST", url: `/b/v1/skills/${id}/publish`, headers: H });
+    expect(pub.statusCode).toBe(422);
+    expect((pub.json() as { error: { code: string } }).error.code).toBe("SKILL_REF_UNRESOLVED");
     expect(await statusOf(t, id)).toBe("DRAFT");
   });
 
