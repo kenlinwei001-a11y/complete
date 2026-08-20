@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AgentBudgetSchema, DEFAULT_AGENT_BUDGET, ObjectRefSchema, PlanStepSchema, type AgentBudget } from "./qos.js";
+import { AgentBudgetSchema, AgentRunKernelSchema, DEFAULT_AGENT_BUDGET, ObjectRefSchema, PlanStepSchema, type AgentBudget } from "./qos.js";
 import { JsonSchemaObject } from "./common.js";
 
 // ---------------------------------------------------------------------------
@@ -56,6 +56,14 @@ export const AgentDefinitionSchema = z.object({
    *（ceo/supply-chain/production/quality/base-planner）或 "coordinator"；未标 = 通用 agent（既有行为不变）。
    */
   role: z.string().optional(),
+  /**
+   * WO-AGENT-KERNEL-SELECT（additive·可选·向后兼容）：per-agent 运行内核选择。
+   * 词表复用 AgentRunKernelSchema——与 run 归因 `run.kernel` 同词，不造第三套词表
+   *（"EXTERNAL" = dsh harness 外部运行时；"DSH" 是实现名不是契约词，UI 标签层负责翻译）。
+   * 缺省/缺失 ≡ 未配置：运行时回落进程 env 分叉（DSH_HARNESS=1 ⇒ EXTERNAL），与现行行为逐字节一致；
+   * 显式值优先于 env（运维钉「原生」的 agent 不被进程级 POC 开关翻走）。
+   */
+  kernel: AgentRunKernelSchema.optional(),
 });
 export type AgentDefinition = z.infer<typeof AgentDefinitionSchema>;
 
