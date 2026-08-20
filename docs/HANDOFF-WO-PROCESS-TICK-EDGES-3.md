@@ -108,8 +108,12 @@ P22（Model）不在红线内：它在档 1/2 已被点亮（既有基线事实�
 
 ## 五、merge-tree 自测
 
-`git merge-tree --write-tree origin/claude/verify-reclaim-6 HEAD`（重定向文件后取 `$?`）——
-结果见最终汇报（提交后执行，写入本节下方）。
+```
+$ git merge-tree --write-tree origin/claude/verify-reclaim-6 HEAD > /tmp/mt-tick3.out 2>&1; echo $?
+0        # MT_RC=0（干净可并），写入树 f906ec5c0737027fcd90ce8bb2e7a748dc53efdc
+```
+
+完工 `git status --porcelain` 为空。
 
 ## 六、避让水位声明（硬性合规）
 
