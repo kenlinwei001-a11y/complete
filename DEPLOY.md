@@ -132,7 +132,7 @@ docker compose ps                  # 全部 healthy 即完成
 ## 5.x LLM Provider 配置与变更传播（增量）
 
 - **多 LLM 厂商**：`/admin/llm-providers`（tenant_admin）配置 provider（anthropic / openai_compatible / custom_http 预留）
-  与「用途绑定矩阵」（classifier/agent/extraction/modeling/template_gen/compose）。apiKey write-only（AES-GCM 落 A 库），
+  与「用途绑定矩阵」（classifier/agent/extraction/modeling/template_gen/compose/comprehend）。apiKey write-only（AES-GCM 落 A 库），
   AgentCore 经服务间凭证 `SERVICE_TOKEN`（两服务同值）拉取配置与解密密钥（密钥内存缓存 5min，永不落 B 库、永不到前端）。
 - **变更传播 SLO ≤60s**：B 对 A 资源（provider 配置/用途绑定/功能集）缓存统一 TTL 60s；发布即发 outbox 事件
   `{kind}.updated`（llm_provider.updated / llm_binding.updated / rules.updated），经 C-2 webhook 注册表回调 B 的
