@@ -403,19 +403,44 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const rules = new RulesService(repos, outbox, authz);
   const solvers = new SolverService(repos, authz);
 
-  /**
-   * A6 列级（属性级）写校验 —— 「对象数据变更」Action 的 patch 逐属性过 `authz` 同一份决策。
-   * 命中不可写属性 → 403 `PROPERTY_FORBIDDEN`（拒绝而非静默丢弃，值绝不落库）。
-   * 无 propertyPolicy 的策略在此**恒为空操作**（S4 向后兼容：不新增任何对象级写门禁）。
-   */
-  async function assertObjectPatchWritable(c: AuthCtx, payload: Record<string, unknown>): Promise<void> {
-    const objectId = String(payload.objectId ?? "");
-    const patch = payload.patch;
-    if (!objectId || !patch || typeof patch !== "object" || Array.isArray(patch)) return;
+  /** 一个对象的一批待写属性过 `authz` 同一份决策（列级写判定的**唯一**实现·不许再抄第二份）。 */
+  async function assertOneObjectWritable(
+    c: AuthCtx,
+    objectId: string,
+    props: Record<string, unknown>,
+  ): Promise<void> {
     const obj = await repos.objects.get(c.tenantId, objectId);
     if (!obj) return; // 对象不存在交由执行期如实报错，不在此伪装成权限问题
     const d = await authz.decide(c, "OBJECT_TYPE", obj.type, "WRITE");
-    authz.assertPropsWritable(d, patch as Record<string, unknown>, `对象 ${obj.type}:${objectId}`);
+    authz.assertPropsWritable(d, props, `对象 ${obj.type}:${objectId}`);
+  }
+
+  /**
+   * A6 列级（属性级）写校验 —— Action payload 里**一切会落成对象属性真值**的形态，逐属性过同一份决策。
+   * 命中不可写属性 → 403 `PROPERTY_FORBIDDEN`（拒绝而非静默丢弃，值绝不落库）。
+   * 无 propertyPolicy 的策略在此**恒为空操作**（S4 向后兼容：不新增任何对象级写门禁）。
+   *
+   * ⚠️ **WO-COLUMN-SECURITY-TAIL · 残口④ 收口**：此前本函数只认 `payload.patch` 一种形态，
+   * 于是本仓**第二条**用户态真值写入路径整条漏在闸外 —— `payload.levers[{objectType,objectId,prop,value}]`
+   * （`采纳产能保障方案` 与带杠杆的 `plan_change`「采纳风险处置方案」，执行体 `applyLeverWrites`
+   * 直接 `props[l.prop] = l.value`）。形态是「接了线接错地方」：闸在、判定在、写路径也在，
+   * 唯独**闸只挂在其中一种 payload 形状上**。本体 §8 原把④记成「系统内部写路径按系统身份写」
+   * ——那只说了一半，漏掉的这一半是**用户态**的（见本体行订正）。
+   * 判据落在 payload 的**形状**上而不是 actionTypeKey 串上（与 `parseLevers` 的既有裁决同源：
+   * 类型名会漂、会新增，而"有没有 {objectId,prop,value}"是"这条 Action 能不能写真值"的充要条件）。
+   */
+  async function assertObjectPatchWritable(c: AuthCtx, payload: Record<string, unknown>): Promise<void> {
+    // ① `patch` 形态（对象数据变更）。
+    const objectId = String(payload.objectId ?? "");
+    const patch = payload.patch;
+    if (objectId && patch && typeof patch === "object" && !Array.isArray(patch)) {
+      await assertOneObjectWritable(c, objectId, patch as Record<string, unknown>);
+    }
+    // ② `levers` 形态（采纳产能保障方案 / 带杠杆的 plan_change）—— 同样是真值写入，同一份判定。
+    const levers = parseLevers(payload);
+    if (levers.kind === "OK") {
+      for (const l of levers.levers) await assertOneObjectWritable(c, l.objectId, { [l.prop]: l.value });
+    }
   }
 
   /** 执行期复校：用发起人存档角色重建 AuthCtx，堵「先建草稿、后收紧策略」的时间窗。 */
@@ -563,6 +588,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       // 缺任一要素即**诚实失败**，绝不猜一个值写下去（写错真值比不写危险）。
       return { ok: false, error: `${label}：杠杆行缺 objectId/prop/value（收到 ${parse.detail}）——拒绝臆造写入` };
     }
+    // A6 列级复校（WO-COLUMN-SECURITY-TAIL 残口④·与「对象数据变更」执行期同一道闸）：
+    // 用发起人存档角色重建 AuthCtx 再判一次，堵「先建草稿、后收紧策略」的时间窗。
+    // 抛 403 PROPERTY_FORBIDDEN —— 在**任何一行落库之前**，故值绝不落库（不是写一半再回滚）。
+    await assertDraftPatchWritableAtExecute(draft);
     const written: string[] = [];
     for (const l of parse.levers) {
       const obj = await repos.objects.get(draft.tenantId, l.objectId);
