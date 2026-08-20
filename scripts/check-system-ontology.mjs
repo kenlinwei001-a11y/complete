@@ -48,7 +48,10 @@ if (!onto) {
 const evSrc = read(EVENTS_SRC);
 if (!evSrc) fail.push(`缺少 ${EVENTS_SRC}（事件单一来源）`);
 else {
-  const codeEvents = new Set([...evSrc.matchAll(/event:\s*"([a-z0-9_]+\.[a-z0-9_]+)"/g)].map((m) => m[1]));
+  // ⚠ 键抽取不限定小写形状（2026-08-20 M2 变异实测）：若要求 `[a-z0-9_.]`，把订阅名改成
+  //    带大写的「另一个名字」会被**静默跳过**（不算订阅、也不算死订阅，两个方向都看不见）。
+  //    这些表/字段按构造装的就是事件名，抽到不合惯例的名字该由对账判红，不是由抽取器滤掉。
+  const codeEvents = new Set([...evSrc.matchAll(/event:\s*"([^"]+)"/g)].map((m) => m[1]));
   // 本体 §4 表里事件以反引号包裹，形如 `raw_dataset.uploaded`
   // ⛔ 必须**只截 §4 那一节**，不能扫全文（2026-08-08 实测，我自己当场踩出来的）：
   //    全文扫时，只要事件名在本体任何地方被反引号提过一次就算「已登记」——
@@ -194,7 +197,10 @@ else {
     }
 
     const scanCallee = (callee, isWrapper, evPos) => {
-      const needle = callee.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // ⚠ 可选链盲点（2026-08-20 实测，WO-EVENT-SUB-CLOSURE）：`this.outbox?.emit(...)` 的 `?`
+      //   会断掉字面 needle —— 全仓 30 处 `outbox?.emit`（connectors/databuilder/solvers 等 8 个文件）
+      //   此前对本门完全不可见，「真 emit 78 个」是**少报**。逐段转义后用 `\??\.` 相接。
+      const needle = callee.split(".").map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\??\\.");
       // ⚠ 接收者前缀是任意的：`outbox.emit` / `this.outbox.emit` / `deps.outbox.emit` / `this.deps.outbox.emit`。
       //   早先写死 `(?:this\.)?` 漏掉 `deps.outbox.emit(`（llmproviders.ts:484 的 llm.credential_fetched 实测丢失）。
       const recv = isWrapper ? "" : "(?:[A-Za-z_$][\\w$]*\\.)*";
@@ -231,6 +237,7 @@ else {
   const CANARIES = [
     { form: "literal", src: 'await outbox.emit(c.tenantId, "sim.canary_emitted", {});', expect: ["sim.canary_emitted"] },
     { form: "literal(domain)", src: 'emitDomainEvent(tid, "sim.canary_domain", {});', expect: ["sim.canary_domain"] },
+    { form: "literal(optional-chain)", src: 'await this.outbox?.emit(tid, "sim.canary_optchain", {});', expect: ["sim.canary_optchain"] },
     { form: "dotless", src: 'await outbox.emit(t, "canary_dotless", {});', expect: ["canary_dotless"] },
     { form: "const-local", src: 'const CE = "sim.canary_const";\nawait outbox.emit(t, CE, {});', expect: ["sim.canary_const"] },
     { form: "ternary-inline", src: 'await outbox.emit(t, x ? "sim.canary_ti_a" : "sim.canary_ti_b", {});', expect: ["sim.canary_ti_a", "sim.canary_ti_b"] },
@@ -304,9 +311,12 @@ else {
   // 存量清零请继续回写 §4，**不许抬这个数**。
   const MAX_EMIT_UNREGISTERED = 21;
   if (emitUnregistered.length > MAX_EMIT_UNREGISTERED) {
+    // ⚠ 措辞纪律（2026-08-20 实测踩中）：下面列的是**按字母序排在基线之外的尾部**，
+    //    不是「这次新增的名字」——纯计数棘轮不知道谁新谁旧，名单一涨一跌尾部就会换人。
+    //    本单曾被这句「新增的是」误导去登记错误的事件名。要真「新增」名单， diff 两次门输出。
     fail.push(
       `**emit 了但本体 §4 未登记**：${emitUnregistered.length} 个 > 棘轮基线 ${MAX_EMIT_UNREGISTERED}。` +
-        ` 新增的是：${emitUnregistered.slice(MAX_EMIT_UNREGISTERED).join(", ")}` +
+        ` 超出基线的（字母序尾部，不等于本次新增）：${emitUnregistered.slice(MAX_EMIT_UNREGISTERED).join(", ")}` +
         ` —— 修法：在 §4 补登该事件（发了没人收也要登，登记的是「系统会发这个事」，不是「有人在收」）。` +
         ` 不许抬基线了事。`,
     );
@@ -330,6 +340,211 @@ else {
     if (undecidableAll.length > 8) console.log(`     · …另 ${undecidableAll.length - 8} 处`);
   } else {
     console.log("  └ 无法静态判定：0 处（全部发射点的事件名都已静态求值）");
+  }
+
+  // --- 1c) 发射 → 订阅对账（发出的事件有没有人接）────────────────────────────────
+  // ⛔ 存在理由（断点 G-EVENT-GATE-MEASURES-SUBS-NOT-EMITS 的另一半，WO-EVENT-SUB-CLOSURE 建）：
+  //    1) 量「订阅声明 ⊆ §4」、1b) 量「emit ⊆ §4」—— 两道都对账**登记**，
+  //    没有任何一条回答「这个 emit 出去的事件，有没有哪怕一个订阅方」。
+  //    形态（铁律 0.6）：「我用『订阅数 > 0』当作『这个事件有消费方』的证据，
+  //    而前者并不度量后者 —— 订阅的可能全是**别的**事件。」
+  //    sim.* 六事件当年就是这样：发了、登记了、零消费方，门照样绿。
+  //
+  // 订阅方 = 三处**静态可见**的订阅点 ∪ 一处「故意不接」台账：
+  //   ① agentcore event-subscriptions.ts 的登记（事件→语义标签单一来源，上面已抽为 codeEvents）；
+  //   ② 前端 eventInvalidation.ts 的 EVENT_INVALIDATES 顶层键（真失效接线）；
+  //   ③ B 侧 /b/v1/internal/invalidate 的 `event.startsWith("<prefix>")` 前缀处理器
+  //      （llm_provider/feature/ontology/prompt 这类 {kind}.updated 事件的消费方）；
+  //   ④ 前端 SIM_EVENT_GAPS 的键 = 「故意不接 + 写明理由」的已确认缺口
+  //      （sim-event-invalidation seam 测试守着：理由不许空、不许与已接线重叠）——算记了账，不算违规。
+  // ⚠ 运行时租户自助注册的 webhook（outbox 第二投递通道）静态不可见 ⇒
+  //   只走那条通道的事件只能落下面的棘轮台账，这是口径边界，不是门的盲区谎报。
+  const FE_INVALIDATION_SRC = "apps/frontend-shell/src/store/eventInvalidation.ts";
+  const B_SERVER_SRC = "apps/agentcore/src/server.ts";
+
+  // 抽对象字面量的顶层事件键。⚠ 锚必须是**声明行**（`export const X`），不能只找字串 "X"：
+  //   eventInvalidation.ts 的散文/注释里多次提到 EVENT_INVALIDATES（如 GAPS 的「挪进
+  //   EVENT_INVALIDATES」），锚不到声明行会把**前一个对象**（SIM_EVENT_GAPS）的键抽出来
+  //   —— 2026-08-20 建本段时探针亲测踩中（缺口台账被当成接线表）。
+  const harvestTopKeys = (src, declAnchor) => {
+    const m = src.match(new RegExp(declAnchor + "[^=]*=\\s*\\{([\\s\\S]*?)\\n\\};"));
+    if (!m) return null;
+    return new Set([...m[1].matchAll(/^\s*"([^"]+)":/gm)].map((x) => x[1]));
+  };
+  // B 侧 invalidate 前缀：`event.startsWith("...")` 这个形态在本仓只出现在那个 handler 里
+  // （若将来别处也用，把扫描窗收窄到该 handler 段——先按实测口径记在这里）。
+  const harvestInvalidatePrefixes = (src) =>
+    [...new Set([...src.matchAll(/event\.startsWith\("([^"]+)"\)/g)].map((m) => m[1]))];
+  // 订阅判据与差集计算：**主逻辑与金丝雀共用同一份实现**（不许各抄一份）。
+  const makeSubPredicate = ({ codeEv, invKeys, gapKeys, prefixes }) => (e) =>
+    codeEv.has(e) || invKeys.has(e) || gapKeys.has(e) || prefixes.some((p) => e.startsWith(p));
+  const computeUncovered = (emittedIter, hasSub) => [...emittedIter].filter((e) => !hasSub(e)).sort();
+
+  const feSrc = read(FE_INVALIDATION_SRC);
+  const bSrvSrc = read(B_SERVER_SRC);
+  if (!feSrc) fail.push(`缺少 ${FE_INVALIDATION_SRC}（前端失效接线表）——1c 无法判定订阅方，不许读作「都有订阅」。`);
+  if (!bSrvSrc) fail.push(`缺少 ${B_SERVER_SRC}（B 侧 invalidate 处理器所在）——1c 无法判定前缀订阅。`);
+  if (feSrc && bSrvSrc) {
+    const invKeys = harvestTopKeys(feSrc, "export const EVENT_INVALIDATES");
+    const gapKeys = harvestTopKeys(feSrc, "export const SIM_EVENT_GAPS");
+    const prefixes = harvestInvalidatePrefixes(bSrvSrc);
+    if (!invKeys) fail.push("**门自己瞎了**：抽不出 EVENT_INVALIDATES 的声明块（锚改了？）——1c 结论不可信。");
+    if (!gapKeys) fail.push("**门自己瞎了**：抽不出 SIM_EVENT_GAPS 的声明块（锚改了？）——1c 结论不可信。");
+    if (prefixes.length === 0)
+      fail.push("**门自己瞎了**：B 侧 invalidate 处理器一个 startsWith 前缀都没抽到 —— {kind}.updated 事件会被误报成零订阅。");
+
+    // 金丝雀（全部走上面同一份实现，改坏任一抽取器/判据，对应金丝雀立刻红）：
+    //  C1 必咬：合成 emit 无任何订阅 ⇒ 必被点名。
+    {
+      const c = computeUncovered(["sim.canary_orphan"], makeSubPredicate({ codeEv: new Set(), invKeys: new Set(), gapKeys: new Set(), prefixes: [] }));
+      if (!(c.length === 1 && c[0] === "sim.canary_orphan"))
+        fail.push("**门自己瞎了**：1c 必咬金丝雀未命中 —— 无订阅的 emit 没被抓出来，此时的「零订阅 N 个」不可信。");
+    }
+    //  C2 必不咬 ⊕ 锚陷阱：样例里先在**散文串**里提一次 EVENT_INVALIDATES 再真声明 ——
+    //     锚不到声明行的抽取器会把前一个对象（这里故意放个 GAPS 样子的块）的键当接线表。
+    {
+      const src =
+        'const NOTE = "出台账条件：把本条挪进 EVENT_INVALIDATES 接 [\'sim-x\']。";\n' +
+        "export const SIM_EVENT_GAPS: Record<string, string> = {\n  \"sim.canary_gap\": \"理由：今天没有缓存可失效\",\n};\n" +
+        "export const EVENT_INVALIDATES: Record<string, readonly string[]> = {\n  \"sim.canary_wired\": [\"sim-sessions\"],\n};\n";
+      const k = harvestTopKeys(src, "export const EVENT_INVALIDATES");
+      const g = harvestTopKeys(src, "export const SIM_EVENT_GAPS");
+      const okC2 = k?.has("sim.canary_wired") && !k.has("sim.canary_gap") && g?.has("sim.canary_gap");
+      if (!okC2) fail.push("**门自己瞎了**：1c 抽取器锚错了对象（把缺口台账当接线表，或反之）——1c 结论不可信。");
+      else {
+        const pred = makeSubPredicate({ codeEv: new Set(), invKeys: k, gapKeys: g, prefixes: [] });
+        if (computeUncovered(["sim.canary_wired"], pred).length !== 0)
+          fail.push("**门自己瞎了**：1c 必不咬金丝雀误咬 —— 已接线的事件被报成零订阅（误报方向）。");
+        if (computeUncovered(["sim.canary_gap"], pred).length !== 0)
+          fail.push("**门自己瞎了**：记在缺口台账（有理由的故意不接）的事件被报成违规 —— 台账豁免失效。");
+      }
+    }
+    //  C3 前缀订阅：B 侧 startsWith 前缀 ⇒ "rules.canary_x" 算有订阅。
+    {
+      const pre = harvestInvalidatePrefixes('if (event.startsWith("rules")) invalidated.push("rules(no-cache)");');
+      if (!pre.includes("rules") || computeUncovered(["rules.canary_x"], makeSubPredicate({ codeEv: new Set(), invKeys: new Set(), gapKeys: new Set(), prefixes: pre })).length !== 0)
+        fail.push("**门自己瞎了**：1c 前缀订阅金丝雀未命中 —— {kind}.updated 那类事件的消费方不可见。");
+    }
+
+    if (invKeys && gapKeys && prefixes.length > 0) {
+      const hasSub = makeSubPredicate({ codeEv: codeEvents, invKeys, gapKeys, prefixes });
+      const uncovered = computeUncovered(emitted, hasSub);
+
+      // 棘轮台账（只降不升）：今日实测「emit 了但静态零订阅方」的存量，逐名登记。
+      // 存量大头是审计/webhook 通道事件（iam.* / view_config.* / scenario_package.* / llm.* 等）——
+      // 消费方是运行时租户注册的 webhook 或纯落库审计，静态不可见，不是「忘了接」。
+      // 两个方向都判（与 SIM_EVENT_GAPS seam 测试同款纪律）：
+      //   · 台账外新出现的无订阅事件 ⇒ 红，逐名点名（新增 emit 必须接线或登记缺口）；
+      //   · 台账里的事件今天已有订阅方 / 已不再 emit ⇒ 红，勒令删名（防台账 drift 成遮羞布）。
+      // 2026-08-20 建账：35 名（sim.checkpoint_saved 同日接线出账，未进台账）。
+      // 2026-08-20 修正 35 → 42：`outbox?.emit` 可选链盲点修复后实测 42 名 ——
+      //   新进的 7 名（buildpipeline.reset / buildpipeline.updated / buildworkflow.step_approved /
+      //   decision.options_generated / gap.attributed / prototype.materialized / trigger.fired）
+      //   是**抽取器此前看不见、今天才变得可见**的存量，不是本单新增的违规；
+      //   照 0.6 记账：基线扩张只发生在「测量工具修正」时，且逐名留证据。消费方缺失本身仍是真存量，
+      //   后续接线任一名字必须顺手从台账删名（下面 staleBaseline 方向强制）。
+      const NO_SUBSCRIBER_BASELINE = [
+        "action.approved", "action.auto_approved", "action.cancelled", "action.execution_failed", "action.rejected",
+        "aop.finalized", "approval.escalated", "approval.reminder",
+        "buildpipeline.reset", "buildpipeline.updated", "buildworkflow.step_approved",
+        "calibration.auto_applied", "calibration.meta_evaluated", "calibration.required",
+        "decision.options_generated", "decision.realized", "gap.attributed",
+        "iam.tenant.created", "iam.user.created", "iam.user.password_reset", "iam.user.updated",
+        "llm.credential_fetched", "meta.ontology_synced",
+        "ops_schedule.forecast_run", "ops_schedule.sop_opened", "ops_schedule.updated",
+        "plan.canvas.published", "prototype.materialized", "prototype.objectified",
+        "rule.alert", "rule.scope_unresolved",
+        "scenario.trigger_fired", "scenario_package.created", "scenario_package.updated",
+        "sop.changed", "sop.finalized", "supply_risk", "trigger.fired", "ts.late_arrival",
+        "view_config.created", "view_config.deleted", "view_config.updated",
+      ];
+      const baselineSet = new Set(NO_SUBSCRIBER_BASELINE);
+      const newUncovered = uncovered.filter((e) => !baselineSet.has(e));
+      const staleBaseline = NO_SUBSCRIBER_BASELINE.filter((e) => !uncovered.includes(e));
+      if (newUncovered.length)
+        fail.push(
+          `**emit 了但没有任何订阅方**（台账外新增）：${newUncovered.join(", ")} —— 修法：` +
+            `在 event-subscriptions.ts 登记 + 前端 EVENT_INVALIDATES 接线（真缓存承载），` +
+            `或（仅 sim.*）记进 SIM_EVENT_GAPS 写清「为什么今天不接」。不许把名字塞进 NO_SUBSCRIBER_BASELINE 了事。`,
+        );
+      if (staleBaseline.length)
+        fail.push(
+          `无订阅台账与实测不符：${staleBaseline.join(", ")} 今天已有订阅方或已不再 emit —— ` +
+            `把它们从 NO_SUBSCRIBER_BASELINE 删掉（棘轮只降不升靠这个方向强制）。`,
+        );
+      console.log(
+        `· 事件（发射→订阅对账）：真 emit ${emitted.size} 个 · 静态零订阅方 ${uncovered.length} 个（棘轮台账 ${NO_SUBSCRIBER_BASELINE.length} 名，只降不升）`,
+      );
+
+      // --- 1d) 订阅 → 发射 对账（接的线有没有人在发）──────────────────────────
+      // ⛔ 存在理由（与 1c 对称的另一半，WO-EVENT-SUB-CLOSURE 建）：
+      //    1c 量「每个真 emit 有没有订阅方」；本段量反向 ——「每条登记的订阅，有没有任何一处真在发」。
+      //    没有这一段时，把订阅改成订阅一个**没人发的名字**门照样绿（2026-08-20 M2 变异实测漏报：
+      //    EVENT_INVALIDATES 的 `sim.branched` → `sim.branchedX`，门 RC=0）——
+      //    订阅表可以悄悄 drift 成一堆「听了也没人讲」的死登记。
+      // 发射方 = 两条**静态可见**的真发射通道：
+      //   ① 领域事件：上面 1b 扫出的 emitted（outbox.emit / emitDomainEvent），不重复扫；
+      //   ② B 侧任务事件总线 `events.emit(<taskId>, "<name>", …)`（orchestrator/server 等）——
+      //      entity.out_of_domain、scenario.growth_triggered 这类真的在发，走的是任务流不是 outbox；
+      //      不扫这条通道会把它们误报成死订阅。
+      //   ⚠ webhook 是**订阅**通道不是发射通道，与本方向无关。
+      const harvestTaskBusEmits = (src) =>
+        [...src.matchAll(/\bevents\.emit\(\s*[^,]+,\s*"([a-z0-9_.]+)"/g)].map((m) => m[1]);
+      // 判据与差集：**主逻辑与金丝雀共用同一份实现**。
+      const computeDangling = (subs, emittedSet, taskBusSet) =>
+        [...subs].filter((e) => !emittedSet.has(e) && !taskBusSet.has(e)).sort();
+      //  C4 必咬：合成订阅名两条通道都没人发 ⇒ 必被点名。
+      {
+        const d = computeDangling(["sim.canary_dangling"], new Set(), new Set());
+        if (!(d.length === 1 && d[0] === "sim.canary_dangling"))
+          fail.push("**门自己瞎了**：1d 必咬金丝雀未命中 —— 死订阅没被抓出来，M2 变异（把订阅改成没人发的名字）照样漏。");
+      }
+      //  C5 必不咬：任务事件总线（events.emit）发的名字算「有人在发」。
+      {
+        const tb = new Set(harvestTaskBusEmits('await deps.events.emit(taskId, "sim.canary_taskbus", { x: 1 });'));
+        if (!tb.has("sim.canary_taskbus") || computeDangling(["sim.canary_taskbus"], new Set(), tb).length !== 0)
+          fail.push("**门自己瞎了**：1d 任务总线金丝雀未命中 —— events.emit 通道不可见，会把真在发的事件误报成死订阅。");
+      }
+      const taskBusEmits = new Set(tsFiles.flatMap((f) => harvestTaskBusEmits(readFileSync(f, "utf8"))));
+      const subExact = new Set([...codeEvents, ...invKeys]);
+      const danglingExact = computeDangling(subExact, emitted, taskBusEmits);
+      const danglingPrefixes = prefixes.filter((p) => ![...emitted, ...taskBusEmits].some((e) => e.startsWith(p))).sort();
+      // 棘轮台账（只降不升，与 1c 同款双向纪律）。
+      // 2026-08-20 建账：6 名 exact + 2 条前缀 —— 全是「订阅登记写着 producer，但两条发射通道都
+      //   找不到这个名字」的实测存量（登记了没人发 = 死登记，修法是补真 emit 或删登记）。
+      const DANGLING_SUBSCRIPTION_BASELINE = [
+        "features.updated", "intent.promoted", "policy.updated",
+        "quarantine.row_added", "scene_entry.updated", "ts.ingested",
+      ];
+      const DANGLING_PREFIX_BASELINE = ["feature", "prompt"];
+      const danglingBaseSet = new Set(DANGLING_SUBSCRIPTION_BASELINE);
+      const prefixBaseSet = new Set(DANGLING_PREFIX_BASELINE);
+      const newDangling = danglingExact.filter((e) => !danglingBaseSet.has(e));
+      const staleDangling = DANGLING_SUBSCRIPTION_BASELINE.filter((e) => !danglingExact.includes(e));
+      const newDanglingPrefixes = danglingPrefixes.filter((p) => !prefixBaseSet.has(p));
+      const stalePrefixes = DANGLING_PREFIX_BASELINE.filter((p) => !danglingPrefixes.includes(p));
+      if (newDangling.length)
+        fail.push(
+          `**订阅了但没有任何发射方**（台账外新增）：${newDangling.join(", ")} —— 把订阅改成没人发的名字 = 死登记。` +
+            `修法：补真 emit（D-29 产出必发）或删掉这条订阅登记。不许塞进 DANGLING_SUBSCRIPTION_BASELINE 了事。`,
+        );
+      if (staleDangling.length)
+        fail.push(
+          `死订阅台账与实测不符：${staleDangling.join(", ")} 今天已有真发射方或已删登记 —— ` +
+            `把它们从 DANGLING_SUBSCRIPTION_BASELINE 删掉（棘轮只降不升靠这个方向强制）。`,
+        );
+      if (newDanglingPrefixes.length)
+        fail.push(
+          `**B 侧 invalidate 前缀没有任何发射方**（台账外新增）：${newDanglingPrefixes.join(", ")} —— 同死登记，修法同上。`,
+        );
+      if (stalePrefixes.length)
+        fail.push(
+          `死前缀台账与实测不符：${stalePrefixes.join(", ")} 今天已有匹配的发射 —— 从 DANGLING_PREFIX_BASELINE 删掉。`,
+        );
+      console.log(
+        `· 事件（订阅→发射对账）：静态订阅 ${subExact.size} 名 + B 侧前缀 ${prefixes.length} 条 · 无发射方 ${danglingExact.length} 名 + ${danglingPrefixes.length} 前缀（棘轮台账 ${DANGLING_SUBSCRIPTION_BASELINE.length}+${DANGLING_PREFIX_BASELINE.length}，只降不升）`,
+      );
+    }
   }
 }
 
