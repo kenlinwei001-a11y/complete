@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CHAIN_NODE_REGISTRY } from "@platform/contracts";
 import { runSolver } from "@/api/endpoints";
 import type { ViewRendererProps } from "../registry";
@@ -30,6 +30,9 @@ import { CHAIN_LOSS_SOLVER_KEY } from "./chainLineMap";
 // WO-R13-ONTOCHAIN-PANEL · 共享本体链组件：三段全部由本面板从响应字段透传。
 import { OntologyChainView, type OntologyChainData } from "@/components/OntologyChain";
 import { SEMANTICS_ORIGIN_NOTE, chainNodeSemantics, chainNodeSemanticsCoverage } from "./chainNodeSemantics";
+// WO-UI-FIRSTLAYER-BURNDOWN-2 · `docs/CONVENTION-ui-information-layering.md` §2 R-UI-3 规定的
+// 浮层**唯一实现**（「别每页各做一套」）。本面板的六段口径说明由它承载，见下方 SECTION_CALIBER。
+import { InfoPopover } from "@/components/InfoPopover";
 import styles from "./InspectorNodePanel.module.css";
 
 /**
@@ -74,6 +77,46 @@ function fmtVarValue(v: InspectorVariable, val: number | null): string {
   if (VAR_CONTROL_BY_CLASS[v.cls] === "probability") return fmtProb(val);
   const n = Number.isInteger(val) ? String(val) : String(Math.round(val * 100) / 100);
   return v.unit ? `${n} ${v.unit}` : n;
+}
+
+/**
+ * 段标题 + `?` 浮层触发器（`docs/CONVENTION-ui-information-layering.md` §1 / §2 R-UI-3）。
+ *
+ * ── 为什么抽成组件，而不是每处各写一遍 ──────────────────────────────────────
+ * 规范 §1 的红线是「诚实位**允许降层、绝不允许删除**；降层后第一层必须留一个可见记号，
+ * **静默降层等于删除**」。`children` 是**必填** prop：想把说明删掉又留住标题，TS 当场不给过。
+ *
+ * ⚠ **为什么浮层写在调用处、而不是收进本组件** —— 这一版是改出来的，不是一开始就这样：
+ * 第一版把 `caliber` 当 prop 收进组件内部渲染，屏上完全正确，但
+ * `scripts/check-ui-first-layer.mjs` **看不见**：它判「第二层」靠的是**浮层组件名出现在 JSX 里**，
+ * 而 `caliber={<>…</>}` 只是个普通属性 ⇒ 六段口径被原样计回**第一层**
+ * （实测 first 111→110、deferred 3→4，几乎没动）。规范 §6 早写着这条诚实边界：
+ * 「经变量间接上屏的口径**门看不见** —— 那是门看不见，不是它同意」。
+ * 把 `<InfoPopover>` 摆回调用处，**门看见的结构 ＝ 运行时真实的结构**，两边不再各说一套。
+ *
+ * ── ⚠ 不许改用 `<details>` 折叠（已实测的坑，别再试一遍）─────────────────────
+ * Chromium 141 实测：闭合 `<details>` 的子节点 `checkVisibility()` 为 false、命中测试打不到，
+ * 但 `getBoundingClientRect()` **仍返回非零旧矩形** ⇒ 版面门的可见性判据（计算样式 ＋ 非零矩形）
+ * 照样把它们当第一屏可见控件在数。屏上看不见、数上不降，**两头落空**。
+ * `InfoPopover` 关着时是**真的不渲染**（`open === false` ⇒ 不进 DOM），这才降得下来。
+ */
+function SectionTitle({
+  id,
+  heading,
+  children,
+}: {
+  id: string;
+  /** 第一层留下的那句话：只许是**名字**（规范 §1 第一层准入清单第 ③ 条）。 */
+  heading: string;
+  /** 那个可见记号 —— 按约定填 `<InfoPopover>`，口径正文放它里面。**必填**：缺了就是静默降层。 */
+  children: ReactNode;
+}) {
+  return (
+    <h4 className={styles.sectionTitle} id={id}>
+      <span className={styles.sectionHeading}>{heading}</span>
+      {children}
+    </h4>
+  );
 }
 
 function CarrierTag({ carrier }: { carrier: InspectorVariable["carrier"] }) {
@@ -223,12 +266,13 @@ function NodeConflictSection({ nodeId }: { nodeId: string }) {
   if (cf.length === 0) return null;
   return (
     <section className={styles.section} data-testid="insp-cf" aria-labelledby="insp-cf-h" data-cf-count={String(cf.length)}>
-      <h4 className={styles.sectionTitle} id="insp-cf-h">
-        ⑤ 跨节点冲突 · 改这里会连累谁
-        <small className={styles.sectionSub}>
-          编辑口径（人写的，非引擎下发）；<b>每条都附了代码依据</b>，指不出依据的一条都没写
-        </small>
-      </h4>
+      <SectionTitle id="insp-cf-h" heading="⑤ 跨节点冲突 · 改这里会连累谁">
+        <InfoPopover topic="⑤ 跨节点冲突 · 改这里会连累谁" testId="insp-cf-caliber">
+          <span className={styles.sectionSub}>
+            编辑口径（人写的，非引擎下发）；<b>每条都附了代码依据</b>，指不出依据的一条都没写
+          </span>
+        </InfoPopover>
+      </SectionTitle>
       <ul className={styles.cfList}>
         {cf.map((c) => (
           <li key={c.conflictId} className={styles.cfRow} data-testid={`insp-cf-${c.conflictId}`} data-basis-count={String(c.basis.length)}>
@@ -252,12 +296,13 @@ function NodeKpiSection({ live, state }: { live: NodeLiveView; state: LiveLoadSt
   const [openChains, setOpenChains] = useState<ReadonlySet<string>>(new Set());
   return (
     <section className={styles.section} data-testid="insp-kpi" aria-labelledby="insp-kpi-h" data-kpi-count={String(live.kpis.length)}>
-      <h4 className={styles.sectionTitle} id="insp-kpi-h">
-        ③ 节点级流指标 · 引擎真值
-        <small className={styles.sectionSub}>
-          全部由引擎算出并下发；接不到的指标<b>这一行根本不出现</b>，不填占位数字
-        </small>
-      </h4>
+      <SectionTitle id="insp-kpi-h" heading="③ 节点级流指标 · 引擎真值">
+        <InfoPopover topic="③ 节点级流指标 · 引擎真值" testId="insp-kpi-caliber">
+          <span className={styles.sectionSub}>
+            全部由引擎算出并下发；接不到的指标<b>这一行根本不出现</b>，不填占位数字
+          </span>
+        </InfoPopover>
+      </SectionTitle>
       {live.kpis.length === 0 ? (
         <p className={styles.emptyNote} data-testid="insp-kpi-empty">
           <b>接不到真值 ⇒ 不显示</b>：{liveGapReason(live, state)}
@@ -337,14 +382,20 @@ function DrillEvidenceSection({ live, state }: { live: NodeLiveView; state: Live
       data-evidence-count={String(rows.length)}
       data-empty-count={String(live.empty.length)}
     >
-      <h4 className={styles.sectionTitle} id="insp-ev-h">
-        ④ R13 下钻证据 · 每个天数指回一个真对象的真字段
-        <small className={styles.sectionSub}>
-          下钻值是<b>该字段存着的真值本身</b>（原单位·未换算）；换算成天数由引擎给的换算式说清，
-          界面<b>原样透出、一个字不改</b>
-          {live.anchorSo === null ? null : <> · 本次锚点单 <code>{live.anchorSo}</code></>}
-        </small>
-      </h4>
+      {/*
+       * 标题原为「④ R13 下钻证据 · 每个天数指回一个真对象的真字段」——
+       * 破折号后半句是**解释**不是名字（规范 §1 第一层只许放 ①数值 ②状态 ③名字），
+       * 故整句降进浮层首行，第一层只留那个名字。**一个字都没删，只是换了层。**
+       */}
+      <SectionTitle id="insp-ev-h" heading="④ R13 下钻证据">
+        <InfoPopover topic="④ R13 下钻证据" testId="insp-ev-caliber">
+          <span className={styles.sectionSub}>
+            每个天数指回一个真对象的真字段：下钻值是<b>该字段存着的真值本身</b>（原单位·未换算）；
+            换算成天数由引擎给的换算式说清，界面<b>原样透出、一个字不改</b>
+            {live.anchorSo === null ? null : <> · 本次锚点单 <code>{live.anchorSo}</code></>}
+          </span>
+        </InfoPopover>
+      </SectionTitle>
 
       {rows.length === 0 && live.empty.length === 0 ? (
         <p className={styles.emptyNote} data-testid="insp-drill-none">
@@ -715,10 +766,13 @@ export function InspectorNodePanel({ input, running = false, onValuesChange, liv
 
       {/* ── ① 五段耗时瀑布 ───────────────────────────────────────────────── */}
       <section className={styles.section} data-testid="insp-waterfall" aria-labelledby="insp-wf-h">
-        <h4 className={styles.sectionTitle} id="insp-wf-h">
-          ① 五段耗时瀑布
-          <small className={styles.sectionSub}>前置期 = 五段之和；五段与"哪种算增值"均由 S0 契约冻结，前端不另立口径</small>
-        </h4>
+        <SectionTitle id="insp-wf-h" heading="① 五段耗时瀑布">
+          <InfoPopover topic="① 五段耗时瀑布" testId="insp-wf-caliber">
+            <span className={styles.sectionSub}>
+              前置期 = 五段之和；五段与"哪种算增值"均由 S0 契约冻结，前端不另立口径
+            </span>
+          </InfoPopover>
+        </SectionTitle>
         <ul className={styles.wfList}>
           {readout.buckets.map((b) => (
             <WaterfallRow key={b.kind} b={b} leadDays={readout.leadTimeDays} />
@@ -728,10 +782,11 @@ export function InspectorNodePanel({ input, running = false, onValuesChange, liv
 
       {/* ── ② 流动效率读数 ───────────────────────────────────────────────── */}
       <section className={styles.section} aria-labelledby="insp-fe-h">
-        <h4 className={styles.sectionTitle} id="insp-fe-h">
-          ② 流动效率
-          <small className={styles.sectionSub}>流动效率 = 增值 ÷ 前置期（制造业典型 5–15%，读数低是正常的）</small>
-        </h4>
+        <SectionTitle id="insp-fe-h" heading="② 流动效率">
+          <InfoPopover topic="② 流动效率" testId="insp-fe-caliber">
+            <span className={styles.sectionSub}>流动效率 = 增值 ÷ 前置期（制造业典型 5–15%，读数低是正常的）</span>
+          </InfoPopover>
+        </SectionTitle>
         <div
           className={styles.flowBox}
           data-testid="insp-flow-eff"
@@ -742,8 +797,15 @@ export function InspectorNodePanel({ input, running = false, onValuesChange, liv
           data-whatif={String(readout.whatIfCount)}
         >
           <b className={flowPct === null ? styles.emptyValue : styles.flowValue}>{flowPct === null ? "EMPTY" : fmtPct(flowPct)}</b>
+          {/*
+           * 规范 R-UI-3：`A ÷ B` 这个**算式**属浮层（已搬进本段 `insp-fe-caliber`）。
+           * 但 §1 同时写着「浮层不许放**结论性数字**」—— 增值 / 前置期这两个天数是读数本身，
+           * 不是解释，故**留在第一层**，只把 `=` 与 `÷` 两个运算符去掉：
+           * 现在它是「标签 ＋ 值」（R-UI-1 视线距离也更好），不再是一句算式。
+           * ⚠ 改法是**排版**不是删数：两个数一个都没少，data-* 也原样。
+           */}
           <span className={styles.flowFormula}>
-            = 增值 <b>{fmtDays(readout.valueAddDays)}</b> ÷ 前置期 <b>{fmtDays(readout.leadTimeDays)}</b>
+            增值 <b>{fmtDays(readout.valueAddDays)}</b> · 前置期 <b>{fmtDays(readout.leadTimeDays)}</b>
           </span>
         </div>
         {readout.absentCount > 0 ? (
@@ -770,10 +832,11 @@ export function InspectorNodePanel({ input, running = false, onValuesChange, liv
 
       {/* ── ⑥ 七类变量分组输入 ───────────────────────────────────────────── */}
       <section className={styles.section} data-testid="insp-variables" aria-labelledby="insp-var-h">
-        <h4 className={styles.sectionTitle} id="insp-var-h">
-          ⑥ 变量输入 · 七类
-          <small className={styles.sectionSub}>七类推演机理不同 ⇒ 控件不同。S 类是离散分支换拓扑，不是滑杆</small>
-        </h4>
+        <SectionTitle id="insp-var-h" heading="⑥ 变量输入 · 七类">
+          <InfoPopover topic="⑥ 变量输入 · 七类" testId="insp-var-caliber">
+            <span className={styles.sectionSub}>七类推演机理不同 ⇒ 控件不同。S 类是离散分支换拓扑，不是滑杆</span>
+          </InfoPopover>
+        </SectionTitle>
         {groups.map(({ cls, vars }) => (
           <div key={cls} className={styles.group} data-testid={`insp-group-${cls}`} data-cls={cls} data-control={VAR_CONTROL_BY_CLASS[cls]}>
             <div className={styles.groupHead}>
