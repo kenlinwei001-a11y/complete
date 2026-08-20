@@ -91,6 +91,9 @@ export class SopService {
 
   /** ① 产品评审: PLM cert edge diff → supply feasibility boundary (万套/月 per change). */
   private async step1(ctx: AuthCtx, v: SopVersion): Promise<SopVersion> {
+    // WO-COLUMN-SECURITY-TAIL · 残口②：本步把 SolverContext 算出的供给边界**落库**到计划版本上。
+    // 受列级约束的调用者在此拒绝（拒绝比"用缺列的图算一个错的边界并写进共享版本"轻得多）。
+    await this.solvers.assertContextColumnUnrestricted(ctx, "S&OP 步骤①产品评审");
     const c = await this.solvers.loadContext(ctx.tenantId);
     const rollup = computeRollup(c);
     const weekly = new Map(rollup.bases.map((b) => [b.baseId, b.weeklyWan]));
@@ -193,6 +196,8 @@ export class SopService {
   /** ③ 供应评审: sup = Σ基地(周产能×curveMult×certFactor) monthly + resolved increments; gap > 2 万套 → red flag. */
   private async step3(ctx: AuthCtx, v: SopVersion, payload: Record<string, unknown>): Promise<SopVersion> {
     if (!v.steps.s2) throw invalidState("run step 2 first");
+    // WO-COLUMN-SECURITY-TAIL · 残口②（同 step1）：供给侧 sup/gap 由整张对象图算出并落库。
+    await this.solvers.assertContextColumnUnrestricted(ctx, "S&OP 步骤③供应评审");
     const c = await this.solvers.loadContext(ctx.tenantId);
     const rollup = computeRollup(c);
     const weekly = new Map(rollup.bases.map((b) => [b.baseId, b.weeklyWan]));
@@ -488,6 +493,9 @@ export class SopService {
       const s = segs.find((x) => x.props.segKey === key);
       return round(dem * num(s?.props.baselineShare), 2);
     };
+    // WO-COLUMN-SECURITY-TAIL · 残口②：无 FINAL 版本时的兜底 sup 由整张对象图现算（上面 FINAL 分支
+    // 只读已落库的版本快照，不碰对象图 → 不受此闸约束，故闸放在这里而不是方法顶部，避免误伤）。
+    await this.solvers.assertContextColumnUnrestricted(ctx, "当前计划版本（基线派生）");
     const c = await this.solvers.loadContext(ctx.tenantId);
     const rollup = computeRollup(c);
     let sup = 0;

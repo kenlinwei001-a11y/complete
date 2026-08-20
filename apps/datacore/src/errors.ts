@@ -30,6 +30,24 @@ export const solverColumnRestricted = (solverKey: string, typeKeys: string[]) =>
     403,
   );
 
+/**
+ * A6 列级安全 · 残口② 收口（WO-COLUMN-SECURITY-TAIL）：**SolverContext 的用户可达消费方**
+ * （计划视图 AOP/季度滚动 · S&OP 步骤推进 · 模拟时钟 tick）此前调 `loadContext(tenantId)` 时
+ * **不带 AuthCtx** → 列投影恒等 → 受列级约束的用户读到用被禁列算出的聚合数。
+ *
+ * 为什么是**拒绝**而不是"补上投影"：这几条路产出的都是**聚合数字**，投影后照算 = 受限用户拿到
+ * 一个看不出问题的**错数**（与 `solverColumnRestricted` 同一病理：「没权限」被伪装成「业务数字」）。
+ * 判据复用 `authz.columnRestrictedObjectTypes()`（同一份 `decide()`·不另造第二套匹配）：
+ * admin / 无列级策略 → 空集 → **零成本恒等**（逐字节现行为）。
+ */
+export const contextColumnRestricted = (surface: string, typeKeys: string[]) =>
+  new AppError(
+    "CONTEXT_COLUMN_RESTRICTED",
+    `「${surface}」对当前角色不可用：当前角色在对象类型 [${typeKeys.join(", ")}] 上受列级（属性级）约束，` +
+      `而本视图的聚合数字由整张对象图算出——带缺失属性算下去会产出静默错数，故拒绝而非降级出数（宁可少答，不许错答）。`,
+    403,
+  );
+
 /** A6 列级（属性级）安全：写入不可写属性 —— 显式拒绝，绝不静默丢弃字段后返回成功。 */
 export const propertyForbidden = (props: string[], detail = "") =>
   new AppError(

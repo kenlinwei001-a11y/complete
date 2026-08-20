@@ -3,7 +3,7 @@ import type { AccessDecision, AuthzService } from "../authz.js";
 import type { Repos } from "../repo/repo.js";
 import type { OntologyCoreService } from "../ontology-core.js";
 import type { OptimizerClient } from "./optimizer-client.js";
-import { notFound, validationError, solverColumnRestricted } from "../errors.js";
+import { notFound, validationError, solverColumnRestricted, contextColumnRestricted } from "../errors.js";
 import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
@@ -3338,7 +3338,11 @@ export class SolverService {
     forecastStart: string,
     orders: Record<string, unknown>[],
   ): Promise<ByModelOutlook[]> {
-    const c = await this.loadContext(ctx.tenantId);
+    // WO-COLUMN-SECURITY-TAIL · 残口②（嵌套求解半）：外层 `invoke()` 的 loadContext **已带** authCtx，
+    // 这条嵌套调用此前没带 ⇒ **同一个求解器在两份世界上算**（外层投影过、内层没投影）。
+    // 该不一致本身就是缺陷；补上后两份 context 同约束。调用者若真受列级约束，`columnSignatureGate`
+    // 已在 invoke() 入口先行裁决（拒 or 证明读取面不相交），故此处不改变任何已放行调用的数字。
+    const c = await this.loadContext(ctx.tenantId, undefined, { authCtx: ctx });
     const horizons = [30, 60, 90] as const;
     const rows: ByModelOutlook[] = [];
     for (const m of c.models) {
@@ -5248,6 +5252,30 @@ export class SolverService {
       if (!d.columnRestricted) return objs; // 零成本恒等
       return objs.map((o) => this.authz.projectObject(d, o));
     };
+  }
+
+  /**
+   * WO-COLUMN-SECURITY-TAIL · 残口② 收口 —— **SolverContext 用户可达消费方的列级闸**。
+   *
+   * ─ 它守的是什么 ───────────────────────────────────────────────────────────────
+   * `loadContext` 的列投影只在传了 `authCtx` 时生效（`columnProjector`）。而 `planviews.aop/quarterly`、
+   * `sop.step1/step3/currentPlanVersion`、`simclock.tick` 这几条**用户可达**的路调的是
+   * `loadContext(ctx.tenantId)` —— 有 `AuthCtx` 却没传下去 ⇒ 投影器走恒等分支 ⇒ 受列级约束的用户
+   * 拿到用**它读不到的列**算出的聚合数（本体 §8 G-SECURITY-COLUMN-LEVEL 残口②）。
+   *
+   * ─ 为什么是"拒绝"不是"补投影" ──────────────────────────────────────────────────
+   * 这几条路的产物都是**聚合数字**（年度情景/季度供需/S&OP 目标线）。补上投影 = 受限用户拿到一个
+   * **看不出问题的错数**并照着做决策 —— 与 `columnSignatureGate` 收口时同一条裁决：
+   * **宁可少答，不许错答**。而它们又不是求解器，没有 Function 本体签名可求交（P2 的收窄手段在此不适用），
+   * 故停在 P1 的粗粒度：**调用者只要在任一对象类型上受列级约束就拒**。
+   *
+   * ─ 零回归底线 ────────────────────────────────────────────────────────────────
+   * 判据复用 `authz.columnRestrictedObjectTypes(ctx)`（同一份 `decide()`·不另造第二套匹配·并集语义
+   * 与读写路径一致）：admin 旁路 / 无列级策略 → 空集 → **一行都不多读、逐字节现行为**（S4/S8 硬底线）。
+   */
+  async assertContextColumnUnrestricted(ctx: AuthCtx, surface: string): Promise<void> {
+    const restricted = await this.authz.columnRestrictedObjectTypes(ctx);
+    if (restricted.length > 0) throw contextColumnRestricted(surface, restricted);
   }
 
   async loadContext(

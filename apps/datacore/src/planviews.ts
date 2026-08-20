@@ -44,6 +44,10 @@ export class PlanService {
   // -- AOP ---------------------------------------------------------------------
 
   async aop(ctx: AuthCtx, year?: number): Promise<AopResponse> {
+    // WO-COLUMN-SECURITY-TAIL · 残口②：本视图的每个数字都由 SolverContext 整张对象图算出，
+    // 而下面的 `loadContext(ctx.tenantId)` 不带 AuthCtx（列投影恒等）。受列级约束的调用者在此
+    // 拒绝出数（宁可少答，不许错答）；admin / 无列级策略 → 零成本恒等（逐字节现行为）。
+    await this.solvers.assertContextColumnUnrestricted(ctx, "年度经营计划（AOP）");
     const y = year ?? 2026;
     const scenarioObjs = (await this.repos.objects.listByType(ctx.tenantId, "AnnualScenario"))
       .filter((s) => num(s.props.year) === y)
@@ -208,6 +212,8 @@ export class PlanService {
 
   async quarterly(ctx: AuthCtx, from?: string, n = 6): Promise<QuarterlyResponse> {
     if (from && !QUARTER_RE.test(from)) throw validationError("from must be like 2026-Q3");
+    // WO-COLUMN-SECURITY-TAIL · 残口②（同 aop）：供需季度滚动全由整张对象图算出。
+    await this.solvers.assertContextColumnUnrestricted(ctx, "季度滚动供需");
     const c = await this.solvers.loadContext(ctx.tenantId);
     const [approvedProjects, sopIncrements] = await Promise.all([
       this.approvedCapacityProjects(c),
