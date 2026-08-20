@@ -19,7 +19,7 @@
  * 那只挡住了「整张表被删」这一种死法。本门守的是剩下的那些：
  * **账的形态 / 认领关系 / 受理方是否存在 / 有没有单 / 不许静默销账 / 自陈不许超发。**
  *
- * ══ 七条判据（同时成立才算过 · 每条对应一种真实的死法）═══════════════════════════
+ * ══ 九条判据（同时成立才算过 · 每条对应一种真实的死法）═══════════════════════════
  *  ① **账形态完整**   §4.2 每条 `B-x` 三栏（拆出去的那半 / 为什么够不着 / 要判它得有什么）
  *                     全部非空，且**点名**至少一个判据编号 `U#`。
  *                     栏里写 `—` / `-` / `TBD` / `待定` / `见上` 一律判空 —— 把明账写成填空题。
@@ -46,6 +46,24 @@
  *  ⑦ **自陈不许超发** §4.2 必须写明「内容面机检 N/M」，且 N 必须等于**本门现算**的内容面机检条数。
  *                     拦的是本门建成之后最可能发生的那件事：**「门 B 建好了 ⇒ 4 条都验了」**。
  *                     本门今天只机检 1 条的内容面，文档就不许写 4。
+ *  ⑧ **受理方单号真实存在**（WO-SPLITACCOUNT-B-CLOSE 2026-08-20 补）
+ *                     §5 里点名 B-x 的行所点名的每个 `WO-…` 单号，必须能在**仓里或远端**查到：
+ *                     ① 有一个 git ref 名字含它的 kebab 小写形（`refs/heads/*` / `refs/remotes/*`），或
+ *                     ② 本 PRD **之外**的某个已跟踪文件提过它。两者皆无 ⇒ 这个受理方是**编出来的名字**。
+ *                     ⚠ **为什么判据③ 不够**：③ 只问「点没点名一个**已登记的抽象受理方**」，
+ *                     其中「编排侧评测」那条的存在性判据是 `§5 里有任意一张点名任意 B-x 的单`——
+ *                     那是**代理指标**：把 §5 的 `WO-QOS-PAGECTX-EVAL` 改成 `WO-随便编一个`，
+ *                     ③ 照样绿（其它三行还在，`dispatchAll.length > 0` 恒真）。
+ *                     形态（铁律 0.6 句式）：**「我用『这张表里还有单』当作『这一条的受理方存在』的证据。」**
+ *  ⑨ **结案状态不许说谎**（WO-SPLITACCOUNT-B-CLOSE 2026-08-20 补）
+ *                     §4.2.1 判定表里被标结案（`核销`/`已交付`/`已闭`/`已完成`/`已结案`）的 B-x：
+ *                     ⑨a 不许**同时**还挂在 §4.2 在册表里（「做完了」与「还欠着」不能同时为真）；
+ *                     ⑨b 必须在那一行点名交付它的 `WO-…` 单号（说不出出处的结案 = 无从核对）；
+ *                     ⑨c 该单号必须能在 §2.1 判据改写记录里找到**同样标了结案**的那条 `U#`
+ *                         （拆出去的那半销了账，拆的源头也必须销 —— 只销一头 = 两处账对不上）；
+ *                     ⑨d **该 `U#` 在 §4 主表里不许还有「判不了」格** ←── 这一条就是本判据的本体：
+ *                         拆出去的那半自称交付，而留在表内的那半还判不了 ⇒ 「判不了 0」是假的。
+ *                     ⑨e 结案记录本身上棘轮（只许增不许减）—— 否则把结案行删掉，⑨ 整条自动空转变绿。
  *
  * ══ 逐条可机检判定（本门的诚实位 · 不许读成「四条都验了」）═════════════════════════
  *  · **B-1（U1 时延面）**：**内容面不能机检**。「改完输入到结果更新要多久」是运行期量，
@@ -67,7 +85,11 @@
  *
  * ══ 退出码三分（不许合并）══════════════════════════════════════════════════════
  *   0 = 干净 · 1 = 明账**真有问题** · 2 = **门自己坏了**（金丝雀不中 / 扫描面缺失 /
- *   §4.2 解析出 0 行 / 面板文件抽不出）。2 与 1 处置完全相反：前者只许说「我没查出来」。
+ *   §4.2 解析出 0 行 / 面板文件抽不出 / §4 主表解析不出 U 列 / §5 抽不出任何 `WO-…` 单号 /
+ *   判据⑧ 的两条证据源（git ref、仓内 grep）任一取不到）。
+ *   2 与 1 处置完全相反：前者只许说「我没查出来」。
+ *   ⚠ **判据⑧ 刻意要求两条证据源都可用才判**：只剩一条时，「另一条本可查到」的单号会被
+ *   错报成 RC=1（编出来的名字）—— 那是**失败方向反了**（把「我没查全」说成「你违规」）。
  *
  * ══ 诚实边界 ═════════════════════════════════════════════════════════════════
  *  · 本门**不验四条明账的内容对不对**，只有 B-2 是例外且只到必要条件（判据⑤）。
@@ -92,6 +114,7 @@
 import { readFileSync, existsSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { spawnSync } from "node:child_process";
 import { buildBaselineDoc, baselineDocCanary } from "./lib/baseline-doc.mjs";
 
 const PRD = "docs/PRD-harness-ux-adoption.md";
@@ -112,6 +135,31 @@ const CHAIN_MARK = /本体链|ontologyChain/;
 
 /** 空栏的各种写法：明账写成填空题就等于没写。 */
 const BLANK = /^(—|-|--|~|TBD|待定|待补|见上|同上|略|\/)?$/i;
+
+/**
+ * §4 主表里「静态源码判不了」那一态的**逐字写法**（判据⑨d 数的就是它）。
+ * ⚠ 写成常量而不是字面量散在各处：改坏它 ⇒ 金丝雀 ⑩ 当场不中 ⇒ RC=2，不会静悄悄变绿。
+ */
+const UNDECIDABLE = "判不了";
+
+/**
+ * 结案标记（判据⑨）。⚠ `核销` 不加 `已` 前缀：§2.1 的原文写的是「2026-08-18 核销：…」。
+ * 刻意**不**收「已建」「已接」「已部分能」—— 那些说的是**受理方**的进度，不是**这条账**结了。
+ */
+const CLOSED_MARK = /核销|已交付|已闭|已完成|已结案/;
+
+/** 工单号（判据⑧⑨ 的连接键）。全大写 + 数字 + 连字符，`WO-` 起头。 */
+const WO_ID = /\bWO-[A-Z0-9][A-Z0-9-]*\b/g;
+
+/** 从一段文本里取出全部工单号（去重保序）。**唯一实现** —— 判据⑧⑨ 与金丝雀共用。 */
+export function woIdsIn(text) {
+  return [...new Set((String(text ?? "").match(WO_ID) ?? []))];
+}
+
+/** 工单号 → git ref 名里的形态（`WO-FACT-USAGE-REGISTRY` → `wo-fact-usage-registry`）。 */
+export function woRefSlug(wo) {
+  return String(wo).toLowerCase();
+}
 
 /**
  * **受理方登记表**：`B-x` 的「要判它得有什么」栏必须点名其中之一，且那个受理方必须真实存在。
@@ -181,7 +229,11 @@ export function stripComments(src) {
  * @returns {{criteria:Set<string>, carveOuts:Array<{u:string,dest:string}>,
  *            accounts:Array<{id:string,half:string,why:string,need:string,us:string[]}>,
  *            dispatch:Map<string,string>, dispatchAll:string[],
- *            selfClaim:{n:number,m:number}|null, panelFiles:string[]}}
+ *            selfClaim:{n:number,m:number}|null, panelFiles:string[],
+ *            closures:Array<{id:string,verdict:string,wos:string[]}>,
+ *            carveClosures:Array<{u:string,wos:string[],dest:string}>,
+ *            woIds:Array<{wo:string,ids:string[]}>,
+ *            grid:Map<string,{total:number,undecidable:string[]}>}}
  */
 export function parseSplitAccounts(md) {
   /* §2 判据表：`| **U1** | …` —— 只取 §2 正文（§2.1 之前那段） */
@@ -239,9 +291,42 @@ export function parseSplitAccounts(md) {
   const sc = sec42.match(/内容面机检\s*(\d+)\s*\/\s*(\d+)/);
   const selfClaim = sc ? { n: Number(sc[1]), m: Number(sc[2]) } : null;
 
+  /*
+   * §4.2.1 判定表里**被标结案**的 B-x（判据⑨ 的 B 侧真值源）。
+   * 只看第 2 列「内容面今天能不能机检」这一栏的判词 —— 第 4 列「差什么」里满是
+   * 「harness 已建」「已接 pnpm gates」，那说的是**受理方**的进度不是**这条账**结了，
+   * 收进来就会把「工具做好了」读成「这条账验完了」（本门存在的全部理由就是拦这个）。
+   */
+  const sec42Sub = sec42.split(/\n#{4,}\s/).slice(1).join("\n");
+  const closures = [];
+  for (const line of sec42Sub.split("\n")) {
+    if (!line.trim().startsWith("|")) continue;
+    const cs = cells(line);
+    if (isSep(cs) || cs.length < 2) continue;
+    const m = cs[0].match(/^(B-\d+)$/);
+    if (!m) continue;
+    if (!CLOSED_MARK.test(cs[1] ?? "")) continue;
+    closures.push({ id: m[1], verdict: cs[1] ?? "", wos: woIdsIn(line) });
+  }
+
+  /* §2.1 里**被标结案**的 U#（判据⑨ 的 U 侧真值源）：末列「挪出去的那半去哪」含结案标记 */
+  const carveClosures = [];
+  for (const line of (section(md, "### 2.1") ?? "").split("\n")) {
+    if (!line.trim().startsWith("|")) continue;
+    const cs = cells(line);
+    if (isSep(cs) || cs.length < 5) continue;
+    const m = cs[0].match(/^(U\d+b?)$/);
+    if (!m) continue;
+    const dest = cs[cs.length - 1];
+    if (!CLOSED_MARK.test(dest)) continue;
+    carveClosures.push({ u: m[1], wos: woIdsIn(dest), dest });
+  }
+
   /* §5 优先级表：点名了某条 B-x 且归属栏（末列）非空的行 = 一张可派的单 */
   const dispatch = new Map();
   const dispatchAll = [];
+  const woIds = []; // {wo, ids[]} —— 判据⑧ 的扫描面
+  const woSeen = new Map();
   for (const line of (section(md, "## 5 ·") ?? "").split("\n")) {
     if (!line.trim().startsWith("|")) continue;
     const cs = cells(line);
@@ -252,6 +337,40 @@ export function parseSplitAccounts(md) {
     if (BLANK.test(owner)) continue; // 归属栏空 = 没人接 = 不算一张单
     dispatchAll.push(line);
     for (const id of ids) dispatch.set(id, line);
+    for (const wo of woIdsIn(line)) {
+      if (!woSeen.has(wo)) { const e = { wo, ids: [] }; woSeen.set(wo, e); woIds.push(e); }
+      for (const id of ids) if (!woSeen.get(wo).ids.includes(id)) woSeen.get(wo).ids.push(id);
+    }
+  }
+
+  /*
+   * §4 主表（**只取 §4.1 之前那段**）逐 `U#` 列读数 —— 判据⑨d 的真值源。
+   * ⚠ §4 这一节下面还有 §4.1/§4.5/§4.7…十几张**别的**表（逐格取证 / 逐单增补），
+   * 它们的正文里「判不了」三个字满地都是。连它们一起收 ⇒ 主表明明 0 格判不了，
+   * 门却报「还有判不了」。形态照铁律 0.6：**「我用『§4 这一节里出现的判不了』
+   * 当作『主表里的判不了格』的证据，而前者并不度量后者。」**
+   * 表头判据是**形状**不是列数：一行里 ≥3 个单元格形如 `U3 DAG点节点` ⇒ 那是表头。
+   * 这样将来加一列判据不会让本门失灵（写死列数才会）。
+   */
+  const sec4 = (section(md, "## 4 ·") ?? "").split("### 4.1")[0];
+  let gridHead = null;
+  const gridRows = [];
+  for (const line of sec4.split("\n")) {
+    if (!line.trim().startsWith("|")) continue;
+    const cs = cells(line);
+    if (isSep(cs)) continue;
+    const us = cs.map((c) => (c.match(/^(U\d+b?)(\s|$)/) ?? [])[1] ?? null);
+    if (!gridHead && us.filter(Boolean).length >= 3) { gridHead = us; continue; }
+    if (gridHead) gridRows.push(cs);
+  }
+  const grid = new Map();
+  if (gridHead) {
+    for (let c = 0; c < gridHead.length; c++) {
+      const u = gridHead[c];
+      if (!u) continue;
+      const undecidable = gridRows.filter((r) => (r[c] ?? "") === UNDECIDABLE).map((r) => r[0]);
+      grid.set(u, { total: gridRows.length, undecidable });
+    }
   }
 
   /*
@@ -265,7 +384,7 @@ export function parseSplitAccounts(md) {
   const conform = (u3Block.split(/-\s*\*\*不符合/)[0] ?? "");
   const panelFiles = [...new Set([...conform.matchAll(/([A-Z][A-Za-z0-9]*\.tsx)/g)].map((x) => x[1]))].sort();
 
-  return { criteria, carveOuts, accounts, dispatch, dispatchAll, selfClaim, panelFiles };
+  return { criteria, carveOuts, accounts, dispatch, dispatchAll, selfClaim, panelFiles, closures, carveClosures, woIds, grid };
 }
 
 /* ═══════════════════ 唯一实现 · 判据本体 ═══════════════════════════════════════ */
@@ -279,9 +398,13 @@ export function parseSplitAccounts(md) {
  * @param {boolean} p.wired     本门是否真在 `pnpm gates` 串里（判据③ 自指接线证明）
  * @param {{panels:number,withChain:number}} p.chain 判据⑤ 的现算读数
  * @param {object|null} p.baseline
+ * @param {((wo:string)=>{found:boolean,via:string})|null} [p.woEvidence]
+ *        判据⑧ 的证据源（注入，便于金丝雀喂假证据而仍走同一个 judge）。
+ *        **传 null = 本次没有证据源**，判据⑧ 整条跳过 —— 主流程绝不许这样调：
+ *        取不到证据源时 main() 直接 RC=2（「我没查出来」），不是静悄悄跳过。
  * @returns {{fail:Array<{code:string,account:string|null,msg:string}>}}
  */
-export function judge({ prd, ontology, wired, chain, baseline }) {
+export function judge({ prd, ontology, wired, chain, baseline, woEvidence = null }) {
   const fail = [];
   const push = (code, account, msg) => fail.push({ code, account, msg });
   const ctx = { ontology, wired, dispatchAll: prd.dispatchAll };
@@ -376,6 +499,59 @@ export function judge({ prd, ontology, wired, chain, baseline }) {
     }
   }
 
+  /* ── ⑧ 受理方单号真实存在（判据③ 只问「点没点名」，这条问「那个名字是不是真的」）── */
+  if (woEvidence) {
+    for (const w of prd.woIds) {
+      const ev = woEvidence(w.wo);
+      if (ev.found) continue;
+      for (const id of w.ids) {
+        push("⑧", id, `⑧受理方是编出来的名字：§5 把 ${id} 派给 \`${w.wo}\`，而这个单号**仓里和远端都查不到** —— 既没有名字含 \`${woRefSlug(w.wo)}\` 的 git ref，也没有本 PRD 之外的已跟踪文件提过它。转给一个不存在的接收方 = 销账（判据③ 拦不住这一种：它只问「点没点名一个已登记的受理方」）`);
+      }
+    }
+  }
+
+  /* ── ⑨ 结案状态不许说谎 ─────────────────────────────────────────────────── */
+  const inLedger = new Set(prd.accounts.map((a) => a.id));
+  for (const c of prd.closures) {
+    /* ⑨a：结了的账不许还挂着 */
+    if (inLedger.has(c.id)) {
+      push("⑨", c.id, `⑨a 账面自相矛盾：§4.2.1 把 ${c.id} 标成结案（「${c.verdict.slice(0, 26)}…」），而 §4.2 在册表里它**还挂着** —— 「做完了」与「还欠着」不能同时为真`);
+    }
+    /* ⑨b：结案必须说得出是哪张单交付的 */
+    if (!c.wos.length) {
+      push("⑨", c.id, `⑨b 结案说不出出处：§4.2.1 把 ${c.id} 标成结案，而那一行里没有点名任何 \`WO-…\` 单号 —— 一条说不出被谁交付的结案，无从核对，与「悄悄删掉」在证据上等价`);
+      continue;
+    }
+    /* ⑨c：拆出去的那半销账了，拆的源头（§2.1）也必须销 —— 只销一头 = 两处账对不上 */
+    const matched = prd.carveClosures.filter((cc) => cc.wos.some((w) => c.wos.includes(w)));
+    if (!matched.length) {
+      push("⑨", c.id, `⑨c 两处账对不上：§4.2.1 说 ${c.id} 由 ${c.wos.join("/")} 结案，而 §2.1 判据改写记录里**没有任何一条 U# 记着由这张单结案** —— 拆出去的那半销了账，拆的源头还写着「挪出去了」`);
+      continue;
+    }
+    /* ⑨d：本判据的本体 —— 结了案的那条判据，表内那半不许还是「判不了」 */
+    for (const cc of matched) {
+      const col = prd.grid.get(cc.u);
+      if (!col) {
+        push("⑨", c.id, `⑨d 判据列查无此列：${c.id} 结案时对应的 ${cc.u} 在 §4 主表表头里找不到 —— 结案对不上任何一列，这条状态无从核对`);
+        continue;
+      }
+      if (col.undecidable.length) {
+        const who = col.undecidable.slice(0, 3).join(" / ");
+        push("⑨", c.id, `⑨d 状态说谎：${c.id} 标着结案（${c.wos.join("/")}），而它对应的 ${cc.u} 在 §4 主表里**还有 ${col.undecidable.length}/${col.total} 格是「${UNDECIDABLE}」**（${who}${col.undecidable.length > 3 ? " …" : ""}）—— 拆出去的那半自称交付，留在表内的那半却还判不了，「判不了 0」这个读数就是假的`);
+      }
+    }
+  }
+  /* ⑨e：结案记录上棘轮 —— 少一条 ⇒ ⑨ 整条自动空转变绿，这是本门最廉价的死法 */
+  const baseClosures = baseline?.closures;
+  if (baseClosures) {
+    const nowC = new Set(prd.closures.map((c) => c.id));
+    for (const id of Object.keys(baseClosures)) {
+      if (!nowC.has(id)) {
+        push("⑨", id, `⑨e 结案记录消失：基线记着 ${id} 是一条结案记录，现在 §4.2.1 里读不到了 —— 删掉结案行，判据⑨ 就没有对象可判、整条自动变绿（真要删就跑 \`--tighten\` 显式记一笔）`);
+      }
+    }
+  }
+
   return { fail };
 }
 
@@ -409,7 +585,73 @@ export function computeChain(panelFiles, root, readText) {
   return { panels: files.length, withChain: files.filter((f) => f.chain).length, files };
 }
 
+/* ═══════════════════ 判据⑧ 的证据源（仓里 / 远端 两条，缺一条就 RC=2）════════════ */
+
+/**
+ * 已知**必不存在**的样例：grep 若连它都命中，说明 grep 在乱报，报的 0/非 0 都不可信。
+ *
+ * ⚠ **必须拼出来，不许写成一个字面量**（2026-08-20 实测栽过一次，当场 RC=2）：
+ * 写成字面量的话，这个串就**存在于本文件里**，`git grep` 一扫就命中自己 ⇒
+ * 反向金丝雀永远报「grep 在乱报」⇒ 门永远 RC=2。拼接后源码里只有碎片、没有整串。
+ * 形态照铁律 0.6：**「我用『我造了一个不存在的串』当作『它真不存在于仓里』的证据」——
+ * 而我写下它的那一刻，它就存在了。**
+ */
+const EVIDENCE_ABSENT_CANARY = ["WO", "SPLITACCOUNT", "CANARY", "MUSTNOT", "EXIST", "7F3A"].join("-");
+
+/**
+ * 两条证据源都现算，**都可用才返回查询函数**；任一不可用返回 `{ ok:false }` ⇒ 调用方 RC=2。
+ *
+ * ⚠ 为什么不允许「只用还活着的那一条」：一个单号可能只有 git ref 没有仓内文本（刚推的分支），
+ * 也可能只有仓内文本没有 ref（分支已删、账留着）。**少一条源 ⇒ 把「我没查全」报成「你违规」**，
+ * 失败方向正好反了。本仓吃过这个亏（否定结论必须先自证工具，铁律 0.6）。
+ *
+ * @param {(args:string[])=>{status:number|null,stdout:string}} run  注入 git 执行器（金丝雀可喂假的）
+ * @returns {{ok:true, query:(wo:string)=>{found:boolean,via:string}, refCount:number, canary:string}
+ *          |{ok:false, why:string}}
+ */
+export function buildWoEvidence(run, selfMark, prdPath) {
+  const refsRes = run(["for-each-ref", "--format=%(refname)"]);
+  if (refsRes.status !== 0) return { ok: false, why: `git for-each-ref 跑不了（status=${refsRes.status}）` };
+  const refs = refsRes.stdout.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (refs.length === 0) return { ok: false, why: "git for-each-ref 一条 ref 都没返回（一个 git 仓不可能零 ref ⇒ 证据源坏了）" };
+
+  /** git grep 一个字面串 → 命中的文件名（已剔除本 PRD 自身：自证不算佐证）。 */
+  const grepFiles = (needle) => {
+    const r = run(["grep", "-l", "-F", "--", needle]);
+    if (r.status !== 0 && r.status !== 1) return null; // 0=有命中 1=无命中 其余=git 出错
+    return r.stdout.split("\n").map((s) => s.trim()).filter(Boolean).filter((f) => f !== prdPath);
+  };
+
+  /* 金丝雀（**用的就是上面这个 grepFiles**，不另抄一份）：必中取自生产实物，必不中是刻意造的。 */
+  const hit = grepFiles(selfMark);
+  if (hit === null) return { ok: false, why: "git grep 跑不了（非 0/1 退出码）" };
+  if (hit.length === 0) return { ok: false, why: `grep 金丝雀不中：连「${selfMark}」都报 0 命中（它至少写在 package.json 的 gates 串里）⇒ 是 grep 坏了，不是单号不存在` };
+  const anti = grepFiles(EVIDENCE_ABSENT_CANARY);
+  if (anti === null) return { ok: false, why: "git grep 跑不了（反向金丝雀）" };
+  if (anti.length > 0) return { ok: false, why: `grep 反向金丝雀命中：「${EVIDENCE_ABSENT_CANARY}」本不该存在却报 ${anti.length} 个文件 ⇒ grep 在乱报` };
+
+  const query = (wo) => {
+    const slug = woRefSlug(wo);
+    const ref = refs.find((r) => r.toLowerCase().includes(slug));
+    if (ref) return { found: true, via: `git ref ${ref}` };
+    const files = grepFiles(wo) ?? [];
+    if (files.length) return { found: true, via: `仓内 ${files.length} 个文件（如 ${files[0]}）` };
+    return { found: false, via: "" };
+  };
+  return { ok: true, query, refCount: refs.length, canary: `必中「${selfMark}」${hit.length} 文件 · 必不中「${EVIDENCE_ABSENT_CANARY}」0 文件 · git ref ${refs.length} 条` };
+}
+
 /* ═══════════════════ 金丝雀（与主判据共用上面那两个函数）══════════════════════ */
+
+/** 判据⑨d 的钉子：U5 已结案的那一格，翻成「判不了」就必须被咬到（见 CANARY_MD_LIE）。 */
+const CANARY_ROW_CLEAN = "| 甲页 `a` | **符合** | **符合** | **符合** | **判不了** |";
+const CANARY_ROW_LIE = "| 甲页 `a` | **符合** | **符合** | **判不了** | **判不了** |";
+/** 判据⑨a 的钉子：把已结案的 B-5 塞回 §4.2 在册表。 */
+const CANARY_LEDGER_B2 = "| **B-2** | **U3 的「本体链」面** | 多数页无对位实现 | 归 R13 溯源链验收 |";
+const CANARY_LEDGER_PLUS_B5 = CANARY_LEDGER_B2 + "\n| **B-5** | **U5 的跨屏面** | 要两屏同开 | 归 R13 溯源链验收 |";
+/** 判据⑨c 的钉子：只销 §4.2.1 那一头、§2.1 的源头不销。 */
+const CANARY_CARVE_CLOSED = "| **U5** | x | y | ① | ②「跨屏」→ R13 线（不在本表射程）。2026-01-01 核销：WO-CANARY-DONE 交付 |";
+const CANARY_CARVE_OPEN = "| **U5** | x | y | ① | ②「跨屏」→ R13 线（不在本表射程），还在做 |";
 
 const CANARY_MD_OK = [
   "## 2 · 判据表",
@@ -417,15 +659,32 @@ const CANARY_MD_OK = [
   "|---|---|---|",
   "| **U1** | 改输入即重演 | ✅ |",
   "| **U3** | 过程图 | ✅ |",
+  "| **U5** | 跨屏一致 | ✅ |",
   "",
   "### 2.1 判据改写记录",
   "| # | 原措辞 | 缝在一起 | 留哪半 | 挪出去的那半去哪 |",
   "|---|---|---|---|---|",
   "| **U1** | x | y | ① | ② → §4.2 门 B（真浏览器） |",
   "| **U3** | x | y | ① | ②「本体链」→ §4.2（属 R13 溯源链） |",
+  CANARY_CARVE_CLOSED,
   "",
   "## 4 · 表",
+  // ↓ §4 主表 = 判据⑨d 的真值源。**U5 已结案 ⇒ 该列不许有「判不了」**；
+  //   **U9 未结案且刻意留着一格「判不了」** —— 它钉住 UNDECIDABLE 这个常量：
+  //   改坏它，下面 ⑨必中的 `U9 判不了 1 格` 当场不中 ⇒ RC=2（而不是静悄悄变绿）。
+  "| 页 | U1 改输入即重演 | U3 过程图 | U5 跨屏一致 | U9 导出带口径 |",
+  "|---|---|---|---|---|",
+  CANARY_ROW_CLEAN,
+  "| 乙页 `b` | **符合** | **符合** | **符合** | **符合** |",
+  "",
   "### 4.1 依据",
+  // ↓ **诱饵表**：§4.1 底下也有一张 `U…` 开头的表头（真文档里 §4.1/§4.5/§4.7 全是这种）。
+  //   主表解析若不在 `### 4.1` 处截断，这两行会被算进主表，U9 的判不了从 1 变 2、总行数从 2 变 4
+  //   —— ⑨必中当场报红。形态照铁律 0.6：「§4 这一节里出现的判不了」≠「主表里的判不了格」。
+  "| 页 | U1 逐格取证 | U3 逐格取证 | U5 逐格取证 | U9 逐格取证 |",
+  "|---|---|---|---|---|",
+  "| 甲页 | 判不了 | 判不了 | 判不了 | 判不了 |",
+  "",
   "**U3 过程图 + 点节点看凭什么**",
   "- **符合 1 页**：`p`：`FakePanelView.tsx:1` 面板",
   "- **不符合 9 页**：`LayeredDag.tsx:104` 共享组件",
@@ -436,22 +695,25 @@ const CANARY_MD_OK = [
   "| # | 拆出去的那半 | 为什么够不着 | 要判它得有什么 |",
   "|---|---|---|---|",
   "| **B-1** | **U1 的时延面** | 运行期量 | 真浏览器：断言 DOM 变了 |",
-  "| **B-2** | **U3 的「本体链」面** | 多数页无对位实现 | 归 R13 溯源链验收 |",
+  CANARY_LEDGER_B2,
   "",
   // ↓ 同一节里的**第二张**表，第一列也叫 B-1/B-2 —— 连它一起收会把 2 条账读成 4 条。
   //   这个坑 2026-08-16 真发生过（本门自己写文档时当场踩中），故常驻金丝雀钉住。
   "#### 4.2.1 逐条可机检判定",
   "| # | 能不能机检 | 理由 | 差什么 |",
   "|---|---|---|---|",
-  "| **B-1** | 不能 | 运行期量 | 真浏览器 harness |",
+  // ⚠ 这一行的「差什么」栏刻意写「已建 / 已接」：那说的是**受理方**的进度，
+  //   **不是这条账结了**。CLOSED_MARK 收了它，门就会把「工具做好了」读成「这条账验完了」。
+  "| **B-1** | 不能 | 运行期量 | 真浏览器 harness 已建并已接 gates |",
   "| **B-2** | 必要条件能 | 可判 | 渲染后读 DOM |",
+  "| **B-5** | ✅ **已核销 · 已交付**（WO-CANARY-DONE）—— 本行是结案记录 | 账面理由被现算推翻 | 已兑现 |",
   "**内容面机检 1/2**（仅 B-2）",
   "",
   "## 5 · 优先级",
   "| 级 | 事项 | 为什么 | 归谁 |",
   "|---|---|---|---|",
-  "| P3 | B-1 建真浏览器 harness | 静态够不着 | 一张门单 |",
-  "| P3 | B-2 逐字齐全归 R13 | 需渲染 | 一张 R13 单 |",
+  "| P3 | `WO-CANARY-HARNESS` 建真浏览器 harness，闭 B-1 | 静态够不着 | 一张门单 |",
+  "| P3 | `WO-CANARY-R13` B-2 逐字齐全归 R13 | 需渲染 | 一张 R13 单 |",
 ].join("\n");
 
 /**
@@ -459,71 +721,175 @@ const CANARY_MD_OK = [
  */
 const CANARY_MD_BAD = CANARY_MD_OK
   .replace("| **B-1** | **U1 的时延面** | 运行期量 | 真浏览器：断言 DOM 变了 |", "| **B-1** | **U1 的时延面** | 运行期量 | — |")
-  .replace("| **B-2** | **U3 的「本体链」面** | 多数页无对位实现 | 归 R13 溯源链验收 |", "| **B-2** | **U99 的面** | 多数页无对位实现 | 以后再说 |")
-  .replace("| P3 | B-1 建真浏览器 harness | 静态够不着 | 一张门单 |", "")
+  .replace(CANARY_LEDGER_B2, "| **B-2** | **U99 的面** | 多数页无对位实现 | 以后再说 |")
+  .replace("| P3 | `WO-CANARY-HARNESS` 建真浏览器 harness，闭 B-1 | 静态够不着 | 一张门单 |", "")
   .replace("**内容面机检 1/2**（仅 B-2）", "**内容面机检 2/2**（都验了）");
+
+/**
+ * ⚠ **锚点自检（2026-08-20 WO-SPLITACCOUNT-B-CLOSE 补，因为差点栽在这上面）**：
+ * 上面四处 `replace` 的锚点都是**手抄的行**。改 `CANARY_MD_OK` 时锚点会静悄悄失配，
+ * `replace` 无声返回原串 ⇒ 「必不中样例」退化成「必中样例」⇒ 判据③ 那一组**全部空转**，
+ * 而门照样 RC=0。形态照铁律 0.6：**「我用『我写了一个坏样例』当作『坏样例真的坏了』的证据。」**
+ * 故此处硬断言：坏样例必须**真的**与好样例不同（差异条数写死，少一处都不行）。
+ */
+const CANARY_BAD_DIFF = (() => {
+  const a = CANARY_MD_OK.split("\n");
+  const b = CANARY_MD_BAD.split("\n");
+  return a.filter((l, i) => l !== b[i]).length;
+})();
 
 const FAKE_ONTOLOGY = "…不变量 R13 结论可溯源…";
 
+/** 判据⑧ 的假证据源（金丝雀用）：只有这两张单存在。走的仍是**同一个** `judge`。 */
+const FAKE_WO_ALL_FOUND = (wo) => ({ found: wo === "WO-CANARY-HARNESS" || wo === "WO-CANARY-R13", via: "canary" });
+/** 同上，但 `WO-CANARY-R13` 查无此单 —— 判据⑧ 必须咬在 B-2 上。 */
+const FAKE_WO_R13_MISSING = (wo) => ({ found: wo === "WO-CANARY-HARNESS", via: "canary" });
+/** 金丝雀基线：含结案记录 B-5，供判据⑨e（结案记录只许增不许减）用。 */
+const FAKE_BASELINE = {
+  accounts: {
+    "B-1": { us: ["U1"], receivers: ["门 B（本门 · 真浏览器那一面尚未具备）"] },
+    "B-2": { us: ["U3"], receivers: ["R13 溯源链（本体不变量）"] },
+  },
+  closures: { "B-5": ["WO-CANARY-DONE"] },
+  chain: { panels: 1, withChain: 0 },
+};
+
 export function canaries() {
   const bad = [];
+  /**
+   * ⚠ **跑过的条数必须现算，不许写死**（2026-08-20 WO-SPLITACCOUNT-B-CLOSE 改）：
+   * 原来打印的是硬编码的 `金丝雀 8/8`。删掉一条金丝雀，那个 `8` 一动不动 ——
+   * 于是「金丝雀 8/8」这句话本身就成了装饰品，正是本门要拦的那一族病。
+   * 形态（铁律 0.6）：**「我用『报告里写着 8/8』当作『真跑了 8 条』的证据。」**
+   */
+  let ran = 0;
+  const chk = (cond, msg) => { ran++; if (!cond) bad.push(msg); };
+
   const ok = parseSplitAccounts(CANARY_MD_OK);
   const notok = parseSplitAccounts(CANARY_MD_BAD);
 
-  /* ①必中：解析器认得出合法的账（2 条账 · 2 条外移 · 2 条判据 · 2 张单 · 自陈 1/2 · 面板文件只取「符合」段） */
-  if (!(ok.accounts.length === 2 && ok.carveOuts.length === 2 && ok.criteria.size === 2 &&
-        ok.dispatch.size === 2 && ok.selfClaim?.n === 1 && ok.selfClaim?.m === 2 &&
-        ok.panelFiles.join(",") === "FakePanelView.tsx")) {
-    bad.push(`①必中样例：accounts=${ok.accounts.length} carveOuts=${ok.carveOuts.length} criteria=${ok.criteria.size} dispatch=${ok.dispatch.size} selfClaim=${JSON.stringify(ok.selfClaim)} panelFiles=[${ok.panelFiles.join(",")}]（应为 2/2/2/2/{1,2}/[FakePanelView.tsx]）`);
-  }
+  /* ①必中：解析器认得出合法的账（2 条账 · 2 条外移 · 3 条判据 · 2 张单 · 自陈 1/2 · 面板文件只取「符合」段） */
+  chk(ok.accounts.length === 2 && ok.carveOuts.length === 2 && ok.criteria.size === 3 &&
+      ok.dispatch.size === 2 && ok.selfClaim?.n === 1 && ok.selfClaim?.m === 2 &&
+      ok.panelFiles.join(",") === "FakePanelView.tsx",
+    `①必中样例：accounts=${ok.accounts.length} carveOuts=${ok.carveOuts.length} criteria=${ok.criteria.size} dispatch=${ok.dispatch.size} selfClaim=${JSON.stringify(ok.selfClaim)} panelFiles=[${ok.panelFiles.join(",")}]（应为 2/2/3/2/{1,2}/[FakePanelView.tsx]）`);
   /* ①b 必不中：`LayeredDag.tsx` 在「不符合」段，**不许**被收进面板文件 —— 收进来会把
    *      「共享组件里没有本体链」误当成「某个面板里没有」（那正是代理指标那一族病）。 */
-  if (ok.panelFiles.includes("LayeredDag.tsx")) {
-    bad.push("①b 必不中样例：`LayeredDag.tsx`（§4.1「不符合」段的共享组件）被误收进面板文件");
-  }
+  chk(!ok.panelFiles.includes("LayeredDag.tsx"),
+    "①b 必不中样例：`LayeredDag.tsx`（§4.1「不符合」段的共享组件）被误收进面板文件");
   /* ①c 必不中：§4.2.1 的第二张表（第一列同样是 B-1/B-2）**不许**被算成明账。
    *      样例里两张表各 2 行；若解析器把两张都收了，`accounts` 会是 4 —— 上面 ①必中
    *      的 `accounts.length === 2` 就会当场报红。这条只再钉一次「重复 id」这个更刺眼的形态。 */
-  if (new Set(ok.accounts.map((a) => a.id)).size !== ok.accounts.length) {
-    bad.push(`①c 必不中样例：明账 id 有重复（${ok.accounts.map((a) => a.id).join(",")}）—— §4.2.1 的第二张表被误收成了明账`);
-  }
+  chk(new Set(ok.accounts.map((a) => a.id)).size === ok.accounts.length,
+    `①c 必不中样例：明账 id 有重复（${ok.accounts.map((a) => a.id).join(",")}）—— §4.2.1 的第二张表被误收成了明账`);
 
-  /* ②必中：合法账全绿 */
+  /* ②必中：合法账全绿（**带上判据⑧⑨ 的证据源一起判**，否则两条新判据在必中侧从没被跑过） */
   const jOk = judge({
     prd: ok, ontology: FAKE_ONTOLOGY, wired: true,
     chain: { panels: 1, withChain: 0 },
-    baseline: { accounts: { "B-1": { us: ["U1"], receivers: ["门 B（本门 · 真浏览器那一面尚未具备）"] }, "B-2": { us: ["U3"], receivers: ["R13 溯源链（本体不变量）"] } }, chain: { panels: 1, withChain: 0 } },
+    baseline: FAKE_BASELINE, woEvidence: FAKE_WO_ALL_FOUND,
   });
-  if (jOk.fail.length !== 0) bad.push(`②必中样例：合法账应零违规，实得 ${jOk.fail.length} 条 → ${jOk.fail.map((f) => f.code + (f.account ? "/" + f.account : "")).join(" ")}`);
+  if (jOk.fail.length !== 0) bad.push(`②必中样例：合法账应零违规，实得 ${jOk.fail.length} 条 → ${jOk.fail.map((f) => f.code + (f.account ? "/" + f.account : "") + " " + f.msg.slice(0, 60)).join(" ｜ ")}`);
+
+  /* ③0 锚点自检：坏样例必须**真的**坏了（四处 replace 全部命中）—— 见 CANARY_BAD_DIFF 的注释 */
+  chk(CANARY_BAD_DIFF === 4,
+    `③0 锚点自检：必不中样例只与必中样例差 ${CANARY_BAD_DIFF} 行（应 4 行）—— 有 replace 的锚点失配、无声返回了原串，那几条「必不中」其实什么都没测`);
 
   /* ③必不中：六处坏账必须被逐条抓到，且**红在对应那条上** */
   const jBad = judge({ prd: notok, ontology: FAKE_ONTOLOGY, wired: true, chain: { panels: 1, withChain: 0 }, baseline: null });
   const codes = new Set(jBad.fail.map((f) => f.code));
-  const want = ["①", "②", "③", "④", "⑦"];
-  for (const c of want) if (!codes.has(c)) bad.push(`③必不中样例：判据${c} 没有被抓到（实得 ${[...codes].join("")}）`);
-  if (!jBad.fail.some((f) => f.account === "B-1" && f.code === "①")) bad.push("③必不中样例：B-1 的空栏没有红在 B-1 上");
-  if (!jBad.fail.some((f) => f.account === "B-2" && f.code === "③")) bad.push("③必不中样例：B-2 的未登记受理方没有红在 B-2 上");
+  for (const c of ["①", "②", "③", "④", "⑦"]) {
+    chk(codes.has(c), `③必不中样例：判据${c} 没有被抓到（实得 ${[...codes].join("")}）`);
+  }
+  chk(jBad.fail.some((f) => f.account === "B-1" && f.code === "①"), "③必不中样例：B-1 的空栏没有红在 B-1 上");
+  chk(jBad.fail.some((f) => f.account === "B-2" && f.code === "③"), "③必不中样例：B-2 的未登记受理方没有红在 B-2 上");
 
   /* ④受理方登记表真的会拒绝不存在的受理方（R13 从本体里消失 ⇒ B-2 的出口指向空气） */
   const jNoR13 = judge({ prd: ok, ontology: "（本体里没有那条不变量）", wired: true, chain: { panels: 1, withChain: 0 }, baseline: null });
-  if (!jNoR13.fail.some((f) => f.code === "③" && f.account === "B-2")) bad.push("④受理方存在性：R13 从本体里消失时，B-2 的出口没有被判为指向空气");
+  chk(jNoR13.fail.some((f) => f.code === "③" && f.account === "B-2"), "④受理方存在性：R13 从本体里消失时，B-2 的出口没有被判为指向空气");
 
   /* ⑤自指接线证明：本门没接进 gates 串时，「归门 B」那条必须红 */
   const jUnwired = judge({ prd: ok, ontology: FAKE_ONTOLOGY, wired: false, chain: { panels: 1, withChain: 0 }, baseline: null });
-  if (!jUnwired.fail.some((f) => f.code === "③" && f.account === "B-1")) bad.push("⑤自指接线证明：门未接线时「归门 B」那条没有红");
+  chk(jUnwired.fail.some((f) => f.code === "③" && f.account === "B-1"), "⑤自指接线证明：门未接线时「归门 B」那条没有红");
 
   /* ⑥判据⑤ 的现算方向：对位实现过半 ⇒ B-2 账面理由不再成立 */
   const jChain = judge({ prd: ok, ontology: FAKE_ONTOLOGY, wired: true, chain: { panels: 2, withChain: 2 }, baseline: null });
-  if (!jChain.fail.some((f) => f.code === "⑤" && f.account === "B-2")) bad.push("⑥判据⑤：对位实现过半时 B-2 账面理由没有被判为不成立");
+  chk(jChain.fail.some((f) => f.code === "⑤" && f.account === "B-2"), "⑥判据⑤：对位实现过半时 B-2 账面理由没有被判为不成立");
 
   /* ⑦剥注释：注释里写的「本体链」不算对位实现 */
-  if (CHAIN_MARK.test(stripComments("// 这里以后要渲染本体链\nconst x = 1;"))) bad.push("⑦剥注释：注释里的「本体链」被当成了对位实现");
-  if (!CHAIN_MARK.test(stripComments("const label = \"本体链\";"))) bad.push("⑦剥注释：真代码里的「本体链」被剥掉了");
+  chk(!CHAIN_MARK.test(stripComments("// 这里以后要渲染本体链\nconst x = 1;")), "⑦剥注释：注释里的「本体链」被当成了对位实现");
+  chk(CHAIN_MARK.test(stripComments("const label = \"本体链\";")), "⑦剥注释：真代码里的「本体链」被剥掉了");
 
   const bd = baselineDocCanary();
-  if (!bd.ok) bad.push(`⑧基线写入器：${bd.got}`);
+  chk(bd.ok, `⑧基线写入器：${bd.got}`);
 
-  return { ok: bad.length === 0, bad };
+  /* ══ 以下 ⑨–⑬ 为 WO-SPLITACCOUNT-B-CLOSE 补：判据⑧⑨ 的正反两侧 ══════════════
+   * 全部喂给**同一个** `parseSplitAccounts()` + `judge()`。这几条同时是 M4 的靶子：
+   * 主正则/主常量（`B-\d+` · `U\d+b?` · UNDECIDABLE · CLOSED_MARK · WO_ID · 表头形状）
+   * 任改坏一个，下面必有一条不中 ⇒ RC=2（工具坏了），**不会**静悄悄 RC=0。 */
+
+  /* ⑨必中：新解析面的四个读数（§4 主表逐列 · 结案记录 · 源头销账 · §5 单号） */
+  const u5 = ok.grid.get("U5");
+  const u9 = ok.grid.get("U9");
+  chk(ok.grid.size === 4 && !!u5 && !!u9 && u5.total === 2 && u5.undecidable.length === 0 &&
+      u9.total === 2 && u9.undecidable.length === 1,
+    `⑨必中样例·§4 主表：列数=${ok.grid.size}（应 4）· U5=${u5 ? `${u5.undecidable.length}/${u5.total}` : "缺"}（应 0/2）· U9=${u9 ? `${u9.undecidable.length}/${u9.total}` : "缺"}（应 1/2）—— 多半是 UNDECIDABLE 常量、表头形状正则，或 \`### 4.1\` 截断被改坏（§4.1 的诱饵表混进主表）`);
+  chk(ok.closures.length === 1 && ok.closures[0].id === "B-5" && ok.closures[0].wos.join(",") === "WO-CANARY-DONE",
+    `⑨必中样例·结案记录：实得 [${ok.closures.map((c) => `${c.id}(${c.wos.join("+")})`).join(",")}]（应 [B-5(WO-CANARY-DONE)]）—— 多半是 CLOSED_MARK 或 WO_ID 被改坏`);
+  chk(ok.carveClosures.length === 1 && ok.carveClosures[0].u === "U5",
+    `⑨必中样例·§2.1 源头销账：实得 [${ok.carveClosures.map((c) => c.u).join(",")}]（应 [U5]）`);
+  chk(ok.woIds.length === 2 && ok.woIds[0].wo === "WO-CANARY-HARNESS" && ok.woIds[0].ids.join(",") === "B-1" &&
+      ok.woIds[1].wo === "WO-CANARY-R13" && ok.woIds[1].ids.join(",") === "B-2",
+    `⑨必中样例·§5 单号：实得 [${ok.woIds.map((w) => `${w.wo}→${w.ids.join("+")}`).join(", ")}]（应 [WO-CANARY-HARNESS→B-1, WO-CANARY-R13→B-2]）—— WO_ID 正则被改坏时这条先红`);
+  /* ⑨b 必不中：「harness 已建 / 已接 gates」说的是受理方进度，**不是这条账结了** */
+  chk(!ok.closures.some((c) => c.id === "B-1"),
+    "⑨b 必不中样例：B-1 那行的「已建 / 已接」被 CLOSED_MARK 当成了结案标记 —— 「工具做好了」会被读成「这条账验完了」，正是本门要拦的那件事");
+  chk(CLOSED_MARK.test("已核销") && CLOSED_MARK.test("已交付") && !CLOSED_MARK.test("不能") && !CLOSED_MARK.test("harness 已建并已接 pnpm gates"),
+    "⑨b 必不中样例：CLOSED_MARK 双向判定不符（应认「已核销/已交付」、不认「不能」与「已建/已接」）");
+  /* ⑨c 必中：WO_ID 只认全大写单号，不认小写、不认半截 */
+  chk(woIdsIn("派给 `WO-FOO-BAR` 与 wo-lower-case 以及 WO-").join(",") === "WO-FOO-BAR",
+    `⑨c WO_ID 正则：woIdsIn 实得 [${woIdsIn("派给 \`WO-FOO-BAR\` 与 wo-lower-case 以及 WO-").join(",")}]（应 [WO-FOO-BAR]）`);
+
+  /* ⑩必中：判据⑨d 会咬 —— 已结案的 U5 列翻出一格「判不了」 */
+  const lieMd = CANARY_MD_OK.replace(CANARY_ROW_CLEAN, CANARY_ROW_LIE);
+  chk(lieMd !== CANARY_MD_OK, "⑩必中样例：⑨d 的锚点没命中（变异体与原文相同）—— 这一条什么都没证");
+  const jLie = judge({ prd: parseSplitAccounts(lieMd), ontology: FAKE_ONTOLOGY, wired: true, chain: { panels: 1, withChain: 0 }, baseline: FAKE_BASELINE, woEvidence: FAKE_WO_ALL_FOUND });
+  chk(jLie.fail.some((f) => f.code === "⑨" && f.account === "B-5" && f.msg.includes("状态说谎")),
+    `⑩必中样例·⑨d：已结案的 U5 列出现「${UNDECIDABLE}」时没有红在 B-5 上（实得 ${jLie.fail.map((f) => f.code + "/" + f.account).join(" ") || "零违规"}）`);
+
+  /* ⑪必中：判据⑨a 会咬 —— 已结案的账又挂回 §4.2 在册表 */
+  const dupMd = CANARY_MD_OK.replace(CANARY_LEDGER_B2, CANARY_LEDGER_PLUS_B5);
+  chk(dupMd !== CANARY_MD_OK, "⑪必中样例：⑨a 的锚点没命中（变异体与原文相同）");
+  const jDup = judge({ prd: parseSplitAccounts(dupMd), ontology: FAKE_ONTOLOGY, wired: true, chain: { panels: 1, withChain: 0 }, baseline: FAKE_BASELINE, woEvidence: FAKE_WO_ALL_FOUND });
+  chk(jDup.fail.some((f) => f.code === "⑨" && f.account === "B-5" && f.msg.includes("自相矛盾")),
+    `⑪必中样例·⑨a：结了案的 B-5 又挂回在册表时没有红在 B-5 上（实得 ${jDup.fail.map((f) => f.code + "/" + f.account).join(" ") || "零违规"}）`);
+
+  /* ⑫必中：判据⑨c 会咬 —— 只销 §4.2.1 那一头，§2.1 的源头不销 */
+  const orphanMd = CANARY_MD_OK.replace(CANARY_CARVE_CLOSED, CANARY_CARVE_OPEN);
+  chk(orphanMd !== CANARY_MD_OK, "⑫必中样例：⑨c 的锚点没命中（变异体与原文相同）");
+  const jOrphan = judge({ prd: parseSplitAccounts(orphanMd), ontology: FAKE_ONTOLOGY, wired: true, chain: { panels: 1, withChain: 0 }, baseline: FAKE_BASELINE, woEvidence: FAKE_WO_ALL_FOUND });
+  chk(jOrphan.fail.some((f) => f.code === "⑨" && f.account === "B-5" && f.msg.includes("两处账对不上")),
+    `⑫必中样例·⑨c：§2.1 源头不销账时没有红在 B-5 上（实得 ${jOrphan.fail.map((f) => f.code + "/" + f.account).join(" ") || "零违规"}）`);
+
+  /* ⑫b 必中：判据⑨e 会咬 —— 结案记录整行消失（⑨ 最廉价的空转死法） */
+  const goneMd = CANARY_MD_OK.split("\n").filter((l) => !l.trim().startsWith("| **B-5** |")).join("\n");
+  chk(goneMd !== CANARY_MD_OK, "⑫b 必中样例：⑨e 的锚点没命中（变异体与原文相同）");
+  const jGone = judge({ prd: parseSplitAccounts(goneMd), ontology: FAKE_ONTOLOGY, wired: true, chain: { panels: 1, withChain: 0 }, baseline: FAKE_BASELINE, woEvidence: FAKE_WO_ALL_FOUND });
+  chk(jGone.fail.some((f) => f.code === "⑨" && f.account === "B-5" && f.msg.includes("结案记录消失")),
+    `⑫b 必中样例·⑨e：结案行被删时没有红在 B-5 上（实得 ${jGone.fail.map((f) => f.code + "/" + f.account).join(" ") || "零违规"}）`);
+
+  /* ⑬必中：判据⑧ 会咬 —— 受理方单号查无此单，且**红在认领它的那条账上** */
+  const jFakeWo = judge({ prd: ok, ontology: FAKE_ONTOLOGY, wired: true, chain: { panels: 1, withChain: 0 }, baseline: FAKE_BASELINE, woEvidence: FAKE_WO_R13_MISSING });
+  const hit8 = jFakeWo.fail.filter((f) => f.code === "⑧");
+  chk(hit8.length === 1 && hit8[0].account === "B-2",
+    `⑬必中样例·⑧：单号查无此单时应恰好红 1 条且落在 B-2，实得 [${hit8.map((f) => f.account).join(",")}]`);
+  /* ⑬b 必不中：证据源齐全时判据⑧ 不许误伤（否则每条账都会被报成「编出来的名字」） */
+  chk(!jOk.fail.some((f) => f.code === "⑧"), "⑬b 必不中样例：单号都查得到时判据⑧ 仍报了违规（误伤）");
+  /* ⑬c 必不中：**没有证据源就不许判** —— 传 null 时判据⑧ 必须整条跳过（主流程此时走 RC=2） */
+  const jNoEv = judge({ prd: ok, ontology: FAKE_ONTOLOGY, wired: true, chain: { panels: 1, withChain: 0 }, baseline: FAKE_BASELINE, woEvidence: null });
+  chk(!jNoEv.fail.some((f) => f.code === "⑧"), "⑬c 必不中样例：没有证据源时判据⑧ 仍下了结论 —— 「我没查出来」被说成了「你违规」，失败方向反了");
+
+  return { ok: bad.length === 0, bad, ran };
 }
 
 /* ═══════════════════ 顶层兜底（形态 a：try 是 Program 的直接子语句）═════════════ */
@@ -570,7 +936,8 @@ function main() {
     console.error("   ⛔ 不许把本次结果读作「明账都在册」。");
     process.exit(2);
   }
-  console.log("✅ 金丝雀 8/8（必中账 · 必不中账六处逐条对位 · 共享组件不许混进面板文件 · 受理方存在性 · 自指接线 · 判据⑤方向 · 剥注释双向 · 基线写入器）");
+  // ⚠ 条数**现算**（`cy.ran`），不是写死的字面量 —— 删掉一条金丝雀，这个数会跟着掉。
+  console.log(`✅ 金丝雀 ${cy.ran}/${cy.ran}（必中账 · 必不中账逐条对位 · 坏样例锚点自检 · 共享组件不许混进面板文件 · 受理方存在性 · 自指接线 · 判据⑤方向 · 剥注释双向 · 基线写入器 · §4 主表逐列 · 结案标记双向 · 单号正则 · 判据⑨abcde 五向 · 判据⑧ 正反两侧＋无证据源不许判）`);
   if (flag("--selftest")) { console.log("（--selftest：只跑金丝雀，未比对仓库内容）"); return; }
 
   /* ── 现算三个输入源 ────────────────────────────────────────────────────── */
@@ -581,6 +948,13 @@ function main() {
   }
   if (prd.panelFiles.length === 0) {
     toolBroken(`${PRD} §4.1 的 U3「符合」段抽不出任何面板文件`, "抽不出 ⇒ 判据⑤ 的扫描面为空 ⇒ 恒绿（失败危险方向）。多半是 §4.1 改写了写法。");
+  }
+  /* ↓ 判据⑧⑨ 的两个扫描面，空了就是恒绿的危险方向 —— 一律判「我没查出来」而不是「都好着呢」 */
+  if (prd.grid.size === 0) {
+    toolBroken(`${PRD} §4 主表解析不出任何 \`U#\` 列`, "解析不出 ⇒ 判据⑨d 没有任何一格可数 ⇒ 「结案的那条判据还判不了」永远发现不了（恒绿）。多半是主表表头改了写法，或 `### 4.1` 这个截断锚点变了。");
+  }
+  if (prd.woIds.length === 0) {
+    toolBroken(`${PRD} §5 里点名 B-x 的行抽不出任何 \`WO-…\` 单号`, "抽不出 ⇒ 判据⑧ 的扫描面为空 ⇒ 「受理方是编出来的名字」永远发现不了（恒绿）。多半是 §5 改了写法，或单号不再写成全大写。");
   }
   const ontology = read(ONTOLOGY);
   const pkg = read(PKG);
@@ -598,6 +972,17 @@ function main() {
 
   const baseline = existsSync(resolve(process.cwd(), BASELINE)) ? JSON.parse(read(BASELINE)) : null;
 
+  /* ── 判据⑧ 的证据源：git ref（远端）＋ 仓内 grep，**两条都可用才判** ─────────── */
+  const git = (args) => {
+    const r = spawnSync("git", args, { encoding: "utf8", cwd: process.cwd(), maxBuffer: 64 * 1024 * 1024 });
+    return { status: r.error ? null : r.status, stdout: r.stdout ?? "" };
+  };
+  const ev = buildWoEvidence(git, SELF, PRD);
+  if (!ev.ok) {
+    toolBroken(`判据⑧ 的证据源取不到：${ev.why}`, "少一条证据源 ⇒ 「本可查到的单号」会被错报成「编出来的名字」—— 那是把「我没查全」说成「你违规」，失败方向正好反了。");
+  }
+  const woEvidence = ev.query;
+
   if (flag("--census")) {
     console.log("\n── §4.2 明账现算 ──");
     for (const a of prd.accounts) {
@@ -611,6 +996,24 @@ function main() {
     for (const f of chain.files) console.log(`  ${f.chain ? "✓有" : "✗无"}  ${f.base}\t${f.path ?? "（找不到，本次不计入）"}`);
     console.log(`  合计：面板文件 ${chain.panels} · 有对位实现 ${chain.withChain}`);
     console.log(`\n  本门是否已接进 pnpm gates：${wired ? "是" : "否"}`);
+    console.log(`\n── 判据⑧ 现算（§5 点名的受理方单号 → 仓里/远端查得到吗）──`);
+    console.log(`  证据源金丝雀：${ev.canary}`);
+    for (const w of prd.woIds) {
+      const r = woEvidence(w.wo);
+      console.log(`  ${r.found ? "✓在" : "✗查无此单"}  ${w.wo}\t← ${w.ids.join("+")}\t${r.via}`);
+    }
+    console.log(`\n── 判据⑨ 现算（结案状态 → §4 主表对应列还有没有「${UNDECIDABLE}」）──`);
+    if (!prd.closures.length) console.log("  （§4.2.1 里今天没有任何结案记录）");
+    for (const c of prd.closures) {
+      const ms = prd.carveClosures.filter((cc) => cc.wos.some((w) => c.wos.includes(w)));
+      const cols = ms.map((cc) => {
+        const col = prd.grid.get(cc.u);
+        return `${cc.u}: ${col ? `${col.undecidable.length}/${col.total} 格${UNDECIDABLE}` : "§4 主表无此列"}`;
+      });
+      console.log(`  ${c.id}  结案单 ${c.wos.join("+") || "（未点名）"}  §2.1 源头销账 ${ms.map((m) => m.u).join("+") || "（无·两处账对不上）"}  ${cols.join(" · ") || "—"}  在册 ${prd.accounts.some((a) => a.id === c.id) ? "是（自相矛盾）" : "否"}`);
+    }
+    console.log(`\n── §4 主表逐列（判据⑨d 的真值源，共 ${prd.grid.size} 列 × ${[...prd.grid.values()][0]?.total ?? 0} 页）──`);
+    console.log(`  还有「${UNDECIDABLE}」的列：${[...prd.grid.entries()].filter(([, v]) => v.undecidable.length).map(([u, v]) => `${u}(${v.undecidable.length})`).join(" ") || "（无）"}`);
     return;
   }
 
@@ -621,6 +1024,8 @@ function main() {
     for (const a of prd.accounts) {
       accounts[a.id] = { us: a.us, receivers: RECEIVERS.filter((r) => r.re.test(a.need)).map((r) => r.name) };
     }
+    const closures = {};
+    for (const c of prd.closures) closures[c.id] = c.wos;
     writeFileSync(resolve(process.cwd(), BASELINE), JSON.stringify(buildBaselineDoc({
       prev: baseline,
       generatedBy: `node scripts/${SELF} ${flag("--seed") ? "--seed" : "--tighten"}`,
@@ -629,23 +1034,27 @@ function main() {
           "harness-ux-splitaccount 棘轮基线：`docs/PRD-harness-ux-adoption.md` §4.2 的 B-x 明账快照。" +
           "记的是每条账**认领的判据**与**受理方**，以及判据⑤ 的现算读数。销账 / 改绑 / 改口 / 新账" +
           "一律要显式跑 `--tighten` —— 明账最危险的死法不是被推翻，是**没人注意到它没了**。" +
-          "`accounts`/`chain` 归机器算，本 note 与任何人手新增的顶层键归人手（scripts/lib/baseline-doc.mjs 保证不吞人话）。",
+          "`accounts`/`chain`/`closures` 归机器算，本 note 与任何人手新增的顶层键归人手（scripts/lib/baseline-doc.mjs 保证不吞人话）。" +
+          "`closures` 是**结案记录**的棘轮（判据⑨e）：一条账结了案就从 accounts 挪到这里，之后**只许增不许减**——" +
+          "把结案行删掉，判据⑨ 就没有对象可判、整条自动变绿，那是本门最廉价的死法。",
       },
-      computed: { accounts, chain: { panels: chain.panels, withChain: chain.withChain } },
+      computed: { accounts, closures, chain: { panels: chain.panels, withChain: chain.withChain } },
     }), null, 2) + "\n");
-    console.log(`✍️  基线已写：${BASELINE}（明账 ${Object.keys(accounts).length} 条 · 面板文件 ${chain.panels} · 有对位实现 ${chain.withChain}）`);
+    console.log(`✍️  基线已写：${BASELINE}（明账 ${Object.keys(accounts).length} 条 · 结案记录 ${Object.keys(closures).length} 条 · 面板文件 ${chain.panels} · 有对位实现 ${chain.withChain}）`);
     return;
   }
 
-  if (flag("--mutation-proof")) { mutationProof({ prdText, ontology, wired, chain, baseline }); return; }
+  if (flag("--mutation-proof")) { mutationProof({ prdText, ontology, wired, chain, baseline, woEvidence }); return; }
 
   /* ── 门本体 ─────────────────────────────────────────────────────────────── */
-  const { fail } = judge({ prd, ontology, wired, chain, baseline });
+  const { fail } = judge({ prd, ontology, wired, chain, baseline, woEvidence });
 
   console.log(`· §4.2 明账 ${prd.accounts.length} 条：${prd.accounts.map((a) => `${a.id}(${a.us.join("+")})`).join(" ")}`);
   console.log(`· §2.1 外移 ${prd.carveOuts.length} 条 → 认领 ${new Set(prd.accounts.flatMap((a) => a.us)).size} 条 · §5 已派单 ${prd.dispatch.size}/${prd.accounts.length}`);
   console.log(`· 判据⑤ 现算：面板文件 ${chain.panels} · 有「本体链」对位实现 ${chain.withChain}${unresolved.length ? `（${unresolved.length} 个文件名找不到，未计入）` : ""}`);
   console.log(`· 内容面机检 ${prd.accounts.filter((a) => CONTENT_CHECKED.has(a.id)).length}/${prd.accounts.length}（自陈 ${prd.selfClaim ? `${prd.selfClaim.n}/${prd.selfClaim.m}` : "缺"}）· 本门已接线 ${wired ? "是" : "否"}`);
+  console.log(`· 判据⑧ 受理方单号 ${prd.woIds.filter((w) => woEvidence(w.wo).found).length}/${prd.woIds.length} 查得到（${prd.woIds.map((w) => w.wo).join(" ")}）`);
+  console.log(`· 判据⑨ 结案记录 ${prd.closures.length} 条：${prd.closures.map((c) => `${c.id}←${c.wos.join("+")}`).join(" ") || "（无）"} · §4 主表 ${prd.grid.size} 列，仍有「${UNDECIDABLE}」的列：${[...prd.grid.entries()].filter(([, v]) => v.undecidable.length).map(([u, v]) => `${u}(${v.undecidable.length})`).join(" ") || "无"}`);
   if (!baseline) {
     console.error(`\n🔴 harness-ux-splitaccount:check 未通过：基线 ${BASELINE} 不存在 —— 先跑 \`node scripts/${SELF} --seed\` 建账（不建账 = 判据⑥ 不生效，门是装饰品）`);
     process.exit(1);
@@ -656,7 +1065,8 @@ function main() {
     console.error("\n  提醒：本门红了**不等于**那四条明账被验完了 —— 它们今天的验收方式见门头「逐条可机检判定」。");
     process.exit(1);
   }
-  console.log("\n🟢 harness-ux-splitaccount:check 通过（账形态完整 · 双向绑定无孤儿无悬空 · 受理方均存在 · 每条账有单 · B-2 账面理由现算属实 · 无静默销账 · 自陈未超发）。");
+  console.log("\n🟢 harness-ux-splitaccount:check 通过（账形态完整 · 双向绑定无孤儿无悬空 · 受理方均存在 · 每条账有单 · B-2 账面理由现算属实 · 无静默销账 · 自陈未超发 · 受理方单号仓里/远端查得到 · 结案状态与 §4 主表对得上）。");
+  console.log("  ⚠ 诚实位：**通过 ≠ 那几条明账被验完了**。本门守的是账（在不在 / 有没有主 / 指不指向空气 / 有没有单 / 状态是不是真的），不是账的内容。");
 }
 
 /* ═══════════════════ 变异反证（每条 B-x 一个违规样例，且必须红在对应那条上）═════ */
@@ -680,7 +1090,42 @@ function diffProof(a, b) {
  * 而实测触发的是 `①⑥` —— **打印出来的「期望」是错的却没人拦**，正是本仓
  * 「写在最容易被信的地方的错误说法比没有更危险」那条。断言化之后，写错当场红。
  */
-function mutationProof({ prdText, ontology, wired, chain, baseline }) {
+function mutationProof({ prdText, ontology, wired, chain, baseline, woEvidence }) {
+  /**
+   * M7/M8 需要**假装某个单号查不到**。刻意不去真删分支：变异必须只动被验的那一个变量。
+   * 包在真证据源外面 —— 仍是同一个 `judge`，只是喂它一个被单点污染的证据源。
+   */
+  const evWithout = (missing) => (wo) => (wo === missing ? { found: false, via: "" } : woEvidence(wo));
+  /** 一个**真的**查不到的单号。同 EVIDENCE_ABSENT_CANARY：拼出来，否则它会存在于本文件里。 */
+  const FAKE_WO = ["WO", "NEVER", "EXISTED", "ZZ9"].join("-");
+  /**
+   * 结构化变异：把 §4 主表里 `u` 那一列的**第一个数据行**翻成「判不了」。
+   * 刻意不写死行文本 —— 那张表的格子今天全是「符合」，靠字面锚点根本定位不到某一列，
+   * 而写死某一行的整行文本，明天别人翻一格账那行就变了、锚点静默失配（M2/M5/M6 就是这么死的）。
+   */
+  const flipGridCell = (t, u) => {
+    const lines = t.split("\n");
+    let headIdx = -1; let col = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (!lines[i].trim().startsWith("|")) continue;
+      const cs = cells(lines[i]);
+      const us = cs.map((c) => (c.match(/^(U\d+b?)(\s|$)/) ?? [])[1] ?? null);
+      if (us.filter(Boolean).length >= 3) { headIdx = i; col = us.indexOf(u); break; }
+    }
+    if (headIdx < 0 || col < 0) return t; // 定位不到 ⇒ 原样返回 ⇒ 「变异体 ≠ 原文」当场判失败
+    for (let i = headIdx + 1; i < lines.length; i++) {
+      if (!lines[i].trim().startsWith("|")) break;
+      const cs = cells(lines[i]);
+      if (isSep(cs)) continue;
+      const raw = lines[i].replace(/^\|/, "").replace(/\|\s*$/, "").split("|");
+      if (col >= raw.length) return t;
+      raw[col] = ` **${UNDECIDABLE}** `;
+      lines[i] = "|" + raw.join("|") + "|";
+      return lines.join("\n");
+    }
+    return t;
+  };
+
   const M = [
     {
       id: "M1", target: "B-1", wantCodes: "①⑥",
@@ -689,10 +1134,10 @@ function mutationProof({ prdText, ontology, wired, chain, baseline }) {
       mutate: (t) => t.replace("| 真浏览器：改一个输入、**不点任何按钮**，断言结果 DOM 在 N 毫秒内变了 |", "| — |"),
     },
     {
-      id: "M2", target: "B-2", wantCodes: "③⑥",
-      why: "把 B-2 的受理方从「R13 溯源链」改成一个没登记的去处",
-      note: "③出口没点名任何已登记受理方 + ⑥改口",
-      mutate: (t) => t.replace("| 归 R13 溯源链验收，不在本表射程 |", "| 以后再说 |"),
+      id: "M2", target: "B-3", wantCodes: "③⑥",
+      why: "把 B-3 的受理方从「真浏览器」改成一个没登记的去处",
+      note: "③出口没点名任何已登记受理方 + ⑥改口。⚠ 本条原来打在 B-2 上，**B-2 已于 2026-08-18 核销出表**，锚点随之失配（`--mutation-proof` 因此从 6/6 掉成 3/6 而没人发现）—— 已改挂在册的 B-3",
+      mutate: (t) => t.replace("| 真浏览器：两屏同开，断言同一 `objectId.prop` 两处读数相等 |", "| 以后再说 |"),
     },
     {
       id: "M3", target: "B-3", wantCodes: "④",
@@ -707,16 +1152,40 @@ function mutationProof({ prdText, ontology, wired, chain, baseline }) {
       mutate: (t) => t.replace("| **B-4** | **U7 的内容面** ＋ **U8 的几何面**", "| **B-4** | **U99 的内容面** ＋ **U98 的几何面**"),
     },
     {
-      id: "M5", target: "B-2", wantCodes: "②⑥⑦",
-      why: "整行删掉 B-2（明账最危险的死法：没人注意到它没了）",
-      note: "②正向（U3 挪走了却没人认领）+ ⑥销账 + ⑦分母 4→3。**⑦跟着红是对的**：账少了一条，自陈的分母就不再属实",
-      mutate: (t) => t.split("\n").filter((l) => !l.trim().startsWith("| **B-2** |")).join("\n"),
+      id: "M5", target: "B-3", wantCodes: "②⑥⑦",
+      why: "整行删掉 B-3（明账最危险的死法：没人注意到它没了）",
+      note: "②正向（U5 挪走了却没人认领）+ ⑥销账 + ⑦分母 3→2。**⑦跟着红是对的**：账少了一条，自陈的分母就不再属实。⚠ 同 M2，原来打在已核销的 B-2 上",
+      mutate: (t) => t.split("\n").filter((l) => !l.trim().startsWith("| **B-3** |")).join("\n"),
     },
     {
       id: "M6", target: null, wantCodes: "⑦",
-      why: "把自陈从「内容面机检 1/4」改成 4/4（门建成之后最可能发生的那件事）",
-      note: "**等长替换 ⇒ 长度差为 0**，所以这一条的「变异体≠原文」必须靠首个差异位来证，不能靠字节数",
-      mutate: (t) => t.replace(/内容面机检\s*1\s*\/\s*4/, "内容面机检 4/4"),
+      why: "把自陈从「内容面机检 0/3」改成 3/3（门建成之后最可能发生的那件事）",
+      note: "**等长替换 ⇒ 长度差为 0**，所以这一条的「变异体≠原文」必须靠首个差异位来证，不能靠字节数。⚠ 原写死 `1/4`，随 B-2 核销失配",
+      mutate: (t) => t.replace(/内容面机检\s*0\s*\/\s*3/, "内容面机检 3/3"),
+    },
+    {
+      id: "M7", target: "B-3", wantCodes: "⑧",
+      why: `把 §5 派给 B-3 的受理方单号换成一个仓里和远端都查不到的名字（${FAKE_WO}）`,
+      note: "⑧ 单号查无此单。**判据③ 在这一条上一声不吭** —— 它只问「点没点名一个已登记的抽象受理方」，而「真浏览器」那三个字一个没动。这正是加判据⑧ 的全部理由",
+      mutate: (t) => t.replaceAll("WO-FACT-USAGE-REGISTRY", FAKE_WO),
+    },
+    {
+      id: "M8", target: "B-2", wantCodes: "⑨",
+      why: `把 §4 主表里 U3 列的第一格翻成「${UNDECIDABLE}」（B-2 标着已交付，而它拆自的那条判据还判不了）`,
+      note: "⑨d 状态说谎 —— 这一条就是本门新判据的本体：「判不了 0」是拆账拆出来的读数，拆出去的那半自称交付时，留在表内的那半必须真的判得了",
+      mutate: (t) => flipGridCell(t, "U3"),
+    },
+    {
+      id: "M9", target: "B-2", wantCodes: "⑨",
+      why: "把 §2.1 U3 行的「核销」二字抹掉（只销 §4.2.1 那一头，拆的源头不销）",
+      note: "⑨c 两处账对不上。等长替换，长度差为 0 ⇒ 必须靠首个差异位证明真改了",
+      mutate: (t) => t.replace("**2026-08-18 核销**：WO-R13-ONTOCHAIN-PANEL", "**2026-08-18 收尾**：WO-R13-ONTOCHAIN-PANEL"),
+    },
+    {
+      id: "M10", target: "B-2", wantCodes: "⑨",
+      why: "整行删掉 §4.2.1 里 B-2 的结案记录（判据⑨ 最廉价的死法：没有对象可判 ⇒ 整条自动变绿）",
+      note: "⑨e 结案记录消失（棘轮）。**这一条只有在基线里记着 closures 时才会红** —— 它同时在证明那份基线不是摆设",
+      mutate: (t) => t.split("\n").filter((l) => !l.trim().startsWith("| **B-2** |")).join("\n"),
     },
   ];
 
@@ -727,7 +1196,7 @@ function mutationProof({ prdText, ontology, wired, chain, baseline }) {
     const d = diffProof(prdText, mutated);
     if (!d) { console.error(`  ✗ ${m.id} 变异体与原文完全相同 —— **锚点没命中，这一条什么都没证**（${m.why}）`); bad++; continue; }
     const prd2 = parseSplitAccounts(mutated);
-    const { fail } = judge({ prd: prd2, ontology, wired, chain, baseline });
+    const { fail } = judge({ prd: prd2, ontology, wired, chain, baseline, woEvidence: m.evidence ? m.evidence(evWithout) : woEvidence });
     const hitB = [...new Set(fail.map((f) => f.account).filter((a) => a && /^B-\d+$/.test(a)))].sort();
     const codes = [...new Set(fail.map((f) => f.code))].sort().join("");
     const wantB = m.target ? [m.target] : [];

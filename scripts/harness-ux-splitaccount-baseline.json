@@ -32,5 +32,10 @@
   "chain": {
     "panels": 5,
     "withChain": 3
+  },
+  "closures": {
+    "B-2": [
+      "WO-R13-ONTOCHAIN-PANEL"
+    ]
   }
 }
