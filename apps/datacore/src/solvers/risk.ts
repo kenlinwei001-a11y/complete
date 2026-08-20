@@ -1092,17 +1092,23 @@ export function auditTimeline(c: SolverContext, args: Record<string, unknown>): 
   const orders = repBase ? affectedOrders(c, { baseId: repBase, day: crossIdx < 0 ? horizon : crossIdx, peak: Math.max(...series) }).affected : [];
   return {
     kind, series, stages, peak: Math.max(...series), crossDay: crossIdx < 0 ? null : crossIdx, threshold,
-    // 轨M 增量2（audit_timeline 去哈希诚实标·KILL-MOCK-RED）：无真源 kind 的 series/peak/crossDay 仍是按 kind 名
-    // hashString 确定性派生的**形状投影** → dataMode 恒 MOCK + provenanceSynthetic 披露，绝不裸渲染当实测真值
-    // （前端据此显"估算/合成"，不把恒越线红当真）。
-    // WO-AUDIT-TIMELINE-LIVESOURCE：有真源 kind 升 LIVE——series 由 A8 真日序列逐日派生（source 披露真源·R13），
-    // provenance 维照 tsSeries.origin 如实标（demo 合成世界 SYNTHETIC → true·不谎报"实测"）。
-    dataMode: liveMeta ? "LIVE" : "MOCK",
-    provenanceSynthetic: liveMeta ? liveMeta.provenanceSynthetic : true,
-    note: liveMeta
-      ? `逐日 series/峰值/越线日由 A8 实测日序列 ${liveMeta.src.seriesKey}（${liveMeta.src.measure}·${liveMeta.days} 天）派生——真源时序，非 kind 名哈希投影`
-      : "逐日 series/峰值/越线日为按审计口径名确定性派生的形状投影（无逐日实测时序源）·估算非实测——不裸渲染当真值",
-    ...(liveMeta ? { source: { seriesKey: liveMeta.src.seriesKey, measure: liveMeta.src.measure, days: liveMeta.days } } : {}),
+    ...(liveMeta
+      ? {
+          // WO-AUDIT-TIMELINE-LIVESOURCE：有真源 kind 升 LIVE——series 由 A8 真日序列逐日派生（source 披露真源·R13），
+          // provenance 维照 tsSeries.origin 如实标（demo 合成世界 SYNTHETIC → true·不谎报"实测"）。
+          dataMode: "LIVE",
+          provenanceSynthetic: liveMeta.provenanceSynthetic,
+          note: `逐日 series/峰值/越线日由 A8 实测日序列 ${liveMeta.src.seriesKey}（${liveMeta.src.measure}·${liveMeta.days} 天）派生——真源时序，非 kind 名哈希投影`,
+          source: { seriesKey: liveMeta.src.seriesKey, measure: liveMeta.src.measure, days: liveMeta.days },
+        }
+      : {
+          // 轨M 增量2（audit_timeline 去哈希诚实标·KILL-MOCK-RED）：无真源 kind 的 series/peak/crossDay 仍是按 kind 名
+          // hashString 确定性派生的**形状投影** → dataMode 恒 MOCK + provenanceSynthetic 披露，绝不裸渲染当实测真值
+          // （前端据此显"估算/合成"，不把恒越线红当真）。
+          dataMode: "MOCK",
+          provenanceSynthetic: true,
+          note: "逐日 series/峰值/越线日为按审计口径名确定性派生的形状投影（无逐日实测时序源）·估算非实测——不裸渲染当真值",
+        }),
     events: events.map((e) => ({ type: e.type, day: e.day, amp: e.amp, factors: e.factors, ...(e.tag ? { tag: e.tag } : {}), ...(e.obj ? { obj: e.obj } : {}), ...(e.desc ? { desc: e.desc } : {}), ...(e.src ? { src: e.src } : {}) })),
     affectedOrders: orders,
   };
