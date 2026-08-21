@@ -81,7 +81,7 @@
   border: 1px solid var(--accent);
   display: grid;
   place-items: center;
-  color: var(--c-capacity);
+  color: var(--c-capacity-txt);
   font-size: 13px;
 }
 .tt {
@@ -147,8 +147,8 @@
 }
 .rbtn.on {
   background: color-mix(in srgb, var(--warn) 16%, transparent);
-  border-color: var(--warn);
-  color: var(--warn);
+  border-color: var(--warn-txt);
+  color: var(--warn-txt);
 }
 .main {
   flex: 1;
@@ -209,7 +209,7 @@
 }
 .ph i {
   font-style: normal;
-  color: var(--c-capacity);
+  color: var(--c-capacity-txt);
   font-size: 9px;
 }
 .ph b {
@@ -279,7 +279,7 @@
   white-space: nowrap;
 }
 .wv b.on {
-  color: var(--c-capacity);
+  color: var(--c-capacity-txt);
   border-bottom: 1px solid var(--c-capacity);
 }
 .wv .nav {
@@ -313,7 +313,7 @@
 .it .rg {
   margin-left: auto;
   font-size: 8.5px;
-  color: var(--warn);
+  color: var(--warn-txt);
   border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
   padding: 0 3px;
   line-height: 1.25;
@@ -383,18 +383,18 @@
 .it.on {
   background: color-mix(in srgb, var(--warn) 12%, transparent);
   outline: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
-  color: var(--warn);
+  color: var(--warn-txt);
 }
 .it.on .tg {
-  border-color: var(--warn);
-  color: var(--warn);
+  border-color: var(--warn-txt);
+  color: var(--warn-txt);
 }
 .it.hot {
-  color: var(--danger);
+  color: var(--danger-txt);
 }
 .it.hot .tg {
-  border-color: var(--danger);
-  color: var(--danger);
+  border-color: var(--danger-txt);
+  color: var(--danger-txt);
 }
 .it.mute {
   color: var(--muted2);
@@ -506,7 +506,7 @@
 .north b {
   display: block;
   font-size: 12px;
-  color: var(--c-capacity);
+  color: var(--c-capacity-txt);
 }
 .lgd {
   position: absolute;
@@ -574,7 +574,7 @@
   color: var(--muted2);
 }
 .btabs b.on {
-  color: var(--c-capacity);
+  color: var(--c-capacity-txt);
   border-bottom: 1px solid var(--c-capacity);
 }
 .btabs .nav {
@@ -630,10 +630,10 @@
   color: var(--txt);
 }
 .gcell.up {
-  color: var(--danger);
+  color: var(--danger-txt);
 }
 .gcell.dn {
-  color: var(--ok);
+  color: var(--ok-txt);
 }
 .vgrp {
   flex: none;
@@ -695,7 +695,7 @@
 .seg.a {
   background: color-mix(in srgb, var(--warn) 16%, transparent);
   border: 1px solid var(--warn);
-  color: var(--warn);
+  color: var(--warn-txt);
 }
 .seg.r {
   background: color-mix(in srgb, var(--danger) 16%, transparent);
@@ -732,7 +732,7 @@
   top: 0;
   left: -3px;
   border: 3px solid transparent;
-  border-top-color: var(--warn);
+  border-top-color: var(--warn-txt);
 }
 
 /* ══ 左轨下三格 ══ */
