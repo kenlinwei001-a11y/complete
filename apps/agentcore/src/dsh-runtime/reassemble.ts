@@ -180,6 +180,34 @@ export function stallLoopCause(events: readonly DshSessionEvent[]): StallLoopCau
   return undefined;
 }
 
+/**
+ * W8主 · B6 预算降级桥（与 stallLoopCause 同构的第三分类器）：
+ * harness tool-bridge 收到宿主 BUDGET_EXCEEDED 回执 ⇒ agent.cancel({kind:'budget-exhausted',
+ * reason}）⇒ turn/end data.reason = {kind:'aborted', reason:<cause 原样>}。
+ * reason 字段 = 宿主 BUDGET_EXCEEDED payload.reason 原值（如 "maxToolCalls exceeded"），
+ * 供诚实摘要头 budgetNote 逐字复用（loop.ts:632 模板）。
+ */
+export interface BudgetExhaustedCause {
+  kind: "budget-exhausted";
+  reason?: string;
+}
+
+/** 最后一个 turn/end 若为 budget-exhausted abort 则返回其 cause；否则 undefined。 */
+export function budgetExhaustedCause(events: readonly DshSessionEvent[]): BudgetExhaustedCause | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (!e || e.type !== "turn/end") continue;
+    const reason = (e.data as Record<string, unknown> | undefined)?.reason;
+    if (typeof reason !== "object" || reason === null) return undefined;
+    if ((reason as Record<string, unknown>).kind !== "aborted") return undefined;
+    const inner = (reason as Record<string, unknown>).reason;
+    if (typeof inner !== "object" || inner === null) return undefined;
+    if ((inner as Record<string, unknown>).kind !== "budget-exhausted") return undefined;
+    return inner as BudgetExhaustedCause;
+  }
+  return undefined;
+}
+
 /** tool/result 帧的窄提取（成功判定仅供 stall-loop 诚实块的 provenance）。 */
 function successfulCallIds(events: readonly DshSessionEvent[]): string[] {
   const out: string[] = [];
@@ -496,6 +524,35 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
       answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics: scanBlocks(blocks) },
       sketch,
       degraded: { reason: "STALL_LOOP" },
+      iterations,
+    };
+  }
+
+  // W8主 · B6 预算降级桥分类前置（与上方 stall 分支同构，先于 expectsSchema/final_answer）：
+  // tool-bridge 收宿主 BUDGET_EXCEEDED ⇒ cancel 落帧 ⇒ outcome BUDGET_EXHAUSTED +
+  // degraded{BUDGET_EXHAUSTED} + 诚实摘要头（loop.ts:632 BUDGET_EXHAUSTED 支模板逐字，
+  // budgetNote = 宿主 reason 原值）+ 部分发现抢救 + provenance 仅成功 callId（stall 同口径）。
+  const budgetHit = budgetExhaustedCause(events);
+  if (budgetHit) {
+    const budgetNote = budgetHit.reason ?? "round-trip/迭代上界";
+    const header = `[预算耗尽·诚实摘要] ⚠️ 已达最大探索轮次/预算（${budgetNote}）：本次深问未能完全解答。以下为已探索到的线索：`;
+    const blocks: AnswerBlock[] = [
+      { type: "text", markdown: header },
+      { type: "text", markdown: synthesizePartialFindings(events, sketch) },
+    ];
+    const provenance: ProvenanceRef[] = successfulCallIds(events).map((toolCallId) => ({
+      id: newProvId(),
+      source: "TOOL_RESULT",
+      toolCallId,
+      toolName: toolNameByCallId.get(toolCallId) ?? "unknown",
+      outputPath: "$",
+    }));
+    return {
+      ok: true,
+      outcome: "BUDGET_EXHAUSTED",
+      answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics: scanBlocks(blocks) },
+      sketch,
+      degraded: { reason: "BUDGET_EXHAUSTED" },
       iterations,
     };
   }

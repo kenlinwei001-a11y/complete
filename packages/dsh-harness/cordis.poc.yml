@@ -23,6 +23,12 @@
     mode: 'mock'
     deny: []
 
+# W8主 · tool-execute 反向通道桥（与生产档同款；url/token/runToken 逐 run 经 env 缝注入，
+# 缺 env ⇒ 休眠不抛——runner 级 POC 夹具无该 env，hostTools 到达而桥休眠 ⇒ platform-world
+# 创建期 fail-closed）。见 cordis.yml 同条注释。
+- id: platform-tool-bridge
+  name: './plugins/tool-bridge.mjs'
+
 - id: llm
   name: '@deepseek-ai/dsh-llm'
 

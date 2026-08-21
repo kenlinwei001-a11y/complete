@@ -23,6 +23,17 @@
   config:
     mode: 'http'
 
+# W8主 · tool-execute 反向通道桥：子进程世界经本插件 fetch 宿主 /b/v1/dsh/tool-execute
+# （带外通道，与 platform-governance http 模式同构）。url/token/runToken 不落盘：engine
+# 分叉逐 run 经 runner opts.env 注入 PLATFORM_TOOL_EXEC_URL（缺省推导
+# http://127.0.0.1:${PORT}/b/v1/dsh/tool-execute，DSH_TOOL_EXEC_URL 可覆盖）、
+# PLATFORM_TOOL_EXEC_TOKEN（= SERVICE_TOKEN，未配置不发头 ⇒ 端点恒 401 fail-closed）与
+# DSH_RUN_TOKEN（per-run 一次性，run 终注销）。env 缺 url/runToken ⇒ 插件休眠不抛
+# （runner 级消费方无该 env）；setup.hostTools 到达而桥休眠 ⇒ platform-world 创建期
+# fail-closed 抛错。端点非 200/不可达/超时/畸形应答 ⇒ 一律 ERROR 回执，零静默放行。
+- id: platform-tool-bridge
+  name: './plugins/tool-bridge.mjs'
+
 - id: llm
   name: '@deepseek-ai/dsh-llm'
 

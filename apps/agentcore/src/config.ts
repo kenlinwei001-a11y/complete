@@ -92,6 +92,14 @@ const ConfigSchema = z.object({
    * 不落盘。
    */
   DSH_GOV_URL: z.string().optional(),
+  /**
+   * WO-DSH-PROD-READY · W8主：dsh 子进程世界反向调宿主 BUILTIN 工具的 tool-execute 端点
+   * （带外通道，与 DSH_GOV_URL 同构）。缺省在 engine 分叉推导为
+   * `http://127.0.0.1:${PORT}/b/v1/dsh/tool-execute`（zod default 引不了同 schema 的 PORT）；
+   * 显式设置 = 覆盖。凭据经 PLATFORM_TOOL_EXEC_TOKEN（= SERVICE_TOKEN）随 env 缝注入，不落盘；
+   * per-run 一次性 runToken 经 DSH_RUN_TOKEN 注入（fork 时铸、run 终注销，wire 零鉴权材料）。
+   */
+  DSH_TOOL_EXEC_URL: z.string().optional(),
   /** 增量 §4.3：stdio command 绝对路径白名单（逗号分隔，精确匹配） */
   MCP_STDIO_COMMAND_ALLOWLIST: z.string().optional(),
   /** 增量 §3：技能附件本地存储目录（与 DataCore BLOB_DIR 共享卷形态）；缺省仅元信息 */
