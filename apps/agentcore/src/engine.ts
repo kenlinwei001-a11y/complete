@@ -674,6 +674,19 @@ export class ExecutionEngine {
       // 而审计记录 budgetExhausted=false = 自体矛盾（管理台可见）。
       const dshRun = emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, "EXTERNAL");
       if (dsh.result.outcome === "BUDGET_EXHAUSTED") dshRun.budgetExhausted = true;
+      // WO-DSH-PROD-READY W9-lite：审计记录骨架回填（PRD :366 宣言违例 + 计费逃单修复，
+      // ROLLOUT §1 落地即翻转——orchestrator.ts:2125 无条件记账自此对 EXTERNAL 真扣减）。
+      // 形态照 W1 stats 正交先例选**后置补丁**：run 记录穿 applyPostChecks 不被替换（后验只换
+      // answer），iterations/tokens 是运行观测不是答案内容，与治理替换正交。
+      //   · iterations = 帧流骨架透传（两态 + 推导 durationMs；四态+tc_ 合流待 W9-full，REC §3 #10）；
+      //   · tokens 挂 run.total*（B11 载体 A 回填）——取 fold 的 tokenUsage 同源两桶
+      //     （uncachedInputTokens/outputTokens，与载体 B answer.stats 同源等值，消费方各读各的
+      //     不相加，ROLLOUT §6.5 账）；零 usage 帧 ⇒ stats 不出 ⇒ tokens 维持 0/0（诚实缺省）。
+      dshRun.iterations = dsh.result.iterations;
+      if (dsh.result.stats) {
+        dshRun.totalInputTokens = dsh.result.stats.tokenUsage.uncachedInputTokens;
+        dshRun.totalOutputTokens = dsh.result.stats.tokenUsage.outputTokens;
+      }
       const checked = await applyPostChecks({
         outcome: dsh.result.outcome,
         answer: dsh.result.answer,
