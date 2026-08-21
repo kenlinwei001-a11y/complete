@@ -220,7 +220,7 @@ describe("WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engi
           {
             ruleId: RULE_ID,
             passed: !blocking,
-            severity: blocking ? "BLOCK" : "INFO",
+            severity: blocking ? "BLOCK" : "WARN",
             explanation: blocking ? RULE_EXPLANATION : "通过",
             ruleVersion: 1,
           } satisfies RuleVerdict,
@@ -262,7 +262,7 @@ describe("WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engi
       await seedMcpConfig(t, recordPath);
       await t.repos.agents.insert(agentDef());
       const evaluateSpy = vi.spyOn(t.dataCore.rules, "evaluate").mockResolvedValue([
-        { ruleId: RULE_ID, passed: true, severity: "INFO", explanation: "通过", ruleVersion: 1 } satisfies RuleVerdict,
+        { ruleId: RULE_ID, passed: true, severity: "WARN", explanation: "通过", ruleVersion: 1 } satisfies RuleVerdict,
       ]);
       const emitted: Emitted[] = [];
       const result = await runAgent(t, "task_f1_gov_allow", emitted);
@@ -367,7 +367,7 @@ describe("WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engi
       await seedMcpConfig(t, recordPath);
       await t.repos.agents.insert(agentDef());
       const evaluateSpy = vi.spyOn(t.dataCore.rules, "evaluate").mockResolvedValue([
-        { ruleId: RULE_ID, passed: true, severity: "INFO", explanation: "通过", ruleVersion: 1 } satisfies RuleVerdict,
+        { ruleId: RULE_ID, passed: true, severity: "WARN", explanation: "通过", ruleVersion: 1 } satisfies RuleVerdict,
       ]);
       const emitted: Emitted[] = [];
       const result = await runAgent(t, "task_f1_gov_derived", emitted);
