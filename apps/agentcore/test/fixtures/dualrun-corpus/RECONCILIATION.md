@@ -136,8 +136,11 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
    不体现 deny。本层如实登记，不修缝（L1 是测试层；若评审裁定这是缺陷，另立 WO）。
 6. runPathB 不过分叉（蓝图 evidence 1）⇒ 本层驱动只走 runRegisteredAgent。
 7. 角色路（runRolePathB）/场景路（runSceneAgent）STALL_LOOP 两条语料槽（跨单回执）：
-   本树 orchestrator 仅 :2179 一处 agent_degraded 发射，两处 degraded 静默缝 WO 未落线
-   ⇒ 语料留 gated 槽（`GATED_SLOTS`），driver 鸣报 skipped，不冒充覆盖。
+   两处 degraded 静默缝**已由 886c436a7 落线**（orchestrator agent_degraded 发射点现三处：
+   :2182/:2433/:2694）；但解 gate = 跨单回执 STALL_LOOP + 角色路/场景路（不过分叉，#6 在册）
+   的新语料面，超出现 driver 的 runRegisteredAgent 单驱动边界，属 SSE 事件面扩面——
+   team-lead 2026-08-21 裁决：转 W5 登记（W5-输入 #1），gated 槽维持 gated（`GATED_SLOTS`），
+   driver 鸣报 skipped，不冒充覆盖。
 8. **缝观察（纯空 stop 的 outcome 分歧；已裁决·不判缺陷，不进断言，W2 批1 实证）**：native 臂
    纯空文本轮走 `lastText || "（探索模式未能产出回答）"` 软收尾 ⇒ outcome ANSWERED；
    dsh 臂 pi-ai 适配器对「stop + 零内容块」判 EMPTY_RESPONSE 错误

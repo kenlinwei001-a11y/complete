@@ -534,7 +534,7 @@ describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（60 任务）", () => {
     }
   });
 
-  it("gated 槽鸣报：角色路/场景路 STALL_LOOP 覆盖待 WO-degraded-seams 落线", () => {
+  it("gated 槽鸣报：角色路/场景路 STALL_LOOP 覆盖转 W5 登记（缝已落线·解 gate 属新语料面）", () => {
     for (const g of GATED_SLOTS) {
       console.warn(`GATED ${g.id}（${g.path} ${g.scenario}）：${g.gate}`);
     }

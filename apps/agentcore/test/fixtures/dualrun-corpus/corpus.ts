@@ -710,20 +710,21 @@ export const A5_SUBSET: readonly string[] = ["dr50-ac", "dr50-ad", "dr50-an", "d
 
 /**
  * 跨单回执 gated 槽（蓝图末行：角色路/场景路 STALL_LOOP 各一）。
- * 本树 orchestrator 唯 :2179 一处 agent_degraded 发射（runPathB 段）——runRolePathB/runSceneAgent
- * 两处 degraded 静默缝 WO 未落线，缝修复后转正式任务；driver 鸣报 skipped，不冒充覆盖。
+ * 两处 degraded 静默缝已由 886c436a7 落线（orchestrator agent_degraded 发射点 :2182/:2433/:2694）；
+ * 解 gate 属跨单回执新语料面（超 runRegisteredAgent 单驱动边界），team-lead 2026-08-21 裁决
+ * 转 W5 登记（W5-输入 #1，REC §3 #7）——槽维持 gated，driver 鸣报 skipped，不冒充覆盖。
  */
 export const GATED_SLOTS = [
   {
     id: "dr50-gated-role-stall",
     path: "runRolePathB",
     scenario: "STALL_LOOP",
-    gate: "WO-degraded-seams 缝①（runRolePathB degraded 静默缝）未落线",
+    gate: "解 gate 属新语料面，转 W5 登记（W5-输入 #1；缝① 886c436a7 已落线）",
   },
   {
     id: "dr50-gated-scene-stall",
     path: "runSceneAgent",
     scenario: "STALL_LOOP",
-    gate: "WO-degraded-seams 缝②（runSceneAgent degraded 静默缝）未落线",
+    gate: "解 gate 属新语料面，转 W5 登记（W5-输入 #1；缝② 886c436a7 已落线）",
   },
 ] as const;
