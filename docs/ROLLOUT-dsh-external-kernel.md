@@ -191,6 +191,13 @@ reassemble.ts:412-420：expectsSchema 分支校验通过后**提前 return**—�
 相加 = 单计（侥幸无害）；W9-lite 回填瞬间，同一批 token 在两个载体同时为真，相加 = **双计**。
 W9 验收判据应含「两载体同源等值」断言，但**等值也不许相加**——消费方按上表各读各的。
 
+> **W9-lite 落地注记（2026-08-21）**：载体 A 回填已落线（engine.ts DSH 出口后置补丁，
+> run.total* = fold tokenUsage 的 uncachedInput/output 两桶；零 usage 帧 ⇒ 维持 0/0 诚实缺省），
+> 计费翻转按 §1 生效（orchestrator.ts:2125 无条件记账自此对 EXTERNAL 真扣减，无 flag 间隔）。
+> 消费方本单 grep 复核与上表逐条相符：载体 A = orchestrator:2125 / skill-probe:290 / evals:238
+> / AgentsPage 展示（:428/:557 只读）；载体 B = Timeline.tsx:54 唯一。**无「两处都读再相加」**。
+> 同源等值断言已入 dualrun50 A4 dsh 臂锚（run.total* === stats 对应桶，逐任务机器核）。
+
 ---
 
 ## §7 裁决史（每条目的出处，留给复验 Agent）

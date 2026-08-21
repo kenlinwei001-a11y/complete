@@ -100,13 +100,15 @@ meta-only 语料下两臂非伪步序列均空（load_skill/final_answer 两臂�
 - **kernel = 唯一白名单值差**：dsh 恒 "EXTERNAL"、native 恒 "NATIVE"（N5 已落线，真咬）；
   断言两臂值各为锚定字面量 **且其余字段零值差**（差集恰 = {kernel}，反咬白名单不膨胀）。
 - **native 迭代锚**：native 臂 iterations 按语料声明逐轮锚定（轮数 + 每轮 toolCalls 的
-  toolName/outcome 序列 + load_skill input 深等）；dsh 臂 iterations 恒 === []
-  （emptyAgentRunRecord 无源——登记为固有不对称 #4 的一半）。
-- **dsh stats 对齐**（固有不对称 #4 的另一半）：dsh 臂 token 账不在 run 记录在 answer.stats——
-  断言 `stats.tokenUsage` 逐桶等 = 语料声明的 stub 剧本 usage 折出和（pi-ai 口径：
-  prompt_cache_hit_tokens→cacheReadTokens，余入 uncachedInputTokens）、
-  `stats.contextPressure.pressureTokens` = 末轮 prompt_tokens；run.totalInputTokens/totalOutputTokens
-  恒 0/0 锚定。native 臂 tokens 锚 = 100/50 × 剧本轮数（ScriptedLlmClient 固定账）。
+  toolName/outcome 序列 + load_skill input 深等）；dsh 臂 iterations 锚 = W9-lite 帧流骨架
+  （固有不对称 #4 加注 + #10：turn 分组单迭代形态 + 剧本非 meta 调用逐一对点 + 两态 outcome
+  + durationMs 非负形态锚；零 spawn 任务恒 === [] 维持空壳诚实缺省）。
+- **dsh stats 对齐**（固有不对称 #4 的另一半）：dsh 臂 token 账双载体同源——answer.stats
+  与 run 记录同出一份帧流 fold。断言 `stats.tokenUsage` 逐桶等 = 语料声明的 stub 剧本
+  usage 折出和（pi-ai 口径：prompt_cache_hit_tokens→cacheReadTokens，余入 uncachedInputTokens）、
+  `stats.contextPressure.pressureTokens` = 末轮 prompt_tokens；run.totalInputTokens/
+  totalOutputTokens 锚 = stats 对应桶**同源等值**（W9-lite 起，B11 验收判据；零 spawn 任务
+  恒 0/0 维持）。native 臂 tokens 锚 = 100/50 × 剧本轮数（ScriptedLlmClient 固定账）。
   两臂 token 账**不互比**（物理不同源），各锚各的剧本。
 - **budgetExhausted 分锚（G3 length 截断任务，W2 批3）**：finish_reason=length 场景两臂
   语义取向不同（§3 #9 缝观察）⇒ 该字段对 lengthDivergence 置位任务**不互比**，逐臂锚定
@@ -130,6 +132,10 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
    真工具对账物理不可达，L1 不声明该覆盖。
 4. dsh 臂审计记录为空壳（iterations []、tokens 0/0）⇒ native 迭代锚 + dsh stats 对齐代之，
    两臂 token/迭代不互比。
+   **（W9-lite 加注 2026-08-21：W9-lite 起 iterations/tokens 有骨架——两态（OK/ERROR）+
+   推导 durationMs（tool/call↔tool/result 帧 time 差）+ run.total* 回填帧流 usage 折出和
+   （B11 同源等值入锚：run.total* === answer.stats.tokenUsage 对应桶）。四态+tc_ 合流待
+   W9-full，A4 锚维持至 W9-full 单翻。空壳口径仅余零 spawn 早退路（deny_prefork 类）。）**
 5. **缝观察（denied final_answer 的 blocks 仍上 answer 面）**：dsh 帧流 tool/call 在派发前记录
    （agent-loop lib/index.js:191 appendToolCall 在派发 :196 之前），pre-execute deny 不抹帧；reassemble collectToolCalls 不滤成败
    ⇒ 被拒 final_answer 的 blocks 仍成 answer。deny 的执行证据只能在 wire/帧面断言，answer 面
@@ -175,6 +181,15 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
    有界终止必带诚实前缀约定；语料锚 = corpus.ts LENGTH_TRUNCATION_HEADER 逐字）。
    钉死位：dr50-ch 双臂分锚 + reassemble 探针 max-tokens 头逐字锚 + mutation 双招反证
    （摘 engine budgetExhausted 赋值 ⇒ 分锚红；摘 reassemble 摘要头 ⇒ A1 分锚红 + 探针红）。
+10. **MCP 调用在 dsh 臂不过宿主（W9-lite 观测面骨架的物理上限，2026-08-21 登记）**：
+   dsh 臂 MCP 工具由 harness 子进程世界直连执行（不过宿主 executor；W8主 HTTP 带外
+   tool-execute 反向通道在途）⇒ 调用无 tc_ 形态 id、无宿主 IAM/DENIED 决策记录；
+   治理面 deny（允许表/ruleBindings 裁决）落到帧面只是 isError=true 的 tool/result
+   （mcp-forward 缝 A4 实证：表外调用 2ms ERROR、server 零到达）。
+   ⇒ W9-lite run.iterations 骨架的 outcome 只有 OK/ERROR **两态**（DENIED/BUDGET_EXCEEDED
+   帧流无源，不硬造）；toolCallId = dsh 帧 callId 原值（非 tc_ 形态）；durationMs =
+   call/result 帧 time 差推导值（墙钟，只锚非负形态）。四态 + tc_ 合流 + A4 双臂互比
+   单翻待 W9-full。
 
 ## 4. 语料构成（60 条 + 2 gated）
 - 内容源：20 条 = SCENARIO_CATALOG triggerQuestion（执行通道不借 evals——蓝图 evidence 5）；
