@@ -678,7 +678,8 @@ export class ExecutionEngine {
       // ROLLOUT §1 落地即翻转——orchestrator.ts:2125 无条件记账自此对 EXTERNAL 真扣减）。
       // 形态照 W1 stats 正交先例选**后置补丁**：run 记录穿 applyPostChecks 不被替换（后验只换
       // answer），iterations/tokens 是运行观测不是答案内容，与治理替换正交。
-      //   · iterations = 帧流骨架透传（两态 + 推导 durationMs；四态+tc_ 合流待 W9-full，REC §3 #10）；
+      //   · iterations = 帧流骨架透传（step 分组每 LLM 轮一迭代含空轮——team-lead 2026-08-21
+      //     裁决②，native 迭代粒度对位；两态 + 推导 durationMs；四态+tc_ 合流待 W9-full，REC §3 #10）；
       //   · tokens 挂 run.total*（B11 载体 A 回填）——取 fold 的 tokenUsage 同源两桶
       //     （uncachedInputTokens/outputTokens，与载体 B answer.stats 同源等值，消费方各读各的
       //     不相加，ROLLOUT §6.5 账）；零 usage 帧 ⇒ stats 不出 ⇒ tokens 维持 0/0（诚实缺省）。
