@@ -187,12 +187,27 @@ const PLACEHOLDER_TREE_NODES = {
   "delivery.transit": 2,
 } satisfies Partial<Record<Rid, number>>;
 
-/** 规格 `D[]` 里 l3 子因（挂在 `capacity.aging` 下）。子因名不是在册 label，故可字面量。 */
-const PLACEHOLDER_SUB_CAUSES: readonly { label: string; pct: number }[] = [
-  { label: "炉位不足", pct: 19 },
-  { label: "批次拆分", pct: 11 },
-  { label: "温控复检", pct: 4 },
-];
+/**
+ * 规格 `D[]` 里的 l3 子因（前三个环节各展开一层）。
+ * 子因名**不是**在册 label（它们是执行单元级的因，端点回包里由 `ChainSubCause.label`
+ * 从真实对象派生），故这里可以是字面量 —— 判据 L 只咬在册 label。
+ */
+const PLACEHOLDER_SUB_CAUSES = {
+  "capacity.aging": [
+    { label: "炉位不足", pct: 19 },
+    { label: "批次拆分", pct: 11 },
+    { label: "温控复检", pct: 4 },
+  ],
+  "material.kitting": [
+    { label: "正极粉断供", pct: 12 },
+    { label: "隔膜到货延迟", pct: 6 },
+    { label: "拣配等待", pct: 3 },
+  ],
+  "capacity.qc_batch": [
+    { label: "攒批阈值", pct: 8 },
+    { label: "抽检返工", pct: 5 },
+  ],
+} satisfies Partial<Record<Rid, readonly { label: string; pct: number }[]>>;
 
 /** 规格 l1 行：全链非增值 100% / 21.6 D。 */
 const PLACEHOLDER_CHAIN_TOTAL_PCT = 100;
@@ -208,10 +223,10 @@ function placeholderTree(): RootCauseModel {
   const rows: RootCauseRow[] = [
     { level: 1, key: "chain", label: CHAIN_TOTAL_LABEL, pct: PLACEHOLDER_CHAIN_TOTAL_PCT, days: daysOf(PLACEHOLDER_CHAIN_TOTAL_PCT), hot: false },
   ];
+  const subs: Record<string, readonly { label: string; pct: number }[]> = PLACEHOLDER_SUB_CAUSES;
   entries.forEach(([nodeId, pct], i) => {
     rows.push({ level: 2, key: nodeId, label: chainNodeDef(nodeId)?.label ?? nodeId, pct, days: daysOf(pct), hot: i < HOT_TOP_N });
-    if (i !== 0) return; // 规格只展开第一个（老化静置）的三条子因
-    for (const s of PLACEHOLDER_SUB_CAUSES) {
+    for (const s of subs[nodeId] ?? []) {
       rows.push({ level: 3, key: `${nodeId}::${s.label}`, label: s.label, pct: s.pct, days: daysOf(s.pct), hot: false });
     }
   });
@@ -411,23 +426,29 @@ const PLACEHOLDER_WF_STEPS = {
 } satisfies Partial<Record<Rid, number>>;
 const PLACEHOLDER_WF_REST = { label: "其余", days: 1.0 };
 
-/** 瀑布分档阈值（天）。同 `LEVEL_CUTS` 的纪律：显式声明，可被直接反对。 */
-const WF_HIGH_DAYS = 2;
-const WF_MID_DAYS = 0.5;
-const wfKind = (days: number): WaterfallKind => (days >= WF_HIGH_DAYS ? "high" : days >= WF_MID_DAYS ? "mid" : "low");
+/**
+ * 瀑布分档 = **按名次**，不按绝对天数。
+ * 规格的着色规则是位置式的（前 2 段红 · 中间 3 段琥珀 · 末段「其余」青），
+ * 而「其余」是一个**聚合桶**不是单个原因 —— 拿它的天数去和单个环节比档次，
+ * 桶一大就会被染成红色，把「一堆小因加起来」读成「一个大因」。故：
+ *   · 名次 < `WF_HIGH_RANK` ⇒ high（红）· 其余单环节 ⇒ mid（琥珀）· 聚合桶 ⇒ low（青）。
+ */
+const WF_HIGH_RANK = 2;
+const wfKind = (rank: number): WaterfallKind => (rank < WF_HIGH_RANK ? "high" : "mid");
+const WF_REST_KIND: WaterfallKind = "low";
 
 /** 瀑布图取的是**同一份**热力矩阵（不另发请求）：屏上三块必须是同一个世界的三个视角。 */
 export function useWaterfall(heat: HeatMatrixModel, tree: RootCauseModel): WaterfallModel {
   if (heat.source !== "endpoint") {
     return {
       bars: [
-        ...Object.entries(PLACEHOLDER_WF_STEPS).map(([nodeId, days]) => ({
+        ...Object.entries(PLACEHOLDER_WF_STEPS).map(([nodeId, days], i) => ({
           key: nodeId,
           label: chainNodeDef(nodeId)?.label ?? nodeId,
           value: days,
-          kind: wfKind(days),
+          kind: wfKind(i),
         })),
-        { key: "rest", label: PLACEHOLDER_WF_REST.label, value: PLACEHOLDER_WF_REST.days, kind: wfKind(PLACEHOLDER_WF_REST.days) },
+        { key: "rest", label: PLACEHOLDER_WF_REST.label, value: PLACEHOLDER_WF_REST.days, kind: WF_REST_KIND },
       ],
       baseDays: PLACEHOLDER_WF_BASE_DAYS,
       totalDays: PLACEHOLDER_WF_TOTAL_DAYS,
@@ -438,8 +459,8 @@ export function useWaterfall(heat: HeatMatrixModel, tree: RootCauseModel): Water
   const top = nodes.slice(0, PLACEHOLDER_WF_TOP_N);
   const restDays = nodes.slice(PLACEHOLDER_WF_TOP_N).reduce((s, r) => s + r.days, 0);
   const totalDays = nodes.reduce((s, r) => s + r.days, 0);
-  const bars: WaterfallBar[] = top.map((r) => ({ key: r.key, label: r.label, value: r.days, kind: wfKind(r.days) }));
-  if (restDays > 0) bars.push({ key: "rest", label: PLACEHOLDER_WF_REST.label, value: restDays, kind: wfKind(restDays) });
+  const bars: WaterfallBar[] = top.map((r, i) => ({ key: r.key, label: r.label, value: r.days, kind: wfKind(i) }));
+  if (restDays > 0) bars.push({ key: "rest", label: PLACEHOLDER_WF_REST.label, value: restDays, kind: WF_REST_KIND });
   return { bars, baseDays: Math.max(0, totalDays - bars.reduce((s, b) => s + b.value, 0)), totalDays, source: "endpoint" };
 }
 

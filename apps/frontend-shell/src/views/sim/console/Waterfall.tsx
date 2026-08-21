@@ -11,8 +11,9 @@
  * （`FlowMap.tsx` 头注记的就是这笔账），故一律 `style={{ fill: "var(--X)" }}`。
  *
  * ── 起止两根柱的色（规格 `#2d4460`）──────────────────────────────────────────
- * 它不在 token 表里，是一个过渡蓝。取 `color-mix(in srgb, var(--accent) 10%, var(--panel))`
- * （= #2f456d，与规格差在蓝通道 10）。**不把 `#2d4460` 抄进来** —— 抄了就是把主题固定死一处。
+ * 它不在 token 表里，是一个过渡蓝。取 `color-mix(in srgb, var(--c-capacity) 6%, var(--panel))`
+ * —— 实测合成后 (45,68,101) vs 规格 (45,68,96)，只差蓝通道 5（低于逐像素比对的 8 档阈值）。
+ * **不把 `#2d4460` 抄进来** —— 抄了就是把主题在这一处固定死。
  */
 import type { WaterfallModel } from "./useLossAttribution";
 import styles from "./SandboxAttr.module.css";
@@ -33,7 +34,7 @@ const MIN_BAR_H = 3;
 /** 规格网格线（0.1D 单位：0/50/100/150/200 ⇒ 0/5/10/15/20 D）。 */
 const GRID_TENTHS = [0, 50, 100, 150, 200] as const;
 
-const ANCHOR_FILL = "color-mix(in srgb, var(--accent) 10%, var(--panel))";
+const ANCHOR_FILL = "color-mix(in srgb, var(--c-capacity) 6%, var(--panel))";
 const KIND_FILL: Record<string, string> = {
   anchor: ANCHOR_FILL,
   high: "var(--danger)",
@@ -92,7 +93,7 @@ export function Waterfall({ model }: { model: WaterfallModel }): JSX.Element {
                 y1={y}
                 x2={VB_W - 10}
                 y2={y}
-                style={{ stroke: v === 0 ? "var(--line2)" : "var(--line)" }}
+                style={{ stroke: v === 0 ? "var(--line2)" : "color-mix(in srgb, var(--line) 62.5%, transparent)" }}
               />
               <text
                 x={X0 - 6}

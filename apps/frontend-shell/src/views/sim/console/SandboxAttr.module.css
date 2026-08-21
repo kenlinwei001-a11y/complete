@@ -311,7 +311,6 @@
   font-size: 11px;
   padding: 4px 7px;
   color: var(--muted2);
-  white-space: nowrap;
   cursor: default;
 }
 .wv b.on {
