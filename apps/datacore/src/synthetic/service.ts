@@ -16,7 +16,8 @@ import type { OutboxService } from "../outbox.js";
 import type { FeatureService } from "../features.js";
 import type { ActionService } from "../actions.js";
 import { VIEW_FEATURE_MAP, ALL_FEATURE_KEYS } from "../features.js";
-import { BUILTIN_VIEWS, assertViewManifestIntegrity, SANDBOX_CONSOLE_VIEW_KEYS } from "./view-manifest.js";
+import { BUILTIN_VIEWS, assertViewManifestIntegrity } from "./view-manifest.js";
+import { SANDBOX_CONSOLE_VIEW_KEYS } from "./sandbox-console.js";
 import { AuthService } from "../auth.js";
 import { newId } from "../ids.js";
 import { mulberry32, hashString, round } from "../prng.js";
@@ -1797,7 +1798,7 @@ export class SyntheticService {
       //   —— 这一条是实测撞出来的，不是风格洁癖：判据⑦ 的供给侧抽取器是**正则捞字面量**
       //   （深度 1 的 `renderer: "…"`），派生写法它一个字都看不见 ⇒ 供给侧集合变小 ⇒ 门照旧
       //   报「这四个键零路径可达」。第一版就是这么写的，门当场原样再红一次。
-      //   与 view-manifest 的 `SANDBOX_CONSOLE_VIEWS` 声明表**不许各写各的**：两侧一致性由
+      //   与 `sandbox-console.ts` 的 `SANDBOX_CONSOLE_VIEWS` 声明表**不许各写各的**：两侧一致性由
       //   `test/workspace-sim-console.seam.test.ts`（§0.2 逐字对前端 registry + A1 逐条对下发值）
       //   机械对账 —— 改一处不改另一处，测试当场红。
       //

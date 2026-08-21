@@ -3,10 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, ADMIN, PLANNER, BASE_MANAGER } from "./helpers.js";
 import { VIEW_FEATURE_MAP } from "../src/features.js";
-import {
-  SANDBOX_CONSOLE_FEATURE_KEY,
-  SANDBOX_CONSOLE_VIEWS,
-} from "../src/synthetic/view-manifest.js";
+import { SANDBOX_CONSOLE_FEATURE_KEY, SANDBOX_CONSOLE_VIEWS } from "../src/synthetic/sandbox-console.js";
 
 /**
  * WO-SIM-BE-VIEWKEY · 推演沙盘指控台四视图 —— **派单侧接缝门**（SEAM-GATE 的后端那一半）。
@@ -101,7 +98,7 @@ describe("WO-SIM-BE-VIEWKEY · §0 金丝雀（否定结论前先自证工具·�
       consoleKeysFromFrontend,
       "前端 `./sim/console/` 下抽出的渲染器键数不是 4 —— 前端改了而后端没跟，本文件的被测对象已失真",
     ).toHaveLength(4);
-    // 后端声明表（view-manifest 的 SANDBOX_CONSOLE_VIEWS）必须与前端真值**逐字**一致。
+    // 后端声明表（sandbox-console.ts 的 SANDBOX_CONSOLE_VIEWS）必须与前端真值**逐字**一致。
     // 写错一个字母不会报错，只会让 ViewPage 落「该视图类型暂不支持」兜底卡 ——
     // 页面开得出来、是空的，本仓最难查的那种坏法。
     expect([...SANDBOX_CONSOLE_VIEWS.map((v) => v.key)].sort()).toEqual([...consoleKeysFromFrontend].sort());
