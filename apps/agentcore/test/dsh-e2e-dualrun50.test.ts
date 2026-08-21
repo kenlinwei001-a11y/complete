@@ -1,5 +1,5 @@
 /**
- * WO-DSH-E2E · §16.2 L1 双跑字节比对（58 任务）driver。
+ * WO-DSH-E2E · §16.2 L1 双跑字节比对（59 任务）driver。
  *
  * 对账口径单源 = fixtures/dualrun-corpus/RECONCILIATION.md（team-lead 2026-08-19 重定义：
  * scalar + kernel 唯一白名单 + native 迭代锚 + dsh stats 对齐）。骨架扩 N2
@@ -428,10 +428,10 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
 // 套件
 // ---------------------------------------------------------------------------
 
-describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（58 任务）", () => {
+describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（59 任务）", () => {
   it("A0 语料自检：构成 / 四维覆盖 / gated 槽在册", () => {
-    expect(DUALRUN_CORPUS.length).toBe(58);
-    expect(new Set(DUALRUN_CORPUS.map((t) => t.id)).size).toBe(58);
+    expect(DUALRUN_CORPUS.length).toBe(59);
+    expect(new Set(DUALRUN_CORPUS.map((t) => t.id)).size).toBe(59);
     const deny = DUALRUN_CORPUS.filter((t) => t.cls.startsWith("deny_"));
     expect(deny.length).toBeGreaterThanOrEqual(10);
     expect(deny.filter((t) => t.cls === "deny_pre").length).toBeGreaterThanOrEqual(1);

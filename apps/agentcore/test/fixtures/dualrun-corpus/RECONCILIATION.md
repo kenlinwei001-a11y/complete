@@ -45,6 +45,26 @@ EMPTY 空块类（W2 批1）同此面：零块数组、空 markdown 串、空白
 （两臂 final_answer 校验同一 zod 形——无 .min(1)，空形态天然可账）；
 G4 超长输出同此面（≥32KB 长文深度等 = 比对器自身压力测试）。
 
+### A1b · structured 深等（G2 expectsSchema，W2 批2）
+expectsSchema 任务的双臂对账面：`result.structured` 双臂捕获深等 + 语料声明锚；
+非结构化任务两臂同 undefined 也逐值咬（反咬「观测面缺失」——driver 先补捕获再断言）。
+valid 形态（dr50-ce/cf）：native acceptFinalAnswer 校验过 ⇒ answer 恒固定文案
+「已按要求返回结构化结果。」（loop.ts:1287-1295）；dsh reassemble expectsSchema 分支
+answer = `lastAssistantText || "（结构化回答见 structured）"`（reassemble.ts:401）⇒
+**dsh 剧本末轮文本必须逐字写固定文案**（语料 STRUCTURED_ANSWER_TEXT 单源），A1 才逐字节等。
+invalid 形态（dr50-cg，invalid→valid 收敛）：native 拒首轮（checkJsonSchema 回注重规划，
+loop.ts:1122-1131）⇒ 次轮 valid 收敛；dsh reassemble 校验**末次** final_answer ⇒ 通过收敛。
+**fail-closed 修复登记（W2 批2③，team-lead 裁决判缺陷）**：reassemble expectsSchema 分支
+原实现 raw 直通无校验（注释自称「对位 loop.ts:147/256」系误引——:256 只是类型注释），
+invalid structured 会落进 `result.structured`；修复 = 同一 checkJsonSchema
+（util/jsonschema.ts 单源 import 复用）校验，invalid ⇒ ok:false（与 provenance/writeMode
+rejects 同通道，engine 出口 FAILED + 「dsh 重组装拒绝：…」既有映射）。
+钉死位：reassemble 单测探针 2 条（dsh-runtime-reassemble.test.ts ③ 组）+ mutation 反证
+（摘校验 ⇒ 探针红）。语义差诚实登记：持久 invalid（剧本不收敛）下 native 重规划至剧本耗尽
+软收尾 ANSWERED，dsh fail-closed FAILED——两臂对「模型反复给非法结构化结果」的处置
+取向不同（native 宽容重试 / dsh 诚实拒绝），语料只钉「拒后收敛」形态（dr50-cg），
+持久分歧形态不进双跑（同 §3 #8 的设计取向差性质）。
+
 ### A2 · 拒绝口径（deny 类 ≥10 条：deny_pre / deny_mid / deny_all / deny_prefork）
 1. 双臂最终 Answer 拒绝文案**逐字节等**（A1 同一条断言覆盖）；
 2. dsh 臂**真强制证据**（wire 级）：`stub.requests[声明位].body` 含
@@ -89,7 +109,7 @@ meta-only 语料下两臂非伪步序列均空（load_skill/final_answer 两臂�
   不进字节断言（A5 确定性同样豁免）。
 
 ### A5 · 确定性
-A5 子集（语料声明 7 条：每类至少一 + 长上下文 + 多轮 + provenance + 空块混排）同臂连跑两遍，
+A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + provenance + 空块混排 + structured）同臂连跑两遍，
 四面产物过**同一比对器同臂变体**（kernel 期望同值、其余同口径）必须全绿——
 证明比对器不把噪声当差集。
 
@@ -124,15 +144,18 @@ A5 子集（语料声明 7 条：每类至少一 + 长上下文 + 多轮 + prove
    （blocks:[] 是实证的，零内容 stop 目前无真跳证据）；③动哪一侧都要改上游 vendor lib
    或 native 宽限，不成比例；④若后续 L2/L6 真跳证据显示真 provider 真撞此形态，再翻案。
 
-## 4. 语料构成（56 条 + 2 gated）
+## 4. 语料构成（59 条 + 2 gated）
 - 内容源：20 条 = SCENARIO_CATALOG triggerQuestion（执行通道不借 evals——蓝图 evidence 5）；
-  36 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮 load_skill；
+  39 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮 load_skill；
   多轮：1/2/5 次 LLM 往返；拒绝混合：deny_pre 前置 / deny_mid 中段 / deny_all 全 deny /
   deny_prefork 分叉前）+ W2 批1 扩面 6 条：G1 EMPTY 空块类 4（dr50-by 空 blocks /
   dr50-bz 空 markdown 块 / dr50-ca 空白软收尾 / dr50-cb 空块混排）+ G4 超长输出 2
-  （dr50-cc ≥32KB markdown 块 / dr50-cd ≥32KB 软收尾长文——确定性填充、零裸数、携带 marker）。
+  （dr50-cc ≥32KB markdown 块 / dr50-cd ≥32KB 软收尾长文——确定性填充、零裸数、携带 marker）
+  + W2 批2 扩面 3 条：G2 expectsSchema 结构化（dr50-ce 简单 schema valid /
+  dr50-cf 嵌套 schema valid / dr50-cg invalid→valid 拒后收敛——dsh 剧本末轮文本
+  恒写固定文案 STRUCTURED_ANSWER_TEXT 单源，invalid 形态锚 A1b 修复后 fail-closed 口径）。
 - 每条 = 数据对 {native 臂 mock 队列剧本，dsh 臂 stub 剧本（+PLATFORM_GOV_DENY 声明），
   期望值声明（answer / native 迭代锚 / native token 锚 / dsh stats 锚 / deny wire 证据位 /
-  EMPTY 豁免位）}。
-- 自检闸（driver 首条 it）：总数 56、deny ≥10、四维覆盖全到位、A5 子集 ∈ 语料、
+  EMPTY 豁免位 / expectsSchema 与 structured 锚）}。
+- 自检闸（driver 首条 it）：总数 59、deny ≥10、四维覆盖全到位、A5 子集 ∈ 语料、
   EMPTY 豁免位双恰（豁免 ⇔ 期望答案无 marker；豁免任务 prompt 必含 id）、gated 槽在册。

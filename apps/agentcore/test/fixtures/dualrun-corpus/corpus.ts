@@ -1,5 +1,5 @@
 /**
- * WO-DSH-E2E · L1 双跑语料（58 任务 + 2 gated 槽）——纯数据，零 IO。
+ * WO-DSH-E2E · L1 双跑语料（59 任务 + 2 gated 槽）——纯数据，零 IO。
  *
  * 对账口径单源 = 同目录 RECONCILIATION.md（team-lead 2026-08-19 重定义：
  * scalar + kernel 唯一白名单 + native 迭代锚 + dsh stats 对齐）。摘要：
@@ -387,6 +387,29 @@ function answerStructured(o: ClassOpts & { schema: Record<string, unknown>; stru
   };
 }
 
+/** answer · G2 invalid→valid 收敛：invalid final_answer 两臂同拒后收敛 valid。
+ *  native：acceptFinalAnswer checkJsonSchema 拒 ⇒ tool_result 回注「参数校验失败」续轮（loop.ts:1122-1131）
+ *    ⇒ 次轮 valid 收敛；dsh：invalid 调用随帧流掠过，reassemble 校验**末次** final_answer（valid）
+ *    ⇒ 通过。fail-closed 钉「落进 result.structured 的值必过 schema」由 reassemble 单测探针钉死
+ *    （dsh-runtime-reassemble.test.ts ③ 组），本条钉双臂收敛形态。答案无 marker ⇒ 豁免位。 */
+function answerStructuredReplan(o: ClassOpts & { schema: Record<string, unknown>; invalid: Record<string, unknown>; structured: Record<string, unknown> }): DualRunTask {
+  return {
+    id: o.id, cls: "answer", source: o.source, prompt: o.prompt,
+    skills: [], ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    expectsSchema: o.schema,
+    dsh: { rounds: [rFa(o.invalid), rFa(o.structured), rTx(STRUCTURED_ANSWER_TEXT)] },
+    native: { turns: [nFa(o.invalid), nFa(o.structured)] },
+    expect: {
+      answer: expectAnswer([T(STRUCTURED_ANSWER_TEXT)]),
+      structured: o.structured,
+      nativeIterations: [{ calls: [] }, { calls: [] }],
+      nativeTokens: { input: 200, output: 100 },
+      dshStats: stats(3),
+      skipMarkerSentinel: true,
+    },
+  };
+}
+
 /** deny_pre · 前置 deny：dsh 臂首次调用（final_answer）即被治理桥拒；双臂终答 = engine 出口 POST_CHECK 替换（W1 起同码）。 */
 
 function denyPre(o: ClassOpts & { ruleId: string }): DualRunTask {
@@ -607,6 +630,13 @@ export const DUALRUN_CORPUS: DualRunTask[] = [
         { name: "乙项", score: 0.7 },
       ],
     },
+  }),
+  answerStructuredReplan({
+    id: "dr50-cg", source: "synthetic",
+    prompt: "合成题 cg（dr50-cg）：先给不合 schema 的结构化结果再收敛。",
+    schema: { type: "object", required: ["conclusion"], properties: { conclusion: { type: "string" } } },
+    invalid: { wrong: "缺 conclusion 键的非法输入（cg）" },
+    structured: { conclusion: "结构化结论（cg）：invalid 被拒后收敛产出。" },
   }),
 ];
 
