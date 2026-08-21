@@ -471,3 +471,7 @@ allow-all，DSH 路径 PRE_CHECK 静默失效，建议升为第四条前置，�
 + mutation 反证三招红（含缺省推导路径段写错 ⇒ ⑤ 红）+ 既有 DSH
 套件全绿（证据指针：`/tmp/dsh-prod-ready-evidence/f1-gov-*.txt`，分支 `claude/wo-dsh-prod-f1-gov`）。
 PRD §6 已同步增列第四条前置并标已销。
+
+## 12 · 补遗（2026-08-21）· WO-DSH-PROD-READY W7：灰度方案与推广/回退判据
+
+见 `docs/ROLLOUT-dsh-external-kernel.md`——W9-lite 计费口径翻转的阻塞性前置观察面、G0→G3 三档推广/回退判据（初值）、灰度期已知差异白名单与观测面边界登记。本文 §3 前置条件仍是闸，灰度文档一个字不放宽。
