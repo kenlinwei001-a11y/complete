@@ -123,7 +123,7 @@ turn/end + 进程死亡 + deadline，缺一即慢失败），有界的是「怎�
 
 | # | 差异 | 登记处 | 分流口径 |
 |---|---|---|---|
-| W-1 | **B5 并行到达序**：并行工具调用按网络到达序各自 tryConsume，序不确定（dualrun 只声明串行预算场景） | W8/W9 立项架构评审登记（team-lead 2026-08-21 归因订正）。⚠ 文件级 file:line 锚**尚未落线**——将由 **W8主 落地时的 REC §3 语义 delta 登记**创建（与 W5 块4 无关），落线后回填本格 | 「并行工具调用到达序不一致」类工单 ⇒ 白名单；排序之外的**内容**差不许借本条目放行 |
+| W-1 | **B5 并行到达序**：并行工具调用按网络到达序各自 tryConsume，序不确定（dualrun 只声明串行预算场景） | W8/W9 立项架构评审登记（team-lead 2026-08-21 归因订正）。⚠ 文件锚待 **W8主 落线回填（REC §3 语义 delta 登记）**（W8主 在途），引用须连带本说明 | 「并行工具调用到达序不一致」类工单 ⇒ 白名单；排序之外的**内容**差不许借本条目放行 |
 | W-2 | **watchdog post-execute 计数差 1**：第 cap 次调用**已执行后**才中断（native 在 dispatch 前拦，第 cap 次不执行）⇒ 工具执行数差 1；事件面/轮次/outcome 不受影响 | `packages/dsh-harness/plugins/platform-watchdog.mjs:79-81` 自陈 · `w3-precondition-audit.md:74` 登记 | 「环检测时多执行了一次工具」类 ⇒ 白名单 |
 | W-3 | **纯空 stop 缝**（RECONCILIATION §3 #8）：provider 病态零内容 stop ⇒ native 兜底软收尾 ANSWERED / dsh pi-ai 判 EMPTY_RESPONSE 诚实 FAILED | team-lead 2026-08-20 判词：缝观察、设计取向差、不判缺陷、不动码 | 「同问句 native 答了 dsh  FAILED」且现场为字面零内容 stop ⇒ 白名单；L2/L6 真跳证据翻案通道保留 |
 | W-4 | **length 截断取向差**（RECONCILIATION §3 #9）：native stopReason≠tool_use 一律软收尾（loop.ts:1027）/ dsh BUDGET_EXHAUSTED + 诚实摘要头 + run.budgetExhausted=true | team-lead 2026-08-21 判词：native 不修（换心不换身/半残机制/仓主级产品裁决） | 「dsh 报预算耗尽 native 不报」且 finish_reason=length ⇒ 白名单 |
@@ -204,7 +204,7 @@ W9 验收判据应含「两载体同源等值」断言，但**等值也不许相
 | §4 重套件串行 / 负载 159 基建红 | dualrun50 负载敏感性观察（战役台账；n0 实测负载证据 `/tmp/dsh-n0-evidence/shard4-rerun-load.txt`  corroborate；W5 `76a547cd8` 191s 串行自陈） |
 | §5 W-2 / cap 解析差 | **W3** 前置审计登记（`w3-precondition-audit.md:74`） |
 | §5 W-3 / W-4 | **W2 批1 / 批3** 裁决（team-lead 2026-08-20 / 2026-08-21，RECONCILIATION §3 #8/#9） |
-| §5 W-1（B5 并行到达序） | **W8/W9 立项架构评审**——并行工具调用按网络到达序各自 tryConsume、序不确定（dualrun 只声明串行预算场景）；战役台账已登记，文件锚待 **W8主 落线时的 REC §3 语义 delta 登记**创建后回填（team-lead 2026-08-21 归因订正：与 W5 块4 无关；本单如实标注，不冒充已锚） |
+| §5 W-1（B5 并行到达序） | **W8主（在途）**——并行工具调用按网络到达序各自 tryConsume、序不确定（dualrun 只声明串行预算场景）；W8/W9 立项架构评审登记，文件锚待 W8主 落线回填（REC §3 语义 delta 登记），引用须连带本说明（team-lead 2026-08-21 归因订正：与 W5 块4 无关） |
 | §6.1 filter-throw | **w4-verifier** SDK 注；本单复核 `dsh-sdk-client/lib/index.js:197-213` |
 | §6.2 PG 边界 | **W6** 边界登记（2026-08-19，`w6-pg-persistence.md` Q2/Q4） |
 | §6.3 degraded 码对称 | **W5 块4** 方向 + RECONCILIATION §3 #7（orchestrator 三发射点，`886c436a7` 静默缝×2 修复落线）；本单复核 :2182/:2433/:2694 同构 |
