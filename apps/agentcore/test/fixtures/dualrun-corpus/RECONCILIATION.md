@@ -50,7 +50,7 @@ expectsSchema 任务的双臂对账面：`result.structured` 双臂捕获深等 
 非结构化任务两臂同 undefined 也逐值咬（反咬「观测面缺失」——driver 先补捕获再断言）。
 valid 形态（dr50-ce/cf）：native acceptFinalAnswer 校验过 ⇒ answer 恒固定文案
 「已按要求返回结构化结果。」（loop.ts:1287-1295）；dsh reassemble expectsSchema 分支
-answer = `lastAssistantText || "（结构化回答见 structured）"`（reassemble.ts:401）⇒
+answer = `lastAssistantText || "（结构化回答见 structured）"`（reassemble.ts:414）⇒
 **dsh 剧本末轮文本必须逐字写固定文案**（语料 STRUCTURED_ANSWER_TEXT 单源），A1 才逐字节等。
 invalid 形态（dr50-cg，invalid→valid 收敛）：native 拒首轮（checkJsonSchema 回注重规划，
 loop.ts:1122-1131）⇒ 次轮 valid 收敛；dsh reassemble 校验**末次** final_answer ⇒ 通过收敛。
@@ -123,7 +123,7 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
 4. dsh 臂审计记录为空壳（iterations []、tokens 0/0）⇒ native 迭代锚 + dsh stats 对齐代之，
    两臂 token/迭代不互比。
 5. **缝观察（denied final_answer 的 blocks 仍上 answer 面）**：dsh 帧流 tool/call 在派发前记录
-   （agent-loop lib/index.js:275），pre-execute deny 不抹帧；reassemble collectToolCalls 不滤成败
+   （agent-loop lib/index.js:191 appendToolCall 在派发 :196 之前），pre-execute deny 不抹帧；reassemble collectToolCalls 不滤成败
    ⇒ 被拒 final_answer 的 blocks 仍成 answer。deny 的执行证据只能在 wire/帧面断言，answer 面
    不体现 deny。本层如实登记，不修缝（L1 是测试层；若评审裁定这是缺陷，另立 WO）。
 6. runPathB 不过分叉（蓝图 evidence 1）⇒ 本层驱动只走 runRegisteredAgent。
