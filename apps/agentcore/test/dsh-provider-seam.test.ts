@@ -376,7 +376,8 @@ describe("A4 · usage 缓存透传", () => {
       try {
         const out = await runDshAgent(
           { prompt: "调 final_answer 收尾", setup: SETUP, provider: PRODUCTION_DSH_HARNESS_PROVIDER, model: MODEL_ID },
-          { harnessDir: HARNESS_DIR, requestTimeoutMs: 60_000, env: platformEnv(`${stub.url}/v1`, FAKE_KEY) },
+          // F-1：生产档治理切 http 后，本组测 provider 缝不测裁决，钉 poc 档（mock 治理放行）。
+          { harnessDir: HARNESS_DIR, requestTimeoutMs: 60_000, cordisFile: "cordis.poc.yml", env: platformEnv(`${stub.url}/v1`, FAKE_KEY) },
         );
         expect(out.result.ok).toBe(true);
         const usages = usageChunks(out.events);
@@ -419,7 +420,8 @@ describe("A5 · 凭据红线", () => {
       try {
         const out = await runDshAgent(
           { prompt: "调 final_answer 收尾", setup: SETUP, provider: PRODUCTION_DSH_HARNESS_PROVIDER, model: MODEL_ID },
-          { harnessDir: HARNESS_DIR, requestTimeoutMs: 60_000, env: platformEnv(`${stub.url}/v1`, FAKE_KEY) },
+          // F-1：生产档治理切 http 后，本组测 provider 缝不测裁决，钉 poc 档（mock 治理放行）。
+          { harnessDir: HARNESS_DIR, requestTimeoutMs: 60_000, cordisFile: "cordis.poc.yml", env: platformEnv(`${stub.url}/v1`, FAKE_KEY) },
         );
         expect(out.result.ok).toBe(true);
         expect(JSON.stringify(out.events)).not.toContain(FAKE_KEY); // server→client 全部帧载荷
@@ -449,7 +451,9 @@ describe("A5 · 凭据红线", () => {
       try {
         const out2 = await runDshAgent(
           { prompt: "调 final_answer 收尾", setup: SETUP, provider: PRODUCTION_DSH_HARNESS_PROVIDER, model: MODEL_ID },
-          { harnessDir: HARNESS_DIR, requestTimeoutMs: 60_000, env: platformEnv(`${stub2.url}/v1`) },
+          // F-1：同上，钉 poc 档（缺 key 负向臂在 governance 初始化之后才解析凭据？——不，
+          // platform-llm initialize 防呆先于 run；钉 poc 档保既有语义）。
+          { harnessDir: HARNESS_DIR, requestTimeoutMs: 60_000, cordisFile: "cordis.poc.yml", env: platformEnv(`${stub2.url}/v1`) },
         );
         const wire = JSON.stringify(out2.events) + JSON.stringify(out2.result);
         expect(wire).toContain("MISSING_CREDENTIAL");
