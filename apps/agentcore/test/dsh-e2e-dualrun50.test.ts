@@ -1,5 +1,5 @@
 /**
- * WO-DSH-E2E · §16.2 L1 双跑字节比对（59 任务）driver。
+ * WO-DSH-E2E · §16.2 L1 双跑字节比对（60 任务）driver。
  *
  * 对账口径单源 = fixtures/dualrun-corpus/RECONCILIATION.md（team-lead 2026-08-19 重定义：
  * scalar + kernel 唯一白名单 + native 迭代锚 + dsh stats 对齐）。骨架扩 N2
@@ -79,6 +79,8 @@ interface ArmProducts {
   answer: Record<string, unknown>;
   /** G2：result.structured 捕获（expectsSchema 任务的双臂对账面；非结构化任务两臂同 undefined）。 */
   structured?: unknown;
+  /** G3：result.degraded 捕获（length 截断任务的分锚面；先补观测面再断言，同 structured 纪律）。 */
+  degraded?: { reason: string };
   run: AgentRunRecord;
   sketch: { toolName: string; inputSummary: string }[];
   events: CapturedEvent[];
@@ -178,6 +180,7 @@ async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProduct
       outcome: result.outcome,
       answer: result.answer as Record<string, unknown>,
       structured: (result as { structured?: unknown }).structured,
+      degraded: (result as { degraded?: { reason: string } }).degraded,
       run: result.run,
       sketch: result.sketch,
       events,
@@ -272,11 +275,24 @@ function checkSseFace(task: DualRunTask, x: ArmProducts, y: ArmProducts): void {
   }
 }
 
-function checkAuditFace(task: DualRunTask, x: ArmProducts, xKernel: string, y: ArmProducts, yKernel: string): void {
-  // scalar 尾逐值等 + kernel 两臂锚定字面量（⇒ 差集恰 = {kernel}，白名单零膨胀）
-  expect(scalarTail(x.run)).toEqual(scalarTail(y.run));
-  expect(x.run.kernel).toBe(xKernel);
-  expect(y.run.kernel).toBe(yKernel);
+function checkAuditFace(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: { x: "off" | "on"; y: "off" | "on" }): void {
+  const div = task.expect.lengthDivergence;
+  if (div) {
+    // G3 分锚（RECONCILIATION §2 A4 分锚行 + §3 #9；team-lead 2026-08-21 裁决）：
+    // budgetExhausted 两臂不互比、各锚各的声明值（先例 = A4 token 账两臂分锚）——
+    // 从 scalar 尾剔出后逐臂锚定，其余 scalar 尾照常逐值等；全局断言对非 div 任务零放宽。
+    const { budgetExhausted: _xb, ...xTail } = scalarTail(x.run);
+    const { budgetExhausted: _yb, ...yTail } = scalarTail(y.run);
+    expect(xTail).toEqual(yTail);
+    // native 臂锚 = false（loop.ts:1027 软收尾不走 finishRun(true)）；dsh 臂锚 = 语料声明 true。
+    expect(x.run.budgetExhausted, `${task.id} budgetExhausted 分锚（x 臂）`).toBe(flags.x === "on" ? div.dsh.budgetExhausted : false);
+    expect(y.run.budgetExhausted, `${task.id} budgetExhausted 分锚（y 臂）`).toBe(flags.y === "on" ? div.dsh.budgetExhausted : false);
+  } else {
+    // scalar 尾逐值等 + kernel 两臂锚定字面量（⇒ 差集恰 = {kernel}，白名单零膨胀）
+    expect(scalarTail(x.run)).toEqual(scalarTail(y.run));
+  }
+  expect(x.run.kernel).toBe(flags.x === "on" ? "EXTERNAL" : "NATIVE");
+  expect(y.run.kernel).toBe(flags.y === "on" ? "EXTERNAL" : "NATIVE");
   // 归一化集形态锚
   expect(x.run.id).toMatch(/^run_/);
   expect(y.run.id).toMatch(/^run_/);
@@ -388,8 +404,21 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
   }
 
   // ---- A1 · Answer 结构逐字节（剥 stats + provenance 归一）----
-  expect(normalizeAnswer(x.answer)).toEqual(normalizeAnswer(y.answer));
-  expect(normalizeAnswer(x.answer)).toEqual(normalizeAnswer(task.expect.answer as unknown as Json));
+  const div = task.expect.lengthDivergence;
+  if (div) {
+    // G3 分锚（§3 #9 设计取向差）：两臂各锚各的声明产物，不互比——
+    // native 臂锚 = expect.answer 本位（软收尾原文）；dsh 臂锚 = div.dsh.answer（摘要头 + 截断前文）。
+    // A5 同臂复跑两臂同 flag ⇒ 锚同一份，比对器噪声检查不受影响。
+    expect(normalizeAnswer(x.answer), `${task.id} A1 分锚（x 臂）`).toEqual(
+      normalizeAnswer((flags.x === "on" ? div.dsh.answer : task.expect.answer) as unknown as Json),
+    );
+    expect(normalizeAnswer(y.answer), `${task.id} A1 分锚（y 臂）`).toEqual(
+      normalizeAnswer((flags.y === "on" ? div.dsh.answer : task.expect.answer) as unknown as Json),
+    );
+  } else {
+    expect(normalizeAnswer(x.answer)).toEqual(normalizeAnswer(y.answer));
+    expect(normalizeAnswer(x.answer)).toEqual(normalizeAnswer(task.expect.answer as unknown as Json));
+  }
 
   // ---- A1b · structured 深等（G2 expectsSchema 任务对账面；非结构化任务两臂同 undefined 也逐值咬）----
   expect(x.structured, `${task.id} structured 双臂深等`).toEqual(y.structured);
@@ -415,23 +444,32 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
   checkSseFace(task, x, y);
 
   // ---- A4 · 审计逐字段 ----
-  checkAuditFace(task, x, flags.x === "on" ? "EXTERNAL" : "NATIVE", y, flags.y === "on" ? "EXTERNAL" : "NATIVE");
+  checkAuditFace(task, x, y, flags);
   checkArmAnchors(task, flags.x, x);
   checkArmAnchors(task, flags.y, y);
 
   // ---- sketch / outcome parity ----
   expect(x.sketch).toEqual(y.sketch);
-  expect(x.outcome).toBe(y.outcome);
+  if (div) {
+    // G3 分锚：outcome/degraded 两臂各锚各的（native 常量锚 ANSWERED/无 degraded；
+    // dsh 锚语料声明 BUDGET_EXHAUSTED/degraded{BUDGET_EXHAUSTED}）。
+    expect(x.outcome, `${task.id} outcome 分锚（x 臂）`).toBe(flags.x === "on" ? div.dsh.outcome : "ANSWERED");
+    expect(y.outcome, `${task.id} outcome 分锚（y 臂）`).toBe(flags.y === "on" ? div.dsh.outcome : "ANSWERED");
+    expect(x.degraded, `${task.id} degraded 分锚（x 臂）`).toEqual(flags.x === "on" ? div.dsh.degraded : undefined);
+    expect(y.degraded, `${task.id} degraded 分锚（y 臂）`).toEqual(flags.y === "on" ? div.dsh.degraded : undefined);
+  } else {
+    expect(x.outcome).toBe(y.outcome);
+  }
 }
 
 // ---------------------------------------------------------------------------
 // 套件
 // ---------------------------------------------------------------------------
 
-describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（59 任务）", () => {
+describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（60 任务）", () => {
   it("A0 语料自检：构成 / 四维覆盖 / gated 槽在册", () => {
-    expect(DUALRUN_CORPUS.length).toBe(59);
-    expect(new Set(DUALRUN_CORPUS.map((t) => t.id)).size).toBe(59);
+    expect(DUALRUN_CORPUS.length).toBe(60);
+    expect(new Set(DUALRUN_CORPUS.map((t) => t.id)).size).toBe(60);
     const deny = DUALRUN_CORPUS.filter((t) => t.cls.startsWith("deny_"));
     expect(deny.length).toBeGreaterThanOrEqual(10);
     expect(deny.filter((t) => t.cls === "deny_pre").length).toBeGreaterThanOrEqual(1);
