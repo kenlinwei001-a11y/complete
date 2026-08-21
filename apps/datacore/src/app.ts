@@ -80,6 +80,9 @@ import { ParetoRequestSchema } from "@platform/contracts"; // WO-SIM-BE-PARETO �
 import { runOptimizePareto } from "./solvers/opt-pareto.js";
 import type { SolveArgsFn } from "./solvers/opt-whatif.js";
 import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact.js";
+// WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段）的**模型层**。回放/归属/分段一律在那边，
+// 本文件只负责「取数据 → 交给它 → 回包」这三件事（同 change-impact / impact-analysis 的分层）。
+import { buildMetricSeries } from "./sim/metric-series.js";
 import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
 // WO-STATEVAR-DISPLAYNAME：推演状态变量中文名的**唯一**投影口（单源表在 battery.ts，两条路由共用此函数）
 import { stateVarDisplayNames } from "./synthetic/battery.js";
@@ -1948,6 +1951,57 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
     return { tick: s.curTick, state: await simCurrent(c, s) };
+  });
+  /**
+   * WO-SIM-BE-SERIES · **指标时序**：基线线 + 扰动后线 + 环节分段。
+   *
+   * 🔴 病灶（实测原文）：上面那条 `…/world` 只回**当前一格** `{ tick, state }`，
+   * 于是「这个数是怎么走到今天的」「不施加这条扰动本该是什么样」两句话在后端**一句都答不出来**。
+   * 前端只好自己攒：`views/sim/ProcessCanvasView.tsx` 头注原文「『上一拍』必须由本档自己留存，
+   * **不能问后端要**：`GET …/:id/world` 只回当前态」—— 攒的是屏幕残留，刷新即失、跨档不共享，
+   * 而且它**永远攒不出基线**（基线是一条从没在屏上跑过的线）。
+   *
+   * ⛔ 基线**不是**另起一个会话重算（这是本单最容易做错的地方，也是唯一一处必须点名的禁忌）：
+   * 下面 `seed` 取的是**本会话自己的 tick0 行**，两条线连同规则集/图/参数/闸门全部共用，
+   * 只有扰动集不同。改成 `simState(s.baseSnapshot)`（= 新会话开局拿到的东西）或另建会话，
+   * 分叉点会**提前到 tick 0** —— 屏上就是一个从头就存在的假分叉，而它与扰动毫无关系。
+   * 回包的 `baselineOrigin.sessionId` 把这件事摊开，`metric-series.seam.test.ts` ①⑤ 咬死它。
+   *
+   * entitlement 取 `sim.propagation` 而非 `sim.sandbox`：本路由**真的驱动 `propagateTick`**
+   * （与 `POST …/tick`、`POST …/counterfactual` 同一档），不是纯快照读。
+   * ⚠ 只读：`putTickState` / `putSession` / `outbox.emit` 一次都不调（同 counterfactual 的 `persist:false`）。
+   */
+  app.get("/a/v1/sim/sessions/:id/metric-series", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation"); // R3 entitlement 先于 authz
+    const s = await getSimOr404(c, (req.params as { id: string }).id); // R2：别租户 404
+    const q = parseBody(
+      z.object({
+        from: z.coerce.number().int().min(0).optional(),
+        to: z.coerce.number().int().min(0).optional(),
+      }),
+      req.query ?? {},
+    );
+    const published = await listPublishedPropRules(c);
+    const active = (await sessionPropRules(c, s)).active; // 引擎吃过滤后的；目录吃全量（判据见模型层注释）
+    const perturbations = await repos.sim.listPerturbations(c.tenantId, s.id);
+    // 与 tick 路同一条性能判据（`propagation-inputs.ts` 头注）：没规则也没扰动 ⇒ 整段装配都省掉，
+    // 保住"无传导规则的租户零本体读"这条既有特征。此时两条线恒等（世界不动），回包照常成立。
+    const engine = published.length > 0 || perturbations.length > 0
+      ? await buildPropagationInputs(repos, c, resolveSimScope(s.scope))
+      : { graph: { objects: [], links: [] }, ruleParams: {}, cadenceGates: {} };
+    return buildMetricSeries({
+      sessionId: s.id,
+      // 🔴 基线种子 = **本会话自己的 tick0 行**（`/act` 直写过的世界里它与 baseSnapshot 不同，
+      //    那个差额属于这个世界、两条线都该带着它）。缺行才退回 baseSnapshot。
+      seed: (await repos.sim.getTickState(c.tenantId, s.id, 0))?.state ?? simState(s.baseSnapshot),
+      engine: { graph: engine.graph, ruleParams: engine.ruleParams, cadenceGates: engine.cadenceGates },
+      publishedRules: published,
+      activeRules: active,
+      perturbations,
+      curTick: s.curTick,
+      ...(q.from === undefined ? {} : { from: q.from }),
+      ...(q.to === undefined ? {} : { to: q.to }),
+    });
   });
   /**
    * 从会话**当前态**推进 n 格（`propagateTick` 的唯一驱动处）。
