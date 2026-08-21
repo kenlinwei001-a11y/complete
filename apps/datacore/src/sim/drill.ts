@@ -47,7 +47,6 @@ import {
   type ChainNodeDetail,
   type ChainRoute,
   type ChainSubCause,
-  type ChainSubCauseEvidence,
 } from "@platform/contracts";
 import { propDisplayName } from "../synthetic/battery.js";
 import type { ChainNodeLossShare } from "../solvers/chain-loss.js";
