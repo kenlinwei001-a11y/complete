@@ -71,11 +71,17 @@
   font-size: 12px;
   line-height: 1.35;
 }
-/* 规格 `*{box-sizing:border-box}` —— 作用域限定在本页画布内 */
+/*
+ * 规格 `*{box-sizing:border-box}` —— 作用域限定在本页画布内。
+ *
+ * ⚠ **故意不带 `::before` / `::after`**：CSS 的 `*` **不匹配伪元素**，而 `box-sizing`
+ *   又不是继承属性 ⇒ 规格里 `.pan::before/::after` 那两枚 8px 角标吃的是 `content-box`，
+ *   总尺寸是 8+1(border)=9px。这里若顺手把伪元素也 border-box 掉，角标每条臂**短 1px**。
+ *   实测：加上伪元素那两行，四枚角标共 28 个器件像素（dsf=2）与基准 `pg2.png` 不符
+ *   （逻辑坐标 (488,31)/(480,39) 等臂端各 1px）。这不是洁癖，是本页 1:1 的一部分。
+ */
 .app,
-.app *,
-.app *::before,
-.app *::after {
+.app * {
   box-sizing: border-box;
 }
 
