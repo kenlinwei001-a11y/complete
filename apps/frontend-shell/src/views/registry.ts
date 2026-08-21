@@ -67,6 +67,7 @@ registerRenderer("optimize-whatif", () => import("./OptimizeWhatifView"));
 // 不在接线这一步顺手删别人的入口（删了出问题就说不清是接线错还是退役错）。
 registerRenderer("sim-console", () => import("./sim/console/SandboxHomeRoute"));
 registerRenderer("sim-conduction", () => import("./sim/console/SandboxDetailRoute"));
+registerRenderer("sim-attribution", () => import("./sim/console/SandboxAttrRoute"));
 registerRenderer("ledger", () => import("./LedgerView"));
 registerRenderer("plan-audit", () => import("./sim/PlanAuditView"));
 registerRenderer("plan-generate", () => import("./sim/PlanGenerateView"));
