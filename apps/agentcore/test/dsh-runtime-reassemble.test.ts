@@ -152,10 +152,17 @@ describe("reassemble · 治理拒证（loop.ts acceptFinalAnswer 同口径）", 
 });
 
 describe("reassemble · turn/end → outcome", () => {
-  it("max-tokens → BUDGET_EXHAUSTED + degraded", () => {
+  it("max-tokens → BUDGET_EXHAUSTED + degraded + 诚实摘要头（W2 批3 修复②钉死）", () => {
     const r = reassembleDshRun([assistantMessage("半"), turnEnd("max-tokens")]);
     expect(r.ok && r.outcome).toBe("BUDGET_EXHAUSTED");
     expect(r.ok && r.degraded).toEqual({ reason: "BUDGET_EXHAUSTED" });
+    // 诚实摘要头钉死（镜像 stall 路模板；语料锚 = corpus.ts LENGTH_TRUNCATION_HEADER 逐字同源）：
+    // header 块在前、截断前文在后，两块同形对位 native degrade 有界终止约定（loop.ts:620-634）。
+    expect(r.ok && r.answer.blocks.map((b) => b.type)).toEqual(["text", "text"]);
+    expect(r.ok && (r.answer.blocks[0] as { markdown: string }).markdown).toBe(
+      "[预算耗尽·诚实摘要] ⚠️ 模型输出触长度上限被截断——本次深问未能完全解答（已诚实终止）。以下为已探索到的线索：",
+    );
+    expect(r.ok && (r.answer.blocks[1] as { markdown: string }).markdown).toBe("半");
   });
   it("error → FAILED；aborted → FAILED", () => {
     expect(reassembleDshRun([turnEnd("error")]).ok && (reassembleDshRun([turnEnd("error")]) as { outcome: string }).outcome).toBe("FAILED");

@@ -655,10 +655,16 @@ export class ExecutionEngine {
       // stats 回声与治理替换**正交**：后验 BLOCK 换掉的是答案内容，token/轮次等运行观测回声
       // 不随答案一起消失（对拍驱动 A4 锚「dsh 臂必带 stats」不按后验结果分支）——
       // 故 stats 在闭包**之后**重挂，而不是编进待后验的 answer。
+      // W2 批3（team-lead 2026-08-21 裁决·dsh 自体修复①）：dsh 自体对齐——reassemble outcome
+      // BUDGET_EXHAUSTED ⇒ run.budgetExhausted=true（对位 loop.ts:659 finishRun 同口径）。
+      // emptyAgentRunRecord 恒 false 会把 dsh 自己的 outcome 语义在出口丢掉：answer 带 degraded
+      // 而审计记录 budgetExhausted=false = 自体矛盾（管理台可见）。
+      const dshRun = emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, "EXTERNAL");
+      if (dsh.result.outcome === "BUDGET_EXHAUSTED") dshRun.budgetExhausted = true;
       const checked = await applyPostChecks({
         outcome: dsh.result.outcome,
         answer: dsh.result.answer,
-        run: emptyAgentRunRecord(opts.taskId, model, opts.nesting.budget, attribution, opts.placement, "EXTERNAL"),
+        run: dshRun,
         sketch: dsh.result.sketch,
         ...(dsh.result.structured ? { structured: dsh.result.structured } : {}),
         ...(dsh.result.degraded ? { degraded: dsh.result.degraded } : {}),
