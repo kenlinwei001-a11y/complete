@@ -614,6 +614,9 @@ export class ExecutionEngine {
           prompt: userContent,
           setup,
           provider: cfg.DSH_HARNESS_PROVIDER,
+          // F-1（WO-DSH-PROD-READY）：cordis 档可配（缺省 "cordis.yml" 生产档 = 治理 http 模式；
+          // 测试经 cfg 钉 "cordis.poc.yml" mock 档，与 runner opts.cordisFile 同键直通）。
+          cordisFile: cfg.DSH_HARNESS_CORDIS_FILE,
           model: facts.modelId,
           reassemble: {
             governance: { writeMode, provenancePolicy: effectiveProvenancePolicy },
@@ -628,6 +631,15 @@ export class ExecutionEngine {
             PLATFORM_LLM_MODEL: facts.modelId,
             ...(facts.apiKey ? { PLATFORM_LLM_API_KEY: facts.apiKey } : {}),
             ...(facts.contextWindow ? { PLATFORM_LLM_CONTEXT_WINDOW: String(facts.contextWindow) } : {}),
+            // F-1：生产档 platform-governance（http 模式）裁决端点与凭据经 env 缝注入，不落盘。
+            // fail-closed 链（不许削弱）：① http 模式无 url ⇒ 插件 initialize 抛错
+            // （platform-governance.mjs「requires config.url or PLATFORM_GOV_URL」）；
+            // ② 端点 requireServiceToken 未配置/不符 ⇒ 401 ⇒ 插件转 deny
+            // （server.ts requireServiceToken + 插件 HTTP !ok 分支）；③ 不可达/超时/畸形
+            // 应答 ⇒ 插件一律 deny。URL 缺省推导本进程裁决端点（zod default 引不了 PORT，
+            // 故在此推导），DSH_GOV_URL 显式覆盖。
+            PLATFORM_GOV_URL: cfg.DSH_GOV_URL ?? `http://127.0.0.1:${cfg.PORT}/b/v1/governance/adjudicate`,
+            ...(cfg.SERVICE_TOKEN ? { PLATFORM_GOV_TOKEN: cfg.SERVICE_TOKEN } : {}),
           },
         },
       );
