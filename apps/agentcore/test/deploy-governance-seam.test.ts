@@ -243,6 +243,8 @@ describe("#88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（N3 看门狗·en
     const stub = await startStubOpenAi(STALL_SCRIPT.map((r) => ({ ...r })));
     const t: TestApp = await createTestApp({
       providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+      // F-1：生产档治理切 http 后，dsh 臂钉 poc 档（mock 治理放行）保持既有语义。
+      env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
     });
     try {
       await t.repos.agents.insert(echoAgentDef());

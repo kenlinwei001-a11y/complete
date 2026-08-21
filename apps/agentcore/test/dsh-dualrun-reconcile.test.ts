@@ -105,7 +105,8 @@ async function runArm(flag: "off" | "on"): Promise<{ t: TestApp; events: Capture
   // 裁决 A：on 臂走 N1 既定缝（stub OpenAI 端点 + dcp 绑定矩阵 stub）；off 臂逐字未动。
   const stub = flag === "on" ? await startStubOpenAi(DUALRUN_SCRIPT.map((r) => ({ ...r }))) : undefined;
   const t = await createTestApp(
-    stub ? { providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never } : {},
+    // F-1：dsh 臂钉 poc 档（生产档治理已切 http；本对拍依赖 mock 治理放行）。
+    stub ? { providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never, env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" } } : {},
   );
   const agentId = `agt_dual_${flag}`;
   await t.repos.agents.insert(agentDef(agentId, stub ? STUB_DCP_SPEC : "claude-opus-4-8"));
