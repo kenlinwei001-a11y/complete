@@ -13,6 +13,7 @@
 
 import * as McpClient from './mcp-client-tenant.mjs'
 import { getAdjudicator } from './platform-governance.mjs'
+import { getToolExecutor } from './tool-bridge.mjs'
 import { installStallLoopWatchdog } from './platform-watchdog.mjs'
 
 /** agent 级 system prompt section 的固定名/序（root persona 是 order 0，agent 追加其后）。 */
@@ -78,6 +79,15 @@ export function validateSetupSpec(spec) {
       throw new TypeError('setup.finalAnswer requires {description: string, schema: object}')
     }
     out.finalAnswer = spec.finalAnswer
+  }
+  if (spec.hostTools !== undefined) {
+    // W8主：反向通道注册素材（BUILTIN 工具面）。形态错误当场抛（创建期 fail-closed）。
+    if (!Array.isArray(spec.hostTools) || spec.hostTools.some((t) =>
+      typeof t?.name !== 'string' || typeof t?.description !== 'string'
+      || typeof t?.inputSchema !== 'object' || t?.inputSchema === null || Array.isArray(t?.inputSchema))) {
+      throw new TypeError('setup.hostTools must be an array of {name, description, inputSchema: object}')
+    }
+    out.hostTools = spec.hostTools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }))
   }
   return out
 }
@@ -147,6 +157,59 @@ export async function applySetupSpec(agentCtx, spec) {
         if (!skill) return { found: false, key: args?.key ?? '' } // 缺省 fail-closed：找不到 = 明确否定，不编造
         return { found: true, key: skill.key, body: skill.body, resources: skill.resources, governance: skill.governance }
       },
+    })
+  }
+
+  // --- W8主 · 反向通道：hostTools 逐条注册成「反向工具」+ tools/execute 桥接包装 ---
+  // execute = tool-bridge 单例 executor（fetch 宿主 tool-execute 端点）。宿主端点已把
+  // OK 面截断整形完（payloadJson 串 + note），render 只套 <tool_data tool_call_id> 包装
+  // （loop.ts:901 逐字同形）；非 OK 包络由下方 tools/execute 包装换成 authored isError
+  // 回执——native 文案逐字等的唯一通路（execute 抛错必带 "Error: " 前缀，success 恒
+  // isError:false，见 tool-bridge.mjs 头注）。
+  if (spec.hostTools !== undefined && spec.hostTools.length > 0) {
+    if (!tools) throw new Error('setup.hostTools requires the tools plugin in cordis.yml')
+    const hostExecute = getToolExecutor()
+    // 有 hostTools 但桥插件未挂/休眠（无 PLATFORM_TOOL_EXEC_URL/DSH_RUN_TOKEN）= 配置错误，
+    // fail-closed 创建期抛（不静默注册死工具——与上方 governance 无裁决器同口径）。
+    if (!hostExecute) throw new Error('setup.hostTools requires the platform-tool-bridge plugin in cordis.yml (armed via PLATFORM_TOOL_EXEC_URL + DSH_RUN_TOKEN)')
+    const reverseNames = new Set(spec.hostTools.map((t) => t.name))
+    for (const t of spec.hostTools) {
+      tools.register({
+        name: t.name,
+        description: t.description,
+        parameters: t.inputSchema,
+        output: {
+          schema: { type: 'object' },
+          render: (_args, value) => [{
+            type: 'text',
+            text: value.ok
+              ? `<tool_data tool_call_id="${value.toolCallId}">${value.payloadJson}</tool_data>${value.note ? `\n${value.note}` : ''}`
+              : value.text, // 非 OK：此 render 产物被下方包装替换，永不交付
+          }],
+        },
+        execute: async (args) => hostExecute({ toolName: t.name, input: args }),
+      })
+    }
+    // authored isError 通道：非 OK 包络在此换成 native 逐字回执（normalizeDispatchResult
+    // 对 authored isError 结果的 content 原文透传）。BUDGET_EXCEEDED 另触发 B6 降级桥：
+    // 宿主预算消尽 ⇒ cancel 整个 turn（reassemble 第三分类器前置 ⇒ BUDGET_EXHAUSTED +
+    // 诚实摘要头）；结果帧先于 cancel 落流（drain：cancel 不丢已起步的执行体）。
+    agentCtx.on('tools/execute', async (exec, next) => {
+      const result = await next()
+      if (!reverseNames.has(exec.name)) return result
+      const value = result?.value
+      if (!value || value.__w8bridge !== true || value.ok !== false) return result
+      if (value.outcome === 'BUDGET_EXCEEDED') {
+        exec.agent?.cancel({
+          kind: 'budget-exhausted',
+          ...(typeof value.reason === 'string' ? { reason: value.reason } : {}),
+        })
+      }
+      return {
+        isError: true,
+        error: { message: value.text },
+        content: [{ type: 'text', text: value.text }],
+      }
     })
   }
 
