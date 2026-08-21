@@ -614,9 +614,6 @@ export class ExecutionEngine {
           prompt: userContent,
           setup,
           provider: cfg.DSH_HARNESS_PROVIDER,
-          // F-1（WO-DSH-PROD-READY）：cordis 档可配（缺省 "cordis.yml" 生产档 = 治理 http 模式；
-          // 测试经 cfg 钉 "cordis.poc.yml" mock 档，与 runner opts.cordisFile 同键直通）。
-          cordisFile: cfg.DSH_HARNESS_CORDIS_FILE,
           model: facts.modelId,
           reassemble: {
             governance: { writeMode, provenancePolicy: effectiveProvenancePolicy },
@@ -625,6 +622,10 @@ export class ExecutionEngine {
           onSse: (e) => { void opts.emit(e.event, e.payload); },
         },
         {
+          // F-1（WO-DSH-PROD-READY）：cordis 档可配（缺省 "cordis.yml" 生产档 = 治理 http 模式；
+          // 测试经 cfg 钉 "cordis.poc.yml" mock 档）。键属 DshRunnerOptions（第二参），放错到
+          // 第一参会被静默忽略（血账：F-1 施工期实证，tsc 才咬得到）。
+          cordisFile: cfg.DSH_HARNESS_CORDIS_FILE,
           env: {
             PLATFORM_LLM_API: facts.kind === "anthropic" ? "anthropic-messages" : "openai-completions",
             ...(facts.baseUrl ? { PLATFORM_LLM_BASE_URL: facts.baseUrl } : {}),
