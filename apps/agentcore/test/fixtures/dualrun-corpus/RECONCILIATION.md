@@ -174,6 +174,9 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
    待 W9-full 一次翻。空壳口径仅余零 spawn 早退路（deny_prefork 类）。A4b 审计行锚与
    本骨架正交：骨架进 run.iterations（记录内字段），审计行 = 宿主 tool_calls 表（IO 面），
    W9-lite 仍零行——A4b「dsh 臂若开始写审计行 = 红」反咬维持，行写入属 W8主/W9-full。）**
+   **（W8主 落线加注 2026-08-21：反向通道落线后 dsh 臂真调 BUILTIN 反向工具即落宿主
+   审计行——dualrun50 语料 meta 剧本声明 query_objects 但从不真调 ⇒ 语料面 dsh 臂仍恒零行，
+   A4b 反咬维持有效；未来语料引入真反向调用时 A4b 须按本登记翻锚。）**
 5. **缝观察（denied final_answer 的 blocks 仍上 answer 面）**：dsh 帧流 tool/call 在派发前记录
    （agent-loop lib/index.js:191 appendToolCall 在派发 :196 之前），pre-execute deny 不抹帧；reassemble collectToolCalls 不滤成败
    ⇒ 被拒 final_answer 的 blocks 仍成 answer。deny 的执行证据只能在 wire/帧面断言，answer 面
@@ -235,7 +238,25 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
    ⇒ W9-lite run.iterations 骨架的 outcome 只有 OK/ERROR **两态**（DENIED/BUDGET_EXCEEDED
    帧流无源，不硬造）；toolCallId = dsh 帧 callId 原值（非 tc_ 形态）；durationMs =
    call/result 帧 time 差推导值（墙钟，只锚非负形态）。四态 + tc_ 合流 + A4 双臂互比
-   单翻待 W9-full。
+   单翻待 W9-full。**（W8主 落线加注 2026-08-21：反向通道已落线——dsh 臂 scope 白名单内
+   BUILTIN 28 工具经宿主 GuardedToolExecutor 执行 ⇒ OK/DENIED/ERROR/BUDGET_EXCEEDED 四态 +
+   tc_ 形态 id 在宿主 tool_calls 表有源（dsh-engine-tool-bridge.seam A1-A9 钉死）；MCP 工具
+   仍不过宿主，本条主体维持。四态 + tc_ 合流进 run.iterations 骨架 + A4 双臂互比仍待
+   W9-full 一次翻，本条不销。）**
+11. **B5 并行到达序（W8主 落线回填——ROLLOUT §5 W-1 文件锚）**：W8主 起 dsh 臂 BUILTIN
+   工具调用经 HTTP 带外 tool-execute 反向通道进宿主 GuardedToolExecutor——并行调用按网络
+   到达序各自过预算门 tryConsume（`apps/agentcore/src/server.ts` /b/v1/dsh/tool-execute
+   端点 → `engine.ts` dshToolExecuteRuns 登记的 :491 同实例 executor），到达序不确定 ⇒
+   并行预算耗尽场景谁先撞线不可账。dualrun 语料只声明串行预算场景，本差不进断言；
+   「并行工具调用到达序不一致」类工单走 ROLLOUT §5 W-1 白名单，排序之外的**内容**差
+   不许借本条目放行。
+12. **孤儿审计行合法（W8主 反向通道双档超时的构造面）**：桥本地 fetch 放弃线
+   （DSH_TOOL_EXEC_FETCH_TIMEOUT_MS）与宿主 per-call withTimeout（DSH_TOOL_EXEC_TIMEOUT_MS
+   上行，端点再与预算剩余取 min）相互独立——桥先放弃**不取消**宿主 fastify handler ⇒
+   帧面 ERROR（TOOL_EXECUTE_TIMEOUT）而宿主 tool_calls 表晚落 OK 行（孤儿行）。孤儿行是
+   合法形态，不作对账差；工具结果事实源 = 宿主 tool_calls 表 ∪ 帧流，任一单面不完整。
+   实证锚：dsh-engine-tool-bridge.seam B6（exec 3000ms / fetch 100ms / 宿主 400ms ⇒
+   帧 ERROR ∧ 晚落 OK 行）。
 
 ## 4. 语料构成（63 条 + 2 gated）
 - 内容源：20 条 = SCENARIO_CATALOG triggerQuestion（执行通道不借 evals——蓝图 evidence 5）；
