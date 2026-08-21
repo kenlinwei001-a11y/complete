@@ -2,7 +2,12 @@ import { assertSharedFeatureNames, type FeatureDef } from "@platform/contracts";
 import type { AuthCtx, FeatureAuditRecord, FeatureConfigRecord } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import { AppError, validationError } from "./errors.js";
-import { builtInViewFeatureDefs, builtInViewFeatureMap } from "./synthetic/view-manifest.js";
+import {
+  builtInViewFeatureDefs,
+  builtInViewFeatureMap,
+  SANDBOX_CONSOLE_FEATURE_KEY,
+  SANDBOX_CONSOLE_VIEW_KEYS,
+} from "./synthetic/view-manifest.js";
 
 /**
  * Feature entitlement (增量 PRD). FeatureRegistry is code-registered; resolution
@@ -298,6 +303,12 @@ export const VIEW_FEATURE_MAP: Record<string, string> = {
   // 暗发中（process.runtime defaultOn:false + INCOMPLETE_DATA_DARK_LAUNCH_FEATURES）⇒ 导航里默认不出现，
   // 开通后才进 workspace 导航 —— 这一行正是「开通后它能被导航到」的接线，缺它则开了也看不见。
   "process-stuck": "process.runtime",
+  // WO-SIM-BE-VIEWKEY · 推演沙盘指控台四视图（前端 renderer 键见 frontend registry.ts 的
+  // `./sim/console/` 那四行）。**受控键直接是 `sim.sandbox`**，与沙盘主屏同一把闸 ——
+  // 不新增 VIEW 级功能（判据与连坐后果见 view-manifest.ts `SANDBOX_CONSOLE_VIEWS` 的长注）。
+  // 缺这四行 = 「开了沙盘也看不见控制台」：`viewAllowed()` 查不到映射就一律放行，
+  // 反而会变成"沙盘关着还下发"——两个方向都错，故映射必须显式写在这里。
+  ...Object.fromEntries(SANDBOX_CONSOLE_VIEW_KEYS.map((k) => [k, SANDBOX_CONSOLE_FEATURE_KEY])),
 };
 
 /**
