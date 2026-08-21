@@ -51,7 +51,7 @@ const OBJECT_TYPE_LABEL: Record<string, string> = {
  * 组名是视图层的看板分组（契约的 `层1..层6` 是产能金字塔的层，不是这张扰动表的分组），
  * 故不从契约派生；但**组行数之和必须等于册长**，由测试咬住（改册漏改这里即红）。
  */
-const GROUPS: readonly { title: string; count: number }[] = [
+const GROUPS: readonly { title: string; count: number }[] = [ // hardcoded-data-allow —— 纯**分组版面**（每组几行），零业务数值；因子内容全部来自契约 CAPACITY_FACTOR_BINDINGS
   { title: "节拍与产出", count: 6 },
   { title: "良率与人力", count: 4 },
   { title: "产线", count: 3 },
@@ -66,8 +66,15 @@ const GROUPS: readonly { title: string; count: number }[] = [
  * 不是自由串 —— 册里改了属性名，下面的常量对不上，测试会红。
  */
 const PLACEHOLDER_HOT_PROPS: readonly string[] = ["oee_current", "yield_baseline", "onHand"];
-/** 同上：规格里被选中的那一行（⑮ 物料到货）。 */
+/**
+ * 同上：规格里被选中的那一行（⑮ 物料到货）。
+ * ⚠ **行的身份是 `num` 不是 `prop`** —— 册里 `prop` 有重复（实测 20 条只有 19 个不同的 `prop`：
+ * ⑧ 利用率 与 ⑩ 瓶颈工序 都落在 `utilization`，只是对象类型不同 Process / Line）。
+ * 拿 `prop` 当行 id 会**同时选中两行**、并让 `querySelector([data-factor])` 两次都命中第一行
+ * （首版就是这么写的，逐像素比对当场抓到：⑧ 那行画了两条重叠的连线、⑩ 那行一条都没有）。
+ */
 const DEFAULT_SELECTED_PROP = "leadTime";
+const DEFAULT_SELECTED_NUM = CAPACITY_FACTOR_BINDINGS.find((f) => f.prop === DEFAULT_SELECTED_PROP)?.num ?? 0;
 
 /** 轮次页签（规格第 191 行）。第几轮推演是纯 UI 态，今天没有承载物。 */
 const ROUNDS = ["第一轮次", "第二轮次", "第三轮次", "第四轮次"] as const;
@@ -99,7 +106,7 @@ export interface PerturbTreeProps {
 export function PerturbTree({ sessionId, targetObjectId }: PerturbTreeProps): JSX.Element {
   const qc = useQueryClient();
   const groups = useMemo(groupedFactors, []);
-  const [selectedProp, setSelectedProp] = useState<string>(DEFAULT_SELECTED_PROP);
+  const [selectedNum, setSelectedNum] = useState<number>(DEFAULT_SELECTED_NUM);
 
   const listQuery = useQuery({
     queryKey: ["a", "sim-perturbations", sessionId ?? ""],
@@ -109,7 +116,12 @@ export function PerturbTree({ sessionId, targetObjectId }: PerturbTreeProps): JS
     retry: false,
   });
 
-  /** 受击 = 世界里真有一条扰动打在这个因子的落点属性上。没回包 ⇒ 规格占位。 */
+  /**
+   * 受击 = 世界里真有一条扰动打在这个因子的落点属性上。没回包 ⇒ 规格占位。
+   * ⚠ 这里按 `targetStateVar` 匹配，而扰动契约只给到「哪个对象的哪个状态变量」——
+   * 故 `utilization` 上的一条扰动会把 ⑧ 与 ⑩ **同时**点亮。这是**据实的过近似**，
+   * 不是 bug：要区分得先能把 `targetObjectId` 解析回 objectType，那是落点选择器那张单的事。
+   */
   const hotProps = useMemo(
     () =>
       listQuery.data === undefined
@@ -121,7 +133,7 @@ export function PerturbTree({ sessionId, targetObjectId }: PerturbTreeProps): JS
 
   const onAdd = useCallback(
     (kind: PerturbationKind) => {
-      const factor = CAPACITY_FACTOR_BINDINGS.find((f) => f.prop === selectedProp);
+      const factor = CAPACITY_FACTOR_BINDINGS.find((f) => f.num === selectedNum);
       // 三个前置缺一不可；缺了就**什么都不做**，不去编一个 objectId 顶上（那是造假数据）。
       if (sessionId === undefined || targetObjectId === undefined || factor === undefined) return;
       void createSimPerturbation(sessionId, {
@@ -132,7 +144,7 @@ export function PerturbTree({ sessionId, targetObjectId }: PerturbTreeProps): JS
         label: `${factor.mark} ${factor.factorName}`,
       }).then(() => qc.invalidateQueries({ queryKey: ["a", "sim-perturbations", sessionId] }));
     },
-    [qc, selectedProp, sessionId, targetObjectId],
+    [qc, selectedNum, sessionId, targetObjectId],
   );
 
   // ── 组间括号式黄连线：与规格同一套算法（量 DOM 而不是猜版面），jsdom 无布局 ⇒ 自然为空 ──
@@ -146,8 +158,8 @@ export function PerturbTree({ sessionId, targetObjectId }: PerturbTreeProps): JS
     if (r0.width === 0 && r0.height === 0) return; // 无布局环境（jsdom）：不画，也不报错
     const next: { d: string; key: string }[] = [];
     for (const f of CAPACITY_FACTOR_BINDINGS) {
-      const a = grid.querySelector(`[data-factor="${f.prop}"]`);
-      const b = grid.querySelector(`[data-drop="${f.prop}"]`);
+      const a = grid.querySelector(`[data-factor="${f.num}"]`);
+      const b = grid.querySelector(`[data-drop="${f.num}"]`);
       if (a === null || b === null) continue;
       const A = a.getBoundingClientRect();
       const B = b.getBoundingClientRect();
@@ -156,7 +168,7 @@ export function PerturbTree({ sessionId, targetObjectId }: PerturbTreeProps): JS
       const x2 = B.left - r0.left - 2;
       const y2 = B.top - r0.top + B.height / 2;
       const mx = x1 + (x2 - x1) * 0.42;
-      next.push({ key: f.prop, d: `M${x1} ${y1} H${mx} V${y2} H${x2}` });
+      next.push({ key: String(f.num), d: `M${x1} ${y1} H${mx} V${y2} H${x2}` });
     }
     setLinkBox({ w: r0.width, h: r0.height });
     setLinks(next);
@@ -206,17 +218,17 @@ export function PerturbTree({ sessionId, targetObjectId }: PerturbTreeProps): JS
                 </div>
                 {g.rows.map((f) => {
                   const ro = !f.writable;
-                  const on = f.prop === selectedProp;
+                  const on = f.num === selectedNum;
                   const hot = !on && hotProps.has(f.prop);
                   return (
                     <div
-                      key={f.prop}
+                      key={f.num}
                       className={[styles.it, ro ? styles.ro : "", on ? styles.on : "", hot ? styles.hot : ""]
                         .filter(Boolean)
                         .join(" ")}
-                      data-factor={f.prop}
+                      data-factor={f.num}
                       data-testid={`sandbox-home-factor-${f.num}`}
-                      onClick={() => setSelectedProp(f.prop)}
+                      onClick={() => setSelectedNum(f.num)}
                     >
                       <span className={styles.mk}>{f.mark}</span>
                       <span className={styles.tg}>{ro ? "／" : "▤"}</span>
@@ -238,7 +250,7 @@ export function PerturbTree({ sessionId, targetObjectId }: PerturbTreeProps): JS
                   落点
                 </div>
                 {g.rows.map((f) => (
-                  <div key={f.prop} className={styles.dp} data-drop={f.prop}>
+                  <div key={f.num} className={styles.dp} data-drop={f.num} data-testid={`sandbox-home-drop-${f.num}`}>
                     ▸ <b>{OBJECT_TYPE_LABEL[f.objectType] ?? f.objectType}</b>
                   </div>
                 ))}

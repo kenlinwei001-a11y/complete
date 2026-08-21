@@ -108,7 +108,7 @@ type SpecRow = readonly [string | undefined, string, string, string, "up" | "dn"
 const RELEASE: SegmentRef = { text: "缓冲释放" };
 const CARRY: SegmentRef = { text: "结转" };
 
-const SPEC_ROWS: readonly SpecRow[] = [
+const SPEC_ROWS: readonly SpecRow[] = [ // hardcoded-data-allow —— **规格占位数**，端点 WO-SIM-BE-SERIES 未到；派单原文要求先用它并把取数收进 useMetricSeries()，端点一到只换 hook 内部。这是全仓唯一一份，不许再抄第二处
   ["交付域", "交付准时率", "94.2%", "88.6%", "up", [[2, 9, "o", "REQ"], [13, 17, "b", "KIT"], [32, 16, "b", "AGING"], [52, 12, "g", RELEASE], [70, 9, "o", CARRY]]],
   [undefined, "订单履约率", "96.8%", "91.2%", "up", [[3, 10, "o", "PO"], [15, 16, "b", "KIT"], [34, 15, "b", "AGING"], [54, 13, "g", RELEASE], [73, 8, "o", CARRY]]],
   [undefined, "受影响客户", "0 家", "7 家", "up", [[2, 10, "o", "IQC"], [15, 15, "b", "KIT"], [33, 16, "b", "AGING"], [54, 12, "g", RELEASE], [73, 8, "o", CARRY]]],

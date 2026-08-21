@@ -517,7 +517,15 @@
   gap: 3px;
   font-size: 9.5px;
   color: var(--muted2);
-  background: color-mix(in srgb, var(--panel2) 86%, transparent);
+  /* ⚠ **这一处刻意偏离规格**（规格写 `rgba(28,41,66,.86)` 半透）。
+     `.lgd` 是**定位浮层**（浮在地图之上），本仓对浮层有一条带事故来历的不变量：
+     浮层表面必须**不透明** —— 半透浮层里那行字看到的背景 = f(浮层色, 底下恰好是什么)，
+     不是一个可设计的常量（tokens.css `--popover-surface` 那段记的就是这笔账：
+     暗色实测同一句字压空白处 9.19:1、压底层字形只剩 1.01:1）。
+     `test/provenance-popover-legibility.test.tsx` ⑥「全仓定位浮层的背景必须三套主题都解析出实色」
+     当场判红把这一处逼了回来 —— 机器先说话，不是人想起来的。
+     像素代价：图例框 ≈ 110×105 逻辑 px，实测差异见交单报告。 */
+  background: var(--panel2);
   padding: 6px 8px;
   border: 1px solid var(--line);
 }

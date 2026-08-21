@@ -56,7 +56,7 @@ interface StationLayout {
  * 用**非 `Partial`** 的 `Record` 是刻意的：注册表若新增一条而这里没跟上，`tsc` 直接红，
  * 而不是屏上安静地少一站。
  */
-const FLOW_LAYOUT: Record<RegisteredChainNodeId, StationLayout> = {
+const FLOW_LAYOUT: Record<RegisteredChainNodeId, StationLayout> = { // hardcoded-data-allow —— seq/blockToSeq 是**版面**（注册表是登记序，给不了流程序）；lossPct 是规格占位，真值一到即被 useChainNodeLoss 覆盖
   // 需求段（DEMAND）
   "demand.forecast": { seq: 0, lossPct: 1 },
   "demand.quote": { seq: 1, lossPct: 1 },
@@ -107,7 +107,7 @@ interface CalloutSpec {
 }
 
 /** 呼出卡。键同样锚在契约上（判据 C 按机制放行的写法）。 */
-const FLOW_CALLOUTS = {
+const FLOW_CALLOUTS = { // hardcoded-data-allow —— 呼出卡的坐标/偏移是**版面**，卡内数字是规格占位（WO-SIM-BE-SERIES 之后随甘特一起换掉）
   "capacity.aging": {
     clock: "38:42",
     code: "C3",
