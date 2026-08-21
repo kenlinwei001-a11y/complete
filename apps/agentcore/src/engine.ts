@@ -246,10 +246,28 @@ export interface RunRegisteredAgentOpts {
   placement?: AgentRunPlacementInput;
 }
 
+/**
+ * WO-DSH-PROD-READY · W8主：tool-execute 反向通道的 per-run 登记册条目。
+ * runToken（随机一次性）→ 本次 run 的执行面。executor 必须是 fork 前 :491 创建的**同一实例**
+ * （第二实例 = readCache/预算/审计双账本缺陷）；seenCallIds 供端点 409 重放拒绝。
+ */
+export interface DshToolExecuteRun {
+  executor: GuardedToolExecutor;
+  budget?: BudgetTracker;
+  defaultTimeoutMs: number;
+  seenCallIds: Set<string>;
+}
+
 /** Cross-wires the agent loop and the workflow executor (mutual nesting, shared budget). */
 export class ExecutionEngine {
   /** WO-DRIL-P2 · DRIL 检索注册表（features 存在时懒建；供 retrieve_knowledge 工具）。 */
   private readonly resourceRegistry?: ResourceRegistryService;
+  /**
+   * W8主：tool-execute 反向通道 runToken 登记册（实例字段而非模块级——多 engine 实例不互串；
+   * server.ts 端点经 deps.engine 直达，不静态 import dsh-runtime（dormancy D3 约束）。
+   * 仅 dsh fork 期间有活条目：fork 铸、try/finally 注销。
+   */
+  readonly dshToolExecuteRuns = new Map<string, DshToolExecuteRun>();
 
   constructor(readonly deps: EngineDeps) {
     if (deps.features) {
@@ -603,13 +621,34 @@ export class ExecutionEngine {
         skills: skills.map((s) => mapSkill(s)),
         ...(mcpServers.length ? { mcpServers } : {}),
         ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
+        // W8主：BUILTIN 授予面下发（harness 侧注册成反向工具，execute = fetch 宿主
+        // tool-execute 端点）。scope 范围 = BUILTIN 28 件；workflow 工具不在本 WO（W8.5 出列登记）。
+        // 空集 ⇒ 键不出（setup 帧逐字节旧行为，dualrun 语料面零扰动）。
+        ...(() => {
+          const hostTools = tools
+            .filter((t) => t.binding.kind === "BUILTIN")
+            .map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }));
+          return hostTools.length ? { hostTools } : {};
+        })(),
       });
       // WO-DSH-N1-PROVIDER：model spec（dcp:{providerId}:{modelId}）不再原样当 wire model——
       // 经绑定矩阵解析出连接事实（modelId 剥前缀/kind/baseUrl/apiKey），env 缝注入子进程；
       // provider 路由取 cfg.DSH_HARNESS_PROVIDER（生产值单源 = PRODUCTION_DSH_HARNESS_PROVIDER，
       // 无 mock 回退）。非 dcp / custom_http ⇒ resolveConnectionFacts 诚实抛错。
       const facts = await this.deps.llmSettings.resolveConnectionFacts(model, agent.tenantId);
-      const dsh = await runDshAgent(
+      // W8主：反向通道登记——runToken = per-run 一次性随机 token（newId 加密随机源），
+      // wire 上唯一凭证；登记 executor 用上方 :491 同一实例（scope/预算/readCache 同账本）。
+      // try/finally 保证 run 终（含异常路径）即注销——迟到的反向调用一律 401。
+      const runToken = newId("dshr");
+      this.dshToolExecuteRuns.set(runToken, {
+        executor,
+        budget: opts.nesting.budget,
+        defaultTimeoutMs: 20_000, // 我方工具契约缺省 20s（mapMcpConfig toolCallTimeoutMs 同值）
+        seenCallIds: new Set<string>(),
+      });
+      let dsh: Awaited<ReturnType<typeof runDshAgent>>;
+      try {
+        dsh = await runDshAgent(
         {
           prompt: userContent,
           setup,
@@ -641,9 +680,18 @@ export class ExecutionEngine {
             // 故在此推导），DSH_GOV_URL 显式覆盖。
             PLATFORM_GOV_URL: cfg.DSH_GOV_URL ?? `http://127.0.0.1:${cfg.PORT}/b/v1/governance/adjudicate`,
             ...(cfg.SERVICE_TOKEN ? { PLATFORM_GOV_TOKEN: cfg.SERVICE_TOKEN } : {}),
+            // W8主：tool-execute 反向通道三键（与上方治理两键同构）。URL 缺省推导本进程端点
+            // （DSH_TOOL_EXEC_URL 显式覆盖）；凭据 = SERVICE_TOKEN（未配置不发头 ⇒ 端点恒 401
+            // fail-closed）；DSH_RUN_TOKEN = 上方铸的 per-run 一次性 token。
+            PLATFORM_TOOL_EXEC_URL: cfg.DSH_TOOL_EXEC_URL ?? `http://127.0.0.1:${cfg.PORT}/b/v1/dsh/tool-execute`,
+            ...(cfg.SERVICE_TOKEN ? { PLATFORM_TOOL_EXEC_TOKEN: cfg.SERVICE_TOKEN } : {}),
+            DSH_RUN_TOKEN: runToken,
           },
         },
-      );
+        );
+      } finally {
+        this.dshToolExecuteRuns.delete(runToken);
+      }
       if (!dsh.result.ok) {
         return {
           outcome: "FAILED",

@@ -322,8 +322,9 @@ export const DEFAULT_FINAL_ANSWER_SCHEMA: Record<string, unknown> = {
 };
 
 /** 增量 §1.2：query_timeseries_agg（桶数 ≤120）等自带输出上限的工具不受二次截断影响；
- * read_skill_resource 自带 64KB 文本上限（§3），同样豁免。 */
-const TRUNCATION_EXEMPT_TOOLS = new Set(["query_timeseries_agg", "read_skill_resource"]);
+ * read_skill_resource 自带 64KB 文本上限（§3），同样豁免。
+ * W8主：导出供 server.ts tool-execute 端点镜像同一豁免集（单源，禁双写）。 */
+export const TRUNCATION_EXEMPT_TOOLS = new Set(["query_timeseries_agg", "read_skill_resource"]);
 
 /**
  * WO-AGENT-RUNTIME-S01 · 停滞早停阈值（治病根：workflow_capacity_check DENIED + invoke_solver ERROR + 反复 query_objects

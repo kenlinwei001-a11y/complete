@@ -74,6 +74,8 @@ import { perceptionMetrics } from "./router/perception-metrics.js";
 import { runGrowthLoop } from "./growth/loop.js";
 import { buildGrowthLoopWiring } from "./growth/scenario-grow.js";
 import { builtinTool } from "./tools/registry.js";
+import { truncateToolResultJson } from "./agent/context.js";
+import { TRUNCATION_EXEMPT_TOOLS } from "./agent/loop.js";
 import { lintSkill, classifySkillEvalCases, type SkillLintTarget } from "./skill-lint.js";
 import { compileSkill } from "./skill-compiler.js";
 // WO-REFGATE-ENT · F14：发布门判据的单一实现（本路由与 main.ts 启动期种子审计共用）。
@@ -2192,6 +2194,61 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       return { decision: "deny", reason: blocking.map((v) => `${v.ruleId}: ${v.explanation}`).join("; ") };
     }
     return { decision: "allow" };
+  });
+
+  /**
+   * WO-DSH-PROD-READY · W8主：dsh 子进程世界 → 宿主 BUILTIN 工具的**反向执行通道**（带外，
+   * 与上方 adjudicate 同模板）。dsh fork 时 engine 铸 per-run 一次性 runToken 登记
+   * {executor, budget, seenCallIds}（同一 GuardedToolExecutor 实例——第二实例 = 双账本缺陷），
+   * run 终注销；wire 上零鉴权材料（runToken 随机一次性）。fail-closed 次序：
+   * 服务间凭据 401 → 载荷形态 400 → runToken 不识/已注销 401 → callId 重放 409 → executor 四态。
+   *
+   * 截断顺序（team-lead 2026-08-21 裁决 b）：executor 出 payload（全量）→ finish() 落审计行
+   * （64KB 兜底，截断前）→ **端点**截断整形（8KB 模型面，单源 truncateToolResultJson +
+   * TRUNCATION_EXEMPT_TOOLS 豁免集，禁 .mjs 双源漂移）→ wire。OK 出 payloadJson **串**
+   * （JSON 往返会重排 integer-like 键，串原样过 wire 保逐字等）；非 OK 出 payload 对象。
+   */
+  app.post("/b/v1/dsh/tool-execute", async (req) => {
+    requireServiceToken(req);
+    const body = (req.body ?? {}) as {
+      runToken?: unknown;
+      callId?: unknown;
+      toolName?: unknown;
+      input?: unknown;
+      timeoutMs?: unknown;
+    };
+    if (typeof body.runToken !== "string" || typeof body.callId !== "string" || typeof body.toolName !== "string") {
+      throw new HttpError(400, "VALIDATION_ERROR", "tool-execute 载荷需 {runToken, callId, toolName: string, input, timeoutMs?}");
+    }
+    const entry = deps.engine.dshToolExecuteRuns.get(body.runToken);
+    if (!entry) throw new HttpError(401, "UNAUTHORIZED", "unknown or expired runToken");
+    if (entry.seenCallIds.has(body.callId)) {
+      throw new HttpError(409, "CALL_ID_REPLAY", "callId 在同一 run 内一次性（重放拒绝）");
+    }
+    entry.seenCallIds.add(body.callId);
+    const requestedTimeoutMs = body.timeoutMs === undefined ? undefined : Number(body.timeoutMs);
+    if (requestedTimeoutMs !== undefined && (!Number.isInteger(requestedTimeoutMs) || requestedTimeoutMs < 1)) {
+      throw new HttpError(400, "VALIDATION_ERROR", "timeoutMs 需正整数");
+    }
+    // per-call deadline 对位 native callTimeoutMs（loop.ts:837-838）：min(请求档 ?? 默认档, 预算剩余)。
+    const base = requestedTimeoutMs ?? entry.defaultTimeoutMs;
+    const remainingMs = entry.budget ? entry.budget.budget.maxDurationMs - entry.budget.elapsedMs() : base;
+    const effectiveTimeoutMs = Math.max(1, Math.min(base, remainingMs));
+    const r = await entry.executor.run(body.toolName, body.input, { timeoutMs: effectiveTimeoutMs });
+    if (r.outcome === "OK") {
+      const t = TRUNCATION_EXEMPT_TOOLS.has(body.toolName)
+        ? { json: JSON.stringify(r.payload), truncated: false as const, note: undefined }
+        : truncateToolResultJson(r.payload);
+      return {
+        outcome: "OK",
+        payloadJson: t.json,
+        truncated: t.truncated,
+        ...(t.note ? { note: t.note } : {}),
+        toolCallId: r.toolCallId,
+        durationMs: r.durationMs,
+      };
+    }
+    return { outcome: r.outcome, payload: r.payload, toolCallId: r.toolCallId, durationMs: r.durationMs };
   });
 
   app.put("/b/v1/llm/bindings", async (req) => {

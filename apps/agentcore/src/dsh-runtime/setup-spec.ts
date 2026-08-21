@@ -37,6 +37,13 @@ export interface DshSetupSpec {
   /** 治理线（S2 answerer 网桥消费；fail-closed 方向对我方有利）。 */
   governance?: DshGovernanceSpec;
   /**
+   * WO-DSH-PROD-READY · W8主：授予的 BUILTIN 工具面（反向通道注册素材）。
+   * harness 侧 platform-world 逐条注册成「反向工具」（execute = fetch 宿主 tool-execute
+   * 端点）；description/inputSchema 过 wire 让子进程模型面与 native 同形同参。
+   * 空/缺省 = 键不出（setup 帧逐字节旧行为）。
+   */
+  hostTools?: { name: string; description: string; inputSchema: Record<string, unknown> }[];
+  /**
    * final_answer 终止工具的 schema 下发（harness 侧 scoped 注册；模型调它收尾 =
    * 我方 Answer 的结构化载体）。description/schema 单一出处 = agent/loop.ts 导出常量；
    * expectsSchema 模式下由 buildSessionSetup 替换为调用方 schema（raw input 直通 structured）。
@@ -228,6 +235,8 @@ export function buildSessionSetup(input: {
   /** loop.ts AgentLoopOpts.expectsSchema 对位：提供则替换 final_answer schema，raw input 进 structured。 */
   expectsSchema?: Record<string, unknown>;
   finalAnswerDescription?: string;
+  /** W8主：授予工具中 binding.kind==="BUILTIN" 的子集（name/description/inputSchema），engine 分叉处筛入。 */
+  hostTools?: { name: string; description: string; inputSchema: Record<string, unknown> }[];
 }): DshSetupSpec {
   const { agent } = input;
   // final_answer/load_skill 是循环自加的元工具（AgentLoopOpts 契约：调用方 tools 不得含，
@@ -240,6 +249,7 @@ export function buildSessionSetup(input: {
     tools: effectiveToolNames.map((name) => ({ name })),
     ...(input.mcpServers?.length ? { mcpServers: input.mcpServers } : {}),
     ...(input.skills?.length ? { skills: input.skills } : {}),
+    ...(input.hostTools?.length ? { hostTools: input.hostTools } : {}),
     governance: {
       ruleBindings: agent.ruleBindings,
       scopeObjectTypes: agent.scopeDeclaration.objectTypes,
