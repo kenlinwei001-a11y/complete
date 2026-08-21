@@ -1,5 +1,5 @@
 /**
- * WO-DSH-E2E · L1 双跑语料（59 任务 + 2 gated 槽）——纯数据，零 IO。
+ * WO-DSH-E2E · L1 双跑语料（63 任务 + 2 gated 槽）——纯数据，零 IO。
  *
  * 对账口径单源 = 同目录 RECONCILIATION.md（team-lead 2026-08-19 重定义：
  * scalar + kernel 唯一白名单 + native 迭代锚 + dsh stats 对齐）。摘要：
@@ -9,8 +9,8 @@
  *   两臂同算，保 unverifiedNumerics:false 锚简洁）；
  * - native load_skill 入参键 = skillId，dsh = key（声明映射，RECONCILIATION §2-A4）。
  *
- * 跨单回执（蓝图末行）：角色路/场景路 STALL_LOOP 各一槽 → GATED_SLOTS（静默缝 WO 未落线，
- * driver 鸣报 skipped，不冒充覆盖）。
+ * 跨单回执（蓝图末行）：角色路/场景路 STALL_LOOP 各一槽 → GATED_SLOTS（缝已落线；
+ * 缺口 = 编排层驱动级 + STALL_LOOP 确定性触发通道缺，REC §3 #7；driver 鸣报 skipped，不冒充覆盖）。
  */
 import type { Answer, AnswerBlock, RuleVerdict } from "@platform/contracts";
 import { SCENARIO_CATALOG } from "../../../src/scenarios-catalog.js";
@@ -85,6 +85,22 @@ export interface DualRunTask {
      * A0 闸同断）+ stats/sessionStats 锚；native 臂 token/迭代锚（mock 按消费记账）。
      */
     skipMarkerSentinel?: boolean;
+    /**
+     * G3 length 截断分歧（RECONCILIATION §3 #9 缝观察·team-lead 2026-08-21 裁决）：
+     * finish_reason=length 场景 = 设计取向差（native 宽容软收尾 / dsh 诚实降级），
+     * 两臂**不互比**，各锚各的声明产物（先例 = A4 token 账两臂分锚）。
+     * 置位后 driver 分锚：native 臂锚 = expect.answer 本位 + outcome ANSWERED +
+     * budgetExhausted false + 无 degraded（四件常量在 driver 写死）；dsh 臂锚 = 本字段四件套。
+     * 全局 A1/A4/outcome 互比对其他任务零放宽。
+     */
+    lengthDivergence?: {
+      dsh: {
+        outcome: "BUDGET_EXHAUSTED";
+        answer: Answer;
+        budgetExhausted: true;
+        degraded: { reason: "BUDGET_EXHAUSTED" };
+      };
+    };
   };
 }
 
@@ -146,6 +162,18 @@ const rTx = (t: string): StubRound => ({ text: t, usage: STUB_USAGE });
 const nFa = (args: unknown): ScriptedTurn => ({ content: [toolUse("final_answer", args)] });
 const nLs = (skillId: string): ScriptedTurn => ({ content: [toolUse("load_skill", { skillId })] });
 const nTx = (t: string): ScriptedTurn => ({ content: [text(t)] });
+
+/** G3：finish_reason=length 截断轮（dsh stub 文本轮覆盖 finishReason；native mock stopReason 逐字透传）。 */
+const rTxLen = (t: string): StubRound => ({ text: t, usage: STUB_USAGE, finishReason: "length" });
+const nTxLen = (t: string): ScriptedTurn => ({ content: [text(t)], stopReason: "length" });
+
+/**
+ * G3 诚实摘要头锚（镜像 reassemble.ts max-tokens 路模板逐字——即 stall 路 :372 同形：
+ * 「[预算耗尽·诚实摘要] ⚠️ …未能完全解答…以下为已探索到的线索：」）。
+ * 语料锚与产品码各自持字面量（同 STRUCTURED_ANSWER_TEXT 对 loop.ts 的锚法）：漂移即红，正是锚的职能。
+ */
+export const LENGTH_TRUNCATION_HEADER =
+  "[预算耗尽·诚实摘要] ⚠️ 模型输出触长度上限被截断——本次深问未能完全解答（已诚实终止）。以下为已探索到的线索：";
 
 /** 长上下文填充（确定性；≥4096 字符 = 蓝图「4KB 长上下文」档）。 */
 const longPrompt = (q: string, id: string): string => {
@@ -216,6 +244,38 @@ function answerSoft(o: ClassOpts): DualRunTask {
       nativeIterations: [],
       nativeTokens: { input: 100, output: 50 },
       dshStats: stats(1),
+    },
+  };
+}
+
+/**
+ * answer · G3 length 截断（finish_reason=length 单文本轮）。
+ * 链：native mock stopReason 逐字 ⇒ loop.ts:1027 ≠"tool_use" ⇒ degrade("ANSWERED") 软收尾
+ * （无 reason ⇒ 无摘要头/无 degraded/budgetExhausted=false，loop.ts:635-637/659——设计取向差，
+ * native 侧不修，REC §3 #9）；dsh pi-ai mapStopReason length⇒max-tokens ⇒ reassemble outcome
+ * BUDGET_EXHAUSTED + degraded{BUDGET_EXHAUSTED} + 诚实摘要头 + engine 出口 run.budgetExhausted=true
+ * （W2 批3 dsh 自体修复两件）。双臂分锚不互比（先例 = A4 token 账）。
+ */
+function answerLengthTruncated(o: ClassOpts): DualRunTask {
+  const t = `【${o.id}】截断前已产出的部分文本：模型输出触长度上限，话未说完。`;
+  return {
+    id: o.id, cls: "answer", source: o.source, prompt: o.prompt,
+    skills: [], ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    dsh: { rounds: [rTxLen(t)] },
+    native: { turns: [nTxLen(t)] },
+    expect: {
+      answer: expectAnswer([T(t)]), // native 臂锚本位（软收尾原文；A0 护栏/豁免双恰同消费本位）
+      nativeIterations: [],
+      nativeTokens: { input: 100, output: 50 },
+      dshStats: stats(1),
+      lengthDivergence: {
+        dsh: {
+          outcome: "BUDGET_EXHAUSTED",
+          answer: expectAnswer([T(LENGTH_TRUNCATION_HEADER), T(t)]),
+          budgetExhausted: true,
+          degraded: { reason: "BUDGET_EXHAUSTED" },
+        },
+      },
     },
   };
 }
@@ -741,9 +801,13 @@ export const DUALRUN_CORPUS: DualRunTask[] = [
     invalid: { wrong: "缺 conclusion 键的非法输入（cg）" },
     structured: { conclusion: "结构化结论（cg）：invalid 被拒后收敛产出。" },
   }),
+  // ---- W2 批3：G3 finish_reason=length 截断（双臂分锚，REC §3 #9 设计取向差 + dsh 自体修复） ----
+  answerLengthTruncated({
+    id: "dr50-ch", source: "synthetic",
+    prompt: "合成题 ch（dr50-ch）：输出触长度上限截断的双臂口径对账。",
+  }),
   // ---- W5 块2：fail-closed 双路对账（provenance 畸形 / writeMode 非法 拒后收敛各一；
-  //      expectsSchema 通道 = dr50-cg 既有）+ W5 块1：agent_think 族真触发 1 条。
-  //      id 接续说明：dr50-ch 已被 W2 批3 G3 长度截断条目占用（并线树），本批从 ci 起。 ----
+  //      expectsSchema 通道 = dr50-cg 既有）+ W5 块1：agent_think 族真触发 1 条。 ----
   answerProvenanceReplan({ id: "dr50-ci", source: "synthetic", prompt: "合成题 ci（dr50-ci）：先给畸形 provenance 再收敛。" }),
   answerWriteModeReplan({ id: "dr50-cj", source: "synthetic", prompt: "合成题 cj（dr50-cj）：写回技能挂载下先缺 action_draft 再收敛。" }),
   answerReasoning({ id: "dr50-ck", source: "synthetic", prompt: "合成题 ck（dr50-ck）：带推理流的收尾形态。" }),
@@ -754,20 +818,24 @@ export const A5_SUBSET: readonly string[] = ["dr50-ac", "dr50-ad", "dr50-an", "d
 
 /**
  * 跨单回执 gated 槽（蓝图末行：角色路/场景路 STALL_LOOP 各一）。
- * 本树 orchestrator 唯 :2179 一处 agent_degraded 发射（runPathB 段）——runRolePathB/runSceneAgent
- * 两处 degraded 静默缝 WO 未落线，缝修复后转正式任务；driver 鸣报 skipped，不冒充覆盖。
+ * 两处 degraded 静默缝已由 886c436a7 落线（orchestrator agent_degraded 发射点 :2182/:2433/:2694，
+ * 分叉后编排层共享码，两臂对称经过——W5 块4 实证两路同走 engine.runRegisteredAgent 过分叉）。
+ * team-lead 2026-08-21 裁决（W5 块4）：gated 维持不解、不建编排层双跑驱动级；覆盖缺口 =
+ * 编排层驱动级（本 driver 直驱 runRegisteredAgent 捕获不到编排层发射）+ STALL_LOOP 确定性
+ * 触发通道缺（dsh 臂须 watchdog 真 cancel 落帧）——非发射缝；parity = 码对称论证，转 W7 输入。
+ * （REC §3 #7）——槽维持 gated，driver 鸣报 skipped，不冒充覆盖。
  */
 export const GATED_SLOTS = [
   {
     id: "dr50-gated-role-stall",
     path: "runRolePathB",
     scenario: "STALL_LOOP",
-    gate: "WO-degraded-seams 缝①（runRolePathB degraded 静默缝）未落线",
+    gate: "gate 维持：缝① 886c436a7 已落线；缺口 = 编排层驱动级 + STALL_LOOP 确定性触发通道缺（非发射缝）；裁决不建编排层双跑驱动级，parity = 码对称论证，转 W7 输入",
   },
   {
     id: "dr50-gated-scene-stall",
     path: "runSceneAgent",
     scenario: "STALL_LOOP",
-    gate: "WO-degraded-seams 缝②（runSceneAgent degraded 静默缝）未落线",
+    gate: "gate 维持：缝② 886c436a7 已落线；缺口 = 编排层驱动级 + STALL_LOOP 确定性触发通道缺（非发射缝）；裁决不建编排层双跑驱动级，parity = 码对称论证，转 W7 输入",
   },
 ] as const;

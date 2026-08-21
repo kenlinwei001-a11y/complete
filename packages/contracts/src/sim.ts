@@ -400,6 +400,130 @@ export const SimTickStateSchema = z.object({
 });
 export type SimTickState = z.infer<typeof SimTickStateSchema>;
 
+// ── 指标时序（WO-SIM-BE-SERIES · `GET /a/v1/sim/sessions/:id/metric-series`）──────────
+//
+// 🔴 病灶（实测原文，非转述）：沙盘只有**当前一格**。
+//  · `app.ts` 的 `GET …/:id/world` 回 `{ tick: s.curTick, state: await simCurrent(c, s) }` —— 一格；
+//  · 前端 `views/sim/ProcessCanvasView.tsx` 头注写着「『上一拍』必须由本档自己留存，
+//    **不能问后端要**：`GET …/:id/world` 只回当前态」—— 前端在自己攒历史，攒的是屏幕上的残留，
+//    刷新即失、跨档不共享，且它攒不出「不施加扰动本该是什么样」的那条线。
+//  · 唯一带 tick 序列的既有端点是 `GET /a/v1/sim/compare?a=&b=`，但它比的是**两个会话** ——
+//    正是下面 `baselineOrigin` 要禁掉的那种基线（两条线种子不同源，差值是噪声不是扰动效果）。
+//
+// ── 基线的定义（本契约最容易被做错的地方，写死在这里）───────────────────────────────
+// 基线 **不是**「另开一个会话重算一遍」，而是「**同一个世界**、同一 tick0 种子、同一套传导规则，
+// 只把扰动集清空」的那条线。这与 `SimCounterfactualResult` 是**同一条纪律的两个投影**：
+// 那边「两版只差 `disabledRuleKeys`」，这边「两版只差扰动集」，两边都由**同一支算法**跑出来。
+// 另起会话 ⇒ 新会话的 `baseSnapshot` 拿不到本世界 tick0 行上累积的东西（`/act` 直写、
+// 分支继承的屏蔽集…），分叉点会**提前到 tick 0**，屏上就是一个从头就存在的假分叉。
+// 故回包必须带 `baselineOrigin`：把「基线是从哪个世界、哪一格种出来的」写在脸上，可被测试咬死。
+
+/**
+ * 一段「这个指标在这几格归属哪个环节」。
+ *
+ * ⚠ **由后端给，前端不许自己切**（同 `PropagationRule.domainKey` 那条纪律）：前端手抄一份
+ * 「哪条规则属于哪个环节」的映射表，新增一条规则忘了加进去它就从分段里消失，而没有任何东西会报错
+ * —— 屏上的分段与归因从此对不上，且永远绿。
+ *
+ * 归属**只从真跑过的 trace 反查**（`SimTickState.trace` 的 `ruleKey` → 该规则），不猜、不按类型硬派。
+ * 查不到环节的 tick **不产生分段**（诚实留白），绝不塞进相邻那一段 —— 塞了就是把
+ * 「这一格其实没有归属」这句话抹掉。
+ */
+export const SimMetricSegmentSchema = z.object({
+  /** 闭区间起点 tick。 */
+  fromTick: z.number().int(),
+  /** 闭区间终点 tick（单格分段 `fromTick === toTick`）。 */
+  toTick: z.number().int(),
+  /** 环节 id。`source` 决定它的取值域，见下 —— **不许**把两个取值域混读成一个裸串。 */
+  nodeId: z.string(),
+  /** 环节人话名。查不到登记名时回落 `nodeId` 裸串（不编名字）。 */
+  label: z.string(),
+  /**
+   * 🔴 **归属是怎么算出来的（诚实位·两者不是一回事，绝不合并）**：
+   *  · `cadence` —— 规则声明的节拍节点 `PropagationRule.cadenceNodeId`，取值域 = `CHAIN_NODE_REGISTRY`
+   *    在册 id（`chain-sim.ts` §2.5 单源）。这是**建模方显式绑定**的全链环节，最强的一档。
+   *  · `domain`  —— 规则落域 `PropagationRule.domainKey`（`seed.ts resolveRuleDomain`，D01–D13），
+   *    取值域 = 业务域登记册。这是**回落档**：出厂 35 条种子规则的 `cadenceNodeId` **全为 `null`**
+   *    （实测 `grep -c "cadenceNodeId: null" apps/datacore/src/seed.ts` = 35，
+   *    种子注释原文「具体哪条流绑哪个节拍留给建模/运营去配」）⇒ 只认 `cadence` 的话，
+   *    demo 世界的分段会**恒为空**，功能等于没做（"接了线没数据"）。
+   * 两者混成一个裸 `nodeId` 会让屏上分不出「这是建模方绑的节拍点」与「这是按落域推的」——
+   * 同族戒律：一个字段盖住两个不同事实。
+   */
+  source: z.enum(["cadence", "domain"]),
+  /**
+   * 本段内**逐格主导贡献者**的规则 key（去重升序）。
+   * 有它，用户才能从"屏上这一段归 D06"追回"是哪条边把这个数写上去的"；
+   * 只给结论不给出处，就又是一个查无对证的数字。
+   */
+  ruleKeys: z.array(z.string()),
+});
+export type SimMetricSegment = z.infer<typeof SimMetricSegmentSchema>;
+
+/** 一条指标的两条线 + 环节分段。`baseline`/`actual` 与响应的 `ticks` **逐位对齐**（等长）。 */
+export const SimMetricSeriesItemSchema = z.object({
+  /** `${objectId}.${stateVar}` —— 与 `TickState` / `SimStateDiffCell` 同一粒度（对象×状态变量）。 */
+  key: z.string(),
+  objectId: z.string(),
+  /**
+   * 状态变量裸键。**本单不新造指标名**：取值域 = 已发布传导规则的
+   * `sourceStateVar ∪ targetStateVar`（与 `SandboxViewConfig.stateVars` 同一口径、同一去重）。
+   */
+  stateVar: z.string(),
+  /** 人话名，取自后端单源表 `STATE_VAR_DISPLAY_NAMES`（`synthetic/battery.ts`）；未登记 ⇒ 回落裸键。 */
+  label: z.string(),
+  /**
+   * 诚实位：`label` 是不是回落的裸键。
+   * 没有它，屏上分不出「名字恰好等于键」与「压根没登记名字」
+   * —— 这正是 `stateVarDisplayNames` 当初"未登记就不进字典"的同一条理由。
+   */
+  labelIsFallback: z.boolean(),
+  /**
+   * 单位。**恒 `null`，这是诚实缺席不是没做**：全仓没有任何"状态变量 → 单位"的登记册
+   * （`unit` 只登记在**对象类型属性**上，而 `loadIndex`/`demandPressure` 这些状态变量
+   * 在 `apps/datacore/src/synthetic/` 里一次都不出现 —— `battery.ts` 头注已实测记过这笔账）。
+   * 编一个「%」或「指数」出来就是新造口径（破 R13/R14）。前端据 `null` 显示无单位，别自己补。
+   */
+  unit: z.string().nullable(),
+  /** **不施加任何扰动**的那条线。缺格 = `null`（「这个世界里没有这一格」≠「这一格是 0」）。 */
+  baseline: z.array(z.number().nullable()),
+  /** 施加了本会话全部扰动的那条线（= 屏上真跑出来的世界线）。缺格语义同上。 */
+  actual: z.array(z.number().nullable()),
+  /** 环节分段（按 tick 升序、互不重叠；无归属的 tick 处留空档，不跨越、不填补）。 */
+  segments: z.array(SimMetricSegmentSchema),
+});
+export type SimMetricSeriesItem = z.infer<typeof SimMetricSeriesItemSchema>;
+
+/** `GET /a/v1/sim/sessions/:id/metric-series?from=&to=` 的响应。 */
+export const SimMetricSeriesResponseSchema = z.object({
+  sessionId: z.string(),
+  /** 实际返回的窗口（已按世界线可用范围收敛，见 `clamped`）。 */
+  fromTick: z.number().int(),
+  toTick: z.number().int(),
+  /** 窗口内逐格 tick（升序连续）。`metrics[*].baseline/actual` 与它**同长同序**。 */
+  ticks: z.array(z.number().int()),
+  /** 指标按 `key` 升序（R6 确定性：同 (session, from, to) 重跑字节级一致）。 */
+  metrics: z.array(SimMetricSeriesItemSchema),
+  /**
+   * 🔴 **基线出处回执** —— 本端点最容易被悄悄做错的那件事，摊开在回包里让测试咬。
+   * `sessionId` 必须**等于本会话 id**：不等 = 基线来自另一个世界 = 上面禁掉的那种假分叉。
+   */
+  baselineOrigin: z.object({
+    /** 基线种子取自哪个会话。**恒 = 请求的那个会话**。 */
+    sessionId: z.string(),
+    /** 基线从哪一格种起（世界线起点）。 */
+    seedTick: z.number().int(),
+    /** 基线里被清掉的扰动 id（= 本会话全部扰动，升序）。空 ⇒ 本世界没有扰动 ⇒ 两条线必然重合。 */
+    excludedPerturbationIds: z.array(z.string()),
+  }),
+  /**
+   * 诚实位：请求的 `to` 是否超出了世界线（`curTick`）而被收敛。
+   * **本端点不预测未来** —— 超出部分不补 `null` 格、更不外推，直接把窗口截到 `curTick` 并在此声明。
+   */
+  clamped: z.boolean(),
+});
+export type SimMetricSeriesResponse = z.infer<typeof SimMetricSeriesResponseSchema>;
+
 // ── SimCheckpoint 命名存档（§2.1 sim_checkpoint 表） ──────────────────────────
 export const SimCheckpointSchema = z.object({
   id: z.string(),
@@ -730,3 +854,128 @@ export type ChangeImpactPreview = z.infer<typeof ChangeImpactPreviewSchema>;
 
 export const ChangeImpactPreviewRequestSchema = z.object({ focus: ChangeFocusSchema });
 export type ChangeImpactPreviewRequest = z.infer<typeof ChangeImpactPreviewRequestSchema>;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-SIM-BE-PARETO · 帕累托解集（多目标权衡的**解集**，不是 80/20 排行）
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ **命名撞车预警（这不是客套，本单开工第一件事就撞上了）**：
+//    本仓已有一个 `buildPareto`（`frontend-shell/src/views/sim/sandboxConsoleModel.ts`），
+//    那是**帕累托图**——把环节按 `pctOfChainLoss` 降序取 Top-N，单指标排行，无目标、无支配关系。
+//    本节是**帕累托前沿**——多目标下互不支配的**解集**。两者同名不同物，
+//    谁把它们当成一回事，谁就会得出「解集能力已经有了」这个恰好相反的结论。
+//
+// 为什么沙盘需要它：`optimize_whatif` 今天一次只回**两个**解（`baselineSolution` /
+// `perturbedSolution`）——同一条扰动路径上的前后快照。决策者真正要问的
+// 「少花钱和快交付之间有哪些不吃亏的折中」，两个点答不了，要的是一条前沿。
+
+/**
+ * 目标方向。**必须显式声明**，不许由代码按目标名猜。
+ * （把方向写死在代码里，下次新增一个「最大化准时率」就会被静默算反——
+ *  而算反的前沿看起来完全正常：它仍然是一条曲线，只是选出来的是最差的那批解。）
+ */
+export const ParetoObjectiveDirSchema = z.enum(["min", "max"]);
+export type ParetoObjectiveDir = z.infer<typeof ParetoObjectiveDirSchema>;
+
+export const ParetoObjectiveSchema = z.strictObject({
+  /** 目标键，须能在解的 `metrics` 里取到同名数值（取不到 ⇒ 该解判不可行，**不补 0**）。 */
+  key: z.string().min(1),
+  dir: ParetoObjectiveDirSchema,
+  /** 人读名与量纲（前端只格式化，不另维护映射表·R14）。 */
+  label: z.string().min(1).optional(),
+  unit: z.string().optional(),
+});
+export type ParetoObjective = z.infer<typeof ParetoObjectiveSchema>;
+
+/**
+ * 一条绑定约束的裕度读数。
+ *
+ * `tight` 的判据**写在这里，不让前端猜阈值**：`slack <= PARETO_TIGHT_EPS`。
+ * 取绝对 eps 而非相对百分比，是因为链上所有数值都已按 `1e-6` 量化
+ * （与 `opt-whatif.ts` 的 `Math.round(x*1e6)/1e6` 同一口径）——
+ * eps 正好等于这条链的数值分辨率，比它小的差已经不是「差」而是量化噪声。
+ */
+export const ParetoBindingSchema = z.strictObject({
+  key: z.string().min(1),
+  /** 该解在这条约束上的实际取值。 */
+  value: z.number(),
+  /** 上限（调用方声明；本层不编造上限）。 */
+  limit: z.number(),
+  /** `limit - value`。负数 = 越界 ⇒ 该解 `feasible:false`。 */
+  slack: z.number(),
+  /** 是否顶到边（判据见本 schema 注释，唯一声明处）。 */
+  tight: z.boolean(),
+});
+export type ParetoBinding = z.infer<typeof ParetoBindingSchema>;
+
+/** 一个杠杆档位（`key` = 扰动 target，与 `optimize_whatif` 的 DF.8 接地语法同一套）。 */
+export const ParetoLeverSettingSchema = z.strictObject({
+  key: z.string().min(1),
+  value: z.number(),
+});
+export type ParetoLeverSetting = z.infer<typeof ParetoLeverSettingSchema>;
+
+/** 解集里的一个解 = 「一组杠杆档位 → 各目标读数 + 各约束裕度」。 */
+export const ParetoSolutionSchema = z.strictObject({
+  /** 稳定 id，**由杠杆档位派生**（`paretoSolutionId`），故可从公开字段重建。 */
+  id: z.string().min(1),
+  label: z.string().min(1),
+  levers: z.array(ParetoLeverSettingSchema).min(1),
+  /** 目标读数（键含全部 `objectives[].key`）。 */
+  metrics: z.record(z.string(), z.number()),
+  bindings: z.array(ParetoBindingSchema),
+  /** 求解可行 **且** 全部绑定约束不越界。`false` 的解不参与前沿竞争。 */
+  feasible: z.boolean(),
+});
+export type ParetoSolution = z.infer<typeof ParetoSolutionSchema>;
+
+/**
+ * 帕累托解集结果。
+ *
+ * **账必须是平的**：`iterations === frontier.length + dominated.length + residual`。
+ * `residual` = 因不可行（求解 INFEASIBLE / 越界 / 目标读数缺失）被剔出竞争的候选数。
+ * 这条恒等式让「解去哪了」可被机器核 —— 不平就是有解被静默吞掉了。
+ */
+export const ParetoResultSchema = z.strictObject({
+  /** 原样回显，前端画轴要用（方向也在里面，不许前端自己猜）。 */
+  objectives: z.array(ParetoObjectiveSchema).min(2),
+  /** 互不支配的解（**已做逐对支配剔除**，被支配者绝不出现在这里）。 */
+  frontier: z.array(ParetoSolutionSchema),
+  /** 被支配的可行解（前端散点画灰点用）。与 `frontier` 交集恒为空。 */
+  dominated: z.array(ParetoSolutionSchema),
+  /** 枚举并求解的候选总数（= 杠杆网格笛卡尔积大小）。 */
+  iterations: z.number().int().nonnegative(),
+  /** 守恒残差（见本 schema 注释）。 */
+  residual: z.number().int().nonnegative(),
+});
+export type ParetoResult = z.infer<typeof ParetoResultSchema>;
+
+/** 单根杠杆的候选档位（网格的一维）。 */
+export const ParetoLeverGridSchema = z.strictObject({
+  /** 扰动 target，如 `facilities.F1.openCost`（DF.8 接地，语法同 `optimize_whatif`）。 */
+  key: z.string().min(1),
+  label: z.string().min(1).optional(),
+  /** 候选取值；内部会去重 + 升序，故请求里的顺序不影响结果（R6）。 */
+  values: z.array(z.number()).min(1),
+});
+export type ParetoLeverGrid = z.infer<typeof ParetoLeverGridSchema>;
+
+/**
+ * 请求体。
+ *
+ * `objectives` 至少两个 —— 单目标下「前沿」退化成「最优解」，那是 `optimize_whatif` 的活；
+ * 允许 1 个目标只会让调用方以为自己在做权衡分析，而其实没有。
+ */
+export const ParetoRequestSchema = z.strictObject({
+  /** 推演会话 id（R6 确定性键的一部分：同 session + 同杠杆集 + 同参数版本 ⇒ 字节级一致）。 */
+  sessionId: z.string().min(1).optional(),
+  /** 优化模板族（5 核心之一，与 `optimize_whatif` 同一套）。 */
+  family: z.string().min(1),
+  /** 基线 args（杠杆扰动施加在它的克隆上，R4 不落真值）。 */
+  args: z.record(z.string(), z.unknown()).optional(),
+  objectives: z.array(ParetoObjectiveSchema).min(2),
+  levers: z.array(ParetoLeverGridSchema).min(1),
+  /** 绑定约束上限（不给 ⇒ 该解 `bindings` 为空数组，**不是**「没有约束」的断言）。 */
+  constraints: z.array(z.strictObject({ key: z.string().min(1), limit: z.number() })).optional(),
+});
+export type ParetoRequest = z.infer<typeof ParetoRequestSchema>;

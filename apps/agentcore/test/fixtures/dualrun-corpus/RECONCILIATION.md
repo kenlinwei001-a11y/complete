@@ -44,13 +44,16 @@ provenance 形态任务 = unknown 引用形态（两臂同引未解析 id ⇒ to
 EMPTY 空块类（W2 批1）同此面：零块数组、空 markdown 串、空白串均逐字节等
 （两臂 final_answer 校验同一 zod 形——无 .min(1)，空形态天然可账）；
 G4 超长输出同此面（≥32KB 长文深度等 = 比对器自身压力测试）。
+G3 length 截断任务（语料 lengthDivergence 置位，W2 批3）本面**不互比**：两臂各锚各的
+声明产物（native = expect.answer 本位软收尾原文；dsh = 诚实摘要头 + 截断前文），
+设计取向差登记见 §3 #9；非置位任务互比口径零放宽。
 
 ### A1b · structured 深等（G2 expectsSchema，W2 批2）
 expectsSchema 任务的双臂对账面：`result.structured` 双臂捕获深等 + 语料声明锚；
 非结构化任务两臂同 undefined 也逐值咬（反咬「观测面缺失」——driver 先补捕获再断言）。
 valid 形态（dr50-ce/cf）：native acceptFinalAnswer 校验过 ⇒ answer 恒固定文案
 「已按要求返回结构化结果。」（loop.ts:1287-1295）；dsh reassemble expectsSchema 分支
-answer = `lastAssistantText || "（结构化回答见 structured）"`（reassemble.ts:401）⇒
+answer = `lastAssistantText || "（结构化回答见 structured）"`（reassemble.ts:415）⇒
 **dsh 剧本末轮文本必须逐字写固定文案**（语料 STRUCTURED_ANSWER_TEXT 单源），A1 才逐字节等。
 invalid 形态（dr50-cg，invalid→valid 收敛）：native 拒首轮（checkJsonSchema 回注重规划，
 loop.ts:1122-1131）⇒ 次轮 valid 收敛；dsh reassemble 校验**末次** final_answer ⇒ 通过收敛。
@@ -128,6 +131,11 @@ meta-only 语料下两臂非伪步序列均空（load_skill/final_answer 两臂�
   `stats.contextPressure.pressureTokens` = 末轮 prompt_tokens；run.totalInputTokens/totalOutputTokens
   恒 0/0 锚定。native 臂 tokens 锚 = 100/50 × 剧本轮数（ScriptedLlmClient 固定账）。
   两臂 token 账**不互比**（物理不同源），各锚各的剧本。
+- **budgetExhausted 分锚（G3 length 截断任务，W2 批3）**：finish_reason=length 场景两臂
+  语义取向不同（§3 #9 缝观察）⇒ 该字段对 lengthDivergence 置位任务**不互比**，逐臂锚定
+  （native 恒 false——loop.ts:1027 软收尾不走 finishRun(true)；dsh = 语料声明 true），
+  scalar 尾其余字段照常逐值等——先例即上方 token 账「两臂不互比，各锚各的剧本」。
+  全局白名单零膨胀：仅语料显式置位的任务走分锚，其余任务差集恰 = {kernel} 不变。
 - 时间量（stats.sessionStats 的 llmMs/ttftMs/decodeMs 等）为墙钟，只核非负数值形态，
   不进字节断言（A5 确定性同样豁免）。
 
@@ -152,13 +160,22 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
    = 审计丢失 ⇒ 红。entitlement 拒证时序同此口径：同一 agent 配置下两臂拒绝点位
    逐字节同码（A2 强制点），kernel 字段值差仍是唯一白名单差（A4 先例）。
 5. **缝观察（denied final_answer 的 blocks 仍上 answer 面）**：dsh 帧流 tool/call 在派发前记录
-   （agent-loop lib/index.js:275），pre-execute deny 不抹帧；reassemble collectToolCalls 不滤成败
+   （agent-loop lib/index.js:191 appendToolCall 在派发 :196 之前），pre-execute deny 不抹帧；reassemble collectToolCalls 不滤成败
    ⇒ 被拒 final_answer 的 blocks 仍成 answer。deny 的执行证据只能在 wire/帧面断言，answer 面
    不体现 deny。本层如实登记，不修缝（L1 是测试层；若评审裁定这是缺陷，另立 WO）。
 6. runPathB 不过分叉（蓝图 evidence 1）⇒ 本层驱动只走 runRegisteredAgent。
 7. 角色路（runRolePathB）/场景路（runSceneAgent）STALL_LOOP 两条语料槽（跨单回执）：
-   本树 orchestrator 仅 :2179 一处 agent_degraded 发射，两处 degraded 静默缝 WO 未落线
-   ⇒ 语料留 gated 槽（`GATED_SLOTS`），driver 鸣报 skipped，不冒充覆盖。
+   agent_degraded 发射缝已落线（886c436a7，发射点 :2182/:2433/:2694；发射点在分叉后编排层
+   共享码，两臂对称经过——W5 块4 实证：runRolePathB :2406 / runSceneAgent :2669 同走
+   engine.runRegisteredAgent 过分叉，「两臂对称性不适用（不过分叉）」预设不成立；
+   runPathB :2027 直调 runAgentLoop 不过分叉，#6 登记维持）。**覆盖缺口非发射缝** =
+   ①编排层驱动级缺：dualrun50 直驱 runRegisteredAgent，捕获不到编排层发射的 agent_degraded；
+   ②STALL_LOOP 确定性触发通道缺：dsh 臂须 watchdog 真 cancel 落帧，语料面无确定性通道。
+   team-lead 2026-08-21 裁决（W5 块4）：gated 槽**维持不解**且**不建编排层双跑驱动级**——
+   a. STALL_LOOP 触发无确定性通道，建驱动级也得先造新观测缝，属新增观测面（撞冻结扩面禁令）；
+   b. 两臂对称性由「发射点在分叉后共享码」码结构论证 + L4/L6 真跳层覆盖，登记即够。
+   ⇒ 语料维持 gated 槽（`GATED_SLOTS`），driver 鸣报 skipped，不冒充覆盖；
+   **转 W7 输入**：灰度文档须载明「degraded 事件面 parity = 码对称论证，非双跑实证」。
 8. **缝观察（纯空 stop 的 outcome 分歧；已裁决·不判缺陷，不进断言，W2 批1 实证）**：native 臂
    纯空文本轮走 `lastText || "（探索模式未能产出回答）"` 软收尾 ⇒ outcome ANSWERED；
    dsh 臂 pi-ai 适配器对「stop + 零内容块」判 EMPTY_RESPONSE 错误
@@ -172,10 +189,33 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
    「过度防卫 vs 过宽」是设计取向差不是对错差；②dr50-by 已覆盖 kimi 系真实吐空块形态
    （blocks:[] 是实证的，零内容 stop 目前无真跳证据）；③动哪一侧都要改上游 vendor lib
    或 native 宽限，不成比例；④若后续 L2/L6 真跳证据显示真 provider 真撞此形态，再翻案。
+9. **缝观察（finish_reason=length 截断的双臂取向差；已裁决·native 不修，W2 批3 dr50-ch 实证钉死）**：
+   native 臂 stopReason≠"tool_use" 一律 `degrade("ANSWERED")` 软收尾（loop.ts:1027 唯一判据，
+   全文无 length/max_tokens 分支；连生产适配器 openai.ts:283 也把 length 折成 end_turn，
+   anthropic.ts:199 逐字透传 "max_tokens" 但 loop 同样不认）；dsh 臂 pi-ai mapStopReason
+   length⇒max-tokens ⇒ reassemble outcome BUDGET_EXHAUSTED + degraded{BUDGET_EXHAUSTED} +
+   诚实摘要头 + run.budgetExhausted=true。native 宽容放行截断文本 vs dsh 诚实判预算耗尽 =
+   设计取向差，不是对错差。**裁决史**：批1探明差异时原判「修 dsh 对齐 native」——基于
+   「native 有 budgetExhausted 语义」的前提；批3读码证前提倒置（语义缺失在 native 侧，
+   dsh 反而是带语义更多的一臂），team-lead 2026-08-21 推翻重判，native 不修三理由：
+   a. 换心不换身（native loop 是壳，本战役边界不动它）；b. 生产适配器折叠使 loop 加 length
+   分支对 OpenAI 路天然死代码、只有 anthropic 路能到——半残机制；c. 改 native = 全 agent
+   （非 DSH 范围）行为变更，属仓主级产品裁决——若仓主要 native 诚实截断语义，另立 WO。
+   ⇒ 登记缝观察；断言走 §2 A1 分锚 + A4 budgetExhausted 分锚 + outcome/degraded 逐臂锚
+   （dr50-ch，双臂不互比）。
+   **dsh 自体不一致两件判缺陷、已修**（dsh 对齐 dsh 自己的 outcome，不涉 native）：
+   ① engine DSH 出口 run 记录恒 emptyAgentRunRecord（budgetExhausted 恒 false）⇒ dsh 自己的
+   outcome=BUDGET_EXHAUSTED 语义在出口被丢、审计记录自体矛盾（管理台可见）——修：
+   outcome=BUDGET_EXHAUSTED ⇒ budgetExhausted=true（对位 loop.ts:659 finishRun 同口径）；
+   ② reassemble max-tokens 路裸文本、无诚实摘要头（stall 路有模板）——修：镜像 stall 路
+   补「[预算耗尽·诚实摘要] ⚠️ 模型输出触长度上限被截断——…」头块（对位 loop.ts:620-634
+   有界终止必带诚实前缀约定；语料锚 = corpus.ts LENGTH_TRUNCATION_HEADER 逐字）。
+   钉死位：dr50-ch 双臂分锚 + reassemble 探针 max-tokens 头逐字锚 + mutation 双招反证
+   （摘 engine budgetExhausted 赋值 ⇒ 分锚红；摘 reassemble 摘要头 ⇒ A1 分锚红 + 探针红）。
 
-## 4. 语料构成（62 条 + 2 gated）
+## 4. 语料构成（63 条 + 2 gated）
 - 内容源：20 条 = SCENARIO_CATALOG triggerQuestion（执行通道不借 evals——蓝图 evidence 5）；
-  42 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮 load_skill；
+  43 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮 load_skill；
   多轮：1/2/5 次 LLM 往返；拒绝混合：deny_pre 前置 / deny_mid 中段 / deny_all 全 deny /
   deny_prefork 分叉前）+ W2 批1 扩面 6 条：G1 EMPTY 空块类 4（dr50-by 空 blocks /
   dr50-bz 空 markdown 块 / dr50-ca 空白软收尾 / dr50-cb 空块混排）+ G4 超长输出 2
@@ -183,12 +223,14 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
   + W2 批2 扩面 3 条：G2 expectsSchema 结构化（dr50-ce 简单 schema valid /
   dr50-cf 嵌套 schema valid / dr50-cg invalid→valid 拒后收敛——dsh 剧本末轮文本
   恒写固定文案 STRUCTURED_ANSWER_TEXT 单源，invalid 形态锚 A1b 修复后 fail-closed 口径）
+  + W2 批3 扩面 1 条：G3 finish_reason=length 截断（dr50-ch 双臂分锚——§3 #9 设计取向差
+  登记 + dsh 自体修复两件钉死；stub 夹具增 finishReason 可选键，缺省 "stop" 字节兼容）
   + W5 扩面 3 条：dr50-ci provenance 畸形拒后收敛（final_answer 入参严校验通道双臂同形态）、
   dr50-cj writeMode 缺 action_draft 拒后收敛（语料声明 sideEffect=WRITE ⇒ driver skillDef
   治理位透传）、dr50-ck reasoning 流（stub reasoning 通道 ⇒ dsh 臂 agent_think 族真触发，
   A3c 矩阵精确族集锚）。
 - 每条 = 数据对 {native 臂 mock 队列剧本，dsh 臂 stub 剧本（+PLATFORM_GOV_DENY 声明），
   期望值声明（answer / native 迭代锚 / native token 锚 / dsh stats 锚 / deny wire 证据位 /
-  EMPTY 豁免位 / expectsSchema 与 structured 锚）}。
-- 自检闸（driver 首条 it）：总数 62、deny ≥10、四维覆盖全到位、A5 子集 ∈ 语料、
+  EMPTY 豁免位 / expectsSchema 与 structured 锚 / lengthDivergence 分锚）}。
+- 自检闸（driver 首条 it）：总数 63、deny ≥10、四维覆盖全到位、A5 子集 ∈ 语料、
   EMPTY 豁免位双恰（豁免 ⇔ 期望答案无 marker；豁免任务 prompt 必含 id）、gated 槽在册。
