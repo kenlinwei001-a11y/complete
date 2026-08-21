@@ -83,6 +83,10 @@ import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact
 // WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段）的**模型层**。回放/归属/分段一律在那边，
 // 本文件只负责「取数据 → 交给它 → 回包」这三件事（同 change-impact / impact-analysis 的分层）。
 import { buildMetricSeries } from "./sim/metric-series.js";
+// WO-SIM-BE-DRILL · 根因二级下钻 + 批号级传导明细（算法全在 sim/drill.ts 纯函数层，本文件只做 IO 与 A6 装配）
+import { ChainLossDrillRequestSchema } from "@platform/contracts";
+import { chainLossDrill, chainNodeDetail, type DrillObject, type DrillWorld } from "./sim/drill.js";
+import { nodeLossShare, type ChainLossResult } from "./solvers/chain-loss.js";
 import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
 // WO-STATEVAR-DISPLAYNAME：推演状态变量中文名的**唯一**投影口（单源表在 battery.ts，两条路由共用此函数）
 import { stateVarDisplayNames } from "./synthetic/battery.js";
@@ -2513,6 +2517,82 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         chain: { orders, customers, models, routings, operations, materials, suppliers, processes, cadences, purchaseOrders, customsClearances, incomingInspections, links },
       }),
     );
+  });
+
+  // ── WO-SIM-BE-DRILL · 根因二级下钻 + 批号级传导明细 ──────────────────────────
+  //
+  // 两条路由共用**同一份**世界态装配（下面这个闭包），理由与 `simAdvanceTicks` 同：
+  // 「下钻算出来的份额」与「明细列出来的批号」必须是同一个世界的两个视角，
+  // 各读各的迟早漂移（本仓 D1×E1「两半各自绿、链路断」的形态）。
+  //
+  // ⚠ A6 的**唯一闸门在 Line 上**（实测：`authz.decide(base_manager, OBJECT_TYPE, X, READ)` ——
+  //   `Line` 回 `rowFilters:["Object.baseId IN ${user.attributes.baseScope}"]`，
+  //   而 `WIPLot`/`WorkOrder`/`Process`/`Equipment` 四类全回 `no policy attached; default allow`）。
+  //   批号/工单/设备都挂在产线上，所以「他能看哪些批号」= 「他能看哪些产线」。
+  //   这里刻意**不**自己写一条 baseId 比较：那是绕开 A6 另造判据，策略一改就静默漂移。
+  //   闸门一律来自 `authz.rowAllowed`，与 `ontology.queryObjects` 走的是同一个机制。
+  const buildDrillWorld = async (c: AuthCtx, baseId: string | null, routingId: string | null) => {
+    const load = async (typeKey: string): Promise<DrillObject[]> =>
+      (await repos.objects.listByType(c.tenantId, typeKey))
+        .filter((o) => !o.mergedInto) // OC1：被并入对象不出现，只见 golden
+        .map((o) => ({ id: o.id, props: o.props }));
+    const [operations, processes, equipment, workOrders, lineObjs, wipLots] = await Promise.all([
+      load("Operation"), load("Process"), load("Equipment"), load("WorkOrder"), load("Line"), load("WIPLot"),
+    ]);
+    const rowFilters = await authz.require(c, "OBJECT_TYPE", "Line", "READ");
+    const allLineIds = new Set(lineObjs.map((l) => String(l.props.lineId ?? "")).filter((s) => s !== ""));
+    const visibleLineIds = new Set(
+      lineObjs
+        .filter((l) => authz.rowAllowed(c, rowFilters, l.props))
+        .map((l) => String(l.props.lineId ?? ""))
+        .filter((s) => s !== ""),
+    );
+    const links = (await repos.links.list(c.tenantId)).map((l) => ({ type: l.type, fromId: l.fromId, toId: l.toId }));
+    const world: DrillWorld = {
+      operations, processes, equipment, workOrders, lines: lineObjs, wipLots, links,
+      visibleLineIds, allLineIds, rowFilters,
+    };
+    return { world, opts: { baseId, routingId } };
+  };
+
+  /**
+   * 取锚点链的环节份额（`chain_loss_attribution` 的**唯一**调用口，两条路由共用）。
+   * 折叠「step 占比 → 节点占比」这一步走 `nodeLossShare`（住在 chain-loss.ts），本文件不复写。
+   */
+  const chainShareFor = async (c: AuthCtx, nodeId: string, so?: string) => {
+    const raw = (await solvers.invoke(c, "chain_loss_attribution", so ? { so } : {})) as unknown as ChainLossResult;
+    return { result: raw, share: nodeLossShare(raw, nodeId) };
+  };
+
+  /**
+   * 根因二级下钻：把某个环节的损失占比拆到**真实执行单元**（设备 / 工单）上。
+   * 口径、红线（子因名不许写死当词表）与守恒的全部说明在 `sim/drill.ts` 文件头，本处不复述。
+   */
+  app.post("/a/v1/sim/chain-loss-drill", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const body = parseBody(ChainLossDrillRequestSchema, req.body ?? {});
+    const { result, share } = await chainShareFor(c, body.nodeId, body.so);
+    // 缺省基地 = 锚点订单的基地（不限定就会把别基地的设备也摊进来，那是另一条链上的事）。
+    const baseId = body.baseId ?? result.anchor.baseId ?? null;
+    const { world, opts } = await buildDrillWorld(c, baseId, result.anchor.routingId ?? null);
+    return chainLossDrill(share, world, opts);
+  });
+
+  /**
+   * 批号级传导明细：某个环节所在站位上、**本角色可见**的在制批号，逐条带 wip / takt / yieldPct 真读数。
+   * 三个数一律读回物化真值，读不到就是 null + `missing[]`（一个常数兜底都没有，见 `sim/drill.ts`）。
+   */
+  app.get("/a/v1/sim/sessions/:id/node-detail", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    await getSimOr404(c, (req.params as { id: string }).id); // R2：别租户 404（会话存在性先于一切）
+    const q = req.query as { nodeId?: string; so?: string; baseId?: string };
+    if (typeof q.nodeId !== "string" || q.nodeId.length === 0) throw validationError("nodeId query param required");
+    const { result, share } = await chainShareFor(c, q.nodeId, typeof q.so === "string" && q.so.length > 0 ? q.so : undefined);
+    // 明细的基地范围**不缺省到锚点基地**：这条路由是「让我看这个站上的批号」，
+    // 缺省限死锚点基地会让基地经理看不到自己基地的批号（锚点订单可能落在别的基地）。
+    const baseId = typeof q.baseId === "string" && q.baseId.length > 0 ? q.baseId : null;
+    const { world, opts } = await buildDrillWorld(c, baseId, result.anchor.routingId ?? null);
+    return chainNodeDetail(share, world, opts);
   });
   // 增量 4：沙盘视图配置——由租户**本体 + 传导规则派生**（零业务常数 R14：节点/边/状态变量全来自
   // 租户自己的本体，换行业=换本体内容不改代码）。前端 5 屏从此渲染。

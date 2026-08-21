@@ -1320,3 +1320,206 @@ export const ChainLossMatrixResultSchema = z.strictObject({
   summary: z.string().min(1),
 });
 export type ChainLossMatrixResult = z.infer<typeof ChainLossMatrixResultSchema>;
+// § 7 · 根因二级下钻（ChainSubCause）+ 批号级传导明细（ChainNodeDetail）
+//       —— WO-SIM-BE-DRILL
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ── 这一节补的是什么 ──────────────────────────────────────────────────────
+ * §5 的 `LossAttribution` 只到**环节级**：「老化静置吃掉了全链损失的 5.94%」。
+ * 屏上再点一层要问的是「**这 5.94% 里，谁吃的**」——那是**执行单元级**：
+ * 哪台设备、哪张工单、哪个批号。本节冻结那一层的形状。
+ *
+ * ★ 红线（本节存在的全部理由）★
+ * **子因的名字必须从真实对象派生，不许写死成词表。**
+ * 写死「炉位不足 / 批次拆分」这种名字，种子一换（换行业、换基地、换 seed）名字照印不误，
+ * 而它背后早已没有任何对象 —— **屏上撒谎比屏上没有更糟**。故 `ChainSubCause` 把
+ * `evidence`（`objectType.objectId.prop` + 该字段真值）设成**必填**：
+ * 拿它回仓储捞不到那一行，这条子因就是编的，门当场红（`sim-drill.seam.test.ts` ②）。
+ * 这与 §5 `chain-loss.ts` 的 R13 下钻三元组是同一条纪律，只是下沉了一层。
+ *
+ * ★ 守恒（第二条命门）★
+ * `Σ(子因 pct) + residual.pct == 该环节 pct`。
+ * 残差**显式返回、绝不吞掉**：吞掉就会出现「子因加起来只有环节的一半，而屏上看不出少了什么」。
+ * 残差的两个合法来源各自标名（`ChainSubCauseResidualSchema.reason`）：
+ *   · 浮点尾差（≈1e-14 量级，正常）；
+ *   · **A6 行级过滤挡掉的那部分** —— 分母按**全量**行算、只发可见行，
+ *     于是不可见的份额落进残差而**不会被摊到可见行头上**（摊上去 = 用权限外的量污染权限内的数）。
+ */
+
+/** 子因证据：`objectType.objectId.prop` 三元组 + **该字段在仓储里的真值本身**（原单位·不换算）。 */
+export const ChainSubCauseEvidenceSchema = z.strictObject({
+  /** 本体对象类型（`Process` / `Equipment` / `WorkOrder` …）。必须是**已发布本体里真有**的类型。 */
+  objectType: z.string().min(1),
+  /** 该类型主键字段的值。拿它回 `listByType` 必须捞得到那一行（门 ② 咬这一条）。 */
+  objectId: z.string().min(1),
+  /** 承载这条子因权重的属性名。 */
+  prop: z.string().min(1),
+  /** `prop` 在仓储里的真值（原单位·不换算·不 round）。`null` = 该行此字段缺值。 */
+  value: z.number().nullable(),
+});
+export type ChainSubCauseEvidence = z.infer<typeof ChainSubCauseEvidenceSchema>;
+
+/**
+ * 子因的**下钻层级**——两层修法不同，混标会让读者以为「已经钻到底了」。
+ * · `CARRIER` —— 一级：这段天数的**承载字段本身**（= §5 evidence 的那个三元组）。
+ *   精确、零建模，但没有再往下拆（今天仓里没有能拆它的下级行）。
+ * · `UNIT`    —— 二级：摊到**真实执行单元**（设备 / 工单）上的份额。
+ */
+export const CHAIN_SUB_CAUSE_LEVELS = ["CARRIER", "UNIT"] as const;
+export const ChainSubCauseLevelSchema = z.enum(CHAIN_SUB_CAUSE_LEVELS);
+export type ChainSubCauseLevel = z.infer<typeof ChainSubCauseLevelSchema>;
+
+export const ChainSubCauseSchema = z.strictObject({
+  /** 稳定键（`<stepId>::<objectType>:<objectId>:<prop>`）。同输入两跑一致（R6）。 */
+  key: z.string().min(1),
+  /** 人读名。**从对象自身字段 + 属性中文名单源表派生**，不是写死的因名词表。 */
+  label: z.string().min(1),
+  /** 占**全链损失**的百分比（与 `LossAttribution.pctOfChainLoss` 同口径同分母）。 */
+  pct: z.number().min(0).max(100),
+  /** 该子因摊到的天数。 */
+  days: z.number().nonnegative(),
+  level: ChainSubCauseLevelSchema,
+  /** 归属的环节内 step（回指 §5 的 `LossAttribution.stepId`）。 */
+  stepId: z.string().min(1),
+  evidence: ChainSubCauseEvidenceSchema,
+  /** 这条子因是**怎么**被算出来的（份额口径原文；屏上原样显示，读者据此复核）。 */
+  basis: z.string().min(1),
+});
+export type ChainSubCause = z.infer<typeof ChainSubCauseSchema>;
+
+/** 残差行：环节占比里**没被任何子因认领**的那部分。恒返回（0 也返回），不吞。 */
+export const ChainSubCauseResidualSchema = z.strictObject({
+  pct: z.number(),
+  days: z.number(),
+  /** 残差从哪来（浮点尾差 / 行级权限挡掉 / 无子因可派生）。空串不合法 —— 说不清就是没查清。 */
+  reason: z.string().min(1),
+});
+export type ChainSubCauseResidual = z.infer<typeof ChainSubCauseResidualSchema>;
+
+/** 子因守恒容差（百分点）。与 §5 `LOSS_CONSERVATION_TOLERANCE_PCT` 同量级，刻意不复用同一常量：口径不同（一个对 100，一个对环节占比）。 */
+export const SUB_CAUSE_CONSERVATION_TOLERANCE_PCT = 0.001;
+
+/**
+ * 子因守恒残差 = `Σ子因pct + residualPct − nodePct` 的**唯一实现**。
+ * 谁在别处再写一遍这个加减，「单一实现」就破了（同 `lossConservationResidual` 纪律）。
+ */
+export function subCauseConservationResidual(
+  subCauses: readonly Pick<ChainSubCause, "pct">[],
+  residualPct: number,
+  nodePct: number,
+): number {
+  return subCauses.reduce((sum, s) => sum + s.pct, 0) + residualPct - nodePct;
+}
+
+export const ChainLossDrillSchema = z.strictObject({
+  nodeId: z.string().min(1),
+  label: z.string().min(1),
+  stage: ChainStageSchema.nullable(),
+  /** 该环节的非增值天数（= 名下各非增值 step 之和）。 */
+  nodeDays: z.number().nonnegative(),
+  /** 该环节占全链损失的百分比（= 名下各非增值 step 的 `pctOfChainLoss` 之和）。 */
+  nodePct: z.number().min(0).max(100),
+  subCauses: z.array(ChainSubCauseSchema),
+  residual: ChainSubCauseResidualSchema,
+  conservation: z.strictObject({
+    subCausePct: z.number(),
+    residualPct: z.number(),
+    nodePct: z.number(),
+    residual: z.number(),
+    tolerancePct: z.number(),
+    ok: z.boolean(),
+  }),
+  /**
+   * `subCauses` 为空时**必须**说清为什么（诚实缺席）。非空时省略。
+   * ⚠ 空数组 + 一句原因，永远优于一条编出来的子因。
+   */
+  reason: z.string().min(1).optional(),
+});
+export type ChainLossDrill = z.infer<typeof ChainLossDrillSchema>;
+
+/**
+ * 批号级明细行。`wip / takt / yieldPct` **一律读回真实物化值**，读不到就是 `null` + 进 `missing[]`，
+ * **禁止任何常数兜底** —— 给个默认节拍/默认良率，屏上会看到一个「确凿」的假读数。
+ */
+export const ChainLotDetailSchema = z.strictObject({
+  /** 批号（`WIPLot` 主键真值）。 */
+  lotNo: z.string().min(1),
+  /** 当前站位（`WIPLot.currentProcess` 真值）。 */
+  station: z.string().min(1),
+  /** 批量（该批所属工单的计划投产数 `WorkOrder.qtyPlanned`）。取不到 → `null`。 */
+  batch: z.number().nullable(),
+  /** 在制数量（`WIPLot.qty`）。取不到 → `null`。 */
+  wip: z.number().nullable(),
+  /** 站位节拍（秒/件；= 该站设备 `Equipment.ctSeconds`，多台取最慢的一台）。取不到 → `null`。 */
+  takt: z.number().nullable(),
+  /** 站位良率（百分比；= `Process.yield` × 100）。取不到 → `null`。 */
+  yieldPct: z.number().nullable(),
+  /** 逐字段溯源：拿它回仓储捞真值必须逐位对上（同 §5 R13 纪律）。 */
+  evidence: z.strictObject({
+    lot: ChainSubCauseEvidenceSchema,
+    batch: ChainSubCauseEvidenceSchema.nullable(),
+    takt: ChainSubCauseEvidenceSchema.nullable(),
+    yield: ChainSubCauseEvidenceSchema.nullable(),
+  }),
+});
+export type ChainLotDetail = z.infer<typeof ChainLotDetailSchema>;
+
+/**
+ * 站间流转（上一站 → 下一站）。
+ *
+ * ⚠ **不走 `WIPMove`**：那张表生成器里有、对象库里**一条都没有**
+ * （`synthetic/service.ts` 的 `putAll` 清单只落了 `WIPLot`，实测 `listByType("WIPMove")` n=0）。
+ * 拿一张空表当路由源 = 永远返回空而看不出为什么。故路由取**真实工艺顺序**
+ * `Operation.operationSeq`（锚点型号量产路由上的相邻工序），并把依据写进 `basis`。
+ */
+export const ChainRouteSchema = z.strictObject({
+  fromStation: z.string().min(1).nullable(),
+  toStation: z.string().min(1).nullable(),
+  basis: z.string().min(1),
+});
+export type ChainRoute = z.infer<typeof ChainRouteSchema>;
+
+/** 诚实缺席行（明细里某个数取不到时登记，**替代**任何常数兜底）。 */
+export const ChainDetailMissingSchema = z.strictObject({
+  field: z.string().min(1),
+  scope: z.string().min(1),
+  reason: z.string().min(1),
+  probe: z.string().min(1),
+});
+export type ChainDetailMissing = z.infer<typeof ChainDetailMissingSchema>;
+
+export const ChainNodeDetailSchema = z.strictObject({
+  node: z.strictObject({
+    nodeId: z.string().min(1),
+    label: z.string().min(1),
+    stage: ChainStageSchema.nullable(),
+    /** 该节点对应的真实站位名（`Process.name`）。派生不出 → `null`（不编一个）。 */
+    station: z.string().min(1).nullable(),
+    nodeDays: z.number().nonnegative(),
+    nodePct: z.number().min(0).max(100),
+    steps: z.array(ChainStepSchema),
+  }),
+  lots: z.array(ChainLotDetailSchema),
+  route: ChainRouteSchema,
+  missing: z.array(ChainDetailMissingSchema),
+  /** A6 说明：本次读到的批号是在哪个可见产线集合内取的（权限透明，不静默截断）。 */
+  visibility: z.strictObject({
+    /** 行级过滤后可见的产线条数。 */
+    visibleLineCount: z.number().nonnegative(),
+    /** 行级过滤前的产线条数。两者不等 ⇒ 本次结果被 A6 收窄过。 */
+    totalLineCount: z.number().nonnegative(),
+    rowFilters: z.array(z.string()),
+  }),
+});
+export type ChainNodeDetail = z.infer<typeof ChainNodeDetailSchema>;
+
+/** `POST /a/v1/sim/chain-loss-drill` 入参。 */
+export const ChainLossDrillRequestSchema = z.strictObject({
+  nodeId: z.string().min(1),
+  /** 锚点订单号（透传给 `chain_loss_attribution`；缺省走它的 R6 字典序首张）。 */
+  so: z.string().min(1).optional(),
+  /** 把执行单元的展开限定在某个基地内（缺省 = 锚点订单的基地）。 */
+  baseId: z.string().min(1).optional(),
+});
+export type ChainLossDrillRequest = z.infer<typeof ChainLossDrillRequestSchema>;
