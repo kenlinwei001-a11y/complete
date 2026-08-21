@@ -101,6 +101,31 @@ describe("reassemble · block 类型 ③ structured（expectsSchema）", () => {
     const r = reassembleDshRun([assistantMessage("t"), turnEnd("completed")], { expectsSchema: {} });
     expect(r.ok).toBe(false);
   });
+
+  // WO-DSH-PROD-READY W2 批2③ red-first 探针（team-lead 裁决：invalid 直通判缺陷，修 reassemble）：
+  // invalid structured 今天 raw 直通（reassemble expectsSchema 分支无 checkJsonSchema，
+  // 注释自称「对位 loop.ts:147/256」是假的——:256 只是类型注释，真校验在 acceptFinalAnswer
+  // loop.ts:1284）。fail-closed 口径 = 与既有 rejects 同通道（ok:false + 显式错误）。
+  it("expectsSchema + invalid final_answer input → ok:false fail-closed（对位 loop.ts:1284 checkJsonSchema）", () => {
+    const schema = { type: "object", required: ["conclusion"], properties: { conclusion: { type: "string" } } };
+    const events = [toolCall("c4b", "final_answer", { wrong: 1 }), turnEnd("completed")];
+    const r = reassembleDshRun(events, { expectsSchema: schema });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.errors.join("; ")).toContain("conclusion");
+  });
+
+  it("expectsSchema + 嵌套 invalid（数组元素缺键）→ ok:false（checkJsonSchema items 递归同语义）", () => {
+    const schema = {
+      type: "object", required: ["items"],
+      properties: {
+        items: { type: "array", items: { type: "object", required: ["name"], properties: { name: { type: "string" } } } },
+      },
+    };
+    const events = [toolCall("c4c", "final_answer", { items: [{ name: "甲" }, { score: 1 }] }), turnEnd("completed")];
+    const r = reassembleDshRun(events, { expectsSchema: schema });
+    expect(r.ok).toBe(false);
+  });
 });
 
 describe("reassemble · 治理拒证（loop.ts acceptFinalAnswer 同口径）", () => {
