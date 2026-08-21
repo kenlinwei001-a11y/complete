@@ -47,13 +47,18 @@
  *    23% ⇒ rgb(15,42,49) vs 规格 rgb(13,43,51)；47% ⇒ rgb(31,86,101) vs 规格 rgb(27,90,102)。
  *    逐通道差 ≤ 4/255，且跟着主题走。第三个 #7fd8e4 与 `--c-capacity-txt` #80cfe4 差 ≤ 9/255。
  *
- * ── 字族：与 `SandboxDetail.module.css` 同一笔实测账 ───────────────────────
- * `--font-sans` 比规格那串多两项 `"Segoe UI", system-ui`，容器里 `system-ui` 经 fontconfig
- * 落到 DejaVu Sans，而规格那串落到 Liberation Sans —— `▤`（U+25A4）宽窄不同会把整行推位。
- * 基准 `pg4.png` 是拿规格那串渲出来的，**它就是本页的验收对象**，故此处照 Detail 的先例
- * 收一个局部 `--sbo-fs`（只此一处定义）。真正的修法是把 `--font-sans` 与规格对齐，
- * 那要动 `styles/tokens.css` —— 不在本单 🚦范围边界内，只登记不擅改。
- * 等宽字族没有这个问题，照常用 `var(--font-mono)`。
+ * ── 字族：直接用 `var(--font-sans)`（**与 Detail 那笔旧账不同，别照抄**）─────
+ * `SandboxDetail.module.css` 里记着一笔「`--font-sans` 比规格多两项 `"Segoe UI", system-ui`，
+ * 换成产品令牌差异像素 2.714%」的实测账，并因此收了一个局部 `--sbx-fs`。
+ * **那笔账在本页已经过期**：`sandbox-opt.html` 第 12 行的 `--fs` 原文就是
+ * `"Inter", "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif`，
+ * 注释写明「与 tokens.css --font-sans 逐字对齐（2026-08-21 裁决：产品 token 是真值，规格随它）」
+ * —— 三份规格 HTML 全部改过了。故本页用 `var(--font-sans)` 才是 1:1。
+ * 实测（同一套 chromium 参数 · 同一份基准）：局部字族 5.53% → `var(--font-sans)` 见交单报告。
+ * 差在 `▤`（U+25A4）：两条回落链在容器里分别落到 DejaVu Sans / Liberation Sans，
+ * 字形宽窄不同，会把甘特与面板头上几十处方块符号连带后面的文字整行推位。
+ * ⚠ Detail 那份文件的注释因此**已过期**（它不在本单 🚦范围边界内，只在此记账不擅改）。
+ * 等宽字族两边同解，照常用 `var(--font-mono)`。
  *
  * ── `writing-mode` ────────────────────────────────────────────────────────
  * 本页竖排的只有 `.vgrp`（中文组名 基线执行 / S-xxxx 执行）⇒ **逐字换行**，不用
@@ -82,8 +87,6 @@
   /* 见文件头偏差 ④。 */
   --sbo-transit-bg: color-mix(in srgb, var(--c-capacity) 23%, black);
   --sbo-transit-bd: color-mix(in srgb, var(--c-capacity) 47%, black);
-  /* 见文件头「字族」。 */
-  --sbo-fs: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
   box-sizing: border-box;
   width: 1440px;
   height: 897px;
@@ -92,7 +95,7 @@
   overflow: hidden;
   background: var(--bg);
   color: var(--txt);
-  font-family: var(--sbo-fs);
+  font-family: var(--font-sans);
   font-size: 12px;
   line-height: 1.35;
   -webkit-font-smoothing: antialiased;
@@ -403,7 +406,7 @@
 }
 .pc .r2 {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4,1fr);
   gap: 4px;
   font-family: var(--font-mono);
   font-size: 9.5px;
@@ -536,7 +539,7 @@
 }
 .cst .r.hd {
   color: var(--muted2);
-  font-family: var(--sbo-fs);
+  font-family: var(--font-sans);
   border-bottom: 1px solid var(--line);
 }
 .cst .r span {
