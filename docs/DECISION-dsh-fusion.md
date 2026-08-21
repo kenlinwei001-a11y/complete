@@ -466,7 +466,8 @@ allow-all，DSH 路径 PRE_CHECK 静默失效，建议升为第四条前置，�
 切 `mode: 'http'`（删 `deny: []`），engine DSH 分叉逐 run 经 env 缝注入 `PLATFORM_GOV_URL`
 （缺省推导本进程 `/b/v1/governance/adjudicate`，`DSH_GOV_URL` 可覆盖）与 `PLATFORM_GOV_TOKEN`
 （= `SERVICE_TOKEN`，不落盘）；fail-closed 链三段（无 url 初始化抛错 / 401 / 不可达皆转 deny）
-未削弱。机器证据：新缝 `dsh-gov-production.seam.test.ts` 四臂（真端点 BLOCK deny 理由逐字回灌 ∧
-零执行 / 放行真执行 / 不可达 fail-closed / 401 fail-closed）+ mutation 反证两招红 + 既有 DSH
+未削弱。机器证据：新缝 `dsh-gov-production.seam.test.ts` 五臂（真端点 BLOCK deny 理由逐字回灌 ∧
+零执行 / 放行真执行 / 不可达 fail-closed / 401 fail-closed / 不钉 DSH_GOV_URL 缺省推导真打到）
++ mutation 反证三招红（含缺省推导路径段写错 ⇒ ⑤ 红）+ 既有 DSH
 套件全绿（证据指针：`/tmp/dsh-prod-ready-evidence/f1-gov-*.txt`，分支 `claude/wo-dsh-prod-f1-gov`）。
 PRD §6 已同步增列第四条前置并标已销。

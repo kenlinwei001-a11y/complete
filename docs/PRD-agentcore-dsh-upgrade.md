@@ -269,11 +269,12 @@ engine 分叉 `cordisFile` 直通 + 逐 run 注入 `PLATFORM_GOV_URL`（缺省�
 ③ fail-closed 链三段未削弱：http 无 url ⇒ 插件 initialize 抛错；端点 `requireServiceToken`
 401 ⇒ 插件转 deny；不可达/超时/畸形 ⇒ 插件转 deny。
 
-**机器证据**：新缝 `apps/agentcore/test/dsh-gov-production.seam.test.ts` 四臂（真裁决端点
+**机器证据**：新缝 `apps/agentcore/test/dsh-gov-production.seam.test.ts` 五臂（真裁决端点
 BLOCK ⇒ deny 理由逐字回灌模型面 ∧ 工具体零执行 ∧ step ERROR；放行 ⇒ 真执行 ∧ 裁决覆盖
 echo+final_answer；URL 指已关闭端口 ⇒ fail-closed deny 含 unreachable ∧ 零求值；
-SERVICE_TOKEN 缺失 ⇒ 401 ⇒ fail-closed deny ∧ 零求值）+ mutation 反证两招（删
-`PLATFORM_GOV_URL` 注入 ⇒ ③④ 红；生产档 mode 回 mock ⇒ ①② 红）+ 既有 DSH 套件逐个绿
+SERVICE_TOKEN 缺失 ⇒ 401 ⇒ fail-closed deny ∧ 零求值；不钉 DSH_GOV_URL ⇒ engine 缺省推导
+端点真被打到 ∧ 放行真执行）+ mutation 反证三招（删 `PLATFORM_GOV_URL` 注入 ⇒ ③④ 红；
+生产档 mode 回 mock ⇒ ①② 红；缺省推导路径段写错 ⇒ ⑤ 红且 ①-④ 不受影响）+ 既有 DSH 套件逐个绿
 （evidence：`/tmp/dsh-prod-ready-evidence/f1-gov-*.txt[.rc]`）+ D3 门/selftest 绿。
 
 ---
