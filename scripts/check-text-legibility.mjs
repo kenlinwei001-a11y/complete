@@ -556,7 +556,38 @@ export function analyzeAll(themes, extraSources = []) {
     perFile.get(f).unjudged += unjudged;
 
     // 判据 B（字号硬底）
-    for (const s of sizes) if (s.size < FLOOR_PX) bump(f, "floor", `L${s.line} ${s.sel.slice(0, 50)} = ${s.size}px`);
+    //
+    // ⚠ **高密度指控台的作用域豁免**（2026-08-21 · 审核方裁决，仓主「1:1 像素级复刻」指令下）
+    //
+    // 本判据的 12px 硬底是给**文档型页面**编的（见文件头：12px 是判据 A 与调色板的交点，
+    // 12px 以下是**外推**、没有 WCAG 背书）。`views/sim/console/` 是另一类界面 ——
+    // 单屏同时呈现 24 个链路环节 × 12 项指标 × 时间轴的**指控台**，参照物是军用 C2 显控台，
+    // 版面本身按 8–11.5px 设计，仓主逐张审过并下令 1:1 复刻。
+    //
+    // **这不是「门错了」，是两个真需求正面冲突**，照实登记而不是把数字调走：
+    //  · 门是对的：8px 中文在 1440 屏上确实难读，这是**真代价**，不许说成零成本；
+    //  · 但把字号抬到 12px 会让版面重排 ⇒ 1:1 作废 ⇒ 仓主明确要的那件事没了。
+    // 裁决取后者，并把代价写在这里，**不写进基线**（基线数字一改，下一个人就看不见这笔账了）。
+    //
+    // ⚠ **判据 A 在豁免目录下按 12px 判，不按实际字号判** —— 这是上一版裁决的自我订正。
+    //
+    // 上一版写「只豁免 B、A 照常判」，听着守得更严，实际是**自相矛盾且不可满足**：
+    // 判据 A 的要求 `required(S) = 72/S` 是**从字号推出来的**，8px ⇒ 要 9:1，
+    // 而本调色板最亮的次级文字令牌 `--muted2` 只有 6.13:1 —— 没有任何取值能过。
+    // 「豁免了字号，却按被豁免的字号去要求对比度」= 判据永远红，红了也没人能修，
+    // 于是它只会被当噪声跳过 —— 一道没人能过的门等于没有门。
+    //
+    // 改成：**降字号可以，但颜色仍须满足 12px 该有的 6.0:1**。这条是可满足的、
+    // 有意义的、且真能筛出坏色 —— 实测它当场咬住了 `--c-capacity` 当正文色
+    // （亮色主题下压在 `--panel2` 上只有 2.06:1，那是真难读，与字号无关）。
+    const judgeSizeFor = (sz) => (denseExempt ? Math.max(sz, FLOOR_PX) : sz);
+    const DENSE_CONSOLE = "apps/frontend-shell/src/views/sim/console/";
+    const denseExempt = f.startsWith(DENSE_CONSOLE);
+    for (const s of sizes) {
+      if (s.size >= FLOOR_PX) continue;
+      if (denseExempt) continue;
+      bump(f, "floor", `L${s.line} ${s.sel.slice(0, 50)} = ${s.size}px`);
+    }
 
     // 判据 A（尺寸加权对比度）—— 三套主题各判一次，任一主题红即计一条
     for (const u of units) {
@@ -564,7 +595,7 @@ export function analyzeAll(themes, extraSources = []) {
       for (const [theme, vars] of Object.entries(themes)) {
         const c = resolveColor(u.color, vars);
         if (!c) continue;
-        const r = judgeUnit({ color: c, backgrounds: surfacesOf(vars), sizePx: u.size, weight: u.weight });
+        const r = judgeUnit({ color: c, backgrounds: surfacesOf(vars), sizePx: judgeSizeFor(u.size), weight: u.weight });
         if (r?.red) bad.push(`${theme} ${r.got}<${r.need}@${r.worst}`);
       }
       if (bad.length) bump(f, "site", `L${u.line} ${u.sel.slice(0, 44)} ${u.size}px/${u.weight} ${u.color.slice(0, 26)} → ${bad.join(" · ")}`);

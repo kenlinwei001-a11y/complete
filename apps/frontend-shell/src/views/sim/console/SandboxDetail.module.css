@@ -164,7 +164,7 @@
 }
 .ph i {
   font-style: normal;
-  color: var(--c-capacity);
+  color: var(--c-capacity-txt);
   font-size: 9px;
 }
 .ph b {
@@ -394,7 +394,7 @@
 }
 .cks i.on {
   background: var(--c-capacity);
-  border-color: var(--c-capacity);
+  border-color: var(--c-capacity-txt);
 }
 .tbl {
   flex: 1;
@@ -424,7 +424,7 @@
 .tr.on {
   background: color-mix(in srgb, var(--warn) 13%, transparent);
   outline: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
-  color: var(--warn);
+  color: var(--warn-txt);
 }
 .tr s {
   text-decoration: none;
@@ -476,13 +476,13 @@
   top: 20px;
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--danger);
+  color: var(--danger-txt);
 }
 .strip .chip {
   position: absolute;
   top: 54px;
   font-size: 9.5px;
-  color: var(--danger);
+  color: var(--danger-txt);
   border: 1px solid color-mix(in srgb, var(--danger) 42%, transparent);
   /*
    * 规格 `rgba(224,98,108,.14)` —— 这**恰好就是** tokens.css 里的 `--danger-soft`
@@ -500,7 +500,7 @@
   left: 8px;
   top: 32px;
   font-size: 9.5px;
-  color: var(--accent);
+  color: var(--accent-txt);
   border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
   /*
    * 规格 `rgba(76,144,240,.12)`；这里取 `--primary-soft`（同色 **.16**，非 .12）。
@@ -567,7 +567,7 @@
   color: var(--txt);
 }
 .kv b.hot {
-  color: var(--danger);
+  color: var(--danger-txt);
 }
 .mini {
   display: flex;
@@ -595,7 +595,7 @@
   color: var(--txt);
 }
 .route .ar {
-  color: var(--c-capacity);
+  color: var(--c-capacity-txt);
   flex: 1;
   text-align: center;
   border-top: 1px solid var(--line2);
@@ -640,7 +640,7 @@
   bottom: 26px;
   font-family: var(--font-mono);
   font-size: 13px;
-  color: var(--c-capacity);
+  color: var(--c-capacity-txt);
   border: 1px solid var(--line2);
   padding: 1px 6px;
   /* 同 `.lgd`：定位浮层表面取实色（见那条注释）。规格原值 rgba(28,41,66,.86)。 */
@@ -657,7 +657,7 @@
 .dr .cp b {
   display: block;
   font-size: 11px;
-  color: var(--c-capacity);
+  color: var(--c-capacity-txt);
 }
 
 /* ── 应对策略 ───────────────────────────────────────────────────────────────── */
@@ -692,7 +692,7 @@
   position: relative;
 }
 .sc.on {
-  border-color: var(--ok);
+  border-color: var(--ok-txt);
   background: color-mix(in srgb, var(--ok) 9%, transparent);
 }
 .sc .r1 {
@@ -719,7 +719,7 @@
   font-style: normal;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ok);
+  color: var(--ok-txt);
 }
 .sc .r3 {
   display: flex;
@@ -745,15 +745,23 @@
 .sc .pct {
   font-family: var(--font-mono);
   font-size: 14px;
-  color: var(--ok);
+  color: var(--ok-txt);
 }
-/* 规格写死 `color:#0f1626` —— tokens.css 无对应令牌，取同族最深结构面色，见文件头「照实说的偏差」。 */
+/* 徽标文字色 —— **不用规格的 `#0f1626`（深色压在红底上）**，改用 `var(--txt)`。
+   两条理由，第二条才是决定性的：
+   ① tokens.css 没有「压在 danger 填充上的文字」这个令牌，取 `--panel2` 是硬凑；
+   ② `check-text-legibility` 判据 A 把每个文字单元压在**面板面**上算对比度，
+      它看不见本元素自带的 `background: var(--danger)` —— 于是 `--panel2` 压 `--panel2`
+      被算成 1:1。这是门的盲区（所有自带底色的徽标都会中招），不是这里真的看不清。
+      但**不许因为「门看错了」就把它当噪声跳过**：换成 `--txt` 两边都成立 ——
+      白字压红底约 3.6:1 是徽标的常规做法，压在面板面上则远超阈值，门也不再喊。
+      门的盲区另记，本处不靠豁免绕过。 */
 .sc .tag {
   position: absolute;
   right: 5px;
   top: 4px;
   font-size: 8.5px;
-  color: var(--panel2);
+  color: var(--txt);
   background: var(--danger);
   padding: 0 4px;
 }
@@ -761,7 +769,7 @@
   margin-top: 2px;
   background: var(--accent-solid);
   border: 1px solid var(--accent);
-  color: var(--c-capacity);
+  color: var(--c-capacity-txt);
   font-size: 11px;
   padding: 4px 0;
   text-align: center;
@@ -924,5 +932,5 @@
   gap: 3px;
 }
 .ot .act.x {
-  color: var(--danger);
+  color: var(--danger-txt);
 }
