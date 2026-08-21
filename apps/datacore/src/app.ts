@@ -2424,6 +2424,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = ParetoRequestSchema.parse(req.body ?? {});
     const solve: SolveArgsFn = (fam, a) => solvers.invoke(c, fam, a);
     return runOptimizePareto(solve, body);
+  });
+  /**
    * WO-SIM-BE-MATRIX · 环节 × 基地 损失矩阵 `chain_loss_matrix`（纯只读）。
    *
    * 与 `chain_loss_attribution` 的分层：那条答「**这一条**链上每个环节吃掉损失的百分之多少」，
