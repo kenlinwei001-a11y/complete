@@ -1193,3 +1193,130 @@ export function compareChainImpediment(a: ChainImpediment, b: ChainImpediment): 
   if (a.impedimentId !== b.impedimentId) return a.impedimentId < b.impedimentId ? -1 : 1;
   return 0;
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// § 7 · ChainLossMatrix（环节 × 基地 损失矩阵）—— WO-SIM-BE-MATRIX
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * **环节 × 基地 损失矩阵**：把 §5 的一维损失归因（一条锚点链）铺成二维。
+ *
+ * ── 为什么需要它（一维版今天的行为）────────────────────────────────────────
+ * `chain_loss_attribution` 只跑**一条**锚点链，链上的基地由
+ * `apps/datacore/src/solvers/chain-loss.ts` 的 `const baseId = orderBases[0] ?? null`
+ * **隐式**定死成「锚点订单 `bases` 数组字典序第一个」。一张订单可产 N 个基地时，
+ * 其余 N−1 个基地在输出里**没有任何一维承载它** —— 既不是 0 也不是 EMPTY，是这一维根本不存在。
+ * 本矩阵把「基地」升成显式的一维：**对每个基地各跑一次同一份归因**，拼成格子。
+ *
+ * ── 三条口径（与 §5 完全同源，本节不新写任何算式）────────────────────────
+ * ① 每个格子的 `days` 是**非增值天数**（增值段不进矩阵，和 §5 的分母纪律一致）；
+ *    `pct` 是**该列内**占比（= 该基地全链非增值总量的百分之几），故**每列 Σpct == 100 ±容差**。
+ *    ⚠ 不是「占全矩阵的百分之几」—— 列间可比的是 `days`，不是 `pct`。
+ * ② 列合计 `colTotals[].days` 必须 == 该基地 `chainNonValueDays(全链 steps)`（守恒），
+ *    残差走 §5 的 `lossConservationResidual()`，**显式返回**，不在服务端偷偷判掉。
+ * ③ **空列不许返 0**。某基地在本租户没有可锚定的 Order ⇒ `days`/`sumPct`/`residual` 全 `null`
+ *    且带 `reason` —— 屏上「这个基地没数据」和「这个基地损失是 0」是两个相反的结论，
+ *    返 0 会把前者读成后者（本仓 `genuine-sim` 战役打的就是这个病）。
+ *    同理，某个环节在某基地的链上**不存在**时**不产格子**，而是进该列的 `missingNodeIds`。
+ */
+export const ChainLossMatrixNodeSchema = z.strictObject({
+  nodeId: z.string().min(1),
+  stage: ChainStageSchema,
+  label: z.string().min(1),
+});
+export type ChainLossMatrixNode = z.infer<typeof ChainLossMatrixNodeSchema>;
+
+/** 列：租户内的一个生产基地（`baseId` 取自 `Base` 对象自身，不从 `BASE_REGISTRY` 硬抄）。 */
+export const ChainLossMatrixBaseSchema = z.strictObject({
+  baseId: z.string().min(1),
+  name: z.string().min(1),
+});
+export type ChainLossMatrixBase = z.infer<typeof ChainLossMatrixBaseSchema>;
+
+/**
+ * 一个格子 = （环节, 基地）。
+ * `days` 与 `pct` **都可以是真 0**（该环节在这条链上存在、只是不吃损失）——
+ * 「真 0」与「没数据」的区别在于：没数据的格子**根本不出现**（见 `missingNodeIds` / 空列）。
+ */
+export const ChainLossMatrixCellSchema = z.strictObject({
+  nodeId: z.string().min(1),
+  baseId: z.string().min(1),
+  /** 占**本列**（该基地全链非增值总量）的百分比 0–100。 */
+  pct: z.number().min(0).max(100),
+  /** 该环节在该基地链上的非增值天数。 */
+  days: z.number().nonnegative(),
+});
+export type ChainLossMatrixCell = z.infer<typeof ChainLossMatrixCellSchema>;
+
+/** 行合计：某环节在**所有**有数据的基地上合计吃掉多少天，以及占全矩阵损失的百分之几。 */
+export const ChainLossMatrixRowTotalSchema = z.strictObject({
+  nodeId: z.string().min(1),
+  days: z.number().nonnegative(),
+  /** 占**全矩阵**非增值总量的百分比（分母 = Σ 所有非空列的 `days`）。Σ 行 == 100 ±容差。 */
+  pctOfGrandLoss: z.number().min(0).max(100),
+  /** 该环节在几个基地上真有格子（0 不可能出现——没格子的环节不进行索引）。 */
+  baseCount: z.number().int().nonnegative(),
+});
+export type ChainLossMatrixRowTotal = z.infer<typeof ChainLossMatrixRowTotalSchema>;
+
+/**
+ * 列合计。**空列的 `days`/`sumPct` 是 `null` 不是 0**（口径③）。
+ * `anchorBaseId` 是复验位：它必须 == `baseId`，否则说明这一列其实跑的是**别的基地**的链
+ * （一维求解器的 `orderBases[0]` 隐式锚点没被本列的投影覆盖住）——
+ * 那种情形下 13 列会静默变成 13 份同样的东西，除了这个字段没有任何断言看得见。
+ */
+export const ChainLossMatrixColTotalSchema = z.strictObject({
+  baseId: z.string().min(1),
+  /** 本列用了哪张订单当锚点（空列 = `null`）。 */
+  anchorSo: z.string().min(1).nullable(),
+  /** 该列实际锚到的基地（= 一维结果的 `anchor.baseId`）。非空列必须 == `baseId`。 */
+  anchorBaseId: z.string().min(1).nullable(),
+  /**
+   * 该列老化段实际锚到的 `Process`（= 一维结果的 `anchor.agingProcessId`）。
+   * 这是比 `anchorBaseId` **更难伪造**的一位：`anchorBaseId` 可以由循环变量原样回填，
+   * 而这个 id 是一维求解器**在本列基地上按 `Process.baseId` 过滤**才拿得到的 ——
+   * 同一张订单的两列若共用同一个 `agingProcessId`，就说明基地这一维根本没生效。
+   */
+  anchorAgingProcessId: z.string().min(1).nullable(),
+  /** 该基地全链非增值天数（= `chainNonValueDays`）。空列 = `null`，**不是 0**。 */
+  days: z.number().nonnegative().nullable(),
+  /** 本列 Σpct，应 == 100 ±容差。空列 = `null`。 */
+  sumPct: z.number().nullable(),
+  cellCount: z.number().int().nonnegative(),
+  /** 行索引里存在、但本列的链上没有的环节（诚实缺席，不补 0 格）。 */
+  missingNodeIds: z.array(z.string().min(1)),
+  /** 空列/缺格的原因（非空列 = `null`）。 */
+  reason: z.string().min(1).nullable(),
+  /** 复验探针（怎么自己再验一遍这条结论）。空列必给。 */
+  probe: z.string().min(1).nullable(),
+});
+export type ChainLossMatrixColTotal = z.infer<typeof ChainLossMatrixColTotalSchema>;
+
+/** 守恒残差：逐列 + 行合计口径各一份，**显式返回**（不在服务端判掉只回一个 ok）。 */
+export const ChainLossMatrixResidualSchema = z.strictObject({
+  byBase: z.array(
+    z.strictObject({
+      baseId: z.string().min(1),
+      /** `lossConservationResidual(该列 attribution)`。空列 = `null`（空表上「守恒」无意义）。 */
+      residualPct: z.number().nullable(),
+      ok: z.boolean(),
+      reason: z.string().min(1).nullable(),
+    }),
+  ),
+  /** 行合计口径的守恒残差（Σ `pctOfGrandLoss` − 100）。矩阵全空 = `null`。 */
+  rows: z.number().nullable(),
+  rowsOk: z.boolean(),
+  tolerancePct: z.number().positive(),
+});
+export type ChainLossMatrixResidual = z.infer<typeof ChainLossMatrixResidualSchema>;
+
+export const ChainLossMatrixResultSchema = z.strictObject({
+  nodes: z.array(ChainLossMatrixNodeSchema),
+  bases: z.array(ChainLossMatrixBaseSchema),
+  cells: z.array(ChainLossMatrixCellSchema),
+  rowTotals: z.array(ChainLossMatrixRowTotalSchema),
+  colTotals: z.array(ChainLossMatrixColTotalSchema),
+  residual: ChainLossMatrixResidualSchema,
+  summary: z.string().min(1),
+});
+export type ChainLossMatrixResult = z.infer<typeof ChainLossMatrixResultSchema>;

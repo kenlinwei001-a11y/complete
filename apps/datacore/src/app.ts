@@ -114,6 +114,10 @@ const CapabilityNeedsSchema = z.object({
 });
 import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "./solvers/service.js";
+// WO-SIM-BE-MATRIX · 环节 × 基地 损失矩阵（逐基地各跑一次既有一维归因，口径全走 S0 契约）
+import { chainLossMatrix, CHAIN_LOSS_MATRIX_SOLVER_KEY } from "./solvers/chain-loss-matrix.js";
+import { ChainLossMatrixResultSchema } from "@platform/contracts";
+import type { ChainLossObject } from "./solvers/chain-loss.js";
 // WO-V4-INSPECT · 杠杆标签/单位/值类的**单一真值**（PRD §4.1 的杠杆→域映射拿它当输入·前端零内联）
 import { LEVER_PROP_META } from "./solvers/lever-meta.js";
 import { solversByCategory, uncategorizedSolverKeys } from "./solvers/taxonomy.js"; // WO-L7A · 求解器决策问题分类维
@@ -2420,6 +2424,39 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = ParetoRequestSchema.parse(req.body ?? {});
     const solve: SolveArgsFn = (fam, a) => solvers.invoke(c, fam, a);
     return runOptimizePareto(solve, body);
+   * WO-SIM-BE-MATRIX · 环节 × 基地 损失矩阵 `chain_loss_matrix`（纯只读）。
+   *
+   * 与 `chain_loss_attribution` 的分层：那条答「**这一条**链上每个环节吃掉损失的百分之多少」，
+   * 本条把「基地」升成显式一维 —— 对租户内每个 `Base` 各跑一次**同一份**归因拼成二维。
+   * 口径、诚实缺席与「空列不许返 0」的全部理由写在 `solvers/chain-loss-matrix.ts` 文件头，
+   * 本处不复述（避免两份注释漂移）。
+   *
+   * 本方法只做 IO 与入参归一（与 `SolverService.chainLossAttribution` 兄弟写法一致）：
+   * 逐类型 `listByType` + 一次 `links.list` → 委派**纯函数** `chainLossMatrix`（无时钟无随机·R6）。
+   * 全程带 `c.tenantId`：仓储读全部按租户过滤，别的租户既读不到本租户的 Order 也读不到 Base。
+   */
+  app.post("/a/v1/sim/chain-loss-matrix", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const body = z.object({ so: z.string().min(1).optional() }).parse(req.body ?? {});
+    const load = async (typeKey: string): Promise<ChainLossObject[]> =>
+      (await repos.objects.listByType(c.tenantId, typeKey)).map((o) => ({ id: o.id, props: o.props }));
+    const [baseObjects, orders, customers, models, routings, operations, materials, suppliers, processes, cadences, purchaseOrders, customsClearances, incomingInspections] =
+      await Promise.all([
+        load("Base"), load("Order"), load("Customer"), load("Model"), load("Routing"), load("Operation"), load("Material"),
+        load("Supplier"), load("Process"), load("Cadence"), load("PurchaseOrder"), load("CustomsClearance"), load("IncomingInspection"),
+      ]);
+    // 诚实拒绝而非静默空答：没 Order 就没有任何一条链可锚，返回一张全 null 的矩阵会被读成
+    // 「全部基地都没损失」——那是与事实相反的结论（`chain_loss_attribution` 同一处也是显式 400）。
+    if (orders.length === 0) throw validationError(`${CHAIN_LOSS_MATRIX_SOLVER_KEY} 需先合成 Order（全链锚点）`);
+    if (body.so && !orders.some((o) => typeof o.props.so === "string" && o.props.so === body.so)) throw notFound(`Order ${body.so}`);
+    const links = (await repos.links.list(c.tenantId)).map((l) => ({ type: l.type, fromId: l.fromId, toId: l.toId }));
+    return ChainLossMatrixResultSchema.parse(
+      chainLossMatrix({
+        baseObjects,
+        ...(body.so ? { so: body.so } : {}),
+        chain: { orders, customers, models, routings, operations, materials, suppliers, processes, cadences, purchaseOrders, customsClearances, incomingInspections, links },
+      }),
+    );
   });
   // 增量 4：沙盘视图配置——由租户**本体 + 传导规则派生**（零业务常数 R14：节点/边/状态变量全来自
   // 租户自己的本体，换行业=换本体内容不改代码）。前端 5 屏从此渲染。
