@@ -163,6 +163,7 @@ import { SimClockService } from "./simclock.js";
 import { EnterpriseStateService } from "./twin/enterprise-state.js"; // WO-ENTERPRISE-STATE · 企业状态快照（读写端点见 /a/v1/twin/enterprise-states）
 import { HistoryService } from "./livedin/bundle.js";
 import { FeatureService, VIEW_FEATURE_MAP, featureNotFound } from "./features.js";
+import { SANDBOX_CONSOLE_FEATURE_KEY, SANDBOX_CONSOLE_VIEW_KEYS } from "./synthetic/sandbox-console.js";
 import { ConfigBundleService } from "./config-bundle.js";
 import { createEmbeddingProvider, type EmbeddingProvider } from "./embeddings.js";
 import { OpsTeamService } from "./opsteam/team.js";
@@ -1395,6 +1396,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     //   （这正是本仓「绿测试 ≠ 能用·断在接缝」的教科书形态，故补在与图谱视角同一个地方、同一种机制。）
     // 别名是**单向**的：关掉 `process.runtime` ⇒ 这里不 add ⇒ 前端两道闸一起关（R3 不被绕过）。
     if (out.has("process.runtime")) out.add("view.process-stuck");
+    // WO-SIM-BE-VIEWKEY · 推演沙盘指控台四视图：受控键是 `sim.sandbox`（**非** view.* 命名 ——
+    // 它们是同一个控制台的四种模式，共用沙盘那把闸，见 synthetic/sandbox-console.ts 文件头），
+    // 而 `ViewPage` 的路由守卫写死查 `view.${viewKey}`（frontend-shell/src/pages/ViewPage.tsx:33）。
+    // ⇒ 与上面 process-stuck **同一种断线、同一个修法**：不补别名就会出现最难查的那一种 ——
+    //   workspace.views 里有它、导航里点得到，点进去 ViewPage 第一道闸就 404；后端绿、前端绿，
+    //   只有真点一下才看得见（本仓「绿测试 ≠ 能用·断在接缝」的教科书形态）。
+    // 别名是**单向**的：关掉 `sim.sandbox` ⇒ 这里不 add ⇒ 前端两道闸一起关（R3 不被绕过）。
+    if (out.has(SANDBOX_CONSOLE_FEATURE_KEY)) for (const k of SANDBOX_CONSOLE_VIEW_KEYS) out.add(`view.${k}`);
     return [...out].sort();
   };
   app.get("/a/v1/me/workspace", async (req) => {

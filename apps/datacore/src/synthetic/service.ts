@@ -17,6 +17,7 @@ import type { FeatureService } from "../features.js";
 import type { ActionService } from "../actions.js";
 import { VIEW_FEATURE_MAP, ALL_FEATURE_KEYS } from "../features.js";
 import { BUILTIN_VIEWS, assertViewManifestIntegrity } from "./view-manifest.js";
+import { SANDBOX_CONSOLE_VIEW_KEYS } from "./sandbox-console.js";
 import { AuthService } from "../auth.js";
 import { newId } from "../ids.js";
 import { mulberry32, hashString, round } from "../prng.js";
@@ -93,6 +94,11 @@ const DARK_LAUNCH_EXTRA_KEYS = [
   // 流程卡点面板（「为什么**这一张单**现在卡住了」·需求 §4.5）。控制键 `process.runtime`
   // （features.ts:272 VIEW_FEATURE_MAP + INCOMPLETE_DATA_DARK_LAUNCH_FEATURES 暗发）。
   "process-stuck",
+  // WO-SIM-BE-VIEWKEY · 推演沙盘指控台四视图（sim-console / sim-conduction /
+  // sim-attribution / sim-optimize）。控制键 `sim.sandbox`，`features.ts` 里写着
+  // `defaultOn:false` ⇒ 与 process-stuck 同属"暗发"，**同一个死结**：过种子期过滤就永远
+  // 写不进 ViewConfig，租户日后开通也无从下发。故同桶（目录无条件收录·闸在请求期）。
+  ...SANDBOX_CONSOLE_VIEW_KEYS,
 ];
 
 /** §7.18 学习闭环视角 nodeFilter.ids —— 与图谱端点概念节点 id 一字不差。 */
@@ -1782,6 +1788,27 @@ export class SyntheticService {
       },
       // 运营态增量 §4.2：运营复盘（只读历史证据链页面，消费 history/bundle）
       review: { title: "运营复盘", renderer: "review", layout: { apiTag: "history" } },
+      // ── WO-SIM-BE-VIEWKEY · 推演沙盘指控台四视图（暗发·见 DARK_LAUNCH_EXTRA_KEYS）──────
+      //
+      // 本段是 `check-nav-group-coverage.mjs` 判据⑦ 的**供给侧之二**（「或 service.ts VIEW_DEFS 项
+      // 的 renderer 字段等于该 key」）。那道门在本单开工前就红着，报的正是这四个 renderer 键
+      // 「注册了却零路径渲染得到」；本段合上的就是它。
+      //
+      // ⚠ **必须写成字面量，不许写成 `...Object.fromEntries(SANDBOX_CONSOLE_VIEWS.map(...))`**
+      //   —— 这一条是实测撞出来的，不是风格洁癖：判据⑦ 的供给侧抽取器是**正则捞字面量**
+      //   （深度 1 的 `renderer: "…"`），派生写法它一个字都看不见 ⇒ 供给侧集合变小 ⇒ 门照旧
+      //   报「这四个键零路径可达」。第一版就是这么写的，门当场原样再红一次。
+      //   与 `sandbox-console.ts` 的 `SANDBOX_CONSOLE_VIEWS` 声明表**不许各写各的**：两侧一致性由
+      //   `test/workspace-sim-console.seam.test.ts`（§0.2 逐字对前端 registry + A1 逐条对下发值）
+      //   机械对账 —— 改一处不改另一处，测试当场红。
+      //
+      // `layout: {}`：本族不经 solver，画布/图层/求解全在前端控制台内部按会话取数。
+      // **无 `options`** —— 不许硬编 `sessionId`（会话是运行期的，写进 workspace 配置就成死值；
+      // 前端 `useConsoleSession()` 自己查最近一条 RUNNING）。
+      "sim-console": { title: "推演沙盘", renderer: "sim-console", layout: {} },
+      "sim-conduction": { title: "传导识别", renderer: "sim-conduction", layout: {} },
+      "sim-attribution": { title: "损失归因", renderer: "sim-attribution", layout: {} },
+      "sim-optimize": { title: "方案寻优", renderer: "sim-optimize", layout: {} },
       // WO-PROCESS-INSTANCE · 流程卡点面板（暗发·见 DARK_LAUNCH_EXTRA_KEYS）。
       // 走增量视图桶而**不进** BUILTIN_VIEWS，判据是**语义归属**（同 nav 门判据⑦ 的修法说明），逐条：
       //  ① 它的控制键是 `process.runtime`（引擎级），不是 `view.<key>`。BUILTIN_VIEWS 的
@@ -1845,7 +1872,15 @@ export class SyntheticService {
       { key: "query-history", label: "推演历史" },
     ];
     // 不同账号不同前端：admin 全量（含 admin 导航组），planner 业务视图，base_manager 子集 + 不同主题强调色。
-    const baseManagerExtras = extraViews.filter((v) => v === "order-chain" || v === "review");
+    // WO-SIM-BE-VIEWKEY：沙盘指控台四视图**不按角色收窄** —— 判据是"沙盘家族今天怎么配的"，
+    // 不是我另定一条：① 沙盘主屏 `sim-sandbox` 是 `NAV_GROUPS` 里带 `feature:"sim.sandbox"` 的
+    // 专用 route，**只有功能闸、零角色条件**；② 五个沙盘子视图（chain-line-map / transit-flow /
+    // physical-topology / node-inspector / chain-impediments）走核心 `views`，而 base_manager 的
+    // 排除名单是 `["dash","graph","plan-audit","plan-generate","global-sim"]` —— 一个沙盘键都不在。
+    // ⇒ 既有口径 = 沙盘一家只按 `sim.sandbox` 判、不按角色判。四视图照抄这条。
+    const baseManagerExtras = extraViews.filter(
+      (v) => v === "order-chain" || v === "review" || SANDBOX_CONSOLE_VIEW_KEYS.includes(v),
+    );
     const roleViews: Record<string, string[]> = {
       admin: [...views, ...extraViews],
       planner: [...views, ...extraViews],
