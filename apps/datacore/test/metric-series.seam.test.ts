@@ -294,10 +294,13 @@ describe("WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节�
 
   // ── ⑤ 变异反证：把基线改成「另起会话重算」⇒ ① 必须当场红 ──────────────────────────
   //
-  // 变异**手工执行并已记录在交单报告里**（把 `metric-series.ts` 的基线种子从"本会话 tick0 行"
-  // 改成 `{}` = 新建会话的世界，一行改动），实测 ① 当场红：
-  //   AssertionError: expected [ null, null, null, null, …(3) ] to deeply equal [ 4, 4, 4, 4, 4, 4, 4 ]
-  //   → 分叉点从 tick3 提前到了 tick0（判据 b/c 同时红）。
+  // 变异 M1 **手工执行并已记录在交单报告里**（把 `metric-series.ts` 里基线那一跑的种子
+  // 从"本会话 tick0 行"改成 `{}` = 新建会话的世界，一行改动），实测 6 条里 **4 条当场红**，① 的原文：
+  //   AssertionError: expected [ null, null, null, null, null, …(2) ] to deeply equal [ 4, 4, 4, 4, 4, 4, 4 ]
+  //    ❯ test/metric-series.seam.test.ts:148  expect(load.baseline).toEqual([ACT_LOAD, …])
+  //   → 基线整条变成 null，分叉点从 tick3 提前到了 tick0（判据 b 与 c 同时红）。
+  // 一并红的还有 ②（`obj_base_changzhou.loadIndex 在扰动删除后仍未与基线重合`）、③（`expected null to be 2`）、
+  // 本条（`expected null to be 4`）；④ 与 R3 那条仍绿 —— 确定性与鉴权本就不度量基线口径，它俩绿是对的。
   //
   // 本用例是那次变异的**常驻替身**：它不改实现，而是把"基线必须来自本会话自己的 tick0 行"
   // 这件事直接钉成断言 —— 任何"另起会话/从 baseSnapshot 重开"的改法都过不去。
