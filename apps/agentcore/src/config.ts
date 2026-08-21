@@ -78,6 +78,20 @@ const ConfigSchema = z.object({
    * env 缝注入子进程。部署态建议 `DSH_HARNESS_PROVIDER=platform`（单源 = PRODUCTION_DSH_HARNESS_PROVIDER）。
    */
   DSH_HARNESS_PROVIDER: z.string().default(PRODUCTION_DSH_HARNESS_PROVIDER),
+  /**
+   * WO-DSH-PROD-READY · F-1：dsh 分叉的 cordis 配置档文件名（runner opts.cordisFile 的 cfg 源，
+   * additive·缺省 "cordis.yml" 生产档与既有调用方字节兼容）。测试夹具钉 "cordis.poc.yml"
+   * （mock 治理/mock-llm/echo-tool）；生产档治理 = http 模式（F-1 起），经 DSH_GOV_URL 缝注入。
+   */
+  DSH_HARNESS_CORDIS_FILE: z.string().default("cordis.yml"),
+  /**
+   * WO-DSH-PROD-READY · F-1：生产档 platform-governance http 裁决端点（带外通道）。
+   * 缺省在 engine 分叉推导为 `http://127.0.0.1:${PORT}/b/v1/governance/adjudicate`
+   * （zod default 引不了同 schema 的 PORT，故推导放 engine）；显式设置 = 覆盖（如测试指
+   * app.listen 的随机端口）。凭据经 PLATFORM_GOV_TOKEN（= SERVICE_TOKEN）随 env 缝注入，
+   * 不落盘。
+   */
+  DSH_GOV_URL: z.string().optional(),
   /** 增量 §4.3：stdio command 绝对路径白名单（逗号分隔，精确匹配） */
   MCP_STDIO_COMMAND_ALLOWLIST: z.string().optional(),
   /** 增量 §3：技能附件本地存储目录（与 DataCore BLOB_DIR 共享卷形态）；缺省仅元信息 */
