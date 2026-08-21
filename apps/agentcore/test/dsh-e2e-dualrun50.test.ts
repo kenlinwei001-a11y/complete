@@ -348,39 +348,32 @@ function checkArmAnchors(task: DualRunTask, flag: "off" | "on", arm: ArmProducts
     expect(stats!.contextPressure).toEqual({ pressureTokens: anchor.pressureTokens });
     expect(stats!.sessionStats.turns).toBe(anchor.turns);
     expect(stats!.sessionStats.steps).toBe(anchor.steps);
-    // WO-DSH-PROD-READY W9-lite 骨架锚①：iterations = 帧流 turn 分组（语料单 turn ⇒ 至多 1 条），
-    // 非 meta 调用逐一对点剧本（final_answer meta 不进，对位 native 审计口径）；
-    // outcome 两态物理上限（govDeny ⇒ 帧 isError ⇒ ERROR；DENIED/BUDGET_EXCEEDED 帧流无源不硬造）；
-    // durationMs 推导值只锚非负形态（墙钟，A4 时间量豁免同口径）。
-    const expectedCalls = task.dsh.rounds
-      .filter((r) => r.toolCall !== undefined && r.toolCall.name !== "final_answer")
-      .map((r) => ({
-        toolName: r.toolCall!.name,
-        outcome: (task.dsh.govDeny ?? []).includes(r.toolCall!.name) ? "ERROR" : "OK",
-      }));
+    // WO-DSH-PROD-READY W9-lite 骨架锚①：iterations = 帧流 step 分组（team-lead 2026-08-21 裁决②——
+    // native 迭代粒度 = 每 LLM 轮 = step，turn 恒 1 时 turn 分组恒产单迭代无 parity 价值）。
+    // 每 stub 轮 = 一个 LLM step（与上方 stats 锚 steps === 剧本轮数同源互证）⇒ 迭代数 === 剧本轮数，
+    // index 0 基顺编号对位 native index=i；非 meta 调用对点所属轮（final_answer 剔除其轮留空迭代，
+    // 对位 native 审计口径 + :1041 空轮形态）；outcome 两态物理上限（govDeny ⇒ 帧 isError ⇒ ERROR；
+    // DENIED/BUDGET_EXCEEDED 帧流无源不硬造）；durationMs 推导值只锚非负形态（墙钟，A4 时间量豁免同口径）。
     const its = arm.run.iterations;
-    if (expectedCalls.length === 0) {
-      expect(its, `${task.id} dsh 臂剧本无真工具轮 ⇒ iterations 空`).toEqual([]);
-    } else {
-      expect(its, `${task.id} dsh 臂语料单 turn ⇒ 单迭代`).toHaveLength(1);
-      const iter = its[0];
-      expect(iter, `${task.id} dsh 迭代锚点缺失（长度断言过但取下标失败）`).toBeDefined();
-      if (!iter) return;
-      expect(Number.isInteger(iter.index), `${task.id} 迭代 index 整数形态`).toBe(true);
-      expect(
-        iter.toolCalls.map((c) => c.toolName),
-        `${task.id} dsh 迭代 toolName 序列对点剧本`,
-      ).toEqual(expectedCalls.map((e) => e.toolName));
-      iter.toolCalls.forEach((c, j) => {
-        const ec = expectedCalls[j];
-        expect(ec, `${task.id} dsh 迭代第 ${j} 个调用缺锚点`).toBeDefined();
-        if (!ec) return;
-        expect(c.outcome, `${task.id} dsh 调用 ${c.toolName} outcome 两态锚`).toBe(ec.outcome);
-        expect(["OK", "ERROR"], `${task.id} dsh outcome 词表物理上限两态`).toContain(c.outcome);
-        expect(c.durationMs).toBeGreaterThanOrEqual(0);
-        expect(typeof c.toolCallId).toBe("string"); // dsh 帧 callId 原值（非 tc_ 形态，#10）
-      });
-    }
+    expect(its, `${task.id} dsh 臂迭代数 === 剧本轮数（step 分组，每 LLM 轮一迭代）`).toHaveLength(task.dsh.rounds.length);
+    its.forEach((iter, i) => {
+      expect(iter.index, `${task.id} dsh 迭代 ${i} index 0 基顺编号`).toBe(i);
+      const tc = task.dsh.rounds[i]?.toolCall;
+      if (tc === undefined || tc.name === "final_answer") {
+        expect(iter.toolCalls, `${task.id} dsh 第 ${i} 轮（文本/final_answer 轮）⇒ 空迭代`).toEqual([]);
+        return;
+      }
+      expect(iter.toolCalls.map((c) => c.toolName), `${task.id} dsh 第 ${i} 轮 toolName 对点剧本`).toEqual([tc.name]);
+      const c = iter.toolCalls[0];
+      expect(c, `${task.id} dsh 第 ${i} 轮调用锚点缺失`).toBeDefined();
+      if (!c) return;
+      expect(c.outcome, `${task.id} dsh 调用 ${tc.name} outcome 两态锚`).toBe(
+        (task.dsh.govDeny ?? []).includes(tc.name) ? "ERROR" : "OK",
+      );
+      expect(["OK", "ERROR"], `${task.id} dsh outcome 词表物理上限两态`).toContain(c.outcome);
+      expect(c.durationMs).toBeGreaterThanOrEqual(0);
+      expect(typeof c.toolCallId).toBe("string"); // dsh 帧 callId 原值（非 tc_ 形态，#10）
+    });
     // W9-lite 骨架锚②：B11 同源等值（ROLLOUT §6.5 验收判据）——run.total* === answer.stats
     // 对应桶（同一份帧流 fold 的两个载体）；两臂 token 账不互比维持。
     const buckets = stats!.tokenUsage as { uncachedInputTokens: number; outputTokens: number };

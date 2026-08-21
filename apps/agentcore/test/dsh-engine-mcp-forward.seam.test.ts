@@ -280,13 +280,17 @@ describe("WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发", () => {
         expect(result.outcome).toBe("ANSWERED");
         expect(result.run.kernel).toBe("EXTERNAL"); // 钉死真走 DSH 分叉（否则全臂结论反掉）
         expect(stub.requests.length).toBe(3); // 剧本三轮真走完（wire 实证）
-        // 骨架锚①：iterations 非空——单 turn（单 prompt 形态）⇒ 单迭代；mcp echo 进、final_answer 不进
-        expect(result.run.iterations).toHaveLength(1);
+        // 骨架锚①：iterations 非空——step 分组（每 LLM 轮一迭代，team-lead 2026-08-21 裁决②）：
+        // 剧本 3 轮 ⇒ 3 迭代（0 基顺编号对位 native index=i）；mcp echo 进、final_answer 轮与
+        // 文本轮留空迭代（轮次证据与调用证据分离，native :1041 空轮同形态）。
+        expect(result.run.iterations).toHaveLength(3);
+        expect(result.run.iterations.map((it) => it.index)).toEqual([0, 1, 2]);
         const iteration = result.run.iterations[0];
         expect(iteration).toBeDefined();
         if (!iteration) return;
-        expect(Number.isInteger(iteration.index)).toBe(true);
         expect(iteration.toolCalls.map((c) => c.toolName)).toEqual([`mcp__${SERVER_NAME}__echo`]);
+        expect(result.run.iterations[1]?.toolCalls).toEqual([]); // final_answer 轮：调用剔除、轮次留痕
+        expect(result.run.iterations[2]?.toolCalls).toEqual([]); // 纯文本收尾轮
         const echo = iteration.toolCalls[0];
         expect(echo).toBeDefined();
         if (!echo) return;
