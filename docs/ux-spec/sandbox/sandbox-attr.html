@@ -1,0 +1,311 @@
+<title>损失归因台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+:root{
+  --ink:#223251; --panel:#2c3d5e; --panel2:#1c2942; --rail:#1c2942;
+  --hair:rgba(226,235,245,0.08); --hair2:rgba(226,235,245,0.14);
+  --txt:#e9eef5; --dim:#ced7e1; --dim2:#bbc5ce;
+  --cy:#43b7d7; --cy2:#4c90f0;
+  --amb:#e8b54a; --red:#e0626c; --grn:#62be77; --blu:#4c90f0;
+  --fs:"Inter","PingFang SC","Microsoft YaHei",sans-serif;
+  --fm:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--ink);color:var(--txt);font-family:var(--fs);font-size:12px;line-height:1.35}
+.app{width:1440px;height:897px;display:flex;flex-direction:column;overflow:hidden}
+.tb{display:flex;align-items:center;gap:10px;padding:6px 12px 0}
+.logo{width:26px;height:26px;border-radius:50%;border:1px solid var(--cy2);display:grid;place-items:center;color:var(--cy);font-size:13px}
+.tt{display:flex;flex-direction:column;line-height:1.15}
+.tt b{font-size:14px;letter-spacing:.14em;color:#e9eef5}
+.tt i{font-style:normal;font-size:8px;letter-spacing:.34em;color:var(--dim2)}
+.hole{width:92px;height:13px;background:#1c2942;border-radius:2px;margin-left:8px}
+.mb{display:flex;gap:20px;padding:5px 14px 6px;font-size:11.5px;color:var(--dim);border-bottom:1px solid var(--hair)}
+.body{flex:1;display:flex;min-height:0}
+.rail{width:44px;background:var(--rail);border-right:1px solid var(--hair);display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px 0}
+.rbtn{width:28px;height:28px;border-radius:4px;border:1px solid var(--hair2);display:grid;place-items:center;font-size:13px;color:var(--dim)}
+.rbtn.on{background:rgba(232,181,74,.16);border-color:var(--amb);color:var(--amb)}
+.crew{display:flex;flex-direction:column;gap:5px;margin-top:auto;padding-bottom:4px;align-items:center}
+.cw{display:flex;flex-direction:column;align-items:center;gap:2px}
+.cw u{text-decoration:none;font-family:var(--fm);font-size:8px;color:var(--dim2)}
+.cw i{width:20px;height:20px;border-radius:50%;border:1px solid var(--hair2);display:grid;place-items:center;font-size:9px;color:var(--dim);font-style:normal}
+.cw s{text-decoration:none;width:24px;height:2px;display:block}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;padding:6px;gap:6px}
+.row1{height:518px;flex:none;display:flex;gap:6px;min-height:0}
+.pan{background:var(--panel);border:1px solid var(--hair);position:relative;display:flex;flex-direction:column;min-height:0;min-width:0}
+.pan::before,.pan::after{content:"";position:absolute;width:9px;height:9px;border:1px solid var(--cy2);opacity:.5}
+.pan::before{left:-1px;top:-1px;border-right:0;border-bottom:0}
+.pan::after{right:-1px;bottom:-1px;border-left:0;border-top:0}
+.ph{display:flex;align-items:center;gap:6px;padding:5px 9px;border-bottom:1px solid var(--hair);background:var(--panel2);flex:none}
+.ph i{font-style:normal;color:var(--cy);font-size:9px}
+.ph b{font-size:11.5px;font-weight:600;letter-spacing:.06em;color:#e9eef5}
+.ph .rt{margin-left:auto;color:var(--dim2);font-size:11px;letter-spacing:.2em}
+.pb{flex:1;min-height:0;overflow:hidden;position:relative}
+
+/* 左：根因树 */
+.left{width:264px;flex:none}
+.sel{margin:7px 8px 6px;position:relative}
+.sel select{width:100%;background:var(--panel2);border:1px solid var(--hair2);color:var(--txt);padding:5px 8px;font-size:11.5px;font-family:inherit;appearance:none;border-radius:2px}
+.sel::after{content:"⌄";position:absolute;right:8px;top:2px;color:var(--dim2)}
+.wv{display:flex;align-items:center;margin:0 8px 6px;border-bottom:1px solid var(--hair)}
+.wv b{font-weight:400;font-size:11px;padding:4px 7px;color:var(--dim2)}
+.wv b.on{color:var(--cy);border-bottom:1px solid var(--cy)}
+.wv .nav{margin-left:auto;display:flex;gap:2px;color:var(--dim2)}
+.wv .nav u{text-decoration:none;padding:0 4px;border:1px solid var(--hair);font-size:10px}
+.tree{padding:0 8px 8px;font-size:11px}
+.tn{display:grid;grid-template-columns:1fr 34px 44px;align-items:center;height:20px;color:var(--dim);gap:5px}
+.tn span:first-child{white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:4px}
+.tn i{font-style:normal;color:var(--dim2);font-size:9px}
+.tn em{font-style:normal;font-family:var(--fm);font-size:10px;text-align:right}
+.tn .bar{height:5px;background:var(--hair2);position:relative}
+.tn .bar s{text-decoration:none;position:absolute;left:0;top:0;bottom:0;display:block;background:var(--amb)}
+.tn.l1{color:var(--txt);border-bottom:1px dotted var(--hair2)}
+.tn.l2{padding-left:12px}
+.tn.l3{padding-left:26px;color:var(--dim2)}
+.tn.hot{color:var(--red)} .tn.hot .bar s{background:var(--red)}
+
+/* 中：热力矩阵 + 瀑布 */
+.mid{flex:1;min-width:0}
+.mt{display:flex;flex-direction:column;height:100%}
+.hm{flex:none;padding:8px}
+.hmg{display:grid;gap:2px}
+.hc{height:20px;display:grid;place-items:center;font-family:var(--fm);font-size:9px;color:#0a1018}
+.hl{font-family:var(--fs);font-size:9.5px;color:var(--dim2);display:flex;align-items:center;justify-content:flex-end;padding-right:5px;background:transparent}
+.ht{font-family:var(--fs);font-size:9px;color:var(--dim2);display:grid;place-items:center;background:transparent;height:16px}
+.wf{flex:1;min-height:0;position:relative;border-top:1px solid var(--hair);margin:0 8px}
+.wf svg{position:absolute;inset:0;width:100%;height:100%}
+
+/* 右：归因明细 */
+.right{width:344px;flex:none}
+.dt{font-size:10px}
+.dr{display:grid;grid-template-columns:5px 74px 74px 34px 42px 26px 1fr;align-items:center;gap:0 4px;height:19px;
+  border-bottom:1px solid rgba(226,235,245,0.05);font-family:var(--fm);color:var(--dim);padding:0 6px}
+.dr span{white-space:nowrap;overflow:hidden}
+.dr.hd{color:var(--dim2);font-family:var(--fs);border-bottom:1px solid var(--hair)}
+.dr.on{background:rgba(232,181,74,.13);outline:1px solid rgba(232,181,74,.4);color:var(--amb)}
+.dr s{text-decoration:none;height:12px;width:2px;display:block}
+.dr .bd{font-size:9px;padding:0 3px;border:1px solid currentColor;justify-self:start}
+.dr .spk{height:9px;display:flex;align-items:flex-end;gap:1px}
+.dr .spk u{text-decoration:none;width:3px;background:var(--cy2);display:block}
+
+/* 下：贡献度时序 */
+.bot{height:300px;flex:none}
+.btabs{display:flex;align-items:center;padding:0 8px;border-bottom:1px solid var(--hair);flex:none}
+.btabs b{font-weight:400;font-size:11px;padding:5px 9px;color:var(--dim2)}
+.btabs b.on{color:var(--cy);border-bottom:1px solid var(--cy)}
+.btabs .nav{margin-left:auto;display:flex;gap:2px;color:var(--dim2)}
+.btabs .nav u{text-decoration:none;padding:0 4px;border:1px solid var(--hair);font-size:10px}
+.grid{height:246px;flex:none;display:grid;grid-template-columns:22px 132px 58px 58px 1fr;overflow:hidden}
+.gcol{border-right:1px solid var(--hair);display:flex;flex-direction:column}
+.gcap{flex:none;height:18px;border-bottom:1px solid var(--hair);display:grid;place-items:center;font-size:10px;color:var(--dim2)}
+.gcell{flex:none;height:18px;border-bottom:1px solid rgba(226,235,245,0.05);display:flex;align-items:center;padding:0 7px;font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden}
+.gcell.mono{font-family:var(--fm);font-size:10px;justify-content:flex-end;color:var(--txt)}
+.gcell.up{color:var(--red)} .gcell.dn{color:var(--grn)}
+.vgrp{flex:none;font-size:9.5px;color:var(--dim);letter-spacing:0;text-align:center;line-height:1.18;display:flex;flex-direction:column;align-items:center;justify-content:center;border-bottom:1px solid var(--hair)}
+.lane{position:relative;overflow:hidden}
+.lh{flex:none;height:18px;border-bottom:1px solid var(--hair);position:relative}
+.lh span{position:absolute;top:4px;font-family:var(--fm);font-size:8.5px;color:var(--dim2);border-left:1px solid var(--hair2);padding-left:3px;line-height:1}
+.gr{flex:none;height:18px;border-bottom:1px solid rgba(226,235,245,0.05);position:relative}
+.sg{position:absolute;top:3px;height:12px;display:flex;align-items:center;gap:3px;padding:0 5px;font-size:9px;white-space:nowrap}
+.sg.b{background:rgba(76,144,240,.18);border:1px solid #4c90f0;color:#a2c6f7}
+.sg.a{background:rgba(232,181,74,.16);border:1px solid #e8b54a;color:var(--amb)}
+.sg.r{background:rgba(224,98,108,.16);border:1px solid #e0626c;color:#f0b4b8}
+.sg.g{background:rgba(98,190,119,.16);border:1px solid #62be77;color:#91d2a0}
+.sg.o{border:1px solid var(--hair2);color:var(--dim2)}
+.play{position:absolute;top:0;bottom:0;width:1px;background:var(--amb);z-index:3}
+</style>
+
+<div class="app">
+  <div class="tb"><span class="logo">◈</span><span class="tt"><b>损失归因</b><i>attribution console</i></span><span class="hole"></span></div>
+  <div class="mb"><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Tools</span><span>Help</span></div>
+  <div class="body">
+    <div class="rail">
+      <span class="rbtn">◉</span><span class="rbtn on">✎</span>
+      <div class="crew">
+        <span class="cw"><u>01</u><i>◔</i><s style="background:var(--amb)"></s></span>
+        <span class="cw"><u>02</u><i>◑</i><s style="background:var(--cy)"></s></span>
+        <span class="cw"><u>03</u><i>◕</i><s style="background:var(--dim2)"></s></span>
+      </div>
+    </div>
+    <div class="main">
+      <div class="row1">
+
+        <section class="pan left">
+          <div class="ph"><i>▤</i><b>根因树</b><span class="rt">▤ ⤢</span></div>
+          <div class="pb" style="overflow:auto">
+            <div class="sel"><select><option>常州基地 · 动力线-B</option><option>盐城基地</option><option>合肥基地</option></select></div>
+            <div class="wv"><b class="on">第一轮次</b><b>第二轮次</b><b>第三轮次</b><b>第四轮次</b><span class="nav"><u>‹</u><u>›</u></span></div>
+            <div class="tree" id="tree"></div>
+          </div>
+        </section>
+
+        <section class="pan mid">
+          <div class="ph"><i>▤</i><b>环节 × 基地 热力</b><span class="rt">▤ ⤢</span></div>
+          <div class="pb"><div class="mt">
+            <div class="hm" id="hm"></div>
+            <div class="wf"><svg id="wf" viewBox="0 0 700 210"></svg></div>
+          </div></div>
+        </section>
+
+        <section class="pan right">
+          <div class="ph"><i>▤</i><b>归因明细</b><span class="rt">▤ ⤢</span></div>
+          <div class="pb" style="overflow:hidden"><div class="dt" id="dt"></div></div>
+        </section>
+      </div>
+
+      <section class="pan bot">
+        <div class="ph"><i>▤</i><b>贡献度时序</b><span class="rt">▤ ⤢</span></div>
+        <div class="btabs"><b class="on">全局</b><b>需求段</b><b>产能段</b><b>物料段</b><b>交付段</b><span class="nav"><u>‹</u><u>›</u></span></div>
+        <div class="grid" id="grid"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+var NS="http://www.w3.org/2000/svg";
+function E(n,a,p){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;}
+function T(e,s){e.textContent=s;return e;}
+
+/* 根因树 */
+(function(){
+  var D=[
+    ["l1","全链非增值",100,"21.6 D"],
+    ["l2 hot","老化静置",34,"7.34 D"],
+    ["l3","炉位不足",19,"4.10 D"],
+    ["l3","批次拆分",11,"2.38 D"],
+    ["l3","温控复检",4,"0.86 D"],
+    ["l2 hot","齐套发料",21,"4.54 D"],
+    ["l3","正极粉断供",12,"2.59 D"],
+    ["l3","隔膜到货延迟",6,"1.30 D"],
+    ["l3","拣配等待",3,"0.65 D"],
+    ["l2","过程质检攒批",13,"2.81 D"],
+    ["l3","攒批阈值",8,"1.73 D"],
+    ["l3","抽检返工",5,"1.08 D"],
+    ["l2","质量与返工",6,"1.30 D"],
+    ["l2","关键物料补货",4,"0.86 D"],
+    ["l2","产能与瓶颈复核",4,"0.86 D"],
+    ["l2","入厂在途与清关",3,"0.65 D"],
+    ["l2","S&OP 共识会",3,"0.65 D"],
+    ["l2","干线运输在途",2,"0.43 D"],
+    ["l2","其余 16 环节",10,"2.16 D"]
+  ];
+  var h="";
+  D.forEach(function(d){
+    h+='<div class="tn '+d[0]+'"><span>'+(d[0].indexOf("l1")===0?"▤":d[0].indexOf("l2")===0?"▸":"·")+
+       ' '+d[1]+'</span><em>'+d[2]+'%</em><span class="bar"><s style="width:'+d[2]+'%"></s></span></div>';
+  });
+  document.getElementById("tree").innerHTML=h;
+})();
+
+/* 热力矩阵 */
+(function(){
+  var N=["老化静置","齐套发料","过程质检","质量返工","主计划排产","关键补货","入厂在途","干线在途"];
+  var B=["常州","盐城","合肥","宜宾","全网"];
+  var V=[[34,18,11,9,22],[21,26,14,7,19],[13,9,17,6,12],[6,11,8,4,7],
+         [5,7,6,12,7],[4,5,9,3,5],[3,4,3,8,4],[2,3,2,3,3]];
+  var h='<div class="hmg" style="grid-template-columns:64px repeat(5,1fr)"><div class="ht"></div>';
+  B.forEach(function(b){h+='<div class="ht">'+b+'</div>';});
+  N.forEach(function(n,i){
+    h+='<div class="hl">'+n+'</div>';
+    V[i].forEach(function(v){
+      var a=Math.min(1,v/34);
+      var col=v>=20?"rgba(255,77,77,":v>=10?"rgba(232,181,74,":"rgba(63,208,224,";
+      h+='<div class="hc" style="background:'+col+(0.16+a*0.74)+');color:'+(a>0.45?"#140508":"#9fb4c6")+'">'+v+'</div>';
+    });
+  });
+  h+='</div>';
+  document.getElementById("hm").innerHTML=h;
+})();
+
+/* 瀑布 */
+(function(){
+  var s=document.getElementById("wf");
+  var D=[["基线",184,"#2d4460"],["老化静置",34,"#e0626c"],["齐套发料",21,"#e0626c"],
+         ["过程质检",13,"#e8b54a"],["质量返工",6,"#e8b54a"],["补货",4,"#e8b54a"],
+         ["其余",10,"#43b7d7"],["合计",216,"#2d4460"]];
+  var X0=44,W=(700-X0-14)/D.length,base=190,scale=0.62;
+  var acc=184;
+  D.forEach(function(d,i){
+    var x=X0+i*W+4,w=W-10,h,y;
+    if(i===0){h=184*scale;y=base-h;}
+    else if(i===D.length-1){h=216*scale;y=base-h;}
+    else{h=d[1]*scale*1.0;y=base-(acc*scale)-h;acc+=d[1];}
+    E("rect",{x:x,y:y,width:w,height:Math.max(h,3),fill:d[2],opacity:i===0||i===D.length-1?.9:.85},s);
+    T(E("text",{x:x+w/2,y:y-4,"text-anchor":"middle","font-size":9,fill:"#e9eef5","font-family":"var(--fm)"},s),
+      (i===0||i===D.length-1)?d[1]/10+"D":"+"+d[1]);
+    T(E("text",{x:x+w/2,y:base+12,"text-anchor":"middle","font-size":9,fill:"#ced7e1"},s),d[0]);
+  });
+  E("line",{x1:X0,y1:base,x2:690,y2:base,stroke:"rgba(226,235,245,0.14)"},s);
+  [0,50,100,150,200].forEach(function(v){
+    var y=base-v*scale;
+    E("line",{x1:X0,y1:y,x2:690,y2:y,stroke:"rgba(226,235,245,0.05)"},s);
+    T(E("text",{x:X0-6,y:y+3,"text-anchor":"end","font-size":8,fill:"#bbc5ce","font-family":"var(--fm)"},s),(v/10).toFixed(0)+"D");
+  });
+})();
+
+/* 归因明细 */
+(function(){
+  var N=["老化静置","齐套发料","过程质检","质量返工","排产计划","关键补货","入厂在途","干线在途","客户验收","请购","采购下单","到货检验","成品入库","MRP 运行","工单下达","检修窗"];
+  var S=["chain_loss","gap_attribution","chain_loss","gap_attribution"];
+  var C=["#62be77","#4c90f0","#e8b54a","#e0626c"];
+  var h='<div class="dr hd"><span></span><span>环节</span><span>求解器</span><span>贡献</span><span>耗时</span><span>级</span><span>趋势</span></div>';
+  var V=[[34,4],[21,4],[13,3],[6,2],[5,2],[4,2],[3,1],[2,1],[2,1],[2,1],[1,1],[1,1],[1,1],[1,1],[2,1],[2,1]];
+  N.forEach(function(n,i){
+    var spk="";for(var k=0;k<8;k++)spk+='<u style="height:'+(2+((i*7+k*5)%9))+'px"></u>';
+    h+='<div class="dr'+(i===0?" on":"")+'"><s style="background:'+C[V[i][1]-1]+'"></s>'+
+       '<span>'+n+'</span><span>'+S[i%4]+'</span><span>'+V[i][0]+'%</span>'+
+       '<span>'+(V[i][0]*0.216).toFixed(2)+'D</span>'+
+       '<span class="bd" style="color:'+C[V[i][1]-1]+'">'+V[i][1]+'</span>'+
+       '<span class="spk">'+spk+'</span></div>';
+  });
+  document.getElementById("dt").innerHTML=h;
+})();
+
+/* 贡献度时序 */
+(function(){
+  var R=[
+    {g:"贡献组1",n:"老化静置",b:"5.1%",a:"34.0%",d:"up",s:[[2,10,"o","炉位排队"],[14,18,"r","批次拆分"],[34,16,"r","温控复检"],[54,13,"g","缓冲释放"],[72,10,"o","结转"]]},
+    {n:"齐套发料",b:"7.2%",a:"21.0%",d:"up",s:[[3,11,"o","拣配等待"],[16,17,"r","正极粉断供"],[36,14,"r","隔膜延迟"],[54,12,"g","缓冲释放"],[71,11,"o","结转"]]},
+    {n:"过程质检攒批",b:"9.4%",a:"13.0%",d:"up",s:[[2,12,"o","攒批阈值"],[16,16,"a","抽检返工"],[35,15,"a","复检"],[53,13,"g","缓冲释放"],[71,10,"o","结转"]]},
+    {n:"质量与返工",b:"5.8%",a:"6.0%",d:"up",s:[[4,9,"o","首检"],[15,17,"b","返修排队"],[34,16,"b","复判"],[53,12,"g","缓冲释放"],[70,11,"o","结转"]]},
+    {n:"排产计划",b:"6.1%",a:"5.0%",d:"dn",s:[[3,10,"o","算料"],[15,15,"b","下达"],[33,17,"b","执行"],[54,11,"g","缓冲释放"],[70,12,"o","结转"]]},
+    {n:"关键物料补货",b:"4.4%",a:"4.0%",d:"dn",s:[[2,11,"o","请购"],[15,16,"b","采购下单"],[34,15,"b","入厂在途"],[53,13,"g","缓冲释放"],[71,10,"o","结转"]]},
+    {g:"贡献组2",n:"产能与瓶颈复核",b:"3.9%",a:"4.0%",d:"up",s:[[3,10,"o","粗排"],[15,16,"b","瓶颈识别"],[34,15,"b","复核"],[53,13,"g","缓冲释放"],[71,10,"o","结转"]]},
+    {n:"入厂在途与清关",b:"3.2%",a:"3.0%",d:"dn",s:[[3,10,"o","报关"],[15,17,"b","清关"],[35,14,"b","转运"],[52,14,"g","缓冲释放"],[71,11,"o","结转"]]},
+    {n:"S&OP 共识会",b:"3.4%",a:"3.0%",d:"dn",s:[[2,12,"o","预告汇总"],[16,14,"b","共识"],[33,17,"b","锁量"],[53,12,"g","缓冲释放"],[70,12,"o","结转"]]},
+    {n:"干线运输在途",b:"2.6%",a:"2.0%",d:"dn",s:[[2,12,"o","装车"],[16,15,"b","干线"],[34,16,"b","分拨"],[53,12,"g","缓冲释放"],[70,12,"o","结转"]]},
+    {n:"客户验收",b:"2.1%",a:"2.0%",d:"dn",s:[[4,9,"o","到货"],[15,16,"b","验收"],[34,16,"b","签署"],[53,13,"g","缓冲释放"],[71,10,"o","结转"]]},
+    {n:"其余 13 环节",b:"46.8%",a:"10.0%",d:"dn",s:[[2,11,"o","混合"],[15,17,"b","混合"],[35,15,"b","混合"],[53,13,"g","缓冲释放"],[71,11,"o","结转"]]}
+  ];
+
+  var host=document.getElementById("grid");
+  var cV=document.createElement("div"),cN=document.createElement("div"),cB=document.createElement("div"),
+      cA=document.createElement("div"),cL=document.createElement("div");
+  [cV,cN,cB,cA].forEach(function(c){c.className="gcol";});
+  cL.className="gcol lane";cL.style.borderRight="0";
+  cV.innerHTML='<div class="gcap"></div>';
+  cN.innerHTML='<div class="gcap">环节</div>';
+  cB.innerHTML='<div class="gcap">基线</div>';
+  cA.innerHTML='<div class="gcap">扰动后</div>';
+  var head='<div class="lh">';
+  for(var i=0;i<=14;i++)head+='<span style="left:'+(i/14*100)+'%">'+String(i*2).padStart(2,"0")+':00</span>';
+  head+='</div>';cL.innerHTML=head;
+  var vb=[];
+  R.forEach(function(r){
+    if(r.g)vb.push({t:r.g,n:0});
+    vb[vb.length-1].n++;
+    cN.innerHTML+='<div class="gcell">'+r.n+'</div>';
+    cB.innerHTML+='<div class="gcell mono">'+r.b+'</div>';
+    cA.innerHTML+='<div class="gcell mono '+r.d+'">'+r.a+'</div>';
+    var row='<div class="gr">';
+    r.s.forEach(function(sg){row+='<div class="sg '+sg[2]+'" style="left:'+sg[0]+'%;width:'+sg[1]+'%">▤ '+sg[3]+'</div>';});
+    cL.innerHTML+=row+'</div>';
+  });
+  vb.forEach(function(v){cV.innerHTML+='<div class="vgrp" style="height:'+(v.n*18)+'px">'+v.t.split("").join("<br>")+'</div>';});
+  var p=document.createElement("div");p.className="play";p.style.left="43%";cL.appendChild(p);
+  [cV,cN,cB,cA,cL].forEach(function(c){host.appendChild(c);});
+})();
+</script>
