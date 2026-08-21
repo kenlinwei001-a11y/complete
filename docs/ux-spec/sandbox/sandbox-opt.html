@@ -1,0 +1,362 @@
+<title>方案寻优台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+:root{
+  --ink:#223251; --panel:#2c3d5e; --panel2:#1c2942; --rail:#1c2942;
+  --hair:rgba(226,235,245,0.08); --hair2:rgba(226,235,245,0.14);
+  --txt:#e9eef5; --dim:#ced7e1; --dim2:#bbc5ce;
+  --cy:#43b7d7; --cy2:#4c90f0;
+  --amb:#e8b54a; --red:#e0626c; --grn:#62be77; --blu:#4c90f0;
+  --fs:"Inter","PingFang SC","Microsoft YaHei",sans-serif;
+  --fm:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--ink);color:var(--txt);font-family:var(--fs);font-size:12px;line-height:1.35}
+.app{width:1440px;height:897px;display:flex;flex-direction:column;overflow:hidden}
+.tb{display:flex;align-items:center;gap:10px;padding:6px 12px 0}
+.logo{width:26px;height:26px;border-radius:50%;border:1px solid var(--cy2);display:grid;place-items:center;color:var(--cy);font-size:13px}
+.tt{display:flex;flex-direction:column;line-height:1.15}
+.tt b{font-size:14px;letter-spacing:.14em;color:#e9eef5}
+.tt i{font-style:normal;font-size:8px;letter-spacing:.34em;color:var(--dim2)}
+.hole{width:92px;height:13px;background:#1c2942;border-radius:2px;margin-left:8px}
+.mb{display:flex;gap:20px;padding:5px 14px 6px;font-size:11.5px;color:var(--dim);border-bottom:1px solid var(--hair)}
+.body{flex:1;display:flex;min-height:0}
+.rail{width:44px;background:var(--rail);border-right:1px solid var(--hair);display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px 0}
+.rbtn{width:28px;height:28px;border-radius:4px;border:1px solid var(--hair2);display:grid;place-items:center;font-size:13px;color:var(--dim)}
+.rbtn.on{background:rgba(63,208,224,.14);border-color:var(--cy);color:var(--cy)}
+.crew{display:flex;flex-direction:column;gap:5px;margin-top:auto;padding-bottom:4px;align-items:center}
+.cw{display:flex;flex-direction:column;align-items:center;gap:2px}
+.cw u{text-decoration:none;font-family:var(--fm);font-size:8px;color:var(--dim2)}
+.cw i{width:20px;height:20px;border-radius:50%;border:1px solid var(--hair2);display:grid;place-items:center;font-size:9px;color:var(--dim);font-style:normal}
+.cw s{text-decoration:none;width:24px;height:2px;display:block}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;padding:6px;gap:6px}
+.row1{height:518px;flex:none;display:flex;gap:6px;min-height:0}
+.pan{background:var(--panel);border:1px solid var(--hair);position:relative;display:flex;flex-direction:column;min-height:0;min-width:0}
+.pan::before,.pan::after{content:"";position:absolute;width:9px;height:9px;border:1px solid var(--cy2);opacity:.5}
+.pan::before{left:-1px;top:-1px;border-right:0;border-bottom:0}
+.pan::after{right:-1px;bottom:-1px;border-left:0;border-top:0}
+.ph{display:flex;align-items:center;gap:6px;padding:5px 9px;border-bottom:1px solid var(--hair);background:var(--panel2);flex:none}
+.ph i{font-style:normal;color:var(--cy);font-size:9px}
+.ph b{font-size:11.5px;font-weight:600;letter-spacing:.06em;color:#e9eef5}
+.ph .rt{margin-left:auto;color:var(--dim2);font-size:11px;letter-spacing:.2em}
+.pb{flex:1;min-height:0;overflow:hidden;position:relative}
+
+/* 左：候选方案 */
+.left{width:272px;flex:none}
+.sel{margin:7px 8px 6px;position:relative}
+.sel select{width:100%;background:var(--panel2);border:1px solid var(--hair2);color:var(--txt);padding:5px 8px;font-size:11.5px;font-family:inherit;appearance:none;border-radius:2px}
+.sel::after{content:"⌄";position:absolute;right:8px;top:2px;color:var(--dim2)}
+.wv{display:flex;align-items:center;margin:0 8px 6px;border-bottom:1px solid var(--hair)}
+.wv b{font-weight:400;font-size:11px;padding:4px 7px;color:var(--dim2)}
+.wv b.on{color:var(--cy);border-bottom:1px solid var(--cy)}
+.wv .nav{margin-left:auto;display:flex;gap:2px;color:var(--dim2)}
+.wv .nav u{text-decoration:none;padding:0 4px;border:1px solid var(--hair);font-size:10px}
+.plist{padding:0 8px 8px;display:flex;flex-direction:column;gap:5px}
+.pc{border:1px solid var(--hair);background:var(--panel2);padding:5px 7px;display:flex;flex-direction:column;gap:3px;position:relative}
+.pc.on{border-color:var(--cy);background:rgba(63,208,224,.08)}
+.pc .r1{display:flex;align-items:baseline;gap:7px}
+.pc .r1{padding-left:30px}
+.pc .r1 b{font-size:11.5px;color:var(--txt);font-weight:600}
+.pc .r1 em{font-style:normal;font-size:9.5px;color:var(--dim2);margin-left:auto;font-family:var(--fm)}
+.pc .r2{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;font-family:var(--fm);font-size:9.5px}
+.pc .r2 u{text-decoration:none;display:flex;flex-direction:column;gap:1px;color:var(--dim2)}
+.pc .r2 u i{font-style:normal;font-size:11px;color:var(--txt)}
+.pc .r2 u i.g{color:var(--grn)} .pc .r2 u i.r{color:var(--red)}
+.pc .tag{position:absolute;left:-1px;top:-1px;font-size:8.5px;color:#04140f;background:var(--grn);padding:0 4px}
+.pc .bars{display:flex;gap:1.5px}
+.pc .bars s{text-decoration:none;width:4px;height:7px;background:var(--cy);display:block;opacity:.85}
+.pc .bars s.off{background:var(--hair2)}
+
+/* 中：帕累托前沿 */
+.mid{flex:1;min-width:0}
+.mt{display:flex;flex-direction:column;height:100%}
+.pf{flex:1;min-height:0;position:relative}
+.pf svg{position:absolute;inset:0;width:100%;height:100%}
+.rad{height:172px;flex:none;border-top:1px solid var(--hair);position:relative}
+.rad svg{position:absolute;inset:0;width:100%;height:100%}
+
+/* 右：方案详情 */
+.right{width:328px;flex:none}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 8px;font-size:10.5px;padding:7px 9px;border-bottom:1px solid var(--hair)}
+.kv em{font-style:normal;color:var(--dim2);white-space:nowrap}
+.kv b{font-weight:400;font-family:var(--fm);color:var(--txt);text-align:right}
+.kv b.g{color:var(--grn)} .kv b.r{color:var(--red)}
+.sub{font-size:10px;color:var(--dim2);padding:5px 9px 3px}
+.cst{font-size:10px;margin:0 9px}
+.cst .r{display:grid;grid-template-columns:6px 1fr 52px 40px;align-items:center;gap:0 5px;height:19px;
+  border-bottom:1px solid rgba(226,235,245,0.05);color:var(--dim);font-family:var(--fm)}
+.cst .r.hd{color:var(--dim2);font-family:var(--fs);border-bottom:1px solid var(--hair)}
+.cst .r span{white-space:nowrap;overflow:hidden}
+.cst s{text-decoration:none;height:12px;width:2px;display:block}
+.cst .bd{font-size:9px;padding:0 3px;border:1px solid currentColor;justify-self:start}
+.abtn{margin:7px 9px;background:#115dc9;border:1px solid var(--cy2);color:var(--cy);font-size:11px;padding:5px 0;text-align:center}
+
+/* 下：执行对比 */
+.bot{height:300px;flex:none}
+.btabs{display:flex;align-items:center;padding:0 8px;border-bottom:1px solid var(--hair);flex:none}
+.btabs b{font-weight:400;font-size:11px;padding:5px 9px;color:var(--dim2)}
+.btabs b.on{color:var(--cy);border-bottom:1px solid var(--cy)}
+.btabs .nav{margin-left:auto;display:flex;gap:2px;color:var(--dim2)}
+.btabs .nav u{text-decoration:none;padding:0 4px;border:1px solid var(--hair);font-size:10px}
+.grid{height:246px;flex:none;display:grid;grid-template-columns:22px 128px 56px 56px 1fr;overflow:hidden}
+.gcol{border-right:1px solid var(--hair);display:flex;flex-direction:column}
+.gcap{flex:none;height:18px;border-bottom:1px solid var(--hair);display:grid;place-items:center;font-size:10px;color:var(--dim2)}
+.gcell{flex:none;height:18px;border-bottom:1px solid rgba(226,235,245,0.05);display:flex;align-items:center;padding:0 7px;font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden}
+.gcell.mono{font-family:var(--fm);font-size:10px;justify-content:flex-end;color:var(--txt)}
+.gcell.up{color:var(--red)} .gcell.dn{color:var(--grn)}
+.vgrp{flex:none;font-size:9.5px;color:var(--dim);letter-spacing:0;text-align:center;line-height:1.18;display:flex;flex-direction:column;align-items:center;justify-content:center;border-bottom:1px solid var(--hair)}
+.lane{position:relative;overflow:hidden}
+.lh{flex:none;height:18px;border-bottom:1px solid var(--hair);position:relative}
+.lh span{position:absolute;top:4px;font-family:var(--fm);font-size:8.5px;color:var(--dim2);border-left:1px solid var(--hair2);padding-left:3px;line-height:1}
+.gr{flex:none;height:18px;border-bottom:1px solid rgba(226,235,245,0.05);position:relative}
+.sg{position:absolute;top:3px;height:12px;display:flex;align-items:center;gap:3px;padding:0 5px;font-size:9px;white-space:nowrap}
+.sg.b{background:rgba(76,144,240,.18);border:1px solid #4c90f0;color:#a2c6f7}
+.sg.a{background:rgba(232,181,74,.16);border:1px solid #e8b54a;color:var(--amb)}
+.sg.r{background:rgba(224,98,108,.16);border:1px solid #e0626c;color:#f0b4b8}
+.sg.g{background:rgba(98,190,119,.16);border:1px solid #62be77;color:#91d2a0}
+.sg.o{border:1px solid var(--hair2);color:var(--dim2)}
+.sg.c{background:#0d2b33;border:1px solid #1b5a66;color:#7fd8e4}
+.play{position:absolute;top:0;bottom:0;width:1px;background:var(--amb);z-index:3}
+</style>
+
+<div class="app">
+  <div class="tb"><span class="logo">◈</span><span class="tt"><b>方案寻优</b><i>optimizer console</i></span><span class="hole"></span></div>
+  <div class="mb"><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Tools</span><span>Help</span></div>
+  <div class="body">
+    <div class="rail">
+      <span class="rbtn">◉</span><span class="rbtn on">⌗</span>
+      <div class="crew">
+        <span class="cw"><u>01</u><i>◔</i><s style="background:var(--amb)"></s></span>
+        <span class="cw"><u>02</u><i>◑</i><s style="background:var(--cy)"></s></span>
+        <span class="cw"><u>03</u><i>◕</i><s style="background:var(--dim2)"></s></span>
+      </div>
+    </div>
+    <div class="main">
+      <div class="row1">
+
+        <section class="pan left">
+          <div class="ph"><i>▤</i><b>候选方案</b><span class="rt">▤ ⤢</span></div>
+          <div class="pb" style="overflow:auto">
+            <div class="sel"><select><option>目标 - 全链非增值 最小</option><option>目标 - 外协成本 最小</option><option>目标 - 准时率 最大</option></select></div>
+            <div class="wv"><b class="on">前沿解</b><b>可行解</b><b>不可行</b><b>全部</b><span class="nav"><u>‹</u><u>›</u></span></div>
+            <div class="plist" id="plist"></div>
+          </div>
+        </section>
+
+        <section class="pan mid">
+          <div class="ph"><i>▤</i><b>帕累托前沿</b><span class="rt">▤ ⤢</span></div>
+          <div class="pb"><div class="mt">
+            <div class="pf"><svg id="pf" viewBox="0 0 640 280"></svg></div>
+            <div class="rad"><svg id="rad" viewBox="0 0 640 172"></svg></div>
+          </div></div>
+        </section>
+
+        <section class="pan right">
+          <div class="ph"><i>▤</i><b>方案详情</b><span class="rt">▤ ⤢</span></div>
+          <div class="pb" style="overflow:hidden">
+            <div class="kv">
+              <em>方案编号</em><b>S-0042</b>
+              <em>求解器</em><b>optimize_whatif</b>
+              <em>参数版本</em><b>v3.2.1</b>
+              <em>可行性</em><b class="g">可行</b>
+              <em>全链非增值</em><b class="g">19.1 D</b>
+              <em>外协兜底成本</em><b>¥ 620 万</b>
+              <em>交付准时率</em><b class="g">92.4 %</b>
+              <em>产线稼动率</em><b>84.6 %</b>
+              <em>迭代步数</em><b>1,284</b>
+              <em>收敛残差</em><b>0.0031</b>
+            </div>
+            <div class="sub">绑定约束</div>
+            <div class="cst" id="cst"></div>
+            <div class="abtn">应用方案</div>
+          </div>
+        </section>
+      </div>
+
+      <section class="pan bot">
+        <div class="ph"><i>▤</i><b>执行对比</b><span class="rt">▤ ⤢</span></div>
+        <div class="btabs"><b class="on">基线 vs S-0042</b><b>基线 vs S-0038</b><b>基线 vs S-0051</b><span class="nav"><u>‹</u><u>›</u></span></div>
+        <div class="grid" id="grid"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+var NS="http://www.w3.org/2000/svg";
+function E(n,a,p){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;}
+function T(e,s){e.textContent=s;return e;}
+
+/* 候选方案卡 */
+(function(){
+  var D=[
+    ["S-0055","跨基地借调 + 外协 · 盐城","18.4","2,180","94.1","86.2",12,1,0],
+    ["S-0051","外协兜底 · 合肥","18.7","1,240","93.0","82.4",10,1,0],
+    ["S-0042","跨基地借调 · 盐城","19.1","620","92.4","84.6",9,1,1],
+    ["S-0038","缓冲释放 · 常州","20.2","180","90.1","79.2",6,1,0],
+    ["S-0029","缓冲释放 + 限产 · 常州","21.4","60","88.4","74.8",4,1,0]
+  ];
+  var h="";
+  D.forEach(function(d){
+    var bars="";for(var i=0;i<12;i++)bars+='<s class="'+(i<d[6]?"":"off")+'"></s>';
+    h+='<div class="pc'+(d[8]?" on":"")+'">'+(d[7]?'<span class="tag">前沿</span>':"")+
+      '<div class="r1"><b>'+d[0]+'</b><span style="font-size:10px;color:var(--dim)">'+d[1]+'</span><em>P'+(d[6]*8)+'</em></div>'+
+      '<div class="r2">'+
+        '<u>非增值<i class="'+(+d[2]<20?"g":"")+'">'+d[2]+'D</i></u>'+
+        '<u>外协<i class="'+(+d[3].replace(",","")>1000?"r":"")+'">¥'+d[3]+'万</i></u>'+
+        '<u>准时<i class="'+(+d[4]>91?"g":"")+'">'+d[4]+'%</i></u>'+
+        '<u>稼动<i>'+d[5]+'%</i></u>'+
+      '</div><div class="bars">'+bars+'</div></div>';
+  });
+  document.getElementById("plist").innerHTML=h;
+})();
+
+/* 帕累托前沿散点 —— 两目标皆取最小：前沿 = 左下边界。
+   被支配解只可能落在前沿**上方**（同时间更贵 / 同成本更慢）；
+   落在前沿下方等于「比前沿还好」，那是不可能解，画出来就是撒谎。 */
+(function(){
+  var s=document.getElementById("pf");
+  var X0=52,X1=612,Y0=24,Y1=238, D0=18.0,D1=22.2, C1=2400;
+  function fx(d){return X0+(d-D0)/(D1-D0)*(X1-X0);}
+  function fy(c){return Y1-c/C1*(Y1-Y0);}
+
+  for(var i=0;i<=6;i++){
+    var y=Y0+(Y1-Y0)*i/6;
+    E("line",{x1:X0,y1:y,x2:X1,y2:y,stroke:"rgba(226,235,245,0.05)"},s);
+    T(E("text",{x:X0-6,y:y+3,"text-anchor":"end","font-size":8,fill:"#bbc5ce","font-family":"var(--fm)"},s),
+      (2400-i*400).toLocaleString());
+  }
+  for(var j=0;j<=7;j++){
+    var d=D0+j*0.6,x=fx(d);
+    E("line",{x1:x,y1:Y0,x2:x,y2:Y1,stroke:"rgba(226,235,245,0.05)"},s);
+    T(E("text",{x:x,y:Y1+13,"text-anchor":"middle","font-size":8,fill:"#bbc5ce","font-family":"var(--fm)"},s),d.toFixed(1)+"D");
+  }
+  E("line",{x1:X0,y1:Y1,x2:X1,y2:Y1,stroke:"rgba(226,235,245,0.14)"},s);
+  E("line",{x1:X0,y1:Y0,x2:X0,y2:Y1,stroke:"rgba(226,235,245,0.14)"},s);
+
+  /* 前沿：五个互不支配的解 */
+  var F=[["S-0055",18.4,2180],["S-0051",18.7,1240],["S-0042",19.1,620],
+         ["S-0038",20.2,180],["S-0029",21.4,60]];
+  var pts=F.map(function(f){return fx(f[1])+","+fy(f[2]);});
+  /* 被支配区 = 前沿之上（含右上），淡填 */
+  E("polygon",{points:pts.join(" ")+" "+X1+","+fy(60)+" "+X1+","+Y0+" "+fx(18.4)+","+Y0,
+    fill:"rgba(67,183,215,.07)"},s);
+  E("polyline",{points:pts.join(" "),fill:"none",stroke:"#43b7d7","stroke-width":1.6},s);
+
+  /* 被支配解：逐点保证在前沿上方（y 比同 x 处前沿小 = 成本更高） */
+  function frontY(x){
+    for(var k=0;k<F.length-1;k++){
+      var x1=fx(F[k][1]),x2=fx(F[k+1][1]);
+      if(x>=x1&&x<=x2){var t=(x-x1)/(x2-x1);return fy(F[k][2])+t*(fy(F[k+1][2])-fy(F[k][2]));}
+    }
+    return x<fx(F[0][1])?fy(F[0][2]):fy(F[F.length-1][2]);
+  }
+  var DOM=[150,60,185,44,215,92,248,70,286,120,318,96,352,150,386,118,
+           420,176,455,140,492,196,520,164,556,208,584,182,268,40,470,84];
+  for(var q=0;q<DOM.length;q+=2){
+    var x=DOM[q],y=Math.min(DOM[q+1],frontY(x)-9);
+    E("circle",{cx:x,cy:y,r:2.6,fill:"rgba(226,235,245,0.30)"},s);
+  }
+
+  /* 前沿点 + 选中解 */
+  F.forEach(function(f){
+    var x=fx(f[1]),y=fy(f[2]),sel=f[0]==="S-0042";
+    if(sel){
+      E("circle",{cx:x,cy:y,r:10,fill:"none",stroke:"#e8b54a","stroke-width":1.3},s);
+      E("circle",{cx:x,cy:y,r:4.6,fill:"#e8b54a"},s);
+    }else E("circle",{cx:x,cy:y,r:4,fill:"#43b7d7"},s);
+    T(E("text",{x:x+9,y:y-7,"font-size":8.5,fill:sel?"#e8b54a":"#ced7e1","font-family":"var(--fm)"},s),f[0]);
+  });
+
+  T(E("text",{x:X0,y:15,"font-size":9,fill:"#bbc5ce"},s),"外协兜底成本 ¥万");
+  T(E("text",{x:X1,y:15,"text-anchor":"end","font-size":9,fill:"#bbc5ce"},s),"全链非增值 D");
+})();
+
+/* 目标权衡雷达 */
+(function(){
+  var s=document.getElementById("rad");
+  var AX=["非增值","外协成本","准时率","稼动率","库存","缺口"];
+  var cx=320,cy=88,R=62;
+  [1,.75,.5,.25].forEach(function(k){
+    var pts=AX.map(function(_,i){
+      var a=-Math.PI/2+i*Math.PI*2/AX.length;
+      return (cx+Math.cos(a)*R*k)+","+(cy+Math.sin(a)*R*k);}).join(" ");
+    E("polygon",{points:pts,fill:"none",stroke:"rgba(120,160,200,.12)"},s);
+  });
+  AX.forEach(function(n,i){
+    var a=-Math.PI/2+i*Math.PI*2/AX.length;
+    E("line",{x1:cx,y1:cy,x2:cx+Math.cos(a)*R,y2:cy+Math.sin(a)*R,stroke:"rgba(120,160,200,.12)"},s);
+    T(E("text",{x:cx+Math.cos(a)*(R+16),y:cy+Math.sin(a)*(R+16)+3,"text-anchor":"middle","font-size":8.5,fill:"#ced7e1"},s),n);
+  });
+  function poly(v,col,fill){
+    var pts=v.map(function(k,i){
+      var a=-Math.PI/2+i*Math.PI*2/AX.length;
+      return (cx+Math.cos(a)*R*k)+","+(cy+Math.sin(a)*R*k);}).join(" ");
+    E("polygon",{points:pts,fill:fill,stroke:col,"stroke-width":1.5},s);
+  }
+  poly([.42,.88,.55,.60,.50,.35],"rgba(120,160,200,.55)","rgba(226,235,245,0.07)");
+  poly([.82,.66,.90,.86,.74,.80],"#43b7d7","rgba(63,208,224,.16)");
+  [["基线","rgba(120,160,200,.55)",34],["S-0042","#43b7d7",50]].forEach(function(l){
+    E("rect",{x:20,y:l[2]-7,width:16,height:3,fill:l[1]},s);
+    T(E("text",{x:42,y:l[2]-2,"font-size":9,fill:"#ced7e1"},s),l[0]);
+  });
+})();
+
+/* 绑定约束 */
+(function(){
+  var C=["#62be77","#4c90f0","#e8b54a","#e0626c"];
+  var D=[["盐城日产上限",4200,"紧",4],["常州检修窗",3,"松",1],["LFP-99 库存",8600,"紧",3],
+         ["跨基地运距",280,"松",1],["外协配额",1200,"紧",3],["班组工时",1680,"松",2],
+         ["良率下限",96.5,"紧",4],["在制上限",14000,"松",2],["交付窗口",22,"紧",3]];
+  var h='<div class="r hd"><span></span><span>约束</span><span>取值</span><span>裕度</span></div>';
+  D.forEach(function(d){
+    h+='<div class="r"><s style="background:'+C[d[3]-1]+'"></s><span>'+d[0]+'</span>'+
+       '<span style="text-align:right">'+d[1].toLocaleString()+'</span>'+
+       '<span class="bd" style="color:'+C[d[3]-1]+'">'+d[2]+'</span></div>';
+  });
+  document.getElementById("cst").innerHTML=h;
+})();
+
+/* 执行对比甘特 */
+(function(){
+  var R=[
+    {g:"基线执行",n:"齐套发料",b:"4.54 D",a:"2.10 D",d:"dn",s:[[2,12,"o","请购"],[16,22,"r","正极粉断供"],[40,18,"b","拣配"],[60,14,"g","发料"],[78,10,"o","结转"]]},
+    {n:"老化静置",b:"7.34 D",a:"5.02 D",d:"dn",s:[[3,10,"o","上炉"],[15,26,"r","炉位排队"],[43,16,"b","静置"],[61,13,"g","下炉"],[77,11,"o","结转"]]},
+    {n:"过程质检攒批",b:"2.81 D",a:"2.20 D",d:"dn",s:[[2,11,"o","抽检"],[15,20,"a","攒批"],[37,18,"b","复判"],[57,15,"g","放行"],[75,12,"o","结转"]]},
+    {n:"干线运输在途",b:"0.43 D",a:"0.43 D",d:"",s:[[4,9,"o","装车"],[15,18,"b","干线"],[35,16,"b","分拨"],[54,14,"g","签收"],[71,12,"o","结转"]]},
+    {g:"S-0042 执行",n:"齐套发料",b:"4.54 D",a:"2.10 D",d:"dn",s:[[2,12,"o","请购"],[16,14,"c","盐城调拨"],[32,20,"c","跨基地在途"],[54,18,"g","发料"],[75,12,"o","结转"]]},
+    {n:"老化静置",b:"7.34 D",a:"5.02 D",d:"dn",s:[[3,10,"o","上炉"],[15,18,"c","盐城炉位"],[35,20,"c","并行静置"],[57,16,"g","下炉"],[75,12,"o","结转"]]},
+    {n:"过程质检攒批",b:"2.81 D",a:"2.20 D",d:"dn",s:[[2,11,"o","抽检"],[15,16,"c","阈值下调"],[33,18,"c","并行复判"],[53,17,"g","放行"],[73,14,"o","结转"]]},
+    {n:"干线运输在途",b:"0.43 D",a:"0.56 D",d:"up",s:[[4,9,"o","装车"],[15,22,"c","盐城→常州"],[39,16,"b","分拨"],[57,14,"g","签收"],[73,13,"o","结转"]]}
+  ];
+  var host=document.getElementById("grid");
+  var cV=document.createElement("div"),cN=document.createElement("div"),cB=document.createElement("div"),
+      cA=document.createElement("div"),cL=document.createElement("div");
+  [cV,cN,cB,cA].forEach(function(c){c.className="gcol";});
+  cL.className="gcol lane";cL.style.borderRight="0";
+  cV.innerHTML='<div class="gcap"></div>';
+  cN.innerHTML='<div class="gcap">环节</div>';
+  cB.innerHTML='<div class="gcap">基线</div>';
+  cA.innerHTML='<div class="gcap">方案</div>';
+  var head='<div class="lh">';
+  for(var i=0;i<=14;i++)head+='<span style="left:'+(i/14*100)+'%">'+String(i*2).padStart(2,"0")+':00</span>';
+  head+='</div>';cL.innerHTML=head;
+  var vb=[];
+  R.forEach(function(r){
+    if(r.g)vb.push({t:r.g,n:0});
+    vb[vb.length-1].n++;
+    cN.innerHTML+='<div class="gcell">'+r.n+'</div>';
+    cB.innerHTML+='<div class="gcell mono">'+r.b+'</div>';
+    cA.innerHTML+='<div class="gcell mono '+r.d+'">'+r.a+'</div>';
+    var row='<div class="gr">';
+    r.s.forEach(function(sg){row+='<div class="sg '+sg[2]+'" style="left:'+sg[0]+'%;width:'+sg[1]+'%">▤ '+sg[3]+'</div>';});
+    cL.innerHTML+=row+'</div>';
+  });
+  vb.forEach(function(v){cV.innerHTML+='<div class="vgrp" style="height:'+(v.n*18)+'px">'+v.t.split("").join("<br>")+'</div>';});
+  var p=document.createElement("div");p.className="play";p.style.left="46%";cL.appendChild(p);
+  [cV,cN,cB,cA,cL].forEach(function(c){host.appendChild(c);});
+})();
+</script>
