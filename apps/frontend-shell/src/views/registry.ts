@@ -61,6 +61,12 @@ registerRenderer("disruption-radius", () => import("./DisruptionRadiusView"));
 registerRenderer("what-if", () => import("./WhatIfView"));
 // 优化推演页（optimize_whatif·轨B增量3·闭 G-12 前端半）：改目标/约束→真 CP-SAT 重解→Δ目标（专用 route 见 App.tsx）。
 registerRenderer("optimize-whatif", () => import("./OptimizeWhatifView"));
+
+// ── 推演沙盘指控台（WO-SIM-FE-HOME / -DETAIL · 规格 docs/ux-spec/sandbox/）────────────
+// 与既有 `sim-sandbox` 并存**不替换**：旧屏是否退役属产品决策，本次只把新屏接上，
+// 不在接线这一步顺手删别人的入口（删了出问题就说不清是接线错还是退役错）。
+registerRenderer("sim-console", () => import("./sim/console/SandboxHomeRoute"));
+registerRenderer("sim-conduction", () => import("./sim/console/SandboxDetailRoute"));
 registerRenderer("ledger", () => import("./LedgerView"));
 registerRenderer("plan-audit", () => import("./sim/PlanAuditView"));
 registerRenderer("plan-generate", () => import("./sim/PlanGenerateView"));

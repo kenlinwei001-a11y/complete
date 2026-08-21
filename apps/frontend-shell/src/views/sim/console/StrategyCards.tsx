@@ -200,7 +200,7 @@ export function StrategyCards({
             <em style={{ marginLeft: "auto" }}>{c.residualPct} %</em>
           </div>
           <div className={styles.r3}>
-            <span style={{ fontSize: 9, color: "var(--muted2)" }}>{c.basis}</span>
+            <span style={{ fontSize: 9, color: "var(--txt)" }}>{c.basis}</span>
             <Bars n={c.bars.n} k={c.bars.k} />
             <span className={styles.pct}>{c.attainmentPct} %</span>
           </div>
