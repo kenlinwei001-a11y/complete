@@ -161,7 +161,7 @@ const rTxLen = (t: string): StubRound => ({ text: t, usage: STUB_USAGE, finishRe
 const nTxLen = (t: string): ScriptedTurn => ({ content: [text(t)], stopReason: "length" });
 
 /**
- * G3 诚实摘要头锚（镜像 reassemble.ts max-tokens 路模板逐字——即 stall 路 :371 同形：
+ * G3 诚实摘要头锚（镜像 reassemble.ts max-tokens 路模板逐字——即 stall 路 :372 同形：
  * 「[预算耗尽·诚实摘要] ⚠️ …未能完全解答…以下为已探索到的线索：」）。
  * 语料锚与产品码各自持字面量（同 STRUCTURED_ANSWER_TEXT 对 loop.ts 的锚法）：漂移即红，正是锚的职能。
  */

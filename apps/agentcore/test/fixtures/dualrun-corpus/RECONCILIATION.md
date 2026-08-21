@@ -53,7 +53,7 @@ expectsSchema 任务的双臂对账面：`result.structured` 双臂捕获深等 
 非结构化任务两臂同 undefined 也逐值咬（反咬「观测面缺失」——driver 先补捕获再断言）。
 valid 形态（dr50-ce/cf）：native acceptFinalAnswer 校验过 ⇒ answer 恒固定文案
 「已按要求返回结构化结果。」（loop.ts:1287-1295）；dsh reassemble expectsSchema 分支
-answer = `lastAssistantText || "（结构化回答见 structured）"`（reassemble.ts:414）⇒
+answer = `lastAssistantText || "（结构化回答见 structured）"`（reassemble.ts:415）⇒
 **dsh 剧本末轮文本必须逐字写固定文案**（语料 STRUCTURED_ANSWER_TEXT 单源），A1 才逐字节等。
 invalid 形态（dr50-cg，invalid→valid 收敛）：native 拒首轮（checkJsonSchema 回注重规划，
 loop.ts:1122-1131）⇒ 次轮 valid 收敛；dsh reassemble 校验**末次** final_answer ⇒ 通过收敛。
