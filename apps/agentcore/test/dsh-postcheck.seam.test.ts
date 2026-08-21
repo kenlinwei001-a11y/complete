@@ -134,7 +134,10 @@ describe("WO-DSH-PROD-READY W1 · DSH 路径 postcheck 后验对拍", () => {
     const { stub, t } = await setupDshAgent(agentDef({ id: "agt_post_pass", key: "post_pass", kernel: "EXTERNAL" }));
     try {
       const evaluateSpy = vi.spyOn(t.dataCore.rules, "evaluate").mockResolvedValue([
-        { ruleId: "POST_RULE_X", passed: true, severity: "INFO", explanation: "通过", ruleVersion: 1 },
+        // severity 词表是 `["BLOCK","WARN"]`（contracts `common.ts` RuleVerdictSchema）——**没有 INFO**。
+        // 原写 "INFO" 时 vitest 照绿（它不做类型检查），`tsc` 才红 ⇒ 这一臂曾是「测试绿但四包 typecheck 红」。
+        // 本臂验的是「passed:true ⇒ 放行」，severity 取值与断言无关，取词表内的非阻断档即可。
+        { ruleId: "POST_RULE_X", passed: true, severity: "WARN", explanation: "通过", ruleVersion: 1 },
       ]);
       const result = await runDshOnce(t, "agt_post_pass", "task_post_pass");
       expect(result.run.kernel).toBe("EXTERNAL");

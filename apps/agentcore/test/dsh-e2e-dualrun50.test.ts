@@ -1,5 +1,5 @@
 /**
- * WO-DSH-E2E · §16.2 L1 双跑字节比对（50 任务）driver。
+ * WO-DSH-E2E · §16.2 L1 双跑字节比对（59 任务）driver。
  *
  * 对账口径单源 = fixtures/dualrun-corpus/RECONCILIATION.md（team-lead 2026-08-19 重定义：
  * scalar + kernel 唯一白名单 + native 迭代锚 + dsh stats 对齐）。骨架扩 N2
@@ -9,7 +9,8 @@
  *   A3 SSE 事件名序列（收缩白名单过滤后逐项等 + 差集 ⊆ ALLOWED_PSEUDO_TYPES 反咬）；
  *   A4 审计逐字段（归一化/逐值等/kernel 唯一差/native 迭代锚/dsh stats 锚）。
  * 发车哨兵（蓝图 risks #3，防 native-vs-native 假绿）：dsh 臂 stub wire 请求数 ==
- * 剧本轮数 + kernel==="EXTERNAL" + answer 含任务 marker；deny_prefork 类反向哨兵（零 spawn）。
+ * 剧本轮数 + kernel==="EXTERNAL" + answer 含任务 marker；deny_prefork 类反向哨兵（零 spawn）；
+ * EMPTY 空块类 marker 哨兵条件豁免（markerSentinelExempt 谓词 + wire 首请求替代锚，A0 双恰护栏）。
  * A5 确定性：子集同臂连跑两遍过同一比对器。
  *
  * 环境：负载 >400 时按 env-precheck 口径 180s timeout 串行（--pool=forks --maxWorkers=1
@@ -76,6 +77,8 @@ interface CapturedEvent {
 interface ArmProducts {
   outcome: string;
   answer: Record<string, unknown>;
+  /** G2：result.structured 捕获（expectsSchema 任务的双臂对账面；非结构化任务两臂同 undefined）。 */
+  structured?: unknown;
   run: AgentRunRecord;
   sketch: { toolName: string; inputSummary: string }[];
   events: CapturedEvent[];
@@ -167,12 +170,15 @@ async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProduct
       ctx,
       nesting: { callChain: [], budget: new BudgetTracker() },
       emit,
+      // G2：expectsSchema 透传（engine.ts:225 opts 字段，两臂接线俱在：:605 setup/:620 reassemble/:695 loop）
+      ...(task.expectsSchema ? { expectsSchema: task.expectsSchema } : {}),
     });
     // 镜像 orchestrator.ts:2187（G-9 逃生舱）：answer.final 整对象直发 result.answer（两臂同一行，N2 同形）。
     events.push({ event: "answer.final", payload: result.answer as Record<string, unknown> });
     return {
       outcome: result.outcome,
       answer: result.answer as Record<string, unknown>,
+      structured: (result as { structured?: unknown }).structured,
       run: result.run,
       sketch: result.sketch,
       events,
@@ -327,6 +333,27 @@ function checkArmAnchors(task: DualRunTask, flag: "off" | "on", arm: ArmProducts
   }
 }
 
+/**
+ * EMPTY 空块类豁免谓词（发车哨兵第 3 条「answer 含任务 marker」的唯一条件位）。
+ *
+ * 为何豁免是安全的——哨兵本意是防「压根没发车」（蓝图 risks #3：native-vs-native 假绿），
+ * 不是防「答案为空」。空答案 ≠ 没发车：EMPTY 类（blocks:[] / 空 markdown / 空白软收尾）
+ * 的答案结构上不可能携带 marker，强留哨兵等于判这类任务死刑。豁免后发车事实由以下
+ * 互补证据链锁定（缺一即红，不比 marker 哨兵弱）：
+ *   dsh 臂  ① stub.requests.length === 剧本轮数（HTTP wire 实证子进程真 spawn 真走完）；
+ *           ② run.kernel === "EXTERNAL"（engine 分叉真返回，A4 锚定字面量）；
+ *           ③ answer.stats.sessionStats.turns/steps 锚（A4 stats 对齐，证明 harness 真跑了轮次）；
+ *           ④ wire 首请求体含本任务 id（豁免任务的 prompt 必含 id——A0 闸强制，
+ *              证明子进程消费的是**本任务**输入而非旁路，顶替 marker 的「剧本身份」职能）。
+ *   native 臂 ⑤ token 锚 100/50 × 轮数（ScriptedLlmClient 只有真消费剧本才记账）+
+ *             迭代锚逐轮对点。
+ * 双恰护栏（A0 闸）：「豁免位置位 ⇔ expect.answer 序列化后确无本任务 id」——
+ * 给有 marker 的任务误置豁免位会红（谓词第二析取不成立 ⇒ 哨兵照常跑），
+ * 给纯空答案漏置豁免位也会红（哨兵必败）。豁免面被锁死在 EMPTY 类，不可外溢。
+ */
+const markerSentinelExempt = (task: DualRunTask): boolean =>
+  task.expect.skipMarkerSentinel === true && !JSON.stringify(task.expect.answer).includes(task.id);
+
 /** 四面对账主入口。flags 标明每臂实际身份（A5 同臂复跑也过同一比对器）。 */
 function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: { x: "off" | "on"; y: "off" | "on" }): void {
   // ---- 发车哨兵（蓝图 risks #3）：按各臂实际身份锚定 ----
@@ -347,12 +374,29 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
     } else {
       expect(arm.stubRequests.length, `${task.id} 哨兵：native 臂不得触 stub wire`).toBe(0);
     }
-    expect(JSON.stringify(arm.answer), `${task.id} 哨兵：${label} 臂 answer 须含任务 marker`).toContain(task.id);
+    if (markerSentinelExempt(task)) {
+      // EMPTY 类：marker 哨兵豁免（安全性论证见 markerSentinelExempt 注释），
+      // dsh 臂改锚 wire 级替代证据——首请求体必含本任务 id（剧本身份顶替位）。
+      if (flag === "on") {
+        expect(
+          JSON.stringify(arm.stubRequests[0]?.body ?? null),
+          `${task.id} 豁免位替代哨兵：dsh wire 首请求体须含本任务 id（prompt 锚定剧本身份）`,
+        ).toContain(task.id);
+      }
+    } else {
+      expect(JSON.stringify(arm.answer), `${task.id} 哨兵：${label} 臂 answer 须含任务 marker`).toContain(task.id);
+    }
   }
 
   // ---- A1 · Answer 结构逐字节（剥 stats + provenance 归一）----
   expect(normalizeAnswer(x.answer)).toEqual(normalizeAnswer(y.answer));
   expect(normalizeAnswer(x.answer)).toEqual(normalizeAnswer(task.expect.answer as unknown as Json));
+
+  // ---- A1b · structured 深等（G2 expectsSchema 任务对账面；非结构化任务两臂同 undefined 也逐值咬）----
+  expect(x.structured, `${task.id} structured 双臂深等`).toEqual(y.structured);
+  if (task.expect.structured !== undefined) {
+    expect(x.structured, `${task.id} structured 须等于语料声明锚`).toEqual(task.expect.structured);
+  }
 
   // ---- A2 · 拒绝口径（deny 类）----
   for (const { arm, flag } of arms) {
@@ -385,10 +429,10 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
 // 套件
 // ---------------------------------------------------------------------------
 
-describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（50 任务）", () => {
+describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（59 任务）", () => {
   it("A0 语料自检：构成 / 四维覆盖 / gated 槽在册", () => {
-    expect(DUALRUN_CORPUS.length).toBe(50);
-    expect(new Set(DUALRUN_CORPUS.map((t) => t.id)).size).toBe(50);
+    expect(DUALRUN_CORPUS.length).toBe(59);
+    expect(new Set(DUALRUN_CORPUS.map((t) => t.id)).size).toBe(59);
     const deny = DUALRUN_CORPUS.filter((t) => t.cls.startsWith("deny_"));
     expect(deny.length).toBeGreaterThanOrEqual(10);
     expect(deny.filter((t) => t.cls === "deny_pre").length).toBeGreaterThanOrEqual(1);
@@ -410,6 +454,19 @@ describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（50 任务）", () => {
     // 答案块经生产 scanBlocks 零裸数（unverifiedNumerics:false 锚的单源护栏）
     for (const t of DUALRUN_CORPUS) {
       expect(scanBlocks(t.expect.answer.blocks), `${t.id} 答案块含裸数，unverifiedNumerics 锚会漂`).toBe(false);
+    }
+    // EMPTY 豁免位双恰护栏：「豁免位生效 ⇔ expect.answer 确无本任务 id」——
+    // 给有 marker 的任务误置豁免位 ⇒ 谓词不成立 ⇒ 哨兵照常跑（此断言同红，双保险）；
+    // 给纯空答案漏置豁免位 ⇒ 此断言红。豁免任务的 prompt 必含 id（wire 替代哨兵的前提）。
+    for (const t of DUALRUN_CORPUS) {
+      const carriesMarker = JSON.stringify(t.expect.answer).includes(t.id);
+      expect(
+        markerSentinelExempt(t),
+        `${t.id} 豁免位双恰：有 marker 不得豁免、纯空答案必须置豁免位`,
+      ).toBe(!carriesMarker);
+      if (markerSentinelExempt(t)) {
+        expect(t.prompt, `${t.id} 豁免任务的 prompt 必含本任务 id（wire 首请求替代哨兵的锚源）`).toContain(t.id);
+      }
     }
     expect(GATED_SLOTS.length).toBe(2);
   });

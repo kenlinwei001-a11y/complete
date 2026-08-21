@@ -54,6 +54,7 @@ const ValidationPage = lazy(() => import("@/pages/admin/ValidationPage"));
 const QuarantinePage = lazy(() => import("@/pages/admin/QuarantinePage"));
 const NotificationsPage = lazy(() => import("@/pages/admin/NotificationsPage"));
 const DomainsPage = lazy(() => import("@/pages/admin/DomainsPage"));
+const InterfacesPage = lazy(() => import("@/pages/admin/InterfacesPage"));
 // WO-BEFE-A · 本体关系编辑器（结构边 LinkType + 因果边 PropagationRule + 发布会签）。
 const OntologyRelationsPage = lazy(() => import("@/pages/admin/OntologyRelationsPage"));
 const EvalsPage = lazy(() => import("@/pages/admin/EvalsPage"));
@@ -193,6 +194,7 @@ export const routes: RouteObject[] = [
       admin("quarantine", <QuarantinePage />),
       admin("notifications", <NotificationsPage />),
       admin("domains", <DomainsPage />),
+      admin("interfaces", <InterfacesPage />),
       admin("ontology-relations", <OntologyRelationsPage />),
       admin("evals", <EvalsPage />),
       admin("slices", <SlicesPage />),

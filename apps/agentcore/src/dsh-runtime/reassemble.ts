@@ -10,7 +10,8 @@
  *   - aborted 且 cause.kind==='stall-loop'（N3 watchdog cancel 落帧）⇒ 分类前置：
  *     BUDGET_EXHAUSTED + degraded{STALL_LOOP} + 诚实降级块（镜像 loop.ts:620-632），
  *     先于 expectsSchema/final_answer 分支（degrade 短路语义）；
- *   - expectsSchema 模式 ⇒ structured = final_answer raw input（对位 loop.ts:256）。
+ *   - expectsSchema 模式 ⇒ checkJsonSchema 校验（对位 loop.ts:1284 acceptFinalAnswer，
+ *     同一 util/jsonschema.ts 单源）后 structured = final_answer raw input；invalid ⇒ fail-closed。
  *
  * WO-DSH-N2 · SSE 桥映射表（createSseMapper，既有三分支逐字节不动 + 四增补）：
  *   tool/call              → step.started  {stepId=callId, type=name}        （meta 工具 skip，见下）
@@ -30,6 +31,7 @@
 import { AnswerBlockSchema, type Answer, type AnswerBlock, type ProvenanceRef } from "@platform/contracts";
 import { z } from "zod";
 import { scanBlocks } from "../util/numerics.js";
+import { checkJsonSchema } from "../util/jsonschema.js";
 import { newId } from "../ids.js";
 
 // ---- dsh 帧的窄本地类型（只声明重组装消费的字段；wire 上还有更多字段，宽容忽略） ----
@@ -51,7 +53,7 @@ interface DshToolCall {
 export interface ReassembleOptions {
   /** skillGovernance 聚合（loop.ts:451 同口径）；writeMode/provenancePolicy 校验在此执行。 */
   governance?: { writeMode: boolean; provenancePolicy: "required" | "best_effort" | "none" };
-  /** expectsSchema 模式：final_answer raw input 进 structured，不按 AnswerBlock 校验。 */
+  /** expectsSchema 模式：final_answer raw input 按 schema 校验（fail-closed）后进 structured，不按 AnswerBlock 校验。 */
   expectsSchema?: Record<string, unknown>;
   /** provenance id 生成（测试注入确定性 id；生产缺省 prov_ 前缀自增由调用方包一层）。 */
   newProvId?: () => string;
@@ -390,10 +392,21 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
   // N2·D-2：stats 纯 fold（零 usage ⇒ undefined ⇒ 键不出）；失败路径（ok:false）不造。
   const stats = foldDshRunStats(events);
 
-  // expectsSchema 模式：raw input 直通 structured（对位 loop.ts:147/256）。
+  // expectsSchema 模式：schema 校验后 structured = raw input。
+  // 校验对位 loop.ts:1284（acceptFinalAnswer 的 expectsSchema 分支）——同一 checkJsonSchema
+  // （util/jsonschema.ts）import 复用，单源零漂移；invalid ⇒ fail-closed ok:false
+  // （与下方 provenancePolicy/writeMode rejects 同通道）。
+  // ⚠ 注释订正（W2 批2③）：本分支原注释自称「对位 loop.ts:147/256」——:256 只是
+  //   AgentLoopResult.structured 的类型注释、:147 非校验点，真校验在 acceptFinalAnswer；
+  //   原实现 raw 直通无校验，invalid structured 会落进 result.structured（探针实证，
+  //   dsh-runtime-reassemble.test.ts ③ 组 red-first 两条）。
   if (opts.expectsSchema !== undefined) {
     if (!finalCall) {
       return { ok: false, errors: ["expectsSchema 模式但帧流中无 final_answer 调用"] };
+    }
+    const schemaErrors = checkJsonSchema(finalCall.input, opts.expectsSchema);
+    if (schemaErrors.length > 0) {
+      return { ok: false, errors: [`expectsSchema 校验失败: ${schemaErrors.join("; ")}`] };
     }
     return {
       ok: true,

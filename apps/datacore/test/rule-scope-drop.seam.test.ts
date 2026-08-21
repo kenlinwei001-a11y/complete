@@ -109,7 +109,7 @@ describe("WO-RULE-SCOPE-DROP · 规则作用域命名漂移（静默丢弃 → �
     expect((feed.json() as { event: string }[]).some((e) => e.event === RULE_SCOPE_UNRESOLVED_EVENT)).toBe(true);
   });
 
-  it("SEAM-3 · 修完之后：种子里剩下的未解析作用域**全部是真缺口**，无一条是「打错名」", async () => {
+  it("SEAM-3 · 修完之后：种子里剩下的未解析作用域**全是范畴错误**，无一条是「打错名」", async () => {
     const t = await makeApp();
     await seedBattery(t);
     await t.services.ruleScan.scan("demo");
@@ -119,22 +119,22 @@ describe("WO-RULE-SCOPE-DROP · 规则作用域命名漂移（静默丢弃 → �
       .map((e) => e.payload as { ruleKey: string; unknownTypeKey: string; reason: string; suggestion: string | null })
       .sort((a, b) => `${a.ruleKey}${a.unknownTypeKey}`.localeCompare(`${b.ruleKey}${b.unknownTypeKey}`));
 
-    // 实测口径（真跑 28 条 PUBLISHED 规则 × 94 个对象类型）。C10 是本机制**自己抖出来的**：
+    // 实测口径（真跑 28 条 PUBLISHED 规则 × 95 个对象类型）。C10 是本机制**自己抖出来的**：
     // 我原以为只剩 C31，机制说还有 C10 的 Action/Scenario —— 机器先说话，不是人想起来。
+    // ⚠ WO-RULE-SCOPE-TRIAD 后信号集收缩：`Outsource` 承载类型已补建（C31 转真评估，见
+    // rule-scope-triad.seam.test.ts TRIAD-1），剩下的只有 C10 的两条**范畴错误**（刻意保留当诚实缺口标记）。
     expect(found.map((f) => `${f.ruleKey}:${f.unknownTypeKey}`)).toEqual([
       "C10:Action",
       "C10:Scenario",
-      "C31:Outsource",
     ]);
 
     // 头号判据：**没有任何一条是 RENAME_CANDIDATE** —— 凡是"改个名就能接上"的，本单已经全改完了。
     // 若这条变红，说明又混进了一个命名漂移（正是本机制要拦的复发）。
     expect(found.filter((f) => f.reason === "RENAME_CANDIDATE")).toEqual([]);
 
-    // C31 外协质量门：零候选 ⇒ 真缺承载对象类型（**不许硬塞近似类型**）。
-    const c31 = found.find((f) => f.ruleKey === "C31")!;
-    expect(c31.reason).toBe("NO_CARRIER");
-    expect(c31.suggestion).toBeNull();
+    // C31 外协质量门：**承载类型已补建**（WO-RULE-SCOPE-TRIAD）⇒ 不再出现在未解析信号里。
+    // 它若重新出现，说明 Outsource 类型被删/改名 —— 那是回归，不是静默。
+    expect(found.find((f) => f.ruleKey === "C31")).toBeUndefined();
 
     // C10 场景必填+行动审批留痕：**范畴错误，不是拼写错误**（审核方裁决）。
     // `Action`/`Scenario` 是本体七要素里的行动/场景，与「对象类型」**平级的另一类要素**，
@@ -267,10 +267,12 @@ describe("WO-RULE-SCOPE-DROP · 规则作用域命名漂移（静默丢弃 → �
     expect(rows.filter((r) => r.props.changeoverMin !== undefined).length).toBe(0);
   });
 
-  it("SEAM-7 · 种子表回归锁：三条已归真类型键，C31 保持原样（缺口不许靠塞近似类型糊掉）", () => {
+  it("SEAM-7 · 种子表回归锁：三条已归真类型键，C31 键不变但承载已补建（WO-RULE-SCOPE-TRIAD）", () => {
     expect(BATTERY_RULE_SCOPES.C28).toEqual(["MaterialBatch"]);
     expect(BATTERY_RULE_SCOPES.C26).toEqual(["Certification"]);
     expect(BATTERY_RULE_SCOPES.C27).toEqual(["LongTermAgreement"]);
+    // C31 的键字面值没动，但 `Outsource` 已是真实对象类型（WO-RULE-SCOPE-TRIAD 补建承载）——
+    // 从「NO_CARRIER 缺口」转为「真评估」。改动这个键或删掉 Outsource 类型都属回归。
     expect(BATTERY_RULE_SCOPES.C31).toEqual(["Outsource"]);
   });
 });
