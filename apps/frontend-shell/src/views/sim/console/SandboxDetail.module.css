@@ -234,7 +234,16 @@
   gap: 3px;
   font-size: 9.5px;
   color: var(--muted2);
-  background: color-mix(in srgb, var(--panel2) 86%, transparent);
+  /*
+   * ⚠ **登记在案的第三处偏差：规格 `rgba(28,41,66,.86)` → 这里取实色 `var(--panel2)`。**
+   * 规格让这张图例半透 86%。而本仓已有一条成文规则（`WO-PROV-POPOVER-LEGIBILITY`，
+   * 门在 `test/provenance-popover-legibility.test.tsx`）：**定位浮层的表面必须不透明** ——
+   * 半透浮层里那行字看到的背景 = f(浮层色, 底下恰好是什么)，不是一个可设计的常量，
+   * 换皮即不可读。这张图例正是那条规则点名的形态（`position:absolute` + alpha ≥ .5）。
+   * 规格 vs 既有规则冲突时取既有规则：像素代价实测极小（底下是 `.mapbox` 的 `--panel`，
+   * 14% 的透出量本就与 `--panel2` 差 2–4/通道），而"换皮读不了"是真缺陷。
+   */
+  background: var(--panel2);
   padding: 6px 8px;
   border: 1px solid var(--line);
 }
@@ -475,7 +484,14 @@
   font-size: 9.5px;
   color: var(--danger);
   border: 1px solid color-mix(in srgb, var(--danger) 42%, transparent);
-  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  /*
+   * 规格 `rgba(224,98,108,.14)` —— 这**恰好就是** tokens.css 里的 `--danger-soft`
+   *（`rgba(224, 98, 108, 0.14)`，逐字节相同，零像素代价）。用既有令牌而不是现调一份：
+   * 顺带让 `provenance-popover-legibility` 那道门解析得动 —— 它的 `parseColor`
+   * 读不懂 `color-mix()`，于是把本该按「alpha<0.5 ⇒ 是 tint 不是面 ⇒ 放行」豁免的低透底纹
+   * 也报成「解析不出实色」。这是那道门的工具缺口（详见交单报告），不是这条底纹的错。
+   */
+  background: var(--danger-soft);
   padding: 1px 5px;
   white-space: nowrap;
 }
@@ -486,7 +502,15 @@
   font-size: 9.5px;
   color: var(--accent);
   border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  /*
+   * 规格 `rgba(76,144,240,.12)`；这里取 `--primary-soft`（同色 **.16**，非 .12）。
+   * 两个理由，都写明白：① 语义对得上 —— `--primary-soft` 在 tokens.css 里的定义就是
+   * 「选中项底纹」，而这枚 `P4212` 徽标正是"当前选中的那条"的自标记；② 与上面 `.chip`
+   * 同款：给那道读不懂 `color-mix()` 的门一个它解析得动的值。
+   * 代价实测：该徽标约 44×14 逻辑像素，alpha 差 4% ⇒ 严格(tol=0)比对多约 0.05%，
+   * tol=8 下看不出差别。数字见交单报告，不是"顺手改的"。
+   */
+  background: var(--primary-soft);
   padding: 1px 6px;
 }
 .dt {
@@ -619,7 +643,8 @@
   color: var(--c-capacity);
   border: 1px solid var(--line2);
   padding: 1px 6px;
-  background: color-mix(in srgb, var(--panel2) 86%, transparent);
+  /* 同 `.lgd`：定位浮层表面取实色（见那条注释）。规格原值 rgba(28,41,66,.86)。 */
+  background: var(--panel2);
 }
 .dr .cp {
   position: absolute;
