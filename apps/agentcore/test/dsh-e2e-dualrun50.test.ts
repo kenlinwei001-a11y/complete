@@ -586,7 +586,7 @@ describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（63 任务）", () => {
   // -------------------------------------------------------------------------
   // W5 块1 · A3c SSE 事件族覆盖矩阵
   //
-  // 15 族 = KNOWN_EVENTS 十名（前端 useTaskStream.ts:28-39 订阅面，单源经 N2 字面量锚）
+  // 15 族 = KNOWN_EVENTS 十名（前端 useTaskStream.ts:29-38 订阅面，单源经 N2 字面量锚）
   // ∪ ALLOWED_PSEUDO_TYPES 五名（payload.type 伪步族，N2 单源）。矩阵每行声明一族在本
   // 驱动级（engine.runRegisteredAgent 双臂 + answer.final 镜像）的覆盖真相：
   //   triggered   —— 至少一条语料真触发（本 it 自跑声明任务实证，精确族集断言）；

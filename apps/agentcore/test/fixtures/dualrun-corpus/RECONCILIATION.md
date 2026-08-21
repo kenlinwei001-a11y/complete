@@ -104,7 +104,7 @@ meta-only 语料下两臂非伪步序列均空（load_skill/final_answer 两臂�
 | coordinator.planned | 编排层事件·本驱动级不可达（orchestrator:2546） |
 | step.started（真工具名族） | 真工具步族·meta-only 语料不可达（固有不对称 #3；发射点 loop.ts:847 / mapper tool/call 分支） |
 | step.completed（真工具名/status 族） | 真工具步族·meta-only 语料不可达（固有不对称 #3；loop.ts:848 / mapper tool/result 分支） |
-| answer.final | **真触发**：全部 62 条（双臂；测试镜像 orchestrator:2187 同行发射；矩阵实证锚 dr50-aa） |
+| answer.final | **真触发**：全部 63 条（双臂；测试镜像 orchestrator:2187 同行发射；矩阵实证锚 dr50-aa） |
 | action_draft.created | 编排层事件·本驱动级不可达（orchestrator:2171 runPathB 段） |
 | task.failed | 编排层事件·本驱动级不可达（orchestrator:1727/:2876；runRegisteredAgent 层 FAILED 无 SSE 发射） |
 | task.cancelled | 编排层事件·本驱动级不可达（orchestrator 取消面发射点群） |
