@@ -730,3 +730,128 @@ export type ChangeImpactPreview = z.infer<typeof ChangeImpactPreviewSchema>;
 
 export const ChangeImpactPreviewRequestSchema = z.object({ focus: ChangeFocusSchema });
 export type ChangeImpactPreviewRequest = z.infer<typeof ChangeImpactPreviewRequestSchema>;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-SIM-BE-PARETO · 帕累托解集（多目标权衡的**解集**，不是 80/20 排行）
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ **命名撞车预警（这不是客套，本单开工第一件事就撞上了）**：
+//    本仓已有一个 `buildPareto`（`frontend-shell/src/views/sim/sandboxConsoleModel.ts`），
+//    那是**帕累托图**——把环节按 `pctOfChainLoss` 降序取 Top-N，单指标排行，无目标、无支配关系。
+//    本节是**帕累托前沿**——多目标下互不支配的**解集**。两者同名不同物，
+//    谁把它们当成一回事，谁就会得出「解集能力已经有了」这个恰好相反的结论。
+//
+// 为什么沙盘需要它：`optimize_whatif` 今天一次只回**两个**解（`baselineSolution` /
+// `perturbedSolution`）——同一条扰动路径上的前后快照。决策者真正要问的
+// 「少花钱和快交付之间有哪些不吃亏的折中」，两个点答不了，要的是一条前沿。
+
+/**
+ * 目标方向。**必须显式声明**，不许由代码按目标名猜。
+ * （把方向写死在代码里，下次新增一个「最大化准时率」就会被静默算反——
+ *  而算反的前沿看起来完全正常：它仍然是一条曲线，只是选出来的是最差的那批解。）
+ */
+export const ParetoObjectiveDirSchema = z.enum(["min", "max"]);
+export type ParetoObjectiveDir = z.infer<typeof ParetoObjectiveDirSchema>;
+
+export const ParetoObjectiveSchema = z.strictObject({
+  /** 目标键，须能在解的 `metrics` 里取到同名数值（取不到 ⇒ 该解判不可行，**不补 0**）。 */
+  key: z.string().min(1),
+  dir: ParetoObjectiveDirSchema,
+  /** 人读名与量纲（前端只格式化，不另维护映射表·R14）。 */
+  label: z.string().min(1).optional(),
+  unit: z.string().optional(),
+});
+export type ParetoObjective = z.infer<typeof ParetoObjectiveSchema>;
+
+/**
+ * 一条绑定约束的裕度读数。
+ *
+ * `tight` 的判据**写在这里，不让前端猜阈值**：`slack <= PARETO_TIGHT_EPS`。
+ * 取绝对 eps 而非相对百分比，是因为链上所有数值都已按 `1e-6` 量化
+ * （与 `opt-whatif.ts` 的 `Math.round(x*1e6)/1e6` 同一口径）——
+ * eps 正好等于这条链的数值分辨率，比它小的差已经不是「差」而是量化噪声。
+ */
+export const ParetoBindingSchema = z.strictObject({
+  key: z.string().min(1),
+  /** 该解在这条约束上的实际取值。 */
+  value: z.number(),
+  /** 上限（调用方声明；本层不编造上限）。 */
+  limit: z.number(),
+  /** `limit - value`。负数 = 越界 ⇒ 该解 `feasible:false`。 */
+  slack: z.number(),
+  /** 是否顶到边（判据见本 schema 注释，唯一声明处）。 */
+  tight: z.boolean(),
+});
+export type ParetoBinding = z.infer<typeof ParetoBindingSchema>;
+
+/** 一个杠杆档位（`key` = 扰动 target，与 `optimize_whatif` 的 DF.8 接地语法同一套）。 */
+export const ParetoLeverSettingSchema = z.strictObject({
+  key: z.string().min(1),
+  value: z.number(),
+});
+export type ParetoLeverSetting = z.infer<typeof ParetoLeverSettingSchema>;
+
+/** 解集里的一个解 = 「一组杠杆档位 → 各目标读数 + 各约束裕度」。 */
+export const ParetoSolutionSchema = z.strictObject({
+  /** 稳定 id，**由杠杆档位派生**（`paretoSolutionId`），故可从公开字段重建。 */
+  id: z.string().min(1),
+  label: z.string().min(1),
+  levers: z.array(ParetoLeverSettingSchema).min(1),
+  /** 目标读数（键含全部 `objectives[].key`）。 */
+  metrics: z.record(z.string(), z.number()),
+  bindings: z.array(ParetoBindingSchema),
+  /** 求解可行 **且** 全部绑定约束不越界。`false` 的解不参与前沿竞争。 */
+  feasible: z.boolean(),
+});
+export type ParetoSolution = z.infer<typeof ParetoSolutionSchema>;
+
+/**
+ * 帕累托解集结果。
+ *
+ * **账必须是平的**：`iterations === frontier.length + dominated.length + residual`。
+ * `residual` = 因不可行（求解 INFEASIBLE / 越界 / 目标读数缺失）被剔出竞争的候选数。
+ * 这条恒等式让「解去哪了」可被机器核 —— 不平就是有解被静默吞掉了。
+ */
+export const ParetoResultSchema = z.strictObject({
+  /** 原样回显，前端画轴要用（方向也在里面，不许前端自己猜）。 */
+  objectives: z.array(ParetoObjectiveSchema).min(2),
+  /** 互不支配的解（**已做逐对支配剔除**，被支配者绝不出现在这里）。 */
+  frontier: z.array(ParetoSolutionSchema),
+  /** 被支配的可行解（前端散点画灰点用）。与 `frontier` 交集恒为空。 */
+  dominated: z.array(ParetoSolutionSchema),
+  /** 枚举并求解的候选总数（= 杠杆网格笛卡尔积大小）。 */
+  iterations: z.number().int().nonnegative(),
+  /** 守恒残差（见本 schema 注释）。 */
+  residual: z.number().int().nonnegative(),
+});
+export type ParetoResult = z.infer<typeof ParetoResultSchema>;
+
+/** 单根杠杆的候选档位（网格的一维）。 */
+export const ParetoLeverGridSchema = z.strictObject({
+  /** 扰动 target，如 `facilities.F1.openCost`（DF.8 接地，语法同 `optimize_whatif`）。 */
+  key: z.string().min(1),
+  label: z.string().min(1).optional(),
+  /** 候选取值；内部会去重 + 升序，故请求里的顺序不影响结果（R6）。 */
+  values: z.array(z.number()).min(1),
+});
+export type ParetoLeverGrid = z.infer<typeof ParetoLeverGridSchema>;
+
+/**
+ * 请求体。
+ *
+ * `objectives` 至少两个 —— 单目标下「前沿」退化成「最优解」，那是 `optimize_whatif` 的活；
+ * 允许 1 个目标只会让调用方以为自己在做权衡分析，而其实没有。
+ */
+export const ParetoRequestSchema = z.strictObject({
+  /** 推演会话 id（R6 确定性键的一部分：同 session + 同杠杆集 + 同参数版本 ⇒ 字节级一致）。 */
+  sessionId: z.string().min(1).optional(),
+  /** 优化模板族（5 核心之一，与 `optimize_whatif` 同一套）。 */
+  family: z.string().min(1),
+  /** 基线 args（杠杆扰动施加在它的克隆上，R4 不落真值）。 */
+  args: z.record(z.string(), z.unknown()).optional(),
+  objectives: z.array(ParetoObjectiveSchema).min(2),
+  levers: z.array(ParetoLeverGridSchema).min(1),
+  /** 绑定约束上限（不给 ⇒ 该解 `bindings` 为空数组，**不是**「没有约束」的断言）。 */
+  constraints: z.array(z.strictObject({ key: z.string().min(1), limit: z.number() })).optional(),
+});
+export type ParetoRequest = z.infer<typeof ParetoRequestSchema>;

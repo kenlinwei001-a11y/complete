@@ -203,3 +203,34 @@ export async function runOptimizeWhatif(
     perturbedSolution,
   };
 }
+
+/**
+ * WO-SIM-BE-PARETO · **解集分支**：把一组扰动施加到基线 args 的克隆上并返回（**只施加，不求解**）。
+ *
+ * 为什么复用而不是在 `opt-pareto.ts` 里另写一份施加逻辑：帕累托解集要枚举几十个杠杆组合，
+ * 每个组合都得「施加一次扰动」。若另抄一份，两条路会各自漂移 ——
+ * `applyOne` 里那三个不显眼的默认字段规则（`facilities`→`openCost` / `bids`→`value` / 其余→`cost`）
+ * 和「`objectives.` 分支必须先于全局缩放」的顺序，抄的那份第一天就会漏掉一条，
+ * 而漏掉之后**两条路都不会红**：扰动照样施加成功，只是加错了字段。
+ * 这正是本仓 metric-aware 反复炸的形态（拆两半、用不同机制、不对接）。
+ *
+ * ⚠️ 既有两解路径（`runOptimizeWhatif` 及其调用的全部私有函数）**一行未动**——
+ *    本函数是纯增量，与它共用 `resolveTarget` / `clone` / `applyOne` 三个同一份实现。
+ *
+ * @returns `args` = 施加后的克隆（基线不被污染，R4）；`touched` = 受影响的约束族 key（稳定序）。
+ */
+export function applyPerturbationSet(
+  baselineArgs: Record<string, unknown>,
+  perturbations: readonly OptPerturbation[],
+): { args: Record<string, unknown>; touched: string[] } {
+  // DF.8 接地：每条扰动 target 须可寻址到基线 args 内（与 what-if 同一道门，不放宽）。
+  for (const p of perturbations) {
+    const g = resolveTarget(baselineArgs, p.target);
+    if (!g.ok) throw validationError(`optimize_pareto 接地失败：${g.reason}`);
+  }
+  const args = clone(baselineArgs);
+  // 稳定序（R6）：与 runOptimizeWhatif 逐字节同一个排序键。
+  const sorted = [...perturbations].sort((a, b) => a.kind.localeCompare(b.kind) || a.target.localeCompare(b.target));
+  const touched = sorted.map((p) => applyOne(args, p));
+  return { args, touched };
+}
