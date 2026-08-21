@@ -68,6 +68,8 @@ registerRenderer("optimize-whatif", () => import("./OptimizeWhatifView"));
 registerRenderer("sim-console", () => import("./sim/console/SandboxHomeRoute"));
 registerRenderer("sim-conduction", () => import("./sim/console/SandboxDetailRoute"));
 registerRenderer("sim-attribution", () => import("./sim/console/SandboxAttrRoute"));
+// WO-SIM-FE-OPT 方案寻优台（帕累托前沿解集 · 规格 docs/ux-spec/sandbox/sandbox-opt.html + pg4.png）。
+registerRenderer("sim-optimize", () => import("./sim/console/SandboxOptRoute"));
 registerRenderer("ledger", () => import("./LedgerView"));
 registerRenderer("plan-audit", () => import("./sim/PlanAuditView"));
 registerRenderer("plan-generate", () => import("./sim/PlanGenerateView"));
