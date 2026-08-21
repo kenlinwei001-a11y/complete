@@ -112,7 +112,7 @@ const CapabilityNeedsSchema = z.object({
 import { LivedInEngine } from "./livedin/engine.js";
 import { SolverService, SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "./solvers/service.js";
 // WO-SIM-BE-MATRIX · 环节 × 基地 损失矩阵（逐基地各跑一次既有一维归因，口径全走 S0 契约）
-import { chainLossMatrix } from "./solvers/chain-loss-matrix.js";
+import { chainLossMatrix, CHAIN_LOSS_MATRIX_SOLVER_KEY } from "./solvers/chain-loss-matrix.js";
 import { ChainLossMatrixResultSchema } from "@platform/contracts";
 import type { ChainLossObject } from "./solvers/chain-loss.js";
 // WO-V4-INSPECT · 杠杆标签/单位/值类的**单一真值**（PRD §4.1 的杠杆→域映射拿它当输入·前端零内联）
@@ -2430,7 +2430,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       ]);
     // 诚实拒绝而非静默空答：没 Order 就没有任何一条链可锚，返回一张全 null 的矩阵会被读成
     // 「全部基地都没损失」——那是与事实相反的结论（`chain_loss_attribution` 同一处也是显式 400）。
-    if (orders.length === 0) throw validationError("chain_loss_matrix 需先合成 Order（全链锚点）");
+    if (orders.length === 0) throw validationError(`${CHAIN_LOSS_MATRIX_SOLVER_KEY} 需先合成 Order（全链锚点）`);
     if (body.so && !orders.some((o) => typeof o.props.so === "string" && o.props.so === body.so)) throw notFound(`Order ${body.so}`);
     const links = (await repos.links.list(c.tenantId)).map((l) => ({ type: l.type, fromId: l.fromId, toId: l.toId }));
     return ChainLossMatrixResultSchema.parse(
