@@ -473,3 +473,117 @@ describe("N2-A10 · 保序（SSE 序==帧序；同(turn,step) think 伪步 seq �
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// WO-DSH-PROD-READY W9-lite · 帧流→iterations 骨架探针（审计记录空壳修复第一刀）。
+// 口径钉死（与 reassemble.ts foldDshIterations 头注同源）：
+//   分组键 = 帧 data.turn（dsh 语义 turn=用户请求轮、step=LLM 响应轮；单 prompt 形态 turn 恒 1
+//   ——hist-multihop 6 调用全在 turn:1 + dualrun 语料 stats 锚 turns:1 双实证）；index=turn 原值不重编号。
+//   outcome 两态 = isError⇒ERROR 否则 OK；DENIED/BUDGET_EXCEEDED 帧流无源不硬造（REC §3 #10）。
+// ---------------------------------------------------------------------------
+describe("WO-DSH-PROD-READY W9-lite · 帧流→iterations 骨架", () => {
+  const callAt = (turn: number, callId: string, name: string, time: number, args: unknown = {}): DshSessionEvent => ({
+    type: "tool/call",
+    time,
+    data: { turn, step: 1, callId, name, arguments: JSON.stringify(args) },
+  });
+  const resultAt = (turn: number, toolCallId: string, isError: boolean, time: number): DshSessionEvent => ({
+    type: "tool/result",
+    time,
+    data: { turn, step: 1, message: { content: [{ type: "tool-result", toolCallId, content: [], isError }] } },
+  });
+
+  it("① turn 分组：两 turn 各一调用 ⇒ 两条迭代 index=turn 原值，调用各归各轮", () => {
+    const r = reassembleDshRun([
+      callAt(1, "c1", "read", 1000), resultAt(1, "c1", false, 1120),
+      callAt(2, "c2", "read", 2000), resultAt(2, "c2", false, 2350),
+      assistantMessage("收尾"), turnEnd("completed"),
+    ]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.iterations.map((it) => it.index)).toEqual([1, 2]);
+    expect(r.iterations[0]?.toolCalls.map((c) => c.toolCallId)).toEqual(["c1"]);
+    expect(r.iterations[1]?.toolCalls.map((c) => c.toolCallId)).toEqual(["c2"]);
+  });
+
+  it("② 配对推导 durationMs = result.time − call.time（foldDshRunStats 同法）；同轮多调用保 wire 序", () => {
+    const r = reassembleDshRun([
+      callAt(1, "c1", "read", 1000, { a: 1 }), resultAt(1, "c1", false, 1250),
+      callAt(1, "c2", "query_objects", 1300), resultAt(1, "c2", false, 1400),
+      turnEnd("completed"),
+    ]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.iterations).toHaveLength(1);
+    const calls = r.iterations[0]?.toolCalls ?? [];
+    expect(calls.map((c) => [c.toolName, c.durationMs])).toEqual([["read", 250], ["query_objects", 100]]);
+    expect(calls[0]?.input).toEqual({ a: 1 }); // arguments JSON 容错解析（collectToolCalls 同口径）
+  });
+
+  it("③ outcome 两态映射：isError⇒ERROR、否则 OK；词表物理上限 OK|ERROR 两态", () => {
+    const r = reassembleDshRun([
+      callAt(1, "c1", "read", 1000), resultAt(1, "c1", true, 1100),
+      callAt(1, "c2", "read", 1200), resultAt(1, "c2", false, 1300),
+      turnEnd("completed"),
+    ]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const calls = r.iterations[0]?.toolCalls ?? [];
+    expect(calls.map((c) => c.outcome)).toEqual(["ERROR", "OK"]);
+    for (const c of calls) expect(["OK", "ERROR"]).toContain(c.outcome);
+  });
+
+  it("④ 空轮诚实：零 tool/call 帧 ⇒ iterations 空数组（键在值为空，不造迭代）", () => {
+    const r = reassembleDshRun([assistantMessage("只有文本"), turnEnd("completed")]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.iterations).toEqual([]);
+  });
+
+  it("⑤ meta 口径对位 native 审计：final_answer 不进（派发前拦截）；load_skill 进（loop.ts:734-746 同口径）", () => {
+    const r = reassembleDshRun([
+      callAt(1, "ls1", "load_skill", 1000, { skillId: "sk-a" }), resultAt(1, "ls1", false, 1080),
+      toolCall("fa1", "final_answer", { blocks: [{ type: "text", markdown: "x" }], provenance: [] }),
+      turnEnd("completed"),
+    ]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.iterations).toHaveLength(1);
+    expect(r.iterations[0]?.toolCalls.map((c) => c.toolName)).toEqual(["load_skill"]);
+  });
+
+  it("⑥ 未配对 tool/call（abort 撕票）不进 iterations——帧不全不造 outcome；轨迹仍由 sketch 承载", () => {
+    const r = reassembleDshRun([
+      callAt(1, "c1", "read", 1000), // 无 result 帧
+      turnEnd("aborted"),
+    ]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.iterations).toEqual([]);
+    expect(r.sketch.map((s) => s.toolName)).toEqual(["read"]);
+  });
+
+  it("⑦ 缺 time 帧 ⇒ durationMs 0（native 未执行调用 durationMs:0 同约定，loop.ts:780），不产负值/NaN", () => {
+    const r = reassembleDshRun([
+      { type: "tool/call", data: { turn: 1, step: 1, callId: "c1", name: "read", arguments: "{}" } },
+      { type: "tool/result", data: { turn: 1, step: 1, message: { content: [{ type: "tool-result", toolCallId: "c1", content: [], isError: false }] } } },
+      turnEnd("completed"),
+    ]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.iterations[0]?.toolCalls[0]?.durationMs).toBe(0);
+  });
+
+  it("⑧ 黄金夹具 multihop：单 turn 6 调用全配对 OK，ΣdurationMs == stats.sessionStats.toolMs（同源交叉核）", () => {
+    const { frames } = loadDshFixture("hist-multihop.json");
+    const r = reassembleDshRun(frames);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.iterations).toHaveLength(1); // turn 恒 1（夹具实证）⇒ 单迭代骨架
+    expect(r.iterations[0]?.index).toBe(1);
+    expect(r.iterations[0]?.toolCalls).toHaveLength(6);
+    for (const c of r.iterations[0]?.toolCalls ?? []) expect(c.outcome).toBe("OK");
+    const sum = (r.iterations[0]?.toolCalls ?? []).reduce((n, c) => n + c.durationMs, 0);
+    expect(sum).toBe(r.stats?.sessionStats.toolMs); // 两条独立 fold 路径同帧同源，必须互等
+  });
+});

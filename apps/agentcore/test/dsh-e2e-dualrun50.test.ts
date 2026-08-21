@@ -326,26 +326,66 @@ function checkArmAnchors(task: DualRunTask, flag: "off" | "on", arm: ArmProducts
       });
     });
   } else {
-    // dsh 臂审计空壳（固有不对称 #4）：iterations 恒空、tokens 恒零
-    expect(arm.run.iterations).toEqual([]);
-    expect(arm.run.totalInputTokens).toBe(0);
-    expect(arm.run.totalOutputTokens).toBe(0);
+    // dsh 臂审计锚（固有不对称 #4 + W9-lite 起 #10）：两臂不互比、各锚各的剧本——
+    // A4 锚定方案不变（scalar 互比零触、kernel 唯一差不变）；四态+tc_ 合流 + A4 单翻待 W9-full。
     const anchor = task.expect.dshStats;
     const stats = (arm.answer as { stats?: { tokenUsage: Json; contextPressure?: Json; sessionStats: Json } }).stats;
     if (!anchor) {
+      // 零 spawn（分叉前预检早退）：无帧流 ⇒ 空壳维持（诚实缺省，骨架不造无源数据）
       expect(stats, `${task.id} 零 spawn 任务不得有 stats 键`).toBeUndefined();
-    } else {
-      expect(stats, `${task.id} dsh 臂必带 stats（N2 M8 回声）`).toBeDefined();
-      expect(stats!.tokenUsage).toEqual({
-        uncachedInputTokens: anchor.uncachedInputTokens,
-        outputTokens: anchor.outputTokens,
-        cacheReadTokens: anchor.cacheReadTokens,
-        cacheWriteTokens: anchor.cacheWriteTokens,
-      });
-      expect(stats!.contextPressure).toEqual({ pressureTokens: anchor.pressureTokens });
-      expect(stats!.sessionStats.turns).toBe(anchor.turns);
-      expect(stats!.sessionStats.steps).toBe(anchor.steps);
+      expect(arm.run.iterations, `${task.id} 零 spawn ⇒ iterations 空壳维持`).toEqual([]);
+      expect(arm.run.totalInputTokens, `${task.id} 零 spawn ⇒ tokens 0/0 维持`).toBe(0);
+      expect(arm.run.totalOutputTokens, `${task.id} 零 spawn ⇒ tokens 0/0 维持`).toBe(0);
+      return;
     }
+    expect(stats, `${task.id} dsh 臂必带 stats（N2 M8 回声）`).toBeDefined();
+    expect(stats!.tokenUsage).toEqual({
+      uncachedInputTokens: anchor.uncachedInputTokens,
+      outputTokens: anchor.outputTokens,
+      cacheReadTokens: anchor.cacheReadTokens,
+      cacheWriteTokens: anchor.cacheWriteTokens,
+    });
+    expect(stats!.contextPressure).toEqual({ pressureTokens: anchor.pressureTokens });
+    expect(stats!.sessionStats.turns).toBe(anchor.turns);
+    expect(stats!.sessionStats.steps).toBe(anchor.steps);
+    // WO-DSH-PROD-READY W9-lite 骨架锚①：iterations = 帧流 turn 分组（语料单 turn ⇒ 至多 1 条），
+    // 非 meta 调用逐一对点剧本（final_answer meta 不进，对位 native 审计口径）；
+    // outcome 两态物理上限（govDeny ⇒ 帧 isError ⇒ ERROR；DENIED/BUDGET_EXCEEDED 帧流无源不硬造）；
+    // durationMs 推导值只锚非负形态（墙钟，A4 时间量豁免同口径）。
+    const expectedCalls = task.dsh.rounds
+      .filter((r) => r.toolCall !== undefined && r.toolCall.name !== "final_answer")
+      .map((r) => ({
+        toolName: r.toolCall!.name,
+        outcome: (task.dsh.govDeny ?? []).includes(r.toolCall!.name) ? "ERROR" : "OK",
+      }));
+    const its = arm.run.iterations;
+    if (expectedCalls.length === 0) {
+      expect(its, `${task.id} dsh 臂剧本无真工具轮 ⇒ iterations 空`).toEqual([]);
+    } else {
+      expect(its, `${task.id} dsh 臂语料单 turn ⇒ 单迭代`).toHaveLength(1);
+      const iter = its[0];
+      expect(iter, `${task.id} dsh 迭代锚点缺失（长度断言过但取下标失败）`).toBeDefined();
+      if (!iter) return;
+      expect(Number.isInteger(iter.index), `${task.id} 迭代 index 整数形态`).toBe(true);
+      expect(
+        iter.toolCalls.map((c) => c.toolName),
+        `${task.id} dsh 迭代 toolName 序列对点剧本`,
+      ).toEqual(expectedCalls.map((e) => e.toolName));
+      iter.toolCalls.forEach((c, j) => {
+        const ec = expectedCalls[j];
+        expect(ec, `${task.id} dsh 迭代第 ${j} 个调用缺锚点`).toBeDefined();
+        if (!ec) return;
+        expect(c.outcome, `${task.id} dsh 调用 ${c.toolName} outcome 两态锚`).toBe(ec.outcome);
+        expect(["OK", "ERROR"], `${task.id} dsh outcome 词表物理上限两态`).toContain(c.outcome);
+        expect(c.durationMs).toBeGreaterThanOrEqual(0);
+        expect(typeof c.toolCallId).toBe("string"); // dsh 帧 callId 原值（非 tc_ 形态，#10）
+      });
+    }
+    // W9-lite 骨架锚②：B11 同源等值（ROLLOUT §6.5 验收判据）——run.total* === answer.stats
+    // 对应桶（同一份帧流 fold 的两个载体）；两臂 token 账不互比维持。
+    const buckets = stats!.tokenUsage as { uncachedInputTokens: number; outputTokens: number };
+    expect(arm.run.totalInputTokens, `${task.id} run.totalInputTokens === stats.uncachedInputTokens（同源等值）`).toBe(buckets.uncachedInputTokens);
+    expect(arm.run.totalOutputTokens, `${task.id} run.totalOutputTokens === stats.outputTokens（同源等值）`).toBe(buckets.outputTokens);
   }
 }
 
