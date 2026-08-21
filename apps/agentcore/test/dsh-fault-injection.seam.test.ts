@@ -165,12 +165,12 @@ describe("WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态", () 
     }
   });
 
-  it("F3 中途崩（runner 级）⇒ 有界收束 + outcome FAILED + 半截文本兜底不编造", { timeout: 30_000 }, async () => {
+  it("F3 中途崩（runner 级）⇒ 百 ms 级收束 + outcome FAILED + 半截文本兜底不编造", { timeout: 30_000 }, async () => {
     setFaultEnv(harness.dir, "mid-crash");
     const started = Date.now();
     const out = await runDshAgent(
       { prompt: "中途崩故障注入", provider: "stub", model: "stub" },
-      { harnessDir: harness.dir, requestTimeoutMs: 2_000 },
+      { harnessDir: harness.dir, requestTimeoutMs: 3_000 },
     );
     const elapsed = Date.now() - started;
     expect(out.result.ok, "中途崩不构成重组装拒绝（帧流自洽，只是没等到 turn/end）").toBe(true);
@@ -180,7 +180,9 @@ describe("WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态", () 
       expect(md, "半截 assistant 文本如实兜底（软收尾语义），不编造最终结论").toContain("崩溃前的半截回答");
       expect(out.result.answer.provenance, "无 final_answer ⇒ provenance 空 = 诚实不造溯源").toHaveLength(0);
     }
-    expect(elapsed, "收束必须有上界（现状：等满 requestTimeoutMs——慢失败事实钉板）").toBeLessThan(10_000);
+    // G1 修复钉板：收束三源 = turn/end + deadline + 进程死亡。注入 3s ≫ 断言上界 1s——
+    // 绿 = 收束靠存活位（崩后百 ms 级），红 = 空转到 deadline（慢失败回潮）。
+    expect(elapsed, "中途崩 ⇒ 百 ms 级收束（存活位第三收束源），不得空转到 requestTimeoutMs").toBeLessThan(1_000);
     expect(await countHarnessProcesses(harness.binPath), "中途崩后不得有残留子进程").toBe(0);
   });
 
