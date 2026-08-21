@@ -7,18 +7,21 @@
  * engine 分叉逐 run 注入 PLATFORM_GOV_URL（缺省推导本进程裁决端点，DSH_GOV_URL 覆盖）与
  * PLATFORM_GOV_TOKEN（= SERVICE_TOKEN，未配置不发头）。
  *
- * **fail-closed 链（四臂分别钉死，不许削弱）**：
+ * **fail-closed 链（五臂分别钉死，不许削弱）**：
  *   ① 真裁决端点 + 双侧同 token + 规则 BLOCK ⇒ pre-execute deny：理由（真 verdict 文案
  *     `ruleId: explanation`）逐字回灌模型面 ∧ 工具体零执行 ∧ step.completed status=ERROR；
  *   ② 同构放行 ⇒ 工具体真执行（server 侧 toolCalls===1）∧ 裁决计数覆盖 echo + final_answer；
  *   ③ PLATFORM_GOV_URL 指已关闭端口 ⇒ 插件 catch 转 deny（reason 含 unreachable）∧ 零执行
  *     ∧ rules.evaluate 零调用（根本没到端点）；
  *   ④ SERVICE_TOKEN 缺失 ⇒ 端点 requireServiceToken fail-closed 401 ⇒ 插件 HTTP !ok 转 deny
- *     （reason 含 HTTP 401）∧ 零执行 ∧ rules.evaluate 零调用（鉴权先于求值）。
+ *     （reason 含 HTTP 401）∧ 零执行 ∧ rules.evaluate 零调用（鉴权先于求值）；
+ *   ⑤ 不钉 DSH_GOV_URL（PORT 钉死同端口真 listen）⇒ engine 缺省推导
+ *     `http://127.0.0.1:${cfg.PORT}/b/v1/governance/adjudicate` 真被打到：rules.evaluate
+ *     真被调 ∧ 放行真执行——缺省推导行（engine.ts `??` fallback）的唯一测试锚。
  *
  * 与 L2（dsh-e2e-real-triad A2，runner 级 cordis.l2.yml）的关系：L2 证 http 缝本身可用，
  * 本缝证**生产档 + engine 分叉**这条出货链路真的把裁决端点/凭据注入子进程——缺注入时
- * ③④ 红、mode 回 mock 时 ①② 红（mutation 反证锚点）。
+ * ③④ 红、mode 回 mock 时 ①② 红、缺省推导路径段写错时 ⑤ 红（mutation 反证锚点）。
  */
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer as createNetServer } from "node:net";
@@ -136,16 +139,24 @@ async function startProductionGovApp(opts: {
   stubUrl: string;
   serviceToken?: string;
   govUrl?: string; // ③ 臂显式指已关闭端口
+  /** ⑤ 臂：不钉 DSH_GOV_URL，PORT 钉死同端口真 listen ⇒ engine 缺省推导行被真打到。 */
+  defaultGovUrl?: boolean;
 }): Promise<{ t: TestApp; close: () => Promise<void> }> {
   const port = await freePort();
   const t = await createTestApp({
     providerDirectory: stubDirectory(stubProvider(opts.stubUrl), FAKE_LLM_KEY) as never,
     // 进程内 MCP 面置空（本缝断言子进程世界转发执行，与 in-process mock 工具解耦）。
     mcp: new MockMcpClient({ [MCP_CONFIG_ID]: [] }),
-    env: {
-      DSH_GOV_URL: opts.govUrl ?? `http://127.0.0.1:${port}/b/v1/governance/adjudicate`,
-      ...(opts.serviceToken ? { SERVICE_TOKEN: opts.serviceToken } : {}),
-    },
+    env: opts.defaultGovUrl
+      ? {
+          // 缺省推导锚：cfg.PORT = 本端口 ⇒ engine `??` fallback 推导出本 app 的裁决端点。
+          PORT: String(port),
+          ...(opts.serviceToken ? { SERVICE_TOKEN: opts.serviceToken } : {}),
+        }
+      : {
+          DSH_GOV_URL: opts.govUrl ?? `http://127.0.0.1:${port}/b/v1/governance/adjudicate`,
+          ...(opts.serviceToken ? { SERVICE_TOKEN: opts.serviceToken } : {}),
+        },
   });
   if (!opts.govUrl) await t.app.listen({ port, host: "127.0.0.1" });
   return { t, close: () => t.app.close() };
@@ -332,6 +343,47 @@ describe("WO-DSH-PROD-READY F-1 · 生产档 governance http 裁决接线（engi
       const record = JSON.parse(readFileSync(recordPath, "utf8")) as { toolCalls: unknown[] };
       expect(record.toolCalls, "401 fail-closed ⇒ 零执行").toHaveLength(0);
       expect(evaluateSpy, "鉴权先于求值 ⇒ rules.evaluate 零调用").not.toHaveBeenCalled();
+    } finally {
+      await close();
+      await stub.close();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("⑤ 不钉 DSH_GOV_URL ⇒ engine 缺省推导本进程裁决端点真被打到 ∧ 放行真执行", { timeout: GOV_TIMEOUT }, async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "f1-gov-derived-"));
+    const recordPath = join(tmp, "record.json");
+    const stub = await startStubOpenAi([
+      { toolCall: { name: ECHO_TOOL, arguments: JSON.stringify({ text: "x" }) }, usage: PLAIN_USAGE },
+      { toolCall: { name: "final_answer", arguments: FINAL_ANSWER_ARGS }, usage: PLAIN_USAGE },
+      { text: "stub final answer", usage: PLAIN_USAGE },
+    ] satisfies StubRound[]);
+    const { t, close } = await startProductionGovApp({
+      stubUrl: `${stub.url}/v1`,
+      serviceToken: SERVICE_TOKEN,
+      defaultGovUrl: true,
+    });
+    try {
+      await seedMcpConfig(t, recordPath);
+      await t.repos.agents.insert(agentDef());
+      const evaluateSpy = vi.spyOn(t.dataCore.rules, "evaluate").mockResolvedValue([
+        { ruleId: RULE_ID, passed: true, severity: "INFO", explanation: "通过", ruleVersion: 1 } satisfies RuleVerdict,
+      ]);
+      const emitted: Emitted[] = [];
+      const result = await runAgent(t, "task_f1_gov_derived", emitted);
+
+      // 前置钉死：本臂确实没钉 DSH_GOV_URL（防未来改动把本臂退化成 ② 的同义反复——
+      // 缺省推导行的唯一测试锚就靠这个前置保住敏感性）。
+      expect(t.config.DSH_GOV_URL, "本臂必须走缺省推导（不钉 DSH_GOV_URL）").toBeUndefined();
+      expect(result.run.kernel).toBe("EXTERNAL");
+      expect(result.outcome).toBe("ANSWERED");
+      // 推导 URL 真打到端点 ⇒ rules.evaluate 真被调（覆盖 echo + final_answer 两次 pre-execute）。
+      // 推导路径段写错 ⇒ 端点 404 ⇒ 插件 fail-closed deny ⇒ 本断言红（mutation 反证锚点）。
+      expect(evaluateSpy.mock.calls.length, "缺省推导 URL 真打到裁决端点").toBeGreaterThanOrEqual(2);
+      expect(echoStepStatus(emitted), "放行 ⇒ echo step 正常完成（非 ERROR）").not.toBe("ERROR");
+      const record = JSON.parse(readFileSync(recordPath, "utf8")) as { toolCalls: unknown[] };
+      expect(record.toolCalls, "放行 ⇒ MCP server 真执行一次").toHaveLength(1);
+      expect(result.answer.blocks.some((b) => b.type === "text" && b.markdown.includes("f1 gov seam answer"))).toBe(true);
     } finally {
       await close();
       await stub.close();
