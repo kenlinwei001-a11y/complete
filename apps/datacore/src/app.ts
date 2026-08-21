@@ -76,6 +76,9 @@ import { buildPropagationInputs } from "./sim/propagation-inputs.js";
 import { ImpactAnalysisRequestSchema } from "@platform/contracts"; // WO-IMPACT-PROPAGATION · 影响传播统一入口（栈B传播 × 栈A世界隔离）
 import { analyzeImpact } from "./sim/impact-analysis.js";
 import { ChangeImpactPreviewRequestSchema } from "@platform/contracts"; // WO-CHANGE-IMPACT-PREVIEW · 变更传播预览（分桶+跳数+诚实位）
+import { ParetoRequestSchema } from "@platform/contracts"; // WO-SIM-BE-PARETO · 帕累托解集（多目标前沿）
+import { runOptimizePareto } from "./solvers/opt-pareto.js";
+import type { SolveArgsFn } from "./solvers/opt-whatif.js";
 import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact.js";
 import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
 // WO-STATEVAR-DISPLAYNAME：推演状态变量中文名的**唯一**投影口（单源表在 battery.ts，两条路由共用此函数）
@@ -2401,6 +2404,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = ChangeImpactPreviewRequestSchema.parse(req.body ?? {});
     const world = await buildChangeImpactWorld(repos, c.tenantId);
     return previewChangeImpact(world, body.focus);
+  });
+  /**
+   * WO-SIM-BE-PARETO · 帕累托解集（多目标权衡的**解集**，不是 `buildPareto` 那个 80/20 排行）。
+   *
+   * 为什么是新的一条口而不是 `optimize_whatif` 加个参数：what-if 一次只回**两个**解
+   * （`baselineSolution` / `perturbedSolution`，见 `solvers/opt-whatif.ts:191-192`）——
+   * 同一条扰动路径上的前后快照。「少花钱和快交付之间有哪些不吃亏的折中」两个点答不了。
+   *
+   * 求解走与 5 核心**同一个 invoke 通道**（sidecar / InProc），故解集里每个解的数值
+   * 与用户单独跑一次 what-if 得到的逐字节相同 —— 不存在"解集有自己一套算法"这种漂移源。
+   */
+  app.post("/a/v1/sim/optimize-pareto", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const body = ParetoRequestSchema.parse(req.body ?? {});
+    const solve: SolveArgsFn = (fam, a) => solvers.invoke(c, fam, a);
+    return runOptimizePareto(solve, body);
   });
   // 增量 4：沙盘视图配置——由租户**本体 + 传导规则派生**（零业务常数 R14：节点/边/状态变量全来自
   // 租户自己的本体，换行业=换本体内容不改代码）。前端 5 屏从此渲染。
