@@ -251,6 +251,19 @@ export function extendedObjectTypes(): TypeDef[] {
       pd("defectQty", "不合格数量。"),
       pd("result", "检验结论（合格 / 让步接收 / 拒收）。", "enum"),
     ], "来料/到货检验（IQC）凭证。承载采购段「到货检验」这一腿的实测耗时（releasedDay − arrivedDay）与责任方（质量部检验班组）。每张到货的采购单都有此记录——「到厂」与「可投产」之间的这段等待此前全仓无任何承载，导致缺料只能答「晚了」、答不出「压在待检区」。"),
+    // WO-RULE-SCOPE-TRIAD · 外协加工批次（闭 §8 G-RULE-SCOPE-NO-CARRIER-C31）。
+    // 规则 C31 `Outsource.yieldRate < Outsource.minYieldRate` 的承载类型此前**本体 94 类里零候选**
+    // （rule-scope.ts 判 NO_CARRIER）：近似数据只有 `Material.outsourceYield` 单字段（字段名对不上），
+    // 且 `minYieldRate`（合同约定的最低良率）全仓无任何对象承载 —— 缺的是「一票外协加工」这个一等事实，
+    // 不是改个名能糊上的。外协良率的真值源沿用 Material.outsourceYield（同一物理量，单一来源，不另编一份）。
+    def("Outsource", "外协批次", "supply", [
+      pd("outsourceId", "外协批次号（主键）。", "string", true),
+      rd("matId", "Material", "外协加工的物料。"),
+      rd("supplierId", "Supplier", "承接外协加工的供应商——良率不达标该找谁（责任方）。"),
+      pd("qty", "本批外协加工数量。"),
+      pd("yieldRate", "本批实测良率（0–1）。真值源 = Material.outsourceYield（同一物理量单一来源）。"),
+      pd("minYieldRate", "合同约定的最低可接受良率（0–1）。yieldRate 低于它即触发 C31 外协质量门（BLOCK）。"),
+    ], "外协加工批次台账：「这票料交给谁加工、实测良率多少、合同底线多少」。此前全仓只有 Material 上一个孤字段 outsourceYield，没有「一票外协加工」这个一等事实——C31 外协质量门因此零承载（NO_CARRIER），永不参与评估。"),
     def("CarbonFactor", "碳因子", "supply", [p("factorId", "string", true), p("kind", "string"), p("key", "string"), p("factor")]),
     // Phase5A 财务域：基地现金账户 + 情景级财务指标（让 finance 进切片，凑满 9 域）。
     def("FinanceAccount", "基地财务账户", "finance", [p("accId", "string", true), p("baseId", "string"), p("cashOnHand"), p("receivable"), p("payable"), p("workingCapital")]),
@@ -335,6 +348,14 @@ const IQC_TEAM_BY_CATEGORY: Record<string, string> = {
   结构件: "IQC-尺寸组",
   其他: "IQC-通用组",
 };
+
+/**
+ * WO-RULE-SCOPE-TRIAD · 外协合同最低良率（C31 外协质量门的阈值一侧）。
+ * 合同约定值属业务参数、随行业/租户可变 → 放数据侧配置（R14），不焊进生成环也不进引擎。
+ * 0.92 的选取**有据**：种子良率只有两档（sep_film=0.91 外协最难加工档 / 其余 0.95），
+ * 阈值必须落在 (0.91, 0.95] 开区间内才能恰好把隔膜那一批判越线、其余判合规 —— 这就是 C31 的植入越线。
+ */
+const OUTSOURCE_MIN_YIELD_RATE = 0.92;
 
 // WO-CEO-2 供货量约定（正极 3 家植入减供：actual<contracted → 上游减供因果一环·常数不消耗 rng·R6）。
 const CATHODE_CONTRACT: Record<string, number> = { "SUP-001": 8000, "SUP-002": 6000, "SUP-003": 4000 };
@@ -639,6 +660,8 @@ export interface ExtendedData {
   // WO-SANDBOX-D2 采购段两段新承载（此前全仓 0 条）：清关记录（仅进口单）+ 到货检验记录（每单必检）。
   customsClearances: Record<string, unknown>[];
   incomingInspections: Record<string, unknown>[];
+  // WO-RULE-SCOPE-TRIAD：外协加工批次（C31 外协质量门的承载·每物料 1 批·此前全仓 0 条）。
+  outsources: Record<string, unknown>[];
   carbonFactors: Record<string, unknown>[];
   financeAccounts: Record<string, unknown>[];
   financeMetrics: Record<string, unknown>[];
@@ -720,6 +743,19 @@ export function generateExtended(
     shelfLife: m.matId === "elyte" ? 180 : m.matId === "sep_film" ? 365 : 730,
     isKeyMaterial: m.isKey,
     status: "活跃",
+  }));
+
+  // WO-RULE-SCOPE-TRIAD · Outsource 外协批次：每物料 1 批（外协加工是**按料**组织的，8 料 = 8 批，全 scale 同值）。
+  //   · yieldRate 真值源 = Material.outsourceYield（同一物理量单一来源，不另编一份）⇒ sep_film=0.91 那批越线。
+  //   · qty 由 matId 加盐哈希派生（**零 rng 消耗** → 既有字节基线不动·R6）；supplierId 取该料主供（责任方）。
+  //   · minYieldRate = OUTSOURCE_MIN_YIELD_RATE（合同底线·数据侧配置 R14）：恰把 0.91 判越线、0.95 判合规。
+  const outsources: Record<string, unknown>[] = materials.map((m) => ({
+    outsourceId: `os_${m.matId}`,
+    matId: m.matId,
+    supplierId: m.supplierId,
+    qty: 200 + (hashString(`outsource_qty_${m.matId}`) % 800),
+    yieldRate: m.outsourceYield,
+    minYieldRate: OUTSOURCE_MIN_YIELD_RATE,
   }));
 
   // MaterialBatch：每物料 batchesPerMat 批，植入 6 批 >90 日呆滞（XL=工业级 2000 批）
@@ -1079,7 +1115,7 @@ export function generateExtended(
 
   return {
     materials, materialBatches, customers, customerLocations, arInvoices, certifications, energyMeters, changeoverMatrix,
-    capexProjects, purchaseOrders, customsClearances, incomingInspections, carbonFactors, financeAccounts, financeMetrics, suppliers,
+    capexProjects, purchaseOrders, customsClearances, incomingInspections, outsources, carbonFactors, financeAccounts, financeMetrics, suppliers,
     longTermAgreements: LONG_TERM_AGREEMENTS, backupSupplierPools: BACKUP_SUPPLIER_POOLS,
     commodityPriceTrends: COMMODITY_PRICE_TRENDS, decisionGaps: DECISION_GAPS, causalFactors,
     triggerRules: TRIGGER_RULES,

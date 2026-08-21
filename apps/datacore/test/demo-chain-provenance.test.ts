@@ -41,7 +41,8 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
     //   + WO-SANDBOX D1×E1 接缝：Cadence（节拍落库·61 battery + 31 extended）→ 92。
     //   + WO-SANDBOX-D2 采购段两段承载 2 类（CustomsClearance 清关 / IncomingInspection 到货检验）→ 94。
     //     两类**均有实例**（清关仅进口单 1 条 · 检验每单必检 30 条），故下面的 provenance 校验覆盖它们。
-    expect(types.length).toBe(94);
+    //   + WO-RULE-SCOPE-TRIAD 外协批次 1 类（Outsource·C31 外协质量门承载·每物料 1 批 8 实例）→ 95。
+    expect(types.length).toBe(95);
     // R13 provenance 因果真实：凡在 demo 中物化了实例的类型，其 sourceBindings 非空且指向同名真 rawDataset
     //（非硬编码模板）。Phase3 MES 类型（WorkOrder/WIP*/Equipment*E/Operator* 等）为轻量 demo 的
     // 本体模型定义、不落 demo 实例（否则单次 seed 逾万对象拖垮用例），无实例 provenance，故按物化类型校验。
@@ -86,7 +87,7 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
     const b = await run();
     expect(a.types).toEqual(b.types);
     expect(a.objs).toEqual(b.objs);
-    expect(a.types.length).toBe(94); // +WO-TIER3 GrossMarginBridge；+WO-ADOPT-MITIGATION AdoptedMitigation（零实例 → objs 计数不变）；+WO-SANDBOX Cadence（节拍·8 实例）；+WO-SANDBOX-D2 CustomsClearance/IncomingInspection（92→94）
+    expect(a.types.length).toBe(95); // +WO-TIER3 GrossMarginBridge；+WO-ADOPT-MITIGATION AdoptedMitigation（零实例 → objs 计数不变）；+WO-SANDBOX Cadence（节拍·8 实例）；+WO-SANDBOX-D2 CustomsClearance/IncomingInspection（92→94）；+WO-RULE-SCOPE-TRIAD Outsource（94→95）
     // WO-SANDBOX-D2：+32 对象 = 进口供应商 SUP-015 宇部兴产 1 条（清关段唯一能走到实测分支的路，
     // 原 14 家 region 全境内 → 清关段恒 NOT_APPLICABLE = 接了线没数据）+ CustomsClearance 1 条（仅进口 PO）
     // + IncomingInspection 30 条（每张 PO 到货必检）。PurchaseOrder 仍 30 条、Material 仍 8 条（只加字段不加实例）。
@@ -99,6 +100,6 @@ describe("轨L 增量2 · demo 本体经真建模链（chainMode·provenance 因
     // 两条路都落它：`putAll` 在 chainMode 只产 rawDataset、非 chainMode 直物化，本用例走 viaModelingChain:true，
     // 生产路（seed.ts 传 false）由 `opt-whatif-close.seam.test.ts ⑤` 经 REST 合成 job 断言同为 193
     //（守铁律 0.5 #6：生产实参那条分支必须真的被某个测试覆盖）。
-    expect(a.objs.length).toBe(11329); // WO-ORDER-JOURNEY：+2 对象（链路落点域 CausalFactor 2 条·cf-batch-idle[MaterialBatch.idleDays] / cf-base-capacity-contention[Base.util]·metricKey=chain_flow·**类型集仍 94**：CausalFactor 早在册，本次只补实例；补的是 `locus{objectType,objectId}` ↔ `CausalFactor{drillType,drillId}` 这一跳今天缺的两类落点）。// WO-FACTOR-SCOPE-SINGLESOURCE：+7 对象（产能域 CausalFactor 7 条·瓶颈工序/设备OEE/人力工时/物料齐套/物流时长/换型损失/良率波动·metricKey=capacity·**类型集仍 94**：CausalFactor 早在册，本次只补实例）。// WO-SANDBOX D1×E1 接缝：+8 对象（Cadence 全链节拍·4 SYNTHETIC 真推出周期 + 4 EMPTY 诚实缺席照样落库，使「查过没有」与「压根没登记」在下游分得开）。// WO-GSIM-1-DATA：+5 对象（电芯→电池包就近供芯 InterBaseTransfer·5 纯 PACK 基地各 1 条·T5 SEAM 物料·类型集不变）。 WO-TIER3：+8 对象（GrossMarginBridge 毛利桥 gmb-total/volume/price/cost·chainMode 物化·real 跑实测） // WO-CEO-1a：+10 对象（7 顶层/细分 Metric + 3 细分业务线 Principal）；WO-CEO-2/3：+22 对象（长协/备份池/矿价趋势/决策缺陷/因果因素 + 触发规则；类型集 66→72）；WO-CEO-DATA-2：+35 对象（商业/财务域每指标因果 drill 实例；类型集 72→81）；WO-EXCEPTION-EVENT：+734 对象（首次物化 DefectRecord/EquipmentDowntime/EquipmentAlarm 三源[R13 下钻]+ 四源归一 ExceptionEvent；类型集 81→82）；integ-wave-11：+7065 对象（narrowed-P0 首次物化 5 类决策 MES[WorkOrder/WIPLot/QualityLot/InspectionResult/EquipmentOEE 高量] + WO-ATP-PROMISE/ORDERLINE/INVENTORY-3TIER/WAREHOUSE-CUSTLOC[OrderLine/OrderPromise/FinishedGoodsInventory/InventoryTxn/Warehouse/CustomerLocation] + WO-INTERBASE-TRANSFER[InterBaseTransfer]；类型集 82→89）
+    expect(a.objs.length).toBe(11337); // WO-RULE-SCOPE-TRIAD：+8 对象（Outsource 外协批次·每物料 1 批·C31 承载·类型集 94→95）// WO-ORDER-JOURNEY：+2 对象（链路落点域 CausalFactor 2 条·cf-batch-idle[MaterialBatch.idleDays] / cf-base-capacity-contention[Base.util]·metricKey=chain_flow·**类型集仍 94**：CausalFactor 早在册，本次只补实例；补的是 `locus{objectType,objectId}` ↔ `CausalFactor{drillType,drillId}` 这一跳今天缺的两类落点）。// WO-FACTOR-SCOPE-SINGLESOURCE：+7 对象（产能域 CausalFactor 7 条·瓶颈工序/设备OEE/人力工时/物料齐套/物流时长/换型损失/良率波动·metricKey=capacity·**类型集仍 94**：CausalFactor 早在册，本次只补实例）。// WO-SANDBOX D1×E1 接缝：+8 对象（Cadence 全链节拍·4 SYNTHETIC 真推出周期 + 4 EMPTY 诚实缺席照样落库，使「查过没有」与「压根没登记」在下游分得开）。// WO-GSIM-1-DATA：+5 对象（电芯→电池包就近供芯 InterBaseTransfer·5 纯 PACK 基地各 1 条·T5 SEAM 物料·类型集不变）。 WO-TIER3：+8 对象（GrossMarginBridge 毛利桥 gmb-total/volume/price/cost·chainMode 物化·real 跑实测） // WO-CEO-1a：+10 对象（7 顶层/细分 Metric + 3 细分业务线 Principal）；WO-CEO-2/3：+22 对象（长协/备份池/矿价趋势/决策缺陷/因果因素 + 触发规则；类型集 66→72）；WO-CEO-DATA-2：+35 对象（商业/财务域每指标因果 drill 实例；类型集 72→81）；WO-EXCEPTION-EVENT：+734 对象（首次物化 DefectRecord/EquipmentDowntime/EquipmentAlarm 三源[R13 下钻]+ 四源归一 ExceptionEvent；类型集 81→82）；integ-wave-11：+7065 对象（narrowed-P0 首次物化 5 类决策 MES[WorkOrder/WIPLot/QualityLot/InspectionResult/EquipmentOEE 高量] + WO-ATP-PROMISE/ORDERLINE/INVENTORY-3TIER/WAREHOUSE-CUSTLOC[OrderLine/OrderPromise/FinishedGoodsInventory/InventoryTxn/Warehouse/CustomerLocation] + WO-INTERBASE-TRANSFER[InterBaseTransfer]；类型集 82→89）
   });
 });
