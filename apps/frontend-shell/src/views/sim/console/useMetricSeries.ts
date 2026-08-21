@@ -20,6 +20,18 @@
  * 把回包（`SimMetricSeriesResponse`）投影成下面的 `MetricSeries`，`source` 反映**真实出身**：
  * 拿到回包 ⇒ `"endpoint"`；没会话 / 请求失败 / 回包零指标 ⇒ 仍落规格占位并如实标 `"placeholder"`。
  *
+ * ── 真后端实测（**不是 mock**，「绿测试≠能用」的那把尺子）─────────────────────
+ * 内存态 datacore（`SEED_DEMO=1`）建会话 `baseSnapshot={obj_base_changzhou:{loadIndex:42}}`、
+ * 走两拍后 `GET …/metric-series` 的真回包，逐条对上了本文件的每一条设计判断：
+ *   · **17 条指标 / 只有 5 个不同 `label`** ⇒ 12 行撞名（见 `rowNames` 的实测账）；
+ *   · **17 条里 16 条带缺格**（如 `baseline:[null,null,12.6]`）⇒「缺格不插值」是常态路径，不是边角；
+ *   · `unit` **17 条全为 `null`** ⇒ 屏上不带单位这条不是保守，是唯一诚实的做法；
+ *   · `segments[].source` 在这个世界里**只有 `domain`** ⇒ 若把 `domain` 也映射成中性 `o`，
+ *     真数据下每一段都会长成「出身不明」，等于把这一位抹平；
+ *   · `ticks=[0,1,2]`、`toTick=2` ⇒ 播放头落 100%（当前格 = 末格），与下面的推理逐字节吻合。
+ * ⚠ 同一次实测也暴露了一个**做不到的格**：所有 17 行的 `direction` 都是 `dn`
+ *   （这个世界没有扰动 ⇒ 两条线恒等 ⇒ 全是「持平」，而枚举没有「持平」这一态）。
+ *
  * ── 为什么是一个 hook 而不是把数写进 JSX ────────────────────────────────────
  * 首版派单原文：「必须把取数抽成一个 `useMetricSeries()` hook，端点一到只换 hook 内部；
  * ⚠️ 占位数不许散在 JSX 里，否则接真数据时要满屏找」。本单正是那次预留的兑现：
@@ -237,11 +249,23 @@ const reading = (v: number | null, unit: string | null): string =>
 /**
  * 行名。**同名行会撞 React key**（`MetricGantt` 用 `key={r.name}`、`data-testid` 也带行名），
  * 而端点的 `label` 取自「状态变量 → 人话名」单源表 ⇒ **不同对象的同一状态变量必然同名**
- * （`obj_a.loadIndex` 与 `obj_b.loadIndex` 都叫「负荷指数」）。这不是理论风险，是默认情形。
+ * （`obj_a.loadIndex` 与 `obj_b.loadIndex` 都叫「负载指数」）。
+ *
+ * **这不是理论风险，是默认情形 —— 实测数字（真后端，非 mock）**：
+ * 内存态 datacore（`SEED_DEMO=1`）建一个 `baseSnapshot={obj_base_changzhou:{loadIndex:42}}`
+ * 的会话、走两拍，`GET …/metric-series` 回 **17 条指标、只有 5 个不同 `label`**
+ * ⇒ **12 行会撞名**。不消歧的话这 12 行共用 React key，且 `data-testid` 也重。
  *
  * 撞名时**用回包里已有的 `objectId` 消歧**（不是编一个后缀）：`名字·对象id`。
  * 极端情形（同对象同名两条）退回契约保证唯一的 `key`（`${objectId}.${stateVar}`）。
  * ⚠ `MetricRow` 没有 `key` 字段、签名在本单冻结 ⇒ 只能把唯一性做进 `name` 这一格。
+ * ⚠ **已知缺口（写进交单报告，不是悄悄接受）**：`objectId` 是开发口径的裸串，
+ *   而指标名那一列宽 128px、`.gcell` 是 `white-space:nowrap; overflow:hidden`（硬裁不带省略号）
+ *   ⇒ 实测那条 `跨基地调拨压力·obj_interbasetransfer_XFER-CELL-changzhou-yangzhou-圆柱-LFP`
+ *   在屏上被裁到只剩人话名那一截，**消歧对 React 有效、对用户不可见**。
+ *   真正的修法在**后端**：回包该像 `label`/`labelIsFallback` 那样也下发一个**对象人话名**
+ *   （届时这里换成 `名字 · 对象名`，一行代码）。在前端按 id 串规律拆出「常州」= 编一套解析约定，
+ *   那是新造口径，本单不做。
  */
 function rowNames(metrics: readonly SimMetricSeriesResponse["metrics"][number][]): string[] {
   const seen = new Map<string, number>();
