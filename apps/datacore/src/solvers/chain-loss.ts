@@ -298,6 +298,14 @@ export interface ChainLossInput {
 
 const SOLVER_KEY = "chain_loss_attribution";
 
+/**
+ * 一维求解器的 key，**转出去给二维矩阵引用**（WO-SIM-BE-MATRIX，只加导出、算式一字未改）。
+ * 转出而不是让 `chain-loss-matrix.ts` 再写一遍这个字符串：evidence 里的 `solverKey` 与矩阵
+ * 自述「我是在谁身上铺出来的」必须是**同一个**值，各写一份就会在改名那天悄悄分裂
+ * （本仓「改名要连断言一起改」那族账的同一形态）。
+ */
+export const CHAIN_LOSS_SOLVER_KEY = SOLVER_KEY;
+
 function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
