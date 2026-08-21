@@ -110,16 +110,19 @@ A5 子集（语料声明 7 条：每类至少一 + 长上下文 + 多轮 + prove
 7. 角色路（runRolePathB）/场景路（runSceneAgent）STALL_LOOP 两条语料槽（跨单回执）：
    本树 orchestrator 仅 :2179 一处 agent_degraded 发射，两处 degraded 静默缝 WO 未落线
    ⇒ 语料留 gated 槽（`GATED_SLOTS`），driver 鸣报 skipped，不冒充覆盖。
-8. **缝观察（纯空 stop 的 outcome 分歧；裁决候选，不进断言，W2 批1 实证）**：native 臂
+8. **缝观察（纯空 stop 的 outcome 分歧；已裁决·不判缺陷，不进断言，W2 批1 实证）**：native 臂
    纯空文本轮走 `lastText || "（探索模式未能产出回答）"` 软收尾 ⇒ outcome ANSWERED；
    dsh 臂 pi-ai 适配器对「stop + 零内容块」判 EMPTY_RESPONSE 错误
    （dsh-llm-pi-ai/lib/index.js mapStopReason：`message.content.length === 0` ⇒ kind:error，
    注释自述「空消息会让 turn 无可行动内容静默终结，故归类为可重试失败」），
    turn/end reason=error ⇒ reassemble outcome FAILED（answer 块面巧合同形——兜底文案
    两臂逐字同——但 outcome 与 run 记录分歧）。W2 批1 dr50-ca 故取空白串 `" "` 形态
-   （适配器侧合法内容块，两臂 ANSWERED 逐字节可账）。纯空 stop 究竟属「harness 适配器
-   过度防卫」还是「native 过宽」，是缺陷候选：留 team-lead 裁决，本层如实登记、不拿
-   语料形态掩饰、不进白名单。
+   （适配器侧合法内容块，两臂 ANSWERED 逐字节可账）。
+   **team-lead 判词（2026-08-20）：缝观察，不判缺陷、不动码**——①字面零内容 stop 是
+   provider 病态响应，harness 诚实判失败、native 兜底放行，两个方向都站得住，
+   「过度防卫 vs 过宽」是设计取向差不是对错差；②dr50-by 已覆盖 kimi 系真实吐空块形态
+   （blocks:[] 是实证的，零内容 stop 目前无真跳证据）；③动哪一侧都要改上游 vendor lib
+   或 native 宽限，不成比例；④若后续 L2/L6 真跳证据显示真 provider 真撞此形态，再翻案。
 
 ## 4. 语料构成（56 条 + 2 gated）
 - 内容源：20 条 = SCENARIO_CATALOG triggerQuestion（执行通道不借 evals——蓝图 evidence 5）；
