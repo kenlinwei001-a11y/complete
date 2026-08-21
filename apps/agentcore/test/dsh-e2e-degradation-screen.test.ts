@@ -172,6 +172,8 @@ describe("WO-DSH-E2E · L3 降级路径穿透（后端半）", () => {
         const t = await createTestApp({
           providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), FAKE_LLM_KEY) as never,
           mcp: new MockMcpClient({ [MCP_CONFIG_ID]: [] }),
+          // F-1：生产档治理切 http 后，dsh 臂钉 poc 档（mock 治理；PLATFORM_GOV_DENY 仅 mock 模式有效）。
+          env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
         });
         await seedMcpConfig(t, recordPath);
         const agentId = await makeAgent(t, "agt_l3_stall", {
@@ -289,6 +291,8 @@ describe("WO-DSH-E2E · L3 降级路径穿透（后端半）", () => {
         const t = await createTestApp({
           providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), FAKE_LLM_KEY) as never,
           mcp: new MockMcpClient({ [MCP_CONFIG_ID]: [] }),
+          // F-1：生产档治理切 http 后，dsh 臂钉 poc 档（mock 治理；PLATFORM_GOV_DENY 仅 mock 模式有效）。
+          env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
         });
         await seedMcpConfig(t, recordPath);
         const agentId = await makeAgent(t, "agt_l3_deny_dsh", {

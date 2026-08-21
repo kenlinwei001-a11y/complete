@@ -48,7 +48,7 @@ dsh（`0.1.0-rc.6`，developer preview）是 agent 执行循环运行时：sessi
 | 分档 | 表面 | 处置 |
 |---|---|---|
 | **A · 可映射**（POC 已证） | AgentDefinition 执行面 · McpServerConfig 连接面 · 规则 PRE_CHECK 闸（经裁决网桥） | 配置真相源不动，运行时编译为 SetupSpec（§4） |
-| **B · 补缺口后可映射** | STALL_LOOP 降级理由 · 多租户 serverName · 真 LLM provider · 真规则裁决 · POST_CHECK/WORKFLOW 工具 | §6 三条前置 + §4 缺口行，各带销账判据与工单 |
+| **B · 补缺口后可映射** | STALL_LOOP 降级理由 · 多租户 serverName · 真 LLM provider · 真规则裁决 · POST_CHECK/WORKFLOW 工具 | §6 四条前置 + §4 缺口行，各带销账判据与工单 |
 | **C · 不可迁移**（dsh 无对应物） | 146 个 `/b/v1/*`+`/api/v1/*` 端点 · 租户/鉴权/审计 · persistence · workflow 引擎 · 规则引擎本体 · SSE 外壳 · **前端全表面 89,003 行实测：58 个 admin 管理页 + 7 个求解投影页 + Object360 + 登录/权限/暗发体系（`App.tsx:130-232` 55+ 路由、`api/endpoints.ts` 102 处端点引用）——其中仅会话面 ~2,800 行（3%）与 dsh 有讨论关系** · growth/ops/dril/plan-builder 业务域 | **永久保留我方外壳**。这是架构分工，不是妥协 |
 
 **「dsh 可组合（cordis 插件模式），所以都能基于 dsh 重建」之辨（2026-08-16 实录）**：可组合性属实且已被本方案使用——harness 的 platform-world/platform-governance 就是我方 scoped 插件（治理闸/允许表/final_answer/load_skill 全是插件模式落地），本轮负向接缝与 MCP 桥测试也直接以 `provide/plugin/inject/effect/dispose` 驱动 cordis 4.0.1 成功。但要区分「**容器能装**」与「**容器提供**」：cordis 是 DI/生命周期容器，能装任何东西（任何插件框架都能）；dsh **提供**的领域能力只有 agent 执行域（loop/工具瀑布/MCP/skill/compaction/session）。我方平台域实测（**统一 src-only 口径**，2026-08-16 审核方复核）：**后端 103,030 行 + 前端 88,926 行 ≈ 19.2 万行**（租户/本体/切片/求解器/evals/R-write/审计/58 管理页）。⚠️ **口径订正**：本行初版写「后端 173,671 + 前端 89,003」，审核方复核发现**两个数口径不一致** —— 前端那个是 `src` 仅（复核 88,926，差 77），后端那个实为 `src+test`（复核 179,976）。拼成「26 万行」是苹果加橘子，而这个数正是本节反驳「基于 dsh 重建」的核心论据，**用混合口径会把整段论证的可信度一起带走**。统一 src-only 后仍是 19.2 万行，论点不变、论据更硬。复算：`find apps/{datacore,agentcore}/src -name '*.ts' | xargs wc -l | tail -1`（103,030）· `find apps/frontend-shell/src -name '*.ts' -o -name '*.tsx' | xargs wc -l | tail -1`（88,926），把这些重写成 cordis 插件在「能装」层面成立，但 dsh 对它们的贡献为零——那不是「基于 dsh 完成」，是「基于一个 0.1.0-rc.6 的 DI 容器重写 26 万行」。且 tenant_id everywhere 是横切不变量不是插件：dsh 核心数据结构（session/workspace/storage）无 tenantId 字段，补它 = fork 核心包而非写插件。**结论：插件模式用在 agent 执行域（本 PRD 的既有形态），平台域留在我方仓——可组合性改变集成深度，不改变三分归属。**
@@ -217,9 +217,10 @@ AgentCore 外壳：租户/鉴权/entitlement/审计/persistence/规则引擎/wor
 
 ---
 
-## §6 三条前置条件（各带方案 + 销账判据；未销账 flag 不许进部署面）
+## §6 四条前置条件（各带方案 + 销账判据；未销账 flag 不许进部署面）
 
 > 裁决原文与全部 file:line 证据见 `docs/DECISION-dsh-fusion.md` §3，本节是给落地方的方案面。
+> 第四条（前置 D · F-1）由 WO-DSH-PROD-READY W3 审计增补（2026-08-21 已销，见下）。
 
 ### 前置 A · 真 provider 从没跑过
 
@@ -251,6 +252,30 @@ AgentCore 外壳：租户/鉴权/entitlement/审计/persistence/规则引擎/wor
 **方案**：命名空间宿主从 root 下沉到携带 tenantId 的作用域。README 给的两条路选「**根级共享连接池 + scoped 可见性过滤**」——不选「会话后缀改名」（它破坏 `mcp__<serverName>__<tool>` 审计名，E4 逐字节基线会被打破）；连接键 = `tenantId+serverName`，可见性按键过滤。
 **销账判据**（照录裁决）：① 宿主下沉至少携带 tenantId；② 负向接缝测试：租户 A/B 各配同名 serverName，断言**两边都起得来 ∧ A 看不见 B 的工具 ∧ 工具全名审计可归因**；③ 该测试必须在 `DSH_HARNESS=1` 下跑（原生 MCP 路绿不算）。
 **工单**：WO-DSH-P2-NAMESPACE。
+
+### 前置 D（F-1）· 生产档 governance mock allow-all —— **已销（2026-08-21）**
+
+**事实**（W3 审计实证，`/tmp/dsh-prod-ready-evidence/w3-precondition-audit.md`）：生产档
+`packages/dsh-harness/cordis.yml` 的 platform-governance 曾 `mode: 'mock'` + `deny: []` ⇒
+DSH 路径 ruleBindings PRE_CHECK 静默 allow-all；engine 分叉 env 注入块只注 `PLATFORM_LLM_*`，
+不注 `PLATFORM_GOV_URL/TOKEN`——即使 A/B/C 全销，翻 flag 后生产档治理仍是空闸。
+
+**落地（WO-DSH-PROD-READY F-1 线，分支 `claude/wo-dsh-prod-f1-gov`）**：
+① 生产档 `cordis.yml` 切 `mode: 'http'`（`deny: []` 删除；url/token 不落盘）；
+② config 增两键 `DSH_HARNESS_CORDIS_FILE`（缺省 `cordis.yml`）/ `DSH_GOV_URL`（optional），
+engine 分叉 `cordisFile` 直通 + 逐 run 注入 `PLATFORM_GOV_URL`（缺省推导
+`http://127.0.0.1:${PORT}/b/v1/governance/adjudicate`）与 `PLATFORM_GOV_TOKEN`
+（= `SERVICE_TOKEN`，未配置不发头）；
+③ fail-closed 链三段未削弱：http 无 url ⇒ 插件 initialize 抛错；端点 `requireServiceToken`
+401 ⇒ 插件转 deny；不可达/超时/畸形 ⇒ 插件转 deny。
+
+**机器证据**：新缝 `apps/agentcore/test/dsh-gov-production.seam.test.ts` 五臂（真裁决端点
+BLOCK ⇒ deny 理由逐字回灌模型面 ∧ 工具体零执行 ∧ step ERROR；放行 ⇒ 真执行 ∧ 裁决覆盖
+echo+final_answer；URL 指已关闭端口 ⇒ fail-closed deny 含 unreachable ∧ 零求值；
+SERVICE_TOKEN 缺失 ⇒ 401 ⇒ fail-closed deny ∧ 零求值；不钉 DSH_GOV_URL ⇒ engine 缺省推导
+端点真被打到 ∧ 放行真执行）+ mutation 反证三招（删 `PLATFORM_GOV_URL` 注入 ⇒ ③④ 红；
+生产档 mode 回 mock ⇒ ①② 红；缺省推导路径段写错 ⇒ ⑤ 红且 ①-④ 不受影响）+ 既有 DSH 套件逐个绿
+（evidence：`/tmp/dsh-prod-ready-evidence/f1-gov-*.txt[.rc]`）+ D3 门/selftest 绿。
 
 ---
 

@@ -15,7 +15,8 @@
  *      + provenance 空（不编造）；writeMode 而无 action_draft 同形一臂。
  *   P3 EMPTY 口径保真：无 final_answer 软收尾 ⇒ markdown 逐字 == 末 assistant 文本；
  *      空文本 ⇒ 「（探索模式未能产出回答）」逐字；provenance 空。
- *   P4 拒绝口径帧保真：PLATFORM_GOV_DENY 拒 MCP 工具 ⇒ 帧流 tool/result isError 理由逐字；
+ *   P4 拒绝口径帧保真：http 裁决端点 deny（F-1 起生产档 = http 模式；原 PLATFORM_GOV_DENY
+ *      mock 通道随之退役）拒 MCP 工具 ⇒ 帧流 tool/result isError 理由逐字；
  *      SSE 面 step.started/step.completed(status ERROR) 不漂白成 OK（native 对照：loop.ts:848
  *      step.completed 载荷亦只带 outcome 不带理由原文 —— 理由原文的归档面 = 帧流/重组装，
  *      SSE 面的诚实义务 = 错误状态不漂白，两臂同口径，不冒充对称之外的保真）。
@@ -26,6 +27,8 @@
  * （runRegisteredAgent，DSH_HARNESS=1，裁决 A stub 缝）。
  */
 import { mkdtempSync } from "node:fs";
+import { createServer as createHttpServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -95,6 +98,21 @@ function agentDef(over: Partial<AgentDefinition> = {}): AgentDefinition {
   };
 }
 
+/** 最小 http 裁决端点：恒 {decision:"allow"}（F-1 起生产档 = http 模式，本缝测诚实层不测裁决，
+ *  显式钉「放行」语义；fail-closed 链由 dsh-gov-production.seam 专验）。 */
+async function startGovAllow(): Promise<{ url: string; close: () => Promise<void> }> {
+  const server = createHttpServer((req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ decision: "allow" }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}/b/v1/governance/adjudicate`,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
+
 /** runner 级一次真跑（engine 分叉 env 五件注入同款 + 生产档 cordis.yml）。 */
 async function runScripted(
   script: ScriptedRound[],
@@ -106,6 +124,7 @@ async function runScripted(
   } = {},
 ): Promise<{ run: DshRunOutput; sse: SseEmission[] }> {
   const stub = await startScriptedOpenAi(script.map((r) => ({ ...r })));
+  const gov = await startGovAllow();
   const sse: SseEmission[] = [];
   try {
     const run = await runDshAgent(
@@ -127,12 +146,14 @@ async function runScripted(
           PLATFORM_LLM_BASE_URL: `${stub.url}/v1`,
           PLATFORM_LLM_MODEL: STUB_MODEL_ID,
           PLATFORM_LLM_API_KEY: STUB_FAKE_KEY,
+          PLATFORM_GOV_URL: gov.url, // F-1：生产档 http 模式必需（无 url 插件 initialize 抛错）
           ...opts.extraEnv,
         },
       },
     );
     return { run, sse };
   } finally {
+    await gov.close();
     await stub.close();
   }
 }
@@ -203,7 +224,11 @@ describe("WO-DSH-E2E · L5 诚实层穿透", () => {
       },
       { text: "unused", usage: USAGE },
     ]);
-    const t = await createTestApp({ providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never });
+    const t = await createTestApp({
+      providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+      // F-1：生产档治理切 http 后，本缝钉 poc 档（mock 治理放行）保持既有语义。
+      env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
+    });
     await t.repos.skills.insert(skillDef({ provenancePolicy: "required" }));
     await t.repos.agents.insert(
       agentDef({ id: "agt_l5_req", model: STUB_DCP_SPEC, skills: [{ skillId: "skl_l5", version: 1 }] }),
@@ -244,7 +269,11 @@ describe("WO-DSH-E2E · L5 诚实层穿透", () => {
       },
       { text: "unused", usage: USAGE },
     ]);
-    const t = await createTestApp({ providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never });
+    const t = await createTestApp({
+      providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+      // F-1：生产档治理切 http 后，本缝钉 poc 档（mock 治理放行）保持既有语义。
+      env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
+    });
     await t.repos.skills.insert(skillDef({ id: "skl_l5w", key: "l5_write", sideEffect: "WRITE" }));
     await t.repos.agents.insert(
       agentDef({ id: "agt_l5_wr", model: STUB_DCP_SPEC, skills: [{ skillId: "skl_l5w", version: 1 }] }),
@@ -307,14 +336,28 @@ describe("WO-DSH-E2E · L5 诚实层穿透", () => {
       grantedToolNames: ["mcp__erp__whoami"],
       mcpServers: [{ ...mapMcpConfig(mcpConfig, () => undefined), failOnStartupError: true }],
     });
-    const DENY_REASON = "mock rule engine: tool mcp__erp__whoami denied by ruleBindings PRE_CHECK";
-    const { run, sse } = await runScripted(
-      [
-        { toolCall: { name: "mcp__erp__whoami", arguments: "{}", callId: "call_deny1" }, usage: USAGE },
-        { text: "被拒后诚实收尾", usage: USAGE },
-      ],
-      { setup, extraEnv: { PLATFORM_GOV_DENY: "mcp__erp__whoami" } },
-    );
+    // F-1：生产档治理切 http 后 PLATFORM_GOV_DENY（mock 专用）不再生效——deny 语义改由
+    // 最小 http 裁决端点供出（reason 原串 = 端点应答体，runScripted 内 extraEnv 覆盖 PLATFORM_GOV_URL）。
+    const DENY_REASON = "GOV_RULE_L5: tool mcp__erp__whoami denied by ruleBindings PRE_CHECK";
+    const denyServer = createHttpServer((req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ decision: "deny", reason: DENY_REASON }));
+    });
+    await new Promise<void>((resolve) => denyServer.listen(0, "127.0.0.1", resolve));
+    const denyPort = (denyServer.address() as AddressInfo).port;
+    let run: DshRunOutput;
+    let sse: SseEmission[];
+    try {
+      ({ run, sse } = await runScripted(
+        [
+          { toolCall: { name: "mcp__erp__whoami", arguments: "{}", callId: "call_deny1" }, usage: USAGE },
+          { text: "被拒后诚实收尾", usage: USAGE },
+        ],
+        { setup, extraEnv: { PLATFORM_GOV_URL: `http://127.0.0.1:${denyPort}/b/v1/governance/adjudicate` } },
+      ));
+    } finally {
+      await new Promise<void>((resolve) => denyServer.close(() => resolve()));
+    }
     // 帧流面：isError + 理由逐字（E2 先例形态）。
     const all = eventsJson(run);
     expect(all).toContain('"isError":true');

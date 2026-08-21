@@ -298,6 +298,14 @@ export interface ChainLossInput {
 
 const SOLVER_KEY = "chain_loss_attribution";
 
+/**
+ * 一维求解器的 key，**转出去给二维矩阵引用**（WO-SIM-BE-MATRIX，只加导出、算式一字未改）。
+ * 转出而不是让 `chain-loss-matrix.ts` 再写一遍这个字符串：evidence 里的 `solverKey` 与矩阵
+ * 自述「我是在谁身上铺出来的」必须是**同一个**值，各写一份就会在改名那天悄悄分裂
+ * （本仓「改名要连断言一起改」那族账的同一形态）。
+ */
+export const CHAIN_LOSS_SOLVER_KEY = SOLVER_KEY;
+
 function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
@@ -942,3 +950,73 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
 
 /** 供测试/门做穷举校验用：五段 kind 全集（转出契约常量，避免测试自己抄一份）。 */
 export const CHAIN_LOSS_STEP_KINDS = CHAIN_STEP_KINDS;
+
+// ══════════════════════════════════════════════════════════════════════════
+// § 5 · 子因下钻的**唯一入口**（WO-SIM-BE-DRILL 只加这一段）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 一个节点在全链损失里的份额 + 它名下每个非增值 step 的承载三元组。
+ *
+ * **为什么这个函数必须住在本文件**：`attribution` 是按 `stepId` 排的（契约
+ * `computeLossAttribution` 的口径），而下钻的问句是按**节点**问的（「老化静置这 5.94% 谁吃的」）。
+ * 「节点占比 = 名下各非增值 step 占比之和」这条折叠口径要是让下钻侧自己写一遍，
+ * 就会出现第二份口径 —— 本仓 D1×E1「两边各发明一套词表」那次事故的同一形态。
+ * 故折叠只在这里做一次，`sim/drill.ts` 只消费不复写。
+ *
+ * 诚实缺席：节点不在 `attribution` 里（= 它今天一天损失都没有，或整段 EMPTY）⇒ `found:false`
+ * + `emptyReasons` 原样带回 §3/§4 登记的原因，**不回一个 0% 的节点冒充「查过了没问题」**。
+ */
+export interface ChainNodeLossShare {
+  nodeId: string;
+  /** 节点人读名。取自 `nodes[]`；节点只在 `empty[]` 里出现时取那一行的 label。 */
+  label: string;
+  stage: ChainStage | null;
+  found: boolean;
+  /** 名下非增值 step 的天数之和。 */
+  nonValueDays: number;
+  /** 名下非增值 step 的 `pctOfChainLoss` 之和（分母 = 全链非增值总量，与 §5 契约同口径）。 */
+  pctOfChainLoss: number;
+  /** 名下的全部 step（含增值段；调用方要不要用自己判）。 */
+  steps: ChainStep[];
+  /** 名下**非增值** step 的证据行（下钻的起点：每行一个 `drillType.drillId.drillField`）。 */
+  carriers: ChainLossEvidence[];
+  /**
+   * 名下各非增值 step 的归因行，**原样转出**（不是这里重算的）。
+   * 下钻侧要按 step 分摊份额，必须拿这一份的 `pctOfChainLoss` 当被摊的量 ——
+   * 拿 `days` 自己再除一次全链分母 = 造出第二份分母（本仓「两份口径都绿却对不上」的老形态）。
+   */
+  rows: LossAttribution[];
+  /** 该节点下诚实标空的行（`found:false` 时下钻侧据此产出 `reason`，不自己编一句）。 */
+  empties: ChainLossEmpty[];
+}
+
+export function nodeLossShare(result: ChainLossResult, nodeId: string): ChainNodeLossShare {
+  const node = result.nodes.find((n) => n.nodeId === nodeId) ?? null;
+  const carriers = result.evidence.filter((e) => e.nodeId === nodeId && !e.valueAdd);
+  const empties = result.empty.filter((e) => e.nodeId === nodeId);
+  // 占比走 `attribution`（契约的唯一实现算出来的那份），**不在这里拿 days 再除一次** ——
+  // 再除一次就是第二份分母，分母一漂两处数字对不上而两边测试都绿（本仓最爱的假绿形态）。
+  const byStep = new Map(result.attribution.map((a) => [a.stepId, a]));
+  const rows = carriers.map((c) => byStep.get(c.stepId)).filter((a): a is NonNullable<typeof a> => a !== undefined);
+  const nonValueDays = rows.reduce((sum, a) => sum + a.nonValueDays, 0);
+  const pctOfChainLoss = rows.reduce((sum, a) => sum + a.pctOfChainLoss, 0);
+  const label =
+    node?.label ??
+    empties[0]?.label ??
+    carriers[0]?.label ??
+    nodeId;
+  const stage = node?.stage ?? empties[0]?.stage ?? carriers[0]?.stage ?? null;
+  return {
+    nodeId,
+    label,
+    stage,
+    found: rows.length > 0,
+    nonValueDays,
+    pctOfChainLoss,
+    steps: node ? [...node.steps] : [],
+    carriers,
+    rows,
+    empties,
+  };
+}

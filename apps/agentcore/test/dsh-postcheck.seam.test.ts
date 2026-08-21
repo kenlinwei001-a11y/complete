@@ -103,6 +103,9 @@ describe("WO-DSH-PROD-READY W1 · DSH 路径 postcheck 后验对拍", () => {
     ]);
     const t = await createTestApp({
       providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+      // F-1：生产档 cordis.yml 治理已切 http 模式；本缝验 postcheck 不验 pre-execute 裁决，
+      // 钉 poc 档（mock 治理放行）保持既有语义。
+      env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
     });
     await t.repos.agents.insert(agent);
     return { stub, t };

@@ -319,6 +319,8 @@ describe("WO-DSH-P2-UX · 内核标识写入对拍（A7）", () => {
     ]);
     const t = await createTestApp({
       providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+      // F-1：生产档治理切 http 后，dsh 臂钉 poc 档（mock 治理放行）保持既有语义。
+      env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
     });
     try {
       // echo_tool 是 harness 侧世界插件（非 native BUILTIN），对 runtime 而言是 UNKNOWN（照 N3 对位形态）。
@@ -366,6 +368,8 @@ describe("WO-DSH-P2-UX · 内核标识写入对拍（A7）", () => {
     ]);
     const t = await createTestApp({
       providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+      // F-1：生产档治理切 http 后，dsh 臂钉 poc 档（mock 治理放行）保持既有语义。
+      env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
     });
     try {
       await t.repos.agents.insert(

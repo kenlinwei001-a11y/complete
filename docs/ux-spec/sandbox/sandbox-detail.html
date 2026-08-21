@@ -1,0 +1,493 @@
+<title>传导识别台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+:root{
+  --ink:#223251; --panel:#2c3d5e; --panel2:#1c2942;
+  --hair:rgba(226,235,245,0.08); --hair2:rgba(226,235,245,0.14);
+  --txt:#e9eef5; --dim:#ced7e1; --dim2:#bbc5ce;
+  --cy:#43b7d7; --cy2:#4c90f0;
+  --amb:#e8b54a; --red:#e0626c; --grn:#62be77; --blu:#4c90f0;
+  --fs:"Inter","PingFang SC","Microsoft YaHei",sans-serif;
+  --fm:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--ink);color:var(--txt);font-family:var(--fs);font-size:12px;line-height:1.35}
+.app{width:1440px;height:897px;display:flex;flex-direction:column;overflow:hidden}
+
+.sysbar{height:26px;display:flex;align-items:center;gap:12px;padding:0 10px;flex:none;
+  border-bottom:1px solid var(--hair)}
+.hole{width:96px;height:12px;background:#1c2942;border-radius:2px}
+.sysbar .sp{flex:1}
+.sysbar time{font-family:var(--fm);font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+.sysbar u{text-decoration:none;color:var(--dim2);font-size:12px;padding:0 3px}
+
+.body{flex:1;display:flex;min-height:0;padding:5px;gap:5px}
+.pan{background:var(--panel);border:1px solid var(--hair);position:relative;
+  display:flex;flex-direction:column;min-height:0;min-width:0}
+.pan::before,.pan::after{content:"";position:absolute;width:8px;height:8px;border:1px solid var(--cy2);opacity:.5}
+.pan::before{left:-1px;top:-1px;border-right:0;border-bottom:0}
+.pan::after{right:-1px;bottom:-1px;border-left:0;border-top:0}
+.ph{display:flex;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--hair);
+  background:var(--panel2);flex:none}
+.ph i{font-style:normal;color:var(--cy);font-size:9px}
+.ph b{font-size:11.5px;font-weight:600;letter-spacing:.06em;color:#e9eef5}
+.ph .rt{margin-left:auto;color:var(--dim2);font-size:11px;letter-spacing:.2em}
+
+/* 左：地图延续 */
+.lcol{width:470px;flex:none;display:flex;flex-direction:column;gap:5px;min-height:0}
+.mapbox{height:648px;flex:none;position:relative;overflow:hidden;background:var(--panel);border:1px solid var(--hair)}
+.mapbox svg{position:absolute;inset:0;width:100%;height:100%}
+.rul{position:absolute;right:0;top:0;bottom:0;width:24px;border-left:1px solid var(--hair);
+  display:flex;flex-direction:column;justify-content:space-around;align-items:center;
+  font-family:var(--fm);font-size:8px;color:var(--dim2)}
+.rul u{text-decoration:none;writing-mode:vertical-rl}
+.lgd{position:absolute;right:30px;bottom:8px;display:flex;flex-direction:column;gap:3px;
+  font-size:9.5px;color:var(--dim2);background:rgba(28,41,66,.86);padding:6px 8px;border:1px solid var(--hair)}
+.lgd div{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+.lgd s{text-decoration:none;width:24px;height:0;border-top:2px solid currentColor;display:block}
+.lgd .el{width:16px;height:8px;border-radius:50%;background:rgba(98,190,119,.30);border:1px solid var(--grn)}
+.lgd .num{font-family:var(--fm)}
+.gminis{height:204px;flex:none;background:var(--panel);border:1px solid var(--hair);overflow:hidden;position:relative}
+.gm{height:18px;position:relative;border-bottom:1px solid rgba(226,235,245,0.05)}
+.gm .sg{position:absolute;top:3px;height:12px;display:flex;align-items:center;gap:3px;padding:0 4px;
+  font-size:9px;white-space:nowrap}
+.sg.b{background:rgba(76,144,240,.18);border:1px solid #4c90f0;color:#a2c6f7}
+.sg.g{background:rgba(98,190,119,.16);border:1px solid #62be77;color:#91d2a0}
+.sg.o{border:1px solid var(--hair2);color:var(--dim2)}
+.gmhead{height:16px;position:relative;border-bottom:1px solid var(--hair)}
+.gmhead span{position:absolute;top:3px;font-family:var(--fm);font-size:8px;color:var(--dim2);
+  border-left:1px solid var(--hair2);padding-left:3px;line-height:1}
+
+/* 右 */
+.rcol{flex:1;display:flex;flex-direction:column;gap:5px;min-width:0;min-height:0}
+.top{height:460px;flex:none;display:flex;flex-direction:column}
+.tb2{flex:1;display:grid;grid-template-columns:288px 1fr;min-height:0}
+.lft{border-right:1px solid var(--hair);display:flex;flex-direction:column;min-height:0}
+.sel{margin:6px 7px 5px;position:relative}
+.sel select{width:100%;background:var(--panel2);border:1px solid var(--hair2);color:var(--txt);
+  padding:5px 8px;font-size:11.5px;font-family:inherit;appearance:none;border-radius:2px}
+.sel::after{content:"⌄";position:absolute;right:8px;top:2px;color:var(--dim2)}
+.cks{display:flex;gap:11px;padding:0 8px 6px;font-size:10.5px;color:var(--dim)}
+.cks label{display:flex;align-items:center;gap:4px}
+.cks i{width:9px;height:9px;border:1px solid var(--hair2);display:inline-block;font-style:normal}
+.cks i.on{background:var(--cy);border-color:var(--cy)}
+.tbl{flex:1;overflow:hidden;font-size:10px}
+.tr{display:grid;grid-template-columns:7px 42px 54px 52px 34px 30px 36px;align-items:center;gap:0 3px;
+  height:19px;border-bottom:1px solid rgba(226,235,245,0.05);font-family:var(--fm);color:var(--dim)}
+.tr span{white-space:nowrap;overflow:hidden}
+.tr.hd{color:var(--dim2);border-bottom:1px solid var(--hair);font-family:var(--fs);font-size:10px}
+.tr.on{background:rgba(232,181,74,.13);outline:1px solid rgba(232,181,74,.4);color:var(--amb)}
+.tr s{text-decoration:none;height:12px;width:2px;display:block}
+.tr .bd{justify-self:center;font-size:9px;padding:0 4px;border:1px solid currentColor}
+.rgt{display:flex;flex-direction:column;min-height:0}
+.strip{height:74px;border-bottom:1px solid var(--hair);position:relative;flex:none}
+.strip .km{position:absolute;top:4px;font-family:var(--fm);font-size:8px;color:var(--dim2)}
+.strip .ax{position:absolute;left:8px;right:8px;top:46px;height:1px;background:var(--hair2)}
+.strip .tk{position:absolute;top:42px;font-family:var(--fm);font-size:8px;color:var(--dim2)}
+.strip .ev{position:absolute;top:20px;font-family:var(--fm);font-size:10px;color:var(--red)}
+.strip .chip{position:absolute;top:54px;font-size:9.5px;color:var(--red);border:1px solid rgba(224,98,108,.42);
+  background:rgba(224,98,108,.14);padding:1px 5px;white-space:nowrap}
+.strip .self{position:absolute;left:8px;top:32px;font-size:9.5px;color:var(--blu);
+  border:1px solid rgba(76,144,240,.5);background:rgba(76,144,240,.12);padding:1px 6px}
+.dt{flex:1;display:grid;grid-template-columns:1fr 236px;min-height:0}
+.dl{border-right:1px solid var(--hair);display:flex;flex-direction:column;min-height:0}
+.dcard{display:grid;grid-template-columns:78px 1fr 76px;gap:8px;padding:7px 8px;border-bottom:1px solid var(--hair)}
+.glyph{display:flex;flex-direction:column;align-items:center;gap:2px}
+.glyph b{font-family:var(--fm);font-size:12px;color:#e9eef5}
+.glyph u{text-decoration:none;font-size:8px;color:var(--dim2);letter-spacing:.06em}
+.kv{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:2px 7px;font-size:10px;align-content:start}
+.kv em{font-style:normal;color:var(--dim2);white-space:nowrap}
+.kv b{font-weight:400;font-family:var(--fm);color:var(--txt)}
+.kv b.hot{color:var(--red)}
+.mini{display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center}
+.mini u{text-decoration:none;font-size:8.5px;color:var(--dim2)}
+.route{display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid var(--hair);font-size:10px;color:var(--dim)}
+.route b{font-weight:400;color:var(--txt)}
+.route .ar{color:var(--cy);flex:1;text-align:center;border-top:1px solid var(--hair2)}
+.rt2{flex:1;overflow:hidden;font-size:10px}
+.rt2 .r{display:grid;grid-template-columns:66px 1fr 1fr 44px 52px 40px;height:18px;align-items:center;
+  padding:0 8px;border-bottom:1px solid rgba(226,235,245,0.05);font-family:var(--fm);color:var(--dim)}
+.rt2 .r.hd{color:var(--dim2);font-family:var(--fs);border-bottom:1px solid var(--hair)}
+.rt2 .r.on{background:rgba(67,183,215,.12);color:var(--txt)}
+.dr{position:relative;overflow:hidden}
+.dr svg{position:absolute;inset:0;width:100%;height:100%}
+.dr .rd{position:absolute;right:8px;bottom:26px;font-family:var(--fm);font-size:13px;color:var(--cy);
+  border:1px solid var(--hair2);padding:1px 6px;background:rgba(28,41,66,.86)}
+.dr .cp{position:absolute;right:12px;bottom:6px;text-align:center;font-size:9px;color:var(--dim)}
+.dr .cp b{display:block;font-size:11px;color:var(--cy)}
+
+/* 应对策略 */
+.bot{height:390px;flex:none;min-height:0;display:flex;flex-direction:column}
+.bb{flex:1;display:grid;grid-template-columns:250px 268px 1fr;min-height:0}
+.stk{display:flex;flex-direction:column;gap:4px;padding:5px;border-right:1px solid var(--hair);overflow:hidden}
+.sc{border:1px solid var(--hair);background:var(--panel2);padding:5px 7px;display:flex;flex-direction:column;gap:3px;position:relative}
+.sc.on{border-color:var(--grn);background:rgba(98,190,119,.09)}
+.sc .r1{display:flex;gap:8px;font-size:9.5px;color:var(--dim2)}
+.sc .r1 u{text-decoration:none;margin-left:auto}
+.sc .r2{display:flex;align-items:baseline;gap:6px}
+.sc .r2 b{font-size:11px;color:var(--txt);font-weight:500}
+.sc .r2 em{font-style:normal;font-family:var(--fm);font-size:11px;color:var(--grn)}
+.sc .r3{display:flex;align-items:center;gap:6px}
+.sc .bars{flex:1;display:flex;gap:1.5px}
+.sc .bars s{text-decoration:none;width:4px;height:9px;background:var(--grn);display:block;opacity:.85}
+.sc .bars s.off{background:var(--hair2)}
+.sc .pct{font-family:var(--fm);font-size:14px;color:var(--grn)}
+.sc .tag{position:absolute;right:5px;top:4px;font-size:8.5px;color:#0f1626;background:var(--red);padding:0 4px}
+.abtn{margin-top:2px;background:#115dc9;border:1px solid var(--cy2);color:var(--cy);
+  font-size:11px;padding:4px 0;text-align:center;font-family:inherit}
+.form{padding:6px 8px;border-right:1px solid var(--hair);display:flex;flex-direction:column;gap:5px;overflow:hidden}
+.fl{font-size:10px;color:var(--dim2)}
+.fi{display:grid;grid-template-columns:56px 1fr;gap:6px;align-items:center;font-size:10.5px}
+.fi select,.fi input{background:var(--panel2);border:1px solid var(--hair2);color:var(--txt);
+  padding:3px 6px;font-size:10.5px;font-family:inherit;width:100%;appearance:none;border-radius:2px}
+.fi .duo{display:flex;gap:5px}
+.fi .duo select{flex:1}
+.stp{display:flex;align-items:center;border:1px solid var(--hair2);background:var(--panel2)}
+.stp b{font-family:var(--fm);font-size:10.5px;padding:0 7px;font-weight:400}
+.stp u{text-decoration:none;color:var(--dim2);font-size:8px;display:flex;flex-direction:column;
+  line-height:.9;padding:0 4px;border-left:1px solid var(--hair2)}
+.plat{display:grid;grid-template-columns:16px 1fr 34px;gap:6px;align-items:center;font-size:10px;color:var(--dim2)}
+.plat .tr2{height:4px;background:var(--panel2);border:1px solid var(--hair2);position:relative}
+.plat .tr2 i{position:absolute;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--red)}
+.plat span{font-family:var(--fm);text-align:right;color:var(--dim)}
+.rr{display:flex;flex-direction:column;min-height:0}
+.rr .sub{font-size:10px;color:var(--dim2);padding:4px 8px 3px}
+.supp{height:64px;position:relative;border-bottom:1px solid var(--hair);flex:none;margin:0 8px}
+.supp .tk{position:absolute;top:2px;font-family:var(--fm);font-size:8px;color:var(--dim2);
+  border-left:1px solid var(--hair2);padding-left:3px}
+.supp .sg{position:absolute;top:26px;height:13px;display:flex;align-items:center;gap:3px;padding:0 5px;font-size:9px}
+.ot{flex:1;overflow:hidden;font-size:10px;margin:0 8px}
+.ot .r{display:grid;grid-template-columns:78px 46px 62px 48px 48px 44px 1fr;height:18px;align-items:center;
+  border-bottom:1px solid rgba(226,235,245,0.05);color:var(--dim);font-family:var(--fm)}
+.ot .r.hd{color:var(--dim2);font-family:var(--fs);border-bottom:1px solid var(--hair)}
+.ot .bd{justify-self:start;font-size:9px;padding:0 4px;border:1px solid currentColor}
+.ot .act{color:var(--dim);font-family:var(--fs);display:flex;align-items:center;gap:3px}
+.ot .act.x{color:var(--red)}
+</style>
+
+<div class="app">
+  <div class="sysbar">
+    <span class="hole"></span><span class="sp"></span>
+    <time>2027年3月14日　12:28:39</time>
+    <u>─</u><u>□</u><u>✕</u>
+  </div>
+
+  <div class="body">
+
+    <!-- ══ 左：地图与甘特延续 ══ -->
+    <div class="lcol">
+      <div class="mapbox">
+        <svg id="m2" viewBox="0 0 470 470" preserveAspectRatio="xMidYMid slice"></svg>
+        <div class="rul"><u>12000</u><u>13000</u><u>14000</u><u>15000</u><u>16000</u></div>
+        <div class="lgd">
+          <div style="color:var(--red)"><span>阻滞区间</span><s></s></div>
+          <div><span>缓冲区</span><span class="el"></span></div>
+          <div style="color:var(--dim2)"><span>传导关系</span><s style="border-top-style:dotted"></s></div>
+          <div style="color:var(--red)"><span>阻滞发生</span><span class="num">00:00</span></div>
+          <div style="color:var(--grn)"><span>缓冲到达</span><span class="num">00:00</span></div>
+          <div style="color:var(--blu)"><span>计划路径</span><s></s></div>
+          <div style="color:var(--blu)"><span>预测路径</span><s style="border-top-style:dashed"></s></div>
+          <div style="color:#e9bb8f"><span>实际路径</span><s style="border-top-style:dashed"></s></div>
+          <div style="color:#e9bb8f"><span>补货路径</span><s style="border-top-style:dotted"></s></div>
+        </div>
+      </div>
+      <div class="gminis" id="gm"></div>
+    </div>
+
+    <!-- ══ 右 ══ -->
+    <div class="rcol">
+
+      <!-- 传导识别 -->
+      <section class="pan top">
+        <div class="ph"><i>▤</i><b>传导识别</b><span class="rt">▤ ⤢</span></div>
+        <div class="tb2">
+          <div class="lft">
+            <div class="sel"><select><option>传导方向 - 常州→盐城</option><option>传导方向 - 常州→合肥</option></select></div>
+            <div class="cks">
+              <label><i class="on"></i>产能影响</label><label><i class="on"></i>物料影响</label>
+              <label><i></i>时间偏差</label><label><i></i>成本偏差</label>
+            </div>
+            <div class="tbl" id="tbl"></div>
+          </div>
+
+          <div class="rgt">
+            <div class="strip" id="strip"></div>
+            <div class="dt">
+              <div class="dl">
+                <div class="dcard">
+                  <div class="glyph">
+                    <svg viewBox="0 0 40 30" width="52" height="38"><path d="M20 3 L23 12 L37 15 L23 18 L20 27 L17 18 L3 15 L17 12 Z" fill="#a2c6f7"/></svg>
+                    <b>LFP-314 X2</b><u>Cell · Pack</u>
+                  </div>
+                  <div class="kv">
+                    <em>节点编号</em><b>P4212</b><em>口径校准</em><b>关闭</b>
+                    <em>环节类型</em><b>老化静置</b><em>上游工位</em><b>160#</b>
+                    <em>传导能力</em><b class="hot">是</b><em>在制批量</em><b>3000</b>
+                    <em>日产能力</em><b>3.0k 套</b><em>下游距离</em><b>98 工时</b>
+                  </div>
+                  <div class="mini">
+                    <svg viewBox="0 0 60 16" width="60" height="16"><line x1="4" y1="8" x2="56" y2="8" stroke="#a2c6f7" stroke-width="2"/><circle cx="12" cy="8" r="3" fill="#a2c6f7"/></svg>
+                    <u>LFP-9　1k套</u>
+                    <svg viewBox="0 0 60 16" width="60" height="16"><path d="M4 8 H40 L52 4 V12 L40 8" fill="none" stroke="#a2c6f7" stroke-width="1.4"/></svg>
+                  </div>
+                </div>
+                <div class="route">
+                  <span>⇲ 起始工位 <b>W-3140</b></span><span class="ar">➜</span><span>⇱ 终止库位 <b>S-0420</b></span>
+                  <span style="margin-left:auto;font-family:var(--fm);color:var(--dim2)">SOP</span>
+                </div>
+                <div class="rt2" id="rt2"></div>
+              </div>
+              <div class="dr">
+                <svg id="cone" viewBox="0 0 236 240"></svg>
+                <span class="rd">18:12</span>
+                <span class="cp"><b>↑</b>下游</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 应对策略 -->
+      <section class="pan bot">
+        <div class="ph"><i>▤</i><b>应对策略</b><span class="rt">▤ ⤢</span></div>
+        <div class="bb">
+          <div class="stk">
+            <div class="sc">
+              <div class="r1"><span>策略类型</span><span>残差比</span><u>达成度</u></div>
+              <div class="r2"><b>缓冲释放</b><em style="margin-left:auto">80 %</em></div>
+              <div class="r3"><span style="font-size:9px;color:var(--dim2)">DATA·SOP</span>
+                <span class="bars" data-n="12" data-k="7"></span><span class="pct">60 %</span></div>
+            </div>
+            <div class="sc on">
+              <span class="tag">推荐</span>
+              <div class="r1"><span>策略类型</span><span>残差比</span><u>达成度</u></div>
+              <div class="r2"><b>跨基地借调</b><em style="margin-left:auto">15 %</em></div>
+              <div class="r3"><span style="font-size:9px;color:var(--dim2)">DATA·PR</span>
+                <span class="bars" data-n="12" data-k="10"></span><span class="pct">85 %</span></div>
+              <div class="abtn">应用策略</div>
+            </div>
+            <div class="sc">
+              <div class="r1"><span>策略类型</span><span>残差比</span><u>达成度</u></div>
+              <div class="r2"><b>外协兜底</b><em style="margin-left:auto">40 %</em></div>
+              <div class="r3"><span style="font-size:9px;color:var(--dim2)">DATA·PR</span>
+                <span class="bars" data-n="12" data-k="7"></span><span class="pct">60 %</span></div>
+            </div>
+          </div>
+
+          <div class="form">
+            <div class="fl">方案设置</div>
+            <div class="fi"><span>方案名称</span><input value="缓冲方案 K1"></div>
+            <div class="fi"><span>承接基地</span><select><option>盐城基地</option><option>合肥基地</option></select></div>
+            <div class="fi"><span>调拨物料</span><div class="duo"><select><option>LFP-99</option></select>
+              <span class="stp"><b>X4</b><u><span>▲</span><span>▼</span></u></span></div></div>
+            <div class="fi"><span></span><div class="duo"><select><option>LFP-88</option></select>
+              <span class="stp"><b>X4</b><u><span>▲</span><span>▼</span></u></span></div></div>
+            <div class="fl" style="margin-top:2px">可用产线</div>
+            <div class="plat"><i>▤</i><span class="tr2"><i style="left:36%"></i></span><span>2/5</span></div>
+            <div class="plat"><i>▤</i><span class="tr2"><i style="left:18%"></i></span><span>1/5</span></div>
+            <div class="plat"><i>▤</i><span class="tr2"><i style="left:52%"></i></span><span>3/5</span></div>
+          </div>
+
+          <div class="rr">
+            <div class="sub">补货路径</div>
+            <div class="supp" id="supp"></div>
+            <div class="sub">原计划处置</div>
+            <div class="ot" id="ot"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+var NS="http://www.w3.org/2000/svg";
+function E(n,a,p){var e=document.createElementNS(NS,n);for(var k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;}
+function T(e,s){e.textContent=s;return e;}
+
+/* 左：地铁线路图片段（首页同一张图的左半，被面板边界裁切）——
+   站名同源 packages/contracts/src/chain-sim.ts 的 CHAIN_NODE_REGISTRY。 */
+(function(){
+  var s=document.getElementById("m2");
+  var LANES=[
+    {k:"需求",c:"#d2b04c",n:[["客户预告接收",1],["询报价",1],["S&OP 共识会",3]]},
+    {k:"订单",c:"#36bfa5",n:[["订单评审",2],["开票对账",1],["订单回款",1]]},
+    {k:"产能",c:"#43b7d7",n:[["产能复核",4],["主计划排产",5,1],["工单下达",2],["过程质检",13,1],["质量返工",6],["老化静置",34,1]]},
+    {k:"物料",c:"#dd9551",n:[["MRP 运行",2],["请购",1],["采购下单",1],["入厂在途",3],["到货检验",2],["齐套发料",21,1]]},
+    {k:"交付",c:"#5e8fe8",n:[["成品入库",1],["干线在途",2],["客户验收",1]]}
+  ];
+  var X0=64,X1=396,Y0=48,LH=84;
+  function px(li,i){var n=LANES[li].n.length;return X0+i*(n>1?(X1-X0)/(n-1):0);}
+  function py(li){return Y0+li*LH;}
+
+  for(var i=0;i<11;i++)E("line",{x1:0,y1:i*47,x2:470,y2:i*47,stroke:"rgba(226,235,245,0.04)"},s);
+  for(var j=0;j<11;j++)E("line",{x1:j*47,y1:0,x2:j*47,y2:470,stroke:"rgba(226,235,245,0.04)"},s);
+
+  E("ellipse",{cx:px(3,4),cy:py(3),rx:56,ry:20,fill:"rgba(98,190,119,.15)",stroke:"#62be77","stroke-width":1.1},s);
+
+  LANES.forEach(function(L,li){
+    var y=py(li),n=L.n.length;
+    var lb=E("text",{x:X0-14,y:y+4,"text-anchor":"end",fill:L.c,"font-size":10.5,"font-weight":700},s);
+    lb.textContent=L.k;
+    E("line",{x1:X0,y1:y,x2:X1,y2:y,stroke:L.c,"stroke-width":3,"stroke-linecap":"round",opacity:.62},s);
+    if(li<LANES.length-1)
+      E("path",{d:"M"+X1+" "+y+" L"+(X1+16)+" "+y+" L"+(X1+16)+" "+(y+LH/2)+
+        " L"+(X0-16)+" "+(y+LH/2)+" L"+(X0-16)+" "+(y+LH)+" L"+X0+" "+(y+LH),
+        fill:"none",stroke:"rgba(226,235,245,0.12)","stroke-width":1.2,"stroke-dasharray":"4 4"},s);
+  });
+
+  [[2,3,5],[3,4,5]].forEach(function(g){
+    E("line",{x1:px(g[0],g[1]),y1:py(g[0]),x2:px(g[0],g[2]),y2:py(g[0]),
+      stroke:"#e0626c","stroke-width":4.4,"stroke-linecap":"round",opacity:.95},s);
+  });
+
+  LANES.forEach(function(L,li){
+    var y=py(li);
+    L.n.forEach(function(nd,i){
+      var x=px(li,i),loss=nd[1],hit=nd[2],r=3.8+Math.sqrt(loss)*1.9;
+      if(hit)E("circle",{cx:x,cy:y,r:r+5,fill:"none",stroke:"#e0626c","stroke-width":1,opacity:.5},s);
+      E("circle",{cx:x,cy:y,r:r,fill:hit?"#e0626c":L.c,stroke:"#2c3d5e","stroke-width":2},s);
+      if(loss>=13){var pv=E("text",{x:x,y:y-r-6,"text-anchor":"middle",fill:"#eabd5d","font-size":9,
+        "font-family":"var(--fm)"},s);pv.textContent=loss+"%";}
+      var w=nd[0],parts=w.length>5?[w.slice(0,5),w.slice(5)]:[w];
+      parts.forEach(function(t,pi){
+        var e=E("text",{x:x,y:y+r+11+pi*10,"text-anchor":"middle",
+          fill:hit?"#f0b4b8":"rgba(233,238,245,.7)","font-size":8.5,"font-weight":hit?600:400},s);
+        e.textContent=t;});
+    });
+  });
+
+  /* 选中节点呼出（与右栏「节点详情 P4212」同一对象） */
+  var cx=px(2,5),cy=py(2);
+  E("circle",{cx:cx,cy:cy,r:20,fill:"none",stroke:"#e8b54a","stroke-width":1.2,opacity:.85},s);
+  ["批号 P4212","在制 6.8k 套","库存 3.8k 套","节拍 1.2/h"].forEach(function(l,k){
+    var t=E("text",{x:cx-108,y:cy-40+k*11,"font-size":8.5,fill:"rgba(233,238,245,.88)"},s);t.textContent=l;});
+})();
+
+/* 左下甘特 */
+(function(){
+  var h=document.getElementById("gm"),out='<div class="gmhead">';
+  for(var i=0;i<=8;i++)h&&(out+='<span style="left:'+(i/8*100)+'%">'+String(i*3).padStart(2,"0")+':00</span>');
+  out+='</div>';
+  var R=[[[2,20,"o","请购"],[30,26,"b","齐套发料"],[62,20,"g","缓冲释放"],[86,12,"o","结转"]],
+         [[6,18,"o","采购下单"],[28,28,"b","老化静置"],[60,22,"g","缓冲释放"],[86,12,"o","结转"]],
+         [[3,22,"o","入厂在途"],[30,24,"b","齐套发料"],[58,24,"g","缓冲释放"],[85,13,"o","结转"]],
+         [[5,19,"o","到货检验"],[27,27,"b","老化静置"],[59,23,"g","缓冲释放"],[85,13,"o","结转"]],
+         [[2,21,"o","请购"],[26,29,"b","齐套发料"],[60,21,"g","缓冲释放"],[84,14,"o","结转"]],
+         [[4,20,"o","采购下单"],[29,25,"b","老化静置"],[57,25,"g","缓冲释放"],[85,13,"o","结转"]],
+         [[3,19,"o","到货检验"],[25,30,"b","齐套发料"],[58,23,"g","缓冲释放"],[84,14,"o","结转"]],
+         [[6,17,"o","入厂在途"],[27,26,"b","老化静置"],[56,26,"g","缓冲释放"],[85,13,"o","结转"]],
+         [[2,22,"o","请购"],[28,27,"b","齐套发料"],[59,22,"g","缓冲释放"],[84,14,"o","结转"]]];
+  R.forEach(function(r){out+='<div class="gm">';r.forEach(function(x){
+    out+='<div class="sg '+x[2]+'" style="left:'+x[0]+'%;width:'+x[1]+'%">▤ '+x[3]+'</div>';});out+='</div>';});
+  h.innerHTML=out;
+})();
+
+/* 传导识别表 */
+(function(){
+  var C=["#62be77","#4c90f0","#e8b54a","#e0626c"];
+  var M=["LFP-314","NCM-300","NCM-050","LFP-250"];
+  var N=["老化静置","齐套发料","过程质检","排产计划","干线在途"];
+  var t=document.getElementById("tbl");
+  var h='<div class="tr hd"><span></span><span>批号</span><span>环节</span><span>型号</span><span>在制</span><span>影响</span><span>耗时</span></div>';
+  var D=[["P2161",0,0,"4.2k",1,"21'12"],["P2162",1,1,"3.8k",3,"32'42",1],["P2161",2,2,"2.6k",2,"12'12"],
+         ["P2161",0,3,"4.0k",2,"17'29"],["P2161",3,0,"1.9k",1,"8'32"],["P2161",1,1,"3.1k",2,"12'09"],
+         ["P2161",4,2,"2.2k",2,"14'18"],["P2161",0,0,"4.4k",2,"3'12"],["P2161",2,3,"3.6k",2,"12'12"],
+         ["P2161",1,0,"2.8k",1,"8'32"],["P2161",3,1,"3.3k",2,"14'18"],["P2161",0,2,"4.1k",2,"3'12"],
+         ["P2161",4,3,"2.4k",2,"12'12"],["P2161",2,0,"3.9k",1,"9'44"]];
+  D.forEach(function(d){
+    h+='<div class="tr'+(d[6]?" on":"")+'"><s style="background:'+C[d[4]-1]+'"></s>'+
+       '<span>'+d[0]+'</span><span>'+N[d[1]]+'</span><span>'+M[d[2]]+'</span><span>'+d[3]+'</span>'+
+       '<span class="bd" style="color:'+C[d[4]-1]+'">'+d[4]+'级</span><span>'+d[5]+'</span></div>';
+  });
+  t.innerHTML=h;
+})();
+
+/* 时间条 */
+(function(){
+  var s=document.getElementById("strip"),h="";
+  [["76.86","18%"],["59.64","50%"],["45.23","82%"]].forEach(function(k){
+    h+='<span class="km" style="left:'+k[1]+'">'+k[0]+'KM</span>';});
+  h+='<span class="self">P4212</span><div class="ax"></div>';
+  ["01:20","01:30","01:40","01:50","02:00","02:10","02:20","02:30","02:40"].forEach(function(t,i){
+    h+='<span class="tk" style="left:'+(9+i*10.2)+'%">'+t+'</span>';});
+  [["阻滞时间 24:42","30%"],["阻滞时间 38:24","58%"],["阻滞时间","86%"]].forEach(function(e){
+    h+='<span class="ev" style="left:'+e[1]+'">'+e[0]+'</span>';});
+  [["齐套冲击 P2","28%"],["排产冲击 P1","52%"],["老化冲击 Y1","80%"]].forEach(function(c){
+    h+='<span class="chip" style="left:'+c[1]+'">'+c[0]+'</span>';});
+  s.innerHTML=h;
+})();
+
+/* 流转明细表 */
+(function(){
+  var t=document.getElementById("rt2");
+  var h='<div class="r hd"><span>时间</span><span>工位</span><span>批次</span><span>在制</span><span>节拍</span><span>良率</span></div>';
+  var D=[["01:32:10","W-3634","B-4430","12k","1.2/h","98%"],
+         ["01:46:38","W-3634","B-4430","12k","1.2/h","98%",1],
+         ["01:32:10","W-3634","B-4430","12k","1.2/h","98%"],
+         ["01:32:10","W-3634","B-4430","12k","1.2/h","98%"]];
+  D.forEach(function(d){
+    h+='<div class="r'+(d[6]?" on":"")+'"><span>'+d[0]+'</span><span>'+d[1]+'</span><span>'+d[2]+
+       '</span><span>'+d[3]+'</span><span>'+d[4]+'</span><span>'+d[5]+'</span></div>';});
+  t.innerHTML=h;
+})();
+
+/* 扇区图 */
+(function(){
+  var s=document.getElementById("cone");
+  for(var i=1;i<=4;i++)E("line",{x1:14,y1:i*48,x2:222,y2:i*48,stroke:"rgba(226,235,245,0.05)"},s);
+  ["400","300","200","100"].forEach(function(v,i){
+    T(E("text",{x:4,y:i*48+52,"font-size":7,fill:"#bbc5ce","font-family":"var(--fm)"},s),v);
+    T(E("text",{x:212,y:i*48+52,"font-size":7,fill:"#bbc5ce","font-family":"var(--fm)"},s),v);});
+  E("path",{d:"M118 208 L64 96 A 60 60 0 0 1 172 96 Z",fill:"rgba(226,235,245,0.05)",
+    stroke:"rgba(226,235,245,0.14)"},s);
+  E("ellipse",{cx:118,cy:196,rx:44,ry:16,fill:"none",stroke:"rgba(226,235,245,0.14)"},s);
+  E("path",{d:"M40 108 C 90 66, 150 62, 208 92",fill:"none",stroke:"#43b7d7","stroke-width":1.5},s);
+  E("path",{d:"M44 128 C 96 92, 152 88, 206 112",fill:"none",stroke:"rgba(76,144,240,.6)","stroke-dasharray":"5 4"},s);
+  [[38,66],[92,58],[150,60],[204,72]].forEach(function(p,i){
+    var g=E("g",{transform:"translate("+p[0]+","+p[1]+")"},s);
+    E("path",{d:"M0 -6 L2 -1 L8 0 L2 1 L0 6 L-2 1 L-8 0 L-2 -1 Z",fill:i===1?"#eabd5d":"#a2c6f7"},g);
+    T(E("text",{x:-14,y:-9,"font-size":7,fill:i===1?"#eabd5d":"#ced7e1","font-family":"var(--fm)"},g),"P421"+(i+1));});
+  E("rect",{x:78,y:44,width:56,height:14,fill:"none",stroke:"#e8b54a"},s);
+  [["齐套冲击 P2",84],["排产冲击 P1",100],["老化冲击 Y1",116]].forEach(function(c){
+    E("rect",{x:112,y:c[1]-8,width:7,height:7,fill:"#e0626c"},s);
+    T(E("text",{x:123,y:c[1],"font-size":7,fill:"#f0b4b8"},s),c[0]);});
+  E("path",{d:"M118 208 L104 186 L132 186 Z",fill:"#e0626c"},s);
+  T(E("text",{x:150,y:200,"font-size":7,fill:"#bbc5ce","font-family":"var(--fm)"},s),"39°");
+})();
+
+/* 补货路径 + 原计划处置 */
+(function(){
+  var s=document.getElementById("supp"),h="";
+  ["01:20","01:30","01:40","01:50","02:00","02:10","02:20","02:30"].forEach(function(t,i){
+    h+='<span class="tk" style="left:'+(i*12.4)+'%">'+t+'</span>';});
+  h+='<div class="sg o" style="left:2%;width:16%;border:1px solid rgba(226,235,245,0.14);color:#bbc5ce">▤ 请购</div>';
+  h+='<div class="sg o" style="left:20%;width:18%;border:1px solid rgba(226,235,245,0.14);color:#bbc5ce">▤ 采购下单</div>';
+  h+='<div class="sg b" style="left:40%;width:30%;background:rgba(76,144,240,.18);border:1px solid #4c90f0;color:#a2c6f7">▤ 齐套发料 3/16</div>';
+  h+='<div class="sg o" style="left:72%;width:14%;border:1px solid rgba(226,235,245,0.14);color:#bbc5ce">▤ 结转</div>';
+  s.innerHTML=h;
+
+  var o=document.getElementById("ot");
+  var g='<div class="r hd"><span>计划名称</span><span>线别</span><span>物料</span><span>班组</span><span>计划目标</span><span>剩余缺口</span><span>操作</span></div>';
+  var D=[["齐套计划 P1","L-16","LFP-9 x3…","xxx 队","3/22",1,"正常执行"],
+         ["齐套计划 P2","L-22","LFP-9 x3…","xxx 团","3/22",3,"取消方案",1],
+         ["老化计划 Y1","L-25","LFP-22 x3…","xxx 队","3/22",1,"正常执行"],
+         ["老化计划 Y2","L-25","LFP-21 x3…","xxx 团","3/22",1,"正常执行"]];
+  var C=["#62be77","#4c90f0","#e8b54a","#e0626c"];
+  D.forEach(function(d){
+    g+='<div class="r"><span>'+d[0]+'</span><span>'+d[1]+'</span><span>'+d[2]+'</span><span>'+d[3]+
+       '</span><span>'+d[4]+'</span><span class="bd" style="color:'+C[d[5]-1]+'">'+d[5]+'级</span>'+
+       '<span class="act'+(d[7]?" x":"")+'">'+d[6]+' ⌄</span></div>';});
+  o.innerHTML=g;
+})();
+
+/* 达成度条 */
+document.querySelectorAll(".bars").forEach(function(b){
+  var n=+b.dataset.n,k=+b.dataset.k,h="";
+  for(var i=0;i<n;i++)h+='<s class="'+(i<k?"":"off")+'"></s>';
+  b.innerHTML=h;
+});
+</script>

@@ -12,13 +12,16 @@
 - id: platform-sdk-server
   name: './plugins/platform-sdk-server.mjs'
 
-# S2 · 治理裁决网桥：mock 模式 deny 清单取 env PLATFORM_GOV_DENY（csv）优先于 config.deny。
-# 生产换 mode: http + url 指向 agentcore 规则评估端点（带外通道）。
+# S2 · 治理裁决网桥 —— F-1（WO-DSH-PROD-READY）起生产档 = http 模式：POST {tool, args,
+# governance} 到 agentcore 规则评估端点 /b/v1/governance/adjudicate（带外通道）。
+# url/token 不落盘：engine 分叉逐 run 经 runner opts.env 注入 PLATFORM_GOV_URL
+# （缺省推导 http://127.0.0.1:${PORT}/b/v1/governance/adjudicate，DSH_GOV_URL 可覆盖）
+# 与 PLATFORM_GOV_TOKEN（= SERVICE_TOKEN，未配置则不发头）。fail-closed 链：http 模式
+# 无 url ⇒ 插件 initialize 抛错；端点 401/不可达/畸形应答 ⇒ 插件一律转 deny。
 - id: platform-governance
   name: './plugins/platform-governance.mjs'
   config:
-    mode: 'mock'
-    deny: []
+    mode: 'http'
 
 - id: llm
   name: '@deepseek-ai/dsh-llm'

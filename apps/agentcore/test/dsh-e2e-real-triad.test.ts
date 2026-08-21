@@ -329,7 +329,12 @@ describe.skipIf(!KIMI_READY)("L2.A1 · 真 LLM：engine 分叉 → 绑定矩阵�
       process.env.DSH_HARNESS = "1"; // engine 守卫直读 process.env（D3 休眠门判据形态）
       let t: TestApp | undefined;
       try {
-        t = await createTestApp({ providerDirectory: kimiDirectory() as never });
+        t = await createTestApp({
+          providerDirectory: kimiDirectory() as never,
+          // F-1：生产档治理切 http 后，本臂聚焦真 LLM 链不验裁决，钉 poc 档（mock 治理放行）；
+          // engine 级 http 裁决链由 dsh-gov-production.seam 专验。
+          env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
+        });
         const agentId = await makeBareAgent(t);
         const run = () =>
           t!.deps.engine.runRegisteredAgent({

@@ -110,6 +110,10 @@ flag 关时该模块不加载。部署面实测零处设这个 flag。
 **销账判据（三条同时成立）**：
 1. `cordis.yml` 的 LLM 插件换成我方 `@platform/llm-adapters` 适配器（非 `mock-llm.mjs`），
    且 `DSH_HARNESS_PROVIDER` 有明确的生产取值；
+   > 订正（2026-08-21，W3 审计 A-d1 字面偏差裁决登记）：落地形态不是 `@platform/llm-adapters`，
+   > 而是 harness 侧 `plugins/platform-llm.mjs` 委托 `@deepseek-ai/dsh-llm-pi-ai` 出线；我方所有的
+   > 是连接事实单源（绑定矩阵 `resolveConnectionFacts` + 凭据解密注入）。判据按意图已销
+   > （非剧本、生产取值明确、凭据从我方矩阵出、key 零上帧，真跳实证见 W3 审计）。
 2. 存在一条**接缝驱动**的组合测试（SEAM-GATE 判据），断言「生产实际传的那个 provider 值」
    端到端跑通 —— 不是各半 unit 绿；
 3. 该测试的实参**就是生产实参**（不是另一个分支）。这一条必须被机器核，
@@ -457,3 +461,13 @@ RECONCILIATION evidence 2b 作废）+ D3 门/selftest 绿。
 **对 §3 前置条件的意义**：本项不等于「flag 可翻」——W3 审计（`/tmp/dsh-prod-ready-evidence/
 w3-precondition-audit.md`）另发现 F-1：生产档 cordis.yml 的 platform-governance 仍 mock
 allow-all，DSH 路径 PRE_CHECK 静默失效，建议升为第四条前置，处置另案。
+
+**F-1 已接线（2026-08-21，WO-DSH-PROD-READY F-1 线）**：生产档 `cordis.yml` platform-governance
+切 `mode: 'http'`（删 `deny: []`），engine DSH 分叉逐 run 经 env 缝注入 `PLATFORM_GOV_URL`
+（缺省推导本进程 `/b/v1/governance/adjudicate`，`DSH_GOV_URL` 可覆盖）与 `PLATFORM_GOV_TOKEN`
+（= `SERVICE_TOKEN`，不落盘）；fail-closed 链三段（无 url 初始化抛错 / 401 / 不可达皆转 deny）
+未削弱。机器证据：新缝 `dsh-gov-production.seam.test.ts` 五臂（真端点 BLOCK deny 理由逐字回灌 ∧
+零执行 / 放行真执行 / 不可达 fail-closed / 401 fail-closed / 不钉 DSH_GOV_URL 缺省推导真打到）
++ mutation 反证三招红（含缺省推导路径段写错 ⇒ ⑤ 红）+ 既有 DSH
+套件全绿（证据指针：`/tmp/dsh-prod-ready-evidence/f1-gov-*.txt`，分支 `claude/wo-dsh-prod-f1-gov`）。
+PRD §6 已同步增列第四条前置并标已销。
