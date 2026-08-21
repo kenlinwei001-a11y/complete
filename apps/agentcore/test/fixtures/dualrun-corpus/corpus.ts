@@ -1,5 +1,5 @@
 /**
- * WO-DSH-E2E · L1 双跑语料（56 任务 + 2 gated 槽）——纯数据，零 IO。
+ * WO-DSH-E2E · L1 双跑语料（58 任务 + 2 gated 槽）——纯数据，零 IO。
  *
  * 对账口径单源 = 同目录 RECONCILIATION.md（team-lead 2026-08-19 重定义：
  * scalar + kernel 唯一白名单 + native 迭代锚 + dsh stats 对齐）。摘要：
@@ -53,10 +53,14 @@ export interface DualRunTask {
   prompt: string;
   skills: CorpusSkill[];
   ruleBindings: { ruleKeys: string[]; mode: "PRE_CHECK" | "POST_CHECK" | "BOTH" };
+  /** G2 结构化任务：expectsSchema 透传 runRegisteredAgent（engine.ts:225 两臂接线俱在）。 */
+  expectsSchema?: Record<string, unknown>;
   dsh: { rounds: StubRound[]; govDeny?: string[] };
   native: { turns: ScriptedTurn[]; preBlock?: RuleVerdict[]; postBlock?: RuleVerdict[] };
   expect: {
     answer: Answer;
+    /** G2：structured 深等锚（result.structured 双臂捕获比对；非结构化任务缺省 = 两臂同 undefined）。 */
+    structured?: unknown;
     nativeIterations: IterationAnchor[];
     nativeTokens: { input: number; output: number };
     /** dsh 臂 stats 锚（usage 折出和）；deny_prefork（零 spawn）无。 */
@@ -352,6 +356,37 @@ function answerLongSoft(o: ClassOpts): DualRunTask {
   };
 }
 
+// ---------------------------------------------------------------------------
+// W2 批2 构造器：G2 expectsSchema 结构化输出
+// （机制依据：两臂接线俱在——engine.ts:605 setup / :620 reassemble / :695 native loop 同传
+//  opts.expectsSchema。valid 形态：native acceptFinalAnswer 校验过 ⇒ answer 恒固定文案
+//  「已按要求返回结构化结果。」（loop.ts:1287-1295）；dsh reassemble expectsSchema 分支
+//  answer = lastAssistantText || 兜底（reassemble.ts:401）⇒ dsh 剧本末轮文本逐字写
+//  同一固定文案对齐。structured = final_answer raw input，两臂深等。）
+// ---------------------------------------------------------------------------
+
+/** 结构化收尾固定文案（native 恒产此文案；dsh 剧本末轮逐字对齐——单源，防两臂各写漂移）。 */
+export const STRUCTURED_ANSWER_TEXT = "已按要求返回结构化结果。";
+
+/** answer · G2 valid：expectsSchema 校验通过 ⇒ 双臂收敛固定文案 + structured 深等。答案无 marker ⇒ 豁免位。 */
+function answerStructured(o: ClassOpts & { schema: Record<string, unknown>; structured: Record<string, unknown> }): DualRunTask {
+  return {
+    id: o.id, cls: "answer", source: o.source, prompt: o.prompt,
+    skills: [], ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    expectsSchema: o.schema,
+    dsh: { rounds: [rFa(o.structured), rTx(STRUCTURED_ANSWER_TEXT)] },
+    native: { turns: [nFa(o.structured)] },
+    expect: {
+      answer: expectAnswer([T(STRUCTURED_ANSWER_TEXT)]),
+      structured: o.structured,
+      nativeIterations: [{ calls: [] }],
+      nativeTokens: { input: 100, output: 50 },
+      dshStats: stats(2),
+      skipMarkerSentinel: true,
+    },
+  };
+}
+
 /** deny_pre · 前置 deny：dsh 臂首次调用（final_answer）即被治理桥拒；双臂终答 = engine 出口 POST_CHECK 替换（W1 起同码）。 */
 
 function denyPre(o: ClassOpts & { ruleId: string }): DualRunTask {
@@ -542,10 +577,41 @@ export const DUALRUN_CORPUS: DualRunTask[] = [
   answerEmptyMixed({ id: "dr50-cb", source: "synthetic", prompt: "合成题 cb（dr50-cb）：空块混排形态。" }),
   answerLongMarkdown({ id: "dr50-cc", source: "synthetic", prompt: "合成题 cc（dr50-cc）：超长输出形态。" }),
   answerLongSoft({ id: "dr50-cd", source: "synthetic", prompt: "合成题 cd（dr50-cd）：超长软收尾形态。" }),
+  // ---- W2 批2：G2 expectsSchema 结构化输出（valid 2 条；prompt 含 id 供豁免位 wire 替代哨兵） ----
+  answerStructured({
+    id: "dr50-ce", source: "synthetic",
+    prompt: "合成题 ce（dr50-ce）：单键结构化结论产出。",
+    schema: { type: "object", required: ["conclusion"], properties: { conclusion: { type: "string" } } },
+    structured: { conclusion: "结构化结论（ce）：按声明口径产出，单键形态。" },
+  }),
+  answerStructured({
+    id: "dr50-cf", source: "synthetic",
+    prompt: "合成题 cf（dr50-cf）：嵌套结构化产出。",
+    schema: {
+      type: "object", required: ["summary", "items"],
+      properties: {
+        summary: { type: "string" },
+        items: {
+          type: "array",
+          items: {
+            type: "object", required: ["name", "score"],
+            properties: { name: { type: "string" }, score: { type: "number" } },
+          },
+        },
+      },
+    },
+    structured: {
+      summary: "嵌套结论（cf）：数组套对象形态。",
+      items: [
+        { name: "甲项", score: 0.9 },
+        { name: "乙项", score: 0.7 },
+      ],
+    },
+  }),
 ];
 
-/** A5 确定性子集（同臂连跑两遍过同一比对器）：每类至少一 + 长上下文 + provenance + 多轮 + 空块混排。 */
-export const A5_SUBSET: readonly string[] = ["dr50-ac", "dr50-ad", "dr50-an", "dr50-ag", "dr50-bk", "dr50-bs", "dr50-cb"];
+/** A5 确定性子集（同臂连跑两遍过同一比对器）：每类至少一 + 长上下文 + provenance + 多轮 + 空块混排 + 结构化。 */
+export const A5_SUBSET: readonly string[] = ["dr50-ac", "dr50-ad", "dr50-an", "dr50-ag", "dr50-bk", "dr50-bs", "dr50-cb", "dr50-ce"];
 
 /**
  * 跨单回执 gated 槽（蓝图末行：角色路/场景路 STALL_LOOP 各一）。

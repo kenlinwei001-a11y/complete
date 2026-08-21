@@ -1,5 +1,5 @@
 /**
- * WO-DSH-E2E · §16.2 L1 双跑字节比对（56 任务）driver。
+ * WO-DSH-E2E · §16.2 L1 双跑字节比对（58 任务）driver。
  *
  * 对账口径单源 = fixtures/dualrun-corpus/RECONCILIATION.md（team-lead 2026-08-19 重定义：
  * scalar + kernel 唯一白名单 + native 迭代锚 + dsh stats 对齐）。骨架扩 N2
@@ -77,6 +77,8 @@ interface CapturedEvent {
 interface ArmProducts {
   outcome: string;
   answer: Record<string, unknown>;
+  /** G2：result.structured 捕获（expectsSchema 任务的双臂对账面；非结构化任务两臂同 undefined）。 */
+  structured?: unknown;
   run: AgentRunRecord;
   sketch: { toolName: string; inputSummary: string }[];
   events: CapturedEvent[];
@@ -167,12 +169,15 @@ async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProduct
       ctx,
       nesting: { callChain: [], budget: new BudgetTracker() },
       emit,
+      // G2：expectsSchema 透传（engine.ts:225 opts 字段，两臂接线俱在：:605 setup/:620 reassemble/:695 loop）
+      ...(task.expectsSchema ? { expectsSchema: task.expectsSchema } : {}),
     });
     // 镜像 orchestrator.ts:2187（G-9 逃生舱）：answer.final 整对象直发 result.answer（两臂同一行，N2 同形）。
     events.push({ event: "answer.final", payload: result.answer as Record<string, unknown> });
     return {
       outcome: result.outcome,
       answer: result.answer as Record<string, unknown>,
+      structured: (result as { structured?: unknown }).structured,
       run: result.run,
       sketch: result.sketch,
       events,
@@ -386,6 +391,12 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
   expect(normalizeAnswer(x.answer)).toEqual(normalizeAnswer(y.answer));
   expect(normalizeAnswer(x.answer)).toEqual(normalizeAnswer(task.expect.answer as unknown as Json));
 
+  // ---- A1b · structured 深等（G2 expectsSchema 任务对账面；非结构化任务两臂同 undefined 也逐值咬）----
+  expect(x.structured, `${task.id} structured 双臂深等`).toEqual(y.structured);
+  if (task.expect.structured !== undefined) {
+    expect(x.structured, `${task.id} structured 须等于语料声明锚`).toEqual(task.expect.structured);
+  }
+
   // ---- A2 · 拒绝口径（deny 类）----
   for (const { arm, flag } of arms) {
     if (flag !== "on") continue;
@@ -417,10 +428,10 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
 // 套件
 // ---------------------------------------------------------------------------
 
-describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（56 任务）", () => {
+describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（58 任务）", () => {
   it("A0 语料自检：构成 / 四维覆盖 / gated 槽在册", () => {
-    expect(DUALRUN_CORPUS.length).toBe(56);
-    expect(new Set(DUALRUN_CORPUS.map((t) => t.id)).size).toBe(56);
+    expect(DUALRUN_CORPUS.length).toBe(58);
+    expect(new Set(DUALRUN_CORPUS.map((t) => t.id)).size).toBe(58);
     const deny = DUALRUN_CORPUS.filter((t) => t.cls.startsWith("deny_"));
     expect(deny.length).toBeGreaterThanOrEqual(10);
     expect(deny.filter((t) => t.cls === "deny_pre").length).toBeGreaterThanOrEqual(1);
