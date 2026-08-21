@@ -64,7 +64,7 @@ const SCRIPT: StubRound[] = [
   { text: "stub final answer", usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
 ];
 
-async function makeAgent(t: TestApp, id: string, mcpServers: { mcpConfigId: string }[]): Promise<string> {
+async function makeAgent(t: TestApp, id: string, mcpServers: { mcpConfigId: string }[], scopeToolNames: string[] = []): Promise<string> {
   const agent = {
     id,
     tenantId: TENANT,
@@ -78,7 +78,7 @@ async function makeAgent(t: TestApp, id: string, mcpServers: { mcpConfigId: stri
     ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
     skills: [],
     mcpServers,
-    scopeDeclaration: { objectTypes: [], toolNames: [] },
+    scopeDeclaration: { objectTypes: [], toolNames: scopeToolNames },
     status: "PUBLISHED",
   } as const;
   await t.repos.agents.insert(agent as never);
@@ -234,6 +234,81 @@ describe("WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发", () => {
         ).rejects.toThrow(/credentialRef unresolvable/);
         // 子进程根本没出生（映射期抛错先于 spawn）⇒ stub 零请求。
         expect(stub.requests.length).toBe(0);
+      } finally {
+        restore();
+        await stub.close();
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it(
+    "A4 · WO-DSH-PROD-READY W9-lite 审计骨架 e2e：dsh 臂 run.iterations 非空（两态+推导 duration）+ run.total* == 剧本 usage 折出和（B11 同源等值）",
+    { timeout: INTEGRATION_TIMEOUT },
+    async () => {
+      const tmp = mkdtempSync(join(tmpdir(), "mcp-forward-a4-"));
+      const recordPath = join(tmp, "record.json");
+      // 剧本：① mcp echo 真工具调用（帧流 tool/call↔tool/result 配对源；MCP 不过宿主=REC §3 #10 实景）
+      //       ② final_answer（meta，不进 iterations）③ 文本收尾。三轮各 50/10 ⇒ 折出和 150/30。
+      const script: StubRound[] = [
+        { toolCall: { name: `mcp__${SERVER_NAME}__echo`, arguments: JSON.stringify({ text: "w9lite" }) }, usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
+        { toolCall: { name: "final_answer", arguments: FINAL_ANSWER_ARGS }, usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
+        { text: "stub final answer", usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } },
+      ];
+      const stub = await startStubOpenAi(script);
+      const restore = withHarnessEnv();
+      try {
+        const t = await createTestApp({
+          providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), "wo-mcp-forward-fake-llm-key") as never,
+          mcp: new MockMcpClient({ [MCP_CONFIG_ID]: [] }),
+          env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
+        });
+        await seedMcpConfig(t, recordPath);
+        // scope 声明白名单含 echo 公开名——harness 治理闸允许表 = scopeDeclaration ∪ granted ∪ meta
+        // （setup-spec.ts :218/:240），表外即 pre-execute deny（本单 TEMP-DIAG 实证：2ms ERROR、server 零到达）。
+        const agentId = await makeAgent(t, "agt_mcp_forward_a4", [{ mcpConfigId: MCP_CONFIG_ID }], [`mcp__${SERVER_NAME}__echo`]);
+        const result = await t.deps.engine.runRegisteredAgent({
+          taskId: "task_mcp_forward_a4",
+          agentId,
+          version: 1,
+          prompt: "先 echo 再收尾",
+          ctx: CTX,
+          nesting: enterNesting({ callChain: [], budget: new BudgetTracker() }, "agent", agentId),
+          emit: async () => {},
+          expectsSchema: EXPECTS_SCHEMA,
+        });
+        expect(result.outcome).toBe("ANSWERED");
+        expect(result.run.kernel).toBe("EXTERNAL"); // 钉死真走 DSH 分叉（否则全臂结论反掉）
+        expect(stub.requests.length).toBe(3); // 剧本三轮真走完（wire 实证）
+        // 骨架锚①：iterations 非空——step 分组（每 LLM 轮一迭代，team-lead 2026-08-21 裁决②）：
+        // 剧本 3 轮 ⇒ 3 迭代（0 基顺编号对位 native index=i）；mcp echo 进、final_answer 轮与
+        // 文本轮留空迭代（轮次证据与调用证据分离，native :1041 空轮同形态）。
+        expect(result.run.iterations).toHaveLength(3);
+        expect(result.run.iterations.map((it) => it.index)).toEqual([0, 1, 2]);
+        const iteration = result.run.iterations[0];
+        expect(iteration).toBeDefined();
+        if (!iteration) return;
+        expect(iteration.toolCalls.map((c) => c.toolName)).toEqual([`mcp__${SERVER_NAME}__echo`]);
+        expect(result.run.iterations[1]?.toolCalls).toEqual([]); // final_answer 轮：调用剔除、轮次留痕
+        expect(result.run.iterations[2]?.toolCalls).toEqual([]); // 纯文本收尾轮
+        const echo = iteration.toolCalls[0];
+        expect(echo).toBeDefined();
+        if (!echo) return;
+        expect(echo.outcome).toBe("OK"); // mock echo 放行；两态物理上限（OK|ERROR，REC §3 #10）
+        // 真到达 server 的交叉实证（防「假 OK」——deny/未派发也落 iterations，只是 outcome 不同）：
+        const a4Record = JSON.parse(readFileSync(recordPath, "utf8")) as { toolCalls: { name: string | null }[] };
+        expect(a4Record.toolCalls.map((c) => c.name)).toEqual(["echo"]);
+        expect(echo.input).toEqual({ text: "w9lite" });
+        expect(echo.durationMs).toBeGreaterThanOrEqual(0); // 墙钟推导值，只锚非负形态（A4 时间量豁免同口径）
+        expect(typeof echo.toolCallId).toBe("string"); // dsh 帧 callId 原值（非 tc_ 形态，合流待 W9-full）
+        // 骨架锚②：run.total* == 剧本 usage 折出和（3×50 / 3×10）
+        expect(result.run.totalInputTokens).toBe(150);
+        expect(result.run.totalOutputTokens).toBe(30);
+        // 骨架锚③：B11 同源等值（ROLLOUT §6.5 验收判据）——run.total* 与 answer.stats 对应桶互等，各读各的不相加
+        const stats = (result.answer as { stats?: { tokenUsage: { uncachedInputTokens: number; outputTokens: number } } }).stats;
+        expect(stats).toBeDefined();
+        expect(result.run.totalInputTokens).toBe(stats?.tokenUsage.uncachedInputTokens);
+        expect(result.run.totalOutputTokens).toBe(stats?.tokenUsage.outputTokens);
       } finally {
         restore();
         await stub.close();

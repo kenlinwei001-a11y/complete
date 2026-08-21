@@ -91,6 +91,29 @@ meta-only 语料下两臂非伪步序列均空（load_skill/final_answer 两臂�
 本面价值 = 50 任务扫频下零意外事件泄漏 + 白名单反咬；真工具 SSE parity 物理不可达
 （dsh 臂无真工具），登记为固有不对称 #3 的推论。
 
+#### A3 补表 · 事件族覆盖矩阵（W5 块1；15 族 = KNOWN_EVENTS 十名 ∪ ALLOWED_PSEUDO_TYPES 五名）
+
+族 = 观测面对账单元 `事件名:伪类型`（driver seqOf 形态）。每族二选一：真触发（语料条目 +
+臂别，driver A3c 自跑实证精确族集）或登记不可达（原因四类闭枚举，不冒充覆盖）。
+
+| 族 | 覆盖真相 |
+|---|---|
+| task.accepted | 编排层事件·本驱动级不可达（orchestrator:538 在 runRegisteredAgent 之外发射） |
+| routing.completed | 编排层事件·本驱动级不可达（orchestrator 路由面发射点群） |
+| clarification.required | 编排层事件·本驱动级不可达（orchestrator:1351） |
+| coordinator.planned | 编排层事件·本驱动级不可达（orchestrator:2546） |
+| step.started（真工具名族） | 真工具步族·meta-only 语料不可达（固有不对称 #3；发射点 loop.ts:847 / mapper tool/call 分支） |
+| step.completed（真工具名/status 族） | 真工具步族·meta-only 语料不可达（固有不对称 #3；loop.ts:848 / mapper tool/result 分支） |
+| answer.final | **真触发**：全部 63 条（双臂；测试镜像 orchestrator:2187 同行发射；矩阵实证锚 dr50-aa） |
+| action_draft.created | 编排层事件·本驱动级不可达（orchestrator:2171 runPathB 段） |
+| task.failed | 编排层事件·本驱动级不可达（orchestrator:1727/:2876；runRegisteredAgent 层 FAILED 无 SSE 发射） |
+| task.cancelled | 编排层事件·本驱动级不可达（orchestrator 取消面发射点群） |
+| agent_narration（step.completed 伪步族） | **真触发**：dsh 臂文本轮（dr50-aa 等凡带 rTx 轮次者；白名单差集项，N2 evidence 12 既有登记；native 臂 emitNarration 缺省关） |
+| agent_think（step.completed 伪步族） | **真触发**：dr50-ck（dsh 臂 reasoning-delta 流式透传，stub reasoning 通道确定性触发；白名单差集项；native 臂 loop.ts 无 agent_think 发射点） |
+| compaction（step.started/step.completed 伪步族） | harness 内部决策·剧本面无确定性触发通道（压缩由子进程上下文压力触发；mapper 三分支由 N2 A6b + N2-A3/A4 黄金帧单测钉死） |
+| final_answer（meta 伪步族） | meta-skip 销账项·绿态恒不出现（D-7 双臂同不产 meta 步事件；出现即差集反咬 + 收缩过滤后序列不等 ⇒ M10 咬点） |
+| load_skill（meta 伪步族） | meta-skip 销账项·绿态恒不出现（同上行口径） |
+
 ### A4 · 审计逐字段（重定义口径）
 逐字段对账 AgentRunRecord：
 - **归一化集**：id（`run_` 形态）；iterations[].toolCalls[].toolCallId（`tc_` 形态）、durationMs（非负数值）。
@@ -100,13 +123,16 @@ meta-only 语料下两臂非伪步序列均空（load_skill/final_answer 两臂�
 - **kernel = 唯一白名单值差**：dsh 恒 "EXTERNAL"、native 恒 "NATIVE"（N5 已落线，真咬）；
   断言两臂值各为锚定字面量 **且其余字段零值差**（差集恰 = {kernel}，反咬白名单不膨胀）。
 - **native 迭代锚**：native 臂 iterations 按语料声明逐轮锚定（轮数 + 每轮 toolCalls 的
-  toolName/outcome 序列 + load_skill input 深等）；dsh 臂 iterations 恒 === []
-  （emptyAgentRunRecord 无源——登记为固有不对称 #4 的一半）。
-- **dsh stats 对齐**（固有不对称 #4 的另一半）：dsh 臂 token 账不在 run 记录在 answer.stats——
-  断言 `stats.tokenUsage` 逐桶等 = 语料声明的 stub 剧本 usage 折出和（pi-ai 口径：
-  prompt_cache_hit_tokens→cacheReadTokens，余入 uncachedInputTokens）、
-  `stats.contextPressure.pressureTokens` = 末轮 prompt_tokens；run.totalInputTokens/totalOutputTokens
-  恒 0/0 锚定。native 臂 tokens 锚 = 100/50 × 剧本轮数（ScriptedLlmClient 固定账）。
+  toolName/outcome 序列 + load_skill input 深等）；dsh 臂 iterations 锚 = W9-lite 帧流骨架
+  （固有不对称 #4 加注 + #10：step 分组每 LLM 轮一迭代（含空轮，native 同粒度）+ 剧本
+  非 meta 调用逐轮对点 + 两态 outcome + durationMs 非负形态锚；零 spawn 任务恒 === []
+  维持空壳诚实缺省）。
+- **dsh stats 对齐**（固有不对称 #4 的另一半）：dsh 臂 token 账双载体同源——answer.stats
+  与 run 记录同出一份帧流 fold。断言 `stats.tokenUsage` 逐桶等 = 语料声明的 stub 剧本
+  usage 折出和（pi-ai 口径：prompt_cache_hit_tokens→cacheReadTokens，余入 uncachedInputTokens）、
+  `stats.contextPressure.pressureTokens` = 末轮 prompt_tokens；run.totalInputTokens/
+  totalOutputTokens 锚 = stats 对应桶**同源等值**（W9-lite 起，B11 验收判据；零 spawn 任务
+  恒 0/0 维持）。native 臂 tokens 锚 = 100/50 × 剧本轮数（ScriptedLlmClient 固定账）。
   两臂 token 账**不互比**（物理不同源），各锚各的剧本。
 - **budgetExhausted 分锚（G3 length 截断任务，W2 批3）**：finish_reason=length 场景两臂
   语义取向不同（§3 #9 缝观察）⇒ 该字段对 lengthDivergence 置位任务**不互比**，逐臂锚定
@@ -129,16 +155,42 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
 3. 两臂工具集物理不同（dsh meta-only vs native builtin）⇒ 语料两臂同用 meta 剧本保 parity；
    真工具对账物理不可达，L1 不声明该覆盖。
 4. dsh 臂审计记录为空壳（iterations []、tokens 0/0）⇒ native 迭代锚 + dsh stats 对齐代之，
-   两臂 token/迭代不互比。
+   两臂 token/迭代不互比。**审计行维度扩锚（W5 块3，A4b）**：native 臂每轮 load_skill
+   落一行 toolCalls 审计（loop.ts:731），dsh 臂恒零行（reassemble 纯重组装零 IO）——
+   该不对称从「登记」升级为「锚」：driver A4b 断言 native 行数 == 剧本 load_skill
+   tool_use 数且逐行 toolName/outcome/input 深等、dsh 臂 `toEqual([])`、deny_prefork 类
+   两臂同零。双向反咬：dsh 臂若开始写审计行 = 未登记的行为漂移 ⇒ 红；native 臂若丢行
+   = 审计丢失 ⇒ 红。entitlement 拒证时序同此口径：同一 agent 配置下两臂拒绝点位
+   逐字节同码（A2 强制点），kernel 字段值差仍是唯一白名单差（A4 先例）。
+   **（W9-lite 加注 2026-08-21：W9-lite 起 iterations/tokens 有骨架——iterations 按 step
+   分组（team-lead 裁决②：native 迭代粒度 = 每 LLM 轮 = step；turn 恒 1 时 turn 分组恒产
+   单迭代、无 parity 价值），每 LLM 轮一迭代含空 step 轮（对位 native loop.ts:1041/:1083
+   空轮形态），index 0 基顺编号对位 native index=i；outcome 两态（OK/ERROR）+ 推导
+   durationMs（tool/call↔tool/result 帧 time 差，配对键 turn-step-callId）+ run.total*
+   回填帧流 usage 折出和（B11 同源等值入锚：run.total* === answer.stats.tokenUsage 对应桶）。
+   A4 锚路径两步走——**空壳锚 → 骨架锚（W9-lite 本步）→ 真对账（W9-full 单翻）**：
+   本步只把 dsh 臂每臂锚定值从空壳翻成骨架，跨臂互比结构未动（scalarTail 差集仍恰 =
+   {kernel}），复验不得把骨架锚误判为已提前翻成真对账。四态 + tc_ 合流 + A4 双臂互比
+   待 W9-full 一次翻。空壳口径仅余零 spawn 早退路（deny_prefork 类）。A4b 审计行锚与
+   本骨架正交：骨架进 run.iterations（记录内字段），审计行 = 宿主 tool_calls 表（IO 面），
+   W9-lite 仍零行——A4b「dsh 臂若开始写审计行 = 红」反咬维持，行写入属 W8主/W9-full。）**
 5. **缝观察（denied final_answer 的 blocks 仍上 answer 面）**：dsh 帧流 tool/call 在派发前记录
    （agent-loop lib/index.js:191 appendToolCall 在派发 :196 之前），pre-execute deny 不抹帧；reassemble collectToolCalls 不滤成败
    ⇒ 被拒 final_answer 的 blocks 仍成 answer。deny 的执行证据只能在 wire/帧面断言，answer 面
    不体现 deny。本层如实登记，不修缝（L1 是测试层；若评审裁定这是缺陷，另立 WO）。
 6. runPathB 不过分叉（蓝图 evidence 1）⇒ 本层驱动只走 runRegisteredAgent。
 7. 角色路（runRolePathB）/场景路（runSceneAgent）STALL_LOOP 两条语料槽（跨单回执）：
-   orchestrator agent_degraded 发射已三处补齐（:2182/:2433/:2694，886c436a7 静默缝×2 修复落线）；
-   解 gate 属跨单回执 + 角色/场景路新语料面，超出本 driver 的 runRegisteredAgent 单驱动边界（#6），
-   已裁决转 W5 登记（W5-输入 #1）⇒ 语料维持 gated 槽（`GATED_SLOTS`），driver 鸣报 skipped，不冒充覆盖。
+   agent_degraded 发射缝已落线（886c436a7，发射点 :2182/:2433/:2694；发射点在分叉后编排层
+   共享码，两臂对称经过——W5 块4 实证：runRolePathB :2406 / runSceneAgent :2669 同走
+   engine.runRegisteredAgent 过分叉，「两臂对称性不适用（不过分叉）」预设不成立；
+   runPathB :2027 直调 runAgentLoop 不过分叉，#6 登记维持）。**覆盖缺口非发射缝** =
+   ①编排层驱动级缺：dualrun50 直驱 runRegisteredAgent，捕获不到编排层发射的 agent_degraded；
+   ②STALL_LOOP 确定性触发通道缺：dsh 臂须 watchdog 真 cancel 落帧，语料面无确定性通道。
+   team-lead 2026-08-21 裁决（W5 块4）：gated 槽**维持不解**且**不建编排层双跑驱动级**——
+   a. STALL_LOOP 触发无确定性通道，建驱动级也得先造新观测缝，属新增观测面（撞冻结扩面禁令）；
+   b. 两臂对称性由「发射点在分叉后共享码」码结构论证 + L4/L6 真跳层覆盖，登记即够。
+   ⇒ 语料维持 gated 槽（`GATED_SLOTS`），driver 鸣报 skipped，不冒充覆盖；
+   **转 W7 输入**：灰度文档须载明「degraded 事件面 parity = 码对称论证，非双跑实证」。
 8. **缝观察（纯空 stop 的 outcome 分歧；已裁决·不判缺陷，不进断言，W2 批1 实证）**：native 臂
    纯空文本轮走 `lastText || "（探索模式未能产出回答）"` 软收尾 ⇒ outcome ANSWERED；
    dsh 臂 pi-ai 适配器对「stop + 零内容块」判 EMPTY_RESPONSE 错误
@@ -175,10 +227,19 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
    有界终止必带诚实前缀约定；语料锚 = corpus.ts LENGTH_TRUNCATION_HEADER 逐字）。
    钉死位：dr50-ch 双臂分锚 + reassemble 探针 max-tokens 头逐字锚 + mutation 双招反证
    （摘 engine budgetExhausted 赋值 ⇒ 分锚红；摘 reassemble 摘要头 ⇒ A1 分锚红 + 探针红）。
+10. **MCP 调用在 dsh 臂不过宿主（W9-lite 观测面骨架的物理上限，2026-08-21 登记）**：
+   dsh 臂 MCP 工具由 harness 子进程世界直连执行（不过宿主 executor；W8主 HTTP 带外
+   tool-execute 反向通道在途）⇒ 调用无 tc_ 形态 id、无宿主 IAM/DENIED 决策记录；
+   治理面 deny（允许表/ruleBindings 裁决）落到帧面只是 isError=true 的 tool/result
+   （mcp-forward 缝 A4 实证：表外调用 2ms ERROR、server 零到达）。
+   ⇒ W9-lite run.iterations 骨架的 outcome 只有 OK/ERROR **两态**（DENIED/BUDGET_EXCEEDED
+   帧流无源，不硬造）；toolCallId = dsh 帧 callId 原值（非 tc_ 形态）；durationMs =
+   call/result 帧 time 差推导值（墙钟，只锚非负形态）。四态 + tc_ 合流 + A4 双臂互比
+   单翻待 W9-full。
 
-## 4. 语料构成（60 条 + 2 gated）
+## 4. 语料构成（63 条 + 2 gated）
 - 内容源：20 条 = SCENARIO_CATALOG triggerQuestion（执行通道不借 evals——蓝图 evidence 5）；
-  40 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮 load_skill；
+  43 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮 load_skill；
   多轮：1/2/5 次 LLM 往返；拒绝混合：deny_pre 前置 / deny_mid 中段 / deny_all 全 deny /
   deny_prefork 分叉前）+ W2 批1 扩面 6 条：G1 EMPTY 空块类 4（dr50-by 空 blocks /
   dr50-bz 空 markdown 块 / dr50-ca 空白软收尾 / dr50-cb 空块混排）+ G4 超长输出 2
@@ -187,9 +248,13 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
   dr50-cf 嵌套 schema valid / dr50-cg invalid→valid 拒后收敛——dsh 剧本末轮文本
   恒写固定文案 STRUCTURED_ANSWER_TEXT 单源，invalid 形态锚 A1b 修复后 fail-closed 口径）
   + W2 批3 扩面 1 条：G3 finish_reason=length 截断（dr50-ch 双臂分锚——§3 #9 设计取向差
-  登记 + dsh 自体修复两件钉死；stub 夹具增 finishReason 可选键，缺省 "stop" 字节兼容）。
+  登记 + dsh 自体修复两件钉死；stub 夹具增 finishReason 可选键，缺省 "stop" 字节兼容）
+  + W5 扩面 3 条：dr50-ci provenance 畸形拒后收敛（final_answer 入参严校验通道双臂同形态）、
+  dr50-cj writeMode 缺 action_draft 拒后收敛（语料声明 sideEffect=WRITE ⇒ driver skillDef
+  治理位透传）、dr50-ck reasoning 流（stub reasoning 通道 ⇒ dsh 臂 agent_think 族真触发，
+  A3c 矩阵精确族集锚）。
 - 每条 = 数据对 {native 臂 mock 队列剧本，dsh 臂 stub 剧本（+PLATFORM_GOV_DENY 声明），
   期望值声明（answer / native 迭代锚 / native token 锚 / dsh stats 锚 / deny wire 证据位 /
   EMPTY 豁免位 / expectsSchema 与 structured 锚 / lengthDivergence 分锚）}。
-- 自检闸（driver 首条 it）：总数 60、deny ≥10、四维覆盖全到位、A5 子集 ∈ 语料、
+- 自检闸（driver 首条 it）：总数 63、deny ≥10、四维覆盖全到位、A5 子集 ∈ 语料、
   EMPTY 豁免位双恰（豁免 ⇔ 期望答案无 marker；豁免任务 prompt 必含 id）、gated 槽在册。

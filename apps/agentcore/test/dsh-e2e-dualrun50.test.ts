@@ -1,5 +1,5 @@
 /**
- * WO-DSH-E2E · §16.2 L1 双跑字节比对（60 任务）driver。
+ * WO-DSH-E2E · §16.2 L1 双跑字节比对（63 任务）driver。
  *
  * 对账口径单源 = fixtures/dualrun-corpus/RECONCILIATION.md（team-lead 2026-08-19 重定义：
  * scalar + kernel 唯一白名单 + native 迭代锚 + dsh stats 对齐）。骨架扩 N2
@@ -85,6 +85,12 @@ interface ArmProducts {
   sketch: { toolName: string; inputSummary: string }[];
   events: CapturedEvent[];
   stubRequests: StubRequest[];
+  /**
+   * W5 块3（A4b）：本臂运行落库的 toolCalls 审计行（repos.toolCalls.listByTask 原样快照，
+   * 仅取对账字段）。native 臂 load_skill 每轮一行（loop.ts:731）；dsh 臂恒零行
+   * （reassemble 纯重组装零 IO——固有不对称 #4 的审计空壳维度，本面把它从「登记」升级为「锚」）。
+   */
+  auditRows: { toolName: string; outcome: string; input: unknown }[];
 }
 
 function agentDef(task: DualRunTask): AgentDefinition {
@@ -117,8 +123,9 @@ function skillDef(task: DualRunTask, s: DualRunTask["skills"][number]): SkillDef
     body: s.body,
     resources: [],
     status: "PUBLISHED",
-    sideEffect: "READ",
-    approvalGate: "none",
+    // W5 块2：治理位从语料声明取（缺省 = 既有硬编码，旧 59 条零漂移；dr50-cj 置 WRITE ⇒ writeMode 通道开）。
+    sideEffect: s.sideEffect ?? "READ",
+    approvalGate: s.approvalGate ?? "none",
     provenancePolicy: "best_effort",
     references: (s.preRuleKeys ?? []).map((key) => ({
       kind: "rule" as const,
@@ -177,6 +184,13 @@ async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProduct
     });
     // 镜像 orchestrator.ts:2187（G-9 逃生舱）：answer.final 整对象直发 result.answer（两臂同一行，N2 同形）。
     events.push({ event: "answer.final", payload: result.answer as Record<string, unknown> });
+    // W5 块3（A4b）：审计行快照在臂内完成（repos 随 TestApp 存活；行序 = listByTask 的 createdAt 序，
+    // 同毫秒并列时 V8 稳定排序保插入序——语料逐轮串行插入，次序即剧本序）。
+    const auditRows = (await t.repos.toolCalls.listByTask(`task_${task.id}`)).map((r) => ({
+      toolName: r.toolName,
+      outcome: r.outcome,
+      input: r.input,
+    }));
     return {
       outcome: result.outcome,
       answer: result.answer as Record<string, unknown>,
@@ -186,6 +200,7 @@ async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProduct
       sketch: result.sketch,
       events,
       stubRequests: stub?.requests ?? [],
+      auditRows,
     };
   } finally {
     delete process.env.DSH_HARNESS;
@@ -326,26 +341,59 @@ function checkArmAnchors(task: DualRunTask, flag: "off" | "on", arm: ArmProducts
       });
     });
   } else {
-    // dsh 臂审计空壳（固有不对称 #4）：iterations 恒空、tokens 恒零
-    expect(arm.run.iterations).toEqual([]);
-    expect(arm.run.totalInputTokens).toBe(0);
-    expect(arm.run.totalOutputTokens).toBe(0);
+    // dsh 臂审计锚（固有不对称 #4 + W9-lite 起 #10）：两臂不互比、各锚各的剧本——
+    // A4 锚定方案不变（scalar 互比零触、kernel 唯一差不变）；四态+tc_ 合流 + A4 单翻待 W9-full。
     const anchor = task.expect.dshStats;
     const stats = (arm.answer as { stats?: { tokenUsage: Json; contextPressure?: Json; sessionStats: Json } }).stats;
     if (!anchor) {
+      // 零 spawn（分叉前预检早退）：无帧流 ⇒ 空壳维持（诚实缺省，骨架不造无源数据）
       expect(stats, `${task.id} 零 spawn 任务不得有 stats 键`).toBeUndefined();
-    } else {
-      expect(stats, `${task.id} dsh 臂必带 stats（N2 M8 回声）`).toBeDefined();
-      expect(stats!.tokenUsage).toEqual({
-        uncachedInputTokens: anchor.uncachedInputTokens,
-        outputTokens: anchor.outputTokens,
-        cacheReadTokens: anchor.cacheReadTokens,
-        cacheWriteTokens: anchor.cacheWriteTokens,
-      });
-      expect(stats!.contextPressure).toEqual({ pressureTokens: anchor.pressureTokens });
-      expect(stats!.sessionStats.turns).toBe(anchor.turns);
-      expect(stats!.sessionStats.steps).toBe(anchor.steps);
+      expect(arm.run.iterations, `${task.id} 零 spawn ⇒ iterations 空壳维持`).toEqual([]);
+      expect(arm.run.totalInputTokens, `${task.id} 零 spawn ⇒ tokens 0/0 维持`).toBe(0);
+      expect(arm.run.totalOutputTokens, `${task.id} 零 spawn ⇒ tokens 0/0 维持`).toBe(0);
+      return;
     }
+    expect(stats, `${task.id} dsh 臂必带 stats（N2 M8 回声）`).toBeDefined();
+    expect(stats!.tokenUsage).toEqual({
+      uncachedInputTokens: anchor.uncachedInputTokens,
+      outputTokens: anchor.outputTokens,
+      cacheReadTokens: anchor.cacheReadTokens,
+      cacheWriteTokens: anchor.cacheWriteTokens,
+    });
+    expect(stats!.contextPressure).toEqual({ pressureTokens: anchor.pressureTokens });
+    expect(stats!.sessionStats.turns).toBe(anchor.turns);
+    expect(stats!.sessionStats.steps).toBe(anchor.steps);
+    // WO-DSH-PROD-READY W9-lite 骨架锚①：iterations = 帧流 step 分组（team-lead 2026-08-21 裁决②——
+    // native 迭代粒度 = 每 LLM 轮 = step，turn 恒 1 时 turn 分组恒产单迭代无 parity 价值）。
+    // 每 stub 轮 = 一个 LLM step（与上方 stats 锚 steps === 剧本轮数同源互证）⇒ 迭代数 === 剧本轮数，
+    // index 0 基顺编号对位 native index=i；非 meta 调用对点所属轮（final_answer 剔除其轮留空迭代，
+    // 对位 native 审计口径 + :1041 空轮形态）；outcome 两态物理上限（govDeny ⇒ 帧 isError ⇒ ERROR；
+    // DENIED/BUDGET_EXCEEDED 帧流无源不硬造）；durationMs 推导值只锚非负形态（墙钟，A4 时间量豁免同口径）。
+    const its = arm.run.iterations;
+    expect(its, `${task.id} dsh 臂迭代数 === 剧本轮数（step 分组，每 LLM 轮一迭代）`).toHaveLength(task.dsh.rounds.length);
+    its.forEach((iter, i) => {
+      expect(iter.index, `${task.id} dsh 迭代 ${i} index 0 基顺编号`).toBe(i);
+      const tc = task.dsh.rounds[i]?.toolCall;
+      if (tc === undefined || tc.name === "final_answer") {
+        expect(iter.toolCalls, `${task.id} dsh 第 ${i} 轮（文本/final_answer 轮）⇒ 空迭代`).toEqual([]);
+        return;
+      }
+      expect(iter.toolCalls.map((c) => c.toolName), `${task.id} dsh 第 ${i} 轮 toolName 对点剧本`).toEqual([tc.name]);
+      const c = iter.toolCalls[0];
+      expect(c, `${task.id} dsh 第 ${i} 轮调用锚点缺失`).toBeDefined();
+      if (!c) return;
+      expect(c.outcome, `${task.id} dsh 调用 ${tc.name} outcome 两态锚`).toBe(
+        (task.dsh.govDeny ?? []).includes(tc.name) ? "ERROR" : "OK",
+      );
+      expect(["OK", "ERROR"], `${task.id} dsh outcome 词表物理上限两态`).toContain(c.outcome);
+      expect(c.durationMs).toBeGreaterThanOrEqual(0);
+      expect(typeof c.toolCallId).toBe("string"); // dsh 帧 callId 原值（非 tc_ 形态，#10）
+    });
+    // W9-lite 骨架锚②：B11 同源等值（ROLLOUT §6.5 验收判据）——run.total* === answer.stats
+    // 对应桶（同一份帧流 fold 的两个载体）；两臂 token 账不互比维持。
+    const buckets = stats!.tokenUsage as { uncachedInputTokens: number; outputTokens: number };
+    expect(arm.run.totalInputTokens, `${task.id} run.totalInputTokens === stats.uncachedInputTokens（同源等值）`).toBe(buckets.uncachedInputTokens);
+    expect(arm.run.totalOutputTokens, `${task.id} run.totalOutputTokens === stats.outputTokens（同源等值）`).toBe(buckets.outputTokens);
   }
 }
 
@@ -449,6 +497,39 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
   checkArmAnchors(task, flags.x, x);
   checkArmAnchors(task, flags.y, y);
 
+  // ---- A4b · audit 写入不变量（W5 块3：audit 写入不因内核选择而**隐性**分裂）----
+  // 锚定形态（双向防漂）：
+  //   native 臂 = 剧本里每个 load_skill tool_use 一行审计（toolName/outcome/input 逐点）；
+  //   dsh 臂   = 恒零行（reassemble 零 IO，固有不对称 #4 的审计空壳维度——登记差异被锚成字面量，
+  //              dsh 侧哪天开始写审计 = 未登记的语义变更 ⇒ 红；native 侧哪天丢行 = 审计丢失 ⇒ 红）；
+  //   deny_prefork = 两臂恒零行（分叉前预检拒止 ⇒ 零执行痕迹——entitlement/治理拒止时点
+  //              跨核一致的强形态：拒止早于一切可观测执行，kernel 选择不改变拒止时点）。
+  {
+    const expectedLoadSkillCalls: unknown[] = [];
+    for (const turn of task.native.turns) {
+      if (typeof turn !== "object" || !("content" in turn)) continue;
+      for (const b of turn.content) {
+        if (b.type === "tool_use" && b.name === "load_skill") expectedLoadSkillCalls.push(b.input);
+      }
+    }
+    for (const { label, arm, flag } of arms) {
+      if (flag === "on") {
+        expect(arm.auditRows, `${task.id} A4b：dsh 臂 toolCalls 审计行恒零（reassemble 纯重组装零 IO）`).toEqual([]);
+      } else {
+        expect(
+          arm.auditRows.length,
+          `${task.id} A4b：native 臂审计行数 == 剧本 load_skill 轮数（每轮一行，不多不少）`,
+        ).toBe(expectedLoadSkillCalls.length);
+        arm.auditRows.forEach((row, i) => {
+          expect(row.toolName, `${task.id} A4b：第 ${i} 行 toolName`).toBe("load_skill");
+          expect(row.outcome, `${task.id} A4b：第 ${i} 行 outcome`).toBe("OK");
+          expect(row.input, `${task.id} A4b：第 ${i} 行 input 与剧本 load_skill 入参逐值等`).toEqual(expectedLoadSkillCalls[i]);
+        });
+      }
+      void label;
+    }
+  }
+
   // ---- sketch / outcome parity ----
   expect(x.sketch).toEqual(y.sketch);
   if (div) {
@@ -467,10 +548,10 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
 // 套件
 // ---------------------------------------------------------------------------
 
-describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（60 任务）", () => {
+describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（63 任务）", () => {
   it("A0 语料自检：构成 / 四维覆盖 / gated 槽在册", () => {
-    expect(DUALRUN_CORPUS.length).toBe(60);
-    expect(new Set(DUALRUN_CORPUS.map((t) => t.id)).size).toBe(60);
+    expect(DUALRUN_CORPUS.length).toBe(63);
+    expect(new Set(DUALRUN_CORPUS.map((t) => t.id)).size).toBe(63);
     const deny = DUALRUN_CORPUS.filter((t) => t.cls.startsWith("deny_"));
     expect(deny.length).toBeGreaterThanOrEqual(10);
     expect(deny.filter((t) => t.cls === "deny_pre").length).toBeGreaterThanOrEqual(1);
@@ -535,7 +616,141 @@ describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（60 任务）", () => {
     }
   });
 
-  it("gated 槽鸣报：角色路/场景路 STALL_LOOP 覆盖转 W5 登记（缝已落线·解 gate 属新语料面）", () => {
+  // -------------------------------------------------------------------------
+  // W5 块1 · A3c SSE 事件族覆盖矩阵
+  //
+  // 15 族 = KNOWN_EVENTS 十名（前端 useTaskStream.ts:29-38 订阅面，单源经 N2 字面量锚）
+  // ∪ ALLOWED_PSEUDO_TYPES 五名（payload.type 伪步族，N2 单源）。矩阵每行声明一族在本
+  // 驱动级（engine.runRegisteredAgent 双臂 + answer.final 镜像）的覆盖真相：
+  //   triggered   —— 至少一条语料真触发（本 it 自跑声明任务实证，精确族集断言）；
+  //   unreachable —— 本驱动级物理不可达，原因四类闭枚举，逐行登记进 REC §2-A3 补表
+  //                  （本 it 文本锚 REC 防登记漂移），不冒充覆盖。
+  // -------------------------------------------------------------------------
+
+  /** 不可达原因闭枚举（加类须评审；中文标签须与 REC §2-A3 补表逐字一致）。 */
+  const UNREACHABLE_REASONS = {
+    /** 编排层事件：orchestrator 在 runRegisteredAgent 之外发射（task.accepted 等七名），本驱动级够不着。 */
+    ORCHESTRATOR_LEVEL: "编排层事件·本驱动级不可达",
+    /** 真工具步族：语料两臂同用 meta 剧本保 parity（固有不对称 #3），真工具 SSE 对拍物理不可达。 */
+    REAL_TOOL_ONLY: "真工具步族·meta-only 语料不可达",
+    /** harness 内部决策：压缩由子进程上下文压力触发，剧本面无确定性通道（mapper 分支由 N2 A6b/A3/A4 单测钉死）。 */
+    HARNESS_INTERNAL: "harness 内部决策·剧本面无确定性触发通道",
+    /** meta skip 销账项：D-7 双臂同不产 meta 步事件，绿态恒不出现；出现即差集反咬 + 收缩过滤后序列不等（M10 咬点）。 */
+    META_SKIP_GREEN_ABSENT: "meta-skip 销账项·绿态恒不出现",
+  } as const;
+  type UnreachableReason = keyof typeof UNREACHABLE_REASONS;
+
+  interface FamilyRow {
+    /** 族名（KNOWN_EVENTS 事件名 或 ALLOWED_PSEUDO_TYPES 伪步类型名）。 */
+    name: string;
+    /** seqOf 族串（事件名:伪类型）——观测面对账单元。 */
+    family: string;
+    status:
+      | { kind: "triggered"; taskId: string; expect: { off: string[]; on: string[] } }
+      | { kind: "unreachable"; reason: UnreachableReason };
+  }
+
+  const EVENT_FAMILY_MATRIX: readonly FamilyRow[] = [
+    { name: "task.accepted", family: "task.accepted:", status: { kind: "unreachable", reason: "ORCHESTRATOR_LEVEL" } },
+    { name: "routing.completed", family: "routing.completed:", status: { kind: "unreachable", reason: "ORCHESTRATOR_LEVEL" } },
+    { name: "clarification.required", family: "clarification.required:", status: { kind: "unreachable", reason: "ORCHESTRATOR_LEVEL" } },
+    { name: "coordinator.planned", family: "coordinator.planned:", status: { kind: "unreachable", reason: "ORCHESTRATOR_LEVEL" } },
+    { name: "step.started", family: "step.started:<真工具名>", status: { kind: "unreachable", reason: "REAL_TOOL_ONLY" } },
+    { name: "step.completed", family: "step.completed:<真工具名>", status: { kind: "unreachable", reason: "REAL_TOOL_ONLY" } },
+    {
+      name: "answer.final",
+      family: "answer.final:",
+      status: {
+        kind: "triggered",
+        taskId: "dr50-aa",
+        expect: { off: ["answer.final:"], on: ["step.completed:agent_narration", "answer.final:"] },
+      },
+    },
+    { name: "action_draft.created", family: "action_draft.created:", status: { kind: "unreachable", reason: "ORCHESTRATOR_LEVEL" } },
+    { name: "task.failed", family: "task.failed:", status: { kind: "unreachable", reason: "ORCHESTRATOR_LEVEL" } },
+    { name: "task.cancelled", family: "task.cancelled:", status: { kind: "unreachable", reason: "ORCHESTRATOR_LEVEL" } },
+    {
+      name: "agent_narration",
+      family: "step.completed:agent_narration",
+      status: {
+        kind: "triggered",
+        taskId: "dr50-aa",
+        expect: { off: ["answer.final:"], on: ["step.completed:agent_narration", "answer.final:"] },
+      },
+    },
+    {
+      name: "agent_think",
+      family: "step.completed:agent_think",
+      status: {
+        kind: "triggered",
+        taskId: "dr50-ck",
+        expect: {
+          off: ["answer.final:"],
+          on: ["step.completed:agent_think", "step.completed:agent_narration", "answer.final:"],
+        },
+      },
+    },
+    { name: "compaction", family: "step.started:compaction|step.completed:compaction", status: { kind: "unreachable", reason: "HARNESS_INTERNAL" } },
+    { name: "final_answer", family: "step.started:final_answer|step.completed:final_answer", status: { kind: "unreachable", reason: "META_SKIP_GREEN_ABSENT" } },
+    { name: "load_skill", family: "step.started:load_skill|step.completed:load_skill", status: { kind: "unreachable", reason: "META_SKIP_GREEN_ABSENT" } },
+  ];
+
+  it("A3c 事件族覆盖矩阵：15 族每族真触发或登记不可达，不冒充覆盖", { timeout: 300_000 }, async () => {
+    // ① 完备性：矩阵恰 = KNOWN_EVENTS ∪ ALLOWED_PSEUDO_TYPES（单源字面量漂移 ⇒ 此断言红）。
+    const declared = EVENT_FAMILY_MATRIX.map((r) => r.name);
+    expect(new Set(declared).size, "矩阵族名零重复").toBe(declared.length);
+    expect([...declared].sort()).toEqual([...KNOWN_EVENTS, ...ALLOWED_PSEUDO_TYPES].sort());
+
+    // ② 触发行真触发：按 taskId 分组自跑双臂，观测族集（Set 语义）与声明逐组精确等——
+    //    「精确等」是双向咬：声明的族没出现 ⇒ 红（冒充触发）；出现声明外的族 ⇒ 红（事件面漂移）。
+    const triggeredRows = EVENT_FAMILY_MATRIX.filter(
+      (r): r is FamilyRow & { status: Extract<FamilyRow["status"], { kind: "triggered" }> } => r.status.kind === "triggered",
+    );
+    const byTask = new Map<string, typeof triggeredRows>();
+    for (const r of triggeredRows) {
+      const group = byTask.get(r.status.taskId) ?? [];
+      group.push(r);
+      byTask.set(r.status.taskId, group);
+    }
+    for (const [taskId, rows] of byTask) {
+      for (const r of rows) {
+        expect(r.status.expect, `矩阵同任务 ${taskId} 的各行 expect 声明必须一致`).toEqual(rows[0]!.status.expect);
+        expect(r.status.expect.off.includes(r.family) || r.status.expect.on.includes(r.family),
+          `矩阵行 ${r.name} 的族串 ${r.family} 须在其声明的观测集内`).toBe(true);
+      }
+      const task = DUALRUN_CORPUS.find((t) => t.id === taskId);
+      expect(task, `矩阵触发任务 ${taskId} 须在语料内`).toBeDefined();
+      const off = await runArm(task!, "off");
+      const on = await runArm(task!, "on");
+      expect([...new Set(seqOf(off.events))].sort(), `${taskId} native 臂观测族集 == 矩阵声明`).toEqual(
+        [...rows[0]!.status.expect.off].sort(),
+      );
+      expect([...new Set(seqOf(on.events))].sort(), `${taskId} dsh 臂观测族集 == 矩阵声明`).toEqual(
+        [...rows[0]!.status.expect.on].sort(),
+      );
+    }
+
+    // ③ 不可达行登记锚：原因 ∈ 闭枚举 ∧ REC §2-A3 补表逐行登记（族名 + 原因中文标签文本锚）。
+    const rec = readFileSync(fileURLToPath(new URL("./fixtures/dualrun-corpus/RECONCILIATION.md", import.meta.url)), "utf8");
+    const a3Section = rec.slice(rec.indexOf("### A3"), rec.indexOf("### A4"));
+    expect(a3Section.length, "REC §2-A3 节须存在").toBeGreaterThan(0);
+    for (const r of EVENT_FAMILY_MATRIX) {
+      if (r.status.kind !== "unreachable") continue;
+      expect(
+        a3Section.includes(r.name) && a3Section.includes(UNREACHABLE_REASONS[r.status.reason]),
+        `REC §2-A3 补表须登记不可达族 ${r.name}（原因 ${r.status.reason} = ${UNREACHABLE_REASONS[r.status.reason]}）`,
+      ).toBe(true);
+    }
+
+    // ④ META_SKIP 反咬机制锚（静态）：final_answer/load_skill 恒在全量白名单但恒不在收缩集——
+    //    skip 破损时它们以差集出现（白名单内可过 diff 断言）但收缩过滤滤不掉 ⇒ 序列不等红（M10 咬点不动）。
+    for (const meta of ["final_answer", "load_skill"]) {
+      expect(ALLOWED_PSEUDO_TYPES).toContain(meta);
+      expect(SHRUNK_PSEUDO_TYPES).not.toContain(meta);
+    }
+  });
+
+  it("gated 槽鸣报：角色路/场景路 STALL_LOOP 覆盖维持 gated（缝已落线；缺口=编排层驱动级+触发通道缺，REC §3 #7 裁决口径）", () => {
     for (const g of GATED_SLOTS) {
       console.warn(`GATED ${g.id}（${g.path} ${g.scenario}）：${g.gate}`);
     }
