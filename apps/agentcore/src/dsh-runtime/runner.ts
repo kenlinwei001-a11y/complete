@@ -74,6 +74,10 @@ export async function runDshAgent(input: DshRunInput, opts: DshRunnerOptions = {
   const events: DshSessionEvent[] = [];
   const mapper = createSseMapper(); // N2·D-7：工厂持 meta callId 集，一次 run 一个实例
   const sub = client.subscribeSessionTree(sessionId);
+  // WO-DSH-PROD-READY W4·G1：子进程死亡信号位。subscription 在轮询期内被拒的唯一成因
+  // 是 runtime 死（failSubscriptions 挂在 child error/exit 上；finally 的 sub.close() 拒
+  // 发生在轮询之后）——collector 的 reject 边即第三收束源，免碰 client 私有 exitCode。
+  let runtimeDead = false;
   const collector = (async () => {
     for await (const n of sub) {
       if (n.method !== "session.event") continue;
@@ -83,7 +87,9 @@ export async function runDshAgent(input: DshRunInput, opts: DshRunnerOptions = {
       const sse = mapper(event);
       if (sse) input.onSse?.(sse);
     }
-  })().catch(() => undefined); // sub.close() 会拒 pending waiter；立即挂 catch 防 unhandled rejection
+  })().catch(() => {
+    runtimeDead = true; // sub.close()/进程死都会拒 pending waiter；挂 catch 防 unhandled rejection（原语义保留）
+  });
   try {
     client.start();
     await client.initialize({
@@ -97,9 +103,10 @@ export async function runDshAgent(input: DshRunInput, opts: DshRunnerOptions = {
       contentBlocks: [{ type: "text", text: input.prompt }],
       ...(input.setup ? { setup: input.setup } : {}),
     });
-    // turn/end 即收束（requestTimeoutMs 兜底悬死）。
+    // 收束三源：turn/end（正常尾帧）+ 进程死亡（runtimeDead，G1——崩于 t=0 也百 ms 级收束，
+    // 不空转烧 deadline 尾延迟）+ deadline（requestTimeoutMs 兜底悬死）。缺一即慢失败。
     const deadline = Date.now() + (opts.requestTimeoutMs ?? 120_000);
-    while (!events.some((e) => e.type === "turn/end") && Date.now() < deadline) {
+    while (!events.some((e) => e.type === "turn/end") && !runtimeDead && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 50));
     }
     const result = reassembleDshRun(events, input.reassemble ?? {});
