@@ -88,6 +88,29 @@ meta-only 语料下两臂非伪步序列均空（load_skill/final_answer 两臂�
 本面价值 = 50 任务扫频下零意外事件泄漏 + 白名单反咬；真工具 SSE parity 物理不可达
 （dsh 臂无真工具），登记为固有不对称 #3 的推论。
 
+#### A3 补表 · 事件族覆盖矩阵（W5 块1；15 族 = KNOWN_EVENTS 十名 ∪ ALLOWED_PSEUDO_TYPES 五名）
+
+族 = 观测面对账单元 `事件名:伪类型`（driver seqOf 形态）。每族二选一：真触发（语料条目 +
+臂别，driver A3c 自跑实证精确族集）或登记不可达（原因四类闭枚举，不冒充覆盖）。
+
+| 族 | 覆盖真相 |
+|---|---|
+| task.accepted | 编排层事件·本驱动级不可达（orchestrator:538 在 runRegisteredAgent 之外发射） |
+| routing.completed | 编排层事件·本驱动级不可达（orchestrator 路由面发射点群） |
+| clarification.required | 编排层事件·本驱动级不可达（orchestrator:1351） |
+| coordinator.planned | 编排层事件·本驱动级不可达（orchestrator:2546） |
+| step.started（真工具名族） | 真工具步族·meta-only 语料不可达（固有不对称 #3；发射点 loop.ts:847 / mapper tool/call 分支） |
+| step.completed（真工具名/status 族） | 真工具步族·meta-only 语料不可达（固有不对称 #3；loop.ts:848 / mapper tool/result 分支） |
+| answer.final | **真触发**：全部 62 条（双臂；测试镜像 orchestrator:2187 同行发射；矩阵实证锚 dr50-aa） |
+| action_draft.created | 编排层事件·本驱动级不可达（orchestrator:2171 runPathB 段） |
+| task.failed | 编排层事件·本驱动级不可达（orchestrator:1727/:2876；runRegisteredAgent 层 FAILED 无 SSE 发射） |
+| task.cancelled | 编排层事件·本驱动级不可达（orchestrator 取消面发射点群） |
+| agent_narration（step.completed 伪步族） | **真触发**：dsh 臂文本轮（dr50-aa 等凡带 rTx 轮次者；白名单差集项，N2 evidence 12 既有登记；native 臂 emitNarration 缺省关） |
+| agent_think（step.completed 伪步族） | **真触发**：dr50-ck（dsh 臂 reasoning-delta 流式透传，stub reasoning 通道确定性触发；白名单差集项；native 臂 loop.ts 无 agent_think 发射点） |
+| compaction（step.started/step.completed 伪步族） | harness 内部决策·剧本面无确定性触发通道（压缩由子进程上下文压力触发；mapper 三分支由 N2 A6b + N2-A3/A4 黄金帧单测钉死） |
+| final_answer（meta 伪步族） | meta-skip 销账项·绿态恒不出现（D-7 双臂同不产 meta 步事件；出现即差集反咬 + 收缩过滤后序列不等 ⇒ M10 咬点） |
+| load_skill（meta 伪步族） | meta-skip 销账项·绿态恒不出现（同上行口径） |
+
 ### A4 · 审计逐字段（重定义口径）
 逐字段对账 AgentRunRecord：
 - **归一化集**：id（`run_` 形态）；iterations[].toolCalls[].toolCallId（`tc_` 形态）、durationMs（非负数值）。
@@ -121,7 +144,13 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
 3. 两臂工具集物理不同（dsh meta-only vs native builtin）⇒ 语料两臂同用 meta 剧本保 parity；
    真工具对账物理不可达，L1 不声明该覆盖。
 4. dsh 臂审计记录为空壳（iterations []、tokens 0/0）⇒ native 迭代锚 + dsh stats 对齐代之，
-   两臂 token/迭代不互比。
+   两臂 token/迭代不互比。**审计行维度扩锚（W5 块3，A4b）**：native 臂每轮 load_skill
+   落一行 toolCalls 审计（loop.ts:731），dsh 臂恒零行（reassemble 纯重组装零 IO）——
+   该不对称从「登记」升级为「锚」：driver A4b 断言 native 行数 == 剧本 load_skill
+   tool_use 数且逐行 toolName/outcome/input 深等、dsh 臂 `toEqual([])`、deny_prefork 类
+   两臂同零。双向反咬：dsh 臂若开始写审计行 = 未登记的行为漂移 ⇒ 红；native 臂若丢行
+   = 审计丢失 ⇒ 红。entitlement 拒证时序同此口径：同一 agent 配置下两臂拒绝点位
+   逐字节同码（A2 强制点），kernel 字段值差仍是唯一白名单差（A4 先例）。
 5. **缝观察（denied final_answer 的 blocks 仍上 answer 面）**：dsh 帧流 tool/call 在派发前记录
    （agent-loop lib/index.js:275），pre-execute deny 不抹帧；reassemble collectToolCalls 不滤成败
    ⇒ 被拒 final_answer 的 blocks 仍成 answer。deny 的执行证据只能在 wire/帧面断言，answer 面
@@ -144,18 +173,22 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
    （blocks:[] 是实证的，零内容 stop 目前无真跳证据）；③动哪一侧都要改上游 vendor lib
    或 native 宽限，不成比例；④若后续 L2/L6 真跳证据显示真 provider 真撞此形态，再翻案。
 
-## 4. 语料构成（59 条 + 2 gated）
+## 4. 语料构成（62 条 + 2 gated）
 - 内容源：20 条 = SCENARIO_CATALOG triggerQuestion（执行通道不借 evals——蓝图 evidence 5）；
-  39 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮 load_skill；
+  42 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮 load_skill；
   多轮：1/2/5 次 LLM 往返；拒绝混合：deny_pre 前置 / deny_mid 中段 / deny_all 全 deny /
   deny_prefork 分叉前）+ W2 批1 扩面 6 条：G1 EMPTY 空块类 4（dr50-by 空 blocks /
   dr50-bz 空 markdown 块 / dr50-ca 空白软收尾 / dr50-cb 空块混排）+ G4 超长输出 2
   （dr50-cc ≥32KB markdown 块 / dr50-cd ≥32KB 软收尾长文——确定性填充、零裸数、携带 marker）
   + W2 批2 扩面 3 条：G2 expectsSchema 结构化（dr50-ce 简单 schema valid /
   dr50-cf 嵌套 schema valid / dr50-cg invalid→valid 拒后收敛——dsh 剧本末轮文本
-  恒写固定文案 STRUCTURED_ANSWER_TEXT 单源，invalid 形态锚 A1b 修复后 fail-closed 口径）。
+  恒写固定文案 STRUCTURED_ANSWER_TEXT 单源，invalid 形态锚 A1b 修复后 fail-closed 口径）
+  + W5 扩面 3 条：dr50-ci provenance 畸形拒后收敛（final_answer 入参严校验通道双臂同形态）、
+  dr50-cj writeMode 缺 action_draft 拒后收敛（语料声明 sideEffect=WRITE ⇒ driver skillDef
+  治理位透传）、dr50-ck reasoning 流（stub reasoning 通道 ⇒ dsh 臂 agent_think 族真触发，
+  A3c 矩阵精确族集锚）。
 - 每条 = 数据对 {native 臂 mock 队列剧本，dsh 臂 stub 剧本（+PLATFORM_GOV_DENY 声明），
   期望值声明（answer / native 迭代锚 / native token 锚 / dsh stats 锚 / deny wire 证据位 /
   EMPTY 豁免位 / expectsSchema 与 structured 锚）}。
-- 自检闸（driver 首条 it）：总数 59、deny ≥10、四维覆盖全到位、A5 子集 ∈ 语料、
+- 自检闸（driver 首条 it）：总数 62、deny ≥10、四维覆盖全到位、A5 子集 ∈ 语料、
   EMPTY 豁免位双恰（豁免 ⇔ 期望答案无 marker；豁免任务 prompt 必含 id）、gated 槽在册。
