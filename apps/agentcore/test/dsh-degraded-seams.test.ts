@@ -196,6 +196,8 @@ describe("WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧�
     const stub = await startStubOpenAi(stallScript());
     const t = await createTestApp({
       providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+      // F-1：生产档治理切 http 后，dsh 臂钉 poc 档（mock 治理放行）保持既有语义。
+      env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
     });
     try {
       t.deps.features.mock.set(TENANT, [...defaultOnKeys(), "agent.coordinator"]); // 复刻 coordinator-a2a :206 暗发开
@@ -219,6 +221,8 @@ describe("WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧�
     const stub = await startStubOpenAi(stallScript());
     const t = await createTestApp({
       providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+      // F-1：生产档治理切 http 后，dsh 臂钉 poc 档（mock 治理放行）保持既有语义。
+      env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
     });
     try {
       await t.repos.agents.insert(sceneEchoAgent());
@@ -243,6 +247,8 @@ describe("WO-degraded-seams · 静默缝 ×2（orchestrator 级 HTTP→SSE 帧�
     const stub = await startStubOpenAi(varyingScript());
     const t = await createTestApp({
       providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+      // F-1：生产档治理切 http 后，dsh 臂钉 poc 档（mock 治理放行）保持既有语义。
+      env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
     });
     try {
       await t.repos.agents.insert(sceneEchoAgent());

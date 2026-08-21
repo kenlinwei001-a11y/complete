@@ -142,7 +142,8 @@ function patchRules(t: TestApp, task: DualRunTask): void {
 async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProducts> {
   const stub = flag === "on" ? await startStubOpenAi(task.dsh.rounds.map((r) => ({ ...r }))) : undefined;
   const t = await createTestApp(
-    stub ? { providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never } : {},
+    // F-1：dsh 臂钉 poc 档（生产档治理已切 http；govDeny 语料依赖 mock 模式 PLATFORM_GOV_DENY）。
+    stub ? { providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never, env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" } } : {},
   );
   for (const s of task.skills) await t.repos.skills.insert(skillDef(task, s));
   await t.repos.agents.insert(agentDef(task));

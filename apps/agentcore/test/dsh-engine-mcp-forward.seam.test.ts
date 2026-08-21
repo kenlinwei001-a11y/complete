@@ -136,6 +136,8 @@ describe("WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发", () => {
           providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), "wo-mcp-forward-fake-llm-key") as never,
           // 进程内 MCP 面置空（本 WO 断言子进程世界转发，与 in-process mock 工具解耦）。
           mcp: new MockMcpClient({ [MCP_CONFIG_ID]: [] }),
+          // F-1：生产档治理切 http 后，本缝钉 poc 档（mock 治理放行）保持既有语义。
+          env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
         });
         await seedMcpConfig(t, recordPath);
         const agentId = await makeAgent(t, "agt_mcp_forward_a1", [{ mcpConfigId: MCP_CONFIG_ID }]);
@@ -175,6 +177,8 @@ describe("WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发", () => {
       try {
         const t = await createTestApp({
           providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), "wo-mcp-forward-fake-llm-key") as never,
+          // F-1：生产档治理切 http 后，本缝钉 poc 档（mock 治理放行）保持既有语义。
+          env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
         });
         const agentId = await makeAgent(t, "agt_mcp_forward_a2", []);
         const result = await t.deps.engine.runRegisteredAgent({
@@ -210,6 +214,8 @@ describe("WO-MCP-FORWARD · engine dsh 分叉 mcpServers 转发", () => {
         const t = await createTestApp({
           providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), "wo-mcp-forward-fake-llm-key") as never,
           mcp: new MockMcpClient({ [MCP_CONFIG_ID]: [] }),
+          // F-1：生产档治理切 http 后，本缝钉 poc 档（mock 治理放行）保持既有语义。
+          env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
         });
         // 只插 mcpConfig，不插凭据行 —— credentialRef 解析不出。
         await seedMcpConfig(t, join(tmp, "record.json"), { withCredentialRow: false });

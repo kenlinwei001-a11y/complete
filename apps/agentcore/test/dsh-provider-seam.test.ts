@@ -328,6 +328,8 @@ describe("A3 · SEAM 端到端：engine 分叉 → 绑定矩阵解析 → env �
       try {
         const t = await createTestApp({
           providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), FAKE_KEY) as never,
+          // F-1：生产档治理切 http 后，本缝钉 poc 档（mock 治理放行）保持既有语义。
+          env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
         });
         const agentId = await makeBareAgent(t);
         const result = await t.deps.engine.runRegisteredAgent({

@@ -18,6 +18,8 @@
  * 大写字母标记杜绝「零跨租户串字」断言的假撞（sessionId 随机子串不可能命中）。
  */
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -111,6 +113,10 @@ async function runTenant(
   extraGrant: string[] = [],
 ): Promise<DshRunOutput> {
   const stub = await startStubOpenAi(script.map((r) => ({ ...r })));
+  // F-1：生产档 cordis.yml 治理已切 http 模式（插件无 url ⇒ initialize 抛错）——本壳测
+  // MCP 租户隔离不测裁决，起最小 allow 裁决端点钉住「放行」语义（fail-closed 链由
+  // dsh-gov-production.seam 专验）。
+  const gov = await startGovAllow();
   try {
     return await runDshAgent(
       {
@@ -128,12 +134,28 @@ async function runTenant(
           PLATFORM_LLM_BASE_URL: `${stub.url}/v1`,
           PLATFORM_LLM_MODEL: STUB_MODEL_ID,
           PLATFORM_LLM_API_KEY: STUB_FAKE_KEY,
+          PLATFORM_GOV_URL: gov.url,
         },
       },
     );
   } finally {
+    await gov.close();
     await stub.close();
   }
+}
+
+/** 最小 http 裁决端点：恒 {decision:"allow"}（治理放行语义的显式钉，非静默省略）。 */
+async function startGovAllow(): Promise<{ url: string; close: () => Promise<void> }> {
+  const server: Server = createServer((req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ decision: "allow" }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}/b/v1/governance/adjudicate`,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
 }
 
 const eventsJson = (run: DshRunOutput): string => JSON.stringify(run.events);

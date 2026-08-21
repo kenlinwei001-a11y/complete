@@ -203,7 +203,11 @@ describe("WO-DSH-E2E · L5 诚实层穿透", () => {
       },
       { text: "unused", usage: USAGE },
     ]);
-    const t = await createTestApp({ providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never });
+    const t = await createTestApp({
+      providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+      // F-1：生产档治理切 http 后，本缝钉 poc 档（mock 治理放行）保持既有语义。
+      env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
+    });
     await t.repos.skills.insert(skillDef({ provenancePolicy: "required" }));
     await t.repos.agents.insert(
       agentDef({ id: "agt_l5_req", model: STUB_DCP_SPEC, skills: [{ skillId: "skl_l5", version: 1 }] }),
@@ -244,7 +248,11 @@ describe("WO-DSH-E2E · L5 诚实层穿透", () => {
       },
       { text: "unused", usage: USAGE },
     ]);
-    const t = await createTestApp({ providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never });
+    const t = await createTestApp({
+      providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never,
+      // F-1：生产档治理切 http 后，本缝钉 poc 档（mock 治理放行）保持既有语义。
+      env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
+    });
     await t.repos.skills.insert(skillDef({ id: "skl_l5w", key: "l5_write", sideEffect: "WRITE" }));
     await t.repos.agents.insert(
       agentDef({ id: "agt_l5_wr", model: STUB_DCP_SPEC, skills: [{ skillId: "skl_l5w", version: 1 }] }),
