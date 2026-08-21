@@ -1,5 +1,5 @@
 /**
- * WO-DSH-E2E · L1 双跑语料（60 任务 + 2 gated 槽）——纯数据，零 IO。
+ * WO-DSH-E2E · L1 双跑语料（63 任务 + 2 gated 槽）——纯数据，零 IO。
  *
  * 对账口径单源 = 同目录 RECONCILIATION.md（team-lead 2026-08-19 重定义：
  * scalar + kernel 唯一白名单 + native 迭代锚 + dsh stats 对齐）。摘要：
@@ -9,8 +9,8 @@
  *   两臂同算，保 unverifiedNumerics:false 锚简洁）；
  * - native load_skill 入参键 = skillId，dsh = key（声明映射，RECONCILIATION §2-A4）。
  *
- * 跨单回执（蓝图末行）：角色路/场景路 STALL_LOOP 各一槽 → GATED_SLOTS（静默缝 WO 未落线，
- * driver 鸣报 skipped，不冒充覆盖）。
+ * 跨单回执（蓝图末行）：角色路/场景路 STALL_LOOP 各一槽 → GATED_SLOTS（缝已落线；
+ * 缺口 = 编排层驱动级 + STALL_LOOP 确定性触发通道缺，REC §3 #7；driver 鸣报 skipped，不冒充覆盖）。
  */
 import type { Answer, AnswerBlock, RuleVerdict } from "@platform/contracts";
 import { SCENARIO_CATALOG } from "../../../src/scenarios-catalog.js";
@@ -30,6 +30,13 @@ export interface CorpusSkill {
   body: string;
   /** skill precondition 规则引用（deny_prefork 类用；engine.ts 分叉前预检的输入）。 */
   preRuleKeys?: string[];
+  /**
+   * W5 块2：技能治理位（writeMode 通道语料用）。缺省 = 驱动既有硬编码
+   * READ/none/best_effort（既有 59 条零漂移）；置 sideEffect:"WRITE"（或 approvalGate≠none）
+   * 即得 writeMode=true（契约 isWriteModeSkill 单源，两臂同取 engine 聚合值）。
+   */
+  sideEffect?: string;
+  approvalGate?: string;
 }
 
 export interface IterationAnchor {
@@ -184,12 +191,14 @@ const longMarkdown = (id: string): string => {
   return m;
 };
 
-const skill = (key: string, taskId: string, preRuleKeys?: string[]): CorpusSkill => ({
+const skill = (key: string, taskId: string, preRuleKeys?: string[], gov?: { sideEffect?: string; approvalGate?: string }): CorpusSkill => ({
   key,
   name: `语料技能 ${key}（${taskId}）`,
   summary: `供 ${taskId} 双跑对账的剧本化技能 ${key}`,
   body: `## ${key} 正文（${taskId}）\n\n口径铺陈与剧本化材料，供 load_skill 轮次消费。`,
   ...(preRuleKeys ? { preRuleKeys } : {}),
+  ...(gov?.sideEffect ? { sideEffect: gov.sideEffect } : {}),
+  ...(gov?.approvalGate ? { approvalGate: gov.approvalGate } : {}),
 });
 
 const SKILL_KEYS = ["sk-a", "sk-b", "sk-c", "sk-d"] as const;
@@ -470,6 +479,100 @@ function answerStructuredReplan(o: ClassOpts & { schema: Record<string, unknown>
   };
 }
 
+// ---------------------------------------------------------------------------
+// W5 块2 构造器：fail-closed 三通道的双臂「拒后收敛」对账形态
+// （机制依据：两臂 final_answer 校验同一 zod 形——loop.ts FinalAnswerSchema 与
+//  reassemble.ts FinalAnswerInputSchema 逐字同构（blocks + provenance strict）。
+//  native 拒 = acceptFinalAnswer ok:false ⇒ tool_result 回注续轮（loop.ts:1119-1131）；
+//  dsh 拒 = reassemble 校验**末次** final_answer（reassemble.ts:424-450）。
+//  故双跑只钉「拒后收敛」形态（末次 valid ⇒ 两臂同答）；
+//  持久畸形形态 = reassemble 单测探针领地（dsh-runtime-reassemble.test.ts 治理拒证组），
+//  不进双跑——同 A1b 对 dr50-cg 的登记口径。）
+// ---------------------------------------------------------------------------
+
+/** answer · provenance 畸形→收敛：首轮 final_answer provenance 缺 outputPath（strict zod 拒），次轮补齐收敛。 */
+function answerProvenanceReplan(o: ClassOpts): DualRunTask {
+  const blocks = [T(`【${o.id}】剧本化回答：provenance 畸形被拒后补齐收敛。`)];
+  const validArgs = { blocks, provenance: UNKNOWN_PROV };
+  // 畸形形态：provenance 条目缺 outputPath 键 ⇒ 两臂同一 strict zod 形必拒。
+  const malformedArgs = { blocks, provenance: [{ toolCallId: "callprov-unresolved" }] };
+  return {
+    id: o.id, cls: "answer", source: o.source, prompt: o.prompt,
+    skills: [], ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    dsh: { rounds: [rFa(malformedArgs), rFa(validArgs), rTx(`收尾 ${o.id}`)] },
+    native: { turns: [nFa(malformedArgs), nFa(validArgs)] },
+    expect: {
+      answer: expectAnswer(blocks, maskedProv(UNKNOWN_PROV.length)),
+      nativeIterations: [{ calls: [] }, { calls: [] }],
+      nativeTokens: { input: 200, output: 100 },
+      dshStats: stats(3),
+    },
+  };
+}
+
+/** answer · writeMode 非法→收敛：挂载 WRITE 技能（writeMode=true 静态聚合，无需 load_skill），
+ *  首轮 final_answer 缺 action_draft 块 ⇒ 两臂同拒（loop.ts:1325-1330 / reassemble.ts:448-450
+ *  同一文案「挂载的 Skill 为 WRITE/审批类型…」），次轮补齐 action_draft 收敛。 */
+function answerWriteModeReplan(o: ClassOpts): DualRunTask {
+  const sk = skill("sk-w", o.id, undefined, { sideEffect: "WRITE" });
+  const textBlock = T(`【${o.id}】剧本化回答：writeMode 缺 action_draft 被拒后补齐收敛。`);
+  const draftBlock: AnswerBlock = {
+    type: "action_draft",
+    draftId: `draft-${o.id}-甲`,
+    actionType: "adjust_plan",
+    summary: `【${o.id}】写回动作草稿：按声明口径待批复。`,
+  };
+  const noDraftArgs = { blocks: [textBlock], provenance: [] };
+  const draftArgs = { blocks: [textBlock, draftBlock], provenance: [] };
+  return {
+    id: o.id, cls: "answer", source: o.source, prompt: o.prompt,
+    skills: [sk], ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    dsh: { rounds: [rFa(noDraftArgs), rFa(draftArgs), rTx(`收尾 ${o.id}`)] },
+    native: { turns: [nFa(noDraftArgs), nFa(draftArgs)] },
+    expect: {
+      answer: expectAnswer([textBlock, draftBlock]),
+      nativeIterations: [{ calls: [] }, { calls: [] }],
+      nativeTokens: { input: 200, output: 100 },
+      dshStats: stats(3),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// W5 块1 构造器：agent_think 事件族真触发（dsh 臂 reasoning-delta 流式透传）
+// （机制依据：reassemble.ts:509-514 mapper 把 assistant/chunk reasoning-delta 逐 delta 映成
+//  step.completed{type:agent_think}；native 臂 loop.ts 无 agent_think 发射点（该族是
+//  DSH 帧流独有观测），stub 剧本经 reasoning 通道（StubRound.reasoning → OpenAI
+//  reasoning_content delta）确定性触发 ⇒ 差集项 ∈ ALLOWED_PSEUDO_TYPES（N2 已列名），
+//  收缩白名单过滤后序列仍逐项等。）
+// ---------------------------------------------------------------------------
+
+/** answer · reasoning 形态：dsh 首轮带 reasoning_content（agent_think 族真触发），native 臂同答无对应事件。 */
+function answerReasoning(o: ClassOpts): DualRunTask {
+  const args = { blocks: [T(`【${o.id}】剧本化回答：推理流透传形态收尾。`)], provenance: [] };
+  return {
+    id: o.id, cls: "answer", source: o.source, prompt: o.prompt,
+    skills: [], ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    dsh: {
+      rounds: [
+        {
+          toolCall: { name: "final_answer", arguments: JSON.stringify(args) },
+          reasoning: `【${o.id}】推理增量：先理清口径再调收尾工具。`,
+          usage: STUB_USAGE,
+        },
+        rTx(`收尾 ${o.id}`),
+      ],
+    },
+    native: { turns: [nFa(args)] },
+    expect: {
+      answer: expectAnswer(args.blocks),
+      nativeIterations: [{ calls: [] }],
+      nativeTokens: { input: 100, output: 50 },
+      dshStats: stats(2),
+    },
+  };
+}
+
 /** deny_pre · 前置 deny：dsh 臂首次调用（final_answer）即被治理桥拒；双臂终答 = engine 出口 POST_CHECK 替换（W1 起同码）。 */
 
 function denyPre(o: ClassOpts & { ruleId: string }): DualRunTask {
@@ -703,6 +806,11 @@ export const DUALRUN_CORPUS: DualRunTask[] = [
     id: "dr50-ch", source: "synthetic",
     prompt: "合成题 ch（dr50-ch）：输出触长度上限截断的双臂口径对账。",
   }),
+  // ---- W5 块2：fail-closed 双路对账（provenance 畸形 / writeMode 非法 拒后收敛各一；
+  //      expectsSchema 通道 = dr50-cg 既有）+ W5 块1：agent_think 族真触发 1 条。 ----
+  answerProvenanceReplan({ id: "dr50-ci", source: "synthetic", prompt: "合成题 ci（dr50-ci）：先给畸形 provenance 再收敛。" }),
+  answerWriteModeReplan({ id: "dr50-cj", source: "synthetic", prompt: "合成题 cj（dr50-cj）：写回技能挂载下先缺 action_draft 再收敛。" }),
+  answerReasoning({ id: "dr50-ck", source: "synthetic", prompt: "合成题 ck（dr50-ck）：带推理流的收尾形态。" }),
 ];
 
 /** A5 确定性子集（同臂连跑两遍过同一比对器）：每类至少一 + 长上下文 + provenance + 多轮 + 空块混排 + 结构化。 */
@@ -710,21 +818,24 @@ export const A5_SUBSET: readonly string[] = ["dr50-ac", "dr50-ad", "dr50-an", "d
 
 /**
  * 跨单回执 gated 槽（蓝图末行：角色路/场景路 STALL_LOOP 各一）。
- * 两处 degraded 静默缝已由 886c436a7 落线（orchestrator agent_degraded 发射点 :2182/:2433/:2694）；
- * 解 gate 属跨单回执新语料面（超 runRegisteredAgent 单驱动边界），team-lead 2026-08-21 裁决
- * 转 W5 登记（W5-输入 #1，REC §3 #7）——槽维持 gated，driver 鸣报 skipped，不冒充覆盖。
+ * 两处 degraded 静默缝已由 886c436a7 落线（orchestrator agent_degraded 发射点 :2182/:2433/:2694，
+ * 分叉后编排层共享码，两臂对称经过——W5 块4 实证两路同走 engine.runRegisteredAgent 过分叉）。
+ * team-lead 2026-08-21 裁决（W5 块4）：gated 维持不解、不建编排层双跑驱动级；覆盖缺口 =
+ * 编排层驱动级（本 driver 直驱 runRegisteredAgent 捕获不到编排层发射）+ STALL_LOOP 确定性
+ * 触发通道缺（dsh 臂须 watchdog 真 cancel 落帧）——非发射缝；parity = 码对称论证，转 W7 输入。
+ * （REC §3 #7）——槽维持 gated，driver 鸣报 skipped，不冒充覆盖。
  */
 export const GATED_SLOTS = [
   {
     id: "dr50-gated-role-stall",
     path: "runRolePathB",
     scenario: "STALL_LOOP",
-    gate: "解 gate 属新语料面，转 W5 登记（W5-输入 #1；缝① 886c436a7 已落线）",
+    gate: "gate 维持：缝① 886c436a7 已落线；缺口 = 编排层驱动级 + STALL_LOOP 确定性触发通道缺（非发射缝）；裁决不建编排层双跑驱动级，parity = 码对称论证，转 W7 输入",
   },
   {
     id: "dr50-gated-scene-stall",
     path: "runSceneAgent",
     scenario: "STALL_LOOP",
-    gate: "解 gate 属新语料面，转 W5 登记（W5-输入 #1；缝② 886c436a7 已落线）",
+    gate: "gate 维持：缝② 886c436a7 已落线；缺口 = 编排层驱动级 + STALL_LOOP 确定性触发通道缺（非发射缝）；裁决不建编排层双跑驱动级，parity = 码对称论证，转 W7 输入",
   },
 ] as const;

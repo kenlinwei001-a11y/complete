@@ -48,7 +48,7 @@ export const ALLOWED_PSEUDO_TYPES: readonly string[] = [
 /** 收缩白名单：去掉 final_answer/load_skill 销账项——序列在此过滤后即须相等（M10 的咬点）。 */
 const SHRUNK_PSEUDO_TYPES = ALLOWED_PSEUDO_TYPES.filter((t) => t !== "final_answer" && t !== "load_skill");
 
-/** useTaskStream.ts:28-39 的 KNOWN_EVENTS 十名（前端不订阅=浏览器整条丢弃）；单源在前端，此处硬锚对账。 */
+/** useTaskStream.ts:29-38 的 KNOWN_EVENTS 十名（前端不订阅=浏览器整条丢弃）；单源在前端，此处硬锚对账。 */
 const KNOWN_EVENTS = [
   "task.accepted",
   "routing.completed",

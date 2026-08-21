@@ -29,6 +29,13 @@ export interface StubRound {
   toolCall?: { name: string; arguments: string };
   /** 纯文本收尾轮。 */
   text?: string;
+  /**
+   * W5 块1（additive）：推理流通道——置位则在内容/工具增量前先发一帧
+   * `reasoning_content` delta（pi-ai openai-completions 适配器认此键 ⇒ dsh 帧流
+   * 产 assistant/chunk reasoning-delta ⇒ SSE 桥 agent_think 族真触发）。
+   * 缺省不出该帧——既有全部剧本逐字节不变。
+   */
+  reasoning?: string;
   /** G3：文本轮 finish_reason 覆盖（缺省 "stop" 字节兼容）；"length" = 输出触长度上限截断。 */
   finishReason?: "stop" | "length";
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number; prompt_cache_hit_tokens?: number };
@@ -41,6 +48,19 @@ function sseChunk(obj: unknown): string {
 function roundToSse(round: StubRound): string {
   const base = { id: "chatcmpl-stub", object: "chat.completion.chunk", created: 1, model: STUB_MODEL_ID };
   let out = "";
+  // W5 块1：reasoning 帧在内容/工具增量之前（推理先行，与真 provider 时序同形）。
+  if (round.reasoning !== undefined) {
+    out += sseChunk({
+      ...base,
+      choices: [
+        {
+          index: 0,
+          delta: { role: "assistant", reasoning_content: round.reasoning },
+          finish_reason: null,
+        },
+      ],
+    });
+  }
   if (round.toolCall) {
     out += sseChunk({
       ...base,
