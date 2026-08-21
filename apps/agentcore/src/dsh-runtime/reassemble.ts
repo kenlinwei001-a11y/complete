@@ -7,6 +7,7 @@
  *     provenance 的 toolName 从帧流里的 tool/call 记录回填（对位 loop.ts repos.toolCalls.get）；
  *   - 无 final_answer ⇒ 软收尾：最后一条 assistant/message 文本兜底（对位 lastText 分支）；
  *   - turn/end reason: completed→ANSWERED · max-tokens→BUDGET_EXHAUSTED · error/aborted→FAILED；
+ *     max-tokens 收尾补诚实摘要头（W2 批3 dsh 自体修复②，镜像 stall 路模板·对位 loop.ts:620-634）；
  *   - aborted 且 cause.kind==='stall-loop'（N3 watchdog cancel 落帧）⇒ 分类前置：
  *     BUDGET_EXHAUSTED + degraded{STALL_LOOP} + 诚实降级块（镜像 loop.ts:620-632），
  *     先于 expectsSchema/final_answer 分支（degrade 短路语义）；
@@ -447,6 +448,22 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
   }
   if (opts.governance?.writeMode && !blocks.some((b) => b.type === "action_draft")) {
     return { ok: false, errors: ["挂载的 Skill 为 WRITE/审批类型，final_answer 必须包含 action_draft 块"] };
+  }
+
+  // W2 批3（team-lead 2026-08-21 裁决·dsh 自体修复②）：max-tokens 截断收尾补诚实摘要头——
+  // 镜像上方 stall 路模板（同形：header 块 + 截断前文/产出块），对位 native degrade 有界终止
+  // 必带诚实前缀的约定（loop.ts:620-634）。stall 路自带头提前 return，不会叠双头；
+  // expectsSchema 分支同有 BUDGET_EXHAUSTED 可能（:417），其 answer 是占位文案，不在本修复面。
+  // 语料锚 = corpus.ts LENGTH_TRUNCATION_HEADER（漂移即红，锚的职能）。
+  if (outcome === "BUDGET_EXHAUSTED") {
+    blocks = [
+      {
+        type: "text",
+        markdown:
+          "[预算耗尽·诚实摘要] ⚠️ 模型输出触长度上限被截断——本次深问未能完全解答（已诚实终止）。以下为已探索到的线索：",
+      },
+      ...blocks,
+    ];
   }
 
   return {

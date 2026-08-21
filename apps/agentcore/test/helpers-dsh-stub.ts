@@ -29,6 +29,8 @@ export interface StubRound {
   toolCall?: { name: string; arguments: string };
   /** 纯文本收尾轮。 */
   text?: string;
+  /** G3：文本轮 finish_reason 覆盖（缺省 "stop" 字节兼容）；"length" = 输出触长度上限截断。 */
+  finishReason?: "stop" | "length";
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number; prompt_cache_hit_tokens?: number };
 }
 
@@ -72,7 +74,7 @@ function roundToSse(round: StubRound): string {
       ...base,
       choices: [{ index: 0, delta: { role: "assistant", content: round.text ?? "" }, finish_reason: null }],
     });
-    out += sseChunk({ ...base, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: round.usage });
+    out += sseChunk({ ...base, choices: [{ index: 0, delta: {}, finish_reason: round.finishReason ?? "stop" }], usage: round.usage });
   }
   out += "data: [DONE]\n\n";
   return out;

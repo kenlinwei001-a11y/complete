@@ -386,8 +386,13 @@ describe("WO-DSH-E2E · L5 诚实层穿透", () => {
     if (!run.result.ok) return;
     expect(run.result.outcome).toBe("BUDGET_EXHAUSTED");
     expect(run.result.degraded?.reason, "degraded 理由原值透出（不顶替）").toBe("BUDGET_EXHAUSTED");
-    // 诚实块：末 assistant 文本复述（不编造结论、不伪造 final_answer）。
-    const md = run.result.answer.blocks[0];
+    // 诚实块（W2 批3 修复②后形态）：blocks[0] = 诚实摘要头（镜像 stall 路模板，对位 loop.ts:620-634
+    // 有界终止必带诚实前缀约定）；blocks[1] = 末 assistant 文本复述（不编造结论、不伪造 final_answer）。
+    const hd = run.result.answer.blocks[0];
+    expect(hd && "markdown" in hd ? hd.markdown : "").toBe(
+      "[预算耗尽·诚实摘要] ⚠️ 模型输出触长度上限被截断——本次深问未能完全解答（已诚实终止）。以下为已探索到的线索：",
+    );
+    const md = run.result.answer.blocks[1];
     expect(md && "markdown" in md ? md.markdown : "").toBe("L5 部分发现：已探到一半");
     expect(run.result.answer.provenance).toEqual([]);
     // SSE 面：narration 帧文本逐字保真（降级前的探索陈述不截不改）。
