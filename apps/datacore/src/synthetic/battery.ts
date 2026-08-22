@@ -1890,8 +1890,15 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
 //
 // 单源纪律（单源 > 并存）：
 //  · 前端**不得**自建中文名映射，只消费 `displayName ?? propKey`（缺则诚实回落裸键，不渲染空白）；
-//  · 与求解器杠杆标签 LEVER_PROP_META.label（形如「物料·到货周期」= 类型简称 + "·" + 属性名）**收敛成一份**：
-//    重叠属性（见 test/schema-display-name.seam.test.ts）此处的名 === 该 label "·" 之后的后缀，属性级中文名只有一个串。
+//  · 求解器杠杆标签 LEVER_PROP_META.label（形如「物料·到货周期」= 类型简称 + "·" + 属性中文名）
+//    **由本表派生**，不是另抄一份（WO-FIX-SCHEMA-DISPLAY-NAME，2026-08-22）：
+//    `solvers/lever-meta.ts` 只存"类型简称"那半段，属性中文名一律 `propDisplayName()` 现取 ⇒
+//    改这里，杠杆条上的名字自动跟随，**结构上不可能分叉**。
+//    （旧机制是两份表各写整串、靠门盯着别写歪；实测已经歪过一次：裁决 C 把 Equipment.oee_current
+//     改成带口径标注的名字后只改了本表，杠杆标签留在「设备·OEE」，同一属性两个中文名同时在屏上。）
+//    ⚠ 由此得出一条**改名纪律**：本表的值是屏上真串，被 `test/schema-display-name.seam.test.ts` ①
+//    与 `test/oee-ssot.seam.test.ts` S5 咬着；改一个值前先跑这两个文件 —— 中文名以**字符串字面量**
+//    形态散落在测试里，`typecheck` 一个都看不见（CLAUDE.md 铁律 0.6 第 4 条）。
 //
 // 诚实留白（诚实 > 好看）：**只登记能从代码/注释/规则表达式确证业务含义的属性**。含义未确证者故意不登记
 // （如 Base.position 与 kind 同值语义存疑、Material.devPct 无消费方口径不明），下游回落 propKey，
@@ -1907,7 +1914,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   // WO-OPT-WHATIF-DATA · 选址决策成本（optimize_whatif/facility_location 的 open_cost / assign_cost 系数源）
   "Base.openCost": "年固定开办成本", "Base.serveCost": "单位需求点履约成本",
   "Line.lineId": "产线编号", "Line.baseId": "所属基地", "Line.name": "产线名称",
-  "Line.utilization": "利用率", // ← 与 LEVER_PROP_META["Line.utilization"].label「产线·利用率」同一串
+  "Line.utilization": "利用率", // ← 杠杆标签「产线·利用率」的后半段由本串派生（lever-meta.ts 不另存）
   "Line.actual_output_daily": "日实际产出", "Line.schedule_attainment": "排产达成率",
   "Line.line_code": "产线编码", "Line.max_capacity_day": "日最大产能", "Line.capacityDaily": "日运营产能",
   "Line.target_yield": "目标良率", "Line.status": "产线状态",
@@ -1928,7 +1935,10 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   // WO-OEE-UNIFY 裁决 C 标注：四个 OEE 属性全部 = EquipmentOEE 日事实表 7 日均值（同源·equipmentOeeAtomsDaily），
   // 属性表同屏并列时用户能看出是同一套口径；oeeA×oeeP×oeeQ 与 oee_current 之间仅余协方差级残差（实测 ≤0.003）。
   "Equipment.oeeA": "OEE可用率（事实表7日均值）", "Equipment.oeeP": "OEE表现性（事实表7日均值）", "Equipment.oeeQ": "OEE质量率（事实表7日均值）",
-  "Equipment.oee_current": "OEE（综合·事实表7日均值）", // ← LEVER「设备·OEE」
+  // ⚠ 本串带口径标注是**仓主裁决 C**（WO-OEE-UNIFY·docs/DECISION-oee-ssot.md §8.1）的执行结果，不是装饰：
+  //   同屏并列的 oeeA×oeeP×oeeQ 乘起来 ≠ 本值，不标口径用户无从知道差在哪。`test/oee-ssot.seam.test.ts` S5 咬着它。
+  //   杠杆标签「设备·OEE（综合·事实表7日均值）」的后半段即由本串派生 —— 曾因只改本表、没改 lever-meta 而分叉过。
+  "Equipment.oee_current": "OEE（综合·事实表7日均值）", // ← LEVER「设备·<本串>」
   "Equipment.equipment_code": "设备编码", "Equipment.equipment_type": "设备类型",
   "Equipment.manufacturer": "制造厂商", "Equipment.install_date": "安装日期", "Equipment.status": "设备状态",
   "Equipment.mtbf": "平均无故障时间", "Equipment.mttr": "平均修复时间", "Equipment.health_score": "设备健康度",
@@ -2040,7 +2050,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "MaterialBalance.matBalId": "物料平衡编号", "MaterialBalance.material": "物料",
   "MaterialBalance.unit": "计量单位", "MaterialBalance.netDemandTon": "净需求量",
   "MaterialBalance.ltaPct": "长协覆盖率", "MaterialBalance.gapTon": "现货缺口",
-  // ← LEVER_PROP_META["MaterialBalance.coverage"].label「物料齐套·覆盖率」的 "·" 后缀，单源收敛
+  // ← 杠杆标签「物料齐套·覆盖率」的后半段由本串派生（lever-meta.ts 不另存中文名·单源）
   //    （schema-display-name.seam.test.ts ③b 静态穷举咬这条）。与上一行「长协覆盖率」是**两个业务量**，
   //    今日数值巧合相等，别合并（理由见 materialBalanceDerived 抬头）。
   "MaterialBalance.coverage": "覆盖率",

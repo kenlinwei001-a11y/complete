@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, invokeSolver, type TestApp } from "./helpers.js";
 import { CAPACITY_FACTOR_BINDINGS, factorPropKeys, matchesGrain } from "@platform/contracts";
 import { computeByProcessModel, equipmentOee, patchCapacityContext } from "../src/solvers/capacity.js";
+import { LEVER_PROP_META } from "../src/solvers/lever-meta.js";
 import { BATTERY_SOLVER_PARAMS } from "../src/synthetic/battery.js";
 import type { SolverContext, SolverParamsShape } from "../src/solvers/types.js";
 import type { ObjectInstance } from "../src/domain.js";
@@ -57,7 +58,16 @@ describe("WO-LEVER-BINDING-DRIFT · 设备层拨杆在生产实参下必须反�
     expect(Math.abs(oee!.sensitivity), "Equipment.oee_current 敏感度为 0 → 仍会被丢弃").toBeGreaterThan(0);
     // 因子归属可溯源（③ = BN 词表「设备OEE」·与 capacity.ts BN_BY_MARK 同名）
     expect(oee!.mark).toBe("③");
-    expect(oee!.factor).toBe("设备·OEE"); // LEVER_PROP_META 单源下发
+    // 因子标签**不在这里写死第二份**（WO-FIX-SCHEMA-DISPLAY-NAME，2026-08-22）：
+    // 本行原写 `toBe("设备·OEE")`，仓主裁决 C 把 `Equipment.oee_current` 的中文名改成带口径标注的
+    // 「OEE（综合·事实表7日均值）」之后，标签跟着变而本行没改 —— `typecheck` 全绿（中文名是字符串
+    // 字面量，类型系统一个都看不见，CLAUDE.md 铁律 0.6 第 4 条），只有真跑本文件才红。
+    // 本行要咬的是「factor 由 LEVER_PROP_META 单源下发」这条缝；串**长什么样**归
+    // `schema-display-name.seam.test.ts` ③b 管（它穷举两表交集），此处不重复、也不再抄。
+    const oeeLabel = LEVER_PROP_META["Equipment.oee_current"]!.label;
+    // 金丝雀：表里没这条时 oeeLabel 会是 undefined，下一句就成了空断言 —— 这句不让它空过。
+    expect(oeeLabel, "LEVER_PROP_META 缺 Equipment.oee_current ⇒ 下面那句在空跑").toMatch(/^设备·.+/);
+    expect(oee!.factor).toBe(oeeLabel); // LEVER_PROP_META 单源下发
   });
 
   /**
