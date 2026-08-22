@@ -1514,7 +1514,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/config-bundles/import", async (req) => {
     const c = ctx(req);
     if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
-    const body = ImportBundleBodySchema.parse(req.body);
+    const body = parseBody(ImportBundleBodySchema, req.body ?? {});
     return configBundle.import(c, body.bundle, body.dryRun, body.conflictPolicy);
   });
 
@@ -1542,7 +1542,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
     const key = (req.params as { key: string }).key as (typeof PROMPT_KEYS)[number];
     if (!PROMPT_KEYS.includes(key)) throw notFound("prompt key");
-    const body = PutPromptTemplateBodySchema.parse(req.body);
+    const body = parseBody(PutPromptTemplateBodySchema, req.body ?? {});
     const id = `pt_${c.tenantId}_${key}`;
     const prev = await repos.promptTemplates.get(c.tenantId, id);
     const rec = { id, tenantId: c.tenantId, key, template: body.template, version: (prev?.version ?? 0) + 1, updatedAt: new Date().toISOString(), updatedBy: c.userId };
@@ -1573,14 +1573,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/llm-budgets", async (req) => { const c = ctx(req); mustAdminOrService(c); return budgetStatus(await repos.llmBudgets.get(c.tenantId, `lbg_${c.tenantId}`)); });
   app.put("/a/v1/llm-budgets", async (req) => {
     const c = ctx(req); mustAdmin(c);
-    const body = PutLlmBudgetBodySchema.parse(req.body);
+    const body = parseBody(PutLlmBudgetBodySchema, req.body ?? {});
     const prev = await repos.llmBudgets.get(c.tenantId, `lbg_${c.tenantId}`);
     const rec = { id: `lbg_${c.tenantId}`, tenantId: c.tenantId, hardLimitTokens: body.hardLimitTokens, softLimitPct: body.softLimitPct ?? prev?.softLimitPct ?? 0.8, periodStart: prev?.periodStart ?? new Date().toISOString(), usedTokens: prev?.usedTokens ?? 0, updatedAt: new Date().toISOString() };
     await repos.llmBudgets.put(rec); return budgetStatus(rec);
   });
   app.post("/a/v1/llm-budgets/record", async (req) => {
     const c = ctx(req); mustAdminOrService(c);
-    const body = RecordUsageBodySchema.parse(req.body);
+    const body = parseBody(RecordUsageBodySchema, req.body ?? {});
     const prev = await repos.llmBudgets.get(c.tenantId, `lbg_${c.tenantId}`);
     const rec = { id: `lbg_${c.tenantId}`, tenantId: c.tenantId, hardLimitTokens: prev?.hardLimitTokens ?? 0, softLimitPct: prev?.softLimitPct ?? 0.8, periodStart: prev?.periodStart ?? new Date().toISOString(), usedTokens: (prev?.usedTokens ?? 0) + body.tokens, updatedAt: new Date().toISOString() };
     await repos.llmBudgets.put(rec); return budgetStatus(rec);
@@ -1593,7 +1593,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.put("/a/v1/calendars/:key", async (req) => {
     const c = ctx(req); mustAdmin(c); const key = (req.params as { key: string }).key;
-    const body = PutCalendarBodySchema.parse(req.body);
+    const body = parseBody(PutCalendarBodySchema, req.body ?? {});
     const prev = await repos.factoryCalendars.get(c.tenantId, `cal_${c.tenantId}_${key}`);
     const rec = { id: `cal_${c.tenantId}_${key}`, tenantId: c.tenantId, calendarKey: key, weekendMode: body.weekendMode ?? prev?.weekendMode ?? "SAT_SUN_OFF", exceptions: body.exceptions ?? prev?.exceptions ?? [], updatedAt: new Date().toISOString() };
     await repos.factoryCalendars.put(rec); return rec;
@@ -1615,7 +1615,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.post("/a/v1/writeback-echoes/reconcile", async (req) => {
     const c = ctx(req); mustAdmin(c);
-    const body = ReconcileBodySchema.parse(req.body);
+    const body = parseBody(ReconcileBodySchema, req.body ?? {});
     const pending = (await repos.writebackEchoes.list(c.tenantId, (e) => e.ref === body.ref)).sort((a, b) => (a.writtenAt < b.writtenAt ? 1 : -1))[0];
     if (!pending) return { verdict: "NO_PENDING_WRITEBACK", ref: body.ref, incomingValue: body.incomingValue };
     const echo = JSON.stringify(pending.writtenValue) === JSON.stringify(body.incomingValue);
@@ -2524,7 +2524,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    */
   app.post("/a/v1/sim/change-impact-preview", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.propagation");
-    const body = ChangeImpactPreviewRequestSchema.parse(req.body ?? {});
+    const body = parseBody(ChangeImpactPreviewRequestSchema, req.body ?? {});
     const world = await buildChangeImpactWorld(repos, c.tenantId);
     return previewChangeImpact(world, body.focus);
   });
@@ -2570,7 +2570,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    */
   app.post("/a/v1/sim/chain-loss-matrix", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
-    const body = z.object({ so: z.string().min(1).optional() }).parse(req.body ?? {});
+    const body = parseBody(z.object({ so: z.string().min(1).optional() }), req.body ?? {});
     const load = async (typeKey: string): Promise<ChainLossObject[]> =>
       (await repos.objects.listByType(c.tenantId, typeKey)).map((o) => ({ id: o.id, props: o.props }));
     const [baseObjects, orders, customers, models, routings, operations, materials, suppliers, processes, cadences, purchaseOrders, customsClearances, incomingInspections] =
@@ -3565,7 +3565,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/ontology/interfaces", async (req, reply) => {
     const c = ctx(req);
     requireAdmin(c);
-    const body = ObjectInterfaceInputSchema.parse(req.body);
+    const body = parseBody(ObjectInterfaceInputSchema, req.body ?? {});
     return reply.status(201).send(await objectInterfaces.upsert(c, body));
   });
   // 只读一致性报告（= 发布门会说的话，但不改任何东西 → 可先看迁移清单再决定升级路径）。
@@ -3677,7 +3677,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
   // ---- 推演验证痕迹 Layer 2：结论断言 vs 知识图谱已有事实交叉验证 -----------------
   app.post("/a/v1/ontology/cross-validate", async (req) => {
-    const body = CrossValidateRequestSchema.parse(req.body);
+    const body = parseBody(CrossValidateRequestSchema, req.body ?? {});
     return ontology.crossValidate(ctx(req), body.claims);
   });
 
@@ -5671,7 +5671,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // 校验配置（二次配置时前端可预检）
   app.post("/a/v1/data-builders/validate-config", async (req) => {
     requireAdmin(ctx(req));
-    return { ok: true, config: DataBuilderConfigSchema.parse(req.body) };
+    return { ok: true, config: parseBody(DataBuilderConfigSchema, req.body ?? {}) };
   });
   // 运行 build（七阶段引擎；dryRun=预览不落库）
   app.post("/a/v1/data-builders/run", async (req, reply) => {
