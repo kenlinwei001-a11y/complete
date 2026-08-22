@@ -2235,6 +2235,9 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const remainingMs = entry.budget ? entry.budget.budget.maxDurationMs - entry.budget.elapsedMs() : base;
     const effectiveTimeoutMs = Math.max(1, Math.min(base, remainingMs));
     const r = await entry.executor.run(body.toolName, body.input, { timeoutMs: effectiveTimeoutMs });
+    // W9-full：宿主侧表累积（键 = 桥上传的帧 callId 原值）——reassemble 命中支的四态/tc_/
+    // 宿主实测 durationMs 事实源。409 重放拒绝在上方先行 ⇒ 同 callId 不会二次落表。
+    entry.hostToolCalls.set(body.callId, { outcome: r.outcome, toolCallId: r.toolCallId, durationMs: r.durationMs });
     if (r.outcome === "OK") {
       const t = TRUNCATION_EXEMPT_TOOLS.has(body.toolName)
         ? { json: JSON.stringify(r.payload), truncated: false as const, note: undefined }

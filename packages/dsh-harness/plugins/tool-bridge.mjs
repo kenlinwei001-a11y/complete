@@ -7,9 +7,12 @@
 //
 // wire 形态：
 //   请求  {runToken, callId, toolName, input, timeoutMs}——runToken = engine fork 铸的
-//         per-run 一次性随机 token（env DSH_RUN_TOKEN 注入）；callId = 桥侧每次调用新铸
-//         （宿主同 run 域内重放 ⇒ 409）。零静态鉴权材料上 wire（x-service-token 是
-//         服务间凭据，与治理端点同一枚）。
+//         per-run 一次性随机 token（env DSH_RUN_TOKEN 注入）；callId = **帧 callId 直通**
+//         （W9-full，team-lead 2026-08-22 裁决：platform-world 反向工具 execute 二参
+//         exec.callId = agent-loop exec 铸造的 block.id，与 tool/call 帧同源同值——
+//         关联白得，宿主侧表键直接命中帧配对键；provider 重号 ⇒ 宿主 409 ⇒ ERROR 包络
+//         fail-closed，「重放拒」扩为「重号拒」，语义方向一致）。零静态鉴权材料上 wire
+//         （x-service-token 是服务间凭据，与治理端点同一枚）。
 //   应答  200 OK ⇒ {outcome:'OK', payloadJson, truncated, note?, toolCallId, durationMs}
 //         （payloadJson 是宿主端点用单源 truncateToolResultJson 截断后的**串**——原样透传，
 //          禁 parse/stringify 往返：JSON 会重排 integer-like 键，逐字等契约会破）；
@@ -36,8 +39,6 @@
 // platform-world 创建期抛（「带畸形 spec 的会话不许出生」同口径）。engine 分叉恒注入三键
 // ⇒ 生产链路永远 armed。
 
-import { randomUUID } from 'node:crypto'
-
 let executor = null
 
 export function setToolExecutor(fn) { executor = fn }
@@ -61,7 +62,7 @@ export function apply(ctx, config = {}) {
   const callTimeoutMs = Number(process.env.DSH_TOOL_EXEC_TIMEOUT_MS ?? 20000)
   const fetchTimeoutMs = Number(process.env.DSH_TOOL_EXEC_FETCH_TIMEOUT_MS ?? (callTimeoutMs + 5000))
 
-  setToolExecutor(async ({ toolName, input }) => {
+  setToolExecutor(async ({ toolName, input, callId }) => {
     const envelope = (out) => ({ __w8bridge: true, ...out })
     try {
       const res = await fetch(url, {
@@ -72,7 +73,7 @@ export function apply(ctx, config = {}) {
         },
         body: JSON.stringify({
           runToken,
-          callId: `dshcall_${randomUUID()}`, // 每次调用新铸；宿主同 run 域内重放 ⇒ 409
+          callId, // W9-full：帧 callId 直通（exec.callId = block.id）；宿主同 run 域内重号 ⇒ 409
           toolName,
           input,
           timeoutMs: callTimeoutMs,

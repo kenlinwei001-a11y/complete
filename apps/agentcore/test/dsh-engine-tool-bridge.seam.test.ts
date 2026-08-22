@@ -122,6 +122,7 @@ function registerRun(
     budget,
     defaultTimeoutMs: 20_000,
     seenCallIds: new Set<string>(),
+    hostToolCalls: new Map(), // W9-full：侧表字段（A 臂端点级亦走累积，不断言即透传）
   });
 }
 
