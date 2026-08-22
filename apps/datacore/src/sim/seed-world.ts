@@ -496,12 +496,29 @@ export function pickSeedPerturbation(args: {
 export async function seedDemoSimWorld(repos: Repos, sim: SimWorldOps, ctx: AuthCtx): Promise<SeedWorldReport> {
   const existing = await repos.sim.getSession(ctx.tenantId, DEMO_SIM_WORLD_SESSION_ID);
   if (existing) {
+    // 幂等命中（判据 6）：一条都不多，也不把已有世界再推 3 拍。
+    //
+    // ⚠ 但这里有一个**只在持久化部署上出现**的形态，必须诚实报出来而不是静默走开：
+    // 本单之前播下的世界**没有扰动**（那时还不播），而固定 id 让判重在这里就短路 ⇒
+    // 升级后重启，老世界照旧是一片"无事发生"，两条线仍逐值全等。
+    // 不在这里补播：补了还得再推拍才能让它沿链路走，而"再推 3 拍"正是幂等要挡的事 ——
+    // 两个都想要就会得到一个 curTick 越滚越大的世界。处置权交给运维（删掉这条会话再重启即可
+    // 重播一个带扰动的），但**前提是他知道**。所以把这件事写进 `reason`。
+    const existingPerturbations = await repos.sim.listPerturbations(ctx.tenantId, existing.id);
     return {
       created: false,
       sessionId: existing.id,
       curTick: existing.curTick,
-      reason: "幂等命中：种子世界已存在（固定 id），不重建、不再推拍",
+      reason:
+        "幂等命中：种子世界已存在（固定 id），不重建、不再推拍" +
+        (existingPerturbations.length === 0
+          ? "；⚠ 该世界**零扰动**（本单之前播的老世界），基线与扰动后两条线会逐值全等 —— " +
+            `删除会话 ${existing.id} 后重启即可重播一个带扰动的世界`
+          : `；已有 ${existingPerturbations.length} 条扰动`),
       origin: null,
+      perturbation: null,
+      choice: null,
+      perturbationReason: existingPerturbations.length === 0 ? "幂等命中的老世界零扰动，本次不补播（补播需再推拍，与幂等冲突）" : null,
     };
   }
   const { state, origin } = await deriveSeedBaseSnapshot(repos, ctx.tenantId);
