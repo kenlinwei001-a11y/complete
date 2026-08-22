@@ -76,8 +76,19 @@ export function EnterpriseStateTwinPanel() {
     queryFn: () => fetchEnterpriseStates(),
     staleTime: 30_000,
   });
+  /**
+   * WO-SANDBOX-MEMORY · 缓存键从 `["a","sim-sessions","enterprise-fork"]` 并回**共用的**
+   * `["a","sim-sessions"]`（`SandboxView` / `EdgeActivePanel` / `useConsoleSession` 用的同一个）。
+   *
+   * 病灶：同一个 URL、同一份数据，只因键不同而在缓存里躺**两份**。更糟的是
+   * `["a","sim-sessions"]` 的失效是**前缀匹配** ⇒ 带后缀的这一条会被同一个事件一起标脏，
+   * 于是 `sim.tick_completed` 一到，同一个端点被**重打三次**。
+   * 真浏览器实测（35 条会话）：一趟①–⑧下来 `/a/v1/sim/sessions` 累计下行 **1,542MB**。
+   * 本面板一个字节都不读 `baseSnapshot`，要的只是 `id`（世界下拉），并回共用键后
+   * 三跳变一跳，数据与语义**逐字节不变**（同 URL 同响应）。
+   */
   const worldsQ = useQuery({
-    queryKey: ["a", "sim-sessions", "enterprise-fork"],
+    queryKey: ["a", "sim-sessions"],
     queryFn: fetchSimSessions,
     retry: false,
     staleTime: 30_000,

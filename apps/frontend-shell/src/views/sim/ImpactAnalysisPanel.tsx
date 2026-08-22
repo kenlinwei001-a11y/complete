@@ -345,8 +345,11 @@ export function ImpactAnalysisPanel({
   // 可选世界 = 本租户的推演会话（栈 A）。**不写死任何 id**：没有会话就诚实说没有。
   // 宿主已经定了世界 ⇒ `enabled:false`：这一发请求的唯一用途是填那个 `<select>`，
   // 而 `<select>` 此时根本不渲染。发了就是白发（且会在沙盘首屏多一次往返）。
+  // WO-SANDBOX-MEMORY · 键并回共用的 `["a","sim-sessions"]`（理由与 `EnterpriseStateTwinPanel`
+  // 那处同源：同 URL 同数据、只因键不同而在缓存里各躺一份，且前缀失效会把它们一起打三遍）。
+  // `enabled` 一字未改 —— 宿主已定世界时本面板照旧**不发**这一跳，只是不再自开一个副本缓存。
   const worldsQ = useQuery({
-    queryKey: ["a", "sim-sessions", "impact-analysis"],
+    queryKey: ["a", "sim-sessions"],
     queryFn: fetchSimSessions,
     enabled: !hostControlsWorld,
     retry: false,
