@@ -1,5 +1,5 @@
 /**
- * WO-DSH-E2E · L1 双跑语料（63 任务 + 2 gated 槽）——纯数据，零 IO。
+ * WO-DSH-E2E · L1 双跑语料（64 任务 + 2 gated 槽）——纯数据，零 IO。
  *
  * 对账口径单源 = 同目录 RECONCILIATION.md（team-lead 2026-08-19 重定义：
  * scalar + kernel 唯一白名单 + native 迭代锚 + dsh stats 对齐）。摘要：
@@ -53,6 +53,36 @@ export interface DshStatsAnchor {
   steps: number;
 }
 
+/**
+ * W8副（#54）：MCP 可见性 name-set parity 声明面。mcp 在表的任务，driver 两臂同 seed
+ * （mcpConfigs/credentials 行 + in-process MockMcpClient 同工具表）；dsh 臂另起 stdio
+ * fixture 子进程（同表镜像——mock-mcp-stdio-server-multi.mjs 三工具：echo/echo2/util.calc）。
+ * 比对口径 = 两臂模型可见工具**名集合**（不咬 description 字节——REC §3 #13 登记不修）。
+ */
+export interface CorpusMcp {
+  configId: string;
+  credId: string;
+  serverName: string;
+  /** 两臂同一工具表（native 臂 MockMcpClient 枚举面 / dsh 臂 stdio fixture 应答面，逐字同形）。 */
+  tools: { name: string; description: string; inputSchema: Record<string, unknown> }[];
+  /** agent.tools MCP ref 的 toolFilter（裸名/全名皆可——host expandAgentTools 同口径收窄）。 */
+  toolFilter?: string[];
+  /**
+   * dsh 臂 poc 档固有夹具件（cordis.poc.yml echo-tool 插件，生产档无——预存不对称，非本 WO 面）。
+   * 声明后 driver 比对时从 dsh 原始集剥除此列名，且反向钉「该列名必须真在 dsh 原始集」
+   * （豁免名单消失即红，防豁免掩盖真实漂移）。
+   */
+  dshExtraTools?: string[];
+  /**
+   * native 臂固有额外面（方向与 dshExtraTools 相反）：注册 agent 路 engine.ts:811
+   * `loadSkillEnabled: true` **无条件**把 load_skill 挂上模型面（零技能也挂，调用期才
+   * resolveSkill 落空）；dsh 路 setup-spec.ts:251 仅在 skills 非空时进 scoped 允许表
+   * ——预存不对称（本 WO 范围=toolFilter 映射，不动 load_skill 元工具策略），REC 登记。
+   * 声明后 driver 比对时从 native 原始集剥除此列名，且反向钉「该列名必须真在 native 原始集」。
+   */
+  nativeExtraTools?: string[];
+}
+
 export interface DualRunTask {
   id: string;
   cls: TaskClass;
@@ -64,6 +94,8 @@ export interface DualRunTask {
   expectsSchema?: Record<string, unknown>;
   dsh: { rounds: StubRound[]; govDeny?: string[] };
   native: { turns: ScriptedTurn[]; preBlock?: RuleVerdict[]; postBlock?: RuleVerdict[] };
+  /** W8副（#54）：MCP 可见性 name-set parity 声明（在表 ⇒ driver 走 MCP seed/捕获/对拍链）。 */
+  mcp?: CorpusMcp;
   expect: {
     answer: Answer;
     /** G2：structured 深等锚（result.structured 双臂捕获比对；非结构化任务缺省 = 两臂同 undefined）。 */
@@ -231,9 +263,31 @@ function answerImmediate(o: ClassOpts & { blocks?: AnswerBlock[]; provenance?: {
   };
 }
 
+/**
+ * answer · W8副 MCP name-set parity（#54）：final_answer 收尾的简形态 + mcp 声明面。
+ * 锚面同 answerImmediate（四轮面对账全量适用），外加 driver 对 mcp 任务的可见工具
+ * 名集合对拍（两臂 mcp__ 子集恰等 = 滤后留存名；exotic 件 toolFilter 未含，两臂同不可见）。
+ */
+function answerMcpNameSet(o: ClassOpts & { mcp: CorpusMcp }): DualRunTask {
+  const blocks = [T(`【${o.id}】MCP name-set parity：按声明口径直接收尾。`)];
+  const args = { blocks, provenance: [] };
+  return {
+    id: o.id, cls: "answer", source: o.source, prompt: o.prompt,
+    skills: [], ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    mcp: o.mcp,
+    dsh: { rounds: [rFa(args), rTx(`收尾 ${o.id}`)] },
+    native: { turns: [nFa(args)] },
+    expect: {
+      answer: expectAnswer(blocks),
+      nativeIterations: [{ calls: [] }],
+      nativeTokens: { input: 100, output: 50 },
+      dshStats: stats(2),
+    },
+  };
+}
+
 /** answer · 软收尾（纯文本轮，无 final_answer）。 */
-function answerSoft(o: ClassOpts): DualRunTask {
-  const t = `【${o.id}】软收尾文本：模型未调 final_answer，末次文本兜底。`;
+function answerSoft(o: ClassOpts): DualRunTask {  const t = `【${o.id}】软收尾文本：模型未调 final_answer，末次文本兜底。`;
   return {
     id: o.id, cls: "answer", source: o.source, prompt: o.prompt,
     skills: [], ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
@@ -811,6 +865,30 @@ export const DUALRUN_CORPUS: DualRunTask[] = [
   answerProvenanceReplan({ id: "dr50-ci", source: "synthetic", prompt: "合成题 ci（dr50-ci）：先给畸形 provenance 再收敛。" }),
   answerWriteModeReplan({ id: "dr50-cj", source: "synthetic", prompt: "合成题 cj（dr50-cj）：写回技能挂载下先缺 action_draft 再收敛。" }),
   answerReasoning({ id: "dr50-ck", source: "synthetic", prompt: "合成题 ck（dr50-ck）：带推理流的收尾形态。" }),
+  // ---- W8副（#54）：MCP 可见性 name-set parity 1 条。工具表逐字镜像
+  //      mock-mcp-stdio-server-multi.mjs（echo/echo2/util.calc）；toolFilter 裸名滤一留一：
+  //      echo 留、echo2 两臂同剔；exotic util.calc 未含于 filter（native 宿主剔除 /
+  //      dsh 注册期 fail-closed 同向），不咬 name-set。dshExtraTools = poc 档 echo_tool
+  //      夹具件（cordis.poc.yml echo-tool 插件；生产档无，预存不对称登记在 REC §2 家族）。
+  //      nativeExtraTools = load_skill（engine.ts:811 无条件挂模型面 vs setup-spec.ts:251
+  //      仅 skills 非空才进允许表——预存不对称，REC 登记，本 WO 不动元工具策略）。 ----
+  answerMcpNameSet({
+    id: "dr50-cl", source: "synthetic",
+    prompt: "合成题 cl（dr50-cl）：MCP 工具可见性 name-set 双臂对拍。",
+    mcp: {
+      configId: "mcpcfg_dr50cl",
+      credId: "cred_dr50cl",
+      serverName: "dr50cl",
+      tools: [
+        { name: "echo", description: "Echo back the given text (mock fixture)", inputSchema: { type: "object", properties: { text: { type: "string" } } } },
+        { name: "echo2", description: "Second echo (toolFilter drop target)", inputSchema: { type: "object", properties: { text: { type: "string" } } } },
+        { name: "util.calc", description: "Exotic bare name with a dot (normalization seam)", inputSchema: { type: "object", properties: { expr: { type: "string" } } } },
+      ],
+      toolFilter: ["echo"],
+      dshExtraTools: ["echo_tool"],
+      nativeExtraTools: ["load_skill"],
+    },
+  }),
 ];
 
 /** A5 确定性子集（同臂连跑两遍过同一比对器）：每类至少一 + 长上下文 + provenance + 多轮 + 空块混排 + 结构化。 */
