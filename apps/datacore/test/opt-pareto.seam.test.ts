@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN } from "./helpers.js";
 import type { OptimizerClient, OptimizationRequest, OptimizationResult, MultiObjectiveRequest, MultiObjectiveResult } from "../src/solvers/optimizer-client.js";
 import type { ParetoObjective, ParetoRequest, ParetoResult, ParetoSolution } from "@platform/contracts";
-import { ParetoResultSchema } from "@platform/contracts";
+import { ParetoRequestSchema, ParetoResultSchema } from "@platform/contracts";
 import { runOptimizePareto, PARETO_TIGHT_EPS, paretoSolutionId } from "../src/solvers/opt-pareto.js";
 import type { SolveArgsFn } from "../src/solvers/opt-whatif.js";
 
@@ -237,5 +237,86 @@ describe("WO-SIM-BE-PARETO · 帕累托解集（支配剔除 · 确定性 · 绑
     await t.app.inject({ method: "PUT", url: "/a/v1/tenants/demo/features", headers: ADMIN, payload: { overrides: { "sim.sandbox": false } } });
     const off = await t.app.inject({ method: "POST", url: "/a/v1/sim/optimize-pareto", headers: ADMIN, payload: body });
     expect(off.statusCode).toBe(404);
+  });
+
+  /**
+   * WO-SIM-PARAM-WIRE ③ · 入参校验失败 = **400 VALIDATION_ERROR**，不是 500，且不回显 zod 内部结构。
+   *
+   * 🔴 病灶（改前实测原文，内存态真服务）：
+   * ```
+   * POST /a/v1/sim/optimize-pareto  body={}
+   *   → http=500  {"error":{"code":"INTERNAL_ERROR","message":"[\n  {\n    \"expected\": \"string\", … \"path\": [\"family\"] …"}}
+   * ```
+   * `app.ts` 那一行原是**裸** `ParetoRequestSchema.parse(req.body ?? {})`。ZodError 身上没有
+   * `statusCode` ⇒ 被兜底错误处理器判成 500：把「调用方少填了 family」报成「服务器坏了」，
+   * 并把 zod 的内部字段（`expected` / `invalid_type` / `path`）原样吐给调用方。
+   *
+   * ⚠ **本用例的第二半（不含 zod 内部字段）才是真正会退化的那一半**：只断言 400 的话，
+   * 有人把它改回 `parse` 再在兜底处理器里加一句「ZodError → 400」照样绿，而回显仍在。
+   * 故两半都咬：状态码 + 错误信封形状 + 内部字段黑名单。
+   *
+   * ── 变异反证（本用例真会说话的证据）───────────────────────────────────────
+   * 把 `app.ts` 那一行改回裸 `ParetoRequestSchema.parse(req.body ?? {})`，实测原文：
+   * ```
+   *   × WO-SIM-PARAM-WIRE ③ … → 校验失败被报成了 500 —— 「用户填错了」不是「服务器坏了」:
+   *       expected 500 to be 400 // Object.is equality
+   *   Tests  1 failed | 5 passed (6)
+   * ```
+   * 同文件另外 5 条保持绿 ⇒ 变异**精确命中**这一条，没有连坐。
+   */
+  it("WO-SIM-PARAM-WIRE ③ · body={} ⇒ 400 VALIDATION_ERROR + 统一信封，且不回显 zod 内部字段", async () => {
+    const t = await makeApp();
+    await t.app.inject({
+      method: "PUT", url: "/a/v1/tenants/demo/features", headers: ADMIN,
+      payload: { overrides: { "sim.sandbox": true, "opt.solver-pool": true, "opt.multiobj": true } },
+    });
+
+    // 金丝雀（铁律 0.6）：先证这条路在**入参合法**时不是恒 400 —— 否则下面的 400 断言
+    // 会因为「这条路对什么都回 400」而绿，那不是本用例要度量的东西。
+    class MockOk implements OptimizerClient {
+      async solve(_r: OptimizationRequest): Promise<OptimizationResult> {
+        return { status: "INFEASIBLE", optimal: false, selected: [], totalValue: 0, totalWeight: 0 };
+      }
+      async solveMultiObjective(req: MultiObjectiveRequest): Promise<MultiObjectiveResult> {
+        const w = Object.fromEntries((req.objectives ?? []).map((o) => [o.key, o.weight ?? 0]));
+        return { status: "OPTIMAL", optimal: true, values: {}, objectiveValues: metricsOfLevers(w.ot ?? 0, w.os ?? 0), method: req.method };
+      }
+    }
+    t.services.solvers.setOptimizer(new MockOk());
+    const good: ParetoRequest = {
+      family: "multi_objective",
+      args: {
+        vars: [{ id: "x", kind: "bool" }],
+        constraints: [{ terms: [{ var: "x", coef: 1 }], op: "<=", rhs: 1 }],
+        objectives: [{ key: "ot", sense: "min", terms: [{ var: "x", coef: 1 }], weight: 0 }, { key: "os", sense: "min", terms: [{ var: "x", coef: 1 }], weight: 0 }],
+        method: "weighted",
+      },
+      objectives: OBJECTIVES,
+      levers: [{ key: "objectives.ot.weight", values: [0, 8] }],
+    };
+    const canary = await t.app.inject({ method: "POST", url: "/a/v1/sim/optimize-pareto", headers: ADMIN, payload: good });
+    expect(canary.statusCode, "合法入参也回非 200 ⇒ 这条路本身坏了，下面的 400 断言没有意义").toBe(200);
+
+    // ── 主断言：空 body ⇒ 400 + 统一信封 ───────────────────────────────────────
+    const res = await t.app.inject({ method: "POST", url: "/a/v1/sim/optimize-pareto", headers: ADMIN, payload: {} });
+    expect(res.statusCode, "校验失败被报成了 500 —— 「用户填错了」不是「服务器坏了」").toBe(400);
+
+    const env = res.json() as { error?: { code?: string; message?: string; requestId?: string } };
+    expect(env.error?.code).toBe("VALIDATION_ERROR");
+    expect(typeof env.error?.message).toBe("string");
+    expect(env.error?.requestId, "统一错误信封缺 requestId").toMatch(/^req_/);
+    // 三个必填项一个都不许漏报（只报第一个 ⇒ 用户要来回试三次）。
+    for (const field of ["family", "objectives", "levers"]) expect(env.error?.message).toContain(field);
+
+    // ── 第二半：响应体**整体**不含 zod 内部结构（比只看 message 更严：换个字段名也咬得住）──
+    const raw = res.body;
+    for (const leak of ['"expected"', '"invalid_type"', '"path"', '"received"', '"unionErrors"']) {
+      expect(raw, `响应体回显了 zod 内部字段 ${leak}`).not.toContain(leak);
+    }
+    // 反向金丝雀：黑名单本身要能命中 —— 拿一份**真的 ZodError 序列化串**过一遍同一条判据，
+    // 它必须被判为"含内部字段"。不然黑名单写错了（比如引号形态不对）上面五条恒绿。
+    const realZodDump = JSON.stringify(ParetoRequestSchema.safeParse({}).error?.issues ?? []);
+    expect(realZodDump).toContain('"expected"');
+    expect(realZodDump).toContain('"path"');
   });
 });

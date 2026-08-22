@@ -2527,7 +2527,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    */
   app.post("/a/v1/sim/optimize-pareto", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
-    const body = ParetoRequestSchema.parse(req.body ?? {});
+    // WO-SIM-PARAM-WIRE ③ · `parseBody`（= `safeParse`）而非裸 `parse`。
+    //
+    // 🔴 病灶（实测原文，改前）：`POST /a/v1/sim/optimize-pareto` body `{}` →
+    //   `http=500 {"error":{"code":"INTERNAL_ERROR","message":"[\n  {\n    \"expected\": \"string\",
+    //    … \"path\": [\"family\"] …"}}` —— 裸 `parse` 抛的 ZodError 身上没有 `statusCode`，
+    //   被兜底错误处理器判成 **500 INTERNAL_ERROR**：把「调用方少填了 family」报成「服务器坏了」，
+    //   而且把 zod 的内部结构（`expected` / `code:"invalid_type"` / `path`）原样回显给调用方。
+    //   同一个坑本文件上方 `POST …/perturbations` 早已记过账并修过 —— **只修了那一处**。
+    //
+    // ✅ 现在与本文件另外 97 处 `parseBody(...)` 逐字一致：400 `VALIDATION_ERROR`
+    //   + 统一错误信封 `{ error: { code, message, requestId } }`，message 是
+    //   `"<path>: <message>"` 的人读串，不含任何 zod 内部字段。
+    const body = parseBody(ParetoRequestSchema, req.body ?? {});
     const solve: SolveArgsFn = (fam, a) => solvers.invoke(c, fam, a);
     return runOptimizePareto(solve, body);
   });
