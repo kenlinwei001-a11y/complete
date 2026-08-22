@@ -187,7 +187,10 @@ export async function applySetupSpec(agentCtx, spec) {
               : value.text, // 非 OK：此 render 产物被下方包装替换，永不交付
           }],
         },
-        execute: async (args) => hostExecute({ toolName: t.name, input: args }),
+        // W9-full：execute 二参 exec 透传帧 callId（agent-loop exec 铸造 callId=block.id，
+        // lib/index.js:120-129，与 tool/call 帧 :293-298 同源同值）——桥上传作请求 callId，
+        // 宿主侧表键 = 帧配对键，关联白得（team-lead 2026-08-22 裁决）。
+        execute: async (args, exec) => hostExecute({ toolName: t.name, input: args, callId: exec?.callId }),
       })
     }
     // authored isError 通道：非 OK 包络在此换成 native 逐字回执（normalizeDispatchResult

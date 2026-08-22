@@ -256,6 +256,16 @@ export interface DshToolExecuteRun {
   budget?: BudgetTracker;
   defaultTimeoutMs: number;
   seenCallIds: Set<string>;
+  /**
+   * W9-full：宿主侧表（键 = 桥上传的帧 callId 原值，team-lead 2026-08-22 裁决直通方案）。
+   * 端点逐调用累积 {outcome 四态, tc_ 形态 toolCallId, 宿主实测 durationMs}；run 终作
+   * ReassembleOptions.hostToolCalls 传 reassemble（侧表 = 事实源；MCP/meta 不过宿主的
+   * 调用无条目 ⇒ 未命中支帧两态推导维持）。
+   */
+  hostToolCalls: Map<
+    string,
+    { outcome: "OK" | "DENIED" | "ERROR" | "BUDGET_EXCEEDED"; toolCallId: string; durationMs: number }
+  >;
 }
 
 /** Cross-wires the agent loop and the workflow executor (mutual nesting, shared budget). */
@@ -640,11 +650,15 @@ export class ExecutionEngine {
       // wire 上唯一凭证；登记 executor 用上方 :491 同一实例（scope/预算/readCache 同账本）。
       // try/finally 保证 run 终（含异常路径）即注销——迟到的反向调用一律 401。
       const runToken = newId("dshr");
+      // W9-full：侧表 Map 先铸——reassemble opts（下方 :657 区）持同一引用，端点 run 期间
+      // 累积，runner 在 run 终后才 fold（runner.ts:112 reassembleDshRun 在收束循环后）⇒ 时序自洽。
+      const hostToolCalls: DshToolExecuteRun["hostToolCalls"] = new Map();
       this.dshToolExecuteRuns.set(runToken, {
         executor,
         budget: opts.nesting.budget,
         defaultTimeoutMs: 20_000, // 我方工具契约缺省 20s（mapMcpConfig toolCallTimeoutMs 同值）
         seenCallIds: new Set<string>(),
+        hostToolCalls,
       });
       let dsh: Awaited<ReturnType<typeof runDshAgent>>;
       try {
@@ -657,6 +671,8 @@ export class ExecutionEngine {
           reassemble: {
             governance: { writeMode, provenancePolicy: effectiveProvenancePolicy },
             ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
+            // W9-full：宿主侧表（活引用——端点 run 期间累积，run 终 fold 时读全）。
+            hostToolCalls,
           },
           onSse: (e) => { void opts.emit(e.event, e.payload); },
         },
