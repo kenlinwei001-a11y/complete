@@ -2510,7 +2510,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.post("/a/v1/sim/propagation-rules", async (req, reply) => {
     const c = ctx(req); await requireSim(c, "sim.propagation");
-    const r = PropagationRuleSchema.parse({ ...(req.body as object), id: newId("simpr"), tenantId: c.tenantId });
+    // 与上方 `POST …/perturbations` 的 `safeParse` 记账同一个坑（那处已修、这处漏了）：
+    // 裸 `parse` 抛的 ZodError 没有 `statusCode` ⇒ 兜底处理器判 500 INTERNAL_ERROR 并回显 zod 内部结构。
+    const r = parseBody(PropagationRuleSchema, { ...(req.body as object), id: newId("simpr"), tenantId: c.tenantId });
     await repos.sim.putPropagationRule(r);
     return reply.status(201).send(r);
   });
@@ -3427,7 +3429,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { key } = req.params as { key: string };
     const cat = dataCategoriesForIndustry().find((x) => x.key === key);
     if (!cat) throw validationError(`未知数据分类 '${key}'`);
-    const mode = IngestModeSchema.parse((req.body as { mode?: unknown })?.mode);
+    const mode = parseBody(IngestModeSchema, (req.body as { mode?: unknown })?.mode);
     if (!cat.modes.includes(mode)) throw validationError(`分类 '${key}' 不支持接入方式 '${mode}'`);
     return upsertCategorySetting(c.tenantId, key, { mode });
   });
@@ -3438,7 +3440,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { key } = req.params as { key: string };
     const cat = dataCategoriesForIndustry().find((x) => x.key === key);
     if (!cat) throw validationError(`未知数据分类 '${key}'`);
-    const cols = z.array(z.string().min(1)).parse((req.body as { columns?: unknown })?.columns);
+    const cols = parseBody(z.array(z.string().min(1)), (req.body as { columns?: unknown })?.columns);
     return upsertCategorySetting(c.tenantId, key, { customColumns: cols.length > 0 ? cols : null });
   });
   // 本体切片字段覆盖检查（铁律："所有字段实体都需被至少一个本体切片覆盖"）+ 分类归并完整性。
@@ -3471,7 +3473,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.put("/a/v1/connections/:id/validation-policy", async (req) => {
     const c = ctx(req);
     requireAdmin(c);
-    const policy = ValidationPolicySchema.parse((req.body as { policy?: unknown })?.policy ?? req.body);
+    const policy = parseBody(ValidationPolicySchema, (req.body as { policy?: unknown })?.policy ?? req.body ?? {});
     return connectors.setValidationPolicy(c, (req.params as { id: string }).id, policy);
   });
   app.post("/a/v1/ontology/object-types", async (req, reply) => {
