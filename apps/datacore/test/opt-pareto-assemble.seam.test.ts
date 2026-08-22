@@ -280,8 +280,14 @@ describe("WO-SIM-PARETO-MODEL-EXIT · 装配出口 → 求解 整条缝", () => 
     const a = await assemble(t, ACME, { selection: [{ objectType: "Coach", objectId: "c1" }, { objectType: "Coach", objectId: "c3" }] });
     const j = a.json as Extract<ParetoAssembleResult, { applicable: true }>;
     expect(j.applicable).toBe(true);
-    expect((j.request.args.lines as { id: string }[]).map((l) => l.id).sort(), "收窄没生效（c2 还在）").toEqual(["c1", "c3"]);
-    expect((j.request.args.orders as unknown[]).length, "订单侧被误伤收窄了").toBe(4);
+    // `ParetoRequest.args` 在契约里是**可选**的 ⇒ 直接下标取 `TS18048 possibly undefined`。
+    // 这里先把「args 必须在」单独断言出来（装配成功却不给 args 本身就是缺陷，值得独立报错），
+    // 之后再取字段 —— 比 `!` 断言强：`!` 只是让类型闭嘴，缺 args 时会在下一行抛 TypeError，
+    // 报错指向的是「读不到 .lines」而不是「装配没给 args」，那是把病因盖掉。
+    const args = j.request.args;
+    expect(args, "装配声明 applicable 却没给 args").toBeDefined();
+    expect((args!.lines as { id: string }[]).map((l) => l.id).sort(), "收窄没生效（c2 还在）").toEqual(["c1", "c3"]);
+    expect((args!.orders as unknown[]).length, "订单侧被误伤收窄了").toBe(4);
     // 装出来的仍是一份合法请求（收窄不该把契约弄坏）。
     expect(ParetoRequestSchema.safeParse(j.request).success).toBe(true);
   });
