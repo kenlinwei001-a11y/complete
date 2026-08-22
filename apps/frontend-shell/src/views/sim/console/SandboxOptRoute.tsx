@@ -35,30 +35,54 @@
  *   ③ **拒绝**：解析不出 ⇒ 返回 `undefined` ⇒ `enabled:false` ⇒ **一个请求都不发**，
  *      `[data-testid="sandbox-opt"]` 的 `data-source` 保持 `placeholder`。
  *
- * ══ ⛔ 为什么模型部分（`family`/`args`/`objectives`/`levers`）**不由前端生成** ══════
+ * ══════════════════════════════════════════════════════════════════════════
+ * WO-SIM-PARETO-MODEL-EXIT · 模型那一半：今天的行为是 X，应该是 Y
+ * ══════════════════════════════════════════════════════════════════════════
  *
- * 这是本单唯一一处「本来想做、实测做不了、故如实报」的地方，证据逐条如下（都是亲手跑出来的）：
+ * **X（`WO-SIM-PARAM-WIRE` 收工时写在本文件里的原文，逐条属实，我复现过）**：
+ * 宿主会校验、会补 `sessionId`、会拒绝坏形状 —— 但**模型本身没人给**。原文写着：
  *
  *  · `ParetoRequest` 的必填三件套是 `family` + `objectives(≥2)` + `levers(≥1)`，
  *    且 `levers[].key` 必须能 **DF.8 接地**到 `args` 里（`opt-whatif.ts` 的 `resolveTarget`）——
  *    也就是说必须先有一份**完整的优化模型**（vars/constraints/成本系数/可产对），才谈得上杠杆。
- *  · 这份模型在本仓是**建模产物**，唯一的自动装配口在后端且**没有出口**：
- *    `solvers/opt-binding.ts` 的 `bindToSolverArgs` / `bindCrossObjectOccupancy`（要一份
- *    `OntologyBinding` 的 role→本体映射），以及 `solvers/service.ts` 的
- *    `assembleBaselineFromSelection`（`private`，只在 `optimize_whatif` 的 `autoBind` 分支里走）。
- *    两者都**不回显装配出来的 `args`**，前端拿不到。
+ *  · 这份模型的**唯一自动装配口在后端且没有出口**：`solvers/opt-binding.ts` 的
+ *    `bindToSolverArgs`/`bindCrossObjectOccupancy` 要一份**现成的** `OntologyBinding`；
+ *    `solvers/service.ts` 的 `assembleBaselineFromSelection` 是 `private`，只在
+ *    `optimize_whatif` 的 `autoBind` 分支里走，且**只回 Δ目标不回 args**。
+ *    （复现原文，本机内存态 demo 租户：
+ *     `POST /a/v1/solvers/optimize_whatif/invoke {"args":{"family":"facility_location","autoBind":true,…}}`
+ *     → `200 {"data":{"applicable":false,"missingRoles":["facility（Base 在选中范围内无实例）"],…}}`
+ *     ——通篇没有一格叫 `args`。）
  *  · 前端自己猜 role（把 `Order.value` 读成 revenue、`Order.qty` 读成 qty…）就是在客户端
- *    另造一套求解口径 —— 正是 R13/R14 反复点名的漂移源，也是 `SandboxOptProps.paretoRequest`
- *    与 `useParetoFrontier.ts` 文件头立的那条纪律。**判据 1 明写「解析不出就不发请求」，故不发。**
- *  · 补充实测（内存态 · `node apps/datacore/dist/server.js`）：即使前端拼得出模型，
- *    `GET /a/v1/opt/templates` 在册的 5 个族（facility_location / min_cost_flow / set_cover /
- *    independent_set / combinatorial_auction）**一律**回
- *    `400 "<family> 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）"`；
- *    内存态唯一能真解的族是 `cross_object_occupancy`（`InProcOptimizerClient` 兜底，实测 200、
- *    `frontier` 3 个解）。**故也不许拿「在册族」去做白名单校验** —— 那会把唯一能解的族挡掉。
+ *    另造一套求解口径 —— 正是 R13/R14 反复点名的漂移源。
+ *
+ * 于是 `view.options.paretoRequest` 恒缺席 ⇒ 前沿图恒 `data-source="placeholder"`。
+ *
+ * **Y（现在）**：后端开了出口 —— `POST /a/v1/sim/optimize-pareto/assemble`
+ * 从**本租户已发布本体**装出模型，回一份**完整的、可直接 POST 的 `ParetoRequest`**。
+ * 宿主的活因此变成四件事，一件都不多：
+ *   ① **要范围**：把会话 scope 递过去。本页除"当前会话"外没有别的范围可给，
+ *      故只递它 —— **不猜 selection**（猜出来的范围就是客户端另造口径的另一种形态）。
+ *   ② **不改模型**：装回来的 `family`/`args`/`objectives`/`levers` **一格不动**往下透。
+ *      宿主仍然只许"补齐"（`sessionId`），不许"改写" —— 与上半段同一条纪律。
+ *   ③ **仍然真过契约**：装配结果照样喂 `resolveParetoRequest()`（= `safeParse`）。
+ *      服务端产出的东西为什么还要再校一遍 —— **这一格是接缝不是客套**：前后端版本错位、
+ *      代理改写、缓存串包，任何一种都会让"服务端保证过了"失效，而失效时的表现是
+ *      发一个必然 400 的请求再被 hook 吞成占位，屏上与"没给"长得一模一样。
+ *   ④ **装不出就不发**：`applicable:false`（本体撑不起这个模型）或这一跳自己失败
+ *      ⇒ `undefined` ⇒ `useParetoFrontier` 的 `enabled:false` ⇒ **一个 pareto 请求都不发**，
+ *      占位原样保留。这正是「不许兜假模型」在前端这一侧的落点。
+ *
+ * ⚠ **显式给的模型优先**：`view.options.paretoRequest` 若真有值就用它、**连装配口都不调**
+ * （显式 > 自动，与 `sessionId` 同一套优先级；`WO-SIM-PARAM-WIRE` 那四条用例因此逐字节仍成立）。
+ *
+ * ⛔ **版面零改动**：本文件不产出任何 DOM —— 诚实位仍只走既有 `data-source` 属性族，
+ *    屏上一个字都没多。像素级 1:1 的验收线（`docs/ux-spec/sandbox/sandbox-opt.html`）不受影响。
  */
 import type { ViewRendererProps } from "@/views/registry";
-import { ParetoRequestSchema, type ParetoRequest } from "@platform/contracts";
+import { useQuery } from "@tanstack/react-query";
+import { ParetoAssembleResultSchema, ParetoRequestSchema, type ParetoRequest } from "@platform/contracts";
+import { api } from "@/api/apiClient";
 import { SandboxOpt } from "./SandboxOpt";
 import { consoleHostProps, useConsoleSession, type ConsoleSession } from "./useConsoleSession";
 
@@ -95,10 +119,45 @@ export function resolveParetoRequest(raw: unknown, session: ConsoleSession): Par
   return { ...req, sessionId };
 }
 
+/** 装配出口的路径 —— 与 `useParetoFrontier.PARETO_ENDPOINT` 同族，写成常量供测试引用。 */
+export const PARETO_ASSEMBLE_ENDPOINT = "/a/v1/sim/optimize-pareto/assemble" as const;
+
+/**
+ * 向后端要一份模型（`WO-SIM-PARETO-MODEL-EXIT`）。
+ *
+ * 三条判据，逐条对着一个具体的坏结局：
+ *  · **`explicit` 时不调**：宿主已经拿到显式模型，再调一次装配口就是白发一个请求，
+ *    而且会让"显式 > 自动"这条优先级在网络层看起来是反的。
+ *  · **会话还在路上（`loading`）不调**：与下半段同一条理由 —— 先发一份缺 `sessionId` 的、
+ *    列表回来再发一份，一次开页两次装配，且第一份装出来的模型缺 R6 确定性键。
+ *  · **回包必须过契约**（`ParetoAssembleResultSchema.safeParse`）：解析不出就当装不出。
+ *    ⛔ 不做部分修补 —— 半份模型发出去换回 400，再被吞成占位，屏上与"没装出来"一模一样。
+ *
+ * `retry:false`：装不出是**结论**不是抖动，重试三次只会把同一个结论算三遍。
+ */
+function useAssembledParetoRequest(session: ConsoleSession, enabled: boolean): ParetoRequest | undefined {
+  const sessionId = session.sessionId;
+  const body = sessionId ? { sessionId } : {};
+  const q = useQuery({
+    queryKey: ["a", "sim-pareto-assemble", sessionId ?? ""],
+    enabled: enabled && session.reason !== "loading",
+    retry: false,
+    queryFn: () => api.a<unknown>(PARETO_ASSEMBLE_ENDPOINT, { body }),
+  });
+  if (q.data === undefined) return undefined;
+  const parsed = ParetoAssembleResultSchema.safeParse(q.data);
+  if (!parsed.success || !parsed.data.applicable) return undefined;
+  return parsed.data.request;
+}
+
 export default function SandboxOptRoute({ view }: ViewRendererProps): JSX.Element {
   const p = (view.options ?? {}) as { sessionId?: string; paretoRequest?: unknown };
   const session = useConsoleSession(p);
-  const paretoRequest = resolveParetoRequest(p.paretoRequest, session);
+  const explicit = resolveParetoRequest(p.paretoRequest, session);
+  // 显式没给才去装配（hook 恒调用、只切 `enabled` —— React hook 规则不许条件调用）。
+  const assembled = useAssembledParetoRequest(session, explicit === undefined && p.paretoRequest === undefined);
+  // 装回来的那份**再过一遍同一个判官**：补 `sessionId`、坏形状照样拒。
+  const paretoRequest = explicit ?? resolveParetoRequest(assembled, session);
   return (
     <div {...consoleHostProps(session)}>
       <SandboxOpt
