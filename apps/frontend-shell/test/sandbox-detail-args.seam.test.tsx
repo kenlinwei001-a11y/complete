@@ -339,9 +339,16 @@ describe("WO-SIM-DETAIL-WIRE · 传导识别页宿主组装参数（接缝）", 
   });
 
   it("⓪ 金丝雀：三条派生规则与记录器先自证（不中 ⇒ 报「判据坏了」，不许读作「接线对了」）", async () => {
-    // (a) 「最近一条扰动」：数组顺序与 startTick 顺序**刻意相反**，两个方向各堵一个。
+    // (a) 「最近一条扰动」：数组顺序与时间顺序**刻意相反**，两个方向各堵一个。
     expect(pickLatestPerturbation(PERTURBATIONS)?.id, "拿数组最后一个当「最近」⇒ 判据坏了").toBe("pert_new");
     expect(pickLatestPerturbation([]), "空清单必须给 undefined").toBeUndefined();
+    // 同 tick 连下两条 ⇒ 判据必须落在 `createdAt` 上。`id` 字典序在这里**恰好相反**
+    //（`pert_a` < `pert_z`），照 id 排会挑出先下的那条 —— 真跑时这个坑真的踩到了。
+    const sameTick: Perturbation[] = [
+      { ...PERTURBATIONS[0]!, id: "pert_z", startTick: 5, createdAt: "2026-08-20T03:00:00.000Z" },
+      { ...PERTURBATIONS[0]!, id: "pert_a", startTick: 5, createdAt: "2026-08-20T04:00:00.000Z" },
+    ];
+    expect(pickLatestPerturbation(sameTick)?.id, "同 tick 时按 id 排了 ⇒ 挑中的是先下的那条").toBe("pert_a");
 
     // (b) 类型反查：查得到 / 查不到必须分得开（查不到 = undefined，不是空串）。
     expect(objectTypeOf(VIEW_CONFIG, "obj_a1")).toBe("TypeA");

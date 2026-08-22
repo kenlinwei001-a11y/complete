@@ -81,16 +81,30 @@ export type ArgSource =
   | "unavailable"; // 解析不出 ⇒ 这一跳不发
 
 /**
- * 本会话最近一条扰动。排序键 `startTick` 优先、`id` 兜底（**全序**，不靠后端返回顺序）——
- * 端点自述按 `startTick→id` 稳定排序，但"我信它排好了"不是"我自己有全序"，
- * 拿最后一个元素当"最近"会在排序口径一改时安静地取到别的那条。
+ * 本会话**最近一条**扰动。
+ *
+ * ── 排序键为什么是 `createdAt` 而不是 `startTick`（真跑时撞出来的）─────────────
+ * 端点自述按 `startTick → id` 稳定排序。照它取"最后一条"在**同一 tick 里连下三条扰动**时
+ * 会退化成按 `id` 字典序 —— 而 `id` 是 `newId()` 的 randomBytes，**与先后毫无关系**
+ * （实测：同 tick 三条扰动，id 最大的是第二条下的那一条）。
+ * 「最近一条」问的是**谁最后被下达**，那是 `createdAt`。`startTick`/`id` 只当同秒兜底，
+ * 保证**全序**（R6：同一份清单每次都挑出同一条，且不靠后端返回顺序）。
+ *
+ * ⚠ 未生效的未来扰动（`startTick > curTick`）本函数**不过滤**，由下游的
+ * `deriveImpactChange` 兜住：它要求世界态里真有那一格读数，而未生效的扰动没在世界上留下读数。
+ * 「还没发生的事」因此不会被当成「改了什么」。
  */
 export function pickLatestPerturbation(items: readonly Perturbation[]): Perturbation | undefined {
+  const rank = (p: Perturbation): [string, number, string] => [p.createdAt, p.startTick, p.id];
   let best: Perturbation | undefined;
   for (const p of items) {
-    if (best === undefined || p.startTick > best.startTick || (p.startTick === best.startTick && p.id > best.id)) {
+    if (best === undefined) {
       best = p;
+      continue;
     }
+    const [ca, sa, ia] = rank(p);
+    const [cb, sb, ib] = rank(best);
+    if (ca > cb || (ca === cb && (sa > sb || (sa === sb && ia > ib)))) best = p;
   }
   return best;
 }
