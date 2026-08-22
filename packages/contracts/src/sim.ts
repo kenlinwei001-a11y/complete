@@ -494,7 +494,101 @@ export const SimMetricSeriesItemSchema = z.object({
 });
 export type SimMetricSeriesItem = z.infer<typeof SimMetricSeriesItemSchema>;
 
-/** `GET /a/v1/sim/sessions/:id/metric-series?from=&to=` 的响应。 */
+// ── 规模闸（WO-SIM-SERIES-SCALE）─────────────────────────────────────────────────
+//
+// 🔴 病灶（实测原文，非转述 —— 真 datacore `SEED_DEMO=1` + 真浏览器路径）：
+// 前端 `deriveBaseSnapshot(view-config)` 建的**生产量级**世界是 **11,348 对象 × 36 状态变量**，
+// 而本端点原先**零筛选入参**（query 只有 `from`/`to`）⇒ 无条件回全量：
+//   `GET …/metric-series` → 200 · **bytes = 116,859,540** · **metrics = 408,528 条** · ticks=[0,1] · **21.8 秒**
+// 屏上那张指标甘特**只画 12 行**（`useMetricSeries.ts` 的 `SPEC_ROWS`）。
+// 后果是**静默错答**：请求 20 秒回不来 ⇒ `[data-testid=sandbox-home-gantt]` 的 `data-source`
+// 恒为 `placeholder`，用户永远看不到自己的数，**且屏上不报错**。
+//
+// **为什么以前没发现**（照本仓 0.5 判据 6 的句式）：
+// > 「我用『1 对象手造世界回包 17 条』当作『这个端点回包规模可控』的证据，而前者并不度量后者。」
+// 当初的真后端实测用的是 `baseSnapshot={obj_base_changzhou:{loadIndex:42}}` —— **一个对象**。
+// **生产实参与测试实参交集为空**，于是三周来验的是一个生产从没走过的规模。
+//
+// ── 闸的三条纪律（缺一条就还是今天这个病）────────────────────────────────────────
+//  ① **不传任何参数也不许回全量** —— 默认 `limit` 就是版面量级，任何调用方从此都打不爆服务；
+//  ② **硬上限**在服务端，客户端要多少都压得住（`limit` 超上限 ⇒ 静默降到上限，`appliedLimit` 亮出来）；
+//  ③ **不许静默截断** —— 回包必须读得出「一共多少条 / 回了多少条 / 被裁了没有」。
+//     「我没给你」和「一共就这么多」是两个不同的命题，一个 `metrics.length` 盖不住两件事。
+
+/**
+ * 不传 `limit` 时的默认条数。**取值 = 12，理由写死在这里**：
+ * 四页规格里最大的那张指标表就是 12 行 —— 首页指标甘特 `SPEC_ROWS` 12 行、
+ * 页3 贡献度时序 11 环节 + 1「其余」= 12 行（`PLACEHOLDER_SERIES_NODES` + `PLACEHOLDER_SERIES_REST`，
+ * 竖排组名 6+6 也是 12）、页4 执行对比 `metrics.slice(0,4)` 只要 4。
+ * 故 12 = **版面量级本身**，不是一个拍脑袋的整数。
+ *
+ * ⚠ 这个数还有第二重作用，改它之前先读懂：三个消费方
+ * （`useMetricSeries` / `useContributionSeries` / `useExecutionCompare`）**共用同一个
+ * React Query 缓存键** `["a","sim-metric-series",id]`，而只有第一个会带 `limit`/`order`。
+ * 把服务端默认值取成**与前端所带的那一组相同**，三者拿到的回包才逐字节一致 ——
+ * 否则谁先发请求谁定这份缓存，屏上行数会随进场顺序变。
+ */
+export const SIM_METRIC_SERIES_DEFAULT_LIMIT = 12;
+
+/**
+ * `limit` 的**硬上限**。请求要得再多也只回这么多（不报错、只在 `appliedLimit` 里亮出来）。
+ *
+ * ⚠ **这个数是被测出来的，不是拍出来的** —— 首版取 200，被 `metric-series.seam.test.ts`
+ * 的金丝雀当场顶回来：那个世界（battery 种子 + 6 拍）的**全目录实测 204 条**，
+ * 原文 `expected 200 to be 204`。一个连**小 demo 世界的全目录都装不下**的上限，
+ * 会让白名单下钻这条路当场废掉（筛完了还是被截）。故按实测抬到 500。
+ *
+ * 500 的量纲：实测每条指标在 2 格窗口下约 **286 字节**（116,859,540 ÷ 408,528），
+ * 500 条 ≈ 143KB；窗口拉到 100 格也在数百 KB 量级，**且与世界里有多少对象无关** ——
+ * 这正是本闸要的性质：**回包规模由请求决定，不由世界规模决定**。
+ *
+ * ⚠ 别把这个数当成"保护"本身：真正挡住浏览器那一跳的是**默认值**
+ * （上面的 `SIM_METRIC_SERIES_DEFAULT_LIMIT` = 12），因为页3/页4 那两条请求根本不传 `limit`。
+ * 硬上限挡的是"有人手写了个大数"，两道闸各挡一种，缺一道都留缺口。
+ */
+export const SIM_METRIC_SERIES_MAX_LIMIT = 500;
+
+/**
+ * 指标排序档。
+ *  · `magnitude` —— 按**变化幅度**降序：每条取 `|actual 末值 − baseline 首值|`。
+ *    这两个数**正是屏上那两列**（甘特的「基线」列 = `baseline` 首个有效读数、
+ *    「扰动后」列 = `actual` 末个有效读数）⇒ 排的就是「屏上这两个数差得最多的那些行」，
+ *    而不是另编一个内部指标。任一端缺格（`null`）⇒ 幅度记 0（屏上是 `—`，最不值得占版面）。
+ *  · `key` —— 按 `key` 字典序升序（本端点的**历史行为**，下钻/对账时要可复现的稳定序）。
+ * 两档都以 `key` 升序作**稳定 tiebreaker** ⇒ 全序 ⇒ R6：同 (session, 窗口, limit, order) 重跑字节级一致。
+ */
+export const SimMetricSeriesOrderSchema = z.enum(["magnitude", "key"]);
+export type SimMetricSeriesOrder = z.infer<typeof SimMetricSeriesOrderSchema>;
+
+/** 逗号分隔串 / 重复 query 键 / 数组 —— 三种写法都收成 `string[]`（去空白、去空串）。 */
+const csvList = z.preprocess(
+  (v) => {
+    if (v === undefined || v === null || v === "") return undefined;
+    const raw = Array.isArray(v) ? v : [v];
+    const out = raw.flatMap((x) => String(x).split(",")).map((x) => x.trim()).filter((x) => x !== "");
+    return out.length > 0 ? out : undefined;
+  },
+  z.array(z.string()).min(1).optional(),
+);
+
+/**
+ * `GET /a/v1/sim/sessions/:id/metric-series` 的 **query 契约**（单源：路由与前端都读这一份）。
+ *
+ * ⚠ `objectIds` / `stateVars` 是**白名单**（给下钻用），不是"排除表"：给了就只回名单里的，
+ * 名单外的连**目录**都不进。两者都不给 ⇒ 全目录参与排序，再由 `limit` 截。
+ */
+export const SimMetricSeriesQuerySchema = z.object({
+  from: z.coerce.number().int().min(0).optional(),
+  to: z.coerce.number().int().min(0).optional(),
+  /** 正整数；不给 ⇒ `SIM_METRIC_SERIES_DEFAULT_LIMIT`；超 `SIM_METRIC_SERIES_MAX_LIMIT` ⇒ 压到上限。 */
+  limit: z.coerce.number().int().min(1).optional(),
+  order: SimMetricSeriesOrderSchema.optional(),
+  objectIds: csvList,
+  stateVars: csvList,
+});
+export type SimMetricSeriesQuery = z.infer<typeof SimMetricSeriesQuerySchema>;
+
+/** `GET /a/v1/sim/sessions/:id/metric-series?from=&to=&limit=&order=&objectIds=&stateVars=` 的响应。 */
 export const SimMetricSeriesResponseSchema = z.object({
   sessionId: z.string(),
   /** 实际返回的窗口（已按世界线可用范围收敛，见 `clamped`）。 */
@@ -502,8 +596,25 @@ export const SimMetricSeriesResponseSchema = z.object({
   toTick: z.number().int(),
   /** 窗口内逐格 tick（升序连续）。`metrics[*].baseline/actual` 与它**同长同序**。 */
   ticks: z.array(z.number().int()),
-  /** 指标按 `key` 升序（R6 确定性：同 (session, from, to) 重跑字节级一致）。 */
+  /**
+   * 本页指标，序由 `appliedOrder` 决定（`key` 档 = 字典序升序 = 历史行为；
+   * `magnitude` 档 = 变化幅度降序 + key 升序 tiebreak）。两档都是全序 ⇒ R6 字节级可复现。
+   * **长度 ≤ `appliedLimit`**，且 `< totalMetrics` 时 `truncated` 为真。
+   */
   metrics: z.array(SimMetricSeriesItemSchema),
+  /**
+   * 🔴 **诚实位（不许静默截断）**：本窗口内**一共**有多少条指标
+   * （已应用 `objectIds`/`stateVars` 白名单，**未**应用 `limit`）。
+   * 有它，「我没给你剩下的」与「一共就这么多」才分得开 —— 只给 `metrics.length` 的话，
+   * 一个数盖住两个不同事实，正是本仓反复记账的那个病。
+   */
+  totalMetrics: z.number().int(),
+  /** 诚实位：`metrics.length < totalMetrics`。屏上据此决定要不要标"还有更多"（**不许**默默少回）。 */
+  truncated: z.boolean(),
+  /** 回执：**真正生效**的条数上限（= min(请求 limit ?? 默认, 硬上限)）。要多了被压过，从这里看得出来。 */
+  appliedLimit: z.number().int(),
+  /** 回执：真正生效的排序档（不给 ⇒ `magnitude`）。 */
+  appliedOrder: SimMetricSeriesOrderSchema,
   /**
    * 🔴 **基线出处回执** —— 本端点最容易被悄悄做错的那件事，摊开在回包里让测试咬。
    * `sessionId` 必须**等于本会话 id**：不等 = 基线来自另一个世界 = 上面禁掉的那种假分叉。

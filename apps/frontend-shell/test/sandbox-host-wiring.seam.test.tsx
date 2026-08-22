@@ -3,7 +3,7 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import type { ComponentType } from "react";
-import type { SimMetricSeriesResponse, SimSession } from "@platform/contracts";
+import { SIM_METRIC_SERIES_DEFAULT_LIMIT, type SimMetricSeriesResponse, type SimSession } from "@platform/contracts";
 import { server } from "./setup";
 import type { ViewConfigVM } from "@/api/types";
 import type { ViewRendererProps } from "@/views/registry";
@@ -124,6 +124,11 @@ const metricSeries = (sessionId: string): SimMetricSeriesResponse => ({
   ],
   baselineOrigin: { sessionId, seedTick: 0, excludedPerturbationIds: [] },
   clamped: false,
+  // 规模闸的诚实位（WO-SIM-SERIES-SCALE）：这个桩只有 1 条指标、且没被裁过 ⇒ 一共就这么多。
+  totalMetrics: 1,
+  truncated: false,
+  appliedLimit: SIM_METRIC_SERIES_DEFAULT_LIMIT,
+  appliedOrder: "magnitude",
 });
 
 /** `GET …/:id/node-detail` 的回包。形状必须**完整** —— 缺一格页面就在 `.map()` 上炸，那是白屏不是占位。 */

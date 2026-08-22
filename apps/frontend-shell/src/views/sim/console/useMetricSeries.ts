@@ -59,7 +59,7 @@
  * 判据 C 明文按机制放行），占位表按**段位代号**引用它。
  */
 import { useQuery } from "@tanstack/react-query";
-import { chainNodeDef, type ChainNodeDef, type SimMetricSeriesResponse } from "@platform/contracts";
+import { chainNodeDef, type ChainNodeDef, type SimMetricSeriesOrder, type SimMetricSeriesResponse } from "@platform/contracts";
 import { api } from "@/api/apiClient";
 // 端点路径取**既有单源** `metricSeriesPath()`（`useParetoFrontier.ts`，同目录、同一条端点）。
 // 在这里再写一遍 `/a/v1/sim/sessions/${id}/metric-series` 就是第二份路径字面量 ——
@@ -167,6 +167,36 @@ const SPEC_ROWS: readonly SpecRow[] = [ // hardcoded-data-allow —— **规格�
   [undefined, "Q3 产能缺口", "0 万套", "6.0 万套", "up", [[1, 11, "o", "REQ"], [14, 14, "r", "KIT"], [31, 17, "b", "AGING"], [53, 12, "g", RELEASE], [72, 10, "o", CARRY]]],
   [undefined, "全链非增值", "18.4 D", "21.6 D", "up", [[3, 10, "o", "PO"], [16, 15, "b", "KIT"], [34, 16, "b", "AGING"], [55, 11, "g", RELEASE], [72, 9, "o", CARRY]]],
 ];
+
+/**
+ * **版面能画下的行数**（WO-SIM-SERIES-SCALE）—— 派生自 `SPEC_ROWS`，**不许再手写这个数**。
+ *
+ * 🔴 病灶（实测原文，真 datacore `SEED_DEMO=1` + 真浏览器走真实用户路径）：
+ * 本 hook 原先**不带任何裁剪入参**地打 `GET …/metric-series`，而生产量级世界
+ * （`deriveBaseSnapshot(view-config)` = 11,348 对象 × 36 状态变量）下端点回
+ * **408,528 条 / 116,859,540 字节**、**20 秒回不来** ⇒ 请求永远悬着 ⇒
+ * `[data-testid=sandbox-home-gantt]` 的 `data-source` 恒 `placeholder`。
+ * 用户看不到自己的数，**而屏上不报错** —— 静默错答。
+ *
+ * **今天是 X**：一个只画 12 行的看板，让服务器序列化 116 MB、让浏览器解析 40 万条。
+ * **应该是 Y**：只要它画得下的那批。故请求带 `limit = SPEC_ROWS.length`。
+ *
+ * ⚠ 这个数**同时是服务端默认值**（契约 `SIM_METRIC_SERIES_DEFAULT_LIMIT` = 12）。
+ * 不是巧合，是必须的：见 `useMetricSeries` 里「共用缓存键」那段。
+ */
+export const METRIC_GANTT_ROWS = SPEC_ROWS.length;
+
+/**
+ * 默认排序档：**按变化幅度降序**。
+ *
+ * 12 行版面从 40 万条里选谁上屏，这件事必须有判据。按 `key` 字典序取前 12 条
+ * 会拿到「恰好排在字母表最前面的那个对象的 12 个变量」—— 与用户关心什么毫无关系，
+ * 且屏上那两列（基线 / 扰动后）多半一模一样，看起来像"什么都没发生"。
+ * `magnitude` 档排的正是「屏上这两个数差得最多的那些行」（契约 `SimMetricSeriesOrderSchema` 写死口径）。
+ *
+ * 类型锚在契约上（不是裸字符串）：档位改名 ⇒ 这里 TS 报错，而不是悄悄发一个后端不认识的值。
+ */
+const DEFAULT_ORDER: SimMetricSeriesOrder = "magnitude";
 
 /** 规格 `tick`/`laneHead`：`for(i=0;i<=14;i++) String(i*2).padStart(2,"0")+":00"`。**两处共用这一份**。 */
 export const HOUR_TICKS: readonly string[] = Array.from({ length: 15 }, (_, i) => `${String(i * 2).padStart(2, "0")}:00`);
@@ -306,9 +336,22 @@ export function projectMetricSeries(res: SimMetricSeriesResponse): MetricSeries 
   const tN = ticks[ticks.length - 1] ?? t0;
   /** 窗口里的**格数**（闭区间）。空窗口按 1 兜底，只为不除零。 */
   const cells = Math.max(1, tN - t0 + 1);
-  const names = rowNames(res.metrics);
+  /**
+   * **防御性裁剪**（WO-SIM-SERIES-SCALE）—— 与请求里的 `limit` 是**两道**闸，不是一道写两遍。
+   *
+   * 请求那道管的是「别让服务器算 40 万条、别让网络传 116 MB」；
+   * 这道管的是「不管回包里到底有多少条，这张 12 行的版面只画 12 行」。
+   * 两道各挡一种死法，去掉任何一道都留一个真实缺口：
+   *  · 只留请求那道 ⇒ 缓存键与 `useContributionSeries`/`useExecutionCompare` **共用**，
+   *    它们不带 `limit`，谁先进场谁定这份缓存 ⇒ 本组件可能拿到一份**不是自己要的**回包；
+   *  · 只留这道 ⇒ 服务器照样算全量、照样 20 秒，屏上照样是占位。
+   * ⚠ 裁掉的部分**不在屏上编任何提示**（四页像素级 1:1，`MetricGantt.tsx` 一行不动）——
+   *   「被裁了多少」这件事诚实地记在回包的 `totalMetrics`/`truncated`/`appliedLimit` 上。
+   */
+  const shown = res.metrics.slice(0, METRIC_GANTT_ROWS);
+  const names = rowNames(shown);
 
-  const rows: MetricRow[] = res.metrics.map((m, i) => ({
+  const rows: MetricRow[] = shown.map((m, i) => ({
     // `group` 整列不给 —— 理由见函数头注「域名为什么整列不给」。
     name: names[i] as string,
     baseline: reading(firstReading(m.baseline), m.unit),
@@ -354,6 +397,8 @@ function directionOf(before: number | null, after: number | null): "up" | "dn" {
  * 本 hook **不发 `from`/`to`** ⇒ 后端 `requestedTo = args.to ?? curTick`
  * （`apps/datacore/src/sim/metric-series.ts` 的窗口收敛段）⇒ `toTick === curTick`。
  * ⚠ 这条推理**只在不发窗口参数时成立**。哪天这里加了 `?from=&to=`，它立刻失效。
+ *   （WO-SIM-SERIES-SCALE 加的是 `limit`/`order` —— 那两个只筛**指标**、不动**窗口**，
+ *   故本推理仍然成立；下面 `seriesUrl` 里刻意没有 `from`/`to` 就是为了守住它。）
  *   故实现写成「在 `ticks` 里**找** `toTick` 的下标」而不是直接写死 100：
  *   找不到（窗口不含当前格 / `ticks` 为空）⇒ **置 0**，不猜。
  */
@@ -377,6 +422,15 @@ function playheadPctOf(res: SimMetricSeriesResponse): number {
  *
  * 缓存键与 `useContributionSeries` / `useExecutionCompare` **共用** `["a","sim-metric-series",id]`：
  * 同一会话的这条端点全仓只打一次，且三处同时随 `sim.*` 事件失效（`store/eventInvalidation.ts`）。
+ *
+ * ⚠ **共用缓存键 × 只有本 hook 带参数 —— 这件事必须想清楚，别当细节**（WO-SIM-SERIES-SCALE）：
+ * 三个消费方共用一份缓存，而只有本 hook 发 `?limit=&order=`。React Query 认的是**键**不是 URL，
+ * 于是谁先进场谁定这份缓存。所以服务端的默认值被**刻意取成与这里发的那一组相同**
+ * （`SIM_METRIC_SERIES_DEFAULT_LIMIT` = 12 = `METRIC_GANTT_ROWS`，默认 `order` = `magnitude`）
+ * ⇒ 带参数与不带参数拿到的回包**逐字节一致**，缓存谁先进场都一样。
+ * 这不是巧合，是本单的设计裁决：另外两个 hook 在本单的 🚦 范围边界之外，不能去给它们补参数，
+ * 而「让默认值等于版面量级」既堵死了「不传参数就回全量」这条路，又让共用缓存自洽。
+ * 若哪天版面行数变了（`SPEC_ROWS` 增删），**契约里那个默认值要跟着改** —— 两处都留了互指的注释。
  */
 export function useMetricSeries(sessionId?: string): MetricSeries {
   const enabled = sessionId !== undefined && sessionId !== "";
@@ -384,8 +438,18 @@ export function useMetricSeries(sessionId?: string): MetricSeries {
     queryKey: ["a", "sim-metric-series", sessionId ?? ""],
     enabled,
     retry: false,
-    queryFn: () => api.a<SimMetricSeriesResponse>(metricSeriesPath(sessionId as string)),
+    queryFn: () => api.a<SimMetricSeriesResponse>(seriesUrl(sessionId as string)),
   });
   if (!enabled || q.data === undefined || q.data.metrics.length === 0) return PLACEHOLDER;
   return projectMetricSeries(q.data);
 }
+
+/**
+ * 本 hook 要打的完整 URL —— 路径走既有单源 `metricSeriesPath()`，参数在这里拼。
+ *
+ * **只发 `limit`/`order` 两个，刻意不发 `from`/`to`**：窗口一发，`playheadPctOf` 那条
+ * 「`toTick === curTick`」的推理当场失效（见该函数注释）。
+ * 导出给测试当断言对象用 —— 「请求带了 limit」这条判据要咬的是**这个串**，不是某个中间变量。
+ */
+export const seriesUrl = (sessionId: string): string =>
+  `${metricSeriesPath(sessionId)}?limit=${METRIC_GANTT_ROWS}&order=${DEFAULT_ORDER}`;

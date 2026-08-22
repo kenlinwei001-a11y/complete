@@ -2,11 +2,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
-import { chainNodeDef, type SimMetricSeriesResponse, type SimSession } from "@platform/contracts";
+import {
+  chainNodeDef,
+  SIM_METRIC_SERIES_DEFAULT_LIMIT,
+  SIM_METRIC_SERIES_MAX_LIMIT,
+  type SimMetricSeriesResponse,
+  type SimSession,
+} from "@platform/contracts";
 import { server } from "./setup";
 import type { ViewConfigVM } from "@/api/types";
 import SandboxHomeRoute from "@/views/sim/console/SandboxHomeRoute";
-import { HOUR_TICKS, projectMetricSeries } from "@/views/sim/console/useMetricSeries";
+import { HOUR_TICKS, METRIC_GANTT_ROWS, projectMetricSeries } from "@/views/sim/console/useMetricSeries";
 import styles from "@/views/sim/console/SandboxHome.module.css";
 
 /**
@@ -115,6 +121,12 @@ const response = (metrics: Metric[], over: Partial<SimMetricSeriesResponse> = {}
   metrics,
   baselineOrigin: { sessionId: SESSION_ID, seedTick: 0, excludedPerturbationIds: [] },
   clamped: false,
+  // 规模闸的诚实位（WO-SIM-SERIES-SCALE）。默认桩 = 「一共就这么多、没裁过」；
+  // 要测「回包超量」的用例自己在 `over` 里把 `totalMetrics`/`truncated` 翻过去。
+  totalMetrics: metrics.length,
+  truncated: false,
+  appliedLimit: SIM_METRIC_SERIES_DEFAULT_LIMIT,
+  appliedOrder: "magnitude",
   ...over,
 });
 
@@ -305,7 +317,9 @@ describe("WO-SIM-FE-SERIES-WIRE · 指标甘特真取数（接缝）", () => {
     expect(hits, "一条指标请求都没发出去").not.toHaveLength(0);
     for (const u of hits) expect(u).toContain(SESSION_ID);
 
-    // 行数 = 指标数：**一条都不许砍**（切片会让屏上少几行而没有任何东西报错）。
+    // 行数 = 指标数：**版面装得下的一条都不许砍**（无故切片会让屏上少几行而没有任何东西报错）。
+    // ⚠ 这里 3 条 < 版面 12 行 ⇒ 全画。「装不下时怎么办」是另一条判据，见用例 ⑧。
+    expect(body.metrics.length).toBeLessThanOrEqual(METRIC_GANTT_ROWS); // 金丝雀：本例确实在"装得下"这一侧
     expect(cellTexts(g, COL.name)).toHaveLength(body.metrics.length);
     expect(cellTexts(g, COL.name)).toEqual(body.metrics.map((m) => m.label));
 
@@ -529,5 +543,98 @@ describe("WO-SIM-FE-SERIES-WIRE · 指标甘特真取数（接缝）", () => {
     // 「唯一那格的刻度文字」与「指着那一格的播放头」就会落在屏上两个地方，自相矛盾。
     const play = columnsOf(g)[COL.lane]?.lastElementChild as HTMLElement | null;
     expect(play?.style.left, "播放头与唯一那格的刻度分家了").toBe("0%");
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WO-SIM-SERIES-SCALE · 规模闸的前端这一半
+  // ══════════════════════════════════════════════════════════════════════════
+  /**
+   * ── 病灶（真浏览器实测，非 mock）─────────────────────────────────────────────
+   * 本 hook 原先**不带任何裁剪入参**地打 `GET …/metric-series`。生产量级世界
+   * （`deriveBaseSnapshot(view-config)` = 11,348 对象 × 36 状态变量）下端点回
+   * **408,528 条 / 116,859,540 字节**：
+   * ```
+   * REQ +5609ms GET /a/v1/sim/sessions/<sid>/metric-series
+   * （等到 +20000ms 仍无 response）
+   * data-testid=sandbox-home-gantt 的 data-source = "placeholder"
+   * ```
+   * ⇒ 首页甘特**永远**是规格占位数，**且屏上不报错** —— 静默错答。
+   *
+   * ⚠ **为什么 mock 测不出那个病，这两条却仍然值得写**：MSW 桩里回 3 条还是 40 万条，
+   *   屏上都是瞬间的，**规模本身在这一层不可观测**。所以这两条咬的不是"快不快"，
+   *   而是那个病的**两个可观测因**：① 请求到底带没带 `limit`（带了，服务器才不会去算全量）；
+   *   ② 万一回包仍然超量（缓存共用 / 别的调用方先进场），屏上会不会被撑爆。
+   *   "回包规模真的降下来了"那一半由 datacore 侧的生产量级用例咬（`metric-series.seam.test.ts`
+   *   的 WO-SIM-SERIES-SCALE 组），两半合起来才是完整判据 —— 各半单独看都不够。
+   */
+  it("⑧ 请求必须带 limit（= 版面行数，不是硬写的数字）与 order；且**不带** from/to（否则播放头那条推理失效）", async () => {
+    installHandlers({ body: response(THREE_METRICS) });
+    const root = mount({ sessionId: SESSION_ID });
+    await waitSource(root, "endpoint");
+
+    const hits = urlsMatching(SERIES_RE);
+    expect(hits, "一条指标请求都没发出去 ⇒ 下面每一条都是空转").not.toHaveLength(0);
+    for (const u of hits) {
+      const q = new URL(u.slice(u.indexOf("http"))).searchParams;
+      // 🔴 核心：带 `limit`，且它**等于版面行数**（`SPEC_ROWS.length` 单一出处派生）。
+      expect(q.get("limit"), `请求没带 limit：${u}`).toBe(String(METRIC_GANTT_ROWS));
+      expect(q.get("order"), `请求没带 order：${u}`).toBe("magnitude");
+      // 不带窗口参数 —— `playheadPctOf` 的「toTick === curTick」推理只在这个前提下成立。
+      expect(q.get("from"), "带上了 from ⇒ 播放头那条推理当场失效").toBeNull();
+      expect(q.get("to"), "带上了 to ⇒ 播放头那条推理当场失效").toBeNull();
+    }
+
+    // 金丝雀：版面行数与服务端默认值**必须相等** —— 三个消费方共用一个 React Query 缓存键，
+    // 只有本 hook 带参数，两者不等的话谁先进场谁定这份缓存，屏上行数会随进场顺序变。
+    expect(METRIC_GANTT_ROWS, "版面行数与服务端默认 limit 脱钩了 ⇒ 共用缓存不再自洽").toBe(
+      SIM_METRIC_SERIES_DEFAULT_LIMIT,
+    );
+    // 且版面行数必须落在硬上限之内（否则前端要的那批服务端根本给不全）。
+    expect(METRIC_GANTT_ROWS).toBeLessThanOrEqual(SIM_METRIC_SERIES_MAX_LIMIT);
+  });
+
+  it("⑨ 回包超量（版面 12 行、回 17 条）⇒ 屏上只画 12 行，画的是**前 12 条**（服务端已排过序），且屏上不新增任何提示文字", async () => {
+    const OVER = METRIC_GANTT_ROWS + 5;
+    const many = Array.from({ length: OVER }, (_, i) =>
+      metric({
+        key: `obj_${i}.loadIndex`,
+        objectId: `obj_${i}`,
+        stateVar: "loadIndex",
+        // 每行一个**不同**的 label：撞名会走 `rowNames` 的消歧分支，那时断言读的就不是本条要验的东西。
+        label: `指标${String(i).padStart(2, "0")}`,
+        baseline: [i, i, i, i],
+        actual: [i * 2, i * 2, i * 2, i * 2],
+      }),
+    );
+    // 回包如实声明「一共 17 条、被裁过」—— 前端不因这两位改变渲染，但它们必须在回包里。
+    installHandlers({ body: response(many, { totalMetrics: 999, truncated: true }) });
+    const root = mount({ sessionId: SESSION_ID });
+    await waitSource(root, "endpoint");
+    const g = ganttOf(root);
+
+    // 金丝雀：桩确实超量了（`OVER > METRIC_GANTT_ROWS`），否则这条在"没超量"上空转全绿。
+    expect(OVER).toBeGreaterThan(METRIC_GANTT_ROWS);
+
+    // 🔴 判据：**屏上不渲染超量行**。多出来的 5 行不许把版面撑破。
+    const names = cellTexts(g, COL.name);
+    expect(names, `屏上画了 ${names.length} 行，版面只有 ${METRIC_GANTT_ROWS} 行`).toHaveLength(METRIC_GANTT_ROWS);
+    // 且留下的是**前 12 条**（服务端已按 order 排过序，前端不许自己再挑一遍）。
+    expect(names).toEqual(many.slice(0, METRIC_GANTT_ROWS).map((m) => m.label));
+    // 反向证据：被裁掉的那几条**真的没上屏**（否则上一条可能只是"恰好前 12 个名字对上"）。
+    for (const m of many.slice(METRIC_GANTT_ROWS)) {
+      expect(names, `被裁掉的 ${m.label} 仍然出现在屏上`).not.toContain(m.label);
+    }
+    // 三列等长 —— 只砍名字列而读数列没砍的话，行与读数会整体错位（比少几行更糟）。
+    expect(cellTexts(g, COL.baseline)).toHaveLength(METRIC_GANTT_ROWS);
+    expect(cellTexts(g, COL.after)).toHaveLength(METRIC_GANTT_ROWS);
+
+    // ⛔ 像素级约束：**屏上不许新增任何描述性文字**（四页与规格逐像素 1:1）。
+    //    「被裁了多少」这件事诚实地记在**回包**的 totalMetrics/truncated 上，不上屏。
+    const shown = g.textContent ?? "";
+    for (const word of ["截断", "已裁", "更多", "省略", "共 999", "truncated"]) {
+      expect(shown, `屏上出现了本单不许加的提示文字「${word}」`).not.toContain(word);
+    }
+    // 诚实位仍然只走既有的 `data-source` 属性族（真数据 ⇒ endpoint，不是新造第三态）。
+    expect(sourceOf(root)).toBe("endpoint");
   });
 });
