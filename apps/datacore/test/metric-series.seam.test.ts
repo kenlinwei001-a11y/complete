@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
-import type { SimMetricSeriesResponse } from "@platform/contracts";
+import {
+  SIM_METRIC_SERIES_DEFAULT_LIMIT,
+  SIM_METRIC_SERIES_MAX_LIMIT,
+  type SimMetricSeriesResponse,
+} from "@platform/contracts";
 
 /**
  * WO-SIM-BE-SERIES · **后端接缝门**：`GET /a/v1/sim/sessions/:id/metric-series`
@@ -108,10 +112,29 @@ async function worldWithFuturePerturbation(): Promise<Fixture> {
   return { t, sid, perturbationId };
 }
 
+/**
+ * 取指标时序。**显式带 `order=key&limit=<硬上限>`** —— 这不是可省的装饰，理由写在这里：
+ *
+ * 自 WO-SIM-SERIES-SCALE（2026-08-22）起本端点**不传参数就不回全量**：默认只回
+ * `SIM_METRIC_SERIES_DEFAULT_LIMIT`（=12）条、且默认按**变化幅度**降序。
+ * 而本文件下面那几条判据（基线口径 / 缺格 / 可逆 / 目录完整）要的是**全目录**。
+ * ⚠ 实测过：不显式指定的话，`obj_base_changzhou.loadIndex`（幅度 4→20 = 16）会被
+ *   逐格累加的 `utilPressure` / `queuePressure`（幅度 30+）**挤出前 12** ——
+ *   那不是回归，是闸在正常工作。把它读成回归会去"修"掉刚建好的闸。
+ *
+ * 配套金丝雀（`toBe(out.totalMetrics)`）：万一哪天这个世界长过硬上限，它当场报「尺子坏了」，
+ * 而不是让这些用例在一个子集上**悄悄全绿**。「我没找到」和「它不存在」是两个命题。
+ */
 const series = async (t: TestApp, sid: string, qs = "from=0&to=6"): Promise<SimMetricSeriesResponse> => {
-  const r = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/metric-series?${qs}`, headers: ADMIN });
+  const url = `/a/v1/sim/sessions/${sid}/metric-series?${qs}&order=key&limit=${SIM_METRIC_SERIES_MAX_LIMIT}`;
+  const r = await t.app.inject({ method: "GET", url, headers: ADMIN });
   expect(r.statusCode).toBe(200);
-  return r.json() as SimMetricSeriesResponse;
+  const out = r.json() as SimMetricSeriesResponse;
+  expect(
+    out.metrics.length,
+    "本世界的指标数已超过硬上限 ⇒ 本文件那几条「全目录」判据正在一个子集上空转，先把尺子修好再读结论",
+  ).toBe(out.totalMetrics);
+  return out;
 };
 
 const metricOf = (out: SimMetricSeriesResponse, key: string) => {
@@ -352,5 +375,198 @@ describe("WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节�
     const r = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/metric-series`, headers: ADMIN });
     expect(r.statusCode).toBe(404);
     expect(r.json().error.code).toBe("FEATURE_NOT_FOUND");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-SIM-SERIES-SCALE · 规模闸（**生产量级世界**，不是 1 对象的手造世界）
+// ══════════════════════════════════════════════════════════════════════════════
+/**
+ * ── 这一组为什么必须用**上万对象**的世界 ────────────────────────────────────────
+ * 上面那一组（WO-SIM-BE-SERIES）当初的真后端实测用的是
+ * `baseSnapshot={obj_base_changzhou:{loadIndex:42}}` —— **一个对象**，回包 17 条，一切正常。
+ * 形态（照本仓 0.6 句式）：
+ * > **「我用『1 对象手造世界回包 17 条』当作『这个端点回包规模可控』的证据，而前者并不度量后者。」**
+ * 这正是铁律 0.5 判据 6 的**生产实参与测试实参交集为空**：三周来验的是生产从没走过的规模。
+ *
+ * 真浏览器走真实用户路径（`/v/sim-sandbox` → `deriveBaseSnapshot(view-config)` → 推进一拍）
+ * 建出来的世界是 **11,348 对象 × 36 状态变量**，端点实测回
+ * **408,528 条 / 116,859,540 字节 / 21.8 秒**，屏上那张甘特**只画 12 行**，
+ * 请求 20 秒回不来 ⇒ `data-source` 恒 `placeholder` ⇒ **静默错答**。
+ *
+ * 故本组的世界必须是**上万对象**量级。用小世界写这几条断言 = 把刚修好的病重新埋回去。
+ *
+ * ── 世界怎么造（每一步都有用，别精简）───────────────────────────────────────────
+ *  · `SCALE_OBJECTS` 个合成对象 × 2 个**已登记**状态变量（取值域 = 已发布规则的
+ *    source/target stateVar，与生产同一口径）⇒ 目录 = `SCALE_OBJECTS × 2` 条；
+ *  · 合成对象**刻意不在本体图上** ⇒ 没有规则会写它们 ⇒ 两条线恒等 ⇒ 幅度恒 0，
+ *    于是「幅度最大的那几条」就只能是下面那三条**被扰动打过**的，判据可解析、不是"不等于"；
+ *  · 三条扰动的幅度**刻意各不相同且拉开**（900 / 800 / 700），
+ *    这样"按幅度降序"就能断言成**具体的顺序**，而不是"某种排序"。
+ */
+describe("WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,348 对象是真实测得的量级）", () => {
+  /** 合成对象数。**上万量级**（真实测 11,337 个 `nodeObjectIds` + 11 个空类型占位键 = 11,348）。 */
+  const SCALE_OBJECTS = 10_000;
+  /** 每个对象带的已登记状态变量（`seedDemoPropagationRules` 的 source/target 取值域里真有这两个）。 */
+  const SCALE_VARS = ["loadIndex", "utilPressure"] as const;
+  /** 合成对象的基线值 —— 全体同一个数 ⇒ 没被扰动打过的那些幅度恒 0。 */
+  const FLAT = 50;
+  /** 三条"热"指标：`set` 到这些值 ⇒ 幅度 = |值 − FLAT| = 900 / 800 / 700，三档拉开、可解析。 */
+  const HOT: readonly (readonly [number, number])[] = [[0, 950], [1, 850], [2, 750]];
+  const oid = (i: number): string => `obj_scale_${String(i).padStart(5, "0")}`;
+  /** 目录规模 = 对象数 × 变量数。**这个数就是 `totalMetrics` 该有的值**。 */
+  const CATALOG = SCALE_OBJECTS * SCALE_VARS.length;
+
+  interface ScaleFixture { t: TestApp; sid: string }
+
+  async function scaleWorld(): Promise<ScaleFixture> {
+    const t = await makeApp();
+    await seedDemoPropagationRules(t.repos); // 只要规则（= 指标目录的口径来源），不需要整套 battery
+    await enableSim(t);
+
+    const baseSnapshot: Record<string, Record<string, number>> = {};
+    for (let i = 0; i < SCALE_OBJECTS; i++) {
+      const row: Record<string, number> = {};
+      for (const v of SCALE_VARS) row[v] = FLAT;
+      baseSnapshot[oid(i)] = row;
+    }
+    const created = await t.app.inject({
+      method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN, payload: { baseSnapshot },
+    });
+    expect(created.statusCode).toBe(201);
+    const sid = created.json().id as string;
+
+    for (const [i, value] of HOT) {
+      const p = await t.app.inject({
+        method: "POST", url: `/a/v1/sim/sessions/${sid}/perturbations`, headers: ADMIN,
+        payload: {
+          kind: "capacity_loss", targetObjectId: oid(i), targetStateVar: "loadIndex",
+          startTick: 1, magnitude: value, mode: "set", label: `热指标 ${i} 置 ${value}`,
+        },
+      });
+      expect(p.statusCode).toBe(201);
+    }
+    const ticked = await t.app.inject({
+      method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 2 },
+    });
+    expect(ticked.statusCode).toBe(200);
+    return { t, sid };
+  }
+
+  const get = async (t: TestApp, sid: string, qs = ""): Promise<SimMetricSeriesResponse> => {
+    const r = await t.app.inject({
+      method: "GET", url: `/a/v1/sim/sessions/${sid}/metric-series${qs}`, headers: ADMIN,
+    });
+    expect(r.statusCode).toBe(200);
+    return r.json() as SimMetricSeriesResponse;
+  };
+
+  /** 一条指标的**变化幅度**，与服务端同一口径（`|actual 末个有效读数 − baseline 首个有效读数|`）。 */
+  const magnitudeOf = (m: SimMetricSeriesResponse["metrics"][number]): number => {
+    const first = m.baseline.find((v) => v !== null) ?? null;
+    const last = [...m.actual].reverse().find((v) => v !== null) ?? null;
+    return first === null || last === null ? 0 : Math.abs(last - first);
+  };
+
+  // ── ① 防复发的那台机器：**不传任何参数也不许回全量** ────────────────────────────
+  it("🔴 SEAM：生产量级世界（10,000 对象 × 2 变量 = 20,000 条目录）下**不传 limit** ⇒ 回包 ≤ 硬上限，且 totalMetrics 如实等于全量", async () => {
+    const { t, sid } = await scaleWorld();
+    const out = await get(t, sid);
+
+    // 金丝雀先说话：这个世界**真的是**上万量级 —— 否则下面每一条都在一个小世界上空转全绿。
+    expect(out.totalMetrics, "世界没造起来 ⇒ 本用例在空转，先修世界再读结论").toBe(CATALOG);
+    expect(out.totalMetrics).toBeGreaterThan(10_000);
+
+    // 🔴 本单的核心判据：**任何调用方从此都打不爆服务**。
+    expect(out.metrics.length).toBeLessThanOrEqual(SIM_METRIC_SERIES_MAX_LIMIT);
+    expect(out.metrics.length).toBe(SIM_METRIC_SERIES_DEFAULT_LIMIT);
+    expect(out.appliedLimit).toBe(SIM_METRIC_SERIES_DEFAULT_LIMIT);
+
+    // 🔴 诚实位：**不许静默截断**。「我没给你剩下的」必须与「一共就这么多」分得开。
+    expect(out.truncated).toBe(true);
+
+    // 回包**真的变小了**：改造前 116,859,540 字节 / 408,528 条（真 datacore 实测）。
+    // 这条按"每条 ≈ 286 字节"折算，20,000 条的全量约 5.7MB —— 回包必须远小于它。
+    const bytes = JSON.stringify(out).length;
+    expect(bytes, `回包 ${bytes} 字节 —— 闸没起作用`).toBeLessThan(200_000);
+  });
+
+  // ── ② 硬上限压得住任何客户端 ────────────────────────────────────────────────
+  it("🔴 limit 要多少都压到硬上限（appliedLimit 亮出来，不是静默给全量）；limit 小于默认值时如实生效", async () => {
+    const { t, sid } = await scaleWorld();
+
+    const huge = await get(t, sid, "?limit=999999");
+    expect(huge.metrics.length).toBe(SIM_METRIC_SERIES_MAX_LIMIT);
+    expect(huge.appliedLimit).toBe(SIM_METRIC_SERIES_MAX_LIMIT);
+    expect(huge.truncated).toBe(true);
+    expect(huge.totalMetrics).toBe(CATALOG);
+
+    const tiny = await get(t, sid, "?limit=3");
+    expect(tiny.metrics.length).toBe(3);
+    expect(tiny.appliedLimit).toBe(3);
+  });
+
+  // ── ③ 幅度档回的确实是变化最大的那些（可解析，不是"不等于"）─────────────────────
+  it("🔴 order=magnitude ⇒ 回的正是被扰动打过的那三条，且按 |actual末 − baseline首| 降序（900/800/700）", async () => {
+    const { t, sid } = await scaleWorld();
+    const out = await get(t, sid, "?order=magnitude&limit=3");
+    expect(out.appliedOrder).toBe("magnitude");
+
+    // 具体到**哪三条、什么顺序、幅度各是多少** —— 「排序了」这种断言，排错方向也照样绿。
+    expect(out.metrics.map((m) => m.key)).toEqual(HOT.map(([i]) => `${oid(i)}.loadIndex`));
+    expect(out.metrics.map(magnitudeOf)).toEqual(HOT.map(([, v]) => Math.abs(v - FLAT)));
+
+    // 反向金丝雀：这三条**真的被挑出来了**，不是"恰好排在字典序最前面"——
+    // 字典序前三条是 obj_scale_00000 的两个变量 + obj_scale_00001.loadIndex，与上面这组不同。
+    const byKey = await get(t, sid, "?order=key&limit=3");
+    expect(byKey.appliedOrder).toBe("key");
+    expect(byKey.metrics.map((m) => m.key)).toEqual([
+      `${oid(0)}.loadIndex`, `${oid(0)}.utilPressure`, `${oid(1)}.loadIndex`,
+    ]);
+    expect(byKey.metrics.map((m) => m.key)).not.toEqual(out.metrics.map((m) => m.key));
+  });
+
+  // ── ④ 白名单（下钻）：名单外的**连目录都不进** ⇒ totalMetrics 跟着变小 ──────────────
+  it("🔴 objectIds / stateVars 是白名单不是排除表：totalMetrics 反映筛后的全量；名单落空 ⇒ 0 条且 truncated=false", async () => {
+    const { t, sid } = await scaleWorld();
+
+    const byVar = await get(t, sid, "?stateVars=loadIndex&limit=5");
+    expect(byVar.totalMetrics).toBe(SCALE_OBJECTS); // 只剩一个变量 ⇒ 目录砍半
+    expect(byVar.metrics.every((m) => m.stateVar === "loadIndex")).toBe(true);
+
+    const byObj = await get(t, sid, `?objectIds=${oid(0)},${oid(1)}`);
+    expect(byObj.totalMetrics).toBe(2 * SCALE_VARS.length);
+    expect(byObj.truncated).toBe(false); // 4 条 < 默认 12 ⇒ **一共就这么多**，不是"我没给你"
+    expect(new Set(byObj.metrics.map((m) => m.objectId))).toEqual(new Set([oid(0), oid(1)]));
+
+    // 名单落空：`totalMetrics=0 & truncated=false` = 「一共就这么多（零条）」，
+    // 与「被裁了」是两个命题 —— 只看 `metrics.length===0` 的话这两态长得一模一样。
+    const none = await get(t, sid, "?objectIds=obj_不存在");
+    expect(none.metrics.length).toBe(0);
+    expect(none.totalMetrics).toBe(0);
+    expect(none.truncated).toBe(false);
+  });
+
+  // ── ⑤ R6 确定性：截断 + 排序之后仍然字节级可复现（tiebreaker 必须是全序）──────────
+  it("🔴 R6：同 (session, limit, order) 连跑三次逐字节一致；幅度并列的那一大批按 key 升序（tiebreaker 稳定）", async () => {
+    const { t, sid } = await scaleWorld();
+    const url = `/a/v1/sim/sessions/${sid}/metric-series?limit=${SIM_METRIC_SERIES_DEFAULT_LIMIT}&order=magnitude`;
+    const bodies = [];
+    for (let i = 0; i < 3; i++) {
+      const r = await t.app.inject({ method: "GET", url, headers: ADMIN });
+      expect(r.statusCode).toBe(200);
+      bodies.push(r.body);
+    }
+    expect(bodies[1]).toBe(bodies[0]);
+    expect(bodies[2]).toBe(bodies[0]);
+    expect(bodies[0]!.length).toBeGreaterThan(200); // 金丝雀：不是一个恒返 "{}" 的实现
+
+    // 前 3 条是热指标；第 4 条起幅度全为 0（合成对象没有规则写它们）⇒ 必须按 key 升序。
+    // 没有稳定 tiebreaker 的话，同一个世界两次刷新行序会跳 —— 那正是 R6 要禁的。
+    const out = JSON.parse(bodies[0]!) as SimMetricSeriesResponse;
+    const flatKeys = out.metrics.slice(HOT.length).map((m) => m.key);
+    expect(flatKeys.length).toBeGreaterThan(0); // 金丝雀：确实有并列的那一批可验
+    expect(out.metrics.slice(HOT.length).map(magnitudeOf)).toEqual(flatKeys.map(() => 0));
+    expect(flatKeys).toEqual([...flatKeys].sort());
   });
 });
