@@ -3,7 +3,7 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import type { ComponentType } from "react";
-import { SIM_METRIC_SERIES_DEFAULT_LIMIT, type SimMetricSeriesResponse, type SimSession } from "@platform/contracts";
+import { SIM_METRIC_SERIES_DEFAULT_LIMIT, type ChainLossMatrixResult, type ChainNodeDetail, type SimMetricSeriesResponse, type SimSession } from "@platform/contracts";
 import { server } from "./setup";
 import type { ViewConfigVM } from "@/api/types";
 import type { ViewRendererProps } from "@/views/registry";
@@ -11,7 +11,6 @@ import SandboxHomeRoute from "@/views/sim/console/SandboxHomeRoute";
 import SandboxDetailRoute from "@/views/sim/console/SandboxDetailRoute";
 import SandboxAttrRoute from "@/views/sim/console/SandboxAttrRoute";
 import SandboxOptRoute from "@/views/sim/console/SandboxOptRoute";
-import type { NodeDetailPayload } from "@/views/sim/console/SandboxDetail";
 import { pickLatestRunningSession } from "@/views/sim/console/useConsoleSession";
 
 /**
@@ -42,6 +41,11 @@ import { pickLatestRunningSession } from "@/views/sim/console/useConsoleSession"
  *   |---|---|---|---|
  *   | Home   | `[data-hot-source]`                     | `PerturbTree` 的扰动清单   | `GET …/:id/perturbations` |
  *   | Detail | `[data-testid=sandbox-detail]` `data-source`     | `useNodeDetail`      | `GET …/:id/node-detail`   |
+ *
+ * ⚠ **Detail 那一行自 WO-SIM-DETAIL-WIRE 起要两个入参，不是一个**：该端点的 `nodeId` 必填，
+ *   宿主除了会话还得解析出落点节点（来自 `chain-loss-matrix`）才发得出这一跳。
+ *   本文件的矩阵桩因此从 404 换成真形状 —— 见 `CHAIN_LOSS_MATRIX` 上的注释。
+ *   「宿主组装参数 → 发请求 → 诚实位翻真」整条缝由 `sandbox-detail-args.seam.test.tsx` 咬。
  *   | Attr   | `[data-testid=sandbox-attr-series]` `data-source` | `useContributionSeries` | `GET …/:id/metric-series` |
  *   | Opt    | `[data-testid=sandbox-opt-grid]` `data-source`   | `useExecutionCompare`   | `GET …/:id/metric-series` |
  *
@@ -131,22 +135,80 @@ const metricSeries = (sessionId: string): SimMetricSeriesResponse => ({
   appliedOrder: "magnitude",
 });
 
-/** `GET …/:id/node-detail` 的回包。形状必须**完整** —— 缺一格页面就在 `.map()` 上炸，那是白屏不是占位。 */
-const NODE_DETAIL: NodeDetailPayload = {
-  clock: "2027年3月14日　12:28:39",
-  directions: ["传导方向 - 甲→乙"],
-  filters: [{ label: "产能影响", on: true }],
-  conduction: [{ batch: "B1", node: "老化静置", model: "M1", wip: "1.0k", level: 2, elapsed: "10'00" }],
-  strip: { kms: [{ label: "K1", left: "10%" }], self: "S", ticks: [{ label: "T1", left: "20%" }], events: [], chips: [] },
-  card: {
-    title: "节点",
-    sub: "副标题",
-    kv: [["标签", "值", true]],
-    miniLabel: "迷你",
-    route: { from: "起", to: "终", tag: "标" },
+/**
+ * `GET …/:id/node-detail` 的回包 = 契约 `ChainNodeDetailSchema`。
+ *
+ * ⚠ **WO-SIM-DETAIL-WIRE 换掉了这份证物，换的是形状不是数值。**
+ * 旧版这里放的是前端自己那份 `NodeDetailPayload`（clock/directions/filters/…），
+ * 而端点真回的是 `{node, lots, route, missing, visibility}` —— **两者零个同名字段**。
+ * 于是这道门三周来验的是「前端把自己编的形状喂给自己」，端点真接通时页面会在
+ * `d.directions.map()` 上炸成白屏，而门照样绿。
+ * 判据落在**契约**上（本对象逐字节满足 `ChainNodeDetailSchema`），不落在前端的私有接口上。
+ */
+const NODE_DETAIL: ChainNodeDetail = {
+  node: {
+    nodeId: "capacity.aging",
+    label: "老化静置",
+    stage: "CAPACITY",
+    station: "老化站",
+    nodeDays: 4,
+    nodePct: 34,
+    steps: [],
   },
-  flow: [{ time: "12:00", station: "站", batch: "B1", wip: "1.0k", takt: "1", yieldRate: "99%" }],
-  callout: ["一", "二"],
+  lots: [
+    {
+      lotNo: "LOT-SEAM-1",
+      station: "老化站",
+      batch: 3000,
+      wip: 1200,
+      takt: 30,
+      yieldPct: 98,
+      evidence: {
+        lot: { objectType: "WIPLot", objectId: "LOT-SEAM-1", prop: "qty", value: 1200 },
+        batch: null,
+        takt: null,
+        yield: null,
+      },
+    },
+  ],
+  route: { fromStation: "齐套站", toStation: "质检站", basis: "接缝桩：Operation.operationSeq 相邻工序" },
+  missing: [],
+  visibility: { visibleLineCount: 1, totalLineCount: 1, rowFilters: [] },
+};
+
+/**
+ * 环节 × 基地 损失矩阵的回包。
+ *
+ * ⚠ **WO-SIM-DETAIL-WIRE 把这条桩从 `err(404)` 换成了真形状** —— 换的理由不是"为了让测试变绿"：
+ * 传导识别页的落点节点（`nodeId`）现在由宿主从**这张矩阵**解析（口径同损失归因台
+ * `SandboxAttr.tsx:74` 的 `heat.nodes[0]`），而 `GET …/:id/node-detail` 的 `nodeId` 是**必填**
+ * （后端 `app.ts` 手写守卫，缺它必 400）。矩阵恒 404 ⇒ 解析不出落点 ⇒ 该页**按设计不发请求**
+ * ⇒ 用例 ①④ 断言的 `data-source="endpoint"` 永远到不了。
+ * 换句话说：旧桩连同旧断言一起，描述的是一个**请求发出去也只会 400** 的世界。
+ *
+ * 只放**一个**环节 / **一列**基地：本门咬的是"宿主把参数组装出来了没有"，不是矩阵的算术。
+ */
+const CHAIN_LOSS_MATRIX: ChainLossMatrixResult = {
+  nodes: [{ nodeId: "capacity.aging", stage: "CAPACITY", label: "老化静置" }],
+  bases: [{ baseId: "base_a", name: "甲基地" }],
+  cells: [{ nodeId: "capacity.aging", baseId: "base_a", pct: 100, days: 4 }],
+  rowTotals: [{ nodeId: "capacity.aging", days: 4, pctOfGrandLoss: 100, baseCount: 1 }],
+  colTotals: [
+    {
+      baseId: "base_a",
+      anchorSo: "SO-SEAM-1",
+      anchorBaseId: "base_a",
+      anchorAgingProcessId: "proc_seam_1",
+      days: 4,
+      sumPct: 100,
+      cellCount: 1,
+      missingNodeIds: [],
+      reason: null,
+      probe: null,
+    },
+  ],
+  residual: { byBase: [{ baseId: "base_a", residualPct: 0, ok: true, reason: null }], rows: 0, rowsOk: true, tolerancePct: 0.5 },
+  summary: "接缝桩：一环节 × 一基地",
 };
 
 /** 统一的错误信封（两系统同一份形状）。 */
@@ -180,9 +242,15 @@ function installHandlers(opts: { sessions?: SimSession[]; fail?: "list" | "data"
     http.get("*/a/v1/sim/sessions/:id/perturbations", () =>
       opts.fail === "data" ? err(500, "INTERNAL") : HttpResponse.json({ items: [] }),
     ),
-    // 归因页的热矩阵由 `so` 驱动、与会话无关（见文件头表格）。本单不送 `so`，
-    // 故这条恒 404 —— 显式桩掉是为了让它**确定性**落占位，而不是靠 MSW 的未处理请求告警。
-    http.post("*/a/v1/sim/chain-loss-matrix", () => err(404, "NOT_FOUND")),
+    // 环节 × 基地 损失矩阵：传导识别页的落点节点由它解析（理由见 `CHAIN_LOSS_MATRIX` 上的注释）。
+    // `fail:"data"` 时连它一起挂掉 —— 用例 ③b 要的是"有会话但这一格没数据"，
+    // 落点解析不出与端点 500 都归入同一句结论：屏上落占位、不白屏。
+    http.post("*/a/v1/sim/chain-loss-matrix", () =>
+      opts.fail === "data" ? err(500, "INTERNAL") : HttpResponse.json(CHAIN_LOSS_MATRIX),
+    ),
+    // 矩阵一旦是真数据，归因页的根因树就会去下钻（`useChainLossDrill`）。本门不咬子因，
+    // 显式桩成 404 让它**确定性**落空，而不是靠 MSW 的未处理请求告警把整条用例打断。
+    http.post("*/a/v1/sim/chain-loss-drill", () => err(404, "NOT_FOUND")),
   );
 }
 

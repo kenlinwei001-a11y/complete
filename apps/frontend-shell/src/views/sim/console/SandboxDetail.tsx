@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CHAIN_NODE_REGISTRY, type ImpactChange } from "@platform/contracts";
+import { CHAIN_NODE_REGISTRY, ChainNodeDetailSchema, type ChainNodeDetail, type ImpactChange } from "@platform/contracts";
 import { api } from "@/api/apiClient";
 import { ImpactCone, useImpactCone } from "./ImpactCone";
 import { StrategyCards, useMitigationCards, type MitigationArgs } from "./StrategyCards";
@@ -19,7 +19,8 @@ import styles from "./SandboxDetail.module.css";
  * ══ 数据接线现状（照实说，不许拿"接了线"盖住"只接了一半"）═════════════════
  * | 屏上的东西 | 真出处 | 今天 |
  * |---|---|---|
- * | 传导识别表 / 节点详情 / 流转明细 | `GET /a/v1/sim/sessions/:id/node-detail` | **端点还在做**（`WO-SIM-BE-DRILL`）⇒ `useNodeDetail()` 里的规格占位 |
+ * | 节点详情卡 / 流转明细 | `GET /a/v1/sim/sessions/:id/node-detail` | **已接**（WO-SIM-DETAIL-WIRE：卡的四格 + 起止工位 + 逐批工位/批次/在制/节拍/良率是真值，见 `projectNodeDetail`） |
+ * | 传导识别表 / 时间条 / 时钟 / 传导方向 / 过滤器 | 同上 | **端点答不出**（回包 `ChainNodeDetail` 里没有型号/影响级/耗时/时钟）⇒ 规格占位，`data-prov="placeholder"` |
  * | 应对策略三档 | 求解器 `mitigation_select` | **已接**（名字/推荐/排序真数据；残差比求解器没有，见 `StrategyCards.tsx`） |
  * | 影响半径扇区 | `POST /a/v1/simulation/impact-analysis` | **已接**（三条冲击真数据；半径/张角端点没有，见 `ImpactCone.tsx`） |
  * | 左侧地铁图站名 | `CHAIN_NODE_REGISTRY`（contracts 冻结表） | **已接**：站名逐个由 `nodeId` 查表得到，一个字都不是手写的 |
@@ -565,18 +566,138 @@ function ChainMapFragment({ callout }: { callout: readonly string[] }) {
 // § 3 · `useNodeDetail()` —— 节点详情端点的唯一入口
 // ══════════════════════════════════════════════════════════════════════════
 
-/** 端点路径模板（`WO-SIM-BE-DRILL` 在做）。写成常量是为了让"还没接通"这件事可被 grep 到。 */
+/** 端点路径模板。写成常量是为了让"接没接通"这件事可被 grep 到。 */
 export const NODE_DETAIL_ENDPOINT = "/a/v1/sim/sessions/:sessionId/node-detail" as const;
 
-export const nodeDetailPath = (sessionId: string, nodeId?: string): string =>
-  `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/node-detail${
-    nodeId === undefined ? "" : `?nodeId=${encodeURIComponent(nodeId)}`
-  }`;
+/**
+ * ⚠ `nodeId` 是**必填**，不是可选查询串（WO-SIM-DETAIL-WIRE 实测订正）。
+ *
+ * 后端 `apps/datacore/src/app.ts` 的该路由第一件事就是
+ * `if (typeof q.nodeId !== "string" || q.nodeId.length === 0) throw validationError("nodeId query param required")`
+ * ⇒ 不带它必 400。旧签名把它写成 `nodeId?`，于是本页在真浏览器里**每次都发一条注定 400 的请求**
+ * （2026-08-22 实测：整页只发两跳，第二跳就是这条 400）。签名收紧到必填是为了让
+ * 「少带一个参数」变成**编译期红**，而不是运行期一条安静的 400。
+ */
+export const nodeDetailPath = (sessionId: string, nodeId: string): string =>
+  `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/node-detail?nodeId=${encodeURIComponent(nodeId)}`;
+
+/**
+ * 逐格出处。**`"endpoint"` 只标真从回包投影出来的那几格**，其余一律 `"placeholder"` ——
+ * 与本目录 `ImpactCone.provenance` / `StrategyCards.provenance` 同一条纪律：
+ * 「接了线」不许盖住「只接了一半」。
+ */
+export interface NodeDetailProvenance {
+  /** 节点详情卡（标题/副题/kv 四格/起止工位）。 */
+  card: "endpoint" | "placeholder";
+  /** 流转明细表（工位/批次/在制/节拍/良率）。 */
+  flow: "endpoint" | "placeholder";
+  /** 流转明细的**时间**一列 —— 回包里没有这个量，恒占位。 */
+  flowTime: "placeholder";
+  /** 传导识别表：回包是批号级明细，没有型号/影响级/耗时三列，整表恒占位。 */
+  conduction: "placeholder";
+  /** 系统条时钟 / 传导方向 / 四个过滤器 / 时间条：端点一个都不答，恒占位。 */
+  chrome: "placeholder";
+}
+
+const PLACEHOLDER_PROVENANCE: NodeDetailProvenance = {
+  card: "placeholder",
+  flow: "placeholder",
+  flowTime: "placeholder",
+  conduction: "placeholder",
+  chrome: "placeholder",
+};
+
+/** 节拍：回包是**秒/件**（`Equipment.ctSeconds`），屏上那一列是「件/小时」。换算只做这一次。 */
+const taktLabel = (ctSeconds: number | null): string | null =>
+  ctSeconds === null || ctSeconds <= 0 ? null : `${(3600 / ctSeconds).toFixed(1)}/h`;
+
+/** 在制/批量：回包是台数，屏上是 `4.2k` 这种紧凑写法。 */
+const kLabel = (n: number | null): string | null => (n === null ? null : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
+
+/**
+ * `ChainNodeDetail`（端点真回包）→ `NodeDetailPayload`（本页消费的形状）。
+ *
+ * ══ 为什么需要这个投影 —— 病灶第三条（工单没列，实测撞出来的）═══════════════════
+ * 端点回的是契约 `ChainNodeDetailSchema`：`{node, lots, route, missing, visibility}`；
+ * 本页消费的是 `NodeDetailPayload`：`{clock, directions, filters, conduction, strip, card, flow, callout}`。
+ * **两者零个同名字段**。旧代码把回包直接 `as NodeDetailPayload` 灌进渲染 ⇒ 一旦请求真成功，
+ * `d.directions.map(...)` 当场在 `undefined` 上炸 —— 那是**白屏**，比 400 更坏。
+ * 故「把 400 修没」这件事必须与本投影一起做，单修一半只是把静默失败换成崩溃。
+ *
+ * ══ 只换端点真答得出的格（其余保留规格占位并逐格标记）═══════════════════════════
+ * · `card.kv` 的**标签一个字都不动**（屏上零新增文字），只换那四格**值**：
+ *   节点编号 ← `node.nodeId` · 环节类型 ← `node.label` · 上游工位 ← `route.fromStation` ·
+ *   在制批量 ← `lots[0].batch`（该批所属工单的计划投产数）。
+ *   口径校准 / 传导能力 / 日产能力 / 下游距离 回包里**没有**，保留规格值。
+ * · `flow[]` ← `lots[]`：工位/批次/在制/节拍/良率五列真值；**时间**一列端点没有 ⇒ 沿用规格串并标记。
+ * · 传导识别表要型号/影响级/耗时，回包三个都没有 ⇒ **整表不动**（换一半会让同一行自相矛盾）。
+ */
+export function projectNodeDetail(res: ChainNodeDetail): { data: NodeDetailPayload; provenance: NodeDetailProvenance } {
+  const P = PLACEHOLDER_NODE_DETAIL;
+  const lots = res.lots;
+  const first = lots[0];
+  // kv 四格换值、标签原样（`[标签, 值, 高亮?]` 三元组的第 0 位一个字都不改）。
+  const kvOverride = new Map<string, string>([
+    ["节点编号", res.node.nodeId],
+    ["环节类型", res.node.label],
+  ]);
+  if (res.route.fromStation !== null) kvOverride.set("上游工位", res.route.fromStation);
+  const batchLabel = first === undefined ? null : kLabel(first.batch);
+  if (batchLabel !== null) kvOverride.set("在制批量", batchLabel);
+
+  const card: NodeCard = {
+    title: res.node.label,
+    sub: res.node.stage ?? P.card.sub,
+    kv: P.card.kv.map(([k, v, hot]) => [k, kvOverride.get(k) ?? v, hot] as const),
+    miniLabel: P.card.miniLabel,
+    route: {
+      from: res.route.fromStation ?? P.card.route.from,
+      to: res.route.toStation ?? P.card.route.to,
+      tag: P.card.route.tag,
+    },
+  };
+
+  // 流转明细：逐批一行。取不到的数一律走规格占位串，**不补 0 也不补默认节拍/良率**
+  //（契约 `ChainLotDetailSchema` 文件头原话：给个默认节拍/良率，屏上会看到一个「确凿」的假读数）。
+  const flow: FlowRow[] = lots.map((l, i) => {
+    const slot = P.flow[i % P.flow.length] as FlowRow;
+    return {
+      time: slot.time, // 端点没有这个量（provenance.flowTime = "placeholder"）
+      station: l.station,
+      batch: l.lotNo,
+      wip: kLabel(l.wip) ?? slot.wip,
+      takt: taktLabel(l.takt) ?? slot.takt,
+      yieldRate: l.yieldPct === null ? slot.yieldRate : `${Math.round(l.yieldPct)}%`,
+      ...(i === 1 ? { selected: true } : {}),
+    };
+  });
+
+  return {
+    data: { ...P, card, flow: flow.length > 0 ? flow : P.flow },
+    provenance: {
+      ...PLACEHOLDER_PROVENANCE,
+      card: "endpoint",
+      flow: flow.length > 0 ? "endpoint" : "placeholder",
+    },
+  };
+}
 
 export interface UseNodeDetailResult {
   data: NodeDetailPayload;
-  /** `"endpoint"` = 真数据；`"placeholder"` = 规格占位（端点还没做完 / 没给会话 id / 请求失败）。 */
+  /** `"endpoint"` = 端点答了并投影上屏；`"placeholder"` = 规格占位。 */
   source: "endpoint" | "placeholder";
+  /** 逐格出处（根上的 `data-source` 只说"这一跳通没通"，说不清哪几格是真的）。 */
+  provenance: NodeDetailProvenance;
+  /**
+   * 为什么是占位。**四态互斥**，混成一个 `source==="placeholder"` 就丢了区别：
+   * · `ok`          这一跳通了（此时 `source==="endpoint"`）；
+   * · `no-session`  宿主没透会话下来；
+   * · `no-node`     宿主解析不出落点节点 ⇒ **一个请求都不发**（发了必 400）；
+   * · `request-failed` 发了但这一跳自己挂了；
+   * · `shape-mismatch` 回来了，但**不是** `ChainNodeDetailSchema` 那个形状 ——
+   *   这一态与 `request-failed` **必须分得开**：前者要查前端的投影，后者要查端点。
+   */
+  reason: "ok" | "no-session" | "no-node" | "request-failed" | "shape-mismatch";
   endpoint: typeof NODE_DETAIL_ENDPOINT;
   isLoading: boolean;
 }
@@ -584,23 +705,46 @@ export interface UseNodeDetailResult {
 /**
  * 传导识别表 + 节点详情 + 流转明细的**唯一**取数口。
  *
- * `sessionId` 缺省 ⇒ 不发请求（端点还在做，发了只会 404），直接给规格占位。
- * 给了 ⇒ 真发；失败也**不**把屏渲染成空，落回占位并把 `source` 报成 `"placeholder"` ——
- * 「请求失败」与「没有数据」是两件事，调用方/测试读得出区别。
+ * ══ 门槛是**两个**入参都得有，不是一个 ═══════════════════════════════════════
+ * 旧门槛 `enabled = sessionId !== ""` 与后端契约对不上（后端 `nodeId` 必填）⇒
+ * 宿主只透会话下来时，本 hook 每次都发一条**注定 400** 的请求。
+ * 兄弟 hook `useChainLossDrill`（`useLossAttribution.ts:245`，驱动同一族的 `chain-loss-drill`
+ * 端点）写的是 `heat.source === "endpoint" && drilledNodeId !== null` —— 上游是真数据**且**
+ * 落点已定才发。本 hook 是这条纪律在本页的缺口，不是端点少了个缺省值。
+ *
+ * 失败也**不**把屏渲染成空：落回占位并把 `source` 报成 `"placeholder"` + `reason` 报明是哪一态。
  */
 export function useNodeDetail(sessionId?: string, nodeId?: string): UseNodeDetailResult {
   const sid = sessionId ?? "";
-  const enabled = sid !== "";
+  const nid = nodeId ?? "";
+  const enabled = sid !== "" && nid !== "";
   const q = useQuery({
-    queryKey: ["a", "sim-node-detail", sid, nodeId ?? ""],
+    queryKey: ["a", "sim-node-detail", sid, nid],
     enabled,
     retry: false,
-    queryFn: () => api.a<NodeDetailPayload>(nodeDetailPath(sid, nodeId)),
+    // ⚠ **`safeParse` 不是装饰**：本页曾把回包直接 `as NodeDetailPayload` 灌进渲染，
+    //   而端点回的是完全不同的 `ChainNodeDetail` ⇒ 请求一旦成功就是白屏。
+    //   形状对不上是**一种可报告的结果**（`reason:"shape-mismatch"`），不是崩溃。
+    queryFn: async () => ChainNodeDetailSchema.safeParse(await api.a<unknown>(nodeDetailPath(sid, nid))),
   });
   const live = enabled ? q.data : undefined;
+  const parsed: ChainNodeDetail | undefined = live?.success === true ? live.data : undefined;
+  const projected = parsed === undefined ? undefined : projectNodeDetail(parsed);
+  const reason: UseNodeDetailResult["reason"] =
+    projected !== undefined
+      ? "ok"
+      : sid === ""
+        ? "no-session"
+        : nid === ""
+          ? "no-node"
+          : live !== undefined
+            ? "shape-mismatch"
+            : "request-failed";
   return {
-    data: live ?? PLACEHOLDER_NODE_DETAIL,
-    source: live === undefined ? "placeholder" : "endpoint",
+    data: projected?.data ?? PLACEHOLDER_NODE_DETAIL,
+    source: projected === undefined ? "placeholder" : "endpoint",
+    provenance: projected?.provenance ?? PLACEHOLDER_PROVENANCE,
+    reason,
     endpoint: NODE_DETAIL_ENDPOINT,
     isLoading: enabled && q.isLoading,
   };
@@ -632,7 +776,12 @@ export function SandboxDetail({ sessionId, nodeId, impactChange, mitigation }: S
   const strategies = useMitigationCards(mitigation);
 
   return (
-    <div className={styles.app} data-testid="sandbox-detail" data-source={detail.source}>
+    <div
+      className={styles.app}
+      data-testid="sandbox-detail"
+      data-source={detail.source}
+      data-detail-reason={detail.reason}
+    >
       {/* ── 系统条 ── */}
       <div className={styles.sysbar}>
         <span className={styles.hole} />
@@ -716,7 +865,11 @@ export function SandboxDetail({ sessionId, nodeId, impactChange, mitigation }: S
                     </label>
                   ))}
                 </div>
-                <div className={styles.tbl} data-testid="sandbox-detail-conduction">
+                <div
+                  className={styles.tbl}
+                  data-testid="sandbox-detail-conduction"
+                  data-prov={detail.provenance.conduction}
+                >
                   <div className={`${styles.tr} ${styles.hd}`}>
                     <span />
                     <span>批号</span>
@@ -743,7 +896,7 @@ export function SandboxDetail({ sessionId, nodeId, impactChange, mitigation }: S
               </div>
 
               <div className={styles.rgt}>
-                <div className={styles.strip} data-testid="sandbox-detail-strip">
+                <div className={styles.strip} data-testid="sandbox-detail-strip" data-prov={detail.provenance.chrome}>
                   {d.strip.kms.map((k) => (
                     <span key={k.label} className={styles.km} style={{ left: k.left }}>
                       {k.label}
@@ -769,7 +922,7 @@ export function SandboxDetail({ sessionId, nodeId, impactChange, mitigation }: S
                 </div>
                 <div className={styles.dt}>
                   <div className={styles.dl}>
-                    <div className={styles.dcard}>
+                    <div className={styles.dcard} data-testid="sandbox-detail-card" data-prov={detail.provenance.card}>
                       <div className={styles.glyph}>
                         <svg viewBox="0 0 40 30" width="52" height="38">
                           <path
@@ -816,7 +969,12 @@ export function SandboxDetail({ sessionId, nodeId, impactChange, mitigation }: S
                         {d.card.route.tag}
                       </span>
                     </div>
-                    <div className={styles.rt2} data-testid="sandbox-detail-flow">
+                    <div
+                      className={styles.rt2}
+                      data-testid="sandbox-detail-flow"
+                      data-prov={detail.provenance.flow}
+                      data-prov-time={detail.provenance.flowTime}
+                    >
                       <div className={`${styles.r} ${styles.hd}`}>
                         <span>时间</span>
                         <span>工位</span>
