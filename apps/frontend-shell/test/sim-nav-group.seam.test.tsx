@@ -205,8 +205,12 @@ describe("WO-SIM-NAV-GROUP · §A 四个 viewKey 落在「推演」组", () => {
         `${key} 进了 CONSOLIDATED_INTO_SANDBOX ⇒ UnifiedNav :397 会无条件滤掉它，归组白归`,
       ).toBeUndefined();
       const item = simGroup!.items.find((it) => it.key === key)!;
+      // `NavItemRef` 是三态 union，`kind:"admin"` 那一支**结构上就没有** `consolidatedWhen`
+      // ⇒ 直接在 union 上取属性 `tsc` 报 TS2339（vitest 不做类型检查，所以只有 typecheck 会红）。
+      // 用 `in` 收窄而不是 `as`：断言语义逐字不变（「不带 consolidatedWhen」），
+      // 且 admin 变体天然满足 —— 换成断言写死 `kind:"view"` 反而会把「归错了 kind」这种错漏过去。
       expect(
-        item.consolidatedWhen,
+        "consolidatedWhen" in item ? item.consolidatedWhen : undefined,
         `${key} 带了 consolidatedWhen —— 它的受控键就是 sim.sandbox 本身：` +
           `沙盘开则被这条隐藏、沙盘关则后端根本不下发 ⇒ **两态都不出现**，等于把页面从 IA 里抹掉`,
       ).toBeUndefined();
