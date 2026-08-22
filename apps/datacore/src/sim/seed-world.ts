@@ -576,9 +576,14 @@ export async function seedDemoSimWorld(repos: Repos, sim: SimWorldOps, ctx: Auth
         durationTicks: null,
         magnitude: choice.magnitude,
         mode: "delta",
-        label:
+        // ⚠ 截到 200：契约 `label` 是 `z.string().max(200)`，而 `varLabel` 来自**租户数据**
+        // （`stateVarDisplayName` 查不到就回落裸变量名，长度不受本仓控制）。
+        // 超一个字 ⇒ `safeParse` 失败 ⇒ 播种抛错 ⇒ **整个服务起不来**。
+        // 一句展示文案不值得赌服务启动；真正的出处在 `scope.seedPerturbation` 里，那份不截。
+        label: (
           `种子扰动 · 把「${varLabel}」抬高一个全距（+${choice.magnitude}）` +
-          `｜落点 = 传导可达面最大的一格（${choice.candidates} 个候选里下游 ${choice.reachCells} 格 / ${choice.reachObjects} 个对象）`,
+          `｜落点 = 传导可达面最大的一格（${choice.candidates} 个候选里下游 ${choice.reachCells} 格 / ${choice.reachObjects} 个对象）`
+        ).slice(0, 200),
       },
       // 确定性 + 幂等：id/createdAt 都跟着会话固定，重跑逐字节一致（R6）。
       { id: `${DEMO_SIM_WORLD_SESSION_ID}_p0`, createdAt: DEMO_SIM_WORLD_CREATED_AT },
