@@ -52,14 +52,19 @@ async function main(): Promise<void> {
     // WO-SIM-SEED-WORLD 推演种子世界（与 server.ts 播种路径**必须同步**，理由同上）。
     // 同样排最后：它读的是上面几步播出来的对象与规则。
     const simWorld = await seedDemoSimWorld(repos, services.sim, adminCtx);
-    logger.info(
-      simWorld.created
-        ? `seeded demo sim world (RUNNING @tick${simWorld.curTick}, ${simWorld.origin?.cells ?? 0} 格 / 实测 ${simWorld.origin?.measuredCells ?? 0} 格` +
-          // 与 server.ts 那条**逐字同步**（两条播种路径漂了就会出现「容器里有扰动、pnpm seed 出来的没有」）。
-          (simWorld.choice
-            ? `；扰动落 ${simWorld.choice.targetObjectId}.${simWorld.choice.targetStateVar} delta+${simWorld.choice.magnitude}，下游 ${simWorld.choice.reachCells} 格)`
-            : `；**未播扰动** — ${simWorld.perturbationReason ?? "unknown"}）`)
-        : `demo sim world not created — ${simWorld.reason ?? "unknown"}`,
+    // 与 server.ts 那条**逐字同步**（两条播种路径漂了就会出现「容器里有扰动、pnpm seed 出来的没有」）——
+    // 半残检出这一态同样要同步，否则会得到「容器里报了不完整、pnpm seed 静默修掉」的错位。
+    const simWorldBody =
+      `(RUNNING @tick${simWorld.curTick}, ${simWorld.origin?.cells ?? 0} 格 / 实测 ${simWorld.origin?.measuredCells ?? 0} 格` +
+      (simWorld.choice
+        ? `；扰动落 ${simWorld.choice.targetObjectId}.${simWorld.choice.targetStateVar} delta+${simWorld.choice.magnitude}，下游 ${simWorld.choice.reachCells} 格)`
+        : `；**未播扰动** — ${simWorld.perturbationReason ?? "unknown"}）`);
+    logger[simWorld.repaired ? "warn" : "info"](
+      simWorld.repaired
+        ? `⚠ demo sim world INCOMPLETE — 检测到播种不完整，已自动补齐 ${simWorldBody}`
+        : simWorld.created
+          ? `seeded demo sim world ${simWorldBody}`
+          : `demo sim world not created — ${simWorld.reason ?? "unknown"}`,
     );
   }
   await repos.close();
