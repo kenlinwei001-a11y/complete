@@ -56,7 +56,8 @@ describe("WO-SANDBOX-MEMORY · sim-sessions 流式投影", () => {
 
     expect(r.items).toHaveLength(3);
     for (let i = 0; i < 3; i++) {
-      const { baseSnapshot: _drop, ...rest } = items[i]!;
+      const rest: Record<string, unknown> = { ...items[i]! };
+      delete rest.baseSnapshot;
       expect(r.items[i]).toEqual(rest);
       expect(Object.prototype.hasOwnProperty.call(r.items[i], STRIPPED_KEY)).toBe(false);
     }
