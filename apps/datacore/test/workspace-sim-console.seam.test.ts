@@ -58,6 +58,74 @@ function parseRegisterRenderer(src: string): { key: string; module: string }[] {
 
 const registrySrc = readFileSync(REGISTRY_PATH, "utf8");
 const allRegistered = parseRegisterRenderer(registrySrc);
+
+/* ══ §0' WO-SIM-NAV-GROUP：前端 `ShellLayout.NAV_GROUPS` 的**内联 route label** ═════════
+ *
+ * 为什么这一半必须从前端源码读、不能写死：导航上的文案有**两个出处**，
+ *   · `kind:"view"` 项 → 后端 `workspace.navigation[].label`（= 本文件下面真打端点拿到的）；
+ *   · `kind:"route"` 项 → 前端 `NAV_GROUPS` 里**内联的 label**（route 不查任何下发集合）。
+ * 「两条同名条目」这个缺陷**只在两个出处合起来看的时候才存在** —— 各看各的都合法。
+ * 这正是 SEAM-GATE 说的那种「拆两半各自绿、合起来是坏的」，故断言必须驱动接缝。
+ */
+const SHELL_LAYOUT_PATH = fileURLToPath(
+  new URL("../../frontend-shell/src/pages/ShellLayout.tsx", import.meta.url),
+);
+const shellSrc = readFileSync(SHELL_LAYOUT_PATH, "utf8");
+
+/** 去注释（逐行）—— 本仓注释密度下，「注释里抄了一行 NAV_GROUPS 条目」会被读成真条目。 */
+function stripCommentLines(src: string): string[] {
+  return src.split("\n").filter((line) => {
+    const t = line.trim();
+    return !(t.startsWith("//") || t.startsWith("*") || t.startsWith("/*"));
+  });
+}
+
+/** `NAV_GROUPS` 声明体（从 `export const NAV_GROUPS` 到第一条顶格 `];`）。 */
+function navGroupsBody(src: string): string[] {
+  const lines = stripCommentLines(src);
+  const start = lines.findIndex((l) => l.includes("export const NAV_GROUPS"));
+  if (start < 0) return [];
+  const end = lines.findIndex((l, i) => i > start && l.trimEnd() === "];");
+  return end < 0 ? [] : lines.slice(start, end);
+}
+
+/** `NAV_GROUPS` 里的 `{ kind:"route", key, label, … }` 全表。 */
+function parseRouteItems(src: string): { key: string; label: string }[] {
+  const out: { key: string; label: string }[] = [];
+  for (const line of navGroupsBody(src)) {
+    for (const m of line.matchAll(/\{\s*kind:\s*"route"[^{}]*\}/g)) {
+      const k = /key:\s*"([^"]+)"/.exec(m[0]);
+      const l = /label:\s*"([^"]+)"/.exec(m[0]);
+      if (k && l) out.push({ key: k[1]!, label: l[1]! });
+    }
+  }
+  return out;
+}
+
+/** `CONSOLIDATED_INTO_SANDBOX` 的键集（沙盘开着时这些条目**不出现在侧栏**）。 */
+function parseConsolidatedKeys(src: string): Set<string> {
+  const lines = stripCommentLines(src);
+  const start = lines.findIndex((l) => l.includes("export const CONSOLIDATED_INTO_SANDBOX"));
+  if (start < 0) return new Set();
+  const end = lines.findIndex((l, i) => i > start && l.trimEnd() === "};");
+  if (end < 0) return new Set();
+  const out = new Set<string>();
+  const body = lines.slice(start, end).join("\n");
+  for (const m of body.matchAll(/"([^"]+)":\s*\{[\s\S]{0,40}?via:/g)) out.add(m[1]!);
+  return out;
+}
+
+const routeItems = parseRouteItems(shellSrc);
+const consolidatedKeys = parseConsolidatedKeys(shellSrc);
+/** 沙盘**开着**时侧栏真出现的 route 文案（`consolidatedWhen` 命中的那批不出现）。 */
+const visibleRouteLabels = routeItems.filter((r) => !consolidatedKeys.has(r.key)).map((r) => r.label);
+
+/** 重名探测（唯一实现 —— 变异反证与真断言共用它，抄第二份就是装饰品）。 */
+function duplicateLabels(labels: string[]): string[] {
+  const seen = new Map<string, number>();
+  for (const l of labels) seen.set(l, (seen.get(l) ?? 0) + 1);
+  return [...seen.entries()].filter(([, n]) => n > 1).map(([l]) => l).sort();
+}
 /** 指控台家族的判别式：组件住在 `./sim/console/` —— 比"键名以 sim- 开头"精确（后者会捞到别的页）。 */
 const consoleKeysFromFrontend = allRegistered
   .filter((r) => r.module.startsWith("./sim/console/"))
@@ -254,5 +322,93 @@ describe("WO-SIM-BE-VIEWKEY · §C 角色口径（照抄沙盘家族既有那条
     expect(ws.views.map((v) => v.viewKey), "排除名单整体失效 ⇒ C1 的「都拿得到」不构成证据").not.toContain(
       "global-sim",
     );
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * §D WO-SIM-NAV-GROUP · **左导航里不许有重名条目**（接缝：后端 label × 前端内联 route label）
+ *
+ * ══ 今天的行为是 X，应该是 Y（仓主真服务真浏览器实测，附截图）══════════════════════
+ * **X**：`sim-console` 下发的 title 是「推演沙盘」，与 `ShellLayout.NAV_GROUPS`「推演」组里
+ *       `{ kind:"route", key:"sim-sandbox", label:"推演沙盘" }` **逐字相同** ⇒ 左栏同时出现
+ *       两条「推演沙盘」，点进去是两个不同的页面（`SandboxView` / `SandboxHomeRoute`）。
+ * **Y**：新的那个改名（本单定为「推演指控台」），旧 `/v/sim-sandbox` 一字不动。
+ *
+ * ══ 为什么断言在**这里**而不是前端 ═══════════════════════════════════════════════
+ * 文案的两个出处分处两包：view 项的 label 在**后端** ViewConfig，route 项的 label 在**前端**
+ * `NAV_GROUPS` 内联。任一包单独测都测不出重名 —— 各自都合法。本段把两侧合起来算一次，
+ * 正是 SEAM-GATE 要的「驱动接缝」。
+ * ⚠ 断言前先跑**变异反证**：把 `sim-console` 的标题换回「推演沙盘」，探测器必须当场报重名。
+ *   不做这一步的话，探测器恒返回空数组也是绿的（哑门）。
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+describe("WO-SIM-NAV-GROUP · §D 导航文案不重名（后端 label × 前端 route label 的接缝）", () => {
+  it("D0 · 金丝雀：两个抽取器都没瞎（route 表非空且含 sim-sandbox/推演沙盘；收编表非空）", () => {
+    expect(shellSrc.length, `读不到 ${SHELL_LAYOUT_PATH} ⇒ 工具坏了，不是「没有重名」`).toBeGreaterThan(1000);
+    expect(
+      routeItems.length,
+      "NAV_GROUPS 里一条 kind:\"route\" 都没抽出来 ⇒ **抽取器坏了**，下面的重名检查会恒绿",
+    ).toBeGreaterThanOrEqual(4);
+    expect(
+      routeItems.find((r) => r.key === "sim-sandbox")?.label,
+      "已知必中项 sim-sandbox/「推演沙盘」没抽到 ⇒ 抽取器坏了（这条正是本单要区分的那一半）",
+    ).toBe("推演沙盘");
+    expect(
+      consolidatedKeys.size,
+      "CONSOLIDATED_INTO_SANDBOX 抽成空集 ⇒ 收编项会被误当成「屏上可见」，重名集失真",
+    ).toBeGreaterThanOrEqual(5);
+    expect(consolidatedKeys.has("chain-line-map"), "收编表金丝雀键缺席 ⇒ 抽取器坏了").toBe(true);
+  });
+
+  it("D1 · 变异反证：把 sim-console 的标题换回「推演沙盘」，重名探测器必须当场报出来", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const ws = await workspace(t, ADMIN);
+    const mutated = [
+      ...ws.navigation
+        .filter((n) => n.group === "business" && !consolidatedKeys.has(n.viewKey ?? n.key))
+        .map((n) => ((n.viewKey ?? n.key) === "sim-console" ? "推演沙盘" : n.label)),
+      ...visibleRouteLabels,
+    ];
+    expect(
+      duplicateLabels(mutated),
+      "把标题换回旧值后探测器仍报「无重名」⇒ 探测器是哑的，D2 的绿不构成证据",
+    ).toContain("推演沙盘");
+  });
+
+  it("D2 · 真断言：沙盘开着（默认）时侧栏可见的条目文案**两两不重名**", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const ws = await workspace(t, ADMIN);
+    const visible = [
+      ...ws.navigation
+        .filter((n) => n.group === "business" && !consolidatedKeys.has(n.viewKey ?? n.key))
+        .map((n) => n.label),
+      ...visibleRouteLabels,
+    ];
+    expect(visible.length, "可见条目为空 ⇒ 本条恒真（哑门）").toBeGreaterThan(10);
+    expect(
+      duplicateLabels(visible),
+      "左导航出现重名条目 —— 用户扫一眼分不出点哪个（本单要修的正是这个屏上缺陷）",
+    ).toEqual([]);
+  });
+
+  it("D3 · 定点：sim-console 的下发标题不再是「推演沙盘」，且与任何内联 route label 都不相等", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const ws = await workspace(t, ADMIN);
+    const title = ws.views.find((v) => v.viewKey === "sim-console")?.title;
+    expect(title, "sim-console 没下发 ⇒ 本条无意义").toBeDefined();
+    expect(title, "新旧两页仍然同名 —— 屏上那个缺陷原样还在").not.toBe("推演沙盘");
+    expect(
+      routeItems.map((r) => r.label),
+      `sim-console 的标题「${title}」与某条专用 route 的内联 label 撞了`,
+    ).not.toContain(title!);
+    // 导航 label 与 views.title 同源（后端 `label: VIEW_DEFS[k]?.title`）——
+    // 前端**不许**再写一份映射，故这两处必须逐字相等。
+    expect(
+      ws.navigation.find((n) => (n.viewKey ?? n.key) === "sim-console")?.label,
+      "navigation.label 与 views.title 漂移 ⇒ 有人在别处又写了一份标题",
+    ).toBe(title);
   });
 });

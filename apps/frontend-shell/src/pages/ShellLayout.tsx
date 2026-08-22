@@ -189,6 +189,21 @@ export const GROUP_CONSOLIDATION_EXEMPT: Record<string, string> = {
   "推演::global-sim": "独立场景：全局推演有自己的求解器与整页流程，不是沙盘五问之一；收进去只会把沙盘撑爆",
   "推演::risk": "独立场景：风险看板有自己的数据面与整页流程，不是沙盘五问之一；收进去只会把沙盘撑爆",
   "推演::order-chain": "独立场景：订单全链有自己的求解器与整页流程，不是沙盘五问之一；收进去只会把沙盘撑爆",
+  // ── WO-SIM-NAV-GROUP · 指控台四页（与上面四条「独立场景」是**两种不同的豁免理由**）──────
+  // 上面四条说的是「它不该被收编」；下面四条说的是「它**收编不了**——带上就永远不出现」。
+  // 机制（写全，免得下一个人以为漏了 consolidatedWhen）：这四个 viewKey 的受控键就是
+  // `sim.sandbox` 本身（`VIEW_FEATURE_MAP`）⇒ 沙盘关时后端根本不下发、`viewByKey` 查不中、
+  // 条目自己就没了；沙盘开时若再被 `consolidatedWhen` 隐藏，**两态都不出现** = 页面从 IA 里蒸发。
+  // 换句话说：判据⑨ 要防的「组被掏空」在这四条上不成立 —— 它们**天然随 sim.sandbox 一起消失**，
+  // 本就兑现了「沙盘关 ⇒ 这一组该消失」那半边承诺，只是靠 entitlement 级联而不是靠 `consolidatedWhen`。
+  "推演::sim-console":
+    "受控键就是 sim.sandbox 本身（VIEW_FEATURE_MAP）：沙盘关时后端不下发、条目自动消失；再带 consolidatedWhen 会让它开关两态都不出现 = 页面从导航里蒸发",
+  "推演::sim-conduction":
+    "受控键就是 sim.sandbox 本身（VIEW_FEATURE_MAP）：沙盘关时后端不下发、条目自动消失；再带 consolidatedWhen 会让它开关两态都不出现 = 页面从导航里蒸发",
+  "推演::sim-attribution":
+    "受控键就是 sim.sandbox 本身（VIEW_FEATURE_MAP）：沙盘关时后端不下发、条目自动消失；再带 consolidatedWhen 会让它开关两态都不出现 = 页面从导航里蒸发",
+  "推演::sim-optimize":
+    "受控键就是 sim.sandbox 本身（VIEW_FEATURE_MAP）：沙盘关时后端不下发、条目自动消失；再带 consolidatedWhen 会让它开关两态都不出现 = 页面从导航里蒸发",
 };
 
 // WO-SWEEP-03-NAV-GROUP（导航分组防漂移）：export 供 f61 结构守卫——NAV_GROUPS 的 admin 键须覆盖全部 ADMIN_PAGES，
@@ -240,6 +255,38 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
     items: [
       // 沙盘是**入口**不是附录，故置于本组之首（上一版把它裸挂在分组之外正是为了这个位置感）。
       { kind: "route" as const, key: "sim-sandbox", label: "推演沙盘", feature: "sim.sandbox" },
+      // ── WO-SIM-NAV-GROUP · 指控台四页归入本组（此前**一条都没登记**）────────────────
+      //
+      // **X（改之前的屏上行为·仓主真服务真浏览器实测）**：本表里 `sim-console` /
+      //   `sim-conduction` / `sim-attribution` / `sim-optimize` 一条都没有，而后端
+      //   `synthetic/service.ts` 的 `seedViewConfigs` 照样把这四个键连同 label 派进
+      //   `workspace.navigation`（group=business）。`UnifiedNav` 归完组后，没被 `usedViews`
+      //   认领的项**全部**落 `leftover` → 推进 `{ title: "其它" }` 兜底桶（本文件 :435）。
+      //   于是屏上是：「推演」组里一个「推演沙盘」，「其它」组里另一个「推演沙盘」＋传导识别／
+      //   损失归因／方案寻优 —— 两条同名条目指向两个不同页面，用户不知道点哪个。
+      //   这正是 `G-NAV-FALLBACK-BUCKET` 那个断点的**第五次**复现（前四次：plan-builder /
+      //   boundary / prototype-intake / 沙盘四子视图），形态一字未变：
+      //   **「后端派了单 + 前端注册了渲染器 + 路由通」全部成立，唯独没人把它登记进分组表。**
+      // **Y**：四页登记进「推演」组，与旧沙盘同组并列；同名歧义在**后端那一份标题**上消除
+      //   （`sandbox-console.ts` 的 `SANDBOX_CONSOLE_VIEWS`：`sim-console` →「推演指控台」）。
+      //
+      // 为什么是 `kind:"view"` 而不是 `kind:"route"`：这四页**没有** `App.tsx` 专用静态 route
+      // （只有 `v/:viewKey` 通用分发），走的是后端 `VIEW_DEFS` 增量视图桶下发。挂成 route 会被
+      // `check-nav-group-coverage.mjs` 判据⑤（route 条目不是幽灵）当场咬住。
+      //
+      // 为什么**不带** `consolidatedWhen: "sim.sandbox"`（这一条最容易写反）：这四个 viewKey 的
+      // 受控键**就是 `sim.sandbox` 本身**（`features.ts` `VIEW_FEATURE_MAP`，见
+      // `sandbox-console.ts` 的 `SANDBOX_CONSOLE_FEATURE_KEY`）。带上就成了：
+      //   · 沙盘**开** ⇒ `consolidatedWhen` 命中 ⇒ 隐藏；
+      //   · 沙盘**关** ⇒ 后端根本不下发（`viewAllowed()` 为假）⇒ `viewByKey` 查不中 ⇒ 也隐藏。
+      // 两态都隐藏 = **这四页永远不出现在导航里**，等于把本单要修的病换个方式再犯一次。
+      // 故它们逐条登记在 `GROUP_CONSOLIDATION_EXEMPT`（判据⑨ 的唯一豁免源），理由见那张表。
+      //
+      // 顺序 = 决策链序（与后端 `SANDBOX_CONSOLE_VIEWS` 的声明顺序逐字同序）：
+      //   现状（指控台）→ 传导识别 → 损失归因 → 方案寻优。
+      // label 一律**不在本表内联** —— `kind:"view"` 项的文案取 `workspace.navigation[].label`，
+      // 单一出处在后端那份 view 定义里。本仓最恨双份真相源，这里不许开第二份。
+      ...["sim-console", "sim-conduction", "sim-attribution", "sim-optimize"].map((key) => ({ kind: "view" as const, key })),
       // ── 并线单 WO-SANDBOX-UI-INTEGRATE 的一处**方向性裁决**（两条分支在此真对立）─────
       // · WO-IMPEDIMENTS-REACHABLE 要把 `chain-line-map` / `transit-flow` / `physical-topology` /
       //   `node-inspector` / `chain-impediments` 五个键**加进本组**做导航入口 ——
@@ -473,6 +520,12 @@ const NAV_ICON_PATHS: Record<string, string> = {
   "order-chain": "M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
   "decision-play": "M13 2 3 14h9l-1 8 10-12h-9z",
   "sim-sandbox": "M13 2 3 14h9l-1 8 10-12h-9z",
+  // WO-SIM-NAV-GROUP 指控台四页 —— 指控台(monitor) / 传导(share) / 归因(trending-down) / 寻优(crosshair)。
+  // 刻意**不与** `sim-sandbox` 用同一个 zap：两条曾经同名的条目若再共用图标，改了标题也还是一眼分不开。
+  "sim-console": "M2 3h20v14H2zM8 21h8M12 17v4",
+  "sim-conduction": "M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6M6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6M8.6 13.5l6.8 4M15.4 6.5l-6.8 4",
+  "sim-attribution": "M3 3v18h18M7 9l4 5 3-3 5 6",
+  "sim-optimize": "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20M22 12h-4M6 12H2M12 6V2M12 22v-4",
   // WO-ROUTE-NAV-COVERAGE 专用 route 页 —— 假设推演(sliders) / 优化推演(target) / 净室归因(pie) / 断供半径(alert)
   "what-if": "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
   "optimize-whatif": "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2",

@@ -1805,7 +1805,11 @@ export class SyntheticService {
       // `layout: {}`：本族不经 solver，画布/图层/求解全在前端控制台内部按会话取数。
       // **无 `options`** —— 不许硬编 `sessionId`（会话是运行期的，写进 workspace 配置就成死值；
       // 前端 `useConsoleSession()` 自己查最近一条 RUNNING）。
-      "sim-console": { title: "推演沙盘", renderer: "sim-console", layout: {} },
+      // ⚠ WO-SIM-NAV-GROUP：`sim-console` 的 title 从「推演沙盘」→「推演指控台」——
+      //   改前它与 `ShellLayout.NAV_GROUPS`「推演」组那条 route（`key:"sim-sandbox"`,
+      //   `label:"推演沙盘"`）**逐字同名**，左栏出现两条「推演沙盘」指向两个不同页面。
+      //   改名理由与「为什么不动旧页」写在 `sandbox-console.ts` 的 `SANDBOX_CONSOLE_VIEWS` 头注（单一出处）。
+      "sim-console": { title: "推演指控台", renderer: "sim-console", layout: {} },
       "sim-conduction": { title: "传导识别", renderer: "sim-conduction", layout: {} },
       "sim-attribution": { title: "损失归因", renderer: "sim-attribution", layout: {} },
       "sim-optimize": { title: "方案寻优", renderer: "sim-optimize", layout: {} },
