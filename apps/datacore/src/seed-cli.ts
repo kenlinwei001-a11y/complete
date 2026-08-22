@@ -10,6 +10,7 @@ import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoOrgWorld, seedDemoEntitlements } from "./seed.js";
 import { seedDemoDerivationSpecs } from "./seed-derivation-specs.js";
+import { seedDemoSimWorld } from "./sim/seed-world.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -48,6 +49,14 @@ async function main(): Promise<void> {
     // WO-SLICE-DERIV-EMPTY 派生溯源规格（与 server.ts 播种路径**必须同步**，理由同上）。
     const nSpecs = await seedDemoDerivationSpecs(repos, services.ontologyCore, services.governance, adminCtx);
     logger.info(`compiled ${nSpecs} demo derivation specs (evidence layer non-empty)`);
+    // WO-SIM-SEED-WORLD 推演种子世界（与 server.ts 播种路径**必须同步**，理由同上）。
+    // 同样排最后：它读的是上面几步播出来的对象与规则。
+    const simWorld = await seedDemoSimWorld(repos, services.sim, adminCtx);
+    logger.info(
+      simWorld.created
+        ? `seeded demo sim world (RUNNING @tick${simWorld.curTick}, ${simWorld.origin?.cells ?? 0} 格 / 实测 ${simWorld.origin?.measuredCells ?? 0} 格)`
+        : `demo sim world not created — ${simWorld.reason ?? "unknown"}`,
+    );
   }
   await repos.close();
 }

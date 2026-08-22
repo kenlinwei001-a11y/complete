@@ -10,6 +10,7 @@ import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
 import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoOrgWorld, seedDemoEntitlements, DEMO_TENANT } from "./seed.js";
 import { seedDemoDerivationSpecs } from "./seed-derivation-specs.js";
+import { seedDemoSimWorld } from "./sim/seed-world.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -99,6 +100,17 @@ async function main(): Promise<void> {
       phase("seed:derivation-specs");
       const nSpecs = await seedDemoDerivationSpecs(repos, services.ontologyCore, services.governance, adminCtx);
       logger.info(`SEED_DEMO=1: compiled ${nSpecs} demo derivation specs (evidence layer non-empty)`);
+      // WO-SIM-SEED-WORLD 推演种子世界（**必须排在最后**）：它铺的 tick0 世界态取自**别人播完的产物**
+      // ——合成本体的物化对象 + 传导规则 + 流程层对象。谁没播完，世界就是残的。
+      // 走 `services.sim` = 两条路由用的同一份实现（建会话 + 真 tick），不在这里另写一套。
+      phase("seed:sim-world");
+      const simWorld = await seedDemoSimWorld(repos, services.sim, adminCtx);
+      logger.info(
+        { ...simWorld, origin: simWorld.origin ?? undefined },
+        simWorld.created
+          ? `SEED_DEMO=1: seeded demo sim world (RUNNING @tick${simWorld.curTick}, ${simWorld.origin?.cells ?? 0} 格 / 实测 ${simWorld.origin?.measuredCells ?? 0} 格)`
+          : `SEED_DEMO=1: demo sim world not created — ${simWorld.reason ?? "unknown"}`,
+      );
     }
   } finally {
     readiness.seeding = false; // 预热完成（成/败均放行 → /readyz 落到 bootstrap 检查·失败则 main().catch 退出）

@@ -83,6 +83,8 @@ import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact
 // WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段）的**模型层**。回放/归属/分段一律在那边，
 // 本文件只负责「取数据 → 交给它 → 回包」这三件事（同 change-impact / impact-analysis 的分层）。
 import { buildMetricSeries } from "./sim/metric-series.js";
+// WO-SIM-SEED-WORLD · 建会话/推拍两条生产写路径的**契约**（定义住在播种侧，本文件只 import type ⇒ 运行时零依赖、不成环）。
+import type { SimWorldOps } from "./sim/seed-world.js";
 // WO-SIM-BE-DRILL · 根因二级下钻 + 批号级传导明细（算法全在 sim/drill.ts 纯函数层，本文件只做 IO 与 A6 装配）
 import { ChainLossDrillRequestSchema } from "@platform/contracts";
 import { chainLossDrill, chainNodeDetail, type DrillObject, type DrillWorld } from "./sim/drill.js";
@@ -268,6 +270,12 @@ export interface BuiltApp {
     opsTeam: OpsTeamService;
     opsSchedule: OpsScheduleService;
     opsReplay: OpsReplayService;
+    /**
+     * 推演世界的两条生产写路径（WO-SIM-SEED-WORLD）——`POST /a/v1/sim/sessions` 与
+     * `POST …/tick` 用的**同一份闭包**，经这里交给 `SEED_DEMO=1` 播种路径复用。
+     * 暴露它不是为了给别人当第二个入口：任何新的建世界/推拍需求都该走这两个函数，别再写第三处。
+     */
+    sim: SimWorldOps;
   };
 }
 
@@ -1872,21 +1880,39 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   //   能无条件断言「`app.ts` 里出现任何一处传导相装配 = 红」——留在本文件里就只能数「恰好一次」。
   //   别再往本文件里写第二处装配：门 `sim-cert-contract-reconcile.seam.test.ts` ④结构判据会红。
 
-  app.post("/a/v1/sim/sessions", async (req, reply) => {
-    const c = ctx(req);
-    await requireSim(c, "sim.sandbox");
-    const b = (req.body ?? {}) as { baseSnapshot?: TickState; scope?: Record<string, unknown> };
-    const base = b.baseSnapshot ?? {};
+  /**
+   * 建一个推演世界的**唯一实现**（WO-SIM-SEED-WORLD）。
+   *
+   * 从 `POST /a/v1/sim/sessions` 原样提出来的，一行语义未改；提出去的唯一理由是
+   * **`SEED_DEMO=1` 播种路径要走同一条路**（`sim/seed-world.ts`）——
+   * 播种侧另手写一个 `status:"RUNNING"` 塞进仓储，会得到 `curTick`/tick 态/trace 全假的空壳，
+   * 四页取数回来照样是空（"把占位换成另一种占位"）。别在别处再写第二处建会话。
+   *
+   * `id`/`createdAt` 是**播种专用**的可选覆盖（要 R6 确定性 + 固定幂等键）。
+   * 路由**刻意只透传 `baseSnapshot`/`scope` 两个字段**，不整包转发 `req.body` ——
+   * 整包转发等于把 `id` 开放给客户端指定（可撞已有会话 id），那是本次提取最容易顺手引入的洞。
+   */
+  const createSimSessionWorld = async (
+    c: AuthCtx,
+    input: { baseSnapshot?: TickState; scope?: Record<string, unknown>; id?: string; createdAt?: string },
+  ): Promise<SimSession> => {
+    const base = input.baseSnapshot ?? {};
     const s: SimSession = {
-      id: newId("sims"), tenantId: c.tenantId, baseSnapshot: base, scope: b.scope ?? {},
+      id: input.id ?? newId("sims"), tenantId: c.tenantId, baseSnapshot: base, scope: input.scope ?? {},
       status: Object.keys(base).length > 0 ? "READY" : "DRAFT", curTick: 0, parentCheckpointId: null,
       disabledRuleKeys: [], // WO-ACTIVE-EDGE-UX：新会话不屏蔽任何边 ⇒ 与本字段引入前逐字节相同（RL9）
-      createdAt: new Date().toISOString(),
+      createdAt: input.createdAt ?? new Date().toISOString(),
     };
     await repos.sim.createSession(s);
     await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: 0, state: simState(base), pending: [], trace: null });
     await outbox.emit(c.tenantId, "sim.session_created", { sessionId: s.id, status: s.status });
-    return reply.status(201).send(s);
+    return s;
+  };
+  app.post("/a/v1/sim/sessions", async (req, reply) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.sandbox");
+    const b = (req.body ?? {}) as { baseSnapshot?: TickState; scope?: Record<string, unknown> };
+    return reply.status(201).send(await createSimSessionWorld(c, { baseSnapshot: b.baseSnapshot, scope: b.scope }));
   });
   const getSimOr404 = async (c: AuthCtx, id: string): Promise<SimSession> => {
     const s = await repos.sim.getSession(c.tenantId, id);
@@ -2144,12 +2170,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     };
   };
 
-  app.post("/a/v1/sim/sessions/:id/tick", async (req) => {
-    const c = ctx(req); await requireSim(c, "sim.propagation");
-    const s = await getSimOr404(c, (req.params as { id: string }).id);
+  /**
+   * 真推 n 拍并落盘的**唯一实现**（WO-SIM-SEED-WORLD 从 `POST …/tick` 原样提出，语义未改）。
+   *
+   * 提出去的理由同 `createSimSessionWorld`：`SEED_DEMO=1` 播种要推的是**真的拍**
+   * （同一份传导核、同一套 active 规则、同一条落盘序），不是把 `status` 改成 `RUNNING`。
+   *
+   * 世界冻结闸从路由**挪进来**（不是删掉）：两条路径都必须过闸，且对路由而言判据与顺序不变
+   * —— 原先它排在 `n` 解析之前，而 `n` 解析不抛（`Math.max(1, Math.floor(NaN))` 只是让循环不执行）。
+   */
+  const tickSimSessionWorld = async (c: AuthCtx, s: SimSession, n: number) => {
     // PAUSED/ENDED 不许推进（WO-SIMSESSION-BIZ-REUSE）：暂停不是标签，是世界真的不走；ENDED 终态不可复活。
     assertSimSessionWritable(s, "tick");
-    const n = Math.max(1, Math.floor(Number((req.body as { n?: number })?.n ?? 1)));
     // PUBLISHED only，**再减去本会话屏蔽的边**（WO-ACTIVE-EDGE-UX 的引擎接缝就是这一行）。
     // `disabledRuleKeys` 为空 ⇒ `partitionPropagationRules` 原样返回 ⇒ 与本单引入前逐字节相同（RL9）。
     const rules = (await sessionPropRules(c, s)).active;
@@ -2157,6 +2189,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     s.curTick = r.curTick;
     s.status = "RUNNING"; await repos.sim.putSession(s);
     await outbox.emit(c.tenantId, "sim.tick_completed", { sessionId: s.id, curTick: s.curTick });
+    return r;
+  };
+  app.post("/a/v1/sim/sessions/:id/tick", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const n = Math.max(1, Math.floor(Number((req.body as { n?: number })?.n ?? 1)));
+    const r = await tickSimSessionWorld(c, s, n);
     // `cadence` 段是**诚实缺席的出口**（E4）：哪些节点有闸门、哪些节点查得到但用不了、
     // 哪些规则声明了闸门却拿不到 —— 全部亮出来，前端才可能显示"这条流因节拍未知未参与推演"，
     // 而不是看到一条安静的零。
@@ -6485,6 +6524,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       opsTeam,
       opsSchedule,
       opsReplay,
+      // WO-SIM-SEED-WORLD：播种路径与两条路由共用**同一个函数对象**（不是照抄一份）。
+      sim: { createSession: createSimSessionWorld, tick: tickSimSessionWorld },
     },
   };
 }
