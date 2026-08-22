@@ -108,7 +108,12 @@ async function main(): Promise<void> {
       logger.info(
         { ...simWorld, origin: simWorld.origin ?? undefined },
         simWorld.created
-          ? `SEED_DEMO=1: seeded demo sim world (RUNNING @tick${simWorld.curTick}, ${simWorld.origin?.cells ?? 0} 格 / 实测 ${simWorld.origin?.measuredCells ?? 0} 格)`
+          ? `SEED_DEMO=1: seeded demo sim world (RUNNING @tick${simWorld.curTick}, ${simWorld.origin?.cells ?? 0} 格 / 实测 ${simWorld.origin?.measuredCells ?? 0} 格` +
+            // 扰动播没播**要在 msg 里看得见**：没播的世界屏上是一整片"无事发生"，
+            // 而那件事若只躺在结构化字段里，读日志的人不会发现（诚实缺席要显式，不是可选）。
+            (simWorld.choice
+              ? `；扰动落 ${simWorld.choice.targetObjectId}.${simWorld.choice.targetStateVar} delta+${simWorld.choice.magnitude}，下游 ${simWorld.choice.reachCells} 格)`
+              : `；**未播扰动** — ${simWorld.perturbationReason ?? "unknown"}）`)
           : `SEED_DEMO=1: demo sim world not created — ${simWorld.reason ?? "unknown"}`,
       );
     }
