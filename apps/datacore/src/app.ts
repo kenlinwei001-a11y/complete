@@ -77,6 +77,7 @@ import { ImpactAnalysisRequestSchema } from "@platform/contracts"; // WO-IMPACT-
 import { analyzeImpact } from "./sim/impact-analysis.js";
 import { ChangeImpactPreviewRequestSchema } from "@platform/contracts"; // WO-CHANGE-IMPACT-PREVIEW · 变更传播预览（分桶+跳数+诚实位）
 import { ParetoRequestSchema } from "@platform/contracts"; // WO-SIM-BE-PARETO · 帕累托解集（多目标前沿）
+import { SimMetricSeriesQuerySchema } from "@platform/contracts"; // WO-SIM-SERIES-SCALE · 指标时序 query 单源（limit/order/白名单）
 import { runOptimizePareto } from "./solvers/opt-pareto.js";
 import type { SolveArgsFn } from "./solvers/opt-whatif.js";
 import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact.js";
@@ -1983,17 +1984,24 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    * entitlement 取 `sim.propagation` 而非 `sim.sandbox`：本路由**真的驱动 `propagateTick`**
    * （与 `POST …/tick`、`POST …/counterfactual` 同一档），不是纯快照读。
    * ⚠ 只读：`putTickState` / `putSession` / `outbox.emit` 一次都不调（同 counterfactual 的 `persist:false`）。
+   *
+   * ── 🔴 规模闸（WO-SIM-SERIES-SCALE·2026-08-22）───────────────────────────────
+   * **今天的行为 X（实测原文）**：query 只有 `from`/`to`，**零筛选入参** ⇒ 生产量级世界
+   * （前端 `deriveBaseSnapshot(view-config)`：11,348 对象 × 36 状态变量）下本路由回
+   * **408,528 条 / 116,859,540 字节 / 21.8 秒**，而屏上那张甘特**只画 12 行**。
+   * 请求 20 秒回不来 ⇒ 首页甘特 `data-source` 恒 `placeholder`，**屏上还不报错**（静默错答）。
+   * **应该的 Y**：服务端按需筛选且**有硬上限**，被裁掉多少如实回报。
+   *
+   * 闸落在**模型层**（`buildMetricSeries`）而不是这里，理由是：闸必须对**所有**调用方生效，
+   * 包括不经这条路由直接调模型函数的测试。路由这一层只做「把 query 翻译成模型入参」。
+   * ⚠ **不传任何参数也不会再回全量** —— 模型层落 `SIM_METRIC_SERIES_DEFAULT_LIMIT`。
    */
   app.get("/a/v1/sim/sessions/:id/metric-series", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.propagation"); // R3 entitlement 先于 authz
     const s = await getSimOr404(c, (req.params as { id: string }).id); // R2：别租户 404
-    const q = parseBody(
-      z.object({
-        from: z.coerce.number().int().min(0).optional(),
-        to: z.coerce.number().int().min(0).optional(),
-      }),
-      req.query ?? {},
-    );
+    // query 契约取**契约包单源** `SimMetricSeriesQuerySchema`（本文件不再手抄一份 zod 对象）：
+    // 前端要按同一口径发 `limit`/`order`，两边各写一份迟早漂。
+    const q = parseBody(SimMetricSeriesQuerySchema, req.query ?? {});
     const published = await listPublishedPropRules(c);
     const active = (await sessionPropRules(c, s)).active; // 引擎吃过滤后的；目录吃全量（判据见模型层注释）
     const perturbations = await repos.sim.listPerturbations(c.tenantId, s.id);
@@ -2014,6 +2022,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       curTick: s.curTick,
       ...(q.from === undefined ? {} : { from: q.from }),
       ...(q.to === undefined ? {} : { to: q.to }),
+      // 规模闸：**一个都不给也照样有闸**（模型层落默认 `limit`，不回全量）。
+      ...(q.limit === undefined ? {} : { limit: q.limit }),
+      ...(q.order === undefined ? {} : { order: q.order }),
+      ...(q.objectIds === undefined ? {} : { objectIds: q.objectIds }),
+      ...(q.stateVars === undefined ? {} : { stateVars: q.stateVars }),
     });
   });
   /**
