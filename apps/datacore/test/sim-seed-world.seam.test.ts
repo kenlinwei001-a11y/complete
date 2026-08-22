@@ -193,6 +193,23 @@ describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
     // （本单实测过一次：第一跳开销算错 ⇒ 估 37 / 真 94，正是靠这条对账抖出来的）。
     const movedCellsDownstream = moved.filter((m) => m.objectId !== p.targetObjectId || m.stateVar !== p.targetStateVar);
     expect(movedCellsDownstream.length, "结构可达面与真跑对不上 ⇒ 排序键度量的不是传导").toBe(report.choice!.reachCells);
+
+    // ── ⑤f **落库的世界**与**屏上的曲线**必须是同一个世界 ──────────────────────────
+    // 为什么必须单独咬这一条（变异反证逼出来的，不是想出来的）：
+    // `metric-series` **从 tick0 现场重算两条线**，它压根不读 `sim_tick_state` 的落盘行。
+    // ⇒ 只要扰动记录在库里，哪怕它是在 tick **之后**才建的（那时逐格世界态早已算完、
+    //   `POST …/perturbations` 只把落点那一格就地改了、下游一格没动），
+    //   ⑤b/⑤c 依旧全绿 —— 曲线是对的，而**落盘的世界是错的**。
+    //   沙盘取「当前世界」走的正是那批落盘行（`GET …/:id/world`），于是屏上两处对不上账。
+    // 判据：逐格比对「落盘的当前 tick 态」与「曲线 actual 的最后一格」，必须逐值相同。
+    const last = await t.repos.sim.getTickState("demo", DEMO_SIM_WORLD_SESSION_ID, series.toTick);
+    expect(last, `tick${series.toTick} 行必须落盘`).not.toBeNull();
+    for (const m of moved) {
+      expect(
+        last!.state[m.objectId]?.[m.stateVar],
+        `${m.key}：落盘世界与曲线 actual 对不上 ⇒ 扰动没进那条真跑的传导（多半是建扰动排到了 tick 之后）`,
+      ).toBe(m.actual[m.actual.length - 1]);
+    }
   });
 
   it("⑥ 确定性（R6）：同一份世界重播一遍，选出来的落点与幅度**逐字节一致**", async () => {
