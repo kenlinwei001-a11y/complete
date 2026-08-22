@@ -17,6 +17,14 @@
  *    （接链路损耗求解器，**与会话无关**）。
  * 本单只负责送 `sessionId`；`so` 照旧只从宿主取（前端凭空编一个订单号就是造假锚点）。
  * 故本页会出现"序列格 `endpoint`、其余四格 `placeholder`"的**正常**中间态 —— 这不是漏接。
+ *
+ * ⚠ **WO-SIM-PARAM-WIRE ② 复核后订正上面那句的后半**：`so` 缺席时**四格不落占位**——
+ * `useChainLossMatrix` 的 `useQuery` 根本没有 `enabled` 判据，`so` 缺席照发 body `{}`，
+ * 实测回 `200 · 13/13 列有数据 · 234 格`，四格全是 `endpoint`。
+ * 而「宿主自己挑一张单」这条缺省规则实测会把矩阵砍到 `2/13 列 · 36 格`（收窄语义），
+ * 且与后端**逐列**已有的「`so` 字典序首张」口径撞成两份实现。
+ * 逐格对拍表与全部证据在 `useLossAttribution.ts` 的 `useChainLossMatrix` 头注，此处不复述。
+ * ⇒ **`so` 维持只从宿主取，本单对 ② 不改代码。**
  */
 import type { ViewRendererProps } from "@/views/registry";
 import { SandboxAttr } from "./SandboxAttr";
