@@ -148,7 +148,11 @@ function installHandlers(assembleBody: unknown, opts?: { assembleStatus?: number
     http.post("*/a/v1/sim/optimize-pareto/assemble", () =>
       opts?.assembleStatus && opts.assembleStatus !== 200
         ? err(opts.assembleStatus, "BOOM")
-        : HttpResponse.json(assembleBody),
+        // `assembleBody` 刻意是 `unknown` —— 这道门的一半价值就在于能喂**坏形状**
+        // （服务端说装不出却夹带模型 / 字段缺失 / 类型不对）。若把形参收成 `JsonBodyType`，
+        // 那几条用例连编译都过不去，等于把要测的东西从测试里删掉。
+        // 故收窄放在**调用点**：MSW 只要求它是可序列化的 JSON，运行期由各用例自己负责。
+        : HttpResponse.json(assembleBody as Parameters<typeof HttpResponse.json>[0]),
     ),
     http.post("*/a/v1/sim/optimize-pareto", () => HttpResponse.json(RESULT)),
     // 执行对比那一半与本门无关；显式桩成 404 让它**确定性**落占位。
