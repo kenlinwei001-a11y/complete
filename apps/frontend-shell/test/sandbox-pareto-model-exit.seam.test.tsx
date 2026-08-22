@@ -273,7 +273,24 @@ describe("WO-SIM-PARETO-MODEL-EXIT · 宿主要范围 → 服务端装配 → �
     expect(solveCalls().map((c) => c.body)).toEqual([]);
   });
 
-  it("⑤ 显式 > 自动：`view.options.paretoRequest` 有值 ⇒ 用它，**连装配口都不调**", async () => {
+  it("⑤ 服务端说装不出**却夹带了一份模型** ⇒ 前端不许用它（`applicable` 这一格是判据不是装饰）", async () => {
+    // 这一态在契约上不合法（`applicable:false` 那一支是 `strictObject`，多一格 `request` 就过不了），
+    // 但**线上真会出现**：服务端版本比前端旧/新、代理拼包、缓存串包。
+    // ⚠ 本用例是被变异反证逼出来的：原先只有 ②（干净的 applicable:false，回包里根本没有 request），
+    //   把 `applicable` 那一格的判断删掉照样绿 —— 因为"没有 request"这件事替它挡住了。
+    //   两件事必须分开测：**「没给模型」和「说装不出却给了模型」是两个不同的命题。**
+    const DISOWNED = { ...ASSEMBLE_MISS, request: ASSEMBLED };
+    expect(ParetoAssembleResultSchema.safeParse(DISOWNED).success, "装置里的 DISOWNED 居然合法 ⇒ 本用例在测别的东西").toBe(false);
+    installHandlers(DISOWNED);
+    const root = mount();
+
+    await waitFor(() => expect(hostReason(root)).toBe("auto"));
+    await waitFor(() => expect(assembleCalls()).toHaveLength(1));
+    expect(optSource(root), "服务端自己都说装不出，前端却拿它的夹带模型算了一条前沿").toBe("placeholder");
+    expect(solveCalls().map((c) => c.body), "用了服务端已经声明「装不出」的那份模型去求解").toEqual([]);
+  });
+
+  it("⑥ 显式 > 自动：`view.options.paretoRequest` 有值 ⇒ 用它，**连装配口都不调**", async () => {
     installHandlers(ASSEMBLE_OK);
     const EXPLICIT: ParetoRequest = { ...ASSEMBLED, family: "cross_object_occupancy", levers: [{ key: "lines.c1.capacity", label: "c1", values: [10] }] };
     const root = mount({ paretoRequest: EXPLICIT });
