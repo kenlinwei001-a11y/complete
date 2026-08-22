@@ -149,14 +149,23 @@ describe("WO-SIM-SESSIONS-PROJECTION 件一 · 列表投影", () => {
     // `sim_session` 是**逐列表**，memory 全绿从不构成 pg 也行的证据（`PgSimRepo` 头注立的规矩）。
     // 这里不连库，咬的是**这条实现的两个要害**，都是能被一次手滑改没的：
     const sql = PgSimRepo.prototype.listSessionSummaries.toString();
-    // ① 投影：`base_snapshot` 只许出现在**聚合函数的入参**里，不许出现在 SELECT 的输出列里。
-    //    判据落在"有没有 `SELECT ... base_snapshot ...` 这个输出列"上 —— 用 `SELECT *` 或把它
-    //    加回列清单，是这条实现最容易被"顺手改回去"的一手，而那一手会让 285MB 原样回来。
+    // ① 投影：主查询里**不许出现 `SELECT *`**，也不许把 `base_snapshot` 放进输出列 ——
+    //    那一手（顺手改回 `SELECT *`）会让 285MB 原样回来，而回包大小以外的一切都照旧绿。
     expect(sql).not.toMatch(/SELECT\s+\*/i);
-    expect(sql, "规模摘要必须在服务端算，不许把世界搬回进程再数").toContain("jsonb_object_keys");
+    //    规模摘要读**预存列**（migration 038），主查询碰不到 jsonb：
+    //    读时现算的话回包 9KB 而耗时仍是 3.2s（实测），「回包小」不度量「读得快」。
+    expect(sql, "主查询必须读预存列，不许读时现算").toContain("base_objects, base_cells");
     // ② bigint→string：pg 的 count()/sum() 回字符串，不 Number() 就会渲染成 `"12000"`。
-    expect(sql).toContain("Number(row.obj_count)");
-    expect(sql).toContain("Number(row.cell_count)");
+    expect(sql).toContain("Number(row.base_objects)");
+    expect(sql).toContain("Number(row.base_cells)");
+    // ③ 存量行（-1 = 还没算过）必须回落现算 + 回填，绝不把 -1 当 0 回出去。
+    expect(sql, "存量行必须回填，不许把 -1 当 0").toContain("UPDATE sim_session SET base_objects");
+    expect(sql).toContain("Number(row.base_objects) < 0");
+    // ④ 写侧与回填侧**共用同一份口径 SQL**：各抄一份 ⇒ 同一条会话因"新写还是回填"得到两个数，
+    //    而两个数长得一模一样，谁也不会发现（金丝雀必须与主逻辑共用同一份实现的同一条理由）。
+    const putSql = PgSimRepo.prototype.putSession.toString();
+    expect(putSql).toContain("SCALE_OBJECTS_SQL");
+    expect(putSql).toContain("SCALE_CELLS_SQL");
   });
 });
 

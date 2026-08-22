@@ -35,6 +35,29 @@ import type { Perturbation, PropagationRule, SimCheckpoint, SimSession, SimSessi
 const { Pool } = pg;
 
 /**
+ * 规模摘要的 SQL 口径（WO-SIM-SESSIONS-PROJECTION · **唯一实现**：写时算与回填现算共用这两串）。
+ *
+ * `$3` = 正在入库的那个 `base_snapshot`。两处各抄一份 SQL 就是第二套真相源：
+ * 改了写侧忘了改回填侧，同一条会话会因为「是新写的还是回填的」而得到两个不同的格数，
+ * 而这两个数长得一模一样、谁也不会发现（本仓「金丝雀必须与主逻辑共用同一份实现」的同一条理由）。
+ *
+ * ⚠ `jsonb_typeof(v)='object'` 那道守卫不是洁癖：`base_snapshot` 契约上是
+ * `Record<string, Record<string, number>>`，但库里是 jsonb，历史行里塞过标量就会让
+ * `jsonb_object_keys(v)` **整条查询报错** —— 一个诚实位不值得赌整个列表端点 500。
+ * 非对象值按 0 格计（它本来也不是格子）。
+ *
+ * 口径与契约纯函数 `simSessionScaleOf`（memory 侧走的那份）逐值相同 ——
+ * 两侧机制天生不同（SQL vs JS），能同源的只有"口径"，故两边都在注释里点名对方。
+ */
+const scaleObjectsSql = (v: string): string => `(SELECT count(*) FROM jsonb_object_keys(${v}))`;
+const scaleCellsSql = (v: string): string =>
+  `(SELECT coalesce(sum(CASE WHEN jsonb_typeof(e.value)='object'
+                             THEN (SELECT count(*) FROM jsonb_object_keys(e.value)) ELSE 0 END), 0)
+      FROM jsonb_each(${v}) AS e)`;
+const SCALE_OBJECTS_SQL = scaleObjectsSql("$3::jsonb");
+const SCALE_CELLS_SQL = scaleCellsSql("$3::jsonb");
+
+/**
  * 推演沙盘 pg 仓储（migration026·三具名列表 + 传导规则 doc-jsonb；R2 跨租户 null）。
  *
  * ⚠ `sim_session` 是**逐列**表不是 doc-jsonb 表 ⇒ 契约上加一个字段，这里**不会自动跟上**：
@@ -57,11 +80,19 @@ export class PgSimRepo implements SimRepo {
     };
   }
   async createSession(s: SimSession) { await this.putSession(s); }
+  /**
+   * 落一条会话。`base_objects` / `base_cells`（规模摘要·migration 038）**在同一条语句里、
+   * 从同一个 `$3` 参数**用 SQL 算出来 —— 不许在应用层算好了当第 10 个参数传进来：
+   * 那样传的数与真正入库的那个 jsonb 就是**两个可以不一致的东西**，而且没有任何东西会发现。
+   * 同语句同值 ⇒ 结构上不可能漂（理由全文见 `migrations/038_sim_session_scale.sql`）。
+   */
   async putSession(s: SimSession) {
     await this.pool.query(
-      `INSERT INTO sim_session (id, tenant_id, base_snapshot, scope, status, cur_tick, parent_checkpoint_id, disabled_rule_keys, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       ON CONFLICT (id) DO UPDATE SET base_snapshot=$3, scope=$4, status=$5, cur_tick=$6, parent_checkpoint_id=$7, disabled_rule_keys=$8`,
+      `INSERT INTO sim_session (id, tenant_id, base_snapshot, scope, status, cur_tick, parent_checkpoint_id, disabled_rule_keys, created_at,
+                                base_objects, base_cells)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${SCALE_OBJECTS_SQL},${SCALE_CELLS_SQL})
+       ON CONFLICT (id) DO UPDATE SET base_snapshot=$3, scope=$4, status=$5, cur_tick=$6, parent_checkpoint_id=$7, disabled_rule_keys=$8,
+                                      base_objects=${SCALE_OBJECTS_SQL}, base_cells=${SCALE_CELLS_SQL}`,
       [s.id, s.tenantId, JSON.stringify(s.baseSnapshot), JSON.stringify(s.scope), s.status, s.curTick, s.parentCheckpointId,
         JSON.stringify(s.disabledRuleKeys ?? []), s.createdAt],
     );
@@ -78,22 +109,34 @@ export class PgSimRepo implements SimRepo {
    * 列会话投影（WO-SIM-SESSIONS-PROJECTION）。**`base_snapshot` 不进 SELECT 列表** ——
    * 这是本方法与 `listSessions` 唯一但要命的区别：35 条生产量级会话下，那一列走网线是 285MB。
    *
-   * 规模摘要在**服务端**算（`jsonb_object_keys`），于是「诚实位」不需要把世界搬回进程再数。
-   * ⚠ `jsonb_typeof(v)='object'` 那道守卫不是洁癖：`base_snapshot` 契约上是
-   * `Record<string, Record<string, number>>`，但库里是 jsonb，历史行里塞过标量就会让
-   * `jsonb_object_keys(v)` **整条查询报错** —— 一个诚实位不值得赌整个列表端点 500。
-   * 非对象值按 0 格计（它本来也不是格子）。
+   * 规模摘要读**预存列**（migration 038 · 写时算），于是这条查询碰不到 jsonb：
+   * 同一个库逐项实测 —— 只取投影列 0.11ms / 读时现算对象数 230ms / 再现算格数 3,150ms。
+   * 「回包已经不大了」不度量「读得快」：不预存，回包 9KB 而耗时仍是 3.2 秒。
+   *
+   * ⚠ `base_objects = -1` = **存量行（migration 之前写的），还没算过**，不是"是 0"。
+   *   这种行**回落到现算并就地回填**：升级后第一次列表把存量补齐，此后恒走快路。
+   *   绝不把 `-1` 当 0 回出去 —— 那是拿一个假数字冒充诚实位，比不给更坏。
    */
   async listSessionSummaries(tenantId: string): Promise<SimSessionListItem[]> {
     const r = await this.pool.query(
       `SELECT id, tenant_id, scope, status, cur_tick, parent_checkpoint_id, disabled_rule_keys, created_at,
-              (SELECT count(*) FROM jsonb_object_keys(base_snapshot)) AS obj_count,
-              (SELECT coalesce(sum(CASE WHEN jsonb_typeof(e.value)='object'
-                                        THEN (SELECT count(*) FROM jsonb_object_keys(e.value)) ELSE 0 END), 0)
-                 FROM jsonb_each(base_snapshot) AS e) AS cell_count
+              base_objects, base_cells
          FROM sim_session WHERE tenant_id=$1 ORDER BY created_at`,
       [tenantId],
     );
+    const stale = r.rows.filter((row) => Number(row.base_objects) < 0).map((row) => row.id as string);
+    // 回填：只碰"还没算过"的那几行（存量），且**共用写侧那两串 SQL**（不许各抄一份）。
+    // 一次 UPDATE 全部搞定，不逐行往返 —— 存量库上这条只跑一次。
+    const backfilled = new Map<string, { objects: number; cells: number }>();
+    if (stale.length > 0) {
+      const b = await this.pool.query(
+        `UPDATE sim_session SET base_objects=${scaleObjectsSql("base_snapshot")}, base_cells=${scaleCellsSql("base_snapshot")}
+          WHERE tenant_id=$1 AND id = ANY($2::text[])
+      RETURNING id, base_objects, base_cells`,
+        [tenantId, stale],
+      );
+      for (const row of b.rows) backfilled.set(row.id as string, { objects: Number(row.base_objects), cells: Number(row.base_cells) });
+    }
     return r.rows.map((row) => ({
       id: row.id as string, tenantId: row.tenant_id as string, scope: row.scope as SimSession["scope"],
       status: row.status as SimSession["status"], curTick: row.cur_tick as number,
@@ -102,7 +145,7 @@ export class PgSimRepo implements SimRepo {
       createdAt: (row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at)),
       // pg 的 count()/sum() 回 bigint ⇒ node-pg 给的是**字符串**。不 Number() 会让契约里的
       // `z.number()` 当场失败，而且 JSON 里会渲染成 `"408528"` —— 一个带引号的格数最难查。
-      baseSnapshotScale: { objects: Number(row.obj_count), cells: Number(row.cell_count) },
+      baseSnapshotScale: backfilled.get(row.id as string) ?? { objects: Number(row.base_objects), cells: Number(row.base_cells) },
     }));
   }
   async putTickState(ts: SimTickState) {
