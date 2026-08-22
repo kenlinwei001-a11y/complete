@@ -107,6 +107,8 @@ import type {
 } from "@platform/contracts";
 import { ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 真实世界 worldId 单源（前端不许再写一个 "REAL" 字面量）
 import { api } from "./apiClient";
+// WO-SANDBOX-MEMORY：`GET /a/v1/sim/sessions` 的流式投影（解析前剥掉 285MB 的 baseSnapshot）
+import { readSessionsProjected, type WithoutBaseSnapshot } from "./simSessionsProjection";
 import type {
   ActionDraftAuditVM,
   CalendarNetWindowVM,
@@ -721,8 +723,43 @@ export const createSimSession = (body: { baseSnapshot: TickState; scope?: Record
  * WO-L4B（欠账 #145）：这个后端路由**一直都在**，缺的是前端这一跳 —— 于是 `sim.session_created` /
  * `sim.branched` 两个事件发出来没有任何缓存承载，只能记在 `SIM_EVENT_GAPS` 里当缺口。
  * 补上它，分叉出的子会话才不再"刷新即丢"（此前 `branchId` 只活在 SandboxView 的 useState）。
+ *
+ * ══ WO-SANDBOX-MEMORY · 这一跳**不再把整份世界搬进内存** ═════════════════════════════
+ *
+ * 实测（真浏览器 + 35 条会话）：该端点回包 **285MB** —— 每条会话都带整份 `baseSnapshot`
+ * （11,348 对象 × 36 状态变量 = 408,528 格 ≈ 8.4MB）。而前端 **5 个调用点 / 3 个缓存键**
+ * 各存一份，React Query 缓存里同时躺 **2×293MB**；用户连开三次沙盘就 OOM 崩标签页。
+ *
+ * 逐个消费方读过之后的事实：**除 `SandboxView` 的下区差分基线外，没有任何一处读
+ * `baseSnapshot`** —— 列表要的是 id / status / curTick / scope / disabledRuleKeys。
+ * 故本跳在 `JSON.parse` **之前**就把它从字节流里剥掉（`simSessionsProjection.ts`），
+ * 返回类型也随之变成 `SimSessionListItem`（**该字段在类型上不存在** ⇒ 谁想读，tsc 当场报错，
+ * 而不是安静地拿到一个空世界）。要基线的那一处走下面的 `fetchSimSessionBaseSnapshot`。
+ *
+ * ⚠ 这**不替代**后端投影（那是另一张单）：后端一旦不再下发该字段，扫描器扫不到，本跳退化成纯拷贝。
  */
-export const fetchSimSessions = () => api.a<{ items: SimSession[] }>("/a/v1/sim/sessions");
+export type SimSessionListItem = WithoutBaseSnapshot<SimSession>;
+export const fetchSimSessions = async (): Promise<{ items: SimSessionListItem[] }> => {
+  const res = await api.aRaw("/a/v1/sim/sessions");
+  const { items } = await readSessionsProjected<SimSession>(res);
+  return { items };
+};
+/**
+ * 单条会话的 `baseSnapshot`（下区差分的左端）。**一次只把一条世界搬进内存。**
+ *
+ * 为什么不是 `GET /a/v1/sim/sessions/:id`：后端今天**没有**这条路由（实测 `app.ts` 的
+ * `/a/v1/sim/sessions/:id/*` 只有 world / tick / checkpoints / … 这些子路径，没有裸 `:id`）。
+ * 所以只能仍打列表，但用 `keepFor` 让扫描器**只留指名那一条**、其余 34 条边扫边丢 ——
+ * 峰值从 285MB 降到一条 8.4MB。
+ *
+ * 取不到 ⇒ `null`（**不造一个空世界出来**）：屏上诚实显示"没有基线"，
+ * 好过拿空世界算出一组看着合理的假差值。
+ */
+export const fetchSimSessionBaseSnapshot = async (sessionId: string): Promise<TickState | null> => {
+  const res = await api.aRaw("/a/v1/sim/sessions");
+  const { kept } = await readSessionsProjected<SimSession>(res, sessionId);
+  return (kept as TickState | null) ?? null;
+};
 // ── 推演边的 active 开关 + 关掉后的对照（WO-ACTIVE-EDGE-UX）────────────────────────────
 /**
  * 本租户的传导边目录（默认只回 PUBLISHED）。

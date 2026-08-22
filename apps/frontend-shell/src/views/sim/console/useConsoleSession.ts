@@ -71,9 +71,17 @@ export interface ConsoleViewOptions {
  *
  * 只认 `RUNNING`：`DRAFT`/`READY` 是还没跑起来的空壳（取数回来是空的，比占位更难看），
  * `PAUSED`/`ENDED` 是历史世界（拿它冒充"当前"会让屏上的数与用户正在推的那个世界对不上）。
+ *
+ * ⚠ WO-SANDBOX-MEMORY · 入参从 `SimSession` 放宽成**本函数真正读的那两个字段**（纯类型改动，
+ *   运行时零变化、屏上零变化）。理由：`fetchSimSessions` 现在在解析前就剥掉了 `baseSnapshot`
+ *   （单条 8.4MB × 35 条 = 285MB，本 hook 一个字节都不读它），返回类型随之变成
+ *   `SimSessionListItem = Omit<SimSession,"baseSnapshot">`。写死 `SimSession` 会让**类型系统
+ *   要求一个本函数不需要、也不该被搬进内存的字段**。
  */
-export function pickLatestRunningSession(items: readonly SimSession[]): SimSession | undefined {
-  let best: SimSession | undefined;
+export function pickLatestRunningSession<T extends Pick<SimSession, "status" | "createdAt">>(
+  items: readonly T[],
+): T | undefined {
+  let best: T | undefined;
   for (const s of items) {
     if (s.status !== "RUNNING") continue;
     if (best === undefined || s.createdAt >= best.createdAt) best = s;

@@ -9,6 +9,8 @@ import {
   fetchSimCompare,
   fetchSimPropagationRules,
   fetchSimSessions,
+  // WO-SANDBOX-MEMORY：单条基线（列表不再下发 baseSnapshot ⇒ 要用才捞，一次一条）
+  fetchSimSessionBaseSnapshot,
   fetchSimViewConfig,
   simBranch,
   simCheckpoint,
@@ -702,15 +704,41 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
    */
   const [baseWorld, setBaseWorld] = useState<TickState | null>(null);
   /**
-   * 切世界（`sandbox-world-switch-*` 只换 `sessionId`）之后，基线也得跟着换到**那个世界的**那一份。
-   * 会话列表里找不到（列表还没回来 / 该会话不在本租户可见集）⇒ 置 `null`，
-   * 下区差分整块显示诚实空 —— **绝不**留着上一个世界的基线继续算：那会算出一组看着合理的假差值。
+   * `baseWorld` 里那一份**属于哪个会话**。
+   *
+   * WO-SANDBOX-MEMORY 之前不需要它：会话列表里每一条都带整份 `baseSnapshot`，
+   * 一个 `find` 就能随时取到。现在列表**不再下发**那 285MB（见 `fetchSimSessions` 头注），
+   * 基线改成"要用才单条捞"，于是必须自己记住"手上这份是谁的" ——
+   * 不记就分不出「这份是当前世界的」与「这份是切世界前那个世界的残值」，
+   * 而后者会让下区差分**安静地算错**（拿别人的基线减本世界的现值）。
    */
+  const [baseWorldFor, setBaseWorldFor] = useState<string | null>(null);
+  /**
+   * 切世界（`sandbox-world-switch-*` 只换 `sessionId`）之后，基线也得跟着换到**那个世界的**那一份。
+   *
+   * 改前：从 `sessionsQuery` 的列表里 `find` —— 而那要求列表把**全部** 35 个世界的整份基线
+   * （35 × 8.4MB = 285MB）都搬进浏览器，只为读其中一个。
+   * 改后：`fetchSimSessionBaseSnapshot(id)` 边扫边丢，**一次只把一条世界搬进内存**。
+   *
+   * `enabled` 的判据是 `baseWorldFor !== sessionId`（"手上这份不是这个世界的"），
+   * 不是 `baseWorld === null` —— 后者在切世界时恒为假（上一个世界的残值还在），
+   * 于是永远不会去取新世界的基线，正是上面那句"安静地算错"。
+   *
+   * 首次挂载**一发都不会发**：`init` 已经从建会话回包里拿到了权威的那一份并连同归属一起记下。
+   * 取不到 ⇒ `null`，下区差分整块显示诚实空（`retry:false`：拿不到就如实说，不是打三遍再说）。
+   */
+  const baseSnapshotQuery = useQuery<TickState | null>({
+    queryKey: ["a", "sim-session-base", sessionId ?? ""],
+    queryFn: () => fetchSimSessionBaseSnapshot(sessionId as string),
+    enabled: sessionId !== null && baseWorldFor !== sessionId,
+    staleTime: Infinity,
+    retry: false,
+  });
   useEffect(() => {
-    if (sessionId === null) return;
-    const s = sessionsQuery.data?.items.find((x) => x.id === sessionId);
-    if (s !== undefined) setBaseWorld(s.baseSnapshot);
-  }, [sessionId, sessionsQuery.data]);
+    if (sessionId === null || baseSnapshotQuery.data === undefined) return;
+    setBaseWorld(baseSnapshotQuery.data);
+    setBaseWorldFor(sessionId);
+  }, [sessionId, baseSnapshotQuery.data]);
 
   // ── WO-SIM-SCOPE-LOCAL：局部范围候选与生效 target ──────────────────────────────
   // 候选 = 本体派生的 nodeTypes（零业务常数 R14）。未显式选过时取首个（语义抄向导屏 step①，但**不 import 它**）。
@@ -815,6 +843,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       // 基线快照取**后端回的那一份**（`s.baseSnapshot`），不是本地 `base` ——
       // 两者今天相同，但真相源是会话对象；写 `base` 就是在本地留了第二套真相源。
       setBaseWorld(s.baseSnapshot);
+      // WO-SANDBOX-MEMORY：连同"这份基线属于哪个会话"一起记 —— 记了，上面那条懒查询
+      // 首次挂载就**一发都不发**（省掉一整跳 285MB），只有真的切世界时才去捞那一条。
+      setBaseWorldFor(s.id);
       setCurTick(0);
       // WO-V4-HONEST-ORIGIN：这一份是**前端哈希占位**，盖 `DERIVED` 章 —— 顶栏据此标「合成·占位」。
       setWorldOrigin("DERIVED");
