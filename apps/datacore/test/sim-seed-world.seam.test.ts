@@ -7,7 +7,18 @@ import {
   DEMO_SIM_WORLD_TICKS,
   seedDemoSimWorld,
 } from "../src/sim/seed-world.js";
-import type { Perturbation, SimMetricSeriesResponse, SimSession, SimSessionListItem, TickState } from "@platform/contracts";
+import { replayWorldLine } from "../src/sim/metric-series.js";
+import { buildPropagationInputs } from "../src/sim/propagation-inputs.js";
+import {
+  partitionPropagationRules,
+  resolveSimScope,
+  SIM_METRIC_SERIES_MAX_LIMIT,
+  type Perturbation,
+  type SimMetricSeriesResponse,
+  type SimSession,
+  type SimSessionListItem,
+  type TickState,
+} from "@platform/contracts";
 
 /**
  * WO-SIM-SEED-WORLD · **接缝门**：种子跑完 ⇒ 列表里有 RUNNING 会话，且 tick 态存在、非空、真动过。
@@ -62,6 +73,100 @@ const getSession = async (t: TestApp, id: string): Promise<SimSession> => {
   expect(r.statusCode).toBe(200);
   return r.json() as SimSession;
 };
+
+/** 指标身份，与 `metric-series.ts` 的 `metricKey` 同式（回包里的 `key` 就是这个）。 */
+const metricKey = (objectId: string, stateVar: string): string => `${objectId}.${stateVar}`;
+
+/** 一格指标在窗口内的两条线读数（长度/序与回包的 `ticks` 同）。 */
+interface CensusReading {
+  objectId: string;
+  stateVar: string;
+  baseline: (number | null)[];
+  actual: (number | null)[];
+}
+
+/**
+ * **全量普查**：把这个世界的两条线（基线 / 扰动后）整条跑出来，逐格数「谁真的动了」。
+ *
+ * ══ 为什么这一条对账**离开了 HTTP**（跨单交叉·本次修的就是它）══════════════════════
+ *
+ * **X（改之前·实测原文）**：⑤e 要数的是「**全世界**真跑动了多少个下游格」，而它拿的是
+ * `GET …/metric-series` 的**默认回包** —— `WO-SIM-SERIES-SCALE` 已经给那条端点封了顶
+ * （默认 `limit`=12、硬上限 500），于是这条断言实际在数「**这一页里**动了几格」：
+ *   · 不传参数         → 回 12 条 / `total=3494` / 动了 4 → 下游 **3**
+ *   · `limit=500`      → 回 500 条 / 动了 20 → 下游 19
+ *   · `limit=3494`     → 被夹到硬上限 500，同上
+ *   而全量真跑动的下游是 **93** 格 ⇒ `expected 3 to be 93`。
+ * 形态是本仓记过账的那一句：
+ * > 「我用『**这一页**里动了几格』当作『**全世界**动了几格』的证据，而前者并不度量后者。」
+ *
+ * ⚠ `order=magnitude` **救不了**：它排的是 `|actual 末 − baseline 首|`（窗口内**位移**），
+ *   而「动没动」看的是两条线的**分叉**。基线自己也会随 tick 走，位移大的格子多数根本没分叉 ——
+ *   实测 `limit=500&order=magnitude` 仍然只捞到 20 个。两个不同的量，别当成同一回事。
+ *
+ * **Y（现在）**：对账的**真值**由**引擎自己**给 —— `replayWorldLine` 正是那条端点内部用的
+ * 同一个纯函数（`buildMetricSeries` 就调它），入参走**唯一装配处** `buildPropagationInputs`。
+ * 封顶**一个字节都不动**：那道闸挡的是浏览器 OOM（408,528 条 / 116MB / 21.8 秒），
+ * 为了让测试好数而给它开个口子，等于把生产病重新打开一次。
+ *
+ * ══ 这样会不会造出「第二套真相源」—— 会，所以下面用桥把它钉死 ═══════════════════════
+ * 本函数自己装一遍入参（seed / 图 / 规则 / 扰动），万一哪天路由那边改喂别的，
+ * 普查就会悄悄与屏上那条曲线分家。⇒ ⑤e 里有两道**桥**，任一处漂移当场红：
+ *   · 桥①：封顶回包里每一条「动了」的指标，`baseline`/`actual` 必须与普查**逐值相同**；
+ *   · 桥②：拿普查算出的对象当白名单，走**端点自己的** `objectIds` 入口再要一次
+ *     （整份装得进硬上限，`truncated:false` 是诚实闸），回来的「动了」集合必须与普查**逐条相同**。
+ * 桥②同时是「不必开口子」的证据：端点**已有**的白名单入口就够拿到这一份，不需要新入口。
+ */
+async function censusWorldLines(t: TestApp, sessionId: string): Promise<{
+  catalog: number;
+  /** 两条线在窗口内**任一格**取值不同的指标 key，升序。 */
+  moved: string[];
+  readings: Map<string, CensusReading>;
+}> {
+  const s = (await t.repos.sim.getSession("demo", sessionId))!;
+  // 逐条对齐路由喂给 `buildMetricSeries` 的那一份（`app.ts` 的 metric-series 路由）：
+  // 种子取**本会话自己的 tick0 行**（缺行才退回 baseSnapshot）；引擎吃 `active`（= 已发布 − 本会话屏蔽，
+  // 走契约唯一实现 `partitionPropagationRules`，不在这里手写一个 filter）；目录口径吃**全量已发布**。
+  const seed = (await t.repos.sim.getTickState("demo", s.id, 0))?.state ?? s.baseSnapshot;
+  const published = await t.repos.sim.listPropagationRules("demo", true);
+  const { active } = partitionPropagationRules(published, s.disabledRuleKeys);
+  const perturbations = await t.repos.sim.listPerturbations("demo", s.id);
+  const inputs = await buildPropagationInputs(t.repos, t.adminCtx, resolveSimScope(s.scope));
+  const engine = { graph: inputs.graph, ruleParams: inputs.ruleParams, cadenceGates: inputs.cadenceGates };
+  const actualLine = replayWorldLine({ seed, engine, rules: active, perturbations, toTick: s.curTick });
+  const baselineLine = replayWorldLine({ seed, engine, rules: active, perturbations: [], toTick: s.curTick });
+
+  // 目录口径 = `buildMetricSeries` 那一份：两条线在窗口内出现过的格子 ∩ 已发布规则的 source/target 变量。
+  const knownStateVars = new Set(published.flatMap((r) => [r.sourceStateVar, r.targetStateVar]));
+  const cells = new Map<string, { objectId: string; stateVar: string }>();
+  for (const line of [actualLine, baselineLine]) {
+    for (const st of line.states) {
+      for (const [objectId, row] of Object.entries(st)) {
+        for (const [stateVar, v] of Object.entries(row)) {
+          if (typeof v !== "number" || !knownStateVars.has(stateVar)) continue;
+          cells.set(metricKey(objectId, stateVar), { objectId, stateVar });
+        }
+      }
+    }
+  }
+
+  const readings = new Map<string, CensusReading>();
+  const moved: string[] = [];
+  const ticks = Array.from({ length: s.curTick + 1 }, (_, i) => i);
+  // 缺格记 `null`（不插值、不补 0）—— 与 `buildMetricSeries` 的 `readAt` 同一条纪律。
+  const readAt = (line: { states: TickState[] }, tick: number, objectId: string, stateVar: string): number | null => {
+    const v = line.states[tick]?.[objectId]?.[stateVar];
+    return typeof v === "number" ? v : null;
+  };
+  for (const [key, { objectId, stateVar }] of cells) {
+    const baseline = ticks.map((tick) => readAt(baselineLine, tick, objectId, stateVar));
+    const actualVals = ticks.map((tick) => readAt(actualLine, tick, objectId, stateVar));
+    readings.set(key, { objectId, stateVar, baseline, actual: actualVals });
+    // 比较器与 ⑤b/⑤c 在 HTTP 那侧用的是同一式（`JSON.stringify` 两条线），不另立一套判据。
+    if (JSON.stringify(baseline) !== JSON.stringify(actualVals)) moved.push(key);
+  }
+  return { catalog: cells.size, moved: moved.sort(), readings };
+}
 
 describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
   it("① 播种 → GET /a/v1/sim/sessions 里有一条 RUNNING(curTick≥1)、baseSnapshot 非空；② tick 态落盘且真动过；③ 幂等", async () => {
@@ -210,8 +315,53 @@ describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
     // ── ⑤e 可达面口径不是装饰：结构估的下游格数 == 真跑动了的下游格数 ────────────────
     // 这一条是给排序键做的"金丝雀"：`reachCells` 若与真跑对不上，那它就不度量它声称度量的东西
     // （本单实测过一次：第一跳开销算错 ⇒ 估 37 / 真 94，正是靠这条对账抖出来的）。
-    const movedCellsDownstream = moved.filter((m) => m.objectId !== p.targetObjectId || m.stateVar !== p.targetStateVar);
-    expect(movedCellsDownstream.length, "结构可达面与真跑对不上 ⇒ 排序键度量的不是传导").toBe(report.choice!.reachCells);
+    //
+    // ⚠ **真值不从上面那条封顶的回包里数**（WO-SEED-REACH-SEAM·跨单交叉）——
+    //   那份只有 12 条，数出来的是「这一页动了几格」不是「全世界动了几格」，实测 3 ≠ 93。
+    //   全量由引擎自己给：`censusWorldLines` 走的是端点内部同一个 `replayWorldLine` +
+    //   同一处 `buildPropagationInputs`，**不碰那道封顶**（理由见该函数头注）。
+    const census = await censusWorldLines(t, DEMO_SIM_WORLD_SESSION_ID);
+    const landingKey = metricKey(p.targetObjectId, p.targetStateVar);
+    // 金丝雀：普查必须先认得出落点自己动了 —— 连它都没动，下面数出来的就不是"这条扰动的下游"。
+    expect(census.moved, "普查里连落点自己都没动 ⇒ 普查装的入参与真跑那条不是同一个世界").toContain(landingKey);
+    // `reachCells` 的口径：**不含落点那一格**（落点对象上的其它格仍算下游）。
+    const censusDownstreamCells = census.moved.filter((k) => k !== landingKey);
+    expect(censusDownstreamCells.length, "结构可达面与真跑对不上 ⇒ 排序键度量的不是传导").toBe(report.choice!.reachCells);
+    // `reachObjects` 的口径：**不含落点对象**。两个数分属排序键结构里两个不同字段，
+    // 只对其中一个 ⇒ 另一个可以随便错而没人知道（"一个数盖住两件事"的老形态）。
+    const censusDownstreamObjects = new Set(
+      census.moved.map((k) => census.readings.get(k)!.objectId).filter((id) => id !== p.targetObjectId),
+    );
+    expect(censusDownstreamObjects.size, "结构可达面的**对象**数与真跑对不上").toBe(report.choice!.reachObjects);
+
+    // ── ⑤e-桥① 普查与**屏上那条曲线**必须是同一个世界（防"第二套真相源"）──────────────
+    // 封顶回包里每一条"动了"的指标，逐值必须与普查相同。普查若哪天装错了入参
+    //（种子取错、规则集取错、范围没裁），这里当场红 —— 而不是安静地把 ⑤e 变成自说自话。
+    for (const m of moved) {
+      const r = census.readings.get(m.key);
+      expect(r, `${m.key}：HTTP 说它动了，普查目录里却没有这一格 ⇒ 两处口径已分家`).toBeDefined();
+      expect(m.baseline, `${m.key}：普查的基线与回包对不上 ⇒ 普查不是同一个世界`).toEqual(r!.baseline);
+      expect(m.actual, `${m.key}：普查的扰动后线与回包对不上 ⇒ 普查不是同一个世界`).toEqual(r!.actual);
+    }
+
+    // ── ⑤e-桥② 端点**已有**的白名单入口就够复现这一份（⇒ 不需要给它开"全量"口子）────────
+    // 拿普查算出的对象当 `objectIds` 白名单：筛完只剩这些对象的格子，整份装得进硬上限
+    //（`truncated:false` 就是这句话的诚实闸；装不下会当场红，不会静默少数几条）。
+    const movedObjectIds = [...new Set(census.moved.map((k) => census.readings.get(k)!.objectId))].sort();
+    const scoped = await t.app.inject({
+      method: "GET",
+      url: `/a/v1/sim/sessions/${DEMO_SIM_WORLD_SESSION_ID}/metric-series`
+        + `?limit=${SIM_METRIC_SERIES_MAX_LIMIT}&order=key&objectIds=${encodeURIComponent(movedObjectIds.join(","))}`,
+      headers: ADMIN,
+    });
+    expect(scoped.statusCode).toBe(200);
+    const scopedSeries = scoped.json() as SimMetricSeriesResponse;
+    expect(scopedSeries.truncated, "白名单筛完仍被硬上限截断 ⇒ 这一跳的对账不完整，别信它的计数").toBe(false);
+    const scopedMoved = scopedSeries.metrics
+      .filter((m) => JSON.stringify(m.baseline) !== JSON.stringify(m.actual))
+      .map((m) => m.key)
+      .sort();
+    expect(scopedMoved, "经端点白名单入口拿回来的「动了」集合与普查对不上 ⇒ 普查是第二套真相源").toEqual(census.moved);
 
     // ── ⑤f **落库的世界**与**屏上的曲线**必须是同一个世界 ──────────────────────────
     // 为什么必须单独咬这一条（变异反证逼出来的，不是想出来的）：
