@@ -25,10 +25,19 @@
  * 手写一个 `status:"RUNNING"` 塞进仓储会得到一个 `curTick`/`tickState`/`trace` 全是假的空壳：
  * 四页取数回来照样是空 —— 那只是把占位换成了另一种占位。
  */
-import { PerturbationKindSchema, type Perturbation, type PropagationRule, type SimSession, type TickState } from "@platform/contracts";
+import {
+  PerturbationKindSchema,
+  resolveSimScope,
+  type Perturbation,
+  type PropagationRule,
+  type SimSession,
+  type TickState,
+} from "@platform/contracts";
 import type { AuthCtx } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import { stateVarDisplayName } from "../synthetic/battery.js";
+import { buildPropagationInputs } from "./propagation-inputs.js";
+import type { PropagationGraph } from "./propagation.js";
 
 /**
  * 推演世界的两条**生产写路径**（`app.ts` 的路由与本播种模块共用同一份实现）。
@@ -96,6 +105,21 @@ export const DEMO_SIM_WORLD_CREATED_AT = "2026-01-01T00:00:00.000Z";
  */
 export const DEMO_SIM_WORLD_TICKS = 3;
 
+/**
+ * 种子扰动的 `startTick`。**必须 ≥ 1，这是本单的地雷所在**（WO-SIM-SEED-PERTURB）。
+ *
+ * 建扰动时会话 `curTick === 0`。若 `startTick` 也取 0，则 `POST …/perturbations` 那条路
+ * 判它「已在当前 tick 生效」⇒ 当场 `simApplyAtCurrentTick` 把它写进 **tick0 行**。
+ * 而 `metric-series` 的两条线（基线/扰动后）**共用同一份 tick0 种子**
+ * （`app.ts` 取 `getTickState(…,0).state`，见 `MetricSeriesArgs.seed`）——
+ * 于是扰动被烙进了**基线自己的起点**，两条线再次逐值全等：
+ * 屏上有一条扰动记录、`actual` 却一格不动，正是本单要消灭的那种「无事发生」换了个马甲。
+ *
+ * 取 1 ⇒ 建单时不生效（只入库）、tick0 干净；引擎在产出 tick1 那一格时 `entersAt` 施加一次，
+ * 此后 tick2/tick3 沿链路往下带。分叉点因此**看得见**：t0 两线重合，t1 落点分开，t2/t3 下游跟着分开。
+ */
+export const DEMO_SIM_WORLD_PERTURB_START_TICK = 1;
+
 /** `scope` 里承载种子记号的键（**不叫 `snapshotKind`**：那个键会把会话从沙盘列表里滤掉）。 */
 export const DEMO_SIM_WORLD_SCOPE_KEY = "seedWorld";
 
@@ -145,6 +169,12 @@ export interface SeedWorldReport {
   /** 没建世界时**说明为什么**（诚实缺席：不许静默返回一个空回执）。 */
   reason: string | null;
   origin: SeedWorldSnapshotOrigin | null;
+  /** 本次播下的种子扰动（`null` = 没播；原因见 `perturbationReason`）。 */
+  perturbation?: Perturbation | null;
+  /** 落点是怎么选出来的（口径分项，供日志与对账；`null` = 选不出合格落点）。 */
+  choice?: SeedPerturbationChoice | null;
+  /** 没播扰动时**说明为什么**（同 `reason` 的纪律：不许静默地少播一样东西）。 */
+  perturbationReason?: string | null;
 }
 
 /**
@@ -253,6 +283,191 @@ export async function deriveSeedBaseSnapshot(
 }
 
 /**
+ * 种子扰动的**落点与幅度**（全部**现算**，代码里零业务常数 R14）。
+ *
+ * ⚠ 每一个数都必须说得出口径 —— 这批字段随 `SimSession.scope.seedPerturbation` 原样下发，
+ * 就是给人回头对账用的：口径变了，数就该跟着变，而不是等人想起来改注释。
+ */
+export interface SeedPerturbationChoice {
+  targetObjectId: string;
+  targetStateVar: string;
+  /** `delta` 的幅度 = 该状态变量在本世界的**观测全距**（`varMax - varMin`）。 */
+  magnitude: number;
+  varMax: number;
+  varMin: number;
+  /** 落点被多少条 PUBLISHED 规则读作源（= 它有几条外发链路可走）。 */
+  outRules: number;
+  /** tick 预算内可被带动的下游**格子**数（不含落点自身）——排序键。 */
+  reachCells: number;
+  /** 其中不同下游**对象**数（不含落点对象自身）。`0` ⇒ 这条扰动只会动自己那一格，本单判它不合格。 */
+  reachObjects: number;
+  /** 排序时一共比过几个候选（诚实回带：这不是"随手挑的一格"）。 */
+  candidates: number;
+}
+
+/** `"linkKey\u0000fromId"`（与 `propagateTick` 的 `navKey` 同式：用 NUL 分隔避免 key 撞车）。 */
+const navKey = (linkKey: string, fromId: string): string => `${linkKey}\u0000${fromId}`;
+/** 格子的稳定标识（`objectId` 与 `stateVar` 都可能含 `.`，故同样用 NUL 而不是点号）。 */
+const cellKey = (objectId: string, stateVar: string): string => `${objectId}\u0000${stateVar}`;
+
+/**
+ * 选出种子扰动该落在**哪一格、多大幅度** —— 纯函数（R6：同入参逐字节同出参，零时钟零随机）。
+ *
+ * ── 为什么要"选"，不能写死一个落点 ───────────────────────────────────────────────
+ * 判据 4「有出处，不编数」：落点写死就是**替租户断言**「你这个世界里最值得推的是这一格」，
+ * 换租户/换行业当场失效（`seed.ts` 拒绝给规则绑 `cadenceNodeId` 是同一条纪律）。
+ * 所以口径必须**可复算**：给定同一个世界，任何人重跑这个函数都该得到同一格。
+ *
+ * ── 口径三步（每一步都对齐引擎自己的取数条件，不另立一套）────────────────────────
+ *
+ * **① 候选** = tick0 世界态里**真实存在**的格子 `(objectId, stateVar)`，且同时满足：
+ *    · `objectId` 在**引擎将要吃的那张图**里（`graph.objects`，故 `typeOf` 查得到）；
+ *    · 某条规则把它读作源：`r.sourceTypeKey === typeOf(objectId) && r.sourceStateVar === stateVar`；
+ *    · 该对象沿 `r.viaLinkKey` **真的有**类型为 `r.targetTypeKey` 的下游对象。
+ *    这三条逐条抄自 `propagateTick` 的取数条件（`idsByType` / `sourceStateVar` / `targetsOf`）——
+ *    **本单的分水岭就在这里**：落点若不满足它们，`propagateTick` 的 `state[sourceId]` 取不到，
+ *    屏上那一格看着变了、下游一动不动（`SandboxView.tsx`「扰动落点候选」注释记的正是这个坑）。
+ *
+ * **② 排序键 = 传导可达面**（`reachCells`）：从该格出发，在「格图」上按**引擎的时基**做 BFS，
+ *    一条边的开销 = `1 + delayTicks` 拍。判据来自引擎自己：某格在 tick `T` 变了，
+ *    `propagateTick(tick=T)` 读它、产出 tick `T+1` ⇒ 即时边（`delayTicks:0`）下游在 `T+1` 变；
+ *    延迟边 `arriveTick = T+1`，要等 `tick===T+1` 那一次调用才结算 ⇒ 下游在 `T+2` 变。
+ *    预算 = `budgetTicks`（= 世界总拍数 − 扰动 `startTick`）。**超预算的边不计入** ——
+ *    数一条这辈子都不会在这条 4 个点的曲线上出现的传导，就是拿一个不度量目标的数当排序键。
+ *
+ * **③ 幅度 = 该状态变量在本世界的观测全距**（`max − min`，`mode:"delta"`）。
+ *    为什么是全距而不是"翻一倍"「+15%」这类数：全距是**这个世界自己的离散度**，
+ *    量级天然与它匹配，且随世界内容变化而变化；而 1.5 / 2 / 0.15 这些是外部拍脑袋的常数。
+ *    全距为 0 的变量（全世界这一格都一样）**直接出局**：`delta 0` = 什么都没发生。
+ *
+ * ── 并列怎么办（R6 稳定 tiebreaker）──────────────────────────────────────────────
+ * 候选按 `(objectId, stateVar)` **字典序**遍历，比较用**严格大于** ⇒ 并列时取字典序最小的那个。
+ * 不用时钟、不用插入序、不用 `Math.random` —— 同一份种子重跑逐字节同一格。
+ *
+ * @param state       tick0 世界态（= 会话 `baseSnapshot`）。候选只从这里面出 ⇒ 落点必真实存在。
+ * @param graph       引擎将要吃的**同一张**图（`buildPropagationInputs` 唯一装配处给，本函数不自己拼）。
+ * @param rules       引擎将要吃的**同一批**规则（PUBLISHED − 本会话屏蔽）。
+ * @param budgetTicks 扰动落地后还剩几拍可以传导。`≤0` ⇒ 没有任何下游来得及动，直接判无解。
+ * @returns 选中的落点；**无合格候选时返回 `null`**（诚实缺席，调用方据此不播扰动并说明原因）。
+ */
+export function pickSeedPerturbation(args: {
+  state: TickState;
+  graph: PropagationGraph;
+  rules: readonly PropagationRule[];
+  budgetTicks: number;
+}): SeedPerturbationChoice | null {
+  const { state, graph, rules, budgetTicks } = args;
+  if (budgetTicks <= 0) return null;
+
+  const typeOf = new Map<string, string>();
+  for (const o of graph.objects) typeOf.set(o.id, o.typeKey);
+  // 链路导航索引（与 `propagateTick` 同式）：`"linkKey\0fromId"` → 该边的 toId 列表。
+  const navOut = new Map<string, string[]>();
+  for (const l of graph.links) {
+    const k = navKey(l.linkKey, l.fromId);
+    const cur = navOut.get(k);
+    if (cur) cur.push(l.toId);
+    else navOut.set(k, [l.toId]);
+  }
+  // `sourceTypeKey|sourceStateVar` → 规则（一格可能被多条规则读作源 ⇒ 数组）。
+  const rulesBySource = new Map<string, PropagationRule[]>();
+  for (const r of rules) {
+    const k = cellKey(r.sourceTypeKey, r.sourceStateVar);
+    const cur = rulesBySource.get(k);
+    if (cur) cur.push(r);
+    else rulesBySource.set(k, [r]);
+  }
+
+  /** 一格的**一跳**下游：`{格, 这一跳花几拍}`。空数组 ⇒ 这一格推不动任何东西。 */
+  const stepsFrom = (objectId: string, stateVar: string): { objectId: string; stateVar: string; cost: number }[] => {
+    const t = typeOf.get(objectId);
+    if (t === undefined) return [];
+    const out: { objectId: string; stateVar: string; cost: number }[] = [];
+    for (const r of rulesBySource.get(cellKey(t, stateVar)) ?? []) {
+      for (const toId of navOut.get(navKey(r.viaLinkKey, objectId)) ?? []) {
+        // 目标类型必须对得上 —— 同一条链路键可能连着别的类型（`targetsOf` 的同一层过滤）。
+        if (typeOf.get(toId) !== r.targetTypeKey) continue;
+        out.push({ objectId: toId, stateVar: r.targetStateVar, cost: 1 + r.delayTicks });
+      }
+    }
+    return out;
+  };
+
+  // ── 各状态变量在本世界的观测极值（幅度口径 ③ 的唯一出处）──────────────────────────
+  const varMin = new Map<string, number>();
+  const varMax = new Map<string, number>();
+  for (const row of Object.values(state)) {
+    for (const [v, raw] of Object.entries(row)) {
+      if (typeof raw !== "number" || !Number.isFinite(raw)) continue;
+      const lo = varMin.get(v);
+      const hi = varMax.get(v);
+      if (lo === undefined || raw < lo) varMin.set(v, raw);
+      if (hi === undefined || raw > hi) varMax.set(v, raw);
+    }
+  }
+
+  let best: SeedPerturbationChoice | null = null;
+  let candidates = 0;
+  // 字典序遍历 ⇒ 并列时取最小者（R6 稳定 tiebreaker，见头注）。
+  for (const objectId of Object.keys(state).sort((a, b) => a.localeCompare(b))) {
+    const row = state[objectId]!;
+    for (const stateVar of Object.keys(row).sort((a, b) => a.localeCompare(b))) {
+      const first = stepsFrom(objectId, stateVar);
+      if (first.length === 0) continue; // 不是任何规则的源，或没有下游对象 ⇒ 推不动
+      const hi = varMax.get(stateVar);
+      const lo = varMin.get(stateVar);
+      if (hi === undefined || lo === undefined) continue;
+      const magnitude = hi - lo;
+      if (magnitude <= 0) continue; // 全距为 0 ⇒ `delta 0` = 什么都没发生
+      candidates += 1;
+
+      // ── BFS：按引擎时基算可达面。同一格可能经不同路径到达，留**最早到达**的那次 ──
+      const bestArrival = new Map<string, number>(); // cellKey → 最早到达拍数
+      let frontier: { objectId: string; stateVar: string; spent: number }[] = [{ objectId, stateVar, spent: 0 }];
+      while (frontier.length > 0) {
+        const next: typeof frontier = [];
+        for (const cur of frontier) {
+          for (const st of stepsFrom(cur.objectId, cur.stateVar)) {
+            const spent = cur.spent + st.cost;
+            if (spent > budgetTicks) continue; // 这辈子不会出现在这条曲线上，不计
+            const k = cellKey(st.objectId, st.stateVar);
+            const seen = bestArrival.get(k);
+            if (seen !== undefined && seen <= spent) continue;
+            bestArrival.set(k, spent);
+            next.push({ objectId: st.objectId, stateVar: st.stateVar, spent });
+          }
+        }
+        frontier = next;
+      }
+      // 落点自己那一格不算"下游"（它是因，不是果）。
+      bestArrival.delete(cellKey(objectId, stateVar));
+      const reachObjects = new Set<string>();
+      for (const k of bestArrival.keys()) {
+        const id = k.slice(0, k.indexOf("\u0000"));
+        if (id !== objectId) reachObjects.add(id);
+      }
+      const reachCells = bestArrival.size;
+      // 严格大于 ⇒ 并列保留先到者 = 字典序最小者。
+      if (best !== null && reachCells <= best.reachCells) continue;
+      best = {
+        targetObjectId: objectId,
+        targetStateVar: stateVar,
+        magnitude,
+        varMax: hi,
+        varMin: lo,
+        outRules: rulesBySource.get(cellKey(typeOf.get(objectId)!, stateVar))?.length ?? 0,
+        reachCells,
+        reachObjects: reachObjects.size,
+        candidates: 0, // 总数要等遍历完才知道，最后回填
+      };
+    }
+  }
+  // 判据 2 的硬闸：**只动自己那一格不算带动下游**。选不出带下游的落点 ⇒ 诚实返回 null。
+  if (best === null || best.reachObjects === 0) return null;
+  return { ...best, candidates };
+}
+
+/**
  * `SEED_DEMO=1` → 给 demo 租户播**一条 RUNNING 的推演会话**（消四页的"无世界"占位）。
  *
  * 由两条播种路径调用（`server.ts` / `seed-cli.ts`）——两条**必须同步**（seed.ts 立的同一条纪律：
@@ -289,18 +504,88 @@ export async function seedDemoSimWorld(repos: Repos, sim: SimWorldOps, ctx: Auth
       origin,
     };
   }
+  // ── 选种子扰动的落点（**建会话之前**算完：会话 `scope` 要把口径一起带上）────────────────
+  // 图/规则走**唯一装配处** `buildPropagationInputs`（与 `POST …/tick`、Trial Tick 同一份）——
+  // 在这里另拼一张图，就会出现「选点时看到的世界」与「引擎真跑的世界」不是同一个，
+  // 落点当场落空（本仓「第二套真相源」的老形态）。范围走契约唯一实现 `resolveSimScope`。
+  const seedScope: Record<string, unknown> = {
+    // 种子记号（幂等/审计用）。**没有 `kind` 键** ⇒ `resolveSimScope` 读作 GLOBAL，与旧会话同档。
+    [DEMO_SIM_WORLD_SCOPE_KEY]: true,
+    label: "demo 种子世界",
+    baseSnapshotOrigin: origin,
+  };
+  const inputs = await buildPropagationInputs(repos, ctx, resolveSimScope(seedScope));
+  // 新会话的 `disabledRuleKeys` 恒为空（`createSimSessionWorld` 写死），故"引擎将吃的规则"= 全部 PUBLISHED。
+  const rules = await repos.sim.listPropagationRules(ctx.tenantId, true);
+  const choice = pickSeedPerturbation({
+    state,
+    graph: inputs.graph,
+    rules,
+    // 扰动在 tick1 落地，世界总共推 3 拍 ⇒ 还剩 2 拍可以往下传。
+    budgetTicks: DEMO_SIM_WORLD_TICKS - DEMO_SIM_WORLD_PERTURB_START_TICK,
+  });
+  if (choice !== null) seedScope.seedPerturbation = choice;
+
   const session = await sim.createSession(ctx, {
     baseSnapshot: state,
-    scope: {
-      // 种子记号（幂等/审计用）。**没有 `kind` 键** ⇒ `resolveSimScope` 读作 GLOBAL，与旧会话同档。
-      [DEMO_SIM_WORLD_SCOPE_KEY]: true,
-      label: "demo 种子世界",
-      baseSnapshotOrigin: origin,
-    },
+    scope: seedScope,
     id: DEMO_SIM_WORLD_SESSION_ID,
     createdAt: DEMO_SIM_WORLD_CREATED_AT,
   });
+
+  // ── 播扰动：**必须排在 tick 之前** ────────────────────────────────────────────────
+  // 引擎只在**产出 `startTick` 那一格**时施加一次（`propagateTick` 的 `entersAt`）。
+  // 先 tick 后建扰动 ⇒ 那一格早就跑过去了，扰动只会被 `POST …/perturbations` 就地写进
+  // 当前 tick 的那一行、且**不触发任何传导** ⇒ 下游一动不动。这正是判据 1 点名的那种
+  // 「换了一种无事发生」——顺序在这里不是风格问题，是语义问题。
+  //
+  // 只播**一条**（判据 3）：`delta`/`scale` 不可交换，多条就要为"为什么是这个顺序"负责；
+  // 一条 ⇒ 顺序问题在结构上不存在，不必靠插入序的偶然性。
+  let perturbation: Perturbation | null = null;
+  if (choice !== null) {
+    const varLabel = stateVarDisplayName(choice.targetStateVar) ?? choice.targetStateVar;
+    const r = await sim.createPerturbation(
+      ctx,
+      session,
+      {
+        // `kind` 只管**展示分类**，契约判据 3 写明它**不进传导规则** ⇒ 它一个数字都不影响。
+        // 取枚举首项而不是挑一个"像"的：落点是**结构**选出来的，我们没有任何依据断言
+        // 这是一次「产能损失」还是「质量事件」——替租户下这种判断正是 R14 要禁的。
+        // 真正的出处写在 `label` 与 `scope.seedPerturbation` 里，那两处每个数都可复算。
+        kind: PerturbationKindSchema.options[0],
+        targetObjectId: choice.targetObjectId,
+        targetStateVar: choice.targetStateVar,
+        startTick: DEMO_SIM_WORLD_PERTURB_START_TICK,
+        // 永久（`null`）：可传导的预算只有 2 拍，限时扰动会在下游还没看见之前就回退，
+        // 屏上又是一条几乎重合的线 —— 那等于没播。
+        durationTicks: null,
+        magnitude: choice.magnitude,
+        mode: "delta",
+        label:
+          `种子扰动 · 把「${varLabel}」抬高一个全距（+${choice.magnitude}）` +
+          `｜落点 = 传导可达面最大的一格（${choice.candidates} 个候选里下游 ${choice.reachCells} 格 / ${choice.reachObjects} 个对象）`,
+      },
+      // 确定性 + 幂等：id/createdAt 都跟着会话固定，重跑逐字节一致（R6）。
+      { id: `${DEMO_SIM_WORLD_SESSION_ID}_p0`, createdAt: DEMO_SIM_WORLD_CREATED_AT },
+    );
+    perturbation = r.perturbation;
+  }
+
   // 真 tick（与 `POST …/tick` 同一份传导核）：会话在这一步才变 RUNNING，`curTick` 才真进位。
+  // 扰动已经在库里 ⇒ `simAdvanceTicks` 的 `listPerturbations` 读得到，引擎在 tick1 施加并往下带。
   const ticked = await sim.tick(ctx, session, DEMO_SIM_WORLD_TICKS);
-  return { created: true, sessionId: session.id, curTick: ticked.curTick, reason: null, origin };
+  return {
+    created: true,
+    sessionId: session.id,
+    curTick: ticked.curTick,
+    reason: null,
+    origin,
+    perturbation,
+    choice,
+    // 诚实缺席：没播扰动就**说为什么**（世界照建，但屏上会是一片"无事发生"，得让人查得到）。
+    perturbationReason:
+      choice === null
+        ? "本世界选不出**能带动下游**的落点（无格子同时满足：是某条 PUBLISHED 规则的源 · 该对象沿 viaLinkKey 真有对应类型的下游 · 该状态变量在本世界的观测全距 > 0）⇒ 不播扰动"
+        : null,
+  };
 }
