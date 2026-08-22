@@ -2,11 +2,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
-import { chainNodeDef, type SimMetricSeriesResponse, type SimSession } from "@platform/contracts";
+import {
+  chainNodeDef,
+  SIM_METRIC_SERIES_DEFAULT_LIMIT,
+  SIM_METRIC_SERIES_MAX_LIMIT,
+  type SimMetricSeriesResponse,
+  type SimSession,
+} from "@platform/contracts";
 import { server } from "./setup";
 import type { ViewConfigVM } from "@/api/types";
 import SandboxHomeRoute from "@/views/sim/console/SandboxHomeRoute";
-import { HOUR_TICKS, projectMetricSeries } from "@/views/sim/console/useMetricSeries";
+import { HOUR_TICKS, METRIC_GANTT_ROWS, projectMetricSeries } from "@/views/sim/console/useMetricSeries";
 import styles from "@/views/sim/console/SandboxHome.module.css";
 
 /**
@@ -115,6 +121,12 @@ const response = (metrics: Metric[], over: Partial<SimMetricSeriesResponse> = {}
   metrics,
   baselineOrigin: { sessionId: SESSION_ID, seedTick: 0, excludedPerturbationIds: [] },
   clamped: false,
+  // 规模闸的诚实位（WO-SIM-SERIES-SCALE）。默认桩 = 「一共就这么多、没裁过」；
+  // 要测「回包超量」的用例自己在 `over` 里把 `totalMetrics`/`truncated` 翻过去。
+  totalMetrics: metrics.length,
+  truncated: false,
+  appliedLimit: SIM_METRIC_SERIES_DEFAULT_LIMIT,
+  appliedOrder: "magnitude",
   ...over,
 });
 
