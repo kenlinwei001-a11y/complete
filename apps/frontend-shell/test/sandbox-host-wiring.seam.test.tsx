@@ -45,12 +45,23 @@ import { pickLatestRunningSession } from "@/views/sim/console/useConsoleSession"
  *   | Attr   | `[data-testid=sandbox-attr-series]` `data-source` | `useContributionSeries` | `GET …/:id/metric-series` |
  *   | Opt    | `[data-testid=sandbox-opt-grid]` `data-source`   | `useExecutionCompare`   | `GET …/:id/metric-series` |
  *
- * **Home 用的是 `data-hot-source` 而不是甘特上的 `data-source`，这是据实登记不是走捷径**：
- * 甘特走 `useMetricSeries(sessionId)`，而该 hook 的函数体今天是 `void sessionId; return PLACEHOLDER`
- * —— 它**丢掉入参**，`source` 是编译期常量 `"placeholder"`。宿主透任何值下去都翻不动它。
- * 要翻得改 `useMetricSeries` 本体，那在本单的 🚦 范围边界之外（工单 §1 明令不许碰四个 hook）。
- * 若把断言写成"甘特的 data-source 变 endpoint"，这道门**永远红且没人能修** —— 一道没人能过的门
- * 等于没有门。故此处咬**真正被宿主接线驱动的那一位**，并把做不到的那一格写进交单报告。
+ * **Home 咬的是 `data-hot-source` 而不是甘特上的 `data-source`。**
+ *
+ * ⚠ **此处原来给的理由今天已过期，照实回写（`WO-SIM-STALE-3`）**。原文是：
+ * 「甘特走 `useMetricSeries(sessionId)`，而该 hook 的函数体今天是
+ * `void sessionId; return PLACEHOLDER` —— 它丢掉入参，`source` 是编译期常量 `"placeholder"`，
+ * 宿主透任何值下去都翻不动它；若把断言写成『甘特的 data-source 变 endpoint』，
+ * 这道门永远红且没人能修」。那是本单（`WO-SIM-FE-HOST`）交单当时的实测，**不再成立**：
+ * `WO-SIM-FE-SERIES-WIRE` 已把该 hook 接到真端点 ——
+ * `useMetricSeries()` → `api.a(metricSeriesPath(sessionId))`
+ * → `GET /a/v1/sim/sessions/:id/metric-series`（后端 `apps/datacore/src/app.ts` 的该路由），
+ * 入参真被读，那一位**今天真会翻 `endpoint`**。
+ *
+ * **今天仍咬 `data-hot-source` 的理由换成了「两门各咬一截、不叠」**：甘特那一位已有自己的
+ * 专门接缝门 —— `metric-series-wire.seam.test.tsx` 用例 ①，同样真渲染 `SandboxHomeRoute`、
+ * 同样咬到 `"endpoint"`。本门管的是**宿主选会话**这一段（`pickLatestRunningSession` →
+ * 透 `sessionId`），左栏扰动清单是它最直接的下游，故探针留在 `data-hot-source`。
+ * 下面 §1 表格里 Home 一行的「由谁驱动 / 端点」照旧准确，未改。
  *
  * 同理，Attr 的热矩阵 / 根因树 / 瀑布三格由 `so`（锚点订单号）驱动、Opt 的前沿图由
  * `paretoRequest` 驱动，**都与会话无关**，本单不负责送这两个值，故它们保持占位是**正常态**。

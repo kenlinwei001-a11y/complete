@@ -230,6 +230,17 @@ function laneTicks(g: HTMLElement): string[] {
   return Array.from(head.children).map((e) => (e.textContent ?? "").trim());
 }
 
+/**
+ * 轨道头每条刻度的 `left` **内联值**（不是文本）。
+ * ⚠ 坏坐标只在这一位上露馅：`left:"NaN%"` 不是合法 CSS 长度，浏览器与 jsdom 一致地
+ * **整条声明丢弃** ⇒ 这里读回来是 `""`，而刻度文字本身照常在屏上。
+ */
+function laneTickLefts(g: HTMLElement): string[] {
+  const head = columnsOf(g)[COL.lane]?.children[0];
+  if (head === undefined) throw new Error("轨道头不在 DOM 里 —— 尺子坏了");
+  return Array.from(head.children).map((e) => (e as HTMLElement).style.left);
+}
+
 /** 某一行轨道上的段（`data-testid=sandbox-home-gantt-row-<行名>`）。 */
 function segmentsOf(root: HTMLElement, rowName: string): HTMLElement[] {
   const row = root.querySelector(`[data-testid="sandbox-home-gantt-row-${rowName}"]`);
@@ -447,5 +458,76 @@ describe("WO-SIM-FE-SERIES-WIRE · 指标甘特真取数（接缝）", () => {
     expect(projectMetricSeries(odd).playheadPct, "当前格找不到时不许猜位置").toBe(0);
     // 且与墙钟无关：同一个回包投两次，逐字节相同（拿 Date.now() 算的话这里会漂）。
     expect(projectMetricSeries(odd)).toEqual(projectMetricSeries(odd));
+  });
+
+  /**
+   * ⑦ = `WO-SIM-STALE-3` 的常驻门。**一条用例同时咬两件相反的事**，缺一件都会被绕过去：
+   *   · 单刻度**不许**产生 NaN 坐标（今天的 bug）；
+   *   · 多刻度的坐标**必须一个字节没动**（改法的边界 —— 四页验收线是与规格
+   *     `docs/ux-spec/sandbox/sandbox-home.html` 逐像素 1:1）。
+   * 只咬前者，一个「全都改成居中」的修法照样绿；只咬后者，bug 根本没被测。
+   */
+  it("⑦ 单刻度不产生 NaN 坐标（退化到轨道起点），且多刻度坐标逐字节未变", async () => {
+    // ── (a) 尺子先自证 ───────────────────────────────────────────────────────
+    // 这把尺子读 `style.left`，而 CSS 解析器会把非法值**整条丢掉**。没有这一条，
+    // 「读到 ""」既可能是「NaN 被丢了」也可能是「压根没设过 left」—— 两个不同的事实，
+    // 而下面的断言分不出来，于是本用例可能因为错误的原因变绿。
+    const probeEl = document.createElement("div");
+    probeEl.style.left = "NaN%";
+    expect(probeEl.style.left, "CSS 解析器没丢掉 NaN% ⇒ 这把尺子测不出本用例要测的东西").toBe("");
+    probeEl.style.left = "0%";
+    expect(probeEl.style.left, "合法百分比也读不回来 ⇒ 尺子坏了，不许读作「坐标没问题」").toBe("0%");
+
+    // ── (b) 多刻度：坐标逐字节等于原式 `i/(n-1)*100` ─────────────────────────
+    installHandlers({ body: response(THREE_METRICS) }); // ticks:[0,1,2,3]
+    const many = mount({ sessionId: SESSION_ID });
+    await waitSource(many, "endpoint");
+    expect(laneTickLefts(ganttOf(many)), "多刻度坐标漂了 —— 与规格逐像素 1:1 的验收线当场破").toEqual([
+      "0%",
+      "33.33333333333333%",
+      "66.66666666666666%",
+      "100%",
+    ]);
+    cleanup();
+
+    // ── (c) 单刻度：**合法输入，不是脏数据** ─────────────────────────────────
+    // 本页取数不发 `from`/`to`（`metricSeriesPath()` 只有路径没有查询串）⇒ 后端
+    // `requestedTo = args.to ?? curTick`、`fromTick = min(from ?? 0, toTick)`
+    // （`apps/datacore/src/sim/metric-series.ts` 窗口收敛段）⇒ 刚建的世界 `curTick=0`
+    // 就是 `fromTick=toTick=0` ⇒ 回包 `ticks=[0]`。故桩按**那个世界真会给的形状**配：
+    // 序列长度 1、段落在第 0 格，而不是把四格数据硬塞进一格。
+    const ONE_TICK = response(
+      [
+        metric({
+          key: "obj_a.loadIndex",
+          objectId: "obj_a",
+          stateVar: "loadIndex",
+          label: "负荷指数",
+          baseline: [10],
+          actual: [10],
+          segments: [{ fromTick: 0, toTick: 0, nodeId: DOMAIN_NODE, label: DOMAIN_LABEL, source: "domain", ruleKeys: ["r1"] }],
+        }),
+      ],
+      { fromTick: 0, toTick: 0, ticks: [0] },
+    );
+    installHandlers({ body: ONE_TICK });
+    const one = mount({ sessionId: SESSION_ID });
+    await waitSource(one, "endpoint");
+    const g = ganttOf(one);
+
+    expect(laneTicks(g), "单刻度回包没渲成一格刻度 ⇒ 下面读的不是我要读的那个东西").toEqual(["0"]);
+    const lefts = laneTickLefts(g);
+    // 反面先咬：`""` 正是 `left:"NaN%"` 被丢掉之后的原样。
+    expect(lefts, "单刻度的 left 是空串 ⇒ 声明被 CSS 解析器丢了（NaN% 的原样），绝对定位的刻度塌回左沿").not.toEqual([""]);
+    expect(lefts, "单刻度退化位置必须是轨道起点 0%").toEqual(["0%"]);
+    for (const v of lefts) {
+      expect(Number.isFinite(Number.parseFloat(v)), `坐标「${v}」不是有限数 ⇒ NaN/Infinity 进了 SVG/布局坐标`).toBe(true);
+    }
+
+    // 且必须**与播放头对齐**：同一个退化条件（`span = ticks.length - 1 <= 0`）下
+    // `playheadPctOf`（`useMetricSeries.ts`）也取 0。若有人把刻度改成居中，
+    // 「唯一那格的刻度文字」与「指着那一格的播放头」就会落在屏上两个地方，自相矛盾。
+    const play = columnsOf(g)[COL.lane]?.lastElementChild as HTMLElement | null;
+    expect(play?.style.left, "播放头与唯一那格的刻度分家了").toBe("0%");
   });
 });

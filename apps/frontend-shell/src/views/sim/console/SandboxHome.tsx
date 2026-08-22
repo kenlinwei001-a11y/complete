@@ -6,7 +6,7 @@
  * 版面在 `SandboxHome.module.css`（逐条照抄），三块内容各自成组件：
  *   · 左 `PerturbTree`   —— 扰动因素（契约 20 因子 × `…/perturbations` 端点）
  *   · 中 `FlowMap`       —— 端到端流程图（`CHAIN_NODE_REGISTRY` 24 站 × `chain_loss_attribution`）
- *   · 下 `MetricGantt`   —— 指标甘特（`useMetricSeries()`；真端点 `WO-SIM-BE-SERIES` 未到）
+ *   · 下 `MetricGantt`   —— 指标甘特（`useMetricSeries()` × `…/:id/metric-series` 端点）
  *
  * ⚠ **与既有 `views/sim/` 并存，不替换、不删除任何既有文件**（派单范围边界）。
  * 本组件不自带 `QueryClientProvider`：宿主（App / 测试 `renderWithClient`）已经有一个，
