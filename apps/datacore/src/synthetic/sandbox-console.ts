@@ -82,9 +82,31 @@ export interface SandboxConsoleView {
  *   `check-nav-group-coverage.mjs` 判据⑦ 的供给侧抽取器是正则捞字面量，派生写法它看不见
  *   （第一版写成 `...Object.fromEntries(...)`，那道门原样再红一次）。
  *   两侧一致性由 `test/workspace-sim-console.seam.test.ts` 机械对账，不靠人记得。
+ *
+ * ── WO-SIM-NAV-GROUP · `sim-console` 的标题为什么从「推演沙盘」改成「推演指控台」──────
+ * **X（改之前的屏上行为，仓主真浏览器实测）**：本表 `sim-console` 的 title 与
+ * `ShellLayout.NAV_GROUPS`「推演」组里那条 `{ kind:"route", key:"sim-sandbox",
+ * label:"推演沙盘" }` **逐字相同** ⇒ 左侧导航同时出现**两条「推演沙盘」**，
+ * 点进去是两个不同的页面（旧 `/v/sim-sandbox` = `SandboxView`；
+ * 新 `/v/sim-console` = `views/sim/console/SandboxHomeRoute`）。这是屏上直接可见的缺陷。
+ * **Y**：新的那个改名，旧 `/v/sim-sandbox` 一个字不动（它是既有产品行为）。
+ *
+ * 名字取「推演指控台」，判据是「用户扫一眼就知道点哪个」：
+ *  ① **不是新造词**：仓里对这一屏的既有称呼就是「指控台」——本文件头「推演沙盘指控台四视图」、
+ *     `service.ts` VIEW_DEFS 那段的同名注释、前端 `SandboxHome.tsx` 文件头「沙盘首页『指控台』」
+ *     与页面副标题 `simulation console`。改名是把**已经在用的词**提到导航面上，不是另起一套叫法。
+ *  ② **核心名词与旧页不同**（指控台 ≠ 沙盘）：两条并排在同一组里时区分点落在名词本身，
+ *     而不是靠后缀/编号（「推演沙盘 2」这类才是真歧义）。
+ *  ③ **与三个同族页连读成一条决策链**：推演指控台（现状）→ 传导识别 → 损失归因 → 方案寻优。
+ *  ④ 平台自有术语，**不含任何外部产品名**（铁律 0 的命名约束）。
+ *
+ * ⚠ 单一出处就是本表（+ `service.ts` 那份被门逼出来的同值镜像）。**前端不许再写一份 label 映射** ——
+ *   `workspace.navigation[].label` 就是从这里流过去的（`service.ts` 的 `label: VIEW_DEFS[k]?.title`）。
+ * ⚠ 页面**内部**顶栏那行 `<b>推演沙盘</b>`（`SandboxHome.tsx`）**不动**：那批是像素级 1:1 移植的
+ *   版面，验收线在像素上，本单的范围边界明令不碰。导航面上的歧义由本表这一行消除。
  */
 export const SANDBOX_CONSOLE_VIEWS: SandboxConsoleView[] = [
-  { key: "sim-console", title: "推演沙盘", renderer: "sim-console" },
+  { key: "sim-console", title: "推演指控台", renderer: "sim-console" },
   { key: "sim-conduction", title: "传导识别", renderer: "sim-conduction" },
   { key: "sim-attribution", title: "损失归因", renderer: "sim-attribution" },
   { key: "sim-optimize", title: "方案寻优", renderer: "sim-optimize" },
