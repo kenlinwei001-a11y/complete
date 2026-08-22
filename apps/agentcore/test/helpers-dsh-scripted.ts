@@ -1,10 +1,11 @@
 /**
  * WO-DSH-E2E · L5 专用剧本化 stub：startStubOpenAi（helpers-dsh-stub.ts，裁决 A 共享资产）
- * 的 **callId 参数化**变体。为何独立成文件：共享 stub 把 tool_call id 硬编码 "call_1"，
+ * 的 **callId 参数化**变体。为何独立成文件：共享 stub 原把 tool_call id 硬编码 "call_1"，
  * 多工具调用剧本里 callId 全部相撞 —— reassemble 的 toolNameByCallId 映射后写覆盖，
  * provenance 溯源断言（toolName 解析）将失去意义。L5.P1 需要「load_skill 的 callId ≠
- * final_answer 的 callId」才能断言溯源到真对象。共享资产不回改（零改面），协议字节格式
- * 与本文件保持逐字一致（同 roundToSse 模板）。
+ * final_answer 的 callId」才能断言溯源到真对象。（W9-full 起共享 stub 改为按请求序铸
+ * call_<seq>，多轮剧本天然唯一；本变体保留的价值 = **显式指定** callId 的能力。）
+ * 协议字节格式与本文件保持逐字一致（同 roundToSse 模板）。
  */
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";

@@ -610,3 +610,99 @@ describe("WO-DSH-PROD-READY W9-lite · 帧流→iterations 骨架", () => {
     expect(sum).toBe(r.stats?.sessionStats.toolMs); // 两条独立 fold 路径同帧同源，必须互等
   });
 });
+
+// ---------------------------------------------------------------------------
+// WO-DSH-PROD-READY W9-full · hostToolCalls 侧表合流探针（四态 + tc_ + 宿主实测 durationMs）。
+// 口径（team-lead 2026-08-22 裁决：帧 callId 直通方案——侧表键 = 帧 callId 原值）：
+//   侧表 = 事实源——命中支：outcome 翻四态（OK/DENIED/ERROR/BUDGET_EXCEEDED 按宿主端点记录，
+//   覆盖帧 isError 两态推导）、toolCallId 换 tc_ 形态、durationMs 取宿主实测值（覆盖帧 time 差）；
+//   未命中支（MCP/meta——不过宿主）：维持 W9-lite 帧流两态推导（OK/ERROR + 帧 callId + 帧 time 差）。
+//   配对权威仍是帧：侧表只翻已配对调用的三字段，不把帧外调用补进 toolFrames（帧不全不造 outcome）。
+// ---------------------------------------------------------------------------
+describe("WO-DSH-PROD-READY W9-full · hostToolCalls 侧表合流（四态+tc_+宿主 durationMs）", () => {
+  const callAt = (turn: number, step: number, callId: string, name: string, time: number, args: unknown = {}): DshSessionEvent => ({
+    type: "tool/call",
+    time,
+    data: { turn, step, callId, name, arguments: JSON.stringify(args) },
+  });
+  const resultAt = (turn: number, step: number, toolCallId: string, isError: boolean, time: number): DshSessionEvent => ({
+    type: "tool/result",
+    time,
+    data: { turn, step, message: { content: [{ type: "tool-result", toolCallId, content: [], isError }] } },
+  });
+  const stepEnd = (turn: number, step: number, time = 0): DshSessionEvent => ({ type: "step/end", time, data: { turn, step } });
+
+  it("⑨ 命中支：侧表 outcome 覆盖帧推导（帧 isError⇒ERROR 但侧表 DENIED ⇒ DENIED 胜）+ toolCallId 换 tc_ + durationMs 取宿主实测", () => {
+    const hostToolCalls = new Map([
+      ["c1", { outcome: "DENIED" as const, toolCallId: "tc_host1", durationMs: 7 }],
+    ]);
+    const r = reassembleDshRun([
+      callAt(1, 1, "c1", "query_objects", 1000), resultAt(1, 1, "c1", true, 1250), stepEnd(1, 1, 1260),
+      turnEnd("completed"),
+    ], { hostToolCalls });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.iterations[0]?.toolCalls).toEqual([
+      { toolCallId: "tc_host1", toolName: "query_objects", input: {}, outcome: "DENIED", durationMs: 7 },
+    ]);
+  });
+
+  it("⑩ 四态逐值：OK/DENIED/ERROR/BUDGET_EXCEEDED 各一条命中，outcome/toolCallId/durationMs 全取侧表", () => {
+    const hostToolCalls = new Map([
+      ["c1", { outcome: "OK" as const, toolCallId: "tc_1", durationMs: 11 }],
+      ["c2", { outcome: "DENIED" as const, toolCallId: "tc_2", durationMs: 3 }],
+      ["c3", { outcome: "ERROR" as const, toolCallId: "tc_3", durationMs: 22 }],
+      ["c4", { outcome: "BUDGET_EXCEEDED" as const, toolCallId: "tc_4", durationMs: 1 }],
+    ]);
+    const r = reassembleDshRun([
+      callAt(1, 1, "c1", "query_objects", 1000), resultAt(1, 1, "c1", false, 1100),
+      callAt(1, 1, "c2", "query_objects", 1200), resultAt(1, 1, "c2", true, 1210), // 帧 isError 但侧表 DENIED
+      callAt(1, 1, "c3", "query_objects", 1300), resultAt(1, 1, "c3", true, 1500),
+      callAt(1, 1, "c4", "query_objects", 1600), resultAt(1, 1, "c4", true, 1610), // 帧 isError 但侧表 BUDGET_EXCEEDED
+      stepEnd(1, 1, 1620),
+      turnEnd("completed"),
+    ], { hostToolCalls });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const calls = r.iterations[0]?.toolCalls ?? [];
+    expect(calls.map((c) => c.outcome)).toEqual(["OK", "DENIED", "ERROR", "BUDGET_EXCEEDED"]);
+    expect(calls.map((c) => c.toolCallId)).toEqual(["tc_1", "tc_2", "tc_3", "tc_4"]);
+    expect(calls.map((c) => c.durationMs)).toEqual([11, 3, 22, 1]);
+  });
+
+  it("⑪ 未命中支维持帧两态推导：侧表有他人条目不影响；帧 isError⇒ERROR/否则 OK + 帧 callId 原值 + 帧 time 差", () => {
+    const hostToolCalls = new Map([
+      ["someone-else", { outcome: "DENIED" as const, toolCallId: "tc_x", durationMs: 5 }],
+    ]);
+    const r = reassembleDshRun([
+      callAt(1, 1, "m1", "mcp__srv__echo", 1000), resultAt(1, 1, "m1", true, 1250),
+      callAt(1, 1, "m2", "mcp__srv__echo", 1300), resultAt(1, 1, "m2", false, 1400),
+      stepEnd(1, 1, 1410),
+      turnEnd("completed"),
+    ], { hostToolCalls });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const calls = r.iterations[0]?.toolCalls ?? [];
+    expect(calls.map((c) => [c.toolCallId, c.outcome, c.durationMs])).toEqual([
+      ["m1", "ERROR", 250],
+      ["m2", "OK", 100],
+    ]);
+  });
+
+  it("⑫ 侧表只读不 mutate（纯函数性）+ 帧未配对调用即使侧表有条目也不进 toolCalls（配对权威=帧）", () => {
+    const hostToolCalls = new Map([
+      ["ghost", { outcome: "OK" as const, toolCallId: "tc_g", durationMs: 9 }], // 帧里无此调用
+      ["c1", { outcome: "OK" as const, toolCallId: "tc_1", durationMs: 9 }], // 有 call 帧无 result 帧（未配对）
+    ]);
+    const snapshot = JSON.stringify([...hostToolCalls.entries()]);
+    const r = reassembleDshRun([
+      callAt(1, 1, "c1", "read", 1000), // 无 result 帧 ⇒ 未配对
+      stepEnd(1, 1, 1100),
+      turnEnd("aborted"),
+    ], { hostToolCalls });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.iterations).toEqual([{ index: 0, toolCalls: [] }]); // 帧不全不造 outcome（探针⑥口径维持）
+    expect(JSON.stringify([...hostToolCalls.entries()])).toBe(snapshot); // opts 进值出，零副作用
+  });
+});
