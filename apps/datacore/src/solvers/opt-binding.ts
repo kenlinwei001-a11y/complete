@@ -225,7 +225,8 @@ export async function bindToSolverArgs(
  *  - eligibility(objectType) + elig_order/elig_line/elig_cost(property)：显式可产对；未绑 → 诚实标 eligibilityDefaulted（全资格全通、换型成本 0，不编成本数字）
  *  - line_assign_cost(property on line)：**每条产线一个标量占用成本**，对所有订单同成本
  *    （WO-SIM-PARETO-MODEL-EXIT 新增·可选）。语义与取法**照搬同文件 `facility_location` 的
- *    `assign_cost`**（「每设施携带 assignProp 标量 → 对所有 client 同成本」，见上方 143 行注释）——
+ *    `assign_cost`**（原话：「每设施携带 assignProp 标量 → 对所有 client 同成本（完全图，资格全开）」，
+ *    见本文件 `case "facility_location"` 分支里 `assignCosts` 那一段；⚠ 不写行号，行号会漂）——
  *    不是新发明一套口径，是把已在跑的那条口径搬到本族上。
  *    ⚠ 优先级 `elig_cost` > `line_assign_cost` > 0：显式可产对自带的成本最准；它没有时才退回
  *    每线标量；两者都没有才是 0，而那个 0 由回包的 `assignCostBound:false` 标出来。
@@ -263,8 +264,8 @@ export async function bindCrossObjectOccupancy(
     };
   });
   const lines = lineObjs.map((l) => ({ id: objId(l, linePk), capacity: num((l.props as Record<string, unknown>)[capProp]) }));
-  // 每线占用成本（可选）：绑了才有，绑不到就没有这一维——**不填 0 冒充"免费"**，
-  // 而是让下面 eligibility 的 defaulted 分支照旧写 0 并把 `eligibilityDefaulted` 举起来。
+  // 每线占用成本（可选）：绑了才有，绑不到就没有这一维 —— 没有时下面照旧写 0，
+  // 而那个 0 由回包的 `assignCostBound:false` 举起来，**不许被读成"占用免费"**。
   const assignCostProp = rm.has("line_assign_cost") ? propForRole("line_assign_cost", rm) : undefined;
   const lineAssignCost = new Map(
     assignCostProp ? lineObjs.map((l) => [objId(l, linePk), num((l.props as Record<string, unknown>)[assignCostProp])]) : [],
