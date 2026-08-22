@@ -419,7 +419,7 @@ describe("WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,
 
   interface ScaleFixture { t: TestApp; sid: string }
 
-  async function scaleWorld(): Promise<ScaleFixture> {
+  async function scaleWorld(opts: { perturb?: boolean } = {}): Promise<ScaleFixture> {
     const t = await makeApp();
     await seedDemoPropagationRules(t.repos); // 只要规则（= 指标目录的口径来源），不需要整套 battery
     await enableSim(t);
@@ -436,7 +436,7 @@ describe("WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,
     expect(created.statusCode).toBe(201);
     const sid = created.json().id as string;
 
-    for (const [i, value] of HOT) {
+    for (const [i, value] of opts.perturb === false ? [] : HOT) {
       const p = await t.app.inject({
         method: "POST", url: `/a/v1/sim/sessions/${sid}/perturbations`, headers: ADMIN,
         payload: {
@@ -568,5 +568,37 @@ describe("WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,
     expect(flatKeys.length).toBeGreaterThan(0); // 金丝雀：确实有并列的那一批可验
     expect(out.metrics.slice(HOT.length).map(magnitudeOf)).toEqual(flatKeys.map(() => 0));
     expect(flatKeys).toEqual([...flatKeys].sort());
+  });
+
+  // ── ⑥ **全体幅度并列为 0** 的世界：tiebreaker 不是可选项，它就是这里的实际排序 ──────
+  /**
+   * 这条不是补充用例，是**真实世界的默认形态**。集成线收编 `WO-SIM-SEED-WORLD` 之后，
+   * `SEED_DEMO=1` 播出的那条种子世界实测（真服务，非 mock）：
+   * ```
+   * sims_demo_seed_world  RUNNING  curTick=3  baseSnapshot 3411 键
+   * GET …/metric-series → 1,249,004 字节 / 3,494 条 / ticks=[0,1,2,3]
+   * 其中「baseline ≠ actual」的条数 = 0        ← 零扰动 ⇒ 全部幅度并列为 0
+   * ```
+   * ⇒ **屏上那 12 行到底是谁，完全由 tiebreaker 决定**。tiebreaker 若不是全序
+   * （比如只写 `mag[b]-mag[a]` 靠 `Array.sort` 的稳定性兜底），同一个世界两次刷新行序就会跳，
+   * 而且**没有任何东西会报错** —— 永远绿的那种错。故这里把它钉死：
+   * 全并列时 `order=magnitude` 必须与 `order=key` **逐条相同**。
+   */
+  it("🔴 零扰动世界（全体幅度并列为 0，= 种子世界的实际形态）⇒ magnitude 档必须逐条等于 key 档，且两次重跑不跳序", async () => {
+    const { t, sid } = await scaleWorld({ perturb: false });
+
+    const mag = await get(t, sid, `?order=magnitude&limit=${SIM_METRIC_SERIES_DEFAULT_LIMIT}`);
+    const key = await get(t, sid, `?order=key&limit=${SIM_METRIC_SERIES_DEFAULT_LIMIT}`);
+
+    // 金丝雀：这个世界**真的**全并列为 0（否则下面那句在一个有区分度的世界上是空转）。
+    expect(mag.metrics.map(magnitudeOf)).toEqual(mag.metrics.map(() => 0));
+    expect(mag.totalMetrics).toBe(CATALOG); // 且它**真的是**上万量级，不是空世界
+
+    expect(mag.metrics.map((m) => m.key)).toEqual(key.metrics.map((m) => m.key));
+    // 顺带钉住 tiebreaker 的方向：升序，不是"某种固定顺序"。
+    expect(mag.metrics.map((m) => m.key)).toEqual([...mag.metrics.map((m) => m.key)].sort());
+
+    const again = await get(t, sid, `?order=magnitude&limit=${SIM_METRIC_SERIES_DEFAULT_LIMIT}`);
+    expect(again.metrics.map((m) => m.key)).toEqual(mag.metrics.map((m) => m.key));
   });
 });
