@@ -84,13 +84,13 @@ function topLevelSegments(src: string, open: number): string[] {
         if (d === c && tpl === 0) { j += 1; break; }
         j += 1;
       }
-      if (depth === 1) seg += src.slice(i, j).replace(/,/g, "");
+      seg += src.slice(i, j).replace(/,/g, " ");
       i = j - 1;
       continue;
     }
     if (OPENERS.includes(c)) {
       depth += 1;
-      if (depth > 1) seg += c;
+      if (depth > 1) seg += c; // 起始那一个括号本身不进段
       continue;
     }
     if (")}]".includes(c)) {
@@ -99,8 +99,11 @@ function topLevelSegments(src: string, open: number): string[] {
       seg += c;
       continue;
     }
+    // ⚠ 切分只在**一级**逗号上发生，但**所有**深度的字符都得留在段里。
+    //   初版写成 `if (depth === 1) seg += c` ⇒ 嵌套花括号里的内容被整个丢掉，
+    //   第二个实参抽出来成了空对象、键数恒 0（本次实测当场红在 ① 的 `keys.length`）。
     if (c === "," && depth === 1) { segs.push(seg); seg = ""; continue; }
-    if (depth === 1) seg += c;
+    seg += c;
   }
   throw new Error(`[sim-act-close] 分组没有闭合（起点 ${open}）—— 抽取器坏了，不许据此报「前端没接线」`);
 }
@@ -224,15 +227,23 @@ describe("WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → K
     // ── 抽取 + 金丝雀 ───────────────────────────────────────────────────────────
     // 事实锚（WO-C 修法）：调用**住在哪个文件**不是事实 —— 全树定位（搬家不红；真断线才红）。
     const fe = checkedTree(FE_TREE, 'data-testid="sandbox-tick-btn"', 100);
-    const view = readRepo(locateFe(PERTURB_CALL, "「施加扰动」调用宿主"));
-    const endpoints = readRepo(locateFe(EP_RE, "createSimPerturbation 端点封装宿主"));
+    // 唯一事实锚 = 用户真按的那个按钮。**不再**拿 `createSimPerturbation(sessionId, {` 当锚：
+    // 那是锚在实参变量名上，而前端合法地长出了第二、第三个扰动入口（顶注病历第 2 次）。
+    const btnHost = locateFe(fe, APPLY_BTN, "「施加扰动」按钮宿主");
+    const view = codeOf(fe, btnHost);
+    const endpoints = codeOf(fe, locateFe(fe, EP_RE, "createSimPerturbation 端点封装宿主"));
     expect(view.length, "定位到的调用宿主读到空内容 ⇒ 定位器坏了，不许据此报「前端没接线」").toBeGreaterThan(1000);
     // 金丝雀：已知必中的锚点（沙盘推进封装与本单无关，一定还在）。
     expect(factHits(fe, "export const simTick"), "金丝雀不中 ⇒ 扫描器坏了，不许据此报「前端没接线」").not.toEqual([]);
 
-    // 前端真的有那个按钮，且它真的调施加口（不是只 import 不调 —— 那是"排练"不是"实现"）。
-    expect(factHits(fe, 'data-testid="sandbox-perturbation-apply-btn"'), "沙盘没有「施加扰动」按钮 ⇒ 用户仍然做不出任何动作（#150 复发）").not.toEqual([]);
-    // （调用宿主已由 locateFe 钉死唯一，view 即其原文。）
+    // 链路三段必须在同一宿主里合拢：按钮 → 处理器 → POST。
+    // 缺任何一段都不是"搬家"，是真断线 —— 尤其「只定义不调用 = 排练不是实现」（铁律 0.5 判据 2）。
+    expect(factHits(fe, APPLY_HANDLER), `「施加扰动」处理器 ${APPLY_HANDLER} 不在按钮宿主 ${btnHost} 里 ⇒ 链路断了`).toEqual([btnHost]);
+    expect(
+      view.split(APPLY_HANDLER).length - 1,
+      `${APPLY_HANDLER} 在源码里只出现 1 次 = 只定义没接到 onClick ⇒ 用户按不出任何动作（#150 复发）`,
+    ).toBeGreaterThan(1);
+    expect(PERTURB_CALL.test(view), "按钮宿主里没有 createSimPerturbation 调用 ⇒ 按钮是假入口").toBe(true);
     // 落点必须来自**真物化对象 id**：写到 `Type#0` 这种占位键上，屏上会变而下游一动不动。
     expect(factHits(fe, "cfg?.nodeObjectIds?.[t]"), "扰动落点候选不是从 nodeObjectIds（真物化 id）来的 ⇒ 传导取不到源态").not.toEqual([]);
 
@@ -245,6 +256,26 @@ describe("WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → K
     expect(keys.length, "抽不到前端 body 字段——抽取器坏了或调用形状变了").toBeGreaterThan(0);
     expect([...keys].sort()).toEqual(
       ["durationTicks", "kind", "label", "magnitude", "mode", "targetObjectId", "targetStateVar"].sort(),
+    );
+
+    // ── 入口普查：前端今天到底有几个扰动 POST 入口、各传什么 ─────────────────────
+    // 这是 2026-08-22 那次红的直接对策：入口从 1 个长到 3 个，而旧定位器只会说
+    // 「命中 2 处」——它连"第三个入口存在"都不知道（首参写 `child.id` 就看不见了）。
+    // 钉的是**形状指纹**不是文件名 ⇒ 搬家不红；多一个/少一个/改形状必红，且红里带着它是谁。
+    const sites = perturbationCallSites(fe);
+    expect(
+      sites.map((s) => shapeOf(s.keys)).sort(),
+      `前端扰动 POST 入口清单变了，现为：${sites.map((s) => `${s.file}(${s.keys.join(",")})`).join("；")}` +
+        " —— 新增入口先确认后端真收（本用例下面会逐个打真后端），再更新本断言；不许改成 ≥1 处糊过去",
+    ).toEqual(
+      [
+        // 沙盘「施加扰动」表单（本用例复刻的那一个）
+        shapeOf(["kind", "targetObjectId", "targetStateVar", "magnitude", "mode", "durationTicks", "label"]),
+        // 方案环：每个方案分叉一个平行世界后施加同族扰动（字段全同，首参是 branch id）
+        shapeOf(["kind", "targetObjectId", "targetStateVar", "magnitude", "mode", "durationTicks", "label"]),
+        // 控制台首页左栏「扰动因素」树的「添加扰动」菜单（不传 mode/durationTicks，吃后端默认）
+        shapeOf(["kind", "targetObjectId", "targetStateVar", "magnitude", "label"]),
+      ].sort(),
     );
 
     // ── 真跑：对照组（不施加扰动）───────────────────────────────────────────────
@@ -291,6 +322,26 @@ describe("WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → K
     expect(kpiPerturbed, "coefficient 2 × 被扰动到 20 的上游 = 40").toBe(40);
     // 溯源（R13）：这一格是哪几次扰动造成的，回包里说得出来。
     expect(tick.json().appliedPerturbations).toEqual([applied.json().perturbation.id]);
+
+    // ── 其余入口同样要打得通 ────────────────────────────────────────────────────
+    // 上面复刻的是「施加扰动」表单那一个。控制台首页那个入口**少传 mode/durationTicks**，
+    // 靠的是后端默认值 —— 而"后端默认值还在不在"这件事，只有真打一次才知道。
+    // 只测一个入口 = 另外两个入口的 payload 后端收不收，本门一个字都说不出来。
+    // ⚠ 复刻时**换一个幅度**（7 而不是底值 10）：控制台入口不传 `mode`、吃后端默认 `set`，
+    //   而 `set 10` 打在底值 10 上「落点没变」与「payload 被整个吞掉」在回包里长得一模一样
+    //   —— 那恰恰是本段最该分辨的两件事。7 在 set/delta/scale 三种模式下都 ≠ 10。
+    const replay: Record<string, unknown> = { ...fixture, magnitude: 7, label: "SEAM · 入口普查" };
+    for (const s of [...new Map(sites.map((x) => [shapeOf(x.keys), x])).values()]) {
+      for (const k of s.keys) expect(replay, `前端入口 ${s.file} 新增了 body 字段 ${k}，本门未覆盖——补 fixture 再跑`).toHaveProperty(k);
+      const sidX = await newSession(t);
+      const rx = await t.app.inject({
+        method: "POST", url: `/a/v1/sim/sessions/${sidX}/perturbations`, headers: ADMIN,
+        payload: Object.fromEntries(s.keys.map((k) => [k, replay[k]])),
+      });
+      expect(rx.statusCode, `前端入口 ${s.file} 真传的 payload 被施加口拒收：${rx.body}`).toBe(201);
+      // 收下 201 却什么都没改 = "接了线没生效"，比拒收更难发现，所以这一句必须单独咬。
+      expect(rx.json().state.o_up.load, `前端入口 ${s.file} 的 payload 收下了却没落到世界态`).not.toBe(10);
+    }
   });
 
   // ══ ② 限时扰动到期真回退（"停机 72h" 不许悄悄变成永久停机）══════════════════════
@@ -382,9 +433,28 @@ describe("WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → K
   // ══ ⑤ 反证：拿掉前端那次调用，本门必须红（证明它咬的是链路不是自己）═══════════════
   // 变异反证只能靠"改源码再跑"来做，这里退而求其次：断言抽取器**确实依赖前端源码**
   // —— 喂一段不含该调用的假源码，抽取结果必须为空（而不是靠某个恒真的兜底混过去）。
+  //
+  // 链路是三段（按钮宿主 → 处理器 → POST），所以反证也按三段各断一次：
+  // 只断"整段假源码抽不到"太弱 —— 那只证明抽取器认得出一段完全无关的文本。
   it("⑤ 反证：抽取器喂假源码 → 抽不到任何字段（证明①的绿来自前端真源码，不是恒真兜底）", () => {
+    // ⑤a 既无处理器也无调用 ⇒ 空。
     expect(frontendPerturbationBodyKeys("export default function X(){ return null }")).toEqual([]);
-    // 而喂真源码时必须抽得到（同一函数，两个方向都验过才叫工具是对的）。
-    expect(frontendPerturbationBodyKeys(readRepo(locateFe(PERTURB_CALL, "「施加扰动」调用宿主"))).length).toBeGreaterThan(0);
+    // ⑤b **有处理器、没那次 POST** ⇒ 空。这一条咬的是"处理器名还在，但里面不发请求了"——
+    //     旧版只锚调用串，这种退化它一个字都说不出来。
+    expect(
+      frontendPerturbationBodyKeys(`const ${APPLY_HANDLER} = useCallback(async () => { toast("施加扰动"); }, []);`),
+      "处理器还在但已不发 POST，抽取器却仍抽出字段 ⇒ 它在凭空造证据",
+    ).toEqual([]);
+    // ⑤c **有那次 POST、没处理器** ⇒ 空。别的入口（方案环 / 控制台树）也在调同一个封装，
+    //     若少了这一条，①就可能抽到**别的入口**的形状而自以为抽到了「施加扰动」表单的。
+    expect(
+      frontendPerturbationBodyKeys(`void createSimPerturbation(x.id, { kind: "k", label: "l" });`),
+      "不是「施加扰动」处理器里的那次调用，也被当成了它 ⇒ ①的绿说不清来自哪个入口",
+    ).toEqual([]);
+    // ⑤d 而喂真源码时必须抽得到（同一函数，四个方向都验过才叫工具是对的）。
+    const fe = checkedTree(FE_TREE, 'data-testid="sandbox-tick-btn"', 100);
+    expect(
+      frontendPerturbationBodyKeys(codeOf(fe, locateFe(fe, APPLY_BTN, "「施加扰动」按钮宿主"))).length,
+    ).toBeGreaterThan(0);
   });
 });
