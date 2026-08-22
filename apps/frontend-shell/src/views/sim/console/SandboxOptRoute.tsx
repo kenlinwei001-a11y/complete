@@ -60,27 +60,37 @@
 import type { ViewRendererProps } from "@/views/registry";
 import { ParetoRequestSchema, type ParetoRequest } from "@platform/contracts";
 import { SandboxOpt } from "./SandboxOpt";
-import { consoleHostProps, useConsoleSession } from "./useConsoleSession";
+import { consoleHostProps, useConsoleSession, type ConsoleSession } from "./useConsoleSession";
 
 /**
  * 宿主参数组装口 —— **前沿图这一半的唯一入口**（`SandboxOptRoute` 只调它，不再自己拼）。
  *
- * @param raw       `view.options.paretoRequest` 的**未校验**原值（视图配置是外部输入）。
- * @param sessionId 会话 scope 里那条会话（`useConsoleSession` 的产出）。
+ * @param raw     `view.options.paretoRequest` 的**未校验**原值（视图配置是外部输入）。
+ * @param session 会话 scope（`useConsoleSession` 的五态产出 —— 要的是**态**不只是 id，理由见判据三）。
  * @returns 可发的 `ParetoRequest`；**解析不出一律 `undefined`**（= 不发请求、保留占位）。
  *
- * 三条判据，逐条对着一个具体的坏结局：
+ * 四条判据，逐条对着一个具体的坏结局：
  *  · `raw` 缺席 ⇒ `undefined`：宿主没给模型，前端**不生成**（理由见文件头 ⛔ 段）。
  *  · `raw` 形状不对 ⇒ `undefined`：**不做部分修补**。补一半的 request 会真的发出去、
  *    换回一个 400，再被 hook 吞成占位 —— 屏上和"没给"一样，而库里多了一次无效求解。
- *  · `sessionId` **只补不覆盖**：`raw` 自带的优先（显式 > 自动）。两个都没有也照发 ——
- *    契约里这一格是 `optional`，`runOptimizePareto` 不读它，把它升成硬门槛属于加戏。
+ *  · **会话还在路上（`loading`）⇒ 先不发**。这一条是被本单的接缝测试当场逼出来的，
+ *    实测原文：`expected [ … ] to have a length of 1 but got 2` ——
+ *    第一次渲染时 `sessionId` 还是 `undefined`，于是先发了一份**缺 R6 确定性键**的 request；
+ *    列表回来后 request 变了、`queryKey` 跟着变，**又发一份**。一次开页两次求解，
+ *    而第一份正是本单要消灭的那种"没带会话的解"。`useConsoleSession` 的文件头早就写着
+ *    「`loading` 什么都不该说」—— 这里就是那句话的落点：**等它定态再组装**。
+ *    其余四态（`explicit`/`auto`/`no-running-session`/`unavailable`）都已是**结论**，照常组装。
+ *  · `sessionId` **只补不覆盖**：`raw` 自带的优先（显式 > 自动）。会话定态后仍没有 id
+ *    （`no-running-session` / `unavailable`）也照发 —— 契约里这一格是 `optional`，
+ *    `runOptimizePareto` 不读它，把它升成硬门槛属于加戏。
  */
-export function resolveParetoRequest(raw: unknown, sessionId?: string): ParetoRequest | undefined {
+export function resolveParetoRequest(raw: unknown, session: ConsoleSession): ParetoRequest | undefined {
   if (raw === undefined || raw === null) return undefined;
+  if (session.reason === "loading") return undefined;
   const parsed = ParetoRequestSchema.safeParse(raw);
   if (!parsed.success) return undefined;
   const req = parsed.data;
+  const sessionId = session.sessionId;
   if (req.sessionId !== undefined || sessionId === undefined || sessionId === "") return req;
   return { ...req, sessionId };
 }
@@ -88,7 +98,7 @@ export function resolveParetoRequest(raw: unknown, sessionId?: string): ParetoRe
 export default function SandboxOptRoute({ view }: ViewRendererProps): JSX.Element {
   const p = (view.options ?? {}) as { sessionId?: string; paretoRequest?: unknown };
   const session = useConsoleSession(p);
-  const paretoRequest = resolveParetoRequest(p.paretoRequest, session.sessionId);
+  const paretoRequest = resolveParetoRequest(p.paretoRequest, session);
   return (
     <div {...consoleHostProps(session)}>
       <SandboxOpt

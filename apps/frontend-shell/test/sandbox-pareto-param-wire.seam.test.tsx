@@ -6,6 +6,7 @@ import { ParetoRequestSchema, type ParetoRequest, type ParetoResult, type SimSes
 import { server } from "./setup";
 import type { ViewConfigVM } from "@/api/types";
 import SandboxOptRoute, { resolveParetoRequest } from "@/views/sim/console/SandboxOptRoute";
+import type { ConsoleSession } from "@/views/sim/console/useConsoleSession";
 
 /**
  * ══ WO-SIM-PARAM-WIRE ① · 「方案寻优」页**宿主参数组装**的接缝门 ═════════════════
@@ -166,9 +167,12 @@ describe("WO-SIM-PARAM-WIRE · 方案寻优页宿主参数组装（接缝）", (
     //     而用例②③ 的「没发出去」会因为**同一个错误原因**绿，两头都读错。
     expect(ParetoRequestSchema.safeParse(MODEL).success, "装置里的 MODEL 自己就过不了契约").toBe(true);
     // (b) 判官会说话：坏形状必须真的被拒（恒返 undefined 的判官会让用例③空转）。
-    expect(resolveParetoRequest(MODEL, "sims_running")?.sessionId, "补 sessionId 这一步没生效").toBe("sims_running");
-    expect(resolveParetoRequest({ family: "multi_objective" }, "sims_running"), "坏形状被放行了").toBeUndefined();
-    expect(resolveParetoRequest(undefined, "sims_running"), "缺席被放行了").toBeUndefined();
+    const AUTO: ConsoleSession = { sessionId: "sims_running", reason: "auto", isLoading: false };
+    const LOADING: ConsoleSession = { reason: "loading", isLoading: true };
+    expect(resolveParetoRequest(MODEL, AUTO)?.sessionId, "补 sessionId 这一步没生效").toBe("sims_running");
+    expect(resolveParetoRequest({ family: "multi_objective" }, AUTO), "坏形状被放行了").toBeUndefined();
+    expect(resolveParetoRequest(undefined, AUTO), "缺席被放行了").toBeUndefined();
+    expect(resolveParetoRequest(MODEL, LOADING), "会话还在路上就把 request 放行了（用例① 的『只发一条』会当场红）").toBeUndefined();
 
     // (c) 请求记录器：先证它**真记得到东西**，否则下面每一条「一个请求都没发」都是空转。
     expect(seen, "记录器起点必须干净").toHaveLength(0);
@@ -190,8 +194,13 @@ describe("WO-SIM-PARAM-WIRE · 方案寻优页宿主参数组装（接缝）", (
     await waitFor(() => expect(optSource(root), "前沿图诚实位没翻 endpoint").toBe("endpoint"));
 
     // ── 反向证据 1：这一位是**真发了请求**换来的，不是把常量改成了 "endpoint"。
+    //    数量咬死 **1**（不是 ≥1）：会话还在路上时若照样组装，会先发一份**缺会话**的 request、
+    //    列表回来后 `queryKey` 变了再发第二份 —— 一次开页两次求解，且第一份正是本单要消灭的
+    //    那种"没带 R6 确定性键的解"。改造中实测原文：
+    //      `AssertionError: 一条 optimize-pareto 都没发出去: expected [ … ] to have a length of 1 but got 2`
+    //    这条断言就是那次红逼出来的，写成 `not.toHaveLength(0)` 会把它放过去。
     const calls = paretoCalls();
-    expect(calls, "一条 optimize-pareto 都没发出去").toHaveLength(1);
+    expect(calls.map((c) => c.body), "optimize-pareto 发出去的份数不是 1").toHaveLength(1);
 
     // ── 反向证据 2：**宿主把会话 scope 补进了 body**。`MODEL` 自己不带 `sessionId`，
     //    body 里出现它 ⇒ 只可能是宿主组装时补的（契约：R6 确定性键的一部分）。
