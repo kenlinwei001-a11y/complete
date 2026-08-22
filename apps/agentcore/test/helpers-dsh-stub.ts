@@ -45,7 +45,7 @@ function sseChunk(obj: unknown): string {
   return `data: ${JSON.stringify(obj)}\n\n`;
 }
 
-function roundToSse(round: StubRound): string {
+function roundToSse(round: StubRound, seq: number): string {
   const base = { id: "chatcmpl-stub", object: "chat.completion.chunk", created: 1, model: STUB_MODEL_ID };
   let out = "";
   // W5 块1：reasoning 帧在内容/工具增量之前（推理先行，与真 provider 时序同形）。
@@ -71,7 +71,11 @@ function roundToSse(round: StubRound): string {
             role: "assistant",
             content: null,
             tool_calls: [
-              { index: 0, id: "call_1", type: "function", function: { name: round.toolCall.name, arguments: "" } },
+              // W9-full：帧 callId 直通宿主反向通道后，同剧本多轮工具调用若共用硬编码
+              // "call_1" 会撞宿主 409 重号拒（真 provider 每轮铸唯一 id——这是夹具仿真度缺口，
+              // 非产品缺陷）。按请求序铸 call_<seq>：单调用剧本恒 call_1（逐字节兼容），
+              // 多轮剧本得唯一 id。显式 callId 控制仍走 helpers-dsh-scripted 变体。
+              { index: 0, id: `call_${seq}`, type: "function", function: { name: round.toolCall.name, arguments: "" } },
             ],
           },
           finish_reason: null,
@@ -130,7 +134,7 @@ export async function startStubOpenAi(
         return;
       }
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "close" });
-      res.end(roundToSse(round));
+      res.end(roundToSse(round, requests.length));
     });
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));

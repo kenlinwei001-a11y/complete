@@ -341,8 +341,11 @@ function checkArmAnchors(task: DualRunTask, flag: "off" | "on", arm: ArmProducts
       });
     });
   } else {
-    // dsh 臂审计锚（固有不对称 #4 + W9-lite 起 #10）：两臂不互比、各锚各的剧本——
-    // A4 锚定方案不变（scalar 互比零触、kernel 唯一差不变）；四态+tc_ 合流 + A4 单翻待 W9-full。
+    // dsh 臂审计锚（固有不对称 #4 已销·W9-full 单翻落线；MCP 两态上限余 #10 部分销）：
+    // 两臂不互比、各锚各的剧本——A4 锚定方案不变（scalar 互比零触、kernel 唯一差不变）。
+    // W9-full 单翻（2026-08-22 裁决）：断言结构翻四态词表 + tc_ 形态许可；锚值零动——
+    // 语料 meta-only ⇒ 侧表恒空 ⇒ 值面仍帧推导（OK/ERROR + 帧 callId 原值），四态值
+    // （DENIED/BUDGET_EXCEEDED）与 tc_ 值面的真对账待语料引入真反向调用（A4b 同登记）。
     const anchor = task.expect.dshStats;
     const stats = (arm.answer as { stats?: { tokenUsage: Json; contextPressure?: Json; sessionStats: Json } }).stats;
     if (!anchor) {
@@ -363,12 +366,14 @@ function checkArmAnchors(task: DualRunTask, flag: "off" | "on", arm: ArmProducts
     expect(stats!.contextPressure).toEqual({ pressureTokens: anchor.pressureTokens });
     expect(stats!.sessionStats.turns).toBe(anchor.turns);
     expect(stats!.sessionStats.steps).toBe(anchor.steps);
-    // WO-DSH-PROD-READY W9-lite 骨架锚①：iterations = 帧流 step 分组（team-lead 2026-08-21 裁决②——
-    // native 迭代粒度 = 每 LLM 轮 = step，turn 恒 1 时 turn 分组恒产单迭代无 parity 价值）。
+    // WO-DSH-PROD-READY W9-full 骨架锚①（W9-lite 结构 + 单翻词表/形态）：iterations = 帧流 step
+    // 分组（team-lead 2026-08-21 裁决②——native 迭代粒度 = 每 LLM 轮 = step，turn 恒 1 时 turn
+    // 分组恒产单迭代无 parity 价值）。
     // 每 stub 轮 = 一个 LLM step（与上方 stats 锚 steps === 剧本轮数同源互证）⇒ 迭代数 === 剧本轮数，
     // index 0 基顺编号对位 native index=i；非 meta 调用对点所属轮（final_answer 剔除其轮留空迭代，
-    // 对位 native 审计口径 + :1041 空轮形态）；outcome 两态物理上限（govDeny ⇒ 帧 isError ⇒ ERROR；
-    // DENIED/BUDGET_EXCEEDED 帧流无源不硬造）；durationMs 推导值只锚非负形态（墙钟，A4 时间量豁免同口径）。
+    // 对位 native 审计口径 + :1041 空轮形态）；outcome 词表翻四态（OK/DENIED/ERROR/BUDGET_EXCEEDED——
+    // 侧表命中支四态有源；本语料 meta-only 侧表恒空，值面恒 OK/ERROR，锚值不变）；durationMs
+    // 只锚非负形态（命中支宿主实测/未命中支帧 time 差推导，墙钟，A4 时间量豁免同口径）。
     const its = arm.run.iterations;
     expect(its, `${task.id} dsh 臂迭代数 === 剧本轮数（step 分组，每 LLM 轮一迭代）`).toHaveLength(task.dsh.rounds.length);
     its.forEach((iter, i) => {
@@ -382,12 +387,18 @@ function checkArmAnchors(task: DualRunTask, flag: "off" | "on", arm: ArmProducts
       const c = iter.toolCalls[0];
       expect(c, `${task.id} dsh 第 ${i} 轮调用锚点缺失`).toBeDefined();
       if (!c) return;
-      expect(c.outcome, `${task.id} dsh 调用 ${tc.name} outcome 两态锚`).toBe(
+      expect(c.outcome, `${task.id} dsh 调用 ${tc.name} outcome 锚（锚值不变：govDeny⇒ERROR/否则OK）`).toBe(
         (task.dsh.govDeny ?? []).includes(tc.name) ? "ERROR" : "OK",
       );
-      expect(["OK", "ERROR"], `${task.id} dsh outcome 词表物理上限两态`).toContain(c.outcome);
+      // W9-full 单翻：词表翻四态（侧表命中支 DENIED/BUDGET_EXCEEDED 有源即合法值）。
+      expect(["OK", "DENIED", "ERROR", "BUDGET_EXCEEDED"], `${task.id} dsh outcome 词表四态`).toContain(c.outcome);
       expect(c.durationMs).toBeGreaterThanOrEqual(0);
-      expect(typeof c.toolCallId).toBe("string"); // dsh 帧 callId 原值（非 tc_ 形态，#10）
+      // W9-full 单翻：tc_ 形态许可——命中支 = 宿主 tc_ id，未命中支 = 帧 callId 原值；
+      // 结构齿：DENIED/BUDGET_EXCEEDED 唯侧表可产 ⇒ 该两态下 toolCallId 必 tc_ 形态。
+      expect(typeof c.toolCallId).toBe("string");
+      if (c.outcome === "DENIED" || c.outcome === "BUDGET_EXCEEDED") {
+        expect(c.toolCallId, `${task.id} dsh 四态值 ⇒ toolCallId 必 tc_ 形态`).toMatch(/^tc_/);
+      }
     });
     // W9-lite 骨架锚②：B11 同源等值（ROLLOUT §6.5 验收判据）——run.total* === answer.stats
     // 对应桶（同一份帧流 fold 的两个载体）；两臂 token 账不互比维持。

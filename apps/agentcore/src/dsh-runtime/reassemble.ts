@@ -58,6 +58,17 @@ export interface ReassembleOptions {
   expectsSchema?: Record<string, unknown>;
   /** provenance id 生成（测试注入确定性 id；生产缺省 prov_ 前缀自增由调用方包一层）。 */
   newProvId?: () => string;
+  /**
+   * WO-DSH-PROD-READY W9-full：宿主 tool-execute 反向通道侧表（W8主 端点逐调用累积；
+   * 键 = 帧 callId 原值——桥上传 exec.callId 直通，team-lead 2026-08-22 裁决，关联白得）。
+   * 命中支 = 事实源：outcome 翻四态（OK/DENIED/ERROR/BUDGET_EXCEEDED 按端点记录）、
+   * toolCallId 换 tc_ 形态、durationMs 取宿主实测值（覆盖帧 time 差推导）；未命中支
+   * （MCP/meta 不过宿主）维持 W9-lite 帧流两态推导。只读消费（opts 进、值出，不 mutate）。
+   */
+  hostToolCalls?: ReadonlyMap<
+    string,
+    { outcome: "OK" | "DENIED" | "ERROR" | "BUDGET_EXCEEDED"; toolCallId: string; durationMs: number }
+  >;
 }
 
 export type ReassembledRun =
@@ -404,9 +415,13 @@ export function foldDshRunStats(events: readonly DshSessionEvent[]): DshRunStats
  *     其轮次仍留空迭代）；load_skill 进（native runToolBlock 有 audit 条目，loop.ts:734-746）
  *     ——与 sketch/SSE 桥的「meta 双剔」不同，审计面只剔 final_answer。
  *   - 未配对 tool/call（abort 撕票等帧不全）不进 toolCalls——帧不全不造 outcome；
- *     调用轨迹仍由 sketch 承载（诚实缺省，信号不丢）。四态 + tc_ 合流待 W9-full（REC §3 #10）。
+ *     调用轨迹仍由 sketch 承载（诚实缺省，信号不丢）。W9-full 起 hostToolCalls 侧表
+ *     命中支翻四态 + tc_（REC §3 #10 BUILTIN 段已销，MCP 未命中支两态维持）。
  */
-export function foldDshIterations(events: readonly DshSessionEvent[]): AgentIteration[] {
+export function foldDshIterations(
+  events: readonly DshSessionEvent[],
+  hostToolCalls?: ReassembleOptions["hostToolCalls"],
+): AgentIteration[] {
   interface PendingCall {
     turn: number;
     step: number;
@@ -463,12 +478,16 @@ export function foldDshIterations(events: readonly DshSessionEvent[]): AgentIter
       const call = pending.get(`${turn}-${step}-${b.toolCallId}`);
       if (!call) continue;
       pending.delete(`${turn}-${step}-${b.toolCallId}`);
+      // W9-full 侧表合流（team-lead 2026-08-22 裁决：键 = 帧 callId 原值直通）——命中支 =
+      // 事实源（四态 outcome + tc_ 形态 id + 宿主实测 durationMs，覆盖帧推导）；未命中支
+      // （MCP/meta 不过宿主）维持帧两态推导。配对权威仍是帧：侧表不补帧外调用。
+      const host = hostToolCalls?.get(call.callId);
       bucketOf(call.turn, call.step).toolCalls.push({
-        toolCallId: call.callId, // dsh 帧 callId 原值（非 tc_ 形态，合流待 W9-full）
+        toolCallId: host ? host.toolCallId : call.callId,
         toolName: call.name,
         input: call.input,
-        outcome: b.isError === true ? "ERROR" : "OK",
-        durationMs: call.time !== undefined && typeof e.time === "number" ? e.time - call.time : 0,
+        outcome: host ? host.outcome : b.isError === true ? "ERROR" : "OK",
+        durationMs: host ? host.durationMs : call.time !== undefined && typeof e.time === "number" ? e.time - call.time : 0,
       });
     }
   }
@@ -495,7 +514,8 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
     : "FAILED";
 
   // W9-lite：iterations 骨架与 stats 同为帧流纯 fold，三条 ok:true 出口恒带（失败路径不造）。
-  const iterations = foldDshIterations(events);
+  // W9-full：hostToolCalls 侧表入 fold（命中支四态+tc_+宿主 durationMs，未命中支帧两态维持）。
+  const iterations = foldDshIterations(events, opts.hostToolCalls);
 
   const finalCall = [...calls].reverse().find((c) => c.name === "final_answer");
 
