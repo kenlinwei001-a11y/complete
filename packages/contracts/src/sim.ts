@@ -1090,3 +1090,79 @@ export const ParetoRequestSchema = z.strictObject({
   constraints: z.array(z.strictObject({ key: z.string().min(1), limit: z.number() })).optional(),
 });
 export type ParetoRequest = z.infer<typeof ParetoRequestSchema>;
+
+// ── WO-SIM-PARETO-MODEL-EXIT · 模型装配出口（`POST /a/v1/sim/optimize-pareto/assemble`）──
+//
+// ══ 今天的行为是 X，应该是 Y ══════════════════════════════════════════════════
+// **X**：`ParetoRequest` 的必填三件套（`family` + `objectives(≥2)` + `levers(≥1)`）是**建模产物**，
+//   而本仓唯一能从租户本体自动装配它的两段代码**都没有出口**：
+//   `solvers/opt-binding.ts` 的 `bindToSolverArgs`/`bindCrossObjectOccupancy` 要一份现成的
+//   `OntologyBinding`（role→本体映射，谁来写？），`solvers/service.ts` 的
+//   `assembleBaselineFromSelection` 是 `private`、只在 `optimize_whatif` 的 `autoBind` 分支里走，
+//   且**只回 Δ目标不回 args**。于是调用方永远拿不到「一份可解的模型」⇒ 页4 前沿图恒占位。
+// **Y**：本对请求/响应就是那个出口 —— 调用方只说「要优化什么范围」，
+//   服务端从**本租户已发布本体**装配出完整模型并**原样回显成一份可直接 POST 的 `ParetoRequest`**。
+//
+// ══ 为什么是「单开只读装配口」而不是「给求解口加 autoBind 分支」════════════════
+//  ① **装配失败必须是零求解**：契约要求「装配不出 ⇒ 前端不发 pareto 请求、保留占位」。
+//     若装配长在求解口里，那一次请求**就是** pareto 请求 —— 「零 pareto 请求」这句话
+//     字面上不可能成立，也就无从被测试咬住。
+//  ② **可追溯**：装配结果是一份**可复制、可重放**的 `ParetoRequest`，屏上那条前沿对应的
+//     请求体就是它本身；求解口回显的话，模型只活在响应里，重放要靠人抄。
+//  ③ `ParetoRequestSchema` 是 `strictObject` 且三件套必填 —— 给它加 autoBind 分支
+//     等于把必填改成条件必填，契约的拒绝力当场下降一档。
+export const ParetoAssembleRequestSchema = z.strictObject({
+  /** 推演会话 id：原样写进装配出的 `ParetoRequest.sessionId`（R6 确定性键，本层不解释它）。 */
+  sessionId: z.string().min(1).optional(),
+  /** 想要的模板族。不给 ⇒ 服务端按「今天真能装配且真能求解」的族挑（确定性顺序）。 */
+  family: z.string().min(1).optional(),
+  /**
+   * 优化范围：选中的决策对象。**收窄的是资源侧那一类**（产能承载类型）——
+   * 不给 ⇒ 全租户。给了 ⇒ 只有这些 id 参与，于是「产能真的不够用」这件事才可能发生。
+   */
+  selection: z.array(z.strictObject({
+    objectType: z.string().min(1),
+    objectId: z.string().min(1),
+    label: z.string().optional(),
+  })).optional(),
+  /** 求解种子（R6）；不给由绑定层取默认。 */
+  seed: z.number().optional(),
+});
+export type ParetoAssembleRequest = z.infer<typeof ParetoAssembleRequestSchema>;
+
+/** 一条 role→本体 绑定的溯源行（屏上那条前沿「是从哪个类型的哪个字段来的」）。 */
+export const ParetoAssembleRoleSchema = z.strictObject({
+  role: z.string().min(1),
+  kind: z.enum(["objectType", "property", "link"]),
+  ref: z.string().min(1),
+});
+export type ParetoAssembleRole = z.infer<typeof ParetoAssembleRoleSchema>;
+
+/**
+ * 装配结果。
+ *
+ * **`applicable:false` 不是错误**（不是 4xx/5xx）：本租户本体撑不起这个模型是一个**结论**，
+ * 不是服务端故障。故走 200 + 诚实位，理由与 `optimize_whatif` 的装配报缺同一条 ——
+ * 报 400 会让调用方以为「我请求写错了」，于是去改请求，而真相是「本体里没有这一格」。
+ * ⛔ 绝不兜一个假模型：缺角色就报缺，缺到只剩一个真目标也报缺（帕累托前沿需要两个真目标，
+ *    补一个恒为 0 的第二目标会让屏上那条"前沿"是假的）。
+ */
+export const ParetoAssembleResultSchema = z.discriminatedUnion("applicable", [
+  z.strictObject({
+    applicable: z.literal(true),
+    /** **可直接 POST 到 `/a/v1/sim/optimize-pareto` 的完整请求**（调用方不需要再拼任何一格）。 */
+    request: ParetoRequestSchema,
+    /** role→本体 溯源（R13/R14：换租户换本体，这张表跟着变，代码一行不动）。 */
+    roles: z.array(ParetoAssembleRoleSchema),
+    /** 装配过程中**诚实缺席**的可选角色（绑不到 ⇒ 该维度不参与，绝不伪造）。 */
+    unboundRoles: z.array(z.string()),
+    note: z.string(),
+  }),
+  z.strictObject({
+    applicable: z.literal(false),
+    /** 缺哪几格（原文点名类型/字段，供调用方去补本体而不是去改请求）。 */
+    missingRoles: z.array(z.string()).min(1),
+    note: z.string(),
+  }),
+]);
+export type ParetoAssembleResult = z.infer<typeof ParetoAssembleResultSchema>;
