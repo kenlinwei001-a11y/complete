@@ -3126,8 +3126,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     };
   };
   interface GsliveScope { snapshotKind: "gslive"; label: string; page: string; primary: string; parentId: string | null; kpi: GsliveKpi7; servedCount: number; displacedCount: number; ontimeRate: number }
-  const snapKind = (s: SimSession): string | undefined => (s.scope as { snapshotKind?: string })?.snapshotKind;
-  const gsliveSnap = (s: SimSession) => {
+  /**
+   * ⚠ 三个 helper 的入参刻意收窄成**它们真正读的那几个字段**（WO-SIM-SESSIONS-PROJECTION）。
+   *
+   * 理由不是洁癖：写成 `SimSession` 时，下面两条列表路由就只能喂 `listSessions()` ——
+   * 而那个方法会把**本租户全部会话的 `baseSnapshot`** 从库里搬回进程（35 条生产量级会话实测 285MB），
+   * 只为了 `filter(snapKind === "gslive")` 之后扔掉。这两条路由的回包一直是小的，
+   * 所以这笔开销**在回包上完全看不见** —— 正是「回包小」不度量「读得少」的那个形态。
+   * 收窄之后 `listSessionSummaries()` 直接可喂，且哪天有人想把 `baseSnapshot` 读回来，
+   * **编译当场红**（机器先说话）。
+   */
+  type SnapshotSessionView = Pick<SimSession, "id" | "scope" | "createdAt" | "status">;
+  const snapKind = (s: SnapshotSessionView): string | undefined => (s.scope as { snapshotKind?: string })?.snapshotKind;
+  const gsliveSnap = (s: SnapshotSessionView) => {
     const sc = s.scope as unknown as GsliveScope;
     return { id: s.id, label: sc.label, parentId: sc.parentId ?? null, page: sc.page, primary: sc.primary, createdAt: s.createdAt, kpi: sc.kpi, servedCount: sc.servedCount, displacedCount: sc.displacedCount, ontimeRate: sc.ontimeRate };
   };
@@ -3152,7 +3163,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/sim/scenarios", async (req) => {
     const c = ctx(req); await requireLive(c);
     const page = (req.query as { page?: string })?.page;
-    const all = (await repos.sim.listSessions(c.tenantId)).filter((s) => snapKind(s) === "gslive");
+    const all = (await repos.sim.listSessionSummaries(c.tenantId)).filter((s) => snapKind(s) === "gslive");
     const scoped = page ? all.filter((s) => (s.scope as unknown as GsliveScope).page === page) : all;
     return { scenarios: scoped.map(gsliveSnap) };
   });
@@ -3189,7 +3200,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // 下游派生 after = 0.8*0.5 + value*0.5（generic_inference 前向重算同款公式·R6 确定）；capGain = Σ max(0, after − 0.8)。
   const scenarioCapGain = (apply: { value: number }[]): number =>
     round6(apply.reduce((acc, a) => { const v = Number.isFinite(Number(a.value)) ? Number(a.value) : 1; return acc + Math.max(0, (0.8 * 0.5 + v * 0.5) - 0.8); }, 0));
-  const liveSnap = (s: SimSession) => {
+  const liveSnap = (s: SnapshotSessionView) => {
     const sc = s.scope as unknown as LiveScope;
     // status 为 WO-SIMSESSION-BIZ-REUSE 增补（additive·RL9）：方案生命周期对前端可见，不再是安静的字节。
     return { id: s.id, baseId: sc.baseId, name: sc.name, parentId: sc.parentId ?? undefined, apply: sc.apply, kpis: sc.kpis, status: s.status, createdAt: s.createdAt };
@@ -3209,7 +3220,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/sim/live-scenarios", async (req) => {
     const c = ctx(req); await requireLive(c);
     const baseId = (req.query as { baseId?: string })?.baseId;
-    const all = (await repos.sim.listSessions(c.tenantId)).filter((s) => snapKind(s) === "live");
+    const all = (await repos.sim.listSessionSummaries(c.tenantId)).filter((s) => snapKind(s) === "live");
     const scoped = baseId ? all.filter((s) => (s.scope as unknown as LiveScope).baseId === baseId) : all;
     return { scenarios: scoped.map(liveSnap) };
   });
