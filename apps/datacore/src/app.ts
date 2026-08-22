@@ -1921,10 +1921,53 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!s) throw notFound("sim session not found");
     return s;
   };
+  /**
+   * WO-SIM-SESSIONS-PROJECTION · **列表回列表该有的东西，不回世界内容**。
+   *
+   * ── 🔴 病灶（2026-08-22 真 PostgreSQL 实测原文）────────────────────────────────
+   * **今天的行为 X**：本端点把每条会话的完整 `baseSnapshot` 全量回给调用方，零投影。
+   * 库里 35 条生产量级会话（每条 11,348 对象 × 36 状态变量 = 408,528 格 ≈ 8.4MB）时实测：
+   *   `curl -w 'size=%{size_download} time=%{time_total}'` → **size=298,834,924 / time=8.99**
+   *   = 285 MB / 9 秒。规模是 **O(N × 世界规模)**：会话越多越大，没有上界。
+   * 后果不是"慢"，是**崩**：前端 `useConsoleSession` / `SandboxView` / `EdgeActivePanel`
+   * 共用缓存键 `["a","sim-sessions"]` 打这一跳，285MB JSON 解析成 JS 对象后再翻几倍 ⇒
+   * 渲染进程 OOM（`Target crashed`）。用户开几次推演沙盘就崩一次标签页。
+   * **应该的 Y**：列表回 id / status / curTick / scope / 规模摘要；要世界内容的**按 id 单取**。
+   *
+   * ── 三条判据落在哪 ──────────────────────────────────────────────────────────
+   * ① **不静默改契约**：回包类型换成 `SimSessionListItem`（= `SimSession` omit `baseSnapshot`），
+   *    「这个响应有没有世界内容」落在**类型**上而不是注释里。`SimSession` 一个字段没动 ——
+   *    建会话的 201 回包、`GET …/:id`、引擎侧读 `baseSnapshot` 的那几处全部照旧。
+   * ② **诚实位**：`baseSnapshotScale{objects,cells}` 随每一项下发。
+   *    「我没给你」和「它就是空的」是两个不同的命题，不给规模摘要就是把两者混成一句。
+   * ③ **闸落在仓储层**（`listSessionSummaries`），不是在这里 `map` 掉字段：
+   *    在路由里删字段只裁小了回包，**库→进程那一段照旧搬 285MB**，
+   *    而那一段才是 9 秒里的大头 —— 那种修法会得到一个"回包变小了、还是 9 秒"的假绿。
+   */
   app.get("/a/v1/sim/sessions", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
     // WO-LIVE-ENDPOINTS：活方案快照复用 SimSession 承载（scope.snapshotKind 标记），非沙盘会话——从沙盘列表滤除（不污染沙盘 UI）。
-    return { items: (await repos.sim.listSessions(c.tenantId)).filter((s) => !(s.scope as { snapshotKind?: string })?.snapshotKind) };
+    return { items: (await repos.sim.listSessionSummaries(c.tenantId)).filter((s) => !(s.scope as { snapshotKind?: string })?.snapshotKind) };
+  });
+  /**
+   * 单条会话的**完整**读（含 `baseSnapshot`）—— 上面那条列表投影的落点。
+   *
+   * 存在的理由是一个**真实的消费方**，不是"补全 REST 好看"：
+   * `apps/frontend-shell/src/views/sim/SandboxView.tsx:709-713` 的切世界 effect 要拿
+   * **那个世界自己的基线**（下区差分的左端），今天它是从列表里 `find` 出来再读 `baseSnapshot` 的。
+   * 列表不再带世界内容之后，它该改打这一跳 —— **一个世界 8.4MB，不是 35 个世界 285MB**。
+   *
+   * ⚠ 为什么**不能**用 `GET …/:id/world` 顶替（这是本单最容易做错的地方）：
+   * 那条回的是 `simCurrent(c, s)` = **当前 tick** 的世界态，不是基线。
+   * 拿当前态当基线，屏上每一格差分恒为 0 —— 一个看着完全正常的错答。
+   * 两者的区别 `app.ts` 自己在 `metric-series` 头注里就写过：`/act` 直写过的世界里
+   * tick0 行与 `baseSnapshot` 已经不同，"当前"与"基线"从来不是同一个东西。
+   *
+   * 路由顺序无关：Fastify 的 radix 树把 `/sessions/:id` 与 `/sessions/:id/world` 分在不同深度。
+   */
+  app.get("/a/v1/sim/sessions/:id", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    return await getSimOr404(c, (req.params as { id: string }).id); // R2：别租户 404
   });
 
   // ── 会话生命周期迁移：PAUSED / ENDED（WO-SIMSESSION-BIZ-REUSE）──────────────────────────

@@ -30,7 +30,7 @@ import type {
   VectorIndex,
 } from "./repo.js";
 import { cosineSimilarity } from "./memory.js";
-import type { Perturbation, PropagationRule, SimCheckpoint, SimSession, SimTickState } from "@platform/contracts";
+import type { Perturbation, PropagationRule, SimCheckpoint, SimSession, SimSessionListItem, SimTickState } from "@platform/contracts";
 
 const { Pool } = pg;
 
@@ -73,6 +73,37 @@ export class PgSimRepo implements SimRepo {
   async listSessions(tenantId: string) {
     const r = await this.pool.query(`SELECT * FROM sim_session WHERE tenant_id=$1 ORDER BY created_at`, [tenantId]);
     return r.rows.map((row) => this.rowToSession(row));
+  }
+  /**
+   * 列会话投影（WO-SIM-SESSIONS-PROJECTION）。**`base_snapshot` 不进 SELECT 列表** ——
+   * 这是本方法与 `listSessions` 唯一但要命的区别：35 条生产量级会话下，那一列走网线是 285MB。
+   *
+   * 规模摘要在**服务端**算（`jsonb_object_keys`），于是「诚实位」不需要把世界搬回进程再数。
+   * ⚠ `jsonb_typeof(v)='object'` 那道守卫不是洁癖：`base_snapshot` 契约上是
+   * `Record<string, Record<string, number>>`，但库里是 jsonb，历史行里塞过标量就会让
+   * `jsonb_object_keys(v)` **整条查询报错** —— 一个诚实位不值得赌整个列表端点 500。
+   * 非对象值按 0 格计（它本来也不是格子）。
+   */
+  async listSessionSummaries(tenantId: string): Promise<SimSessionListItem[]> {
+    const r = await this.pool.query(
+      `SELECT id, tenant_id, scope, status, cur_tick, parent_checkpoint_id, disabled_rule_keys, created_at,
+              (SELECT count(*) FROM jsonb_object_keys(base_snapshot)) AS obj_count,
+              (SELECT coalesce(sum(CASE WHEN jsonb_typeof(e.value)='object'
+                                        THEN (SELECT count(*) FROM jsonb_object_keys(e.value)) ELSE 0 END), 0)
+                 FROM jsonb_each(base_snapshot) AS e) AS cell_count
+         FROM sim_session WHERE tenant_id=$1 ORDER BY created_at`,
+      [tenantId],
+    );
+    return r.rows.map((row) => ({
+      id: row.id as string, tenantId: row.tenant_id as string, scope: row.scope as SimSession["scope"],
+      status: row.status as SimSession["status"], curTick: row.cur_tick as number,
+      parentCheckpointId: (row.parent_checkpoint_id as string | null) ?? null,
+      disabledRuleKeys: (row.disabled_rule_keys as string[] | null) ?? [],
+      createdAt: (row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at)),
+      // pg 的 count()/sum() 回 bigint ⇒ node-pg 给的是**字符串**。不 Number() 会让契约里的
+      // `z.number()` 当场失败，而且 JSON 里会渲染成 `"408528"` —— 一个带引号的格数最难查。
+      baseSnapshotScale: { objects: Number(row.obj_count), cells: Number(row.cell_count) },
+    }));
   }
   async putTickState(ts: SimTickState) {
     await this.pool.query(

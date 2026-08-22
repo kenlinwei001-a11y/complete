@@ -26,7 +26,8 @@ import type {
   VectorHit,
   VectorIndex,
 } from "./repo.js";
-import type { Perturbation, PropagationRule, SimCheckpoint, SimSession, SimTickState } from "@platform/contracts";
+import { simSessionScaleOf } from "@platform/contracts";
+import type { Perturbation, PropagationRule, SimCheckpoint, SimSession, SimSessionListItem, SimTickState } from "@platform/contracts";
 
 /**
  * 推演沙盘内存仓储（R2 跨租户 null；R6 clone 隔离）。
@@ -52,6 +53,26 @@ class MemSimRepo implements SimRepo {
   }
   async listSessions(tenantId: string) {
     return [...this.sessions.values()].filter((s) => s.tenantId === tenantId).map(clone);
+  }
+  /**
+   * 列会话投影（WO-SIM-SESSIONS-PROJECTION · R9：与 `PgSimRepo.listSessionSummaries` 语义须逐字节同）。
+   *
+   * 这里**不 `clone(s)` 再删字段**：`clone` 是 `structuredClone`，那等于先把 285MB 世界复制一遍
+   * 再扔掉 —— 修的是回包，没修的是内存峰值，而 memory 模式下峰值就是全部代价。
+   * 逐字段挑出来 + `[...disabledRuleKeys]` 断引用，语义与 clone 相同（`scope` 是只读消费，
+   * 与 `listSessions` 的既有暴露面一致）。
+   */
+  async listSessionSummaries(tenantId: string): Promise<SimSessionListItem[]> {
+    return [...this.sessions.values()]
+      .filter((s) => s.tenantId === tenantId)
+      .map((s) => ({
+        id: s.id, tenantId: s.tenantId, scope: s.scope, status: s.status, curTick: s.curTick,
+        parentCheckpointId: s.parentCheckpointId, disabledRuleKeys: [...(s.disabledRuleKeys ?? [])],
+        createdAt: s.createdAt,
+        // 口径走契约**唯一实现**：这里再写一遍 reduce 就是第二套真相源，
+        // 而 pg 那半是 SQL、天生抄不到一起 —— 唯一能同源的只有这一个纯函数。
+        baseSnapshotScale: simSessionScaleOf(s.baseSnapshot),
+      }));
   }
   async putTickState(ts: SimTickState) { this.ticks.set(`${ts.sessionId}|${ts.tick}`, clone(ts)); }
   async getTickState(tenantId: string, sessionId: string, tick: number) {
