@@ -59,7 +59,14 @@
  * `data-*-source`，挂在 `display:contents` 的包裹元素上 ⇒ 不生成盒、版面零影响。
  */
 import { useQuery } from "@tanstack/react-query";
-import type { BottleneckMatrixOutput, ImpactChange, Perturbation, SandboxViewConfig, TickState } from "@platform/contracts";
+import {
+  BottleneckMatrixOutputSchema,
+  type BottleneckMatrixOutput,
+  type ImpactChange,
+  type Perturbation,
+  type SandboxViewConfig,
+  type TickState,
+} from "@platform/contracts";
 import { fetchSimPerturbations, fetchSimViewConfig, invokeSolver, simWorld } from "@/api/endpoints";
 import type { ViewRendererProps } from "@/views/registry";
 import { SandboxDetail } from "./SandboxDetail";
@@ -189,10 +196,14 @@ export default function SandboxDetailRoute({ view }: ViewRendererProps): JSX.Ele
     retry: false,
     queryFn: async () => {
       const res = await invokeSolver("bottleneck_matrix", { dataMode: "LIVE" });
-      return res.data as BottleneckMatrixOutput;
+      // 形状对不上 ⇒ 解析不出这一对 ⇒ 不发 `mitigation_select`（`as` 会把一个陌生形状
+      // 一路带到 `r.tightness[r.primary]` 上，在渲染里炸；本页的失败态该是占位不是白屏）。
+      return BottleneckMatrixOutputSchema.safeParse(res.data);
     },
   });
-  const derivedMitigation = deriveMitigation(bottleneck.data);
+  const derivedMitigation = deriveMitigation(
+    bottleneck.data?.success === true ? bottleneck.data.data : undefined,
+  );
   const mitigation = p.mitigation ?? derivedMitigation;
   const mitigationSource: ArgSource =
     p.mitigation !== undefined ? "explicit" : mitigation === undefined ? "unavailable" : "derived";

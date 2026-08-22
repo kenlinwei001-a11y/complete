@@ -3,7 +3,7 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import type { ComponentType } from "react";
-import type { ChainLossMatrixResult, SimMetricSeriesResponse, SimSession } from "@platform/contracts";
+import type { ChainLossMatrixResult, ChainNodeDetail, SimMetricSeriesResponse, SimSession } from "@platform/contracts";
 import { server } from "./setup";
 import type { ViewConfigVM } from "@/api/types";
 import type { ViewRendererProps } from "@/views/registry";
@@ -11,7 +11,6 @@ import SandboxHomeRoute from "@/views/sim/console/SandboxHomeRoute";
 import SandboxDetailRoute from "@/views/sim/console/SandboxDetailRoute";
 import SandboxAttrRoute from "@/views/sim/console/SandboxAttrRoute";
 import SandboxOptRoute from "@/views/sim/console/SandboxOptRoute";
-import type { NodeDetailPayload } from "@/views/sim/console/SandboxDetail";
 import { pickLatestRunningSession } from "@/views/sim/console/useConsoleSession";
 
 /**
@@ -120,22 +119,45 @@ const metricSeries = (sessionId: string): SimMetricSeriesResponse => ({
   clamped: false,
 });
 
-/** `GET …/:id/node-detail` 的回包。形状必须**完整** —— 缺一格页面就在 `.map()` 上炸，那是白屏不是占位。 */
-const NODE_DETAIL: NodeDetailPayload = {
-  clock: "2027年3月14日　12:28:39",
-  directions: ["传导方向 - 甲→乙"],
-  filters: [{ label: "产能影响", on: true }],
-  conduction: [{ batch: "B1", node: "老化静置", model: "M1", wip: "1.0k", level: 2, elapsed: "10'00" }],
-  strip: { kms: [{ label: "K1", left: "10%" }], self: "S", ticks: [{ label: "T1", left: "20%" }], events: [], chips: [] },
-  card: {
-    title: "节点",
-    sub: "副标题",
-    kv: [["标签", "值", true]],
-    miniLabel: "迷你",
-    route: { from: "起", to: "终", tag: "标" },
+/**
+ * `GET …/:id/node-detail` 的回包 = 契约 `ChainNodeDetailSchema`。
+ *
+ * ⚠ **WO-SIM-DETAIL-WIRE 换掉了这份证物，换的是形状不是数值。**
+ * 旧版这里放的是前端自己那份 `NodeDetailPayload`（clock/directions/filters/…），
+ * 而端点真回的是 `{node, lots, route, missing, visibility}` —— **两者零个同名字段**。
+ * 于是这道门三周来验的是「前端把自己编的形状喂给自己」，端点真接通时页面会在
+ * `d.directions.map()` 上炸成白屏，而门照样绿。
+ * 判据落在**契约**上（本对象逐字节满足 `ChainNodeDetailSchema`），不落在前端的私有接口上。
+ */
+const NODE_DETAIL: ChainNodeDetail = {
+  node: {
+    nodeId: "capacity.aging",
+    label: "老化静置",
+    stage: "CAPACITY",
+    station: "老化站",
+    nodeDays: 4,
+    nodePct: 34,
+    steps: [],
   },
-  flow: [{ time: "12:00", station: "站", batch: "B1", wip: "1.0k", takt: "1", yieldRate: "99%" }],
-  callout: ["一", "二"],
+  lots: [
+    {
+      lotNo: "LOT-SEAM-1",
+      station: "老化站",
+      batch: 3000,
+      wip: 1200,
+      takt: 30,
+      yieldPct: 98,
+      evidence: {
+        lot: { objectType: "WIPLot", objectId: "LOT-SEAM-1", prop: "qty", value: 1200 },
+        batch: null,
+        takt: null,
+        yield: null,
+      },
+    },
+  ],
+  route: { fromStation: "齐套站", toStation: "质检站", basis: "接缝桩：Operation.operationSeq 相邻工序" },
+  missing: [],
+  visibility: { visibleLineCount: 1, totalLineCount: 1, rowFilters: [] },
 };
 
 /**

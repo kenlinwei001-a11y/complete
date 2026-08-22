@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CHAIN_NODE_REGISTRY, type ChainNodeDetail, type ImpactChange } from "@platform/contracts";
+import { CHAIN_NODE_REGISTRY, ChainNodeDetailSchema, type ChainNodeDetail, type ImpactChange } from "@platform/contracts";
 import { api } from "@/api/apiClient";
 import { ImpactCone, useImpactCone } from "./ImpactCone";
 import { StrategyCards, useMitigationCards, type MitigationArgs } from "./StrategyCards";
@@ -693,9 +693,11 @@ export interface UseNodeDetailResult {
    * · `ok`          这一跳通了（此时 `source==="endpoint"`）；
    * · `no-session`  宿主没透会话下来；
    * · `no-node`     宿主解析不出落点节点 ⇒ **一个请求都不发**（发了必 400）；
-   * · `request-failed` 发了但这一跳自己挂了。
+   * · `request-failed` 发了但这一跳自己挂了；
+   * · `shape-mismatch` 回来了，但**不是** `ChainNodeDetailSchema` 那个形状 ——
+   *   这一态与 `request-failed` **必须分得开**：前者要查前端的投影，后者要查端点。
    */
-  reason: "ok" | "no-session" | "no-node" | "request-failed";
+  reason: "ok" | "no-session" | "no-node" | "request-failed" | "shape-mismatch";
   endpoint: typeof NODE_DETAIL_ENDPOINT;
   isLoading: boolean;
 }
@@ -720,12 +722,24 @@ export function useNodeDetail(sessionId?: string, nodeId?: string): UseNodeDetai
     queryKey: ["a", "sim-node-detail", sid, nid],
     enabled,
     retry: false,
-    queryFn: () => api.a<ChainNodeDetail>(nodeDetailPath(sid, nid)),
+    // ⚠ **`safeParse` 不是装饰**：本页曾把回包直接 `as NodeDetailPayload` 灌进渲染，
+    //   而端点回的是完全不同的 `ChainNodeDetail` ⇒ 请求一旦成功就是白屏。
+    //   形状对不上是**一种可报告的结果**（`reason:"shape-mismatch"`），不是崩溃。
+    queryFn: async () => ChainNodeDetailSchema.safeParse(await api.a<unknown>(nodeDetailPath(sid, nid))),
   });
   const live = enabled ? q.data : undefined;
-  const projected = live === undefined ? undefined : projectNodeDetail(live);
+  const parsed: ChainNodeDetail | undefined = live?.success === true ? live.data : undefined;
+  const projected = parsed === undefined ? undefined : projectNodeDetail(parsed);
   const reason: UseNodeDetailResult["reason"] =
-    projected !== undefined ? "ok" : sid === "" ? "no-session" : nid === "" ? "no-node" : "request-failed";
+    projected !== undefined
+      ? "ok"
+      : sid === ""
+        ? "no-session"
+        : nid === ""
+          ? "no-node"
+          : live !== undefined
+            ? "shape-mismatch"
+            : "request-failed";
   return {
     data: projected?.data ?? PLACEHOLDER_NODE_DETAIL,
     source: projected === undefined ? "placeholder" : "endpoint",
