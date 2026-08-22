@@ -164,6 +164,11 @@ async function syncTools(client, ctx, opts, previous) {
 		const response = await listToolsUncached(client, cursor);
 		for (const tool of response.tools) {
 			const publicName = publicToolName(opts.serverName, tool.name);
+			// W8副（platform WO-DSH-PROD-READY）：注册期收窄——允许表在表时仅注册表内公开名。
+			// 匹配键 = publicToolName **输出**（规范化+截断后名）；宿主允许表按契约裸拼接名
+			// （mcpToolFullName）生成 ⇒ exotic 裸名（含非法字符/超长）规范化后不匹配 = fail-closed
+			// 丢弃（收窄方向，绝不放大）。键缺席 = undefined ⇒ 不收窄（逐字节旧行为）。
+			if (opts.toolAllowlist !== void 0 && !opts.toolAllowlist.includes(publicName)) continue;
 			if (definitions.has(publicName)) throw new Error(`mcp-client(${opts.serverName}): server listed tool "${tool.name}" more than once — invalid tool list`);
 			definitions.set(publicName, {
 				name: publicName,
@@ -363,10 +368,17 @@ function resolveReconnectPolicy(config, path) {
 */
 function startConnection(ctx, config, policy, subscribers) {
 	const label = `mcp-client(${config.serverName})`;
+	// W8副：toolAllowlist 走 Config 未声明键透传（见 Config 下方注记）——schema 层不把关，
+	// 消费侧 fail-closed 形态校验：在场但不是 string[] = 配置错误，当场抛（不静默全丢/全放）。
+	if (config.toolAllowlist !== void 0 && (!Array.isArray(config.toolAllowlist) || config.toolAllowlist.some((x) => typeof x !== "string"))) {
+		throw new TypeError(`${label}: toolAllowlist must be an array of strings when present`);
+	}
 	const opts = {
 		registrationFailure: "contain",
 		serverName: config.serverName,
-		toolCallTimeoutMs: config.toolCallTimeoutMs
+		toolCallTimeoutMs: config.toolCallTimeoutMs,
+		// W8副：注册期允许表随 opts 透传（重连再同步走同一份 opts —— enqueueSync 缺省 syncOpts）。
+		toolAllowlist: config.toolAllowlist
 	};
 	const startupOpts = config.failOnStartupError ? {
 		...opts,
@@ -654,6 +666,11 @@ const Config = z.union([z.object({
 	failOnStartupError: z.boolean().default(false),
 	reconnect: Reconnect
 })]);
+// W8副（platform WO-DSH-PROD-READY）：toolAllowlist **故意不进 Config union**——schemastery
+// 对声明的 array 字段在缺席时填 []（实测：string/number/boolean 缺席保持 undefined，array/object
+// 填空值），会把「键缺席 = 不收窄」与「空数组 = 全丢」两种语义压平；未声明键逐字节透传（同实测），
+// 缺席⇒undefined⇒全量注册（旧行为），在场（含空数组）⇒注册期收窄。形态校验在 startConnection
+// 消费侧 fail-closed（非 string[] 当场抛），不依赖 schema 层。
 /**
 * (D2) Acquire the pool entry for this plugin instance and attach it as a subscriber.
 * No-tenant configs keep the upstream reservation semantics byte-identically: a live
