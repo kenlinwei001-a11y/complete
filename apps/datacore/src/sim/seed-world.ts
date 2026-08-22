@@ -25,9 +25,10 @@
  * 手写一个 `status:"RUNNING"` 塞进仓储会得到一个 `curTick`/`tickState`/`trace` 全是假的空壳：
  * 四页取数回来照样是空 —— 那只是把占位换成了另一种占位。
  */
-import type { PropagationRule, SimSession, TickState } from "@platform/contracts";
+import { PerturbationKindSchema, type Perturbation, type PropagationRule, type SimSession, type TickState } from "@platform/contracts";
 import type { AuthCtx } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
+import { stateVarDisplayName } from "../synthetic/battery.js";
 
 /**
  * 推演世界的两条**生产写路径**（`app.ts` 的路由与本播种模块共用同一份实现）。
@@ -47,6 +48,20 @@ export interface SimWorldOps {
   ): Promise<SimSession>;
   /** 真推 n 拍：逐格 `putTickState` + 会话进位置 RUNNING + 发 `sim.tick_completed`。 */
   tick(c: AuthCtx, s: SimSession, n: number): Promise<{ curTick: number }>;
+  /**
+   * 建一条扰动：zod 校验 + 落 `sim_perturbation` + 已生效者立即施加 + 发 `sim.perturbation_created`。
+   * `override` 只有播种路径会传（要确定性与幂等）；路由不传 ⇒ `newId()` + 当前时刻，逐字节同旧。
+   *
+   * ⚠ `body` 刻意是 `Record<string, unknown>` 而不是收窄成 `Perturbation` 的子集：**校验只有一处**
+   * （路由里的 `PerturbationSchema.safeParse`）。在这里再声明一遍字段就是第二套校验，
+   * 两处迟早漂 —— 播种侧填错字段的后果应当是**播种当场红**，不是被一个更宽松的本地类型放过去。
+   */
+  createPerturbation(
+    c: AuthCtx,
+    s: SimSession,
+    body: Record<string, unknown>,
+    override?: { id?: string; createdAt?: string },
+  ): Promise<{ perturbation: Perturbation; state: TickState }>;
 }
 
 /**

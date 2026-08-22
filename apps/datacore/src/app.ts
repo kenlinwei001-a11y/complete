@@ -2351,20 +2351,35 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // 本组路由把扰动升为实体：可建、可列、可删。全部过 sim.sandbox entitlement（R3 先于 authz）。
   // ⚠ 本单**不做** propagateTick 接扰动（WO-P2）：建扰动只在「本 tick 已生效」时立即施加
   // （= 与 `/act` 等价的那条路），未来 tick 的扰动只入库、等 WO-P2 在传导里按 startTick/duration 施加与回退。
-  app.post("/a/v1/sim/sessions/:id/perturbations", async (req, reply) => {
-    const c = ctx(req); await requireSim(c, "sim.sandbox");
-    const s = await getSimOr404(c, (req.params as { id: string }).id);
+  /**
+   * 建一条扰动的**唯一实现**（WO-SIM-SEED-PERTURB 从 `POST …/perturbations` 原样提出，一行语义未改）。
+   *
+   * 提出去的理由与 `createSimSessionWorld` / `tickSimSessionWorld` 同源：`SEED_DEMO=1` 播种要播的是
+   * **真扰动**（同一份 zod 校验、同一条入库、同一份 `isPerturbationActiveAt` 生效判据、同一个事件），
+   * 不是往 `sim_perturbation` 里塞一条记录 —— 那样传导核不会跑，`metric-series` 的 `actual`
+   * 还是不动，等于把「一片无事发生」换成「有一条扰动记录的无事发生」（静默错答的老形态）。
+   *
+   * `override` 是**播种专用**的可选覆盖（要 R6 确定性 + 固定幂等键）。它**排在 `body` 展开之后**，
+   * 而路由**不传 `override`** ⇒ 客户端 body 里的 `id`/`createdAt` 恒被丢弃。
+   * 这不是靠调用方自觉：结构上就取不到（同 `createSimSessionWorld` 只透传两个字段的那条纪律 ——
+   * 整包转发等于把 `id` 开放给客户端指定，可撞已有扰动 id）。
+   */
+  const createPerturbationWorld = async (
+    c: AuthCtx,
+    s: SimSession,
+    body: Record<string, unknown>,
+    override?: { id?: string; createdAt?: string },
+  ): Promise<{ perturbation: Perturbation; state: TickState }> => {
     assertSimSessionWritable(s, "建扰动"); // 退修①：createPerturbation + 已生效者立即 putTickState，冻结世界必须拒
-    const body = (req.body ?? {}) as Record<string, unknown>;
     // `safeParse` 而非裸 `parse`：ZodError 身上没有 `statusCode`，会被兜底错误处理器（app.ts:833）
     // 判成 **500 INTERNAL_ERROR** —— 把「用户填错了」报成「服务器坏了」，且进 error 日志。
     // 统一错误信封要求这里是 400 VALIDATION_ERROR。
     const parsed = PerturbationSchema.safeParse({
       ...body,
-      id: newId("simpert"), tenantId: c.tenantId, sessionId: s.id,
+      id: override?.id ?? newId("simpert"), tenantId: c.tenantId, sessionId: s.id,
       // 不填 startTick = 「现在就发生」（当前 tick）——与 `/act` 的隐含语义一致。
       startTick: body.startTick ?? s.curTick,
-      createdAt: new Date().toISOString(),
+      createdAt: override?.createdAt ?? new Date().toISOString(),
     });
     if (!parsed.success) throw validationError(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
     const p = parsed.data;
@@ -2373,7 +2388,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // 引擎与路由共用同一份，不许各写一份）。未生效的只入库。
     const state = isPerturbationActiveAt(p, s.curTick) ? await simApplyAtCurrentTick(c, s, p) : await simCurrent(c, s);
     await outbox.emit(c.tenantId, "sim.perturbation_created", { sessionId: s.id, perturbationId: p.id, kind: p.kind, startTick: p.startTick });
-    return reply.status(201).send({ perturbation: p, curTick: s.curTick, state });
+    return { perturbation: p, state };
+  };
+  app.post("/a/v1/sim/sessions/:id/perturbations", async (req, reply) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const { perturbation, state } = await createPerturbationWorld(c, s, (req.body ?? {}) as Record<string, unknown>);
+    return reply.status(201).send({ perturbation, curTick: s.curTick, state });
   });
   app.get("/a/v1/sim/sessions/:id/perturbations", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
@@ -6525,7 +6546,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       opsSchedule,
       opsReplay,
       // WO-SIM-SEED-WORLD：播种路径与两条路由共用**同一个函数对象**（不是照抄一份）。
-      sim: { createSession: createSimSessionWorld, tick: tickSimSessionWorld },
+      // WO-SIM-SEED-PERTURB 添 `createPerturbation`：种子世界的那条扰动走的也是路由那份实现。
+      sim: { createSession: createSimSessionWorld, tick: tickSimSessionWorld, createPerturbation: createPerturbationWorld },
     },
   };
 }
