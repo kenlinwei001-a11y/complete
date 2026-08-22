@@ -7,7 +7,7 @@ import {
   DEMO_SIM_WORLD_TICKS,
   seedDemoSimWorld,
 } from "../src/sim/seed-world.js";
-import type { Perturbation, SimMetricSeriesResponse, SimSession, TickState } from "@platform/contracts";
+import type { Perturbation, SimMetricSeriesResponse, SimSession, SimSessionListItem, TickState } from "@platform/contracts";
 
 /**
  * WO-SIM-SEED-WORLD · **接缝门**：种子跑完 ⇒ 列表里有 RUNNING 会话，且 tick 态存在、非空、真动过。
@@ -44,10 +44,23 @@ const enableSim = (t: TestApp, tenant = "demo") =>
 const cellCount = (state: TickState): number =>
   Object.values(state).reduce((n, row) => n + Object.keys(row).length, 0);
 
-const listSessions = async (t: TestApp): Promise<SimSession[]> => {
+/**
+ * ⚠ 回包类型是 `SimSessionListItem`（**不含 `baseSnapshot`**·WO-SIM-SESSIONS-PROJECTION）。
+ * 原来这里写的是 `as SimSession[]` —— 一个 `as` 让类型系统对这件事**一个字都说不出来**
+ * （铁律 0.6 第 4 条那个形态：旧名以「数据键」形态存在，`typecheck` 全绿）。
+ * 改成投影类型之后，任何再从列表里读世界内容的写法都会**编译当场红**。
+ */
+const listSessions = async (t: TestApp): Promise<SimSessionListItem[]> => {
   const r = await t.app.inject({ method: "GET", url: "/a/v1/sim/sessions", headers: ADMIN });
   expect(r.statusCode).toBe(200);
-  return r.json().items as SimSession[];
+  return r.json().items as SimSessionListItem[];
+};
+
+/** 单条会话的完整读（含 `baseSnapshot`）—— 列表投影之后，世界内容只从这条路来。 */
+const getSession = async (t: TestApp, id: string): Promise<SimSession> => {
+  const r = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${id}`, headers: ADMIN });
+  expect(r.statusCode).toBe(200);
+  return r.json() as SimSession;
 };
 
 describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
@@ -75,12 +88,18 @@ describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
     expect(s.status).toBe("RUNNING");
     expect(s.curTick).toBe(DEMO_SIM_WORLD_TICKS);
     expect(s.curTick).toBeGreaterThanOrEqual(1);
-    expect(cellCount(s.baseSnapshot), "baseSnapshot 非空").toBeGreaterThan(0);
+    // WO-SIM-SESSIONS-PROJECTION：列表**不再带世界内容**，「世界非空」改由规模摘要作证；
+    // 完整的那一份从 `GET …/:id` 取（两处必须逐值对得上，见下）。
+    expect(s.baseSnapshotScale.cells, "规模摘要说这个世界非空").toBeGreaterThan(0);
+    const full = await getSession(t, s.id);
+    expect(cellCount(full.baseSnapshot), "baseSnapshot 非空").toBeGreaterThan(0);
+    expect(s.baseSnapshotScale.cells, "列表摘要与单取的世界必须是同一个数").toBe(cellCount(full.baseSnapshot));
+    expect(s.baseSnapshotScale.objects).toBe(Object.keys(full.baseSnapshot).length);
 
     // 出处记号随列表原样下发（判据 3：这批读数说得出出处，且分项是**现测**的）。
     const origin = (s.scope as { baseSnapshotOrigin?: Record<string, unknown> }).baseSnapshotOrigin;
     expect(origin?.kind).toBe("DERIVED");
-    expect(origin?.cells).toBe(cellCount(s.baseSnapshot));
+    expect(origin?.cells).toBe(cellCount(full.baseSnapshot));
     expect((origin?.measuredCells as number) + (origin?.derivedCells as number)).toBe(origin?.cells);
 
     // ── ② tick 态：存在 + 非空 + 与 tick0 不同 + trace 非空（= 真的过了传导核）────
@@ -94,7 +113,7 @@ describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
     expect(last!.trace!.length).toBeGreaterThan(0);
 
     // 世界态是从**真物化对象**上铺的：随便取一格，它的 objectId 必须是本租户真对象。
-    const anyObjectId = Object.keys(s.baseSnapshot)[0]!;
+    const anyObjectId = Object.keys(full.baseSnapshot)[0]!;
     const objs = await t.repos.objects.listByType("demo", (await t.repos.objects.get("demo", anyObjectId))!.type);
     expect(objs.some((o) => o.id === anyObjectId), "世界的键 = 真物化对象 id（不是 `${type}#0` 占位）").toBe(true);
 

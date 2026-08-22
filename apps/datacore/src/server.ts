@@ -105,17 +105,24 @@ async function main(): Promise<void> {
       // 走 `services.sim` = 两条路由用的同一份实现（建会话 + 真 tick），不在这里另写一套。
       phase("seed:sim-world");
       const simWorld = await seedDemoSimWorld(repos, services.sim, adminCtx);
-      logger.info(
-        { ...simWorld, origin: simWorld.origin ?? undefined },
-        simWorld.created
-          ? `SEED_DEMO=1: seeded demo sim world (RUNNING @tick${simWorld.curTick}, ${simWorld.origin?.cells ?? 0} 格 / 实测 ${simWorld.origin?.measuredCells ?? 0} 格` +
-            // 扰动播没播**要在 msg 里看得见**：没播的世界屏上是一整片"无事发生"，
-            // 而那件事若只躺在结构化字段里，读日志的人不会发现（诚实缺席要显式，不是可选）。
-            (simWorld.choice
-              ? `；扰动落 ${simWorld.choice.targetObjectId}.${simWorld.choice.targetStateVar} delta+${simWorld.choice.magnitude}，下游 ${simWorld.choice.reachCells} 格)`
-              : `；**未播扰动** — ${simWorld.perturbationReason ?? "unknown"}）`)
-          : `SEED_DEMO=1: demo sim world not created — ${simWorld.reason ?? "unknown"}`,
-      );
+      // 扰动播没播**要在 msg 里看得见**：没播的世界屏上是一整片"无事发生"，
+      // 而那件事若只躺在结构化字段里，读日志的人不会发现（诚实缺席要显式，不是可选）。
+      const simWorldTail =
+        (simWorld.choice
+          ? `；扰动落 ${simWorld.choice.targetObjectId}.${simWorld.choice.targetStateVar} delta+${simWorld.choice.magnitude}，下游 ${simWorld.choice.reachCells} 格)`
+          : `；**未播扰动** — ${simWorld.perturbationReason ?? "unknown"}）`);
+      const simWorldBody =
+        `(RUNNING @tick${simWorld.curTick}, ${simWorld.origin?.cells ?? 0} 格 / 实测 ${simWorld.origin?.measuredCells ?? 0} 格` + simWorldTail;
+      // WO-SIM-SESSIONS-PROJECTION 件二 · 半残态**必须报成半残，不许报成"幂等命中"**。
+      // 旧行为：`created:false` 一律打 `not created — 幂等命中…`，于是一个被打断的播种
+      // 在日志里长得和"一切正常"一模一样，运维没有任何信号去查。三态三句话：
+      const msg = simWorld.repaired
+        ? `SEED_DEMO=1: ⚠ demo sim world INCOMPLETE — 检测到播种不完整，已自动补齐 ${simWorldBody}`
+        : simWorld.created
+          ? `SEED_DEMO=1: seeded demo sim world ${simWorldBody}`
+          : `SEED_DEMO=1: demo sim world not created — ${simWorld.reason ?? "unknown"}`;
+      // 修复是异常事件（意味着上一次启动被打断过），按 warn 出；正常路径照旧 info。
+      logger[simWorld.repaired ? "warn" : "info"]({ ...simWorld, origin: simWorld.origin ?? undefined }, msg);
     }
   } finally {
     readiness.seeding = false; // 预热完成（成/败均放行 → /readyz 落到 bootstrap 检查·失败则 main().catch 退出）

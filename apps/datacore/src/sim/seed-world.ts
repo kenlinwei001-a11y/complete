@@ -124,6 +124,59 @@ export const DEMO_SIM_WORLD_PERTURB_START_TICK = 1;
 export const DEMO_SIM_WORLD_SCOPE_KEY = "seedWorld";
 
 /**
+ * **播种完成标记**（WO-SIM-SESSIONS-PROJECTION 件二 · `scope` 里的键）。
+ *
+ * ── 🔴 病灶：今天的行为是 X，应该是 Y（2026-08-22 真 PostgreSQL 实测）──────────────
+ * **X（今天）**：本函数的幂等守卫判的是「`getSession` 有没有回东西」。而播种**不是原子的**：
+ * `createSession` → `createPerturbation` → `tick × 3` 是**四次独立写**，容器在中间任一处被杀，
+ * 库里就留下一条**存在但没播完**的会话（实测：`status=READY, cur_tick=0`，
+ * `sim_tick_state` 只剩 tick0 一行，`sim_perturbation` 零行）。
+ * 下次重启，守卫看到"有东西了"就走开，日志打的是
+ *   `SEED_DEMO=1: demo sim world not created — 幂等命中：种子世界已存在（固定 id），不重建、不再推拍`
+ * —— **一句看起来一切正常的话**。此后永远不会补齐：四页的 `pickLatestRunningSession`
+ * 要 `status==="RUNNING"`，这条 READY@tick0 一辈子挑不中，屏上永远是"无世界"占位，
+ * 而这正是 WO-SIM-SEED-WORLD 当初要消灭的那个东西。**一个部署态的库就这样永久坏掉。**
+ *
+ * **Y（应该）**：幂等的判据落在「**播完了没有**」上，不是「**有没有东西**」上。
+ * 这正是本仓反复踩的那个形态：
+ * > 「我用『已经有数据了』当作『已经播完了』的证据，而前者并不度量后者。」
+ *
+ * ── 为什么标记写在 `scope` 里，而不是新开一张表 / 一列 ──────────────────────────
+ * ① `scope` 是 jsonb，加键**不需要 migration**，也不需要 `repo/pg.ts` 逐列跟改
+ *    （那张表是逐列表，加列漏改就是 memory 全绿 / pg 恒默认值的老坑）；
+ * ② 标记必须与它描述的那条会话**同生共死** —— 会话被删，标记跟着没；
+ *    放外面就会出现"标记说播完了、世界已经不在了"这种更难查的错位；
+ * ③ `resolveSimScope` 对不认识的键一律读作 GLOBAL ⇒ 推演语义逐字节不变（RL9 additive 可回退）。
+ *
+ * 值刻意存**推了几拍这个常数**而不是时间戳：R6 要求同 `SEED_DEMO` 重跑字节级一致，
+ * 塞一个 `completedAt` 进去，`sim_session.scope` 就再也不可能字节相同。
+ */
+export const DEMO_SIM_WORLD_COMPLETE_KEY = "seedWorldCompletedTicks";
+
+/**
+ * 一条已存在的种子世界，**播完了没有**（唯一实现：守卫与接缝门共用，别各写一套判据）。
+ *
+ * 三态，处置完全不同 —— 合成两态必修错地方：
+ *  · `COMPLETE`   有完成标记 ⇒ 幂等命中，走开。**零额外查询**（标记就在已经读到的 `scope` 里）。
+ *  · `LEGACY`     没有标记，但世界本身作证已播完（`RUNNING` 且 `curTick ≥ 播种目标拍数`）。
+ *                 这是**本标记引入之前**播下的世界：不重播、只回填标记。
+ *                 ⚠ 没有这一态，所有存量部署会在升级后被误判成半残并重播一次 ——
+ *                 那就是拿一个新字段去证伪一堆本来好好的世界。
+ *  · `INCOMPLETE` 既无标记、世界也作不了证 ⇒ **播到一半被打断**，必须修，且必须如实说。
+ *
+ * ⚠ 判据用 `curTick >= TICKS` 而不是 `=== TICKS`：用户自己在种子世界上多推了几拍是合法的，
+ *   而 `=== ` 会把"用户用过这个世界"读成"播种没播完"，然后把人家的世界重置掉。
+ * ⚠ 判据**不查 `listTickStates`**（判据 3「不许因此变慢」）：那条 `SELECT *` 会把
+ *   每一拍的世界态 jsonb 全搬回进程，只为了数几行 —— 用一个刚为省流量修过的病去做体检，说不过去。
+ */
+export type SeedWorldCompleteness = "COMPLETE" | "LEGACY" | "INCOMPLETE";
+export function seedWorldCompleteness(s: SimSession): SeedWorldCompleteness {
+  if ((s.scope as Record<string, unknown>)[DEMO_SIM_WORLD_COMPLETE_KEY] === DEMO_SIM_WORLD_TICKS) return "COMPLETE";
+  if (s.status === "RUNNING" && s.curTick >= DEMO_SIM_WORLD_TICKS) return "LEGACY";
+  return "INCOMPLETE";
+}
+
+/**
  * tick0 世界态的**出处记号**（写进 `SimSession.scope.baseSnapshotOrigin`，随
  * `GET /a/v1/sim/sessions` 原样下发 ⇒ 可查、可被测试咬死）。
  *
@@ -161,9 +214,20 @@ export interface SeedWorldSnapshotOrigin {
   derivedCells: number;
 }
 
-/** 播种回执（供 `server.ts` / `seed-cli.ts` 打日志；`created:false` = 幂等命中或诚实缺席）。 */
+/** 播种回执（供 `server.ts` / `seed-cli.ts` 打日志；`created:false` = 幂等命中 / 修复 / 诚实缺席）。 */
 export interface SeedWorldReport {
   created: boolean;
+  /**
+   * 本次是不是**修了一个半残世界**（WO-SIM-SESSIONS-PROJECTION 件二）。
+   *
+   * ⚠ 与 `created` **两个字段都要，不许合并**：`created` 回答「库里多了一条世界吗」，
+   * `repaired` 回答「有一条世界原本是坏的吗」。合并成一个布尔，日志就再也分不出
+   * 「首次播种」与「上次崩了这次补上」—— 而这两件事对运维的含义完全不同
+   * （后者意味着**上一次启动被打断过**，值得去查为什么）。
+   */
+  repaired: boolean;
+  /** 守卫这次判的是哪一态（`null` = 库里压根没有种子世界，谈不上完整性）。 */
+  completeness: SeedWorldCompleteness | null;
   sessionId: string | null;
   curTick: number;
   /** 没建世界时**说明为什么**（诚实缺席：不许静默返回一个空回执）。 */
@@ -490,15 +554,28 @@ export function pickSeedPerturbation(args: {
  * 排在播种序列**最后**：它要读的是别人播完的产物（合成本体的对象 + 传导规则 + 流程层对象），
  * 任何一个没播完，铺出来的世界就是残的。
  *
- * 幂等（判据 4）：固定 id 先 `getSession` 判重 ⇒ 重复启动**一条都不多**，也不会把已有世界又推 3 拍。
+ * 幂等（判据 4）：固定 id 先 `getSession`，判据落在 **`seedWorldCompleteness`（播完了没有）**
+ * 而不是「有没有东西」——理由与实测见 `DEMO_SIM_WORLD_COMPLETE_KEY` 的头注。
  * 只影响 demo 种子（判据 5）：本函数只有 `SEED_DEMO=1` 分支调用，其它启动路径一个字节不动。
  */
 export async function seedDemoSimWorld(repos: Repos, sim: SimWorldOps, ctx: AuthCtx): Promise<SeedWorldReport> {
   const existing = await repos.sim.getSession(ctx.tenantId, DEMO_SIM_WORLD_SESSION_ID);
   if (existing) {
-    // 幂等命中（判据 6）：一条都不多，也不把已有世界再推 3 拍。
+    const completeness = seedWorldCompleteness(existing);
+    if (completeness === "INCOMPLETE") {
+      // ── 🔴 半残态：**不许**在这里报"幂等命中"走开（那正是本单要治的病）──────────────
+      // 实测形态：`status=READY, cur_tick=0`，tick 态只剩 tick0，扰动零条 —— 播种被杀在
+      // `createSession` 与 `tick` 之间。旧守卫看到"有东西了"就走开，日志打的是一句
+      // 看起来一切正常的「幂等命中」，而四页的 `pickLatestRunningSession` 要 `RUNNING`，
+      // 这条世界一辈子挑不中 ⇒ 屏上永远"无世界"。**修，并且如实说修了什么。**
+      return await finishSeedWorld(repos, sim, ctx, existing, { repaired: true });
+    }
+    // ── 幂等命中（判据 6）：一条都不多，也不把已有世界再推 3 拍 ────────────────────────
+    // `LEGACY` = 标记引入之前播下的世界，世界本身作证已播完 ⇒ 只**回填标记**，不重播。
+    // 回填是一次 `putSession`（幂等 upsert），此后它就走 `COMPLETE` 那条零额外查询的快路。
+    if (completeness === "LEGACY") await markSeedWorldComplete(repos, existing);
     //
-    // ⚠ 但这里有一个**只在持久化部署上出现**的形态，必须诚实报出来而不是静默走开：
+    // ⚠ 另有一个**只在持久化部署上出现**的形态，必须诚实报出来而不是静默走开：
     // 本单之前播下的世界**没有扰动**（那时还不播），而固定 id 让判重在这里就短路 ⇒
     // 升级后重启，老世界照旧是一片"无事发生"，两条线仍逐值全等。
     // 不在这里补播：补了还得再推拍才能让它沿链路走，而"再推 3 拍"正是幂等要挡的事 ——
@@ -507,10 +584,13 @@ export async function seedDemoSimWorld(repos: Repos, sim: SimWorldOps, ctx: Auth
     const existingPerturbations = await repos.sim.listPerturbations(ctx.tenantId, existing.id);
     return {
       created: false,
+      repaired: false,
+      completeness,
       sessionId: existing.id,
       curTick: existing.curTick,
       reason:
-        "幂等命中：种子世界已存在（固定 id），不重建、不再推拍" +
+        "幂等命中：种子世界已存在且**已播完**（固定 id + 完成标记），不重建、不再推拍" +
+        (completeness === "LEGACY" ? "；该世界播于完成标记引入之前，本次已回填标记（未重播）" : "") +
         (existingPerturbations.length === 0
           ? "；⚠ 该世界**零扰动**（本单之前播的老世界），基线与扰动后两条线会逐值全等 —— " +
             `删除会话 ${existing.id} 后重启即可重播一个带扰动的世界`
@@ -528,6 +608,8 @@ export async function seedDemoSimWorld(repos: Repos, sim: SimWorldOps, ctx: Auth
   if (origin.cells === 0) {
     return {
       created: false,
+      repaired: false,
+      completeness: null, // 库里压根没有种子世界 ⇒ 谈不上"完整性"，不许拿 COMPLETE 冒充
       sessionId: null,
       curTick: 0,
       reason:
@@ -564,6 +646,47 @@ export async function seedDemoSimWorld(repos: Repos, sim: SimWorldOps, ctx: Auth
     id: DEMO_SIM_WORLD_SESSION_ID,
     createdAt: DEMO_SIM_WORLD_CREATED_AT,
   });
+
+  return await finishSeedWorld(repos, sim, ctx, session, { repaired: false });
+}
+
+/**
+ * 播种的**后半段**：扰动 → 真 tick → 落完成标记。**新建路与修复路共用这一份**。
+ *
+ * 为什么必须共用而不是修复路另写一段：两段各写一套，就会出现「新建的世界带扰动、
+ * 修出来的世界不带」这种只在崩过一次的机器上复现的漂移 —— 本仓治过多次的
+ * 「两半各写一套必漂」。这里连 `startTick` / 固定 id / label 截断都只有一处。
+ *
+ * ── 修复路（`repaired:true`）比新建路多做的两件事，都不是可选的 ───────────────────
+ * ① `deleteTicksAfter(…, 0)`：把上一次没播完留下的**残 tick 行**清掉。
+ *    不清 ⇒ 若残行的拍数比这次推的多，库里会留着一段**属于上一个半成品世界**的世界线，
+ *    而 `GET …/:id/world` 取的正是落盘行 —— 屏上会读到一段没人再算得出来的历史。
+ * ② `putSession` 把 `status/curTick` 归零：`sim.tick` 是**相对推进**（从 `curTick` 往后推 n 拍），
+ *    半残世界的 `curTick` 可能已经是 1 或 2 ⇒ 直接推 3 拍会得到 `curTick=5` 这种数，
+ *    而完成判据是 `curTick >= 3`，它照样"通过" —— 一个**能骗过自己判据**的修法。
+ *    ⚠ `baseSnapshot`/`scope`/`createdAt` **原样保留**（不重算）：那份世界是上一次从当时的本体
+ *    铺出来的，重算会得到一个与库里那行不是同一个世界的东西（R6 确定性在这里指的是
+ *    「同一条种子世界」，不是「今天重跑会得到什么」）。
+ */
+async function finishSeedWorld(
+  repos: Repos,
+  sim: SimWorldOps,
+  ctx: AuthCtx,
+  session: SimSession,
+  opts: { repaired: boolean },
+): Promise<SeedWorldReport> {
+  // 出处/落点都从会话自己的 `scope` 里读 —— 修复路没有 `deriveSeedBaseSnapshot` 的返回值，
+  // 而重算一次会得到「今天的本体」铺出来的世界，与库里那行不是同一个（见函数头注②）。
+  const scope = session.scope as Record<string, unknown>;
+  const origin = (scope.baseSnapshotOrigin as SeedWorldSnapshotOrigin | undefined) ?? null;
+  const choice = (scope.seedPerturbation as SeedPerturbationChoice | undefined) ?? null;
+
+  if (opts.repaired) {
+    await repos.sim.deleteTicksAfter(ctx.tenantId, session.id, 0);
+    session.status = Object.keys(session.baseSnapshot).length > 0 ? "READY" : "DRAFT";
+    session.curTick = 0;
+    await repos.sim.putSession(session);
+  }
 
   // ── 播扰动：**必须排在 tick 之前** ────────────────────────────────────────────────
   // 引擎只在**产出 `startTick` 那一格**时施加一次（`propagateTick` 的 `entersAt`）。
@@ -617,11 +740,24 @@ export async function seedDemoSimWorld(repos: Repos, sim: SimWorldOps, ctx: Auth
   // 真 tick（与 `POST …/tick` 同一份传导核）：会话在这一步才变 RUNNING，`curTick` 才真进位。
   // 扰动已经在库里 ⇒ `simAdvanceTicks` 的 `listPerturbations` 读得到，引擎在 tick1 施加并往下带。
   const ticked = await sim.tick(ctx, session, DEMO_SIM_WORLD_TICKS);
+
+  // ── 完成标记：**必须是最后一次写** ──────────────────────────────────────────────
+  // 它就是这条会话「播完了」的唯一证据。写在这里 ⇒ 上面任何一步被杀，标记都不在，
+  // 下次启动 `seedWorldCompleteness` 判 INCOMPLETE、如实报、并修。
+  // 写早一格（比如紧跟 `createSession`）就会得到一个**说自己播完了的半成品** ——
+  // 那比没有标记更坏：它把"我没查到"变成了"它已经好了"。
+  await markSeedWorldComplete(repos, { ...session, status: "RUNNING", curTick: ticked.curTick });
+
   return {
-    created: true,
+    created: !opts.repaired,
+    repaired: opts.repaired,
+    completeness: "COMPLETE",
     sessionId: session.id,
     curTick: ticked.curTick,
-    reason: null,
+    reason: opts.repaired
+      ? `⚠ 检测到播种不完整（会话 ${session.id} 存在但未播完：无完成标记，且非 RUNNING@tick≥${DEMO_SIM_WORLD_TICKS}）` +
+        `—— 已自动补齐：世界线重置到 tick0、重播扰动、重推 ${DEMO_SIM_WORLD_TICKS} 拍、落完成标记`
+      : null,
     origin,
     perturbation,
     choice,
@@ -631,4 +767,17 @@ export async function seedDemoSimWorld(repos: Repos, sim: SimWorldOps, ctx: Auth
         ? "本世界选不出**能带动下游**的落点（无格子同时满足：是某条 PUBLISHED 规则的源 · 该对象沿 viaLinkKey 真有对应类型的下游 · 该状态变量在本世界的观测全距 > 0）⇒ 不播扰动"
         : null,
   };
+}
+
+/**
+ * 把完成标记落到会话 `scope` 上（幂等：同值重写无副作用）。
+ *
+ * 走 `putSession` 而不是 `createSession`：后者会连 tick0 态一起重写并再发一次
+ * `sim.session_created` —— 回填一个标记不该让全前端的会话缓存失效一次。
+ */
+async function markSeedWorldComplete(repos: Repos, session: SimSession): Promise<void> {
+  await repos.sim.putSession({
+    ...session,
+    scope: { ...(session.scope as Record<string, unknown>), [DEMO_SIM_WORLD_COMPLETE_KEY]: DEMO_SIM_WORLD_TICKS },
+  });
 }

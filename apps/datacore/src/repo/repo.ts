@@ -1,4 +1,4 @@
-import type { ApprovalLimit, Authority, BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Delegation, EnterpriseState, OrgPrincipal, Perturbation, ProcessDefinition, ProcessDomain, ProcessInstance, ProcessStepTemplate, ProcessTask, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { ApprovalLimit, Authority, BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Delegation, EnterpriseState, OrgPrincipal, Perturbation, ProcessDefinition, ProcessDomain, ProcessInstance, ProcessStepTemplate, ProcessTask, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimSessionListItem, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -395,7 +395,24 @@ export interface SimRepo {
   createSession(s: SimSession): Promise<void>;
   putSession(s: SimSession): Promise<void>; // 状态/cur_tick 更新
   getSession(tenantId: string, id: string): Promise<SimSession | null>;
+  /**
+   * 全量列会话（**含 `baseSnapshot`**）。
+   *
+   * ⚠ 这是 O(N × 世界规模) 的读：35 条生产量级会话实测 **285 MB**。
+   * 「列出我有哪些世界」一律走 `listSessionSummaries`；本方法只留给
+   * **真的要每个世界的内容**的调用方（今天零个生产调用方，故不删只标）。
+   */
   listSessions(tenantId: string): Promise<SimSession[]>;
+  /**
+   * 列会话的**投影**：不含 `baseSnapshot`，改带规模摘要（WO-SIM-SESSIONS-PROJECTION）。
+   *
+   * R9 三处同改：本接口 + `memory.ts MemSimRepo` + `pg.ts PgSimRepo`，语义须无漂移。
+   * 两实现的**机制不同但结果必须逐字节相同**：memory 在进程内数键，pg 在**服务端**用
+   * `jsonb_object_keys` 数、`base_snapshot` 一个字节都不过网线 —— 这正是本方法存在的意义：
+   * 只把回包裁小、而库到进程那一段照旧搬 285MB，等于没修（那一段才是 9 秒里的大头）。
+   * 排序与 `listSessions` 一致（`created_at` 升序），换序会让列表 UI 无声跳行。
+   */
+  listSessionSummaries(tenantId: string): Promise<SimSessionListItem[]>;
   putTickState(ts: SimTickState): Promise<void>;
   getTickState(tenantId: string, sessionId: string, tick: number): Promise<SimTickState | null>;
   listTickStates(tenantId: string, sessionId: string): Promise<SimTickState[]>;

@@ -183,6 +183,60 @@ export const SimSessionSchema = z.object({
 });
 export type SimSession = z.infer<typeof SimSessionSchema>;
 
+// ── 会话**列表**投影（WO-SIM-SESSIONS-PROJECTION · 列表不带世界内容） ───────────────────
+/**
+ * 一个世界有多大 —— **列表投影的诚实位**。
+ *
+ * 存在的唯一理由：`SimSessionListItem` 把 `baseSnapshot` 整个拿掉了，
+ * 而「**我没给你**」与「**它就是空的**」是两个不同的命题。
+ * 不给规模摘要，调用方只能在这两句话之间猜；给了，它就知道那边有多少东西、值不值得再打一跳。
+ *
+ * 两个分项的口径（与 `SeedWorldSnapshotOrigin.objects/cells`、
+ * 与 `sim-seed-world.seam.test.ts` 的 `cellCount()` **逐字同口径**，别另立一套）：
+ *  · `objects` = `Object.keys(baseSnapshot).length` —— 世界里有几个对象；
+ *  · `cells`   = `Σ Object.keys(baseSnapshot[oid]).length` —— 几个「对象 × 状态变量」格。
+ * ⚠ 只数 `objects` 会把「11,348 个对象 × 36 个变量」读成「11,348」，差 36 倍。两个都要。
+ */
+export const SimSessionScaleSchema = z.object({
+  objects: z.number().int().nonnegative(),
+  cells: z.number().int().nonnegative(),
+});
+export type SimSessionScale = z.infer<typeof SimSessionScaleSchema>;
+
+/**
+ * `GET /a/v1/sim/sessions` 的**列表项**：`SimSession` 减去 `baseSnapshot`，加一个规模摘要。
+ *
+ * ── 病灶（2026-08-22 真 PostgreSQL 实测原文，不是推测）────────────────────────────
+ * **今天的行为 X**：一个「列出我有哪些世界」的端点，把每个世界的**全部内容**都塞进回包。
+ * 库里 35 条会话（每条 `baseSnapshot` = 11,348 对象 × 36 状态变量 = 408,528 格 ≈ 8.4MB）时：
+ *   `GET /a/v1/sim/sessions` → `http=200 size=298,834,924 time=8.99s` = **285 MB / 9 秒**。
+ * 前端三处消费方共用缓存键 `["a","sim-sessions"]` 打这一跳，285MB 的 JSON 解析成 JS 对象后
+ * 再翻几倍 ⇒ **渲染进程 OOM 崩溃**。规模是 O(N × 世界规模)：会话越多越大。
+ * **应该的 Y**：列表回列表该有的东西（id / status / curTick / scope / 规模摘要…），
+ * 要世界内容的**按 id 单取**（`GET /a/v1/sim/sessions/:id` 回完整 `SimSession`）。
+ *
+ * ── 为什么是一个**新类型**而不是把 `SimSession.baseSnapshot` 改成 optional ────────────
+ * 改 optional 会让**所有**读 `baseSnapshot` 的地方（建会话 201 回包、`finance-world.ts:184`、
+ * `impact-analysis.ts:90`、`metric-series` 的 seed 回落）同时失去类型保护 ——
+ * 那些地方拿到的**确实是**完整会话，收窄它们等于用一个真实的类型谎去换列表的安全。
+ * 分成两个类型，「这个响应有没有世界内容」这件事就落在**类型**上，而不是落在注释里。
+ *
+ * ⚠ 本类型**刻意不带** `baseSnapshot: never` 之类的占位键：多一个恒 `undefined` 的键，
+ * 只会让 `if ("baseSnapshot" in s)` 这种探测读出错误答案。没有就是没有。
+ */
+export const SimSessionListItemSchema = SimSessionSchema.omit({ baseSnapshot: true }).extend({
+  /** 被拿掉的那份世界内容有多大（诚实位·口径见 `SimSessionScaleSchema`）。 */
+  baseSnapshotScale: SimSessionScaleSchema,
+});
+export type SimSessionListItem = z.infer<typeof SimSessionListItemSchema>;
+
+/** `baseSnapshot` → 规模摘要的**唯一实现**（服务端投影与任何复算都走它，别各写一套 reduce）。 */
+export function simSessionScaleOf(baseSnapshot: TickState): SimSessionScale {
+  let cells = 0;
+  for (const row of Object.values(baseSnapshot)) cells += Object.keys(row ?? {}).length;
+  return { objects: Object.keys(baseSnapshot).length, cells };
+}
+
 // ── 会话级反事实：过滤 / 对照（WO-ACTIVE-EDGE-UX · 契约唯一实现，引擎与前端共用） ──────
 /**
  * 把「本会话屏蔽了哪几条边」作用到一组传导规则上（**纯函数** R6：不改入参）。
