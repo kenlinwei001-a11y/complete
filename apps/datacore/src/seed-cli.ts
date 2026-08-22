@@ -54,7 +54,11 @@ async function main(): Promise<void> {
     const simWorld = await seedDemoSimWorld(repos, services.sim, adminCtx);
     logger.info(
       simWorld.created
-        ? `seeded demo sim world (RUNNING @tick${simWorld.curTick}, ${simWorld.origin?.cells ?? 0} 格 / 实测 ${simWorld.origin?.measuredCells ?? 0} 格)`
+        ? `seeded demo sim world (RUNNING @tick${simWorld.curTick}, ${simWorld.origin?.cells ?? 0} 格 / 实测 ${simWorld.origin?.measuredCells ?? 0} 格` +
+          // 与 server.ts 那条**逐字同步**（两条播种路径漂了就会出现「容器里有扰动、pnpm seed 出来的没有」）。
+          (simWorld.choice
+            ? `；扰动落 ${simWorld.choice.targetObjectId}.${simWorld.choice.targetStateVar} delta+${simWorld.choice.magnitude}，下游 ${simWorld.choice.reachCells} 格)`
+            : `；**未播扰动** — ${simWorld.perturbationReason ?? "unknown"}）`)
         : `demo sim world not created — ${simWorld.reason ?? "unknown"}`,
     );
   }
