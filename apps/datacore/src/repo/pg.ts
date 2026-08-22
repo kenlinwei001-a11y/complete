@@ -129,12 +129,21 @@ export class PgSimRepo implements SimRepo {
     // 一次 UPDATE 全部搞定，不逐行往返 —— 存量库上这条只跑一次。
     const backfilled = new Map<string, { objects: number; cells: number }>();
     if (stale.length > 0) {
-      const b = await this.pool.query(
-        `UPDATE sim_session SET base_objects=${scaleObjectsSql("base_snapshot")}, base_cells=${scaleCellsSql("base_snapshot")}
-          WHERE tenant_id=$1 AND id = ANY($2::text[])
-      RETURNING id, base_objects, base_cells`,
-        [tenantId, stale],
-      );
+      const compute = `${scaleObjectsSql("base_snapshot")} AS base_objects, ${scaleCellsSql("base_snapshot")} AS base_cells`;
+      const where = `WHERE tenant_id=$1 AND id = ANY($2::text[])`;
+      let b: pg.QueryResult;
+      try {
+        b = await this.pool.query(
+          `UPDATE sim_session SET base_objects=${scaleObjectsSql("base_snapshot")}, base_cells=${scaleCellsSql("base_snapshot")}
+            ${where} RETURNING id, base_objects, base_cells`,
+          [tenantId, stale],
+        );
+      } catch {
+        // 写不进去（只读副本 / 权限 / 并发冲突）也**必须给出真数**：`-1` 是"还没算过"的记号，
+        // 把它当成 0 回出去就是拿一个假数字冒充诚实位 —— 一个 11,348 对象的世界会显示成空世界。
+        // 退化成纯读的现算（慢，但诚实），下次再试着回填。
+        b = await this.pool.query(`SELECT id, ${compute} FROM sim_session ${where}`, [tenantId, stale]);
+      }
       for (const row of b.rows) backfilled.set(row.id as string, { objects: Number(row.base_objects), cells: Number(row.base_cells) });
     }
     return r.rows.map((row) => ({
