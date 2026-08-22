@@ -1,0 +1,288 @@
+import { describe, expect, it } from "vitest";
+import { makeApp, debugUser } from "./helpers.js";
+import { ParetoAssembleResultSchema, ParetoRequestSchema, ParetoResultSchema, type ParetoAssembleResult, type ParetoResult } from "@platform/contracts";
+
+/**
+ * WO-SIM-PARETO-MODEL-EXIT · **模型装配出口的接缝门**（DataCore 半）。
+ *
+ * ══ 今天的行为是 X，应该是 Y ══════════════════════════════════════════════════
+ *
+ * **X（开工时实测，两条各自成立）**
+ *  ① 装配能力**有**但**没有出口**：`solvers/service.ts` 的 `assembleBaselineFromSelection`
+ *     是 `private`，只在 `optimize_whatif` 的 `autoBind` 分支里走，**只回 Δ目标不回 args**。
+ *     真跑原文（内存态 demo 租户）：
+ *     `POST /a/v1/solvers/optimize_whatif/invoke` `{"args":{"family":"facility_location","autoBind":true,…}}`
+ *     → `200 {"data":{"applicable":false,"missingRoles":["facility（Base 在选中范围内无实例）"],
+ *              "baselineObjective":null,…}}` —— 通篇没有一格叫 `args`。
+ *  ② 它只认 `facility_location`/`min_cost_flow` 两族，而这两族在内存态一律
+ *     `400 未接入最优化引擎` ⇒ **能装配的解不了、解得了的装配不出**。
+ *  于是 `POST /a/v1/sim/optimize-pareto` 那份必填的 `ParetoRequest` 谁都拼不出来，
+ *  页4 前沿图恒 `data-source="placeholder"`。
+ *
+ * **Y（本门驱动的那条缝）**
+ *  `POST …/optimize-pareto/assemble`（要范围）→ 服务端从**本租户已发布本体**推角色、装 args、
+ *  声明目标、生成杠杆网格 → 回一份**完整的 `ParetoRequest`** →
+ *  **把它原样 POST 给 `…/optimize-pareto`** → 真前沿。
+ *
+ * ══ 这道门咬的是链路不是函数（本仓复验头号判据）════════════════════════════════
+ * 两步都走 **HTTP 路由**（`app.inject`），中间那份请求体**不是测试写的、是上一跳回的** ——
+ * 装配器、契约、绑定层、求解器、路由、entitlement 任一半退化即红。
+ * ⛔ 刻意**不**直调 `assembleParetoModel()`：只测装配函数是本仓记过的假绿第 9 形态
+ * （「实现有、测试有、且是绿的，零生产调用方」）。
+ *
+ * ══ R14 反硬编码：本门的本体里**没有一个电池/基地字样** ══════════════════════════
+ * 类型叫 `TicketOrder`/`Coach`，字段叫 `farePrice`/`refundCost`/`seatCapacity`/`runCost`。
+ * 装配器若哪天偷偷硬编 `Order`/`Base`/`unitPrice`，本门当场红 —— 这就是那条硬编码的**捕手**。
+ */
+
+// ══════════════════════════════════════════════════════════════════════════
+// § 0 · 装置：一套与本仓演示行业**完全无关**的本体（客运售票）
+// ══════════════════════════════════════════════════════════════════════════
+
+const T = "acme"; // 非 demo 租户：顺带把 R2 隔离一起咬了
+const ACME = debugUser(T, "admin", "admin");
+const OTHER = debugUser("zeta", "admin", "admin");
+
+type App = Awaited<ReturnType<typeof makeApp>>;
+
+const putType = (t: App, tenantId: string, key: string, props: { propKey: string; dataType: string; isPrimaryKey?: boolean; refToTypeKey?: string }[]) =>
+  t.repos.ontologyTypes.put({
+    id: `ot_${tenantId}_${key}`, tenantId, key, displayName: key, domain: "x", version: 1, status: "ACTIVE",
+    derivedProperties: [], sourceBindings: [],
+    properties: props.map((p) => ({ isPrimaryKey: false, ...p })) as never,
+  });
+
+const putObj = (t: App, tenantId: string, type: string, id: string, props: Record<string, unknown>) =>
+  t.repos.objects.put({ origin: { type: "MANUAL" }, id, tenantId, type, props });
+
+/** 开门：`sim.sandbox` 是这两条口**同一格**门禁（关 ⇒ 404，见用例 ⑤）。 */
+const enableSim = (t: App, tenantId: string, headers: Record<string, string>) =>
+  t.app.inject({ method: "PUT", url: `/a/v1/tenants/${tenantId}/features`, headers, payload: { overrides: { "sim.sandbox": true } } });
+
+/**
+ * 售票世界：**总需求 41 > 三节车厢的最小档合计 30** —— 这一条是刻意的：
+ * 产能不够用时"多拉一单"才要付出"另一单被挤"的代价，前沿上才会有**真的权衡**。
+ * 若把产能放到人人有座，营收维恒定，"前沿"会退化成一个点（那也是真答案，只是咬不住几何）。
+ */
+async function seedTicketWorld(t: App, tenantId = T): Promise<void> {
+  // 需求侧：命中 leaf 词库（…order…）+ 有"量"(seatQty→qty 词库) + 有"价"(farePrice→revenue 词库)
+  //         + 有"罚"(refundCost→cost 词库，且 ≠ 价) ⇒ penalty 目标也接得到地。
+  await putType(t, tenantId, "TicketOrder", [
+    { propKey: "ticketNo", dataType: "string", isPrimaryKey: true },
+    { propKey: "seatQty", dataType: "number" },
+    { propKey: "farePrice", dataType: "number" },
+    { propKey: "refundCost", dataType: "number" },
+  ]);
+  // 资源侧：有"产能"(seatCapacity) + 有"成本"(runCost) ⇒ cost 目标接得到地。
+  await putType(t, tenantId, "Coach", [
+    { propKey: "coachId", dataType: "string", isPrimaryKey: true },
+    { propKey: "seatCapacity", dataType: "number" },
+    { propKey: "runCost", dataType: "number" },
+  ]);
+  const orders: [string, number, number, number][] = [
+    ["o1", 12, 100, 50], ["o2", 8, 60, 5], ["o3", 15, 90, 40], ["o4", 6, 30, 30],
+  ];
+  for (const [id, seatQty, farePrice, refundCost] of orders) {
+    await putObj(t, tenantId, "TicketOrder", id, { ticketNo: id, seatQty, farePrice, refundCost });
+  }
+  const coaches: [string, number, number][] = [["c1", 20, 5], ["c2", 10, 3], ["c3", 30, 7]];
+  for (const [id, seatCapacity, runCost] of coaches) {
+    await putObj(t, tenantId, "Coach", id, { coachId: id, seatCapacity, runCost });
+  }
+}
+
+const assemble = async (t: App, headers: Record<string, string>, payload: Record<string, unknown> = {}) => {
+  const r = await t.app.inject({ method: "POST", url: "/a/v1/sim/optimize-pareto/assemble", headers, payload });
+  return { statusCode: r.statusCode, body: r.body, json: r.statusCode === 200 ? (JSON.parse(r.body) as ParetoAssembleResult) : undefined };
+};
+
+const solve = async (t: App, headers: Record<string, string>, payload: unknown) => {
+  const r = await t.app.inject({ method: "POST", url: "/a/v1/sim/optimize-pareto", headers, payload: payload as object });
+  return { statusCode: r.statusCode, body: r.body };
+};
+
+// ══════════════════════════════════════════════════════════════════════════
+// § 1 · 用例
+// ══════════════════════════════════════════════════════════════════════════
+
+describe("WO-SIM-PARETO-MODEL-EXIT · 装配出口 → 求解 整条缝", () => {
+  it("⓪ 金丝雀：装置与探针先自证（不中 ⇒ 报「工具坏了」，不许读作「接线对了」）", async () => {
+    const t = await makeApp();
+    await enableSim(t, T, ACME);
+    await seedTicketWorld(t);
+    // (a) 本体真的进去了（种子失败会让下面每一条报缺都"因为正确的原因"变绿）。
+    const types = await t.repos.ontologyTypes.list(T);
+    expect(types.map((x) => x.key).sort(), "本体种子没进去 ⇒ 后面所有报缺都是空转").toEqual(["Coach", "TicketOrder"]);
+    expect((await t.repos.objects.listByType(T, "TicketOrder")).length, "订单实例没进去").toBe(4);
+    expect((await t.repos.objects.listByType(T, "Coach")).length, "车厢实例没进去").toBe(3);
+    // (b) 路由真的在（404 会让"装不出"与"没这条路"分不开）。
+    const r = await assemble(t, ACME);
+    expect(r.statusCode, "装配口不通 ⇒ 本门测的是别的东西").toBe(200);
+    // (c) 门禁探针可用：关着的租户必须 404（用例⑤ 靠它）。
+    const closed = await assemble(t, OTHER);
+    expect(closed.statusCode, "未开门的租户居然通了 ⇒ 门禁探针失效").toBe(404);
+  });
+
+  it("① 正向整条缝：要范围 → 装配 → **把装出来的那份原样求解** → 真前沿（多点·账平）", async () => {
+    const t = await makeApp();
+    await enableSim(t, T, ACME);
+    await seedTicketWorld(t);
+
+    const a = await assemble(t, ACME, { sessionId: "sess-1" });
+    expect(a.statusCode).toBe(200);
+    const parsed = ParetoAssembleResultSchema.safeParse(a.json);
+    expect(parsed.success, `装配回包过不了契约：${JSON.stringify(a.json)}`).toBe(true);
+    const res = parsed.success ? parsed.data : undefined;
+    expect(res?.applicable, `装不出来：${JSON.stringify(a.json)}`).toBe(true);
+    if (!res || res.applicable !== true) return;
+
+    // ── 反向证据 1：角色是**从本体推出来的**，不是硬编 —— 本体里一个电池字样都没有。
+    const roleMap = Object.fromEntries(res.roles.map((r) => [r.role, r.ref]));
+    expect(roleMap.order).toBe("TicketOrder");
+    expect(roleMap.line).toBe("Coach");
+    expect(roleMap.revenue).toBe("TicketOrder.farePrice");
+    expect(roleMap.qty).toBe("TicketOrder.seatQty");
+    expect(roleMap.penalty).toBe("TicketOrder.refundCost");
+    expect(roleMap.line_capacity).toBe("Coach.seatCapacity");
+    expect(roleMap.line_assign_cost).toBe("Coach.runCost");
+    expect(JSON.stringify(res), "装配结果里出现了本仓演示行业的实体名 ⇒ 有硬编码").not.toMatch(/Base|unitPrice|formationCap/);
+
+    // ── 反向证据 2：三个目标**每一个都接得到地**（label 就是它的出处）。
+    expect(res.request.objectives.map((o) => `${o.key}:${o.dir}:${o.label}`)).toEqual([
+      "revenue:max:TicketOrder.farePrice",
+      "penalty:min:TicketOrder.refundCost",
+      "cost:min:Coach.runCost",
+    ]);
+    // ── 反向证据 3：杠杆档位取自**实测产能取值**（10/20/30），不是编出来的等分刻度。
+    expect(res.request.levers.map((l) => l.values)).toEqual([[10, 20, 30], [10, 20, 30], [10, 20, 30]]);
+    expect(res.request.levers.map((l) => l.key).sort()).toEqual(["lines.c1.capacity", "lines.c2.capacity", "lines.c3.capacity"]);
+    expect(res.request.sessionId, "R6 确定性键没透进装配结果").toBe("sess-1");
+
+    // ── 头号判据：**把上一跳回的那份原样发出去**（一格不改）→ 真前沿。
+    const s = await solve(t, ACME, res.request);
+    expect(s.statusCode, `装出来的请求求解失败：${s.body}`).toBe(200);
+    const out = ParetoResultSchema.parse(JSON.parse(s.body)) as ParetoResult;
+    expect(out.iterations, "杠杆网格 3 根 × 3 档 = 27 个候选").toBe(27);
+    expect(out.iterations, "账不平 ⇒ 有解被静默吞掉").toBe(out.frontier.length + out.dominated.length + out.residual);
+    expect(out.frontier.length, "前沿一个点都没有 ⇒ 这不是前沿").toBeGreaterThan(1);
+    expect(out.dominated.length, "一个被支配解都没有 ⇒ 支配剔除根本没发生（网格白扫）").toBeGreaterThan(0);
+
+    // ── 反向证据 4：**真的是权衡**，不是一维排序 —— 前沿上存在两个解，一个营收更高、
+    //    另一个成本更低。少了这一条，"多点前沿"可能只是同一堆并列点。
+    const better = (k: string, x: number, y: number) => (k === "revenue" ? x > y : x < y);
+    const tradeoff = out.frontier.some((p) =>
+      out.frontier.some((q) => p.id !== q.id && better("revenue", p.metrics.revenue!, q.metrics.revenue!) && better("cost", q.metrics.cost!, p.metrics.cost!)),
+    );
+    expect(tradeoff, "前沿上没有一对真权衡（营收更高 vs 成本更低）⇒ 前沿是退化的").toBe(true);
+
+    // ── 反向证据 5：解的数值**真来自本体**（41 座需求 vs 最小档 30 座 ⇒ 一定有人被挤）。
+    const minCap = out.frontier.concat(out.dominated).find((p) => p.levers.every((l) => l.value === 10));
+    expect(minCap, "最小档那个候选不见了").toBeDefined();
+    expect(minCap!.metrics.penalty, "全档最小产能下居然零违约 ⇒ 产能约束没生效").toBeGreaterThan(0);
+  });
+
+  it("② 反向：本体撑不起两个真目标 ⇒ applicable:false（**不补一个恒为 0 的假目标**）", async () => {
+    const t = await makeApp();
+    await enableSim(t, T, ACME);
+    // 与①同一个世界，唯独**去掉两个成本字段**：订单没有 refundCost、车厢没有 runCost。
+    await putType(t, T, "TicketOrder", [
+      { propKey: "ticketNo", dataType: "string", isPrimaryKey: true },
+      { propKey: "seatQty", dataType: "number" },
+      { propKey: "farePrice", dataType: "number" },
+    ]);
+    await putType(t, T, "Coach", [
+      { propKey: "coachId", dataType: "string", isPrimaryKey: true },
+      { propKey: "seatCapacity", dataType: "number" },
+    ]);
+    await putObj(t, T, "TicketOrder", "o1", { ticketNo: "o1", seatQty: 12, farePrice: 100 });
+    await putObj(t, T, "Coach", "c1", { coachId: "c1", seatCapacity: 20 });
+    await putObj(t, T, "Coach", "c2", { coachId: "c2", seatCapacity: 10 });
+
+    const a = await assemble(t, ACME);
+    expect(a.statusCode, "本体撑不起模型是**结论**不是故障 ⇒ 必须 200，不许 4xx/5xx").toBe(200);
+    expect(a.json?.applicable, "只剩一个真目标却装出来了 ⇒ 补了假目标").toBe(false);
+    if (a.json?.applicable !== false) return;
+    // 报缺必须**点名到字段**，让人去补本体而不是去改请求。
+    expect(a.json.missingRoles.join("|")).toMatch(/penalty（TicketOrder 上没有命中成本\/违约词库的数值字段）/);
+    expect(a.json.missingRoles.join("|")).toMatch(/cost（/);
+    expect(a.json.note).toMatch(/只接地到 1 个真目标/);
+    // 关键：这一态下调用方**拿不到任何可发的请求** ⇒ 前端据此不发 pareto（前端半由
+    // `sandbox-pareto-model-exit.seam.test.tsx` 咬「零请求 + placeholder」）。
+    expect(Object.keys(a.json).includes("request"), "报缺却还给了一份 request ⇒ 兜了假模型").toBe(false);
+  });
+
+  it("③ R6 确定性：同租户同范围两跑，装配结果与求解结果**逐字节一致**", async () => {
+    const run = async (): Promise<{ asm: string; sol: string }> => {
+      const t = await makeApp();
+      await enableSim(t, T, ACME);
+      await seedTicketWorld(t);
+      const a = await assemble(t, ACME, { sessionId: "sess-1" });
+      const j = a.json as Extract<ParetoAssembleResult, { applicable: true }>;
+      const s = await solve(t, ACME, j.request);
+      return { asm: a.body, sol: s.body };
+    };
+    const r1 = await run();
+    const r2 = await run();
+    expect(r1.asm, "装配结果两跑不一致 ⇒ 排序缺 tiebreaker（R6 破）").toBe(r2.asm);
+    expect(r1.sol, "求解结果两跑不一致").toBe(r2.sol);
+  });
+
+  it("④ R2 租户隔离：装配只读本租户 —— 别租户的本体一行都摸不到", async () => {
+    const t = await makeApp();
+    await enableSim(t, T, ACME);
+    await enableSim(t, "zeta", OTHER);
+    await seedTicketWorld(t, T); // 只给 acme 播种，zeta 是空的
+    const mine = await assemble(t, ACME);
+    expect(mine.json?.applicable, "自己租户装不出 ⇒ 本用例在测别的东西").toBe(true);
+    const theirs = await assemble(t, OTHER);
+    expect(theirs.statusCode).toBe(200);
+    expect(theirs.json?.applicable, "空租户居然装出来了 ⇒ 读到了别人的本体（R2 破）").toBe(false);
+    expect(JSON.stringify(theirs.json), "别租户回包里出现了本租户的类型名").not.toMatch(/TicketOrder|Coach/);
+  });
+
+  it("⑤ R3 门禁先于 authz：`sim.sandbox` 关 ⇒ 404 FEATURE_NOT_FOUND（不泄露存在性）", async () => {
+    const t = await makeApp();
+    await seedTicketWorld(t); // 本体齐全 —— 证明 404 来自门禁而不是"装不出"
+    const r = await assemble(t, ACME);
+    expect(r.statusCode).toBe(404);
+    expect(JSON.parse(r.body).error.code).toBe("FEATURE_NOT_FOUND");
+    // 同一格门禁也管着求解口（拆成两个 entitlement 会造出"能装配不能求解"的半开态）。
+    const s = await solve(t, ACME, { family: "cross_object_occupancy", objectives: [{ key: "a", dir: "min" }, { key: "b", dir: "min" }], levers: [{ key: "x.y.z", values: [1] }] });
+    expect(s.statusCode, "两条口的门禁不是同一格").toBe(404);
+  });
+
+  it("⑥ 错误信封：坏形状走 `parseBody` ⇒ 400 VALIDATION_ERROR（不是 500、不回显 zod 内部结构）", async () => {
+    const t = await makeApp();
+    await enableSim(t, T, ACME);
+    const r = await t.app.inject({ method: "POST", url: "/a/v1/sim/optimize-pareto/assemble", headers: ACME, payload: { family: 123, nope: 1 } });
+    expect(r.statusCode, "裸 .parse 会让校验失败漏成 500（本仓刚在同一条路由上修过这个坑）").toBe(400);
+    const e = JSON.parse(r.body).error;
+    expect(e.code).toBe("VALIDATION_ERROR");
+    expect(e.requestId, "错误信封缺 requestId").toBeTruthy();
+    expect(r.body, "回显了 zod 内部结构").not.toMatch(/invalid_type|"expected"|"received"/);
+  });
+
+  it("⑦ 装不出的族：诚实点名「能装哪些」，**不替调用方猜一份**", async () => {
+    const t = await makeApp();
+    await enableSim(t, T, ACME);
+    await seedTicketWorld(t);
+    const a = await assemble(t, ACME, { family: "facility_location" });
+    expect(a.statusCode).toBe(200);
+    expect(a.json?.applicable).toBe(false);
+    if (a.json?.applicable !== false) return;
+    expect(a.json.note).toMatch(/cross_object_occupancy/);
+  });
+
+  it("⑧ 范围收窄：selection 点名的车厢之外的**一节都不进 args**", async () => {
+    const t = await makeApp();
+    await enableSim(t, T, ACME);
+    await seedTicketWorld(t);
+    const a = await assemble(t, ACME, { selection: [{ objectType: "Coach", objectId: "c1" }, { objectType: "Coach", objectId: "c3" }] });
+    const j = a.json as Extract<ParetoAssembleResult, { applicable: true }>;
+    expect(j.applicable).toBe(true);
+    expect((j.request.args.lines as { id: string }[]).map((l) => l.id).sort(), "收窄没生效（c2 还在）").toEqual(["c1", "c3"]);
+    expect((j.request.args.orders as unknown[]).length, "订单侧被误伤收窄了").toBe(4);
+    // 装出来的仍是一份合法请求（收窄不该把契约弄坏）。
+    expect(ParetoRequestSchema.safeParse(j.request).success).toBe(true);
+  });
+});
