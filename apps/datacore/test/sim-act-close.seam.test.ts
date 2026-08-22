@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, type TestApp } from "./helpers.js";
-import { checkedTree, factHits, readRepo, srcCode } from "./factlock.js";
+import { type CodeTree, checkedTree, factHits } from "./factlock.js";
 
 /**
  * WO-SIM-ACT-CLOSE · **扰动闭环接缝门**（欠账 #150 / #151 / #152）。
@@ -23,34 +23,160 @@ import { checkedTree, factHits, readRepo, srcCode } from "./factlock.js";
 
 // ── 源码抽取（带金丝雀）─────────────────────────────────────────────────────────
 const FE_TREE = "apps/frontend-shell/src";
-const PERTURB_CALL = "createSimPerturbation(sessionId, {";
+
+/** 用户真按的那个东西 —— 本门要复刻的，就是它发出去的那个请求。 */
+const APPLY_BTN = 'data-testid="sandbox-perturbation-apply-btn"';
+/** 该按钮 `onClick` 直接调的处理器（链路第二段：按钮 → 处理器 → POST）。 */
+const APPLY_HANDLER = "onApplyPerturbation";
+/**
+ * 扰动 POST 调用点。**只认「在调用」，不认实参叫什么名字**（病历见 `perturbationCallKeys` 顶注）。
+ * `endpoints.ts` 里的封装**定义**写作 `createSimPerturbation = (`，中间隔着 `=`，天然不中
+ * —— 「定义」不是「调用」，这条区分是 CLAUDE.md 铁律 0.5 判据 2 的原话。
+ */
+const PERTURB_CALL = /\bcreateSimPerturbation\s*\(/;
 const EP_RE = /createSimPerturbation[\s\S]{0,900}?`(\/a\/v1\/sim\/sessions\/\$\{[^`]*?\}\/perturbations)`/;
-function locateFe(probe: string | RegExp, what: string): string {
-  const homes = factHits(srcCode(FE_TREE), probe);
+
+/**
+ * 定位一个**必须唯一**的事实：命中 0 处 = 事实没了；命中 ≥2 处 = **我锚错了东西**。
+ * ⚠ 不许放宽成「≥1 处取第一个」—— 那样第二个入口长出来时本门一声不吭，
+ *   而「①的绿到底来自哪次调用」就再也说不清（⑤ 的全部价值正在这一句上）。
+ */
+function locateFe(code: CodeTree, probe: string | RegExp, what: string): string {
+  const homes = factHits(code, probe);
   if (homes.length !== 1)
     throw new Error(`[sim-act-close] ${what} 全树命中 ${homes.length} 处（${homes.join("、")}）—— 形状变了，先修定位器再谈结论`);
   return homes[0]!;
 }
 
+/** 取树里某个文件**剥注释后**的可执行代码 —— 注释里抄一遍调用不算「代码里有」。 */
+function codeOf(code: CodeTree, file: string): string {
+  const hit = code.find(([f]) => f === file);
+  if (hit === undefined) throw new Error(`[sim-act-close] 树里没有 ${file} —— 扫描面塌了，结论作废`);
+  return hit[1];
+}
+
 /**
- * 从 `SandboxView.tsx` 里抽出「施加扰动」那次调用真正传的 body 字段名。
- * 抽的是 `createSimPerturbation(sessionId, { … })` 花括号里的一级键。
+ * 逐字符扫一段以 `open` 处 `(`/`{`/`[` 开头的分组，返回它的**一级**逗号分段（原文片段）。
+ * 串与模板串整段跳过（内部逗号不参与分段），嵌套分组的内容不参与分段。
  *
- * ⚠ **这个抽取器第一版就骗了我一次，原样记在这里**（铁律 0.6 第 1 次 = 修 + 记账）：
- * 初版正则只认 `^ {8}key:`，而 `magnitude,` / `durationTicks,` 在源码里是 **ES 简写属性**（无冒号）
- * ⇒ 抽出 5 个键、漏掉 2 个，而且那 5 个看着完全合理。若不是下面写死了期望全集，
- * 这个"看起来相关的数字"会被当成结论用下去 —— 形态即「我用 `key:` 的命中数当作
- * 『body 有哪些字段』的证据，而前者并不度量后者」。
- * 现在两种写法都认；⑤ 的双向反证（真源码必中 / 假源码必空）就是这条的常驻门。
+ * ⚠ 诚实边界（已知、不假装没有）：模板串 `${…}` 内部的**字符串里**若含裸 `}`，会提前收尾。
+ * 本仓当前无此写法；正则字面量同样不单独识别（与 `factlock.stripComments` 的边界一致）。
+ */
+function topLevelSegments(src: string, open: number): string[] {
+  const OPENERS = "({[";
+  if (!OPENERS.includes(src[open] ?? ""))
+    throw new Error(`[sim-act-close] 分段起点不是括号：${JSON.stringify(src.slice(open, open + 40))}`);
+  const segs: string[] = [];
+  let seg = "";
+  let depth = 0;
+  for (let i = open; i < src.length; i += 1) {
+    const c = src[i]!;
+    if (c === '"' || c === "'" || c === "`") {
+      // 串/模板串：原样收进本段，但把内部逗号换成替身，免得它把一段劈成两段。
+      let j = i + 1;
+      let tpl = 0; // 模板串插值 `${…}` 的嵌套深度（含插值里的对象字面量花括号）
+      while (j < src.length) {
+        const d = src[j]!;
+        if (d === "\\") { j += 2; continue; }
+        if (c === "`" && d === "$" && src[j + 1] === "{") { tpl += 1; j += 2; continue; }
+        if (c === "`" && tpl > 0 && d === "{") { tpl += 1; j += 1; continue; }
+        if (c === "`" && tpl > 0 && d === "}") { tpl -= 1; j += 1; continue; }
+        if (d === c && tpl === 0) { j += 1; break; }
+        j += 1;
+      }
+      if (depth === 1) seg += src.slice(i, j).replace(/,/g, "");
+      i = j - 1;
+      continue;
+    }
+    if (OPENERS.includes(c)) {
+      depth += 1;
+      if (depth > 1) seg += c;
+      continue;
+    }
+    if (")}]".includes(c)) {
+      depth -= 1;
+      if (depth === 0) { segs.push(seg); return segs; }
+      seg += c;
+      continue;
+    }
+    if (c === "," && depth === 1) { segs.push(seg); seg = ""; continue; }
+    if (depth === 1) seg += c;
+  }
+  throw new Error(`[sim-act-close] 分组没有闭合（起点 ${open}）—— 抽取器坏了，不许据此报「前端没接线」`);
+}
+
+/** 一级键 = `key:` / `"key":` / ES 简写 `key`。认不出来的分段**抛错**，绝不静默漏掉。 */
+const KEY_RE = /^\s*(?:["']([A-Za-z_$][\w$]*)["']|([A-Za-z_$][\w$]*))\s*(?::|$)/;
+
+/**
+ * 抽出 `src` 中位于 `callAt` 的那次 `createSimPerturbation(…, { … })` 调用真正传的 body 一级键。
+ *
+ * ⚠ **这个抽取器骗过我两次，两次原样记在这里**（铁律 0.6：第 1 次修+记账，第 2 次建机制）：
+ *
+ * · **第 1 次**：初版正则只认 `^ {8}key:`，而 `magnitude,` / `durationTicks,` 是 **ES 简写属性**
+ *   （无冒号）⇒ 抽出 5 个键、漏掉 2 个，那 5 个还看着完全合理。形态：
+ *   「我用 `key:` 的命中数当作『body 有哪些字段』的证据，而前者并不度量后者。」
+ *
+ * · **第 2 次（2026-08-22 · 本次红）**：定位器写死字面串 `createSimPerturbation(sessionId, {`，
+ *   而 2026-08-21 `WO-SIM-FE-HOME`（`6ff9d823`）给沙盘首页控制台加了**第二个合法入口**
+ *   （`console/PerturbTree.tsx` 的「添加扰动」上下文菜单）⇒ 命中从 1 变 2 ⇒ ①⑤ 双红。
+ *   更难看的是同一个探针**锚在实参变量名 `sessionId` 上**：`SandboxPlaysPanel.tsx` 那次
+ *   同样真实、字段全同的调用因为首参写作 `child.id`，被它**整个看不见**；
+ *   而键抽取写死 8 空格缩进，那处 10 空格缩进的调用即使被看见也会抽出 **0 个键**。
+ *   形态：「我用『某个字面写法在源码里出现过一次』当作『前端只有这一个扰动入口』的证据。」
+ *   —— 这正是 `factlock.ts` 顶注那句「锚在**事实**上，不锚在**位置**上」的反面。
+ *
+ * **机制（机器先说话，不靠人想起来）**：本抽取器现在
+ *   ① 只认「在调用」这件事，不认实参名、不认缩进、不认收尾写法（`topLevelSegments` 真扫括号）；
+ *   ② 认不出的分段**抛错**而不是跳过（上面第 1 次那种「静默少几个键」再也发生不了）；
+ *   ③ ① 里对**全树入口做普查**并逐个打真后端 —— 再长出第四个入口时，红的信息里
+ *      直接带着「它是谁、它传什么」，而不是一句没用的「命中 N 处」。
+ */
+function perturbationCallKeys(src: string, callAt: number): string[] {
+  const paren = src.indexOf("(", callAt);
+  if (paren < 0) return [];
+  const args = topLevelSegments(src, paren);
+  const body = args[1];
+  if (body === undefined) return [];
+  const brace = body.indexOf("{");
+  if (brace < 0) return []; // 第二个实参不是对象字面量（例如整个 body 是个变量）⇒ 抽不到形状
+  return topLevelSegments(body, brace).flatMap((seg) => {
+    if (seg.trim() === "") return []; // 尾逗号后的空白段
+    const m = KEY_RE.exec(seg);
+    if (m === null)
+      throw new Error(
+        `[sim-act-close] body 里有本抽取器不认识的写法（展开/计算属性？）：${JSON.stringify(seg.trim().slice(0, 60))}` +
+          " —— 先教会抽取器，不许静默漏掉一个字段（那正是它第一次骗人的形态）",
+      );
+    return [(m[1] ?? m[2])!];
+  });
+}
+
+/**
+ * 「施加扰动」按钮的处理器体内那次 POST 真正传的 body 一级键。
+ * 链路三段（按钮 → 处理器 → POST）缺任何一段 ⇒ 返回 `[]` ⇒ ①⑤ 当场红。
+ * ⑤ 拿它做**双向**反证：假源码必空、真源码必中 —— 空数组不是兜底，是"这段源码里真没有"。
  */
 function frontendPerturbationBodyKeys(src: string): string[] {
-  const at = src.indexOf("createSimPerturbation(sessionId, {");
-  if (at < 0) return [];
-  const open = src.indexOf("{", at);
-  // 一级键 = 缩进为 8 空格的 `key:`（普通属性）或 `key,`（ES 简写属性）。
-  const body = src.slice(open, src.indexOf("\n      });", open));
-  return [...body.matchAll(/^ {8}([a-zA-Z][a-zA-Z0-9]*)\s*[:,]/gm)].map((m) => m[1]!);
+  const h = src.indexOf(APPLY_HANDLER);
+  if (h < 0) return [];
+  const rel = src.slice(h).search(PERTURB_CALL);
+  return rel < 0 ? [] : perturbationCallKeys(src, h + rel);
 }
+
+/** 前端今天**所有**扰动 POST 入口的普查（封装定义本身不算 —— 那是定义不是调用）。 */
+function perturbationCallSites(code: CodeTree): { file: string; keys: string[] }[] {
+  const out: { file: string; keys: string[] }[] = [];
+  for (const [file, s] of code) {
+    const re = new RegExp(PERTURB_CALL.source, "g");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(s)) !== null) out.push({ file, keys: perturbationCallKeys(s, m.index) });
+  }
+  return out;
+}
+
+/** 形状指纹：入口**搬家不红**（不锚文件名），**改形状/多一个/少一个必红**。 */
+const shapeOf = (keys: string[]): string => [...keys].sort().join("+");
 
 // ── 世界种子：TypeA --FEEDS--> TypeB，一条已发布传导规则（coefficient 2·零延迟）────────
 // 行业无关（TypeA/TypeB/FEEDS 是结构名不是业务名），KPI 取**下游** TypeB 的 load ——
