@@ -34,6 +34,16 @@ import type { ConsoleSession } from "@/views/sim/console/useConsoleSession";
  *   · 会话     `[data-testid="sandbox-console-host"]` `data-session-reason` / `data-session-id`
  * 本门只判**第一条**；后两条由 `sandbox-host-wiring.seam.test.tsx` 守着，此处只做旁证。
  *
+ * ── 变异反证（本门真会说话的证据，不是"我觉得它会红"）─────────────────────────
+ * 把 `resolveParetoRequest` 里的 `ParetoRequestSchema.safeParse` 那两行换成
+ * `const req = raw as ParetoRequest;`（= 改造前的裸透传），实测原文：
+ * ```
+ *   × ⓪ 金丝雀 → 坏形状被放行了: expected { family: 'multi_objective', …(1) } to be undefined
+ *   × ③ 形状不对 → 坏形状的 request 被发出去了: expected [ Array(1) ] to deeply equal []
+ *   Tests  2 failed | 3 passed (5)
+ * ```
+ * ①②④ 保持绿 ⇒ 变异**精确命中**校验这一条，没有连坐。
+ *
  * R6 确定性：网络全桩、时间戳固定、无随机数、无真实时钟。
  */
 

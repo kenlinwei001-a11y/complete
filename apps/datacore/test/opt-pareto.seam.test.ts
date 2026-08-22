@@ -254,6 +254,15 @@ describe("WO-SIM-BE-PARETO · 帕累托解集（支配剔除 · 确定性 · 绑
    * ⚠ **本用例的第二半（不含 zod 内部字段）才是真正会退化的那一半**：只断言 400 的话，
    * 有人把它改回 `parse` 再在兜底处理器里加一句「ZodError → 400」照样绿，而回显仍在。
    * 故两半都咬：状态码 + 错误信封形状 + 内部字段黑名单。
+   *
+   * ── 变异反证（本用例真会说话的证据）───────────────────────────────────────
+   * 把 `app.ts` 那一行改回裸 `ParetoRequestSchema.parse(req.body ?? {})`，实测原文：
+   * ```
+   *   × WO-SIM-PARAM-WIRE ③ … → 校验失败被报成了 500 —— 「用户填错了」不是「服务器坏了」:
+   *       expected 500 to be 400 // Object.is equality
+   *   Tests  1 failed | 5 passed (6)
+   * ```
+   * 同文件另外 5 条保持绿 ⇒ 变异**精确命中**这一条，没有连坐。
    */
   it("WO-SIM-PARAM-WIRE ③ · body={} ⇒ 400 VALIDATION_ERROR + 统一信封，且不回显 zod 内部字段", async () => {
     const t = await makeApp();
