@@ -77,6 +77,7 @@ import { ImpactAnalysisRequestSchema } from "@platform/contracts"; // WO-IMPACT-
 import { analyzeImpact } from "./sim/impact-analysis.js";
 import { ChangeImpactPreviewRequestSchema } from "@platform/contracts"; // WO-CHANGE-IMPACT-PREVIEW · 变更传播预览（分桶+跳数+诚实位）
 import { ParetoRequestSchema } from "@platform/contracts"; // WO-SIM-BE-PARETO · 帕累托解集（多目标前沿）
+import { ParetoAssembleRequestSchema } from "@platform/contracts"; // WO-SIM-PARETO-MODEL-EXIT · 模型装配出口
 import { SimMetricSeriesQuerySchema } from "@platform/contracts"; // WO-SIM-SERIES-SCALE · 指标时序 query 单源（limit/order/白名单）
 import { runOptimizePareto } from "./solvers/opt-pareto.js";
 import type { SolveArgsFn } from "./solvers/opt-whatif.js";
@@ -2576,6 +2577,34 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(ParetoRequestSchema, req.body ?? {});
     const solve: SolveArgsFn = (fam, a) => solvers.invoke(c, fam, a);
     return runOptimizePareto(solve, body);
+  });
+  /**
+   * WO-SIM-PARETO-MODEL-EXIT · **模型装配出口**（上一条口的"请求从哪来"）。
+   *
+   * ══ 今天的行为是 X，应该是 Y ══════════════════════════════════════════════
+   * **X**：上面那条 `optimize-pareto` 要一份完整 `ParetoRequest`（族 + args + ≥2 目标 + ≥1 杠杆），
+   *   而全仓**没有任何出口**能产出它 —— 装配能力在 `opt-binding.ts` / `service.ts`
+   *   `assembleBaselineFromSelection`（`private`，且只回 Δ目标不回 args）里，谁都调不到。
+   *   于是页4 前沿图的 `data-source` 恒为 `placeholder`（实测：`sandbox-opt=placeholder`
+   *   而同页 `sandbox-opt-grid=endpoint` —— 两半的诚实位一真一假，正说明缺的是模型这一半）。
+   * **Y**：调用方只说「要优化什么范围」，这条口从**本租户已发布本体**装出模型并回一份
+   *   **可直接 POST 给上面那条口**的 `ParetoRequest`；装不出就诚实说缺哪格，调用方据此**不发**求解请求。
+   *
+   * ══ 为什么单开一条只读口，而不是给 `optimize-pareto` 加 autoBind 分支 ═══════
+   *  ① **「装配不出 ⇒ 零求解请求」这句话要能被测试咬住**。装配若长在求解口里，
+   *     那一次请求**就是**求解请求，"零请求"字面上不可能成立。
+   *  ② **可追溯**：装配结果是一份能复制、能重放的请求体，屏上那条前沿对应的就是它本身。
+   *  ③ `ParetoRequestSchema` 是 `strictObject` 且三件套必填；加 autoBind 等于把必填改成
+   *     条件必填，契约的拒绝力当场降一档。
+   *
+   * 门禁与上面那条**同一格**（`sim.sandbox`）：它俩是同一块屏的两步，
+   * 拆成两个 entitlement 会造出"能装配但不能求解"这种半开状态。关 ⇒ 404 FEATURE_NOT_FOUND（R3）。
+   * `applicable:false` 走 **200**（本体撑不起这个模型是**结论**不是故障，理由见契约注释）。
+   */
+  app.post("/a/v1/sim/optimize-pareto/assemble", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const body = parseBody(ParetoAssembleRequestSchema, req.body ?? {});
+    return solvers.assembleParetoModel(c, body);
   });
   /**
    * WO-SIM-BE-MATRIX · 环节 × 基地 损失矩阵 `chain_loss_matrix`（纯只读）。

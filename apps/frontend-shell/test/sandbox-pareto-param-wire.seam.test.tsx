@@ -127,6 +127,14 @@ function installHandlers(): void {
   server.use(
     http.get("*/a/v1/sim/sessions", () => HttpResponse.json({ items: [SESSION_RUNNING] })),
     http.post("*/a/v1/sim/optimize-pareto", () => HttpResponse.json(RESULT)),
+    // WO-SIM-PARETO-MODEL-EXIT · 宿主在「显式模型缺席」时会向装配口要一份模型。
+    // 本门测的是**显式那一路**，故这里显式桩成「装不出」：于是用例② 的
+    // 「一个 optimize-pareto 都不发」量的仍然是同一件事（宿主没模型就不求解），
+    // 而不是被一份自动装配出来的模型悄悄改成绿。自动那一路由
+    // `sandbox-pareto-model-exit.seam.test.tsx` 单独咬。
+    http.post("*/a/v1/sim/optimize-pareto/assemble", () =>
+      HttpResponse.json({ applicable: false, missingRoles: ["order（本门不测自动装配）"], note: "本门显式桩" }),
+    ),
     // 执行对比那一半与本门无关；显式桩成 404 让它**确定性**落占位，
     // 而不是靠 MSW 的未处理请求告警（那会在别的用例里变成噪声）。
     http.get("*/a/v1/sim/sessions/:id/metric-series", () => err(404, "NOT_FOUND")),

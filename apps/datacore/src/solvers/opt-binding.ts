@@ -223,6 +223,14 @@ export async function bindToSolverArgs(
  *  - order_contract(property on order → contractId)
  *  - contract(objectType) + contract_cap(property on contract)：**无合同类型 → 诚实报缺**（contracts=[]，contractBound=false），不伪造合同额度约束
  *  - eligibility(objectType) + elig_order/elig_line/elig_cost(property)：显式可产对；未绑 → 诚实标 eligibilityDefaulted（全资格全通、换型成本 0，不编成本数字）
+ *  - line_assign_cost(property on line)：**每条产线一个标量占用成本**，对所有订单同成本
+ *    （WO-SIM-PARETO-MODEL-EXIT 新增·可选）。语义与取法**照搬同文件 `facility_location` 的
+ *    `assign_cost`**（原话：「每设施携带 assignProp 标量 → 对所有 client 同成本（完全图，资格全开）」，
+ *    见本文件 `case "facility_location"` 分支里 `assignCosts` 那一段；⚠ 不写行号，行号会漂）——
+ *    不是新发明一套口径，是把已在跑的那条口径搬到本族上。
+ *    ⚠ 优先级 `elig_cost` > `line_assign_cost` > 0：显式可产对自带的成本最准；它没有时才退回
+ *    每线标量；两者都没有才是 0，而那个 0 由回包的 `assignCostBound:false` 标出来。
+ *    未绑 line_assign_cost ⇒ 成本仍为 0，既有调用方（无此 role）逐字节不变。
  */
 export async function bindCrossObjectOccupancy(
   view: BindingOntologyView,
@@ -256,6 +264,12 @@ export async function bindCrossObjectOccupancy(
     };
   });
   const lines = lineObjs.map((l) => ({ id: objId(l, linePk), capacity: num((l.props as Record<string, unknown>)[capProp]) }));
+  // 每线占用成本（可选）：绑了才有，绑不到就没有这一维 —— 没有时下面照旧写 0，
+  // 而那个 0 由回包的 `assignCostBound:false` 举起来，**不许被读成"占用免费"**。
+  const assignCostProp = rm.has("line_assign_cost") ? propForRole("line_assign_cost", rm) : undefined;
+  const lineAssignCost = new Map(
+    assignCostProp ? lineObjs.map((l) => [objId(l, linePk), num((l.props as Record<string, unknown>)[assignCostProp])]) : [],
+  );
 
   // 合同类对象：无绑定 → 诚实报缺（不伪造额度约束）。
   let contracts: { id: string; cap: number }[] = [];
@@ -279,10 +293,17 @@ export async function bindCrossObjectOccupancy(
     const eligObjs = (await view.listByType(tid, eligT.key)).sort((a, b) => a.id.localeCompare(b.id));
     eligibility = eligObjs.map((e) => {
       const p = e.props as Record<string, unknown>;
-      return { order: String(p[eoProp]), line: String(p[elProp]), cost: ecProp ? num(p[ecProp]) : 0 };
+      const line = String(p[elProp]);
+      // 成本三档优先级（显式 > 每线标量 > 没量到）：可产对自带成本字段最准；没有就退回
+      // 该线的标量占用成本（同 facility_location 的 assign_cost）；两者都没有才是 0，
+      // 而这个 0 由 `assignCostBound:false` 标出来，不许被读成"占用不要钱"。
+      return { order: String(p[eoProp]), line, cost: ecProp ? num(p[ecProp]) : (lineAssignCost.get(line) ?? 0) };
     });
   } else {
-    eligibility = orders.flatMap((o) => lines.map((l) => ({ order: o.id, line: l.id, cost: 0 })));
+    // 全资格全通。成本：绑了 line_assign_cost 就用该线的**真实字段值**（同 facility_location 的
+    // assign_cost 口径）；没绑才写 0 —— 0 在这里是"这一维没有数据"的记号，由
+    // `eligibilityDefaulted` + `assignCostBound` 两位一起说清楚，不许被读成"占用不要钱"。
+    eligibility = orders.flatMap((o) => lines.map((l) => ({ order: o.id, line: l.id, cost: lineAssignCost.get(l.id) ?? 0 })));
   }
 
   return {
@@ -295,5 +316,7 @@ export async function bindCrossObjectOccupancy(
     lineType: lineT.key,
     contractBound,
     eligibilityDefaulted: !eligibilityBound,
+    /** 占用成本这一维**有没有真数据**（false ⇒ eligibility[].cost 恒 0，不是"免费"是"没量到"）。 */
+    assignCostBound: eligibilityBound ? rm.has("elig_cost") || assignCostProp !== undefined : assignCostProp !== undefined,
   };
 }
