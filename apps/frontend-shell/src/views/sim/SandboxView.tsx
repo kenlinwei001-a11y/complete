@@ -171,6 +171,15 @@ export interface WorldSnapshot {
 
 // （`deriveBaseSnapshot` 的实现见 `./edgeActiveModel`，本文件顶部已 re-export，签名与行为逐字节不变。）
 
+/**
+ * WO-SANDBOX-MEMORY · 落点下拉一次**渲染**多少个 `<option>`（不是候选集有多少个）。
+ *
+ * 100 是"一屏滚得完、又不至于要输很多字才见到目标"的量；候选集仍是全量 11,337 个，
+ * 想要窗口外的哪一个，输它的 id / 类型 key 即可（见 `perturbTargetWindow` 那段注释）。
+ * ⚠ 这个数**不许当成"落点只有这么多"**：屏上必须同时写出"还有多少个没显示"。
+ */
+export const PERTURB_OPTION_WINDOW = 100;
+
 /** 对象当前态聚合成单值（节点着色用）：所有 stateVar 均值，0-100。 */
 function aggregate(row: Record<string, number> | undefined): number {
   if (!row) return 0;
@@ -825,6 +834,43 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const canPerturb = perturbTargets.length > 0 && effPStateVar !== "";
 
   /**
+   * ══ WO-SANDBOX-MEMORY · 落点下拉的**筛选窗口**（不是"只给前 N 个"）═══════════════════
+   *
+   * 病灶（真浏览器实测，不是推测）：这个 `<select>` 一次性把 `perturbTargets` **全量**渲染成
+   * `<option>` —— demo 租户是 **11,337 个**。堆快照逐项对账（`stage4.heapsnapshot`）：
+   *   · `<slot pseudo="-internal-option-slot">`            11,389 个 · 2.1MB
+   *   · `ShadowRoot`                                       11,415 个 · 1.9MB
+   *   · `<span pseudo="-internal-option-label-container">` 11,389 个 · 1.1MB
+   *   · `FiberNode` 48,714 个 · 6.1MB ＋ `Text` 46,433 个 · 4.1MB（绝大部分是这些 option）
+   * 合计约 **34MB 常驻**，且它让整页 DOM 从 1,005 涨到 12,969 —— 每次重渲染都要走一遍。
+   *
+   * ⛔ **不许缩水成"只给前 N 个"**（本单验收判据原文：可用搜索/虚拟滚动/分页，
+   *    但落点必须仍能选到**任意一个**真实对象）。故这里是**筛选**不是**截断**：
+   *  · 输入框现打现筛（对象 id 与类型 key 都匹），**全量 11,337 个都在候选集里**；
+   *  · 屏上只渲染命中的前 `PERTURB_OPTION_WINDOW` 个 —— 想要第 5,000 个，输它的名字即可；
+   *  · **当前选中的那个恒在窗口里**（否则筛掉之后 `<select>` 的 value 会掉到第一项，
+   *    用户的选择被静默改掉 —— 那比慢更糟）；
+   *  · 窗口外还剩多少，**屏上如实写出来**（不写就成了"列表只有这么多"的假象）。
+   *
+   * 为什么仍是原生 `<select>` 而不是换成自绘浮层：`sandbox-perturbation-object` 这个 testid
+   * 上挂着 6 处 `user.selectOptions(...)` 的既有断言（config-ux / perturbation ×2 /
+   * perturbation-timeline / plays / three-zone / u2-stepwise）——那是**别人单的接线断言**，
+   * 不由本单（只治内存）推翻。候选少于窗口时（测试里都是 1–3 个）逐字节同屏。
+   */
+  const [pObjectFilter, setPObjectFilter] = useState("");
+  const perturbTargetWindow = useMemo(() => {
+    const q = pObjectFilter.trim().toLowerCase();
+    const hits = q === ""
+      ? perturbTargets
+      : perturbTargets.filter((t) => t.id.toLowerCase().includes(q) || t.typeKey.toLowerCase().includes(q));
+    const shown = hits.slice(0, PERTURB_OPTION_WINDOW);
+    // 选中的那个若被筛掉/挤出窗口，补进来 —— 决不让筛选把用户已选的落点悄悄换掉。
+    const sel = effPObject === "" ? undefined : perturbTargets.find((t) => t.id === effPObject);
+    if (sel && !shown.some((t) => t.id === sel.id)) shown.unshift(sel);
+    return { shown, hitCount: hits.length, hiddenCount: Math.max(0, hits.length - shown.length) };
+  }, [perturbTargets, pObjectFilter, effPObject]);
+
+  /**
    * 建会话：baseSnapshot 由配置派生（无业务常数）。
    *
    * WO-SIM-SCOPE-LOCAL ②：`scope` 从前是硬写的 **`{}`**（空范围）——向导屏里用户逐步选好的
@@ -1448,18 +1494,40 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                 </select>
 
                 <span className={styles.sub}>落点对象</span>
+                {/* WO-SANDBOX-MEMORY：筛选框 + 窗口（**候选仍是全量**，见 `perturbTargetWindow` 头注）。
+                    整块仍在同一个 grid 单元里 ⇒ 不新增一行高度，版面门的首屏锚点不动。 */}
+                <div style={{ display: "grid", gap: 4 }}>
+                  <input
+                    data-testid="sandbox-perturbation-object-filter"
+                    aria-label="筛选扰动落点对象"
+                    placeholder={`筛选（共 ${perturbTargets.length} 个落点）`}
+                    value={pObjectFilter}
+                    onChange={(e) => setPObjectFilter(e.target.value)}
+                  />
                 <select
                   data-testid="sandbox-perturbation-object"
                   aria-label="扰动落点对象"
                   value={effPObject}
                   onChange={(e) => setPObject(e.target.value)}
                 >
-                  {perturbTargets.map((t) => (
+                  {perturbTargetWindow.shown.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.typeKey} · {t.id}
                     </option>
                   ))}
                 </select>
+                  {/* 窗口外还剩多少，如实写出来 —— 不写就成了"落点只有这么多"的假象（诚实缺席 R13）。 */}
+                  {perturbTargetWindow.hiddenCount > 0 || pObjectFilter.trim() !== "" ? (
+                    <span className={styles.sub} data-testid="sandbox-perturbation-object-window">
+                      {perturbTargetWindow.hitCount === 0
+                        ? `没有匹配「${pObjectFilter.trim()}」的落点（共 ${perturbTargets.length} 个）`
+                        : `命中 ${perturbTargetWindow.hitCount} 个，已列出 ${perturbTargetWindow.shown.length} 个` +
+                          (perturbTargetWindow.hiddenCount > 0
+                            ? `，另有 ${perturbTargetWindow.hiddenCount} 个未列出 —— 输入 id 或类型即可选到任意一个（候选是全量 ${perturbTargets.length} 个，不是只有这些）`
+                            : "")}
+                    </span>
+                  ) : null}
+                </div>
 
                 <span className={styles.sub}>状态变量</span>
                 <select
