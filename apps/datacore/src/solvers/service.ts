@@ -20,6 +20,7 @@ import { generateSolverDraft, checkGrounding, type SolverGenSpec } from "./llm-g
 import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 import type { OutboxService } from "../outbox.js";
 import type { SolverArtifact, SolverGenDraft } from "@platform/contracts";
+import type { ParetoAssembleRequest, ParetoAssembleResult } from "@platform/contracts"; // WO-SIM-PARETO-MODEL-EXIT
 import { capacityForecast, computeByProcessModel, computeRollup, curveMult, patchCapacityContext, type ForecastArgs } from "./capacity.js";
 import { CAPACITY_FACTOR_BINDINGS, matchesGrain, type FactorGrain } from "@platform/contracts";
 // WO-AUDIT-TIMELINE-LIVESOURCE：审计口径 → A8 真日序列源映射（单一出处·loadContext 按需加载 audit_ts_daily）。
@@ -31,6 +32,7 @@ import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
 // WO-69 P2 · Function 本体签名（求解器读/写本体面声明）—— 列级守卫的收窄依据 + DRIL inputSpec 的派生源。
 import { SOLVER_ONTOLOGY_SIGNATURES, mergeReadSurfaces } from "./ontology-signature.js";
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
+import { assembleParetoModel } from "./opt-assemble.js"; // WO-SIM-PARETO-MODEL-EXIT · 模型装配的**出口**（此前装配能力有、无人能调）
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import { lexiconHit } from "./field-role-lexicon.js"; // WO-OPTWHATIF-NL-WIRING · 复用 A13 角色推断机制（field-roles/resolveFieldRoles 同源词库·配置化 R14·非业务常数）+ 结构信号 fanOut（R6·零 LLM）
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
@@ -4787,6 +4789,29 @@ export class SolverService {
     const args = await bindToSolverArgs(view, family, binding, extra);
     const out = await this.invoke(ctx, family, args);
     return { ...out, binding: { templateKey: binding.templateKey || family, roles: binding.roleBindings.map((r) => ({ role: r.role, ...r.bind })) } };
+  }
+
+  /**
+   * WO-SIM-PARETO-MODEL-EXIT · **帕累托模型装配的出口**（纯读·不写仓储·不发事件）。
+   *
+   * 与上面 `assembleBaselineFromSelection` 的分工，一句话说清（两者**不许合并**）：
+   *  · 那个是 `private`，服务于 `optimize_whatif` 的「基线 args」，**只回 Δ目标不回 args**——
+   *    它的产物是一次比较，不是一份可交给别人重放的模型。
+   *  · 这个是 `public`，产物是一份**完整的 `ParetoRequest`**：调用方拿到就能原样 POST，
+   *    也就能把「屏上这条前沿是怎么来的」原样贴出来。两者共用同一份词库与同一个绑定层
+   *    （`field-role-lexicon` / `opt-binding`），故口径不会分叉。
+   *
+   * R2：`ctx.tenantId` 全程透传，`listTypes`/`listByType` 都是租户内查询，别租户一行摸不到。
+   */
+  async assembleParetoModel(ctx: AuthCtx, input: ParetoAssembleRequest): Promise<ParetoAssembleResult> {
+    return assembleParetoModel(
+      {
+        listTypes: (tid) => this.repos.ontologyTypes.list(tid),
+        listByType: (tid, typeKey) => this.repos.objects.listByType(tid, typeKey),
+      },
+      ctx.tenantId,
+      input,
+    );
   }
 
   // ── 轨B·增量3 optimize_whatif（结构化扰动→sidecar 重解→Δ目标/可行性/冲突约束） ────
