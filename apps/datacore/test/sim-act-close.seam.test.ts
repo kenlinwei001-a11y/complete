@@ -455,6 +455,8 @@ describe("WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → K
     const fe = checkedTree(FE_TREE, 'data-testid="sandbox-tick-btn"', 100);
     expect(
       frontendPerturbationBodyKeys(codeOf(fe, locateFe(fe, APPLY_BTN, "「施加扰动」按钮宿主"))).length,
+      "前端真源码里抽不到「施加扰动」的 body 字段 ⇒ 按钮还在但处理器已不发 POST（#150 复发），" +
+        "或抽取器坏了 —— 两者都不许当成「本门通过」",
     ).toBeGreaterThan(0);
   });
 });
