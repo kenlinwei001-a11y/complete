@@ -328,12 +328,19 @@ const cellKey = (objectId: string, stateVar: string): string => `${objectId}\u00
  *    **本单的分水岭就在这里**：落点若不满足它们，`propagateTick` 的 `state[sourceId]` 取不到，
  *    屏上那一格看着变了、下游一动不动（`SandboxView.tsx`「扰动落点候选」注释记的正是这个坑）。
  *
- * **② 排序键 = 传导可达面**（`reachCells`）：从该格出发，在「格图」上按**引擎的时基**做 BFS，
- *    一条边的开销 = `1 + delayTicks` 拍。判据来自引擎自己：某格在 tick `T` 变了，
- *    `propagateTick(tick=T)` 读它、产出 tick `T+1` ⇒ 即时边（`delayTicks:0`）下游在 `T+1` 变；
- *    延迟边 `arriveTick = T+1`，要等 `tick===T+1` 那一次调用才结算 ⇒ 下游在 `T+2` 变。
- *    预算 = `budgetTicks`（= 世界总拍数 − 扰动 `startTick`）。**超预算的边不计入** ——
- *    数一条这辈子都不会在这条 4 个点的曲线上出现的传导，就是拿一个不度量目标的数当排序键。
+ * **② 排序键 = 传导可达面**（`reachCells`）：从该格出发，在「格图」上按**引擎的时基**做 BFS。
+ *    预算 = `budgetTicks`（= 世界总拍数 − 扰动 `startTick`）；超预算的边不计入 ——
+ *    数一条这辈子都不会在这条曲线上出现的传导，就是拿一个不度量目标的数当排序键。
+ *
+ *    ⚠ **第一跳与后续跳的开销不一样，这不是笔误**（实测逼出来的：按"都算 `1+delayTicks`"
+ *    估出 37 格，真跑却动了 94 格 —— 差的就是这一跳）。机制在 `propagation.ts:593-595`：
+ *    引擎**先把本拍落地的扰动写进 `effState`，再让规则读 `effState`**，
+ *    原注释写明「本 tick 落地的扰动**当 tick 就要往下游传**，否则扰动要白等一个 tick」。所以：
+ *      · **第一跳**（源就是扰动落点）：开销 = `delayTicks`。即时边的下游**与落点同一拍**就变。
+ *      · **后续跳**（源是被带动的格子）：该格在 tick `T` 变 ⇒ `propagateTick(tick=T)` 读它、
+ *        产出 `T+1` ⇒ 即时边下游在 `T+1` 变；延迟边 `arriveTick=T+1` 要等 `tick===T+1`
+ *        那次调用才结算 ⇒ 下游在 `T+2` 变。开销 = `1 + delayTicks`。
+ *    照"都算 `1+delayTicks`"会**系统性少数一跳**，排出来的第一名就未必是真的第一名。
  *
  * **③ 幅度 = 该状态变量在本世界的观测全距**（`max − min`，`mode:"delta"`）。
  *    为什么是全距而不是"翻一倍"「+15%」这类数：全距是**这个世界自己的离散度**，
@@ -378,16 +385,20 @@ export function pickSeedPerturbation(args: {
     else rulesBySource.set(k, [r]);
   }
 
-  /** 一格的**一跳**下游：`{格, 这一跳花几拍}`。空数组 ⇒ 这一格推不动任何东西。 */
-  const stepsFrom = (objectId: string, stateVar: string): { objectId: string; stateVar: string; cost: number }[] => {
+  /**
+   * 一格的**一跳**下游：`{格, 这条边的 delayTicks}`。空数组 ⇒ 这一格推不动任何东西。
+   * 刻意只回带 `delayTicks` 而不是算好的开销：开销取决于**这是第几跳**（见头注②），
+   * 那是 BFS 的事，不是这里的事 —— 在这里就把它算死，第一跳那条例外就没地方表达了。
+   */
+  const stepsFrom = (objectId: string, stateVar: string): { objectId: string; stateVar: string; delayTicks: number }[] => {
     const t = typeOf.get(objectId);
     if (t === undefined) return [];
-    const out: { objectId: string; stateVar: string; cost: number }[] = [];
+    const out: { objectId: string; stateVar: string; delayTicks: number }[] = [];
     for (const r of rulesBySource.get(cellKey(t, stateVar)) ?? []) {
       for (const toId of navOut.get(navKey(r.viaLinkKey, objectId)) ?? []) {
         // 目标类型必须对得上 —— 同一条链路键可能连着别的类型（`targetsOf` 的同一层过滤）。
         if (typeOf.get(toId) !== r.targetTypeKey) continue;
-        out.push({ objectId: toId, stateVar: r.targetStateVar, cost: 1 + r.delayTicks });
+        out.push({ objectId: toId, stateVar: r.targetStateVar, delayTicks: r.delayTicks });
       }
     }
     return out;
@@ -422,13 +433,16 @@ export function pickSeedPerturbation(args: {
       candidates += 1;
 
       // ── BFS：按引擎时基算可达面。同一格可能经不同路径到达，留**最早到达**的那次 ──
+      // `spent` = 该格比落点晚几拍才开始变。落点自己 = 0。
+      // 第一跳开销 `delayTicks`、后续跳 `1 + delayTicks`（理由见头注②：引擎当拍就往下传）。
       const bestArrival = new Map<string, number>(); // cellKey → 最早到达拍数
       let frontier: { objectId: string; stateVar: string; spent: number }[] = [{ objectId, stateVar, spent: 0 }];
+      let isFirstHop = true;
       while (frontier.length > 0) {
         const next: typeof frontier = [];
         for (const cur of frontier) {
           for (const st of stepsFrom(cur.objectId, cur.stateVar)) {
-            const spent = cur.spent + st.cost;
+            const spent = cur.spent + (isFirstHop ? st.delayTicks : 1 + st.delayTicks);
             if (spent > budgetTicks) continue; // 这辈子不会出现在这条曲线上，不计
             const k = cellKey(st.objectId, st.stateVar);
             const seen = bestArrival.get(k);
@@ -438,6 +452,7 @@ export function pickSeedPerturbation(args: {
           }
         }
         frontier = next;
+        isFirstHop = false;
       }
       // 落点自己那一格不算"下游"（它是因，不是果）。
       bestArrival.delete(cellKey(objectId, stateVar));

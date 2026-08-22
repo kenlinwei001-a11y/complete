@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
 import {
+  DEMO_SIM_WORLD_PERTURB_START_TICK,
   DEMO_SIM_WORLD_SESSION_ID,
   DEMO_SIM_WORLD_TICKS,
   seedDemoSimWorld,
 } from "../src/sim/seed-world.js";
-import type { SimSession, TickState } from "@platform/contracts";
+import type { Perturbation, SimMetricSeriesResponse, SimSession, TickState } from "@platform/contracts";
 
 /**
  * WO-SIM-SEED-WORLD · **接缝门**：种子跑完 ⇒ 列表里有 RUNNING 会话，且 tick 态存在、非空、真动过。
