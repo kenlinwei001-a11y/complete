@@ -1,5 +1,5 @@
 /**
- * WO-DSH-E2E · §16.2 L1 双跑字节比对（63 任务）driver。
+ * WO-DSH-E2E · §16.2 L1 双跑字节比对（64 任务）driver。
  *
  * 对账口径单源 = fixtures/dualrun-corpus/RECONCILIATION.md（team-lead 2026-08-19 重定义：
  * scalar + kernel 唯一白名单 + native 迭代锚 + dsh stats 对齐）。骨架扩 N2
@@ -16,13 +16,17 @@
  * 环境：负载 >400 时按 env-precheck 口径 180s timeout 串行（--pool=forks --maxWorkers=1
  * --maxConcurrency=1 --testTimeout=180000）。
  */
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { AgentDefinition, AgentRunRecord, RuleVerdict, SkillDefinition } from "@platform/contracts";
 import { createTestApp, TENANT, type TestApp } from "./helpers.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 import { scanBlocks } from "../src/util/numerics.js";
+import { MockMcpClient } from "../src/mcp/mock.js";
+import { encryptSecret } from "../src/crypto.js";
 import {
   STUB_DCP_SPEC,
   STUB_FAKE_KEY,
@@ -40,6 +44,10 @@ import {
 } from "./fixtures/dualrun-corpus/corpus.js";
 
 const HARNESS_DIR = fileURLToPath(new URL("../../../packages/dsh-harness", import.meta.url));
+/** W8副：mcp 语料任务 dsh 臂的 stdio fixture（三工具 echo/echo2/util.calc，与语料 tools 表逐字镜像）。 */
+const MOCK_SERVER_MULTI = fileURLToPath(new URL("./fixtures/mock-mcp-stdio-server-multi.mjs", import.meta.url));
+/** W8副：显式假凭据（绝非真凭据；泄凭扫描对象为真凭据前缀模式）。 */
+const FAKE_MCP_SECRET = "wo-dsh-prod-ready-w8sub-fake-secret-0000000000000000";
 const ctx = { tenantId: TENANT, userId: "user-planner", roles: ["planner"] };
 
 // ---------------------------------------------------------------------------
@@ -91,6 +99,12 @@ interface ArmProducts {
    * （reassemble 纯重组装零 IO——固有不对称 #4 的审计空壳维度，本面把它从「登记」升级为「锚」）。
    */
   auditRows: { toolName: string; outcome: string; input: unknown }[];
+  /**
+   * W8副（#54）：本臂模型可见工具名集（原始序）。native 臂 = llm.agentRequests[0].tools
+   * （in-process mock 捕获面）；dsh 臂 = stub.requests[0].body.tools[].function.name
+   * （子进程世界真注册面，wire 实证）。仅 mcp 语料任务捕获/比对。
+   */
+  visibleToolNames?: string[];
 }
 
 function agentDef(task: DualRunTask): AgentDefinition {
@@ -103,10 +117,16 @@ function agentDef(task: DualRunTask): AgentDefinition {
     description: "WO-DSH-E2E L1 dualrun50 corpus agent",
     model: STUB_DCP_SPEC, // 两臂同值：model 成真 scalar（探针 P1 坐实 roleModel 回落原值）
     systemPrompt: `你是 L1 双跑对账 agent（${task.id}）。`,
-    tools: [{ kind: "BUILTIN", name: "query_objects" }],
+    tools: [
+      { kind: "BUILTIN", name: "query_objects" },
+      // W8副：mcp 语料任务的 MCP ref（toolFilter 真源 = agent.tools，contracts AgentToolRefSchema）。
+      ...(task.mcp
+        ? [{ kind: "MCP" as const, mcpConfigId: task.mcp.configId, ...(task.mcp.toolFilter ? { toolFilter: task.mcp.toolFilter } : {}) }]
+        : []),
+    ],
     ruleBindings: task.ruleBindings,
     skills: task.skills.map((s) => ({ skillId: skillIdOf(task.id, s.key), version: 1 as const })),
-    mcpServers: [],
+    mcpServers: task.mcp ? [{ mcpConfigId: task.mcp.configId }] : [],
     scopeDeclaration: { objectTypes: ["Base"], toolNames: ["query_objects"] },
     status: "PUBLISHED",
   };
@@ -153,10 +173,34 @@ function patchRules(t: TestApp, task: DualRunTask): void {
 
 async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProducts> {
   const stub = flag === "on" ? await startStubOpenAi(task.dsh.rounds.map((r) => ({ ...r }))) : undefined;
+  // W8副：mcp 语料任务两臂同 seed——in-process MockMcpClient 同工具表镜像（宿主
+  // expandAgentTools 枚举面两臂同源）；记录文件路径仅 dsh 臂 stdio fixture 真写。
+  const mcpTmp = task.mcp ? mkdtempSync(join(tmpdir(), `dualrun-mcp-${task.id}-`)) : undefined;
+  const mcpOpt = task.mcp ? { mcp: new MockMcpClient({ [task.mcp.configId]: task.mcp.tools }) } : {};
   const t = await createTestApp(
     // F-1：dsh 臂钉 poc 档（生产档治理已切 http；govDeny 语料依赖 mock 模式 PLATFORM_GOV_DENY）。
-    stub ? { providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never, env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" } } : {},
+    stub ? { providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never, env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" }, ...mcpOpt } : mcpOpt,
   );
+  if (task.mcp && mcpTmp) {
+    const mcp = task.mcp;
+    await t.repos.mcpConfigs.insert({
+      id: mcp.configId,
+      tenantId: TENANT,
+      name: `dualrun mcp ${task.id}`,
+      serverName: mcp.serverName,
+      transport: { type: "stdio", command: process.execPath, args: [MOCK_SERVER_MULTI, join(mcpTmp, "record.json")] },
+      credentialRef: mcp.credId,
+      credentialKind: "static_bearer",
+      status: "ACTIVE",
+    } as never);
+    await t.repos.credentials.insert({
+      id: mcp.credId,
+      tenantId: TENANT,
+      name: `dualrun mcp cred ${task.id}`,
+      ciphertext: encryptSecret(FAKE_MCP_SECRET, t.config.CREDENTIAL_KEY),
+      createdAt: new Date().toISOString(),
+    });
+  }
   for (const s of task.skills) await t.repos.skills.insert(skillDef(task, s));
   await t.repos.agents.insert(agentDef(task));
   patchRules(t, task);
@@ -191,6 +235,17 @@ async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProduct
       outcome: r.outcome,
       input: r.input,
     }));
+    // W8副：mcp 语料任务的可见工具名集捕获（各臂各源，比对在 compareArms）。
+    let visibleToolNames: string[] | undefined;
+    if (task.mcp) {
+      if (flag === "on") {
+        const tools = (stub?.requests[0]?.body as { tools?: { function?: { name?: string } }[] } | undefined)?.tools ?? [];
+        visibleToolNames = tools.map((x) => x.function?.name ?? "");
+      } else {
+        const reqs = (t.llm as unknown as { agentRequests: { tools: { name: string }[] }[] }).agentRequests;
+        visibleToolNames = (reqs[0]?.tools ?? []).map((x) => x.name);
+      }
+    }
     return {
       outcome: result.outcome,
       answer: result.answer as Record<string, unknown>,
@@ -201,12 +256,14 @@ async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProduct
       events,
       stubRequests: stub?.requests ?? [],
       auditRows,
+      visibleToolNames,
     };
   } finally {
     delete process.env.DSH_HARNESS;
     delete process.env.DSH_HARNESS_DIR;
     delete process.env.PLATFORM_GOV_DENY;
     if (stub) await stub.close();
+    if (mcpTmp) rmSync(mcpTmp, { recursive: true, force: true });
   }
 }
 
@@ -541,6 +598,48 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
     }
   }
 
+  // ---- W8副（#54）· MCP 可见性 name-set parity（mcp 语料任务限定；不咬 description 字节——REC §3 #13）----
+  if (task.mcp) {
+    const mcp = task.mcp;
+    const extras = mcp.dshExtraTools ?? [];
+    const nativeExtras = mcp.nativeExtraTools ?? [];
+    const yRaw = y.visibleToolNames ?? [];
+    const xRaw = x.visibleToolNames ?? [];
+    // 反向钉：声明的 poc 夹具件必须真在 dsh 原始集（豁免件消失即红——防豁免名单掩盖真实漂移）。
+    // 仅 y 臂确为 dsh（flag on）时钉；A5 同臂复跑 off/off 时 y 是 native 臂，无夹具件可钉。
+    if (flags.y === "on") {
+      for (const e of extras) {
+        expect(yRaw, `${task.id} name-set：声明豁免件 ${e} 须真在 dsh 臂可见集（豁免不得掩盖消失）`).toContain(e);
+      }
+    }
+    // 对称反向钉（native 侧）：load_skill 类 native 固有额外面必须真在 native 原始集
+    // （engine.ts:811 无条件挂 vs setup-spec.ts:251 条件挂——预存不对称，REC 登记）。
+    // 仅 x 臂确为 native（flag off）时钉。
+    if (flags.x === "off") {
+      for (const e of nativeExtras) {
+        expect(xRaw, `${task.id} name-set：声明豁免件 ${e} 须真在 native 臂可见集（豁免不得掩盖消失）`).toContain(e);
+      }
+    }
+    const xSet = xRaw.filter((n) => !(flags.x === "off" && nativeExtras.includes(n))).sort();
+    const ySet = yRaw.filter((n) => !(flags.y === "on" && extras.includes(n))).sort();
+    expect(ySet, `${task.id} W8副 name-set parity：双臂模型可见工具名集合（dsh 剥 poc 夹具件后）逐序等`).toEqual(xSet);
+    // 防「空集对空集」假绿 + 锚收窄真发生：mcp__ 子集恰等语料声明的滤后留存名
+    // （宿主 expandAgentTools 同口径：裸名/全名双形态匹配）。
+    const expectedMcp = mcp.tools
+      .filter(
+        (tool) =>
+          !mcp.toolFilter ||
+          mcp.toolFilter.includes(tool.name) ||
+          mcp.toolFilter.includes(`mcp__${mcp.serverName}__${tool.name}`),
+      )
+      .map((tool) => `mcp__${mcp.serverName}__${tool.name}`)
+      .sort();
+    expect(
+      xSet.filter((n) => n.startsWith("mcp__")),
+      `${task.id} name-set 防空集假绿：x 臂 mcp__ 子集须恰为语料滤后留存名`,
+    ).toEqual(expectedMcp);
+  }
+
   // ---- sketch / outcome parity ----
   expect(x.sketch).toEqual(y.sketch);
   if (div) {
@@ -559,10 +658,12 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
 // 套件
 // ---------------------------------------------------------------------------
 
-describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（63 任务）", () => {
+describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（64 任务）", () => {
   it("A0 语料自检：构成 / 四维覆盖 / gated 槽在册", () => {
-    expect(DUALRUN_CORPUS.length).toBe(63);
-    expect(new Set(DUALRUN_CORPUS.map((t) => t.id)).size).toBe(63);
+    expect(DUALRUN_CORPUS.length).toBe(64);
+    expect(new Set(DUALRUN_CORPUS.map((t) => t.id)).size).toBe(64);
+    // W8副：MCP name-set parity 任务恰一条（dr50-cl；新增 mcp 任务须同步本钉与 REC 登记）。
+    expect(DUALRUN_CORPUS.filter((t) => t.mcp !== undefined).length).toBe(1);
     const deny = DUALRUN_CORPUS.filter((t) => t.cls.startsWith("deny_"));
     expect(deny.length).toBeGreaterThanOrEqual(10);
     expect(deny.filter((t) => t.cls === "deny_pre").length).toBeGreaterThanOrEqual(1);

@@ -66,6 +66,13 @@ export interface DshMcpServerSpec {
   toolCallTimeoutMs: number;
   failOnStartupError: boolean;
   reconnect: { enabled: boolean; initialDelayMs: number; maxDelayMs: number; maxAttempts: number };
+  /**
+   * WO-DSH-PROD-READY · W8副（可见性 parity）：注册期工具允许表（公开名集合）。
+   * additive 可选键——ref 无 toolFilter ⇒ 键缺席（setup 帧逐字节旧行为，A6 形态B 咬点）；
+   * 有 ⇒ 子进程 mcp-client-tenant syncTools 注册期按表收窄（exotic 规范化名不匹配裸拼接
+   * 表项 ⇒ fail-closed 丢弃）。键缺席与空数组语义不同：空数组 = 全丢（toolFilter: []）。
+   */
+  toolAllowlist?: string[];
 }
 
 export interface DshSkillSpec {

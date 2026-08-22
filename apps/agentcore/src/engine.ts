@@ -621,7 +621,23 @@ export class ExecutionEngine {
           if (!mcpConfig) throw new Error(`dsh mcp forward: mcp config not found: ${ref.mcpConfigId}`);
           const credRow = mcpConfig.credentialRef ? await this.deps.repos.credentials.get(mcpConfig.credentialRef) : undefined;
           const secret = credRow ? decryptSecret(credRow.ciphertext, cfg.CREDENTIAL_KEY) : undefined;
-          mcpServers.push(mapMcpConfig(mcpConfig, () => secret));
+          const spec = mapMcpConfig(mcpConfig, () => secret);
+          // WO-DSH-PROD-READY · W8副（可见性 parity）：toolFilter 真源 = agent.tools 的 MCP ref
+          // （contracts AgentToolRefSchema；mcpServers 挂载行本身只有 mcpConfigId 不带 filter）。
+          // 同 config 首个带 filter 的 tools-ref 决定允许表——派生源 = expandAgentTools **收窄后**
+          // 结果（`expanded`，Phase6C router 收窄前，与 native 臂模型可见面同口径；router 二次
+          // 收窄只作用于宿主 tools/授予面，不在本 WO 复刻到子进程，登记为既有残差）。匹配键 =
+          // expanded 公开名（contracts mcpToolFullName 裸拼接）；子进程 mcp-client-tenant 以
+          // publicToolName 输出比对，exotic 裸名规范化后不匹配 ⇒ fail-closed 丢弃（收窄方向）。
+          // 无 tools-ref / toolFilter undefined ⇒ 键不出（A6 形态B：setup 帧逐字节旧行为）；
+          // toolFilter: [] ⇒ 空数组键在，该 server 工具全丢（与 native 臂全剔同语义）。
+          const toolRef = agent.tools.find((tr) => tr.kind === "MCP" && tr.mcpConfigId === ref.mcpConfigId);
+          if (toolRef && toolRef.kind === "MCP" && toolRef.toolFilter !== undefined) {
+            spec.toolAllowlist = expanded
+              .filter((t) => t.binding.kind === "MCP" && t.binding.mcpConfigId === ref.mcpConfigId)
+              .map((t) => t.name);
+          }
+          mcpServers.push(spec);
         }
       }
       const setup = buildSessionSetup({

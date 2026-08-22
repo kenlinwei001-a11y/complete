@@ -104,7 +104,7 @@ meta-only 语料下两臂非伪步序列均空（load_skill/final_answer 两臂�
 | coordinator.planned | 编排层事件·本驱动级不可达（orchestrator:2546） |
 | step.started（真工具名族） | 真工具步族·meta-only 语料不可达（固有不对称 #3；发射点 loop.ts:847 / mapper tool/call 分支） |
 | step.completed（真工具名/status 族） | 真工具步族·meta-only 语料不可达（固有不对称 #3；loop.ts:848 / mapper tool/result 分支） |
-| answer.final | **真触发**：全部 63 条（双臂；测试镜像 orchestrator:2187 同行发射；矩阵实证锚 dr50-aa） |
+| answer.final | **真触发**：全部 64 条（双臂；测试镜像 orchestrator:2187 同行发射；矩阵实证锚 dr50-aa） |
 | action_draft.created | 编排层事件·本驱动级不可达（orchestrator:2171 runPathB 段） |
 | task.failed | 编排层事件·本驱动级不可达（orchestrator:1727/:2876；runRegisteredAgent 层 FAILED 无 SSE 发射） |
 | task.cancelled | 编排层事件·本驱动级不可达（orchestrator 取消面发射点群） |
@@ -277,8 +277,41 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
    合法形态，不作对账差；工具结果事实源 = 宿主 tool_calls 表 ∪ 帧流，任一单面不完整。
    实证锚：dsh-engine-tool-bridge.seam B6（exec 3000ms / fetch 100ms / 宿主 400ms ⇒
    帧 ERROR ∧ 晚落 OK 行）。
+13. **MCP 工具 description 前缀差（native 展示性修饰；已裁决·登记不修，W8副 侦察登记）**：
+   native 臂 expandAgentTools 给 MCP 工具 description 加 `[MCP·外部] ` 前缀
+   （engine.ts:392）；dsh 臂 mcp-client-tenant 注册裸 description
+   （mcp-client-tenant.mjs:175）⇒ 两臂 tools 面 description 字节差（工具名集合、
+   名称路由、执行面均无差）。
+   **team-lead 判词（2026-08-21）：登记不修**——①前缀是 native 侧模型可见面的
+   展示性修饰，不影响名称路由与执行；②抹平只能二选一：native 摘前缀（动 native
+   代码，越出 W8副 边界）或 dsh 侧 vendor 层复刻前缀（双源漂移风险，与截断逻辑裁
+   同源复用同理）——两向不成比例；③W8副 parity 语料按 name-set 对拍，不咬
+   description 字节。**任何未来做 tools 面字节 parity 的语料必须先裁决此条。**
+   （落地注：判词一字未改；两处 file:line 按落线时点实况由 :382/:170 校正为
+   :392/:175——草稿定稿后 W8主/W9-full/W8副 本体的落码使行号漂移，REC 行号扫除
+   纪律优先于字面冻结。）
+14. **W8副 MCP 可见性 name-set parity 的豁免与边界（dr50-cl 对拍口径登记，2026-08-23）**：
+   dr50-cl 两臂模型可见工具**名集合**对拍（不咬 description 字节——#13），比对前
+   剥除以下**声明制**豁免件（CorpusMcp.dshExtraTools / nativeExtraTools，均带反向钉：
+   豁免件消失即红，防豁免掩盖真实漂移）：
+   ① **echo_tool（dsh 臂 poc 夹具件）**：cordis.poc.yml echo-tool 插件常量面，
+   生产 cordis.yml 无、native 臂无——预存档差，非本 WO 面。
+   ② **load_skill（native 臂固有额外面，dr50-cl 首跑实证红出）**：native 注册 agent 路
+   engine.ts:811 `loadSkillEnabled: true` **无条件**把 load_skill 挂上模型面（零技能
+   也挂，调用期 resolveSkill 才落空）；dsh 路 setup-spec.ts:251 仅在 skills 非空时把
+   load_skill 进 scoped 允许表 ⇒ 零技能任务两臂差一件。属元工具策略预存不对称，
+   不在 W8副 toolFilter 映射范围；修 dsh 侧（loopMetaTools 无条件加）会破 A6 形态B
+   「ref 无 toolFilter ⇒ setup 帧逐字节旧行为」锚，登记不修（若评审裁定对齐，另立 WO）。
+   ③ **exotic 裸名（含 `.` 等非法字符）剔除同向不咬**：toolFilter 未含 exotic 名时，
+   native 臂由宿主 expandAgentTools 收窄剔除、dsh 臂由 mcp-client-tenant 注册期
+   fail-closed 丢弃（publicToolName 规范化名 ≠ contracts 裸拼接表项）——剔除发生在
+   不同层但**方向相同**，name-set 无差；toolFilter 若显式含 exotic 裸名则两臂分歧
+   （native 按裸拼接命中放行、dsh 规范化后失配丢弃），该形态不进语料（既知缝，
+   真 provider 含非法字符工具名的工具面 parity 另立裁决）。
+   锚收窄真发生的防假绿断言：mcp__ 前缀子集恰等语料声明的滤后留存名（dr50-cl =
+   仅 `mcp__dr50cl__echo`）。
 
-## 4. 语料构成（63 条 + 2 gated）
+## 4. 语料构成（64 条 + 2 gated）
 - 内容源：20 条 = SCENARIO_CATALOG triggerQuestion（执行通道不借 evals——蓝图 evidence 5）；
   43 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮 load_skill；
   多轮：1/2/5 次 LLM 往返；拒绝混合：deny_pre 前置 / deny_mid 中段 / deny_all 全 deny /
@@ -293,9 +326,12 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
   + W5 扩面 3 条：dr50-ci provenance 畸形拒后收敛（final_answer 入参严校验通道双臂同形态）、
   dr50-cj writeMode 缺 action_draft 拒后收敛（语料声明 sideEffect=WRITE ⇒ driver skillDef
   治理位透传）、dr50-ck reasoning 流（stub reasoning 通道 ⇒ dsh 臂 agent_think 族真触发，
-  A3c 矩阵精确族集锚）。
+  A3c 矩阵精确族集锚）+ W8副 扩面 1 条：dr50-cl MCP 可见性 name-set parity
+  （CorpusMcp 声明面：两臂同 seed 三工具表 + toolFilter 滤一留一；豁免与边界 §3 #14，
+  不咬 description 字节 §3 #13）。
 - 每条 = 数据对 {native 臂 mock 队列剧本，dsh 臂 stub 剧本（+PLATFORM_GOV_DENY 声明），
   期望值声明（answer / native 迭代锚 / native token 锚 / dsh stats 锚 / deny wire 证据位 /
   EMPTY 豁免位 / expectsSchema 与 structured 锚 / lengthDivergence 分锚）}。
-- 自检闸（driver 首条 it）：总数 63、deny ≥10、四维覆盖全到位、A5 子集 ∈ 语料、
-  EMPTY 豁免位双恰（豁免 ⇔ 期望答案无 marker；豁免任务 prompt 必含 id）、gated 槽在册。
+- 自检闸（driver 首条 it）：总数 64、deny ≥10、四维覆盖全到位、A5 子集 ∈ 语料、
+  EMPTY 豁免位双恰（豁免 ⇔ 期望答案无 marker；豁免任务 prompt 必含 id）、gated 槽在册、
+  mcp 声明任务恰 1 条（dr50-cl，§3 #14）。
