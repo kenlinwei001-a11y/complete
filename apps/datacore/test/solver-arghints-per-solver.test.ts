@@ -44,12 +44,42 @@ import { ALL_SOLVER_CATALOG } from "../src/catalog.js";
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 const SOLVER_DIR = join(SRC, "solvers");
 
+/**
+ * 注释**必须先剥掉**（下标对齐地涂成空格，切块靠下标）——否则读的是文档不是代码。
+ * 实测：`concentrationRisk` 与 `ontologyQuery` 之间那段 JSDoc 里写着「args.nl 存在时…」，
+ * 不剥就会被算成「concentration_risk 读了 nl」—— 判据当场变松（本仓「剥注释后再扫」的老纪律）。
+ */
+function scrub(src: string): string {
+  const out = src.split("");
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i]!;
+    if (ch === '"' || ch === "'" || ch === "`") {
+      const q = ch;
+      i++;
+      while (i < src.length && src[i] !== q) { if (src[i] === "\\") i++; i++; }
+      continue;
+    }
+    if (ch === "/" && src[i + 1] === "/") {
+      while (i < src.length && src[i] !== "\n") { out[i] = " "; i++; }
+      continue;
+    }
+    if (ch === "/" && src[i + 1] === "*") {
+      const end = src.indexOf("*/", i + 2);
+      const stop = end < 0 ? src.length : end + 2;
+      for (let j = i; j < stop; j++) if (src[j] !== "\n") out[j] = " ";
+      i = stop - 1;
+      continue;
+    }
+  }
+  return out.join("");
+}
+
 // ── 扫描面：求解器实现 + 少数在别处实现的条目（slice 走 ontology.ts，个别入参在 app.ts 路由层读） ──
 const FILES = new Map<string, string>();
 for (const f of readdirSync(SOLVER_DIR).filter((f) => f.endsWith(".ts"))) {
-  FILES.set(`solvers/${f}`, readFileSync(join(SOLVER_DIR, f), "utf8"));
+  FILES.set(`solvers/${f}`, scrub(readFileSync(join(SOLVER_DIR, f), "utf8")));
 }
-for (const f of ["app.ts", "ontology.ts"]) FILES.set(f, readFileSync(join(SRC, f), "utf8"));
+for (const f of ["app.ts", "ontology.ts"]) FILES.set(f, scrub(readFileSync(join(SRC, f), "utf8")));
 
 // ── 源码切块：声明索引（不做花括号配对——返回类型里的 `{}` 会把配对带歪） ──────────────
 // 判据：行首缩进 + 修饰符 + 名字 + `(`，且**括号配对之后**跟的是 `{` 或 `:`（调用点跟的是 `;,).` 等）。
@@ -173,7 +203,10 @@ function keysFrom(body: string, params: string[], depth: number, seen: Set<strin
       const open = body.indexOf("(", m.index! + m[0].length - 1);
       const close = matchParen(body, open);
       if (close < 0) continue;
-      if (!new RegExp(`\\b${pe}\\b`).test(body.slice(open + 1, close))) continue;
+      // 只在**整包**透传时才展开（`fn(args)` / `fn(x, args as T)`），不在 `str(args.modelId)` 这种
+      // 取单键的调用上展开 —— 后者会把被调函数自己的形参读取（`v.trim()`）算成"本求解器读了 trim"，
+      // 把判据变松，等于给空头支票开后门。
+      if (!new RegExp(`\\b${pe}\\b(?![.\\[])`).test(body.slice(open + 1, close))) continue;
       for (const k of keysOfFn(callee, depth + 1, seen)) out.add(k);
     }
   }
@@ -259,6 +292,7 @@ const KNOWN_RESIDUAL: Record<string, Record<string, string>> = {
     objective: "REAL-DRIFT · plan.ts `planGenerate` 实读 targets/base/hard，objective 无读者（既有门 KNOWN_DRIFT 亦已登记）。",
   },
   optimize_whatif: {
+    templateKey: "REAL-DRIFT · service.ts `optimizeWhatif` 实读 `family`（OptTemplateFamily）；templateKey 无读者（既有门 KNOWN_DRIFT 亦已登记）。",
     perturbation: "REAL-DRIFT · service.ts `optimizeWhatif` 实读 `perturbations`（复数）；单数无读者（既有门 KNOWN_DRIFT 亦已登记）。",
   },
   capacity_rollup: {
