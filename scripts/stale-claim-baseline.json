@@ -8,7 +8,7 @@
   "④ ratchetHigh 是历史最高水位，只降不升。**评审唯一必须拒绝的一行就是把它调大。**"
  ],
  "ratchetHigh": 38,
- "maxExemptions": 37,
+ "maxExemptions": 35,
  "exemptions": [
   {
    "key": "apps/frontend-shell/src/components/ProvenanceDag.tsx#4411cbdd8b75e546",
@@ -115,16 +115,6 @@
    ],
    "why": "真观测缺日期与复验方式：屏上文案「实测 baseIds=changzhou 时 total 15→13」。本单对 SandboxConsole.tsx 的授权范围**只有可算性图例那两行**，此处是另一处文案，不擅自扩权。",
    "sample": "勾选只驱动 <code>chain_impediments</code>（实测 baseIds=changzhou 时 total 15→13）。"
-  },
-  {
-   "key": "apps/frontend-shell/src/views/sim/SandboxConsole.tsx#41fcd246632423a2",
-   "file": "apps/frontend-shell/src/views/sim/SandboxConsole.tsx",
-   "line": 911,
-   "codes": [
-    "STALE-1"
-   ],
-   "why": "真观测缺日期（复验方式已给：fixture 锚点 `fixtures/chain-loss-live-evidence.json` + 门 `sandbox-console.seam §9`）。同上，不在本单对本文件的授权范围内。",
-   "sample": "* ── 这条注释记的是一次实测，不是推理 ─────────────────────────────────────────"
   },
   {
    "key": "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx#67171888f5be9e49",
@@ -278,16 +268,6 @@
    ],
    "why": "真观测缺日期：「EquipmentOEE 实测 5460 行」+「实测推翻 join 键（processId 仅 3 值 / lineId 10 值）」，带真实对象字段值作证。🚦 本单范围边界外。",
    "sample": "//  `EquipmentOEE` 实测 **5460 行**已物化（13 基地 × 10 车间 × 3 串行工序 × 2 台设备 × 7 天），"
-  },
-  {
-   "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#75b4af2bc3e6b3c4",
-   "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
-   "line": 298,
-   "codes": [
-    "STALE-1"
-   ],
-   "why": "真观测缺日期（复验方式已给：`GET /a/v1/objects` / `POST /a/v1/objects/query` / `/objects/aggregate` 三个端点与各自回值）。🚦 本单范围边界外。",
-   "sample": "*   实测 `type=EquipmentOEE` 回 `total=1000`、`page=3` 回 0 条 —— **5460 行只能拿到 1000 行（18%）**；"
   },
   {
    "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#5e860829c8162ffa",
