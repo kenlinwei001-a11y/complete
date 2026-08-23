@@ -426,9 +426,15 @@ const DASH_LAYOUT = {
     {
       key: "oee-trend",
       type: "chart",
-      // WO-TITLE-DIVERGENCE ②：窗口实测——本 query days:14，MSW 桩 TS_AGG_POINTS 也是
-      // Array.from({length:14})，后端同写 days:14。数据两侧都是 14 天，错的只是标题文案，
-      // 改标题对齐后端（service.ts oee-trend），不动数据。
+      // WO-TITLE-DIVERGENCE ②：窗口实测（2026-08-16 测，**2026-08-23 复核三处仍同值**）——
+      // 本 query days:14，MSW 桩 TS_AGG_POINTS 也是 Array.from({length:14})，后端同写 days:14。
+      // 数据两侧都是 14 天，错的只是标题文案，改标题对齐后端（service.ts oee-trend），不动数据。
+      // 复验三个锚点（都能直接点开读到，不必起服务）：
+      //   · 本 query 的窗口：本文件下面第 435 行 `days: 14`（就在这条注释脚下的 `query:` 里）；
+      //   · MSW 桩：`apps/frontend-shell/src/mocks/fixtures.ts:1772`
+      //     `export const TS_AGG_POINTS = Array.from({ length: 14 }, …)`；
+      //   · 后端同一个 widget：`apps/datacore/src/synthetic/service.ts:1647-1648`
+      //     （`key: "oee-trend"` · `title: "OEE 14 日趋势"` · `days: 14`）。
       title: "OEE 14 日趋势",
       span: 2,
       chartKind: "line",

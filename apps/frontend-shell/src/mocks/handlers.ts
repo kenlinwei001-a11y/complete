@@ -2024,8 +2024,15 @@ const MOCK_RULE_SEED: MockPropRule[] = [
     id: "simpr_mock_b", tenantId: "demo", key: "mock_a_to_b_slow",
     sourceTypeKey: "TypeA", sourceStateVar: "s2", viaLinkKey: "linkAB", targetTypeKey: "TypeB", targetStateVar: "s2",
     coefficient: 0.25, delayTicks: 1, combine: "sum", decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null, status: "PUBLISHED",
-    // 第三条**故意未归域** —— 真后端里这一态是真实存在的（demo 实测 35 条里有 3 条），
+    // 第三条**故意未归域** —— 真后端里这一态是真实存在的
+    // （demo 实测 35 条里有 3 条·2026-08-17 测，**2026-08-23 复核仍成立**）。
     // mock 里不造出来，屏上那条「未归域」分片就永远没有测试走过。
+    // 复验这两个数（三条任选，都能亲手跑）：
+    //   · 35：`grep -c 'id: "simpr_demo' apps/datacore/src/seed.ts`
+    //   · 3 ：`apps/datacore/src/seed.ts:1057-1062` 的 `resolveRuleDomain` 头注逐条点名了那三条
+    //         （`Material` / `Process` / `Equipment` 三个中间跳量纲）；
+    //   · 机器化断言：`pnpm --filter datacore exec vitest run test/sim-rule-domain.seam.test.ts`
+    //     —— 用例「诚实缺席」咬的是**集合相等**（不是数量相等），种子一改当场红。
     domainKey: null, domainName: null,
   },
 ];
@@ -2100,7 +2107,11 @@ export function resetMockOntologyRelations(): void {
  *
  * ⚠ **这是替身，不是第二套真相源** —— 真求值核在 `apps/datacore/src/ontology/invariants.ts`
  *   （它用 A5 那套规则 DSL 真解析表达式；mock 侧不引 DSL，只镜像同一个比较形状
- *   `实测量 > 容差 ⇒ 不成立`，因为目录里 8 条守卫的表达式全是这一形）。
+ *   `实测量 > 容差 ⇒ 不成立`，因为目录里 8 条守卫的表达式全是这一形
+ *   —— 2026-08-17 写下，**2026-08-23 复核仍成立**；复验一条命令，现算就是 8：
+ *   `grep -c 'violationExpression: \`\${FACTS_NAMESPACE}\..* > params\.' apps/datacore/src/ontology/invariants.ts`
+ *   金丝雀：同文件 `grep -c violationExpression` 现算 12（8 条守卫 + 类型声明 + 3 处求值引用），
+ *   两个数一起看才知道上面那个 8 是真数到了守卫、而不是正则瞎了报 0）。
  *   两边**必须同名同条数**，这件事不靠人记：`test/ontology-invariants.seam.test.tsx` §事实锁
  *   在运行时把本表的 key 集合与 datacore 那份目录源码里的 key 集合逐条对账 ——
  *   后端加了一条而这里忘了加，机器当场报红。
@@ -2286,6 +2297,10 @@ function mockInvariantReport(overrides: Record<string, { tolerance?: number; ena
       name: spec.name,
       subject: spec.subject,
       // 后端由语法树渲染；目录 8 条守卫的表达式全是 `实测量 > 容差`，其成立方向即「不超过」。
+      // 2026-08-17 写下，**2026-08-23 复核仍成立**（现算 8/8）。复验一条命令：
+      //   `grep -c 'violationExpression: \`\${FACTS_NAMESPACE}\..* > params\.' apps/datacore/src/ontology/invariants.ts`
+      // 后端渲染的那一半在 `apps/datacore/src/ontology/invariants.ts:320-328` 的 `NEGATED_OP`
+      // （`">" → "不超过"`）—— 上游哪天改成 `>=`，那张表会给出别的字，这里的硬串就该跟着改。
       guardText: `${spec.factLabel} 不超过 ${spec.tolerance.label}`,
       measure: { label: spec.factLabel, value: measured, unit: spec.factUnit },
       tolerance: {
@@ -2897,9 +2912,16 @@ const MOCK_OBJECT_TYPES = [
   { key: "EngineeringChange", displayName: "工程变更", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-plm", dataset: "plm_ecn" }], properties: [{ propKey: "changeId", dataType: "string", isPrimaryKey: true }, { propKey: "changeNumber", dataType: "string" }, { propKey: "changeType", dataType: "enum" }] },
 ];
 /**
- * `typeKey → displayName`（由上面那份**现算**，不是另抄一张表）。
+ * `typeKey → displayName`（由上面那份 `MOCK_OBJECT_TYPES` **现算**，不是另抄一张表）。
  * 消费方：`GET /a/v1/sim/propagation-rules` 的 `sourceTypeName`/`targetTypeName` 投影，
  * 镜像真后端 `app.ts` 里那个 `nameOf` —— mock 与后端做同一件事，前端才测得到真行为。
+ *
+ * 「镜像同一件事」这句今天还成不成立，**2026-08-23 复核成立**，复验两条：
+ *   · 后端那半：`apps/datacore/src/app.ts:2560-2565` ——
+ *     `const nameOf = new Map((await repos.ontologyTypes.list(...)).map((t) => [t.key, t.displayName]))`，
+ *     随后 `sourceTypeName: nameOf.get(r.sourceTypeKey) ?? null`（查不到给 null，不编名字）；
+ *   · 本处那半：紧接下面这行 `new Map(...)` 就是从 `MOCK_OBJECT_TYPES` 现算的同一个映射。
+ *   两边一旦分叉（比如谁改成「查不到回落到 key」），mock 世界就会显示真后端不会显示的字。
  */
 const MOCK_OBJECT_TYPE_DISPLAY_NAMES: ReadonlyMap<string, string> = new Map(
   MOCK_OBJECT_TYPES.map((t) => [t.key, t.displayName] as const),
