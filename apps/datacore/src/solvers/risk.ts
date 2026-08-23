@@ -1405,7 +1405,10 @@ const PROBLEM_TITLES: Record<string, string> = {
 };
 
 // PRD-IND-order-aggregate §4.5-B：应用细分按客户名判定（客户名单与合成数据 CUSTOMERS 保持一致）。
-const PAS_CUSTOMERS = new Set(["广汽集团", "长安汽车", "吉利汽车", "东风汽车", "小鹏汽车"]);
+// 乘用车（广汽集团 / 长安汽车 / 吉利汽车 / 东风汽车 / 小鹏汽车）**刻意不列成 Set**：
+// 下面 `segOfCust` 用的是"排除法"——先认商用车、再认储能，其余一律 pas。
+// 单列一张 pas 名单等于把同一件事写两遍，两份还会各自漂（合成层的单一来源是
+// `synthetic/battery.ts` 的 `CUSTOMER_BUSINESS_TYPE`）。
 const COM_CUSTOMERS = new Set(["宇通客车", "金龙客车", "奇瑞", "瑞驰新能源", "Ashok Leyland"]);
 const ESS_CUSTOMERS = new Set(["国家电网", "国家电投", "南方电网", "龙源电力"]);
 export function segOfCust(cust: string): "pas" | "ess" | "com" {
