@@ -177,6 +177,31 @@ export const EVENT_INVALIDATES: Record<string, readonly string[]> = { // hardcod
   // 发起方本页不等这条事件（onCheckpoint 里本地失效），它管的是**别的标签页/别的用户**。
   // ⚠ 若将来把 checkpointsQuery 删了/改了 queryKey，本条退化成假接线，必须挪回 SIM_EVENT_GAPS 台账。
   "sim.checkpoint_saved": ["sim-checkpoints"],
+  // ── WO-GATE-ONTOLOGY-DRIFT（2026-08-23）：会话生命周期迁移 —— 修的是**真陈旧**，不是补记账 ──
+  // 生产者：`setSimSessionStatus`（datacore app.ts:1989）**唯一**的 emit（app.ts:2002），在
+  // `repos.sim.putSession(s)` 之后发；两个入口共用它 —— `PATCH /a/v1/sim/sessions/:id/status`
+  // （app.ts:2031）与产能页 `POST /a/v1/sim/live-scenarios/:id/pause|end`（app.ts:3255/3260）。
+  //
+  // 为什么是 `sim-sessions` 这个键（"真正该失效的那个缓存"，不是随便挂一个）：
+  // 会话列表投影 `listSessionSummaries` 逐项带 `status`，而 `["a","sim-sessions"]` 是五处共用的
+  // **同一份**缓存（SandboxView / EdgeActivePanel / EnterpriseStateTwinPanel / ImpactAnalysisPanel /
+  // console 的 useConsoleSession）。其中两处真会把陈旧的 status 摆到用户面前：
+  //   ① `views/sim/SandboxView.tsx:1373` —— 世界列表 rail 直接渲染 `{s.status} · tick {s.curTick}`；
+  //   ② `views/sim/console/useConsoleSession.ts:111` —— 那条 useQuery 是 **`staleTime: Infinity`**，
+  //      不失效就永不重取；而它用 `pickLatestRunningSession`（只认 `status === "RUNNING"`）替四个
+  //      控制台页挑「当前世界」。别处把会话迁成 PAUSED/ENDED 后，这四页会继续拿一个**已冻结**的世界
+  //      冒充「当前」，用户再点 tick/act/扰动只会撞上后端 `assertSimSessionWritable` 的 409，
+  //      屏上却没有任何东西解释原因 —— 该 hook 自己的头注就写着「拿 PAUSED/ENDED 冒充『当前』会让
+  //      屏上的数与用户正在推的那个世界对不上」，本条就是让那句话不再发生。
+  //
+  // 刻意**不**挂的两个标签（各有实据，防下一个人"顺手补齐"）：
+  //   · `sim-world` —— `setSimSessionStatus` 只写 `s.status` 再 `putSession`，tick 态一个字节没动
+  //     ⇒ `["a","sim-world",…]` 内容不变，挂上去是纯空跑（与 `sim.perturbation_created` 不同，
+  //     那条在 emit 前真的 `putTickState` 了）。
+  //   · `sim-scenarios` —— 产能页 pause/end 也走本事件，但前端 `LiveScenario` 类型
+  //     （`api/endpoints.ts:2044`）**没有 `status` 字段**、`RiskBoardView` 一处都不读它
+  //     ⇒ 今天没有承载它的屏，硬挂 = 假接线。方案列表哪天真把生命周期上屏，再补进来（先读端后事件）。
+  "sim.session_status_changed": ["sim-sessions"],
 };
 
 /** 失效一个领域事件下游的所有引用方缓存（响应式 Loop 的"自动更新"）。 */
