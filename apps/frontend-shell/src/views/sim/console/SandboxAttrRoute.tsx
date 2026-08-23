@@ -25,9 +25,23 @@
  * 且与后端**逐列**已有的「`so` 字典序首张」口径撞成两份实现。
  * 逐格对拍表与全部证据在 `useLossAttribution.ts` 的 `useChainLossMatrix` 头注，此处不复述。
  * ⇒ **`so` 维持只从宿主取，本单对 ② 不改代码。**
+ *
+ * ── WO-EDGE-PANEL-4PAGES：今天的行为是 X，应该是 Y（四页同一笔账）─────────────
+ * **X**：本页（`sim-attribution`）在现算名册里（R3 nav-sim-group），却零个 `EdgeActivePanel`
+ * 挂载点 ⇒ 在损失归因台上做不了「关掉这条传导边看看」，要退回旧沙盘页才行。
+ * （注释里指代该组件一律写**裸名**、不写尖括号形态 —— 理由见 `SandboxHomeRoute.tsx` 的同段 ⚠。）
+ * **Y**：挂上，且挂在默认导出的主组件里。取舍与版面理由见 `SandboxHomeRoute.tsx`
+ * 的同名段（四页同一套：画布外 · 紧贴其下 · 默认折叠 ⇒ 画布内逐像素不动）。
+ *
+ * ⚠ **本页的诚实边界，写在这里而不是屏上**（屏上由面板自己的 `?` 说全）：面板算的是
+ * **会话级反事实**（`SimSession.disabledRuleKeys` × counterfactual 对照跑），它**不改**
+ * 上方热矩阵/根因树/瀑布三格的数 —— 那三格走链路损耗求解器（`useChainLossMatrix`），
+ * 与会话、与传导边**不同源**（见本文件头 `so` 那段）。两个问题相邻但不同源，故各自成块。
  */
 import type { ViewRendererProps } from "@/views/registry";
+import EdgeActivePanel from "../EdgeActivePanel";
 import { SandboxAttr } from "./SandboxAttr";
+import css from "./SandboxAttr.module.css";
 import { consoleHostProps, useConsoleSession } from "./useConsoleSession";
 
 export default function SandboxAttrRoute({ view }: ViewRendererProps): JSX.Element {
@@ -39,6 +53,13 @@ export default function SandboxAttrRoute({ view }: ViewRendererProps): JSX.Eleme
         {...(session.sessionId ? { sessionId: session.sessionId } : {})}
         {...(p.so ? { so: p.so } : {})}
       />
+      {/* WO-EDGE-PANEL-4PAGES 挂载点：**主组件里**、不在任何条件渲染之下。 */}
+      <details className={css.dock} data-testid="sim-attribution-edge-dock">
+        <summary className={css.dockSum} data-testid="sim-attribution-edge-summary">
+          <i>▤</i>关掉一条传导边，看这次推演的数怎么变
+        </summary>
+        <EdgeActivePanel pageKey="sim-attribution" sessionId={session.sessionId} />
+      </details>
     </div>
   );
 }

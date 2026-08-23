@@ -57,6 +57,19 @@
  * ── 诚实位一律走属性（屏上零新增文字·本页验收线是像素级 1:1）─────────────────
  * 沿用本目录既有属性族（`data-source` / `data-session-reason`），本层新增三条
  * `data-*-source`，挂在 `display:contents` 的包裹元素上 ⇒ 不生成盒、版面零影响。
+ *
+ * ⚠ **上面这句「屏上零新增文字」的适用范围今天缩小了一次，照实回写（WO-EDGE-PANEL-4PAGES）**：
+ * 它当时描述的是 `WO-SIM-DETAIL-WIRE` 那一批改动（参数解析），那批确实屏上一个字没多，
+ * 这句话对**那批**仍然成立。但本单**新增了画布外的一条折叠抽屉**，屏上多了一条 26px 的标题条
+ * —— 仓主对本单的原话是「**挂，并接受版面变化**」，即像素级 1:1 那条验收线在**本处**已被
+ * 显式作废，规格 HTML 与基准 PNG 同批已改（`sandbox-detail.html` 的 `.dock` 段）。
+ *
+ * ── WO-EDGE-PANEL-4PAGES：今天的行为是 X，应该是 Y（四页同一笔账）─────────────
+ * **X**：本页（`sim-conduction`）在现算名册里（R3 nav-sim-group），却零个 `EdgeActivePanel`
+ * 挂载点（注释里一律写裸名，理由见 `SandboxHomeRoute.tsx` 的同段 ⚠）
+ * ⇒ 在传导识别页上做不了「关掉这条传导边看看」——**这一页恰恰就是讲传导的那一页**，
+ * 缺得最刺眼。**Y**：挂上，且挂在默认导出的主组件里。
+ * 版面取舍见 `SandboxHomeRoute.tsx` 的同名段（画布外 · 紧贴其下 · 默认折叠）。
  */
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -69,7 +82,9 @@ import {
 } from "@platform/contracts";
 import { fetchSimPerturbations, fetchSimViewConfig, invokeSolver, simWorld } from "@/api/endpoints";
 import type { ViewRendererProps } from "@/views/registry";
+import EdgeActivePanel from "../EdgeActivePanel";
 import { SandboxDetail } from "./SandboxDetail";
+import css from "./SandboxDetail.module.css";
 import type { MitigationArgs } from "./StrategyCards";
 import { useChainLossMatrix } from "./useLossAttribution";
 import { consoleHostProps, useConsoleSession } from "./useConsoleSession";
@@ -236,6 +251,14 @@ export default function SandboxDetailRoute({ view }: ViewRendererProps): JSX.Ele
         {...(impactChange === undefined ? {} : { impactChange })}
         {...(mitigation === undefined ? {} : { mitigation })}
       />
+      {/* WO-EDGE-PANEL-4PAGES 挂载点：**主组件里**、不在 `impactChange && …` 那类条件之下
+          —— 挂进条件里就是「没解析出扰动就看不见开关」，正是本门拦的那个形态。 */}
+      <details className={css.dock} data-testid="sim-conduction-edge-dock">
+        <summary className={css.dockSum} data-testid="sim-conduction-edge-summary">
+          <i>▤</i>关掉一条传导边，看这次推演的数怎么变
+        </summary>
+        <EdgeActivePanel pageKey="sim-conduction" sessionId={session.sessionId} />
+      </details>
     </div>
   );
 }

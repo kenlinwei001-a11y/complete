@@ -78,12 +78,29 @@
  *
  * ⛔ **版面零改动**：本文件不产出任何 DOM —— 诚实位仍只走既有 `data-source` 属性族，
  *    屏上一个字都没多。像素级 1:1 的验收线（`docs/ux-spec/sandbox/sandbox-opt.html`）不受影响。
+ *
+ * ⚠ **上面那句 ⛔「版面零改动」今天不再成立，照实回写而不是圆场（WO-EDGE-PANEL-4PAGES）**：
+ * 它描述的是 `WO-SIM-PARAM-WIRE` / `WO-SIM-PARETO-MODEL-EXIT` 那两批（纯参数装配，屏上确实
+ * 一个字没多），对**那两批**仍属实。本单**新增了画布外的一条折叠抽屉**，屏上多了一条 26px
+ * 标题条；仓主对本单的原话是「**挂，并接受版面变化**」，像素级 1:1 那条线在**本处**已被
+ * 显式作废，规格 HTML 与基准 PNG 同批已改（`sandbox-opt.html` 的 `.dock` 段）。
+ * 把一句过期的 ⛔ 留在最容易被信的地方，比没有这句更危险 —— 下一个人会照它把抽屉删掉。
+ *
+ * ── WO-EDGE-PANEL-4PAGES：今天的行为是 X，应该是 Y（四页同一笔账）─────────────
+ * **X**：本页（`sim-optimize`）在现算名册里（R3 nav-sim-group），却零个 `EdgeActivePanel`
+ * 挂载点（注释里一律写裸名，理由见 `SandboxHomeRoute.tsx` 的同段 ⚠）
+ * ⇒ 在方案寻优页上做不了「关掉这条传导边看看」。**Y**：挂上，且挂在默认导出的主组件里。
+ * 版面取舍见 `SandboxHomeRoute.tsx` 的同名段（画布外 · 紧贴其下 · 默认折叠）。
+ * ⚠ 诚实边界：面板算的是**会话级反事实**，它**不重算前沿图** —— 前沿走
+ * `POST …/optimize-pareto`，读的是优化模型不是传导边，两者不同源。
  */
 import type { ViewRendererProps } from "@/views/registry";
 import { useQuery } from "@tanstack/react-query";
 import { ParetoAssembleResultSchema, ParetoRequestSchema, type ParetoRequest } from "@platform/contracts";
 import { api } from "@/api/apiClient";
+import EdgeActivePanel from "../EdgeActivePanel";
 import { SandboxOpt } from "./SandboxOpt";
+import css from "./SandboxOpt.module.css";
 import { consoleHostProps, useConsoleSession, type ConsoleSession } from "./useConsoleSession";
 
 /**
@@ -164,6 +181,14 @@ export default function SandboxOptRoute({ view }: ViewRendererProps): JSX.Elemen
         {...(session.sessionId ? { sessionId: session.sessionId } : {})}
         {...(paretoRequest ? { paretoRequest } : {})}
       />
+      {/* WO-EDGE-PANEL-4PAGES 挂载点：**主组件里**、不在 `paretoRequest && …` 之下
+          —— 挂进条件里就是「装不出优化模型就看不见开关」，正是本门拦的那个形态。 */}
+      <details className={css.dock} data-testid="sim-optimize-edge-dock">
+        <summary className={css.dockSum} data-testid="sim-optimize-edge-summary">
+          <i>▤</i>关掉一条传导边，看这次推演的数怎么变
+        </summary>
+        <EdgeActivePanel pageKey="sim-optimize" sessionId={session.sessionId} />
+      </details>
     </div>
   );
 }
