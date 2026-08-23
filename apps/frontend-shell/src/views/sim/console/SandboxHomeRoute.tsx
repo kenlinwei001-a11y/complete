@@ -34,16 +34,17 @@
  * **X（改造前实测，`node scripts/check-edge-active-mounts.mjs` RC=1）**：本页（`sim-console`）
  * 与同族三页在现算名册里**都在**（R3 nav-sim-group：左导航「推演」组成员），却**一个
  * `EdgeActivePanel` 挂载点都没有**。屏上的净效果是：用户在这四页做不了「关掉这条边看看」——
- *
- * ⚠ 上一句刻意**不写成 JSX 尖括号形态**：门 `check-edge-active-mounts.mjs` 的 `analyze()` 判挂载点
- * 用的是「左尖括号 + 组件名」的 **`includes` 子串**匹配、且**不剥注释** —— 写在文件头注里的
- * 那半个标签会被它当成**一处真挂载**，而它落在默认导出的行段之外 ⇒ 当场判
- * `MOUNTED_IN_SUBCOMPONENT`。本单实测连撞两次：第一次四页同时红（原因全在头注里的举例），
- * 第二次只剩本页红 —— 红在**这段警告自己**（它当时把那个子串原样写了出来）。
- * 故纪律是：**在本目录的注释里指代该组件，一律写裸名，连引号里的正则/子串也不许还原它**。
  * 要退回旧沙盘页（`sim-sandbox` / `what-if` …）才能操作，而「先关一条边、再看结果」
  * 恰恰是推演最常见的用法。**而那道能拦住这件事的门建好了却没接进 `pnpm gates`**
  * （门账 `binding=NONE` · `disposition=WIRE`），所以没有任何东西告诉过任何人。
+ *
+ * ⚠ 上面指代该组件时刻意**不写 JSX 尖括号形态**：门 `check-edge-active-mounts.mjs` 的 `analyze()`
+ * 判挂载点用的是「左尖括号 + 组件名」的 **`includes` 子串**匹配、且**不剥注释** ——
+ * 写在文件头注里的那半个标签会被它当成**一处真挂载**，而它落在默认导出的行段之外
+ * ⇒ 当场判 `MOUNTED_IN_SUBCOMPONENT`（"挂在子组件里"）。本单实测连撞两次：
+ * 第一次四页同时红（原因全在头注里的举例），第二次只剩本页红 —— 红在**这段警告自己**
+ * （它当时把那个子串原样写了出来）。两次都不是代码错，是注释把门骗了。
+ * 故纪律是：**本目录的注释里指代该组件一律写裸名，连引号里的正则/子串也不许还原它**。
  *
  * **Y（现在）**：四页都挂上，**且挂在默认导出的主组件里**（不是"跑出结果才渲染"的子组件），
  * 同批把那道门接进 `pnpm gates` 真跑。
@@ -79,7 +80,7 @@ export default function SandboxHomeRoute({ view }: ViewRendererProps): JSX.Eleme
           并在屏上标出处（`edge-active-*-probe-origin`），不冒充实测量级。 */}
       <details className={css.dock} data-testid="sim-console-edge-dock">
         <summary className={css.dockSum} data-testid="sim-console-edge-summary">
-          <i>▤</i>关掉一条传导边，看这次推演的数怎么变
+          关掉一条传导边，看这次推演的数怎么变 ▸
         </summary>
         <EdgeActivePanel pageKey="sim-console" sessionId={session.sessionId} />
       </details>

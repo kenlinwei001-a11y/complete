@@ -185,7 +185,7 @@ export default function SandboxOptRoute({ view }: ViewRendererProps): JSX.Elemen
           —— 挂进条件里就是「装不出优化模型就看不见开关」，正是本门拦的那个形态。 */}
       <details className={css.dock} data-testid="sim-optimize-edge-dock">
         <summary className={css.dockSum} data-testid="sim-optimize-edge-summary">
-          <i>▤</i>关掉一条传导边，看这次推演的数怎么变
+          关掉一条传导边，看这次推演的数怎么变 ▸
         </summary>
         <EdgeActivePanel pageKey="sim-optimize" sessionId={session.sessionId} />
       </details>

@@ -255,7 +255,7 @@ export default function SandboxDetailRoute({ view }: ViewRendererProps): JSX.Ele
           —— 挂进条件里就是「没解析出扰动就看不见开关」，正是本门拦的那个形态。 */}
       <details className={css.dock} data-testid="sim-conduction-edge-dock">
         <summary className={css.dockSum} data-testid="sim-conduction-edge-summary">
-          <i>▤</i>关掉一条传导边，看这次推演的数怎么变
+          关掉一条传导边，看这次推演的数怎么变 ▸
         </summary>
         <EdgeActivePanel pageKey="sim-conduction" sessionId={session.sessionId} />
       </details>

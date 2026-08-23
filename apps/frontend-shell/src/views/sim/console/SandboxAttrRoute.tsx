@@ -56,7 +56,7 @@ export default function SandboxAttrRoute({ view }: ViewRendererProps): JSX.Eleme
       {/* WO-EDGE-PANEL-4PAGES 挂载点：**主组件里**、不在任何条件渲染之下。 */}
       <details className={css.dock} data-testid="sim-attribution-edge-dock">
         <summary className={css.dockSum} data-testid="sim-attribution-edge-summary">
-          <i>▤</i>关掉一条传导边，看这次推演的数怎么变
+          关掉一条传导边，看这次推演的数怎么变 ▸
         </summary>
         <EdgeActivePanel pageKey="sim-attribution" sessionId={session.sessionId} />
       </details>
