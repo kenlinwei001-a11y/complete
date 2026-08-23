@@ -125,6 +125,29 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   // 前端真缓存 = SandboxView 的 checkpointsQuery `["a","sim-checkpoints",sessionId]`（WO-BEFE-E），
   // 存档/回滚都经它出。本条登记后 `sim.*` 六事件全部闭环（frontend SIM_EVENT_GAPS 台账今日为空）。
   { event: "sim.checkpoint_saved", producer: "推演沙盘·存档检查点（POST /a/v1/sim/sessions/:id/checkpoint）", tier: "IN_SESSION", invalidates: ["sim-checkpoints"] },
+  // ── WO-GATE-ONTOLOGY-DRIFT（2026-08-23）：会话生命周期迁移补订阅方 ────────────────────
+  // 生产者 = `setSimSessionStatus`（datacore `app.ts:1989`）的**唯一** emit（`app.ts:2002`），
+  // 两个调用点共用它：`PATCH /a/v1/sim/sessions/:id/status`（app.ts:2031）与产能页
+  // `POST /a/v1/sim/live-scenarios/:id/pause|end`（app.ts:3255 / 3260）。emit 排在
+  // `repos.sim.putSession(s)` **之后**，所以发出来时库里那一行 `status` 已经真的变了。
+  //
+  // 为什么只挂 `sim-sessions` 一个标签（不是凑数，也不是漏挂）：
+  //  · `sim-sessions` —— 会话列表（`GET /a/v1/sim/sessions` 的 `listSessionSummaries` 投影）
+  //    **逐项带 `status`**，前端 `["a","sim-sessions"]` 这一份缓存有五个消费方，其中两个真会显示陈旧：
+  //      ① `SandboxView.tsx:1373` 世界列表 rail 直接渲染 `{s.status} · tick {s.curTick}`；
+  //      ② `console/useConsoleSession.ts:111` 用 `pickLatestRunningSession`（只认 `status==="RUNNING"`）
+  //         替四个控制台页挑"当前世界"，而那条 useQuery 是 **`staleTime: Infinity`** —— 不失效就
+  //         **永远不会自己重取**。于是别处把会话迁成 PAUSED/ENDED 之后，这四页仍把一个**冻结的世界**
+  //         当成"当前"，用户接着点 tick/act/扰动只会撞上 `assertSimSessionWritable` 的 409，
+  //         而屏上没有任何东西解释为什么。这正是"用户会看到坏东西"那一类，不是记账问题。
+  //  · **刻意不挂 `sim-world`**：`setSimSessionStatus` 只改 `s.status` 后 `putSession`，
+  //    一个 tick 态字节都没动 ⇒ `["a","sim-world",…]` 的内容不变，挂上去就是纯空跑
+  //    （与 `sim.perturbation_created` 那条不同——那条在 emit 前真的 `putTickState` 了）。
+  //  · **刻意不挂 `sim-scenarios`**：产能页 pause/end 走的也是本事件，但前端 `LiveScenario`
+  //    （`api/endpoints.ts:2044`）**类型里根本没有 `status` 字段**，`RiskBoardView` 一处都不读它
+  //    ⇒ 今天没有承载它的屏，硬挂 = 假接线（#90/#92 同族）。哪天方案列表真把生命周期上屏了，
+  //    再把 `sim-scenarios` 加进本行——**先读端后事件**，与前两次同一条纪律。
+  { event: "sim.session_status_changed", producer: "推演沙盘·会话生命周期迁移 PAUSED/RUNNING/ENDED（PATCH /a/v1/sim/sessions/:id/status · POST /a/v1/sim/live-scenarios/:id/pause|end 共用 setSimSessionStatus · app.ts:2002·负载带 from/status）", tier: "IN_SESSION", invalidates: ["sim-sessions"] },
   // ── L19 业务流程实例环（WO-FLOWTIME）───────────────────────────────────────────
   // 生产者：`apps/datacore/src/process/reconstruct.ts reconstructAndPersist()`，由求解器
   // `process_flow_time` 与端点 `GET /a/v1/process-definitions/:key/instances` 两处调用。
