@@ -821,13 +821,27 @@ export function buildPlaceholderInspectorInput(args: {
       label: "供应商准时率",
       unit: "",
       carrier: "薄",
+      /*
+       * ⚠ 这两句原写「`solvers/` **0 消费方**（实测 grep 计数 0）」「零求解器消费方 ⇒ 今天没有任何一条链把它算进耗时」——
+       *   **今天都是假的**：`WO-SANDBOX-D2` 把 `Supplier` 加进 `SolverContext`（solvers/types.ts `suppliers?:`），
+       *   `kit_readiness` 从此拿 `onTimeRate` 算**期望滑期天** `expectedSlipDays = 供应商段天数 ×(1 − onTimeRate)`，
+       *   再叠成 `expectedKitDay`。那次改动**同时**证伪了本条与下方 B2（minOrderQty），两条一起挂赌注。
+       *   下面三条记号替这两句盯着上游：公式没了 / 契约字段没了，门当场红。
+       *
+       * @stale-fact apps/datacore/src/solvers/extended.ts /supplierLeg\.days \* \(1 - ev\.onTimeRate\)/ ==1
+       * @stale-fact apps/datacore/src/solvers/extended.ts /ev\.onTimeRate/ ==3
+       * @stale-fact packages/contracts/src/procurement.ts /expectedSlipDays: z\.number\(\)/ ==1
+       */
       evidence:
-        "datacore 种子有真值（battery-extended.ts:152-159 逐供应商 onTimeRate）+ `livedin.ts:227` 有同名字段（另一口径），" +
-        "但 `apps/datacore/src/solvers/` **0 消费方**（实测 grep 计数 0）⇒ 薄",
+        "datacore 种子有真值（`battery-extended.ts` 供应商表逐家 onTimeRate）+ `livedin/bundle.ts` 有同名字段（另一口径·百分数），" +
+        "求解器**有真消费方**：kit_readiness 拿它算期望滑期天（复验 `grep -n 'ev.onTimeRate' apps/datacore/src/solvers/extended.ts`）；" +
+        "但契约只在求解器**出参** `ProcurementPlan` 里带它，`Supplier` 没有可写入参 ⇒ 薄",
       baseline: null,
       domain: { min: 0, max: 1, step: 0.01 },
       effect: { op: "inert" },
-      inertReason: "零求解器消费方 ⇒ 今天没有任何一条链把它算进耗时；面板显示它是为了让缺口**看得见**，不是为了让它假装能算。",
+      inertReason:
+        "它**有**求解器消费方（kit_readiness 用它算采购段的期望滑期天），但那条链算的是**采购段**，" +
+        "而本节点读数只由厂内各段（等待/交接/转运/节拍/返工）构成，没有采购段可落 ⇒ 拨它不改本读数。",
     },
 
     // ── R 规则 ────────────────────────────────────────────────────────────────
