@@ -513,18 +513,36 @@ describe("WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 →
     }
   }, 300_000);
 
-  it("路径表完整性锚：supply_demand_gap_attribution 今天**丢掉**全部入参 → 故上表只列 1 条；哪天接了 args 这条必红", async () => {
+  it("路径表完整性锚：supply_demand_gap_attribution **不消费任何入参** → 故上表只列 1 条；哪天接了 args 这条必红", async () => {
     // 这条不是在给"丢参数"背书，而是把「为什么只列 1 条路径」从**我的说法**变成**机器的说法**。
-    // 实测：`supplyDemandGapAttribution(ctx, args)` 函数体内零处读 args（catalog.ts:135 却对外声明
-    // `argHints:{metricKey}`）⇒ 传什么都一样。一旦有人接上 scope/metricKey，输出不再逐字节相同 →
-    // 本用例红 → 逼着回来把新路径补进上面那张表，判据的作用面才不会悄悄落后于求解器。
+    // 实测：`supplyDemandGapAttribution(ctx, args)` 的**归因计算**零处读 args ⇒ 传什么算出来的都一样。
+    //
+    // ⚠ WO-METRICKEY-EMPTY-PROMISE 起，"逐字节相同"这个判据要**收窄口径**，原因写清楚免得下一个人以为被放水：
+    //   改前 `catalog.ts` 声明 `argHints:{metricKey}` 而实现不读 ⇒ 传了既不报错也不生效 = **静默错答**。
+    //   本单撤掉该 argHint，并让回包用 `ignoredArgs` + `summary` **点名**说"你传了什么、为什么没生效"。
+    //   于是「传 vs 不传」的回包**在两个诚实位上必然不同**（这正是修好的表现，不是回归）。
+    //   故这里对拍**除这两位之外**的一切 —— 判据仍然是"有没有第二条计算路径"，只是不再被回执噪声盖住。
+    //   真接了入参（算出第二组数）时，本用例照样当场红 → 逼着回来补 paths 表。
     const t = await makeApp();
     await seedBattery(t);
-    const bare = await t.services.solvers.invoke(ADMIN, SDGA_SOLVER, {});
-    const withArgs = await t.services.solvers.invoke(ADMIN, SDGA_SOLVER, { metricKey: "cash", scope: { baseId: "hefei" } });
+    const bare = (await t.services.solvers.invoke(ADMIN, SDGA_SOLVER, {})) as unknown as Record<string, unknown>;
+    const withArgs = (await t.services.solvers.invoke(ADMIN, SDGA_SOLVER, {
+      metricKey: "cash",
+      scope: { baseId: "hefei" },
+    })) as unknown as Record<string, unknown>;
+    const stripHonestyBits = (o: Record<string, unknown>): string => {
+      const { ignoredArgs: _i, summary: _s, ...rest } = o;
+      return JSON.stringify(rest);
+    };
     expect(
-      JSON.stringify(withArgs),
-      "传 metricKey/scope 后输出变了 ⇒ 该求解器已有第二条路径，请把它补进通用判据的 paths 表（否则新路径无人把关）",
-    ).toBe(JSON.stringify(bare));
+      stripHonestyBits(withArgs),
+      "传 metricKey/scope 后**归因数值**变了 ⇒ 该求解器已有第二条路径，请把它补进通用判据的 paths 表（否则新路径无人把关）",
+    ).toBe(stripHonestyBits(bare));
+    // 而"没生效"这件事必须**说得出口**（不许退回静默吞：那才是本锚点当年记下的病）。
+    expect(
+      (withArgs.ignoredArgs as { name: string }[] | undefined)?.map((a) => a.name) ?? [],
+      "传了不消费的入参，回包必须逐条点名忽略（静默吞 = 静默错答复活）",
+    ).toEqual(["metricKey", "scope"]);
+    expect(bare.ignoredArgs, "什么都没传时回执为空数组（『没什么可忽略』≠『我没查』）").toEqual([]);
   }, 300_000);
 });
