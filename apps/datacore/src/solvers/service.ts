@@ -556,7 +556,10 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   // WO-DECISION-PLAY-OPTIONS 追加两键：optionsOmitted（被挡下的战略方案 + 理由·诚实位）·
   // impedimentPlays（接 `enumerateImpedimentOptions` 的真候选 + join 路径·空则带 noPlayReason）。
   decision_play: ["rootCause", "options", "matrix", "triggers", "recommendedPlan", "sandboxNarrowing", "summary", "locusPlay", "optionsOmitted", "optionsEvidence", "impedimentPlays"],
-  supply_demand_gap_attribution: ["rootMetric", "totalGap", "unit", "demandSide", "supplySide", "residual", "reconChecks", "reconciled", "residualPct", "summary"],
+  // WO-METRICKEY-EMPTY-PROMISE：+ ignoredArgs（**诚实位**·两条返回路都出）——调用方传了本求解器不吃的
+  // 入参（如原 argHints 空头支票 `metricKey`）时逐条点名"你传了什么、为什么没生效、该去哪"。
+  // 漏进形状契约 = 下游（前端/模型）看不见这条回执 ⇒ 静默错答原样复活，故必须登记。
+  supply_demand_gap_attribution: ["rootMetric", "totalGap", "unit", "demandSide", "supplySide", "residual", "reconChecks", "reconciled", "residualPct", "ignoredArgs", "summary"],
   // WO-ATP-PROMISE atp_check 输出形状（= AtpCheckOutput 顶层 key·净读三源承诺）。
   atp_check: ["orderRef", "requestedQty", "committableQty", "promiseDate", "atpStatus", "shortfallQty", "bottleneck", "breakdown", "summary"],
   sop_reschedule: ["feasible", "verdict", "targetOrder", "allocation", "displaced", "cost", "residualQty", "reconChecks", "reconciled", "objective", "summary"],
@@ -658,6 +661,77 @@ function solveBudgetDeadline(startedAt: number): { incumbentDeadlineAt?: number 
   if (!Number.isFinite(raw) || raw <= 0) return {}; // 未配/非法 → 关（不猜一个默认值出来）
   return { incumbentDeadlineAt: startedAt + Math.floor(raw) };
 }
+
+/**
+ * WO-METRICKEY-EMPTY-PROMISE · 「调用方传了本求解器不吃的入参」→ **诚实回执**（不静默吞）。
+ *
+ * 病根一句话：目录声明了一个入参、实现从不读它 ⇒ 传了**既不报错也不生效**，答案按缺省口径算出来，
+ * 而调用方（人或模型）以为是按自己指定的那个算的 —— 屏上/回包里没有任何东西能分辨这两种情形。
+ * 撤掉 argHint 只解决"以后别再传"；**已经在传的那些调用方**（确定性路由的通用参数注入、
+ * 种子意图的槽模板、照着旧提示生成参数的模型）仍然会传，故还需要这条回执把「你传的没生效」说出口。
+ *
+ * 判据落在**消费集**上而不是「已知不吃的参数名单」：名单会随实现漂移而过期（漂了照样绿），
+ * 消费集不会 —— 求解器哪天真接了某个入参，就必须把它移出被忽略集，否则回包会自曝
+ * 「我忽略了我其实读了的参数」，当场被接缝测试咬红。
+ *
+ * R6 确定性：按键名升序，无时钟/随机。回显值只作**短展示串**（截断 120 字）——够看清"我传的是这个"，
+ * 又不至于把大对象整个抄进回包。
+ */
+export interface IgnoredSolverArg {
+  /** 被忽略的入参名。 */
+  name: string;
+  /** 调用方实际传进来的值（展示串·超长截断）。 */
+  received: string;
+  /** 为什么它没生效 + 想要那个效果该去哪。 */
+  reason: string;
+}
+
+/** 值 → 短展示串（截断 120 字·不抄大对象·不抛异常）。 */
+function displayArgValue(v: unknown): string {
+  let s: string;
+  if (v === undefined) s = "undefined";
+  else if (v === null) s = "null";
+  else if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") s = String(v);
+  else {
+    try {
+      s = JSON.stringify(v) ?? String(v);
+    } catch {
+      s = "[unserializable]";
+    }
+  }
+  return s.length > 120 ? `${s.slice(0, 117)}...` : s;
+}
+
+/**
+ * 给定调用方 args 与该求解器**真正消费的键集**，列出全部被忽略的入参（按键名升序·R6）。
+ * `consumed` 缺省为空集 = 该求解器不吃任何入参。
+ */
+export function ignoredSolverArgs(
+  args: Record<string, unknown>,
+  reasons: Record<string, string>,
+  genericReason: string,
+  consumed: ReadonlySet<string> = new Set<string>(),
+): IgnoredSolverArg[] {
+  return Object.keys(args ?? {})
+    .filter((k) => !consumed.has(k) && args[k] !== undefined)
+    .sort()
+    .map((name) => ({ name, received: displayArgValue(args[name]), reason: reasons[name] ?? genericReason }));
+}
+
+/** `supply_demand_gap_attribution` 不吃任何入参；这里只是把**最常被传的那两个**的理由写具体。 */
+const SDGA_IGNORED_ARG_REASONS: Record<string, string> = {
+  metricKey:
+    "本求解器的被归因量固定为 S&OP 产销缺口（Σ SopVersionRow max(0,demand−supply)·万套），" +
+    "两端驱动亦为万套等效；本体内没有任何 Metric 以万套计量（营收/毛利/现金=亿，毛利率/份额/达成率=%），" +
+    "按指定指标切万套驱动会造出一个不存在的口径，故不接受该入参。要按指定指标看根因请改调 gap_attribution(metricKey=…)。",
+  factorId:
+    "本求解器出的是**全域**产销双向归因（需求端 ⊥ 供给端），没有按因果因子收窄的作用域维。" +
+    "要从某个根因因子往下钻请改调 gap_attribution(scope.factorId=…) 或 decision_play(factorId=…)。",
+};
+
+/** 其余任何键的通用理由（无需逐个登记 —— 消费集为空即全部落这条）。 */
+const SDGA_GENERIC_IGNORE_REASON =
+  "本求解器不吃任何入参：全部输入取自本体对象库，被归因量固定为 S&OP 产销缺口。该参数未参与本次计算。";
 
 /**
  * S1 real solver algorithms. All numeric constants come from the per-tenant
@@ -2998,17 +3072,34 @@ export class SolverService {
    * 归因系数 explained / matTonToWan 一等 RuleEntry.params（R14·改系数即改归因）。
    */
   /**
-   * ⚠ `_args` 是**形参保留、实参不读**（下划线只是把这个事实显式化，不是"已处理"）：
-   * 本方法的全部输入都来自本体对象库，一路不读 `args`。分发处 `invoke` 按统一的
-   * `(ctx, args)` 形状调（见 `solverKey === "supply_demand_gap_attribution"` 那行），
-   * 且 args 在更上游被 `columnSignatureGate` 消费，故签名保留该位、**不改签名**。
+   * ⚠ 本方法**不吃任何入参**：全部输入来自本体对象库，被归因量固定 = S&OP 产销缺口。
    *
-   * 🔴 已知不一致（**未在本单修改，属行为问题不是 lint 问题**）：
-   * `catalog.ts` 的本求解器条目声明了 `argHints: { metricKey: "达成率指标 key(缺省用 S&OP 产销缺口)" }`，
-   * 而这里恒走 S&OP 产销缺口那条**缺省**路 ⇒ 调用方传 `metricKey` 不报错也不生效。
-   * 要么实现该入参，要么摘掉那条 argHint —— 两者都改行为，需另立单。
+   * ✅ WO-METRICKEY-EMPTY-PROMISE（闭掉原先那条 🔴「声明了却不生效」的记账）：
+   * `catalog.ts` 此前声明 `argHints: { metricKey: "达成率指标 key(缺省用 S&OP 产销缺口)" }`，
+   * 而这里恒走缺省路 ⇒ 传了既不报错也不生效 = **静默错答**。本单选择**撤承诺**（而非实现）：
+   *  · G = Σ SopVersionRow max(0, demand−supply) 量纲是**万套**，两端驱动（预测偏差/在手订单/结构漂移
+   *    ⊥ 产能缺口/物料缺口/OEE 损失）也全是万套等效 —— 这套分摊只对「产销供需平衡」这一个口径成立；
+   *  · 本体里**没有任何 Metric 以万套计量**（`GOAL_REGISTRY`：营收/毛利/现金=亿，毛利率/份额/达成率/保障率=%，
+   *    `seg_attain_*`=%）⇒ 拿 %/亿 的缺口去切万套驱动是**硬造口径**，不是真值派生；
+   *  · 也没有「指标 → 需求端/供给端驱动族」的登记册（`metric_causal_binding` 登的是指标→CausalFactor，
+   *    服务的是 `gap_attribution`）；且缺省 `rootMetric.key="sop_demand_supply"` 根本不是任何 Metric 的 key。
+   * ⇒ 要按指定指标看根因，正门是 `gap_attribution`（那里 `args.metricKey` 是**真读**的）。
+   *
+   * ⚠ 为什么是「诚实忽略 + 回包点名」而不是 400 拒收：`agentcore` 的确定性 CEO 路由
+   * （`router/ceo-route.ts` 的通用 else 支）对**所有**落该支的 route 无条件 `args.metricKey = focus.metric`，
+   * 本求解器就落在该支；种子意图 `ceo_supply_demand_gap` 的计划模板也带 `{{slots.metricKey}}`。
+   * 400 会把一条本来能出答案的 CEO 深问打断，而那两处都在 agentcore（本单范围外）改不了。
+   * 故：**照常算**，但把「你传了什么、为什么没生效、该去哪」写进 `ignoredArgs` + `summary`
+   * —— 静默吞才是把一个静默错答换成另一个。
    */
-  private async supplyDemandGapAttribution(ctx: AuthCtx, _args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async supplyDemandGapAttribution(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    // 本求解器消费的入参集 = ∅ ⇒ 调用方给的每一个键都是被忽略的。用**空集**当判据（而非写死一张
+    // 「已知不吃的参数」名单）：名单会随代码漂移而过期，空集不会 —— 哪天真接了某个入参，
+    // 那时必须把它从这里排除，否则回包会自曝「我忽略了我其实读了的参数」，当场被测试咬红。
+    const ignoredArgs = ignoredSolverArgs(args, SDGA_IGNORED_ARG_REASONS, SDGA_GENERIC_IGNORE_REASON);
+    const ignoreNote = ignoredArgs.length
+      ? `｜⚠ 已忽略入参 ${ignoredArgs.map((a) => a.name).join("/")}：${ignoredArgs[0]!.reason}`
+      : "";
     const sop = (await this.repos.objects.listByType(ctx.tenantId, "SopVersionRow")).map((o) => o.props);
     const segs = (await this.repos.objects.listByType(ctx.tenantId, "DemandSegment")).map((o) => o.props);
     const lines = (await this.repos.objects.listByType(ctx.tenantId, "Line")).map((o) => o.props);
@@ -3024,7 +3115,10 @@ export class SolverService {
         rootMetric: { key: "sop_demand_supply", name: "产销供需缺口", unit, gap: G },
         totalGap: G, demandSide: null, supplySide: null, residual: G, reconChecks: [],
         reconciled: true, residualPct: G > 0 ? 100 : 0,
-        summary: sop.length === 0 ? "无 S&OP 产销数据 → 供需缺口双向归因不可用（诚实空·未编五五开）" : "当前产销无正缺口（供≥需），无需归因",
+        // 诚实空这条路同样要把「你传的入参没生效」说出口 —— 否则「因为没数据所以空」与
+        // 「因为我按你指定的指标算所以空」在屏上一模一样，又是一次静默错答。
+        ignoredArgs,
+        summary: (sop.length === 0 ? "无 S&OP 产销数据 → 供需缺口双向归因不可用（诚实空·未编五五开）" : "当前产销无正缺口（供≥需），无需归因") + ignoreNote,
       };
     }
 
@@ -3137,7 +3231,9 @@ export class SolverService {
       demandSide: { contribution: demandContribution, share: round((sumD / T), 4), pct: demandPct, drivers: demandLeaves },
       supplySide: { contribution: supplyContribution, share: round((sumS / T), 4), pct: supplyPct, drivers: supplyLeaves },
       residual, reconChecks, reconciled, residualPct,
-      summary: `产销缺口 ${G}${unit} 双向归因：需求端 ${demandPct}%（${demandLeaves.length} 叶·预测偏差/在手订单/结构漂移）⊥ 供给端 ${supplyPct}%（${supplyLeaves.length} 叶·产能/物料/设备OEE），residual ${residualPct}%（诚实未解释）·勾稽${reconciled ? "通过" : "未通过"}`,
+      // WO-METRICKEY-EMPTY-PROMISE：被忽略的入参逐条点名（空数组 = 调用方什么都没传·非"我没查"）。
+      ignoredArgs,
+      summary: `产销缺口 ${G}${unit} 双向归因：需求端 ${demandPct}%（${demandLeaves.length} 叶·预测偏差/在手订单/结构漂移）⊥ 供给端 ${supplyPct}%（${supplyLeaves.length} 叶·产能/物料/设备OEE），residual ${residualPct}%（诚实未解释）·勾稽${reconciled ? "通过" : "未通过"}${ignoreNote}`,
     };
   }
 
