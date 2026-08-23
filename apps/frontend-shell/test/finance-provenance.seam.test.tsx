@@ -299,7 +299,8 @@ describe("WO-FIELD-DEAD-6 病① · 财务投影的诚实位真的上屏（接�
      * React 卸掉整棵树 ⇒ 屏上不是「这块面板没数据」，而是**整个沙盘白屏**（连坐 4 个用例）。
      * 现在校形走契约 `safeParse`，缺字段按「拿不到数」处理。
      */
-    const { pressures: _dropped, ...withoutPressures } = OUT;
+    const withoutPressures: Partial<typeof OUT> = { ...OUT };
+    delete withoutPressures.pressures;
     serveProjection(withoutPressures);
     mount();
 

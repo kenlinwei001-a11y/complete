@@ -63,7 +63,7 @@ vi.mock("@/api/endpoints", async (importOriginal) => {
 });
 
 import SandboxView from "@/views/sim/SandboxView";
-import { ChainLossPayloadSchema, type ChainLossPayload } from "@/views/sim/chainLineMap";
+import { ChainLossPayloadSchema } from "@/views/sim/chainLineMap";
 import { ChainImpedimentPayloadSchema, type ChainImpedimentPayload } from "@/views/sim/chainImpediment";
 
 // ── 仓根 / fixture ────────────────────────────────────────────────────────────
@@ -86,9 +86,6 @@ const FIX = join(REPO_ROOT, "apps/frontend-shell/test/fixtures");
 
 function loadLossRaw(): Record<string, unknown> {
   return JSON.parse(readFileSync(join(FIX, "chain-loss-real.json"), "utf8")) as Record<string, unknown>;
-}
-function loadLoss(): ChainLossPayload {
-  return ChainLossPayloadSchema.parse(loadLossRaw());
 }
 function loadImpRaw(): Record<string, unknown> {
   const raw = JSON.parse(readFileSync(join(FIX, "chain-impediment-baseline.json"), "utf8")) as Record<string, unknown>;

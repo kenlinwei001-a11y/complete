@@ -7,7 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "./setup";
 import { loginAs, renderApp, renderWithClient } from "./utils";
-import { checkedTree, factHits } from "./factlock";
+import { checkedTree } from "./factlock";
 import { CONSOLIDATED_INTO_SANDBOX } from "@/pages/ShellLayout";
 import {
   buildChainLineMap,
