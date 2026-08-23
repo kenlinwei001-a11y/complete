@@ -112,9 +112,14 @@ describe("A10 接缝 · sim.* 事件 → 前端查询键真失效", () => {
     //                  WO-ENGINE-2 件二（08-13）+ 真缓存 WO-BEFE-E 的 checkpointsQuery
     //                  + agentcore 登记（本单）⇒ `sim.checkpoint_saved` 转真接线，台账清空。
     //                  **emit 侧同样一行没动**，7/6 不变）。
+    //   7/6 → 8/7（WO-SIMSESSION-BIZ-REUSE 加了 `sim.session_status_changed` 这**一处**新 emit
+    //                  （`setSimSessionStatus` 里的唯一一行，datacore app.ts:2002），当时只登了本体 §4、
+    //                  **前端两边都没登** ⇒ 本条与④当场变红。WO-GATE-ONTOLOGY-DRIFT（2026-08-23）
+    //                  按"真缓存承载"判据接进 `EVENT_INVALIDATES`（→ `sim-sessions`，理由见 ⑭⑮），
+    //                  故 8/7 + 缺口仍为 0。**这两个数是被这条断言逼出来的，不是人想起来的**。
     const emitted = emittedSimEvents();
-    expect(emitted.length, "datacore sim.* emit 处数变了，重新核消费方").toBe(7);
-    expect(new Set(emitted).size, "datacore sim.* 事件名数变了，重新核消费方").toBe(6);
+    expect(emitted.length, "datacore sim.* emit 处数变了，重新核消费方").toBe(8);
+    expect(new Set(emitted).size, "datacore sim.* 事件名数变了，重新核消费方").toBe(7);
     // 台账今日为空（机制保留）：哪天它又长出条目，每条必须有理由（上面的循环守着），
     // 且不允许拿台账当「悄悄不接线」的挡箭牌 —— 新增 emit 而不接线也不记账 ⇒ 测试④红。
     expect(Object.keys(SIM_EVENT_GAPS).length, "缺口台账应为空：最后一个缺口 sim.checkpoint_saved 已闭环").toBe(0);
@@ -244,5 +249,65 @@ describe("A10 接缝 · sim.* 事件 → 前端查询键真失效", () => {
       invalidateForEvent(bad);
     }
     expect(queryClient.getQueryState(cpKey)?.isInvalidated).toBe(false);
+  });
+
+  /**
+   * ══ WO-GATE-ONTOLOGY-DRIFT（2026-08-23）· 会话生命周期迁移接线 ══
+   *
+   * 这一条不是补记账，修的是**真陈旧**：`setSimSessionStatus`（datacore `app.ts:1989`）改完
+   * `s.status` 并 `putSession` 之后 emit（`app.ts:2002`），而会话列表投影
+   * （`GET /a/v1/sim/sessions` 的 `listSessionSummaries`）**逐项带 `status`**。
+   * 不失效 ⇒ 别的标签页/别的面板停在旧状态：
+   *   · `SandboxView.tsx` 世界列表 rail 直接渲染 `{s.status} · tick {s.curTick}`；
+   *   · `console/useConsoleSession.ts` 的那条 useQuery 是 **`staleTime: Infinity`**（不失效永不重取），
+   *     它用 `pickLatestRunningSession`（只认 `RUNNING`）替四个控制台页挑「当前世界」——
+   *     会话被迁成 PAUSED/ENDED 后仍拿冻结世界冒充「当前」，用户再点 tick/act 只会撞 409。
+   */
+  it("⑭ sim.session_status_changed → 世界列表 query 真失效（迁 PAUSED/ENDED 后别处不再停在旧状态）", () => {
+    const listKey = [...SIM_CONSUMER_KEYS.simSessionList];
+    queryClient.setQueryData(listKey, { items: [{ id: "sims_a", status: "RUNNING", curTick: 3 }] });
+    expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(false);
+
+    invalidateForEvent("sim.session_status_changed");
+
+    expect(
+      queryClient.getQueryState(listKey)?.isInvalidated,
+      "会话迁了状态而世界列表没失效——rail 上的 status 与 useConsoleSession 挑的『当前世界』都会停在旧值（useConsoleSession 是 staleTime:Infinity，不失效就永不重取）",
+    ).toBe(true);
+  });
+
+  it("⑮ 会话状态接线的防漂移锚 + 「不挂无承载的标签」的反向断言 + 拼错事件名反证", () => {
+    // 正向：这个前缀确实是本事件走的那条标签映射出来的（表改了这里就红）。
+    expect(EVENT_INVALIDATES["sim.session_status_changed"]).toContain("sim-sessions");
+
+    // 反向（这一半才是「不是随便挂一个」的证据）：
+    //  · `sim-world` —— `setSimSessionStatus` 只改 status 再 putSession，tick 态一个字节没动 ⇒ 挂上=空跑；
+    //  · `sim-scenarios` —— 产能页 pause/end 也走本事件，但前端 `LiveScenario` 类型里没有 `status`
+    //    字段、`RiskBoardView` 一处都不读 ⇒ 今天没有承载它的屏，挂上=假接线（#90/#92 同族）。
+    expect(
+      EVENT_INVALIDATES["sim.session_status_changed"],
+      "sim-world 被挂上了——状态迁移不改 tick 态，这是纯空跑；要挂先给出它真变了的证据",
+    ).not.toContain("sim-world");
+    expect(
+      EVENT_INVALIDATES["sim.session_status_changed"],
+      "sim-scenarios 被挂上了——前端 LiveScenario 类型里没有 status、方案列表一处都不读它，这是假接线；等方案列表真把生命周期上屏（先读端后事件）再挂",
+    ).not.toContain("sim-scenarios");
+    // 上面那句「LiveScenario 没有 status」是本条的前提，锚在源码上，改了即红（防前提悄悄过期）。
+    const ep = readRepoFile("../src/api/endpoints.ts");
+    expect(ep.length, "api/endpoints.ts 读到了空内容——路径漂了").toBeGreaterThan(1000);
+    const liveScenarioDecl = ep.slice(ep.indexOf("export interface LiveScenario {"));
+    expect(liveScenarioDecl.length, "抓不到 LiveScenario 声明——锚漂了，本条结论不可信").toBeGreaterThan(100);
+    expect(
+      liveScenarioDecl.slice(0, liveScenarioDecl.indexOf("}")),
+      "LiveScenario 长出了 status 字段——方案列表可能已把生命周期上屏，重新判断要不要给本事件补挂 sim-scenarios",
+    ).not.toContain("status");
+
+    // 反证：事件名拼错 → 什么都不失效（证咬的是真事件名）。
+    const listKey = [...SIM_CONSUMER_KEYS.simSessionList];
+    queryClient.setQueryData(listKey, { items: [] });
+    for (const bad of ["sim.session_status_change", "sim.session_statuses_changed", "sim_session_status_changed"]) {
+      invalidateForEvent(bad);
+    }
+    expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(false);
   });
 });
