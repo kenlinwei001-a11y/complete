@@ -114,6 +114,21 @@ html,body{margin:0;background:var(--ink);color:var(--txt);font-family:var(--fs);
 .sg.g{background:rgba(98,190,119,.16);border:1px solid #62be77;color:#91d2a0}
 .sg.o{border:1px solid var(--hair2);color:var(--dim2)}
 .play{position:absolute;top:0;bottom:0;width:1px;background:var(--amb);z-index:3}
+
+/* ══ 传导边抽屉（WO-EDGE-PANEL-4PAGES · 仓主批准「挂，并接受版面变化」）══
+   画布 .app 是**定死的 1440×897 且 overflow:hidden** ⇒ 塞进画布的任何东西都得挤掉既有内容。
+   故抽屉挂在画布**外**、紧贴其下，**默认折叠**：收起态只占 26px 一条，画布内逐像素不动；
+   展开才向下顶开页面。
+   ⚠ 展开后的内容是**共享件 EdgeActivePanel**（四页同一个，源码 views/sim/EdgeActivePanel.tsx
+   + 它自己的 .module.css）。它不在本规格里复刻 —— 本规格只定义「抽屉这条壳」的版面；
+   把共享件抄进四份规格 = 造出四份会各自漂移的第二真相源。
+   色值移植对照：--panel2→var(--panel2) · --hair→var(--line) · --txt→var(--txt) · --dim→var(--muted) */
+.dock{width:1440px;background:var(--panel2);border:1px solid var(--hair);border-top:0;
+  color:var(--txt);font-family:var(--fs);font-size:11.5px}
+.dockSum{height:26px;display:flex;align-items:center;gap:6px;padding:0 12px;cursor:pointer;
+  color:var(--dim);letter-spacing:0.06em;list-style:none}
+.dockSum::-webkit-details-marker{display:none}
+.dock[open] .dockSum{border-bottom:1px solid var(--hair);color:var(--txt)}
 </style>
 
 <div class="app">
@@ -162,6 +177,14 @@ html,body{margin:0;background:var(--ink);color:var(--txt);font-family:var(--fs);
     </div>
   </div>
 </div>
+
+<!-- ══ 传导边抽屉（画布外·默认折叠）══
+     收起态就是基准 PNG 里那条 26px 的标题条。展开后是共享件 EdgeActivePanel：
+     每行一条传导边（源类型.状态变量 —链路→ 目标类型.状态变量 + 系数/延迟），
+     勾掉一条即发一次对照跑，下方出差值表。见 views/sim/EdgeActivePanel.tsx。 -->
+<details class="dock" data-testid="sim-attribution-edge-dock">
+  <summary class="dockSum" data-testid="sim-attribution-edge-summary">关掉一条传导边，看这次推演的数怎么变 ▸</summary>
+</details>
 
 <script>
 "use strict";

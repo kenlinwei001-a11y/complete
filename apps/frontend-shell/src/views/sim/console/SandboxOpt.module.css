@@ -736,3 +736,53 @@
   background: var(--warn);
   z-index: 3;
 }
+
+/* ══ 传导边抽屉 `.dock`（WO-EDGE-PANEL-4PAGES）════════════════════════════════
+ * 规格 = `docs/ux-spec/sandbox/sandbox-opt.html` 的同名段（那份 HTML 是**可执行规格**，
+ * 不是设计说明）。要改这块版面：先改规格 → 重出基准 PNG → 再回来改这里，顺序不许倒过来。
+ *
+ * ── 为什么挂在画布**外** ────────────────────────────────────────────────────
+ * `.app` 是**定死的 1440×897 且 `overflow:hidden`**，塞进画布的任何东西都必须挤掉既有内容。
+ * 抽屉紧贴画布下沿、**默认折叠**：收起态只占 26px 一条 ⇒ 画布内信息密度**逐像素不动**；
+ * 展开才向下顶开页面。用 `<details>` 而不是条件渲染 —— 它**任何时候都能展开**，
+ * 不以「已经跑过推演」为前提，那正是 `check-edge-active-mounts` 那道门存在的理由。
+ *
+ * ── 色值一律走 token（本目录零字面色值，三套主题自动跟随）──────────────────────
+ *   var(--panel2) ← 规格 --panel2   var(--line) ← 规格 --hair
+ *   var(--txt)    ← 规格 --txt      var(--muted) ← 规格 --dim
+ * ⚠ `--muted` 当**正文色**是刻意的（不是 `--muted2`）：`check-text-legibility` 对
+ * `views/sim/console/` 按 12px 判对比度（判据 A 的高密度指控台裁决），`--muted` 三套主题
+ * 都在 6.0:1 以上，`--muted2` 只有 6.13:1 且亮色主题更险。
+ * ⚠ 字号 11.5px：本目录整体按 8–11.5px 设计（判据 B 的作用域豁免已覆盖本目录），
+ * 抽屉标题条与画布里的面板头 `.ph b` 同档，不另开一级字号（R-UI-2 只许 3 级）。 */
+.dock {
+  width: 1440px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-top: 0;
+  color: var(--txt);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+}
+.dockSum {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  cursor: pointer;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  /* 去掉浏览器默认的三角记号 —— 展开态由本条自己的下边框 + 文字色表达，
+     文字尾部另有一个 ▸ 记号。**两条声明都要写**：`list-style` 管 Firefox 与新版 Chrome，
+     `::-webkit-details-marker` 管 Safari 与旧 Chrome；只写一条会在另一半浏览器里
+     多出一个与 12px 左内边距对不齐的小三角。 */
+  list-style: none;
+}
+.dockSum::-webkit-details-marker {
+  display: none;
+}
+.dock[open] .dockSum {
+  border-bottom: 1px solid var(--line);
+  color: var(--txt);
+}
