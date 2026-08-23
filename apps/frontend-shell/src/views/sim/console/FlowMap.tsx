@@ -17,7 +17,14 @@
  *   注册表增删一条 ⇒ `tsc` 当场 TS2739/TS2353，编译期就红，不会漂。
  *   这正是 `scripts/check-chain-node-singlesource.mjs` 判据 C 明文放行的写法
  *   （门原话：「把它声明成 `const T: Partial<Record<Rid, …>>`…键就绑在编译期了，本判据按机制放行」）。
- *   ⚠ 不许改成 `as` 断言、也不许把键类型掺成 `Rid | string` —— 那两条实测都会让 `tsc` 不再咬。
+ *   ⚠ 不许改成 `as` 断言、也不许把键类型掺成 `Rid | string` —— 那两条 **2026-08-21 实测**
+ *     都会让 `tsc` 不再咬。复验（把这条注释当赌注亲手验一遍，两步）：
+ *       ① 基线：`pnpm --filter frontend-shell typecheck` 应当**绿**；
+ *       ② 变异反证：把 `FLOW_LAYOUT` 的键类型临时改成 `Record<RegisteredChainNodeId | string, …>`
+ *          （或给它加 `as`），再跑同一条命令 —— 应当**仍然绿**，那就证明"咬"确实没了；
+ *          随后从注册表里删一条 `CHAIN_NODE_REGISTRY` 项，原写法会 TS2739/TS2353 当场红、
+ *          改坏的写法则不红。**记得把变异改回来。**
+ *     门那一半的原话在 `scripts/check-chain-node-singlesource.mjs`（搜「判据 C」）。
  *
  * ── 站圈占比的数据出身 ──────────────────────────────────────────────────────
  * 真源 = 求解器 `chain_loss_attribution`（`useChainNodeLoss()`）。载荷按 `stepId → nodeId` 归并
