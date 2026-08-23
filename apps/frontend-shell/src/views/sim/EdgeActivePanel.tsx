@@ -75,7 +75,8 @@ import css from "./EdgeActivePanel.module.css";
  * ══ WO-DISRUPTION-CARDS · 按业务域切片的卡片版面 ══════════════════════════════════
  *
  * 仓主看了推演页截图后的原话：「**按照卡片，建立不同扰动因素的分类展示**」。
- * 改前病灶三条叠在一起：**35 条边一次全倒**（demo 租户实测）· **无栅格**（标签长短不一，
+ * 改前病灶三条叠在一起：**35 条边一次全倒**（demo 租户 2026-08-17 实测，**2026-08-23 复核仍是 35**；
+ * 复验：`grep -c 'id: "simpr_demo' apps/datacore/src/seed.ts`）· **无栅格**（标签长短不一，
  * 勾选框不在一条竖线上）· **字号过小**。三条各自的对策：
  *   ① 分类切片 —— 每个业务域一个 chip（带条数），点一个只显示该域的行；
  *   ② 固定三段栅格 `18px | 1fr | max-content`（见 `.row`），控件左边缘在同一条竖线上；
@@ -97,7 +98,10 @@ import css from "./EdgeActivePanel.module.css";
  *    那一行，第一级不给它编一个名字。这是诚实缺席，补法见本单交单报告"没做的部分"。」
  * 那句话当时**属实**，且它把缺口记在了正确的地方（缺的是真值源，不是排版）。现在缺口已闭：
  *   · 真值源 —— `apps/datacore/src/synthetic/battery.ts` 的 `STATE_VAR_DISPLAY_NAMES`（36 条，
- *     逐条引自 `seed.ts` 那 35 条传导规则自己的注释，不是照英文键意译）；
+ *     逐条引自 `seed.ts` 那 35 条传导规则自己的注释，不是照英文键意译）。
+ *     这个 36 是 **2026-08-23 现算**的（原注写下时同值）；复验一条命令（**不写死行号**）：
+ *     `sed -n '/^export const STATE_VAR_DISPLAY_NAMES/,/^};/p' apps/datacore/src/synthetic/battery.ts | grep -oE '[A-Za-z_][A-Za-z0-9_]*: *"' | wc -l`
+ *     ⚠ 别按「行数」数：这张表**一行写多条**，按行数得 16 —— 那个数不度量条数（本单实测踩过）；
  *   · 下发 —— `GET /a/v1/sim/propagation-rules` 与 `GET /a/v1/sim/view-config` 各投影一份
  *     `stateVarNames` 字典（读时 join，不入库；两处共用同一个投影函数）；
  *   · 消费 —— 本文件经 `stateVarLabel.ts` 这**一条**路径翻译，前端仍然零中文名映射表（R14 未破）。
@@ -138,9 +142,13 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
   /**
    * 对象类型的中文名（`ObjectType.displayName`）**随边一起下发**，本面板不另打一次请求。
    *
-   * ⚠ 这不是省一次请求那么简单 —— 初稿在这里加了 `useQuery(fetchObjectTypes)`，实测当场炸：
-   * 本组件挂在 8 个推演页上，而**全仓 29 个前端测试文件 `vi.mock("@/api/endpoints")` 做部分 mock**，
+   * ⚠ 这不是省一次请求那么简单 —— 初稿在这里加了 `useQuery(fetchObjectTypes)`，**2026-08-17 实测当场炸**：
+   * 本组件挂在 8 个推演页上，而当天**全仓 29 个前端测试文件 `vi.mock("@/api/endpoints")` 做部分 mock**，
    * 新增一个 endpoint 导入 ⇒ 它们全部报 `No "fetchObjectTypes" export is defined on the mock`。
+   * ⚠ **29 是 2026-08-17 那天的数，今天已经不是了** —— 2026-08-23 现算 **36**（只增不减，
+   *   即这条纪律今天比当时更该守）。复验一条命令：
+   *   `grep -rlF 'vi.mock("@/api/endpoints"' apps/frontend-shell/test/ | wc -l`
+   *   （报 0 就是这条 grep 坏了，不是没人 mock：`test/sandbox-console.seam.test.tsx` 是已知必中的金丝雀。）
    * 挨个去补那 29 份 mock 是治标：下一个往共享面板加依赖的人还会再炸一次。
    * 治本是**让这个面板只依赖一个响应** —— 类型名由 `GET /a/v1/sim/propagation-rules`
    * 在**读时投影**（`app.ts` 那条路由 join 本租户本体），前端零加工、零额外依赖。
@@ -319,6 +327,12 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
         ① 分类切片：每个业务域一个 chip（带**现算**的条数），点一个只显示该域的行。
         ⛔ chip 的条数与下方真渲染的行数是**同一个数组的长度**（`slice.rows`）——
            不是两个各自维护的数字，所以不可能出现"chip 写 7 条、点开只有 5 行"。
+        「现算」这件事今天还成不成立（**2026-08-23 复核成立**），复验两条：
+          · 实现那一行：`apps/frontend-shell/src/views/sim/edgeActiveModel.ts` 的
+            `buildDomainSlices` 结尾 `return slices.map((s) => ({ ...s, count: s.rows.length }));`
+            （不写死行号，`grep -n 'count: s.rows.length' apps/frontend-shell/src/views/sim/edgeActiveModel.ts`）；
+          · 机器化断言：`pnpm --filter frontend-shell exec vitest run test/disruption-cards.seam.test.tsx`
+            —— 用例「纯模型：… count 恒等于 rows.length」就在咬这一条。
       */}
       <div className={css.chipbar} role="tablist" aria-label="按业务域筛选扰动因素" data-testid={tid("domains")}>
         {slices.map((sl) => (
