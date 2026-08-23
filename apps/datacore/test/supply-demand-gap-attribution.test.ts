@@ -253,7 +253,9 @@ describe("WO-METRICKEY-EMPTY-PROMISE · metricKey 空头支票（声明面 ⊗ �
     // 只把两个**诚实位**（回执 + 带回执的 summary）摘掉，其余全部对拍：
     // 若哪天真接了入参、算出了第二组数，这里当场红 —— 那时必须回来把新口径的判据补上。
     const strip = (o: SdgaOut): string => {
-      const { ignoredArgs: _i, summary: _s, ...rest } = o;
+      const rest: Record<string, unknown> = { ...o };
+      delete rest.ignoredArgs;
+      delete rest.summary;
       return JSON.stringify(rest);
     };
     expect(strip(withArgs), "传参改变了归因数值 ⇒ 出现了第二条口径，本用例的前提失效，必须回来补判据").toBe(strip(bare));

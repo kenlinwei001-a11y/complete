@@ -531,7 +531,9 @@ describe("WO-R13-DRILLFIELD · 溯源口径通用判据（标签所指字段 →
       scope: { baseId: "hefei" },
     })) as unknown as Record<string, unknown>;
     const stripHonestyBits = (o: Record<string, unknown>): string => {
-      const { ignoredArgs: _i, summary: _s, ...rest } = o;
+      const rest: Record<string, unknown> = { ...o };
+      delete rest.ignoredArgs;
+      delete rest.summary;
       return JSON.stringify(rest);
     };
     expect(
