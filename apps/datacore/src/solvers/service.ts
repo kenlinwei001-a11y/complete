@@ -215,7 +215,7 @@ const resolveDomainEntryFactor = (
   adj: Map<string, string[]>,
 ): DomainEntryPick => {
   const idOf = (c: Record<string, unknown>) => str(c.factorId);
-  const candidates = domainFactors.filter((c) => !Boolean(c.isRoot));
+  const candidates = domainFactors.filter((c) => !c.isRoot);
   if (candidates.length === 0) return { kind: "none" };
   const domainIds = new Set(domainFactors.map(idOf));
   const domainRootIds = new Set(domainFactors.filter((c) => Boolean(c.isRoot)).map(idOf));
@@ -2119,7 +2119,7 @@ export class SolverService {
     const severityOf = async (cf: Record<string, unknown>): Promise<{ sev: number; raw: number }> => {
       const type = str(cf.drillType); const id = str(cf.drillId); const field = str(cf.drillField);
       const raw = await drillVal(type, id, field);
-      let sev = 0;
+      let sev: number; // 下面的 if/else 链最后一支是无条件 else ⇒ 每条路径都必赋值，不给初值
       if (cf.factorId === "cf-upstream-cut") { const c = await drillVal("Supplier", id, "contractedSupplyTon"); sev = c > 0 ? (c - raw) / c : 0; }
       else if (cf.factorId === "cf-lta-breach") { const c = await drillVal("LongTermAgreement", id, "contractedQtyTon"); sev = c > 0 ? (c - raw) / c : 0; }
       else if (cf.factorId === "cf-ore-price") sev = Math.min(1, raw / 10); // pctChange% → 0–1
@@ -2366,7 +2366,7 @@ export class SolverService {
       const id = str(cf.drillId);
       const field = str(cf.drillField);
       const raw = await drillVal(type, id, field);
-      let sev = 0;
+      let sev: number; // 同上：末支是无条件 else ⇒ 每条路径都必赋值，不给初值
       if (cf.factorId === "cf-competitor-price") {
         const selfPrice = await drillVal("CompetitorPrice", "price-ess-self", "pricePerKwh");
         sev = selfPrice > 0 ? Math.max(0, (selfPrice - raw) / selfPrice) : 0;
@@ -2997,7 +2997,18 @@ export class SolverService {
    * KILL-MOCK-RED：无 S&OP 产销数据 → 诚实空（不编五五开·C6）。R6：排序稳定 + 无时钟/随机。
    * 归因系数 explained / matTonToWan 一等 RuleEntry.params（R14·改系数即改归因）。
    */
-  private async supplyDemandGapAttribution(ctx: AuthCtx, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  /**
+   * ⚠ `_args` 是**形参保留、实参不读**（下划线只是把这个事实显式化，不是"已处理"）：
+   * 本方法的全部输入都来自本体对象库，一路不读 `args`。分发处 `invoke` 按统一的
+   * `(ctx, args)` 形状调（见 `solverKey === "supply_demand_gap_attribution"` 那行），
+   * 且 args 在更上游被 `columnSignatureGate` 消费，故签名保留该位、**不改签名**。
+   *
+   * 🔴 已知不一致（**未在本单修改，属行为问题不是 lint 问题**）：
+   * `catalog.ts` 的本求解器条目声明了 `argHints: { metricKey: "达成率指标 key(缺省用 S&OP 产销缺口)" }`，
+   * 而这里恒走 S&OP 产销缺口那条**缺省**路 ⇒ 调用方传 `metricKey` 不报错也不生效。
+   * 要么实现该入参，要么摘掉那条 argHint —— 两者都改行为，需另立单。
+   */
+  private async supplyDemandGapAttribution(ctx: AuthCtx, _args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const sop = (await this.repos.objects.listByType(ctx.tenantId, "SopVersionRow")).map((o) => o.props);
     const segs = (await this.repos.objects.listByType(ctx.tenantId, "DemandSegment")).map((o) => o.props);
     const lines = (await this.repos.objects.listByType(ctx.tenantId, "Line")).map((o) => o.props);
@@ -3047,7 +3058,7 @@ export class SolverService {
 
     // ── 供给端驱动（真颗粒·万套等效）──
     const supplyDrv: Drv[] = [];
-    const finalDemand = num([...sop].sort((a, b) => (Boolean(b.isFinal) ? 1 : 0) - (Boolean(a.isFinal) ? 1 : 0) || str(b.ver).localeCompare(str(a.ver)))[0]?.demand);
+    const finalDemand = num([...sop].sort((a, b) => (b.isFinal ? 1 : 0) - (a.isFinal ? 1 : 0) || str(b.ver).localeCompare(str(a.ver)))[0]?.demand);
     const sumCapDaily = round(lines.reduce((a, l) => a + num(l.capacityDaily), 0), 4); // Σ`Line.capacityDaily`（套/日·与 drillField 同口径）
     const totalCapWan = round(lines.reduce((a, l) => a + num(l.capacityDaily) * 300, 0) / 1e4, 4); // 年化产能（万套·300 工作日·capacityDaily 缺则 0）
     // 产能基准：有真产能颗粒→年化产能；无（demo Line.capacityDaily 未落）→ 退需求为基准（诚实·避免 OEE 权重被 0 归零）。
@@ -5885,8 +5896,9 @@ export class SolverService {
         out.push({ key, name: rule.name, severity: rule.severity, outcome: "NOT_APPLICABLE", expression: rule.expression, evidence: naEvidence });
         continue;
       }
-      let violated = false;
       // 命名阈值随规则一起喂进求值（改 rule.params → 本求解器的规则判定跟着变，无需改代码）。
+      // try/catch 两条路径都必赋值 ⇒ 不给初值（写 `= false` 会读成"默认通过"，而默认是由 catch 明确给的）。
+      let violated: boolean;
       try { violated = evaluateExpression(rule.expression, { payload, params: rule.params }); } catch { violated = false; }
       out.push({
         key, name: rule.name, severity: rule.severity, expression: rule.expression,
