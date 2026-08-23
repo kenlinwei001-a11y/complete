@@ -9,7 +9,6 @@ import type {
   CoordinatorPlan,
   IntentDefinition,
   PendingClarification,
-  ProvenanceRef,
   QueryTask,
   ResolvedRef,
   RoleDispatch,

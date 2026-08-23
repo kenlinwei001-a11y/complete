@@ -617,8 +617,8 @@ export class MockSolverClient implements SolverClient {
 
       // ① 路径：显式 hops 优先（逐跳校验 R12 闭包），否则镜像图 BFS 最短路 —— 全部现算，无一写死。
       type HopStep = OntologyPathHop & { filter?: MockQueryFilter[] };
-      let pathSet: HopStep[][] = [];
-      let sliceKey: string | null = null;
+      let pathSet: HopStep[][];
+      let sliceKey: string | null;
       const explicitHops = Array.isArray(args.hops)
         ? (args.hops as { linkKey: string; direction: "forward" | "backward"; targetType?: string; filter?: MockQueryFilter[] }[])
         : [];
