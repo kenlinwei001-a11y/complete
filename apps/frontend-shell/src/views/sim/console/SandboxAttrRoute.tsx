@@ -20,7 +20,10 @@
  *
  * ⚠ **WO-SIM-PARAM-WIRE ② 复核后订正上面那句的后半**：`so` 缺席时**四格不落占位**——
  * `useChainLossMatrix` 的 `useQuery` 根本没有 `enabled` 判据，`so` 缺席照发 body `{}`，
- * 实测回 `200 · 13/13 列有数据 · 234 格`，四格全是 `endpoint`。
+ * **2026-08-22 实测**回 `200 · 13/13 列有数据 · 234 格`，四格全是 `endpoint`。
+ * 复验（一条 curl 把这三个数一起打出来，命令与回包字段名见
+ * `useLossAttribution.ts` 的 `useChainLossMatrix` 头注「复验这一行」那段）；
+ * 不起后端的那一半：`pnpm --filter frontend-shell exec vitest run test/sandbox-attr-pixel.test.tsx`。
  * 而「宿主自己挑一张单」这条缺省规则实测会把矩阵砍到 `2/13 列 · 36 格`（收窄语义），
  * 且与后端**逐列**已有的「`so` 字典序首张」口径撞成两份实现。
  * 逐格对拍表与全部证据在 `useLossAttribution.ts` 的 `useChainLossMatrix` 头注，此处不复述。
