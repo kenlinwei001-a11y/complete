@@ -91,7 +91,8 @@ import type { SimWorldOps } from "./sim/seed-world.js";
 import { ChainLossDrillRequestSchema } from "@platform/contracts";
 import { chainLossDrill, chainNodeDetail, type DrillObject, type DrillWorld } from "./sim/drill.js";
 import { nodeLossShare, type ChainLossResult } from "./solvers/chain-loss.js";
-import { cadenceFromProps } from "./synthetic/cadence.js"; // WO-SANDBOX-E4：Cadence 落库行 → Cadence 的**唯一**读回口（D1 定的纪律）
+// WO-SANDBOX-E4：`cadenceFromProps`（Cadence 落库行 → Cadence 的**唯一**读回口）刻意**不在本文件 import** ——
+// 它只该出现在装配处 `sim/propagation-inputs.ts` 里，与上面 `buildCadenceGates` / `scopePropagationGraph` 同一条纪律。
 // WO-STATEVAR-DISPLAYNAME：推演状态变量中文名的**唯一**投影口（单源表在 battery.ts，两条路由共用此函数）
 import { stateVarDisplayNames } from "./synthetic/battery.js";
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
