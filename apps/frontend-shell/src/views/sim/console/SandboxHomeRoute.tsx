@@ -7,17 +7,27 @@
  * 显式适配把「视图配置 → 业务参数」这一步摆在明面上，改的时候看得见。
  *
  * ── WO-SIM-FE-HOST：这一层此前**透了一个永远为空的值** ────────────────────────
- * 本层一直在读 `view.options.sessionId`，但没有任何后端 workspace 下发过 `sim-console`
- * 这个 viewKey ⇒ `view.options` 恒 `undefined` ⇒ 透下去的 `sessionId` 恒 `undefined`
+ * 本层一直在读 `view.options.sessionId`，而 `view.options` 恒 `undefined`
+ * ⇒ 透下去的 `sessionId` 恒 `undefined`
  * ⇒ 左栏 `PerturbTree` 的 `listQuery` 恒 `enabled:false` ⇒ `data-hot-source` 恒 `"placeholder"`。
  * 「接了线」与「线上有值」是两件事（CLAUDE.md 铁律 0.5 的三态之二）。
  * 补 `useConsoleSession()` 之后，没有显式指定时本层自己去查最近一条 RUNNING 会话。
+ *
+ * ⚠ **2026-08-23 复核订正**：原文这里写的理由是「**没有任何后端 workspace 下发过 `sim-console`
+ *   这个 viewKey**」—— 那是 2026-08-21 的实情，**今天已不成立**：`WO-SIM-BE-VIEWKEY` 之后
+ *   `apps/datacore/src/synthetic/sandbox-console.ts` 的 `SANDBOX_CONSOLE_VIEWS`
+ *   与 `apps/datacore/src/synthetic/service.ts` 的 `VIEW_DEFS` 都登记了这四个 viewKey。
+ *   **结论没变、理由变了**：下发的 view 对象是 `{ key, title, renderer, layout: {} }`，
+ *   **没有 `options` 这一格**，所以 `view.options?.sessionId` 照旧恒 `undefined`。
+ *   形态从「没接线」变成「接了线没数据」。逐条复验命令写在
+ *   `apps/frontend-shell/src/views/sim/console/useConsoleSession.ts` 头注的同一段里。
  *
  * ── ⚠ 上一段附带的那条注记已被后一张单推翻，照实回写（`WO-SIM-STALE-3`）──────────
  * 此处原文写「本页的诚实位是 `data-hot-source`，**不是**甘特上的 `data-source`：
  * 甘特走 `useMetricSeries(sessionId)`，而那个 hook 的函数体今天是
  * `void sessionId; return PLACEHOLDER` —— 它丢掉入参、`source` 是编译期常量，
- * 宿主透什么下去都翻不动它」。那是 `WO-SIM-FE-HOST` 交单当时的实测，**今天已不成立**：
+ * 宿主透什么下去都翻不动它」。那是 `WO-SIM-FE-HOST` 交单当时（**2026-08-21**）的实测，
+ * **2026-08-22 起已不成立**：
  * `WO-SIM-FE-SERIES-WIRE` 已把该 hook 接到真端点 ——
  * `useMetricSeries()` → `api.a(metricSeriesPath(sessionId))`
  * → `GET /a/v1/sim/sessions/:id/metric-series`（后端 `apps/datacore/src/app.ts` 的该路由），

@@ -17,6 +17,16 @@
  * 规格写 `rgba(255,77,77, 0.16 + a*0.74)` —— 那既不是 token 也不跟主题。
  * 派单硬约束①「色值一律 `var(--…)`」，故按同底 token 现算：`color-mix(in srgb, var(--X) N%, transparent)`
  * 的 srgb 预乘插值 ⇒ 底色不变、alpha 线性缩放，与规格的 alpha 曲线逐值相同（色相取 token 真值）。
+ *
+ * 这条等价关系写于 **2026-08-21**，**2026-08-23 复核仍成立**。复验三条：
+ *  · 规格那条 alpha 曲线的原文：
+ *    `grep -n 'rgba(255,77,77' docs/ux-spec/sandbox/sandbox-attr.html`；
+ *  · 屏上真的走 token 而不是硬色：
+ *    `pnpm --filter frontend-shell exec vitest run test/sandbox-attr-pixel.test.tsx`
+ *    —— 用例 ③「色值走 token：computed 拿到的是 `var()` 引用，且 token 真值 == 规格调色板真值」
+ *    （该文件用例 ⓪ 是三把尺子的**金丝雀**：尺子不中就报「尺子坏了」，不许报「代码没问题」）；
+ *  · alpha 线性这件事本身：`color-mix(in srgb, C p%, transparent)` 在 srgb 预乘下等价于
+ *    `rgba(C, p)`，故 `0.16 + a*0.74` 对应本文件里那条百分比公式，改公式该用例当场变色。
  */
 import type { HeatMatrixModel } from "./useLossAttribution";
 import { heatCellKey } from "./useLossAttribution";

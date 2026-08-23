@@ -186,8 +186,15 @@ export function LayeredDag({
         判据 U4b 的「**为什么**」那一半 —— 与图**同一块**，不是折叠区、不是点开才出。
         节点框只有 142px 宽，塞不下一句理由；而判据要的正是「看得见被排除的是谁、为什么」，
         所以理由落在紧贴图下的这条图例里：谁（label）+ 为什么（excludedReason）逐条并列。
-        ⛔ 不许改成 `<details>`：本仓实测闭合 `<details>` 的子节点 `getBoundingClientRect()`
-           仍返回非零旧矩形 ⇒ 屏上看不见、版面门数上不降，两头落空。
+        ⛔ 不许改成 `<details>`：本仓 **2026-08-19** 实测（Chromium 141）闭合 `<details>` 的子节点
+           `checkVisibility()` 为 false、命中测试也打不到，但 `getBoundingClientRect()`
+           **仍返回非零旧矩形** ⇒ 屏上看不见、版面门数上不降，两头落空。
+           复验（两条都能亲手读到，不是"见相关测试"）：
+             · 门那半边的判据原文：`scripts/lib/layout-probe.mjs:125-130` 的 `visible()` ——
+               「计算样式非 none/hidden/opacity0 **且** 矩形宽高 ≥ 1」，闭合 details 的子节点
+               恰好两条都满足，所以它被当成第一屏可见控件在数；
+             · 同一次实测的逐控件取证记在 `apps/frontend-shell/src/views/sim/SandboxView.tsx:2392-2397`
+               （canonical 那一屏 52 个控件里有 12 个是闭合 `<details>` 里的幻影）。
       */}
       {excludedNodes.length > 0 && (
         <ul className={styles.excludedLegend} data-testid={`${testId}-excluded-legend`}>

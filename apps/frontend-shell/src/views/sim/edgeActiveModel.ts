@@ -70,6 +70,13 @@ export interface EdgeRowVM {
  *
  * ⛔ **`count` 必须从 `rows.length` 现算，不许另存一个数** —— 两个数就有两套真相，
  * 而"chip 上写着 7 条、点开只有 5 行"正是本单要防的那种错（分类里凭空少掉边）。
+ *
+ * 这条纪律今天真的还在被遵守吗（**2026-08-23 复核成立**）—— 两条都能亲手跑：
+ *  · 实现：`grep -n 'count: s.rows.length' apps/frontend-shell/src/views/sim/edgeActiveModel.ts`
+ *    （`buildDomainSlices` 的最后一行；中途那几处 `count: 0` 是占位，全被这一行覆盖）；
+ *  · 机器化断言：`pnpm --filter frontend-shell exec vitest run test/disruption-cards.seam.test.tsx`
+ *    —— 用例「纯模型：buildDomainSlices 按域 key 全序、未归域垫底、**count 恒等于 rows.length**」。
+ *    改成另存一个数 ⇒ 该用例当场红，而不是等谁在屏上看见"7 条 / 5 行"。
  */
 export interface DomainSliceVM {
   /** 域 key；`null` = 未归域分片。 */

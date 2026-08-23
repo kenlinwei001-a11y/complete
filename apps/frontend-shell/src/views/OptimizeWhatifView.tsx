@@ -271,7 +271,7 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
    * 修法是把 `queryKey` 从快照改挂**实时入参**，不是造新组件。
    *
    * ── 为什么敢撤（先量再动，不是照着 `what-if` 抄）───────────────────────────────
-   * 本单实测（内存态 datacore·`POST /a/v1/solvers/optimize_whatif/invoke`·页面自带的
+   * 本单实测 **2026-08-19**（内存态 datacore·`POST /a/v1/solvers/optimize_whatif/invoke`·页面自带的
    * 那 5 个 FAMILY_EXAMPLE 实参逐字节照发·各 20 次）：
    *   facility_location p50 8.5ms · min_cost_flow 8.8ms · set_cover 7.5ms ·
    *   independent_set 6.1ms · combinatorial_auction 5.6ms
@@ -280,6 +280,13 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
    *   本环境没有，故**照实说没量到**，不拿这五个数冒充"CP-SAT 很快"。
    *   （金丝雀：同一脚本同一台服务打 `capacity_forecast` 得 **HTTP 200 / 68ms** ⇒ 链路是活的，
    *    那 5 个 400 是真的 400，不是工具坏了。）
+   * 复验这一组（**不带** `OPTIMIZER_BASE_URL` 起 datacore 之后，两条一起跑才有金丝雀）：
+   *   · 被测那条（应回 400「未接入最优化引擎」）：
+   *     `curl -s -o /dev/null -w '%{http_code} %{time_total}\n' -X POST -H 'Content-Type: application/json' -H 'X-Debug-User: demo:admin:admin|planner|catalog_admin' -d '{"args":{}}' http://127.0.0.1:4001/a/v1/solvers/optimize_whatif/invoke`
+   *   · 金丝雀那条（应回 200 ⇒ 证明链路活着、上面那个 400 不是服务没起）：
+   *     同一条命令把 `optimize_whatif` 换成 `capacity_forecast`。
+   *   拒绝路的判据原文在 `apps/datacore/src/solvers/service.ts:4585`
+   *   （`if (!this.optimizer) throw validationError("… 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）")`）。
    * ⇒ 求解**真慢**这一路由两件事兜住，而不是靠"它应该很快"：
    *   ① 300ms 防抖（`RERUN_DEBOUNCE_MS`，与 `what-if` 同一个数）——键入抖动不会连发；
    *   ② `isFetching` 时屏上**显式标"重算中·下面是上一版的解"**（见 `ow-restale`）——

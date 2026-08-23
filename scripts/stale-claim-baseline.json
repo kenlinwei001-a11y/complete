@@ -8,7 +8,7 @@
   "④ ratchetHigh 是历史最高水位，只降不升。**评审唯一必须拒绝的一行就是把它调大。**"
  ],
  "ratchetHigh": 38,
- "maxExemptions": 37,
+ "maxExemptions": 35,
  "exemptions": [
   {
    "key": "apps/frontend-shell/src/components/ProvenanceDag.tsx#4411cbdd8b75e546",
@@ -115,16 +115,6 @@
    ],
    "why": "真观测缺日期与复验方式：屏上文案「实测 baseIds=changzhou 时 total 15→13」。本单对 SandboxConsole.tsx 的授权范围**只有可算性图例那两行**，此处是另一处文案，不擅自扩权。",
    "sample": "勾选只驱动 <code>chain_impediments</code>（实测 baseIds=changzhou 时 total 15→13）。"
-  },
-  {
-   "key": "apps/frontend-shell/src/views/sim/SandboxConsole.tsx#41fcd246632423a2",
-   "file": "apps/frontend-shell/src/views/sim/SandboxConsole.tsx",
-   "line": 911,
-   "codes": [
-    "STALE-1"
-   ],
-   "why": "真观测缺日期（复验方式已给：fixture 锚点 `fixtures/chain-loss-live-evidence.json` + 门 `sandbox-console.seam §9`）。同上，不在本单对本文件的授权范围内。",
-   "sample": "* ── 这条注释记的是一次实测，不是推理 ─────────────────────────────────────────"
   },
   {
    "key": "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx#67171888f5be9e49",
@@ -280,16 +270,6 @@
    "sample": "//  `EquipmentOEE` 实测 **5460 行**已物化（13 基地 × 10 车间 × 3 串行工序 × 2 台设备 × 7 天），"
   },
   {
-   "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#75b4af2bc3e6b3c4",
-   "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
-   "line": 298,
-   "codes": [
-    "STALE-1"
-   ],
-   "why": "真观测缺日期（复验方式已给：`GET /a/v1/objects` / `POST /a/v1/objects/query` / `/objects/aggregate` 三个端点与各自回值）。🚦 本单范围边界外。",
-   "sample": "*   实测 `type=EquipmentOEE` 回 `total=1000`、`page=3` 回 0 条 —— **5460 行只能拿到 1000 行（18%）**；"
-  },
-  {
    "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#5e860829c8162ffa",
    "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
    "line": 391,
@@ -399,24 +379,6 @@
  "generatedBy": "node scripts/check-stale-claims.mjs --update",
  "onscreenExemptions": [
   {
-   "key": "apps/frontend-shell/src/locales/zh.ts#21e581ce8059a746",
-   "code": "STALE-5",
-   "file": "apps/frontend-shell/src/locales/zh.ts",
-   "line": 1672,
-   "verdict": "UNMARKED",
-   "why": "真断言（「归属形态只有两种正值：REGISTERED / EXPLORATORY」是对契约枚举的封死），本单未复核其真伪，也未挂记号。契约枚举一加值，这句话即失真。",
-   "sample": "\"运行记录（AgentRunRecord）现在带 agentId / agentKey / agentVersion / 归属形态，由引擎在 Agent 循环收尾时与运行数据同一次写入 —— 所以「谁跑的」和「跑出了什么」不会各说各话。归属"
-  },
-  {
-   "key": "apps/frontend-shell/src/mocks/processWaitFixtures.ts#1acb280090190e9e",
-   "code": "STALE-5",
-   "file": "apps/frontend-shell/src/mocks/processWaitFixtures.ts",
-   "line": 217,
-   "verdict": "UNMARKED",
-   "why": "真断言（「承载物 PlanTarget 有 17 条实例，但没有任何一条反推规则…」），落在 mock fixture 的屏上文案里，本单未复核其真伪，也未挂记号。",
-   "sample": "\"承载物 PlanTarget 有 17 条实例，但**没有任何一条反推规则**声明本流程的进/出站字段落在哪两个属性上。这是「有单据、没规则」不是「没数据」—— 修法是补规则表一行，不是补数据。\","
-  },
-  {
    "key": "apps/frontend-shell/src/views/sim/ChainLineMapView.tsx#53399facf22a005f",
    "code": "STALE-5",
    "file": "apps/frontend-shell/src/views/sim/ChainLineMapView.tsx",
@@ -460,26 +422,8 @@
    "verdict": "UNMARKED",
    "why": "真断言（「零求解器消费方 ⇒ 今天没有任何一条链把它算进耗时」），且它正是本门 STALE-4 那一族的屏上版本，本单未复核其真伪，也未挂记号 —— 求解器一接上，这句话即失真而屏上不会变。",
    "sample": "inertReason: \"零求解器消费方 ⇒ 今天没有任何一条链把它算进耗时；面板显示它是为了让缺口**看得见**，不是为了让它假装能算。\","
-  },
-  {
-   "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#52e447ad00d290b7",
-   "code": "STALE-5",
-   "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
-   "line": 809,
-   "verdict": "UNMARKED",
-   "why": "真枚举断言（「Process 对象只有 涂布/卷绕/装配/化成/老化 五类」），本单未复核其真伪，也未挂记号。Process 种子一增一类，这句话即失真。",
-   "sample": "gap: \"未接：Process 对象只有 涂布/卷绕/装配/化成/老化 五类，且属 Process 层，与本图 Workshop 层十列不同口径\", // debattery-allow：这是**诚实缺口说明文案**，不是驱动逻辑的业务常"
-  },
-  {
-   "key": "apps/frontend-shell/src/views/sim/transitFlow.ts#afdf58f82d6097f2",
-   "code": "STALE-5",
-   "file": "apps/frontend-shell/src/views/sim/transitFlow.ts",
-   "line": 469,
-   "verdict": "UNMARKED",
-   "why": "真断言（「本租户采购段一条都没有 —— 代码链路是通的，缺的是数据」＝ CLAUDE.md 铁律 0.5 里的「接了线没数据」态），本单未复核其真伪，也未挂记号。补一条采购段种子它就失真。",
-   "sample": "reason: \"已经查过了，本租户采购段一条都没有 —— 代码链路是通的，缺的是数据。\","
   }
  ],
- "onscreenMax": 9,
+ "onscreenMax": 5,
  "onscreenRatchetHigh": 9
 }

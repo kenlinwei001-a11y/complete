@@ -1886,7 +1886,7 @@ function main() {
     if (live["truth.widgetKeysMultiSource"] < 5) {
       blind.push(`⑧ widget 槽位里被 ≥2 真相源登记的只有 ${live["truth.widgetKeysMultiSource"]} 个（<5）—— 只剩单边就查不出分叉，这条槽位等于没开`);
     }
-    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==17
+    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==24
     //    ⇒ 这个数不再是传说，它由本门每次现算并对账）。抽到 0 条 ⇒ 报「工具坏了」，
     //    **不许**报「全仓记号都通过」—— 那正是本门自己在治的那种「我没找到 ≠ 它不存在」。
     if (markSweep.files < 100) blind.push(`⑥b 记号扫描只走到 ${markSweep.files} 个源文件（<100）—— srcRoots 是不是没读到？`);
@@ -2137,7 +2137,7 @@ try {
  *        `frontend-shell/locales/zh.ts` ×2 · `frontend-shell/views/sim/sandboxConsoleModel.ts` ×6）。
  *        WO-STALE-TEXT-SWEEP 当天就补上了生产实例，而这句自述留在原地 ——
  *        **它把「已经在用」写成了「还没在用」，方向正好相反**。
- *        赌注：@stale-self marks.production ==17
+ *        赌注：@stale-self marks.production ==24
  *      · 原文写「`runBaselineFactChecks` 那条今天有 6 条真数据，挂在两条 CONFIRMED-STALE 上」。
  *        **实为 0 条赌注、0 条 CONFIRMED-STALE**（存量已被后续单改完，基线只剩
  *        7 条 UNMARKED + 4 条 FALSE-POSITIVE）。
@@ -2148,8 +2148,19 @@ try {
  *      的「9 条反推得出」+ `sim…orderBasisWhereReal` 的「6 条链 / 9 条流程」），12 → 15；
  *      2026-08-20 WO-STALE-TEXT-FAMILY 再补 2 条 —— 那两条补的是**方向**不是数量：
  *      `sandboxConsoleModel.ts` 原有的三条赌注全在赌「新的在」，没有一条赌「旧的没了」，
- *      于是「删内容冒充修好」这条路一直敞着；补上后 15 → 17，
- *      @stale-self marks.production ==17）、
+ *      于是「删内容冒充修好」这条路一直敞着；补上后 15 → 17；
+ *      **2026-08-23 WO-STALE-CLAIMS-69 再补 7 条，17 → 24** —— 补的是基线里那批 `UNMARKED`
+ *      （「是真断言、今天没被证伪，只是还没挂记号」）中**能赌得下来**的四条屏上断言：
+ *      `locales/zh.ts` 的「归属形态只有两种正值」×1 ·
+ *      `mocks/processWaitFixtures.ts` 的「P01 没有任何一条反推规则」×2（含金丝雀）·
+ *      `views/sim/physicalTopology.ts` 的「Process 只有五类」×3（3 类 + 2 类 + 生成点封口）·
+ *      `views/sim/transitFlow.ts` 的「跑一次合成种子就有采购段」×1。
+ *      ⚠ 同批**有一条没挂**：`views/sim/inspectorModel.ts` 的「零求解器消费方」——
+ *      复核发现它今天已经是假话（`solvers/extended.ts` 的 `buildProcurementPlan` 真在算
+ *      `expectedSlipDays = 供应商段天数 ×(1−onTimeRate)`，经 `kitReadiness` 挂在
+ *      已注册求解器 `kit_readiness` 上）。给一句已知是假的话挂赌注 = 把假话钉死在门里，
+ *      故留给裁决：**改文案还是把那个 `effect: inert` 一并解除**，属行为判断，不由记号单决定。
+ *      @stale-self marks.production ==24）、
  *      **基线赌注路径今天 0 条数据**（@stale-self baseline.factChecks ==0；属「接了线没数据」，
  *      不是「没接线」——`runBaselineFactChecks` 仍被主流程无条件调用）。
  *    ⇒ 复验命令：`node scripts/check-stale-claims.mjs`（末行直接打印这三个现算值）。

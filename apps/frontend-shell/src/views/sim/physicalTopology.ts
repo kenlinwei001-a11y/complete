@@ -809,6 +809,22 @@ export const REAL_DATA_ENTRYPOINTS: RealDataEntrypoint[] = [
     status: "gap",
     source: "capacity_rollup",
     shapeToday: "bases[].processes[]{capacityPerDay, formula, inputs}（逐基地逐工序日产能）",
+    /**
+     * 屏上这句「Process 对象**只有** 涂布/卷绕/装配/化成/老化 **五类**」是一条**枚举断言** ——
+     * 种子里一多出第六类，这句话当天就开始对用户说谎，而屏上不会有任何变化。
+     * 五类今天由**三个**生成点凑出来（2026-08-23 逐条读过 `apps/datacore/src/synthetic/battery.ts`）：
+     *   · `SERIAL_STEPS` 三条（coating 涂布 / winding 卷绕 / assembly 装配）；
+     *   · `${lineId}-formation`（化成）与 `${lineId}-aging`（老化）两条单独 push。
+     * 故赌注拆成三条，任何一条变了都当场红（3 + 2 = 5，且生成点恰好 3 个）：
+     *
+     * @stale-fact apps/datacore/src/synthetic/battery.ts /\{ suffix: "(?:coating|winding|assembly)", name: "/ ==3
+     * @stale-fact apps/datacore/src/synthetic/battery.ts /name: "(?:化成|老化)",/ ==2
+     * @stale-fact apps/datacore/src/synthetic/battery.ts /processes\.push\(\{/ ==3
+     *
+     * 第三条是**金丝雀兼封口**：多一个 `processes.push({` 就意味着多一类工序，
+     * 哪怕它的名字没落进前两条正则 —— 只赌名字会漏掉「换了个写法新加一类」这一形。
+     * 人工复验：`grep -c 'processes\.push({' apps/datacore/src/synthetic/battery.ts`（现算 3）。
+     */
     gap: "未接：Process 对象只有 涂布/卷绕/装配/化成/老化 五类，且属 Process 层，与本图 Workshop 层十列不同口径", // debattery-allow：这是**诚实缺口说明文案**，不是驱动逻辑的业务常数。把工序名从这句里删掉，诊断就没用了（「只有五类」等于没说）。工序表本身已单源化到 contracts。
   },
   {

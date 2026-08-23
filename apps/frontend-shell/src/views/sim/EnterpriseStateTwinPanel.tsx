@@ -83,7 +83,15 @@ export function EnterpriseStateTwinPanel() {
    * 病灶：同一个 URL、同一份数据，只因键不同而在缓存里躺**两份**。更糟的是
    * `["a","sim-sessions"]` 的失效是**前缀匹配** ⇒ 带后缀的这一条会被同一个事件一起标脏，
    * 于是 `sim.tick_completed` 一到，同一个端点被**重打三次**。
-   * 真浏览器实测（35 条会话）：一趟①–⑧下来 `/a/v1/sim/sessions` 累计下行 **1,542MB**。
+   * 真浏览器实测 **2026-08-22**（35 条会话）：一趟①–⑧下来 `/a/v1/sim/sessions` 累计下行 **1,542MB**。
+   * 复验（两条，都不必开真浏览器就能验到"并回一个键"这件事）：
+   *   · `pnpm --filter frontend-shell exec vitest run test/sandbox-memory-window.seam.test.tsx`
+   *     —— 用例 ⑤/⑥ 咬的是「回包很大，落到组件里的却只有几十字节/条」与「首次挂载一发都不多发」；
+   *   · 缓存键是不是真的并回来了 —— 两条一起跑（一条正面、一条反面，缺一条都会被骗）：
+   *     ① 正面（**金丝雀**，2026-08-23 现算命中 5 个文件 / 11 处，报 0 就是 grep 坏了）：
+   *        `grep -rc 'queryKey: \["a", "sim-sessions"\]' apps/frontend-shell/src --include=*.ts --include=*.tsx | grep -v ':0'`
+   *     ② 反面（**必须零命中**：带后缀的分身键已全部退役，2026-08-23 现算 0）：
+   *        `grep -rn '"sim-sessions", "' apps/frontend-shell/src`
    * 本面板一个字节都不读 `baseSnapshot`，要的只是 `id`（世界下拉），并回共用键后
    * 三跳变一跳，数据与语义**逐字节不变**（同 URL 同响应）。
    */

@@ -565,7 +565,15 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
  * 但它同时意味着用户看完 before/after 之后**无处可去**，只能记下参数换一张页面重填一遍。
  * R4「真值经 Action」已经规定了对象写入只有审批这一条路；本按钮接的正是那条既有的路。
  *
- * ── ⚠ 顶回 §5/§5.2 登记的那条「备裁」理由（照铁律 0.5 追了一层，实测不成立）────────
+ * ── ⚠ 顶回 §5/§5.2 登记的那条「备裁」理由（照铁律 0.5 追了一层，**2026-08-19 实测不成立**）──
+ *
+ * 复验这条「不成立」的判断（三个锚点，逐条都能亲手读到 / 跑到）：
+ *   · 类型与对象两条端点确实按租户取：本页发的是 `GET /a/v1/ontology/object-types`
+ *     与 `GET /a/v1/objects?type=`，两条在后端都走 `ctx(req)` 取 tenantId；
+ *   · 建草稿时的列级 authz：`apps/datacore/src/app.ts:438`（`assertObjectPatchWritable`）
+ *     与 `apps/datacore/src/app.ts:449`（`assertDraftPatchWritableAtExecute`），
+ *     建草稿处的调用点在 `apps/datacore/src/app.ts:4977`、执行期复校在 `:707`；
+ *   · 机器化断言：`pnpm --filter datacore exec vitest run test/action-adopt-hypothesis.seam.test.ts`。
  * 原文（`docs/PRD-harness-ux-adoption.md` §5:1153）写：这四页是「**净室通用页（与租户本体无关）**」，
  * 硬补会造出「在一个通用假设页上生成**全租户** Action」。**前半句在本页上是错的**：
  * 本页的类型列表来自 `GET /a/v1/ontology/object-types`、对象列表来自 `GET /a/v1/objects?type=`，

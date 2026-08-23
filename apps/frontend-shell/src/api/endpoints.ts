@@ -726,9 +726,15 @@ export const createSimSession = (body: { baseSnapshot: TickState; scope?: Record
  *
  * ══ WO-SANDBOX-MEMORY · 这一跳**不再把整份世界搬进内存** ═════════════════════════════
  *
- * 实测（真浏览器 + 35 条会话）：该端点回包 **285MB** —— 每条会话都带整份 `baseSnapshot`
- * （11,348 对象 × 36 状态变量 = 408,528 格 ≈ 8.4MB）。而前端 **5 个调用点 / 3 个缓存键**
- * 各存一份，React Query 缓存里同时躺 **2×293MB**；用户连开三次沙盘就 OOM 崩标签页。
+ * 实测 **2026-08-22**（真浏览器 + 35 条会话）：该端点回包 **285MB** —— 每条会话都带整份
+ * `baseSnapshot`（11,348 对象 × 36 状态变量 = 408,528 格 ≈ 8.4MB）。而前端 **5 个调用点 /
+ * 3 个缓存键**各存一份，React Query 缓存里同时躺 **2×293MB**；用户连开三次沙盘就 OOM 崩标签页。
+ *
+ * 复验（不用真浏览器也能验到量级，两条都能亲手跑）：
+ *   · `pnpm --filter frontend-shell exec vitest run test/sandbox-memory-projection.test.ts`
+ *     —— 用例 ⑨ 就是「11,348 对象 × 36 变量那一条，剥后 < 1‰」这条量级断言本身；
+ *   · 真后端量一遍回包字节数（SEED_DEMO=1 起 datacore 后）：
+ *     `curl -s -o /dev/null -w '%{size_download}\n' -H 'X-Debug-User: demo:admin:admin|planner|catalog_admin' http://127.0.0.1:4001/a/v1/sim/sessions`
  *
  * 逐个消费方读过之后的事实：**除 `SandboxView` 的下区差分基线外，没有任何一处读
  * `baseSnapshot`** —— 列表要的是 id / status / curTick / scope / disabledRuleKeys。
@@ -747,10 +753,18 @@ export const fetchSimSessions = async (): Promise<{ items: SimSessionListItem[] 
 /**
  * 单条会话的 `baseSnapshot`（下区差分的左端）。**一次只把一条世界搬进内存。**
  *
- * 为什么不是 `GET /a/v1/sim/sessions/:id`：后端今天**没有**这条路由（实测 `app.ts` 的
- * `/a/v1/sim/sessions/:id/*` 只有 world / tick / checkpoints / … 这些子路径，没有裸 `:id`）。
- * 所以只能仍打列表，但用 `keepFor` 让扫描器**只留指名那一条**、其余 34 条边扫边丢 ——
- * 峰值从 285MB 降到一条 8.4MB。
+ * 为什么仍然打列表而不是 `GET /a/v1/sim/sessions/:id`：
+ * ⚠ **2026-08-23 复核订正**（原文写「后端今天没有这条路由」，**今天已不成立**）——
+ *   裸 `:id` 那条路由**已经存在**：`apps/datacore/src/app.ts:1968`
+ *   `app.get("/a/v1/sim/sessions/:id", …)`，与本函数同一批（2026-08-22）补上，
+ *   头注里点名的消费方就是沙盘这一跳。复验两条：
+ *     · `apps/datacore/src/app.ts:1968`（读到 `app.get("/a/v1/sim/sessions/:id"`）；
+ *     · `pnpm --filter datacore exec vitest run test/sim-sessions-projection.seam.test.ts`
+ *       —— 用例 ④ 就在打这条裸 `:id`（别租户 404 / 功能关闭 404）。
+ *   所以这里**不是"后端没有"，是"前端这一跳还没改过去"**（改打新路由是另一张单：
+ *   要连着 `readSessionsProjected` 的 `keepFor` 分支一起退役，属行为改动）。
+ * 今天的做法：仍打列表，但用 `keepFor` 让扫描器**只留指名那一条**、其余 34 条边扫边丢 ——
+ * 峰值从 285MB 降到一条 8.4MB（2026-08-22 实测，复验同上条 `test/sandbox-memory-projection.test.ts` 用例 ②/⑨）。
  *
  * 取不到 ⇒ `null`（**不造一个空世界出来**）：屏上诚实显示"没有基线"，
  * 好过拿空世界算出一组看着合理的假差值。

@@ -8,10 +8,13 @@
  *
  * ── WO-SIM-DETAIL-WIRE：把 ② 那句「只从宿主取」落到实处 ─────────────────────
  *
- * **X（改造前实测）**：`impactChange` / `mitigation` 只从 `view.options` 取，而后端 workspace
- * 从不下发这四个 viewKey 的 options（取证见 `useConsoleSession` 文件头的金丝雀）⇒ 两者恒
- * `undefined` ⇒ `useImpactCone`（`ImpactCone.tsx:90`）与 `useMitigationCards`
- * （`StrategyCards.tsx:139`）恒 `enabled:false` ⇒ 影响半径扇区与应对策略栈**连请求都不发**。
+ * **X（2026-08-22 改造前实测）**：`impactChange` / `mitigation` 只从 `view.options` 取，而后端
+ * workspace 下发的那四个 view 对象**没有 `options` 这一格**（今天仍如此；逐条复验命令与
+ * 「viewKey 已下发、options 仍缺」这一形态的订正，见 `useConsoleSession` 文件头 2026-08-23 那段）
+ * ⇒ 两者恒 `undefined` ⇒ `useImpactCone`（`ImpactCone.tsx` 的 `enabled = worldId !== "" && change !== undefined`）
+ * 与 `useMitigationCards`（`StrategyCards.tsx` 的 `enabled = args !== undefined && …`）
+ * 恒 `enabled:false` ⇒ 影响半径扇区与应对策略栈**连请求都不发**。
+ * （两处**刻意不写行号** —— 行号会漂；用 `grep -n 'const enabled' <文件>` 现找那一行。）
  * 前一版注释自己写着「页面开了口，宿主没往里送值」—— 认了账，没修。
  * 同族第三格：`nodeId` 同样恒空，而 `node-detail` 端点要它 ⇒ 那一跳恒 400（见 `SandboxDetail.tsx`）。
  *

@@ -91,7 +91,17 @@ const NODE_W = 158;
 const NODE_H = 34;
 const COL_GAP = 56;
 const ROW_GAP = 12;
-/** 图内文字**不低于 12px**（本仓字号硬底：`check-text-legibility` 的 `FLOOR_PX` ＋ `layout-legibility:check` 真浏览器实测同一档）。 */
+/**
+ * 图内文字**不低于 12px**（本仓字号硬底：`check-text-legibility` 的 `FLOOR_PX`
+ * ＋ `layout-legibility:check` 真浏览器实测同一档）。
+ *
+ * 这个 12 今天还对不对（**2026-08-23 复核成立**，现算 12）—— 复验两条：
+ *  · 硬底常量本身：`grep -n 'FLOOR_PX = ' scripts/check-text-legibility.mjs`
+ *    （现算 `export const FLOOR_PX = 12;`，本页这个 12 就是照它写的，不是另挑的数）；
+ *  · 真浏览器那一档：`pnpm run layout-legibility:check`
+ *    —— 它的字号项与上面同一个常数档；历次实测原文记在 `scripts/layout-legibility-baseline.json`
+ *    的 `sim-sandbox` 条目里（搜「字号仍 12」）。
+ */
 const GRAPH_FS = 12;
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -168,8 +178,15 @@ export default function SandboxConfigPanel({
   const expanded = open ?? true;
   /**
    * **与 `EdgeActivePanel` 共用同一个 queryKey 与同一支 queryFn** ⇒ 零额外请求、零新增 mock 面。
-   * （那个组件的文件头记着一次实测教训：给共享面板加一个新 endpoint 依赖，会把全仓 29 个
-   * 对 `@/api/endpoints` 做部分 mock 的测试文件一起打红。共用现成的这条路没有这个代价。）
+   * （那个组件的文件头记着一次实测教训 **2026-08-17**：给共享面板加一个新 endpoint 依赖，
+   * 会把当天全仓 **29 个**对 `@/api/endpoints` 做部分 mock 的测试文件一起打红。
+   * 共用现成的这条路没有这个代价。）
+   *
+   * ⚠ 29 是那天的数；**2026-08-23 现算是 36**（只增不减 ⇒ 这条纪律今天更该守）。复验一条命令：
+   *   `grep -rlF 'vi.mock("@/api/endpoints"' apps/frontend-shell/test/ | wc -l`
+   *   金丝雀（已知必中，报 0 就是 grep 坏了不是没人 mock）：`test/sandbox-console.seam.test.tsx`。
+   * 原始那条教训的出处：`apps/frontend-shell/src/views/sim/EdgeActivePanel.tsx` 的
+   * `objectTypeName` 头注（搜「初稿在这里加了 `useQuery(fetchObjectTypes)`」）。
    */
   const rulesQuery = useQuery({
     queryKey: ["a", "sim-propagation-rules"],

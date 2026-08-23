@@ -466,6 +466,26 @@ export function deriveProcurementBranch(input: ProcurementAbsenceInput = {}): Ab
     ...base,
     status: "EMPTY",
     cause,
+    /**
+     * 屏上这句「本租户采购段**一条都没有**」是**运行期判定**（只在 `probe.fetched === 0`
+     * 这一支才渲染），不是写死的现状断言 —— 种子一补，`cause` 就不再落到这一支，这句话自动不出现。
+     * 真正会过期的是下面 `unblockedBy` 指的那三条 `putAll` 到底在不在，故赌注挂在它上面
+     * （2026-08-23 挂记号，现算相符）：
+     *
+     * @stale-fact apps/datacore/src/synthetic/service.ts /putAll\("(?:PurchaseOrder|CustomsClearance|IncomingInspection)"/ ==3
+     *
+     * ⇒ 谁把这三条播种删了 / 改了名，这条现算掉到 <3，门当场红 ——
+     *   否则屏上会继续教用户「跑一次合成种子就有了」，而那条路已经不存在。
+     * 人工复验：`grep -n 'putAll("PurchaseOrder"\|putAll("CustomsClearance"\|putAll("IncomingInspection"' apps/datacore/src/synthetic/service.ts`
+     *
+     * ⚠ **2026-08-23 顶回一处错锚点（本单不改屏上文案，只点名）**：`unblockedBy` 里写的
+     *   `service.ts:773/:775/:776` **今天指错了地方** —— 那三行现在是
+     *   `ProductEquipmentCapability` / `MaterialAlternative` / `Workshop`；
+     *   采购段那三条 `putAll` 实际在 `:821` / `:823` / `:824`。
+     *   **行号会漂，写死行号的引用天生带保质期**（CLAUDE.md 铁律 0.5 判据 #5 的同一条教训）。
+     *   修法应是把那句改成上面这条按内容找的 grep，而不是再钉一组新行号；
+     *   但它是**屏上文案**不是注释，改它超出本单（WO-STALE-CLAIMS-69）的范围边界，故只点名。
+     */
     reason: "已经查过了，本租户采购段一条都没有 —— 代码链路是通的，缺的是数据。",
     evidence: [
       ...PROCUREMENT_UPSTREAM_EVIDENCE,

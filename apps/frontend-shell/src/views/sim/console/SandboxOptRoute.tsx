@@ -16,12 +16,17 @@
  * WO-SIM-PARAM-WIRE ① · 今天的行为是 X，应该是 Y
  * ══════════════════════════════════════════════════════════════════════════
  *
- * **X（改造前实测原文）**：本文件旧第 29 行 `{...(p.paretoRequest ? { paretoRequest: p.paretoRequest } : {})}`
+ * **X（2026-08-22 改造前实测原文）**：本文件旧第 29 行
+ * `{...(p.paretoRequest ? { paretoRequest: p.paretoRequest } : {})}`
  * —— `p` 是 `(view.options ?? {})` 的**裸 cast**，既不校验形状、也不补 `sessionId`。
- * 配上 `useParetoFrontier.ts:618` 的 `const enabled = req !== undefined;`，
+ * 配上 `useParetoFrontier.ts` 的 `const enabled = req !== undefined;`
+ * （**不写死行号**，行号会漂；现找：`grep -n 'const enabled = req' apps/frontend-shell/src/views/sim/console/useParetoFrontier.ts`），
  * 于是「宿主不给 ⇒ 一个请求都不发 ⇒ 落 `PLACEHOLDER_OPT_MODEL`」。
- * 而**全仓没有任何地方往 `view.options` 里放 `paretoRequest`**（同 `useConsoleSession` 文件头
- * 记过的那笔账：后端 workspace 从不下发这四个 viewKey）⇒ 前沿图**恒占位**。
+ * 而**全仓没有任何地方往 `view.options` 里放 `paretoRequest`** ⇒ 前沿图**恒占位**。
+ * ⚠ **2026-08-23 订正这条的理由**：这里原写「后端 workspace **从不下发这四个 viewKey**」，
+ *   那句今天已不成立（viewKey 已下发，见 `useConsoleSession` 文件头 2026-08-23 那段）。
+ *   真正仍然成立的是**下发的 view 对象没有 `options` 这一格** ——
+ *   结论（`paretoRequest` 恒缺席）没变，理由换了一档：从「没接线」变成「接了线没数据」。
  *
  * **Y（现在）**：宿主真的**组装**一份参数再透下去 —— 组装 = 校验 + 补齐 + 拒绝，三件事：
  *   ① **校验**：`ParetoRequestSchema.safeParse` 真过一遍契约。形状不对 ⇒ **不发请求**
@@ -49,10 +54,12 @@
  *    `bindToSolverArgs`/`bindCrossObjectOccupancy` 要一份**现成的** `OntologyBinding`；
  *    `solvers/service.ts` 的 `assembleBaselineFromSelection` 是 `private`，只在
  *    `optimize_whatif` 的 `autoBind` 分支里走，且**只回 Δ目标不回 args**。
- *    （复现原文，本机内存态 demo 租户：
+ *    （**2026-08-22 复现原文**，本机内存态 demo 租户：
  *     `POST /a/v1/solvers/optimize_whatif/invoke {"args":{"family":"facility_location","autoBind":true,…}}`
  *     → `200 {"data":{"applicable":false,"missingRoles":["facility（Base 在选中范围内无实例）"],…}}`
- *     ——通篇没有一格叫 `args`。）
+ *     ——通篇没有一格叫 `args`。复验，SEED_DEMO=1 起 datacore 后：
+ *     `curl -s -X POST -H 'Content-Type: application/json' -H 'X-Debug-User: demo:admin:admin|planner|catalog_admin' -d '{"args":{"family":"facility_location","autoBind":true}}' http://127.0.0.1:4001/a/v1/solvers/optimize_whatif/invoke`
+ *     —— 回包里若出现 `args` 这一格，本段就该重写。）
  *  · 前端自己猜 role（把 `Order.value` 读成 revenue、`Order.qty` 读成 qty…）就是在客户端
  *    另造一套求解口径 —— 正是 R13/R14 反复点名的漂移源。
  *

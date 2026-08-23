@@ -20,7 +20,7 @@
  * 把回包（`SimMetricSeriesResponse`）投影成下面的 `MetricSeries`，`source` 反映**真实出身**：
  * 拿到回包 ⇒ `"endpoint"`；没会话 / 请求失败 / 回包零指标 ⇒ 仍落规格占位并如实标 `"placeholder"`。
  *
- * ── 真后端实测（**不是 mock**，「绿测试≠能用」的那把尺子）─────────────────────
+ * ── 真后端实测 **2026-08-21**（**不是 mock**，「绿测试≠能用」的那把尺子）───────────
  * 内存态 datacore（`SEED_DEMO=1`）建会话 `baseSnapshot={obj_base_changzhou:{loadIndex:42}}`、
  * 走两拍后 `GET …/metric-series` 的真回包，逐条对上了本文件的每一条设计判断：
  *   · **17 条指标 / 只有 5 个不同 `label`** ⇒ 12 行撞名（见 `rowNames` 的实测账）；
@@ -31,6 +31,19 @@
  *   · `ticks=[0,1,2]`、`toTick=2` ⇒ 播放头落 100%（当前格 = 末格），与下面的推理逐字节吻合。
  * ⚠ 同一次实测也暴露了一个**做不到的格**：所有 17 行的 `direction` 都是 `dn`
  *   （这个世界没有扰动 ⇒ 两条线恒等 ⇒ 全是「持平」，而枚举没有「持平」这一态）。
+ *
+ * ── 《怎么再测一遍》（上面那组 17 / 5 / 16 / null / [0,1,2] 的复现路径）──────────
+ *  ① 起真服务（内存态，不需要数据库）：
+ *     `PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=<64hex> node apps/datacore/dist/server.js`
+ *  ② 建会话 → 走两拍 → 取回包（`H` 用 `X-Debug-User: demo:admin:admin|planner|catalog_admin`）：
+ *     `curl -s -X POST -H "$H" -H 'Content-Type: application/json' -d '{"baseSnapshot":{"obj_base_changzhou":{"loadIndex":42}}}' http://127.0.0.1:4001/a/v1/sim/sessions`
+ *     取回包里的 `id` 记作 `$S`，`curl -s -X POST -H "$H" -d '{}' .../sim/sessions/$S/tick` 跑两次，然后
+ *     `curl -s -H "$H" http://127.0.0.1:4001/a/v1/sim/sessions/$S/metric-series`
+ *  ③ 上面五个数一次数出来：把 ② 的回包管给
+ *     `node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const r=JSON.parse(s);const m=r.metrics;console.log('指标',m.length,'不同label',new Set(m.map(x=>x.label)).size,'带缺格',m.filter(x=>x.baseline.includes(null)).length,'unit全null',m.every(x=>x.unit===null),'ticks',JSON.stringify(r.ticks))})"`
+ *  ④ 不起后端也能验的那一半（接线与投影，非上面这组数）：
+ *     `pnpm --filter frontend-shell exec vitest run test/metric-series-wire.seam.test.tsx`
+ *     —— 用例 ⓪ 是三把尺子的**金丝雀**（不中则报「尺子坏了」，不许读作「接线对了」）。
  *
  * ── 为什么是一个 hook 而不是把数写进 JSX ────────────────────────────────────
  * 首版派单原文：「必须把取数抽成一个 `useMetricSeries()` hook，端点一到只换 hook 内部；
@@ -171,7 +184,7 @@ const SPEC_ROWS: readonly SpecRow[] = [ // hardcoded-data-allow —— **规格�
 /**
  * **版面能画下的行数**（WO-SIM-SERIES-SCALE）—— 派生自 `SPEC_ROWS`，**不许再手写这个数**。
  *
- * 🔴 病灶（实测原文，真 datacore `SEED_DEMO=1` + 真浏览器走真实用户路径）：
+ * 🔴 病灶（**2026-08-22 实测**原文，真 datacore `SEED_DEMO=1` + 真浏览器走真实用户路径）：
  * 本 hook 原先**不带任何裁剪入参**地打 `GET …/metric-series`，而生产量级世界
  * （`deriveBaseSnapshot(view-config)` = 11,348 对象 × 36 状态变量）下端点回
  * **408,528 条 / 116,859,540 字节**、**20 秒回不来** ⇒ 请求永远悬着 ⇒
@@ -183,6 +196,17 @@ const SPEC_ROWS: readonly SpecRow[] = [ // hardcoded-data-allow —— **规格�
  *
  * ⚠ 这个数**同时是服务端默认值**（契约 `SIM_METRIC_SERIES_DEFAULT_LIMIT` = 12）。
  * 不是巧合，是必须的：见 `useMetricSeries` 里「共用缓存键」那段。
+ *
+ * 复验（**2026-08-23 复核两侧仍同为 12**）：
+ *  · 前端这一侧：`METRIC_GANTT_ROWS = SPEC_ROWS.length`（就在本注释下一行，不是手写的数）；
+ *  · 契约那一侧：`grep -n 'SIM_METRIC_SERIES_DEFAULT_LIMIT = ' packages/contracts/src/sim.ts`
+ *    —— 现算 `export const SIM_METRIC_SERIES_DEFAULT_LIMIT = 12;`；
+ *  · 「请求真的带了 limit、且带的是版面行数不是硬写的 12」：
+ *    `pnpm --filter frontend-shell exec vitest run test/metric-series-wire.seam.test.tsx`
+ *    —— 用例 ⑧「请求必须带 limit（= 版面行数，不是硬写的数字）与 order；且**不带** from/to」，
+ *       以及用例 ⑨「回包超量（版面 12 行、回 17 条）⇒ 屏上只画 12 行」。
+ *  · 116MB / 408,528 条那组量级：它 = 11,348 对象 × 36 状态变量，出处与复验路径见
+ *    `apps/frontend-shell/src/api/simSessionsProjection.ts` 头注的《怎么再测一遍》。
  */
 export const METRIC_GANTT_ROWS = SPEC_ROWS.length;
 
@@ -281,18 +305,26 @@ const reading = (v: number | null, unit: string | null): string =>
  * 而端点的 `label` 取自「状态变量 → 人话名」单源表 ⇒ **不同对象的同一状态变量必然同名**
  * （`obj_a.loadIndex` 与 `obj_b.loadIndex` 都叫「负载指数」）。
  *
- * **这不是理论风险，是默认情形 —— 实测数字（真后端，非 mock）**：
+ * **这不是理论风险，是默认情形 —— 2026-08-21 实测数字（真后端，非 mock）**：
  * 内存态 datacore（`SEED_DEMO=1`）建一个 `baseSnapshot={obj_base_changzhou:{loadIndex:42}}`
  * 的会话、走两拍，`GET …/metric-series` 回 **17 条指标、只有 5 个不同 `label`**
  * ⇒ **12 行会撞名**。不消歧的话这 12 行共用 React key，且 `data-testid` 也重。
+ *
+ * 复验这两个数（17 / 5）：**复现步骤与一条现数命令写在本文件头注的《怎么再测一遍》**
+ * （①起服务 → ②建会话走两拍 → ③把回包管给那条 `node -e`，它直接打印「指标 N 不同label M」）。
+ * ⚠ 这一支**没有**单测在咬 —— `rowNames` 是本文件私有函数，
+ * `test/metric-series-wire.seam.test.tsx:603` 反而特意让每行 label 都不同来**绕开**消歧分支。
+ * 也就是说：撞名这条路今天只有上面那条真后端复现能验，**别把该文件全绿读成"消歧被测过"**。
  *
  * 撞名时**用回包里已有的 `objectId` 消歧**（不是编一个后缀）：`名字·对象id`。
  * 极端情形（同对象同名两条）退回契约保证唯一的 `key`（`${objectId}.${stateVar}`）。
  * ⚠ `MetricRow` 没有 `key` 字段、签名在本单冻结 ⇒ 只能把唯一性做进 `name` 这一格。
  * ⚠ **已知缺口（写进交单报告，不是悄悄接受）**：`objectId` 是开发口径的裸串，
  *   而指标名那一列宽 128px、`.gcell` 是 `white-space:nowrap; overflow:hidden`（硬裁不带省略号）
- *   ⇒ 实测那条 `跨基地调拨压力·obj_interbasetransfer_XFER-CELL-changzhou-yangzhou-圆柱-LFP`
+ *   ⇒ 2026-08-21 实测那条 `跨基地调拨压力·obj_interbasetransfer_XFER-CELL-changzhou-yangzhou-圆柱-LFP`
  *   在屏上被裁到只剩人话名那一截，**消歧对 React 有效、对用户不可见**。
+ *   （那两条样式的出处：`grep -n 'gcell' apps/frontend-shell/src/views/sim/console/SandboxHome.module.css`
+ *    —— 现算能读到 `white-space: nowrap` 与 `overflow: hidden`，且**没有** `text-overflow: ellipsis`。）
  *   真正的修法在**后端**：回包该像 `label`/`labelIsFallback` 那样也下发一个**对象人话名**
  *   （届时这里换成 `名字 · 对象名`，一行代码）。在前端按 id 串规律拆出「常州」= 编一套解析约定，
  *   那是新造口径，本单不做。

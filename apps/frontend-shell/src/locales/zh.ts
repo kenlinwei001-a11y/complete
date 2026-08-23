@@ -1935,6 +1935,18 @@ export const zh = {
         /** ? 浮层（口径 · 公式 · 为什么这么算 · 数据来源） */
         info: {
           attribution: "哪些运行归得上、哪些归不上",
+          /**
+           * 屏上这句「归属形态**只有两种正值**：REGISTERED 与 EXPLORATORY」是一条**枚举断言** ——
+           * 契约里一加第三个值，这句话当天就开始对用户说谎，而屏上不会有任何变化。
+           * 故把它赌的那个计数写下来（2026-08-23 挂记号，现算相符）：
+           *
+           * @stale-fact packages/contracts/src/qos.ts /AgentRunAttributionSchema = z\.enum\(\["REGISTERED", "EXPLORATORY"\]\)/ ==1
+           *
+           * 赌的是**那一行原样存在**：枚举一旦增删值或改写形状，这条正则现算掉到 0，门当场红。
+           * 人工复验一条命令：
+           *   `grep -n 'AgentRunAttributionSchema = z.enum' packages/contracts/src/qos.ts`
+           * ⚠ 第三种情况（字段整体缺失 = 归属上线前的旧记录）**不是枚举值**，故不进这条赌注。
+           */
           attributionBody:
             "运行记录（AgentRunRecord）现在带 agentId / agentKey / agentVersion / 归属形态，由引擎在 Agent 循环收尾时与运行数据同一次写入 —— 所以「谁跑的」和「跑出了什么」不会各说各话。归属形态只有两种正值：REGISTERED（真解析了某一版 Agent 定义，如场景入口 Agent、角色 Agent）与 EXPLORATORY（本次确实没有 Agent 定义）。字段整体缺失是第三种情况：归属上线前的旧记录，属于未知，不会被当成 EXPLORATORY 混算。归属之外还有一个正交的维度：这次运行是这个任务自己跑的（直接运行），还是被多角色会诊扇出去的子运行（会诊扇出）。两者都算这个 Agent 真跑过一次，都计入上面的数字，「来源」列标明是哪一种 —— 此前会诊扇出的子运行根本不落库（运行记录曾以任务为唯一键，一个任务只存得下一条），那部分次数在全仓不可见，现在已经补上。",
           contextOps: "上下文清理的触发口径",

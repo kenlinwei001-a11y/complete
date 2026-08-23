@@ -97,8 +97,14 @@ export interface GapAttrOutput {
    * `residual` = 本层未解释残差（契约 `GapAttributionLevelSchema.residual`，**必填字段**）。
    * ⚠ 它此前在本前端类型里**整个缺席** —— 后端逐层都在下发，前端类型没声明 ⇒ 没人消费 ⇒
    *   树上只画得出被解释的那几支。这是「接了线没消费」，不是「后端没给」：
-   *   实测 `POST /a/v1/solvers/gap_attribution/invoke`（demo 租户）回包
+   *   **2026-08-19** 实测 `POST /a/v1/solvers/gap_attribution/invoke`（demo 租户）回包
    *   `levels[0].residual=3.336 / totalGap=27.8 / residualPct=12`。
+   *   复验（两条，任一条都能亲手跑）：
+   *     · `pnpm --filter datacore exec vitest run test/gap-attribution.test.ts`
+   *       —— 用例 C1 就在断言 `Σ子贡献 + residual == 父gap` 与 `0 < residualPct < 15`，
+   *       上面那组数字若漂出这个区间，它当场红；
+   *     · 真服务（SEED_DEMO=1 起 datacore 后）：
+   *       `curl -s -X POST -H 'Content-Type: application/json' -H 'X-Debug-User: demo:admin:admin|planner|catalog_admin' -d '{"args":{}}' http://127.0.0.1:4001/a/v1/solvers/gap_attribution/invoke`
    */
   levels?: { depth: number; label: string; nodes: GapAttrNode[]; residual?: number }[];
   /**
@@ -229,11 +235,19 @@ export function gapAttributionToBaseRootCause(ga: GapAttrOutput | undefined, bas
   /*
     ══ 判据 U4b · 本基地缺口里**没被任何因素解释掉**的那一块 ══════════════════════
     改前这张树只画被解释的那几支 ⇒ 读者把「订单 + 设备OEE + 物料」读成缺口的**全部**，
-    而实测 demo 租户里 `基地 handan 内` 的 13.8196 有 **1.6584 无人认领**（12%）。
+    而 **2026-08-19** 实测 demo 租户里 `基地 handan 内` 的 13.8196 有 **1.6584 无人认领**（12%）。
     「被排除项与主因同图」要的就是这一块：它留在图上、可见地降级、并写清为什么。
 
     ⚠ 残差取 `reconChecks` 里**本基地那一条**（`depth=2 · label 含 baseId`），
-      **不能**用 `levels[1].residual` —— 那是全部基地加总（实测 2.9357 vs 本基地 1.6584）。
+      **不能**用 `levels[1].residual` —— 那是全部基地加总（同日实测 2.9357 vs 本基地 1.6584）。
+
+    复验这三个数（2026-08-19 那次实测的复现路径，两条任选）：
+      · `pnpm --filter datacore exec vitest run test/gap-attribution.test.ts`
+        —— 用例 C1 逐条断言 `sumChildren + residual == parentGap`（每层每条 reconCheck 都咬），
+        「本基地那一条」与「全部基地加总那一条」在同一个数组里、depth 不同，故取错层当场对不上；
+      · 真服务（SEED_DEMO=1 起 datacore 后）拿回包自己数：
+        `curl -s -X POST -H 'Content-Type: application/json' -H 'X-Debug-User: demo:admin:admin|planner|catalog_admin' -d '{"args":{}}' http://127.0.0.1:4001/a/v1/solvers/gap_attribution/invoke`
+        回包里 `reconChecks[].{depth,label,parentGap,sumChildren,residual}` 就是本段说的那几个数。
     ⚠ 取不到就**不画**：宁可少一个节点，也不拿一个算出来的差值冒充引擎的勾稽结论。
   */
   const baseKey = baseId.startsWith("base:") ? baseId.slice(5) : baseId;

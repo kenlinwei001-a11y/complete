@@ -482,13 +482,19 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   /**
    * WO-SANDBOX-DENSITY · 左区动作条的**第二层**开关（默认收起）。
    *
-   * 为什么这一层用 `display:none` 而**不用 `<details>`**（本单实测，不是照抄传说）：
+   * 为什么这一层用 `display:none` 而**不用 `<details>`**（**2026-08-17** 本单实测，不是照抄传说）：
    * 闭合 `<details>` 的子节点在 Chromium 141 里 `checkVisibility()` 为 false、命中测试也打不到，
    * 但 `getBoundingClientRect()` **仍返回非零旧矩形** —— 而版面门 `visible()` 的判据正是
    * 「计算样式非 none/hidden/opacity0 ＋ 非零矩形」（`scripts/lib/layout-probe.mjs`）。
    * ⇒ 用 `<details>` 折叠，门照样把折叠里的控件**当第一屏可见控件在数**，屏上看不见、数上不降。
    * 取证：canonical 那一屏 52 个控件里有 12 个正是闭合 `<details>`（`sandbox-consolidated-links`，
    * `open===false`）里的深链接 `<a>` —— 本单亲手逐控件 dump 复现，见交单报告①。
+   * 复验（不必信"交单报告"这四个字，两条都能自己看）：
+   *  · 门的 `visible()` 判据原文：`scripts/lib/layout-probe.mjs:125-130`
+   *    （`display/visibility/opacity` 三项 ＋ `width>=1 && height>=1`，闭合 details 的子节点两项都过）；
+   *  · 那次实测的逐项原文（含「52 里有 13 个正是闭合 `sandbox-consolidated-links`」）记在
+   *    `scripts/layout-legibility-baseline.json` 的 `sim-sandbox` 条目，
+   *    搜「折叠必须用 `display:none`」那一段；门本身跑一遍是 `pnpm run layout-legibility:check`。
    *
    * ⚠ 不用条件渲染（`open ? <…/> : null`）的理由同样是实测出来的：
    *   `sandbox-console.seam` / `befe-e-sim-checkpoint-rollback` / `sim-event-consumers` /
@@ -503,7 +509,11 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
    *
    * 仓主裁决：**配置面板默认收起成一条，点开才展开；地铁图留在首屏当主角。**
    * 上一张单（CONFIG-UX）把「扰动 × 本体关系」并成同屏两列是对的，但它占满整行 ⇒
-   * 画布被排到第二行。真浏览器实测顶边 **1440×900→1453px · 1280×800→1472px**，全在折线以下。
+   * 画布被排到第二行。真浏览器实测 **2026-08-17** 顶边 **1440×900→1453px · 1280×800→1472px**，
+   * 全在折线以下；改成默认收起后同次实测回到 **319px**（两个视口同数）。
+   * 复验：`pnpm run layout-legibility:check`（首屏锚点是绝对判据）；
+   * 那次的逐项原文与同码双测对照记在 `scripts/layout-legibility-baseline.json` 的 `sim-sandbox` 条目，
+   * 搜「WO-SANDBOX-CONFIG-COLLAPSE」→「② 实测三态」。
    *
    * ── 这份 state 为什么在**宿主**而不在面板里 ────────────────────────────────
    * 它有**两个消费方**：面板自己（横幅 + 行内 `display`）与 `SandboxConsole`（分栏方式）。
@@ -788,8 +798,14 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       docName: "推演沙盘",
       basis: [
         `沙盘会话 ${sessionId ?? "（未建立）"} · 当前 tick ${curTick}`,
+        // ⚠ 2026-08-23 · 这一行原来的括注是裸的「（实测）」。改掉的理由不是排版：
+        //    `WorldOrigin` 的两个取值本身叫 MEASURED / DERIVED（定义与判据见
+        //    `docs/SYSTEM-ONTOLOGY.md` 的「世界态出处（WorldOrigin · 诚实位）」一节），
+        //    「实测」在这里是**口径标签**、不是一次带日期的观测；而导出报告的读者读到裸的
+        //    「（实测）」只会以为"有人量过"。改成与下面那支对仗的说法（后端读数 ↔ 本地占位），
+        //    两支放在一起才说得清这条诚实位到底在区分什么。取数路径没变，仍是同一条端点。
         worldOrigin === "MEASURED"
-          ? "世界态出处：GET /a/v1/sim/sessions/:id/world 取回（实测）"
+          ? "世界态出处：GET /a/v1/sim/sessions/:id/world 取回（后端真实读数，非本地占位）"
           : "世界态出处：本地基线快照（占位，未经后端重演——按此复算会与屏上不同源）",
         `推演范围：${describeSandboxScope(scope)}`,
       ],
@@ -836,8 +852,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   /**
    * ══ WO-SANDBOX-MEMORY · 落点下拉的**筛选窗口**（不是"只给前 N 个"）═══════════════════
    *
-   * 病灶（真浏览器实测，不是推测）：这个 `<select>` 一次性把 `perturbTargets` **全量**渲染成
-   * `<option>` —— demo 租户是 **11,337 个**。堆快照逐项对账（`stage4.heapsnapshot`）：
+   * 病灶（真浏览器实测 **2026-08-22**，不是推测）：这个 `<select>` 一次性把 `perturbTargets` **全量**
+   * 渲染成 `<option>` —— demo 租户是 **11,337 个**。堆快照逐项对账（`stage4.heapsnapshot`）：
    *   · `<slot pseudo="-internal-option-slot">`            11,389 个 · 2.1MB
    *   · `ShadowRoot`                                       11,415 个 · 1.9MB
    *   · `<span pseudo="-internal-option-label-container">` 11,389 个 · 1.1MB
@@ -856,6 +872,20 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
    * 上挂着 6 处 `user.selectOptions(...)` 的既有断言（config-ux / perturbation ×2 /
    * perturbation-timeline / plays / three-zone / u2-stepwise）——那是**别人单的接线断言**，
    * 不由本单（只治内存）推翻。候选少于窗口时（测试里都是 1–3 个）逐字节同屏。
+   *
+   * ── 怎么再验一遍（2026-08-22 那次的复现路径）─────────────────────────────────
+   *  · 「窗口不缩水能力」这条判据：
+   *    `pnpm --filter frontend-shell exec vitest run test/sandbox-memory-window.seam.test.tsx`
+   *    —— 用例 ①「候选 1,200 个，DOM 里的 `<option>` ≤ 窗口 + 1」、
+   *       用例 ③「**窗口外**那个落点仍然选得到，且真发出去的 targetObjectId 就是它」、
+   *       用例 ④「选中的那个恒在窗口里」。
+   *  · 那 6 处既有断言还在不在：
+   *    `grep -rn 'sandbox-perturbation-object' apps/frontend-shell/test/ | wc -l`
+   *    （2026-08-23 现算命中 > 0；报 0 就是这条 grep 坏了，不是断言没了）。
+   *  · 11,337 这个量级：`perturbTargets` 是本文件上方那个 `useMemo` 把
+   *    `cfg.nodeObjectIds[类型]` 逐类型摊平出来的（`cfg` = `GET /a/v1/sim/view-config` 的回包），
+   *    起真 datacore（SEED_DEMO=1）后可直接数回来：
+   *    `curl -s -H 'X-Debug-User: demo:admin:admin|planner|catalog_admin' http://127.0.0.1:4001/a/v1/sim/view-config | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const c=JSON.parse(s);console.log(Object.values(c.nodeObjectIds??{}).reduce((n,a)=>n+a.length,0))})"`
    */
   const [pObjectFilter, setPObjectFilter] = useState("");
   const perturbTargetWindow = useMemo(() => {
@@ -2276,11 +2306,15 @@ function SandboxModeSwitch({
   /**
    * 判据 U2 的步骤条（密排）。**并进模式钮那一行的空白段，不新增一行高度。**
    *
-   * 为什么非这么放不可（实测数，不是审美）：步骤条竖排时占 **81px**
+   * 为什么非这么放不可（**2026-08-20** 实测数，不是审美）：步骤条竖排时占 **81px**
    * （步骤钮 27 + 间隙 6 + 口径行 48），单独成块还要吃掉一个 10px 的行间隙 ⇒ 共 **91px**。
    * 而本页首屏锚点（`sandbox-zone-canvas` 的 top）是仓主**亲自裁决过**的判据 ——
    * 「配置面板默认收起成一条，点开才展开；地铁图留在首屏当主角」。
    * 步骤条一挂上去，锚点 **319 → 410px**，版面门棘轮当场报红（三次采样同值，非抖动）。
+   * 复验这组数：`pnpm run layout-legibility:check`（首屏锚点是绝对判据，判据实现见
+   * `scripts/check-layout-legibility.mjs`，量法见 `scripts/lib/layout-probe.mjs` 的 M9）；
+   * 逐项原文（81/91px 拆解 + `dense` 同码双测「基线/竖排/密排 = 319/439/319」）记在
+   * `scripts/layout-legibility-baseline.json` 的 `sim-sandbox` 条目，搜「WO-U2-DENSE-ANCHOR」。
    *
    * 模式钮那一行本来就是 **27px 高、右端空着约 685px**（五个模式钮止于 x≈640，
    * 导出起于 x≈1325），步骤钮 4 个约 396px —— 塞得下且**行高不变** ⇒ 这 91px 归零。
@@ -2389,7 +2423,10 @@ function SandboxModeSwitch({
  * 判据全都保持成立：`sandbox-consolidated-links` 还在、12 条 `<a>` 还在、默认仍折叠
  * （`sandbox-ia-consolidate.seam` 的三条断言 —— 清单不漂移 / href 正确 / `open===false` —— 逐条照旧）。
  *
- * ⚠ 顺带记一条实测（本单的取证，不是推想 · 见交单报告①）：
+ * ⚠ 顺带记一条实测（**2026-08-17** 本单的取证，不是推想 · 见交单报告①；
+ *   两条自己也能验：门的判据原文在 `scripts/lib/layout-probe.mjs:125-130` 的 `visible()`，
+ *   那次取证的逐项原文在 `scripts/layout-legibility-baseline.json` 的 `sim-sandbox` 条目
+ *   「折叠必须用 `display:none`」一段；门跑一遍是 `pnpm run layout-legibility:check`）：
  *   闭合 `<details>` 的子节点在 Chromium 141 里 `checkVisibility()` 为 **false**、
  *   命中测试打不到（点不着、也没画出来），但 `getBoundingClientRect()` **仍返回旧的非零矩形**。
  *   版面门的 `visible()` 判据是「计算样式 + 非零矩形」⇒ 它把这 12 条**当成第一屏可见控件在数**。

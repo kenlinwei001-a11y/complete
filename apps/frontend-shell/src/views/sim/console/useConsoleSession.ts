@@ -4,12 +4,26 @@
  * ══ 病灶：今天的行为是 X，应该是 Y ═══════════════════════════════════════════
  *
  * **X（今天）**：四个适配层（`Sandbox{Home,Detail,Attr,Opt}Route.tsx`）确实读了
- * `view.options.sessionId` 并往下透，但**全仓没有任何地方往 `view.options` 里放这个值** ——
- * 实测：`grep -rn "sim-console\|sim-conduction\|sim-attribution\|sim-optimize"`
- * 在 `apps/datacore/src` · `apps/agentcore/src` · `packages/contracts/src` 三处**零命中**
- * （金丝雀：同一条命令对确定存在的 `sim-sandbox` 有命中 ⇒ 工具没坏），
- * 即后端 workspace 从不下发这四个 viewKey，`view.options` 恒为 `undefined`。
- * 于是 `sessionId` 恒 `undefined` ⇒ 四页的取数 hook 全部 `enabled:false` ⇒ 一律落占位。
+ * `view.options.sessionId` 并往下透，但**全仓没有任何地方往 `view.options` 里放这个值**
+ * ⇒ `sessionId` 恒 `undefined` ⇒ 四页的取数 hook 全部 `enabled:false` ⇒ 一律落占位。
+ *
+ * ⚠ **2026-08-23 复核：结论仍成立，但当初写下的那条证据已经过期，照实改对**（铁律 0.5 三态之别）。
+ *   · **过期的原话**（2026-08-21 那次实测）：「`grep -rn "sim-console\|sim-conduction\|sim-attribution\|sim-optimize"`
+ *     在 `apps/datacore/src` · `apps/agentcore/src` · `packages/contracts/src` 三处**零命中**，
+ *     即后端 workspace **从不下发这四个 viewKey**」。
+ *   · **今天的实情**：后端**已经下发**这四个 viewKey 了（`WO-SIM-BE-VIEWKEY` 之后）——
+ *     `apps/datacore/src/synthetic/sandbox-console.ts` 的 `SANDBOX_CONSOLE_VIEWS`
+ *     与 `apps/datacore/src/synthetic/service.ts` 的 `VIEW_DEFS` 各有一份四行的登记。
+ *     2026-08-23 现算：同一条 grep 命中 **21 处**（datacore 三个文件 12/8/1，agentcore 与 contracts 仍 0）。
+ *   · **为什么结论没变**：下发的那四个 view 对象是 `{ key, title, renderer, layout: {} }`，
+ *     **压根没有 `options` 这一格**（`grep -c options apps/datacore/src/synthetic/sandbox-console.ts`
+ *     现算 **0**）。所以形态从「**没接线**」变成了「**接了线没数据**」——
+ *     两者修法完全不同，但对本 hook 而言 `view.options?.sessionId` 照样恒 `undefined`，
+ *     下面那条兜底仍然是必需的。**别把「viewKey 有了」读成「sessionId 有了」。**
+ *   · 复验（三条命令，带金丝雀）：
+ *       ① `grep -rc "sim-console\|sim-conduction\|sim-attribution\|sim-optimize" apps/datacore/src apps/agentcore/src packages/contracts/src -r | grep -v ':0'`
+ *       ② `sed -n '/"sim-console": {/p' apps/datacore/src/synthetic/service.ts`（看有没有 `options:`）
+ *       ③ 金丝雀：同一条 grep 换成确定存在的 `sim-sandbox` 应有命中（现算 6 处）；它若也报 0，是工具坏了。
  *
  * **Y（应该）**：宿主没拿到显式指定时，应当**自己去查**本租户最近一条 RUNNING 会话，
  * 查到就把它透下去（四页随即真发请求、诚实位翻 `"endpoint"`）；查不到就**如实报**

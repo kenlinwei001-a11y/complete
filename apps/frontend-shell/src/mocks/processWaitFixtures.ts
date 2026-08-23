@@ -221,6 +221,25 @@ export const PROCESS_INSTANCES_P01: ProcessInstancesResponse = {
     name: "年度经营目标分解",
     carrierTypeKey: "PlanTarget",
     kind: "NO_RECONSTRUCTION_RULE",
+    /**
+     * 屏上这句里有**两个可被证伪的断言**，处置不同，不许合成一句（2026-08-23 挂记号）：
+     *
+     * ① 「**没有任何一条反推规则**声明本流程（P01）的进/出站字段」——**静态的**，赌得下来：
+     *
+     *    @stale-fact apps/datacore/src/process/flow-rules.ts /processKey: "P01"/ ==0
+     *
+     *    金丝雀（同一份规则表里**确定存在**的那些，防「正则瞎了报 0」被读成「规则没了」）：
+     *
+     *    @stale-fact apps/datacore/src/process/flow-rules.ts /processKey: "P\d+"/ ==9
+     *
+     *    ⇒ 有人给 P01 补上规则那天，第一条从 0 变 1、门当场红；抽取器坏了则第二条掉到 0、也红。
+     *    人工复验：`grep -c 'processKey: "P01"' apps/datacore/src/process/flow-rules.ts`（现算 0）。
+     *
+     * ② 「承载物 PlanTarget 有 **17 条实例**」——**运行期计数**，不是仓里的静态字面量，
+     *    没法用 `@stale-fact` 赌（它赌的是"某文件里某正则的匹配数"）。它的复验方式写在下面
+     *    `probe` 那一格里，是一条真能跑的口径：`listByType("PlanTarget")` 数一遍。
+     *    **别把 ① 绿了读成 ② 也验过了**——那正是本门要治的「拿一个数字当另一个数字的证据」。
+     */
     reason:
       "承载物 PlanTarget 有 17 条实例，但**没有任何一条反推规则**声明本流程的进/出站字段落在哪两个属性上。这是「有单据、没规则」不是「没数据」—— 修法是补规则表一行，不是补数据。",
     probe: 'listByType("PlanTarget") 数出 17 条；再在 flow-rules.ts 里搜 processKey:"P01" 命中 0 条。',

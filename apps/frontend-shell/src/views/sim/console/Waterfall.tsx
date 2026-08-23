@@ -14,6 +14,15 @@
  * 它不在 token 表里，是一个过渡蓝。取 `color-mix(in srgb, var(--c-capacity) 6%, var(--panel))`
  * —— 实测合成后 (45,68,101) vs 规格 (45,68,96)，只差蓝通道 5（低于逐像素比对的 8 档阈值）。
  * **不把 `#2d4460` 抄进来** —— 抄了就是把主题在这一处固定死。
+ *
+ * 实测日期 **2026-08-21**，**2026-08-23 逐通道复算仍是 (45,68,101) vs (45,68,96) / 差 0,0,5**。
+ * 复验三条（都能亲手跑，不必开浏览器）：
+ *  · 两个 token 的真值：`grep -n -- '--c-capacity:\|--panel:' apps/frontend-shell/src/styles/tokens.css`
+ *    （2026-08-23 现算 `#43b7d7` / `#2c3d5e`）；
+ *  · 规格那个色：`grep -n '2d4460' docs/ux-spec/sandbox/sandbox-attr.html`
+ *    （现算命中第 226 / 228 行的「基线」与「合计」两根柱）；
+ *  · srgb 预乘插值现算一遍（把上面两个真值代进去；改了 token 这个数就会变）：
+ *    `node -e "const a=[0x43,0xb7,0xd7],b=[0x2c,0x3d,0x5e];console.log(a.map((c,i)=>Math.round(c*0.06+b[i]*0.94)).join(','))"`
  */
 import type { WaterfallModel } from "./useLossAttribution";
 import styles from "./SandboxAttr.module.css";
