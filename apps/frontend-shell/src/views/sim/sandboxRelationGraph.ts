@@ -261,6 +261,13 @@ export function buildRelationGraph(
     edges,
     layerCount: list.length === 0 ? 0 : Math.max(...list.map((n) => n.layer)) + 1,
     // 现算，不另存（chip 上写 7 条、点开只有 5 行的那种病，根子就是两个数分了家）。
+    // 「现算」今天还真的成立吗（**2026-08-23 复核成立**）—— 两条都能亲手跑：
+    //   · 就是紧接着这三行 `list.filter(...).length` / `edges.filter(...).length`，
+    //     没有任何一处把这三个数存进 `nodes`/`edges` 之外的地方
+    //     （`grep -n 'Count:' apps/frontend-shell/src/views/sim/sandboxRelationGraph.ts` 只应命中这几行与接口声明）；
+    //   · 机器化断言：`pnpm --filter frontend-shell exec vitest run test/sandbox-config-ux.seam.test.tsx`
+    //     —— 用例「原生量/派生量：…」里 `expect(off.derivedCount).toBe(all.derivedCount - 1)`：
+    //     关掉一条边 ⇒ 这个数必须**跟着**变。另存一份就不会跟着变，该断言当场红。
     nativeCount: list.filter((n) => n.kind === "native").length,
     derivedCount: list.filter((n) => n.kind === "derived").length,
     activeEdgeCount: edges.filter((e) => e.active).length,
