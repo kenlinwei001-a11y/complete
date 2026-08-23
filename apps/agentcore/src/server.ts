@@ -978,7 +978,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.get("/b/v1/mcp/servers/solvers", async (req) => {
     const a = await auth(req);
     const { query } = req.query as { query?: string };
-    let items: { key: string; name: string; description: string; domain?: string; argHints?: Record<string, string> }[] = [];
+    let items: { key: string; name: string; description: string; domain?: string; argHints?: Record<string, string> }[];
     try { items = (await deps.dataCore.catalog.solverRegistry(a, query)).items; } catch { items = []; }
     return { server: SOLVERS_MCP_SERVER_INFO, tools: buildSolverMcpTools(items), count: items.length };
   });
@@ -1492,7 +1492,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const body = req.body as Partial<SkillLintTarget> & { id?: string; name?: string };
     let target: SkillLintTarget;
     // WO-PROMPT-KEY-LINT：摘要语义审查（?review=1）需要技能名进 inputs；两条路各自取名。
-    let skillName = "";
+    let skillName: string;
     if (body.id) {
       const skill = await deps.repos.skills.get(body.id);
       if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${body.id}`);
@@ -2905,7 +2905,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const launchBody = LaunchScenarioBodySchema.parse(req.body ?? {});
     const userQuery = launchBody.query?.trim() || sc.triggerQuestion;
     // 产能可行性变体（如 "1天交付"）从用户 query 确定性解析，更新 presetSlots 让 path-A 真拿到归一化周数。
-    let slotPresets = { ...sc.presetContext.slotPresets };
+    const slotPresets = { ...sc.presetContext.slotPresets };
     if (userQuery !== sc.triggerQuestion) {
       const variant = parseCapacityFeasibilityVariant(userQuery);
       if (variant.modelId) slotPresets.model = variant.modelId;

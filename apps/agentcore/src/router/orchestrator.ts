@@ -1482,7 +1482,7 @@ export class Orchestrator {
    * `coordinator.planned` → 参与角色；`step.completed` 的 `dispatch_i` → 已答完的角色；其余 step → 步骤名。
    */
   private async describeStalledProgress(taskId: string): Promise<{ roles: string[]; done: string[] }> {
-    let events: { seq: number; event: string; payload: unknown }[] = [];
+    let events: { seq: number; event: string; payload: unknown }[];
     try {
       events = await this.deps.repos.events.listAfter(taskId, 0);
     } catch (err) {
