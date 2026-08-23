@@ -219,8 +219,15 @@ describe("WO-MOCK-ENGINE-PARITY · mock 与真引擎同口径现算集合相等"
     expect(shapes.get("ontology_query"), "工具坏了：ontology_query 声明形状缺 provenance").toContain("provenance");
     expect(shapes.get("capacity_forecast"), "工具坏了：shapeKeys(CapacityForecastOutputSchema) live 求值缺 capWanP50").toContain("capWanP50");
     // 独立口径对总数（铁律 0.6：全中不保证覆盖全）：类型/链路计数与 grep 口径一致
+    // ⚠️ 这两个数**写死**是有意的：它们是**第三方口径**（人手 grep `key:`/`plain(`/`fromTypeKey:` 计数），
+    // 与 §2 的镜像表互为对照 —— 抽取器若因正则漂移少抽一条，§2 会跟着少要一条、**照样绿**，
+    // 只有这里的绝对数会红。所以它不能改成 `MOCK_ONTOLOGY_LINKS.length`（那就退化成自己跟自己比）。
+    // 代价是它**天生带保质期**：A 侧每加一条链路/类型就要人肉改一次数（改前须两侧独立复算，
+    // 不许照着报错信息里的 received 直接抄）。
+    // 100→101 于 2026-08-23（本单）：A 侧 4a0c7ea1 加 `material_has_outsource`(Material→Outsource)；
+    // 该类型落在 battery-extended.ts，不进 `batteryObjectTypes()` ⇒ 类型数仍为 61。
     expect(graph.types.length, "类型数与探针独立口径不符（今日 61）").toBe(61);
-    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 100）").toBe(100);
+    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 101）").toBe(101);
   });
 
   it("§2 mock 镜像图 == battery.ts 现算图（集合相等·缺谁多谁点名）", () => {

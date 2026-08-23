@@ -126,6 +126,11 @@ export const MOCK_ONTOLOGY_LINKS: MockOntologyLink[] = [
   { linkKey: "model_has_cert", fromTypeKey: "Model", toTypeKey: "Certification" },
   { linkKey: "customer_has_invoice", fromTypeKey: "Customer", toTypeKey: "ARInvoice" },
   { linkKey: "material_has_batch", fromTypeKey: "Material", toTypeKey: "MaterialBatch" },
+  // A 侧 4a0c7ea1（WO-RULE-SCOPE-TRIAD ②）给本体加的 Material→Outsource（外协批次·C31 承载类型接入本体图）。
+  // 本行由 battery.ts 文本现算差集机械补入，非手写；`Outsource` 类型键**不进** MOCK_ONTOLOGY_TYPES，
+  // 因为它落在 battery-extended.ts `extendedObjectTypes()` 里，而镜像口径只覆盖 `batteryObjectTypes()`
+  //（同 Material / Supplier / Customer 等既有情形：链路表引用它们，类型表里没有）。
+  { linkKey: "material_has_outsource", fromTypeKey: "Material", toTypeKey: "Outsource" },
   { linkKey: "material_supplied_by_po", fromTypeKey: "Material", toTypeKey: "PurchaseOrder" },
   { linkKey: "po_from_supplier", fromTypeKey: "PurchaseOrder", toTypeKey: "Supplier" },
   { linkKey: "po_customs_cleared_by", fromTypeKey: "PurchaseOrder", toTypeKey: "CustomsClearance" },
