@@ -1,7 +1,8 @@
 /**
  * ══ WO-SANDBOX-MEMORY · `GET /a/v1/sim/sessions` 的**流式投影** ═══════════════════════
  *
- * 病灶（本单亲手实测，非推测）：该端点把**每一条**会话的完整 `baseSnapshot` 全量回给前端。
+ * 病灶（本单亲手实测 **2026-08-22**，非推测；复验见本块末尾《怎么再测一遍》）：
+ * 该端点把**每一条**会话的完整 `baseSnapshot` 全量回给前端。
  * 一条 = 11,348 对象 × 36 状态变量 = 408,528 格 ≈ 8.4MB JSON；库里 35 条 ⇒ **单跳 285MB**。
  * 而前端有 **5 个调用点 / 3 个不同缓存键**（`["a","sim-sessions"]` ·
  * `[…,"enterprise-fork"]` · `[…,"impact-analysis"]`），于是同一份 285MB 在
@@ -25,6 +26,17 @@
  * ⛔ **这不是"后端该做的事前端补一刀"的重复实现**：端点该不该投影是另一张单的事。
  *   本模块**与那张单正交** —— 后端一旦不再下发 `baseSnapshot`，扫描器扫不到这个键，
  *   就是个纯拷贝，行为逐字节不变（`stripped === 0`，见 `SessionsProjectionStats`）。
+ *
+ * ── 《怎么再测一遍》（2026-08-22 那次实测的复现路径，逐条都能亲手跑）───────────────
+ *   ① 量级断言（不需要后端）：
+ *      `pnpm --filter frontend-shell exec vitest run test/sandbox-memory-projection.test.ts`
+ *      —— 用例 ⑨「11,348 对象 × 36 变量那一条，剥后 < 1‰」就是上面那组数字的机器化断言；
+ *      用例 ①「金丝雀：stripped 必须 > 0」保证扫描器没瞎（剥不到就红，而不是安静报干净）。
+ *   ② 真回包字节数（SEED_DEMO=1 起 datacore 之后）：
+ *      `curl -s -o /dev/null -w '%{size_download}\n' -H 'X-Debug-User: demo:admin:admin|planner|catalog_admin' http://127.0.0.1:4001/a/v1/sim/sessions`
+ *   ③ 前端这一屏真的不再持有那份内存：
+ *      `pnpm --filter frontend-shell exec vitest run test/sandbox-memory-window.seam.test.tsx`
+ *      —— 用例 ⑤「回包很大，落到组件里的却只有几十字节/条」。
  */
 
 /** 剥掉 `baseSnapshot` 之后的会话列表项：**该字段在类型上就不存在**（谁想读，tsc 报错）。 */
