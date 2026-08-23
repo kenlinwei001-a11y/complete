@@ -36,7 +36,10 @@ function VerticalGroupName({ text }: { text: string }): JSX.Element {
  * ── 补的是 `n === 1` 这一支：原式在这里除以 0 ──────────────────────────────────
  * 原文 `(i / (series.ticks.length - 1)) * 100`，单刻度时 `i=0`、分母 `0` ⇒ `0/0 = NaN`
  * ⇒ 渲成 `left:"NaN%"`。**这不是"差一点"，是整条声明被丢弃**：`NaN%` 不是合法 CSS 长度，
- * 浏览器与 jsdom 一致地整条丢掉（实测 `el.style.left = "NaN%"` 之后读回来是 `""`），
+ * 浏览器与 jsdom 一致地整条丢掉（**2026-08-22 实测** `el.style.left = "NaN%"` 之后读回来是 `""`；
+ * **2026-08-23 复跑仍是 `""`**。复验一条命令，**带金丝雀**，报空串前先证明这台 jsdom 是活的：
+ *   `node -e "const {JSDOM}=require('./apps/frontend-shell/node_modules/jsdom');const el=new JSDOM('<div id=x></div>').window.document.getElementById('x');el.style.left='NaN%';console.log('NaN%→',JSON.stringify(el.style.left));el.style.left='0%';console.log('金丝雀 0%→',JSON.stringify(el.style.left))"`
+ *   现算打印 `NaN%→ ""` 与 `金丝雀 0%→ "0%"` —— 后者若也是 `""`，那是 jsdom 装坏了，不是本条成立），
  * 而 `.laneHead span` 是 `position:absolute`（`SandboxHome.module.css`）⇒ 失去偏移、
  * 塌回轨道左沿。
  *

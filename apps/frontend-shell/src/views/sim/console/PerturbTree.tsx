@@ -68,8 +68,12 @@ const GROUPS: readonly { title: string; count: number }[] = [ // hardcoded-data-
 const PLACEHOLDER_HOT_PROPS: readonly string[] = ["oee_current", "yield_baseline", "onHand"];
 /**
  * 同上：规格里被选中的那一行（⑮ 物料到货）。
- * ⚠ **行的身份是 `num` 不是 `prop`** —— 册里 `prop` 有重复（实测 20 条只有 19 个不同的 `prop`：
- * ⑧ 利用率 与 ⑩ 瓶颈工序 都落在 `utilization`，只是对象类型不同 Process / Line）。
+ * ⚠ **行的身份是 `num` 不是 `prop`** —— 册里 `prop` 有重复（2026-08-21 实测 20 条只有 19 个不同的
+ * `prop`：⑧ 利用率 与 ⑩ 瓶颈工序 都落在 `utilization`，只是对象类型不同 Process / Line）。
+ * **2026-08-23 现算复核仍是 20 / 19 / `utilization` 落在 num 8 与 10**。复验一条命令
+ * （先 `pnpm --filter @platform/contracts build`，它读的是 contracts 的构建产物，不是抄来的数）：
+ *   `node -e "const {CAPACITY_FACTOR_BINDINGS:B}=require('./packages/contracts/dist/capacity-factors.js');const m=new Map();for(const b of B)m.set(b.prop,(m.get(b.prop)??[]).concat(b.num));console.log(B.length,new Set(B.map(b=>b.prop)).size,[...m].filter(([,n])=>n.length>1))"`
+ *   —— 现算打印 `20 19 [ [ 'utilization', [ 8, 10 ] ] ]`。三个数任一变了，本段就该重写。
  * 拿 `prop` 当行 id 会**同时选中两行**、并让 `querySelector([data-factor])` 两次都命中第一行
  * （首版就是这么写的，逐像素比对当场抓到：⑧ 那行画了两条重叠的连线、⑩ 那行一条都没有）。
  */
