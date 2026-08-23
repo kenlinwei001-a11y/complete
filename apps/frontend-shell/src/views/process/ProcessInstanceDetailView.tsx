@@ -19,7 +19,12 @@ import styles from "./ProcessInstanceDetailView.module.css";
  *
  * 工单病灶原话：「流程实例能建出来，但建完就消失」——
  * `GET /a/v1/process-instances/{id}` 与 `POST …/advance` 两条端点前端消费方各 0 处
- * （本单复核实测，金丝雀与逐层追调用记录见交单报告）。本页是这两条端点的**唯一生产消费方**。
+ * （2026-08-16 本单复核实测，金丝雀与逐层追调用记录见交单报告）。
+ * 本页是这两条端点的**唯一生产消费方** —— **2026-08-23 复核仍成立**（各 1 处，就是本文件）。
+ * 复验一条命令（两个符号一起数，命中里除了 `api/endpoints.ts` 的定义处只该有本文件）：
+ *   `grep -rn 'fetchProcessInstance\|advanceProcessInstance' apps/frontend-shell/src --include=*.ts --include=*.tsx`
+ * ⚠ 金丝雀：同一条命令把符号换成 `fetchStuckProcesses`（本仓确定存在、且另有消费方）应当有命中；
+ *   它若也报 0，那是这条 grep 坏了，不是消费方没了 —— 「我没找到」和「它不存在」是两个命题。
  *
  * ══ 这页答什么 ═══════════════════════════════════════════════════════════════
  *  ① 这条实例此刻**在哪一站**（当前步 / 整体状态 / 入出站时刻）；

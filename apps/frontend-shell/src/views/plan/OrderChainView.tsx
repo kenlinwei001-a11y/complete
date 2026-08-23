@@ -359,9 +359,11 @@ function ProblemNarrativePanel({ group, categoryLabel }: { group: OrderProblemGr
 /**
  * WO-U2-STEPWISE-2 · 判据 **U2** 的步骤契约（本页无 `ReasoningGraph`，故按 `SolverStep` 直写）。
  *
- * ⚠ **只有三步，是实测逼出来的，不是偷工**：`affected_orders` 的输出白名单
- * （`apps/datacore/src/solvers/service.ts:516`）是
+ * ⚠ **只有三步，是实测逼出来的，不是偷工**（2026-08-19 实测，**2026-08-23 复核仍成立**）：
+ * `affected_orders` 的输出白名单是
  * `["baseId","affected","total","count","columns","rows","fallback","problems","summary"]`
+ * 复验一条命令（**不写死行号** —— 行号会漂，这条注释原写 `service.ts:516`，2026-08-23 已漂到 `:527`）：
+ *   `grep -n '^  affected_orders: \["baseId"' apps/datacore/src/solvers/service.ts`
  * —— `rows` / `summary` / `problems` **同出一次求解、互不为输入**，是**并列产物**不是三步。
  * 把它们摊成三步会画出一条不存在的因果链（「先有明细才有问题归类」是假的），
  * 那正是判据 U2 点名要排除的装饰。故第 2 步如实写「本层 3 个并列产物」，
