@@ -1886,7 +1886,7 @@ function main() {
     if (live["truth.widgetKeysMultiSource"] < 5) {
       blind.push(`⑧ widget 槽位里被 ≥2 真相源登记的只有 ${live["truth.widgetKeysMultiSource"]} 个（<5）—— 只剩单边就查不出分叉，这条槽位等于没开`);
     }
-    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==24
+    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==35
     //    ⇒ 这个数不再是传说，它由本门每次现算并对账）。抽到 0 条 ⇒ 报「工具坏了」，
     //    **不许**报「全仓记号都通过」—— 那正是本门自己在治的那种「我没找到 ≠ 它不存在」。
     if (markSweep.files < 100) blind.push(`⑥b 记号扫描只走到 ${markSweep.files} 个源文件（<100）—— srcRoots 是不是没读到？`);
@@ -2137,7 +2137,7 @@ try {
  *        `frontend-shell/locales/zh.ts` ×2 · `frontend-shell/views/sim/sandboxConsoleModel.ts` ×6）。
  *        WO-STALE-TEXT-SWEEP 当天就补上了生产实例，而这句自述留在原地 ——
  *        **它把「已经在用」写成了「还没在用」，方向正好相反**。
- *        赌注：@stale-self marks.production ==24
+ *        赌注：@stale-self marks.production ==35
  *      · 原文写「`runBaselineFactChecks` 那条今天有 6 条真数据，挂在两条 CONFIRMED-STALE 上」。
  *        **实为 0 条赌注、0 条 CONFIRMED-STALE**（存量已被后续单改完，基线只剩
  *        7 条 UNMARKED + 4 条 FALSE-POSITIVE）。
@@ -2160,7 +2160,7 @@ try {
  *      `expectedSlipDays = 供应商段天数 ×(1−onTimeRate)`，经 `kitReadiness` 挂在
  *      已注册求解器 `kit_readiness` 上）。给一句已知是假的话挂赌注 = 把假话钉死在门里，
  *      故留给裁决：**改文案还是把那个 `effect: inert` 一并解除**，属行为判断，不由记号单决定。
- *      @stale-self marks.production ==24）、
+ *      @stale-self marks.production ==35）、
  *      **基线赌注路径今天 0 条数据**（@stale-self baseline.factChecks ==0；属「接了线没数据」，
  *      不是「没接线」——`runBaselineFactChecks` 仍被主流程无条件调用）。
  *    ⇒ 复验命令：`node scripts/check-stale-claims.mjs`（末行直接打印这三个现算值）。

@@ -8,7 +8,7 @@
   "④ ratchetHigh 是历史最高水位，只降不升。**评审唯一必须拒绝的一行就是把它调大。**"
  ],
  "ratchetHigh": 38,
- "maxExemptions": 35,
+ "maxExemptions": 33,
  "exemptions": [
   {
    "key": "apps/frontend-shell/src/components/ProvenanceDag.tsx#4411cbdd8b75e546",
@@ -219,26 +219,6 @@
    "sample": "\"但 `apps/datacore/src/solvers/` **零直接消费方**（实测 grep 计数 0）⇒ 薄，非有\","
   },
   {
-   "key": "apps/frontend-shell/src/views/sim/inspectorModel.ts#826287397d88b3de",
-   "file": "apps/frontend-shell/src/views/sim/inspectorModel.ts",
-   "line": 754,
-   "codes": [
-    "STALE-1"
-   ],
-   "why": "同 :685（C4 落点「supplierOnTimeRate 侧」的 0 消费方声明）：缺日期，属另一批欠账，不在本单对本文件的授权范围内。",
-   "sample": "\"但 `apps/datacore/src/solvers/` **0 消费方**（实测 grep 计数 0）⇒ 前端拿不到、也没人算它\","
-  },
-  {
-   "key": "apps/frontend-shell/src/views/sim/inspectorModel.ts#360458182e3e909e",
-   "file": "apps/frontend-shell/src/views/sim/inspectorModel.ts",
-   "line": 824,
-   "codes": [
-    "STALE-1"
-   ],
-   "why": "同 :685（P2 落点的 0 消费方声明）：缺日期，属另一批欠账，不在本单对本文件的授权范围内。",
-   "sample": "\"但 `apps/datacore/src/solvers/` **0 消费方**（实测 grep 计数 0）⇒ 薄\","
-  },
-  {
    "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#5d103d698fd1c1ff",
    "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
    "line": 3,
@@ -413,17 +393,8 @@
    "verdict": "FALSE-POSITIVE",
    "why": "误报，同 chainImpediment.ts:377：是对「跑了但一条都没有」这个说法的辨析，不是断言。两处是同一句诚实位文案的两个出口。",
    "sample": "\"与「跑了但一条都没有」不是一回事，别读成「没有对策」。\","
-  },
-  {
-   "key": "apps/frontend-shell/src/views/sim/inspectorModel.ts#4773f980bdd7d7c7",
-   "code": "STALE-5",
-   "file": "apps/frontend-shell/src/views/sim/inspectorModel.ts",
-   "line": 830,
-   "verdict": "UNMARKED",
-   "why": "真断言（「零求解器消费方 ⇒ 今天没有任何一条链把它算进耗时」），且它正是本门 STALE-4 那一族的屏上版本，本单未复核其真伪，也未挂记号 —— 求解器一接上，这句话即失真而屏上不会变。",
-   "sample": "inertReason: \"零求解器消费方 ⇒ 今天没有任何一条链把它算进耗时；面板显示它是为了让缺口**看得见**，不是为了让它假装能算。\","
   }
  ],
- "onscreenMax": 5,
- "onscreenRatchetHigh": 9
+ "onscreenMax": 4,
+ "onscreenRatchetHigh": 4
 }
