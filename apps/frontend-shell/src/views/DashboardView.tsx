@@ -82,12 +82,14 @@ function useKpiDecor(): (key: string) => KpiDecor | undefined {
 export default function DashboardView({ view }: ViewRendererProps) {
   const navigate = useNavigate();
   const decorFor = useKpiDecor();
+  // #9 「经营指标」→「未达成指标根因下钻」联动：左侧点行选中该指标 → 右侧 rootcause 面板以 metricKey 真调 gap_attribution 下钻。
+  // ⚠ 必须排在下面的空态早返回**之前**：早返回在后会让 widgets 空/非空两态的 hook 数不同（2 vs 3），
+  //   同一组件实例在两态间切换时 React 抛 hook 顺序错乱（react-hooks/rules-of-hooks 报的就是这个）。
+  const [drillMetric, setDrillMetric] = useState<CockpitMetricSel | null>(null);
   const widgets = ((view.layout?.widgets as DashboardWidgetDef[] | undefined) ?? []).filter(Boolean);
   if (widgets.length === 0) return <div className="empty-state">{zh.common.none}</div>;
   const modLinks = (view.layout?.moduleLinks as ModLink[] | undefined) ?? MODULE_LINKS;
   const feedbackChain = (view.layout?.feedbackChain as string[] | undefined) ?? FEEDBACK_CHAIN;
-  // #9 「经营指标」→「未达成指标根因下钻」联动：左侧点行选中该指标 → 右侧 rootcause 面板以 metricKey 真调 gap_attribution 下钻。
-  const [drillMetric, setDrillMetric] = useState<CockpitMetricSel | null>(null);
   const handleExport = async () => {
     const [ao, mr] = await Promise.allSettled([invokeSolver("affected_orders", {}), invokeSolver("metric_rollup", { level: "op" })]);
     const problems = ao.status === "fulfilled" ? ((ao.value.data as { problems?: DashExportProblem[] })?.problems ?? []) : [];

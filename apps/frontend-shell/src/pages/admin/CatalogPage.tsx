@@ -401,7 +401,7 @@ function PlanEditor({ plan, packageId }: { plan: ExecutionPlan | null; packageId
       try {
         steps = JSON.parse(draftSteps) as Record<string, unknown>[];
       } catch (e) {
-        throw new Error(`步骤 JSON 解析失败：${(e as Error).message}`);
+        throw new Error(`步骤 JSON 解析失败：${(e as Error).message}`, { cause: e });
       }
       if (!Array.isArray(steps)) throw new Error("步骤必须是一个数组");
       return updatePlan(plan!.id, { steps });
