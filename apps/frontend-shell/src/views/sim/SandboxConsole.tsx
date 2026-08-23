@@ -175,8 +175,16 @@ export interface SandboxConsoleProps {
    *
    * ── 为什么这一个布尔值就是「地铁图回不回得来」的开关 ──────────────────────────
    * 上一张单让两区**都**占整行（`zoneFullRow`），于是画布被排到第二行、跟在整个左区之后。
-   * 真浏览器实测：画布区顶边 **1440×900 → 1453px · 1280×800 → 1472px**，全在折线以下。
-   * 收起时改回两栏 ⇒ 画布回到第一行右侧，顶边与左区同高 ⇒ 回到第一屏。
+   * 真浏览器实测 **2026-08-17**：画布区顶边 **1440×900 → 1453px · 1280×800 → 1472px**，全在折线以下。
+   * 收起时改回两栏 ⇒ 画布回到第一行右侧，顶边与左区同高 ⇒ 回到第一屏（同次实测 **319px**）。
+   *
+   * 复验这三个数（都能亲手跑 / 读到）：
+   *  · 门现跑一遍：`pnpm run layout-legibility:check` —— 首屏锚点是**绝对判据**
+   *    （`[data-testid="sandbox-zone-canvas"]` 的 top < 视口高），判据实现在
+   *    `scripts/check-layout-legibility.mjs`（搜 `sandbox-zone-canvas`）、量法在 `scripts/lib/layout-probe.mjs` 的 M9；
+   *  · 那次实测的逐项原文（含 1453 / 1472 / 319 与同码双测对照）记在
+   *    `scripts/layout-legibility-baseline.json` 的 `sim-sandbox` 条目，
+   *    搜「WO-SANDBOX-CONFIG-COLLAPSE」那一段的「② 实测三态」。
    *
    * ⚠ 这就是「折叠 ≠ 首屏」那条判据的落点：**只把面板收起来并不会把画布拉回来** ——
    *   收起后左区仍有方案环 / 指挥台 / 控制条一路往下排，画布只要还在第二行就仍在折线以下。

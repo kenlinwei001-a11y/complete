@@ -81,11 +81,17 @@ export function SolverStepBar({
   /**
    * **单行密排**（口径行降进 `?` 浮层）。默认 `false` ⇒ 其余 8 页逐字节不变。
    *
-   * 为什么要这个开关（`sim-sandbox` 实测逼出来的，不是审美）：本条竖排时占 **81px**
+   * 为什么要这个开关（`sim-sandbox` **2026-08-20** 实测逼出来的，不是审美）：本条竖排时占 **81px**
    * （步骤钮 27 + 间隙 6 + 口径行 48），单独成块还要吃掉一个 10px 行间隙 ⇒ 共 **91px**。
    * 而该页的首屏锚点（`sandbox-zone-canvas` 的 top）是仓主**亲自裁决过**的判据 ——
    * 「配置面板默认收起成一条，点开才展开；地铁图留在首屏当主角」。
    * 本条一挂上去，锚点 **319 → 410px**，版面门棘轮当场报红（三次采样同值，非抖动）。
+   * 复验这一组数（两条）：
+   *  · 门现跑一遍：`pnpm run layout-legibility:check`（首屏锚点是绝对判据，判据实现见
+   *    `scripts/check-layout-legibility.mjs`，量法见 `scripts/lib/layout-probe.mjs` 的 M9）；
+   *  · 那次实测的逐项原文（81px / 91px 的拆解 + `dense` 开关的**同码双测**对照表
+   *    「基线 / 竖排 / 密排 = 319 / 439 / 319」）记在 `scripts/layout-legibility-baseline.json`
+   *    的 `sim-sandbox` 条目，搜「WO-U2-DENSE-ANCHOR」那一段。
    * ⇒ 密排把这 91px 压成 **0**：步骤钮并进模式条那一行的空白段（那行本就 27px 高、
    * 右端空着约 685px），口径行整段进浮层。
    *
