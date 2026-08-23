@@ -296,4 +296,41 @@ describe("WO-SIM-FE-HOME · 规格 1:1（期望值全部现从 sandbox-home.html
     // 反向证据：这几个文件**确实**大量用了 token（不是「因为没写颜色所以没命中」）。
     expect((MODULE.match(/var\(--/g) ?? []).length).toBeGreaterThan(60);
   });
+
+  /**
+   * ⑥ **传导边抽屉**（`WO-EDGE-PANEL-4PAGES` 新增）—— 规格 `docs/ux-spec/sandbox/sandbox-home.html` 的 `.dock` 段
+   * 与 CSS Module 逐值对齐。
+   *
+   * ⚠ **为什么本条只比几何、不比色与边框**：规格 README「唯一允许改的两件事」第 1 条写着
+   * 色值移植时要换成产品 token（规格写 `var(--hair)`、组件写 `var(--line)`，同一个真值两个名字）
+   * —— 拿字符串去比它们必然假红。色值那一半由本文件 §③ 的「零字面色值 + computed 全是 var(--…)」咬，
+   * 两把尺子各管一段。
+   *
+   * ⚠ **为什么抽屉不在本文件的 `mount()` 里**：抽屉挂在**适配层**（`Sandbox*Route.tsx`）、
+   * 是画布 `.app` 的**兄弟**，而本文件渲染的是画布组件本身。抽屉真渲染 + 真拨开关那一段
+   * 由 `test/edge-panel-4pages.seam.test.tsx` 咬（它真渲染 Route、真点开、真发对照请求）。
+   * 本条守的是**规格与实现不许分叉**这一件事 —— 规格改了而 CSS 没跟（或反过来）即红。
+   */
+  it("⑥ 传导边抽屉 .dock/.dockSum：规格与 CSS Module 逐值对齐（几何口径）", () => {
+    // 金丝雀：先证明这两把尺子在**新加的这段**上真的取得到东西 —— 取不到时
+    // 下面的 `toBe(undefined)===toBe(undefined)` 会**恒绿**，那是失败危险方向的绿。
+    expect(specDecl(".dock", "width"), "规格里没有 .dock{width} ⇒ 规格没跟着改，或解析器坏了").toBeTruthy();
+    expect(moduleDecl(".dock", "width"), "CSS Module 里没有 .dock{width} ⇒ 实现没跟着规格改").toBeTruthy();
+
+    for (const [sel, prop] of [
+      [".dock", "width"],
+      [".dock", "font-size"],
+      [".dockSum", "height"],
+      [".dockSum", "padding"],
+      [".dockSum", "gap"],
+      [".dockSum", "display"],
+      [".dockSum", "align-items"],
+      [".dockSum", "letter-spacing"],
+      [".dockSum", "list-style"],
+      [".dockSum::-webkit-details-marker", "display"],
+    ] as const) {
+      expect(moduleDecl(sel, prop), `${sel}{${prop}} 与规格不一致`).toBe(specDecl(sel, prop));
+    }
+  });
+
 });
