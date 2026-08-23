@@ -198,8 +198,8 @@ describe("WO-BEFE-A ② 结构边 CRUD 与启停（POST link-types / links:depre
   it("停用一个**对象类型** ⇒ 打的是 `types/*/deprecate` 那条路（不是 links，也不是 interfaces）", async () => {
     /**
      * 为什么要单独咬这条：`deprecateOntologyElement(kind)` 的第一版把路径段写成
-     * `${kind === "link" ? "links" : "types"}` —— 归一化后是 `/a/v1/ontology/*​/*​/deprecate`，
-     * 会**冒领** `interfaces/*​/…` 这类同形状但根本没接的端点，让接缝门把它们误判成「已修复」。
+     * `${kind === "link" ? "links" : "types"}` —— 归一化后是 `/a/v1/ontology/<*>/<*>/deprecate`，
+     * 会**冒领** `interfaces/<*>/…` 这类同形状但根本没接的端点，让接缝门把它们误判成「已修复」。
      * 现在改成两条各自的字面量路径；本条断言真发出去的 URL 里**有 `/types/`、没有 `/links/`**，
      * 把「路径段是字面量」这件事钉在链路上，而不是靠人记得别用三元拼段。
      */
