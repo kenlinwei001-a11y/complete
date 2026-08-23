@@ -422,7 +422,8 @@ describe("WO-PROCESS-INSTANCE · 确定性与不变量", () => {
     // 逐层剥掉，应严格按 PRECEDENCE 顺序退让 —— 这条把那张优先序表钉死。
     const peeled: Record<string, unknown> = { ...gate };
     const seen: string[] = [];
-    for (const _ of PROCESS_GATE_PRECEDENCE) {
+    // 循环体不看当前元素，只是"最多剥 PRECEDENCE 层"——用计数循环，别造一个用不到的绑定。
+    for (let peel = 0; peel < PROCESS_GATE_PRECEDENCE.length; peel++) {
       const v = evaluateGate(peeled as never, { now });
       if (!v.waitState) break;
       seen.push(v.waitState);

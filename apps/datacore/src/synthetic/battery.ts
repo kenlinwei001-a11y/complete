@@ -3875,9 +3875,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     { materialId: "cell_case", quantity: 1, unit: "个", level: 1, isKeyComponent: true },
   ];
 
-  let bomSeq = 0;
-  let opSeq = 0;
-  let capSeq = 0;
+  // 曾有 bomSeq / opSeq / capSeq 三个全局流水号在这里，**从未自增也从未被读**（旧 ID 方案的残留）。
+  // 现行 ID 全部由自然键组合而成、天然唯一：`BDTL-${bomId}-${bi}` · `${routingId}-${sop.operationCode}` ·
+  // `CAP-${operationId}-${ci}`。把流水号接回去等于换一套 ID ⇒ 破坏确定性种子的字节级一致，故删不接。
   for (const v of productVersions) {
     const modelId = v.modelId as string;
     const versionId = v.versionId as string;
@@ -4238,7 +4238,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   for (const m of models) {
     const modelId = m.modelId as string;
     // QualityStandard：每 Model 6 项
-    for (const [qi, qItem] of QUALITY_ITEMS.entries()) {
+    for (const [, qItem] of QUALITY_ITEMS.entries()) {
       const standardId = `QS-${modelId}-${qItem.itemCode}`;
       qualityStandards.push({
         standardId,
@@ -4536,7 +4536,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   ];
 
   // Phase 3 MES Domain: Production Planning
-  const rngMES = mulberry32(seed ^ hashString("mes"));
+  // ⚠ 这里曾有 `const rngMES = mulberry32(seed ^ hashString("mes"))`，**一次都没被调用**：
+  // 整个 MES 段的确定性早已改成按 `hashString(<自然键>)` 逐值派生（比取流不依赖求值顺序，更强）。
+  // 留着一个从不消费的 PRNG 会让人以为"这段是取流生成的"，把下面那句旧注释一并读错，故删。
   const workOrders: Record<string, unknown>[] = [];
   const productionSchedules: Record<string, unknown>[] = [];
   const shiftPlans: Record<string, unknown>[] = [];
@@ -4576,7 +4578,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
 
   const WO_MODELS = ["4680-NCM", "4680-LFP", "方形-LFP", "储能-280Ah", "储能-314Ah"];
 
-  // WorkOrders: 2 per line (deterministic, using rngMES)
+  // WorkOrders: 2 per line（确定性来自 `hashString(<lineId+序号>)` 逐值派生，**不取 PRNG 流**）
   for (const l of lines) {
     const lineId = l.lineId as string;
     const baseId = l.baseId as string;

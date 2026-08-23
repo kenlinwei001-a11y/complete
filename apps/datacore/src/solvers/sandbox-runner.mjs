@@ -4,6 +4,9 @@
 //  - 隔离(R5)：父进程以 `--permission` 起本进程 → fs 写/子进程/worker 被 Node 权限模型拒；
 //    require/process/fetch/globalThis 在函数作用域遮蔽为 undefined（净室，数据只经 stdin 注入、只回 stdout）。
 // 协议：stdin 收 {source, ctx, args} JSON → stdout 回 {ok, output?} 或 {ok:false, error}。
+// `process` 显式从核心模块取（不吃 Node 全局）：核心模块不受 `--permission` 的 fs 白名单约束，
+// 语义与全局 `process` 同一个对象；下面 `new Function` 里那个 undefined 的 `process` 形参照旧遮蔽它。
+import process from "node:process";
 let input = "";
 process.stdin.on("data", (c) => { input += c; });
 process.stdin.on("end", () => {

@@ -9,7 +9,7 @@ import {
   type CeoDatasetMetricKey,
 } from "@platform/contracts";
 import { hashString, mulberry32, randInt, round } from "../prng.js";
-import { HTML_ORDERS, MODEL_BASE_MAP, MODELS } from "./battery.js";
+import { HTML_ORDERS, MODEL_BASE_MAP } from "./battery.js";
 
 /**
  * WO-CEO-DATA-2 · CEO 驾驶舱原子颗粒数据集生成器（纯函数·无 IO·确定性 R6）。

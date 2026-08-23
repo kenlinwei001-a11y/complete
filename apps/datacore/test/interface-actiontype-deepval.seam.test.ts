@@ -39,7 +39,8 @@ async function getType(t: TestApp, key: string) {
  */
 const forReupsert = (props: Record<string, unknown>[]) =>
   props.map((p, i) => {
-    const { unit: _unit, ...rest } = p;
+    const rest: Record<string, unknown> = { ...p };
+    delete rest.unit;
     return { ...rest, isPrimaryKey: i === 0 };
   });
 

@@ -27,7 +27,6 @@ describe("WO-SCALE-COHERENCE · 五层尺度自洽四方互核（SEAM）", () =>
     const t: TestApp = await makeApp();
     await seedBattery(t, 42); // scale S · seed 42 · 内存仓储
 
-    const packCellCount = 96;
     // ── 从物化对象取值 ──
     const bases = await t.repos.objects.listByType("demo", "Base");
     const segs = await t.repos.objects.listByType("demo", "DemandSegment");

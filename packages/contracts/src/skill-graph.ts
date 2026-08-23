@@ -30,7 +30,10 @@
  *   而不是「有 render 就行」）。**
  */
 import { z } from "zod";
-import { OnErrorSchema, PlanStepSchema, TemplateValueSchema, type PlanStep } from "./qos.js";
+// 刻意**不** import `PlanStepSchema`：见下文约束① —— `steps` 元素若钉死成这个闭合判别联合，
+// 用 ExtraToolStep 三类（query_timeseries_agg / search_knowledge / plan_slice）的技能会解析即失败。
+// 这里只要 `PlanStep` 的**类型**（`chainGraphFromPlanSteps` 的入参联合）。
+import { OnErrorSchema, TemplateValueSchema, type PlanStep } from "./qos.js";
 
 // ---------------------------------------------------------------------------
 // §3.1 结构

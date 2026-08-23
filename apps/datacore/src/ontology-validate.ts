@@ -111,7 +111,8 @@ export function validateOutputAgainstOntology(
     // ⑤ WO-ONTOLOGY-CONTEXT-A · 口径 scope 规则：值命中违规条件表达式（表达式为真）→ 标记（不改 ok/violations）。
     // 表达式经 Metric.actual 解析到 row.actual（resolveField 允许省略 typeKey 前缀）。求值异常按不命中处理（诚实不误报）。
     for (const sr of scopeRules) {
-      let violated = false;
+      // 两条路径都必赋值（try 里求值成功、catch 里落 false）⇒ 不给初值，免得读起来像"默认不命中"。
+      let violated: boolean;
       try {
         // WO-RULE-EXPR-PARAMS：喂该规则的命名阈值，否则 `params.<名>` 求值即抛 → 被下面 catch 成
         // "不命中"，规则静悄悄变哑弹（C08/C09/C18/C21 都引用命名阈值）。

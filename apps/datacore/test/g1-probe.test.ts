@@ -1,6 +1,7 @@
 /** G1 临时取证探针（跑完即删）：把真种子上的真实输出打出来，供 PRD §9 A5「亲手真跑」逐条核。 */
 import { describe, expect, it } from "vitest";
-import { ADMIN, invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
+// 不 import ADMIN：`invokeSolver` 的 headers 形参默认就是 ADMIN（helpers.ts:73）。
+import { invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
 
 const P = (label: string, v: unknown) => console.log(`\n===== ${label} =====\n${JSON.stringify(v, null, 1)}`);
 

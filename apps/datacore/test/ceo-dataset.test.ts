@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, debugUser } from "./helpers.js";
 import { generateCeoAtomicDataset } from "../src/synthetic/ceo-dataset.js";
-import type { CeoAtomicGrain, CeoDatasetMetricKey } from "@platform/contracts";
+import type { CeoDatasetMetricKey } from "@platform/contracts";
 
 /**
  * WO-CEO-DATA-2 · CEO 驾驶舱原子颗粒数据集测试。

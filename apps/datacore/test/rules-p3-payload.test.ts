@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ADMIN, invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
+// 不 import ADMIN：`invokeSolver` 的 headers 形参默认就是 ADMIN（helpers.ts:73）。
+import { invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
 
 /**
  * 规则即引用 P3-b：扩 ruleEvalPayload —— 为高价值求解器把输出/上下文映射成规则 expression 期望字段，

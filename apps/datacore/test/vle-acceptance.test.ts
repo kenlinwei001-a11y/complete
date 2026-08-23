@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 // 类型退化成 any，下面那个字面量的形状从来没被校验过。
 import type { CalibrationProposalRecord } from "../src/domain.js";
 import { readFileSync } from "node:fs";
-import { makeApp, seedBattery, invokeSolver, ADMIN, PLANNER } from "./helpers.js";
+// 本文件不经 `invokeSolver` 驱动：VL2/VL5 直接调 `t.services.vle.run`，VL4 打校准/动作审批两条路由。
+import { makeApp, seedBattery, ADMIN, PLANNER } from "./helpers.js";
 
 /**
  * VLE 闭环验证引擎 · 补齐验收 VL2/VL4/VL5/VL7（PRD-addendum-validation-loop §7；prd:coverage 零引用补测）。

@@ -283,7 +283,9 @@ export async function bindCrossObjectOccupancy(
   }
 
   // 可产对（eligibility）：显式绑 objectType（elig_order/elig_line/elig_cost）→ 读真对；未绑 → 诚实标 defaulted，全资格全通、成本 0（不编成本）。
-  let eligibility: { order: string; line: string; cost: number }[] = [];
+  // 不给初值：下面 if/else 两条路径都必赋值，写个 `[]` 只会让人误以为"绑不到就是空表"
+  // （绑不到走的是 else 的**全资格全通**，不是空表 —— 这两件事的回包完全不同）。
+  let eligibility: { order: string; line: string; cost: number }[];
   const eligibilityBound = rm.has("eligibility");
   if (eligibilityBound) {
     const eligT = typeForRole("eligibility", rm, byKey);
