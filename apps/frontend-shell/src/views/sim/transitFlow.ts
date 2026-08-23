@@ -369,11 +369,27 @@ export interface ProcurementAbsenceInput {
   inspectionRows?: readonly TransitRawRow[];
 }
 
-/** D2 已并线的可复验事实（与本文件旧注释相反 —— 旧注释写于 D2 之前）。 */
+/**
+ * D2 已并线的可复验事实（与本文件旧注释相反 —— 旧注释写于 D2 之前）。
+ *
+ * ⚠ 这三条**屏上证据**原先钉了 7 处行号，**2026-08-23 实测无一指对**（同本文件 `unblockedBy` 那条的病）：
+ *   `battery-extended.ts:157-164`→`DSO`、`:168`→`GrossMarginBridge`、`:181`→`Customer`、
+ *   `service.ts:775/:776`→`MaterialAlternative`/`Workshop`、`data-categories.ts:64/:70`→两行注释、
+ *   `contracts/index.ts:72`→`object-interface.js`。用户照着跳过去看到的全是别的东西。
+ *   故一律改成**按内容找**（下面每条都附用户自己能跑的 grep）。三条记号替它们盯着上游。
+ *
+ * @stale-fact apps/datacore/src/synthetic/battery-extended.ts /def\("PurchaseOrder"/ ==1
+ * @stale-fact apps/datacore/src/synthetic/battery-extended.ts /def\("CustomsClearance"/ ==1
+ * @stale-fact apps/datacore/src/synthetic/battery-extended.ts /def\("IncomingInspection"/ ==1
+ */
 const PROCUREMENT_UPSTREAM_EVIDENCE = [
-  "PurchaseOrder 现有四段日戳：orderDay / shipDay / arriveDay（+ supplierId / sourceMode），类型声明 apps/datacore/src/synthetic/battery-extended.ts:157-164、行生成 :708-720 —— **发运日与到货日都在**，不再是「只有 etaDay」。",
-  "CustomsClearance（清关，declaredDay→clearedDay）声明于 apps/datacore/src/synthetic/battery-extended.ts:168，IncomingInspection（到货检验，arrivedDay→releasedDay）声明于 :181；两者经 apps/datacore/src/synthetic/service.ts:775/:776 putAll 落库，并在 synthetic/data-categories.ts:64/:70 登记类目。",
-  "契约侧 packages/contracts/src/procurement.ts 冻结了四段腿 supplier_production / in_transit / customs / incoming_inspection（packages/contracts/src/index.ts:72 导出），前端可直接依赖。",
+  "PurchaseOrder 现有四段日戳：orderDay / shipDay / arriveDay（+ supplierId / sourceMode）—— **发运日与到货日都在**，不再是「只有 etaDay」。" +
+    "复验：`grep -n 'def(\"PurchaseOrder\"' apps/datacore/src/synthetic/battery-extended.ts`（类型声明）。",
+  "CustomsClearance（清关，declaredDay→clearedDay）与 IncomingInspection（到货检验，arrivedDay→releasedDay）都已是在册对象类型，" +
+    "经 synthetic/service.ts 的 putAll 落库、并在 synthetic/data-categories.ts 登记类目（清关归采购、到货检验归质量，责任方不同故分属两类目）。" +
+    "复验：`grep -n 'def(\"CustomsClearance\"' apps/datacore/src/synthetic/battery-extended.ts`。",
+  "契约侧 packages/contracts/src/procurement.ts 冻结了四段腿 supplier_production / in_transit / customs / incoming_inspection，前端可直接依赖。" +
+    "复验：`grep -n 'procurement.js' packages/contracts/src/index.ts`（导出处）。",
 ] as const;
 
 /**
