@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_AGENT_BUDGET, SkillDefinitionSchema, type AgentDefinition, type Answer, type EvalCase, type SkillDefinition } from "@platform/contracts";
+import { DEFAULT_AGENT_BUDGET, SkillDefinitionSchema, type Answer, type SkillDefinition } from "@platform/contracts";
 // AgentLoopResult 的出处是 `src/agent/loop.ts`，不是契约包（契约包从来没导出过它）。
 // 原来从 "@platform/contracts" 取 ⇒ TS2305，隐式变成 any，`loopResult()` 的返回形状三年没人校验过。
 import type { AgentLoopResult } from "../src/agent/loop.js";
@@ -333,10 +333,8 @@ describe("SkillProbeRunner · WO-1 生产化缺陷修复", () => {
   it("behaviorGain · 答案必须依赖 skill（twin 不出现）", async () => {
     const repos = createMemoryRepos();
     await repos.packages.insert({ ...seedScenarioPackage(), id: PKG, tenantId: TENANT_A });
-    let calls = 0;
     const engine = {
       runRegisteredAgent: async (opts: { agentId: string }) => {
-        calls++;
         // probe 含答案，twin 不含
         if (opts.agentId.includes("_twin_")) return loopResult("generic answer");
         return loopResult("skill-specific provenance");

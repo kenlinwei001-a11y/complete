@@ -2278,9 +2278,9 @@ export const createLinkType = (body: {
  * 停用（ACTIVE → DEPRECATED）。`kind` 二选一，后端是同一个 `governance.deprecate`。
  *
  * ⚠ 两条路**必须各写各的字面量段**，不许写成 `/a/v1/ontology/${seg}/${key}/deprecate` ——
- * 那样归一化后是 `/a/v1/ontology/*​/*​/deprecate`，会**冒领** `interfaces/*​/deprecate` 之类
+ * 那样归一化后是 `/a/v1/ontology/<*>/<*>/deprecate`，会**冒领** `interfaces/<*>/deprecate` 之类
  * 同形状但**根本没接**的端点，让 `befe-seam:check` 把它们误判成「已修复」而从基线摘掉。
- * 2026-08-14 实测踩过：第一版用 ternary 拼段，`POST /a/v1/ontology/interfaces/*​/retire`
+ * 2026-08-14 实测踩过：第一版用 ternary 拼段，`POST /a/v1/ontology/interfaces/<*>/retire`
  * 被无辜摘掉一条（我从没接过对象接口）。**消红消到不该消的地方，比不消更糟**。
  * 复验：`node scripts/check-backend-frontend-seam.mjs` 看「已修复」清单里有没有你没接过的路。
  */
@@ -2304,7 +2304,7 @@ export const retireOntologyElement = (kind: "link" | "type", key: string) =>
 // ── 对象接口（ObjectInterface · WO-69 P3 定义/发布门已在后端，WO-INTERFACE-ADMIN-UI 补前端管理台）──────
 // 后端路由面：`apps/datacore/src/app.ts`「WO-69 P3 · 对象接口」段（7 条）。
 // ⚠ 路径纪律同上方 `deprecateOntologyElement`：每条端点各写各的**字面量**段，不许 ternary/模板拼段
-//   （拼段归一化成 `interfaces/*​/*` 会冒领同形状未接端点，让 befe-seam 门误摘基线——2026-08-14 实测踩过）。
+//   （拼段归一化成 `interfaces/<*>/*` 会冒领同形状未接端点，让 befe-seam 门误摘基线——2026-08-14 实测踩过）。
 
 /** 接口清单。缺省每 key 只回最新一条；`allVersions` = 全版本（开闭：多版本共存）。 */
 export const fetchObjectInterfaces = (opts?: { allVersions?: boolean }) =>

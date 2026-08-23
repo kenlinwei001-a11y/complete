@@ -8,7 +8,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
@@ -361,7 +361,7 @@ describe("A19 接缝测试（SEAM-GATE：SSE→reducer→adapter→projection→
       }
     }
     // answer.final 附加键 stats = 夹具 projections.values（黄金三键原样）
-    out.push({ id: String(++i), event: "answer.final", data: { stats: env.result.value.projections.values } });
+    out.push({ id: String(i + 1), event: "answer.final", data: { stats: env.result.value.projections.values } });
     return out;
   };
 

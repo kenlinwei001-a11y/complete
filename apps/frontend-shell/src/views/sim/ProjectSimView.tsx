@@ -68,7 +68,7 @@ function pmMatchAddr(raw: string): string {
   return parts[parts.length - 1] ?? s;
 }
 function parseBatchTable(text: string): { rows: BatchRowInput[]; skipped: number } {
-  const lines = text.replace(/^﻿/, "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   if (lines.length === 0) return { rows: [], skipped: 0 };
   const head = lines[0]!;
   const delim = head.includes("\t") ? "\t" : head.includes("，") ? "，" : ",";

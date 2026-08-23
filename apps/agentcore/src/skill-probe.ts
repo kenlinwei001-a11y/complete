@@ -1,11 +1,10 @@
-import { isWriteModeSkill, skillBudgetOverride, type AgentBudget, type AgentDefinition, type Answer, type EvalCase, type EvalCaseResult, type EvalRunReport, type SkillDefinition } from "@platform/contracts";
+import { isWriteModeSkill, skillBudgetOverride, type AgentBudget, type AgentDefinition, type Answer, type EvalCase, type EvalCaseResult, type SkillDefinition } from "@platform/contracts";
 import type { ExecutionEngine } from "./engine.js";
 import type { RequestAuth } from "./auth.js";
 import type { Repos } from "./persistence/repos.js";
 import { newId } from "./ids.js";
 import { BudgetTracker } from "./tools/budget.js";
-import { enterNesting, type NestingCtx } from "./runtime.js";
-import { BUILTIN_TOOLS } from "./tools/registry.js";
+import type { NestingCtx } from "./runtime.js";
 
 /** 技能探针运行结果（等价于单个 skill 的 EvalRunReport 子集）。 */
 export interface SkillProbeRunResult {

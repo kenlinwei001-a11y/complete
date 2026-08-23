@@ -609,7 +609,7 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
   }
 
   let blocks: AnswerBlock[];
-  let provenance: ProvenanceRef[] = [];
+  const provenance: ProvenanceRef[] = [];
   if (finalCall) {
     const parsed = FinalAnswerInputSchema.safeParse(finalCall.input);
     if (!parsed.success) {

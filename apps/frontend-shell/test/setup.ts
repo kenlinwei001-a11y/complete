@@ -69,7 +69,8 @@ beforeAll(() => {
   if (baseFetch) {
     globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
       if (init && "signal" in init && init.signal != null) {
-        const { signal: _signal, ...rest } = init;
+        const rest: RequestInit = { ...init };
+        delete rest.signal;
         return baseFetch(input, rest);
       }
       return baseFetch(input, init);
@@ -83,7 +84,8 @@ beforeAll(() => {
     class PatchedRequest extends RealRequest {
       constructor(input: RequestInfo | URL, init?: RequestInit) {
         if (init && "signal" in init && init.signal != null) {
-          const { signal: _signal, ...rest } = init;
+          const rest: RequestInit = { ...init };
+          delete rest.signal;
           super(input as RequestInfo, rest);
         } else {
           super(input as RequestInfo, init);

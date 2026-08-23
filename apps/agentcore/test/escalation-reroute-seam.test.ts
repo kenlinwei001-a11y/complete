@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createTestApp, submitQuery, waitForTask, ADMIN, PLANNER, TENANT, type TestApp } from "./helpers.js";
-import { toolUse, text } from "../src/llm/mock.js";
+import { toolUse } from "../src/llm/mock.js";
 import { defaultOnKeys } from "../src/features/registry.js";
 import { seedRegistry } from "../src/mocks/seed.js";
 

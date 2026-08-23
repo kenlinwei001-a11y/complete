@@ -7,6 +7,7 @@
  * ③ echo 工具注册进子进程 ToolRuntime（stub LLM 首轮请求 tools 含 mcp__fwdmock__echo）。
  */
 import { writeFileSync } from "node:fs";
+import process from "node:process";
 
 const recordPath = process.argv[2];
 const record = { credential: process.env.MCP_CREDENTIAL ?? null, argv: process.argv.slice(2), toolCalls: [] };

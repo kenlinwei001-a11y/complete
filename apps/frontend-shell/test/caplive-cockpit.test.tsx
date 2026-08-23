@@ -4,7 +4,6 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
-import { db } from "@/mocks/db";
 
 /**
  * WO-CAPLIVE-2-COCKPIT · 产能推演「活台」SEAM 组合测（前端 + datacore merge 态·头号判据·非各半绿）。

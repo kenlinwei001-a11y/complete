@@ -141,7 +141,7 @@ const SANDBOX_SECONDARY_ACTION_COUNT = SANDBOX_SECONDARY_ACTIONS.length;
 // **在那边放一份副本才是错的**：两份 tick0 派生 = 沙盘的世界与探针世界不是同一个世界，
 // 用户看到的差值会对不上账（这正是本仓「第二套真相源」那条老账的形态）。
 export { deriveBaseSnapshot, hash01 } from "./edgeActiveModel";
-import { deriveBaseSnapshot, hash01 } from "./edgeActiveModel";
+import { deriveBaseSnapshot } from "./edgeActiveModel";
 // WO-STATEVAR-DISPLAYNAME：状态变量中文名的**唯一**消费路径（本文件零中文名映射表）
 import { stateVarLabel, stateVarText } from "./stateVarLabel";
 

@@ -402,7 +402,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
               <div>
                 <b>影响面序</b>：按求解器 <code>exposureOrder</code>（金额↓ → 单数↓ → 最早交期↑；零敞口基地一律沉底）。
                 它是 <code>cards[].exposure.rank</code> 的同一次计算投影，前端不另排一套。
-                {!hasExposureOrder && <>　⚠ 本次响应<b>未返回</b> <code>exposureOrder</code>（契约中为 optional），该档不可选。</>}
+                {!hasExposureOrder && <>{"　"}⚠ 本次响应<b>未返回</b> <code>exposureOrder</code>（契约中为 optional），该档不可选。</>}
               </div>
               <div style={{ marginTop: 6 }}>
                 <b>越线日序</b>：求解器数组序（越线日↑ → 实测当前张力↓ → 峰值↓ → 基地名）。

@@ -66,11 +66,6 @@ const ECHO_TOOL = `mcp__${SERVER_NAME}__echo`;
 const RULE_ID = "GOV_RULE_X";
 const RULE_EXPLANATION = "生产档治理命中";
 const PLAIN_USAGE = { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 };
-const EXPECTS_SCHEMA = {
-  type: "object",
-  properties: { blocks: { type: "array" }, provenance: { type: "array" } },
-  required: ["blocks", "provenance"],
-};
 const FINAL_ANSWER_ARGS = JSON.stringify({
   blocks: [{ type: "text", markdown: "f1 gov seam answer" }],
   provenance: [],

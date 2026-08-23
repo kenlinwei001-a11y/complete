@@ -81,7 +81,7 @@ const SIM_SOLVERS: SliceSolver[] = [
  * （capacity_forecast 无 modelId / margin_attribution 无 targetType 诚实落选），portfolio/affected_orders/mrp_netting
  * （required=[]）恒可编入 → ≥2 步并行组合（① 地基补登记后 mrp_netting 自动纳入·物料短缺归因入链）。
  */
-export function buildSimNavSlice(query: string): NavigationSlice {
+export function buildSimNavSlice(_query: string): NavigationSlice {
   return {
     domain: "global-sim",
     primarySolver: "portfolio",
@@ -181,7 +181,7 @@ const CAPACITY_SOLVERS: SliceSolver[] = [
   { key: "generic_inference", capability: "沿派生 DAG 前向重算任意因子假设值 → before/after deltas（待本体补派生边·当前无 apply 诚实落选）", outputShape: ["deltas", "rows", "affectedObjects", "count", "rootTypes"] },
 ];
 
-export function buildCapacityNavSlice(query: string): NavigationSlice {
+export function buildCapacityNavSlice(_query: string): NavigationSlice {
   return {
     domain: "capacity-whatif",
     primarySolver: "gap_attribution",

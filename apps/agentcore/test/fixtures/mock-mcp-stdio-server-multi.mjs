@@ -10,6 +10,7 @@
  * 记录文件协议同原夹具（credential/argv/toolCalls）。
  */
 import { writeFileSync } from "node:fs";
+import process from "node:process";
 
 const recordPath = process.argv[2];
 const record = { credential: process.env.MCP_CREDENTIAL ?? null, argv: process.argv.slice(2), toolCalls: [] };

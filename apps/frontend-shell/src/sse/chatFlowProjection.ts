@@ -349,8 +349,6 @@ export interface ToolTreeState {
   step: number;
 }
 
-const jsonArguments = (value: unknown): string => JSON.stringify(value);
-
 /** rootCall(8293-8305)：callId/name/argsRaw/turn/step 逐字保留 */
 export function rootCall(ev: Extract<ChatEvent, { kind: "tool-call" }>): ToolCallBlock {
   return {

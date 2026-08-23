@@ -2,7 +2,6 @@ import { lazy, Suspense, type ReactNode } from "react";
 import {
   createBrowserRouter,
   createMemoryRouter,
-  Navigate,
   RouterProvider,
   type RouteObject,
 } from "react-router-dom";

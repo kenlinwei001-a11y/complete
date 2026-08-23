@@ -51,7 +51,6 @@ import {
   IMPEDIMENT_CARDS,
   IMPEDIMENT_DESIGN_GAP,
   impedimentHandoffs,
-  PARETO_TOP_N,
   sameOverlayBox,
   SCOPE_DIMENSIONS,
   transitOverlayBox,

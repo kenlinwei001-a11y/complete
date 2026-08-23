@@ -1,5 +1,5 @@
 import type { ContextOp } from "@platform/contracts";
-import type { LlmAgentMessage, LlmAgentRequest, LlmCapabilities, LlmClient, LlmContentBlock } from "../llm/types.js";
+import type { LlmAgentMessage, LlmAgentRequest, LlmCapabilities, LlmClient } from "../llm/types.js";
 import type { Metrics } from "../metrics.js";
 
 /**

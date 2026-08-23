@@ -15,7 +15,6 @@ import { text, toolUse, type ScriptedTurn } from "../src/llm/mock.js";
 import { defaultOnKeys } from "../src/features/registry.js";
 import { projectNavigationSlice, renderNavigationSlice, navigationSliceSolverKeys } from "../src/agent/navigation-slice.js";
 import { buildGrowthLoopWiring } from "../src/growth/scenario-grow.js";
-import { questionSlug } from "../src/growth/scaffold.js";
 
 /**
  * ★ WO-E2E-DIALOGUE-ACCEPTANCE · 全链验收门（capstone·蓝图 §5 拥有的唯一"防各半绿·断在接缝"硬门）。
