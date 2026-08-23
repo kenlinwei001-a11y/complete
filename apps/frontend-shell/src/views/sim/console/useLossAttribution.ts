@@ -92,8 +92,16 @@ const PLACEHOLDER_HEAT = {
 /**
  * 占位列 = 基地册前 4 条 + 「全网」汇总列。
  * ⚠ 规格写的是「常州/盐城/合肥/宜宾」，而 `BASE_REGISTRY` 里**没有盐城、没有宜宾**
- * （13 条实测：常州/厦门/成都/眉山/武汉/江门/合肥/信阳/枣庄/邯郸/自贡/金华/扬州）。
+ * （2026-08-21 实测 13 条：常州/厦门/成都/眉山/武汉/江门/合肥/信阳/枣庄/邯郸/自贡/金华/扬州）。
  * 规格那四个是占位文案，不是册里的基地 —— 照册取，不照规格抄一个不存在的基地名。
+ *
+ * **2026-08-23 现算复核仍是这 13 条、仍无盐城/宜宾。** 复验一条命令
+ * （先 `pnpm --filter @platform/contracts build`；它读构建产物，不是抄这里的名单）：
+ *   `node -e "const {BASE_REGISTRY:B}=require('./packages/contracts/dist/index.js');console.log(B.length, B.map(b=>b.name).join('/'))"`
+ *   —— 现算打印 `13 常州/厦门/成都/眉山/武汉/江门/合肥/信阳/枣庄/邯郸/自贡/金华/扬州`。
+ *   ⚠ 字段名是 `name` 不是 `label`（写错字段会打出一串空的 `/`，看着像"册里没名字"——那是命令写错了，不是册坏了）。
+ * 规格那半边：`grep -n '盐城\|宜宾' docs/ux-spec/sandbox/sandbox-attr.html`
+ *   —— 现算命中第 206 行 `var B=["常州","盐城","合肥","宜宾","全网"]`，即那四个名字的出处。
  */
 const PLACEHOLDER_BASE_COUNT = 4;
 const ALL_BASES_ID = "__all__";
@@ -150,8 +158,12 @@ export function projectHeatMatrix(res: ChainLossMatrixResult): HeatMatrixModel {
  *
  * **(a) 「不给 `so` ⇒ 不发请求」不成立** —— 本 hook 的 `useQuery` **没有 `enabled` 判据**
  * （与本文件 `useChainLossDrill` / `useContributionSeries` 刻意不同）。`so` 缺席时照发，
- * body 走 `{}`。实测（内存态真服务 `POST /a/v1/sim/chain-loss-matrix` body `{}`）：
+ * body 走 `{}`。**2026-08-22 实测**（内存态真服务 `POST /a/v1/sim/chain-loss-matrix` body `{}`）：
  * `http=200 · nodes=18 · bases=13 · cells=234 · 有数据列 13/13 · 空列 0`。
+ * 复验这一行（SEED_DEMO=1 起 datacore 之后，一条命令把这几个数一起打出来；
+ * 回包顶层字段是 `nodes / bases / cells / colTotals / summary`，见 `solvers/chain-loss-matrix.ts` 的 `return`）：
+ *   `curl -s -X POST -H 'Content-Type: application/json' -H 'X-Debug-User: demo:admin:admin|planner|catalog_admin' -d '{}' http://127.0.0.1:4001/a/v1/sim/chain-loss-matrix | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const m=JSON.parse(s);console.log('nodes',m.nodes.length,'bases',m.bases.length,'cells',m.cells.length,'有数据列',m.colTotals.filter(c=>c.days!==null).length);console.log(m.summary)})"`
+ *   —— 回包自带的 `summary` 里也写着同一组数（「N 个环节 × M 个基地，K 列有数据」），两处对得上才算复验到。
  * 所以热矩阵 / 根因树 / 明细 / 瀑布这四格今天**已经是真数据**，不是占位。
  *
  * **(b) 前端补一个缺省 `so` 会把这一页打坏，不是修好** —— 端点对 `so` 的语义是**收窄**
@@ -328,7 +340,17 @@ export interface AttrDetailRow {
   days: number;
   /** 影响级 1..4（绿 / 蓝 / 琥珀 / 红）。**由占比现分档**，不是端点字段。 */
   level: 1 | 2 | 3 | 4;
-  /** 迷你趋势条（8 格高度）。端点没有这一维 ⇒ 由 `key` 现算的确定性形状（R6：同键同形）。 */
+  /**
+   * 迷你趋势条（8 格高度）。端点没有这一维 ⇒ 由 `key` 现算的确定性形状（R6：同键同形）。
+   *
+   * ⚠ **它不是数据，是形状** —— 端点回包里没有任何一维对应它，别把它读成趋势。
+   * 「现算 + 同键同形」这两句 **2026-08-23 复核成立**，复验两条（都能亲手跑）：
+   *  · 实现就一行，无状态、无随机、只吃下标：
+   *    `grep -n 'export const sparkOf' apps/frontend-shell/src/views/sim/console/useLossAttribution.ts`
+   *    （现算 `Array.from({ length: SPARK_BARS }, (_, k) => 2 + ((i * 7 + k * 5) % 9))`）；
+   *  · R6 同输入同输出，跑两遍逐字节比：
+   *    `node -e "const f=i=>Array.from({length:8},(_,k)=>2+((i*7+k*5)%9));console.log(JSON.stringify(f(3))===JSON.stringify(f(3)), JSON.stringify(f(3)))"`
+   */
   spark: readonly number[];
   selected: boolean;
 }
