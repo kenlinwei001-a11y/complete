@@ -390,10 +390,11 @@ const DECISION_GAPS = [
   { gapId: "dgap-clause", kind: "条款缺失", description: "长协无违约追偿/替代激活条款，断供时无兜底", severity: 0.6, ownerRef: "prin-procure", reviewDate: "2026-06-18", evidence: "LTA-SUP-003 合同扫描件" },
 ];
 
-// WO-CEO-2/3 外部信号：真源事件引用示例（合成种子诚实标灰·真源上传后覆盖）。
-const EXTERNAL_SIGNALS_EXTRA = [
-  { signalKey: "li_carbonate_price", name: "碳酸锂现货价", category: "commodity", value: 96000, unit: "元/吨", asOf: "2026-06-22", source: "SMM", trend: "up", impact: "成本上行", elasticity: -0.35, eventRef: "EVT-COMM-2026-0622" },
-];
+// WO-CEO-2/3 外部信号：**不在本文件下发**。`ExternalSignal` 的单一来源是
+// `connectors/registry.ts` 的 `MOCK_EXTERNAL_DATA.external_signals`（含 `li_carbonate_price`，
+// 带 eventRef/elasticity）；下面 `cf-geopolitical` 下钻的就是那一行的 `value`。
+// 本文件曾另存过一份同 key 的副本（category/source/impact 三个字段还与真源不一致、且从未接进任何下发路径），
+// 已删 —— 接回去反而会与 `test/synthetic.test.ts` 断言的真源口径打架。
 
 // WO-CEO-2 供应链/地缘/决策域因果因素节点（caused_by 遍历的一等节点·每节点下钻到真证据对象）。
 // 因果方向：caused_by 从「果」指向「因」（物料短缺 --caused_by--> 上游减供 …）。
