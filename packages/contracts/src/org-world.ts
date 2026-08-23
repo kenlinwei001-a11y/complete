@@ -57,7 +57,10 @@
  * 绝不 `Date.now()`，否则「同 seed 重跑字节级一致」当场破。
  */
 import { z } from "zod";
-import { PRINCIPAL_KINDS, PrincipalSchema } from "./spine.js";
+// 只 import `PrincipalSchema`：`kind` 的值域是**经它**继承来的（`spine.ts` 里已是
+// `z.enum(PRINCIPAL_KINDS)`），本文件再单独 import 一次 `PRINCIPAL_KINDS` 也用不上 ——
+// 上面注释说的「值域来自 PRINCIPAL_KINDS、未抄第二份」正是靠 `.extend()` 这条继承线成立的。
+import { PrincipalSchema } from "./spine.js";
 
 /** 机器键格式：小写 ASCII + 下划线。中文名一律进 `name`，不进任何匹配面（#139）。 */
 export const ORG_KEY_RE = /^[a-z][a-z0-9_]*$/;

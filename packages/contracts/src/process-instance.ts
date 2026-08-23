@@ -95,8 +95,11 @@
  * 所有排序走全序比较器（平手回 0 再按 id 字典序兜底）。同输入两跑字节一致。
  */
 import { z } from "zod";
-import { IsoTime } from "./common.js";
-import { PROCESS_WAIT_KINDS, ProcessWaitKindSchema } from "./process.js";
+// 刻意不 import `IsoTime`：它就是裸 `z.string()`，而本文件的时间字段一律写 `z.string().min(1)`（更严）。
+// 刻意不 import `ProcessWaitKindSchema`：本文件要的是**词表数组** `PROCESS_WAIT_KINDS`
+// （`PROCESS_TASK_WAIT_STATES` 由它派生、`ProcessFlowDefinition.waitKind` 取它的 TS 字面量联合），
+// zod 枚举那一份只在 `process.ts` 自己的 schema 里用。
+import { PROCESS_WAIT_KINDS } from "./process.js";
 
 // ══════════════════════════════════════════════════════════════════════════
 // § 0 · 等待态词表（**五值 = 模板四值派生 + 审批**）
