@@ -751,13 +751,25 @@ export function buildPlaceholderInspectorInput(args: {
       label: "采购最小起订量 minOrderQty",
       unit: "件",
       carrier: "缺",
+      /*
+       * ⚠ 与上方 P2 同一个病、同一次上游改动（`WO-SANDBOX-D2` 把 `Supplier` 加进 `SolverContext`）：
+       *   原写「契约层无此字段」「`solvers/` **0 消费方**」，**两句今天都是假的** ——
+       *   `kit_readiness` 拿 MOQ 算补货量 `replenishQty = max(缺口, MOQ)`，契约 `ProcurementPlan` 也带这两个字段。
+       *
+       * @stale-fact apps/datacore/src/solvers/extended.ts /Math\.max\(round\(shortage, 4\), ev\.minOrderQty\)/ ==1
+       * @stale-fact packages/contracts/src/procurement.ts /minOrderQty: z\.number\(\)/ ==1
+       */
       evidence:
-        "契约层无此字段；datacore 种子有真值（apps/datacore/src/synthetic/battery-extended.ts:152-159），" +
-        "但 `apps/datacore/src/solvers/` **0 消费方**（实测 grep 计数 0）⇒ 前端拿不到、也没人算它",
+        "datacore 种子有真值（`battery-extended.ts` 供应商表逐家 minOrderQty）；" +
+        "求解器**有真消费方**：kit_readiness 用它算补货量 max(缺口, 起订量)" +
+        "（复验 `grep -n 'ev.minOrderQty' apps/datacore/src/solvers/extended.ts`）；" +
+        "但契约只在求解器**出参** `ProcurementPlan` 里带它，`Supplier` 没有可写入参 ⇒ 前端拨不到源头",
       baseline: null,
       domain: { min: 0, max: 5000, step: 100 },
       effect: { op: "inert" },
-      inertReason: "跨包只能依赖 `@platform/contracts`（R1 contracts-only-shared），而它只存在于 datacore 种子里 ⇒ 前端无从取值，更不该编一个。",
+      inertReason:
+        "跨包只能依赖 `@platform/contracts`（R1 contracts-only-shared），而契约只把它作为求解器**出参**回传" +
+        "（`ProcurementPlan.minOrderQty`），没有可写的 `Supplier` 入参 ⇒ 前端改不动它，更不该编一个。",
     },
 
     // ── C 能力 ────────────────────────────────────────────────────────────────
