@@ -290,7 +290,9 @@ describe("采纳经营方案 · 审批后真落 scheme_adoptions 台账 + AOP �
     const after = await readAop(t, SEED_YEAR);
     // 剥掉 additive 的 schemeAdoption 段后，AOP 响应的其余部分必须与采纳前逐字节一致——
     // 证明采纳没碰 PLAN_GOAL_TARGETS 基线（业务裁定：targets 只是拍板快照，无写回路径）。
-    const { schemeAdoption: _drop, ...afterRest } = after as Record<string, unknown> & { schemeAdoption?: unknown };
+    // spread+delete 而非 rest 解构：键顺序与原对象逐字一致（下面比的是 JSON.stringify，顺序是判据的一部分）。
+    const afterRest: Record<string, unknown> = { ...(after as Record<string, unknown>) };
+    delete afterRest.schemeAdoption;
     expect(JSON.stringify(afterRest)).toBe(JSON.stringify(before));
     const targetsAfter = (await t.repos.objects.listByType("demo", "PlanTarget")).map((o) => ({ id: o.id, props: o.props }));
     expect(JSON.stringify(targetsAfter)).toBe(JSON.stringify(targetsBefore));

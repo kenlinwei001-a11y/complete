@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ADMIN, invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
+// 不 import ADMIN：`invokeSolver` 的 headers 形参默认就是 ADMIN（helpers.ts:73）。
+import { invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
 
 /**
  * cockpit P4 反事实双轨推演（"如不解决 XX，未来 N 天会怎样"）：counterfactual_timeline 编排 risk_timeline

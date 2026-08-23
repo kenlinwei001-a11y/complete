@@ -85,7 +85,9 @@ describe("WO-ORDER-JOURNEY · decision_play 落点挂载点 SEAM", () => {
     })) as unknown as DecisionPlayOut;
     expect(anchored.locusPlay, "锚了落点却没出 locusPlay ⇒ 挂载点没接上").toBeDefined();
     // 删掉新键之后必须与不锚落点的那一份**逐字节**相同 —— additive 的机器可核判据。
-    const { locusPlay: _drop, ...rest } = anchored as unknown as Record<string, unknown>;
+    // spread+delete 而非 rest 解构：键顺序与原对象逐字一致（下面比的是 JSON.stringify，顺序是判据的一部分）。
+    const rest: Record<string, unknown> = { ...(anchored as unknown as Record<string, unknown>) };
+    delete rest.locusPlay;
     expect(JSON.stringify(rest)).toBe(JSON.stringify(bare));
   });
 
