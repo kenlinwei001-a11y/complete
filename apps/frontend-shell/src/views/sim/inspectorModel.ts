@@ -835,7 +835,7 @@ export function buildPlaceholderInspectorInput(args: {
       carrier: "薄",
       /*
        * ⚠ 这两句原写「`solvers/` **0 消费方**（实测 grep 计数 0）」「零求解器消费方 ⇒ 今天没有任何一条链把它算进耗时」——
-       *   **今天都是假的**：`WO-SANDBOX-D2` 把 `Supplier` 加进 `SolverContext`（solvers/types.ts `suppliers?:`），
+       *   **2026-08-23 实测两句都已为假**：`WO-SANDBOX-D2` 把 `Supplier` 加进 `SolverContext`（solvers/types.ts `suppliers?:`），
        *   `kit_readiness` 从此拿 `onTimeRate` 算**期望滑期天** `expectedSlipDays = 供应商段天数 ×(1 − onTimeRate)`，
        *   再叠成 `expectedKitDay`。那次改动**同时**证伪了本条与下方 B2（minOrderQty），两条一起挂赌注。
        *   下面三条记号替这两句盯着上游：公式没了 / 契约字段没了，门当场红。
