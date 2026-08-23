@@ -148,7 +148,8 @@ const seqOf = (events: readonly CapturedEvent[]): string[] =>
 const stripStats = (events: readonly CapturedEvent[]): CapturedEvent[] =>
   events.map((e) => {
     if (e.event !== "answer.final" || !("stats" in e.payload)) return e;
-    const { stats: _drop, ...rest } = e.payload;
+    const rest = { ...e.payload };
+    delete rest.stats;
     return { event: e.event, payload: rest };
   });
 

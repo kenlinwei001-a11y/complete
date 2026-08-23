@@ -114,7 +114,7 @@ describe("WO-Phase2-C-COMPLETE · SEAM-2 退化单步防双算（sop_reschedule 
     // 该问句 navSlice 同时投影 sop_reschedule + capacity_forecast；退化单步表须抑制 capacity_forecast 前置步。
     const q = "SO-3402 提前两周交跨基地重排，产能够不够、哪些在手单被挤占，代价多少";
     const { taskId } = await submitQuery(t, ADMIN, q);
-    const task = await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
+    await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
 
     expect(hoisted.runAgentLoopSpy).toHaveBeenCalledTimes(0); // 仍是组合命中·不落 agent
     const calls = await t.repos.toolCalls.listByTask(taskId);

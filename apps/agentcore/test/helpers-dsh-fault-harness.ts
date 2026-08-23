@@ -19,7 +19,7 @@
  * bin.js 写 CJS（无 package.json 的 .js 缺省 CJS；spawn 直跑不过 vitest transform）。
  */
 
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

@@ -294,7 +294,8 @@ describe("#88 SEAM · ③′④′ DSH_HARNESS=1 对位副本（N3 看门狗·en
   });
 
   it("④′ 归因臂：同剧本仅去掉 QOS_AGENT_LOOP_REPEAT_CAP → 无 STALL_LOOP ∧ metric 0 ∧ 烧满 8 轮（差值=compose 那行字节买到的治理）", { timeout: 60_000 }, async () => {
-    const { QOS_AGENT_LOOP_REPEAT_CAP: _omit, ...noCap } = SHIPPED_LOOP;
+    const noCap = { ...SHIPPED_LOOP };
+    delete noCap.QOS_AGENT_LOOP_REPEAT_CAP;
     const r = await runPathologicalDsh(noCap);
     expect(r.result.degraded, "去 cap 后不得出现 degraded（watchdog opt-in 缺省禁用）").toBeUndefined();
     expect(r.loopRepeatMetric).toBe(0);

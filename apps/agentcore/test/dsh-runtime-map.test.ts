@@ -97,7 +97,8 @@ describe("mapMcpConfig", () => {
     expect(spec).toMatchObject({ transport: "stdio", command: "uvx", args: ["srv"], env: {}, cwd: "", toolCallTimeoutMs: 20_000 });
   });
   it("derives serverName from name when absent (contract slug single source)", () => {
-    const { serverName: _omit, ...rest } = MCP_HTTP;
+    const rest = { ...MCP_HTTP };
+    delete rest.serverName;
     const spec = mapMcpConfig({ ...rest, credentialRef: undefined }, () => undefined);
     expect(spec.serverName).toBe("solver_api");
   });

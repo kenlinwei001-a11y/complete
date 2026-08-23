@@ -232,7 +232,7 @@ describe("runSkillSummaryReview · 键真到达请求体 + verdict 四档 + R6 �
   });
 
   it("mock 默认串（非 JSON）→ UNPARSEABLE 且 issues 含原文前 120 字（诚实档·不许读成通过）", async () => {
-    const { llm, deps } = mkDeps(new MockPromptClient());
+    const { deps } = mkDeps(new MockPromptClient());
     // 不 queue：mock 默认返回串 "根据材料分析如上 ⟦ref:0⟧。"（非 JSON）
     const raw = "根据材料分析如上 ⟦ref:0⟧。";
     const r = await runSkillSummaryReview(SKILL, deps);

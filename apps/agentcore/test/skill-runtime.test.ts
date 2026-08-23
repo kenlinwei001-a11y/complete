@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createTestApp, ADMIN, TENANT, type TestApp } from "./helpers.js";
+import { createTestApp, TENANT, type TestApp } from "./helpers.js";
 import type { AgentDefinition, SkillDefinition } from "@platform/contracts";
 import { toolUse } from "../src/llm/mock.js";
 import { BudgetTracker } from "../src/tools/budget.js";

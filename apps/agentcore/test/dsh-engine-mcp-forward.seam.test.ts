@@ -37,7 +37,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createTestApp, TENANT, type TestApp } from "./helpers.js";
-import { startStubOpenAi, stubProvider, stubDirectory, STUB_MODEL_ID, type StubRound } from "./helpers-dsh-stub.js";
+import { startStubOpenAi, stubProvider, stubDirectory, type StubRound } from "./helpers-dsh-stub.js";
 import { MockMcpClient } from "../src/mcp/mock.js";
 import { encryptSecret } from "../src/crypto.js";
 import { buildSessionSetup, type DshMcpServerSpec } from "../src/dsh-runtime/setup-spec.js";

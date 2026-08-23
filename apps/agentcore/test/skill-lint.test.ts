@@ -166,7 +166,7 @@ describe("WO-SKILL-3 · Skill 工业级契约静态 lint 与发布依赖闭合",
 
   it("publish：dependsOn 指向 DRAFT skill → 422 SKILL_LINT_FAILED；force 可豁免", async () => {
     const t = await createTestApp();
-    const depId = await postSkill(t, { key: "draft_dep", name: "Draft Dep", summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [] });
+    await postSkill(t, { key: "draft_dep", name: "Draft Dep", summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [] });
     const mainId = await postSkill(t, { key: "needs_draft", name: "Needs Draft", summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [], dependsOn: [{ kind: "skill", key: "draft_dep" }] });
 
     const blocked = await t.app.inject({ method: "POST", url: `/b/v1/skills/${mainId}/publish`, headers: debugHeaders(ADMIN) });
@@ -191,7 +191,7 @@ describe("WO-SKILL-3 · Skill 工业级契约静态 lint 与发布依赖闭合",
   it("publish：dependsOn 成环 → 422 SKILL_LINT_FAILED", async () => {
     const t = await createTestApp();
     const idA = await postSkill(t, { key: "cycle_a", name: "Cycle A", summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [], dependsOn: [{ kind: "skill", key: "cycle_b" }] });
-    const idB = await postSkill(t, { key: "cycle_b", name: "Cycle B", summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [], dependsOn: [{ kind: "skill", key: "cycle_a" }] });
+    await postSkill(t, { key: "cycle_b", name: "Cycle B", summary: GOOD_SUMMARY, body: GOOD_BODY, resources: [], dependsOn: [{ kind: "skill", key: "cycle_a" }] });
 
     const blocked = await t.app.inject({ method: "POST", url: `/b/v1/skills/${idA}/publish`, headers: debugHeaders(ADMIN) });
     expect(blocked.statusCode).toBe(422);

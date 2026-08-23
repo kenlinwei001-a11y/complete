@@ -275,7 +275,8 @@ type Json = Record<string, unknown>;
 
 /** answer 归一：剥 dsh stats 附加键；provenance 的 id/toolCallId 归一占位（归一化集 + 声明映射集）。 */
 function normalizeAnswer(a: Json): Json {
-  const { stats: _drop, ...rest } = a;
+  const rest = { ...a };
+  delete rest.stats;
   const provenance = ((rest.provenance as Json[] | undefined) ?? []).map((p) => ({
     ...p,
     id: "<prov>",
@@ -286,16 +287,10 @@ function normalizeAnswer(a: Json): Json {
 
 /** run 归一：剔归一化集（id/createdAt）与分项锚定集（iterations/tokens/kernel）后比 scalar 尾。 */
 function scalarTail(r: AgentRunRecord): Json {
-  const {
-    id: _id,
-    createdAt: _ca,
-    iterations: _it,
-    totalInputTokens: _ti,
-    totalOutputTokens: _to,
-    kernel: _k,
-    ...rest
-  } = r as AgentRunRecord & { createdAt?: string };
-  return rest as Json;
+  const rest = { ...(r as AgentRunRecord & { createdAt?: string }) } as Json;
+  // 归一化集（id/createdAt）+ 分项锚定集（iterations/tokens/kernel）逐键剔除。
+  for (const k of ["id", "createdAt", "iterations", "totalInputTokens", "totalOutputTokens", "kernel"]) delete rest[k];
+  return rest;
 }
 
 const seqOf = (events: readonly CapturedEvent[]): string[] =>
@@ -304,7 +299,8 @@ const seqOf = (events: readonly CapturedEvent[]): string[] =>
 const stripStats = (events: readonly CapturedEvent[]): CapturedEvent[] =>
   events.map((e) => {
     if (e.event !== "answer.final" || !("stats" in e.payload)) return e;
-    const { stats: _drop, ...rest } = e.payload;
+    const rest = { ...e.payload };
+    delete rest.stats;
     return { event: e.event, payload: rest };
   });
 
@@ -354,8 +350,10 @@ function checkAuditFace(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags
     // G3 分锚（RECONCILIATION §2 A4 分锚行 + §3 #9；team-lead 2026-08-21 裁决）：
     // budgetExhausted 两臂不互比、各锚各的声明值（先例 = A4 token 账两臂分锚）——
     // 从 scalar 尾剔出后逐臂锚定，其余 scalar 尾照常逐值等；全局断言对非 div 任务零放宽。
-    const { budgetExhausted: _xb, ...xTail } = scalarTail(x.run);
-    const { budgetExhausted: _yb, ...yTail } = scalarTail(y.run);
+    const xTail = scalarTail(x.run);
+    const yTail = scalarTail(y.run);
+    delete xTail.budgetExhausted;
+    delete yTail.budgetExhausted;
     expect(xTail).toEqual(yTail);
     // native 臂锚 = false（loop.ts:1027 软收尾不走 finishRun(true)）；dsh 臂锚 = 语料声明 true。
     expect(x.run.budgetExhausted, `${task.id} budgetExhausted 分锚（x 臂）`).toBe(flags.x === "on" ? div.dsh.budgetExhausted : false);

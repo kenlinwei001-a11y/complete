@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { QueryTask } from "@platform/contracts";
 import { classifyGap } from "../src/growth/probe.js";
-import { createTestApp, PLANNER, submitQuery, waitForTask, type TestApp } from "./helpers.js";
+import { createTestApp, PLANNER, type TestApp } from "./helpers.js";
 import { text, toolUse } from "../src/llm/mock.js";
 
 /**

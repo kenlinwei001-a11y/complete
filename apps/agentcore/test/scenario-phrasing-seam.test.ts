@@ -67,7 +67,7 @@ async function routeOne(c: PhrasingCase): Promise<Outcome> {
   const r = await submitQuery(t, ADMIN, c.query, { view: c.view });
   let routedIntent = "(未绑定)";
   let model = "(无)";
-  let status = "(无)";
+  let status: string;
   try {
     const task = await waitForTask(
       t,
@@ -242,7 +242,6 @@ describe("场景启动器 · 探索型推演接缝门（16 条真开放题）", 
       }
       const r = await submitQuery(t, ADMIN, c.query, { view: c.view });
       const task = await waitForTask(t, r.taskId, (x) => ["COMPLETED", "FAILED", "AWAITING_CLARIFICATION"].includes(x.status), 25000);
-      const events = await t.repos.events.listAfter(r.taskId, 0);
       const md = JSON.stringify(task.answer ?? {});
       // 判据修正（首版三条里两条是我自己的断言错，已按真相重写）：
       //  · 「真探索了」不能靠数 agent 往返或扫事件名——零 LLM 组合路径（qos.compose-path）

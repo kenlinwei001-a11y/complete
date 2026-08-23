@@ -3,7 +3,6 @@ import { createTestApp, debugHeaders, ADMIN, PKG, type TestApp } from "./helpers
 import { EvalService } from "../src/evals.js";
 import { createMemoryRepos } from "../src/persistence/memory.js";
 import { seedScenarioPackage } from "../src/mocks/seed.js";
-import type { QueryTask } from "@platform/contracts";
 
 const RISK_CTX = { view: "risk", selectedObjects: [], filters: {} };
 
