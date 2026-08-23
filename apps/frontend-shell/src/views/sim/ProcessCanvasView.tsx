@@ -14,7 +14,6 @@ import {
   type ProcessLineVM,
   type ProcessLiveInput,
   type ProcessStationVM,
-  type ProcessTickDrive,
   type ProcessTickSnapshot,
 } from "./processCanvas";
 import {
