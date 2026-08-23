@@ -750,8 +750,12 @@ function loci(input: ChainScanInput, b: ImpedimentRuleBinding): LocusRow[] {
         (o) => {
           const r = readBaseContention(o, c.orders, c.lines);
           if (r.status === "EMPTY") return null;
-          const { status: _s, ...reading } = r;
-          return reading as unknown as Record<string, unknown>;
+          // 摘掉判别字段 `status`、其余原样转发。刻意用 spread+delete 而不是逐字段列举：
+          // `BaseContentionReading` 以后新增字段能自动跟着走（列举法会静默漏掉新字段），
+          // 且键顺序与原对象逐字一致（R6 确定性）。
+          const reading: Record<string, unknown> = { ...r };
+          delete reading.status;
+          return reading;
         },
         (_o, extra) => (extra.segClaims as SegmentClaim[] | undefined)?.map((s) => s.businessType),
       );
