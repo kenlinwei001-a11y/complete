@@ -147,7 +147,12 @@ export default function PlanGenerateView({ view }: ViewRendererProps) {
   // 「推荐方案默认展开」是**派生默认值**，不是事后补开的副作用。
   // 原实现用 useEffect 在 gen.data 到达后 setOpenKey，于是「展开」比「结果出现」晚一次渲染；
   // 本页同屏还有第二个查询（riskTl）会再触发渲染，断言落在两次渲染之间就抓不到展开区里的东西
-  // ⇒ 同一棵树同一条命令时红时绿（实测 8 次里红 N 次，见交单记账）。
+  // ⇒ 同一棵树同一条命令时红时绿（2026-08-17 实测，跑了 8 次）。
+  // ⚠ **原注写的是「8 次里红 N 次」—— `N` 是个占位符，当初就没落下实数**，故这里不补一个
+  //   编出来的数（编一个比留着占位符更糟）。真正能复验的是「今天还抖不抖」，跑这条：
+  //     `for i in 1 2 3 4 5 6 7 8; do pnpm --filter frontend-shell exec vitest run test/f16.plan-generate.test.tsx || echo "第 $i 次红"; done`
+  //   被抖到的就是该文件里那句「推荐方案默认展开（useEffect 异步）→ 雷达多边形顶点与 mock scores 同构」
+  //   （`await screen.findByTestId('radar-<no>-polygon'`）。改成下面这条派生默认值之后应当 8/8 绿。
   // 判据：`userPicked` 为 null 表示「用户还没表过态」，此时一律取推荐方案；表过态就完全听用户的
   //（含用户主动收起推荐方案 → 存 "" 而不是 null，否则会被派生值立刻重新打开）。
   // 这样「哪张卡是开的」只由当前数据决定，**没有任何时序参与**。
