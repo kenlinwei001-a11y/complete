@@ -471,7 +471,21 @@ export function deriveProcurementBranch(input: ProcurementAbsenceInput = {}): Ab
       ...PROCUREMENT_UPSTREAM_EVIDENCE,
       "本次判定：查询已发出且返回 0 条（probe.fetched === 0）—— 与「没查过」是两回事，不要按接线去修。",
     ],
-    unblockedBy: "种数据：对本租户跑一次合成种子（service.ts:773/:775/:776 那三条 putAll 会把采购段行落进来）。",
+    /*
+     * ⚠ 这条排查线索原写死行号「service.ts:773/:775/:776」，**今天指错了地方** ——
+     *   那三行现在是 `ProductEquipmentCapability` / `MaterialAlternative` / `Workshop`，
+     *   采购段那三条 `putAll` 已漂到别处。行号会漂，**写死行号的引用天生带保质期**，
+     *   故改成**按内容找**（下面那条 grep 用户自己就能跑）。三条记号替它盯着上游：
+     *   哪条 `putAll` 被改名/删掉，门当场红。
+     *
+     * @stale-fact apps/datacore/src/synthetic/service.ts /putAll\("PurchaseOrder"/ ==1
+     * @stale-fact apps/datacore/src/synthetic/service.ts /putAll\("CustomsClearance"/ ==1
+     * @stale-fact apps/datacore/src/synthetic/service.ts /putAll\("IncomingInspection"/ ==1
+     */
+    unblockedBy:
+      "种数据：对本租户跑一次合成种子 —— `apps/datacore/src/synthetic/service.ts` 里 " +
+      'putAll("PurchaseOrder" / "CustomsClearance" / "IncomingInspection", …) ' +
+      "那三条会把采购段行落进来（复验：`grep -n 'putAll(\"PurchaseOrder\"' apps/datacore/src/synthetic/service.ts`）。",
   };
 }
 
