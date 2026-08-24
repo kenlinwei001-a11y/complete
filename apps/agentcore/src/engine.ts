@@ -266,6 +266,28 @@ export interface DshToolExecuteRun {
     string,
     { outcome: "OK" | "DENIED" | "ERROR" | "BUDGET_EXCEEDED"; toolCallId: string; durationMs: number }
   >;
+  /**
+   * WO-DSH-PROD-READY · W8.5：workflow 反向化的 per-run 绑定表（模型可见名 → {workflowId, version}）。
+   * 源 = fork 处 grantedToolNames 同一 `tools`（router 收窄后授予面）的 WORKFLOW 成员——
+   * **表成员即 scope 闸**：与 native loop.ts:766 scopeToolNames 检查等价（两臂都是「授予面内
+   * 的 workflow 名才可执行」；dsh 臂 scope 语义由子进程 allow-list + 本表双闸合成，宿主表 =
+   * 唯一 workflowId 解析权威）。wire 禁带 workflowId（端点永不读取 body.workflowId）——
+   * 防子进程越权点名绑定表外的任意 workflow。
+   */
+  workflowBindings?: Map<string, { workflowId: string; version: number | "latest" }>;
+  /**
+   * W8.5：workflow 执行上下文（fork 处从 runRegisteredAgent opts 捕获）。端点 workflow 分支
+   * 透传给 runWorkflowAsTool——nested 预算（enterNesting 共享 budget）/留痕/metrics/SSE emit
+   * 全走既有内部逻辑，零复刻。emit 出处差登记：dsh 臂 nested workflow 事件来自宿主端点路径
+   * 而非帧流（REC §3 W8.5 条目）。
+   */
+  workflowCtx?: {
+    taskId: string;
+    ctx: ToolAuthCtx;
+    nesting: NestingCtx;
+    emit: (event: string, payload: unknown) => Promise<void>;
+    onResolvedRef?: (ref: ResolvedRef) => void;
+  };
 }
 
 /** Cross-wires the agent loop and the workflow executor (mutual nesting, shared budget). */
@@ -648,13 +670,22 @@ export class ExecutionEngine {
         ...(mcpServers.length ? { mcpServers } : {}),
         ...(opts.expectsSchema ? { expectsSchema: opts.expectsSchema } : {}),
         // W8主：BUILTIN 授予面下发（harness 侧注册成反向工具，execute = fetch 宿主
-        // tool-execute 端点）。scope 范围 = BUILTIN 28 件；workflow 工具不在本 WO（W8.5 出列登记）。
-        // 空集 ⇒ 键不出（setup 帧逐字节旧行为，dualrun 语料面零扰动）。
+        // tool-execute 端点）。scope 范围 = BUILTIN 28 件。空集 ⇒ 键不出（setup 帧逐字节
+        // 旧行为，dualrun 语料面零扰动）。W8.5：WORKFLOW 授予面同形态下发（下方第二个 IIFE）。
         ...(() => {
           const hostTools = tools
             .filter((t) => t.binding.kind === "BUILTIN")
             .map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }));
           return hostTools.length ? { hostTools } : {};
+        })(),
+        // W8.5：WORKFLOW 授予面下发（agent→workflow 方向反向化；harness 侧注册反向工具，
+        // execute 带 kind:"workflow" 经同一 tool-execute 端点回宿主 runWorkflowAsTool）。
+        // 空集 ⇒ 键不出（setup 帧逐字节旧行为，C4 锚）。
+        ...(() => {
+          const hostWorkflowTools = tools
+            .filter((t) => t.binding.kind === "WORKFLOW")
+            .map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }));
+          return hostWorkflowTools.length ? { hostWorkflowTools } : {};
         })(),
       });
       // WO-DSH-N1-PROVIDER：model spec（dcp:{providerId}:{modelId}）不再原样当 wire model——
@@ -669,12 +700,31 @@ export class ExecutionEngine {
       // W9-full：侧表 Map 先铸——reassemble opts（下方 :657 区）持同一引用，端点 run 期间
       // 累积，runner 在 run 终后才 fold（runner.ts:112 reassembleDshRun 在收束循环后）⇒ 时序自洽。
       const hostToolCalls: DshToolExecuteRun["hostToolCalls"] = new Map();
+      // W8.5：workflow 绑定表 + 执行上下文随 run 条目铸造。绑定表源 = 授予面 `tools` 的
+      // WORKFLOW 成员（与上方 hostWorkflowTools 同源同滤）——空表照常铸（字段恒在），
+      // 端点 workflow 分支对 miss 一律 ERROR fail-closed。
+      const workflowBindings: DshToolExecuteRun["workflowBindings"] = new Map(
+        tools
+          .filter((t) => t.binding.kind === "WORKFLOW")
+          .map((t) => {
+            const b = t.binding as { kind: "WORKFLOW"; workflowId: string; version: number | "latest" };
+            return [t.name, { workflowId: b.workflowId, version: b.version }] as const;
+          }),
+      );
       this.dshToolExecuteRuns.set(runToken, {
         executor,
         budget: opts.nesting.budget,
         defaultTimeoutMs: 20_000, // 我方工具契约缺省 20s（mapMcpConfig toolCallTimeoutMs 同值）
         seenCallIds: new Set<string>(),
         hostToolCalls,
+        workflowBindings,
+        workflowCtx: {
+          taskId: opts.taskId,
+          ctx: opts.ctx,
+          nesting: opts.nesting,
+          emit: opts.emit,
+          onResolvedRef: opts.onResolvedRef,
+        },
       });
       let dsh: Awaited<ReturnType<typeof runDshAgent>>;
       try {

@@ -89,6 +89,15 @@ export function validateSetupSpec(spec) {
     }
     out.hostTools = spec.hostTools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }))
   }
+  if (spec.hostWorkflowTools !== undefined) {
+    // W8.5：WORKFLOW 授予面（同 hostTools 形态校验，创建期 fail-closed）。
+    if (!Array.isArray(spec.hostWorkflowTools) || spec.hostWorkflowTools.some((t) =>
+      typeof t?.name !== 'string' || typeof t?.description !== 'string'
+      || typeof t?.inputSchema !== 'object' || t?.inputSchema === null || Array.isArray(t?.inputSchema))) {
+      throw new TypeError('setup.hostWorkflowTools must be an array of {name, description, inputSchema: object}')
+    }
+    out.hostWorkflowTools = spec.hostWorkflowTools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }))
+  }
   return out
 }
 
@@ -160,20 +169,33 @@ export async function applySetupSpec(agentCtx, spec) {
     })
   }
 
-  // --- W8主 · 反向通道：hostTools 逐条注册成「反向工具」+ tools/execute 桥接包装 ---
+  // --- W8主+W8.5 · 反向通道：hostTools（BUILTIN）/ hostWorkflowTools（WORKFLOW）逐条注册成
+  // 「反向工具」+ tools/execute 桥接包装 ---
   // execute = tool-bridge 单例 executor（fetch 宿主 tool-execute 端点）。宿主端点已把
-  // OK 面截断整形完（payloadJson 串 + note），render 只套 <tool_data tool_call_id> 包装
-  // （loop.ts:901 逐字同形）；非 OK 包络由下方 tools/execute 包装换成 authored isError
-  // 回执——native 文案逐字等的唯一通路（execute 抛错必带 "Error: " 前缀，success 恒
-  // isError:false，见 tool-bridge.mjs 头注）。
-  if (spec.hostTools !== undefined && spec.hostTools.length > 0) {
-    if (!tools) throw new Error('setup.hostTools requires the tools plugin in cordis.yml')
+  // OK 面截断整形完（payloadJson 串 + note），render 只套 <tool_data> 包装——两族包装
+  // 不同形，各对 native 单源逐字：BUILTIN 带 tool_call_id 属性（loop.ts:901，供模型
+  // 在 final_answer.provenance 引用）；WORKFLOW 不带（loop.ts:820）。非 OK 包络由下方
+  // tools/execute 包装换成 authored isError 回执——native 文案逐字等的唯一通路
+  // （execute 抛错必带 "Error: " 前缀，success 恒 isError:false，见 tool-bridge.mjs 头注）。
+  // wire 差异仅 additive kind 键：WORKFLOW 带 kind:'workflow'，BUILTIN 不带（逐字节旧）。
+  const hostToolList = spec.hostTools ?? []
+  const hostWorkflowList = spec.hostWorkflowTools ?? []
+  const reverseSpecs = [
+    ...hostToolList.map((t) => ({ ...t, wireKind: undefined, withCallId: true })),
+    ...hostWorkflowList.map((t) => ({ ...t, wireKind: 'workflow', withCallId: false })),
+  ]
+  if (reverseSpecs.length > 0) {
+    if (!tools) throw new Error(hostToolList.length > 0
+      ? 'setup.hostTools requires the tools plugin in cordis.yml'
+      : 'setup.hostWorkflowTools requires the tools plugin in cordis.yml')
     const hostExecute = getToolExecutor()
-    // 有 hostTools 但桥插件未挂/休眠（无 PLATFORM_TOOL_EXEC_URL/DSH_RUN_TOKEN）= 配置错误，
+    // 有反向工具面但桥插件未挂/休眠（无 PLATFORM_TOOL_EXEC_URL/DSH_RUN_TOKEN）= 配置错误，
     // fail-closed 创建期抛（不静默注册死工具——与上方 governance 无裁决器同口径）。
-    if (!hostExecute) throw new Error('setup.hostTools requires the platform-tool-bridge plugin in cordis.yml (armed via PLATFORM_TOOL_EXEC_URL + DSH_RUN_TOKEN)')
-    const reverseNames = new Set(spec.hostTools.map((t) => t.name))
-    for (const t of spec.hostTools) {
+    if (!hostExecute) throw new Error(hostToolList.length > 0
+      ? 'setup.hostTools requires the platform-tool-bridge plugin in cordis.yml (armed via PLATFORM_TOOL_EXEC_URL + DSH_RUN_TOKEN)'
+      : 'setup.hostWorkflowTools requires the platform-tool-bridge plugin in cordis.yml (armed via PLATFORM_TOOL_EXEC_URL + DSH_RUN_TOKEN)')
+    const reverseNames = new Set(reverseSpecs.map((t) => t.name))
+    for (const t of reverseSpecs) {
       tools.register({
         name: t.name,
         description: t.description,
@@ -183,14 +205,21 @@ export async function applySetupSpec(agentCtx, spec) {
           render: (_args, value) => [{
             type: 'text',
             text: value.ok
-              ? `<tool_data tool_call_id="${value.toolCallId}">${value.payloadJson}</tool_data>${value.note ? `\n${value.note}` : ''}`
+              ? (t.withCallId
+                ? `<tool_data tool_call_id="${value.toolCallId}">${value.payloadJson}</tool_data>${value.note ? `\n${value.note}` : ''}`
+                : `<tool_data>${value.payloadJson}</tool_data>${value.note ? `\n${value.note}` : ''}`)
               : value.text, // 非 OK：此 render 产物被下方包装替换，永不交付
           }],
         },
         // W9-full：execute 二参 exec 透传帧 callId（agent-loop exec 铸造 callId=block.id，
         // lib/index.js:120-129，与 tool/call 帧 :293-298 同源同值）——桥上传作请求 callId，
         // 宿主侧表键 = 帧配对键，关联白得（team-lead 2026-08-22 裁决）。
-        execute: async (args, exec) => hostExecute({ toolName: t.name, input: args, callId: exec?.callId }),
+        execute: async (args, exec) => hostExecute({
+          toolName: t.name,
+          input: args,
+          callId: exec?.callId,
+          ...(t.wireKind ? { kind: t.wireKind } : {}),
+        }),
       })
     }
     // authored isError 通道：非 OK 包络在此换成 native 逐字回执（normalizeDispatchResult
