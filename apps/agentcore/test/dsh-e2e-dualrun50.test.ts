@@ -1,5 +1,5 @@
 /**
- * WO-DSH-E2E · §16.2 L1 双跑字节比对（64 任务）driver。
+ * WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务）driver。
  *
  * 对账口径单源 = fixtures/dualrun-corpus/RECONCILIATION.md（team-lead 2026-08-19 重定义：
  * scalar + kernel 唯一白名单 + native 迭代锚 + dsh stats 对齐）。骨架扩 N2
@@ -20,8 +20,10 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
-import type { AgentDefinition, AgentRunRecord, RuleVerdict, SkillDefinition } from "@platform/contracts";
+import { createServer as createNetServer } from "node:net";
+import type { AddressInfo } from "node:net";
+import { describe, expect, it, vi } from "vitest";
+import type { AgentDefinition, AgentRunRecord, RuleVerdict, SkillDefinition, WorkflowDefinition } from "@platform/contracts";
 import { createTestApp, TENANT, type TestApp } from "./helpers.js";
 import { BudgetTracker } from "../src/tools/budget.js";
 import { scanBlocks } from "../src/util/numerics.js";
@@ -40,8 +42,21 @@ import {
   DUALRUN_CORPUS,
   GATED_SLOTS,
   skillIdOf,
+  type CorpusWorkflow,
   type DualRunTask,
 } from "./fixtures/dualrun-corpus/corpus.js";
+
+/** W8.5：workflow 语料任务 dsh 臂真 listen 的显式假 service token（绝非真凭据）。 */
+const DUALRUN_SERVICE_TOKEN = "wo-dsh-e2e-dualrun50-fake-service-token-000000";
+
+/** W8.5：抓空闲端口再释放（镜像 dsh-engine-tool-bridge.seam freePort；cfg 在 listen 前定型 ⇒ URL 须预知端口）。 */
+async function freePort(): Promise<number> {
+  const s = createNetServer();
+  await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
+  const { port } = s.address() as AddressInfo;
+  await new Promise<void>((r) => s.close(() => r()));
+  return port;
+}
 
 const HARNESS_DIR = fileURLToPath(new URL("../../../packages/dsh-harness", import.meta.url));
 /** W8副：mcp 语料任务 dsh 臂的 stdio fixture（三工具 echo/echo2/util.calc，与语料 tools 表逐字镜像）。 */
@@ -97,8 +112,10 @@ interface ArmProducts {
    * W5 块3（A4b）：本臂运行落库的 toolCalls 审计行（repos.toolCalls.listByTask 原样快照，
    * 仅取对账字段）。native 臂 load_skill 每轮一行（loop.ts:731）；dsh 臂恒零行
    * （reassemble 纯重组装零 IO——固有不对称 #4 的审计空壳维度，本面把它从「登记」升级为「锚」）。
+   * W8.5 翻锚：语料声明 expect.auditRows 的任务（dr50-cm）两臂真对账——行 id 随快照带出，
+   * 比对时钉 tc_ 形态（归一化为形态锚，不比值）。
    */
-  auditRows: { toolName: string; outcome: string; input: unknown }[];
+  auditRows: { id: string; toolName: string; outcome: string; input: unknown }[];
   /**
    * W8副（#54）：本臂模型可见工具名集（原始序）。native 臂 = llm.agentRequests[0].tools
    * （in-process mock 捕获面）；dsh 臂 = stub.requests[0].body.tools[].function.name
@@ -123,13 +140,37 @@ function agentDef(task: DualRunTask): AgentDefinition {
       ...(task.mcp
         ? [{ kind: "MCP" as const, mcpConfigId: task.mcp.configId, ...(task.mcp.toolFilter ? { toolFilter: task.mcp.toolFilter } : {}) }]
         : []),
+      // W8.5：workflow 语料任务的 WORKFLOW ref（条件散布照 mcp 先例；expand 后模型可见名 = workflow_<key>）。
+      ...(task.workflow
+        ? [{ kind: "WORKFLOW" as const, workflowId: task.workflow.id, version: task.workflow.version }]
+        : []),
     ],
     ruleBindings: task.ruleBindings,
     skills: task.skills.map((s) => ({ skillId: skillIdOf(task.id, s.key), version: 1 as const })),
     mcpServers: task.mcp ? [{ mcpConfigId: task.mcp.configId }] : [],
-    scopeDeclaration: { objectTypes: ["Base"], toolNames: ["query_objects"] },
+    scopeDeclaration: {
+      objectTypes: ["Base"],
+      // W8.5：workflow_<key> 须进 scope 允许表——native loop.ts:766 scope 闸与 dsh setup
+      // scoped 允许表同源消费（缺 ⇒ native DENIED / dsh 注册期 fail-closed，两臂同红）。
+      toolNames: ["query_objects", ...(task.workflow ? [`workflow_${task.workflow.key}`] : [])],
+    },
     status: "PUBLISHED",
   };
+}
+
+/** W8.5：语料声明 → WorkflowDefinition 行（两臂同 seed，同 skillDef 手法）。 */
+function workflowDef(task: DualRunTask, w: CorpusWorkflow): WorkflowDefinition {
+  return {
+    id: w.id,
+    tenantId: TENANT,
+    key: w.key,
+    version: w.version,
+    name: w.name,
+    description: w.description,
+    inputs: w.inputs,
+    steps: w.steps,
+    status: "PUBLISHED",
+  } as WorkflowDefinition;
 }
 
 function skillDef(task: DualRunTask, s: DualRunTask["skills"][number]): SkillDefinition {
@@ -173,14 +214,31 @@ function patchRules(t: TestApp, task: DualRunTask): void {
 
 async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProducts> {
   const stub = flag === "on" ? await startStubOpenAi(task.dsh.rounds.map((r) => ({ ...r }))) : undefined;
+  // W8.5：workflow 语料任务的 dsh 臂必须真 listen——子进程经 127.0.0.1 真 HTTP 打
+  // /b/v1/dsh/tool-execute（镜像 dsh-engine-tool-bridge.seam startToolExecApp：freePort +
+  // env PORT 钉死 + SERVICE_TOKEN ⇒ engine 缺省推导 PLATFORM_TOOL_EXEC_URL/TOKEN 双双真到；
+  // finally close）。native 臂 in-process runWorkflowAsTool，维持现状不 listen。
+  // 非 workflow 任务零扰动（不 listen、帧逐字节旧——A0/既有任务回归即证）。
+  const needsListen = flag === "on" && task.workflow !== undefined;
+  const listenPort = needsListen ? await freePort() : undefined;
   // W8副：mcp 语料任务两臂同 seed——in-process MockMcpClient 同工具表镜像（宿主
   // expandAgentTools 枚举面两臂同源）；记录文件路径仅 dsh 臂 stdio fixture 真写。
   const mcpTmp = task.mcp ? mkdtempSync(join(tmpdir(), `dualrun-mcp-${task.id}-`)) : undefined;
   const mcpOpt = task.mcp ? { mcp: new MockMcpClient({ [task.mcp.configId]: task.mcp.tools }) } : {};
   const t = await createTestApp(
     // F-1：dsh 臂钉 poc 档（生产档治理已切 http；govDeny 语料依赖 mock 模式 PLATFORM_GOV_DENY）。
-    stub ? { providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never, env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" }, ...mcpOpt } : mcpOpt,
+    stub ? { providerDirectory: stubDirectory(stubProvider(`${stub.url}/v1`), STUB_FAKE_KEY) as never, env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml", ...(needsListen ? { PORT: String(listenPort), SERVICE_TOKEN: DUALRUN_SERVICE_TOKEN } : {}) }, ...mcpOpt } : mcpOpt,
   );
+  // W8.5：workflow 定义行两臂同 seed（声明驱动；nested 执行两臂同经 runWorkflowAsTool 解析）。
+  if (task.workflow) {
+    await t.repos.workflows.insert(workflowDef(task, task.workflow));
+    // 本体间谍（镜像 seam spyOntology）：query_objects 步确定性产物，两臂同形。
+    vi.spyOn(t.dataCore.ontology, "listObjectTypeKeys").mockResolvedValue(["Base", "Line", "Material"]);
+    vi.spyOn(t.dataCore.ontology, "queryObjects").mockResolvedValue({
+      data: { total: 1, items: [{ id: "base-cm", name: `常州基地（${task.id}）` }] },
+      snapshotVersion: "dualrun-w85",
+    });
+  }
   if (task.mcp && mcpTmp) {
     const mcp = task.mcp;
     await t.repos.mcpConfigs.insert({
@@ -214,6 +272,7 @@ async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProduct
     if (task.dsh.govDeny) process.env.PLATFORM_GOV_DENY = task.dsh.govDeny.join(",");
   }
   try {
+    if (needsListen) await t.app.listen({ port: listenPort!, host: "127.0.0.1" });
     if (flag === "off") t.llm.queueAgentTurn(...task.native.turns);
     const result = await t.deps.engine.runRegisteredAgent({
       taskId: `task_${task.id}`,
@@ -231,6 +290,7 @@ async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProduct
     // W5 块3（A4b）：审计行快照在臂内完成（repos 随 TestApp 存活；行序 = listByTask 的 createdAt 序，
     // 同毫秒并列时 V8 稳定排序保插入序——语料逐轮串行插入，次序即剧本序）。
     const auditRows = (await t.repos.toolCalls.listByTask(`task_${task.id}`)).map((r) => ({
+      id: r.id,
       toolName: r.toolName,
       outcome: r.outcome,
       input: r.input,
@@ -262,6 +322,7 @@ async function runArm(task: DualRunTask, flag: "off" | "on"): Promise<ArmProduct
     delete process.env.DSH_HARNESS;
     delete process.env.DSH_HARNESS_DIR;
     delete process.env.PLATFORM_GOV_DENY;
+    if (needsListen) await t.app.close();
     if (stub) await stub.close();
     if (mcpTmp) rmSync(mcpTmp, { recursive: true, force: true });
   }
@@ -334,16 +395,39 @@ function diffItems(a: readonly CapturedEvent[], b: readonly CapturedEvent[]): st
   return [...onlyA, ...onlyB];
 }
 
-function checkSseFace(task: DualRunTask, x: ArmProducts, y: ArmProducts): void {
-  for (const item of diffItems(x.events, y.events)) {
+function checkSseFace(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: { x: "off" | "on"; y: "off" | "on" }): void {
+  // W8.5：workflow 语料任务的声明制剥除（REC §3 W8.5 登记项）——dsh 臂帧流 mapper 为
+  // workflow 调用自身发 step.started{type:workflow_<key>} + step.completed{stepId,status}
+  // 两条（reassemble mapper tool/call·tool/result 分支）；native WORKFLOW 分支无该发射点
+  // （step.started/step.completed 发射点 loop.ts:848-849 仅 executor 路径）。nested 步事件
+  // （qo/ra）两臂同 executor 码发射（dsh 臂来自宿主端点 workflowCtx.emit 路径——emit 出处差
+  // 登记），序列逐项等不剥。双向反咬：dsh 臂必须真产该两条（反向通道真被调用之证，消失即红），
+  // native 臂必须不产（发射点漂移即红）。
+  const stripWfFrameEvents = (arm: ArmProducts, flag: "off" | "on"): CapturedEvent[] => {
+    if (!task.workflow) return arm.events;
+    const wfTool = `workflow_${task.workflow.key}`;
+    const started = arm.events.filter((e) => e.event === "step.started" && e.payload?.type === wfTool);
+    if (flag === "on") {
+      expect(started, `${task.id} A3 反向钉：dsh 臂帧流必须真产 step.started:${wfTool}（反向通道真调用之证）`).toHaveLength(1);
+      const stepId = started[0]!.payload.stepId;
+      const completed = arm.events.filter((e) => e.event === "step.completed" && e.payload?.stepId === stepId);
+      expect(completed, `${task.id} A3 反向钉：dsh 臂帧流必须真产 workflow 调用自身的 step.completed`).toHaveLength(1);
+      return arm.events.filter((e) => e !== started[0] && e !== completed[0]);
+    }
+    expect(started, `${task.id} A3 反向钉：native 臂 WORKFLOW 分支不得为调用自身发 step.started（发射点仅 executor 路径）`).toHaveLength(0);
+    return arm.events;
+  };
+  const xEvents = stripWfFrameEvents(x, flags.x);
+  const yEvents = stripWfFrameEvents(y, flags.y);
+  for (const item of diffItems(xEvents, yEvents)) {
     const pseudoType = item.split(":")[1] ?? "";
     expect(
       ALLOWED_PSEUDO_TYPES.includes(pseudoType),
       `${task.id} 差集项 ${item} 的伪步类型必须在 ALLOWED_PSEUDO_TYPES 内（加项须评审）`,
     ).toBe(true);
   }
-  expect(seqOf(filterPseudo(stripStats(x.events)))).toEqual(seqOf(filterPseudo(stripStats(y.events))));
-  for (const e of [...x.events, ...y.events]) {
+  expect(seqOf(filterPseudo(stripStats(xEvents)))).toEqual(seqOf(filterPseudo(stripStats(yEvents))));
+  for (const e of [...xEvents, ...yEvents]) {
     expect(KNOWN_EVENTS, `${task.id} 事件名 ${e.event} 必须在 KNOWN_EVENTS 十名内`).toContain(e.event);
   }
 }
@@ -558,7 +642,7 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
   }
 
   // ---- A3 · SSE 事件名序列 ----
-  checkSseFace(task, x, y);
+  checkSseFace(task, x, y, flags);
 
   // ---- A4 · 审计逐字段 ----
   checkAuditFace(task, x, y, flags);
@@ -572,7 +656,28 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
   //              dsh 侧哪天开始写审计 = 未登记的语义变更 ⇒ 红；native 侧哪天丢行 = 审计丢失 ⇒ 红）；
   //   deny_prefork = 两臂恒零行（分叉前预检拒止 ⇒ 零执行痕迹——entitlement/治理拒止时点
   //              跨核一致的强形态：拒止早于一切可观测执行，kernel 选择不改变拒止时点）。
+  // W8.5 翻锚（按任务维度，REC §2-A4b 修订）：语料声明 expect.auditRows 的任务（dr50-cm）
+  //   走双臂真对账——两臂各行 toolName/outcome/input 逐点深等声明 + 行 id 钉 tc_ 形态
+  //   （归一化为形态锚）；声明任务恰 1 条由 A0 闸钉死，未声明任务旧锚零放宽。
   {
+    if (task.expect.auditRows) {
+      const decl = task.expect.auditRows;
+      for (const { label, arm } of arms) {
+        expect(
+          arm.auditRows.length,
+          `${task.id} A4b：${label} 臂审计行数 == 语料声明行数（dr50-cm = 内层 qo 步 + 外层 workflow 行）`,
+        ).toBe(decl.length);
+        arm.auditRows.forEach((row, i) => {
+          const anchor = decl[i];
+          expect(anchor, `${task.id} A4b：第 ${i} 行缺声明锚点`).toBeDefined();
+          if (!anchor) return;
+          expect(row.id, `${task.id} A4b：${label} 臂第 ${i} 行 id 须 tc_ 形态（归一化形态锚）`).toMatch(/^tc_/);
+          expect(row.toolName, `${task.id} A4b：${label} 臂第 ${i} 行 toolName`).toBe(anchor.toolName);
+          expect(row.outcome, `${task.id} A4b：${label} 臂第 ${i} 行 outcome`).toBe(anchor.outcome);
+          expect(row.input, `${task.id} A4b：${label} 臂第 ${i} 行 input 与声明逐值等`).toEqual(anchor.input);
+        });
+      }
+    } else {
     const expectedLoadSkillCalls: unknown[] = [];
     for (const turn of task.native.turns) {
       if (typeof turn !== "object" || !("content" in turn)) continue;
@@ -595,6 +700,7 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
         });
       }
       void label;
+    }
     }
   }
 
@@ -658,12 +764,18 @@ function compareArms(task: DualRunTask, x: ArmProducts, y: ArmProducts, flags: {
 // 套件
 // ---------------------------------------------------------------------------
 
-describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（64 任务）", () => {
+describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（65 任务）", () => {
   it("A0 语料自检：构成 / 四维覆盖 / gated 槽在册", () => {
-    expect(DUALRUN_CORPUS.length).toBe(64);
-    expect(new Set(DUALRUN_CORPUS.map((t) => t.id)).size).toBe(64);
+    expect(DUALRUN_CORPUS.length).toBe(65);
+    expect(new Set(DUALRUN_CORPUS.map((t) => t.id)).size).toBe(65);
     // W8副：MCP name-set parity 任务恰一条（dr50-cl；新增 mcp 任务须同步本钉与 REC 登记）。
     expect(DUALRUN_CORPUS.filter((t) => t.mcp !== undefined).length).toBe(1);
+    // W8.5：workflow 反向对拍任务恰一条（dr50-cm；新增 workflow 任务须同步本钉与 REC 登记）。
+    expect(DUALRUN_CORPUS.filter((t) => t.workflow !== undefined).length).toBe(1);
+    // W8.5：A4b 翻锚声明面恰一处，且必挂在 workflow 任务上（防 auditRows 声明外溢到旧锚任务）。
+    const auditDeclared = DUALRUN_CORPUS.filter((t) => t.expect.auditRows !== undefined);
+    expect(auditDeclared.length).toBe(1);
+    expect(auditDeclared[0]!.workflow, "A4b 翻锚声明必须挂在 workflow 任务上").toBeDefined();
     const deny = DUALRUN_CORPUS.filter((t) => t.cls.startsWith("deny_"));
     expect(deny.length).toBeGreaterThanOrEqual(10);
     expect(deny.filter((t) => t.cls === "deny_pre").length).toBeGreaterThanOrEqual(1);
@@ -743,7 +855,9 @@ describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（64 任务）", () => {
   const UNREACHABLE_REASONS = {
     /** 编排层事件：orchestrator 在 runRegisteredAgent 之外发射（task.accepted 等七名），本驱动级够不着。 */
     ORCHESTRATOR_LEVEL: "编排层事件·本驱动级不可达",
-    /** 真工具步族：语料两臂同用 meta 剧本保 parity（固有不对称 #3），真工具 SSE 对拍物理不可达。 */
+    /** 真工具步族：语料两臂同用 meta 剧本保 parity（固有不对称 #3），真工具 SSE 对拍物理不可达。
+     *  W8.5 起暂无引用行（step.started/step.completed 两行已翻 triggered·dr50-cm）——闭枚举
+     *  保留原位（删枚举值 = 矩阵结构变更，须评审；留着不咬任何断言）。 */
     REAL_TOOL_ONLY: "真工具步族·meta-only 语料不可达",
     /** harness 内部决策：压缩由子进程上下文压力触发，剧本面无确定性通道（mapper 分支由 N2 A6b/A3/A4 单测钉死）。 */
     HARNESS_INTERNAL: "harness 内部决策·剧本面无确定性触发通道",
@@ -767,8 +881,65 @@ describe("WO-DSH-E2E · §16.2 L1 双跑字节比对（64 任务）", () => {
     { name: "routing.completed", family: "routing.completed:", status: { kind: "unreachable", reason: "ORCHESTRATOR_LEVEL" } },
     { name: "clarification.required", family: "clarification.required:", status: { kind: "unreachable", reason: "ORCHESTRATOR_LEVEL" } },
     { name: "coordinator.planned", family: "coordinator.planned:", status: { kind: "unreachable", reason: "ORCHESTRATOR_LEVEL" } },
-    { name: "step.started", family: "step.started:<真工具名>", status: { kind: "unreachable", reason: "REAL_TOOL_ONLY" } },
-    { name: "step.completed", family: "step.completed:<真工具名>", status: { kind: "unreachable", reason: "REAL_TOOL_ONLY" } },
+    // W8.5 翻锚：dr50-cm 起真工具步族不再不可达——nested workflow 步事件（qo/ra）两臂同
+    // executor 码真触发（dsh 臂经宿主端点 workflowCtx.emit 路径，emit 出处差 REC §3 W8.5 登记）。
+    // dsh 臂观测集另含帧流 mapper 为 workflow 调用自身发的两条（step.started:workflow_dr50cm +
+    // status 形 step.completed:）——native WORKFLOW 分支无该发射点，A3 对账面声明制剥除，
+    // 本矩阵按原始观测如实登记。dsh 臂 step.completed:agent_narration 来自末轮 rTx 文本轮（既有族）。
+    {
+      name: "step.started",
+      family: "step.started:query_objects",
+      status: {
+        kind: "triggered",
+        taskId: "dr50-cm",
+        expect: {
+          off: [
+            "answer.final:",
+            "step.completed:query_objects",
+            "step.completed:render_answer",
+            "step.started:query_objects",
+            "step.started:render_answer",
+          ],
+          on: [
+            "answer.final:",
+            "step.completed:",
+            "step.completed:agent_narration",
+            "step.completed:query_objects",
+            "step.completed:render_answer",
+            "step.started:query_objects",
+            "step.started:render_answer",
+            "step.started:workflow_dr50cm",
+          ],
+        },
+      },
+    },
+    {
+      name: "step.completed",
+      family: "step.completed:query_objects",
+      status: {
+        kind: "triggered",
+        taskId: "dr50-cm",
+        expect: {
+          off: [
+            "answer.final:",
+            "step.completed:query_objects",
+            "step.completed:render_answer",
+            "step.started:query_objects",
+            "step.started:render_answer",
+          ],
+          on: [
+            "answer.final:",
+            "step.completed:",
+            "step.completed:agent_narration",
+            "step.completed:query_objects",
+            "step.completed:render_answer",
+            "step.started:query_objects",
+            "step.started:render_answer",
+            "step.started:workflow_dr50cm",
+          ],
+        },
+      },
+    },
     {
       name: "answer.final",
       family: "answer.final:",

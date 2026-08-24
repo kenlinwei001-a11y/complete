@@ -1,5 +1,5 @@
 /**
- * WO-DSH-E2E · L1 双跑语料（64 任务 + 2 gated 槽）——纯数据，零 IO。
+ * WO-DSH-E2E · L1 双跑语料（65 任务 + 2 gated 槽）——纯数据，零 IO。
  *
  * 对账口径单源 = 同目录 RECONCILIATION.md（team-lead 2026-08-19 重定义：
  * scalar + kernel 唯一白名单 + native 迭代锚 + dsh stats 对齐）。摘要：
@@ -83,6 +83,37 @@ export interface CorpusMcp {
   nativeExtraTools?: string[];
 }
 
+/**
+ * W8.5：workflow 工具双臂对拍声明面（dr50-cm）。声明驱动——driver 两臂同 seed
+ * t.repos.workflows（WorkflowDefinition 行由声明映射，同 skillDef 手法），agentDef 条件散布
+ * WORKFLOW ref（照 mcp 先例）。模型可见/调用名 = `workflow_${key}`（engine.ts expandAgentTools
+ * :397-406 命名口径，单源在宿主）。
+ * dsh 臂经 W8.5 反向通道真执行（hostWorkflowTools 下发 ⇒ harness 注册反向工具 ⇒ execute
+ * 带 kind:"workflow" 打宿主 tool-execute 端点 ⇒ per-run 绑定表解析 ⇒ runWorkflowAsTool）；
+ * driver 对该任务 dsh 臂真 listen（freePort + PORT/SERVICE_TOKEN env 钉死，镜像
+ * dsh-engine-tool-bridge.seam startToolExecApp）。native 臂 in-process runWorkflowAsTool，不 listen。
+ */
+export interface CorpusWorkflow {
+  id: string;
+  key: string;
+  version: number;
+  name: string;
+  description: string;
+  /** inputs schema（简单确定性；executor resolveTemplate 的 slots 来源）。 */
+  inputs: Record<string, unknown>;
+  /** 步骤定义（形状对位 contracts WorkflowDefinition.steps / ExtendedPlanStep）。 */
+  steps: { id: string; type: string; params: Record<string, unknown> }[];
+  /** 模型调用入参（两臂剧本同值 ⇒ A4b 审计行 input 深等锚）。 */
+  callInput: Record<string, unknown>;
+}
+
+/** W8.5（A4b 修订）：审计行声明锚（toolName/outcome/input 深等；行 id 由 driver 钉 tc_ 形态）。 */
+export interface AuditRowAnchor {
+  toolName: string;
+  outcome: string;
+  input: unknown;
+}
+
 export interface DualRunTask {
   id: string;
   cls: TaskClass;
@@ -96,6 +127,8 @@ export interface DualRunTask {
   native: { turns: ScriptedTurn[]; preBlock?: RuleVerdict[]; postBlock?: RuleVerdict[] };
   /** W8副（#54）：MCP 可见性 name-set parity 声明（在表 ⇒ driver 走 MCP seed/捕获/对拍链）。 */
   mcp?: CorpusMcp;
+  /** W8.5：workflow 反向对拍声明（在表 ⇒ driver 两臂 seed workflows + dsh 臂真 listen + A3/A4b 翻锚）。 */
+  workflow?: CorpusWorkflow;
   expect: {
     answer: Answer;
     /** G2：structured 深等锚（result.structured 双臂捕获比对；非结构化任务缺省 = 两臂同 undefined）。 */
@@ -108,6 +141,14 @@ export interface DualRunTask {
     denyWire?: { requestIndex: number; reason: string }[];
     /** deny_prefork：分叉前预检早退 ⇒ dsh 零 spawn（反向哨兵）。 */
     dshZeroSpawn?: boolean;
+    /**
+     * W8.5（A4b 修订）：审计行双臂真对账声明。在表 ⇒ driver 两臂各行 toolName/outcome/input
+     * 逐点深等本声明 + 行 id 钉 tc_ 形态（归一化为形态锚）；不在表 ⇒ 维持旧锚（native 每轮
+     * load_skill 一行逐点锚 / dsh 臂 toEqual([]) 反咬）。dr50-cm 预期两臂各 2 行
+     * （内层 query_objects 步 executor 自落行 + 外层 workflow_<key> 行——native loop.ts:805-815
+     * 与 dsh 端点 workflow 分支同字段口径）。
+     */
+    auditRows?: AuditRowAnchor[];
     /**
      * EMPTY 空块类专用：发车哨兵第 3 条（answer 含任务 marker）条件豁免位。
      * 仅当 expect.answer 结构上不可能携带 marker（空 blocks / 空 markdown / 空白软收尾）
@@ -194,6 +235,12 @@ const rTx = (t: string): StubRound => ({ text: t, usage: STUB_USAGE });
 const nFa = (args: unknown): ScriptedTurn => ({ content: [toolUse("final_answer", args)] });
 const nLs = (skillId: string): ScriptedTurn => ({ content: [toolUse("load_skill", { skillId })] });
 const nTx = (t: string): ScriptedTurn => ({ content: [text(t)] });
+
+/** W8.5：泛名工具调用轮（workflow_<key> 等反向工具剧本用；rFa/nFa 的泛化形，meta 两件不动）。 */
+const rCall = (name: string, args: unknown): StubRound => ({
+  toolCall: { name, arguments: JSON.stringify(args) }, usage: STUB_USAGE,
+});
+const nCall = (name: string, args: unknown): ScriptedTurn => ({ content: [toolUse(name, args)] });
 
 /** G3：finish_reason=length 截断轮（dsh stub 文本轮覆盖 finishReason；native mock stopReason 逐字透传）。 */
 const rTxLen = (t: string): StubRound => ({ text: t, usage: STUB_USAGE, finishReason: "length" });
@@ -282,6 +329,41 @@ function answerMcpNameSet(o: ClassOpts & { mcp: CorpusMcp }): DualRunTask {
       nativeIterations: [{ calls: [] }],
       nativeTokens: { input: 100, output: 50 },
       dshStats: stats(2),
+    },
+  };
+}
+
+/**
+ * W8.5：workflow 工具双臂对拍（dr50-cm）。剧本 = 一轮 tool_use(workflow_<key>) + final_answer
+ * 收尾（dsh 臂末轮 rTx 文本轮照 answerImmediate 先例）。锚面同 answerImmediate 全量适用，外加：
+ *  - A4b 翻锚：auditRows 声明两臂各 2 行（内层 query_objects 步 + 外层 workflow_<key> 行），
+ *    真对账取代「dsh 恒零行」反咬（仅本任务；其余任务旧锚不动）；
+ *  - A3 翻锚：nested workflow 步事件（step.started/completed × qo/ra）两臂同 executor 码发射
+ *    逐项等；dsh 臂另有帧流 mapper 为 workflow 调用自身发的 step.started/step.completed 两条
+ *    （native WORKFLOW 分支无该发射点——loop.ts:848 仅 executor 路径）⇒ 声明制剥除 + 反向钉
+ *    （REC §3 W8.5 登记项）。
+ * native 迭代锚：首轮 calls=[workflow_<key> OK input=callInput]，次轮空（final_answer 收尾轮，
+ * 对位 answerSkillRounds 口径）。
+ */
+function answerWorkflowReverse(o: ClassOpts & { workflow: CorpusWorkflow; auditRows: AuditRowAnchor[] }): DualRunTask {
+  const wfTool = `workflow_${o.workflow.key}`;
+  const blocks = [T(`【${o.id}】workflow 反向对拍：经 workflow 工具真执行后收尾。`)];
+  const args = { blocks, provenance: [] };
+  return {
+    id: o.id, cls: "answer", source: o.source, prompt: o.prompt,
+    skills: [], ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+    workflow: o.workflow,
+    dsh: { rounds: [rCall(wfTool, o.workflow.callInput), rFa(args), rTx(`收尾 ${o.id}`)] },
+    native: { turns: [nCall(wfTool, o.workflow.callInput), nFa(args)] },
+    expect: {
+      answer: expectAnswer(blocks),
+      nativeIterations: [
+        { calls: [{ toolName: wfTool, outcome: "OK", input: o.workflow.callInput }] },
+        { calls: [] },
+      ],
+      nativeTokens: { input: 200, output: 100 },
+      dshStats: stats(3),
+      auditRows: o.auditRows,
     },
   };
 }
@@ -888,6 +970,33 @@ export const DUALRUN_CORPUS: DualRunTask[] = [
       dshExtraTools: ["echo_tool"],
       nativeExtraTools: ["load_skill"],
     },
+  }),
+  // ---- W8.5：workflow 工具双臂对拍 1 条（dr50-cm）。夹具 = 两步确定性流程（query_objects
+  //      BUILTIN 步 objectType:"Base" + render_answer 收尾块，零 LLM 步——形状对位
+  //      dsh-engine-tool-bridge.seam C 组 workflowDef 实证形）。dsh 臂真 listen 经
+  //      tool-execute 端点 kind:"workflow" 反向执行；native 臂 in-process runWorkflowAsTool。
+  //      auditRows 声明两臂各 2 行（内层 qo 步 executor 自落行 + 外层 workflow_dr50cm 行），
+  //      值先跑实证后钉（行数若不是 2 = 实现面问题，停下申报不削断言）。 ----
+  answerWorkflowReverse({
+    id: "dr50-cm", source: "synthetic",
+    prompt: "合成题 cm（dr50-cm）：workflow 工具双臂反向对拍。",
+    workflow: {
+      id: "wf_dr50cm",
+      key: "dr50cm",
+      version: 1,
+      name: "dr50-cm 对拍流程",
+      description: "wo-dsh-prod-ready w8.5 dualrun corpus workflow",
+      inputs: { type: "object", properties: { topic: { type: "string" } } },
+      steps: [
+        { id: "qo", type: "query_objects", params: { objectType: "Base", filter: {} } },
+        { id: "ra", type: "render_answer", params: { blocks: [{ type: "text", markdown: "dr50-cm workflow marker 块" }] } },
+      ],
+      callInput: { topic: "dr50-cm" },
+    },
+    auditRows: [
+      { toolName: "query_objects", outcome: "OK", input: { objectType: "Base", filter: {} } },
+      { toolName: "workflow_dr50cm", outcome: "OK", input: { topic: "dr50-cm" } },
+    ],
   }),
 ];
 
