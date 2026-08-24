@@ -173,7 +173,19 @@ describe("WO-FE-AGENT-TRACE · 界面上真的看得见", () => {
 
     // 不崩、步照常渲染
     expect(screen.getByTestId("step-tc-1")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-narration")).toHaveTextContent("我先看一下利用率");
+    /*
+      旁白正文照常上屏 —— 但**承载它的渲染器已换过一次**，本条曾因咬旧渲染器而红：
+      N6 CHATUX（`752c85b1`，2026-08-17，`Timeline.tsx` 引入 `chatNodes`/`flatSteps` 二选一）后
+      平铺模式（`tracks` 为空）的 agent 伪步交给 `ChatFlow` 承载
+      （`Timeline.tsx:43-46` 取 `selectChatFlow(adaptSseEvents(...))`，`:108-115` 渲染），
+      `agent_narration` 不在 `WORKFLOW_STEP_TYPES` 里（`dshFrameAdapter.ts:286-297`）
+      ⇒ 被 `flatSteps` 滤掉，`NarrationRow` 的 `agent-narration` 在平铺模式下不再出现。
+      `agent-narration` 如今**只属于多角色分栏模式**（上一条用例仍在咬它，且是绿的）。
+      故这里咬 ChatFlow 的正文块：换渲染器可以，**旁白逐字不上屏不可以**。
+    */
+    expect(screen.getAllByTestId("chat-text-block").map((e) => e.textContent)).toEqual(["我先看一下利用率"]);
+    // 平铺模式只由 ChatFlow 出旁白，不与 NarrationRow 双渲染（Timeline.tsx:42 「双渲染比缺渲染更糟」）
+    expect(screen.queryByTestId("agent-narration")).toBeNull();
     // 没有分栏（缺字段 → 整块不出，而不是出一个空壳栏）
     expect(screen.queryByTestId("role-tracks")).toBeNull();
     // 没有任何角色/轮次 chip
