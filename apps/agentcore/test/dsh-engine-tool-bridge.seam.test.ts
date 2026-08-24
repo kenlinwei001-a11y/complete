@@ -30,6 +30,9 @@
  * 分组：A = 端点级（app.inject + 直登记册，四态 deny/缓存/鉴权/重放/畸形/截断各钉死）；
  * B = e2e（freePort 真 listen + stub LLM + per-agent kernel=EXTERNAL，真 fork 真子进程
  * 真 HTTP 回环进同一 GuardedToolExecutor）。
+ * C = W8.5 workflow 反向化（同端点 additive kind:"workflow"：① e2e OK 全链 ② 端点级
+ * 绑定表 miss fail-closed + wire workflowId 无视 ③ e2e 内部 FAILED → ERROR parity
+ * ④ 零扰动锚——无 WORKFLOW ref 键缺席 / 旧桥无 kind 逐字节旧）。
  */
 import { createServer as createHttpServer, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";
@@ -37,7 +40,7 @@ import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentDefinition } from "@platform/contracts";
+import type { AgentDefinition, WorkflowDefinition } from "@platform/contracts";
 import { createTestApp, TENANT, type TestApp } from "./helpers.js";
 import {
   STUB_DCP_SPEC,
@@ -50,6 +53,7 @@ import { BudgetTracker } from "../src/tools/budget.js";
 import { truncateToolResultJson } from "../src/agent/context.js";
 import { enterNesting } from "../src/runtime.js";
 import type { ToolAuthCtx } from "../src/tools/clients.js";
+import { buildSessionSetup } from "../src/dsh-runtime/setup-spec.js";
 
 // apps/agentcore/test/ → 仓根 = ../../../
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -108,6 +112,14 @@ function registerRun(
     budget?: BudgetTracker;
     scopeToolNames?: string[];
     scopeObjectTypes?: string[];
+    /** W8.5：workflow 分支的 per-run 绑定表 + 执行上下文（C 组臂用；缺席 = W8主 旧形态）。 */
+    workflowBindings?: Map<string, { workflowId: string; version: number | "latest" }>;
+    workflowCtx?: {
+      taskId: string;
+      ctx: ToolAuthCtx;
+      nesting: ReturnType<typeof enterNesting>;
+      emit: (event: string, payload: unknown) => Promise<void>;
+    };
   },
 ): void {
   const budget = opts.budget ?? new BudgetTracker();
@@ -123,6 +135,8 @@ function registerRun(
     defaultTimeoutMs: 20_000,
     seenCallIds: new Set<string>(),
     hostToolCalls: new Map(), // W9-full：侧表字段（A 臂端点级亦走累积，不断言即透传）
+    ...(opts.workflowBindings ? { workflowBindings: opts.workflowBindings } : {}),
+    ...(opts.workflowCtx ? { workflowCtx: opts.workflowCtx } : {}),
   });
 }
 
@@ -792,6 +806,229 @@ describe("W8主 · B e2e：stub LLM 剧本 + dsh 臂反向调用真进 GuardedTo
     } finally {
       await close();
       await stub.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C 组 · W8.5：workflow 工具反向化（同端点 additive kind:"workflow" + 宿主 per-run 绑定表）
+// ---------------------------------------------------------------------------
+
+const WF_ID = "wf_w85_probe";
+const WF_KEY = "w85_probe";
+const WF_TOOL = `workflow_${WF_KEY}`; // expandAgentTools 命名口径（engine.ts:401）
+const WF_RUN_TOKEN = "dshr_w85";
+
+/** 2-step 确定性夹具：query_objects（本体间谍）+ render_answer（marker 块），零 LLM 步。 */
+function workflowDef(): WorkflowDefinition {
+  return {
+    id: WF_ID,
+    tenantId: TENANT,
+    key: WF_KEY,
+    version: 1,
+    name: "W8.5 探针流程",
+    description: "wo-dsh-prod-ready w8.5 seam",
+    inputs: { type: "object", properties: {} },
+    steps: [
+      { id: "qo", type: "query_objects", params: { objectType: "Base", filter: {} } },
+      { id: "ra", type: "render_answer", params: { blocks: [{ type: "text", markdown: "w85 workflow marker" }] } },
+    ],
+    status: "PUBLISHED",
+  };
+}
+
+/** W8.5 agent：tools 仅 WORKFLOW ref（expand 后名 = workflow_<key>）。 */
+function workflowAgentDef(): AgentDefinition {
+  return agentDef({
+    tools: [{ kind: "WORKFLOW", workflowId: WF_ID, version: 1 }],
+    scopeDeclaration: { objectTypes: [], toolNames: [WF_TOOL] },
+  } as Partial<AgentDefinition>);
+}
+
+describe("W8.5 · C workflow 反向化：模型可见 + 同端点反向执行 + 治理/审计/预算同账", () => {
+  let savedEnv: Record<string, string | undefined>;
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+    delete process.env.DSH_HARNESS;
+    process.env.DSH_HARNESS_DIR = HARNESS_DIR;
+    delete process.env.QOS_AGENT_LOOP_REPEAT_CAP;
+    delete process.env.DSH_TOOL_EXEC_TIMEOUT_MS;
+    delete process.env.DSH_TOOL_EXEC_FETCH_TIMEOUT_MS;
+  });
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (savedEnv[k] === undefined) delete process.env[k];
+      else process.env[k] = savedEnv[k];
+    }
+  });
+
+  it("C1 workflow e2e OK：可见 + 真过宿主引擎 + 审计行三键 + 侧表 iterations + emit 透传", { timeout: SEAM_TIMEOUT }, async () => {
+    const stub = await startStubOpenAi([
+      { toolCall: { name: WF_TOOL, arguments: "{}" }, usage: PLAIN_USAGE },
+      { toolCall: { name: "final_answer", arguments: FINAL_ANSWER_ARGS }, usage: PLAIN_USAGE },
+      { text: "stub final answer", usage: PLAIN_USAGE },
+    ] satisfies StubRound[]);
+    const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
+    try {
+      await t.repos.agents.insert(workflowAgentDef());
+      await t.repos.workflows.insert(workflowDef());
+      const qo = spyOntology(t, BASE_PAYLOAD);
+      const emitted: Emitted[] = [];
+      const result = await runAgent(t, "task_w85_c1", emitted);
+
+      expect(result.run.kernel).toBe("EXTERNAL"); // 真走 DSH 分叉
+      expect(result.outcome).toBe("ANSWERED");
+      // 可见性：首轮请求 tools 面含 workflow_<key>（hostWorkflowTools 下发注册成反向工具）
+      expect(JSON.stringify(stub.requests[0]!.body)).toContain(`"${WF_TOOL}"`);
+      // 真过宿主引擎：nested workflow 的 qo 步本体真调一次
+      expect(qo.mock.calls.length).toBe(1);
+      // 审计行 = 2 行（native 同构）：nested qo 步过 GuardedToolExecutor 自落一行 +
+      // 端点 workflow 行（loop.ts:805-815 对齐：tc_/taskId/toolName/outcome/durationMs 实测）
+      const rows = await t.repos.toolCalls.listByTask("task_w85_c1");
+      expect(rows).toHaveLength(2);
+      const wfRow = rows.find((r) => r.toolName === WF_TOOL);
+      const qoRow = rows.find((r) => r.toolName === "query_objects");
+      expect(qoRow?.outcome, "nested 步执行行（executor 自落，native 同构）").toBe("OK");
+      expect(wfRow, "端点 workflow 审计行").toBeDefined();
+      expect(wfRow!.outcome).toBe("OK");
+      expect(wfRow!.id).toMatch(/^tc_/);
+      // stepOutputs 实回：模型面 <tool_data> 包装含 qo 步产物 + render_answer marker
+      // （native WORKFLOW OK 包装 loop.ts:820 逐字——无 tool_call_id 属性，与 BUILTIN 面 :901 不同形）
+      const req1 = JSON.stringify(stub.requests[1]!.body);
+      expect(req1).toContain("常州基地");
+      expect(req1).toContain("w85 workflow marker");
+      // W9-full 侧表零改动吃到：run.iterations 该行 toolCallId = 审计行 tc_、outcome OK
+      const iterCalls = result.run.iterations.flatMap((it) => it.toolCalls);
+      const wfCall = iterCalls.find((c) => c.toolName === WF_TOOL);
+      expect(wfCall, "iterations 须经 hostToolCalls 侧表吃到 workflow 调用行").toBeDefined();
+      expect(wfCall!.toolCallId).toBe(wfRow!.id);
+      expect(wfCall!.outcome).toBe("OK");
+      // emit 透传：nested workflow 步事件经 workflowCtx.emit 宿主侧发射（出处差登记：非帧流）
+      expect(emitted.some((f) => f.event === "step.started" && (f.payload as { stepId?: string }).stepId === "qo")).toBe(true);
+      expect(emitted.some((f) => f.event === "step.completed" && (f.payload as { stepId?: string }).stepId === "ra")).toBe(true);
+    } finally {
+      await close();
+      await stub.close();
+    }
+  });
+
+  it("C2 端点级：绑定表 miss ⇒ ERROR fail-closed + ERROR 审计行（wire workflowId 被无视）", async () => {
+    const t = await createTestApp({ env: { SERVICE_TOKEN } });
+    try {
+      // wire 点名的 workflow 真实存在——仍不许越权解析（绑定表 = 唯一权威，mutation m2 咬位）
+      await t.repos.workflows.insert(workflowDef());
+      registerRun(t, WF_RUN_TOKEN, {
+        taskId: "task_w85_c2",
+        workflowBindings: new Map([[WF_TOOL, { workflowId: WF_ID, version: 1 }]]),
+        workflowCtx: {
+          taskId: "task_w85_c2",
+          ctx: CTX,
+          nesting: enterNesting({ callChain: [], budget: new BudgetTracker() }, "agent", "agt_w8_main"),
+          emit: async () => {},
+        },
+      });
+      const res = await callExecute(t, {
+        runToken: WF_RUN_TOKEN,
+        callId: "c2-1",
+        kind: "workflow",
+        toolName: "workflow_evil", // 幻觉名：不在绑定表
+        input: {},
+        workflowId: WF_ID, // 越权点名材料：实现若从 wire 读 workflowId，本调用会真跑 wf_w85_probe ⇒ 红
+      }, SERVICE_TOKEN);
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as Record<string, unknown>;
+      expect(body.outcome).toBe("ERROR"); // fail-closed ERROR，非 DENIED（native 面该工具不可见，无 DENIED 对位）
+      expect(JSON.stringify(body.payload)).toContain("WORKFLOW");
+      const rows = await t.repos.toolCalls.listByTask("task_w85_c2");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.outcome).toBe("ERROR");
+      expect(rows[0]!.toolName).toBe("workflow_evil");
+      expect(rows[0]!.id).toBe(body.toolCallId); // 回执 tc_ = 审计行主键（与 tool 分支同口径）
+    } finally {
+      await t.app.close();
+    }
+  });
+
+  it("C3 workflow 内部 FAILED ⇒ ERROR parity（两态词表 + ERROR 审计行 + isError 回执上模型面）", { timeout: SEAM_TIMEOUT }, async () => {
+    const stub = await startStubOpenAi([
+      { toolCall: { name: WF_TOOL, arguments: "{}" }, usage: PLAIN_USAGE },
+      { toolCall: { name: "final_answer", arguments: FINAL_ANSWER_ARGS }, usage: PLAIN_USAGE },
+      { text: "stub final answer", usage: PLAIN_USAGE },
+    ] satisfies StubRound[]);
+    const { t, close } = await startToolExecApp({ stubUrl: `${stub.url}/v1`, serviceToken: SERVICE_TOKEN });
+    try {
+      await t.repos.agents.insert(workflowAgentDef());
+      await t.repos.workflows.insert(workflowDef());
+      vi.spyOn(t.dataCore.ontology, "listObjectTypeKeys").mockResolvedValue(["Base", "Line", "Material"]);
+      vi.spyOn(t.dataCore.ontology, "queryObjects").mockRejectedValue(new Error("w85 ontology down"));
+      const emitted: Emitted[] = [];
+      const result = await runAgent(t, "task_w85_c3", emitted);
+
+      expect(result.run.kernel).toBe("EXTERNAL");
+      expect(result.outcome).toBe("ANSWERED"); // workflow 失败不炸 agent 循环（native catch → ERROR 同口径）
+      const rows = await t.repos.toolCalls.listByTask("task_w85_c3");
+      expect(rows).toHaveLength(2); // nested qo 步 ERROR 行（executor 自落）+ 端点 workflow ERROR 行
+      const wfRow = rows.find((r) => r.toolName === WF_TOOL);
+      expect(rows.find((r) => r.toolName === "query_objects")?.outcome).toBe("ERROR");
+      expect(wfRow).toBeDefined();
+      expect(wfRow!.outcome).toBe("ERROR"); // CANCELLED/FAILED/预算 throw 一律 ERROR（两态词表）
+      const req1 = JSON.stringify(stub.requests[1]!.body);
+      expect(req1, "ERROR payload JSON 上模型面（loop.ts:889 同形）").toContain("w85 ontology down");
+    } finally {
+      await close();
+      await stub.close();
+    }
+  });
+
+  it("C4 零扰动锚：无 WORKFLOW ref ⇒ setup 键缺席；wire 无 kind ⇒ tool 路逐字节旧；kind 畸形 ⇒ 400", async () => {
+    // 形态B 单元：setup 层键缺席/内容透传（对位 W8副 A6-B 同手法）
+    const agent = agentDef(); // 默认 tools 仅 BUILTIN query_objects，无 WORKFLOW ref
+    const baseInput = { agent, agentSystemCore: "CORE", grantedToolNames: ["query_objects"] };
+    const specWithout = buildSessionSetup(baseInput);
+    expect(
+      Object.prototype.hasOwnProperty.call(specWithout, "hostWorkflowTools"),
+      "无 WORKFLOW 授予 ⇒ hostWorkflowTools 键必须缺席（setup 帧逐字节旧行为）",
+    ).toBe(false);
+    const wfTools = [{ name: WF_TOOL, description: "d", inputSchema: { type: "object" } }];
+    const specWith = buildSessionSetup({ ...baseInput, hostWorkflowTools: wfTools });
+    expect(specWith.hostWorkflowTools).toEqual(wfTools);
+
+    // 端点级：run 条目带 workflow 绑定表，wire 不带 kind ⇒ 仍走 tool 路（旧桥逐字节旧）
+    const t = await createTestApp({ env: { SERVICE_TOKEN } });
+    try {
+      registerRun(t, WF_RUN_TOKEN, {
+        taskId: "task_w85_c4",
+        workflowBindings: new Map([[WF_TOOL, { workflowId: WF_ID, version: 1 }]]),
+        workflowCtx: {
+          taskId: "task_w85_c4",
+          ctx: CTX,
+          nesting: enterNesting({ callChain: [], budget: new BudgetTracker() }, "agent", "agt_w8_main"),
+          emit: async () => {},
+        },
+      });
+      spyOntology(t, BASE_PAYLOAD);
+      const res = await callExecute(t, {
+        runToken: WF_RUN_TOKEN,
+        callId: "c4-1",
+        toolName: "query_objects", // 无 kind ⇒ 缺席 = tool（additive 旧行为）
+        input: { objectType: "Base" },
+      }, SERVICE_TOKEN);
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as Record<string, unknown>).outcome).toBe("OK");
+      const rows = await t.repos.toolCalls.listByTask("task_w85_c4");
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.toolName).toBe("query_objects");
+      // kind 畸形 ⇒ 400 fail-closed（词表外值不许静默当 tool）
+      const bad = await callExecute(t, {
+        runToken: WF_RUN_TOKEN,
+        callId: "c4-2",
+        kind: "bogus",
+        toolName: "query_objects",
+        input: {},
+      }, SERVICE_TOKEN);
+      expect(bad.statusCode).toBe(400);
+    } finally {
+      await t.app.close();
     }
   });
 });
