@@ -491,7 +491,22 @@ describe("§3 · 输入唯一性：主区与下区**零输入控件**（PRD §4.
     );
   });
 
-  it("扰动输入整套在左区，且主区/下区里一个都找不到", async () => {
+  /**
+   * ⚠ **口径已随产品裁决改过一次**（本条曾因咬旧口径而长期红）。
+   *
+   * 旧口径「扰动**不点就看见**」写于 WO-SANDBOX-V3；`3266933e`（WO-SANDBOX-CONFIG-COLLAPSE，
+   * 2026-08-17）把承载扰动表单的配置面板改成**默认收起的横幅**——
+   * 该提交信息与 `SandboxView.tsx:507-525` 的头注都写明这是**仓主裁决**，
+   * 且由版面门的首屏锚点钉住（展开态实测画布顶边 1453px/900、1472px/800，全在折线以下）。
+   * 于是七件控件默认落在 `SandboxConfigPanel.tsx:253` 的行内 `display:none` 里 ⇒ 不可见。
+   *
+   * 新口径 = **一次点击就到**，分两段咬，缺一不可：
+   *  ① 收起态：七件**全部不可见**但**仍在 DOM**（D4：降层不是删除）；
+   *  ② 点一下横幅：七件**全部可见**。
+   * 只咬②的话，把表单再往里套一层折叠也照样绿；只咬①的话，把它删了也绿。
+   */
+  it("扰动输入整套在左区，收起态仍在 DOM，点开横幅一次即全部可见", async () => {
+    const user = userEvent.setup();
     mount();
     await ready();
     const input = screen.getByTestId("sandbox-zone-input");
@@ -512,8 +527,25 @@ describe("§3 · 输入唯一性：主区与下区**零输入控件**（PRD §4.
       expect(input.contains(el), `${id} 不在左区 ⇒ 输入区不唯一`).toBe(true);
       expect(canvas.contains(el)).toBe(false);
       expect(impact.contains(el)).toBe(false);
-      // 扰动是这一区的主角：**不点就看见**（不许再被塞进一层默认展开的折叠块里）
-      expect(el, `${id} 默认不可见 ⇒ 沙盘唯一的动作入口又被藏起来了`).toBeVisible();
+    }
+
+    const bar = screen.getByTestId("sandbox-config-bar");
+    /*
+      🐤 金丝雀：先证明此刻**确实是收起的**。默认态哪天被改回展开，这里不中 ⇒
+      报「前提变了」，而不是闷头点一下把它**关上**再断言可见 —— 那会让下半段红得莫名其妙。
+      （同款金丝雀见 `sandbox-config-ux.seam.test.tsx` 的 `ready()`。）
+    */
+    expect(bar.getAttribute("aria-expanded"), "配置面板默认态不是收起 ⇒ 本条的前提变了").toBe("false");
+    // ① 收起态：不可见，但一件不少地留在 DOM 里（上面的 `getByTestId` 已逐件证到）
+    for (const id of ids) {
+      expect(screen.getByTestId(id), `${id} 收起态下就可见 ⇒ 折叠没生效，前提变了`).not.toBeVisible();
+    }
+
+    // ② 一次点击 ⇒ 七件全可见。埋得比一层深（收起里再套一层折叠）在这里必红。
+    await user.click(bar);
+    await waitFor(() => expect(bar.getAttribute("aria-expanded")).toBe("true"));
+    for (const id of ids) {
+      expect(screen.getByTestId(id), `${id} 点开配置面板后仍不可见 ⇒ 沙盘唯一的动作入口埋得不止一层`).toBeVisible();
     }
   });
 
@@ -539,6 +571,21 @@ describe("§3 · 输入唯一性：主区与下区**零输入控件**（PRD §4.
     const user = userEvent.setup();
     mount();
     await ready();
+    /*
+      ⚠ 先把配置面板点开 —— 扰动说明整块住在里面，而它自 `3266933e`
+      （WO-SANDBOX-CONFIG-COLLAPSE，2026-08-17）起**默认收起**（行内 `display:none`），
+      本条的 ② 段咬的是 `?` 记号「默认可见」，收起态下它当然不可见，
+      于是这条曾长期红在一个与本判据（分层）**无关**的原因上。
+      本条要判的是**降层做没做对**，不是**面板开没开** —— 后者由
+      `sandbox-config-collapse.test.tsx` 专门咬，这里不重复。
+      ⚠ 必须**真的点**，不走"直接渲染展开态"的后门（生产走一条路、测试验另一条 = 假绿）。
+    */
+    const bar = screen.getByTestId("sandbox-config-bar");
+    // 🐤 金丝雀：证明此刻确实是收起的；默认态改了就报「前提变了」，别闷头把它点关上。
+    expect(bar.getAttribute("aria-expanded"), "配置面板默认态不是收起 ⇒ 本条的前提变了").toBe("false");
+    await user.click(bar);
+    await waitFor(() => expect(bar.getAttribute("aria-expanded")).toBe("true"));
+
     const note = screen.getByTestId("sandbox-perturbation-note");
 
     // ① 第一层：两个结论都在，中间那段机制说明**不在**。
