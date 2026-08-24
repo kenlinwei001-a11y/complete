@@ -44,6 +44,14 @@ export interface DshSetupSpec {
    */
   hostTools?: { name: string; description: string; inputSchema: Record<string, unknown> }[];
   /**
+   * WO-DSH-PROD-READY · W8.5：WORKFLOW 授予面（反向通道注册素材，同 hostTools 形态）。
+   * harness 侧 platform-world 注册成反向工具（execute 带 kind:"workflow" 经同一
+   * tool-execute 端点回宿主 runWorkflowAsTool；render 包装 = native loop.ts:820 逐字，
+   * 无 tool_call_id 属性——与 BUILTIN 面 :901 不同形，两臂各自单源）。
+   * 空/缺省 = 键不出（setup 帧逐字节旧行为，C4 锚）。
+   */
+  hostWorkflowTools?: { name: string; description: string; inputSchema: Record<string, unknown> }[];
+  /**
    * final_answer 终止工具的 schema 下发（harness 侧 scoped 注册；模型调它收尾 =
    * 我方 Answer 的结构化载体）。description/schema 单一出处 = agent/loop.ts 导出常量；
    * expectsSchema 模式下由 buildSessionSetup 替换为调用方 schema（raw input 直通 structured）。
@@ -244,6 +252,8 @@ export function buildSessionSetup(input: {
   finalAnswerDescription?: string;
   /** W8主：授予工具中 binding.kind==="BUILTIN" 的子集（name/description/inputSchema），engine 分叉处筛入。 */
   hostTools?: { name: string; description: string; inputSchema: Record<string, unknown> }[];
+  /** W8.5：授予工具中 binding.kind==="WORKFLOW" 的子集（同 hostTools 形态），engine 分叉处筛入。 */
+  hostWorkflowTools?: { name: string; description: string; inputSchema: Record<string, unknown> }[];
 }): DshSetupSpec {
   const { agent } = input;
   // final_answer/load_skill 是循环自加的元工具（AgentLoopOpts 契约：调用方 tools 不得含，
@@ -257,6 +267,7 @@ export function buildSessionSetup(input: {
     ...(input.mcpServers?.length ? { mcpServers: input.mcpServers } : {}),
     ...(input.skills?.length ? { skills: input.skills } : {}),
     ...(input.hostTools?.length ? { hostTools: input.hostTools } : {}),
+    ...(input.hostWorkflowTools?.length ? { hostWorkflowTools: input.hostWorkflowTools } : {}),
     governance: {
       ruleBindings: agent.ruleBindings,
       scopeObjectTypes: agent.scopeDeclaration.objectTypes,

@@ -62,7 +62,7 @@ export function apply(ctx, config = {}) {
   const callTimeoutMs = Number(process.env.DSH_TOOL_EXEC_TIMEOUT_MS ?? 20000)
   const fetchTimeoutMs = Number(process.env.DSH_TOOL_EXEC_FETCH_TIMEOUT_MS ?? (callTimeoutMs + 5000))
 
-  setToolExecutor(async ({ toolName, input, callId }) => {
+  setToolExecutor(async ({ toolName, input, callId, kind }) => {
     const envelope = (out) => ({ __w8bridge: true, ...out })
     try {
       const res = await fetch(url, {
@@ -77,6 +77,9 @@ export function apply(ctx, config = {}) {
           toolName,
           input,
           timeoutMs: callTimeoutMs,
+          // W8.5：additive kind 键——workflow 反向工具带 kind:'workflow'（宿主端点按 per-run
+          // 绑定表解析 workflowId，wire 永不带 workflowId）；BUILTIN 不带 ⇒ 请求体逐字节旧。
+          ...(kind ? { kind } : {}),
         }),
         signal: AbortSignal.timeout(fetchTimeoutMs),
       })

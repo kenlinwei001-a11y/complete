@@ -13,6 +13,10 @@
   **mock-llm 剧本外置化（蓝图 changes #1）已裁决撤销**，本层零 product 改动。
 - dsh 臂 **meta-tools only**（裁决）：生产档零真工具插件，scoped 世界可用 =
   final_answer（恒）+ load_skill（挂技能时）。语料剧本只用这两件 + 纯文本轮。
+  **（W8.5 加注 2026-08-24：dr50-cm 起例外——该任务 agent 挂 WORKFLOW ref，dsh 臂经
+  W8.5 反向通道（hostWorkflowTools 下发 ⇒ harness 注册反向工具 ⇒ tool-execute 端点
+  kind:"workflow" ⇒ 宿主 runWorkflowAsTool）真调 workflow 工具，driver 对该任务 dsh 臂
+  真 listen。其余 64 条维持 meta-only 不变。）**
 
 ## 1. 发车哨兵（防 native-vs-native 假绿，蓝图 risks #3）
 
@@ -90,6 +94,12 @@ stats 键 → 滤收缩白名单（ALLOWED_PSEUDO_TYPES 去 final_answer/load_sk
 meta-only 语料下两臂非伪步序列均空（load_skill/final_answer 两臂同不产 step 事件）——
 本面价值 = 50 任务扫频下零意外事件泄漏 + 白名单反咬；真工具 SSE parity 物理不可达
 （dsh 臂无真工具），登记为固有不对称 #3 的推论。
+**（W8.5 加注 2026-08-24：dr50-cm 起真工具 SSE 进入对账——nested workflow 步事件
+（step.started/completed × qo/ra）两臂同 workflow executor 码发射、逐项等（dsh 臂事件
+来自宿主端点 workflowCtx.emit 路径而非帧流——emit 出处差，§3 #15）；dsh 臂另有帧流
+mapper 为 workflow 调用自身发的 step.started/step.completed 两条，native WORKFLOW 分支
+无该发射点（loop.ts:848-849 仅 executor 路径）⇒ 声明制剥除 + 双向反向钉（dsh 必产 /
+native 必不产），剥除面锁死 workflow 语料任务。）**
 
 #### A3 补表 · 事件族覆盖矩阵（W5 块1；15 族 = KNOWN_EVENTS 十名 ∪ ALLOWED_PSEUDO_TYPES 五名）
 
@@ -102,9 +112,9 @@ meta-only 语料下两臂非伪步序列均空（load_skill/final_answer 两臂�
 | routing.completed | 编排层事件·本驱动级不可达（orchestrator 路由面发射点群） |
 | clarification.required | 编排层事件·本驱动级不可达（orchestrator:1351） |
 | coordinator.planned | 编排层事件·本驱动级不可达（orchestrator:2546） |
-| step.started（真工具名族） | 真工具步族·meta-only 语料不可达（固有不对称 #3；发射点 loop.ts:847 / mapper tool/call 分支） |
-| step.completed（真工具名/status 族） | 真工具步族·meta-only 语料不可达（固有不对称 #3；loop.ts:848 / mapper tool/result 分支） |
-| answer.final | **真触发**：全部 64 条（双臂；测试镜像 orchestrator:2187 同行发射；矩阵实证锚 dr50-aa） |
+| step.started（真工具名族） | **真触发**：dr50-cm（W8.5 翻锚 2026-08-24——nested workflow qo/ra 步两臂同 executor 码发射；dsh 臂另有帧流 mapper 的 step.started:workflow_dr50cm，A3 声明制剥除，§3 #15；矩阵实证精确族集） |
+| step.completed（真工具名/status 族） | **真触发**：dr50-cm（同上行；dsh 臂观测集另含 status 形 `step.completed:`（mapper tool/result 分支无 type 键）+ agent_narration 既有族） |
+| answer.final | **真触发**：全部 65 条（双臂；测试镜像 orchestrator:2187 同行发射；矩阵实证锚 dr50-aa） |
 | action_draft.created | 编排层事件·本驱动级不可达（orchestrator:2171 runPathB 段） |
 | task.failed | 编排层事件·本驱动级不可达（orchestrator:1727/:2876；runRegisteredAgent 层 FAILED 无 SSE 发射） |
 | task.cancelled | 编排层事件·本驱动级不可达（orchestrator 取消面发射点群） |
@@ -126,7 +136,9 @@ meta-only 语料下两臂非伪步序列均空（load_skill/final_answer 两臂�
   toolName/outcome 序列 + load_skill input 深等）；dsh 臂 iterations 锚 = W9-full 帧流骨架
   （固有不对称 #4 已销 + #10 部分销：step 分组每 LLM 轮一迭代（含空轮，native 同粒度）+ 剧本
   非 meta 调用逐轮对点 + outcome 词表四态（OK/DENIED/ERROR/BUDGET_EXCEEDED——侧表命中支
-  有源；本语料 meta-only 侧表恒空，值面恒 OK/ERROR，锚值不变）+ toolCallId tc_ 形态许可
+  有源；meta-only 任务侧表恒空、值面恒 OK/ERROR，锚值不变；**W8.5 加注：dr50-cm 的
+  workflow 调用经宿主端点侧表命中——outcome OK + toolCallId = 宿主审计行 tc_ id，
+  四态合流零改动吃到**）+ toolCallId tc_ 形态许可
   （命中支 tc_/未命中支帧 callId 原值；结构齿：DENIED/BUDGET_EXCEEDED 唯侧表可产 ⇒ 该两态
   必 tc_ 形态）+ durationMs 非负形态锚；零 spawn 任务恒 === [] 维持空壳诚实缺省）。
 - **dsh stats 对齐**（固有不对称 #4 的另一半）：dsh 臂 token 账双载体同源——answer.stats
@@ -156,6 +168,10 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
 2. skill precondition 预检在分叉前 ⇒ deny_prefork 类 dsh 臂零 spawn（反向哨兵），kernel 为 flag 态值。
 3. 两臂工具集物理不同（dsh meta-only vs native builtin）⇒ 语料两臂同用 meta 剧本保 parity；
    真工具对账物理不可达，L1 不声明该覆盖。
+   **（W8.5 加注 2026-08-24：「dsh 无真工具」前提对 workflow 方向部分松动——dr50-cm 的
+   dsh 臂经反向通道真调 workflow 工具（宿主 runWorkflowAsTool 执行），真工具对账首次
+   进入 L1（A3 步事件逐项等 + A4b 审计行真对账）。BUILTIN 反向工具（W8主）语料面仍
+   未引入真调用；MCP 工具不过宿主维持（#10）。本条主体对 meta-only 64 条维持有效。）**
 4. **【已销账·W9-full 2026-08-22】** dsh 臂审计记录为空壳（iterations []、tokens 0/0）⇒
    native 迭代锚 + dsh stats 对齐代之，两臂 token/迭代不互比。销账路径：W9-lite 帧流骨架
    （iterations/tokens 回填）→ W9-full 侧表合流（四态+tc_+宿主 durationMs）→ A4 单翻落线。
@@ -184,6 +200,13 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
    A4b 反咬维持有效；未来语料引入真反向调用时 A4b 须按本登记翻锚。）**
    **（W9-full 销账加注 2026-08-22：空壳本体已销（见条首）。A4b 审计行维度**不随本条销账**——
    语料面 dsh 臂仍恒零行，「dsh 臂若开始写审计行 = 红」反咬维持有效，翻锚时点同 W8主 加注。）**
+   **（W8.5 翻锚加注 2026-08-24：翻锚时点已到——dr50-cm 语料声明 expect.auditRows（A4b 按
+   任务维度修订），该任务两臂审计行**真对账**：各行 toolName/outcome/input 逐点深等语料声明
+   （实测两臂各 2 行 = 内层 query_objects 步 executor 自落行 + 外层 workflow_dr50cm 行——
+   native loop.ts:805-815 与 dsh 端点 workflow 分支同字段口径），行 id 钉 tc_ 形态（归一化
+   为形态锚，不比值）。未声明任务旧锚零放宽：native 每轮 load_skill 一行逐点锚 / dsh 臂
+   toEqual([]) 反咬 / deny_prefork 两臂同零，全部维持。声明面恰 1 条且必挂 workflow 任务，
+   A0 闸钉死防外溢。）**
 5. **缝观察（denied final_answer 的 blocks 仍上 answer 面）**：dsh 帧流 tool/call 在派发前记录
    （agent-loop lib/index.js:191 appendToolCall 在派发 :196 之前），pre-execute deny 不抹帧；reassemble collectToolCalls 不滤成败
    ⇒ 被拒 final_answer 的 blocks 仍成 answer。deny 的执行证据只能在 wire/帧面断言，answer 面
@@ -310,10 +333,33 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
    真 provider 含非法字符工具名的工具面 parity 另立裁决）。
    锚收窄真发生的防假绿断言：mcp__ 前缀子集恰等语料声明的滤后留存名（dr50-cl =
    仅 `mcp__dr50cl__echo`）。
+15. **W8.5 workflow 反向化的对账差登记（dr50-cm 实证，2026-08-24）**：
+   ① **emit 出处差**：dsh 臂 nested workflow 步事件（step.started/completed × qo/ra）来自
+   宿主端点 workflowCtx.emit 路径（tool-execute kind:"workflow" 分支 ⇒ runWorkflowAsTool
+   透传 emit），非帧流；native 臂同码 in-process 发射。事件名序列逐项等（同一 workflow
+   executor 码），出处不进断言。
+   ② **调用自身步事件的臂差**：dsh 臂帧流 mapper 为 workflow 调用自身发
+   step.started{type:workflow_<key>} + step.completed{stepId,status}（reassemble mapper
+   tool/call·tool/result 分支）；native WORKFLOW 分支无该发射点（loop.ts:848-849 的
+   step.started/step.completed 仅 executor 路径，WORKFLOW 分支 :764-833 提前返回）。
+   ⇒ A3 声明制剥除 + 双向反向钉（dsh 必产该两条 = 反向通道真调用之证；native 必不产 =
+   发射点漂移即红），剥除面锁死 workflow 语料任务。
+   ③ **无 per-call timeout 对位**：native WORKFLOW 分支无 callTimeoutMs 竞速（对 BUILTIN
+   路径 :838-839 而言），dsh 端点 workflow 分支同样无 per-call timeout——两臂界同为
+   nested 共享预算（enterNesting 同一 budget 的 tryConsumeWorkflow）。桥本地 fetch 放弃线
+   仍可能先咬 ⇒ 孤儿审计行合法形态（#12 同口径）。
+   ④ **outcome 两态词表（OK/ERROR）**：workflow 内部 CANCELLED/FAILED 与 nested 预算
+   tryConsumeWorkflow 的 BUDGET_EXCEEDED throw 一律收敛为 ERROR（payload 保错误码），
+   不映射 BUDGET_EXCEEDED outcome、不触发 B6 cancel 桥——native loop.ts:791-800 同口径
+   （catch ⇒ ERROR），两臂无四态对位差。
+   ⑤ **幻觉名 fail-closed = ERROR 非 DENIED**：绑定表 miss（模型幻觉调用绑定表外
+   workflow 名）⇒ ERROR + WORKFLOW_TOOL_UNBOUND——native 面该工具根本不在模型可见集，
+   无 DENIED 对位；wire 禁带 workflowId（端点永不读取 body.workflowId），绑定表 =
+   唯一解析权威（缝 C2 钉死）。
 
-## 4. 语料构成（64 条 + 2 gated）
+## 4. 语料构成（65 条 + 2 gated）
 - 内容源：20 条 = SCENARIO_CATALOG triggerQuestion（执行通道不借 evals——蓝图 evidence 5）；
-  43 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮 load_skill；
+  44 条合成：四维造（长度：短问句 / ≥4KB 长上下文；工具轮：0/1/3 轮 load_skill；
   多轮：1/2/5 次 LLM 往返；拒绝混合：deny_pre 前置 / deny_mid 中段 / deny_all 全 deny /
   deny_prefork 分叉前）+ W2 批1 扩面 6 条：G1 EMPTY 空块类 4（dr50-by 空 blocks /
   dr50-bz 空 markdown 块 / dr50-ca 空白软收尾 / dr50-cb 空块混排）+ G4 超长输出 2
@@ -328,10 +374,14 @@ A5 子集（语料声明 8 条：每类至少一 + 长上下文 + 多轮 + prove
   治理位透传）、dr50-ck reasoning 流（stub reasoning 通道 ⇒ dsh 臂 agent_think 族真触发，
   A3c 矩阵精确族集锚）+ W8副 扩面 1 条：dr50-cl MCP 可见性 name-set parity
   （CorpusMcp 声明面：两臂同 seed 三工具表 + toolFilter 滤一留一；豁免与边界 §3 #14，
-  不咬 description 字节 §3 #13）。
+  不咬 description 字节 §3 #13）+ W8.5 扩面 1 条：dr50-cm workflow 工具双臂对拍
+  （CorpusWorkflow 声明面：两步夹具 query_objects+render_answer 两臂同 seed；dsh 臂真
+  listen 经 tool-execute kind:"workflow" 反向执行；A3 帧流两条声明制剥除 §3 #15②；
+  A4b 翻锚双臂审计行真对账 §3 #4 W8.5 加注）。
 - 每条 = 数据对 {native 臂 mock 队列剧本，dsh 臂 stub 剧本（+PLATFORM_GOV_DENY 声明），
   期望值声明（answer / native 迭代锚 / native token 锚 / dsh stats 锚 / deny wire 证据位 /
-  EMPTY 豁免位 / expectsSchema 与 structured 锚 / lengthDivergence 分锚）}。
-- 自检闸（driver 首条 it）：总数 64、deny ≥10、四维覆盖全到位、A5 子集 ∈ 语料、
+  EMPTY 豁免位 / expectsSchema 与 structured 锚 / lengthDivergence 分锚 / auditRows 审计行锚）}。
+- 自检闸（driver 首条 it）：总数 65、deny ≥10、四维覆盖全到位、A5 子集 ∈ 语料、
   EMPTY 豁免位双恰（豁免 ⇔ 期望答案无 marker；豁免任务 prompt 必含 id）、gated 槽在册、
-  mcp 声明任务恰 1 条（dr50-cl，§3 #14）。
+  mcp 声明任务恰 1 条（dr50-cl，§3 #14）、workflow 声明任务恰 1 条（dr50-cm，§3 #15）、
+  auditRows 翻锚声明恰 1 条且必挂 workflow 任务。

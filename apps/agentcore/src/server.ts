@@ -2216,9 +2216,15 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       toolName?: unknown;
       input?: unknown;
       timeoutMs?: unknown;
+      kind?: unknown;
     };
     if (typeof body.runToken !== "string" || typeof body.callId !== "string" || typeof body.toolName !== "string") {
       throw new HttpError(400, "VALIDATION_ERROR", "tool-execute 载荷需 {runToken, callId, toolName: string, input, timeoutMs?}");
+    }
+    // W8.5：additive 可选 kind（缺席 = tool，W8主 桥逐字节旧行为）；词表外值 fail-closed 400
+    // （不许静默当 tool——静默会把 workflow 调用落进 executor 路，mutation m1 咬位）。
+    if (body.kind !== undefined && body.kind !== "tool" && body.kind !== "workflow") {
+      throw new HttpError(400, "VALIDATION_ERROR", 'kind 仅许 "tool" | "workflow"（缺席 = tool）');
     }
     const entry = deps.engine.dshToolExecuteRuns.get(body.runToken);
     if (!entry) throw new HttpError(401, "UNAUTHORIZED", "unknown or expired runToken");
@@ -2226,6 +2232,79 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       throw new HttpError(409, "CALL_ID_REPLAY", "callId 在同一 run 内一次性（重放拒绝）");
     }
     entry.seenCallIds.add(body.callId);
+    // ── W8.5 workflow 分支（kind:"workflow"）──────────────────────────────────
+    // 绑定表 = 唯一 workflowId 解析权威：wire 禁带 workflowId——body 即使夹带也永不读取
+    // （防子进程越权点名绑定表外任意 workflow；mutation m2 咬位）。表成员即 scope 闸
+    // （等价论证见 engine.ts DshToolExecuteRun.workflowBindings 注）。
+    // outcome 两态词表 OK/ERROR（native parity loop.ts:764-833）：绑定表 miss（幻觉调用——
+    // native 面该工具根本不可见，无 DENIED 对位）/ CANCELLED / FAILED / nested
+    // tryConsumeWorkflow 的 BUDGET_EXCEEDED throw 一律 ERROR（payload 保错误码），
+    // 不映射 BUDGET_EXCEEDED outcome、不触发 B6 cancel 桥（native 无此对位）。
+    // 无 per-call timeout 竞速：native loop.ts:791 无 callTimeoutMs 对位，界 = nested
+    // 共享预算（enterNesting 同一 budget）；桥本地 fetch 放弃线仍可能先咬 ⇒ 孤儿行
+    // 合法形态（REC §3 B3 同口径）。
+    if (body.kind === "workflow") {
+      const t0 = Date.now();
+      let outcome: "OK" | "ERROR" = "OK";
+      let payload: unknown;
+      const binding = entry.workflowBindings?.get(body.toolName);
+      if (!binding || !entry.workflowCtx) {
+        outcome = "ERROR";
+        payload = { error: "WORKFLOW_TOOL_UNBOUND", message: `workflow tool not bound in this run: ${body.toolName}` };
+      } else {
+        try {
+          // 执行体直调 engine.runWorkflowAsTool（workflowCtx 透传）——nested 预算/留痕/
+          // metrics/emit 全走既有内部逻辑，零复刻。
+          payload = await deps.engine.runWorkflowAsTool({
+            taskId: entry.workflowCtx.taskId,
+            workflowId: binding.workflowId,
+            version: binding.version,
+            input: (body.input ?? {}) as Record<string, unknown>,
+            ctx: entry.workflowCtx.ctx,
+            nesting: entry.workflowCtx.nesting,
+            emit: entry.workflowCtx.emit,
+            onResolvedRef: entry.workflowCtx.onResolvedRef,
+          });
+        } catch (err) {
+          outcome = "ERROR";
+          payload = { error: err instanceof Error ? err.message : String(err) };
+        }
+      }
+      const durationMs = Date.now() - t0;
+      const tcId = newId("tc");
+      // 审计行字段逐一对齐 native loop.ts:805-815（outputDigest:"" / output=payload /
+      // durationMs 实测 / createdAt）。workflowCtx 缺席（旧形态条目）时行不落——
+      // ERROR 包络照常回（fail-closed 不依赖审计面）。
+      if (entry.workflowCtx) {
+        await deps.repos.toolCalls.insert({
+          id: tcId,
+          taskId: entry.workflowCtx.taskId,
+          toolName: body.toolName,
+          input: body.input,
+          outputDigest: "",
+          output: payload ?? null,
+          outcome,
+          durationMs,
+          createdAt: new Date().toISOString(),
+        });
+        deps.metrics.toolCalls.inc({ tool: body.toolName, outcome }); // loop.ts:816 同口径
+      }
+      // 侧表累积位置同 tool 分支（409 检查后、outcome 分支前）⇒ reassemble 四态合流
+      // 零改动吃到（两态值域内）。
+      entry.hostToolCalls.set(body.callId, { outcome, toolCallId: tcId, durationMs });
+      if (outcome === "OK") {
+        const t = truncateToolResultJson(payload);
+        return {
+          outcome: "OK",
+          payloadJson: t.json,
+          truncated: t.truncated,
+          ...(t.note ? { note: t.note } : {}),
+          toolCallId: tcId,
+          durationMs,
+        };
+      }
+      return { outcome: "ERROR", payload, toolCallId: tcId, durationMs };
+    }
     const requestedTimeoutMs = body.timeoutMs === undefined ? undefined : Number(body.timeoutMs);
     if (requestedTimeoutMs !== undefined && (!Number.isInteger(requestedTimeoutMs) || requestedTimeoutMs < 1)) {
       throw new HttpError(400, "VALIDATION_ERROR", "timeoutMs 需正整数");
