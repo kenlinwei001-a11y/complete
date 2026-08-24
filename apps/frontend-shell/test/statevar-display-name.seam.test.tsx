@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { SandboxViewConfig, SimSession } from "@platform/contracts";
 
@@ -147,8 +148,24 @@ describe("WO-STATEVAR-DISPLAYNAME · 状态变量中文名真上屏（SEAM）", 
   });
 
   it("④ 扰动落点下拉同样显人话名，但提交给引擎的 value 仍是**接线名**（改的是展示层，不是接线名）", async () => {
+    const user = userEvent.setup();
     wrap(cfgWith({ loadIndex: "负载指数" }));
     await screen.findByTestId("sandbox-view");
+
+    /*
+      ⚠ 先把配置面板点开 —— 这个下拉住在里面，而它自 `3266933e`
+      （WO-SANDBOX-CONFIG-COLLAPSE，2026-08-17，仓主裁决）起**默认收起**：
+      `SandboxConfigPanel.tsx:253` 给整块打行内 `display:none`，
+      于是 `getAllByRole("option")` 报「there are no accessible roles」——
+      本条曾长期红在这个与「名字有没有上屏」毫不相干的原因上。
+      ⚠ 走**真点击**，不用 `{ hidden: true }` 绕过去：那样连"下拉根本点不开"
+      也照样绿，等于把本条从「人话名真上屏」降成「DOM 里有这个字符串」。
+    */
+    const bar = await screen.findByTestId("sandbox-config-bar");
+    // 🐤 金丝雀：默认态若已不是收起，报「前提变了」，别闷头点一下反而把它关上。
+    expect(bar.getAttribute("aria-expanded"), "配置面板默认态不是收起 ⇒ 本条的前提变了").toBe("false");
+    await user.click(bar);
+    await waitFor(() => expect(bar.getAttribute("aria-expanded")).toBe("true"));
 
     const select = await screen.findByTestId("sandbox-perturbation-statevar");
     const opts = within(select).getAllByRole("option") as HTMLOptionElement[];
