@@ -1,6 +1,13 @@
 import { Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CHAIN_NODE_REGISTRY, ChainNodeDetailSchema, type ChainNodeDetail, type ImpactChange } from "@platform/contracts";
+import {
+  BASE_REGISTRY,
+  CHAIN_NODE_REGISTRY,
+  ChainNodeDetailSchema,
+  chainNodeDef,
+  type ChainNodeDetail,
+  type ImpactChange,
+} from "@platform/contracts";
 import { api } from "@/api/apiClient";
 import { ImpactCone, useImpactCone } from "./ImpactCone";
 import { StrategyCards, useMitigationCards, type MitigationArgs } from "./StrategyCards";
@@ -31,6 +38,48 @@ import styles from "./SandboxDetail.module.css";
  * ⚠ README「已知的取舍」第 2 条：**左侧地铁图被面板边界裁切是效果不是缺陷**（地图延续出画面）。
  *   段名看不见是照参考图来的，别去"修"。
  */
+
+// ══════════════════════════════════════════════════════════════════════════
+// § 0 · 屏上的业务名词一律查契约冻结册（R14「应用层无业务常数」）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 环节名 ← `CHAIN_NODE_REGISTRY`（`packages/contracts/src/chain-sim.ts`）。
+ *
+ * 本文件 §2 的地铁图早就是这么做的（`laneNodeLabel` + 「一个字都不许自己编」的用例），
+ * 而 §1 的占位表格却把同一批环节名**又手写了一遍** —— 同一个事实两处各存一份，
+ * 迟早漂开。这里把 §1 也接到同一个册上，判据仍是那句：**换注册表 = 换租户**。
+ *
+ * ⚠ 不在册即**抛**，不静默回退到手写串：回退会让「注册表少一条」表现成屏上一切正常。
+ */
+function nodeLabel(nodeId: string): string {
+  const def = chainNodeDef(nodeId);
+  if (def === undefined) throw new Error(`不在 CHAIN_NODE_REGISTRY 里的环节：${nodeId}`);
+  return def.label;
+}
+
+/**
+ * 基地名 ← `BASE_REGISTRY`（`packages/contracts/src/base-registry.ts`）。
+ * 该文件头原话：「**所有消费端从 BASE_REGISTRY 派生，改一处全局同步（DF.1/G-5/R14）**」，
+ * 后端 `apps/datacore/src/synthetic/battery.ts` 更是对不在册的基地名**直接抛**
+ * （`基地「X」不在 BASE_REGISTRY 单一来源册`）。前端视图理应同册。
+ *
+ * ⚠ **本单实测：规格占位里的「盐城」在 `BASE_REGISTRY` 13 个基地里一条都没有**
+ *   （复验：`grep -rn 盐城 packages/contracts/src/` = 0 命中；金丝雀「常州」同命令命中 5 文件
+ *   ⇒ 工具是好的）。也就是说这一页此前把一个**本系统并不存在的基地**画在屏上，
+ *   同名的东西拿去问后端会被上面那句 throw 挡掉。故本单把它换成在册基地（扬州，同属江苏），
+ *   **不是**改名，是把幻影基地换成真基地。
+ */
+function baseName(baseId: string): string {
+  const hit = BASE_REGISTRY.find((b) => b.baseId === baseId);
+  if (hit === undefined) throw new Error(`不在 BASE_REGISTRY 里的基地：${baseId}`);
+  return hit.name;
+}
+
+/** 本页占位场景里的三个基地：主基地 + 两个承接基地（原规格的「盐城」见 `baseName` 注释）。 */
+const HOME_BASE = "changzhou";
+const PEER_BASE_A = "yangzhou";
+const PEER_BASE_B = "hefei";
 
 // ══════════════════════════════════════════════════════════════════════════
 // § 1 · 占位数据（**集中在这一处**，不许散进 JSX）
@@ -104,29 +153,34 @@ const LEVEL_TOKEN = ["var(--ok)", "var(--accent)", "var(--warn)", "var(--danger)
  */
 const PLACEHOLDER_NODE_DETAIL: NodeDetailPayload = {
   clock: "2027年3月14日　12:28:39",
-  directions: ["传导方向 - 常州→盐城", "传导方向 - 常州→合肥"],
+  directions: [
+    `传导方向 - ${baseName(HOME_BASE)}→${baseName(PEER_BASE_A)}`,
+    `传导方向 - ${baseName(HOME_BASE)}→${baseName(PEER_BASE_B)}`,
+  ],
   filters: [
     { label: "产能影响", on: true },
     { label: "物料影响", on: true },
     { label: "时间偏差", on: false },
     { label: "成本偏差", on: false },
   ],
-  // 规格里的 D[] / N[] / M[] 三张表展开后的样子（`环节` 一列是端点未接通前的占位文案）。
+  // 规格里的 D[] / N[] / M[] 三张表展开后的样子。
+  // `环节` 一列**整列查注册表**（`nodeId` → `CHAIN_NODE_REGISTRY.label`）：端点接通前它是占位行，
+  // 但「哪些环节存在、各叫什么」不是本视图能编的事实 —— 那是链路注册表的事实。
   conduction: [
-    { batch: "P2161", node: "老化静置", model: "LFP-314", wip: "4.2k", level: 1, elapsed: "21'12" },
-    { batch: "P2162", node: "齐套发料", model: "NCM-300", wip: "3.8k", level: 3, elapsed: "32'42", selected: true },
-    { batch: "P2161", node: "过程质检", model: "NCM-050", wip: "2.6k", level: 2, elapsed: "12'12" },
-    { batch: "P2161", node: "老化静置", model: "LFP-250", wip: "4.0k", level: 2, elapsed: "17'29" },
-    { batch: "P2161", node: "排产计划", model: "LFP-314", wip: "1.9k", level: 1, elapsed: "8'32" },
-    { batch: "P2161", node: "齐套发料", model: "NCM-300", wip: "3.1k", level: 2, elapsed: "12'09" },
-    { batch: "P2161", node: "干线在途", model: "NCM-050", wip: "2.2k", level: 2, elapsed: "14'18" },
-    { batch: "P2161", node: "老化静置", model: "LFP-314", wip: "4.4k", level: 2, elapsed: "3'12" },
-    { batch: "P2161", node: "过程质检", model: "LFP-250", wip: "3.6k", level: 2, elapsed: "12'12" },
-    { batch: "P2161", node: "齐套发料", model: "LFP-314", wip: "2.8k", level: 1, elapsed: "8'32" },
-    { batch: "P2161", node: "排产计划", model: "NCM-300", wip: "3.3k", level: 2, elapsed: "14'18" },
-    { batch: "P2161", node: "老化静置", model: "NCM-050", wip: "4.1k", level: 2, elapsed: "3'12" },
-    { batch: "P2161", node: "干线在途", model: "LFP-250", wip: "2.4k", level: 2, elapsed: "12'12" },
-    { batch: "P2161", node: "过程质检", model: "LFP-314", wip: "3.9k", level: 1, elapsed: "9'44" },
+    { batch: "P2161", node: nodeLabel("capacity.aging"), model: "LFP-314", wip: "4.2k", level: 1, elapsed: "21'12" },
+    { batch: "P2162", node: nodeLabel("material.kitting"), model: "NCM-300", wip: "3.8k", level: 3, elapsed: "32'42", selected: true },
+    { batch: "P2161", node: nodeLabel("capacity.qc_batch"), model: "NCM-050", wip: "2.6k", level: 2, elapsed: "12'12" },
+    { batch: "P2161", node: nodeLabel("capacity.aging"), model: "LFP-250", wip: "4.0k", level: 2, elapsed: "17'29" },
+    { batch: "P2161", node: nodeLabel("capacity.schedule"), model: "LFP-314", wip: "1.9k", level: 1, elapsed: "8'32" },
+    { batch: "P2161", node: nodeLabel("material.kitting"), model: "NCM-300", wip: "3.1k", level: 2, elapsed: "12'09" },
+    { batch: "P2161", node: nodeLabel("delivery.transit"), model: "NCM-050", wip: "2.2k", level: 2, elapsed: "14'18" },
+    { batch: "P2161", node: nodeLabel("capacity.aging"), model: "LFP-314", wip: "4.4k", level: 2, elapsed: "3'12" },
+    { batch: "P2161", node: nodeLabel("capacity.qc_batch"), model: "LFP-250", wip: "3.6k", level: 2, elapsed: "12'12" },
+    { batch: "P2161", node: nodeLabel("material.kitting"), model: "LFP-314", wip: "2.8k", level: 1, elapsed: "8'32" },
+    { batch: "P2161", node: nodeLabel("capacity.schedule"), model: "NCM-300", wip: "3.3k", level: 2, elapsed: "14'18" },
+    { batch: "P2161", node: nodeLabel("capacity.aging"), model: "NCM-050", wip: "4.1k", level: 2, elapsed: "3'12" },
+    { batch: "P2161", node: nodeLabel("delivery.transit"), model: "LFP-250", wip: "2.4k", level: 2, elapsed: "12'12" },
+    { batch: "P2161", node: nodeLabel("capacity.qc_batch"), model: "LFP-314", wip: "3.9k", level: 1, elapsed: "9'44" },
   ],
   strip: {
     kms: [
@@ -144,10 +198,11 @@ const PLACEHOLDER_NODE_DETAIL: NodeDetailPayload = {
       { label: "阻滞时间 38:24", left: "58%" },
       { label: "阻滞时间", left: "86%" },
     ],
+    // 与 `ImpactCone.CONE_SLOTS` 同三个环节（时间条徽标 ↔ 扇区图冲击条是同一批事实的两个视图）。
     chips: [
-      { label: "齐套冲击 P2", left: "28%" },
-      { label: "排产冲击 P1", left: "52%" },
-      { label: "老化冲击 Y1", left: "80%" },
+      { label: `${nodeLabel("material.kitting")} P2`, left: "28%" },
+      { label: `${nodeLabel("capacity.schedule")} P1`, left: "52%" },
+      { label: `${nodeLabel("capacity.aging")} Y1`, left: "80%" },
     ],
   },
   card: {
@@ -156,7 +211,8 @@ const PLACEHOLDER_NODE_DETAIL: NodeDetailPayload = {
     kv: [
       ["节点编号", "P4212"],
       ["口径校准", "关闭"],
-      ["环节类型", "老化静置"],
+      // 真数据模式下这一格由 `projectNodeDetail` 换成 `res.node.label`（也是注册表的字）。
+      ["环节类型", nodeLabel("capacity.aging")],
       ["上游工位", "160#"],
       ["传导能力", "是", true],
       ["在制批量", "3000"],
@@ -183,59 +239,68 @@ const PLACEHOLDER_NODE_DETAIL: NodeDetailPayload = {
   callout: ["批号 P4212", "在制 6.8k 套", "库存 3.8k 套", "节拍 1.2/h"],
 };
 
-/** 左下甘特（规格 `R[]`）：每行四段 [left%, width%, 类型, 文案]。 */
+/**
+ * 左下甘特（规格 `R[]`）：每行四段 [left%, width%, 类型, 文案]。
+ *
+ * 段名里**凡是链路环节的**一律查注册表（`nodeLabel`）：这批词与注册表 label **逐字相同**，
+ * 换成查表是零像素变化、只把出处从「手写」改成「冻结册」。
+ * 「缓冲释放 / 结转 / 入厂在途」三个**不在** `CHAIN_NODE_REGISTRY` 里
+ * （前两个是动作不是环节；「入厂在途」是规格给 `material.inbound_transit`
+ * 「入厂在途与清关」起的短名，与 label 不逐字相同）—— 这三个留在原地，
+ * 硬套一个 nodeId 上去等于在视图里新造一套环节命名，那比写死更坏。
+ */
 const GANTT_ROWS: readonly (readonly (readonly [number, number, "o" | "b" | "g", string])[])[] = [
   [
-    [2, 20, "o", "请购"],
-    [30, 26, "b", "齐套发料"],
+    [2, 20, "o", nodeLabel("material.purchase_req")],
+    [30, 26, "b", nodeLabel("material.kitting")],
     [62, 20, "g", "缓冲释放"],
     [86, 12, "o", "结转"],
   ],
   [
-    [6, 18, "o", "采购下单"],
-    [28, 28, "b", "老化静置"],
+    [6, 18, "o", nodeLabel("material.purchase_order")],
+    [28, 28, "b", nodeLabel("capacity.aging")],
     [60, 22, "g", "缓冲释放"],
     [86, 12, "o", "结转"],
   ],
   [
     [3, 22, "o", "入厂在途"],
-    [30, 24, "b", "齐套发料"],
+    [30, 24, "b", nodeLabel("material.kitting")],
     [58, 24, "g", "缓冲释放"],
     [85, 13, "o", "结转"],
   ],
   [
-    [5, 19, "o", "到货检验"],
-    [27, 27, "b", "老化静置"],
+    [5, 19, "o", nodeLabel("material.iqc")],
+    [27, 27, "b", nodeLabel("capacity.aging")],
     [59, 23, "g", "缓冲释放"],
     [85, 13, "o", "结转"],
   ],
   [
-    [2, 21, "o", "请购"],
-    [26, 29, "b", "齐套发料"],
+    [2, 21, "o", nodeLabel("material.purchase_req")],
+    [26, 29, "b", nodeLabel("material.kitting")],
     [60, 21, "g", "缓冲释放"],
     [84, 14, "o", "结转"],
   ],
   [
-    [4, 20, "o", "采购下单"],
-    [29, 25, "b", "老化静置"],
+    [4, 20, "o", nodeLabel("material.purchase_order")],
+    [29, 25, "b", nodeLabel("capacity.aging")],
     [57, 25, "g", "缓冲释放"],
     [85, 13, "o", "结转"],
   ],
   [
-    [3, 19, "o", "到货检验"],
-    [25, 30, "b", "齐套发料"],
+    [3, 19, "o", nodeLabel("material.iqc")],
+    [25, 30, "b", nodeLabel("material.kitting")],
     [58, 23, "g", "缓冲释放"],
     [84, 14, "o", "结转"],
   ],
   [
     [6, 17, "o", "入厂在途"],
-    [27, 26, "b", "老化静置"],
+    [27, 26, "b", nodeLabel("capacity.aging")],
     [56, 26, "g", "缓冲释放"],
     [85, 13, "o", "结转"],
   ],
   [
-    [2, 22, "o", "请购"],
-    [28, 27, "b", "齐套发料"],
+    [2, 22, "o", nodeLabel("material.purchase_req")],
+    [28, 27, "b", nodeLabel("material.kitting")],
     [59, 22, "g", "缓冲释放"],
     [84, 14, "o", "结转"],
   ],
@@ -260,9 +325,9 @@ const PLAN_ROWS: readonly {
   action: string;
   danger?: boolean;
 }[] = [
-  { name: "齐套计划 P1", line: "L-16", material: "LFP-9 x3…", team: "xxx 队", target: "3/22", level: 1, action: "正常执行" },
+  { name: `${nodeLabel("material.kitting")} P1`, line: "L-16", material: "LFP-9 x3…", team: "xxx 队", target: "3/22", level: 1, action: "正常执行" },
   {
-    name: "齐套计划 P2",
+    name: `${nodeLabel("material.kitting")} P2`,
     line: "L-22",
     material: "LFP-9 x3…",
     team: "xxx 团",
@@ -271,14 +336,14 @@ const PLAN_ROWS: readonly {
     action: "取消方案",
     danger: true,
   },
-  { name: "老化计划 Y1", line: "L-25", material: "LFP-22 x3…", team: "xxx 队", target: "3/22", level: 1, action: "正常执行" },
-  { name: "老化计划 Y2", line: "L-25", material: "LFP-21 x3…", team: "xxx 团", target: "3/22", level: 1, action: "正常执行" },
+  { name: `${nodeLabel("capacity.aging")} Y1`, line: "L-25", material: "LFP-22 x3…", team: "xxx 队", target: "3/22", level: 1, action: "正常执行" },
+  { name: `${nodeLabel("capacity.aging")} Y2`, line: "L-25", material: "LFP-21 x3…", team: "xxx 团", target: "3/22", level: 1, action: "正常执行" },
 ];
 
 /** 方案设置表单（规格 `.form`）。 */
 const FORM_PLACEHOLDER = {
   planName: "缓冲方案 K1",
-  bases: ["盐城基地", "合肥基地"],
+  bases: [`${baseName(PEER_BASE_A)}基地`, `${baseName(PEER_BASE_B)}基地`],
   materials: [
     { options: ["LFP-99"], qty: "X4" },
     { options: ["LFP-88"], qty: "X4" },
