@@ -31,7 +31,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const cfg = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: ADMIN })).json()) as {
       nodeTypes: string[]; stateVars: string[]; propagationCount: number;
     };
-    expect(cfg.propagationCount).toBe(35); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35
+    expect(cfg.propagationCount).toBe(39); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35 → WO-SIM-ROOT-TRIAD +4 = 39
     expect(cfg.stateVars.length).toBeGreaterThan(0);
     // stateVars 派生自规则 source/target stateVar。WO-P1 后覆盖六个方向的量纲：
     // 需求(demandPressure/demandLoad/loadIndex/utilPressure) · 产能(queuePressure) ·
@@ -42,15 +42,17 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     // 替代料/MRP 缺口 · 调拨 · 设备负荷/维修积压 · 成品提货）。
     // 档 3 再补 1 个 `reviewPressure`（供应商绩效复评）——它是 `Supplier` 身上**第一个被写**的量纲，
     // 在此之前 Supplier 只当 source ⇒ P28 屏上标着「随节拍变」而读数恒定（见 seed.ts 档 3 段头）。
+    // WO-SIM-ROOT-TRIAD 再补 3 个**根源**量纲（入度 0 = 只能被外部打进来）：
+    // `forecastBias`（销售预测偏差·带方向）· `orderChurn`（订单变更压力）· `equipmentFailure`（设备故障率）。
     expect(cfg.stateVars).toEqual([
       "changeoverPressure", "clearanceQueueDays", "collectionPressure", "costPressure", "defectPressure",
       "deliveryDelay", "deliveryHoldRisk", "demandLoad", "demandPressure", "drawdownPressure",
-      "expeditePressure", "feedPressure", "gapPressure", "handlingBacklog", "inboundExpeditePressure",
-      "inspectBacklog", "loadIndex", "loadPressure", "overduePressure", "priceShock",
-      "promiseRisk", "qualificationQueue", "queueDays", "queuePressure", "receivablePressure",
-      "releasePressure", "repairBacklog", "reviewPressure", "shortageRisk", "splitPressure",
-      "supplyRisk", "switchPressure", "transferPressure", "turnoverPressure", "utilPressure",
-      "windowSqueeze",
+      "equipmentFailure", "expeditePressure", "feedPressure", "forecastBias", "gapPressure",
+      "handlingBacklog", "inboundExpeditePressure", "inspectBacklog", "loadIndex", "loadPressure",
+      "orderChurn", "overduePressure", "priceShock", "promiseRisk", "qualificationQueue",
+      "queueDays", "queuePressure", "receivablePressure", "releasePressure", "repairBacklog",
+      "reviewPressure", "shortageRisk", "splitPressure", "supplyRisk", "switchPressure",
+      "transferPressure", "turnoverPressure", "utilPressure", "windowSqueeze",
     ]);
     // 节点类型派生自本体（含 demo 真类型）。
     expect(cfg.nodeTypes).toContain("Order");
@@ -65,22 +67,26 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const items = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json()).items as Array<{
       key: string; status: string; viaLinkKey: string; sourceTypeKey: string; targetTypeKey: string;
     }>;
-    expect(items.length).toBe(35);
+    expect(items.length).toBe(39);
     expect(items.every((r) => r.status === "PUBLISHED")).toBe(true);
     const viaKeys = items.map((r) => r.viaLinkKey).sort();
+    // WO-SIM-ROOT-TRIAD 新增 4 条根源边全部挂**已物化**的既有链路（零新 linkType、零新物化）：
+    // `model_demanded_by_order` 第 3 条（预测偏差→订单需求压力）· `order_has_line` 第 2 条 +
+    // `order_for_model` 第 2 条（订单变更→拆行 / →型号需求负载）· `equip_used_in` 首条（设备故障→工序排队）。
     expect(viaKeys).toEqual([
       "base_dispatches_transfer", "base_has_shipment", "base_maint_plan",
       "customer_has_invoice", "customer_has_location", "customer_has_overdue_record",
-      "defect_raises_exception", "equipment_has_maintenance_order",
+      "defect_raises_exception", "equip_used_in", "equipment_has_maintenance_order",
       "line_belongs_to_base", "line_has_process", "line_runs_work_order",
       "material_has_alternative", "material_has_balance", "material_has_batch",
       "material_supplied_by_po", "material_used_by_model", "material_used_by_model",
-      "model_changeover", "model_demanded_by_order", "model_demanded_by_order", "model_has_cert",
-      "model_producible_at", "model_stocked_as_finished_goods",
-      "order_for_model", "order_has_line", "order_has_promise", "order_of_customer",
-      "po_customs_cleared_by", "po_from_supplier", "po_inspected_by", "process_uses_equipment",
-      "supplier_supplies_material", "wip_lot_found_defect",
-      "work_order_sampled_by_quality_lot", "work_order_yields_wip_lot",
+      "model_changeover", "model_demanded_by_order", "model_demanded_by_order",
+      "model_demanded_by_order", "model_has_cert", "model_producible_at",
+      "model_stocked_as_finished_goods", "order_for_model", "order_for_model",
+      "order_has_line", "order_has_line", "order_has_promise",
+      "order_of_customer", "po_customs_cleared_by", "po_from_supplier",
+      "po_inspected_by", "process_uses_equipment", "supplier_supplies_material",
+      "wip_lot_found_defect", "work_order_sampled_by_quality_lot", "work_order_yields_wip_lot",
     ]);
   });
 
@@ -110,7 +116,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(canary.length).toBeGreaterThan(0);
 
     const rules = await t.repos.sim.listPropagationRules("demo", true);
-    expect(rules.length).toBe(35);
+    expect(rules.length).toBe(39);
     const dead: string[] = [];
     for (const r of rules) {
       const ok = links.some(
@@ -155,7 +161,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     await seedDemoPropagationRules(t.repos);
     await seedDemoPropagationRules(t.repos);
     const items = await t.repos.sim.listPropagationRules("demo", true);
-    expect(items.length).toBe(35);
+    expect(items.length).toBe(39);
   });
 
   it("live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导", async () => {

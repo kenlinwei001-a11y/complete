@@ -983,6 +983,12 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
   //    被读的那个 `Supplier.deliveryDelay` 本条一个字节都不碰。所以
   //    「三个纯源量纲（deliveryDelay/demandPressure/priceShock）无人写」这条前提**仍然成立**，
   //    接缝测试 §C 赖以成立的「读数变了只可能是传导走过去的」也仍然成立。
+  //    ⚠ **2026-08-25 WO-SIM-ROOT-TRIAD 起，上一句只剩两个纯源**：`demandPressure` 已被
+  //      `demo_forecast_bias_to_order_demand` 写（入度 0 → 1，**有意的降级**，见数组尾段头）。
+  //      §C 的推理**不受影响**，但理由变了、必须说清：那里的 `baseSnapshot` 只给
+  //      Supplier/Order/Material 三类塞格子，`Model.forecastBias` 那一格**根本不存在** ⇒
+  //      `readVar` 取 0 ⇒ 新边零贡献。**不是**因为"没人写 demandPressure"，
+  //      而是因为"写它的那条边这次没被喂数据"。留着旧说法就会有人照它去下一个错结论。
   //    写成同一个量纲就会变成 `deliveryDelay → … → deliveryDelay` 的正反馈，每拍自我放大 —— 故意不那么写。
   // ══════════════════════════════════════════════════════════════════════════════════
   {

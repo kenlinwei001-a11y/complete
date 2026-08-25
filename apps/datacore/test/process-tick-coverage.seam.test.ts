@@ -254,8 +254,13 @@ describe("WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（
     const tri = await trichotomy(t);
 
     // ── 只在**三个源头量纲**上施加初值，其余一律靠传导自己走到 ──────────────────
-    // 三个源都是「没有任何规则写它」的纯源（deliveryDelay / demandPressure / priceShock），
+    // 三个源里 `deliveryDelay` / `priceShock` 是「没有任何规则写它」的纯源，
     // 所以下面任何一个非源类型的读数变了，都只可能是**传导走过去的**，不可能是我们塞的。
+    // ⚠ **2026-08-25 WO-SIM-ROOT-TRIAD 起，`demandPressure` 不再是纯源**（入度 0 → 1，
+    //   被 `demo_forecast_bias_to_order_demand` 写 —— 有意的降级）。**本节的推理仍然成立，
+    //   但理由换了、必须写明**：下面的 `baseSnapshot` 只给 Supplier/Order/Material 三类塞格子，
+    //   写它的那条边的源 `Model.forecastBias` 在这个世界态里**根本没有那一格** ⇒ `readVar` 取 0
+    //   ⇒ 零贡献。照旧说法读作"没人写 demandPressure"会得到一个今天已经不成立的前提。
     const idsOf = (type: string) => tri.objectIdsByType.get(type) ?? [];
     const baseSnapshot: Record<string, Record<string, number>> = {};
     for (const id of idsOf("Supplier")) baseSnapshot[id] = { deliveryDelay: 10 };
@@ -350,7 +355,7 @@ describe("WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（
     for (const l of doomed) await t.repos.links.remove("demo", l.id);
     expect((await t.repos.links.list("demo", (l) => l.type === "line_runs_work_order")).length).toBe(0);
     // 规则条数**没变** —— 这正是"条数不度量链路通不通"的当场证据。
-    expect((await t.repos.sim.listPropagationRules("demo", true)).length).toBe(35);
+    expect((await t.repos.sim.listPropagationRules("demo", true)).length).toBe(39);
 
     const baseSnapshot: Record<string, Record<string, number>> = {};
     for (const id of idsOf("Order")) baseSnapshot[id] = { demandPressure: 10 };
