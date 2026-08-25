@@ -626,7 +626,9 @@ const SCREEN_QUANTITIES_NOT_ANSWERED_HERE: readonly {
     code: "PRESENTATION_ONLY",
     reason:
       "扇区图「张角 39°」标的是规格里那个三角形自身的顶角（`M118 208 L104 186 L132 186 Z`），是版面几何，不是传导广度的度量。" +
-      "把它做成契约字段，等于让后端去算一个只有这一版版面才成立的角度。",
+      "把它做成契约字段，等于让后端去算一个只有这一版版面才成立的角度。" +
+      "旁证（`WO-SIM-CONSOLE-DAYS` 独立实测，已在本体 §I SimSession 条回写）：同一张扇区图的纵轴刻度" +
+      "`ImpactCone.tsx` 的 `[\"400\",\"300\",\"200\",\"100\"]` 也是**写死在占位模型里、没有任何端点会替换**的量级读数。",
     probe: "读 `docs/ux-spec/sandbox/sandbox-detail.html` 里画那个三角形的那一行；换个 viewBox 这个角就变了 ⇒ 它度量的是画布不是业务。",
   },
   {
