@@ -36,15 +36,57 @@
  * 本文件是这套占位数在本仓的唯一落点 —— 视图层零硬编码数据。
  */
 import { useQuery } from "@tanstack/react-query";
-import type {
-  ParetoBinding,
-  ParetoObjective,
-  ParetoRequest,
-  ParetoResult,
-  ParetoSolution,
-  SimMetricSeriesResponse,
+import {
+  BASE_REGISTRY,
+  chainNodeDef,
+  type ParetoBinding,
+  type ParetoObjective,
+  type ParetoRequest,
+  type ParetoResult,
+  type ParetoSolution,
+  type SimMetricSeriesResponse,
 } from "@platform/contracts";
 import { api } from "@/api/apiClient";
+
+// ══════════════════════════════════════════════════════════════════════════
+// § 0 · 屏上的业务名词一律查契约冻结册（R14「应用层无业务常数」）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 环节名 ← `CHAIN_NODE_REGISTRY`；基地名 ← `BASE_REGISTRY`。两者都在 `@platform/contracts`，
+ * 是这两类事实的**跨包唯一真相源**（`base-registry.ts` 原话：「所有消费端从 BASE_REGISTRY
+ * 派生，改一处全局同步（DF.1/G-5/R14）」；后端 `synthetic/battery.ts` 对不在册的基地名直接抛）。
+ *
+ * 判据是「**换注册表 = 换租户**」：本页的占位方案卡、绑定约束、执行对比甘特里的环节与基地，
+ * 改注册表就跟着改，视图零改动。写死在这里则换个行业整页都是错话。
+ *
+ * ⚠ 不在册即**抛**，不静默回退到手写串 —— 回退会让「注册表少一条」表现成屏上一切正常。
+ */
+function nodeLabel(nodeId: string): string {
+  const def = chainNodeDef(nodeId);
+  if (def === undefined) throw new Error(`不在 CHAIN_NODE_REGISTRY 里的环节：${nodeId}`);
+  return def.label;
+}
+
+function baseName(baseId: string): string {
+  const hit = BASE_REGISTRY.find((b) => b.baseId === baseId);
+  if (hit === undefined) throw new Error(`不在 BASE_REGISTRY 里的基地：${baseId}`);
+  return hit.name;
+}
+
+/**
+ * 本页占位场景里的两个基地：主基地 + 承接基地。
+ *
+ * ⚠ **本单实测：规格占位用的「盐城」在 `BASE_REGISTRY` 13 个基地里一条都没有**
+ *   （复验 `grep -rn 盐城 packages/contracts/src/` = 0；金丝雀「常州」同命令命中 5 文件 ⇒ 工具是好的）。
+ *   即：此前这一页把一个**本系统并不存在的基地**写在方案名、绑定约束与甘特段上，
+ *   而同名的东西拿去问后端会被 `synthetic/battery.ts` 的
+ *   `基地「X」不在 BASE_REGISTRY 单一来源册` 当场抛掉。换成在册基地（扬州，与常州同属江苏）
+ *   **不是改名，是把幻影基地换成真基地**。
+ */
+const HOME_BASE = "changzhou";
+const PEER_BASE_A = "yangzhou";
+const PEER_BASE_B = "hefei";
 
 // ══════════════════════════════════════════════════════════════════════════
 // § 1 · 几何（规格 `#pf` 段的 `X0/X1/Y0/Y1` 与两族网格线，逐值照抄）
@@ -287,11 +329,11 @@ const PLACEHOLDER_AXES: readonly [OptAxis, OptAxis] = [
 
 /** 规格候选方案卡 `D[]`（第 227–233 行）：id / 文案 / 非增值 / 外协 / 准时 / 稼动 / 亮格数 / 前沿 / 选中。 */
 const PLACEHOLDER_CARDS = [ // hardcoded-data-allow —— 规格占位
-  ["S-0055", "跨基地借调 + 外协 · 盐城", 18.4, 2180, 94.1, 86.2, 12],
-  ["S-0051", "外协兜底 · 合肥", 18.7, 1240, 93.0, 82.4, 10],
-  ["S-0042", "跨基地借调 · 盐城", 19.1, 620, 92.4, 84.6, 9],
-  ["S-0038", "缓冲释放 · 常州", 20.2, 180, 90.1, 79.2, 6],
-  ["S-0029", "缓冲释放 + 限产 · 常州", 21.4, 60, 88.4, 74.8, 4],
+  ["S-0055", `跨基地借调 + 外协 · ${baseName(PEER_BASE_A)}`, 18.4, 2180, 94.1, 86.2, 12],
+  ["S-0051", `外协兜底 · ${baseName(PEER_BASE_B)}`, 18.7, 1240, 93.0, 82.4, 10],
+  ["S-0042", `跨基地借调 · ${baseName(PEER_BASE_A)}`, 19.1, 620, 92.4, 84.6, 9],
+  ["S-0038", `缓冲释放 · ${baseName(HOME_BASE)}`, 20.2, 180, 90.1, 79.2, 6],
+  ["S-0029", `缓冲释放 + 限产 · ${baseName(HOME_BASE)}`, 21.4, 60, 88.4, 74.8, 4],
 ] as const;
 
 /** 规格 `.pc .r2` 四格的表头（这是**规格的显示简称**，不是第二套目标名）。 */
