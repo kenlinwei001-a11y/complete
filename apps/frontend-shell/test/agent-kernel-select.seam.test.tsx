@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { db } from "@/mocks/db";
@@ -67,5 +67,58 @@ describe("WO-AGENT-KERNEL-SELECT · 编辑器运行内核选择器", () => {
     await openDraftEditor();
     const select = await screen.findByLabelText("运行内核");
     expect(select).toHaveValue("EXTERNAL");
+  });
+});
+
+/**
+ * WO-AGENT-KERNEL-FORK-UI · 既有（PUBLISHED）Agent 的内核选择正路。
+ *
+ * **病灶**：编辑器 `editable = agent.status === "DRAFT"` 锁整表单（不可变发布语义，正确），
+ * 但后端配套的 `POST /b/v1/agents/:id/new-version`（派生 DRAFT v+1）**前端没有任何入口调用它**
+ * ⇒ PUBLISHED agent 在 UI 上是死胡同：不能改，也不告诉你怎么变成能改。
+ * 仓主原话：「既有的无法选择，新建的可以选择」。
+ *
+ * **正路**（后端语义自带）：派生 DRAFT → 改（内核/任何字段）→ 发布。
+ * 本单只补这条路的前端入口，**不动**不可变发布语义（PUBLISHED 表单保持锁定）。
+ */
+describe("WO-AGENT-KERNEL-FORK-UI · PUBLISHED agent 派生正路", () => {
+  async function openPublishedEditor() {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/agents");
+    await user.click(await screen.findByText("探索分析 Agent"));
+    await screen.findByTestId("agent-editor");
+    return user;
+  }
+
+  it("① PUBLISHED ⇒ 表单仍锁（不可变语义不动）+ 画出「派生新版本」入口（死胡同变正路）", async () => {
+    await openPublishedEditor();
+    const select = await screen.findByLabelText("运行内核");
+    expect(select, "PUBLISHED 内核选择器必须保持锁定——派生不是绕过不可变语义的后门").toBeDisabled();
+    expect(screen.getByTestId("agent-new-version"), "PUBLISHED agent 必须有派生入口，否则 UI 是死胡同").toBeEnabled();
+  });
+
+  it("② 派生 ⇒ 新 DRAFT v+1 落库且编辑器切换过去 ⇒ 内核选 DSH 保存进派生品（源版本不动）", async () => {
+    const user = await openPublishedEditor();
+    await user.click(screen.getByTestId("agent-new-version"));
+
+    // 编辑器切到派生 DRAFT：内核选择器从锁定变可选（这是本单的标的）
+    const select = await screen.findByLabelText("运行内核");
+    await waitFor(() => expect(select).toBeEnabled(), { timeout: 15000 });
+
+    const forked = db.agents.find((a) => a.key === "explore_agent" && a.status === "DRAFT");
+    expect(forked, "派生后库里必须多一份 DRAFT（new-version 真落库，不是假动作）").toBeDefined();
+    expect(forked!.version, "派生品版本 = 该 key 最新版 + 1（agt-explore 是 v2 ⇒ v3）").toBe(3);
+
+    // 正路走通：选 DSH → 保存 → 内核落进派生品
+    await user.selectOptions(select, "EXTERNAL");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await screen.findByText("已保存");
+    expect(db.agents.find((a) => a.id === forked!.id)!.kernel, "内核改动必须落进派生 DRAFT").toBe("EXTERNAL");
+    expect(
+      db.agents.find((a) => a.id === "agt-explore")!.kernel,
+      "源 PUBLISHED 版本一个字节都不能被顺手改写（不可变发布语义）",
+    ).toBeUndefined();
+    expect(db.agents.find((a) => a.id === "agt-explore")!.status).toBe("PUBLISHED");
   });
 });

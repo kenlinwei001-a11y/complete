@@ -6451,6 +6451,16 @@ export const handlers = [
     agent.status = "PUBLISHED";
     return HttpResponse.json({ ok: true });
   }),
+  // WO-AGENT-KERNEL-FORK-UI · 与真后端 `POST /b/v1/agents/:id/new-version` 同形状同语义：
+  // 以该 key 最新版为基拷一份 v+1 DRAFT，201 回新对象（不可变发布语义的唯一派生正路）。
+  http.post("*/b/v1/agents/:id/new-version", ({ params }) => {
+    const src = db.agents.find((a) => a.id === String(params.id));
+    if (!src) return err(404, "AGENT_NOT_FOUND", `agent not found: ${params.id}`);
+    const latest = db.agents.filter((a) => a.key === src.key).sort((a, b) => b.version - a.version)[0]!;
+    const copy = { ...structuredClone(src), id: `agt_${Date.now()}`, version: latest.version + 1, status: "DRAFT" as const };
+    db.agents.push(copy);
+    return HttpResponse.json(copy, { status: 201 });
+  }),
 
   http.get("*/b/v1/workflows", () => HttpResponse.json(db.workflows)),
   // G-4：自助创建工作流（此前无创建入口）
