@@ -98,7 +98,18 @@
 **门**：`apps/datacore/test/sim-root-procurement.seam.test.ts`（6 例：①入度臂现算 · ②落点臂咬 `world.state`
 且反向咬死"没跑到对象属性上" · ③/③b 传导臂逐值对系数 · ④真 HTTP 四跳全链 · ⑤R6 字节一致）。
 **本体已回写**：`docs/SYSTEM-ONTOLOGY.md` §2.I（PropagationRule 根源/枢纽/末端三层）· §3（根源扰动层 · 物料采购）·
-§5（`R-ROOT-PERTURB`）。**落地 commit**：见 handoff 分支 `claude/handoff-wo-sim-root-procurement`。
+§5（`R-ROOT-PERTURB`）。
+
+**落地 commit**（handoff 分支 `claude/handoff-wo-sim-root-procurement`，基线 `4df5bfbe`）：
+`d2542195` 两条补货向逆边 + 中文名 → `31035e1d` 三条传导规则 → `48660ac4` 接缝门 →
+`d3b40cf5` 金值 35→38 → `a6f1de22` 修两处被本单打红的既有测试 → `e6e666b5` 本体回写 →
+`7db0b09b` PRD 回写 → `cecb0823` ④ 全链臂改从真种子世界态出发 → `6057d63f` 刷新门产物。
+
+**变异反证（两发·分别打两半，原始输出见交付报告）**：
+① 删掉三条 `procurementDelay → shortageRisk` 规则（靶 = 规则半）⇒ `RC=1`，**6/6 臂全红**（含传导臂）；
+② 让 `deriveSeedBaseSnapshot` 不给 `procurementDelay` 铺格子、**规则一条不动**（靶 = 世界态半）
+⇒ `RC=1`，②落点臂 / ④全链传导臂 / ⑤R6 红，而 ①入度臂 与 ③/③b 隔离传导臂**照旧绿** ——
+两发红在**不同的臂**上，这就是「接缝真被驱动」的证据（若两发红成一模一样，说明只咬到了一半）。
 
 ### G-ROOT-4 · 设备故障
 
