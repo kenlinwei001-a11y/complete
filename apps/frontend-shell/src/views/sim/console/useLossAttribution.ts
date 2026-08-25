@@ -38,7 +38,7 @@ import {
 } from "@platform/contracts";
 import { api } from "@/api/apiClient";
 // tick → 天 的换算与措辞：**同目录唯一一份**（它再往下转调契约的 `daysForTicks`）。
-import { tickAxisLabels } from "./tickAxis";
+import { tickAxisLabels, tickDaysOf } from "./tickAxis";
 
 /** 在册节点 id 的字面量联合（派生自契约本尊，不是本地起个同名别名白嫖）。 */
 type Rid = ChainNodeDef["nodeId"];
@@ -555,9 +555,14 @@ export interface SeriesModel {
    * 轨道刻度文本。**两种数据模式口径不同，别合成一句**（`WO-SIM-CONSOLE-DAYS`）：
    *  · **占位模式** ⇒ 规格那套墙钟时刻 `SERIES_TICKS`（`00:00`…`28:00`），像素 1:1 咬着它；
    *  · **真端点模式** ⇒ 按**天**（`第 30 天`），由 `tickAxis.ts` 从回包 tick 序号换算；
-   *    拿不到 `tickDays` 时退回 `第 N 拍`，**不猜天数**（判据表见 `tickAxis.ts` 头注）。
+   *    口径 `tickDays` 随回包下发（契约选的方案 A，见 `tickAxis.ts` 头注）。
    */
   ticks: readonly string[];
+  /**
+   * 这条轴的**刻度单位**：一格 tick 等于几天。真端点模式取回包的 `tickDays`（缺 ⇒ `1`）；
+   * 占位模式**不给** —— 墙钟时刻那套压根不是按天的轴，给个数就是替它编一个口径。
+   */
+  tickDays?: number;
   playheadPct: number;
   /**
    * 诚实位：端点回包的 `metrics[].unit` **恒 `null`** —— 全仓没有「状态变量 → 单位」的登记册
@@ -665,7 +670,7 @@ const fmt = (v: number | null | undefined): string => (v === null || v === undef
  * 接 `GET /a/v1/sim/sessions/:id/metric-series`。
  * 没有 sessionId ⇒ **不发请求**（不是发一个必然 404 的请求），落回规格占位。
  */
-export function useContributionSeries(sessionId?: string, tickDays?: number): SeriesModel {
+export function useContributionSeries(sessionId?: string): SeriesModel {
   const enabled = sessionId !== undefined && sessionId !== "";
   const q = useQuery({
     queryKey: ["a", "sim-metric-series", sessionId ?? ""],
@@ -704,9 +709,11 @@ export function useContributionSeries(sessionId?: string, tickDays?: number): Se
   });
   return {
     rows,
-    // 回包的 tick 序号 → **按天**的轴标签（`WO-SIM-CONSOLE-DAYS`）。换算与措辞的唯一实现
-    // 在同目录 `tickAxis.ts`（它再往下转调契约的 `daysForTicks`）——**别在这里 map 一份出来**。
-    ticks: tickAxisLabels(ticks, tickDays),
+    // 回包的 tick 序号 → **按天**的轴标签（`WO-SIM-CONSOLE-DAYS`）。口径 `tickDays` 随回包下发
+    // （契约选的方案 A，理由见 `tickAxis.ts` 头注），换算与措辞的唯一实现在同目录 `tickAxis.ts`
+    // （它再往下转调契约的 `daysForTicks`）——**别在这里 map 一份出来**。
+    ticks: tickAxisLabels(ticks, q.data.tickDays),
+    tickDays: tickDaysOf(q.data.tickDays),
     playheadPct: PLAYHEAD_PCT,
     // 契约明写 `unit` 恒 `null`；真有一天登记了单位，这一位自己会翻。
     unitsKnown: q.data.metrics.some((m) => m.unit !== null),

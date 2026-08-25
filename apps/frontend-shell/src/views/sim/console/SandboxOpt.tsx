@@ -36,7 +36,6 @@ import {
   type OptCandidate,
   type OptExecRow,
 } from "./useParetoFrontier";
-import { tickAxisUnit } from "./tickAxis";
 import styles from "./SandboxOpt.module.css";
 
 const MENUBAR = ["File", "Edit", "View", "Window", "Tools", "Help"] as const;
@@ -97,14 +96,9 @@ export interface SandboxOptProps {
   paretoRequest?: ParetoRequest;
   /** 沙盘世界 id（底部执行对比取 `metric-series` 用）。不给 ⇒ 落规格占位。 */
   sessionId?: string;
-  /**
-   * 一 tick 几天（`WO-SIM-CONSOLE-DAYS`）——底部执行对比轨道头按天说话的口径。
-   * **`undefined` = 没有会话对象可问**，不是「一 tick 一天」（判据表见 `tickAxis.ts` 头注）。
-   */
-  tickDays?: number;
 }
 
-export function SandboxOpt({ paretoRequest, sessionId, tickDays }: SandboxOptProps = {}): JSX.Element {
+export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): JSX.Element {
   const { model } = useParetoFrontier(paretoRequest);
   const [tab, setTab] = useState<ViewTab>("frontier");
   const [picked, setPicked] = useState<string | null>(null);
@@ -121,7 +115,7 @@ export function SandboxOpt({ paretoRequest, sessionId, tickDays }: SandboxOptPro
 
   const detail = detailRowsOf(model, selected);
   const constraints = constraintRowsOf(model, selected);
-  const exec = useExecutionCompare(sessionId, selected?.id ?? "", tickDays);
+  const exec = useExecutionCompare(sessionId, selected?.id ?? "");
   const runs = groupRuns(exec.rows);
 
   return (
@@ -322,7 +316,9 @@ export function SandboxOpt({ paretoRequest, sessionId, tickDays }: SandboxOptPro
               data-testid="sandbox-opt-grid"
               data-source={exec.source}
               data-lane-provenance={exec.laneProvenance}
-              data-tick-unit={tickAxisUnit(tickDays)}
+              // 轨道横轴的刻度单位（`WO-SIM-CONSOLE-DAYS`）。占位模式给空串不给数 ——
+              // 那套墙钟时刻不是按天的轴，编一个口径出来就是拿假数冒充实测。
+              data-tick-days={exec.tickDays === undefined ? "" : String(exec.tickDays)}
             >
               {/* 竖排组名 */}
               <div className={styles.gcol}>

@@ -11,7 +11,6 @@
  * 接线做在 hook 内部（`WO-SIM-FE-SERIES-WIRE`），本文件当时确实一行没动。
  */
 import { useMetricSeries, type MetricRow } from "./useMetricSeries";
-import { tickAxisUnit } from "./tickAxis";
 import styles from "./SandboxHome.module.css";
 
 /** 规格：每行、表头、竖排域名格的行高都是 18px（`.gcell/.gcap/.grow/.laneHead`）。 */
@@ -72,13 +71,8 @@ function groupRuns(rows: readonly MetricRow[]): { name: string; count: number }[
   return out;
 }
 
-/**
- * @param tickDays 一 tick 几天（`WO-SIM-CONSOLE-DAYS`）。**`undefined` = 没有会话对象可问**，
- *   不是「一 tick 一天」—— 那时轨道头退回 `第 N 拍`，不猜一个可能错 `tickDays` 倍的天数。
- *   口径挂在 `data-tick-unit` 上：属性对测试可见、对像素不可见。
- */
-export function MetricGantt({ sessionId, tickDays }: { sessionId?: string; tickDays?: number }): JSX.Element {
-  const series = useMetricSeries(sessionId, tickDays);
+export function MetricGantt({ sessionId }: { sessionId?: string }): JSX.Element {
+  const series = useMetricSeries(sessionId);
   const runs = groupRuns(series.rows);
 
   return (
@@ -86,7 +80,9 @@ export function MetricGantt({ sessionId, tickDays }: { sessionId?: string; tickD
       className={styles.gantt}
       data-testid="sandbox-home-gantt"
       data-source={series.source}
-      data-tick-unit={tickAxisUnit(tickDays)}
+      // 轨道横轴的刻度单位（`WO-SIM-CONSOLE-DAYS`）。占位模式**给空串不给数**——
+      // 那套墙钟时刻不是按天的轴，编一个口径出来就是拿假数冒充实测。
+      data-tick-days={series.tickDays === undefined ? "" : String(series.tickDays)}
     >
       {/* 竖排域名 */}
       <div className={styles.gcol}>

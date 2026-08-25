@@ -80,14 +80,9 @@ export default function SandboxHomeRoute({ view }: ViewRendererProps): JSX.Eleme
   const session = useConsoleSession(p);
   return (
     <div {...consoleHostProps(session)}>
-      {/* WO-SIM-CONSOLE-DAYS：`tickDays` **只在真拿到会话对象时**才透（`auto` 那条路）。
-          刻意用条件展开而不是 `tickDays={session.tickDays}` —— 两者运行时同义，
-          但条件展开把「没有就不给」写在明面上，防有人日后顺手补一个 `?? 1`
-          （那会把「没问过」说成「问过了，答案是 1」，见 `tickAxis.ts` 头注的判据表）。 */}
       <SandboxHome
         {...(session.sessionId ? { sessionId: session.sessionId } : {})}
         {...(p.targetObjectId ? { targetObjectId: p.targetObjectId } : {})}
-        {...(session.tickDays === undefined ? {} : { tickDays: session.tickDays })}
       />
       {/* WO-EDGE-PANEL-4PAGES 挂载点：**主组件里**、不在任何 `xxx.data &&` 之下。
           `sessionId` 透的是本页正在推演的那个世界（`useConsoleSession` 的五态产出）——
