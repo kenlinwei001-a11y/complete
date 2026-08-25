@@ -340,10 +340,37 @@ describe("WO-BEFE-A ④ 事实锁：mock 的派生口径必须钉在**后端源�
 
   it("诚实位有据：`POST …/propagation-rules` 的 id 确实恒被覆盖（⇒ 只能新建、改不了）", () => {
     // 页面上写着「因果边只能新建改不了」。这句话必须有源码证据，否则就是拿注释当结论。
+    const tree = dc();
+    /**
+     * ⚠ 这条探针**曾经把校验器的写法一起钉死**，于是长期红在一次与本事实无关的重构上：
+     *   原文是 `/PropagationRuleSchema\.parse\(\{ …/`，而 `dfa7cc28`
+     *   （WO-DC-ERRORENVELOPE-11，2026-08-22）把 4 处 `req.body` 派生的裸 `parse` 统一换成
+     *   `parseBody(Schema, …)` —— 换的理由是错误信封（裸 `parse` 抛的 ZodError 没有
+     *   `statusCode` ⇒ 兜底判 500 并回显 zod 内部结构），**与 id 覆不覆盖毫无关系**。
+     *   行为一天没变过：`app.ts` 那一行至今是 `{ ...(req.body as object), id: newId("simpr"), … }`。
+     * 形态（铁律 0.6 句式）：**「我用『校验器叫什么名字』当作『id 恒被覆盖』的证据，而前者并不度量后者。」**
+     * 故探针改成只钉**事实本身**：客户端 body 被摊开后，`id` 被服务端新 id 盖掉 ——
+     * 换哪个校验器包都不该红，把这行覆盖删掉才该红。
+     */
     expect(
-      factHits(dc(), /PropagationRuleSchema\.parse\(\{\s*\.\.\.\(req\.body as object\),\s*id:\s*newId\("simpr"\)/),
-      "id 覆盖已不复存在 ⇒ 后端可能已补更新路径，页面上那条诚实位该撤了",
+      factHits(tree, /\{\s*\.\.\.\(req\.body as object\),\s*id:\s*newId\("simpr"\)/),
+      "id 覆盖已不复存在 ⇒ 客户端传的 id 可能被采信，页面上那条诚实位该撤了",
     ).toContain("apps/datacore/src/app.ts");
+
+    /**
+     * 「改不了」那半边也要有据：这条路径上**只有** GET / POST 两个动词。
+     * 否定结论建立在同一棵树的四条金丝雀之上（`checkedTree` 已跑），再加一条**正向对照**：
+     * 同样的路径串用 `app.post(` 必须命中 —— 命不中就是这条路径的写法变了，
+     * 那时该报「探针失准」，而不是报「后端没有更新口」。
+     */
+    expect(
+      factHits(tree, 'app.post("/a/v1/sim/propagation-rules"'),
+      "正向对照落空 ⇒ 路由写法变了，下面那条否定结论作废",
+    ).toContain("apps/datacore/src/app.ts");
+    expect(
+      factHits(tree, /app\.(put|patch)\(\s*"\/a\/v1\/sim\/propagation-rules"/),
+      "后端补了更新口 ⇒ 「只能新建、改不了」这句诚实位已成谎话，该撤",
+    ).toEqual([]);
   });
 
   it("mock 的两份结构边种子逐 key 一致（`mapping/registries` 字面量 vs `MOCK_LINK_SEED` store）", async () => {
