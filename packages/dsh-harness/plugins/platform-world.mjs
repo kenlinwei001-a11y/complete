@@ -14,7 +14,7 @@
 import * as McpClient from './mcp-client-tenant.mjs'
 import { getAdjudicator } from './platform-governance.mjs'
 import { getToolExecutor } from './tool-bridge.mjs'
-import { installStallLoopWatchdog } from './platform-watchdog.mjs'
+import { installDenyBudget, installStallLoopWatchdog } from './platform-watchdog.mjs'
 
 /** agent 级 system prompt section 的固定名/序（root persona 是 order 0，agent 追加其后）。 */
 export const AGENT_PERSONA_SECTION = 'platform:agent-persona'
@@ -253,7 +253,15 @@ export async function applySetupSpec(agentCtx, spec) {
     ? new Set(spec.tools.map((t) => t.name))
     : undefined
   if (allow !== undefined || spec.governance !== undefined) {
-    agentCtx.on('tools/pre-execute', async (exec, next) => {
+    // WO-DSH-GOV-CREDENTIAL · deny 上界：计数点必须落在**产生 deny 的这一层**。
+    // 下方 STALL_LOOP 挂 tools/post-execute，而本闸的 deny 分支 **不调 next()** ⇒ 瀑布短路
+    // ⇒ post-execute 帧压根不存在 ⇒ 那只看门狗对 deny 环结构上是瞎的
+    // （再叠一层：final_answer 还在它的 META_TOOLS 豁免集里，而实测烧掉 ~4,963 轮的正是它）。
+    const denyBudget = installDenyBudget(agentCtx)
+
+    // 裁决逻辑原样搬进 decide()，**三条 deny 出口与 allow 出口逐字不变**；
+    // 唯一新增的是出口统一过一次 record() —— 计数与裁决分离，裁决语义零漂移。
+    const decide = async (exec, next) => {
       if (allow !== undefined && !allow.has(exec.name)) {
         return { kind: 'deny', reason: `tool ${exec.name} not in agent scope allow-list (scopeDeclaration ∪ granted)` }
       }
@@ -266,6 +274,12 @@ export async function applySetupSpec(agentCtx, spec) {
         return adjudicator({ name: exec.name, arguments: exec.arguments }, spec.governance)
       }
       return next()
+    }
+
+    agentCtx.on('tools/pre-execute', async (exec, next) => {
+      const decision = await decide(exec, next)
+      denyBudget.record(exec, decision)
+      return decision
     })
   }
 
