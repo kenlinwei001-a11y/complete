@@ -129,6 +129,15 @@ import { WorkspaceSchema } from "./types";
 import type { ProcessDefinitionsResponse, ProcessInstancesResponse } from "@/views/process/processWait";
 // WO-V4-INSPECT · 流程节点检视响应契约（前端不重定义·R1 contracts-only-shared）
 import type { ProcessInspectResponse } from "@platform/contracts";
+// WO-SIM-DRILL-P12 · 推演演习契约（事件目录 / 演习请求 / 演习报告）
+import type { DrillCatalog, DrillReport, DrillEvent } from "@platform/contracts";
+/** `POST …/drill` 的请求体（`DrillRunRequestSchema` 的**输入**侧：带默认值的字段可省）。 */
+export interface DrillRunRequestInput {
+  events?: DrillEvent[];
+  horizonDays?: number;
+  scanOnly?: boolean;
+  limitPerKind?: number;
+}
 // WO-ONTOLOGY-EDGE-TRICLASS · 本体第三类边（不变式守卫）契约 —— 前端不重定义，也不自带清单
 import type { OntologyInvariantOverride, OntologyInvariantReport } from "@platform/contracts";
 
@@ -806,6 +815,29 @@ export const simTick = (sessionId: string, n = 1) =>
 /** 读当前世界态（curTick + state）。 */
 export const simWorld = (sessionId: string) =>
   api.a<{ tick: number; state: TickState }>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/world`);
+
+// ── WO-SIM-DRILL-P12 · 推演**演习**（事件型扰动 → 真调求解器 → 卡点清单）───────────
+/**
+ * 事件目录：有哪些事件可输、各要填什么、各会调哪几个求解器。
+ *
+ * ⚠ 前端**不许**自己写一份事件清单 —— 标签/必填字段/校验规则全部后端单源
+ * （同 `stateVarNames` 的纪律）。写了就是第二套真相源：后端加一个事件，
+ * 前端表单不知道；后端改一个必填字段，前端照旧放行然后收 400。
+ */
+export const fetchDrillCatalog = () => api.a<DrillCatalog>(`/a/v1/sim/drill/catalog`);
+/**
+ * 跑一次演习。**只读**：不改世界线（`persist:false`），同输入重跑同结果（R6）。
+ *
+ * 回包的 `summary.allFailed` 与「findings 为空」是**两个不同的状态**，
+ * 屏上必须分开渲染 —— 详见 `DrillReport.summary` 契约注释。
+ */
+export const simDrill = (sessionId: string, body: DrillRunRequestInput) =>
+  api.a<DrillReport>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/drill`, { body });
+/** 状态变量三层（根源/枢纽/末端）—— 层级由传导图入度出度**后端现算**，前端不自己判。 */
+export const fetchDrillStateVarLayers = () =>
+  api.a<{ layers: { stateVar: string; layer: string; label: string }[]; ruleCount: number }>(
+    `/a/v1/sim/drill/state-var-layers`,
+  );
 /** 命名存档（检查点）。 */
 export const simCheckpoint = (sessionId: string, label?: string) =>
   api.a<SimCheckpoint>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/checkpoint`, { body: { label } });

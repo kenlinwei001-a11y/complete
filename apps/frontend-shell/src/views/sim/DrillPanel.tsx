@@ -1,0 +1,299 @@
+/**
+ * WO-SIM-DRILL-P12 · 推演**演习**面板（PRD-sim-drill-parallel-world §4）。
+ *
+ * ══ 今天的行为是 X，应该是 Y ═══════════════════════════════════════════════
+ * **X（今天）**：沙盘只能「推进 tick」——一次一格、没有天的概念，而且推完只得到一张
+ *   四十万格的数值矩阵，**没有任何东西回答「哪里卡住了」**。业务事件（某单改交期）
+ *   压根输不进去：扰动契约只收「把某个数值变量拨动多少」。
+ * **Y（应该）**：用户输「把 SO-3391 交期提前 10 天，看 30 天」，屏上给出
+ *   **被挤占的具体订单号 + 代价数字**，且每条结论标明它是真算的还是估的。
+ *
+ * ══ 屏上三条红线（都是本仓点名过的假绿形态）═══════════════════════════════
+ * ① **「无卡点」与「没算出来」必须是两个不同的屏上状态**（PRD §4.6）。
+ *    本组件据 `report.summary.allFailed` 分叉渲染，且「未能评估」的条目
+ *    **留在清单里**并单独配色 —— 绝不因为它算不出来就从屏上消失。
+ * ② **MOCK / UNDECLARED 的结论必须带记号**。`dataMode !== "LIVE"` 一律挂角标，
+ *    与 LIVE 的结论**不许长得一样**。判据走契约的 `drillDataModeIsTrustworthy`
+ *    单源函数，不在这里另写一个 `=== "LIVE"`。
+ * ③ **截断要说出来**。后端逐类只回前 N 条，`truncated` 为真时屏上明写还有多少 ——
+ *    不说 = 用显示上限冒充世界的真实规模。
+ *
+ * ══ R14 零业务常数 ═══════════════════════════════════════════════════════
+ * 本文件**没有任何**基地名/型号/工序名/事件中文名。事件标签、必填字段、提示文案
+ * 全部来自 `GET /a/v1/sim/drill/catalog`（后端单源）；结论文案来自后端 `why`。
+ * 门 `check-debattery.mjs` 扫的正是这个目录，写死即红。
+ */
+import { useCallback, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { drillDataModeIsTrustworthy, type DrillDataMode, type DrillEvent, type DrillFinding, type DrillReport } from "@platform/contracts";
+import { fetchDrillCatalog, simDrill } from "@/api/endpoints";
+import { toastError } from "@/store/toastStore";
+
+/** 诚实位角标文案 —— **后端枚举 → 屏上人话**的唯一映射（前端别处不许再写一份）。 */
+const DATA_MODE_BADGE: Record<DrillDataMode, string> = {
+  LIVE: "实测",
+  MOCK: "估算",
+  PARTIAL: "部分估算",
+  EMPTY: "无数据",
+  // ⚠ 这一档最要紧：求解器**没说**自己是真是假（实测 `sop_reschedule` 就没有 `dataMode` 字段）。
+  // 写「实测」就是替它担保，写「估算」又冤枉它 —— 只能如实说「未声明」。
+  UNDECLARED: "来源未声明",
+};
+
+function DataModeBadge({ mode }: { mode: DrillDataMode }) {
+  if (drillDataModeIsTrustworthy(mode)) {
+    return (
+      <span className="badge ok sm" data-testid="drill-datamode" data-mode={mode}>
+        {DATA_MODE_BADGE[mode]}
+      </span>
+    );
+  }
+  return (
+    <span className="badge warn sm" data-testid="drill-datamode" data-mode={mode} title="这条结论不是实测值，不可当真值读（R13）">
+      {DATA_MODE_BADGE[mode]}
+    </span>
+  );
+}
+
+function FindingRow({ f }: { f: DrillFinding }) {
+  const unevaluated = f.kind === "未能评估";
+  return (
+    <li
+      className="drill-finding"
+      data-testid="drill-finding"
+      data-kind={f.kind}
+      data-datamode={f.source.dataMode}
+      data-solver={f.source.solverKey}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "auto 1fr auto",
+        gap: 8,
+        alignItems: "baseline",
+        padding: "6px 0",
+        borderBottom: "1px solid var(--border, #2a2a2a)",
+        // 「未能评估」不是一条低危结论，是一个空洞 —— 视觉上必须与真结论区分开
+        opacity: unevaluated ? 0.75 : 1,
+      }}
+    >
+      <span className="badge sm" data-testid="drill-finding-kind">
+        {f.kind}
+      </span>
+      <span>
+        <strong>{f.where.label}</strong>
+        <span style={{ opacity: 0.85 }}> · {f.why}</span>
+        <span style={{ opacity: 0.6, fontSize: "0.85em" }}>
+          {" "}
+          ← {f.source.solverKey}
+          {f.when === null ? "" : ` · 第 ${f.when} 天`}
+        </span>
+      </span>
+      <span style={{ display: "inline-flex", gap: 6, alignItems: "center", whiteSpace: "nowrap" }}>
+        {/* 「未能评估」的 severity 恒 0，那不是「不严重」而是「没有严重度这个量」，故不显示数字 */}
+        {unevaluated ? null : <span data-testid="drill-severity">{f.severity.toFixed(1)}</span>}
+        <DataModeBadge mode={f.source.dataMode} />
+      </span>
+    </li>
+  );
+}
+
+export interface DrillPanelProps {
+  sessionId: string | null;
+}
+
+export function DrillPanel({ sessionId }: DrillPanelProps) {
+  // 事件目录：标签与必填字段的**唯一真相源**（前端不写死任何事件名）
+  const catalog = useQuery({ queryKey: ["a", "drill-catalog"], queryFn: fetchDrillCatalog, retry: false, staleTime: Infinity });
+
+  const [horizonDays, setHorizonDays] = useState("30");
+  const [eventKind, setEventKind] = useState<string>("");
+  const [targetObjectId, setTargetObjectId] = useState("");
+  /** payload 逐键的输入值（键来自 catalog，不是写死的表单字段）。 */
+  const [payload, setPayload] = useState<Record<string, string>>({});
+  const [running, setRunning] = useState(false);
+  const [report, setReport] = useState<DrillReport | null>(null);
+
+  const specs = catalog.data?.specs ?? [];
+  const spec = useMemo(() => specs.find((s) => s.kind === eventKind) ?? null, [specs, eventKind]);
+
+  const onRun = useCallback(async () => {
+    if (!sessionId) return;
+    const days = Math.max(1, Math.floor(Number(horizonDays)));
+    if (!Number.isFinite(days)) {
+      toastError(new Error("推演天数必须是正整数"));
+      return;
+    }
+    // 没选事件 ⇒ 只跑卡点扫描（一期行为），**不是**报错：扫描本身就有价值。
+    const events: DrillEvent[] =
+      spec && targetObjectId.trim() !== ""
+        ? [
+            {
+              kind: spec.kind,
+              targetObjectId: targetObjectId.trim(),
+              // 按 catalog 声明的类型转换 —— 类型也是数据，不在这里 if 死每个字段名
+              payload: Object.fromEntries(
+                spec.payloadKeys
+                  .map((pk) => {
+                    const raw = payload[pk.key];
+                    if (raw === undefined || raw.trim() === "") return null;
+                    return [pk.key, pk.type === "number" ? Number(raw) : raw] as const;
+                  })
+                  .filter((x): x is readonly [string, string | number] => x !== null),
+              ),
+              effectiveDay: 0,
+            },
+          ]
+        : [];
+    setRunning(true);
+    try {
+      const r = await simDrill(sessionId, { events, horizonDays: days, scanOnly: events.length === 0 });
+      setReport(r);
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setRunning(false);
+    }
+  }, [sessionId, horizonDays, spec, targetObjectId, payload]);
+
+  return (
+    <section className="card" data-testid="drill-panel">
+      <h3 style={{ marginTop: 0 }}>推演演习 · 扫端到端卡点</h3>
+      <p style={{ opacity: 0.75, fontSize: "0.9em", marginTop: -6 }}>
+        输入一件**业务上发生的事**（不是拨数值），沿真实求解器算出卡点 / 堵点 / 脆弱点。
+        阈值取该变量在本世界的 P90/P95 分位，零配置。
+      </p>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <label>
+          <span style={{ display: "block", fontSize: "0.85em", opacity: 0.8 }}>推演天数</span>
+          <input
+            data-testid="drill-horizon-days"
+            value={horizonDays}
+            onChange={(e) => setHorizonDays(e.target.value)}
+            inputMode="numeric"
+            style={{ width: 90 }}
+          />
+        </label>
+        <label>
+          <span style={{ display: "block", fontSize: "0.85em", opacity: 0.8 }}>发生了什么</span>
+          <select
+            data-testid="drill-event-kind"
+            value={eventKind}
+            onChange={(e) => {
+              setEventKind(e.target.value);
+              setPayload({});
+            }}
+          >
+            {/* 空档 = 只扫卡点不调求解器，是**一等选项**不是"请选择"的占位 */}
+            <option value="">（不输事件·只扫卡点）</option>
+            {specs.map((s) => (
+              <option key={s.kind} value={s.kind}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {spec === null ? null : (
+          <>
+            <label>
+              <span style={{ display: "block", fontSize: "0.85em", opacity: 0.8 }}>对象编号</span>
+              <input
+                data-testid="drill-target-object"
+                value={targetObjectId}
+                onChange={(e) => setTargetObjectId(e.target.value)}
+                style={{ width: 140 }}
+              />
+            </label>
+            {/* 表单字段由 catalog 生成 —— 加一个事件，前端零改动就有了它的输入框 */}
+            {spec.payloadKeys.map((pk) => (
+              <label key={pk.key}>
+                <span style={{ display: "block", fontSize: "0.85em", opacity: 0.8 }} title={pk.hint}>
+                  {pk.key}
+                  {pk.required ? " *" : ""}
+                </span>
+                <input
+                  data-testid={`drill-payload-${pk.key}`}
+                  value={payload[pk.key] ?? ""}
+                  onChange={(e) => setPayload((p) => ({ ...p, [pk.key]: e.target.value }))}
+                  placeholder={pk.hint}
+                  inputMode={pk.type === "number" ? "numeric" : "text"}
+                  style={{ width: 130 }}
+                />
+              </label>
+            ))}
+          </>
+        )}
+        <button className="btn primary" data-testid="drill-run-btn" disabled={!sessionId || running} onClick={onRun}>
+          {running ? "演习中…" : "开始演习"}
+        </button>
+      </div>
+
+      {catalog.isError ? (
+        <p data-testid="drill-catalog-error" style={{ opacity: 0.8 }}>
+          事件目录取不到（后端 `sim.sandbox` 未开通或不可达）——**这不代表没有事件可输**，只是这一跳没打通。
+        </p>
+      ) : null}
+
+      {report === null ? null : (
+        <div style={{ marginTop: 12 }} data-testid="drill-report">
+          {/* ⚠ 红线①：allFailed 与「没扫出卡点」是两个状态，绝不合并渲染 */}
+          <p
+            data-testid="drill-summary"
+            data-all-failed={String(report.summary.allFailed)}
+            data-datamode={report.summary.dataMode}
+            className={report.summary.allFailed ? "badge warn" : undefined}
+          >
+            {report.summary.text}
+          </p>
+
+          {/* ⚠ 红线③：截断必须说出来 */}
+          {report.truncated ? (
+            <p data-testid="drill-truncated" style={{ opacity: 0.8, fontSize: "0.9em" }}>
+              每类只显示前 {report.appliedLimitPerKind} 条（实际：
+              {Object.entries(report.totalByKind)
+                .map(([k, n]) => `${k} ${n}`)
+                .join("·")}
+              ）。
+            </p>
+          ) : null}
+
+          {/* 求解器回执 —— 「求解器真被调用」这件事屏上可见，不必开 network 面板 */}
+          <details data-testid="drill-solver-runs">
+            <summary style={{ cursor: "pointer", fontSize: "0.9em", opacity: 0.85 }}>
+              求解器回执（{report.solverRuns.length} 次调用）
+            </summary>
+            <ul style={{ fontSize: "0.85em", opacity: 0.9 }}>
+              {report.solverRuns.map((r, i) => (
+                <li key={`${r.solverKey}-${i}`} data-testid="drill-solver-run" data-solver={r.solverKey} data-ok={String(r.ok)}>
+                  {r.solverKey} · {r.ok ? `产出 ${r.findingCount} 条` : `失败：${r.error ?? "未知错误"}`} ·{" "}
+                  <DataModeBadge mode={r.dataMode} />
+                </li>
+              ))}
+            </ul>
+          </details>
+
+          <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }} data-testid="drill-findings">
+            {report.findings.map((f) => (
+              <FindingRow key={f.key} f={f} />
+            ))}
+          </ul>
+
+          {/* 降级区：守恒未通过的结论不删掉，但不混进主清单（PRD §4.6） */}
+          {report.degraded.length === 0 ? null : (
+            <details data-testid="drill-degraded" style={{ marginTop: 8 }}>
+              <summary style={{ cursor: "pointer", fontSize: "0.9em", opacity: 0.85 }}>
+                降级区 · {report.degraded.length} 条守恒校验未通过（不进主清单）
+              </summary>
+              <ul style={{ listStyle: "none", padding: 0 }}>
+                {report.degraded.map((f) => (
+                  <FindingRow key={f.key} f={f} />
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default DrillPanel;

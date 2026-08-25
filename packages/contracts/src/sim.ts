@@ -721,7 +721,7 @@ export const SimMetricSeriesResponseSchema = z.object({
    *
    * 缺省 `1` ⇒ 本字段引入前的响应照旧解析、读出来恒 `1`（additive · 可回退）。
    */
-  tickDays: z.number().int().min(1).default(1),
+  tickDays: z.number().int().min(1).optional(),
   /**
    * 本页指标，序由 `appliedOrder` 决定（`key` 档 = 字典序升序 = 历史行为；
    * `magnitude` 档 = 变化幅度降序 + key 升序 tiebreak）。两档都是全序 ⇒ R6 字节级可复现。
