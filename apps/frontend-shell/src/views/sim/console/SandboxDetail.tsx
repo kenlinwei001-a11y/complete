@@ -58,6 +58,41 @@ function nodeLabel(nodeId: string): string {
   return def.label;
 }
 
+/** `short` 的每个字必须按序出自 `full`（与 §2 地铁图 `isSub` 判据同一把尺）。 */
+function isSubsequence(short: string, full: string): boolean {
+  let i = 0;
+  for (const ch of full) if (i < short.length && short[i] === ch) i += 1;
+  return i === short.length;
+}
+
+/**
+ * 传导识别表「环节」一列的**短名**。该列宽定死 54px（规格 `.tr{grid-template-columns}`），
+ * 放不下 `过程质检攒批` / `干线运输在途` 这种 6 字契约名 —— 规格因此用 4 字短名。
+ *
+ * 但短名**不许自由手写**：这里沿用本文件 §2 地铁图那条已被用例咬住的纪律 ——
+ * **短名必须是注册表 label 的子序列**（不许出现注册表里没有的字），不合即抛。
+ * 于是「列宽放不下」这件事只能靠**截字**解决，不能靠**另起一个名字**解决。
+ *
+ * ⚠ 规格原文给 `capacity.schedule` 起的短名是「排产计划」，而注册表 label 是「主计划排产」——
+ *   `排产计划` **不是**它的子序列（本仓 `sandbox-detail-pixel.test.tsx` ④ 的反向金丝雀
+ *   正是拿这两个串做的：`expect(isSub("排产计划","主计划排产")).toBe(false)`）。
+ *   也就是说那 4 个字是**编出来的**，本单不予保留，改用注册表全名（宽 1 个字）。
+ */
+function shortNodeLabel(nodeId: string, short: string): string {
+  const full = nodeLabel(nodeId);
+  if (!isSubsequence(short, full)) {
+    throw new Error(`短名「${short}」不是 CHAIN_NODE_REGISTRY 里「${full}」的子序列 ⇒ 有自己编的字`);
+  }
+  return short;
+}
+
+/** 传导识别表用到的五个环节（短名逐个经 `shortNodeLabel` 校验）。 */
+const CD_AGING = nodeLabel("capacity.aging");
+const CD_KITTING = nodeLabel("material.kitting");
+const CD_QC = shortNodeLabel("capacity.qc_batch", "过程质检");
+const CD_SCHEDULE = nodeLabel("capacity.schedule");
+const CD_TRANSIT = shortNodeLabel("delivery.transit", "干线在途");
+
 /**
  * 基地名 ← `BASE_REGISTRY`（`packages/contracts/src/base-registry.ts`）。
  * 该文件头原话：「**所有消费端从 BASE_REGISTRY 派生，改一处全局同步（DF.1/G-5/R14）**」，
@@ -167,20 +202,20 @@ const PLACEHOLDER_NODE_DETAIL: NodeDetailPayload = {
   // `环节` 一列**整列查注册表**（`nodeId` → `CHAIN_NODE_REGISTRY.label`）：端点接通前它是占位行，
   // 但「哪些环节存在、各叫什么」不是本视图能编的事实 —— 那是链路注册表的事实。
   conduction: [
-    { batch: "P2161", node: nodeLabel("capacity.aging"), model: "LFP-314", wip: "4.2k", level: 1, elapsed: "21'12" },
-    { batch: "P2162", node: nodeLabel("material.kitting"), model: "NCM-300", wip: "3.8k", level: 3, elapsed: "32'42", selected: true },
-    { batch: "P2161", node: nodeLabel("capacity.qc_batch"), model: "NCM-050", wip: "2.6k", level: 2, elapsed: "12'12" },
-    { batch: "P2161", node: nodeLabel("capacity.aging"), model: "LFP-250", wip: "4.0k", level: 2, elapsed: "17'29" },
-    { batch: "P2161", node: nodeLabel("capacity.schedule"), model: "LFP-314", wip: "1.9k", level: 1, elapsed: "8'32" },
-    { batch: "P2161", node: nodeLabel("material.kitting"), model: "NCM-300", wip: "3.1k", level: 2, elapsed: "12'09" },
-    { batch: "P2161", node: nodeLabel("delivery.transit"), model: "NCM-050", wip: "2.2k", level: 2, elapsed: "14'18" },
-    { batch: "P2161", node: nodeLabel("capacity.aging"), model: "LFP-314", wip: "4.4k", level: 2, elapsed: "3'12" },
-    { batch: "P2161", node: nodeLabel("capacity.qc_batch"), model: "LFP-250", wip: "3.6k", level: 2, elapsed: "12'12" },
-    { batch: "P2161", node: nodeLabel("material.kitting"), model: "LFP-314", wip: "2.8k", level: 1, elapsed: "8'32" },
-    { batch: "P2161", node: nodeLabel("capacity.schedule"), model: "NCM-300", wip: "3.3k", level: 2, elapsed: "14'18" },
-    { batch: "P2161", node: nodeLabel("capacity.aging"), model: "NCM-050", wip: "4.1k", level: 2, elapsed: "3'12" },
-    { batch: "P2161", node: nodeLabel("delivery.transit"), model: "LFP-250", wip: "2.4k", level: 2, elapsed: "12'12" },
-    { batch: "P2161", node: nodeLabel("capacity.qc_batch"), model: "LFP-314", wip: "3.9k", level: 1, elapsed: "9'44" },
+    { batch: "P2161", node: CD_AGING, model: "LFP-314", wip: "4.2k", level: 1, elapsed: "21'12" },
+    { batch: "P2162", node: CD_KITTING, model: "NCM-300", wip: "3.8k", level: 3, elapsed: "32'42", selected: true },
+    { batch: "P2161", node: CD_QC, model: "NCM-050", wip: "2.6k", level: 2, elapsed: "12'12" },
+    { batch: "P2161", node: CD_AGING, model: "LFP-250", wip: "4.0k", level: 2, elapsed: "17'29" },
+    { batch: "P2161", node: CD_SCHEDULE, model: "LFP-314", wip: "1.9k", level: 1, elapsed: "8'32" },
+    { batch: "P2161", node: CD_KITTING, model: "NCM-300", wip: "3.1k", level: 2, elapsed: "12'09" },
+    { batch: "P2161", node: CD_TRANSIT, model: "NCM-050", wip: "2.2k", level: 2, elapsed: "14'18" },
+    { batch: "P2161", node: CD_AGING, model: "LFP-314", wip: "4.4k", level: 2, elapsed: "3'12" },
+    { batch: "P2161", node: CD_QC, model: "LFP-250", wip: "3.6k", level: 2, elapsed: "12'12" },
+    { batch: "P2161", node: CD_KITTING, model: "LFP-314", wip: "2.8k", level: 1, elapsed: "8'32" },
+    { batch: "P2161", node: CD_SCHEDULE, model: "NCM-300", wip: "3.3k", level: 2, elapsed: "14'18" },
+    { batch: "P2161", node: CD_AGING, model: "NCM-050", wip: "4.1k", level: 2, elapsed: "3'12" },
+    { batch: "P2161", node: CD_TRANSIT, model: "LFP-250", wip: "2.4k", level: 2, elapsed: "12'12" },
+    { batch: "P2161", node: CD_QC, model: "LFP-314", wip: "3.9k", level: 1, elapsed: "9'44" },
   ],
   strip: {
     kms: [
