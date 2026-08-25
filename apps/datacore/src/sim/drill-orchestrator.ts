@@ -26,6 +26,8 @@
  * 复用不需要改造它们 —— 本文件**一行都没碰** `apps/datacore/src/solvers/**`。
  */
 import {
+  DRILL_FINDINGS_PER_KIND_DEFAULT,
+  DRILL_FINDINGS_PER_KIND_MAX,
   aggregateDrillDataMode,
   compareDrillFindings,
   drillEventSpec,
@@ -57,6 +59,8 @@ export interface DrillOrchestrateInput {
   invokeSolver: DrillSolverInvoker;
   /** 传导引擎扫出来的那批（G-DRILL-2 的产物），与求解器那批合并成一张清单。 */
   scanFindings?: readonly DrillFinding[];
+  /** 每类结论上限（规模闸）。不传落契约默认 —— **绝不回全量**。 */
+  limitPerKind?: number;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -558,15 +562,36 @@ export async function orchestrateDrill(input: DrillOrchestrateInput): Promise<Dr
 
   // ── 降级区：守恒未通过的结论**不删掉**，但不混进主清单（PRD §4.6）──────────
   const degraded = findings.filter((f) => f.reconciled === false).sort(compareDrillFindings);
-  const main = findings.filter((f) => f.reconciled !== false).sort(compareDrillFindings);
+  const allMain = findings.filter((f) => f.reconciled !== false).sort(compareDrillFindings);
+
+  // ── 规模闸：**逐类**取前 N（实测 1,567 对象的世界会产出 5,593 条 / 4.6MB）────────
+  // 逐类而不是全局取 Top-N：全局会把整类堵点（severity ~47）挤出榜外，
+  // 屏上显示成「没有堵点」—— 把截断伪装成结论。理由全文见契约 `DRILL_FINDINGS_PER_KIND_DEFAULT`。
+  const limitPerKind = Math.max(
+    1,
+    Math.min(input.limitPerKind ?? DRILL_FINDINGS_PER_KIND_DEFAULT, DRILL_FINDINGS_PER_KIND_MAX),
+  );
+  const totalByKind: Record<string, number> = {};
+  for (const f of allMain) totalByKind[f.kind] = (totalByKind[f.kind] ?? 0) + 1;
+  const perKindCount = new Map<string, number>();
+  const main: DrillFinding[] = [];
+  for (const f of allMain) {
+    const n = perKindCount.get(f.kind) ?? 0;
+    if (n >= limitPerKind) continue;
+    perKindCount.set(f.kind, n + 1);
+    main.push(f);
+  }
+  const truncated = main.length < allMain.length;
 
   // ── 汇总诚实位 ────────────────────────────────────────────────────────────
+  // ⚠ 汇总一律基于 **`allMain`（截断前）**，不是回包里那份被裁过的 `main`：
+  //   拿截断后的数去算「一共几条」，就是用自己的显示上限冒充世界的真实规模。
   const realRuns = solverRuns.filter((r) => r.solverKey !== "(event)" && r.solverKey !== "(routing)");
   const allFailed = realRuns.length > 0 && realRuns.every((r) => !r.ok);
-  const modes = main.filter((f) => f.kind !== "未能评估").map((f) => f.source.dataMode);
+  const modes = allMain.filter((f) => f.kind !== "未能评估").map((f) => f.source.dataMode);
   const aggMode = aggregateDrillDataMode(modes);
-  const unevaluatedCount = main.filter((f) => f.kind === "未能评估").length;
-  const realFindings = main.filter((f) => f.kind !== "未能评估");
+  const unevaluatedCount = allMain.filter((f) => f.kind === "未能评估").length;
+  const realFindings = allMain.filter((f) => f.kind !== "未能评估");
 
   // ⚠ 这段文案是「无卡点」与「没算出来」两个状态的分叉点（PRD §4.6 的红线）。
   let text: string;
@@ -583,6 +608,9 @@ export async function orchestrateDrill(input: DrillOrchestrateInput): Promise<Dr
       `堵点 ${realFindings.filter((f) => f.kind === "堵点").length}·脆弱点 ${realFindings.filter((f) => f.kind === "脆弱点").length}）` +
       (unevaluatedCount > 0 ? `，另有 ${unevaluatedCount} 条未能评估` : "") +
       (degraded.length > 0 ? `；${degraded.length} 条守恒未通过已降级` : "") +
+      // 截断这件事必须**出现在人读的那句话里**，不能只藏在 `truncated` 字段里 ——
+      // 屏上第一眼看到的是这句话。
+      (truncated ? `；本次每类只回前 ${limitPerKind} 条（共 ${allMain.length} 条）` : "") +
       `。数据模式=${aggMode}。`;
   }
 
@@ -594,6 +622,9 @@ export async function orchestrateDrill(input: DrillOrchestrateInput): Promise<Dr
     ticks: ticksForDays(horizonDays, tickDays),
     events: [...events],
     findings: main,
+    totalByKind,
+    truncated,
+    appliedLimitPerKind: limitPerKind,
     degraded,
     solverRuns,
     summary: {

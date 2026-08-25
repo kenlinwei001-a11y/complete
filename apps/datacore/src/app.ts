@@ -2871,8 +2871,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       tickDays: s.tickDays ?? 1,
       worldId: s.id,
       forkedFromStateId,
-      scanFindings: body.scanOnly ? scanFindings : scanFindings,
-      invokeSolver: async (solverKey, args) => ontology.invokeSolver(c, solverKey, args),
+      scanFindings,
+      // 规模闸：**不传也有闸**（编排器落契约默认，绝不回全量）。
+      // 实测依据：1,567 对象 × 36 变量的世界一次演习产出 5,593 条 / 4.66MB，
+      // 与本仓 metric-series 栽过的那个 O(N×世界规模) 是同一个形状。
+      limitPerKind: body.limitPerKind,
+      // `scanOnly` ⇒ 一个求解器都不调（一期行为）。诚实：不调就是不调，
+      // 不许偷偷调了再把结果丢掉（那会让「求解器真被调用」这条判据失去意义）。
+      invokeSolver: async (solverKey, args) => {
+        if (body.scanOnly) throw new Error(`scanOnly=true：本次演习只跑卡点扫描，未调用 ${solverKey}`);
+        return ontology.invokeSolver(c, solverKey, args);
+      },
     });
 
     // ⑤ `sim.drill_completed`（PRD §0 登记的待增事件）。

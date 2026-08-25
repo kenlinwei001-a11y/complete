@@ -451,6 +451,22 @@ export type DrillFinding = z.infer<typeof DrillFindingSchema>;
  * `findings` 已排好**全序**（severity 降序 → when 升序 → key 字典序），
  * 故同输入同种子重跑逐字节一致（R6）。
  */
+/**
+ * **每类结论的条数上限**（规模闸）。
+ *
+ * ⚠ 这不是拍脑袋加的，是**实测逼出来的**：本单开发中在 1,567 对象 × 36 状态变量的世界上
+ * 真跑一次演习，回包 **4,656,049 字节 / 5,593 条结论**（卡点 2760 · 脆弱点 2815 · 堵点 18）。
+ * 规模是 **O(对象数 × 状态变量数)** —— 生产量级世界（实测 11,348 对象）会是它的 7 倍。
+ * 本仓 `GET …/metric-series` **正是栽在同一个形状上**（116,859,540 字节 / 21.8 秒 → 前端 OOM），
+ * 那次的教训写在 `SimMetricSeriesResponseSchema` 的注释里。同样的形状不许再来一次。
+ *
+ * ⛔ **按「每类」限，不是按总数限**：总数限会把 18 条堵点整类挤掉 ——
+ * 卡点 severity ~99、堵点 ~47，取全局 Top-N 时堵点一条都进不来，
+ * 而屏上会显示成「这个世界没有堵点」。**那是把截断伪装成结论**，正是本单要堵的那种假绿。
+ */
+export const DRILL_FINDINGS_PER_KIND_DEFAULT = 50;
+export const DRILL_FINDINGS_PER_KIND_MAX = 500;
+
 export const DrillReportSchema = z.object({
   /** 演习跑在哪个世界（R4-sim：必是 fork 出来的仿真世界，不是真实世界）。 */
   worldId: z.string(),
@@ -461,8 +477,20 @@ export const DrillReportSchema = z.object({
   /** 实际推进了几个 tick = `ceil(horizonDays / tickDays)`。 */
   ticks: z.number().int().min(0),
   events: z.array(DrillEventSchema),
-  /** 主清单（`reconciled !== false` 的那些）。 */
+  /** 主清单（`reconciled !== false` 的那些）。**已按 `appliedLimitPerKind` 逐类截断**，见下方诚实位。 */
   findings: z.array(DrillFindingSchema),
+  /**
+   * 🔴 **诚实位（不许静默截断）** —— 本次**一共**扫出多少条，逐类给。
+   *
+   * 与 `findings.length` 是两个不同的命题：不给这个数，调用方就没法区分
+   * 「这个世界只有 3 条卡点」和「有 2,760 条，我只给了你 50 条」。
+   * 口径与 `SimMetricSeriesResponse.totalMetrics` 逐条同源（那次也是被同一个坑教出来的）。
+   */
+  totalByKind: z.record(z.string(), z.number().int().min(0)).default({}),
+  /** 诚实位：任一类被截断即为真。屏上据此标「还有更多」，**不许默默少回**。 */
+  truncated: z.boolean().default(false),
+  /** 回执：**真正生效**的每类上限（要多了被压过，从这里看得出来）。 */
+  appliedLimitPerKind: z.number().int().min(1).default(DRILL_FINDINGS_PER_KIND_DEFAULT),
   /** 降级区：守恒未通过的结论（PRD §4.6）——**不删掉**，但不混进主清单。 */
   degraded: z.array(DrillFindingSchema),
   /** 每个被调求解器的回执（真调过 / 报了什么错），前端据此证明「求解器真被调用」。 */
@@ -526,12 +554,15 @@ export function compareDrillFindings(a: DrillFinding, b: DrillFinding): number {
 export const DRILL_CHOKE_QUANTILE = 0.9; // 卡点：P90 以上
 export const DRILL_FRAGILE_QUANTILE = 0.95; // 脆弱点：离 P95 阈值最近的那批
 
+
 export const DrillRunRequestSchema = z.object({
   events: z.array(DrillEventSchema).default([]),
   /** 推演天数（仓主要的「30 天」）。 */
   horizonDays: z.number().int().min(1).max(365).default(30),
   /** 只跑卡点扫描不调求解器（一期行为）；`true` 时 `events` 可为空。 */
   scanOnly: z.boolean().default(false),
+  /** 每类结论最多回几条（规模闸；**不传也有闸**，绝不回全量）。 */
+  limitPerKind: z.number().int().min(1).max(DRILL_FINDINGS_PER_KIND_MAX).default(DRILL_FINDINGS_PER_KIND_DEFAULT),
 });
 export type DrillRunRequest = z.infer<typeof DrillRunRequestSchema>;
 
