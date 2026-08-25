@@ -205,8 +205,18 @@ export const SimSessionSchema = z.object({
    *
    * 缺省 `1`（一 tick = 一天，与 A8 模拟时钟「一 tick = 一个模拟日」同口径）⇒
    * 本字段引入前建的世界读出来恒 `1`，行为逐字节不变（additive · 可回退 RL9）。
+   *
+   * ⚠ **刻意 optional 而非 required** —— 沿用正上方 `disabledRuleKeys` 立下的同一条理由，
+   * 别推翻：`SimSession` 在前端被当**字面量**构造 7 处（`apps/frontend-shell/test/` 下
+   * sandbox-p0 / sandbox-view / sandbox-declutter / sandbox-three-zone / sandbox-kpi-layer /
+   * sandbox-finance-worldstate 等 fixture），置为必填会把整包前端打成编译红 ——
+   * 而那些文件属于**并行在跑的另几张单**，不该被本单牵动。实测确有其事：
+   * 改成必填时 `pnpm --filter datacore typecheck` 当场报 6 处（app.ts×2 · repo/memory · repo/pg×2 ·
+   * 两个既有测试），全部是与本单无关的字面量。
+   * DataCore 侧**恒填**（`app.ts` 的 `createSimSessionWorld` + `repo/pg.ts rowToSession` 的 `?? 1`），
+   * 故服务端答复里它总在；消费方一律写 `?? 1`（缺失与 1 同义，见 `ticksForDays` 自己也兜底）。
    */
-  tickDays: z.number().int().min(1).default(1),
+  tickDays: z.number().int().min(1).optional(),
   createdAt: z.string(),
 });
 export type SimSession = z.infer<typeof SimSessionSchema>;
