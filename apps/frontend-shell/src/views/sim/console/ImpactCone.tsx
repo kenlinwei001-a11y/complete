@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { ImpactAnalysisResponse, ImpactChange } from "@platform/contracts";
+import { chainNodeDef, type ImpactAnalysisResponse, type ImpactChange } from "@platform/contracts";
 import { runImpactAnalysis } from "@/api/endpoints";
 import styles from "./SandboxDetail.module.css";
 
@@ -44,6 +44,33 @@ export interface ImpactConeModel {
   provenance: { impacts: "impact-analysis" | "placeholder"; radius: "placeholder"; angle: "placeholder" };
 }
 
+/**
+ * 屏上的**环节名**取自契约冻结表 `CHAIN_NODE_REGISTRY`，一个字都不在视图里手写（R14）。
+ *
+ * 与本目录 `SandboxDetail.laneNodeLabel` 同一条纪律，只是那里管地铁图 21 个站、
+ * 这里管三条冲击的槽位名。判据是「**换注册表 = 换租户**」：改 `chain-sim.ts` 的 label，
+ * 这三条冲击的名字跟着变，视图零改动。写死在这里则换个行业就是三句错话。
+ *
+ * ⚠ 不在册即**抛**，不回退到手写串 —— 静默回退会让「注册表少了一条」表现成屏上一切正常。
+ */
+function nodeLabel(nodeId: string): string {
+  const def = chainNodeDef(nodeId);
+  if (def === undefined) throw new Error(`不在 CHAIN_NODE_REGISTRY 里的环节：${nodeId}`);
+  return def.label;
+}
+
+/**
+ * 规格三条冲击的槽位。**`y` 是版面坐标（规格 84/100/116），`nodeId` 是内容的出处**：
+ * 前者是本文件里真正该写死的那一类（画布几何），后者一律查注册表。
+ * 规格原文把两者写在同一个字面量里（`{ label: "老化冲击 Y1", y: 116 }`），
+ * 于是「坐标」与「业务事实」混成一格、一起被当成硬编码 —— 这里拆开。
+ */
+const CONE_SLOTS: readonly { nodeId: string; code: string; y: number }[] = [
+  { nodeId: "material.kitting", code: "P2", y: 84 },
+  { nodeId: "capacity.schedule", code: "P1", y: 100 },
+  { nodeId: "capacity.aging", code: "Y1", y: 116 },
+];
+
 /** 规格里的那一套（占位数集中在这一处，不散进 JSX）。 */
 export const PLACEHOLDER_CONE: ImpactConeModel = {
   radiusLabel: "18:12",
@@ -56,11 +83,7 @@ export const PLACEHOLDER_CONE: ImpactConeModel = {
     { label: "P4214", x: 204, y: 72 },
   ],
   hotMarkerIndex: 1,
-  impacts: [
-    { label: "齐套冲击 P2", y: 84 },
-    { label: "排产冲击 P1", y: 100 },
-    { label: "老化冲击 Y1", y: 116 },
-  ],
+  impacts: CONE_SLOTS.map((s) => ({ label: `${nodeLabel(s.nodeId)} ${s.code}`, y: s.y })),
   provenance: { impacts: "placeholder", radius: "placeholder", angle: "placeholder" },
 };
 

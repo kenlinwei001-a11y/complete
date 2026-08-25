@@ -36,15 +36,57 @@
  * 本文件是这套占位数在本仓的唯一落点 —— 视图层零硬编码数据。
  */
 import { useQuery } from "@tanstack/react-query";
-import type {
-  ParetoBinding,
-  ParetoObjective,
-  ParetoRequest,
-  ParetoResult,
-  ParetoSolution,
-  SimMetricSeriesResponse,
+import {
+  BASE_REGISTRY,
+  chainNodeDef,
+  type ParetoBinding,
+  type ParetoObjective,
+  type ParetoRequest,
+  type ParetoResult,
+  type ParetoSolution,
+  type SimMetricSeriesResponse,
 } from "@platform/contracts";
 import { api } from "@/api/apiClient";
+
+// ══════════════════════════════════════════════════════════════════════════
+// § 0 · 屏上的业务名词一律查契约冻结册（R14「应用层无业务常数」）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 环节名 ← `CHAIN_NODE_REGISTRY`；基地名 ← `BASE_REGISTRY`。两者都在 `@platform/contracts`，
+ * 是这两类事实的**跨包唯一真相源**（`base-registry.ts` 原话：「所有消费端从 BASE_REGISTRY
+ * 派生，改一处全局同步（DF.1/G-5/R14）」；后端 `synthetic/battery.ts` 对不在册的基地名直接抛）。
+ *
+ * 判据是「**换注册表 = 换租户**」：本页的占位方案卡、绑定约束、执行对比甘特里的环节与基地，
+ * 改注册表就跟着改，视图零改动。写死在这里则换个行业整页都是错话。
+ *
+ * ⚠ 不在册即**抛**，不静默回退到手写串 —— 回退会让「注册表少一条」表现成屏上一切正常。
+ */
+function nodeLabel(nodeId: string): string {
+  const def = chainNodeDef(nodeId);
+  if (def === undefined) throw new Error(`不在 CHAIN_NODE_REGISTRY 里的环节：${nodeId}`);
+  return def.label;
+}
+
+function baseName(baseId: string): string {
+  const hit = BASE_REGISTRY.find((b) => b.baseId === baseId);
+  if (hit === undefined) throw new Error(`不在 BASE_REGISTRY 里的基地：${baseId}`);
+  return hit.name;
+}
+
+/**
+ * 本页占位场景里的两个基地：主基地 + 承接基地。
+ *
+ * ⚠ **本单实测：规格占位用的「盐城」在 `BASE_REGISTRY` 13 个基地里一条都没有**
+ *   （复验 `grep -rn 盐城 packages/contracts/src/` = 0；金丝雀「常州」同命令命中 5 文件 ⇒ 工具是好的）。
+ *   即：此前这一页把一个**本系统并不存在的基地**写在方案名、绑定约束与甘特段上，
+ *   而同名的东西拿去问后端会被 `synthetic/battery.ts` 的
+ *   `基地「X」不在 BASE_REGISTRY 单一来源册` 当场抛掉。换成在册基地（扬州，与常州同属江苏）
+ *   **不是改名，是把幻影基地换成真基地**。
+ */
+const HOME_BASE = "changzhou";
+const PEER_BASE_A = "yangzhou";
+const PEER_BASE_B = "hefei";
 
 // ══════════════════════════════════════════════════════════════════════════
 // § 1 · 几何（规格 `#pf` 段的 `X0/X1/Y0/Y1` 与两族网格线，逐值照抄）
@@ -287,11 +329,11 @@ const PLACEHOLDER_AXES: readonly [OptAxis, OptAxis] = [
 
 /** 规格候选方案卡 `D[]`（第 227–233 行）：id / 文案 / 非增值 / 外协 / 准时 / 稼动 / 亮格数 / 前沿 / 选中。 */
 const PLACEHOLDER_CARDS = [ // hardcoded-data-allow —— 规格占位
-  ["S-0055", "跨基地借调 + 外协 · 盐城", 18.4, 2180, 94.1, 86.2, 12],
-  ["S-0051", "外协兜底 · 合肥", 18.7, 1240, 93.0, 82.4, 10],
-  ["S-0042", "跨基地借调 · 盐城", 19.1, 620, 92.4, 84.6, 9],
-  ["S-0038", "缓冲释放 · 常州", 20.2, 180, 90.1, 79.2, 6],
-  ["S-0029", "缓冲释放 + 限产 · 常州", 21.4, 60, 88.4, 74.8, 4],
+  ["S-0055", `跨基地借调 + 外协 · ${baseName(PEER_BASE_A)}`, 18.4, 2180, 94.1, 86.2, 12],
+  ["S-0051", `外协兜底 · ${baseName(PEER_BASE_B)}`, 18.7, 1240, 93.0, 82.4, 10],
+  ["S-0042", `跨基地借调 · ${baseName(PEER_BASE_A)}`, 19.1, 620, 92.4, 84.6, 9],
+  ["S-0038", `缓冲释放 · ${baseName(HOME_BASE)}`, 20.2, 180, 90.1, 79.2, 6],
+  ["S-0029", `缓冲释放 + 限产 · ${baseName(HOME_BASE)}`, 21.4, 60, 88.4, 74.8, 4],
 ] as const;
 
 /** 规格 `.pc .r2` 四格的表头（这是**规格的显示简称**，不是第二套目标名）。 */
@@ -299,8 +341,8 @@ const PLACEHOLDER_CELL_CAPTIONS = ["非增值", "外协", "准时", "稼动"] as
 
 /** 规格 `#cst` 的 `D[]`（第 328–330 行）：约束名 / 取值 / 松紧 / 色阶。 */
 const PLACEHOLDER_CONSTRAINTS: readonly OptConstraintRow[] = [ // hardcoded-data-allow —— 规格占位
-  { key: "盐城日产上限", value: (4200).toLocaleString(), slackLabel: "紧", level: 4 },
-  { key: "常州检修窗", value: "3", slackLabel: "松", level: 1 },
+  { key: `${baseName(PEER_BASE_A)}日产上限`, value: (4200).toLocaleString(), slackLabel: "紧", level: 4 },
+  { key: `${baseName(HOME_BASE)}检修窗`, value: "3", slackLabel: "松", level: 1 },
   { key: "LFP-99 库存", value: (8600).toLocaleString(), slackLabel: "紧", level: 3 },
   { key: "跨基地运距", value: "280", slackLabel: "松", level: 1 },
   { key: "外协配额", value: (1200).toLocaleString(), slackLabel: "紧", level: 3 },
@@ -636,38 +678,46 @@ export const EXEC_TICKS: readonly string[] = Array.from({ length: 15 }, (_, i) =
 /** 规格 `.play{left:46%}`。 */
 const EXEC_PLAYHEAD_PCT = 46;
 
-/** 规格 `R[]`（第 341–350 行）逐值照抄。 */
+/**
+ * 规格 `R[]`（第 341–350 行）。
+ *
+ * 四行的 `name` 是**链路环节**，四个都与 `CHAIN_NODE_REGISTRY` 的 label **逐字相同**
+ * ⇒ 整列改查注册表：零像素变化，只把出处从「手写」换成「冻结册」。
+ * 段名里凡是环节的（`请购`）同样查表；`拣配 / 发料 / 上炉 / 静置` 这类是**环节内部的动作**、
+ * 不在注册表里，硬套 nodeId 等于在视图里新造一套命名，比写死更坏 —— 留在原地。
+ * 基地名（原规格的「盐城」）见文件头 `baseName` 注释：那是个**不在册的幻影基地**，已换在册基地。
+ */
 const PLACEHOLDER_EXEC_ROWS: readonly OptExecRow[] = [ // hardcoded-data-allow —— 规格占位
-  { group: "基线执行", name: "齐套发料", baseline: "4.54 D", actual: "2.10 D", direction: "dn", segments: [
-    { startPct: 2, widthPct: 12, tone: "o", label: "请购" }, { startPct: 16, widthPct: 22, tone: "r", label: "正极粉断供" },
+  { group: "基线执行", name: nodeLabel("material.kitting"), baseline: "4.54 D", actual: "2.10 D", direction: "dn", segments: [
+    { startPct: 2, widthPct: 12, tone: "o", label: nodeLabel("material.purchase_req") }, { startPct: 16, widthPct: 22, tone: "r", label: "正极粉断供" },
     { startPct: 40, widthPct: 18, tone: "b", label: "拣配" }, { startPct: 60, widthPct: 14, tone: "g", label: "发料" },
     { startPct: 78, widthPct: 10, tone: "o", label: "结转" }] },
-  { name: "老化静置", baseline: "7.34 D", actual: "5.02 D", direction: "dn", segments: [
+  { name: nodeLabel("capacity.aging"), baseline: "7.34 D", actual: "5.02 D", direction: "dn", segments: [
     { startPct: 3, widthPct: 10, tone: "o", label: "上炉" }, { startPct: 15, widthPct: 26, tone: "r", label: "炉位排队" },
     { startPct: 43, widthPct: 16, tone: "b", label: "静置" }, { startPct: 61, widthPct: 13, tone: "g", label: "下炉" },
     { startPct: 77, widthPct: 11, tone: "o", label: "结转" }] },
-  { name: "过程质检攒批", baseline: "2.81 D", actual: "2.20 D", direction: "dn", segments: [
+  { name: nodeLabel("capacity.qc_batch"), baseline: "2.81 D", actual: "2.20 D", direction: "dn", segments: [
     { startPct: 2, widthPct: 11, tone: "o", label: "抽检" }, { startPct: 15, widthPct: 20, tone: "a", label: "攒批" },
     { startPct: 37, widthPct: 18, tone: "b", label: "复判" }, { startPct: 57, widthPct: 15, tone: "g", label: "放行" },
     { startPct: 75, widthPct: 12, tone: "o", label: "结转" }] },
-  { name: "干线运输在途", baseline: "0.43 D", actual: "0.43 D", direction: "", segments: [
+  { name: nodeLabel("delivery.transit"), baseline: "0.43 D", actual: "0.43 D", direction: "", segments: [
     { startPct: 4, widthPct: 9, tone: "o", label: "装车" }, { startPct: 15, widthPct: 18, tone: "b", label: "干线" },
     { startPct: 35, widthPct: 16, tone: "b", label: "分拨" }, { startPct: 54, widthPct: 14, tone: "g", label: "签收" },
     { startPct: 71, widthPct: 12, tone: "o", label: "结转" }] },
-  { group: "S-0042 执行", name: "齐套发料", baseline: "4.54 D", actual: "2.10 D", direction: "dn", segments: [
-    { startPct: 2, widthPct: 12, tone: "o", label: "请购" }, { startPct: 16, widthPct: 14, tone: "c", label: "盐城调拨" },
+  { group: "S-0042 执行", name: nodeLabel("material.kitting"), baseline: "4.54 D", actual: "2.10 D", direction: "dn", segments: [
+    { startPct: 2, widthPct: 12, tone: "o", label: nodeLabel("material.purchase_req") }, { startPct: 16, widthPct: 14, tone: "c", label: `${baseName(PEER_BASE_A)}调拨` },
     { startPct: 32, widthPct: 20, tone: "c", label: "跨基地在途" }, { startPct: 54, widthPct: 18, tone: "g", label: "发料" },
     { startPct: 75, widthPct: 12, tone: "o", label: "结转" }] },
-  { name: "老化静置", baseline: "7.34 D", actual: "5.02 D", direction: "dn", segments: [
-    { startPct: 3, widthPct: 10, tone: "o", label: "上炉" }, { startPct: 15, widthPct: 18, tone: "c", label: "盐城炉位" },
+  { name: nodeLabel("capacity.aging"), baseline: "7.34 D", actual: "5.02 D", direction: "dn", segments: [
+    { startPct: 3, widthPct: 10, tone: "o", label: "上炉" }, { startPct: 15, widthPct: 18, tone: "c", label: `${baseName(PEER_BASE_A)}炉位` },
     { startPct: 35, widthPct: 20, tone: "c", label: "并行静置" }, { startPct: 57, widthPct: 16, tone: "g", label: "下炉" },
     { startPct: 75, widthPct: 12, tone: "o", label: "结转" }] },
-  { name: "过程质检攒批", baseline: "2.81 D", actual: "2.20 D", direction: "dn", segments: [
+  { name: nodeLabel("capacity.qc_batch"), baseline: "2.81 D", actual: "2.20 D", direction: "dn", segments: [
     { startPct: 2, widthPct: 11, tone: "o", label: "抽检" }, { startPct: 15, widthPct: 16, tone: "c", label: "阈值下调" },
     { startPct: 33, widthPct: 18, tone: "c", label: "并行复判" }, { startPct: 53, widthPct: 17, tone: "g", label: "放行" },
     { startPct: 73, widthPct: 14, tone: "o", label: "结转" }] },
-  { name: "干线运输在途", baseline: "0.43 D", actual: "0.56 D", direction: "up", segments: [
-    { startPct: 4, widthPct: 9, tone: "o", label: "装车" }, { startPct: 15, widthPct: 22, tone: "c", label: "盐城→常州" },
+  { name: nodeLabel("delivery.transit"), baseline: "0.43 D", actual: "0.56 D", direction: "up", segments: [
+    { startPct: 4, widthPct: 9, tone: "o", label: "装车" }, { startPct: 15, widthPct: 22, tone: "c", label: `${baseName(PEER_BASE_A)}→${baseName(HOME_BASE)}` },
     { startPct: 39, widthPct: 16, tone: "b", label: "分拨" }, { startPct: 57, widthPct: 14, tone: "g", label: "签收" },
     { startPct: 73, widthPct: 13, tone: "o", label: "结转" }] },
 ];
