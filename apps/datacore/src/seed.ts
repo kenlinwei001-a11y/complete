@@ -997,6 +997,103 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // WO-SIM-ROOT-PROCUREMENT · **物料采购这个根源**（G-ROOT-3 · 3 条 · 新增状态变量 `procurementDelay`）
+  //
+  // ── 病灶：今天的行为是 X，应该是 Y ────────────────────────────────────────────────
+  // **X（改前实测）**：按传导图**入度**分层，全世界只有 **3 个根源**（入度 0 = 没有上游 =
+  //   只能被外部扰动打进来）：`demandPressure` / `deliveryDelay` / `priceShock`。
+  //   而库存侧的 `shortageRisk`（短缺风险）**入度 2 / 出度 6**，是被上游算出来的**枢纽**。
+  //   于是「扰动物料采购」在今天只能去扰 `shortageRisk` —— 等于**从半路插入**：
+  //   用户以为自己在推「采购晚到会怎样」，实际是在直接改结果，推演结论失真。
+  // **Y（应该）**：采购到货延迟是**因**，库存短缺是**果**。系统里得有一个入度 0 的
+  //   `procurementDelay`，扰它才是扰「物料采购」；`shortageRisk` 从此只当果，不再兼任源。
+  //
+  // 本段同时**修正模型的语义错误**，不只是加功能：库存从「源」回到「果」。
+  //
+  // ── 为什么是三条而不是一条：采购这条根源在现实里有**三个不同的抓手**───────────────
+  // 三类落点各自是一本**不同的台账**，扰法与量纲都不同，合成一条就没法分别推演：
+  //   · `PurchaseOrder`（在途采购单）—— 「**这一单**比 ETA 晚了几天」（`etaDay`/`arriveDay` 那本账）
+  //   · `MaterialBatch`（到货批次）  —— 「**这一批**入库比计划晚了几天」（`ageDays` 那本账）
+  //   · `Supplier`（供应商）         —— 「**这一家**在手单的整体到货延迟」（跨单聚合口径）
+  // ⚠ 与既有 `Supplier.deliveryDelay`（交付延迟）**不是一件事，别合并**：那一个是供应商的
+  //   **履约表现画像**（准入/评估在用），本条是**这批货到没到**的天数。两者同时非零是常态
+  //   （表现一贯很好的供应商也会遇上一次港口拥堵），故 `combine:"sum"` 各自入账。
+  //
+  // ── 三条判据逐条实测（照档 1/档 3 立下的同一套，不许照名字猜）──────────────────────
+  //   ① **方向**：`po_replenishes_material` / `batch_replenishes_material` 是本单在
+  //      `battery.ts batteryLinkTypes()` 新声明、在 `service.ts` 真物化的**补货向逆边**
+  //      （既有 `material_supplied_by_po` / `material_has_batch` 是归属边，方向「料→单据」，
+  //      拿它跑影响传导必然走反 —— #158 的病）。`supplier_supplies_material` 是 WO-P1 已有的逆边。
+  //   ② **两端真有实例**：三条边的实例数由本单接缝测试**现算**并断言（不写死在这里 ——
+  //      写死就又变成一份会过期的手抄名单）。
+  //   ③ **落点真进 `world.state`**：`deriveSeedBaseSnapshot`（`sim/seed-world.ts`）铺的是
+  //      「规则触及的类型 × 该类型被触及的变量」⇒ 这三条一进来，三类落点的 `procurementDelay`
+  //      **自动**在 tick0 世界态里有格子有值。**这一步是本单的分水岭**：只在对象属性上加而不进
+  //      `state`，`propagateTick` 读到 `undefined` ⇒ 屏上看着施加成功、下游一动不动
+  //      （本仓点名的「静默错答的老形态」）。接缝测试的落点臂咬的就是这一格。
+  //
+  // 🔴 **`procurementDelay` 入度必须恒为 0**（它是根源，不是枢纽）：本段三条**只把它当 source**，
+  //    全仓没有任何规则写它。谁哪天加一条 `… → procurementDelay`，它就从根源掉成枢纽 ——
+  //    接缝测试的入度臂用**现算**入度咬死这件事（不是硬编根源名单：硬编会随下一条边悄悄失效）。
+  //    这也维持了「纯源量纲无人写」这条前提（此前三个：deliveryDelay/demandPressure/priceShock）。
+  // ══════════════════════════════════════════════════════════════════════════════════
+  {
+    id: "simpr_demo_po_procurement_to_material",
+    key: "demo_po_procurement_delay_to_material_shortage",
+    sourceTypeKey: "PurchaseOrder",
+    sourceStateVar: "procurementDelay",
+    viaLinkKey: "po_replenishes_material", // 本单新物化：PurchaseOrder→Material（一单补一料）
+    targetTypeKey: "Material",
+    targetStateVar: "shortageRisk",
+    // 0.8：在途单是**最直接**的补给。系数低于既有 `supplier_delay→material_shortage`(0.9) ——
+    // 那条是"这家供应商整体都在拖"，波及面比单张单大。
+    coefficient: 0.8,
+    delayTicks: 0, // 在途单晚到 ⇒ 缺口**当天**就是缺口，没有缓冲垫在中间
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_batch_procurement_to_material",
+    key: "demo_batch_procurement_delay_to_material_shortage",
+    sourceTypeKey: "MaterialBatch",
+    sourceStateVar: "procurementDelay",
+    viaLinkKey: "batch_replenishes_material", // 本单新物化：MaterialBatch→Material（一批补一料）
+    targetTypeKey: "Material",
+    targetStateVar: "shortageRisk",
+    // 0.6：批次晚入库时，**手上还有上一批**顶着，故弱于在途单那条。
+    coefficient: 0.6,
+    delayTicks: 1, // 先吃现有批次的库存，缺口**次拍**才显现
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_supplier_procurement_to_material",
+    key: "demo_supplier_procurement_delay_to_material_shortage",
+    sourceTypeKey: "Supplier",
+    sourceStateVar: "procurementDelay",
+    viaLinkKey: "supplier_supplies_material", // WO-P1 已有逆边：Supplier→Material
+    targetTypeKey: "Material",
+    targetStateVar: "shortageRisk",
+    // 0.5：供应商级是**跨单聚合**口径，摊到单个物料上最弱（一家供应商供多个料）。
+    coefficient: 0.5,
+    delayTicks: 1, // 跨单聚合要等当期在手单都对完账才看得出来，不与单据同拍
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
 ];
 
 /**
