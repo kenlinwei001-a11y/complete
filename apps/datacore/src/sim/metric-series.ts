@@ -190,6 +190,14 @@ export interface MetricSeriesArgs {
   perturbations: readonly Perturbation[];
   /** 世界线终点（会话 `curTick`）—— 窗口上界，**不外推**。 */
   curTick: number;
+  /**
+   * 一格 tick 等于几天（= `SimSession.tickDays`，WO-SIM-DRILL-P12）。
+   *
+   * 随回包下发，让下游甘特能把横轴从裸 tick 序号换算成天 —— 消费方
+   * （`views/sim/console/MetricGantt.tsx`）手上只有这一个响应，不给它口径就只能渲染裸序号。
+   * 缺省 `1` ⇒ 老调用方逐字节同旧（additive）。
+   */
+  tickDays?: number;
   from?: number;
   to?: number;
   // ── 规模闸（WO-SIM-SERIES-SCALE）—— 三条入参，语义写死在契约里，此处只记"为什么在模型层" ──
@@ -387,6 +395,8 @@ export function buildMetricSeries(args: MetricSeriesArgs): SimMetricSeriesRespon
     fromTick,
     toTick,
     ticks,
+    // 时间轴刻度单位随轴一起下发（见 `MetricSeriesArgs.tickDays`）。实测增量恒 13 字节·O(1)。
+    tickDays: Math.max(1, Math.floor(args.tickDays ?? 1)),
     metrics,
     // ── 诚实位：**不许静默截断** ──────────────────────────────────────────────
     totalMetrics,

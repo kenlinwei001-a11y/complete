@@ -58,6 +58,7 @@ import {
   type SandboxMode,
   type SandboxScope,
 } from "./sandboxModes";
+import { DrillPanel } from "./DrillPanel"; // WO-SIM-DRILL-P12 · 推演演习（事件→求解器→卡点清单）——本文件的 rail 是它唯一的生产调用方
 import { EnterpriseStatePanel } from "./EnterpriseStatePanel"; // WO-ENTERPRISE-STATE · 企业状态快照（只读）——本文件的 rail 是它唯一的生产调用方
 import { EnterpriseStateTwinPanel } from "./EnterpriseStateTwinPanel"; // WO-BEFE-WIRE-3 · 快照分叉(fork)与比对(diff)——同样，本文件的 rail 是它唯一的生产调用方
 import SandboxPlaysPanel, { type PlayAnchor } from "./SandboxPlaysPanel"; // WO-V4-PLAYS · 方案环（本文件的左区是它唯一的生产调用方）
@@ -1882,6 +1883,23 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
           </InfoPopover>
         </div>
       ),
+    },
+    {
+      /**
+       * WO-SIM-DRILL-P12 · **推演演习** —— 本单的用户入口。
+       *
+       * ⚠ **本行是 `DrillPanel` 唯一的生产调用方**（右栏是手工组装的数组、无自动扫描）——
+       *   删了这一行，那三个新端点（`/drill` · `/drill/catalog` · `/drill/state-var-layers`）
+       *   立刻退化成本仓连踩三次的 `G-SKILL-REFGRAPH-DEAD-EXTRACTOR`：
+       *   实现有、测试绿、却没有任何路由渲染得到。
+       *
+       * `defaultOpen: true`：这是仓主点名要的能力（「推演的目标是类似演习，扫描产销端到端的
+       * 环节卡点、堵点、脆弱点」），不该藏在折叠块里 —— 藏起来找不到的抽屉等于把内容删了。
+       */
+      id: "sim-drill",
+      title: "推演演习 · 卡点扫描",
+      defaultOpen: true,
+      node: <DrillPanel sessionId={sessionId} />,
     },
     {
       // WO-ENTERPRISE-STATE · 企业状态快照（只读）。

@@ -68,6 +68,10 @@ class MemSimRepo implements SimRepo {
       .map((s) => ({
         id: s.id, tenantId: s.tenantId, scope: s.scope, status: s.status, curTick: s.curTick,
         parentCheckpointId: s.parentCheckpointId, disabledRuleKeys: [...(s.disabledRuleKeys ?? [])],
+        // WO-SIM-DRILL-P12：天口径必须进列表投影 —— 下游四页的会话单源 `useConsoleSession`
+        // 走的正是这条列表（`pickLatestRunningSession` 从 `SimSessionListItem` 里挑），
+        // 漏在这里 = 四页永远读不到天口径，而 memory 模式（测试默认）还全绿。
+        tickDays: s.tickDays ?? 1,
         createdAt: s.createdAt,
         // 口径走契约**唯一实现**：这里再写一遍 reduce 就是第二套真相源，
         // 而 pg 那半是 SQL、天生抄不到一起 —— 唯一能同源的只有这一个纯函数。

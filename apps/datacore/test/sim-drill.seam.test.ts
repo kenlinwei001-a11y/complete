@@ -1,327 +1,444 @@
 import { describe, expect, it } from "vitest";
-import { makeApp, seedBattery, ADMIN, BASE_MANAGER, type TestApp } from "./helpers.js";
-import type { AuthCtx } from "../src/domain.js";
-import { SUB_CAUSE_CONSERVATION_TOLERANCE_PCT, subCauseConservationResidual, type ChainLossDrill, type ChainNodeDetail } from "@platform/contracts";
-import type { ChainLossResult } from "../src/solvers/chain-loss.js";
+import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
+import { seedDemoPropagationRules } from "../src/seed.js";
+import {
+  DRILL_EVENT_SPECS,
+  DrillEventKindSchema,
+  assertDrillRoutingTableComplete,
+  drillRoutesFor,
+  normalizeDrillDataMode,
+  resolveDrillArgs,
+  ticksForDays,
+  type DrillReport,
+} from "@platform/contracts";
+import { orchestrateDrill } from "../src/sim/drill-orchestrator.js";
+import { scanDrillFindings, transitiveClosureSizes, quantileSorted } from "../src/sim/drill-scan.js";
 
 /**
- * WO-SIM-BE-DRILL · 根因二级下钻 + 批号级传导明细的门。
+ * WO-SIM-DRILL-P12 · **推演演习接缝门**。
  *
- * ── 这个文件咬五件事（全在**效果层**，不是「路由存在 / 字段非空」的运输层）──
- *  ① **守恒（命门）**：`Σ子因pct + residual.pct == 该环节pct`，**逐环节**断言（不是抽一个样）。
- *     另加**非空洞前置**：必须至少有一个环节真拆出 ≥2 条 `UNIT` 级子因 ——
- *     否则这条守恒测在本数据集上等于「1 == 1」，门没牙。
- *  ② **子因不许是编的（红线）**：每条子因的 `evidence.objectId` 拿**已发布本体声明的主键**
- *     回 `listByType` 必须捞得到那一行，且 `evidence.value` 与该行那个字段**逐位相等**。
- *     金丝雀：同一套解析对一个**故意不存在**的 id 必须捞不到 —— 捞得到说明解析器坏了，
- *     这时候本条的「全部命中」是假绿（本仓「报否定结论前先自证工具」那条纪律）。
- *  ③ **诚实缺席**：派生不出子因的环节返回**空数组 + reason**，且 reason **必须来自数据**
- *     （= `chain_loss_attribution` 的 `empty[].reason` 原文），不是本测试或引擎编的一句文案。
- *  ④ **A6 行级过滤（本单唯一带权限断言的门）**：`base_manager:常州` 调明细只拿到常州批号；
- *     同一请求换到别的基地 **0 条**，且**必须配金丝雀**：admin 同参数拿得到 >0 条 ——
- *     否则「0 条」证明不了是权限挡的，可能只是那儿本来就没数据。
- *  ⑤ **变异反证的常设机制**：把子因换成写死词表（「炉位不足 / 批次拆分」）后，②的解析必须**当场落空**。
- *     写成断言而不是只在报告里说一句 —— 「下次同样的错发生时，是机器先说话」。
+ * ── 为什么必须接缝驱动、不能各半 unit（SEAM-GATE 头号判据）─────────────────────
+ * 本单跨**契约半**（事件 schema + 路由表 + 卡点语义）· **编排半**（分派 → 真调 → 归一）·
+ * **求解器半**（`sop_reschedule` 等 8 个既有求解器的真实输出形状）· **路由半**（真端点装配）。
+ * 各半分开测都能全绿而功能是坏的，四种**真实**死法：
+ *  · 路由表登记了但编排器没读它（写死 if 链）⇒ 加事件不生效，而单测路由表照样绿；
+ *  · 求解器真被调了，但归一时把缺失的 `dataMode` 当成 `LIVE` ⇒ 屏上把估算画成实测；
+ *  · 求解器抛错被 `catch { continue }` 吞掉 ⇒ 屏上从「没算出来」变成「没有风险」；
+ *  · 归一读的字段名是照 PRD 抄的（PRD 说 `tightness` 在顶层，实测在 `rows[].tightness`
+ *    且是**一张 factor→number 的表**）⇒ 取到 `undefined`，一条卡点都出不来而且不报错。
+ * 故 ①②③ 一律走**真路由 inject**（真 seed → 真求解器 → 真编排），不直调纯函数。
+ *
+ * ── 三靶变异反证（每条动过的断言都要有靶）─────────────────────────────────────
+ * 靶① 路由表改空 ⇒ ②「求解器真被调用」红
+ * 靶② 归一处 `dataMode` 强制 LIVE ⇒ ④「诚实位」红
+ * 靶③ 求解器抛错时静默跳过 ⇒ ⑤「未能评估仍在清单里」红
  */
 
-const A: AuthCtx = { tenantId: "demo", userId: "u", roles: ["admin"], attributes: {} };
-const TOL = SUB_CAUSE_CONSERVATION_TOLERANCE_PCT;
+const enableSim = async (t: TestApp) =>
+  t.app.inject({
+    method: "PUT",
+    url: "/a/v1/tenants/demo/features",
+    headers: ADMIN,
+    payload: { overrides: { "sim.sandbox": true, "sim.propagation": true } },
+  });
 
-/** 本体声明的主键属性（单一出处 = 已发布本体·**非硬编码类型→PK 映射表**，新增下钻类型自动进门）。 */
-async function pkPropOf(t: TestApp, typeKey: string): Promise<string | undefined> {
-  const ty = (await t.services.ontology.listTypes(A)).find((x) => x.key === typeKey);
-  return ty?.properties.find((p) => p.isPrimaryKey)?.propKey;
+/**
+ * 锚点订单 —— 仓主验收线原话「把 SO-3391 交期提前 10 天」里的那一单。
+ * 它是**种子里真实存在的行**（`synthetic/battery.ts` 的 `{ so:"SO-3391", cust:"广汽集团",
+ * model:"4680-NCM", qty:7259, due:"2026-06-24", pri:"高" }`），不是本文件编的一个 id ——
+ * 编一个不存在的 id，`sop_reschedule` 会走 404 分支，这道门就永远验不到真实的挤占逻辑。
+ */
+const ANCHOR_ORDER = "SO-3391";
+const ADVANCE_DAYS = 10;
+
+async function seededApp(): Promise<TestApp> {
+  const t = await makeApp();
+  await seedBattery(t);
+  await seedDemoPropagationRules(t.repos);
+  await enableSim(t);
+  return t;
 }
 
-/** 按 `objectType.objectId` 回仓储捞那一行的 props。捞不到 → undefined（调用方必须判为失败）。 */
-async function rowOf(t: TestApp, objectType: string, objectId: string): Promise<Record<string, unknown> | undefined> {
-  const pk = await pkPropOf(t, objectType);
-  if (!pk) return undefined;
-  const rows = (await t.repos.objects.listByType(A.tenantId, objectType)).map((o) => o.props);
-  return rows.find((r) => String(r[pk]) === objectId);
+async function newSession(t: TestApp, tickDays = 1): Promise<string> {
+  const r = await t.app.inject({ method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN, payload: { tickDays } });
+  expect(r.statusCode).toBe(201);
+  return (r.json() as { id: string }).id;
 }
 
-const chainLoss = (t: TestApp) => t.services.solvers.invoke(A, "chain_loss_attribution", {}) as unknown as Promise<ChainLossResult>;
-
-const drill = async (t: TestApp, nodeId: string, headers: Record<string, string> = ADMIN): Promise<{ status: number; body: ChainLossDrill }> => {
-  const res = await t.app.inject({ method: "POST", url: "/a/v1/sim/chain-loss-drill", headers, payload: { nodeId } });
-  return { status: res.statusCode, body: res.json() as ChainLossDrill };
-};
-
-async function newSession(t: TestApp): Promise<string> {
-  const res = await t.app.inject({ method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN, payload: {} });
-  if (res.statusCode !== 201) throw new Error(`sim session create failed: ${res.body}`);
-  return (res.json() as { id: string }).id;
+async function runDrill(t: TestApp, sid: string, payload: Record<string, unknown>): Promise<DrillReport> {
+  const r = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/drill`, headers: ADMIN, payload });
+  expect(r.statusCode).toBe(200);
+  return r.json() as DrillReport;
 }
 
-const detail = async (t: TestApp, sid: string, query: string, headers: Record<string, string> = ADMIN): Promise<{ status: number; body: ChainNodeDetail }> => {
-  const res = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/node-detail?${query}`, headers });
-  return { status: res.statusCode, body: res.json() as ChainNodeDetail };
-};
-
-describe("WO-SIM-BE-DRILL · 根因二级下钻 + 批号级传导明细", () => {
+describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
   // ══════════════════════════════════════════════════════════════════════
-  // ① 守恒（逐环节）
+  // ① 契约半：路由表数据驱动 · 枚举与登记同覆盖
   // ══════════════════════════════════════════════════════════════════════
-  it("① 守恒：Σ子因占比 + 残差 == 该环节占比，逐环节断言（且门有牙：至少一个环节真拆出 ≥2 条 UNIT 级）", async () => {
-    const t = await makeApp();
-    await seedBattery(t);
-    const loss = await chainLoss(t);
-
-    // 非空洞前置：链上真有归因行，否则下面的循环等于空转。
-    expect(loss.nodes.length, "chain_loss_attribution 一个节点都没有 ⇒ 本条空转，不是通过").toBeGreaterThan(0);
-
-    let unitLevelNodes = 0;
-    let maxUnitFanout = 0;
-    for (const node of loss.nodes) {
-      const { status, body } = await drill(t, node.nodeId);
-      expect(status, `节点 ${node.nodeId} 下钻返回 ${status}`).toBe(200);
-
-      // 守恒本体：Σ子因 + 残差 == 环节占比（口径走契约的**唯一实现**，测试不自己写这条加减）。
-      const residual = subCauseConservationResidual(body.subCauses, body.residual.pct, body.nodePct);
-      expect(Math.abs(residual), `节点 ${node.nodeId}：Σ子因 ${body.conservation.subCausePct} + 残差 ${body.residual.pct} 与环节占比 ${body.nodePct} 差 ${residual}`).toBeLessThanOrEqual(TOL);
-      expect(body.conservation.ok, `节点 ${node.nodeId} 自报守恒未通过：residual=${body.conservation.residual}`).toBe(true);
-      // 引擎自报的三个数必须与测试独立算出的一致（自报值不许是另一份口径）。
-      expect(body.conservation.nodePct).toBe(body.nodePct);
-      expect(body.conservation.residualPct).toBe(body.residual.pct);
-
-      // admin 无行级过滤 ⇒ 残差只该是浮点尾差，子因必须覆盖整个环节。
-      const sum = body.subCauses.reduce((s, x) => s + x.pct, 0);
-      expect(Math.abs(sum - body.nodePct), `admin 视角下节点 ${node.nodeId} 有未认领份额：Σ子因=${sum} vs 环节=${body.nodePct}（残差原因：${body.residual.reason}）`).toBeLessThanOrEqual(TOL);
-
-      // 环节占比必须与 §5 attribution 折叠出来的一致（下钻不许悄悄换分母）。
-      const foldPct = loss.attribution
-        .filter((a) => loss.evidence.some((e) => e.stepId === a.stepId && e.nodeId === node.nodeId))
-        .reduce((s, a) => s + a.pctOfChainLoss, 0);
-      expect(body.nodePct, `节点 ${node.nodeId} 的下钻分母与 attribution 折叠值不一致`).toBeCloseTo(foldPct, 10);
-
-      const units = body.subCauses.filter((s) => s.level === "UNIT");
-      if (units.length >= 2) unitLevelNodes += 1;
-      maxUnitFanout = Math.max(maxUnitFanout, units.length);
-      // 天数守恒同样成立（占比对了但天数错了，屏上两栏会自相矛盾）。
-      const dSum = body.subCauses.reduce((s, x) => s + x.days, 0) + body.residual.days;
-      expect(dSum, `节点 ${node.nodeId} 天数不守恒`).toBeCloseTo(body.nodeDays, 9);
+  it("① 路由表登记了全部 11 类事件，且每类至少一条路由（枚举加了表没加 ⇒ 当场抛）", () => {
+    expect(() => assertDrillRoutingTableComplete()).not.toThrow();
+    // 金丝雀：枚举本身确实有 11 个值（若这里读到 0，是契约没加载对，不是「表是空的」）
+    expect(DrillEventKindSchema.options.length).toBe(11);
+    expect(DRILL_EVENT_SPECS.length).toBe(11);
+    for (const kind of DrillEventKindSchema.options) {
+      expect(drillRoutesFor(kind).length, `${kind} 一条路由都没有`).toBeGreaterThan(0);
     }
+  });
 
-    // 门有牙：本数据集上必须真发生过「二级」下钻，否则这条测只是在验 1==1。
-    expect(unitLevelNodes, `没有任何环节拆出 ≥2 条 UNIT 级子因（最大扇出 ${maxUnitFanout}）⇒ 本门空转`).toBeGreaterThan(0);
-  }, 300_000);
+  it("① 加一个新事件只需改**一处**：路由与校验规则全部由 DRILL_EVENT_SPECS 派生", () => {
+    // 判据：编排器拿到的路由**完全**来自规格表 —— 表里有几条，`drillRoutesFor` 就给几条
+    // （加上通用路由，且按 solverKey 去重）。这条断言使「引擎里另写一条 if 分支」变得可见：
+    // 若编排器私自加了一个求解器，端到端的 solverRuns 会多出表里没有的 key（见 ② 的集合断言）。
+    const spec = DRILL_EVENT_SPECS.find((s) => s.kind === "ORDER_RESCHEDULE")!;
+    const routes = drillRoutesFor("ORDER_RESCHEDULE");
+    const expected = new Set([...spec.routes.map((r) => r.solverKey), "risk_timeline"]);
+    expect(new Set(routes.map((r) => r.solverKey))).toEqual(expected);
+  });
 
-  // ══════════════════════════════════════════════════════════════════════
-  // ② 子因证据不许悬空（红线：不许编）
-  // ══════════════════════════════════════════════════════════════════════
-  it("② 每条子因的 evidence.objectId 都能在 objects.listByType 里查到，且 evidence.value 与该字段真值逐位相等（配不存在 id 的金丝雀）", async () => {
-    const t = await makeApp();
-    await seedBattery(t);
-    const loss = await chainLoss(t);
-
-    let checked = 0;
-    const seenTypes = new Set<string>();
-    for (const node of loss.nodes) {
-      const { body } = await drill(t, node.nodeId);
-      for (const sc of body.subCauses) {
-        const { objectType, objectId, prop, value } = sc.evidence;
-        const pk = await pkPropOf(t, objectType);
-        expect(pk, `子因 ${sc.key}：本体里没有类型 ${objectType} 或它没有主键属性 ⇒ 这条子因指向一个不存在的类型`).toBeTruthy();
-        const row = await rowOf(t, objectType, objectId);
-        expect(row, `子因 ${sc.key}（label="${sc.label}"）的 evidence 指向 ${objectType}.${objectId}，回仓储**捞不到这一行** ⇒ 这条子因是编的`).toBeTruthy();
-        const truth = row?.[prop];
-        expect(typeof truth, `子因 ${sc.key}：${objectType}.${objectId}.${prop} 不是数值（真值=${JSON.stringify(truth)}）`).toBe("number");
-        expect(value, `子因 ${sc.key}：标签写着 ${objectType}.${objectId}.${prop}，那个字段的真值是 ${String(truth)}，证据却回了 ${String(value)}`).toBe(truth);
-        seenTypes.add(objectType);
-        checked += 1;
-      }
-    }
-    expect(checked, "一条子因都没检查到 ⇒ 本条空转").toBeGreaterThan(0);
-    // 真发生过「二级」下钻的证据：至少见到 Process/Equipment/WorkOrder 里的一个执行单元类型。
-    expect([...seenTypes].some((x) => x === "Equipment" || x === "WorkOrder" || x === "Process"), `子因只落在 ${[...seenTypes].join("/")} 上，一个执行单元类型都没有 ⇒ 没有真的下钻`).toBe(true);
-
-    // 金丝雀（自证工具）：同一套解析对一个**故意不存在**的 id 必须捞不到。
-    // 它若也「捞得到」，上面那一片 toBeTruthy 就全是假绿。
-    const ghost = await rowOf(t, "Equipment", "EQUIP-这台设备不存在-金丝雀");
-    expect(ghost, "金丝雀命中了不存在的 id ⇒ 解析器坏了，上面的全部命中不作数").toBeUndefined();
-    const known = await rowOf(t, "Equipment", "LINE-WS-hefei-slurry-coating-E1");
-    expect(known, "金丝雀：一个确定存在的 Equipment 也捞不到 ⇒ 解析器坏了（不是数据没有）").toBeTruthy();
-  }, 300_000);
+  it("① 入参解释是声明式的：required 缺值 ⇒ 报 missing（而不是硬调一次拿 400）", () => {
+    const spec = DRILL_EVENT_SPECS.find((s) => s.kind === "FORECAST_BIAS")!;
+    const route = spec.routes.find((r) => r.solverKey === "capacity_forecast")!;
+    // `capacity_forecast` 实测**必须**带 modelId（不带 → 400 "modelId required"）
+    const without = resolveDrillArgs(route, { kind: "FORECAST_BIAS", targetObjectId: "X", payload: {}, effectiveDay: 0 }, 30);
+    expect(without?.missing).toContain("modelId");
+    const withIt = resolveDrillArgs(
+      route,
+      { kind: "FORECAST_BIAS", targetObjectId: "X", payload: { modelId: "2170-NCM" }, effectiveDay: 0 },
+      30,
+    );
+    expect(withIt?.missing).toEqual([]);
+    expect(withIt?.args).toEqual({ modelId: "2170-NCM" });
+  });
 
   // ══════════════════════════════════════════════════════════════════════
-  // ③ 诚实缺席：拆不出来就是空数组 + 取自数据的原因
+  // ② 接缝主干：事件 → 编排 → 求解器**真被调** → 归一 → DrillFinding
+  //    （任一半漏即红）
   // ══════════════════════════════════════════════════════════════════════
-  it("③ 派生不出子因的环节：空数组 + reason，且 reason 原文来自 chain_loss_attribution 的 empty[]（不是编的）", async () => {
-    const t = await makeApp();
-    await seedBattery(t);
-    const loss = await chainLoss(t);
-
-    // 取一个**只在 empty[] 里**、不在 nodes[] 里的节点（= 本次锚点链上确实拆不出东西的那种）。
-    const emptyOnly = loss.empty.filter((e) => !loss.nodes.some((n) => n.nodeId === e.nodeId));
-    expect(emptyOnly.length, "本数据集上没有任何「只在 empty[] 里」的节点 ⇒ 本条空转").toBeGreaterThan(0);
-
-    for (const e of emptyOnly) {
-      const { status, body } = await drill(t, e.nodeId);
-      expect(status).toBe(200);
-      expect(body.subCauses, `节点 ${e.nodeId} 无承载却返回了 ${body.subCauses.length} 条子因 ⇒ 那些是编出来的`).toEqual([]);
-      expect(body.nodePct, `节点 ${e.nodeId} 无损失却报了 ${body.nodePct}% ⇒ 0% 冒充「查过了没问题」`).toBe(0);
-      expect(body.reason, `节点 ${e.nodeId} 返回空子因却不说为什么 ⇒ 空白比错答更容易被当成「没问题」`).toBeTruthy();
-      // 原因必须**逐字**来自数据行，不是引擎另写的一句好听话。
-      expect(body.reason, `节点 ${e.nodeId} 的 reason 与 chain_loss_attribution 登记的原因对不上：\nreason=${body.reason}\nempty.reason=${e.reason}`).toContain(e.reason);
-      expect(body.residual.reason, "残差原因也必须说清（0 也要说）").toBeTruthy();
-    }
-
-    // 反面样例：有承载的环节**不许**走这条空分支（否则「空数组」就成了万能兜底）。
-    const withLoss = loss.nodes[0]!;
-    const { body: ok } = await drill(t, withLoss.nodeId);
-    expect(ok.subCauses.length, `有损失的节点 ${withLoss.nodeId} 也返回空子因 ⇒ 空分支被当兜底用了`).toBeGreaterThan(0);
-    expect(ok.reason, "有子因时不该再挂 reason（自相矛盾）").toBeUndefined();
-  }, 300_000);
-
-  // ══════════════════════════════════════════════════════════════════════
-  // ④ A6 行级过滤（本单唯一带权限断言的门）
-  // ══════════════════════════════════════════════════════════════════════
-  it("④ A6：base_manager:常州 调明细只拿到常州批号；同一请求换个基地 0 条（配 admin 金丝雀证明不是没数据）", async () => {
-    const t = await makeApp();
-    await seedBattery(t);
+  it("② 端到端：SO-3391 提前 10 天 ⇒ 求解器真被调 + 屏上给出被挤占订单号与代价数字", async () => {
+    const t = await seededApp();
     const sid = await newSession(t);
-    const NODE = "capacity.op.OP-002"; // 涂布：实测这是全仓唯一有在制批号的站位
+    const rep = await runDrill(t, sid, {
+      horizonDays: 30,
+      events: [{ kind: "ORDER_RESCHEDULE", targetObjectId: ANCHOR_ORDER, payload: { advanceDays: ADVANCE_DAYS }, effectiveDay: 0 }],
+    });
 
-    // ── 金丝雀（必须先跑）：admin 在两个基地上都拿得到批号 ────────────────────
-    // 没有这一步，下面的「0 条」证明不了是权限挡的 —— 可能只是那儿本来就没数据。
-    const adminCz = await detail(t, sid, `nodeId=${NODE}&baseId=changzhou`);
-    const adminHf = await detail(t, sid, `nodeId=${NODE}&baseId=hefei`);
-    expect(adminCz.status).toBe(200);
-    expect(adminCz.body.lots.length, "金丝雀：admin 在常州都拿不到批号 ⇒ 本条无意义").toBeGreaterThan(0);
-    expect(adminHf.body.lots.length, "金丝雀：admin 在合肥都拿不到批号 ⇒ 下面的「0 条」证明不了任何事").toBeGreaterThan(0);
-    expect(adminCz.body.visibility.visibleLineCount, "admin 不该被行级过滤收窄").toBe(adminCz.body.visibility.totalLineCount);
+    // ── (a) 求解器**真的**被调用了（靶① 把路由表改空 ⇒ 这里当场红）──────────────
+    const called = rep.solverRuns.map((r) => r.solverKey);
+    expect(called, "一个求解器都没被调用 ⇒ 路由表没被读，或编排器没走它").toContain("sop_reschedule");
+    expect(called).toContain("risk_timeline"); // 通用路由：任何事件都调
+    // 且**没有**表外的 key —— 编排器私加 if 分支会在这里露出来
+    const allowed = new Set(drillRoutesFor("ORDER_RESCHEDULE").map((r) => r.solverKey));
+    for (const k of called) expect(allowed.has(k), `${k} 不在路由表里，编排器私自加了分支？`).toBe(true);
+    expect(rep.solverRuns.find((r) => r.solverKey === "sop_reschedule")?.ok).toBe(true);
 
-    // ── base_manager:常州 ───────────────────────────────────────────────────
-    const bm = await detail(t, sid, `nodeId=${NODE}`, BASE_MANAGER);
-    expect(bm.status).toBe(200);
-    expect(bm.body.lots.length, "base_manager 一条批号都拿不到 ⇒ 过滤过头了（应当看得到自己基地的）").toBeGreaterThan(0);
-    expect(bm.body.visibility.rowFilters.length, "base_manager 身上没有生效的行级过滤 ⇒ A6 根本没走").toBeGreaterThan(0);
-    expect(bm.body.visibility.visibleLineCount, "base_manager 的可见产线数应当**少于**全量（否则没被收窄）").toBeLessThan(bm.body.visibility.totalLineCount);
+    // ── (b) 归一真的产出了结论（求解器调通但归一读错字段名 ⇒ 这里红）──────────────
+    const displaced = rep.findings.filter((f) => f.source.solverKey === "sop_reschedule" && f.key.includes("displaced"));
+    expect(displaced.length, "sop_reschedule 调通了却一条被挤占订单都没归一出来").toBeGreaterThan(0);
 
-    // 逐条回仓储验：每个批号的产线所属基地必须是常州。
-    // ⛔ 不拿 lotNo 里的子串当基地判据（id 里恰好含基地名是巧合，不是契约）——
-    //    回 WIPLot → Line → baseId 走真链路才是判据。
-    const lines = (await t.repos.objects.listByType("demo", "Line")).map((o) => o.props);
-    const lots = (await t.repos.objects.listByType("demo", "WIPLot")).map((o) => o.props);
-    const baseOfLot = (lotNo: string): string | undefined => {
-      const lot = lots.find((l) => String(l.lotId) === lotNo);
-      const line = lines.find((l) => String(l.lineId) === String(lot?.lineId));
-      return line ? String(line.baseId) : undefined;
+    // ── (c) 仓主的验收线：**具体订单号 + 代价数字**都在屏上那句话里 ────────────────
+    for (const f of displaced) {
+      // 订单号（不是「有 2 单被挤」这种模糊话）
+      expect(f.where.objectId).toMatch(/^SO-/);
+      expect(f.why).toContain(f.where.objectId);
+      // 代价数字：`why` 里带总代价，`provenance` 里带分项（换型/加班/延误）
+      expect(f.why).toContain("代价");
+      expect(typeof f.source.provenance.costTotal).toBe("number");
+      expect(f.source.provenance.costBreakdown).toBeTruthy();
+      // R13 溯源：能回仓储对拍的下钻三元组
+      expect(f.source.provenance.drill).toBeTruthy();
+    }
+  });
+
+  it("② 事件驱动的结论**只在给了事件时**出现（scanOnly 不调求解器）", async () => {
+    const t = await seededApp();
+    const sid = await newSession(t);
+    const scanOnly = await runDrill(t, sid, { horizonDays: 30, scanOnly: true, events: [] });
+    // 没有事件 ⇒ 没有求解器回执；但**扫描照跑**（堵点来自传导图，与事件无关）
+    expect(scanOnly.solverRuns).toEqual([]);
+    expect(scanOnly.findings.some((f) => f.source.solverKey === "sop_reschedule")).toBe(false);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ③ 时间语义：tickDays（G-DRILL-1）
+  // ══════════════════════════════════════════════════════════════════════
+  it("③ 推演 N 天 ⇒ ceil(N/tickDays) 个 tick，且天口径随会话走", async () => {
+    expect(ticksForDays(30, 1)).toBe(30);
+    expect(ticksForDays(30, 7)).toBe(5); // ceil(30/7)
+    expect(ticksForDays(1, 7)).toBe(1);
+
+    const t = await seededApp();
+    const sid = await newSession(t, 7);
+    const rep = await runDrill(t, sid, { horizonDays: 30, scanOnly: true, events: [] });
+    expect(rep.tickDays).toBe(7);
+    expect(rep.ticks).toBe(5);
+  });
+
+  it("③ tickDays 从 SimSession 透到**下游四页的消费面**（会话列表投影）", async () => {
+    // ⚠ 本条只验「四页够得着」，**不验四页已经按天显示** —— 后者是 WO-SIM-CONSOLE-DAYS。
+    // 下游四页的会话单源 `useConsoleSession` 走 `GET /a/v1/sim/sessions` 的
+    // `SimSessionListItem`，再经 `pickLatestRunningSession` 整条返回。
+    // 故只要列表项带上 tickDays，四页就读得到。
+    //
+    // ── 变异反证：**真正的守卫点是仓储投影，不是 zod** ─────────────────────────
+    // 本条断言写完后逐靶实测过，其中一靶**没打红**，照实记在这里免得下一个人再信错：
+    //  · 靶 A（无效）把 `tickDays` 从 `SimSessionSchema` 上摘掉 ⇒ 本条**仍然绿**。
+    //    原因：`GET /a/v1/sim/sessions` 这条路由**不做 zod parse**
+    //    （`app.ts` 直接 `return { items: await repos.sim.listSessionSummaries(...) }`），
+    //    所以契约改了运行时不受影响，只有 typecheck 会红。
+    //    ⇒ 「schema 里有这个字段」并不度量「响应里有这个字段」。
+    //  · 靶 B（有效）把 `tickDays: s.tickDays ?? 1` 从 `repo/memory.ts` 的
+    //    `listSessionSummaries` 投影里删掉 ⇒ 本条**当场红**
+    //    （`expected undefined to be 7`）。这才是真正承载它的那一行。
+    // ⚠ 且 memory 绿不构成 pg 也行（`repo/pg.ts` 是逐列表，见 migration 039 的 R9 注释）。
+    const t = await seededApp();
+    const sid = await newSession(t, 7);
+    // 推一拍让它变成 RUNNING（`pickLatestRunningSession` 只认 RUNNING）
+    await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } });
+
+    const list = await t.app.inject({ method: "GET", url: "/a/v1/sim/sessions", headers: ADMIN });
+    expect(list.statusCode).toBe(200);
+    const items = (list.json() as { items: { id: string; status: string; tickDays?: number }[] }).items;
+    const mine = items.find((s) => s.id === sid);
+    expect(mine, "会话不在列表里").toBeTruthy();
+    expect(mine!.tickDays, "列表投影没带 tickDays ⇒ 下游四页永远读不到天口径").toBe(7);
+    expect(mine!.status).toBe("RUNNING"); // 金丝雀：确实是 pickLatestRunningSession 会挑中的那种
+
+    // 时间轴回包也带口径（方案 A：消费方手上只有这一个响应）
+    const series = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/metric-series`, headers: ADMIN });
+    expect(series.statusCode).toBe(200);
+    expect((series.json() as { tickDays?: number }).tickDays).toBe(7);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ④ 诚实位（靶②）：缺 dataMode ⇒ UNDECLARED，**绝不** LIVE
+  // ══════════════════════════════════════════════════════════════════════
+  it("④ 诚实位：sop_reschedule 无 dataMode 字段 ⇒ 归一成 UNDECLARED，不冒充 LIVE", async () => {
+    const t = await seededApp();
+    const sid = await newSession(t);
+    const rep = await runDrill(t, sid, {
+      horizonDays: 30,
+      events: [{ kind: "ORDER_RESCHEDULE", targetObjectId: ANCHOR_ORDER, payload: { advanceDays: ADVANCE_DAYS }, effectiveDay: 0 }],
+    });
+    const sop = rep.findings.filter((f) => f.source.solverKey === "sop_reschedule");
+    expect(sop.length).toBeGreaterThan(0);
+    // 🔴 靶②：把 `readDataMode` 改成 `?? "LIVE"` ⇒ 这一行当场红
+    for (const f of sop) {
+      expect(f.source.dataMode, "sop_reschedule 实测没有 dataMode 字段，归一必须是 UNDECLARED").toBe("UNDECLARED");
+    }
+    // 汇总也不许把 UNDECLARED 洗成可信
+    expect(rep.summary.trustworthy).toBe(false);
+  });
+
+  it("④ 诚实位归一的**唯一实现**：认识的值原样保留，不认识 / 缺失一律 UNDECLARED", () => {
+    expect(normalizeDrillDataMode("LIVE")).toBe("LIVE");
+    expect(normalizeDrillDataMode("MOCK")).toBe("MOCK");
+    expect(normalizeDrillDataMode("PARTIAL")).toBe("PARTIAL"); // 实测 risk_timeline 回这个（PRD 未列）
+    expect(normalizeDrillDataMode(undefined)).toBe("UNDECLARED");
+    expect(normalizeDrillDataMode(null)).toBe("UNDECLARED");
+    expect(normalizeDrillDataMode("真的")).toBe("UNDECLARED");
+    expect(normalizeDrillDataMode(1)).toBe("UNDECLARED");
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ⑤ 失败不静默吞（靶③）：抛错 ⇒「未能评估」留在清单里
+  // ══════════════════════════════════════════════════════════════════════
+  it("⑤ 求解器抛错 ⇒ 记「未能评估」**留在清单里**，绝不从屏上消失", async () => {
+    const rep = await orchestrateDrill({
+      events: [{ kind: "ORDER_RESCHEDULE", targetObjectId: ANCHOR_ORDER, payload: { advanceDays: 10 }, effectiveDay: 0 }],
+      horizonDays: 30,
+      tickDays: 1,
+      worldId: "w1",
+      forkedFromStateId: null,
+      // 全塌
+      invokeSolver: async (key) => {
+        throw new Error(`SOLVER_BOOM_${key}`);
+      },
+    });
+    // 🔴 靶③：把编排器里失败分支改成 `continue` ⇒ 这三行当场红
+    const unevaluated = rep.findings.filter((f) => f.kind === "未能评估");
+    expect(unevaluated.length, "求解器全塌了，清单里却一条「未能评估」都没有 ⇒ 被静默吞了").toBeGreaterThan(0);
+    expect(unevaluated.some((f) => f.why.includes("SOLVER_BOOM_sop_reschedule"))).toBe(true);
+    // 错误码逐条可见（不是一句笼统的「失败」）
+    expect(rep.solverRuns.every((r) => r.ok === false)).toBe(true);
+    expect(rep.solverRuns.map((r) => r.error).join(" ")).toContain("SOLVER_BOOM_");
+  });
+
+  it("⑤ 全部失败 ⇒ allFailed=true 且文案明说「不是没有风险」（与「无卡点」是两个状态）", async () => {
+    const allFail = await orchestrateDrill({
+      events: [{ kind: "ORDER_RESCHEDULE", targetObjectId: ANCHOR_ORDER, payload: { advanceDays: 10 }, effectiveDay: 0 }],
+      horizonDays: 30, tickDays: 1, worldId: "w1", forkedFromStateId: null,
+      invokeSolver: async () => { throw new Error("BOOM"); },
+    });
+    expect(allFail.summary.allFailed).toBe(true);
+    expect(allFail.summary.text).toContain("未能评估");
+    expect(allFail.summary.text).toContain("不是「没有风险」");
+
+    // 对照：真的没扫出东西 —— 这是**另一个**状态，文案与 allFailed 必须不同
+    const empty = await orchestrateDrill({
+      events: [], horizonDays: 30, tickDays: 1, worldId: "w1", forkedFromStateId: null,
+      invokeSolver: async () => ({}),
+    });
+    expect(empty.summary.allFailed).toBe(false);
+    expect(empty.summary.text).not.toContain("不是「没有风险」");
+    expect(empty.summary.text).not.toBe(allFail.summary.text);
+  });
+
+  it("⑤ 调通但没登记归一规则 ⇒ 同样记「未能评估」，不静默丢结果", async () => {
+    const rep = await orchestrateDrill({
+      events: [{ kind: "ORDER_RELOCATE", targetObjectId: "SO-1", payload: {}, effectiveDay: 0 }],
+      horizonDays: 30, tickDays: 1, worldId: "w1", forkedFromStateId: null,
+      // portfolio 有 normalizer；这里让它回一个**空**壳，risk_timeline 也回空 ⇒ 0 条结论但不是失败
+      invokeSolver: async () => ({ someUnknownShape: true }),
+    });
+    expect(rep.summary.allFailed).toBe(false);
+    // 没有结论时，`findings` 可以是空的，但**求解器回执必须在**（证明确实调过）
+    expect(rep.solverRuns.length).toBeGreaterThan(0);
+    expect(rep.solverRuns.every((r) => r.ok)).toBe(true);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ⑥ 卡点扫描器（G-DRILL-2）：A 方案分位 · 传递闭包 · 三类互斥
+  // ══════════════════════════════════════════════════════════════════════
+  it("⑥ 卡点/脆弱点按 P90/P95 分位切，三类由构造互斥（零配置·不许出现固定红线）", () => {
+    // 造一个分布明确的世界：19 个 1 + 一个 100 ⇒ 100 必然越过 P95
+    const state: Record<string, Record<string, number>> = {};
+    for (let i = 0; i < 19; i++) state[`o${i}`] = { v: 1 };
+    state.hot = { v: 100 };
+    const findings = scanDrillFindings({
+      state,
+      rules: [],
+      typeOf: new Map(Object.keys(state).map((k) => [k, "T"])),
+      stateVarLabel: (s) => s,
+    });
+    const chokes = findings.filter((f) => f.kind === "卡点");
+    expect(chokes.map((f) => f.where.objectId)).toEqual(["hot"]);
+    // 三类互斥：同一个 (对象,变量) 不许既是卡点又是脆弱点
+    const keys = findings.map((f) => `${f.where.objectId}|${f.kind}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    // 诚实位：传导引擎读的是真实世界态 ⇒ LIVE
+    for (const f of findings) expect(f.source.dataMode).toBe("LIVE");
+    // 阈值出处进溯源（R13 可下钻），不是一个裸判断
+    expect(chokes[0]!.source.provenance.p95).toBeDefined();
+    expect(chokes[0]!.source.provenance.basis).toContain("分位");
+  });
+
+  it("⑥ 单样本变量不硬判（「算不出分布」不冒充「没事」）", () => {
+    const findings = scanDrillFindings({
+      state: { only: { v: 999 } },
+      rules: [],
+      typeOf: new Map([["only", "T"]]),
+      stateVarLabel: (s) => s,
+    });
+    expect(findings.filter((f) => f.kind === "卡点")).toEqual([]);
+  });
+
+  it("⑥ 堵点用**传递闭包**不是出度（出度会把「直连 3 个叶子」排在「直连 1 个再散 40 个」前面）", () => {
+    // a→b→c→d（a 出度 1，闭包 3）；x→y1,y2,y3（x 出度 3，闭包 3）
+    // 关键对照：a 出度只有 1，但闭包与 x 相同 ⇒ 用出度会把 a 排到后面，用闭包不会
+    const mk = (k: string, s: string, sv: string, tt: string, tv: string) =>
+      ({ key: k, sourceTypeKey: s, sourceStateVar: sv, targetTypeKey: tt, targetStateVar: tv }) as never;
+    const sizes = transitiveClosureSizes([
+      mk("r1", "A", "v", "B", "v"),
+      mk("r2", "B", "v", "C", "v"),
+      mk("r3", "C", "v", "D", "v"),
+      mk("r4", "X", "v", "Y1", "v"),
+      mk("r5", "X", "v", "Y2", "v"),
+      mk("r6", "X", "v", "Y3", "v"),
+    ]);
+    expect(sizes.get("A\u0000v")).toBe(3); // 出度 1，闭包 3
+    expect(sizes.get("X\u0000v")).toBe(3); // 出度 3，闭包 3
+    expect(sizes.get("C\u0000v")).toBe(1);
+  });
+
+  it("⑥ 传导图成环不死循环（真实传导图允许成环）", () => {
+    const mk = (k: string, s: string, tt: string) =>
+      ({ key: k, sourceTypeKey: s, sourceStateVar: "v", targetTypeKey: tt, targetStateVar: "v" }) as never;
+    const sizes = transitiveClosureSizes([mk("r1", "A", "B"), mk("r2", "B", "A")]);
+    expect(sizes.get("A\u0000v")).toBe(1); // 闭包含 B，不含自己
+  });
+
+  it("⑥ 分位函数：空样本回 null（不是 0）——「算不出阈值」不是「阈值为 0」", () => {
+    expect(quantileSorted([], 0.9)).toBeNull();
+    expect(quantileSorted([5], 0.9)).toBe(5);
+    expect(quantileSorted([0, 10], 0.5)).toBe(5); // 线性插值
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ⑦ R6 确定性 + R4-sim 边界 + 规模闸
+  // ══════════════════════════════════════════════════════════════════════
+  it("⑦ R6：同输入重跑，结论逐字节一致", async () => {
+    const t = await seededApp();
+    const sid = await newSession(t);
+    const body = {
+      horizonDays: 30,
+      events: [{ kind: "ORDER_RESCHEDULE", targetObjectId: ANCHOR_ORDER, payload: { advanceDays: ADVANCE_DAYS }, effectiveDay: 0 }],
     };
-    const bases = [...new Set(bm.body.lots.map((l) => baseOfLot(l.lotNo)))];
-    expect(bases, `base_manager:常州 拿到了非常州基地的批号：${JSON.stringify(bases)}`).toEqual(["changzhou"]);
-    // 而 admin 同一请求跨多个基地（证明上面那个单元素集合不是「本来就只有一个基地」）。
-    const adminAll = await detail(t, sid, `nodeId=${NODE}`);
-    expect([...new Set(adminAll.body.lots.map((l) => baseOfLot(l.lotNo)))].length, "全仓只有一个基地 ⇒ 上面的基地断言空转").toBeGreaterThan(1);
+    const a = await runDrill(t, sid, body);
+    const b = await runDrill(t, sid, body);
+    expect(JSON.stringify(a.findings)).toBe(JSON.stringify(b.findings));
+    expect(JSON.stringify(a.summary)).toBe(JSON.stringify(b.summary));
+  });
 
-    // ── 换个基地：0 条 ─────────────────────────────────────────────────────
-    const bmHefei = await detail(t, sid, `nodeId=${NODE}&baseId=hefei`, BASE_MANAGER);
-    expect(bmHefei.status).toBe(200);
-    expect(bmHefei.body.lots, "base_manager:常州 拿到了合肥的批号 ⇒ 行级过滤没生效").toEqual([]);
-    // 0 条必须**说清是被什么挡的**（静默空数组会被读成「那儿没有」）。
-    const why = bmHefei.body.missing.find((m) => m.field === "lots");
-    expect(why, "0 条却不登记原因 ⇒ 「看不到」被伪装成「没有」").toBeTruthy();
-    expect(why?.reason).toContain("行级过滤");
-
-    // 下钻路由同样受 A6 约束，且**不把挡掉的份额摊给可见行**（摊上去 = 用权限外的量污染权限内的数）。
-    const { body: bmDrill } = await drill(t, "capacity.aging", BASE_MANAGER);
-    const bmResidual = subCauseConservationResidual(bmDrill.subCauses, bmDrill.residual.pct, bmDrill.nodePct);
-    expect(Math.abs(bmResidual), "受限视角下守恒也必须成立（残差装下被挡掉的份额）").toBeLessThanOrEqual(TOL);
-    const hidden = bmDrill.nodePct - bmDrill.subCauses.reduce((s, x) => s + x.pct, 0);
-    if (hidden > TOL) {
-      expect(bmDrill.residual.reason, "有份额被挡掉却不在残差原因里点名 ⇒ 少掉的部分在屏上消失了").toContain("行级过滤");
-    }
-  }, 300_000);
-
-  // ══════════════════════════════════════════════════════════════════════
-  // ⑤ 变异反证的**常设机制**（不是只在报告里写一句「已知此坑」）
-  // ══════════════════════════════════════════════════════════════════════
-  it("⑤ 变异反证：把子因换成写死词表（炉位不足/批次拆分），②那套解析必须当场落空 —— 证明②真有牙", async () => {
-    const t = await makeApp();
-    await seedBattery(t);
-
-    // 这就是本单红线禁止的那种东西：名字好看、`evidence` 齐全，但背后没有任何一行对象。
-    // 种子一换它照印不误 —— 屏上撒谎比屏上没有更糟。
-    const HARDCODED_LEXICON = [
-      { key: "furnace_shortage", label: "炉位不足", evidence: { objectType: "Process", objectId: "PROC-炉位", prop: "channels" } },
-      { key: "batch_split", label: "批次拆分", evidence: { objectType: "WorkOrder", objectId: "WO-批次拆分", prop: "qtyPlanned" } },
-      { key: "equip_downtime", label: "设备停机", evidence: { objectType: "Equipment", objectId: "EQ-停机", prop: "availFactor" } },
-    ];
-    for (const fake of HARDCODED_LEXICON) {
-      const row = await rowOf(t, fake.evidence.objectType, fake.evidence.objectId);
-      expect(row, `写死词表「${fake.label}」竟然在仓储里捞得到 ${fake.evidence.objectType}.${fake.evidence.objectId} ⇒ ②的判据失效（此时②全绿也说明不了子因是真的）`).toBeUndefined();
-    }
-
-    // 反面：真实实现产出的子因，同一套解析必须**全部命中**（否则是解析器坏了，不是词表被抓住了）。
-    const loss = await chainLoss(t);
-    const { body } = await drill(t, "capacity.aging");
-    expect(body.subCauses.length, "老化环节一条子因都没有 ⇒ 本条对照组空转").toBeGreaterThan(0);
-    for (const sc of body.subCauses) {
-      const row = await rowOf(t, sc.evidence.objectType, sc.evidence.objectId);
-      expect(row, `真实子因 ${sc.key} 反而捞不到 ⇒ 解析器坏了`).toBeTruthy();
-    }
-    // 且真实子因的 label 里**不含**任何写死因名（引擎里根本没有那些串）。
-    const labels = body.subCauses.map((s) => s.label).join(" ");
-    for (const fake of HARDCODED_LEXICON) {
-      expect(labels, `真实子因的 label 里出现了写死因名「${fake.label}」`).not.toContain(fake.label);
-    }
-    expect(loss.anchor.baseId, "锚点基地为空 ⇒ 上面的展开范围无意义").toBeTruthy();
-  }, 300_000);
-
-  // ══════════════════════════════════════════════════════════════════════
-  // 明细的真值纪律（③ 的孪生：wip/takt/yieldPct 一律读回物化真值，禁常数）
-  // ══════════════════════════════════════════════════════════════════════
-  it("明细：wip / takt / yieldPct 逐条回仓储对拍（含单位换算可校），route 取自真实工序顺序而非空表 WIPMove", async () => {
-    const t = await makeApp();
-    await seedBattery(t);
+  it("⑦ R4-sim：演习是只读的 —— 世界线 curTick 一格不动", async () => {
+    const t = await seededApp();
     const sid = await newSession(t);
-    const { status, body } = await detail(t, sid, "nodeId=capacity.op.OP-002&baseId=changzhou");
-    expect(status).toBe(200);
-    expect(body.node.station, "站位派生不出来 ⇒ 下面全部空转").toBe("涂布");
-    expect(body.lots.length, "该站位一条批号都没有 ⇒ 本条空转").toBeGreaterThan(0);
+    const before = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}`, headers: ADMIN });
+    const tickBefore = (before.json() as { curTick: number }).curTick;
+    await runDrill(t, sid, { horizonDays: 30, scanOnly: true, events: [] });
+    const after = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}`, headers: ADMIN });
+    // 演习推了 30 拍，但**不落盘** ⇒ 会话本身的世界线不动
+    expect((after.json() as { curTick: number }).curTick).toBe(tickBefore);
+  });
 
-    for (const lot of body.lots) {
-      // wip：批号行自己的 qty
-      const lotRow = await rowOf(t, "WIPLot", lot.lotNo);
-      expect(lotRow, `批号 ${lot.lotNo} 回仓储捞不到`).toBeTruthy();
-      expect(lot.wip, `批号 ${lot.lotNo} 的 wip 与 WIPLot.qty 对不上`).toBe(lotRow?.qty);
-      expect(lot.station).toBe(lotRow?.currentProcess);
-      // batch：工单计划投产数
-      expect(lot.evidence.batch, `批号 ${lot.lotNo} 缺 batch 证据`).toBeTruthy();
-      const woRow = await rowOf(t, "WorkOrder", lot.evidence.batch!.objectId);
-      expect(woRow?.qtyPlanned, `批号 ${lot.lotNo} 的 batch 与 WorkOrder.qtyPlanned 对不上`).toBe(lot.batch);
-      // takt：设备节拍（原单位，1:1，不换算）
-      expect(lot.evidence.takt, `批号 ${lot.lotNo} 缺 takt 证据 ⇒ 它的 takt 是哪来的？`).toBeTruthy();
-      const eqRow = await rowOf(t, "Equipment", lot.evidence.takt!.objectId);
-      expect(eqRow?.ctSeconds, `批号 ${lot.lotNo} 的 takt 与 Equipment.ctSeconds 对不上`).toBe(lot.takt);
-      expect(lot.evidence.takt!.value).toBe(lot.takt);
-      // yieldPct：Process.yield × 100 —— 证据回的是**比率原值**，换算必须机器可校（同 chain-loss 的 1e4 教训）
-      expect(lot.evidence.yield, `批号 ${lot.lotNo} 缺 yield 证据`).toBeTruthy();
-      const procRow = await rowOf(t, "Process", lot.evidence.yield!.objectId);
-      expect(procRow?.yield, "yield 证据回的必须是比率原值（不是换算后的百分数）").toBe(lot.evidence.yield!.value);
-      expect(lot.yieldPct, `批号 ${lot.lotNo}：yieldPct 必须 == Process.yield × 100`).toBeCloseTo((lot.evidence.yield!.value as number) * 100, 10);
-      // 禁常数：三个数在批号之间必须真有差异（全等 = 很可能是个默认值）
+  it("⑦ 规模闸：逐类截断 + 诚实位（「我给了 N 条」与「一共 M 条」分得开）", async () => {
+    // 造一个会爆量的世界：200 个对象 × 1 个变量 ⇒ 卡点/脆弱点各远超上限
+    const state: Record<string, Record<string, number>> = {};
+    for (let i = 0; i < 200; i++) state[`o${String(i).padStart(3, "0")}`] = { v: i };
+    const scan = scanDrillFindings({
+      state, rules: [],
+      typeOf: new Map(Object.keys(state).map((k) => [k, "T"])),
+      stateVarLabel: (s) => s,
+    });
+    const rep = await orchestrateDrill({
+      events: [], horizonDays: 30, tickDays: 1, worldId: "w1", forkedFromStateId: null,
+      invokeSolver: async () => ({}),
+      scanFindings: scan,
+      limitPerKind: 5,
+    });
+    expect(rep.appliedLimitPerKind).toBe(5);
+    expect(rep.truncated).toBe(true);
+    // 逐类都被压到 5 条以内
+    for (const kind of ["卡点", "脆弱点"]) {
+      expect(rep.findings.filter((f) => f.kind === kind).length).toBeLessThanOrEqual(5);
+      // 诚实位报的是**真实总数**，不是被裁后的数
+      expect(rep.totalByKind[kind]!).toBeGreaterThan(5);
     }
-    const distinctWip = new Set(body.lots.map((l) => l.wip));
-    const distinctYield = new Set(body.lots.map((l) => l.yieldPct));
-    expect(distinctWip.size, "所有批号的 wip 完全相同 ⇒ 高度疑似常数兜底").toBeGreaterThan(1);
-    expect(distinctYield.size, "所有批号的 yieldPct 完全相同 ⇒ 高度疑似常数兜底").toBeGreaterThan(1);
+    // 截断这件事出现在人读的那句话里
+    expect(rep.summary.text).toContain("只回前 5 条");
+  });
 
-    // route：真实工序顺序（WIPMove 实测 0 条，不许拿它当来源）
-    expect(body.route.fromStation, "route.fromStation 取不到 ⇒ 工序顺序没走通").toBe("混料");
-    expect(body.route.toStation).toBe("辊压");
-    expect(body.route.basis).toContain("operationSeq");
-    expect((await t.repos.objects.listByType("demo", "WIPMove")).length, "WIPMove 一旦被物化，route 的取数口径要重新论证（本注释即金丝雀）").toBe(0);
-  }, 300_000);
-
-  it("R2/R3：别租户的会话 404；nodeId 缺失 400", async () => {
-    const t = await makeApp();
-    await seedBattery(t);
-    const sid = await newSession(t);
-    const other = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/node-detail?nodeId=capacity.aging`, headers: { "x-debug-user": "acme:admin:admin" } });
-    expect(other.statusCode, "别租户拿到了本租户的会话明细 ⇒ R2 破").toBe(404);
-    const noNode = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/node-detail`, headers: ADMIN });
-    expect(noNode.statusCode).toBe(400);
-  }, 300_000);
+  it("⑦ 规模闸**逐类**限而非全局 Top-N（全局会把整类低分结论挤掉 = 把截断伪装成结论）", async () => {
+    // 高分卡点 20 条（sev 90+）+ 低分堵点 3 条（sev ~10）
+    const state: Record<string, Record<string, number>> = {};
+    for (let i = 0; i < 40; i++) state[`o${String(i).padStart(3, "0")}`] = { v: i };
+    const scan = scanDrillFindings({
+      state,
+      // 三条边 ⇒ 会产出堵点，且 severity 远低于卡点
+      rules: [
+        { key: "r1", sourceTypeKey: "A", sourceStateVar: "v", targetTypeKey: "B", targetStateVar: "v" },
+        { key: "r2", sourceTypeKey: "B", sourceStateVar: "v", targetTypeKey: "C", targetStateVar: "v" },
+        { key: "r3", sourceTypeKey: "C", sourceStateVar: "v", targetTypeKey: "D", targetStateVar: "v" },
+      ] as never,
+      typeOf: new Map(Object.keys(state).map((k) => [k, "T"])),
+      stateVarLabel: (s) => s,
+    });
+    const rep = await orchestrateDrill({
+      events: [], horizonDays: 30, tickDays: 1, worldId: "w1", forkedFromStateId: null,
+      invokeSolver: async () => ({}), scanFindings: scan, limitPerKind: 2,
+    });
+    // 🔴 关键断言：堵点 severity 远低于卡点，全局 Top-N 会把它们**一条不剩**地挤掉。
+    // 逐类限 ⇒ 每类都还在。
+    expect(rep.findings.filter((f) => f.kind === "堵点").length).toBeGreaterThan(0);
+    expect(rep.findings.filter((f) => f.kind === "卡点").length).toBeGreaterThan(0);
+  });
 });

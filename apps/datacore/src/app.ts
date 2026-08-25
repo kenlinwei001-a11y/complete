@@ -94,7 +94,21 @@ import { nodeLossShare, type ChainLossResult } from "./solvers/chain-loss.js";
 // WO-SANDBOX-E4：`cadenceFromProps`（Cadence 落库行 → Cadence 的**唯一**读回口）刻意**不在本文件 import** ——
 // 它只该出现在装配处 `sim/propagation-inputs.ts` 里，与上面 `buildCadenceGates` / `scopePropagationGraph` 同一条纪律。
 // WO-STATEVAR-DISPLAYNAME：推演状态变量中文名的**唯一**投影口（单源表在 battery.ts，两条路由共用此函数）
-import { stateVarDisplayNames } from "./synthetic/battery.js";
+import { stateVarDisplayNames, stateVarDisplayName } from "./synthetic/battery.js";
+// WO-SIM-DRILL-P12 · 推演演习（事件型扰动 → 数据驱动路由 → 真调求解器 → 归一成卡点清单）。
+// 算法全在 sim/drill-scan.ts（纯函数扫描器）与 sim/drill-orchestrator.ts（编排+归一），本文件只做 IO 装配。
+// ⚠ 与上面的 `sim/drill.ts`（WO-SIM-BE-DRILL·根因二级下钻）**是两件不同的事**，别混：
+//   那个是「某个环节的损失拆到执行单元」，这个是「一件事发生了会卡在哪」。
+import {
+  DrillRunRequestSchema,
+  DrillCatalogSchema,
+  DRILL_EVENT_SPECS,
+  DRILL_UNIVERSAL_ROUTES,
+  assertDrillRoutingTableComplete,
+  ticksForDays,
+} from "@platform/contracts";
+import { scanDrillFindings, layerOfStateVars } from "./sim/drill-scan.js";
+import { orchestrateDrill } from "./sim/drill-orchestrator.js";
 import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
 import { buildCausalGraphFromSim, buildCausalGraphFromDecision } from "./decision/causal-graph.js"; // WO-DECISION-CAUSAL-GRAPH · 因果图构图器（纯投影·零发明）
 import { validateClosure } from "./databuilder/closure.js";
@@ -1897,13 +1911,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    */
   const createSimSessionWorld = async (
     c: AuthCtx,
-    input: { baseSnapshot?: TickState; scope?: Record<string, unknown>; id?: string; createdAt?: string },
+    input: { baseSnapshot?: TickState; scope?: Record<string, unknown>; id?: string; createdAt?: string; tickDays?: number },
   ): Promise<SimSession> => {
     const base = input.baseSnapshot ?? {};
     const s: SimSession = {
       id: input.id ?? newId("sims"), tenantId: c.tenantId, baseSnapshot: base, scope: input.scope ?? {},
       status: Object.keys(base).length > 0 ? "READY" : "DRAFT", curTick: 0, parentCheckpointId: null,
       disabledRuleKeys: [], // WO-ACTIVE-EDGE-UX：新会话不屏蔽任何边 ⇒ 与本字段引入前逐字节相同（RL9）
+      // WO-SIM-DRILL-P12 · G-DRILL-1：一 tick = 几天。缺省 1（与 A8 模拟时钟「一 tick = 一模拟日」同口径）
+      // ⇒ 本字段引入前建的世界读出来恒 1，行为逐字节不变。
+      tickDays: Math.max(1, Math.floor(input.tickDays ?? 1)),
       createdAt: input.createdAt ?? new Date().toISOString(),
     };
     await repos.sim.createSession(s);
@@ -1914,8 +1931,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/sim/sessions", async (req, reply) => {
     const c = ctx(req);
     await requireSim(c, "sim.sandbox");
-    const b = (req.body ?? {}) as { baseSnapshot?: TickState; scope?: Record<string, unknown> };
-    return reply.status(201).send(await createSimSessionWorld(c, { baseSnapshot: b.baseSnapshot, scope: b.scope }));
+    const b = (req.body ?? {}) as { baseSnapshot?: TickState; scope?: Record<string, unknown>; tickDays?: number };
+    return reply.status(201).send(
+      await createSimSessionWorld(c, {
+        baseSnapshot: b.baseSnapshot,
+        scope: b.scope,
+        ...(b.tickDays === undefined ? {} : { tickDays: b.tickDays }),
+      }),
+    );
   });
   const getSimOr404 = async (c: AuthCtx, id: string): Promise<SimSession> => {
     const s = await repos.sim.getSession(c.tenantId, id);
@@ -2091,6 +2114,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       activeRules: active,
       perturbations,
       curTick: s.curTick,
+      // 天口径随轴下发（WO-SIM-DRILL-P12）：下游甘特手上只有这一个响应。
+      tickDays: s.tickDays ?? 1,
       ...(q.from === undefined ? {} : { from: q.from }),
       ...(q.to === undefined ? {} : { to: q.to }),
       // 规模闸：**一个都不给也照样有闸**（模型层落默认 `limit`，不回全量）。
@@ -2763,6 +2788,130 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { world, opts } = await buildDrillWorld(c, baseId, result.anchor.routingId ?? null);
     return chainNodeDetail(share, world, opts);
   });
+  // ══════════════════════════════════════════════════════════════════════════
+  // WO-SIM-DRILL-P12 · 推演**演习**（PRD-sim-drill-parallel-world）
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * 事件目录 —— 前端建表单的**唯一真相源**。
+   *
+   * 事件的人话名、必填字段、校验规则、以及每个事件会调哪几个求解器，全部从契约
+   * `DRILL_EVENT_SPECS` 现读下发。前端**不许**自己写一份 —— 写了就是第二套真相源，
+   * 加事件时前端表单与后端路由会各说各话（同 `stateVarNames` 立下的那条规矩）。
+   */
+  app.get("/a/v1/sim/drill/catalog", async (req) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.sandbox");
+    // 枚举加了而路由表没加 ⇒ 在这里当场抛，而不是等用户点了那个事件、屏上安静回一句「无卡点」。
+    assertDrillRoutingTableComplete();
+    return DrillCatalogSchema.parse({ specs: DRILL_EVENT_SPECS, universalRoutes: DRILL_UNIVERSAL_ROUTES });
+  });
+
+  /**
+   * 跑一次演习：事件 → 世界 fork → 双引擎 → 卡点扫描 → 结论（PRD §4.1 的 ①–⑤）。
+   *
+   * ── R4-sim 三条边界，逐条落在代码上（不是注释保证）─────────────────────────
+   * ① **不回写真实世界**：本路由对 `EnterpriseState` 只调 `fork`（产生**新行**），
+   *    `worldId=REAL` 那一行一个字节不动；对世界态只读 `simCurrent`，**不 `putTickState`**。
+   * ② **结论要生效必须走 R4 正门**：本路由**不建 Action** —— 采纳是另一颗按钮
+   *    （前端 `useActionDraft` → `POST /a/v1/actions`），演习本身只产出结论。
+   * ③ **快照标 `FORKED`**：`forkEnterpriseState` 自己写 `source.kind`，本路由不覆盖它。
+   *
+   * ⚠ entitlement 取 `sim.propagation` 而非 `sim.sandbox`：本路由**真的驱动 `propagateTick`**
+   * （推 `ceil(horizonDays/tickDays)` 拍算世界态）+ 真调求解器，不是纯快照读。
+   *
+   * ⚠ **只读**：`persist:false` ⇒ 演习不改这个世界的世界线，跑一百次结果都一样（R6）。
+   *    这也是它能安全地在用户每次改天数时重跑的原因。
+   */
+  app.post("/a/v1/sim/sessions/:id/drill", async (req) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.propagation");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const body = parseBody(DrillRunRequestSchema, req.body ?? {});
+    assertDrillRoutingTableComplete();
+
+    // ── ① 世界 fork（复用已有原语，不造轮子 · PRD §1）────────────────────────
+    // 没有可 fork 的真实快照是**常态**（这个租户还没捕获过企业状态），不是错误：
+    // 诚实回 `forkedFromStateId: null`，**不现场偷偷捕获一份**（那会让一次只读的演习产生写副作用）。
+    let forkedFromStateId: string | null = null;
+    try {
+      const latest = await enterpriseState.latest(c, ENTERPRISE_STATE_REAL_WORLD_ID);
+      if (latest) {
+        const forked = await enterpriseState.fork(c, latest.id, s.id);
+        forkedFromStateId = forked.forkedFromStateId;
+      }
+    } catch {
+      // fork 失败不该让整场演习塌掉；它只影响「这份世界从哪来」这一条溯源信息。
+      forkedFromStateId = null;
+    }
+
+    // ── ② 传导引擎：推 ceil(horizonDays / tickDays) 拍（**不落盘**）──────────
+    const ticks = ticksForDays(body.horizonDays, s.tickDays ?? 1);
+    const activeRules = (await sessionPropRules(c, s)).active;
+    const advanced = await simAdvanceTicks(c, s, { rules: activeRules, n: ticks, persist: false });
+
+    // ── ③ 卡点扫描（G-DRILL-2）──────────────────────────────────────────────
+    const typeOf = new Map<string, string>();
+    for (const t of await repos.ontologyTypes.list(c.tenantId)) {
+      for (const o of await repos.objects.listByType(c.tenantId, t.key)) {
+        if (!o.mergedInto) typeOf.set(o.id, t.key);
+      }
+    }
+    const scanFindings = scanDrillFindings({
+      state: advanced.state,
+      rules: activeRules,
+      typeOf,
+      stateVarLabel: (sv) => stateVarDisplayName(sv) ?? sv,
+    });
+
+    // ── ④ 求解器编排（G-DRILL-4）—— 真调，不是前端自己算 ────────────────────
+    const report = await orchestrateDrill({
+      events: body.events,
+      horizonDays: body.horizonDays,
+      tickDays: s.tickDays ?? 1,
+      worldId: s.id,
+      forkedFromStateId,
+      scanFindings,
+      // 规模闸：**不传也有闸**（编排器落契约默认，绝不回全量）。
+      // 实测依据：1,567 对象 × 36 变量的世界一次演习产出 5,593 条 / 4.66MB，
+      // 与本仓 metric-series 栽过的那个 O(N×世界规模) 是同一个形状。
+      limitPerKind: body.limitPerKind,
+      // `scanOnly` ⇒ 一个求解器都不调（一期行为）。诚实：不调就是不调，
+      // 不许偷偷调了再把结果丢掉（那会让「求解器真被调用」这条判据失去意义）。
+      invokeSolver: async (solverKey, args) => {
+        if (body.scanOnly) throw new Error(`scanOnly=true：本次演习只跑卡点扫描，未调用 ${solverKey}`);
+        return ontology.invokeSolver(c, solverKey, args);
+      },
+    });
+
+    // ⑤ `sim.drill_completed`（PRD §0 登记的待增事件）。
+    await outbox.emit(c.tenantId, "sim.drill_completed", {
+      sessionId: s.id,
+      horizonDays: body.horizonDays,
+      ticks,
+      eventCount: body.events.length,
+      findingCount: report.findings.length,
+      allFailed: report.summary.allFailed,
+      dataMode: report.summary.dataMode,
+    });
+    return report;
+  });
+
+  /** 状态变量三层（根源/枢纽/末端）—— 层级由传导图入度出度**现算**，不手工登记。 */
+  app.get("/a/v1/sim/drill/state-var-layers", async (req) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.sandbox");
+    const rules = await repos.sim.listPropagationRules(c.tenantId, true);
+    const layers = layerOfStateVars(rules);
+    return {
+      // `null` 层级的变量**不下发**（「不在传导图里」与「是末端」是两个命题，不合并）
+      layers: [...layers.entries()]
+        .map(([stateVar, layer]) => ({ stateVar, layer, label: stateVarDisplayName(stateVar) ?? stateVar }))
+        .sort((a, b) => (a.stateVar < b.stateVar ? -1 : a.stateVar > b.stateVar ? 1 : 0)),
+      ruleCount: rules.length,
+    };
+  });
+
   // 增量 4：沙盘视图配置——由租户**本体 + 传导规则派生**（零业务常数 R14：节点/边/状态变量全来自
   // 租户自己的本体，换行业=换本体内容不改代码）。前端 5 屏从此渲染。
   app.get("/a/v1/sim/view-config", async (req) => {

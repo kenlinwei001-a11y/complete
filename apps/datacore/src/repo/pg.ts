@@ -76,6 +76,8 @@ export class PgSimRepo implements SimRepo {
       parentCheckpointId: (r.parent_checkpoint_id as string | null) ?? null,
       // WO-ACTIVE-EDGE-UX：034 加的列。旧行读回 `null`/`undefined` ⇒ `[]`（additive 可回退 RL9）。
       disabledRuleKeys: (r.disabled_rule_keys as string[] | null) ?? [],
+      // WO-SIM-DRILL-P12：039 加的列。旧行读回 null/undefined ⇒ 1（additive 可回退 RL9）。
+      tickDays: Number(r.tick_days ?? 1) || 1,
       createdAt: (r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at)),
     };
   }
@@ -88,13 +90,13 @@ export class PgSimRepo implements SimRepo {
    */
   async putSession(s: SimSession) {
     await this.pool.query(
-      `INSERT INTO sim_session (id, tenant_id, base_snapshot, scope, status, cur_tick, parent_checkpoint_id, disabled_rule_keys, created_at,
+      `INSERT INTO sim_session (id, tenant_id, base_snapshot, scope, status, cur_tick, parent_checkpoint_id, disabled_rule_keys, created_at, tick_days,
                                 base_objects, base_cells)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${SCALE_OBJECTS_SQL},${SCALE_CELLS_SQL})
-       ON CONFLICT (id) DO UPDATE SET base_snapshot=$3, scope=$4, status=$5, cur_tick=$6, parent_checkpoint_id=$7, disabled_rule_keys=$8,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${SCALE_OBJECTS_SQL},${SCALE_CELLS_SQL})
+       ON CONFLICT (id) DO UPDATE SET base_snapshot=$3, scope=$4, status=$5, cur_tick=$6, parent_checkpoint_id=$7, disabled_rule_keys=$8, tick_days=$10,
                                       base_objects=${SCALE_OBJECTS_SQL}, base_cells=${SCALE_CELLS_SQL}`,
       [s.id, s.tenantId, JSON.stringify(s.baseSnapshot), JSON.stringify(s.scope), s.status, s.curTick, s.parentCheckpointId,
-        JSON.stringify(s.disabledRuleKeys ?? []), s.createdAt],
+        JSON.stringify(s.disabledRuleKeys ?? []), s.createdAt, s.tickDays ?? 1],
     );
   }
   async getSession(tenantId: string, id: string) {
@@ -119,7 +121,7 @@ export class PgSimRepo implements SimRepo {
    */
   async listSessionSummaries(tenantId: string): Promise<SimSessionListItem[]> {
     const r = await this.pool.query(
-      `SELECT id, tenant_id, scope, status, cur_tick, parent_checkpoint_id, disabled_rule_keys, created_at,
+      `SELECT id, tenant_id, scope, status, cur_tick, parent_checkpoint_id, disabled_rule_keys, created_at, tick_days,
               base_objects, base_cells
          FROM sim_session WHERE tenant_id=$1 ORDER BY created_at`,
       [tenantId],
@@ -151,6 +153,7 @@ export class PgSimRepo implements SimRepo {
       status: row.status as SimSession["status"], curTick: row.cur_tick as number,
       parentCheckpointId: (row.parent_checkpoint_id as string | null) ?? null,
       disabledRuleKeys: (row.disabled_rule_keys as string[] | null) ?? [],
+      tickDays: Number(row.tick_days ?? 1) || 1,
       createdAt: (row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at)),
       // pg 的 count()/sum() 回 bigint ⇒ node-pg 给的是**字符串**。不 Number() 会让契约里的
       // `z.number()` 当场失败，而且 JSON 里会渲染成 `"408528"` —— 一个带引号的格数最难查。

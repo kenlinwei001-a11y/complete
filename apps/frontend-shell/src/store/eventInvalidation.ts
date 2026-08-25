@@ -110,6 +110,18 @@ export const SIM_EVENT_GAPS: Record<string, string> = { // hardcoded-data-allow 
   // · sim.session_created / sim.branched / sim.tick_completed —— WO-L4B（2026-08-09）接线转出；
   // · sim.perturbation_created —— WO-SIM-PERTURB-TIMELINE（2026-08-10）先读端后事件转出；
   // · sim.checkpoint_saved —— WO-EVENT-SUB-CLOSURE（2026-08-20）三件齐备转出（见头注）。
+
+  // ── 在账缺口 ────────────────────────────────────────────────────────────────
+  "sim.drill_completed":
+    "WO-SIM-DRILL-P12（2026-08-25）· **刻意不接，不是漏接**。" +
+    "演习（`POST /a/v1/sim/sessions/:id/drill`）是**只读**的：`simAdvanceTicks` 传 `persist:false`，" +
+    "会话 `curTick` 一格不动、`putTickState` 一次不调（接缝门 `sim-drill.seam.test.ts` ⑦ 逐字节咬死）。" +
+    "它**不改任何被缓存的东西** —— 世界态没变、会话列表没变、扰动清单没变、检查点没变。" +
+    "此时接任何一个失效标签，都是给一个没变的缓存发失效 = 假接线（#90/#92 同族），" +
+    "代价是每跑一次演习就白重取一遍那些没动的数据。" +
+    "演习结果本身走**响应体**直接落屏（`DrillPanel` 的 `useState`），不经 TanStack 缓存，故也无键可失效。" +
+    "出台账的条件（与 `sim.perturbation_created` 立下的顺序纪律逐条相同，**不可颠倒**）：" +
+    "先有一个真读端把演习结论存进缓存（如 G-DRILL-8 把结论交给 Agent 解读时的那条链），再登记本事件。",
 };
 
 /**

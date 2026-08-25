@@ -43,6 +43,7 @@ export * from "./object-ref-resolve.js"; // WO-SLOT-ENTITY-RESOLVE · 「实体�
 export * from "./base-registry.js";
 export * from "./interbase-transfer.js"; // WO-INTERBASE-TRANSFER · 跨基地调拨一等对象（字符串杠杆→可查/可溯数据·R13·R14·R6）
 export * from "./sim.js";
+export * from "./sim-drill.js"; // WO-SIM-DRILL-P12 · 推演演习（事件型扰动 DrillEvent · 事件→求解器路由表 DRILL_EVENT_SPECS · 统一卡点语义 DrillFinding · 诚实位 DrillDataMode 含 UNDECLARED）
 export * from "./opt-template.js";
 export * from "./derive-fields.js"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生映射（R14 config-driven·R6·R13）
 export * from "./record-materialize.js"; // WO-CEO-DATA-supply · 真源记录颗粒级物化（1 行→1 真对象·颗粒不聚合·R14·R6·R13·KILL-MOCK-RED）
