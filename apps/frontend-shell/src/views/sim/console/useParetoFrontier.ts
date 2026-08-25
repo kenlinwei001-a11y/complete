@@ -94,8 +94,17 @@ const PEER_BASE_B = "hefei";
 // § 1 · 几何（规格 `#pf` 段的 `X0/X1/Y0/Y1` 与两族网格线，逐值照抄）
 // ══════════════════════════════════════════════════════════════════════════
 
-/** 帕累托散点的画布几何。**规格第 253 行**：`X0=52,X1=612,Y0=24,Y1=238`，viewBox `0 0 640 280`。 */
-export const PARETO_GEOM = {
+/**
+ * 帕累托散点的画布几何。**规格第 253 行**：`X0=52,X1=612,Y0=24,Y1=238`，viewBox `0 0 640 280`。
+ *
+ * ── 为什么它带 `hardcoded-data-allow`（WO-SIM-HONEST-FALLBACK-A 逐张裁决）─────
+ * 它是**画布坐标**，不是业务量：这几个数说的是"SVG 里哪一像素是轴的原点"，
+ * 真数据模式与占位模式**走同一份**（`scaleX/scaleY/unscaleX/unscaleY/frontierYAt` 全吃它）。
+ * 删掉它连真数据也画不出来。判据一句话：**它不描述这个租户的任何事实**
+ * —— 同类还有 `TradeoffRadar.tsx` 的 `RADAR_GEOM`、`Waterfall.tsx` 的 `VB_W/X0/BASE_Y`。
+ * 且它被 `sandbox-opt-pixel.test.tsx` 用例 ① 反向咬着（规格 HTML 里那行 `X0=…` 改了这里必须跟）。
+ */
+export const PARETO_GEOM = { // hardcoded-data-allow —— 画布坐标（呈现），非业务量
   vbW: 640,
   vbH: 280,
   X0: 52,
@@ -325,7 +334,36 @@ export interface OptExecModel {
 
 // ══════════════════════════════════════════════════════════════════════════
 // § 3 · 规格占位数（**全仓唯一一份**，不许再抄第二处）
+//
+// ⛔ WO-SIM-HONEST-FALLBACK-A 到此为止 —— **本节整段没动，理由是硬约束不是懒**
 // ══════════════════════════════════════════════════════════════════════════
+//
+// 本单的标的是「兜底占位不许编数」。归因台（`useLossAttribution.ts`）与应对策略卡
+// （`StrategyCards.tsx`）都改成了诚实空态；**寻优台这一节改不动**，卡在一处**本单不许碰**
+// 的测试上（`test/sandbox-opt-pixel.test.tsx`，范围边界写明只许新增一个测试文件）。
+//
+// 那份测试不是"顺带用了一下占位数"，它是**直接 import 这个模块的占位模型，再拿它去断言
+// 屏上真渲染出来的圆点个数**。逐条列出（行号是 2026-08-25 现读，会漂，用断言原文定位）：
+//
+// | 测试里的断言 | 它要求的东西 | 换成诚实空态会怎样 |
+// |---|---|---|
+// | `expect(pd.length).toBeGreaterThan(0)`（用例 ②b） | `PLACEHOLDER_OPT_MODEL.dominated` 非空 | 当场红（它自己的注释写着「反『零元素也全过』」） |
+// | `expect(doms.length).toBe(PLACEHOLDER_OPT_MODEL.dominated.length)`（②c） | 渲染 `<SandboxOpt />`（**不给 props** ⇒ 走占位）后屏上圆点数 == 占位被支配解数 | 空态 0 ≠ 16，红 |
+// | `expect(opts.length).toBe(PLACEHOLDER_OPT_MODEL.objectives.length)`（④） | 目标下拉的 `<option>` 数 == 占位目标数，且逐个比 `data-dir` | 空态无目标 ⇒ 0 ≠ 3，红 |
+// | `.cst .r` / `.gcell` / `.sg` 各 `toBeGreaterThan(0)`（①） | 绑定约束表 / 执行对比甘特 / 泳道段各至少一行 | 三处全红 |
+//
+// 即：**「屏上必须画着这套占位数」这件事，今天被一份不许改的测试钉死了。**
+// 要消掉它得同时改那份测试（把它从"断言占位数上屏"改成"断言几何不变量"），
+// 那是另一张单的事 —— 本单**不自行扩范围**（派单原话：判定做不完就顶回来，不许自己扩）。
+//
+// 与归因台的区别在哪：归因台的组件（`HeatMatrix.tsx`）本来就写好了「没格子就印 `—` + reason」
+// 那条分支，空态是**复用**它；而寻优台的像素测**直接对占位数组的长度做断言**，
+// 没有任何"空态也成立"的写法。两者不是同一种阻塞。
+//
+// ⚠ 因此本节的 `hardcoded-data-allow` 记号**一个都没加**：那会是"拿豁免压真业务数据换绿"，
+// 派单点名禁止。门 `check-debattery` 对本文件仍会报 `PLACEHOLDER_RADAR` /
+// `PLACEHOLDER_OPT_MODEL` 两处（原本三处，`PARETO_GEOM` 已按"呈现常量"归类并加记号）——
+// **这两处红是照实的红**，不许用记号把它抹掉。
 
 /** 规格 `.sel` 三个下拉项 ⇒ 三个目标（`dir` 由「最小 / 最大」字面反推，与端点回显同形）。 */
 const PLACEHOLDER_OBJECTIVES: readonly ParetoObjective[] = [ // hardcoded-data-allow —— 规格占位
