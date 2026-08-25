@@ -52,9 +52,11 @@ export default function SandboxAttrRoute({ view }: ViewRendererProps): JSX.Eleme
   const session = useConsoleSession(p);
   return (
     <div {...consoleHostProps(session)}>
+      {/* WO-SIM-CONSOLE-DAYS：`tickDays` 只在真拿到会话对象时才透（理由同 `SandboxHomeRoute`）。 */}
       <SandboxAttr
         {...(session.sessionId ? { sessionId: session.sessionId } : {})}
         {...(p.so ? { so: p.so } : {})}
+        {...(session.tickDays === undefined ? {} : { tickDays: session.tickDays })}
       />
       {/* WO-EDGE-PANEL-4PAGES 挂载点：**主组件里**、不在任何条件渲染之下。 */}
       <details className={css.dock} data-testid="sim-attribution-edge-dock">

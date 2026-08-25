@@ -184,9 +184,11 @@ export default function SandboxOptRoute({ view }: ViewRendererProps): JSX.Elemen
   const paretoRequest = explicit ?? resolveParetoRequest(assembled, session);
   return (
     <div {...consoleHostProps(session)}>
+      {/* WO-SIM-CONSOLE-DAYS：`tickDays` 只在真拿到会话对象时才透（理由同 `SandboxHomeRoute`）。 */}
       <SandboxOpt
         {...(session.sessionId ? { sessionId: session.sessionId } : {})}
         {...(paretoRequest ? { paretoRequest } : {})}
+        {...(session.tickDays === undefined ? {} : { tickDays: session.tickDays })}
       />
       {/* WO-EDGE-PANEL-4PAGES 挂载点：**主组件里**、不在 `paretoRequest && …` 之下
           —— 挂进条件里就是「装不出优化模型就看不见开关」，正是本门拦的那个形态。 */}

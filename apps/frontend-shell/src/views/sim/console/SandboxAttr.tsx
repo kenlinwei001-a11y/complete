@@ -36,6 +36,7 @@ import {
   type RootCauseRow,
   type SeriesRow,
 } from "./useLossAttribution";
+import { tickAxisUnit, type TickAxisUnit } from "./tickAxis";
 import styles from "./SandboxAttr.module.css";
 
 const MENUBAR = ["File", "Edit", "View", "Window", "Tools", "Help"] as const;
@@ -76,15 +77,20 @@ export interface SandboxAttrProps {
   sessionId?: string;
   /** 锚点订单号（透传给矩阵/下钻；缺省走后端 R6 字典序首张）。 */
   so?: string;
+  /**
+   * 一 tick 几天（`WO-SIM-CONSOLE-DAYS`）——底部环节序列轨道头按天说话的口径。
+   * **`undefined` = 没有会话对象可问**，不是「一 tick 一天」（判据表见 `tickAxis.ts` 头注）。
+   */
+  tickDays?: number;
 }
 
-export function SandboxAttr({ sessionId, so }: SandboxAttrProps = {}): JSX.Element {
+export function SandboxAttr({ sessionId, so, tickDays }: SandboxAttrProps = {}): JSX.Element {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const heat = useChainLossMatrix(so);
   const tree = useChainLossDrill(heat, selectedNodeId ?? heat.nodes[0]?.nodeId ?? null, so);
   const detail = useAttrDetail(heat, selectedNodeId);
   const waterfall = useWaterfall(heat, tree);
-  const series = useContributionSeries(sessionId);
+  const series = useContributionSeries(sessionId, tickDays);
 
   return (
     <div className={styles.app} data-testid="sandbox-attr">
@@ -234,7 +240,7 @@ export function SandboxAttr({ sessionId, so }: SandboxAttrProps = {}): JSX.Eleme
                 <u>›</u>
               </span>
             </div>
-            <SeriesGrid rows={series.rows} ticks={series.ticks} playheadPct={series.playheadPct} source={series.source} unitsKnown={series.unitsKnown} />
+            <SeriesGrid rows={series.rows} ticks={series.ticks} playheadPct={series.playheadPct} source={series.source} unitsKnown={series.unitsKnown} tickUnit={tickAxisUnit(tickDays)} />
           </section>
         </div>
       </div>
@@ -275,12 +281,15 @@ function SeriesGrid({
   playheadPct,
   source,
   unitsKnown,
+  tickUnit,
 }: {
   rows: readonly SeriesRow[];
   ticks: readonly string[];
   playheadPct: number;
   source: "endpoint" | "placeholder";
   unitsKnown: boolean;
+  /** 轨道横轴的口径诚实位（`day` = 按天算出来的；`tick` = 没有会话对象、按拍说话）。 */
+  tickUnit: TickAxisUnit;
 }): JSX.Element {
   // 竖排组：`group` 只在该组第一行给，续行归并到上一组。
   const groups: { title: string; count: number }[] = [];
@@ -292,7 +301,7 @@ function SeriesGrid({
   const span = Math.max(1, ticks.length - 1);
 
   return (
-    <div className={styles.grid} data-testid="sandbox-attr-series" data-source={source} data-units-known={unitsKnown ? "1" : "0"}>
+    <div className={styles.grid} data-testid="sandbox-attr-series" data-source={source} data-units-known={unitsKnown ? "1" : "0"} data-tick-unit={tickUnit}>
       <div className={styles.gcol}>
         <div className={styles.gcap} />
         {groups.map((g) => (

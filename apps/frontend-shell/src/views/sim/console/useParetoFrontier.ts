@@ -45,6 +45,8 @@ import type {
   SimMetricSeriesResponse,
 } from "@platform/contracts";
 import { api } from "@/api/apiClient";
+// tick → 天 的换算与措辞：**同目录唯一一份**（它再往下转调契约的 `daysForTicks`）。
+import { tickAxisLabels } from "./tickAxis";
 
 // ══════════════════════════════════════════════════════════════════════════
 // § 1 · 几何（规格 `#pf` 段的 `X0/X1/Y0/Y1` 与两族网格线，逐值照抄）
@@ -256,6 +258,12 @@ export interface OptExecRow {
 
 export interface OptExecModel {
   rows: readonly OptExecRow[];
+  /**
+   * 轨道刻度文本。**两种数据模式口径不同，别合成一句**（`WO-SIM-CONSOLE-DAYS`）：
+   *  · **占位模式** ⇒ 规格那套墙钟时刻 `EXEC_TICKS`（`00:00`…`28:00`），像素 1:1 咬着它；
+   *  · **真端点模式** ⇒ 按**天**（`第 30 天`），由 `tickAxis.ts` 从回包 tick 序号换算；
+   *    拿不到 `tickDays` 时退回 `第 N 拍`，**不猜天数**（判据表见 `tickAxis.ts` 头注）。
+   */
   ticks: readonly string[];
   playheadPct: number;
   source: OptSource;
@@ -700,7 +708,11 @@ const lastNumber = (xs: readonly (number | null)[]): number | null => {
  * 段色只编码契约的**诚实位** `source`：`cadence`（建模方显式绑定的节拍点）⇒ 青片 `c`；
  * `domain`（按落域推的回落档）⇒ 蓝片 `b`。两者不许合并成一个裸色。
  */
-export function projectExecCompare(res: SimMetricSeriesResponse, solutionLabel: string): OptExecModel {
+export function projectExecCompare(
+  res: SimMetricSeriesResponse,
+  solutionLabel: string,
+  tickDays?: number,
+): OptExecModel {
   const items = res.metrics.slice(0, 4);
   const t0 = res.ticks[0] ?? 0;
   const tN = res.ticks[res.ticks.length - 1] ?? t0;
@@ -735,7 +747,9 @@ export function projectExecCompare(res: SimMetricSeriesResponse, solutionLabel: 
   items.forEach((m, i) => rows.push(i === 0 ? { group: `${solutionLabel} 执行`, ...rowOf(m) } : rowOf(m)));
   return {
     rows,
-    ticks: res.ticks.map((t) => String(t)),
+    // 回包的 tick 序号 → **按天**的轴标签（`WO-SIM-CONSOLE-DAYS`）。换算与措辞的唯一实现
+    // 在同目录 `tickAxis.ts`（它再往下转调契约的 `daysForTicks`）——**别在这里 map 一份出来**。
+    ticks: tickAxisLabels(res.ticks, tickDays),
     // 播放头 = 世界线当前格（窗口右端）。占位模式那 46% 是规格的美术值，真数据模式不沿用。
     playheadPct: 100,
     source: "endpoint",
@@ -746,8 +760,15 @@ export function projectExecCompare(res: SimMetricSeriesResponse, solutionLabel: 
 export const metricSeriesPath = (sessionId: string): string =>
   `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/metric-series`;
 
-/** 接 `GET …/metric-series`。无 `sessionId` ⇒ 不发请求，落规格占位。 */
-export function useExecutionCompare(sessionId?: string, solutionLabel = ""): OptExecModel {
+/**
+ * 接 `GET …/metric-series`。无 `sessionId` ⇒ 不发请求，落规格占位。
+ *
+ * @param tickDays 一 tick 几天（`WO-SIM-CONSOLE-DAYS`）。**`undefined` = 没有会话对象可问**，
+ *   不是「一 tick 一天」—— 那时轨道头退回 `第 N 拍`（判据表见 `tickAxis.ts` 头注）。
+ *   ⚠ 它**刻意不进 `queryKey`**：不改 URL、不改回包，只改标签措辞；进了键就把同一份回包
+ *   按口径分裂成两份缓存，白打一跳。
+ */
+export function useExecutionCompare(sessionId?: string, solutionLabel = "", tickDays?: number): OptExecModel {
   const enabled = sessionId !== undefined && sessionId !== "";
   const q = useQuery({
     queryKey: ["a", "sim-metric-series", sessionId ?? ""],
@@ -756,5 +777,5 @@ export function useExecutionCompare(sessionId?: string, solutionLabel = ""): Opt
     queryFn: () => api.a<SimMetricSeriesResponse>(metricSeriesPath(sessionId as string)),
   });
   if (!enabled || q.data === undefined || q.data.metrics.length === 0) return PLACEHOLDER_EXEC_MODEL;
-  return projectExecCompare(q.data, solutionLabel);
+  return projectExecCompare(q.data, solutionLabel, tickDays);
 }

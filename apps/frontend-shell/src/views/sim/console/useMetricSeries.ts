@@ -78,6 +78,8 @@ import { api } from "@/api/apiClient";
 // 在这里再写一遍 `/a/v1/sim/sessions/${id}/metric-series` 就是第二份路径字面量 ——
 // 后端哪天改了前缀，两处只会改一处，而没有任何东西会报错。
 import { metricSeriesPath } from "./useParetoFrontier";
+// tick → 天 的换算与措辞：**同目录唯一一份**（它再往下转调契约的 `daysForTicks`）。
+import { tickAxisLabels } from "./tickAxis";
 
 /** 在册节点 id 的字面量联合（派生自契约本尊，不是本地起个同名别名白嫖）。 */
 type RegisteredChainNodeId = ChainNodeDef["nodeId"];
@@ -145,7 +147,12 @@ export interface MetricRow {
 
 export interface MetricSeries {
   rows: MetricRow[];
-  /** 轨道时间刻度文本（`00:00` … `28:00`），条数即刻度数。 */
+  /**
+   * 轨道时间刻度文本，条数即刻度数。**两种数据模式下这一列的口径不同，别合成一句**：
+   *  · **占位模式** ⇒ 规格那套墙钟时刻 `HOUR_TICKS`（`00:00` … `28:00`），像素 1:1 咬着它；
+   *  · **真端点模式** ⇒ 按**天**说话（`第 30 天`），由 `tickAxis.ts` 从回包的 tick 序号换算；
+   *    会话拿不到 `tickDays` 时退回 `第 N 拍` 并**不猜**天数（判据表见 `tickAxis.ts` 头注）。
+   */
   ticks: string[];
   /** 播放头位置，占轨道宽度的百分比。 */
   playheadPct: number;
@@ -362,7 +369,7 @@ function rowNames(metrics: readonly SimMetricSeriesResponse["metrics"][number][]
  * = 把开发口径推到用户脸上。故真数据模式下**一行都不带 `group`**，竖排域名列留空 ——
  * 这是**诚实缺席**，已写进交单报告的「没做的格」，不是漏了。
  */
-export function projectMetricSeries(res: SimMetricSeriesResponse): MetricSeries {
+export function projectMetricSeries(res: SimMetricSeriesResponse, tickDays?: number): MetricSeries {
   const ticks = res.ticks;
   const t0 = ticks[0] ?? 0;
   const tN = ticks[ticks.length - 1] ?? t0;
@@ -407,9 +414,11 @@ export function projectMetricSeries(res: SimMetricSeriesResponse): MetricSeries 
 
   return {
     rows,
-    // 逐格照抄回包的 tick 序列（后端给的是整型 tick，屏上是文本刻度）。
-    // **不补齐、不改写、不套 `HOUR_TICKS` 那套占位时刻** —— 那是墙钟口径，这里是模拟时钟。
-    ticks: ticks.map((t) => String(t)),
+    // 回包的 tick 序列 → **按天**的轴标签（`WO-SIM-CONSOLE-DAYS`）。
+    // 换算与措辞的唯一实现在 `tickAxis.ts`，那里再往下转调契约的 `daysForTicks` ——
+    // **别在这里 `map` 一份出来**：本单消灭的正是三处逐字节相同的 `ticks.map(String)`。
+    // **不补齐、不套 `HOUR_TICKS` 那套占位时刻** —— 那是墙钟口径，这里是模拟时钟。
+    ticks: tickAxisLabels(ticks, tickDays),
     playheadPct: playheadPctOf(res),
     source: "endpoint",
   };
@@ -464,7 +473,7 @@ function playheadPctOf(res: SimMetricSeriesResponse): number {
  * 而「让默认值等于版面量级」既堵死了「不传参数就回全量」这条路，又让共用缓存自洽。
  * 若哪天版面行数变了（`SPEC_ROWS` 增删），**契约里那个默认值要跟着改** —— 两处都留了互指的注释。
  */
-export function useMetricSeries(sessionId?: string): MetricSeries {
+export function useMetricSeries(sessionId?: string, tickDays?: number): MetricSeries {
   const enabled = sessionId !== undefined && sessionId !== "";
   const q = useQuery({
     queryKey: ["a", "sim-metric-series", sessionId ?? ""],
@@ -472,8 +481,10 @@ export function useMetricSeries(sessionId?: string): MetricSeries {
     retry: false,
     queryFn: () => api.a<SimMetricSeriesResponse>(seriesUrl(sessionId as string)),
   });
+  // ⚠ `tickDays` **刻意不进 `queryKey`**：它不改这一跳的 URL、也不改回包，
+  //   只改屏上标签的措辞。塞进键里会让同一份回包按口径分裂成两份缓存（白打一跳）。
   if (!enabled || q.data === undefined || q.data.metrics.length === 0) return PLACEHOLDER;
-  return projectMetricSeries(q.data);
+  return projectMetricSeries(q.data, tickDays);
 }
 
 /**

@@ -67,6 +67,24 @@ export type ConsoleSessionReason = "explicit" | "auto" | "loading" | "no-running
 export interface ConsoleSession {
   /** 当前推演会话 id。`undefined` = 四页照旧落占位（不是"传个空串下去让它发 404"）。 */
   sessionId?: string;
+  /**
+   * 这个世界里**一 tick 等于几天**（`SimSession.tickDays`）——
+   * 四页轨道横轴按天说话的口径来源（`WO-SIM-CONSOLE-DAYS`）。
+   *
+   * ⚠ **`undefined` 的意思是「没有会话对象可问」，不是「这个世界一 tick 一天」**。
+   * 两者混成一句就会静默显示一个可能错 `tickDays` 倍的天数 —— 判据表与修法写在
+   * `tickAxis.ts` 的头注里，别在这里补 `?? 1` 把它抹平。
+   *
+   * 三条路各自的取值（与 `reason` 严格对应）：
+   *  · `auto`  ⇒ 挑中的那条会话的 `tickDays ?? 1`（契约明写「缺失与 1 同义」，
+   *              且 DataCore 侧恒填 —— 这里的 `?? 1` 覆盖的是本字段引入前建的旧世界）；
+   *  · `explicit` ⇒ **`undefined`**：宿主只给了 id，列表这一跳 `enabled:false`
+   *              ⇒ 一条会话都没查过 ⇒ 真的不知道。要消除它得改打裸
+   *              `GET /a/v1/sim/sessions/:id`（后端已存在），属另一张单；
+   *  · 其余三态（`loading`/`no-running-session`/`unavailable`）⇒ `undefined`，
+   *              且此时 `sessionId` 也没有 ⇒ 四页落规格占位、压根走不到换算。
+   */
+  tickDays?: number;
   reason: ConsoleSessionReason;
   isLoading: boolean;
 }
@@ -137,7 +155,10 @@ export function useConsoleSession(options?: ConsoleViewOptions): ConsoleSession 
 
   const picked = pickLatestRunningSession(q.data.items);
   if (picked === undefined) return { reason: "no-running-session", isLoading: false };
-  return { sessionId: picked.id, reason: "auto", isLoading: false };
+  // `?? 1` 只在**会话对象已经在手**时才写得出来（契约：缺失与 1 同义，且 DataCore 侧恒填）。
+  // 上面 `explicit` 那条 early return **刻意不带这一格** —— 那条路一条会话都没查过，
+  // 在那里补 `?? 1` 就是把"没问过"说成"问过了，答案是 1"（见 `ConsoleSession.tickDays`）。
+  return { sessionId: picked.id, tickDays: picked.tickDays ?? 1, reason: "auto", isLoading: false };
 }
 
 /** `consoleHostProps()` 的返回形状（四个适配层的包裹元素属性）。 */
@@ -146,6 +167,15 @@ export interface ConsoleHostProps {
   "data-session-reason": ConsoleSessionReason;
   /** 真正透下去的那个 id（没有则空串）。测试据此断言"透下去的是显式那个，不是自动查到的那个"。 */
   "data-session-id": string;
+  /**
+   * 透下去的 `tickDays`（**没有会话对象可问时是空串，不是 `"1"`**）——
+   * 轨道横轴按天换算的口径，`WO-SIM-CONSOLE-DAYS` 的诚实位。
+   *
+   * 与 `data-session-id` 同一条纪律：属性对测试可见、对像素不可见
+   * （`display:contents` ⇒ 包裹元素不生成盒），故四页的像素级 1:1 验收线不受影响。
+   * 空串与 `"1"` 必须分得开 —— 合并了就再也验不出「屏上那个天数是算的还是猜的」。
+   */
+  "data-tick-days": string;
   style: { display: "contents" };
 }
 
@@ -161,6 +191,7 @@ export function consoleHostProps(s: ConsoleSession): ConsoleHostProps {
     "data-testid": "sandbox-console-host",
     "data-session-reason": s.reason,
     "data-session-id": s.sessionId ?? "",
+    "data-tick-days": s.tickDays === undefined ? "" : String(s.tickDays),
     style: { display: "contents" },
   };
 }

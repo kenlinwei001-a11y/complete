@@ -47,9 +47,14 @@ export interface SandboxHomeProps {
   sessionId?: string;
   /** 施加扰动的落点对象实例 id（见 `PerturbTree` 文件头的「诚实位」）。 */
   targetObjectId?: string;
+  /**
+   * 一 tick 几天（`WO-SIM-CONSOLE-DAYS`）——底部甘特轨道头按天说话的口径。
+   * **`undefined` = 没有会话对象可问**，不是「一 tick 一天」（判据表见 `tickAxis.ts` 头注）。
+   */
+  tickDays?: number;
 }
 
-export function SandboxHome({ sessionId, targetObjectId }: SandboxHomeProps = {}): JSX.Element {
+export function SandboxHome({ sessionId, targetObjectId, tickDays }: SandboxHomeProps = {}): JSX.Element {
   return (
     <div className={styles.app} data-testid="sandbox-home">
       {/* ══ 顶栏 ══ */}
@@ -150,7 +155,7 @@ export function SandboxHome({ sessionId, targetObjectId }: SandboxHomeProps = {}
                 <u>›</u>
               </span>
             </div>
-            <MetricGantt sessionId={sessionId} />
+            <MetricGantt sessionId={sessionId} tickDays={tickDays} />
           </section>
         </div>
       </div>
