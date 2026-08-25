@@ -17,6 +17,14 @@
  *    该表自带「单源：施加表单与本时间轴共用，不许各写一份」的批注）。
  *    点选 → `POST …/perturbations`（`createSimPerturbation`）。
  *
+ * ── 范围下拉的置灰（WO-SIM-BASEDRILL-GREYOUT）────────────────────────────────
+ * ④ **选项集** = 契约 `baseScopeOptions()`（基地册 13 条 + 末位「全网」，单一出处，
+ *    与 `SandboxAttr.tsx` 共用；改前两边各存一份逐字节相同的副本）。
+ * ⑤ **置灰判据** = 契约 `canDrillByBase(选中因子.objectType)` —— 本文件**不认识任何类型名**。
+ *    落点类型没有基地维度（实测 `ChangeoverMatrix` / `Material`）时，13 条基地选项 `disabled`
+ *    + `aria-disabled`，「全网」保持可选，并在下方给一句原因。**置灰不隐藏**：隐藏等于假装
+ *    没这功能，用户会以为自己没找对地方。有基地维度的因子一个像素不变（由用例咬住）。
+ *
  * ── 诚实位：POST 这条线今天「接了线没数据」，不是「没接线」───────────────────
  * 契约 `PerturbationSchema.targetObjectId` 要的是**对象实例 id**，而因子目录只给到
  * `objectType`（类型）。本页今天没有对象选择器 ⇒ 宿主传不进 `targetObjectId` ⇒
@@ -26,8 +34,11 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  BASE_REGISTRY,
+  BASE_DRILL_BLOCKED_REASON,
   CAPACITY_FACTOR_BINDINGS,
+  NETWORK_SCOPE_KEY,
+  baseScopeOptions,
+  canDrillByBase,
   type CapacityFactorBinding,
   type PerturbationKind,
 } from "@platform/contracts";
@@ -83,8 +94,12 @@ const DEFAULT_SELECTED_NUM = CAPACITY_FACTOR_BINDINGS.find((f) => f.prop === DEF
 /** 轮次页签（规格第 191 行）。第几轮推演是纯 UI 态，今天没有承载物。 */
 const ROUNDS = ["第一轮次", "第二轮次", "第三轮次", "第四轮次"] as const;
 
-/** 范围下拉：**从基地册派生**（`BASE_REGISTRY`，13 条），末位补「全网」。规格里那 4 条是占位。 */
-const SCOPES: readonly string[] = [...BASE_REGISTRY.map((b) => `${b.name}基地`), "全网"];
+/**
+ * 范围下拉：**从契约取单一出处**（`baseScopeOptions()` = 基地册 13 条 + 末位「全网」）。
+ * 规格里那 4 条是占位。改前本文件与 `SandboxAttr.tsx` 各存了一份逐字节相同的副本，
+ * 现两处同读一个函数 —— 册子改了两处一起动，不会漂。
+ */
+const SCOPES = baseScopeOptions();
 
 /** 把 20 条因子按 `GROUPS` 切段（不重排）。 */
 function groupedFactors(): { title: string; rows: CapacityFactorBinding[] }[] {
@@ -111,6 +126,28 @@ export function PerturbTree({ sessionId, targetObjectId }: PerturbTreeProps): JS
   const qc = useQueryClient();
   const groups = useMemo(groupedFactors, []);
   const [selectedNum, setSelectedNum] = useState<number>(DEFAULT_SELECTED_NUM);
+  const [scopeKey, setScopeKey] = useState<string>(SCOPES[0]?.key ?? NETWORK_SCOPE_KEY);
+
+  /**
+   * ── 按基地下钻是否可用（WO-SIM-BASEDRILL-GREYOUT）────────────────────────
+   * 判据**只**来自契约 `canDrillByBase(objectType)`，本文件不认识任何对象类型名 ——
+   * 写成 `if (type === "Material" || type === "Order")` 会撑不起换租户/换行业（R14），
+   * 且落点册加一个类型时这里不会红、只会静默漏判。
+   *
+   * 落点类型没有基地维度时：13 条基地选项置灰，「全网」保持可选（全局量本就该看全网）。
+   * **不隐藏** —— 隐藏等于假装没这功能，用户会以为自己没找对地方；置灰 + 给原因才是照实说。
+   */
+  const selectedFactor = useMemo(
+    () => CAPACITY_FACTOR_BINDINGS.find((f) => f.num === selectedNum),
+    [selectedNum],
+  );
+  const baseDrillOk = selectedFactor === undefined || canDrillByBase(selectedFactor.objectType);
+
+  /**
+   * 置灰时把选中值收回「全网」：否则 `<select>` 的 value 会停在一个 `disabled` 的选项上
+   * —— 屏上显示着一个用户**再也选不回来**的基地，比置灰之前更难懂。
+   */
+  const effectiveScopeKey = baseDrillOk ? scopeKey : NETWORK_SCOPE_KEY;
 
   const listQuery = useQuery({
     queryKey: ["a", "sim-perturbations", sessionId ?? ""],
@@ -187,12 +224,40 @@ export function PerturbTree({ sessionId, targetObjectId }: PerturbTreeProps): JS
       </div>
       <div className={`${styles.pb} ${styles.pbScroll}`}>
         <div className={styles.sel}>
-          <select defaultValue={SCOPES[0]} data-testid="sandbox-home-scope">
-            {SCOPES.map((s) => (
-              <option key={s}>{s}</option>
-            ))}
+          <select
+            value={effectiveScopeKey}
+            onChange={(e) => setScopeKey(e.target.value)}
+            data-testid="sandbox-home-scope"
+            data-base-drill={baseDrillOk ? "on" : "blocked"}
+            title={baseDrillOk ? undefined : BASE_DRILL_BLOCKED_REASON}
+          >
+            {SCOPES.map((s) => {
+              // 基地项在不可下钻时置灰；全网项永远可选（否则下拉里一个合法选项都不剩）。
+              const off = !baseDrillOk && s.kind === "base";
+              return (
+                <option
+                  key={s.key}
+                  value={s.key}
+                  disabled={off}
+                  aria-disabled={off ? "true" : undefined}
+                  data-testid={`sandbox-home-scope-opt-${s.key}`}
+                  data-disabled={off ? "true" : "false"}
+                >
+                  {s.label}
+                </option>
+              );
+            })}
           </select>
         </div>
+        {/* 置灰的原因要**说人话**：不出现 baseId / objectType / 类型 key 这类内部符号名。 */}
+        {!baseDrillOk && (
+          <div
+            data-testid="sandbox-home-scope-note"
+            style={{ margin: "-2px 8px 6px", fontSize: 10.5, lineHeight: 1.35, color: "var(--muted2)" }}
+          >
+            {BASE_DRILL_BLOCKED_REASON}
+          </div>
+        )}
         <div className={styles.wv}>
           {ROUNDS.map((r, i) => (
             <b key={r} className={i === 0 ? styles.on : undefined}>
