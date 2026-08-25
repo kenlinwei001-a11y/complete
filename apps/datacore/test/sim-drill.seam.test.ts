@@ -147,7 +147,6 @@ describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
       // R13 溯源：能回仓储对拍的下钻三元组
       expect(f.source.provenance.drill).toBeTruthy();
     }
-    await t.close?.();
   });
 
   it("② 事件驱动的结论**只在给了事件时**出现（scanOnly 不调求解器）", async () => {
@@ -157,7 +156,6 @@ describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
     // 没有事件 ⇒ 没有求解器回执；但**扫描照跑**（堵点来自传导图，与事件无关）
     expect(scanOnly.solverRuns).toEqual([]);
     expect(scanOnly.findings.some((f) => f.source.solverKey === "sop_reschedule")).toBe(false);
-    await t.close?.();
   });
 
   // ══════════════════════════════════════════════════════════════════════
@@ -173,7 +171,6 @@ describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
     const rep = await runDrill(t, sid, { horizonDays: 30, scanOnly: true, events: [] });
     expect(rep.tickDays).toBe(7);
     expect(rep.ticks).toBe(5);
-    await t.close?.();
   });
 
   it("③ tickDays 从 SimSession 透到**下游四页的消费面**（会话列表投影）", async () => {
@@ -210,7 +207,6 @@ describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
     const series = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/metric-series`, headers: ADMIN });
     expect(series.statusCode).toBe(200);
     expect((series.json() as { tickDays?: number }).tickDays).toBe(7);
-    await t.close?.();
   });
 
   // ══════════════════════════════════════════════════════════════════════
@@ -231,7 +227,6 @@ describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
     }
     // 汇总也不许把 UNDECLARED 洗成可信
     expect(rep.summary.trustworthy).toBe(false);
-    await t.close?.();
   });
 
   it("④ 诚实位归一的**唯一实现**：认识的值原样保留，不认识 / 缺失一律 UNDECLARED", () => {
@@ -350,16 +345,16 @@ describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
       mk("r5", "X", "v", "Y2", "v"),
       mk("r6", "X", "v", "Y3", "v"),
     ]);
-    expect(sizes.get("A v")).toBe(3); // 出度 1，闭包 3
-    expect(sizes.get("X v")).toBe(3); // 出度 3，闭包 3
-    expect(sizes.get("C v")).toBe(1);
+    expect(sizes.get("A\u0000v")).toBe(3); // 出度 1，闭包 3
+    expect(sizes.get("X\u0000v")).toBe(3); // 出度 3，闭包 3
+    expect(sizes.get("C\u0000v")).toBe(1);
   });
 
   it("⑥ 传导图成环不死循环（真实传导图允许成环）", () => {
     const mk = (k: string, s: string, tt: string) =>
       ({ key: k, sourceTypeKey: s, sourceStateVar: "v", targetTypeKey: tt, targetStateVar: "v" }) as never;
     const sizes = transitiveClosureSizes([mk("r1", "A", "B"), mk("r2", "B", "A")]);
-    expect(sizes.get("A v")).toBe(1); // 闭包含 B，不含自己
+    expect(sizes.get("A\u0000v")).toBe(1); // 闭包含 B，不含自己
   });
 
   it("⑥ 分位函数：空样本回 null（不是 0）——「算不出阈值」不是「阈值为 0」", () => {
@@ -382,7 +377,6 @@ describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
     const b = await runDrill(t, sid, body);
     expect(JSON.stringify(a.findings)).toBe(JSON.stringify(b.findings));
     expect(JSON.stringify(a.summary)).toBe(JSON.stringify(b.summary));
-    await t.close?.();
   });
 
   it("⑦ R4-sim：演习是只读的 —— 世界线 curTick 一格不动", async () => {
@@ -394,7 +388,6 @@ describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
     const after = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}`, headers: ADMIN });
     // 演习推了 30 拍，但**不落盘** ⇒ 会话本身的世界线不动
     expect((after.json() as { curTick: number }).curTick).toBe(tickBefore);
-    await t.close?.();
   });
 
   it("⑦ 规模闸：逐类截断 + 诚实位（「我给了 N 条」与「一共 M 条」分得开）", async () => {
