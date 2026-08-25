@@ -811,10 +811,24 @@ describe("WO-TRANSIT-WIRE · 图层自取 Cadence / 采购段，缺席由取回�
     expect(Number(absence.getAttribute("data-fetched"))).toBeGreaterThan(0);
     expect(absence).not.toHaveTextContent("本层没去取");
 
+    /*
+      采购支线同一条判据（**病因由响应决定**），但落点档位与节拍那条不同 ——
+      ⚠ 本条曾写死等 `CONTRACT_REJECTED`，长期红：`7ed59ce9`（WO-STEP-TEMPLATE-LAYER，
+        2026-08-15）给 mock 的 `/a/v1/objects` 补了 `CustomsClearance` 分支（两行都带
+        `declaredDay`/`clearedDay`），清关那条腿于是**算得出来** ⇒ 判 `PRESENT` ⇒ 渲染 `-live` 那一支。
+        节拍那条仍是 `CONTRACT_REJECTED`，因为 mock 对 `Cadence` 至今没有分支、落 `else` 拿回订单行。
+        两条档位不同**恰恰是本条要的东西**：写死任何一档都会掩盖"病因随响应变"这件事。
+      「查询真的发出去了」的活证据在这里是 `data-fetched > 0` —— props 里一个字没喂，却取回了 62 条。
+    */
     await waitFor(() =>
-      expect(screen.getByTestId("transit-branch-procurement")).toHaveAttribute("data-cause", "CONTRACT_REJECTED"),
+      expect(screen.getByTestId("transit-branch-procurement-live")).toHaveAttribute("data-cause", "PRESENT"),
     );
-    expect(screen.getByTestId("transit-branch-procurement")).not.toHaveTextContent("本层没去取");
+    const proc = screen.getByTestId("transit-branch-procurement-live");
+    expect(proc).not.toHaveTextContent("本层没去取");
+    expect(Number(proc.getAttribute("data-fetched")), "一条都没取回来 ⇒ 采购段那三条查询没发出去").toBeGreaterThan(0);
+    expect(proc, "可用腿数变了 ⇒ mock 世界改过，回来重新核对").toHaveAttribute("data-usable", "2");
+    // EMPTY 那一支必须整个不出（两支同时在 = 面板又变回无条件渲染）
+    expect(screen.queryByTestId("transit-branch-procurement")).toBeNull();
   });
 
   // ── ④ 源码级回归锁：接上的线不许再被摘掉 ────────────────────────────────────

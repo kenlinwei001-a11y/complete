@@ -101,8 +101,33 @@ describe("WO-SANDBOX-F2 · 在途 / 在制渲染器可达（咬链路不咬组�
     const absence = within(layer).getByTestId("transit-cadence-absence");
     expect(absence).toHaveAttribute("data-status", "EMPTY");
     expect(within(absence).getAllByRole("listitem").length).toBeGreaterThan(0);
-    // 采购支线同理：恒空 + 逐条取证（D2 前的诚实判据）
-    expect(within(layer).getByTestId("transit-branch-procurement")).toHaveAttribute("data-status", "EMPTY");
+    /*
+      采购支线同理：必须**当面表态 + 逐条给证**，不许静默留白。
+      ⚠ 「恒空（D2 前的诚实判据）」那句已过期，本条曾长期红在这上面：
+        `7ed59ce9`（WO-STEP-TEMPLATE-LAYER，2026-08-15）给 mock 的 `GET /a/v1/objects`
+        补了 `CustomsClearance` 分支，两行都带 `declaredDay`/`clearedDay`
+        （`handlers.ts` 该分支的头注写明补它是为了不让 `else` 兜底把**订单**当成任何未登记类型返回）
+        ⇒ 清关那条腿的区间位置**算得出来** ⇒ `deriveProcurementBranch` 判 `PRESENT`
+        ⇒ 渲染的是 `-live` 那一支，`transit-branch-procurement` 整个不出。
+        实测（本单探针）：`data-fetched="62" data-usable="2"`，覆盖 `customs` 一条腿。
+      判据随之改成「**病因由取回来的东西决定**」——这比「恒空」更咬得住接线：
+      线被摘掉 ⇒ 一条都取不到 ⇒ 回落 `NOT_FETCHED` ⇒ 下面两条当场红。
+    */
+    expect(within(layer).queryByTestId("transit-branch-procurement"), "采购支线判回 EMPTY ⇒ 要么线被摘了，要么 mock 世界又变了").toBeNull();
+    const proc = within(layer).getByTestId("transit-branch-procurement-live");
+    expect(proc).toHaveAttribute("data-cause", "PRESENT");
+    expect(Number(proc.getAttribute("data-fetched")), "一条都没取回来 ⇒ 那条查询没发出去").toBeGreaterThan(0);
+    expect(proc, "可用腿数变了 ⇒ mock 世界改过，回来重新核对 PROCUREMENT_LEG_PROBES").toHaveAttribute("data-usable", "2");
+    expect(proc).toHaveTextContent("覆盖 customs");
+    // 逐条给证（原判据保留）：证据条目不许空着
+    expect(within(proc).getAllByRole("listitem").length).toBeGreaterThan(0);
+    /*
+      诚实边界必须仍在屏上：「日戳齐全」≠「已经画成车」。
+      这句一旦被删，页面就会在只判定到"算得出来"的时候让用户以为采购段的车已经在图上了。
+    */
+    expect(within(layer).getByTestId("transit-branch-procurement-scope")).toHaveTextContent(
+      "屏上不会出现采购段的车",
+    );
   });
 
   it("`view.options` 的播控初值真的穿过宿主落到图层（ViewPage 传参这条路真的通）", async () => {
