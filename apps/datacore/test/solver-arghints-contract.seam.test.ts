@@ -262,11 +262,14 @@ describe("WO-SOLVER-ARGHINTS-DRIFT §0a · 正金丝雀（夹具自证·不成�
     expect(out.concentrations.length, BROKEN("concentration_risk")).toBe(1);
     expect(out.topExposure?.rootType, BROKEN("concentration_risk")).toBe("AhSupplier");
     expect(out.topExposure?.count, BROKEN("concentration_risk")).toBe(3);
-    // ⚠ 观察到的**非对称**（本单不修·不在范围边界内，仅记录）：终端根的 `rootId` 取的是对象的
-    //   **仓储 id**（`service.ts:1438` `keyOf(cur)` 少传 pk ⇒ 落 `o.id` 分支），而 `dependents[]`
-    //   取的是**主键属性值**（`:1440` `keyOf(s, sPk)`）—— 同一个输出里两种 id 口径。
-    //   这与本单的 argHints 漂移是**两笔账**：那一笔是「说明书写错键名」，这一笔是「输出 id 口径不一」。
-    expect(out.topExposure?.rootId, BROKEN("concentration_risk")).toBe("ah_sup1");
+    // ✅ 已闭（WO-SOLVER-ROLE-TABLE-DRIFT 2026-08-25 改本行·**本单之外的唯一改动**）：
+    //   本行原钉的是修前现状 `toBe("ah_sup1")` —— 终端根 `rootId` 取**仓储 id**（`keyOf(cur)` 少传 pk），
+    //   而 `dependents[]` 取**主键属性值**（`keyOf(s, sPk)`），同一个输出里两种 id 口径。
+    //   现已统一到**主键值**（判据 = 「调用方拿这个 id 能不能查到东西」：本仓其它求解器一律主键值，
+    //   且互为反向的 supplier_disruption_radius 逐层比 props[viaField] = 主键值，喂仓储 id 恒零命中）。
+    //   ⇒ 本行由「钉住现状」翻成**正向断言**；行为判据（能否查回 / 能否驱动反向扇出）见
+    //   `test/solver-role-table.seam.test.ts` §2。
+    expect(out.topExposure?.rootId, BROKEN("concentration_risk")).toBe(SUPPLIER);
   });
 
   it("margin_attribution 用实读键 → 2 单倒挂且主驱动是「原料」（两个成本项真被拆开）", async () => {
