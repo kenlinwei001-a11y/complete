@@ -32,7 +32,7 @@ import {
   type DrillFinding,
   type DrillReport,
 } from "@platform/contracts";
-import { simDrill } from "@/api/endpoints";
+import { fetchDrillStateVarLayers, simDrill } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
 
 /** 诚实位角标文案 —— **后端枚举 → 屏上人话**的唯一映射（前端别处不许再写一份）。 */
@@ -114,6 +114,17 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
   const [payload, setPayload] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<DrillReport | null>(null);
+  /**
+   * 状态变量**三层重排**（根源 / 枢纽 / 末端）—— 层级由传导图入度出度**后端现算**，不手工登记。
+   *
+   * ⚠ 与事件目录同一条纪律：**在点击事件里取，不在渲染期取**。
+   * 渲染期新增 endpoint 依赖会被整体替换式 `vi.mock` 打成 undefined 而当场抛，
+   * 把别的单的门整片打红（本单实测栽过一次，见上方 `specs` 的头注）。
+   *
+   * 为什么不在前端自己按传导规则算一遍：那是第二套真相源 ——
+   * 后端 `layerOfStateVars` 是唯一实现，前端再算一份，度数口径一漂两边就各说各话。
+   */
+  const [layers, setLayers] = useState<{ stateVar: string; layer: string; label: string }[] | null>(null);
 
   /**
    * 事件目录 —— **直接读契约包，不打网络**。
@@ -172,6 +183,13 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
     try {
       const r = await simDrill(sessionId, { events, horizonDays: days, scanOnly: events.length === 0 });
       setReport(r);
+      // 三层重排与演习结果同时上屏。**单独 try**：层级取不到不该让整场演习白跑，
+      // 但也不静默 —— 取不到就保持 `null`，屏上那一段直接不出现（不画一个空壳假装有）。
+      try {
+        setLayers((await fetchDrillStateVarLayers()).layers);
+      } catch {
+        setLayers(null);
+      }
     } catch (e) {
       toastError(e);
     } finally {
@@ -277,6 +295,39 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
           ) : null}
 
           {/* 求解器回执 —— 「求解器真被调用」这件事屏上可见，不必开 network 面板 */}
+          {/*
+            状态变量**三层重排**（根源 / 枢纽 / 末端）—— 层级现算，不手工登记。
+            为什么值得单独一段：仓主的分层判据「库存是衍生不是根源」在数据上成立，
+            而屏上一直没有任何东西表达它 —— 用户看到 36 个平铺的变量，
+            分不出「扰它有意义」（根源）与「扰它等于从半路插入」（末端）。
+            取不到 ⇒ 整段不渲染（不画空壳）。
+          */}
+          {layers === null || layers.length === 0 ? null : (
+            <details data-testid="drill-statevar-layers">
+              <summary style={{ cursor: "pointer", fontSize: "0.9em", opacity: 0.85 }}>
+                状态变量三层（根源 {layers.filter((l) => l.layer === "根源").length}·枢纽{" "}
+                {layers.filter((l) => l.layer === "枢纽").length}·末端 {layers.filter((l) => l.layer === "末端").length}）
+              </summary>
+              <div style={{ fontSize: "0.85em", opacity: 0.9 }}>
+                {(["根源", "枢纽", "末端"] as const).map((layer) => {
+                  const items = layers.filter((l) => l.layer === layer);
+                  if (items.length === 0) return null;
+                  return (
+                    <p key={layer} data-testid="drill-layer-row" data-layer={layer} style={{ margin: "4px 0" }}>
+                      <strong>{layer}</strong>（
+                      {layer === "根源"
+                        ? "入度 0·没人喂它，扰它才有意义"
+                        : layer === "末端"
+                          ? "出度 0·它只承接，是结果不是输入"
+                          : "两头都有·传导中继"}
+                      ）：{items.map((l) => l.label).join("、")}
+                    </p>
+                  );
+                })}
+              </div>
+            </details>
+          )}
+
           <details data-testid="drill-solver-runs">
             <summary style={{ cursor: "pointer", fontSize: "0.9em", opacity: 0.85 }}>
               求解器回执（{report.solverRuns.length} 次调用）
