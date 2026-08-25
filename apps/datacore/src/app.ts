@@ -2725,7 +2725,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   //   批号/工单/设备都挂在产线上，所以「他能看哪些批号」= 「他能看哪些产线」。
   //   这里刻意**不**自己写一条 baseId 比较：那是绕开 A6 另造判据，策略一改就静默漂移。
   //   闸门一律来自 `authz.rowAllowed`，与 `ontology.queryObjects` 走的是同一个机制。
-  const buildDrillWorld = async (c: AuthCtx, baseId: string | null, routingId: string | null) => {
+  //
+  // ⚠ WO-SIM-NODEDETAIL-FIELDS：世界态里多了一个 **A8 模拟时钟**（`lots[].conduction.dwellDays`
+  //   的减数）。它从 `repos.simulationClocks` 现读，读不回来就传 `null` —— `sim/drill.ts` 会
+  //   诚实报 `CLOCK_UNINITIALIZED` 而**不是**退回 `new Date()`。这条纪律与
+  //   `twin/enterprise-state.ts` 的 `currentClock()` 同源：wall-clock 兜底 = 给读数一个不在
+  //   任何时间轴上的坐标。区别只在处置——那边抛 409（快照必须有确定时刻），这边诚实缺席
+  //   （节点详情的其余九成内容与时钟无关，为一个可选戳把整条读数打成错误是把缺口放大成故障）。
+  //   `session` 可为 `null`：`POST /a/v1/sim/chain-loss-drill` **不在会话上下文里**（它没有 :id），
+  //   那条路也不消费时钟。传 null 比编一个 `curTick:0` 诚实 —— 后者会让「没有会话」冒充「会话在第 0 拍」。
+  const buildDrillWorld = async (c: AuthCtx, baseId: string | null, routingId: string | null, session: SimSession | null) => {
     const load = async (typeKey: string): Promise<DrillObject[]> =>
       (await repos.objects.listByType(c.tenantId, typeKey))
         .filter((o) => !o.mergedInto) // OC1：被并入对象不出现，只见 golden
@@ -2742,9 +2751,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         .filter((s) => s !== ""),
     );
     const links = (await repos.links.list(c.tenantId)).map((l) => ({ type: l.type, fromId: l.fromId, toId: l.toId }));
+    // A8 模拟时钟：id == tenantId（`synthetic/service.ts` 落的那一行）。没有 ⇒ null，不兜底。
+    const clockRec = await repos.simulationClocks.get(c.tenantId, c.tenantId);
     const world: DrillWorld = {
       operations, processes, equipment, workOrders, lines: lineObjs, wipLots, links,
       visibleLineIds, allLineIds, rowFilters,
+      clock: clockRec ? { t0: clockRec.t0, currentTick: clockRec.currentTick } : null,
+      session: session ? { curTick: session.curTick, tickDays: session.tickDays } : null,
     };
     return { world, opts: { baseId, routingId } };
   };
@@ -2768,7 +2781,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { result, share } = await chainShareFor(c, body.nodeId, body.so);
     // 缺省基地 = 锚点订单的基地（不限定就会把别基地的设备也摊进来，那是另一条链上的事）。
     const baseId = body.baseId ?? result.anchor.baseId ?? null;
-    const { world, opts } = await buildDrillWorld(c, baseId, result.anchor.routingId ?? null);
+    // 本路由不在会话上下文里（无 :id），也不消费模拟时钟 ⇒ 显式传 null（见 buildDrillWorld 注释）。
+    const { world, opts } = await buildDrillWorld(c, baseId, result.anchor.routingId ?? null, null);
     return chainLossDrill(share, world, opts);
   });
 
@@ -2778,14 +2792,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    */
   app.get("/a/v1/sim/sessions/:id/node-detail", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
-    await getSimOr404(c, (req.params as { id: string }).id); // R2：别租户 404（会话存在性先于一切）
+    // R2：别租户 404（会话存在性先于一切）。会话本体也要留着 —— `clock.sessionTick/sessionTickDays`
+    // 是从它身上读的（那是「我推了几拍」，与租户 A8 时钟的「世界是哪天」是两个量）。
+    const session = await getSimOr404(c, (req.params as { id: string }).id);
     const q = req.query as { nodeId?: string; so?: string; baseId?: string };
     if (typeof q.nodeId !== "string" || q.nodeId.length === 0) throw validationError("nodeId query param required");
     const { result, share } = await chainShareFor(c, q.nodeId, typeof q.so === "string" && q.so.length > 0 ? q.so : undefined);
     // 明细的基地范围**不缺省到锚点基地**：这条路由是「让我看这个站上的批号」，
     // 缺省限死锚点基地会让基地经理看不到自己基地的批号（锚点订单可能落在别的基地）。
     const baseId = typeof q.baseId === "string" && q.baseId.length > 0 ? q.baseId : null;
-    const { world, opts } = await buildDrillWorld(c, baseId, result.anchor.routingId ?? null);
+    const { world, opts } = await buildDrillWorld(c, baseId, result.anchor.routingId ?? null, session);
     return chainNodeDetail(share, world, opts);
   });
   // ══════════════════════════════════════════════════════════════════════════

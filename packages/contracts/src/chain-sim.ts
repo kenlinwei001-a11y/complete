@@ -1634,10 +1634,14 @@ export const ChainDetailClockSchema = z.strictObject({
   tick: z.number().int().nonnegative().nullable(),
   /** 逻辑「现在」= `t0 + tick` 天（ISO 日期）。**不是 wall-clock**。未初始化 → `null`。 */
   simulatedDate: z.string().min(1).nullable(),
-  /** 本次推演会话自己走到第几拍（`SimSession.curTick`）。 */
-  sessionTick: z.number().int().nonnegative(),
-  /** 一拍 = 几天（`SimSession.tickDays`）。 */
-  sessionTickDays: z.number().positive(),
+  /**
+   * 本次推演会话自己走到第几拍（`SimSession.curTick`）。
+   * `null` = 这次读数不在会话上下文里（`POST /a/v1/sim/chain-loss-drill` 那条路没有 `:id`）。
+   * **不拿 0 顶替** —— 「没有会话」与「会话停在第 0 拍」是两件事。
+   */
+  sessionTick: z.number().int().nonnegative().nullable(),
+  /** 一拍 = 几天（`SimSession.tickDays`）。无会话上下文 → `null`。 */
+  sessionTickDays: z.number().positive().nullable(),
   source: z.enum(["A8_SIMULATION_CLOCK", "UNINITIALIZED"]),
   basis: z.string().min(1),
 });

@@ -41,12 +41,15 @@
 import {
   SUB_CAUSE_CONSERVATION_TOLERANCE_PCT,
   subCauseConservationResidual,
+  type ChainDetailClock,
   type ChainDetailMissing,
   type ChainLossDrill,
+  type ChainLotConduction,
   type ChainLotDetail,
   type ChainNodeDetail,
   type ChainRoute,
   type ChainSubCause,
+  type ChainTextEvidence,
 } from "@platform/contracts";
 import { propDisplayName } from "../synthetic/battery.js";
 import type { ChainNodeLossShare } from "../solvers/chain-loss.js";
@@ -89,6 +92,22 @@ export interface DrillWorld {
   allLineIds: ReadonlySet<string>;
   /** 生效的行级过滤表达式原文（透明返回，屏上能说清是被什么挡的）。 */
   rowFilters: string[];
+  /**
+   * A8 模拟时钟（WO-SIM-NODEDETAIL-FIELDS）。`null` = 该租户还没跑过合成作业 ⇒ 时钟未初始化。
+   *
+   * ⛔ **本模块永远不看 wall-clock**（全文件零 `Date.now()` / `new Date()` 无参调用，R6）。
+   *    「现在」只有这一个来源；它是 `null` 时相关读数就诚实缺席，不拿系统时间顶替。
+   */
+  clock: { t0: string; currentTick: number } | null;
+  /**
+   * 本次推演会话自己的进度（`SimSession.curTick` / `.tickDays`）—— 与租户时钟是两个量。
+   * `null` = 调用方不在会话上下文里（`POST /a/v1/sim/chain-loss-drill` 没有 `:id`）。
+   * **不拿 `{curTick:0,tickDays:1}` 顶替**：那会让「没有会话」冒充「会话停在第 0 拍」。
+   *
+   * ⚠ `tickDays` 在契约里是 `.optional()`（`SimSessionSchema`）⇒ 这里也允许 `undefined`，
+   *   同样**不补默认 1**：补了就把「这条会话没声明刻度」说成了「一拍等于一天」。
+   */
+  session: { curTick: number; tickDays: number | undefined } | null;
 }
 
 export interface DrillOptions {
@@ -120,6 +139,116 @@ function hopAll(links: readonly DrillLink[], fromId: string, linkType: string, p
 /** 属性中文业务名（单源表；未登记回落 propKey —— 诚实留白，不臆造中文名）。 */
 function propLabel(typeKey: string, propKey: string): string {
   return propDisplayName(typeKey, propKey) ?? propKey;
+}
+
+/** 一天的毫秒数（唯一一处，别再内联 86400000）。 */
+const DAY_MS = 86_400_000;
+
+/**
+ * 日期串 → UTC epoch 毫秒。**只认前 10 位 `YYYY-MM-DD`**，其余一律 `null`。
+ *
+ * ⚠ 刻意不做 `Date.parse(任意串)`：那个会把 `"上周"` 之外的一堆垃圾解析成 `NaN`（还行），
+ *   但也会把 `"2026-6-1"` 这种半合法串按**本地时区**解析 —— 于是同一份种子在不同 TZ 的机器上
+ *   算出差一天的 `elapsedDays`，R6 字节一致当场破。收窄到定长 ISO 日期 + 显式 `T00:00:00Z`，
+ *   时区这一维就被消掉了。
+ */
+function dayEpoch(v: unknown): number | null {
+  if (typeof v !== "string") return null;
+  const d = v.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  const ms = Date.parse(`${d}T00:00:00Z`);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** epoch 毫秒 → `YYYY-MM-DD`（与 `dayEpoch` 互逆，同一处口径）。 */
+function epochDay(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/**
+ * 逻辑 as-of 戳。**唯一来源是 A8 模拟时钟**；没有就诚实报 `UNINITIALIZED`，
+ * 不退 wall-clock（理由写在契约 `ChainDetailClockSchema` 注释里，此处不复述）。
+ */
+function resolveClock(world: DrillWorld): ChainDetailClock {
+  const base = {
+    sessionTick: world.session === null ? null : world.session.curTick,
+    sessionTickDays: world.session?.tickDays ?? null,
+  };
+  const t0 = world.clock === null ? null : dayEpoch(world.clock.t0);
+  if (world.clock === null || t0 === null) {
+    return {
+      ...base,
+      t0: null,
+      tick: null,
+      simulatedDate: null,
+      source: "UNINITIALIZED",
+      basis:
+        world.clock === null
+          ? "本租户没有 A8 模拟时钟记录（SimulationClockRecord 不存在 —— 通常是还没跑过合成作业）⇒ 逻辑「现在」取不到。不退 wall-clock。"
+          : `A8 模拟时钟的 t0「${world.clock.t0}」不是 YYYY-MM-DD ⇒ 解析不出逻辑「现在」。不退 wall-clock。`,
+    };
+  }
+  const tick = world.clock.currentTick;
+  return {
+    ...base,
+    t0: epochDay(t0),
+    tick,
+    simulatedDate: epochDay(t0 + tick * DAY_MS),
+    source: "A8_SIMULATION_CLOCK",
+    basis:
+      `逻辑「现在」= A8 模拟时钟 t0(${epochDay(t0)}) + currentTick(${tick}) 天 = ${epochDay(t0 + tick * DAY_MS)}。` +
+      `本次会话自身进度 curTick=${base.sessionTick ?? "—（不在会话上下文里）"} × tickDays=${base.sessionTickDays ?? "—"}（与租户时钟是两个量，不互相冒充）。`,
+  };
+}
+
+/** 文本证据三元组（`value` 非串即 `null` —— 不 `String()` 强转，那会把 `undefined` 变成 `"undefined"`）。 */
+function textEvidence(objectType: string, objectId: string, prop: string, raw: unknown): ChainTextEvidence {
+  return { objectType, objectId, prop, value: typeof raw === "string" && raw !== "" ? raw : null };
+}
+
+/**
+ * 传导识别表那三列（型号 / 耗时 / 影响级）—— 逐批从 `WIPLot` 自己的字段读回。
+ *
+ * **三个量各自的真值源**（一个常数都没有）：
+ *   · `model`       = `WIPLot.modelId`；
+ *   · `elapsedDays` = `WIPLot.lastMoveTime − WIPLot.startTime`（天，两个日戳都在才算）；
+ *   · `dwellDays`   = `clock.simulatedDate − WIPLot.lastMoveTime`（天，时钟在才算）；
+ *   · `impactLevel` = **恒 `null`**（本体零字段承载它，见契约注释「B 路」）。
+ *
+ * ⚠ `dwellDays` 允许为负：`lastMoveTime` 晚于逻辑「现在」时，那是**数据与时钟对不齐**这个事实本身，
+ *   钳成 0 会把它抹平成「刚到站」。故 schema 上它不是 `nonnegative`。
+ */
+function lotConduction(lot: DrillObject, clock: ChainDetailClock): ChainLotConduction {
+  const lotNo = str(lot.props.lotId);
+  const model = str(lot.props.modelId);
+  const startedRaw = lot.props.startTime;
+  const movedRaw = lot.props.lastMoveTime;
+  const started = dayEpoch(startedRaw);
+  const moved = dayEpoch(movedRaw);
+  const nowMs = clock.simulatedDate === null ? null : dayEpoch(clock.simulatedDate);
+  const elapsedDays = started === null || moved === null || moved < started ? null : (moved - started) / DAY_MS;
+  const dwellDays = moved === null || nowMs === null ? null : (nowMs - moved) / DAY_MS;
+  return {
+    model: model !== "" ? model : null,
+    startedAt: typeof startedRaw === "string" && startedRaw !== "" ? startedRaw : null,
+    lastMovedAt: typeof movedRaw === "string" && movedRaw !== "" ? movedRaw : null,
+    elapsedDays,
+    dwellDays,
+    // ⛔ 这一行是本单的红线本身：本体里没有「影响级」这个量，任何 1..4 都得先发明一张阈值表。
+    //    要改它，先在本体里给出承载字段，然后把 `missing[]` 里那条 ONTOLOGY_MISSING 一起撤掉。
+    impactLevel: null,
+    evidence: {
+      model: textEvidence("WIPLot", lotNo, "modelId", lot.props.modelId),
+      startedAt: textEvidence("WIPLot", lotNo, "startTime", startedRaw),
+      lastMovedAt: textEvidence("WIPLot", lotNo, "lastMoveTime", movedRaw),
+    },
+    basis:
+      `耗时两个口径分开算：① 在链历时 elapsedDays = WIPLot.lastMoveTime(${str(movedRaw, "—")}) − WIPLot.startTime(${str(startedRaw, "—")})` +
+      `${elapsedDays === null ? " ⇒ 日戳缺/倒挂，取不到" : ` = ${elapsedDays} 天`}；` +
+      `② 在站停留 dwellDays = 逻辑现在(${clock.simulatedDate ?? "—"}) − lastMoveTime` +
+      `${dwellDays === null ? `（${clock.source === "UNINITIALIZED" ? "A8 模拟时钟未初始化" : "日戳缺"} ⇒ 取不到，不退 wall-clock）` : ` = ${dwellDays} 天`}。` +
+      `影响级：本体零字段承载，恒 null（见 missing[] 的 ONTOLOGY_MISSING 一条）。`,
+  };
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -447,6 +576,93 @@ function resolveRoute(station: string | null, world: DrillWorld, opts: DrillOpti
 }
 
 /**
+ * 屏上已在展示、而本回包**刻意不给真值**的量 —— 逐条登记，附裁决与理由。
+ *
+ * ══ 为什么要有这张表（不是文档，是回包内容）═════════════════════════════════
+ * 上一张单实测点名「端点答不出这几个量 ⇒ 整表恒占位」。本单把能答的答了，
+ * **剩下的必须说清是「没有」还是「不在这儿」** —— 否则前端只能把两者都画成同一个「—」，
+ * 而屏上「没有这个数」与「还没加载」必须是不同的状态（否则用户以为是加载慢，一直等）。
+ *
+ * ══ 三类裁决，判据各不相同 ═══════════════════════════════════════════════════
+ * · `PRESENTATION_ONLY` —— **纯呈现量**。判据：这个数是不是把某个业务值映射成了几何？
+ *   是 ⇒ 该进回包的是**那个业务值**，不是几何本身。把「半径 18:12 / 张角 39°」塞进契约，
+ *   等于把画布坐标写进真相源；换一版版面它就全错，而且**没有任何对象能对拍它**。
+ * · `ANSWERED_ELSEWHERE` —— **已有单一来源端点在答**。本回包再答一份 = 第二套真相源
+ *   （本仓 `boundary-singlesource` 纪律：同一个事实只存一份，改一处全局同步）。
+ * · `ONTOLOGY_MISSING` —— **本体里压根没有这个量**。给它就得先发明口径 = 编数。
+ *
+ * ⚠ 每条的 `probe` 都是**可执行的下一步**，不是一句抱歉 —— 读的人拿它就能自己复核裁决对不对。
+ */
+const SCREEN_QUANTITIES_NOT_ANSWERED_HERE: readonly {
+  field: string;
+  code: ChainDetailMissing["code"];
+  reason: string;
+  probe: string;
+}[] = [
+  {
+    // 传导识别表第 5 列。本体全表扫过：没有任何对象类型承载「这批号受本次传导影响有多严重」。
+    field: "conduction.impactLevel",
+    code: "ONTOLOGY_MISSING",
+    reason:
+      "影响级（1..4）在本体里**零字段承载**：WIPLot / WorkOrder / Process / Equipment / Line 上都没有严重度属性。" +
+      "要给出 1..4 就得先发明一张阈值表（例如按在制量分四档）——那是替数据编口径，比留空更坏。" +
+      "故 lots[].conduction.impactLevel 恒 null，且**不按 wip/耗时现场分档**。",
+    probe:
+      "GET /a/v1/ontology/object-types 后在 WIPLot 的 properties 里找严重度/等级字段；要它先建模（或用 chain_impediments 的 severity 另建一条链，那是环节级不是批号级）。",
+  },
+  {
+    // 扇区图右下角 `.rd` 的 `18:12`。
+    field: "cone.radius",
+    code: "PRESENTATION_ONLY",
+    reason:
+      "扇区图「半径 18:12」是画布读数（规格 `docs/ux-spec/sandbox/sandbox-detail.html` 的 `.rd`），不是业务量：" +
+      "它没有单位、没有对象能对拍。真正该进回包的业务量是「这次变更波及了哪些对象/流程/决策/KPI」，" +
+      "而那个已由 `POST /a/v1/simulation/impact-analysis` 四维作答（前端 `ImpactCone` 已接其中的 affectedProcesses 一维）。",
+    probe: "读 `docs/ux-spec/sandbox/sandbox-detail.html` 的 `.rd` 与 `#cone` 段；再对 `POST /a/v1/simulation/impact-analysis` 看四维回包。",
+  },
+  {
+    // 扇区图 SVG 内的 `39°` —— 规格里它是那个三角形 `M118 208 L104 186 L132 186 Z` 自己的角。
+    field: "cone.angle",
+    code: "PRESENTATION_ONLY",
+    reason:
+      "扇区图「张角 39°」标的是规格里那个三角形自身的顶角（`M118 208 L104 186 L132 186 Z`），是版面几何，不是传导广度的度量。" +
+      "把它做成契约字段，等于让后端去算一个只有这一版版面才成立的角度。",
+    probe: "读 `docs/ux-spec/sandbox/sandbox-detail.html` 里画那个三角形的那一行；换个 viewBox 这个角就变了 ⇒ 它度量的是画布不是业务。",
+  },
+  {
+    // 系统条上的「传导方向 - A→B」下拉。
+    field: "chrome.directions",
+    code: "ANSWERED_ELSEWHERE",
+    reason:
+      "传导方向的真相源是**已发布的传导规则**（`PropagationRule`：sourceTypeKey.sourceStateVar --viaLinkKey--> targetTypeKey.targetStateVar），" +
+      "由 `GET /a/v1/sim/propagation-rules` 作答（实测 demo 租户 35 条 PUBLISHED）。本回包再答一份就是第二套真相源。" +
+      "⚠ 规格占位里那种「常州→扬州」的**基地对基地**方向在本体里不存在：传导规则是**状态变量级**的，不是基地级的。",
+    probe: "GET /a/v1/sim/propagation-rules 看 sourceTypeKey/targetTypeKey/viaLinkKey；对 `apps/datacore/src/seed.ts` 的 seedDemoPropagationRules 复核。",
+  },
+  {
+    // 系统条上那四个影响维开关。
+    field: "chrome.filters",
+    code: "ONTOLOGY_MISSING",
+    reason:
+      "「产能影响 / 物料影响 / 时间偏差 / 成本偏差」这四维在本仓**只出现在规格 HTML 与前端占位里**，" +
+      "本体、求解器、契约三处零出处（`impact-analysis` 的四维是 对象/流程/决策/KPI，是另一套切法）。" +
+      "而且开关的**开/关状态**本就是 UI 态，不该由后端持有。",
+    probe: "grep -rn '成本偏差' apps packages —— 只命中 `docs/ux-spec/sandbox/sandbox-detail.html` 与前端占位；金丝雀 '老化静置' 同命令命中多文件 ⇒ 工具没坏。",
+  },
+  {
+    // 时间条上的 76.86KM / 阻滞时间 24:42 / 01:20–02:40 刻度。
+    field: "chrome.strip",
+    code: "ONTOLOGY_MISSING",
+    reason:
+      "时间条的三类元素各自无承载物：① `76.86KM` —— 本仓只有**基地对**直线距离（`baseDistanceKm` 于 BASE_REGISTRY 经纬度），" +
+      "没有任何「某批号在某条时间轴上还剩多少公里」的量，硬接就是发明一套映射；" +
+      "② `01:20–02:40` 刻度是版面轴标；③ `阻滞时间 24:42` 的**环节级**对应量已经在回包里了 —— " +
+      "就是 `node.steps[].days`（非增值天数）与 `node.nodeDays`，只是口径是**天**不是分秒。",
+    probe: "读回包的 node.steps[].days / node.nodeDays；再看 `apps/datacore/src/synthetic/battery.ts` 的 baseDistanceKm 确认距离只到基地对粒度。",
+  },
+] as const;
+
+/**
  * 节点明细：该站位上**可见**的在制批号，逐条带 `wip / takt / yieldPct` 的真实读数与溯源。
  *
  * 三个数各自的真值源（**一个常数都没有**；取不到即 `null` + 进 `missing[]`）：
@@ -456,9 +672,16 @@ function resolveRoute(station: string | null, world: DrillWorld, opts: DrillOpti
  *                  （节拍由瓶颈设备决定；并列按 `equipId` 升序取首 —— R6 全序）；
  *   · `yieldPct` = 该批所在产线该站位的 `Process.yield` × 100（比率 → 百分比；
  *                  `evidence.yield.value` 回的是**比率原值**，换算写在这里，量纲不混 —— 同 chain-loss 的 1e4 教训）。
+ *
+ * ══ WO-SIM-NODEDETAIL-FIELDS 补的那三列 + as-of 戳 ═══════════════════════════
+ *   · `lots[].conduction` = 传导识别表的**型号 / 耗时 / 影响级**（前两个真值、第三个诚实 null）；
+ *   · `clock`             = 本次读数的逻辑 as-of 戳（`dwellDays` 的减数，让那个减法可被复核）。
+ * 屏上还剩几个量本回包**刻意不答**，逐条登记在 `missing[]` 里（`PRESENTATION_ONLY` /
+ * `ANSWERED_ELSEWHERE` / `ONTOLOGY_MISSING` 三码分开），理由见 `SCREEN_QUANTITIES_NOT_ANSWERED_HERE`。
  */
 export function chainNodeDetail(share: ChainNodeLossShare, world: DrillWorld, opts: DrillOptions): ChainNodeDetail {
   const station = resolveStation(share, world);
+  const clock = resolveClock(world);
   const missing: ChainDetailMissing[] = [];
   const lots: ChainLotDetail[] = [];
 
@@ -466,6 +689,7 @@ export function chainNodeDetail(share: ChainNodeLossShare, world: DrillWorld, op
     missing.push({
       field: "station",
       scope: share.nodeId,
+      code: "DERIVATION_UNAVAILABLE",
       reason:
         `节点 ${share.nodeId} 派生不出真实站位：它的承载对象是 ` +
         `${share.carriers.map((c) => c.drillType).join("/") || "（无·该环节本次无损失）"}，` +
@@ -526,16 +750,40 @@ export function chainNodeDetail(share: ChainNodeLossShare, world: DrillWorld, op
     const taktRow = taktRows[0] ?? null;
 
     if (wip === null) {
-      missing.push({ field: "wip", scope: lotNo, reason: `WIPLot.${lotNo}.qty 不是有限数 ⇒ 在制量取不到（不补 0：0 的语义是「这批空了」）`, probe: `读 WIPLot(lotId=${lotNo}).qty` });
+      missing.push({ field: "wip", scope: lotNo, code: "VALUE_MISSING", reason: `WIPLot.${lotNo}.qty 不是有限数 ⇒ 在制量取不到（不补 0：0 的语义是「这批空了」）`, probe: `读 WIPLot(lotId=${lotNo}).qty` });
     }
     if (batch === null) {
-      missing.push({ field: "batch", scope: lotNo, reason: `批号挂不到工单（WIPLot.woId=${str(lot.props.woId)}）或该工单无 qtyPlanned ⇒ 批量取不到`, probe: `读 WorkOrder(woId=${str(lot.props.woId)}).qtyPlanned` });
+      missing.push({ field: "batch", scope: lotNo, code: "VALUE_MISSING", reason: `批号挂不到工单（WIPLot.woId=${str(lot.props.woId)}）或该工单无 qtyPlanned ⇒ 批量取不到`, probe: `读 WorkOrder(woId=${str(lot.props.woId)}).qtyPlanned` });
     }
     if (taktRow === null) {
-      missing.push({ field: "takt", scope: lotNo, reason: `产线 ${lineId} 的站位「${station}」上取不到带 ctSeconds 的设备（${proc ? `工序 ${str(proc.props.processId)} 沿 process_uses_equipment 取到 ${eqs.length} 台` : "该产线上没有同名工序对象"}）⇒ 节拍取不到，不给默认节拍`, probe: `Process(lineId=${lineId},name=${station}) --process_uses_equipment--> Equipment.ctSeconds` });
+      missing.push({ field: "takt", scope: lotNo, code: "VALUE_MISSING", reason: `产线 ${lineId} 的站位「${station}」上取不到带 ctSeconds 的设备（${proc ? `工序 ${str(proc.props.processId)} 沿 process_uses_equipment 取到 ${eqs.length} 台` : "该产线上没有同名工序对象"}）⇒ 节拍取不到，不给默认节拍`, probe: `Process(lineId=${lineId},name=${station}) --process_uses_equipment--> Equipment.ctSeconds` });
     }
     if (yieldRatio === null) {
-      missing.push({ field: "yieldPct", scope: lotNo, reason: `产线 ${lineId} 的站位「${station}」工序对象缺 yield ⇒ 良率取不到，不给默认良率`, probe: `读 Process(lineId=${lineId},name=${station}).yield` });
+      missing.push({ field: "yieldPct", scope: lotNo, code: "VALUE_MISSING", reason: `产线 ${lineId} 的站位「${station}」工序对象缺 yield ⇒ 良率取不到，不给默认良率`, probe: `读 Process(lineId=${lineId},name=${station}).yield` });
+    }
+
+    // ── WO-SIM-NODEDETAIL-FIELDS：传导识别表的型号 / 耗时（影响级恒 null，见下方统一登记）──
+    const conduction = lotConduction(lot, clock);
+    if (conduction.model === null) {
+      missing.push({ field: "conduction.model", scope: lotNo, code: "VALUE_MISSING", reason: `WIPLot.${lotNo}.modelId 缺值 ⇒ 型号取不到（不拿工单的型号顶替：那是另一行的事实）`, probe: `读 WIPLot(lotId=${lotNo}).modelId` });
+    }
+    if (conduction.elapsedDays === null) {
+      missing.push({ field: "conduction.elapsedDays", scope: lotNo, code: "VALUE_MISSING", reason: `WIPLot.${lotNo} 的 startTime(${conduction.startedAt ?? "缺"}) / lastMoveTime(${conduction.lastMovedAt ?? "缺"}) 不成对或倒挂 ⇒ 在链历时算不出`, probe: `读 WIPLot(lotId=${lotNo}).startTime 与 .lastMoveTime，两者都要是 YYYY-MM-DD` });
+    }
+    if (conduction.dwellDays === null) {
+      missing.push({
+        field: "conduction.dwellDays",
+        scope: lotNo,
+        code: clock.source === "UNINITIALIZED" ? "CLOCK_UNINITIALIZED" : "VALUE_MISSING",
+        reason:
+          clock.source === "UNINITIALIZED"
+            ? `在站停留 = 逻辑现在 − lastMoveTime，而 A8 模拟时钟未初始化 ⇒ 没有「现在」。**不退 wall-clock**（退了这一列就落在一个不在任何时间轴上的坐标上）。`
+            : `WIPLot.${lotNo}.lastMoveTime(${conduction.lastMovedAt ?? "缺"}) 取不到 ⇒ 在站停留算不出`,
+        probe:
+          clock.source === "UNINITIALIZED"
+            ? "GET /a/v1/synthetic/clock 看时钟是否 ACTIVE；未初始化就先跑一次合成作业（POST /a/v1/synthetic/jobs）。"
+            : `读 WIPLot(lotId=${lotNo}).lastMoveTime`,
+      });
     }
 
     lots.push({
@@ -552,6 +800,7 @@ export function chainNodeDetail(share: ChainNodeLossShare, world: DrillWorld, op
         takt: taktRow ? { objectType: "Equipment", objectId: str(taktRow.e.props.equipId), prop: "ctSeconds", value: taktRow.ct } : null,
         yield: proc && yieldRatio !== null ? { objectType: "Process", objectId: str(proc.props.processId), prop: "yield", value: yieldRatio } : null,
       },
+      conduction,
     });
   }
 
@@ -560,6 +809,7 @@ export function chainNodeDetail(share: ChainNodeLossShare, world: DrillWorld, op
     missing.push({
       field: "lots",
       scope: share.nodeId,
+      code: "ROW_FILTER_BLOCKED",
       reason:
         `站位「${station}」上共有 ${candidates.length} 条在制批号，本次一条都没下发：` +
         `${blockedByRowFilter} 条被 A6 行级过滤挡掉` +
@@ -572,8 +822,23 @@ export function chainNodeDetail(share: ChainNodeLossShare, world: DrillWorld, op
     missing.push({
       field: "lots",
       scope: share.nodeId,
+      code: "NO_ROWS",
       reason: `站位「${station}」上没有任何在制批号（WIPLot.currentProcess 无一等于它）——这是「真没有」，不是「看不到」`,
       probe: `listByType("WIPLot") 后按 currentProcess 分组计数`,
+    });
+  }
+
+  // ── 屏上已在展示、而本回包**不给真值**的量：逐条登记，一条都不许沉默 ────────────────
+  for (const q of SCREEN_QUANTITIES_NOT_ANSWERED_HERE) {
+    missing.push({ field: q.field, scope: share.nodeId, code: q.code, reason: q.reason, probe: q.probe });
+  }
+  if (clock.source === "UNINITIALIZED") {
+    missing.push({
+      field: "clock",
+      scope: share.nodeId,
+      code: "CLOCK_UNINITIALIZED",
+      reason: clock.basis,
+      probe: "GET /a/v1/synthetic/clock 看 status；未初始化就先跑一次合成作业（POST /a/v1/synthetic/jobs）。",
     });
   }
 
@@ -590,6 +855,7 @@ export function chainNodeDetail(share: ChainNodeLossShare, world: DrillWorld, op
     lots,
     route: resolveRoute(station, world, opts),
     missing,
+    clock,
     visibility: {
       visibleLineCount: world.visibleLineIds.size,
       totalLineCount: world.allLineIds.size,
