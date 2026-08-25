@@ -176,7 +176,62 @@ DrillEventSchema = {
 
 **这张表是数据驱动的**（登记在契约里），不是引擎 if 链 —— 否则违反 R14 且加事件要改引擎。
 
-### 4.4 时间语义（tick → 天）
+### 4.4 求解器输出 → 统一卡点语义（本设计最难的一层）
+
+**问题**：`sop_reschedule` 说「挤占了 3 单」，`bottleneck_matrix` 说「化成工序 tightness 0.92」，
+`capacity_forecast` 说「gap 1200 套」—— 三种话，要放进同一张卡点清单。
+
+**好消息（实测）**：四个代表性求解器的输出已经有**公共可对齐面**，不需要各写一套适配：
+
+| 求解器 | 输出字段（实测） |
+|---|---|
+| `sop_reschedule` | `feasible`(bool) · `verdict` · `displaced[]` · `cost` · `residualQty` · **`reconChecks`/`reconciled`** |
+| `bottleneck_matrix` | **`tightness`**(0–100) · `factors` · `rows` · `primary` · `hardCapacity` · `dataMode` |
+| `capacity_forecast` | **`gap`** · `ok` · `byProcessModel` · `perBaseRows` · `nonProducible` · `dataMode` |
+| `risk_timeline` | **`threshold`**(默认 85) · `horizon` · `cards` · `planRows` · `exposureOrder` · `dataMode` |
+
+三条公共语义：
+1. **`tightness` 0–100** —— 契约原文 `// 0–100，= 缺口比 × hardCapShortfallK`，`bottleneck_matrix` 两处、`risk_timeline` 一处共用
+2. **`threshold`** —— `risk_timeline` 默认 85，即"越线"判据
+3. **`dataMode`(LIVE/MOCK)** —— **四个全带**，是 R13 的诚实位
+
+#### 统一卡点记录（`DrillFinding`）
+
+```ts
+DrillFindingSchema = {
+  kind: "卡点" | "堵点" | "脆弱点",
+  severity: number,          // 0–100，归一到 tightness 口径
+  where: {                   // 落在哪
+    objectType: string, objectId: string, label: string,
+  },
+  when: number | null,       // 第几天越线（null = 结构性，与时间无关）
+  why: string,               // 人话，取自 verdict/summary
+  source: {                  // R13 溯源：这条结论谁算的
+    solverKey: string,       // 或 "propagation" 表示传导引擎
+    dataMode: "LIVE" | "MOCK",   // ⚠ 必带 —— 四个求解器都有，不许丢
+    provenance: {...},
+  },
+  evidence: unknown,         // 原始输出片段，供下钻
+}
+```
+
+#### 三类归一规则（数据驱动，登记在契约）
+
+| 卡点类型 | 归一规则 | 来源 |
+|---|---|---|
+| **卡点**（越线） | `severity = tightness`；无 tightness 时按 `gap / capacity × 100` | `bottleneck_matrix.tightness` · `capacity_forecast.gap` · `risk_timeline.cards[].越线` · 传导引擎的 P90 分位 |
+| **卡点**（不可行） | `feasible === false` ⇒ `severity = 100` | `sop_reschedule.feasible` |
+| **堵点** | `severity = 传递闭包大小 / 总变量数 × 100`；`when = null`（结构性） | 传导图现算（35 条边） |
+| **脆弱点** | `severity = 当前值 / threshold × 100`（离阈值多近） | `world.state` 现值 vs `risk_timeline.threshold` |
+
+⚠ **归一不许丢诚实位**：`dataMode: "MOCK"` 的结论**必须在屏上标出来**（R13 的
+「真推演 not 假推演」子条款原文：推演输出绝不裸渲染当真值）。
+一条 MOCK 的卡点和一条 LIVE 的卡点排在一起而不加区分 —— 那是本仓点名的假绿形态。
+
+⚠ **`reconChecks` 不许丢**：`sop_reschedule` 自带守恒校验（`Σalloc + residual == qty`）。
+归一时保留 `reconciled` 位；未通过的结论**降级展示**，不进主清单。
+
+### 4.5 时间语义（tick → 天）
 
 - 契约加 `SimSession.tickDays`（默认 1）
 - UI 收「推演 30 天」→ `ceil(30 / tickDays)` 个 tick
@@ -185,6 +240,69 @@ DrillEventSchema = {
   否则「第 12 天越线」和「第 12 个 tick 越线」会是两个不同的日子
 
 ---
+
+### 4.6 编排器设计（G-DRILL-4 的具体形态）
+
+**仓主问：三个推演系统（项目/全局/产能）能不能以微服务模式复用？**
+
+**实测答案：它们本来就是服务化的 —— 不是三个系统，是同一个注册表里的 key。**
+
+| 俗称 | 实际 solverKey | 统一入口 |
+|---|---|---|
+| 项目推演 | `sop_reschedule` / `order_fullchain` | `GET /a/v1/solvers/registry` 注册表 |
+| 全局推演 | `portfolio` | `invoke_solver` 工作流步骤 |
+| 产能推演 | `capacity_forecast` / `base_capacity_outlook` | `switch (solverKey)` 分发（`solvers/service.ts:5643`） |
+
+**所以复用不需要改造它们**，编排器只做三件事：读路由表 → 循环调 key → 归一到 `DrillFinding`。
+
+#### 要不要拆成真微服务：**建议不拆**
+
+| | 现状（同进程函数分发） | 真微服务 |
+|---|---|---|
+| 复用 | ✅ 已经能 | 同 |
+| 独立伸缩 / 发版 | ❌ | ✅ |
+| **R6 确定性** | ✅ 纯函数天然满足 | ⚠ 跨进程要处理超时/重试/部分失败，确定性变脆 |
+| 一次演习串 3–5 个求解器 | 零网络开销 | 3–5 次 RTT |
+
+**判据**：演习要的是**编排**不是**隔离**，且 R6 是本仓铁律。
+**真要拆的时机**：某个求解器算得特别久（如 `job_shop_schedule` 大规模排程）拖垮 datacore 时，
+**单独拆那一个**，不是全拆。
+
+#### 编排时序
+
+```
+DrillRun(events[], horizonDays, scope)
+  │
+  ├─ 0. fork 世界（复用 EnterpriseState.fork·R4-sim）
+  │
+  ├─ 1. 事件分派：按 kind 查路由表 → 得到 solverKey 列表（去重、保序）
+  │
+  ├─ 2. 并行调用（同进程，无 RTT）
+  │      ├─ sop_reschedule(targetOrderId, newDueDate)
+  │      ├─ affected_orders(baseId)
+  │      └─ risk_timeline(horizon = horizonDays)   ← 任何事件都调
+  │
+  ├─ 3. 传导引擎并行跑 ceil(horizonDays / tickDays) 个 tick
+  │
+  ├─ 4. 归一：两路输出 → DrillFinding[]（§4.4 规则）
+  │
+  ├─ 5. 排序：severity 降序，同分按 when 升序（早出事的在前）
+  │      ⚠ 全序 ⇒ R6 字节级可复现
+  │
+  └─ 6. 产出 DrillReport{ findings[], worldId, dataMode 汇总, provenance }
+```
+
+#### 失败处置（不许静默吞）
+
+| 情形 | 处置 |
+|---|---|
+| 某求解器抛错 | 该条记 `DrillFinding{kind:"未能评估", why: 错误码}`，**不从清单消失** |
+| 某求解器 `dataMode: MOCK` | 结论保留但屏上标「估算」 |
+| `reconciled === false` | 降级区展示，不进主清单 |
+| 所有求解器都失败 | 报「本次演习未能评估」+ 逐条错误码，**绝不回落成"没有风险"** |
+
+> 判据来自本仓教训：**「我没找到」和「它不存在」是两个不同的命题。**
+> 演习报「无卡点」和「没算出来」必须是两个不同的屏上状态。
 
 ## 5 · 待补齐（按依赖排序）
 
@@ -230,7 +348,44 @@ G-DRILL-8 ⇒ 演习结论交给 Agent 做解读与追问。
 
 ---
 
-## 7 · 判据（怎么算做成了）
+## 7 · 覆盖面自查（仓主原问：覆盖了所有扰动因素吗）
+
+### 7.1 三套输入面，各管一段（不是三选一）
+
+| 输入面 | 数量 | 语义 | 今天可用 |
+|---|---|---|---|
+| **数值型扰动**（现有） | 36 个状态变量 × 3411 落点 | 拨动传导网络节点 | ✅ 可用 |
+| **事件型扰动**（G-DRILL-3 新增） | 11 类事件 | 业务上"发生了一件事" | ❌ 待建 |
+| **求解器入参**（复用） | 22 个对口求解器 | 结构化问句 | ✅ 后端可用，前端未接 |
+
+⚠ **三者不重叠**：数值型改"压力"，事件型改"事实"，求解器问"排不排得下"。
+早期设计曾把因子目录（`CAPACITY_FACTOR_BINDINGS` 20 条）当成扰动清单，
+**实测与沙盘实际可输入的 36 个状态变量交集为 0** —— 那是产能测算的另一套，不是推演输入面。
+
+### 7.2 仓主点名的高频根源，逐条对账
+
+| 仓主点名 | 覆盖路径 | 状态 |
+|---|---|---|
+| **销售预测准确性** | 事件 `FORECAST_BIAS` → `capacity_forecast` + `supply_demand_gap_attribution` | ❌ 待建（G-DRILL-3+5） |
+| **订单临时插单 / 取消** | 事件 `ORDER_INSERT`/`ORDER_CANCEL` → `portfolio`(已吃 `frozenOrderIds`) | ❌ 待建 |
+| **订单改交期 / 地点 / 价格** | 事件 `ORDER_RESCHEDULE`/`RELOCATE`/`REPRICE` → `sop_reschedule`(已吃 `targetOrderId`+`newDueDate`) | ❌ 待建（**求解器已就绪**） |
+| **物料采购**（仓主点名是根源） | 事件 `MATERIAL_DELAY` → `supply_demand_gap_attribution` + `order_fullchain` | ❌ 待建 |
+| **产线设备故障** | 事件 `EQUIPMENT_FAILURE` → `bottleneck_matrix` + `job_shop_schedule` | ❌ 待建 |
+| **库存**（仓主点名是**衍生**，非根源） | 不做根源输入 —— 它是 `shortageRisk`（入度 2/出度 6）的结果 | ✅ 判定一致 |
+
+**仓主的分层判据在数据上成立**：库存类 `shortageRisk` 入度 2、出度 6，是传导枢纽不是源头。
+把它当输入等于从半路插入，推演结论会失真。
+
+### 7.3 明确不做（划边界，避免以后被当成遗漏）
+
+| 不做 | 理由 |
+|---|---|
+| 把 20 个产能因子塞进推演输入面 | 与 36 个状态变量交集为 0，是另一套机制；混了会造出扰不动的界面 |
+| 扰动 7,926 个无状态变量的对象 | 引擎 `propagateTick` 只读 `world.state`，这些对象扰了落不了值（静默错答） |
+| 把 62 个求解器全拆成微服务 | R6 确定性会变脆；演习要编排不要隔离（§4.6） |
+| 用"配置红线"做阈值 | 仓主已定 **A 方案**（P90/P95 分位），零配置且数据自带 |
+
+## 8 · 判据（怎么算做成了）
 
 1. **不是绿测试，是真跑**：输入「SO-3391 提前 10 天」→ 屏上给出被挤占的具体订单号 + 代价数字，
    且每个数字能悬浮出溯源（R13）。
