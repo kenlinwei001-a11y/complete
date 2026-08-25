@@ -261,14 +261,20 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const customsMatId = links.find((l) => l.type === "material_supplied_by_po" && l.toId === customsPoId)!.fromId;
     const customsSupplierId = links.find((l) => l.type === "supplier_supplies_material" && l.toId === customsMatId)!.fromId;
 
+    // WO-SIM-ROOT-TRIAD：三个**新根源**同样要各给一个活源 —— 它们入度 0（没有任何规则写它们），
+    // 不给源就永远进不了 trace。落点取各自那条边的 from 端（与上面几行同一条取法）。
+    const rootModelId = head("model_demanded_by_order"), rootEquipId = head("equip_used_in");
+
     const sid = (await (await t.app.inject({
       method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
       payload: { baseSnapshot: {
-        [orderId]: { demandPressure: 10, costPressure: 8 },
+        [orderId]: { demandPressure: 10, costPressure: 8, orderChurn: 10 },
         [baseId]: { loadIndex: 20 },
         [supplierId]: { deliveryDelay: 10 },
         [customsSupplierId]: { deliveryDelay: 10 }, // 进口料的主供 —— 清关段唯一的活源
         [materialId]: { priceShock: 5 },
+        [rootModelId]: { forecastBias: 10 },
+        [rootEquipId]: { equipmentFailure: 10 },
       } },
     })).json()).id as string;
     // 🔴 为什么是 9 拍不是 6 拍：档 2 把执行链接长了 —— 最深的一条是
@@ -315,10 +321,19 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       // 它同样不额外造源 —— 由供应商延迟这个源头经 Material→PurchaseOrder 两跳带回 Supplier
       // （`Supplier.deliveryDelay` 出去、`Supplier.reviewPressure` 回来，是两个量纲不是回路）。
       扩面档3: ["demo_po_expedite_to_supplier_review"],
+      // WO-SIM-ROOT-TRIAD：三个**根源**扰动因素（入度 0 = 只能被外部打进来）新增的 4 条边。
+      // 与上面几档不同，这一档**必须自带源**（见上面 baseSnapshot 里的 forecastBias /
+      // orderChurn / equipmentFailure 三格）—— 根源的定义就是"没有任何规则写它"，
+      // 指望被别的源带动是自相矛盾的。
+      根源: [
+        "demo_forecast_bias_to_order_demand",
+        "demo_order_churn_to_line_split", "demo_order_churn_to_model_demand_load",
+        "demo_equipment_failure_to_process_queue",
+      ],
     };
     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys.filter((k) => !fired.has(k)).map((k) => `${dir}/${k}`));
     expect(missing).toEqual([]);
-    // 九组合计 35 条 = 全部种子规则（没有哪条规则游离在分组之外）。
+    // 十组合计 39 条 = 全部种子规则（没有哪条规则游离在分组之外）。
     expect(Object.values(DIRS).flat().sort()).toEqual(
       (await t.repos.sim.listPropagationRules("demo", true)).map((r) => r.key).sort(),
     );
