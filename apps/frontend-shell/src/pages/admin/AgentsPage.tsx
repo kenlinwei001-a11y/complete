@@ -13,6 +13,7 @@ import {
   fetchQueryHistory,
   fetchSkills,
   fetchWorkflows,
+  forkAgentVersion,
   publishAgent,
   saveAgent,
   type QueryHistoryItem,
@@ -147,7 +148,16 @@ export default function AgentsPage() {
                 ))}
               </select>
             </div>
-            <AgentEditor key={selected.id} agent={selected} onChanged={() => void queryClient.invalidateQueries({ queryKey: ["b", "agents"] })} />
+            <AgentEditor
+              key={selected.id}
+              agent={selected}
+              onChanged={() => void queryClient.invalidateQueries({ queryKey: ["b", "agents"] })}
+              onForked={(a) => {
+                void queryClient.invalidateQueries({ queryKey: ["b", "agents"] });
+                // 显式切到派生出来的那个版本——不靠「最高版本恰好排在 versions[0]」这个巧合
+                setVersion(a.version);
+              }}
+            />
           </div>
         )}
       </div>
@@ -735,7 +745,7 @@ function RunDetail({ item }: { item: QueryHistoryItem }) {
   );
 }
 
-function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: () => void }) {
+function AgentEditor({ agent, onChanged, onForked }: { agent: AgentDefinition; onChanged: () => void; onForked: (a: AgentDefinition) => void }) {
   const { data: mcpConfigs } = useQuery({ queryKey: ["b", "mcp-configs", {}], queryFn: fetchMcpConfigs });
   const { data: workflows } = useQuery({ queryKey: ["b", "workflows", {}], queryFn: fetchWorkflows });
   const { data: skills } = useQuery({ queryKey: ["b", "skills", {}], queryFn: fetchSkills });
@@ -780,6 +790,18 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
     },
     onError: toastError,
   });
+  // WO-AGENT-KERNEL-FORK-UI · 派生新版本：PUBLISHED 不可改（后端 PUT 409 IMMUTABLE_VERSION，
+  // 错误消息原文就指着 new-version），此前前端没有任何入口调它 ⇒ PUBLISHED agent 在 UI 是
+  // 死胡同（仓主原话「既有的无法选择」——运行内核改不了只是其中最显眼的一个）。派生 ⇒
+  // 编辑器切到新 DRAFT，表单自然解锁，改完走既有保存/发布。
+  const forkMut = useMutation({
+    mutationFn: () => forkAgentVersion(agent.id),
+    onSuccess: (a) => {
+      toast(`已派生 v${a.version}（DRAFT）——现在可以改了，发布前不影响线上`, "success");
+      onForked(a);
+    },
+    onError: toastError,
+  });
 
   const builtinSelected = new Set(form.tools.filter((x): x is Extract<AgentToolRef, { kind: "BUILTIN" }> => x.kind === "BUILTIN").map((x) => x.name));
   const mcpRefs = form.tools.filter((x): x is Extract<AgentToolRef, { kind: "MCP" }> => x.kind === "MCP");
@@ -801,6 +823,16 @@ function AgentEditor({ agent, onChanged }: { agent: AgentDefinition; onChanged: 
             </button>
             <button className="btn primary sm" disabled={publishMut.isPending} onClick={() => publishMut.mutate()} data-testid="agent-publish">
               {zh.common.publish}
+            </button>
+          </>
+        )}
+        {!editable && (
+          <>
+            <span style={{ fontSize: 12, color: "var(--muted,#999)", alignSelf: "center" }}>
+              {agent.status} 版本不可改（不可变发布语义）——改内核/任何字段走派生：
+            </span>
+            <button className="btn primary sm" disabled={forkMut.isPending} onClick={() => forkMut.mutate()} data-testid="agent-new-version">
+              派生新版本
             </button>
           </>
         )}

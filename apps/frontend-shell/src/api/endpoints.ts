@@ -1477,6 +1477,13 @@ export const saveAgent = (id: string | null, body: Partial<AgentDefinition>) =>
   id ? api.b<AgentDefinition>(`/b/v1/agents/${id}`, { method: "PUT", body }) : api.b<AgentDefinition>("/b/v1/agents", { body });
 export const publishAgent = (id: string) =>
   api.b<{ ok: boolean; errors?: { field: string; message: string }[] }>(`/b/v1/agents/${id}/publish`, { body: {} });
+/**
+ * WO-AGENT-KERNEL-FORK-UI · 派生新版本（不可变发布语义的唯一正路）。
+ * 后端 `POST /b/v1/agents/:id/new-version`（server.ts）：以该 key 最新版为基，拷一份 v+1 DRAFT，
+ * 201 回新对象。PUBLISHED 版本不可改（PUT 409 IMMUTABLE_VERSION，错误消息原文就指着这个端点），
+ * 改任何字段（含运行内核）的唯一路径 = 派生 → 改 DRAFT → 发布。
+ */
+export const forkAgentVersion = (id: string) => api.b<AgentDefinition>(`/b/v1/agents/${id}/new-version`, { method: "POST", body: {} });
 
 export const fetchWorkflows = () => api.b<WorkflowDefinition[]>("/b/v1/workflows");
 export const fetchWorkflow = (id: string) => api.b<WorkflowDefinition>(`/b/v1/workflows/${id}`);
