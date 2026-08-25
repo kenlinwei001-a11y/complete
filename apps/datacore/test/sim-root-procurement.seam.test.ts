@@ -221,7 +221,14 @@ describe("WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SE
   // ══════════════════════════════════════════════════════════════════════════
   // ④ 全链臂 —— 走**真 HTTP 路由**，采购根源一路带到订单（证明它接的是那条真链路，不是一个孤立函数）
   // ══════════════════════════════════════════════════════════════════════════
-  it("④ 全链臂（真 HTTP）：采购到货延迟 → 物料短缺 → 型号缺料 → 订单缺口，四跳全程真的分叉", async () => {
+  //
+  // ⚠ **这一臂刻意从「真种子铺出来的 tick0 世界态」出发，不自己造 state** ——
+  //   ③/③b 喂的是测试手搓的最小 state（为了能逐值对系数），那证明的是**引擎半**：
+  //   「给了这一格，引擎会算对」。但它证明不了**数据半**：「这一格真的会被种出来」。
+  //   两半合起来才是接缝。判据落在这一句：本臂的幅度**取自 `seedState[poId].procurementDelay`**，
+  //   若种子没把这一格铺进 `world.state`，这里**当场拿不到数** ⇒ 红在取数那一行，
+  //   而不是安静地拿一个测试自己塞的值把数据半的窟窿糊过去（变异反证②咬的正是这条）。
+  it("④ 全链臂（真 HTTP · 从真种子世界态出发）：采购到货延迟 → 物料短缺 → 型号缺料 → 订单缺口，四跳全程真的分叉", async () => {
     const t = await seededApp();
     const rules = await t.repos.sim.listPropagationRules("demo", true);
     const poRule = rules.find((r) => r.sourceStateVar === ROOT_VAR && r.sourceTypeKey === "PurchaseOrder")!;
@@ -256,20 +263,32 @@ describe("WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SE
       return (r.json() as { state: TickState }).state;
     };
 
-    // 基线 vs 扰动后：**同一份世界**，唯一差别就是这一格采购到货延迟。
-    const baseline = await tick(await mkSession({}), 4);
-    const actual = await tick(await mkSession({ [poId]: { [ROOT_VAR]: 6 } }), 4);
+    // ── 世界从**播种侧真实现**铺出来（`SEED_DEMO=1` 用的就是这一支）──────────────────
+    const { state: seedState } = await deriveSeedBaseSnapshot(t.repos, "demo");
+    const seeded = seedState[poId]?.[ROOT_VAR];
+    // 🔴 数据半的判据就在这两行：种子**必须**已经把这一格铺进世界态，且值非 0
+    //    （值恒 0 的源被引擎 `if (sourceVal === 0) continue` 跳过 ⇒ 下面拨大它也推不动任何东西）。
+    expect(typeof seeded, `种子没把 ${poId}.${ROOT_VAR} 铺进 world.state ⇒ 引擎读到 undefined，扰了不传导`).toBe("number");
+    expect(seeded, `${poId}.${ROOT_VAR} 恒 0 ⇒ 这个落点扰不动`).toBeGreaterThan(0);
+
+    // 基线 vs 扰动后：**同一份真世界**，唯一差别是把这一张采购单的到货延迟拨到 3 倍。
+    const bumped: TickState = { ...seedState, [poId]: { ...seedState[poId]!, [ROOT_VAR]: seeded! * 3 } };
+    const baseline = await tick(await mkSession(seedState), 4);
+    const actual = await tick(await mkSession(bumped), 4);
 
     const read = (s: TickState, id: string, v: string) => s[id]?.[v] ?? 0;
-    // 四跳逐跳分叉（基线全 0 ⇒ 差值就是这条根源带出来的量）。
-    expect(read(baseline, matId, RESULT_VAR)).toBe(0);
-    expect(read(actual, matId, RESULT_VAR), "第 1 跳：物料短缺没动").toBeGreaterThan(0);
-    expect(read(actual, modelId, "supplyRisk"), "第 2 跳：型号供应风险没动").toBeGreaterThan(0);
-    expect(read(actual, orderId, RESULT_VAR), "第 3 跳：订单缺口没动").toBeGreaterThan(0);
+    // 四跳逐跳分叉。⚠ 这里比的是 `actual > baseline` 而不是 `baseline === 0`：
+    // 真世界里每个根源量纲本来就非 0（`deliveryDelay`/`demandPressure`/`priceShock` 同样），
+    // 基线自己就在长 —— 「变大了」才是这条扰动的可归因效果，「非 0」不是。
+    expect(read(actual, matId, RESULT_VAR), "第 1 跳：物料短缺没跟着变大").toBeGreaterThan(read(baseline, matId, RESULT_VAR));
+    expect(read(actual, modelId, "supplyRisk"), "第 2 跳：型号供应风险没跟着变大").toBeGreaterThan(read(baseline, modelId, "supplyRisk"));
+    expect(read(actual, orderId, RESULT_VAR), "第 3 跳：订单缺口没跟着变大").toBeGreaterThan(read(baseline, orderId, RESULT_VAR));
     // 第 4 跳（交付向）：物料短缺会回头压到采购加急上 —— 证明它进的是那张真图，不是一条直线。
-    expect(read(actual, poId, "expeditePressure"), "第 4 跳：采购加急压力没动").toBeGreaterThan(0);
-    // 根源自己**不被任何规则改写**（入度 0 的可观测后果：推了 4 拍还是那个数）。
-    expect(read(actual, poId, ROOT_VAR), "根源被下游写回来了 ⇒ 它已经不是根源").toBe(6);
+    expect(read(actual, poId, "expeditePressure"), "第 4 跳：采购加急压力没跟着变大").toBeGreaterThan(read(baseline, poId, "expeditePressure"));
+    // 反向金丝雀：**与采购链无关**的那一路不该被这条扰动带动（否则"到处都在涨"，上面四条就不成其为证据）。
+    expect(read(actual, orderId, "costPressure"), "成本向被采购扰动带动了 ⇒ 图上串味了").toBe(read(baseline, orderId, "costPressure"));
+    // 根源自己**不被任何规则改写**（入度 0 的可观测后果：推了 4 拍还是拨进去的那个数）。
+    expect(read(actual, poId, ROOT_VAR), "根源被下游写回来了 ⇒ 它已经不是根源").toBe(seeded! * 3);
   });
 
   // ══════════════════════════════════════════════════════════════════════════
