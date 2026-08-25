@@ -25,10 +25,36 @@ export interface FieldRoleResolution {
   ambiguous: boolean;
 }
 
-/** 每通用求解器需要的角色集（类型角色/字段角色）。 */
+/**
+ * 每通用求解器需要的角色集（类型角色/字段角色）。
+ *
+ * ⛔ 不变量（WO-SOLVER-ROLE-TABLE-DRIFT 立·由 `test/solver-role-table.seam.test.ts` 现算守）：
+ *    **role 名 ≡ 该求解器真读的入参名**，即 `SOLVER_FIELD_ROLES[k] ⊆ 求解器实读键集`。
+ *
+ * 为什么这条不变量非有不可（判据是"用户会不会看到坏东西"，不是记账整齐）：
+ * 本表的唯一生产消费方是 `app.ts` 的 `GET /a/v1/solvers/:solverKey/field-roles`，
+ * 前端 `SolversPage.tsx` 的「字段角色绑定」块把 role 名**原样上屏**渲成
+ * `<role> → <本租户类型/字段>`（`solver-role-<key>-<role>` testid），文案是
+ * 「在本租户本体里绑到哪」。⇒ role 名若不是求解器认的入参名，屏上那行就是**假绑定**：
+ * 用户照它去理解/调用求解器必然错。
+ *
+ * 修前实测（2026-08-25，各自读到方法边界）：
+ *  · `concentration_risk` 登记 `rootType`/`sinkType`，而 `concentrationRisk`（`service.ts:1408-1453`）
+ *    实读 `startType`(:1409)/`path`(:1410)/`minDependents`(:1411) ⇒ **交集 0**。且方向是**反的**：
+ *    登记名 `rootType` 的那条打分（fanOut + leaf 词库）挑的是**分散起点**（客户/订单），
+ *    而该求解器自己把「收敛根」叫 `rootType`（`:1443` 从 path 末跳算出的**输出**字段）——
+ *    同一个词在同一块屏上指着链条的两端，比缺一行更坏。
+ *  · 另三个实测 ⊆ 成立，无漂移：`supplier_disruption_radius`(`:4647-4679` 实读 rootType/rootId/layers)、
+ *    `shared_bottleneck`(`:1343-1400`)、`margin_attribution`(`:1517-1564`)。
+ *
+ * 判据是 ⊆ 不是 ==：**能被结构信号解出来的角色才登记**。求解器真读、但解析器给不出的键
+ * 不登记（不是漏，是诚实）——两类：① 结构化数组（`path`/`layers`/`costFields`：一个角色只解
+ * 一个 typeKey/propKey，给不出 [{viaField,toType}] 这种形状）；② 运行期标量（`rootId`/`minDependents`：
+ * 是"哪一个对象/几个"，不是"哪个类型/字段"）。登记了却解不出 = 屏上多一行空绑定 = 噪声。
+ */
 export const SOLVER_FIELD_ROLES: Record<string, string[]> = {
   supplier_disruption_radius: ["rootType"], // 断供根（反向扇出起点）；rootId 是运行期标量,不在此
-  concentration_risk: ["rootType", "sinkType"], // 扇出起点 + 收敛汇点
+  concentration_risk: ["startType"], // 分散起点；path 是结构化多跳、收敛根由求解器从 path 末跳算出,均不在此
   shared_bottleneck: ["resourceType", "sharedByType", "priorityField"],
   margin_attribution: ["targetType", "revenueField"],
 };
@@ -79,14 +105,18 @@ export function resolveFieldRoles(types: RoleResolverType[], solverKey: string):
 
   for (const role of need) {
     let cands: RoleCandidate[] = [];
-    if (role === "rootType" && solverKey === "supplier_disruption_radius") {
-      // 断供根 = 被 ref 的终端汇点（disruption 沿"谁 ref 我"反向扇出）：fanIn>0 + 终端(fanOut=0) + 命名命中 source/supplier。
+    if (role === "rootType") {
+      // `rootType`（今 supplier_disruption_radius 声明）断供根 = 被 ref 的终端汇点（disruption 沿"谁 ref 我"
+      // 反向扇出）：fanIn>0 + 终端(fanOut=0) + 命名命中 source/supplier。
       cands = typeCand((t, s) => (s.fanIn === 0 ? null : { score: s.fanIn * 2 + (s.fanOut === 0 ? 2 : 0) + (lexiconHit(t.typeKey, "sourceSink") ? 3 : 0), signals: [`fanIn=${s.fanIn}`, ...(s.fanOut === 0 ? ["terminal"] : []), ...(lexiconHit(t.typeKey, "sourceSink") ? ["name:source"] : [])] }));
-    } else if (role === "rootType") {
-      // concentration_risk 起点 = 扇出多、命名命中 leaf（客户/订单 是分散起点）。
+    } else if (role === "startType") {
+      // `startType`（concentration_risk 实读入参名，`service.ts:1409`）分散起点 = 扇出多、命名命中 leaf
+      // （客户/订单）。⚠ 本条打分不变，改的是**名字**：它一直算的就是「起点」，此前却挂在 `rootType` 这个
+      // 名下上屏，而该求解器自己把**收敛根**叫 rootType ⇒ 屏上同名指反端。
+      // 收敛汇点（原 `sinkType` 角色）已随本单删除：它不是用户要填的入参，是求解器从 `path` 末跳
+      // **算出来的答案**（`service.ts:1443`）——把答案摆进「绑定」面板是类目错误，且 sinkType 这个名
+      // 求解器一处也不认。
       cands = typeCand((t, s) => ({ score: s.fanOut * 2 + (lexiconHit(t.typeKey, "leaf") ? 3 : 0), signals: [`fanOut=${s.fanOut}`, ...(lexiconHit(t.typeKey, "leaf") ? ["name:leaf"] : [])] }));
-    } else if (role === "sinkType") {
-      cands = typeCand((t, s) => ({ score: s.fanIn * 2 + (lexiconHit(t.typeKey, "sourceSink") ? 3 : 0), signals: [`fanIn=${s.fanIn}`] }));
     } else if (role === "resourceType") {
       cands = typeCand((t, s) => ({ score: (s.fanIn > 0 ? 1 : 0) + (numFields(t).some((p) => lexiconHit(p.propKey, "capacity")) ? 3 : 0), signals: ["capacity-field"] }));
     } else if (role === "sharedByType") {
