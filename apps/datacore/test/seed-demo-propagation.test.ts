@@ -240,7 +240,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
   });
 
   // 每条边真触发（REQ143 的验收面 + 档 1 扩面）：一次扰动若干源头，逐组核 trace。
-  it("🔴 逐条真触发：35 条规则在真 tick 的 trace 里一条不缺（REQ143 + WO-PROCESS-TICK-COVERAGE 档 1/2/3）", async () => {
+  it("🔴 逐条真触发：38 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     await seedDemoPropagationRules(t.repos);
@@ -250,6 +250,9 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const head = (type: string) => links.find((l) => l.type === type)!.fromId;
     const orderId = head("order_for_model"), baseId = head("line_belongs_to_base");
     const supplierId = head("supplier_supplies_material"), materialId = head("material_used_by_model");
+    // WO-SIM-ROOT-PROCUREMENT · 采购根源三条边的源头（`procurementDelay`）。
+    // 同样**沿真实例链**取（`head()` 拿的就是该 linkKey 第一条边的 from 端），不是猜 id 拼接。
+    const procurePoId = head("po_replenishes_material"), procureBatchId = head("batch_replenishes_material");
 
     // 🔴 清关段要**沿着真实例链**回溯着扰，不能指望"随便扰一个供应商"就能带到它。
     // 实测（本单）：全 demo 只有 **1 条** `po_customs_cleared_by` 边（S 规模下只有高电压电解液
@@ -267,9 +270,13 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       payload: { baseSnapshot: {
         [orderId]: { demandPressure: 10, costPressure: 8 },
         [baseId]: { loadIndex: 20 },
-        [supplierId]: { deliveryDelay: 10 },
+        // 采购根源（WO-SIM-ROOT-PROCUREMENT）：`procurementDelay` 是**入度 0 的纯源**，
+        // 没有任何规则会写它 ⇒ 不在这里给初值，那三条边就恒不触发（"接了线没数据"）。
+        [supplierId]: { deliveryDelay: 10, procurementDelay: 7 },
         [customsSupplierId]: { deliveryDelay: 10 }, // 进口料的主供 —— 清关段唯一的活源
         [materialId]: { priceShock: 5 },
+        [procurePoId]: { procurementDelay: 7 },
+        [procureBatchId]: { procurementDelay: 7 },
       } },
     })).json()).id as string;
     // 🔴 为什么是 9 拍不是 6 拍：档 2 把执行链接长了 —— 最深的一条是
@@ -316,10 +323,19 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       // 它同样不额外造源 —— 由供应商延迟这个源头经 Material→PurchaseOrder 两跳带回 Supplier
       // （`Supplier.deliveryDelay` 出去、`Supplier.reviewPressure` 回来，是两个量纲不是回路）。
       扩面档3: ["demo_po_expedite_to_supplier_review"],
+      // WO-SIM-ROOT-PROCUREMENT · **根源**（G-ROOT-3）：这一组与上面所有组不同 ——
+      // 它**自己就是源**（`procurementDelay` 入度 0，没有任何规则写它），所以必须在
+      // baseSnapshot 里给初值才会触发。这不是"多造了一个源"，这正是本组存在的意义：
+      // 「物料采购」是根源扰动因素，库存 `shortageRisk` 是它的果。
+      采购根源: [
+        "demo_po_procurement_delay_to_material_shortage",
+        "demo_batch_procurement_delay_to_material_shortage",
+        "demo_supplier_procurement_delay_to_material_shortage",
+      ],
     };
     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys.filter((k) => !fired.has(k)).map((k) => `${dir}/${k}`));
     expect(missing).toEqual([]);
-    // 九组合计 35 条 = 全部种子规则（没有哪条规则游离在分组之外）。
+    // 十组合计 38 条 = 全部种子规则（没有哪条规则游离在分组之外）。
     expect(Object.values(DIRS).flat().sort()).toEqual(
       (await t.repos.sim.listPropagationRules("demo", true)).map((r) => r.key).sort(),
     );
