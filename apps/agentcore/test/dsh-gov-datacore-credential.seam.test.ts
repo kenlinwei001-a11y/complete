@@ -35,7 +35,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createHttpDataCore } from "../src/tools/datacore-http.js";
+import { seedRegistry } from "../src/mocks/seed.js";
 import { createTestApp } from "./helpers.js";
 
 const SERVICE_TOKEN = "seam-service-token-0000";
@@ -136,11 +140,22 @@ describe("WO-AGENT-DSH-DEFAULT · DSH 治理带外通道 → DataCore 凭据接�
     }
   });
 
-  it("③ 出厂 seed agent 一个都不带 kernel ⇒ 今天默认落 NATIVE（翻默认之前的基准线）", async () => {
-    const t = await createTestApp();
-    const agents = await t.repos.agents.list(undefined as never);
-    // 金丝雀：种子 agent 真的被装进来了（0 条时「没有 EXTERNAL」是空真理）。
+  it("③ 出厂 seed agent 一个都不带 kernel ⇒ 今天默认落 NATIVE（翻默认之前的基准线）", () => {
+    const { agents } = seedRegistry();
+    // 金丝雀：种子 agent 真的抽出来了（0 条时「没有 EXTERNAL」是空真理，不是结论）。
     expect(agents.length).toBeGreaterThan(0);
+    expect(agents.map((a) => a.key).includes("analyst")).toBe(true);
+    // 本体：零个显式 kernel ⇒ 分叉守卫必落 `agent.kernel === undefined` 那一支，
+    // 再回落 `process.env.DSH_HARNESS`（出货 compose 显式 `${DSH_HARNESS:-0}`）⇒ 全 NATIVE。
     expect(agents.filter((a) => a.kernel !== undefined)).toEqual([]);
+  });
+
+  it("④ `cfg.DSH_HARNESS` 在 src 侧零消费方 ⇒ 改 config.ts 的 zod 缺省**翻不动**分叉（方案 A 是空操作）", () => {
+    const engineSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../src/engine.ts"), "utf8");
+    // 金丝雀：确实读到了 engine.ts 且抓得到分叉守卫本身（读空文件时下面的否定断言会是空真理）。
+    expect(engineSrc).toContain('agent.kernel === "EXTERNAL"');
+    // 本体：守卫直读 process.env，从不经 cfg —— 故 config.ts 的 default("0")→("1") 不改变任何分叉行为。
+    expect(engineSrc).toContain('process.env.DSH_HARNESS === "1"');
+    expect(/\bcfg\.DSH_HARNESS(?![_A-Za-z0-9])/.test(engineSrc)).toBe(false);
   });
 });
