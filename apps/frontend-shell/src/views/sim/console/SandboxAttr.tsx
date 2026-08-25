@@ -23,7 +23,7 @@
  * 本组件不自带 `QueryClientProvider`：宿主（App / 测试 `renderWithClient`）已经有一个。
  */
 import { useState } from "react";
-import { BASE_REGISTRY } from "@platform/contracts";
+import { baseScopeOptions } from "@platform/contracts";
 import { HeatMatrix } from "./HeatMatrix";
 import { Waterfall } from "./Waterfall";
 import {
@@ -53,10 +53,20 @@ const ROUNDS = ["第一轮次", "第二轮次", "第三轮次", "第四轮次"] 
 const STAGE_TABS = ["全局", "需求段", "产能段", "物料段", "交付段"] as const;
 
 /**
- * 范围下拉：**从基地册派生**（`BASE_REGISTRY`，13 条），末位补「全网」。
- * 规格里那 3 条（常州基地 · 动力线-B / 盐城基地 / 合肥基地）是占位 —— 册里没有盐城。
+ * 范围下拉：**从契约取单一出处**（`baseScopeOptions()` = 基地册 13 条 + 末位「全网」）。
+ * 规格里那 3 条是占位 —— 册里没有其中一个地名。
+ *
+ * ⚠ **本页不做「按基地下钻」置灰，这是据实的，不是漏做**
+ * （WO-SIM-BASEDRILL-GREYOUT·**2026-08-25** 读本文件与 `PerturbTree.tsx` 全文比对得出；
+ *  复验方式：在本文件的**代码行**里搜因子册符号与因子选中态（本段注释自身不算）——
+ *  零命中，而 `PerturbTree.tsx` 里 15 处；即本页没有「当前因子」这个概念）：
+ * 置灰的判据是「**当前选中的因子**其落点类型有没有基地维度」，而本页**没有因子选择器** ——
+ * 左栏选的是根因树的**环节**（chain node），底部页签选的是链段，都不是产能因子；
+ * 本页的范围下拉限定的是整台归因台的口径，不隶属于某个因子。
+ * 没有「当前因子」就没有可判的落点类型，此处置灰等于**凭空发明一个判据**。
+ * 与 `PerturbTree.tsx` 共用选项集即可（那边才有因子选择器，置灰落在那边）。
  */
-const SCOPES: readonly string[] = [...BASE_REGISTRY.map((b) => `${b.name}基地`), "全网"];
+const SCOPES = baseScopeOptions();
 
 /** 规格 `.tn` 首格的层级图元：l1 `▤` · l2 `▸` · l3 `·`。 */
 const LEVEL_GLYPH: Record<1 | 2 | 3, string> = { 1: "▤", 2: "▸", 3: "·" };
@@ -120,9 +130,11 @@ export function SandboxAttr({ sessionId, so }: SandboxAttrProps = {}): JSX.Eleme
               </div>
               <div className={`${styles.pb} ${styles.pbScroll}`}>
                 <div className={styles.sel}>
-                  <select defaultValue={SCOPES[0]} data-testid="sandbox-attr-scope">
+                  <select defaultValue={SCOPES[0]?.key} data-testid="sandbox-attr-scope">
                     {SCOPES.map((s) => (
-                      <option key={s}>{s}</option>
+                      <option key={s.key} value={s.key}>
+                        {s.label}
+                      </option>
                     ))}
                   </select>
                 </div>
