@@ -166,8 +166,18 @@ describe("WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的
     expect(parseDenyCap("7")).toBe(7);
     // 本体：未配置 ⇒ 有缺省 cap，不是 undefined。出货 compose 不在本单范围内，
     // 若此处 opt-in，生产态就恒禁用 —— 那正是本仓最忌的「代码在、测试绿、生产一次都不触发」。
-    expect(parseDenyCap(undefined)).toBeGreaterThan(0);
-    expect(parseDenyCap("")).toBeGreaterThan(0);
+    // ⚠ 审核方复验补强（2026-08-25）：原断言写的是 `toBeGreaterThan(0)`，**口径太松**。
+    //   变异反证当场抖出：把缺省改成 `Infinity`（= 出货态恒无上界，正是本功能要防的那个世界），
+    //   19 个 DSH 文件 245 例**全绿 RC=0** —— 因为 `Infinity > 0` 为真。
+    //   形态（照铁律 0.6 句式）：「我用『缺省值 > 0』当作『缺省有上界』的证据，
+    //   而前者并不度量后者。」`> 0` 度量的是"非零"，本条要的是"**有限**"。
+    //   故判据落在 `Number.isFinite` 上：无穷大不是上界，是没有上界。
+    for (const raw of [undefined, ""]) {
+      const cap = parseDenyCap(raw);
+      expect(cap, `缺省(${JSON.stringify(raw)}) 必须是有限上界，Infinity 等于没上界`).toBeTypeOf("number");
+      expect(Number.isFinite(cap as number), `缺省(${JSON.stringify(raw)}) cap=${cap} 不是有限数`).toBe(true);
+      expect(cap as number).toBeGreaterThan(0);
+    }
     // 逃生阀：显式 0 / 负数 / 非整数 ⇒ 禁用。
     expect(parseDenyCap("0")).toBeUndefined();
     expect(parseDenyCap("-1")).toBeUndefined();
