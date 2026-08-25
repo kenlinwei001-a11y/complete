@@ -166,6 +166,17 @@ const NOT_DRIVEN: Record<string, string> = {
   generic_inference:
     "需本体派生引擎 + 真实对象 id 才能重算（`service.ts:990` genericInference 走 recompute，非纯对象图）；" +
     "其目录键 `apply` 已追一层确认与 `service.ts:993` 实读一致，不属本单缺陷。",
+  ontology_query:
+    "需注入 `ontologyCore`（`service.ts:1462` 未注入即 throw），本夹具不装配查询引擎；" +
+    "其目录键 `rootFilter`/`hops` 由 `check-solver-arg-key-drift.mjs` 的 KNOWN_DRIFT 逐条追到读取点，" +
+    "认定为 VERIFIED-OK（整包 args 交 `OntologyQueryInputSchema` 解析，不走 `args.<key>` 字面读取）。",
+  process_flow_time:
+    "需先播种业务流程层（`service.ts:4312` ProcessDefinition 0 条即 throw），本夹具是纯对象图、无流程定义；" +
+    "其四个目录键 `asOf`/`processKey`/`flowKey`/`limit` 已追一层确认**全部真被读**" +
+    "（`service.ts:4318` / `:4323` / `:4324` / `:4325`）且全为可选 ⇒ 不属本单缺陷。",
+  chain_impediments:
+    "需电池 SolverContext（`service.ts:4377` loadContext withExtended）+ MaterialBalance 对象，本夹具没有；" +
+    "其唯一目录键 `scope` 已追一层确认真被读（`service.ts:4366` `args.scope`）且为可选 ⇒ 不属本单缺陷。",
   // 下面这一族：无 CP-SAT sidecar 时求解器在**参数校验通过之后**另抛一条
   // 「未接入最优化引擎（设 OPTIMIZER_BASE_URL）」的 VALIDATION_ERROR（如 `service.ts:4692`）
   // ⇒ 本文件「不许是 VALIDATION_ERROR」这个判据在它们身上**分辨不了「漂移」与「没 sidecar」**，
@@ -247,9 +258,15 @@ describe("WO-SOLVER-ARGHINTS-DRIFT §0a · 正金丝雀（夹具自证·不成�
   it("concentration_risk 用实读键 → 三个客户经三跳全收敛到同一供应商（敞口 3）", async () => {
     const r = await invokeWithHintKeys(t, "concentration_risk", Object.keys(WORKING_ARGS.concentration_risk!));
     expect(r.statusCode, `${BROKEN("concentration_risk")} 实收 ${r.code}: ${r.message}`).toBe(200);
-    const out = r.data as { topExposure: { rootId: string; count: number } | null };
-    expect(out.topExposure?.rootId, BROKEN("concentration_risk")).toBe(SUPPLIER);
+    const out = r.data as { concentrations: unknown[]; topExposure: { rootType: string; rootId: string; count: number } | null };
+    expect(out.concentrations.length, BROKEN("concentration_risk")).toBe(1);
+    expect(out.topExposure?.rootType, BROKEN("concentration_risk")).toBe("AhSupplier");
     expect(out.topExposure?.count, BROKEN("concentration_risk")).toBe(3);
+    // ⚠ 观察到的**非对称**（本单不修·不在范围边界内，仅记录）：终端根的 `rootId` 取的是对象的
+    //   **仓储 id**（`service.ts:1438` `keyOf(cur)` 少传 pk ⇒ 落 `o.id` 分支），而 `dependents[]`
+    //   取的是**主键属性值**（`:1440` `keyOf(s, sPk)`）—— 同一个输出里两种 id 口径。
+    //   这与本单的 argHints 漂移是**两笔账**：那一笔是「说明书写错键名」，这一笔是「输出 id 口径不一」。
+    expect(out.topExposure?.rootId, BROKEN("concentration_risk")).toBe("ah_sup1");
   });
 
   it("margin_attribution 用实读键 → 2 单倒挂且主驱动是「原料」（两个成本项真被拆开）", async () => {
