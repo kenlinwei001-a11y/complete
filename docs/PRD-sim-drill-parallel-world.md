@@ -103,7 +103,7 @@
 | 订单**取消** | ❌ | 取消是状态跃迁，不是幅度 |
 | 改**交付地点** | ❌ | 是关系变更（指向另一个 `CustomerLocation`） |
 | 改**价格** | ◐ | `priceShock` 在 state 里，但那是"冲击压力"不是"单价" |
-| 物料**采购到货延迟** | ❌ | 无此根源变量（见 `WO-SIM-ROOT-PERTURB-LAYER.md`） |
+| 物料**采购到货延迟** | ✅ **2026-08-25 已补**（WO-SIM-ROOT-PROCUREMENT · G-ROOT-3） | 根源变量 `procurementDelay` 已在 `world.state` 里（PurchaseOrder 30 / MaterialBatch 24 / Supplier 15 共 69 个落点），三条传导边指向 `Material.shortageRisk`。**本行原文「无此根源变量」已过期** |
 
 ### 3.3 引擎只读 `world.state`
 
@@ -312,7 +312,7 @@ DrillRun(events[], horizonDays, scope)
 | **G-DRILL-2** | 卡点扫描器：P90/P95 分位判定 + 堵点（传递闭包）+ 脆弱点 | datacore | 无（用现有 state） |
 | **G-DRILL-3** | `DrillEventSchema` 事件型扰动契约 | 契约 | 无 |
 | **G-DRILL-4** | 事件→求解器路由表 + 编排执行器 | datacore | G-DRILL-3 |
-| **G-DRILL-5** | 根源扰动层（预测偏差/插单取消/采购到货/设备故障）+ 传导边 | 种子+规则 | 见 `WO-SIM-ROOT-PERTURB-LAYER.md` |
+| **G-DRILL-5** | 根源扰动层（预测偏差/插单取消/~~采购到货~~/设备故障）+ 传导边 · **◑ 部分闭合**：采购到货（G-ROOT-3）已于 2026-08-25 落地，余三类待补 | 种子+规则 | 见 `WO-SIM-ROOT-PERTURB-LAYER.md` |
 | **G-DRILL-6** | 库存/BOM/OEE 投进 `world.state` | 种子 | 需先测规模影响 |
 | **G-DRILL-7** | 演习结论 → Action 提案（R4 正门） | datacore | G-DRILL-4 |
 | **G-DRILL-8** | Skill/Agent 接入：把演习结论交给 Agent 做自然语言解读与追问 | agentcore | G-DRILL-4 |
@@ -322,7 +322,7 @@ DrillRun(events[], horizonDays, scope)
 | 数据 | 现状 | 补什么 |
 |---|---|---|
 | 订单可扰字段 | state 里只有 `demandPressure`/`costPressure`/`shortageRisk` | `due` / `unitPrice` / `status` / 交付地点关系 —— **走事件不走 state** |
-| 物料 | state 里只有 `priceShock`/`shortageRisk` | 采购到货延迟（事件）+ `onHand`/`inTransit` 进 state |
+| 物料 | state 里有 `priceShock`/`shortageRisk`；**采购侧三类台账已带 `procurementDelay`**（2026-08-25 · 69 个落点） | ~~采购到货延迟~~ ✅ 已补（作**状态变量**落地，不是事件）+ `onHand`/`inTransit` 进 state（仍缺） |
 | BOM | **0 个对象进 state** | `Material.bomUnit` + `BOMDetail`(105) |
 | 设备 OEE | state 里 780 个设备只带 `loadPressure` | `oee_current`/`oeeA`/`oeeP`/`oeeQ` |
 | 阈值 | 无 | **A 方案**（仓主已定）：取该变量在世界里的 P90/P95 分位，零配置 |
