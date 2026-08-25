@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BASE_REGISTRY } from "./base-registry.js";
 
 /**
  * WO-CAPLIVE-1-ATOM · 产能推演 20 原子因子 → object.property 绑定**单一来源**（R14·治 G-CAPACITY-FACTOR-SHALLOW）。
@@ -187,6 +188,37 @@ export function canDrillByBase(objectType: string): boolean {
  * 类型 key 这类内部符号名（用户不认识，写了等于没解释）。
  */
 export const BASE_DRILL_BLOCKED_REASON = "本因子为全局量，不区分基地";
+
+/**
+ * 推演页「范围」下拉的选项集（**单一出处**）。
+ *
+ * 建这个函数的直接原因：`PerturbTree.tsx` 与 `SandboxAttr.tsx` 各自写了一份**逐字节相同**的
+ *   `const SCOPES = [...BASE_REGISTRY.map((b) => `${b.name}基地`), "全网"]`
+ * —— 两份副本，改一份漏一份不会红。置灰又必须能区分「这一项是基地」还是「这一项是全网」，
+ * 靠「最后一个元素」或字符串比对来认「全网」是**位置/字面量耦合**，册子一改就错位。
+ * 故把选项建成带标的对象，身份由 `kind` 承载，不由位置或文案承载。
+ *
+ * `kind: 'base'` 的项在落点类型不支持基地下钻时被置灰；`kind: 'network'`（全网）**永远可选**
+ * —— 全局量本来就该按全网看，把它一起置灰会把用户堵死在一个没有合法选项的下拉里。
+ */
+export interface BaseScopeOption {
+  /** 稳定标识（基地项 = baseId；全网项 = `__network__`）。用于 key/testid，不用于展示。 */
+  key: string;
+  /** 展示名（基地项 = `<基地名>基地`；全网项 = `全网`）。 */
+  label: string;
+  kind: "base" | "network";
+}
+
+/** 全网项的稳定 key（不与任何 baseId 冲突）。 */
+export const NETWORK_SCOPE_KEY = "__network__";
+
+/** 范围下拉选项：13 条基地（派生自 `BASE_REGISTRY`）+ 末位「全网」。 */
+export function baseScopeOptions(): BaseScopeOption[] {
+  return [
+    ...BASE_REGISTRY.map((b) => ({ key: b.baseId, label: `${b.name}基地`, kind: "base" as const })),
+    { key: NETWORK_SCOPE_KEY, label: "全网", kind: "network" as const },
+  ];
+}
 
 /** 圈号 → 绑定（byProcessModel 逐格瓶颈判定读属性时用·单源查表·非写死）。 */
 export function factorBindingByMark(mark: string): CapacityFactorBinding | undefined {
