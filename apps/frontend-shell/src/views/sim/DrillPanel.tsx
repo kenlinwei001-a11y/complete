@@ -24,9 +24,15 @@
  * 门 `check-debattery.mjs` 扫的正是这个目录，写死即红。
  */
 import { useCallback, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { drillDataModeIsTrustworthy, type DrillDataMode, type DrillEvent, type DrillFinding, type DrillReport } from "@platform/contracts";
-import { fetchDrillCatalog, simDrill } from "@/api/endpoints";
+import {
+  DRILL_EVENT_SPECS,
+  drillDataModeIsTrustworthy,
+  type DrillDataMode,
+  type DrillEvent,
+  type DrillFinding,
+  type DrillReport,
+} from "@platform/contracts";
+import { simDrill } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
 
 /** 诚实位角标文案 —— **后端枚举 → 屏上人话**的唯一映射（前端别处不许再写一份）。 */
@@ -101,9 +107,6 @@ export interface DrillPanelProps {
 }
 
 export function DrillPanel({ sessionId }: DrillPanelProps) {
-  // 事件目录：标签与必填字段的**唯一真相源**（前端不写死任何事件名）
-  const catalog = useQuery({ queryKey: ["a", "drill-catalog"], queryFn: fetchDrillCatalog, retry: false, staleTime: Infinity });
-
   const [horizonDays, setHorizonDays] = useState("30");
   const [eventKind, setEventKind] = useState<string>("");
   const [targetObjectId, setTargetObjectId] = useState("");
@@ -112,7 +115,29 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<DrillReport | null>(null);
 
-  const specs = catalog.data?.specs ?? [];
+  /**
+   * 事件目录 —— **直接读契约包，不打网络**。
+   *
+   * ⚠ 这不是「前端自己写一份」：`DRILL_EVENT_SPECS` 就是后端 `GET /a/v1/sim/drill/catalog`
+   * 下发的那一份，同一个模块、同一个常量。跨包只依赖 `@platform/contracts` 正是本仓
+   * `contracts-only-shared` 约定要的形态 —— 编译期读同一个源，比运行时再打一跳更强，
+   * 因为它连「版本漂移」都不可能发生。
+   *
+   * ⛔ **为什么不 `useQuery(fetchDrillCatalog)`**（这条踩过，别改回去）：
+   * 本面板挂在推演沙盘上，而**全仓大量前端测试对 `@/api/endpoints` 做整体替换式 mock**
+   * （`vi.mock("@/api/endpoints", () => ({...}))`，没有 `importOriginal`）。
+   * 给共享视图**在渲染期**新增一个 endpoint 依赖 ⇒ 那些 mock 里没有这个导出 ⇒
+   * `useQuery` 拿到 `undefined` 的 `queryFn` 当场抛，把**别的单的门**整片打红。
+   * 实测：改成 useQuery 时 `test/sandbox-three-zone.seam.test.tsx` **18 例全红**，
+   * 而那个文件属于并行在跑的另一张单、本单严禁修改。
+   * 同一条教训契约里已写过一次（`PropagationRule.sourceTypeName` 的头注：
+   * 「给共享面板加一个 endpoint 依赖会把它们全部打红」）—— 这是第二次，照它办。
+   *
+   * `simDrill` 不受此限：它只在**点击事件里**调用，渲染期不碰。
+   * 而 `/drill/catalog` 端点仍然保留 —— 它服务的是**不能 import TS 的消费方**
+   * （agentcore / curl / CLI，R15「CLI/curl 先于 UI」），由接缝门覆盖。
+   */
+  const specs = DRILL_EVENT_SPECS;
   const spec = useMemo(() => specs.find((s) => s.kind === eventKind) ?? null, [specs, eventKind]);
 
   const onRun = useCallback(async () => {
@@ -227,11 +252,6 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
         </button>
       </div>
 
-      {catalog.isError ? (
-        <p data-testid="drill-catalog-error" style={{ opacity: 0.8 }}>
-          事件目录取不到（后端 `sim.sandbox` 未开通或不可达）——**这不代表没有事件可输**，只是这一跳没打通。
-        </p>
-      ) : null}
 
       {report === null ? null : (
         <div style={{ marginTop: 12 }} data-testid="drill-report">
