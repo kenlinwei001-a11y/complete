@@ -341,8 +341,8 @@ const PLACEHOLDER_CELL_CAPTIONS = ["非增值", "外协", "准时", "稼动"] as
 
 /** 规格 `#cst` 的 `D[]`（第 328–330 行）：约束名 / 取值 / 松紧 / 色阶。 */
 const PLACEHOLDER_CONSTRAINTS: readonly OptConstraintRow[] = [ // hardcoded-data-allow —— 规格占位
-  { key: "盐城日产上限", value: (4200).toLocaleString(), slackLabel: "紧", level: 4 },
-  { key: "常州检修窗", value: "3", slackLabel: "松", level: 1 },
+  { key: `${baseName(PEER_BASE_A)}日产上限`, value: (4200).toLocaleString(), slackLabel: "紧", level: 4 },
+  { key: `${baseName(HOME_BASE)}检修窗`, value: "3", slackLabel: "松", level: 1 },
   { key: "LFP-99 库存", value: (8600).toLocaleString(), slackLabel: "紧", level: 3 },
   { key: "跨基地运距", value: "280", slackLabel: "松", level: 1 },
   { key: "外协配额", value: (1200).toLocaleString(), slackLabel: "紧", level: 3 },
@@ -678,38 +678,46 @@ export const EXEC_TICKS: readonly string[] = Array.from({ length: 15 }, (_, i) =
 /** 规格 `.play{left:46%}`。 */
 const EXEC_PLAYHEAD_PCT = 46;
 
-/** 规格 `R[]`（第 341–350 行）逐值照抄。 */
+/**
+ * 规格 `R[]`（第 341–350 行）。
+ *
+ * 四行的 `name` 是**链路环节**，四个都与 `CHAIN_NODE_REGISTRY` 的 label **逐字相同**
+ * ⇒ 整列改查注册表：零像素变化，只把出处从「手写」换成「冻结册」。
+ * 段名里凡是环节的（`请购`）同样查表；`拣配 / 发料 / 上炉 / 静置` 这类是**环节内部的动作**、
+ * 不在注册表里，硬套 nodeId 等于在视图里新造一套命名，比写死更坏 —— 留在原地。
+ * 基地名（原规格的「盐城」）见文件头 `baseName` 注释：那是个**不在册的幻影基地**，已换在册基地。
+ */
 const PLACEHOLDER_EXEC_ROWS: readonly OptExecRow[] = [ // hardcoded-data-allow —— 规格占位
-  { group: "基线执行", name: "齐套发料", baseline: "4.54 D", actual: "2.10 D", direction: "dn", segments: [
-    { startPct: 2, widthPct: 12, tone: "o", label: "请购" }, { startPct: 16, widthPct: 22, tone: "r", label: "正极粉断供" },
+  { group: "基线执行", name: nodeLabel("material.kitting"), baseline: "4.54 D", actual: "2.10 D", direction: "dn", segments: [
+    { startPct: 2, widthPct: 12, tone: "o", label: nodeLabel("material.purchase_req") }, { startPct: 16, widthPct: 22, tone: "r", label: "正极粉断供" },
     { startPct: 40, widthPct: 18, tone: "b", label: "拣配" }, { startPct: 60, widthPct: 14, tone: "g", label: "发料" },
     { startPct: 78, widthPct: 10, tone: "o", label: "结转" }] },
-  { name: "老化静置", baseline: "7.34 D", actual: "5.02 D", direction: "dn", segments: [
+  { name: nodeLabel("capacity.aging"), baseline: "7.34 D", actual: "5.02 D", direction: "dn", segments: [
     { startPct: 3, widthPct: 10, tone: "o", label: "上炉" }, { startPct: 15, widthPct: 26, tone: "r", label: "炉位排队" },
     { startPct: 43, widthPct: 16, tone: "b", label: "静置" }, { startPct: 61, widthPct: 13, tone: "g", label: "下炉" },
     { startPct: 77, widthPct: 11, tone: "o", label: "结转" }] },
-  { name: "过程质检攒批", baseline: "2.81 D", actual: "2.20 D", direction: "dn", segments: [
+  { name: nodeLabel("capacity.qc_batch"), baseline: "2.81 D", actual: "2.20 D", direction: "dn", segments: [
     { startPct: 2, widthPct: 11, tone: "o", label: "抽检" }, { startPct: 15, widthPct: 20, tone: "a", label: "攒批" },
     { startPct: 37, widthPct: 18, tone: "b", label: "复判" }, { startPct: 57, widthPct: 15, tone: "g", label: "放行" },
     { startPct: 75, widthPct: 12, tone: "o", label: "结转" }] },
-  { name: "干线运输在途", baseline: "0.43 D", actual: "0.43 D", direction: "", segments: [
+  { name: nodeLabel("delivery.transit"), baseline: "0.43 D", actual: "0.43 D", direction: "", segments: [
     { startPct: 4, widthPct: 9, tone: "o", label: "装车" }, { startPct: 15, widthPct: 18, tone: "b", label: "干线" },
     { startPct: 35, widthPct: 16, tone: "b", label: "分拨" }, { startPct: 54, widthPct: 14, tone: "g", label: "签收" },
     { startPct: 71, widthPct: 12, tone: "o", label: "结转" }] },
-  { group: "S-0042 执行", name: "齐套发料", baseline: "4.54 D", actual: "2.10 D", direction: "dn", segments: [
-    { startPct: 2, widthPct: 12, tone: "o", label: "请购" }, { startPct: 16, widthPct: 14, tone: "c", label: "盐城调拨" },
+  { group: "S-0042 执行", name: nodeLabel("material.kitting"), baseline: "4.54 D", actual: "2.10 D", direction: "dn", segments: [
+    { startPct: 2, widthPct: 12, tone: "o", label: nodeLabel("material.purchase_req") }, { startPct: 16, widthPct: 14, tone: "c", label: `${baseName(PEER_BASE_A)}调拨` },
     { startPct: 32, widthPct: 20, tone: "c", label: "跨基地在途" }, { startPct: 54, widthPct: 18, tone: "g", label: "发料" },
     { startPct: 75, widthPct: 12, tone: "o", label: "结转" }] },
-  { name: "老化静置", baseline: "7.34 D", actual: "5.02 D", direction: "dn", segments: [
-    { startPct: 3, widthPct: 10, tone: "o", label: "上炉" }, { startPct: 15, widthPct: 18, tone: "c", label: "盐城炉位" },
+  { name: nodeLabel("capacity.aging"), baseline: "7.34 D", actual: "5.02 D", direction: "dn", segments: [
+    { startPct: 3, widthPct: 10, tone: "o", label: "上炉" }, { startPct: 15, widthPct: 18, tone: "c", label: `${baseName(PEER_BASE_A)}炉位` },
     { startPct: 35, widthPct: 20, tone: "c", label: "并行静置" }, { startPct: 57, widthPct: 16, tone: "g", label: "下炉" },
     { startPct: 75, widthPct: 12, tone: "o", label: "结转" }] },
-  { name: "过程质检攒批", baseline: "2.81 D", actual: "2.20 D", direction: "dn", segments: [
+  { name: nodeLabel("capacity.qc_batch"), baseline: "2.81 D", actual: "2.20 D", direction: "dn", segments: [
     { startPct: 2, widthPct: 11, tone: "o", label: "抽检" }, { startPct: 15, widthPct: 16, tone: "c", label: "阈值下调" },
     { startPct: 33, widthPct: 18, tone: "c", label: "并行复判" }, { startPct: 53, widthPct: 17, tone: "g", label: "放行" },
     { startPct: 73, widthPct: 14, tone: "o", label: "结转" }] },
-  { name: "干线运输在途", baseline: "0.43 D", actual: "0.56 D", direction: "up", segments: [
-    { startPct: 4, widthPct: 9, tone: "o", label: "装车" }, { startPct: 15, widthPct: 22, tone: "c", label: "盐城→常州" },
+  { name: nodeLabel("delivery.transit"), baseline: "0.43 D", actual: "0.56 D", direction: "up", segments: [
+    { startPct: 4, widthPct: 9, tone: "o", label: "装车" }, { startPct: 15, widthPct: 22, tone: "c", label: `${baseName(PEER_BASE_A)}→${baseName(HOME_BASE)}` },
     { startPct: 39, widthPct: 16, tone: "b", label: "分拨" }, { startPct: 57, widthPct: 14, tone: "g", label: "签收" },
     { startPct: 73, widthPct: 13, tone: "o", label: "结转" }] },
 ];
