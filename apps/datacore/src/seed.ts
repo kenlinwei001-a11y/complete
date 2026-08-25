@@ -198,6 +198,10 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
  *  - 沿真链路：sourceTypeKey/viaLinkKey/targetTypeKey 均为 demo 本体真有的对象类型/链路 key，
  *    且每条都经**实测**确认「链路存在 + 方向对 + 两端在 demo 真有实例」（#158 的教训）。
  *
+ * WO-SIM-ROOT-PROCUREMENT：在 35 条之上再补 **3 条**（`procurementDelay → shortageRisk`，
+ * 三类采购台账各一条），共 **38 条**。这 3 条补的是**根源**：此前全世界只有 3 个入度 0 的量纲，
+ * 而「物料采购」这个高频根源一个都没有，扰动只能从枢纽 `shortageRisk`（库存）半路插入。段头见文件末。
+ *
  * WO-PROCESS-TICK-COVERAGE：在 WO-P1 的 13 条之上再补 **22 条**（档 1 六条挂既有正向边 /
  * 档 2 十五条挂新补的「影响向逆边」/ 档 3 一条闭掉「标着会动其实不动」），共 **35 条**。
  * 目的不是把规则堆多，是把 §8 `G-PROCESS-TICK-COVERAGE` 的流程覆盖率从 **9/65** 抬到 **29/65**，
