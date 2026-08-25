@@ -8,6 +8,20 @@ export interface ToolAuthCtx extends AuthCtx {
   tokenExpiresAt?: number;
   /** 开发期 X-Debug-User 原值：无 bearer token 时透传给 DataCore（仅非生产）。 */
   debugUser?: string;
+  /**
+   * WO-DSH-GOV-CREDENTIAL · 服务间凭据（= env `SERVICE_TOKEN`，两服务同值）。
+   *
+   * 仅供**无用户主体**的服务间调用（如 DSH 治理带外裁决 `/b/v1/governance/adjudicate`
+   * → DataCore `/a/v1/rules/evaluate`）。用户 OBO 路径**永不**设本字段 —— `call()` 的
+   * 鉴权链把它排在 `token` / `debugUser` **之后**，故即便误设也不会顶掉用户身份（fail-safe 方向）。
+   *
+   * 为什么不用 `debugUser` 顶替：DataCore 侧 `X-Debug-User` 在 `NODE_ENV=production`
+   * 下**必须** `ALLOW_DEBUG_USER=1` 才认（`apps/datacore/src/app.ts` 的 `debugAuthAllowed`
+   * + `config.ts` 的 `ALLOW_DEBUG_USER` 默认 `"0"`）⇒ 走 debugUser 的修法在生产态**依然 401**，
+   * 等于没修。而 `x-service-token` 是 DataCore 通用鉴权钩子里**已经存在**的一支，
+   * 不需要 DataCore 改一行。
+   */
+  serviceToken?: string;
 }
 
 export interface OntologyClient {

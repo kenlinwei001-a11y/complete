@@ -2400,6 +2400,43 @@ fetchOntologyInvariants()                 evaluateOntologyInvariants(overrides)
 
 ---
 
+### G-DSH-GOV-CREDENTIAL · DSH 治理带外通道 → DataCore 的**跨进程身份断点**（✅ 已修 · WO-DSH-GOV-CREDENTIAL · 2026-08-25）
+
+**链路**：`dsh 子进程 tools/pre-execute` → `platform-governance.mjs`(http) → **B** `POST /b/v1/governance/adjudicate`
+→ `deps.dataCore.rules.evaluate(ctx,…)` → `tools/datacore-http.ts call()` → **A** `POST /a/v1/rules/evaluate`
+
+**今天的行为是 X，应该是 Y（两条，形态不同、修法不同，不许合并成一句）**
+
+| # | X（修前实测） | Y（应该） |
+|---|---|---|
+| ① | `server.ts` 裁决端点造的服务间 ctx = `{tenantId, userId:"svc:dsh-governance", roles:["service"]}`，**三个鉴权载体一个都没有**；`datacore-http.ts` 的鉴权链因此落到「什么头都不发」那一支 ⇒ A 侧 `ctx(req)` 判 **401 UNAUTHORIZED** ⇒ 插件 fail-closed 转 deny ⇒ 模型无限重试 | ctx 带 `serviceToken`（= env `SERVICE_TOKEN`），鉴权链补第四支发 `x-service-token` + `x-tenant-id`（+`x-service-caller`）⇒ A 侧 **200** |
+| ② | 连续 deny **无任何上界**：治理闸在 `tools/pre-execute` 里 `return {kind:'deny'}` 且**不调 `next()`** ⇒ 瀑布短路 ⇒ `tools/post-execute` 帧不存在，而 STALL_LOOP 看门狗正挂在那里；再叠一层 `final_answer ∈ META_TOOLS` 豁免 ⇒ **计数器永不递增，无人喊停** | deny 计数点落在**产生 deny 的那一层**、**不设 meta 豁免**、**累计**语义；达上界 ⇒ `agent.cancel({kind:'budget-exhausted'})` ⇒ 有界终止 + 诚实终态 |
+
+**性质**：**会烧钱的生产断点**，不是记账。实测单条问句 **305,532 + 111,780 tokens / ~4,963 轮**，答案为空。
+
+**`roles:["service"]` 是进程内自述，跨进程看不见** —— 这是「没接线 / 接了线没数据」之外的**第三态：接了线，但线上什么都没有**。
+
+**为什么以前没测出来**：`dsh-gov-production.seam.test.ts` 五臂全绿，但每臂都
+`vi.spyOn(t.dataCore.rules,"evaluate")` —— **把断的那一跳整个换掉了**。「测试咬的是函数不是链路」的又一标本。
+
+**方案选择（B，实测定的）**：A 侧通用鉴权钩子**第一支就是** `x-service-token`（排在 `x-debug-user`/`Bearer` 之前）
+⇒ **DataCore 零改动**。而方案 A（走 `debugUser`）**在生产链路上不成立**：`NODE_ENV=production` 下
+`X-Debug-User` 必须 `ALLOW_DEBUG_USER=1`（默认 `"0"`）才认 —— 真服务实测 **401**，等于没修。
+
+**真跑对照**（两真进程 · `NODE_ENV=production` · A:4091 / B:4092·4095 · LLM 用 stub）：
+
+| 形态 | 轮次 | fail-closed deny | tokens | outcome |
+|---|---|---|---|---|
+| 修前（无凭据 · 无 deny 上界） | **300+**（仅被 stub 自身 300 上限截停 = 真无界） | 300 | 49,500 | FAILED |
+| 修前（无凭据 · **有** deny 上界） | **12** | 12 | — | **BUDGET_EXHAUSTED**（诚实，原因逐字入用户可见文案） |
+| **修后（凭据已装）** | **2** | **0** | **330** | **ANSWERED** |
+
+**不变量**：治理裁决**必须**携服务间凭据到达 A；`SERVICE_TOKEN` 未配置 ⇒ 仍旧 401 ⇒ deny（**fail-closed 有意保留**，不许退化成放行）。
+**护栏**：`dsh-gov-datacore-credential.seam.test.ts`（臂 ① 正向不变量 + 臂 ①b fail-closed）、
+`dsh-deny-budget.seam.test.ts`（有界终止 5 臂，含 cap=0 变异反证臂）。
+
+---
+
 ## 9. 演进与维护
 
 - 本文是**接线单一来源**：改动若新增/改变对象类型、链路、事件、不变量、门禁 → **必须同步本文对应章节**，否则大脑过期即失效。
