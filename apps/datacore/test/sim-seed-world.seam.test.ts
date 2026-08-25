@@ -290,11 +290,34 @@ describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
     expect(p.magnitude).not.toBe(0);
 
     // ── ⑤b 两条线真分叉（判据 7 的核心：`baseline ≠ actual` 的条数 > 0）─────────────
+    //
+    // ⚠ **2026-08-25 WO-SIM-ROOT-PROCUREMENT 订正：这一臂原来读的是「默认那一页」，它不度量分叉。**
+    //   原文取 `GET …/metric-series`（不带参数 ⇒ `limit=12` + `order=magnitude`）里逐值不等的条数。
+    //   而 `magnitude` 排的是**窗口内位移** `|actual 末 − baseline 首|`，**不是两条线的分叉** ——
+    //   这件事本文件 ⑤e 的头注早就写着，只是当时没意识到 ⑤b 自己也踩在同一个坑上：
+    //   在那 12 条恰好包含分叉格的世界里它是绿的，**靠的是运气不是判据**。
+    //   补进 3 条采购根源边（`procurementDelay → shortageRisk`）之后，`shortageRisk`/`supplyRisk`
+    //   的**基线位移**排到了前 12（基线自己也在长），把真正分叉的那些格挤出了这一页 ⇒
+    //   实测 `moved` 从 4 掉到 **0**，而全量普查里分叉的仍是 **93 格**。传导核一切正常，
+    //   红的是这条断言的口径。形态就是本仓那一句：
+    //     **「我用『这一页里动了几格』当作『这个世界动了几格』的证据，而前者并不度量后者。」**
+    //
+    //   修法**不是**把 limit 调大（那只是把运气的赌注加大），也**不是**给端点开"全量"口子
+    //   （那道封顶挡的是浏览器 OOM）。改走端点**已有**的 `objectIds` 白名单入口 ——
+    //   即本文件 ⑤e-桥② 早就在用的那条路：筛完只剩这些对象的格子、整份装得进硬上限，
+    //   `truncated:false` 就是"这一份是完整的"那句话的诚实闸。HTTP 仍在链路里，判据不再靠运气。
+    const census = await censusWorldLines(t, DEMO_SIM_WORLD_SESSION_ID);
+    const movedObjectIds = [...new Set(census.moved.map((k) => census.readings.get(k)!.objectId))].sort();
+    expect(movedObjectIds.length, "普查里一个对象都没动 ⇒ 扰动压根没进传导核").toBeGreaterThan(0);
     const ms = await t.app.inject({
-      method: "GET", url: `/a/v1/sim/sessions/${DEMO_SIM_WORLD_SESSION_ID}/metric-series`, headers: ADMIN,
+      method: "GET",
+      url: `/a/v1/sim/sessions/${DEMO_SIM_WORLD_SESSION_ID}/metric-series`
+        + `?limit=${SIM_METRIC_SERIES_MAX_LIMIT}&order=key&objectIds=${encodeURIComponent(movedObjectIds.join(","))}`,
+      headers: ADMIN,
     });
     expect(ms.statusCode).toBe(200);
     const series = ms.json() as SimMetricSeriesResponse;
+    expect(series.truncated, "白名单筛完仍被硬上限截断 ⇒ 这一份不完整，下面的计数不许信").toBe(false);
     const moved = series.metrics.filter((m) => JSON.stringify(m.baseline) !== JSON.stringify(m.actual));
     expect(moved.length, "两条线逐值全等 = 扰动没进传导核（本单要消灭的那个 X）").toBeGreaterThan(0);
 
@@ -325,11 +348,11 @@ describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
     // 这一条是给排序键做的"金丝雀"：`reachCells` 若与真跑对不上，那它就不度量它声称度量的东西
     // （本单实测过一次：第一跳开销算错 ⇒ 估 37 / 真 94，正是靠这条对账抖出来的）。
     //
-    // ⚠ **真值不从上面那条封顶的回包里数**（WO-SEED-REACH-SEAM·跨单交叉）——
+    // ⚠ **真值不从「默认那一页」里数**（WO-SEED-REACH-SEAM·跨单交叉）——
     //   那份只有 12 条，数出来的是「这一页动了几格」不是「全世界动了几格」，实测 3 ≠ 93。
     //   全量由引擎自己给：`censusWorldLines` 走的是端点内部同一个 `replayWorldLine` +
     //   同一处 `buildPropagationInputs`，**不碰那道封顶**（理由见该函数头注）。
-    const census = await censusWorldLines(t, DEMO_SIM_WORLD_SESSION_ID);
+    //   （`census` 现在在 ⑤b 就算好了 —— 因为 ⑤b 自己也需要它来选白名单，见那一段的订正。）
     const landingKey = metricKey(p.targetObjectId, p.targetStateVar);
     // 金丝雀：普查必须先认得出落点自己动了 —— 连它都没动，下面数出来的就不是"这条扰动的下游"。
     expect(census.moved, "普查里连落点自己都没动 ⇒ 普查装的入参与真跑那条不是同一个世界").toContain(landingKey);
@@ -344,7 +367,7 @@ describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
     expect(censusDownstreamObjects.size, "结构可达面的**对象**数与真跑对不上").toBe(report.choice!.reachObjects);
 
     // ── ⑤e-桥① 普查与**屏上那条曲线**必须是同一个世界（防"第二套真相源"）──────────────
-    // 封顶回包里每一条"动了"的指标，逐值必须与普查相同。普查若哪天装错了入参
+    // 回包里每一条"动了"的指标，逐值必须与普查相同。普查若哪天装错了入参
     //（种子取错、规则集取错、范围没裁），这里当场红 —— 而不是安静地把 ⑤e 变成自说自话。
     for (const m of moved) {
       const r = census.readings.get(m.key);
@@ -354,23 +377,11 @@ describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
     }
 
     // ── ⑤e-桥② 端点**已有**的白名单入口就够复现这一份（⇒ 不需要给它开"全量"口子）────────
-    // 拿普查算出的对象当 `objectIds` 白名单：筛完只剩这些对象的格子，整份装得进硬上限
-    //（`truncated:false` 就是这句话的诚实闸；装不下会当场红，不会静默少数几条）。
-    const movedObjectIds = [...new Set(census.moved.map((k) => census.readings.get(k)!.objectId))].sort();
-    const scoped = await t.app.inject({
-      method: "GET",
-      url: `/a/v1/sim/sessions/${DEMO_SIM_WORLD_SESSION_ID}/metric-series`
-        + `?limit=${SIM_METRIC_SERIES_MAX_LIMIT}&order=key&objectIds=${encodeURIComponent(movedObjectIds.join(","))}`,
-      headers: ADMIN,
-    });
-    expect(scoped.statusCode).toBe(200);
-    const scopedSeries = scoped.json() as SimMetricSeriesResponse;
-    expect(scopedSeries.truncated, "白名单筛完仍被硬上限截断 ⇒ 这一跳的对账不完整，别信它的计数").toBe(false);
-    const scopedMoved = scopedSeries.metrics
-      .filter((m) => JSON.stringify(m.baseline) !== JSON.stringify(m.actual))
-      .map((m) => m.key)
-      .sort();
-    expect(scopedMoved, "经端点白名单入口拿回来的「动了」集合与普查对不上 ⇒ 普查是第二套真相源").toEqual(census.moved);
+    // ⑤b 那次请求走的正是这条白名单路（`limit=硬上限 & order=key & objectIds=普查动过的对象`），
+    // 故这里直接拿它的结果对账：经端点拿回来的「动了」集合必须与普查**逐条相同**。
+    // （订正前这一段自己另发一次同样的请求；⑤b 改口径后两次请求完全同参，留两份就是白跑一次。）
+    const httpMoved = moved.map((m) => m.key).sort();
+    expect(httpMoved, "经端点白名单入口拿回来的「动了」集合与普查对不上 ⇒ 普查是第二套真相源").toEqual(census.moved);
 
     // ── ⑤f **落库的世界**与**屏上的曲线**必须是同一个世界 ──────────────────────────
     // 为什么必须单独咬这一条（变异反证逼出来的，不是想出来的）：

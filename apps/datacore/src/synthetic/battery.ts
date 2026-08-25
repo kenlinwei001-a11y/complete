@@ -2392,6 +2392,10 @@ export const STATE_VAR_DISPLAY_NAMES: Record<string, string> = {
   // ── D05 采购与供应：批次周转 / 清关排队 / 替代料切换 / MRP 缺口 / 供应商绩效复评 ──
   turnoverPressure: "批次周转压力", clearanceQueueDays: "清关排队天数",
   switchPressure: "替代料切换压力", gapPressure: "缺口压力", reviewPressure: "绩效复评压力",
+  // ── D05 采购**根源**（WO-SIM-ROOT-PROCUREMENT · G-ROOT-3）：采购到货延迟 → 物料短缺 ──
+  // 名字取「到货延迟」而不是「采购压力」：它度量的是**天数**（这一单/这一批比计划晚到几天），
+  // 与既有 `deliveryDelay`（供应商履约表现）分属两个抓手 —— 前者挂单据、后者挂供应商画像。
+  procurementDelay: "采购到货延迟",
   // ── D09 设备与维护：工序排队 → 设备负荷 → 维修派工积压；基地负载 → 检修窗挤压 ──
   loadPressure: "设备负荷压力", repairBacklog: "维修派工积压", windowSqueeze: "检修窗挤压",
   // ── D10 基地与仓储交付：认证排队 / 成品提货 / 来料催交 ──
@@ -2728,6 +2732,18 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     // D05 采购与供应：Material → {MaterialAlternative, MaterialBalance}
     { key: "material_has_alternative", fromTypeKey: "Material", toTypeKey: "MaterialAlternative", cardinality: "1:N" }, // supply（影响向·`alt_for_material` 之逆）
     { key: "material_has_balance", fromTypeKey: "Material", toTypeKey: "MaterialBalance", cardinality: "1:N" }, // supply（MRP 缺口·按物料名归属）
+    // ── WO-SIM-ROOT-PROCUREMENT · 采购**补货向**逆边（G-ROOT-3 的地基）─────────────────────
+    // 既有 `material_supplied_by_po`(Material→PurchaseOrder) / `material_has_batch`(Material→MaterialBatch)
+    // 表达的是**归属**「这个料有哪些采购单 / 哪些批次」，方向「料→单据」。
+    // 而「物料采购」这个**根源扰动**的影响方向恰好相反：**一张采购单到货晚了 ⇒ 它补的那个料短缺**、
+    // **一个批次入库晚了 ⇒ 同样是那个料短缺**。传导核只沿 `fromId→toId` 走（`sim/propagation.ts` navOut），
+    // 拿归属边跑影响传导必然走反（#158 的病）——故照 WO-P1 立下的同一条范式**另立 key**，与归属边共存。
+    // ⚠ 这两条不是"可选的对称补全"：`MaterialBatch` 在本体里**一条出边都没有**（实测
+    //   `fromTypeKey: "MaterialBatch"` 全本体 0 命中），不补它就永远只能当传导的**末端**，
+    //   而根源扰动必须从**源**这一侧打进去 —— 少这条边，批次这一类落点在结构上就不成立。
+    // 实例由既有对象 FK **确定性反投影**（与正向边共用同一个循环变量，见 `service.ts`）⇒ R6 字节一致。
+    { key: "po_replenishes_material", fromTypeKey: "PurchaseOrder", toTypeKey: "Material", cardinality: "N:1" }, // supply（影响向·`material_supplied_by_po` 之逆·一单补一料）
+    { key: "batch_replenishes_material", fromTypeKey: "MaterialBatch", toTypeKey: "Material", cardinality: "N:1" }, // supply（影响向·`material_has_batch` 之逆·一批补一料）
     // D06 计划与排产：Base → InterBaseTransfer
     { key: "base_dispatches_transfer", fromTypeKey: "Base", toTypeKey: "InterBaseTransfer", cardinality: "1:N" }, // capacity（影响向·`transfer_from_base` 之逆）
     // D09 设备与维护：Process → Equipment → MaintenanceOrder

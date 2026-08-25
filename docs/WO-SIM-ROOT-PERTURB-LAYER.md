@@ -33,6 +33,10 @@
 | 枢纽 | 13 | 有上游也有下游，扰它等于从半路插入 |
 | 末端 | 20 | 出度 0，通常是「看」的不是「扰」的 |
 
+> ✅ **2026-08-25 起本表已过期一格**（G-ROOT-3 落地）：根源 **3 → 4**（新增 `procurementDelay` 采购到货延迟），
+> 枢纽 / 末端不变（13 / 20），`shortageRisk` 入度 **2 → 5**。详见 §3 G-ROOT-3 条目。
+> 下表「按传递闭包影响面排序」的数字同属改前口径，重排留给下一张单（G-ROOT-1/2/4 还会再动它）。
+
 按**传递闭包影响面**排序（扰动它最终会波及多少个状态变量）：
 
 | 层级 | 落点数 | 影响面 | 变量 |
@@ -74,11 +78,38 @@
 - 落点：`Order`(24) / `OrderLine`(38)
 - 传导边：`orderChurn → releasePressure`（工单下达）、`orderChurn → splitPressure`（订单行拆分）
 
-### G-ROOT-3 · 物料采购（仓主点名的根源）
+### ~~G-ROOT-3 · 物料采购（仓主点名的根源）~~ ✅ **已落地（2026-08-25 · WO-SIM-ROOT-PROCUREMENT）**
 
-- 新增 `procurementDelay`（采购到货延迟）
-- 落点：`PurchaseOrder`(30) / `Supplier`(15) / `MaterialBatch`(24)
-- 传导边：`procurementDelay → shortageRisk`（**把库存从"源"改回"果"**，与仓主判据一致）
+- ~~新增 `procurementDelay`（采购到货延迟）~~ ✅ `seed.ts` 三条规则 + `battery.ts STATE_VAR_DISPLAY_NAMES` 中文名「采购到货延迟」
+- ~~落点：`PurchaseOrder`(30) / `Supplier`(15) / `MaterialBatch`(24)~~ ✅ **三个对象数亲手复核，与本文一致**；
+  三类共 **69** 个落点在 `world.state` 里真带这一格，实测**无一为 0**
+- ~~传导边：`procurementDelay → shortageRisk`~~ ✅ 三条（各台账一条，全部指向 `Material.shortageRisk`）：
+  `PurchaseOrder --po_replenishes_material(0.8,delay0)-->` · `MaterialBatch --batch_replenishes_material(0.6,delay1)-->` ·
+  `Supplier --supplier_supplies_material(0.5,delay1)-->`
+- 顺带**新增两条补货向逆边**（声明 `battery.ts batteryLinkTypes()` + 物化 `service.ts`，与正向边共用同一循环变量）：
+  `po_replenishes_material`(30 条) · `batch_replenishes_material`(24 条)。
+  ⚠ 后者非补不可：`MaterialBatch` 在本体里**一条出边都没有**，不补就只能永远当末端。
+
+**量化结果（改前 → 改后·seed 42·scale S）**：规则 35 → **38** · 根源 3 → **4**（`procurementDelay` 出度 3）·
+`shortageRisk` 入度 **2 → 5**（库存从"源"改回"果"，与仓主判据一致）· `world.state` 格子 3494 → **3563** ·
+多变量对象 53 → **107** · 链路总数 6737 → **6791** · 传导 3 拍中位 55.2 → **58.6 ms**（+6%）·
+`metric-series` 默认页 4556 → **4519 字节**（`limit=500` 时 172,647 → 175,224，+1.5%）。
+
+**门**：`apps/datacore/test/sim-root-procurement.seam.test.ts`（6 例：①入度臂现算 · ②落点臂咬 `world.state`
+且反向咬死"没跑到对象属性上" · ③/③b 传导臂逐值对系数 · ④真 HTTP 四跳全链 · ⑤R6 字节一致）。
+**本体已回写**：`docs/SYSTEM-ONTOLOGY.md` §2.I（PropagationRule 根源/枢纽/末端三层）· §3（根源扰动层 · 物料采购）·
+§5（`R-ROOT-PERTURB`）。
+
+**落地 commit**（handoff 分支 `claude/handoff-wo-sim-root-procurement`，基线 `4df5bfbe`）：
+`d2542195` 两条补货向逆边 + 中文名 → `31035e1d` 三条传导规则 → `48660ac4` 接缝门 →
+`d3b40cf5` 金值 35→38 → `a6f1de22` 修两处被本单打红的既有测试 → `e6e666b5` 本体回写 →
+`7db0b09b` PRD 回写 → `cecb0823` ④ 全链臂改从真种子世界态出发 → `6057d63f` 刷新门产物。
+
+**变异反证（两发·分别打两半，原始输出见交付报告）**：
+① 删掉三条 `procurementDelay → shortageRisk` 规则（靶 = 规则半）⇒ `RC=1`，**6/6 臂全红**（含传导臂）；
+② 让 `deriveSeedBaseSnapshot` 不给 `procurementDelay` 铺格子、**规则一条不动**（靶 = 世界态半）
+⇒ `RC=1`，②落点臂 / ④全链传导臂 / ⑤R6 红，而 ①入度臂 与 ③/③b 隔离传导臂**照旧绿** ——
+两发红在**不同的臂**上，这就是「接缝真被驱动」的证据（若两发红成一模一样，说明只咬到了一半）。
 
 ### G-ROOT-4 · 设备故障
 

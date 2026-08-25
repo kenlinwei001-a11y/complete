@@ -1069,9 +1069,19 @@ export class SyntheticService {
       await putLink(`lnk_chl_${P(loc).locId}`, "customer_has_location", oid("Customer", P(loc).customerRef), oid("CustomerLocation", P(loc).locId));
     }
     // supply（批次）: Material → MaterialBatch（batch.matId）
-    for (const bt of ext.materialBatches) await putLink(`lnk_mhb_${P(bt).batchId}`, "material_has_batch", oid("Material", P(bt).matId), oid("MaterialBatch", P(bt).batchId));
+    // WO-SIM-ROOT-PROCUREMENT 逆边（`batch_replenishes_material`）：**与正向边共用同一个 `bt`**
+    // （不是抄一遍派生式）⇒ 两向严格互逆，改归属派生式时不可能只改一半 ——
+    // 同 `lnk_mum_`/`lnk_mubm_` 那一对立下的纪律（抄一份就会漂）。
+    for (const bt of ext.materialBatches) {
+      await putLink(`lnk_mhb_${P(bt).batchId}`, "material_has_batch", oid("Material", P(bt).matId), oid("MaterialBatch", P(bt).batchId));
+      await putLink(`lnk_brm_${P(bt).batchId}`, "batch_replenishes_material", oid("MaterialBatch", P(bt).batchId), oid("Material", P(bt).matId));
+    }
     // supply（采购）: Material → PurchaseOrder（po.matId）
-    for (const po of ext.purchaseOrders) await putLink(`lnk_mpo_${P(po).poId}`, "material_supplied_by_po", oid("Material", P(po).matId), oid("PurchaseOrder", P(po).poId));
+    // WO-SIM-ROOT-PROCUREMENT 逆边（`po_replenishes_material`）：同上，与正向边共用同一个 `po`。
+    for (const po of ext.purchaseOrders) {
+      await putLink(`lnk_mpo_${P(po).poId}`, "material_supplied_by_po", oid("Material", P(po).matId), oid("PurchaseOrder", P(po).poId));
+      await putLink(`lnk_porm_${P(po).poId}`, "po_replenishes_material", oid("PurchaseOrder", P(po).poId), oid("Material", P(po).matId));
+    }
     // WO-SANDBOX-D2 · supply（采购责任方）: PurchaseOrder → Supplier（po.supplierId）——
     // 「这一单是谁供的」此前只能经 Material 主供间接猜，多供物料一猜就错。
     for (const po of ext.purchaseOrders) await putLink(`lnk_pos_${P(po).poId}`, "po_from_supplier", oid("PurchaseOrder", P(po).poId), oid("Supplier", P(po).supplierId));

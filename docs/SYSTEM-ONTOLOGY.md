@@ -232,6 +232,7 @@
 - **PropagationRule（传导规则 · 一等类型，不塞进 RuleEntry）**：承载结构 `sourceTypeKey/sourceStateVar/viaLinkKey/targetTypeKey/targetStateVar` + 配置 `coefficient/delayTicks/combine[sum|max]/decay/clamp` · 系数/延迟**应优先引用一条可编辑规则的 `rule.params`**（G-10 P1 已落，真正兑现"改规则即改推演"；冷启动可内联）· 是**新 BuildPlan need + 注册 provisioner**（R16 倒序发育，新增 need 不注册即测试红）· 契约 `packages/contracts` sim（增量 1/3 新建）。竞品 UI `supplier.delay_risk -- SUPPLIES.risk_propagation 0.85 --> factory.supply_risk` = 本结构逐字命中（GROUNDING-MAP §F.2）。
   **⚠ 方向是硬约束，不是排版（WO-SANDBOX-PROP-DIRECTION·2026-08-11 实测复核，闭 #158/#160）**：`propagateTick` 的 `navOut` **只沿 `fromId→toId` 走**（`apps/datacore/src/sim/propagation.ts:527 (navOut)`），故规则的 `(sourceTypeKey, viaLinkKey, targetTypeKey)` 必须与本体 linkType 声明的 `(fromType, key, toType)` **同向**；写反 ⇒ `targetsOf` 恒空 ⇒ **该规则一次都不触发，且不报任何错**（trace 里没有它、下游一个字节不动，界面上只看得到"一条安静的零"）。这是本仓栽过两次的同一个错，写成一句：**「我用『这个 linkKey 的名字读起来像 A→B』当作『它在本体里就是 A→B』的证据。」** `line_belongs_to_base` 名字读作 Line→Base，而契约 cardinality 只允许 1:1/1:N/N:N，**N:1 语义一律翻转方向表达为 1:N**（`synthetic/battery.ts` linkType 声明处注释原文）⇒ 真方向是 **`Base --line_belongs_to_base(1:N)--> Line`**。两处副本：种子规则（#158，WO-P1 已修：`demo_line_util_to_base_load` → `demo_base_load_to_line_util`，`apps/datacore/src/seed.ts:281 (demo_base_load_to_line_util)`）· 前端 mock（#160，WO-SANDBOX-PROP-DIRECTION 已修：`frontend-shell/src/mocks/handlers.ts` registries handler）。**三道门守（缺一不可，各咬一层）**：① `test/seed-demo-propagation.test.ts`「方向可达门」咬**链路表**（图上走不走得通）· ② `test/sim-propagation-direction.seam.test.ts` 咬**效果层**（真扰动 → tick → 下游状态变量的**数值**，并含「把边反过来 ⇒ 必须不触发」的方向反证）· ③ `test/mock-linktype-direction.gate.test.ts` 咬 **mock ⇄ 真路由**（前端 mock 的方向与 `GET /a/v1/ontology/mapping/registries` 真响应逐条比对）。①②③ 分层的理由是实测得来的：只有①时「图对而引擎没算」照样绿；只有②时「trace 里出现过这个名字」被当成「数是对的」照样绿。
   **业务域归属 `domainKey`/`domainName`（WO-DISRUPTION-CARDS·2026-08-17·屏上分类卡片的唯一分组依据）**：仓主看推演页截图后的原话「**按照卡片，建立不同扰动因素的分类展示**」。病灶是 demo 租户 **35 条传导边一次全倒在屏上**——无分类、无栅格（勾选框不在一条竖线上）、字号过小（实测最小 12px 且含 3 处 12px `<code>`，等宽字视觉更小）。**分组依据一直在数据里，不是本单发明的**：`DEMO_PROCESS_DEFINITIONS` 每条流程都带 `domainKey`(D01–D13) + `carrierTypeKey`（承载物对象类型），而种子作者当初选边时用的就是这条关系，逐条写在注释里（「承载物 MaterialBatch 即 P36」「承载物 MaintPlan 即 P50」「全世界恰好一个：`Supplier`（P28）」）——只是**躺在注释里、没进数据结构、屏上拿不到**。本单把它搬进数据。**口径：域 = target 承载物所属的域，不是 source**（依据是种子自己的分节注释：`── D09 设备与维护 · 检修窗：基地负载 → 计划检修窗挤压 ──` 源 `Base`(D10) 而节名 D09 = target `MaintPlan` 的域）；语义上也对——用户按域找一条边，找的是「它**影响**哪个域的活动」。⛔ **不是照分节注释逐条硬编码**（那只是把手抄名单从前端搬到后端，病没治）：`seed.ts resolveRuleDomain()` 从承载物登记册**现算** ⇒ 新增一条规则只要 target 是某流程的承载物，域自动就有，**「忘了归域」在本设计里不可能发生**。⛔ **前端同样零对照表**（本体 §8 `G-GATE-ROSTER-HANDCOPIED`）：`edgeActiveModel.buildDomainSlices` 只按边自带的 `domainKey` 做 `groupBy`，一个业务判断都不做。**实测 35 条 → 9 个域 + 3 条未归域**（D03 销售与客户 6 · D04 产品与工程 3 · D05 采购与供应 7 · D06 计划与排产 2 · D07 生产制造 3 · D08 质量管理 3 · D09 设备与维护 2 · D10 基地与仓储交付 4 · D11 财务与成本 2 · 未归域 3），最大一片 7 条（参照物「一屏 5–8 行」口径）。**`null` 是诚实缺席不是漏填**：那 3 条的 target（`Material`/`Process`/`Equipment`）不是任何流程的承载物 —— 种子注释自己就写着「Equipment **不是任何流程的承载物**，它在这里是**中间跳**」；屏上单列「未归域」分片并写清原因，**不许硬塞进最近的那个域**。**注释与现算的 4 处分歧如实登记**（18 条带 D 号分节里 15 条一致）：`demo_wo_release_to_quality_backlog`/`demo_wip_feed_to_defect_pressure`/`demo_defect_to_exception_backlog` 落在节名 `D07 生产制造执行链`下而三个 target 承载物均属 **D08 质量管理**（那句节名写的是一条**跨域的链**，不是一个域）；`demo_customer_receivable_to_collection` 节名 `D03` 而 target `OverdueRecord` 属 **D11**（取 D11 顺带与同属 D11 且无分节注释的 `demo_customer_receivable_to_invoice_overdue` 归到一起）。取现算值 = 取**逐条可复算**的口径；注释那 4 处不改（它描述的是叙事链路，本来没错）。**同批新增 `sourceTypeName`/`targetTypeName`：读时投影，不入库** —— `GET /a/v1/sim/propagation-rules` 每次 join 本租户 `ObjectType.displayName` 后填（种子/POST 存进去恒 `null`），存一份会在类型改名后变成查无对证的旧名字。⚠ **初稿把它做成前端 `useQuery(fetchObjectTypes)`，实测把全仓 29 个做 `vi.mock("@/api/endpoints")` 部分 mock 的前端测试全部打红** —— 该面板挂在 8 个推演页上，给共享面板加 endpoint 依赖是结构性负债，故改成随边下发（面板只依赖一个响应）。**状态变量（`loadIndex`/`demandLoad` …）在全仓没有任何中文名**（只作为字符串存在于传导规则里，本体 `properties`/`derivedProperties` 都不含它们）⇒ 只出现在第二级的系统键那一行，前端不给它编名字（R14）。存储零迁移（`sim_propagation_rule` 是 doc-jsonb 表）· 缺省 `null` ⇒ 与本字段引入前逐字节相同（additive 可回退 RL9）。**门**：`apps/datacore/test/sim-rule-domain.seam.test.ts`（期望值取自**另一条独立路径** `GET /a/v1/process-definitions`，零写死 key/条数；含正反金丝雀 + 集合相等而非数量相等 + 单条最小变异反证）· `apps/frontend-shell/test/disruption-cards.seam.test.tsx`（chip 条数两边现算 · 切片判据同时落在**可见性与 DOM 存在性**上——`<details>` 折叠时子节点照样在 DOM 里，本仓已有 dev 在这条上栽过 · 拨动断的是**差值表里的数**不是勾选框 checked）。
+  **根源/枢纽/末端三层（WO-SIM-ROOT-PROCUREMENT·2026-08-25·G-ROOT-3·链路详见 §3「根源扰动层 · 物料采购」）**：传导规则集自带一张**量纲图**（一条规则 = `sourceStateVar → targetStateVar` 一条边），按**入度**分层：**入度 0 = 根源**（没有上游 ⇒ 只能被外部扰动打进来，扰它才是扰"因"）· 入度>0 且出度>0 = **枢纽**（扰它 = 从半路插入，推演结论会失真）· 出度 0 = **末端**（通常是"看"的不是"扰"的）。**这一层必须现算，不许硬编根源名单** —— 硬编的名单在下一条边加进来时会**悄悄失效**（同 `domainKey` 拒绝硬编分节注释的那条纪律）。改前实测 3 根源 / 13 枢纽 / 20 末端；库存 `shortageRisk` 入度 2 ⇒ **是果不是源**，而仓主点名的高频根源「物料采购」当时**一个变量都没有**。本单补 `procurementDelay`（采购到货延迟）为**第 4 个根源**，三类采购台账各一条边指向 `Material.shortageRisk`（PurchaseOrder 30 / MaterialBatch 24 / Supplier 15 个落点）。⛔ **`procurementDelay` 的入度必须恒为 0**：全仓不许有任何规则写它，谁加一条 `… → procurementDelay` 它就从根源掉成枢纽 —— 门 `sim-root-procurement.seam.test.ts ①` 用**现算**入度咬死这件事。
 - **SimCertification（就绪认证 · 派生投影对象，非真值，R4 豁免）**：把 SimSession 能否进推演投影成 L0-L4（INVALID→CONFIGURED→RUNNABLE→VERIFIED→CERTIFIED）+ 三维准备度（结构/知识/行为/综合）+ L4 三元组（fanoutSafe/writebackComplete/observabilityMet）+ worldCompleteness（范围预检）+ `canEnterSimulation`（=L4 ∧ trialTick.passed ∧ closure.gatePassed）+ `gaps[]`（缺件诚实，绝不静默放行）· **WO-CERT-HONESTY 口径收口（2026-08-10 · 四处「名不副实」，改的是口径不是判据）**：① 删 `worldCompleteness.stateVars{present,needed}` —— present 与 `derivationRules` 取同一个变量、needed 在 `app.ts` 是逐字节相同的表达式 ⇒ 零独立事实且把派生在 `pct` 分子分母各数两遍；真状态变量改由 `worldCompleteness.stateVarKeys[]`（传导规则 `sourceStateVar ∪ targetStateVar` 去重集，与 `SandboxViewConfig.stateVars` 单源）以**清单**呈现，**不做成比值**（无任何承载物声明「应有几个」，编一个 needed 即错答）· ② `entering[]` 是 DERIVATION|ACTION|PROPAGATION **三类混装的「要素」**，不是「状态变量」（实测 demo 真跑 23 条 = 行动 10 · 传导 13 · 派生 0），前端按 kind 分组计数· ③ `trialTick.rulesFired` → `derivationNodes`（= 拓扑排序出的派生规格节点数 = 图规模，**不是触发数**：空跑不喂变更集 ⇒ 零条派生被求值）；`passed` 语义 = 「重算未抛异常（派生图无环）」≠「这个世界推得动」· **WO-CERT-CONTRACT-RECONCILE 契约合成（2026-08-10 · 两条 WO 各对一半，功劳分开记，别并成一条）**：㊀ **WO-CERT-HONESTY 的口径判断成立且已实测复验** —— `recompute` 的 `order.length` 在「空变更集（认证路实参）」与「喂真变更集」两趟里**同为 2**，而 `updatedObjects` 分别 0 与 1 ⇒ 该数与「触发」正交、度量的是**图规模**，故 `derivationNodes` 名副其实（取证 `apps/datacore/test/sim-cert-contract-reconcile.seam.test.ts` ③）；㊁ **WO-SIM-SCOPE-TRIAL 的实现同样成立且必须保留** —— 认证路**已真跑传导相**并以 `firedPropagationRuleKeys` 只数「真产出贡献」的规则（遍历到但源态为 0 / 无匹配边 / 闸门拿不到**都不算触发**）⇒ `propagationRulesFired` 是**真·触发计数**；⇒ 故 `trialTick.propagationCovered` **今天恒 `true`**（WO-CERT-HONESTY 原文「由构造恒 false / 从不调传导核」是对**它自己那条分支**的如实描述，合流后已不成立，此处据实翻正，欠账 #152 `G-SIM-TRIAL-TICK-NOT-PROPAGATION` **已闭**）；㊂ 两数**性质不同、不可相加** ⇒ 旧字段 `rulesFired`（= 规模 + 触发）量纲不成立，连同 `derivationRulesFired` 一并转 `@deprecated`（仍下发原值以可回退，删除条件写在契约注释里）；㊃ 新增 `trialTick.propagationRulesDeclared`（= fired 的**分母**）—— 只报 fired 时「本来就没有传导规则」与「声明了一堆但全哑火」在屏上都是 0，有了分母才分得开，并由新 gap `PROPAGATION_ALL_SILENT`（`covered ∧ declared>0 ∧ fired===0`）与 `PROPAGATION_NOT_COVERED`（未覆盖传导相 ⇒ 触发数不可解读）显式报出· ④ `canEnterSimulation` **故意不含 worldCompleteness 且不许加**（认证判「能不能跑」/完整度判「建得全不全」，互不蕴含），缺的只是屏上那句解释 —— 已补在完整度卡· 接缝门 `apps/frontend-shell/test/sim-cert-honesty.seam.test.tsx`（真 `deriveCertification` → 真 `SimReadinessPanel`，任一半改口径即红）· **RL3 单源：全部 DERIVE 自既有 `closure.ts` 五维（OBJECT/DATA/FORWARD/CHAIN/SHAPE）+ GapReport + 一次 Trial Tick，零新校验逻辑**（纯函数 `deriveCertification`，增量 2 新建）· `canEnterSimulation` 对齐 `ScenarioOntogenesisRun` maturity 语义（GOVERNED=真可用/PROVISIONAL=有缺口不假装）。**WO-SIM-ACT-CLOSE 修 Trial Tick（2026-08-10·闭 #152）**：`trialTick` 长期**只跑派生相**（`ontologyCore.recompute(dryRun)`），`rulesFired` 恒 = topo order 长度，注释停在「传导 propagateTick 待增量3」——而增量 3 早已落地（`POST …/tick` 真跑传导）。形态 = 铁律 0.5 之「**接了线接错地方**」：引擎接了 tick 路、没接认证路（既非没实现、也非没数据）。净效果是静默错答：**一条传导都跑不动的世界，认证照样报漂亮数字**，而 `worldCompleteness.propagationRules` 那一栏按"声明了几条"照计完整度。修：`app.ts` 新增 `trialPropagate`，在会话**当前态**上真跑一 tick 传导（`pending`/`perturbations` 都传 `[]` —— Trial Tick 是**探针不是续跑**，同一份世界态必须每次得同一结论 R6，不许被在途队列/扰动历史带偏）；图/规则参数/节拍闸门经**新抽的唯一装配处** `buildPropagationInputs` 取得，**与真 tick 同源**（另抄一份就会出现「认证说能跑、真 tick 不是这个数」）。契约 `trialTick` 加三个 **optional** 拆账字段 `derivationRulesFired`/`propagationRulesFired`/`propagationRulesDeclared`（additive·老回包无则前端整段不显·逐字节可回退）——拆开报是必须的：一个合数 `rulesFired` 恰好把「传导零触发」盖得严严实实（同族戒律：一个笼统数字盖住两个不同事实）。`declared>0 && fired===0` 是**诚实位**（规则在册、当前世界态驱动不动它们），`SimReadinessPanel` 用告警色显式写出。`certification.ts` 仍**一相都不跑**（纯投影 RL3，门 `sim-readiness:check` 守住）。**WO-RC1-CLOSURE-SCOPE 前向闭合硬前置收口（2026-07-16）**：canonical 上 seedBattery/demo 世界的唯一前向 HARD 缺口 = 规则 `C24` 的 scope 引用 `Quote`（仅 evaluate 期注入的命名空间，非本体对象类型），令 `closure.forwardMissing>0` 把 cert 钉在 `L1_CONFIGURED`（L2 需 `!forwardMissing`）→ `canEnterSimulation` 恒 false（「暂不可进入推演」）。修：规则 scope 归真实类型 `BATTERY_RULE_SCOPES.C24 [Quote,DemandSegment]→[Order,DemandSegment]`（Order 与 Quote 命名空间同 `marginPct/floorPct`·镜像 C15；仅改 scope 元数据不动 expression，`quote_margin` 评估仍走 eval 期 Quote 注入）→ `forwardMissing 1→0`·`gatePassed=true` → GLOBAL cert `L1_CONFIGURED→L4_CERTIFIED`·`canEnterSimulation false→true`·`gaps[]` 空·「✓可进入推演」亮（真跑就绪认证端点逐值证）。canonical 无 July 线的融合型 `ErpOrder/MesOrder/SrmOrder`（`observabilityMet` 本已 true）与 `C45/C50` 定义，故仅需 C24 一处 scope 修（`observability` 非阻断）。零字节基线移动（scope 数组非对象类型/对象·`debattery`/`meta:sync` 绿）。
 - **ChainImpediment（链路阻滞点 · 派生对象，不进 R4 审批面 · 契约 `packages/contracts/src/chain-sim.ts` §6 冻结 · 判定器 `apps/datacore/src/solvers/chain-impediment.ts`）**：全链扫描产出的**卡点/堵点/断点**三类阻滞点（`BOTTLENECK` 能力不够·加产能有用 / `CONGESTION` 流不动·加产能没用 / `BREAK` 链接不上，三亚型 `MATERIAL|LEADTIME|DATA`）。**三类互斥**，同一 locus 同时命中时按「利用率是否达红线」裁决（达线=卡点），裁决只在 `arbitrateByLocus` 一处（不靠 if 顺序的巧合，教训 `wo-capacity-100pct` R7–R9）。求解器 `chain_impediments`（`POST /a/v1/solvers/chain_impediments/invoke`）。
   **判定阈值一律从规则读回，引擎内零阈值**（WO-SANDBOX-E3）：`readRuleThreshold` 从规则表达式的 AST 里取实测值那一侧的对侧操作数 —— `params.<名>` → `rule.params`（WO-RULE-EXPR-PARAMS 的命名阈值面）· 字面量 → 表达式里的那个数 · 字段 → 对象上的那个属性；读不回来一律 `unresolved[]` + `UNKNOWN` + 原因，**没有"给个默认阈值"的分支**。判据登记表 `IMPEDIMENT_RULE_BINDINGS`（**七条**·单一来源 —— 第七条 `C34` 由 WO-A6-CONTENTION 补入，见下段）：卡点 ← `C02` 化成/老化串并产能口径（实测值 = D3 `readProcessHardCapacity().capacityPerDay`，本单让这条**此前恒不可评估**的规则第一次真能判）· 卡点 ← `C05` 产线利用率红线（含 SUSTAIN，`SolverContext` 无时序访问 ⇒ **只读红线、不冒充"持续 N 天"**，结论标 `dataMode=PARTIAL` + `caveats[]`）· 堵点 ← `C28` 呆滞预警（在制/在途堆积。**WO-RULE-SCOPE-DROP 2026-08-11 起已从「登记未验」升为「真评估出 6 条判定」**：此前 `BATTERY_RULE_SCOPES.C28` 写作 `["Batch"]` —— 不是对象类型键 ⇒ `scheduler.ts` 扫描期 `listByType("Batch")` 恒空 ⇒ **一条判定都产不出且零信号**；改成 `["MaterialBatch"]` 后真跑 memory 模式 seed 42 scale S 得 **6** 条 `rule.alert`，落在 `cu_foil_b2`/`elyte_b2`/`neg_graphite_b2` 等 6 条 `idleDays>90` 的真批次上。表达式 `Batch.idleDays > 90` **未动**——`ruledsl` 前缀可省略，退一层即命中 `MaterialBatch.idleDays`。此条与本表其余五条不同：它的实测值不是「读不回来」而是**曾经根本没人去读**）· 堵点 ← `C22` 换型损失（今天 `Order.changeoverMin` 无对象承载 ⇒ 恒 `UNKNOWN`，属"接了线没数据"）· 断点·物理 ← `C06` 齐套缺口 · 断点·数据 ← `C09` 数据时延（`params.staleHours`，改这一个数即翻判定）。**断点·时间（提前期）全库无规则承载 ⇒ 登记为 `UNBOUND_IMPEDIMENT_JUDGEMENTS` 诚实缺席**（R16 生长信号，拒绝自造提前期阈值）。`severity` 由「超阈幅度 / 阈值（阈值为 0 时用声明的规模基准字段）」算出，禁固定权重表。R6：`scanId` 由输入哈希派生，排序走契约冻结的全序 `compareChainImpediment`。R-ARG-FIDELITY：`scope.baseIds` 真过滤且回带；`modelIds` **仍显式 400 拒绝**而非静默返全域（型号无 contracts 级单源册 —— `MODEL_BASE_MAP` 在 `apps/datacore/src/synthetic/battery.ts`，跨包不可依赖 R1；且判定器无任何 locus 承载型号维）。⚠ **`businessTypes` 自 WO-A6-CONTENTION 起已放行，本行原写「businessTypes/modelIds 一律 400」现已过期**（铁律 0 回写）—— 放行前提是判定器**真读它了**，详见下段。SEAM `apps/datacore/test/chain-impediment-seam.test.ts`（规则发布路径 × 判定引擎，四条改阈值即改判定 + 变异反证）。
@@ -1427,6 +1428,80 @@ toType 是 Order」一句**字面为假**，实有 3 条；但其限定句「Ord
 `supplier_delay→material_shortage` · `material_shortage→model_supply_risk` ·
 `material_shortage→po_expedite` · `po_expedite→inspection_queue` · `model_supply_risk→order_shortage`
 
+### 根源扰动层 · 物料采购（WO-SIM-ROOT-PROCUREMENT · 2026-08-25 · 传导规则 35 → 38 · G-ROOT-3）
+
+> 仓主原话：「我们需要找到**根源**扰动因素，而不是**衍生**因素（比如库存就是衍生因素），
+> 而**物料采购是根源扰动因素**」。目标是**经营决策与生产的弹性、韧性**。
+
+**病灶（今天的行为是 X，应该是 Y）**——按传导图**入度**分层现算（入度 0 = 没有上游 = 只能被外部
+扰动打进来 = **根源**）：
+
+| | 改前（35 条规则） | 改后（38 条） |
+|---|---|---|
+| 根源（入度 0） | **3** —— `demandPressure` · `deliveryDelay` · `priceShock` | **4** —— 新增 `procurementDelay`（出度 3） |
+| 枢纽 | 13 | 13 |
+| 末端（出度 0） | 20 | 20 |
+| `shortageRisk`（库存短缺） | **入度 2 / 出度 6** —— 被算出来的**枢纽** | **入度 5 / 出度 6** —— 上游多了三条采购根源边 |
+
+**X**：想推「物料采购晚到会怎样」，今天只能去扰 `shortageRisk` —— **从半路插入**：
+用户以为在推因，实际在直接改果，推演结论失真。
+**Y**：采购到货延迟是**因**、库存短缺是**果**；扰 `procurementDelay` 才叫扰「物料采购」。
+本单同时**修正模型的语义错误**（库存从「源」回到「果」），不只是加功能。
+
+**链路（沿链路走）**：
+
+```
+seed.ts DEMO_PROPAGATION_RULES（3 条·唯一真值）
+  PurchaseOrder.procurementDelay --po_replenishes_material(0.8, delay 0)--> Material.shortageRisk
+  MaterialBatch.procurementDelay --batch_replenishes_material(0.6, delay 1)--> Material.shortageRisk
+  Supplier.procurementDelay      --supplier_supplies_material(0.5, delay 1)--> Material.shortageRisk
+  ↓ sim/seed-world.ts deriveSeedBaseSnapshot（铺「规则触及的类型 × 被触及的变量」）
+world.state：三类落点共 69 个对象各带一格 procurementDelay（值非 0）
+  ↓ sim/propagation-inputs.ts buildPropagationInputs（唯一装配处）
+  ↓ sim/propagation.ts propagateTick（只读 world.state，不读对象属性）
+Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应向三跳）
+                     → PurchaseOrder.expeditePressure → IncomingInspection.queueDays（既有交付向）
+```
+
+**新增两条对象关系链路**（`synthetic/battery.ts batteryLinkTypes()` 声明 + `synthetic/service.ts` 真物化）：
+
+| 链路 key | 方向 | 实例数 | 说明 |
+|---|---|---|---|
+| `po_replenishes_material` | PurchaseOrder → Material | 30 | **影响向**·既有 `material_supplied_by_po`(归属向) 之逆，与正向边**共用同一个循环变量**⇒严格互逆 |
+| `batch_replenishes_material` | MaterialBatch → Material | 24 | 同上·`material_has_batch` 之逆。⚠ 不补它 `MaterialBatch` 在本体里**一条出边都没有**，永远只能当末端 |
+
+⚠ **为什么必须另立 key 而不是往归属边里反向塞行**：`propagateTick` 只建 `navOut`、只沿
+`fromId→toId` 走，拿归属边（料→单据）跑影响传导必然走反 —— 这是 #158 的病，WO-P1 已论证过一次。
+
+**⛔ 落点必须真进 `world.state`，这是本单的分水岭**：引擎 `propagateTick(graph, **state**, …)`
+**只读 `world.state`，不读对象属性**。只在对象属性上加 `procurementDelay` 而不进 `state` ⇒
+用户选「采购延迟 +5 天」→ 请求返回成功 → 引擎读到 `undefined` → **什么都不发生**，
+屏上看着施加成功、下游一动不动 = 本仓点名的「静默错答的老形态」。
+⇒ **验收判据不是「变量登记了」，是「扰它下游真的动」**（门见 §7 `sim-root-procurement`）。
+
+**规模实测（改前 → 改后·seed 42·scale S）**：`world.state` 对象 3411 → 3411（不变）·
+格子 **3494 → 3563**（+69）· 多变量对象 **53 → 107**（1 变量 3358→3304 / 2 变量 23→62 / 3 变量 30→45）·
+`measuredCells` **0 → 0**（状态变量本就不在对象属性上，见下）· 链路总数 6737 → 6791（+54）·
+传导 3 拍中位耗时 **55.2 → 58.6 ms**（9 次采样·+6%）· `metric-series` 默认页（limit=12）
+**4556 → 4519 字节**、`limit=500` **172,647 → 175,224 字节**（+1.5%）· `totalMetrics` 3494 → 3563。
+
+⛔ **`procurementDelay` 与其余 36 个状态变量同一条纪律：不登记成 `PropertyDef`**
+（理由见下一节「展示名链路」的同名禁令，并由 `statevar-display-name.seam.test.ts ⑥` 钉死）。
+它的 tick0 读数与既有根源 `demandPressure`/`deliveryDelay`/`priceShock` **完全同源同式** ——
+`deriveSeedBaseSnapshot` 的确定性结构派生 `round(hash01(objectId|stateVar)×100)`，
+实测 69 个落点**无一为 0**（值恒 0 的源会被引擎 `if (sourceVal === 0) continue` 跳过 = 扰不动）。
+
+⚠ **顺带抖出并修好的一条既有假绿**（跨单交叉，登记在案）：
+`sim-seed-world.seam.test.ts ⑤b` 原来拿 `GET …/metric-series` 的**默认那一页**
+（`limit=12` + `order=magnitude`）里"逐值不等的条数"当「两条线分叉」的证据。
+而 `magnitude` 排的是**窗口内位移**（`|actual 末 − baseline 首|`），**不是分叉** ——
+这件事该文件 ⑤e 的头注早就写着，只是没意识到 ⑤b 自己也踩在同一个坑上，**绿了很久靠的是运气**。
+本单补进 3 条根源边后，`shortageRisk`/`supplyRisk` 的**基线位移**排进前 12，把真正分叉的格挤出这一页
+⇒ 实测 `moved` 4 → **0**，而全量普查里分叉的仍是 **93 格**（传导核一切正常，红的是断言口径）。
+形态就是本仓那一句：**「我用『这一页里动了几格』当作『这个世界动了几格』的证据。」**
+修法是改走端点**已有**的 `objectIds` 白名单入口（⑤e-桥② 早就在用的那条路，`truncated:false` 作诚实闸），
+**不是**把 limit 调大（那只是把运气的赌注加大），更**不是**给端点开"全量"口子（那道封顶挡的是浏览器 OOM）。
+
 ### 展示名链路 · 状态变量单源表 → 两条读时投影 → 屏上人话名（WO-STATEVAR-DISPLAYNAME · 2026-08-17）
 
 上面那 35 条传导规则**声明**了 36 个状态变量（`sourceStateVar ∪ targetStateVar`），
@@ -1901,6 +1976,7 @@ fetchOntologyInvariants()                 evaluateOntologyInvariants(overrides)
 | **R-共享产能守恒** | **跨单联合守恒·非各单独立超发（WO-PORTFOLIO-OPTIMAL）**：`∀(base b, 时间窗 t): Σ_{跨所有订单 i} qty_i·x[i,b,t] ≤ cap[b,t]`——同一基地×时间窗的产能被跨全部订单**联合守恒**分配，根治「两单分开求解都假设同一 SO-3415 产能可用 → 重复占用」（G-PORTFOLIO-LOCAL-ONLY 病根）。引擎落点=CP-SAT sidecar `solve_portfolio` 共享产能约束（真 CP-SAT 约束的产物，mock 冒充即绿测试≠能用）；`reconChecks` 逐格硬校验 `allocated≤cap`→`noDoubleOccupancy`，`capacityLedger` 逐格亮出（与 `sop_reschedule` 端内 `Σalloc+residual==qty`、`supply_demand` 双向勾稽同族守恒纪律）。在产 WIP/冻结单以承诺占用**预扣净产能**（非自由决策变量）。 | ✅ SEAM 层2 真 sidecar 亲验（`portfolio-sidecar.integration.test.ts`·单/联对拍 SO-3415 分开 Σ>其量 vs 联合只指派一次·全订单每格 Σ≤cap·R6 双跑字节一致）+ 层1 默认门 `portfolio.test.ts`（mock 也逃不掉守恒/方案差异/冻结） |
 | **十红线（推演沙盘落地纪律 · `docs/HANDOFF-sandbox-build-and-review-contract.md` §4 · 越线即停）** | RL1 本体先行(改接线先回写本体过 `ontology:check`) · RL2 暗发(新模块 `defaultOn:false` 不动现有租户) · RL3 单一来源(不出双份；就绪=投影既有 closure 零新校验；单源门复用 `boundary-singlesource:check` 勿造 `ia-single-source:check`) · RL4 走正门(沙盘 act 模拟态，采纳才经 Action R4 写真值) · RL5 零业务常数(传导核/表无行业实体名，两行业验收 R14) · RL6 确定性(传导核纯函数，无 Date.now/随机，R6) · RL7 CLI 先于 UI(R15) · RL8 倒序长出(世界态经连接器/合成/runStory，禁硬编码 seed，R16) · RL9 additive 可回退(迁移有 down，entitlement 关=404，旧路径在) · RL10 不与在建分叉(复用 sim-views/A8/recompute/replay/ontogenesis/closure，不平行造第二套)。 | 大多复用既有不变量（RL1=R16本体先行·RL3=R-一致·RL4=R4·RL5=R14·RL6=R6·RL7=R15·RL8=R16·RL10=不分叉）；逐 PR 评审硬判据（HANDOFF §5） |
 | **R-ARG-FIDELITY** | **接缝丢参保真（WO-SEAM-ARG-DROP）**：路由（`resolveCeoRoute` 等）解析出的**过滤实体**（custName / baseIds / scopeObjectIds / orderRef / …）**必达求解器**——要么声明为 intent slot（`fillSlots` 只填声明槽·`slots.ts:307`）+ plan `{{slots.X}}` 映射，要么列入**显式豁免表（带理由）**；求解器缺过滤维**不得静默返全域/首个**，须报 `AMBIGUOUS_SCOPE`（错误信封）或结果显式带 `scope`（CUSTOMER/ALL 让前端可见"未指定→全域"）。杜绝"信阳→全 12 基地 / 敞口→首客户整车厂A"的 plausible-but-WRONG（静默错答比崩溃更危险）。 | 门 `arg-drop-seam:check`（§7）+ SEAM `apps/datacore/test/arg-drop-seam.test.ts`（router×plan×solver 接缝驱动）+ `apps/agentcore/test/arg-drop-seam.test.ts`（数据半）+ 台账 `docs/seam-arg-drop-ledger.md` |
+| **R-ROOT-PERTURB** | **根源扰动层现算，不许硬编（WO-SIM-ROOT-PROCUREMENT·2026-08-25）**：传导规则集的量纲图上，**入度 0 = 根源**（只能被外部扰动打进来）· 入度>0∧出度>0 = **枢纽**（扰它 = 从半路插入）· 出度 0 = **末端**。三条纪律：① 分层**一律从当前规则集现算**，屏上/文档/测试都不许硬编一份根源名单（硬编的名单会在下一条边加进来时悄悄失效）；② **根源变量的入度必须恒为 0** —— 不许有任何规则写它（写了它就掉成枢纽，而扰动界面仍把它当因，静默错答）；③ **根源必须真进 `world.state`** —— 引擎 `propagateTick(graph, **state**, …)` 只读世界态、不读对象属性，只在属性上加而不进 state ⇒ 请求成功、下游一动不动（本仓点名的「静默错答的老形态」）。⇒ 验收判据是「扰它下游真的动」，不是「变量登记了」。 | SEAM `apps/datacore/test/sim-root-procurement.seam.test.ts`（①入度臂现算 ②落点臂咬 world.state ③/③b 传导臂逐值对系数 ④真 HTTP 四跳全链 ⑤R6） + `test/seed-demo-propagation.test.ts`「逐条真触发」采购根源组 |
 
 > **WO-MOCK-SCALE-TRUTH 增补 · R18 尺度自洽的第七层「mock 轴」**（2026-08-15 实测立·门见 §7 `mock-scale-truth`）：
 > R18 原文守的是**真后端内部**六层（物理/需求/产能/订单/财务/realized）round-trip 自洽。今天实测到它**盖不住的一轴**：
