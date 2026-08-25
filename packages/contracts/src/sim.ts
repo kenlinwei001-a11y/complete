@@ -179,9 +179,55 @@ export const SimSessionSchema = z.object({
    * 故服务端答复里它总在。
    */
   disabledRuleKeys: z.array(z.string()).optional(),
+  /**
+   * **一个 tick 等于几天**（WO-SIM-DRILL-P12 · G-DRILL-1 · PRD-sim-drill-parallel-world §4.5）。
+   *
+   * ══ 今天的行为是 X，应该是 Y ═══════════════════════════════════════════════
+   * **X（今天）**：全仓**没有任何东西**声明 tick 与天的换算关系（实测
+   * `grep -rn tickDays` 全仓 **0 命中**；金丝雀：同目录 `durationTicks` 在
+   * `packages/contracts/src` 命中 **7** ⇒ 工具没坏，是真的没有）。于是屏上「推进 tick」
+   * 与求解器侧吃天的 `risk_timeline.horizon`（原文「推演天数·默认 30」）、
+   * `sop_reschedule.advanceDays` **锚在两个互不相干的刻度上** ——
+   * 「第 12 天越线」和「第 12 个 tick 越线」会是两个不同的日子，而屏上看不出来。
+   * **Y（应该）**：一个显式的换算基准跟着**世界**走，两条路（传导 tick / 求解器 day）
+   * 都从它换算，于是同一次演习里的「天」只有一个意思。
+   *
+   * ══ 为什么挂在 `SimSession` 上，而不是塞进沙盘组件 state ═══════════════════
+   * 因为**下游四页要读它**。`views/sim/console/**` 的会话单源是 `useConsoleSession`，
+   * 它经 `pickLatestRunningSession` 从 `GET /a/v1/sim/sessions` 的 `SimSessionListItem`
+   * 里挑一条整个返回 —— 而 `SimSessionListItemSchema = SimSessionSchema.omit({baseSnapshot})`，
+   * 故**本字段一加，四页立刻够得着，零改动**。
+   * 反过来若只存在沙盘自己的 `useState` 里，四页永远拿不到：
+   * `MetricGantt.tsx` 的横轴至今直接渲染 `series.ticks` 的裸序号（`0 1 2 …`），
+   * 用户在沙盘输「30 天」、切到指控台看到的还是 tick —— 两半各自绿、合起来对不上，
+   * 正是本仓「绿测试≠能用·断在接缝」的老形态。
+   * ⚠ 本单只保证**四页够得着**；四页真的按天显示是 `WO-SIM-CONSOLE-DAYS` 的事，别在这里改它们。
+   *
+   * 缺省 `1`（一 tick = 一天，与 A8 模拟时钟「一 tick = 一个模拟日」同口径）⇒
+   * 本字段引入前建的世界读出来恒 `1`，行为逐字节不变（additive · 可回退 RL9）。
+   */
+  tickDays: z.number().int().min(1).default(1),
   createdAt: z.string(),
 });
 export type SimSession = z.infer<typeof SimSessionSchema>;
+
+/**
+ * 「推演 N 天」→ 要推几个 tick（PRD §4.5 的 `ceil(N / tickDays)`）。
+ *
+ * 放契约里的理由与 `isPerturbationActiveAt` 逐条相同：**UI 与引擎必须用同一份判据**。
+ * 各写一份 = 第二套真相源 —— 屏上说推 30 天、引擎推了 30 个 tick（而一 tick 是 7 天），
+ * 这种错不会崩、只会静默算错 210 天。
+ */
+export function ticksForDays(days: number, tickDays: number): number {
+  const d = Math.max(0, Math.floor(days));
+  const td = Math.max(1, Math.floor(tickDays));
+  return Math.ceil(d / td);
+}
+
+/** 反向：第 `tick` 个 tick 对应第几天（屏上横轴换算的唯一实现）。 */
+export function daysForTicks(ticks: number, tickDays: number): number {
+  return Math.max(0, Math.floor(ticks)) * Math.max(1, Math.floor(tickDays));
+}
 
 // ── 会话**列表**投影（WO-SIM-SESSIONS-PROJECTION · 列表不带世界内容） ───────────────────
 /**
@@ -650,6 +696,22 @@ export const SimMetricSeriesResponseSchema = z.object({
   toTick: z.number().int(),
   /** 窗口内逐格 tick（升序连续）。`metrics[*].baseline/actual` 与它**同长同序**。 */
   ticks: z.array(z.number().int()),
+  /**
+   * **这条时间轴的刻度单位**：一格 `ticks` 等于几天（WO-SIM-DRILL-P12 · 见 `SimSession.tickDays`）。
+   *
+   * ══ 为什么回包自带口径（方案 A），而不是让消费方从 session 另取（方案 B）══════════
+   * 消费方 `views/sim/console/MetricGantt.tsx` 的横轴**直接渲染 `series.ticks` 的裸序号**，
+   * 它手上只有这一个响应。走 B 就得让每个消费方各自再拼一次 `useConsoleSession` ——
+   * 而「换算口径从哪来」这件事一旦有两个出处，迟早漂（本仓治过多次的第二套真相源）。
+   *
+   * ⚠ **体积顾虑已实测排除，不是拍脑袋**：本端点历史上曾 116MB → 4.8KB
+   * （病根是 `baseSnapshot` 那种 **O(N × 世界规模)** 的负载），而本字段是**一个标量**。
+   * 真测（4071 · seed 42 · 6 格窗口）：回包 `289 → 302` 字节，**增量恒 13 字节**，
+   * 与世界规模、窗口长度、指标条数**全部无关**（O(1)）。两种形状不是一回事，不构成回潮。
+   *
+   * 缺省 `1` ⇒ 本字段引入前的响应照旧解析、读出来恒 `1`（additive · 可回退）。
+   */
+  tickDays: z.number().int().min(1).default(1),
   /**
    * 本页指标，序由 `appliedOrder` 决定（`key` 档 = 字典序升序 = 历史行为；
    * `magnitude` 档 = 变化幅度降序 + key 升序 tiebreak）。两档都是全序 ⇒ R6 字节级可复现。
