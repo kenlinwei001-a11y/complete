@@ -25,6 +25,38 @@ import {
  * HTTP DataCore client: forwards every call to DataCore's REST API with the user's
  * JWT passed through (OBO). Connection errors → DATACORE_UNAVAILABLE.
  */
+
+/**
+ * WO-DSH-GOV-CREDENTIAL · 鉴权载体装配（**单一实现**，`call()` 唯一出处）。
+ *
+ * 四支，**次序 load-bearing**：
+ *   ① `ctx.token`       → `Bearer`（用户 OBO，生产主路）
+ *   ② `ctx.debugUser`   → `x-debug-user`（开发链路；DataCore 生产态默认**不认**，见 ③ 的理由）
+ *   ③ `ctx.serviceToken`→ `x-service-token` + `x-tenant-id`（+ `x-service-caller`）
+ *   ④ 皆无            → `{}`（裸请求 ⇒ DataCore 401·**fail-closed**，刻意保留：
+ *                         `SERVICE_TOKEN` 没配时治理必须拒，不许因为"没凭据"就放行）
+ *
+ * ③ 排在 ①② **之后**：万一某个 ctx 同时带用户 token 与服务令牌，用户身份优先 ——
+ * 服务令牌在 DataCore 侧是**跨租户**身份，让它顶掉用户身份 = 提权。次序即防线。
+ *
+ * `x-tenant-id` 是**必发**的：DataCore 对服务间调用显式要求该头
+ * （缺失 → `X-Tenant-Id header required for service calls`，400 而非 401，
+ * 极易被误读成"载荷坏了"）。
+ */
+function authHeaders(ctx: ToolAuthCtx): Record<string, string> {
+  if (ctx.token) return { authorization: `Bearer ${ctx.token}` };
+  if (ctx.debugUser) return { "x-debug-user": encodeURIComponent(ctx.debugUser) };
+  if (ctx.serviceToken && ctx.tenantId) {
+    return {
+      "x-service-token": ctx.serviceToken,
+      "x-tenant-id": ctx.tenantId,
+      // DataCore 据此拼 `userId = "svc:" + caller`；ctx.userId 已是 `svc:xxx` 形态时剥前缀，
+      // 使 A 侧审计里的主体与 B 侧端点自述的主体**逐字一致**（对不上就没法跨系统追一次调用）。
+      "x-service-caller": ctx.userId?.startsWith("svc:") ? ctx.userId.slice(4) : (ctx.userId ?? "agentcore"),
+    };
+  }
+  return {};
+}
 async function call<T>(
   baseUrl: string,
   ctx: ToolAuthCtx,
@@ -40,11 +72,7 @@ async function call<T>(
       method,
       headers: {
         "content-type": "application/json",
-        ...(ctx.token
-          ? { authorization: `Bearer ${ctx.token}` }
-          : ctx.debugUser
-            ? { "x-debug-user": encodeURIComponent(ctx.debugUser) }
-            : {}),
+        ...authHeaders(ctx),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       ...(signal ? { signal } : {}),

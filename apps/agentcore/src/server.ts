@@ -2178,10 +2178,25 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (!(Array.isArray(ruleKeys) || ruleKeys === "ALL_APPLICABLE")) {
       throw new HttpError(400, "VALIDATION_ERROR", "governance.ruleBindings.ruleKeys 需 string[] | \"ALL_APPLICABLE\"");
     }
+    // WO-DSH-GOV-CREDENTIAL · 这个 ctx 要**真的能过 DataCore 的鉴权**。
+    //
+    // 修前：ctx 只有 {tenantId, userId, roles}，一个鉴权载体都没有 ⇒ `tools/datacore-http.ts`
+    // 的鉴权链落到「什么头都不发」那一支 ⇒ DataCore `/a/v1/rules/evaluate` 判 401 ⇒
+    // 插件 fail-closed 转 deny ⇒ 模型重试 ⇒ 而 `final_answer` 在 watchdog 的 META_TOOLS 里
+    // 被豁免、deny 又发生在 pre-execute（watchdog 挂 post-execute，且 pre-execute 的 deny
+    // 不调 next() ⇒ post-execute 根本不触发）⇒ 计数器永不递增 ⇒ 无人喊停。
+    // 实测代价：一条问句 305,532 + 111,780 tokens / ~4,963 轮，答案为空。
+    //
+    // `roles:["service"]` 只是**本进程内**的自述，DataCore 看不见它 —— 跨进程的身份只能靠 wire 上的头。
+    // 这正是「接了线没数据」与「压根没接线」之外的第三态：**接了线，但线上什么都没有**。
+    //
+    // `SERVICE_TOKEN` 未配置 ⇒ 本字段 undefined ⇒ 仍旧裸请求 ⇒ 401 ⇒ deny。
+    // 这是**有意保留的 fail-closed**：没凭据时治理必须拒，不许退化成放行。
     const ctx = {
       tenantId: typeof body.tenantId === "string" ? body.tenantId : "platform",
       userId: "svc:dsh-governance",
       roles: ["service"],
+      serviceToken: deps.config.SERVICE_TOKEN,
     };
     const args = body.arguments;
     const payload = {
