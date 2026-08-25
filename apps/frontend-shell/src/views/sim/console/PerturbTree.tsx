@@ -21,9 +21,15 @@
  * ④ **选项集** = 契约 `baseScopeOptions()`（基地册 13 条 + 末位「全网」，单一出处，
  *    与 `SandboxAttr.tsx` 共用；改前两边各存一份逐字节相同的副本）。
  * ⑤ **置灰判据** = 契约 `canDrillByBase(选中因子.objectType)` —— 本文件**不认识任何类型名**。
- *    落点类型没有基地维度（实测 `ChangeoverMatrix` / `Material`）时，13 条基地选项 `disabled`
- *    + `aria-disabled`，「全网」保持可选，并在下方给一句原因。**置灰不隐藏**：隐藏等于假装
- *    没这功能，用户会以为自己没找对地方。有基地维度的因子一个像素不变（由用例咬住）。
+ *    落点类型没有基地维度时，13 条基地选项 `disabled` + `aria-disabled`，「全网」保持可选，
+ *    并在下方给一句原因。**置灰不隐藏**：隐藏等于假装没这功能，用户会以为自己没找对地方。
+ *    有基地维度的因子一个像素不变（由用例咬住）。
+ *    **2026-08-25 实测**（起真 datacore 内存模式 `SEED_DEMO=1`，`/readyz` ready 后逐类型拉真实例）：
+ *    今天落在「无基地维度」这一侧的是 `ChangeoverMatrix`（30 条·`lineId` 30/30 全 null）与
+ *    `Material`（8 条·无任何基地字段）。**这两个类型名写在注释里只是当天的观测，不是判据** ——
+ *    判据在契约 `OBJECT_TYPE_BASE_DRILL`，那张表改了这里不用动。
+ *    复验：`curl -H 'X-Debug-User: demo:admin:admin' '<datacore>/a/v1/objects?type=Material&limit=5'`
+ *    看 `props` 里有没有 `baseId`（⚠ 参数名是 `type` 不是 `objectType`，写错回 400 不是空列表）。
  *
  * ── 诚实位：POST 这条线今天「接了线没数据」，不是「没接线」───────────────────
  * 契约 `PerturbationSchema.targetObjectId` 要的是**对象实例 id**，而因子目录只给到
