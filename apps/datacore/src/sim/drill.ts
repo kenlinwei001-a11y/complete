@@ -656,9 +656,14 @@ const SCREEN_QUANTITIES_NOT_ANSWERED_HERE: readonly {
     reason:
       "时间条的三类元素各自无承载物：① `76.86KM` —— 本仓只有**基地对**直线距离（`baseDistanceKm` 于 BASE_REGISTRY 经纬度），" +
       "没有任何「某批号在某条时间轴上还剩多少公里」的量，硬接就是发明一套映射；" +
-      "② `01:20–02:40` 刻度是版面轴标；③ `阻滞时间 24:42` 的**环节级**对应量已经在回包里了 —— " +
-      "就是 `node.steps[].days`（非增值天数）与 `node.nodeDays`，只是口径是**天**不是分秒。",
-    probe: "读回包的 node.steps[].days / node.nodeDays；再看 `apps/datacore/src/synthetic/battery.ts` 的 baseDistanceKm 确认距离只到基地对粒度。",
+      "② `01:20–02:40` 是墙钟时刻（同一条 strip 上并排挂着 KM 与分秒），本仓的时间刻度只有 A8 模拟**日**，量纲对不上；" +
+      "③ `阻滞时间 24:42` 的**环节级**对应量已经在回包里了 —— 就是 `node.steps[].days`（非增值天数）与 `node.nodeDays`，只是口径是**天**不是分秒。" +
+      "⚠ 另有一条独立事实：这条 strip 今天**连取数口都没有** —— 前端 `SandboxDetailRoute.tsx` 里 `strip` 零命中" +
+      "（金丝雀：同文件 `nodeId` 10 命中 ⇒ 工具没坏），`projectNodeDetail` 也只覆写 card/flow 两块。" +
+      "也就是说它不是「端点没答」，是**没有任何端点被指望去答它**；补进本回包等于凭空造一个没人要的字段。",
+    probe:
+      "grep -c strip apps/frontend-shell/src/views/sim/console/SandboxDetailRoute.tsx（= 0）；" +
+      "再读回包的 node.steps[].days / node.nodeDays，与 `apps/datacore/src/synthetic/battery.ts` 的 baseDistanceKm（只到基地对粒度）。",
   },
 ] as const;
 
