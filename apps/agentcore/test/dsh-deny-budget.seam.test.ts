@@ -157,9 +157,8 @@ describe("WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的
   );
 
   it("④ 缺省**启用**：未设 env ⇒ 上界仍在（不许是「接了线没数据」）", async () => {
-    const { parseDenyCap, installDenyBudget } = (await import(
-      "../../../packages/dsh-harness/plugins/platform-watchdog.mjs"
-    )) as {
+    // @ts-expect-error -- harness 侧纯 JS 插件无声明文件；形状由右侧 as 断言锁（同 dsh-watchdog.test.ts D1/D2）
+    const { parseDenyCap, installDenyBudget } = (await import("../../../packages/dsh-harness/plugins/platform-watchdog.mjs")) as {
       parseDenyCap: (raw: unknown) => number | undefined;
       installDenyBudget: (ctx: unknown, env?: Record<string, string | undefined>) => { enabled: boolean; cap?: number };
     };
@@ -180,9 +179,8 @@ describe("WO-DSH-GOV-CREDENTIAL 修② · deny 侧上界（pre-execute 拒绝的
   });
 
   it("⑤ 计数不设 meta 豁免（这正是既有看门狗致盲的第二条原因）", async () => {
-    const { installDenyBudget } = (await import(
-      "../../../packages/dsh-harness/plugins/platform-watchdog.mjs"
-    )) as {
+    // @ts-expect-error -- harness 侧纯 JS 插件无声明文件；形状由右侧 as 断言锁（同 dsh-watchdog.test.ts D1/D2）
+    const { installDenyBudget } = (await import("../../../packages/dsh-harness/plugins/platform-watchdog.mjs")) as {
       installDenyBudget: (
         ctx: unknown,
         env?: Record<string, string | undefined>,
