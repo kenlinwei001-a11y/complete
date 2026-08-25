@@ -33,6 +33,15 @@
 | 枢纽 | 13 | 有上游也有下游，扰它等于从半路插入 |
 | 末端 | 20 | 出度 0，通常是「看」的不是「扰」的 |
 
+> ⚠ **2026-08-25 WO-SIM-ROOT-TRIAD 落地后，上表已过期**（原文留着是本文件的来历，不是今天的口径）。
+> 现算：**39 条边 / 39 个量纲 / ★根源 5 · 枢纽 14 · 末端 20**。
+> 根源 = `deliveryDelay` · `priceShock` · **`forecastBias`** · **`orderChurn`** · **`equipmentFailure`**；
+> **`demandPressure` 已从根源降级为一级衍生**（入度 0 → 1，被 `forecastBias` 写）。
+> 新三个的传递闭包影响面：`forecastBias` **19** · `orderChurn` **18** · `equipmentFailure` 3
+> —— 前两个直接超过原来最大的 `demandPressure`(18)。
+> **复算口径**（别信这张表，自己跑）：从 `seed.ts` 的 `DEMO_PROPAGATION_RULES` 按对象字面量切段抽
+> `(sourceStateVar, targetStateVar)`，条数须 === `grep -c "sourceStateVar:" apps/datacore/src/seed.ts`。
+
 按**传递闭包影响面**排序（扰动它最终会波及多少个状态变量）：
 
 | 层级 | 落点数 | 影响面 | 变量 |
@@ -53,26 +62,40 @@
 
 | 仓主点名的高频根源 | 系统现状 | 判定 |
 |---|---|---|
-| **销售预测准确性** | 只有 `demandPressure`（需求压力），**没有「预测偏差」这个量** | ◐ 勉强能用替代，但语义不对 —— 预测偏差有方向（高估/低估），压力没有 |
-| **订单临时插单 / 取消** | **没有任何订单变更类根源变量** | ❌ 缺 |
-| **物料采购**（仓主点名是根源） | **没有采购根源变量**。`shortageRisk` 是衍生结果 | ❌ 缺 |
-| **产线设备故障 / 估值** | `loadPressure` 在图里（760 个落点）但语义是「负荷压力」，**不是故障** | ❌ 缺 |
+| **销售预测准确性** | 只有 `demandPressure`（需求压力），**没有「预测偏差」这个量** | ✅ **已补**（`forecastBias`·2026-08-25） |
+| **订单临时插单 / 取消** | **没有任何订单变更类根源变量** | ✅ **已补**（`orderChurn`·2026-08-25） |
+| **物料采购**（仓主点名是根源） | **没有采购根源变量**。`shortageRisk` 是衍生结果 | ❌ 缺（G-ROOT-3·另一张单） |
+| **产线设备故障 / 估值** | `loadPressure` 在图里（780 个落点）但语义是「负荷压力」，**不是故障** | ✅ **已补**（`equipmentFailure`·2026-08-25） |
 
 ⚠ **`loadPressure` 那条订正见 §0** —— 它**在**传导图里，我第一版说它不在，是抽取器坏了。
 
 ## 3 · 待补（后端·种子层 + 规则层）
 
-### G-ROOT-1 · 销售预测偏差
+### ~~G-ROOT-1 · 销售预测偏差~~ ✅ 已落地（WO-SIM-ROOT-TRIAD · 2026-08-25 · 分支 `claude/handoff-wo-sim-root-triad`）
 
-- 新增状态变量 `forecastBias`（预测偏差·带方向，正=高估/负=低估）
-- 落点：`DemandSegment`(3) / `AnnualScenario`(3) / `Model`(6)
-- 传导边：`forecastBias → demandPressure`（现有根源降级为一级衍生）
+- ~~新增状态变量 `forecastBias`（预测偏差·带方向，正=高估/负=低估）~~ ✅ 已加，中文名「销售预测偏差（正=高估）」
+- ~~落点：`DemandSegment`(3) / `AnnualScenario`(3) / `Model`(6)~~
+  ⚠ **实测订正：只能落 `Model`**。`DemandSegment` 在 `batteryLinkTypes()` 里**零 linkType**、
+  `AnnualScenario` 只有 `scenario_to_target/capex/finance` 三条出边而三个 target 都不带 `demandPressure`
+  ⇒ 挂上去过不了「方向可达门」，且 `propagateTick` 永远取不到 target
+  = 屏上看着施加成功、下游一动不动（本文件 §3 G-ROOT-5 点名的那个形态）。
+- ~~传导边：`forecastBias → demandPressure`（现有根源降级为一级衍生）~~
+  ✅ `Model.forecastBias --model_demanded_by_order--> Order.demandPressure`，**系数 −0.6**（负号即方向）。
+  `demandPressure` 入度 **0 → 1**，降级已落地并由接缝测试的「降级臂」钉住。
 
-### G-ROOT-2 · 订单临时插单 / 取消
+### ~~G-ROOT-2 · 订单临时插单 / 取消~~ ✅ 已落地（同上）
 
-- 新增 `orderChurn`（订单变更压力）
-- 落点：`Order`(24) / `OrderLine`(38)
-- 传导边：`orderChurn → releasePressure`（工单下达）、`orderChurn → splitPressure`（订单行拆分）
+- ~~新增 `orderChurn`（订单变更压力）~~ ✅ 已加，中文名「订单变更压力」
+- ~~落点：`Order`(24) / `OrderLine`(38)~~ ⚠ **实测订正：落 `Order`(24)**。
+  `OrderLine` 是**下游**（`splitPressure` 的承载物），不是这个根源的落点。
+- ~~传导边：`orderChurn → releasePressure`（工单下达）~~
+  ⚠ **实测订正：这条边接不到，改接 `order_for_model`**。`releasePressure` 挂在 `WorkOrder` 上，
+  而 `workOrderProps` 只有 `modelId`/`lineId`/`baseId`、**根本没有订单 FK**
+  ⇒ 连一条确定性的 `Order→WorkOrder` 边都投影不出来。改接之后 `orderChurn` 仍**真的走到**
+  `releasePressure`，只是四跳（`→Model.demandLoad→Base.loadIndex→(delay1)Line.utilPressure→WorkOrder.releasePressure`），
+  接缝测试的远端臂断言的正是这一跳真的到了。
+- ~~`orderChurn → splitPressure`（订单行拆分）~~
+  ✅ `Order.orderChurn --order_has_line--> OrderLine.splitPressure`（0.7），直连、无订正。
 
 ### G-ROOT-3 · 物料采购（仓主点名的根源）
 
@@ -80,11 +103,21 @@
 - 落点：`PurchaseOrder`(30) / `Supplier`(15) / `MaterialBatch`(24)
 - 传导边：`procurementDelay → shortageRisk`（**把库存从"源"改回"果"**，与仓主判据一致）
 
-### G-ROOT-4 · 设备故障
+### ~~G-ROOT-4 · 设备故障~~ ✅ 已落地（WO-SIM-ROOT-TRIAD · 2026-08-25 · 分支 `claude/handoff-wo-sim-root-triad`）
 
-- 新增 `equipmentFailure`（设备故障率）
-- 落点：`Equipment`(780) / `EquipmentDowntime`(166)
-- 传导边：`equipmentFailure → loadPressure` → 已有下游
+- ~~新增 `equipmentFailure`（设备故障率）~~ ✅ 已加，中文名「设备故障率」
+- ~~落点：`Equipment`(780) / `EquipmentDowntime`(166)~~
+  ⚠ **实测订正：只能落 `Equipment`(780)**，`EquipmentDowntime` 被**两道门各堵一半**：
+  ① `dt_for_equip` 的 linkType 声明了很久而 `service.ts` **一条实例都没物化过**（`putLink` 全表零命中）
+  ⇒ 过不了方向可达门；② 就算补物化，`EquipmentDowntime` 会成为**只当源不当 target** 的类型 ⇒
+  `process-tick-coverage.seam.test.ts §C4` 的 `sourceOnly` 恒空门当场红。
+  语义上也是 `Equipment` 更对：故障**率**是设备的属性，那 166 条停机记录是故障的**证据**。
+- ~~传导边：`equipmentFailure → loadPressure` → 已有下游~~
+  ⚠ **实测订正：必须多一跳**（`loadPressure` 挂在 `Equipment` 自己身上，全表零自环 linkType）。
+  ✅ `Equipment.equipmentFailure --equip_used_in--> Process.queuePressure`(0.6)
+  → 既有 `process_uses_equipment` → `Equipment.loadPressure`。业务因果为真：
+  某台设备故障 ⇒ 它那道工序排队 ⇒ 该工序其余设备负荷被顶上去。
+  接缝测试的远端臂断言 `Equipment.loadPressure` **真的动**，不是只到工序就收工。
 
 ### G-ROOT-5 · 三类属性投进 world.state（合并自另一份缺口）
 
@@ -127,14 +160,23 @@ OEE 那四个字段一个都没进来。
 
 ## 5 · 排期建议
 
-| 序 | 事项 | 依赖 | 画像 |
-|---|---|---|---|
-| 1 | 前端三层重排（用现有 3 个根源） | 无 | 中 |
-| 2 | **G-ROOT-3 物料采购** | 无 | 重（改种子+规则） |
-| 3 | **G-ROOT-2 订单插单/取消** | 无 | 重 |
-| 4 | G-ROOT-1 预测偏差 | 无 | 重 |
-| 5 | G-ROOT-4 设备故障 | 无 | 重 |
-| 6 | G-ROOT-5 三类属性进 state | 需先测规模影响 | 重 |
+| 序 | 事项 | 依赖 | 画像 | 状态 |
+|---|---|---|---|---|
+| 1 | 前端三层重排（用现有 3 个根源） | 无 | 中 | ✅ WO-SIM-DRILL-P12 |
+| 2 | **G-ROOT-3 物料采购** | 无 | 重（改种子+规则） | 在跑（`handoff-wo-sim-root-procurement`） |
+| 3 | **G-ROOT-2 订单插单/取消** | 无 | 重 | ✅ WO-SIM-ROOT-TRIAD |
+| 4 | G-ROOT-1 预测偏差 | 无 | 重 | ✅ WO-SIM-ROOT-TRIAD |
+| 5 | G-ROOT-4 设备故障 | 无 | 重 | ✅ WO-SIM-ROOT-TRIAD |
+| 6 | G-ROOT-5 三类属性进 state | 需先测规模影响 | 重 | ⛔ 未做 |
+
+### ⚠ G-ROOT-5 的规模数据（WO-SIM-ROOT-TRIAD 顺手实测，供排 6 时用）
+
+本单把 3 个根源投进 `world.state` 之后的实测涨幅见交回报告。要点：
+**「投进 state」不是一个独立动作** —— `deriveSeedBaseSnapshot` 的口径是 `varsByType(rules)`
+（规则触及的「类型 × 变量」，source/target 两端都算），所以**加规则 = 落点自动进 state**。
+G-ROOT-5 想投的那三类（库存 / BOM / 设备 OEE）之所以进不去，不是因为"漏了一步投放代码"，
+而是因为**没有任何传导规则读写它们** —— 修法是给它们接边，不是写投放代码。
+这一条订正很重要：照原文去找「投放代码」会找不到，然后以为是自己没看懂。
 
 **2 排在最前的理由**：仓主直接点名「物料采购是根源扰动因素」，
 且它能把库存从「源」纠正回「果」—— 这一条同时修正了现有模型的语义错误，
