@@ -234,7 +234,7 @@ export function SandboxAttr({ sessionId, so }: SandboxAttrProps = {}): JSX.Eleme
                 <u>›</u>
               </span>
             </div>
-            <SeriesGrid rows={series.rows} ticks={series.ticks} playheadPct={series.playheadPct} source={series.source} unitsKnown={series.unitsKnown} />
+            <SeriesGrid rows={series.rows} ticks={series.ticks} playheadPct={series.playheadPct} source={series.source} unitsKnown={series.unitsKnown} tickDays={series.tickDays} />
           </section>
         </div>
       </div>
@@ -275,12 +275,15 @@ function SeriesGrid({
   playheadPct,
   source,
   unitsKnown,
+  tickDays,
 }: {
   rows: readonly SeriesRow[];
   ticks: readonly string[];
   playheadPct: number;
   source: "endpoint" | "placeholder";
   unitsKnown: boolean;
+  /** 轨道横轴的刻度单位（一格几天）。占位模式不给 —— 那不是按天的轴。 */
+  tickDays?: number;
 }): JSX.Element {
   // 竖排组：`group` 只在该组第一行给，续行归并到上一组。
   const groups: { title: string; count: number }[] = [];
@@ -292,7 +295,7 @@ function SeriesGrid({
   const span = Math.max(1, ticks.length - 1);
 
   return (
-    <div className={styles.grid} data-testid="sandbox-attr-series" data-source={source} data-units-known={unitsKnown ? "1" : "0"}>
+    <div className={styles.grid} data-testid="sandbox-attr-series" data-source={source} data-units-known={unitsKnown ? "1" : "0"} data-tick-days={tickDays === undefined ? "" : String(tickDays)}>
       <div className={styles.gcol}>
         <div className={styles.gcap} />
         {groups.map((g) => (

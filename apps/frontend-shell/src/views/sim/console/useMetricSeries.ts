@@ -78,6 +78,8 @@ import { api } from "@/api/apiClient";
 // 在这里再写一遍 `/a/v1/sim/sessions/${id}/metric-series` 就是第二份路径字面量 ——
 // 后端哪天改了前缀，两处只会改一处，而没有任何东西会报错。
 import { metricSeriesPath } from "./useParetoFrontier";
+// tick → 天 的换算与措辞：**同目录唯一一份**（它再往下转调契约的 `daysForTicks`）。
+import { tickAxisLabels, tickDaysOf } from "./tickAxis";
 
 /** 在册节点 id 的字面量联合（派生自契约本尊，不是本地起个同名别名白嫖）。 */
 type RegisteredChainNodeId = ChainNodeDef["nodeId"];
@@ -145,8 +147,21 @@ export interface MetricRow {
 
 export interface MetricSeries {
   rows: MetricRow[];
-  /** 轨道时间刻度文本（`00:00` … `28:00`），条数即刻度数。 */
+  /**
+   * 轨道时间刻度文本，条数即刻度数。**两种数据模式下这一列的口径不同，别合成一句**：
+   *  · **占位模式** ⇒ 规格那套墙钟时刻 `HOUR_TICKS`（`00:00` … `28:00`），像素 1:1 咬着它；
+   *  · **真端点模式** ⇒ 按**天**说话（`第 30 天`），由 `tickAxis.ts` 从回包的 tick 序号换算；
+   *    会话拿不到 `tickDays` 时退回 `第 N 拍` 并**不猜**天数（判据表见 `tickAxis.ts` 头注）。
+   */
   ticks: string[];
+  /**
+   * 这条轴的**刻度单位**：一格 tick 等于几天（`WO-SIM-CONSOLE-DAYS`）。
+   *
+   * 真端点模式取回包的 `tickDays`（缺 ⇒ `1`，契约明写「缺省 1」）；
+   * 占位模式**不给** —— 那套墙钟时刻压根不是按天的轴，给一个数就是替它编一个口径。
+   * 视图把它挂在 `data-tick-days` 上：属性对测试可见、对像素不可见。
+   */
+  tickDays?: number;
   /** 播放头位置，占轨道宽度的百分比。 */
   playheadPct: number;
   /**
@@ -407,9 +422,14 @@ export function projectMetricSeries(res: SimMetricSeriesResponse): MetricSeries 
 
   return {
     rows,
-    // 逐格照抄回包的 tick 序列（后端给的是整型 tick，屏上是文本刻度）。
-    // **不补齐、不改写、不套 `HOUR_TICKS` 那套占位时刻** —— 那是墙钟口径，这里是模拟时钟。
-    ticks: ticks.map((t) => String(t)),
+    // 回包的 tick 序列 → **按天**的轴标签（`WO-SIM-CONSOLE-DAYS`）。
+    // 口径 `res.tickDays` **随回包下发**（契约选的方案 A，理由见 `tickAxis.ts` 头注）——
+    // 不从 `useConsoleSession` 另取，那会造出第二个口径出处。
+    // 换算与措辞的唯一实现在 `tickAxis.ts`，那里再往下转调契约的 `daysForTicks` ——
+    // **别在这里 `map` 一份出来**：本单消灭的正是三处逐字节相同的 `ticks.map(String)`。
+    // **不补齐、不套 `HOUR_TICKS` 那套占位时刻** —— 那是墙钟口径，这里是模拟时钟。
+    ticks: tickAxisLabels(ticks, res.tickDays),
+    tickDays: tickDaysOf(res.tickDays),
     playheadPct: playheadPctOf(res),
     source: "endpoint",
   };

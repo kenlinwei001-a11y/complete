@@ -316,6 +316,9 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
               data-testid="sandbox-opt-grid"
               data-source={exec.source}
               data-lane-provenance={exec.laneProvenance}
+              // 轨道横轴的刻度单位（`WO-SIM-CONSOLE-DAYS`）。占位模式给空串不给数 ——
+              // 那套墙钟时刻不是按天的轴，编一个口径出来就是拿假数冒充实测。
+              data-tick-days={exec.tickDays === undefined ? "" : String(exec.tickDays)}
             >
               {/* 竖排组名 */}
               <div className={styles.gcol}>

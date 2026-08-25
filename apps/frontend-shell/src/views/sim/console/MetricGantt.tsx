@@ -76,7 +76,14 @@ export function MetricGantt({ sessionId }: { sessionId?: string }): JSX.Element 
   const runs = groupRuns(series.rows);
 
   return (
-    <div className={styles.gantt} data-testid="sandbox-home-gantt" data-source={series.source}>
+    <div
+      className={styles.gantt}
+      data-testid="sandbox-home-gantt"
+      data-source={series.source}
+      // 轨道横轴的刻度单位（`WO-SIM-CONSOLE-DAYS`）。占位模式**给空串不给数**——
+      // 那套墙钟时刻不是按天的轴，编一个口径出来就是拿假数冒充实测。
+      data-tick-days={series.tickDays === undefined ? "" : String(series.tickDays)}
+    >
       {/* 竖排域名 */}
       <div className={styles.gcol}>
         <div className={styles.gcap} />
