@@ -323,8 +323,21 @@ describe("WO-SIM-FE-SERIES-WIRE · 指标甘特真取数（接缝）", () => {
     expect(cellTexts(g, COL.name)).toHaveLength(body.metrics.length);
     expect(cellTexts(g, COL.name)).toEqual(body.metrics.map((m) => m.label));
 
-    // 刻度逐格等于回包（后端给整型 tick ⇒ 屏上是它的字面量）。
-    expect(laneTicks(g)).toEqual(body.ticks.map((t) => String(t)));
+    // 刻度逐格来自回包（后端给整型 tick，屏上是它换算后的文本）。
+    //
+    // ⚠ **WO-SIM-CONSOLE-DAYS 改了这一行的期望值 —— 改的是措辞不是判据**，别读成放宽：
+    //   原文是 `body.ticks.map((t) => String(t))`（裸序号 `0 1 2 3`）。那一版正是那张单要治的病：
+    //   用户输「推演 30 天」，屏上给的是 tick 序号。
+    //   现在轨道头一律经 `views/sim/console/tickAxis.ts` 换算。
+    // ⚠ **这里是「拍」不是「天」，而且这恰恰是对的**：本文件的 `mount({ sessionId })` 走
+    //   `useConsoleSession` 的 `explicit` 那条路 —— 宿主只给了 id，会话列表这一跳 `enabled:false`
+    //   ⇒ **一条会话都没查过** ⇒ 拿不到 `tickDays` ⇒ 按契约的「缺省 1」猜一个天数会在
+    //   真实 `tickDays=7` 的世界上把「第 35 天」写成「第 5 天」（差 7 倍且不会有任何东西报错）。
+    //   故那一支**说得出自己不知道**：按拍说话。「会话在手 ⇒ 按天」那一半由
+    //   `sim-console-days.seam.test.tsx` 咬（两臂 `tickDays=1` / `tickDays=7`），本门不重复。
+    expect(laneTicks(g)).toEqual(body.ticks.map((t) => `第 ${t} 拍`));
+    // 判据没变的那一半：数字部分仍**逐格等于回包**，一格不多一格不少。
+    expect(laneTicks(g).map((s) => s.replace(/\D/g, ""))).toEqual(body.ticks.map((t) => String(t)));
     // 且**确实不是**占位那套墙钟时刻 —— 否则上一条可能只是"两边恰好都是 4 条"。
     expect(laneTicks(g)).not.toEqual([...HOUR_TICKS]);
 
@@ -529,7 +542,9 @@ describe("WO-SIM-FE-SERIES-WIRE · 指标甘特真取数（接缝）", () => {
     await waitSource(one, "endpoint");
     const g = ganttOf(one);
 
-    expect(laneTicks(g), "单刻度回包没渲成一格刻度 ⇒ 下面读的不是我要读的那个东西").toEqual(["0"]);
+    // ⚠ WO-SIM-CONSOLE-DAYS 改了措辞（原文 `["0"]`），判据不变：**一格刻度、且就是第 0 拍**。
+    //   这里是「拍」不是「天」的理由与用例 ① 同一条（explicit 路 ⇒ 没查过会话 ⇒ 不猜天数）。
+    expect(laneTicks(g), "单刻度回包没渲成一格刻度 ⇒ 下面读的不是我要读的那个东西").toEqual(["第 0 拍"]);
     const lefts = laneTickLefts(g);
     // 反面先咬：`""` 正是 `left:"NaN%"` 被丢掉之后的原样。
     expect(lefts, "单刻度的 left 是空串 ⇒ 声明被 CSS 解析器丢了（NaN% 的原样），绝对定位的刻度塌回左沿").not.toEqual([""]);
