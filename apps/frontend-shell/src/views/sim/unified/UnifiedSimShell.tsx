@@ -233,6 +233,138 @@ function ModePanel({ mode, view }: { mode: UnifiedMode; view: ViewConfigVM }): J
   );
 }
 
+/**
+ * 右栏「改这一格会波及谁」。**四态各回各的**，一态都不许并进另一态：
+ *   ① 问不出来（这张卡没有落点对象 ⇒ 焦点根本组不出来）
+ *   ② 还没问 / 正在算
+ *   ③ 这一跳没走通 ⇒ **不知道**（再细分：功能没开 vs 别的原因）
+ *   ④ 后端答了 —— 而「答的是空」还要再分两态：确为叶子 vs 有算不出来的部分
+ *
+ * ⛔ 第 ④ 态那两半合并成一句「没有波及」就是造谎：契约原文写着
+ *    「items 空 + unresolved 空 = 焦点确为叶子；unresolved 非空 = 有算不出来的部分」。
+ */
+function ChangeImpactSection({
+  objectId,
+  stateVar,
+  asked,
+  onAsk,
+  query,
+}: {
+  objectId: string | null;
+  stateVar: string;
+  asked: ChangeFocus | null;
+  onAsk: (focus: ChangeFocus) => void;
+  query: { isLoading: boolean; isError: boolean; error: unknown; data: ChangeImpactPreview | undefined };
+}): JSX.Element {
+  const focus: ChangeFocus | null = objectId === null ? null : { kind: "stateVar", objectId, stateVar };
+  /** 问过的那一格，是不是**眼前**这一格 —— 否则上一张卡的答案会顶着当这一张的答案（静默错答）。 */
+  const isThisOne =
+    focus !== null &&
+    asked !== null &&
+    asked.kind === "stateVar" &&
+    asked.objectId === focus.objectId &&
+    asked.stateVar === focus.stateVar;
+
+  const body = (): JSX.Element => {
+    if (focus === null) {
+      return (
+        <div className={styles.calibre} data-testid="usim-impact-nofocus">
+          这张卡没有落点对象，问不出波及面 —— 这是问不出来，不是「没有波及」。
+        </div>
+      );
+    }
+    if (!isThisOne) {
+      return (
+        <button
+          type="button"
+          className={styles.tab}
+          data-testid="usim-impact-ask"
+          title="只读预览：不改世界线，也不推进任何一拍"
+          onClick={() => onAsk(focus)}
+        >
+          看看改这一格会波及谁
+        </button>
+      );
+    }
+    if (query.isLoading) {
+      return (
+        <div className={styles.calibre} data-testid="usim-impact-loading">
+          正在问 —— 还不知道
+        </div>
+      );
+    }
+    if (query.isError) {
+      const e = query.error;
+      const notEnabled = e instanceof ApiClientError && e.status === 404;
+      return (
+        <div className={`${styles.calibre} ${styles.warn}`} data-testid="usim-impact-error">
+          {notEnabled
+            ? `后端说传导预览这项功能不在：${(e as ApiClientError).message}`
+            : "这一跳没走通 —— 不知道有没有波及（这和「后端说没有波及」是两件事）"}
+        </div>
+      );
+    }
+    const d = query.data;
+    if (d === undefined) {
+      return (
+        <div className={styles.calibre} data-testid="usim-impact-empty-unknown">
+          没拿到回包 —— 不知道有没有波及
+        </div>
+      );
+    }
+    const counts = new Map<string, number>();
+    for (const it of d.items) counts.set(it.bucket, (counts.get(it.bucket) ?? 0) + 1);
+    const shown = d.items.slice(0, 12);
+    return (
+      <div data-testid="usim-impact-result" data-items={d.items.length} data-unresolved={d.unresolved.length}>
+        {d.items.length === 0 && d.unresolved.length === 0 ? (
+          <div className={styles.calibre} data-testid="usim-impact-leaf">
+            改这一格不波及任何下游 —— 这是后端给的结论，不是缺数据。
+          </div>
+        ) : (
+          <>
+            <div className={styles.calibre} data-testid="usim-impact-buckets">
+              {d.items.length === 0
+                ? "一条波及都没算出来"
+                : [...counts].map(([b, n]) => `${IMPACT_BUCKET_TEXT[b as keyof typeof IMPACT_BUCKET_TEXT]} ${n}`).join(" · ")}
+            </div>
+            {shown.length === 0 ? null : (
+              <ul className={styles.list} data-testid="usim-impact-list">
+                {shown.map((it) => (
+                  <li key={`${it.bucket}:${it.target}:${it.via}`}>
+                    {IMPACT_BUCKET_TEXT[it.bucket]} · {it.target} · {it.hops} 跳 · 经 {it.via}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {d.items.length > shown.length ? (
+              <div className={styles.calibre}>还有 {d.items.length - shown.length} 条没列出来</div>
+            ) : null}
+          </>
+        )}
+        {d.unresolved.length === 0 ? null : (
+          <div className={`${styles.calibre} ${styles.warn}`} data-testid="usim-impact-unresolved">
+            有 {d.unresolved.length} 处算不出来（所以上面那份不是全部）：
+            {d.unresolved.map((u) => `${u.what} 缺 ${u.missing}`).join("；")}
+          </div>
+        )}
+        {d.truncated ? (
+          <div className={`${styles.calibre} ${styles.warn}`} data-testid="usim-impact-truncated">
+            追到第 {d.maxHops} 跳就停了 —— 更远处有没有波及，这里答不了。
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  return (
+    <section className={styles.section} data-testid="usim-impact">
+      <div className={styles.sectionHead}>改这一格会波及谁</div>
+      {body()}
+    </section>
+  );
+}
+
 export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.Element {
   const session = useConsoleSession(view?.options);
   const sessionId = session.sessionId;
@@ -598,6 +730,18 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
                 }}
                 onAction={(a) => say(`动作 ${a}（本单不落写操作）`)}
               />
+              {inspector === null ? null : (
+                <ChangeImpactSection
+                  objectId={inspector.card.objectId}
+                  stateVar={inspector.card.stateVar}
+                  asked={askedFocus}
+                  onAsk={(f) => {
+                    setAskedFocus(f);
+                    say(`问了一次波及面：${f.kind === "stateVar" ? f.stateVar : f.kind}`);
+                  }}
+                  query={impactQ}
+                />
+              )}
             </aside>
           </>
         ) : (
