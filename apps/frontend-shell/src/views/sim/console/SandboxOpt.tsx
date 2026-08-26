@@ -16,9 +16,25 @@
  * | 执行对比甘特 | `GET /a/v1/sim/sessions/:id/metric-series` | **已接**（`useExecutionCompare(sessionId)`） |
  * | 参数版本 / 「收敛残差」小数口径 | —— | 端点**没有**：不编，见 `useParetoFrontier.ts` |
  *
- * 宿主不给 `paretoRequest` / `sessionId` ⇒ 两个 hook 都**不发请求**、落规格占位，
- * 并把出身写进 `data-source` 属性。provenance 走属性而不是屏上文字：本页验收线是
- * 像素级 1:1，往版面里塞一行「占位」会当场破坏它；属性对测试可见、对像素不可见。
+ * 宿主不给 `paretoRequest` / `sessionId` ⇒ 两个 hook 都**不发请求**、落规格占位。
+ *
+ * ══ WO-SIM-HONEST-FALLBACK-B · 今天的行为是 X，应该是 Y ═══════════════════════
+ *
+ * **X（改造前）**：出身只写进 `data-source` 属性，理由原文是
+ * 「provenance 走属性而不是屏上文字：本页验收线是像素级 1:1，往版面里塞一行「占位」
+ * 会当场破坏它；属性对测试可见、对像素不可见」。
+ * **这句话的后半截是真的，前半截是错的代价**：`data-source` 用户看不见 ⇒
+ * 屏上是一整页**看起来完全正常**的方案、前沿、雷达、约束、甘特，而它们逐个数都抄自设计稿。
+ * 用户无从分辨这是不是真算出来的 —— 本仓点名的「静默错答」。
+ *
+ * **Y（现在）**：`model.source === "placeholder"` 时，顶栏多一条**用户读得到**的横幅
+ * （`sandbox-opt-placeholder`）。像素验收线**没被破坏**：`sandbox-opt-pixel.test.tsx`
+ * 咬的是 `.gcell` / `.cst .r` / `.sg` 的**行高**、散点/下拉的**个数**、以及色值走 token，
+ * 它一条都不咬顶栏的子节点数（本单实测：那份测试一个字未改，8/8 仍绿）。
+ * 即：「往版面里塞一行会破坏像素线」这个前提**当时没被验过**，实测不成立。
+ *
+ * ⚠ 本单**不接任何端点、不发任何新请求**（仓主禁令 2：沙盘接真实数据的 UX 需逐案批准）。
+ *   屏上的数**一个都没变**，变的只有"屏上有没有说这是示例"。
  *
  * ══ 本页的红线 ═════════════════════════════════════════════════════════════
  * 散点的几何不变量（被支配点必在前沿之上）在 `ParetoChart.tsx` 与
@@ -62,6 +78,15 @@ const LEVEL_TXT_TOKEN = ["var(--ok-txt)", "var(--accent-txt)", "var(--warn-txt)"
 
 /** 规格 `.lh`：15 根刻度，`left: i/14*100%`。 */
 const TICK_COUNT_DIVISOR = 14;
+
+/**
+ * 占位态那条横幅的**唯一一句话**（WO-SIM-HONEST-FALLBACK-B）。
+ *
+ * 判据照第一批 A 的 `EMPTY_REASON`：① 说人话，一个内部符号名都不许出现；
+ * ② 与「算了但结果是空」区分得开 —— 这里是**根本没算**（宿主还没选定要优化什么），
+ * 屏上这些数是设计稿里的样例。两件事混成一句，用户仍然不知道发生了什么。
+ */
+const OPT_PLACEHOLDER_NOTE = "示例数据 · 不是本次推演算出来的";
 
 /** 竖排组名：**逐字换行**，不用 `writing-mode`（规格 README §已知取舍 —— 中文竖排会叠成黑块）。 */
 function VerticalGroupName({ text }: { text: string }): JSX.Element {
@@ -128,6 +153,13 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
           <i>optimizer console</i>
         </span>
         <span className={styles.hole} />
+        {/* 诚实标记：这一页的数是不是本次推演算出来的。**屏上文字**，不是 `data-*`。
+            只在占位态渲染 —— 真数据来了它就该消失，常驻的横幅两周后没人会读。 */}
+        {model.source === "placeholder" ? (
+          <span className={styles.phb} data-testid="sandbox-opt-placeholder">
+            {OPT_PLACEHOLDER_NOTE}
+          </span>
+        ) : null}
       </div>
       <div className={styles.mb}>
         {MENUBAR.map((m) => (

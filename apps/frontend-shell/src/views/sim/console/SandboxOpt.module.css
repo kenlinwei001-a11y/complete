@@ -144,6 +144,21 @@
   border-radius: 2px;
   margin-left: 8px;
 }
+/*
+ * 占位态横幅（WO-SIM-HONEST-FALLBACK-B）。字号 12px 是 `check-text-legibility.mjs`
+ * 的硬底，不许再往下调 —— 这是**诚实声明**，印成看不清的小字等于没印。
+ * 色值一律走 token：`sandbox-opt-pixel.test.tsx` 用例 ③ 扫本文件，写一个字面色值当场红。
+ */
+.phb {
+  margin-left: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--warn-txt);
+  border: 1px solid var(--warn);
+  border-radius: 2px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
 .mb {
   display: flex;
   gap: 20px;
