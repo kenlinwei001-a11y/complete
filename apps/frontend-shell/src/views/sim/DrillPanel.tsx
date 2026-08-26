@@ -87,7 +87,7 @@ function FindingRow({ f }: { f: DrillFinding }) {
       <span>
         <strong>{f.where.label}</strong>
         <span style={{ opacity: 0.85 }}> · {f.why}</span>
-        <span style={{ opacity: 0.6, fontSize: "0.85em" }}>
+        <span style={{ opacity: 0.6, fontSize: 12 }}>
           {" "}
           ← {f.source.solverKey}
           {f.when === null ? "" : ` · 第 ${f.when} 天`}
@@ -209,7 +209,7 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
         <label>
-          <span style={{ display: "block", fontSize: "0.85em", opacity: 0.8 }}>推演天数</span>
+          <span style={{ display: "block", fontSize: 12, opacity: 0.8 }}>推演天数</span>
           <input
             data-testid="drill-horizon-days"
             value={horizonDays}
@@ -219,7 +219,7 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
           />
         </label>
         <label>
-          <span style={{ display: "block", fontSize: "0.85em", opacity: 0.8 }}>发生了什么</span>
+          <span style={{ display: "block", fontSize: 12, opacity: 0.8 }}>发生了什么</span>
           <select
             data-testid="drill-event-kind"
             value={eventKind}
@@ -240,7 +240,7 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
         {spec === null ? null : (
           <>
             <label>
-              <span style={{ display: "block", fontSize: "0.85em", opacity: 0.8 }}>对象编号</span>
+              <span style={{ display: "block", fontSize: 12, opacity: 0.8 }}>对象编号</span>
               <input
                 data-testid="drill-target-object"
                 value={targetObjectId}
@@ -251,7 +251,7 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
             {/* 表单字段由 catalog 生成 —— 加一个事件，前端零改动就有了它的输入框 */}
             {spec.payloadKeys.map((pk) => (
               <label key={pk.key}>
-                <span style={{ display: "block", fontSize: "0.85em", opacity: 0.8 }} title={pk.hint}>
+                <span style={{ display: "block", fontSize: 12, opacity: 0.8 }} title={pk.hint}>
                   {pk.key}
                   {pk.required ? " *" : ""}
                 </span>
@@ -312,7 +312,7 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
                 状态变量三层（根源 {layers.filter((l) => l.layer === "根源").length}·枢纽{" "}
                 {layers.filter((l) => l.layer === "枢纽").length}·末端 {layers.filter((l) => l.layer === "末端").length}）
               </summary>
-              <div style={{ fontSize: "0.85em", opacity: 0.9 }}>
+              <div style={{ fontSize: 12, opacity: 0.9 }}>
                 {(["根源", "枢纽", "末端"] as const).map((layer) => {
                   const items = layers.filter((l) => l.layer === layer);
                   if (items.length === 0) return null;
@@ -336,7 +336,7 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
             <summary style={{ cursor: "pointer", fontSize: "0.9em", opacity: 0.85 }}>
               求解器回执（{report.solverRuns.length} 次调用）
             </summary>
-            <ul style={{ fontSize: "0.85em", opacity: 0.9 }}>
+            <ul style={{ fontSize: 12, opacity: 0.9 }}>
               {report.solverRuns.map((r, i) => (
                 <li key={`${r.solverKey}-${i}`} data-testid="drill-solver-run" data-solver={r.solverKey} data-ok={String(r.ok)}>
                   {r.solverKey} · {r.ok ? `产出 ${r.findingCount} 条` : `失败：${r.error ?? "未知错误"}`} ·{" "}
