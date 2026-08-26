@@ -159,6 +159,44 @@ export const CONSOLIDATED_INTO_SANDBOX: Record<
     via: "view-defs",
     where: "沙盘模式「归因」→ 档「流程卡点」（暗发键关着时该档整个不出现·沙盘关则回退为导航单列）",
   },
+  // ── WO-SIM-NAV-UNIFIED · 指控台四页收编进**统一推演控制台**（`/v/sim-unified`）──────────
+  // ⚠ 与上面所有条目的**收编宿主不同**：上面那批进的是旧沙盘 `SandboxConsole`（`/v/sim-sandbox`），
+  //   这四条进的是合并壳 `views/sim/unified/UnifiedSimShell.tsx`。本表键名里的 "SANDBOX" 是历史名，
+  //   语义是「已被某个控制台收编、故不在左导航单列」——两个宿主共用这一张声明表，`where` 里写明是哪一个。
+  //
+  // `via` 必须是 `"view-defs"`，两个方向都不许写错（各错各的死法）：
+  //   · 写成 `"workspace.views"` ⇒ 判据⑧b 会去查 `BUILTIN_VIEWS`，而这四键**刻意不在**那张表里
+  //     （进去就被 `builtInViewFeatureDefs()` 照 featureKey 注册成 defaultOn:true，把
+  //     `sim.sandbox` 这把闸顶掉）；更阴的是 `sim-page-roster.mjs` 的**排除判据 X1** 只排
+  //     `via === "workspace.views"` ⇒ 四页会被当成「沙盘内部构件」**踢出推演页名册**，
+  //     UX 判据与挂载点门从此对它们恒绿（漏检永远绿）。
+  //   · 写成 `"static-route"` ⇒ 判据⑧c 要求 `App.tsx` 里有 `{ path: "v/<key>" }`，这四页没有
+  //     （只走 `v/:viewKey` 通用分发）；且 ⑧e 会反过来要求本组留 `kind:"route"` 回退条目。
+  // 实测依据：`apps/datacore/src/synthetic/service.ts` 的 `VIEW_DEFS` 第 1822–1825 行四键俱在。
+  //
+  // `where` 写的是**用户点哪里能到**，逐条与 `unifiedModes.ts` 的 `UNIFIED_MODE_SPEC` 对得上：
+  "sim-conduction": {
+    via: "view-defs",
+    where: "统一推演控制台顶部页签 →「传导识别」（`UNIFIED_MODE_SPEC.conduction.renderer = \"sim-conduction\"`，经 getRenderer 挂的就是本页组件）",
+  },
+  "sim-attribution": {
+    via: "view-defs",
+    where: "统一推演控制台顶部页签 →「损失归因」（`UNIFIED_MODE_SPEC.attribution.renderer = \"sim-attribution\"`，经 getRenderer 挂的就是本页组件）",
+  },
+  "sim-optimize": {
+    via: "view-defs",
+    where: "统一推演控制台顶部页签 →「方案寻优」（`UNIFIED_MODE_SPEC.optimize.renderer = \"sim-optimize\"`，经 getRenderer 挂的就是本页组件）",
+  },
+  // ⚠ `sim-console` 与上面三条**收编方式不同，必须分开说**（合成一句就是本仓最恨的
+  //   「拿一个笼统说法盖住两个不同事实」）：上面三条是**同组件原样挂进页签**（点开还是那一页）；
+  //   本条是**版面替代** —— 合并壳首档 `now` 用自带的 37 张指标卡墙（`MetricWall`）取代了本页首屏，
+  //   `UNIFIED_MODE_SPEC.now.renderer === null`，即壳里**并没有挂 `sim-console` 这个组件**。
+  //   这正是仓主那句「base 页面是一个大量的指标卡片」所裁决的合并方向，不是漏接线。
+  //   旧版面本身一个字没动、`/v/sim-console` 深链照旧可达（判据⑧b 逐条验它还在 VIEW_DEFS 里）。
+  "sim-console": {
+    via: "view-defs",
+    where: "统一推演控制台首档「指标态势」（= 本页首屏的合并去向：37 张指标卡墙取代旧首屏；旧版面 /v/sim-console 深链仍可直达）",
+  },
 };
 
 /**
