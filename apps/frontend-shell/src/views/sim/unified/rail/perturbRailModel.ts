@@ -355,6 +355,7 @@ export type BlockReason =
   | "NOT_IN_WORLD_STATE"
   | "STATE_VARS_UNKNOWN"
   | "BAD_MAGNITUDE"
+  | "BAD_START_TICK"
   | "BAD_DURATION";
 
 export const BLOCK_REASON_TEXT: Record<BlockReason, string> = {
@@ -368,6 +369,9 @@ export const BLOCK_REASON_TEXT: Record<BlockReason, string> = {
     "**不知道**这个量在不在世界态里 —— view-config 这一跳还没回来或失败了。" +
     "这不是「它扰不动」，是「现在判断不了」，所以先不发（不猜、不兜底）。",
   BAD_MAGNITUDE: "幅度必须是一个有限的数",
+  // 契约 `PerturbationSchema.startTick` 是 `int().min(0)` —— 这里按契约拦，
+  // 而不是让后端回一个 400 再把技术错误原样甩到屏上。
+  BAD_START_TICK: "起始拍必须是 ≥ 0 的整数",
   BAD_DURATION: "持续拍数必须 ≥ 1（要永久就留空）",
 };
 
@@ -409,6 +413,7 @@ export function buildPerturbBody(
   if (liveness === "not-in-world-state") return { ok: false, reason: "NOT_IN_WORLD_STATE" };
   if (draft.targetObjectId === "") return { ok: false, reason: "NO_TARGET_OBJECT" };
   if (!Number.isFinite(draft.magnitude)) return { ok: false, reason: "BAD_MAGNITUDE" };
+  if (!(Number.isInteger(draft.startTick) && draft.startTick >= 0)) return { ok: false, reason: "BAD_START_TICK" };
   if (draft.durationTicks !== null && !(Number.isInteger(draft.durationTicks) && draft.durationTicks >= 1)) {
     return { ok: false, reason: "BAD_DURATION" };
   }
