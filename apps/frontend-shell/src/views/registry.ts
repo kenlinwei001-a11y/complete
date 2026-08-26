@@ -141,6 +141,8 @@ registerRenderer("process-wait", () => import("./process/ProcessWaitView"));
 //   `scripts/check-nav-group-coverage.mjs` 判据⑦ 咬的就是"只做了本行"这一态。
 registerRenderer("process-stuck", () => import("./ProcessStuckView"));
 // WO-SIM-UNIFIED-SHELL · 统一推演控制台（五区外壳 + 指标卡墙 + 右栏检视 + 底部抽屉）。
-// 到达路径 = `App.tsx` 的专用 route `v/sim-unified`（判据⑦ 认这一条）；刻意不占导航位，
-// 理由登记在 `ShellLayout.ROUTE_NO_NAV`——导航信息架构属产品决策，本单只获批「做这一页」。
+// 到达路径 = `App.tsx` 的专用 route `v/sim-unified`（判据⑦ 认这一条）
+// **＋ 左导航「推演」组之首的 `kind:"route"` 条目**（WO-SIM-NAV-UNIFIED 起）。
+// ⚠ 上一版这里写着「刻意不占导航位，理由登记在 `ShellLayout.ROUTE_NO_NAV`」——**该说法已作废**：
+//   仓主已裁决本页为「推演」组主入口，那条 `ROUTE_NO_NAV` 豁免同批删除（留着就是陈旧豁免）。
 registerRenderer("sim-unified", () => import("./sim/unified/UnifiedSimShell"));

@@ -152,8 +152,9 @@ export const routes: RouteObject[] = [
       // 优化 what-if 投影页专用 route（opt-template 系·静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
       { path: "v/optimize-whatif", element: lazyWrap(<OptimizeWhatifView />) },
       // 统一推演控制台专用 route（静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
-      // ⚠ 刻意**不占导航位**：导航信息架构属产品决策，本单未获批 ⇒ 登记 `ShellLayout.ROUTE_NO_NAV`
-      //   （门 `nav-group-coverage:check` 判据④ 与 `f61.admin-nav-groups` 都对账那张表）。
+      // ⚠ WO-SIM-NAV-UNIFIED：上一版这里写着「刻意**不占导航位**…登记 `ShellLayout.ROUTE_NO_NAV`」——
+      //   **该说法已作废**，仓主已裁决本页为「推演」组主入口，`ROUTE_NO_NAV` 里那条豁免同批删除。
+      //   现在的到达路径有两条：左导航「推演」组之首「统一推演控制台」 + 本 route 的深链。
       { path: "v/sim-unified", element: lazyWrap(<UnifiedSimShell />) },
       { path: "v/:viewKey", element: <ViewPage /> },
       { path: "tasks/:taskId", element: lazyWrap(<TaskDetailPage />) },

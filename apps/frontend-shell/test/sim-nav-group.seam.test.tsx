@@ -5,6 +5,7 @@ import {
   NAV_GROUPS,
   CONSOLIDATED_INTO_SANDBOX,
   GROUP_CONSOLIDATION_EXEMPT,
+  ROUTE_NO_NAV,
 } from "@/pages/ShellLayout";
 
 /**
@@ -26,18 +27,38 @@ import {
  *       （`sandbox-console.ts` 的 `SANDBOX_CONSOLE_VIEWS`：`sim-console` →「推演指控台」），
  *       旧 `/v/sim-sandbox` 一个字不动。
  *
+ * ══════════════════════════════════════════════════════════════════════════════
+ * ⚠ WO-SIM-NAV-UNIFIED（2026-08-26）· 上面那个 Y **已被下一条产品裁决取代**
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * 仓主原话：「把推演沙盘+4个页面结合在一个页面。base 页面是一个大量的指标卡片……」
+ * ⇒ 四个台**不再各占一条导航位**，降为统一推演控制台（`/v/sim-unified`）的页签；
+ *   「推演」组之首改挂合并壳 `{ kind:"route", key:"sim-unified", label:"统一推演控制台" }`。
+ *
+ * **本文件因此有四条断言被反转**（A4 / A5 / §0.3 / B1），逐条理由写在各自 `it()` 里。
+ * 反转的**不是**判据本身，而是判据要守的那个形态：
+ *   · 旧形态「四页必须单列且不许被滤掉」——当时它们在任何控制台里都没有落点，藏 = 删；
+ *   · 新形态「四页必须**仍登记在组里**（受检面/名册）、但带 `consolidatedWhen` + 进收编表
+ *     ⇒ 屏上不单列、页面一个没删」。
+ *
+ * ⚠ **A1/A2/A3 一个字都不能改**：它们守的是「四个键仍在分组表里」——
+ *   这条在新形态下**更重要**了。`scripts/lib/sim-page-roster.mjs` 的判据 R3 读的就是这张表，
+ *   而这四页**只经 R3 一条路进推演页名册**（实测 R1/R2/R4/R5 全不含）。
+ *   若有人图省事把四条删掉，名册 17 → 13，`check-edge-active-mounts.mjs` 的缩水棘轮才会红，
+ *   而 UX 判据门会**悄悄少检四页**。故「删条目」与「带 consolidatedWhen」在屏上一样、在受检面上天差地别。
+ *
  * ══ 本文件咬什么、不咬什么（说清楚，免得被当成比它更强的证据）════════════════════
  *
  * 咬的是**分组表这一半**：四个键在不在「推演」组、会不会再掉进兜底桶、
- * 有没有被 `CONSOLIDATED_INTO_SANDBOX` / `consolidatedWhen` 顺手滤掉、组内文案有没有重名。
+ * 收编的两半（`consolidatedWhen` + `CONSOLIDATED_INTO_SANDBOX`）齐不齐、组内文案有没有重名。
  *
- * **不**咬「真 DOM 里这四条渲染出来了」——`src/mocks/fixtures.ts` 的 `allViews` 至今
- * **不含**这四个键（实测：`grep -n "sim-console" apps/frontend-shell/src/mocks/fixtures.ts` 零命中，
- * 金丝雀 `grep -n "chain-line-map"` 同文件有命中 ⇒ 是真没有，不是 grep 坏了）。
- * mock 里不下发 ⇒ `renderApp()` 走 MSW 时侧栏本来就没有这四条，任何"渲染出来了"的断言都是**空转**。
- * 屏上那一半由 **`apps/datacore/test/workspace-sim-console.seam.test.ts` §A/§D** 咬：
- * 它打真 `GET /a/v1/me/workspace`，拿真下发的 label，与本文件这张表的内联 route label 合起来算重名。
- * （mock 与生产在这四个键上不同形 —— 那是本单**范围边界之外**的既有欠账，已在交单报告里点名。）
+ * **不**咬「真 DOM 里这四条渲染出来了」。⚠ 上一版这里写的理由是「`fixtures.ts` 的 `allViews`
+ * **不含**这四个键 ⇒ 任何渲染断言都是空转」——**该理由已于 WO-SIM-NAV-UNIFIED 失效**：
+ * 那一单为满足门判据⑧b（收编项必须仍在 mock allViews 里，否则"路由仍可达"的断言是哑门）
+ * 已把四个键补进 `fixtures.ts`，并把它们的 featureKey 映到 `sim.sandbox`（与后端
+ * `features.ts` 的 `VIEW_FEATURE_MAP` 同口径）。今天 mock **会**下发这四页，
+ * 只是它们随即被 `consolidatedWhen` 隐藏 —— 这正是本文件 A4 现在要断言的那条链。
+ * 屏上那一半仍由 **`apps/datacore/test/workspace-sim-console.seam.test.ts` §A/§D** 咬真下发。
  *
  * R6 确定性：纯结构断言 + 读源码，无时钟、无随机、无网络。
  */
@@ -100,13 +121,27 @@ function duplicateLabels(labels: string[]): string[] {
   return [...seen.entries()].filter(([, n]) => n > 1).map(([l]) => l).sort();
 }
 
-/** 「推演」组沙盘开着时**屏上可见**的文案：route 项取内联 label，view 项取后端 title。 */
-function visibleSimGroupLabels(overrideTitle?: { key: string; title: string }): string[] {
+/**
+ * 「推演」组沙盘开着时**屏上可见**的文案：route 项取内联 label，view 项取后端 title。
+ *
+ * `ignoreConsolidation`（WO-SIM-NAV-UNIFIED 新增）= **不施加 `consolidatedWhen` 过滤**，
+ * 即"假如这一组一条都没被收编，屏上会是哪些文案"。它有两个用途，都不是为了放宽判据：
+ *  ① §0.3 的**抽取器金丝雀**：收编之后真实可见集只剩 2 条，用它做下界会把
+ *     「文案抽取塌了」和「收编生效了」读成同一件事 —— 那正是本仓最恨的
+ *     「拿一个看起来相关的数字当判据」。故金丝雀改在**未收编集**上取下界。
+ *  ② B1 的**变异反证**：证明「重名探测器 + 标题抽取」这条链今天仍然是活的 ——
+ *     把 `sim-console` 的标题换回旧值「推演沙盘」，在未收编集上必须当场报重名。
+ *     这同时说明了收编**为什么**消除了歧义：不是名字改好了，是那条目根本不出现了。
+ */
+function visibleSimGroupLabels(
+  overrideTitle?: { key: string; title: string },
+  ignoreConsolidation = false,
+): string[] {
   const out: string[] = [];
   for (const it of simGroup!.items) {
     if (it.kind === "admin") continue;
-    // `consolidatedWhen` 命中（sim.sandbox 开着）⇒ 该条目不出现（见 UnifiedNav :412 / :395）
-    if (it.consolidatedWhen === "sim.sandbox") continue;
+    // `consolidatedWhen` 命中（sim.sandbox 开着）⇒ 该条目不出现（见 UnifiedNav :543 / :500）
+    if (!ignoreConsolidation && it.consolidatedWhen === "sim.sandbox") continue;
     if (it.kind === "route") {
       out.push(it.label);
       continue;
@@ -148,11 +183,21 @@ describe("WO-SIM-NAV-GROUP · §0 金丝雀（不中就报「工具坏了」，�
     expect(old, "「推演」组里没有 sim-sandbox route ⇒ 被测对象已变，重名断言失去依据").toBeTruthy();
   });
 
-  it("0.3 · 文案覆盖率下界：本组可见文案至少 5 条（抽不出文案会让重名检查恒绿）", () => {
+  it("0.3 · 文案抽取没塌：**未收编集**至少 5 条（收编后的真实可见集只剩 2 条，不能拿它当抽取器下界）", () => {
+    // ⚠ WO-SIM-NAV-UNIFIED 反转点：上一版这条断言的是 `visibleSimGroupLabels().length >= 5`。
+    //   四个台收编之后真实可见集 = 统一推演控制台 + 推演沙盘 = **2 条**，旧下界必然红。
+    //   但**不许**把下界从 5 改成 2 了事：那样一来「抽取器坏了（抽出 0 条）」与
+    //   「收编生效了（剩 2 条）」在同一个数字上不可区分 —— 金丝雀会跟着被测对象一起塌。
+    //   故金丝雀移到**未收编集**上：它不随收编状态变化，只随抽取器好坏变化。
     expect(
-      visibleSimGroupLabels().length,
-      "「推演」组算出的可见文案过少 ⇒ 文案抽取塌了，重名检查会变成空数组比空数组",
+      visibleSimGroupLabels(undefined, true).length,
+      "「推演」组在未收编集上算出的文案仍过少 ⇒ 文案抽取塌了，重名检查会变成空数组比空数组",
     ).toBeGreaterThanOrEqual(5);
+    // 收编后的真实可见集单独断言（这是产品形态，不是金丝雀）：合并壳 + 旧沙盘，各一条，不多不少。
+    expect(
+      visibleSimGroupLabels(),
+      "「推演」组沙盘开着时的可见条目不是「统一推演控制台 + 推演沙盘」两条 ⇒ IA 又长回去了",
+    ).toEqual(["统一推演控制台", "推演沙盘"]);
   });
 });
 
@@ -198,34 +243,88 @@ describe("WO-SIM-NAV-GROUP · §A 四个 viewKey 落在「推演」组", () => {
     ).toEqual([...CONSOLE_KEYS]);
   });
 
-  it("A4 · 不许被两条过滤顺手滤掉：不在收编表里，也不带 consolidatedWhen", () => {
+  it("A4 · 收编的**两半必须齐**：四个键各带 consolidatedWhen:\"sim.sandbox\" ⊗ 各在 CONSOLIDATED_INTO_SANDBOX 里", () => {
+    // ⚠ WO-SIM-NAV-UNIFIED 反转点：上一版断言的是「**不**在收编表里、**不**带 consolidatedWhen」。
+    //   那条判据守的是「四页没有落点，藏起来 = 删掉」。今天四页在合并壳里有落点
+    //   （三页是真页签、`sim-console` 的首屏由卡墙取代），故收编成立，判据随之反转。
+    //   反转后守的是门 `nav-group-coverage:check` 判据⑧f 那条规则：**两张表不许各写一半** ——
+    //   只写 `consolidatedWhen` = 条目会隐藏，却没有任何一处声明「它在控制台里点哪能到」，
+    //   那就是「删入口了事」披了张皮。
     for (const key of CONSOLE_KEYS) {
-      expect(
-        CONSOLIDATED_INTO_SANDBOX[key],
-        `${key} 进了 CONSOLIDATED_INTO_SANDBOX ⇒ UnifiedNav :397 会无条件滤掉它，归组白归`,
-      ).toBeUndefined();
       const item = simGroup!.items.find((it) => it.key === key)!;
-      // `NavItemRef` 是三态 union，`kind:"admin"` 那一支**结构上就没有** `consolidatedWhen`
-      // ⇒ 直接在 union 上取属性 `tsc` 报 TS2339（vitest 不做类型检查，所以只有 typecheck 会红）。
-      // 用 `in` 收窄而不是 `as`：断言语义逐字不变（「不带 consolidatedWhen」），
-      // 且 admin 变体天然满足 —— 换成断言写死 `kind:"view"` 反而会把「归错了 kind」这种错漏过去。
+      // 用 `in` 收窄而不是 `as`：`NavItemRef` 的 `kind:"admin"` 那一支结构上没有 consolidatedWhen，
+      // 直接取属性 tsc 会报 TS2339（vitest 不做类型检查，只有 typecheck 会红）。
       expect(
         "consolidatedWhen" in item ? item.consolidatedWhen : undefined,
-        `${key} 带了 consolidatedWhen —— 它的受控键就是 sim.sandbox 本身：` +
-          `沙盘开则被这条隐藏、沙盘关则后端根本不下发 ⇒ **两态都不出现**，等于把页面从 IA 里抹掉`,
-      ).toBeUndefined();
+        `${key} 没带 consolidatedWhen ⇒ 沙盘开着时它仍单列 = 与合并壳里的页签构成重复入口`,
+      ).toBe("sim.sandbox");
+      const entry = CONSOLIDATED_INTO_SANDBOX[key];
+      expect(entry, `${key} 不在 CONSOLIDATED_INTO_SANDBOX ⇒ 判据⑧f RC=1（收编只写了一半）`).toBeTruthy();
+      // `via` 必须是 view-defs：写成 workspace.views 会被 sim-page-roster 的排除判据 X1
+      // 当成「沙盘内部构件」踢出推演页名册 ⇒ UX 判据与挂载点门从此对这四页恒绿（漏检永远绿）。
+      expect(
+        entry?.via,
+        `${key} 的 via 不是 "view-defs" —— 它走后端增量视图桶；写成 workspace.views 会把它踢出推演页名册`,
+      ).toBe("view-defs");
+      expect(
+        entry?.where.trim().length ?? 0,
+        `${key} 的 where 不足 6 字（判据⑧d：写不出「点哪里」= 没真收编）`,
+      ).toBeGreaterThanOrEqual(6);
     }
   });
 
-  it("A5 · 判据⑨ 的账要平：四个键逐条登记在 GROUP_CONSOLIDATION_EXEMPT，且理由不是占位符", () => {
+  it("A4b · 条件收编必须**先于**无条件收编生效（否则沙盘关着的租户会连页面一起丢）", () => {
+    // 这条守的是 `UnifiedNav` 里两行过滤的**顺序**（ShellLayout :541-545）：
+    //   const when = conditionalConsolidation.get(key);
+    //   if (when !== undefined) return !featureOn(workspace, when);   // ← 条件收编，先
+    //   return !CONSOLIDATED_INTO_SANDBOX[key];                        // ← 无条件收编，后
+    // 四个台**两张表都在**。若顺序反了（先查无条件表），它们会被**无条件**滤掉 ——
+    // 沙盘关着时本该回退单列的语义当场失效。上一版 A4 担心的正是这一条，
+    // 当时的修法是「不许进收编表」；今天的修法是「进表，但靠顺序保证条件分支赢」。
+    // 断言落在**源码顺序**上（纯结构、无渲染），与门判据⑧a 的免责条件同源。
+    const shellSrc = readFileSync(join(REPO_ROOT, "apps/frontend-shell/src/pages/ShellLayout.tsx"), "utf8");
+    const condIdx = shellSrc.indexOf("if (when !== undefined) return !featureOn(workspace, when);");
+    const uncondIdx = shellSrc.indexOf("return !CONSOLIDATED_INTO_SANDBOX[key];");
+    expect(condIdx, "找不到条件收编那一行 ⇒ 本条断言失去被测对象（抽取器坏了，不许读成「顺序对」）").toBeGreaterThan(-1);
+    expect(uncondIdx, "找不到无条件收编那一行 ⇒ 同上").toBeGreaterThan(-1);
+    expect(
+      condIdx,
+      "无条件收编排在了条件收编**前面** ⇒ 四个台会被无条件滤掉，沙盘关着时它们连回退单列都没有",
+    ).toBeLessThan(uncondIdx);
+  });
+
+  it("A5 · 四条**陈旧豁免必须已删**，合并壳自己则必须登记（判据⑨ 的账要平）", () => {
+    // ⚠ WO-SIM-NAV-UNIFIED 反转点：上一版断言四个键**必须**在 GROUP_CONSOLIDATION_EXEMPT 里。
+    //   那四条豁免的原文理由是「再带 consolidatedWhen 会让它开关两态都不出现 = 页面从导航里蒸发」——
+    //   四个键现在**确实带着** consolidatedWhen，理由已成假命题，留着就是自相矛盾的记号。
+    //   ⚠ 这四条**不是被门逼着删的**：判据⑨ 的陈旧检测 `groupExemptUsed`
+    //     （check-nav-group-coverage.mjs :1225-1230）只要该项还在组里就记作「已用」，
+    //     **不看它是否已带 consolidatedWhen**——文档写了这一半，实现里没有。故由本条断言来守。
     for (const key of CONSOLE_KEYS) {
-      const why = GROUP_CONSOLIDATION_EXEMPT[`推演::${key}`];
       expect(
-        why,
-        `推演::${key} 没登记豁免 ⇒ scripts/check-nav-group-coverage.mjs 判据⑨ RC=1（组的收编承诺被掏空）`,
-      ).toBeTruthy();
-      expect(why!.trim().length, `推演::${key} 的理由不足 10 字（"待定/TODO" 不是理由）`).toBeGreaterThanOrEqual(10);
+        GROUP_CONSOLIDATION_EXEMPT[`推演::${key}`],
+        `推演::${key} 的豁免还挂着，而该项已带 consolidatedWhen ⇒ 自相矛盾的陈旧豁免（门看不见这一态）`,
+      ).toBeUndefined();
     }
+    // 合并壳自己不可能被自己收编 ⇒ 它必须**有**豁免，否则判据⑨ RC=1。
+    const why = GROUP_CONSOLIDATION_EXEMPT["推演::sim-unified"];
+    expect(why, "推演::sim-unified 没登记豁免 ⇒ 判据⑨ RC=1（组的收编承诺被它掏空）").toBeTruthy();
+    expect(why!.trim().length, "推演::sim-unified 的理由不足 10 字").toBeGreaterThanOrEqual(10);
+  });
+
+  it("A6 · 合并壳是本组**主入口**：kind:\"route\"、排在首位、且不在 ROUTE_NO_NAV 里", () => {
+    const first = simGroup!.items[0];
+    expect(first, "「推演」组是空的 ⇒ 本条断言失去被测对象").toBeTruthy();
+    expect(first!.kind, "「推演」组第一项不是 kind:\"route\" ⇒ 主入口被挪走了").toBe("route");
+    expect(first!.key, "「推演」组第一项不是 sim-unified ⇒ 合并壳不再是主入口").toBe("sim-unified");
+    expect(
+      first!.kind === "route" ? first!.label : undefined,
+      "合并壳的导航文案变了 —— 它与旧沙盘「推演沙盘」必须不同名（两条并排时靠名词本身区分）",
+    ).toBe("统一推演控制台");
+    expect(
+      ROUTE_NO_NAV["sim-unified"],
+      "sim-unified 还挂在 ROUTE_NO_NAV 里，而它已经有导航条目了 ⇒ 陈旧豁免，门判据④ RC=1",
+    ).toBeUndefined();
   });
 });
 
@@ -234,11 +333,28 @@ describe("WO-SIM-NAV-GROUP · §A 四个 viewKey 落在「推演」组", () => {
  * ══════════════════════════════════════════════════════════════════════════════ */
 
 describe("WO-SIM-NAV-GROUP · §B 导航里没有重名条目", () => {
-  it("B1 · 变异反证：把 sim-console 的标题换回「推演沙盘」，探测器必须当场报重名", () => {
+  it("B1 · 变异反证：在**未收编集**上把 sim-console 的标题换回「推演沙盘」，探测器必须当场报重名", () => {
+    // ⚠ WO-SIM-NAV-UNIFIED 反转点：上一版在**真实可见集**上做这个变异。四个台收编之后
+    //   `sim-console` 根本不出现在可见集里 ⇒ 换成什么标题都不会重名 ⇒ 旧断言必然红。
+    //   **但不许因此把 B1 删掉**：删了就没有任何东西证明「重名探测器 + 标题抽取」还是活的，
+    //   B2 的绿会退化成「空数组比空数组」——那正是本文件 §0 金丝雀存在的理由。
+    //   故变异改在未收编集上做：它同时证明了两件事 ——
+    //     ① 探测器与抽取器都没瞎（旧标题一放回去就报重名）；
+    //     ② 今天不重名**不是因为名字改好了，而是因为那条目根本不出现** ——
+    //        这正是收编相对「改名」更强的地方，也是 B2 现在为什么恒绿的真实原因。
+    expect(
+      duplicateLabels(visibleSimGroupLabels({ key: "sim-console", title: "推演沙盘" }, true)),
+      "换回旧标题后探测器仍说「无重名」⇒ 探测器或标题抽取是哑的，B2 的绿不构成证据",
+    ).toContain("推演沙盘");
+  });
+
+  it("B1b · 收编确实消除了歧义：同一个旧标题放回**真实可见集**，不再构成重名", () => {
+    // 与 B1 是一对：同样的变异、同样的探测器，只是施加在收编生效之后的可见集上。
+    // 两条一起读才说得清「歧义为什么没了」——不是探测器瞎了（B1 证明它没瞎），是条目不在了。
     expect(
       duplicateLabels(visibleSimGroupLabels({ key: "sim-console", title: "推演沙盘" })),
-      "换回旧标题后探测器仍说「无重名」⇒ 探测器是哑的，B2 的绿不构成证据",
-    ).toContain("推演沙盘");
+      "sim-console 已收编却仍在可见集里参与重名计算 ⇒ consolidatedWhen 没生效",
+    ).toEqual([]);
   });
 
   it("B2 · 真断言：「推演」组沙盘开着时可见的条目文案两两不重名", () => {
