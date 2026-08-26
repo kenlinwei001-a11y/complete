@@ -573,16 +573,64 @@ describe("WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门", () => {
     expect(screen.queryByTestId("usim-drawer")).toBeNull();
   });
 
-  it("⑧ 模式页签：只有「现状」是活的，其余四档占位**禁用**（不是隐藏 —— 隐藏 = 假装没这功能）", async () => {
+  /**
+   * ⑧ **WO-SIM-SHELL-TABS 改写了这一条**（改前 / 改后 / 为什么，逐句写在这里）。
+   *
+   * ── 改前 ────────────────────────────────────────────────────────────────────
+   * ```
+   * it("⑧ 模式页签：只有「现状」是活的，其余四档占位**禁用**…", …)
+   *   const now = screen.getByTestId("usim-tab-now");  expect(now.disabled).toBe(false);
+   *   for (const m of ["attribute","tryone","optimize","radius"])
+   *     expect(screen.getByTestId(`usim-tab-${m}`).disabled).toBe(true);
+   * ```
+   *
+   * ── 为什么改（判据：这条断言咬的是「版面长这样」还是「这个能力还在」）──────────
+   * 它咬的是**一份具体的占位名单**，而那份名单来自 `../sandboxModes.ts` 的 `SANDBOX_MODES`
+   * ——**另一屏**（旧沙盘控制台 `SandboxConsole`）的模式表。那五档指向
+   * `cleanroom-attr`/`what-if`/`optimize-whatif`/`disruption-radius` 四个通用页，
+   * 与本屏要挂的四页（`sim-conduction`/`sim-attribution`/`sim-optimize`/`chain-line-map`）
+   * **一个都不重叠**。已批准的 UX 规格（artifact 7e027dab 的 `.modes`）给了本屏自己的九档，
+   * 第 ② 单接其中五档、留三档占位 ⇒ 名单本身**按批准的 UX 变了**，属「咬版面」⇒ 更新断言。
+   *
+   * 而它保护的那个**能力**——「未接线的档要占位禁用、不许隐藏（隐藏 = 假装没这功能）」——
+   * 一个字都没放宽：下面照旧逐档断言 `disabled` 且**在 DOM 里**。
+   *
+   * ── 期望值从哪来（不许从被测的那张表现算，那是空转）────────────────────────
+   * `EXPECT_TABS` 是**已批准 UX 规格里那排按钮的逐字文案与顺序**，硬写在门里。
+   * 若有人改了 `unifiedModes.ts` 的顺序或文案，本条当场红 —— 这正是「顺序即产品表达」
+   * 需要一道门守着的原因；把期望改成 `UNIFIED_MODES.map(…)` 就等于让被告自证清白。
+   */
+  it("⑧ 模式页签：顺序与文案 == 已批准 UX 规格；已接线的可点，未接线的**占位禁用**（不是隐藏）", async () => {
     mount();
     await ready(STATE_VARS.length);
-    const now = screen.getByTestId("usim-tab-now") as HTMLButtonElement;
-    expect(now.disabled).toBe(false);
-    expect(now.getAttribute("data-active")).toBe("1");
-    for (const m of ["attribute", "tryone", "optimize", "radius"]) {
+
+    // 规格 artifact 7e027dab `.modes[role=tablist]` 里那排按钮，逐字逐序。
+    const EXPECT_TABS = [
+      "指标态势",
+      "传导识别",
+      "损失归因",
+      "方案寻优",
+      "演习结论",
+      "产销线路图",
+      "传导边册",
+      "本体与就绪",
+    ];
+    const tabs = within(screen.getByTestId("usim-tabs")).getAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(EXPECT_TABS);
+
+    // 本单接线的五档（含本壳自带的「指标态势」）：可点。
+    for (const m of ["now", "conduction", "attribution", "optimize", "linemap"]) {
       const t = screen.getByTestId(`usim-tab-${m}`) as HTMLButtonElement;
-      expect(t.disabled, `${m} 档应占位禁用`).toBe(true);
-      expect(t.getAttribute("data-active")).toBe("0");
+      expect(t.disabled, `${m} 档已接线，应可点`).toBe(false);
     }
+    // 尚未接线的三档：**在 DOM 里**且禁用，并且 `title` 说得出为什么点不动。
+    for (const m of ["verdict", "edges", "readiness"]) {
+      const t = screen.getByTestId(`usim-tab-${m}`) as HTMLButtonElement;
+      expect(t.disabled, `${m} 档未接线，应占位禁用`).toBe(true);
+      expect(t.getAttribute("data-active")).toBe("0");
+      expect((t.getAttribute("title") ?? "").length, `${m} 档要说明为什么点不动`).toBeGreaterThan(10);
+    }
+    // 默认落在「指标态势」。
+    expect(screen.getByTestId("usim-tab-now").getAttribute("data-active")).toBe("1");
   });
 });
