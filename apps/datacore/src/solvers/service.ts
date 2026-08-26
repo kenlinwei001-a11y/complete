@@ -1411,13 +1411,16 @@ export class SolverService {
     const minDependents = Number(args.minDependents ?? 2);
     if (!startType || path.length === 0) throw validationError("concentration_risk 需 startType + path:[{viaField,toType}]");
 
-    // 每个路径目标类型预建 PK→对象 索引（多跳遍历用）。
+    // 每个路径目标类型预建 PK→对象 索引（多跳遍历用）。pkByType 同批留下每型的主键字段名，
+    // 供终端根取**与 dependents 同口径**的 id（见下 rootKey 处的 WO-SOLVER-ROLE-TABLE-DRIFT 注）。
     const idxByType = new Map<string, Map<string, ObjectInstance>>();
+    const pkByType = new Map<string, string | undefined>();
     for (const hop of path) {
       if (idxByType.has(hop.toType)) continue;
       const objs = await this.repos.objects.listByType(ctx.tenantId, hop.toType);
       const tdef = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === hop.toType))[0];
       const pk = tdef?.properties.find((p) => p.isPrimaryKey)?.propKey;
+      pkByType.set(hop.toType, pk);
       idxByType.set(hop.toType, new Map(objs.map((o) => [String((pk ? o.props[pk] : undefined) ?? o.id), o])));
     }
     const sdef = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === startType))[0];
@@ -1435,7 +1438,20 @@ export class SolverService {
         if (!cur) break;
       }
       if (!cur || cur === s) continue;
-      const rootKey = keyOf(cur);
+      // WO-SOLVER-ROLE-TABLE-DRIFT · id 口径统一为**主键值**（此前 `keyOf(cur)` 少传 pk ⇒ 落 `o.id`
+      // 仓储 id 分支，而下一行 dependents 取的是主键值 ⇒ 同一个回包里两种 id）。
+      // 为什么统一到主键值而不是仓储 id（判据 = 「调用方拿这个 id 能不能查到东西」）：
+      //  ① 本仓其它求解器一律主键值（`sharedBottleneck:1359/1380` · `supplierDisruptionRadius:4661`
+      //     · `marginAttribution:1534` · `selectionOptimize:4699`），仓储 id 是本方法的孤例；
+      //  ② 本方法与 `supplier_disruption_radius` **互为反向**（见该方法头注）：本回包的 rootId
+      //     正是那一个的 `rootId` 入参，而那一个逐层比的是 `props[viaField]`（=主键值，`:4660`）
+      //     ⇒ 喂仓储 id 进去恒零命中，得到「断供影响 0 个对象」这种**静默错答的全清报告**；
+      //  ③ 前端两页也已是主键值口径：断供页的 rootId 下拉取 `props[pk] ?? o.id`
+      //     （`DisruptionRadiusView.tsx:304`），而集中度页把本字段直接上屏当「最大敞口根」
+      //     （`CleanroomAttrView.tsx:596/606`）⇒ 修前用户在一页看到 `obj_xxx`、去另一页搜不到它。
+      //  ④ 仓储 id 侧不丢可查性：`repos.objects.get()` 虽只认仓储 id，但无主键的类型此处仍回落 `o.id`
+      //     （keyOf 的 `?? o.id` 分支），与 dependents 完全同规则。
+      const rootKey = keyOf(cur, pkByType.get(cur.type));
       const set = byRoot.get(rootKey) ?? new Set<string>();
       set.add(keyOf(s, sPk));
       byRoot.set(rootKey, set);
