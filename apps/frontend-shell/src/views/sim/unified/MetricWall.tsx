@@ -50,7 +50,7 @@ export function MetricCardButton({ card, selected, quiet, onSelect }: MetricCard
         {card.label.text}
       </div>
       <div className={styles.cardKey}>{card.label.key}</div>
-      <div className={styles.cardValue} data-testid={`usim-card-value-${card.stateVar}`}>
+      <div className={styles.cardValue} data-testid={`usim-value-${card.stateVar}`}>
         {NUM(card.current)}
         {card.unit === null ? "" : ` ${card.unit}`}
       </div>
@@ -73,8 +73,21 @@ export function MetricWall({ wall, selected, onSelect }: MetricWallProps): JSX.E
   /** 每层的「未变化」展开态。默认收起 —— 收起的是**这一屏的注意力**，不是数据。 */
   const [open, setOpen] = useState<Readonly<Record<string, boolean>>>({});
 
+  /**
+   * ⚠ `data-series` 与 `data-total` 是**两件事**，不许拿后者当前者的证据：
+   * `data-total` 只说「状态变量清单有几条」（`view-config` 一回来就是终值），
+   * `data-series` 才说「指标时序这一跳到底回来没有」。
+   * 本门第一版就是拿 `data-total` 当"数据到齐了"的探针，于是在时序还没回来的那一帧上做断言，
+   * 七个用例一起红在「卡片不存在」——而真相是那一刻所有卡都还是 `EMPTY`、被收进了展开块。
+   * （形态：「我用 X 当作 Y 的证据，而 X 并不度量 Y」。）
+   */
   return (
-    <div data-testid="usim-wall" data-total={wall.totalCards} data-moved={wall.movedCards}>
+    <div
+      data-testid="usim-wall"
+      data-total={wall.totalCards}
+      data-moved={wall.movedCards}
+      data-series={wall.seriesAvailable ? "1" : "0"}
+    >
       <div className={styles.calibre} data-testid="usim-threshold">
         「被推动」判据：|Δ| ≥ {wall.threshold.value === 0 ? "任何非零变化" : fmt(wall.threshold.value)} · 口径 = {wall.threshold.basis}
       </div>
