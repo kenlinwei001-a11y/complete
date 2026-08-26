@@ -80,6 +80,7 @@
  */
 import { Suspense, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SIM_METRIC_SERIES_MAX_LIMIT } from "@platform/contracts";
 import type {
   ChangeFocus,
   ChangeImpactPreview,
@@ -424,9 +425,39 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
     staleTime: Infinity,
     retry: false,
   });
+  /**
+   * 卡墙的取数**必须带上白名单**，否则屏上是「4373 条里的 12 条」。
+   *
+   * ── 今天的行为是 X，应该是 Y（仓主 2026-08-26 问「财务指标都在哪里？没有看到」逼出来的）──
+   * · X：这条请求**一个查询参数都不带** ⇒ 吃后端默认 `SIM_METRIC_SERIES_DEFAULT_LIMIT = 12`
+   *   （`packages/contracts/src/sim.ts:641`）。实测该会话 `totalMetrics = 4373`、
+   *   `appliedLimit = 12`、`truncated = true`，回来的变量只有
+   *   `supplyRisk / loadIndex / demandLoad / shortageRisk` 四个 —— 屏上看到的是全量的 **0.27%**。
+   *   而 `costPressure`（成本压力）/ `priceShock`（价格冲击）在 `view-config` 的 40 个状态变量里**都有**，
+   *   只是排序后没进前 12。所以用户「没看到财务指标」不是他没找对地方，**是它真的没被取回来**。
+   * · Y：卡墙**本来就知道**自己要显示哪 40 个变量（`cfg.stateVars`）。按这份白名单去要，
+   *   而不是在 4373 个「对象×变量」组合里碰运气。
+   *
+   * ⚠ 为什么不是「把 limit 调大」了事：4373 条卡片没人看得完，调大只是把「看不到」换成
+   *   「看不完」。白名单把口径从**组合数**收回到**变量数**（40），这才是卡墙真正要的那一维。
+   * ⚠ `limit` 仍显式给 `SIM_METRIC_SERIES_MAX_LIMIT`：40 个变量可能横跨多个对象，
+   *   不给就又被默认 12 截一次 —— 换了个地方犯同一个错。
+   * ⚠ 白名单进 `queryKey`：不进的话，切换会话/配置后 TanStack 会把**上一份白名单的结果**
+   *   当成本次的缓存命中，屏上显示的是另一组变量而毫无提示。
+   */
+  // ⚠ 读 `cfgQ.data` 而不是下面那个 `cfg` —— `cfg` 在 :500 才声明，
+  //   在这里引用是 TDZ 里的 use-before-declaration（`tsc` 会当场报 TS2448）。
+  const seriesVars = useMemo(
+    () => [...((cfgQ.data as SandboxViewConfig | undefined)?.stateVars ?? [])].sort(),
+    [cfgQ.data],
+  );
   const seriesQ = useQuery({
-    queryKey: ["a", "sim-metric-series", sessionId ?? ""],
-    queryFn: () => api.a<SimMetricSeriesResponse>(metricSeriesPath(sessionId as string)),
+    queryKey: ["a", "sim-metric-series", sessionId ?? "", seriesVars.join(",")],
+    queryFn: () => {
+      const qs = new URLSearchParams({ limit: String(SIM_METRIC_SERIES_MAX_LIMIT) });
+      if (seriesVars.length > 0) qs.set("stateVars", seriesVars.join(","));
+      return api.a<SimMetricSeriesResponse>(`${metricSeriesPath(sessionId as string)}?${qs.toString()}`);
+    },
     enabled,
     staleTime: Infinity,
     retry: false,
