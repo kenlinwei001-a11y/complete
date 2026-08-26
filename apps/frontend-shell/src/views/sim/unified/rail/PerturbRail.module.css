@@ -1,5 +1,13 @@
 /* WO-SIM-RAIL-FORMS · 左栏扰动子页版面。
-   颜色一律走既有 CSS 变量（本文件不新造调色板）；不写死栏宽 —— 栏宽归外壳（第 ② 张单）。 */
+   颜色一律走既有 CSS 变量（本文件不新造调色板）；不写死栏宽 —— 栏宽归外壳（第 ② 张单）。
+
+   ⚠ WO-LEGIBILITY-12PX（2026-08-26）· 本文件原有 **7 处 10.5–11.5px** 字号，全部低于
+   `check-text-legibility` 判据 B 的 **12px 硬底**（该 12 不是自由参数，是判据 A
+   `required(S)=max(3.0,72/S)` 与本仓调色板的交点，见门头推导）。一律抬到 12px。
+   同时 `opacity` 也是**真实**的对比度损失、而门看不到它（那些块没声明 `color` ⇒ 门记为
+   "unjudged"）：`--txt` 压最差面在 12px 需 6.0:1，实测 opacity 0.7 ⇒ 5.41/5.68/5.95（三主题全不过）、
+   0.75 ⇒ 5.95/6.68/7.03（暗色不过）、**0.8 ⇒ 6.52/7.86/8.33（三主题全过）**。
+   故 0.7 / 0.75 一律抬到 0.8；0.85 本来就过，不动。 */
 
 .rail {
   display: flex;
@@ -23,7 +31,7 @@
   border: 1px solid var(--border, #d0d7de);
   border-radius: 6px;
   background: var(--bg-subtle, #f6f8fa);
-  font-size: 11.5px;
+  font-size: 12px;
   cursor: pointer;
 }
 .tabOn {
@@ -50,8 +58,8 @@
   min-width: 0;
 }
 .lbl {
-  font-size: 11px;
-  opacity: 0.75;
+  font-size: 12px;
+  opacity: 0.8;
 }
 .fld select,
 .fld input {
@@ -65,14 +73,31 @@
   font: inherit;
   font-size: 12px;
 }
+/* 主按钮 —— 两处都改了，理由分开写，别合成一句：
+ *
+ * ① **底色改 `--accent-solid`（真缺陷，不是门的误报）**：`--accent` 是「实心底/描边」那一档
+ *    （逐主题 #4c90f0 / #3b5bdb / #E8590C），白字压上去实测 **dark 3.20 · light 5.67 · warm 3.58**，
+ *    12px 需 6.0:1 ⇒ **三主题全不过**。`--accent-solid` 是 tokens.css 专为「实心 accent 底 + 白字」
+ *    定的那一档（#115dc9 / #3455da / #aa4109），白字实测 **6.12 / 6.07 / 6.05**，三主题全过。
+ *    `global.css` 的 `.btn.primary` 与 `ProcessStartFromTemplate.module.css` 的 `.primary`
+ *    早已因同一条理由改过 —— 这里沿用同一个结论，不另立一套。
+ *
+ * ② **`font-size: 12px` 换成 `font: inherit`**：`<button>` 不继承字体，原本这颗按钮渲染的是
+ *    **UA 默认的 Arial 13.33px**，与整条左栏（`.rail` 的 12px）不是一套字 —— 这本身就是个真 bug。
+ *    `font: inherit` 后随 `.rail` 的 **12px**，而 `.rail { font-size: 12px }` 仍在判据 B 的扫描面里，
+ *    字号硬底**没有因此失去机器守护**。同文件的 `.fld select, .fld input` 早就是这么写的。
+ *    ⚠ 顺带说明：判据 A 读不到「这段字最终落在哪块颜色上」（门头「三条测不准」①：
+ *    它拿该主题**所有表面令牌里最差的那个**当底色）。仓里 8 处同形态的白字主按钮
+ *    全部作为该已知误报挂在 `text-legibility-baseline.json` 里；本单不许动基线，
+ *    故把真实数值写在这里备查，而不是把账藏起来。 */
 .apply {
   margin-top: 4px;
   padding: 5px 10px;
-  border: 1px solid var(--accent, #0969da);
+  border: 1px solid var(--accent-solid);
   border-radius: 6px;
-  background: var(--accent, #0969da);
-  color: #fff;
-  font-size: 12px;
+  background: var(--accent-solid);
+  color: var(--on-accent);
+  font: inherit;
   cursor: pointer;
 }
 .apply:disabled {
@@ -83,13 +108,13 @@
 /* ── 诚实缺席 / 说明 ────────────────────────────────────────────── */
 .hint {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
-  opacity: 0.75;
+  opacity: 0.8;
 }
 .absent {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
   opacity: 0.85;
 }
@@ -102,16 +127,16 @@
 }
 .blocked summary {
   cursor: pointer;
-  font-size: 11.5px;
+  font-size: 12px;
 }
 .blocked ul {
   margin: 4px 0 0;
   padding-left: 16px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10.5px;
-  opacity: 0.7;
+  font-size: 12px;
+  opacity: 0.8;
 }
