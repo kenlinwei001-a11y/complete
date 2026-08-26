@@ -382,6 +382,14 @@ export function ChainLineMapView({ view, chrome = "full", onPayload, familyAncho
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [t, setT] = useState<ViewTransform>(IDENTITY_TRANSFORM);
   const [hoverId, setHoverId] = useState<string | null>(null);
+  // 键盘兜底：鼠标点空白关得掉，键盘用户也得关得掉（浮层是 focus 打开的，Esc 是它的标准出口）。
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent): void => {
+      if (ev.key === "Escape") setHoverId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [hint, setHint] = useState<string | null>(null);
   const [famState, setFamState] = useState<FamilyState>({ status: "off" });
   const famKey = useMemo(() => JSON.stringify(familyAnchors ?? []), [familyAnchors]);
@@ -539,6 +547,13 @@ export function ChainLineMapView({ view, chrome = "full", onPayload, familyAncho
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
+    // ⛔ 浮层滞留的病根就在下一行的 `setPointerCapture`：指针被本容器捕获之后，
+    //    站点元素上的 `mouseleave` / `blur` **不再触发** ⇒ `hoverId` 永远清不掉，
+    //    浮层就一直挂在屏上挡着（仓主 2026-08-26 报的「悬框一直在」）。
+    //    不去改捕获（它是拖拽平移必须的），而是在这里加一条**兜底**：
+    //    按下的位置若不在任何站点上（`[data-station-kind]`），就当作「点了空白处」⇒ 关浮层。
+    //    这条兜底不依赖病因 —— 无论将来 mouseleave 因为什么原因没触发，它都能关掉。
+    if (!(e.target as Element | null)?.closest?.("[data-station-kind]")) setHoverId(null);
     dragRef.current = { sx: e.clientX, sy: e.clientY, ox: t.x, oy: t.y };
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
   };
