@@ -39,6 +39,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   BASE_REGISTRY,
   chainNodeDef,
+  type ChainNodeDef,
   type ParetoBinding,
   type ParetoObjective,
   type ParetoRequest,
@@ -69,6 +70,42 @@ function nodeLabel(nodeId: string): string {
   if (def === undefined) throw new Error(`不在 CHAIN_NODE_REGISTRY 里的环节：${nodeId}`);
   return def.label;
 }
+
+/** 在册节点 id 的**字面量联合**（派生自契约，不是本地起个同名别名白嫖）。 */
+type RegisteredChainNodeId = ChainNodeDef["nodeId"];
+
+/** 本文件按语义引用环节时用的别名（下面那张锚定表的**值**）。 */
+type ExecNodeAlias = "kitting" | "purchaseReq" | "aging" | "qcBatch" | "transit";
+
+/**
+ * 执行对比甘特用到的 5 个在册环节。**键锚在契约联合上**（`Partial<Record<Rid, …>>`）——
+ * 注册表删/改一条，`tsc` 当场 TS2353，屏上不会安静地少一行。
+ *
+ * ── 为什么要有这张表（WO-SIM-HONEST-FALLBACK-B）─────────────────────────────
+ * 原写法把这 5 个 id 写在 `EXEC_LABEL.kitting` 这种**值位**上，
+ * `scripts/check-chain-node-singlesource.mjs` 判据 C 判为「第二份注册表」并报红
+ * （原话：id 全对也仍然是第二份注册表，改册时这里不会跟着变）。
+ * 门明文放行的写法只有一条：**把 id 挪到键位、键类型锚在契约上**。
+ * ⚠ 不许改成 `as` 断言、也不许把键类型掺成 `Rid | string` —— 这两条会让 `tsc` 不再咬
+ *   （于是门放行了一张其实没绑住的表）。这是**门自己的 2026-08-21 实测**，不是我这次测的；
+ *   出处 `scripts/check-chain-node-singlesource.mjs` 头注「反伪造」段与 `keyTypeAnchored()`，
+ *   复验：`node scripts/check-chain-node-singlesource.mjs`。
+ */
+const EXEC_NODE_ALIAS: Partial<Record<RegisteredChainNodeId, ExecNodeAlias>> = {
+  "material.kitting": "kitting",
+  "material.purchase_req": "purchaseReq",
+  "capacity.aging": "aging",
+  "capacity.qc_batch": "qcBatch",
+  "delivery.transit": "transit",
+};
+
+/**
+ * 别名 → 该环节的注册表 `label`。**本文件屏上的环节名只有这一个出处**。
+ * 反解自上表，故 id 在本文件里**只出现一次**（就是上面那五个键）。
+ */
+const EXEC_LABEL: Record<ExecNodeAlias, string> = Object.fromEntries(
+  Object.entries(EXEC_NODE_ALIAS).flatMap(([nodeId, alias]) => (alias === undefined ? [] : [[alias, nodeLabel(nodeId)]])),
+) as Record<ExecNodeAlias, string>;
 
 function baseName(baseId: string): string {
   const hit = BASE_REGISTRY.find((b) => b.baseId === baseId);
@@ -364,6 +401,24 @@ export interface OptExecModel {
 // 派单点名禁止。门 `check-debattery` 对本文件仍会报 `PLACEHOLDER_RADAR` /
 // `PLACEHOLDER_OPT_MODEL` 两处（原本三处，`PARETO_GEOM` 已按"呈现常量"归类并加记号）——
 // **这两处红是照实的红**，不许用记号把它抹掉。
+//
+// ══ WO-SIM-HONEST-FALLBACK-B 续账（2026-08-26）——那两处怎么闭的 ═════════════
+//
+// A 的判断「不许用记号把它抹掉」在**当时**是对的：那时屏上确实看不出这是占位，
+// 只加一个源码记号就是纯粹换绿。B 补的正是缺的那一半 ——
+// **`SandboxOpt` 顶栏现在会印一条用户读得到的横幅**
+// （`data-testid="sandbox-opt-placeholder"`：「示例数据 · 不是本次推演算出来的」），
+// 只在 `model.source === "placeholder"` 时渲染。
+//
+// 于是这两处的定性从「兜底编数」变成「**已标注的规格样例**」，与本节上面那五张表
+// （`PLACEHOLDER_CARDS` / `_CONSTRAINTS` / `_DETAIL` / `_DOMINATED_SCREEN` / `execTabIds`）
+// 归为同一类，记号也就跟它们一致了。判据一句话（本单的验收线）：
+//   **屏上看得出这是示例 ⇒ 记号是「已标注」；屏上看不出 ⇒ 记号就是「换绿」。**
+//
+// ⚠ 这**不是**把 A 的表格（上面那四条被 `sandbox-opt-pixel.test.tsx` 钉死的断言）解掉了。
+//   那四条依旧钉着，本单**一个字都没改那份测试**：占位数照旧上屏、圆点个数照旧对得上，
+//   变的只有"屏上有没有告诉用户这是示例"。要把占位数真正换成端点值，
+//   仍然要先解那四条断言 —— 那是另一张单。
 
 /** 规格 `.sel` 三个下拉项 ⇒ 三个目标（`dir` 由「最小 / 最大」字面反推，与端点回显同形）。 */
 const PLACEHOLDER_OBJECTIVES: readonly ParetoObjective[] = [ // hardcoded-data-allow —— 规格占位
@@ -417,8 +472,8 @@ const PLACEHOLDER_DETAIL: readonly OptDetailRow[] = [ // hardcoded-data-allow �
   { label: "收敛残差", value: "0.0031", tone: "" },
 ];
 
-/** 规格 `#rad`（第 288–296 行）。 */
-const PLACEHOLDER_RADAR: OptRadar = {
+/** 规格 `#rad`（第 288–296 行）。**屏上已标注为示例**，见本节头注 (b)。 */
+const PLACEHOLDER_RADAR: OptRadar = { // hardcoded-data-allow —— 规格占位（屏上已标「示例数据」，见 SandboxOpt 的 sandbox-opt-placeholder）
   axes: ["非增值", "外协成本", "准时率", "稼动率", "库存", "缺口"],
   baseLabel: "基线",
   base: [0.42, 0.88, 0.55, 0.6, 0.5, 0.35],
@@ -523,7 +578,12 @@ const PLACEHOLDER_DOMINATED: readonly OptCandidate[] = (() => {
   });
 })();
 
-export const PLACEHOLDER_OPT_MODEL: OptModel = {
+/**
+ * 规格占位模型（把上面几张**逐张已标注**的规格表装配起来）。
+ * `source: "placeholder"` 是它上屏后的**唯一开关**：`SandboxOpt` 见到它就在顶栏印
+ * 「示例数据」那条横幅（`data-testid="sandbox-opt-placeholder"`）。
+ */
+export const PLACEHOLDER_OPT_MODEL: OptModel = { // hardcoded-data-allow —— 规格占位（屏上已标「示例数据」，见 SandboxOpt 的 sandbox-opt-placeholder）
   objectives: PLACEHOLDER_OBJECTIVES,
   axes: PLACEHOLDER_AXES,
   frontier: PLACEHOLDER_FRONTIER,
@@ -739,35 +799,35 @@ const EXEC_PLAYHEAD_PCT = 46;
  * 基地名（原规格的「盐城」）见文件头 `baseName` 注释：那是个**不在册的幻影基地**，已换在册基地。
  */
 const PLACEHOLDER_EXEC_ROWS: readonly OptExecRow[] = [ // hardcoded-data-allow —— 规格占位
-  { group: "基线执行", name: nodeLabel("material.kitting"), baseline: "4.54 D", actual: "2.10 D", direction: "dn", segments: [
-    { startPct: 2, widthPct: 12, tone: "o", label: nodeLabel("material.purchase_req") }, { startPct: 16, widthPct: 22, tone: "r", label: "正极粉断供" },
+  { group: "基线执行", name: EXEC_LABEL.kitting, baseline: "4.54 D", actual: "2.10 D", direction: "dn", segments: [
+    { startPct: 2, widthPct: 12, tone: "o", label: EXEC_LABEL.purchaseReq }, { startPct: 16, widthPct: 22, tone: "r", label: "正极粉断供" },
     { startPct: 40, widthPct: 18, tone: "b", label: "拣配" }, { startPct: 60, widthPct: 14, tone: "g", label: "发料" },
     { startPct: 78, widthPct: 10, tone: "o", label: "结转" }] },
-  { name: nodeLabel("capacity.aging"), baseline: "7.34 D", actual: "5.02 D", direction: "dn", segments: [
+  { name: EXEC_LABEL.aging, baseline: "7.34 D", actual: "5.02 D", direction: "dn", segments: [
     { startPct: 3, widthPct: 10, tone: "o", label: "上炉" }, { startPct: 15, widthPct: 26, tone: "r", label: "炉位排队" },
     { startPct: 43, widthPct: 16, tone: "b", label: "静置" }, { startPct: 61, widthPct: 13, tone: "g", label: "下炉" },
     { startPct: 77, widthPct: 11, tone: "o", label: "结转" }] },
-  { name: nodeLabel("capacity.qc_batch"), baseline: "2.81 D", actual: "2.20 D", direction: "dn", segments: [
+  { name: EXEC_LABEL.qcBatch, baseline: "2.81 D", actual: "2.20 D", direction: "dn", segments: [
     { startPct: 2, widthPct: 11, tone: "o", label: "抽检" }, { startPct: 15, widthPct: 20, tone: "a", label: "攒批" },
     { startPct: 37, widthPct: 18, tone: "b", label: "复判" }, { startPct: 57, widthPct: 15, tone: "g", label: "放行" },
     { startPct: 75, widthPct: 12, tone: "o", label: "结转" }] },
-  { name: nodeLabel("delivery.transit"), baseline: "0.43 D", actual: "0.43 D", direction: "", segments: [
+  { name: EXEC_LABEL.transit, baseline: "0.43 D", actual: "0.43 D", direction: "", segments: [
     { startPct: 4, widthPct: 9, tone: "o", label: "装车" }, { startPct: 15, widthPct: 18, tone: "b", label: "干线" },
     { startPct: 35, widthPct: 16, tone: "b", label: "分拨" }, { startPct: 54, widthPct: 14, tone: "g", label: "签收" },
     { startPct: 71, widthPct: 12, tone: "o", label: "结转" }] },
-  { group: "S-0042 执行", name: nodeLabel("material.kitting"), baseline: "4.54 D", actual: "2.10 D", direction: "dn", segments: [
-    { startPct: 2, widthPct: 12, tone: "o", label: nodeLabel("material.purchase_req") }, { startPct: 16, widthPct: 14, tone: "c", label: `${baseName(PEER_BASE_A)}调拨` },
+  { group: "S-0042 执行", name: EXEC_LABEL.kitting, baseline: "4.54 D", actual: "2.10 D", direction: "dn", segments: [
+    { startPct: 2, widthPct: 12, tone: "o", label: EXEC_LABEL.purchaseReq }, { startPct: 16, widthPct: 14, tone: "c", label: `${baseName(PEER_BASE_A)}调拨` },
     { startPct: 32, widthPct: 20, tone: "c", label: "跨基地在途" }, { startPct: 54, widthPct: 18, tone: "g", label: "发料" },
     { startPct: 75, widthPct: 12, tone: "o", label: "结转" }] },
-  { name: nodeLabel("capacity.aging"), baseline: "7.34 D", actual: "5.02 D", direction: "dn", segments: [
+  { name: EXEC_LABEL.aging, baseline: "7.34 D", actual: "5.02 D", direction: "dn", segments: [
     { startPct: 3, widthPct: 10, tone: "o", label: "上炉" }, { startPct: 15, widthPct: 18, tone: "c", label: `${baseName(PEER_BASE_A)}炉位` },
     { startPct: 35, widthPct: 20, tone: "c", label: "并行静置" }, { startPct: 57, widthPct: 16, tone: "g", label: "下炉" },
     { startPct: 75, widthPct: 12, tone: "o", label: "结转" }] },
-  { name: nodeLabel("capacity.qc_batch"), baseline: "2.81 D", actual: "2.20 D", direction: "dn", segments: [
+  { name: EXEC_LABEL.qcBatch, baseline: "2.81 D", actual: "2.20 D", direction: "dn", segments: [
     { startPct: 2, widthPct: 11, tone: "o", label: "抽检" }, { startPct: 15, widthPct: 16, tone: "c", label: "阈值下调" },
     { startPct: 33, widthPct: 18, tone: "c", label: "并行复判" }, { startPct: 53, widthPct: 17, tone: "g", label: "放行" },
     { startPct: 73, widthPct: 14, tone: "o", label: "结转" }] },
-  { name: nodeLabel("delivery.transit"), baseline: "0.43 D", actual: "0.56 D", direction: "up", segments: [
+  { name: EXEC_LABEL.transit, baseline: "0.43 D", actual: "0.56 D", direction: "up", segments: [
     { startPct: 4, widthPct: 9, tone: "o", label: "装车" }, { startPct: 15, widthPct: 22, tone: "c", label: `${baseName(PEER_BASE_A)}→${baseName(HOME_BASE)}` },
     { startPct: 39, widthPct: 16, tone: "b", label: "分拨" }, { startPct: 57, widthPct: 14, tone: "g", label: "签收" },
     { startPct: 73, widthPct: 13, tone: "o", label: "结转" }] },
