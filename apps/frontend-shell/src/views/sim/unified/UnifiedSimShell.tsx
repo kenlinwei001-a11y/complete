@@ -96,6 +96,7 @@ import { stateVarLabel } from "../stateVarLabel";
 import { useConsoleSession, type ConsoleSessionReason } from "../console/useConsoleSession";
 import { metricSeriesPath } from "../console/useParetoFrontier";
 import PerturbRail from "./rail/PerturbRail";
+import EdgeActivePanel from "../EdgeActivePanel";
 import {
   buildInspectorView,
   buildMetricWall,
@@ -435,6 +436,14 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
                 }}
                 onAction={(a) => say(`动作 ${a}（本单不落写操作）`)}
               />
+              {/* 「关掉这条边看看」—— 八个推演页共享的同一个件（`../EdgeActivePanel`）。
+                  本壳此前是名册里唯一漏挂的一页（`edge-active-mounts:check` 逐字点名，
+                  它进名册的依据是 R6 route-no-nav）。同批四页由 `WO-EDGE-PANEL-4PAGES` 挂完，
+                  漏了这里。
+                  · `sessionId` 传本壳选中的会话，与卡墙/右栏同一个 —— 不让面板自己回落到
+                    「本租户最近一个可推演会话」，否则右栏在讲 A 会话、这里在讲 B 会话。
+                  · `pageKey` 只用于 testid 前缀，不参与任何业务判断（见组件 props 注释）。 */}
+              <EdgeActivePanel pageKey="sim-unified" sessionId={sessionId} />
             </aside>
           </>
         ) : (
