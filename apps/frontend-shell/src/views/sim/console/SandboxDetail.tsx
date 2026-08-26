@@ -509,9 +509,14 @@ const GANTT_ROWS: readonly (readonly (readonly [number, number, "o" | "b" | "g",
 
 /**
  * 补货路径（规格 `#supp`）。
- * 三态：**压根没有数据源** —— 全仓没有任何端点回答「这条补货路径分几段、各占多宽」
- * （复验：`grep -rn "replenish" apps/datacore/src/sim/` 无对应回包字段；
- * 金丝雀：同目录搜 `node-detail` 命中 `app.ts` 那条路由 ⇒ 工具没坏）。
+ *
+ * 三态：**压根没有数据源** —— 没有任何端点回答「这条补货路径分几段、各段占多宽」。
+ * **2026-08-26 实测**（措辞按实际命中写，不许含糊）：
+ *   · `ChainNodeDetailSchema`（`packages/contracts/src/chain-sim.ts`）的顶层字段只有
+ *     `node` / `lots` / `route` / `missing` / `clock` / `visibility` —— **没有任何一格是分段进度**；
+ *   · `grep -rn "replenish" apps/datacore/src/sim/` **确实有 1 条命中**，但它是
+ *     `drill.ts` 注释里的**链路节点 id**（`material.replenish`），不是回包字段 ——
+ *     「有命中」≠「有这个量」，两者不许混（本仓铁律 0.6 的老病）。
  * 版面百分比 + 规格段名，屏上已标「示例数据」，故按「规格占位（已标注）」记。
  */
 const REPLENISH_SEGS: readonly (readonly [number, number, "o" | "b" | "g", string])[] = [ // hardcoded-data-allow —— 规格占位（屏上已标「示例数据」，见 sandbox-detail-placeholder）
