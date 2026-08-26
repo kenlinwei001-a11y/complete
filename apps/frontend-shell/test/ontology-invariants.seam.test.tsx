@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http } from "msw";
 import { loginAs, renderApp } from "./utils";
 import { server } from "./setup";
-import { readRepo, stripComments } from "./factlock";
+import { checkedTree } from "./factlock";
 
 /**
  * WO-ONTOLOGY-EDGE-TRICLASS · **本体第三类边（不变式守卫）的接缝门**
@@ -185,8 +185,19 @@ describe("WO-ONTOLOGY-EDGE-TRICLASS ④ 事实锁：替身与真身的守卫清�
    *   必须报「工具坏了」，不许读作「后端没有守卫」。
    */
   it("datacore 目录里的守卫 key 集合 == mock 下发的 key 集合", async () => {
-    const src = stripComments(readRepo("apps/datacore/src/ontology/invariants.ts"));
-    const backendKeys = [...src.matchAll(/\bkey:\s*"([a-z][a-z0-9_]*)"/g)].map((m) => m[1]!).sort();
+    // 扫**整棵 datacore 源码树**，再按判别式挑出「守卫目录」那一份 —— 不写死文件路径。
+    // `checkedTree` 自带四条金丝雀（规模下界 / 已知必中 / 注释不当代码 / 代码不当注释）。
+    const tree = checkedTree("apps/datacore/src", "violationExpression:", 50);
+    // 判别式：**声明了 `violationExpression:` 的文件**就是守卫目录（`InvariantEntry` 的必填字段），
+    // 与它叫什么名字、住在哪个目录无关。目录搬家 ⇒ 本条自动跟过去；多出一份目录 ⇒ 一并入账。
+    const catalogFiles = tree.filter(([, code]) => /\bviolationExpression:\s*[`"']/.test(code));
+    expect(
+      catalogFiles.map(([f]) => f),
+      "整棵 datacore 树里找不到任何声明 violationExpression 的守卫目录 ⇒ 抽取器坏了（或目录真被删了）",
+    ).not.toEqual([]);
+    const backendKeys = catalogFiles
+      .flatMap(([, code]) => [...code.matchAll(/\bkey:\s*"([a-z][a-z0-9_]*)"/g)].map((m) => m[1]!))
+      .sort();
 
     // 金丝雀（与主判据共用同一份抽取实现）：一个已知必中的 key 必须在
     expect(backendKeys.length, "从 datacore 目录里一条 key 都没抽到 ⇒ 抽取器坏了，不许读作「后端没有守卫」").toBeGreaterThan(2);
