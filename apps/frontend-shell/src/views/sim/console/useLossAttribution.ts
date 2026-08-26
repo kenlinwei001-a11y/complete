@@ -50,6 +50,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   BASE_REGISTRY,
   CHAIN_NODE_REGISTRY,
+  NETWORK_SCOPE_KEY,
   chainNodeDef,
   type ChainLossDrill,
   type ChainLossMatrixResult,
@@ -273,6 +274,65 @@ export function useChainLossMatrix(so?: string): HeatMatrixModel {
   // 「还在飞」与「没答上来」是两个不同的屏上态：前者会自己好，后者不会。
   return skeletonHeat(q.isError ? EMPTY_REASON.noAnswer : EMPTY_REASON.loading);
 }
+
+// ── 范围下拉 → 热力矩阵的列投影（WO-ATTR-DEAD-CONTROLS · B）────────────────────
+//
+// ══ 今天的行为是 X，应该是 Y ═══════════════════════════════════════════════
+// **X（改造前）**：`SandboxAttr.tsx` 的范围下拉是 `<select defaultValue={SCOPES[0]?.key}>` ——
+// **非受控、无 `onChange`**。屏上写着「常州基地」而热力图画着全部 13 列：
+// 控件不但点了没反应，它**显示的状态本身就是假的**（说常州、给全网）。
+// **Y（现在）**：受控 + 默认「全网」（= 屏上真在画的那件事），选某基地 ⇒ 热力图只留该列。
+//
+// ══ 为什么是**前端投影**而不是给端点加一个 `baseId` 入参 ═══════════════════
+// 矩阵端点**一次性把 13 列全给了**（2026-08-26 实测真服务 `POST /a/v1/sim/chain-loss-matrix`
+// body `{}` ⇒ `nodes=18 · bases=13 · cells=234 · 有数据列 13/13`）。列筛选是**同一份数据取子集**，
+// 不是另一次求解 —— 再发一次请求只会得到逐格相同的数（后端按 `so` 锚，不按基地收窄）。
+// 多发一跳既慢又给了「这是重新算过的」这个错觉。
+//
+// ⚠ **本函数只投影列，不重算任何一个数** —— `cells` 里的 `pct` 是「占**本列**总量的百分比」
+// （见 `HeatCellValue.pct` 的口径），筛掉别的列**不改变**留下这一列里每一格的占比。
+// 若哪天有人想让它变成「占全矩阵」，那是换口径，必须先改上面那条注释与端点。
+//
+/**
+ * 按范围下拉的选中项投影热力矩阵的**列**。
+ *
+ * · `NETWORK_SCOPE_KEY`（全网）⇒ **原样返回同一个对象**（恒等投影，不复制、不重排）；
+ * · 某个 `baseId` ⇒ 只留该列；
+ * · 该基地**不在**这次回包里（例：空态骨架只有 4 列；或后端这次没回这个基地）
+ *   ⇒ **诚实空态**：列还在（版面不塌）、格子一个都没有、原因写在 `reasons` 里让用户悬停读得到。
+ *   **绝不**回落成「那就给你看全网」—— 那会让下拉显示 A、屏上画 B，正是本单要消灭的那个病。
+ *
+ * 列名从 `BASE_REGISTRY` 现取（与 `baseScopeOptions()` 同一个册），**不自己编基地名**。
+ */
+export function projectHeatByScope(heat: HeatMatrixModel, scopeKey: string): HeatMatrixModel {
+  if (scopeKey === NETWORK_SCOPE_KEY) return heat;
+  const hit = heat.bases.find((b) => b.baseId === scopeKey);
+  if (hit !== undefined) {
+    const cells = new Map<string, HeatCellValue>();
+    for (const n of heat.nodes) {
+      const c = heat.cells.get(heatCellKey(n.nodeId, scopeKey));
+      if (c !== undefined) cells.set(heatCellKey(n.nodeId, scopeKey), c);
+    }
+    const reason = heat.reasons.get(scopeKey);
+    return {
+      ...heat,
+      bases: [hit],
+      cells,
+      reasons: new Map(reason === undefined ? [] : [[scopeKey, reason]]),
+    };
+  }
+  // 册里有这个基地、这次回包里没有 —— 说清是哪一种「没有」，不拿全网顶上。
+  const name = BASE_REGISTRY.find((b) => b.baseId === scopeKey)?.name;
+  return {
+    ...heat,
+    bases: [{ baseId: scopeKey, name: name ?? scopeKey }],
+    cells: new Map(),
+    reasons: new Map([[scopeKey, SCOPE_NOT_IN_MATRIX]]),
+  };
+}
+
+/** 选了一个**这次回包里没有**的基地时的说法（说人话，不出现内部符号名）。 */
+export const SCOPE_NOT_IN_MATRIX = "这一次取到的数里没有这个基地";
 
 /** 上游矩阵没通时，下游三格（根因树 / 明细 / 瀑布）跟它报同一条原因 —— 一页之内不许两种说法。 */
 const reasonOf = (heat: HeatMatrixModel): EmptyReason => heat.emptyReason ?? EMPTY_REASON.noAnswer;
@@ -647,6 +707,40 @@ const SOURCE_TONE: Record<"cadence" | "domain", SeriesTone> = { cadence: "b", do
 const fmt = (v: number | null | undefined): string => (v === null || v === undefined ? "—" : String(Math.round(v * 100) / 100));
 
 /**
+ * ══ WO-ATTR-DEAD-CONTROLS · A ══════════════════════════════════════════════
+ * 🔴 **本 hook 回的数据里今天没有「链段（`ChainStage`）」这个维度** —— 这不是「接了线没数据」，
+ * 是**两层缺口叠在一起**，混成一句就会去修错地方（本仓 0.5 判据 1 点名的三种「不工作」）：
+ *
+ * **① 指标行本身压根没有段的概念（不是「缺了个字段」）**
+ *    行的粒度是 `${objectId}.${stateVar}`（对象 × 状态变量，见 `SimMetricSeriesItemSchema`），
+ *    与 `ChainStage`（需求/订单/产能/物料/交付）是**正交的两个维度**。
+ *    实测回包 `metrics[]` 的字段恰好是
+ *    `key/objectId/stateVar/label/labelIsFallback/unit/baseline/actual/segments` —— 无 `stage`。
+ *
+ * **② 唯一可能通到段的那条路，今天是空的（这一层才是「接了线没数据」）**
+ *    `segments[].nodeId` **取值域由 `source` 决定**（`SimMetricSegmentSchema` 原文）：
+ *      · `cadence` ⇒ nodeId ∈ `CHAIN_NODE_REGISTRY`，**那里才有 `stage`** ⇒ 段可由
+ *        `chainNodeDef(nodeId)?.stage` 从契约单源现取，前端不必造第二张表；
+ *      · `domain`  ⇒ nodeId ∈ 业务域册 `D01…D13`，`ProcessDomainSchema` 里**没有 `stage`**。
+ *    2026-08-26 实测真服务（`GET /a/v1/sim/sessions/sims_demo_seed_world/metric-series`，200 · 4752B）：
+ *    `segments` 11 条，`source` **11/11 全是 `domain`**，nodeId 去重 = `["D04","D10","D03"]`，
+ *    三个 `chainNodeDef()` 全 `undefined`。病因契约自己写着，实测复核成立：
+ *    `grep -c "cadenceNodeId: null" apps/datacore/src/seed.ts` ⇒ **42**，
+ *    而全部非 null 命中只有 1 处且是**注释**（`seed.ts:253`「留给建模/运营去配」）⇒ 零条种子规则绑节拍点。
+ *
+ * ⇒ **前端不接这条线，也不自己编一张「环节 → 段」对照表**（那就是第二份注册表，
+ *    `scripts/check-chain-node-singlesource.mjs` 判据 C 点名禁止的形态）。
+ *    段页签因此显式标成不可用，见 `SandboxAttr.tsx` 的 `STAGE_TABS`。
+ *
+ * **该由谁下发（两条路，任一条通了这里就能接）**：
+ *   (a) 建模/运营侧给传导规则绑 `cadenceNodeId`（`POST /a/v1/sim/propagation-rules`）
+ *       ⇒ 分段自动升到 `cadence` 档 ⇒ 前端 `chainNodeDef(nodeId)?.stage` 现取，零新契约；
+ *   (b) 或后端在 `SimMetricSegmentSchema` 上显式下发 `stage: ChainStage | null`
+ *       （`domain` 档诚实给 `null`，别硬派一个）。
+ * 金丝雀（证明上面这些「没有」是真的没有，不是探针坏了）：同一支探针在
+ * `CHAIN_NODE_REGISTRY` 上现算 24/24 条全带 `stage`、`chainNodeDef("capacity.aging").stage === "CAPACITY"`。
+ *
+ * ══════════════════════════════════════════════════════════════════════════
  * 接 `GET /a/v1/sim/sessions/:id/metric-series`。**四态各回各的**（本单的标的就在这里）：
  *   · 没有会话 id ⇒ `enabled:false`，**不发请求** ⇒ `notAsked`（"还没选定要看哪一次推演"）；
  *   · 请求在飞 ⇒ `loading`；· 请求失败 ⇒ `noAnswer`；· 200 但零指标 ⇒ `empty`。

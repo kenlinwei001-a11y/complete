@@ -291,6 +291,23 @@
   font-family: inherit;
   appearance: none;
   border-radius: 2px;
+  /* 它现在**真的会筛**（WO-ATTR-DEAD-CONTROLS · B）—— 光标据实说它可点。
+     改前是 `defaultValue` 非受控、无 `onChange`：选了没反应，且默认显示「常州基地」
+     而屏上画着全部 13 列（控件报的状态本身就是假的）。 */
+  cursor: pointer;
+}
+
+/**
+ * 「这一行真的点得动」的**唯一记号**（`.tn` 的二级行 · `.dr` 的明细行）。
+ * 与上面那批 `disabled` 的页签正好相反：那边是「看起来能点其实不能」，
+ * 这边是改前「能点却看不出能点」。两边都是屏上的可点性与真实可点性对不上。
+ */
+.pick {
+  cursor: pointer;
+}
+.pick:focus-visible {
+  outline: 1px solid var(--c-capacity);
+  outline-offset: -1px;
 }
 .sel::after {
   content: "⌄";
@@ -306,14 +323,32 @@
   margin: 0 8px 6px;
   border-bottom: 1px solid var(--line);
 }
-.wv b {
+/* ── 轮次页签（WO-ATTR-DEAD-CONTROLS）──────────────────────────────────────
+   改前是 `<b>`：无 `onClick`、无 state、高亮写死在第 0 个 —— 看起来是页签，点了没反应。
+   现改 `<button disabled>`（今天没有「第几轮推演」这个承载物，理由挂 `title`）。
+
+   ⚠ **这段重置是必需的，不是洁癖**：`<button>` 带一整套 UA 默认样式
+   （背景 / 边框 / `font-family` / `line-height:normal` / `text-align:center`），
+   不逐条抹掉，屏上盒子会与规格 `docs/ux-spec/sandbox/sandbox-attr.html` 当场对不上 ——
+   本页验收线是像素级 1:1，换标签**不许连带换外观**。
+   `appearance:none` 管 Safari 的原生按钮皮，`background:none` + `border:0` 管其余。 */
+.wv button {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-align: left;
   font-weight: 400;
   font-size: 11px;
   padding: 4px 7px;
   color: var(--muted2);
   cursor: default;
 }
-.wv b.on {
+.wv button.on {
   color: var(--c-capacity-txt);
   border-bottom: 1px solid var(--c-capacity);
 }
@@ -323,7 +358,15 @@
   gap: 2px;
   color: var(--muted2);
 }
-.wv .nav u {
+.wv .nav button {
+  appearance: none;
+  background: none;
+  border-radius: 0;
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
+  color: inherit;
+  cursor: default;
   text-decoration: none;
   padding: 0 4px;
   border: 1px solid var(--line);
@@ -575,13 +618,27 @@
   border-bottom: 1px solid var(--line);
   flex: none;
 }
-.btabs b {
+/* ── 段页签（WO-ATTR-DEAD-CONTROLS · A）────────────────────────────────────
+   同上，改前是 `<b>` + 写死高亮。今天**不可用**的理由不是没接线，是**回包里没有段这个维度**
+   （实测原文与复验命令在 `useLossAttribution.ts` 的 `useContributionSeries` 头注）。
+   重置理由同 `.wv button` 那段：换标签不许连带换外观。 */
+.btabs button {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: default;
   font-weight: 400;
   font-size: 11px;
   padding: 5px 9px;
   color: var(--muted2);
 }
-.btabs b.on {
+.btabs button.on {
   color: var(--c-capacity-txt);
   border-bottom: 1px solid var(--c-capacity);
 }
@@ -591,7 +648,15 @@
   gap: 2px;
   color: var(--muted2);
 }
-.btabs .nav u {
+.btabs .nav button {
+  appearance: none;
+  background: none;
+  border-radius: 0;
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
+  color: inherit;
+  cursor: default;
   text-decoration: none;
   padding: 0 4px;
   border: 1px solid var(--line);
