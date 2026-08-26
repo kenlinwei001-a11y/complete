@@ -227,21 +227,25 @@ export const GROUP_CONSOLIDATION_EXEMPT: Record<string, string> = {
   "推演::global-sim": "独立场景：全局推演有自己的求解器与整页流程，不是沙盘五问之一；收进去只会把沙盘撑爆",
   "推演::risk": "独立场景：风险看板有自己的数据面与整页流程，不是沙盘五问之一；收进去只会把沙盘撑爆",
   "推演::order-chain": "独立场景：订单全链有自己的求解器与整页流程，不是沙盘五问之一；收进去只会把沙盘撑爆",
-  // ── WO-SIM-NAV-GROUP · 指控台四页（与上面四条「独立场景」是**两种不同的豁免理由**）──────
-  // 上面四条说的是「它不该被收编」；下面四条说的是「它**收编不了**——带上就永远不出现」。
-  // 机制（写全，免得下一个人以为漏了 consolidatedWhen）：这四个 viewKey 的受控键就是
-  // `sim.sandbox` 本身（`VIEW_FEATURE_MAP`）⇒ 沙盘关时后端根本不下发、`viewByKey` 查不中、
-  // 条目自己就没了；沙盘开时若再被 `consolidatedWhen` 隐藏，**两态都不出现** = 页面从 IA 里蒸发。
-  // 换句话说：判据⑨ 要防的「组被掏空」在这四条上不成立 —— 它们**天然随 sim.sandbox 一起消失**，
-  // 本就兑现了「沙盘关 ⇒ 这一组该消失」那半边承诺，只是靠 entitlement 级联而不是靠 `consolidatedWhen`。
-  "推演::sim-console":
-    "受控键就是 sim.sandbox 本身（VIEW_FEATURE_MAP）：沙盘关时后端不下发、条目自动消失；再带 consolidatedWhen 会让它开关两态都不出现 = 页面从导航里蒸发",
-  "推演::sim-conduction":
-    "受控键就是 sim.sandbox 本身（VIEW_FEATURE_MAP）：沙盘关时后端不下发、条目自动消失；再带 consolidatedWhen 会让它开关两态都不出现 = 页面从导航里蒸发",
-  "推演::sim-attribution":
-    "受控键就是 sim.sandbox 本身（VIEW_FEATURE_MAP）：沙盘关时后端不下发、条目自动消失；再带 consolidatedWhen 会让它开关两态都不出现 = 页面从导航里蒸发",
-  "推演::sim-optimize":
-    "受控键就是 sim.sandbox 本身（VIEW_FEATURE_MAP）：沙盘关时后端不下发、条目自动消失；再带 consolidatedWhen 会让它开关两态都不出现 = 页面从导航里蒸发",
+  // ── WO-SIM-NAV-UNIFIED · 合并壳自己不可能被自己收编（同 sim-sandbox 那条的形态）──────────
+  "推演::sim-unified":
+    "它就是本组四个台被收编进去的那个控制台本身（/v/sim-unified）；收编自己在逻辑上不成立，合并壳开着反而必须看得见入口",
+  //
+  // ── WO-SIM-NAV-UNIFIED · **指控台四页的豁免已删**（不是漏了，是理由失效了）──────────────
+  // 上一版这里有四条 `推演::sim-console|sim-conduction|sim-attribution|sim-optimize`，理由逐字是：
+  //   「受控键就是 sim.sandbox 本身（VIEW_FEATURE_MAP）：沙盘关时后端不下发、条目自动消失；
+  //     再带 consolidatedWhen 会让它开关两态都不出现 = **页面从导航里蒸发**」
+  // 那条理由**挡的是「藏起来就等于删掉」**——当时这四页在任何控制台里都没有落点，
+  // 藏掉 = 唯一入口消失。今天前提已变（落点见 NAV_GROUPS 那四条旁的长注与
+  // `CONSOLIDATED_INTO_SANDBOX` 的四条 `where`），故理由本身已成假命题：
+  // 四条现在**确实带着** `consolidatedWhen`，而豁免文案还写着「不能带」——留着就是自相矛盾的记号。
+  //
+  // ⚠ 这四条**不是被门逼着删的**（本轮实测的一处门盲区，照实记下，别当成「门会兜住」）：
+  //   判据⑨ 的陈旧检测 `groupExemptUsed`（`check-nav-group-coverage.mjs:1225-1230`）
+  //   只要该项**还在组里**就把豁免记作「已用」，**不看它是否已经带上 `consolidatedWhen`**。
+  //   而本表头注写的陈旧判据是「那一项**已经带上 consolidatedWhen**，或那一项已从组里删掉 ⇒ RC=1」
+  //   —— **文档说的这一半，实现里并没有**。所以一条已经自相矛盾的豁免可以在这里躺着不被发现。
+  //   （门脚本属本单禁区，只记不改；这是留给后续单的一条真缺口。）
 };
 
 // WO-SWEEP-03-NAV-GROUP（导航分组防漂移）：export 供 f61 结构守卫——NAV_GROUPS 的 admin 键须覆盖全部 ADMIN_PAGES，
