@@ -79,9 +79,16 @@
  *                                 共用 `["a","sim-sessions"]` ⇒ 同一份缓存、同一条事件失效链）
  */
 import { Suspense, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import type { PropagationRulesResponse, SandboxViewConfig, SimMetricSeriesResponse } from "@platform/contracts";
-import { api } from "@/api/apiClient";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type {
+  ChangeFocus,
+  ChangeImpactPreview,
+  PropagationRulesResponse,
+  SandboxViewConfig,
+  SimMetricSeriesResponse,
+  SimSessionStatus,
+} from "@platform/contracts";
+import { api, ApiClientError } from "@/api/apiClient";
 import type { ViewConfigVM } from "@/api/types";
 import {
   fetchDrillStateVarLayers,
@@ -89,6 +96,9 @@ import {
   fetchSimPerturbations,
   fetchSimSessions,
   fetchSimViewConfig,
+  patchSimSessionStatus,
+  previewChangeImpact,
+  type SimSessionStatusTarget,
 } from "@/api/endpoints";
 import { getRenderer } from "@/views/registry";
 import { UNIFIED_MODES, UNIFIED_MODE_SPEC, type UnifiedMode } from "./unifiedModes";
@@ -115,6 +125,75 @@ const SESSION_REASON_TEXT: Record<ConsoleSessionReason, string> = {
   loading: "会话列表还在路上",
   "no-running-session": "本租户没有 RUNNING 会话 —— 没有世界可推演（不是算不出来）",
   unavailable: "会话列表这一跳失败 —— **不知道**有没有会话（不是没有）",
+};
+
+/**
+ * ══ WO-SIM-SESSION-WIRE · 会话生命周期（暂停 / 恢复 / 结束）与变更波及面 ═══════════
+ *
+ * **今天的行为是 X（开工实测）**：本壳区② 只把 `sessionId` 与「会话哪来的」印出来，
+ *   **会话自己是什么状态一个字都没有**，更没有任何控制 —— 而后端
+ *   `PATCH …/sessions/:id/status` 早就在，且 PAUSED/ENDED 是**世界真的冻结**
+ *   （推进 / 施加扰动 / 回滚 / 改屏蔽边一律 409）。用户在这块屏上看着世界继续走，
+ *   却没有一个地方能把它停下来。
+ * **应该是 Y**：状态条上直接看到状态、直接迁移；三种"没成功"分开说
+ *   （后端拒绝这次迁移 · 会话/功能不在 · 这一跳自己没走通 ⇒ 不知道成没成）。
+ *
+ * **第二件（右栏）**：`POST …/change-impact-preview` 的四桶波及面前端零调用 ⇒
+ *   「我改这一格会波及谁」问不出来。补在右栏检视之下，**按需触发**（只读语义不做成副作用节奏）。
+ *
+ * ⛔ **迁移合法性表不在这里镜像一份**：后端 `SIM_STATUS_TRANSITIONS` 自称唯一真相源，
+ *   前端再抄一遍就是第二套语义，两边一漂就各说各话。故三个按钮**照发**，
+ *   非法迁移由后端 409 明说（实测原话：「会话 … 不能从 PAUSED 迁到 PAUSED（PAUSED 允许的去向：RUNNING/ENDED）。」），
+ *   前端原样上屏 —— 用户读到的是权威答案，不是前端的猜测。
+ */
+
+/** 会话状态的**五态**（四种"拿不到"各有处置，禁止塌成一个 `undefined`）。 */
+type SessionStatusState =
+  | { kind: "known"; status: SimSessionStatus }
+  /** 壳压根没解析出会话 —— 理由走 `SESSION_REASON_TEXT`，这里不重复一遍。 */
+  | { kind: "no-session" }
+  /** 会话清单还在路上：此刻"没状态"是**暂时**的，不该被读成"它没有状态"。 */
+  | { kind: "loading" }
+  /** 会话清单这一跳自己失败了 ⇒ **不知道**它是什么状态（不是"它没状态"）。 */
+  | { kind: "unavailable" }
+  /** 清单回来了、里面没有这一条 ⇒ 这是**清单的结论**，与"这一跳失败"完全不同。 */
+  | { kind: "absent" };
+
+const SESSION_STATUS_ABSENCE_TEXT: Record<Exclude<SessionStatusState["kind"], "known">, string> = {
+  "no-session": "没有会话，也就没有状态可迁移",
+  loading: "会话清单还在路上 —— 状态待会才知道",
+  unavailable: "会话清单这一跳失败 —— 不知道它现在是什么状态（不是它没有状态）",
+  absent: "会话清单里没有这一条 —— 它可能不是沙盘会话（清单只回沙盘会话），也可能已被删",
+};
+
+/** 三个迁移目标的屏上说法。目标集合与后端 zod 收的那三个逐字对应。 */
+const STATUS_ACTIONS: readonly { target: SimSessionStatusTarget; label: string; hint: string }[] = [
+  { target: "PAUSED", label: "暂停", hint: "世界停住：推进、施加扰动、回滚一律被拒" },
+  { target: "RUNNING", label: "恢复", hint: "解冻，世界可以继续推" },
+  { target: "ENDED", label: "结束", hint: "终态，之后只能从它分叉出新世界" },
+];
+
+/**
+ * 一次写操作**没成功**，究竟是哪一种没成功。
+ * ⛔ 三者绝不合并成一句「失败」：前两种是**后端给的结论**（照它办即可），
+ *    第三种是**我们不知道**（得再看一眼才知道成没成）—— 处置完全相反。
+ */
+function describeWriteFailure(e: unknown): string {
+  if (e instanceof ApiClientError) {
+    if (e.status === 409) return `后端拒绝了这次迁移：${e.message}`;
+    if (e.status === 404) return `后端说这条会话或推演沙盘功能不在：${e.message}`;
+    if (e.status === 403) return `没有权限做这次迁移：${e.message}`;
+    return `后端回了 ${e.status}：${e.message}`;
+  }
+  return "这一跳没走通 —— 不知道迁移成没成（这和「后端拒绝了」是两件事）。刷新后再看一眼状态。";
+}
+
+/** 波及面四桶的屏上说法（桶名与契约 `ChangeImpactItem.bucket` 一一对应，不多不少）。 */
+const IMPACT_BUCKET_TEXT: Record<ChangeImpactPreview["items"][number]["bucket"], string> = {
+  recompute: "传导重算",
+  rederive: "派生重算",
+  rejudge: "规则重判",
+  rewire: "结构改写",
 };
 
 /**
@@ -165,6 +244,9 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [log, setLog] = useState<readonly string[]>([]);
   const say = (line: string): void => setLog((p) => [...p, line].slice(-50));
+  const qc = useQueryClient();
+  /** 用户**主动问过**的那一格（`null` = 还没问）。只读预览不许挂在选中态上自动发。 */
+  const [askedFocus, setAskedFocus] = useState<ChangeFocus | null>(null);
 
   const cfgQ = useQuery({
     queryKey: ["a", "sim-view-config"],
@@ -206,6 +288,31 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
     retry: false,
   });
 
+  /**
+   * 变更波及面。`enabled` 咬在「用户问过了」上 —— 没问就一发不发（只读，但方法是 POST）。
+   * `retry:false`：这一跳失败时正确的行为是**如实说不知道**，不是偷偷重试几次再说。
+   */
+  const impactQ = useQuery({
+    queryKey: ["a", "sim-change-impact", askedFocus === null ? "" : JSON.stringify(askedFocus)],
+    queryFn: () => previewChangeImpact(askedFocus as ChangeFocus),
+    enabled: askedFocus !== null,
+    staleTime: Infinity,
+    retry: false,
+  });
+
+  /**
+   * 会话状态迁移。成功即失效 `["a","sim-sessions"]` —— 权威状态**只有清单那一份**
+   * （单跳实测 1,087 字节），不在本组件另存一个 status 副本当第二个出处。
+   */
+  const statusM = useMutation({
+    mutationFn: (target: SimSessionStatusTarget) => patchSimSessionStatus(sessionId as string, target),
+    onSuccess: (r) => {
+      say(`会话迁到「${r.status}」（第 ${r.curTick} 拍）`);
+      void qc.invalidateQueries({ queryKey: ["a", "sim-sessions"] });
+    },
+    onError: (e) => say(describeWriteFailure(e)),
+  });
+
   const cfg = cfgQ.data as SandboxViewConfig | undefined;
   const rules = (rulesQ.data as PropagationRulesResponse | undefined)?.items ?? [];
   /**
@@ -214,11 +321,23 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
    */
   const names = cfg?.stateVarNames ?? (rulesQ.data as PropagationRulesResponse | undefined)?.stateVarNames;
 
-  const origin = useMemo(() => {
-    const items = sessionsQ.data?.items ?? [];
-    const s = items.find((x) => x.id === sessionId);
-    return s === undefined ? null : readSnapshotOrigin(s.scope);
-  }, [sessionsQ.data, sessionId]);
+  /**
+   * 清单里那一条会话本身。**这一步单独拿出来**，是因为「清单里没有这一条」与
+   * 「这一条没有出处记号」此前被合并成了同一句话（`origin === null`）——
+   * 两者一个是**清单的结论**、一个是**会话的属性**，处置完全不同。
+   */
+  const current = useMemo(
+    () => (sessionsQ.data?.items ?? []).find((x) => x.id === sessionId),
+    [sessionsQ.data, sessionId],
+  );
+  const origin = useMemo(() => (current === undefined ? null : readSnapshotOrigin(current.scope)), [current]);
+  const statusState: SessionStatusState = useMemo(() => {
+    if (!enabled) return { kind: "no-session" };
+    if (current !== undefined) return { kind: "known", status: current.status };
+    if (sessionsQ.isLoading) return { kind: "loading" };
+    if (sessionsQ.isError) return { kind: "unavailable" };
+    return { kind: "absent" };
+  }, [enabled, current, sessionsQ.isLoading, sessionsQ.isError]);
 
   const wall = useMemo(
     () =>
@@ -346,13 +465,57 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
         <span className={styles.calibre}>{SESSION_REASON_TEXT[session.reason]}</span>
         <span data-testid="usim-origin" data-origin-kind={origin?.kind ?? "unknown"} className={styles.calibre}>
           {origin === null
-            ? "世界态出处：会话未下发 `scope.baseSnapshotOrigin` ⇒ 出处不明，屏上一律按「非实测」读"
+            ? current === undefined
+              ? // 「清单里根本没有这一条」—— 这与「有这一条、但它没带出处记号」是两件事，
+                // 从前两者共用一句话，屏上分不出来。现在按 statusState 分开说。
+                `世界态出处：${SESSION_STATUS_ABSENCE_TEXT[statusState.kind === "known" ? "absent" : statusState.kind]}`
+              : "世界态出处：这条会话没有带出处记号 ⇒ 出处不明，屏上一律按「非实测」读"
             : `世界态出处：${origin.kind}${origin.note === null ? "" : ` · ${origin.note}`}${
                 origin.measuredCells === null || origin.cells === null
                   ? ""
                   : ` · 实测格 ${origin.measuredCells}/${origin.cells}`
               }`}
         </span>
+      </div>
+
+      {/* ── 会话生命周期条：状态 + 暂停/恢复/结束（WO-SIM-SESSION-WIRE）──────────
+          状态只有一个出处 = 会话清单。迁移合法性不在前端镜像，非法迁移由后端明说。 */}
+      <div className={styles.status} data-testid="usim-lifecycle" data-status={statusState.kind === "known" ? statusState.status : statusState.kind}>
+        <span>
+          <span className={styles.statusKey}>状态 </span>
+          {statusState.kind === "known" ? statusState.status : "—"}
+        </span>
+        {statusState.kind === "known" ? null : (
+          <span className={styles.calibre} data-testid="usim-status-absent">
+            {SESSION_STATUS_ABSENCE_TEXT[statusState.kind]}
+          </span>
+        )}
+        {STATUS_ACTIONS.map((a) => (
+          <button
+            key={a.target}
+            type="button"
+            className={styles.tab}
+            data-testid={`usim-status-${a.target.toLowerCase()}`}
+            disabled={!enabled || statusM.isPending}
+            title={enabled ? a.hint : "先要有一个会话，才谈得上迁移它的状态"}
+            onClick={() => {
+              say(`请求把会话迁到「${a.target}」`);
+              statusM.mutate(a.target);
+            }}
+          >
+            {a.label}
+          </button>
+        ))}
+        {statusM.isPending ? (
+          <span className={styles.calibre} data-testid="usim-status-pending">
+            正在迁移 —— 还不知道结果
+          </span>
+        ) : null}
+        {statusM.isError ? (
+          <span className={`${styles.calibre} ${styles.warn}`} data-testid="usim-status-error">
+            {describeWriteFailure(statusM.error)}
+          </span>
+        ) : null}
       </div>
 
       {/* 左栏收起后的常驻摘要条（仓主明确要的那条） */}
