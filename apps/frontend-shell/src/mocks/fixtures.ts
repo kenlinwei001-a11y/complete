@@ -216,6 +216,29 @@ export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
   // WO-IMPEDIMENTS-REACHABLE：沙盘第五子视图（后端 BUILTIN_VIEWS 同批入册）。mock 缺它 ⇒
   // `nav-group-coverage:check` 判据② 红，且 f61 的归组断言对它恒真（哑门）——同 #99/#110 的病根。
   { key: "view.chain-impediments", name: "全链阻滞点", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"], bindings: { solverKeys: ["chain_impediments"] } },
+  // ── WO-SIM-NAV-UNIFIED · 推演指控台四页的 `view.*` 功能键（mock 补齐·此前一条都没有）──────
+  //
+  // **X（2026-08-26 playwright 真浏览器 mock 模式 planner/demo1234 实测）**：
+  //   `/v/sim-console`（及同族三页）屏上是 **「404 页面不存在 / 该功能不存在或未开通」**。
+  //   病灶不在下发表，在 `pages/ViewPage.tsx` 的 feature 闸 —— 它**写死 `view.<viewKey>` 这个拼法**：
+  //     `if (features && !features.includes("view." + viewKey)) return <NotFoundPage />;`
+  //   而这四页在后端的受控键是 `sim.sandbox`（`features.ts` 的 `VIEW_FEATURE_MAP`）⇒
+  //   光把它们补进 `allViews` 不够：`view.sim-console` 不在 features 里，这道闸照样 404。
+  //
+  // **生产为什么不 404**：后端 `seedViewConfigs` 建 ViewConfig 时会走
+  //   `features.ts` 的 `registerViewFeature()`，它**自动注册一条动态功能** `view.<viewKey>`（defaultOn:true）。
+  //   故生产的 `workspace.features` 里两条都在：`sim.sandbox`（管下发/viewAllowed）
+  //   ＋ `view.sim-console`（管前端这道闸）。mock 的 `FEATURE_REGISTRY` 是**静态表、没有动态注册这一步**，
+  //   于是只有 mock 会 404 —— 典型的「mock 与生产不同形」，且是**失败危险**那一侧：
+  //   跑 mock 的「路由仍可达」断言恒绿（正是门判据⑧b 点名要防的哑门）。
+  //
+  // **Y**：照生产补齐四条。`requires: ["sim.sandbox"]` 复刻生产的级联语义（沙盘关 ⇒ 四页一起关），
+  //   与上面五个沙盘子视图的写法逐字同构。补完之后 `featureKeyOf` 的默认规则自然成立，不需要特例。
+  // 复验：`node scripts/check-nav-group-coverage.mjs` ＋ 真浏览器 SPA 内跳 `/v/sim-console`（应见页面而非 404）。
+  { key: "view.sim-console", name: "推演指控台", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
+  { key: "view.sim-conduction", name: "传导识别", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
+  { key: "view.sim-attribution", name: "损失归因", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
+  { key: "view.sim-optimize", name: "方案寻优", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
   // WO-WAITING-STATES-FE：流程等待态（后端 BUILTIN_VIEWS 同批入册·seed:true）。
   // 不挂 requires —— 业务流程层是配置驱动的主数据，与 sim.sandbox 无从属关系（挂上去是假依赖）。
   { key: "view.process-wait", name: "流程等待态", level: "VIEW", defaultOn: true },
@@ -692,13 +715,11 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
   //   （features.ts:272 有意为之：卡点面板与运行时引擎同生共死，不另立一个能各自开关的 view.* 键）。
   //   照默认规则算成 `view.process-stuck` ⇒ 该键永不在 features 里 ⇒ 视图恒被过滤掉，
   //   表现为「注册了、下发表里也写了，就是不出现」——最难查的那种。
-  //   同理 WO-SIM-NAV-UNIFIED：指控台四页的控制键**不是** `view.sim-console` 一族，
-  //   而是**沙盘同一把闸** `sim.sandbox`（后端单一出处：`apps/datacore/src/features.ts:307`
-  //   `...Object.fromEntries(SANDBOX_CONSOLE_VIEW_KEYS.map((k) => [k, SANDBOX_CONSOLE_FEATURE_KEY]))`，
-  //   而 `SANDBOX_CONSOLE_FEATURE_KEY = "sim.sandbox"`）。
-  //   照默认规则算成 `view.sim-console` ⇒ 该键永不在 features 里 ⇒ 四页恒被过滤掉，
-  //   于是 mock 里「收编前后一个样」，`consolidatedWhen` 那条线在 mock 下**永远测不到**。
-  const SANDBOX_CONSOLE_KEYS = ["sim-console", "sim-conduction", "sim-attribution", "sim-optimize"];
+  //   ⚠ WO-SIM-NAV-UNIFIED 曾在这里给指控台四页加过一条 `→ "sim.sandbox"` 的特例，**已撤销**：
+  //   那样一来 mock 的下发闸走 `sim.sandbox`、而 `ViewPage` 的 feature 闸仍写死查 `view.sim-console`，
+  //   **两道闸各查一个键** ⇒ 视图下发得到、页面照样 404（2026-08-26 真浏览器实测就是这个屏）。
+  //   正解是照生产补 `view.*` 那四条功能键（见上方 FEATURE_REGISTRY 该段长注），
+  //   补完之后默认规则 `view.${viewKey}` 自然成立，这里不需要任何特例。
   const featureKeyOf = (viewKey: string) =>
     viewKey === "graph"
       ? "view.ontology-graph"
@@ -708,9 +729,7 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
           ? "view.ledger"
           : viewKey === "process-stuck"
             ? "process.runtime"
-            : SANDBOX_CONSOLE_KEYS.includes(viewKey)
-              ? "sim.sandbox"
-              : `view.${viewKey}`;
+            : `view.${viewKey}`;
   // 服务端按 features 过滤后下发（前端不做解析，只消费结果）
   const views = allViews.filter((v) => features.includes(featureKeyOf(v.key)));
   // aop 不进导航（仅直链可达，演示兜底卡）；base_manager 额外隐藏图谱（含八视角）
