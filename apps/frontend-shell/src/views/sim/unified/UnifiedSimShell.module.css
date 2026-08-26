@@ -70,12 +70,17 @@
   border-radius: 6px;
   font-size: 12px;
 }
+/* ⚠ `--fg-muted` **全仓无定义**（tokens.css 只有 `--txt` / `--muted` / `--muted2`），
+   于是这几处恒落到字面兜底 `#656d76`：暗色主题下压在 `--panel-glass` 上实测 **2.03:1**，
+   浅色 4.63 / 暖色 4.69 —— 12px 需 6.0:1，三主题全不过，暗色下基本读不到。
+   全部改用在册令牌 `--muted2`（逐主题 #bbc5ce / #515a6a / #5b5b5b，
+   实测 dark 6.09 / light 6.13 / warm 6.07 ≥ 6.0），与本文件 `.tabGroup` 那段同一个结论。 */
 .statusKey {
-  color: var(--fg-muted, #656d76);
+  color: var(--muted2);
 }
 .calibre {
-  font-size: 11px;
-  color: var(--fg-muted, #656d76);
+  font-size: 12px;
+  color: var(--muted2);
 }
 .warn {
   color: var(--danger, #cf222e);
@@ -179,8 +184,8 @@
 }
 .cardKey {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
-  color: var(--fg-muted, #656d76);
+  font-size: 12px;
+  color: var(--muted2);
   overflow-wrap: anywhere;
 }
 .cardValue {
@@ -194,13 +199,18 @@
 .unmovedBlock {
   margin-top: 6px;
 }
+/* ⚠ 文字用 `--accent` 是**真缺陷**，不是门的误报：`--accent` 是**实心底/描边**那一档
+   （逐主题 #4c90f0 / #3b5bdb / #E8590C），当**文字色**压在页面表面上实测
+   dark 3.33 / light 5.00 / warm 3.20 —— 12px 需 6.0:1，三主题全不过。
+   tokens.css 另有专给「accent 色的文字」的一档 `--accent-txt`
+   （#a2c6f7 / #274ad7 / #9d3c08），实测 6.07 / 6.08 / 6.08，三主题全过。 */
 .unmovedToggle {
   font-size: 12px;
   background: none;
   border: none;
   padding: 2px 0;
   cursor: pointer;
-  color: var(--accent, #0969da);
+  color: var(--accent-txt);
 }
 
 /* ── 右栏 ─────────────────────────────────────────────────────── */
@@ -208,8 +218,8 @@
   margin-bottom: 10px;
 }
 .sectionHead {
-  font-size: 11px;
-  color: var(--fg-muted, #656d76);
+  font-size: 12px;
+  color: var(--muted2);
   margin-bottom: 4px;
 }
 .bigNumber {
@@ -245,7 +255,7 @@
   border: 1px solid var(--border, #d0d7de);
   border-radius: 6px;
   padding: 4px 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   max-height: 6rem;
   overflow: auto;
