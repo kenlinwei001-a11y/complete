@@ -7,6 +7,12 @@ import { memo, useEffect, useRef, useState } from "react";
  *  - 流式尾（running）summary 取**最新非空行**并跟随滚动；
  *  - 展开后 summary 消失、全文入普通流；
  *  - settled 后 summary 回到**首行**（首个非空行）。
+ *
+ * WO-LEGIBILITY-12PX（2026-08-26）·「(进行中)」原写内联 `fontSize: 10` —— 低于
+ * `check-text-legibility` 判据 B 的 **12px 硬底**（门头推导：9–10px 的中文在本仓调色板内
+ * 无解，唯一修法是升字号不是调颜色）。去掉内联覆盖 ⇒ 随外层按钮的 12px，不另立一档。
+ * ⚠ 说明留在文件头注而不是 JSX 注释 —— `check-ui-first-layer` 判据 D2b 把 JSX 里的长串
+ * 算作「第一层长说明串」。
  */
 
 /** 首个非空行（settled summary） */
@@ -49,8 +55,6 @@ export function ThinkRow({ text, running }: { text: string; running: boolean }) 
       >
         <span aria-hidden>{expanded ? "▾" : "▸"}</span>
         <span>Think</span>
-        {/* 原写 10px —— `check-text-legibility` 判据 B 的硬底是 12px（9–10px 的中文在本调色板内
-            无解，见门头推导）。去掉内联覆盖 ⇒ 随外层按钮的 12px，不另立一档。 */}
         {running && <span>(进行中)</span>}
         {!expanded && (
           <>
