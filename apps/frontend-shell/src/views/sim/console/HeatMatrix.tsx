@@ -49,9 +49,22 @@ const toneToken = (pct: number): string =>
 /** 没数据时格子里印的东西。**一个字符常量，全仓只此一处**（换成 0 就是本文件存在的理由被推翻）。 */
 export const HEAT_EMPTY_GLYPH = "—";
 
-export function HeatMatrix({ matrix }: { matrix: HeatMatrixModel }): JSX.Element {
+/**
+ * @param scopeKey 范围下拉当前选中的 key（`WO-ATTR-DEAD-CONTROLS · B`）。
+ *   只用来在根元素上留两个**机器可读的记号**：`data-scope-follows="1"`（本块跟着范围走）
+ *   与 `data-scope`（跟到了哪一档）。
+ *   ⚠ **筛列这件事不在本组件里做** —— 投影由 `projectHeatByScope` 干完再喂进来，
+ *   本组件仍然「给什么画什么」。两处都筛就会有两份口径，改一处漏一处不会红。
+ *   缺省 ⇒ 不留记号（本组件被单独渲染的场合，例如像素测里手造一个 `matrix` 字面量）。
+ */
+export function HeatMatrix({ matrix, scopeKey }: { matrix: HeatMatrixModel; scopeKey?: string }): JSX.Element {
   return (
-    <div className={styles.hm} data-testid="sandbox-attr-heat" data-source={matrix.source}>
+    <div
+      className={styles.hm}
+      data-testid="sandbox-attr-heat"
+      data-source={matrix.source}
+      {...(scopeKey === undefined ? {} : { "data-scope-follows": "1", "data-scope": scopeKey })}
+    >
       <div
         className={styles.hmg}
         style={{ gridTemplateColumns: `64px repeat(${matrix.bases.length}, 1fr)` }}
