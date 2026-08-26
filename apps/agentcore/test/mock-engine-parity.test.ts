@@ -227,7 +227,12 @@ describe("WO-MOCK-ENGINE-PARITY · mock 与真引擎同口径现算集合相等"
     // 100→101 于 2026-08-23（本单）：A 侧 4a0c7ea1 加 `material_has_outsource`(Material→Outsource)；
     // 该类型落在 battery-extended.ts，不进 `batteryObjectTypes()` ⇒ 类型数仍为 61。
     expect(graph.types.length, "类型数与探针独立口径不符（今日 61）").toBe(61);
-    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 101）").toBe(101);
+    // 101→103 于 2026-08-26：A 侧 d2542195 加两条**补货逆边** `po_replenishes_material`
+    // (PurchaseOrder→Material) 与 `batch_replenishes_material`(MaterialBatch→Material)。
+    // 按本注释的要求**两侧独立复算过**，没有照抄报错里的 received：拿 battery.ts 与
+    // ontology-graph.ts 各跑一遍同一条 `fromTypeKey:` 正则求差集 ⇒ battery 103 · mock 101 ·
+    // missing 正是这两条 · extra 0；再 `git log -S` 追到 d2542195 确认是**有意新增**不是回归。
+    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 103）").toBe(103);
   });
 
   it("§2 mock 镜像图 == battery.ts 现算图（集合相等·缺谁多谁点名）", () => {

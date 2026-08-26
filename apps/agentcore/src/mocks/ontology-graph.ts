@@ -132,6 +132,11 @@ export const MOCK_ONTOLOGY_LINKS: MockOntologyLink[] = [
   //（同 Material / Supplier / Customer 等既有情形：链路表引用它们，类型表里没有）。
   { linkKey: "material_has_outsource", fromTypeKey: "Material", toTypeKey: "Outsource" },
   { linkKey: "material_supplied_by_po", fromTypeKey: "Material", toTypeKey: "PurchaseOrder" },
+  // 两条**补货逆边**（A 侧 d2542195 加，供影响向传导用）：正向 `material_supplied_by_po`
+  // 与 `material_has_batch` 都在本表上面几行，逆向此前漏镜像 —— `mock-engine-parity` 的
+  // §2 当场点名了这两条，正是这道门要治的「A 侧改了本体而 mock 没跟」。
+  { linkKey: "po_replenishes_material", fromTypeKey: "PurchaseOrder", toTypeKey: "Material" },
+  { linkKey: "batch_replenishes_material", fromTypeKey: "MaterialBatch", toTypeKey: "Material" },
   { linkKey: "po_from_supplier", fromTypeKey: "PurchaseOrder", toTypeKey: "Supplier" },
   { linkKey: "po_customs_cleared_by", fromTypeKey: "PurchaseOrder", toTypeKey: "CustomsClearance" },
   { linkKey: "po_inspected_by", fromTypeKey: "PurchaseOrder", toTypeKey: "IncomingInspection" },
