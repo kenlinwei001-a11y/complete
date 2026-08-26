@@ -16,7 +16,9 @@ export function TurnStatsBar({ stats }: { stats: TurnStats | undefined }) {
     <div
       data-testid="turn-stats-bar"
       className="mono"
-      style={{ display: "flex", gap: 10, fontSize: 10.5, color: "var(--muted2)", padding: "4px 0", flexWrap: "wrap" }}
+      /* 12px = `check-text-legibility` 判据 B 硬底；`--muted2` 在 12px 需 6.0:1，
+         实测 dark 6.09 / light 6.13 / warm 6.07（原 10.5px 需 6.86:1，三主题全不过）。 */
+      style={{ display: "flex", gap: 10, fontSize: 12, color: "var(--muted2)", padding: "4px 0", flexWrap: "wrap" }}
     >
       <span data-testid="turn-stats-rounds">
         {stats.turns} 轮·{stats.steps} 步

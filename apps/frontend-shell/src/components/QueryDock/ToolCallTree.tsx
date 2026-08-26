@@ -9,6 +9,18 @@ import type { ToolBlock, ToolResultBlock } from "@/sse/chatFlowProjection";
  *  - openFile/inspectCall 宿主回调 → 零实现诚实缺省（不传即不出按钮，不造假链接）；
  *  - 「Runtime 仍是 call/result 配对与 subCalls 投影的权威」（README 原话）——
  *    本组件只渲染投影产物，不自己配对。
+ *
+ * WO-LEGIBILITY-12PX（2026-08-26）· `GenericToolCard` 原有 3 处不达标声明，逐条：
+ *  · 「调用中…」10.5px、`tool-args` 11px：低于 `check-text-legibility` 判据 B 的 **12px 硬底**
+ *    （该 12 是判据 A `required(S)=max(3.0,72/S)` 与本仓调色板的交点，见门头推导）。抬到 12px 后
+ *    `--muted2` 实测 **dark 6.09 · light 6.13 · warm 6.07 ≥ 6.0**，三主题全过。
+ *  · **`tool-error-detail` 原写 `var(--red, #c00)` —— `--red` 全仓无定义**
+ *    （tokens.css 只有 `--danger` / `--danger-txt`），于是恒落到字面兜底 `#c00`：
+ *    暗色主题下压在 `--panel-glass` 上实测 **1.81:1**。那不是「不够好看」，
+ *    是**这行报错原文根本读不到**。改用在册令牌 `--danger-txt`
+ *    （逐主题 #f0b4b8 / #ad222d / #af222e），12px 实测 **6.05 / 6.09 / 6.07**，三主题全过。
+ * ⚠ 这几行说明刻意留在**文件头注**而不是写成 JSX 注释 —— `check-ui-first-layer` 的判据 D2b
+ * 把 JSX 里的长串算作「第一层长说明串」，写进 JSX 会让那道门凭空多一条。
  */
 
 export interface ToolViewProps {
@@ -41,9 +53,9 @@ function GenericToolCard({ callId, toolName, block, openFile, inspect }: ToolVie
           ERROR
         </span>
       )}
-      {!settled && <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--muted2)" }}>调用中…</span>}
+      {!settled && <span style={{ marginLeft: 6, fontSize: 12, color: "var(--muted2)" }}>调用中…</span>}
       {"argsRaw" in block && block.argsRaw !== "" && (
-        <div className="mono" data-testid={`tool-args-${callId}`} style={{ fontSize: 11, color: "var(--muted2)", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+        <div className="mono" data-testid={`tool-args-${callId}`} style={{ fontSize: 12, color: "var(--muted2)", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
           {block.argsRaw}
         </div>
       )}
@@ -53,7 +65,7 @@ function GenericToolCard({ callId, toolName, block, openFile, inspect }: ToolVie
         </div>
       )}
       {settled && block.error !== undefined && (
-        <div className="mono" data-testid={`tool-error-detail-${callId}`} style={{ fontSize: 11, color: "var(--red, #c00)" }}>
+        <div className="mono" data-testid={`tool-error-detail-${callId}`} style={{ fontSize: 12, color: "var(--danger-txt)" }}>
           {typeof block.error === "string" ? block.error : JSON.stringify(block.error)}
         </div>
       )}
