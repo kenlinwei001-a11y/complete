@@ -129,22 +129,17 @@ const DECLARED = {
       "「风险推演看板」，在导航里点的是「产能推演」，没有任何线索表明这是同一个东西。" +
       "页内大标题写的是「产能推演」，与导航一致 ⇒ 落单的是功能名那一份。等仓主裁决用哪个词。",
   },
-  "plan-generate::featureName-vs-navTitle": {
-    verdict: "DEFECT",
-    featureName: "规划建议",
-    navTitle: "方案生成",
-    why:
-      "同 risk：两个不同的词。且此处**导航是落单的那一份** —— 功能名与页内大标题都写「规划建议」，" +
-      "只有视图标题写「方案生成」。三比一，改一处即收敛。",
-  },
-  "plan-generate::navTitle-vs-pageHeading": {
-    verdict: "DEFECT",
-    navTitle: "方案生成",
-    pageHeading: "规划建议",
-    why:
-      "**本门判据② 抓到的唯一一条真·用户可见分歧**：侧栏点「方案生成」，进去屏幕最上方写「规划建议」。" +
-      "这正是工单描述的那个形态 —— 只是它发生在 plan-generate，不是工单以为的 risk-board。",
-  },
+  // ⛔ 2026-08-26 · WO-GATE-SEAM-SMALL 销号：`plan-generate` 的两条 DEFECT 登记（
+  //    `featureName-vs-navTitle` 与 `navTitle-vs-pageHeading`）被 L2 棘轮判为**陈旧登记**。
+  //    销号前逐条实测（登记表说「有分歧」不度量「真有分歧」，反向同理 —— 铁律 0.5）：
+  //      · featureName  = "规划建议"  ← apps/datacore/src/synthetic/view-manifest.ts:155
+  //                                     ∥ packages/contracts/src/feature-names.ts:47
+  //      · navTitle     = "规划建议"  ← apps/datacore/src/synthetic/view-manifest.ts:155（原「方案生成」已改）
+  //      · pageHeading  = "规划建议"  ← apps/frontend-shell/src/views/sim/PlanGenerateView.tsx:263
+  //                                     `<h3>{zh.sim.gen.title}</h3>` → apps/frontend-shell/src/locales/zh.ts:1349
+  //    三源同字 ⇒ 两条分歧现实中均已不存在。全仓残留的「方案生成」只剩注释与
+  //    `apps/datacore/src/graphmeta.ts:57` 的**求解器 label**（`plan_generate`），那是另一个命名空间，
+  //    本门三源一个都不读它 ⇒ 不构成本门意义上的分歧。`MAX_DECLARED` 随之 5 → 3（只降不升）。
   "process-stuck::featureName-vs-navTitle": {
     verdict: "SPLIT",
     featureName: "流程运行时（实例·卡点）",
@@ -158,7 +153,7 @@ const DECLARED = {
 };
 
 /** 硬上限 —— **只许改小**。调大与改 `DECLARED` 同级，须写理由；无自动抬升入口。 */
-const MAX_DECLARED = 5;
+const MAX_DECLARED = 3;
 
 /**
  * **盲区**登记：页内大标题解析不出静态字符串的视图（判据② 对它们失效）。
