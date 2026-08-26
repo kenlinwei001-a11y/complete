@@ -1543,6 +1543,49 @@ GET /a/v1/sim/propagation-rules    → PropagationRulesResponse.stateVarNames（
 §8 G-UPSERTTYPE-DROPS-FIELDS 已闭·2026-08-18 复核；battery.ts 注释 c4e2df8d8 有逐句订正）。这条由
 `statevar-display-name.seam.test.ts ⑥` 钉死：谁把它们登记成属性，那条断言当场红。
 
+### 出处记号链路 · 世界态出处 → 会话 `scope` → **逐卡口径标注**（WO-SIM-UNIFIED-SHELL · 2026-08-26）
+
+上面 §2.I 的 `WorldOrigin` 诚实位登记的是**前端自己塞的那份占位**（`deriveBaseSnapshot`）。
+本条登记的是**后端那一份**，以及它的第一个前端消费方。
+
+```
+apps/datacore/src/sim/seed-world.ts:190 (SeedWorldSnapshotOrigin)   ← 真值源（kind/formula/note/cells/measuredCells）
+  └─ 写进 SimSession.scope.baseSnapshotOrigin（seed-world.ts:629）
+       └─ GET /a/v1/sim/sessions 原样下发（scope 是 z.record 松口袋，投影层只剥 baseSnapshot、不动 scope）
+            └─ apps/frontend-shell/src/api/simSessionsProjection.ts（STRIPPED_KEY = "baseSnapshot" 而已）
+                 └─ views/sim/unified/metricWallModel.ts (readSnapshotOrigin → provenanceOfOrigin → calibreTextOf)
+                      └─ /v/sim-unified 卡墙**逐卡**的口径标注 + 状态条的整体出处
+```
+
+⚠ **接线前实测（2026-08-26 · 本单开工探针）**：`grep -rn baseSnapshotOrigin apps/frontend-shell/`
+**零命中**（金丝雀：同目录 `fetchDrillStateVarLayers` 同法命中 3 处 ⇒ 检索工具是好的）。
+即三分法里的**没接线** —— 后端把「这批读数是 `round(hash01(objectId|stateVar)×100)` 结构派生的」
+写得清清楚楚（`measuredCells` 实测 **0/408528**），而屏上一个字都没有；
+更糟的是 `SandboxView.tsx` 第 595 行给**任何**后端回包盖 `MEASURED` 章 ⇒ 占位被当实测读。
+这正是 `seed-world.ts` 第 180 行头注预判的那句：「**出处只能落在数据自己身上，落在屏上就会被别人盖章盖掉**」。
+
+⛔ **三态互斥，不许合并**（`CellProvenance`）：`MEASURED` 实测 · `PROJECTED` 推演投影·非实测 ·
+`EMPTY` 算不出来。**记号缺席时判 `PROJECTED` 而不是 `MEASURED`** —— 不知道出处时说它是实测，
+正是本条要堵的那件事。屏上措辞取后端 `note`（「供任何消费方直接展示，不必各自编」），前端不另写一句。
+门 `apps/frontend-shell/test/sim-unified-shell.seam.test.tsx ⑤` 咬「口径标注与数字同屏」；
+变异反证：摘掉那一行标注 ⇒ ⑤ 当场红。
+
+### 层级链路 · 传导图入度出度 → 三层重排（第二个消费方 · WO-SIM-UNIFIED-SHELL · 2026-08-26）
+
+`apps/datacore/src/sim/drill-scan.ts:290 (layerOfStateVars)` 是**全平台唯一实现**
+（根源 = 入度 0 且出度 > 0 · 末端 = 出度 0 且入度 > 0 · 枢纽 = 两头都有 ·
+两头皆 0 **不下发层级**：「不在传导图里」与「是末端」是两个命题），
+经 `GET /a/v1/sim/drill/state-var-layers`（`apps/datacore/src/app.ts` 第 2901 行）下发。
+消费方此前只有 `views/sim/DrillPanel.tsx`（**点击事件里取，不在渲染期取**），
+本单新增第二个：`/v/sim-unified` 的卡墙分层。
+
+⛔ **前端零度数计算**（`DrillPanel.tsx` 第 125 行立的规矩，本单照办）：
+「前端再算一份，度数口径一漂两边就各说各话」。
+故「层级不是手工登记的」这条性质的判据是 **改边集 ⇒ 屏上层级跟着变**，
+而不是「前端有没有一段求度数的代码」——
+门 `sim-unified-shell.seam.test.tsx ②` 给一个根源加一条入边、断言屏上从 `根源` 翻成 `枢纽`；
+变异反证：把层级换成手工表 ⇒ ② 单臂红（`expected '根源' to be '枢纽'`）。
+
 ### 金额链路 · 世界态压力 → 财务金额（WO-FINANCE-WORLDSTATE · 2026-08-14 · 求解器见 §2.E `finance_world_projection`）
 
 上面那 13 条传导规则产出的是**压力指数**（无量纲）。**这条链把指数接到钱上**，是「财务指标随扰动动态变化」缺的那半。
