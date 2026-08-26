@@ -9,22 +9,42 @@
  * | 底部贡献度时序 | `GET /a/v1/sim/sessions/:id/metric-series` | **已接**（`useContributionSeries`） |
  *
  * 每个 hook 的返回都带 `source`（`"endpoint"` / `"placeholder"`）——**这不是可以省略的元数据**：
- * 没选世界 / 请求未回 / 请求失败时回落规格占位数，屏上要读得出「这几个数不是真算出来的」。
  * 诚实位走 `data-source` 属性而不是屏上文字：本页验收线是**像素级 1:1**，
  * 往版面里塞一行「占位」会当场破坏它；属性对测试可见、对像素不可见，两头都不骗。
  *
- * ── 占位数的出处 ────────────────────────────────────────────────────────────
- * 逐条取自规格 `docs/ux-spec/sandbox/sandbox-attr.html` 的 `D[]` / `V[]` / `R[]` 三张表。
- * README §「已知的取舍」明写：四页的数字是**内部自洽的一套**，接真数据时整套换掉，
- * 不许只换一半 —— 换一半屏上就自相矛盾。故占位数**全部**集中在本文件，一个都不许散进 JSX。
+ * ══ WO-SIM-HONEST-FALLBACK-A · 今天的行为是 X，应该是 Y ═══════════════════════
+ *
+ * **X（改造前）**：这四条线**都已接真端点**，但端点没答 / 还在飞 / 参数不全时，
+ * 一律 `return PLACEHOLDER_*` —— 一整套**编出来的业务数值**（热力矩阵 9 行 × 40 个数、
+ * 根因树 10 行、明细 16 行、贡献度时序 12 行 × 120 个段坐标），逐条抄自规格
+ * `docs/ux-spec/sandbox/sandbox-attr.html` 的 `D[]` / `V[]` / `R[]` 三张表。
+ * 屏上因此画着一张**看起来完全正常**的表，而用户无从分辨它是真算出来的还是兜底编的
+ * —— 这正是本仓点名的「静默错答」：请求成功、界面照画、值是假的。
+ *
+ * **Y（现在）**：仓主 2026-08-09 裁定二（门 `scripts/check-debattery.mjs` 探测器 B 的
+ * 报错文案里就写着这句原话）：
+ * > **数据必须来自一次真实 API 调用。真没有的数据返回诚实空 + reason，不许兜底编一个。**
+ * 故非端点态一律回**骨架 + 说人话的原因**（`EMPTY_REASON`）：行列还在（版面不塌），
+ * 每一格印 `—`，原因写在用户读得到的地方（热矩阵挂 `title`，其余三格直接当行名）。
+ *
+ * ⚠ **仍未消掉的残留，照实记账（要消必须改 `SandboxAttr.tsx` / `Waterfall.tsx`，本单范围外）**：
+ * 那两个组件把数字**无条件**印出来 —— `SandboxAttr.tsx` 的 `TreeRow` 写死
+ * `{Math.round(row.pct)}%`、明细行写死 `{r.days.toFixed(2)}D`，`Waterfall.tsx` 的起止两根
+ * `anchor` 柱写死 `${(tenths/10).toFixed(1)}D`。于是空态那一行仍会印出 `0%` / `0.00D` /
+ * `0.0D`。**「没有数」和「数是 0」是两个相反的结论**（同一条纪律见 `HeatMatrix.tsx` 头注
+ * 「印 `—` 而不是 0」），本文件已把能给的都给成 `—`，剩下这三处得在组件里加空态分支。
+ * 复验：`grep -n 'Math.round(row.pct)\|toFixed(2)}D\|toFixed(1)}D' SandboxAttr.tsx Waterfall.tsx`。
  *
  * ── 环节名为什么绕一道「键位锚定」───────────────────────────────────────────
  * 契约 §2.5 明写「`label` 人读名，前端**不另维护中文映射表**，一律取这里」，
  * 门 `scripts/check-chain-node-singlesource.mjs` 判据 L（≥3 个在册 label 字面量即红）
  * 与判据 C（≥3 个在册 nodeId 出现在**值位**即红）双面守着。故本文件：
- *   · 站名一律 `chainNodeDef(nodeId).label` 现取，**零 label 字面量**；
- *   · nodeId **只出现在 `Partial<Record<Rid, …>>` 的键位**（`Rid` 由契约的
- *     `ChainNodeDef["nodeId"]` 派生 ⇒ 编译期绑死，改册即 TS2353），判据 C 明文按机制放行。
+ *   · 站名一律从注册表 / 端点回包现取，**零 label 字面量**；
+ *   · **零 nodeId 字面量** —— 原先那批 `Partial<Record<Rid, …>>` 占位表连同它们的键位
+ *     一起被本单删了（`Rid` 这个别名因此也没了消费方，一并删）。判据 C 现在是**零命中**，
+ *     不再靠"键位豁免"这条机制放行。复验：
+ *     `grep -c '"\(capacity\|material\|delivery\|demand\)\.' useLossAttribution.ts` ⇒ 0
+ *     （金丝雀：同一条命令在 `SandboxDetail.tsx` 现算命中 >0 ⇒ 工具没坏）。
  */
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -33,15 +53,11 @@ import {
   chainNodeDef,
   type ChainLossDrill,
   type ChainLossMatrixResult,
-  type ChainNodeDef,
   type SimMetricSeriesResponse,
 } from "@platform/contracts";
 import { api } from "@/api/apiClient";
 // tick → 天 的换算与措辞：**同目录唯一一份**（它再往下转调契约的 `daysForTicks`）。
 import { tickAxisLabels, tickDaysOf } from "./tickAxis";
-
-/** 在册节点 id 的字面量联合（派生自契约本尊，不是本地起个同名别名白嫖）。 */
-type Rid = ChainNodeDef["nodeId"];
 
 /**
  * 求解器键的**本文件单源**。既当请求路径的一段、又当屏上「求解器」那一列的显示值 ——
@@ -51,7 +67,44 @@ export const CHAIN_LOSS_SOLVER_KEY = "chain_loss_attribution";
 export const CHAIN_LOSS_MATRIX_PATH = "/a/v1/sim/chain-loss-matrix";
 export const CHAIN_LOSS_DRILL_PATH = "/a/v1/sim/chain-loss-drill";
 
+/**
+ * `"placeholder"` 这个名字是**历史包袱，不许照字面读**：它今天的含义是「**不是端点算出来的**」，
+ * 而不是「这里有一套占位数」。四页的 `data-source` 断言（`sandbox-host-wiring.seam.test.tsx`
+ * 用例 ②③ 逐页 `toBe("placeholder")`）咬着这个字面量，改名要连它们一起改 —— 那是另一张单。
+ * 三态的区分**不在这一位上**，在 `EMPTY_REASON`（屏上读得到，见下）。
+ */
 export type DataSource = "endpoint" | "placeholder";
+
+// ══════════════════════════════════════════════════════════════════════════
+// § 0 · 空态的四条原因（**屏上文字**，不是日志）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 「这一格为什么没有数」的四条说法。判据两条，缺一条就退回本单要消灭的那个态：
+ *
+ * 1. **说人话** —— 一个内部符号名都不许出现（`so` / `sessionId` / `objectType` 用户不认识，
+ *    写了等于没解释）。范例是契约的 `BASE_DRILL_BLOCKED_REASON`（"本因子为全局量，不区分基地"）。
+ * 2. **四条互不相同** —— 「没在问」与「问了但没有」是两件事：前者是本页还缺一个入参，
+ *    后者是这次推演真的没有可归因的损失。混成一句，用户仍然不知道发生了什么。
+ */
+export const EMPTY_REASON = {
+  /** 请求在飞（骨架态）。 */
+  loading: "正在取数，还没算完",
+  /** 端点没答上来：失败 / 超时 / 回包形状不对。 */
+  noAnswer: "没取到数：这一格的服务没答上来",
+  /** 端点答了 200，但结果集是空的 —— 有答案，答案是「没有」。 */
+  empty: "这一次推演里没有可归因的损失",
+  /** 参数不全 ⇒ 压根没发请求（不是发了一个必然失败的请求）。 */
+  notAsked: "还没选定要看哪一次推演，所以没去取数",
+} as const;
+
+export type EmptyReason = (typeof EMPTY_REASON)[keyof typeof EMPTY_REASON];
+
+/** 空态那一行/那一格里印的东西。与 `HeatMatrix.tsx` 的 `HEAT_EMPTY_GLYPH` 同一个字符，同一条纪律。 */
+export const EMPTY_CELL = "—";
+
+/** 空态行的键。屏上不出现，只用来当 React key / `data-testid` 后缀。 */
+export const EMPTY_ROW_KEY = "__empty";
 
 // ══════════════════════════════════════════════════════════════════════════
 // § 1 · 环节 × 基地 热力矩阵
@@ -75,24 +128,32 @@ export interface HeatMatrixModel {
   /** `baseId` → 该列/该格没数据的原因（挂到 `title` 上，用户悬停读得到）。 */
   reasons: ReadonlyMap<string, string>;
   source: DataSource;
+  /**
+   * 整张表为空时的原因（`EMPTY_REASON` 之一）。**可选**：`source:"endpoint"` 且有格子时没有它。
+   *
+   * ⚠ 这一格必须是 optional —— `sandbox-attr-pixel.test.tsx` 用例 ② 手工构造一个
+   * `HeatMatrixModel` 字面量，加必填字段会让那份**不许改**的测试当场编译红。
+   */
+  emptyReason?: EmptyReason;
 }
 
 export const heatCellKey = (nodeId: string, baseId: string): string => `${nodeId}|${baseId}`;
 
-/** 规格 `V[]`（8 环节 × 5 列）。**键位锚在契约上**，值只是占位百分比。 */
-const PLACEHOLDER_HEAT = {
-  "capacity.aging": [34, 18, 11, 9, 22],
-  "material.kitting": [21, 26, 14, 7, 19],
-  "capacity.qc_batch": [13, 9, 17, 6, 12],
-  "capacity.quality": [6, 11, 8, 4, 7],
-  "capacity.schedule": [5, 7, 6, 12, 7],
-  "material.replenish": [4, 5, 9, 3, 5],
-  "material.inbound_transit": [3, 4, 3, 8, 4],
-  "delivery.transit": [2, 3, 2, 3, 3],
-} satisfies Partial<Record<Rid, readonly number[]>>;
+/**
+ * 空态骨架的行数 —— **版面锚点，不是业务量**。
+ *
+ * 为什么不是「一行都不画」：本页三栏宽度与 `.row1` 高度是像素级 1:1 的验收线，
+ * 表整张消失会让中栏塌掉、整页跳动（`sandbox-attr-pixel.test.tsx` 用例 ① 逐类断言
+ * `.hc`/`.ht` 的高度，零元素时那条断言等于没跑，它自己写着「一个都没渲染 ⇒ 断言等于没跑」）。
+ * 为什么不是「画满 24 行」：同一份用例断言 `CHAIN_NODE_REGISTRY.length > 行数`
+ * —— 满册 = 把"骨架"读成"这就是全部环节"。
+ *
+ * **行名取自冻结册（真出处），值一个都没有** —— 骨架借的是名字，不是数。
+ */
+const SKELETON_NODE_COUNT = 8;
 
 /**
- * 占位列 = 基地册前 4 条 + 「全网」汇总列。
+ * 空态骨架的列 = 基地册前 4 条 + 「全网」汇总列。
  * ⚠ 规格写的是「常州/盐城/合肥/宜宾」，而 `BASE_REGISTRY` 里**没有盐城、没有宜宾**
  * （2026-08-21 实测 13 条：常州/厦门/成都/眉山/武汉/江门/合肥/信阳/枣庄/邯郸/自贡/金华/扬州）。
  * 规格那四个是占位文案，不是册里的基地 —— 照册取，不照规格抄一个不存在的基地名。
@@ -105,32 +166,31 @@ const PLACEHOLDER_HEAT = {
  * 规格那半边：`grep -n '盐城\|宜宾' docs/ux-spec/sandbox/sandbox-attr.html`
  *   —— 现算命中第 206 行 `var B=["常州","盐城","合肥","宜宾","全网"]`，即那四个名字的出处。
  */
-const PLACEHOLDER_BASE_COUNT = 4;
+const SKELETON_BASE_COUNT = 4;
 const ALL_BASES_ID = "__all__";
-const PLACEHOLDER_BASES: readonly { baseId: string; name: string }[] = [
-  ...BASE_REGISTRY.slice(0, PLACEHOLDER_BASE_COUNT).map((b) => ({ baseId: b.baseId, name: b.name })),
+const SKELETON_BASES: readonly { baseId: string; name: string }[] = [
+  ...BASE_REGISTRY.slice(0, SKELETON_BASE_COUNT).map((b) => ({ baseId: b.baseId, name: b.name })),
   { baseId: ALL_BASES_ID, name: "全网" },
 ];
 
-function placeholderHeat(): HeatMatrixModel {
-  const cells = new Map<string, HeatCellValue>();
-  const nodes: { nodeId: string; label: string }[] = [];
-  for (const [nodeId, row] of Object.entries(PLACEHOLDER_HEAT)) {
-    const def = chainNodeDef(nodeId);
-    if (def === undefined) continue; // 册里没了这一条 ⇒ 不画一行编出来的（键位已被 TS 绑死，实际到不了这里）
-    nodes.push({ nodeId, label: def.label });
-    (row as readonly number[]).forEach((pct, i) => {
-      const base = PLACEHOLDER_BASES[i];
-      if (base === undefined) return;
-      // 占位天数按规格瀑布图的换算（21.6 D 全链 ⇒ 1% ≈ 0.216 D）——与 §3 明细列同一口径。
-      cells.set(heatCellKey(nodeId, base.baseId), { pct, days: pct * PLACEHOLDER_DAYS_PER_PCT });
-    });
-  }
-  return { nodes, bases: PLACEHOLDER_BASES, cells, reasons: new Map(), source: "placeholder" };
+/**
+ * 空态骨架：**行列在、格子一个都没有**。
+ *
+ * `cells` 恒空 ⇒ `HeatMatrix.tsx` 每一格走它那条本来就写好的空格分支（印 `—`、虚线框、
+ * `title` 挂 `reasons` 里的原因）。那条分支原本是为后端「空列 `null` + `reason`」写的，
+ * 这里复用它 —— **同一个屏上语义只许有一份实现**，第二份迟早与第一份漂。
+ */
+function skeletonHeat(reason: EmptyReason): HeatMatrixModel {
+  const nodes = CHAIN_NODE_REGISTRY.slice(0, SKELETON_NODE_COUNT).map((n) => ({ nodeId: n.nodeId, label: n.label }));
+  return {
+    nodes,
+    bases: SKELETON_BASES,
+    cells: new Map(),
+    reasons: new Map(SKELETON_BASES.map((b) => [b.baseId, reason as string])),
+    source: "placeholder",
+    emptyReason: reason,
+  };
 }
-
-/** 规格：全链非增值 21.6 D 对应 100% ⇒ 每 1% = 0.216 D。占位口径的**唯一**换算常数。 */
-const PLACEHOLDER_DAYS_PER_PCT = 0.216;
 
 /** 把端点回包投影成视图模型。空列的 `reason` 逐列登记，缺格**不补 0**。 */
 export function projectHeatMatrix(res: ChainLossMatrixResult): HeatMatrixModel {
@@ -138,7 +198,12 @@ export function projectHeatMatrix(res: ChainLossMatrixResult): HeatMatrixModel {
   for (const c of res.cells) cells.set(heatCellKey(c.nodeId, c.baseId), { pct: c.pct, days: c.days });
   const reasons = new Map<string, string>();
   for (const t of res.colTotals) if (t.reason !== null) reasons.set(t.baseId, t.reason);
+  // 端点答了 200 但一个格子都没有 ⇒ 这是**有答案的「没有」**，与「没答上来」是两回事。
+  // 后端没逐列给 reason 的那些列，补上这句人话，免得屏上只剩一片没来由的 `—`。
+  const answeredEmpty = res.cells.length === 0;
+  if (answeredEmpty) for (const b of res.bases) if (!reasons.has(b.baseId)) reasons.set(b.baseId, EMPTY_REASON.empty);
   return {
+    ...(answeredEmpty ? { emptyReason: EMPTY_REASON.empty } : {}),
     // 站名仍走注册表：回包的 `label` 与册同源，但动态工序节点（`capacity.op.*`）不在册 ⇒ 用回包的。
     nodes: res.nodes.map((n) => ({ nodeId: n.nodeId, label: chainNodeDef(n.nodeId)?.label ?? n.label })),
     bases: res.bases.map((b) => ({ baseId: b.baseId, name: b.name })),
@@ -149,8 +214,12 @@ export function projectHeatMatrix(res: ChainLossMatrixResult): HeatMatrixModel {
 }
 
 /**
- * 接 `POST /a/v1/sim/chain-loss-matrix`。
- * 失败 / 未回 ⇒ 落回规格占位，`source` 报 `"placeholder"`（调用方与测试都读得出）。
+ * 接 `POST /a/v1/sim/chain-loss-matrix`。三态各回各的（`source` 一律 `"placeholder"`，
+ * **区分靠 `emptyReason`，不靠这一位**，理由见 `DataSource` 上的注释）：
+ *   · 请求在飞 ⇒ 骨架 + `loading`；
+ *   · 请求失败 ⇒ 骨架 + `noAnswer`；
+ *   · 端点 200 但零格 ⇒ 走 `projectHeatMatrix`（`source:"endpoint"`）+ `empty`。
+ * 「没在问」这一态**本 hook 没有** —— 它没有 `enabled` 判据，任何时候都问，见下 (a)。
  *
  * ══════════════════════════════════════════════════════════════════════════
  * WO-SIM-PARAM-WIRE ② · 实测结论：**`so` 的缺省不该由前端定，今天这样就是对的**
@@ -159,7 +228,14 @@ export function projectHeatMatrix(res: ChainLossMatrixResult): HeatMatrixModel {
  * 派单给的线索是「宿主从不给 `so` ⇒ 缺口在谁来定那个 `so`」。逐条实测后**两半都要更正**：
  *
  * **(a) 「不给 `so` ⇒ 不发请求」不成立** —— 本 hook 的 `useQuery` **没有 `enabled` 判据**
- * （与本文件 `useChainLossDrill` / `useContributionSeries` 刻意不同）。`so` 缺席时照发，
+ * （与本文件 `useChainLossDrill` / `useContributionSeries` 刻意不同）。
+ * ✅ **2026-08-25 复核这一句仍然成立**（`WO-SIM-HONEST-FALLBACK-A` 逐行读 + 真跑）：
+ * 下面 `useQuery` 的实参里今天依然只有 `queryKey` / `retry` / `queryFn` 三项。
+ * 复验两条：`grep -n 'enabled' apps/frontend-shell/src/views/sim/console/useLossAttribution.ts`
+ * —— 现算命中的三处**都不在** `useChainLossMatrix` 里（金丝雀：同一条命令在
+ * `useChainLossDrill` / `useContributionSeries` 各中一处 ⇒ 工具没坏）；
+ * 以及 `test/sim-honest-fallback.test.tsx` 用例 ①（不给 `so` 渲染，MSW 真收到一条
+ * `POST …/chain-loss-matrix` —— 那是**跑出来的**，不是读出来的）。`so` 缺席时照发，
  * body 走 `{}`。**2026-08-22 实测**（内存态真服务 `POST /a/v1/sim/chain-loss-matrix` body `{}`）：
  * `http=200 · nodes=18 · bases=13 · cells=234 · 有数据列 13/13 · 空列 0`。
  * 复验这一行（SEED_DEMO=1 起 datacore 之后，一条命令把这几个数一起打出来；
@@ -193,8 +269,13 @@ export function useChainLossMatrix(so?: string): HeatMatrixModel {
     retry: false,
     queryFn: () => api.a<ChainLossMatrixResult>(CHAIN_LOSS_MATRIX_PATH, { body: so === undefined ? {} : { so } }),
   });
-  return q.data === undefined ? placeholderHeat() : projectHeatMatrix(q.data);
+  if (q.data !== undefined) return projectHeatMatrix(q.data);
+  // 「还在飞」与「没答上来」是两个不同的屏上态：前者会自己好，后者不会。
+  return skeletonHeat(q.isError ? EMPTY_REASON.noAnswer : EMPTY_REASON.loading);
 }
+
+/** 上游矩阵没通时，下游三格（根因树 / 明细 / 瀑布）跟它报同一条原因 —— 一页之内不许两种说法。 */
+const reasonOf = (heat: HeatMatrixModel): EmptyReason => heat.emptyReason ?? EMPTY_REASON.noAnswer;
 
 // ══════════════════════════════════════════════════════════════════════════
 // § 2 · 根因树（下钻）
@@ -219,64 +300,26 @@ export interface RootCauseModel {
   source: DataSource;
 }
 
-/** 规格 `D[]` 里 l2 行的顺序与占比（键位锚在契约上；`label` 现取注册表）。 */
-const PLACEHOLDER_TREE_NODES = {
-  "capacity.aging": 34,
-  "material.kitting": 21,
-  "capacity.qc_batch": 13,
-  "capacity.quality": 6,
-  "material.replenish": 4,
-  "capacity.rccp": 4,
-  "material.inbound_transit": 3,
-  "demand.consensus": 3,
-  "delivery.transit": 2,
-} satisfies Partial<Record<Rid, number>>;
-
-/**
- * 规格 `D[]` 里的 l3 子因（前三个环节各展开一层）。
- * 子因名**不是**在册 label（它们是执行单元级的因，端点回包里由 `ChainSubCause.label`
- * 从真实对象派生），故这里可以是字面量 —— 判据 L 只咬在册 label。
- */
-const PLACEHOLDER_SUB_CAUSES = {
-  "capacity.aging": [
-    { label: "炉位不足", pct: 19 },
-    { label: "批次拆分", pct: 11 },
-    { label: "温控复检", pct: 4 },
-  ],
-  "material.kitting": [
-    { label: "正极粉断供", pct: 12 },
-    { label: "隔膜到货延迟", pct: 6 },
-    { label: "拣配等待", pct: 3 },
-  ],
-  "capacity.qc_batch": [
-    { label: "攒批阈值", pct: 8 },
-    { label: "抽检返工", pct: 5 },
-  ],
-} satisfies Partial<Record<Rid, readonly { label: string; pct: number }[]>>;
-
-/** 规格 l1 行：全链非增值 100% / 21.6 D。 */
-const PLACEHOLDER_CHAIN_TOTAL_PCT = 100;
-/** 规格 `D[]` 末行「其余 16 环节」。 */
-const PLACEHOLDER_REST = { label: "其余 16 环节", pct: 10 };
+/** l1 行恒占 100% —— 这是**定义**（"全链"就是分母本身），不是抄来的占位数。 */
+const CHAIN_TOTAL_PCT = 100;
 /** 规格：吃掉损失最多的前 N 个环节标红（`.tn.hot`）。 */
 const HOT_TOP_N = 2;
 
-const daysOf = (pct: number): number => pct * PLACEHOLDER_DAYS_PER_PCT;
-
-function placeholderTree(): RootCauseModel {
-  const entries = Object.entries(PLACEHOLDER_TREE_NODES);
-  const rows: RootCauseRow[] = [
-    { level: 1, key: "chain", label: CHAIN_TOTAL_LABEL, pct: PLACEHOLDER_CHAIN_TOTAL_PCT, days: daysOf(PLACEHOLDER_CHAIN_TOTAL_PCT), hot: false },
-  ];
-  const subs: Record<string, readonly { label: string; pct: number }[]> = PLACEHOLDER_SUB_CAUSES;
-  entries.forEach(([nodeId, pct], i) => {
-    rows.push({ level: 2, key: nodeId, label: chainNodeDef(nodeId)?.label ?? nodeId, pct, days: daysOf(pct), hot: i < HOT_TOP_N });
-    for (const s of subs[nodeId] ?? []) {
-      rows.push({ level: 3, key: `${nodeId}::${s.label}`, label: s.label, pct: s.pct, days: daysOf(s.pct), hot: false });
-    }
-  });
-  rows.push({ level: 2, key: "rest", label: PLACEHOLDER_REST.label, pct: PLACEHOLDER_REST.pct, days: daysOf(PLACEHOLDER_REST.pct), hot: false });
-  return { rows, drilledNodeId: entries[0]?.[0] ?? null, source: "placeholder" };
+/**
+ * 空态：**一行**，行名就是原因，占比/天数没有。
+ *
+ * · `hot: true` 不是"这一条损失最大"—— 空态里没有任何一条损失。它是 `.tn.hot` 那条**告警底色**
+ *   （`--danger`），语义正是"这里缺东西"。同时它是版面锚点：`sandbox-attr-pixel.test.tsx` 用例 ③
+ *   拿 `.tn.hot` 当色值抽查点，一行都不画那条抽查会 `toBeNull` 而红。
+ * · `pct: 0` 会被 `SandboxAttr.tsx` 的 `TreeRow` 无条件印成 `0%` —— **这是已知残留**，
+ *   见本文件头「仍未消掉的残留」。要真正印 `—` 必须在那个组件里加空态分支（本单范围外）。
+ */
+function emptyTree(reason: EmptyReason): RootCauseModel {
+  return {
+    rows: [{ level: 1, key: EMPTY_ROW_KEY, label: reason, pct: 0, days: 0, hot: true }],
+    drilledNodeId: null,
+    source: "placeholder",
+  };
 }
 
 /** 根节点行的名字。**不是在册 label**（"全链"不是一个环节），故可字面量。 */
@@ -297,7 +340,7 @@ export function useChainLossDrill(heat: HeatMatrixModel, drilledNodeId: string |
         body: { nodeId: drilledNodeId as string, ...(so === undefined ? {} : { so }) },
       }),
   });
-  if (heat.source !== "endpoint") return placeholderTree();
+  if (heat.source !== "endpoint") return emptyTree(reasonOf(heat));
 
   // 二级 = 矩阵行合计（按占比降序）。天数取矩阵格子之和，占比取「占全矩阵」口径。
   const totals = heat.nodes
@@ -317,7 +360,7 @@ export function useChainLossDrill(heat: HeatMatrixModel, drilledNodeId: string |
   const grandDays = totals.reduce((s, t) => s + t.days, 0);
 
   const rows: RootCauseRow[] = [
-    { level: 1, key: "chain", label: CHAIN_TOTAL_LABEL, pct: PLACEHOLDER_CHAIN_TOTAL_PCT, days: grandDays, hot: false },
+    { level: 1, key: "chain", label: CHAIN_TOTAL_LABEL, pct: CHAIN_TOTAL_PCT, days: grandDays, hot: false },
   ];
   totals.forEach((t, i) => {
     const pct = grand > 0 ? (100 * t.pct) / grand : 0;
@@ -357,8 +400,16 @@ export interface AttrDetailRow {
   selected: boolean;
 }
 
-/** 影响级分档阈值（占全链损失的百分比）。**声明出来让人可以直接反对**，不藏在三元表达式里。 */
-const LEVEL_CUTS: readonly [number, 1 | 2 | 3 | 4][] = [
+/**
+ * 影响级分档阈值（占全链损失的百分比）。**声明出来让人可以直接反对**，不藏在三元表达式里。
+ *
+ * ── 为什么它带 `hardcoded-data-allow` 而 `PLACEHOLDER_*` 不许带 ──────────────
+ * 这张表**不是兜底数据**：它是「占比 → 屏上第几档颜色」的**分档规则**，
+ * 真数据模式与空态模式**走同一份**（`levelOfPct` 被下面 endpoint 分支调用）。
+ * 删掉它，真数据也没法上色。判据一句话：**它读的是别人算出来的数，自己不产生任何一个数**
+ * —— 与 `HeatMatrix.tsx` 的 `HEAT_HIGH_PCT/HEAT_MID_PCT`、`SandboxOpt.tsx` 的四档色阶同类。
+ */
+const LEVEL_CUTS: readonly [number, 1 | 2 | 3 | 4][] = [ // hardcoded-data-allow —— 分档断点（呈现），非业务量
   [20, 4],
   [10, 3],
   [5, 2],
@@ -372,45 +423,33 @@ export function levelOfPct(pct: number): 1 | 2 | 3 | 4 {
 const SPARK_BARS = 8;
 export const sparkOf = (i: number): number[] => Array.from({ length: SPARK_BARS }, (_, k) => 2 + ((i * 7 + k * 5) % 9));
 
-/** 规格右栏 16 行（键位锚在契约上；值 = 占比）。 */
-const PLACEHOLDER_DETAIL = {
-  "capacity.aging": 34,
-  "material.kitting": 21,
-  "capacity.qc_batch": 13,
-  "capacity.quality": 6,
-  "capacity.schedule": 5,
-  "material.replenish": 4,
-  "material.inbound_transit": 3,
-  "delivery.transit": 2,
-  "delivery.acceptance": 2,
-  "material.purchase_req": 2,
-  "material.purchase_order": 1,
-  "material.iqc": 1,
-  "delivery.fg_stock": 1,
-  "material.mrp": 1,
-  "capacity.wo_release": 2,
-  "capacity.maint": 2,
-} satisfies Partial<Record<Rid, number>>;
-
 export interface AttrDetailModel {
   rows: readonly AttrDetailRow[];
   source: DataSource;
 }
 
-/** 明细行由**矩阵行合计**投影而来（占比 = 占全矩阵，天数 = 该环节全基地合计）。 */
+/**
+ * 明细行由**矩阵行合计**投影而来（占比 = 占全矩阵，天数 = 该环节全基地合计）。
+ *
+ * 空态：**一行**，行名就是原因；「求解器」那列印 `—`（空态里没有任何一次求解，
+ * 印一个求解器键就是在说"这数是它算的"）；`spark: []` ⇒ 迷你趋势条一根都不画。
+ * `pct` / `days` 的 `0%` / `0.00D` 是 `SandboxAttr.tsx` 无条件印的**已知残留**，见文件头。
+ */
 export function useAttrDetail(heat: HeatMatrixModel, selectedNodeId: string | null): AttrDetailModel {
   if (heat.source !== "endpoint") {
     return {
-      rows: Object.entries(PLACEHOLDER_DETAIL).map(([nodeId, pct], i) => ({
-        key: nodeId,
-        label: chainNodeDef(nodeId)?.label ?? nodeId,
-        solverKey: CHAIN_LOSS_SOLVER_KEY,
-        pct,
-        days: daysOf(pct),
-        level: levelOfPct(pct),
-        spark: sparkOf(i),
-        selected: i === 0,
-      })),
+      rows: [
+        {
+          key: EMPTY_ROW_KEY,
+          label: reasonOf(heat),
+          solverKey: EMPTY_CELL,
+          pct: 0,
+          days: 0,
+          level: 1,
+          spark: [],
+          selected: false,
+        },
+      ],
       source: "placeholder",
     };
   }
@@ -468,18 +507,8 @@ export interface WaterfallModel {
   source: DataSource;
 }
 
-/** 规格瀑布：基线 18.4 D → 6 段增量 → 合计 21.6 D（`D[]` 的 1/10 即天）。 */
-const PLACEHOLDER_WF_BASE_DAYS = 18.4;
-const PLACEHOLDER_WF_TOTAL_DAYS = 21.6;
-/** 规格瀑布的中间 6 段（前 5 段是环节 ⇒ 键位锚契约；末段「其余」是原创文案）。 */
-const PLACEHOLDER_WF_STEPS = {
-  "capacity.aging": 3.4,
-  "material.kitting": 2.1,
-  "capacity.qc_batch": 1.3,
-  "capacity.quality": 0.6,
-  "material.replenish": 0.4,
-} satisfies Partial<Record<Rid, number>>;
-const PLACEHOLDER_WF_REST = { label: "其余", days: 1.0 };
+/** 聚合桶那一根柱的名字（不是在册环节，故可字面量）。 */
+const WF_REST_LABEL = "其余";
 
 /**
  * 瀑布分档 = **按名次**，不按绝对天数。
@@ -492,35 +521,27 @@ const WF_HIGH_RANK = 2;
 const wfKind = (rank: number): WaterfallKind => (rank < WF_HIGH_RANK ? "high" : "mid");
 const WF_REST_KIND: WaterfallKind = "low";
 
-/** 瀑布图取的是**同一份**热力矩阵（不另发请求）：屏上三块必须是同一个世界的三个视角。 */
+/**
+ * 瀑布图取的是**同一份**热力矩阵（不另发请求）：屏上三块必须是同一个世界的三个视角。
+ *
+ * 空态：**一根增量柱都不画**。规格那套「基线 18.4 D → 六段 → 合计 21.6 D」是编出来的
+ * 天数，删了。⚠ 残留：`Waterfall.tsx` 的起止两根 `anchor` 柱是**无条件画的**，
+ * 于是空态屏上仍有两个 `0.0D`（见文件头「仍未消掉的残留」）——
+ * 要印 `—` 得在那个组件里加空态分支，本单范围外。
+ */
 export function useWaterfall(heat: HeatMatrixModel, tree: RootCauseModel): WaterfallModel {
-  if (heat.source !== "endpoint") {
-    return {
-      bars: [
-        ...Object.entries(PLACEHOLDER_WF_STEPS).map(([nodeId, days], i) => ({
-          key: nodeId,
-          label: chainNodeDef(nodeId)?.label ?? nodeId,
-          value: days,
-          kind: wfKind(i),
-        })),
-        { key: "rest", label: PLACEHOLDER_WF_REST.label, value: PLACEHOLDER_WF_REST.days, kind: WF_REST_KIND },
-      ],
-      baseDays: PLACEHOLDER_WF_BASE_DAYS,
-      totalDays: PLACEHOLDER_WF_TOTAL_DAYS,
-      source: "placeholder",
-    };
-  }
+  if (heat.source !== "endpoint") return { bars: [], baseDays: 0, totalDays: 0, source: "placeholder" };
   const nodes = tree.rows.filter((r) => r.level === 2);
-  const top = nodes.slice(0, PLACEHOLDER_WF_TOP_N);
-  const restDays = nodes.slice(PLACEHOLDER_WF_TOP_N).reduce((s, r) => s + r.days, 0);
+  const top = nodes.slice(0, WF_TOP_N);
+  const restDays = nodes.slice(WF_TOP_N).reduce((s, r) => s + r.days, 0);
   const totalDays = nodes.reduce((s, r) => s + r.days, 0);
   const bars: WaterfallBar[] = top.map((r, i) => ({ key: r.key, label: r.label, value: r.days, kind: wfKind(i) }));
-  if (restDays > 0) bars.push({ key: "rest", label: PLACEHOLDER_WF_REST.label, value: restDays, kind: WF_REST_KIND });
+  if (restDays > 0) bars.push({ key: "rest", label: WF_REST_LABEL, value: restDays, kind: WF_REST_KIND });
   return { bars, baseDays: Math.max(0, totalDays - bars.reduce((s, b) => s + b.value, 0)), totalDays, source: "endpoint" };
 }
 
-/** 规格中间段数（5 个环节 + 1 个「其余」）。 */
-const PLACEHOLDER_WF_TOP_N = 5;
+/** 单独列出的环节柱数（其余并进聚合桶）——**版面口径**，不是业务量。 */
+const WF_TOP_N = 5;
 
 // ══════════════════════════════════════════════════════════════════════════
 // § 5 · 底部贡献度时序
@@ -572,41 +593,12 @@ export interface SeriesModel {
   source: DataSource;
 }
 
-/** 规格 `R[]` 里那 11 个环节行（键位锚契约）+ 末行「其余 13 环节」。值 = `[基线, 扰动后, 方向]`。 */
-const PLACEHOLDER_SERIES_NODES = {
-  "capacity.aging": ["5.1%", "34.0%", "up"],
-  "material.kitting": ["7.2%", "21.0%", "up"],
-  "capacity.qc_batch": ["9.4%", "13.0%", "up"],
-  "capacity.quality": ["5.8%", "6.0%", "up"],
-  "capacity.schedule": ["6.1%", "5.0%", "dn"],
-  "material.replenish": ["4.4%", "4.0%", "dn"],
-  "capacity.rccp": ["3.9%", "4.0%", "up"],
-  "material.inbound_transit": ["3.2%", "3.0%", "dn"],
-  "demand.consensus": ["3.4%", "3.0%", "dn"],
-  "delivery.transit": ["2.6%", "2.0%", "dn"],
-  "delivery.acceptance": ["2.1%", "2.0%", "dn"],
-} satisfies Partial<Record<Rid, readonly [string, string, "up" | "dn"]>>;
-
-const PLACEHOLDER_SERIES_REST: readonly [string, string, string, "up" | "dn"] = ["其余 13 环节", "46.8%", "10.0%", "dn"];
-
-/** 规格 `R[].s[]` 的段模板（`[startPct, widthPct, tone, 文字]`）。逐行只差几个百分点，故按行序取模。 */
-const PLACEHOLDER_SEGMENTS: readonly (readonly [number, number, SeriesTone, string])[][] = [
-  [[2, 10, "o", "炉位排队"], [14, 18, "r", "批次拆分"], [34, 16, "r", "温控复检"], [54, 13, "g", "缓冲释放"], [72, 10, "o", "结转"]],
-  [[3, 11, "o", "拣配等待"], [16, 17, "r", "正极粉断供"], [36, 14, "r", "隔膜延迟"], [54, 12, "g", "缓冲释放"], [71, 11, "o", "结转"]],
-  [[2, 12, "o", "攒批阈值"], [16, 16, "a", "抽检返工"], [35, 15, "a", "复检"], [53, 13, "g", "缓冲释放"], [71, 10, "o", "结转"]],
-  [[4, 9, "o", "首检"], [15, 17, "b", "返修排队"], [34, 16, "b", "复判"], [53, 12, "g", "缓冲释放"], [70, 11, "o", "结转"]],
-  [[3, 10, "o", "算料"], [15, 15, "b", "下达"], [33, 17, "b", "执行"], [54, 11, "g", "缓冲释放"], [70, 12, "o", "结转"]],
-  [[2, 11, "o", "请购"], [15, 16, "b", "采购下单"], [34, 15, "b", "入厂在途"], [53, 13, "g", "缓冲释放"], [71, 10, "o", "结转"]],
-  [[3, 10, "o", "粗排"], [15, 16, "b", "瓶颈识别"], [34, 15, "b", "复核"], [53, 13, "g", "缓冲释放"], [71, 10, "o", "结转"]],
-  [[3, 10, "o", "报关"], [15, 17, "b", "清关"], [35, 14, "b", "转运"], [52, 14, "g", "缓冲释放"], [71, 11, "o", "结转"]],
-  [[2, 12, "o", "预告汇总"], [16, 14, "b", "共识"], [33, 17, "b", "锁量"], [53, 12, "g", "缓冲释放"], [70, 12, "o", "结转"]],
-  [[2, 12, "o", "装车"], [16, 15, "b", "干线"], [34, 16, "b", "分拨"], [53, 12, "g", "缓冲释放"], [70, 12, "o", "结转"]],
-  [[4, 9, "o", "到货"], [15, 16, "b", "验收"], [34, 16, "b", "签署"], [53, 13, "g", "缓冲释放"], [71, 10, "o", "结转"]],
-  [[2, 11, "o", "混合"], [15, 17, "b", "混合"], [35, 15, "b", "混合"], [53, 13, "g", "缓冲释放"], [71, 11, "o", "结转"]],
-];
-
-/** 规格 `.vgrp`：两个竖排组名，第 1 组 6 行、第 2 组 6 行。 */
-const PLACEHOLDER_GROUPS: readonly { title: string; count: number }[] = [
+/**
+ * 规格 `.vgrp`：两个竖排组名，第 1 组 6 行、第 2 组 6 行。
+ * **这是分组版式，不是业务数据** —— 真数据模式也走它（`useContributionSeries` 的 endpoint
+ * 分支按行序 `groupTitleAt(i)` 贴组名），删了真数据那半也没有组名。
+ */
+const SERIES_GROUPS: readonly { title: string; count: number }[] = [
   { title: "贡献组1", count: 6 },
   { title: "贡献组2", count: 6 },
 ];
@@ -616,48 +608,36 @@ export const SERIES_TICKS: readonly string[] = Array.from({ length: 15 }, (_, i)
 /** 规格 `.play` 的 `left:43%`。 */
 const PLAYHEAD_PCT = 43;
 
-const segsAt = (i: number): readonly SeriesSegment[] =>
-  (PLACEHOLDER_SEGMENTS[i % PLACEHOLDER_SEGMENTS.length] ?? []).map(([startPct, widthPct, tone, label]) => ({
-    startPct,
-    widthPct,
-    tone,
-    label,
-  }));
-
 function groupTitleAt(i: number): string | undefined {
   let at = 0;
-  for (const g of PLACEHOLDER_GROUPS) {
+  for (const g of SERIES_GROUPS) {
     if (i === at) return g.title;
     at += g.count;
   }
   return undefined;
 }
 
-function placeholderSeries(): SeriesModel {
-  const nodeRows = Object.entries(PLACEHOLDER_SERIES_NODES);
-  const rows: SeriesRow[] = nodeRows.map(([nodeId, v], i) => {
-    const title = groupTitleAt(i);
-    return {
-      ...(title === undefined ? {} : { group: title }),
-      key: nodeId,
-      name: chainNodeDef(nodeId)?.label ?? nodeId,
-      baseline: v[0],
-      after: v[1],
-      direction: v[2],
-      segments: segsAt(i),
-    };
-  });
-  const title = groupTitleAt(nodeRows.length);
-  rows.push({
-    ...(title === undefined ? {} : { group: title }),
-    key: "rest",
-    name: PLACEHOLDER_SERIES_REST[0],
-    baseline: PLACEHOLDER_SERIES_REST[1],
-    after: PLACEHOLDER_SERIES_REST[2],
-    direction: PLACEHOLDER_SERIES_REST[3],
-    segments: segsAt(nodeRows.length),
-  });
-  return { rows, ticks: SERIES_TICKS, playheadPct: PLAYHEAD_PCT, unitsKnown: false, source: "placeholder" };
+/**
+ * 空态：**一行**，行名就是原因，两列读数印 `—`，泳道一段都不画。
+ *
+ * · `baseline`/`after` 是**字符串**字段 ⇒ 这一格能真正做到「没有数就印 `—`」，
+ *   不像根因树/明细那两处被组件的 `Math.round()` 逼出一个 `0`（见文件头残留那段）。
+ * · `direction: "dn"` 只是那一格的类名（`SandboxAttr.tsx` 里 `up` 以外一律走 `.dn`），
+ *   **不表示"变好了"** —— 空态里没有任何方向可言，`—` 上的颜色不承载判断。
+ *   顺带它是版面锚点：`sandbox-attr-pixel.test.tsx` 用例 ③ 拿 `.gcell.dn` 当色值抽查点。
+ * · `ticks` 仍是规格那套墙钟时刻：空态不走 `tickAxis.ts`（那份头注明写「占位模式一格都不走本文件」），
+ *   也**不给** `tickDays` —— 没跑过的世界没有"一拍几天"这个口径。
+ */
+function emptySeries(reason: EmptyReason): SeriesModel {
+  return {
+    rows: [
+      { key: EMPTY_ROW_KEY, name: reason, baseline: EMPTY_CELL, after: EMPTY_CELL, direction: "dn", segments: [] },
+    ],
+    ticks: SERIES_TICKS,
+    playheadPct: PLAYHEAD_PCT,
+    unitsKnown: false,
+    source: "placeholder",
+  };
 }
 
 /** 端点 `segments[].source` → 屏上色调。`cadence`（建模方显式绑定）比 `domain`（按落域回落）强一档。 */
@@ -667,8 +647,11 @@ const SOURCE_TONE: Record<"cadence" | "domain", SeriesTone> = { cadence: "b", do
 const fmt = (v: number | null | undefined): string => (v === null || v === undefined ? "—" : String(Math.round(v * 100) / 100));
 
 /**
- * 接 `GET /a/v1/sim/sessions/:id/metric-series`。
- * 没有 sessionId ⇒ **不发请求**（不是发一个必然 404 的请求），落回规格占位。
+ * 接 `GET /a/v1/sim/sessions/:id/metric-series`。**四态各回各的**（本单的标的就在这里）：
+ *   · 没有会话 id ⇒ `enabled:false`，**不发请求** ⇒ `notAsked`（"还没选定要看哪一次推演"）；
+ *   · 请求在飞 ⇒ `loading`；· 请求失败 ⇒ `noAnswer`；· 200 但零指标 ⇒ `empty`。
+ * 前两条与后两条**说的不是一件事**：`notAsked` 要用户去选一次推演，`empty` 是选了、算了、真没有。
+ * 改造前这四态全部塌成同一句 `placeholderSeries()`（一套编出来的百分比），用户无从分辨。
  */
 export function useContributionSeries(sessionId?: string): SeriesModel {
   const enabled = sessionId !== undefined && sessionId !== "";
@@ -679,7 +662,10 @@ export function useContributionSeries(sessionId?: string): SeriesModel {
     queryFn: () =>
       api.a<SimMetricSeriesResponse>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId as string)}/metric-series`),
   });
-  if (!enabled || q.data === undefined || q.data.metrics.length === 0) return placeholderSeries();
+  if (!enabled) return emptySeries(EMPTY_REASON.notAsked);
+  if (q.isError) return emptySeries(EMPTY_REASON.noAnswer);
+  if (q.data === undefined) return emptySeries(EMPTY_REASON.loading);
+  if (q.data.metrics.length === 0) return emptySeries(EMPTY_REASON.empty);
 
   const ticks = q.data.ticks;
   const span = Math.max(1, ticks.length - 1);

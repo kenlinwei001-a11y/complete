@@ -31,6 +31,22 @@
  * | `impactChange` | `GET …/:id/perturbations` × `GET …/:id/world` × `GET /a/v1/sim/view-config` | 本会话**最近一条扰动**的落点 + 世界里的**实测现值** | 不发 `impact-analysis` |
  * | `mitigation` | 求解器 `bottleneck_matrix` | **张力最高的基地** × 该基地的 `primary` 因素 | 不发 `mitigation_select` |
  *
+ * ── WO-SIM-HONEST-FALLBACK-A · `useChainLossMatrix()` 那处"一个实参都不给"的裁决 ─────
+ *
+ * 派单给的线索是「本页调 `useChainLossMatrix()` 一个实参都不给 ⇒ **这一处是真的没在问**」。
+ * **实测后这半句要更正**：不给实参**不等于**不发请求 —— 那个 hook 的 `useQuery`
+ * **没有 `enabled` 判据**（复验：`grep -n 'enabled' useLossAttribution.ts` 的三处命中
+ * 都不在 `useChainLossMatrix` 里；金丝雀：同命令在 `useChainLossDrill` /
+ * `useContributionSeries` 各中一处 ⇒ 工具没坏）。它照发，body 走 `{}`，
+ * 而 `{}` 恰恰是**最宽**的那次问法（实测 234 格 / 13 列全有数据；给了 `so` 反而砍到 36 格 / 2 列）。
+ * 所以这一处**不是"没在问"，是"问得最全"**。
+ *
+ * 本单只补了**透传**：`view.options.so` 若真有值，两页用同一张锚点单（页 2 的
+ * `SandboxAttrRoute` 早就这么透）。宿主没给时行为**逐字节不变**（仍是 body `{}`）。
+ * ⚠ 「宿主给不给得到 `so`」这件事的答案是**给不到**：后端 workspace 下发的那四个 view 对象
+ * 没有 `options` 这一格（同一笔账见本文件头 X 段与 `useConsoleSession` 头注）——
+ * 缺口在**后端下发 view.options** 那一层，不在本文件。**不许在这里编一个订单号塞进去。**
+ *
  * · **`nodeId` 为什么取 `heat.nodes[0]` 而不是"损失最大的那个"**：损失归因台
  *   （`SandboxAttr.tsx:74`）的缺省落点就是 `selectedNodeId ?? heat.nodes[0]?.nodeId ?? null`。
  *   两页钻的是**同一条链**，缺省落点必须同源同序 —— 这里另算一个"最大的"就是第二份口径，
@@ -181,14 +197,19 @@ export default function SandboxDetailRoute({ view }: ViewRendererProps): JSX.Ele
   const p = (view.options ?? {}) as {
     sessionId?: string;
     nodeId?: string;
+    so?: string;
     impactChange?: ImpactChange;
     mitigation?: MitigationArgs;
   };
   const session = useConsoleSession(p);
   const sid = session.sessionId ?? "";
 
-  // ── ① 落点节点：与损失归因台同源同序（`SandboxAttr.tsx:74`）──────────────────
-  const heat = useChainLossMatrix();
+  // ── ① 落点节点：与损失归因台同源同序（`SandboxAttr.tsx` 的 `heat.nodes[0]`）──
+  // `so` 透传给矩阵：与归因台**同一个锚点订单**才叫"同源同序"。宿主没给 ⇒ 不给 ⇒
+  // 后端按它自己那份「每列取 `so` 字典序首张」的口径挑（前端再写一份就是第二套真相源，
+  // 且实测会把矩阵从 234 格砍到 36 格 —— 逐格对拍表在 `useLossAttribution.ts` 的
+  // `useChainLossMatrix` 头注 (b)）。故这里**只透传，不兜底**。
+  const heat = useChainLossMatrix(p.so);
   const derivedNodeId = heat.source === "endpoint" ? heat.nodes[0]?.nodeId : undefined;
   const nodeId = p.nodeId ?? derivedNodeId;
   const nodeSource: ArgSource = p.nodeId !== undefined ? "explicit" : nodeId === undefined ? "unavailable" : "derived";
