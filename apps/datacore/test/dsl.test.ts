@@ -81,3 +81,55 @@ describe("rule DSL", () => {
     expect(() => parseExpression("SUSTAIN(Line.utilization > 95)")).toThrow();
   });
 });
+
+import { BATTERY_TEMPLATE } from "../src/synthetic/battery.js";
+
+describe("rule DSL · IMPLIES（C33 招牌算子）+ catalog C26–C33 注册（规则引擎可见）", () => {
+  it("IMPLIES 真值表（a IMPLIES b ≡ NOT a OR b）：T→T=T · T→F=F · F→T=T · F→F=T", () => {
+    const expr = "a > 0 IMPLIES b > 0";
+    expect(evaluateExpression(expr, { payload: { a: 1, b: 1 } })).toBe(true); // T→T
+    expect(evaluateExpression(expr, { payload: { a: 1, b: -1 } })).toBe(false); // T→F（唯一假）
+    expect(evaluateExpression(expr, { payload: { a: -1, b: 1 } })).toBe(true); // F→T（前件假→真）
+    expect(evaluateExpression(expr, { payload: { a: -1, b: -1 } })).toBe(true); // F→F（前件假→真）
+  });
+
+  it("IMPLIES 脱糖等价 NOT a OR b（四组合逐一一致）", () => {
+    for (const a of [1, -1]) {
+      for (const b of [1, -1]) {
+        const p = { payload: { a, b } };
+        expect(evaluateExpression("a > 0 IMPLIES b > 0", p)).toBe(evaluateExpression("NOT a > 0 OR b > 0", p));
+      }
+    }
+  });
+
+  it("IMPLIES 最低优先级 + 可嵌套 AND/OR", () => {
+    // a AND b IMPLIES c ≡ (a AND b) IMPLIES c
+    expect(evaluateExpression("a > 0 AND b > 0 IMPLIES c > 0", { payload: { a: 1, b: 1, c: -1 } })).toBe(false);
+    expect(evaluateExpression("a > 0 AND b > 0 IMPLIES c > 0", { payload: { a: 1, b: -1, c: -1 } })).toBe(true); // 前件假
+  });
+
+  it("C33 碳护照（NOT(EU IMPLIES carbon<=阈值)= 违规）：EU 超阈→违规;EU 达标/非EU→不违规", () => {
+    const expr = "NOT (Order.destination == 'EU' IMPLIES Order.carbonFootprint <= Order.euCarbonThreshold)";
+    expect(evaluateExpression(expr, { payload: { destination: "EU", carbonFootprint: 90, euCarbonThreshold: 80 } })).toBe(true); // EU 超阈 → 违规
+    expect(evaluateExpression(expr, { payload: { destination: "EU", carbonFootprint: 70, euCarbonThreshold: 80 } })).toBe(false); // EU 达标
+    expect(evaluateExpression(expr, { payload: { destination: "US", carbonFootprint: 999, euCarbonThreshold: 80 } })).toBe(false); // 非 EU → 前件假，不违规
+  });
+
+  it("C26–C33 全注册进规则库（规则引擎可见，补审计「0/8 注册」缺口）+ 每条 DSL 可解析", () => {
+    const keys = BATTERY_TEMPLATE.rules.map((r) => r.key);
+    for (const k of ["C26", "C27", "C28", "C29", "C30", "C31", "C32", "C33"]) expect(keys, `${k} 未注册`).toContain(k);
+    // 每条表达式 DSL 合法（parseExpression 不抛）
+    for (const r of BATTERY_TEMPLATE.rules) expect(() => parseExpression(r.expression), `${r.key} DSL 非法: ${r.expression}`).not.toThrow();
+    // 严重度按 PRD §3：C26/C29/C30/C31/C32/C33=BLOCK · C27/C28=WARN
+    const sev = Object.fromEntries(BATTERY_TEMPLATE.rules.map((r) => [r.key, r.severity]));
+    for (const k of ["C26", "C29", "C30", "C31", "C32", "C33"]) expect(sev[k], `${k} 应 BLOCK`).toBe("BLOCK");
+    for (const k of ["C27", "C28"]) expect(sev[k], `${k} 应 WARN`).toBe("WARN");
+  });
+
+  it("C28/C32 违规谓词求值（pass + violation 两侧）", () => {
+    expect(evaluateExpression("Batch.idleDays > 90", { payload: { idleDays: 120 } })).toBe(true); // 呆滞违规
+    expect(evaluateExpression("Batch.idleDays > 90", { payload: { idleDays: 30 } })).toBe(false);
+    expect(evaluateExpression("Customer.maxOverdueDays > 30", { payload: { maxOverdueDays: 45 } })).toBe(true); // 逾期冻结
+    expect(evaluateExpression("Customer.maxOverdueDays > 30", { payload: { maxOverdueDays: 10 } })).toBe(false);
+  });
+});

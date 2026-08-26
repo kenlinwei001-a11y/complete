@@ -1,9 +1,11 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import { buildSolverMcpTools, SOLVERS_MCP_SERVER_INFO } from "./mcp/solvers-catalog.js";
 import cors from "@fastify/cors";
 import { z, ZodError } from "zod";
 import {
   AgentDefinitionSchema,
   ClarificationReplyBodySchema,
+  CreatePlanBuilderBodySchema,
   ErrorCodes,
   LlmProviderConfigSchema,
   MCP_CONFIG_NOTES,
@@ -12,39 +14,108 @@ import {
   mcpServerNameSlug,
   ModelBindingSchema,
   SceneEntryConfigSchema,
+  ScenarioSchema,
+  SkillExecutionSchema,
+  SkillExecutionStepSchema,
+  SkillGraphSchema,
+  ScaffoldManifestSchema,
+  AgentRunRecordSchema,
+  DecisionTraceSchema,
   EvalCaseSchema,
   EvalSuiteSchema,
+  LaunchScenarioBodySchema,
+  OperationClassifyRequestSchema,
+  IntentClassifyPreviewRequestSchema,
+  classifyOperation,
   SkillDefinitionSchema,
   SubmitQueryBodySchema,
+  UpdatePlanBuilderBodySchema,
   WorkflowDefinitionSchema,
+  InferenceTraceSchema,
+  ResourceSearchRequestSchema,
+  incumbentNotice,
+  type SolverInputScale,
+  type SolverPhase,
+  type SolverTimeoutDiagnostics,
+  type QueryTask,
+  type ExecutionPlan,
   type AgentDefinition,
   type LlmProviderConfig,
   type McpServerConfig,
   type SceneEntryConfig,
+  type Scenario,
+  type ScenarioOntogenesisRun,
   type SkillDefinition,
   type WorkflowDefinition,
 } from "@platform/contracts";
+import { GraphScheduler, SkillGraphCompileError } from "./skill-orchestrator.js";
 import { stdioPolicyFromConfig } from "./config.js";
 import { validateStdioTransport } from "./mcp/runtime.js";
 import { AuthError, requireRole, resolveAuth, type RequestAuth } from "./auth.js";
 import { DataCoreHttpError, DataCoreUnavailableError } from "./tools/clients.js";
-import { solverAllowed, viewAllowed } from "./features/registry.js";
-import { CreateIntentBodySchema, CreatePlanBodySchema, UpdateIntentBodySchema } from "./catalog/service.js";
+import { solverAllowed, viewAllowed, featureEnabled } from "./features/registry.js";
+import { CreateIntentBodySchema, CreatePlanBodySchema, UpdateIntentBodySchema, resolvePlanForIntent, resolvePlanByRef } from "./catalog/service.js";
 import { encryptSecret } from "./crypto.js";
 import type { AppDeps } from "./deps.js";
 import { newId } from "./ids.js";
 import { fallbackStats, promoteFallbackTrace } from "./ops/fallback.js";
 import { HttpError } from "./router/orchestrator.js";
+import { projectTrace, type TraceGapInput } from "./router/project-trace.js";
+import { SIM_COMPOSE_SCENARIOS, buildComposeNarrative, classifyCapacityQuestion, mapLeversAnswer, mapGapAnswer } from "./router/live-endpoints.js";
 import { streamTaskEvents } from "./api/sse.js";
 import { BudgetTracker } from "./tools/budget.js";
 import { detectStaticCycle, validatePlanSteps } from "./workflow/validate.js";
-import { agentRuleRefs, planStepRuleRefs } from "./refs/report.js";
+import { parseCapacityFeasibilityVariant } from "./agent/sim-planner.js";
+import { agentRuleRefs, planStepRuleRefs, planStepSliceRefs } from "./refs/report.js";
 import { detectBreakingSchemaChange } from "./workflow/compat.js";
-import { applyListQuery, assertRetireOrDelete, computeReferences, requireCatalogAdmin, type ListQuery } from "./resources.js";
+import { applyListQuery, assertRetireOrDelete, computeReferences, probeMissingRefs, requireCatalogAdmin, type ListQuery } from "./resources.js";
+import { classifyGap, FILL } from "./growth/probe.js";
+import { perceptionMetrics } from "./router/perception-metrics.js";
+import { runGrowthLoop } from "./growth/loop.js";
+import { buildGrowthLoopWiring } from "./growth/scenario-grow.js";
 import { builtinTool } from "./tools/registry.js";
-import { lintSkill } from "./skill-lint.js";
-import { SCENARIO_CATALOG } from "./scenarios-catalog.js";
+import { truncateToolResultJson } from "./agent/context.js";
+import { TRUNCATION_EXEMPT_TOOLS } from "./agent/loop.js";
+import { lintSkill, classifySkillEvalCases, type SkillLintTarget } from "./skill-lint.js";
+import { compileSkill } from "./skill-compiler.js";
+// WO-REFGATE-ENT · F14：发布门判据的单一实现（本路由与 main.ts 启动期种子审计共用）。
+import { getFreshSeedSkillGateReport, runSkillPublishGate } from "./skill-publish-gate.js";
+import { runSkillSummaryReview } from "./skill-summary-review.js";
+import { seedScenarios } from "./scenarios-catalog.js";
+import { ensureScenarioPackageSeed } from "./mocks/seed.js";
 import { EVENT_SUBSCRIPTIONS } from "./event-subscriptions.js";
+import { ResourceRegistryService } from "./dril/resource-registry.js";
+import { ResourceQualityService } from "./dril/quality.js";
+import { relationsOf } from "./dril/relations.js";
+
+/** PRD-IND-story §4.3：从 task.error/path 确定性派生缺口（本 base 用 task.error 归类断点 → projectTrace 标 gap 节点）。 */
+function deriveTraceGap(task: QueryTask): TraceGapInput | undefined {
+  if (task.status === "FAILED" && task.error) {
+    const s = `${task.error.code} ${task.error.message}`.toLowerCase();
+    const gapCode = /plan_not_found|plan not found/.test(s)
+      ? "NO_PLAN"
+      : /solver/.test(s)
+        ? "SOLVER_NOT_FOUND"
+        : /slice/.test(s)
+          ? "NO_SLICE"
+          : /shape|render|template_resolution|output\./.test(s)
+            ? "SHAPE_MISMATCH"
+            : /rule/.test(s)
+              ? "NO_RULE"
+              : /empty|no data|空/.test(s)
+                ? "EMPTY_DATA"
+                : "OTHER";
+    return { verdict: "BLOCKED", findings: [{ gapCode, atStep: task.error.stepId, blocking: true }] };
+  }
+  if (task.status === "COMPLETED" && task.path === "AGENT") {
+    const outOfCatalog = task.classification?.outOfCatalog ?? true;
+    return {
+      verdict: "BOUNDARY",
+      findings: [{ gapCode: outOfCatalog ? "NO_INTENT" : "NO_CAPABILITY", atStep: "routing", blocking: false }],
+    };
+  }
+  return undefined;
+}
 
 export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
@@ -53,7 +124,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     // /b/v1 下原生路由（agents/workflows/…）不受影响，只把 QOS 子集重写到 /api/v1。
     rewriteUrl(req) {
       const url = req.url ?? "/";
-      for (const seg of ["/b/v1/queries", "/b/v1/catalog", "/b/v1/ops"]) {
+      for (const seg of ["/b/v1/queries", "/b/v1/catalog", "/b/v1/ops", "/b/v1/growth"]) {
         if (url.startsWith(seg)) return "/api/v1" + url.slice("/b/v1".length);
       }
       return url;
@@ -61,7 +132,13 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   });
 
   // 经网关同源访问时无需 CORS；开放宽松 CORS 仅为直连端口的开发调试（credentials 模式）。
-  await app.register(cors, { origin: true, credentials: true });
+  // 显式放行全部写方法：管理控制台 B 侧 PUT/PATCH/DELETE（工作流/Agent/技能/场景编辑）直连端口时
+  // 浏览器预检需 PUT/DELETE 在 Access-Control-Allow-Methods，否则 405（部署态经网关同源不受影响）。
+  await app.register(cors, {
+    origin: true,
+    credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  });
 
   // tolerate empty JSON bodies (e.g. POST .../publish without payload)
   app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
@@ -84,6 +161,25 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       dataCoreBaseUrl: deps.config.DATACORE_BASE_URL,
     });
   };
+
+  /**
+   * 服务间凭证校验（**单一实现**，供 `/metrics` 与 `/b/v1/internal/invalidate` 共用）。
+   *
+   * B 栈没有全局 onRequest 钩子 —— 鉴权是逐路由 `await auth(req)`，因此**只能在 handler 里守**：
+   * 漏写一个路由 = 那个路由裸奔，没有任何兜底会替它拦。
+   *
+   * **fail-closed**：未配置 `SERVICE_TOKEN` ⇒ 恒不通过（与 `/b/v1/internal/scaffold` 同口径）。
+   */
+  const requireServiceToken = (req: FastifyRequest): void => {
+    const tok = req.headers["x-service-token"];
+    if (!deps.config.SERVICE_TOKEN || typeof tok !== "string" || tok !== deps.config.SERVICE_TOKEN) {
+      throw new HttpError(401, "UNAUTHORIZED", "仅限服务间调用（x-service-token）");
+    }
+  };
+
+  /** D-29 实时环 E-c：B 侧发布类领域事件落库（经 /b/v1/outbox 馈源供前端 F1 全局轮询传播）。 */
+  const emitDomainEvent = (tenantId: string, event: string, payload: Record<string, unknown> = {}): Promise<void> =>
+    deps.repos.domainEvents.append({ id: newId("evt"), tenantId, event, payload, createdAt: new Date().toISOString() });
 
   app.setErrorHandler((err, req, reply) => {
     const requestId = req.id as string;
@@ -132,7 +228,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return { status: "ok", dataCoreReachable };
   });
 
-  app.get("/metrics", async (_req, reply) => {
+  // 服务间专用：`qos_llm_tokens_total{provider,model}` 携带租户 provider 记录 ID + 模型名 + token 量，
+  // `qos_entitlement_fail_open_total` 更是对外广播「门禁当前是否在强制执行」——都不该匿名可读。
+  // 且指标是**全租户合计**，给任一租户的用户看反而扩大跨租户可见面 ⇒ 只发给服务间抓取方。
+  app.get("/metrics", async (req, reply) => {
+    requireServiceToken(req);
     reply.header("content-type", "text/plain; version=0.0.4");
     return deps.metrics.render();
   });
@@ -150,6 +250,132 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const idem = req.headers["idempotency-key"];
     const result = await deps.orchestrator.submitQuery(a, body, typeof idem === "string" ? idem : undefined);
     return reply.status(202).send({ taskId: result.taskId, status: result.status, streamUrl: result.streamUrl });
+  });
+
+  // 需求拉动的自成长发动机 · P1：QOS 缺口探针——把问句真跑一遍 orchestrator → 终态 → 结构化 GapReport。
+  app.post("/api/v1/growth/probe", async (req, reply) => {
+    const a = await auth(req);
+    const body = SubmitQueryBodySchema.parse(req.body);
+    const { taskId } = await deps.orchestrator.submitQuery(a, body);
+    const TERMINAL = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
+    let task = await deps.repos.tasks.get(taskId);
+    for (let i = 0; i < 100 && (!task || !TERMINAL.has(task.status)); i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      task = await deps.repos.tasks.get(taskId);
+    }
+    if (!task) throw new HttpError(500, "PROBE_FAILED", "probe task vanished");
+    return reply.status(200).send(classifyGap(task));
+  });
+
+  // 自成长发动机 · P3：LOOP——探针→补齐→重跑→收敛（K 有界，前端可配 maxRounds）。
+  app.post("/api/v1/growth/run", async (req, reply) => {
+    const a = await auth(req);
+    const body = SubmitQueryBodySchema.parse(req.body);
+    const maxRounds = Number((req.body as { maxRounds?: number })?.maxRounds ?? 8); // K 前端可配
+    // probe/fill 单源（RL3/RL10）：抽到 growth/scenario-grow.ts，与 growScenario(O9) 共用同一套补法引擎，不分叉。
+    // 补法分派：① 缺数据→真人正门补(P2 真实)；② 缺执行计划/缺求解器(in-catalog)→A3 自动 scaffold DRAFT（不发布 R4）；③ 其余→骨架工单收敛到边界。
+    // 每次 fill 发 growth.fill_proposed（经 E-c domain_events → F1 全局通道反映到驾驶舱）。
+    const { probe, fill, scaffoldedByGap } = buildGrowthLoopWiring(deps, a, body, emitDomainEvent);
+    const report = await runGrowthLoop({ question: body.query, maxRounds, probe, fill });
+    // P4：成长账本(demand-indexed) + 缺功能→成长工单（厂商中立施工契约，带真实 I/O 契约 + 本体引用骨架）
+    const now = new Date().toISOString();
+    await deps.repos.growthLedger.insert({ id: newId("glr"), tenantId: a.tenantId, report, createdAt: now });
+    // 从真实 context 推断骨架（agentcore 可见：view + selectedObjects + filters）；非空，供 code-agent 定位施工。
+    const ctxTypes = [...new Set((body.context.selectedObjects ?? []).map((o) => o.objectType).filter((x): x is string => !!x))];
+    const refObjectTypes = [...new Set([...ctxTypes, ...(body.context.view ? [body.context.view] : [])])];
+    // 每 gapCode 期望输出形状骨架（求解器骨架契约的签名来源；B 兜底/求解器骨架知道该产出什么）。
+    const OUTPUT_SHAPE_BY_GAP: Partial<Record<import("@platform/contracts").GapCode, string[]>> = {
+      SOLVER_NOT_FOUND: ["value", "unit", "rows", "provenance"],
+      NO_CAPABILITY: ["answer", "provenance"],
+      SHAPE_MISMATCH: ["rows", "columns"],
+      NO_PLAN: ["steps", "rows"],
+      NO_SLICE: ["sliceKey", "rows"],
+      NO_RULE: ["verdict", "explanation"],
+    };
+    for (const tk of report.openTickets) {
+      const ticketId = newId("gtk");
+      const drafts = scaffoldedByGap.get(tk.gapCode);
+      await deps.repos.growthTickets.upsert({
+        id: ticketId, tenantId: a.tenantId, fromQuestion: body.query, gapCode: tk.gapCode,
+        ioContract: {
+          inputs: [...new Set([...Object.keys(body.context.filters ?? {}), ...ctxTypes])],
+          outputShape: OUTPUT_SHAPE_BY_GAP[tk.gapCode] ?? ["answer", "provenance"],
+        },
+        ontologyRefs: { objectTypes: refObjectTypes, slices: [], rules: [] },
+        acceptance: drafts && drafts.length > 0
+          ? `问句「${body.query}」应能答出可验证答案并过门禁。已 scaffold DRAFT 骨架（${drafts.map((d) => d.key).join(",")}），施工 = 审批发布/补全参数（非从零开发）。`
+          : `问句「${body.query}」应能答出可验证答案并过门禁。建议补法：${FILL[tk.gapCode]}`,
+        status: "OPEN", createdAt: now,
+        ...(drafts && drafts.length > 0 ? { scaffoldedDrafts: drafts } : {}),
+      });
+      await emitDomainEvent(a.tenantId, "growth.ticket_opened", { ticketId, gapCode: tk.gapCode });
+    }
+    if (report.terminalState === "CONVERGED") {
+      await emitDomainEvent(a.tenantId, "growth.converged", { question: body.query, rounds: report.rounds.length });
+    }
+    return reply.status(200).send(report);
+  });
+
+  // P4：成长账本（demand-indexed）—— 每个客户问题→缺口→补法→终态→工单，发现盲区/量化覆盖度。
+  app.get("/api/v1/growth/ledger", async (req) => {
+    const a = await auth(req);
+    return { items: await deps.repos.growthLedger.listByTenant(a.tenantId) };
+  });
+  // P4：成长工单（缺功能的厂商中立施工契约；OPEN→…→VERIFIED）。
+  app.get("/api/v1/growth/tickets", async (req) => {
+    const a = await auth(req);
+    return { items: await deps.repos.growthTickets.listByTenant(a.tenantId) };
+  });
+
+  // P5：code-agent 执行器接缝——工单领取/草稿/重跑验证闭环（厂商中立：任意 agent 经 REST/CLI/MCP 同面操作）。
+  const getTicket = async (tenantId: string, id: string) => {
+    const tk = (await deps.repos.growthTickets.listByTenant(tenantId)).find((t) => t.id === id);
+    if (!tk) throw new HttpError(404, "TICKET_NOT_FOUND", `growth ticket not found: ${id}`);
+    return tk;
+  };
+  app.post("/api/v1/growth/tickets/:id/claim", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const { assignee } = (req.body ?? {}) as { assignee?: string };
+    const tk = await getTicket(a.tenantId, id);
+    const updated = { ...tk, status: "IN_PROGRESS" as const, assignee: assignee ?? a.userId };
+    await deps.repos.growthTickets.upsert(updated);
+    return updated;
+  });
+  app.post("/api/v1/growth/tickets/:id/submit", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const tk = await getTicket(a.tenantId, id);
+    await deps.repos.growthTickets.upsert({ ...tk, status: "IN_REVIEW" });
+    return { ...tk, status: "IN_REVIEW" };
+  });
+  // 重跑验证：施工合并后重跑该工单的问句 → 若现在可答 → VERIFIED（闭环收敛）；否则停 IN_REVIEW 并回带新缺口。
+  app.post("/api/v1/growth/tickets/:id/verify", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const ctxBody = (req.body ?? {}) as { context?: Record<string, unknown> };
+    const tk = await getTicket(a.tenantId, id);
+    const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
+    if (!pkg) throw new HttpError(404, "PACKAGE_NOT_FOUND", "no package");
+    const probeBody = SubmitQueryBodySchema.parse({ packageId: pkg.id, query: tk.fromQuestion, context: { view: "dash", selectedObjects: [], filters: {}, ...(ctxBody.context ?? {}) } });
+    const { taskId } = await deps.orchestrator.submitQuery(a, probeBody);
+    const TERMINAL = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
+    let task = await deps.repos.tasks.get(taskId);
+    for (let i = 0; i < 100 && (!task || !TERMINAL.has(task.status)); i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      task = await deps.repos.tasks.get(taskId);
+    }
+    const gap = classifyGap(task!);
+    const verified = gap.verdict === "ANSWERABLE";
+    const updated = { ...tk, status: verified ? ("VERIFIED" as const) : ("IN_REVIEW" as const) };
+    await deps.repos.growthTickets.upsert(updated);
+    return { ticket: updated, verified, gapReport: gap };
+  });
+
+  // A5 感知层埋点：实体解析"误触发率"（域外/尝试）+ 最近域外明细（带最近邻候选）。
+  app.get("/api/v1/perception/metrics", async (req) => {
+    const a = await auth(req);
+    return perceptionMetrics(a.tenantId);
   });
 
   // Phase9C 推演历史列表：按租户列最近任务（id/问句/路径/状态/结论摘要/时间），供"推演历史"页浏览+重放。
@@ -223,6 +449,154 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return task;
   });
 
+  // 实时验证审计层：统一决策痕迹导出（聚合 task/answer/toolCalls → 单一可导出 JSON）。
+  // ontology_validation 总判定 + human_review_required 显式字段；监管可直接出示。
+  app.get("/api/v1/queries/:taskId/decision-trace", async (req) => {
+    const a = await auth(req);
+    const { taskId } = req.params as { taskId: string };
+    const task = await deps.repos.tasks.get(taskId);
+    if (!task || task.tenantId !== a.tenantId) throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
+    const toolCalls = await deps.repos.toolCalls.listByTask(taskId);
+    const verdict = task.answer?.validationTrace?.crossValidation?.verdict;
+    const ontologyValidation = !task.answer?.validationTrace
+      ? "NONE"
+      : verdict === "ALL_CONSISTENT" ? "ALL_PASS" : verdict === "CONFLICT" ? "CONFLICT" : verdict === "PARTIAL" ? "PARTIAL" : "NO_EVIDENCE";
+    const humanReviewRequired =
+      task.answer?.trustLevel === "AGENT_EXPLORATORY" || !!task.answer?.unverifiedNumerics || ontologyValidation === "CONFLICT";
+    return DecisionTraceSchema.parse({
+      decisionId: task.id,
+      tenantId: task.tenantId,
+      question: task.query,
+      status: task.status,
+      path: task.path,
+      classification: task.classification,
+      matchedIntent: task.matchedIntent,
+      resolvedRefs: task.resolvedRefs ?? [],
+      trustLevel: task.answer?.trustLevel,
+      unverifiedNumerics: task.answer?.unverifiedNumerics ?? false,
+      provenanceCount: task.answer?.provenance?.length ?? 0,
+      ontologyValidation,
+      humanReviewRequired,
+      toolCalls: toolCalls.map((tc) => ({ tool: tc.toolName, outcome: tc.outcome, durationMs: tc.durationMs, at: tc.createdAt })),
+      createdAt: task.createdAt,
+      completedAt: task.completedAt,
+    });
+  });
+
+  // PRD-IND-story §4.3：编排推演 DAG —— 把真实 QueryTask 轨迹确定性投影为 10 节点编排图。
+  app.get("/api/v1/queries/:taskId/trace", async (req) => {
+    const a = await auth(req);
+    const { taskId } = req.params as { taskId: string };
+    const task = await deps.repos.tasks.get(taskId);
+    if (!task || task.tenantId !== a.tenantId) throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
+    const toolCalls = await deps.repos.toolCalls.listByTask(taskId);
+    let plan: ExecutionPlan | undefined;
+    if (task.path === "WORKFLOW" && task.matchedIntent) {
+      const intent = await deps.repos.intents.get(task.matchedIntent.intentId);
+      if (intent) plan = (await resolvePlanForIntent(deps.repos, intent))?.plan;
+    }
+    const gap = deriveTraceGap(task);
+    const trace = projectTrace(
+      task,
+      plan,
+      toolCalls.map((tc) => ({ toolName: tc.toolName, input: tc.input, outcome: tc.outcome })),
+      gap,
+      task.answer,
+    );
+    return InferenceTraceSchema.parse(trace);
+  });
+
+  /**
+   * WO-AGENT-ADMIN-CONSOLE · Agent 运行记录只读下发（闭 `G-AGENTRUN-NO-READ-SURFACE`）。
+   *
+   * **为什么要加这条**（取证见 `docs/AUDIT-agent-console-gap.md` §3.4）：
+   * `AgentRunRecord` 在 path-B 每次跑完都真写库（`router/orchestrator.ts` 的 runPathB / runRolePathB / runSceneAgent
+   * → `repos.agentRuns.insert`），仓储双实现的 `getByTask` 也早就在
+   * （`persistence/memory.ts:180` · `persistence/pg.ts:276`）——**但全仓没有任何 HTTP 读端**
+   * （`grep -n "agentRuns" server.ts` 零命中，金丝雀 `toolCalls` 同文件 5 命中 ⇒ 工具是好的）。
+   * 唯一的 src 消费方 `evals.ts:237` 只取 token 数，于是 `iterations` / `budget` /
+   * `budgetExhausted` / `contextOps` 这四项**写进库之后从没有任何人读过**。
+   * 这是「写了没人读」，不是「没实现」——所以本单补的是**读投影**，不是新功能：
+   * 零新增仓储方法、零新增契约字段、零写操作。
+   *
+   * **上下文工程的诚实边界（#91 · `SYSTEM-ONTOLOGY.md:1063`）**：`contextOps` 挂在
+   * `agent/loop.ts:747` 的 `tokens > budgeter.softLimit` 分支下。200k provider 的
+   * softLimit=140,000，而系统自身预算上界允许的最坏上下文=102,785 tok ⇒ **默认路恒为空数组**；
+   * ≤128k provider 才够得到。故本端点常态返回 `contextOps: []` 是**真值**，不是缺陷，
+   * 前端必须把「为什么是 0」说出来而不是留白。
+   *
+   * 租户隔离与同文件既有三条 trace 端点同形：先 auth，再校 task 归属，越租户一律 404。
+   */
+  app.get("/api/v1/queries/:taskId/agent-run", async (req) => {
+    const a = await auth(req);
+    const { taskId } = req.params as { taskId: string };
+    // 先校 task 归属再取 run —— run 记录本身不带 tenantId，隔离只能靠它的 task（勿颠倒顺序）。
+    const task = await deps.repos.tasks.get(taskId);
+    if (!task || task.tenantId !== a.tenantId) throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
+    const run = await deps.repos.agentRuns.getByTask(taskId);
+    // 走 WORKFLOW 路 / 尚未跑完 agent 循环 → 本来就没有 run 记录。这是正常态，不是错误态，
+    // 但仍返 404（而非空对象）：让「没有」和「有但空」在调用方那里可区分。
+    if (!run) throw new HttpError(404, "AGENT_RUN_NOT_FOUND", `no agent run for task: ${taskId}`);
+    return AgentRunRecordSchema.parse(run);
+  });
+
+  /**
+   * WO-AGENTRUN-FANOUT-PERSIST · 一次任务的**全部**运行（顶层 + 多角色会诊扇出的子运行）。
+   *
+   * 为什么上面那条不够、必须另开一条：`/agent-run`（单数）按契约返**一个** `AgentRunRecord`，
+   * 而多角色会诊的真实形态是「**0 条顶层 + N 条子运行**」—— 编排层顶层压根没跑 agent 循环
+   * （`runCoordinator` 直接进 `runWorkflowSteps` 扇出），真正干活的是那 N 个角色子 agent。
+   * 把它塞进单数端点只有两条路，两条都是说假话：返 N 条里的某一条（悄悄换了对象），
+   * 或继续返 404（真跑了三个角色却说"本次未进入 Agent 循环"）。所以单数端点语义**一个字不改**，
+   * 这条复数端点是新增的读投影。
+   *
+   * 租户隔离与同文件既有四条 trace 端点同形：先 auth，再校 task 归属，越租户一律 404。
+   */
+  app.get("/api/v1/queries/:taskId/agent-runs", async (req) => {
+    const a = await auth(req);
+    const { taskId } = req.params as { taskId: string };
+    // 先校 task 归属再取 run —— run 记录的 tenantId 是 additive 可选字段（旧记录没有），
+    // 隔离必须靠它的 task，勿颠倒顺序也勿改成信 run 自己的 tenantId。
+    const task = await deps.repos.tasks.get(taskId);
+    if (!task || task.tenantId !== a.tenantId) throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
+    const runs = await deps.repos.agentRuns.listByTask(taskId);
+    return {
+      taskId,
+      // 空数组是**常态**：走 WORKFLOW 路、或未接 LLM provider 被 `completeNoLlmDegradation` 诚实降级，
+      // 都不产生任何 run。前端不许把它画成加载失败（与 `/b/v1/agents/:id/runs` 同一条纪律）。
+      runs: runs.map((r) => AgentRunRecordSchema.parse(r)),
+    };
+  });
+
+  // 活数据可溯（PRD-live-traceable-data §3.2，结果→入参对象）：一次推演结果引用了哪些对象。
+  // 收集本任务的 selectedObjects + objectRef 槽位 → 每个对象前端再经 DataCore 对象 lineage
+  // 溯回原始行/连接器，形成"结果 → 入参对象 → 原始数据"的完整可溯链。
+  app.get("/api/v1/queries/:taskId/lineage", async (req) => {
+    const a = await auth(req);
+    const { taskId } = req.params as { taskId: string };
+    const task = await deps.repos.tasks.get(taskId);
+    if (!task || task.tenantId !== a.tenantId) {
+      throw new HttpError(404, "TASK_NOT_FOUND", `task not found: ${taskId}`);
+    }
+    const seen = new Set<string>();
+    const inputObjects: { objectType: string; objectId: string; label?: string; via: string }[] = [];
+    const push = (o: unknown, via: string) => {
+      if (o && typeof o === "object") {
+        const r = o as { objectType?: unknown; objectId?: unknown; label?: unknown };
+        if (typeof r.objectType === "string" && typeof r.objectId === "string") {
+          const k = `${r.objectType}|${r.objectId}`;
+          if (!seen.has(k)) {
+            seen.add(k);
+            inputObjects.push({ objectType: r.objectType, objectId: r.objectId, label: typeof r.label === "string" ? r.label : undefined, via });
+          }
+        }
+      }
+    };
+    for (const o of task.context?.selectedObjects ?? []) push(o, "selectedObjects");
+    for (const [name, v] of Object.entries(task.slots ?? {})) push(v, `slot:${name}`);
+    return { taskId, query: task.query, matchedIntent: task.matchedIntent ?? null, inputObjects };
+  });
+
   // ---------------------------------------------------------------------
   // Catalog management §8.4 (role catalog_admin)
   // ---------------------------------------------------------------------
@@ -253,7 +627,9 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const a = await auth(req);
     requireRole(a, "catalog_admin");
     const { intentId } = req.params as { intentId: string };
-    return deps.catalog.publishIntent(intentId);
+    const published = await deps.catalog.publishIntent(intentId);
+    await emitDomainEvent(a.tenantId, "intent.published", { intentId });
+    return published;
   });
 
   app.post("/api/v1/catalog/intents/:intentId/retire", async (req) => {
@@ -301,6 +677,36 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return fallbackStats(deps.repos, { tenantId: a.tenantId, ...q });
   });
 
+  /**
+   * WO-REFGATE-ENT · F14 · 出厂技能发布门审计的**诚实位**（`/b/v1/ops/*` 由 rewriteUrl 折到此处）。
+   *
+   * 为什么要有这道位：出厂技能经 `repos.skills.insert` 旁路落库，从未走过
+   * `POST /b/v1/skills/:id/publish` —— 「门装上了」不等于「库里的东西都过了门」。
+   * 启动期 `auditSeededSkills` 用**同一份判据**补问一遍，结论落在这里，运维随时可查。
+   *
+   * `NOT_RUN` / `REGISTRY_UNREACHABLE` / `REGISTRY_EMPTY` / `GATE_UNAVAILABLE` **都不是"干净"**：
+   * 第一个是没审计过，后三个是注册表读不出来所以没法判——「我没找到」≠「它不存在」。
+   *
+   * **WO-SEEDGATE-FRESHNESS · 缺陷 A**：本路由原先直接 `return getSeedSkillGateReport()`——
+   * 那是**进程启动时算一次就冻住**的快照。实测：连续 3 次请求间隔 3 分钟 `ranAt` 一字未变，
+   * 而同一时刻 `GET /a/v1/catalog?kind=solvers` 返 200/39 条，DataCore 明明是健康的。
+   * 后果是实的：DataCore 起得比 AgentCore 慢一拍 → 审计永久停在"不可用"，
+   * 而用户看到的是一条**自称"刚刚测过"**的结论。
+   * 改为按请求现算（TTL 30s 复用 + `?refresh=1` 手动刷新），`ranAt` 恒等于真正计算那一瞬。
+   */
+  app.get("/api/v1/ops/skill-seed-gate", async (req) => {
+    const a = await auth(req);
+    const q = req.query as { refresh?: string };
+    return getFreshSeedSkillGateReport({
+      repos: deps.repos,
+      dataCore: deps.dataCore,
+      // 按**请求者的**租户算（tenant_id everywhere）；缓存也按租户分桶，不跨租户串味。
+      tenantId: a.tenantId,
+      logger: req.log,
+      force: q.refresh === "1" || q.refresh === "true",
+    });
+  });
+
   app.post("/api/v1/ops/fallback/:traceId/promote", async (req, reply) => {
     const a = await auth(req);
     requireRole(a, "catalog_admin");
@@ -332,6 +738,46 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       .sort((x, y) => y.version - x.version)
       .map((x) => ({ id: x.id, version: x.version, status: x.status }));
     return { ...agent, versions };
+  });
+
+  /**
+   * WO-AGENTRUN-ATTRIBUTION · **这个 Agent 的历次运行**（闭 `G-AGENTRUN-NO-AGENT-ATTRIBUTION` 的可归属半边）。
+   *
+   * 此前 `AgentRunRecord` 只有 `taskId`，「这个 Agent 跑过几次」在全仓不可得 —— 管理台只能显示
+   * 「本租户 AGENT 路径的全部运行」并常驻一条诚实横幅。现在归属由引擎在 `agent/loop.ts finishRun`
+   * 单点回填（注册 agent 路 ⇒ REGISTERED；通用探索路 ⇒ 正面记 EXPLORATORY），本端点是它的读投影。
+   *
+   * **按 key 而非按 id 聚合**：`agt_` 是版本级主键，按 id 查在换版当天就归零；管理台问的是
+   * 「这个 Agent」。入参仍收 id（那是前端手上有的东西），服务端先解析成 agent 再取它的 key。
+   *
+   * **租户隔离两道**：① agent 必须属于本租户（否则 404 AGENT_NOT_FOUND，与「不存在」同码，不泄漏存在性）；
+   * ② `listByAgent` 再按 `tenantId` 硬过滤 —— 不靠「key 大概率不撞」这种默契。
+   *
+   * **诚实边界（必须与前端对齐，别在界面上补一个后端没有的语义）**：
+   *  - 空数组是**常态**而非故障。未绑 LLM provider 时 `completeNoLlmDegradation`
+   *    （`router/orchestrator.ts` 的 completeNoLlmDegradation）把 task 标成 `path=AGENT` + `COMPLETED` 却**从不写 run**，
+   *    这类环境下任何 agent 的运行数都是 0。前端不许把它画成"加载失败"。
+   *  - 本端点**只**回归属得上的那些。通用探索路的运行（`attribution:"EXPLORATORY"`）与归属上线前的
+   *    旧记录（无归属字段）**一条都不会出现在这里** —— 它们的存在必须由前端另行诚实交代，
+   *    不许因为"这个列表干净了"就当它们不存在。
+   *  - **WO-AGENTRUN-FANOUT-PERSIST 起，多角色会诊扇出的子运行已在本列表内**（`origin:"FANOUT"`）。
+   *    此前它们根本没落库（`runAgentStep` 把 `r.run` 整个丢了 + `agent_runs.task_id` 带 UNIQUE
+   *    一个 task 只存得下一条），于是"被会诊叫去跑的那几次"在全仓不可见。现在两层都修了：
+   *    引擎侧在 `engine.runWorkflowSteps` 的 `runAgentStep` 落库，表侧主键回到 run 级（migrations/013）。
+   *    ⇒ 本端点返回的次数 = 这个 Agent **真跑过的**次数（含被叫去会诊的），不再少报。
+   */
+  app.get("/b/v1/agents/:id/runs", async (req) => {
+    const a = await auth(req);
+    const { id } = req.params as { id: string };
+    const agent = await deps.repos.agents.get(id);
+    if (!agent || agent.tenantId !== a.tenantId) throw new HttpError(404, "AGENT_NOT_FOUND", `agent not found: ${id}`);
+    const runs = await deps.repos.agentRuns.listByAgent(a.tenantId, agent.key);
+    return {
+      agentId: agent.id,
+      agentKey: agent.key,
+      // 逐条过 schema：真后端下发的形状 = 契约形状（前端 mock 也照这个 schema 对，形状漂了当场红）。
+      runs: runs.map((r) => AgentRunRecordSchema.parse(r)),
+    };
   });
 
   app.post("/b/v1/agents", async (req, reply) => {
@@ -380,8 +826,8 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (!agent.systemPrompt.trim()) {
       fieldErrors.push({ field: "systemPrompt", message: "系统提示词不能为空" });
     }
-    // 管理平台增量 §4 发布校验：模型 ID 合法 + 工具/技能/MCP 引用存在
-    if (!agent.model.trim() || !/^[\w][\w.:/-]*$/.test(agent.model)) {
+    // 管理平台增量 §4 发布校验：模型 ID 合法或留空（空=继承用途矩阵 agent 绑定，运行时 roleModel 回落）。
+    if (agent.model.trim() && !/^[\w][\w.:/-]*$/.test(agent.model)) {
       fieldErrors.push({ field: "model", message: `模型 ID 非法：「${agent.model}」` });
     }
     for (const tool of agent.tools) {
@@ -402,6 +848,11 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     for (const m of agent.mcpServers) {
       const cfg = await deps.repos.mcpConfigs.get(m.mcpConfigId);
       if (!cfg || cfg.tenantId !== a.tenantId) fieldErrors.push({ field: "mcpServers", message: `MCP 配置不存在：${m.mcpConfigId}` });
+    }
+    // B→A 存在性探针（引用闭合）：scopeDeclaration 声明的对象类型必须在 DataCore 本体存在。
+    if (agent.scopeDeclaration.objectTypes.length > 0) {
+      const missing = await probeMissingRefs(deps.dataCore, a, { objectTypes: agent.scopeDeclaration.objectTypes });
+      for (const t of missing.objectTypes) fieldErrors.push({ field: "scopeDeclaration.objectTypes", message: `对象类型「${t}」在 DataCore 本体不存在（死路）` });
     }
     if (fieldErrors.length > 0) return { ok: false, errors: fieldErrors };
     const cycle = await detectStaticCycle(deps.repos, { kind: "agent", id }, { agent });
@@ -434,6 +885,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (deps.reportRefs && ruleRefs.length > 0) {
       void deps.reportRefs(a.tenantId, { source: { kind: "agent", key: published.key, name: published.name }, refs: ruleRefs });
     }
+    await emitDomainEvent(a.tenantId, "agent.published", { id: published.id, key: published.key });
     // 前端消费形态 { ok, ...agent }（SPA AgentsPage 读 r.ok / r.errors）
     return { ok: true, ...published };
   });
@@ -519,6 +971,104 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       return { items: [], createHint: "求解器由平台提供，如需新增请联系实施" };
     }
   });
+
+  // A1 求解器 MCP server 治理：列内置 `solvers` server + 全部工具（mcp__solvers__{key}，含净室通用族 +
+  // A8 CP-SAT；OBO 已 entitlement 过滤）。源=求解器全集注册表（31，与 SOLVER_KEYS 对齐），非 QOS 场景
+  // discover（22）。关某求解器 feature → 注册表不返回 → 工具消失（R3 先于 authz）。MCP 页据此显示/治理。
+  app.get("/b/v1/mcp/servers/solvers", async (req) => {
+    const a = await auth(req);
+    const { query } = req.query as { query?: string };
+    let items: { key: string; name: string; description: string; domain?: string; argHints?: Record<string, string> }[];
+    try { items = (await deps.dataCore.catalog.solverRegistry(a, query)).items; } catch { items = []; }
+    return { server: SOLVERS_MCP_SERVER_INFO, tools: buildSolverMcpTools(items), count: items.length };
+  });
+
+  // ---------------------------------------------------------------------
+  // WO-DRIL-P1 · Resource Registry（Decision Resource Intelligence Layer §6.4）
+  // 一次发现全量资源（7+ 类统一 IntelligenceResource）。派生投影 R13·entitlement 先于 authz R3·租户隔离 R2。
+  // ---------------------------------------------------------------------
+  const resourceRegistry = new ResourceRegistryService({
+    repos: deps.repos,
+    dataCore: deps.dataCore,
+    features: deps.features,
+  });
+  const listResources = async (req: FastifyRequest, reply: import("fastify").FastifyReply) => {
+    const a = await auth(req);
+    const { kind, tag } = req.query as { kind?: string; tag?: string };
+    const items = await resourceRegistry.list(a, { kind, tag });
+    reply.header("x-total-count", String(items.length));
+    return { items, total: items.length };
+  };
+  const getResource = async (req: FastifyRequest) => {
+    const a = await auth(req);
+    const { kind, key } = req.params as { kind: string; key: string };
+    const res = await resourceRegistry.get(a, kind, key);
+    if (!res) throw new HttpError(404, "RESOURCE_NOT_FOUND", `resource not found: ${kind}/${key}`);
+    return res;
+  };
+  // WO-DRIL-P2 · 混合检索（§6.4/§7）。POST 主入口（复杂 body）；GET 便捷入口（?query=）。
+  const searchResources = async (req: FastifyRequest) => {
+    const a = await auth(req);
+    const raw = req.method === "GET" ? { query: (req.query as { query?: string }).query ?? "" } : (req.body ?? {});
+    const parsed = ResourceSearchRequestSchema.safeParse(raw);
+    if (!parsed.success) throw new HttpError(400, "INVALID_SEARCH_REQUEST", parsed.error.message);
+    return resourceRegistry.search(a, parsed.data);
+  };
+  app.get("/b/v1/resources", listResources);
+  app.get("/api/v1/resources", listResources);
+  app.post("/b/v1/resources/search", searchResources);
+  app.post("/api/v1/resources/search", searchResources);
+  app.get("/b/v1/resources/search", searchResources);
+  app.get("/api/v1/resources/search", searchResources);
+  app.get("/b/v1/resources/:kind/:key", getResource);
+  app.get("/api/v1/resources/:kind/:key", getResource);
+
+  // WO-DRIL-P3 · 关系图（1-hop·§6.4）：资源↔资源出边（invokes/includes/binds）+ 即时派生对象类型边（reads/scopes）
+  // + 入边（谁指向本资源）。派生投影 R13·租户隔离 R2·不存在 404。
+  const getRelations = async (req: FastifyRequest) => {
+    const a = await auth(req);
+    const { kind, key } = req.params as { kind: string; key: string };
+    const resource = await resourceRegistry.get(a, kind, key);
+    if (!resource) throw new HttpError(404, "RESOURCE_NOT_FOUND", `resource not found: ${kind}/${key}`);
+    const outRows = await deps.repos.resourceRelations.listFrom(a.tenantId, kind, key);
+    const allRows = await deps.repos.resourceRelations.listByTenant(a.tenantId);
+    const relations = relationsOf(outRows, kind, key, resource); // 出边（含对象类型 1-hop）
+    const inbound = allRows
+      .filter((r) => r.toKind === kind && r.toKey === key)
+      .map((r) => ({ fromKind: r.fromKind, fromKey: r.fromKey, relType: r.relType }))
+      .sort((x, y) => (x.fromKind + x.fromKey < y.fromKind + y.fromKey ? -1 : 1));
+    return { resource: { kind, key }, relations, inbound };
+  };
+  app.get("/b/v1/resources/:kind/:key/relations", getRelations);
+  app.get("/api/v1/resources/:kind/:key/relations", getRelations);
+
+  // WO-DRIL-P3 · 运行时质量分（§5.4/§6.4）。GET 读当前 EWMA 分行；POST 记一次观测（success/latency）→ EWMA 更新
+  // （运行时探针入口 + 可解释性演示）。派生投影 R13·租户隔离 R2。
+  const qualityService = new ResourceQualityService(deps.repos);
+  const getQuality = async (req: FastifyRequest) => {
+    const a = await auth(req);
+    const { kind, key } = req.params as { kind: string; key: string };
+    const resource = await resourceRegistry.get(a, kind, key);
+    if (!resource) throw new HttpError(404, "RESOURCE_NOT_FOUND", `resource not found: ${kind}/${key}`);
+    const row = await qualityService.get(a, kind, key);
+    return { kind, key, quality: row ?? null };
+  };
+  const postQuality = async (req: FastifyRequest) => {
+    const a = await auth(req);
+    const { kind, key } = req.params as { kind: string; key: string };
+    const resource = await resourceRegistry.get(a, kind, key);
+    if (!resource) throw new HttpError(404, "RESOURCE_NOT_FOUND", `resource not found: ${kind}/${key}`);
+    const body = (req.body ?? {}) as { success?: unknown; latencyMs?: unknown };
+    if (typeof body.success !== "boolean" || typeof body.latencyMs !== "number" || !Number.isFinite(body.latencyMs)) {
+      throw new HttpError(400, "INVALID_QUALITY_PROBE", "body 须含 { success: boolean, latencyMs: number }");
+    }
+    const row = await qualityService.record(a, kind, key, { success: body.success, latencyMs: Math.max(0, body.latencyMs) });
+    return { kind, key, quality: row };
+  };
+  app.get("/b/v1/resources/:kind/:key/quality", getQuality);
+  app.get("/api/v1/resources/:kind/:key/quality", getQuality);
+  app.post("/b/v1/resources/:kind/:key/quality", postQuality);
+  app.post("/api/v1/resources/:kind/:key/quality", postQuality);
 
   app.get("/b/v1/workflows", async (req, reply) => {
     const a = await auth(req);
@@ -610,6 +1160,25 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     if (cycle) {
       stepErrors.push({ code: ErrorCodes.CYCLIC_INVOCATION, message: `发布被拒：静态可达环 ${cycle.join(" -> ")}` });
     }
+    // B→A 存在性探针（引用闭合）：步骤引用的求解器/规则必须在 DataCore 真实存在（无死路）。
+    if (stepErrors.length === 0) {
+      const solverKeys: string[] = [];
+      const ruleKeys: string[] = [];
+      for (const st of wf.steps) {
+        const p = st.params as Record<string, unknown>;
+        if (st.type === "invoke_solver" && typeof p.solverKey === "string") solverKeys.push(p.solverKey);
+        if (st.type === "evaluate_rules" && Array.isArray(p.ruleIds)) for (const r of p.ruleIds as unknown[]) if (typeof r === "string") ruleKeys.push(r);
+      }
+      const missing = await probeMissingRefs(deps.dataCore, a, { solverKeys, ruleKeys });
+      for (const s of missing.solvers) {
+        const stepId = wf.steps.find((st) => (st.params as Record<string, unknown>).solverKey === s)?.id;
+        stepErrors.push({ ...(stepId ? { stepId } : {}), code: ErrorCodes.VALIDATION_ERROR, message: `求解器「${s}」在 DataCore 未注册（死路）` });
+      }
+      for (const r of missing.rules) {
+        const stepId = wf.steps.find((st) => Array.isArray((st.params as Record<string, unknown>).ruleIds) && ((st.params as Record<string, unknown>).ruleIds as string[]).includes(r))?.id;
+        stepErrors.push({ ...(stepId ? { stepId } : {}), code: ErrorCodes.VALIDATION_ERROR, message: `规则「${r}」在 DataCore 规则库不存在（死路）` });
+      }
+    }
     if (stepErrors.length > 0) return { ok: false, errors: stepErrors };
 
     // 引用模式增量 §2.3：影响面（latest 引用本 key 的 agent —— references 反查）
@@ -654,11 +1223,13 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
 
     const published = { ...wf, status: "PUBLISHED" as const, updatedAt: new Date().toISOString() };
     await deps.repos.workflows.update(published);
-    // §2.3：workflow 出向规则引用上报 A
-    const wfRuleRefs = planStepRuleRefs(published.steps);
-    if (deps.reportRefs && wfRuleRefs.length > 0) {
-      void deps.reportRefs(a.tenantId, { source: { kind: "workflow", key: published.key, name: published.name }, refs: wfRuleRefs });
+    // §2.3 + §2.4：workflow 出向引用上报 A（evaluate_rules→rule + resolve_slice→slice，
+    // 后者闭 G-SLICE-REF-PRODUCER-EMPTY —— 切片反查/十六层①② 的事实源）
+    const wfRefs = [...planStepRuleRefs(published.steps), ...planStepSliceRefs(published.steps)];
+    if (deps.reportRefs && wfRefs.length > 0) {
+      void deps.reportRefs(a.tenantId, { source: { kind: "workflow", key: published.key, name: published.name }, refs: wfRefs });
     }
+    await emitDomainEvent(a.tenantId, "workflow.published", { id: published.id, key: published.key });
     // 前端消费形态 { ok, ...workflow }（SPA WorkflowsPage 读 r.ok / r.errors）；§2.3 附 impact
     return { ok: true, ...published, impact, ...(forced ? { forced: true, breakingChanges: breaking } : {}) };
   });
@@ -690,6 +1261,20 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const wf = await deps.repos.workflows.get(id);
     if (!wf || wf.tenantId !== a.tenantId) throw new HttpError(404, "WORKFLOW_NOT_FOUND", `workflow not found: ${id}`);
     const references = await computeReferences(deps.repos, a.tenantId, "workflow", id);
+    return { references, count: references.length };
+  });
+
+  // rule/solver 反查（响应式失效环可见性）：改了规则/求解器 → 哪些编排资源引用它（DataCore 资源按 key 反查）。
+  app.get("/b/v1/rules/:key/references", async (req) => {
+    const a = await auth(req);
+    const { key } = req.params as { key: string };
+    const references = await computeReferences(deps.repos, a.tenantId, "rule", key);
+    return { references, count: references.length };
+  });
+  app.get("/b/v1/solvers/:key/references", async (req) => {
+    const a = await auth(req);
+    const { key } = req.params as { key: string };
+    const references = await computeReferences(deps.repos, a.tenantId, "solver", key);
     return { references, count: references.length };
   });
 
@@ -737,6 +1322,10 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       nesting: { callChain: [], budget }, // top-level run not counted toward nesting depth
       emit: (e, p) => deps.events.emit(runId, e, p).then(() => undefined),
     });
+    if (result.status === "CANCELLED") {
+      await deps.events.emit(runId, "task.cancelled", { reason: result.reason });
+      return reply.status(200).send({ runId, status: "CANCELLED", reason: result.reason, stepOutputs: result.stepOutputs });
+    }
     if (result.status === "FAILED") {
       await deps.events.emit(runId, "task.failed", result.error);
       return reply.status(200).send({ runId, status: "FAILED", error: result.error, stepOutputs: result.stepOutputs });
@@ -814,14 +1403,72 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const { id } = req.params as { id: string };
     const skill = await deps.repos.skills.get(id);
     if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
-    // Skill 编写规范 §4 门禁一：结构 lint 必过（force=true 走审计豁免）。
     const { force } = req.query as { force?: string };
-    const lint = lintSkill(skill);
-    if (!lint.ok && force !== "true") {
-      throw new HttpError(422, "SKILL_LINT_FAILED", `技能结构 lint 未通过（${lint.violations.length} 项）：${lint.violations.map((x) => x.rule).join(", ")}`);
+    // ——— Skill 编写规范 §4 门禁一（结构 lint）+ 门禁一·补（B→A 引用闭合）———
+    //
+    // WO-REFGATE-ENT · F14：这两道判据**已抽到 `skill-publish-gate.ts`**，本路由与
+    // `main.ts` 启动期种子审计**调用同一份实现**。原因是 F14 的病灶：出厂技能经
+    // `repos.skills.insert` 旁路落库，以 `status:"PUBLISHED"` 直接进库，**一次也没走过本端点** ——
+    // 「门装上了」于是被读成「库里的东西都过了门」，而这是两个不同的命题。
+    // 抽一份实现出来（而不是在 seed 里再写一遍校验）是刻意的：抄一份就是装饰品，
+    // 改主逻辑时另一份拿旧的去测、照样绿（CLAUDE.md 铁律 0.6）。
+    //
+    // 语义原样保留：
+    //  · 短路——lint 未过即返回，**不打 DataCore**（I/O 顺序与此前字节一致）；
+    //  · force——只豁免**质量门**（lint / 评测），**不豁免事实门**（引用死路）：
+    //    审计签字不能让一个不存在的求解器变成存在，也不能让一条 DRAFT 规则变成已发布；
+    //  · 注册表不可用（读不出 / 空集）→ `probeMissingRefs` 抛 503 REF_PROBE_UNAVAILABLE（fail-closed，向上冒泡）；
+    //  · 位置仍在评测门之前、`repos.skills.update` 之前 ⇒ 拒发布 = **未落库**。
+    const gate = await runSkillPublishGate({
+      skill,
+      allSkills: await deps.repos.skills.listByTenant(a.tenantId),
+      probe: (want) => probeMissingRefs(deps.dataCore, a, want),
+      options: { force: force === "true", shortCircuit: true },
+    });
+    const lint = gate.lint;
+    const blocking = gate.violations[0];
+    if (blocking) throw new HttpError(422, blocking.code, blocking.message);
+    // Skill 编写规范 §4 门禁二：评测门禁——发布必附 ≥3 个 skill_quality 评测用例（关联本技能，
+    // 应触发/不应触发/行为增益三类）+ 评测套件全过（force=true 审计豁免）。此前仅 lint，无评测门。
+    const skillCases = (await deps.repos.evalCases.listByTenant(a.tenantId, "skill_quality")).filter((c) => c.skillKey === skill.key);
+    if (skillCases.length < 3 && force !== "true") {
+      throw new HttpError(422, "SKILL_EVAL_INSUFFICIENT", `技能发布需 ≥3 个 skill_quality 评测用例（含行为增益维度），当前 ${skillCases.length}；补用例或 force=true 审计豁免`);
     }
-    const published = { ...skill, status: "PUBLISHED" as const };
+    // 门只数数 → 门真判别（修「名不副实」）：此前仅 length>=3，3 条同类用例即放行，而文案宣称"含行为增益维度"。
+    // PRD §4 三类各须 ≥1（应触发/不应触发/行为增益）——尤其"不应触发"缺失时，误触发（污染所有无关任务）无人把守。
+    if (force !== "true") {
+      const cov = classifySkillEvalCases(skillCases);
+      if (!cov.ok) {
+        throw new HttpError(
+          422,
+          "SKILL_EVAL_COVERAGE",
+          `skill_quality 评测用例类型覆盖不足（PRD §4 三类各需 ≥1）：缺 ${cov.missing.join("、")}；当前 应触发${cov.shouldTrigger}/不应触发${cov.shouldNotTrigger}/行为增益${cov.behaviorGain}；补用例或 force=true 审计豁免`,
+        );
+      }
+    }
+    if (skillCases.length >= 3 && force !== "true") {
+      const run = await deps.evals.runSkillProbe(a, skill.key, { skillId: skill.id });
+      if (run.passRate < 1) {
+        throw new HttpError(422, "SKILL_EVAL_FAILED", `skill_quality 评测未全过（通过率 ${run.passRate}，${skillCases.length} 用例）；修用例或 force=true 审计豁免`);
+      }
+    }
+    // WO-PROMPT-KEY-LINT · 门禁一·语义补「LLM 摘要语义审查」（**建议式·不阻断**）：
+    // 位置 = 全部阻断判据（结构 lint + 引用闭合 + 评测门）通过之后、落库之前——
+    // 被 422 拒掉的发布不跑审查（不浪费 LLM 调用；lint 失败 ⇒ composeRequests 为零是机器判据）。
+    // verdict **不进 422 判据**（R6：阻断路径 100% 确定性），只落留痕（skill 行 summaryReview
+    // 字段 + 本响应）；LLM 抛错/不可解析落 UNAVAILABLE/UNPARSEABLE 诚实档，同样不阻断。
+    // 设计论据全文见 `skill-summary-review.ts` 头注。
+    const summaryReview = await runSkillSummaryReview(skill, {
+      llm: deps.llm,
+      prompts: deps.dataCore.prompts,
+      ctx: a,
+      model: deps.config.QOS_SKILL_SUMMARY_REVIEW_MODEL,
+    });
+    const published = { ...skill, status: "PUBLISHED" as const, summaryReview };
     await deps.repos.skills.update(published);
+    // DF-5（Wave3 数据流闭环）：B 栈技能发布 → B 侧 outbox 领域事件 → /b/v1/outbox → 前端 F1 轮询失效
+    // agent-editor 技能绑定下拉（同 workflow/agent/intent/scenario.published 一致模式·补 skill 缺口·TR2/3）。
+    await emitDomainEvent(a.tenantId, "skill.published", { id: published.id, key: published.key });
     // 引用模式增量 §2.3：影响面（引用同 key 任一版本的 agent；latest 下次加载即新内容 — L8）
     const siblingIds = new Set(
       (await deps.repos.skills.listByTenant(a.tenantId)).filter((x) => x.key === skill.key).map((x) => x.id),
@@ -842,16 +1489,127 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   app.post("/b/v1/skills/lint", async (req) => {
     const a = await auth(req);
     requireCatalogAdmin(a);
-    const body = req.body as { id?: string; summary?: string; body?: string; resources?: { name: string }[] };
-    let target: { summary: string; body: string; resources: { name: string }[] };
+    const body = req.body as Partial<SkillLintTarget> & { id?: string; name?: string };
+    let target: SkillLintTarget;
+    // WO-PROMPT-KEY-LINT：摘要语义审查（?review=1）需要技能名进 inputs；两条路各自取名。
+    let skillName: string;
     if (body.id) {
       const skill = await deps.repos.skills.get(body.id);
       if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${body.id}`);
-      target = { summary: skill.summary, body: skill.body, resources: skill.resources };
+      skillName = skill.name;
+      // ⚠️ 此前这里只摘 `{summary, body, resources}` 三项 → WO-SKILL-3 的工业级契约规则
+      //   （inputSchema/outputSchema 形状 · references/dependsOn 合法性与可解析性 · 依赖图环）
+      //   在**编辑器干跑**这条路上从不参评：编辑器报「lint 通过」，同一个 skill 到发布门（:1246 传了全量 + ctx）
+      //   却 422。同一份 lint 两条路两套输入 = 「接了线接错地方」，且两侧测试都能是绿的
+      //   （单测直接调 lintSkill 并手传全量 → 覆盖不到这条窄化路径）。现在干跑与发布**同一份输入**。
+      target = {
+        summary: skill.summary,
+        body: skill.body,
+        resources: skill.resources,
+        ...(skill.inputSchema ? { inputSchema: skill.inputSchema } : {}),
+        ...(skill.outputSchema ? { outputSchema: skill.outputSchema } : {}),
+        ...(skill.references ? { references: skill.references } : {}),
+        ...(skill.dependsOn ? { dependsOn: skill.dependsOn } : {}),
+      };
     } else {
-      target = { summary: body.summary ?? "", body: body.body ?? "", resources: body.resources ?? [] };
+      skillName = body.name ?? "";
+      target = {
+        summary: body.summary ?? "",
+        body: body.body ?? "",
+        resources: body.resources ?? [],
+        ...(body.inputSchema ? { inputSchema: body.inputSchema } : {}),
+        ...(body.outputSchema ? { outputSchema: body.outputSchema } : {}),
+        ...(body.references ? { references: body.references } : {}),
+        ...(body.dependsOn ? { dependsOn: body.dependsOn } : {}),
+      };
     }
-    return lintSkill(target);
+    // 干跑同样需要 ctx.allSkills（跨资源规则缺 ctx 时 `return []` = 恒过）；但**不**传 requirePublishedDeps
+    //   —— 草稿态预览不该因依赖还没发布就报错（skill-lint.ts:32-33 的既定语义），发布门那半才收紧。
+    const lint = lintSkill(target, {}, { allSkills: await deps.repos.skills.listByTenant(a.tenantId) });
+    // WO-PROMPT-KEY-LINT：`?review=1` opt-in 追加 LLM 摘要语义审查（门禁一·语义补的 DRAFT 预览半）——
+    // 编写者在发布前就能看到语义裁决；**additive**（不带参数响应逐字节不变·零回归·也不打 LLM）。
+    const { review } = req.query as { review?: string };
+    if (review === "1") {
+      const summaryReview = await runSkillSummaryReview(
+        { name: skillName, summary: target.summary },
+        { llm: deps.llm, prompts: deps.dataCore.prompts, ctx: a, model: deps.config.QOS_SKILL_SUMMARY_REVIEW_MODEL },
+      );
+      return { ...lint, summaryReview };
+    }
+    return lint;
+  });
+
+  // ---- WO-SKILL-ORCHESTRATOR-S1 · Skill Graph 编排（PRD-skill-runtime-orchestrator §3.4）----
+  const SkillGraphRunBody = z.object({
+    /** 新路（推荐）：`Skill.execution`（`steps` 线性 / `graph` 图，审核方对名裁决）。 */
+    execution: SkillExecutionSchema.optional(),
+    /** `execution.graph` 的简写。 */
+    graph: SkillGraphSchema.optional(),
+    /**
+     * 旧路：legacy `ExecutionPlan.steps[]` —— 走它会在响应 `source` 里如实标出，不静默。
+     * 元素**不钉死** `PlanStepSchema`（闭合联合会挡掉 ExtraToolStep 三类真实可执行步骤）；
+     * 语义校验由 `GraphScheduler` 调 `validatePlanSteps` 完成（裁决 v3 约束①：单一来源在函数不在类型）。
+     */
+    planSteps: z.array(SkillExecutionStepSchema).optional(),
+    slots: z.record(z.string(), z.unknown()).optional(),
+    context: z.unknown().optional(),
+  });
+  // 图调度**旁挂**于既有线性 `workflow/executor.ts`，不改后者。编译期拒环/拒未实现节点，
+  // 运行期按层并发、数据只沿边流动（作用域 = 祖先输出）。
+  app.post("/b/v1/skill-graphs/run", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    // 三路执行来源（审核方 2026-08-09 对名裁决）：`execution.graph` / `execution.steps` / legacy `plan.steps`。
+    // 判别与「走了哪一路」的上报由 contracts `compileExecution` 单点负责——服务端不自己再判一次。
+    // `graph` 是 `execution.graph` 的便捷简写（老调用形态，向后兼容）。
+    const body = SkillGraphRunBody.parse(req.body ?? {});
+    const execution = body.execution ?? (body.graph ? { graph: body.graph } : undefined);
+    // metrics 是 `render` 节点要的：它复用 `workflow/executor.ts renderAnswer`，
+    // 后者在扫出未溯源数值时会打 `unverifiedNumerics` 点（与线性路同一口径，不另开第二个出口）。
+    const scheduler = new GraphScheduler({ repos: deps.repos, dataCore: deps.dataCore, metrics: deps.metrics });
+    try {
+      // R2 tenant_id everywhere：节点内所有仓储读取经 a.tenantId 过滤。
+      return await scheduler.run(
+        a,
+        { ...(execution ? { execution } : {}), ...(body.planSteps ? { legacyPlanSteps: body.planSteps } : {}) },
+        {
+          runId: newId("sgr"),
+          ...(body.slots ? { slots: body.slots } : {}),
+          ...(body.context !== undefined ? { context: body.context } : {}),
+        },
+      );
+    } catch (e) {
+      if (e instanceof SkillGraphCompileError) {
+        // 环 / 未实现节点 / 三路皆空 → 422 + 可读原因
+        //（错误信封由 setErrorHandler 统一成 {error:{code,message,requestId}}）
+        throw new HttpError(422, e.code, e.message);
+      }
+      throw e;
+    }
+  });
+
+  /**
+   * WO-SKILL-COMPILER-S1 · 技能编译（PRD-skill-compiler-registry §8.1「真新增端点」）。
+   *
+   * 七段管线的 S1 最小垂直切片：① Parser → ② Validator（**复用既有 `lintSkill`**）→ ③ 推理图派生。
+   * Optimizer 与运行时包两段**未实现**，在 `stages[]` 里显式标 `NOT_IMPLEMENTED`——
+   * 不返回空对象让调用方以为跑过了。
+   *
+   * 鉴权 / 租户 / 错误信封照抄同文件既有 skill 路由：`auth` → `requireCatalogAdmin`
+   * → 跨租户一律 404 `SKILL_NOT_FOUND`（不泄漏存在性，R2 + PRD §4.2 GV-TENANT）。
+   * 只读操作：不落库、不改状态、不发领域事件（`?dryRun` 语义即默认且唯一行为）。
+   */
+  app.post("/b/v1/skills/:id/compile", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const skill = await deps.repos.skills.get(id);
+    if (!skill || skill.tenantId !== a.tenantId) throw new HttpError(404, "SKILL_NOT_FOUND", `skill not found: ${id}`);
+    // ⚠️ 必须传 ctx.allSkills：`lintSkill` 的跨资源规则（dependsOn 可解析 / 依赖图无环）在缺省时直接
+    //    `return []`——不传等于「接了线没通」（同 server.ts:1243 publish 路已踩过的坑）。
+    const allSkills = (await deps.repos.skills.listByTenant(a.tenantId)).filter((s) => s.tenantId === a.tenantId);
+    // 发布态口径（requirePublishedDeps）只在技能已发布时套用；草稿编译不该因依赖还没发布就报错。
+    return compileSkill(skill, { allSkills, requirePublishedDeps: skill.status === "PUBLISHED" });
   });
 
   // ---- 管理平台增量 §4：skills 统一资源模式 ----
@@ -910,6 +1668,104 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const resource = skill.resources.find((r) => r.name === name);
     if (!resource) throw new HttpError(404, "RESOURCE_NOT_FOUND", `resource not found: ${name}`);
     return { name: resource.name, blobKey: resource.blobKey };
+  });
+
+  // ---------------------------------------------------------------------
+  // WO-A · Plan Builder Canvas ↔ PlanDSL（编译产物 = 现有 ExecutionPlan）
+  // Entitlement 先于 authz：功能关闭 = 不存在 → 404 FEATURE_NOT_FOUND
+  // ---------------------------------------------------------------------
+  const requirePlanBuilderFeature = async (a: RequestAuth) => {
+    // ⚠ 传**整个 auth 对象**，不是 `a.token`：X-Debug-User 链路没有 token，
+    //   只传 .token 会让 entitlement 拉取恒失败 → fail-open 放行（欠账 #89）。
+    //   `entitlement-obo-seam.test.ts` ⑦ 有防回潮哨兵咬这个写法。
+    const enabled = await deps.features.enabledSet(a.tenantId, a);
+    if (!featureEnabled(enabled, "admin.plan-builder")) {
+      throw new HttpError(404, "FEATURE_NOT_FOUND", "admin.plan-builder");
+    }
+  };
+
+  app.get("/b/v1/plan-builders", async (req, reply) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    requireCatalogAdmin(a);
+    const { packageId } = req.query as { packageId?: string };
+    if (!packageId) throw new HttpError(400, ErrorCodes.VALIDATION_ERROR, "packageId required");
+    const list = await deps.planBuilder.listCanvases(a, packageId);
+    const { items, total } = applyListQuery(list, req.query as ListQuery);
+    reply.header("x-total-count", String(total));
+    return items;
+  });
+
+  app.post("/b/v1/plan-builders", async (req, reply) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    requireCatalogAdmin(a);
+    const body = CreatePlanBuilderBodySchema.parse(req.body);
+    const { packageId } = req.query as { packageId?: string };
+    if (!packageId) throw new HttpError(400, ErrorCodes.VALIDATION_ERROR, "packageId required");
+    return reply.status(201).send(await deps.planBuilder.createCanvas(a, packageId, body));
+  });
+
+  app.get("/b/v1/plan-builders/:id", async (req) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    const { id } = req.params as { id: string };
+    const canvas = await deps.planBuilder.getCanvas(a, id);
+    if (!canvas) throw new HttpError(404, "CANVAS_NOT_FOUND", `canvas not found: ${id}`);
+    return canvas;
+  });
+
+  app.put("/b/v1/plan-builders/:id", async (req) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const patch = UpdatePlanBuilderBodySchema.parse(req.body);
+    return deps.planBuilder.updateCanvas(a, id, patch);
+  });
+
+  app.post("/b/v1/plan-builders/:id/compile", async (req) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    const { id } = req.params as { id: string };
+    return deps.planBuilder.compileCanvas(a, id);
+  });
+
+  app.post("/b/v1/plan-builders/:id/publish", async (req) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    const body = z.object({ force: z.boolean().default(false) }).parse(req.body ?? {});
+    const result = await deps.planBuilder.publishCanvas(a, id, body);
+    if (result.ok) {
+      await emitDomainEvent(a.tenantId, "plan.canvas.published", { canvasId: result.canvas.id, planId: result.canvas.compiledPlanId });
+    }
+    return result;
+  });
+
+  app.post("/b/v1/plan-builders/:id/new-version", async (req, reply) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    return reply.status(201).send(await deps.planBuilder.newVersion(a, id));
+  });
+
+  app.post("/b/v1/plan-builders/:id/retire", async (req) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    requireCatalogAdmin(a);
+    const { id } = req.params as { id: string };
+    return deps.planBuilder.retireCanvas(a, id);
+  });
+
+  app.post("/b/v1/plan-builders/:id/run", async (req) => {
+    const a = await auth(req);
+    await requirePlanBuilderFeature(a);
+    const { id } = req.params as { id: string };
+    const body = z.object({ inputs: z.record(z.string(), z.unknown()).default({}) }).parse(req.body ?? {});
+    return deps.planBuilder.runCanvas(a, id, body.inputs);
   });
 
   // ---------------------------------------------------------------------
@@ -1249,9 +2105,19 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
   // -----------------------------------------------------------------------
   // 引用模式增量 §2.4：内部缓存失效钩子 —— A 的 C-2 webhook 注册表回调此端点
   // （{kind}.updated 事件 → 立即失效 B 侧对 A 资源的缓存；TTL 60s 兜底）。
-  // 该操作幂等无害（仅清缓存），不要求鉴权 —— 与 webhook 投递形态（裸 POST JSON）对齐。
+  //
+  // ⚠ 原注释写「该操作幂等无害（仅清缓存），不要求鉴权」——**已推翻**。它读 body 里的**任意
+  // `tenantId`** 并逐个 `invalidate()`，而 `deploy/nginx.conf` 的 `location ~ ^/(b|api)/v1/`
+  // 反代整个 `/b/v1/` 前缀 ⇒ **80 端口匿名可达**。匿名者可对任意租户无限次强制清缓存，每次清完
+  // 下一请求都要回源 DataCore = 放大型缓存击穿。「幂等」挡不住「可被无限次重放」。
+  //
+  // 收口为 SERVICE_TOKEN（与 `/b/v1/internal/scaffold` 同款）。**调用端同步已改**：
+  // `apps/datacore/src/outbox.ts` 只对 `AGENTCORE_BASE_URL` 同源的 hook 附带 token
+  // （见该文件 `isInternalPeer`——绝不能无差别附带：webhook URL 是租户自助注册的，
+  // 无差别附带 = 把服务间密钥送给任意租户填的地址）。
   // -----------------------------------------------------------------------
   app.post("/b/v1/internal/invalidate", async (req) => {
+    requireServiceToken(req);
     const body = (req.body ?? {}) as { event?: string; tenantId?: string; payload?: unknown };
     const event = body.event ?? "";
     const invalidated: string[] = [];
@@ -1265,7 +2131,221 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     }
     // rules.updated：B 不缓存规则定义（每次求值经 A REST），propagation 即时 —— 仅确认收到
     if (event.startsWith("rules")) invalidated.push("rules(no-cache)");
+    // WO-QOS-ONTOLOGY-CONTEXT · type-semantics 口径缓存失效：本体发布 / 规则变更 → 口径可能变（description/formula/expression），
+    // 清 B 侧 type-semantics 缓存使下次注入取 A 最新真值（TTL 60s 兜底；单一真值在 A·非 B 手写 mirror）。
+    if (!event || event.startsWith("ontology") || event.startsWith("rules")) {
+      deps.dataCore.ontology.invalidateTypeSemantics?.(body.tenantId);
+      invalidated.push("type-semantics");
+    }
+    // WO-PROMPT-DEFAULTS-WIRING · prompt.updated：admin 改了 DataCore 提示词模板 → 清 B 侧提示词缓存，
+    // 使下次 classify 取 A 最新模板（TTL 60s 兜底；单一真值在 A·消硬编码漂移·传播 SLO ≤60s）。
+    if (!event || event.startsWith("prompt")) {
+      deps.dataCore.prompts?.invalidatePromptTemplate?.(body.tenantId);
+      invalidated.push("prompt-templates");
+    }
     return { ok: true, event: event || "(all)", invalidated };
+  });
+
+  // -----------------------------------------------------------------------
+  // WO-DSH-E2E · L2 真规则缝：dsh harness platform-governance 插件（http 模式）的
+  // 裁决端点。薄包 `deps.dataCore.rules.evaluate`——与 native POST_CHECK 同一客户端
+  // （engine.ts ruleBindings 后验段），不是第二份规则逻辑。
+  //
+  // 入参形态 = 插件 http 载荷 {tool, arguments, governance}（plugins/platform-governance.mjs）；
+  // 语义：ruleBindings.ruleKeys 逐条求值，有 !passed ∧ severity BLOCK ⇒ {decision:"deny",
+  // reason: 真 verdict 文案（ruleId: explanation）}，余 ⇒ {decision:"allow"}。
+  // 规则引擎异常 ⇒ 向上抛（错误处理 5xx）——fail-closed 转 deny 全在插件侧，本端点不吞。
+  // payload = queryText（人读留痕）+ 工具实参平铺：pre-execute 裁决的业务载荷就是工具实参
+  // （对位 native POST_CHECK 的 {answerText} 形态）；queryText-only 则面向业务字段的规则
+  // 表达式恒不可达，deny 语义造不出。
+  // 鉴权 = requireServiceToken（服务间单一实现，与 /metrics、/b/v1/internal/* 同口径）；
+  // ctx = 服务间形态（datacore llmproviders 先例）：dsh 治理载荷不携 tenantId
+  // （DshGovernanceSpec = ruleBindings + scopeObjectTypes），缺省 "platform" 服务身份，
+  // 不冒充任何租户用户；body.tenantId 为预留透传位。
+  // -----------------------------------------------------------------------
+  app.post("/b/v1/governance/adjudicate", async (req) => {
+    requireServiceToken(req);
+    const body = (req.body ?? {}) as {
+      tool?: unknown;
+      arguments?: unknown;
+      governance?: { ruleBindings?: { ruleKeys?: string[] | "ALL_APPLICABLE" } };
+      tenantId?: unknown;
+    };
+    if (typeof body.tool !== "string" || typeof body.governance !== "object" || body.governance === null) {
+      throw new HttpError(400, "VALIDATION_ERROR", "adjudicate 载荷需 {tool: string, arguments, governance}");
+    }
+    const ruleKeys = body.governance.ruleBindings?.ruleKeys;
+    if (!(Array.isArray(ruleKeys) || ruleKeys === "ALL_APPLICABLE")) {
+      throw new HttpError(400, "VALIDATION_ERROR", "governance.ruleBindings.ruleKeys 需 string[] | \"ALL_APPLICABLE\"");
+    }
+    // WO-DSH-GOV-CREDENTIAL · 这个 ctx 要**真的能过 DataCore 的鉴权**。
+    //
+    // 修前：ctx 只有 {tenantId, userId, roles}，一个鉴权载体都没有 ⇒ `tools/datacore-http.ts`
+    // 的鉴权链落到「什么头都不发」那一支 ⇒ DataCore `/a/v1/rules/evaluate` 判 401 ⇒
+    // 插件 fail-closed 转 deny ⇒ 模型重试 ⇒ 而 `final_answer` 在 watchdog 的 META_TOOLS 里
+    // 被豁免、deny 又发生在 pre-execute（watchdog 挂 post-execute，且 pre-execute 的 deny
+    // 不调 next() ⇒ post-execute 根本不触发）⇒ 计数器永不递增 ⇒ 无人喊停。
+    // 实测代价：一条问句 305,532 + 111,780 tokens / ~4,963 轮，答案为空。
+    //
+    // `roles:["service"]` 只是**本进程内**的自述，DataCore 看不见它 —— 跨进程的身份只能靠 wire 上的头。
+    // 这正是「接了线没数据」与「压根没接线」之外的第三态：**接了线，但线上什么都没有**。
+    //
+    // `SERVICE_TOKEN` 未配置 ⇒ 本字段 undefined ⇒ 仍旧裸请求 ⇒ 401 ⇒ deny。
+    // 这是**有意保留的 fail-closed**：没凭据时治理必须拒，不许退化成放行。
+    const ctx = {
+      tenantId: typeof body.tenantId === "string" ? body.tenantId : "platform",
+      userId: "svc:dsh-governance",
+      roles: ["service"],
+      serviceToken: deps.config.SERVICE_TOKEN,
+    };
+    const args = body.arguments;
+    const payload = {
+      queryText: `${body.tool} ${JSON.stringify(args ?? {})}`,
+      ...(args !== null && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {}),
+    };
+    const verdicts = await deps.dataCore.rules.evaluate(ctx, ruleKeys, payload);
+    const blocking = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
+    if (blocking.length > 0) {
+      return { decision: "deny", reason: blocking.map((v) => `${v.ruleId}: ${v.explanation}`).join("; ") };
+    }
+    return { decision: "allow" };
+  });
+
+  /**
+   * WO-DSH-PROD-READY · W8主：dsh 子进程世界 → 宿主 BUILTIN 工具的**反向执行通道**（带外，
+   * 与上方 adjudicate 同模板）。dsh fork 时 engine 铸 per-run 一次性 runToken 登记
+   * {executor, budget, seenCallIds}（同一 GuardedToolExecutor 实例——第二实例 = 双账本缺陷），
+   * run 终注销；wire 上零鉴权材料（runToken 随机一次性）。fail-closed 次序：
+   * 服务间凭据 401 → 载荷形态 400 → runToken 不识/已注销 401 → callId 重放 409 → executor 四态。
+   *
+   * 截断顺序（team-lead 2026-08-21 裁决 b）：executor 出 payload（全量）→ finish() 落审计行
+   * （64KB 兜底，截断前）→ **端点**截断整形（8KB 模型面，单源 truncateToolResultJson +
+   * TRUNCATION_EXEMPT_TOOLS 豁免集，禁 .mjs 双源漂移）→ wire。OK 出 payloadJson **串**
+   * （JSON 往返会重排 integer-like 键，串原样过 wire 保逐字等）；非 OK 出 payload 对象。
+   */
+  app.post("/b/v1/dsh/tool-execute", async (req) => {
+    requireServiceToken(req);
+    const body = (req.body ?? {}) as {
+      runToken?: unknown;
+      callId?: unknown;
+      toolName?: unknown;
+      input?: unknown;
+      timeoutMs?: unknown;
+      kind?: unknown;
+    };
+    if (typeof body.runToken !== "string" || typeof body.callId !== "string" || typeof body.toolName !== "string") {
+      throw new HttpError(400, "VALIDATION_ERROR", "tool-execute 载荷需 {runToken, callId, toolName: string, input, timeoutMs?}");
+    }
+    // W8.5：additive 可选 kind（缺席 = tool，W8主 桥逐字节旧行为）；词表外值 fail-closed 400
+    // （不许静默当 tool——静默会把 workflow 调用落进 executor 路，mutation m1 咬位）。
+    if (body.kind !== undefined && body.kind !== "tool" && body.kind !== "workflow") {
+      throw new HttpError(400, "VALIDATION_ERROR", 'kind 仅许 "tool" | "workflow"（缺席 = tool）');
+    }
+    const entry = deps.engine.dshToolExecuteRuns.get(body.runToken);
+    if (!entry) throw new HttpError(401, "UNAUTHORIZED", "unknown or expired runToken");
+    if (entry.seenCallIds.has(body.callId)) {
+      throw new HttpError(409, "CALL_ID_REPLAY", "callId 在同一 run 内一次性（重放拒绝）");
+    }
+    entry.seenCallIds.add(body.callId);
+    // ── W8.5 workflow 分支（kind:"workflow"）──────────────────────────────────
+    // 绑定表 = 唯一 workflowId 解析权威：wire 禁带 workflowId——body 即使夹带也永不读取
+    // （防子进程越权点名绑定表外任意 workflow；mutation m2 咬位）。表成员即 scope 闸
+    // （等价论证见 engine.ts DshToolExecuteRun.workflowBindings 注）。
+    // outcome 两态词表 OK/ERROR（native parity loop.ts:764-833）：绑定表 miss（幻觉调用——
+    // native 面该工具根本不可见，无 DENIED 对位）/ CANCELLED / FAILED / nested
+    // tryConsumeWorkflow 的 BUDGET_EXCEEDED throw 一律 ERROR（payload 保错误码），
+    // 不映射 BUDGET_EXCEEDED outcome、不触发 B6 cancel 桥（native 无此对位）。
+    // 无 per-call timeout 竞速：native loop.ts:791 无 callTimeoutMs 对位，界 = nested
+    // 共享预算（enterNesting 同一 budget）；桥本地 fetch 放弃线仍可能先咬 ⇒ 孤儿行
+    // 合法形态（REC §3 B3 同口径）。
+    if (body.kind === "workflow") {
+      const t0 = Date.now();
+      let outcome: "OK" | "ERROR" = "OK";
+      let payload: unknown;
+      const binding = entry.workflowBindings?.get(body.toolName);
+      if (!binding || !entry.workflowCtx) {
+        outcome = "ERROR";
+        payload = { error: "WORKFLOW_TOOL_UNBOUND", message: `workflow tool not bound in this run: ${body.toolName}` };
+      } else {
+        try {
+          // 执行体直调 engine.runWorkflowAsTool（workflowCtx 透传）——nested 预算/留痕/
+          // metrics/emit 全走既有内部逻辑，零复刻。
+          payload = await deps.engine.runWorkflowAsTool({
+            taskId: entry.workflowCtx.taskId,
+            workflowId: binding.workflowId,
+            version: binding.version,
+            input: (body.input ?? {}) as Record<string, unknown>,
+            ctx: entry.workflowCtx.ctx,
+            nesting: entry.workflowCtx.nesting,
+            emit: entry.workflowCtx.emit,
+            onResolvedRef: entry.workflowCtx.onResolvedRef,
+          });
+        } catch (err) {
+          outcome = "ERROR";
+          payload = { error: err instanceof Error ? err.message : String(err) };
+        }
+      }
+      const durationMs = Date.now() - t0;
+      const tcId = newId("tc");
+      // 审计行字段逐一对齐 native loop.ts:805-815（outputDigest:"" / output=payload /
+      // durationMs 实测 / createdAt）。workflowCtx 缺席（旧形态条目）时行不落——
+      // ERROR 包络照常回（fail-closed 不依赖审计面）。
+      if (entry.workflowCtx) {
+        await deps.repos.toolCalls.insert({
+          id: tcId,
+          taskId: entry.workflowCtx.taskId,
+          toolName: body.toolName,
+          input: body.input,
+          outputDigest: "",
+          output: payload ?? null,
+          outcome,
+          durationMs,
+          createdAt: new Date().toISOString(),
+        });
+        deps.metrics.toolCalls.inc({ tool: body.toolName, outcome }); // loop.ts:816 同口径
+      }
+      // 侧表累积位置同 tool 分支（409 检查后、outcome 分支前）⇒ reassemble 四态合流
+      // 零改动吃到（两态值域内）。
+      entry.hostToolCalls.set(body.callId, { outcome, toolCallId: tcId, durationMs });
+      if (outcome === "OK") {
+        const t = truncateToolResultJson(payload);
+        return {
+          outcome: "OK",
+          payloadJson: t.json,
+          truncated: t.truncated,
+          ...(t.note ? { note: t.note } : {}),
+          toolCallId: tcId,
+          durationMs,
+        };
+      }
+      return { outcome: "ERROR", payload, toolCallId: tcId, durationMs };
+    }
+    const requestedTimeoutMs = body.timeoutMs === undefined ? undefined : Number(body.timeoutMs);
+    if (requestedTimeoutMs !== undefined && (!Number.isInteger(requestedTimeoutMs) || requestedTimeoutMs < 1)) {
+      throw new HttpError(400, "VALIDATION_ERROR", "timeoutMs 需正整数");
+    }
+    // per-call deadline 对位 native callTimeoutMs（loop.ts:837-838）：min(请求档 ?? 默认档, 预算剩余)。
+    const base = requestedTimeoutMs ?? entry.defaultTimeoutMs;
+    const remainingMs = entry.budget ? entry.budget.budget.maxDurationMs - entry.budget.elapsedMs() : base;
+    const effectiveTimeoutMs = Math.max(1, Math.min(base, remainingMs));
+    const r = await entry.executor.run(body.toolName, body.input, { timeoutMs: effectiveTimeoutMs });
+    // W9-full：宿主侧表累积（键 = 桥上传的帧 callId 原值）——reassemble 命中支的四态/tc_/
+    // 宿主实测 durationMs 事实源。409 重放拒绝在上方先行 ⇒ 同 callId 不会二次落表。
+    entry.hostToolCalls.set(body.callId, { outcome: r.outcome, toolCallId: r.toolCallId, durationMs: r.durationMs });
+    if (r.outcome === "OK") {
+      const t = TRUNCATION_EXEMPT_TOOLS.has(body.toolName)
+        ? { json: JSON.stringify(r.payload), truncated: false as const, note: undefined }
+        : truncateToolResultJson(r.payload);
+      return {
+        outcome: "OK",
+        payloadJson: t.json,
+        truncated: t.truncated,
+        ...(t.note ? { note: t.note } : {}),
+        toolCallId: r.toolCallId,
+        durationMs: r.durationMs,
+      };
+    }
+    return { outcome: r.outcome, payload: r.payload, toolCallId: r.toolCallId, durationMs: r.durationMs };
   });
 
   app.put("/b/v1/llm/bindings", async (req) => {
@@ -1276,33 +2356,294 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return deps.repos.llmBindings.list(a.tenantId);
   });
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // WO-D2/D3 · 同步求解超时的两件事：**先回可行解**（incumbent）+ **把诊断说清楚**
+  //
+  // 病灶（审核方真跑坐实·承 WO-D1「取消已通到底层」）：超时之后用户什么都不知道、也什么都拿不到——
+  //   ① 504 载荷只有一个 `SOLVER_TIMEOUT`：不说哪个求解器、跑了多久、数据多大、有没有可行解
+  //      → 前端只能 `toastError` 泛化提示，用户与排查者都无从下手；
+  //   ② CP-SAT 族在证最优之前先有 **incumbent**（逐步改进的可行解），超时却**全丢**——
+  //      宁可给「已找到可行解·非最优」也不该给一片空白。
+  //
+  // ⚠ 诚实边界（哪一层做得到、哪一层做不到，写死在这里，不许被上层话术盖过）：
+  //   - **做得到（本层）**：超时 → 先取消（D1 语义不变）→ 给底层一个**极短交卷窗口**；底层若把
+  //     「自报非最优 + 真带解」的载荷交回来，就以 200 + **诚实标注**（incumbent/optimal:false/proven:false）
+  //     返还，并附真诊断；交不回来 → 照旧 504，**绝不编造**一个 incumbent。
+  //   - **做得到（DataCore 侧）**：`SOLVER_INCUMBENT_BUDGET_MS` 给 portfolio 一个自有时间预算，
+  //     到点即把已求到的可行解**在调用方放弃之前**回过来（见 datacore solvers/portfolio.ts）。
+  //     运维必须把它设成 **< 本服务 SOLVER_RUN_TIMEOUT_MS**，否则解来不及跨过网线。
+  //   - **做不到（诚实标注·不假装）**：走真 HTTP 时，本层的取消 = **abort 那条 OBO fetch**，连接一断，
+  //     DataCore 再想交卷也没有回程通道了；而 `services/optimizer/server.py` 是 ThreadingHTTPServer +
+  //     BaseHTTPRequestHandler，**无取消接口、不感知客户端断开、更没有 incumbent 回传通道**，
+  //     它只会把当次 CP-SAT 求完再写响应。故 **真 HTTP 链路上的 incumbent 只能靠 DataCore 侧的自有预算
+  //     提前交卷**；本层的交卷窗口服务于「能交卷的求解客户端」（进程内/未来可回传的实现）。
+  //     此处不粉饰：拿不到就是拿不到，诊断里 `hasIncumbent:false` 如实写。
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** 超时后给底层的交卷窗口：短到不改变「超时早返」的体感，长到够一次同步回传。 */
+  const INCUMBENT_HANDBACK_MS = 300;
+
+  /** 可能承载「解」的载荷键（数组或非空对象）——incumbent 判定必须**真看到解**，否则就是空壳。 */
+  const SOLUTION_KEYS = [
+    "allocation", "occupancy", "assignments", "schedule", "selected", "sequence", "bins",
+    "openFacilities", "flows", "chosen", "winners", "values", "scenarios", "rows", "plan", "batches",
+  ] as const;
+
+  const sizeOf = (v: unknown): number => {
+    if (Array.isArray(v)) return v.length;
+    if (v && typeof v === "object") return Object.keys(v as Record<string, unknown>).length;
+    return 0;
+  };
+
+  /**
+   * D3 · 从**真入参**统计规模（数组长度 / 对象键数）。
+   * 诚实：代理层只看得见 args——订单/基地等真数据规模在 DataCore 侧，超时后拿不回来，
+   * 故 `source:"args"` 如实标注「这是入参规模，不是全量数据规模」，缺就留空不编。
+   */
+  const summarizeArgScale = (args: Record<string, unknown>): SolverInputScale => {
+    const counts: Record<string, number> = {};
+    for (const [k, v] of Object.entries(args)) {
+      const n = sizeOf(v);
+      if (n > 0) counts[k] = n;
+    }
+    return {
+      source: "args",
+      counts,
+      totalElements: Object.values(counts).reduce((s, n) => s + n, 0),
+      argKeys: Object.keys(args).sort(),
+    };
+  };
+
+  /** D3 · 交回解时把**实测**规模并进来（solution.* 前缀），source 升级为 mixed。 */
+  const observeScale = (base: SolverInputScale, d: Record<string, unknown>): SolverInputScale => {
+    const counts = { ...base.counts };
+    for (const k of SOLUTION_KEYS) {
+      const n = sizeOf(d[k]);
+      if (n > 0) counts[`solution.${k}`] = n;
+    }
+    // 领域可得量：逐格产能台账 → 真实 (基地×窗口) 格数 + 去重基地数（有则给·无则不编）。
+    const ledger = d.capacityLedger;
+    if (Array.isArray(ledger) && ledger.length > 0) {
+      counts["solution.capacityCells"] = ledger.length;
+      const bases = new Set(ledger.map((r) => String((r as { baseId?: unknown }).baseId ?? "")).filter(Boolean));
+      if (bases.size > 0) counts["solution.bases"] = bases.size;
+    }
+    const same = Object.keys(counts).length === Object.keys(base.counts).length;
+    return {
+      source: same ? base.source : "mixed",
+      counts,
+      totalElements: Object.values(counts).reduce((s, n) => s + n, 0),
+      argKeys: base.argKeys,
+    };
+  };
+
+  /**
+   * D2 · incumbent 判定（**两条都满足才算**，缺一即「没有」）：
+   *   ① 底层**自报非最优**：`incumbent:true` / `optimal:false` / `status:"FEASIBLE"`
+   *      （明确 `optimal:true` 一票否决——绝不把最优解改标成 incumbent）；
+   *   ② 载荷**真带解**：至少一个解字段非空。
+   * 两条缺一 → 返回 null → 上层照旧 504。**不许**据此编一个 incumbent 出来。
+   */
+  const readIncumbent = (payload: unknown): { d: Record<string, unknown>; keys: string[] } | null => {
+    if (!payload || typeof payload !== "object") return null;
+    const raw = payload as Record<string, unknown>;
+    const inner = raw.data;
+    const d = (inner && typeof inner === "object" && !Array.isArray(inner) ? inner : raw) as Record<string, unknown>;
+    if (d.optimal === true) return null; // 已证最优 → 不是 incumbent
+    const declaresNonOptimal = d.incumbent === true || d.optimal === false || d.status === "FEASIBLE";
+    if (!declaresNonOptimal) return null; // 没有任何「非最优」自述 → 不臆断
+    const keys = SOLUTION_KEYS.filter((k) => sizeOf(d[k]) > 0);
+    if (keys.length === 0) return null; // 空壳 → 当作「没有可行解」
+    return { d, keys };
+  };
+
   // ---------------------------------------------------------------------
   // Sync solver proxy (entitlement PRD §4): entitlement check FIRST —
   // solverKey bound to any disabled feature → 404 FEATURE_NOT_FOUND (not 403).
   // Then OBO passthrough to DataCore /a/v1/solvers/{key}/invoke.
   // ---------------------------------------------------------------------
-  app.post("/b/v1/solvers/:key/run", async (req) => {
+  app.post("/b/v1/solvers/:key/run", async (req, reply) => {
     const a = await auth(req);
     const { key } = req.params as { key: string };
-    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    const enabled = await deps.features.enabledSet(a.tenantId, a);
     if (!solverAllowed(enabled, key)) {
       throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
     }
     const body = z.object({ args: z.record(z.string(), z.unknown()).default({}) }).parse(req.body ?? {});
     // 增量 §0-2：同步求解 15s 超时 → 504 SOLVER_TIMEOUT（错误信封统一）。
     const timeoutMs = deps.config.SOLVER_RUN_TIMEOUT_MS;
+    // ── WO-D1 · 超时/断开 → **真取消**底层求解（此前只有 Promise.race：不再等它 ≠ 取消它） ──────────────
+    // 病灶实测：504@169ms 返回后再等 700ms，桩求解仍 finished=1（服务端还在烧）。全局推演页 portfolio
+    // （最重求解器）滑杆 debounce 300ms 连发 → 用户见「超时」→ 调参重试 → 服务端叠加求解、旧的仍在跑。
+    // 两条触发路径共用同一个控制器：① 本地 15s 超时；② 客户端断开（前端 AbortController / 网关断链）。
+    // abort → OBO fetch 中断 → DataCore 侧 reply.raw "close" → 取消传到求解执行 / 优化器 sidecar 调用。
+    const cancel = new AbortController();
+    const onClientGone = () => {
+      if (!reply.raw.writableEnded) cancel.abort(new Error(`solver ${key} run: client disconnected`));
+    };
+    reply.raw.on("close", onClientGone);
     let timer: NodeJS.Timeout | undefined;
+    let timedOut = false;
+    // WO-D3：真耗时锚点（诊断里的 elapsedMs 必须是**真差值**，不是把 timeoutMs 抄一遍）+ 真入参规模。
+    const startedAt = Date.now();
+    const argScale = summarizeArgScale(body.args);
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () => reject(new HttpError(504, "SOLVER_TIMEOUT", `solver ${key} run exceeded ${timeoutMs}ms`)),
-        timeoutMs,
-      );
+      timer = setTimeout(() => {
+        timedOut = true;
+        // 顺序要紧：先把 504 定死（race 就此定局），再 abort。反过来的话，取消信号的同步监听器会让
+        // invoke 先抛「已取消」而抢跑赢 race → 用户拿到 500 而非 504（真踩过：本文件测试①先红后绿）。
+        reject(new HttpError(504, "SOLVER_TIMEOUT", `solver ${key} run exceeded ${timeoutMs}ms`));
+        cancel.abort(new Error(`solver ${key} run exceeded ${timeoutMs}ms`));
+      }, timeoutMs);
     });
+    // WO-D2：求解 promise 要**单独持有**——超时后还得回头向它讨 incumbent，不能只丢进 race 就撒手。
+    const run = deps.dataCore.solver.invoke(a, key, body.args, cancel.signal);
+    // 立刻挂旁路收敛（race 定局后 run 若再拒绝，不能变成 unhandledRejection 把进程带下水）。
+    const settled: Promise<{ ok: true; value: unknown } | { ok: false; error: unknown }> = run.then(
+      (value) => ({ ok: true as const, value }),
+      (error) => ({ ok: false as const, error }),
+    );
     try {
-      return await Promise.race([deps.dataCore.solver.invoke(a, key, body.args), timeout]);
+      return await Promise.race([run, timeout]);
+    } catch (e) {
+      // 兜底（不依赖上面的微任务顺序）：已判超时的请求，无论先抛出的是 504 还是"被我们取消"的下游错误，
+      // 对外一律 504 SOLVER_TIMEOUT —— 我们自己发起的取消不该塌成 500 误导排查。
+      if (!timedOut) throw e;
+
+      // ── D2 · 交卷窗口：已取消（D1 语义不变），但再等一小会儿，看底层肯不肯把 incumbent 交回来 ──
+      // 行为良好的求解客户端会在收到取消时 **resolve 已找到的可行解**（而非一律 reject）；
+      // 交不出来（reject / 窗口耗尽）→ 一切照旧走 504。窗口一旦 settle 立即返回，不白等。
+      let handbackTimer: NodeJS.Timeout | undefined;
+      const handback = await Promise.race([
+        settled,
+        new Promise<null>((resolve) => { handbackTimer = setTimeout(() => resolve(null), INCUMBENT_HANDBACK_MS); }),
+      ]).finally(() => { if (handbackTimer) clearTimeout(handbackTimer); });
+
+      const handbackValue: unknown = handback?.ok === true ? handback.value : undefined;
+      const handbackError: unknown = handback?.ok === false ? handback.error : undefined;
+      const inc = readIncumbent(handbackValue);
+      const elapsedMs = Date.now() - startedAt;
+      const phase: SolverPhase = inc
+        ? "incumbent_returned" // 交回了真可行解
+        : handback === null
+          ? "dispatched" // 窗口耗尽，底层一声不吭
+          : handback.ok
+            ? "incumbent_handback" // 窗口内回来了，但没带可用的可行解
+            : "aborted_no_result"; // 窗口内以错误/取消收场
+      const diagnostics: SolverTimeoutDiagnostics = {
+        solverKey: key,
+        timeoutMs,
+        elapsedMs,
+        handbackWindowMs: INCUMBENT_HANDBACK_MS,
+        inputScale: inc ? observeScale(argScale, inc.d) : argScale,
+        hasIncumbent: !!inc,
+        phase,
+        cancelRequested: true,
+        ...(handbackError !== undefined
+          ? { underlyingError: String((handbackError as { message?: unknown })?.message ?? handbackError).slice(0, 300) }
+          : {}),
+        honestNote:
+          "耗时/规模为实测值；规模仅覆盖代理层可见的入参（订单/基地等全量数据规模在 DataCore 侧，超时后不可得）。" +
+          "走真 HTTP 时取消即断链，DataCore 无回程通道交卷 —— 真链路的 incumbent 依赖 DataCore 自有预算（SOLVER_INCUMBENT_BUDGET_MS）提前返回；" +
+          "CP-SAT sidecar（services/optimizer）无取消接口、无 incumbent 回传通道，这一层确实拿不到，不假装。",
+      };
+
+      if (inc) {
+        // D2 · 有可行解 → 200 返还，并**诚实标注非最优**（顶层 + data 内双份，防调用方只读一处而误判最优）。
+        const notice = incumbentNotice(key, timeoutMs, elapsedMs);
+        const honesty = {
+          incumbent: true as const,
+          optimal: false as const,
+          proven: false as const,
+          resultKind: "incumbent" as const,
+          degraded: true as const,
+          notice,
+        };
+        const raw = (handbackValue && typeof handbackValue === "object" ? handbackValue : {}) as Record<string, unknown>;
+        const innerData = raw.data;
+        const stampedData =
+          innerData && typeof innerData === "object" && !Array.isArray(innerData)
+            ? { ...(innerData as Record<string, unknown>), ...honesty }
+            : innerData;
+        reply.status(200);
+        return {
+          ...raw,
+          ...(innerData !== undefined ? { data: stampedData } : {}),
+          ...honesty,
+          diagnostics,
+        };
+      }
+
+      // D2 · 没有 incumbent → **照旧 504，绝不编一个**；D3 · 但把诊断带上（既有 error 信封逐字节不变·老前端仍可解析）。
+      reply.status(504);
+      return {
+        error: {
+          code: "SOLVER_TIMEOUT",
+          message: `solver ${key} run exceeded ${timeoutMs}ms`,
+          requestId: req.id as string,
+        },
+        diagnostics,
+      };
     } finally {
       if (timer) clearTimeout(timer);
+      reply.raw.removeListener("close", onClientGone);
     }
+  });
+
+  // ---------------------------------------------------------------------
+  // WO-LIVE-ENDPOINTS · 活①② 全局推演/产能页「人机对话」真后端端点（前端直连·替 MSW 桩）。
+  //   活①compose：NL → 真 portfolio（twoStage·三方案联合求解·OBO 到 DataCore）→ 组装叙述（数字全取真值）。
+  //     compose 单原语 · 非 path-B Agent → ranAgentLoop 恒 false（runAgentLoop 未落·分水岭）。
+  //   活②capacity-live：NL → 识别产能 what-if → 真 generic_inference(levers)/gap_attribution（OBO）→ 叙述带溯源。
+  // ---------------------------------------------------------------------
+  app.post("/b/v1/sim/compose", async (req) => {
+    const a = await auth(req);
+    const body = z.object({
+      query: z.string().default(""),
+      sessionId: z.string().nullish(),
+      page: z.string().optional(),
+      context: z.record(z.string(), z.unknown()).optional(),
+    }).parse(req.body ?? {});
+    // 真 portfolio 联合求解（twoStage → globalSimOptimize·GlobalSimResponse.scenarios[] 供叙述权衡）。
+    const res = await deps.dataCore.solver.invoke(a, "portfolio", {
+      scenarios: [...SIM_COMPOSE_SCENARIOS],
+      objective: "max_ontime",
+      twoStage: true,
+    });
+    const gs = ((res as { data?: unknown }).data ?? res) as { scenarios?: Record<string, unknown>[] };
+    return buildComposeNarrative(body.query, Array.isArray(gs.scenarios) ? gs.scenarios : []);
+  });
+
+  app.post("/b/v1/capacity-live/ask", async (req) => {
+    const a = await auth(req);
+    const body = z.object({
+      baseId: z.string().default(""),
+      question: z.string().optional(),
+      query: z.string().optional(), // 兼容 {query} 变体（前端契约用 question）
+      factor: z.string().optional(),
+    }).parse(req.body ?? {});
+    const q = (body.question ?? body.query ?? "").trim();
+    const base = body.baseId || "该基地";
+    const intent = classifyCapacityQuestion(q);
+    if (intent.isWhatIf) {
+      // 真 generic_inference mode:"levers"：从本基地派生 DAG 反推可撬动杠杆 + ±ε 敏感度（服务端 R6 真算）。
+      const lv = await deps.dataCore.solver.invoke(a, "generic_inference", {
+        mode: "levers",
+        ...(body.baseId ? { scopeObjectIds: [body.baseId] } : {}),
+        factors: intent.factors,
+        topK: 5,
+      });
+      const lvData = ((lv as { data?: unknown }).data ?? lv) as Record<string, unknown>;
+      const ans = mapLeversAnswer(q, base, body.baseId, lvData);
+      if (ans.dataMode !== "EMPTY") return ans;
+      // 杠杆反推空（本体该作用域无下游派生边）→ 诚实转 gap_attribution 真根因（不返空壳·KILL-MOCK-RED）。
+    }
+    // 根因归因：真 gap_attribution（scope 基地×因子·结构反向多跳分摊到叶级根因·带溯源）。
+    const ga = await deps.dataCore.solver.invoke(a, "gap_attribution", {
+      scope: { ...(body.baseId ? { baseId: body.baseId } : {}), ...(body.factor ? { factorId: body.factor } : {}) },
+    });
+    const gaData = ((ga as { data?: unknown }).data ?? ga) as Record<string, unknown>;
+    return mapGapAnswer(q, base, body.baseId, body.factor, gaData);
   });
 
   // ---------------------------------------------------------------------
@@ -1329,6 +2670,54 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const { packageId } = req.body as { packageId: string };
     if (!packageId) throw new HttpError(400, "VALIDATION_ERROR", "packageId required");
     return deps.evals.seedScenarioCases(a.tenantId, packageId);
+  });
+  // A15：CLI 通用操作外壳——操作型意图分类（NL → QUERY 走 QOS ask / OPERATION 路由模块）。
+  // 确定性关键词打分（R6，无 LLM）；低置信/多候选 → candidates 让 CLI 列出不瞎猜。CLI 与 GUI 平行同源。
+  app.post("/b/v1/operations/classify", async (req) => {
+    await auth(req); // R8：带 JWT（OBO）
+    const { input } = OperationClassifyRequestSchema.parse(req.body);
+    return classifyOperation(input);
+  });
+  // C10 试分类（catalog_admin 内联测试意图分类）：确定性词法打分（R6，无 LLM、非 SSE 异步），
+  // 对该 package 已发布意图集(name/description/examples)打分返 top-N，让 CatalogPage「试分类」即时显命中/未命中。
+  app.post("/b/v1/intents/classify-preview", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const body = IntentClassifyPreviewRequestSchema.parse(req.body);
+    const all = await deps.repos.intents.listByPackage(body.packageId);
+    const byKey = new Map<string, (typeof all)[number]>();
+    for (const i of all) {
+      if (i.status !== "PUBLISHED") continue;
+      const cur = byKey.get(i.key);
+      if (!cur || i.version > cur.version) byKey.set(i.key, i);
+    }
+    // 词法 token：拉丁词(≥2)+CJK 单字（确定性，R6）。
+    const tok = (s: string): Set<string> => {
+      const set = new Set<string>();
+      const lower = s.toLowerCase();
+      for (const m of lower.match(/[a-z0-9]{2,}/g) ?? []) set.add(m);
+      for (const m of lower.match(/[一-龥]/g) ?? []) set.add(m);
+      return set;
+    };
+    const qtok = tok(body.query);
+    const scored = [...byKey.values()]
+      .map((i) => {
+        const itok = tok([i.name, i.description, ...i.examples].join(" "));
+        const inter = [...qtok].filter((t) => itok.has(t)).length;
+        const union = new Set([...qtok, ...itok]).size || 1;
+        return { intentKey: i.key, name: i.name, score: Math.round((inter / union) * 1000) / 1000 };
+      })
+      .sort((x, y) => (y.score - x.score) || x.intentKey.localeCompare(y.intentKey));
+    const top = scored[0] && scored[0].score > 0 ? scored[0].intentKey : null;
+    return { matched: scored.slice(0, 5), top, outOfCatalog: top === null };
+  });
+  // A14：PRD 期望用例库（intent + 工具序列 + 答案）—— 真 Kimi 实跑后由 parity 报告标偏差。
+  app.post("/b/v1/evals/seed-parity", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { packageId } = req.body as { packageId: string };
+    if (!packageId) throw new HttpError(400, "VALIDATION_ERROR", "packageId required");
+    return deps.evals.seedParityCases(a.tenantId, packageId);
   });
   app.post("/b/v1/evals/from-fallback/:taskId", async (req) => {
     const a = await auth(req);
@@ -1362,27 +2751,605 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     return { total: items.length, items };
   });
 
-  // 20 场景目录 §9：场景启动器卡片（单一来源=SCENARIO_CATALOG；非前端硬编码）。
-  // SL2：关闭某视图 feature → 对应卡从 active 列表消失（默认仅返回 active）。
+  // D-29 实时环 E-c：B 侧领域事件馈源（前端 F1 双源轮询之一；?since=<ISO> 游标，R2 租户隔离）。
+  app.get("/b/v1/outbox", async (req) => {
+    const a = await auth(req);
+    const since = (req.query as { since?: string }).since;
+    const events = await deps.repos.domainEvents.listSince(a.tenantId, since);
+    return events.map((e) => ({ eventId: e.id, event: e.event, createdAt: e.createdAt }));
+  });
+
+  // 场景启动器 P2：Scenario 升一等持久化对象（repo 单一来源；出厂 SCENARIO_CATALOG 懒播种）。
+  // 首次访问某租户若仓储为空 → 幂等播种出厂 20 场景，保证目录始终完整（含自助新增场景）。
+  const ensureScenarios = async (tenantId: string): Promise<Scenario[]> => {
+    // 多租户：任意租户首次访问场景即懒补齐「场景包 + 意图 + 计划」（per-id 幂等，与卡解耦的根因修复）
+    // —— 没有这步，非 demo 租户有卡但无意图 → classify 候选空 → OUT_OF_CATALOG。
+    await ensureScenarioPackageSeed(deps.repos, tenantId);
+    const existing = await deps.repos.scenarios.listByTenant(tenantId);
+    const keys = new Set(existing.map((s) => s.scenarioKey));
+    let added = false;
+    // 按 key 幂等补齐出厂 20 场景（即便已有自助新增/退役场景也不漏播、不覆盖既有）。
+    for (const sc of seedScenarios(tenantId)) {
+      if (!keys.has(sc.scenarioKey)) {
+        await deps.repos.scenarios.upsert(sc);
+        added = true;
+      }
+    }
+    return added ? deps.repos.scenarios.listByTenant(tenantId) : existing;
+  };
+
+  // 场景闭包/就绪（PRD §3.6 上架门 + 引用闭合「无死路」）：场景调用的链路必须全配置好——
+  // intentKey→意图存在 · 意图→执行计划存在 · AGENT 模式→defaultAgent 已发布。断链则不可发布。
+  const scenarioClosure = async (tenantId: string, sc: Scenario): Promise<{ ready: boolean; issues: string[] }> => {
+    const issues: string[] = [];
+    const pkg = (await deps.repos.packages.listByTenant(tenantId))[0];
+    if (!pkg) return { ready: false, issues: ["租户无场景包"] };
+    const intents = await deps.repos.intents.listByPackage(pkg.id);
+    const byKey = new Map<string, (typeof intents)[number]>();
+    for (const i of intents) {
+      const cur = byKey.get(i.key);
+      if (!cur || i.version > cur.version) byKey.set(i.key, i);
+    }
+    const intent = byKey.get(sc.intentKey);
+    if (!intent) {
+      issues.push(`意图「${sc.intentKey}」未配置（死路）`);
+    } else if (!(await resolvePlanForIntent(deps.repos, intent))) {
+      issues.push(`意图「${sc.intentKey}」未绑定执行计划（workflow）`);
+    }
+    if (sc.mode === "AGENT_FIRST" || sc.mode === "AGENT_ONLY") {
+      if (!sc.defaultAgentId) issues.push("AGENT 模式缺 defaultAgent");
+      else {
+        const agent = await deps.repos.agents.get(sc.defaultAgentId);
+        if (!agent || agent.tenantId !== tenantId) issues.push(`defaultAgent 不存在：${sc.defaultAgentId}`);
+        else if (agent.status !== "PUBLISHED") issues.push(`defaultAgent 未发布：${agent.name}`);
+      }
+    }
+    return { ready: issues.length === 0, issues };
+  };
+
+  // ---------------------------------------------------------------------
+  // g8-P3 跨系统 scaffold（G-8 核心收口）：A 栈构建后经 SERVICE_TOKEN 下发 B 栈清单，
+  // 幂等 upsert 计划/意图/场景为 DRAFT（不自动上线，R4），跑无死路门 scenarioClosure，
+  // 回执 ScaffoldReceipt{items, fullChainOk}。用户 JWT 一律 403（R8）。
+  // ---------------------------------------------------------------------
+  app.post("/b/v1/internal/scaffold", async (req, reply) => {
+    const token = req.headers["x-service-token"];
+    if (!deps.config.SERVICE_TOKEN || token !== deps.config.SERVICE_TOKEN) {
+      throw new HttpError(403, "FORBIDDEN", "scaffold 仅限服务间调用（x-service-token）");
+    }
+    const m = ScaffoldManifestSchema.parse(req.body);
+    const items: { kind: string; key: string; status: "REUSED" | "SCAFFOLDED" | "MISSING"; missingRefs?: string[] }[] = [];
+    const pkg = (await deps.repos.packages.listByTenant(m.tenantId))[0];
+    if (!pkg) {
+      const all = [...m.planNeeds.map((p) => ["plan", p.planKey] as const), ...m.intentNeeds.map((i) => ["intent", i.intentKey] as const), ...m.sceneNeeds.map((s) => ["scene", s.scenarioKey] as const)];
+      return reply.send({ items: all.map(([kind, key]) => ({ kind, key, status: "MISSING" as const, missingRefs: ["租户无场景包"] })), fullChainOk: false });
+    }
+
+    // ① 计划（先建，供意图 planRef 解析）
+    const existingPlans = await deps.repos.plans.listByPackage(pkg.id);
+    for (const pn of m.planNeeds) {
+      if (existingPlans.some((p) => p.key === pn.planKey)) { items.push({ kind: "plan", key: pn.planKey, status: "REUSED" }); continue; }
+      const solverKey = pn.solverKey ?? pn.planKey.replace(/^plan_/, "");
+      // FDE 倒推出的求解器参数贯通到 step.params.args → 启动器跑此计划即真调求解器出答案（非空答）。
+      await deps.catalog.createPlan(pkg.id, {
+        key: pn.planKey,
+        steps: [
+          { id: "s1", type: "invoke_solver", params: { solverKey, args: (pn.args ?? {}) as Record<string, import("@platform/contracts").TemplateValue> } },
+          { id: "s2", type: "render_answer", params: { blocks: [] } },
+        ],
+      });
+      items.push({ kind: "plan", key: pn.planKey, status: "SCAFFOLDED" });
+    }
+
+    // ② 意图（planRef → 计划，DRAFT 可解析）
+    const existingIntents = await deps.repos.intents.listByPackage(pkg.id);
+    for (const inb of m.intentNeeds) {
+      if (existingIntents.some((i) => i.key === inb.intentKey)) { items.push({ kind: "intent", key: inb.intentKey, status: "REUSED" }); continue; }
+      await deps.catalog.createIntent(pkg.id, {
+        key: inb.intentKey,
+        name: inb.intentKey,
+        description: "g8 故事倒推 scaffold（DRAFT，待审批发布）",
+        examples: inb.triggers ?? [],
+        enabledViews: "*",
+        slots: [],
+        planRef: { planKey: inb.planRef ?? inb.intentKey.replace(/^intent_/, "plan_"), version: "latest" },
+        riskLevel: "COMPUTE",
+        owner: "g8-scaffold",
+      });
+      items.push({ kind: "intent", key: inb.intentKey, status: "SCAFFOLDED" });
+    }
+
+    // ③ 场景（DRAFT；不自动发布 R4）
+    for (const sn of m.sceneNeeds) {
+      const existing = await deps.repos.scenarios.byKey(m.tenantId, sn.scenarioKey);
+      if (existing) { items.push({ kind: "scene", key: sn.scenarioKey, status: "REUSED" }); continue; }
+      const now = new Date().toISOString();
+      const sc: Scenario = {
+        id: newId("scn"),
+        tenantId: m.tenantId,
+        scenarioKey: sn.scenarioKey,
+        name: sn.scenarioKey,
+        domain: "",
+        targetView: sn.targetView,
+        intentKey: sn.intentKey ?? "",
+        // E15（评审返工）：带上倒推问句（故事即问句）→ DRAFT 场景可经 grow/verify 跑出真答案（此前空串导致 query 报错断链）。
+        triggerQuestion: sn.triggerQuestion ?? "",
+        rules: [],
+        riskLevel: "COMPUTE",
+        summary: "g8 故事倒推 scaffold（DRAFT）",
+        mode: "WORKFLOW_FIRST",
+        presetContext: { targetView: sn.targetView, selectedObjects: [], slotPresets: {} },
+        status: "DRAFT",
+        version: 1,
+        updatedAt: now,
+      };
+      await deps.repos.scenarios.upsert(sc);
+      items.push({ kind: "scene", key: sn.scenarioKey, status: "SCAFFOLDED" });
+    }
+
+    // ③.5 工作流 / 技能 / Agent（债2：B 栈配置全可见，DRAFT；不自动上线 R4）
+    for (const wn of m.workflowNeeds) {
+      if (await deps.repos.workflows.latestByKey(m.tenantId, wn.workflowKey)) { items.push({ kind: "workflow", key: wn.workflowKey, status: "REUSED" }); continue; }
+      const solverKey = wn.workflowKey.replace(/^wf_/, "");
+      await deps.repos.workflows.insert({
+        id: newId("wf"), tenantId: m.tenantId, key: wn.workflowKey, version: 1,
+        name: wn.workflowKey, description: "g8 故事倒推 scaffold（DRAFT）",
+        inputs: { type: "object", properties: {} },
+        steps: [{ id: "s1", type: "invoke_solver", params: { solverKey, args: {} } }, { id: "s2", type: "render_answer", params: { blocks: [] } }],
+        status: "DRAFT", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      });
+      items.push({ kind: "workflow", key: wn.workflowKey, status: "SCAFFOLDED" });
+    }
+    const existingSkills = await deps.repos.skills.listByTenant(m.tenantId);
+    for (const sk of m.skillNeeds) {
+      if (existingSkills.some((x) => x.key === sk.skillKey)) { items.push({ kind: "skill", key: sk.skillKey, status: "REUSED" }); continue; }
+      await deps.repos.skills.insert({
+        id: newId("skl"), tenantId: m.tenantId, key: sk.skillKey, version: 1,
+        name: sk.skillKey, summary: `能力 ${sk.capability}（g8 scaffold）`, body: "g8 故事倒推 scaffold（DRAFT，待补全）",
+        resources: [], status: "DRAFT",
+      });
+      items.push({ kind: "skill", key: sk.skillKey, status: "SCAFFOLDED" });
+    }
+    for (const an of m.agentNeeds) {
+      if (await deps.repos.agents.latestByKey(m.tenantId, an.agentKey)) { items.push({ kind: "agent", key: an.agentKey, status: "REUSED" }); continue; }
+      await deps.repos.agents.insert({
+        id: newId("agt"), tenantId: m.tenantId, key: an.agentKey, version: 1,
+        name: an.agentKey, description: "g8 故事倒推 scaffold（DRAFT）", model: "",  // 空=继承租户用途绑定（不硬编 claude·同 seed）
+        systemPrompt: an.systemPrompt || `针对 ${an.agentKey} 的推演 agent`,
+        tools: [], ruleBindings: { ruleKeys: [], mode: "POST_CHECK" }, skills: [], mcpServers: [],
+        scopeDeclaration: { objectTypes: an.scopeObjectTypes ?? [], toolNames: an.tools ?? [] },
+        status: "DRAFT",
+      });
+      items.push({ kind: "agent", key: an.agentKey, status: "SCAFFOLDED" });
+    }
+
+    // ④ 全链判定（DRAFT-aware 无死路门）：场景→意图→计划 结构接通即可（scaffold 产 DRAFT，
+    //    用 forValidation 允许 DRAFT 计划解析；区别于发布期 scenarioClosure 的 PUBLISHED 严格门）。
+    //    任一断 → fullChainOk=false + 对应场景标 MISSING（R11 跨系统断链）。
+    let fullChainOk = true;
+    const pkgIntents = await deps.repos.intents.listByPackage(pkg.id);
+    const intentByKey = new Map<string, (typeof pkgIntents)[number]>();
+    for (const i of pkgIntents) { const c = intentByKey.get(i.key); if (!c || i.version > c.version) intentByKey.set(i.key, i); }
+    for (const sn of m.sceneNeeds) {
+      const issues: string[] = [];
+      const intent = intentByKey.get(sn.intentKey ?? "");
+      if (!intent) issues.push(`意图「${sn.intentKey ?? ""}」未配置（死路）`);
+      else if (!intent.planRef || !(await resolvePlanByRef(deps.repos, pkg.id, intent.planRef, { forValidation: true }))) issues.push(`意图「${sn.intentKey ?? ""}」未绑定执行计划`);
+      if (issues.length > 0) {
+        fullChainOk = false;
+        const it = items.find((x) => x.kind === "scene" && x.key === sn.scenarioKey);
+        if (it) { it.status = "MISSING"; it.missingRefs = issues; }
+      }
+    }
+    return reply.send({ items, fullChainOk });
+  });
+
+  // 20 场景目录 §9：场景启动器卡片（单一来源=scenarios 仓储；非前端硬编码）。
+  // SL2：关闭某视图 feature → 对应卡从 active 列表消失（默认仅返回 active+PUBLISHED）。
   app.get("/b/v1/scenarios", async (req) => {
     const a = await auth(req);
-    const { includeInactive } = req.query as { includeInactive?: string };
-    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    const { includeInactive, includeDraft } = req.query as { includeInactive?: string; includeDraft?: string };
+    const enabled = await deps.features.enabledSet(a.tenantId, a);
     const launcherOn = viewAllowed(enabled, "scenarios");
-    const cards = SCENARIO_CATALOG.map((c) => ({
-      ...c,
-      willProduceDraft: c.riskLevel === "ACTION_DRAFT",
-      inactive: !viewAllowed(enabled, c.view),
-    }));
+    const all = await ensureScenarios(a.tenantId);
+    const cards = all
+      .filter((s) => s.status !== "RETIRED")
+      .filter((s) => includeDraft === "true" || s.status === "PUBLISHED")
+      .map((s) => ({
+        // 兼容旧字段（前端启动器/评测沿用 sNo/view/name）：投影出 ScenarioCard 形态 + 一等字段。
+        sNo: s.scenarioKey,
+        name: s.name,
+        view: s.targetView,
+        domain: s.domain,
+        intentKey: s.intentKey,
+        triggerQuestion: s.triggerQuestion,
+        solver: s.solver,
+        rules: s.rules,
+        riskLevel: s.riskLevel,
+        summary: s.summary,
+        mode: s.mode,
+        defaultAgentId: s.defaultAgentId,
+        presetContext: s.presetContext,
+        status: s.status,
+        willProduceDraft: s.riskLevel === "ACTION_DRAFT",
+        inactive: !viewAllowed(enabled, s.targetView),
+      }))
+      .sort((a, b) => (a.sNo < b.sNo ? -1 : 1));
     const items = includeInactive === "true" ? cards : cards.filter((c) => !c.inactive);
     return { launcherEnabled: launcherOn, total: items.length, items };
+  });
+
+  // 场景启动器（PRD-scenario-launcher §3.5）：点一张场景卡 → 服务端组装 presetContext（单一来源
+  // =SCENARIO_CATALOG）→ 提交 QOS Query。selectedObjects + presetSlots 经 SessionContext 注入，
+  // 命中意图后必填槽位由 fillSlots 从 presetSlots/选中对象满足 → 零反问、直达路径A 推演。
+  app.post("/b/v1/scenarios/:key/launch", async (req, reply) => {
+    const a = await auth(req);
+    const { key } = req.params as { key: string };
+    await ensureScenarios(a.tenantId);
+    const all = await deps.repos.scenarios.listByTenant(a.tenantId);
+    const sc = all.find((c) => c.scenarioKey === key || c.intentKey === key);
+    if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", `scenario not found: ${key}`);
+    if (sc.status !== "PUBLISHED") throw new HttpError(409, ErrorCodes.INVALID_STATE, `场景未发布（${sc.status}），不可启动`);
+    // entitlement 先于 authz（R3）：场景所属视图关闭 → 功能不存在
+    const enabled = await deps.features.enabledSet(a.tenantId, a);
+    if (!viewAllowed(enabled, sc.targetView)) throw new HttpError(404, "FEATURE_NOT_FOUND", "not found");
+    const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
+    if (!pkg) throw new HttpError(404, "PACKAGE_NOT_FOUND", "no scenario package for tenant");
+    // WO-SCENARIO-INPUT-PHASE0：用户可覆盖自由文本 query；缺省仍用卡 triggerQuestion。
+    const launchBody = LaunchScenarioBodySchema.parse(req.body ?? {});
+    const userQuery = launchBody.query?.trim() || sc.triggerQuestion;
+    // 产能可行性变体（如 "1天交付"）从用户 query 确定性解析，更新 presetSlots 让 path-A 真拿到归一化周数。
+    const slotPresets = { ...sc.presetContext.slotPresets };
+    if (userQuery !== sc.triggerQuestion) {
+      const variant = parseCapacityFeasibilityVariant(userQuery);
+      if (variant.modelId) slotPresets.model = variant.modelId;
+      if (variant.demandDelta !== undefined) slotPresets.demandDelta = variant.demandDelta;
+      if (variant.weeks !== undefined) slotPresets.weeks = variant.weeks;
+      if (variant.baseId) slotPresets.base = variant.baseId;
+      // R13 留痕：把天/周/月归一化结果带进去，让路径 A 答案的 validationTrace 可校验。
+      if (variant.normalizedSlots) slotPresets._normalizedSlots = variant.normalizedSlots;
+    }
+    const body = SubmitQueryBodySchema.parse({
+      packageId: pkg.id,
+      query: userQuery,
+      context: {
+        view: sc.presetContext.targetView,
+        selectedObjects: sc.presetContext.selectedObjects,
+        filters: {},
+        presetSlots: slotPresets,
+        // §2.4 确定性绑定：卡声明的意图键随上下文进编排器 → GOVERNED 卡直接绑定意图（跳过 classify）。
+        scenarioIntentKey: sc.intentKey,
+        scenarioKey: sc.scenarioKey,
+      },
+    });
+    const result = await deps.orchestrator.submitQuery(a, body);
+    return reply.status(202).send({ taskId: result.taskId, status: result.status, streamUrl: result.streamUrl, scenario: sc.scenarioKey, query: userQuery });
+  });
+
+  // ---- PRD-scenario-ontogenesis P1：卡发育闭环（grow=亲手把 triggerQuestion 经 QOS 跑通验证→留痕→定 maturity）----
+  // §2.2/§2.3：把卡的触发问句正序经 QOS 实跑到终态 → 验证真出答案（非空/非兜底/非 gap）才标 GOVERNED；
+  // 否则 PROVISIONAL + 记缺口（§2.5 诚实，不静默）。留痕 ScenarioOntogenesisRun 落在卡上，前端可见"从哪来/到哪步"。
+  // 一次发育验证（A10 正序实跑 triggerQuestion → 三环 + 诚实门 → 结论）。可重复调用：O9 自动补齐后重验。
+  type VerifyResult = {
+    dataOk: boolean; ontologyOk: boolean; capabilityOk: boolean;
+    // O12 ADVISORY：跑通到终态且产出**非空、非 gap、非兜底**答案，但未达 dataOk（含承载数据块）的 GOVERNED 标尺
+    // ——自动发育所得、待人工坐实的中间态信号（dataOk=true 时不参与定级；dataOk 为更严的 GOVERNED 门）。
+    advisoryAnswer: boolean;
+    vstatus: "VERIFIED" | "NOT_VERIFIED" | "NOT_RUN";
+    vpath: "WORKFLOW" | "AGENT" | "NONE"; gapCode: string | null; answerPreview: string | null; taskId: string | null;
+    closureIssues: string[];
+  };
+  const verifyScenario = async (a: RequestAuth, sc: Scenario): Promise<VerifyResult> => {
+    // 本体环/能力环：意图存在且发布 + 计划可绑定（复用 scenarioClosure 口径）。
+    const closure = await scenarioClosure(a.tenantId, sc);
+    const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
+    const intents = pkg ? await deps.repos.intents.listByPackage(pkg.id) : [];
+    const intent = intents.filter((i) => i.key === sc.intentKey).sort((x, y) => y.version - x.version)[0];
+    const capabilityOk = !!intent && intent.status === "PUBLISHED" && !!(await resolvePlanForIntent(deps.repos, intent));
+    const ontologyOk = !!intent && !!(intent.planId);
+
+    let dataOk = false, advisoryAnswer = false, vstatus: VerifyResult["vstatus"] = "NOT_RUN";
+    let vpath: VerifyResult["vpath"] = "NONE", gapCode: string | null = null, answerPreview: string | null = null, taskId: string | null = null;
+    if (capabilityOk) {
+      try {
+        const body = SubmitQueryBodySchema.parse({
+          packageId: pkg!.id, query: sc.triggerQuestion,
+          context: { view: sc.presetContext.targetView, selectedObjects: sc.presetContext.selectedObjects, filters: {}, presetSlots: sc.presetContext.slotPresets, scenarioIntentKey: sc.intentKey, scenarioKey: sc.scenarioKey },
+        });
+        const sub = await deps.orchestrator.submitQuery(a, body, undefined, { internal: true });
+        taskId = sub.taskId;
+        let t = await deps.repos.tasks.get(taskId);
+        for (let i = 0; i < 120 && t && !["COMPLETED", "FAILED", "CANCELLED", "AWAITING_CLARIFICATION"].includes(t.status); i++) {
+          await new Promise((r) => setTimeout(r, 100));
+          t = await deps.repos.tasks.get(taskId);
+        }
+        vpath = t?.path === "AGENT" ? "AGENT" : t?.path === "WORKFLOW" ? "WORKFLOW" : "NONE";
+        const blocks = t?.answer?.blocks ?? [];
+        const gapBlock = blocks.find((b) => b.type === "gap");
+        const fallbackText = blocks.some((b) => b.type === "text" && /未能产出回答|探索模式未能/.test(String((b as { markdown?: string }).markdown ?? "")));
+        // 诚实门（闭 G-1）：答案必须**投影出真实数据**才算 VERIFIED——含承载数据的块。
+        const dataBearing = blocks.some((b) =>
+          b.type === "kpi" || b.type === "table" || b.type === "rule_violation" || b.type === "action_draft" ||
+          (b.type === "text" && /⟦ref:/.test(String((b as { markdown?: string }).markdown ?? ""))));
+        const hasReal = t?.status === "COMPLETED" && blocks.length > 0 && !gapBlock && !fallbackText && dataBearing;
+        dataOk = hasReal;
+        // O12 ADVISORY：发育闭环经**路径 B 探索（AGENT）**自动推出非空、非 gap、非兜底答案，但未达 dataBearing
+        // （GOVERNED 标尺）→ 自动发育所得、待人工坐实的中间态。**关键边界**：路径 A 工作流只渲染静态占位文本
+        // （RENDER_NOT_PROJECTED，无求解器投影）= 空壳占位，**不算 advisory**（仍 PROVISIONAL，守诚实门 RL4，
+        // 不把占位文案升格）；唯有真经 agent 推理产出的非空答案才算 advisory（待人工坐实）。
+        advisoryAnswer = t?.status === "COMPLETED" && blocks.length > 0 && !gapBlock && !fallbackText && !dataBearing && vpath === "AGENT";
+        vstatus = hasReal ? "VERIFIED" : "NOT_VERIFIED";
+        if (!hasReal) {
+          gapCode = gapBlock ? String(((gapBlock as { report?: { findings?: { gapCode?: string }[] } }).report?.findings?.[0]?.gapCode) ?? "OTHER")
+            : t?.status === "AWAITING_CLARIFICATION" ? "NEEDS_SLOTS" : t?.status === "FAILED" ? "RUNTIME_FAIL"
+            : t?.status === "COMPLETED" && !dataBearing ? "RENDER_NOT_PROJECTED" : "NO_ANSWER";
+        }
+        const firstText = blocks.find((b) => b.type === "text") as { markdown?: string } | undefined;
+        const firstKpi = blocks.find((b) => b.type === "kpi") as { label?: string; value?: unknown; unit?: string } | undefined;
+        const kpiStr = firstKpi ? `${firstKpi.label}=${String(firstKpi.value)}${firstKpi.unit ?? ""}` : "";
+        answerPreview = `${firstText?.markdown ?? ""}${kpiStr ? ` ${kpiStr}` : ""}`.trim().slice(0, 160) || (kpiStr || null);
+      } catch (e) {
+        vstatus = "NOT_VERIFIED"; gapCode = "RUNTIME_FAIL"; answerPreview = (e as Error).message.slice(0, 160);
+      }
+    } else {
+      gapCode = !intent ? "MISSING_INTENT" : intent.status !== "PUBLISHED" ? "INTENT_NOT_PUBLISHED" : "MISSING_PLAN";
+    }
+    return { dataOk, advisoryAnswer, ontologyOk, capabilityOk, vstatus, vpath, gapCode, answerPreview, taskId, closureIssues: closure.issues };
+  };
+
+  const growScenario = async (a: RequestAuth, sc: Scenario): Promise<ScenarioOntogenesisRun> => {
+    const runId = newId("sor");
+    const ranAt = new Date().toISOString();
+    let v = await verifyScenario(a, sc);
+
+    // O9（P3 wiring，G-9 收尾）：首验未通过 + 缺口可自动补（AUTO_DERIVE）→ 触发 runGrowthLoop（探针→补齐→重跑→收敛），
+    // 收敛后重验一次；真出可验证答案才标 GOVERNED（RL4 不放水）。诚实门：补不上的卡保持 PROVISIONAL + 开 GrowthTicket，绝不假装 GOVERNED。
+    // 复用 §289 同一套 probe/fill 引擎（buildGrowthLoopWiring，RL3/RL10 单源不分叉），被调 runGrowthLoop/fill 零重写（RL3）。
+    let growth: { triggered: boolean; terminalState?: string; rounds?: number; ticketId?: string } = { triggered: false };
+    const initialAutoDerive = !v.dataOk && (v.gapCode === "MISSING_INTENT" || v.gapCode === "INTENT_NOT_PUBLISHED" || v.gapCode === "MISSING_PLAN" || v.gapCode === "NO_PLAN" || v.gapCode === "SOLVER_NOT_FOUND" || v.gapCode === "EMPTY_DATA" || v.gapCode === "RENDER_NOT_PROJECTED");
+    if (initialAutoDerive) {
+      const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
+      if (pkg) {
+        const loopBody = SubmitQueryBodySchema.parse({
+          packageId: pkg.id, query: sc.triggerQuestion,
+          context: { view: sc.presetContext.targetView, selectedObjects: sc.presetContext.selectedObjects, filters: {}, presetSlots: sc.presetContext.slotPresets, scenarioIntentKey: sc.intentKey, scenarioKey: sc.scenarioKey },
+        });
+        const { probe, fill, scaffoldedByGap } = buildGrowthLoopWiring(deps, a, loopBody, emitDomainEvent);
+        await deps.events.emit(sc.scenarioKey, "scenario.growth_triggered", { scenarioKey: sc.scenarioKey, runId, gapCode: v.gapCode });
+        const report = await runGrowthLoop({ question: sc.triggerQuestion, maxRounds: 6, probe, fill });
+        growth = { triggered: true, terminalState: report.terminalState, rounds: report.rounds.length };
+        await deps.repos.growthLedger.insert({ id: newId("glr"), tenantId: a.tenantId, report, createdAt: new Date().toISOString() });
+        // 边界/未收敛（系统已做完它能做的，仍补不上）→ 诚实开 GrowthTicket（不静默、不假装 GOVERNED）。
+        for (const tk of report.openTickets) {
+          const ticketId = newId("gtk");
+          const drafts = scaffoldedByGap.get(tk.gapCode);
+          await deps.repos.growthTickets.upsert({
+            id: ticketId, tenantId: a.tenantId, fromQuestion: sc.triggerQuestion, gapCode: tk.gapCode,
+            ioContract: { inputs: [], outputShape: ["answer", "provenance"] },
+            ontologyRefs: { objectTypes: sc.presetContext.targetView ? [sc.presetContext.targetView] : [], slices: [], rules: sc.rules ?? [] },
+            acceptance: `场景卡「${sc.scenarioKey}」发育：问句「${sc.triggerQuestion}」应跑出可验证答案才能 GOVERNED。${drafts && drafts.length > 0 ? `已 scaffold DRAFT 骨架（${drafts.map((d) => d.key).join(",")}），施工=审批发布/补全参数。` : `建议补法：${tk.detail}`}`,
+            status: "OPEN", createdAt: new Date().toISOString(),
+            ...(drafts && drafts.length > 0 ? { scaffoldedDrafts: drafts } : {}),
+          });
+          growth.ticketId = ticketId;
+          await emitDomainEvent(a.tenantId, "growth.ticket_opened", { ticketId, gapCode: tk.gapCode });
+        }
+        // 收敛（补法已推进）→ 重验一次：现可投影真实答案则升 GOVERNED；否则诚实保持 PROVISIONAL。
+        if (report.terminalState === "CONVERGED") {
+          await emitDomainEvent(a.tenantId, "growth.converged", { question: sc.triggerQuestion, rounds: report.rounds.length });
+          v = await verifyScenario(a, sc);
+        }
+      }
+    }
+
+    // O11（P3 wiring）：卡声明 sliceTargets → 自动调 planSlice（OBO → DataCore /a/v1/slices/plan）把切片纳入发育闭环。
+    // 复用既有 OBO 客户端模式（OntologyClient.planSlice，透传用户 JWT/X-Debug-User，与 invoke_solver/resolveSlice 同面）。
+    // 规划器纯确定性图算法（R6）+ 命中索引即复用既有已发布切片（A3.4）。诚实门：NO_PATH（maxHops 内不可达）→ 出 NO_SLICE 缺口，不静默跳过。
+    const sliceGaps: { gapCode: string; disposition: "AUTO_DERIVE" | "NEEDS_HUMAN"; detail: string }[] = [];
+    const plannedSlices: string[] = [];
+    for (const st of sc.sliceTargets ?? []) {
+      if (!st.targets || st.targets.length === 0) continue;
+      try {
+        const res = await deps.dataCore.ontology.planSlice(a, { rootType: st.rootType, targets: st.targets, maxHops: 6 });
+        if (res.ok) {
+          plannedSlices.push(res.plan.sliceKey);
+          // slice.planned 由 DataCore /a/v1/slices/plan 内部发（§4 单源）；此处不重复发，避免双源。
+        } else {
+          // 诚实：maxHops 内不可达 → NO_SLICE 缺口（需补本体链路/真人正门），不假装已长出。
+          sliceGaps.push({ gapCode: "NO_SLICE", disposition: "NEEDS_HUMAN", detail: `切片规划失败（${st.rootType}）：${res.reason.unreachable.join("、")} 在 maxHops=6 内不可达——需补本体链路` });
+        }
+      } catch (e) {
+        // DataCore 无 planSlice 路径/不可达 → 诚实标 NO_SLICE，不静默（守诚实门）。
+        sliceGaps.push({ gapCode: "NO_SLICE", disposition: "NEEDS_HUMAN", detail: `切片规划调用失败（${st.rootType}）：${(e as Error).message.slice(0, 120)}` });
+      }
+    }
+
+    // O12 三态成熟（PROVISIONAL→ADVISORY→GOVERNED）：
+    //  - GOVERNED：dataOk（VERIFIED 含承载数据块）——最严人工标尺，grow 亲手验证真出数据才到。
+    //  - ADVISORY：发育闭环跑通且产出非空、非 gap、非兜底答案，但未达 dataBearing（自动发育所得，待人工坐实）。
+    //    诚实门（RL4）：不冒充 GOVERNED（未达数据承载标尺），也不含糊降级成 PROVISIONAL（确有 advisory 答案）。
+    //  - PROVISIONAL：纯缺件、补不上、无任何 advisory 答案（诚实开票）。
+    // 切片缺口（O11 NO_SLICE）即便答案验证通过也要诚实并入——切片未长出是发育闭环的真实缺口。
+    const gaps = [
+      ...(v.vstatus === "VERIFIED" ? [] : [{
+        gapCode: v.gapCode ?? "OTHER",
+        // 缺意图/计划=可自动补（grow/scaffold）；运行缺数据/求解器=需人工（真人正门/审批）。
+        disposition: (v.gapCode === "MISSING_INTENT" || v.gapCode === "INTENT_NOT_PUBLISHED" || v.gapCode === "MISSING_PLAN" ? "AUTO_DERIVE" : "NEEDS_HUMAN") as "AUTO_DERIVE" | "NEEDS_HUMAN",
+        detail: v.closureIssues.join("；") || (v.answerPreview ?? "触发问句未跑出真实答案") + (growth.triggered ? `（已触发自动补齐：${growth.terminalState}，${growth.rounds} 轮${growth.ticketId ? "，已开工单 " + growth.ticketId : ""}）` : ""),
+      }]),
+      ...sliceGaps,
+    ];
+    // 切片未长齐（NO_SLICE）→ 发育闭环未完整，maturity 不得 GOVERNED（封顶 ADVISORY，诚实降级）。
+    const maturity: import("@platform/contracts").ScenarioMaturity =
+      v.dataOk && sliceGaps.length === 0 ? "GOVERNED"
+      : (v.dataOk || v.advisoryAnswer) ? "ADVISORY"
+      : "PROVISIONAL";
+    const run: ScenarioOntogenesisRun = {
+      runId, scenarioKey: sc.scenarioKey, ranAt,
+      rings: { data: v.dataOk, ontology: v.ontologyOk, capability: v.capabilityOk },
+      verification: { status: v.vstatus, path: v.vpath, gapCode: v.gapCode, answerPreview: v.answerPreview, taskId: v.taskId },
+      gaps, maturity,
+    };
+    await deps.repos.scenarios.upsert({ ...sc, maturity, lastOntogenesisRun: run, updatedAt: new Date().toISOString() });
+    await deps.events.emit(sc.scenarioKey, maturity === "GOVERNED" ? "scenario.matured" : "scenario.gap_detected", { scenarioKey: sc.scenarioKey, runId, maturity, gapCode: v.gapCode, plannedSlices });
+    return run;
+  };
+
+  // POST /b/v1/scenarios/:key/grow —— 亲手发育验证一张卡（admin/catalog_admin）。
+  app.post("/b/v1/scenarios/:key/grow", async (req, reply) => {
+    const a = await auth(req);
+    const { key } = req.params as { key: string };
+    await ensureScenarios(a.tenantId);
+    const sc = (await deps.repos.scenarios.listByTenant(a.tenantId)).find((c) => c.scenarioKey === key || c.intentKey === key);
+    if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", `scenario not found: ${key}`);
+    const run = await growScenario(a, sc);
+    return reply.status(200).send(run);
+  });
+
+  // ---- 场景管理（PRD §4 管理面）：创建/编辑 DRAFT · 发布/退役（发 scenario.* 事件）----
+  const ScenarioUpsertBody = ScenarioSchema.omit({ id: true, tenantId: true, version: true, updatedAt: true, status: true }).partial({
+    rules: true, riskLevel: true, summary: true, mode: true, presetContext: true,
+  });
+  // 列表（管理态：含 DRAFT/RETIRED；前端场景编辑器消费——每个用 workflow/agent 的场景都在此完整可配）
+  app.get("/b/v1/scenarios/manage", async (req) => {
+    const a = await auth(req);
+    await ensureScenarios(a.tenantId);
+    const enabled = await deps.features.enabledSet(a.tenantId, a);
+    const all = await deps.repos.scenarios.listByTenant(a.tenantId);
+    // 每个场景附引用闭包就绪（intent→plan→agent 全配置好 = 无死路），前端显示就绪/断链。
+    const withClosure = await Promise.all(
+      all.map(async (s) => ({ ...s, inactive: !viewAllowed(enabled, s.targetView), closure: await scenarioClosure(a.tenantId, s) })),
+    );
+    return withClosure.sort((x, y) => (x.scenarioKey < y.scenarioKey ? -1 : 1));
+  });
+  // 单场景闭包（编辑器实时校验）。
+  app.get("/b/v1/scenarios/:key/closure", async (req) => {
+    const a = await auth(req);
+    await ensureScenarios(a.tenantId);
+    const sc = await deps.repos.scenarios.byKey(a.tenantId, (req.params as { key: string }).key);
+    if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", "scenario not found");
+    return scenarioClosure(a.tenantId, sc);
+  });
+  app.get("/b/v1/scenarios/:key", async (req) => {
+    const a = await auth(req);
+    await ensureScenarios(a.tenantId);
+    const sc = await deps.repos.scenarios.byKey(a.tenantId, (req.params as { key: string }).key);
+    if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", "scenario not found");
+    return sc;
+  });
+  // 创建/编辑：scenarioKey 已存在 → 编辑（仅 DRAFT 可改全字段；PUBLISHED 则派生 DRAFT 由前端 new-version 触发，
+  // 此处 PUT 直接对 DRAFT 生效，PUBLISHED 改字段返回 409 提示先退役/派生）。
+  const upsertScenario = async (req: Parameters<typeof auth>[0], expectKey?: string): Promise<Scenario> => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const raw = { ...(req.body as Record<string, unknown>) };
+    if (expectKey) raw.scenarioKey = expectKey;
+    const body = ScenarioUpsertBody.parse(raw);
+    // viewKey 闭合（PRD admin-console-closure §5-①）：targetView 必须是真实视图（来自 workspace 导航/feature）。
+    const existing = await deps.repos.scenarios.byKey(a.tenantId, body.scenarioKey);
+    if (existing && existing.status === "PUBLISHED") {
+      throw new HttpError(409, ErrorCodes.INVALID_STATE, `场景 ${body.scenarioKey} 已发布，请先退役再改或新建键`);
+    }
+    if (existing?.updatedAt && (body as { updatedAt?: string }).updatedAt && (body as { updatedAt?: string }).updatedAt !== existing.updatedAt) {
+      throw new HttpError(409, "STALE_WRITE", "场景已被他人修改，请刷新后重试");
+    }
+    const now = new Date().toISOString();
+    const sc: Scenario = {
+      id: existing?.id ?? newId("scn"),
+      tenantId: a.tenantId,
+      scenarioKey: body.scenarioKey,
+      name: body.name,
+      domain: body.domain,
+      targetView: body.targetView,
+      intentKey: body.intentKey,
+      triggerQuestion: body.triggerQuestion,
+      solver: body.solver,
+      rules: body.rules ?? [],
+      riskLevel: body.riskLevel ?? "COMPUTE",
+      summary: body.summary ?? "",
+      mode: body.mode ?? "WORKFLOW_FIRST",
+      defaultAgentId: body.defaultAgentId,
+      presetContext: body.presetContext ?? { targetView: body.targetView, selectedObjects: [], slotPresets: {} },
+      // O11：卡声明的切片自动规划目标（growScenario 据此 OBO 调 planSlice，纳入发育闭环）。
+      ...(body.sliceTargets ? { sliceTargets: body.sliceTargets } : {}),
+      status: "DRAFT",
+      version: existing?.version ?? 1,
+      updatedAt: now,
+    };
+    // AGENT_* 模式必须有已发布 defaultAgent（与 scene-entries 一致）。
+    if ((sc.mode === "AGENT_FIRST" || sc.mode === "AGENT_ONLY")) {
+      if (!sc.defaultAgentId) throw new HttpError(400, ErrorCodes.VALIDATION_ERROR, "AGENT_* 模式必须提供 defaultAgentId");
+      const agent = await deps.repos.agents.get(sc.defaultAgentId);
+      if (!agent || agent.tenantId !== a.tenantId) throw new HttpError(400, ErrorCodes.VALIDATION_ERROR, `defaultAgent 不存在：${sc.defaultAgentId}`);
+      if (agent.status !== "PUBLISHED") throw new HttpError(400, ErrorCodes.VALIDATION_ERROR, `AGENT_* 模式要求 defaultAgent 已发布：${agent.name} 当前 ${agent.status}`);
+    }
+    await deps.repos.scenarios.upsert(sc);
+    return sc;
+  };
+  app.post("/b/v1/scenarios", async (req, reply) => reply.status(201).send(await upsertScenario(req)));
+  app.put("/b/v1/scenarios/:key", async (req) => upsertScenario(req, (req.params as { key: string }).key));
+  app.post("/b/v1/scenarios/:key/publish", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { key } = req.params as { key: string };
+    const sc = await deps.repos.scenarios.byKey(a.tenantId, key);
+    if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", "scenario not found");
+    // 上架门（R11/§3.6 无死路）：引用链未全配置好 → 拒绝发布，列出断链项。
+    const closure = await scenarioClosure(a.tenantId, sc);
+    if (!closure.ready) throw new HttpError(409, ErrorCodes.VALIDATION_ERROR, `场景引用未闭合（死路），不可发布：${closure.issues.join("；")}`);
+    const published: Scenario = { ...sc, status: "PUBLISHED", version: sc.version + 1, updatedAt: new Date().toISOString() };
+    await deps.repos.scenarios.upsert(published);
+    // scenario.published 事件登记于 event-subscriptions.ts（§4 单一来源）；经 F1 双源轮询失效缓存。
+    await emitDomainEvent(a.tenantId, "scenario.published", { key });
+    return published;
+  });
+  // PRD-fde §3.1/P4 终态闭环：把 scaffold 出的 DRAFT 场景链(计划→意图→场景)一键发布(经审批 R4)→
+  // 进场景启动器、可推演。此前发布场景要先手动逐个 publish 计划/意图,本端点按依赖序一次发布。
+  app.post("/b/v1/scenarios/:key/publish-chain", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a); // R4：发布经审批角色（不自动上线）
+    const { key } = req.params as { key: string };
+    const sc = await deps.repos.scenarios.byKey(a.tenantId, key);
+    if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", "scenario not found");
+    const pkg = (await deps.repos.packages.listByTenant(a.tenantId))[0];
+    if (!pkg) throw new HttpError(404, "PACKAGE_NOT_FOUND", "no package");
+    const publishedChain: { kind: string; key: string }[] = [];
+    // ① 计划 + 意图（依赖序：计划先，供意图 planRef 解析为 PUBLISHED）
+    const intents = await deps.repos.intents.listByPackage(pkg.id);
+    const intent = intents.filter((i) => i.key === sc.intentKey).sort((x, y) => y.version - x.version)[0];
+    if (intent) {
+      if (intent.planRef) {
+        const plan = await resolvePlanByRef(deps.repos, pkg.id, intent.planRef, { forValidation: true });
+        if (plan && plan.status !== "PUBLISHED") { await deps.catalog.publishPlan(plan.id); publishedChain.push({ kind: "plan", key: plan.key }); }
+      }
+      if (intent.status !== "PUBLISHED") { await deps.catalog.publishIntent(intent.id); publishedChain.push({ kind: "intent", key: intent.key }); }
+    }
+    // ② 场景（链补齐后重跑无死路上架门 → 通过才发布,进启动器）
+    const closure = await scenarioClosure(a.tenantId, sc);
+    if (!closure.ready) throw new HttpError(409, ErrorCodes.VALIDATION_ERROR, `场景引用未闭合（死路），不可发布：${closure.issues.join("；")}`);
+    const published: Scenario = { ...sc, status: "PUBLISHED", version: sc.version + 1, updatedAt: new Date().toISOString() };
+    await deps.repos.scenarios.upsert(published);
+    publishedChain.push({ kind: "scenario", key });
+    await emitDomainEvent(a.tenantId, "scenario.published", { key });
+    return { scenario: published, publishedChain };
+  });
+  app.post("/b/v1/scenarios/:key/retire", async (req) => {
+    const a = await auth(req);
+    requireCatalogAdmin(a);
+    const { key } = req.params as { key: string };
+    const sc = await deps.repos.scenarios.byKey(a.tenantId, key);
+    if (!sc) throw new HttpError(404, "SCENARIO_NOT_FOUND", "scenario not found");
+    const retired: Scenario = { ...sc, status: "RETIRED", updatedAt: new Date().toISOString() };
+    await deps.repos.scenarios.upsert(retired);
+    await emitDomainEvent(a.tenantId, "scenario.retired", { key });
+    return retired;
   });
 
   app.get("/b/v1/scene-entries", async (req) => {
     const a = await auth(req);
     const entries = await deps.repos.sceneEntries.listByTenant(a.tenantId);
     // entitlement PRD §5 (B5 联动): entry referencing a disabled view → marked inactive
-    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    const enabled = await deps.features.enabledSet(a.tenantId, a);
     return entries.map((e) => ({ ...e, inactive: !viewAllowed(enabled, e.viewKey) }));
   });
 
@@ -1392,7 +3359,7 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     const a = await auth(req);
     const view = (req.query as Record<string, unknown>)["view"];
     const entries = await deps.repos.sceneEntries.listByTenant(a.tenantId);
-    const enabled = await deps.features.enabledSet(a.tenantId, a.token);
+    const enabled = await deps.features.enabledSet(a.tenantId, a);
     const marked = entries.map((e) => ({ ...e, inactive: !viewAllowed(enabled, e.viewKey) }));
     if (typeof view === "string" && view.length > 0) {
       return reply.send(marked.find((e) => e.viewKey === view) ?? null);

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SchemeAdoptionSchema } from "./scheme-adoption.js";
 
 // ---------------------------------------------------------------------------
 // 前端剩余视图增量 PRD §0/§7.14–7.22 契约（计划域 / 映射表 / 校准 / 健康度 / 图谱配置）
@@ -11,6 +12,7 @@ export const AnnualScenarioSchema = z.object({
   name: z.string(), // 保守/基准/激进
   year: z.number().int(),
   demand: z.number(), // 年需求（万套）
+  note: z.string().optional(), // 情景前提注解（乘用车放缓/储能放量/海外大单——电池域种子文案，非前端写死）
   capacityDecision: z.string(),
   ltaLock: z.string(), // 长协锁量描述
   finance: z.object({ revenue: z.number(), capex: z.number(), irr: z.number() }),
@@ -69,6 +71,14 @@ export const AopResponseSchema = z.object({
       targetRef: z.string().optional(),
     }),
   ),
+  /**
+   * WO-ADOPT-SCHEME-CARRIER · 本年度现役「方案采纳台账」（G-ADOPT-SCHEME-NO-CARRIER 的读端）。
+   * additive optional（与 capexScenario 同一先例）：该年度从未采纳过方案 ⇒ 整个字段缺省。
+   * 同 (tenant, year) 至多一条 ACTIVE 是**写时不变量**（执行器先置旧 SUPERSEDED），
+   * 故读端直接给一条、不给数组——没有"在多条里挑"就没有挑错的余地。
+   * tenantId 不下发（本响应全文无 tenantId 先例；调用方本来就只能读到自己的租户）。
+   */
+  schemeAdoption: SchemeAdoptionSchema.omit({ tenantId: true }).optional(),
 });
 export type AopResponse = z.infer<typeof AopResponseSchema>;
 
@@ -113,6 +123,15 @@ export const MappingRowSchema = z.object({
   }),
 });
 export type MappingRow = z.infer<typeof MappingRowSchema>;
+
+// PRD-IND-map §4.4/§4.5-③：映射表四注册表段（关系类型 / 规则 / Action / 事件）。
+export const MappingRegistriesSchema = z.object({
+  linkTypes: z.array(z.object({ key: z.string(), fromType: z.string(), toType: z.string(), cardinality: z.string() })),
+  rules: z.array(z.object({ key: z.string(), expression: z.string(), scope: z.string(), severity: z.string() })),
+  actions: z.array(z.object({ name: z.string(), params: z.string(), check: z.string(), target: z.string(), perm: z.string() })),
+  events: z.array(z.object({ name: z.string(), window: z.string(), affects: z.string(), source: z.string() })),
+});
+export type MappingRegistries = z.infer<typeof MappingRegistriesSchema>;
 
 /** M11 校准增量（PRD-addendum-m11-calibration）：方法/证据/paramRef —— 全部 ADDITIVE。 */
 export const CalibrationMethodSchema = z.enum(["EMA", "REPLAY_ATTRIBUTION", "QUANTILE"]);
@@ -249,6 +268,37 @@ export const GraphOptionsSchema = z.object({
   layoutSeed: z.number().int().optional(),
 });
 export type GraphOptions = z.infer<typeof GraphOptionsSchema>;
+
+/**
+ * §7.18 图谱视角**描述卡**（`ViewConfig.options.desc` / `.descLink`）—— 容器与字段名的**单一来源**。
+ *
+ * 为什么是 `options` 而不是 `layout`（G-GRAPH-DESC-CONTRACT-SPLIT 的裁定依据，不是"哪边改得少"）：
+ *  ① 同一 §7.18 特性的另一半 `graphOptions` 的契约注释（见上）已把容器钉死为 `ViewConfig.options`——
+ *     描述卡与视角配置是**同一个特性的两个字段**，拆两个容器即制造第二个真相源。
+ *  ② `ViewConfig.layout` 有**后端机器消费方**：`datacore/src/databuilder/pull-target.ts` 的
+ *     `ViewLayoutLike`（"来自 ViewConfig.views[].layout"）按 `solverKey`/`outputFields` 派生 DF.6 拉取靶。
+ *     `layout` 是"给机器读的求解器契约位"，叙事文案放进去属语义错置。
+ *  ③ 前端 `api/types.ts` 的 `ViewConfigVM.options` 注释亦写明"renderer 专属配置……契约 ViewConfig.options"。
+ *
+ * **本 schema 存在的意义 = 防复发的机制**（铁律 0.6：下次错位时机器先说话）：
+ * 后端 `graphView()` 的第 3 形参与前端 `OntologyGraphView` 的读取侧**都以此为类型**，
+ * 任一侧再写成 `description`/`descriptionLink`（或把它塞回 `layout`）即 **tsc 当场报错**，
+ * 不再靠"mock 恰好走对形状"把生产的错位盖过去。
+ */
+export const GraphDescLinkSchema = z.object({
+  /** 站内路由（react-router `<Link to>`）。**不是**裸字符串 URL —— 需要 label 才能渲染出可点文字。 */
+  to: z.string(),
+  label: z.string(),
+});
+export type GraphDescLink = z.infer<typeof GraphDescLinkSchema>;
+
+export const GraphViewDescSchema = z.object({
+  /** 视角叙事描述（descCard 正文）。 */
+  desc: z.string().optional(),
+  /** 描述卡内的延伸链接（如学习闭环 → 校准报告页）。 */
+  descLink: GraphDescLinkSchema.optional(),
+});
+export type GraphViewDesc = z.infer<typeof GraphViewDescSchema>;
 
 /** §S1.5 修订：affected_orders 输出扩展（问题归并 + 根因链） */
 export const OrderProblemCategorySchema = z.enum(["DELIVERY", "MARGIN", "KIT", "CREDIT"]);

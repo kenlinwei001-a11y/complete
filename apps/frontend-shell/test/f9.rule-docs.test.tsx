@@ -34,8 +34,9 @@ describe("F9 · 规则文档审核台", () => {
     });
 
     // diff 模式分组
+    // WO-UNIT-MEANING：分组标题此前是「新增 (1)」的裸数——label 是差异类别不是被数之物 → 点明"条规则候选"
     await user.click(screen.getByLabelText(/diff 模式/));
-    expect(screen.getByText(/新增 \(1\)/)).toBeInTheDocument();
-    expect(screen.getByText(/疑似删除 \(1\)/)).toBeInTheDocument();
+    expect(screen.getByText("新增（1 条规则候选）")).toBeInTheDocument();
+    expect(screen.getByText("疑似删除（1 条规则候选）")).toBeInTheDocument();
   });
 });

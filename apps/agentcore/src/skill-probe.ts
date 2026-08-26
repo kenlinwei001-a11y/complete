@@ -1,0 +1,426 @@
+import { isWriteModeSkill, skillBudgetOverride, type AgentBudget, type AgentDefinition, type Answer, type EvalCase, type EvalCaseResult, type SkillDefinition } from "@platform/contracts";
+import type { ExecutionEngine } from "./engine.js";
+import type { RequestAuth } from "./auth.js";
+import type { Repos } from "./persistence/repos.js";
+import { newId } from "./ids.js";
+import { BudgetTracker } from "./tools/budget.js";
+import type { NestingCtx } from "./runtime.js";
+
+/** 技能探针运行结果（等价于单个 skill 的 EvalRunReport 子集）。 */
+export interface SkillProbeRunResult {
+  tenantId: string;
+  skillKey: string;
+  total: number;
+  passed: number;
+  passRate: number;
+  results: EvalCaseResult[];
+  intentAccuracy: number;
+  toolCorrectness: number;
+  avgToolCalls: number;
+  avgLatencyMs: number;
+  avgTokenCost: number;
+}
+
+const DEFAULT_TIMEOUT_MS = 8000;
+
+/** 探针 agent 通用评测工具集（读写类技能再追加 create_action_draft）。 */
+const PROBE_TOOL_NAMES = [
+  "query_objects",
+  "get_object",
+  "invoke_solver",
+  "evaluate_rules",
+  "retrieve_knowledge",
+  "read_skill_resource",
+  "load_skill",
+  "final_answer",
+];
+
+function sanitizeIdPart(s: string): string {
+  return s.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function round4(n: number): number {
+  return Math.round(n * 10000) / 10000;
+}
+
+function extractAnswerText(answer?: Answer | null): string {
+  if (!answer) return "";
+  return answer.blocks
+    .map((b) => {
+      switch (b.type) {
+        case "text":
+          return b.markdown;
+        case "kpi":
+          return `${b.label} ${b.value}`;
+        case "action_draft":
+          return b.summary;
+        case "rule_violation":
+          return b.explanation;
+        case "table":
+          return b.columns.join(" ") + " " + b.rows.map((r) => r.join(" ")).join(" ");
+        case "gap":
+          return JSON.stringify(b.report);
+        default:
+          return "";
+      }
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function classifyFailKind(failures: string[]): NonNullable<EvalCaseResult["failKind"]> {
+  if (failures.some((f) => f.startsWith("intent"))) return "INTENT";
+  if (failures.some((f) => f.startsWith("toolSequence") || f.startsWith("maxToolCalls"))) return "TOOLSEQ";
+  if (failures.some((f) => f.startsWith("answer"))) return "ANSWER";
+  return "OTHER";
+}
+
+function isSubsequence(needle: string[], haystack: string[]): boolean {
+  let i = 0;
+  for (const h of haystack) if (i < needle.length && h === needle[i]) i++;
+  return i === needle.length;
+}
+
+export class SkillProbeRunner {
+  constructor(
+    private readonly deps: {
+      repos: Repos;
+      engine: ExecutionEngine;
+      emit?: (event: string, payload: unknown) => Promise<void>;
+    },
+  ) {}
+
+  async runSkill(
+    auth: RequestAuth,
+    skillKey: string,
+    opts: {
+      timeoutMs?: number;
+      skillId?: string;
+      intentKey?: string;
+    } = {},
+  ): Promise<SkillProbeRunResult> {
+    const tenantId = auth.tenantId;
+    const timeoutMs = opts.timeoutMs === undefined || opts.timeoutMs <= 0 ? DEFAULT_TIMEOUT_MS : opts.timeoutMs;
+
+    // 1. 定位待测 skill：显式 skillId 优先，避免 latestByKey 漂移测到草稿。
+    let skill: SkillDefinition | undefined;
+    if (opts.skillId) {
+      skill = await this.deps.repos.skills.get(opts.skillId);
+      if (skill && (skill.tenantId !== tenantId || skill.key !== skillKey)) skill = undefined;
+    }
+    if (!skill) {
+      const all = await this.deps.repos.skills.listByTenant(tenantId);
+      skill = all.filter((s) => s.key === skillKey && s.status !== "RETIRED").sort((a, b) => b.version - a.version)[0];
+    }
+    if (!skill) throw new Error(`skill not found: ${skillKey}`);
+
+    // 2. 确保探针 agent（含 tenantId）与 twin 存在且指向当前 skill 版本。
+    const probeAgent = await this.ensureProbeAgent(auth, skill);
+    const twinAgent = await this.ensureTwinAgent(auth, skill);
+
+    // 3. 取出本 skill 的 skill_quality 用例。
+    const cases = (await this.deps.repos.evalCases.listByTenant(tenantId, "skill_quality")).filter(
+      (c) => c.skillKey === skillKey,
+    );
+
+    // 4. 逐 case 跑 probe（挂 skill）；behaviorGain 用例再跑 twin（不挂 skill）做差分。
+    //
+    // WO-SKILL-PARTIAL-A · 给 `maxBudgetRounds` 接上**真消费方**（此前零生产调用方 = 填了不改变任何行为）。
+    // 归一单源在 contracts `skillBudgetOverride()`；未声明 → undefined → 下方展开为空 → 逐字节维持今日行为（R6）。
+    // twin（不挂 skill）**同样**用这个预算：behaviorGain 差分的唯一变量必须是「挂没挂 skill」，
+    // 预算若两侧不同，差出来的就不是 skill 的增益（对照组失格·同族老病见本文件 runCase 注释）。
+    const budgetOverride = skillBudgetOverride([skill]);
+    const results: EvalCaseResult[] = [];
+    for (const c of cases) {
+      results.push(await this.runCase(auth, c, probeAgent, twinAgent, timeoutMs, opts.intentKey, budgetOverride));
+    }
+
+    const passed = results.filter((r) => r.pass).length;
+    const total = results.length;
+
+    const intentCases = cases.filter((c) => c.expect.intentKey !== undefined);
+    const intentPassed = intentCases.filter((c) => {
+      const r = results.find((x) => x.caseId === c.id);
+      return r && !r.failures.some((f) => f.startsWith("intent"));
+    }).length;
+
+    const toolCases = cases.filter((c) => c.expect.toolSequence && c.expect.toolSequence.length > 0);
+    const toolPassed = toolCases.filter((c) => {
+      const r = results.find((x) => x.caseId === c.id);
+      return r && !r.failures.some((f) => f.startsWith("toolSequence") || f.startsWith("maxToolCalls"));
+    }).length;
+
+    const avgLatencyMs = total === 0 ? 0 : Math.round(results.reduce((s, r) => s + r.observed.latencyMs, 0) / total);
+    const avgTokenCost = total === 0 ? 0 : Math.round(results.reduce((s, r) => s + (r.observed.tokenCost ?? 0), 0) / total);
+
+    return {
+      tenantId,
+      skillKey,
+      total,
+      passed,
+      passRate: total === 0 ? 1 : round4(passed / total),
+      results,
+      intentAccuracy: intentCases.length === 0 ? 1 : round4(intentPassed / intentCases.length),
+      toolCorrectness: toolCases.length === 0 ? 1 : round4(toolPassed / toolCases.length),
+      avgToolCalls: total === 0 ? 0 : round4(results.reduce((s, r) => s + r.observed.toolCount, 0) / total),
+      avgLatencyMs,
+      avgTokenCost,
+    };
+  }
+
+  private async ensureProbeAgent(auth: RequestAuth, skill: SkillDefinition): Promise<AgentDefinition> {
+    const tenantId = auth.tenantId;
+    const sanitized = sanitizeIdPart(tenantId);
+    const agentId = `agt_probe_${sanitized}_${skill.key}`;
+    const existing = await this.deps.repos.agents.get(agentId);
+
+    const systemPrompt = `你是技能「${skill.name}」的探针评测 agent。\n\n${skill.body}`;
+    const desired: AgentDefinition = {
+      id: agentId,
+      tenantId,
+      key: `probe_${skill.key}`,
+      version: 1,
+      name: `Probe: ${skill.name}`,
+      description: `Skill probe for ${skill.key}`,
+      model: "claude-opus-4-8",
+      systemPrompt,
+      tools: this.buildProbeTools(skill),
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "PRE_CHECK" },
+      skills: [{ skillId: skill.id, version: skill.version }],
+      mcpServers: [],
+      scopeDeclaration: { objectTypes: [], toolNames: [] },
+      budget: { maxIterations: 8 },
+      status: "PUBLISHED",
+    };
+
+    if (existing) {
+      const sameSkill = existing.skills[0]?.skillId === skill.id;
+      const samePrompt = existing.systemPrompt === systemPrompt;
+      const sameName = existing.name === desired.name;
+      if (sameSkill && samePrompt && sameName) return existing;
+      // 内容漂移时直接覆盖（update 优先；若仓储 update 语义不完整可 delete+insert）。
+      await this.deps.repos.agents.update({ ...desired, id: existing.id, version: existing.version });
+      const refreshed = await this.deps.repos.agents.get(agentId);
+      if (refreshed) return refreshed;
+    }
+
+    await this.deps.repos.agents.insert(desired);
+    const inserted = await this.deps.repos.agents.get(agentId);
+    if (!inserted) throw new Error(`failed to insert probe agent ${agentId}`);
+    return inserted;
+  }
+
+  private async ensureTwinAgent(auth: RequestAuth, skill: SkillDefinition): Promise<AgentDefinition> {
+    const tenantId = auth.tenantId;
+    const sanitized = sanitizeIdPart(tenantId);
+    const agentId = `agt_probe_twin_${sanitized}_${skill.key}`;
+    const existing = await this.deps.repos.agents.get(agentId);
+
+    const systemPrompt = `你是技能「${skill.name}」的探针评测 agent。\n\n${skill.body}`;
+    const desired: AgentDefinition = {
+      id: agentId,
+      tenantId,
+      key: `probe_twin_${skill.key}`,
+      version: 1,
+      name: `Twin: ${skill.name}`,
+      description: `Skill twin for ${skill.key}`,
+      model: "claude-opus-4-8",
+      systemPrompt,
+      tools: this.buildProbeTools(skill),
+      ruleBindings: { ruleKeys: "ALL_APPLICABLE", mode: "PRE_CHECK" },
+      skills: [],
+      mcpServers: [],
+      scopeDeclaration: { objectTypes: [], toolNames: [] },
+      budget: { maxIterations: 8 },
+      status: "PUBLISHED",
+    };
+
+    if (existing) {
+      const samePrompt = existing.systemPrompt === systemPrompt;
+      const sameName = existing.name === desired.name;
+      const noSkills = existing.skills.length === 0;
+      if (samePrompt && sameName && noSkills) return existing;
+      await this.deps.repos.agents.update({ ...desired, id: existing.id, version: existing.version });
+      const refreshed = await this.deps.repos.agents.get(agentId);
+      if (refreshed) return refreshed;
+    }
+
+    await this.deps.repos.agents.insert(desired);
+    const inserted = await this.deps.repos.agents.get(agentId);
+    if (!inserted) throw new Error(`failed to insert twin agent ${agentId}`);
+    return inserted;
+  }
+
+  private buildProbeTools(skill: SkillDefinition): AgentDefinition["tools"] {
+    const refs: AgentDefinition["tools"] = PROBE_TOOL_NAMES.map((name) => ({ kind: "BUILTIN", name }));
+    // SP5 · 写模式技能才追加 create_action_draft。判定**必须**与 engine.ts skillWriteMode 同源
+    // （contracts isWriteModeSkill：写副作用 ∪ 需审批），否则探针的工具集会比生产小 → 绿证书发给跑不通的技能。
+    if (isWriteModeSkill(skill)) {
+      refs.push({ kind: "BUILTIN", name: "create_action_draft" });
+    }
+    return refs;
+  }
+
+  private async runCase(
+    auth: RequestAuth,
+    c: EvalCase,
+    probeAgent: AgentDefinition,
+    twinAgent: AgentDefinition,
+    timeoutMs: number,
+    intentKey?: string,
+    budgetOverride?: Partial<AgentBudget>,
+  ): Promise<EvalCaseResult> {
+    const t0 = Date.now();
+    const failures: string[] = [];
+
+    // behaviorGain 用例必须有 answerMust，否则无法度量增益。
+    if (c.expect.behaviorGain && (!c.expect.answerMust || c.expect.answerMust.length === 0)) {
+      failures.push("behaviorGain: missing answerMust dimension");
+    }
+
+    // 跑 probe（挂载 skill）。
+    let probeAnswerText = "";
+    let probeToolNames: string[] = [];
+    let probeTokenCost = 0;
+    try {
+      const probeResult = await this.runAgent(auth, probeAgent, c, timeoutMs, budgetOverride);
+      probeAnswerText = extractAnswerText(probeResult.answer);
+      probeToolNames = await this.getToolNamesForTask(probeResult.run.taskId);
+      probeTokenCost = probeResult.run.totalInputTokens + probeResult.run.totalOutputTokens;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.startsWith("probe timeout:")) {
+        failures.push(msg);
+      } else {
+        failures.push(`probe failed: ${msg}`);
+      }
+    }
+
+    // behaviorGain 用例再跑 twin（不挂 skill），校验增益真实存在。
+    //
+    // ⚠️ twin 跑挂 ≠ 增益成立。旧写法 `catch { twinAnswerText = "" }` 把「没能验证」无声换成了「已验证」：
+    // behaviorGain 的唯一判据是「twin 不应含该内容」，而 `"".includes(非空串)` 恒 false → 失败项永远
+    // push 不进去 → 用例判 pass。且「无法对比」这个状态在代码里没有任何落点（不进 failures / failKind / observed）。
+    // 更险的是测试期 LLM 全 mock、twin 几乎不会挂，所以这条路**只在真 LLM 生产态被走到**。
+    // 现在：null = 未验证（禁止参与比对），并直接计入 failures——宁可报「没证成」，不许默认「证成了」。
+    let twinAnswerText: string | null = null;
+    if (c.expect.behaviorGain && failures.length === 0) {
+      try {
+        const twinResult = await this.runAgent(auth, twinAgent, c, timeoutMs, budgetOverride);
+        twinAnswerText = extractAnswerText(twinResult.answer);
+      } catch (e) {
+        twinAnswerText = null;
+        failures.push(`behaviorGain: 对照组(twin)未能跑通，无法证明增益 —— ${(e as Error).message}`);
+      }
+    }
+
+    // 断言：intent / toolSequence / answerMust / answerMustNot / maxToolCalls。
+    if (c.expect.intentKey !== undefined) {
+      // skill probe 不关心分类器意图，除非调用方显式传入了 intentKey 或 case 有 behaviorGain。
+      if (intentKey && intentKey !== c.expect.intentKey) {
+        failures.push(`intent: expected ${c.expect.intentKey}, got ${intentKey}`);
+      }
+    }
+
+    if (c.expect.toolSequence && c.expect.toolSequence.length > 0) {
+      if (!isSubsequence(c.expect.toolSequence.map((t) => t.name), probeToolNames)) {
+        failures.push(`toolSequence: expected subsequence ${c.expect.toolSequence.map((t) => t.name).join(",")}, got ${probeToolNames.join(",") || "none"}`);
+      }
+    }
+
+    for (const must of c.expect.answerMust ?? []) {
+      if (!probeAnswerText.includes(must)) failures.push(`answerMust: missing "${must}"`);
+      // behaviorGain 要求该内容必须依赖 skill：twin（不挂 skill）不应出现。
+      // twinAnswerText === null（对照组跑挂）时**不得**走比对分支：上面已计入 failures，此处再比会拿 null 当"twin 没提到"。
+      else if (c.expect.behaviorGain && twinAnswerText !== null && twinAnswerText.includes(must)) {
+        failures.push(`behaviorGain: "${must}" present without skill (twin also contains it)`);
+      }
+    }
+
+    for (const mustNot of c.expect.answerMustNot ?? []) {
+      if (probeAnswerText.includes(mustNot)) failures.push(`answerMustNot: contains "${mustNot}"`);
+    }
+
+    if (c.expect.maxToolCalls !== undefined && probeToolNames.length > c.expect.maxToolCalls) {
+      failures.push(`maxToolCalls: ${probeToolNames.length} > ${c.expect.maxToolCalls}`);
+    }
+
+    const observedIntent = intentKey ?? null;
+    const latencyMs = Date.now() - t0;
+
+    return {
+      caseId: c.id,
+      pass: failures.length === 0,
+      failures,
+      ...(failures.length > 0 ? { failKind: classifyFailKind(failures) } : {}),
+      observed: {
+        intentKey: observedIntent,
+        toolNames: probeToolNames,
+        toolCount: probeToolNames.length,
+        latencyMs,
+        tokenCost: probeTokenCost,
+        answerExcerpt: probeAnswerText.slice(0, 200),
+      },
+    };
+  }
+
+  private async runAgent(
+    auth: RequestAuth,
+    agent: AgentDefinition,
+    c: EvalCase,
+    timeoutMs: number,
+    budgetOverride?: Partial<AgentBudget>,
+  ) {
+    const taskId = newId("task");
+    const now = new Date().toISOString();
+    await this.deps.repos.tasks.insert({
+      id: taskId,
+      tenantId: auth.tenantId,
+      userId: auth.userId,
+      packageId: c.packageId,
+      conversationId: taskId,
+      query: c.input.query,
+      context: { ...c.input.context, conversationId: undefined },
+      status: "ROUTING",
+      clarificationRounds: 0,
+      createdAt: now,
+    });
+
+    // `budgetOverride` 展开在后 → skill 声明的 maxRoundTrips 生效；未声明时展开空对象，
+    // BudgetTracker 落回 DEFAULT_AGENT_BUDGET.maxRoundTrips(24)，与改造前逐字节一致（R6）。
+    const budget = new BudgetTracker({ maxIterations: 8, maxToolCalls: 12, ...(budgetOverride ?? {}) });
+    const nesting: NestingCtx = { callChain: [], budget };
+
+    const runPromise = this.deps.engine.runRegisteredAgent({
+      taskId,
+      agentId: agent.id,
+      version: agent.version,
+      prompt: c.input.query,
+      ctx: {
+        tenantId: auth.tenantId,
+        userId: auth.userId,
+        roles: auth.roles ?? [],
+        token: auth.token,
+        debugUser: auth.debugUser,
+      },
+      nesting,
+      emit: this.deps.emit ?? (async () => {}),
+    });
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      const timer = setTimeout(() => reject(new Error(`probe timeout: ${timeoutMs}ms`)), timeoutMs);
+      // 避免 Node 事件循环警告
+      timer.unref?.();
+    });
+
+    return await Promise.race([runPromise, timeoutPromise]);
+  }
+
+  private async getToolNamesForTask(taskId: string): Promise<string[]> {
+    const rows = await this.deps.repos.toolCalls.listByTask(taskId);
+    return rows.map((r) => r.toolName);
+  }
+}
+
+/** 从真实答案文本提取语义文本（用于 answerMust/answerMustNot）。 */
+export { extractAnswerText };

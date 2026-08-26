@@ -3,8 +3,9 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { useSessionStore } from "@/store/sessionStore";
+import { outsourceRedlineViolationExprPublished } from "@platform/contracts";
 
-describe("F22 · 季度滚动看板（quarterly-rolling）", () => {
+describe("F22 · 季度规划（quarterly-rolling）", () => {
   it("缺口徽章三档色：>4 红 / >0 黄 / ≤0 绿", async () => {
     loginAs("planner");
     renderApp("/v/quarterly-rolling");
@@ -28,7 +29,9 @@ describe("F22 · 季度滚动看板（quarterly-rolling）", () => {
     renderApp("/v/quarterly-rolling");
 
     await user.click(await screen.findByTestId("qrule-2027-Q2-C08"));
-    expect(await screen.findByTestId("qrule-expression")).toHaveTextContent("Outsource.ratio <= 0.2");
+    // WO-RULE-EXPR-PARAMS（#78）：季度视图读**活规则库**，故显真后端口径的违规谓词 + 命名阈值引用。
+    // 原断言咬的是 mock 独有的约束式 `Outsource.ratio <= 0.2`（主体与极性都是另一套）。
+    expect(await screen.findByTestId("qrule-expression")).toHaveTextContent(outsourceRedlineViolationExprPublished());
   });
 
   it("长协 −8% 行红色 + 升级供应风险标记 + 行尾链接跳 risk-board 并写入对应基地", async () => {
@@ -42,6 +45,8 @@ describe("F22 · 季度滚动看板（quarterly-rolling）", () => {
     expect(screen.getByTestId("lta-escalate-三元正极")).toHaveTextContent("升级供应风险");
     // 正常行不红标
     expect(screen.getByTestId("lta-隔膜")).toHaveAttribute("data-breach", "false");
+    // PRD-IND-quarter §4.5(F)：LTA 脚注去硬编码（i18n 下发，R14），与到货间隙/S&OP 决议同源
+    expect(screen.getByTestId("quarter-lta-footnote")).toHaveTextContent("到货间隙");
 
     // 行尾链接 → /v/risk + 基地写入 selectedObjects（到货间隙事件同源基地：合肥）
     await user.click(screen.getByTestId("lta-goto-risk-三元正极"));

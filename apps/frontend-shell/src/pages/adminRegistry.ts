@@ -15,9 +15,13 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "connections", label: zh.nav.connections, roles: ["admin", "data_admin"] },
   { path: "rule-docs", label: zh.nav.ruleDocs, roles: ["admin", "data_admin", "rule_admin"] },
   { path: "modeling", label: zh.nav.modeling, roles: ["admin", "data_admin"] },
+  { path: "object-types", label: zh.nav.objectTypes, roles: ["admin", "data_admin"] },
   { path: "rules", label: zh.nav.rules, roles: ["admin", "data_admin", "rule_admin"] },
   { path: "permissions", label: zh.nav.permissions, roles: ["admin"] },
   { path: "synthetic", label: zh.nav.synthetic, roles: ["admin"] },
+  { path: "data-builder", label: zh.nav.dataBuilder, roles: ["admin"] },
+  // WO-FE-WIRE-2 件一：pipeline 配置面（后端五条端点此前零调用方）
+  { path: "pipelines", label: zh.nav.pipelines, roles: ["admin"] },
   { path: "actions", label: zh.nav.actions, roles: ["admin", "approver"] },
   { path: "catalog", label: zh.nav.catalog, roles: ["admin", "catalog_admin"] },
   { path: "agents", label: zh.nav.agents, roles: ["admin", "catalog_admin"] },
@@ -28,6 +32,9 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "ops/fallback", label: zh.nav.opsFallback, roles: ["admin", "catalog_admin"] },
   // 回放编排器 §6：真实租户运营自动化（tenant_admin）
   { path: "ops-schedule", label: zh.nav.opsSchedule, roles: ["admin", "tenant_admin"] },
+  // WO-BEFE-B：S3 定时任务台 / OC9 工厂日历（后端 admin only ⇒ 此处不放宽到 tenant_admin）
+  { path: "scheduler", label: zh.nav.scheduler, roles: ["admin", "tenant_admin"] },
+  { path: "calendars", label: zh.nav.calendars, roles: ["admin"] },
   { path: "features", label: zh.nav.features, roles: ["admin", "catalog_admin"] },
   // LLM Provider 增量 §1.4：/admin/llm-providers（tenant_admin）
   { path: "llm-providers", label: zh.nav.llmProviders, roles: ["admin", "tenant_admin"] },
@@ -35,6 +42,44 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { path: "views", label: zh.nav.views, roles: ["admin", "catalog_admin"] },
   // §7.21 校准报告（catalog_admin 或 planner）
   { path: "calibration", label: zh.nav.calibration, roles: ["admin", "catalog_admin", "planner"] },
+  // 外部域 EXT_SIG：环境信号 + 敏感性
+  { path: "external-signals", label: zh.nav.externalSignals, roles: ["admin", "data_admin", "planner"] },
+  // 七管理页整簇（admin-console-closure §6；后端已就绪、补前端）
+  { path: "validation", label: zh.nav.validation, roles: ["admin", "platform_admin"] },
+  { path: "quarantine", label: zh.nav.quarantine, roles: ["admin", "data_admin"] },
+  { path: "notifications", label: zh.nav.notifications, roles: ["admin", "tenant_admin", "approver", "planner"] },
+  { path: "domains", label: zh.nav.domains, roles: ["admin", "data_admin"] },
+  // WO-INTERFACE-ADMIN-UI · 对象接口管理台（闭 §8 G-NO-INTERFACE 残口③）：
+  // 接口的建/改/发/退役 + 发布门预览（点名到属性）+ 实现者影响面。
+  { path: "interfaces", label: zh.nav.interfaces, roles: ["admin", "data_admin"] },
+  // WO-BEFE-A · 本体关系编辑器：结构边（LinkType）与因果边（PropagationRule）的人工建/停/下线 +
+  // 发布会签（R4）。补的是「后端三个写端全在、前端零调用方」那个洞 —— 此前 13 条传导规则
+  // 只能写死在 `apps/datacore/src/seed.ts` 里，没有任何人工创建入口。
+  { path: "ontology-relations", label: zh.nav.ontologyRelations, roles: ["admin", "data_admin"] },
+  { path: "evals", label: zh.nav.evals, roles: ["admin", "catalog_admin"] },
+  { path: "slices", label: zh.nav.slices, roles: ["admin", "data_admin"] },
+  { path: "slice-library", label: zh.nav.sliceLibrary, roles: ["admin", "data_admin"] },
+  { path: "merge", label: zh.nav.merge, roles: ["admin", "data_admin"] },
+  { path: "growth", label: zh.nav.growth, roles: ["admin", "data_admin"] },
+  // A18.4 求解器审核台：审 PROVISIONAL 临时求解器 → 晋升 GOVERNED（解锁写真值，R4）
+  { path: "solver-review", label: zh.nav.solverReview, roles: ["admin"] },
+  // C5 求解器目录（只读发现）：workflow invoke_solver 的 solverKey 引用目标（catalog_admin 配工作流需可见）
+  { path: "solvers", label: zh.nav.solvers, roles: ["admin", "catalog_admin", "data_admin"] },
+  // C12 配置迁移工作台（OC3 跨系统 Saga）：导出/导入租户配置 bundle。后端 admin only。
+  { path: "config-migration", label: zh.nav.configMigration, roles: ["admin"] },
+  // WO-DRIL-P4 · 智能资源治理台（DRIL·entitlement qos.dril-routing 门控·见 App.tsx 路由 featureKey）：资源列表/五级标签/质量分/1-hop 关系图。
+  { path: "resources", label: zh.nav.resources, roles: ["admin", "catalog_admin"] },
+  // WO-A · No-code Plan Builder Canvas（Phase 1：线性多 solver 链）。
+  { path: "plan-builder", label: zh.nav.planBuilder, roles: ["admin", "catalog_admin"] },
+  // WO-BEFE-D · 组织世界（entitlement org.world 真暗发·见 App.tsx 路由 featureKey）：
+  // 人/角色/部门 · 职权与审批额度 · 授权代理 · 「这一单该谁批」解析器。
+  // 角色面比后端**宽**是有意的：读面（chart/authorities/delegations/resolve）后端只要 entitlement 不要角色，
+  // 审批人问题恰恰是 approver/planner 最需要的；唯一的写面（availability）在页内按
+  // admin/tenant_admin 单独禁用（与 org/routes.ts:86 同判据），不摆必然 403 的按钮。
+  { path: "org", label: "组织世界", roles: ["admin", "tenant_admin", "approver", "planner"] },
+  { path: "meta", label: "系统自我", roles: ["admin"] },
+  { path: "boundary", label: "边界册治理", roles: ["admin"] },
+  { path: "prototype-intake", label: "原型 intake", roles: ["admin", "data_admin"] },
 ];
 
 /** 角色形如 "base_manager:常州" → 基础角色 "base_manager" */
@@ -49,4 +94,44 @@ export function canAccessAdmin(userRoles: string[], page: AdminPageDef): boolean
 
 export function visibleAdminPages(userRoles: string[]): AdminPageDef[] {
   return ADMIN_PAGES.filter((p) => canAccessAdmin(userRoles, p));
+}
+
+/**
+ * nav-reorg：管理区导航按业务域统一分组（配置驱动，R14——组名=平台模块域，非租户业务常数）。
+ * 把 ~33 项扁平管理页归入 7 组，父级字号≥子级（见 ShellLayout 渲染）。逐项可见性仍按角色 + entitlement
+ * 上游过滤后传入；空组自动隐藏；折叠记忆复用 NavGroup。未在配置内的新页 → 落「其它」组（不丢，提示补配）。
+ */
+export interface AdminNavGroup {
+  key: string;
+  title: string;
+  /** 组内成员页 path（顺序即展示序）。 */
+  paths: string[];
+}
+
+export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
+  { key: "data", title: "数据接入", paths: ["connections", "rule-docs", "synthetic", "external-signals", "quarantine"] },
+  // WO-SWEEP-03-NAV-GROUP：meta（系统自我）改归 governance（见下）与 ShellLayout.NAV_GROUPS 对齐——防两处分组源漂移。
+  { key: "modeling", title: "建模与图谱", paths: ["modeling", "object-types", "domains", "interfaces", "ontology-relations", "slices", "slice-library", "merge", "boundary", "prototype-intake"] },
+  { key: "rules", title: "规则与校准", paths: ["rules", "calibration"] },
+  { key: "build", title: "构建与成长", paths: ["data-builder", "pipelines", "growth", "evals", "solvers", "solver-review"] },
+  { key: "orchestration", title: "编排与场景", paths: ["catalog", "agents", "workflows", "skills", "mcp", "scenes", "resources", "plan-builder", "ops/fallback", "views"] },
+  // WO-BEFE-D：组织世界归「运营与审批」—— 它答的是「这一单该谁批 / 为什么没人批得了」，
+  // 与审批中心（actions）同一条决策链上的相邻两跳，不归「平台治理」（那是租户/权限/开关的地盘）。
+  // WO-BEFE-B：scheduler / calendars 同批登记（两处分组源必须同改，否则掉进「其它」兜底桶）。
+  { key: "ops", title: "运营与审批", paths: ["actions", "org", "ops-schedule", "scheduler", "calendars", "notifications", "validation"] },
+  { key: "governance", title: "平台治理", paths: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration", "meta"] },
+];
+
+/** 把（已按角色过滤的）管理页归入分组；空组剔除；未配置页落「其它」组（不丢）。确定性顺序。 */
+export function groupAdminPages(pages: AdminPageDef[]): { key: string; title: string; pages: AdminPageDef[] }[] {
+  const byPath = new Map(pages.map((p) => [p.path, p]));
+  const used = new Set<string>();
+  const groups = ADMIN_NAV_GROUPS.map((g) => {
+    const gp = g.paths.map((path) => byPath.get(path)).filter((p): p is AdminPageDef => !!p);
+    gp.forEach((p) => used.add(p.path));
+    return { key: g.key, title: g.title, pages: gp };
+  }).filter((g) => g.pages.length > 0);
+  const rest = pages.filter((p) => !used.has(p.path));
+  if (rest.length > 0) groups.push({ key: "other", title: "其它", pages: rest });
+  return groups;
 }

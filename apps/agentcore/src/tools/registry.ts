@@ -7,14 +7,37 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     // mcp_tools 列出未加载的 MCP 工具（>24 按需加载模式）。不确定用什么时先调本工具。
     name: "discover",
     descriptionForLLM:
-      "发现当前可用的能力目录。kind=slices 返回可用本体切片（含用途说明与参数）；kind=solvers 返回求解器；kind=mcp_tools 返回未加载的 MCP 工具。当不确定该用哪个切片/求解器/工具时先调用本工具拿到准确的 key。",
+      "发现当前可用的能力目录。kind=object_types 返回本租户真实已发布对象类型（key+中文标签+域+实例数）——查对象前先用本工具拿真实类型名，勿凭空猜英文名（如 plan_version/production_target 多半不存在）；kind=slices 返回可用本体切片；kind=solvers 返回求解器；kind=mcp_tools 返回未加载的 MCP 工具。不确定用什么时先调本工具。",
     inputSchema: {
       type: "object",
       properties: {
-        kind: { type: "string", enum: ["slices", "solvers", "mcp_tools"] },
+        kind: { type: "string", enum: ["object_types", "slices", "solvers", "mcp_tools"] },
         query: { type: "string", description: "可选关键词过滤" },
       },
       required: ["kind"],
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
+    // WO-DRIL-P2 · DRIL 混合检索：一次跨 7+ 类智能资源（求解器/切片/规则/技能/工作流/Agent/意图）按 NL 选型。
+    // 不确定该用哪个 solver/slice/rule 时先调本工具（比 discover 更强：五级标签 + 语义 + 确定性加权排序 + 打分解释），
+    // 再据 top 结果 invoke_solver / resolve_slice / evaluate_rules。
+    name: "retrieve_knowledge",
+    descriptionForLLM:
+      "DRIL 智能资源混合检索：按自然语言 query 跨求解器/切片/规则/技能/工作流/Agent/意图检索最相关资源，返回排序结果（含 scoreBreakdown 语义/域/本体/历史/成本分项 + 解释）。选型不确定时先调本工具再执行；比 discover 更精准（五级标签+语义+确定性加权）。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "自然语言检索问题" },
+        kinds: {
+          type: "array",
+          items: { type: "string" },
+          description: "可选：限定资源类别（solver/slice/rule/skill/workflow/agent/intent/mcp_tool/field）",
+        },
+        maxResults: { type: "number", description: "返回条数上限，默认 8" },
+      },
+      required: ["query"],
     },
     sideEffect: "READ",
     costClass: "CHEAP",
@@ -35,6 +58,45 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     costClass: "CHEAP",
   },
   {
+    // A3.3 多跳切片规划器：意图需要跨域数据且预置切片不匹配时，先调本工具动态规划切片；
+    // 返回含 planned/reused/sliceKey 等显式 trace 标记，下游 resolve_slice / invoke_solver 可消费。
+    name: "plan_slice",
+    descriptionForLLM:
+      "动态规划一个本体切片。当用户问题需要跨越多个对象类型（如订单→基地→物料→客户）且预置切片不满足时调用；返回的 sliceKey 可传给 resolve_slice 或作为 solver 上下文。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        rootType: { type: "string", description: "根对象类型，如 Order" },
+        targets: { type: "array", items: { type: "string" }, description: "需覆盖的目标类型列表，如 [Base, Material, Customer]" },
+        maxHops: { type: "number", description: "最大跳数（可选，默认 6）" },
+        question: { type: "string", description: "原始问句（可选，用于切片复用索引匹配）" },
+      },
+      required: ["rootType", "targets"],
+    },
+    sideEffect: "COMPUTE",
+    costClass: "CHEAP",
+  },
+  {
+    // WO-Phase3-B §3.2：本体多跳遍历查询（一次 query 顶多次 query_objects）。走 DataCore ontology_query 求解器。
+    name: "query_ontology",
+    descriptionForLLM:
+      "本体多跳遍历查询：给定 rootType(+rootFilter) 沿 hops（或自动最短路）走到目标类型，select 投影字段并可做简单聚合(sum/count/avg/max)。回答『某基地关联哪些订单』『某供应商断供影响哪些客户』『某基地产线总产能』等跨类型关联问题——一次调用顶多次 query_objects。每行带 {typeKey,objId,linkPath} 溯源。仅遍历+简单聚合；复杂业务推演(能不能接/供需归因/组合最优)请用对应 invoke_solver。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        rootType: { type: "string", description: "起点对象类型，如 Base" },
+        rootFilter: { type: "array", items: { type: "object" }, description: "根过滤 [{field,op,value}]" },
+        hops: { type: "array", items: { type: "object" }, description: "多跳 [{linkKey,direction:forward|backward,targetType?,filter?}]；省略则自动规划最短路" },
+        select: { type: "array", items: { type: "object" }, description: "投影 [{type,fields[],aggregate?,groupBy?}]" },
+        orderBy: { type: "object", description: "{field,direction:asc|desc}" },
+        limit: { type: "number" },
+      },
+      required: ["rootType", "select"],
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
     name: "query_objects",
     descriptionForLLM:
       "按对象类型与过滤条件查询本体对象列表。当需要原始业务对象（基地/型号/订单等）数据时调用。limit 上限 200。",
@@ -47,6 +109,28 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
       },
       required: ["objectType", "filter"],
     },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  // Dogfooding P3：问运行中的系统自己（元本体活查询;受 DataCore MetaAccessPolicy 白名单门控,默认仅 admin）。
+  {
+    name: "query_system_ontology",
+    descriptionForLLM: "查询平台自身的系统本体落库摘要（八类元对象计数：不变量/断点/事件/域/对象类型/门禁/切片）。回答『系统本体里有哪些断点/不变量』类元问题时调用。",
+    inputSchema: { type: "object", properties: {} },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
+    name: "get_breakpoint",
+    descriptionForLLM: "取某断点（G-1..G-8）的状态 + 关联不变量 + 覆盖它的 PRD。回答『G-8 修了没/谁覆盖它』时调用。",
+    inputSchema: { type: "object", properties: { id: { type: "string", description: "断点 id，如 G-8" } }, required: ["id"] },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
+    name: "impact_of",
+    descriptionForLLM: "影响分析：以某节点（R14 / G-5 / SystemObjectType:Solver …）为根在系统本体图上 BFS，返回受影响节点集（『改 X 影响什么』= 图查询，自动化铁律0 read-first）。",
+    inputSchema: { type: "object", properties: { node: { type: "string", description: "R14 / G-5 / SystemObjectType:<key>" } }, required: ["node"] },
     sideEffect: "READ",
     costClass: "CHEAP",
   },
@@ -89,10 +173,20 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   {
     name: "invoke_solver",
     descriptionForLLM:
-      "调用确定性求解器进行计算（如产能推演 capacity_forecast、受影响订单 affected_orders）。计算成本高，仅在确有必要时调用。",
+      "调用确定性求解器进行计算。计算成本高，仅在确有必要时调用。**入参口径（缺必填即报错，勿空调）**：" +
+      "capacity_forecast（型号需求增量产能可行性/能不能接）必填 args={modelId(型号如 4680-NCM),demandDelta(需求增量比例，如上浮10%→0.1),weeks(周数)}——" +
+      "modelId 从当前选中对象/问句里的型号显式取，把「上浮X%」换算成 demandDelta=X/100、「N周」换算成 weeks=N；" +
+      "affected_orders（某基地受影响订单）args={baseId}；gap_attribution（指标缺口反向归因）args={metricKey?,factorId?,scope?}。" +
+      "「某型号加X%、N周能不能接」这类可承接性问题一律直接调 capacity_forecast，不要先反复 query_objects 盲扫。",
     inputSchema: {
       type: "object",
-      properties: { solverKey: { type: "string" }, args: { type: "object" } },
+      properties: {
+        solverKey: { type: "string", description: "求解器 key，如 capacity_forecast / affected_orders / gap_attribution" },
+        args: {
+          type: "object",
+          description: "求解器入参。capacity_forecast 必填 {modelId, demandDelta, weeks}；缺必填求解器会返回明确参数错误，不要空调。",
+        },
+      },
       required: ["solverKey", "args"],
     },
     sideEffect: "COMPUTE",
@@ -193,6 +287,120 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     sideEffect: "READ",
     costClass: "CHEAP",
   },
+  // CL.2 合规数据生成（fill_data / run_synthetic / build_domain）：在"信息不足/空租户"时
+  // 触发确定性、走管线、可溯源的合成（**触发合成 ≠ 伪造**）。回执只含元信息（jobId/runId/counts），
+  // 业务数字必须由你随后用 query_objects/query_timeseries_agg 读回真实物化值；产出落未审核态
+  // （PROVISIONAL），答案须显式标注"基于本轮合成的未审核数据"，转正经 create_action_draft 走 R4。
+  {
+    name: "fill_data",
+    descriptionForLLM:
+      "缺某对象类型的数据时，按字段确定性补一批数据（经唯一上传口入管线，未审核态）。入参 typeKey/fields[]/rows?/seed?。回执只含 {connId,rowCount}；补完后用 query_objects 读回真实值再分析。不要把回执当业务数字。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        typeKey: { type: "string", description: "对象类型 key（先用 discover 取真实类型名，勿猜）" },
+        fields: { type: "array", items: { type: "string" } },
+        rows: { type: "number", description: "可选，行数" },
+        seed: { type: "number", description: "可选，确定性种子" },
+      },
+      required: ["typeKey", "fields"],
+    },
+    sideEffect: "COMPUTE",
+    costClass: "EXPENSIVE",
+  },
+  {
+    name: "run_synthetic",
+    descriptionForLLM:
+      "触发合成数据作业（industry×scale×seed 确定性，可选 livedIn 回放一年运营态），物化计划域/时序等对象到未审核态。回执只含 {jobId,...}；随后用 query_objects/query_timeseries_agg 读回真实物化值再分析。空租户问'达成率/未达成原因'缺数据时优先用本工具，而非拒绝或编造。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        industry: { type: "string", description: "行业模板 key，如 battery-manufacturing" },
+        scale: { type: "string", enum: ["S", "M", "L", "XL"] },
+        seed: { type: "number", description: "可选，确定性种子（默认 42）" },
+        livedIn: { type: "boolean", description: "可选，true=合成后回放 T−365→T0 一年运营态时序" },
+      },
+      required: ["industry", "scale"],
+    },
+    sideEffect: "COMPUTE",
+    costClass: "EXPENSIVE",
+  },
+  {
+    name: "build_domain",
+    descriptionForLLM:
+      "故事驱动建域：以用户问句为故事，倒推全栈 BuildPlan 并建出对象/规则/求解器骨架（未审核态 PROVISIONAL）。回执只含 {runId,...}；建好后用 query_objects/invoke_solver 读回/推演。需要新业务域而非仅补数据时用本工具。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        story: { type: "string", description: "建域故事（通常=用户问句）" },
+        seed: { type: "number", description: "可选，确定性种子" },
+      },
+      required: ["story"],
+    },
+    sideEffect: "COMPUTE",
+    costClass: "EXPENSIVE",
+  },
+  // 增量4 §5：AI 推演指挥台 —— 让 path B agent 把沙盘当工具驱动（NL「开个沙盘，tick 3 次看风险」→ 调本组工具）。
+  // 仅在租户开通 sim.commander(+sim.sandbox) 时对 agent 可见/可用（关→工具不存在，R3 暗发；门在 orchestrator 过滤层）。
+  // R4 安全：sim tick/act 是**模拟态，绝不写真值**（DataCore 已保证：只动沙盘 TickState，采纳才出 ActionDraft 走审批）。
+  // 回执只含会话态元信息（sessionId/curTick/state 模拟值），不是真值写出口，不绕审批。
+  {
+    name: "sim_init",
+    descriptionForLLM:
+      "开一个推演沙盘会话（模拟态，绝不写真值）。可选 baseSnapshot（初始世界态）/scope（推演范围）。回执 {id,status,curTick}——把 id 作为后续 sim_tick/sim_world/sim_certify 的 sessionId。要做『假设/推演/沙盘/tick』类探索时用本工具开局。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        baseSnapshot: { type: "object", description: "可选：初始世界态快照（对象→状态变量）" },
+        scope: { type: "object", description: "可选：推演范围（如限定基地/型号）" },
+      },
+    },
+    sideEffect: "COMPUTE",
+    costClass: "CHEAP",
+  },
+  {
+    name: "sim_tick",
+    descriptionForLLM:
+      "推进沙盘 n 个 tick（模拟态传导，**不写真值**，R4）。入参 sessionId（sim_init 返回的 id）+ n（步数，默认 1）。回执 {curTick,state}——state 是模拟值非真值，须显式标注『沙盘推演结果（模拟态）』，落地仍须经 create_action_draft 走审批。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string", description: "sim_init 返回的会话 id" },
+        n: { type: "number", description: "推进步数，默认 1" },
+      },
+      required: ["sessionId"],
+    },
+    sideEffect: "COMPUTE",
+    costClass: "CHEAP",
+  },
+  {
+    name: "sim_world",
+    descriptionForLLM:
+      "读沙盘当前世界态（模拟态）。入参 sessionId。回执 {tick,state}。用于 tick 后查看推演到了哪一步、各状态变量的模拟值。",
+    inputSchema: {
+      type: "object",
+      properties: { sessionId: { type: "string", description: "sim_init 返回的会话 id" } },
+      required: ["sessionId"],
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
+    name: "sim_certify",
+    descriptionForLLM:
+      "对沙盘会话做就绪认证（L0–L4，只读评估，不写真值）。入参 sessionId + 可选 scope(GLOBAL|LOCAL)/target。回执含世界完整度/可否进入推演/缺件清单，用于判断该会话推演结论是否可采纳。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string", description: "sim_init 返回的会话 id" },
+        scope: { type: "string", enum: ["GLOBAL", "LOCAL"], description: "认证范围，默认 GLOBAL" },
+        target: { type: "string", description: "可选：LOCAL 时的目标对象引用" },
+      },
+      required: ["sessionId"],
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
   {
     name: "create_action_draft",
     descriptionForLLM:
@@ -205,7 +413,48 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     sideEffect: "ACTION_DRAFT",
     costClass: "CHEAP",
   },
+  // 自成长发动机 A4 · 厂商中立 code-agent 施工面（与 REST/CLI 同源操作，经工具接口暴露）：
+  // 让任意被授予这些工具的 agent（含外部 MCP 客户端走同一执行器）发现/认领/提交成长工单。
+  {
+    name: "discover_growth_tickets",
+    descriptionForLLM:
+      "发现待施工的成长工单（缺功能 → 带 I/O 契约 + 本体引用 + 验收 + 已建 DRAFT 骨架）。可按 status 过滤（OPEN/IN_PROGRESS/IN_REVIEW）。施工 agent 先调本工具拿到要建什么、骨架建到哪了。",
+    inputSchema: {
+      type: "object",
+      properties: { status: { type: "string", enum: ["OPEN", "IN_PROGRESS", "IN_REVIEW", "MERGED", "VERIFIED"], description: "可选状态过滤" } },
+    },
+    sideEffect: "READ",
+    costClass: "CHEAP",
+  },
+  {
+    name: "claim_growth_ticket",
+    descriptionForLLM: "认领一张成长工单（OPEN→IN_PROGRESS），登记施工者。厂商中立：任意 code agent 均可认领。",
+    inputSchema: {
+      type: "object",
+      properties: { ticketId: { type: "string" }, assignee: { type: "string", description: "可选：施工者标识，缺省取当前用户" } },
+      required: ["ticketId"],
+    },
+    sideEffect: "ACTION_DRAFT",
+    costClass: "CHEAP",
+  },
+  {
+    name: "submit_growth_ticket",
+    descriptionForLLM: "提交施工成果待验证（IN_PROGRESS→IN_REVIEW）。提交后由 verify（重跑问句）判定是否 VERIFIED。",
+    inputSchema: {
+      type: "object",
+      properties: { ticketId: { type: "string" }, note: { type: "string", description: "可选：施工说明/PR 链接" } },
+      required: ["ticketId"],
+    },
+    sideEffect: "ACTION_DRAFT",
+    costClass: "CHEAP",
+  },
 ];
+
+/**
+ * 增量4 §5：AI 推演指挥台工具集。仅在租户开通 sim.commander(+sim.sandbox) 时对 path B agent 暴露
+ * （关→工具不存在，R3 暗发）。orchestrator runPathB 据此做 entitlement 过滤。
+ */
+export const SIM_COMMANDER_TOOLS = ["sim_init", "sim_tick", "sim_world", "sim_certify"] as const;
 
 export const FINAL_ANSWER_TOOL = {
   name: "final_answer",

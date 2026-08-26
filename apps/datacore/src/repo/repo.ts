@@ -1,3 +1,4 @@
+import type { ApprovalLimit, Authority, BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Delegation, EnterpriseState, OrgPrincipal, Perturbation, ProcessDefinition, ProcessDomain, ProcessInstance, ProcessStepTemplate, ProcessTask, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimSessionListItem, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -18,12 +19,12 @@ import type {
   IdempotencyRecord,
   NotificationRecord,
   QuarantineRowRecord,
+  MetaAccessPolicyRecord,
   ReplayProgressRecord,
   ValidationRunRecord,
   ObjectPropHistoryRecord,
   PublishRequestRecord,
   SliceSpecRecord,
-  OntologyWorkflowRecord,
   FeatureAuditRecord,
   FeatureConfigRecord,
   ForecastSnapshotRecord,
@@ -39,8 +40,10 @@ import type {
   ObjectTypeDef,
   OntologyDraft,
   OntologyVersion,
+  ObjectInterfaceRecord,
   OpsScheduleStoreRecord,
   OpsTickReportRecord,
+  OntologyWorkflowRecord,
   OutboxEvent,
   PermissionPolicy,
   RawDataset,
@@ -74,6 +77,26 @@ import type {
 export interface Store<T extends { id: string; tenantId: string }> {
   get(tenantId: string, id: string): Promise<T | undefined>;
   put(item: T): Promise<void>;
+  /**
+   * 批量落盘（语义 ≡ 对 items 依次 put，**后写覆盖先写**）。
+   *
+   * 为什么它必须进接口而不是留给调用方循环 put：**round-trip 数就是启动时长**。
+   * 2026-08-07 实测 demo 播种（pg 模式）：`xact_commit=173430`，其中 `ts_agg_runs`
+   * 一张表就贡献 153920 行 —— 全是 `timeseries.ts` 循环里一行一个 `put()` 打出去的。
+   * 单机 fsync=off 下 104s；生产实测 487s；Codespaces 慢盘再乘几倍就撞穿
+   * healthcheck 预算（start_period 600s + retries 30×10s = 900s）→ 容器判 unhealthy →
+   * `depends_on: service_healthy` 永不触发 → 整套编排报「dependency failed to start」。
+   *
+   * 即：**这不是"慢一点"，是部署失败的直接成因**。所以批量写是接口级能力，
+   * 不是某个调用点的局部优化 —— 留给调用方各自循环，下一个热点还会再犯一次。
+   *
+   * 实现约束（两个实现都必须守）：
+   *  - 幂等 + 后写覆盖：同一批内 id 重复时以**最后一条**为准（与依次 put 等价）。
+   *  - 空数组是合法输入，必须 no-op（不得发出空 INSERT）。
+   *  - 全部或全不（pg 端一次 INSERT 即一个事务）；跨 chunk 不保证原子性，
+   *    与依次 put 的语义一致，故调用方不得依赖跨 chunk 原子性。
+   */
+  putMany(items: T[]): Promise<void>;
   remove(tenantId: string, id: string): Promise<void>;
   list(tenantId: string, pred?: (t: T) => boolean): Promise<T[]>;
 }
@@ -206,6 +229,8 @@ export interface Repos {
   ontologyLinks: Store<LinkTypeDef>;
   ontologyDrafts: Store<OntologyDraft>;
   ontologyVersions: Store<OntologyVersion>;
+  /** WO-69 P3 · 对象接口（多态抽象）。每个 key+version 一条记录 → 多版本共存（开闭）。R9 四方同步。 */
+  objectInterfaces: Store<ObjectInterfaceRecord>;
   objects: ObjectStore;
   links: LinkStore;
   derivationRuns: Store<DerivationRun>;
@@ -215,14 +240,14 @@ export interface Repos {
   derivationSpecs: Store<DerivationSpecRecord>;
   derivationValueRuns: Store<DerivationValueRunRecord>;
   sliceSpecs: Store<SliceSpecRecord>;
-  /** OntoFlow（PRD v2 / 013_pipeline.sql）：本体建模工作流。 */
-  ontologyWorkflows: Store<OntologyWorkflowRecord>;
   // 治理增量（009_ontology_governance.sql）
   domains: Store<DomainRecord>;
   elementRefs: Store<ElementRefRecord>;
   publishRequests: Store<PublishRequestRecord>;
   actionDrafts: Store<ActionDraft>;
   actionTypes: Store<ActionTypeRecord>;
+  /** WO-C1 · L2 决策内核：一等 Decision 台账（bundling gap_attribution+decision_play·状态机·溯源）。 */
+  decisions: Store<Decision>;
   industryTemplates: Store<IndustryTemplateRecord>;
   syntheticJobs: Store<SyntheticJob>;
   outboxEvents: Store<OutboxEvent>;
@@ -233,7 +258,16 @@ export interface Repos {
   replayProgress: Store<ReplayProgressRecord>;
   extractSegments: Store<ExtractSegmentRecord>;
   quarantineRows: Store<QuarantineRowRecord>;
+  mergeCandidates: Store<import("@platform/contracts").MergeCandidate>;
+  objectMerges: Store<import("@platform/contracts").ObjectMerge>;
   notifications: Store<NotificationRecord>;
+  /** OntoFlow（PRD v2 / 013_pipeline.sql）：本体建模工作流。嫁接自 main 平行线。 */
+  ontologyWorkflows: Store<OntologyWorkflowRecord>;
+  /**
+   * 数据构建 Pipeline（031_build_pipelines.sql）：把「数据构建发动机」的写死步骤外化成数据。
+   * 一租户一 kind 至多一条（覆盖出厂默认）；不存记录即走 pipeline-defs.ts 的出厂默认。
+   */
+  buildPipelines: Store<import("@platform/contracts").BuildPipeline>;
   validationRuns: Store<ValidationRunRecord>;
   // S1.8
   sopVersions: Store<SopVersion>;
@@ -259,6 +293,15 @@ export interface Repos {
   // Feature entitlement
   featureConfigs: Store<FeatureConfigRecord>;
   featureAudit: Store<FeatureAuditRecord>;
+  /** OC3 配置迁移 Saga 状态机持久化（import_jobs，migration017）。 */
+  importJobs: Store<import("@platform/contracts").ImportJob>;
+  /** OC6 提示词配置化（prompt_templates，migration018）。 */
+  promptTemplates: Store<import("@platform/contracts").PromptTemplate>;
+  llmBudgets: Store<import("@platform/contracts").LlmBudget>;
+  factoryCalendars: Store<import("@platform/contracts").FactoryCalendar>;
+  writebackEchoes: Store<import("@platform/contracts").WritebackEcho>;
+  /** 数据接入分类的接入方式覆盖（系统对接/文件上传，按租户，migration022）。 */
+  dataCategorySettings: Store<import("@platform/contracts").DataCategorySetting>;
   // 管理平台增量 §3
   scenarioPackages: Store<ScenarioPackageRecord>;
   dynamicFeatures: Store<DynamicFeatureRecord>;
@@ -278,7 +321,127 @@ export interface Repos {
   // 回放编排器与虚拟操作团队（replay-orchestrator）
   opsSchedules: Store<OpsScheduleStoreRecord>;
   opsTickReports: Store<OpsTickReportRecord>;
+  // A7 Foundry-Grade Data Builder（agent 驱动 data pipeline 发动机）
+  dataBuilderAgents: Store<DataBuilderAgent>;
+  buildPlans: Store<BuildPlan>;
+  buildJobs: Store<BuildJob>;
+  // A18.2 LLM 临时求解器件（冻结代码 + 状态机；只有 GOVERNED 能写真值）
+  solverArtifacts: Store<SolverArtifact>;
+  // prototype-intake P2：schema 对账人确认候选（HITL 队列；类比 MergeCandidate）
+  reconcileCandidates: Store<SchemaReconcileCandidate & { id: string; tenantId: string }>;
+  // g8 故事驱动全栈倒推 · P1：构建期历史推演记录（与 GrowthLedgerEntry 经 runId 归一）
+  storyBuildRuns: Store<StoryBuildRun>;
+  // 工业级工作流运行时：故事建域的持久化步骤状态机（检查点/可重入/可重试/可观测）
+  buildWorkflowRuns: Store<BuildWorkflowRun>;
+  // Dogfooding P2：元本体访问策略（角色白名单,按租户;id=tenantId）
+  metaAccessPolicies: Store<MetaAccessPolicyRecord>;
+  // ── WO-Q0 · 业务流程层（migrations/029_process_definitions.sql · PRD-UPGRADE-decision-sandbox-v2 §3.2）──
+  // R9 三处同改：本接口 + memory.ts createMemoryRepos + pg.ts createPgRepos，缺一即漂。
+  // 走通用 Store（表结构就是 id/tenant_id/doc/created_at/updated_at，与 PgStore 的 doc-jsonb 假设逐字吻合），
+  // **不另立专用接口** —— 流程层没有「按 startTick 排序」这类语义约束（对比 SimRepo.listPerturbations），
+  // 排序需求由调用方按 `key` 自己排（key 形如 P01，字典序 ≡ 数字序，因两位定宽）。
+  processDomains: Store<ProcessDomain>;
+  processDefinitions: Store<ProcessDefinition>;
+  // ── WO-STEP-TEMPLATE-LAYER · 流程**步骤模板**层（migrations/035_process_step_templates.sql）──
+  // 与 processDefinitions 是**两层**不是两半：029 = 「有哪些流程」，035 = 「一条流程标准分几步」。
+  // 它补的是 `POST /a/v1/process-instances` 的 `tasks` 此前**没有任何数据源**这个洞
+  // （契约 process-step-template.ts 文件头有完整取证）。R9 三处同改的另两处见 memory.ts / pg.ts。
+  // 同走通用 Store（表结构 id/tenant_id/doc/created_at/updated_at）；排序由调用方按 `seq` 显式做（R6）。
+  processStepTemplates: Store<ProcessStepTemplate>;
+  // ── WO-ENTERPRISE-STATE · 企业状态快照（migrations/030_enterprise_states.sql · PRD-enterprise-decision-twin §3/§4.1）──
+  // R9 四处同改：migrations/030 + 本接口 + memory.ts createMemoryRepos + pg.ts createPgRepos，缺一即漂。
+  // 同样走通用 Store（表就是 id/tenant_id/doc/created_at/updated_at）。
+  // ⚠ 与其它 Store 的唯一差别在**调用方**而非接口：本表的 id 由契约 `enterpriseStateId(tenant, world, tick)`
+  //   确定性生成，所以 `put` 天然是「同逻辑时刻幂等覆盖」而不是「插一条新的」——这正是 R6
+  //   「同 (tenant, world, 逻辑时刻) 重复取快照字节级一致」可被验证的前提。
+  enterpriseStates: Store<EnterpriseState>;
+  // ── WO-ORG-WORLD · 组织世界（migrations/032_org_world.sql · 七世界之②）────────────────────
+  // R9 三处同改：本接口 + memory.ts createMemoryRepos + pg.ts createPgRepos，缺一即漂。
+  // 同走通用 Store（id/tenant_id/doc 五列结构与 PgStore 的 doc-jsonb 假设逐字吻合），不另立专用接口 ——
+  // 组织世界没有「按 tick 排序」这类语义约束；排序在 org/service.ts 里按 escalationRank 显式做（确定性）。
+  /** 人/角色/部门三合一（= 既有 spine.Principal 扩展，非平行身份类型）。 */
+  orgPrincipals: Store<OrgPrincipal>;
+  /** 某主体在某职权域上的权力（额度挂其下）。 */
+  orgAuthorities: Store<Authority>;
+  /** 审批额度（金额上限/利润率下限/客户重要度/跨基地/资本投入）。 */
+  orgApprovalLimits: Store<ApprovalLimit>;
+  /** 代理关系（被代理人不在岗时权力落到谁身上）。 */
+  orgDelegations: Store<Delegation>;
+  // ── WO-PROCESS-INSTANCE · 流程**运行时**层（migrations/033_process_instances.sql · PRD-enterprise-decision-twin §4.5）──
+  // 与 processDomains/processDefinitions 是**两层**不是两半：029 = 模板（这类流程通常怎么走），
+  // 033 = 现场（这一单此刻卡在哪）。同样走通用 Store（表结构 id/tenant_id/doc/created_at/updated_at）；
+  // R9 三处同改的另两处见 memory.ts / pg.ts。
+  processInstances: Store<ProcessInstance>;
+  processTasks: Store<ProcessTask>;
+  // ── WO-ADOPT-SCHEME-CARRIER · 方案采纳台账（migrations/037_scheme_adoptions.sql · G-ADOPT-SCHEME-NO-CARRIER 收口）──
+  // 公司级年度拍板的审批留痕（与 Decision 台账同族），**刻意不走 objects 通用对象仓储**：
+  // plan_generate 一个核心对象类型都不读，塞进本体图谱只会冒充「可被推演关联的实体」。
+  // 同走通用 Store（表结构 id/tenant_id/doc/created_at/updated_at），不另立专用接口 ——
+  // 「同 (tenant,year) 至多一条 ACTIVE」是**写时**不变量（执行器先置旧 SUPERSEDED），读侧无排序/挑选语义。
+  // R9 四处同改：migrations/037 + 本接口 + memory.ts createMemoryRepos + pg.ts createPgRepos，缺一即漂。
+  schemeAdoptions: Store<import("@platform/contracts").SchemeAdoption>;
+  // 推演沙盘（migration026·SPEC-sandbox-propagation-and-session §2.3；行业无关 jsonb）
+  sim: SimRepo;
   /** Liveness for /readyz. */
   ping(): Promise<void>;
   close(): Promise<void>;
+}
+
+/**
+ * 推演沙盘会话仓储（SPEC-sandbox-propagation-and-session §2.3）。
+ * 跨租户读一律 null（R2）；PropagationRule 只返 PUBLISHED。
+ */
+export interface SimRepo {
+  createSession(s: SimSession): Promise<void>;
+  putSession(s: SimSession): Promise<void>; // 状态/cur_tick 更新
+  getSession(tenantId: string, id: string): Promise<SimSession | null>;
+  /**
+   * 全量列会话（**含 `baseSnapshot`**）。
+   *
+   * ⚠ 这是 O(N × 世界规模) 的读：35 条生产量级会话实测 **285 MB**。
+   * 「列出我有哪些世界」一律走 `listSessionSummaries`；本方法只留给
+   * **真的要每个世界的内容**的调用方（今天零个生产调用方，故不删只标）。
+   */
+  listSessions(tenantId: string): Promise<SimSession[]>;
+  /**
+   * 列会话的**投影**：不含 `baseSnapshot`，改带规模摘要（WO-SIM-SESSIONS-PROJECTION）。
+   *
+   * R9 三处同改：本接口 + `memory.ts MemSimRepo` + `pg.ts PgSimRepo`，语义须无漂移。
+   * 两实现的**机制不同但结果必须逐字节相同**：memory 在进程内数键，pg 在**服务端**用
+   * `jsonb_object_keys` 数、`base_snapshot` 一个字节都不过网线 —— 这正是本方法存在的意义：
+   * 只把回包裁小、而库到进程那一段照旧搬 285MB，等于没修（那一段才是 9 秒里的大头）。
+   * 排序与 `listSessions` 一致（`created_at` 升序），换序会让列表 UI 无声跳行。
+   */
+  listSessionSummaries(tenantId: string): Promise<SimSessionListItem[]>;
+  putTickState(ts: SimTickState): Promise<void>;
+  getTickState(tenantId: string, sessionId: string, tick: number): Promise<SimTickState | null>;
+  listTickStates(tenantId: string, sessionId: string): Promise<SimTickState[]>;
+  deleteTicksAfter(tenantId: string, sessionId: string, tick: number): Promise<void>; // rollback
+  createCheckpoint(cp: SimCheckpoint): Promise<void>;
+  getCheckpoint(tenantId: string, id: string): Promise<SimCheckpoint | null>;
+  listCheckpoints(tenantId: string, sessionId: string): Promise<SimCheckpoint[]>;
+  putPropagationRule(r: PropagationRule): Promise<void>;
+  listPropagationRules(tenantId: string, publishedOnly?: boolean): Promise<PropagationRule[]>;
+  // ── 扰动一等公民（WO-P0 · migrations/028_perturbations.sql · PRD-UPGRADE-decision-sandbox-v2 §3.1）──
+  // R9 三处同改：本接口 + memory.ts MemSimRepo + pg.ts PgSimRepo，语义须无漂移。
+  /** 建一条扰动（幂等 upsert：同 id 覆盖，便于 pg/memory 语义一致）。 */
+  createPerturbation(p: Perturbation): Promise<void>;
+  /** 读一条扰动（跨租户一律 null·R2）。 */
+  getPerturbation(tenantId: string, id: string): Promise<Perturbation | null>;
+  /**
+   * 列出某世界受过的全部扰动。**排序必须确定**（R6）：`startTick` 升序 → **建单先后**。
+   *
+   * ⚠ 两条来历，都不是洁癖：
+   * ① **不许拿 `id` 当二级键**（本单实测栽过）：`newId` 是 `randomBytes`（`ids.ts:7`），
+   *    同 `startTick` 的两条扰动在两次重跑里顺序会翻 ⇒ PRD §7.2「同扰动同种子重跑字节级一致」当场红。
+   *    「id 是稳定的」这句话度量的是**同一次运行内**，不度量**跨运行**。
+   * ② **二级键必须是建单先后，而不是内容**：`delta`/`scale` 两种幅度模式**不可交换**
+   *    （`(10+2)×1.5 = 18` ≠ `10×1.5+2 = 17`）。WO-P2 的 `propagateTick` 要按本清单顺序施加，
+   *    顺序换了推演结果就换了 —— 所以这里排的不是"好看"，是**语义**。
+   *
+   * R9 两实现的机制不同但**语义同一**：memory 用插入序号，pg 用 `created_at`（微秒精度）。
+   */
+  listPerturbations(tenantId: string, sessionId: string): Promise<Perturbation[]>;
+  /** 删一条扰动（不存在/跨租户 = false，由路由翻成 404）。 */
+  deletePerturbation(tenantId: string, sessionId: string, id: string): Promise<boolean>;
 }

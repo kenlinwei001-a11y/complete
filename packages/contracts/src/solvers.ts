@@ -1,4 +1,10 @@
 import { z } from "zod";
+import { DispositionOptionsSchema, DispositionStepSchema } from "./disposition.js";
+// WO-SANDBOX-D4 · OTD 批次准时率聚合层（判定口径 CUSTOMER_REQUEST 的论证在 solver-aggregates.ts）。
+import { OtdBatchRateSchema } from "./solver-aggregates.js";
+// WO-DECISION-INFO：影响面 / 不作为后果 —— **必须在契约里声明**，否则 zod parse 会把服务端加的键 strip 掉
+// （既有教训见 RiskCardSchema.adoptedMitigation 注释：加性字段不进契约 = 等于没加）。
+import { DoNothingSchema, ExposureSchema } from "./decision-info.js";
 
 // ---------------------------------------------------------------------------
 // 求解器增量 PRD §S1：真实算法的 IO 契约（前端逐基地下钻表等直接消费）
@@ -6,6 +12,33 @@ import { z } from "zod";
 // ---------------------------------------------------------------------------
 
 /** S1.2 capacity_forecast 输出 */
+/**
+ * WO-UNIT-MEANING · 张力（tightness）量纲**单一真值**（治 G-UNIT-NORMALIZE）。
+ *
+ * 张力是 **0–100 的紧张度指数**（越高越紧），不是百分比、不是被测量本身的值。
+ * 病灶：卡面 chip 渲染成「设备OEE 76」时，76 紧贴 "OEE" 会被直接读成 **OEE=76%** ——
+ * 而真实含义是「设备OEE 这个因素的张力为 76/100」，两者含义天差地别（审计中误导性最强的一处）。
+ * 故一律经 `formatTightness` 渲染成「张力76/100」，量程随本常量走（改这里即改全部消费点·前端不内联）。
+ *
+ * 消费方：RiskBoardView（卡面 chip / 峰值 / 详情逐因素 / 逐日点 tooltip）· CapacityDerivationDag。
+ * 出数方：`bottleneck_matrix.rows[].tightness` · `risk_timeline.cards[].peak/currentTightness` ·
+ *        `capacity_forecast.byProcessModel[].tightness`（口径同一·见本文件各 schema 注释「0–100」）。
+ */
+export const TIGHTNESS_METRIC = {
+  /** 显示名（区别于被测量本身，如"设备OEE"）。 */
+  label: "张力",
+  scaleMin: 0,
+  scaleMax: 100,
+  /** 方向说明（悬浮/图例用）。 */
+  hint: "越高越紧",
+} as const;
+
+/** 张力值 → 带量纲显示（「张力76/100」）。null/未知 → 诚实「—」，不臆造 0。 */
+export function formatTightness(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return `${TIGHTNESS_METRIC.label}${Math.round(v)}/${TIGHTNESS_METRIC.scaleMax}`;
+}
+
 export const PerBaseRowSchema = z.object({
   base: z.string(),
   weeklyCap: z.number(),
@@ -13,18 +46,96 @@ export const PerBaseRowSchema = z.object({
   maintWeek: z.number().int().nullable(),
   bottleneck: z.string(),
   tightness: z.number(),
+  // 轨M 增量1（假2）：该基地主瓶颈紧张度是否来自真数据（liveTightness）→ 前端红/橙显"实测/估算"。
+  live: z.boolean().optional(),
+  // WO-DATAMODE-UNIFY-PROVENANCE（provenance 维·加性·与 measurement 维 live 正交）：本行底层基地对象（含其
+  // 设备/产线/工序）是否为**合成种子物化**（origin SYNTHETIC ∪ MATERIALIZED-from-synthetic）。measurement 维
+  // （live=读到真字段值即 true）不变；provenance 维额外披露"底料是否合成"→ 前端对合成行走诚实灰、绝不冒充
+  // "实测"（KILL-MOCK-RED·铁律 0.4）。缺省（无合成源/测试直构 ctx）视为 false（向后兼容 R6）。
+  provenanceSynthetic: z.boolean().optional(),
   cumTotal: z.number(),
 });
 export type PerBaseRow = z.infer<typeof PerBaseRowSchema>;
 
+/**
+ * WO-CAPLIVE-1-ATOM · `capacity_forecast.byProcessModel` per-工序×型号-物料 颗粒行（跨半契约·optional·向后兼容·**字段名冻结**）。
+ * 治 G-CAPACITY-FACTOR-SHALLOW「派生用代表工序均值未到工序×型号-物料」：`granularity:'process-model'` 时输出，
+ * 每格 = 该基地×该工序×该型号 的真派生（processCap × certFactor × 良率基线再基 × 物料齐套∩），R6 确定·R13 每值 provenance。
+ * 现有 per-base（`perBaseRows`）/ per-model（`byModel`）字段**零改**——本表为纯加字段（前端 WO-CAPLIVE-2 消费·冻结不改）。
+ */
+export const ByProcessModelRowSchema = z.object({
+  /** 基地 id（= perBaseRows.baseId 同源）。 */
+  baseId: z.string(),
+  /** 基地名。 */
+  base: z.string(),
+  /** 工序 id（Process.processId·per-工序 落点）。 */
+  process: z.string(),
+  /** 工序名（Process.name）。 */
+  processName: z.string(),
+  /** 型号 id（= 请求 modelId·per-型号 落点）。 */
+  model: z.string(),
+  /** 关键物料名（层4 ∩ 物料齐套约束·model-material 颗粒·无物料数据时省）。 */
+  material: z.string().optional(),
+  /**
+   * 该工序×型号日产能贡献 P50。
+   * @unit 电芯/日
+   * WO-P50-RENAME：字段名自带量纲（`cellsPerDay`）——本仓曾有 4 个不同量纲共用 `p50` 一个名字，
+   * 用户在杠杆重算明细表里分不出「这行是需求的万套还是产能的电芯」。名字即口径，禁止再退回 `p50`。
+   * 派生：processCap × certFactor × 良率基线再基 × 物料齐套系数。
+   */
+  cellsPerDayP50: z.number(),
+  /** `cellsPerDayP50` / `cellsPerDayGap` 的量纲**单一真值**（后端单源下发·前端只格式化不内联·治 G-UNIT-NORMALIZE）。 */
+  unit: z.literal("电芯/日"),
+  /** 逐格主瓶颈因子（BN 口径·与 perBaseRows.bottleneck 同词表：良率波动/设备OEE/物料齐套）。 */
+  bottleneck: z.string(),
+  /** 逐格主瓶颈圈号（① –⑳·映射 CapacityFactorBinding.mark·前端徽标锚·无则省）。 */
+  bottleneckMark: z.string().optional(),
+  /** 该格紧张度（0–100·= 主瓶颈因子的逐工序张力）。 */
+  tightness: z.number(),
+  /**
+   * 缺口 = cellsPerDayP50 × 主瓶颈紧张度/100（该格因主瓶颈而处于风险的产能）。
+   * @unit 电芯/日
+   */
+  cellsPerDayGap: z.number(),
+  /** R13 每值溯源：来源对象/属性/派生公式。 */
+  provenance: z.object({
+    objectType: z.string(),
+    objectId: z.string(),
+    prop: z.string(),
+    formula: z.string(),
+  }),
+});
+export type ByProcessModelRow = z.infer<typeof ByProcessModelRowSchema>;
+
 export const CapacityForecastOutputSchema = z
   .object({
-    p50: z.number(),
-    p90: z.number(),
+    /**
+     * 窗口内产能中位口径 P50。
+     * @unit 万套/窗口
+     * WO-P50-RENAME：与 `DemandSegment.demandWanP50`（万套/**年**·需求）、
+     * `ByProcessModelRow.cellsPerDayP50`（电芯/日·单工序）**不是同一个量**，故不共用名字。
+     */
+    capWanP50: z.number(),
+    /**
+     * 窗口内产能承诺口径 P90 = capWanP50 × healthFactor（保守下界）。
+     * @unit 万套/窗口
+     */
+    capWanP90: z.number(),
+    /** `capWanP50`/`capWanP90`/`baselineDemand`/`effectiveDemand` 的量纲单一真值（后端单源下发）。 */
+    unit: z.literal("万套/窗口").optional(),
+    // WO-CAPLIVE-1-ATOM（additive·per-工序×型号-物料 深化·治 G-CAPACITY-FACTOR-SHALLOW）：granularity:'process-model' 时输出。
+    byProcessModel: z.array(ByProcessModelRowSchema).optional(),
+    // 轨M 增量1（假2 真推演红线）：紧张度/主瓶颈数据模式（LIVE=真 OEE/利用率/良率；MOCK=全回落 → 前端显"估算"）。
+    // PRD-CAP-DEMANDDELTA：EMPTY=已认证但产能数据全零，诚实降级。
+    dataMode: z.enum(["LIVE", "MOCK", "EMPTY"]).optional(),
     healthFactor: z.number(), // 默认 0.93；数据源延迟>2h 降 0.90（C09）
     gap: z.number(),
     ok: z.boolean(),
     perBaseRows: z.array(PerBaseRowSchema),
+    // PRD-IND-model 缺口①：收敛可产网络（不可产基地 + N/总数 注解）。
+    nonProducible: z.array(z.object({ base: z.string(), reason: z.string() })).optional(),
+    totalBases: z.number().optional(),
+    producibleCount: z.number().optional(),
     batchRows: z
       .array(
         z.object({
@@ -33,7 +144,8 @@ export const CapacityForecastOutputSchema = z
           address: z.string().optional(), // 交付地址（净窗口已扣该地址物流时长）
           wkEff: z.number().int(),
           cumDemand: z.number(),
-          cumP90: z.number(),
+          /** 截至该周的累计产能 P90（承诺口径）。@unit 万套/窗口 */
+          cumCapWanP90: z.number(),
           ok: z.boolean(),
         }),
       )
@@ -41,9 +153,53 @@ export const CapacityForecastOutputSchema = z
     mainBn: z.string(),
     pendingCertList: z.array(z.string()),
     degradeNote: z.string().optional(), // C09 降级说明
+    // PRD-CAP-DEMANDDELTA：demandDelta 驱动 effectiveDemand 后的回显与口径字段。
+    baselineDemand: z.number().optional(),
+    effectiveDemand: z.number().optional(),
+    demandDelta: z.number().optional(),
+    feasibilityNote: z.string().optional(),
+    provenance: z
+      .record(
+        z.string(),
+        z.object({
+          formula: z.string(),
+          valueLabel: z.string(),
+        }),
+      )
+      .optional(),
+    // 规则即引用 P2：求解器透出真规则评估 + 规则集版本（关联规则显 PASS/WARN/BLOCK，改规则即改此处）。
+    evaluatedRules: z
+      .array(z.object({ key: z.string(), name: z.string(), severity: z.enum(["BLOCK", "WARN", "INFO"]), outcome: z.enum(["PASS", "WARN", "BLOCK", "NOT_APPLICABLE"]), expression: z.string(), evidence: z.string().optional() }))
+      .optional(),
+    ruleSetVersion: z.string().optional(),
   })
   .catchall(z.unknown());
 export type CapacityForecastOutput = z.infer<typeof CapacityForecastOutputSchema>;
+
+/**
+ * WO-SANDBOX-D3 · 基地硬容量约束读数（加性·随行下发）。
+ * 「有多少个化成柜位 / 老化库位」是**硬约束**，与 OEE/良率那种连续张力不同：它要么夹定要么不夹定。
+ * 本字段把该判定显式下发 —— `binding` 即「该基地当前被硬容量夹住」，`shortfallPerDay` 即夹住多少。
+ * 无数据一律 `status:"EMPTY"` + `reason`，**不给默认柜位数**（基于编造约束的瓶颈判定比算不出来更糟）。
+ */
+export const BottleneckHardCapacitySchema = z.union([
+  z.object({
+    status: z.literal("OK"),
+    /** 该基地最紧的硬容量工序（确定性 tiebreak：张力降序 → processId 升序）。 */
+    processId: z.string(),
+    processName: z.string(),
+    unitKind: z.string(), // 化成柜位 / 老化库位
+    units: z.number(), // 柜位数 —— 数值单源 = Process.channels / Process.agingSlots
+    unitDailyThroughput: z.number(),
+    capacityPerDay: z.number(), // 单元数 × 单元日通过量 × 良率
+    requiredPerDay: z.number(), // Process.requiredThroughput（上游串行段要求承接量）
+    shortfallPerDay: z.number(), // max(0, required − capacity)
+    binding: z.boolean(), // capacity < required ⇒ 硬容量夹定
+    tightness: z.number(), // 0–100，= 缺口比 × hardCapShortfallK
+  }),
+  z.object({ status: z.literal("EMPTY"), reason: z.string() }),
+]);
+export type BottleneckHardCapacity = z.infer<typeof BottleneckHardCapacitySchema>;
 
 /** S1.3 bottleneck_matrix 输出 */
 export const BottleneckMatrixOutputSchema = z.object({
@@ -54,6 +210,11 @@ export const BottleneckMatrixOutputSchema = z.object({
       base: z.string(),
       tightness: z.record(z.string(), z.number()), // 因素 → 0–100
       primary: z.string(),
+      // #13 灰数据接缝修·provenance 维（加性·守 KILL-MOCK-RED）：底层对象合成物化 → 前端诚实标"合成·未接实测"
+      // （不因 dataMode=LIVE 就把 demo 合成谎报"实测"）。缺省向后兼容。
+      provenanceSynthetic: z.boolean().optional(),
+      // WO-SANDBOX-D3（加性·缺省向后兼容）：柜位类硬容量约束读数（OK 带判定 / EMPTY 带原因）。
+      hardCapacity: BottleneckHardCapacitySchema.optional(),
     }),
   ),
 });
@@ -65,25 +226,192 @@ export const RiskEventSchema = z.object({
   day: z.number().int(),
   amp: z.number(),
   factors: z.array(z.string()),
+  // PRD-IND-risk §4.6 逐日 tip 可解释：短标签 / 关联对象 / 量化文案 / 来源系统（量化经 hashN 确定性，R6/可空向后兼容）。
+  tag: z.string().optional(),
+  obj: z.string().optional(),
+  desc: z.string().optional(),
+  src: z.string().optional(),
 });
+export const AffectedOrderSchema = z.object({
+  so: z.string(),
+  cust: z.string(),
+  model: z.string(),
+  qty: z.number(),
+  due: z.string(),
+  dueDay: z.number().int(),
+  delay: z.number().int(),
+  impact: z.number(),
+});
+export type AffectedOrder = z.infer<typeof AffectedOrderSchema>;
+
 export const RiskCardSchema = z.object({
   base: z.string(),
+  baseId: z.string(),
   factor: z.string(),
+  // 轨M 增量1（真推演红线）：LIVE=该因素有实测当前张力（真 OEE/利用率/良率）；MOCK=无真数据源 → 前端必显"估算"。
+  dataMode: z.enum(["LIVE", "MOCK"]).optional(),
+  // 实测当前张力（liveTightness）：value=当前值，live=是否真数据；前端把红/黄推演峰值锚定到此实测真值（有真数据→真算可溯）。
+  currentTightness: z.object({ value: z.number(), live: z.boolean() }).optional(),
+  // WO-DATAMODE-UNIFY-PROVENANCE（provenance 维·加性·与 measurement 维 dataMode/live 正交）：本卡底层对象
+  // （Base + 该基地设备/产线/工序 + 需求细分）是否合成种子物化。measurement 维不变（保 dataMode/currentTightness.live
+  // 语义）；provenance 维额外披露"底料是否合成"→ 前端把合成卡走诚实灰、不显"实测当前 N"（KILL-MOCK-RED·铁律 0.4）。
+  // 缺省（无合成源/测试直构 ctx）视为 false（向后兼容 R6）。
+  provenanceSynthetic: z.boolean().optional(),
   peak: z.number(),
   crossDay: z.number().int().nullable(), // 越线日（首个 ≥85）
-  series: z.array(z.number()), // 逐日 tension
+  series: z.array(z.number()), // 逐日 tension（瓶颈因素）
+  // 治 #1/#3 时序推演无梯度：逐因素真逐日序列（factor → series）——每因素走与 series（瓶颈）**同一** tensionSeries 机制、
+  // 由该因素实测当前张力（liveTightness）起锚 + 确定性前瞻（riskTarget 爬坡 + 真事件脉冲），供详情面板「其余因素」渲染真
+  // 蓝→黄→红逐日梯度（替持平示意）。factorSeries[card.factor] === series（恒等）。缺省（旧后端）→ 前端回落持平当前值（向后兼容 R6）。
+  factorSeries: z.record(z.string(), z.array(z.number())).optional(),
   events: z.array(RiskEventSchema),
-  affectedOrders: z.array(z.record(z.string(), z.unknown())).optional(),
+  affectedOrders: z.array(AffectedOrderSchema).optional(),
+  /**
+   * WO-SANDBOX-D4 ①（加性·optional·向后兼容）：本卡这批单的 OTD 准时率（判定口径 CUSTOMER_REQUEST）。
+   * 与 `affectedOrders` **同一批单**（分母 = 本卡窗口内订单数），窗口内无单 → dataMode=EMPTY 且 rate=null。
+   * ⚠ 加性字段必须同时在契约里声明，否则 zod 默认 strip 未声明键 = 服务端写了、契约吞了、前端永远拿不到。
+   */
+  otd: OtdBatchRateSchema.optional(),
   mitigated: z
     .object({ series: z.array(z.number()), appliedPlan: z.string(), effectiveFrom: z.number() })
     .optional(),
+  // 以基地为主体时，汇总该基地所有越线 factor 的简要信息（产能推演每基地一张卡片）
+  allFactors: z.array(z.object({ factor: z.string(), peak: z.number(), crossDay: z.number().int().nullable() })).optional(),
+  /**
+   * WO-ADOPT-MITIGATION（加性·optional·向后兼容）：该 (base,factor) 上**已被真采纳**的处置方案回执。
+   *
+   * ⚠️ 补这一条的由来（值得记）：服务端已经在 card 上带了这个键，但契约 schema **没声明它** ——
+   * zod 默认 strip 未声明键，而前端 `RiskBoardView` 必经 `RiskTimelineOutputSchema.parse`
+   * ⇒ **服务端写了、契约吞了、前端永远拿不到**，R13 加性披露形同虚设。
+   * 这正是本单要治的「两半各自都对、接缝没接」在**上一层**原样复发，由对抗性证伪测试
+   * （`zz-adversary-adopt.test.ts` E）当场抓出。**加性字段必须同时在契约里声明，否则等于没加。**
+   */
+  adoptedMitigation: z
+    .object({
+      planKey: z.string(),
+      /** 消解幅度（张力点数·来自 params.risk.mitigations 的量化 eff）。 */
+      eff: z.number(),
+      /** 起效日（第 tn 天起曲线开始降）。 */
+      tn: z.number().int(),
+    })
+    .optional(),
+  /**
+   * WO-DECISION-INFO ①（加性·optional·向后兼容）：本卡风险的**影响面** —— 落在哪些订单/客户/多少钱。
+   * `status:"EMPTY"` 是一等结论（本窗无订单敞口 + 窗外最近一张在哪），不是留空让前端猜。
+   * `exposure.rank` 是**影响面排序键**（零敞口者一律降级到有敞口者之后）。
+   */
+  exposure: ExposureSchema.optional(),
+  /**
+   * WO-DECISION-INFO ②（加性·optional·向后兼容）：**不处置会怎样** —— 缺口自然消化天数 / 逐单延误 /
+   * 违约金（本仓恒 EMPTY·C01–C33 无承载·见 DoNothingSchema.penalty 注释）/ 受影响客户名单。
+   */
+  doNothing: DoNothingSchema.optional(),
 });
+/** PRD-IND-risk §2.4：处置行动计划表行（buildRiskPlanRows 口径，按越线日前置 7 天排启动）。 */
+export const RiskPlanRowSchema = z.object({
+  act: z.string(), // 行动项（真派生首步动作（基地）·无缺口时回落方案库名）
+  det: z.string(), // 详情（WO-LIVE-DISPOSITION：真派生摘要「触发缺口 N套 · K 步收窄 M套 · 残留 R套」）
+  owner: z.string(), // 责任人（基地负责人 · X经理 / 计划中心→S&OP）
+  start: z.string(), // 启动 T+{cross−7}·{date}
+  done: z.string(), // 完成 T+{cross}·{date}
+  eff: z.string(), // 预期（真派生收窄量/残留·无缺口时回落方案库 eff/tn）
+  rule: z.string(), // 关联规则 C05/C21
+  // ---- WO-LIVE-DISPOSITION（加性·optional·向后兼容）：每行可点开的「如何推演出来的」 ----
+  /** 该行所属基地 id（前端钻取/横比锚点）。 */
+  baseId: z.string().optional(),
+  /** 真缺口（套·deriveDisposition 入参 shortfall）。 */
+  shortfall: z.number().optional(),
+  /** 三杠杆走完后的诚实残留（守恒：Σ steps.closesGap + residual == shortfall）。 */
+  residual: z.number().optional(),
+  /** 逐步推导过程（动作 + rationale + 触发值→收窄量 + provenance·R13 悬浮即出处）。 */
+  steps: z.array(DispositionStepSchema).optional(),
+  /** 方案库参照名（保留 mitigation library 链路·采纳→Action 用）。 */
+  plan: z.string().optional(),
+  /**
+   * 杠杆推演态覆写指纹（有 apply overlay 时出）：`{ count, capRatio }`——
+   * count=本次推演吃进的杠杆项数；capRatio=覆写后/基线 产能链比（=1 即杠杆未落在产能链上·诚实）。
+   */
+  overlay: z.object({ count: z.number().int(), capRatio: z.number() }).optional(),
+  /**
+   * WO-DECISION-INFO ③（加性·optional·向后兼容）：**可比较的多方案 + 各自代价**。
+   * `steps` 仍是现行的单条贪心路径（口径不动·= options[A] 同解，可对拍）；`options` 是 A/B/C 三个
+   * 可并排比较的方案，每个带 收窄量 / 成本 / 副作用（挤占了**哪几张单**、各延后多少天）/ 前置期（真值派生）。
+   * 只挂在每基地的**主行**（备份行不重复挂同一份大对象）。
+   */
+  options: DispositionOptionsSchema.optional(),
+});
+export type RiskPlanRow = z.infer<typeof RiskPlanRowSchema>;
+
 export const RiskTimelineOutputSchema = z.object({
   horizon: z.number().int(),
   threshold: z.number(), // 默认 85
+  // 轨M 增量1：顶层 dataMode（LIVE/MOCK/PARTIAL）——前端据此提示"部分估算"，红/黄状态不再裸渲染当真值。
+  dataMode: z.enum(["LIVE", "MOCK", "PARTIAL"]).optional(),
   cards: z.array(RiskCardSchema).max(8),
+  /**
+   * WO-SANDBOX-D4 ①（加性·optional）：全平台这批单的 OTD 准时率 —— 跨卡按 `so` **去重**（一单可挂多产地
+   * `Order.bases[]`，各卡相加会重复计数）取最差余量那一次；`total` = 去重后订单数（守恒，不是各卡之和）。
+   */
+  otdBatch: OtdBatchRateSchema.optional(),
+  // PRD-IND-risk §2.4：处置行动计划表（每基地主因素首选方案 + 峰值≥90 备份 + 14 天内反提 S&OP）。
+  planRows: z.array(RiskPlanRowSchema).optional(),
+  /**
+   * WO-DECISION-INFO ①（加性·optional）：**按影响面排序**的 baseId 序列（零敞口基地一律沉底）。
+   * `cards[]` 的数组序仍是既有的「越线日↑ → 实测当前张力↓」契约（不动·由 preferRiskCard 咬死）；
+   * 看板要"别让零敞口的卡占榜首"，按本序渲即可。它与 `cards[].exposure.rank` 是**同一次计算的两个投影**
+   * （不是第二套排序算法 → 不会漂移）。
+   */
+  exposureOrder: z.array(z.string()).optional(),
+  /**
+   * WO-SILENT-WRONG-ANSWER-3（加性·optional）：**这一次算的是谁** —— `BASE`=只这一个基地 / `ALL`=全网。
+   *
+   * 为什么必须同时在契约里声明（本文件 :260 那条戒律的原样复用）：zod 默认 strip 未声明键，
+   * 而前端 `RiskBoardView` 必经 `RiskTimelineOutputSchema.parse` ⇒ 服务端写了、契约吞了、前端永远拿不到，
+   * 诚实位形同虚设。**加性字段必须同时在契约里声明，否则等于没加。**
+   *
+   * 病历：修前 `risk_timeline` 输出**没有任何一处说明作用域**，于是「问枣庄返回 8 张别的基地的卡」
+   * 在屏上完全看不出来（判为静默错答而非报错的直接原因）。与 `capacity_forecast` 的 scope/scopeNote 同款口径。
+   */
+  scope: z.enum(["BASE", "ALL"]).optional(),
+  scopeBaseId: z.string().optional(),
+  scopeBaseName: z.string().optional(),
+  scopeNote: z.string().optional(),
 });
 export type RiskTimelineOutput = z.infer<typeof RiskTimelineOutputSchema>;
+
+/**
+ * audit_timeline 输出（PRD-plan-audit-1to1 §2②）——每审计项按 kind 出 90 天逐日 series。
+ * 诚实边界（轨M 增量2·真推演 not 假推演·KILL-MOCK-RED）：无真源的 kind 的 series/peak/crossDay 仍是按 kind 名
+ * `hashString` 确定性派生的**形状投影** → `dataMode` 标 MOCK + `provenanceSynthetic:true` + `note` 披露，
+ * 绝不裸渲染当实测真值（前端据此显"估算/合成"）。
+ * WO-AUDIT-TIMELINE-LIVESOURCE：有真 A8 日序列源的 kind（见 `AUDIT_KIND_LIVE_SOURCES` 单一出处·实测匹配才收编）
+ * 改由真 tsPoints 逐日派生 → `dataMode:"LIVE"` + `source` 披露真源（改 kind 名不再改变 series——series 只随真源数据变）。
+ */
+export const AuditTimelineOutputSchema = z
+  .object({
+    kind: z.string(),
+    series: z.array(z.number()),
+    stages: z.array(z.object({ d: z.number().int(), label: z.string() })),
+    peak: z.number(),
+    crossDay: z.number().int().nullable(),
+    threshold: z.number(),
+    // 轨M 增量2（去哈希诚实标）：无真时序源 → 恒 MOCK（红/黄不裸渲染当真值）。
+    dataMode: z.enum(["LIVE", "MOCK"]),
+    // provenance 维（与 measurement 维正交）：series 为 hash 形状投影（非实测）→ true。
+    provenanceSynthetic: z.boolean(),
+    // 人读披露：为何是估算而非实测。
+    note: z.string().optional(),
+    /**
+     * WO-AUDIT-TIMELINE-LIVESOURCE（加性·optional·R13 可溯源）：`dataMode:"LIVE"` 时的真源披露——
+     * series 由哪条 A8 日序列（seriesKey）的哪个量纲字段（measure）派生、覆盖多少天（days）。
+     * MOCK 路径（无真源 kind）不出现本字段，保持既有披露形态逐字节不变。
+     */
+    source: z.object({ seriesKey: z.string(), measure: z.string(), days: z.number().int() }).optional(),
+    events: z.array(RiskEventSchema),
+    affectedOrders: z.array(AffectedOrderSchema).optional(),
+  })
+  .catchall(z.unknown());
+export type AuditTimelineOutput = z.infer<typeof AuditTimelineOutputSchema>;
 
 /** S1.6 plan_audit */
 export const PlanAuditInputSchema = z.object({
@@ -100,11 +428,18 @@ export const PlanAuditInputSchema = z.object({
 });
 export type PlanAuditInput = z.infer<typeof PlanAuditInputSchema>;
 
+// PRD-plan-audit-1to1 §2②：9 种审计口径，每审计项按其 kind 展开各自逐日 series（非共用一条曲线）。
+export const AUDIT_KINDS = ["产销", "毛利", "齐套", "现金", "份额", "爬坡", "外协", "capex23", "struct"] as const;
+export const AuditKindSchema = z.enum(AUDIT_KINDS);
+export type AuditKind = z.infer<typeof AuditKindSchema>;
+
 export const AuditItemSchema = z.object({
   id: z.string(), // X01… / R01…
   title: z.string(),
   ruleRef: z.string().optional(),
   why: z.string(), // 含代入数值的解释文本
+  // PRD §2②：审计口径（前端按 kind 路由 audit_timeline 出各自逐日 series）；旧记录可空（向后兼容）。
+  kind: AuditKindSchema.optional(),
   fix: z
     .object({ label: z.string(), patch: z.record(z.string(), z.number()) })
     .optional(),
@@ -114,7 +449,9 @@ export const PlanAuditOutputSchema = z.object({
   M: z.array(AuditItemSchema),
   S: z.array(AuditItemSchema),
   score: z.number(), // clamp(100 − 25|H| − 8|M|, 0, 100)
-  verdict: z.enum(["通过", "有条件通过", "不通过"]),
+  // PRD-IND-audit §3.1：verdict 4 态状态机（按 H/M 计数，非分数阈值）。
+  // 「可定稿·关注风险」为规范枚举值，前端展示时插入 M 计数「可定稿 · 关注 N 项风险」。
+  verdict: z.enum(["站不住", "可定稿但有重要风险", "可定稿·关注风险", "全部通过·可直接定稿"]),
 });
 export type PlanAuditOutput = z.infer<typeof PlanAuditOutputSchema>;
 
@@ -143,6 +480,10 @@ export const GenSchemeSchema = z.object({
   gain: z.array(z.string()),
   give: z.array(z.string()),
   problems: z.array(z.record(z.string(), z.unknown())),
+  /** PRD-IND-plan-generate §4.6：外部信号敏感性（5×3，[signal,impact,color]）——接 ExternalSignal/种子。 */
+  extSensitivity: z.array(z.object({ signal: z.string(), impact: z.string(), color: z.string() })).optional(),
+  /** §4.6：执行关键点（GEN_FOCUS keys 一句话）。 */
+  focusKeys: z.string().optional(),
   /** 增量 §7.11：目标达成清单（六项 meet* 布尔 → ✓/✗ 行）—— 服务端代入目标面板值后输出 */
   meets: z
     .object({
@@ -181,3 +522,304 @@ export type PlanVersionCurrent = z.infer<typeof PlanVersionCurrentSchema>;
 /** 场景包 solverParams（全部常数配置化；battery 默认值见 PRD 增量 §S1） */
 export const SolverParamsSchema = z.record(z.string(), z.unknown());
 export type SolverParams = z.infer<typeof SolverParamsSchema>;
+
+// A13 通用图求解器地板语义确定化：字段角色解析结果（确定性 + 候选 + 置信度，去 LLM）。
+export const RoleCandidateSchema = z.object({
+  value: z.string(),
+  score: z.number(),
+  signals: z.array(z.string()),
+});
+export type RoleCandidate = z.infer<typeof RoleCandidateSchema>;
+
+export const FieldRoleResolutionSchema = z.object({
+  solverKey: z.string(),
+  roles: z.record(z.string(), z.string()),
+  candidates: z.record(z.string(), z.array(RoleCandidateSchema)),
+  confidence: z.number(),
+  ambiguous: z.boolean(),
+});
+export type FieldRoleResolution = z.infer<typeof FieldRoleResolutionSchema>;
+
+// A1 求解器暴露为 MCP 工具：内置 server 名 + 工具命名（mcp__solvers__{key}），AgentCore/前端共用（R1）。
+export const SOLVERS_MCP_SERVER = "solvers";
+export const solverMcpToolName = (key: string): string => `mcp__${SOLVERS_MCP_SERVER}__${key}`;
+/** 反解：mcp__solvers__{key} → key；非求解器工具名 → undefined。 */
+export function parseSolverMcpToolName(name: string): string | undefined {
+  const prefix = `mcp__${SOLVERS_MCP_SERVER}__`;
+  return name.startsWith(prefix) ? name.slice(prefix.length) : undefined;
+}
+
+// ---- A18.2 · LLM 临时求解器件（SolverArtifact）+ 状态机（§3.0）---------------------
+// LLM 生成的纯函数代码冻结件：verbatim+hash+版本，不可变（改=新版本，R6）。只有 GOVERNED 能写真值。
+export const SOLVER_ORIGINS = ["BATTERY", "GENERIC", "HUMAN", "LLM"] as const;
+export const SolverOriginSchema = z.enum(SOLVER_ORIGINS);
+export type SolverOrigin = z.infer<typeof SolverOriginSchema>;
+
+/** §3.0 生命周期状态机（每态一标签，可观测）。 */
+export const SOLVER_STATUSES = ["GENERATED", "UNREGISTERED", "PROVISIONAL", "ADVISORY_PASSED", "GOVERNED", "RETIRED"] as const;
+export const SolverStatusSchema = z.enum(SOLVER_STATUSES);
+export type SolverStatus = z.infer<typeof SolverStatusSchema>;
+
+export const SOLVER_TRUST_LEVELS = ["UNVERIFIED", "ADVISORY_PASSED", "VERIFIED", "CALIBRATED"] as const;
+export const SolverTrustLevelSchema = z.enum(SOLVER_TRUST_LEVELS);
+export type SolverTrustLevel = z.infer<typeof SolverTrustLevelSchema>;
+
+export const SolverArtifactSchema = z.object({
+  id: z.string(), // sart_
+  tenantId: z.string(),
+  /** 求解器 key（注册后 invoke 用）。 */
+  key: z.string(),
+  /** LLM 生成的纯函数源码 `(ctx,args)=>output`（冻结 verbatim，沙箱执行）。 */
+  computeSource: z.string(),
+  /** 顶层输出 key（进 SOLVER_OUTPUT_SHAPES，跑通即正向闭包）。 */
+  outputShape: z.array(z.string()).default([]),
+  /** 入参提示（CLI/Agent 补参用）。 */
+  argHints: z.record(z.string(), z.string()).default({}),
+  /** LLM 给的设计理由（人工审核可看）。 */
+  rationale: z.string().default(""),
+  origin: SolverOriginSchema.default("LLM"),
+  status: SolverStatusSchema,
+  trustLevel: SolverTrustLevelSchema,
+  /** 冻结哈希（同源同 hash，R6 可校验未篡改）。 */
+  hash: z.string(),
+  version: z.number().int().default(1),
+  /** 创建人（A18.3 创建人作用域写真值门控用：actor===createdBy 才放行写真值）。 */
+  createdBy: z.string(),
+  createdAt: z.string(),
+  /** 注册失败原因（status=UNREGISTERED 时）。 */
+  rejectReason: z.string().optional(),
+});
+export type SolverArtifact = z.infer<typeof SolverArtifactSchema>;
+
+/** LLM 生成草稿（沙箱跑通自检前）。 */
+export const SolverGenDraftSchema = z.object({
+  computeSource: z.string().min(1),
+  outputShape: z.array(z.string()).default([]),
+  argHints: z.record(z.string(), z.string()).default({}),
+  rationale: z.string().default(""),
+});
+export type SolverGenDraft = z.infer<typeof SolverGenDraftSchema>;
+
+/**
+ * WO-CAPACITY-DEEPEN-ADDITIVE 块D · base_capacity_outlook.byModel 每产品前瞻行（跨半契约·optional·向后兼容）。
+ * 每 model 的 T+30/60/90 产能预测（同源 capacity_forecast 该基地 P50·跨求解器勾稽）+ 主瓶颈工序 + 缺口。
+ * 现有 base_capacity_outlook per-base 四线输出零改——byModel 为纯加字段（两系统共享此形状·灭前后端漂移）。
+ */
+export const BaseCapacityOutlookByModelSchema = z.object({
+  model: z.string(),
+  modelName: z.string(),
+  /**
+   * T+30/60/90 天该基地该型号累计可承接。
+   * @unit 套
+   * WO-P50-RENAME：口径是**套**（= capacity_forecast 该基地 cumTotal×1e4），与
+   * `CapacityForecastOutput.capWanP50`（万套）差 1e4，故不共用名字。
+   */
+  packsP50At30: z.number(),
+  packsP50At60: z.number(),
+  packsP50At90: z.number(),
+  /** `packsP50At*`/`packsGap` 的量纲单一真值（后端单源下发）。 */
+  unit: z.literal("套").optional(),
+  /** 该型号主瓶颈工序（= capacity_forecast 该 model mainBn·跨求解器一致）。 */
+  mainBn: z.string(),
+  /**
+   * 缺口 = packsP50At90 − 该型号 90 天落窗未来订单（本基地首产地）。
+   * @unit 套
+   */
+  packsGap: z.number(),
+  /** R13 溯源：每值来自 capacity_forecast（P50/mainBn）。 */
+  provenance: z.object({ kind: z.string(), source: z.string(), drillType: z.string(), drillField: z.string() }),
+});
+export type BaseCapacityOutlookByModel = z.infer<typeof BaseCapacityOutlookByModelSchema>;
+
+// ---------------------------------------------------------------------------
+// WO-P50-REMAINING-3 · ⑤ S&OP ② 需求评审「三线对照」行 / ⑥ order_fullchain 交期判
+//
+// 这两个形状此前**只活在前端**（`SopBalanceView` 的内联 type、`OrderChainView` 的本地
+// interface），后端各写各的 —— 典型第二真相源：改后端字段名前端不报红，改前端也不报红。
+// 现收进契约，同时把两处的裸 `p50`/`p90` 换成自带口径的名字，并让 `check-quantile-field-naming`
+// 这道门真的扫得到它们（该门只扫 `packages/contracts/src`；留在 app 里 = 门看不见 = 装饰品）。
+// ---------------------------------------------------------------------------
+
+/**
+ * S&OP ② 需求评审 · 三线对照一行（`SopVersion.steps.s2.rows[]`）。
+ *
+ * 全行都是**本月**口径：`target` 取自 `PlanTarget(level=month)` × `Segment.baselineShare`，
+ * `rolling`/`lastActual` 同轴。**实测锚**（seed 42）：年 322.2 万套 = Σ12 月，
+ * 单月 24.7 / 25.24 / 26.58 万套 ⇒ 分母是**月**，不是年。
+ */
+export const SopDemandReviewRowSchema = z.object({
+  /** 细分键（Segment.segKey，如 pas/ess/com）。 */
+  key: z.string(),
+  /** 细分名（乘用车/储能/商用车）。 */
+  name: z.string(),
+  /** 本月目标（年度目标按季节权重分解到月 × 细分基线占比）。@unit 万套/月 */
+  target: z.number(),
+  /** 本月滚动预测中位口径。@unit 万套/月 */
+  rolling: z.number(),
+  /**
+   * 本月滚动预测**保守下分位** P90（`payload.segments[].p90` 透传，缺省 = rolling×0.936）。
+   * @unit 万套/月
+   * WO-P50-REMAINING-3：分母是**月** —— 与 `DemandSegment.demandWanPerYearP50`（万套/**年**）
+   * 只差一个分母，两者都写「万套」正是让用户在屏上分不出的那半个信息，故名字里必须带 PerMonth。
+   * 口径不变式：P90 是**下**分位 ⇒ 恒 ≤ `rolling`（同分母才谈得上这条；跨分母比就是本轮修的那个 bug）。
+   */
+  rollingWanPerMonthP90: z.number(),
+  /** 上月实际。@unit 万套/月 */
+  lastActual: z.number(),
+  /** 滚动 vs 目标偏差率（小数，0.12 = +12%）。 */
+  dv: z.number(),
+  /** |dv| > 阈值 → C21 差异提报，自动进⑤议程。 */
+  flagged: z.boolean(),
+  /** 本行全部量的量纲**单一真值**（后端单源下发·前端只格式化不内联·治 G-UNIT-NORMALIZE）。 */
+  unit: z.literal("万套/月").optional(),
+});
+export type SopDemandReviewRow = z.infer<typeof SopDemandReviewRowSchema>;
+
+/** S&OP ② 三线对照合计行（列与 `SopDemandReviewRowSchema` 同轴同分母）。 */
+export const SopDemandReviewTotalSchema = z.object({
+  /** @unit 万套/月 */
+  target: z.number(),
+  /** @unit 万套/月 */
+  rolling: z.number(),
+  /** 合计保守下分位。@unit 万套/月 */
+  rollingWanPerMonthP90: z.number(),
+  dv: z.number(),
+  /** 量纲单一真值（后端单源下发）。 */
+  unit: z.literal("万套/月").optional(),
+});
+export type SopDemandReviewTotal = z.infer<typeof SopDemandReviewTotalSchema>;
+
+/**
+ * `order_fullchain` ①交期判（C02/C03）：可产基地周供给 vs 本单需求。
+ *
+ * **实测锚**（seed 42·SO-3391）：可产基地 4 个 × 周产能基线 700 → P50 2800、P90 2520，
+ * 而 `Order.qty` = 7259（**套**，视为单周需求）⇒ 两侧同为**套/周**，可直接比。
+ */
+export const OrderDeliveryJudgeSchema = z.object({
+  /**
+   * 可产基地合计周供给中位口径。
+   * @unit 套/周
+   * WO-P50-REMAINING-3：与 `BaseCapacityOutlookByModel.packsP50At30`（**套**·T+N 累计）
+   * 同为「套」但**分母不同**（周 vs 累计窗口），故名字里带 PerWeek。
+   */
+  packsPerWeekP50: z.number(),
+  /**
+   * 周供给承诺口径 P90 = P50 × 0.9（保守下界·C02 判据用的就是它）。
+   * @unit 套/周
+   */
+  packsPerWeekP90: z.number(),
+  /**
+   * 本单需求。
+   * @unit 套/周
+   * ⚠ 量纲**是折算出来的、不是量出来的**：真值是 `Order.qty`（**套**·存量·SO-3391 实测 7259），
+   * 引擎按「这一单要在一周内交完」当作单周需求，才与左边真·速率的 `packsPerWeekP50/P90` 可比。
+   * 这是 C02 的确定性代理口径 —— 屏上必须说出来（`OrderChainView` 已挂浮层披露），
+   * 不许只写「本周需求」把假设讲成事实。跨周交付的单据此判会偏保守。
+   */
+  demand: z.number(),
+  /** 交期结论：可达 / 紧张。 */
+  verdict: z.string(),
+  /** 该判所依规则键（C02/C03）。 */
+  ruleRefs: z.array(z.string()),
+  /** 本判全部量的量纲单一真值（后端单源下发）。 */
+  unit: z.literal("套/周").optional(),
+});
+export type OrderDeliveryJudge = z.infer<typeof OrderDeliveryJudgeSchema>;
+
+/** `order_fullchain` ②齐套判（C06/C16）。 */
+export const OrderKitJudgeSchema = z.object({
+  material: z.string(),
+  /** 该物料现货缺口。@unit 吨 */
+  gapTon: z.number(),
+  eta: z.string(),
+  verdict: z.string(),
+  ruleRefs: z.array(z.string()),
+});
+export type OrderKitJudge = z.infer<typeof OrderKitJudgeSchema>;
+
+/** `order_fullchain` ③财务判三闸（C15 毛利 → C13 信用 → C18 现金）。 */
+export const OrderFinanceJudgeSchema = z.object({
+  marginPct: z.number(),
+  floorPct: z.number(),
+  marginOk: z.boolean(),
+  priceUpPct: z.number(),
+  creditUsedRatio: z.number(),
+  creditOk: z.boolean(),
+  verdict: z.string(),
+  ruleRefs: z.array(z.string()),
+});
+export type OrderFinanceJudge = z.infer<typeof OrderFinanceJudgeSchema>;
+
+/** `order_fullchain` 顶部 KPI 条。 */
+export const OrderFullchainKpisSchema = z.object({
+  /** 订单量。@unit 套 */
+  qty: z.number(),
+  segment: z.string(),
+  marginPct: z.number(),
+  floorPct: z.number(),
+  /**
+   * 周供给承诺口径（= `judges.cap.packsPerWeekP90`·同一真值的 KPI 投影）。
+   * @unit 套/周
+   */
+  deliveryPacksPerWeekP90: z.number(),
+  /** 最严峻物料缺口。@unit 吨 */
+  kitGap: z.number(),
+});
+export type OrderFullchainKpis = z.infer<typeof OrderFullchainKpisSchema>;
+
+/** `order_fullchain` 输出（前端 `OrderChainView` 直接消费此形状，不再本地重定义）。 */
+export const OrderFullchainOutputSchema = z.object({
+  so: z.string(),
+  verdict: z.string(),
+  vc: z.string(),
+  kpis: OrderFullchainKpisSchema,
+  judges: z.object({ cap: OrderDeliveryJudgeSchema, kit: OrderKitJudgeSchema, fin: OrderFinanceJudgeSchema }),
+  conds: z.array(z.string()),
+  dag: z.object({
+    nodes: z.array(z.record(z.string(), z.unknown())),
+    edges: z.array(z.object({ from: z.string(), to: z.string() })),
+  }),
+  summary: z.string(),
+});
+export type OrderFullchainOutput = z.infer<typeof OrderFullchainOutputSchema>;
+
+// ---------------------------------------------------------------------------
+// WO-69 P2 · Function 本体签名（OntologySignature）
+// ---------------------------------------------------------------------------
+
+/**
+ * 求解器**读取面**的一条声明：某个本体对象类型 + （可选）该类型上真被读到的属性 / 链路。
+ *
+ * `propKeys` **省略 = 该类型的全部属性都可能被读**（最保守）。给出 `propKeys` 则是承诺
+ * 「只读这些属性」——该承诺由 S5 实跑比对门机器校验（观测集 ⊆ 声明集，漏声明即红）。
+ */
+export const OntologyReadSurfaceSchema = z.object({
+  typeKey: z.string().min(1),
+  propKeys: z.array(z.string()).optional(),
+  linkKeys: z.array(z.string()).optional(),
+});
+export type OntologyReadSurface = z.infer<typeof OntologyReadSurfaceSchema>;
+
+/** 求解器**写入面**（写真值须经 Action/审批；此处只做声明与投影，不授权写）。 */
+export const OntologyWriteSurfaceSchema = z.object({
+  typeKey: z.string().min(1),
+  propKeys: z.array(z.string()),
+});
+export type OntologyWriteSurface = z.infer<typeof OntologyWriteSurfaceSchema>;
+
+/**
+ * **Function 本体签名**：一个求解器（Function）对本体的读/写面声明。可序列化部分（跨服务投影用）。
+ *
+ * 用途 ①（安全·头号）：列级（属性级）受限调用者调用求解器时，用签名判定「该求解器是否会读到被禁列」——
+ *   相交 → **拒绝**（403 SOLVER_COLUMN_RESTRICTED），不相交 → 放行出真数字。**无签名 = 读取面未知 = 拒绝**。
+ *   反面教训（live 取证）：受限用户曾拿到 quote_margin 毛利 0.868（真值 0.2565）——「没权限」伪装成「业务数字」，
+ *   比泄漏更毒。故签名必须驱动**诚实拒绝**，绝不驱动「带缺列算下去」。
+ * 用途 ②：DRIL `inputSpec/outputSpec` 由本签名**派生**（不许第二份手填清单）。
+ *
+ * ⚠ 与 SOLVER_REQUIRED_TYPES 同族命门：**漏声明比不声明更危险**（漏 → 误判"不读"→ 放行 → 出错数字）。
+ */
+export const OntologySignatureSchema = z.object({
+  reads: z.array(OntologyReadSurfaceSchema).optional(),
+  writes: z.array(OntologyWriteSurfaceSchema).optional(),
+});
+export type OntologySignature = z.infer<typeof OntologySignatureSchema>;

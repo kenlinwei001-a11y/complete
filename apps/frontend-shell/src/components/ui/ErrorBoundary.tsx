@@ -22,7 +22,7 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="empty-state">
           <div className="code">⚠</div>
           <h3>{zh.errors.pageError}</h3>
-          <p style={{ color: "var(--muted2)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
+          <p style={{ color: "var(--muted2)", fontFamily: "var(--font-mono)", fontSize: 12 }}>
             {this.state.error.message}
           </p>
           <button className="btn" onClick={() => this.setState({ error: null })}>

@@ -17,7 +17,7 @@ export function EChart({ option, height = 220, testId }: { option: Record<string
         chart = echarts.init(ref.current, undefined, { renderer: "canvas" });
         chart.setOption({
           backgroundColor: "transparent",
-          textStyle: { color: "#9AA8B6", fontFamily: "JetBrains Mono, monospace", fontSize: 10 },
+          textStyle: { color: "#9AA8B6", fontFamily: "JetBrains Mono, monospace", fontSize: 12 },
           ...option,
         });
       } catch {

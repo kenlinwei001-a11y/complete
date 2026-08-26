@@ -82,6 +82,7 @@ export class PlanService {
         name: str(s.props.name),
         year: num(s.props.year),
         demand: num(s.props.demand),
+        ...(s.props.note ? { note: str(s.props.note) } : {}),
         capacityDecision: str(s.props.capacityDecision),
         ltaLock: str(s.props.ltaLock),
         finance: { revenue: num(s.props.revenue), capex: num(s.props.capex), irr },
@@ -108,7 +109,19 @@ export class PlanService {
       value: num(t.props.value),
       targetRef: t.id, // 溯源：与 S&OP 平衡台同一目标对象
     }));
-    return { scenarios, triggers, decomposition };
+    // WO-ADOPT-SCHEME-CARRIER · 方案采纳台账读端（G-ADOPT-SCHEME-NO-CARRIER 收口）：
+    // 本年度 ACTIVE 至多一条（写时不变量，执行器侧先置旧 SUPERSEDED），找到即下发；
+    // 从未采纳 ⇒ 字段缺省（additive optional，同 capexScenario 先例）。tenantId 不下发。
+    const activeAdoption = (await this.repos.schemeAdoptions.list(ctx.tenantId))
+      .find((a) => a.year === y && a.status === "ACTIVE");
+    return {
+      scenarios,
+      triggers,
+      decomposition,
+      ...(activeAdoption
+        ? { schemeAdoption: (({ tenantId: _drop, ...view }) => view)(activeAdoption) }
+        : {}),
+    };
   }
 
   /**
@@ -351,8 +364,9 @@ export class PlanService {
     const pv = c.params.planview;
     const ships = [...c.shipments].sort((a, b) => (str(a.props.shipId) < str(b.props.shipId) ? -1 : 1)).slice(0, pv.ltaMaterials.length);
     return ships.map((s, i) => {
-      const planned = num(s.props.qtyTons);
-      const devPct = i === 0 ? pv.ltaForcedPct : ((hashString(str(s.props.shipId)) % 9) - 4); // -4..4，仅首行越线
+      // PRD-IND-quarter §4.5(C)：planned/dev 优先取本视图专属种子配置（确定性 R6），缺则回落 Shipment/hash。
+      const planned = pv.ltaPlanned?.[i] ?? num(s.props.qtyTons);
+      const devPct = pv.ltaDevPct?.[i] ?? (i === 0 ? pv.ltaForcedPct : ((hashString(str(s.props.shipId)) % 9) - 4)); // 仅首行兜底越线
       const actual = round(planned * (1 + devPct / 100), 1);
       const over = Math.abs(devPct) > 5;
       return {
@@ -360,7 +374,7 @@ export class PlanService {
         planned,
         actual,
         deviationPct: devPct,
-        note: over ? "到货缺口，升级供应风险（与风险看板「到货间隙」事件同源）" : "正常波动",
+        note: over ? "到货延迟 · 触发到货间隙事件（升级供应风险，与风险看板同源）" : "正常",
         baseId: str(s.props.baseId),
       };
     });

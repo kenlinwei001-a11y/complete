@@ -2,7 +2,9 @@
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: rgba(7, 10, 14, 0.78);
+  /* 遮罩（scrim）**该**半透 —— 职责是压暗底下页面，与"浮层表面必须不透明"正相反。
+     WO-HOVER-LAYER：收口到 --modal-scrim（逐主题定义），不再写死深墨。 */
+  background: var(--modal-scrim);
   backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
@@ -36,7 +38,7 @@
 
 .hint {
   flex: 1;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted2);
 }
 
@@ -59,6 +61,6 @@
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px dashed var(--line2);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }

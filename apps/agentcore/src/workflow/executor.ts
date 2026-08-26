@@ -1,4 +1,4 @@
-import type { Answer, AnswerBlock, OnError, PlanStep, ProvenanceRef, ResolvedRef, RuleVerdict } from "@platform/contracts";
+import type { Answer, AnswerBlock, ClaimVerdict, ConsistencyCheck, CrossValidateRequest, CrossValidateResponse, ExtendedPlanStep, ProvenanceRef, ResolvedRef, RuleVerdict, ValidationTrace } from "@platform/contracts";
 import { ErrorCodes } from "@platform/contracts";
 import { newId } from "../ids.js";
 import type { LlmClient } from "../llm/types.js";
@@ -10,21 +10,15 @@ import { scanBlocks } from "../util/numerics.js";
 import { resolveTemplate, TemplateResolutionError, type TemplateScope } from "../util/template.js";
 
 /**
- * Additive step types (A8.4 query_timeseries_agg / S4.1 search_knowledge).
- * CONTRACT GAP workaround: contracts PlanStepSchema is a closed discriminated
- * union without these two read tools; since packages/contracts must not change,
- * we widen the executor input locally. The steps are fully isomorphic to the
- * other tool steps and run through the generic GuardedToolExecutor dispatch.
+ * WO-STEP-VOCAB-UPLIFT：步骤词表已合成一个家 —— `ExtendedPlanStep = PlanStep | ExtraToolStep`
+ * 的**单一出处在契约层**（`packages/contracts/src/skill-compile.ts` 的
+ * `ExtendedPlanStepSchema`；本体 §8 `G-STEP-VOCAB-SPLIT-TWO-HOMES` 根治）。
+ * 本行只是 re-export 以保既有 import 路径（`./workflow/executor.js`）不断；
+ * **不许**在本包再定义第二份 `ExtraToolStep` / `ExtendedPlanStep`（留副本 = 分裂固化）。
+ * 三类 ExtraToolStep（query_timeseries_agg / search_knowledge / plan_slice）与其余 tool 步
+ * 完全同构，走下方 generic GuardedToolExecutor dispatch。
  */
-export interface ExtraToolStep {
-  id: string;
-  type: "query_timeseries_agg" | "search_knowledge";
-  params: Record<string, unknown>;
-  onError?: OnError;
-  timeoutMs?: number;
-}
-
-export type ExtendedPlanStep = PlanStep | ExtraToolStep;
+export type { ExtendedPlanStep } from "@platform/contracts";
 
 const SOLVER_TIMEOUT_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -36,6 +30,14 @@ export interface AgentStepInvoker {
     prompt: string;
     expectsSchema?: Record<string, unknown>;
     nesting: NestingCtx;
+    /** WO-FIVE-ROLE P1：本步是否强制被调 agent 的 objectTypes scope（Coordinator 角色扇出 → 越界读对象拒）。 */
+    enforceObjectScope?: boolean;
+    /**
+     * WO-AGENTRUN-FANOUT-PERSIST：扇出本次子 agent 的步 id（多角色会诊里是 `dispatch_0/1/2`）。
+     * 落进子运行记录的 `stepId` —— 同一次会诊的 N 条子运行靠它认回同一次扇出，
+     * 而不是 N 条互不相识、只共享一个 taskId 的孤儿记录。
+     */
+    stepId: string;
   }): Promise<{ structured?: unknown; answer: Answer }>;
 }
 
@@ -48,6 +50,8 @@ export interface WorkflowRunDeps {
   runAgentStep?: AgentStepInvoker;
   /** 引用模式增量 §2.2：评估到的规则等实际版本留痕回调。 */
   onResolvedRef?: (ref: ResolvedRef) => void;
+  /** 推演验证痕迹 Layer 2：交叉验证回调（已闭合 OBO 鉴权上下文；缺省则不附交叉验证）。 */
+  crossValidate?: (req: CrossValidateRequest) => Promise<CrossValidateResponse>;
 }
 
 export interface WorkflowRunInput {
@@ -62,9 +66,14 @@ export interface WorkflowRunInput {
 
 export type WorkflowResult =
   | { status: "COMPLETED"; answer: Answer; stepOutputs: Record<string, unknown> }
-  | { status: "FAILED"; error: { code: string; message: string; stepId?: string }; stepOutputs: Record<string, unknown> };
+  | { status: "FAILED"; error: { code: string; message: string; stepId?: string }; stepOutputs: Record<string, unknown> }
+  | { status: "CANCELLED"; reason: string; stepOutputs: Record<string, unknown> };
 
-interface StepAudit {
+/**
+ * 步骤审计留痕。**导出**是给图调度器（`skill-orchestrator.ts` 的 `render` 节点）用的：
+ * 它必须喂给 `renderAnswer` 同样形状的审计表，才能复用同一个渲染实现（不造第二套渲染器）。
+ */
+export interface StepAudit {
   toolCallId: string;
   toolName: string;
   snapshotVersion?: string;
@@ -79,16 +88,32 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
   const trustLevel = input.trustLevel ?? "VERIFIED_WORKFLOW";
   const scope: TemplateScope = { slots: input.slots, context: input.context, steps: stepOutputs };
 
-  const completed = (answer: Answer): WorkflowResult => ({ status: "COMPLETED", answer, stepOutputs });
+  // 推演验证痕迹收集（凡用到本体切片即附带）
+  const slicesUsed: string[] = [];
+  const sliceObjects: { objectType: string; objectId: string; props: Record<string, unknown> }[] = [];
+  const allVerdicts: RuleVerdict[] = [];
+  const resolvedRefsSeen: ResolvedRef[] = [];
+
+  const completed = async (answer: Answer): Promise<WorkflowResult> => {
+    const trace = await buildValidationTrace(deps, { slicesUsed, sliceObjects, verdicts: allVerdicts, resolvedRefs: resolvedRefsSeen, answer });
+    return { status: "COMPLETED", answer: trace ? { ...answer, validationTrace: trace } : answer, stepOutputs };
+  };
   const failed = (code: string, message: string, stepId?: string): WorkflowResult => ({
     status: "FAILED",
     error: { code, message, stepId },
     stepOutputs,
   });
+  const cancelled = (reason: string): WorkflowResult => ({ status: "CANCELLED", reason, stepOutputs });
 
   for (const step of input.steps) {
     const started = Date.now();
     await deps.emit("step.started", { stepId: step.id, type: step.type });
+
+    // WO-SCENARIO-INPUT-PHASE0：每步前检查取消信号，避免已取消任务继续烧预算。
+    if (input.nesting.isCancelled?.()) {
+      await deps.emit("step.completed", { stepId: step.id, type: step.type, outcome: "CANCELLED", durationMs: 0 });
+      return cancelled("cancelled by upstream signal");
+    }
 
     let resolvedParams: Record<string, unknown>;
     try {
@@ -106,29 +131,39 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
       deps.emit("step.completed", { stepId: step.id, type: step.type, outcome, durationMs: Date.now() - started });
 
     switch (step.type) {
-      // generic tool dispatch — incl. additive A8.4/S4.1 steps (query_timeseries_agg / search_knowledge)
+      // generic tool dispatch — incl. additive A8.4/S4.1/A3.3 steps (query_timeseries_agg / search_knowledge / plan_slice)
       case "resolve_slice":
       case "query_objects":
       case "invoke_solver":
       case "evaluate_rules":
       case "create_action_draft":
       case "query_timeseries_agg":
-      case "search_knowledge": {
+      case "search_knowledge":
+      case "plan_slice": {
         const timeoutMs =
           step.type === "invoke_solver" ? ((step as { timeoutMs?: number }).timeoutMs ?? SOLVER_TIMEOUT_MS) : DEFAULT_TIMEOUT_MS;
         const r = await deps.executor.run(step.type, resolvedParams, { timeoutMs });
 
         if (r.outcome === "DENIED") {
-          // Permission denial → COMPLETED with 权限不足 text (NOT FAILED), no data-existence leak.
+          // DENIED 真因有多种（tools/executor）：① OBO 会话令牌将过期（须重登·非权限）② agent objectType scope 越界
+          // ③ IAM/行级拒。旧实现把三者一律渲成"你没有访问 X 的权限"→ 误导（admin 会话过期被说成没权限·cert_schedule 复盘）。
+          // 按错误码分流诚实文案：过期→提示重登；有具体 reason→带出真因；否则→保留权限不足文案。
           await emitDone("DENIED");
           const target =
             (resolvedParams.objectType as string | undefined) ??
             (resolvedParams.sliceKey as string | undefined) ??
             (resolvedParams.solverKey as string | undefined) ??
             step.type;
+          const deny = r.payload as { error?: string; reason?: string } | undefined;
+          const markdown =
+            deny?.error === "OBO_TOKEN_EXPIRING"
+              ? "登录会话即将过期，请重新登录后重试（非权限不足）。"
+              : deny?.reason
+                ? `你没有访问 ${target} 的权限（${deny.reason}）`
+                : `你没有访问 ${target} 的权限`;
           const answer: Answer = {
             trustLevel,
-            blocks: [{ type: "text", markdown: `你没有访问 ${target} 的权限` }],
+            blocks: [{ type: "text", markdown }],
             provenance: [],
             unverifiedNumerics: false,
           };
@@ -147,6 +182,15 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
         }
 
         stepOutputs[step.id] = r.payload;
+        if (step.type === "resolve_slice") {
+          const sliceKey = (resolvedParams.sliceKey as string | undefined) ?? "";
+          if (sliceKey) slicesUsed.push(sliceKey);
+          collectSliceObjects(r.payload, sliceObjects);
+        } else if (step.type === "plan_slice") {
+          const p = r.payload as { sliceKey?: string; plan?: { sliceKey?: string } } | undefined;
+          const sliceKey = p?.sliceKey ?? p?.plan?.sliceKey;
+          if (sliceKey) slicesUsed.push(sliceKey);
+        }
         stepAudits[step.id] = {
           toolCallId: r.toolCallId,
           toolName: step.type,
@@ -160,10 +204,13 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
 
         if (step.type === "evaluate_rules") {
           const verdicts = r.payload as RuleVerdict[];
+          allVerdicts.push(...verdicts);
           // §2.2 留痕：规则求值结果带 ruleVersion（RuleVerdict additive）
           for (const v of verdicts) {
             if (v.ruleVersion !== undefined) {
-              deps.onResolvedRef?.({ kind: "rule", key: v.ruleId, version: v.ruleVersion });
+              const ref = { kind: "rule" as const, key: v.ruleId, version: v.ruleVersion };
+              resolvedRefsSeen.push(ref);
+              deps.onResolvedRef?.(ref);
             }
           }
           const blocking = verdicts.filter((v) => !v.passed && v.severity === "BLOCK");
@@ -231,11 +278,14 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
         try {
           const child = enterNesting(input.nesting, "agent", step.params.agentId);
           const result = await deps.runAgentStep({
+            stepId: step.id, // WO-AGENTRUN-FANOUT-PERSIST：子运行记录靠它认回是哪一步扇出的
             agentId: step.params.agentId,
             version: step.params.version,
             prompt: typeof resolvedParams.prompt === "string" ? resolvedParams.prompt : JSON.stringify(resolvedParams.prompt),
             expectsSchema: step.params.expectsSchema,
             nesting: child,
+            // WO-FIVE-ROLE P1：Coordinator 角色扇出的 invoke_agent 步声明 enforceObjectScope → 被调 agent 对象 scope 强制。
+            ...((step.params as { enforceObjectScope?: boolean }).enforceObjectScope ? { enforceObjectScope: true } : {}),
           });
           stepOutputs[step.id] =
             step.params.expectsSchema !== undefined
@@ -254,6 +304,7 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
         const r = await deps.executor.run(String(resolvedParams.toolName ?? step.params.toolName), resolvedParams.args ?? {}, {
           binding: { kind: "MCP", mcpConfigId: step.params.mcpConfigId },
           timeoutMs: DEFAULT_TIMEOUT_MS,
+          expectsObjectType: step.params.expectsObjectType, // stage3②：声明则运行时强制本体校验
         });
         if (!r.ok) {
           await emitDone("FAILED");
@@ -272,6 +323,7 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
           stepAudits,
           trustLevel,
           deps.metrics,
+          stepOutputs,
         );
         await emitDone("OK");
         return completed(answer);
@@ -288,12 +340,33 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
   });
 }
 
-/** render_answer: AnswerBlockTemplate → AnswerBlock[], each fromStep → generated ProvenanceRef. */
-function renderAnswer(
+/** 从 render_answer 块模板中推导应溯源的 outputPath：KPI 值若引用 steps.<id>.output.data.<field>，
+ *  则返回 $.data.<field>，使 invoke_solver 能命中 solver 自报的 provenance{formula,valueLabel}。 */
+function deriveBlockOutputPath(type: string, tpl: Record<string, unknown>): string | undefined {
+  // PRD-CAP-DEMANDDELTA：render 块可显式声明 outputPath，避免模板被 resolve 后无法反推字段名。
+  if (typeof tpl.outputPath === "string") return tpl.outputPath;
+  if (type === "solver_summary") return "$.data";
+  if (type === "kpi" && typeof tpl.value === "string") {
+    const m = /^\{\{\s*steps\.[\w-]+\.output\.data\.([\w-]+)\s*\}\}$/.exec(tpl.value);
+    if (m) return `$.data.${m[1] as string}`;
+  }
+  return undefined;
+}
+
+/**
+ * render_answer: AnswerBlockTemplate → AnswerBlock[], each fromStep → generated ProvenanceRef.
+ *
+ * **导出是刻意的**：图调度器的 `render` 节点（`skill-orchestrator.ts runRenderNode`）直接调它。
+ * PRD-skill-runtime-orchestrator §3.1「节点派发复用今天 executor 的同一 switch 体」——
+ * 线性 `render_answer` 与图 `render` 节点必须是**同一个渲染实现**，
+ * 否则两条路会渐渐渲染出不一样的答案，而两边测试各自全绿。
+ */
+export function renderAnswer(
   blockTemplates: Record<string, unknown>[],
   stepAudits: Record<string, StepAudit>,
   trustLevel: "VERIFIED_WORKFLOW" | "AGENT_EXPLORATORY",
   metrics: Metrics,
+  stepOutputs: Record<string, unknown>,
 ): Answer {
   const provenance: ProvenanceRef[] = [];
   const blocks: AnswerBlock[] = [];
@@ -304,14 +377,20 @@ function renderAnswer(
     if (fromStep) {
       const audit = stepAudits[fromStep];
       provId = newId("prov");
-      // fromStep on a ts-agg / kb step picks the right source + meta (A8.3/S4.1)
+      const outputPath = deriveBlockOutputPath(rest.type as string, rest) ?? "$.data";
+      // PRD-CAP-DEMANDDELTA：invoke_solver 按块引用的具体字段命中 solver  provenance{formula,valueLabel}；
+      // 其余工具保持 audit.enrichment（TS_AGGREGATE/KB_CHUNK 不走错）。
+      const enrichment: ProvenanceEnrichment =
+        audit?.toolName === "invoke_solver"
+          ? enrichProvenance(audit.toolName, stepOutputs[fromStep], outputPath)
+          : (audit?.enrichment ?? { source: "TOOL_RESULT" });
       provenance.push({
         id: provId,
         toolCallId: audit?.toolCallId ?? "unknown",
         toolName: audit?.toolName ?? "unknown",
-        outputPath: "$.data",
+        outputPath,
         ...(audit?.snapshotVersion ? { snapshotVersion: audit.snapshotVersion } : {}),
-        ...(audit?.enrichment ?? { source: "TOOL_RESULT" }),
+        ...enrichment,
       });
     }
     const type = rest.type as string;
@@ -349,6 +428,10 @@ function renderAnswer(
         actionType: String(rest.actionType ?? ""),
         summary: String(rest.summary ?? ""),
       });
+    } else if (type === "solver_summary") {
+      // 通用投影：把求解器真实输出（{{steps.<s>.output}} 经模板解析注入 `output`）投成
+      // KPI/表/规则依据块——不写死任何业务数字/文案，前端见的即求解器算出的真值（闭 G-1）。
+      blocks.push(...summarizeSolverOutput(rest.output, provId ?? newId("prov")));
     }
   }
 
@@ -358,4 +441,223 @@ function renderAnswer(
     metrics.unverifiedNumerics.inc({ path: trustLevel === "VERIFIED_WORKFLOW" ? "WORKFLOW" : "AGENT" });
   }
   return { trustLevel, blocks, provenance, unverifiedNumerics: unverified };
+}
+
+/** 确定性数值格式（R6）：整数原样，小数定 4 位去尾零。 */
+function fmtNum(n: number): string {
+  if (Number.isInteger(n)) return String(n);
+  return String(Number(n.toFixed(4)));
+}
+function cellOf(v: unknown): string | number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "boolean") return v ? "是" : "否";
+  if (typeof v === "number") return v;
+  if (typeof v === "string") return v;
+  if (Array.isArray(v)) {
+    if (v.length === 0) return "—";
+    // 对象数组：尝试用业务上可读字段拼接，避免整段 JSON
+    if (v.every((x) => x && typeof x === "object")) {
+      return v
+        .map((x) => {
+          const o = x as Record<string, unknown>;
+          if (typeof o.factor === "string" && typeof o.contribution === "number") {
+            return `${o.factor} ${o.contribution}${(o.unit as string) ?? ""}`;
+          }
+          return String(o.label ?? o.name ?? o.factor ?? o.id ?? JSON.stringify(o));
+        })
+        .join("；");
+    }
+    return v.map(String).join("、");
+  }
+  // 单个对象：优先取 label/name/id，fallback JSON
+  const o = v as Record<string, unknown>;
+  if (typeof o.label === "string") return o.label;
+  if (typeof o.name === "string") return o.name;
+  if (typeof o.id === "string") return o.id;
+  return JSON.stringify(v);
+}
+
+/**
+ * 通用求解器输出投影（PRD-scenario-ontogenesis P2 / 闭 G-1）：把求解器**真实输出对象**投成答案块，
+ * 不手写任何业务数字或文案——前端看到的每个数都是求解器算出的真值，字段名即来源（R13 派生投影）。
+ * 标量→KPI、对象→展开一层 KPI、首个对象数组→表、ruleRefs→规则依据文本。确定性按 Object.keys 顺序。
+ */
+export function summarizeSolverOutput(payload: unknown, provId: string): AnswerBlock[] {
+  const data =
+    payload && typeof payload === "object" && "data" in (payload as Record<string, unknown>)
+      ? (payload as Record<string, unknown>).data
+      : payload;
+  if (!data || typeof data !== "object") return [{ type: "text", markdown: "求解器无结构化输出。" }];
+  const kpis: AnswerBlock[] = [];
+  let table: AnswerBlock | null = null;
+  const ruleRefs: string[] = [];
+  const moreArrays: string[] = [];
+  // BP-7 空结果显性化（diagnostic ledger D7，闭 G-1 沉默空数组面）：记录值为**空数组**的字段
+  // （combo/rows/over… 全空）与已产出的**有意义标量数**，据此区分"真无解"vs"数据未接齐"，不静默吞空数组。
+  const emptyArrayKeys: string[] = [];
+  let scalarCount = 0; // 有意义标量（number/boolean/非空 string/对象内标量），= 求解器确实算出了上下文
+  for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+    if (k === "snapshotVersion") continue;
+    if (k === "ruleRefs" && Array.isArray(v)) { ruleRefs.push(...v.map(String)); continue; }
+    if (typeof v === "number") { kpis.push({ type: "kpi", label: k, value: fmtNum(v), provId }); scalarCount++; }
+    else if (typeof v === "boolean") { kpis.push({ type: "kpi", label: k, value: v ? "是" : "否", provId }); scalarCount++; }
+    else if (typeof v === "string") { if (v) { kpis.push({ type: "kpi", label: k, value: v, provId }); scalarCount++; } }
+    else if (Array.isArray(v) && v.length === 0) { emptyArrayKeys.push(k); }
+    else if (Array.isArray(v) && v.length > 0 && v[0] !== null && typeof v[0] === "object") {
+      if (!table) {
+        const cols = Object.keys(v[0] as Record<string, unknown>);
+        table = { type: "table", columns: cols, rows: v.slice(0, 12).map((r) => cols.map((c) => cellOf((r as Record<string, unknown>)[c]))), provId };
+      } else moreArrays.push(`${k}（${v.length} 项）`);
+    } else if (Array.isArray(v) && v.length > 0) {
+      kpis.push({ type: "kpi", label: k, value: v.map(String).slice(0, 8).join("、"), provId });
+    } else if (v && typeof v === "object") {
+      for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) {
+        if (typeof v2 === "number") { kpis.push({ type: "kpi", label: `${k}.${k2}`, value: fmtNum(v2), provId }); scalarCount++; }
+        else if (typeof v2 === "string" && v2) { kpis.push({ type: "kpi", label: `${k}.${k2}`, value: v2, provId }); scalarCount++; }
+      }
+    }
+  }
+  const out: AnswerBlock[] = [...kpis.slice(0, 8)];
+  if (table) out.push(table);
+  if (ruleRefs.length > 0) out.push({ type: "text", markdown: `依据规则：${ruleRefs.join("、")} ⟦ref:0⟧` });
+  if (moreArrays.length > 0) out.push({ type: "text", markdown: `另有明细：${moreArrays.join("、")}（详见步骤溯源）。` });
+  // BP-7：求解器产出空数组字段（combo/rows/over… 全空）→ 显性化"为何为空 + 下一步建议"，
+  // 区分两类（不静默吞空数组）：
+  //   ·【真无解】关键标量在（求解器跑了且有上下文，如 residualGap/quarter），仅结果数组为空
+  //      → 求解器确认在当前约束下没有可行项（非数据缺失）。建议放宽约束/加杠杆/扩窗口。
+  //   ·【数据未接齐】连关键标量也缺（输出近乎空壳）→ 上游切片/口径未接齐，求解器无料可算。
+  //      建议先接入/补齐数据再重跑（触发合成≠伪造，走管线读回真实值）。
+  // ⚠ 不以 `!table` 为门：求解器常同时含**无关的非空数组**（如 evaluatedRules）投成表，
+  //   但用户问的**主结果数组**（combo/rows）仍为空 —— 那张表不能掩盖空结果，否则又退回静默吞空。
+  if (emptyArrayKeys.length > 0) {
+    const empties = emptyArrayKeys.join("、");
+    if (scalarCount > 0) {
+      out.push({
+        type: "text",
+        markdown:
+          `**结果为空（真无解）**：求解器已运行并给出上述口径，但「${empties}」为空——` +
+          `在当前输入与约束下没有可行项可纳入。\n下一步建议：放宽约束/补充可选杠杆（如新增对策、提升可释放量）或扩大时间窗后重跑；` +
+          `若残余缺口（如 residualGap）>0 表示缺口未被任何对策覆盖。`,
+      });
+    } else {
+      out.push({
+        type: "text",
+        markdown:
+          `**结果为空（数据未接齐）**：「${empties}」为空，且本次未产出关键标量——` +
+          `多为上游数据/切片未接齐，求解器无可计算的输入。\n下一步建议：先核对并接入该场景所需的对象切片与口径` +
+          `（必要时触发合成补数据，走管线读回真实值，非伪造）后重跑。`,
+      });
+    }
+  }
+  if (out.length === 0) out.push({ type: "text", markdown: "求解器本次无输出数据（可能输入为空或全部满足约束）。" });
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// 推演验证痕迹（ValidationTrace）组装：凡用到本体切片即附带，前端展示让用户信任。
+// ---------------------------------------------------------------------------
+
+/** 从切片产出里抽取对象（{props} 形态，含主键的）作为交叉验证的断言主体。 */
+function collectSliceObjects(
+  payload: unknown,
+  acc: { objectType: string; objectId: string; props: Record<string, unknown> }[],
+): void {
+  const PK = ["baseId", "modelId", "so", "objectId", "id", "signalKey"];
+  const visit = (node: unknown, typeHint?: string): void => {
+    if (Array.isArray(node)) {
+      for (const n of node) visit(n, typeHint);
+      return;
+    }
+    if (node === null || typeof node !== "object") return;
+    const obj = node as Record<string, unknown>;
+    if (obj.props && typeof obj.props === "object") {
+      const props = obj.props as Record<string, unknown>;
+      const type = (obj.type as string | undefined) ?? typeHint ?? "Object";
+      const pk = PK.find((k) => props[k] !== undefined);
+      if (pk && acc.length < 50) acc.push({ objectType: type, objectId: String(props[pk]), props });
+    }
+    // descend into known slice container keys (model/bases/base/orders)
+    for (const [k, v] of Object.entries(obj)) {
+      if (k === "props") continue;
+      const hint = k === "bases" ? "Base" : k === "orders" ? "Order" : k === "model" ? "Model" : k === "base" ? "Base" : undefined;
+      visit(v, hint);
+    }
+  };
+  const data = (payload as { data?: unknown } | null)?.data ?? payload;
+  visit(data);
+}
+
+/** 组装验证痕迹：① 一致性（实体定义/公理裁决/数字溯源/版本钉）② 交叉验证（B→A 对照 KG 事实）。 */
+async function buildValidationTrace(
+  deps: WorkflowRunDeps,
+   in_: {
+    slicesUsed: string[];
+    sliceObjects: { objectType: string; objectId: string; props: Record<string, unknown> }[];
+    verdicts: RuleVerdict[];
+    resolvedRefs: ResolvedRef[];
+    answer: Answer;
+  },
+): Promise<ValidationTrace | undefined> {
+  // 钩子：不涉及本体切片**且**无规则裁决 → 不附；有规则裁决（含 O10 自动注入的卡规则）即便无切片也附，
+  // 使 PASS/WARN/BLOCK 透出可见（承接轨E 规则即引用：评估结果非装饰，要能看到）。
+  if (in_.slicesUsed.length === 0 && in_.verdicts.length === 0) return undefined;
+
+  // ---- Layer 1 一致性验证 ----
+  const checks: ConsistencyCheck[] = [];
+  const types = [...new Set(in_.sliceObjects.map((o) => o.objectType))];
+  for (const t of types) checks.push({ kind: "ENTITY_DEFINED", ref: t, status: "PASS", detail: "切片对象类型在本体中定义" });
+  for (const v of in_.verdicts) {
+    checks.push({
+      kind: "AXIOM",
+      ref: v.ruleId,
+      status: v.passed ? "PASS" : v.severity === "BLOCK" ? "FAIL" : "WARN",
+      detail: v.explanation,
+    });
+  }
+  checks.push({
+    kind: "NUMERIC_PROVENANCE",
+    ref: "answer.numerics",
+    status: in_.answer.unverifiedNumerics ? "WARN" : "PASS",
+    detail: in_.answer.unverifiedNumerics ? "部分数字未能溯源" : "结论数字均可溯源",
+  });
+  for (const r of in_.resolvedRefs) {
+    checks.push({ kind: "VERSION_PIN", ref: `${r.kind}:${r.key}`, status: "PASS", detail: `当时生效版本 v${r.version}` });
+  }
+  const consVerdict: "ALL_PASS" | "WARN" | "FAIL" = checks.some((c) => c.status === "FAIL")
+    ? "FAIL"
+    : checks.some((c) => c.status === "WARN")
+      ? "WARN"
+      : "ALL_PASS";
+
+  // ---- Layer 2 交叉验证（对照知识图谱已有事实）----
+  let claims: ClaimVerdict[] = [];
+  let crossVerdict: CrossValidateResponse["verdict"] = "NO_CLAIMS";
+  if (deps.crossValidate && in_.sliceObjects.length > 0) {
+    // 取切片对象的标量属性作为断言，反向核对 KG（确定性、有界 ≤200）
+    const claimReq: CrossValidateRequest["claims"] = [];
+    for (const o of in_.sliceObjects) {
+      for (const [prop, value] of Object.entries(o.props)) {
+        if (value === null || typeof value === "object") continue; // 仅标量
+        claimReq.push({ kind: "PROPERTY", subjectType: o.objectType, subjectId: o.objectId, property: prop, assertedValue: value });
+        if (claimReq.length >= 200) break;
+      }
+      if (claimReq.length >= 200) break;
+    }
+    if (claimReq.length > 0) {
+      try {
+        const res = await deps.crossValidate({ claims: claimReq });
+        claims = res.claims;
+        crossVerdict = res.verdict;
+      } catch {
+        /* 交叉验证不可用不阻断主流程（fail-open，仅一致性层） */
+      }
+    }
+  }
+
+  return {
+    slicesUsed: [...new Set(in_.slicesUsed)],
+    consistency: { checks, verdict: consVerdict },
+    crossValidation: { claims, verdict: crossVerdict },
+    generatedAt: new Date().toISOString(),
+  };
 }

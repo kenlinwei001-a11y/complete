@@ -1,0 +1,58 @@
+{
+  "note": "derived-recompute:check 的棘轮基线。unitLie = 量纲不一致的**存量挂账**（本门只查不改：「改公式还是改值」是产品判断不是工程判断，故挂账不修）；opaque = 不可机械求值的派生属性登记表（每条必须写 whyNotComputable —— 静默跳过等于「我没查」被读成「查了都对」）。maxUnitLie / maxOpaque 只降不升；--update 是认账用的，不是消红用的。",
+  "generatedBy": "node scripts/check-derived-recompute.mjs --update",
+  "outOfScopeOpaqueNote": "【人手登记 · 不是门的现算产物 · WO-DERIVED-RECOMPUTE-CHECK · 2026-08-17】本门在**真后端本体**里现算到的不可机械求值条数是 **0**（14 条全部落进 AGG 5 + ARITH 9，金丝雀已证抽取器可用）。但「0」这个数只对**真后端**成立 —— 前端 mock 里另有一份 derivations 副本，那里面**才是**不可机械求值的那批。⛔ 之所以只登记不判红：`apps/frontend-shell/**` 本单不碰（4 个 dev 在动），把它做成硬判据会因无关改动假红。这条登记是为了让「0 条」不被读成「全仓没有不可求值的公式」——两句话不是一回事。实测方法：解析 `apps/frontend-shell/src/mocks/fixtures.ts` 的 `derivations: [{propKey, formula}]` 与 `batteryObjectTypes() ∪ extendedObjectTypes()` 的 `derivedProperties` 求交并，分类器与主门 `classify()` 同一套判据。",
+  "outOfScopeOpaque": {
+    "__measured__": "mock 11 条 × 真后端 14 条 · 交集仅 5 条（且这 5 条公式逐字节相同）· mock 独有 6 条 · 真后端独有 9 条",
+    "Line.schedule_attainment": {
+      "formula": "rollup(week, 排产 vs 实绩)",
+      "whyNotComputable": "**自然语言 + 未定义函数**：`rollup(...)` 不是本仓派生 DSL 的任何形态（`parseAggregate` 只认 `FN(Type.prop BY field)`），实参「排产 vs 实绩」是中文散文而非标识符 ⇒ 算不了。且真后端 `Line` 类型上**没有**这条派生属性（`schedule_attainment` 是普通 PropertyDef），mock 独有。"
+    },
+    "Process.yield_baseline": {
+      "formula": "ts_agg(yield_daily, avg, 7d)",
+      "whyNotComputable": "**引用了本体外的东西**：`ts_agg` 是时序聚合（A8 管线），输入 `yield_daily` 是时序点位不是对象属性，`7d` 是窗口不是数 ⇒ 静态重算需要时序库，不在本门射程。真后端 `Process` 上无此派生属性，mock 独有。"
+    },
+    "Equipment.oee_current": {
+      "formula": "ts_agg(oee_daily, weighted_avg, 7d)",
+      "whyNotComputable": "同上（时序聚合）。⚠ 特别注意：真后端 `Equipment.oee_current` 是**普通 PropertyDef**（种子里由 oeeA×oeeP×oeeQ 真算并落库，780 个实例全有值），mock 却把它标成派生 —— 同一个属性在两边的**性质**都不一样，不只是公式不同。"
+    },
+    "CapacityPyramid.capWanP90": {
+      "formula": "capacity_forecast(capWanP90)",
+      "whyNotComputable": "**引用求解器而非属性**：`capacity_forecast` 是求解器 key，重算它等于跑一遍求解器。且 `CapacityPyramid` 这个对象类型在真后端 94 个类型里**根本不存在**，mock 独有。"
+    },
+    "CapacityForecast.capWanP90": {
+      "formula": "capWanP50 × healthFactor",
+      "whyNotComputable": "**乘号是 U+00D7「×」不是 ASCII `*`** ⇒ 生产词法器 `evalArithmetic` 切不出这个 token（会当成残渣）。这条最阴：它长得像可求值的算术式，实际一个字符之差就算不了；且 `CapacityForecast` 类型在真后端本体里不存在（求解器输出形状，非对象类型），mock 独有。"
+    },
+    "ProcessCapacity.weeklyCap": {
+      "formula": "节拍 × OEE × 良率 × 可用工时",
+      "whyNotComputable": "**全中文标识符 + U+00D7 乘号**：四个操作数都是中文词而非 propKey，无法解析到任何属性。`ProcessCapacity` 类型在真后端本体里不存在，mock 独有。"
+    }
+  },
+  "unitLie": {
+    "DemandSegment.marginWan": {
+      "kind": "D2",
+      "factor": "10⁴×",
+      "formula": "demandWanPerYearP50 * priceWan * marginPct / 100",
+      "detail": "公式「demandWanPerYearP50 * priceWan * marginPct / 100」里有 2 个「万」量纲的乘数（demandWanPerYearP50[万套/年] × priceWan）⇒ 乘积量纲是 **万×万 = 亿**，而目标属性名/单位仍只声称一个「万」（marginWan）⇒ 差 10⁴ 倍",
+      "why": "【人手挂账 · WO-DERIVED-RECOMPUTE-CHECK · 2026-08-17】实测取证（seed 42 / scale S，真跑 runDerivations 后读回）：三段 marginWan = 84.3106 + 25.3344 + 9.2070，**Σ = 118.852**；而同库 Metric `kpi-gross-profit` 的 unit 明写「亿」、actual = 118.9。两个数是同一个量 ⇒ marginWan 的真实量纲是**亿元**，而属性名（…Wan）与 battery.ts:1161 的行尾注释「毛利额(万)」声称的是**万元**，差 10⁴ 倍。消费方现算：synthetic/service.ts:1563 有一条视图绑定 `objects-aggregate sum(marginWan)`，标签「Σ(需求×单价×毛利率) 派生回写」——**这个和会上屏**。**本单刻意不修**：修法有二（把属性改名成 `marginYi`/补 unit=「亿元」，或把公式除以 10⁴ 让值真的落在万元口径），选哪一条会改变屏上所有引用它的数，是**产品判断不是工程判断**，须另开单裁决。本门只负责让它从此有信号。"
+    },
+    "DemandSegment.revenueWan": {
+      "kind": "D2",
+      "factor": "10⁴×",
+      "formula": "demandWanPerYearP50 * priceWan",
+      "detail": "公式「demandWanPerYearP50 * priceWan」里有 2 个「万」量纲的乘数（demandWanPerYearP50[万套/年] × priceWan）⇒ 乘积量纲是 **万×万 = 亿**，而目标属性名/单位仍只声称一个「万」（revenueWan）⇒ 差 10⁴ 倍",
+      "why": "【人手挂账 · WO-DERIVED-RECOMPUTE-CHECK · 2026-08-17】实测取证（seed 42 / scale S）：三段 revenueWan = 443.74 + 194.88 + 61.38，**Σ = 700.000000**；而同库 Metric `kpi-revenue` 的 unit 明写「亿」、target = actual = 700，且 CLAUDE.md/种子里的规模锚就是「700 亿 = 375 万套 × 1.8667 万元/套」。⇒ revenueWan 的真实量纲是**亿元**，属性名（…Wan）与 battery.ts:1160 行尾注释「收入(万)」声称的是**万元**，差 10⁴ 倍。根因是两个操作数各自都是「万」量级：demandWanPerYearP50 声明 unit=「万套/年」，priceWan 只在注释里写「单价(万/万件)」而 **PropertyDef 上根本没有 unit 字段** —— 万 × 万 = 亿，名字却只留了一个「万」。**本单刻意不修**（同 marginWan：改名/改公式二选一是产品判断）。"
+    },
+    "MaterialBalance.coverage": {
+      "kind": "D1",
+      "factor": "100×",
+      "formula": "(netDemandTon - gapTon) / netDemandTon",
+      "detail": "PropertyDef 声明 unit=\"%\"，但公式「(netDemandTon - gapTon) / netDemandTon」是**无 ×100 的比值**，实测 9 个实例值域 [0.910056, 1] ⊆ [-1,1] ⇒ 存的是 0–1 比率，差 100 倍",
+      "why": "【人手挂账 · WO-DERIVED-RECOMPUTE-CHECK · 2026-08-17】**与上面两条定性不同，不许混为一谈**：这一条是**有约定但约定只写在散文里**。battery.ts:1188 的 description 自己写着「**0–1 比率存储**，显示时 ×100 —— 与 LEVER_PROP_META['MaterialBalance.coverage'].kind='ratio' 同口径」，lever-meta.ts:25 也确实是 `{ unit: \"%\", kind: \"ratio\" }`。即：**机器可读的字段说 %，只有散文和一个并列字段 kind 说它其实是比率**。风险是真的——前端存在 `${m.value}${m.unit}` 这种直贴写法（apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx:63、ChainImpedimentView.tsx:151、TransitFlowLayer.tsx:977），任何走这条读法的消费方会把 0.92 显示成「0.92 %」（真值 92%）。**本单刻意不修**：正确修法是把「ratio 值 + % 单位」这条约定落成机器可读的契约（如 PropertyDef 增 `scale`/`kind` 字段，或统一改存百分数），那是跨 datacore/前端两半的改动，属另一张单。本门只负责让它从此有信号、不再只活在注释里。"
+    }
+  },
+  "opaque": {},
+  "maxUnitLie": 3,
+  "maxOpaque": 0
+}

@@ -16,7 +16,7 @@ export interface TestApp extends BuiltApp {
   adminCtx: AuthCtx;
 }
 
-export async function makeApp(opts?: { fetchImpl?: typeof fetch; seed?: boolean; env?: Record<string, string> }): Promise<TestApp> {
+export async function makeApp(opts?: { fetchImpl?: typeof fetch; seed?: boolean; env?: Record<string, string>; seeding?: () => boolean; bootstrapRequired?: () => Promise<string | null>; processClock?: () => Date }): Promise<TestApp> {
   const blobDir = await mkdtemp(join(tmpdir(), "dc-test-"));
   const config = loadConfig({
     NODE_ENV: "test",
@@ -33,6 +33,11 @@ export async function makeApp(opts?: { fetchImpl?: typeof fetch; seed?: boolean;
     blob: new LocalFsBlobStore(blobDir),
     llm,
     fetchImpl: opts?.fetchImpl,
+    seeding: opts?.seeding,
+    bootstrapRequired: opts?.bootstrapRequired,
+    // WO-PROCESS-INSTANCE：流程运行时的可注入时钟。不传 ⇒ 生产同款真实时钟。
+    // 传了才能对「已等多久」做到毫秒级断言 —— 欠账 #141「挂在墙钟上的断言并发时必假红」的对策。
+    ...(opts?.processClock ? { processClock: opts.processClock } : {}),
   });
   let adminCtx: AuthCtx = { tenantId: "demo", userId: "usr_demo_admin", roles: ["admin"], attributes: {} };
   if (opts?.seed !== false) adminCtx = await seedDemo(repos);
@@ -63,7 +68,9 @@ export async function seedBattery(t: TestApp, seed = 42): Promise<void> {
   if (res.statusCode !== 202) throw new Error(`synthetic job failed: ${res.body}`);
 }
 
-export const invokeSolver = (t: TestApp, solverKey: string, args: Record<string, unknown>, headers = ADMIN) =>
+// headers 显式标 Record<string, string>：不标时会从默认值 ADMIN 推成 `{ "x-debug-user": string }`，
+// 于是调用方传别的租户头（或大小写不同的 "X-Debug-User"）就报 TS2345 —— 而 HTTP 头本就大小写无关。
+export const invokeSolver = (t: TestApp, solverKey: string, args: Record<string, unknown>, headers: Record<string, string> = ADMIN) =>
   t.app.inject({ method: "POST", url: `/a/v1/solvers/${solverKey}/invoke`, headers, payload: { args } });
 
 export const ORDERS_CSV = `so,cust,model,qty,due,status

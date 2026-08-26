@@ -53,9 +53,12 @@ export default function Object360Page() {
         <h3>{zh.object360?.properties ?? "属性"}</h3>
         <table>
           <tbody>
-            {(typeDef?.properties ?? Object.keys(obj.props).map((k) => ({ propKey: k, dataType: "string", isPrimaryKey: false, unit: undefined }))).map((p) => (
+            {(typeDef?.properties ?? Object.keys(obj.props).map((k) => ({ propKey: k, dataType: "string", isPrimaryKey: false, unit: undefined, displayName: undefined as string | undefined }))).map((p) => (
               <tr key={p.propKey} data-testid={`o360-prop-${p.propKey}`}>
-                <th style={{ textAlign: "left", paddingRight: 16 }}>{p.propKey}</th>
+                {/* WO-SCHEMA-ZH：显示后端下发的中文业务名（PropertyDef.displayName 单源）；
+                    缺则**诚实回落**英文 propKey——不臆造中文、不渲染 undefined/空白。
+                    技术键留在 title 供工程排查（不占版面、不再是业务专家看到的那个词）。 */}
+                <th style={{ textAlign: "left", paddingRight: 16 }} title={p.propKey}>{p.displayName ?? p.propKey}</th>
                 <td>
                   {String(obj.props[p.propKey] ?? "—")}
                   {p.unit ? <span style={{ color: "#999", marginLeft: 4 }}>{p.unit}</span> : null}

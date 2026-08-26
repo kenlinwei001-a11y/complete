@@ -1,7 +1,9 @@
-import type { FeatureDef } from "@platform/contracts";
+import { assertSharedFeatureNames, type FeatureDef } from "@platform/contracts";
 import type { AuthCtx, FeatureAuditRecord, FeatureConfigRecord } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import { AppError, validationError } from "./errors.js";
+import { builtInViewFeatureDefs, builtInViewFeatureMap } from "./synthetic/view-manifest.js";
+import { SANDBOX_CONSOLE_FEATURE_KEY, SANDBOX_CONSOLE_VIEW_KEYS } from "./synthetic/sandbox-console.js";
 
 /**
  * Feature entitlement (增量 PRD). FeatureRegistry is code-registered; resolution
@@ -9,23 +11,28 @@ import { AppError, validationError } from "./errors.js";
  * narrowing. Disabled = "does not exist" → 404 FEATURE_NOT_FOUND before authz.
  */
 
-export const FEATURE_REGISTRY: FeatureDef[] = [
-  // VIEW level
-  { key: "view.dash", name: "驾驶舱", level: "VIEW", defaultOn: true, bindings: { apiTags: ["dash"] } },
-  { key: "view.ontology-graph", name: "本体图谱", level: "VIEW", defaultOn: true },
-  { key: "view.risk-board", name: "风险推演看板", level: "VIEW", defaultOn: true, bindings: { intents: ["risk_*"], solverKeys: ["risk_timeline"], apiTags: ["risk-board"] } },
-  { key: "view.ledger", name: "订单台账", level: "VIEW", defaultOn: true },
-  { key: "view.plan-audit", name: "规划体检", level: "VIEW", defaultOn: true, bindings: { intents: ["plan_audit_*"], solverKeys: ["plan_audit"], apiTags: ["plan-audit"] } },
-  { key: "view.plan-generate", name: "规划建议", level: "VIEW", defaultOn: true, bindings: { intents: ["plan_generate_*"], solverKeys: ["plan_generate"], apiTags: ["plan-generate"] } },
-  { key: "view.sop-balance", name: "S&OP 月度平衡", level: "VIEW", defaultOn: true, bindings: { intents: ["sop_*"], solverKeys: ["sop_balance"], apiTags: ["sop"] } },
-  { key: "view.project-sim", name: "项目沙盘推演", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["capacity_forecast"], intents: ["capacity_*"] } },
-  // 剩余视图增量（前端 PRD §7.14–7.17 / 修订点 4）
-  { key: "view.annual-scenario", name: "年度情景规划台", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-aop"], solverKeys: ["capex_scenario"] } },
-  { key: "view.quarterly-rolling", name: "季度滚动看板", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-quarterly"] } },
-  { key: "view.order-chain", name: "订单全链聚合", level: "VIEW", defaultOn: true },
+/**
+ * ⚠ 功能名（`name`）的单一真相源是 `@platform/contracts` 的 `SHARED_FEATURE_NAMES`
+ * （WO-VIEWNAME-SINGLE-SOURCE）。凡被 ≥2 份注册表声明的键（本表 + AgentCore
+ * `features/registry.ts` + 前端 mock `fixtures.ts`），名字由那份册说了算；
+ * 下面的字面量是**受检副本**——`assertSharedFeatureNames()` 在模块加载期逐条核对，
+ * 不符即抛（不是静默覆盖：覆盖会造出"源码写 A、运行时是 B"的假绿）。
+ * 只有本表独有的键（`view.dash.widget.*` / `domain.*` / `sim.propagation` …）才是本地自治。
+ */
+export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
+  // VIEW level · 内置视图（单一来源 synthetic/view-manifest.BUILTIN_VIEWS 派生·防 features/map/VIEW_DEFS/scenarioSeed
+  // 四处漂移·WO-MEMORY-VIEW-RESILIENCE）。含 view.dash/ontology-graph/risk-board/ledger/plan-audit/plan-generate/
+  // project-sim/sop-balance/global-sim——名称/bindings 与此前一字不差，唯 project-sim/sop-balance 相对序随 scenarioSeed
+  // 导航序（无功能行为影响：resolve() 排序 + Set 消费·order 不入任何断言）。**非 VIEW 功能（下方 BLOCK/ACTION/sim.*/
+  // opt.*/ceo.*）保持手注册·顺序原样不动**（PRD §9 风险点：非 VIEW 功能注册序不得被单一来源重构扰动）。
+  ...builtInViewFeatureDefs(),
+  // 剩余视图增量（前端 PRD §7.14–7.17 / 修订点 4）——非出厂种子核心视图（seed:false·不在 BUILTIN_VIEWS）·手注册
+  { key: "view.annual-scenario", name: "年度规划", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-aop"], solverKeys: ["capex_scenario"] } },
+  { key: "view.quarterly-rolling", name: "季度规划", level: "VIEW", defaultOn: true, bindings: { apiTags: ["plan-quarterly"] } },
+  { key: "view.order-chain", name: "订单进展与卡因", level: "VIEW", defaultOn: true },
   { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
-  // 运营态出厂配置增量 §2/§4：运营回顾（只读历史证据链页面，消费 GET /a/v1/history/bundle）
-  { key: "view.review", name: "运营回顾", level: "VIEW", defaultOn: true, bindings: { apiTags: ["history"] } },
+  // 运营态出厂配置增量 §2/§4：运营复盘（只读历史证据链页面，消费 GET /a/v1/history/bundle）
+  { key: "view.review", name: "运营复盘", level: "VIEW", defaultOn: true, bindings: { apiTags: ["history"] } },
   // BLOCK level
   { key: "shell.query-dock", name: "查询对话坞", level: "BLOCK", defaultOn: true },
   { key: "qos.agent-fallback", name: "Agent 兜底（路径 B）", level: "BLOCK", defaultOn: true },
@@ -33,6 +40,16 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.risk-board.mitigation", name: "处置方案区", level: "BLOCK", defaultOn: true, requires: ["view.risk-board"] },
   { key: "view.dash.widget.capacity", name: "驾驶舱·产能卡", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
   { key: "view.dash.widget.risk", name: "驾驶舱·风险卡", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
+  // cockpit P1 富 KPI（需求/财务、物料）
+  { key: "view.dash.widget.demand", name: "驾驶舱·需求与毛利卡", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
+  { key: "view.dash.widget.material", name: "驾驶舱·物料缺口卡", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
+  // cockpit P2 规划决策推演 · 根因 DAG（默认开）
+  { key: "view.dash.widget.rootcause", name: "驾驶舱·根因归因 DAG", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
+  // SPINE.4 经营指标条（视图读 Metric 单一出处，默认开）
+  { key: "view.dash.widget.metric", name: "驾驶舱·经营指标条", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
+  // cockpit P5 前端：V5/V7 版本切换 + 反事实双线图（默认开）
+  { key: "view.dash.widget.version", name: "驾驶舱·S&OP版本切换", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
+  { key: "view.dash.widget.counterfactual", name: "驾驶舱·反事实双轨推演", level: "BLOCK", defaultOn: true, requires: ["view.dash"] },
   // §7.19 任务详情编排 DAG（默认开）
   { key: "view.task-dag", name: "任务详情·编排 DAG", level: "BLOCK", defaultOn: true },
   // §7.18 图谱八视角（每个视角可单独开关，BLOCK 级，依赖本体图谱）
@@ -44,6 +61,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "view.graph.persp.mvp", name: "图谱·MVP", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
   { key: "view.graph.persp.agent", name: "图谱·智能体网络", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
   { key: "view.graph.persp.loop", name: "图谱·学习闭环", level: "BLOCK", defaultOn: true, requires: ["view.ontology-graph"] },
+  // Dogfooding（系统本体自反）：/meta 元本体 entitlement（功能关闭=404 FEATURE_NOT_FOUND 先于角色门）。默认开。
+  { key: "admin.meta-ontology", name: "系统自我（元本体 Dogfooding）", level: "BLOCK", defaultOn: true },
+  // WO-A · No-code Plan Builder Canvas ↔ PlanDSL。⚠ defaultOn 沿用原分支作者的选择（见 agentcore
+  // features/registry.ts 同键注释）—— 权威集在 DataCore，两处必须 parity，改要一起改。
+  { key: "admin.plan-builder", name: "计划构建器", level: "BLOCK", defaultOn: true },
   // 治理增量 §1.4：域级开关（domain.{key}）——关一个域 = 该域类型在图谱/检索/建模/聚合整体不可见。
   // 默认全开；卖"财务域"为可选包的商业形态由此支持。
   { key: "domain.factory", name: "域·工厂", level: "BLOCK", defaultOn: true },
@@ -66,21 +88,199 @@ export const FEATURE_REGISTRY: FeatureDef[] = [
   { key: "act.adopt-to-draft", name: "采纳为草稿", level: "ACTION", defaultOn: true },
   { key: "act.export", name: "导出", level: "ACTION", defaultOn: true },
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
-];
+  // 推演沙盘（G-11·SPEC §4）：全部暗发 defaultOn:false——按租户开不同档（lite/Pro/旗舰），
+  // 关 = /a/v1/sim/* 该能力 404 FEATURE_NOT_FOUND（R3 先于 authz）。现有租户零影响（RL2 暗发）。
+  { key: "sim.sandbox", name: "推演沙盘", level: "VIEW", defaultOn: false },
+  { key: "sim.propagation", name: "系数传导", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
+  { key: "sim.propagation.delay", name: "延迟传导", level: "BLOCK", defaultOn: false, requires: ["sim.propagation"] },
+  { key: "sim.checkpoint", name: "检查点/回滚", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
+  { key: "sim.branch", name: "分支对比", level: "BLOCK", defaultOn: false, requires: ["sim.checkpoint"] },
+  { key: "sim.certification", name: "就绪认证 L0-L4", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
+  { key: "sim.commander", name: "AI 推演指挥台", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
+  // WO-DECISION-CAUSAL-GRAPH · 决策因果图（Cause→Impact→Decision→Action→Result 五段·只读投影）。
+  // **暗发 defaultOn:false**：关 = /a/v1/causal-graphs/* 一律 404 FEATURE_NOT_FOUND（R3 先于 authz），
+  // 现有租户零影响（RL2）。不 requires sim.sandbox —— 两个数据源里只有一个是沙盘，
+  // 台账源（Decision）与沙盘无关，绑上去会让"看决策因果图"莫名其妙依赖"沙盘已开"。
+  { key: "decision.causal-graph", name: "决策因果图", level: "BLOCK", defaultOn: false },
+  // 优化求解器融合（G-12·SPEC-optimization-template-pool §6）：全部暗发 defaultOn:false——按租户开不同档
+  // （lite 给模板池+几个模板 / Pro 给 what-if+复用检索 / 旗舰再给离线进化）。关 = /a/v1/opt/* 该能力
+  // 404 FEATURE_NOT_FOUND（R3 先于 authz）。现有租户零影响（RL2 暗发）。
+  { key: "opt.solver-pool", name: "优化模板池", level: "VIEW", defaultOn: false, bindings: { apiTags: ["opt"] } },
+  { key: "opt.whatif", name: "优化 what-if", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { apiTags: ["opt-whatif"], solverKeys: ["optimize_whatif"] } },
+  // WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用（暗发 defaultOff，依赖优化模板池）。
+  { key: "opt.multiobj", name: "多目标 + 跨对象占用", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"], bindings: { solverKeys: ["multi_objective", "cross_object_occupancy"] } },
+  // 全局推演·活系统（NL 对话框 / 方案存·分支·横比）。**已毕业为默认开**（WO-GSIM-LIVE-FLAG-REASON·2026-08-17）。
+  //
+  // ⚠️ 本行注释此前写的是「真后端 /b/v1/sim/compose · /a/v1/sim/scenarios 端点未落 → defaultOff 不渲染避 404；
+  //    WO-LIVE-SCENARIO 落后开门」。那句话在 WO-LIVE-ENDPOINTS 落地之后就不成立了，却留在这里当了很久的路标 ——
+  //    下一个人读了会以为端点还没做，于是去重做一遍已经做好的东西。**留一句已不成立的理由比没有注释更坏。**
+  //    这一次是「落后开门」这句既有裁决的**执行**（前置条件已满足），不是新的产品决策。
+  //
+  // 前置条件（2026-08-17 亲手复核·端点全部有真处理体，非空壳/非 501/非恒抛）：
+  //   · POST /b/v1/sim/compose            → agentcore/src/server.ts（调真 portfolio·twoStage·三方案 → buildComposeNarrative）
+  //   · POST|GET /a/v1/sim/scenarios      → 本包 app.ts（存/列 gslive 七维 KPI 快照·发 sim.scenario_saved）
+  //   · GET  /a/v1/sim/scenarios/compare  → 本包 app.ts（按 ids 横比）
+  //   · POST /a/v1/sim/scenarios/:id/branch → 本包 app.ts（parentId 链）
+  //   四条 A 侧路由的第一句都是 `requireLive()` ⇒ 本 flag 关 = 404 FEATURE_NOT_FOUND（R3 先于 authz），开 = 真可用。
+  // 复验命令（两条都真跑过·RC=0，不是读代码读出来的）：
+  //   pnpm --filter datacore  exec vitest run test/live-scenarios-seam.test.ts
+  //   pnpm --filter agentcore exec vitest run test/live-endpoints-seam.test.ts
+  //
+  // ⚠️ defaultOn 只管 L1。demo（industry=battery-manufacturing）此前就已被 L2 模板抬开 —— 也就是说
+  //    「真部署那块看不见」对 demo **不成立**，对**无行业模板 / 模板不含本键**的租户才成立，这次翻的正是那一档。
+  //    投放意图同步改成 ga（scripts/feature-rollout.json）；dark-launch:check 的 A3/A4 会核对这两处一致。
+  // 核心（自由杠杆/矩阵/排产）不受此门·照常真出。
+  { key: "view.global-sim.live", name: "全局推演·活系统(NL/方案存比)", level: "BLOCK", defaultOn: true },
+  { key: "opt.embedding-retrieval", name: "模板复用检索", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
+  { key: "opt.evolve", name: "模板进化(离线)", level: "BLOCK", defaultOn: false, requires: ["opt.solver-pool"] },
+  // WO-PROCESS-INSTANCE（R3 暗发·defaultOn:false·关=404 FEATURE_NOT_FOUND·先于 authz）：
+  // 流程**运行时**层 —— `ProcessInstance`/`ProcessTask` + 五个等待态，回答需求 §4.5「为什么这个流程现在卡住了」。
+  // 暗发理由：本单只落引擎与读端，**平台自带流程实例种子尚无**（65 条是模板，不是在跑的单子）——
+  // 默认开会让每个租户的卡点面板都是空的，而空面板与「一切顺利」在界面上分不开，那是会说谎的诚实位。
+  // 先由 CLI/curl 造实例验证（R15 CLI 先于 UI），有真实例数据源之后再议默认开。
+  { key: "process.runtime", name: "流程运行时（实例·卡点）", level: "VIEW", defaultOn: false, bindings: { apiTags: ["process-runtime"] } },
+  // WO-CEO-DATA-supply（R3 暗发·defaultOn:false·关=404）：真源记录颗粒级物化（真 RawDataset 逐行→真对象·颗粒不聚合）。
+  { key: "data-import.record-materialize", name: "真源记录物化", level: "ACTION", defaultOn: false, bindings: { apiTags: ["record-materialize"] } },
+  // WO-CEO-DATA-2（R3 暗发·defaultOn:false）：CEO 驾驶舱原子颗粒数据集生成（只产原子颗粒·无预聚合·可 back-derivation）。
+  { key: "ceo.dataset.generate", name: "CEO 驾驶舱原子数据集生成", level: "VIEW", defaultOn: false, bindings: { apiTags: ["ceo-dataset"] } },
+  // WO-REAL-LLM-FREE-QUERY（R3 暗发·defaultOn:false·关=字节兼容不触发）：CEO/块级深问走 path-B 真 LLM 自由多跳推理
+  // （确定性路由之外·PageContext/BlockContext 注入·失败落确定性兜底）。AgentCore registry 同键双注册（feature parity）。
+  { key: "ceo.free-llm", name: "CEO 深问真 LLM 自由推理", level: "BLOCK", defaultOn: false },
+  // WO-FIVE-ROLE-AI-EMPLOYEE P1（R3 暗发·defaultOn:false·关=字节兼容不触发）：跨域问题→Coordinator 多角色编排
+  //（拆子问→invoke_agent 扇出调各角色 agent→汇总·scope 真隔离越界拒）。AgentCore registry 同键双注册（feature parity）。
+  { key: "agent.coordinator", name: "跨域多角色 Coordinator 编排", level: "BLOCK", defaultOn: false },
+  // WO-DRIL-P4（R3 暗发·defaultOn:false·关=字节兼容不触发）：Path-B Agent Loop 注入 DRIL 资源包（跨 solver/slice/rule
+  // 预选组包）到首轮 prompt → agent 不再盲 discover 逐跳。AgentCore registry 同键双注册（feature parity）·暗发只经显式 override 开。
+  { key: "qos.dril-routing", name: "DRIL 智能资源路由（Path-B 组包注入）", level: "BLOCK", defaultOn: false },
+  // WO-LIGHTUP（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：Path-B 收尾前**反思闭环**——
+  // 确定性复盘（reflect.ts·R6）+ LLM critic advisory（fail-open）。orchestrator reflectEnabled 据本键 set.has 注入 runAgentLoop。
+  { key: "agent.critic", name: "Agent 反思 LLM critic（确定性复盘之上的 advisory 复核·fail-open）", level: "BLOCK", defaultOn: false },
+  // WO-LOOP-CONTROL-P2（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：path-B agent 停滞时**升级阶梯**——
+  // rung① 换策略再试一轮（早于 degrade·发 agent_escalated 伪 step·不新增事件名）→ rung③ 诚实降级。orchestrator escalationEnabled 据本键 set.has 挂点。
+  { key: "agent.escalation", name: "Agent 停滞升级阶梯（换策略再试→诚实降级·暗发）", level: "BLOCK", defaultOn: false },
+  // #90（暗发·defaultOn:false·同列 QOS_DARK_LAUNCH_FEATURES → battery「all on」也保持默认关）：
+  // 租户级已发布 Skill 挂到默认自由问答（泛化 path-B）——此前 Skill 只对注册 agent 路径可达。
+  { key: "agent.skill-on-free-qa", name: "自由问答挂载租户技能（默认 path-B 可见并 load_skill·暗发）", level: "BLOCK", defaultOn: false },
+  // OC7 / #92（暗发·defaultOn:false·同列 QOS_DARK_LAUNCH_FEATURES）：LLM token 配额执行（硬线拒新任务）。
+  { key: "qos.llm-budget-enforce", name: "LLM token 配额执行（硬线耗尽拒新任务·暗发）", level: "BLOCK", defaultOn: false },
+  // WO-LIGHTUP（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：path-B 多对口 solver **服务端组合编排**
+  //（executePlan 逐步 invoke_solver + 一次综合·不经 runAgentLoop·确定性 compose 秒答）。orchestrator composePathEnabled 据本键 set.has 挂点。
+  { key: "qos.compose-path", name: "QOS 组合路径（多 solver 服务端编排）", level: "BLOCK", defaultOn: false },
+  // WO-REASONING-TRACE（R3 暗发·defaultOn:false·同 AgentCore·只经显式 override 开）：path-B agent 每轮"思考旁白"（ReAct thought）
+  // 经 step.completed 伪 step(type=agent_narration) 实时流前端·建人机信任。orchestrator reasoningTraceEnabled 据本键 set.has 挂点。
+  { key: "qos.reasoning-trace", name: "QOS 推理旁白流（path-B agent 思考实时展示）", level: "BLOCK", defaultOn: false },
+  // WO-DATACORE-LAZY-SOLVER-CONTEXT（R3 暗发·defaultOn:false·关=逐字节现行为）：SolverContext 核心 10 类**按需加载**——
+  // 开 → invoke/runWithParams 按 solverKey 只 listByType 该求解器真读的核心对象类型（见 service.ts SOLVER_REQUIRED_TYPES），
+  // 冷启 187→≤80ms。纯性能收窄·裁剪加载结果与全量**逐字节一致**（SEAM-EQ）·无链路/事件/对象变更。同 QOS 暗发门一样
+  // **不随 battery「all on」模板顺带开**（见 PERF_DARK_LAUNCH_FEATURES）——只经显式租户 override 启用（既有租户零回归）。
+  { key: "dc.lazy-solver-context", name: "求解器上下文按需加载（性能收窄）", level: "BLOCK", defaultOn: false },
+  // WO-DETERMINISTIC-CROSS-DOMAIN（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：跨域题在**确定性层**
+  // 逐域枚举 + 并行 solver + 零 LLM 块装配（改写 QOS 编排路由·排在 LLM classify 之前）。orchestrator deterministicMultiEnabled 据本键 set.has 挂点。
+  // 与 ceo.free-llm/agent.coordinator 同列 QOS_DARK_LAUNCH_FEATURES → battery「all on」也保持默认关（不随模板顺带开）。
+  { key: "qos.deterministic-multi-domain", name: "确定性跨域分路（多域并行 solver·零 LLM）", level: "BLOCK", defaultOn: false },
+  // WO-QOS-CROSS-DOMAIN-UNIFIED（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：⑤ LLM 多意图兜底——
+  // ②确定性没覆盖的跨域题 → classify 多候选并行 solver（改写 QOS 编排·排在 clarification 之前）。同列 QOS_DARK_LAUNCH_FEATURES
+  // → battery「all on」也保持默认关（不随模板顺带开）。orchestrator multiIntentEnabled 据本键 set.has 挂点。
+  { key: "qos.multi-intent-orchestration", name: "LLM 多意图兜底（分类器多候选并行 solver·零 LLM 装配）", level: "BLOCK", defaultOn: false },
+  // WO-OPTWHATIF-NL-WIRING（R3 暗发·defaultOn:false·同 AgentCore registry parity·只经显式 override 开）：结构化优化 what-if
+  // 会话路由——NL「改一系数→CP-SAT 重解→最优决策切换」→ path-A optimize_whatif。orchestrator optWhatifRouteEnabled 据本键 set.has 挂点。
+  // 同列 QOS_DARK_LAUNCH_FEATURES → battery「all on」也保持默认关（不随模板顺带开·底层求解仍受 opt.whatif/opt.solver-pool 依赖链门）。
+  { key: "qos.opt-whatif-route", name: "结构化优化 what-if 会话路由（NL→optimize_whatif·CP-SAT 重解）", level: "BLOCK", defaultOn: false },
+  // PRD-multi-intent-L2L3 P1/P2（暗发·defaultOn:false·同 AgentCore registry parity·同列 QOS_DARK_LAUNCH_FEATURES all-on 也关）：
+  // L2 真分解（LLM 产 solver 计划·确定性校验·补漏意图）+ L3 耦合联合求解（一次 portfolio 守恒解·真传导）。
+  { key: "qos.multi-intent-l2-decompose", name: "QOS L2 真分解（LLM 产 solver 计划·确定性校验·补漏意图）", level: "BLOCK", defaultOn: false },
+  { key: "qos.multi-intent-l3-coupled", name: "QOS L3 耦合联合求解（一次 portfolio 守恒解·真传导）", level: "BLOCK", defaultOn: false },
+  // WO-ORG-WORLD（R3 暗发·defaultOn:false·关 = 404 FEATURE_NOT_FOUND 先于 authz）：组织世界（七世界之②）——
+  // Person/Role/Department/Authority/ApprovalLimit/Delegation + 「给定待批事项→谁有权批」查询面。
+  // ⚠️ **开关默认值是产品决策不是 dev 决策**：本单一律 defaultOn:false，要开由产品显式 override（seedDemoEntitlements 或租户配置）。
+  { key: "org.world", name: "组织世界（人/角色/部门/职权/审批额度/代理）", level: "VIEW", defaultOn: false, bindings: { apiTags: ["org-world"] } },
+], "datacore/features.ts FEATURE_REGISTRY");
 
 export const ALL_FEATURE_KEYS: string[] = FEATURE_REGISTRY.map((f) => f.key);
 
+/**
+ * WO-Phase4 · QOS 路由暗发特性——**即便行业模板「全开」也保持默认关**，必须经**显式**租户 override 才启用。
+ * 这两个门直接改写 QOS 编排路由（把有对口确定性 solver 的题劫持进慢/无预算的 path-B ReAct）——若被 battery
+ * 「all on」模板顺带打开，会让 demo 租户在无真 provider 部署态里空转超时（真因=无预算 ReAct，本 WO 硬预算治之，
+ * 但暗发门也必须诚实锁死默认关，不靠行业模板顺带开）。产品分档特性（sim.* / opt.* 等）不在此列，照常随模板开。
+ */
+export const QOS_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
+  "ceo.free-llm",
+  "agent.coordinator",
+  "qos.dril-routing",
+  "agent.critic",
+  "agent.escalation",
+  "agent.skill-on-free-qa",
+  "qos.llm-budget-enforce",
+  "qos.compose-path",
+  "qos.reasoning-trace",
+  "qos.deterministic-multi-domain",
+  "qos.multi-intent-orchestration",
+  "qos.opt-whatif-route",
+  "qos.multi-intent-l2-decompose",
+  "qos.multi-intent-l3-coupled",
+]);
+
+/**
+ * WO-DATACORE-LAZY-SOLVER-CONTEXT · 性能暗发门——同 QOS 暗发门一样**不随行业模板「all on」顺带开**：
+ * 纯性能收窄（求解器上下文按需加载），必须经**显式**租户 override 启用（default-off 锁死 → 既有租户逐字节现行为·SEAM-FLAG-OFF）。
+ * 与 QOS 路由门语义不同（这里是性能、非路由）故单列一个集合，不污染 QOS_DARK_LAUNCH_FEATURES 的原意。
+ */
+export const PERF_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
+  "dc.lazy-solver-context",
+]);
+
+/**
+ * WO-ORG-WORLD · 七世界增量暗发门 —— 同上两门一样**不随行业模板「all on」顺带开**。
+ *
+ * ⚠️ **这条集合不是可选的装饰，是 `defaultOn:false` 能否生效的前提**（本单实测踩出来的）：
+ * `templateFeatures()` 对 `industry === "battery-manufacturing"` 返回
+ * `ALL_FEATURE_KEYS` 减去各暗发集合，而 `layeredSet()` 的 L2 会把模板里的键**无条件 `on.add`** ——
+ * 即 **L2 覆盖 L1**。于是对 demo 租户（`seedDemo` 就把 industry 设成 battery）来说：
+ *
+ *   > **只写 `defaultOn:false` 而不进本集合 = 该功能对 demo 租户其实是「开」的。**
+ *
+ * 这正是本仓反复栽的那种坑的又一形态：**开关看起来关着（注册表里白纸黑字 `defaultOn:false`），
+ * 实际被上层无条件打开**，而且静默 —— 单测若只断言「注册表里 defaultOn 是 false」会全绿，
+ * 却证明不了「它对真实租户是关的」。判据必须是**对租户 resolve 后**的结果，不是注册表字面量。
+ * `org-world.test.ts` 的 Entitlement 断言走的就是真 HTTP + demo 租户，故会咬住这条。
+ *
+ * 与 QOS 路由门 / 性能门语义不同（这里是**未完工的世界层功能**，前端另立单），故单列一个集合，
+ * 不污染前两者的原意。
+ */
+export const WORLD_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
+  "org.world",
+]);
+
+/**
+ * WO-PROCESS-INSTANCE · **数据尚缺**暗发门 —— 同上两个集合一样不随 battery「all on」顺带开。
+ *
+ * ── 为什么必须单列（这条是实测踩出来的，不是照抄格式）──────────────────────
+ * `defaultOn:false` **单靠自己拦不住** demo 租户：`templateFeatures()` 对
+ * `battery-manufacturing` 的规则是「ALL_FEATURE_KEYS 全开，减去这几个暗发集合」，
+ * 于是任何新键只要不在某个集合里，`defaultOn:false` 就会被 L2 覆盖成开。
+ * 本单初版正是这么漏的：注册时写了 `defaultOn:false`，实测 `resolve("demo")` 仍为 `true`
+ * ——「我以为暗发了」和「它真的关着」是两个命题，靠一条断言（`process-instance.test.ts`
+ * 的 R3 用例）才抓出来。**新增暗发门必须同时进这三个集合之一，否则等于没暗发。**
+ *
+ * ── 本门的语义（与上两个都不同，故不合并）───────────────────────────────
+ * 上面两个是「路由会变慢」「性能收窄」；本门是**数据尚无**：
+ * 流程运行时的引擎与读端都已就绪，但平台自带的 65 条流程是**模板**，
+ * 没有任何「正在跑的单子」的种子数据。默认开 ⇒ 每个租户的卡点面板都是空的，
+ * 而**空面板与「一切顺利」在界面上分不开** —— 那是一个会说谎的诚实位。
+ * 有真实例数据源之后再议默认开（届时删掉本条即可）。
+ */
+export const INCOMPLETE_DATA_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
+  "process.runtime",
+]);
+
 /** Workspace view key → controlling feature (server-side navigation filter). */
 export const VIEW_FEATURE_MAP: Record<string, string> = {
-  dash: "view.dash",
-  risk: "view.risk-board",
-  order: "view.ledger",
-  graph: "view.ontology-graph",
-  "ontology-graph": "view.ontology-graph",
-  "plan-audit": "view.plan-audit",
-  "plan-generate": "view.plan-generate",
-  "sop-balance": "view.sop-balance",
-  "project-sim": "view.project-sim",
+  // 内置视图核心段（dash/graph/risk/order/plan-audit/plan-generate/project-sim/sop-balance/global-sim）
+  // 单一来源 view-manifest.BUILTIN_VIEWS 派生（防漂移·WO-MEMORY-VIEW-RESILIENCE）。
+  ...builtInViewFeatureMap(),
+  // 别名与增量视图/图谱视角（非 BUILTIN_VIEWS 成员·手注册）：
+  "ontology-graph": "view.ontology-graph", // graph 的 renderer 同名别名（两 viewKey 指同一功能）
   "annual-scenario": "view.annual-scenario",
   "quarterly-rolling": "view.quarterly-rolling",
   "order-chain": "view.order-chain",
@@ -95,6 +295,62 @@ export const VIEW_FEATURE_MAP: Record<string, string> = {
   "graph-mvp": "view.graph.persp.mvp",
   "graph-agent": "view.graph.persp.agent",
   "graph-loop": "view.graph.persp.loop",
+  // WO-PROCESS-INSTANCE · 流程卡点面板（前端 renderer 键 "process-stuck"，见 frontend registry.ts）。
+  // 暗发中（process.runtime defaultOn:false + INCOMPLETE_DATA_DARK_LAUNCH_FEATURES）⇒ 导航里默认不出现，
+  // 开通后才进 workspace 导航 —— 这一行正是「开通后它能被导航到」的接线，缺它则开了也看不见。
+  "process-stuck": "process.runtime",
+  // WO-SIM-BE-VIEWKEY · 推演沙盘指控台四视图（前端 renderer 键见 frontend registry.ts 的
+  // `./sim/console/` 那四行）。**受控键直接是 `sim.sandbox`**，与沙盘主屏同一把闸 ——
+  // 不新增 VIEW 级功能（判据与连坐后果见 synthetic/sandbox-console.ts 的文件头长注）。
+  // 缺这四行 = 「开了沙盘也看不见控制台」：`viewAllowed()` 查不到映射就一律放行，
+  // 反而会变成"沙盘关着还下发"——两个方向都错，故映射必须显式写在这里。
+  ...Object.fromEntries(SANDBOX_CONSOLE_VIEW_KEYS.map((k) => [k, SANDBOX_CONSOLE_FEATURE_KEY])),
+};
+
+/**
+ * WO-ENTITLEMENT-SERVER-SIDE · **ActionType key → 受控 ACTION 级功能**（服务端闸的查找表）。
+ *
+ * ── 为什么需要这张表（断点 G-ENTITLEMENT-ACTION-LEVEL-CLIENT-ONLY）──────────────
+ * ACTION 级特性此前**只有客户端拦**（`useFeature` / `<Feature>` 隐藏按钮），服务端
+ * `POST /a/v1/action-drafts` 一道 entitlement 闸都没有 ⇒ 关掉 flag 后直接打接口照样建草稿。
+ * 隐藏按钮是 **UX 级**，不是 entitlement —— 铁律写的是「功能关闭 = 不存在 → 404 FEATURE_NOT_FOUND」，
+ * 那必须由服务端给。本表就是服务端那道闸的查找依据。
+ *
+ * ── 为什么是「按 actionTypeKey 查」而不是「整条路由一刀切」────────────────────
+ * `POST /a/v1/action-drafts` 是**所有**动作类型的共用入口（对象数据变更 / 定稿月度计划版本 /
+ * 计划版本变更 / 采纳类 …）。整条路由绑一个 flag ⇒ 关掉「采纳为草稿」会顺带把「定稿计划版本」
+ * 也打成 404，那是把 entitlement 的粒度做丢了。故闸落在**动作类型**这一级。
+ *
+ * ── 为什么不复用 `FeatureDef.bindings`（先追了一层才决定）───────────────────────
+ * 契约 `bindings` 的形状是 `{ intents | solverKeys | apiTags }`（packages/contracts/src/features.ts），
+ * 三个都不是「动作类型」这个命名空间：`intents` 在 AgentCore 是 **QOS 意图键**
+ * （`features/registry.ts intentAllowed` → `router/orchestrator.ts`），把 actionTypeKey 塞进去
+ * 就是让两个命名空间在同一个字段里打架。故仿**同文件**已有的 `VIEW_FEATURE_MAP`
+ * （viewKey → 受控功能）另立一张同形状的表 —— 不是第二套机制，解析仍走同一个 `resolve()`。
+ *
+ * ── 收录判据（不许凭感觉加）────────────────────────────────────────────────
+ * 只收「该动作类型的语义**就是**某个 ACTION 级 flag 本身」的键。反面：
+ *   · `对象数据变更` **不收** —— 它是 R4「用户态对象写入的唯一路径」（app.ts POST /a/v1/action-drafts
+ *     注释），被 what-if 采纳、行内编辑、管理面共用；绑到「采纳为草稿」上 ⇒ 关掉采纳会连带
+ *     把所有对象写入打成 404，语义错。
+ *   · `定稿月度计划版本` / `计划版本变更` / `校准参数变更` **不收** —— 注册表里没有对应的 ACTION 级 flag，
+ *     硬绑等于凭空发明一个产品开关。
+ * 未登记的动作类型**不受 entitlement 控制**（与 `requireByBinding` 对「无 binding 路由」的处置同口径）。
+ */
+export const ACTION_TYPE_FEATURE_MAP: Record<string, string> = {
+  // act.adopt-to-draft「采纳为草稿」—— 把推演/体检/风险结论落成审批草稿的全部动作类型。
+  // 前端同门入口（读到哪个 actionTypeKey 就登记哪个，不猜）：
+  //   PlanGenerateView → 采纳经营方案 · ProjectSimView → 采纳产能预测结论 ·
+  //   DynamicLeverPanel（默认 adoptActionTypeKey）→ 采纳产能保障方案 ·
+  //   PlanAuditView / GlobalSim / Sandbox / OrderChain / RiskBoard 情景采纳 → plan_change ·
+  //   RiskBoardView 处置方案采纳 → adopt_mitigation（前端 mock 注册表本就把它写成该 flag 的 binding）。
+  plan_change: "act.adopt-to-draft",
+  adopt_mitigation: "act.adopt-to-draft",
+  采纳经营方案: "act.adopt-to-draft",
+  采纳产能预测结论: "act.adopt-to-draft",
+  采纳产能保障方案: "act.adopt-to-draft",
+  // act.aop-finalize「AOP 情景拍板」—— 唯一入口 AnnualScenarioView，前端同门，1:1。
+  AOP情景拍板: "act.aop-finalize",
 };
 
 const byKey = new Map(FEATURE_REGISTRY.map((f) => [f.key, f]));
@@ -168,7 +424,21 @@ export class FeatureService {
     const tenant = await this.repos.tenants.get(tenantId, tenantId);
     const industry = tenant?.industry;
     if (!industry) return undefined;
-    if (industry === "battery-manufacturing") return new Set(ALL_FEATURE_KEYS); // battery default: all on
+    // battery default: all on —— 但 QOS 路由暗发门（ceo.free-llm/agent.coordinator）诚实排除，不随「all on」顺带开
+    // （WO-Phase4：暗发门只经显式 override 启用·default-off 锁死·防 demo 部署态空转超时·见 QOS_DARK_LAUNCH_FEATURES）。
+    if (industry === "battery-manufacturing") {
+      return new Set(
+        ALL_FEATURE_KEYS.filter(
+          (k) =>
+            !QOS_DARK_LAUNCH_FEATURES.has(k) &&
+            !PERF_DARK_LAUNCH_FEATURES.has(k) &&
+            // WO-ORG-WORLD：七世界增量暗发门（不进这一行，`defaultOn:false` 对 demo 租户形同虚设）
+            !WORLD_DARK_LAUNCH_FEATURES.has(k) &&
+            // WO-PROCESS-INSTANCE：**数据尚缺**暗发门（同上，不进这一行等于没暗发）
+            !INCOMPLETE_DATA_DARK_LAUNCH_FEATURES.has(k),
+        ),
+      );
+    }
     const tmpl = (
       await this.repos.industryTemplates.list(tenantId, (t) => t.industryKey === industry)
     )[0];
@@ -245,6 +515,21 @@ export class FeatureService {
   async enabled(tenantId: string, featureKey: string): Promise<boolean> {
     const { features } = await this.resolve(tenantId);
     return features.includes(featureKey);
+  }
+
+  /**
+   * WO-ENTITLEMENT-SERVER-SIDE · Entitlement middleware: ActionType 级闸 ——
+   * 受控 ACTION 功能对**本请求租户**关闭 ⇒ 404 FEATURE_NOT_FOUND（**先于 authz**：
+   * 功能关闭 = 不存在，403 会泄露「它存在只是你没权限」，那正是本闸要否掉的语义）。
+   *
+   * 租户维（铁律 tenant_id everywhere）：`tenantId` 必须来自请求上下文 `req.authCtx.tenantId`，
+   * 解析走 `resolve(tenantId)`（L1 默认 → L2 行业模板 → L3 租户 override → cascade requires），
+   * 不读任何全局常量 —— 同一个动作在 A 租户 404、B 租户 201 是**正确**行为。
+   */
+  async requireActionType(tenantId: string, actionTypeKey: string): Promise<void> {
+    const featureKey = ACTION_TYPE_FEATURE_MAP[actionTypeKey];
+    if (featureKey === undefined) return; // 未登记的动作类型不受 entitlement 控制（同 requireByBinding 的无 binding 口径）
+    if (!(await this.enabled(tenantId, featureKey))) throw featureNotFound();
   }
 
   /** Entitlement middleware: route tag / solverKey lookup → 404 when bound feature is off. */

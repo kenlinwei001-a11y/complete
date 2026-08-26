@@ -382,4 +382,65 @@ describe("TenantRoutedLlmClient（A2/A3/A7 用途路由 + fallback）", () => {
     await expect(routed.parseStructured({ ...req, tenantId: "demo", purpose: "extraction" })).rejects.toThrow();
     expect(calls.filter((c) => c.provider === "llmp_third")).toHaveLength(0);
   });
+
+  it("E13 · comprehend 用途绑定 → 按租户 purpose 路由到真实 provider/model（覆盖 DataBuilderService 调用路径）", async () => {
+    const { z } = await import("zod");
+    const { createMemoryRepos } = await import("../src/repo/memory.js");
+    const { CredentialCipher } = await import("../src/crypto.js");
+    const { Metrics } = await import("../src/metrics.js");
+    const { TenantRoutedLlmClient } = await import("../src/llmproviders.js");
+    const { ScriptedLlmClient } = await import("../src/llm.js");
+
+    const repos = createMemoryRepos();
+    const now = new Date().toISOString();
+    await repos.llmProviders.put({
+      id: "llmp_bound_comprehend", tenantId: "demo", name: "Comprehend Provider", kind: "openai_compatible", baseUrl: "http://x",
+      models: [{ modelId: "comprehend-model-v1", displayName: "CMv1", capabilities: { tools: false, structuredOutput: true, maxContext: 8000 } }],
+      status: "ACTIVE", createdAt: now, updatedAt: now,
+    });
+    await repos.llmPurposeBindings.put({
+      id: "llmb_demo_comprehend", tenantId: "demo", purpose: "comprehend", providerId: "llmp_bound_comprehend", modelId: "comprehend-model-v1", updatedAt: now,
+    });
+
+    const calls: { provider: string; model: string }[] = [];
+    const fakeAdapter = (rec: { id: string }) => ({
+      async parse(req: { model: string }) {
+        calls.push({ provider: rec.id, model: req.model });
+        return { objectTypes: [{ typeKey: "Order", displayName: "订单", domain: "sales", fields: [{ name: "so", dataType: "string", isPrimaryKey: true }] }] };
+      },
+      async complete() { throw new Error("unused"); },
+      async *toolLoop() { /* unused */ },
+      async classify() { throw new Error("unused"); },
+      async agent() { throw new Error("unused"); },
+      async compose() { return ""; },
+    });
+
+    const fallbackDefault = new ScriptedLlmClient().enqueue({ objectTypes: [] });
+    const metrics = new Metrics();
+    const routed = new TenantRoutedLlmClient(
+      repos, new CredentialCipher("k".repeat(64)), fallbackDefault, metrics,
+      (rec) => fakeAdapter(rec) as never,
+    );
+    const schema = z.object({ objectTypes: z.array(z.any()) });
+    const req = {
+      model: "env-default-model",
+      maxTokens: 8000,
+      system: "comprehend system",
+      messages: [{ role: "user" as const, content: "某工序共享一台瓶颈设备，故障时下游降级" }],
+      schema,
+      tenantId: "demo",
+      purpose: "comprehend" as const,
+    };
+
+    const out = await routed.parseStructured(req);
+    expect(out.objectTypes.length).toBeGreaterThan(0);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual({ provider: "llmp_bound_comprehend", model: "comprehend-model-v1" });
+    expect(metrics.get("dc_llm_calls_total", { purpose: "comprehend", provider: "llmp_bound_comprehend", model: "comprehend-model-v1" })).toBe(1);
+
+    // 无绑定租户 → 回落 env 默认 client（与 DataBuilderService 兜底口径一致）
+    const unbound = await routed.parseStructured({ ...req, tenantId: "other-tenant" });
+    expect(unbound.objectTypes).toEqual([]);
+    expect(fallbackDefault.calls.length).toBe(1);
+  });
 });

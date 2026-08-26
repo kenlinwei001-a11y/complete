@@ -1,0 +1,79 @@
+/* 判据 U3 · 节点详情面板。
+   ⚠ 零字面色值：全部走既有 token（`--txt` / `--muted` / `--muted2` / `--line2` / `--panel2` / `--accent-txt`），
+   暗/亮两套主题各自成立（本仓踩过写死 hex 只在暗色下能看的坑）。
+   ⚠ 不设 `font-size` 的新档：只复用本仓已有的 12 / 12.5 两级（D3 字号棘轮只降不升）。 */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.verdict {
+  font-weight: 600;
+  color: var(--txt);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line2);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 68px 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.key {
+  color: var(--muted2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.val {
+  color: var(--txt);
+  word-break: break-word;
+}
+
+/* 规则性质徽章：「规则键」与「确定性投影规则」必须分得出来（前者规则库里查得到，后者查不到）。 */
+.kindTag {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--line2);
+  background: var(--panel2);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: var(--panel2);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.chip b {
+  color: var(--txt);
+}
+
+.note {
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line2);
+  color: var(--muted);
+  font-size: 12px;
+}

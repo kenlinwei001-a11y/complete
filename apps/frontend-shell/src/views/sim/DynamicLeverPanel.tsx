@@ -1,0 +1,542 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+// DF.13 外协红线单一来源（C08）：规则缺失时的兜底上限读契约，禁内联裸阈值。
+// WO-SNAPSHOT-UNIT-LIE：留痕快照形状 + 写 payload 前的运行时量纲断言，同样只认契约（禁本地另抄一份）。
+import { OUTSOURCE_REDLINE, assertLeverAdoptSnapshot, type LeverAdoptSnapshot } from "@platform/contracts";
+import { discoverLevers, fetchRules, runSolver, type DiscoveredLever } from "@/api/endpoints";
+import { Feature } from "@/workspace/featureGate";
+import { Provenance } from "@/components/Provenance";
+import { InfoPopover } from "@/components/InfoPopover";
+import { fmt, useActionDraft } from "./shared";
+import { useLiveSolver } from "./useLiveSolver";
+import zh from "@/locales/zh";
+import styles from "./SimViews.module.css";
+
+/**
+ * WO-PROJECT-SIM-WHATIF ⑥ · 动态杠杆面板（闭 G-WHATIF-HARDCODED-LEVERS）：
+ * 替换焊死 3 滑杆（夜班/加产线/外协）为「自⑤瓶颈反推 + 敏感度排序」的动态杠杆集——
+ *   ① 杠杆自本体派生 DAG 反推（generic_inference mode:"levers"·服务端算敏感度，杠杆随瓶颈变，非写死）；
+ *   ② top-K 动态滑杆 + tornado 条（∂目标/∂杠杆 降序，排序=真敏感度）；
+ *   ③ 拖动 → generic_inference recompute 真重算 → before/after deltas + 每值 provenance（R13）；
+ *   ④ 边界自规则闸（外协 C08 读规则表·非内联 20）/ 物理域；
+ *   ⑤ 多方案利弊矩阵（每方案 generic_inference 真算·一键采纳回填）。
+ * 纯投影（KILL-MOCK）：deltas / 敏感度 / 矩阵全部从真求解器输出渲染，零写死数字。
+ */
+
+interface Delta {
+  objId: string;
+  type: string;
+  prop: string;
+  before: unknown;
+  after: unknown;
+}
+interface GenericInferenceOut {
+  deltas: Delta[];
+  rows: { objectId: string; type: string; prop: string; before: unknown; after: unknown }[];
+  affectedObjects: number;
+  count: number;
+  rootTypes: string[];
+}
+
+const leverKey = (l: { objectType: string; objectId: string; prop: string }): string => `${l.objectType}.${l.objectId}.${l.prop}`;
+const isOutsource = (prop: string): boolean => /outsource/i.test(prop);
+
+/** 显示名：杠杆中文名的**单一真值在后端**（`discoverLevers` 下发 `factor`·datacore `LEVER_PROP_LABELS`）——
+ *  前端只兜底：缺 `factor` 时回退「对象类型.属性」原键（露出后端单源缺项以便补·**不在视图内联业务常数标签**·R14 去电池锁死门守）。 */
+function leverLabel(l: { objectType: string; prop: string; factor?: string }): string {
+  return l.factor ?? `${l.objectType}.${l.prop}`;
+}
+
+/** 边界自规则闸（R14·非内联）：外协类杠杆上限读 C08 阈值（从规则表达式解析 ratio），其余取物理域 [0,1] 或值域兜底。 */
+function leverBound(l: DiscoveredLever, c08Ratio: number): { min: number; max: number; step: number; pct: boolean; gated: boolean } {
+  if (l.bound && Number.isFinite(l.bound.min) && Number.isFinite(l.bound.max) && !isOutsource(l.prop)) {
+    const span = l.bound.max - l.bound.min;
+    return { min: l.bound.min, max: l.bound.max, step: span > 0 ? Math.max(span / 20, 0.001) : 0.01, pct: false, gated: false };
+  }
+  if (isOutsource(l.prop)) {
+    return { min: 0, max: c08Ratio, step: c08Ratio / 4 || 0.05, pct: true, gated: true };
+  }
+  // OEE / 利用率 / 良率：物理域 [0,1]。
+  if (l.currentValue >= 0 && l.currentValue <= 1) return { min: 0, max: 1, step: 0.01, pct: false, gated: false };
+  const max = Math.max(l.currentValue * 2, l.currentValue + 1);
+  return { min: 0, max, step: Math.max(max / 20, 0.1), pct: false, gated: false };
+}
+
+/** WO-LEVER-UNIT · 杠杆值配单位（治本单源·后端 `valueKind`/`unit` 下发·前端只格式化不内联业务单位·R14）：
+ *  ratio=比率（0–1 存储自动×100 显示 %，让"0.9"读作"90%"）；days/count/hours/minutes/qty=整数+单位后缀（如 26天/2班）。
+ *  缺后端元数据（`valueKind` undefined）→ 诚实回退旧显示：pct 边界显 %（外协）、其余 3 位小数（不臆造单位）。 */
+function fmtLeverValue(v: number, valueKind?: string, unit?: string, pct?: boolean): string {
+  if (valueKind === "ratio") return `${Math.round(v <= 1 ? v * 100 : v)}%`;
+  if (valueKind) {
+    const n = Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10);
+    return `${n}${unit ?? ""}`;
+  }
+  return pct ? `${Math.round(v * 100)}%` : fmt(v, 3); // 无后端元数据 → 旧兜底（不臆造单位）
+}
+
+function deltaDir(before: unknown, after: unknown): { arrow: string; diff: string; color: string } | null {
+  if (typeof before !== "number" || typeof after !== "number" || !Number.isFinite(before) || !Number.isFinite(after)) return null;
+  const d = Math.round((after - before) * 1e6) / 1e6;
+  if (d === 0) return { arrow: "＝", diff: "0", color: "var(--muted2)" };
+  return d > 0 ? { arrow: "▲", diff: `+${d}`, color: "var(--ok-txt)" } : { arrow: "▼", diff: String(d), color: "var(--danger-txt)" };
+}
+
+/**
+ * C08 阈值解析（R14·非内联）：从规则表达式取第一个 0–1 小数 = 外协比例上限。
+ * DF.13：规则表未返回时的兜底改读契约单一来源 `OUTSOURCE_REDLINE.maxRatio`（此前内联裸阈值）——
+ * 兜底值与真闸值同源，规则表拉不到时 UI 也不会显示一个跟后端对不上的上限。
+ */
+function parseC08Ratio(rules: { key: string; expression?: string }[] | undefined): number {
+  const c08 = rules?.find((r) => r.key === OUTSOURCE_REDLINE.ruleKey);
+  const m = c08?.expression?.match(/(\d*\.?\d+)/);
+  const v = m ? parseFloat(m[1]!) : NaN;
+  return Number.isFinite(v) && v > 0 && v <= 1 ? v : OUTSOURCE_REDLINE.maxRatio;
+}
+
+export function DynamicLeverPanel({
+  beforeValue,
+  baseGap,
+  factors,
+  scopeObjectIds,
+  modelId,
+  snapshot,
+  targetType = "Base",
+  targetProp = "oeeIndex",
+  topK = 6,
+  grain,
+  beforeLabel,
+  adoptActionTypeKey = "采纳产能保障方案",
+  adoptPayloadExtra,
+  onLiveState,
+}: {
+  /**
+   * 「调整前」参照量的**数值**（量纲由调用方决定，故名字里**不许**带分位/口径）。
+   *
+   * WO-P50-REMAINING-3 实测：本 prop 原名 `baseP50`，而两个调用方传的是**两个不同量纲**——
+   * `ProjectSimView` 传 `out.capWanP50`（**万套/窗口**）· `RiskBoardView` 传 `card.peak`
+   * （**张力 0–100 指数**，压根不是分位数）。这正是 R18 要拦的「一个分位名背多个量纲」，
+   * 只是它长在 React prop 上、不在 zod schema 里，所以 `check-quantile-field-naming` 看不见。
+   * 改名为量纲中立的 `beforeValue`：**名字不再撒谎**，口径由必配的 `beforeLabel` 上屏说明。
+   */
+  beforeValue: number;
+  baseGap: number;
+  factors: string[];
+  scopeObjectIds?: string[];
+  modelId: string;
+  /**
+   * 采纳时写进 **ActionDraft payload（审批面）** 的留痕快照。
+   *
+   * WO-SNAPSHOT-UNIT-LIE 实测：本 prop 原是扁平的 `{mode,qty,capWanP50,capWanP90,mainBn}`，
+   * 两个调用方各喂各的量纲 —— `ProjectSimView` 喂 `out.capWanP50`（**万套/窗口**·真产能），
+   * 而 `RiskBoardView` 喂 `card.peak`（**张力峰值 0–100 指数**）。后者经 `adoptCombo` 整份进
+   * payload，`ActionsPage` 又把 payload 原样打给审批人 ⇒ **审批留痕里记着一个假的产能数**。
+   * 与 `beforeValue` 那次同族（同一个 prop 背两个量纲），只是这个不上屏、藏在 payload 里。
+   *
+   * 改判别式联合（契约 `LeverAdoptSnapshotSchema`）：`kind` 决定携带哪个量纲的量，
+   * 两个量纲**不共用字段名** ⇒ 借名字这件事在类型层就写不出来，运行期还有 `.strict()` 兜一道。
+   */
+  snapshot: LeverAdoptSnapshot;
+  /** WO-CAPLIVE-2：参数化推演目标（项目推演页默认 Base.oeeIndex；产能页传 Base.weeklyCap/Process 级）。
+   *  硬编（旧 :91 targetType:"Base"/targetProp:"oeeIndex"）→ 参数，杠杆自不同产能目标反推（保 ProjectSimView 默认不回归）。 */
+  targetType?: string;
+  targetProp?: string;
+  topK?: number;
+  /** WO-CAPLIVE-TRUECHAIN：产能活台 grain 作用域（'process-model'）→ 杠杆发现/重算走真产能链（capacity_forecast.byProcessModel
+   *  Σp50·后端 discoverCapacityLevers/capacityInferenceApply）。缺省（如 ProjectSimView）→ 通用 generic_inference recompute（零回归）。 */
+  grain?: string;
+  /** "调整前" 参照量的标签（项目推演=P50·产能页=可用产能，R14 下发）。 */
+  beforeLabel?: string;
+  /** 采纳杠杆组合的 ActionType（默认产能保障方案·C5 门经审批草稿）。 */
+  adoptActionTypeKey?: string;
+  /**
+   * 该 ActionType **自己的必填 payload 位**（本面板不猜，由调用方按后端 `paramsSchema` 给）。
+   *
+   * WO-SNAPSHOT-UNIT-LIE **2026-08-15 实测**（真后端 inject，不是读注释）：`RiskBoardView` 传
+   * 复验方式：`pnpm --filter datacore exec vitest run test/lever-snapshot-unit.seam.test.ts`
+   * （该测试直接 inject `POST /a/v1/action-drafts`，断言缺 `versionId` 时返 400；
+   *   走 MSW mock 复验不算数 —— mock 不校验 paramsSchema，恒回 201，正是下面说的那族假绿）。
+   * `adoptActionTypeKey="plan_change"`，而 `plan_change` 的 `paramsSchema`
+   * （`synthetic/battery.ts` BATTERY_ACTION_TYPES）`required: ["versionId","reason"]` ——
+   * 本面板原来只发 `{modelId, levers, snapshot}` ⇒ `POST /a/v1/action-drafts` 直接
+   * **400 `payload.versionId is required`**，草稿建了却卡在 `DRAFT` 进不了审批链。
+   * MSW mock（`mocks/handlers.ts` 的 action-drafts 桩）**根本不校验 paramsSchema**、
+   * 一律回 201 `PENDING_APPROVAL` ⇒ 前端测试全绿，谁也没看见后端在拒收。
+   * 这正是「生产实参与测试实参交集为空」那一族假绿。
+   */
+  adoptPayloadExtra?: Record<string, unknown>;
+  /** WO-CAPLIVE-2：向父级暴露当前活推演态（当前杠杆组合 apply + 增益 + 影响面），供产能页方案存/分支/横比消费。 */
+  onLiveState?: (s: { apply: { objectType: string; objectId: string; prop: string; value: number }[]; capGain: number; affected: number }) => void;
+}) {
+  const action = useActionDraft();
+  const [values, setValues] = useState<Record<string, number>>({});
+
+  // ① 杠杆发现（generic_inference mode:levers·服务端算敏感度，随⑤瓶颈变·目标参数化）。
+  const leversQ = useQuery({
+    queryKey: ["a", "levers", { factors, scope: scopeObjectIds, targetType, targetProp, topK, grain, modelId }],
+    queryFn: async () => (await discoverLevers({ factors, scopeObjectIds, targetType, targetProp, topK, ...(grain ? { grain, modelId } : {}) })).data.levers,
+    retry: false,
+  });
+  const levers = useMemo(() => leversQ.data ?? [], [leversQ.data]);
+
+  // ④ 边界：C08 规则闸值（外协上限，读规则表·非内联）。
+  const rulesQ = useQuery({ queryKey: ["a", "rules", {}], queryFn: fetchRules, staleTime: 60_000 });
+  const c08Ratio = parseC08Ratio(rulesQ.data as { key: string; expression?: string }[] | undefined);
+
+  const valueOf = (l: DiscoveredLever): number => values[leverKey(l)] ?? l.currentValue;
+  const bounds = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof leverBound>>();
+    for (const l of levers) m.set(leverKey(l), leverBound(l, c08Ratio));
+    return m;
+  }, [levers, c08Ratio]);
+
+  // ③ 拖动 → 携真 {objectType,objectId,prop,value} 调 generic_inference 真重算（debounce + AbortController）。
+  const activeApply = useMemo(
+    () =>
+      levers
+        .filter((l) => {
+          const v = values[leverKey(l)];
+          return v !== undefined && v !== l.currentValue;
+        })
+        .map((l) => ({ objectType: l.objectType, objectId: l.objectId, prop: l.prop, value: values[leverKey(l)] as number })),
+    [levers, values],
+  );
+  const live = useLiveSolver<GenericInferenceOut>(
+    "generic_inference",
+    activeApply.length > 0 ? { apply: activeApply, ...(grain ? { grain, modelId } : {}) } : null,
+    (raw) => raw as GenericInferenceOut,
+  );
+  const out = live.data;
+
+  const maxSens = Math.max(1e-9, ...levers.map((l) => Math.abs(l.sensitivity)));
+
+  // WO-CAPLIVE-2：把当前活推演态（杠杆组合 + 增益 + 影响面）上抛父级（产能页方案存/分支/横比消费）。
+  // 用序列化 key 稳定依赖、ref 持 callback（避免父级重建触发循环渲染）。
+  const capGain = useMemo(
+    () => (out?.deltas ?? []).reduce((acc, x) => acc + Math.max(0, Number(x.after) - Number(x.before)), 0),
+    [out],
+  );
+  const onLiveStateRef = useRef(onLiveState);
+  onLiveStateRef.current = onLiveState;
+  const liveKey = JSON.stringify({ apply: activeApply, capGain: Math.round(capGain * 1e6), affected: out?.affectedObjects ?? 0 });
+  useEffect(() => {
+    const s = JSON.parse(liveKey) as { apply: { objectType: string; objectId: string; prop: string; value: number }[]; capGain: number; affected: number };
+    onLiveStateRef.current?.({ apply: s.apply, capGain: s.capGain / 1e6, affected: s.affected });
+  }, [liveKey]);
+
+  // ⑤ 多方案候选组合（objective 驱动·确定性·非写死）：max_产能 / min_代价 / 均衡。
+  const schemes = useMemo(() => {
+    if (levers.length === 0) return [] as { key: string; label: string; apply: { objectType: string; objectId: string; prop: string; value: number }[] }[];
+    const mk = (fn: (l: DiscoveredLever, b: ReturnType<typeof leverBound>) => number) =>
+      levers.map((l) => {
+        const b = bounds.get(leverKey(l))!;
+        return { objectType: l.objectType, objectId: l.objectId, prop: l.prop, value: Math.round(fn(l, b) * 1e6) / 1e6 };
+      });
+    return [
+      { key: "maxCap", label: zh.sim.proj.lever.schemes.maxCap, apply: mk((_l, b) => b.max) },
+      // redline-allow：0.3 是「最省成本」方案对非外协杠杆的**推进比例**（外协杠杆本身在此保持不动），非红线阈值。
+      { key: "minCost", label: zh.sim.proj.lever.schemes.minCost, apply: mk((l, b) => (isOutsource(l.prop) ? l.currentValue : l.currentValue + (b.max - l.currentValue) * 0.3)) },
+      { key: "balanced", label: zh.sim.proj.lever.schemes.balanced, apply: mk((l, b) => (l.currentValue + b.max) / 2) },
+    ];
+  }, [levers, bounds]);
+
+  const schemesQ = useQuery({
+    queryKey: ["a", "lever-schemes", schemes.map((s) => s.apply), grain, modelId],
+    enabled: schemes.length > 0,
+    retry: false,
+    queryFn: async () => {
+      const results = await Promise.all(
+        schemes.map(async (s) => {
+          const res = await runSolver("generic_inference", { apply: s.apply, ...(grain ? { grain, modelId } : {}) });
+          const d = res.data as GenericInferenceOut;
+          const capGain = (d.deltas ?? []).reduce((acc, x) => acc + Math.max(0, Number(x.after) - Number(x.before)), 0);
+          const ruleFlag = s.apply.some((a) => isOutsource(a.prop) && a.value >= c08Ratio);
+          return { key: s.key, label: s.label, capGain: Math.round(capGain * 1e6) / 1e6, impact: d.affectedObjects ?? 0, ruleFlag };
+        }),
+      );
+      return results;
+    },
+  });
+
+  const adoptCombo = (apply: { objectType: string; objectId: string; prop: string; value: number }[]): void => {
+    // WO-SNAPSHOT-UNIT-LIE · **写审批留痕之前**的运行时量纲断言（契约单源，不在本文件另判一遍）。
+    // 为什么非要运行时这一道：payload 的类型是 `Record<string, unknown>`，值一进去 TS 就不管了；
+    // 而 payload 是审批面 —— 写错的代价是「审批的人照着一个假数签了字」。
+    // 塞错量纲 ⇒ 这里当场抛，采纳按钮报错、用户看得见；**静默通过才是原病灶的复发形态**。
+    const auditedSnapshot = assertLeverAdoptSnapshot({ ...snapshot, baselineGap: baseGap });
+    action.mutate({
+      actionTypeKey: adoptActionTypeKey,
+      payload: {
+        modelId,
+        levers: apply, // 迁移：动态杠杆组合 [{objectType,prop,value}]（替原 whatIf 三系数）
+        snapshot: auditedSnapshot,
+        // 各 ActionType 自己的必填位（如 `plan_change` 的 versionId/reason）由调用方给。
+        // 不给 ⇒ 后端 `submitInner` 校验 paramsSchema 直接 422/400，草稿卡在 DRAFT 进不了审批链。
+        ...adoptPayloadExtra,
+      },
+    });
+  };
+
+  const applyScheme = (schemeKey: string): void => {
+    const s = schemes.find((x) => x.key === schemeKey);
+    if (!s) return;
+    const next: Record<string, number> = { ...values };
+    for (const a of s.apply) next[`${a.objectType}.${a.objectId}.${a.prop}`] = a.value;
+    setValues(next);
+  };
+
+  return (
+    <div className={styles.whatIfPanel} data-testid="dynamic-lever-panel">
+      <div className="section-title">{zh.sim.proj.lever.title}</div>
+      <div className={styles.noteInfo}>{zh.sim.proj.lever.hint}</div>
+
+      {leversQ.isLoading && <div className="empty-state">{zh.common.loading}</div>}
+      {!leversQ.isLoading && levers.length === 0 && (
+        <div className={styles.noteInfo} data-testid="lever-empty">{zh.sim.proj.lever.empty}</div>
+      )}
+
+      {levers.length > 0 && (
+        <>
+          {/* ② tornado 条（敏感度降序·排序=真敏感度） */}
+          <div data-testid="lever-tornado" style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 4 }}>{zh.sim.proj.lever.tornadoTitle}</div>
+            {levers.map((l) => (
+              <div key={leverKey(l)} data-testid={`tornado-bar-${l.prop}`} style={{ display: "flex", alignItems: "center", gap: 6, margin: "2px 0" }}>
+                <span style={{ width: 128, fontSize: 12 }} className="zh">{leverLabel(l)}</span>
+                <span className={styles.tightBar} style={{ flex: 1 }}>
+                  <i style={{ width: `${Math.min(100, (Math.abs(l.sensitivity) / maxSens) * 100)}%`, background: "var(--c-capacity)" }} />
+                </span>
+                <span className="mono" data-testid={`tornado-sens-${l.prop}`} style={{ fontSize: 12, width: 64, textAlign: "right" }}>{fmt(l.sensitivity, 3)}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* ③ top-K 动态滑杆（非焊死 3 根） */}
+          {levers.map((l) => {
+            const b = bounds.get(leverKey(l))!;
+            const v = valueOf(l);
+            const hitBound = v >= b.max;
+            return (
+              <div className={styles.sliderRow} key={leverKey(l)}>
+                <span className="zh">
+                  {leverLabel(l)}
+                  <span style={{ color: "var(--muted2)", fontSize: 12 }}> · {zh.sim.proj.lever.current} {fmtLeverValue(l.currentValue, l.valueKind, l.unit, b.pct)}</span>
+                </span>
+                <input
+                  type="range"
+                  min={b.min}
+                  max={b.max}
+                  step={b.step}
+                  value={v}
+                  aria-label={leverLabel(l)}
+                  data-testid={`lever-slider-${l.prop}`}
+                  data-object-id={l.objectId}
+                  data-object-type={l.objectType}
+                  onChange={(e) => setValues((prev) => ({ ...prev, [leverKey(l)]: parseFloat(e.target.value) }))}
+                />
+                <b className="mono" data-testid={`lever-value-${l.prop}`}>{fmtLeverValue(v, l.valueKind, l.unit, b.pct)}</b>
+                {hitBound && b.gated && (
+                  <span className={styles.noteAmber} data-testid={`lever-bound-${l.prop}`} style={{ marginLeft: 6, fontSize: 12 }}>
+                    {zh.sim.proj.lever.ruleGate(`${Math.round(c08Ratio * 100)}%`)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+
+          {/* A/B 对比 + 真重算 deltas（before/after + 每值 provenance R13） */}
+          <div className={styles.abCompare} data-testid="lever-ab">
+            <div>
+              <span>{beforeLabel ?? zh.sim.proj.before}</span>
+              <b data-testid="lever-before-value">{fmt(beforeValue)}</b>
+            </div>
+            <div>
+              <span>影响面</span>
+              <b data-testid="lever-affected-count">{out?.affectedObjects ?? 0}</b>
+            </div>
+          </div>
+
+          {/* D5 · 在途可见：拖杠杆触发的重算不再无声——已耗时（秒级递增）+ 主动取消。
+              本面板杠杆全是滑杆（连续控件）→ 按仓主定案**不弹二次确认框**（每动一下弹一次不可用），
+              照旧 debounce + 取消前序（D1 并线后底层求解真的会停，取消本就免费）。
+
+              ⚠ **为什么搬出 `.abCompare`（仓主 2026-08-14 点名「很难看」）**：
+              `.abCompare` 是一排**统计块**（`> div` 带边框 · `b` 是 18px 等宽大数字 · `span` 是 12px 弱化标签）。
+              本块原是它的第三个子元素，于是自动继承那套样式 ⇒ 「已耗时 **3s**」被渲染成与
+              「调整前峰值张力 **97.8**」「影响面 **900**」同等份量的统计数字，旁边还塞一个 `btn sm`。
+              **它不是统计值，是瞬态状态**——两者混排，读的人会把"跑了几秒"当成一个业务指标。
+              且它随每次拖动出现/消失，会把整排统计块**顶得来回跳**。
+              现改为独立的一行状态条，并**恒占位**（不 fetching 时渲染等高空条）⇒ 布局不跳。
+              ⚠ D4：已耗时与取消是诚实位（让人知道自己要放弃的是跑了多久的求解），**只改形态、一个字不删**。 */}
+          <div className={styles.inflightStrip} aria-live="polite">
+            {live.isFetching ? (
+              <span data-testid="lever-live-inflight">
+                <span className={styles.inflightDot} aria-hidden="true" />
+                求解中 · 已耗时{" "}
+                <b className="mono" data-testid="lever-live-elapsed">{Math.floor(live.elapsedMs / 1000)}s</b>
+                <button
+                  type="button"
+                  className={styles.inflightCancel}
+                  data-testid="lever-live-cancel"
+                  onClick={live.cancel}
+                  title="放弃本次重算（服务端会真的中止底层求解）"
+                >
+                  取消
+                </button>
+              </span>
+            ) : null}
+          </div>
+
+          {out && out.count > 0 && (
+            <div style={{ marginTop: 8 }} data-testid="lever-deltas">
+              {/* 仓主 2026-08-14 定案：「**没价值则展示汇总数据，点击后再展示详细数据**」。
+                  逐对象 before/after 是**引擎的中间产物**（哪些对象的哪个派生字段变了），不是决策信息 ——
+                  它的正当用途是**溯源**（「你说影响 900 个对象，是哪些」），故降第二层。
+                  ⚠ D4：一行没删，只是默认收起；`<details>` 保留完整表格与每值 provenance。
+
+                  汇总只报**算得出来的**四个量，一个都不编：
+                    · 影响对象数（后端 `affectedObjects`，非前端数行数）
+                    · 合计 Δ（Σ(after−before)）· 变化区间（min…max）
+                    · **去重后的不同结果数** —— 这一条是仓主实测点名的那个事实：
+                      屏上 15 行里其实只有 5 个不同的数（每条产线的三个型号 before/after 完全相同，
+                      即型号维度不参与本次计算）。**不说出来，读的人会把 15 行当成 15 个独立结论。**
+                  ⛔ 刻意**不**报「缺口 X→Y」：本面板拿不到 gap（不在 props 里），编一个就是造假；
+
+                  📅 复验（2026-08-14 仓主实测点名，数字会随种子/参数变）：
+                    · 「15 行里只有 5 个不同的数」不是写死的 —— 屏上那个数由本组件现算
+                      （`new Set(out.rows.map(r => `${r.prop}|${r.before}|${r.after}`)).size`），
+                      换一次求解它就跟着变；这里写 15/5 只是当天的现场，不是断言。
+                    · 命令复验：`grep -n "deltaDistinct" apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx`
+                      —— 屏上那个数只有这一处产地，没有第二份算法。
+                    · 亲手复验：沙盘上调一次杠杆 → 展开明细表 → 数「不同结果数」那一行，
+                      与表里逐行 before/after 去重后的条数应逐字节一致。
+                     要报它须由父页传入，另立单。 */}
+              {(() => {
+                const nums = out.rows.map((r) => ({ d: Number(r.after) - Number(r.before), ok: Number.isFinite(Number(r.after)) && Number.isFinite(Number(r.before)) })).filter((x) => x.ok);
+                const total = nums.reduce((s, x) => s + x.d, 0);
+                const lo = nums.length ? Math.min(...nums.map((x) => x.d)) : 0;
+                const hi = nums.length ? Math.max(...nums.map((x) => x.d)) : 0;
+                const distinct = new Set(out.rows.map((r) => `${r.prop}|${String(r.before)}|${String(r.after)}`)).size;
+                return (
+                  <div className={styles.deltaSummary} data-testid="lever-delta-summary">
+                    <span>
+                      影响 <b className="mono">{out.affectedObjects}</b> 个对象 · 合计{" "}
+                      <b className="mono" data-testid="lever-delta-total">{total >= 0 ? "+" : ""}{fmt(total, 0)}</b>
+                      {nums.length > 1 && lo !== hi && (
+                        <> · 区间 <span className="mono">{fmt(lo, 0)} … {fmt(hi, 0)}</span></>
+                      )}
+                    </span>
+                    {distinct < out.rows.length && (
+                      /* ⚠ 括号里的解释原本写在第一层，被 `check-ui-first-layer` 当场判红
+                         （D2b「第一层长说明串 ≥24 字」）——**我刚给别的单立的规矩，自己当场犯了**。
+                         按规范降到浮层，第一层只留「N 行中仅 M 个不同结果」这个**结论**。
+
+                         ⚠ 2026-08-14（WO-FE-RED-7）再修一次：上一版降到的是**原生 `title=`**，
+                         而规范 §2 R-UI-3 明令禁止拿 title 当浮层（浏览器原生 tooltip 由 OS 绘制、
+                         不受组件控制、移开后会滞留）。于是它换了一道门继续红：
+                         `provenance-popover-legibility` 的 title= 棘轮。
+                         **躲开一道门不等于治好** —— 正解是 `InfoPopover`，两道门同时绿。
+                         `topic` 用字面量而非 locale 变量：`check-ui-first-layer` 把
+                         `topic={变量}` 计作一条**第一层**信息块（`topic="字面量"` 不计），
+                         写成变量会让 first 涨、D1 棘轮当场红。 */
+                      <span className={styles.deltaDistinct} data-testid="lever-delta-distinct">
+                        {out.rows.length} 行中仅 <b className="mono">{distinct}</b> 个不同结果
+                        <InfoPopover topic="为什么会有同值重复" testId="lever-delta-distinct">
+                          其余为同值重复：该维度不参与本次计算，故多行结果相同。
+                        </InfoPopover>
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
+              <details data-testid="lever-deltas-details">
+                <summary className={styles.deltaSummaryToggle}>{zh.sim.proj.lever.deltaTitle(out.rows.length)}</summary>
+                {/* 诚实位：对象 id 与派生字段的读法。屏上给的是引擎原始键，不解释用户读不出来。
+                    ✅ WO-P50-RENAME 已在**契约层**根治：原先 `p50` 一个名字背 4 个量纲（需求万套/年 ·
+                    产能万套/窗口 · 工序电芯/日 · 累计套），用户在本表里分不出是哪个。现字段名自带量纲，
+                    本表的 `cellsPerDayP50` 只可能是「工序×型号日产能·电芯/日」这一个意思。 */}
+                <div className={styles.deltaLegend}>
+                  对象 = <span className="mono">基地|产线|型号</span> · 派生字段 <span className="mono">cellsPerDayP50</span> = 该格产能 P50（<b>电芯/日</b>）
+                </div>
+              <table className="cmp">
+                <thead>
+                  <tr><th>对象</th><th>派生字段</th><th>before（电芯/日）</th><th>after（电芯/日）</th><th>变化（电芯/日）</th></tr>
+                </thead>
+                <tbody>
+                  {out.rows.map((r, i) => {
+                    const dir = deltaDir(r.before, r.after);
+                    return (
+                      <tr key={`${r.objectId}-${r.prop}-${i}`} data-testid={`lever-delta-row-${r.objectId}-${r.prop}`}>
+                        <td className="mono" style={{ fontSize: 12 }}>{r.objectId}</td>
+                        <td className="mono">{r.prop}</td>
+                        <td className="mono" data-testid={`lever-before-${r.objectId}-${r.prop}`}>{fmt(Number(r.before), 3)}</td>
+                        <td className="mono" data-testid={`lever-after-${r.objectId}-${r.prop}`} style={{ fontWeight: 600 }}>
+                          <Provenance
+                            testId={`ld-${r.objectId}-${r.prop}`}
+                            src="generic_inference · recompute(dryRun)"
+                            formula={zh.sim.proj.lever.provFormula}
+                            inputs={[`${r.type}.${r.prop}`, ...activeApply.map((a) => `${a.objectType}.${a.prop}=${a.value}`)]}
+                            rule="C03/C08"
+                          >
+                            {fmt(Number(r.after), 3)}
+                          </Provenance>
+                        </td>
+                        <td className="mono" data-testid={`lever-diff-${r.objectId}-${r.prop}`} style={dir ? { color: dir.color, fontWeight: 600 } : undefined}>
+                          {dir ? `${dir.arrow} ${dir.diff}` : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              </details>
+            </div>
+          )}
+
+          {/* ⑤ 多方案利弊量化矩阵（每方案 generic_inference 真算·一键采纳回填） */}
+          <div style={{ marginTop: 12 }} data-testid="lever-scheme-matrix">
+            <div className="section-title">{zh.sim.proj.lever.schemeTitle}</div>
+            <div className={styles.noteInfo}>{zh.sim.proj.lever.schemeHint}</div>
+            {schemesQ.data && (
+              <table className="cmp">
+                <thead>
+                  <tr>
+                    <th>{zh.sim.proj.lever.col.scheme}</th>
+                    <th>{zh.sim.proj.lever.col.capGain}</th>
+                    <th>{zh.sim.proj.lever.col.impact}</th>
+                    <th>{zh.sim.proj.lever.col.ruleFlag}</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {schemesQ.data.map((s) => (
+                    <tr key={s.key} data-testid={`scheme-row-${s.key}`}>
+                      <td className="zh"><b>{s.label}</b></td>
+                      <td className="mono" data-testid={`scheme-capgain-${s.key}`}>
+                        <Provenance testId={`scheme-prov-${s.key}`} src="generic_inference · 方案重算" formula={zh.sim.proj.lever.provFormula} inputs={[s.label]}>
+                          {fmt(s.capGain, 3)}
+                        </Provenance>
+                      </td>
+                      <td className="mono" data-testid={`scheme-impact-${s.key}`}>{s.impact}</td>
+                      <td data-testid={`scheme-rule-${s.key}`}>{s.ruleFlag ? "⚠ C08" : "—"}</td>
+                      <td>
+                        <button className="btn sm" data-testid={`scheme-adopt-${s.key}`} onClick={() => applyScheme(s.key)}>
+                          {zh.sim.proj.lever.adoptScheme}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <Feature flag="act.adopt-to-draft">
+            <button className="btn sm primary" style={{ marginTop: 10 }} data-testid="lever-adopt" onClick={() => adoptCombo(activeApply.length > 0 ? activeApply : schemes[0]?.apply ?? [])}>
+              {zh.sim.proj.lever.adopt}（杠杆组合 + 推演快照 → Action）
+            </button>
+          </Feature>
+        </>
+      )}
+    </div>
+  );
+}

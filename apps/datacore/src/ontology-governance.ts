@@ -29,6 +29,21 @@ import type { Metrics } from "./metrics.js";
 import type { OutboxService } from "./outbox.js";
 import { primaryKeyProp } from "./ontology.js";
 import { forbidden, invalidState, notFound, validationError } from "./errors.js";
+// WO-69 P3 · 对象接口（多态抽象）
+import type {
+  InterfaceViolation,
+  ObjectInterfaceInput,
+  OntologySignature,
+} from "@platform/contracts";
+import {
+  ObjectInterfaceInputSchema,
+  checkInterfaceIntegrity,
+  formatInterfaceViolations,
+  resolveInterfaceRef,
+} from "@platform/contracts";
+import type { ObjectInterfaceRecord } from "./domain.js";
+import { newId } from "./ids.js";
+import { SOLVER_ONTOLOGY_SIGNATURES, serializableSignature } from "./solvers/ontology-signature.js";
 
 void (null as unknown as typeof PkFn); // type-only import marker
 
@@ -408,6 +423,16 @@ export class OntologyGovernanceService {
       const cur = latest.get(s.sliceKey);
       if (!cur || s.version > cur.version) latest.set(s.sliceKey, s);
     }
+    // A3-SUITE-1：约束优先从一等 RuleEntry.params 解析，fixture 内联数组作冷启动 fallback。
+    const rules = await this.repos.rules.list(tenantId);
+    const ruleByKey = new Map(rules.map((r) => [r.key, r]));
+    const resolveStringArray = (ref: { ruleKey: string; paramKey: string } | undefined, fallback: string[] | undefined): string[] => {
+      if (!ref) return fallback ?? [];
+      const rule = ruleByKey.get(ref.ruleKey);
+      const v = rule?.params?.[ref.paramKey];
+      if (Array.isArray(v) && v.every((x) => typeof x === "string")) return v as string[];
+      return fallback ?? [];
+    };
     const results: { sliceKey: string; fixture: string; ok: boolean; diff?: string }[] = [];
     for (const spec of latest.values()) {
       const fixtures = spec.spec.contractFixtures ?? [];
@@ -416,11 +441,19 @@ export class OntologyGovernanceService {
           const out = await this.ontologyCore.executeSlice(sysCtx, spec.spec, fx.args);
           const types = new Set(out.nodes.map((n) => n.typeKey));
           const linkKeys = new Set(out.edges.map((e) => e.linkKey));
+          const mustIncludeTypes = resolveStringArray(
+            fx.expect.ruleRef ? { ruleKey: fx.expect.ruleRef.ruleKey, paramKey: fx.expect.ruleRef.typesParam } : undefined,
+            fx.expect.mustIncludeTypes,
+          );
+          const mustIncludeLinkKeys = resolveStringArray(
+            fx.expect.ruleRef ? { ruleKey: fx.expect.ruleRef.ruleKey, paramKey: fx.expect.ruleRef.linksParam } : undefined,
+            fx.expect.mustIncludeLinkKeys,
+          );
           const rootOk = out.nodes.some((n) => n.typeKey === fx.expect.rootType);
           const minOk = out.nodes.length >= fx.expect.minNodes;
           const maxOk = fx.expect.maxNodes === undefined || out.nodes.length <= fx.expect.maxNodes;
-          const typesOk = fx.expect.mustIncludeTypes.every((tk) => types.has(tk));
-          const linksOk = (fx.expect.mustIncludeLinkKeys ?? []).every((lk) => linkKeys.has(lk));
+          const typesOk = mustIncludeTypes.every((tk) => types.has(tk));
+          const linksOk = mustIncludeLinkKeys.every((lk) => linkKeys.has(lk));
           const ok = rootOk && minOk && maxOk && typesOk && linksOk;
           results.push(
             ok
@@ -429,7 +462,7 @@ export class OntologyGovernanceService {
                   sliceKey: spec.sliceKey,
                   fixture: fx.name,
                   ok: false,
-                  diff: `rootOk=${rootOk} minNodes=${out.nodes.length}>=${fx.expect.minNodes}?${minOk} maxOk=${maxOk} types=${[...types].join("/")} need=${fx.expect.mustIncludeTypes.join("/")} typesOk=${typesOk} linksOk=${linksOk}`,
+                  diff: `rootOk=${rootOk} minNodes=${out.nodes.length}>=${fx.expect.minNodes}?${minOk} maxOk=${maxOk} types=${[...types].join("/")} need=${mustIncludeTypes.join("/")} typesOk=${typesOk} linksOk=${linksOk}`,
                 },
           );
         } catch (err) {
@@ -438,6 +471,87 @@ export class OntologyGovernanceService {
       }
     }
     return results;
+  }
+
+  // ===========================================================================
+  // WO-SLICE-GOVERNANCE-FULL §7.2b 无契约 → 推进为契约（确定性派生 baseline fixture）
+  // ===========================================================================
+
+  /**
+   * 从一个切片"当前真实 executeSlice resolve 子图"确定性派生一条 baseline 契约 fixture
+   * （auto_baseline_v1）并写回 spec.contractFixtures：类型/链路取真实子图（**非声明**）。
+   *  - 以系统校验账号（全量可见，与 runSliceContracts 同视角）跑 executeSlice({})，
+   *    使派生的 fixture 与后续契约校验自洽（同视角同数据 → 断言必过·SEAM 自驱）。
+   *  - **空 resolve（0 节点）→ 诚实 skip 不伪造**（KILL-MOCK）：返回 promoted=false + reason。
+   *  - R6 确定性：同租户同数据同切片重跑字节级一致；R2：切片不存在/跨租户 → 404。
+   *  - 与 PUT /ontology/slices 一致：写回后重建 element_refs 引用索引（§7.4）。
+   */
+  async deriveSliceFixture(
+    tenantId: string,
+    sliceKey: string,
+  ): Promise<{
+    sliceKey: string;
+    promoted: boolean;
+    reason?: string;
+    fixture?: NonNullable<SliceSpecRecord["spec"]["contractFixtures"]>[number];
+  }> {
+    const sysCtx: AuthCtx = { tenantId, userId: "system:slice-derive", roles: ["admin"], attributes: {} };
+    const spec = await this.ontologyCore.getSliceSpec(sysCtx, sliceKey);
+    if (!spec) throw notFound(`slice ${sliceKey}`);
+    const out = await this.ontologyCore.executeSlice(sysCtx, spec.spec, {});
+    if (out.nodes.length === 0) {
+      // 空子图 → 无真实数据可断言，诚实 skip（绝不伪造类型/链路制造假绿）。
+      return { sliceKey, promoted: false, reason: "empty_resolve" };
+    }
+    const mustIncludeTypes = [...new Set(out.nodes.map((n) => n.typeKey))].sort();
+    const mustIncludeLinkKeys = [...new Set(out.edges.map((e) => e.linkKey))].sort();
+    const fixture: NonNullable<SliceSpecRecord["spec"]["contractFixtures"]>[number] = {
+      name: "auto_baseline_v1",
+      args: {},
+      expect: {
+        rootType: spec.spec.root.typeKey,
+        minNodes: out.nodes.length,
+        mustIncludeTypes,
+        mustIncludeLinkKeys,
+      },
+    };
+    // 写回：additive（同名替换），保留其它 fixtures 与 spec 结构不变。
+    const existing = spec.spec.contractFixtures ?? [];
+    const contractFixtures = [...existing.filter((f) => f.name !== fixture.name), fixture];
+    const nextSpec = { ...spec.spec, contractFixtures };
+    const rec = await this.ontologyCore.putSliceSpec(sysCtx, sliceKey, spec.version, nextSpec);
+    await this.indexSliceRefs(sysCtx, rec); // §7.4 引用索引随之保持一致
+    return { sliceKey, promoted: true, fixture };
+  }
+
+  /**
+   * 批：为所有"无契约"切片（contractFixtures 为空）确定性派生 baseline fixture。
+   * 空 resolve 的切片进 skipped（诚实），非空的进 promoted。确定性排序（sliceKey 升序）。
+   */
+  async deriveMissingSliceFixtures(
+    tenantId: string,
+  ): Promise<{
+    promoted: { sliceKey: string; fixture: NonNullable<SliceSpecRecord["spec"]["contractFixtures"]>[number] }[];
+    skipped: { sliceKey: string; reason: string }[];
+  }> {
+    const allSpecs = await this.repos.sliceSpecs.list(tenantId);
+    // latest version per sliceKey
+    const latest = new Map<string, SliceSpecRecord>();
+    for (const s of allSpecs) {
+      const cur = latest.get(s.sliceKey);
+      if (!cur || s.version > cur.version) latest.set(s.sliceKey, s);
+    }
+    const missing = [...latest.values()]
+      .filter((s) => (s.spec.contractFixtures?.length ?? 0) === 0)
+      .sort((a, b) => (a.sliceKey < b.sliceKey ? -1 : 1));
+    const promoted: { sliceKey: string; fixture: NonNullable<SliceSpecRecord["spec"]["contractFixtures"]>[number] }[] = [];
+    const skipped: { sliceKey: string; reason: string }[] = [];
+    for (const s of missing) {
+      const r = await this.deriveSliceFixture(tenantId, s.sliceKey);
+      if (r.promoted && r.fixture) promoted.push({ sliceKey: r.sliceKey, fixture: r.fixture });
+      else skipped.push({ sliceKey: r.sliceKey, reason: r.reason ?? "unknown" });
+    }
+    return { promoted, skipped };
   }
 
   // ===========================================================================
@@ -789,6 +903,243 @@ export class OntologyGovernanceService {
 
 function round6(n: number): number {
   return Math.round(n * 1e6) / 1e6;
+}
+
+// ---------------------------------------------------------------------------
+// WO-69 P3 · 对象接口（ObjectInterface = 多态抽象）服务
+// ---------------------------------------------------------------------------
+
+/** 「谁实现了这个接口 + 改它会波及什么」的查询结果（影响面分析）。 */
+export interface InterfaceImplementersReport {
+  interfaceKey: string;
+  /** 被查询的接口版本（默认最新已发布版）。 */
+  interface?: ObjectInterfaceRecord;
+  /** 全部版本（开闭：多版本共存，pin 在旧版的实现者不会被悄悄弄失效）。 */
+  versions: { version: number; status: string; implementerCount: number }[];
+  implementers: {
+    typeKey: string;
+    displayName: string;
+    domain?: string;
+    /** 该实现者 pin 的版本引用（number 或 "latest"）。 */
+    pinnedVersion: number | "latest";
+    /** 实际解析到的接口版本。 */
+    resolvedVersion?: number;
+    conformant: boolean;
+    violations: InterfaceViolation[];
+  }[];
+  impact: {
+    objectTypes: string[];
+    /** 受影响的行动：接口要求的 + 实现者已绑定的（并集，排序确定性 R6）。 */
+    actions: string[];
+    /** 受影响的函数：接口声明的求解器 + 其 P2 本体签名（"这个行为读什么/写什么"当场亮出，R13）。 */
+    functions: { solverKey: string; ontologySignature?: OntologySignature; registered: boolean }[];
+    /** 引用了任一实现者类型的视图配置（前端渲染面）。 */
+    views: { id: string; role?: string }[];
+    /** 需要迁移的实现者（当前不合规 = 接口一改就得补齐的那批）。 */
+    migrationRequired: { typeKey: string; missing: string[] }[];
+  };
+}
+
+/**
+ * 对象接口服务：CRUD + 版本演进 + 「谁实现了 X」查询与影响面分析。
+ *
+ * **开闭/演进**：`upsert` 对已 PUBLISHED 的 key **不原地改**，而是新开一个版本（DRAFT）。
+ * 已发布实现者若 pin 在旧版本号 → 老版本仍在、契约不变（不被悄悄弄失效）；
+ * 若跟 `latest` → 新版本一 PUBLISHED，下次本体发布就会被要求补齐（拒绝 + 迁移清单）。
+ */
+export class ObjectInterfaceService {
+  constructor(
+    private repos: Repos,
+    private ontology: OntologyService,
+  ) {}
+
+  async list(ctx: AuthCtx, opts: { allVersions?: boolean } = {}): Promise<ObjectInterfaceRecord[]> {
+    const all = await this.repos.objectInterfaces.list(ctx.tenantId);
+    const sorted = [...all].sort((a, b) => a.key.localeCompare(b.key) || a.version - b.version);
+    if (opts.allVersions) return sorted;
+    const latest = new Map<string, ObjectInterfaceRecord>();
+    for (const i of sorted) {
+      const cur = latest.get(i.key);
+      if (!cur || i.version > cur.version) latest.set(i.key, i);
+    }
+    return [...latest.values()].sort((a, b) => a.key.localeCompare(b.key));
+  }
+
+  /** 取某 key 的具体版本；`version` 省略 = 最新已发布版（无已发布则取最大版本号，便于草稿期查看）。 */
+  async get(ctx: AuthCtx, key: string, version?: number): Promise<ObjectInterfaceRecord | undefined> {
+    const all = await this.repos.objectInterfaces.list(ctx.tenantId, (i) => i.key === key);
+    if (all.length === 0) return undefined;
+    if (version !== undefined) return all.find((i) => i.version === version);
+    const published = all.filter((i) => i.status === "PUBLISHED");
+    const pool = published.length > 0 ? published : all;
+    return pool.reduce((a, b) => (b.version > a.version ? b : a));
+  }
+
+  /** 已注册 ActionType key + 已签名求解器签名（接口完整性校验的两把真尺子）。 */
+  private async registries(ctx: AuthCtx): Promise<{
+    actionTypeKeys: string[];
+    solverSignatures: Record<string, { reads?: { typeKey: string; propKeys?: string[] }[] }>;
+  }> {
+    const actionTypes = await this.repos.actionTypes.list(ctx.tenantId);
+    return {
+      actionTypeKeys: actionTypes.map((a) => a.key),
+      solverSignatures: SOLVER_ONTOLOGY_SIGNATURES,
+    };
+  }
+
+  /**
+   * 创建 / 演进一个接口。**接口自身的完整性在这里就兑现**（不合法根本存不进去）：
+   * 声明的 ActionType 必须已注册、声明的 solverKey 必须在真求解器签名注册表内。
+   */
+  async upsert(ctx: AuthCtx, input: ObjectInterfaceInput): Promise<ObjectInterfaceRecord> {
+    const parsed = ObjectInterfaceInputSchema.parse(input);
+    const existing = await this.repos.objectInterfaces.list(ctx.tenantId, (i) => i.key === parsed.key);
+    const latest = existing.length > 0 ? existing.reduce((a, b) => (b.version > a.version ? b : a)) : undefined;
+    // 已发布版本不原地改 → 新开版本（多版本共存 = 开闭）。草稿则原地覆盖。
+    const reuseDraft = latest && latest.status === "DRAFT";
+    const now = new Date().toISOString();
+    const rec: ObjectInterfaceRecord = {
+      id: reuseDraft ? latest.id : newId("oif"),
+      tenantId: ctx.tenantId,
+      key: parsed.key,
+      version: reuseDraft ? latest.version : (latest?.version ?? 0) + 1,
+      name: parsed.name,
+      ...(parsed.businessDefinition ? { businessDefinition: parsed.businessDefinition } : {}),
+      properties: parsed.properties,
+      ...(parsed.actions ? { actions: parsed.actions } : {}),
+      ...(parsed.functions ? { functions: parsed.functions } : {}),
+      status: parsed.status ?? "DRAFT",
+      createdAt: reuseDraft ? (latest.createdAt ?? now) : now,
+      updatedAt: now,
+    };
+    const reg = await this.registries(ctx);
+    const bad = checkInterfaceIntegrity(rec, reg);
+    if (bad.length > 0) {
+      throw validationError(`接口定义不合法（${bad.length} 项）：${formatInterfaceViolations(bad)}`);
+    }
+    await this.repos.objectInterfaces.put(rec);
+    return rec;
+  }
+
+  /** 最新一条记录（**含 DRAFT**）——发布/退役按"最新那条"操作，而 `get()` 缺省取最新已发布版。 */
+  private async latestRecord(ctx: AuthCtx, key: string): Promise<ObjectInterfaceRecord | undefined> {
+    const all = await this.repos.objectInterfaces.list(ctx.tenantId, (i) => i.key === key);
+    if (all.length === 0) return undefined;
+    return all.reduce((a, b) => (b.version > a.version ? b : a));
+  }
+
+  /** DRAFT → PUBLISHED（发布后该版本不可原地改，只能新开版本）。 */
+  async publish(ctx: AuthCtx, key: string, version?: number): Promise<ObjectInterfaceRecord> {
+    const rec = version === undefined ? await this.latestRecord(ctx, key) : await this.get(ctx, key, version);
+    if (!rec) throw notFound(`对象接口 '${key}'${version !== undefined ? `@v${version}` : ""} 不存在`);
+    if (rec.status === "RETIRED") throw invalidState(`接口 ${key}@v${rec.version} 已退役，不可发布`);
+    const reg = await this.registries(ctx);
+    const bad = checkInterfaceIntegrity(rec, reg);
+    if (bad.length > 0) {
+      throw validationError(`接口定义不合法（${bad.length} 项）：${formatInterfaceViolations(bad)}`);
+    }
+    const next: ObjectInterfaceRecord = { ...rec, status: "PUBLISHED", updatedAt: new Date().toISOString() };
+    await this.repos.objectInterfaces.put(next);
+    return next;
+  }
+
+  /** PUBLISHED → RETIRED（实现者仍挂着则下次本体发布会被点名要求显式迁移，不静默失效）。 */
+  async retire(ctx: AuthCtx, key: string, version?: number): Promise<ObjectInterfaceRecord> {
+    const rec = version === undefined ? await this.latestRecord(ctx, key) : await this.get(ctx, key, version);
+    if (!rec) throw notFound(`对象接口 '${key}' 不存在`);
+    const next: ObjectInterfaceRecord = { ...rec, status: "RETIRED", updatedAt: new Date().toISOString() };
+    await this.repos.objectInterfaces.put(next);
+    return next;
+  }
+
+  /** 只读一致性报告（= 发布门会说的话，但不改任何东西）。 */
+  async conformance(ctx: AuthCtx): Promise<{ ok: boolean; violations: InterfaceViolation[] }> {
+    const violations = await this.ontology.interfaceViolations(ctx);
+    return { ok: violations.length === 0, violations };
+  }
+
+  /**
+   * **S9 查询能力**：谁实现了接口 X + 改它会波及什么（类型 / 行动 / 函数 / 视图 / 迁移清单）。
+   */
+  async implementers(ctx: AuthCtx, key: string, version?: number): Promise<InterfaceImplementersReport> {
+    const all = await this.repos.objectInterfaces.list(ctx.tenantId, (i) => i.key === key);
+    const iface = await this.get(ctx, key, version);
+    const types = await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.status === "ACTIVE");
+    const impls = types
+      .filter((t) => (t.implements ?? []).some((r) => r.interfaceKey === key))
+      .sort((a, b) => a.key.localeCompare(b.key));
+    const violations = await this.ontology.interfaceViolations(ctx, types);
+
+    const versions = [...all]
+      .sort((a, b) => a.version - b.version)
+      .map((v) => ({
+        version: v.version,
+        status: v.status,
+        implementerCount: impls.filter((t) => {
+          const ref = (t.implements ?? []).find((r) => r.interfaceKey === key);
+          if (!ref) return false;
+          if (ref.version === "latest") {
+            const latestPub = all.filter((i) => i.status === "PUBLISHED").sort((a, b) => b.version - a.version)[0];
+            return latestPub?.version === v.version;
+          }
+          return ref.version === v.version;
+        }).length,
+      }));
+
+    const implementers = impls.map((t) => {
+      const ref = (t.implements ?? []).find((r) => r.interfaceKey === key)!;
+      const resolved = resolveInterfaceRef(all, ref);
+      const own = violations.filter((v) => v.typeKey === t.key && v.interfaceKey.includes(key));
+      return {
+        typeKey: t.key,
+        displayName: t.displayName,
+        ...(t.domain ? { domain: t.domain } : {}),
+        pinnedVersion: ref.version,
+        ...(resolved ? { resolvedVersion: resolved.version } : {}),
+        conformant: own.length === 0,
+        violations: own,
+      };
+    });
+
+    const implKeys = implementers.map((i) => i.typeKey);
+    const actions = [
+      ...new Set([
+        ...(iface?.actions ?? []).map((a) => a.actionTypeKey),
+        ...impls.flatMap((t) => (t.actions ?? []).map((a) => a.actionTypeKey)),
+      ]),
+    ].sort();
+    const functions = (iface?.functions ?? [])
+      .map((f) => ({
+        solverKey: f.solverKey,
+        registered: Boolean(SOLVER_ONTOLOGY_SIGNATURES[f.solverKey]),
+        // **P2 兑现**：把该行为「读哪些对象类型的哪些属性」当场亮出（R13 可溯源），
+        // 实现者据此知道自己要喂饱什么，而不是靠猜。
+        ...(serializableSignature(f.solverKey) ? { ontologySignature: serializableSignature(f.solverKey) } : {}),
+      }))
+      .sort((a, b) => a.solverKey.localeCompare(b.solverKey));
+    const allViews = await this.repos.viewConfigs.list(ctx.tenantId);
+    const views = allViews
+      .filter((v) => {
+        const blob = JSON.stringify(v);
+        return implKeys.some((k) => blob.includes(`"${k}"`));
+      })
+      .map((v) => ({ id: v.id, ...(typeof (v as { role?: string }).role === "string" ? { role: (v as { role?: string }).role } : {}) }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const migrationRequired = implementers
+      .filter((i) => !i.conformant)
+      .map((i) => ({
+        typeKey: i.typeKey,
+        missing: [...new Set(i.violations.map((v) => v.propKey ?? v.actionTypeKey ?? v.solverKey ?? v.code))].sort(),
+      }));
+
+    return {
+      interfaceKey: key,
+      ...(iface ? { interface: iface } : {}),
+      versions,
+      implementers,
+      impact: { objectTypes: implKeys, actions, functions, views, migrationRequired },
+    };
+  }
 }
 
 export type { Rule };

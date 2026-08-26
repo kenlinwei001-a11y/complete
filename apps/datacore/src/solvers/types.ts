@@ -1,3 +1,9 @@
+import {
+  matchObjectRefInType,
+  pickObjectRefResolution,
+  type ObjectRefResolution,
+  type RefTypeDefLike,
+} from "@platform/contracts";
 import type { ObjectInstance } from "../domain.js";
 
 /** Typed view over the per-tenant solverParams JSONB (battery defaults in synthetic/battery.ts). */
@@ -25,7 +31,9 @@ export interface SolverParamsShape {
       utilHighAdd: number;
       utilLowAdd: number;
     };
-    live: { oeeK: number; oeeBase: number; utilK: number; utilBase: number; yieldK: number; yieldBase: number };
+    // WO-SANDBOX-D3：hardCapShortfallK 为**可选**——老租户 solverParams 里没有它时，
+    // 硬容量读数诚实退化为 EMPTY（reason 说明缺参），**不静默按 0 或某个默认系数算**。
+    live: { oeeK: number; oeeBase: number; utilK: number; utilBase: number; yieldK: number; yieldBase: number; hardCapShortfallK?: number };
   };
   risk: {
     threshold: number;
@@ -56,6 +64,8 @@ export interface SolverParamsShape {
       essModels: string[];
       comModels: string[];
       ruleKeys: Record<string, string>;
+      /** PRD-IND-dash ORDER_OVR：逐单越线注入（按 so 覆盖信用/毛利，含 why 文案）——确定性种子让台账出现"未接/提价接"。 */
+      overrides?: Record<string, { credit?: boolean; mAdj?: number; why?: string }>;
     };
   };
   /** C1 · capex_scenario 年度情景测算参数（C23 门槛 + 三情景产能项目集） */
@@ -91,6 +101,9 @@ export interface SolverParamsShape {
     weeksPerQuarter: number;
     increments: { quarter: string; name: string; delta: number }[];
     ltaMaterials: string[];
+    /** PRD-IND-quarter §4.5(C)：LTA 计划吨/季 + 逐行偏差%（专属配置位，缺则回落 Shipment/hash）。 */
+    ltaPlanned?: number[];
+    ltaDevPct?: number[];
     ltaForcedPct: number;
     deliveryPeakMin: number;
     scenarios: {
@@ -117,6 +130,8 @@ export interface SolverParamsShape {
     scoreM: number;
     passScore: number;
     condScore: number;
+    extGmBufferMin: number;
+    extDemHigh: number;
   };
   planGenerate: {
     base: { rev: number; gm: number; share: number; turns: number; cash: number };
@@ -199,7 +214,16 @@ export interface CalibrationConfigShape {
   params: CalibratableParamDef[];
 }
 
-/** Ontology slice snapshot every solver computes from (deterministic input). */
+/**
+ * Ontology slice snapshot every solver computes from (deterministic input).
+ *
+ * WO-DATACORE-LAZY-SOLVER-CONTEXT（性能注记·字段结构不变）：核心 10 类
+ * （bases/lines/processes/equipment/maintPlans/models/orders/shipments/segments/dataHealth）此前一律全表扫。
+ * loadContext 现支持按 solverKey 裁剪（见 service.ts `SOLVER_REQUIRED_TYPES` 声明表 + `dc.lazy-solver-context` 暗发门）——
+ * 未声明的核心类型置 `[]`（求解器不读即逐字节等价）。**字段形状本身不改**：裁掉的类型仍是 `ObjectInstance[]`（空数组），
+ * 求解器无需感知加载策略。⚠ certByModel 由 Line+Model+model_certified_on link 派生 → 需它的求解器必须连带声明 Line+Model。
+ * params/rules/ruleSetVersion/isSynthProvenance 便宜且共享 → 永远加载（不裁）。
+ */
 export interface SolverContext {
   tenantId: string;
   params: SolverParamsShape;
@@ -225,7 +249,78 @@ export interface SolverContext {
   changeoverMatrix?: ObjectInstance[];
   capexProjects?: ObjectInstance[];
   purchaseOrders?: ObjectInstance[];
+  /**
+   * 供应商台账（`Supplier`）。**两个单同时要了这张表，此处是合并后的唯一声明**（并线时 D2 与
+   * WO-DECISION-INFO 各自加过一次 → `error TS2300: Duplicate identifier 'suppliers'`；
+   * 两侧语义相同，故合并注释而非并存两个字段）。
+   *
+   * · WO-SANDBOX-D2 · 采购段按责任方分解所需的三类真源之一（随 `withExtended` 一起加载）。
+   *   此前 `Supplier` 压根不在 SolverContext 里 —— 这就是 `minOrderQty`/`onTimeRate`
+   *   在 `solvers/` 零消费方的**结构性原因**（不是"没人想用"，是引擎根本拿不到这张表）。
+   * · WO-DECISION-INFO ③.2 · 外协补足的**提前期**真值来源（`leadTime`，只认 `status==='合格'`：
+   *   观察/淘汰的供应商不能当作可依赖的外协前置期）。缺省 `[]` → 诚实 EMPTY（不回落 `+14` 魔数）。
+   */
+  suppliers?: ObjectInstance[];
+  customsClearances?: ObjectInstance[];
+  incomingInspections?: ObjectInstance[];
   carbonFactors?: ObjectInstance[];
+  /**
+   * WO-ENGINE-SCOPE-FIX2 · **逐型号 BOM**（`BOMHeader` 主表 + `BOMDetail` 明细·随 `withExtended` 加载）。
+   *
+   * 为什么必须加这两类：`carbon_footprint` 的物料段此前取 `mats.slice(0,4)`（`Material` 按 id 排序的
+   * **前 4 行**·与型号无关）—— 于是「4680-NCM 的碳足迹」与「方形-LFP 的碳足迹」逐字节相同，而输出上
+   * 印着用户问的那个型号（`G-SOLVER-SCOPE-ECHO` A 档②）。真 BOM 一直在库里
+   * （`BOMHeader.modelId` 15 行 / `BOMDetail.quantity+lossRate` 105 行·`synthetic/battery.ts:3365/3382`），
+   * 只是**从没进过 `SolverContext`** —— 这是三态里的「没接线」，故本单加两个字段 + 两次 `listByType`。
+   * optional：缺省 `[]`（测试直构 ctx / 未播种）→ 型号维诚实缺席（400），不回落全局前 4 行冒充该型号的 BOM。
+   */
+  bomHeaders?: ObjectInstance[];
+  bomDetails?: ObjectInstance[];
+  /**
+   * WO-QUOTE-MARGIN-CUSTOMER · `order_of_customer` 边的投影（订单 → 客户的**真实归属**）。
+   * 数据半把这条边从「按订单序轮转」改成「按 `Order.cust` 归属册绑定」；引擎半必须**沿这条边**取客户的订单，
+   * 两半才在同一个接缝上（SEAM-GATE）——engine 若改读别的路径，数据半的修就验不到。
+   * **按需加载**（`COMMERCE_GRAPH_SOLVERS`）；缺省 `[]` → 求解器诚实 EMPTY（不回落全域冒充某客户）。
+   */
+  orderCustomerLinks?: { orderId: string; customerId: string; custId: string; custName: string; orderCust: string }[];
+  /**
+   * WO-ADOPT-MITIGATION · 已采纳处置方案台账（对象类型 `AdoptedMitigation`·由 `adopt_mitigation` Action
+   * 审批执行写入）。**按需加载**（见 service.ts `ADOPTION_AWARE_SOLVERS`：仅 risk_timeline /
+   * counterfactual_timeline 载·其余求解器不扫此类型），故与核心 10 类的 solverKey 裁剪机制正交。
+   *
+   * 消费方 `risk.ts riskTimeline`：逐 (baseId,factor) 取 status==="ACTIVE" 的采纳记录 → 把其 {eff,tn}
+   * 喂进 **真曲线** `tensionSeries`（不是 `card.mitigated` 那条"如果采纳会怎样"的对照曲线）。
+   * optional：缺省 / 空数组（测试直构 ctx / 无人采纳）→ 与采纳功能上线前**逐字节一致**（向后兼容 R6）。
+   */
+  adoptedMitigations?: ObjectInstance[];
+  /**
+   * WO-DECISION-INFO ③.2 · 跨基地调拨台账（`InterBaseTransfer`）—— 处置推演的**跨基地在途前置期**真值来源
+   * （`transitDays` 距离派生 `ceil(baseDistanceKm/dailyTruckKm)`）+ 跨基地运费单价来源（`freightCost/qty`）。
+   * **按需加载**（service.ts `DECISION_INFO_SOLVERS`·照 ADOPTION_AWARE_SOLVERS 写法），缺省 `[]` →
+   * 前置期诚实 EMPTY（不回落 `+7` 魔数），与本单上线前逐字节一致（向后兼容 R6）。
+   */
+  interBaseTransfers?: ObjectInstance[];
+  // 规则即引用（PRD-rules-as-references §2.2/§4）：本租户已发布规则快照（按 ruleKey 索引）+ 规则集版本
+  // 指纹。求解器闸门据此调规则引擎得 PASS/WARN/BLOCK，阈值读 rule.params；推演记录 ruleSetVersion（R6）。
+  // optional：缺省（如测试直接构造 ctx）视为无规则——向后兼容，不破 R6。
+  rules?: Record<string, { key: string; name: string; expression: string; severity: "BLOCK" | "WARN" | "INFO"; params?: Record<string, number | string | string[]> }>;
+  ruleSetVersion?: string;
+  // WO-DATAMODE-UNIFY-PROVENANCE（唯一真相合成 provenance 谓词·SolverService.buildSynthProvenancePredicate 注入）：
+  // 逐对象判"是否合成种子物化"——origin SYNTHETIC ∪（MATERIALIZED 且 datasetId ∈ 合成源连接的物化数据集集）。
+  // 求解器据此把**合成对象**派生的紧张度/卡/行加性标 provenanceSynthetic（measurement 维 live/dataMode 不动，两维正交），
+  // 使合成数据绝不冒充 LIVE/实测（闭 G-DATAMODE-PROVENANCE-LEAK）。optional：缺省（测试直构 ctx / 无合成源）
+  // 视为"全非合成"→ 现行行为不变（向后兼容 R6）。
+  isSynthProvenance?: (o: ObjectInstance) => boolean;
+  /**
+   * WO-AUDIT-TIMELINE-LIVESOURCE · A8 真日序列（**按需加载**·service.ts 仅 `audit_timeline` 载·其余求解器零成本）。
+   * seriesKey → { measure, origin, points[{entityId,date,value}] }（day grain·点按 (date,entityId) 升序·R6）。
+   * 映射表（哪些审计 kind 有真源）不在引擎里写死——单一出处 = contracts `AUDIT_KIND_LIVE_SOURCES`。
+   * 缺键 / 点为空 = 该 kind 无真源 → auditTimeline 走 MOCK 哈希投影 + 诚实披露（绝不冒充 LIVE·不硬造源）。
+   */
+  auditTsDaily?: Record<
+    string,
+    { measure: string; origin?: "SYNTHETIC" | "CONNECTOR"; points: { entityId: string; date: string; value: number }[] }
+  >;
 }
 
 export function num(v: unknown, fallback = 0): number {
@@ -234,6 +329,87 @@ export function num(v: unknown, fallback = 0): number {
 
 export function str(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
+}
+
+/**
+ * WO-BASE-ID-FIDELITY · base 标识符规范化**单一出处**（跨 solver 复用·勿散落）。
+ * 认多形态并归一到「裸 base 键」：
+ *   - `obj_base_<id>`（synthetic 图节点 id·synthetic/service.ts toId=`obj_base_${baseId}`）→ strip 前缀 → `<id>`
+ *   - `<id>`（baseId 拼音 changzhou）/ 中文名（常州）→ 原样（由调用方各自按 baseId/name 匹配）
+ *   - object ref（{objectId} / {baseId} / {id}）→ 取其 id 字段再归一
+ * 只做**字符串归一**（strip 前缀 + 对象取 id + trim），不做数据查找——各调用方（risk.resolveBaseId /
+ * bottleneckMatrix.resolveRef / service.gapAttribution.normalizeBaseId / capacity 基地过滤）按自身数据集匹配。
+ * R6 纯函数·无随机/时钟/副作用。空/无效 → ""。
+ */
+export function normalizeBaseRef(ref: unknown): string {
+  let s: string;
+  if (ref !== null && typeof ref === "object") {
+    const o = ref as Record<string, unknown>;
+    s =
+      typeof o.objectId === "string" ? o.objectId :
+      typeof o.baseId === "string" ? o.baseId :
+      typeof o.id === "string" ? o.id : "";
+  } else {
+    s = typeof ref === "string" ? ref : ref == null ? "" : String(ref);
+  }
+  s = s.trim();
+  if (s.startsWith("obj_base_")) s = s.slice("obj_base_".length);
+  return s;
+}
+
+// ---------------------------------------------------------------------------
+// WO-BASE-SLOT-UNIFY §A 引擎半 · base **解析**改走共享解析器（`G-BASE-SLOT-TYPE-SPLIT` 引擎侧）
+//
+// 病根（真 Kimi 实测）：`capacity_forecast` 收到用户原话「常州工厂」→ 老 `resolveBaseId` 只做
+// `props.baseId === key || props.name === key` **精确**比对（`BASE_REGISTRY` 规范名是裸「常州」）
+// → 400 `unknown base: 常州工厂` → 任务 FAILED。agent 工具直调（`sim_*` / DRIL）**不经槽位层**，
+// 所以光把 AgentCore 的槽改成 objectRef 治不了这条路 —— 两半必须一起改。
+//
+// ⛔ 单一出处纪律（工单：「现在已经有两套了，这单是来收口不是来加的」）：
+//   本函数**一行匹配逻辑都不写**，规则全部来自 contracts `matchObjectRefInType`
+//   （AgentCore 槽位层 / DataCore `ontology.resolveObjectRef` / mock 调的是**同一个**函数）。
+//   DataCore 侧**没有也不许有**第三套中文名匹配 / 任何「中文名 → id」词表（R14 应用层零业务常数）。
+//
+// 接受层级 id / name / alias / **partial**：`partial`（人话近指·「常州工厂」「常州基地」→ `Base.name=常州`）
+// 是这条路真正缺的那一档，且**只在精确层零命中时才兜底**（见 object-ref-resolve.ts ③），
+// 故所有既有精确入参逐字节不回归（R6）。歧义仍走既有机制（`ambiguous` + 候选·绝不静默取第一个）。
+// ---------------------------------------------------------------------------
+
+/**
+ * 从**行数据本身**结构化派生 `RefTypeDefLike`（求解器上下文没有 ObjectTypeDef，只有对象行）。
+ *
+ * 零业务常数（R14）：属性表 = 行里真出现过的键；主键按平台**命名约定** `<typeKey 首字母小写>Id`
+ * 派生（`Base→baseId`、`Model→modelId`，与 `synthetic/battery.ts baseProps isPrimaryKey:true` 一致）。
+ * 名称类属性由 contracts `identifyingProps` 自己按「去分隔符后以 name 结尾」结构判定，本函数不参与。
+ * `searchable` 无从得知 → 不声明（alias 档在求解器侧自然不可用·诚实退化，不臆造）。
+ * 排序确定（属性名字典序）→ R6 同输入同输出。
+ */
+export function refTypeDefFromRows(typeKey: string, rows: readonly ObjectInstance[]): RefTypeDefLike {
+  const pk = `${typeKey.charAt(0).toLowerCase()}${typeKey.slice(1)}Id`;
+  const keys = new Set<string>();
+  for (const r of rows) for (const k of Object.keys(r.props)) keys.add(k);
+  return {
+    key: typeKey,
+    properties: [...keys].sort().map((propKey) => (propKey === pk ? { propKey, isPrimaryKey: true } : { propKey })),
+  };
+}
+
+/**
+ * base 引用 → 解析结果（**归一 + 匹配的单一出处**·纯函数 R6）。
+ * 调用方只负责「取哪些行」（`c.bases` 已带租户隔离 + A6 行级过滤），匹配语义一律走共享解析器。
+ * 解析失败/歧义时带回 `attempts`/`candidates`（试了什么键、扫了几行、为什么不匹）——
+ * 让下一个人不必从 400 一路追回来（R13 可诊断）。
+ */
+export function resolveBaseRef(bases: readonly ObjectInstance[], ref: unknown): ObjectRefResolution {
+  const rows = bases.map((b) => ({ id: b.id, props: b.props }));
+  const { hits, attempt } = matchObjectRefInType({
+    ref,
+    objectType: "Base",
+    typeDef: refTypeDefFromRows("Base", bases),
+    rows,
+    accept: ["id", "name", "alias", "partial"],
+  });
+  return pickObjectRefResolution(ref, hits, [attempt]);
 }
 
 export function clamp(v: number, lo: number, hi: number): number {
@@ -253,4 +429,25 @@ export function baseName(c: SolverContext, baseId: string): string {
 export function maintWeekOf(c: SolverContext, baseId: string): number | null {
   const mp = c.maintPlans.find((m) => m.props.baseId === baseId);
   return mp ? num(mp.props.week) : null;
+}
+
+/**
+ * WO-DATAMODE-UNIFY-PROVENANCE（provenance 维·两正交维模型）：某基地一张卡/一行的**底层决策对象**是否合成种子物化。
+ * 底料 = 该 Base 对象本身 + 喂 liveTightness measurement 的设备/产线/工序（OEE/利用率/良率来源）。
+ * 任一合成物化 → true。谓词缺省（无合成源 / 测试直构 ctx）→ false，现行行为不变（向后兼容 R6·确定性无随机/时钟）。
+ *
+ * ⚠ 这是 **provenance 维**（合成种子），与 **measurement 维**（liveTightness.live·读到真 OEE/util/良率即 LIVE）正交：
+ * 本函数**不改** live/dataMode，只加性透出"底料是否合成"，供前端把合成数据走诚实灰、绝不冒充实测（铁律 0.4）。
+ */
+export function baseProvenanceSynthetic(c: SolverContext, baseId: string): boolean {
+  const p = c.isSynthProvenance;
+  if (!p) return false;
+  const base = c.bases.find((b) => str(b.props.baseId) === baseId);
+  const objs: ObjectInstance[] = [
+    ...(base ? [base] : []),
+    ...c.equipment.filter((e) => str(e.props.baseId) === baseId),
+    ...c.lines.filter((l) => str(l.props.baseId) === baseId),
+    ...c.processes.filter((pr) => str(pr.props.baseId) === baseId),
+  ];
+  return objs.some((o) => p(o));
 }

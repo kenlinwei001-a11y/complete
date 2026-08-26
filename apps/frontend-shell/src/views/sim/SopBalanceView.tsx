@@ -1,13 +1,26 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { advanceSopVersion, createSopVersion, fetchSopVersion, fetchSopVersions, patchSopVersion } from "@/api/endpoints";
+import { advanceSopVersion, createSopVersion, fetchSopVersion, fetchSopVersions, patchSopVersion, runSolver, queryObjectsPaged } from "@/api/endpoints";
 import { ApiClientError } from "@/api/apiClient";
-import type { SopVersionVM } from "@/api/types";
+import type { SopVersionVM, Workspace } from "@/api/types";
+import type { SopDemandReviewRow, SopDemandReviewTotal } from "@platform/contracts";
+import { useWorkspace, workspaceQueryKey } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import { toast, toastError } from "@/store/toastStore";
 import type { ViewRendererProps } from "../registry";
-import { fmt, useActionDraft } from "./shared";
+import { fmt, useActionDraft, ExportReportButton } from "./shared";
+import type { ProvenanceReport } from "./exportProvenance";
+import { Provenance } from "@/components/Provenance";
+import { SopReschedulePanel } from "./SopReschedulePanel";
+// WO-U3-DAG-REST · 判据 U3（过程图 + 点节点看凭什么）——结构与画法与样板两页同源
+// （见 `reasoningGraph.ts` 头注）；本页**不另建**一套。
+import { ProcessGraphPanel } from "./ProcessGraphPanel";
+import { assertReasoningGraph, toSolverSteps, type ReasoningGraph } from "./reasoningGraph";
+// WO-U2-STEPWISE-2 · 判据 U2（分步标口径）。步骤契约**投影自本页同一份 `SOP_GRAPH`**，不另写一份。
+import { SolverStepBar, useSolverStep } from "./SolverStepBar";
+import EdgeActivePanel from "./EdgeActivePanel";
 import zh from "@/locales/zh";
+import { InfoPopover } from "@/components/InfoPopover";
 import styles from "./SimViews.module.css";
 
 const STATUS_BADGE: Record<SopVersionVM["status"], { label: string; cls: string }> = {
@@ -18,14 +31,148 @@ const STATUS_BADGE: Record<SopVersionVM["status"], { label: string; cls: string 
 };
 
 /** KPI 条常数（battery solverParams.sop）：缺口红线 2 / 现金底线 50 / 收入预算 248 亿 */
-const SOP_KPI_P = { gapRed: 2, cashFloor: 50, revBudget: 248 };
+const SOP_KPI_P = { gapRed: 2, cashFloor: 50, revBudget: 240 }; // debattery-allow（PRD-IND-sop §4.5-5：真预算 240，兜底；workspace.sopConfig 优先）
 
-/** ② 需求评审默认三线（原型 SOP_SEG：商用车 −11.8% 触发 C21） */
+/**
+ * ② 三线对照量纲的**前端兜底**（后端 `steps.s2.unit` 缺失时才用；正常路一律取后端单源下发的值）。
+ * 分母是**月**：target 来自 `PlanTarget(level=month)` × `Segment.baselineShare`，
+ * 与 ① 步的 `boundaryDeltaWanPerMonth` 同轴。
+ */
+const SOP_DEMAND_UNIT_FALLBACK = "万套/月";
+
+/** ② 需求评审默认三线（sopConfig.segments 缺失时的电池行业兜底；换租户经 WorkspaceConfig 下发）。 */
 const DEFAULT_SEGMENTS = [
-  { key: "pas", name: "乘用车", target: 69.0, rolling: 71.0, lastActual: 66.8 },
+  { key: "pas", name: "乘用车", target: 69.0, rolling: 71.0, lastActual: 66.8 }, // debattery-allow
   { key: "ess", name: "储能", target: 45.0, rolling: 49.0, lastActual: 41.9 },
-  { key: "com", name: "商用车", target: 13.6, rolling: 12.0, lastActual: 12.9 },
+  { key: "com", name: "商用车", target: 13.6, rolling: 12.0, lastActual: 12.9 }, // debattery-allow
 ];
+/** 决议增量默认项（sopConfig.defaultResolutions 缺失时兜底；换租户经 WorkspaceConfig 下发）。 */
+const DEFAULT_RESOLUTIONS = [
+  { name: "常州化成夜班×1", delta: 1.2 }, // debattery-allow
+  { name: "江门正极加急 200 吨", delta: 0.5 }, // debattery-allow
+];
+
+/**
+ * ══ WO-U3-DAG-REST · `sop-balance` 推演结构（判据 U3 过程图）══
+ *
+ * ── 顶回上一单的判定，并说清它错在哪一步 ──────────────────────────────────────
+ * `WO-U3-DAG-DESIGN` 判本页「**无分段语义**」，理由两条，**两条都是真的**：
+ *  ① 五个 `sop-run-N` 是 S&OP **业务流程**步骤（评审→平衡→定稿），判据 §4.1 显式排除；
+ *  ② `mrp_netting` / `finance_pnl` 是两次 `runSolver(…, {})`，**空入参**、彼此无边。
+ * 但由这两条推不出「本页没有推演过程」—— 因为它们量的都不是**顶栏那六个结论数字**。
+ * 形态（铁律 0.6）：**「我用『那五个按钮是业务流程步骤』当作『本页没有推演过程』的证据，
+ * 而前者并不度量后者。」**
+ *
+ * 真正的推演过程**就写在同一个文件里**：`SopKpiBar` 的六张卡各自带着
+ * `formula` / `source` / `inputs` / `rule`（`C21` / `C15` / `C18`）—— U3 要的三样
+ * （数据·求解器·规则）**已经手写了六遍**，只是没连成图、点不开。
+ *
+ * ── 边是**后端实测**的，不是照按钮顺序摆的（这是本图与「五步业务流程图」的分水岭）──
+ * 逐条取自 `apps/datacore/src/sop.ts`：
+ *  · `step3` 开头 `if (!v.steps.s2) throw`，且 `dem = v.steps.s2.total.rolling` ⇒ **s2 → s3**；
+ *  · `step4` 开头 `if (!v.steps.s3) throw`                               ⇒ **s3 → s4**；
+ *  · `step5` 读 `v.steps.s4.pass` **与** `v.steps.s3.sup`                ⇒ **s4 → s5 且 s3 → s5**；
+ *  · `SopKpiBar` 里 `demand ← s2.total.rolling`、`supply ← s5.supFinal ?? s3.sup` ⇒ 缺口是**汇合点**。
+ * ⚠ `s1` 例外且**必须照实画**：`step3` 完全不读 `s1.boundaryDeltaWanPerMonth`，
+ * 它自己从 `computeRollup(c)` 重算可供给。所以 ① 在图上是一个**没有出边的孤点** ——
+ * 这不是画漏了，这正是这张图最该说的一句话：**改 ① 不会让顶栏的可供给动**。
+ * 补一条不存在的边会让用户以为改了①就能补缺口，那比不画更糟。
+ */
+const SOP_GRAPH: ReasoningGraph = assertReasoningGraph({
+  layerTitles: ["①② 评审输入", "③ 供应评审", "④ 财务整合", "⑤ 决议回灌", "顶栏结论读数"],
+  nodes: [
+    {
+      key: "s1", layer: 0, label: "① 产品评审", sub: "PLM 认证边 diff",
+      data: "steps.s1（changes[] / boundaryDeltaWanPerMonth）",
+      solver: "S&OP ① 产品评审（sop.step1 · computeRollup + certFactors）",
+      rule: "逐「认证中」型号×基地折算月度供给影响 = 周产能 × 月周数 × (1 − certFactor[认证中])，合计即供给可行域边界变化",
+      ruleKind: "projection",
+      formula: "impact(型号,基地) = weeklyWan × monthlyWeeks × (1 − certFactor)",
+      state: "dim",
+      note: "⚠ 诚实位：③ 供应评审**不读**这个数（它自己从 computeRollup 重算可供给）。所以这一环在图上没有出边 —— 改 ① 不会让顶栏「可供给」动。图上不补这条边，是因为后端确实没有这条边。",
+    },
+    {
+      key: "s2", layer: 0, label: "② 需求评审", sub: "三线对照 P50",
+      data: "steps.s2（rows[] / total.rolling）",
+      solver: "S&OP ② 需求评审（sop.step2 · PlanTarget 同源勾稽）",
+      rule: "C21：任一细分 |滚动 vs 目标| > 10% ⇒ 自动生成差异提报议程项，进⑤高管决策会",
+      ruleKind: "ruleKey",
+      inputs: [
+        { label: "三线", value: "目标(年度分解) / 滚动P50 / 上月实际" },
+        { label: "量纲", value: "万套/月（分母是月，与①同轴）" },
+      ],
+      note: "需求 P50 缺省回落 inputs.demTotal —— 回落时屏上那个数不是三线评审出来的，是建版本时填的。",
+    },
+    {
+      key: "s3", layer: 1, label: "③ 供应评审", sub: "月聚合可供给",
+      data: "steps.s3（perBase[] / sup / dem / gap / flagged）",
+      solver: "S&OP ③ 供应评审（sop.step3 · S1.2 月聚合）",
+      rule: "可供给 = Σ基地 Σ周(周产能 × 认证系数 × 爬坡系数)；缺口 > gapRed 即红标并自动进⑤议程",
+      ruleKind: "projection",
+      formula: "sup = Σ_base Σ_{w=1..monthlyWeeks} weeklyWan × certFactor × curveMult(w)",
+      note: "认证系数为 0 的基地整个不计入（不是按 0 产能计）——所以基地数与台账行数可能对不上。",
+    },
+    {
+      key: "s4", layer: 2, label: "④ 财务整合", sub: "毛利率 · 现金垫",
+      data: "steps.s4（revSum / gmRoll / gmBudget / cashCushion / cashOk / pass / violations）",
+      solver: "S&OP ④ 财务整合（sop.step4 · C3 公式级）",
+      rule: "C15 毛利率_roll = Σ细分(量×价×毛利率) ÷ Σ细分(量×价)，低于预算 − 容差即警示；C18 现金垫 = 13 周滚动现金最低点，低于底线**阻断**进入⑤",
+      ruleKind: "ruleKey",
+      formula: "现金垫 = min_{w∈1..13}(期初 + Σ_{k≤w}回款 − Σ付款 − ΣCAPEX)",
+      note: "C18 是阻断门不是警示：现金垫不过线时⑤这一步点不进去（屏上那个 chip 是禁用的）。",
+    },
+    {
+      key: "s5", layer: 3, label: "⑤ 决议回灌", sub: "决议增量 → 终版供给",
+      data: "steps.s5（resolutions[] / supFinal）",
+      solver: "S&OP ⑤ 高管决策会（sop.step5）",
+      rule: "supFinal = ③ 可供给 + Σ 决议增量；议程 = ② 的 C21 差异项 + ③ 的缺口对策 + ④ 的越线项",
+      ruleKind: "projection",
+      formula: "supFinal = s3.sup + Σ resolutions[].delta",
+      note: "编辑决议时顶栏供给/缺口**即时重算的是显示值**（display 侧），落库仍要走第⑤步执行 —— 没执行前刷新一次就回到 ③ 的数。",
+    },
+    {
+      key: "kpi-gap", layer: 4, label: "缺口读数", sub: "需求 − 可供给",
+      data: "顶栏三卡（需求 ← s2.total.rolling · 可供给 ← s5.supFinal ?? s3.sup · 缺口 = 两者之差）",
+      solver: "S&OP ②/③/⑤ 联动即时重算",
+      rule: "缺口 = 需求P50 − 可供给（万套/月）；超 sopConfig.gapRed 即红标并自动进⑤议程",
+      ruleKind: "projection",
+      formula: "gap = demand − supply",
+      note: "这是本图唯一的汇合点：需求来自②、供给来自⑤（未跑⑤时回落③）—— 两支任一没跑，缺口就不是本月的缺口。",
+    },
+    {
+      key: "kpi-fin", layer: 4, label: "财务三卡", sub: "达成 · 毛利率 · 现金",
+      data: "顶栏三卡（收入达成 ← s4.revSum ÷ sopConfig.revBudget · 毛利率 ← s4.gmRoll vs gmBudget · 现金垫 ← s4.cashCushion / cashOk）",
+      solver: "S&OP ④ 财务整合",
+      rule: "阈值（gapRed / cashFloor / revBudget）一律取 WorkspaceConfig.sopConfig，代码常量只作兜底 —— 换租户阈值跟着走，不焊死",
+      ruleKind: "projection",
+      formula: "收入预算达成 = s4.revSum ÷ sopConfig.revBudget",
+    },
+  ],
+  edges: [
+    // 后端实测的边（逐条见本常量头注），不含任何按按钮顺序脑补的边。
+    { from: "s2", to: "s3" },
+    { from: "s3", to: "s4" },
+    { from: "s4", to: "s5" },
+    { from: "s3", to: "s5" },
+    { from: "s2", to: "kpi-gap" },
+    { from: "s5", to: "kpi-gap" },
+    { from: "s4", to: "kpi-fin" },
+    // ⚠ 故意**没有** s1 的出边：`sop.step3` 不读 `s1.boundaryDeltaWanPerMonth`（实测）。
+  ],
+});
+
+/**
+ * WO-U2-STEPWISE-2 · 判据 **U2** 的步骤契约 —— **投影自 `SOP_GRAPH`，不手写第二份**。
+ *
+ * ⛔ **它不是屏上那五个业务流程按钮**（判据 U2 显式排除「评审→平衡→定稿」这类步骤）。
+ * 三条一眼可验的分水岭，任一条不成立就说明我拿业务流程冒充了推演过程：
+ *  ① **分组不同**：五步法是 ①②③④⑤ 五个独立按钮；本步骤条第 1 步把 **①② 合成一格**
+ *    （它们同为「评审输入」层，且 ① 对下游**没有出边**——见 `SOP_GRAPH` 头注的后端实测）。
+ *  ② **多一层业务流程里没有的**：第 5 步「顶栏结论读数」不对应任何按钮，
+ *    它是那六个数字**本身**，正是判据要问的「这个数分几步算出来的」。
+ *  ③ **闸的是读数不是按钮**：切步只改变屏上**哪些数看得见**，五步法按钮一个不动、照常可点。
+ */
+const SOP_STEPS = toSolverSteps(SOP_GRAPH);
 
 /** S&OP 月度平衡台（renderer=sop-balance，增量 §7.12）：六卡 KPI 条 + 五步法 + 定稿走 Action + C22 锁定 */
 export default function SopBalanceView(_props: ViewRendererProps) {
@@ -68,6 +215,46 @@ export default function SopBalanceView(_props: ViewRendererProps) {
   // V{n} = 同月版本按创建时间升序的序号（全局唯一徽章）
   const seq = v ? (versions.data ?? []).filter((x) => x.month === v.month).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)).findIndex((x) => x.id === v.id) + 1 : 1;
 
+  /**
+   * WO-U7-U9-REST · 判据 U9：导出物自带出处与生成时间。
+   * 这页不是单次求解而是**版本仓记录**（五步法状态机），出处 = 记录 id + 状态 + updatedAt ——
+   * 第三方拿这三个值回去查同一版本，才能对上屏上这份内容（版本会被 advance/patch 改写）。
+   * 未选中版本时各段留空 ⇒ 共享件渲染「诚实空态，不补编」（basis 非空照样可导出，空的是内容）。
+   */
+  const buildReport = (): ProvenanceReport => ({
+    docName: zh.sim.sop.title,
+    basis: [
+      `数据源 S&OP 版本仓（GET /a/v1/sop-versions · 记录 ${v?.id ?? "未选中"}）`,
+      `版本口径：月份 ${v?.month ?? "—"} · 状态 ${v ? STATUS_BADGE[v.status].label : "—"} · 更新于 ${v?.updatedAt ?? "—"}`,
+      `版本序号口径：V{n} = 同月版本按创建时间升序的序号（本页徽章同一口径）`,
+    ],
+    sections: [
+      {
+        heading: "版本概览",
+        head: ["项", "值"],
+        rows: v
+          ? [
+              ["月份", v.month],
+              ["状态", STATUS_BADGE[v.status].label],
+              ["版本序号", `V${seq}`],
+              ["供需平衡终值（supFinal）", v.supFinal ?? "—"],
+              ["创建于", v.createdAt],
+            ]
+          : [],
+      },
+      {
+        heading: "决议清单",
+        head: ["决议", "调整量"],
+        rows: (v?.resolutions ?? []).map((r) => [r.name, fmt(r.delta)]),
+      },
+      {
+        heading: "高管会议程",
+        head: ["来源", "议题"],
+        rows: (v?.agenda ?? []).map((a) => [a.source, a.title]),
+      },
+    ],
+  });
+
   return (
     <div data-testid="sop-view">
       <div className={styles.head}>
@@ -77,6 +264,7 @@ export default function SopBalanceView(_props: ViewRendererProps) {
             五步法：产品 → 需求 → 供应 → 财务 → 高管决策会 · 版本状态机 DRAFT → IN_REVIEW → EXEC_MEETING →（定稿 Action 审批）→ FINAL · 定稿后 C22 锁定，任何字段变更走计划版本变更 Action（409 PLAN_LOCKED）。
           </div>
         </div>
+        <ExportReportButton pageKey="sop-balance" build={buildReport} />
       </div>
 
       <div className={styles.sopGrid}>
@@ -118,18 +306,20 @@ export default function SopBalanceView(_props: ViewRendererProps) {
           {v && <VersionDetail key={v.id} v={v} seq={seq} step={step} setStep={setStep} onChanged={invalidate} />}
         </div>
       </div>
+      {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。
+          ⚠ 挂在**主组件**里、不进 `v &&` 那个条件：挂进 VersionDetail = 没选中月度版本就看不见开关。 */}
+      <EdgeActivePanel pageKey="sop-balance" />
     </div>
   );
 }
 
 function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; seq: number; step: number; setStep: (n: number) => void; onChanged: () => void }) {
   const locked = v.status === "FINAL";
+  // R14：决议默认项来自 WorkspaceConfig（按租户/行业），DEFAULT_RESOLUTIONS 仅兜底。
+  const { data: ws } = useWorkspace();
   const [lockedFallback, setLockedFallback] = useState(false); // 409 PLAN_LOCKED 前端兜底（§7.12）
   const [highlightSeg, setHighlightSeg] = useState<string | null>(null);
-  const [resolutions, setResolutions] = useState<{ name: string; delta: number }[]>([
-    { name: "常州化成夜班×1", delta: 1.2 },
-    { name: "江门正极加急 200 吨", delta: 0.5 },
-  ]);
+  const [resolutions, setResolutions] = useState<{ name: string; delta: number }[]>(ws?.sopConfig?.defaultResolutions ?? DEFAULT_RESOLUTIONS);
   const action = useActionDraft();
 
   const advance = useMutation({
@@ -175,6 +365,22 @@ function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; 
   const s4 = v.steps.s4 as { pass?: boolean; violations?: string[] } | undefined;
   const step5Blocked = s4 !== undefined && s4.pass !== true;
 
+  /**
+   * 判据 U2 步骤态（**推演过程**，与上面那个业务流程 `step` 是两个互不相干的状态）。
+   * 默认末步 = 完整结果（与改前屏面逐字节一致 ⇒ 存量测试零回归）。
+   * `upto(n)` 是本页唯一分段闸：点第 N 步 ⇒ 顶栏那六个数只显示到第 N 步为止。
+   */
+  const { active: sopStep, setActive: setSopStep, upto } = useSolverStep(SOP_STEPS.length);
+  /** 逐层真值（全部读 `v.steps.*` 的真实字段，缺则显 —— 不臆造）。 */
+  const chain = {
+    s1: v.steps.s1 as { boundaryDeltaWanPerMonth?: number } | undefined,
+    s2: v.steps.s2 as { total?: { rolling?: number } } | undefined,
+    s3: v.steps.s3 as { sup?: number; gap?: number; flagged?: boolean } | undefined,
+    s4: v.steps.s4 as { gmRoll?: number; cashCushion?: number; pass?: boolean } | undefined,
+    s5: v.steps.s5 as { supFinal?: number; resolutions?: unknown[] } | undefined,
+  };
+  const num = (x: number | undefined): string => (x == null ? "—" : fmt(x));
+
   const jumpToAgenda = (segKey: string) => {
     setStep(5);
     setHighlightSeg(segKey);
@@ -200,7 +406,36 @@ function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; 
         )}
       </div>
 
-      <SopKpiBar v={v} liveResolutions={!locked && v.status !== "EXEC_MEETING" ? resolutions : null} />
+      {/* ── 判据 U2 · 分步推演（步骤态**真正驱动**顶栏六个数的分段）─────────────────
+          ⚠ 这是「这六个数分几步算出来的」，不是「事情分几步做」——后者是下面那排五步法按钮，
+          本步骤条一个字都不碰它们（判据 U2 显式排除业务流程步骤）。 */}
+      <div data-testid="sop-steps-panel" style={{ marginTop: 10 }}>
+        <SolverStepBar steps={SOP_STEPS} active={sopStep} onSelect={setSopStep} testId="sop-steps" />
+        {/* 逐步揭示**该层自己的真值**（读 `v.steps.*`，缺则显「—」，不臆造）。 */}
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 6, display: "flex", gap: 14, flexWrap: "wrap" }} data-testid="sop-chain-readout">
+          <span data-testid="sop-chain-s2">需求P50 <b>{num(chain.s2?.total?.rolling)}</b></span>
+          {upto(2) && <span data-testid="sop-chain-s3">可供给 <b>{num(chain.s3?.sup)}</b></span>}
+          {upto(3) && <span data-testid="sop-chain-s4">现金垫 <b>{num(chain.s4?.cashCushion)}</b></span>}
+          {upto(4) && <span data-testid="sop-chain-s5">终版供给 <b>{num(chain.s5?.supFinal)}</b></span>}
+          {/* 规范 §1：「哪一步喂哪一步、哪一步喂不到」是成段说明（凭什么这么算），降浮层；
+              第一层留 `?` 记号 —— 降层不是删除。这条诚实位尤其不许省：① 是条**死路**。 */}
+          <InfoPopover topic="这几步之间谁喂谁" testId="sop-chain-why">
+            <span data-testid="sop-chain-why-body">
+              后端实测的喂法：② 需求 → ③ 供应 → ④ 财务 → ⑤ 决议；顶栏缺口是汇合点（需求来自 ②、
+              供给来自 ⑤，未跑 ⑤ 时回落 ③）。⚠ ① 产品评审是条死路：③ 不读它的边界变化量，
+              自己重算可供给 —— 改 ① 不会让顶栏「可供给」动。
+            </span>
+          </InfoPopover>
+        </div>
+      </div>
+
+      {/* U2 分段闸：顶栏六卡是图上 layer 4「顶栏结论读数」——链走完才有它们（第 5 步）。 */}
+      {upto(5) && <SopKpiBar v={v} liveResolutions={!locked && v.status !== "EXEC_MEETING" ? resolutions : null} />}
+
+      {/* 判据 U3 · 推演过程图 —— 紧跟 KPI 条：上面六张卡各是一个结论数字，
+          这张图说的是**那六个数分别由哪几步算出来、哪一步喂哪一步**。
+          点任一环 → 面板出该环的来源与规则（缺口/毛利率/现金垫三环带真规则键 C21/C15/C18）。 */}
+      <ProcessGraphPanel graph={SOP_GRAPH} testId="sop-process-graph" />
 
       {(locked || lockedFallback) && (
         <div className={styles.lockBanner} data-testid="sop-locked-banner">
@@ -246,6 +481,9 @@ function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; 
         />
       )}
 
+      {/* WO-SOP-RESCHEDULE 产销重排推演（能否提前/挤占谁/拆哪些基地/代价·读真求解器·additive） */}
+      <SopReschedulePanel />
+
       {/* 改字段尝试（FINAL → 409 PLAN_LOCKED 演示；非 FINAL 可正常保存） */}
       <div className={styles.miniForm} style={{ marginTop: 16, borderTop: "1px dashed var(--line2)", paddingTop: 10 }}>
         <span>{zh.sim.sop.lockDemo}：月度需求总量</span>
@@ -260,6 +498,9 @@ function VersionDetail({ v, seq, step, setStep, onChanged }: { v: SopVersionVM; 
 
 /** 顶部 KPI 条六卡（§7.12）：每卡悬停溯源（公式与来源）；决议编辑中供给/缺口即时重算 */
 function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: { name: string; delta: number }[] | null }) {
+  // 去电池锁死（R14）：KPI 阈值/预算来自 WorkspaceConfig，SOP_KPI_P 仅兜底
+  const { data: ws } = useWorkspace();
+  const kpi = { gapRed: ws?.sopConfig?.gapRed ?? SOP_KPI_P.gapRed, cashFloor: ws?.sopConfig?.cashFloor ?? SOP_KPI_P.cashFloor, revBudget: ws?.sopConfig?.revBudget ?? SOP_KPI_P.revBudget };
   const s2 = v.steps.s2 as { total?: { rolling?: number } } | undefined;
   const s3 = v.steps.s3 as { sup?: number; dem?: number } | undefined;
   const s4 = v.steps.s4 as { revSum?: number; gmRoll?: number; gmBudget?: number; cashCushion?: number; cashOk?: boolean } | undefined;
@@ -271,66 +512,78 @@ function SopKpiBar({ v, liveResolutions }: { v: SopVersionVM; liveResolutions: {
   const liveDelta = liveResolutions && s3?.sup != null && s5?.supFinal == null ? liveResolutions.reduce((a, r) => a + r.delta, 0) : 0;
   const supply = baseSup != null ? Math.round((baseSup + liveDelta) * 10000) / 10000 : null;
   const gap = demand != null && supply != null ? Math.round((demand - supply) * 10000) / 10000 : null;
-  const revAttain = s4?.revSum != null ? (s4.revSum / SOP_KPI_P.revBudget) * 100 : null;
+  const revAttain = s4?.revSum != null ? (s4.revSum / kpi.revBudget) * 100 : null;
 
-  const cards: { key: string; label: string; value: string; color?: string; formula: string; source: string }[] = [
+  // R13/R-一致：六卡统一走共享 <Provenance>（六要素：来源/新鲜度/推导/输入因子/关联规则/备注），
+  // 取代原 2 要素自绘浮层 —— 一个事实一个出处机制。S&OP 三线（需求/供给/缺口）为最高优先（#4 backlog）。
+  type Card = { key: string; label: string; value: string; color?: string; formula: string; source: string; inputs: string[]; rule?: string; note?: string };
+  const cards: Card[] = [
     {
       key: "demand",
       label: zh.sim.sop.kpi.demand,
       value: demand != null ? fmt(demand) : "—",
-      formula: "需求P50 = ② 三线对照合计.滚动P50（缺省 inputs.demTotal）",
+      formula: "需求P50 = ② 三线对照合计.滚动P50（万套/月·缺省 inputs.demTotal）",
       source: "S&OP ② 需求评审（PlanTarget 同源勾稽）",
+      inputs: ["三线应用细分滚动P50", "目标(年度分解)", "上月实际"],
+      rule: "C21",
+      note: "任一细分 |滚动 vs 目标| > 10% → C21 差异提报，自动进⑤议程",
     },
     {
       key: "supply",
       label: zh.sim.sop.kpi.supply,
       value: supply != null ? fmt(supply) : "—",
-      formula: "可供给 = Σ基地(周产能×爬坡×认证)月聚合 + Σ决议增量",
+      formula: "可供给 = Σ基地(周产能×爬坡×认证)月聚合 + Σ决议增量（万套/月）",
       source: "S&OP ③ 供应评审（S1.2 月聚合） + ⑤ 决议",
+      inputs: ["逐基地月供给", "认证系数", "⑤ 决议增量"],
+      note: "⑤ 决议编辑中即时重算（display 侧）；落库走第⑤步执行",
     },
     {
       key: "gap",
       label: zh.sim.sop.kpi.gap,
       value: gap != null ? fmt(gap) : "—",
-      color: gap != null && gap > SOP_KPI_P.gapRed ? "var(--danger)" : "var(--ok)",
-      formula: `缺口 = 需求P50 − 可供给（> ${SOP_KPI_P.gapRed} 红）`,
+      color: gap != null && gap > kpi.gapRed ? "var(--danger-txt)" : "var(--ok-txt)",
+      formula: `缺口 = 需求P50 − 可供给（万套/月·> ${kpi.gapRed} 红）`,
       source: "②/③/⑤ 联动即时重算",
+      inputs: ["需求P50", "可供给"],
+      note: `缺口 > ${kpi.gapRed} 万套/月 → 红标，自动进⑤高管决策会议程`,
     },
     {
       key: "revAttain",
       label: zh.sim.sop.kpi.revAttain,
       value: revAttain != null ? `${revAttain.toFixed(1)}%` : "—",
-      formula: `收入预算达成 = ④ 滚动收入合计 ÷ 预算 ${SOP_KPI_P.revBudget} 亿`,
+      formula: `收入预算达成 = ④ 滚动收入合计 ÷ 预算 ${kpi.revBudget} 亿`,
       source: "S&OP ④ 财务整合",
+      inputs: ["④ 滚动收入合计", `收入预算 ${kpi.revBudget} 亿`],
     },
     {
       key: "gm",
       label: zh.sim.sop.kpi.gmVsBudget,
       value: s4?.gmRoll != null ? `${Number(s4.gmRoll).toFixed(2)}% / ${s4.gmBudget}%` : "—",
-      color: s4?.gmRoll != null && s4.gmBudget != null && s4.gmRoll < s4.gmBudget - 0.5 ? "var(--danger)" : undefined,
+      color: s4?.gmRoll != null && s4.gmBudget != null && s4.gmRoll < s4.gmBudget - 0.5 ? "var(--danger-txt)" : undefined,
       formula: "毛利率_roll = 滚动毛利Σ ÷ 滚动收入Σ vs 预算（容差 0.5pp）",
       source: "S&OP ④ 财务整合（C15 口径）",
+      inputs: ["滚动毛利合计", "滚动收入合计", "预算毛利率"],
+      rule: "C15",
     },
     {
       key: "cash",
       label: zh.sim.sop.kpi.cash,
       value: s4?.cashCushion != null ? `${s4.cashCushion} 亿 ${s4.cashOk ? "✓" : "✗"}` : "—",
-      color: s4?.cashOk === false ? "var(--danger)" : "var(--ok)",
-      formula: `C18：现金垫(13周最低点) ≥ ${SOP_KPI_P.cashFloor} 亿`,
+      color: s4?.cashOk === false ? "var(--danger-txt)" : "var(--ok-txt)",
+      formula: `C18：现金垫(13周最低点) ≥ ${kpi.cashFloor} 亿`,
       source: "S&OP ④ 财务整合（C18 校验）",
+      inputs: ["13周现金垫最低点", `现金底线 ${kpi.cashFloor} 亿`],
+      rule: "C18",
     },
   ];
   return (
     <div className={styles.sopKpiBar} data-testid="sop-kpi-bar">
       {cards.map((c) => (
         <div className={styles.sopKpi} key={c.key} tabIndex={0} data-testid={`sop-kpi-${c.key}`}>
-          <b style={{ color: c.color }}>{c.value}</b>
+          <Provenance testId={`sopkpi-${c.key}`} src={c.source} formula={c.formula} inputs={c.inputs} rule={c.rule} note={c.note}>
+            <b style={{ color: c.color }}>{c.value}</b>
+          </Provenance>
           <span>{c.label}</span>
-          <div className={styles.sopKpiPop} data-testid={`sop-kpi-prov-${c.key}`}>
-            <b style={{ fontSize: 11 }}>公式</b>：{c.formula}
-            <br />
-            <b style={{ fontSize: 11 }}>来源</b>：{c.source}
-          </div>
         </div>
       ))}
     </div>
@@ -343,7 +596,12 @@ function Step1({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
   const s1 = v.steps.s1 as { changes?: Record<string, unknown>[]; boundaryDeltaWanPerMonth?: number } | undefined;
   return (
     <div data-testid="sop-step1">
-      <div className={styles.noteInfo}>产品评审先行：可产矩阵（型号×产线认证关系）变化直接改变 ②③ 的可行域。</div>
+      <div className={styles.noteInfo}>
+        产品评审先行
+        <InfoPopover topic={zh.sim.sop.info.s1Topic} testId="sop-s1-why">
+          <div style={{ fontSize: 12, lineHeight: 1.7 }}>{zh.sim.sop.info.s1Body}</div>
+        </InfoPopover>
+      </div>
       {!locked && (
         <button className="btn primary" onClick={() => run({})} data-testid="sop-run-1">
           {zh.sim.sop.runStep("①")}（PLM 认证边 diff）
@@ -370,7 +628,7 @@ function Step1({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
                   {String(c.modelId)} × <span className="zh">{String(c.baseId)}</span>
                 </td>
                 <td className="zh">{String(c.kind) === "认证转量产" ? "认证中→量产" : "—"}</td>
-                <td style={{ color: Number(c.impactWanPerMonth) > 0 ? "var(--ok)" : Number(c.impactWanPerMonth) < 0 ? "var(--danger)" : undefined }}>
+                <td style={{ color: Number(c.impactWanPerMonth) > 0 ? "var(--ok-txt)" : Number(c.impactWanPerMonth) < 0 ? "var(--danger-txt)" : undefined }}>
                   {Number(c.impactWanPerMonth) > 0 ? "+" : ""}
                   {Number(c.impactWanPerMonth)}
                 </td>
@@ -404,10 +662,22 @@ function Step2({
   run: (p: Record<string, unknown>) => void;
   onJumpAgenda: (segKey: string) => void;
 }) {
-  const [rows, setRows] = useState(DEFAULT_SEGMENTS);
-  const s2 = v.steps.s2 as
-    | { rows?: { key: string; name: string; target: number; rolling: number; lastActual: number; dv: number; flagged: boolean }[]; total?: { target: number; rolling: number; dv: number } }
-    | undefined;
+  const qc = useQueryClient();
+  // 去电池锁死（R14）：需求三段初值取自 WorkspaceConfig（缓存同步读），DEFAULT_SEGMENTS 仅兜底
+  const [rows, setRows] = useState(() => qc.getQueryData<Workspace>(workspaceQueryKey)?.sopConfig?.segments ?? DEFAULT_SEGMENTS);
+  // contracts-only-shared（WO-P50-REMAINING-3）：行形状不在前端重定义，直接用契约类型。
+  const s2 = v.steps.s2 as { rows?: SopDemandReviewRow[]; total?: SopDemandReviewTotal } | undefined;
+  // ── SOP.1 ② 「滚动 P90」列：真相源修正（WO-P50-REMAINING-3）──────────────────────────
+  // 原实现从 `DemandSegment.p90` 取数，那是**万套/年**（乘用车 199.6）；而同一行的
+  // 目标/滚动 P50/上月实际 三列是**万套/月**（乘用车 71.0 量级）—— 年、月两个分母混在一行里。
+  // 算术判据（不看注释看数）：P90 是**下**分位，恒该 ≤ 同口径的 P50；实测这一列却是 P50 的
+  // 2.8 倍（真接后端时约 13 倍）⇒ 只可能是串了轴。后端 `SopService.step2` 本来就算了同分母的
+  // `rollingWanPerMonthP90`（payload 透传或 rolling×0.936 缺省派生），前端一直没接 —— 属
+  // 「接了线接错地方」。现改接后端那一列，并把量纲写进表头。
+  const rowP90 = (r: SopDemandReviewRow): number | undefined =>
+    typeof r.rollingWanPerMonthP90 === "number" ? r.rollingWanPerMonthP90 : undefined;
+  const p90Total = typeof s2?.total?.rollingWanPerMonthP90 === "number" ? s2.total.rollingWanPerMonthP90 : 0;
+  const demandUnit = s2?.total?.unit ?? s2?.rows?.[0]?.unit ?? SOP_DEMAND_UNIT_FALLBACK;
   return (
     <div data-testid="sop-step2">
       {!locked && (
@@ -416,9 +686,9 @@ function Step2({
             <thead>
               <tr>
                 <th>应用细分</th>
-                <th>目标(年度分解)</th>
-                <th>滚动 P50</th>
-                <th>上月实际</th>
+                <th>目标(年度分解·{SOP_DEMAND_UNIT_FALLBACK})</th>
+                <th>滚动 P50({SOP_DEMAND_UNIT_FALLBACK})</th>
+                <th>上月实际({SOP_DEMAND_UNIT_FALLBACK})</th>
               </tr>
             </thead>
             <tbody>
@@ -452,10 +722,13 @@ function Step2({
         <table className="cmp" style={{ marginTop: 10 }} data-testid="sop-s2-table">
           <thead>
             <tr>
+              {/* 屏上必须分得出分母：这四列全是**月**口径，而 DemandSegment 的 P50/P90 是**年**口径。
+                  量纲取后端 `steps.s2.unit` 单源下发值，前端不内联。 */}
               <th>应用细分</th>
-              <th>目标</th>
-              <th>滚动 P50</th>
-              <th>上月实际</th>
+              <th>目标({demandUnit})</th>
+              <th>滚动 P50({demandUnit})</th>
+              <th>滚动 P90({demandUnit})</th>
+              <th>上月实际({demandUnit})</th>
               <th>滚动 vs 目标</th>
               <th>规则</th>
             </tr>
@@ -468,8 +741,9 @@ function Step2({
                 </td>
                 <td>{fmt(r.target)}</td>
                 <td>{fmt(r.rolling)}</td>
+                <td data-testid={`sop-p90-${r.key}`}>{rowP90(r) != null ? fmt(rowP90(r)!) : "—"}</td>
                 <td>{fmt(r.lastActual)}</td>
-                <td style={{ color: r.flagged ? "var(--danger)" : r.dv >= 0 ? "var(--ok)" : "var(--amber)", fontWeight: 700 }} data-testid={`sop-dv-${r.key}`}>
+                <td style={{ color: r.flagged ? "var(--danger-txt)" : r.dv >= 0 ? "var(--ok-txt)" : "var(--amber-txt)", fontWeight: 700 }} data-testid={`sop-dv-${r.key}`}>
                   {r.dv > 0 ? "+" : ""}
                   {(r.dv * 100).toFixed(1)}%{r.flagged ? " ⚑" : ""}
                 </td>
@@ -495,6 +769,7 @@ function Step2({
                 <td>
                   <b>{fmt(s2.total.rolling)}</b>
                 </td>
+                <td data-testid="sop-p90-total">{p90Total > 0 ? <b>{fmt(p90Total)}</b> : "—"}</td>
                 <td>—</td>
                 <td>
                   <b>
@@ -522,7 +797,7 @@ function Step3({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
       {!locked && (
         <div className={styles.miniForm}>
           <span>供给增量（决议外的常规对策）</span>
-          <button className="btn sm" onClick={() => setIncs([...incs, { name: "常州化成夜班×1", delta: 1.2 }])}>
+          <button className="btn sm" onClick={() => setIncs([...incs, { name: "新增供给增量", delta: 1.2 }])}>
             ＋ 增量行
           </button>
           {incs.map((inc, i) => (
@@ -532,8 +807,11 @@ function Step3({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
             </span>
           ))}
           <button className="btn primary" onClick={() => run({ increments: incs })} data-testid="sop-run-3">
-            {zh.sim.sop.runStep("③")}（供给 = Σ基地 周产能×爬坡×认证）
+            {zh.sim.sop.runStep("③")}
           </button>
+          <InfoPopover topic={zh.sim.sop.info.s3Topic} testId="sop-s3-formula">
+            <div style={{ fontSize: 12, lineHeight: 1.7 }}>{zh.sim.sop.info.s3Body}</div>
+          </InfoPopover>
         </div>
       )}
       {s3?.perBase && (
@@ -560,10 +838,12 @@ function Step3({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
           </table>
           <div className={s3.flagged ? styles.noteRed : styles.noteInfo} data-testid="sop-gap">
             需求 <b className="mono">{fmt(s3.dem ?? 0)}</b> − 供给 <b className="mono">{fmt(s3.sup ?? 0)}</b> = 缺口{" "}
-            <b className="mono">{fmt(s3.gap ?? 0)}</b> 万套{s3.flagged ? `（${zh.sim.sop.gapRed} → 红标，自动进⑤议程）` : ""}
+            <b className="mono">{fmt(s3.gap ?? 0)}</b> 万套/月{s3.flagged ? `（${zh.sim.sop.gapRed} → 红标，自动进⑤议程）` : ""}
           </div>
         </>
       )}
+      {/* SOP.2 ③ 物料线 MRP（产能线 ∥ 物料线，C06） */}
+      <MrpTable />
     </div>
   );
 }
@@ -606,14 +886,14 @@ function Step4({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
                 <td>
                   <b>{Number(s4.gmRoll ?? 0).toFixed(2)}%</b>（预算 {s4.gmBudget}%·容差 0.5pp）
                 </td>
-                <td style={{ color: s4.gmOk ? "var(--ok)" : "var(--danger)" }}>{s4.gmOk ? "✓" : "✗"}</td>
+                <td style={{ color: s4.gmOk ? "var(--ok-txt)" : "var(--danger-txt)" }}>{s4.gmOk ? "✓" : "✗"}</td>
               </tr>
               <tr>
                 <td>现金垫 C18</td>
                 <td>
                   <b>{s4.cashCushion} 亿</b>（底线 50 亿）
                 </td>
-                <td style={{ color: s4.cashOk ? "var(--ok)" : "var(--danger)" }}>{s4.cashOk ? "✓" : "✗"}</td>
+                <td style={{ color: s4.cashOk ? "var(--ok-txt)" : "var(--danger-txt)" }}>{s4.cashOk ? "✓" : "✗"}</td>
               </tr>
             </tbody>
           </table>
@@ -622,6 +902,8 @@ function Step4({ v, locked, run }: { v: SopVersionVM; locked: boolean; run: (p: 
           </div>
         </div>
       )}
+      {/* SOP.3 ④ 量价本利科目表（C15 毛利归因） */}
+      <PnlTable />
     </div>
   );
 }
@@ -659,6 +941,9 @@ function Step5({
         );
       })}
 
+      {/* SOP.4 ⑤ 版本演进对比表（V1→V7） */}
+      <VersionCompare />
+
       {!locked && v.status !== "EXEC_MEETING" && (
         <>
           <div className="section-title" style={{ marginTop: 10 }}>
@@ -685,7 +970,7 @@ function Step5({
               {zh.sim.sop.runStep("⑤")}（决议 → 版本演进）
             </button>
             {blocked && (
-              <span style={{ fontSize: 11, color: "var(--danger)" }} data-testid="sop-step5-blocked">
+              <span style={{ fontSize: 12, color: "var(--danger-txt)" }} data-testid="sop-step5-blocked">
                 {zh.sim.sop.step5Blocked}
               </span>
             )}
@@ -709,6 +994,115 @@ function Step5({
           {zh.sim.sop.finalizeDone} —— 草稿 <span className="mono">{v.pendingApproval.draftId}</span>（{zh.sim.gotoActions}：/admin/actions）
         </div>
       )}
+    </div>
+  );
+}
+
+// ── sop 前端 1:1 增量（SOP.2/.3/.4）：物料线 MRP / 量价本利科目 / 版本演进对比，读新求解器/对象，前端零写死 ──
+
+/** SOP.2 ③ 物料线 MRP 净需求表（mrp_netting：净需求/长协覆盖/现货缺口/最早齐套，C06/C16）。 */
+function MrpTable() {
+  const { data } = useQuery({
+    queryKey: ["b", "mrp_netting"],
+    queryFn: async () => (await runSolver("mrp_netting", {})).data as { materials: { material: string; netDemand: number; ltaCoverPct: number; gap: number; earliestComplete: string }[]; shortageCount: number },
+  });
+  const mats = data?.materials ?? [];
+  return (
+    <div style={{ marginTop: 10 }} data-testid="sop-mrp">
+      <div className="section-title">
+        物料线 · MRP 净需求
+        <InfoPopover topic={zh.sim.sop.info.mrpTopic} testId="sop-mrp-formula">
+          <div style={{ fontSize: 12, lineHeight: 1.7 }}>{zh.sim.sop.info.mrpBody}</div>
+        </InfoPopover>
+      </div>
+      <table className="cmp" data-testid="sop-mrp-table">
+        <thead><tr><th>物料</th><th>净需求</th><th>长协覆盖</th><th>现货缺口</th><th>最早齐套</th></tr></thead>
+        <tbody>
+          {mats.map((m) => (
+            <tr key={m.material} data-testid={`sop-mrp-row-${m.material}`}>
+              <td className="zh"><b>{m.material}</b></td>
+              <td className="mono">{fmt(m.netDemand)}</td>
+              <td className="mono">{m.ltaCoverPct}%</td>
+              <td className="mono" style={{ color: m.gap > 0 ? "var(--danger-txt)" : "var(--ok-txt)" }}>{m.gap > 0 ? m.gap : "—"}</td>
+              <td className="mono">{m.gap > 0 ? m.earliestComplete : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className={styles.noteInfo}>
+        {data ? `${data.shortageCount} 种现货缺口` : "加载中…"}
+        <InfoPopover topic={zh.sim.sop.info.mrpTopic} testId="sop-mrp-source">
+          <div style={{ fontSize: 12, lineHeight: 1.7 }}>{zh.sim.sop.info.mrpSourceBody}</div>
+        </InfoPopover>
+      </div>
+    </div>
+  );
+}
+
+/** SOP.3 ④ 量价本利科目表（finance_pnl：收入/销售成本/毛利 预算vs滚动vs差异 + 毛利率行 + 结构归因，C15）。 */
+function PnlTable() {
+  const { data } = useQuery({
+    queryKey: ["b", "finance_pnl"],
+    queryFn: async () => (await runSolver("finance_pnl", {})).data as { pnl: { subject: string; budget: number; rolling: number; diff: number }[]; gmRow: { budgetPct: number; rollPct: number; diffPp: number }; attribution: string },
+  });
+  if (!data) return null;
+  return (
+    <div style={{ marginTop: 10 }} data-testid="sop-pnl">
+      <div className="section-title">量·价·本·利 科目表（预算 vs 滚动 vs 差异）</div>
+      <table className="cmp" data-testid="sop-pnl-table">
+        <thead><tr><th>科目</th><th>预算</th><th>滚动</th><th>差异</th></tr></thead>
+        <tbody>
+          {data.pnl.map((p) => (
+            <tr key={p.subject} data-testid={`sop-pnl-row-${p.subject}`}>
+              <td className="zh"><b>{p.subject}</b></td>
+              <td className="mono">{fmt(p.budget)}</td>
+              <td className="mono">{fmt(p.rolling)}</td>
+              <td className="mono" style={{ color: p.diff < 0 ? "var(--danger-txt)" : "var(--ok-txt)" }}>{p.diff > 0 ? "+" : ""}{fmt(p.diff)}</td>
+            </tr>
+          ))}
+          <tr data-testid="sop-pnl-gm">
+            <td className="zh"><b>毛利率</b></td>
+            <td className="mono">{data.gmRow.budgetPct}%</td>
+            <td className="mono">{data.gmRow.rollPct}%</td>
+            <td className="mono" style={{ color: data.gmRow.diffPp < 0 ? "var(--danger-txt)" : "var(--ok-txt)" }}>{data.gmRow.diffPp > 0 ? "+" : ""}{data.gmRow.diffPp}pp</td>
+          </tr>
+        </tbody>
+      </table>
+      <div className={styles.noteInfo} data-testid="sop-pnl-attr">{data.attribution}</div>
+    </div>
+  );
+}
+
+/** SOP.4 ⑤ 版本演进对比表（SopVersionRow：V1/V3/V5/V7 需求/供给/缺口/备注，V7 待定稿高亮）。 */
+function VersionCompare() {
+  const { data } = useQuery({
+    queryKey: ["a", "objects", "SopVersionRow"],
+    queryFn: () => queryObjectsPaged("SopVersionRow", 1, 20, {}),
+  });
+  const rows = (data?.items ?? []).map((o) => o.props as { ver: string; date: string; demand: number; supply: number; gap: number; note: string; isFinal: boolean }).sort((a, b) => a.ver.localeCompare(b.ver));
+  if (rows.length === 0) return null;
+  return (
+    <div style={{ marginTop: 10 }} data-testid="sop-version-compare">
+      <div className="section-title">版本演进对比（V1 → V7，缺口 = 需求 − 供给）</div>
+      {/* WO-P50-REMAINING-3 · 屏上必须分得出分母：本表三列是 `SopVersionRow` 的**年**口径
+          （`battery.ts` 实测 `demBase = Σ DemandSegment.tgt` = 375 万套/年），而**同一屏**上方的
+          S&OP KPI 条（需求/可供给/缺口）是**月**口径（实测 26.58 量级）—— 相差 12 倍。
+          原先本表三列一个单位都没写，读的人只能把 375 和 26.58 当成同一件事的两个数。 */}
+      <table className="cmp" data-testid="sop-version-compare-table">
+        <thead><tr><th>版本</th><th>日期</th><th>需求(万套/年)</th><th>供给(万套/年)</th><th>缺口(万套/年)</th><th>变化备注</th></tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.ver} data-testid={`sop-ver-${r.ver}`} style={r.isFinal ? { background: "rgba(76,144,240,.08)", fontWeight: 600 } : undefined}>
+              <td className="mono">{r.ver}{r.isFinal ? "（待定稿）" : ""}</td>
+              <td className="mono">{r.date}</td>
+              <td className="mono">{fmt(r.demand)}</td>
+              <td className="mono">{fmt(r.supply)}</td>
+              <td className="mono" style={{ color: r.gap > 2 ? "var(--danger-txt)" : "var(--ok-txt)" }}>{fmt(r.gap)}</td>
+              <td className="zh">{r.note}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

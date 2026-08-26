@@ -32,6 +32,10 @@ describe("F2 · risk 视图选中基地后提问", () => {
     // 流式时间线：routing 徽章 + 步骤行
     await screen.findByTestId("routing-badge");
     expect(screen.getByText(/命中工作流/)).toBeInTheDocument();
+    // WO-UNIT-MEANING：此前渲染成「conf 0.94」——既没说是什么、也没说满分是 1 还是 100。
+    // 量纲＝分类置信度 0–1（QOS routing.completed 的 confidence·契约无 unit 字段），故写成「置信度 0.94/1」。
+    const conf = await screen.findByTestId("routing-confidence");
+    expect(conf.textContent ?? "").toMatch(/^置信度 \d\.\d{2}\/1$/);
     await screen.findByTestId("step-s2");
 
     // 最终 table 回答 + VERIFIED 徽章

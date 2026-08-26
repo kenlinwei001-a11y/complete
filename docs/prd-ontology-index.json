@@ -1,0 +1,4343 @@
+{
+  "generatedAt": "2026-08-26",
+  "ontology": {
+    "invariants": [
+      "R1",
+      "R10",
+      "R11",
+      "R12",
+      "R13",
+      "R14",
+      "R15",
+      "R16",
+      "R17",
+      "R18",
+      "R19",
+      "R2",
+      "R3",
+      "R4",
+      "R5",
+      "R6",
+      "R7",
+      "R8",
+      "R9"
+    ],
+    "breakpoints": [
+      "G-1",
+      "G-10",
+      "G-11",
+      "G-12",
+      "G-2",
+      "G-3",
+      "G-4",
+      "G-5",
+      "G-6",
+      "G-7",
+      "G-8",
+      "G-9"
+    ]
+  },
+  "prds": {
+    "PRD-1to1-README-HANDOFF.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-A15-cli-universal-operation-shell.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R15",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R8"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/tools/registry.ts",
+        "apps/datacore/src/app.ts",
+        "scripts/check-cli-parity.mjs",
+        "scripts/cli-parity-baseline.json",
+        "scripts/platform-cli.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-A18-provisional-build-closure.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R12",
+        "R13",
+        "R2",
+        "R4",
+        "R5",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/solvers/service.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-A3-multihop-slice-completion.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R2",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-10",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/ontology/slice-index.ts",
+        "apps/datacore/src/ontology/slice-library.ts",
+        "apps/datacore/src/ontology/slice-planner.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-A9-external-engines-design-deferred.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R5",
+        "R6",
+        "R8"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/service.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-IND-plan-generate-1to1.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-UPGRADE-decision-sandbox-v2.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R14",
+        "R16",
+        "R2",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/test/skill-orchestrator.seam.test.ts",
+        "packages/contracts/src/sim.ts",
+        "scripts/check-debattery.mjs",
+        "scripts/check-req-coverage.mjs",
+        "scripts/check-verdict-rollup.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-WO-LIVE-DISPOSITION.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/base-outlook.ts",
+        "apps/datacore/src/solvers/disposition.ts",
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/datacore/test/live-disposition-seam.test.ts",
+        "apps/frontend-shell/src/locales/zh.ts",
+        "apps/frontend-shell/src/views/RiskBoardView.tsx"
+      ],
+      "brokenArtifacts": [
+        "apps/datacore/src/solvers/disposition.ts"
+      ]
+    },
+    "PRD-addendum-a8-timeseries.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R2",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-admin-console-closure.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R3"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-4",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-admin-platform.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R3",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-agent-runtime.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-capability-routing.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-7",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-dataflow-loop-closure.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-6",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-excel-seed-700B-expansion.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/rules/constraints.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/synthetic/battery-extended.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/src/synthetic/seed.ts",
+        "apps/frontend-shell/src/mocks/fixtures.ts",
+        "apps/frontend-shell/src/mocks/simSolvers.ts",
+        "apps/frontend-shell/src/views/DashboardView.tsx",
+        "packages/contracts/src/base-registry.ts"
+      ],
+      "brokenArtifacts": [
+        "apps/datacore/src/rules/constraints.ts",
+        "apps/datacore/src/synthetic/seed.ts"
+      ]
+    },
+    "PRD-addendum-execution-semantics.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-feature-entitlement.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R3"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-lived-in-state.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R2",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-llm-providers-and-references.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14",
+        "R5"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-7",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-llm-purpose-enum.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14",
+        "R15",
+        "R19",
+        "R2",
+        "R3",
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-5",
+        "G-7",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/llm/providers.ts",
+        "apps/agentcore/src/server.ts",
+        "apps/datacore/src/domain.ts",
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/llmproviders.ts",
+        "apps/datacore/src/repo/pg.ts",
+        "apps/datacore/src/solvers/llm-gen.ts",
+        "apps/datacore/src/synthetic/service.ts",
+        "apps/frontend-shell/src/mocks/handlers.ts",
+        "apps/frontend-shell/src/pages/admin/LlmProvidersPage.tsx",
+        "apps/frontend-shell/test/feature-name-single-source.seam.test.ts",
+        "packages/contracts/src/feature-names.ts",
+        "packages/contracts/src/operation-intent.ts",
+        "scripts/gate-ledger.json"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-m11-calibration.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-ontology-core.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R12",
+        "R14"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-ontology-governance.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R12",
+        "R14",
+        "R4"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-operational-completeness.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R2",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-replay-orchestrator.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-skill-authoring.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R16",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/main.ts",
+        "apps/agentcore/src/mocks/seed.ts",
+        "apps/agentcore/src/server.ts",
+        "apps/agentcore/src/skill-lint.ts",
+        "apps/agentcore/src/skill-probe.ts",
+        "apps/agentcore/src/tools/registry.ts",
+        "packages/contracts/src/agentcore.ts",
+        "scripts/check-ontology-writeback.mjs",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-solvers-and-gaps.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-2",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-addendum-validation-loop.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-admin-self-approval.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R2",
+        "R3",
+        "R4",
+        "R8"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/actions.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-agent-data-generation-tools.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R15",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/tools/clients.ts",
+        "apps/agentcore/src/tools/datacore-http.ts",
+        "apps/agentcore/src/tools/registry.ts",
+        "apps/datacore/src/app.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-agent-execution-governance-loop-control.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R2",
+        "R3",
+        "R6",
+        "R7"
+      ],
+      "breakpoints": [
+        "G-9"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/agent/loop.ts",
+        "scripts/check-dril-retrieval.mjs",
+        "scripts/check-loop-control.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-agent-navigation-slice-latency.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R6",
+        "R7"
+      ],
+      "breakpoints": [
+        "G-9"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-agent-react-harness.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R16",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/agent/loop.ts",
+        "apps/agentcore/src/agent/prompts.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-agentcore-dsh-upgrade.md": {
+      "hasOntologyRef": true,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/server.ts",
+        "apps/agentcore/test/dsh-gov-production.seam.test.ts",
+        "apps/agentcore/test/dsh-poc-acceptance.test.ts",
+        "packages/contracts/src/agentcore.ts",
+        "packages/dsh-harness/README.md",
+        "packages/dsh-harness/cordis.yml"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-aop-annual-scenario-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/planviews.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx",
+        "packages/contracts/src/planviews.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-attainment-base-daily-timeseries.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/timeseries.ts",
+        "packages/contracts/src/timeseries.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-attribution-routing-plan-audit.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R13",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/tools/executor.ts",
+        "apps/datacore/src/catalog.ts",
+        "apps/datacore/src/solvers/plan.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-build-workflow-runtime.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14",
+        "R2",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/migrations/023_build_workflow_runs.sql",
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/databuilder/provisioners.ts",
+        "apps/datacore/src/databuilder/service.ts",
+        "apps/datacore/src/databuilder/workflow-engine.ts",
+        "apps/datacore/test/build-workflow-engine.test.ts",
+        "apps/datacore/test/provisioners.test.ts",
+        "packages/contracts/src/databuilder.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-capacity-feasibility-demanddelta-fix.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R13",
+        "R14",
+        "R18",
+        "R4",
+        "R6",
+        "R7"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/mocks/seed.ts",
+        "apps/agentcore/src/scenarios-catalog.ts",
+        "apps/agentcore/src/workflow/executor.ts",
+        "apps/agentcore/test/capacity-feasibility-demanddelta-seam.test.ts",
+        "apps/datacore/src/solvers/capacity.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "packages/contracts/src/solvers.ts",
+        "scripts/check-genuine-sim.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-capacity-inference-completion.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-capacity-live-cockpit.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R15",
+        "R17",
+        "R18",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/capacity.ts",
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/frontend-shell/src/api/endpoints.ts",
+        "apps/frontend-shell/src/locales/zh.ts",
+        "apps/frontend-shell/src/views/RiskBoardView.tsx",
+        "apps/frontend-shell/src/views/capacity/CapacityLiveDialog.tsx",
+        "apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx",
+        "packages/contracts/src/capacity-factors.ts",
+        "packages/contracts/src/solvers.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-catalog-battery-20-scenarios.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R14",
+        "R3"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-chain-24nodes.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R16",
+        "R18",
+        "R2",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/service.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-cli-full-coverage.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R15",
+        "R16",
+        "R2",
+        "R3",
+        "R6",
+        "R7"
+      ],
+      "breakpoints": [
+        "G-7"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/features/registry.ts",
+        "apps/agentcore/src/server.ts",
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/frontend-shell/src/components/ScenarioLauncher/CommandPalette.tsx",
+        "packages/contracts/src/operation-intent.ts",
+        "packages/contracts/src/operation-registry.ts",
+        "scripts/check-cli-coverage.mjs",
+        "scripts/check-cli-parity.mjs",
+        "scripts/cli-coverage-baseline.json",
+        "scripts/platform-cli.mjs"
+      ],
+      "brokenArtifacts": [
+        "packages/contracts/src/operation-registry.ts",
+        "scripts/check-cli-coverage.mjs",
+        "scripts/cli-coverage-baseline.json"
+      ]
+    },
+    "PRD-cockpit-capacity-1to1-parity.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R2",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-2",
+        "G-5"
+      ],
+      "artifacts": [
+        "packages/contracts/src/solvers.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-console-cleanup.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-data-backfill.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R16",
+        "R18",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-data-closure-spec.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R10",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R2",
+        "R4",
+        "R5",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5",
+        "G-6",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-data-gap-self-healing-loop.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R16",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-9"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-de-battery-multitenant-config.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R14",
+        "R2",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5",
+        "G-6"
+      ],
+      "artifacts": [
+        "packages/contracts/src/workspace.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-decision-resource-intelligence-layer.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R15",
+        "R2",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/agent/mcp-router.ts",
+        "apps/agentcore/src/agent/navigation-slice.ts",
+        "apps/agentcore/src/agent/skill-router.ts",
+        "apps/agentcore/src/router/compile-plan.ts",
+        "apps/agentcore/src/router/domain-resolver.ts",
+        "apps/agentcore/test/dril-quality.test.ts",
+        "apps/agentcore/test/dril-registry.test.ts",
+        "apps/agentcore/test/dril-retrieval.test.ts",
+        "apps/agentcore/test/dril-routing-seam.test.ts",
+        "apps/datacore/src/catalog.ts",
+        "packages/contracts/src/intelligence-resource.ts",
+        "packages/contracts/src/resource-descriptor.ts",
+        "packages/contracts/test/intelligence-resource.test.ts",
+        "scripts/check-resource-descriptor.mjs"
+      ],
+      "brokenArtifacts": [
+        "packages/contracts/test/intelligence-resource.test.ts"
+      ]
+    },
+    "PRD-demand-pulled-growth-engine.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R10",
+        "R11",
+        "R13",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/router/orchestrator.ts",
+        "scripts/platform-cli.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-demo-lightup-2.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R2",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/test/deliver-verb-seam.test.ts",
+        "apps/agentcore/test/demo-lightup-2-prod-set.seam.test.ts",
+        "apps/agentcore/test/route1-structural-qualifier-seam.test.ts",
+        "apps/agentcore/test/scenario-phrasing-seam.test.ts",
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/test/demo-lightup-seam.test.ts",
+        "apps/datacore/test/solver-context-lazy-loading.seam.test.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-deterministic-cross-domain.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-discover-real-type-names.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R2",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/tools/executor.ts",
+        "apps/agentcore/src/tools/registry.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-dogfooding-self-ontology.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [
+        "packages/contracts/src/meta-ontology.ts",
+        "scripts/check-prd-ontology.mjs",
+        "scripts/check-system-ontology.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-empty-tenant-bootstrap.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/datacore/src/livedin/engine.ts",
+        "apps/datacore/src/seed.ts",
+        "apps/datacore/src/sop.ts",
+        "apps/datacore/src/synthetic/battery.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-enterprise-decision-twin.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/migrations/008_ontology_core.sql",
+        "apps/datacore/src/actions.ts",
+        "apps/datacore/src/domain.ts",
+        "apps/datacore/src/resources.ts",
+        "packages/contracts/src/global-sim.ts"
+      ],
+      "brokenArtifacts": [
+        "apps/datacore/src/resources.ts"
+      ]
+    },
+    "PRD-external-signal-domain.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R2",
+        "R5",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-fde-fullstack-build-workflow.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R2",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-3",
+        "G-5",
+        "G-6",
+        "G-7",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/databuilder/comprehend.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-frontend-addendum-remaining-views.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R3"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-frontend-addendum-sim-views.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-frontend.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R3"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-fullstack-story-build-g8.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R12",
+        "R14",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R8"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-3",
+        "G-5",
+        "G-6",
+        "G-7",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/growth/probe.ts",
+        "apps/agentcore/src/server.ts",
+        "packages/contracts/src/databuilder.ts",
+        "packages/contracts/src/growth.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-gate-ledger.md": {
+      "hasOntologyRef": true,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "scripts/check-fake.mjs",
+        "scripts/check-ontology-writeback.mjs",
+        "scripts/debattery-baseline.json",
+        "scripts/gate-census.mjs",
+        "scripts/gate-ledger.json",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": [
+        "scripts/check-fake.mjs"
+      ]
+    },
+    "PRD-generation-boundary-grounding.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R10",
+        "R12",
+        "R13",
+        "R14",
+        "R16",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-5",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/domain.ts",
+        "apps/datacore/src/growth/loop.ts"
+      ],
+      "brokenArtifacts": [
+        "apps/datacore/src/growth/loop.ts"
+      ]
+    },
+    "PRD-generic-inference.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R2",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-global-sim-live-upgrade.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R15",
+        "R17",
+        "R18",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/agent/sim-planner.ts",
+        "apps/agentcore/src/router/execute-plan.ts",
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/datacore/src/app.ts",
+        "apps/frontend-shell/src/api/endpoints.ts",
+        "apps/frontend-shell/src/locales/zh.ts",
+        "apps/frontend-shell/src/views/sim/GlobalSimLevers.tsx",
+        "apps/frontend-shell/src/views/sim/GlobalSimScenarioBar.tsx",
+        "apps/frontend-shell/src/views/sim/GlobalSimView.tsx",
+        "packages/contracts/src/sim.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-global-sim.md": {
+      "hasOntologyRef": true,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "packages/contracts/src/global-sim.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-goal-metric-owner-spine.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R2",
+        "R4"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/datacore/src/ontology-governance.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/src/synthetic/data-categories.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-hardcoded-absence.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/datacore/src/synthetic/cadence.ts",
+        "apps/frontend-shell/src/views/sim/transitFlow.ts",
+        "apps/frontend-shell/test/transit-flow.seam.test.tsx",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-harness-ux-adoption.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R17",
+        "R19",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-11"
+      ],
+      "artifacts": [
+        "apps/agentcore/dist/mocks/seed.js",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/sop.ts",
+        "apps/datacore/test/action-adopt-forecast.seam.test.ts",
+        "apps/datacore/test/action-adopt-hypothesis.seam.test.ts",
+        "apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.module.css",
+        "apps/frontend-shell/test/sim-ux-u4b-u1-u8.test.tsx",
+        "apps/frontend-shell/test/wo-sim-action-real.project-sim-adopt.test.tsx",
+        "packages/bundle/headless/README.md",
+        "packages/contracts/dist/index.js",
+        "packages/contracts/src/capacity-factors.ts",
+        "packages/contracts/src/planviews.ts",
+        "scripts/check-harness-ux-splitaccount.mjs",
+        "scripts/check-sim-ux-criteria.mjs",
+        "scripts/edge-active-mounts-baseline.json",
+        "scripts/gate-ledger-baseline.json",
+        "scripts/gate.sh",
+        "scripts/lib/baseline-doc.mjs",
+        "scripts/lib/layout-probe.mjs",
+        "scripts/lib/sim-page-roster.mjs",
+        "scripts/sim-ux-criteria-baseline.json"
+      ],
+      "brokenArtifacts": [
+        "packages/bundle/headless/README.md"
+      ]
+    },
+    "PRD-impediments-reachable.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/catalog.ts",
+        "apps/datacore/src/solvers/chain-impediment.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/synthetic/service.ts",
+        "apps/datacore/src/synthetic/view-manifest.ts",
+        "apps/datacore/test/features.test.ts",
+        "apps/datacore/test/memory-mode-views.test.ts",
+        "apps/datacore/test/synthetic.test.ts",
+        "apps/frontend-shell/src/App.tsx",
+        "apps/frontend-shell/src/mocks/fixtures.ts",
+        "apps/frontend-shell/src/pages/ShellLayout.tsx",
+        "apps/frontend-shell/src/views/registry.ts",
+        "apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx",
+        "apps/frontend-shell/test/chain-impediment-mockwire.test.tsx",
+        "apps/frontend-shell/test/chain-impediments-route.test.tsx",
+        "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx",
+        "scripts/check-nav-group-coverage.mjs",
+        "scripts/check-view-reachable.mjs",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-implementation-handbook.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-in-dialog-gap-fill-loop.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/growth/loop.ts",
+        "apps/agentcore/src/growth/probe.ts",
+        "apps/agentcore/src/server.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-inference-line.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R11",
+        "R13",
+        "R14",
+        "R15",
+        "R17",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/mocks/seed.ts",
+        "apps/agentcore/src/router/ceo-route.ts",
+        "apps/agentcore/test/ceo-agent-context.test.ts",
+        "apps/agentcore/test/ceo-agent-e2e.test.ts",
+        "apps/datacore/migrations/027_decisions.sql",
+        "apps/datacore/src/decision/kernel.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/synthetic/battery-extended.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/test/ceo-data2-seam.test.ts",
+        "apps/datacore/test/decision-kernel-c1.test.ts",
+        "apps/datacore/test/decision-play.test.ts",
+        "apps/datacore/test/gap-attribution.test.ts",
+        "apps/datacore/test/supply-demand-gap-attribution.test.ts",
+        "apps/frontend-shell/src/views/RiskBoardView.tsx",
+        "packages/contracts/src/base-registry.ts",
+        "packages/contracts/src/ceo-agent.ts",
+        "packages/contracts/src/decision-engine.ts",
+        "packages/contracts/src/decision-kernel.ts",
+        "packages/contracts/src/gap-attribution.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-inference-process-enhancement.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14"
+      ],
+      "breakpoints": [
+        "G-3",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/frontend-shell/src/sse/useTaskStream.ts",
+        "apps/frontend-shell/src/views/sim/PmDag.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-lever-binding-drift.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/test/lever-binding-drift.test.ts",
+        "apps/datacore/test/ontology-core.test.ts",
+        "packages/contracts/src/capacity-factors.ts",
+        "scripts/check-lever-binding-drift.mjs",
+        "scripts/gate-ledger.json"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-live-traceable-data.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R12",
+        "R2",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-6"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-llm-agent-empty-response-guard.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R6",
+        "R7",
+        "R8"
+      ],
+      "breakpoints": [
+        "G-3"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-maturity-master-plan.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R12",
+        "R14"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-multi-intent-L2-L3-coupled-solving.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-multi-intent-orchestration.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R2",
+        "R3",
+        "R6",
+        "R7"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-nav-gate.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R3"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/synthetic/view-manifest.ts",
+        "apps/frontend-shell/src/pages/ShellLayout.tsx",
+        "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx",
+        "packages/contracts/src/workspace.ts",
+        "scripts/check-nav-group-coverage.mjs",
+        "scripts/gate-ledger.json",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-nav-ia-reorg.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R14",
+        "R15",
+        "R2",
+        "R3"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/pages/ShellLayout.tsx",
+        "apps/frontend-shell/src/pages/adminRegistry.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-node-semantics.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/chain-loss.ts",
+        "apps/datacore/src/solvers/extended.ts",
+        "apps/datacore/src/solvers/plan.ts",
+        "apps/datacore/src/sop.ts",
+        "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts",
+        "apps/frontend-shell/test/node-semantics.seam.test.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-ontoflow-data-builder.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/connectors/parsers.ts",
+        "apps/datacore/src/modeling.ts",
+        "apps/datacore/src/ontology.ts",
+        "apps/datacore/src/pipeline/processing.ts",
+        "apps/datacore/src/pipeline/readiness.ts",
+        "apps/datacore/src/pipeline/service.ts",
+        "apps/datacore/src/pipeline/subgraph.ts",
+        "apps/datacore/src/timeseries.ts",
+        "apps/frontend-shell/src/views/OntologyGraphView.tsx",
+        "packages/contracts/src/pipeline.ts"
+      ],
+      "brokenArtifacts": [
+        "apps/datacore/src/pipeline/readiness.ts"
+      ]
+    },
+    "PRD-ontoflow-v2-unified-modeling.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/domain.ts",
+        "packages/contracts/src/pipeline.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-ontology-7elements.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R13",
+        "R14",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-2"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/agent/navigation-slice.ts",
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/catalog.ts",
+        "apps/datacore/src/databuilder/solver-args.ts",
+        "apps/datacore/src/domain.ts",
+        "apps/datacore/src/ontology.ts",
+        "apps/datacore/src/repo/pg.ts",
+        "apps/datacore/src/seed.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/frontend-shell/src/pages/admin/ActionsPage.tsx",
+        "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx",
+        "packages/contracts/src/actions.ts",
+        "scripts/check-action-wiring.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-ontology-browser-field-coverage.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R12",
+        "R2",
+        "R4",
+        "R5",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-6",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/databuilder/closure.ts",
+        "apps/datacore/src/modeling.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-opt-whatif-close.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R12",
+        "R13",
+        "R14",
+        "R2",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/test/opt-whatif-close.seam.test.ts",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-opt-whatif-data.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R12",
+        "R13",
+        "R14",
+        "R18",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-12"
+      ],
+      "artifacts": [
+        "apps/datacore/src/solvers/field-role-lexicon.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/test/opt-whatif-base-cost.seam.test.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-optimize-whatif-conversational-wiring.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R16",
+        "R18",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-12"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/agent/navigation-slice.ts",
+        "apps/agentcore/src/router/domain-resolver.ts",
+        "apps/agentcore/src/router/opt-whatif-route.ts",
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/test/optimize-whatif-conversational-seam.test.ts",
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/solvers/opt-binding.ts",
+        "apps/datacore/src/solvers/opt-whatif.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/test/opt-real-sidecar.integration.test.ts",
+        "packages/contracts/src/opt-template.ts",
+        "packages/contracts/src/qos.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-order-project-sim-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/frontend-shell/src/views/plan/OrderChainView.tsx",
+        "apps/frontend-shell/src/views/sim/PmDag.tsx",
+        "apps/frontend-shell/src/views/sim/ProjectSimView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-plan-audit-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-2"
+      ],
+      "artifacts": [
+        "apps/datacore/src/solvers/plan.ts",
+        "apps/datacore/src/solvers/risk.ts",
+        "apps/frontend-shell/src/views/sim/PlanAuditView.tsx",
+        "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx",
+        "packages/contracts/src/solvers.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-plan-generate-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/plan.ts",
+        "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx",
+        "packages/contracts/src/solvers.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-platform-foundry-aip.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R2",
+        "R3",
+        "R4",
+        "R5"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-prototype-intake-databuilder.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R12",
+        "R15",
+        "R2",
+        "R4",
+        "R5",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-6",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/datacore/src/entity-resolution.ts",
+        "apps/datacore/src/modeling.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-qos-cross-domain-unified.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R3",
+        "R6",
+        "R7"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-quarter-rolling-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/datacore/src/planviews.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-query-orchestration-service.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-2",
+        "G-3",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-reference-views-1to1-roadmap.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-route-nav-coverage.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R3"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/synthetic/view-manifest.ts",
+        "apps/frontend-shell/src/App.tsx",
+        "apps/frontend-shell/src/pages/ShellLayout.tsx",
+        "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx",
+        "packages/contracts/src/workspace.ts",
+        "scripts/check-nav-group-coverage.mjs",
+        "scripts/gate-ledger.json",
+        "scripts/ui-smoke-sim-init.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-rules-as-references.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R16",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-10"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-sandbox-a10.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R4"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/event-subscriptions.ts",
+        "apps/datacore/src/app.ts",
+        "apps/frontend-shell/src/store/eventInvalidation.ts",
+        "apps/frontend-shell/test/sim-event-invalidation.seam.test.ts",
+        "packages/contracts/src/chain-sim.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-sandbox-a2.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R16",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/test/chain-scan-honesty.test.ts",
+        "scripts/chain-scan-honesty-baseline.json",
+        "scripts/check-chain-scan-honesty.mjs",
+        "scripts/gate-ledger.json",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-sandbox-metro-ops.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R17",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/chain-impediment.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/test/sandbox-metro-lever.seam.test.ts",
+        "apps/datacore/test/sandbox-metro-scope.seam.test.ts",
+        "apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx",
+        "apps/frontend-shell/src/views/sim/SandboxConsole.tsx",
+        "packages/contracts/src/chain-sim.ts",
+        "scripts/gate-ledger.json"
+      ],
+      "brokenArtifacts": [
+        "apps/datacore/test/sandbox-metro-lever.seam.test.ts",
+        "apps/datacore/test/sandbox-metro-scope.seam.test.ts"
+      ]
+    },
+    "PRD-sandbox-metro-semantics.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/frontend-shell/src/views/sim/chainLineMap.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-sandbox-multiplan.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R17",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R9"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/event-subscriptions.ts",
+        "apps/datacore/src/actions.ts",
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/solvers/chain-impediment.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/test/catalog.test.ts",
+        "apps/datacore/test/ontology-core.test.ts",
+        "apps/frontend-shell/src/api/endpoints.ts",
+        "apps/frontend-shell/src/store/eventInvalidation.ts",
+        "apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx",
+        "apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx",
+        "apps/frontend-shell/src/views/sim/SimComparePanel.tsx",
+        "packages/contracts/src/base-registry.ts",
+        "packages/contracts/src/chain-sim.ts",
+        "packages/contracts/src/decision-kernel.ts",
+        "scripts/gate-ledger.json"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-sandbox-ontogenesis-buildplan.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R12",
+        "R14",
+        "R16",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-11"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-sandbox-redesign.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R16",
+        "R2",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-12"
+      ],
+      "artifacts": [
+        "apps/datacore/src/sim/propagation.ts",
+        "apps/datacore/src/timeseries.ts",
+        "apps/frontend-shell/src/views/sim/SandboxView.tsx",
+        "packages/contracts/src/base-registry.ts",
+        "packages/contracts/src/chain-sim.ts",
+        "scripts/gate-ledger.json"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-sandbox-v3-three-zone.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "packages/contracts/src/sim.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-sandbox-v4-backward-derivation.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-scenario-launcher.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-3",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/server.ts",
+        "apps/frontend-shell/src/pages/admin/ScenesPage.tsx",
+        "packages/contracts/src/agentcore.ts",
+        "packages/contracts/src/qos.ts",
+        "scripts/check-chain-closure.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-scenario-ontogenesis.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R16",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-9"
+      ],
+      "artifacts": [
+        "scripts/check-ontogenesis.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-seam-arg-drop-audit.md": {
+      "hasOntologyRef": true,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "scripts/check-arg-drop-seam.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-segment-scoped-gap-attribution.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R13",
+        "R14",
+        "R18",
+        "R2",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/test/gap-attribution-segment-scope.test.ts",
+        "apps/datacore/test/gap-attribution.test.ts",
+        "apps/frontend-shell/src/mocks/fixtures.ts",
+        "apps/frontend-shell/src/views/DashboardView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-self-driving-qos-data-foundation.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-semantics-singlesource.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/sop.ts",
+        "apps/datacore/src/synthetic/cadence.ts",
+        "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts",
+        "apps/frontend-shell/test/chain-node-semantics-typebinding.seam.test.ts",
+        "scripts/check-chain-node-singlesource.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-sim-drill-parallel-world.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/twin/enterprise-state.ts",
+        "packages/contracts/src/enterprise-state.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-sim-scope-local.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R17",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/test/sim-certification.test.ts",
+        "apps/frontend-shell/test/sim-scope-local.seam.test.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-simulation-sandbox.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R16",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-10",
+        "G-11",
+        "G-9"
+      ],
+      "artifacts": [
+        "apps/datacore/src/seed.ts",
+        "apps/datacore/src/sim/propagation.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-skill-compiler-registry.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R11",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R18",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-10",
+        "G-4",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/auth.ts",
+        "apps/agentcore/src/dril/resource-projector.ts",
+        "apps/agentcore/src/dril/resource-registry.ts",
+        "apps/agentcore/src/event-subscriptions.ts",
+        "apps/agentcore/src/features/registry.ts",
+        "apps/agentcore/src/main.ts",
+        "apps/agentcore/src/metrics.ts",
+        "apps/agentcore/src/mocks/seed.ts",
+        "apps/agentcore/src/resources.ts",
+        "apps/agentcore/src/server.ts",
+        "apps/agentcore/src/skill-probe.ts",
+        "apps/agentcore/src/tools/clients.ts",
+        "apps/agentcore/src/tools/registry.ts",
+        "apps/agentcore/test/skill-orchestrator.seam.test.ts",
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/auth.ts",
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/frontend-shell/src/App.tsx",
+        "packages/contracts/src/agentcore.ts",
+        "packages/contracts/src/common.ts",
+        "packages/contracts/src/execution-plan.ts",
+        "packages/contracts/src/operation-intent.ts",
+        "packages/contracts/src/qos.ts",
+        "packages/contracts/src/skill-graph.ts",
+        "scripts/gate.sh",
+        "scripts/platform-cli.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-skill-contract-dsl.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-10",
+        "G-3",
+        "G-8",
+        "G-9"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/agent/prompts.ts",
+        "apps/agentcore/src/catalog/service.ts",
+        "apps/agentcore/src/dril/resource-projector.ts",
+        "apps/agentcore/src/engine.ts",
+        "apps/agentcore/src/mocks/seed.ts",
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/server.ts",
+        "apps/agentcore/src/skill-lint.ts",
+        "apps/agentcore/src/skill-probe.ts",
+        "apps/agentcore/src/tools/registry.ts",
+        "apps/agentcore/src/workflow/executor.ts",
+        "packages/contracts/src/agentcore.ts",
+        "packages/contracts/src/execution-plan.ts",
+        "packages/contracts/src/qos.ts",
+        "packages/contracts/src/skill-graph.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-skill-crossreview.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/resources.ts",
+        "packages/contracts/src/features.ts",
+        "scripts/check-gate-ledger.mjs",
+        "scripts/gate-ledger-baseline.json",
+        "scripts/gate-ledger.json",
+        "scripts/platform-cli.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-skill-governance-learning.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R13",
+        "R14",
+        "R16",
+        "R18",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-12",
+        "G-8",
+        "G-9"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/agent/prompts.ts",
+        "apps/agentcore/src/agent/skill-router.ts",
+        "apps/agentcore/src/catalog/service.ts",
+        "apps/agentcore/src/dril/quality.ts",
+        "apps/agentcore/src/dril/resource-projector.ts",
+        "apps/agentcore/src/engine.ts",
+        "apps/agentcore/src/evals.ts",
+        "apps/agentcore/src/event-subscriptions.ts",
+        "apps/agentcore/src/features/registry.ts",
+        "apps/agentcore/src/growth/scaffold.ts",
+        "apps/agentcore/src/metrics.ts",
+        "apps/agentcore/src/persistence/repos.ts",
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/server.ts",
+        "apps/agentcore/src/skill-lint.ts",
+        "apps/agentcore/src/skill-probe.ts",
+        "apps/agentcore/src/tools/executor.ts",
+        "apps/agentcore/src/tools/registry.ts",
+        "apps/datacore/src/actions.ts",
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/decision/kernel.ts",
+        "apps/datacore/src/decision/outcome-stats.ts",
+        "apps/datacore/src/metrics.ts",
+        "apps/frontend-shell/src/pages/admin/GrowthCockpitPage.tsx",
+        "packages/contracts/src/actions.ts",
+        "packages/contracts/src/agentcore.ts",
+        "packages/contracts/src/base-registry.ts",
+        "packages/contracts/src/decision-kernel.ts",
+        "packages/contracts/src/features.ts",
+        "packages/contracts/src/prompt-template.ts",
+        "packages/contracts/src/qos.ts",
+        "packages/contracts/src/refs.ts",
+        "scripts/platform-cli.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-skill-migration.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R13",
+        "R15",
+        "R16",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-4",
+        "G-9"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/agent/loop.ts",
+        "apps/agentcore/src/catalog/service.ts",
+        "apps/agentcore/src/dril/resource-projector.ts",
+        "apps/agentcore/src/features/registry.ts",
+        "apps/agentcore/src/ids.ts",
+        "apps/agentcore/src/main.ts",
+        "apps/agentcore/src/mocks/seed.ts",
+        "apps/agentcore/src/ops/fallback.ts",
+        "apps/agentcore/src/resources.ts",
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/scenarios-catalog.ts",
+        "apps/agentcore/src/scripts/smoke-llm.ts",
+        "apps/agentcore/src/server.ts",
+        "apps/agentcore/src/skill-lint.ts",
+        "apps/agentcore/src/workflow/executor.ts",
+        "apps/agentcore/test/agent-budget.test.ts",
+        "apps/agentcore/test/fixtures/scenario-phrasing-goldset.ts",
+        "apps/agentcore/test/helpers.ts",
+        "apps/agentcore/test/scenario-phrasing-seam.test.ts",
+        "apps/agentcore/test/scenario-seed-multitenant.test.ts",
+        "apps/agentcore/test/scenarios-wiring.test.ts",
+        "apps/datacore/src/ruledsl.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/test/xservice-smoke.test.ts",
+        "packages/contracts/src/agentcore.ts",
+        "packages/contracts/src/base-registry.ts",
+        "packages/contracts/src/datacore.ts",
+        "packages/contracts/src/operation-intent.ts",
+        "packages/contracts/src/qos.ts",
+        "packages/contracts/src/refs.ts",
+        "scripts/check-gate-ledger.mjs",
+        "scripts/debattery-baseline.json",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-skill-runtime-orchestrator.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-10",
+        "G-2",
+        "G-9"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/config.ts",
+        "apps/agentcore/src/metrics.ts",
+        "apps/agentcore/src/mocks/seed.ts",
+        "apps/agentcore/src/router/ceo-route.ts",
+        "apps/agentcore/src/router/multi-route.ts",
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/server.ts",
+        "apps/agentcore/src/skill-lint.ts",
+        "apps/agentcore/src/skill-orchestrator.ts",
+        "apps/agentcore/src/tools/datacore-http.ts",
+        "apps/agentcore/src/tools/executor.ts",
+        "apps/agentcore/src/workflow/checkpoint.ts",
+        "apps/agentcore/src/workflow/executor.ts",
+        "apps/agentcore/test/solver-cancel-seam.test.ts",
+        "apps/datacore/src/solvers/cancellation.ts",
+        "apps/frontend-shell/src/components/Dag/taskDag.ts",
+        "packages/contracts/src/agentcore.ts",
+        "packages/contracts/src/qos.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-sop-balance-1to1.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-5"
+      ],
+      "artifacts": [
+        "apps/frontend-shell/src/views/sim/SopBalanceView.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-stale-claims.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/sim/propagation.ts",
+        "apps/datacore/src/synthetic/cadence.ts",
+        "apps/datacore/src/synthetic/service.ts",
+        "apps/frontend-shell/src/views/sim/inspectorModel.ts",
+        "apps/frontend-shell/src/views/sim/transitFlow.ts",
+        "apps/frontend-shell/test/stale-claims.seam.test.ts",
+        "packages/contracts/src/chain-sim.ts",
+        "scripts/check-stale-claims.mjs",
+        "scripts/gate-ledger.json",
+        "scripts/gate.sh",
+        "scripts/stale-claim-baseline.json"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-system-ontogenesis-spec.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R16",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-3",
+        "G-5",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-topo-realdata.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R2",
+        "R6",
+        "R7"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-12",
+        "G-4",
+        "G-5",
+        "G-6"
+      ],
+      "artifacts": [
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/ontology-governance.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/src/synthetic/service.ts",
+        "apps/frontend-shell/src/views/sim/physicalTopology.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-traceability-and-baseline-v2.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-traceability-and-baseline.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-transit-geometry.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/views/sim/chainLineMap.ts",
+        "apps/frontend-shell/test/transit-geometry.seam.test.tsx"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-transit-wire.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R14",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx",
+        "apps/frontend-shell/src/views/sim/inspectorModel.ts",
+        "apps/frontend-shell/src/views/sim/transitFlow.ts",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-unified-build-engine.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R12",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-1",
+        "G-2",
+        "G-3",
+        "G-4",
+        "G-5",
+        "G-6",
+        "G-7",
+        "G-8"
+      ],
+      "artifacts": [],
+      "brokenArtifacts": []
+    },
+    "PRD-v2-agent.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R13",
+        "R15",
+        "R16",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-3",
+        "G-9"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/agent/context.ts",
+        "apps/agentcore/src/agent/loop.ts",
+        "apps/agentcore/src/agent/ontology-context.ts",
+        "apps/agentcore/src/agent/prompts.ts",
+        "apps/agentcore/src/agent/reflect.ts",
+        "apps/agentcore/src/features/registry.ts",
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/tools/registry.ts",
+        "apps/agentcore/test/fixtures/qos-20q-goldset.ts",
+        "apps/agentcore/test/harness-elements.test.ts",
+        "apps/agentcore/test/loop-detector-seam.test.ts",
+        "packages/contracts/src/agentcore.ts",
+        "packages/contracts/src/operation-intent.ts",
+        "packages/contracts/src/qos.ts",
+        "scripts/check-loop-control.mjs"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-v2-skill.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R11",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R17",
+        "R2",
+        "R3",
+        "R4",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/dril/relations.ts",
+        "apps/agentcore/src/dril/resource-projector.ts",
+        "apps/agentcore/src/dril/resource-registry.ts",
+        "apps/agentcore/src/engine.ts",
+        "apps/agentcore/src/event-subscriptions.ts",
+        "apps/agentcore/src/features/registry.ts",
+        "apps/agentcore/src/mocks/seed.ts",
+        "apps/agentcore/src/resources.ts",
+        "apps/agentcore/src/router/orchestrator.ts",
+        "apps/agentcore/src/server.ts",
+        "apps/agentcore/src/skill-compiler.ts",
+        "apps/agentcore/src/skill-lint.ts",
+        "apps/agentcore/src/skill-orchestrator.ts",
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/features.ts",
+        "apps/frontend-shell/src/api/endpoints.ts",
+        "apps/frontend-shell/src/pages/admin/SkillStructure.tsx",
+        "packages/contracts/src/agentcore.ts",
+        "packages/contracts/src/skill-compile.ts",
+        "packages/contracts/src/skill-graph.ts",
+        "scripts/check-ref-closure.mjs",
+        "scripts/gate.sh"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-v2-slice.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R19",
+        "R2",
+        "R3",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/agentcore/src/agent/loop.ts",
+        "apps/agentcore/src/agent/navigation-slice.ts",
+        "apps/agentcore/src/dril/relations.ts",
+        "apps/agentcore/src/event-subscriptions.ts",
+        "apps/agentcore/src/mocks/clients.ts",
+        "apps/agentcore/src/mocks/seed.ts",
+        "apps/agentcore/src/router/domain-resolver.ts",
+        "apps/agentcore/src/workflow/executor.ts",
+        "apps/datacore/src/app.ts",
+        "apps/datacore/src/catalog.ts",
+        "apps/datacore/src/databuilder/slice-coverage.ts",
+        "apps/datacore/src/ontology-core.ts",
+        "apps/datacore/src/ontology.ts",
+        "apps/datacore/src/ontology/query-engine.ts",
+        "apps/datacore/src/ontology/refbase.ts",
+        "apps/datacore/src/ontology/slice-index.ts",
+        "apps/datacore/src/ontology/slice-layers.ts",
+        "apps/datacore/src/synthetic/battery.ts",
+        "apps/datacore/src/synthetic/data-categories.ts",
+        "apps/datacore/src/synthetic/service.ts",
+        "apps/datacore/test/slice-order-fulfillment.test.ts",
+        "apps/frontend-shell/src/pages/admin/SliceInspector.tsx",
+        "scripts/check-ontogenesis.mjs",
+        "scripts/check-ontology-slice-coverage.mjs",
+        "scripts/check-slice-ref.mjs",
+        "scripts/provision-enterprise.mjs",
+        "scripts/slice-scenarios-excel.mjs"
+      ],
+      "brokenArtifacts": [
+        "scripts/check-slice-ref.mjs"
+      ]
+    }
+  },
+  "breakpointCoverage": {
+    "G-3": [
+      "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-agent-data-generation-tools.md",
+      "PRD-attribution-routing-plan-audit.md",
+      "PRD-discover-real-type-names.md",
+      "PRD-empty-tenant-bootstrap.md",
+      "PRD-fde-fullstack-build-workflow.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-in-dialog-gap-fill-loop.md",
+      "PRD-inference-line.md",
+      "PRD-inference-process-enhancement.md",
+      "PRD-llm-agent-empty-response-guard.md",
+      "PRD-query-orchestration-service.md",
+      "PRD-scenario-launcher.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-system-ontogenesis-spec.md",
+      "PRD-unified-build-engine.md",
+      "PRD-v2-agent.md"
+    ],
+    "G-8": [
+      "PRD-A18-provisional-build-closure.md",
+      "PRD-A3-multihop-slice-completion.md",
+      "PRD-addendum-a8-timeseries.md",
+      "PRD-addendum-admin-console-closure.md",
+      "PRD-addendum-admin-platform.md",
+      "PRD-addendum-agent-runtime.md",
+      "PRD-addendum-capability-routing.md",
+      "PRD-addendum-dataflow-loop-closure.md",
+      "PRD-addendum-execution-semantics.md",
+      "PRD-addendum-feature-entitlement.md",
+      "PRD-addendum-lived-in-state.md",
+      "PRD-addendum-llm-providers-and-references.md",
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-addendum-m11-calibration.md",
+      "PRD-addendum-ontology-core.md",
+      "PRD-addendum-ontology-governance.md",
+      "PRD-addendum-operational-completeness.md",
+      "PRD-addendum-replay-orchestrator.md",
+      "PRD-addendum-skill-authoring.md",
+      "PRD-addendum-solvers-and-gaps.md",
+      "PRD-addendum-validation-loop.md",
+      "PRD-build-workflow-runtime.md",
+      "PRD-catalog-battery-20-scenarios.md",
+      "PRD-data-closure-spec.md",
+      "PRD-demand-pulled-growth-engine.md",
+      "PRD-dogfooding-self-ontology.md",
+      "PRD-fde-fullstack-build-workflow.md",
+      "PRD-frontend-addendum-remaining-views.md",
+      "PRD-frontend-addendum-sim-views.md",
+      "PRD-frontend.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-generation-boundary-grounding.md",
+      "PRD-implementation-handbook.md",
+      "PRD-inference-process-enhancement.md",
+      "PRD-maturity-master-plan.md",
+      "PRD-ontology-browser-field-coverage.md",
+      "PRD-platform-foundry-aip.md",
+      "PRD-prototype-intake-databuilder.md",
+      "PRD-query-orchestration-service.md",
+      "PRD-scenario-launcher.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-system-ontogenesis-spec.md",
+      "PRD-traceability-and-baseline-v2.md",
+      "PRD-traceability-and-baseline.md",
+      "PRD-unified-build-engine.md"
+    ],
+    "G-10": [
+      "PRD-A3-multihop-slice-completion.md",
+      "PRD-rules-as-references.md",
+      "PRD-simulation-sandbox.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-runtime-orchestrator.md"
+    ],
+    "G-1": [
+      "PRD-addendum-a8-timeseries.md",
+      "PRD-addendum-admin-console-closure.md",
+      "PRD-addendum-admin-platform.md",
+      "PRD-addendum-agent-runtime.md",
+      "PRD-addendum-capability-routing.md",
+      "PRD-addendum-dataflow-loop-closure.md",
+      "PRD-addendum-execution-semantics.md",
+      "PRD-addendum-feature-entitlement.md",
+      "PRD-addendum-lived-in-state.md",
+      "PRD-addendum-llm-providers-and-references.md",
+      "PRD-addendum-m11-calibration.md",
+      "PRD-addendum-ontology-core.md",
+      "PRD-addendum-ontology-governance.md",
+      "PRD-addendum-operational-completeness.md",
+      "PRD-addendum-replay-orchestrator.md",
+      "PRD-addendum-skill-authoring.md",
+      "PRD-addendum-solvers-and-gaps.md",
+      "PRD-addendum-validation-loop.md",
+      "PRD-catalog-battery-20-scenarios.md",
+      "PRD-demand-pulled-growth-engine.md",
+      "PRD-dogfooding-self-ontology.md",
+      "PRD-frontend-addendum-remaining-views.md",
+      "PRD-frontend-addendum-sim-views.md",
+      "PRD-frontend.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-implementation-handbook.md",
+      "PRD-maturity-master-plan.md",
+      "PRD-platform-foundry-aip.md",
+      "PRD-query-orchestration-service.md",
+      "PRD-scenario-launcher.md",
+      "PRD-scenario-ontogenesis.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-skill-migration.md",
+      "PRD-topo-realdata.md",
+      "PRD-traceability-and-baseline-v2.md",
+      "PRD-traceability-and-baseline.md",
+      "PRD-unified-build-engine.md"
+    ],
+    "G-4": [
+      "PRD-addendum-admin-console-closure.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-migration.md",
+      "PRD-topo-realdata.md",
+      "PRD-unified-build-engine.md"
+    ],
+    "G-7": [
+      "PRD-addendum-capability-routing.md",
+      "PRD-addendum-llm-providers-and-references.md",
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-cli-full-coverage.md",
+      "PRD-fde-fullstack-build-workflow.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-unified-build-engine.md"
+    ],
+    "G-6": [
+      "PRD-addendum-dataflow-loop-closure.md",
+      "PRD-data-closure-spec.md",
+      "PRD-de-battery-multitenant-config.md",
+      "PRD-fde-fullstack-build-workflow.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-live-traceable-data.md",
+      "PRD-ontology-browser-field-coverage.md",
+      "PRD-prototype-intake-databuilder.md",
+      "PRD-topo-realdata.md",
+      "PRD-unified-build-engine.md"
+    ],
+    "G-5": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-data-closure-spec.md",
+      "PRD-de-battery-multitenant-config.md",
+      "PRD-fde-fullstack-build-workflow.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-generation-boundary-grounding.md",
+      "PRD-generic-inference.md",
+      "PRD-goal-metric-owner-spine.md",
+      "PRD-hardcoded-absence.md",
+      "PRD-order-project-sim-1to1.md",
+      "PRD-quarter-rolling-1to1.md",
+      "PRD-self-driving-qos-data-foundation.md",
+      "PRD-sop-balance-1to1.md",
+      "PRD-system-ontogenesis-spec.md",
+      "PRD-topo-realdata.md",
+      "PRD-unified-build-engine.md"
+    ],
+    "G-2": [
+      "PRD-addendum-solvers-and-gaps.md",
+      "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-ontology-7elements.md",
+      "PRD-plan-audit-1to1.md",
+      "PRD-query-orchestration-service.md",
+      "PRD-skill-runtime-orchestrator.md",
+      "PRD-unified-build-engine.md"
+    ],
+    "G-9": [
+      "PRD-agent-execution-governance-loop-control.md",
+      "PRD-agent-navigation-slice-latency.md",
+      "PRD-data-gap-self-healing-loop.md",
+      "PRD-scenario-ontogenesis.md",
+      "PRD-simulation-sandbox.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-skill-migration.md",
+      "PRD-skill-runtime-orchestrator.md",
+      "PRD-v2-agent.md"
+    ],
+    "G-11": [
+      "PRD-harness-ux-adoption.md",
+      "PRD-sandbox-ontogenesis-buildplan.md",
+      "PRD-simulation-sandbox.md"
+    ],
+    "G-12": [
+      "PRD-opt-whatif-data.md",
+      "PRD-optimize-whatif-conversational-wiring.md",
+      "PRD-sandbox-redesign.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-topo-realdata.md"
+    ]
+  },
+  "orphanBreakpoints": [],
+  "byArtifact": {
+    "apps/agentcore/src/router/orchestrator.ts": [
+      "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-attribution-routing-plan-audit.md",
+      "PRD-demand-pulled-growth-engine.md",
+      "PRD-global-sim-live-upgrade.md",
+      "PRD-optimize-whatif-conversational-wiring.md",
+      "PRD-scenario-launcher.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-skill-migration.md",
+      "PRD-skill-runtime-orchestrator.md",
+      "PRD-v2-agent.md",
+      "PRD-v2-skill.md"
+    ],
+    "apps/agentcore/src/tools/registry.ts": [
+      "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-addendum-skill-authoring.md",
+      "PRD-agent-data-generation-tools.md",
+      "PRD-discover-real-type-names.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-v2-agent.md"
+    ],
+    "apps/datacore/src/app.ts": [
+      "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-agent-data-generation-tools.md",
+      "PRD-aop-annual-scenario-1to1.md",
+      "PRD-build-workflow-runtime.md",
+      "PRD-cli-full-coverage.md",
+      "PRD-global-sim-live-upgrade.md",
+      "PRD-nav-gate.md",
+      "PRD-ontoflow-data-builder.md",
+      "PRD-ontology-7elements.md",
+      "PRD-sandbox-a10.md",
+      "PRD-sandbox-multiplan.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-stale-claims.md",
+      "PRD-topo-realdata.md",
+      "PRD-v2-skill.md",
+      "PRD-v2-slice.md"
+    ],
+    "scripts/check-cli-parity.mjs": [
+      "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-cli-full-coverage.md"
+    ],
+    "scripts/cli-parity-baseline.json": [
+      "PRD-A15-cli-universal-operation-shell.md"
+    ],
+    "scripts/platform-cli.mjs": [
+      "PRD-A15-cli-universal-operation-shell.md",
+      "PRD-cli-full-coverage.md",
+      "PRD-demand-pulled-growth-engine.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-crossreview.md",
+      "PRD-skill-governance-learning.md"
+    ],
+    "apps/datacore/src/solvers/service.ts": [
+      "PRD-A18-provisional-build-closure.md",
+      "PRD-A9-external-engines-design-deferred.md",
+      "PRD-addendum-excel-seed-700B-expansion.md",
+      "PRD-capacity-feasibility-demanddelta-fix.md",
+      "PRD-capacity-live-cockpit.md",
+      "PRD-chain-24nodes.md",
+      "PRD-cli-full-coverage.md",
+      "PRD-demo-lightup-2.md",
+      "PRD-harness-ux-adoption.md",
+      "PRD-impediments-reachable.md",
+      "PRD-inference-line.md",
+      "PRD-lever-binding-drift.md",
+      "PRD-ontology-7elements.md",
+      "PRD-opt-whatif-data.md",
+      "PRD-optimize-whatif-conversational-wiring.md",
+      "PRD-sandbox-multiplan.md",
+      "PRD-segment-scoped-gap-attribution.md",
+      "PRD-skill-compiler-registry.md"
+    ],
+    "apps/datacore/src/ontology/slice-index.ts": [
+      "PRD-A3-multihop-slice-completion.md",
+      "PRD-v2-slice.md"
+    ],
+    "apps/datacore/src/ontology/slice-library.ts": [
+      "PRD-A3-multihop-slice-completion.md"
+    ],
+    "apps/datacore/src/ontology/slice-planner.ts": [
+      "PRD-A3-multihop-slice-completion.md"
+    ],
+    "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx": [
+      "PRD-IND-plan-generate-1to1.md",
+      "PRD-plan-generate-1to1.md"
+    ],
+    "apps/agentcore/test/skill-orchestrator.seam.test.ts": [
+      "PRD-UPGRADE-decision-sandbox-v2.md",
+      "PRD-skill-compiler-registry.md"
+    ],
+    "packages/contracts/src/sim.ts": [
+      "PRD-UPGRADE-decision-sandbox-v2.md",
+      "PRD-global-sim-live-upgrade.md",
+      "PRD-sandbox-v3-three-zone.md"
+    ],
+    "scripts/check-debattery.mjs": [
+      "PRD-UPGRADE-decision-sandbox-v2.md"
+    ],
+    "scripts/check-req-coverage.mjs": [
+      "PRD-UPGRADE-decision-sandbox-v2.md"
+    ],
+    "scripts/check-verdict-rollup.mjs": [
+      "PRD-UPGRADE-decision-sandbox-v2.md"
+    ],
+    "apps/datacore/src/solvers/base-outlook.ts": [
+      "PRD-WO-LIVE-DISPOSITION.md"
+    ],
+    "apps/datacore/src/solvers/disposition.ts": [
+      "PRD-WO-LIVE-DISPOSITION.md"
+    ],
+    "apps/datacore/src/solvers/risk.ts": [
+      "PRD-WO-LIVE-DISPOSITION.md",
+      "PRD-capacity-live-cockpit.md",
+      "PRD-order-project-sim-1to1.md",
+      "PRD-plan-audit-1to1.md"
+    ],
+    "apps/datacore/test/live-disposition-seam.test.ts": [
+      "PRD-WO-LIVE-DISPOSITION.md"
+    ],
+    "apps/frontend-shell/src/locales/zh.ts": [
+      "PRD-WO-LIVE-DISPOSITION.md",
+      "PRD-capacity-live-cockpit.md",
+      "PRD-global-sim-live-upgrade.md"
+    ],
+    "apps/frontend-shell/src/views/RiskBoardView.tsx": [
+      "PRD-WO-LIVE-DISPOSITION.md",
+      "PRD-capacity-live-cockpit.md",
+      "PRD-inference-line.md"
+    ],
+    "apps/datacore/src/rules/constraints.ts": [
+      "PRD-addendum-excel-seed-700B-expansion.md"
+    ],
+    "apps/datacore/src/synthetic/battery-extended.ts": [
+      "PRD-addendum-excel-seed-700B-expansion.md",
+      "PRD-inference-line.md"
+    ],
+    "apps/datacore/src/synthetic/battery.ts": [
+      "PRD-addendum-excel-seed-700B-expansion.md",
+      "PRD-aop-annual-scenario-1to1.md",
+      "PRD-demo-lightup-2.md",
+      "PRD-empty-tenant-bootstrap.md",
+      "PRD-goal-metric-owner-spine.md",
+      "PRD-inference-line.md",
+      "PRD-opt-whatif-data.md",
+      "PRD-quarter-rolling-1to1.md",
+      "PRD-sandbox-metro-ops.md",
+      "PRD-sandbox-metro-semantics.md",
+      "PRD-segment-scoped-gap-attribution.md",
+      "PRD-skill-migration.md",
+      "PRD-topo-realdata.md",
+      "PRD-v2-slice.md"
+    ],
+    "apps/datacore/src/synthetic/seed.ts": [
+      "PRD-addendum-excel-seed-700B-expansion.md"
+    ],
+    "apps/frontend-shell/src/mocks/fixtures.ts": [
+      "PRD-addendum-excel-seed-700B-expansion.md",
+      "PRD-impediments-reachable.md",
+      "PRD-segment-scoped-gap-attribution.md"
+    ],
+    "apps/frontend-shell/src/mocks/simSolvers.ts": [
+      "PRD-addendum-excel-seed-700B-expansion.md"
+    ],
+    "apps/frontend-shell/src/views/DashboardView.tsx": [
+      "PRD-addendum-excel-seed-700B-expansion.md",
+      "PRD-segment-scoped-gap-attribution.md"
+    ],
+    "packages/contracts/src/base-registry.ts": [
+      "PRD-addendum-excel-seed-700B-expansion.md",
+      "PRD-inference-line.md",
+      "PRD-sandbox-multiplan.md",
+      "PRD-sandbox-redesign.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-skill-migration.md"
+    ],
+    "apps/agentcore/src/llm/providers.ts": [
+      "PRD-addendum-llm-purpose-enum.md"
+    ],
+    "apps/agentcore/src/server.ts": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-addendum-skill-authoring.md",
+      "PRD-agentcore-dsh-upgrade.md",
+      "PRD-cli-full-coverage.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-in-dialog-gap-fill-loop.md",
+      "PRD-scenario-launcher.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-skill-migration.md",
+      "PRD-skill-runtime-orchestrator.md",
+      "PRD-v2-skill.md"
+    ],
+    "apps/datacore/src/domain.ts": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-enterprise-decision-twin.md",
+      "PRD-generation-boundary-grounding.md",
+      "PRD-ontoflow-v2-unified-modeling.md",
+      "PRD-ontology-7elements.md"
+    ],
+    "apps/datacore/src/features.ts": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-demo-lightup-2.md",
+      "PRD-nav-gate.md",
+      "PRD-optimize-whatif-conversational-wiring.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-v2-skill.md"
+    ],
+    "apps/datacore/src/llmproviders.ts": [
+      "PRD-addendum-llm-purpose-enum.md"
+    ],
+    "apps/datacore/src/repo/pg.ts": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-ontology-7elements.md"
+    ],
+    "apps/datacore/src/solvers/llm-gen.ts": [
+      "PRD-addendum-llm-purpose-enum.md"
+    ],
+    "apps/datacore/src/synthetic/service.ts": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-impediments-reachable.md",
+      "PRD-stale-claims.md",
+      "PRD-topo-realdata.md",
+      "PRD-v2-slice.md"
+    ],
+    "apps/frontend-shell/src/mocks/handlers.ts": [
+      "PRD-addendum-llm-purpose-enum.md"
+    ],
+    "apps/frontend-shell/src/pages/admin/LlmProvidersPage.tsx": [
+      "PRD-addendum-llm-purpose-enum.md"
+    ],
+    "apps/frontend-shell/test/feature-name-single-source.seam.test.ts": [
+      "PRD-addendum-llm-purpose-enum.md"
+    ],
+    "packages/contracts/src/feature-names.ts": [
+      "PRD-addendum-llm-purpose-enum.md"
+    ],
+    "packages/contracts/src/operation-intent.ts": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-cli-full-coverage.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-migration.md",
+      "PRD-v2-agent.md"
+    ],
+    "scripts/gate-ledger.json": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-gate-ledger.md",
+      "PRD-lever-binding-drift.md",
+      "PRD-nav-gate.md",
+      "PRD-route-nav-coverage.md",
+      "PRD-sandbox-a2.md",
+      "PRD-sandbox-metro-ops.md",
+      "PRD-sandbox-multiplan.md",
+      "PRD-sandbox-redesign.md",
+      "PRD-skill-crossreview.md",
+      "PRD-stale-claims.md"
+    ],
+    "apps/agentcore/src/main.ts": [
+      "PRD-addendum-skill-authoring.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-migration.md"
+    ],
+    "apps/agentcore/src/mocks/seed.ts": [
+      "PRD-addendum-skill-authoring.md",
+      "PRD-capacity-feasibility-demanddelta-fix.md",
+      "PRD-inference-line.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-migration.md",
+      "PRD-skill-runtime-orchestrator.md",
+      "PRD-v2-skill.md",
+      "PRD-v2-slice.md"
+    ],
+    "apps/agentcore/src/skill-lint.ts": [
+      "PRD-addendum-skill-authoring.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-skill-migration.md",
+      "PRD-skill-runtime-orchestrator.md",
+      "PRD-v2-skill.md"
+    ],
+    "apps/agentcore/src/skill-probe.ts": [
+      "PRD-addendum-skill-authoring.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-governance-learning.md"
+    ],
+    "packages/contracts/src/agentcore.ts": [
+      "PRD-addendum-skill-authoring.md",
+      "PRD-agentcore-dsh-upgrade.md",
+      "PRD-scenario-launcher.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-skill-migration.md",
+      "PRD-skill-runtime-orchestrator.md",
+      "PRD-v2-agent.md",
+      "PRD-v2-skill.md"
+    ],
+    "scripts/check-ontology-writeback.mjs": [
+      "PRD-addendum-skill-authoring.md",
+      "PRD-gate-ledger.md"
+    ],
+    "scripts/gate.sh": [
+      "PRD-addendum-skill-authoring.md",
+      "PRD-gate-ledger.md",
+      "PRD-hardcoded-absence.md",
+      "PRD-harness-ux-adoption.md",
+      "PRD-impediments-reachable.md",
+      "PRD-nav-gate.md",
+      "PRD-opt-whatif-close.md",
+      "PRD-sandbox-a2.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-migration.md",
+      "PRD-stale-claims.md",
+      "PRD-transit-wire.md",
+      "PRD-v2-skill.md"
+    ],
+    "apps/datacore/src/actions.ts": [
+      "PRD-admin-self-approval.md",
+      "PRD-enterprise-decision-twin.md",
+      "PRD-sandbox-multiplan.md",
+      "PRD-skill-governance-learning.md"
+    ],
+    "apps/agentcore/src/tools/clients.ts": [
+      "PRD-agent-data-generation-tools.md",
+      "PRD-skill-compiler-registry.md"
+    ],
+    "apps/agentcore/src/tools/datacore-http.ts": [
+      "PRD-agent-data-generation-tools.md",
+      "PRD-skill-runtime-orchestrator.md"
+    ],
+    "apps/agentcore/src/agent/loop.ts": [
+      "PRD-agent-execution-governance-loop-control.md",
+      "PRD-agent-react-harness.md",
+      "PRD-skill-migration.md",
+      "PRD-v2-agent.md",
+      "PRD-v2-slice.md"
+    ],
+    "scripts/check-dril-retrieval.mjs": [
+      "PRD-agent-execution-governance-loop-control.md"
+    ],
+    "scripts/check-loop-control.mjs": [
+      "PRD-agent-execution-governance-loop-control.md",
+      "PRD-v2-agent.md"
+    ],
+    "apps/agentcore/src/agent/prompts.ts": [
+      "PRD-agent-react-harness.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-v2-agent.md"
+    ],
+    "apps/agentcore/test/dsh-gov-production.seam.test.ts": [
+      "PRD-agentcore-dsh-upgrade.md"
+    ],
+    "apps/agentcore/test/dsh-poc-acceptance.test.ts": [
+      "PRD-agentcore-dsh-upgrade.md"
+    ],
+    "packages/dsh-harness/README.md": [
+      "PRD-agentcore-dsh-upgrade.md"
+    ],
+    "packages/dsh-harness/cordis.yml": [
+      "PRD-agentcore-dsh-upgrade.md"
+    ],
+    "apps/datacore/src/planviews.ts": [
+      "PRD-aop-annual-scenario-1to1.md",
+      "PRD-quarter-rolling-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/plan/AnnualScenarioView.tsx": [
+      "PRD-aop-annual-scenario-1to1.md"
+    ],
+    "packages/contracts/src/planviews.ts": [
+      "PRD-aop-annual-scenario-1to1.md",
+      "PRD-harness-ux-adoption.md"
+    ],
+    "apps/datacore/src/timeseries.ts": [
+      "PRD-attainment-base-daily-timeseries.md",
+      "PRD-ontoflow-data-builder.md",
+      "PRD-sandbox-redesign.md"
+    ],
+    "packages/contracts/src/timeseries.ts": [
+      "PRD-attainment-base-daily-timeseries.md"
+    ],
+    "apps/agentcore/src/tools/executor.ts": [
+      "PRD-attribution-routing-plan-audit.md",
+      "PRD-discover-real-type-names.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-skill-runtime-orchestrator.md"
+    ],
+    "apps/datacore/src/catalog.ts": [
+      "PRD-attribution-routing-plan-audit.md",
+      "PRD-decision-resource-intelligence-layer.md",
+      "PRD-impediments-reachable.md",
+      "PRD-ontology-7elements.md",
+      "PRD-v2-slice.md"
+    ],
+    "apps/datacore/src/solvers/plan.ts": [
+      "PRD-attribution-routing-plan-audit.md",
+      "PRD-node-semantics.md",
+      "PRD-plan-audit-1to1.md",
+      "PRD-plan-generate-1to1.md"
+    ],
+    "apps/datacore/migrations/023_build_workflow_runs.sql": [
+      "PRD-build-workflow-runtime.md"
+    ],
+    "apps/datacore/src/databuilder/provisioners.ts": [
+      "PRD-build-workflow-runtime.md"
+    ],
+    "apps/datacore/src/databuilder/service.ts": [
+      "PRD-build-workflow-runtime.md"
+    ],
+    "apps/datacore/src/databuilder/workflow-engine.ts": [
+      "PRD-build-workflow-runtime.md"
+    ],
+    "apps/datacore/test/build-workflow-engine.test.ts": [
+      "PRD-build-workflow-runtime.md"
+    ],
+    "apps/datacore/test/provisioners.test.ts": [
+      "PRD-build-workflow-runtime.md"
+    ],
+    "packages/contracts/src/databuilder.ts": [
+      "PRD-build-workflow-runtime.md",
+      "PRD-fullstack-story-build-g8.md"
+    ],
+    "apps/agentcore/src/scenarios-catalog.ts": [
+      "PRD-capacity-feasibility-demanddelta-fix.md",
+      "PRD-skill-migration.md"
+    ],
+    "apps/agentcore/src/workflow/executor.ts": [
+      "PRD-capacity-feasibility-demanddelta-fix.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-migration.md",
+      "PRD-skill-runtime-orchestrator.md",
+      "PRD-v2-slice.md"
+    ],
+    "apps/agentcore/test/capacity-feasibility-demanddelta-seam.test.ts": [
+      "PRD-capacity-feasibility-demanddelta-fix.md"
+    ],
+    "apps/datacore/src/solvers/capacity.ts": [
+      "PRD-capacity-feasibility-demanddelta-fix.md",
+      "PRD-capacity-live-cockpit.md"
+    ],
+    "packages/contracts/src/solvers.ts": [
+      "PRD-capacity-feasibility-demanddelta-fix.md",
+      "PRD-capacity-live-cockpit.md",
+      "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-plan-audit-1to1.md",
+      "PRD-plan-generate-1to1.md"
+    ],
+    "scripts/check-genuine-sim.mjs": [
+      "PRD-capacity-feasibility-demanddelta-fix.md"
+    ],
+    "apps/frontend-shell/src/api/endpoints.ts": [
+      "PRD-capacity-live-cockpit.md",
+      "PRD-global-sim-live-upgrade.md",
+      "PRD-sandbox-multiplan.md",
+      "PRD-v2-skill.md"
+    ],
+    "apps/frontend-shell/src/views/capacity/CapacityLiveDialog.tsx": [
+      "PRD-capacity-live-cockpit.md"
+    ],
+    "apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx": [
+      "PRD-capacity-live-cockpit.md",
+      "PRD-sandbox-metro-ops.md",
+      "PRD-sandbox-multiplan.md"
+    ],
+    "packages/contracts/src/capacity-factors.ts": [
+      "PRD-capacity-live-cockpit.md",
+      "PRD-harness-ux-adoption.md",
+      "PRD-lever-binding-drift.md"
+    ],
+    "apps/agentcore/src/features/registry.ts": [
+      "PRD-cli-full-coverage.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-skill-migration.md",
+      "PRD-v2-agent.md",
+      "PRD-v2-skill.md"
+    ],
+    "apps/frontend-shell/src/components/ScenarioLauncher/CommandPalette.tsx": [
+      "PRD-cli-full-coverage.md"
+    ],
+    "packages/contracts/src/operation-registry.ts": [
+      "PRD-cli-full-coverage.md"
+    ],
+    "scripts/check-cli-coverage.mjs": [
+      "PRD-cli-full-coverage.md"
+    ],
+    "scripts/cli-coverage-baseline.json": [
+      "PRD-cli-full-coverage.md"
+    ],
+    "packages/contracts/src/workspace.ts": [
+      "PRD-de-battery-multitenant-config.md",
+      "PRD-nav-gate.md",
+      "PRD-route-nav-coverage.md"
+    ],
+    "apps/agentcore/src/agent/mcp-router.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "apps/agentcore/src/agent/navigation-slice.ts": [
+      "PRD-decision-resource-intelligence-layer.md",
+      "PRD-ontology-7elements.md",
+      "PRD-optimize-whatif-conversational-wiring.md",
+      "PRD-v2-slice.md"
+    ],
+    "apps/agentcore/src/agent/skill-router.ts": [
+      "PRD-decision-resource-intelligence-layer.md",
+      "PRD-skill-governance-learning.md"
+    ],
+    "apps/agentcore/src/router/compile-plan.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "apps/agentcore/src/router/domain-resolver.ts": [
+      "PRD-decision-resource-intelligence-layer.md",
+      "PRD-optimize-whatif-conversational-wiring.md",
+      "PRD-v2-slice.md"
+    ],
+    "apps/agentcore/test/dril-quality.test.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "apps/agentcore/test/dril-registry.test.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "apps/agentcore/test/dril-retrieval.test.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "apps/agentcore/test/dril-routing-seam.test.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "packages/contracts/src/intelligence-resource.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "packages/contracts/src/resource-descriptor.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "packages/contracts/test/intelligence-resource.test.ts": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "scripts/check-resource-descriptor.mjs": [
+      "PRD-decision-resource-intelligence-layer.md"
+    ],
+    "apps/agentcore/test/deliver-verb-seam.test.ts": [
+      "PRD-demo-lightup-2.md"
+    ],
+    "apps/agentcore/test/demo-lightup-2-prod-set.seam.test.ts": [
+      "PRD-demo-lightup-2.md"
+    ],
+    "apps/agentcore/test/route1-structural-qualifier-seam.test.ts": [
+      "PRD-demo-lightup-2.md"
+    ],
+    "apps/agentcore/test/scenario-phrasing-seam.test.ts": [
+      "PRD-demo-lightup-2.md",
+      "PRD-skill-migration.md"
+    ],
+    "apps/datacore/test/demo-lightup-seam.test.ts": [
+      "PRD-demo-lightup-2.md"
+    ],
+    "apps/datacore/test/solver-context-lazy-loading.seam.test.ts": [
+      "PRD-demo-lightup-2.md"
+    ],
+    "packages/contracts/src/meta-ontology.ts": [
+      "PRD-dogfooding-self-ontology.md"
+    ],
+    "scripts/check-prd-ontology.mjs": [
+      "PRD-dogfooding-self-ontology.md"
+    ],
+    "scripts/check-system-ontology.mjs": [
+      "PRD-dogfooding-self-ontology.md"
+    ],
+    "apps/datacore/src/livedin/engine.ts": [
+      "PRD-empty-tenant-bootstrap.md"
+    ],
+    "apps/datacore/src/seed.ts": [
+      "PRD-empty-tenant-bootstrap.md",
+      "PRD-ontology-7elements.md",
+      "PRD-simulation-sandbox.md"
+    ],
+    "apps/datacore/src/sop.ts": [
+      "PRD-empty-tenant-bootstrap.md",
+      "PRD-harness-ux-adoption.md",
+      "PRD-node-semantics.md",
+      "PRD-semantics-singlesource.md"
+    ],
+    "apps/datacore/migrations/008_ontology_core.sql": [
+      "PRD-enterprise-decision-twin.md"
+    ],
+    "apps/datacore/src/resources.ts": [
+      "PRD-enterprise-decision-twin.md"
+    ],
+    "packages/contracts/src/global-sim.ts": [
+      "PRD-enterprise-decision-twin.md",
+      "PRD-global-sim.md"
+    ],
+    "apps/datacore/src/databuilder/comprehend.ts": [
+      "PRD-fde-fullstack-build-workflow.md"
+    ],
+    "apps/agentcore/src/growth/probe.ts": [
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-in-dialog-gap-fill-loop.md"
+    ],
+    "packages/contracts/src/growth.ts": [
+      "PRD-fullstack-story-build-g8.md"
+    ],
+    "scripts/check-fake.mjs": [
+      "PRD-gate-ledger.md"
+    ],
+    "scripts/debattery-baseline.json": [
+      "PRD-gate-ledger.md",
+      "PRD-skill-migration.md"
+    ],
+    "scripts/gate-census.mjs": [
+      "PRD-gate-ledger.md"
+    ],
+    "apps/datacore/src/growth/loop.ts": [
+      "PRD-generation-boundary-grounding.md"
+    ],
+    "apps/agentcore/src/agent/sim-planner.ts": [
+      "PRD-global-sim-live-upgrade.md"
+    ],
+    "apps/agentcore/src/router/execute-plan.ts": [
+      "PRD-global-sim-live-upgrade.md"
+    ],
+    "apps/frontend-shell/src/views/sim/GlobalSimLevers.tsx": [
+      "PRD-global-sim-live-upgrade.md"
+    ],
+    "apps/frontend-shell/src/views/sim/GlobalSimScenarioBar.tsx": [
+      "PRD-global-sim-live-upgrade.md"
+    ],
+    "apps/frontend-shell/src/views/sim/GlobalSimView.tsx": [
+      "PRD-global-sim-live-upgrade.md"
+    ],
+    "apps/datacore/src/ontology-governance.ts": [
+      "PRD-goal-metric-owner-spine.md",
+      "PRD-topo-realdata.md"
+    ],
+    "apps/datacore/src/synthetic/data-categories.ts": [
+      "PRD-goal-metric-owner-spine.md",
+      "PRD-v2-slice.md"
+    ],
+    "apps/datacore/src/synthetic/cadence.ts": [
+      "PRD-hardcoded-absence.md",
+      "PRD-semantics-singlesource.md",
+      "PRD-stale-claims.md"
+    ],
+    "apps/frontend-shell/src/views/sim/transitFlow.ts": [
+      "PRD-hardcoded-absence.md",
+      "PRD-stale-claims.md",
+      "PRD-transit-wire.md"
+    ],
+    "apps/frontend-shell/test/transit-flow.seam.test.tsx": [
+      "PRD-hardcoded-absence.md"
+    ],
+    "apps/agentcore/dist/mocks/seed.js": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "apps/datacore/test/action-adopt-forecast.seam.test.ts": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "apps/datacore/test/action-adopt-hypothesis.seam.test.ts": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.module.css": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "apps/frontend-shell/test/sim-ux-u4b-u1-u8.test.tsx": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "apps/frontend-shell/test/wo-sim-action-real.project-sim-adopt.test.tsx": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "packages/bundle/headless/README.md": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "packages/contracts/dist/index.js": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "scripts/check-harness-ux-splitaccount.mjs": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "scripts/check-sim-ux-criteria.mjs": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "scripts/edge-active-mounts-baseline.json": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "scripts/gate-ledger-baseline.json": [
+      "PRD-harness-ux-adoption.md",
+      "PRD-skill-crossreview.md"
+    ],
+    "scripts/lib/baseline-doc.mjs": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "scripts/lib/layout-probe.mjs": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "scripts/lib/sim-page-roster.mjs": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "scripts/sim-ux-criteria-baseline.json": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "apps/datacore/src/solvers/chain-impediment.ts": [
+      "PRD-impediments-reachable.md",
+      "PRD-sandbox-metro-ops.md",
+      "PRD-sandbox-multiplan.md"
+    ],
+    "apps/datacore/src/synthetic/view-manifest.ts": [
+      "PRD-impediments-reachable.md",
+      "PRD-nav-gate.md",
+      "PRD-route-nav-coverage.md"
+    ],
+    "apps/datacore/test/features.test.ts": [
+      "PRD-impediments-reachable.md"
+    ],
+    "apps/datacore/test/memory-mode-views.test.ts": [
+      "PRD-impediments-reachable.md"
+    ],
+    "apps/datacore/test/synthetic.test.ts": [
+      "PRD-impediments-reachable.md"
+    ],
+    "apps/frontend-shell/src/App.tsx": [
+      "PRD-impediments-reachable.md",
+      "PRD-route-nav-coverage.md",
+      "PRD-skill-compiler-registry.md"
+    ],
+    "apps/frontend-shell/src/pages/ShellLayout.tsx": [
+      "PRD-impediments-reachable.md",
+      "PRD-nav-gate.md",
+      "PRD-nav-ia-reorg.md",
+      "PRD-route-nav-coverage.md"
+    ],
+    "apps/frontend-shell/src/views/registry.ts": [
+      "PRD-impediments-reachable.md"
+    ],
+    "apps/frontend-shell/src/views/sim/ChainImpedimentView.tsx": [
+      "PRD-impediments-reachable.md",
+      "PRD-sandbox-multiplan.md"
+    ],
+    "apps/frontend-shell/test/chain-impediment-mockwire.test.tsx": [
+      "PRD-impediments-reachable.md"
+    ],
+    "apps/frontend-shell/test/chain-impediments-route.test.tsx": [
+      "PRD-impediments-reachable.md"
+    ],
+    "apps/frontend-shell/test/f61.admin-nav-groups.test.tsx": [
+      "PRD-impediments-reachable.md",
+      "PRD-nav-gate.md",
+      "PRD-route-nav-coverage.md"
+    ],
+    "scripts/check-nav-group-coverage.mjs": [
+      "PRD-impediments-reachable.md",
+      "PRD-nav-gate.md",
+      "PRD-route-nav-coverage.md"
+    ],
+    "scripts/check-view-reachable.mjs": [
+      "PRD-impediments-reachable.md"
+    ],
+    "apps/agentcore/src/growth/loop.ts": [
+      "PRD-in-dialog-gap-fill-loop.md"
+    ],
+    "apps/agentcore/src/router/ceo-route.ts": [
+      "PRD-inference-line.md",
+      "PRD-skill-runtime-orchestrator.md"
+    ],
+    "apps/agentcore/test/ceo-agent-context.test.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/agentcore/test/ceo-agent-e2e.test.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/datacore/migrations/027_decisions.sql": [
+      "PRD-inference-line.md"
+    ],
+    "apps/datacore/src/decision/kernel.ts": [
+      "PRD-inference-line.md",
+      "PRD-skill-governance-learning.md"
+    ],
+    "apps/datacore/test/ceo-data2-seam.test.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/datacore/test/decision-kernel-c1.test.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/datacore/test/decision-play.test.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/datacore/test/gap-attribution.test.ts": [
+      "PRD-inference-line.md",
+      "PRD-segment-scoped-gap-attribution.md"
+    ],
+    "apps/datacore/test/supply-demand-gap-attribution.test.ts": [
+      "PRD-inference-line.md"
+    ],
+    "packages/contracts/src/ceo-agent.ts": [
+      "PRD-inference-line.md"
+    ],
+    "packages/contracts/src/decision-engine.ts": [
+      "PRD-inference-line.md"
+    ],
+    "packages/contracts/src/decision-kernel.ts": [
+      "PRD-inference-line.md",
+      "PRD-sandbox-multiplan.md",
+      "PRD-skill-governance-learning.md"
+    ],
+    "packages/contracts/src/gap-attribution.ts": [
+      "PRD-inference-line.md"
+    ],
+    "apps/frontend-shell/src/sse/useTaskStream.ts": [
+      "PRD-inference-process-enhancement.md"
+    ],
+    "apps/frontend-shell/src/views/sim/PmDag.tsx": [
+      "PRD-inference-process-enhancement.md",
+      "PRD-order-project-sim-1to1.md"
+    ],
+    "apps/datacore/test/lever-binding-drift.test.ts": [
+      "PRD-lever-binding-drift.md"
+    ],
+    "apps/datacore/test/ontology-core.test.ts": [
+      "PRD-lever-binding-drift.md",
+      "PRD-sandbox-multiplan.md"
+    ],
+    "scripts/check-lever-binding-drift.mjs": [
+      "PRD-lever-binding-drift.md"
+    ],
+    "apps/frontend-shell/src/pages/adminRegistry.ts": [
+      "PRD-nav-ia-reorg.md"
+    ],
+    "apps/datacore/src/solvers/chain-loss.ts": [
+      "PRD-node-semantics.md"
+    ],
+    "apps/datacore/src/solvers/extended.ts": [
+      "PRD-node-semantics.md"
+    ],
+    "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts": [
+      "PRD-node-semantics.md",
+      "PRD-semantics-singlesource.md"
+    ],
+    "apps/frontend-shell/test/node-semantics.seam.test.tsx": [
+      "PRD-node-semantics.md"
+    ],
+    "apps/datacore/src/connectors/parsers.ts": [
+      "PRD-ontoflow-data-builder.md"
+    ],
+    "apps/datacore/src/modeling.ts": [
+      "PRD-ontoflow-data-builder.md",
+      "PRD-ontology-browser-field-coverage.md",
+      "PRD-prototype-intake-databuilder.md"
+    ],
+    "apps/datacore/src/ontology.ts": [
+      "PRD-ontoflow-data-builder.md",
+      "PRD-ontology-7elements.md",
+      "PRD-v2-slice.md"
+    ],
+    "apps/datacore/src/pipeline/processing.ts": [
+      "PRD-ontoflow-data-builder.md"
+    ],
+    "apps/datacore/src/pipeline/readiness.ts": [
+      "PRD-ontoflow-data-builder.md"
+    ],
+    "apps/datacore/src/pipeline/service.ts": [
+      "PRD-ontoflow-data-builder.md"
+    ],
+    "apps/datacore/src/pipeline/subgraph.ts": [
+      "PRD-ontoflow-data-builder.md"
+    ],
+    "apps/frontend-shell/src/views/OntologyGraphView.tsx": [
+      "PRD-ontoflow-data-builder.md"
+    ],
+    "packages/contracts/src/pipeline.ts": [
+      "PRD-ontoflow-data-builder.md",
+      "PRD-ontoflow-v2-unified-modeling.md"
+    ],
+    "apps/datacore/src/databuilder/solver-args.ts": [
+      "PRD-ontology-7elements.md"
+    ],
+    "apps/frontend-shell/src/pages/admin/ActionsPage.tsx": [
+      "PRD-ontology-7elements.md"
+    ],
+    "apps/frontend-shell/src/pages/admin/DataBuilderPage.tsx": [
+      "PRD-ontology-7elements.md"
+    ],
+    "packages/contracts/src/actions.ts": [
+      "PRD-ontology-7elements.md",
+      "PRD-skill-governance-learning.md"
+    ],
+    "scripts/check-action-wiring.mjs": [
+      "PRD-ontology-7elements.md"
+    ],
+    "apps/datacore/src/databuilder/closure.ts": [
+      "PRD-ontology-browser-field-coverage.md"
+    ],
+    "apps/datacore/test/opt-whatif-close.seam.test.ts": [
+      "PRD-opt-whatif-close.md"
+    ],
+    "apps/datacore/src/solvers/field-role-lexicon.ts": [
+      "PRD-opt-whatif-data.md"
+    ],
+    "apps/datacore/test/opt-whatif-base-cost.seam.test.ts": [
+      "PRD-opt-whatif-data.md"
+    ],
+    "apps/agentcore/src/router/opt-whatif-route.ts": [
+      "PRD-optimize-whatif-conversational-wiring.md"
+    ],
+    "apps/agentcore/test/optimize-whatif-conversational-seam.test.ts": [
+      "PRD-optimize-whatif-conversational-wiring.md"
+    ],
+    "apps/datacore/src/solvers/opt-binding.ts": [
+      "PRD-optimize-whatif-conversational-wiring.md"
+    ],
+    "apps/datacore/src/solvers/opt-whatif.ts": [
+      "PRD-optimize-whatif-conversational-wiring.md"
+    ],
+    "apps/datacore/test/opt-real-sidecar.integration.test.ts": [
+      "PRD-optimize-whatif-conversational-wiring.md"
+    ],
+    "packages/contracts/src/opt-template.ts": [
+      "PRD-optimize-whatif-conversational-wiring.md"
+    ],
+    "packages/contracts/src/qos.ts": [
+      "PRD-optimize-whatif-conversational-wiring.md",
+      "PRD-scenario-launcher.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-skill-migration.md",
+      "PRD-skill-runtime-orchestrator.md",
+      "PRD-v2-agent.md"
+    ],
+    "apps/frontend-shell/src/views/plan/OrderChainView.tsx": [
+      "PRD-order-project-sim-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/sim/ProjectSimView.tsx": [
+      "PRD-order-project-sim-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/sim/PlanAuditView.tsx": [
+      "PRD-plan-audit-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/sim/PropagationTimeline.tsx": [
+      "PRD-plan-audit-1to1.md"
+    ],
+    "apps/datacore/src/entity-resolution.ts": [
+      "PRD-prototype-intake-databuilder.md"
+    ],
+    "apps/frontend-shell/src/views/plan/QuarterlyRollingView.tsx": [
+      "PRD-quarter-rolling-1to1.md"
+    ],
+    "scripts/ui-smoke-sim-init.mjs": [
+      "PRD-route-nav-coverage.md"
+    ],
+    "apps/agentcore/src/event-subscriptions.ts": [
+      "PRD-sandbox-a10.md",
+      "PRD-sandbox-multiplan.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-v2-skill.md",
+      "PRD-v2-slice.md"
+    ],
+    "apps/frontend-shell/src/store/eventInvalidation.ts": [
+      "PRD-sandbox-a10.md",
+      "PRD-sandbox-multiplan.md"
+    ],
+    "apps/frontend-shell/test/sim-event-invalidation.seam.test.ts": [
+      "PRD-sandbox-a10.md"
+    ],
+    "packages/contracts/src/chain-sim.ts": [
+      "PRD-sandbox-a10.md",
+      "PRD-sandbox-metro-ops.md",
+      "PRD-sandbox-multiplan.md",
+      "PRD-sandbox-redesign.md",
+      "PRD-stale-claims.md"
+    ],
+    "apps/datacore/test/chain-scan-honesty.test.ts": [
+      "PRD-sandbox-a2.md"
+    ],
+    "scripts/chain-scan-honesty-baseline.json": [
+      "PRD-sandbox-a2.md"
+    ],
+    "scripts/check-chain-scan-honesty.mjs": [
+      "PRD-sandbox-a2.md"
+    ],
+    "apps/datacore/test/sandbox-metro-lever.seam.test.ts": [
+      "PRD-sandbox-metro-ops.md"
+    ],
+    "apps/datacore/test/sandbox-metro-scope.seam.test.ts": [
+      "PRD-sandbox-metro-ops.md"
+    ],
+    "apps/frontend-shell/src/views/sim/SandboxConsole.tsx": [
+      "PRD-sandbox-metro-ops.md"
+    ],
+    "apps/frontend-shell/src/views/sim/chainLineMap.ts": [
+      "PRD-sandbox-metro-semantics.md",
+      "PRD-transit-geometry.md"
+    ],
+    "apps/datacore/test/catalog.test.ts": [
+      "PRD-sandbox-multiplan.md"
+    ],
+    "apps/frontend-shell/src/views/sim/SimComparePanel.tsx": [
+      "PRD-sandbox-multiplan.md"
+    ],
+    "apps/datacore/src/sim/propagation.ts": [
+      "PRD-sandbox-redesign.md",
+      "PRD-simulation-sandbox.md",
+      "PRD-stale-claims.md"
+    ],
+    "apps/frontend-shell/src/views/sim/SandboxView.tsx": [
+      "PRD-sandbox-redesign.md"
+    ],
+    "apps/frontend-shell/src/pages/admin/ScenesPage.tsx": [
+      "PRD-scenario-launcher.md"
+    ],
+    "scripts/check-chain-closure.mjs": [
+      "PRD-scenario-launcher.md"
+    ],
+    "scripts/check-ontogenesis.mjs": [
+      "PRD-scenario-ontogenesis.md",
+      "PRD-v2-slice.md"
+    ],
+    "scripts/check-arg-drop-seam.mjs": [
+      "PRD-seam-arg-drop-audit.md"
+    ],
+    "apps/datacore/test/gap-attribution-segment-scope.test.ts": [
+      "PRD-segment-scoped-gap-attribution.md"
+    ],
+    "apps/frontend-shell/test/chain-node-semantics-typebinding.seam.test.ts": [
+      "PRD-semantics-singlesource.md"
+    ],
+    "scripts/check-chain-node-singlesource.mjs": [
+      "PRD-semantics-singlesource.md"
+    ],
+    "apps/datacore/src/twin/enterprise-state.ts": [
+      "PRD-sim-drill-parallel-world.md"
+    ],
+    "packages/contracts/src/enterprise-state.ts": [
+      "PRD-sim-drill-parallel-world.md"
+    ],
+    "apps/datacore/test/sim-certification.test.ts": [
+      "PRD-sim-scope-local.md"
+    ],
+    "apps/frontend-shell/test/sim-scope-local.seam.test.tsx": [
+      "PRD-sim-scope-local.md"
+    ],
+    "apps/agentcore/src/auth.ts": [
+      "PRD-skill-compiler-registry.md"
+    ],
+    "apps/agentcore/src/dril/resource-projector.ts": [
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-skill-migration.md",
+      "PRD-v2-skill.md"
+    ],
+    "apps/agentcore/src/dril/resource-registry.ts": [
+      "PRD-skill-compiler-registry.md",
+      "PRD-v2-skill.md"
+    ],
+    "apps/agentcore/src/metrics.ts": [
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-skill-runtime-orchestrator.md"
+    ],
+    "apps/agentcore/src/resources.ts": [
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-crossreview.md",
+      "PRD-skill-migration.md",
+      "PRD-v2-skill.md"
+    ],
+    "apps/datacore/src/auth.ts": [
+      "PRD-skill-compiler-registry.md"
+    ],
+    "packages/contracts/src/common.ts": [
+      "PRD-skill-compiler-registry.md"
+    ],
+    "packages/contracts/src/execution-plan.ts": [
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-contract-dsl.md"
+    ],
+    "packages/contracts/src/skill-graph.ts": [
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-v2-skill.md"
+    ],
+    "apps/agentcore/src/catalog/service.ts": [
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-skill-migration.md"
+    ],
+    "apps/agentcore/src/engine.ts": [
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-v2-skill.md"
+    ],
+    "packages/contracts/src/features.ts": [
+      "PRD-skill-crossreview.md",
+      "PRD-skill-governance-learning.md"
+    ],
+    "scripts/check-gate-ledger.mjs": [
+      "PRD-skill-crossreview.md",
+      "PRD-skill-migration.md"
+    ],
+    "apps/agentcore/src/dril/quality.ts": [
+      "PRD-skill-governance-learning.md"
+    ],
+    "apps/agentcore/src/evals.ts": [
+      "PRD-skill-governance-learning.md"
+    ],
+    "apps/agentcore/src/growth/scaffold.ts": [
+      "PRD-skill-governance-learning.md"
+    ],
+    "apps/agentcore/src/persistence/repos.ts": [
+      "PRD-skill-governance-learning.md"
+    ],
+    "apps/datacore/src/decision/outcome-stats.ts": [
+      "PRD-skill-governance-learning.md"
+    ],
+    "apps/datacore/src/metrics.ts": [
+      "PRD-skill-governance-learning.md"
+    ],
+    "apps/frontend-shell/src/pages/admin/GrowthCockpitPage.tsx": [
+      "PRD-skill-governance-learning.md"
+    ],
+    "packages/contracts/src/prompt-template.ts": [
+      "PRD-skill-governance-learning.md"
+    ],
+    "packages/contracts/src/refs.ts": [
+      "PRD-skill-governance-learning.md",
+      "PRD-skill-migration.md"
+    ],
+    "apps/agentcore/src/ids.ts": [
+      "PRD-skill-migration.md"
+    ],
+    "apps/agentcore/src/ops/fallback.ts": [
+      "PRD-skill-migration.md"
+    ],
+    "apps/agentcore/src/scripts/smoke-llm.ts": [
+      "PRD-skill-migration.md"
+    ],
+    "apps/agentcore/test/agent-budget.test.ts": [
+      "PRD-skill-migration.md"
+    ],
+    "apps/agentcore/test/fixtures/scenario-phrasing-goldset.ts": [
+      "PRD-skill-migration.md"
+    ],
+    "apps/agentcore/test/helpers.ts": [
+      "PRD-skill-migration.md"
+    ],
+    "apps/agentcore/test/scenario-seed-multitenant.test.ts": [
+      "PRD-skill-migration.md"
+    ],
+    "apps/agentcore/test/scenarios-wiring.test.ts": [
+      "PRD-skill-migration.md"
+    ],
+    "apps/datacore/src/ruledsl.ts": [
+      "PRD-skill-migration.md"
+    ],
+    "apps/datacore/test/xservice-smoke.test.ts": [
+      "PRD-skill-migration.md"
+    ],
+    "packages/contracts/src/datacore.ts": [
+      "PRD-skill-migration.md"
+    ],
+    "apps/agentcore/src/config.ts": [
+      "PRD-skill-runtime-orchestrator.md"
+    ],
+    "apps/agentcore/src/router/multi-route.ts": [
+      "PRD-skill-runtime-orchestrator.md"
+    ],
+    "apps/agentcore/src/skill-orchestrator.ts": [
+      "PRD-skill-runtime-orchestrator.md",
+      "PRD-v2-skill.md"
+    ],
+    "apps/agentcore/src/workflow/checkpoint.ts": [
+      "PRD-skill-runtime-orchestrator.md"
+    ],
+    "apps/agentcore/test/solver-cancel-seam.test.ts": [
+      "PRD-skill-runtime-orchestrator.md"
+    ],
+    "apps/datacore/src/solvers/cancellation.ts": [
+      "PRD-skill-runtime-orchestrator.md"
+    ],
+    "apps/frontend-shell/src/components/Dag/taskDag.ts": [
+      "PRD-skill-runtime-orchestrator.md"
+    ],
+    "apps/frontend-shell/src/views/sim/SopBalanceView.tsx": [
+      "PRD-sop-balance-1to1.md"
+    ],
+    "apps/frontend-shell/src/views/sim/inspectorModel.ts": [
+      "PRD-stale-claims.md",
+      "PRD-transit-wire.md"
+    ],
+    "apps/frontend-shell/test/stale-claims.seam.test.ts": [
+      "PRD-stale-claims.md"
+    ],
+    "scripts/check-stale-claims.mjs": [
+      "PRD-stale-claims.md"
+    ],
+    "scripts/stale-claim-baseline.json": [
+      "PRD-stale-claims.md"
+    ],
+    "apps/frontend-shell/src/views/sim/physicalTopology.ts": [
+      "PRD-topo-realdata.md"
+    ],
+    "apps/frontend-shell/test/transit-geometry.seam.test.tsx": [
+      "PRD-transit-geometry.md"
+    ],
+    "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx": [
+      "PRD-transit-wire.md"
+    ],
+    "apps/agentcore/src/agent/context.ts": [
+      "PRD-v2-agent.md"
+    ],
+    "apps/agentcore/src/agent/ontology-context.ts": [
+      "PRD-v2-agent.md"
+    ],
+    "apps/agentcore/src/agent/reflect.ts": [
+      "PRD-v2-agent.md"
+    ],
+    "apps/agentcore/test/fixtures/qos-20q-goldset.ts": [
+      "PRD-v2-agent.md"
+    ],
+    "apps/agentcore/test/harness-elements.test.ts": [
+      "PRD-v2-agent.md"
+    ],
+    "apps/agentcore/test/loop-detector-seam.test.ts": [
+      "PRD-v2-agent.md"
+    ],
+    "apps/agentcore/src/dril/relations.ts": [
+      "PRD-v2-skill.md",
+      "PRD-v2-slice.md"
+    ],
+    "apps/agentcore/src/skill-compiler.ts": [
+      "PRD-v2-skill.md"
+    ],
+    "apps/frontend-shell/src/pages/admin/SkillStructure.tsx": [
+      "PRD-v2-skill.md"
+    ],
+    "packages/contracts/src/skill-compile.ts": [
+      "PRD-v2-skill.md"
+    ],
+    "scripts/check-ref-closure.mjs": [
+      "PRD-v2-skill.md"
+    ],
+    "apps/agentcore/src/mocks/clients.ts": [
+      "PRD-v2-slice.md"
+    ],
+    "apps/datacore/src/databuilder/slice-coverage.ts": [
+      "PRD-v2-slice.md"
+    ],
+    "apps/datacore/src/ontology-core.ts": [
+      "PRD-v2-slice.md"
+    ],
+    "apps/datacore/src/ontology/query-engine.ts": [
+      "PRD-v2-slice.md"
+    ],
+    "apps/datacore/src/ontology/refbase.ts": [
+      "PRD-v2-slice.md"
+    ],
+    "apps/datacore/src/ontology/slice-layers.ts": [
+      "PRD-v2-slice.md"
+    ],
+    "apps/datacore/test/slice-order-fulfillment.test.ts": [
+      "PRD-v2-slice.md"
+    ],
+    "apps/frontend-shell/src/pages/admin/SliceInspector.tsx": [
+      "PRD-v2-slice.md"
+    ],
+    "scripts/check-ontology-slice-coverage.mjs": [
+      "PRD-v2-slice.md"
+    ],
+    "scripts/check-slice-ref.mjs": [
+      "PRD-v2-slice.md"
+    ],
+    "scripts/provision-enterprise.mjs": [
+      "PRD-v2-slice.md"
+    ],
+    "scripts/slice-scenarios-excel.mjs": [
+      "PRD-v2-slice.md"
+    ]
+  }
+}

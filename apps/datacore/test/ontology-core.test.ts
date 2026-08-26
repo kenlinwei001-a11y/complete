@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { makeApp, type TestApp } from "./helpers.js";
+import { makeApp, invokeSolver, type TestApp } from "./helpers.js";
 import type { AuthCtx, LinkTypeDef, ObjectInstance, ObjectTypeDef, PropertyDef } from "../src/domain.js";
 import { CyclicDerivationError } from "../src/ontology-core.js";
+import { SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "../src/solvers/service.js";
 import { parseFormula, extractDeps, evaluate, decimalRound } from "../src/ontology-dsl.js";
 
 const ADMIN_CTX: AuthCtx = { tenantId: "demo", userId: "usr_demo_admin", roles: ["admin"], attributes: {} };
@@ -241,6 +242,39 @@ describe("O1–O10 本体原子规格", () => {
     expect(last.epoch).toBe(res.epoch);
   });
 
+  it("O4b generic-inference 通用 what-if：dryRun 前向重算派生链 before/after，无副作用（G-5 8e）", async () => {
+    const t = await makeApp();
+    await seedPyramid(t);
+    await buildPyramidObjects(t);
+    await t.services.ontologyCore.compileSpecs(ADMIN_CTX, 1, PYRAMID_SPECS);
+    await t.services.ontologyCore.recompute(ADMIN_CTX, [
+      { typeKey: "Equipment", prop: "oee_current", objectIds: ["obj_Equipment_E1", "obj_Equipment_E2", "obj_Equipment_E3"] },
+    ]); // 全量初算，派生值落库
+
+    const oeeBefore = (await t.repos.objects.get("demo", "obj_Equipment_E1"))!.props.oee_current;
+    const capHBefore = (await t.repos.objects.get("demo", "obj_Equipment_E1"))!.props.capacity_h;
+    const factoryBefore = (await t.repos.objects.get("demo", "obj_Factory_F1"))!.props.capacity;
+
+    // what-if：假设 E1 的 OEE = 0.5 → 用本体派生规格前向重算 capacity_h→Process→Line→Factory（不落真值）
+    const res = await t.services.ontologyCore.recompute(
+      ADMIN_CTX,
+      [{ typeKey: "Equipment", prop: "oee_current", objectIds: ["obj_Equipment_E1"] }],
+      { dryRun: true, apply: [{ objectId: "obj_Equipment_E1", prop: "oee_current", value: 0.5 }] },
+    );
+    expect(res.dryRunDeltas, "返回 dryRunDeltas").toBeTruthy();
+    const capH = res.dryRunDeltas!.find((d) => d.objId === "obj_Equipment_E1" && d.prop === "capacity_h");
+    expect(capH, "E1 capacity_h 前向重算").toBeTruthy();
+    expect(capH!.before).toBe(capHBefore);
+    expect(capH!.after).not.toBe(capHBefore);
+    // 级联到工厂（行业无关：纯靠派生规格 + 链路导航）
+    expect(res.dryRunDeltas!.some((d) => d.objId === "obj_Factory_F1" && d.prop === "capacity")).toBe(true);
+
+    // 无副作用（R4，dryRun 不落真值）：对象库真值不变
+    expect((await t.repos.objects.get("demo", "obj_Equipment_E1"))!.props.oee_current).toBe(oeeBefore);
+    expect((await t.repos.objects.get("demo", "obj_Equipment_E1"))!.props.capacity_h).toBe(capHBefore);
+    expect((await t.repos.objects.get("demo", "obj_Factory_F1"))!.props.capacity).toBe(factoryBefore);
+  });
+
   it("O5 求值语义：null 传播 / COALESCE / 除零→null+warning / decimal 0.1+0.2==0.3", async () => {
     // decimal fixed-point
     const sum = evaluate(parseFormula("0.1 + 0.2"), { self: {}, navigate: () => [], warn: () => {} });
@@ -409,5 +443,168 @@ describe("O1–O10 本体原子规格", () => {
     };
     const injF = await t.services.ontologyCore.executeSlice(ADMIN_CTX, fspec, { factoryId: malicious });
     expect(injF.nodes).toHaveLength(0);
+  });
+});
+
+// ---- H: generic_inference 通用 what-if 求解器（注册 + 经求解器路径走本体 recompute，工业级）----
+
+/** 规模化派生金字塔：1 工厂 × N 产线 × M 工序 × K 设备，4 层派生链（复用 PYRAMID_SPECS 公式）。 */
+async function buildScaledPyramid(
+  t: TestApp,
+  lines: number,
+  procPerLine: number,
+  equipPerProc: number,
+): Promise<{ equipIds: string[]; firstProcessKey: string; siblingProcessKey: string }> {
+  const epoch = await t.services.ontologyCore.beginEpoch("demo");
+  await putObj(t, "Factory", "F1", { factoryId: "F1" }, epoch);
+  const equipIds: string[] = [];
+  let pIdx = 0;
+  let eIdx = 0;
+  let firstProcessKey = "";
+  let siblingProcessKey = "";
+  for (let l = 0; l < lines; l++) {
+    const lk = `L${l}`;
+    await putObj(t, "Line", lk, { lineId: lk }, epoch);
+    await link(t, "归属基地", `obj_Line_${lk}`, "obj_Factory_F1");
+    for (let p = 0; p < procPerLine; p++) {
+      const pk = `P${pIdx++}`;
+      if (!firstProcessKey) firstProcessKey = pk;
+      else if (!siblingProcessKey) siblingProcessKey = pk;
+      await putObj(t, "Process", pk, { processId: pk, yield_baseline: 0.9 + (p % 5) * 0.01 }, epoch);
+      await link(t, "包含工序", `obj_Line_${lk}`, `obj_Process_${pk}`);
+      for (let e = 0; e < equipPerProc; e++) {
+        const ek = `E${eIdx++}`;
+        await putObj(t, "Equipment", ek, { equipId: ek, takt: 2 + (e % 3) * 0.5, availFactor: 0.85 + (e % 4) * 0.02, oee_current: 0.7 + (e % 5) * 0.03 }, epoch);
+        await link(t, "使用于", `obj_Equipment_${ek}`, `obj_Process_${pk}`);
+        equipIds.push(`obj_Equipment_${ek}`);
+      }
+    }
+  }
+  return { equipIds, firstProcessKey, siblingProcessKey };
+}
+
+describe("generic_inference 通用 what-if 求解器（H · G-5 通用 what-if，工业级）", () => {
+  it("注册：SOLVER_KEYS 含通用求解器（=46，含 DS.2 cockpit_kpi + 轨B·增量1 优化模板池 5 核心 + 增量3 optimize_whatif）+ 输出形状已声明（chain:check/SHAPE 覆盖）", () => {
+    expect(SOLVER_KEYS.includes("generic_inference" as (typeof SOLVER_KEYS)[number])).toBe(true);
+    // 轨B：40 → 45（5 核心）→ 46（optimize_whatif 增量3）→ 48（WO-CEO-2 gap_attribution + WO-CEO-3 decision_play）。
+    // 双占 reconcile：WO-PORTFOLIO-OPTIMAL portfolio + WO-B base_capacity_outlook 两条 handoff 各自 54→55·合两条 → 56。
+    // …+ WO-Phase3-B ontology_query（薄层本体查询引擎·planSlice+executeSlice+简单聚合·join≠compute）→ 57
+    // ★ 并线对账（#101 预判即中）：E1 与 E3 **各自**把金值从 57 提到 58，两条 handoff 一起并 → **59**。
+    //   两边分开跑都绿、合起来必红 —— 这正是「绿测试≠能用·断在接缝」的教科书形态，也是本仓
+    //   要求「金值/注册即更」的由来：漏对账就会把 59 写成 58，然后一路绿到部署才炸。
+    //   +58 = WO-SANDBOX-E1 chain_loss_attribution（环节级损失归因·Σ非增值 pct==100%）
+    //   +59 = WO-SANDBOX-E3 chain_impediments（全链阻滞点判定·卡点/堵点/断点三类）
+    //   +60 = WO-FLOWTIME process_flow_time（流程**实例**层站间流转时长·哪一张单卡着/卡在谁那里/卡了多久）
+    //         ⚠ 这个 +1 是被本条金值**当场报红**逼出来的（2026-08-14 合并 WO-R9-PROCESS-MERGE 时
+    //         全量跑 datacore 才抖出来，`expected 60 to be 59`）——不是我改完代码顺手想起来的。
+    //         这正是上面那段话说的机制：**机器先说话**。若当时只跑了 process-* 那两个文件，
+    //         两边都绿、这条一路绿到部署才炸，与 E1/E3 那次并线是**同一个形态**。
+    //   +61 = WO-FINANCE-WORLDSTATE finance_world_projection（财务**金额**随世界态扰动的投影 ——
+    //         `finance_pnl(ctx)` 零世界态入参、施加任何扰动都返回逐字节相同的一组数，缺的正是金额那一跳；
+    //         新增 key 而**不动** finance_pnl 的签名：它有既有调用方与金值，动签名会连坐）。
+    expect(SOLVER_KEYS.length).toBe(61);
+    expect(SOLVER_OUTPUT_SHAPES.generic_inference?.length ?? 0).toBeGreaterThan(0);
+  });
+
+  it("规模化派生图（73 对象/4 层）× 10 源假设变更 → 经 /a/v1/solvers/generic_inference/invoke 前向重算 before/after；无副作用 + 确定性 + R2", async () => {
+    const t = await makeApp();
+    await seedPyramid(t);
+    const { equipIds } = await buildScaledPyramid(t, 2, 5, 6); // 60 设备 + 10 工序 + 2 产线 + 1 工厂 = 73 对象
+    await t.services.ontologyCore.compileSpecs(ADMIN_CTX, 1, PYRAMID_SPECS);
+    await t.services.ontologyCore.recompute(ADMIN_CTX, [{ typeKey: "Equipment", prop: "oee_current", objectIds: equipIds }]); // 初算落 before 基线
+
+    const targets = equipIds.slice(0, 10);
+    const apply = targets.map((id) => ({ objectType: "Equipment", objectId: id, prop: "oee_current", value: 0.5 }));
+    const snapshotBefore = JSON.stringify(await t.repos.objects.list("demo"));
+
+    const res = await invokeSolver(t, "generic_inference", { apply });
+    expect(res.statusCode).toBe(200);
+    const out = (res.json() as { data: { deltas: { objId: string; prop: string; before: number; after: number }[]; count: number; affectedObjects: number; rows: unknown[] } }).data;
+    // 10 台设备 capacity_h + 上游工序/产线/工厂 capacity 全被重算
+    expect(out.count).toBeGreaterThan(10);
+    expect(out.rows.length).toBe(out.count);
+    for (const id of targets) {
+      const d = out.deltas.find((x) => x.objId === id && x.prop === "capacity_h");
+      expect(d, `${id} capacity_h delta`).toBeTruthy();
+      expect(Number(d!.after)).toBeLessThan(Number(d!.before)); // oee 降→产能降
+    }
+    expect(out.deltas.some((d) => d.objId === "obj_Factory_F1" && d.prop === "capacity")).toBe(true); // 顶层聚合受影响
+
+    // 无副作用：全量对象快照字节级一致（dryRun 不落库）
+    expect(JSON.stringify(await t.repos.objects.list("demo"))).toBe(snapshotBefore);
+    // 确定性 R6：同 apply 再跑 → deltas 字节级一致
+    const res2 = await invokeSolver(t, "generic_inference", { apply });
+    expect(JSON.stringify((res2.json() as { data: { deltas: unknown } }).data.deltas)).toBe(JSON.stringify(out.deltas));
+    // R2：他租户（无这些对象/未编译派生）→ 不泄漏本租户对象
+    const resOther = await invokeSolver(t, "generic_inference", { apply }, { "X-Debug-User": "acme:u:admin" });
+    expect((resOther.json() as { data: { deltas: { objId: string }[] } }).data.deltas.every((d) => !targets.includes(d.objId))).toBe(true);
+  });
+
+  it("选择性最小集：只改 1 台设备 → 仅其工序/产线/工厂链入 deltas，无关兄弟工序不在", async () => {
+    const t = await makeApp();
+    await seedPyramid(t);
+    const { equipIds, firstProcessKey, siblingProcessKey } = await buildScaledPyramid(t, 1, 4, 5);
+    await t.services.ontologyCore.compileSpecs(ADMIN_CTX, 1, PYRAMID_SPECS);
+    await t.services.ontologyCore.recompute(ADMIN_CTX, [{ typeKey: "Equipment", prop: "oee_current", objectIds: equipIds }]);
+
+    const one = equipIds[0]!; // 属 firstProcess
+    const res = await invokeSolver(t, "generic_inference", { apply: [{ objectType: "Equipment", objectId: one, prop: "oee_current", value: 0.4 }] });
+    const out = (res.json() as { data: { deltas: { objId: string; prop: string }[] } }).data;
+    expect(out.deltas.some((d) => d.objId === `obj_Process_${firstProcessKey}`)).toBe(true); // 直属工序重算
+    expect(out.deltas.some((d) => d.objId === `obj_Process_${siblingProcessKey}`)).toBe(false); // 兄弟工序不重算
+  });
+
+  it("边界：空 apply → 400（need 假设值），不静默返回空", async () => {
+    const t = await makeApp();
+    const res = await invokeSolver(t, "generic_inference", { apply: [] });
+    expect(res.statusCode).toBe(400);
+  });
+
+  // WO-PROJECT-SIM-WHATIF · 杠杆发现 mode:"levers"（G-WHATIF-HARDCODED-LEVERS）：反向 walk 派生 DAG →
+  // 叶输入候选杠杆 + 服务端 ±ε recompute 算敏感度 + 排序（引擎半·SEAM 之杠杆随瓶颈变/真敏感度）。
+  it("mode:levers 反向 walk 派生 DAG → 叶输入候选杠杆，服务端算 |敏感度| 排序 + 确定性 R6", async () => {
+    const t = await makeApp();
+    await seedPyramid(t);
+    const { equipIds } = await buildScaledPyramid(t, 1, 3, 4); // 12 设备 3 工序 1 线 1 厂
+    await t.services.ontologyCore.compileSpecs(ADMIN_CTX, 1, PYRAMID_SPECS);
+    await t.services.ontologyCore.recompute(ADMIN_CTX, [{ typeKey: "Equipment", prop: "oee_current", objectIds: equipIds }]);
+
+    const res = await invokeSolver(t, "generic_inference", { mode: "levers", targetType: "Factory", targetProp: "capacity", topK: 8 });
+    expect(res.statusCode).toBe(200);
+    const out = (res.json() as { data: { levers: { objectType: string; objectId: string; prop: string; sensitivity: number; provenance: unknown }[]; count: number; deltas: unknown[] } }).data;
+    // 反推到叶输入（Equipment 的 oee_current/takt/availFactor + Process.yield_baseline），非派生 capacity_h/capacity
+    const props = new Set(out.levers.map((l) => `${l.objectType}.${l.prop}`));
+    expect(props.has("Equipment.oee_current")).toBe(true);
+    expect(props.has("Process.yield_baseline")).toBe(true);
+    expect(props.has("Equipment.capacity_h")).toBe(false); // 派生属性不作杠杆（只反推到叶）
+    // 每根杠杆指向真对象实例 + provenance + 非零敏感度
+    for (const l of out.levers) {
+      expect(equipIds.includes(l.objectId) || l.objectId.startsWith("obj_Process_")).toBe(true);
+      expect(l.sensitivity).not.toBe(0);
+      expect(l.provenance).toBeTruthy();
+    }
+    // 按 |敏感度| 降序（tornado 排序 = 真敏感度）
+    for (let i = 1; i < out.levers.length; i++) expect(Math.abs(out.levers[i - 1]!.sensitivity)).toBeGreaterThanOrEqual(Math.abs(out.levers[i]!.sensitivity));
+    // 确定性 R6：同输入字节级一致
+    const res2 = await invokeSolver(t, "generic_inference", { mode: "levers", targetType: "Factory", targetProp: "capacity", topK: 8 });
+    expect(JSON.stringify((res2.json() as { data: unknown }).data)).toBe(JSON.stringify(out));
+    // 默认路径输出形状键保留（deltas 存在·SHAPE 不破）
+    expect(Array.isArray(out.deltas)).toBe(true);
+  });
+
+  it("mode:levers · factors 过滤 → 杠杆随瓶颈变（设备OEE 瓶颈只出 Equipment.oee_current 杠杆，不含无关杠杆）", async () => {
+    const t = await makeApp();
+    await seedPyramid(t);
+    const { equipIds } = await buildScaledPyramid(t, 1, 2, 3);
+    await t.services.ontologyCore.compileSpecs(ADMIN_CTX, 1, PYRAMID_SPECS);
+    await t.services.ontologyCore.recompute(ADMIN_CTX, [{ typeKey: "Equipment", prop: "oee_current", objectIds: equipIds }]);
+
+    const oee = (await invokeSolver(t, "generic_inference", { mode: "levers", targetType: "Factory", targetProp: "capacity", factors: ["设备OEE"] })).json() as { data: { levers: { objectType: string; prop: string }[] } };
+    const yieldF = (await invokeSolver(t, "generic_inference", { mode: "levers", targetType: "Factory", targetProp: "capacity", factors: ["良率波动"] })).json() as { data: { levers: { objectType: string; prop: string }[] } };
+    // 设备OEE 瓶颈 → 只出 OEE 杠杆；良率波动瓶颈 → 只出良率杠杆；两瓶颈杠杆集不同（证非写死）
+    expect(oee.data.levers.every((l) => `${l.objectType}.${l.prop}` === "Equipment.oee_current")).toBe(true);
+    expect(oee.data.levers.length).toBeGreaterThan(0);
+    expect(yieldF.data.levers.every((l) => `${l.objectType}.${l.prop}` === "Process.yield_baseline")).toBe(true);
+    expect(JSON.stringify(oee.data.levers)).not.toBe(JSON.stringify(yieldF.data.levers));
   });
 });

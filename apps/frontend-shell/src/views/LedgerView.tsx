@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { queryObjectsPaged } from "@/api/endpoints";
+import { Provenance } from "@/components/Provenance";
 import { useSessionStore } from "@/store/sessionStore";
 import type { ViewRendererProps } from "./registry";
 import zh from "@/locales/zh";
@@ -53,7 +54,7 @@ export default function LedgerView({ view }: ViewRendererProps) {
               }}
             />
           ))}
-        <span className="mono" style={{ marginLeft: "auto", color: "var(--muted2)", fontSize: 11 }}>
+        <span className="mono" style={{ marginLeft: "auto", color: "var(--muted2)", fontSize: 12 }}>
           {data?.total ?? 0} rows
         </span>
       </div>
@@ -85,9 +86,18 @@ export default function LedgerView({ view }: ViewRendererProps) {
                   data-testid={`ledger-row-${row.id}`}
                 >
                   <td>{expanded === row.id ? "▾" : "▸"}</td>
-                  {columns.map((c) => (
+                  {columns.map((c, ci) => (
                     <td key={c.key} className={/[一-鿿]/.test(String(row.props[c.key] ?? "")) ? "zh" : ""}>
-                      {formatCell(row.props[c.key])}
+                      {/* 活数据可溯：首列数据带"悬浮溯源"——溯回原始表/行/连接器（不再是无源头死数据） */}
+                      {ci === 0 ? (
+                        <span onClick={(e) => e.stopPropagation()}>
+                          <Provenance objectType={objectType} objectId={row.id}>
+                            {formatCell(row.props[c.key])}
+                          </Provenance>
+                        </span>
+                      ) : (
+                        formatCell(row.props[c.key])
+                      )}
                     </td>
                   ))}
                 </tr>
@@ -113,7 +123,7 @@ export default function LedgerView({ view }: ViewRendererProps) {
         <button className="btn sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
           ←
         </button>
-        <span className="mono" style={{ fontSize: 11 }}>
+        <span className="mono" style={{ fontSize: 12 }}>
           {page} / {totalPages}
         </span>
         <button className="btn sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>

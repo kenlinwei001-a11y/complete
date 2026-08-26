@@ -15,15 +15,18 @@ import {
   type CalibrationHistoryEntry,
   type DataHealthResponse,
   type OrderProblemGroup,
+  SEG_REGISTRY,
 } from "@platform/contracts";
 import type { AffectedOrderRowVM, AffectedOrdersOutputVM } from "@/api/types";
 import { RISK_TIMELINE } from "./fixtures";
+// DF.13 外协红线单一来源（C08）：季度事件文案里的红线百分数派生，禁手写。
+import { OUTSOURCE_REDLINE, outsourceRedlinePct } from "@platform/contracts";
 
 // ---------------------------------------------------------------------------
 // 剩余视图增量固定数据（全部经契约 schema.parse 校验 —— 与 DataCore 端点同形）
 // ---------------------------------------------------------------------------
 
-/** §7.14 年度情景规划台（AOP 2027，基准已拍板；一条 TRIGGERED 触发记录） */
+/** §7.14 年度规划（AOP 2027，基准已拍板；一条 TRIGGERED 触发记录） */
 export const AOP_RESPONSE: AopResponse = AopResponseSchema.parse({
   scenarios: [
     {
@@ -32,7 +35,8 @@ export const AOP_RESPONSE: AopResponse = AopResponseSchema.parse({
       name: "保守",
       year: 2027,
       demand: 1420,
-      capacityDecision: "现有 12 基地 + 爬坡即可，不新增产线；利用率 81%",
+      note: "乘用车放缓、储能温和；不赌新增产能，守现金",
+      capacityDecision: "现有 13 基地 + 爬坡即可，不新增产线；利用率 81%",
       ltaLock: "正极锁 70%（8.8 万吨）",
       finance: { revenue: 3050, capex: 0, irr: 0 },
       ruleChecks: [
@@ -46,6 +50,7 @@ export const AOP_RESPONSE: AopResponse = AopResponseSchema.parse({
       name: "基准 ★",
       year: 2027,
       demand: 1580,
+      note: "乘用车持平 +8%、储能放量；按年度承诺扩产",
       capacityDecision: "枣庄 +1 条储能线（2026-Q4 动工 · 2027-Q3 投产）；Q2–Q3 6 周窗口缺口以外协过渡",
       ltaLock: "锁 80%（11.2 万吨）+ 10% 价格联动",
       finance: { revenue: 3400, capex: 14, irr: 0.19 },
@@ -70,6 +75,7 @@ export const AOP_RESPONSE: AopResponse = AopResponseSchema.parse({
       name: "激进",
       year: 2027,
       demand: 1760,
+      note: "海外大单落地、储能高增；双基地并扩抢份额",
       capacityDecision: "枣庄储能线 + 江门动力线（同步动工）；人力提前 2 季招训",
       ltaLock: "锁 85% + 前驱体二级锁定",
       finance: { revenue: 3780, capex: 27, irr: 0.17 },
@@ -127,7 +133,8 @@ export const QUARTERLY_RESPONSE: QuarterlyResponse = QuarterlyResponseSchema.par
     { q: "2026-Q3", dem: 382, sup: 376, gap: 6, events: [{ label: "常州夜班常态化" }, { label: "江门齐套治理" }] },
     { q: "2026-Q4", dem: 398, sup: 390, gap: 8, events: [{ label: "枣庄储能线动工（CAPEX 14亿）", ruleKey: "C23" }] },
     { q: "2027-Q1", dem: 372, sup: 392, gap: -20, events: [{ label: "春节检修季 · 供给冗余回补库存" }] },
-    { q: "2027-Q2", dem: 404, sup: 396, gap: 8, events: [{ label: "6 周窗口缺口 → 外协过渡（≤20%）", ruleKey: "C08" }] },
+    // DF.13：事件文案里的红线百分数派生（此前手写 ≤20%）。
+    { q: "2027-Q2", dem: 404, sup: 396, gap: 8, events: [{ label: `6 周窗口缺口 → 外协过渡（≤${outsourceRedlinePct()}%）`, ruleKey: OUTSOURCE_REDLINE.ruleKey }] },
     { q: "2027-Q3", dem: 428, sup: 430, gap: -2, events: [{ label: "枣庄线投产 +22/季 · 爬坡 60%→90%" }] },
     { q: "2027-Q4", dem: 452, sup: 448, gap: 4, events: [{ label: "枣庄满产 · 江门线视触发条件" }] },
   ],
@@ -146,9 +153,9 @@ export const MAPPING_ROWS: MappingRow[] = MappingRowSchema.array().parse([
   { domain: "产品", objectKey: "Model", displayName: "型号", kind: "object", sourceSystem: "PLM", keyProps: ["modelNo★"], rules: [], derivations: [], lineage: { connName: "PLM", dataset: "models", fieldCount: 8 } },
   { domain: "工艺", objectKey: "Process", displayName: "工序", kind: "object", sourceSystem: "MES", keyProps: ["procKey★", "yield_baseline"], rules: [], derivations: ["yield_baseline = ts_agg(yield_daily, avg, 7d)"], lineage: { connName: "MES 制造执行", dataset: "process", fieldCount: 9 } },
   { domain: "设备", objectKey: "Equipment", displayName: "设备", kind: "object", sourceSystem: "IoT/SCADA", keyProps: ["equipNo★", "oee_current"], rules: [], derivations: ["oee_current = ts_agg(oee_daily, weighted_avg, 7d)"], lineage: { connName: "IoT 时序通道", dataset: "oee:equip", fieldCount: 6 } },
-  { domain: "产能", objectKey: "CapacityPyramid", displayName: "产能金字塔", kind: "object", sourceSystem: "派生", keyProps: ["week★", "p50", "p90"], rules: ["C03"], derivations: ["p90 = capacity_forecast(p90)"], lineage: { fieldCount: 0 } },
+  { domain: "产能", objectKey: "CapacityPyramid", displayName: "产能金字塔", kind: "object", sourceSystem: "派生", keyProps: ["week★", "capWanP50", "capWanP90"], rules: ["C03"], derivations: ["capWanP90 = capacity_forecast(capWanP90)"], lineage: { fieldCount: 0 } },
   { domain: "预测", objectKey: "DemandForecast", displayName: "需求预测", kind: "object", sourceSystem: "派生", keyProps: ["period★"], rules: ["C12"], derivations: [], lineage: { fieldCount: 0 } },
-  { domain: "求解器", objectKey: "capacity_forecast", displayName: "产能推演求解器", kind: "solver", sourceSystem: "求解", keyProps: [], rules: ["C03", "C09"], derivations: ["p50/p90 = Σ 基地周产能 × 爬坡 × 检修 × 认证"], lineage: { fieldCount: 0 } },
+  { domain: "求解器", objectKey: "capacity_forecast", displayName: "产能推演求解器", kind: "solver", sourceSystem: "求解", keyProps: [], rules: ["C03", "C09"], derivations: ["capWanP50/capWanP90 = Σ 基地周产能 × 爬坡 × 检修 × 认证"], lineage: { fieldCount: 0 } },
   { domain: "求解器", objectKey: "risk_timeline", displayName: "风险时间线求解器", kind: "solver", sourceSystem: "求解", keyProps: [], rules: [], derivations: ["tension(d) = base + Σ event.amp"], lineage: { fieldCount: 0 } },
   { domain: "智能体", objectKey: "explore_agent", displayName: "探索 Agent", kind: "agent", sourceSystem: "智能体", keyProps: [], rules: [], derivations: [], lineage: { fieldCount: 0 } },
 ]);
@@ -195,7 +202,7 @@ export const CALIBRATION_PROPOSALS: CalibrationProposal[] = CalibrationProposalS
   {
     id: "prop-2", parameter: "良率基线", objectRef: "工序-化成", currentValue: 0.975, proposedValue: 0.968,
     basis: { windowFrom: "2026-03-01", windowTo: "2026-04-30", samples: 1240 }, status: "APPLIED",
-    sliceKey: "capacity_forecast|all|L148-LFP", paramRef: { scope: "ONTOLOGY_PROPERTY", path: "Process.yield" }, method: "EMA",
+    sliceKey: "capacity_forecast|all|方形-LFP", paramRef: { scope: "ONTOLOGY_PROPERTY", path: "Process.yield" }, method: "EMA",
     evidence: { windowFrom: "2026-03-01", windowTo: "2026-04-30", nPairs: 1240, mapeBefore: 8.8, simulatedMapeAfter: 6.4, bias: -0.034, flags: [] },
     realizedMape: 6.9,
   },
@@ -208,13 +215,13 @@ export const CALIBRATION_PROPOSALS: CalibrationProposal[] = CalibrationProposalS
   {
     id: "prop-4", parameter: "P90 健康度系数", objectRef: "Solver:capacity_forecast", currentValue: 0.93, proposedValue: 0.92,
     basis: { windowFrom: "2026-05-01", windowTo: "2026-05-31", samples: 360 }, status: "REJECTED",
-    sliceKey: "capacity_forecast|all|S192-LFP", paramRef: { scope: "SOLVER_PARAMS", path: "health.normal" }, method: "QUANTILE",
+    sliceKey: "capacity_forecast|all|圆柱-LFP", paramRef: { scope: "SOLVER_PARAMS", path: "health.normal" }, method: "QUANTILE",
     evidence: { windowFrom: "2026-05-01", windowTo: "2026-05-31", nPairs: 360, mapeBefore: 7.2, simulatedMapeAfter: 7.2, bias: 0.01, flags: ["COVERAGE_BEFORE:0.83", "COVERAGE_AFTER:0.83", "NO_IMPROVEMENT"] },
   },
   {
-    id: "prop-5", parameter: "工序良率基线", objectRef: "Model:L300-NCM", currentValue: 0.96, proposedValue: 0.71,
+    id: "prop-5", parameter: "工序良率基线", objectRef: "Model:2170-NCM", currentValue: 0.96, proposedValue: 0.71,
     basis: { windowFrom: "2026-05-01", windowTo: "2026-05-31", samples: 280 }, status: "HOLD",
-    sliceKey: "capacity_forecast|all|L300-NCM", paramRef: { scope: "ONTOLOGY_PROPERTY", path: "Process.yield" }, method: "EMA",
+    sliceKey: "capacity_forecast|all|2170-NCM", paramRef: { scope: "ONTOLOGY_PROPERTY", path: "Process.yield" }, method: "EMA",
     evidence: { windowFrom: "2026-05-01", windowTo: "2026-05-31", nPairs: 280, mapeBefore: 11.3, simulatedMapeAfter: 11.3, bias: 0.21, flags: ["STRUCTURAL_SHIFT", "DRIFT:0.26"] },
   },
 ]);
@@ -252,18 +259,28 @@ const riskRef = (base: string, factor?: string) => {
   return { base: card.base, factor: card.factor, crossDay: card.crossDay, peak: card.peak, series: card.series, threshold: RISK_TIMELINE.threshold };
 };
 
+// WO-UNIT-NORMALIZE §3-d：qty 单位=套（对齐真数据口径·消除 mock 掩盖真单位炸）。旧 mock 以 万套 记（1.5…）→ ×1e4 归一为套。
 export const AFFECTED_ROWS: AffectedOrderRowVM[] = [
-  { so: "SO-10001", cust: "蔚途汽车", seg: "乘用车", model: "4680-NCM", qty: 1.5, due: "2026-06-20", delay: 6, risks: [riskRef("常州"), riskRef("宜宾")] },
-  { so: "SO-10006", cust: "星河储能", seg: "储能", model: "储能-280Ah", qty: 1.82, due: "2026-06-24", delay: 4, risks: [riskRef("宜宾")] },
-  { so: "SO-10013", cust: "蔚途汽车", seg: "乘用车", model: "4680-NCM", qty: 1.5, due: "2026-07-02", delay: 3, risks: [riskRef("常州")] },
-  { so: "SO-10004", cust: "蓝海电网", seg: "储能", model: "储能-314Ah", qty: 1.1, due: "2026-06-28", delay: 5, risks: [riskRef("常州"), riskRef("合肥"), riskRef("宜宾"), riskRef("溧阳"), riskRef("成都")] },
-  { so: "SO-10008", cust: "山岳重工", seg: "商用车", model: "VDA-NCM", qty: 0.9, due: "2026-07-05", delay: 2, risks: [riskRef("溧阳")] },
-  { so: "SO-10011", cust: "极光新能源", seg: "储能", model: "储能-280Ah", qty: 1.3, due: "2026-07-08", delay: 2, risks: [riskRef("宜宾")] },
-  { so: "SO-10016", cust: "山岳重工", seg: "商用车", model: "刀片-LFP", qty: 0.8, due: "2026-07-12", delay: 1, risks: [riskRef("西安")] },
-  { so: "SO-10019", cust: "蔚途汽车", seg: "乘用车", model: "4680-LFP", qty: 1.2, due: "2026-07-15", delay: 2, risks: [riskRef("成都")] },
+  { so: "SO-10001", cust: "蔚途汽车", seg: "乘用车", model: "4680-NCM", qty: 15000, due: "2026-06-20", delay: 6, risks: [riskRef("常州"), riskRef("江门")] },
+  { so: "SO-10006", cust: "星河储能", seg: "储能", model: "储能-280Ah", qty: 18200, due: "2026-06-24", delay: 4, risks: [riskRef("江门")] },
+  { so: "SO-10013", cust: "蔚途汽车", seg: "乘用车", model: "4680-NCM", qty: 15000, due: "2026-07-02", delay: 3, risks: [riskRef("常州")] },
+  { so: "SO-10004", cust: "蓝海电网", seg: "储能", model: "储能-314Ah", qty: 11000, due: "2026-06-28", delay: 5, risks: [riskRef("常州"), riskRef("合肥"), riskRef("江门"), riskRef("眉山"), riskRef("成都")] },
+  { so: "SO-10008", cust: "山岳重工", seg: "商用车", model: "VDA-NCM", qty: 9000, due: "2026-07-05", delay: 2, risks: [riskRef("眉山")] },
+  { so: "SO-10011", cust: "极光新能源", seg: "储能", model: "储能-280Ah", qty: 13000, due: "2026-07-08", delay: 2, risks: [riskRef("江门")] },
+  { so: "SO-10016", cust: "山岳重工", seg: "商用车", model: "刀片-LFP", qty: 8000, due: "2026-07-12", delay: 1, risks: [riskRef("武汉")] },
+  { so: "SO-10019", cust: "蔚途汽车", seg: "乘用车", model: "4680-LFP", qty: 12000, due: "2026-07-15", delay: 2, risks: [riskRef("成都")] },
 ];
 
-const SEG_PRICE: Record<string, number> = { 乘用车: 0.9, 商用车: 0.85, 储能: 0.45 };
+// WO-UNIT-NORMALIZE §3-d：价基统一到真口径 SEG_REGISTRY.priceWan（万元/套），取代旧写死 0.9/0.85/0.45（假口径掩盖真 bug）。
+const SEG_PRICE: Record<string, number> = Object.fromEntries(SEG_REGISTRY.map((s) => [s.seg, s.priceWan]));
+// WO-UNIT-NORMALIZE §3-d：金额(亿) = Σ qty(套)×priceWan(万元/套) / 1e4（真公式·非写死亿值 → 改 mock qty 则 financeImpact 随之变，KILL-MOCK-RED）。
+const financeYiOf = (orderIds: string[]): number => {
+  const sumWan = orderIds.reduce((s, so) => {
+    const row = AFFECTED_ROWS.find((r) => r.so === so);
+    return s + (row ? row.qty * (SEG_PRICE[row.seg] ?? 0.6) : 0);
+  }, 0);
+  return Math.round((sumWan / 1e4) * 1e4) / 1e4;
+};
 
 const chain = (orderId: string, judgement: string, rootCause: string, remedy: string) => ({
   orderId,
@@ -280,7 +297,7 @@ export const ORDER_PROBLEMS: OrderProblemGroup[] = OrderProblemGroupSchema.array
     category: "DELIVERY",
     title: "交期风险",
     orderCount: 5,
-    financeImpact: 4.2,
+    financeImpact: financeYiOf(["SO-10001", "SO-10004"]),
     rootCauseSummary: "化成柜张力 D+5 越线 + 交付高峰叠加，P90 口径周供给不足",
     rootChains: [
       chain("SO-10001", "交期判：P90 周供给 < 周需求", "常州化成柜张力 D+5 越线", "化成夜班 + 预留 1 周缓冲"),
@@ -291,7 +308,7 @@ export const ORDER_PROBLEMS: OrderProblemGroup[] = OrderProblemGroupSchema.array
     category: "MARGIN",
     title: "毛利不达线",
     orderCount: 2,
-    financeImpact: 1.6,
+    financeImpact: financeYiOf(["SO-10008"]),
     rootCauseSummary: "框架价压价至接单毛利线（C15）以下",
     rootChains: [chain("SO-10008", "毛利判：测算 9.8% < 商用车线 11%", "框架协议低价 + 议价偏移", "建议提价 2.2% 接单")],
   },
@@ -299,7 +316,7 @@ export const ORDER_PROBLEMS: OrderProblemGroup[] = OrderProblemGroupSchema.array
     category: "KIT",
     title: "齐套缺口",
     orderCount: 2,
-    financeImpact: 1.1,
+    financeImpact: financeYiOf(["SO-10011"]),
     rootCauseSummary: "三元正极长协执行偏差 −8% → 库存+在途覆盖不足",
     rootChains: [chain("SO-10011", "齐套判：正极缺口 86 吨", "长协到货延迟（到货间隙事件）", "加急采购 · 最早齐套 06-29")],
   },
@@ -307,7 +324,7 @@ export const ORDER_PROBLEMS: OrderProblemGroup[] = OrderProblemGroupSchema.array
     category: "CREDIT",
     title: "信用超限",
     orderCount: 1,
-    financeImpact: 1.3,
+    financeImpact: financeYiOf(["SO-10019"]),
     rootCauseSummary: "在手应收 + 新单金额 > 授信额度（C13）",
     rootChains: [chain("SO-10019", "信用判：超限 1.4 亿", "在手应收 9.8 亿叠加新单", "预付款 ≥40% 或追加担保")],
   },
@@ -322,13 +339,14 @@ export function affectedOrdersOutput(base?: string): AffectedOrdersOutputVM {
       .map((r) => ({ ...r, risks: r.risks.filter((k) => k.base === base) }));
   }
   const totalQty = rows.reduce((s, r) => s + r.qty, 0);
-  const revenue = rows.reduce((s, r) => s + r.qty * (SEG_PRICE[r.seg] ?? 0.6), 0);
+  // WO-UNIT-NORMALIZE §3-d：营收(亿) = Σ qty(套)×priceWan(万元/套) / 1e4（与后端 summary.revenue 同口径同价基）。
+  const revenueYi = rows.reduce((s, r) => s + r.qty * (SEG_PRICE[r.seg] ?? 0.6), 0) / 1e4;
   return {
     summary: {
       orderCount: rows.length,
       totalQty: Math.round(totalQty * 100) / 100,
       custCount: new Set(rows.map((r) => r.cust)).size,
-      revenue: Math.round(revenue * 100) / 100,
+      revenue: Math.round(revenueYi * 1e4) / 1e4,
     },
     rows,
     problems: ORDER_PROBLEMS,

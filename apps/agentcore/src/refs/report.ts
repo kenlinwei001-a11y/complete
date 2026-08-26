@@ -10,9 +10,22 @@ import type { AppConfig } from "../config.js";
  * 上报失败不影响 B 的发布事务。
  */
 
+/**
+ * 切片出向引用（§2.4 slice 反查 · G-SLICE-REF-PRODUCER-EMPTY 修法）。
+ * 契约 RefKind 枚举不含 "slice"（A 侧 RefReportSchema/ReportedRefRecord 均为松散 kind:string），
+ * 故本地扩一个 SliceRef，与契约 Ref 并集进 RefReport.refs —— 线上载荷形状不变，只是多一种 kind。
+ */
+export interface SliceRef {
+  kind: "slice";
+  key: string;
+  version: "latest";
+}
+
+export type ReportRef = Ref | SliceRef;
+
 export interface RefReport {
   source: { kind: "agent" | "workflow" | "plan" | "intent"; key: string; name?: string };
-  refs: Ref[];
+  refs: ReportRef[];
 }
 
 export type RefReporter = (tenantId: string, report: RefReport) => Promise<void>;
@@ -59,6 +72,24 @@ export function planStepRuleRefs(steps: (ExecutionPlan | WorkflowDefinition)["st
     for (const id of ids) out.push(ruleRef(id));
   }
   // 去重
+  const seen = new Set<string>();
+  return out.filter((r) => (seen.has(r.key) ? false : (seen.add(r.key), true)));
+}
+
+/**
+ * G-SLICE-REF-PRODUCER-EMPTY 修法：resolve_slice 步 → kind:"slice" 出向引用（§2.4）。
+ * 与 dril/relations.ts 的 workflow --includes--> slice 边同一事实源（step.type=resolve_slice ·
+ * params.sliceKey），但那份关系图只落在 B 侧 resource_relations、不回写 DataCore；
+ * 本函数把同一条边喂进 B→A 上报路，使 governance.sliceReferences（十六层 ①②）读得回。
+ * 切片引用永远 latest（执行时解析，与规则引用同口径）。
+ */
+export function planStepSliceRefs(steps: (ExecutionPlan | WorkflowDefinition)["steps"]): SliceRef[] {
+  const out: SliceRef[] = [];
+  for (const step of steps) {
+    if (step.type !== "resolve_slice") continue;
+    out.push({ kind: "slice", key: step.params.sliceKey, version: "latest" });
+  }
+  // 去重（与 planStepRuleRefs 同口径）
   const seen = new Set<string>();
   return out.filter((r) => (seen.has(r.key) ? false : (seen.add(r.key), true)));
 }
