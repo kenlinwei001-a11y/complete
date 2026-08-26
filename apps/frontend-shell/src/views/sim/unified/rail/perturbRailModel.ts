@@ -101,6 +101,15 @@ export interface RailVarOption {
   readonly typeKeys: readonly string[];
 }
 
+/**
+ * 这个量今天到底扰不扰得动 —— 三态，**不许合并成一个布尔**。
+ *
+ * 合并了就分不出「它不在世界态里」（真扰不动，得后端补一张单）与
+ * 「我还不知道它在不在」（view-config 这一跳没回来），而这两件事的处置完全相反：
+ * 前者要拦、要说明原因；后者只是还没到，拦是对的但**不能说成"这个量扰不动"**。
+ */
+export type LivenessState = "live" | "not-in-world-state" | "unknown";
+
 /** 一个子页 = 一个业务域分片。 */
 export interface RailSubpage {
   /** 选中态与 testid 用的稳定串（`domainKey` 或 `__unassigned__`）—— 同 `DomainSliceVM.sliceId` 的理由。 */
@@ -343,7 +352,8 @@ export type BlockReason =
   | "NO_SESSION"
   | "NO_STATE_VAR"
   | "NO_TARGET_OBJECT"
-  | "BLOCKED_STATE_VAR"
+  | "NOT_IN_WORLD_STATE"
+  | "STATE_VARS_UNKNOWN"
   | "BAD_MAGNITUDE"
   | "BAD_DURATION";
 
@@ -351,7 +361,12 @@ export const BLOCK_REASON_TEXT: Record<BlockReason, string> = {
   NO_SESSION: "没有可推演的世界 —— 先选一个 RUNNING 会话",
   NO_STATE_VAR: "还没选要扰哪个量",
   NO_TARGET_OBJECT: "还没选落点对象（写口要的是引擎给世界态编键的那个对象 id）",
-  BLOCKED_STATE_VAR: "这个量今天扰不动 —— 见下方「今天扰不动的量」那一节的原因",
+  NOT_IN_WORLD_STATE:
+    "这个量今天扰不动：它不在这个世界的状态变量清单里（view-config.stateVars），" +
+    "而传导引擎 propagateTick 只读世界态 —— 发出去会「请求成功、下游一动不动」。",
+  STATE_VARS_UNKNOWN:
+    "**不知道**这个量在不在世界态里 —— view-config 这一跳还没回来或失败了。" +
+    "这不是「它扰不动」，是「现在判断不了」，所以先不发（不猜、不兜底）。",
   BAD_MAGNITUDE: "幅度必须是一个有限的数",
   BAD_DURATION: "持续拍数必须 ≥ 1（要永久就留空）",
 };
@@ -361,19 +376,37 @@ export type BuildResult =
   | { readonly ok: false; readonly reason: BlockReason };
 
 /**
+ * 一个量今天在不在这个世界的状态层里（**唯一判据：后端 `view-config.stateVars`**）。
+ *
+ * `liveStateVars === null` = 那一跳还没回来/失败了 ⇒ `"unknown"`，**不许读作 `"not-in-world-state"`**：
+ * 「我没查到」和「它不存在」是两个命题（铁律 0.6 那句话），处置也不同 —— 见 `LivenessState`。
+ */
+export function livenessOf(stateVar: string, liveStateVars: ReadonlySet<string> | null): LivenessState {
+  if (liveStateVars === null) return "unknown";
+  return liveStateVars.has(stateVar) ? "live" : "not-in-world-state";
+}
+
+/**
  * 草稿 → 写口载荷。**校验在这里一次做完**，组件不许绕过它直接 POST。
  *
- * `blocked` 传的是 §2 那份差集算出来的 prop 集合 —— 于是「屏上标了扰不动」与
+ * `liveStateVars` 就是 `SandboxViewConfig.stateVars`（后端按已发布传导规则的
+ * `sourceStateVar ∪ targetStateVar` 派生的那一份）—— 于是「屏上标了扰不动」与
  * 「提交时真的拦住」用的是**同一个判据**，不会出现"标了但还是发得出去"这种半拉子诚实。
+ *
+ * ⚠ 为什么这道拦是必要的而不是多余的：规则清单取的是 `fetchPropagationRules(true)`
+ * （含草稿，与外壳共用缓存键），而 `stateVars` 只由**已发布**规则派生。于是下拉里**可能**
+ * 出现一个只活在草稿边上的量 —— 它在世界态里没有格子，POST 会 200 而世界一动不动。
  */
 export function buildPerturbBody(
   draft: PerturbDraft,
   label: StateVarLabel,
-  opts: { readonly hasSession: boolean; readonly blocked: ReadonlySet<string> },
+  opts: { readonly hasSession: boolean; readonly liveStateVars: ReadonlySet<string> | null },
 ): BuildResult {
   if (!opts.hasSession) return { ok: false, reason: "NO_SESSION" };
   if (draft.targetStateVar === "") return { ok: false, reason: "NO_STATE_VAR" };
-  if (opts.blocked.has(draft.targetStateVar)) return { ok: false, reason: "BLOCKED_STATE_VAR" };
+  const liveness = livenessOf(draft.targetStateVar, opts.liveStateVars);
+  if (liveness === "unknown") return { ok: false, reason: "STATE_VARS_UNKNOWN" };
+  if (liveness === "not-in-world-state") return { ok: false, reason: "NOT_IN_WORLD_STATE" };
   if (draft.targetObjectId === "") return { ok: false, reason: "NO_TARGET_OBJECT" };
   if (!Number.isFinite(draft.magnitude)) return { ok: false, reason: "BAD_MAGNITUDE" };
   if (draft.durationTicks !== null && !(Number.isInteger(draft.durationTicks) && draft.durationTicks >= 1)) {

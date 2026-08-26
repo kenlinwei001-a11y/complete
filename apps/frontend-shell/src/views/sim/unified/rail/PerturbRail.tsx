@@ -46,6 +46,7 @@ import {
   buildPerturbBody,
   buildSubpages,
   durationText,
+  livenessOf,
   magnitudeText,
   objectChoices,
   type PerturbDraft,
@@ -120,8 +121,15 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
     () => buildSubpages(rules, layersQ.data?.layers ?? null, names),
     [rules, layersQ.data, names],
   );
+  /**
+   * 这个世界今天真有的状态变量（**唯一判据**）。
+   * `null` = view-config 还没回来 / 这一跳失败了 ⇒ 「不知道」，不许读作「没有」。
+   */
+  const liveStateVars = useMemo(
+    () => (cfg === undefined ? null : new Set(cfg.stateVars)),
+    [cfg],
+  );
   const blocked = useMemo(() => buildBlockedFactors(cfg?.stateVars ?? []), [cfg?.stateVars]);
-  const blockedProps = useMemo(() => new Set(blocked.map((b) => b.prop)), [blocked]);
 
   // ── 受控选中：切片没了就回落到第一片（同 `edgeActiveModel.resolveSelectedSlice` 的理由：
   //    「一个都没选中 ⇒ 一行都不显示」看起来和"这页坏了"一模一样）──
@@ -175,10 +183,12 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
     () =>
       buildPerturbBody(draft, stateVarLabel(draft.targetStateVar, names), {
         hasSession: enabled,
-        blocked: blockedProps,
+        liveStateVars,
       }),
-    [draft, names, enabled, blockedProps],
+    [draft, names, enabled, liveStateVars],
   );
+  /** 选中那个量今天扰不扰得动（三态；屏上作 `data-` 记号，让"不知道"与"不行"分得开）。 */
+  const liveness = livenessOf(selectedVar?.stateVar ?? "", liveStateVars);
 
   // ── 收起态摘要数据：交出去，不自己画（那条常驻条在外壳里，归第 ② 张单）──
   const applied: PerturbationBrief[] = useMemo(
@@ -212,12 +222,20 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
     }
   }, [built, enabled, sessionId, qc, onApplied]);
 
-  const varOption = (o: RailVarOption): JSX.Element => (
-    <option key={o.stateVar} value={o.stateVar}>
-      {o.label.text}
-      {o.label.named ? ` · ${o.stateVar}` : ""}
-    </option>
-  );
+  /**
+   * 一个下拉项。**扰不动的量照样列出来**（隐藏 = 假装没这个量，用户会以为自己没找对地方），
+   * 但屏上写明它扰不动，选中后「施加」会被 `buildPerturbBody` 拦住并给出原因。
+   */
+  const varOption = (o: RailVarOption): JSX.Element => {
+    const live = livenessOf(o.stateVar, liveStateVars);
+    return (
+      <option key={o.stateVar} value={o.stateVar} data-liveness={live}>
+        {o.label.text}
+        {o.label.named ? ` · ${o.stateVar}` : ""}
+        {live === "not-in-world-state" ? "（今天扰不动）" : ""}
+      </option>
+    );
+  };
 
   return (
     <div className={styles.rail} data-testid="rail-root" data-pages={pages.length}>
@@ -289,6 +307,7 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
             data-testid="rail-layer-note"
             data-layer={selectedVar?.layer ?? ""}
             data-root={selectedVar?.isRoot === true ? "1" : "0"}
+            data-liveness={liveness}
           >
             {selectedVar === null
               ? "这一片里一个量都没有"
