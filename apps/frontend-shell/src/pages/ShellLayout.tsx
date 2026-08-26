@@ -224,6 +224,11 @@ export const ROUTE_NO_NAV: Record<string, string> = {
   // 与驾驶舱入口（`DashboardView`）继续走 `/v/decision-play` 深链 —— route 保留，`imp*` query 契约一个键没动。
   "decision-play":
     "仓主裁决（WO-IA-E2E5E6）：决策推演不该占导航位，已嵌入各决策点（订单链/链阻滞/壳布局三处共用 DecisionPlayPanel）；route 保留 = 深链 query 契约（fromImpediment/imp* 一族）不变",
+  // WO-SIM-UNIFIED-SHELL（三张单的第 ①）。本单获批的范围只有「做这一页」，
+  // **导航信息架构改动未获批** ⇒ 不在此单里给它导航位（给了就是越界改 IA）。
+  // route 先通：深链可达、门判据⑦ 的到达路径成立；导航归属由后续两张单连同页签收编一起裁决。
+  "sim-unified":
+    "统一推演控制台第 ① 单只交付外壳+卡墙+右栏+抽屉；导航位属信息架构决策、本单未获批，故 route 先通、暂不单列，入口随后续两单一并裁决",
 };
 export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
   { title: null, items: [{ kind: "view", key: "dash" }] },
