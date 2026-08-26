@@ -98,6 +98,8 @@ const CleanroomAttrView = lazy(() => import("@/views/cleanroom/CleanroomAttrView
 const OptimizeWhatifView = lazy(() => import("@/views/OptimizeWhatifView"));
 // WO-PROCESS-INSTANCE-UI · 流程实例详情页（GET /a/v1/process-instances/:id 与 advance 的唯一生产消费方）。
 const ProcessInstanceDetailView = lazy(() => import("@/views/process/ProcessInstanceDetailView"));
+// WO-SIM-UNIFIED-SHELL · 统一推演控制台（五区外壳 + 指标卡墙 + 右栏检视 + 底部抽屉）：专用 route，直挂 renderer。
+const UnifiedSimShell = lazy(() => import("@/views/sim/unified/UnifiedSimShell"));
 
 setAuthFailureHandler(() => {
   if (!window.location.pathname.startsWith("/login")) {
@@ -149,6 +151,10 @@ export const routes: RouteObject[] = [
       { path: "v/cleanroom-attr", element: lazyWrap(<CleanroomAttrView />) },
       // 优化 what-if 投影页专用 route（opt-template 系·静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
       { path: "v/optimize-whatif", element: lazyWrap(<OptimizeWhatifView />) },
+      // 统一推演控制台专用 route（静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
+      // ⚠ 刻意**不占导航位**：导航信息架构属产品决策，本单未获批 ⇒ 登记 `ShellLayout.ROUTE_NO_NAV`
+      //   （门 `nav-group-coverage:check` 判据④ 与 `f61.admin-nav-groups` 都对账那张表）。
+      { path: "v/sim-unified", element: lazyWrap(<UnifiedSimShell />) },
       { path: "v/:viewKey", element: <ViewPage /> },
       { path: "tasks/:taskId", element: lazyWrap(<TaskDetailPage />) },
       // 治理增量 §5：对象 360 页（溯源链终点）

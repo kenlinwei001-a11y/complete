@@ -166,7 +166,7 @@ export function movedThresholdOf(absDeltas: readonly number[], config?: MetricWa
     const sorted = [...absDeltas].sort((a, b) => a - b);
     // 分位用**最近秩**（不插值）：插值会造出一个数据里不存在的数当门槛，屏上就解释不清了。
     const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil(q * sorted.length) - 1));
-    value = Math.max(value, sorted[idx]);
+    value = Math.max(value, sorted[idx] ?? 0);
     parts.push(`本屏 |Δ| 的 ${Math.round(q * 100)} 分位（最近秩，${sorted.length} 个样本）`);
   }
   return { value, basis: parts.join(" · ") };
@@ -246,14 +246,13 @@ export interface MetricCard {
 
 /** 代表格的挑法：**|Δ| 最大的那一格**。 */
 function pickRepresentative(rows: readonly SimMetricSeriesItem[]): SimMetricSeriesItem | null {
-  if (rows.length === 0) return null;
-  let best = rows[0];
+  let best: SimMetricSeriesItem | null = null;
   let bestAbs = -1;
   for (const r of rows) {
     const d = lastDelta(r);
     const a = d === null ? -1 : Math.abs(d);
     // 平手取 key 小的那条 ⇒ 全序、可复现（R6）。
-    if (a > bestAbs || (a === bestAbs && r.key < best.key)) {
+    if (best === null || a > bestAbs || (a === bestAbs && r.key < best.key)) {
       best = r;
       bestAbs = a;
     }
@@ -263,8 +262,9 @@ function pickRepresentative(rows: readonly SimMetricSeriesItem[]): SimMetricSeri
 
 /** 末格（= 当前）的两条线。缺格 = `null`（**不插值、不向前填充**）。 */
 function lastPair(r: SimMetricSeriesItem): { baseline: number | null; actual: number | null } {
-  const at = <T,>(arr: readonly T[]): T | null => (arr.length === 0 ? null : arr[arr.length - 1]);
-  return { baseline: at(r.baseline) ?? null, actual: at(r.actual) ?? null };
+  const at = (arr: readonly (number | null)[]): number | null =>
+    arr.length === 0 ? null : (arr[arr.length - 1] ?? null);
+  return { baseline: at(r.baseline), actual: at(r.actual) };
 }
 
 function lastDelta(r: SimMetricSeriesItem): number | null {
@@ -285,10 +285,11 @@ function firstCrossOf(
   for (let i = 0; i < ticks.length; i += 1) {
     const b = r.baseline[i] ?? null;
     const a = r.actual[i] ?? null;
-    if (b === null || a === null) continue;
+    const t = ticks[i];
+    if (b === null || a === null || t === undefined) continue;
     comparable += 1;
     const gap = Math.abs(a - b);
-    if (gap >= Math.max(threshold, noiseFloor(b, a))) return { tick: ticks[i], reason: null };
+    if (gap >= Math.max(threshold, noiseFloor(b, a))) return { tick: t, reason: null };
   }
   if (comparable === 0) return { tick: null, reason: "两条线在本窗口内没有一格可比（基线或推演值缺格）" };
   return { tick: null, reason: `本窗口 ${comparable} 格可比，没有一格越过阈值` };

@@ -1,0 +1,219 @@
+/* WO-SIM-UNIFIED-SHELL · 统一推演控制台五区外壳。
+   颜色一律走既有 CSS 变量（本文件不新造调色板）；版面用 grid，不写死像素宽。 */
+
+.shell {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto auto;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+/* ── 顶部模式页签 ─────────────────────────────────────────────── */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.tab {
+  padding: 5px 12px;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 6px;
+  background: var(--bg-subtle, #f6f8fa);
+  font-size: 13px;
+  cursor: pointer;
+}
+.tabOn {
+  border-color: var(--accent, #0969da);
+  background: var(--bg, #fff);
+  font-weight: 600;
+}
+.tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── 状态条 ───────────────────────────────────────────────────── */
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.statusKey {
+  color: var(--fg-muted, #656d76);
+}
+.calibre {
+  font-size: 11px;
+  color: var(--fg-muted, #656d76);
+}
+.warn {
+  color: var(--danger, #cf222e);
+}
+
+/* ── 三栏主体 ─────────────────────────────────────────────────── */
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 20rem) minmax(0, 1fr) minmax(0, 22rem);
+  gap: 8px;
+  min-height: 0;
+}
+.bodyRailOff {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+}
+.col {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+/* ── 左栏 / 摘要条 ────────────────────────────────────────────── */
+.railHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.summaryBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* ── 卡墙 ─────────────────────────────────────────────────────── */
+.group {
+  margin-bottom: 12px;
+}
+.groupHead {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.groupLayer {
+  font-weight: 600;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 6px;
+}
+.card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--bg, #fff);
+  cursor: pointer;
+  font: inherit;
+}
+.cardOn {
+  border-color: var(--accent, #0969da);
+  box-shadow: inset 0 0 0 1px var(--accent, #0969da);
+}
+.cardQuiet {
+  filter: saturate(0.35);
+  opacity: 0.8;
+}
+.cardName {
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.cardKey {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  color: var(--fg-muted, #656d76);
+  overflow-wrap: anywhere;
+}
+.cardValue {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.cardDelta {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.unmovedBlock {
+  margin-top: 6px;
+}
+.unmovedToggle {
+  font-size: 12px;
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  color: var(--accent, #0969da);
+}
+
+/* ── 右栏 ─────────────────────────────────────────────────────── */
+.section {
+  margin-bottom: 10px;
+}
+.sectionHead {
+  font-size: 11px;
+  color: var(--fg-muted, #656d76);
+  margin-bottom: 4px;
+}
+.bigNumber {
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+.list {
+  margin: 0;
+  padding-left: 1.1em;
+  font-size: 12px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ── 底部抽屉 / 日志 ──────────────────────────────────────────── */
+.drawer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 6px;
+  padding: 8px;
+  max-height: 16rem;
+}
+.drawerCol {
+  min-width: 0;
+  overflow: auto;
+}
+.log {
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-height: 6rem;
+  overflow: auto;
+}
+.spark {
+  display: block;
+  width: 100%;
+  height: 3rem;
+}
