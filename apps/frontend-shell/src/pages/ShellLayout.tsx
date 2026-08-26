@@ -172,7 +172,9 @@ export const CONSOLIDATED_INTO_SANDBOX: Record<
   //     UX 判据与挂载点门从此对它们恒绿（漏检永远绿）。
   //   · 写成 `"static-route"` ⇒ 判据⑧c 要求 `App.tsx` 里有 `{ path: "v/<key>" }`，这四页没有
   //     （只走 `v/:viewKey` 通用分发）；且 ⑧e 会反过来要求本组留 `kind:"route"` 回退条目。
-  // 实测依据：`apps/datacore/src/synthetic/service.ts` 的 `VIEW_DEFS` 第 1822–1825 行四键俱在。
+  // 实测依据（2026-08-26）：四键在后端增量视图桶里俱在。复验（应为 4）：
+  //   `grep -c '"sim-console"\|"sim-conduction"\|"sim-attribution"\|"sim-optimize"' apps/datacore/src/synthetic/service.ts`
+  //   （刻意不写死行号 —— 行号会漂，写死行号的引用天生带保质期。）
   //
   // `where` 写的是**用户点哪里能到**，逐条与 `unifiedModes.ts` 的 `UNIFIED_MODE_SPEC` 对得上：
   "sim-conduction": {
@@ -305,7 +307,7 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       //   扰动因素页面是多个子页面，下拉方式输入扰动因素（也可以向上收缩）。
       //   这样避免大规模的后端开发，而是前端的优化。」
       //
-      // **X（本轮改之前的屏上行为·实测）**：合并壳 `UnifiedSimShell` 早已建好、
+      // **X（本轮改之前的屏上行为·2026-08-26 实测）**：合并壳 `UnifiedSimShell` 早已建好、
       //   `App.tsx` 的专用 route `v/sim-unified` 也早已通，但它登记在 `ROUTE_NO_NAV`
       //   （原文：「导航信息架构改动未获批」）⇒ **左侧导航里一个入口都没有，只能手打 URL**。
       //   与此同时本组还并排挂着**四个台**（`sim-console`/`sim-conduction`/`sim-attribution`/

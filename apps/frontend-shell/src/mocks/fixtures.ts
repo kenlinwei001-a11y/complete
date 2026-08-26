@@ -673,7 +673,11 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     // 对收编项**反过来验「还到得了」**，其中一条就是「必须在本文件的 allViews 里」——
     // 理由（门的原话）：**「前端所有跑 mock 的『路由仍可达』断言对它恒真（哑门），
     // 深链接真断了也没人报」**。缺了这四行，收编表就成了免死金牌。
-    // 补之前实测：`grep -c "sim-console" 本文件` = 0（金丝雀 `process-stuck|allViews` = 8，工具是好的）。
+    // 补之前实测（2026-08-26）：`grep -c "sim-console" apps/frontend-shell/src/mocks/fixtures.ts` = **0**，
+    // 同一命令同一扫描面的金丝雀 `grep -c "process-stuck\|allViews" 同文件` = **8** ⇒ 工具是好的，这个 0 是真的 0。
+    // 复验（补完之后应为 4 / 8）：
+    //   `grep -c "sim-console\|sim-conduction\|sim-attribution\|sim-optimize" apps/frontend-shell/src/mocks/fixtures.ts`
+    //   `node scripts/check-nav-group-coverage.mjs`（判据⑧b 那四条不再报「不在 allViews 里」）
     { key: "sim-console", title: "推演指控台", renderer: "sim-console", layout: {} },
     { key: "sim-conduction", title: "传导识别", renderer: "sim-conduction", layout: {} },
     { key: "sim-attribution", title: "损失归因", renderer: "sim-attribution", layout: {} },
