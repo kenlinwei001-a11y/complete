@@ -71,6 +71,25 @@ interface Edge {
 }
 
 /**
+ * 按下标取状态变量名，**越界即抛**。
+ *
+ * 加它不是为了「把 `noUncheckedIndexedAccess` 的类型错消掉」—— 那是把问题藏起来。
+ * 下面两个循环的边界（`i + 2 < n` / `i < n`）本来就保证下标在界内；这里做的是把那句
+ * 「本来就保证」变成**运行时会说话的东西**：日后若有人改了 `STATE_VARS` 的条数、
+ * 改了步长、或把循环条件写松一格，越界读到的 `undefined` 会**当场抛在这里**，
+ * 而不是悄悄造出一条 `{ from: undefined }` 的边 —— 那种边会让 `layersFromEdges`
+ * 凭空多出一个名叫 `"undefined"` 的变量，于是卡墙个数对不上，
+ * 红在一个离病根很远的断言上（本仓老坑：症状离病因越远，越容易被读成「组件坏了」）。
+ */
+function stateVarAt(i: number): string {
+  const name = STATE_VARS[i];
+  if (name === undefined) {
+    throw new Error(`STATE_VARS 下标越界：${i}（共 ${STATE_VARS.length} 条）—— fixture 或循环边界被改坏了`);
+  }
+  return name;
+}
+
+/**
  * 基线边集：把 37 条切成若干条 3 跳链（`a→b→c`），末条挂上余下那一个。
  * 于是三层**都非空**（根源 / 枢纽 / 末端），分层分支才真的被跑到。
  */
@@ -78,12 +97,12 @@ function baseEdges(): Edge[] {
   const out: Edge[] = [];
   const n = STATE_VARS.length;
   for (let i = 0; i + 2 < n; i += 3) {
-    out.push({ from: STATE_VARS[i], to: STATE_VARS[i + 1] });
-    out.push({ from: STATE_VARS[i + 1], to: STATE_VARS[i + 2] });
+    out.push({ from: stateVarAt(i), to: stateVarAt(i + 1) });
+    out.push({ from: stateVarAt(i + 1), to: stateVarAt(i + 2) });
   }
   // 余数（37 % 3 = 1）挂到第一条链的末端后面，避免有变量落在边集之外。
   const rest = n - (n % 3);
-  for (let i = rest; i < n; i += 1) out.push({ from: STATE_VARS[2], to: STATE_VARS[i] });
+  for (let i = rest; i < n; i += 1) out.push({ from: stateVarAt(2), to: stateVarAt(i) });
   return out;
 }
 
@@ -470,7 +489,11 @@ describe("WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门", () => {
     // 「已施加什么」必须真的说得出来 —— 落点变量的业务名 + 幅度都在摘要条上。
     const applied = screen.getByTestId("usim-rail-summary-applied");
     await waitFor(() => expect(applied.textContent).toContain(NAMES.loadIndex));
-    expect(applied.textContent).toContain(String(perturbations[0].magnitude));
+    // 幅度**从 fixture 现取**，不写死 12 —— 改了 fixture 这条断言要跟着动。
+    // 取不到 = fixture 被清空，那不是「摘要条没渲染」，直接抛出来别让它退化成一句空断言。
+    const [firstPert] = perturbations;
+    if (firstPert === undefined) throw new Error("fixture perturbations 为空 —— 本臂失去被驱动的输入");
+    expect(applied.textContent).toContain(String(firstPert.magnitude));
     // 结果读数：被推动几张 / 一共几张（个数由回包现算，不写死）。
     const movedCount = STATE_VARS.filter((_, i) => kindOf(i) === "moved").length;
     expect(screen.getByTestId("usim-rail-summary-result").textContent).toContain(
