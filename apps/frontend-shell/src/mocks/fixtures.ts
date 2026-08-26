@@ -664,6 +664,20 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
     // 它走的是**增量视图**桶（同 geo-map/review），不在 BUILTIN_VIEWS 里，故不在 nav 门判据② 的射程；
     // 但漂了照样是「列表显示的 renderer 与注册表对不上 → 兜底卡」，所以照样必须逐字抄。
     { key: "process-stuck", title: "流程卡点", renderer: "process-stuck", layout: {} },
+    // ── WO-SIM-NAV-UNIFIED · 推演指控台四页（mock 补齐·此前四条一条都没有）─────────────
+    // key/title/renderer 逐字对齐后端**增量视图桶** `apps/datacore/src/synthetic/service.ts`
+    // 的 `VIEW_DEFS`（同 process-stuck 那条的机制，不在 BUILTIN_VIEWS 里）。
+    //
+    // **为什么本轮必须补**：这四页被收编进统一推演控制台后登记进了
+    // `ShellLayout.CONSOLIDATED_INTO_SANDBOX`，而门 `check-nav-group-coverage.mjs` 判据⑧b
+    // 对收编项**反过来验「还到得了」**，其中一条就是「必须在本文件的 allViews 里」——
+    // 理由（门的原话）：**「前端所有跑 mock 的『路由仍可达』断言对它恒真（哑门），
+    // 深链接真断了也没人报」**。缺了这四行，收编表就成了免死金牌。
+    // 补之前实测：`grep -c "sim-console" 本文件` = 0（金丝雀 `process-stuck|allViews` = 8，工具是好的）。
+    { key: "sim-console", title: "推演指控台", renderer: "sim-console", layout: {} },
+    { key: "sim-conduction", title: "传导识别", renderer: "sim-conduction", layout: {} },
+    { key: "sim-attribution", title: "损失归因", renderer: "sim-attribution", layout: {} },
+    { key: "sim-optimize", title: "方案寻优", renderer: "sim-optimize", layout: {} },
     // §7.18 八视角（renderer 复用 ontology-graph，仅 options 不同）
     ...GRAPH_VIEWPOINTS.map((v) => ({ key: v.key, title: v.title, renderer: "ontology-graph", layout: {}, options: v.options })),
     // aop（旧直链入口）：renderer="aop" 未注册，演示「该视图类型暂不支持」兜底
@@ -674,6 +688,13 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
   //   （features.ts:272 有意为之：卡点面板与运行时引擎同生共死，不另立一个能各自开关的 view.* 键）。
   //   照默认规则算成 `view.process-stuck` ⇒ 该键永不在 features 里 ⇒ 视图恒被过滤掉，
   //   表现为「注册了、下发表里也写了，就是不出现」——最难查的那种。
+  //   同理 WO-SIM-NAV-UNIFIED：指控台四页的控制键**不是** `view.sim-console` 一族，
+  //   而是**沙盘同一把闸** `sim.sandbox`（后端单一出处：`apps/datacore/src/features.ts:307`
+  //   `...Object.fromEntries(SANDBOX_CONSOLE_VIEW_KEYS.map((k) => [k, SANDBOX_CONSOLE_FEATURE_KEY]))`，
+  //   而 `SANDBOX_CONSOLE_FEATURE_KEY = "sim.sandbox"`）。
+  //   照默认规则算成 `view.sim-console` ⇒ 该键永不在 features 里 ⇒ 四页恒被过滤掉，
+  //   于是 mock 里「收编前后一个样」，`consolidatedWhen` 那条线在 mock 下**永远测不到**。
+  const SANDBOX_CONSOLE_KEYS = ["sim-console", "sim-conduction", "sim-attribution", "sim-optimize"];
   const featureKeyOf = (viewKey: string) =>
     viewKey === "graph"
       ? "view.ontology-graph"
@@ -683,7 +704,9 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
           ? "view.ledger"
           : viewKey === "process-stuck"
             ? "process.runtime"
-            : `view.${viewKey}`;
+            : SANDBOX_CONSOLE_KEYS.includes(viewKey)
+              ? "sim.sandbox"
+              : `view.${viewKey}`;
   // 服务端按 features 过滤后下发（前端不做解析，只消费结果）
   const views = allViews.filter((v) => features.includes(featureKeyOf(v.key)));
   // aop 不进导航（仅直链可达，演示兜底卡）；base_manager 额外隐藏图谱（含八视角）
