@@ -28,11 +28,15 @@
   align-items: center;
   gap: 6px;
 }
-/* 组分隔标签（规格里的 `.grp`）：不是按钮，只是把决策链切成段的路牌。 */
+/* 组分隔标签（规格里的 `.grp`）：不是按钮，只是把决策链切成段的路牌。
+   ⚠ 字号 12px + `var(--muted)` 是被 `check-text-legibility` 逼出来的，不是随手挑的：
+   规格原型那一档是 9px + 自定义灰，本仓判据 A（`required = max(3.0, 72/S_eff)`）在 10px 要 7.2:1，
+   而本文件其余处用的 `var(--fg-muted, …)` **根本不是本仓令牌**（tokens.css 里只有 `--txt/--muted/--muted2`），
+   于是回落到字面色 #656d76、实测 dark 只有 2.03:1。本单新加的声明一律走真令牌 + 12px 硬底。 */
 .tabGroup {
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.12em;
-  color: var(--fg-muted, #656d76);
+  color: var(--muted);
   padding-left: 6px;
   border-left: 1px solid var(--border, #d0d7de);
   white-space: nowrap;
@@ -99,8 +103,8 @@
 /* 被挂载页面的载入/未接线占位。四页各自带版面，本壳只给一个内边距与字号，不干涉其内部。 */
 .modeFallback {
   padding: 12px;
-  font-size: 12px;
-  color: var(--fg-muted, #656d76);
+  font-size: 13px;
+  color: var(--muted);
 }
 .col {
   min-width: 0;

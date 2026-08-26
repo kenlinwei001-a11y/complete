@@ -1686,6 +1686,52 @@ apps/datacore/src/sim/seed-world.ts:190 (SeedWorldSnapshotOrigin)   ← 真值�
 门 `sim-unified-shell.seam.test.tsx ②` 给一个根源加一条入边、断言屏上从 `根源` 翻成 `枢纽`；
 变异反证：把层级换成手工表 ⇒ ② 单臂红（`expected '根源' to be '枢纽'`）。
 
+### 挂载链路 · 四个推演页 → 统一控制台模式页签（WO-SIM-SHELL-TABS · 2026-08-26）
+
+`/v/sim-unified` 的顶部页签从「一排占位按钮」变成**真挂载点**：四个原本各占一条独立路由的推演页，
+现在同时是这一屏的四个模式档。**页面实现零改动**，改的只是「谁来渲染它」。
+
+```
+views/sim/unified/unifiedModes.ts (UNIFIED_MODE_SPEC)        ← 模式表：顺序 / 文案 / 组标签 / renderer key（单一出处）
+  └─ UnifiedSimShell.ModePanel → getRenderer(key)             ← 与 ViewPage 逐字同构的**同一条分发路径**
+       └─ views/registry.ts 的 lazy(() => import(...))        ← 懒加载白拿：未选中的档连 chunk 都不下载
+            ├─ sim-conduction  → console/SandboxDetailRoute
+            ├─ sim-attribution → console/SandboxAttrRoute
+            ├─ sim-optimize    → console/SandboxOptRoute
+            └─ chain-line-map  → ChainLineMapView
+```
+
+**三条口径（都写在 `unifiedModes.ts` 头注，此处只记结论）**：
+
+- **不另开第二条挂载口**：模式表填的是 `views/registry.ts` 的 renderer key，不是 `import()`。
+  写 `import()` 会同时制造「独立路由改了、页签里还挂着旧组件」的漂移面，
+  并把四页拖进本壳首屏 chunk。**实测证据**（`vite build`）：改前 `UnifiedSimShell` chunk **22.61 kB**，
+  改后 **25.28 kB**，而 `SandboxDetailRoute` 30.65 / `SandboxOptRoute` 14.84 /
+  `ChainLineMapView` 21.53 / `SandboxAttrRoute` 12.50 **仍各自独立成 chunk**。
+- **左栏属壳，不属任何一档**：切页签只换中/右两栏。这不是版面偏好，是本单的**功能判据** ——
+  左栏一旦挂在某一档之下，切页签就等于卸载它，用户正在挑的落点当场清零，
+  正是「今天跨页会丢上下文」这件事换个地方复发。已批准的 UX 原型把左栏只画在首档，
+  是因为静态 HTML 没有「卸载」这回事。
+- **会话由壳解析一次、透给各页**：壳把自己的 `sessionId` 写进透下去那个 `view.options`
+  ⇒ 各页 `useConsoleSession` 走 `reason:"explicit"`，不再各自查一遍「最近一条 RUNNING」。
+  壳自己没解析出会话时**不透**（不传空串下去让它发 404），各页回落到自己那条同 `queryKey` 的查询。
+
+⛔ **四条独立路由（`v/sim-conduction` 等）一条都没动 —— 这是裁决不是遗漏**。
+三页是**后端 seeded 视图**（`VIEW_FEATURE_MAP` 受 `sim.sandbox` 管），`chain-line-map` 早已登记在
+`ShellLayout.CONSOLIDATED_INTO_SANDBOX`（收编进旧沙盘中栏画布默认模式）。而
+**`/v/sim-unified` 自己今天在 `ShellLayout.ROUTE_NO_NAV` 里、一个导航位都没有** ——
+此时若把四页重定向进页签，等于让四个本来可达的页面只能从一个导航里找不到的页面进入，
+`nav-group-coverage:check` 判据④/⑦ 与「可达 ≠ 可发现」那整套账当场翻红。
+收编（撤掉四页的导航单列）必须与「给 `/v/sim-unified` 一个导航位」同一批做，
+而导航信息架构属产品决策 ⇒ 留给仓主裁决的那张单。
+门实跑：`node scripts/check-nav-group-coverage.mjs` 改前改后同为 **RC=0**（判据⑦ 32 个 renderer 键全可达）。
+
+门 `apps/frontend-shell/test/sim-shell-tabs.seam.test.tsx`（13 例 · 四臂 + 金丝雀）咬这条链：
+① 切过去 ⇒ 该页**自己的** testid 真渲染且壳透下去的 renderer 键对得上；
+② 左栏选择态 + 卡墙选中卡 切走再切回都还在；③ 首屏一页都没挂（同一探针切过去能找到 = 金丝雀）；
+④ 四页各一个核心交互仍可用。变异反证：左栏加 `key={mode}` ⇒ ② 红 ·
+某档改挂不存在的 renderer ⇒ ①④ 红 · 四页改成全量挂载 + `display:none` ⇒ ③ 红。
+
 ### 金额链路 · 世界态压力 → 财务金额（WO-FINANCE-WORLDSTATE · 2026-08-14 · 求解器见 §2.E `finance_world_projection`）
 
 上面那 13 条传导规则产出的是**压力指数**（无量纲）。**这条链把指数接到钱上**，是「财务指标随扰动动态变化」缺的那半。
