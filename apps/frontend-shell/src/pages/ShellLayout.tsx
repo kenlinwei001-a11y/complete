@@ -224,11 +224,10 @@ export const ROUTE_NO_NAV: Record<string, string> = {
   // 与驾驶舱入口（`DashboardView`）继续走 `/v/decision-play` 深链 —— route 保留，`imp*` query 契约一个键没动。
   "decision-play":
     "仓主裁决（WO-IA-E2E5E6）：决策推演不该占导航位，已嵌入各决策点（订单链/链阻滞/壳布局三处共用 DecisionPlayPanel）；route 保留 = 深链 query 契约（fromImpediment/imp* 一族）不变",
-  // WO-SIM-UNIFIED-SHELL（三张单的第 ①）。本单获批的范围只有「做这一页」，
-  // **导航信息架构改动未获批** ⇒ 不在此单里给它导航位（给了就是越界改 IA）。
-  // route 先通：深链可达、门判据⑦ 的到达路径成立；导航归属由后续两张单连同页签收编一起裁决。
-  "sim-unified":
-    "统一推演控制台第 ① 单只交付外壳+卡墙+右栏+抽屉；导航位属信息架构决策、本单未获批，故 route 先通、暂不单列，入口随后续两单一并裁决",
+  // ⚠ WO-SIM-NAV-UNIFIED（本轮）：`sim-unified` 的豁免条目**已删**，不是漏了。
+  //   上一版这里写着「导航信息架构改动未获批 ⇒ route 先通、暂不单列，入口随后续两单一并裁决」——
+  //   仓主已裁决（原话见 NAV_GROUPS「推演」组之首的长注），统一推演控制台就是本组的主入口。
+  //   条目留着就是**陈旧豁免**：门判据④ 会红出「这个 route 明明在导航里，却还挂着『刻意不占导航位』」。
 };
 export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
   { title: null, items: [{ kind: "view", key: "dash" }] },
@@ -258,7 +257,30 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   {
     title: "推演",
     items: [
-      // 沙盘是**入口**不是附录，故置于本组之首（上一版把它裸挂在分组之外正是为了这个位置感）。
+      // ══ WO-SIM-NAV-UNIFIED · 统一推演控制台 = 本组主入口（仓主裁决）══════════════════
+      //
+      // 仓主原话：「把推演沙盘+4个页面结合在一个页面。base 页面是一个大量的指标卡片，
+      //   扰动因素页面是多个子页面，下拉方式输入扰动因素（也可以向上收缩）。
+      //   这样避免大规模的后端开发，而是前端的优化。」
+      //
+      // **X（本轮改之前的屏上行为·实测）**：合并壳 `UnifiedSimShell` 早已建好、
+      //   `App.tsx` 的专用 route `v/sim-unified` 也早已通，但它登记在 `ROUTE_NO_NAV`
+      //   （原文：「导航信息架构改动未获批」）⇒ **左侧导航里一个入口都没有，只能手打 URL**。
+      //   与此同时本组还并排挂着**四个台**（`sim-console`/`sim-conduction`/`sim-attribution`/
+      //   `sim-optimize`），而那四页正是合并壳要收编的对象 ⇒ 屏上是「合并壳点不到 + 被合并的四页
+      //   各占一行」，恰好是仓主要求的**反面**。
+      // **Y**：合并壳置于本组之首做主入口；四个台带 `consolidatedWhen` 降为壳内页签，不再单列。
+      //
+      // ⚠ 为什么**不给** `feature: "sim.sandbox"`：`feature` 的语义是「暗发页，页面侧本就有 Guard」
+      //   （见 NavItemRef 定义处）。`UnifiedSimShell` **没有任何 entitlement Guard**（实测：
+      //   `grep -c "feature\|Guard" views/sim/unified/UnifiedSimShell.tsx` = 0，金丝雀 `import|export` = 20）。
+      //   填上就成了「导航里藏起来、URL 照样进得去」——把暗发做成假的。故本条不带 `feature`，
+      //   转而逐条登记在 `GROUP_CONSOLIDATION_EXEMPT`（判据⑨ 要求：组内有收编承诺时其余成员须登记）。
+      { kind: "route" as const, key: "sim-unified", label: "统一推演控制台" },
+      // 旧沙盘**保留单列**：它是 `CONSOLIDATED_INTO_SANDBOX` 里 12 个键的收编宿主
+      //   （那张表每条 `where` 都写着「沙盘模式切换 →…」）。把它从导航拿掉 = 那 12 页的
+      //   到达路径当场断掉 —— 那是「把 IA 整理做成了功能消失」，本单硬红线禁止。
+      //   两者不同名、不同页：合并壳答「这次扰动之后看哪一面」，旧沙盘答「五问」。
       { kind: "route" as const, key: "sim-sandbox", label: "推演沙盘", feature: "sim.sandbox" },
       // ── WO-SIM-NAV-GROUP · 指控台四页归入本组（此前**一条都没登记**）────────────────
       //
@@ -279,19 +301,51 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       // （只有 `v/:viewKey` 通用分发），走的是后端 `VIEW_DEFS` 增量视图桶下发。挂成 route 会被
       // `check-nav-group-coverage.mjs` 判据⑤（route 条目不是幽灵）当场咬住。
       //
-      // 为什么**不带** `consolidatedWhen: "sim.sandbox"`（这一条最容易写反）：这四个 viewKey 的
-      // 受控键**就是 `sim.sandbox` 本身**（`features.ts` `VIEW_FEATURE_MAP`，见
-      // `sandbox-console.ts` 的 `SANDBOX_CONSOLE_FEATURE_KEY`）。带上就成了：
-      //   · 沙盘**开** ⇒ `consolidatedWhen` 命中 ⇒ 隐藏；
-      //   · 沙盘**关** ⇒ 后端根本不下发（`viewAllowed()` 为假）⇒ `viewByKey` 查不中 ⇒ 也隐藏。
-      // 两态都隐藏 = **这四页永远不出现在导航里**，等于把本单要修的病换个方式再犯一次。
-      // 故它们逐条登记在 `GROUP_CONSOLIDATION_EXEMPT`（判据⑨ 的唯一豁免源），理由见那张表。
+      // ══ WO-SIM-NAV-UNIFIED · 上一版这段注释写的是「为什么**不带** consolidatedWhen」，
+      //    本轮**结论反转**，理由照实回写（不是漏改，是前提变了）══════════════════════════
+      //
+      // 上一版原文：「两态都隐藏 = 这四页永远不出现在导航里，等于把本单要修的病换个方式再犯一次」。
+      // 那句话在**当时**是对的 —— 当时这四页在任何控制台里都**没有落点**，藏起来就等于删掉。
+      // 今天前提已变：`views/sim/unified/unifiedModes.ts` 的 `UNIFIED_MODE_SPEC` 把其中三页
+      // 挂成了合并壳的页签（`conduction`→`sim-conduction` / `attribution`→`sim-attribution` /
+      // `optimize`→`sim-optimize`，经 `getRenderer` 走与 `ViewPage` 逐字同构的分发路径），
+      // 第四页 `sim-console` 的首屏则由合并壳自带的 `now` 档（37 张指标卡墙）取代 ——
+      // 正是仓主那句「base 页面是一个大量的指标卡片」。**有了落点，收编才成立。**
+      //
+      // ⇒ 于是「两态都隐藏」从**病**变成了**正确行为**：
+      //   · 沙盘**开** ⇒ `consolidatedWhen` 命中 ⇒ 不单列（已在合并壳里）；
+      //   · 沙盘**关** ⇒ 后端根本不下发（`viewAllowed()` 为假）⇒ 本来就没有。
+      //   两态都不占导航位，而**页面一个没删、`/v/<key>` 深链一条没断**（判据⑧b 逐条验这件事）。
+      //
+      // ⚠ **条目本身必须留着，不许改写成删除**（这一条最容易做反，代价是静默的）：
+      //   `scripts/lib/sim-page-roster.mjs` 的判据 **R3 `nav-sim-group`** 读的是**本表的源码文本**，
+      //   而这四页**只经 R3 一条路进推演页名册**（实测：`node` 现算 R3 含此四键，R1/R2/R4/R5 全不含）。
+      //   删条目 ⇒ 名册 17 → 13 ⇒ `check-edge-active-mounts.mjs` 的**名册缩水棘轮**当场红
+      //   （它的注释逐字写着「或**把一页移出「推演」导航组**…这就是『漏检永远绿』正在复发」），
+      //   更糟的是这四页会**悄悄退出 UX 判据的受检面**。带 `consolidatedWhen` 则两全：
+      //   屏上不单列（IA 干净），名册里还在（照旧受检）。
+      //
+      // ⚠ `consolidatedWhen` 的值必须**恰好是 `"sim.sandbox"`**，不许另起一个键：判据⑨ 规定
+      //   「一组里出现两个不同的 `consolidatedWhen` 值时，带 X 的成员对 Y 那条承诺同样算掏空」，
+      //   而本组既有的 `what-if`/`optimize-whatif` 用的就是 `"sim.sandbox"`。
+      //
+      // ⚠ **必须逐条写成对象字面量，不许缩回 `.map()` 形态**（本轮实测踩到，机器先说话）：
+      //   上一版这四条是 `...[...].map((key) => ({ kind: "view" as const, key }))`。本轮先按
+      //   `.map((key) => ({ …, consolidatedWhen: "sim.sandbox" }))` 改了一版，跑门当场发现
+      //   判据⑨ 报「sim.sandbox 开时本组还剩 **10** 项」——若四条被认到，该数应是 6。
+      //   即：`check-nav-group-coverage.mjs` 与 `sim-page-roster.mjs` 的 NAV_GROUPS 解析器
+      //   从 `.map` 形态里只捞得到**键名数组**，捞不到回调里那个对象的 `consolidatedWhen`
+      //   ⇒ 屏上真隐藏了，而**门以为它们还单列着**（判据⑧a/⑧f 也随之全部失准）。
+      //   这正是本仓「拿一个看起来相关的数字当判据」的老形态，判据落在**写法**上而非意图上。
       //
       // 顺序 = 决策链序（与后端 `SANDBOX_CONSOLE_VIEWS` 的声明顺序逐字同序）：
       //   现状（指控台）→ 传导识别 → 损失归因 → 方案寻优。
       // label 一律**不在本表内联** —— `kind:"view"` 项的文案取 `workspace.navigation[].label`，
       // 单一出处在后端那份 view 定义里。本仓最恨双份真相源，这里不许开第二份。
-      ...["sim-console", "sim-conduction", "sim-attribution", "sim-optimize"].map((key) => ({ kind: "view" as const, key })),
+      { kind: "view" as const, key: "sim-console", consolidatedWhen: "sim.sandbox" },
+      { kind: "view" as const, key: "sim-conduction", consolidatedWhen: "sim.sandbox" },
+      { kind: "view" as const, key: "sim-attribution", consolidatedWhen: "sim.sandbox" },
+      { kind: "view" as const, key: "sim-optimize", consolidatedWhen: "sim.sandbox" },
       // ── 并线单 WO-SANDBOX-UI-INTEGRATE 的一处**方向性裁决**（两条分支在此真对立）─────
       // · WO-IMPEDIMENTS-REACHABLE 要把 `chain-line-map` / `transit-flow` / `physical-topology` /
       //   `node-inspector` / `chain-impediments` 五个键**加进本组**做导航入口 ——
