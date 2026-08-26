@@ -1378,9 +1378,11 @@ function ProblemDag({ group, categoryLabel }: { group: OrderProblemGroup; catego
  * 在没有规则键的地方硬写一个规则键，就是把用户支去规则库里找一个不存在的东西 ——
  * 所以这里如实写「四层链的投影规则」，并把「差一个 ruleRef 字段」记进交单报告的可派单里。
  */
-function problemNodeFacts(nodeId: string, group: OrderProblemGroup, categoryLabel: string): DagNodeFacts {
+// ⚠ 形参原名 `nodeId`，同 DisruptionRadiusView 的理由：这里收的是本视图 DAG 的伪节点 id
+//   （"unchained" 聚合块、`<ci>-<kind>` 分段），不是 CHAIN_NODE_REGISTRY 的全链节点。
+function problemNodeFacts(dagNodeId: string, group: OrderProblemGroup, categoryLabel: string): DagNodeFacts {
   // 判据 U4b · 被排除的那一聚合节点也要点得开（否则图上多了个灰块、点开却是空的）。
-  if (nodeId === "unchained") {
+  if (dagNodeId === "unchained") {
     const n = group.orderCount - group.rootChains.length;
     return {
       title: `未推出根因链 · ${n} 单`,
@@ -1398,7 +1400,7 @@ function problemNodeFacts(nodeId: string, group: OrderProblemGroup, categoryLabe
         "所以这里只画得出条数，画不出是哪几单。别拿本类共性根因顶替它们的结论。",
     };
   }
-  const [ciStr, kind] = nodeId.split("-");
+  const [ciStr, kind] = dagNodeId.split("-");
   const chain = group.rootChains[Number(ciStr)];
   const layer = chain?.layers.find((l) => l.kind === kind);
   const kindLabel = LAYER_KIND_LABEL[(kind ?? "order") as LayerKind] ?? (kind ?? "");
@@ -1418,7 +1420,7 @@ function problemNodeFacts(nodeId: string, group: OrderProblemGroup, categoryLabe
     };
   }
   return {
-    title: `${kindLabel} · ${layer?.label ?? nodeId}`,
+    title: `${kindLabel} · ${layer?.label ?? dagNodeId}`,
     verdict: chain ? `订单 ${chain.orderId} · ${categoryLabel}类问题` : undefined,
     src: `求解器 affected_orders · problems[category=${group.category}].rootChains[orderId=${chain?.orderId ?? "—"}].layers[kind=${kind}]`,
     rule: "根因链四层投影：order → judgement → rootCause → remedy，逐层由上一层推出；引擎推不出的单不入链（覆盖度另行披露）",

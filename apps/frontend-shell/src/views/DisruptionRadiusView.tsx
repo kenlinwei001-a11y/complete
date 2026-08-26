@@ -580,7 +580,12 @@ export default function DisruptionRadiusView(_props: { view?: ViewConfigVM }) {
  * 要么上一层 frontier 就已经错了 —— 这正是 U3 要的那个能力。
  */
 function fanoutNodeFacts(
-  nodeId: string,
+  // ⚠ 形参原名 `nodeId` —— 被 `chain-node-singlesource:check` 的 K·键位判据当成
+  //   「全链节点 ID」咬红（"__root" 不在 CHAIN_NODE_REGISTRY 里）。
+  //   **门没判错，是名字骗了它**：本函数收的是**本视图自己那张 DAG 的伪节点 id**，
+  //   同族还有 `X<key>`（被排除的跳）与 `L<n>`（层号），它们和全链节点是两套 id 空间。
+  //   改名而不是给门开豁免：豁免名单一开口，将来真的自由串会跟着被放过（门的自陈原话）。
+  dagNodeId: string,
   out: RadiusOutput,
   disp: (k: string) => string,
   leafIdx: number,
@@ -588,8 +593,8 @@ function fanoutNodeFacts(
 ): DagNodeFacts {
   // 判据 U4b · 被排除节点也要点得开：只把它留在图上、点开却是一句「—」，
   // 用户仍然答不出"为什么它不在半径里"。
-  if (nodeId.startsWith("X")) {
-    const h = excludedHops.find((x) => `X${x.key}` === nodeId);
+  if (dagNodeId.startsWith("X")) {
+    const h = excludedHops.find((x) => `X${x.key}` === dagNodeId);
     if (h) {
       const disabled = h.reason === "disabled";
       return {
@@ -617,7 +622,7 @@ function fanoutNodeFacts(
       };
     }
   }
-  if (nodeId === "__root") {
+  if (dagNodeId === "__root") {
     return {
       title: `断供根 · ${disp(out.rootType)}`,
       verdict: `影响半径 ${out.radius} 层 · 波及 ${out.totalAffected} 个对象`,
@@ -632,9 +637,9 @@ function fanoutNodeFacts(
       note: "换一个来源对象 → 求解器重算 → 半径/敞口随之变（本页仅忠实投影，不缓存上一次的结论）。",
     };
   }
-  const i = Number(nodeId.slice(1));
+  const i = Number(dagNodeId.slice(1));
   const l = out.layers[i];
-  if (!l) return { title: nodeId, src: "—", rule: "—" };
+  if (!l) return { title: dagNodeId, src: "—", rule: "—" };
   const prev = i === 0 ? `${disp(out.rootType)} ${out.rootId}` : `${disp(out.layers[i - 1]!.type)} 层命中集`;
   return {
     title: `第 ${i + 1} 层 · ${disp(l.type)}`,
