@@ -91,6 +91,19 @@ function layers(): { stateVar: string; layer: string; label: string }[] {
   });
 }
 
+/**
+ * ⚠ 收编 WO-SIM-RAIL-FORMS 时补 `domainKey`/`domainName`（2026-08-26）。
+ * 原 fixture 一个域字段都没有 ⇒ 左栏 42 条边全落「未归域」= **只渲染 1 个子页**，
+ * 于是 ② 臂的「切子页」当场空转。而真后端是**恒填**的
+ * （`seed.ts resolveRuleDomain` 现算后随边下发，规则字面量里反而没有这两个字段）。
+ * 形态：**fixture 的形状与生产回包不一致 ⇒ 测试验的是一个生产里不存在的世界**
+ * （本仓记过的「生产实参与测试实参交集为空」同族）。
+ * 这里按下标轮流分两个域，只为让「切子页」有得切；域名是 fixture 自造，不是业务常数。
+ */
+const RULE_DOMAINS = [
+  { domainKey: "D03", domainName: "销售与客户" },
+  { domainKey: "D07", domainName: "采购与供应" },
+] as const;
 const RULES = EDGES.map((e, i) => ({
   id: `rule_${i}`,
   tenantId: "demo",
@@ -103,6 +116,7 @@ const RULES = EDGES.map((e, i) => ({
   coefficient: 0.5,
   delayTicks: 0,
   status: "PUBLISHED",
+  ...RULE_DOMAINS[i % RULE_DOMAINS.length],
 }));
 
 const TICKS = [0, 1, 2, 3];
@@ -338,28 +352,32 @@ describe("WO-SIM-SHELL-TABS · 四页降成模式页签", () => {
     mount();
     const wall = await readyNow();
 
-    // ── (a) 左栏：挑一个**能按基地下钻**的因子（`data-base-drill` 由 `selectedNum` 现算，
-    //        它就是左栏选择态在 DOM 上的读数），再把范围下拉改到一个真基地。
-    //        两样都是纯客户端态 —— 组件一卸载就没了，正是本臂要护住的东西。
-    //        ⚠ 不写死因子编号：可下钻与否由契约 `canDrillByBase(objectType)` 定，
-    //        册子改了本门不该跟着红；找不到任何一个 ⇒ 报「这一臂在空转」，不读作通过。
-    const scope = () => screen.getByTestId("sandbox-home-scope") as HTMLSelectElement;
-    let drillable = false;
-    for (const f of screen.getAllByTestId(/^sandbox-home-factor-/)) {
-      await user.click(f);
-      if (scope().getAttribute("data-base-drill") === "on") {
-        drillable = true;
-        break;
-      }
-    }
-    expect(drillable, "左栏没有任何可按基地下钻的因子 ⇒ 这一臂在空转，不能读作通过").toBe(true);
+    // ── (a) 左栏：`PerturbRail` 的两样**纯客户端态** —— 选中的域子页 + 选中的状态变量。
+    //        ⚠ 收编 WO-SIM-RAIL-FORMS 时本段由 `PerturbTree` 的
+    //        `sandbox-home-factor-*` / `sandbox-home-scope` 改指过来：**咬的能力一字未变**
+    //        （「左栏客户端选择态切档不丢」），换的只是承载它的组件。
+    //        ⛔ 不许因为旧 testid 找不到就删这一臂 —— 那是把防线拆了。
+    //        ⚠ 子页数由后端域分片现算（demo 今天 10 片），**不写死**；
+    //        少于 2 片 ⇒ 报「这一臂在空转」，不读作通过。
+    const railTabs = screen.getAllByTestId(/^rail-tab-/);
+    expect(
+      railTabs.length,
+      "左栏子页少于 2 个 ⇒ 切不动，这一臂在空转，不能读作通过",
+    ).toBeGreaterThan(1);
+    const secondTab = railTabs[1] as HTMLElement;
+    const secondTabId = secondTab.getAttribute("data-testid") as string;
+    await user.click(secondTab);
+    await waitFor(() => expect(screen.getByTestId(secondTabId).getAttribute("aria-selected")).toBe("true"));
 
-    const before = scope().value;
-    const target = Array.from(scope().querySelectorAll("option")).find((o) => !o.disabled && o.value !== before);
-    expect(target, "范围下拉里应至少有第二个可选项（否则这一臂在空转）").toBeDefined();
-    await user.selectOptions(scope(), (target as HTMLOptionElement).value);
-    const railPicked = scope().value;
-    expect(railPicked).toBe((target as HTMLOptionElement).value);
+    const sv = () => screen.getByTestId("rail-statevar") as HTMLSelectElement;
+    const svBefore = sv().value;
+    const svTarget = Array.from(sv().querySelectorAll("option")).find(
+      (o) => !o.disabled && o.value !== svBefore,
+    );
+    expect(svTarget, "状态变量下拉里应至少有第二个可选项（否则这一臂在空转）").toBeDefined();
+    await user.selectOptions(sv(), (svTarget as HTMLOptionElement).value);
+    const railPicked = sv().value;
+    expect(railPicked).toBe((svTarget as HTMLOptionElement).value);
 
     // ── (b) 卡墙：选中第一张可点的卡（壳级 `selected`）。
     const card = within(wall).getAllByTestId(/^usim-card-/)[0] as HTMLElement;
@@ -369,8 +387,11 @@ describe("WO-SIM-SHELL-TABS · 四页降成模式页签", () => {
 
     // ── 切走：左栏必须**还在**（它属于壳，不属于任何一档）。
     await goTab(user, TABS[0] as TabUnderTest);
-    expect(scope().value, "切到别的档时左栏就被卸载了 ⇒ 用户正在挑的落点当场清零").toBe(railPicked);
-    expect(scope().getAttribute("data-base-drill"), "切档后左栏选中的因子也丢了").toBe("on");
+    expect(sv().value, "切到别的档时左栏就被卸载了 ⇒ 用户正在挑的落点当场清零").toBe(railPicked);
+    expect(
+      screen.getByTestId(secondTabId).getAttribute("aria-selected"),
+      "切档后左栏选中的子页也丢了",
+    ).toBe("true");
 
     // 再切一档（多切一次：只切一次的话「第一次切没事、第二次才丢」这一形态漏得掉）。
     await goTab(user, TABS[2] as TabUnderTest);
@@ -378,8 +399,11 @@ describe("WO-SIM-SHELL-TABS · 四页降成模式页签", () => {
     // ── 切回：两样都还在。
     await user.click(screen.getByTestId("usim-tab-now"));
     const wall2 = await readyNow();
-    expect(scope().value, "切回来之后左栏的选择没了 —— 这正是合并要消灭的那件事").toBe(railPicked);
-    expect(scope().getAttribute("data-base-drill"), "切回来之后左栏选中的因子没了").toBe("on");
+    expect(sv().value, "切回来之后左栏的选择没了 —— 这正是合并要消灭的那件事").toBe(railPicked);
+    expect(
+      screen.getByTestId(secondTabId).getAttribute("aria-selected"),
+      "切回来之后左栏选中的子页没了",
+    ).toBe("true");
     expect(
       within(wall2).getByTestId(cardId).getAttribute("aria-pressed"),
       "切回来之后卡墙的选中卡没了",

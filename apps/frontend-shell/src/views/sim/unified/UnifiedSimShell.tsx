@@ -37,10 +37,14 @@
  *      ⇒ 它们的输入一个字节没变。
  *    · 应该是 Y：那批断言**不该改**（改了才是把防线拆了）。逐条判定与实跑 RC 见交付报告。
  *
- * ④ **左栏第 ③ 单的 `rail/PerturbRail.tsx` 尚未落地**
- *    · 今天的行为是 X：`views/sim/unified/rail/` 目录不存在（实测 `ls` 报 No such file）。
- *    · 应该是 Y：本单保留现有左栏（`PerturbTree`）不等它；挂载那一行归本单，
- *      待 ③ 并线后只需把 `<PerturbTree>` 换成 `<PerturbRail>`，本壳其余一行不动。
+ * ④ **左栏第 ③ 单的 `rail/PerturbRail.tsx`**
+ *    · 本单开工时：`views/sim/unified/rail/` 目录不存在（实测 `ls` 报 No such file），
+ *      故保留 `PerturbTree` 不等它，挂载那一行留给收编方。
+ *    · ✅ **2026-08-26 收编 `WO-SIM-RAIL-FORMS` 时已挂上**（本壳唯一改动）：
+ *      `<PerturbTree sessionId>` → `<PerturbRail sessionId>`，其余一行未动。
+ *      ⛔ **刻意不接 `onAppliedChange`**：本壳 `perturbQ`（:190 附近）与 `PerturbRail.tsx:108`
+ *      读的是**逐字相同**的查询键，rail 提交后失效的也是它（`PerturbRail.tsx:216`）⇒
+ *      `applied`/`summary` 自动跟着走；接了它就是给同一事实造第二个出处。
  *
  * ══ 本单开工前实测的三条前提（铁律 0.5：派单给的是线索不是结论）════════════════
  *
@@ -91,7 +95,7 @@ import { UNIFIED_MODES, UNIFIED_MODE_SPEC, type UnifiedMode } from "./unifiedMod
 import { stateVarLabel } from "../stateVarLabel";
 import { useConsoleSession, type ConsoleSessionReason } from "../console/useConsoleSession";
 import { metricSeriesPath } from "../console/useParetoFrontier";
-import { PerturbTree } from "../console/PerturbTree";
+import PerturbRail from "./rail/PerturbRail";
 import {
   buildInspectorView,
   buildMetricWall,
@@ -379,10 +383,22 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
                 收起
               </button>
             </div>
-            {/* 复用既有 `PerturbTree`（`console/PerturbTree.tsx`）**一行未改**：
+            {/* 左栏 = `rail/PerturbRail`（WO-SIM-RAIL-FORMS）。历史：本壳交付时挂的是
+                `console/PerturbTree`（一行未改），收编 ③ 时替换。原注释保留在下方作沿革：
                 它自带取数与 20 条因子目录，props 只有 `{sessionId, targetObjectId}`。
                 本单不动它的表单形态 —— 那是第 ③ 张单。 */}
-            <PerturbTree sessionId={sessionId} />
+            {/*
+              WO-SIM-RAIL-FORMS 收编 · 挂载（②③ 都不归它，归收编方）。
+
+              ⛔ **刻意不接 `onAppliedChange`** —— 那会给同一个事实造第二条路。
+              实测：本壳 `perturbQ`（:190）与 `PerturbRail`（`PerturbRail.tsx:108`）读的是
+              **逐字相同**的查询键 `["a","sim-perturbations", sessionId ?? ""]` ⇒ React Query 去重，
+              两边取的是同一份缓存；而 rail 提交成功后失效的也正是这个键
+              （`PerturbRail.tsx:216`）⇒ 本壳的 `applied` / `summary` **自动跟着更新**，
+              一行都不用改。接了 `onAppliedChange` 反而让「已施加什么」有两个出处，
+              两边一漂就各说各话 —— 那正是本仓治过多次的第二套真相源。
+            */}
+            <PerturbRail sessionId={sessionId} />
           </aside>
         ) : null}
 
