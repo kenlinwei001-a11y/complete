@@ -707,6 +707,40 @@ const SOURCE_TONE: Record<"cadence" | "domain", SeriesTone> = { cadence: "b", do
 const fmt = (v: number | null | undefined): string => (v === null || v === undefined ? "—" : String(Math.round(v * 100) / 100));
 
 /**
+ * ══ WO-ATTR-DEAD-CONTROLS · A ══════════════════════════════════════════════
+ * 🔴 **本 hook 回的数据里今天没有「链段（`ChainStage`）」这个维度** —— 这不是「接了线没数据」，
+ * 是**两层缺口叠在一起**，混成一句就会去修错地方（本仓 0.5 判据 1 点名的三种「不工作」）：
+ *
+ * **① 指标行本身压根没有段的概念（不是「缺了个字段」）**
+ *    行的粒度是 `${objectId}.${stateVar}`（对象 × 状态变量，见 `SimMetricSeriesItemSchema`），
+ *    与 `ChainStage`（需求/订单/产能/物料/交付）是**正交的两个维度**。
+ *    实测回包 `metrics[]` 的字段恰好是
+ *    `key/objectId/stateVar/label/labelIsFallback/unit/baseline/actual/segments` —— 无 `stage`。
+ *
+ * **② 唯一可能通到段的那条路，今天是空的（这一层才是「接了线没数据」）**
+ *    `segments[].nodeId` **取值域由 `source` 决定**（`SimMetricSegmentSchema` 原文）：
+ *      · `cadence` ⇒ nodeId ∈ `CHAIN_NODE_REGISTRY`，**那里才有 `stage`** ⇒ 段可由
+ *        `chainNodeDef(nodeId)?.stage` 从契约单源现取，前端不必造第二张表；
+ *      · `domain`  ⇒ nodeId ∈ 业务域册 `D01…D13`，`ProcessDomainSchema` 里**没有 `stage`**。
+ *    2026-08-26 实测真服务（`GET /a/v1/sim/sessions/sims_demo_seed_world/metric-series`，200 · 4752B）：
+ *    `segments` 11 条，`source` **11/11 全是 `domain`**，nodeId 去重 = `["D04","D10","D03"]`，
+ *    三个 `chainNodeDef()` 全 `undefined`。病因契约自己写着，实测复核成立：
+ *    `grep -c "cadenceNodeId: null" apps/datacore/src/seed.ts` ⇒ **42**，
+ *    而全部非 null 命中只有 1 处且是**注释**（`seed.ts:253`「留给建模/运营去配」）⇒ 零条种子规则绑节拍点。
+ *
+ * ⇒ **前端不接这条线，也不自己编一张「环节 → 段」对照表**（那就是第二份注册表，
+ *    `scripts/check-chain-node-singlesource.mjs` 判据 C 点名禁止的形态）。
+ *    段页签因此显式标成不可用，见 `SandboxAttr.tsx` 的 `STAGE_TABS`。
+ *
+ * **该由谁下发（两条路，任一条通了这里就能接）**：
+ *   (a) 建模/运营侧给传导规则绑 `cadenceNodeId`（`POST /a/v1/sim/propagation-rules`）
+ *       ⇒ 分段自动升到 `cadence` 档 ⇒ 前端 `chainNodeDef(nodeId)?.stage` 现取，零新契约；
+ *   (b) 或后端在 `SimMetricSegmentSchema` 上显式下发 `stage: ChainStage | null`
+ *       （`domain` 档诚实给 `null`，别硬派一个）。
+ * 金丝雀（证明上面这些「没有」是真的没有，不是探针坏了）：同一支探针在
+ * `CHAIN_NODE_REGISTRY` 上现算 24/24 条全带 `stage`、`chainNodeDef("capacity.aging").stage === "CAPACITY"`。
+ *
+ * ══════════════════════════════════════════════════════════════════════════
  * 接 `GET /a/v1/sim/sessions/:id/metric-series`。**四态各回各的**（本单的标的就在这里）：
  *   · 没有会话 id ⇒ `enabled:false`，**不发请求** ⇒ `notAsked`（"还没选定要看哪一次推演"）；
  *   · 请求在飞 ⇒ `loading`；· 请求失败 ⇒ `noAnswer`；· 200 但零指标 ⇒ `empty`。
