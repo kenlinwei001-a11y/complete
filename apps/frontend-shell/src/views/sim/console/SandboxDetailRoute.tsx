@@ -207,7 +207,7 @@ export default function SandboxDetailRoute({ view }: ViewRendererProps): JSX.Ele
   // ── ① 落点节点：与损失归因台同源同序（`SandboxAttr.tsx` 的 `heat.nodes[0]`）──
   // `so` 透传给矩阵：与归因台**同一个锚点订单**才叫"同源同序"。宿主没给 ⇒ 不给 ⇒
   // 后端按它自己那份「每列取 `so` 字典序首张」的口径挑（前端再写一份就是第二套真相源，
-  // 且实测会把矩阵从 234 格砍到 36 格 —— 逐格对拍表在 `useLossAttribution.ts` 的
+  // 且实测（2026-08-25）会把矩阵从 234 格砍到 36 格 —— 逐格对拍表在 `useLossAttribution.ts` 的
   // `useChainLossMatrix` 头注 (b)）。故这里**只透传，不兜底**。
   const heat = useChainLossMatrix(p.so);
   const derivedNodeId = heat.source === "endpoint" ? heat.nodes[0]?.nodeId : undefined;

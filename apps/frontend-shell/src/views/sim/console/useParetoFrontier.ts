@@ -79,7 +79,7 @@ function baseName(baseId: string): string {
 /**
  * 本页占位场景里的两个基地：主基地 + 承接基地。
  *
- * ⚠ **本单实测：规格占位用的「盐城」在 `BASE_REGISTRY` 13 个基地里一条都没有**
+ * ⚠ **本单实测（2026-08-25）：规格占位用的「盐城」在 `BASE_REGISTRY` 13 个基地里一条都没有**
  *   （复验 `grep -rn 盐城 packages/contracts/src/` = 0；金丝雀「常州」同命令命中 5 文件 ⇒ 工具是好的）。
  *   即：此前这一页把一个**本系统并不存在的基地**写在方案名、绑定约束与甘特段上，
  *   而同名的东西拿去问后端会被 `synthetic/battery.ts` 的

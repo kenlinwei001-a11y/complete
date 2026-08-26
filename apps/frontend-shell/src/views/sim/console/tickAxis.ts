@@ -3,7 +3,7 @@
  *
  * ══ 病灶：今天的行为是 X，应该是 Y（本单开工前实测）═══════════════════════════
  *
- * **X（改造前实测原文，三处逐字节相同）**：
+ * **X（2026-08-25 改造前实测原文，三处逐字节相同；复验 `grep -rn 'ticks.map' apps/frontend-shell/src/views/sim/console/`）**：
  * ```ts
  * ticks: ticks.map((t) => String(t))          // useMetricSeries.ts:412  （首页·指标甘特）
  * ticks: ticks.map((t) => String(t))          // useLossAttribution.ts:699（归因台·环节序列）
@@ -15,8 +15,16 @@
  * ⚠ 这是本仓三态里的**第三态「接了线接错地方」**，不是「没接线」也不是「接了线没数据」：
  * 换算函数 `daysForTicks`（`packages/contracts/src/sim.ts:238`）**早就存在**，
  * 后端也早就在吃「天」并**把口径随回包一起下发**（见下）——缺的只是前端这一半没挂上去。
- * 开工前实测 `daysForTicks` **全仓零消费方**（金丝雀：同文件的 `ticksForDays` 同一条 grep
- * 命中 10 行 ⇒ 工具没坏，是真的零）。
+ * 2026-08-25 开工前实测：`daysForTicks` 定义在契约里，而**前端一处都没有调用它**
+ * （金丝雀：同文件的 `ticksForDays` 同一条 grep 命中 10 行 ⇒ 工具没坏）。
+ * ✅ **本单已把它接上**，现有 3 处引用（本文件 · `views/sim/unified/metricWallModel.ts` ·
+ * 定义处 `packages/contracts/src/sim.ts`）。
+ * 复验：`grep -rn daysForTicks apps/frontend-shell/src packages/contracts/src`。
+ *
+ * ⚠ **这段话原本写的是「全仓零消费方」，本单接上之后它就成了假话** ——
+ * 被 `node scripts/check-stale-claims.mjs` 的 STALE-4 当场咬红逼出来的，不是人想起来的。
+ * 教训：**描述"当时的观测"要用不会被读成"现状"的措辞** —— 一句「零消费方」留在活注释里，
+ * 前后包多少「这是沿革」都没用：下一个读者只会读到那六个字。
  *
  * **Y（本单落地）**：三处统一走本文件，标签按「天」说人话。
  *

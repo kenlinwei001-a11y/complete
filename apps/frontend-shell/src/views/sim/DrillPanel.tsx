@@ -134,7 +134,7 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
    * `contracts-only-shared` 约定要的形态 —— 编译期读同一个源，比运行时再打一跳更强，
    * 因为它连「版本漂移」都不可能发生。
    *
-   * ⛔ **为什么不 `useQuery(fetchDrillCatalog)`**（这条踩过，别改回去）：
+   * ⛔ **为什么不 `useQuery(fetchDrillCatalog)`**（2026-08-25 实测踩过，别改回去）：
    * 本面板挂在推演沙盘上，而**全仓大量前端测试对 `@/api/endpoints` 做整体替换式 mock**
    * （`vi.mock("@/api/endpoints", () => ({...}))`，没有 `importOriginal`）。
    * 给共享视图**在渲染期**新增一个 endpoint 依赖 ⇒ 那些 mock 里没有这个导出 ⇒
@@ -296,7 +296,9 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
 
           {/* 求解器回执 —— 「求解器真被调用」这件事屏上可见，不必开 network 面板 */}
           {/*
-            状态变量**三层重排**（根源 / 枢纽 / 末端）—— 层级现算，不手工登记。
+            状态变量**三层重排**（根源 / 枢纽 / 末端）—— 层级现算，不手工登记（2026-08-25）。
+            复验：`GET /a/v1/sim/drill/state-var-layers`（后端唯一实现 `sim/drill-scan.ts` 的
+            `layerOfStateVars`）—— 前端只消费，不算第二份；改边集则该端点回包跟着变。
             为什么值得单独一段：仓主的分层判据「库存是衍生不是根源」在数据上成立，
             而屏上一直没有任何东西表达它 —— 用户看到 36 个平铺的变量，
             分不出「扰它有意义」（根源）与「扰它等于从半路插入」（末端）。

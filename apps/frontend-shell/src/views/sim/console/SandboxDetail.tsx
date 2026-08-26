@@ -99,7 +99,7 @@ const CD_TRANSIT = shortNodeLabel("delivery.transit", "干线在途");
  * 后端 `apps/datacore/src/synthetic/battery.ts` 更是对不在册的基地名**直接抛**
  * （`基地「X」不在 BASE_REGISTRY 单一来源册`）。前端视图理应同册。
  *
- * ⚠ **本单实测：规格占位里的「盐城」在 `BASE_REGISTRY` 13 个基地里一条都没有**
+ * ⚠ **本单实测（2026-08-24）：规格占位里的「盐城」在 `BASE_REGISTRY` 13 个基地里一条都没有**
  *   （复验：`grep -rn 盐城 packages/contracts/src/` = 0 命中；金丝雀「常州」同命令命中 5 文件
  *   ⇒ 工具是好的）。也就是说这一页此前把一个**本系统并不存在的基地**画在屏上，
  *   同名的东西拿去问后端会被上面那句 throw 挡掉。故本单把它换成在册基地（扬州，同属江苏），
