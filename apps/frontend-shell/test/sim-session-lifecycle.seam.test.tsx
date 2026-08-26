@@ -333,16 +333,20 @@ describe("WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门",
     sessionsMode = "throw";
     mount();
     const bar = await lifecycleReady();
-    expect(bar.getAttribute("data-status")).toBe("no-session"); // 清单炸了 ⇒ 壳压根没解析出会话
+    // 清单炸了 ⇒ **不知道**（不是"没有会话"）—— 这两句在屏上必须分得开
+    expect(bar.getAttribute("data-status")).toBe("unavailable");
     const absentText = screen.getByTestId("usim-status-absent").textContent ?? "";
-    expect(absentText).toContain("没有会话");
+    expect(absentText).toContain("不知道它现在是什么状态");
+    expect(absentText).not.toContain("没有会话，也就没有状态可迁移");
 
     // 另一态：清单回来了，但里面没有指名那一条 —— 显式指定会话时才到得了
     cleanup();
     sessionsMode = "absent";
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <UnifiedSimShell view={{ key: "k", title: "t", renderer: "r", options: { sessionId: SESSION_ID } }} />
+        <UnifiedSimShell
+          view={{ key: "k", title: "t", renderer: "r", layout: undefined, options: { sessionId: SESSION_ID } }}
+        />
       </QueryClientProvider>,
     );
     const bar2 = await lifecycleReady();
@@ -395,6 +399,28 @@ describe("WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门",
     expect(un.textContent).toContain("算不出来");
     expect(un.textContent).toContain("派生规格 Base.capacity");
     expect(screen.queryByTestId("usim-impact-leaf")).toBeNull();
+  });
+
+  it("⑨ 暂停不是单程路：暂停之后「恢复」仍然点得动，且真能迁回 RUNNING（2026-08-26 真浏览器实测抓到的死路，机器从此先说话）", async () => {
+    mount();
+    await lifecycleReady();
+    await userEvent.click(screen.getByTestId("usim-status-paused"));
+    const bar = screen.getByTestId("usim-lifecycle");
+    await waitFor(() => expect(bar.getAttribute("data-status")).toBe("PAUSED"));
+
+    // ⛔ 这一条就是那条死路的机器化：自动选取只认 RUNNING ⇒ 会话一暂停就被丢掉 ⇒
+    //    「恢复」按钮当场变灰 —— 把它恢复回来的那个按钮被它自己按没了。
+    const resume = screen.getByTestId("usim-status-running") as HTMLButtonElement;
+    expect(resume.disabled).toBe(false);
+    // 屏上要明说"这块屏还盯着它"，不许闷着（钉住 ≠ 冒充 RUNNING）
+    const reason = screen.getByTestId("usim-session-reason");
+    expect(reason.getAttribute("data-pinned")).toBe("1");
+    expect(reason.textContent).toContain("已经不是 RUNNING");
+
+    await userEvent.click(resume);
+    await waitFor(() => expect(bar.getAttribute("data-status")).toBe("RUNNING"));
+    expect(patchCalls.map((c) => c.status)).toEqual(["PAUSED", "RUNNING"]);
+    expect(screen.getByTestId("usim-session-reason").getAttribute("data-pinned")).toBe("0");
   });
 
   it("⑧ 波及面这一跳没走通 ⇒ 「不知道有没有波及」，与 ⑦ 的「不波及任何下游」字面不同", async () => {

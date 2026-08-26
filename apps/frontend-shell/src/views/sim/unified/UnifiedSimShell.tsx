@@ -367,7 +367,32 @@ function ChangeImpactSection({
 
 export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.Element {
   const session = useConsoleSession(view?.options);
-  const sessionId = session.sessionId;
+
+  /**
+   * ══ 壳**钉住**它正在控制的那个世界 ═══════════════════════════════════════════
+   *
+   * **这不是优化，是「暂停」能不能用的前提**（2026-08-26 真浏览器实测抓到，绿测试没抓到）：
+   * `useConsoleSession` 的自动选取**只认 RUNNING**（`pickLatestRunningSession`，那条规则本身是对的
+   * —— 拿 PAUSED/ENDED 冒充"当前"会让屏上的数与用户正在推的世界对不上）。
+   * 于是接上迁移之后出现了一条**单程路**：按下「暂停」⇒ 会话不再 RUNNING ⇒ 自动选取当场丢掉它 ⇒
+   * 状态位翻成「没有会话」、三个按钮一起变灰 —— **把它恢复回来的那个按钮，被它自己按没了**。
+   * 实测原文（真浏览器）：`data-status=no-session` / 「没有会话，也就没有状态可迁移」。
+   *
+   * 正确的语义是：**用户在这块屏上盯着的那个世界，不因为它停下来了就不再是"这块屏在看的世界"。**
+   * 故壳一旦解析出会话就钉住它；钉住 ≠ 冒充 RUNNING —— 状态条照实印 PAUSED/ENDED，
+   * 且屏上明说「自动选取已经不会再选中它了」。
+   *
+   * ⛔ 修法刻意**不动** `useConsoleSession`：那条 hook 是四页共用的（且属别的边界），
+   *   把「只认 RUNNING」放宽会连带改掉四页的取数语义 —— 那是另一件事。
+   */
+  const [pinnedSessionId, setPinnedSessionId] = useState<string | null>(null);
+  if (session.sessionId !== undefined && session.sessionId !== pinnedSessionId) {
+    // 渲染期改 state 的"随入参调整"官方写法：条件保证只在真的换了世界时走一次，不会自激。
+    setPinnedSessionId(session.sessionId);
+  }
+  /** 钉住的那个世界正在被用，而自动选取已经不认它了 —— 这件事屏上要说，不许闷着。 */
+  const usingPinned = session.sessionId === undefined && pinnedSessionId !== null;
+  const sessionId = session.sessionId ?? pinnedSessionId ?? undefined;
   const enabled = sessionId !== undefined && sessionId !== "";
 
   const [mode, setMode] = useState<UnifiedMode>("now");
@@ -464,12 +489,18 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
   );
   const origin = useMemo(() => (current === undefined ? null : readSnapshotOrigin(current.scope)), [current]);
   const statusState: SessionStatusState = useMemo(() => {
-    if (!enabled) return { kind: "no-session" };
+    if (!enabled) {
+      // 「压根没有会话」与「不知道有没有会话」不是一回事 —— 沿用 `useConsoleSession` 已经分好的那五态，
+      // 不在这里把它们又揉成一句（揉了就是把上游辛苦分出来的区别当场丢掉）。
+      if (session.reason === "unavailable") return { kind: "unavailable" };
+      if (session.reason === "loading") return { kind: "loading" };
+      return { kind: "no-session" };
+    }
     if (current !== undefined) return { kind: "known", status: current.status };
     if (sessionsQ.isLoading) return { kind: "loading" };
     if (sessionsQ.isError) return { kind: "unavailable" };
     return { kind: "absent" };
-  }, [enabled, current, sessionsQ.isLoading, sessionsQ.isError]);
+  }, [enabled, session.reason, current, sessionsQ.isLoading, sessionsQ.isError]);
 
   const wall = useMemo(
     () =>
@@ -594,7 +625,11 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
           <span className={styles.statusKey}>会话 </span>
           {sessionId ?? "—"}
         </span>
-        <span className={styles.calibre}>{SESSION_REASON_TEXT[session.reason]}</span>
+        <span className={styles.calibre} data-testid="usim-session-reason" data-pinned={usingPinned ? "1" : "0"}>
+          {usingPinned
+            ? "这块屏继续盯着刚才那个世界 —— 它已经不是 RUNNING 了，自动选取不会再选中它"
+            : SESSION_REASON_TEXT[session.reason]}
+        </span>
         <span data-testid="usim-origin" data-origin-kind={origin?.kind ?? "unknown"} className={styles.calibre}>
           {origin === null
             ? current === undefined
