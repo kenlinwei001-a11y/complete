@@ -102,11 +102,11 @@
 
 | key（组件） | ① 它回答用户的哪个问题 | ② 对决策有什么价值（看完下一步做什么） | ③ 今天的数据够不够 | ④ 和哪几个重叠 | ⑤ 导航入口 | ⑥ 行数 | ⑦ 处置 |
 |---|---|---|---|---|---|---|---|
-| **sop-balance**<br>`sim/SopBalanceView.tsx` | 「下个月订单接不接得下、缺的那部分谁来补、这版计划谁批」 | **能**：走完五步 → 点「定稿」→ 生成 `定稿月度计划版本` Action 草案进审批队列（真写链路，`:330`）。 | **接了线没数据**。`GET /a/v1/sop/versions` → **`[]`**。种子零条版本 ⇒ 首屏只有「选择或新建一个月度版本」（`:305`）＋左栏空态（`:301`）。用户必须先自己点「新建」。子面板 `mrp_netting`（12 种物料真缺口）/ `finance_pnl`（收入 700/成本 581.1/毛利率 17%）都回真值，但**都锁在选中版本之后**（`:306` `v && <VersionDetail>`）。 | `quarterly-rolling` / `annual-scenario`（年→季→月同一族三层）；`plan-generate`（A组，同样产「计划建议」）；`plan-audit`（A组，同样对同一版计划下判断） | **有**（「规划与平衡」组，`:279`） | 1108 + 0 CSS + 局部依赖 1413（`shared.tsx` 205 · `reasoningGraph.ts` 215 · `EdgeActivePanel` 502 · 其余共享）+ **0 专属测试** | **留（接进导航）** —— 已在导航；欠的是**种子数据**，不是入口 |
+| **sop-balance**<br>`sim/SopBalanceView.tsx` | 「下个月订单接不接得下、缺的那部分谁来补、这版计划谁批」 | **能**：走完五步 → 点「定稿」→ 生成 `定稿月度计划版本` Action 草案进审批队列（真写链路，`:330`）。 | **接了线没数据**。`GET /a/v1/sop/versions` → **`[]`**。种子零条版本 ⇒ 首屏只有「选择或新建一个月度版本」（`:305`）＋左栏空态（`:301`）。用户必须先自己点「新建」。子面板 `mrp_netting`（12 种物料真缺口）/ `finance_pnl`（收入 700/成本 581.1/毛利率 17%）都回真值，但**都锁在选中版本之后**（`:306` `v && <VersionDetail>`）。 | `quarterly-rolling` / `annual-scenario`（年→季→月同一族三层）；`plan-generate`（A组，同样产「计划建议」）；`plan-audit`（A组，同样对同一版计划下判断） | **有**（「规划与平衡」组，`:279`） | 1108 + 0 CSS + 1413 helper（`shared.tsx` 205 · `reasoningGraph.ts` 215 · `EdgeActivePanel` 502 · 其余）+ **0 专属测试** = 2521 | **留（接进导航）** —— 已在导航；欠的是**种子数据**，不是入口 |
 | **physical-topology**<br>`sim/PhysicalTopologyView.tsx` | 「13 个基地 × 10 道工序，哪个格子最堵、堵在哪台设备」 | **能**：热力矩阵定位到 基地×产线，OEE + 节拍 + 在制量三个数同格 → 调产 / 转产 / 修那台设备。 | **数据够**。三个聚合都回真值：`EquipmentOEE` 按 `baseId+lineId` 出 `avg_oee`（常州 assembly 0.816…）；`Equipment` 出 `count_equipId=6`/线；`WIPLot` 按 `lineId` 出 `sum_qty`（8079/4213/…）；`Workshop` **total=130**。 | `chain-line-map`（同一块沙盘画布的两个档，同一排控件、不同画法）；`geo-map`（同一批 13 基地，地图 vs 矩阵）；`sim-console`（A组，同为「现状」屏） | **无**（无条件收编 `:130`）。到达 = 沙盘中栏画布模式条「物理拓扑」，或手打 `/v/physical-topology` | 524 + 507 CSS + 891 helper + **1016 专属测试** = 2938 | **留（作为 `sim-sandbox` 的画布档）** |
-| **chain-line-map**<br>`sim/ChainLineMapView.tsx` | 「这张订单从下单到回款，时间都耗在哪一段」 | **能**：18 个节点各自吃掉多少全链损失（`attribution` 18 条 + `conservation` 守恒校验）→ 去压缩最长那段。 | **数据够**。`chain_loss_attribution` 回 `anchor`（SO-3391/广汽/合肥/`selection` 写明锚点怎么选的）+ `nodes` 18 + `attribution` 18 + `totals`/`conservation`。 | `node-inspector`（**同一份**载荷，一个画图一个看单点）；`transit-flow`（是它的图层，不是另一页）；`order-chain`（`OrderChainView.tsx:1275` 直接 `import` 并内嵌本组件）；`sim-unified` 的 `linemap` 档 | **无**（无条件收编 `:129`）。到达 = 沙盘画布**默认**档 + `sim-unified` 顶部「产销线路图」档 + 订单页内嵌 | 1008 + 394 CSS + 1590 helper + **1105 专属测试** = 4097 | **留（作为 `sim-unified` / `sim-sandbox` 的图档）** |
+| **chain-line-map**<br>`sim/ChainLineMapView.tsx` | 「这张订单从下单到回款，时间都耗在哪一段」 | **能**：18 个节点各自吃掉多少全链损失（`attribution` 18 条 + `conservation` 守恒校验）→ 去压缩最长那段。 | **数据够**。`chain_loss_attribution` 回 `anchor`（SO-3391/广汽/合肥/`selection` 写明锚点怎么选的）+ `nodes` 18 + `attribution` 18 + `totals`/`conservation`。 | `node-inspector`（**同一份**载荷，一个画图一个看单点）；`transit-flow`（是它的图层，不是另一页）；`order-chain`（`OrderChainView.tsx:1275` 直接 `import` 并内嵌本组件）；`sim-unified` 的 `linemap` 档 | **无**（无条件收编 `:129`）。到达 = 沙盘画布**默认**档 + `sim-unified` 顶部「产销线路图」档 + 订单页内嵌 | 1008 + 394 CSS + 2481 helper + **1105 专属测试** = 4988 | **留（作为 `sim-unified` / `sim-sandbox` 的图档）** |
 | **chain-impediments**<br>`sim/ChainImpedimentView.tsx` | 「今天全链哪里被卡住了、凭哪条规则说它卡」 | **半能**：17 条阻滞点带规则码与阈值（如 常州 `C34` 实测 2933.58 套/日 > 阈值 1760），**但 17 条里只有 4 条给得出方案**，另 13 条 `candidates: []` + `noCandidateReason` 明写「有效候选 0 个（探了 10 个杠杆锚点/34 次试算）…LOCUS_PROP 够不着」。⇒ 大多数条目止步于「知道常州卡了」，**下一步动作断在这里**。 | **接了线，数据一半空**。`chain_impediments` 回 17 条（BOTTLENECK 4 / CONGESTION 6 / BREAK 7；dataMode SYNTHETIC 15 / PARTIAL 2），`candidates` 非空的只 4 条。 | `process-wait`（业务流程层的「在等什么」）；`process-stuck`（实例层）；`node-inspector`（同一批节点的另一面） | **无**（无条件收编 `:133`）。到达 = 沙盘主屏阻滞点统计条 + 逐条清单 | 459 + 360 CSS + 809 helper + **148 专属测试** = 1776 | **留（作为 `sim-sandbox` 的档）** |
-| **node-inspector**<br>`sim/InspectorNodePanel.tsx` | 「这一道工序的时间花在哪五段、我能拧的旋钮有哪几个」 | **只增加认知，不导向决策**。七类变量 T/K/B/C/P/R/S 的输入控件**转了不去任何地方**：`onNumber → commit → setValues + onValuesChange?.(next)`（`:685`），而 `onValuesChange` **全仓零生产消费方**（`grep -rn 'onValuesChange' apps/frontend-shell/src apps/frontend-shell/test` = **4** 处，全在本文件 `:642/:654/:685/:687`；金丝雀 `fetchDrillStateVarLayers` 同法 12 处 ⇒ 检索是好的）。⇒ 拧完不重算、不落库、不通知任何人。 | `chain-line-map`（**同一份** `chain_loss_attribution`）；`sim-unified` 的 `InspectorPane`（`InspectorPane.tsx:8` 自己写明「为什么另写而不是复用 `InspectorNodePanel`」⇒ 两份右栏检视并存） | **无**（无条件收编 `:131`）。到达 = 沙盘右栏常驻检视面板 → 页签「变量输入」 | 1052 + 832 CSS + 1435 helper + **85 专属测试** = 3404 | **并入 `chain-line-map`（做它的下钻栏）** —— 输入控件在有去处之前应当摘掉或明标只读 |
+| **node-inspector**<br>`sim/InspectorNodePanel.tsx` | 「这一道工序的时间花在哪五段、我能拧的旋钮有哪几个」 | **只增加认知，不导向决策**。七类变量 T/K/B/C/P/R/S 的输入控件**转了不去任何地方**：`onNumber → commit → setValues + onValuesChange?.(next)`（`:685`），而 `onValuesChange` **全仓零生产消费方**（`grep -rn 'onValuesChange' apps/frontend-shell/src apps/frontend-shell/test` = **4** 处，全在本文件 `:642/:654/:685/:687`；金丝雀 `fetchDrillStateVarLayers` 同法 12 处 ⇒ 检索是好的）。⇒ 拧完不重算、不落库、不通知任何人。 | `chain-line-map`（**同一份** `chain_loss_attribution`）；`sim-unified` 的 `InspectorPane`（`InspectorPane.tsx:8` 自己写明「为什么另写而不是复用 `InspectorNodePanel`」⇒ 两份右栏检视并存） | **无**（无条件收编 `:131`）。到达 = 沙盘右栏常驻检视面板 → 页签「变量输入」 | 1052 + 832 CSS + 2910 helper + **85 专属测试** = 4879 | **并入 `chain-line-map`（做它的下钻栏）** —— 输入控件在有去处之前应当摘掉或明标只读 |
 | **transit-flow**<br>`sim/TransitFlowLayer.tsx` | 「这批货现在在路上还是在车间、几号到、卡在哪个关口」 | **能（薄）**：批次带 ETA / 清关 / 到货检 ⇒ 催单、改排产。 | **数据够但很薄**。七个对象类型 total 实测：`InterBaseTransfer` **17** · `Shipment` **13** · `WIPLot` **260** · `Cadence` **8** · `PurchaseOrder` **30** · `CustomsClearance` **1** · `IncomingInspection` **30**。`CustomsClearance` 只有 1 条 ⇒「清关区间」这一段在屏上基本是单点。 | `chain-line-map`（它自称、也确实是这张图的**图层**）；`procurement-legs`（同一批 PO / 清关 / IQC 对象，换个问法） | **无**（无条件收编 `:132`）。到达 = 沙盘线路图上的「在途批次图层」勾选框 | 1202 + 477 CSS + 2583 helper + **1306 专属测试** = 5568 | **留（作为 `chain-line-map` 的图层，不做独立页）** |
 | **procurement-legs**<br>`sim/ProcurementLegsView.tsx` | 「这批料晚在哪一段、今天该打哪通电话」 | **能，且是本组最硬的一页**：`kit_readiness` 每个缺料项带四段腿 + 每段的 owner 与 ownerRef —— 实测 SO-3391 的电解液缺 750.344，四段是 供应商生产 12 天（宇部兴产）/ 在途 18 天（远洋班轮-海运）/ 清关 3 天（洋山报关行）/ 到货检，全部 `status: MEASURED`。**看完就知道该给谁打电话。** | **数据够**。`kit_readiness` 回 8 张单，row0 有 4 个缺料项，`procurement.legs[]` 四段齐全带 `source.objectType/objectIds/field`。 | `order-chain`（`OrderChainView.tsx:925` 也调 `kit_readiness`，只是不展开四段腿）；`transit-flow`（同一批对象） | **有条目但今天不可见**（`:445` `consolidatedWhen: "sim.sandbox"` 已命中）。到达 = 沙盘「归因」模式 → 档「采购四段腿」 | 489 + 568 CSS + 1985 helper + **938 专属测试** = 3980 | **留（接进导航）** —— 全组唯一「看完就能打电话」的页，却被收编藏到两跳之后 |
 | **annual-scenario**<br>`plan/AnnualScenarioView.tsx` | 「明年按保守/基准/激进三种走法，各要投多少钱、赚多少、踩不踩红线」 | **能**：三情景卡各带 `finance{revenue/capex/irr}` + `ruleChecks`（C18 现金垫底线 / C23 CAPEX 门槛）+ 8 季 capex 曲线 → 选一个 → `createActionDraft` 挂牌进审批。 | **数据够**。`GET /a/v1/plan/aop?year=2026` 回 3 个情景，保守档 `demand 283.5 / revenue 529.2 / capex 3 / irr 0.095`，`ruleChecks` 两条全 passed，`capexScenario` 8 个季度。 | `quarterly-rolling` / `sop-balance`（年→季→月同族）；`plan-generate`（A组） | **有**（「规划与平衡」组，`:279`） | 346 + 0 CSS + 0 helper + **0 专属测试** | **留（接进导航）** —— 已在；346 行做三情景决策，性价比最高的一页 |
@@ -125,7 +125,7 @@
 
 **分布：砍 2 · 并 3 · 留（接进导航）5 · 留（下钻/图层/档）6**
 
-### 2.1 · 砍（2 页 · 1412 行）
+### 2.1 · 砍（2 页 · 1,412 行，其中组件本体 1,075 行）
 
 **`review`（运营复盘，280 行）**
 - 证据：`curl -s -H "$H" 'http://127.0.0.1:4001/a/v1/history/bundle?page=1&pageSize=3'`
@@ -148,7 +148,7 @@
 - 第二候选 `Line/ProductionSchedule` 回 `0 个共享瓶颈,0 张单争用,0 张被降级`（全空）。
 - ⇒ 这是「求解器能力展示页」，不是用户的问题。降为 admin/开发者页或砍掉。
 
-### 2.2 · 并（3 页 · 1834 行）
+### 2.2 · 并（3 页 · 5,275 行，其中组件本体 1,448 行）
 
 **`quarterly-rolling` → 并入 `annual-scenario`**
 - 156 行，一张双条形图 + 事件标签。唯一动作是 `QuarterlyRollingView.tsx:41`
@@ -227,7 +227,7 @@
 | **`process-stuck`** | **1490** | **三条路全断**：`view.process-stuck` + `process.runtime` 双关 ⇒ 导航无 / 深链 404 / 沙盘不出按钮 / 端点 `FEATURE_NOT_FOUND` | `curl -s -H "$H" $A/a/v1/process-instances/stuck` |
 | **`sim-unified`** | 3586 | 端点全通，但 `measuredCells: 0 / derivedCells: 4373` ⇒ 37 张卡的起点全是 hash 派生占位；`unit` 全 `null`；8 档里 3 档 `pending` | `curl -s -H "$H" $A/a/v1/sim/sessions` |
 | **`chain-impediments`** | 1776 | 17 条阻滞点里 **13 条 `candidates: []`**，`noCandidateReason` 写明「有效候选 0 个…LOCUS_PROP 够不着」⇒ 大多数条目走不到「怎么办」 | `curl -s -X POST -H "$H" -H 'content-type: application/json' -d '{"args":{}}' $B/b/v1/solvers/chain_impediments/run` |
-| **`sop-balance`** | 1108+ | `/a/v1/sop/versions` → `[]`，首屏空态；顶栏六个 KPI 与五步法全锁在「先新建一个版本」之后 | `curl -s -H "$H" $A/a/v1/sop/versions` |
+| **`sop-balance`** | 2521 | `/a/v1/sop/versions` → `[]`，首屏空态；顶栏六个 KPI 与五步法全锁在「先新建一个版本」之后 | `curl -s -H "$H" $A/a/v1/sop/versions` |
 | **`review`** | 280 | `/a/v1/history/bundle` → `NOT_FOUND`，整页渲染成一行「暂无运营态历史」 | `curl -s -H "$H" '$A/a/v1/history/bundle?page=1&pageSize=3'` |
 | **`process-wait`**（半条） | 2457 | 模板层 65 条真值够；现场层（每站卡单计数）随 `process-stuck` 一起 404，页面静默降级 | 同 `process-stuck` |
 | **`transit-flow`**（半条） | 5568 | 端点全通但**很薄**：`CustomsClearance` 只有 **1** 条，`Cadence` 8 条 ⇒「清关区间」在屏上是单点 | `curl -s -H "$H" '$A/a/v1/objects?type=CustomsClearance&page=1&pageSize=1'` |
@@ -269,16 +269,25 @@
 
 ## §6 · 行数总账（本组 16 页）
 
-| 分类 | 页数 | 组件行 | +CSS | +同目录 helper | +专属测试 | 合计 |
-|---|---|---|---|---|---|---|
-| 砍 | 2 | 1,075 | 0 | 176 | 161 | **1,412** |
-| 并 | 3 | 1,448 | 832 | 1,435 | 85 | **3,800** |
-| 留（接进导航） | 5 | 4,256 | 850 | 5,168 | 1,597 | **11,871** |
-| 留（下钻/图层/档） | 6 | 4,000 | 2,974 | 6,946 | 3,769 | **17,689** |
+**口径**：组件行 = 该 renderer 的 `.tsx`；CSS = 同名 `.module.css`；helper = 该组件用 `./x` 直接
+引入的同目录 `.ts/.tsx`（**含被多页共享的**，见下方警告）；测试 = 文件名点名该页的 `.test.ts(x)`。
 
-⚠ helper 列有**重复计入**：`chainLineMap.ts`（1475）被 4 页共享、`physicalTopology.ts`（891）被 2 页共享。
-去重后本组独占 helper 约少 3,700 行。**这一列不许当作「砍掉能省多少」直接相加** ——
-共享 helper 砍掉一页并不消失。
+| 分类 | 页数 | 组件行 | +CSS | +helper | +专属测试 | 合计 |
+|---|---|---|---|---|---|---|
+| 砍（`review` `cleanroom-attr`） | 2 | 1,075 | 0 | 176 | 161 | **1,412** |
+| 并（`quarterly-rolling` `geo-map` `node-inspector`） | 3 | 1,448 | 832 | 2,910 | 85 | **5,275** |
+| 留·接进导航（`sop-balance` `annual-scenario` `order-chain` `procurement-legs` `sim-unified`） | 5 | 4,256 | 850 | 5,168 | 1,597 | **11,871** |
+| 留·下钻/图层/档（`physical-topology` `chain-line-map` `chain-impediments` `transit-flow` `process-wait` `process-stuck`） | 6 | 4,178 | 2,368 | 7,882 | 4,789 | **19,217** |
+| **合计** | **16** | **10,957** | **4,050** | **16,136** | **6,632** | **37,775** |
+
+对账：组件行合计 10,957 = 16 个 `.tsx` 的 `wc -l` 直接相加（复验：
+`wc -l apps/frontend-shell/src/views/{sim/SopBalanceView,…}.tsx` 末行 `10957 total`）。
+
+⚠ **helper 列有重复计入，不许当作「砍掉能省多少」直接相加**：
+`chainLineMap.ts`（1,475 行）被 `chain-line-map` / `node-inspector` / `transit-flow` /
+`procurement-legs` **4 页共用**，`physicalTopology.ts`（891 行）被 2 页共用
+⇒ 至少 **5,316 行是重复计的**。共享 helper 砍掉一页并不消失。
+（不去重是刻意的：去重要先定「这行算谁的」，那是分账不是取证；本单只报可复验的原始数。）
 
 ---
 
