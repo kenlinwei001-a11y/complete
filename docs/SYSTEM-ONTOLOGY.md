@@ -1533,11 +1533,79 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 形态就是本仓那一句：**「我用『这一页里动了几格』当作『这个世界动了几格』的证据。」**
 修法是改走端点**已有**的 `objectIds` 白名单入口（⑤e-桥② 早就在用的那条路，`truncated:false` 作诚实闸），
 **不是**把 limit 调大（那只是把运气的赌注加大），更**不是**给端点开"全量"口子（那道封顶挡的是浏览器 OOM）。
+### 根源扰动层 · 三根源（WO-SIM-ROOT-TRIAD · 2026-08-25 · `apps/datacore/src/seed.ts`）
+
+> ⚠ **本节原标题写「传导规则 35 → 39 · 根源 3 → 5」，那是本单单独度量的数，收编后已过期。**
+> 本单与 `WO-SIM-ROOT-PROCUREMENT` 各自基于 35 条独立开发，合并后由**机器现算**（不是两边加法）：
+> **传导边 42**（`sourceStateVar` 与 `targetStateVar` 两侧计数一致，金丝雀过）·
+> **状态变量 40**（source ∪ target 去重）· **根源 6 · 枢纽 14 · 末端 20**（6+14+20 = 40，自洽）。
+> 根源六个：`deliveryDelay` · `equipmentFailure` · `forecastBias` · `orderChurn` · `priceShock` · `procurementDelay`。
+> ⚠ **`demandPressure` 已由根源降级为枢纽**（入度 1 · 出度 2）—— 本单 G-ROOT-1 的
+> `forecastBias → demandPressure` 有意为之（预测偏差带方向，需求压力不带），**不是回归**。
+> 收编时 `WO-SIM-ROOT-PROCUREMENT` 接缝测试的金丝雀因此改指 `deliveryDelay`（仍是入度 0），
+> 并加了一条反向断言钉住「降级是有意的」。下文保留本单开发时的原始度量，读时以本框为准。
+
+**来历**：仓主给的扰动因素**分层判据** ——「要找的是**根源**扰动因素，不是**衍生**因素
+（比如库存就是衍生因素），而物料采购是根源扰动因素……比如销售预测的准确性，
+订单临时插单或取消，包括产线设备的估值」。目标是**经营决策与生产的弹性、韧性**。
+
+**判据落到图上**：**根源 = 传导图里入度 0 的量纲** —— 没有任何规则写它，只能被外部打进来。
+衍生量纲（如库存侧的 `shortageRisk`，入度 2）扰它等于**从半路插入**，推演结论会失真。
+本单之前全世界只有 3 个根源（`demandPressure` / `deliveryDelay` / `priceShock`），
+且都对不上「预测准不准 · 客户临时插单 · 设备坏了」这三个高频经营场景。
+
+| 记号 | 新量纲（中文名） | 落点类型 | 传导边（现算入度均为 0） |
+|---|---|---|---|
+| G-ROOT-1 | `forecastBias` 销售预测偏差（正=高估） | `Model` | `Model.forecastBias --model_demanded_by_order--> Order.demandPressure`（**系数 −0.6**） |
+| G-ROOT-2 | `orderChurn` 订单变更压力 | `Order` | `--order_has_line--> OrderLine.splitPressure`(0.7) · `--order_for_model--> Model.demandLoad`(0.5) |
+| G-ROOT-4 | `equipmentFailure` 设备故障率 | `Equipment` | `--equip_used_in--> Process.queuePressure`(0.6) |
+
+**🔴 `demandPressure` 由根源降级为一级衍生（入度 0 → 1）—— 有意的模型修正，不是副作用。**
+语义上「需求压力」**没有方向**，而「预测偏差」有：正 = 高估（按虚高的预测备产 ⇒ 真实订单需求压力
+**低于**计划）· 负 = 低估（实际需求打穿计划 ⇒ 需求压力上冲，全链告急）。故 G-ROOT-1 是
+**本表第一条负系数**（契约 `coefficient: z.number()` 本就允许，`ontology/invariants.ts` 的
+`causal_coefficient_within_ceiling` 早已按 `Math.abs` 判，上限 1）。正系数会把「高估」读成
+「需求更旺」，方向恰好反了 —— 那是这个量纲最容易被写错的地方。
+
+**⚠ 落点与 `world.state` 是同一个动作，不是两件事**（本单开工时最担心的假绿形态，实测后判定不成立）：
+`sim/seed-world.ts` 的 `deriveSeedBaseSnapshot` 铺格子的口径是 **`varsByType(rules)` —— 规则触及的
+「类型 × 该类型被触及的变量」，source/target 两端都算**。所以加一条规则，它两端类型的每个对象当场多一格；
+反过来删了规则，格子也跟着消失（不留孤儿指标）。⇒ 本单**零** `world.state` 手工投放代码。
+真正的坑在另一侧：**状态变量不许登记成 `PropertyDef`**（见下一节 ⛔ 与
+`statevar-display-name.seam.test.ts ⑥`），登记了才会出现「屏上施加成功、下游一动不动」。
+
+**⚠ 两处「派单要的边接不到，改接哪里、为什么」（实测结论，不是绕路）**：
+- `orderChurn → releasePressure`（工单下达）**接不到**：`releasePressure` 挂在 `WorkOrder` 上，
+  而 **`workOrderProps` 只有 `modelId`/`lineId`/`baseId` 三个 FK，根本没有订单引用**
+  ⇒ 连一条确定性的 `Order→WorkOrder` 边都投影不出来（硬造 = 「张冠李戴的数比没有更危险」）。
+  改接 `order_for_model` 之后 `orderChurn` 仍**真的走到** `releasePressure`，只是四跳：
+  `orderChurn → Model.demandLoad → Base.loadIndex →(delay1) Line.utilPressure → WorkOrder.releasePressure`。
+- `equipmentFailure → loadPressure` **必须多一跳**：`loadPressure` 挂在 `Equipment` 自己身上，
+  而**全表零自环 linkType**；退而挂 `EquipmentDowntime` 也不行，**两道门各堵一半** ——
+  ① `dt_for_equip` 的 linkType 声明了很久而 `service.ts` **一条实例都没物化过**（实测 `putLink` 全表零命中）
+  ⇒ 过不了 `seed-demo-propagation.test.ts` 的方向可达门；
+  ② 就算补物化，`EquipmentDowntime` 会成为**只当源不当 target** 的类型 ⇒
+  `process-tick-coverage.seam.test.ts §C4` 的 `sourceOnly` 恒空门当场红。
+  ⇒ 落在 `Equipment.equipmentFailure`，两跳到 `loadPressure`：
+  `equipmentFailure → Process.queuePressure → Equipment.loadPressure`（业务因果为真：
+  某台设备故障 ⇒ 它那道工序排队 ⇒ 该工序其余设备负荷被顶上去）。
+
+**🔴 三条新边都不构成正反馈回路**：三个新量纲**没有任何规则写它们**（这正是「根源」的定义）
+⇒ 环不闭合，不自我放大。同一条判据在档 3 `demo_po_expedite_to_supplier_review` 处已立过。
+
+**门**：`apps/datacore/test/sim-root-triad.seam.test.ts` —— 每个根源三臂
+（**入度臂**现算入度=0 + `demandPressure` 降级 · **落点臂** `world.state` 真带上且全距>0 不是 0 占位 ·
+**传导臂** 同一真世界跑基线/抬高两条线，1 跳目标断言**精确等式** `Δ = N × 系数 × D`、
+远端断言方向）。该等式成立的前提正是「它是根源」（源值逐拍恒定）⇒ 门本身也在守这条性质。
+含三个金丝雀：源码抽取器恒等式 · 入度计数器拿已知非零量纲自证 · 传导用已知走得通的老根源
+`deliveryDelay` 自证（它若也不动 ⇒ 报「引擎坏了」，不许报「新边接错了」）。
 
 ### 展示名链路 · 状态变量单源表 → 两条读时投影 → 屏上人话名（WO-STATEVAR-DISPLAYNAME · 2026-08-17）
 
 上面那 35 条传导规则**声明**了 36 个状态变量（`sourceStateVar ∪ targetStateVar`），
 而这批名字此前在屏上**一律是裸键**（`loadIndex` / `demandLoad`）。
+（⚠ **2026-08-25 起这两个数是 39 / 39** —— WO-SIM-ROOT-TRIAD 补了 4 条根源边、3 个根源量纲，
+见上一节。此处保留原文数字是为了留住这条链**当时**的来历；凡要拿它当今天的口径用，一律以现算为准。）
 
 **三分法判定 = 没接线**（不是「接了线没数据」，修法完全不同）。实测证据三条：
 - 本体侧：`loadIndex` 等在 `apps/datacore/src/synthetic/` **零命中**（金丝雀 `util` 命中 ⇒ 工具是好的）

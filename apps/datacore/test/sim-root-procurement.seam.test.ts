@@ -92,9 +92,16 @@ describe("WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SE
 
     // 🐤 金丝雀 B（同一支 `varDegrees`，不另抄一份）：拿一个**已知必中**的根源先跑一遍。
     // 它若也算不对，报的是「度数算法坏了」，**不许**报「procurementDelay 不是根源」。
-    expect(deg.get("demandPressure"), "金丝雀变量不在图里 ⇒ 度数索引坏了").toBeDefined();
-    expect(deg.get("demandPressure")!.in, "🐤 金丝雀：既有根源 demandPressure 入度必须为 0").toBe(0);
-    expect(deg.get("demandPressure")!.out).toBeGreaterThan(0);
+    // ⚠ 金丝雀原本拿 `demandPressure` 当「已知必中的根源」。**收编 WO-SIM-ROOT-TRIAD 后它不再是根源** ——
+    //   G-ROOT-1 有意加了 `forecastBias → demandPressure`（预测偏差带方向、需求压力不带），
+    //   把它从根源降级为一级衍生（入度 0 → 1）。那是**有意的模型修正，不是回归**。
+    //   故金丝雀改指 `deliveryDelay`：它在两张单之前就存在，且今天仍是入度 0。
+    //   ⛔ 不许因为金丝雀红了就把它删掉 —— 它证明的是「度数算法没瞎」，删了就没人证明了。
+    expect(deg.get("deliveryDelay"), "金丝雀变量不在图里 ⇒ 度数索引坏了").toBeDefined();
+    expect(deg.get("deliveryDelay")!.in, "🐤 金丝雀：既有根源 deliveryDelay 入度必须为 0").toBe(0);
+    expect(deg.get("deliveryDelay")!.out).toBeGreaterThan(0);
+    // 反向钉住上面那句「降级是有意的」：demandPressure 现在必须**不是**根源。
+    expect(deg.get("demandPressure")!.in, "demandPressure 应已被 forecastBias 降级为一级衍生").toBeGreaterThan(0);
 
     // 🔴 本臂标的（否定结论「入度为 0」与上面的金丝雀命中证据一同给出）。
     const d = deg.get(ROOT_VAR);

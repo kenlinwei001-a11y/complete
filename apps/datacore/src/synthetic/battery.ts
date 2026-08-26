@@ -2406,6 +2406,12 @@ export const STATE_VAR_DISPLAY_NAMES: Record<string, string> = {
   // ── D03 销售与客户：拆行 / 交期承诺 / 收货暂扣 / 逾期催收 ──
   splitPressure: "订单行拆分压力", promiseRisk: "交期承诺风险",
   deliveryHoldRisk: "收货暂扣风险", collectionPressure: "逾期催收压力",
+  // ── WO-SIM-ROOT-TRIAD · 三个**根源**扰动因素（入度 0 = 只能被外部打进来）──────────
+  // 名字逐条引自 `seed.ts` 的 `WO-SIM-ROOT-TRIAD` 段头注释，不是照英文键面意思意译。
+  // ⚠ `forecastBias` 是本表**唯一带方向**的量纲（正=高估 / 负=低估），中文名把方向写进去 ——
+  //   下拉里只写「销售预测偏差」，用户填 +10 时无从知道那是"多估了"还是"少估了"，
+  //   而这条边的系数是**负**的（高估 ⇒ 需求压力下修），方向搞反读数就整条反了。
+  forecastBias: "销售预测偏差（正=高估）", orderChurn: "订单变更压力", equipmentFailure: "设备故障率",
 };
 
 /**

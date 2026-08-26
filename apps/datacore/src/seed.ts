@@ -1098,6 +1098,154 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
+  // WO-SIM-ROOT-TRIAD · 三个**根源**扰动因素（G-ROOT-1 / G-ROOT-2 / G-ROOT-4）
+  //
+  // 判据（仓主给的分层口径）：**根源** = 传导图里入度 0 的量纲 —— 没有任何规则写它，
+  // 只能被外部打进来。衍生因素（库存 `shortageRisk` 入度 2）扰它等于**从半路插入**，
+  // 推演结论会失真。本单之前全世界只有 3 个根源（`demandPressure` / `deliveryDelay` /
+  // `priceShock`），且都对不上「预测准不准 · 客户临时插单 · 设备坏了」这三个高频经营场景。
+  //
+  // ── ⚠ 落点为什么不需要单独"投进 world.state" ──────────────────────────────────────
+  // `sim/seed-world.ts` 的 `deriveSeedBaseSnapshot` 铺格子的口径是
+  // **`varsByType(rules)` —— 规则触及的「类型 × 该类型被触及的变量」两端都算**。
+  // 所以「加一条规则」与「落点进 state」是**同一个动作**，不是两件事：规则一进来，
+  // 它两端类型的每个对象当场多一格。这正是它注释里那句「少铺不是抠库容，是不造假指标」的另一面。
+  // ⇒ 本段**零** `world.state` 手工投放代码；反过来说，谁把规则删了，格子也跟着消失（不留孤儿指标）。
+  //
+  // ── ⚠ 三条边的落点全部受两道既有门约束，改路线前先读它们 ────────────────────────
+  //  ① `test/sim-rule-domain.seam.test.ts` 的**方向可达门**：`source --viaLinkKey--> target`
+  //     必须在**真链路表**上走得通。声明了 linkType 但 `service.ts` 从没物化过实例的边
+  //     （`dt_for_equip` / `oee_for_equip` / `maint_for_equip` 都是这一类）**用不了**。
+  //  ② `test/process-tick-coverage.seam.test.ts` §C4 的 `sourceOnly` 恒空门：
+  //     任何规则端点类型都必须**同时**是某条规则的 target，否则屏上标着「随节拍变」而读数恒定。
+  //     ⇒ 新变量不能挂在一个**只当源**的新类型上（`EquipmentDowntime` 就属这种，故被排除，见 G-ROOT-4）。
+  // ══════════════════════════════════════════════════════════════════════════════════
+
+  // ── G-ROOT-1 · 销售预测偏差：型号预测偏差 → 订单需求压力 ──────────────────────────
+  //
+  // 🔴 **本条把 `demandPressure` 从根源降级为一级衍生** —— 这是有意的模型修正，不是副作用。
+  // 语义上现有的 `demandPressure`（需求压力）**没有方向**，而预测偏差有：
+  //   · `forecastBias > 0` = **高估**（按虚高的预测备产）⇒ 真实订单需求压力**低于**计划；
+  //   · `forecastBias < 0` = **低估**（实际需求打穿计划）⇒ 需求压力**上冲**，全链告急。
+  // ⇒ 系数取**负**（本表第一条负系数，契约 `coefficient: z.number()` 本就允许，
+  //    `ontology/invariants.ts` 的上限门也早已按 `Math.abs` 判）。正系数会把「高估」
+  //    读成「需求更旺」，方向恰好反了 —— 那才是这个量纲最容易被写错的地方。
+  //
+  // 落点为什么是 `Model` 而不是 `DemandSegment`/`AnnualScenario`：后两者在
+  // `batteryLinkTypes()` 里**没有任何出边**（DemandSegment 零 linkType；AnnualScenario 只有
+  // scenario_to_target/capex/finance，三个 target 都不带 `demandPressure`）⇒ 挂上去过不了
+  // 方向可达门，且 `propagateTick` 永远取不到 target = 屏上看着扰动成功、下游一动不动。
+  // `model_demanded_by_order`(Model→Order) 是实物化的真边（`service.ts` 的 `lnk_mdbo_*`）。
+  {
+    id: "simpr_demo_forecast_bias_to_order_demand",
+    key: "demo_forecast_bias_to_order_demand",
+    sourceTypeKey: "Model",
+    sourceStateVar: "forecastBias",
+    viaLinkKey: "model_demanded_by_order", // 实测 Model→Order，service.ts `lnk_mdbo_*`
+    targetTypeKey: "Order",
+    targetStateVar: "demandPressure",
+    coefficient: -0.6, // 负号即方向：高估(+) ⇒ 需求压力被下修；低估(−) ⇒ 需求压力上冲
+    delayTicks: 0, // 预测口径一改，当期订单侧的需求读数同拍就该跟着走
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── G-ROOT-2a · 订单临时插单/取消 → 订单行拆分压力（D03 销售与客户·P18）─────────────
+  // 客户临时插单或取消，最先落地的动作就是**改订单行**（拆行/改期/改量）。
+  // `order_has_line`(Order→OrderLine) 是档 2 已物化的影响向逆边（`lnk_ohl_*`）。
+  {
+    id: "simpr_demo_order_churn_to_line_split",
+    key: "demo_order_churn_to_line_split",
+    sourceTypeKey: "Order",
+    sourceStateVar: "orderChurn",
+    viaLinkKey: "order_has_line", // 实测 Order→OrderLine，service.ts `lnk_ohl_*`
+    targetTypeKey: "OrderLine",
+    targetStateVar: "splitPressure",
+    coefficient: 0.7,
+    delayTicks: 0, // 插单/取消当天就要改行，不隔拍
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── G-ROOT-2b · 订单临时插单/取消 → 型号需求负载（→ 已有下游直通工单下达压力）────────
+  //
+  // ⚠ **派单原文要求的是 `orderChurn → releasePressure`（工单下达）。实测接不到，改接这里。**
+  // 理由是数据的实情，不是绕路：`releasePressure` 挂在 `WorkOrder` 上（今天由
+  // `Line.utilPressure --line_runs_work_order--> WorkOrder.releasePressure` 写），
+  // 而**从 `Order` 到 `WorkOrder` 没有任何链路**：`workOrderProps` 只有
+  // `modelId`/`lineId`/`baseId` 三个 FK，**根本没有订单引用** ⇒ 连一条确定性的 Order→WorkOrder
+  // 边都投影不出来。硬造一条就是「张冠李戴的数比没有更危险」（`order_of_customer` 那次已登记过同一事实）。
+  //
+  // 改接 `order_for_model`(Order→Model·实物化) 之后，`orderChurn` 仍然**真的走到**
+  // `releasePressure`，只是多两跳：orderChurn → Model.demandLoad → Base.loadIndex →
+  // Line.utilPressure → WorkOrder.releasePressure。接缝测试的传导臂咬的就是这条**四跳**链。
+  //
+  // 与既有 `demo_order_demand_pressure`（Order.demandPressure → Model.demandLoad）同 target
+  // 不同源，语义不重复：那条是「需求压力水平」，本条是「订单**变更**频度」——
+  // 插单/取消带来的排产返工本身就会推高型号侧的负载，与需求量高低是两件事。
+  {
+    id: "simpr_demo_order_churn_to_model_demand_load",
+    key: "demo_order_churn_to_model_demand_load",
+    sourceTypeKey: "Order",
+    sourceStateVar: "orderChurn",
+    viaLinkKey: "order_for_model", // 实测 Order→Model，service.ts `lnk_ofm_*`（金丝雀边，方向可达门就拿它自证）
+    targetTypeKey: "Model",
+    targetStateVar: "demandLoad",
+    coefficient: 0.5,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── G-ROOT-4 · 设备故障率 → 工序排队压力（→ 已有下游直通设备负荷压力）───────────────
+  //
+  // ⚠ **派单原文要求的是 `equipmentFailure → loadPressure`。实测必须多一跳，理由两条硬约束。**
+  //  (1) `loadPressure` 挂在 `Equipment` 自己身上，而**设备故障率最自然的落点也是 `Equipment`**
+  //      （故障率是设备的属性；`EquipmentDowntime` 那 166 条是故障的**证据**，不是率）。
+  //      同一个类型不能自己传给自己 —— 全表零自环 linkType。
+  //  (2) 退而求其次挂 `EquipmentDowntime` 也不行，**两道门各堵一半**：
+  //      · `dt_for_equip`(EquipmentDowntime→Equipment) 的 linkType 声明了很久，
+  //        `service.ts` **一条实例都没物化过**（实测 `putLink` 全表零命中）⇒ 过不了方向可达门；
+  //      · 就算补物化，`EquipmentDowntime` 会成为**只当源、不当 target** 的类型 ⇒
+  //        `process-tick-coverage.seam.test.ts` §C4 的 `sourceOnly` 恒空门当场红
+  //        （那道门守的正是「屏上标着随节拍变、读数推多少拍都不动」这个假绿形态）。
+  //
+  // ⇒ 落在 `Equipment.equipmentFailure`，沿**已物化**的 `equip_used_in`(Equipment→Process·`lnk_eui_*`)
+  //    推到工序，再由既有的 `process_uses_equipment` 回到 `Equipment.loadPressure`。
+  //    业务因果是真的、不是为了绕门：**某台设备故障 ⇒ 它所在工序排队 ⇒ 该工序其余设备负荷被顶上去**。
+  //
+  // 🔴 **不构成正反馈回路**：本条写的是 `Process.queuePressure`，读的是 `Equipment.equipmentFailure`；
+  //    而 `equipmentFailure` **没有任何规则写它**（这正是它是根源的定义）⇒ 环不闭合，不自我放大。
+  //    照抄档 3 `demo_po_expedite_to_supplier_review` 立下的同一条判据。
+  {
+    id: "simpr_demo_equipment_failure_to_process_queue",
+    key: "demo_equipment_failure_to_process_queue",
+    sourceTypeKey: "Equipment",
+    sourceStateVar: "equipmentFailure",
+    viaLinkKey: "equip_used_in", // 实测 Equipment→Process，service.ts `lnk_eui_*`
+    targetTypeKey: "Process",
+    targetStateVar: "queuePressure",
+    coefficient: 0.6,
+    delayTicks: 0, // 设备一停，它那道工序当拍就开始堆
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
 ];
 
 /**
