@@ -49,7 +49,9 @@ export function ThinkRow({ text, running }: { text: string; running: boolean }) 
       >
         <span aria-hidden>{expanded ? "▾" : "▸"}</span>
         <span>Think</span>
-        {running && <span style={{ fontSize: 10 }}>(进行中)</span>}
+        {/* 原写 10px —— `check-text-legibility` 判据 B 的硬底是 12px（9–10px 的中文在本调色板内
+            无解，见门头推导）。去掉内联覆盖 ⇒ 随外层按钮的 12px，不另立一档。 */}
+        {running && <span>(进行中)</span>}
         {!expanded && (
           <>
             <span aria-hidden>·</span>

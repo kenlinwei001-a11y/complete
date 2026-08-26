@@ -41,9 +41,9 @@ function GenericToolCard({ callId, toolName, block, openFile, inspect }: ToolVie
           ERROR
         </span>
       )}
-      {!settled && <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--muted2)" }}>调用中…</span>}
+      {!settled && <span style={{ marginLeft: 6, fontSize: 12, color: "var(--muted2)" }}>调用中…</span>}
       {"argsRaw" in block && block.argsRaw !== "" && (
-        <div className="mono" data-testid={`tool-args-${callId}`} style={{ fontSize: 11, color: "var(--muted2)", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+        <div className="mono" data-testid={`tool-args-${callId}`} style={{ fontSize: 12, color: "var(--muted2)", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
           {block.argsRaw}
         </div>
       )}
@@ -53,7 +53,12 @@ function GenericToolCard({ callId, toolName, block, openFile, inspect }: ToolVie
         </div>
       )}
       {settled && block.error !== undefined && (
-        <div className="mono" data-testid={`tool-error-detail-${callId}`} style={{ fontSize: 11, color: "var(--red, #c00)" }}>
+        {/* ⚠ 原写 `var(--red, #c00)` —— **`--red` 全仓无定义**（tokens.css 里只有 `--danger` / `--danger-txt`），
+            于是恒落到字面兜底 `#c00`：暗色主题下压在 `--panel-glass` 上实测 **1.81:1**，
+            那不是「不够好看」，是**这行报错原文根本读不到**。
+            改用在册令牌 `--danger-txt`（逐主题 #f0b4b8 / #ad222d / #af222e），
+            12px 需 6.0:1，实测 dark 6.05 / light 6.09 / warm 6.07 —— 三主题全过。 */}
+        <div className="mono" data-testid={`tool-error-detail-${callId}`} style={{ fontSize: 12, color: "var(--danger-txt)" }}>
           {typeof block.error === "string" ? block.error : JSON.stringify(block.error)}
         </div>
       )}
