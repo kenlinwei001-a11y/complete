@@ -50,6 +50,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   BASE_REGISTRY,
   CHAIN_NODE_REGISTRY,
+  NETWORK_SCOPE_KEY,
   chainNodeDef,
   type ChainLossDrill,
   type ChainLossMatrixResult,
@@ -273,6 +274,65 @@ export function useChainLossMatrix(so?: string): HeatMatrixModel {
   // 「还在飞」与「没答上来」是两个不同的屏上态：前者会自己好，后者不会。
   return skeletonHeat(q.isError ? EMPTY_REASON.noAnswer : EMPTY_REASON.loading);
 }
+
+// ── 范围下拉 → 热力矩阵的列投影（WO-ATTR-DEAD-CONTROLS · B）────────────────────
+//
+// ══ 今天的行为是 X，应该是 Y ═══════════════════════════════════════════════
+// **X（改造前）**：`SandboxAttr.tsx` 的范围下拉是 `<select defaultValue={SCOPES[0]?.key}>` ——
+// **非受控、无 `onChange`**。屏上写着「常州基地」而热力图画着全部 13 列：
+// 控件不但点了没反应，它**显示的状态本身就是假的**（说常州、给全网）。
+// **Y（现在）**：受控 + 默认「全网」（= 屏上真在画的那件事），选某基地 ⇒ 热力图只留该列。
+//
+// ══ 为什么是**前端投影**而不是给端点加一个 `baseId` 入参 ═══════════════════
+// 矩阵端点**一次性把 13 列全给了**（2026-08-26 实测真服务 `POST /a/v1/sim/chain-loss-matrix`
+// body `{}` ⇒ `nodes=18 · bases=13 · cells=234 · 有数据列 13/13`）。列筛选是**同一份数据取子集**，
+// 不是另一次求解 —— 再发一次请求只会得到逐格相同的数（后端按 `so` 锚，不按基地收窄）。
+// 多发一跳既慢又给了「这是重新算过的」这个错觉。
+//
+// ⚠ **本函数只投影列，不重算任何一个数** —— `cells` 里的 `pct` 是「占**本列**总量的百分比」
+// （见 `HeatCellValue.pct` 的口径），筛掉别的列**不改变**留下这一列里每一格的占比。
+// 若哪天有人想让它变成「占全矩阵」，那是换口径，必须先改上面那条注释与端点。
+//
+/**
+ * 按范围下拉的选中项投影热力矩阵的**列**。
+ *
+ * · `NETWORK_SCOPE_KEY`（全网）⇒ **原样返回同一个对象**（恒等投影，不复制、不重排）；
+ * · 某个 `baseId` ⇒ 只留该列；
+ * · 该基地**不在**这次回包里（例：空态骨架只有 4 列；或后端这次没回这个基地）
+ *   ⇒ **诚实空态**：列还在（版面不塌）、格子一个都没有、原因写在 `reasons` 里让用户悬停读得到。
+ *   **绝不**回落成「那就给你看全网」—— 那会让下拉显示 A、屏上画 B，正是本单要消灭的那个病。
+ *
+ * 列名从 `BASE_REGISTRY` 现取（与 `baseScopeOptions()` 同一个册），**不自己编基地名**。
+ */
+export function projectHeatByScope(heat: HeatMatrixModel, scopeKey: string): HeatMatrixModel {
+  if (scopeKey === NETWORK_SCOPE_KEY) return heat;
+  const hit = heat.bases.find((b) => b.baseId === scopeKey);
+  if (hit !== undefined) {
+    const cells = new Map<string, HeatCellValue>();
+    for (const n of heat.nodes) {
+      const c = heat.cells.get(heatCellKey(n.nodeId, scopeKey));
+      if (c !== undefined) cells.set(heatCellKey(n.nodeId, scopeKey), c);
+    }
+    const reason = heat.reasons.get(scopeKey);
+    return {
+      ...heat,
+      bases: [hit],
+      cells,
+      reasons: new Map(reason === undefined ? [] : [[scopeKey, reason]]),
+    };
+  }
+  // 册里有这个基地、这次回包里没有 —— 说清是哪一种「没有」，不拿全网顶上。
+  const name = BASE_REGISTRY.find((b) => b.baseId === scopeKey)?.name;
+  return {
+    ...heat,
+    bases: [{ baseId: scopeKey, name: name ?? scopeKey }],
+    cells: new Map(),
+    reasons: new Map([[scopeKey, SCOPE_NOT_IN_MATRIX]]),
+  };
+}
+
+/** 选了一个**这次回包里没有**的基地时的说法（说人话，不出现内部符号名）。 */
+export const SCOPE_NOT_IN_MATRIX = "这一次取到的数里没有这个基地";
 
 /** 上游矩阵没通时，下游三格（根因树 / 明细 / 瀑布）跟它报同一条原因 —— 一页之内不许两种说法。 */
 const reasonOf = (heat: HeatMatrixModel): EmptyReason => heat.emptyReason ?? EMPTY_REASON.noAnswer;
