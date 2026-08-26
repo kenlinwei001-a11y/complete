@@ -262,8 +262,22 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
 | 影响半径 `disruption-radius` | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** | **不符合** | **符合** | **符合** | **符合** | **符合** |
 | 方案生成 `plan-generate` | **符合** | **符合** | **符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
 | 月度规划 `sop-balance` | **不符合** | **符合** | **符合** | **符合** | 不适用 | **符合** | **符合** | **符合** | **符合** | **符合** | **符合** |
+| 推演指控台 `sim-console` | **不符合** | **不符合** | **不符合** | **符合** | 不适用 | **不符合** | **不符合** | **符合** | **符合** | **不符合** | **不符合** |
+| 传导识别 `sim-conduction` | **不符合** | **不符合** | **不符合** | **符合** | 不适用 | **不符合** | **不符合** | **符合** | **符合** | **不符合** | **不符合** |
+| 损失归因 `sim-attribution` | **不符合** | **不符合** | **不符合** | **符合** | **不符合** | **符合** | **不符合** | **符合** | **符合** | **不符合** | **不符合** |
+| 方案寻优 `sim-optimize` | **不符合** | **不符合** | **不符合** | **符合** | 不适用 | **不符合** | **不符合** | **符合** | **符合** | **不符合** | **不符合** |
+| 统一推演控制台 `sim-unified` | **不符合** | **不符合** | **不符合** | **不符合** | 不适用 | **符合** | **不符合** | **不符合** | **符合** | **不符合** | **不符合** |
 
-**合计（12 页 × 11 判据 = 132 格）：符合 120 · 不符合 4 · 不适用 8 · 判不了 0。**
+**合计（17 页 × 11 判据 = 187 格）：符合 135 · 不符合 40 · 不适用 12 · 判不了 0。**
+
+> ⚠ **2026-08-26 `WO-SIM-UX-PRD-5PAGES` 把表从 12 页扩到 17 页 —— 这一行的跳变必须分两笔读，混了会得出相反的结论**：
+> **符合 120 → 135（+15）不是「有人把 15 格改好了」**，是**新进来 5 页各自带来的存量**；
+> 同一批还带进 **不符合 +36 · 不适用 +4**，前 12 页**一格未动**（棘轮实测 倒退 0 · 松弛 0 · 死账 0）。
+> 形态（铁律 0.6）：**「我用『符合总数涨了』当作『UX 变好了』的证据，而前者并不度量后者」** ——
+> 扩表时它度量的只是「受检面变大了」。**真正的读数是比例：120/132 = 90.9% → 135/187 = 72.2%，
+> 也就是把此前从未被这张表问过的那 5 页放进来之后，横向达标率掉了 18.7 个百分点。**
+> 这 5 页此前不在表里的原因写在 §4.10 的开头：**不是它们合格，是没有人问过它们。**
+> 逐格取证（每格 file:line + 追一层的调用条件）见 §4.10，`不适用` 的 4 格逐格登记在 §4.3。
 
 > ⚠ **2026-08-19 这一行是「三条并行交单」的并集，第三次了 —— 逐格并，别取任一方**：
 > `WO-U6-ACTION-FROM-CONCLUSION`（U6 列 2 格）→ 104；`WO-U4B-U1-U8-SIM`（U4b/U1/U8 共 7 格）→ 111；
@@ -552,7 +566,9 @@ sed -n '/SANDBOX_MODE_ORIGIN_VIEW/,/^};$/p'            apps/frontend-shell/src/v
   修法是**补一道门**（`sandbox-config-ux.seam.test.tsx` §5），不是改实现。
   ⚠ `risk` 那一格同源但病因相反：残差**后端逐层一直在下发**，是**前端类型里根本没声明这个字段** ⇒
   没人消费。属「接了线没消费」，不是「后端没给」。
-- **不适用 7 页**：见 §4.3。
+- **不适用 11 页**：见 §4.3。（原文写「7 页」，2026-08-26 `WO-SIM-UX-PRD-5PAGES` 扩表后 +4 ⇒ 就地订正。
+  ⚠ **这不是「又豁免了 4 页」**：新进来的 5 页里 `sim-attribution` 判的是 `不符合`（本页有根因树 ⇒ 判据有落脚点），
+  只有另外 4 页无因果图 ⇒ 不适用。逐格理由在 §4.3，分野在 §4.10 的 U4b 段。）
   （`DisruptionRadiusView.tsx:268` 那个 `state:"dim"` 标的是「本层 count=0 断链」，
   **不是**「被排除的因素」——两者都叫「灰掉」，语义完全不同，本单因此给 `LayeredDag`
   另加了 `excluded` 态而**没有**复用 `dim`。）
@@ -869,11 +885,13 @@ M2/M5/M6 三条的锚点写死了 `B-2` 与「内容面机检 **1/4**」这两�
 门守的是账在不在册、有没有主、指不指向空气、有没有单、**状态是不是真的**；
 B-1 / B-3 / B-4 的**内容面**今天仍无验收方式，逐条差什么见 §4.2.1 那张判定表。
 
-### 4.3 「不适用」逐格登记（8 格 · 每格带理由 · 不许空着）
+### 4.3 「不适用」逐格登记（12 格 · 每格带理由 · 不许空着）
 
 `不适用` **不是** `判不了` 的近义词，也**不是**免死金牌。它只在一种情形下合法：
 **判据预设的那个对象在这一页上不存在**，于是问题本身问错了对象。
-本表今天有**两条**判据出现这种情形（U4b 七格 + U4 一格）：
+本表今天有**两条**判据出现这种情形（U4b 十一格 + U4 一格）：
+（⚠ 原文写「U4b 七格」，2026-08-26 `WO-SIM-UX-PRD-5PAGES` 扩表 12 → 17 页后 +4 ⇒ 就地订正。
+判据一个字没改，只是**被问到的页多了 5 张**；新增那 4 格的理由逐格写在本表末尾四行。）
 
 | 页 | 判据 | 为什么这条判据在这一页无处落脚 |
 |---|---|---|
@@ -885,6 +903,10 @@ B-1 / B-3 / B-4 的**内容面**今天仍无验收方式，逐条差什么见 §
 | `plan-generate` | U4b | 同上 |
 | `sop-balance` | U4b | 同上 |
 | **`cleanroom-attr`** | **U4** | **本页没有可关的因果边** —— 详见下方「U4 那一格为什么是不适用」，**三块拆开说** |
+| `sim-console` | U4b | 页内那张图是**端到端流程图**（`console/FlowMap.tsx`，`CHAIN_NODE_REGISTRY` 24 站按流程序排），节点是**链路上的站**不是**因果因子** —— 图上不存在「主因」与「被排除项」这两类节点，判据无处落脚。⚠ 与 U3 分开读：本页 U3 判 `不符合`（有图但点不动，`FlowMap.tsx` 全文零 `onClick`），那是欠账；U4b 判 `不适用`，因为**就算把它点开也不会长出因果因子** —— 「有图」与「有因果图」是两个命题（§4.3 的 2026-08-17 订正就是为防这一条被读反） |
+| `sim-conduction` | U4b | 同上换一张图：本页的图是「影响半径」**扇区图**（`console/ImpactCone.tsx`，viewBox `0 0 236 240`，画的是半径/张角/落在锥内的冲击条目）与**传导识别表**，两者都按「波及到谁、几跳」组织，**没有把因素并排成主因候选再排除一个**这回事 ⇒ 判据预设的那两类节点在本页不存在 |
+| `sim-optimize` | U4b | 本页两张图是**帕累托散点**（`console/ParetoChart.tsx`，轴是两个目标值）与**目标权衡雷达**（`console/TradeoffRadar.tsx`），坐标系是**目标空间**不是因果空间：图上的点是**候选方案**，不是「因素」；「排除一个因素并留在图上降级」在目标空间里没有对应物 |
+| `sim-unified` | U4b | 本页中栏是**指标卡墙**（`unified/MetricWall.tsx`，按层级分组的卡片），右栏是**上下游一跳列表**（`unified/InspectorPane.tsx` 的 `usim-upstream` / `usim-downstream`，逐条 `<li>`），**全页没有任何图元把因素画成节点** ⇒ 无处落脚。⚠ 这与本页 U4 判 `不符合` **不矛盾也不重复**：U4 问「能不能关掉一条边并同屏看差异」，本页**有可关的边**（`fetchPropagationRules` 下发的传导边，系数/延迟就渲染在右栏）只是没挂面板 ⇒ 是欠账；U4b 问「关掉的那条**在图上**怎么显示」，而本页压根没有那张图 ⇒ 不是欠账 |
 
 > ⚠ **2026-08-17 WO-U3-DAG-REST 订正一处措辞（判定一格未动）**：`global-sim` 那行原写
 > 「页内无因果/根因图（**U3 已判「连图都没有」**）」。本单给 `global-sim`/`what-if`/`cleanroom-attr`/`sop-balance`
@@ -937,15 +959,18 @@ grep -rn "sim/|SimSession|propagation|counterfactual|stateVar|tick" apps/fronten
 统一抽象一层（瓶颈那块可关的其实是『某个争用方』、毛利那块是『某个成本项』——
 那是另一种反事实，不是关系边）。(b) 不是接线，故本单不单方面做。
 
-**U4b 那 7 格不是欠账，别排进优先级。** 它们的用户价值（「我关掉的是什么，不能让它凭空消失」）
+**U4b 那 11 格不是欠账，别排进优先级**（原文写「7 格」，2026-08-26 扩表后 +4）**。** 它们的用户价值（「我关掉的是什么，不能让它凭空消失」）
 由 **U4** 承担 —— `EdgeActivePanel` 对关掉的边用**三路编码**表达降级
 （虚线 ＋ 不透明度 0.72 ＋ 显式「已关闭」文字标记，见该文件头注释），排除项本来就不会消失。
 本轮新增的 `disruption-radius` 页自有开关**照搬同一条纪律**（虚线 ＋ 显式「已关闭」文字 ＋
 关掉的边留在列表里可拨回），并另加一条本页特有的：**「已关 N 条 · 下方是假设关掉后的读数」徽标留在第一层**
 （面板折起来也看得见）—— 否则用户会把反事实读数当成现状，那比看不到开关更坏。
 
-**这 8 格全部随页面结构变化而失效，届时必须当场改回 `不符合`**：
-U4b 的 7 格 —— **若将来这几页长出了因果图**，判据的对象出现了，豁免就失效；
+**这 12 格全部随页面结构变化而失效，届时必须当场改回 `不符合`**（原文写「8 格」，2026-08-26 扩表后 +4）：
+U4b 的 11 格 —— **若将来这几页长出了因果图**，判据的对象出现了，豁免就失效；
+⚠ 新增那 4 格里 `sim-console` / `sim-conduction` / `sim-optimize` **今天就有图**（流程图 / 扇区图 / 散点图），
+只是那几张不是因果图 ⇒ **它们的豁免比另外 8 格更薄**：往现有图上加一层因果因子就会失效，
+而不需要「长出一张新图」。下一个动这三页的人请先回来看这一行。
 U4 的 1 格（`cleanroom-attr`）—— **若本页长出以 `SimSession` 为世界的推演块**，同理失效。
 （这是 `不适用` 与 `符合` 的关键区别：前者随页面结构变化而失效，后者不会。）
 
@@ -1419,6 +1444,237 @@ U2 列 **符合 3 → 12**（12 页全绿）；全表**合计 符合 111 → 120
 
 ---
 
+### 4.10 WO-SIM-UX-PRD-5PAGES 新进表的 5 页 × 55 格（2026-08-26 · 逐格 file:line + 追一层）
+
+> **先说清这 5 页此前为什么不在表里 —— 不是它们合格，是没有人问过它们。**
+> 门 `sim-ux-criteria:check` 判据① 的现算名册一直是 17 页，而 §4 主表只有 12 行 ⇒ 门**当场报红**
+> 「现算全集里有 5 页不在 PRD §4 表里」。这正是本门存在的全部理由（判据① 注释里那句
+> 「**我用『门是绿的』当作『这些页都合格』的证据，而门的名单里根本没有它们**」）——
+> 只不过这次名单没漏，是**表**漏了。它们进名册的依据链：`sim-console` / `sim-conduction` /
+> `sim-attribution` / `sim-optimize` 走 **R3 nav-sim-group**（左导航「推演」组成员），
+> `sim-unified` 走 **R6 route-no-nav**（`App.tsx:157` 专用 route `v/sim-unified`，按产品裁决不占导航位）。
+>
+> **取证方式与 §4.1 同一套**：只读源码 + 静态探针（每条探针带一个「已知必中」的金丝雀页）
+> + 逐格再追一层调用。本轮金丝雀**当场抓到三条探针写窄**，逐条记在下面对应判据里 ——
+> 与 §4.1 开头那两次同形态（「金丝雀证明的是工具活着，不是工具覆盖全」）。
+> **本节不美化**：55 格里 15 格 `符合` · 36 格 `不符合` · 4 格 `不适用`，`不符合` 逐条写清缺什么。
+
+**U1 改输入即重演 —— 5 页全判 `不符合`，但病因有两种，不许合成一句**
+
+- **形态甲 · 假旋钮（值不进任何 `queryKey`）**：判据原文要求「页内输入控件的值**直接进**求解入参 / `queryKey`」。
+  这四页是规格 HTML 的像素级 1:1 移植，屏上那批口径类控件是**非受控 `defaultValue` + 零 `onChange`**：
+  `sim-conduction` `SandboxDetail.tsx:954`（传导方向下拉）·`:1118`（方案名称输入）·`:1122`（承接基地下拉）·
+  `:1132`（调拨物料下拉）；`sim-attribution` `SandboxAttr.tsx:133`（`sandbox-attr-scope` 范围下拉，
+  14 个选项来自契约 `baseScopeOptions()`）；`sim-optimize` `SandboxOpt.tsx:166`（`sandbox-opt-objective` 目标下拉）。
+  ⚠ **这比提交闸更坏，两者不许混为一谈**：提交闸是「点了才更新」，假旋钮是「**点了也永远不更新**」——
+  判据那句「用户改完不点、以为看到的是新结果，实际在看旧结果」在这里退化成「用户改完**永远**在看旧结果」。
+- **形态乙 · 唯一那条写路今天进不去**（`sim-console`）：本页有一条真的「改输入 → 结果变」的路——
+  `PerturbTree.tsx:340` 的 `onAdd(k.key)` → `:181 onAdd` → `createSimPerturbation` → `:192` 失效
+  `["a","sim-perturbations",sessionId]`。**但它的第一行就是三前置守卫**（`:184`）：
+  `sessionId === undefined || targetObjectId === undefined || factor === undefined` 即 `return`，
+  而 `targetObjectId` 只从 `view.options` 来（`SandboxHomeRoute.tsx:79`），后端下发的 view 对象
+  **没有 `options` 这一格**（同文件 `:16-23` 已实测记账）⇒ 该分支从未进入。
+  这是铁律 0.5 三形态里的**「接了线没数据」**，不是「没接线」——修法是补落点对象，不是补代码路径。
+  同一事实在 `unified/UnifiedSimShell.tsx:23-26` 被独立记过一次，两处说法一致。
+- `sim-unified` 另有**真提交闸**：`rail/PerturbRail.tsx:427` 的 `rail-apply` 按钮 → `:210 onApply` →
+  `createSimPerturbation` → `:216` 失效同一缓存键。表单七项（`rail-statevar`/`rail-typekey`/
+  `rail-objectid`/`rail-mode`/`rail-magnitude`/`rail-starttick`/`rail-duration`）**一项都不进 `queryKey`**，
+  不点「施加」卡墙一个数不动。
+  ⚠ **本格与 `sop-balance` 那格同形不同案，两笔账分开读**：那一格（§4.1 U1）是
+  `advanceSopVersion` 推进业务流程节点，本单顶回过「该翻正」的判断；本格是**真的把扰动写进世界**，
+  也属 POST 变更。**是否该照 `sop-balance` 那条先例改判 `不适用`，是产品裁决、不该由 dev 顺手改表** ——
+  故本节按 `不符合` 挂账并把取证留在这里（对应待派单见 §5.2 的同族条目）。
+- 探针金丝雀：同一条「提交闸」正则在 `GlobalSimView.tsx` 命中 3 处 ⇒ 工具是好的，上面那些 0 是真的 0。
+
+**U2 分步标口径 —— 5 页全判 `不符合`（页上那批「步/轮次」都不是推演过程的步）**
+
+- 共享步骤条 `views/sim/SolverStepBar.tsx` 与分段闸 `useSolverStep` 的消费方今天是 12 页
+  （`RiskBoardView` / `DisruptionRadiusView` / `plan/OrderChainView` / `GlobalSimView` / `SandboxView` /
+  `PlanGenerateView` / `SopBalanceView` / `DecisionPlayPanel` / `WhatIfView` / `cleanroom/CleanroomAttrView` /
+  `OptimizeWhatifView` / `ProcessGraphPanel`），**这 5 页一个都不在其中**。
+- 追一层确认这不是「换了个机制实现同一件事」：
+  · `sim-attribution` `SandboxAttr.tsx:50` 的 `ROUNDS`（第一~第四轮次）源码注释自陈
+    「**第几轮推演是纯 UI 态，今天没有承载物**」——`:142-146` 渲染成 `<b>`，首项写死 `styles.on`，无 `onClick`；
+  · `sim-console` `SandboxHome.tsx:142-152` 的指标域页签（全局/交付域/成本域/库存域/产能域）同样是
+    写死首项高亮的 `<b>`，切不动也不分段；
+  · `sim-optimize` `SandboxOpt.tsx:180` 的 `VIEW_TABS` 切的是**看哪张图**（前沿/…），不是「这个数分几步算出来的」；
+  · `sim-unified` `UnifiedSimShell.tsx:299-330` 的模式页签切的是**同一屏的哪一面**（源码 `:298` 写明用
+    `role="tablist"` 正因为「换的不是导航」），属**视角切换**，判据原文点名排除的正是这一类。
+- ⚠ **金丝雀在这一条上救了一次**：本轮 U2 探针最初拿 `project-sim` 当必中样例，实测**命中 0** ⇒ 报「工具坏了」。
+  复核 §4.1 U2 才知道 `project-sim` 的 U2 走的是 `step` 驱动 `forecast` 分层 + `PmDag`，**根本不用 `SolverStepBar`**。
+  改选 `plan-generate` 作金丝雀（命中 7）后才敢报上面这些 0。**探针词表窄，与 §4.1 开头那次同形态。**
+
+**U3 过程图 + 点节点看凭什么 —— 5 页全判 `不符合`，三种病各不相同**
+
+- **病一 · 有图但点了没反应**（`sim-console` / `sim-conduction`）：`console/FlowMap.tsx`（端到端流程图，
+  24 站）、`console/ImpactCone.tsx`（影响半径扇区图）、`console/HeatMatrix.tsx`（环节×基地热力）
+  **三个文件全文都没有 `onClick`**。这与 §4.1 U3 记的 `risk` 改造前那格（「有图但点了没反应」）同形态，
+  修法也同（给共享图元加**可选** `onNodeClick` + 挂 `DagNodeInspector`），本单不改码只记账。
+  金丝雀：同一条 `onClick=` 探针在同一扫描面（`views/sim/**/*.tsx`）命中 **164 处 / 40 个文件**
+  ⇒ 工具是好的，那三个 0 是真的 0。
+- **病二 · 点得开但面板缺「规则」这一半**（`sim-attribution`）：根因树行可点
+  （`SandboxAttr.tsx:199` 与 `:254` 两处 `setSelectedNodeId`）→ 归因明细面板（`:183 sandbox-attr-detail`）
+  逐行渲染 `环节 / 求解器 / 贡献 / 耗时 / 级 / 趋势`（表头 `:186-192`，`solverKey` 在 `:205` 上屏）。
+  **来源有了（求解器名），规则没有** —— 判据要求「面板里**同时**有 来源 与 规则」，故仍判 `不符合`。
+  ⚠ 这一格离 `符合` 最近，缺的是一格 `ruleKey` 而不是一张面板，别按「造图」排工。
+- **病三 · 点得开但那不是过程图**（`sim-optimize` / `sim-unified`）：
+  `sim-optimize` `SandboxOpt.tsx:238` 把 `onSelect={setPicked}` 传给了 `ParetoChart`
+  （`ParetoChart.tsx:170` 真接上了），但帕累托散点的坐标系是**目标空间**，点是**候选方案**不是推演的一环；
+  `sim-unified` 的卡片可点（`MetricWall.tsx:47`）→ 右栏 `InspectorPane`，面板里有
+  「谁推的 / 推坏谁」两段真传导边（`InspectorPane.tsx:115-145`，逐条带系数与延迟），
+  **但它渲染成 `<ul><li>` 列表不是图**，且 `ruleKey` 只用作 React 的 `key`（`:117` / `:137`）
+  **没有上屏** ⇒ 「过程图」与「规则」两个必要条件都缺。
+
+**U4 反事实开关 —— 4 页 `符合` · `sim-unified` 1 页 `不符合`（本格由既有门现算，非人判）**
+
+- 这是十一条里**唯一有既有机检**的判据。`node scripts/check-edge-active-mounts.mjs` 实测：
+  `sim-console` / `sim-conduction` / `sim-attribution` / `sim-optimize` 四页均报「**挂载于主组件**」——
+  挂载点逐页在 `SandboxHomeRoute.tsx:95` · `SandboxDetailRoute.tsx:284` · `SandboxAttrRoute.tsx:64` ·
+  `SandboxOptRoute.tsx:197`，四处都在默认导出的主组件里、不在任何条件渲染之下（`WO-EDGE-PANEL-4PAGES` 收口）。
+- `sim-unified` 那一格是**真缺口，本单照实写 `不符合` 并顶回来**：同一道门当场红在
+  「② ③ `sim-unified` **未挂载** `EdgeActivePanel`（`views/sim/unified/UnifiedSimShell.tsx`）」，**RC=1**。
+  ⚠ **它不许被改判 `不适用`**：§4.3 那条判据写死了「只要页面上存在任何一个关掉之后读数会变的东西，
+  就仍是 `不符合`」——而本页**有**可关的边（`UnifiedSimShell.tsx:173-178` 取 `fetchPropagationRules(true)`，
+  系数与延迟就渲染在右栏 `InspectorPane.tsx:118-121`）。
+  ⇒ 这一格与 `cleanroom-attr` 那格（真的没有可关的边）**定性相反，不许合并读**。
+
+**U4b 排除项同图 —— 1 页 `不符合` · 4 页 `不适用`（逐格理由在 §4.3，此处只说分野）**
+
+- `sim-attribution` 判 `不符合` 而不是 `不适用`：本页**有**根因结构（根因树 + 瀑布，
+  `SandboxAttr.tsx:152` / `Waterfall.tsx`），「主因」正是本页要算的东西 ⇒ 判据有落脚点，
+  只是「被排除项」这一类节点今天不画（`excluded|已关掉|已关闭|排除` 在本页文件集里命中 0；
+  金丝雀：同一条正则在 `ProjectSimView.tsx` 命中 3 ⇒ 工具是好的）。
+- 另 4 页判 `不适用`，理由逐格登记在 §4.3 —— 共同点是**页上那张图不是因果/根因图**
+  （流程图 / 扇区图 / 目标空间散点 / 压根没有图），照 §4.3 的 2026-08-17 订正：
+  「**有图」与「有因果图」是两个命题**」。
+
+**U5 结论数字标出处 —— 2 页 `符合` · 3 页 `不符合`**
+
+- ✅ `sim-attribution`：归因明细表把**求解器名**印在每一行的贡献数旁边
+  （表头 `SandboxAttr.tsx:187` 的「求解器」列 + `:205` 的 `{r.solverKey}`）。判据原文「求解器名 /
+  快照版本 / 推导链 / 依据规则，**任一即可**」——这一格是求解器名那一路。
+- ✅ `sim-unified`：三层出处都在屏上且**跟着数字走**（判据要的正是这个，不是页脚一句总说明）：
+  逐卡 `MetricWall.tsx:59-61` 的 `usim-calibre-*`（文案来自 `metricWallModel.ts:109 calibreTextOf`，
+  取值 `实测` / `推演投影·非实测`）· 卡墙顶 `:91-93` 的 `usim-threshold`（「被推动」判据 + 口径）·
+  状态条 `UnifiedSimShell.tsx:339-347` 的 `usim-origin`（世界态出处 + 实测格 X/Y）·
+  右栏 `InspectorPane.tsx:68-70` 口径紧跟大数。
+  ⚠ 这一格的**反面样本也在同一页**：源码 `metricWallModel.ts:101-105` 写明记号缺席时判 `PROJECTED`
+  而不是 `MEASURED` —— 「不知道出处时把它说成实测」正是这条判据要堵的那件事。
+- ❌ `sim-console` / `sim-conduction` / `sim-optimize`：**出处存在，但刻意不在屏上**。
+  这三页（连同 `sim-attribution`）的文件头都写着同一条取舍，逐字如：
+  「占位与真数据的分界一律走 `data-source` 属性 —— 本页验收线是**像素级 1:1**，
+  往版面里塞一行「占位」字样会当场破坏它；属性对测试可见、**对像素不可见**」
+  （`SandboxAttr.tsx:19-20`，`SandboxOpt.tsx:19-21` / `ImpactCone.tsx` 末段同义）。
+  ⇒ 屏上的结论数（`FlowMap` 站圈占比 · `MetricGantt` 指标序列 · `SandboxOpt` 的目标值与收敛残差 ·
+  `SandboxDetail` 的半径/张角/节拍/良率）是**裸数字**，判据明写「裸数字不算」。
+  ⚠ **两个近似物追一层后都不算数，写下来防下一个人捡**：
+  ① `PerturbTree.tsx:311` 屏上确有规则码徽标 `{f.ruleGate}`（C03/C06/C08/C16），但契约
+     `packages/contracts/src/capacity-factors.ts:17` 的定义是「**拨动该因子受哪条规则闸约束**」——
+     它是**杠杆的约束**，不是**结论数的出处**，拿它当 U5 成立就是「我用 X 当作 Y 的证据」；
+  ② `sim-conduction` `StrategyCards.tsx:267` 确实把 `{c.basis}` 印在屏上，但该常量
+     （同文件 `:140`）逐字是「来自求解器」——**它没有指名道姓任何一个求解器**，
+     而判据要的是「**指名道姓**的出处」。这与 §4.1 U5 记的 `optimize-whatif` 那次
+     （「屏上唯一的出处说的是模板清单的出处，不是目标值的出处」）是同一形态。
+
+**U6 结论即动作 —— 5 页全判 `不符合`（零采纳路径）**
+
+- 探针词表这次刻意开到最宽（`useActionDraft|createActionDraft|action-draft|actionTypeKey|
+  decisions/commit|/a/v1/decisions`，即 §4.1 U6 那次「探针词表写窄」翻车后补全的那一套），
+  在这 5 页的文件集里命中 **0**；金丝雀：同一条正则在 `plan/OrderChainView.tsx` 命中 3 ⇒ 工具是好的。
+- `sim-unified` 是**最像做了、其实没有**的一页，单独记一笔：右栏有两颗动作按钮
+  「钉到对照」`InspectorPane.tsx:173`、「追这条链」`:176`，都走 `onAction`，而宿主给的实参
+  （`UnifiedSimShell.tsx:428`）逐字是 `(a) => say(\`动作 ${a}（本单不落写操作）\`)` ——
+  **点了只往底部日志里写一行字**。
+  ⚠ 这与 §4.1 U6 记的 `project-sim` 改造前那格（「屏上写着能采纳，代码里没有那条路」）**同形态**：
+  屏上有 affordance、代码里没有落点。差别只在那次是文案，这次是按钮。
+
+**U7 同屏问答带本页上下文 —— 4 页 `符合` · `sim-unified` 1 页 `不符合`**
+
+- ⚠ **这四格是本轮唯一一处「grep 报 0 而结论是符合」的地方，全靠追一层追出来的**：
+  `usePageView|setView\(` 在这 5 页的文件集里命中 **0**。若就此收工，四格会被误判成 `不符合`。
+  真相在路由那一层：`App.tsx:157` 只给 `sim-unified` 开了专用 route，其余四页**没有专用 route**
+  ⇒ 落到 `:158` 的通配 `v/:viewKey` ⇒ 走 `pages/ViewPage.tsx`，而它 `:26-28` 的 `useEffect`
+  无条件调 `setView(viewKey)`。**这正是 §4.1 U7 列出的两条合格路径里的第一条**
+  （「经 `ViewPage` 分发」），与 `project-sim`/`global-sim` 那 6 页逐字同一条。
+  再追一层确认这条路真的到得了（不是「注册了但取不到 view」）：渲染器在
+  `views/registry.ts:68/69/70/72` 逐字注册，后端 viewKey 在
+  `apps/datacore/src/synthetic/sandbox-console.ts:109-112` 的 `SANDBOX_CONSOLE_VIEWS` 逐条下发。
+- `sim-unified` 判 `不符合`，病因**逐字就是 §4.1 U7 描述的那个**：它有专用 route（`App.tsx:157`
+  `lazyWrap(<UnifiedSimShell />)`）**不经过 `ViewPage`**，而 `UnifiedSimShell.tsx` 全文
+  既不调 `usePageView` 也不调 `setView` ⇒ `sessionStore.view` 停在上一页的残值或空串
+  ⇒ `QueryDock` 取不到本页场景、编排侧收到的「用户在哪一页」是错的。
+  ⇒ **它是 §4.1 U7 那批「六个专用 route 页」被收口之后新长出来的第七个**，修法可直接照抄
+  （`DecisionPlayView` 那一版：挂壳不挂面板，一行 `usePageView("sim-unified")`）。
+
+**U8 看明细不换页 —— 5 页全判 `符合`**
+
+- 判据点名的违反形态是「想看细节 ⇒ 被带走」。这 5 页的文件集里
+  `useNavigate|<Link\b|navigate\(` 命中 **0**；金丝雀：同一条正则在 `SandboxConsole.tsx` 命中 3
+  ⇒ 工具是好的，**这 5 页一次路由跳转都没有**。
+- 且每页都有真的受控展开态承担「看明细」，逐页点名：
+  `sim-console` `SandboxHomeRoute.tsx:91` · `sim-conduction` `SandboxDetailRoute.tsx:280` ·
+  `sim-attribution` `SandboxAttrRoute.tsx:60` · `sim-optimize` `SandboxOptRoute.tsx:193`
+  四处 `<details>`（`WO-EDGE-PANEL-4PAGES` 那批，任何时候都在 DOM 里、任何时候都能展开）；
+  `sim-unified` 有三处：底部抽屉 `UnifiedSimShell.tsx:457-466`（`aria-expanded` 受控）、
+  卡墙「未变化」分组展开 `MetricWall.tsx:136`、左栏 `rail/PerturbRail.tsx:445` 的 `<details rail-blocked>`。
+  `sim-attribution` 与 `sim-optimize` 另有就地下钻（点根因树行 / 点候选方案卡 ⇒ 右侧面板原地换内容，
+  `SandboxAttr.tsx:199` / `SandboxOpt.tsx:197`）。
+- ⚠ **诚实位**：`sim-console` 与 `sim-conduction` 的受控展开态**只有那一处传导边抽屉**，
+  页内其余读数（站圈占比 / 甘特条 / 节点详情四格）今天点不开也展不开 ——
+  它们不违反本条（没有把人带走），但离 §4.1 U8 说的「明细回来了页面没渲染」只差一步，
+  真要收紧应由 U3 那一格（点节点看凭什么）承担，不该在本条上加码。
+
+**U9 导出带口径与时间戳 —— 5 页全判 `不符合`（零导出入口）**
+
+- 共享件 `ExportReportButton` / `exportProvenance` 在这 5 页的文件集里命中 **0**；
+  金丝雀：同一条正则在 `ProjectSimView.tsx` 命中 3 ⇒ 工具是好的。
+  再追一层排除「换了个机制导出」：`导出|Export|download|Blob` 在这 5 页里的命中**逐条点开都是
+  ES 模块的「默认导出/本文件导出」或注释**（如 `useParetoFrontier.ts:9`、`SandboxAttrRoute.tsx:36`），
+  **没有一处是把屏上内容交给用户带走**。
+- ⇒ 这 5 页今天进不了 S&OP 决议附件。修法已有现成路（§4.4.1 那批 8 页复用的同一份共享件），
+  是接线不是造件。
+
+**U10 版面 —— 5 页全判 `不符合`（字号硬底 12px，逐页实测最小 7–10px）**
+
+> ⚠ **本列的取证方式与 §4.1 U10 那 12 格不同，必须写清楚，否则下一个人会以为我手填了**：
+> 那 12 格是 `node scripts/check-layout-legibility.mjs --survey` 真 Chromium 量出来的。
+> **本轮跑不了那个普查** —— 该模式要 Playwright + 起服务，而本环境
+> `node_modules` 未装、`~/.cache/ms-playwright` 不存在、磁盘 100%（`df -h /` 实测 8.9MB 可用）。
+> **所以本轮走的是一条只能得出否定结论的静态路，且只用它的否定方向**：
+> 判据三条是 `minFontPx ≥ 12` ∧ `overflowPx = 0` ∧ `overflowUnreachable = 0`，**合取**。
+> 只要证到某一页存在**会被渲染的、声明字号 < 12px 的元素**，就有 `minFontPx < 12`
+> ⇒ 合取必假 ⇒ `不符合` **成立且不需要渲染**。
+> ⚠ 反方向**不成立**：找不到小字号**推不出** `符合`（溢出那两条静态量不到）。本轮没有一页走反方向，
+> 故这 5 格全部落在静态可判的那一侧。**`--survey` 的表屏对账因此仍会绿**（表说 `不符合`、屏也 `不符合`）。
+
+- 逐页实测（先取 CSS Module 里 `font-size < 12px` 的规则，再**追一层**核对该类在本页 `.tsx` 里
+  真被 `styles.X` 引用 —— 只声明不引用的规则不算数）：
+
+  | 页 | CSS Module | <12px 规则数 / 其中被引用 | 最小 | 举例（被引用的那一条） |
+  |---|---|---|---|---|
+  | `sim-console` | `console/SandboxHome.module.css` | 34 / **33** | **7px** | `.it .tg` 7px ← `styles.it`（左栏因子行的类型图元） |
+  | `sim-conduction` | `console/SandboxDetail.module.css` | 42 / **40** | **8px** | `.rul` 8px ← `styles.rul`（标尺刻度） |
+  | `sim-attribution` | `console/SandboxAttr.module.css` | 47 / **42** | **8px** | `.tt i` 8px ← `styles.tt`（顶栏副标题） |
+  | `sim-optimize` | `console/SandboxOpt.module.css` | 30 / **29** | **8px** | `.tt i` 8px ← `styles.tt` |
+  | `sim-unified` | `unified/UnifiedSimShell.module.css` ＋ `unified/rail/PerturbRail.module.css` | 4 / **4** ＋ 7 / **7** | **10px** | `.cardKey` 10px ← `styles.cardKey`（每张指标卡的系统键） |
+
+  过滤器金丝雀：`UnifiedSimShell.module.css` 里 `font-size` 声明共 16 条，其中 **12 条 ≥12px 被本次过滤排除**
+  ⇒ 过滤器确实在按 px 筛，不是全量打印。
+- **另一台机器独立说了同一句话**（不是我一个人的读数）：`node scripts/check-text-legibility.mjs`
+  实测 **RC=1**，报文里逐字点名
+  「【新文件】【B 字号硬底 <12px】`apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.module.css`
+  0 → 4：L67 `.calibre` = 11px · L170 `.cardKey` = 10px · L200 `.sectionHead` = 11px」
+  与「…`rail/PerturbRail.module.css` 0 → 7：L16 `.tab` = 11.5px · L50 `.lbl` = 11px · L80 `.hint` = 11px」。
+- ⚠ **前四页的真凶是同一个，不是四批各自的疏忽**：四份 CSS Module 的文件头都写着
+  「本文件**逐条照抄规格**的 `<style>`：类名、`px`、`grid-template-columns`、`height`、`font-size`」
+  （`SandboxHome.module.css:7` / `SandboxDetail.module.css:7-8` 等）。
+  规格 HTML 是按 1440×897 画的桌面软件观感，本仓的 12px 硬底（`check-text-legibility.mjs` 的 `FLOOR_PX`）
+  在那份规格里不成立 ⇒ **「像素级 1:1」这条验收线与 U10 这条判据今天是互斥的**。
+  这不是一格一格改字号能收的债，**要先裁决哪条线优先**（同 §4.5 那批的取舍，但方向相反）。
+  ⇒ 已作为一条待裁决项写进 §5.2。
+
+---
+
 ## 5 · 优先级
 
 | 级 | 事项 | 为什么是这一级 | 归谁 |
@@ -1428,7 +1684,7 @@ U2 列 **符合 3 → 12**（12 页全绿）；全表**合计 符合 111 → 120
 | **P2**（本轮新立） | **`cleanroom-attr` 隐性集中度那一块的多跳 ref 链做成可关的边** | 上一条收口时逐块实测发现：本页三块里**只有这一块有可断的边**，而它今天关不了。接线部分与 `disruption-radius` 已落地那版**同构**（可照抄），卡的是产品裁决：三 tab 只有一个有开关是否可接受 | 一张前端单 + 一次产品裁决（判据全文见 §4.3） |
 | **P1** | **U1 改输入即重演** —— `what-if` / `optimize-whatif` / `sop-balance` 撤提交闸 | 参考件里这条是**逐字写着的**，且它的失败模式最坏：用户改完不点，**以为在看新结果，实际在看旧的** | 一张前端单（三页，注意 `optimize-whatif` 走真 CP-SAT，需先确认重解成本） |
 | **P1** | **U2 分步标口径** 横向铺开（今天只有 `project-sim` 一页） | 它是「凭什么信这个结论」的唯一抓手；没有它，R13 可溯源在推演页上只剩一句口号 | 逐页单 |
-| **P2** | **U4b 排除项与主因同图** | **5 页不符合**（有图但排除项没画进去），另 7 页**不适用**（无图 ⇒ 判据无处落脚，§4.3——别把这 7 页排进来） | 一张前端单 |
+| **P2** | **U4b 排除项与主因同图** | **现算：符合 5 · 不符合 1（`sim-attribution`）· 不适用 11**（无因果图 ⇒ 判据无处落脚，§4.3——别把这 11 页排进来）。⚠ **本行原文写「5 页不符合，另 7 页不适用」，两个数今天都不成立，且第一个数错得最难看**：那 5 页（`sim-sandbox`/`project-sim`/`risk`/`order-chain`/`disruption-radius`）**早在 2026-08-19 就被 `WO-U4B-U1-U8-SIM` 全部翻正为「符合」**（§4.1 U4b 逐页记着），本行却一直挂着它们的旧身份 —— 照它排工会去修 5 个已经修好的格。形态（铁律 0.6）：**「我用『优先级表那行写着的数』当作『表里现在是什么』的证据，而前者并不度量后者」**，与 §4 合计行那条老账同病。2026-08-26 由 `parsePrdTable` **现算**订正（不是手数：本节自己的历史教训就是「手数三次三个全错」） | 一张前端单（只剩 `sim-attribution` 一页） |
 | **P2** | **~~U9 导出带口径与时间戳~~ ✅ 已闭（WO-U7-U9-REST，2026-08-16）** | 决定这一屏能不能进 S&OP 决议附件。**12 页全闭**：前 4 页 WO-HARNESS-UX-GAP-1，剩 8 页 WO-U7-U9-REST，全部复用同一共享件（§4.4.1） | ~~逐页单~~ 已交付 |
 
 **⇩ 以下四条是 2026-08-16 WO-HARNESS-UX-GAP-1 新增/改写的优先级（前面几条保持原样）。**
@@ -1505,6 +1761,11 @@ U3 有 `LayeredDag`、U5 有 `<Provenance>`、U8 有 `<details>` 惯例，而「
 | ~~**U6 × `what-if`**~~ | ✅ **2026-08-19 已闭**（`WO-U6-ACTION-FROM-CONCLUSION`）：接进既有的 `对象数据变更`，`patch` 由屏上假设直接带过去。原挂在「净室 4 页」名下的备裁理由**实测不成立**，见 §4.9 | ~~备裁~~ 已交付 |
 | **U6 × `optimize-whatif`** | 差一个**落点**（不是差裁决）：扰动 `{target,value}` 的 `target` 是 opt-template 基线入参里的一条路径，**既不是本体对象属性**（无 `objectId/prop`），**也不是校准提案**（`校准参数变更` 要求先有一条由 MAPE 证据产生的 PENDING `CalibrationProposal`）。今天硬接只能塞进一个语义不符的 ActionType | **WO-U6-OPTWHATIF-CARRIER**（中画像·先裁语义再接线）：先定「采纳一组扰动」到底是什么 —— ① 把扰动值写回该 opt-template 的**已保存基线**（要先有「基线可保存」这件事，今天没有）；② 落一条 `OptWhatifAdoption` 台账（参数组合 + 目标值 Δ + 决策切换）留审批痕，与 `采纳产能预测结论` 同族。②的改动量小得多且不臆造任何真值，建议先做② |
 | **U6 × `cleanroom-attr`** | 差的是**结论与动作之间的那一步**：三块的输出都是**归因分解**，**不提议任何值**（「扩容到多少 / 换成谁」求解器没算、屏上也没显示）。硬接就得由前端替用户挑一个值 = 臆造 | **WO-U6-CLEANROOM-PLAY**（重画像·引擎侧先出方案）：让三个求解器各自多产出一段**可采纳的处置候选**（带 `{objectType,objectId,prop,value}` 形状的杠杆行，与 `discoverLevers` 同形），前端才谈得上采纳。⚠ 引擎不出候选之前，**前端这一格做不了**，别派前端单 |
+| **U4 × `sim-unified`**（2026-08-26 新立·**已在红**） | 差的**不是**裁决也不是设计，是**一个挂载点** —— 同批四页（`sim-console`/`sim-conduction`/`sim-attribution`/`sim-optimize`）已由 `WO-EDGE-PANEL-4PAGES` 挂完，本页漏了。⚠ **这一条与本表其余行不同级：它今天就让 `edge-active-mounts:check` RC=1**（报文逐字「② ③ `sim-unified` **未挂载** `EdgeActivePanel`（`views/sim/unified/UnifiedSimShell.tsx`）」），而该门在 `package.json` 的 `gates` 链里 ⇒ **它是交付阻塞物，不是欠账** | **WO-EDGE-PANEL-SIM-UNIFIED**（中画像）：照抄同批四页那一版（画布外 · 紧贴其下 · `<details>` 默认折叠 · 挂在默认导出的主组件里、不在 `mode === "now"` 之下），`sessionId` 透 `useConsoleSession` 已解析的那条。⚠ 注释里指代该组件**一律写裸名**，否则门的 `includes` 子串匹配会把注释当成一处真挂载（`SandboxHomeRoute.tsx:51-57` 记过连撞两次） |
+| **U7 × `sim-unified`**（2026-08-26 新立） | 差**一行**：本页有专用 route（`App.tsx:157`）**不经过 `ViewPage`** ⇒ `setView` 一次都不会被调到，`QueryDock` 取不到本页场景、编排侧收到的「用户在哪一页」是上一页残值或空串。**这是 §4.1 U7 那批「六个专用 route 页」被收口之后新长出来的第七个**，病因与修法都是现成的 | **WO-U7-SIM-UNIFIED**（轻画像）：照 `DecisionPlayView` 那一版加 `usePageView("sim-unified")`。⚠ 视图键要先确认：本页是**壳**、内嵌四页各自会报自己的键，故须照 `SandboxView.tsx:547` 的先例只在**壳自己那一档**（`mode === "now"`）报到，避免与内嵌页抢写（那条防覆盖判据 §4.1 U7 已写明） |
+| **U3 × `sim-attribution`**（2026-08-26 新立） | 差的是**一格 `ruleKey`，不是一张面板** —— 本页根因树已可点（`SandboxAttr.tsx:199`/`:254`）、明细面板已渲染求解器名（`:187` 表头 + `:205` 值），判据两个必要条件里**来源已有、规则未有**。⚠ 别按「造图」排工，那会把一张接线单做成重画像 | **WO-U3-ATTR-RULEKEY**（中画像）：先在 `useLossAttribution` 的下钻回包里核对**后端到底给没给规则键**（给了 ⇒ 纯前端接线；没给 ⇒ 先落引擎侧一格，前端不许自己编一个规则码顶上，那是 R13/R14 反复点名的漂移源） |
+| **U1 × `sim-unified`**（2026-08-26 新立·**先裁决**） | 差一次**语义裁决**，与 `WO-U1-SOP-VERDICT` **同族但不同案，两笔账分开读**：`rail/PerturbRail.tsx:427` 的 `rail-apply` 是**把扰动真写进世界**的 POST（`createSimPerturbation`），不是「填完表再点一下」。判据自己那句「沙盘『推进一格 tick』不算提交闸 —— 那是推演语义本身」可能同样适用于「施加一条扰动」 | **WO-U1-SIM-UNIFIED-VERDICT**（轻画像·先裁决）：请仓主定「施加一条扰动是推演语义本身，还是提交闸」。判**语义本身** ⇒ 本格应从 `不符合` 改判**不适用**并按判据⑥逐格登记理由（⚠ 改判判据写死在 §4 表下，不许拿它消红）；判**提交闸** ⇒ 再派前端单。**注意本页还有另一半病与裁决无关**：表单七项一项都不进 `queryKey`（§4.10 U1 逐项列了 testid），那一半无论怎么裁都是欠账 |
+| **U10 × 前四页**（`sim-console`/`sim-conduction`/`sim-attribution`/`sim-optimize`·2026-08-26 新立·**先裁决**） | 差的**不是**改字号，是**两条验收线今天互斥**：这四页的 CSS Module 文件头逐字写着「本文件**逐条照抄规格**的 `<style>`：类名、`px`、…、`font-size`」（`SandboxHome.module.css:7` 等），而规格 HTML 是按桌面软件观感画的，最小 7px；本仓的字号硬底是 12px（`check-text-legibility.mjs` 的 `FLOOR_PX`，非自由参数）。**照规格 ⇒ U10 恒红；照硬底 ⇒ 「像素级 1:1」当场作废**。⚠ 逐格改字号是**做错事**：改完像素门红，改规格则四页的基准 PNG 全要重出 | **WO-U10-SPEC-VS-FLOOR-VERDICT**（轻画像·先裁决）：请仓主在两条线里定优先级。若判**硬底优先** ⇒ 一张单同批改四份 CSS Module + 四份规格 HTML + 重出基准 PNG（`SandboxOptRoute.tsx:89-94` 有先例：仓主曾就 edge dock 显式作废过本处的 1:1）；若判 **1:1 优先** ⇒ 这四格应登记为**在册豁免**并写明「本页不受 12px 硬底约束」的射程，**而不是留在 `不符合` 里假装将来会改** |
 | **U6 × `disruption-radius`** | 同上（结论是影响面，不提议任何值）；且本页可拨的只有关系边开关，那是 U4 反事实开关，**不是待采纳的方案** | **WO-U6-DISRUPTION-VERDICT**（轻画像·先裁决）：请仓主定「一次影响半径评估该不该留审批痕」。若该留 ⇒ 落 `DisruptionAssessment` 台账（根对象 + 半径 + 波及清单 + 快照版本），与 `采纳产能预测结论` 同族；若不该 ⇒ 本格应从 `不符合` 改判为**不适用**并按判据⑥登记理由（⚠ 改判「不适用」的判据写死在 §4 表下：只有当「采纳」这个动作在这一页上**无处落脚**时才允许，不许拿它消红） |
 
 ---

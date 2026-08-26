@@ -1343,10 +1343,12 @@
         "apps/datacore/src/sop.ts",
         "apps/datacore/test/action-adopt-forecast.seam.test.ts",
         "apps/datacore/test/action-adopt-hypothesis.seam.test.ts",
+        "apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.module.css",
         "apps/frontend-shell/test/sim-ux-u4b-u1-u8.test.tsx",
         "apps/frontend-shell/test/wo-sim-action-real.project-sim-adopt.test.tsx",
         "packages/bundle/headless/README.md",
         "packages/contracts/dist/index.js",
+        "packages/contracts/src/capacity-factors.ts",
         "packages/contracts/src/planviews.ts",
         "scripts/check-harness-ux-splitaccount.mjs",
         "scripts/check-sim-ux-criteria.mjs",
@@ -3528,6 +3530,7 @@
     ],
     "packages/contracts/src/capacity-factors.ts": [
       "PRD-capacity-live-cockpit.md",
+      "PRD-harness-ux-adoption.md",
       "PRD-lever-binding-drift.md"
     ],
     "apps/agentcore/src/features/registry.ts": [
@@ -3718,6 +3721,9 @@
       "PRD-harness-ux-adoption.md"
     ],
     "apps/datacore/test/action-adopt-hypothesis.seam.test.ts": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.module.css": [
       "PRD-harness-ux-adoption.md"
     ],
     "apps/frontend-shell/test/sim-ux-u4b-u1-u8.test.tsx": [
