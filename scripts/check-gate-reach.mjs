@@ -167,15 +167,28 @@ function main() {
     const dropped = Object.keys(prev?.entries ?? {}).filter((k) => !next[k]);
     const entryCount = Object.keys(next).length;
     const prevHigh = typeof prev?.ratchetHigh === "number" ? prev.ratchetHigh : entryCount;
-    const doc = buildBaselineDoc({
-      prev,
-      generatedBy: "node scripts/check-gate-reach.mjs --update",
-      prose: { note: BASELINE_NOTE, gate: "scripts/check-gate-reach.mjs", ontologyRef: "§7 · G-GATE-SCOPE-MISSES-SUBJECT" },
-      computed: { entries: next, entryCount, ratchetHigh: Math.min(prevHigh, entryCount) },
-    });
-    writeFileSync(BASELINE, JSON.stringify(doc, null, 1) + "\n");
+    const ratchetHigh = Math.min(prevHigh, entryCount);
+    // ⚠️ `buildBaselineDoc(...)` **必须内联在 `writeFileSync` 的实参里**，不许先抽成 `const doc`。
+    //    `baseline-writer-honesty:check` 的判据认的就是「写入点实参里有没有这个调用」——
+    //    抽成变量在文本上一样合规，在判据上不合规，本门此前正是栽在这个子形态（HAND_ROLLED (b)）。
+    //    判据这么严不是吹毛求疵：`note` 字段有两个主人（脚本常量 vs 基线正文里的人手挂账），
+    //    `--update` 永远最后写 ⇒ 谁绕过共享写入器，谁就会静默吞掉别人写的「为何这条不许豁免」。
+    //    ratchetHigh 先算出来单独持有，只为下面那行 console.log 用 —— 它不是绕道，是同一个值。
+    writeFileSync(
+      BASELINE,
+      JSON.stringify(
+        buildBaselineDoc({
+          prev,
+          generatedBy: "node scripts/check-gate-reach.mjs --update",
+          prose: { note: BASELINE_NOTE, gate: "scripts/check-gate-reach.mjs", ontologyRef: "§7 · G-GATE-SCOPE-MISSES-SUBJECT" },
+          computed: { entries: next, entryCount, ratchetHigh },
+        }),
+        null,
+        1,
+      ) + "\n",
+    );
     console.log(
-      `✅ 基线已写：差集 ${entryCount} 条（死账清除 ${dropped.length} 条）· ratchetHigh ${doc.ratchetHigh} → ${relative(ROOT, BASELINE)}`,
+      `✅ 基线已写：差集 ${entryCount} 条（死账清除 ${dropped.length} 条）· ratchetHigh ${ratchetHigh} → ${relative(ROOT, BASELINE)}`,
     );
     if (dropped.length) for (const d of dropped) console.log(`   - 死账 ${d}`);
     process.exit(0);
