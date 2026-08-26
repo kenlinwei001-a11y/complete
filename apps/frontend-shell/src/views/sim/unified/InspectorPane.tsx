@@ -87,7 +87,8 @@ export function InspectorPane({ view, onExpand, onAction }: InspectorPaneProps):
               ))}
             </svg>
             <div className={styles.calibre}>
-              值域 {NUM(g.min)} ~ {NUM(g.max)} · 两条线可比 {g.comparable} 格（缺格处**断线**，不插值）
+              {/* 强调用 <strong>：这段按纯文本渲染，markdown 星号会原样印在屏上。 */}
+              值域 {NUM(g.min)} ~ {NUM(g.max)} · 两条线可比 {g.comparable} 格（缺格处<strong>断线</strong>，不插值）
             </div>
           </>
         ) : (

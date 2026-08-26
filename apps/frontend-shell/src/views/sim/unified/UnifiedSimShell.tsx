@@ -132,9 +132,17 @@ function ModePanel({ mode, view }: { mode: UnifiedMode; view: ViewConfigVM }): J
   const key = UNIFIED_MODE_SPEC[mode].renderer;
   const Renderer = getRenderer(key ?? undefined);
   if (key === null || Renderer === undefined) {
+    // ⛔ 原文把源码文件名（`views/` 下那份注册表的文件名）印在屏上 —— 属 dev-jargon:check 的
+    //    「实现细节标识符」。用户读到一个源码文件名做不出任何决定，那是给工程师看的坐标。
+    //    **诚实位一个字没减**：仍然把「接线缺口」与「没有数据」分开说（这一句才是用户要的）；
+    //    渲染器键仍上屏（它是这一档的身份，运维可据此报障），坐标降进 title 浮层且只说口径。
     return (
-      <div className={styles.modeFallback} data-testid="usim-mode-unresolved">
-        这一档挂的渲染器 <code>{key ?? "（本表未填）"}</code> 在 <code>views/registry.ts</code> 里没注册
+      <div
+        className={styles.modeFallback}
+        data-testid="usim-mode-unresolved"
+        title="口径：这一档要显示什么，取决于它在渲染器注册表里登记了没有。登记表为空即此提示。"
+      >
+        这一档挂的渲染器 <code>{key ?? "（本表未填）"}</code> 还没有注册
         —— 这是接线缺口，不是「没有数据」。
       </div>
     );
@@ -438,9 +446,14 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
             role="tabpanel"
             aria-label={UNIFIED_MODE_SPEC[mode].label}
           >
+            {/* 同上：坐标降 title 且只说口径，屏上只留用户能据以判断的那一句。 */}
             {modeView === undefined ? (
-              <div className={styles.modeFallback} data-testid="usim-mode-unresolved">
-                这一档在 <code>unifiedModes.ts</code> 里没填 renderer —— 接线缺口，不是「没有数据」。
+              <div
+                className={styles.modeFallback}
+                data-testid="usim-mode-unresolved"
+                title="口径：这一档要显示什么，由本壳的档位表决定。档位表里这一档没填渲染器即此提示。"
+              >
+                这一档还没有配渲染器 —— 接线缺口，不是「没有数据」。
               </div>
             ) : (
               <ModePanel mode={mode} view={modeView} />

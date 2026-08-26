@@ -201,7 +201,9 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
     <section className="card" data-testid="drill-panel">
       <h3 style={{ marginTop: 0 }}>推演演习 · 扫端到端卡点</h3>
       <p style={{ opacity: 0.75, fontSize: "0.9em", marginTop: -6 }}>
-        输入一件**业务上发生的事**（不是拨数值），沿真实求解器算出卡点 / 堵点 / 脆弱点。
+        {/* ⛔ 原文写的是 `**业务上发生的事**` —— 这段文案按**纯文本**渲染，
+            markdown 的星号不会被解析，会原样印在屏上。强调一律用 <strong>。 */}
+        输入一件<strong>业务上发生的事</strong>（不是拨数值），沿真实求解器算出卡点 / 堵点 / 脆弱点。
         阈值取该变量在本世界的 P90/P95 分位，零配置。
       </p>
 

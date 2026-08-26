@@ -93,7 +93,8 @@ export function MetricWall({ wall, selected, onSelect }: MetricWallProps): JSX.E
       </div>
       {wall.truncated ? (
         <div className={`${styles.calibre} ${styles.warn}`} data-testid="usim-truncated">
-          后端截断了指标清单 —— 屏上这些**不是全部**（回包 truncated=true）
+          {/* 强调用 <strong>：这段按纯文本渲染，markdown 星号会原样印在屏上。 */}
+          后端截断了指标清单 —— 屏上这些<strong>不是全部</strong>（回包 truncated=true）
         </div>
       ) : null}
 
@@ -160,9 +161,18 @@ export function MetricWall({ wall, selected, onSelect }: MetricWallProps): JSX.E
       })}
 
       {wall.groups.length === 0 ? (
-        <div data-testid="usim-wall-empty" className={styles.calibre}>
-          状态变量清单为空 —— `GET /a/v1/sim/view-config` 的 `stateVars` 没有下发任何变量
-          （这是「本租户还没有已发布的传导规则」，不是「算不出来」）
+        <div
+          data-testid="usim-wall-empty"
+          className={styles.calibre}
+          title="口径：本墙的变量清单取自推演视图配置接口的 stateVars 字段；该字段为空即此空态。"
+        >
+          {/* ⛔ 原文把 `GET /a/v1/sim/view-config` 与 `stateVars` 直接印在屏上。两个毛病：
+              ① 反引号在纯文本渲染下**原样印出**，不会变成代码样式；
+              ② 接口路径属工程师层 —— 用户读了做不出任何决定（`dev-jargon:check` 的判据）。
+              **诚实位一个字都没减**：仍然把「还没有可算的东西」与「算不出来」分开说，
+              只是把「去哪儿看」挪进 title 浮层（规范 §1：口径降浮层）。 */}
+          状态变量清单为空 —— 本租户还没有已发布的传导规则。
+          这不是「算不出来」，是「还没有可算的东西」：规则库里发布传导规则后，这面墙会自己长出来。
         </div>
       ) : null}
     </div>

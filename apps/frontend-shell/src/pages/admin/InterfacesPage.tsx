@@ -192,7 +192,8 @@ export default function InterfacesPage() {
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>对象接口</h2>
       <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
         接口 = 一族类型共享的业务契约（多态抽象·组合优于继承：只声明要求、不注入字段）。
-        契约在**发布门**兑现：声明实现却没长出要求的属性/行动/函数 ⇒ 本体发布被拒并逐条点名。
+        {/* 强调用 <strong>：这段按纯文本渲染，markdown 星号会原样印在屏上。 */}
+        契约在<strong>发布门</strong>兑现：声明实现却没长出要求的属性/行动/函数 ⇒ 本体发布被拒并逐条点名。
       </div>
 
       {/* ── 发布门预览：与 assertInterfaceConformance 同一把尺子（只读，不改任何东西）────────── */}
