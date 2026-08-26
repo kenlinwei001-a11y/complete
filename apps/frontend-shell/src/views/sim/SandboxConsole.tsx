@@ -538,8 +538,22 @@ export function SandboxConsole({
    * 本组件自有的那一档是「调试者」的读物：SEED 种子、时窗为何无 ARGS。
    * 它们此前常驻顶栏，把决策者要看的那三张阻滞点卡挤到了第二眼。
    * **搬家不是删除**：徽标原文一字未改，只是从顶栏移到这里（硬约束①）。
+   *
+   * ── 为什么它带 `hardcoded-data-allow`（WO-SIM-HONEST-FALLBACK-B 逐条裁决）─────
+   * `scripts/check-debattery.mjs` 探测器 B 把它数成「3 行 × 6 个数值字面量」的**写死业务数据表**。
+   * **这是误报，理由可复验**：本表**不是数据表**，是一张 **JSX 区块清单** ——
+   * 两个元素：`...diagnostics`（宿主传进来的，运行期才有内容）+ 一个自有区块（`node` 是 JSX）。
+   * 探测器数到的 6 个数字**没有一个上屏当业务读数**，逐个点名：
+   *   · `gap: 6` / `6`（flex 版面）；
+   *   · `§2`、`30D/60D/90D`、`4 个控件` —— 全在**块注释里**（探测器做括号配平时不剥注释，
+   *     故注释里的数字照数；这是它的已知盲区，不是本文件有数据）。
+   * 屏上真正出现的那个数是 `PLACEHOLDER_SEED_DEFAULT`（合成拓扑的种子），
+   * 而它**旁边就印着「物理拓扑占位值种子」**——已经是诚实标注，不是伪装成真数据。
+   * 判据（同 `useParetoFrontier.PARETO_GEOM` 那条）：**它不描述这个租户的任何事实**。
+   * ⚠ 这**不是**「拿豁免压真业务数据换绿」：本页真业务数在 `model`（求解器回包）里，
+   *   一个都不在这张表内。
    */
-  const diagSections: SandboxConsoleRailSection[] = [
+  const diagSections: SandboxConsoleRailSection[] = [ // hardcoded-data-allow —— JSX 区块清单（非数据表），数字全在版面与块注释里；逐条理由见上
     ...diagnostics,
     {
       id: "debug",

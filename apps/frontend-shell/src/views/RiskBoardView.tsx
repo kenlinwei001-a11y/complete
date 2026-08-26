@@ -145,8 +145,21 @@ function tierColor(v: number | null | undefined, threshold: number): string {
  * `RiskTimelineOutputSchema` / `RiskCardSchema`），`data` 一律真字段名 ——
  * 字段没了/改名了引用当场断，屏上当场看得出。
  * ⚠ 「订单聚合」那个 tab 走的是**另一个求解器**（`affected_orders`），不在本条链上，故不受本闸控。
+ *
+ * ── 为什么它带 `hardcoded-data-allow`（WO-SIM-HONEST-FALLBACK-B 逐条裁决）─────
+ * `scripts/check-debattery.mjs` 探测器 B 把它数成「6 行 × 7 个数值字面量」的**写死业务数据表**。
+ * **这是误报，理由可复验**：那 7 个数**没有一个是业务读数**，全部落在**口径散文**里——
+ *   · `30/60/90`（3 个）= 推演窗口的三个档位，与本组件 `useState(30)` 及顶栏 chip **同一套**；
+ *   · `0–100`（2 个）= 张力口径的量纲说明；
+ *   · `90` 与 `14` = **契约原文的转写**：`packages/contracts/src/solvers.ts` 里
+ *     「每基地主因素首选方案 + 峰值≥90 备份 + 14 天内反提 S&OP」一句，逐字同源。
+ * 也就是说：这张表描述的是**求解器怎么算**，不是「常州这个月缺多少套」。
+ * 判据（同 `useParetoFrontier.PARETO_GEOM` 那条）：**它不描述这个租户的任何事实**。
+ * 同族先例：`src/store/eventInvalidation.ts` 的 `SIM_EVENT_GAPS`（缺口台账·散文）同样带此记号。
+ * ⚠ 这**不是**「拿豁免压真业务数据换绿」：真业务数（`cards[]` / `planRows[]`）一个都不在这张表里，
+ *   它们全部来自求解器回包。删掉这个记号唯一的效果是让门去咬一句口径说明。
  */
-const RK_STEPS: SolverStep[] = [
+const RK_STEPS: SolverStep[] = [ // hardcoded-data-allow —— 求解步骤契约（散文），数字全是口径/窗口档位，非业务读数；逐条理由见上
   {
     key: "scope",
     label: "窗口与入参",
