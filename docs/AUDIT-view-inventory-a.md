@@ -27,7 +27,15 @@ registry.ts 里的 registerRenderer key （= 渲染器键）
 ```
 
 `ShellLayout.tsx` 的解析（`UnifiedNav`）用的是 `viewByKey = new Map(views.map((it) => [it.viewKey ?? it.key, it]))` ——
-**匹配的是 viewKey，不是 renderer**。四对键名不同的页因此被整批误判：
+**匹配的是 viewKey，不是 renderer**。
+
+再追一层（铁律 0.5：grep 到一个 Map 不算证据，要追到真正喂进去的是什么）——
+`views` 这个 prop 的实参就在同文件的 `<UnifiedNav views={workspace.navigation.filter((item) => item.group !== "admin")} …/>`，
+而实测 workspace 回包里 `dash` / `graph` / `risk` / `order` / `plan-audit` / `plan-generate` /
+`project-sim` / `global-sim` **八条全带 `group:"business"`**（不是 admin），逐条通过这层过滤，
+再逐条与 `NAV_GROUPS` 的同名 key 对上 ⇒ **八条全渲染**。
+
+四对键名不同的页因此被整批误判：
 
 | 导航键（NAV_GROUPS） | 后端下发的 `renderer` | 屏上标签 | 派单标记 | 实测 |
 |---|---|---|---|---|
