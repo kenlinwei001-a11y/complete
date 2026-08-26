@@ -66,9 +66,14 @@ import type {
   PropagationRule, // WO-BEFE-E · 传导规则清单（契约已有，前端不重定义）
   PropagationRulesResponse, // WO-STATEVAR-DISPLAYNAME · 上者的响应信封（多带 stateVarNames 字典）
   SimSession,
+  SimSessionStatus, // WO-SIM-SESSION-WIRE · 会话五态枚举（契约单源；前端不再写一遍 "PAUSED"|"ENDED" 联合）
   SimCertification,
   SimCheckpoint,
   TickState,
+  // WO-SIM-SESSION-WIRE · 变更传播预览（POST /a/v1/sim/change-impact-preview）——
+  // 请求 `focus` 与回包四桶全部取契约，前端一个形状都不重定义（contracts-only-shared）。
+  ChangeFocus,
+  ChangeImpactPreview,
   // WO-ACTIVE-EDGE-UX · 推演边 active 开关（契约唯一来源，前端不重定义 R1）
   //   ⚠ `PropagationRule` 本单也要用，但它已在 :64 由 WO-BEFE-E 引入 —— 合并时三个单
   //     各写一遍同一个 import 造成 TS2300。此处**不是删掉它**，是它已在上面声明过。
@@ -783,6 +788,40 @@ export const fetchSimSessionBaseSnapshot = async (sessionId: string): Promise<Ti
   const { kept } = await readSessionsProjected<SimSession>(res, sessionId);
   return (kept as TickState | null) ?? null;
 };
+/**
+ * ══ WO-SIM-SESSION-WIRE · 会话生命周期迁移（暂停 / 恢复 / 结束）══════════════════
+ *
+ * **今天的行为是 X（开工实测，非派单转述）**：后端 `PATCH /a/v1/sim/sessions/:id/status`
+ *   （`apps/datacore/src/app.ts:2049`）自 `WO-SIMSESSION-BIZ-REUSE` 起就在，
+ *   `setSimSessionStatus` 是**唯一**置位实现（迁移校验 + `putSession` + 发
+ *   `sim.session_status_changed`），并且 `assertSimSessionWritable` 已把 PAUSED/ENDED
+ *   变成**世界真的冻结**（tick / act / perturbations / rollback / disabled-rules 一律 409）。
+ *   而**前端一个调用方都没有** —— 全仓 `grep -rn "sessions/.*status" apps/frontend-shell/src` 零命中
+ *   （金丝雀：同法 grep `disabled-rules` 命中 `endpoints.ts` 1 处 ⇒ 检索面是好的）。
+ *   于是「暂停这个世界」这件事后端做得到、用户点不到。
+ * **应该是 Y**：统一推演控制台顶部那条会话状态条上能直接迁移，并且**把三种"没成功"分开说**：
+ *   409（非法迁移，后端明说不能从 X 到 Y）· 404（会话/功能不在）· 这一跳自己失败（不知道成没成）。
+ *
+ * ⚠ 回包**刻意只有三格**（`{ id, status, curTick }`，后端原样）——**不含 baseSnapshot**。
+ *   调用方拿它更新屏上状态即可；权威列表由 `["a","sim-sessions"]` 失效后重取（单跳实测 1,087 字节）。
+ *   ⛔ 别改成"迁移后顺手 `GET /a/v1/sim/sessions/:id` 确认一遍"：那条裸 `:id` 回的是**整份世界**
+ *   （2026-08-26 实测 `SEED_DEMO=1` 种子世界 **261,859 字节**，生产量级 11,348×36 约 8.4MB），
+ *   为了读三个字段搬回一份世界，正是 `WO-SANDBOX-MEMORY` 刚治过的那个病。
+ *
+ * `status` 取契约枚举 `SimSessionStatus` 的子集：后端 zod 只收 `PAUSED | ENDED | RUNNING`
+ * （`DRAFT`/`READY` 不是**迁移目标**，只是初始态）。这个子集写在类型上，不写在注释里。
+ */
+export type SimSessionStatusTarget = Extract<SimSessionStatus, "PAUSED" | "ENDED" | "RUNNING">;
+export interface SimSessionStatusPatch {
+  id: string;
+  status: SimSessionStatus;
+  curTick: number;
+}
+export const patchSimSessionStatus = (sessionId: string, status: SimSessionStatusTarget) =>
+  api.a<SimSessionStatusPatch>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/status`, {
+    method: "PATCH",
+    body: { status },
+  });
 // ── 推演边的 active 开关 + 关掉后的对照（WO-ACTIVE-EDGE-UX）────────────────────────────
 /**
  * 本租户的传导边目录（默认只回 PUBLISHED）。
@@ -793,6 +832,28 @@ export const fetchSimSessionBaseSnapshot = async (sessionId: string): Promise<Ti
 // 状态变量中文名字典）——不在前端另写一遍内联形状（contracts-only-shared）。
 export const fetchPropagationRules = (published: boolean) =>
   api.a<PropagationRulesResponse>(`/a/v1/sim/propagation-rules?published=${published ? "true" : "false"}`);
+/**
+ * ══ WO-SIM-SESSION-WIRE · 变更传播预览（**按下去之前**看到波及面）══════════════
+ *
+ * **今天的行为是 X（开工实测）**：后端 `POST /a/v1/sim/change-impact-preview`
+ *   （`apps/datacore/src/app.ts:2617`）已按四桶给出波及面
+ *   （recompute 传导 / rederive 派生 / rejudge 规则重判 / rewire 结构改写）+ 逐跳计数
+ *   + `unresolved` 诚实位 + `truncated` 保险丝；契约 `ChangeImpactPreviewSchema` 也早就冻结。
+ *   而前端 `grep -rn "change-impact" apps/frontend-shell/src` **零命中** ⇒ 屏上问不出
+ *   「我改这一格会波及谁」，用户只能改完再看。
+ * **应该是 Y**：右栏检视选中一格之后能就地问一次，四桶原样上屏。
+ *
+ * ⛔ **只读，但方法是 POST**（`focus` 是判别联合，塞不进 query string）。因此**不许自动发** ——
+ *   挂在选中态上每点一张卡就发一次，是把只读语义做成了副作用节奏。调用方按需触发。
+ *
+ * ⛔ **空集不许冒充「没有波及」**（契约原文）：`items` 空 + `unresolved` 空 = 焦点确为叶子；
+ *   `unresolved` 非空 = 有算不出来的部分。屏上两者必须分开说，合成一句就是本仓最恨的那种谎。
+ *
+ * 门禁取 `sim.propagation`（不是 `sim.sandbox`）—— 关掉 ⇒ 404 `FEATURE_NOT_FOUND`（R3），
+ * 与「后端说没有波及」是两件事，调用方据错误码分开渲染。
+ */
+export const previewChangeImpact = (focus: ChangeFocus) =>
+  api.a<ChangeImpactPreview>("/a/v1/sim/change-impact-preview", { body: { focus } });
 /**
  * 改本会话屏蔽的边（**会话世界态，不是本体真值** ⇒ 不经 Action 审批；R4-sim）。
  * ⚠ 这**不是** `PropagationRule.status`：那个是全租户持久发布态，改它要走 R4 正门，且一改就没法对照。
