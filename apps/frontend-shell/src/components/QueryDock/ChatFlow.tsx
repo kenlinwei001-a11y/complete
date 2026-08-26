@@ -97,7 +97,9 @@ const AssistantNodeView = memo(function AssistantNodeView({
         return null;
       })}
       {data.status === "interrupted" && (
-        <span data-testid="chat-interrupted" className="badge amber" style={{ fontSize: 10.5 }}>
+        {/* 字号不再内联压小：`.badge`（global.css）本来就是 12px，10.5px 的内联覆盖把它压到
+            `check-text-legibility` 判据 B 的硬底以下。去掉覆盖 = 回到 12px，不另立一套。 */}
+        <span data-testid="chat-interrupted" className="badge amber">
           已中断
         </span>
       )}
@@ -105,7 +107,7 @@ const AssistantNodeView = memo(function AssistantNodeView({
         (renderScopeBadge !== undefined ? (
           renderScopeBadge(scope)
         ) : (
-          <span data-testid={`scope-badge-${data.turn}-${data.step}`} className="badge amber" style={{ fontSize: 10.5 }}>
+          <span data-testid={`scope-badge-${data.turn}-${data.step}`} className="badge amber">
             {scope}
           </span>
         ))}
@@ -117,7 +119,10 @@ const AssistantNodeView = memo(function AssistantNodeView({
 function CompactionRow({ node }: { node: Extract<ChatNode, { kind: "compaction" }> }) {
   const { data } = node;
   return (
-    <div data-testid="chat-compaction" data-phase={data.phase} className="mono" style={{ fontSize: 11, color: "var(--muted2)", margin: "4px 0" }}>
+    {/* 12px 是 `check-text-legibility` 判据 B 的硬底，也是判据 A 与本仓调色板的交点：
+        `--muted2` 在 12px 需 6.0:1，实测 dark 6.09 / light 6.13 / warm 6.07 —— 三主题全过；
+        原写 11px 时需 6.55:1，三主题全不过（6.09 / 6.13 / 6.07）。 */}
+    <div data-testid="chat-compaction" data-phase={data.phase} className="mono" style={{ fontSize: 12, color: "var(--muted2)", margin: "4px 0" }}>
       {data.phase === "running" && <span>正在压缩上下文…</span>}
       {data.phase === "done" && <span>{data.doneText ?? "上下文已压缩"}</span>}
       {data.phase === "error" && (
@@ -156,7 +161,7 @@ export function ChatFlow({ nodes, toolViews, provenance, renderScopeBadge, openF
             );
           case "notice":
             return (
-              <div key={node.key} data-testid="chat-notice" className="badge amber" style={{ margin: "4px 0", fontSize: 11 }}>
+              <div key={node.key} data-testid="chat-notice" className="badge amber" style={{ margin: "4px 0" }}>
                 {node.reason}
               </div>
             );
