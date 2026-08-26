@@ -5,6 +5,7 @@ import {
   CHAIN_NODE_REGISTRY,
   ChainNodeDetailSchema,
   chainNodeDef,
+  type ChainNodeDef,
   type ChainNodeDetail,
   type ImpactChange,
 } from "@platform/contracts";
@@ -86,12 +87,149 @@ function shortNodeLabel(nodeId: string, short: string): string {
   return short;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// § 0.5 · 本页触及的**全部**在册环节 —— 键锚在契约上的单一来源
+//
+// ── 今天的行为是 X，应该是 Y（WO-SIM-HONEST-FALLBACK-B）──────────────────────
+// **X**：本文件把 **21 个在册 nodeId 写成了值位字面量**
+//   （`nodeLabel(NODE_ID.aging)` / `{ nodeId: "material.kitting", … }`）。
+//   `scripts/check-chain-node-singlesource.mjs` 判据 C 判为「**第二份注册表**」并报红：
+//   id 全对也没用 —— 改册时这里不会跟着变，就退回「数据侧与前端各持一套词表」的状态。
+// **Y**：id 全部挪到**键位**，且这张表的**声明类型的键类型锚在契约联合上**
+//   （`Partial<Record<RegisteredChainNodeId, …>>`）⇒ 注册表删/改一条，`tsc` 当场 TS2353，
+//   门也按机制放行（这是门明文给的唯一一条放行路，见它的 `判据 C` 头注）。
+//   同族先例：本目录 `FlowMap.tsx` 的 `FLOW_LAYOUT`（那里用**非** `Partial` 的 `Record`，
+//   因为它要求「注册表新增一条这里必须跟上」；本表只覆盖本页画到的 21 站，故用 `Partial`）。
+//
+// ⚠ 三条**看起来能过、实际过不了**的捷径，门头注写明实测都会让 `tsc` 不再咬：
+//   `{…} as Partial<Record<Rid,…>>` · `Record<Rid | string, …>` · `type Rid = string` 本地伪造。
+//   一条都不许走。
+// ══════════════════════════════════════════════════════════════════════════
+
+/** 在册节点 id 的**字面量联合**（派生自契约，不是本地起个同名别名白嫖）。 */
+type RegisteredChainNodeId = ChainNodeDef["nodeId"];
+
+/** 本文件按语义引用某一站时用的别名 —— 就是下面那张锚定表的 `as` 值。 */
+type PageNodeAlias =
+  | "forecast"
+  | "quote"
+  | "consensus"
+  | "orderReview"
+  | "settlement"
+  | "cash"
+  | "rccp"
+  | "schedule"
+  | "woRelease"
+  | "qcBatch"
+  | "quality"
+  | "aging"
+  | "mrp"
+  | "purchaseReq"
+  | "purchaseOrder"
+  | "inboundTransit"
+  | "iqc"
+  | "kitting"
+  | "fgStock"
+  | "transit"
+  | "acceptance";
+
+interface LaneNodeSpec {
+  /** 本文件引用它的别名（见 `NODE_ID`）。 */
+  as: PageNodeAlias;
+  /** 地铁图上的**短名**；缺省 ⇒ 用注册表 label。必须是 label 的子序列（`laneNodeLabel` 校验）。 */
+  short?: string;
+  /** 该站的损失百分比 —— **规格占位数**（≥13 时图上标数字），真值到位即整套换。 */
+  loss: number;
+  /** 命中阻滞。 */
+  hit?: boolean;
+}
+
+/** 一段（泳道）。`nodes` 的**键序即图上左→右的站序**（字符串键按插入序枚举）。 */
+interface LaneSpec {
+  key: string;
+  color: string;
+  nodes: Partial<Record<RegisteredChainNodeId, LaneNodeSpec>>;
+}
+
+/**
+ * 五段 × 21 站。**站名一个字都不在这里**（只有 id 与短名），`loss` 是规格占位。
+ *
+ * 每个 `nodes` 都单独跟一个 `satisfies Partial<Record<RegisteredChainNodeId, LaneNodeSpec>>`：
+ * 门只认 `const X: T = {…}` 与 `{…} satisfies T` 两种**声明类型**载体，
+ * **嵌套在数组元素里的对象字面量拿不到外层的类型注解** —— 少写一个 `satisfies`，
+ * 那一段的 3–6 个 id 立刻退回「值位字面量」被判 C。（本单实测确认过这个边界。）
+ */
+const LANE_SPECS: readonly LaneSpec[] = [ // hardcoded-data-allow —— 键是在册 id（编译期绑死）、short 是版面短名、loss 是规格占位数：屏上已标「示例数据」（见 sandbox-detail-placeholder）
+  {
+    key: "需求",
+    color: "var(--c-forecast)",
+    nodes: {
+      "demand.forecast": { as: "forecast", loss: 1 },
+      "demand.quote": { as: "quote", loss: 1 },
+      "demand.consensus": { as: "consensus", loss: 3 },
+    } satisfies Partial<Record<RegisteredChainNodeId, LaneNodeSpec>>,
+  },
+  {
+    key: "订单",
+    color: "var(--c-product)",
+    nodes: {
+      "order.review": { as: "orderReview", loss: 2 },
+      "order.settlement": { as: "settlement", short: "开票对账", loss: 1 },
+      "order.cash": { as: "cash", loss: 1 },
+    } satisfies Partial<Record<RegisteredChainNodeId, LaneNodeSpec>>,
+  },
+  {
+    key: "产能",
+    color: "var(--c-capacity)",
+    nodes: {
+      "capacity.rccp": { as: "rccp", short: "产能复核", loss: 4 },
+      "capacity.schedule": { as: "schedule", loss: 5, hit: true },
+      "capacity.wo_release": { as: "woRelease", loss: 2 },
+      "capacity.qc_batch": { as: "qcBatch", short: "过程质检", loss: 13, hit: true },
+      "capacity.quality": { as: "quality", short: "质量返工", loss: 6 },
+      "capacity.aging": { as: "aging", loss: 34, hit: true },
+    } satisfies Partial<Record<RegisteredChainNodeId, LaneNodeSpec>>,
+  },
+  {
+    key: "物料",
+    color: "var(--c-process)",
+    nodes: {
+      "material.mrp": { as: "mrp", loss: 2 },
+      "material.purchase_req": { as: "purchaseReq", loss: 1 },
+      "material.purchase_order": { as: "purchaseOrder", loss: 1 },
+      "material.inbound_transit": { as: "inboundTransit", short: "入厂在途", loss: 3 },
+      "material.iqc": { as: "iqc", loss: 2 },
+      "material.kitting": { as: "kitting", loss: 21, hit: true },
+    } satisfies Partial<Record<RegisteredChainNodeId, LaneNodeSpec>>,
+  },
+  {
+    key: "交付",
+    color: "var(--c-factory)",
+    nodes: {
+      "delivery.fg_stock": { as: "fgStock", loss: 1 },
+      "delivery.transit": { as: "transit", short: "干线在途", loss: 2 },
+      "delivery.acceptance": { as: "acceptance", loss: 1 },
+    } satisfies Partial<Record<RegisteredChainNodeId, LaneNodeSpec>>,
+  },
+];
+
+/**
+ * 别名 → 在册 nodeId。**反解自上表的键，本文件再无第二份 id 字面量**。
+ * （`as` 只落在这一步的 `Object.fromEntries` 结果上 —— 它是**派生值**，
+ * 不是那张锚定表的声明类型；门咬的是后者，两者不许混。）
+ */
+const NODE_ID: Record<PageNodeAlias, RegisteredChainNodeId> = Object.fromEntries(
+  LANE_SPECS.flatMap((l) =>
+    Object.entries(l.nodes).flatMap(([id, n]) => (n === undefined ? [] : [[n.as, id]])),
+  ),
+) as Record<PageNodeAlias, RegisteredChainNodeId>;
+
 /** 传导识别表用到的五个环节（短名逐个经 `shortNodeLabel` 校验）。 */
-const CD_AGING = nodeLabel("capacity.aging");
-const CD_KITTING = nodeLabel("material.kitting");
-const CD_QC = shortNodeLabel("capacity.qc_batch", "过程质检");
-const CD_SCHEDULE = nodeLabel("capacity.schedule");
-const CD_TRANSIT = shortNodeLabel("delivery.transit", "干线在途");
+const CD_AGING = nodeLabel(NODE_ID.aging);
+const CD_KITTING = nodeLabel(NODE_ID.kitting);
+const CD_QC = shortNodeLabel(NODE_ID.qcBatch, "过程质检");
+const CD_SCHEDULE = nodeLabel(NODE_ID.schedule);
+const CD_TRANSIT = shortNodeLabel(NODE_ID.transit, "干线在途");
 
 /**
  * 基地名 ← `BASE_REGISTRY`（`packages/contracts/src/base-registry.ts`）。
@@ -185,8 +323,29 @@ const LEVEL_TOKEN = ["var(--ok)", "var(--accent)", "var(--warn)", "var(--danger)
  *
  * README 最后一条告诫：**四页的数字是内部自洽的一套**（产能 −18% → 稼动率 −18.0pp →
  * Q3 缺口 6 万套 → 外协 ¥1,840 万）。接真数据时整套换掉，别只换一半。
+ *
+ * ══ WO-SIM-HONEST-FALLBACK-B 的裁决：**规格占位（已标注），不是兜底编数** ═══════
+ *
+ * 三态先分清（不许混为一谈，修法完全不同）：
+ *   · **card / flow** ⇒ 「**该接已接**」：`GET …/node-detail` 真答，`projectNodeDetail`
+ *     逐格换真，`provenance.card/flow` 变 `"endpoint"`。这两格今天不是占位。
+ *   · **conduction / strip / clock / directions / filters** ⇒ 「**压根没有数据源**」：
+ *     回包 `ChainNodeDetail` 里没有型号 / 影响级 / 耗时 / 模拟时钟 / 阻滞事件这些量
+ *     （`NodeDetailProvenance.chrome` 的注释原话：「端点一个都不答，恒占位」）。
+ *
+ * **为什么这 156 个数留着而不是清成 `—`**（与 `ImpactCone` 那处的相反裁决，理由要说清）：
+ * 那边空掉的是**四个孤立读数**（半径/张角/刻度/标记），清空后版面照样成立；
+ * 这边是**一整页版面的骨架** —— 14 行传导识别表、9 个时间刻度、4 行流转明细、
+ * 一张节点卡的 8 格 —— 全清成 `—` 得到的是一张**空表**，而派单与仓主的话都写着
+ * 「诚实空态 ≠ 空白页；用户看到的必须是『这里暂无数据/这是示例』」。
+ * 故取三态表里的第一条：**加显式占位标记（屏上可见），保留数值**。
+ * 屏上那条标记在 `data-testid="sandbox-detail-placeholder"`，文案见 `DETAIL_PLACEHOLDER_*`。
+ *
+ * ⚠ 本单**没有**去接任何端点、也没有新发一个请求：`conduction`/`strip` 那几格要变真，
+ *   得先由后端在 `ChainNodeDetail` 里补出这些量 —— 那属仓主禁令 2（沙盘接真实数据的 UX），
+ *   要逐案批准，本单只把「屏上在骗人」这一半消掉。
  */
-const PLACEHOLDER_NODE_DETAIL: NodeDetailPayload = {
+const PLACEHOLDER_NODE_DETAIL: NodeDetailPayload = { // hardcoded-data-allow —— 规格占位（屏上已标「示例数据」，见 sandbox-detail-placeholder）；端点无此概念的那几格见上表
   clock: "2027年3月14日　12:28:39",
   directions: [
     `传导方向 - ${baseName(HOME_BASE)}→${baseName(PEER_BASE_A)}`,
@@ -235,9 +394,9 @@ const PLACEHOLDER_NODE_DETAIL: NodeDetailPayload = {
     ],
     // 与 `ImpactCone.CONE_SLOTS` 同三个环节（时间条徽标 ↔ 扇区图冲击条是同一批事实的两个视图）。
     chips: [
-      { label: `${nodeLabel("material.kitting")} P2`, left: "28%" },
-      { label: `${nodeLabel("capacity.schedule")} P1`, left: "52%" },
-      { label: `${nodeLabel("capacity.aging")} Y1`, left: "80%" },
+      { label: `${nodeLabel(NODE_ID.kitting)} P2`, left: "28%" },
+      { label: `${nodeLabel(NODE_ID.schedule)} P1`, left: "52%" },
+      { label: `${nodeLabel(NODE_ID.aging)} Y1`, left: "80%" },
     ],
   },
   card: {
@@ -247,7 +406,7 @@ const PLACEHOLDER_NODE_DETAIL: NodeDetailPayload = {
       ["节点编号", "P4212"],
       ["口径校准", "关闭"],
       // 真数据模式下这一格由 `projectNodeDetail` 换成 `res.node.label`（也是注册表的字）。
-      ["环节类型", nodeLabel("capacity.aging")],
+      ["环节类型", nodeLabel(NODE_ID.aging)],
       ["上游工位", "160#"],
       ["传导能力", "是", true],
       ["在制批量", "3000"],
@@ -284,65 +443,71 @@ const PLACEHOLDER_NODE_DETAIL: NodeDetailPayload = {
  * 「入厂在途与清关」起的短名，与 label 不逐字相同）—— 这三个留在原地，
  * 硬套一个 nodeId 上去等于在视图里新造一套环节命名，那比写死更坏。
  */
-const GANTT_ROWS: readonly (readonly (readonly [number, number, "o" | "b" | "g", string])[])[] = [
+const GANTT_ROWS: readonly (readonly (readonly [number, number, "o" | "b" | "g", string])[])[] = [ // hardcoded-data-allow —— 规格占位（屏上已标「示例数据」，见 sandbox-detail-placeholder）；left/width 是版面百分比，段名查注册表
   [
-    [2, 20, "o", nodeLabel("material.purchase_req")],
-    [30, 26, "b", nodeLabel("material.kitting")],
+    [2, 20, "o", nodeLabel(NODE_ID.purchaseReq)],
+    [30, 26, "b", nodeLabel(NODE_ID.kitting)],
     [62, 20, "g", "缓冲释放"],
     [86, 12, "o", "结转"],
   ],
   [
-    [6, 18, "o", nodeLabel("material.purchase_order")],
-    [28, 28, "b", nodeLabel("capacity.aging")],
+    [6, 18, "o", nodeLabel(NODE_ID.purchaseOrder)],
+    [28, 28, "b", nodeLabel(NODE_ID.aging)],
     [60, 22, "g", "缓冲释放"],
     [86, 12, "o", "结转"],
   ],
   [
     [3, 22, "o", "入厂在途"],
-    [30, 24, "b", nodeLabel("material.kitting")],
+    [30, 24, "b", nodeLabel(NODE_ID.kitting)],
     [58, 24, "g", "缓冲释放"],
     [85, 13, "o", "结转"],
   ],
   [
-    [5, 19, "o", nodeLabel("material.iqc")],
-    [27, 27, "b", nodeLabel("capacity.aging")],
+    [5, 19, "o", nodeLabel(NODE_ID.iqc)],
+    [27, 27, "b", nodeLabel(NODE_ID.aging)],
     [59, 23, "g", "缓冲释放"],
     [85, 13, "o", "结转"],
   ],
   [
-    [2, 21, "o", nodeLabel("material.purchase_req")],
-    [26, 29, "b", nodeLabel("material.kitting")],
+    [2, 21, "o", nodeLabel(NODE_ID.purchaseReq)],
+    [26, 29, "b", nodeLabel(NODE_ID.kitting)],
     [60, 21, "g", "缓冲释放"],
     [84, 14, "o", "结转"],
   ],
   [
-    [4, 20, "o", nodeLabel("material.purchase_order")],
-    [29, 25, "b", nodeLabel("capacity.aging")],
+    [4, 20, "o", nodeLabel(NODE_ID.purchaseOrder)],
+    [29, 25, "b", nodeLabel(NODE_ID.aging)],
     [57, 25, "g", "缓冲释放"],
     [85, 13, "o", "结转"],
   ],
   [
-    [3, 19, "o", nodeLabel("material.iqc")],
-    [25, 30, "b", nodeLabel("material.kitting")],
+    [3, 19, "o", nodeLabel(NODE_ID.iqc)],
+    [25, 30, "b", nodeLabel(NODE_ID.kitting)],
     [58, 23, "g", "缓冲释放"],
     [84, 14, "o", "结转"],
   ],
   [
     [6, 17, "o", "入厂在途"],
-    [27, 26, "b", nodeLabel("capacity.aging")],
+    [27, 26, "b", nodeLabel(NODE_ID.aging)],
     [56, 26, "g", "缓冲释放"],
     [85, 13, "o", "结转"],
   ],
   [
-    [2, 22, "o", nodeLabel("material.purchase_req")],
-    [28, 27, "b", nodeLabel("material.kitting")],
+    [2, 22, "o", nodeLabel(NODE_ID.purchaseReq)],
+    [28, 27, "b", nodeLabel(NODE_ID.kitting)],
     [59, 22, "g", "缓冲释放"],
     [84, 14, "o", "结转"],
   ],
 ];
 
-/** 补货路径（规格 `#supp`）。 */
-const REPLENISH_SEGS: readonly (readonly [number, number, "o" | "b" | "g", string])[] = [
+/**
+ * 补货路径（规格 `#supp`）。
+ * 三态：**压根没有数据源** —— 全仓没有任何端点回答「这条补货路径分几段、各占多宽」
+ * （复验：`grep -rn "replenish" apps/datacore/src/sim/` 无对应回包字段；
+ * 金丝雀：同目录搜 `node-detail` 命中 `app.ts` 那条路由 ⇒ 工具没坏）。
+ * 版面百分比 + 规格段名，屏上已标「示例数据」，故按「规格占位（已标注）」记。
+ */
+const REPLENISH_SEGS: readonly (readonly [number, number, "o" | "b" | "g", string])[] = [ // hardcoded-data-allow —— 规格占位（屏上已标「示例数据」，见 sandbox-detail-placeholder）
   [2, 16, "o", "请购"],
   [20, 18, "o", "采购下单"],
   [40, 30, "b", "齐套发料 3/16"],
@@ -360,9 +525,9 @@ const PLAN_ROWS: readonly {
   action: string;
   danger?: boolean;
 }[] = [
-  { name: `${nodeLabel("material.kitting")} P1`, line: "L-16", material: "LFP-9 x3…", team: "xxx 队", target: "3/22", level: 1, action: "正常执行" },
+  { name: `${nodeLabel(NODE_ID.kitting)} P1`, line: "L-16", material: "LFP-9 x3…", team: "xxx 队", target: "3/22", level: 1, action: "正常执行" },
   {
-    name: `${nodeLabel("material.kitting")} P2`,
+    name: `${nodeLabel(NODE_ID.kitting)} P2`,
     line: "L-22",
     material: "LFP-9 x3…",
     team: "xxx 团",
@@ -371,12 +536,19 @@ const PLAN_ROWS: readonly {
     action: "取消方案",
     danger: true,
   },
-  { name: `${nodeLabel("capacity.aging")} Y1`, line: "L-25", material: "LFP-22 x3…", team: "xxx 队", target: "3/22", level: 1, action: "正常执行" },
-  { name: `${nodeLabel("capacity.aging")} Y2`, line: "L-25", material: "LFP-21 x3…", team: "xxx 团", target: "3/22", level: 1, action: "正常执行" },
+  { name: `${nodeLabel(NODE_ID.aging)} Y1`, line: "L-25", material: "LFP-22 x3…", team: "xxx 队", target: "3/22", level: 1, action: "正常执行" },
+  { name: `${nodeLabel(NODE_ID.aging)} Y2`, line: "L-25", material: "LFP-21 x3…", team: "xxx 团", target: "3/22", level: 1, action: "正常执行" },
 ];
 
-/** 方案设置表单（规格 `.form`）。 */
-const FORM_PLACEHOLDER = {
+/**
+ * 方案设置表单（规格 `.form`）的**默认值**。
+ *
+ * 三态：**压根没有数据源** —— 这是一张「填了之后提交」的表单，它的默认值本来就不是
+ * 后端算出来的事实，而是设计稿给的示例填法（方案名「缓冲方案 K1」、两个物料号、三条产线）。
+ * 屏上已标「示例数据」，故按「规格占位（已标注）」记。
+ * ⚠ 真要让它有意义，得先有「提交这张表 → 生成一个缓冲方案」的端点 —— 那属禁令 2 范围。
+ */
+const FORM_PLACEHOLDER = { // hardcoded-data-allow —— 规格占位（屏上已标「示例数据」，见 sandbox-detail-placeholder）：表单默认填法，非后端事实
   planName: "缓冲方案 K1",
   bases: [`${baseName(PEER_BASE_A)}基地`, `${baseName(PEER_BASE_B)}基地`],
   materials: [
@@ -409,15 +581,21 @@ const LEGEND: readonly { label: string; color?: string; kind: "line" | "dash" | 
 // ══════════════════════════════════════════════════════════════════════════
 
 /**
- * 五段 × 21 个在册节点。**站名不是手写的**：这里只写 `nodeId` 与规格里那张图用的**短名**，
- * 短名必须是注册表 `label` 的**子序列**（即：不许出现注册表里没有的字）——
- * 这条规则由 `sandbox-detail-pixel.test.tsx` 机器校验，写歪一个字当场红。
+ * 五段 × 21 个在册节点。**站名不是手写的**：`nodeId` 与规格里那张图用的**短名**都在
+ * § 0.5 的 `LANE_SPECS`（键锚在契约上），短名必须是注册表 `label` 的**子序列**
+ * （即：不许出现注册表里没有的字）—— 这条规则由 `sandbox-detail-pixel.test.tsx` 机器校验，
+ * 写歪一个字当场红。
  *
  * 为什么要短名：注册表 label 是**契约名**（"产能与瓶颈复核" / "干线运输在途"），
  * 而 470px 宽的图上一站只放得下 4–5 个字，规格 `pg2.png` 用的就是短名。
  * 缩写规则登记在册（子序列）好过两套自由文案各写各的。
  *
- * `loss` = 该站的损失百分比（占位；≥13 时图上标数字），`hit` = 命中阻滞。
+ * `loss` = 该站的损失百分比（**规格占位**；≥13 时图上标数字），`hit` = 命中阻滞。
+ *
+ * ⚠ **本表 2026-08-26 起是派生的，不是写死的**（WO-SIM-HONEST-FALLBACK-B）：
+ *   原文把 21 个 nodeId 写在 `{ nodeId: "…" }` 的**值位**上，被判 C「第二份注册表」。
+ *   现在它由 § 0.5 的 `LANE_SPECS` 展开而来 —— 消费方（`ChainMapFragment` /
+ *   `laneNodeLabel` / 像素测）拿到的形状**逐字节不变**，变的只有 id 写在哪一侧。
  */
 interface LaneNode {
   nodeId: string;
@@ -431,59 +609,13 @@ interface Lane {
   nodes: readonly LaneNode[];
 }
 
-export const CHAIN_MAP_LANES: readonly Lane[] = [
-  {
-    key: "需求",
-    color: "var(--c-forecast)",
-    nodes: [
-      { nodeId: "demand.forecast", loss: 1 },
-      { nodeId: "demand.quote", loss: 1 },
-      { nodeId: "demand.consensus", loss: 3 },
-    ],
-  },
-  {
-    key: "订单",
-    color: "var(--c-product)",
-    nodes: [
-      { nodeId: "order.review", loss: 2 },
-      { nodeId: "order.settlement", short: "开票对账", loss: 1 },
-      { nodeId: "order.cash", loss: 1 },
-    ],
-  },
-  {
-    key: "产能",
-    color: "var(--c-capacity)",
-    nodes: [
-      { nodeId: "capacity.rccp", short: "产能复核", loss: 4 },
-      { nodeId: "capacity.schedule", loss: 5, hit: true },
-      { nodeId: "capacity.wo_release", loss: 2 },
-      { nodeId: "capacity.qc_batch", short: "过程质检", loss: 13, hit: true },
-      { nodeId: "capacity.quality", short: "质量返工", loss: 6 },
-      { nodeId: "capacity.aging", loss: 34, hit: true },
-    ],
-  },
-  {
-    key: "物料",
-    color: "var(--c-process)",
-    nodes: [
-      { nodeId: "material.mrp", loss: 2 },
-      { nodeId: "material.purchase_req", loss: 1 },
-      { nodeId: "material.purchase_order", loss: 1 },
-      { nodeId: "material.inbound_transit", short: "入厂在途", loss: 3 },
-      { nodeId: "material.iqc", loss: 2 },
-      { nodeId: "material.kitting", loss: 21, hit: true },
-    ],
-  },
-  {
-    key: "交付",
-    color: "var(--c-factory)",
-    nodes: [
-      { nodeId: "delivery.fg_stock", loss: 1 },
-      { nodeId: "delivery.transit", short: "干线在途", loss: 2 },
-      { nodeId: "delivery.acceptance", loss: 1 },
-    ],
-  },
-];
+export const CHAIN_MAP_LANES: readonly Lane[] = LANE_SPECS.map((l) => ({
+  key: l.key,
+  color: l.color,
+  nodes: Object.entries(l.nodes).flatMap(([nodeId, n]) =>
+    n === undefined ? [] : [{ nodeId, ...(n.short === undefined ? {} : { short: n.short }), loss: n.loss, ...(n.hit === undefined ? {} : { hit: n.hit }) }],
+  ),
+}));
 
 const REGISTRY_LABEL = new Map(CHAIN_NODE_REGISTRY.map((n) => [n.nodeId as string, n.label as string]));
 
@@ -707,6 +839,39 @@ const PLACEHOLDER_PROVENANCE: NodeDetailProvenance = {
   chrome: "placeholder",
 };
 
+// ── 屏上那条「这一页哪些数是示例」的横幅（WO-SIM-HONEST-FALLBACK-B）─────────────
+
+/** 全页都没接上时的说法。 */
+const DETAIL_PLACEHOLDER_ALL = "示例数据 · 这一页的数不是本次推演算出来的";
+
+/**
+ * 只有节点卡与流转明细接上时的说法。
+ * **必须与上面那句不同**：第一批 A 的接缝门就是拿「两种空态说的是不是同一句话」当判据的 ——
+ * 「全是示例」与「一半是示例」混成一句，用户仍然不知道自己在看什么。
+ */
+const DETAIL_PLACEHOLDER_PARTIAL =
+  "部分是示例 · 传导识别表、时间条、左下甘特、补货路径、方案设置与左图占比不是本次推演算出来的";
+
+/**
+ * 逐格出处 → 屏上那一句。**出处的单一来源是 `NodeDetailProvenance`**（它本来就逐格算好了，
+ * 只是一直只写进 `data-prov` 属性，用户看不见）—— 这里不另算一套，另算就会漂：
+ * 屏上说"全是示例"而属性说 `endpoint`，两边都自称对。
+ *
+ * 返回 `null` = 没有任何一格是示例。今天到不了这一支（`conduction`/`chrome` 的类型
+ * 就写死是 `"placeholder"`），留着是为了端点补齐那些量之后这句话会自己消失。
+ */
+export function detailPlaceholderNote(p: NodeDetailProvenance): string | null {
+  const anyPlaceholder =
+    p.card === "placeholder" ||
+    p.flow === "placeholder" ||
+    p.flowTime === "placeholder" ||
+    p.conduction === "placeholder" ||
+    p.chrome === "placeholder";
+  if (!anyPlaceholder) return null;
+  const anyLive = p.card === "endpoint" || p.flow === "endpoint";
+  return anyLive ? DETAIL_PLACEHOLDER_PARTIAL : DETAIL_PLACEHOLDER_ALL;
+}
+
 /** 节拍：回包是**秒/件**（`Equipment.ctSeconds`），屏上那一列是「件/小时」。换算只做这一次。 */
 const taktLabel = (ctSeconds: number | null): string | null =>
   ctSeconds === null || ctSeconds <= 0 ? null : `${(3600 / ctSeconds).toFixed(1)}/h`;
@@ -874,6 +1039,7 @@ export function SandboxDetail({ sessionId, nodeId, impactChange, mitigation }: S
       : undefined,
   );
   const strategies = useMitigationCards(mitigation);
+  const placeholderNote = detailPlaceholderNote(detail.provenance);
 
   return (
     <div
@@ -891,6 +1057,15 @@ export function SandboxDetail({ sessionId, nodeId, impactChange, mitigation }: S
         <u>□</u>
         <u>✕</u>
       </div>
+
+      {/* 诚实标记：这一页哪些数是示例。**屏上文字**，不是 `data-prov` ——
+          属性用户看不见，而本单要消灭的正是"屏上看不出这是示例"（WO-SIM-HONEST-FALLBACK-B）。
+          出处判定复用 `detail.provenance`，不另算一套（另算就会与属性各说各话）。 */}
+      {placeholderNote === null ? null : (
+        <div className={styles.phb} data-testid="sandbox-detail-placeholder">
+          {placeholderNote}
+        </div>
+      )}
 
       <div className={styles.body}>
         {/* ══ 左：地图与甘特延续 ══ */}
