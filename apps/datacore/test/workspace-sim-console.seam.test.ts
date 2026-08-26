@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, ADMIN, PLANNER, BASE_MANAGER } from "./helpers.js";
@@ -35,9 +36,19 @@ import { SANDBOX_CONSOLE_FEATURE_KEY, SANDBOX_CONSOLE_VIEWS } from "../src/synth
 
 /* ══ §0 前端真值源：从 registry.ts 现抽四个键（不写死）══════════════════════════════ */
 
-const REGISTRY_PATH = fileURLToPath(
-  new URL("../../frontend-shell/src/views/registry.ts", import.meta.url),
-);
+/**
+ * ⚠ **扫整棵前端 src 树，不写死 `registry.ts` 这一个文件**
+ * （`G-FACTLOCK-POSITION-ANCHOR` · check-factlock-anchor 头注的修法①）。
+ *
+ * 原写法把真值源钉在 `apps/frontend-shell/src/views/registry.ts` 上。那是**位置锚**：
+ * 本文件要断言的事实是「**前端注册了哪些 renderer 键**」，而这个事实与那些
+ * `registerRenderer()` 调用**住在哪个文件**无关。钉住位置会同时产出两个方向的错误信号：
+ *   · 有人把注册拆成两个文件 ⇒ 抽出来的键集变小 ⇒ §0.2 的 `toHaveLength(4)` **假红**；
+ *   · 更坏的一头：有人在**别的**文件里 `registerRenderer("sim-console", …)` 覆盖了这一条，
+ *     单文件抽取器一声不吭 ⇒ **假绿**（能力搬了家，断言还在原地咬空气）。
+ * 扫树版对这两头都成立，且严格**更强**：多一个注册点当场进集合。
+ */
+const FRONTEND_SRC = fileURLToPath(new URL("../../frontend-shell/src", import.meta.url));
 
 /**
  * 抽 `registerRenderer("<key>", () => import("<模块路径>"))` 全表。
@@ -56,8 +67,23 @@ function parseRegisterRenderer(src: string): { key: string; module: string }[] {
   return out;
 }
 
-const registrySrc = readFileSync(REGISTRY_PATH, "utf8");
-const allRegistered = parseRegisterRenderer(registrySrc);
+/** 递归列出前端 src 下的 `.ts/.tsx`（跳 node_modules/dist）。 */
+function frontendSrcFiles(dir: string, acc: string[] = []): string[] {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) {
+      if (e.name === "node_modules" || e.name === "dist") continue;
+      frontendSrcFiles(p, acc);
+    } else if (/\.tsx?$/.test(e.name) && !e.name.endsWith(".d.ts")) {
+      acc.push(p);
+    }
+  }
+  return acc;
+}
+
+const frontendFiles = frontendSrcFiles(FRONTEND_SRC);
+const registryBytes = frontendFiles.reduce((n, f) => n + readFileSync(f, "utf8").length, 0);
+const allRegistered = frontendFiles.flatMap((f) => parseRegisterRenderer(readFileSync(f, "utf8")));
 
 /* ══ §0' WO-SIM-NAV-GROUP：前端 `ShellLayout.NAV_GROUPS` 的**内联 route label** ═════════
  *
@@ -149,8 +175,12 @@ async function workspace(
 }
 
 describe("WO-SIM-BE-VIEWKEY · §0 金丝雀（否定结论前先自证工具·铁律 0.6）", () => {
-  it("§0.1 抽取器没瞎：registry.ts 读得到、且含已知必中的键 dashboard", () => {
-    expect(registrySrc.length, `读不到 ${REGISTRY_PATH} ⇒ 工具坏了，不是代码干净`).toBeGreaterThan(500);
+  it("§0.1 抽取器没瞎：前端 src 树扫得到、且含已知必中的键 dashboard", () => {
+    expect(
+      frontendFiles.length,
+      `前端 src 树只扫到 ${frontendFiles.length} 个 .ts/.tsx（${FRONTEND_SRC}）⇒ 工具坏了，不是代码干净`,
+    ).toBeGreaterThan(100);
+    expect(registryBytes, "扫到的前端源码字节数过少 ⇒ 遍历坏了，不是代码干净").toBeGreaterThan(500);
     expect(
       allRegistered.length,
       "registerRenderer 一条都没抽出来 ⇒ **工具坏了**（正则/路径失效），不许读成「前端没注册」",
