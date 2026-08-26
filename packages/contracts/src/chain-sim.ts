@@ -1439,6 +1439,72 @@ export const ChainLossDrillSchema = z.strictObject({
 export type ChainLossDrill = z.infer<typeof ChainLossDrillSchema>;
 
 /**
+ * 文本型溯源三元组（与 `ChainSubCauseEvidence` **同结构**，只是真值是字符串）。
+ *
+ * 为什么不复用那一个：它的 `value` 是 `z.number().nullable()`。型号（`WIPLot.modelId`）与
+ * 日戳（`WIPLot.startTime`）都是字符串，硬塞进数值槽只有两条路 —— 要么把 `value` 放宽成
+ * `unknown`（于是数值证据也失去类型约束），要么在这里把字符串**转成一个数**（那就是编数）。
+ * 加一个同形的文本变体最便宜，且「这条证据是文本还是数值」落在**类型**上而不是注释里。
+ */
+export const ChainTextEvidenceSchema = z.strictObject({
+  objectType: z.string().min(1),
+  objectId: z.string().min(1),
+  prop: z.string().min(1),
+  /** `prop` 在仓储里的真值原文（不 trim、不格式化）。`null` = 该行此字段缺值。 */
+  value: z.string().nullable(),
+});
+export type ChainTextEvidence = z.infer<typeof ChainTextEvidenceSchema>;
+
+/**
+ * 传导识别表要的那几列（**型号 / 耗时 / 影响级**）——
+ * WO-SIM-NODEDETAIL-FIELDS 补。屏上这张表此前整表占位，根因是回包里没有这三个量。
+ *
+ * ══ 三列各自的裁决（开工前真打端点实测的结论，不是照单抄）═══════════════════
+ * · **型号** → **A 路**：`WIPLot.modelId` 真实存在（实测 seed 42 得 `"方形-LFP"`），直接读回。
+ * · **耗时** → **A 路**，但**必须拆成两个口径**，不许合成一个「耗时」糊过去：
+ *     - `elapsedDays`  = `lastMoveTime − startTime`：该批**从投产到最后一次流转**的历时。
+ *       纯对象对对象，不需要「现在」是几点 ⇒ 与时钟无关，恒可算（两个日戳都在即可）。
+ *     - `dwellDays`    = `逻辑现在 − lastMoveTime`：该批**在当前站位已经压了多久**。
+ *       它需要一个「现在」，而本仓的「现在」**只有 A8 模拟时钟**一个合法来源
+ *       （`ChainDetailClockSchema` 文件注释）。时钟没初始化 ⇒ `null` + `CLOCK_UNINITIALIZED`，
+ *       **绝不退回 wall-clock** —— 那会给这一列一个不在任何时间轴上的坐标。
+ *   两者度量的是**不同的东西**，合成一列就是本仓 CLAUDE.md 反复点名的
+ *   「拿一个笼统数字盖住两个不同事实」。
+ * · **影响级** → **B 路**：本体里**压根没有**这个量。全仓实测（金丝雀见 `sim-node-detail-fields.seam.test.ts`）
+ *   没有任何对象类型承载「这批号受本次传导影响有多严重」；要给出 1..4 就得先发明一张
+ *   阈值表（按在制量分档之类）——那是**替数据编口径**，比留空更坏。
+ *   故恒 `null`，并在 `missing[]` 里以 `code:"ONTOLOGY_MISSING"` 登记**一条**（不是每批一条）。
+ *
+ * ⚠ `impactLevel` 的类型故意留成 `number|null` 而不是 `z.null()`：
+ *   写死成 `z.null()` 会让「有人给它编了个数」表现成 **zod 解析炸**，
+ *   而炸的位置在**所有**用例上（全盘红），看不出是哪一条纪律被破了。
+ *   留成可空数值 ⇒ 破纪律时**只有那一条断言**红（门 ③「不许编数臂」），靶打得准。
+ */
+export const ChainLotConductionSchema = z.strictObject({
+  /** 型号（`WIPLot.modelId` 真值）。取不到 → `null`。 */
+  model: z.string().min(1).nullable(),
+  /** 投产日（`WIPLot.startTime`，ISO 日期串原文）。 */
+  startedAt: z.string().min(1).nullable(),
+  /** 最后一次流转日（`WIPLot.lastMoveTime`，ISO 日期串原文）。 */
+  lastMovedAt: z.string().min(1).nullable(),
+  /** `lastMovedAt − startedAt`（天）。任一日戳缺 / 不可解析 → `null`。 */
+  elapsedDays: z.number().nonnegative().nullable(),
+  /** `逻辑现在 − lastMovedAt`（天）。时钟未初始化 / 日戳缺 → `null`（**不退 wall-clock**）。 */
+  dwellDays: z.number().nullable(),
+  /** 影响级（1..4）。**今天恒 `null`**：本体零字段承载它，见本 schema 注释「B 路」。 */
+  impactLevel: z.number().int().min(1).max(4).nullable(),
+  /** 逐字段溯源（同 §5 R13 三元组纪律）。 */
+  evidence: z.strictObject({
+    model: ChainTextEvidenceSchema.nullable(),
+    startedAt: ChainTextEvidenceSchema.nullable(),
+    lastMovedAt: ChainTextEvidenceSchema.nullable(),
+  }),
+  /** 两个耗时口径是**怎么**算出来的（屏上原样显示，读者据此复核）。 */
+  basis: z.string().min(1),
+});
+export type ChainLotConduction = z.infer<typeof ChainLotConductionSchema>;
+
+/**
  * 批号级明细行。`wip / takt / yieldPct` **一律读回真实物化值**，读不到就是 `null` + 进 `missing[]`，
  * **禁止任何常数兜底** —— 给个默认节拍/默认良率，屏上会看到一个「确凿」的假读数。
  */
@@ -1462,6 +1528,18 @@ export const ChainLotDetailSchema = z.strictObject({
     takt: ChainSubCauseEvidenceSchema.nullable(),
     yield: ChainSubCauseEvidenceSchema.nullable(),
   }),
+  /**
+   * 传导识别表那三列（型号 / 耗时 / 影响级）。**端点恒下发**。
+   *
+   * ⚠ 之所以标 `.optional()` 而不是必填，理由与业务无关，是**边界**：
+   *   本单是纯后端单（仓主禁令 2：沙盘接真数据的 UX 改动须逐案批准），
+   *   而 `apps/frontend-shell/test/` 下两处夹具用**对象字面量**整条构造 `ChainLotDetail`；
+   *   加必填字段 = 那两个前端文件当场 TS2741，而本单一行前端都不许改。
+   *   **收紧成必填是前端接线那张单的事**（那张单本来就要动这两处夹具）。
+   *   服务端不下发它属回归，由 `sim-node-detail-fields.seam.test.ts` ①/③ 咬住 ——
+   *   「schema 里可选」不度量「响应里可缺」。
+   */
+  conduction: ChainLotConductionSchema.optional(),
 });
 export type ChainLotDetail = z.infer<typeof ChainLotDetailSchema>;
 
@@ -1480,14 +1558,94 @@ export const ChainRouteSchema = z.strictObject({
 });
 export type ChainRoute = z.infer<typeof ChainRouteSchema>;
 
+/**
+ * 缺席码 —— **机器可读**的「为什么这个数是 null」。
+ *
+ * ══ 为什么必须是枚举而不是那句 `reason` 人话 ═════════════════════════════════
+ * `reason` 是给**人**读的，它回答「具体是哪一行、哪个字段、走哪条链走断的」；
+ * 但屏上要做的判断是**分类**的：「没有这个数」要画成灰底删除线，「还没加载」要画成骨架屏，
+ * 「你没权限看」要画成锁。拿人话串去 `includes("过滤")` 分类是本仓吃过亏的那种接法 ——
+ * 改一个字文案，前端的分支就静默走错。判据必须落在这一列上。
+ *
+ * 六个「答不出」+ 两个「刻意不在这里答」，**互不冒充**：
+ * · `ONTOLOGY_MISSING`       本体里压根没有这个量。要它 ⇒ 先建模，不是端点少写一行。
+ * · `VALUE_MISSING`          本体有这个量，但**这一行**缺值 / 非法（不补 0：0 有它自己的语义）。
+ * · `CLOCK_UNINITIALIZED`    量存在，但需要一个「现在」，而 A8 模拟时钟没初始化。**不退 wall-clock**。
+ * · `ROW_FILTER_BLOCKED`     A6 行级过滤挡掉了（「看不到」≠「没有」，两者屏上必须不同）。
+ * · `NO_ROWS`                真的一行都没有（这是「真没有」，与上一条是相反的事实）。
+ * · `DERIVATION_UNAVAILABLE` 派生路径今天走不通（如站位派生不出来 ⇒ 无从取批号）。
+ * · `PRESENTATION_ONLY`      **纯呈现量**（几何 / 版面读数）。后端刻意不答 ——
+ *                            把「半径 18:12」这种画布读数塞进契约，等于把呈现逻辑写进真相源。
+ * · `ANSWERED_ELSEWHERE`     **已有单一来源端点**在答它。本回包再答一份就是第二套真相源
+ *                            （本仓 `boundary-singlesource` 纪律），故显式登记「去哪问」而不是复制一份。
+ */
+export const CHAIN_DETAIL_ABSENCE_CODES = [
+  "ONTOLOGY_MISSING",
+  "VALUE_MISSING",
+  "CLOCK_UNINITIALIZED",
+  "ROW_FILTER_BLOCKED",
+  "NO_ROWS",
+  "DERIVATION_UNAVAILABLE",
+  "PRESENTATION_ONLY",
+  "ANSWERED_ELSEWHERE",
+] as const;
+export const ChainDetailAbsenceCodeSchema = z.enum(CHAIN_DETAIL_ABSENCE_CODES);
+export type ChainDetailAbsenceCode = z.infer<typeof ChainDetailAbsenceCodeSchema>;
+
 /** 诚实缺席行（明细里某个数取不到时登记，**替代**任何常数兜底）。 */
 export const ChainDetailMissingSchema = z.strictObject({
   field: z.string().min(1),
   scope: z.string().min(1),
+  /**
+   * 机器可读分类（WO-SIM-NODEDETAIL-FIELDS 补）。**必填** —— 缺席而不说清是哪一类，
+   * 前端只能把八种完全不同的状态画成同一个「—」。
+   * 加成必填是安全的：既有夹具全是 `missing: []`（空数组无元素可缺字段）。
+   */
+  code: ChainDetailAbsenceCodeSchema,
   reason: z.string().min(1),
   probe: z.string().min(1),
 });
 export type ChainDetailMissing = z.infer<typeof ChainDetailMissingSchema>;
+
+/**
+ * 本次读数的**逻辑 as-of 戳**。
+ *
+ * ══ 为什么回包里必须有它（不是「顺手多给一个」）═════════════════════════════
+ * `lots[].conduction.dwellDays` = 「现在 − 最后一次流转」。读的人要复核这个减法，
+ * 就必须知道**减数是谁**。不给 as-of 戳 ⇒ 屏上那个「已压 3 天」无法被任何人证伪。
+ * 这与 `twin/enterprise-state.ts` 给快照盖 `capturedAt` 是同一条纪律。
+ *
+ * ══ 「现在」的唯一合法来源 = A8 模拟时钟 ═══════════════════════════════════
+ * `SimulationClockRecord.t0 + currentTick`（天）。**绝不 wall-clock 兜底** ——
+ * `enterprise-state.ts` 文件头原话：wall-clock 兜底会让这份读数带上一个
+ * 「看起来对、实际不在任何时间轴上」的时刻，之后所有对比/回放/确定性判据全建在假坐标上。
+ * 时钟没初始化 ⇒ `source:"UNINITIALIZED"` + 三个日期字段全 `null` + `missing[]` 里一条
+ * `CLOCK_UNINITIALIZED`，**不抛 409**：节点详情的其余九成内容与时钟无关，
+ * 为一个可选戳把整条读数打成错误，是把「少一个量」升级成「什么都看不到」。
+ *
+ * ⚠ **租户时钟与会话 tick 是两个量，分开给**：前者是 A8 全局模拟日历，
+ *   后者是这次推演自己走了几拍（`SimSession.curTick` × `tickDays`）。
+ *   合成一个数会让「世界是哪天」与「我推了几步」互相冒充。
+ */
+export const ChainDetailClockSchema = z.strictObject({
+  /** A8 模拟时钟起点日（`SimulationClockRecord.t0` 的日期部分）。未初始化 → `null`。 */
+  t0: z.string().min(1).nullable(),
+  /** A8 模拟时钟已走的 tick 数。未初始化 → `null`。 */
+  tick: z.number().int().nonnegative().nullable(),
+  /** 逻辑「现在」= `t0 + tick` 天（ISO 日期）。**不是 wall-clock**。未初始化 → `null`。 */
+  simulatedDate: z.string().min(1).nullable(),
+  /**
+   * 本次推演会话自己走到第几拍（`SimSession.curTick`）。
+   * `null` = 这次读数不在会话上下文里（`POST /a/v1/sim/chain-loss-drill` 那条路没有 `:id`）。
+   * **不拿 0 顶替** —— 「没有会话」与「会话停在第 0 拍」是两件事。
+   */
+  sessionTick: z.number().int().nonnegative().nullable(),
+  /** 一拍 = 几天（`SimSession.tickDays`）。无会话上下文 → `null`。 */
+  sessionTickDays: z.number().positive().nullable(),
+  source: z.enum(["A8_SIMULATION_CLOCK", "UNINITIALIZED"]),
+  basis: z.string().min(1),
+});
+export type ChainDetailClock = z.infer<typeof ChainDetailClockSchema>;
 
 export const ChainNodeDetailSchema = z.strictObject({
   node: z.strictObject({
@@ -1503,6 +1661,14 @@ export const ChainNodeDetailSchema = z.strictObject({
   lots: z.array(ChainLotDetailSchema),
   route: ChainRouteSchema,
   missing: z.array(ChainDetailMissingSchema),
+  /**
+   * 本次读数的逻辑 as-of 戳（WO-SIM-NODEDETAIL-FIELDS 补）。**端点恒下发。**
+   *
+   * ⚠ `.optional()` 的理由与 `ChainLotDetail.conduction` 同一条：前端夹具整条字面量构造
+   *   `ChainNodeDetail`，加必填字段会让本单越过「零前端改动」的硬边界。收紧成必填 =
+   *   前端接线那张单的事。服务端不下发它属回归，`sim-node-detail-fields.seam.test.ts` ② 咬住。
+   */
+  clock: ChainDetailClockSchema.optional(),
   /** A6 说明：本次读到的批号是在哪个可见产线集合内取的（权限透明，不静默截断）。 */
   visibility: z.strictObject({
     /** 行级过滤后可见的产线条数。 */

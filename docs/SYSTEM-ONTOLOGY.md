@@ -258,6 +258,15 @@
   SEAM `apps/datacore/test/a6-cross-segment-contention.seam.test.ts`（**7 条**，全部走 `seedBattery` seed 42 + REST 真路由，不直构 ctx）。
   实测（seed 42·内存模式）：17 条阻滞点（原 15 + `Base`×2）；`changzhou` 2933.578 > 1760 套/日 keep=乘用车 ·
   `wuhan` 927.899 > 910 keep=乘用车；`xiamen` 有两条业务线但不越线 ⇒ 同一次扫描里带着 `NO_CONTENTION` 对照。
+- **ChainNodeDetail（批号级传导明细 · **读模型/值对象**，不落表 / 无 migration / 不进 R4 审批面 · 契约 `packages/contracts/src/chain-sim.ts` §7 冻结 · 算法 `apps/datacore/src/sim/drill.ts chainNodeDetail()`（纯函数 R6）· 路由 `GET /a/v1/sim/sessions/:id/node-detail?nodeId=`（`nodeId` **必填**，缺即 400））**：某个链路环节所在**站位**上、**本角色可见**的在制批号，逐条带真读数与溯源三元组。世界态装配走 `app.ts buildDrillWorld`（与 `POST /a/v1/sim/chain-loss-drill` **共用同一份**——「份额算出来的」与「批号列出来的」必须是同一个世界的两个视角）。A6 闸门**唯一落在 `Line` 上**（实测 `WIPLot/WorkOrder/Process/Equipment` 四类全无策略），批号跟着产线走。
+  **WO-SIM-NODEDETAIL-FIELDS（2026-08-25 · 回包形状变更，本节据铁律 0 回写）**：上一张单（WO-DEBATTERY-27）点名「屏上传导识别表恒占位，根因是端点不答那几个量」。本单**只补后端**（前端接线另单，受仓主禁令 2 管），逐项裁决后落三件事：
+  ① **`ChainLotConduction`（新 · 挂在 `ChainLotDetail.conduction`）**——传导识别表的三列：`model` ← `WIPLot.modelId`（A 路真值）· `elapsedDays` ← `WIPLot.lastMoveTime − WIPLot.startTime`（在链历时，**不需要「现在」**）· `dwellDays` ← `逻辑现在 − WIPLot.lastMoveTime`（在站停留，**需要「现在」**）· `impactLevel` **恒 `null`**（B 路：本体零字段承载「影响级」，给 1..4 就得先发明阈值表 = 编数）。⚠ **两个耗时口径刻意不合成一列**——合了就是「拿一个笼统数字盖住两个不同事实」。
+  ② **`ChainDetailClock`（新 · 顶层 `clock`）= 本次读数的逻辑 as-of 戳**。「现在」的**唯一合法来源是 A8 模拟时钟**（`SimulationClockRecord.t0 + currentTick`，见 §F / `simclock.ts`），**绝不 wall-clock 兜底**（同 `twin/enterprise-state.ts currentClock()` 的纪律；区别只在处置：那边抛 409，这边诚实缺席 —— 节点详情九成内容与时钟无关，为一个可选戳把整条读数打成错误是把缺口放大成故障）。租户时钟（世界是哪天）与 `sessionTick/sessionTickDays`（我推了几拍）**分开给，不互相冒充**。它同时是 `dwellDays` 那个减法的**减数**：不给戳，屏上「已压 N 天」就无法被任何人证伪。
+  ③ **`CHAIN_DETAIL_ABSENCE_CODES`（新 · 八码冻结枚举）+ `ChainDetailMissing.code`（新增必填列）**——把「为什么这个数是 null」从人话串升级成**机器可读分类**：`ONTOLOGY_MISSING` / `VALUE_MISSING` / `CLOCK_UNINITIALIZED` / `ROW_FILTER_BLOCKED` / `NO_ROWS` / `DERIVATION_UNAVAILABLE` / `PRESENTATION_ONLY` / `ANSWERED_ELSEWHERE`。理由：屏上要做的判断是**分类**的（灰底删除线 / 骨架屏 / 锁），拿人话串去 `includes()` 分类是改一个字文案就静默走错分支的老接法。
+  **屏上四个量的裁决（登记表 `sim/drill.ts SCREEN_QUANTITIES_NOT_ANSWERED_HERE`，随每次回包下发，不沉默）**：扇区图**半径 `18:12` / 张角 `39°`** ⇒ `PRESENTATION_ONLY`（画布读数，无单位无对象可对拍；`39°` 标的是规格里那个三角形自身的顶角。背后真业务量 = 波及面，已由 `POST /a/v1/simulation/impact-analysis` 四维作答）· **传导方向** ⇒ `ANSWERED_ELSEWHERE`（真相源是 `PropagationRule`，`GET /a/v1/sim/propagation-rules` 实测 demo 租户 35 条 PUBLISHED；⚠ 规格占位那种「基地→基地」方向本体里不存在，传导规则是**状态变量级**的）· **四个影响维过滤器** ⇒ `ONTOLOGY_MISSING`（「产能影响/物料影响/时间偏差/成本偏差」全仓只出现在规格 HTML 与前端占位里，`impact-analysis` 的四维是 对象/流程/决策/KPI，是另一套切法；且开关的开/关本就是 UI 态）· **时间条** ⇒ `ONTOLOGY_MISSING`（KM 只到基地对粒度 `baseDistanceKm`；分秒刻度与本仓唯一的时间刻度「A8 模拟**日**」量纲对不上；`阻滞时间` 的环节级对应量已在回包里 = `node.steps[].days`。且实测它**连取数口都没有**：`SandboxDetailRoute.tsx` 里 `strip` 零命中，金丝雀同文件 `nodeId` 10 命中）。
+  ⚠ **`conduction` 与 `clock` 在 schema 上是 `.optional()`，理由与业务无关**：前端两处夹具用对象字面量整条构造 `ChainNodeDetail`/`ChainLotDetail`，加必填字段会越过本单「零前端改动」的硬边界。**服务端恒下发**；收紧成必填是前端接线那张单的事。「schema 里可选」不度量「响应里可缺」—— 后者由门咬。
+  **接缝门** `apps/datacore/test/sim-node-detail-fields.seam.test.ts`（六例 · 咬「种子/本体 → 端点回包」这条链，全程不直调 `chainNodeDetail()`；含金丝雀 + ③「不许编数臂」逐条回仓储对拍 + ④ 删掉时钟记录驱动 `CLOCK_UNINITIALIZED` 真分支）。
+  ⚠ **一条随回包暴露出来的真事实**：seed 42 下 `WIPLot.lastMoveTime`（如 2026-06-17）**跑在 A8 时钟 t0（2026-06-10）前面** ⇒ `dwellDays` 为**负**。这是「合成数据的日戳与模拟时钟没对齐」这个事实本身，**不许 clamp 成 0**（clamp = 把它抹平成「刚到站」）；门 ③ 连符号一起咬死。
 - **SolutionCandidate（阻滞点的候选对策 · **值对象**，不落表 / 无 migration / 不进 R4 审批面 · 契约 `packages/contracts/src/chain-sim.ts:926 (SolutionCandidateSchema)` §7 冻结 · 枚举器 `apps/datacore/src/solvers/impediment-options.ts:542 (enumerateImpedimentOptions)`）**：一条解法 = 「把**哪个真对象**的**哪个真属性**，从多少拨到多少，各维 KPI 变成什么」。**这是沙盘从「诊断器」变「推演器」的那一步** —— 此前扫描只能告诉你哪里堵了，给不出「能拿它怎么办」。判定与枚举**同一次请求内完成**（候选是 `ChainImpediment.candidates`，不另起 solver key，用户点开卡片不等第二次 round-trip）。采纳时另起 `ActionDraft` 走既有审批链（R4）——沙盘只推演不写真值（RL4）。 **消费端（WO-SANDBOX-CANDIDATES-FE · 2026-08-11 补）**：前端派生层 `apps/frontend-shell/src/views/sim/chainImpediment.ts:465 (toCandidateVM)` 纯翻译成视图模型，沙盘 `/v/sim-sandbox` 经 `apps/frontend-shell/src/views/sim/SandboxConsole.tsx:1966 (CandidateBlock)` 逐条上屏。在此之前**前端零消费方**（后端算好了没人取，屏上什么都看不见）——见 §8 `G-IMPEDIMENT-OPTION-NOJOIN` 缺口①。值格式化按下发的 `lever.valueKind` 走 `apps/frontend-shell/src/views/sim/chainImpediment.ts:392 (formatLeverValue)`，**前端不判断单位**（`ratio` 仅 `v<=1` 才 ×100：`Line.utilization` 存 0–100 而 `Process.attendance` 存 0–1，两者 kind 同为 ratio，无条件 ×100 会画出 9589%）。 **第二个消费方（WO-DECISION-PLAY-OPTIONS · 2026-08-14 补）**：`decision_play` 经 `apps/datacore/src/solvers/service.ts:3592 (decisionImpedimentPlays)` 把候选**原样**下发在 `impedimentPlays.joined[].candidates[]`（同一份产物，不另拼一套；`candidateId` 可用 contracts `solutionCandidateId` 从候选公开字段反算核对）。**刻意不折算成 `DecisionOption`**：后者要六个数（补缺口/代价/周期/风险/敞口/可逆），候选真算得出的只有 `breach/severity/capacityP50` 三维，凑齐另外三个就是造数；缺口折算只在「归因落点 `drillValue` 与候选 `breach` 基线逐位相等」时给，否则 `gapClose.value=null` + reason（不给 0）。**✅ 2026-08-14 决策页前端消费端已补齐（WO-DECISION-PLAY-FE-CONSUME）**（原文写「该区**决策页前端尚无消费方**（与本条当年缺口①同形态，别读成已上屏）」，现已闭）：`apps/frontend-shell/src/views/DecisionPlayPanel.tsx` 的 `ImpedimentPlaysBlock` 把 `impedimentPlays.joined[].candidates[]` 逐条上屏，**刻意不做成表**（做成表就等于替候选编四个数，理由同本条上一段）；`gapClose.value===null` 出**词**不出数（渲染成 0 会被读成「没效果」，而它的意思是「算不出来」）。接缝门 `apps/frontend-shell/test/decision-play-consume.seam.test.tsx` 六例全部从深链 `/v/decision-play?metricKey=…` 出发走真路由。
   **候选是「推」出来的，不是「配」出来的**：全文**没有任何**「阻滞点 → 方案」的人工映射表（编一张看着合理的映射比诚实报缺更坏，本仓已坐实过一次：一条死映射让 24 张单里 12 张被静默标错）。三样东西各有单一来源 ——
   ① **join**（凭什么把这根杠杆算作它的解法·`impediment-options.ts:185 (resolveLeverAnchors)`）只走数据自己有的维度：`LOCUS_PROP` 落点自身承载可拨动因子 / `LINK_HOP` 沿**一等关系行**（`links` 表）一跳可达 / `KEY_JOIN` 值键相等（唯一键由数据现算，给本体上是孤点的类型留的真路径）/ `RULE_GATE` 判据规则码 == 因子拨动闸；四条都够不着 ⇒ **诚实缺席**，不凑数。起点由判定器**顺手带下来**（`chain-impediment.ts:489 (origin)`），不拿业务 id 反查实例。
@@ -1014,6 +1023,29 @@ order_fullchain(args.so) --引擎解析出的那一张单 data.so--> views/plan/
       chain_loss_attribution(so) → 该单 18 站逐站（站序 = 引擎回包 nodes[].steps[].stepId）
       ⚠ 锚点必须是 `data.so`（引擎解析后的那一张），不是选择器的空串 —— 空串会画成全域，与同屏三判不是同一张单
       ⚠ 默认折叠：本页在 check-ui-first-layer 棘轮基线里，第一层不许涨（deferred 9→11，first 134→134）
+```
+
+**节点详情链路 · 环节 → 站位 → 可见批号 → 三列真读数（WO-SIM-BE-DRILL 起 · WO-SIM-NODEDETAIL-FIELDS 2026-08-25 补三列 + as-of 戳）**
+```
+GET /a/v1/sim/sessions/:id/node-detail?nodeId=
+  --requireSim(sim.sandbox) → getSimOr404(:id)（**会话本体要留着**：clock.sessionTick/TickDays 从它读）-->
+  --chain_loss_attribution(so?) → nodeLossShare(nodeId)--> ChainNodeLossShare（环节份额 + 承载三元组）
+  --resolveStation: Operation.operationName ⋂ Process.name 同名匹配（交集外返 null，**不拿别的站顶替**）--> 站位名
+  --buildDrillWorld(c, baseId, routingId, session)：listByType×6 + links + authz.rowAllowed(Line) + simulationClocks.get-->
+      DrillWorld{ …objects, visibleLineIds(A6 唯一闸门), clock: SimulationClockRecord|null, session|null }
+  --chainNodeDetail()（纯函数 R6：零 Date.now / 零随机 / 全序排序）-->
+      lots[]  ← WIPLot.currentProcess == 站位 且 lineId ∈ visibleLineIds
+        · wip/batch/takt/yieldPct ← WIPLot.qty / WorkOrder.qtyPlanned / Equipment.ctSeconds(最慢一台) / Process.yield×100
+        · conduction.model       ← WIPLot.modelId                                   【A 路】
+        · conduction.elapsedDays ← WIPLot.lastMoveTime − WIPLot.startTime            【A 路·不需要时钟】
+        · conduction.dwellDays   ← clock.simulatedDate − WIPLot.lastMoveTime         【A 路·需要 A8 时钟】
+        · conduction.impactLevel ← 恒 null                                           【B 路·本体零承载】
+      clock   ← A8 SimulationClockRecord.t0 + currentTick（**唯一「现在」来源，绝不 wall-clock**）
+      missing[] ← 每条带 CHAIN_DETAIL_ABSENCE_CODES 里的机器可读码（八码互不冒充）
+  ⚠ `POST /a/v1/sim/chain-loss-drill` **共用同一个 buildDrillWorld**，但传 session=null（它没有 :id，也不消费时钟）
+  ⚠ 时钟没了走的是 CLOCK_UNINITIALIZED 分支：dwellDays → null，而 elapsedDays **纹丝不动**（两个口径没被糊成一个）
+  ⚠ 屏上另外四个量本回包**刻意不答**，逐条登记而不沉默：cone.radius/angle=PRESENTATION_ONLY ·
+     chrome.directions=ANSWERED_ELSEWHERE（→ GET /a/v1/sim/propagation-rules）· chrome.filters/strip=ONTOLOGY_MISSING
 ```
 
 **优化融合链路（G-12 · 增量 0 立契约/本体/许可证 · 设计待落，详 `docs/SPEC-optimization-template-pool.md`）**
