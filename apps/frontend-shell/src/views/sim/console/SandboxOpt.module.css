@@ -150,7 +150,7 @@
  * 色值一律走 token：`sandbox-opt-pixel.test.tsx` 用例 ③ 扫本文件，写一个字面色值当场红。
  */
 .phb {
-  margin-left: auto;
+  flex: none;
   font-size: 12px;
   line-height: 1.5;
   color: var(--warn-txt);

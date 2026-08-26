@@ -156,14 +156,19 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
           <b>方案寻优</b>
           <i>optimizer console</i>
         </span>
-        <span className={styles.hole} />
         {/* 诚实标记：这一页的数是不是本次推演算出来的。**屏上文字**，不是 `data-*`。
-            只在占位态渲染 —— 真数据来了它就该消失，常驻的横幅两周后没人会读。 */}
+            只在占位态渲染 —— 真数据来了它就该消失，常驻的横幅两周后没人会读。
+
+            ⚠ 位置**紧跟标题**，不是 `margin-left:auto` 顶到右端：本页版面按 1440 基准做，
+              整个 `.app` 比多数视口宽，顶到右端的元素**会被推到屏外**
+              （2026-08-26 真浏览器实测：1600×950 下横幅只露出半句「示例数据 · 不是本…」）。
+              诚实声明被裁掉一半 = 没印。 */}
         {model.source === "placeholder" ? (
           <span className={styles.phb} data-testid="sandbox-opt-placeholder">
             {OPT_PLACEHOLDER_NOTE}
           </span>
         ) : null}
+        <span className={styles.hole} />
       </div>
       <div className={styles.mb}>
         {MENUBAR.map((m) => (
