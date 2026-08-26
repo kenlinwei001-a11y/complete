@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-17",
+  "generatedAt": "2026-08-26",
   "heuristic": "测试引用≠完整实现；零引用=未测/很可能未实现的强信号",
   "prds": {
     "PRD-A15-cli-universal-operation-shell.md": {
@@ -657,6 +657,9 @@
         "B3",
         "B4",
         "B5",
+        "B6",
+        "B7",
+        "B8",
         "B9",
         "D1",
         "D2",
@@ -664,12 +667,8 @@
         "D4",
         "D6"
       ],
-      "uncovered": [
-        "B6",
-        "B7",
-        "B8"
-      ],
-      "coverage": 0.87
+      "uncovered": [],
+      "coverage": 1
     },
     "PRD-sandbox-v3-three-zone.md": {
       "acceptanceIds": [

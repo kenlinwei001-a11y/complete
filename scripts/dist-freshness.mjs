@@ -382,6 +382,12 @@ export function selfTest({ verbose = true } = {}) {
     { want: false, name: "⑥a 遍历跳过（check-gate-ledger.mjs:57）", code: `if (e.name === "node_modules" || e.name === ".git" || e.name === "dist") continue;` },
     { want: false, name: "⑥b SKIP_DIRS 集合（check-chain-node-singlesource.mjs:527）", code: `const SKIP_DIRS = new Set(["node_modules", "dist", "build", ".git"]);` },
     { want: false, name: "⑥c 注释（check-action-wiring.mjs:16）", code: ` * 读源码而非 dist：本门守的是"声明与接线一致"，源码即声明。` },
+    // ⑥d 已知必不中：**本守卫模块自己的文件名**里就有 dist 四个字母（2026-08-26 实测误判，
+    //    据此把 check-gate-ledger.mjs 报成「读 dist 却未接守卫」）。判据是「dist 要是完整路径段」。
+    { want: false, name: "⑥d 引用本守卫模块（check-gate-ledger.mjs:50）", code: `import { isUnbuiltArtifactPath, exitToolNotReady } from "./dist-freshness.mjs";` },
+    // ⑥e 反向钉住：把 ⑥d 的路径改成**真的** dist 段，必须重新命中 —— 否则上面那条收窄
+    //    就是"把检测器调瞎了"而不是"修掉了误判"，两者在屏上一模一样。
+    { want: true, name: "⑥e 反证：同一行换成真 dist 段", code: `import { x } from "./dist/freshness.mjs";` },
   ];
   for (const p of probes) {
     const got = distReadSites(p.code).length > 0;
@@ -408,8 +414,23 @@ export function selfTest({ verbose = true } = {}) {
  *    把 dist 当作遍历时要跳过的目录名（`if (e.name === "dist") continue`）或注释里写
  *    「读源码而非 dist」。把这 9 个算成读 dist，就是又一次「提及 ≠ 读取」。
  */
-/** 行内出现了含 dist 的字符串字面量（`".../dist/x.js"` 或 `"dist"`）。 */
-const RE_DIST_LITERAL = /["'`][^"'`\n]*(?:\bdist\/|^dist$|\/dist$|\bdist)[^"'`\n]*["'`]/;
+/**
+ * 行内出现了含 dist 的字符串字面量（`".../dist/x.js"` 或 `"dist"`）。
+ *
+ * ⚠️ **`dist` 必须是一个完整的路径段**（前面是 `/` 或串首，后面是 `/` 或串尾），不能只是
+ *    「串里有 dist 这四个字母」。原式的兜底分支 `\bdist` 没有这个约束，于是把
+ *    `from "./dist-freshness.mjs"` —— **本守卫模块自己的文件名** —— 判成了「读 dist 产物」，
+ *    进而报 `check-gate-ledger.mjs` 覆盖缺口（2026-08-26 实测，`check-gate-ledger.mjs` 全文
+ *    只有这一处命中，且它压根不 `import()` 任何 dist 代码，只是引用本模块的
+ *    `isUnbuiltArtifactPath`）。
+ *
+ *    形态（铁律 0.6 句式）：**「我用『这行的字符串里有 dist 且带读取动词』当作
+ *    『这道门在读 dist 产物』的证据，而前者并不度量后者。」**
+ *    —— 与本文件 `AUDIT_SELF_EXCLUDE` 那条注释同族：那次是检测器把**自己的帮助文本**
+ *    当成代码，这次是检测器把**自己的模块名**当成产物路径。同一个病的第二次，故按
+ *    铁律 0.6 二级处置**当场建机制**：判据收进正则 + 金丝雀 ⑥d 钉住（见 selfCheck 的 probes）。
+ */
+const RE_DIST_LITERAL = /["'`](?:[^"'`\n]*\/)?dist(?:\/[^"'`\n]*)?["'`]/;
 /**
  * 读取动词：只有这些才叫「**读** dist」。
  * （`abs`/`rd` 是本仓门里常见的路径包装器，见 check-resource-descriptor.mjs / gate-census.mjs。）

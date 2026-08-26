@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-17",
+  "generatedAt": "2026-08-26",
   "ontology": {
     "invariants": [
       "R1",
@@ -341,6 +341,44 @@
       "artifacts": [],
       "brokenArtifacts": []
     },
+    "PRD-addendum-llm-purpose-enum.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R14",
+        "R15",
+        "R19",
+        "R2",
+        "R3",
+        "R5",
+        "R6",
+        "R7",
+        "R9"
+      ],
+      "breakpoints": [
+        "G-5",
+        "G-7",
+        "G-8"
+      ],
+      "artifacts": [
+        "apps/agentcore/src/llm/providers.ts",
+        "apps/agentcore/src/server.ts",
+        "apps/datacore/src/domain.ts",
+        "apps/datacore/src/features.ts",
+        "apps/datacore/src/llmproviders.ts",
+        "apps/datacore/src/repo/pg.ts",
+        "apps/datacore/src/solvers/llm-gen.ts",
+        "apps/datacore/src/synthetic/service.ts",
+        "apps/frontend-shell/src/mocks/handlers.ts",
+        "apps/frontend-shell/src/pages/admin/LlmProvidersPage.tsx",
+        "apps/frontend-shell/test/feature-name-single-source.seam.test.ts",
+        "packages/contracts/src/feature-names.ts",
+        "packages/contracts/src/operation-intent.ts",
+        "scripts/gate-ledger.json"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-addendum-m11-calibration.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -568,16 +606,13 @@
       "breakpoints": [],
       "artifacts": [
         "apps/agentcore/src/server.ts",
+        "apps/agentcore/test/dsh-gov-production.seam.test.ts",
         "apps/agentcore/test/dsh-poc-acceptance.test.ts",
         "packages/contracts/src/agentcore.ts",
         "packages/dsh-harness/README.md",
         "packages/dsh-harness/cordis.yml"
       ],
-      "brokenArtifacts": [
-        "apps/agentcore/test/dsh-poc-acceptance.test.ts",
-        "packages/dsh-harness/README.md",
-        "packages/dsh-harness/cordis.yml"
-      ]
+      "brokenArtifacts": []
     },
     "PRD-aop-annual-scenario-1to1.md": {
       "hasOntologyRef": true,
@@ -1304,6 +1339,12 @@
       ],
       "artifacts": [
         "apps/agentcore/dist/mocks/seed.js",
+        "apps/datacore/src/solvers/service.ts",
+        "apps/datacore/src/sop.ts",
+        "apps/datacore/test/action-adopt-forecast.seam.test.ts",
+        "apps/datacore/test/action-adopt-hypothesis.seam.test.ts",
+        "apps/frontend-shell/test/sim-ux-u4b-u1-u8.test.tsx",
+        "apps/frontend-shell/test/wo-sim-action-real.project-sim-adopt.test.tsx",
         "packages/bundle/headless/README.md",
         "packages/contracts/dist/index.js",
         "packages/contracts/src/planviews.ts",
@@ -1313,7 +1354,9 @@
         "scripts/gate-ledger-baseline.json",
         "scripts/gate.sh",
         "scripts/lib/baseline-doc.mjs",
-        "scripts/lib/sim-page-roster.mjs"
+        "scripts/lib/layout-probe.mjs",
+        "scripts/lib/sim-page-roster.mjs",
+        "scripts/sim-ux-criteria-baseline.json"
       ],
       "brokenArtifacts": [
         "packages/bundle/headless/README.md"
@@ -2061,6 +2104,7 @@
         "apps/datacore/src/timeseries.ts",
         "apps/frontend-shell/src/views/sim/SandboxView.tsx",
         "packages/contracts/src/base-registry.ts",
+        "packages/contracts/src/chain-sim.ts",
         "scripts/gate-ledger.json"
       ],
       "brokenArtifacts": []
@@ -2193,6 +2237,22 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-sim-drill-parallel-world.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R11",
+        "R13",
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/twin/enterprise-state.ts",
+        "packages/contracts/src/enterprise-state.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-sim-scope-local.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2225,7 +2285,10 @@
         "G-11",
         "G-9"
       ],
-      "artifacts": [],
+      "artifacts": [
+        "apps/datacore/src/seed.ts",
+        "apps/datacore/src/sim/propagation.ts"
+      ],
       "brokenArtifacts": []
     },
     "PRD-skill-compiler-registry.md": {
@@ -2824,6 +2887,7 @@
       "PRD-addendum-feature-entitlement.md",
       "PRD-addendum-lived-in-state.md",
       "PRD-addendum-llm-providers-and-references.md",
+      "PRD-addendum-llm-purpose-enum.md",
       "PRD-addendum-m11-calibration.md",
       "PRD-addendum-ontology-core.md",
       "PRD-addendum-ontology-governance.md",
@@ -2917,6 +2981,7 @@
     "G-7": [
       "PRD-addendum-capability-routing.md",
       "PRD-addendum-llm-providers-and-references.md",
+      "PRD-addendum-llm-purpose-enum.md",
       "PRD-cli-full-coverage.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
@@ -2931,6 +2996,25 @@
       "PRD-live-traceable-data.md",
       "PRD-ontology-browser-field-coverage.md",
       "PRD-prototype-intake-databuilder.md",
+      "PRD-topo-realdata.md",
+      "PRD-unified-build-engine.md"
+    ],
+    "G-5": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-cockpit-capacity-1to1-parity.md",
+      "PRD-data-closure-spec.md",
+      "PRD-de-battery-multitenant-config.md",
+      "PRD-fde-fullstack-build-workflow.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-generation-boundary-grounding.md",
+      "PRD-generic-inference.md",
+      "PRD-goal-metric-owner-spine.md",
+      "PRD-hardcoded-absence.md",
+      "PRD-order-project-sim-1to1.md",
+      "PRD-quarter-rolling-1to1.md",
+      "PRD-self-driving-qos-data-foundation.md",
+      "PRD-sop-balance-1to1.md",
+      "PRD-system-ontogenesis-spec.md",
       "PRD-topo-realdata.md",
       "PRD-unified-build-engine.md"
     ],
@@ -2954,24 +3038,6 @@
       "PRD-skill-migration.md",
       "PRD-skill-runtime-orchestrator.md",
       "PRD-v2-agent.md"
-    ],
-    "G-5": [
-      "PRD-cockpit-capacity-1to1-parity.md",
-      "PRD-data-closure-spec.md",
-      "PRD-de-battery-multitenant-config.md",
-      "PRD-fde-fullstack-build-workflow.md",
-      "PRD-fullstack-story-build-g8.md",
-      "PRD-generation-boundary-grounding.md",
-      "PRD-generic-inference.md",
-      "PRD-goal-metric-owner-spine.md",
-      "PRD-hardcoded-absence.md",
-      "PRD-order-project-sim-1to1.md",
-      "PRD-quarter-rolling-1to1.md",
-      "PRD-self-driving-qos-data-foundation.md",
-      "PRD-sop-balance-1to1.md",
-      "PRD-system-ontogenesis-spec.md",
-      "PRD-topo-realdata.md",
-      "PRD-unified-build-engine.md"
     ],
     "G-11": [
       "PRD-harness-ux-adoption.md",
@@ -3055,6 +3121,7 @@
       "PRD-chain-24nodes.md",
       "PRD-cli-full-coverage.md",
       "PRD-demo-lightup-2.md",
+      "PRD-harness-ux-adoption.md",
       "PRD-impediments-reachable.md",
       "PRD-inference-line.md",
       "PRD-lever-binding-drift.md",
@@ -3168,6 +3235,88 @@
       "PRD-skill-governance-learning.md",
       "PRD-skill-migration.md"
     ],
+    "apps/agentcore/src/llm/providers.ts": [
+      "PRD-addendum-llm-purpose-enum.md"
+    ],
+    "apps/agentcore/src/server.ts": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-addendum-skill-authoring.md",
+      "PRD-agentcore-dsh-upgrade.md",
+      "PRD-cli-full-coverage.md",
+      "PRD-fullstack-story-build-g8.md",
+      "PRD-in-dialog-gap-fill-loop.md",
+      "PRD-scenario-launcher.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-contract-dsl.md",
+      "PRD-skill-governance-learning.md",
+      "PRD-skill-migration.md",
+      "PRD-skill-runtime-orchestrator.md",
+      "PRD-v2-skill.md"
+    ],
+    "apps/datacore/src/domain.ts": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-enterprise-decision-twin.md",
+      "PRD-generation-boundary-grounding.md",
+      "PRD-ontoflow-v2-unified-modeling.md",
+      "PRD-ontology-7elements.md"
+    ],
+    "apps/datacore/src/features.ts": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-demo-lightup-2.md",
+      "PRD-nav-gate.md",
+      "PRD-optimize-whatif-conversational-wiring.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-v2-skill.md"
+    ],
+    "apps/datacore/src/llmproviders.ts": [
+      "PRD-addendum-llm-purpose-enum.md"
+    ],
+    "apps/datacore/src/repo/pg.ts": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-ontology-7elements.md"
+    ],
+    "apps/datacore/src/solvers/llm-gen.ts": [
+      "PRD-addendum-llm-purpose-enum.md"
+    ],
+    "apps/datacore/src/synthetic/service.ts": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-impediments-reachable.md",
+      "PRD-stale-claims.md",
+      "PRD-topo-realdata.md",
+      "PRD-v2-slice.md"
+    ],
+    "apps/frontend-shell/src/mocks/handlers.ts": [
+      "PRD-addendum-llm-purpose-enum.md"
+    ],
+    "apps/frontend-shell/src/pages/admin/LlmProvidersPage.tsx": [
+      "PRD-addendum-llm-purpose-enum.md"
+    ],
+    "apps/frontend-shell/test/feature-name-single-source.seam.test.ts": [
+      "PRD-addendum-llm-purpose-enum.md"
+    ],
+    "packages/contracts/src/feature-names.ts": [
+      "PRD-addendum-llm-purpose-enum.md"
+    ],
+    "packages/contracts/src/operation-intent.ts": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-cli-full-coverage.md",
+      "PRD-skill-compiler-registry.md",
+      "PRD-skill-migration.md",
+      "PRD-v2-agent.md"
+    ],
+    "scripts/gate-ledger.json": [
+      "PRD-addendum-llm-purpose-enum.md",
+      "PRD-gate-ledger.md",
+      "PRD-lever-binding-drift.md",
+      "PRD-nav-gate.md",
+      "PRD-route-nav-coverage.md",
+      "PRD-sandbox-a2.md",
+      "PRD-sandbox-metro-ops.md",
+      "PRD-sandbox-multiplan.md",
+      "PRD-sandbox-redesign.md",
+      "PRD-skill-crossreview.md",
+      "PRD-stale-claims.md"
+    ],
     "apps/agentcore/src/main.ts": [
       "PRD-addendum-skill-authoring.md",
       "PRD-skill-compiler-registry.md",
@@ -3183,20 +3332,6 @@
       "PRD-skill-runtime-orchestrator.md",
       "PRD-v2-skill.md",
       "PRD-v2-slice.md"
-    ],
-    "apps/agentcore/src/server.ts": [
-      "PRD-addendum-skill-authoring.md",
-      "PRD-agentcore-dsh-upgrade.md",
-      "PRD-cli-full-coverage.md",
-      "PRD-fullstack-story-build-g8.md",
-      "PRD-in-dialog-gap-fill-loop.md",
-      "PRD-scenario-launcher.md",
-      "PRD-skill-compiler-registry.md",
-      "PRD-skill-contract-dsl.md",
-      "PRD-skill-governance-learning.md",
-      "PRD-skill-migration.md",
-      "PRD-skill-runtime-orchestrator.md",
-      "PRD-v2-skill.md"
     ],
     "apps/agentcore/src/skill-lint.ts": [
       "PRD-addendum-skill-authoring.md",
@@ -3276,6 +3411,9 @@
       "PRD-skill-contract-dsl.md",
       "PRD-skill-governance-learning.md",
       "PRD-v2-agent.md"
+    ],
+    "apps/agentcore/test/dsh-gov-production.seam.test.ts": [
+      "PRD-agentcore-dsh-upgrade.md"
     ],
     "apps/agentcore/test/dsh-poc-acceptance.test.ts": [
       "PRD-agentcore-dsh-upgrade.md"
@@ -3403,12 +3541,6 @@
     "apps/frontend-shell/src/components/ScenarioLauncher/CommandPalette.tsx": [
       "PRD-cli-full-coverage.md"
     ],
-    "packages/contracts/src/operation-intent.ts": [
-      "PRD-cli-full-coverage.md",
-      "PRD-skill-compiler-registry.md",
-      "PRD-skill-migration.md",
-      "PRD-v2-agent.md"
-    ],
     "packages/contracts/src/operation-registry.ts": [
       "PRD-cli-full-coverage.md"
     ],
@@ -3481,13 +3613,6 @@
       "PRD-demo-lightup-2.md",
       "PRD-skill-migration.md"
     ],
-    "apps/datacore/src/features.ts": [
-      "PRD-demo-lightup-2.md",
-      "PRD-nav-gate.md",
-      "PRD-optimize-whatif-conversational-wiring.md",
-      "PRD-skill-compiler-registry.md",
-      "PRD-v2-skill.md"
-    ],
     "apps/datacore/test/demo-lightup-seam.test.ts": [
       "PRD-demo-lightup-2.md"
     ],
@@ -3508,21 +3633,17 @@
     ],
     "apps/datacore/src/seed.ts": [
       "PRD-empty-tenant-bootstrap.md",
-      "PRD-ontology-7elements.md"
+      "PRD-ontology-7elements.md",
+      "PRD-simulation-sandbox.md"
     ],
     "apps/datacore/src/sop.ts": [
       "PRD-empty-tenant-bootstrap.md",
+      "PRD-harness-ux-adoption.md",
       "PRD-node-semantics.md",
       "PRD-semantics-singlesource.md"
     ],
     "apps/datacore/migrations/008_ontology_core.sql": [
       "PRD-enterprise-decision-twin.md"
-    ],
-    "apps/datacore/src/domain.ts": [
-      "PRD-enterprise-decision-twin.md",
-      "PRD-generation-boundary-grounding.md",
-      "PRD-ontoflow-v2-unified-modeling.md",
-      "PRD-ontology-7elements.md"
     ],
     "apps/datacore/src/resources.ts": [
       "PRD-enterprise-decision-twin.md"
@@ -3550,18 +3671,6 @@
     ],
     "scripts/gate-census.mjs": [
       "PRD-gate-ledger.md"
-    ],
-    "scripts/gate-ledger.json": [
-      "PRD-gate-ledger.md",
-      "PRD-lever-binding-drift.md",
-      "PRD-nav-gate.md",
-      "PRD-route-nav-coverage.md",
-      "PRD-sandbox-a2.md",
-      "PRD-sandbox-metro-ops.md",
-      "PRD-sandbox-multiplan.md",
-      "PRD-sandbox-redesign.md",
-      "PRD-skill-crossreview.md",
-      "PRD-stale-claims.md"
     ],
     "apps/datacore/src/growth/loop.ts": [
       "PRD-generation-boundary-grounding.md"
@@ -3605,6 +3714,18 @@
     "apps/agentcore/dist/mocks/seed.js": [
       "PRD-harness-ux-adoption.md"
     ],
+    "apps/datacore/test/action-adopt-forecast.seam.test.ts": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "apps/datacore/test/action-adopt-hypothesis.seam.test.ts": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "apps/frontend-shell/test/sim-ux-u4b-u1-u8.test.tsx": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "apps/frontend-shell/test/wo-sim-action-real.project-sim-adopt.test.tsx": [
+      "PRD-harness-ux-adoption.md"
+    ],
     "packages/bundle/headless/README.md": [
       "PRD-harness-ux-adoption.md"
     ],
@@ -3627,19 +3748,19 @@
     "scripts/lib/baseline-doc.mjs": [
       "PRD-harness-ux-adoption.md"
     ],
+    "scripts/lib/layout-probe.mjs": [
+      "PRD-harness-ux-adoption.md"
+    ],
     "scripts/lib/sim-page-roster.mjs": [
+      "PRD-harness-ux-adoption.md"
+    ],
+    "scripts/sim-ux-criteria-baseline.json": [
       "PRD-harness-ux-adoption.md"
     ],
     "apps/datacore/src/solvers/chain-impediment.ts": [
       "PRD-impediments-reachable.md",
       "PRD-sandbox-metro-ops.md",
       "PRD-sandbox-multiplan.md"
-    ],
-    "apps/datacore/src/synthetic/service.ts": [
-      "PRD-impediments-reachable.md",
-      "PRD-stale-claims.md",
-      "PRD-topo-realdata.md",
-      "PRD-v2-slice.md"
     ],
     "apps/datacore/src/synthetic/view-manifest.ts": [
       "PRD-impediments-reachable.md",
@@ -3810,9 +3931,6 @@
     "apps/datacore/src/databuilder/solver-args.ts": [
       "PRD-ontology-7elements.md"
     ],
-    "apps/datacore/src/repo/pg.ts": [
-      "PRD-ontology-7elements.md"
-    ],
     "apps/frontend-shell/src/pages/admin/ActionsPage.tsx": [
       "PRD-ontology-7elements.md"
     ],
@@ -3906,6 +4024,7 @@
       "PRD-sandbox-a10.md",
       "PRD-sandbox-metro-ops.md",
       "PRD-sandbox-multiplan.md",
+      "PRD-sandbox-redesign.md",
       "PRD-stale-claims.md"
     ],
     "apps/datacore/test/chain-scan-honesty.test.ts": [
@@ -3938,6 +4057,7 @@
     ],
     "apps/datacore/src/sim/propagation.ts": [
       "PRD-sandbox-redesign.md",
+      "PRD-simulation-sandbox.md",
       "PRD-stale-claims.md"
     ],
     "apps/frontend-shell/src/views/sim/SandboxView.tsx": [
@@ -3964,6 +4084,12 @@
     ],
     "scripts/check-chain-node-singlesource.mjs": [
       "PRD-semantics-singlesource.md"
+    ],
+    "apps/datacore/src/twin/enterprise-state.ts": [
+      "PRD-sim-drill-parallel-world.md"
+    ],
+    "packages/contracts/src/enterprise-state.ts": [
+      "PRD-sim-drill-parallel-world.md"
     ],
     "apps/datacore/test/sim-certification.test.ts": [
       "PRD-sim-scope-local.md"
