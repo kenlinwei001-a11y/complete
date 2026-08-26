@@ -135,14 +135,48 @@ const KEY_RE = /^\s*(?:["']([A-Za-z_$][\w$]*)["']|([A-Za-z_$][\w$]*))\s*(?::|$)/
  *   ③ ① 里对**全树入口做普查**并逐个打真后端 —— 再长出第四个入口时，红的信息里
  *      直接带着「它是谁、它传什么」，而不是一句没用的「命中 N 处」。
  */
-function perturbationCallKeys(src: string, callAt: number): string[] {
+function perturbationCallKeys(
+  src: string,
+  callAt: number,
+  /** 全树 + 本文件路径：第二实参是变量时要跨文件追它的构造处。缺省 = 不追（金丝雀用）。 */
+  resolve?: { code: CodeTree; file: string },
+): string[] {
   const paren = src.indexOf("(", callAt);
   if (paren < 0) return [];
   const args = topLevelSegments(src, paren);
   const body = args[1];
   if (body === undefined) return [];
   const brace = body.indexOf("{");
-  if (brace < 0) return []; // 第二个实参不是对象字面量（例如整个 body 是个变量）⇒ 抽不到形状
+  if (brace < 0) {
+    // ⚠️ 第二个实参不是对象字面量（例如 `createSimPerturbation(id, built.body)`）。
+    //    **旧版在这里 `return []`，那是第 3 次犯同一个病**：本函数顶注自己写着
+    //    「认不出的分段**抛错**而不是跳过」，而这一支恰恰是静默跳过 —— 于是
+    //    `rail/PerturbRail.tsx` 这个真入口被记成 `keys: []`，普查断言看到一个空形状指纹，
+    //    报「入口清单变了」却说不出它传什么。**「我抽不到」和「它没传」是两个命题。**
+    //    现在：追一层到 body 的构造处；追不到就**抛错**，绝不返回空。
+    const ident = body.trim().replace(/[;,]+$/, "");
+    const last = ident.split(".").pop() ?? ident;
+    if (resolve && /^[A-Za-z_$][\w$]*$/.test(last)) {
+      const dir = resolve.file.slice(0, resolve.file.lastIndexOf("/") + 1);
+      for (const [f, text] of resolve.code) {
+        // 只在**同目录**里追（跨目录再追就成了全仓乱猜，命中一个同名 `body:` 会得出假形状）。
+        if (!f.startsWith(dir)) continue;
+        const at = text.search(new RegExp(String.raw`\b${last}\s*:\s*\{`));
+        if (at < 0) continue;
+        const bOpen = text.indexOf("{", at);
+        return topLevelSegments(text, bOpen).flatMap((seg) => {
+          if (seg.trim() === "") return [];
+          const m = KEY_RE.exec(seg);
+          if (m === null) return [];
+          return [(m[1] ?? m[2])!];
+        });
+      }
+    }
+    throw new Error(
+      `[sim-act-close] 第二实参是变量 ${JSON.stringify(ident.slice(0, 40))} 且在同目录里追不到它的构造处` +
+        " —— 先教会抽取器，不许静默记成空形状（那会让普查断言报「入口清单变了」却说不出它传什么）",
+    );
+  }
   return topLevelSegments(body, brace).flatMap((seg) => {
     if (seg.trim() === "") return []; // 尾逗号后的空白段
     const m = KEY_RE.exec(seg);
@@ -173,7 +207,7 @@ function perturbationCallSites(code: CodeTree): { file: string; keys: string[] }
   for (const [file, s] of code) {
     const re = new RegExp(PERTURB_CALL.source, "g");
     let m: RegExpExecArray | null;
-    while ((m = re.exec(s)) !== null) out.push({ file, keys: perturbationCallKeys(s, m.index) });
+    while ((m = re.exec(s)) !== null) out.push({ file, keys: perturbationCallKeys(s, m.index, { code, file }) });
   }
   return out;
 }
@@ -275,6 +309,12 @@ describe("WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → K
         shapeOf(["kind", "targetObjectId", "targetStateVar", "magnitude", "mode", "durationTicks", "label"]),
         // 控制台首页左栏「扰动因素」树的「添加扰动」菜单（不传 mode/durationTicks，吃后端默认）
         shapeOf(["kind", "targetObjectId", "targetStateVar", "magnitude", "label"]),
+        // 统一控制台左栏扰动导轨 `unified/rail/PerturbRail.tsx`（2026-08-26 新增的第 4 个入口）。
+        // 它比前三个多一个 `startTick`（"从第几格起生效"）—— 这不是形状漂移，是真新增字段，
+        // 下面的入口普查会拿它逐字打真后端（201 + 世界态真的变），不是在这里写一行了事。
+        // ⚠ 它的 body 构造在同目录的 `perturbRailModel.ts` 里、调用处传的是 `built.body`，
+        //   抽取器为此新增了「第二实参是变量 ⇒ 同目录追一层」的解析（追不到就抛错，不返回空）。
+        shapeOf(["kind", "targetObjectId", "targetStateVar", "magnitude", "label", "startTick", "durationTicks", "mode"]),
       ].sort(),
     );
 
@@ -330,7 +370,10 @@ describe("WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → K
     // ⚠ 复刻时**换一个幅度**（7 而不是底值 10）：控制台入口不传 `mode`、吃后端默认 `set`，
     //   而 `set 10` 打在底值 10 上「落点没变」与「payload 被整个吞掉」在回包里长得一模一样
     //   —— 那恰恰是本段最该分辨的两件事。7 在 set/delta/scale 三种模式下都 ≠ 10。
-    const replay: Record<string, unknown> = { ...fixture, magnitude: 7, label: "SEAM · 入口普查" };
+    // `startTick: 0` = 立即生效（导轨入口独有的字段）。给 0 不给正数是有意的：
+    // 给正数则本 tick 内不生效，下面那句「收下了却没落到世界态」会被**正确的延迟行为**顶红，
+    // 而红的原因与它要咬的「payload 被吞掉」完全无关 —— 那就成了一条会骗人的断言。
+    const replay: Record<string, unknown> = { ...fixture, magnitude: 7, label: "SEAM · 入口普查", startTick: 0 };
     for (const s of [...new Map(sites.map((x) => [shapeOf(x.keys), x])).values()]) {
       for (const k of s.keys) expect(replay, `前端入口 ${s.file} 新增了 body 字段 ${k}，本门未覆盖——补 fixture 再跑`).toHaveProperty(k);
       const sidX = await newSession(t);
