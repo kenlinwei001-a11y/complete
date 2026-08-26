@@ -200,7 +200,7 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
   return (
     <section className="card" data-testid="drill-panel">
       <h3 style={{ marginTop: 0 }}>推演演习 · 扫端到端卡点</h3>
-      <p style={{ opacity: 0.75, fontSize: "0.9em", marginTop: -6 }}>
+      <p style={{ opacity: 0.75, fontSize: 12, marginTop: -6 }}>
         {/* ⛔ 原文写的是 `**业务上发生的事**` —— 这段文案按**纯文本**渲染，
             markdown 的星号不会被解析，会原样印在屏上。强调一律用 <strong>。 */}
         输入一件<strong>业务上发生的事</strong>（不是拨数值），沿真实求解器算出卡点 / 堵点 / 脆弱点。
@@ -287,7 +287,7 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
 
           {/* ⚠ 红线③：截断必须说出来 */}
           {report.truncated ? (
-            <p data-testid="drill-truncated" style={{ opacity: 0.8, fontSize: "0.9em" }}>
+            <p data-testid="drill-truncated" style={{ opacity: 0.8, fontSize: 12 }}>
               每类只显示前 {report.appliedLimitPerKind} 条（实际：
               {Object.entries(report.totalByKind)
                 .map(([k, n]) => `${k} ${n}`)
@@ -308,7 +308,7 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
           */}
           {layers === null || layers.length === 0 ? null : (
             <details data-testid="drill-statevar-layers">
-              <summary style={{ cursor: "pointer", fontSize: "0.9em", opacity: 0.85 }}>
+              <summary style={{ cursor: "pointer", fontSize: 12, opacity: 0.85 }}>
                 状态变量三层（根源 {layers.filter((l) => l.layer === "根源").length}·枢纽{" "}
                 {layers.filter((l) => l.layer === "枢纽").length}·末端 {layers.filter((l) => l.layer === "末端").length}）
               </summary>
@@ -333,7 +333,7 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
           )}
 
           <details data-testid="drill-solver-runs">
-            <summary style={{ cursor: "pointer", fontSize: "0.9em", opacity: 0.85 }}>
+            <summary style={{ cursor: "pointer", fontSize: 12, opacity: 0.85 }}>
               求解器回执（{report.solverRuns.length} 次调用）
             </summary>
             <ul style={{ fontSize: 12, opacity: 0.9 }}>
@@ -355,7 +355,7 @@ export function DrillPanel({ sessionId }: DrillPanelProps) {
           {/* 降级区：守恒未通过的结论不删掉，但不混进主清单（PRD §4.6） */}
           {report.degraded.length === 0 ? null : (
             <details data-testid="drill-degraded" style={{ marginTop: 8 }}>
-              <summary style={{ cursor: "pointer", fontSize: "0.9em", opacity: 0.85 }}>
+              <summary style={{ cursor: "pointer", fontSize: 12, opacity: 0.85 }}>
                 降级区 · {report.degraded.length} 条守恒校验未通过（不进主清单）
               </summary>
               <ul style={{ listStyle: "none", padding: 0 }}>
