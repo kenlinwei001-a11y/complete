@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
@@ -93,7 +94,53 @@ describe("WO-MOCKDC-PARAMS-INCREMENT ② · 同 id 多版本解析（后写覆�
 
 /* ── ③ 形状断言的扫描器（主逻辑；金丝雀与正式扫描共用这一份） ───────────── */
 
-const MOCK_PATH = fileURLToPath(new URL("../src/mocks/clients.ts", import.meta.url));
+/**
+ * 工厂**住在哪个文件**现算，不写死（`G-FACTLOCK-POSITION-ANCHOR` · check-factlock-anchor 头注）。
+ *
+ * 原写法是 `fileURLToPath(new URL("../src/mocks/clients.ts", …))` —— 一个位置锚：
+ * `createMockDataCore` 一旦被无害重构搬去别的文件，这条 it 会**假红**（能力一行没少，
+ * 只是搬了个家），而「会因无害重构而红的门，只会训练人把门删掉」。
+ * 事实本身是「**这个工厂**的返回字段不许是内联字面量」，与它住在哪个文件无关，
+ * 所以判据必须扫「在不在」，不能扫「在哪个文件里」。
+ *
+ * 定位器自带金丝雀：扫描面为空或声明处不唯一 ⇒ **抛错**（= 工具坏了），不许静默退化成
+ * 「没找到 ⇒ 干净」——那正是本仓「我没找到 ≠ 它不存在」的老坑。
+ */
+const FACTORY_DECL = /export\s+function\s+createMockDataCore\s*\(/;
+
+function srcFilesUnder(dir: string, acc: string[] = []): string[] {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return acc;
+  }
+  for (const e of entries) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) {
+      if (e.name === "node_modules" || e.name === "dist") continue;
+      srcFilesUnder(p, acc);
+    } else if (e.name.endsWith(".ts") && !e.name.endsWith(".d.ts")) {
+      acc.push(p);
+    }
+  }
+  return acc;
+}
+
+function locateFactorySource(): string {
+  const roots = [fileURLToPath(new URL("../src", import.meta.url)), fileURLToPath(new URL("../../../packages", import.meta.url))];
+  const scanned = roots.flatMap((r) => srcFilesUnder(r));
+  if (scanned.length < 50) {
+    throw new Error(`定位器扫描面只有 ${scanned.length} 个 .ts —— 工具坏了（不是「工厂不存在」），先修遍历再谈结论`);
+  }
+  const hits = scanned.filter((f) => FACTORY_DECL.test(readFileSync(f, "utf8")));
+  if (hits.length !== 1) {
+    throw new Error(`声明 createMockDataCore 的源文件应恰好 1 个，实得 ${hits.length}：${hits.join(", ")}`);
+  }
+  return hits[0];
+}
+
+const MOCK_PATH = locateFactorySource();
 
 /** 扫 createMockDataCore() 的 return 对象字面量，抓「字段值是带方法的内联对象字面量」。 */
 function scanInlineLiteralFields(textOverride?: string): { inline: string[]; factoryFound: boolean; returnIsLiteral: boolean } {
