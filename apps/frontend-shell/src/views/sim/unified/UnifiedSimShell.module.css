@@ -31,27 +31,42 @@
 /* 组分隔标签（规格里的 `.grp`）：不是按钮，只是把决策链切成段的路牌。
    ⚠ 字号 12px + `var(--muted)` 是被 `check-text-legibility` 逼出来的，不是随手挑的：
    规格原型那一档是 9px + 自定义灰，本仓判据 A（`required = max(3.0, 72/S_eff)`）在 10px 要 7.2:1，
-   而本文件其余处用的 `var(--fg-muted, …)` **根本不是本仓令牌**（tokens.css 里只有 `--txt/--muted/--muted2`），
+   而本文件其余处用的 `var(--muted2)` **根本不是本仓令牌**（tokens.css 里只有 `--txt/--muted/--muted2`），
    于是回落到字面色 #656d76、实测 dark 只有 2.03:1。本单新加的声明一律走真令牌 + 12px 硬底。 */
 .tabGroup {
   font-size: 12px;
   letter-spacing: 0.12em;
   color: var(--muted);
   padding-left: 6px;
-  border-left: 1px solid var(--border, #d0d7de);
+  border-left: 1px solid var(--line);
   white-space: nowrap;
 }
+/* ⛔ 改前这里写的是 `background: var(--bg-subtle, #f6f8fa)` + `border: var(--border, #d0d7de)`，
+   而 `--bg-subtle` 与 `--border` **全仓无定义**（tokens.css 只有 --panel/--panel2/--line/--line2…）
+   ⇒ 两处恒落到兜底的**浅色字面量**：白底 + 浅灰边。而本规则**没有设 `color`**，
+   文字于是继承暗色主题的浅色字 —— 浅字压白底，屏上基本读不出来（仓主 2026-08-26 报的就是它）。
+   同族病本仓当天已修过一次（`--green` / `--red` 幽灵令牌，LlmProvidersPage 的用量条）。
+   ⚠ 为什么 `check-css-token-defined` 没咬住：它只查**无兜底**的 `var(--x)`。
+     带了兜底反而把病藏起来 —— 声明不会作废，只是**永远用那个写死的浅色**，三个主题一视同仁。
+     这比「没上色」更难发现：屏上有颜色，只是恒定错的那一个。
+   ⚠ 替换时**连兜底值一起删**：留着 `var(--line, #d0d7de)` 等于给下一个幽灵令牌预留藏身处。
+   `color` 显式写 `var(--txt)`，不再靠继承 —— 按钮的前景色不该由「它恰好挂在谁下面」决定。 */
 .tab {
   padding: 5px 12px;
-  border: 1px solid var(--border, #d0d7de);
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--bg-subtle, #f6f8fa);
+  background: var(--panel2);
+  color: var(--txt);
   font-size: 13px;
   cursor: pointer;
 }
+/* 选中态用**成对**的 `--accent-solid` / `--on-accent`：tokens.css 里这两个就是按
+   「实心底 + 其上的字」配好的一对，逐主题验过对比度。
+   改前是 `background: var(--bg, #fff)` —— 又一处白底，且同样不设 `color`。 */
 .tabOn {
-  border-color: var(--accent, #0969da);
-  background: var(--bg, #fff);
+  border-color: var(--accent);
+  background: var(--accent-solid);
+  color: var(--on-accent);
   font-weight: 600;
 }
 .tab:disabled {
@@ -66,7 +81,7 @@
   gap: 10px;
   align-items: baseline;
   padding: 6px 8px;
-  border: 1px solid var(--border, #d0d7de);
+  border: 1px solid var(--line);
   border-radius: 6px;
   font-size: 12px;
 }
@@ -115,7 +130,7 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  border: 1px solid var(--border, #d0d7de);
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 8px;
 }
@@ -134,7 +149,7 @@
   gap: 10px;
   align-items: center;
   padding: 6px 8px;
-  border: 1px solid var(--border, #d0d7de);
+  border: 1px solid var(--line);
   border-radius: 6px;
   font-size: 12px;
 }
@@ -162,7 +177,7 @@
   display: block;
   width: 100%;
   text-align: left;
-  border: 1px solid var(--border, #d0d7de);
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 6px 8px;
   background: var(--bg, #fff);
@@ -242,7 +257,7 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  border: 1px solid var(--border, #d0d7de);
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 8px;
   max-height: 16rem;
@@ -252,7 +267,7 @@
   overflow: auto;
 }
 .log {
-  border: 1px solid var(--border, #d0d7de);
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 12px;

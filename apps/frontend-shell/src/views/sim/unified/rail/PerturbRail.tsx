@@ -29,6 +29,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PerturbationKind, PropagationRulesResponse, SandboxViewConfig } from "@platform/contracts";
 import {
   createSimPerturbation,
+  simTick,
   fetchDrillStateVarLayers,
   fetchPropagationRules,
   fetchSimPerturbations,
@@ -212,8 +213,23 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
     setBusy(true);
     try {
       await createSimPerturbation(sessionId as string, built.body);
+      // ⛔ 改前到这里就收工了 —— 而按钮上写的是「施加**并推演**」。
+      //    只建一条扰动、不推 tick，世界就没往前走一格 ⇒ 中栏指标一个数都不会变，
+      //    用户点完只看到左栏「已施加」多一行，然后合理地问「结果在哪看」（仓主 2026-08-26 原话）。
+      //    **按钮承诺了两件事只做了一件，这是屏上在说谎**，不是「还没做完」。
+      //    推一格（n=1）与 `startTick: 0`（立即生效）配套：扰动在第 0 拍施加，
+      //    推完第 1 拍才有「施加后 vs 施加前」的差值可看。要看累积效应再点几次。
+      await simTick(sessionId as string, 1);
       // 失效**这个世界**的扰动清单：摘要条与时间轴都读这一份缓存。
       await qc.invalidateQueries({ queryKey: ["a", "sim-perturbations", sessionId ?? ""] });
+      // 推过 tick 之后**世界态变了**，指标序列/会话/传导快照全部过期。
+      //   ⚠ 刻意用**前缀**失效而不是逐个列 key：本壳中栏、右栏、底部抽屉读好几条
+      //     `["a", "sim-*"]` 查询，逐个列迟早漏一条 —— 而漏掉的那条会在屏上显示**旧世界的数**，
+      //     与新数并排放着，比整块不刷新更能骗人。
+      await qc.invalidateQueries({
+        predicate: (q) =>
+          Array.isArray(q.queryKey) && q.queryKey[0] === "a" && String(q.queryKey[1] ?? "").startsWith("sim"),
+      });
       onApplied?.(built.body.label);
     } catch (e) {
       toastError(e);

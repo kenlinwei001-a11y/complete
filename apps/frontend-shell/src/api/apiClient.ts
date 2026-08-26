@@ -61,6 +61,28 @@ async function silentRefresh(): Promise<boolean> {
   return refreshing;
 }
 
+/**
+ * **冷启动会话恢复**：内存里没有 access token 时，拿 httpOnly 的 refresh cookie 换一个。
+ *
+ * ── 今天的行为是 X，应该是 Y（这是一条真 bug，不是设计取舍）─────────────────────
+ * · X：`silentRefresh` 此前**只在 401 上触发**（见 `doFetch` 的重试分支）。而
+ *   `ShellLayout` 的挂载守卫在**任何 API 发出去之前**就把人踢去 `/login` ⇒
+ *   整页重载（地址栏敲 URL / F5）时，refresh cookie 明明还有效，却永远轮不到它被用。
+ *   四环相扣：token 只在内存（设计如此，PRD §4.1）→ 重载即丢 → 守卫先跑 → 401 永不发生。
+ * · Y：守卫落地时**先问一次 refresh**，问不出来再跳登录。
+ *
+ * ⚠️ PRD §4.1 要的是「access token 不进 localStorage」，**不是**「有 refresh cookie 也不许用」。
+ *    本函数一个字节都没往 localStorage 写，只是把已经存在的那条 cookie 用起来。
+ *
+ * 复用 `silentRefresh` 的**同一个单飞 promise**，不另起一套：若此刻正好有别的请求
+ * 在刷新，两边等的是同一个 —— 否则会并发打两次 `/auth/refresh`，第二次拿着已被
+ * 轮换掉的 refresh token，反而把会话弄死。
+ */
+export async function restoreSession(): Promise<boolean> {
+  if (tokenStore.get()) return true;
+  return silentRefresh();
+}
+
 async function doFetch(system: System, path: string, opts: RequestOptions): Promise<Response> {
   const headers: Record<string, string> = { ...opts.headers };
   const token = tokenStore.get();

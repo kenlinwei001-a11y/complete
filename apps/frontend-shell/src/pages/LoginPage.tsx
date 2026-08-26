@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { login } from "@/api/endpoints";
 import { loginSession } from "@/store/authSession";
 import zh from "@/locales/zh";
@@ -7,6 +7,7 @@ import styles from "./LoginPage.module.css";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   // 默认租户对齐真实部署种子租户 demo（此前默认 tenant-battery 仅匹配 mock，导致真连登录失败）
   const [tenantId, setTenantId] = useState("demo");
   const [username, setUsername] = useState("");
@@ -22,7 +23,14 @@ export default function LoginPage() {
       const res = await login(tenantId, username, password);
       // 登录即清空上一账号的缓存（切换账号必须清空 Query 缓存与 zustand store）
       loginSession(res.accessToken);
-      navigate("/", { replace: true });
+      // 回跳用户本来要去的地方。改前这里写死 `navigate("/")` —— 与 ShellLayout 守卫
+      // 那条 bug 合起来，深链接/刷新的用户即使重新登录也回不到原页面，只能再点一遍。
+      // ⚠️ 只认**站内相对路径**（`/` 开头且不是 `//` 开头）：`from` 来自 router state，
+      //    而 state 是可被构造的 —— 收下一个 `//evil.com` 就成了开放重定向，
+      //    钓鱼页只要能让人点一次链接就能借本站的登录页把人甩去外站。
+      const from = (location.state as { from?: unknown } | null)?.from;
+      const back = typeof from === "string" && from.startsWith("/") && !from.startsWith("//") ? from : "/";
+      navigate(back, { replace: true });
     } catch {
       setError(zh.login.failed);
     } finally {

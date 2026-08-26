@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { tokenStore } from "@/api/tokenStore";
+import { restoreSession } from "@/api/apiClient";
 import { fetchHistoryWatermark, fetchResolvedFeatures } from "@/api/endpoints";
 import { useWorkspace, workspaceQueryKey } from "@/workspace/useWorkspace";
 import { useDomainEventStream } from "@/store/useDomainEventStream";
@@ -734,14 +735,58 @@ function NavGroup({ title, defaultCollapsed, children }: { title: string; defaul
 export default function ShellLayout() {
   const navigate = useNavigate();
   const location = useLocation();
+  const qc = useQueryClient();
+  /** 冷启动会话恢复是否已完成 —— 唯一作用是**触发一次重渲染**，让 `useWorkspace` 的
+   *  `enabled: tokenStore.get() != null` 重新求值（`tokenStore` 不是响应式的）。 */
+  const [, setRestored] = useState(false);
   const { data: workspace, isLoading, isError } = useWorkspace();
   const [historyOpen, setHistoryOpen] = useState(false);
 
   // D-29 实时环 F1：登录后常驻轮询领域事件，把上游变更反映到被动页面（跨会话传播）。
   useDomainEventStream(!!workspace);
 
+  /**
+   * 挂载守卫。**改前是一条真 bug**（仓主 2026-08-26 逐环诊断，四环相扣）：
+   *   ① access token 只存内存（`tokenStore`，PRD §4.1 设计：不进 localStorage）
+   *      ⇒ 地址栏敲 URL 回车 / F5 = 整页重载 = token 没了；
+   *   ② 本守卫**在任何 API 发出去之前**就 `navigate("/login")` ——
+   *      而 `apiClient` 的静默刷新只在**挨了 401** 才触发 ⇒ 冷启动永远轮不到它，
+   *      哪怕 refresh cookie 还好好地在那儿；
+   *   ③ 登录成功写死回首页，不回跳原地址。
+   * 净效果：**深链接与刷新恒等于掉线**，而且掉得毫无道理 —— 会话其实还活着。
+   *
+   * 改后：先 `restoreSession()`（拿 httpOnly refresh cookie 换 access token），
+   * 换不出来才跳登录，且**把原地址带上**供登录后回跳。
+   *
+   * ⚠️ `cancelled` 这道闸不是装饰：`restoreSession()` 是异步的，组件可能在它落地前
+   *    就卸载了（用户手快点了别处）。不拦就会对着已卸载的组件 `navigate`，
+   *    在 React 18 严格模式下还会因双次挂载**打两次 refresh** —— 而 refresh token
+   *    是轮换的，第二次拿着已作废的那个去换，等于把好端端的会话亲手弄死。
+   */
   useEffect(() => {
-    if (!tokenStore.get()) navigate("/login", { replace: true });
+    let cancelled = false;
+    if (tokenStore.get()) return;
+    void restoreSession().then((ok) => {
+      if (cancelled) return;
+      if (!ok) {
+        // 带上原地址（含 search/hash）：登录后回到用户本来要去的地方，而不是一律甩回首页。
+        navigate("/login", { replace: true, state: { from: location.pathname + location.search + location.hash } });
+        return;
+      }
+      // ⚠️ 换到 token **还不够**，必须再踢一脚让依赖它的查询重跑。
+      //    `useWorkspace.ts:12` 写的是 `enabled: tokenStore.get() != null` —— 这是**渲染期求值**，
+      //    而 `tokenStore` 是个普通模块变量、不是响应式 store ⇒ 恢复成功后没有任何东西触发重渲染，
+      //    `enabled` 永远停在挂载那一刻算出来的 `false`，屏上就永远停在「加载中…」。
+      //    实测形态：`/a/v1/auth/refresh` **回了 200**，而 `/a/v1/me/workspace` 一次都没发出去 ——
+      //    「会话恢复失败」与「恢复成功但没人去取数」在屏上一模一样，都是转圈。
+      //    `setRestored` 触发重渲染让 `enabled` 重算，`resetQueries` 把挂载期那些
+      //    disabled 状态的查询清掉重来（只 invalidate 不够：disabled 的查询不会因失效而重跑）。
+      setRestored(true);
+      void qc.resetQueries();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // 主题由 workspace.theme 覆盖 token（不同账号不同前端的视觉部分）
