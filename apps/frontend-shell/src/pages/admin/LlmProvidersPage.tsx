@@ -511,7 +511,12 @@ function BudgetPanel() {
                   height: "100%",
                   width: `${pctUsed}%`,
                   borderRadius: 3,
-                  background: data.state === "OK" ? "var(--green)" : data.state === "SOFT_EXCEEDED" ? "var(--amber)" : "var(--red)",
+                  // 三档用的是 tokens.css 的**在册**令牌（`--ok:85` / `--amber:87` / `--danger`）。
+                  // ⛔ 原文写的是 `var(--green)` / `var(--red)` —— 这两个令牌**全仓无定义**，
+                  //    而 `var()` 又没给兜底值 ⇒ 声明作废、`background` 落回继承值，
+                  //    屏上不是「没上色」而是「这根用量条整条看不出档位」。
+                  //    `--amber` 是在册的，故保持不动（只改坏的那两个，别顺手统一）。
+                  background: data.state === "OK" ? "var(--ok)" : data.state === "SOFT_EXCEEDED" ? "var(--amber)" : "var(--danger)",
                 }}
               />
             </div>
