@@ -44,7 +44,7 @@ registry.ts 里的 registerRenderer key （= 渲染器键）
 ```bash
 curl -s -H 'X-Debug-User: demo:usr_demo_admin:admin|planner|catalog_admin' \
   http://127.0.0.1:4001/a/v1/me/workspace | node -e '…'
-# 实测：navigation 49 条 / views 33 条
+# 实测 2026-08-26：navigation 51 条 / views 33 条 / features 108 条（含 sim.sandbox）
 # 金丝雀（确知有的）：views 里 dash→renderer=dashboard、order→renderer=ledger 双双命中
 #   ⇒ 遍历没坏；下面报的「某键不在 navigation 里」才算数
 ```
@@ -253,6 +253,17 @@ curl -s -H '…' http://127.0.0.1:4001/a/v1/sim/sessions/sims_demo_seed_world/me
    「统一推演控制台首档「指标态势」（= 本页首屏的**合并去向**：37 张指标卡墙**取代**旧首屏；旧版面 `/v/sim-console` 深链仍可直达）」
    —— **登记表自己承认这是「版面替代」不是「组件收编」**（`ShellLayout.tsx:193-201` 的长注把这条与上面三条明确分开说了）。
 
+4. **别的页面里的跳转**：全仓零个（不是「我没找到」，是带金丝雀的 0）：
+   ```bash
+   grep -rn 'v/sim-console' apps/frontend-shell/src --include=*.tsx --include=*.ts
+   #   → 4 处命中，全是注释/mock 注释（ShellLayout.tsx:198,201 · mocks/fixtures.ts:222,237），
+   #     零个 <Link to> / navigate() / href
+   # 金丝雀（确知有跳转的同族键）：
+   grep -rn 'v/what-if' apps/frontend-shell/src --include=*.tsx --include=*.ts
+   #   → App.tsx:149 真 route + SandboxView.tsx:1481 沙盘模式 `tryone` ⇒ 工具没坏
+   ```
+   同时 `views/sim/sandboxModes.ts` 里 **`sim-console` 一次都没出现**（旧沙盘的五模式表里没有它）。
+
 **⇒ 结论**：`SandboxHomeRoute` + `SandboxHome`（260 行组件 + 826 行 CSS）今天**只能手打 URL 到达**，
 且到了之后看到的是一个**已被别的实现取代**的旧版面。这是全 A 组唯一一条「留着纯属两套版面」。
 
@@ -393,3 +404,35 @@ curl -s -H '…' 'http://127.0.0.1:4001/a/v1/ontology/graph?packageId=ontology-c
 **没算进去、但影响更大的一笔**：`sim-conduction` / `sim-optimize` 两页的 CSS 合计 **1,854 行**
 在服务「今天不发请求」的那半屏。这两页不该砍（问题是真的、页签有落点），
 但**它们的版面投入与已兑现的功能不成比例** —— 先还 §4.2 那两条接线账，再谈版面。
+
+---
+
+## 6 · 本单的验收与边界
+
+```
+node scripts/check-stale-claims.mjs            # STALE_RC=1（存量 8 条，全在 apps/frontend-shell/src）
+node scripts/check-claim-strength.mjs          # CLAIM_RC=1（存量 3 条，全在 apps/frontend-shell/src）
+node scripts/check-merge-conflict-markers.mjs  # MARKERS_RC=0 ✅（金丝雀 7/7）
+git status --porcelain                         # 空
+git diff --stat origin/claude/inspiring-gates-aqczjg...HEAD
+#   docs/AUDIT-view-inventory-a.md | 1 file changed（零产品代码改动）
+```
+
+两条红**都不是本单加的**，证据不靠「我没改」这句话，靠两道门自己的扫描面声明：
+`check-stale-claims.mjs` 的诚实边界第 12 条逐字写着「**本门不碰后端注释与 `docs/`**」
+（⑤ 只扫 `apps/frontend-shell/src`，⑦⑧ 扫 `apps/<pkg>/src` + `packages/<pkg>/src`，两者都不进 `docs/`）；
+`check-claim-strength.mjs` 扫描面 43 文件同样全在 `apps/frontend-shell/src`。
+⇒ 本单唯一改动的文件**不在任何一道门的射程内**，红条数一条没变。
+
+**本份归档的诚实边界（三条，不许读成别的）**：
+
+1. **③ 列全部是端点级实测，不是屏级实测。** 我 curl 到了真回包，**没有在真浏览器里点开每一页**。
+   端点有数 ≠ 屏上画得出来（本仓「绿测试 ≠ 能用」的同族形态）。
+   四条「接了线没数据」我追到了**页面侧的 `enabled` 判据 / 后端的 `dataMode` 字段**才下结论，
+   其余「数据够」只证明了**取数这一跳通**。
+2. **⑥ 列的「专属测试行」按组件名归属**，因此 `ledger` / `plan-audit` / `plan-generate` 报 0 ——
+   实际它们由 view key / `data-testid` 在别的文件里覆盖（如 `f14.plan-audit.test.tsx` 5 处命中、
+   `order-row-detail.seam.test.tsx` 6 处命中）。**这个 0 是口径的 0，不是「没测试」。**
+3. **④ 列的重叠是我逐页读头注 + 对回包字段判的**，B 组那 16 页我**没有实测**，
+   凡引用到 B 组 key（`order-chain` / `procurement-legs` / `sop-balance` / `cleanroom-attr` /
+   `annual-scenario` / `graph-*`）之处，合并时须以 B 组的实测为准。
