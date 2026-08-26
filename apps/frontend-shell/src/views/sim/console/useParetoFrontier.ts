@@ -86,8 +86,10 @@ type ExecNodeAlias = "kitting" | "purchaseReq" | "aging" | "qcBatch" | "transit"
  * `scripts/check-chain-node-singlesource.mjs` 判据 C 判为「第二份注册表」并报红
  * （原话：id 全对也仍然是第二份注册表，改册时这里不会跟着变）。
  * 门明文放行的写法只有一条：**把 id 挪到键位、键类型锚在契约上**。
- * ⚠ 不许改成 `as` 断言、也不许把键类型掺成 `Rid | string` —— 门头注写明这两条
- *   **实测**都会让 `tsc` 不再咬（于是门放行了一张其实没绑住的表）。
+ * ⚠ 不许改成 `as` 断言、也不许把键类型掺成 `Rid | string` —— 这两条会让 `tsc` 不再咬
+ *   （于是门放行了一张其实没绑住的表）。这是**门自己的 2026-08-21 实测**，不是我这次测的；
+ *   出处 `scripts/check-chain-node-singlesource.mjs` 头注「反伪造」段与 `keyTypeAnchored()`，
+ *   复验：`node scripts/check-chain-node-singlesource.mjs`。
  */
 const EXEC_NODE_ALIAS: Partial<Record<RegisteredChainNodeId, ExecNodeAlias>> = {
   "material.kitting": "kitting",

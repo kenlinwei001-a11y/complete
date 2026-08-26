@@ -38,10 +38,12 @@ import styles from "./SandboxDetail.module.css";
  * **骨架还在（版面不塌），每一格印 `—`，原因写在用户读得到的地方**。
  * 三条冲击那一列**不动**：它有真出处（`affectedProcesses`），端点答了就是真值。
  *
- * ⚠ 三态定性（本单开工前逐条实测，不许混为一谈）：
+ * ⚠ 三态定性（**2026-08-26 实测**，逐条给复验方式，不许混为一谈）：
  *   · 半径 / 张角 / 刻度 / 传导标记 ⇒ **压根没有数据源**（`ImpactAnalysisResponse`
- *     四个维里一个都不含这些量，复验：`grep -n "radius\|angle" packages/contracts/src/sim-impact.ts` = 0；
- *     金丝雀：同命令搜 `affectedProcesses` 命中 ⇒ 工具没坏）⇒ 落诚实空态。
+ *     四个维里一个都不含这些量）。复验（2026-08-26 亲手跑过，命中数就是下面这两个）：
+ *     `grep -c "radius\|angle" packages/contracts/src/impact-analysis.ts` ⇒ **0**；
+ *     金丝雀 `grep -c "affectedProcesses" packages/contracts/src/impact-analysis.ts` ⇒ **1**
+ *     （同一把尺在已知必中的串上中了 ⇒ 是「真没有」，不是「尺子坏了」）。
  *   · **不是**「该接没接」——没有端点可接，所以本条与禁令 2 无关，不需要仓主批准。
  *
  * 画布坐标（星标 x/y、冲击条 y）留在原地并标 `hardcoded-data-allow`：
@@ -115,7 +117,9 @@ type RegisteredChainNodeId = ChainNodeDef["nodeId"];
  * nodeId 写成**值位字面量**，`scripts/check-chain-node-singlesource.mjs` 判据 C 判为
  * 「第二份注册表」（改册时这里不会跟着变）。改成 `Partial<Record<Rid, …>>` 之后
  * 键绑在编译期 —— 注册表删一条这里当场 `tsc` 红，门也按机制放行。
- * 不许改成 `as` 断言或 `Rid | string`：门头注写明这两条实测都会让 `tsc` 不再咬。
+ * 不许改成 `as` 断言或 `Rid | string` —— 这两条会让 `tsc` 不再咬（**门自己的 2026-08-21 实测**，
+ * 不是我这次测的；出处 `scripts/check-chain-node-singlesource.mjs` 头注「反伪造」段
+ * 与它的 `keyTypeAnchored()`，复验：`node scripts/check-chain-node-singlesource.mjs`）。
  */
 const CONE_SLOTS: Partial<Record<RegisteredChainNodeId, { code: string; y: number }>> = { // hardcoded-data-allow —— y 是画布坐标（呈现）、code 是规格槽位名，两者都不描述任何租户事实
   "material.kitting": { code: "P2", y: 84 },

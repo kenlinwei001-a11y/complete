@@ -101,7 +101,10 @@ function shortNodeLabel(nodeId: string, short: string): string {
 //   同族先例：本目录 `FlowMap.tsx` 的 `FLOW_LAYOUT`（那里用**非** `Partial` 的 `Record`，
 //   因为它要求「注册表新增一条这里必须跟上」；本表只覆盖本页画到的 21 站，故用 `Partial`）。
 //
-// ⚠ 三条**看起来能过、实际过不了**的捷径，门头注写明实测都会让 `tsc` 不再咬：
+// ⚠ 三条**看起来能过、实际过不了**的捷径 —— 它们都会让 `tsc` 不再咬
+//   （**门自己的 2026-08-21 实测**，不是我这次测的；出处
+//   `scripts/check-chain-node-singlesource.mjs` 头注「反伪造」段与它的 `keyTypeAnchored()`；
+//   复验：`node scripts/check-chain-node-singlesource.mjs`）：
 //   `{…} as Partial<Record<Rid,…>>` · `Record<Rid | string, …>` · `type Rid = string` 本地伪造。
 //   一条都不许走。
 // ══════════════════════════════════════════════════════════════════════════
@@ -155,9 +158,13 @@ interface LaneSpec {
  * 五段 × 21 站。**站名一个字都不在这里**（只有 id 与短名），`loss` 是规格占位。
  *
  * 每个 `nodes` 都单独跟一个 `satisfies Partial<Record<RegisteredChainNodeId, LaneNodeSpec>>`：
- * 门只认 `const X: T = {…}` 与 `{…} satisfies T` 两种**声明类型**载体，
+ * 门只认 `const X: T = {…}` 与 `{…} satisfies T` 两种**声明类型**载体
+ * （出处 `scripts/check-chain-node-singlesource.mjs` 的 `declaredTypeOfObjectLiteral()`），
  * **嵌套在数组元素里的对象字面量拿不到外层的类型注解** —— 少写一个 `satisfies`，
- * 那一段的 3–6 个 id 立刻退回「值位字面量」被判 C。（本单实测确认过这个边界。）
+ * 那一段的 3–6 个 id 立刻退回「值位字面量」被判 C。
+ * **2026-08-26 实测**：先只给外层 `LaneSpec` 注解、不给 `satisfies`，门仍报本文件 6 个 id；
+ * 逐段补上 `satisfies` 后降到 0。复验命令：`node scripts/check-chain-node-singlesource.mjs`
+ * （本文件应当不在输出里；金丝雀：同一次输出里 `DisruptionRadiusView.tsx` 仍在 ⇒ 门确实在跑）。
  */
 const LANE_SPECS: readonly LaneSpec[] = [ // hardcoded-data-allow —— 键是在册 id（编译期绑死）、short 是版面短名、loss 是规格占位数：屏上已标「示例数据」（见 sandbox-detail-placeholder）
   {
