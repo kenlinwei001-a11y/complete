@@ -263,10 +263,13 @@ describe("WO-SIM-NAV-GROUP · §A 四个 viewKey 落在「推演」组", () => {
       // `via` 必须是 view-defs：写成 workspace.views 会被 sim-page-roster 的排除判据 X1
       // 当成「沙盘内部构件」踢出推演页名册 ⇒ UX 判据与挂载点门从此对这四页恒绿（漏检永远绿）。
       expect(
-        entry.via,
+        entry?.via,
         `${key} 的 via 不是 "view-defs" —— 它走后端增量视图桶；写成 workspace.views 会把它踢出推演页名册`,
       ).toBe("view-defs");
-      expect(entry.where.trim().length, `${key} 的 where 不足 6 字（判据⑧d：写不出「点哪里」= 没真收编）`).toBeGreaterThanOrEqual(6);
+      expect(
+        entry?.where.trim().length ?? 0,
+        `${key} 的 where 不足 6 字（判据⑧d：写不出「点哪里」= 没真收编）`,
+      ).toBeGreaterThanOrEqual(6);
     }
   });
 
@@ -311,10 +314,11 @@ describe("WO-SIM-NAV-GROUP · §A 四个 viewKey 落在「推演」组", () => {
 
   it("A6 · 合并壳是本组**主入口**：kind:\"route\"、排在首位、且不在 ROUTE_NO_NAV 里", () => {
     const first = simGroup!.items[0];
-    expect(first.kind, "「推演」组第一项不是 kind:\"route\" ⇒ 主入口被挪走了").toBe("route");
-    expect(first.key, "「推演」组第一项不是 sim-unified ⇒ 合并壳不再是主入口").toBe("sim-unified");
+    expect(first, "「推演」组是空的 ⇒ 本条断言失去被测对象").toBeTruthy();
+    expect(first!.kind, "「推演」组第一项不是 kind:\"route\" ⇒ 主入口被挪走了").toBe("route");
+    expect(first!.key, "「推演」组第一项不是 sim-unified ⇒ 合并壳不再是主入口").toBe("sim-unified");
     expect(
-      first.kind === "route" ? first.label : undefined,
+      first!.kind === "route" ? first!.label : undefined,
       "合并壳的导航文案变了 —— 它与旧沙盘「推演沙盘」必须不同名（两条并排时靠名词本身区分）",
     ).toBe("统一推演控制台");
     expect(
