@@ -459,3 +459,31 @@ grep -c "worldId\|TickState\|SimSession" apps/datacore/src/solvers/types.ts  # 0
 grep -rln "worldId" apps/datacore/src/solvers/*.ts                       # finance-world.ts + service.ts
 grep -rn "evaluateExpression" apps/datacore/src/sim/                     # 0（金丝雀 datacore 全仓 18）
 ```
+
+---
+
+## 附 2 · 本单验收（2026-08-27）
+
+```
+node scripts/check-merge-conflict-markers.mjs   → MARKERS_RC=0  ✅（2441 文件·金丝雀 7/7）
+node scripts/check-stale-claims.mjs             → STALE_RC=1    ❌ 但**与本单无关**
+git status --porcelain                          → 空
+```
+
+**`stale-claims` 那条红是 canonical 上的既有红，不是本单造成的**，实测取证（照铁律 0.5，
+不拿「我没改代码」当证据，而是**真把变量拿掉再测一遍**）：
+
+- 把 `docs/LOOP-architect-round1.md` 临时移出仓库后重跑 → **`BASELINE_RC=1`，同样 8 条**；
+- `grep -c "LOOP-architect-round1" <门输出>` = **0** ⇒ 本文件一条都没贡献；
+- 那 8 条落在 `components/QueryDock/TurnStatsBar.tsx:19-20` · `pages/ShellLayout.tsx:776-783` ·
+  `views/sim/console/SandboxAttr.tsx:69-77` · `views/sim/unified/UnifiedSimShell.tsx:492-495`
+  —— **四个文件本单一个字节都没碰**（🚦范围边界：只允许新建本文件）。
+
+⚠️ **本单不修它**：本单范围边界只允许新建这一个文件；且修它属「度量装置的自我维护」，
+落在仓主禁令 1 的 B 类里（判据：这条红删了用户不会看到坏东西）。**唯一例外条款不适用** ——
+它今天**不是**四包 gate 的阻塞物（`pnpm -r build` 本单已实跑全绿，见下），
+只是一道独立的注释体检门。**照禁令，点名，不开工。**
+
+**四包 build 实跑**（本单为起服务取证而跑，顺带作证）：
+`pnpm -r build` → 6 个 workspace 全 `Done`，`apps/datacore/dist/server.js` 与
+`apps/agentcore/dist/main.js` 均产出。
