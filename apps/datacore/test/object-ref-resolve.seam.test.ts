@@ -12,7 +12,7 @@ import { makeApp, seedBattery, ADMIN, BASE_MANAGER, debugUser, type TestApp } fr
  *   GET /a/v1/objects/Base/常州              → 404   ← 槽位填充走的就是这条，必然失败
  *   GET /a/v1/objects/Base/changzhou         → 200
  *   GET /a/v1/objects/Base/obj_base_changzhou→ 200
- * 「常州」是 `Base.name`、「整车厂A」是 `Customer.custName` —— 按 id/主键查当然查不到。
+ * 「常州」是 `Base.name`、「广汽集团」是 `Customer.custName` —— 按 id/主键查当然查不到。
  *
  * 单一出处纪律：本端点与 `getObject` 共用 contracts `matchObjectRefInType` 一份实现，
  * 可识别属性完全从 ObjectTypeDef 元数据派生（**没有任何中文名→id 词表**，R14）。
@@ -71,7 +71,7 @@ describe("WO-SLOT-ENTITY-RESOLVE · ② 多类型判据：不是只修基地（M
     expect([m2.resolved, m2.objectId, m2.matchedBy, m2.matchedProp]).toEqual([true, "4680-NCM", "name", "name"]);
 
     // Customer：**没有 `name` 属性**，名称在 `custName` —— 只认 name/displayName 的实现在这里必挂。
-    const c = await resolve(t, "整车厂A", { types: ["Customer"] });
+    const c = await resolve(t, "广汽集团", { types: ["Customer"] });
     expect([c.resolved, c.objectType, c.matchedBy, c.matchedProp]).toEqual([true, "Customer", "name", "custName"]);
     expect(c.objectId).toBe("cust_0");
 
@@ -88,16 +88,16 @@ describe("WO-SLOT-ENTITY-RESOLVE · ② 多类型判据：不是只修基地（M
 });
 
 describe("WO-SLOT-ENTITY-RESOLVE · ③ 不给 types 也能解析（槽位未声明 refType 的路）", () => {
-  it("全类型解析：常州→Base · 4680-NCM→Model · 容百科技→Supplier · 整车厂A→Customer（ARInvoice 同名 3 行不夺胜出）", async () => {
+  it("全类型解析：常州→Base · 4680-NCM→Model · 容百科技→Supplier · 广汽集团→Customer（ARInvoice 同名 3 行不夺胜出）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const cases: [string, string, string][] = [
       ["常州", "Base", "changzhou"],
       ["4680-NCM", "Model", "4680-NCM"],
       ["容百科技", "Supplier", "SUP-001"],
-      // 可辨析性筛：`ARInvoice.custName="整车厂A"` 有 3 行（该值在该类型里不标识对象）→ 不参与胜出；
-      // `Customer.custName="整车厂A"` 恰 1 行 → 胜出。**结构性判据，不是"取第一个"**。
-      ["整车厂A", "Customer", "cust_0"],
+      // 可辨析性筛：`ARInvoice.custName="广汽集团"` 有 3 行（该值在该类型里不标识对象）→ 不参与胜出；
+      // `Customer.custName="广汽集团"` 恰 1 行 → 胜出。**结构性判据，不是"取第一个"**。
+      ["广汽集团", "Customer", "cust_0"],
     ];
     for (const [ref, ty, id] of cases) {
       const r = await resolve(t, ref);

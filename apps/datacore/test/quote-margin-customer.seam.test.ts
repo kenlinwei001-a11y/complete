@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, invokeSolver, ADMIN, type TestApp } from "./helpers.js";
 import {
   ORDER_CUST_TO_CUSTOMER,
+  CUSTOMER_REGISTRY,
+  MODELS,
   businessTypeOfCustomer,
   customerNameOfOrderCust,
   customerSegKeyOf,
@@ -72,10 +74,13 @@ describe("WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎�
   });
 
   // ── ② 引擎半 + 差分门：两个不同客户 → 毛利真的不同，且各自可溯 ──────────────
-  it("差分门：8 客户各自的毛利可溯到自己的订单与 BOM，且储能客户 ≠ 乘用车客户", async () => {
+  it("差分门：20 客户各自的毛利可溯到自己的订单与 BOM，且储能客户 ≠ 乘用车客户", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    const names = ["整车厂A", "整车厂B", "整车厂C", "海外车企E", "商用车集团G", "储能集成商D", "储能集成商H", "电网公司F"];
+    // WO-ORDER-BOOK-500：名单**从名册现取**，不再在测试里另抄一份客户名 ——
+    // 抄一份的后果刚刚真实发生过：名册退役匿名代号后，这里还咬着「整车厂A/电网公司F」，
+    // 而那些客户已经不存在了。名单从单一来源取，加客户/改名都不会让这条用例悄悄漏测。
+    const names = CUSTOMER_REGISTRY.map((c) => c.name);
     const got: Record<string, { margin: number; bomCost: number; price: number; scope: Record<string, unknown> }> = {};
     for (const custName of names) {
       const res = await invokeSolver(t, "quote_margin", { custName });
@@ -101,16 +106,28 @@ describe("WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎�
     expect(bomCosts.size, `bomCost 取值集合=${[...bomCosts].join(",")}`).toBeGreaterThan(1);
     expect(bomCosts.has(313.7452), "bomCost 不得等于 Material 前 4 行的 313.7452").toBe(false);
 
-    // 反证②（退回轮转绑定）：轮转下「电网公司F」名下会混进宇通客车(2170-NCM)的单，
-    // 主力型号不再是储能型号 → 下面这条必红。
-    expect(got["电网公司F"]!.scope.modelId).toBe("方形-LFP");
-    expect(got["商用车集团G"]!.scope.modelId).toBe("2170-NCM"); // 宇通客车三单全是 2170-NCM
-    expect(got["整车厂A"]!.scope.modelId).toBe("4680-NCM"); // 广汽集团主力
+    // 反证②（退回轮转绑定）：轮转会把别的业态的单挂到这个客户名下 → 主力型号的**化学体系**跑到对面去。
+    // WO-ORDER-BOOK-500 把判据从「写死三个型号串」换成「**逐客户**核对化学体系与业态相符」：
+    //  · 写死串的版本刚刚被证明是**假的耐久**——它只在 24 张手写单那份数据上成立，订单簿一扩就全红，
+    //    而求解器一行没改。形态：「我用『主力型号恰好等于这个串』当作『归属没串台』的证据。」
+    //  · 现在这版对**全部 20 家**都咬，覆盖面比原来 3 条断言更大：轮转绑定会让储能客户的主力型号
+    //    落到动力型号上（反之亦然），任何一家串台即红。
+    const posOf = new Map(MODELS.map((m) => [m.modelId, m.pos]));
+    for (const custName of names) {
+      const seg = customerSegKeyOf(custName);
+      const pos = String(posOf.get(String(got[custName]!.scope.modelId)) ?? "");
+      expect(pos, `${custName}(${seg}) 的主力型号 ${String(got[custName]!.scope.modelId)} 不在型号表里`).not.toBe("");
+      // 储能客户的主力型号必须可用于储能；动力（乘用/商用）客户的必须可用于动力。
+      expect(pos.includes(seg === "ess" ? "储能" : "动力"), `${custName}(${seg}) 主力型号 ${String(got[custName]!.scope.modelId)} 用途=${pos} 与业态不符 ⇒ 归属串台`).toBe(true);
+    }
 
-    // 差分门本体：储能客户与乘用车客户的毛利**真的不同**（修前两者逐字节相同）
-    expect(got["电网公司F"]!.margin).not.toBe(got["整车厂A"]!.margin);
-    expect(got["电网公司F"]!.bomCost).not.toBe(got["整车厂A"]!.bomCost);
-    expect(got["电网公司F"]!.price).not.toBe(got["整车厂A"]!.price);
+    // 差分门本体：储能客户与乘用车客户的毛利**真的不同**（修前两者逐字节相同）。
+    // 取名册里的头部储能客户与头部乘用车客户各一家（不写死名字·随名册走）。
+    const essName = names.find((n) => customerSegKeyOf(n) === "ess")!;
+    const pasName = names.find((n) => customerSegKeyOf(n) === "pas")!;
+    expect(got[essName]!.margin).not.toBe(got[pasName]!.margin);
+    expect(got[essName]!.bomCost).not.toBe(got[pasName]!.bomCost);
+    expect(got[essName]!.price).not.toBe(got[pasName]!.price);
 
     // 每个客户的 orders 必须真的是他自己的单（scope.orders ⊆ 该客户名下）
     const links = await t.repos.links.list("demo", (l) => l.type === "order_of_customer");
@@ -143,12 +160,43 @@ describe("WO-QUOTE-MARGIN-CUSTOMER · 客户维接缝（数据归属 × 引擎�
     await seedBattery(t);
     // 造一个「客户在库、但名下拿不到真 BOM」的形态：指定一个库里没有 BOM 的型号。
     // 修前该形态会静默回落到 `mats.slice(0,4)` 的 313.7452，并把客户名印在答案上——比修前更像真的。
-    const res = await invokeSolver(t, "quote_margin", { custName: "电网公司F", modelId: "不存在的型号Z" });
+    const probeCust = CUSTOMER_REGISTRY[0]!.name;
+    const res = await invokeSolver(t, "quote_margin", { custName: probeCust, modelId: "不存在的型号Z" });
     expect(res.statusCode, res.body).toBe(400);
     const err = (res.json() as { error: { code: string; message: string } }).error;
     expect(err.code).toBe("EMPTY_SCOPE");
-    expect(err.message).toContain("电网公司F");
+    expect(err.message).toContain(probeCust);
     expect(err.message).toContain("Material 前 4 行");
+  });
+
+  // ── ④ 客户维**可被按图走的工具找到**（WO-ORDER-BOOK-500 · 名字对齐的真正验收点）────────
+  it("集中度按客户走得通（>0 个集中点），且按型号的金丝雀同时成立（证明不是把工具改宽了）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const conc = async (viaField: string, toType: string) => {
+      const res = await invokeSolver(t, "concentration_risk", {
+        startType: "Order", path: [{ viaField, toType }], minDependents: 2,
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      return (res.json() as { data: { concentrations: { rootId: string; count: number }[] } }).data.concentrations;
+    };
+
+    // 命门：修前这里恒为 **0 个** —— `Order.cust` 存的是显示名「东风汽车」，而集中度求解器按
+    // `Customer` 的**主键** `custId` 建索引，拿显示名去查主键索引每一跳都断链。
+    // 修后 `Order.customerId` 存主键且声明成 ref ⇒ 这条边对「按图走」的工具真实存在。
+    const byCust = await conc("customerId", "Customer");
+    expect(byCust.length, "客户集中度回 0 个 ⇒ 订单与客户档案又对不上号了").toBeGreaterThan(0);
+
+    // 金丝雀（**必须同时成立**）：同一个求解器、同样的走法，按型号一直是通的。
+    // 它证明上面那条转绿是因为**数据对上号了**，不是因为把求解器/门槛改宽了。
+    const byModel = await conc("model", "Model");
+    expect(byModel.length, "型号金丝雀也回 0 ⇒ 是工具坏了，不是数据修好了").toBeGreaterThan(0);
+
+    // 集中度必须真的**不平均**：平均分给 20 家 ⇒ 头名占比恒 ≈1/20，这个分析就等于做死了。
+    const total = byCust.reduce((a, c) => a + c.count, 0);
+    const top1 = Math.max(...byCust.map((c) => c.count));
+    expect(top1 / total, `头名客户占比 ${(top1 / total * 100).toFixed(1)}% ≈ 平均分(1/${byCust.length}) ⇒ 长尾没生效`)
+      .toBeGreaterThan(1.5 / byCust.length);
   });
 
   it("未指定客户 → scope.mode=ALL（显式全域，非首客户）；直传 bom → scope.mode=EXPLICIT（R6 向后兼容）", async () => {

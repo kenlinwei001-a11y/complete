@@ -307,12 +307,18 @@ export class GlobalSimPlanExecutor implements ActionExecutor {
       });
       materializedWos.push(woId);
 
-      // ② 采纳即承诺：把该 OPEN 订单移出决策集（status→已排产·portfolio includeOrderIds 默认只收 OPEN）。
+      // ② 采纳即承诺：把该 OPEN 订单移出决策集（status→IN_PRODUCTION·portfolio includeOrderIds 默认只收 OPEN）。
+      // ⚠ WO-ORDER-BOOK-500 订正：这里原先写的是中文字面量 `"已排产"` —— 那是 **WorkOrder** 的词表
+      // （`battery.ts` woStatus = 已排产|生产中|已完成|已关闭），被借来填了 **Order** 的 status 字段。
+      // 两个对象类型各有各的生命周期，借词表就是把两个概念合成一个：借来之后 `Order.status` 同时存在
+      // 英文 `"OPEN"` 与中文 `"已排产"` 两套词，任何按状态分组的统计都会分裂成两半。
+      // 改为 `OrderStatusSchema` 的 `IN_PRODUCTION`（语义就是「已排产在制」，上面那行刚给它下了生产中的工单）。
+      // 行为等价：决策集判据是 `=== "OPEN"`，改后仍然不等于 OPEN，照样移出决策集。
       const orderObj = orderBySo.get(orderId);
       if (orderObj && String(orderObj.props.status) === "OPEN") {
         await this.deps.repos.objects.put({
           ...orderObj,
-          props: { ...orderObj.props, status: "已排产", _committedByAction: draft.id, _provenance: provenance },
+          props: { ...orderObj.props, status: "IN_PRODUCTION", _committedByAction: draft.id, _provenance: provenance },
           origin,
         });
       }

@@ -126,15 +126,38 @@ describe("WO-PROV-DRILLFIELD · gap_attribution provenance 口径真值门（R13
   it("效果层②（基地作用域路 + 敞口路）：scoped/exposure 两条支路逐叶同样对拍真值", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    // hefei = OPEN 订单首基地（走 scoped 复用全局子树支路）；xiamen 从不当首基地（走 exposure 敞口支路）。
-    const scoped = await run(t, { scope: { baseId: "hefei" } });
-    const r1 = await assertProvenanceTellsTruth(t, scoped, "scope:hefei");
-    expect(r1.orderValue, "hefei 专属树应含订单叶").toBeGreaterThanOrEqual(1);
+    // 两条支路的分岔判据（`solvers/service.ts` 敞口分支）：
+    //   · 基地是**某张 OPEN 订单的 bases[0]**（首基地）⇒ 走 scoped（复用全局子树）
+    //   · 基地不是任何 OPEN 订单的首基地、但在某张 OPEN 订单的 bases 里 ⇒ 走 exposure（敞口树）
+    //
+    // ⚠ 这两个基地**必须按上面的判据现算，不许写死基地名**（WO-ORDER-BOOK-500 的教训）：
+    // 原文写死 `xiamen` 当敞口探针，理由是「厦门从不当首基地」—— 那句话只在 24 张手写订单那份
+    // 数据上成立。订单簿扩到 500 张后 13 个基地里 12 个都成了首基地，`xiamen` 变成首基地，
+    // 这条用例当场红，而**求解器一行没改**。形态是本仓的老病：
+    // 「我用『某个基地名』当作『它走敞口支路』的证据，而前者并不度量后者。」
+    // 现改为从仓储现算，数据再怎么变都指得准；一个候选都没有时显式报出来（而不是静默绿）。
+    const allOrders = await t.repos.objects.listByType("demo", "Order");
+    const openOrders = allOrders.filter((o) => String(o.props.status) === "OPEN");
+    const firstBases = new Set(openOrders.map((o) => String((o.props.bases as string[])[0] ?? "")));
+    const exposureCounts = new Map<string, number>();
+    for (const o of openOrders) {
+      for (const b of (o.props.bases as string[]).map(String)) {
+        if (!firstBases.has(b)) exposureCounts.set(b, (exposureCounts.get(b) ?? 0) + 1);
+      }
+    }
+    const scopedBase = [...firstBases].filter(Boolean).sort()[0]!;
+    const exposureBase = [...exposureCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
+    expect(scopedBase, "找不到任何 OPEN 订单首基地 ⇒ 种子坏了，不是支路没了").toBeTruthy();
+    expect(exposureBase, "找不到「非首基地但可承接 OPEN 订单」的基地 ⇒ 敞口支路在本数据集上已无覆盖（须造数或改种子），不许静默跳过").toBeTruthy();
 
-    const exposure = await run(t, { scope: { baseId: "xiamen" } });
-    expect(exposure.scope?.exposure, "xiamen 应走敞口支路（非首基地）").toBe(true);
-    const r2 = await assertProvenanceTellsTruth(t, exposure, "scope:xiamen(exposure)");
-    expect(r2.orderValue, "xiamen 敞口树应含订单叶").toBeGreaterThanOrEqual(2);
+    const scoped = await run(t, { scope: { baseId: scopedBase } });
+    const r1 = await assertProvenanceTellsTruth(t, scoped, `scope:${scopedBase}`);
+    expect(r1.orderValue, `${scopedBase} 专属树应含订单叶`).toBeGreaterThanOrEqual(1);
+
+    const exposure = await run(t, { scope: { baseId: exposureBase! } });
+    expect(exposure.scope?.exposure, `${exposureBase} 应走敞口支路（非首基地）`).toBe(true);
+    const r2 = await assertProvenanceTellsTruth(t, exposure, `scope:${exposureBase}(exposure)`);
+    expect(r2.orderValue, `${exposureBase} 敞口树应含订单叶`).toBeGreaterThanOrEqual(2);
   });
 
   it("效果层③（前端显示这一跳）：ProvenanceDag / DashboardView 渲染出的那个数 == DB 里 Order.value 真值", async () => {

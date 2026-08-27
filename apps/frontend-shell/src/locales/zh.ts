@@ -366,6 +366,21 @@ export const zh = {
    * 而这两维正是本页新增的主体，故取「订单进展与卡因」。
    * ⚠ renderer key 仍是 `order-chain`（那是路由契约，改了会连坐后端 VIEW_DEFS / features / mock 三处）。
    */
+  /**
+   * WO-ORDER-BOOK-500 · 销售订单**头级**三态（`Order.status`）的中文名。
+   *
+   * 枚举值本身是英文、住在 `@platform/contracts` 的 `OrderStatusSchema`（跨包单一来源）；
+   * 中文只在这里出现一次 —— 中文名**不进枚举**，否则契约里就同时躺着两套词表，
+   * 后端按英文分组、前端按中文匹配，迟早对不上。
+   *
+   * ⚠ 别和 `OrderLine.lineStatus`（行级四态：未处理/已承诺/部分满足/已发运）混为一谈：
+   * 那是「这一行发没发货」，这里是「这张单走到生产生命周期的哪一段」。
+   */
+  orderStatus: {
+    OPEN: "已下待排产",
+    IN_PRODUCTION: "进行中",
+    COMPLETED: "已完成",
+  } as Record<string, string>,
   orderChain: {
     title: "订单进展与卡因",
     baseFilter: "基地筛选",

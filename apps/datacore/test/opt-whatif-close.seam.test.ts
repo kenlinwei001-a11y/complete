@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, ADMIN } from "./helpers.js";
 import type { AuthCtx, ObjectTypeDef } from "../src/domain.js";
-import { generateBattery } from "../src/synthetic/battery.js";
+import { generateBattery, ORDER_BOOK_SIZE } from "../src/synthetic/battery.js";
 import type {
   OptimizerClient, OptimizationRequest, OptimizationResult,
   FacilityLocationRequest, FacilityLocationResult,
@@ -169,13 +169,24 @@ describe("WO-OPT-WHATIF-CLOSE · 问句 → optimize_whatif 真结论（SEAM）"
     expect(mock.calls).toBe(2); // 基线 + 扰动各真解一次
 
     // 头号判据 C：需求点是**真需求点**——A2 生效，client 不是决策类型的从属记录（否则是自信错答）。
-    expect(baseSol.clientType).toBe("OrderLine");
+    //
+    // ⚠ WO-ORDER-BOOK-500 变更说明（**这条断言的值变了，判据没变，请连着读**）：
+    // 排序判据是 `subordinate → fanOut 降序 → 字典序`（`solvers/service.ts` rankRoleCandidates），
+    // 其中 `fanOut` = 该类型**声明为 ref 的属性个数**。本单给 `Order` 补了真外键 `customerId`
+    // （ref → Customer，用来修「集中度问客户回 0 个」），于是 `Order` 的 fanOut 从 1 变成 2，
+    // 与 `OrderLine` 打平，再按字典序 `"Order" < "OrderLine"` ⇒ 需求点从行级换成了单级。
+    //
+    // 这不是 A2 失效：下面三条判据（非从属 / 不是维修工单 / 不是生产工单）**一条没松**，
+    // `Order` 同样不带指向 `Base` 的 ref，同样是可自由指派的真需求点。
+    // 但它确实暴露了自动绑定的一处脆弱：**给任何候选类型加一个 ref，都可能翻掉 client 角色的归属**。
+    // 这一点已在交付报告里点名，交由审核方裁决是否要给排序加更稳的判据。
+    expect(baseSol.clientType).toBe("Order");
     expect(baseSol.clientType).not.toBe("MaintenanceOrder"); // 撤掉 A2 → 这里回到维修工单
     expect(baseSol.clientType).not.toBe("WorkOrder");        // 只做 A1 → 这里落到生产工单
     const clientDef = (await t.repos.ontologyTypes.list("demo")).find((x) => x.key === String(baseSol.clientType) && x.status === "ACTIVE")!;
     expect(clientDef.properties.some((p) => p.refToTypeKey === "Base")).toBe(false); // 非从属 = 可自由指派
     expect(mock.last!.clients.length).toBeGreaterThan(0);
-    expect(mock.last!.clients.length).toBe(38);
+    expect(mock.last!.clients.length).toBe(ORDER_BOOK_SIZE); // 需求点 = 全部 500 张订单
   });
 
   it("② A1 隔离（零实例硬过滤）：排位更高的候选零实例 → 让位给有实例的候选，链路真出结论", async () => {
