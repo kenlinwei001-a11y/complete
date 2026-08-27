@@ -4,7 +4,6 @@ import { useSessionStore } from "@/store/sessionStore";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
 import { safeUuid } from "@/lib/uuid"; // P0 crypto 修复·嫁接自 integ-wave-10
-import { resolveViewKey } from "@/views/registry"; // 场景卡 targetView 可能是短键别名
 
 /**
  * 场景启动（PRD-scenario-launcher §3.5）：点一张场景卡 → 注入 presetContext
@@ -27,7 +26,14 @@ export function useQuickLaunch(): (input: {
   const packageId = workspace?.scenarioPackages[0] ?? "";
   return async ({ query, targetView, selectedObjects = [], slotPresets = {}, scenarioIntentKey }) => {
     if (!packageId) return;
-    const canonicalView = resolveViewKey(targetView) ?? targetView;
+    // ⛔ 改前这里是 `resolveViewKey(targetView) ?? targetView` —— **换算这一步本身就是病根**。
+    //    实测（playwright 真跳）：能打开的是**后端下发的短名**，换算出来的规范名反而打不开
+    //      /v/risk ✅ 正常 · /v/risk-board ❌ 无权访问
+    //      /v/dash ✅ 正常 · /v/dashboard  ❌ 页面不存在
+    //    净效果：首页 6 张高频场景卡**全部**落在错误页 —— 系统给新用户准备的
+    //    6 个「从这里开始」一个都推不开（仓主 2026-08-27 那句「我看不懂怎么使用他们」的直接原因）。
+    //    `workspace` 的 navigation/views 用的就是短名，路由与鉴权也按短名判 ⇒ 原样传，别自作主张换。
+    const canonicalView = targetView;
     const store = useSessionStore.getState();
     store.setView(canonicalView);
     store.setSelectedObjects(selectedObjects);
@@ -78,7 +84,8 @@ export function useQuickLaunch(): (input: {
 export function useScenarioLaunch(): (card: ScenarioCardVM, userQuery?: string) => Promise<void> {
   const navigate = useNavigate();
   return async (card: ScenarioCardVM, userQuery?: string) => {
-    const canonicalView = resolveViewKey(card.presetContext.targetView) ?? card.presetContext.targetView;
+    // 同上：原样用后端给的键，不做别名换算（换算出来的规范名路由不认）。
+    const canonicalView = card.presetContext.targetView;
     const store = useSessionStore.getState();
     // 本地会话态照旧在**发请求之前**摆好：屏上先进落点视图、先起对话线程，
     // 用户不必盯着一个没反应的按钮等网络（这一段与原实现逐字同义，只换了那一跳网络调用）。
