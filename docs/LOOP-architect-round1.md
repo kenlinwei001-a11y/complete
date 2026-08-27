@@ -345,3 +345,117 @@ turnoverPressure utilPressure windowSqueeze` —— 21+4+3+2+2+8 = 40 ✅ 一个
   「决策推演不应该在导航这个位置，而是嵌入到每个需要决策的点」）。它不是遗漏。
 
 ---
+
+## 第 ④ 节 · 要兑现那五步，架构上必须补哪几件
+
+### 先把「马上」这条硬约束的冲突结论摆出来 —— **实测：不冲突**
+
+仓主追加的约束是「输入扰动因素，**马上**看到指标变化 / 建议方案 / 方案对比」。
+我把「复杂推演」那条链**从头到尾串起来真跑了一遍**（串行、无缓存、单进程内存模式）：
+
+| 步 | 调用 | 耗时 |
+|---|---|---:|
+| ① | `POST …/perturbations`（`capacity_loss` 常州 loadIndex ×1.4） | 0.065 s |
+| ② | `POST …/tick n=1` | 0.240 s |
+| ④a | `POST …/drill`（14 天 = 14 拍传导 **+ 3 个求解器**） | 0.844 s |
+| ④b | `chain_impediments`（17 个卡点 + 候选枚举 10 锚点/34 试算） | 0.747 s |
+| ⑤ | `decision_play`（3 方案 + 比对矩阵 + 触发规则） | 0.482 s |
+| ③ | `finance_world_projection`（世界态 → 钱） | 0.024 s |
+| ⑤b | `portfolio`（全组合排产，回 FEASIBLE + 逐单 allocation） | 0.020 s |
+| — | **全链墙钟** | **2.485 s** |
+
+> **结论：「复杂推演」与「马上看到」在今天这套代码上不冲突。**
+> 全部是确定性纯计算（零 LLM、零 `Math.random`、零外部 IO），2.5 秒跑完六个引擎。
+> **唯一慢的是 LLM / agent 那条路** —— `orchestrator.ts:97` `DEFAULT_TASK_TERMINAL_TIMEOUT_MS = 180_000`
+> （3 分钟看门狗）。
+
+⇒ **给 PM 的形态判断（这一条会直接决定设计）**：
+**别把 agent 放在算的路上，放在「听懂人话」那一步。**
+用户说「常州减产四成」→ agent 把它翻成一条 `Perturbation` / `DrillEvent`（一次 LLM 调用），
+之后 ①–⑤ 全走确定性链，2.5 秒出全部结果。
+「先出快答再异步补全」「预计算」这两种折中**今天用不上** —— 那是为掩盖几十秒延迟设计的，而延迟不存在。
+
+**真正的性能问题在别处**：`tick` 回包 **1.13 MB**（3411 对象 × 40 变量 + 4150 条 trace）。
+浏览器要把它解析、diff、渲染。这是 D 档「回包投影」那一件的理由，不是算力问题。
+
+---
+
+### 补齐清单（四档）
+
+#### 档 A · 补一条线（两端都已存在，中间缺一根）
+
+| # | 要补的线 | 落点（file:line） | 量级 | 为什么是它 |
+|---|---|---|---|---|
+| **A1** | **`SolverContext` 带上世界态** —— 加 `worldId?: string` + `tickState?: TickState` | `apps/datacore/src/solvers/types.ts`（接口）· `solvers/service.ts:5415 loadContext`（装载）· `ontology.ts:810 invokeSolver`（透传） | **中**（接口 + 装载 ≈ 200 行；`finance-world.ts:181` 已有现成读法可抄） | **这是全部五步的地基**。今天 61 个求解器里 60 个看不见扰动（第 ① 节金丝雀取证），⑤ 的方案与 ② 的世界完全无关（`decision_play` 带不带 `worldId` 回包逐字节相同，实测 7732=7732）。**A1 不做，下面 B 档全部做不了** |
+| **A2** | **`DrillEvent ⇄ Perturbation` 双向转换器** | 新纯函数，落 `packages/contracts/src/sim.ts` 或 `apps/datacore/src/sim/` | **中**（11 类事件 × 落点解析 ≈ 300 行） | 今天两套输入词表并存且无桥：drill 吃业务语汇（`ORDER_RESCHEDULE`/`SO-3391`/`days:-10`），tick 吃引擎语汇（`obj_model_4680-NCM`/`demandLoad`/`delta 30`）。**「不懂技术的使用者」只能说前者** |
+| **A3** | **agent 加 `sim_perturb` / `sim_drill` 两个工具** | `apps/agentcore/src/tools/registry.ts:457 SIM_COMMANDER_TOOLS` + `tools/executor.ts:442-456` | **小**（每个 ≈ 30 行，照 `sim_tick` 抄） | 今天 agent 只有 `sim_init/tick/world/certify` —— **能看不能改**，而目标第 ① 步就是「输入扰动」。配上 A2，自然语言「常州减产四成」才有落点 |
+| **A4** | **需求 → 收入 的传导边** | `apps/datacore/src/seed.ts` 传导规则种子（今天 42 条 PUBLISHED，六个方向全查过无此边） | **小**（1 条规则 + 量纲声明） | `finance_world_projection` 回包 `notes[0]` 自陈：「收入行**故意不动**…没有任何传导规则…凭空折算就是引擎自己发明一个系数」。⇒ **今天推演只能让成本动，不能让收入动**，而毛利 = 收入 − 成本 |
+
+#### 档 B · 补一个挂载点（能力已存在，挂在了够不着的地方）
+
+| # | 要补的挂载点 | 落点 | 量级 | 依赖 |
+|---|---|---|---|---|
+| **B1** | `chain_impediments` 读世界态 —— 判定的 `payload` 从「本体真值」改成「本体真值 ⊕ 当前 tick 覆盖」 | `apps/datacore/src/solvers/chain-impediment.ts:915`（`evaluateExpression(rule.expression,{payload,…})` 那一处，payload 的组装点） | **中** | A1 |
+| **B2** | `decision_play` 的 `sandboxNarrowing` 真跑推演 | `apps/datacore/src/solvers/service.ts:4008` —— 今天是 `{beforeGap, afterGap, narrowedPct, ticks: 0}`，`ticks` **硬编码 0**，`afterGap` 是 `gap − Σ closesGap` 的算术 | **中** | A1 |
+| **B3** | `finance_world_projection` 挂进 drill 的 `universalRoutes` | `packages/contracts` 的 `DRILL_UNIVERSAL_ROUTES`（今天只有 `risk_timeline` 一条） | **小** | — |
+| **B4** | drill 路由表从 7 个求解器扩到覆盖 ①–⑤ | `DRILL_EVENT_SPECS`（11 事件 × 1–2 求解器；61 个里 54 个零命中） | **中**（每条路由要一个 `normalize` 适配器把异构输出归一成 `DrillFinding`） | — |
+| **B5** | `PerturbTree` 的落点选择器 —— 或者按 A2 直接换成业务事件输入 | `views/sim/console/PerturbTree.tsx:181-194`（`targetObjectId` 恒 `undefined` ⇒ POST 分支恒不进入）· 源头是 `SandboxHomeRoute.tsx:79` 从 `view.options` 取，而实测后端下发 `options:{}` | **小–中** | A2 |
+
+#### 档 C · 补一层能力（今天不存在，必须新造）
+
+| # | 要补的能力 | 落点 | 量级 | 为什么非造不可 |
+|---|---|---|---|---|
+| **C1** | **40 个状态变量的量纲声明表**（`stateVar → {unit, kind, baselineRef, divisor}`） | `packages/contracts`（表）+ `seed.ts`（数据）+ `solvers/finance-world.ts`（读表代替 `basis.divisor` 默认 100） | **中** | 实测 `costPressure = 2358.63` 被当百分点读 ⇒ 销售成本 `projected = 14287.09`（基线 581.1）、毛利 `−13587.09`。**③ 这一步今天输出的是错的数，不是没有数**，PM 若按「没有钱」去设计会走反方向 |
+| **C2** | **杠杆册 × 阻滞点落点的覆盖闭合** | `CAPACITY_FACTOR_BINDINGS`（20 因子 / 7 类落点：`Equipment 4 · Process 5 · Line 5 · Material 3 · ChangeoverMatrix 1 · MaintPlan 1 · Order 1`，其中**只有 11 个 writable**）+ 规则码 `ruleGate` | **中–大** | **⑤ 的真瓶颈，机器自己报的原因**：17 个阻滞点落在 4 类对象上（`MaterialBalance 7 · MaterialBatch 6 · Base 2 · Line 2`），而杠杆册**只覆盖到 `Line` 一类** ⇒ 实测 **17 个卡点里只有 4 个出得了方案**（12 条候选）。回包原文：「LOCUS_PROP 够不着：对象类型 `Base`/`MaterialBatch`/`MaterialBalance` 在 `CAPACITY_FACTOR_BINDINGS` 上没有任何可拨动落点」。另一半是规则码：杠杆册的 `ruleGate = {C03,C06,C08,C16}`，阻滞点判据用的是 `{C05,C28,C34}` ——**两个集合交集为空**，回包原文「该判据与产能因子册今天没有共同的规则码」 |
+| **C3** | **约束进推演**：`evaluateExpression` 接进 tick 之后一相，产出「这一格世界违反了哪几条规则」 | `apps/datacore/src/sim/propagation.ts`（新增一相）或更小的改法：`sim/drill-scan.ts` 的判据从「阈值扫 40 个变量」换成「跑规则」 | **中** | 今天 `evaluateExpression` 在 datacore 有 18 个调用点，`sim/**` **零个** ⇒ 推演里没有任何东西会说「这条不可行」。480 条 drill 结论里 470 条是无量纲变量的阈值扫描，说不出业务话 |
+| **C4** | **tick 回包投影**：只回「被本次扰动波及的对象 × 变化最大的 N 个变量 + 全局聚合」 | `apps/datacore/src/app.ts:2277`（回包组装处；`appliedPerturbations` 已在回包里，波及面可由 `trace` 算） | **小–中** | 实测回包 **1.13 MB**。「马上看到指标变化」的瓶颈在这，不在算力（算力 0.24 s） |
+
+#### 档 D · 要重画（接线改不动，属信息架构/产品决策）
+
+| # | 要重画的 | 实测证据 | 归谁 |
+|---|---|---|---|
+| **D1** | **两个沙盘并存** —— `/v/sim-sandbox`（旧，6,844 行，**唯一**能施加扰动 + 唯一挂 `DrillPanel` + 唯一挂钱）与 `/v/sim-unified`（新，3,593 行，自陈「施加扰动在本壳里做不到」），**两条都在同一个「推演」导航组里**（`ShellLayout.tsx:324` 与 `:329`） | 上述 file:line | **PM + 仓主**。⚠ 属**禁令 2** 范围（沙盘 UX / 信息架构），提案可写，开工须逐案批准 |
+| **D2** | **`consolidatedWhen` 这道门的方向是反的** —— 4 个 console 页（≈11,300 行）标了 `consolidatedWhen:"sim.sandbox"`，判据是 `if (when!==undefined) return !featureOn(workspace, when)`（`ShellLayout.tsx:546`）⇒ **`sim.sandbox` 开着，它们就消失**。demo 租户是开的 ⇒ 这 11,300 行今天导航一跳点不到 | 实测 `GET /a/v1/me/workspace` 的 `features[]` 含 `sim.sandbox`；`navigation[]` 51 条 | **PM + 仓主** |
+| **D3** | **⑤ 的交互形态** —— 仓主要「方案跟着卡点一起出」，而今天 `optimize-pareto` 要调用方先凑出 `family + objectives[] + levers[]`（实测只给 `sessionId` → 400），`optimize_whatif` 要 `family + perturbations[].target` 且 target 须是 `<collection>.<id>[.<field>]` 语法（实测三次被三个不同校验层挡回）。而 `/a/v1/opt/templates` **只回 5 个族名，不回任何 schema** ⇒ 前端没有任何办法凑出合法请求 | 实测三条回包原文 | **架构（我）出方案 · PM 定形态**。正确形态已经存在于 `chain_impediments.candidates` —— 方案**长在卡点身上**，不用另开一次求解；缺的是 C2 的覆盖率 |
+| **D4** | **诚实位的层级** —— 屏上中文合计 ≈34,405 字（JSX 14,969 + `locales/zh.ts` 19,436），其中 `views/sim/` 占 JSX 部分的 71% | 第 ③ 节实测表 | **PM**。判据建议：第一层只给数与方向，「这个数是怎么来的 / 它可不可信」降到第二层（点开才看见）。**内容一个字都不许删** —— 删了就回到「屏上一个安静的零」那个老坑 |
+
+### 一句话排期建议（供 PM 参考，仓主可事后否决）
+
+**A1 是唯一的关键路径**：它不做，B1/B2 做不了，⑤ 永远与 ② 无关（今天的实测事实是
+「你扰动什么，`decision_play` 都给同样这 3 个方案」）。
+**A1 + A2 + C1 三件做完，五步就第一次串成一条真链**；
+C2 决定这条链的**覆盖率**（今天 4/17）；C4 决定它**看起来快不快**；D 档决定它**找不找得到**。
+
+**不在清单里的（明确不建议做）**：新建页面（仓主明令）、把 agent 放进算的路上
+（实测确定性链 2.5 s，agent 看门狗 180 s，放进去只会把 2.5 秒变成几十秒）、
+删诚实位（要动的是层级不是内容）。
+
+---
+
+## 附 · 本轮取证的可复验命令
+
+```bash
+# 起服务
+PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 \
+  CREDENTIAL_KEY=$(printf '0%.0s' {1..64}) node apps/datacore/dist/server.js
+
+H='X-Debug-User: demo:usr_demo_admin:admin|planner|catalog_admin'
+B=http://127.0.0.1:4001 ; S=sims_demo_seed_world
+
+curl -s -H "$H" "$B/a/v1/sim/sessions"                      # measuredCells:0 的诚实位
+curl -s -X POST -H "$H" -H 'Content-Type: application/json' -d '{"n":1}' "$B/a/v1/sim/sessions/$S/tick"
+curl -s -H "$H" "$B/a/v1/sim/drill/catalog"                 # 11 事件 × 7 求解器
+curl -s -X POST -H "$H" -H 'Content-Type: application/json' \
+  -d '{"events":[{"kind":"ORDER_RESCHEDULE","targetObjectId":"SO-3391","params":{"days":-10}}],"horizonDays":14,"scanOnly":false}' \
+  "$B/a/v1/sim/sessions/$S/drill"
+curl -s -X POST -H "$H" -H 'Content-Type: application/json' -d '{"args":{}}' "$B/a/v1/solvers/chain_impediments/invoke"
+curl -s -X POST -H "$H" -H 'Content-Type: application/json' -d '{"args":{}}' "$B/a/v1/solvers/decision_play/invoke"
+curl -s -X POST -H "$H" -H 'Content-Type: application/json' -d "{\"args\":{\"worldId\":\"$S\"}}" \
+  "$B/a/v1/solvers/finance_world_projection/invoke"
+
+# 静态（每条都自带金丝雀）
+grep -c "invokeSolver\|solvers\." apps/datacore/src/sim/propagation.ts   # 0（金丝雀 PropagationRule=10）
+grep -c "worldId\|TickState\|SimSession" apps/datacore/src/solvers/types.ts  # 0（金丝雀 SolverContext=6）
+grep -rln "worldId" apps/datacore/src/solvers/*.ts                       # finance-world.ts + service.ts
+grep -rn "evaluateExpression" apps/datacore/src/sim/                     # 0（金丝雀 datacore 全仓 18）
+```
