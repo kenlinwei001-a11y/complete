@@ -1011,9 +1011,29 @@ function VersionToggleWidget({ data }: { data: { items?: { props: Record<string,
   );
 }
 
-function formatKpiValue(value: unknown, unit?: string): string {
+/**
+ * KPI 数值上屏格式化。
+ *
+ * ⛔ **改前这里有一个会骗人的 bug（2026-08-27 COO 视角审计当场抓到）**：
+ *   原规则是「`unit === "%"` 且 `0 < value <= 1` ⇒ 认为是小数比率，×100」。
+ *   而后端「毛利率」这一行回的是 `target:16 · actual:17 · delta:1`，**三个都已经是百分点**。
+ *   `16`/`17` 落在区间外、原样显示（对）；**`delta:1` 恰好落进区间** ⇒ 被 ×100
+ *   ⇒ 屏上写成 **「目标 16% · 差 +100%」**。
+ *   同一行里 `17` 是百分点、`100` 是把百分点当小数换算出来的 —— **一个函数两套量纲，
+ *   只有 delta 踩中**。差 1 个百分点显示成差 100%，就摆在 COO 签字的地方。
+ *
+ * 形态（铁律 0.6 句式）：**「我用『这个数落在 0~1 之间』当作『它是小数比率』的证据，
+ * 而前者并不度量后者 —— 一个已经是百分点的量，取值恰好为 1 时长得和 100% 一模一样。」**
+ *
+ * 修法：**量纲不靠猜，靠调用方声明**。新增 `ratio` 形参：
+ *   · `ratio === true`  ⇒ 值是 0~1 的小数比率，×100 上屏
+ *   · 缺省/`false`      ⇒ 值已是目标单位的数，原样上屏
+ * 本文件三处调用（目标/实际/差值）同属一行指标、量纲一致，故一律不传 ⇒ 原样显示。
+ * ⚠ 不要退回「按取值范围猜」的写法：那条路上 `1` 与 `100%` 永远分不开。
+ */
+function formatKpiValue(value: unknown, unit?: string, ratio = false): string {
   if (typeof value !== "number") return String(value ?? "—");
-  if (unit === "%" && value > 0 && value <= 1) {
+  if (unit === "%" && ratio) {
     const scaled = value * 100;
     return Number.isInteger(scaled) ? String(scaled) : scaled.toFixed(1);
   }
