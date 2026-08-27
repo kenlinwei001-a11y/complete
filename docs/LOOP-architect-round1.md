@@ -258,3 +258,90 @@ turnoverPressure utilPressure windowSqueeze` —— 21+4+3+2+2+8 = 40 ✅ 一个
 **三处剪刀就是全部断点**，其余都是这三处的后果。
 
 ---
+
+## 第 ③ 节 ·「功能太多」这条成不成立
+
+### 结论：**成立，但「多」的形态不是仓主可能以为的那种。**
+
+不是「做了 N 个用户不要的功能」，而是**同一个问题被做了三四遍，每一遍都只完成一半**。
+量化如下，全部实测。
+
+### 量化底盘
+
+| 维度 | 数 | 取证 |
+|---|---|---|
+| 产品源码 | **254,403 行** | `contracts 22,791 + datacore 78,880 + agentcore 36,229 + frontend 114,596 + llm-adapters 1,907` |
+| 测试 | **166,430 行 / 842 个测试文件** | `datacore 61,333/323 · agentcore 40,132/204 · frontend 63,289/306 · contracts 1,676/9` |
+| 门脚本 | **52,640 行 / 148 个** | `scripts/**` |
+| 文档 | **97,154 行 / 390 份** | `docs/*.md` |
+| DataCore 路由 | **371 条**（仅 `app.ts` 一个文件） | `grep -c 'app\.(get\|post\|put\|patch\|delete)("'` |
+| 前端渲染器 | **33 个** `registerRenderer` | `views/registry.ts` |
+| 后端下发视图 | **33 个** | 实测 `GET /a/v1/me/workspace` → `views.length = 33` |
+| 导航条目 | **51 个** | 同上 `navigation.length = 51` |
+| 功能开关 | **108 个** | 同上 `features.length = 108` |
+| 求解器 | **61 个** | 实测 `GET /a/v1/solvers/registry` → `solvers.length = 61`（plan 28 · generic 20 · decision 12 · commercial 1） |
+| 传导规则 | **42 条** | 实测 `GET /a/v1/sim/propagation-rules` |
+| 演习事件类型 | **11 个** | 实测 `GET /a/v1/sim/drill/catalog` |
+
+**推演这一块的自重**：`apps/frontend-shell/src/views/sim/` = **56,018 行**，
+占前端 `src` 全部 114,596 行的 **48.9%**；占 `views/` 全部 76,744 行的 **73%**。
+后端 `apps/datacore/src/sim/` 只有 5,175 行，`solvers/` 21,089 行。
+⇒ **推演的重量有近八成压在前端**，而第 ①② 节测出来的能力差距全在后端。
+
+### 判据逐个归类：不在五步主线上的候选（按行数排序）
+
+判据 = 「这个功能若不在 ①–⑤ 任何一步上，就是『多』的候选」。
+⚠ **「多」不等于「删」**：下表第三列写的是**它今天挡了谁**，删/并/降层由 PM 决定。
+
+| 行数 | 功能 | 在五步的哪一步 | 归类与理由 |
+|---:|---|---|---|
+| **≈11,300** | `views/sim/console/` 四页（`sim-console` 指标态势 / `sim-conduction` 传导识别 / `sim-attribution` 损失归因 / `sim-optimize` 方案寻优） | ②④⑤ 各占一点 | **重复**。四页全部 `consolidatedWhen:"sim.sandbox"` ⇒ **`sim.sandbox` 一开它们就从导航消失**（`ShellLayout.tsx:546` `if (when!==undefined) return !featureOn(...)`）。demo 租户 `sim.sandbox` 是开的 ⇒ **这 11,300 行今天一跳都点不到**，只能靠 `/v/sim-console` 深链 |
+| **≈6,844** | 旧沙盘三件套 `SandboxView.tsx 2630` + `SandboxConsole.tsx 2408` + `SandboxConsole.module.css 1806` | ①②③④⑤ 全占 | **主线**，但与下一行**功能重叠**。它是今天唯一能施加扰动、唯一挂 `DrillPanel`、唯一挂 `SandboxImpactBand`（钱）的页 |
+| **3,593** | `views/sim/unified/` 统一推演控制台（`/v/sim-unified`） | ②④ | **重复**。与上一行**两个沙盘并列在同一个导航组里**（`ShellLayout.tsx:324` 与 `:329`）。它自陈「『施加扰动』这个动作今天在本壳里做不到」（`UnifiedSimShell.tsx:26`）⇒ 主入口反而少了第 ① 步 |
+| **≈4,700** | 几何/地图族：`TransitFlowLayer 1202` + `transitFlow.ts 1108` + `chainLineMap.ts 1475` + `ChainLineMapView 1008` | 都不在 | **不在主线**。回答的是「货现在在哪条路上」，不是「扰动之后会怎样」。且五个键全在 `CONSOLIDATED_INTO_SANDBOX`（`ShellLayout.tsx:129-133`）**无条件**移出导航 |
+| **≈2,600** | `sim-optimize`（Route 201 + SandboxOpt 440 + CSS 803 + 测试 1098） | ⑤ | **规格不是功能**。实测 `POST /a/v1/sim/optimize-pareto` 只给 `sessionId` → 400（`family/objectives/levers` 三个必填全缺），而全仓无人组装 `ParetoRequest` ⇒ 前沿图恒占位 |
+| **≈2,400** | `views/sim/InspectorNodePanel 1052` + `inspectorModel 1184` + `node-inspector` 页 | ④ 的邻居 | **不在主线**。节点属性检视器；`node-inspector` 同样在无条件收编表里 |
+| **≈2,000** | `ProjectSimView 1456` + `GlobalSimView 1449`（合计 2,905，扣共享） | ⑤ 的兄弟 | **重叠**。`project-sim`（单张订单能不能接）与 `global-sim`（一批订单排不排得开）与 `decision_play`（这个缺口怎么补）**三页三套控件回答同一族问题**，且**都不读推演世界态** |
+| **≈1,400** | `WhatIfView 818` + 测试 588 | ② | **今天是空壳**。审计实测：全租户只有 3 条 ACTIVE 派生规格 ⇒ 绝大多数属性改了之后 `deltas` 为空 |
+| **≈1,200** | `optimize-whatif`（924 + 250） | ⑤ | **主线，但没有导航位**（`consolidatedWhen`）。它是这一族里唯一有真求解器的（5 个模板族真解） |
+| **18 个求解器** | `capex_scenario · cert_schedule · lta_gap · inventory_optimize · changeover_sequence · yield_diagnosis · maintenance_stagger · outsourcing_split · quarterly_gap · carbon_footprint · countermeasure_combo · assignment_optimize · sequencing_optimize · packing_optimize · job_shop_schedule · ontology_query · process_flow_time · atp_check` | 都不在 | **前端 `src` 里一次都没出现**（金丝雀：`decision_play` 命中 5 个文件、`chain_loss_attribution` 命中 3 ⇒ 工具没坏）。它们不是死代码（后端能 invoke、agent 的 `invoke_solver` 够得到），但**用户点不出来** |
+| **54 个求解器** | 61 − 7（drill 路由表里的） | — | **不在演习路径上**。drill 只路由到 `sop_reschedule · affected_orders · portfolio · capacity_forecast · order_fullchain · supply_demand_gap_attribution · bottleneck_matrix` + universal `risk_timeline` = **8 个** |
+| **60 个求解器** | 61 − 1 | — | **看不见世界态**。只有 `finance_world_projection` 读 `worldId` |
+
+### 「多」的第二种形态：诚实位被写成段落，摊薄了每个功能的可读性
+
+仓主追加的硬约束里点名了这条。实测量化（**剥注释后**只数 JSX 文本节点里的中文，
+金丝雀：`TransitFlowLayer.tsx` 报 808 字 ⇒ 抽取器没坏）：
+
+| 位置 | 中文字数 |
+|---|---:|
+| `views/**/*.tsx` 的 JSX 文本节点（93 个文件） | **14,969** |
+| 其中 `views/sim/`（61 个文件） | **10,584（71%）** |
+| `locales/zh.ts`（剥注释后，2,961 行） | **19,436** |
+| **屏上中文合计** | **≈34,405 字** |
+
+按每页 600 字算，**屏幕上摊着约 57 页中文**。单页 top 5：
+`SandboxConsole.tsx 1295 字` · `GlobalSimView.tsx 1137` · `TransitFlowLayer.tsx 808` ·
+`SandboxView.tsx 701` · `ProjectSimView.tsx 602`。
+
+仓主截图那几句实测在这些位置（**内容都是对的**，问题只在层级）：
+- `TransitFlowLayer.tsx:808` 「所以**同角度不代表同一个实体**；要真正指到同一个点，需要引擎给本层下发站点清单。」
+- `TransitFlowLayer.tsx:1041` 「这两类**区间位置算不出来**（前者没有发运日与起运地，后者没有任何 eta）」
+- `transitFlow.ts:124`（下发到屏上的 `reason` 串）「对象只有 etaDay 与 baseId，**没有发运日、没有起运地** ⇒ 区间位置算不出来。」
+- `chainImpediment.ts:302` 「locus 对象带合成血缘（A7 合成种子），换成生产接入数据后结论可能改变。」
+
+**成本的准确说法**：这不是「多了一个功能」，是**每个功能都多背了一段自辩**。
+诚实位本身是这个仓库最值钱的资产之一（它让「假绿」当场露馅），
+但它今天以**第一层段落**的形态出现 —— 对不懂技术的使用者，这一层挡在他和数字之间。
+
+### 反面：哪些「多」其实不该动
+
+- **诚实位本身不许删**。删了就回到「屏上一个安静的零，没人知道它是真值还是缺数」——
+  本仓踩过多次的老坑。要动的是**层级**（第一层给数、第二层给「这个数是怎么来的」），不是内容。
+- **61 个求解器不是负债**。它们是这套系统里**唯一有真算力的部分**（实测 `sop_reschedule` 一次
+  改期给出 `displaced:[SO-3415,…]` + `costBreakdown{overtime:8737, delay:201.65}`）。
+  问题是**只有 8 个连到了推演**，而不是「做多了 61 个」。
+- **`decision-play` 没有导航位是仓主自己的裁决**（`ShellLayout.ts` `ROUTE_NO_NAV` 原文：
+  「决策推演不应该在导航这个位置，而是嵌入到每个需要决策的点」）。它不是遗漏。
+
+---
