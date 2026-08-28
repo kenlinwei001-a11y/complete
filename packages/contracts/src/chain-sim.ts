@@ -943,10 +943,18 @@ export const SolutionCandidateSchema = z
       grain: z.string().min(1).optional(),
       unit: z.string(),
       /**
-       * 值类（`LEVER_PROP_META.kind`：ratio/days/count/hours/minutes/qty）——**前端按它格式化**。
+       * 值类（`LEVER_PROP_META.kind`：ratio/percent/days/count/hours/minutes/qty）——**前端按它格式化**。
        * `fromValue`/`toValue` 一律是**存储口径原值**，本文件与引擎都不替前端做换算
-       * （实测本仓 `Line.utilization` 存 0–100 而 `Process.attendance` 存 0–1，两者 kind 同为 ratio ——
-       * 谁在后端替前端 ×100，谁就会把其中一个变成 9589%。量纲换算归前端一处做，不在链上各做一遍）。
+       * （量纲换算归前端一处做，不在链上各做一遍）。
+       *
+       * ⚠ WO-DIM-LABEL-3 ③ 订正（本段原文已过期，照铁律 0.6 回写）：原文写
+       * 「`Line.utilization` 存 0–100 而 `Process.attendance` 存 0–1，**两者 kind 同为 ratio**」——
+       * 前半句（存储范围）实测仍然成立，**后半句已不成立**：正因为两者 kind 同为 ratio，
+       * 「该不该 ×100」在元数据里没有答案，前端只能按取值范围猜。现已拆成两个成员：
+       *   · `ratio`   存 0–1，显示 ×100
+       *   · `percent` 存 0–100，显示原样
+       * `Line.utilization` 现声明 `percent`，`Process.attendance`/`Process.utilization` 声明 `ratio`，
+       * 前端两处 formatter 的 `v <= 1` 猜法**已删除**。
        */
       valueKind: z.string().min(1).optional(),
     }),

@@ -43,7 +43,10 @@ import { server } from "./setup";
  * ══ 变异反证（每条都真红过一次，原文见交付说明）═══════════════════════════════
  *  ① 把 `CandidateBlock` 里 `im.candidates.map(...)` 那段摘掉（只留缺席分支）→ 正向用例 A/B/C 红。
  *  ② 把 `CandidateAbsenceBlock` 的 `return null` 提前（NONE 渲染成空白）→ 反向用例 D/E 红。
- *  ③ 把 `formatLeverValue` 的 ratio 分支改成无条件 `v*100` → 用例 B 红（97.2 会变成 9720%）。
+ *  ③ 把 `formatLeverValue` 的 `percent` 分支删掉（让它落进 ratio 的 `v*100`）→ 用例 B2 红
+ *    （97.2 会变成 9720%）。WO-DIM-LABEL-3 ③ 前本条写的是「ratio 分支改成无条件 v*100」——
+ *    那时两种存储口径共用 `ratio`、靠 `v <= 1` 猜；现在口径由下发方声明，猜法已删，
+ *    故变异点相应移到「删掉 percent 分支」这个等价的破坏方式上。
  *  ④ 把三态缺席合并成一句「暂无方案」→ 用例 E/F 红。
  * ⚠ 变异必须**真的**变异：本仓栽过 `cadenceGates`→`cadenceGatesXX` 而 `toContain("cadenceGates")`
  *   照样通过（子串还在）＝ 等于没变异。故改名一律换**不含原子串**的名字，改行为一律语义反转。
@@ -169,7 +172,9 @@ describe("WO-SANDBOX-CANDIDATES-FE · 阻滞点 → 候选对策上屏（真路�
     // ⚠ 期望值**自己算**，不许调 `formatLeverValue` —— 拿被测函数去算期望值就是**同义反复**：
     //   函数怎么错，期望值跟着一起错，断言恒绿。本单实测被这条坑过（变异③无条件 ×100 时本例照样通过）。
     const expectText = (v: number): string => {
-      if (c.lever.valueKind === "ratio") return `${Math.round(v <= 1 ? v * 100 : v)}%`;
+      // WO-DIM-LABEL-3 ③：口径由下发方声明，期望值也照声明算 —— 不再按取值范围猜。
+      if (c.lever.valueKind === "ratio") return `${Math.round(v * 100)}%`;
+      if (c.lever.valueKind === "percent") return `${Math.round(v)}%`;
       if (c.lever.valueKind !== undefined) {
         return `${Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10)}${c.lever.unit}`;
       }
@@ -214,26 +219,35 @@ describe("WO-SANDBOX-CANDIDATES-FE · 阻滞点 → 候选对策上屏（真路�
     expect(capRow.getAttribute("data-value")).toBe(cap!.value === null ? "" : String(cap!.value));
   });
 
-  it("B2 · 比率类杠杆按 `valueKind` 格式化：**存储 0–100 的不许再 ×100**（利用率画成 9720% 的那条坑）", async () => {
-    // 本仓实测的真实陷阱（contracts chain-sim.ts §7 注释原话）：`Line.utilization` 存 0–100 而
-    // `Process.attendance` 存 0–1，**两者 LEVER_PROP_META.kind 同为 ratio** ——
-    // 谁无条件 ×100，谁就会把利用率画成 9589%。故这一条**单独**咬 ratio 分支，
+  it("B2 · 比率类杠杆按 `valueKind` 格式化：**`percent` 的不许再 ×100**（利用率画成 9720% 的那条坑）", async () => {
+    // 本仓实测的真实陷阱：`Line.utilization` 存 0–100 而 `Process.attendance` 存 0–1。
+    // 谁把 0–100 的那个再 ×100，谁就会把利用率画成 9589%。故这一条**单独**咬百分点分支，
     // 不能指望用例 B（它挑到的那条候选是 qty 类，压根不走这个分支 —— 本单实测确认过）。
     // ⚠ 原写法是 `.find(...)` 取**第一条**就收工。实测这条分支上有 **4 条**候选
     //   （changzhou-formation / xiamen-coating 各 2 条）⇒ **4 条里只验了 1 条**，
     //   另外 3 条格式化错了照样绿 —— 覆盖率盲区门 `EXISTS_FOR_ALL` 抓的正是这个形态。
-    //   改为**逐条全验**：这才是"存储 0–100 的不许再 ×100"这句话的全称形式。
-    const ratioHits = payload()
-      .impediments.flatMap((i) => i.candidates ?? [])
-      .filter((c) => c.lever.valueKind === "ratio" && c.fromValue > 1);
-    expect(ratioHits.length, "响应里没有「ratio 且存储值 > 1」的候选 ⇒ 本例在验一个不存在的分支").toBeGreaterThanOrEqual(4);
+    //   改为**逐条全验**：这才是"存 0–100 的不许再 ×100"这句话的全称形式。
+    //
+    // ⚠ WO-DIM-LABEL-3 ③ 改判据（本例原先咬的那个形态**已经不存在了**）：
+    //   原筛选是 `valueKind === "ratio" && fromValue > 1` —— 即「声明成比率、却存着百分点」。
+    //   那正是被修掉的病：两种存储口径共用一个 `ratio`，逼得前端按取值范围猜。
+    //   现在 0–100 的一律声明 `percent`，故 `ratio 且 > 1` 的候选**应当一条都不剩**；
+    //   本例改咬 `percent` 分支，并**额外断言**旧形态已绝迹（否则等于放任声明与存储不符复活）。
+    const cands = payload().impediments.flatMap((i) => i.candidates ?? []);
+    const pctHits = cands.filter((c) => c.lever.valueKind === "percent");
+    expect(pctHits.length, "响应里没有 percent 类候选 ⇒ 本例在验一个不存在的分支（金丝雀不中 = 夹具坏了）").toBeGreaterThanOrEqual(4);
+    // 旧形态绝迹：声明 ratio（存 0–1）却拿着 > 1 的值 = 声明与存储不符，前端一律会画错 100 倍。
+    expect(
+      cands.filter((c) => c.lever.valueKind === "ratio" && c.fromValue > 1).map((c) => c.candidateId),
+      "有候选声明 ratio（存 0–1）却存着 > 1 的值 ⇒ 声明与存储不符，该声明 percent",
+    ).toEqual([]);
 
     await openSandbox();
-    for (const hit of ratioHits) {
+    for (const hit of pctHits) {
       const card = await screen.findByTestId(`sc-cand-${hit.candidateId}`);
       const shown = within(card).getByTestId(`sc-cand-from-${hit.candidateId}`).textContent;
       // 期望值写死成"就地取整加百分号"，**不调被测函数**（同义反复的反面）
-      expect(shown, `存储 0–100 的比率被再乘了一次 100（${hit.fromValue} → ${shown}）`).toBe(
+      expect(shown, `存 0–100 的百分点被再乘了一次 100（${hit.fromValue} → ${shown}）`).toBe(
         `${Math.round(hit.fromValue)}%`,
       );
       expect(shown, "利用率画成了 9000+% —— 正是契约注释点名的那条坑").not.toContain(String(hit.fromValue * 100));

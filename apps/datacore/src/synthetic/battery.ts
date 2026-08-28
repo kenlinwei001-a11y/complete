@@ -1213,7 +1213,20 @@ const lineProps: PropertyDef[] = [
   { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
   { propKey: "name", dataType: "string", isPrimaryKey: false },
   // 运营指标（利用率 + 时序聚合物化：日实际产出 / 排程达成率）——全建模对齐（R12）。
-  { propKey: "utilization", dataType: "number", isPrimaryKey: false },
+  // WO-DIM-LABEL-3 ③：`utilization` 此前**无 unit 声明**，而全仓同名属性有两套量纲
+  // （本条 0–100 百分点 · `Process.utilization` 0–1 比率）⇒ 不声明就只能靠猜。
+  // 本条的值**不来自播种**（下面 `lines.push` 不写它），而来自时序物化 `line_util_daily`
+  // ← `TS_SERIES` 的 `util:line`（`base:{mean:92,noise:1.2}`）⇒ 量纲是**百分点**。
+  // 实测 `chain_impediments`：金华分切线 95.8912 / 自贡分容线 95.358（规则 C05 红线也写 95）。
+  {
+    propKey: "utilization",
+    dataType: "number",
+    isPrimaryKey: false,
+    unit: "%",
+    description:
+      "产线利用率。**0–100 百分点存储**（非 0–1 比率），显示不再 ×100 —— 与 LEVER_PROP_META['Line.utilization'].kind='percent' 同口径。" +
+      "值由时序 `util:line` 经 `line_util_daily` 物化写入，不在播种期赋值。规则 C05 `SUSTAIN(Line.utilization > 95, 3)` 的红线 95 即按本口径。",
+  },
   { propKey: "actual_output_daily", dataType: "number", isPrimaryKey: false },
   { propKey: "schedule_attainment", dataType: "number", isPrimaryKey: false },
   // SA-5：产线台账字段（R12 全建模对齐）
@@ -1237,7 +1250,19 @@ const processProps: PropertyDef[] = [
   { propKey: "shiftHours", dataType: "number", isPrimaryKey: false },
   { propKey: "shifts", dataType: "number", isPrimaryKey: false },
   { propKey: "attendance", dataType: "number", isPrimaryKey: false },
-  { propKey: "utilization", dataType: "number", isPrimaryKey: false },
+  // WO-DIM-LABEL-3 ③：与 `Line.utilization` **同名但不同量纲** —— 本条存 0–1 比率
+  // （播种：串行工序 `0.88 + rng*0.08` → 实测 0.916 / 0.922；化成与老化恒 1），
+  // 而 `Line.utilization` 存 0–100 百分点。两条同名属性各自声明自己的口径，
+  // 消费方就不必再按取值范围猜（猜法在两套值域哪天重叠时会静默画错 100 倍）。
+  {
+    propKey: "utilization",
+    dataType: "number",
+    isPrimaryKey: false,
+    unit: "%",
+    description:
+      "工序利用率。**0–1 比率存储**，显示时 ×100 —— 与 LEVER_PROP_META['Process.utilization'].kind='ratio' 同口径。" +
+      "注意与 `Line.utilization`（0–100 百分点）同名不同量纲：本条在产能链里作**乘数**参与 `computeRollup`，故必须是比率。",
+  },
   { propKey: "channels", dataType: "number", isPrimaryKey: false },
   { propKey: "channelOutputDaily", dataType: "number", isPrimaryKey: false },
   { propKey: "agingSlots", dataType: "number", isPrimaryKey: false },
