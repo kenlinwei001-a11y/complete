@@ -232,11 +232,48 @@ function isoAddDays(startIso: string, days: number): string {
  * 生成的 WorkOrder/InterBaseTransfer id 也以此指纹为锚 → 二次执行 put 覆盖同 id 不产重复。
  */
 export function planFingerprint(actionTypeKey: string, payload: Record<string, unknown>): string | undefined {
-  if (actionTypeKey !== "plan_change" || payload?.source !== "global-sim") return undefined;
-  const displaced = Array.isArray(payload.displaced) ? payload.displaced.map(String).sort() : [];
-  const raw = `global-sim|${String(payload.objective ?? "")}|${displaced.join(",")}|${String(payload.summary ?? "")}`;
-  return `gsim_${hashString(raw).toString(16)}`;
+  if (actionTypeKey === "plan_change" && payload?.source === "global-sim") {
+    const displaced = Array.isArray(payload.displaced) ? payload.displaced.map(String).sort() : [];
+    const raw = `global-sim|${String(payload.objective ?? "")}|${displaced.join(",")}|${String(payload.summary ?? "")}`;
+    return `gsim_${hashString(raw).toString(16)}`;
+  }
+  /**
+   * WO-CONSOLE-BLOCKERS · **B3：决策台〔就这么办〕可连点，每点一次就真塞一份待批单**。
+   *
+   * 今天的行为是 X（实测，datacore seed 42 内存模式）：同一颗按钮连点 3 次 ⇒
+   *   3 条 `POST /a/v1/action-drafts` 全 201、**3 个不同 draftId**、全部 `PENDING_APPROVAL`、
+   *   `fingerprint` 为空；`base`+`factor`+`planKey` 逐字相同。审批队列里因此躺着 3 份
+   *   一模一样的单，而屏上确认条自始至终写「已经生成**一份**」。
+   * 应该是 Y：同 `base+factor+planKey` **复用同一份 draft**（第 2、3 次拿回第 1 次那个 id）。
+   *
+   * ⚠ 这不是新造一套幂等 —— **本函数上面那一支 + `create()` 里的 fingerprint 去重就是既有机制**，
+   * 它只是把口开在 `plan_change`+`global-sim` 一个型上。实测金丝雀（同一次会话）：
+   *   `plan_change`+`global-sim` 连发两次 → **同一个 draftId**（机制活着）；
+   *   `adopt_mitigation` 连发三次 → 三个不同 draftId（走不到那一支）。
+   * ⇒ 属 CLAUDE.md 铁律 0.5 的「**接了线接错地方**」：修法是**补挂载点**，不是造门。
+   *
+   * 键取 `{base, factor, planKey}` 三件：后端 `adopt_mitigation` 的必填参就是这三个，
+   * 「同一个基地的同一类问题的同一条打法」在业务上本来就只该有一份待批。
+   * `planKey` 不同 ⇒ 指纹不同 ⇒ 三条互斥对策**仍然各自建单**（那是用户真的选了三条不同的路，
+   * 该由屏上说清楚而不是由后端偷偷合并 —— 前端已改成一次只认一条，见 DecisionConsoleView）。
+   */
+  if (actionTypeKey === "adopt_mitigation") {
+    const base = String(payload?.base ?? ""), factor = String(payload?.factor ?? ""), planKey = String(payload?.planKey ?? "");
+    if (!base || !factor || !planKey) return undefined; // 三件缺一 ⇒ 不指纹（宁可不去重，也不拿半个键去撞）
+    return `adopt_${hashString(`adopt_mitigation|${base}|${factor}|${planKey}`).toString(16)}`;
+  }
+  return undefined;
 }
+
+/**
+ * 指纹去重时**哪些状态算「这份单还在」**。
+ *
+ * 被否掉/被撤回的单**不算已采纳** —— 拿它去挡后来的同方案，屏上会说「已有一份待批」，
+ * 而那句话是假的（队列里根本没有待批的）。`APPROVED`/`EXECUTED` 仍然算：那正是
+ * 「同方案已采纳 → 不重复建 Action/物化」这条既有语义（`gsim-action-loop` 那条用例
+ * 就是 adopt → approve → 再 adopt → 同一个 draftId）。
+ */
+const FINGERPRINT_DEAD_STATUSES: ReadonlySet<string> = new Set(["REJECTED", "CANCELLED"]);
 
 export interface PlanWritebackDeps {
   repos: Repos;
@@ -614,9 +651,12 @@ export class ActionService {
     },
   ): Promise<ActionDraft> {
     // WO-GSIM-5-ACTION 幂等：同方案（确定性指纹）已采纳 → 返回既有草稿·不重复建 Action/物化（G-LOOP-FEEDBACK）。
+    // WO-CONSOLE-BLOCKERS：被否掉/撤回的单不再挡住同方案重提（见 FINGERPRINT_DEAD_STATUSES 的账）。
     const fingerprint = planFingerprint(input.actionTypeKey, input.payload);
     if (fingerprint) {
-      const existing = (await this.repos.actionDrafts.list(ctx.tenantId, (d) => d.fingerprint === fingerprint))[0];
+      const existing = (
+        await this.repos.actionDrafts.list(ctx.tenantId, (d) => d.fingerprint === fingerprint && !FINGERPRINT_DEAD_STATUSES.has(d.status))
+      )[0];
       if (existing) return existing;
     }
     const now = new Date().toISOString();

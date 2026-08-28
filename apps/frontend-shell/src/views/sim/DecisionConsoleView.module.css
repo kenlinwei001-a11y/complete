@@ -655,6 +655,31 @@
   color: var(--ok-txt);
   font-size: 13px;
 }
+/* WO-CONSOLE-BLOCKERS · B3：确认条以前是**死胡同** —— 它说"生成了一份待批的动作"，
+   却没有任何入口能去看那份动作，而左导航里明明就有「Action 审批」。 */
+.confirmLink {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--accent-txt);
+  font-size: 13px;
+  text-decoration: underline;
+}
+/* 已排进队列的那一栏：**不是按钮外观**（它不再提交任何东西），是一条去队列的链接。 */
+.adoptedLink {
+  display: block;
+  color: var(--accent-txt);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: underline;
+}
+.adoptedNote {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted2);
+  font-size: 12px;
+  font-weight: 400;
+  text-decoration: none;
+}
 .footer {
   border-top: 1px solid var(--line);
   padding-top: 9px;

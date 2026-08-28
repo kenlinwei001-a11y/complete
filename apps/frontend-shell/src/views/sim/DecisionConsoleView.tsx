@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   aggregateObjects,
+  fetchActionDrafts,
   fetchDrillCatalog,
   fetchObjectTypes,
   fetchPropagationRules,
@@ -397,10 +398,44 @@ export default function DecisionConsoleView() {
   const [selectedBaseId, setSelectedBaseId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("tn");
   const [footerOpen, setFooterOpen] = useState(false);
-  const [confirmText, setConfirmText] = useState<string | null>(null);
   const startedAt = useRef<number>(0);
 
   const adopt = useActionDraft();
+
+  /**
+   * ══ WO-CONSOLE-BLOCKERS · B3 · 已经排进待批的那几条 ═══════════════════════
+   *
+   * 今天的行为是 X（UX 第 7 轮抓包 + 本单实测复现）：〔就这么办〕可以连点，每点一次就真的
+   * `POST /a/v1/action-drafts`，屏上只留最后一条确认，而那句话逐字写着「已经生成**一份**」——
+   * **从第二次点击起这句话就是错的**，队列里已经躺了两份。
+   * 应该是 Y：**同一条打法只会有一份待批**；已经有了就不再是「就这么办」，而是「查看这份待批」。
+   *
+   * ⚠ 光在前端拦不够（派单点名）：前端拦得住连点，**拦不住刷新后再点** —— 刷新后组件状态清零，
+   * 按钮又变回可点。所以这一格是**两半**，缺一半都不成立：
+   *   ① 后端（`actions.ts planFingerprint`）：同 `base+factor+planKey` 复用同一 draft
+   *      —— 那是**真相源**，也是刷新、换标签页、换设备都仍然成立的那一半；
+   *   ② 这里：进页/算完就**现读**待批队列，把「哪几条已经在排队」读回来。
+   *      读的是后端队列**不是本地记忆**，所以刷新后它照样知道。
+   *
+   * 只读 `PENDING_APPROVAL`：已批准/已执行的不该再拦着重提（那已经是另一件事了），
+   * 被否掉/撤回的更不该 —— 后端的指纹去重也按同一条判据放行（`FINGERPRINT_DEAD_STATUSES`）。
+   */
+  const pendingAdoptions = useQuery({
+    queryKey: ["decision-console", "pending-adoptions"],
+    queryFn: () => fetchActionDrafts("PENDING_APPROVAL"),
+    staleTime: 10_000,
+  });
+  /** `base|factor|planKey` → draftId。键与后端指纹用的是**同三件**，不另编一套。 */
+  const adoptedByPlan = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of pendingAdoptions.data ?? []) {
+      if (d.actionTypeKey !== "adopt_mitigation") continue;
+      const p = d.payload as { base?: unknown; factor?: unknown; planKey?: unknown };
+      if (typeof p?.base !== "string" || typeof p?.factor !== "string" || typeof p?.planKey !== "string") continue;
+      m.set(`${p.base}|${p.factor}|${p.planKey}`, d.id);
+    }
+    return m;
+  }, [pendingAdoptions.data]);
 
   const run = useMutation({
     mutationFn: async (): Promise<RunResult> => {
@@ -477,7 +512,7 @@ export default function DecisionConsoleView() {
     },
     onSuccess: (r) => {
       setResult(r);
-      setConfirmText(null);
+      // 确认条不再有本地状态可清 —— 它现算自待批队列（见 B3 那段账）。
       const cards = cardsOf(r.risk);
       setSelectedBaseId((prev) => prev ?? cards.slice().sort((a, b) => b.revenueYi - a.revenueYi)[0]?.baseId ?? null);
     },
@@ -1047,23 +1082,23 @@ export default function DecisionConsoleView() {
                         </div>
                       </div>
                       <div className={styles.planFoot}>
-                        <button
-                          type="button"
-                          className="btn primary"
-                          disabled={adopt.isPending || !selectedCard}
-                          onClick={() => {
-                            if (!selectedCard || !planCategory) return;
-                            adopt.mutate({
-                              actionTypeKey: "adopt_mitigation",
-                              payload: { base: selectedCard.baseId, factor: planCategory, planKey: m.key },
-                            });
-                            setConfirmText(
-                              `已经生成一份待批的动作（${selectedCard.baseName} · ${m.name}），批了才会改真实数据。`,
-                            );
+                        <AdoptButton
+                          planName={m.name}
+                          planKey={m.key}
+                          card={selectedCard}
+                          factor={planCategory}
+                          adoptedDraftId={
+                            selectedCard && planCategory
+                              ? adoptedByPlan.get(`${selectedCard.baseId}|${planCategory}|${m.key}`) ?? null
+                              : null
+                          }
+                          busy={adopt.isPending}
+                          onAdopt={async (payload) => {
+                            await adopt.mutateAsync({ actionTypeKey: "adopt_mitigation", payload });
+                            // 现读队列回填 —— 屏上说的那句话，判据是**队列里真有什么**，不是「我刚点过」。
+                            await pendingAdoptions.refetch();
                           }}
-                        >
-                          就这么办
-                        </button>
+                        />
                       </div>
                     </div>
                   ))}
@@ -1089,11 +1124,34 @@ export default function DecisionConsoleView() {
                   </div>
                 </div>
 
-                {confirmText ? (
-                  <div className={styles.confirm} data-testid="dc-confirm">
-                    {confirmText}
-                  </div>
-                ) : null}
+                {/*
+                  ⚠ WO-CONSOLE-BLOCKERS · B3：这条确认条以前是一个 `confirmText` 字符串，
+                  **它记的是「我刚点了什么」，而屏上那句话声称的是「队列里有什么」** ——
+                  两者在连点第二次之后就分家了（队列 2 份，屏上仍写"一份"）。
+                  现在它**现算**：数就是 `adoptedByPlan` 里属于本基地本类别的那几条，
+                  数不对的时候它自己会变，不需要谁记得去改文案。
+                  （形态照 CLAUDE.md 铁律 0.6：「我用『我刚点了一次』当作『队列里有一份』的证据。」）
+                */}
+                {(() => {
+                  if (!selectedCard || !planCategory) return null;
+                  const mine = plans
+                    .map((m) => ({ m, id: adoptedByPlan.get(`${selectedCard.baseId}|${planCategory}|${m.key}`) }))
+                    .filter((x): x is { m: Mitigation; id: string } => Boolean(x.id));
+                  const first = mine[0];
+                  if (!first) return null;
+                  return (
+                    <div className={styles.confirm} data-testid="dc-confirm">
+                      {/* ⚠ 这段文案自己**不许**写 markdown 星号（B2 就是这么上屏的）——屏上的字就是屏上的字。 */}
+                      {mine.length === 1
+                        ? `已经排了一份待批的动作（${selectedCard.baseName} · ${first.m.name}），批了才会改真实数据。`
+                        : `这个地方现在排了 ${mine.length} 份待批的动作（${mine.map((x) => x.m.name).join(" · ")}）—— 它们是同一个瓶颈的几条互斥打法，批之前先撤掉不要的那几份。`}
+                      <br />
+                      <a className={styles.confirmLink} href="/admin/actions" data-testid="dc-confirm-goto">
+                        去审批队列看这{mine.length === 1 ? "份" : `${mine.length} 份`} →
+                      </a>
+                    </div>
+                  );
+                })()}
               </section>
 
               {/* ══ 区⑥ 这次算的时候做了什么（可披露的演算过程）══════════ */}
@@ -1661,6 +1719,60 @@ function RunTracePanel({ trace }: { trace: RunTrace }) {
         </div>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * 〔就这么办〕—— 全屏**唯一会改真实世界**的按钮（`submit:true` 直接进待批）。
+ *
+ * WO-CONSOLE-BLOCKERS · B3 的前端一半，三态（不是两态）：
+ *  · **还没排** ⇒ 真按钮〔就这么办〕；
+ *  · **正在提交** ⇒ `disabled` + 文案改成「正在排…」（连点的第一道闸，但**只挡得住这一秒**）；
+ *  · **已经排了** ⇒ **不再是提交按钮**，换成「查看这份待批 →」链接。
+ *    这一态由**后端队列**决定（`adoptedDraftId` 来自现读的 `PENDING_APPROVAL` 列表），
+ *    所以刷新之后它照样是这一态 —— 这正是「不许只在前端拦」的那一条。
+ *
+ * ⛔ 刻意**不做**成「点了弹『已应用』而实际什么都没变」：这颗按钮真的建单，
+ * 它的三态说的都是队列里的真实情况。
+ */
+function AdoptButton({
+  planName, planKey, card, factor, adoptedDraftId, busy, onAdopt,
+}: {
+  planName: string;
+  planKey: string;
+  card: BaseCard | null;
+  factor: string | null;
+  adoptedDraftId: string | null;
+  busy: boolean;
+  onAdopt: (payload: Record<string, unknown>) => Promise<void>;
+}) {
+  const [sending, setSending] = useState(false);
+  if (adoptedDraftId) {
+    return (
+      <a className={styles.adoptedLink} href="/admin/actions" data-testid={`dc-adopted-${planKey}`}>
+        查看这份待批 →
+        <span className={styles.adoptedNote}>已经排进审批队列，没批就不会改数据</span>
+      </a>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="btn primary"
+      data-testid={`dc-adopt-${planKey}`}
+      disabled={busy || sending || !card || !factor}
+      onClick={async () => {
+        if (!card || !factor || sending) return;
+        setSending(true); // 提交中禁用：连点的第一道闸（真相源仍是后端指纹幂等）
+        try {
+          await onAdopt({ base: card.baseId, factor, planKey });
+        } finally {
+          setSending(false);
+        }
+      }}
+    >
+      {sending ? `正在排「${planName}」…` : "就这么办"}
+    </button>
   );
 }
 

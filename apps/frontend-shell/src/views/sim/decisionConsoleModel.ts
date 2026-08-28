@@ -462,8 +462,10 @@ export function parseEmphasis(raw: string): RawSeg[] {
   const re = /\*\*([^*]+)\*\*/g;
   let last = 0;
   for (let m = re.exec(raw); m !== null; m = re.exec(raw)) {
+    const inner = m[1];
+    if (inner === undefined) continue;
     if (m.index > last) out.push({ text: raw.slice(last, m.index), strong: false });
-    out.push({ text: m[1], strong: true });
+    out.push({ text: inner, strong: true });
     last = m.index + m[0].length;
   }
   if (last < raw.length) out.push({ text: raw.slice(last), strong: false });
