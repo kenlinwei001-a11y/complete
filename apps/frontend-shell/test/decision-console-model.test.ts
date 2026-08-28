@@ -7,6 +7,8 @@ import {
   nothingMovedText,
   orderedEvents,
   planCategoryOf,
+  scrubSourceRefs,
+  SOURCE_REF_MASK,
   sortMitigations,
   splitImpediments,
   subjectIdFormFor,
@@ -342,6 +344,23 @@ describe("⑦ 诚实位：三态分得开", () => {
     expect(joined).toContain("不读你选的那个主体");
     expect(joined).toContain("诚实缺席");
     expect(joined).toContain("模拟数据");
+  });
+
+  it("引擎原文里的源码文件名/行号要隐去，其余一字不改（R-UI-4 × 诚实位不许删，两条都得守）", () => {
+    // 实测原文（`finance_world_projection.notes[0]`）里就带着 `seed.ts`
+    const raw =
+      "收入行**故意不动**：世界态的需求侧变量与 FinancePlan 收入行之间今天**没有任何传导规则**（`seed.ts` 13 条里六方向全查过）。凭空折算一个收入弹性就是引擎自己发明一个系数。";
+    const out = scrubSourceRefs(raw);
+    expect(out).not.toContain("seed.ts");
+    expect(out).toContain(SOURCE_REF_MASK);
+    // 其余一字不改
+    expect(out).toContain("凭空折算一个收入弹性就是引擎自己发明一个系数");
+    expect(out).toContain("13 条里六方向全查过");
+    // 带行号的形态也要吃掉
+    expect(scrubSourceRefs("契约 gap-attribution.ts:30「\"*\" 表示按类型聚合」")).not.toMatch(/\.ts:\d+/);
+    // 金丝雀：不含源码坐标的原文**一个字节都不动**
+    const clean = "枚举已跑完，有效候选 0 个（探了 10 个杠杆锚点 / 34 次试算），不足 2 个 ⇒ 构不成多方案对比，诚实不下发。";
+    expect(scrubSourceRefs(clean)).toBe(clean);
   });
 
   it("金丝雀：全绿的一次演习只留必要的几条，不会凭空长出「没打上」这种条目", () => {

@@ -397,6 +397,25 @@ export function sortMitigations(list: Mitigation[], key: SortKey): Mitigation[] 
 // § 6 · 诚实位（三态必须分得开）
 // ══════════════════════════════════════════════════════════════════════════
 
+/**
+ * 引擎原文里的**源码文件名 / 行号**要隐去 —— 其余一个字不改。
+ *
+ * 两条规矩在这里打架，两条都得守：
+ *  · `CONVENTION-ui-information-layering §1`：诚实位**允许降层、绝不允许删除**；
+ *  · `R-UI-4`：**源码文件名 + 行号打在用户屏上是明令禁止的**（哪怕在第二层）。
+ * 折中只有一个：把源码坐标换成一句「（出处已隐去）」，**其余原文照录**，
+ * 并在屏上说明做过这一处替换 —— 静默替换等于篡改原文。
+ *
+ * 实测会踩到这条的原文（`finance_world_projection.notes[0]`）：
+ * 「…与 FinancePlan 收入行之间今天**没有任何传导规则**（`seed.ts` 13 条里六方向全查过）…」
+ */
+export const SOURCE_REF_MASK = "（源码出处已按界面规范隐去）";
+export function scrubSourceRefs(raw: string): string {
+  return raw
+    .replace(/`?[A-Za-z0-9_./-]+\.(ts|tsx|mjs|js|json)(:\d+(-\d+)?)?`?/g, SOURCE_REF_MASK)
+    .replace(new RegExp(`(${SOURCE_REF_MASK})+`, "g"), SOURCE_REF_MASK);
+}
+
 export interface HonestyNote {
   /** 屏上一句人话。 */
   text: string;

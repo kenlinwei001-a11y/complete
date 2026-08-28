@@ -19,6 +19,7 @@ import {
   orderedEvents,
   planCategoryOf,
   roundish,
+  scrubSourceRefs,
   sortMitigations,
   splitImpediments,
   subjectIdFormFor,
@@ -150,6 +151,23 @@ function Est() {
   );
 }
 
+/**
+ * 引擎原文的**唯一渲染出口**。
+ *
+ * 一处收口的理由：原文里可能带源码文件名/行号，而 R-UI-4 明令禁止把它们打在用户屏上；
+ * 但诚实位又「绝不允许删除」。所以这里**只**隐去源码坐标、其余一字不改，
+ * 并且**替换发生时在屏上说一句** —— 静默替换等于篡改原文，比不替换更糟。
+ */
+function Raw({ text }: { text: string }) {
+  const scrubbed = scrubSourceRefs(text);
+  return (
+    <span className={styles.raw}>
+      {scrubbed}
+      {scrubbed !== text ? "\n（上面这段是引擎原话，只隐去了源码文件名与行号，其余一字未改。）" : ""}
+    </span>
+  );
+}
+
 /** 「这次没算」：删除线 + 一句话 + 点开给原文。⛔ 不是 0、不是「无变化」、不是空白。 */
 function Absent({ label, why, raw }: { label: string; why: string; raw: string }) {
   const [open, setOpen] = useState(false);
@@ -160,7 +178,7 @@ function Absent({ label, why, raw }: { label: string; why: string; raw: string }
       <button type="button" className={styles.footerBtn} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span className={styles.absentWhy}>{why}</span> {open ? "▾" : "▸"}
       </button>
-      {open ? <span className={styles.raw}>{raw}</span> : null}
+      {open ? <Raw text={raw} /> : null}
     </div>
   );
 }
@@ -436,7 +454,7 @@ export default function DecisionConsoleView() {
             <p className={styles.err}>
               这次没算成，你刚才加的 {added.length} 件事还在，再按一次〔算一下〕。
               <br />
-              <span className={styles.raw}>{String(run.error)}</span>
+              <Raw text={String(run.error)} />
             </p>
           </section>
         ) : null}
@@ -480,10 +498,10 @@ export default function DecisionConsoleView() {
                     why="这次算不出来"
                     raw={
                       "两条独立的原因，任一条成立这一格就没有数据源：\n" +
-                      "① 这次的算是只读的（persist:false），它推出来的那 30 天不落盘；而财务投影只会读会话已落盘的那一天 —— 「你刚加的这几件事之后毛利是多少」今天没有那条线。\n" +
-                      "② 就算读得到，那个数今天也是坏的：零输入、逐项相等时它就已经回「毛利 118.9 → " +
+                      "① 这次的算是只读的，它算出来的那 30 天不留下来；而财务那一路只会读这次算例已经存下来的那一天 —— 「你刚加的这几件事之后毛利是多少」今天没有那条线。\n" +
+                      "② 就算读得到，那个数今天也是坏的：一件事都不加、逐项相等时它就已经回「毛利 118.9 → " +
                       (financeMargin(result.finance) ?? "（本次未取到）") +
-                      "」——42 条传导规则今天没有上界也没有衰减，压力逐日累加。\n" +
+                      "」——那条换算链上的 42 条规则今天既没有上界也没有衰减，压力逐日累加。\n" +
                       "引擎原话：" +
                       (financeBasisNote(result.finance) ?? "（本次未取到）")
                     }
@@ -491,7 +509,7 @@ export default function DecisionConsoleView() {
                   <Absent
                     label="多花的成本"
                     why="这次算不出来"
-                    raw={"同上：这一行与毛利同源（基线 ×（1 + 压力 ÷ 100）），演习的世界不落盘 ⇒ 取不到本次的值。"}
+                    raw={"同上：这一行与毛利同源（基线 ×（1 + 压力 ÷ 100）），这次算出来的那 30 天不留下来 ⇒ 取不到本次的值。"}
                   />
                   <Absent
                     label="少收的钱"
@@ -838,7 +856,7 @@ export default function DecisionConsoleView() {
                   honesty.map((h, i) => (
                     <div className={styles.drawerItem} key={`${h.anchor}-${i}`}>
                       {i + 1}. {h.text} → <a href={`#${h.anchor}`}>看它影响哪一段</a>
-                      <span className={styles.raw}>{h.raw}</span>
+                      <Raw text={h.raw} />
                     </div>
                   ))
                 )}
@@ -1159,7 +1177,7 @@ function WatchOnly({ rows }: { rows: ReturnType<typeof splitImpediments>["watchO
           {rows.map((r) => (
             <div className={styles.drawerItem} key={r.impedimentId}>
               · {r.sentence}
-              {r.noCandidateReason ? <span className={styles.raw}>{r.noCandidateReason}</span> : null}
+              {r.noCandidateReason ? <Raw text={r.noCandidateReason} /> : null}
             </div>
           ))}
         </div>
@@ -1236,7 +1254,7 @@ function PenaltyWhy({ raw }: { raw: string }) {
       <button type="button" className={styles.footerBtn} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         为什么 {open ? "▾" : "▸"}
       </button>
-      {open ? <span className={styles.raw}>{raw}</span> : null}
+      {open ? <Raw text={raw} /> : null}
     </>
   );
 }
@@ -1268,7 +1286,7 @@ function ReconcileEntry({ finding }: { finding: { why: string; reconciled: boole
               · {d.factor} —— {roundish(d.contribution)} {d.unit ?? ""}
             </div>
           ))}
-          <div className={styles.drawerItem}>引擎原话：<span className={styles.raw}>{finding.why}</span></div>
+          <div className={styles.drawerItem}>引擎原话：<Raw text={finding.why} /></div>
         </div>
       ) : null}
     </>
