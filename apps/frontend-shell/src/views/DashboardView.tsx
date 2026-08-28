@@ -711,7 +711,7 @@ function Widget({ def, decor, drillMetric, onDrillMetric }: { def: DashboardWidg
       {isLoading ? (
         <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>
       ) : def.type === "kpi" ? (
-        <KpiWidget value={data} unit={def.unit} decor={decor} />
+        <KpiWidget value={data} unit={def.unit} ratio={def.ratio} decor={decor} />
       ) : def.type === "chart" ? (
         <ChartWidget data={data} kind={def.chartKind ?? "line"} series={def.chartSeries} def={def} />
       ) : def.type === "summary" ? (
@@ -1106,12 +1106,28 @@ function DeltaPill({ delta, tone, unit, testId }: { delta: number; tone: "up" | 
   );
 }
 
-function KpiWidget({ value, unit, decor }: { value: unknown; unit?: string; decor?: KpiDecor }) {
-  const display = formatKpiValue(value, unit);
+/**
+ * ⛔ **这张卡曾同时显示两个互相矛盾的数**（2026-08-28 数据经理评审实测，我亲手复核）：
+ *   「计划达成率」读 `avg(Line.schedule_attainment)` = **0.9109**（小数比率），widget 声明 `unit:"%"`。
+ *   · 大数字走 `formatKpiValue(value, unit)` —— 不传 `ratio` ⇒ 原样上屏 ⇒ **「0.91%」**（100× 错）
+ *   · 同卡的进度条注脚走下面 `pctVal` 那行的**取值范围猜测** ⇒ 91.09 ⇒ 「目标 100% · **差 8.7pt**」
+ *   两个数都由同一个 0.9109 算出，一个说 0.91%、一个说差 8.7 个百分点 —— **一张卡两套量纲**。
+ *
+ * 根因不是哪一半算错了，是**量纲从来没被声明过**：`Line.schedule_attainment` 的 `PropertyDef.unit`
+ * 是 `undefined`，而 widget 自己声明 `unit:"%"`；同屏 `Base.util`（实测 70~88）也声明 `unit:"%"`
+ * 却是百分点。**两个相反的量纲，声明得一模一样。**
+ *
+ * 修法：量纲由下发方显式声明（`DashboardWidgetDef.ratio`），两条路径共用同一个 `ratio` ——
+ * 从此**不可能**再出现「大数字和注脚各猜各的」。⚠ 不许退回按取值范围猜：那条路上 `1` 与 `100%`
+ * 永远分不开（正是上面 `formatKpiValue` 头注记的那次 delta:1 → 「差 +100%」事故）。
+ */
+function KpiWidget({ value, unit, ratio, decor }: { value: unknown; unit?: string; ratio?: boolean; decor?: KpiDecor }) {
+  const display = formatKpiValue(value, unit, ratio);
   const d = decor ?? {};
   const sd = d.delta !== undefined && d.deltaTone ? { delta: d.delta, tone: d.deltaTone } : undefined;
   // accent 进度：优先 decor.progressPct，否则由真值派生（百分比 KPI → value 相对 100% 目标）。
-  const pctVal = typeof value === "number" ? (unit === "%" && value > 0 && value <= 1 ? value * 100 : value) : undefined;
+  // 量纲取自同一个 `ratio` 声明，与上面的 `display` 共用 —— 两条路径不许各自判断。
+  const pctVal = typeof value === "number" ? (unit === "%" && ratio ? value * 100 : value) : undefined;
   const accentPct = d.accent ? (d.progressPct ?? (unit === "%" && pctVal !== undefined ? pctVal : undefined)) : d.progressPct;
   const accentNote = d.progressNote ?? (d.accent && unit === "%" && pctVal !== undefined ? `目标 100% · 差 ${(100 - pctVal).toFixed(1)}pt` : undefined);
   const hasFoot = !!sd || (d.spark && d.spark.length >= 2);

@@ -1563,7 +1563,10 @@ export class SyntheticService {
           provenance: { toolName: "query_objects", outputPath: "$.avg(util)", label: "12 基地利用率算术平均" },
         },
         {
-          key: "attain", type: "kpi", title: "计划达成率", unit: "%",
+          // ⚠ ratio:true —— `Line.schedule_attainment` 实测取值 0.879~0.949（**小数比率**），
+          // 而同屏的 `Base.util` 是 70~88（**百分点**）。两者都声明 unit:"%"，量纲却相反 ⇒
+          // 前端必须由本声明得知该 ×100，不许按取值范围猜（见 DashboardView.formatKpiValue 头注）。
+          key: "attain", type: "kpi", title: "计划达成率", unit: "%", ratio: true,
           query: { kind: "objects-aggregate", objectType: "Line", agg: "avg", prop: "schedule_attainment" },
           provenance: { toolName: "query_timeseries_agg", outputPath: "$.avg(schedule_attainment)", label: "attainment:line 周聚合回写值" },
         },

@@ -111,6 +111,15 @@ export interface DashboardWidgetDef {
   /** 悬停溯源描述 */
   provenance?: { toolName: string; outputPath: string; snapshotVersion?: string; label?: string };
   unit?: string;
+  /**
+   * 值是 0~1 的**小数比率**（需 ×100 才是 `unit` 声明的那个单位），缺省 = 值已是 `unit` 的数。
+   *
+   * 存在的理由：本仓同为 `unit:"%"` 的属性量纲相反 —— 实测 `Base.util` 70~88（百分点）、
+   * `Line.schedule_attainment` 0.879~0.949（比率）。**光看 unit 分不出来**，光看取值范围
+   * 更分不出来（一个已是百分点的量取值恰为 1 时，与 100% 长得一模一样）。故量纲必须由
+   * 下发方显式声明，不许前端猜。
+   */
+  ratio?: boolean;
   chartKind?: "line" | "bar" | "trideviation";
   /** 三线偏差复合图（trideviation）的系列声明：data 各项的数值字段 → 线名/色。 */
   chartSeries?: { key: string; name: string; color?: string }[];
