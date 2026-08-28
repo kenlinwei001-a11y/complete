@@ -508,7 +508,10 @@
   /* WO-SIM-OPT-READABLE：8.5 → 11（次要说明档）。「前沿」是**判据**不是装饰 ——
      它就是"这一手值不值得看"的答案，8.5px 等于把结论藏起来。 */
   font-size: 12px;
-  color: var(--txt);
+  /* WO-CONSOLE-BLOCKERS：原 `var(--txt)` 压在实心 `--ok` 上，暗色皮实测 **1.97:1**
+     （近白字压中绿底·12 个实例全中）。当初取 --txt 是因为那张单的范围边界不含 tokens.css；
+     本单含，故补成一等令牌 `--on-ok`（= 规格原值 #04140f，实测 8.23:1）。账在 tokens.css。 */
+  color: var(--on-ok);
   background: var(--ok);
   padding: 0 4px;
 }
@@ -658,7 +661,12 @@
   background: var(--accent-solid);
   border: 1px solid var(--accent);
   border-radius: 0;
-  color: var(--c-capacity-txt);
+  /* WO-CONSOLE-BLOCKERS：原 `var(--c-capacity-txt)` 压在实心 `--accent-solid` 上实测
+     **1.12–3.48**（冷蓝/暖砂 1.1 ≈ 看不见）。tokens.css 对 `--accent-solid` 的定义就写着
+     「上面压 `--on-accent` 白字」。白字实测 6.05–6.12。
+     今天这颗〔应用方案〕恒 disabled（走 `.abtn:disabled`），所以真浏览器扫不出来 ——
+     是**接上审批流那天才会炸**的雷。判据 A 补上"同块自带底色"之后当场抖出来的。 */
+  color: var(--on-accent);
   font-family: inherit;
   line-height: inherit;
   /* WO-SIM-OPT-READABLE：11 → 12（正文档）。这是本屏唯一的主动作。 */

@@ -45,6 +45,14 @@ import {
  * **一页六区**（不是六个页面）：左栏 ① 加事情 + 唯一的那颗〔算一下〕；右栏 ②算的时候 /
  * ③钱 / ③b 客户与订单 / ④哪儿会出事 / ⑤有几条路。任一区改东西，其余区当场跟着变、位置不丢。
  *
+ * ── 层次是可机检的，不只是约定（WO-CONSOLE-BLOCKERS）──────────────────────────
+ * 每个折叠抽屉都带 `data-layer2="1"`。R-UI-4 的规矩是「机器编号 / 规则码 / 公式**一律进第二层**」，
+ * 而在此之前"第一层 / 第二层"只活在注释里 —— 任何审计（人的或脚本的）都只能靠肉眼判断
+ * 某段文字算第几层，于是 `pos_lfp_b2` 那条在第一层挂了整整一轮没人发现。
+ * 有了这个标记，「第一层里有没有机器话」变成一句可执行的查询：
+ *   `[...document.querySelectorAll('#root *')].filter(el => !el.closest('[data-layer2]'))`
+ * —— 机器先说话，不靠人记得。
+ *
  * ── 屏上不出现的词（整条主线）─────────────────────────────────────────────────
  * `扰动 / 推演 / 传导 / 世界 / 拍 / tick / 张力 / 敞口 / 落点 / 求解器 / 状态变量`。
  * 「拍」一律写「天」（实测本租户所有会话 `tickDays: 1`）。
@@ -670,7 +678,7 @@ export default function DecisionConsoleView() {
               还有一些事这里试不了 {notAvailableOpen ? "▾" : "▸"}
             </button>
             {notAvailableOpen ? (
-              <div className={styles.drawer}>
+              <div className={styles.drawer} data-layer2="1">
                 <div className={styles.drawerItem}>
                   上面这 {specs.length} 件是今天真的能算的全部（清单现读后台，后台加一件这里就多一件，
                   不是这里写死的）。除此之外的事 —— 比如「换一家供应商」「汇率变了」「限电」——
@@ -1176,7 +1184,7 @@ export default function DecisionConsoleView() {
               这一屏有 {honesty.length} 处成色你需要知道 {footerOpen ? "▾" : "▸"}
             </button>
             {footerOpen ? (
-              <div className={styles.drawer}>
+              <div className={styles.drawer} data-layer2="1">
                 {honesty.length === 0 ? (
                   <div className={styles.drawerItem}>这一屏没有需要额外说明的成色。</div>
                 ) : (
@@ -1788,7 +1796,7 @@ function WatchOnly({ rows }: { rows: ReturnType<typeof splitImpediments>["watchO
         另外 {Math.max(0, rows.length - 1)} 处也一样 {open ? "▾" : "▸"}
       </button>
       {open ? (
-        <div className={styles.drawer}>
+        <div className={styles.drawer} data-layer2="1">
           {rows.map((r) => (
             <div className={styles.drawerItem} key={r.impedimentId}>
               · {r.sentence}
@@ -1896,7 +1904,7 @@ function ReconcileEntry({ finding }: { finding: { why: string; reconciled: boole
         这几个数加起来对得上账 {open ? "▾" : "▸"}
       </button>
       {open ? (
-        <div className={styles.drawer}>
+        <div className={styles.drawer} data-layer2="1">
           <div className={styles.drawerItem}>
             {finding.reconciled === true ? "逐层核对过，通过。" : finding.reconciled === false ? "逐层核对没通过，这条已经降级展示。" : "这一条不适用勾稽。"}
           </div>

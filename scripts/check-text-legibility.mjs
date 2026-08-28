@@ -347,6 +347,14 @@ const SPECIAL_PAIRS = [
    * 叠 `--panel2` 在暗色下得 7.98，而叠玻璃卡面（屏上那颗筛选钮真正待的地方）只有 6.06。
    */
   { fg: "--accent-txt", bg: "--primary-soft", over: "*", why: "选中项染色底上的 accent 文字（筛选钮 / 搜索结果选中态 / 选中徽标）" },
+  /**
+   * WO-CONSOLE-BLOCKERS · 实心 `--ok` 底上的文字（`SandboxOpt .pc .tag` 那枚「前沿」徽标）。
+   * 补这一对的理由与上一条同形：**语义色当填充时，压在它上面的字不在任何"页面表面"上**，
+   * 于是判据 C 看不见它 —— 而真浏览器实测那里是 **1.97:1**（近白压中绿）。
+   * `--ok` 是 theme-invariant 的，故这一对无需 `over`。
+   */
+  { fg: "--on-ok", bg: "--ok", why: "实心 --ok 底上的文字（前沿徽标等语义实心片）" },
+  { fg: "--on-danger", bg: "--danger", why: "实心 --danger 底上的文字（告警徽标）" },
 ];
 
 /** 从可能是渐变的值里取出所有色停，逐个叠在 over 上，返回 [name, color] 数组。 */
@@ -457,11 +465,34 @@ export function scanCss(file, raw) {
     }
     const fsRaw = grab("font-size");
     const colorRaw = grab("color") || grab("fill");
+    /*
+     * ⚠ **同块里自带的底色要吃**（WO-CONSOLE-BLOCKERS 2026-08-28）。
+     *
+     * 本门「三条测不准」的第 ① 条写着：底色靠"最差面"代替真实层叠，因为「一个 color 落在哪个
+     * 背景上，是渲染期的事实，源码里不存在」。**这句话对了一半**：跨元素继承来的底确实不存在，
+     * 但**同一个声明块里同时写了 `color` 与 `background` 时，那个配对就白纸黑字写在源码里**。
+     * 拿最差面去代替它，方向还是反的 —— 会把「白字压绿底」判绿，把「近黑字压绿底」判红。
+     *
+     * 真事故（本单实测）：`SandboxOpt.module.css .pc .tag { color: var(--txt); background: var(--ok) }`
+     * 真浏览器暗色皮量出 **1.97:1**（近白压中绿·12 个实例），而本门当时**全绿**；
+     * 上一位作者的注释里甚至写明了理由 ——「判据 A 看不见元素自带的底色…换 --txt 两边都成立」，
+     * 也就是**为了让门变绿而选了一个屏上读不了的颜色**。
+     * 形态照 CLAUDE.md 铁律 0.6：**「我用『判据 A 绿』当作『屏上读得了』的证据，而前者并不度量后者。」**
+     *
+     * ⇒ 声明块自带不透明底 ⇒ 用**它**判；没有 ⇒ 仍走最差面（行为逐字不变）。
+     * 半透底不吃（`rgba(...,<1)` / 含 var 的染色）：那要合成，合成又要知道下层是谁 —— 回到测不准，
+     * 那类仍走最差面，宁可保守。
+     */
+    const bgRaw = grab("background-color") ?? (() => {
+      const b = grab("background");
+      // `background:` 简写里只认**纯色值**（`#rgb` / `rgba()` / `var(--x)`），带图片/渐变/多值的不认。
+      return b && /^(#[0-9a-fA-F]{3,8}|var\(--[A-Za-z0-9_-]+\)|rgba?\([^)]*\))$/.test(b.trim()) ? b.trim() : null;
+    })();
     const line = src.slice(0, m.index).split("\n").length;
     const size = fsRaw ? PX(fsRaw) : shSize;
     const weight = WEIGHT(grab("font-weight") ?? shWeight);
     if (size != null && size > 0) sizes.push({ file, line, sel, size });
-    if (size != null && size > 0 && colorRaw) units.push({ file, line, sel, size, color: colorRaw, weight });
+    if (size != null && size > 0 && colorRaw) units.push({ file, line, sel, size, color: colorRaw, weight, ...(bgRaw ? { ownBg: bgRaw } : {}) });
     else if ((size != null && size > 0) || colorRaw) unjudged++;
   }
   return { units, sizes, unjudged };
@@ -618,7 +649,10 @@ export function analyzeAll(themes, extraSources = []) {
       for (const [theme, vars] of Object.entries(themes)) {
         const c = resolveColor(u.color, vars);
         if (!c) continue;
-        const r = judgeUnit({ color: c, backgrounds: surfacesOf(vars), sizePx: judgeSizeFor(u.size), weight: u.weight });
+        // 同块自带**不透明**底 ⇒ 用它（源码里就写着的真实配对）；否则回落最差面（见 scanCss 的账）。
+        const own = u.ownBg ? resolveColor(u.ownBg, vars) : null;
+        const backgrounds = own && (own.a ?? 1) >= 1 ? [[u.ownBg, { ...own, a: 1 }]] : surfacesOf(vars);
+        const r = judgeUnit({ color: c, backgrounds, sizePx: judgeSizeFor(u.size), weight: u.weight });
         if (r?.red) bad.push(`${theme} ${r.got}<${r.need}@${r.worst}`);
       }
       if (bad.length) bump(f, "site", `L${u.line} ${u.sel.slice(0, 44)} ${u.size}px/${u.weight} ${u.color.slice(0, 26)} → ${bad.join(" · ")}`);

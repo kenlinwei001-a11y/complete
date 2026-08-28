@@ -826,7 +826,10 @@
   right: 5px;
   top: 4px;
   font-size: 8.5px;
-  color: var(--txt);
+  /* WO-CONSOLE-BLOCKERS：原 `var(--txt)` 压在实心 `--danger` 上实测 2.94 / 4.73 / 4.98
+     （近白字压中亮红），三套皮全不达标。补一等令牌 `--on-danger`（纯黑 6.13）。账在 tokens.css。
+     ⚠ 字号 8.5px 仍在本仓 12px 硬底之下 —— 那是本目录 gate 豁免下的存量，不在本单口径内。 */
+  color: var(--on-danger);
   background: var(--danger);
   padding: 0 4px;
 }
@@ -834,7 +837,12 @@
   margin-top: 2px;
   background: var(--accent-solid);
   border: 1px solid var(--accent);
-  color: var(--c-capacity-txt);
+  /* WO-CONSOLE-BLOCKERS：原 `var(--c-capacity-txt)` 压在实心 `--accent-solid` 上实测
+     **1.12–3.48**（冷蓝/暖砂 1.1 ≈ 看不见）。`--accent-solid` 在 tokens.css 里的定义就写着
+     「上面压 `--on-accent` 白字」—— 这里没照做。白字实测 6.05–6.12，三套皮全过。
+     今天这颗按钮恒 disabled（走 `.abtn:disabled` 的灰底），所以真浏览器扫不出来 ——
+     它是**接上审批流那天才会炸**的雷，不是今天看得见的问题。 */
+  color: var(--on-accent);
   font-size: 11px;
   padding: 4px 0;
   text-align: center;
