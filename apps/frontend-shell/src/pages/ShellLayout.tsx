@@ -269,6 +269,11 @@ export const ROUTE_NO_NAV: Record<string, string> = {
   // 与驾驶舱入口（`DashboardView`）继续走 `/v/decision-play` 深链 —— route 保留，`imp*` query 契约一个键没动。
   "decision-play":
     "仓主裁决（WO-IA-E2E5E6）：决策推演不该占导航位，已嵌入各决策点（订单链/链阻滞/壳布局三处共用 DecisionPlayPanel）；route 保留 = 深链 query 契约（fromImpediment/imp* 一族）不变",
+  // WO-DECISION-CONSOLE：仓主逐案批准的是**这一页**（禁令 2 要的那句「可以」），
+  // **不含**「把它放进导航」—— 导航信息架构是另一类决策（铁律 0.6 第 3 条点名要 AskUserQuestion 的那一类）。
+  // 故本页与 `decision-play` 同形态：route 通、深链可达、不占导航位，入口留待仓主裁决。
+  "decision-console":
+    "本单只拿到「这一页」的逐案批准，没拿到动导航的批准；导航信息架构属产品决策，深链先通、入口另议",
   // ⚠ WO-SIM-NAV-UNIFIED（本轮）：`sim-unified` 的豁免条目**已删**，不是漏了。
   //   上一版这里写着「导航信息架构改动未获批 ⇒ route 先通、暂不单列，入口随后续两单一并裁决」——
   //   仓主已裁决（原话见 NAV_GROUPS「推演」组之首的长注），统一推演控制台就是本组的主入口。

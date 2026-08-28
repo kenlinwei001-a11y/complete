@@ -35,7 +35,7 @@
  *       —— **后端自己就是按「基地 × 类别 × 方案键」记账的**，这是最硬的旁证。
  *     ⇒ 第 ⑤ 区按**基地**给方案，`planCategoryOf()` 只认 `card.factor`。
  */
-import type { DrillCatalog, DrillEventSpec, DrillFinding, DrillReport } from "@platform/contracts";
+import type { DrillEventSpec, DrillFinding, DrillReport } from "@platform/contracts";
 
 // ══════════════════════════════════════════════════════════════════════════
 // § 1 · 事件模板 → 主体选择器（**scope 由 catalog 现算，前端不写第二份事件清单**）

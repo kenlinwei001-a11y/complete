@@ -1245,7 +1245,11 @@ function ReconcileEntry({ finding }: { finding: { why: string; reconciled: boole
 /** 500 张单的三段分布。 */
 function SegmentBar({ rows }: { rows: { group: Record<string, string | null>; metrics: Record<string, number | null> }[] }) {
   const label: Record<string, string> = { COMPLETED: "已完成", IN_PRODUCTION: "在产", OPEN: "已下待排产" };
-  const cls: Record<string, string> = { COMPLETED: styles.segDone, IN_PRODUCTION: styles.segWip, OPEN: styles.segOpen };
+  const cls: Record<string, string | undefined> = {
+    COMPLETED: styles.segDone,
+    IN_PRODUCTION: styles.segWip,
+    OPEN: styles.segOpen,
+  };
   const total = rows.reduce((a, r) => a + (r.metrics.count_so ?? 0), 0);
   if (total === 0) return null;
   return (
