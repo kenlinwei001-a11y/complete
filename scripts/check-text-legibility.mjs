@@ -329,6 +329,24 @@ const TEXT_TOKENS = [
 const SPECIAL_PAIRS = [
   { fg: "--on-accent", bg: "--accent-solid", why: "实心 accent 底上的白字（主按钮 / 分段控件选中态）" },
   { fg: "--nav-active-txt", bg: "--nav-active-bg", over: "--panel2", why: "活动导航项文字" },
+  /**
+   * WO-CONSOLE-BLOCKERS（2026-08-28）· **本条是补漏，不是加严**。
+   *
+   * 判据 C 原来只把文字令牌配到 `SURFACE_TOKENS`（页面表面）上，而 `--primary-soft`
+   * 是**本设计系统自己规定的「选中项底纹」**——它就是拿来配 `--accent-txt` 的那块底
+   * （`DecisionConsoleView .sortBtn[aria-pressed=true]` / `.searchItem[aria-pressed=true]` /
+   * `.impWays`、`console/SandboxDetail` 的选中徽标）。它不在表面表里，于是这一对
+   * **三套皮全部低于 6.0 而门全绿**：暗 4.96 · 冷蓝 5.10 · 暖砂 5.30。
+   *
+   * 形态（CLAUDE.md 铁律 0.6）：「我用『在页面表面上达标』当作『在所有会配它的底上达标』的证据。」
+   * 这是同一个病的**第二次**——第一次就是上一行的 `--nav-active-txt`（tokens.css 里那句
+   * 「与 --accent-txt 取齐**不够** …压在蓝染活动底上只剩 5.10」）。第一次是**人**发现的、
+   * 只补了那一个特例对；这一次照三级处置**把判据补上**，让机器先说话。
+   *
+   * `over: "*"` = 逐面合成取最差。写死一个面会让这条对**比现实宽**：实测 `--primary-soft`
+   * 叠 `--panel2` 在暗色下得 7.98，而叠玻璃卡面（屏上那颗筛选钮真正待的地方）只有 6.06。
+   */
+  { fg: "--accent-txt", bg: "--primary-soft", over: "*", why: "选中项染色底上的 accent 文字（筛选钮 / 搜索结果选中态 / 选中徽标）" },
 ];
 
 /** 从可能是渐变的值里取出所有色停，逐个叠在 over 上，返回 [name, color] 数组。 */
@@ -510,8 +528,13 @@ export function judgeMatrix(themes) {
     for (const sp of SPECIAL_PAIRS) {
       const fgv = vars.get(sp.fg), bgv = vars.get(sp.bg);
       if (fgv == null || bgv == null) { fails.push(`【C 令牌矩阵】${theme}：特例对 ${sp.fg} on ${sp.bg} 缺令牌定义`); continue; }
-      const overColor = sp.over ? resolveColor(vars.get(sp.over), vars) : null;
-      const bgs = surfacesFromValue(sp.bg, bgv, vars, overColor);
+      // `over: "*"` = 该染色底会叠在**任何**表面上 ⇒ 逐面合成、取最差（judgeUnit 自己挑最差）。
+      // 写死一个 `over` 会让这条特例对比现实**宽**：`--primary-soft` 在暗色下叠 `--panel2`
+      // 得 7.98，叠玻璃卡面只有 6.06 —— 而屏上那颗筛选钮长在玻璃卡里。
+      // 「取一个面」不度量「所有会出现的面」，那正是这条特例对当初被漏掉的同一个形态。
+      const bgs = sp.over === "*"
+        ? surfacesOf(vars).flatMap(([, s]) => surfacesFromValue(sp.bg, bgv, vars, s))
+        : surfacesFromValue(sp.bg, bgv, vars, sp.over ? resolveColor(vars.get(sp.over), vars) : null);
       const r = judgeUnit({ color: resolveColor(fgv, vars), backgrounds: bgs, sizePx: FLOOR_PX });
       if (!r) { fails.push(`【C 令牌矩阵】${theme}：特例对 ${sp.fg} on ${sp.bg} 解析不出`); continue; }
       rows.push({ theme, token: `${sp.fg} on ${sp.bg}`, ...r });
