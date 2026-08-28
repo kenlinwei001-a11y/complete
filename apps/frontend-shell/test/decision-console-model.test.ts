@@ -7,8 +7,10 @@ import {
   nothingMovedText,
   orderedEvents,
   planCategoryOf,
+  parseEmphasis,
   scrubSourceRefs,
   SOURCE_REF_MASK,
+  SOURCE_REF_MASK_BARE,
   sortMitigations,
   splitImpediments,
   subjectIdFormFor,
@@ -352,7 +354,20 @@ describe("⑦ 诚实位：三态分得开", () => {
       "收入行**故意不动**：世界态的需求侧变量与 FinancePlan 收入行之间今天**没有任何传导规则**（`seed.ts` 13 条里六方向全查过）。凭空折算一个收入弹性就是引擎自己发明一个系数。";
     const out = scrubSourceRefs(raw);
     expect(out).not.toContain("seed.ts");
-    expect(out).toContain(SOURCE_REF_MASK);
+    /*
+     * ⚠ WO-CONSOLE-BLOCKERS · **本条断言改过，改的是期望不是实现** ——
+     * UX 第 7 轮在真屏上抓到 `（（源码出处已按界面规范隐去） 13 条…`：遮蔽词自带一对全角括号，
+     * 而被遮的源码坐标本来就写在括号里 ⇒ 括号叠括号。修法是让遮蔽词**看上下文选形态**。
+     * 这一句原来断言的是 `toContain(SOURCE_REF_MASK)`（带括号那支）——
+     * 它**当时就是绿的，而屏上正躺着那个 `（（`**：断言咬的是"替换发生了没有"，
+     * 不是"替换出来的那句读不读得通"。形态照铁律 0.6：
+     * 「我用『遮蔽词出现了』当作『这句话没被替换搞坏』的证据，而前者并不度量后者。」
+     */
+    expect(out).toContain(SOURCE_REF_MASK_BARE);
+    expect(out).not.toContain("（（"); // ← 这一条才是那次事故的判据
+    // 落点**不在**括号里时，仍用自带括号的那支（不然那句话会缺标点）
+    const standalone = scrubSourceRefs("这条判据的出处见 seed.ts 里那一段。");
+    expect(standalone).toContain(SOURCE_REF_MASK);
     // 其余一字不改
     expect(out).toContain("凭空折算一个收入弹性就是引擎自己发明一个系数");
     expect(out).toContain("13 条里六方向全查过");
@@ -361,6 +376,23 @@ describe("⑦ 诚实位：三态分得开", () => {
     // 金丝雀：不含源码坐标的原文**一个字节都不动**
     const clean = "枚举已跑完，有效候选 0 个（探了 10 个杠杆锚点 / 34 次试算），不足 2 个 ⇒ 构不成多方案对比，诚实不下发。";
     expect(scrubSourceRefs(clean)).toBe(clean);
+  });
+
+  /**
+   * WO-CONSOLE-BLOCKERS · B2：引擎原文是 markdown，渲染方却按纯文本直出 ⇒ `**…**` 上屏。
+   * 这里咬的是**分段函数**；「屏上 0 个星号」那一半由真浏览器扫描量（见交付报告）。
+   */
+  it("引擎原文里的 markdown 强调被切成段（星号不上屏、字一个不少）", () => {
+    // 金丝雀：函数认得出一个**确定存在**的强调段
+    const segs = parseEmphasis("收入行**故意不动**：今天**没有任何传导规则**。");
+    expect(segs.filter((s) => s.strong).map((s) => s.text)).toEqual(["故意不动", "没有任何传导规则"]);
+    // 字一个不少（拼回去 == 去掉星号的原文）
+    expect(segs.map((s) => s.text).join("")).toBe("收入行故意不动：今天没有任何传导规则。");
+    // 反向金丝雀：没有强调标记的原文原样一段，不许凭空切
+    const plain = "这是**不成对的原文";
+    expect(parseEmphasis(plain)).toEqual([{ text: plain, strong: false }]);
+    // 落单的星号不猜作者意图（只认成对）
+    expect(parseEmphasis("a * b").every((s) => !s.strong)).toBe(true);
   });
 
   it("金丝雀：全绿的一次演习只留必要的几条，不会凭空长出「没打上」这种条目", () => {
