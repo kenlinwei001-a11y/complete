@@ -105,7 +105,10 @@ import {
   DRILL_EVENT_SPECS,
   DRILL_UNIVERSAL_ROUTES,
   assertDrillRoutingTableComplete,
+  // WO-MATERIAL-REPRICE：事件 → 世界态落点的**唯一解释器**（落点写在契约规格表里，不是这里的 if）。
+  drillStateEffectFor,
   ticksForDays,
+  type DrillFinding,
 } from "@platform/contracts";
 import { scanDrillFindings, layerOfStateVars } from "./sim/drill-scan.js";
 import { orchestrateDrill } from "./sim/drill-orchestrator.js";
@@ -2141,7 +2144,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const simAdvanceTicks = async (
     c: AuthCtx,
     s: SimSession,
-    opts: { rules: PropagationRule[]; n: number; persist: boolean },
+    opts: { rules: PropagationRule[]; n: number; persist: boolean; ephemeralPerturbations?: readonly Perturbation[] },
   ) => {
     const { rules: propRules, n, persist } = opts;
     let state = await simCurrent(c, s);
@@ -2152,7 +2155,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // ── 扰动接入传导（WO-P2 · PRD-UPGRADE-decision-sandbox-v2 §3.1.3）───────────────────
     // 顺序 = `listPerturbations` 的 `startTick↑ → 建单先后`（repo.ts:362）。**这里绝不重排**：
     // `delta`/`scale` 不可交换（`(10+2)×1.5=18 ≠ 10×1.5+2=17`），顺序即语义。
-    const sessionPerturbations = await repos.sim.listPerturbations(c.tenantId, s.id);
+    //
+    // ── WO-MATERIAL-REPRICE · `ephemeralPerturbations`（**只走演习这一条路**）────────────
+    // 演习事件（`DrillEvent`）声明了 `stateEffect` 时会解释出一条**临时扰动**：它**不入库**，
+    // 只活在这一次 `persist:false` 的推进里。**排在会话已有扰动之后**，理由同上一段 ——
+    // 顺序即语义：会话扰动是这个世界既有的假设，演习问的是「在这些假设之上再发生一件事」。
+    // ⚠ `persist:true` 的路径（真 tick）**一条都不许传** —— 临时扰动落盘就成了没人记得建过的
+    // 世界线污染，而它在 `listPerturbations` 里查不到，用户看到数变了却查不出为什么。
+    if (persist && (opts.ephemeralPerturbations?.length ?? 0) > 0) {
+      throw new Error("simAdvanceTicks: ephemeralPerturbations 只允许在 persist:false 的推进里使用（落盘会造成查不出来源的世界线污染）");
+    }
+    const sessionPerturbations = [
+      ...(await repos.sim.listPerturbations(c.tenantId, s.id)),
+      ...(opts.ephemeralPerturbations ?? []),
+    ];
     /**
      * 「落地前值」= 该扰动 `startTick` 的**前一 tick** 快照上的目标值（`startTick===0` 取 baseSnapshot）。
      * 只有 `set` 与 `scale(magnitude===0)` 到期时用得上 —— 这两种模式不可解析求逆；
@@ -2861,10 +2877,59 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       forkedFromStateId = null;
     }
 
+    // ── ①b 事件 → 世界态冲击（WO-MATERIAL-REPRICE · G-DRILL-3 的另一半）────────
+    /**
+     * **今天的行为是 X，应该是 Y**（起真 datacore 4091 · seed 42 · demo 租户实测，原文照录）：
+     * · **X**：事件只被路由到求解器，**一格世界态都不动** —— 于是「碳酸锂涨 15%」
+     *   进得来、打不到任何一格上，屏上的卡点与没输入这件事时逐字节相同。
+     * · **Y**：一类事件若在传导图上有**唯一正确的落点**，由规格表 `stateEffect` 声明，
+     *   这里**解释**成一条临时扰动喂进传导核（`drillStateEffectFor` 是全平台唯一实现）。
+     *
+     * ⛔ **不入库**：这批扰动只活在下面这一次 `persist:false` 的推进里。演习是只读的
+     *    （R4-sim ①），落盘就是「跑一次演习把世界推歪了」，而且在 `listPerturbations`
+     *    里查不到来源。
+     * ⛔ **落点类型不符 ⇒ 不施加，记一条「未能评估」**：`Material.priceShock` 的传导边是
+     *    `viaLinkKey: material_used_by_model`，打到别的类型上首跳恒不触发 ——
+     *    表现与「链断了」一模一样。**静默照打是最坏的处置**（用户看到 0 影响，以为料价不影响毛利）。
+     */
+    const ephemeralPerturbations: Perturbation[] = [];
+    const stateEffectMisses: { kind: string; targetObjectId: string; reason: string }[] = [];
+    for (const [i, ev] of body.events.entries()) {
+      const eff = drillStateEffectFor(ev);
+      if (eff === null) continue; // 这类事件本来就不动世界态（10/11 类如此），不是缺口
+      const actualType = (await repos.objects.get(c.tenantId, ev.targetObjectId))?.type ?? null;
+      if (actualType !== eff.declaredObjectType) {
+        stateEffectMisses.push({
+          kind: ev.kind,
+          targetObjectId: ev.targetObjectId,
+          reason:
+            actualType === null
+              ? `对象 ${ev.targetObjectId} 在本租户不存在 —— ${ev.kind} 的落点必须是 ${eff.declaredObjectType} 对象`
+              : `对象 ${ev.targetObjectId} 是 ${actualType}，而 ${ev.kind} 的落点声明为 ${eff.declaredObjectType}；` +
+                `打错类型 ⇒ 传导边匹配不上 ⇒ 首跳恒不触发（表现与「链断了」一模一样）`,
+        });
+        continue;
+      }
+      ephemeralPerturbations.push({
+        id: `simpert_drill_${s.id}_${i}`, // 确定性 id（R6：同输入同 id，无随机、无时钟）
+        tenantId: c.tenantId,
+        sessionId: s.id,
+        kind: eff.kind,
+        targetObjectId: eff.targetObjectId,
+        targetStateVar: eff.targetStateVar,
+        startTick: s.curTick + Math.max(0, Math.floor(ev.effectiveDay / (s.tickDays ?? 1))),
+        durationTicks: null,
+        magnitude: eff.magnitude,
+        mode: eff.mode,
+        label: `演习临时扰动 · ${ev.kind} ${eff.magnitude > 0 ? "+" : ""}${eff.magnitude}（不入库）`,
+        createdAt: s.createdAt, // 借会话的建单时刻：本对象不落盘，且 R6 禁止在此读时钟
+      });
+    }
+
     // ── ② 传导引擎：推 ceil(horizonDays / tickDays) 拍（**不落盘**）──────────
     const ticks = ticksForDays(body.horizonDays, s.tickDays ?? 1);
     const activeRules = (await sessionPropRules(c, s)).active;
-    const advanced = await simAdvanceTicks(c, s, { rules: activeRules, n: ticks, persist: false });
+    const advanced = await simAdvanceTicks(c, s, { rules: activeRules, n: ticks, persist: false, ephemeralPerturbations });
 
     // ── ③ 卡点扫描（G-DRILL-2）──────────────────────────────────────────────
     const typeOf = new Map<string, string>();
@@ -2879,6 +2944,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       typeOf,
       stateVarLabel: (sv) => stateVarDisplayName(sv) ?? sv,
     });
+    /**
+     * 落点没打上的那些 ⇒ **一等的「未能评估」**，不是从清单里消失（PRD §4.6）。
+     * 「这次冲击没施加上」与「施加了但没影响」是两个不同的屏上状态：
+     * 后者说明料价不重要，前者说明这次演习**什么都没验**。混成一句就是静默错答。
+     */
+    const stateEffectFindings: DrillFinding[] = stateEffectMisses.map((m) => ({
+      key: `state-effect::unapplied::${m.kind}::${m.targetObjectId}`,
+      kind: "未能评估" as const,
+      severity: 0, // 「未能评估」恒 0：它不是一个严重度，是一个空洞
+      where: { objectType: "DrillEvent", objectId: m.targetObjectId, label: `${m.kind}·${m.targetObjectId}` },
+      when: null,
+      why: `本次「${m.kind}」的世界态冲击**未能施加**：${m.reason}。故下面的结论里不含这件事的影响。`,
+      source: { solverKey: "drill-state-effect", dataMode: "EMPTY" as const, provenance: { ...m } },
+      reconciled: null,
+      evidence: m,
+    }));
 
     // ── ④ 求解器编排（G-DRILL-4）—— 真调，不是前端自己算 ────────────────────
     const report = await orchestrateDrill({
@@ -2887,7 +2968,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       tickDays: s.tickDays ?? 1,
       worldId: s.id,
       forkedFromStateId,
-      scanFindings,
+      scanFindings: [...scanFindings, ...stateEffectFindings],
       // 规模闸：**不传也有闸**（编排器落契约默认，绝不回全量）。
       // 实测依据：1,567 对象 × 36 变量的世界一次演习产出 5,593 条 / 4.66MB，
       // 与本仓 metric-series 栽过的那个 O(N×世界规模) 是同一个形状。
