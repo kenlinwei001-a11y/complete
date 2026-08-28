@@ -417,7 +417,7 @@ export default function DecisionConsoleView() {
         <div className={styles.goWrap}>
           <button
             type="button"
-            className={styles.go}
+            className={`${styles.go} ${styles.goSolid}`}
             data-testid="dc-go"
             disabled={run.isPending || added.length === 0 || !sessionId}
             onClick={() => run.mutate()}
