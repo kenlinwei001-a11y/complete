@@ -107,6 +107,7 @@ import {
   assertDrillRoutingTableComplete,
   // WO-MATERIAL-REPRICE：事件 → 世界态落点的**唯一解释器**（落点写在契约规格表里，不是这里的 if）。
   drillStateEffectFor,
+  drillStateEffectAbsolute,
   ticksForDays,
   type DrillEvent,
   type DrillFinding,
@@ -2909,21 +2910,129 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
      *    表现与「链断了」一模一样。**静默照打是最坏的处置**（用户看到 0 影响，以为料价不影响毛利）。
      */
     const ephemeralPerturbations: Perturbation[] = [];
+    /**
+     * 施加前的世界态 —— 幅度要按「该变量在**这个**世界的实测全距」换算，故必须先读一份。
+     * ⚠ 只读，不 `putTickState`（R4-sim ①：演习不改世界线）。
+     */
+    const baseState = await simCurrent(c, s);
     /** 扰动 id → 它是哪个事件带来的（回执要按事件报，别从 id 里反解字符串）。 */
     const effectEventKind = new Map<string, DrillEvent["kind"]>();
+    /** 扰动 id → 回执要的那几格（原始数 / 换算依据 / 落点中文名）。 */
+    const effectReceipt = new Map<
+      string,
+      { rawMagnitude: number; magnitudeBasis: string; targetLabel: string; rangePct: number; observedRange: number }
+    >();
+    /** 扰动 id → 落点的**对象类型**（算出边时必须连类型一起比，见下方 `downstream` 注释）。 */
+    const landingType = new Map<string, string>();
     const stateEffectMisses: { kind: string; targetObjectId: string; reason: string }[] = [];
+    /**
+     * **落点解析：对象 id 与业务键两种都认**（WO-EVENTS-WRITE-STATE）。
+     *
+     * ── 今天的行为是 X，应该是 Y（起真 datacore 4821 · seed 42 · demo 实测）────────
+     * · **X**：`targetObjectId` 这一个字段被两种消费方按**两种口径**读 ——
+     *   求解器入参要业务键（`sop_reschedule.targetOrderId = SO-3391`，
+     *   传 `obj_order_SO-3391` 实测回 `Order obj_order_SO-3391 not found`），
+     *   而世界态落点这一路只按对象 id 查（`repos.objects.get`）。
+     *   ⇒ 一个事件只要**同时**有求解器路由和世界态落点，两边就必然打架：
+     *   前端只能二选一，另一边必红。这正是「10 类事件全部加落点」的拦路石。
+     * · **Y**：落点这一路两种都认 —— 先按对象 id 查，查不到再按规格表声明的
+     *   `keyProp`（`Order⇒so` / `Material⇒matId` / `Base⇒baseId` / `Model⇒modelId` /
+     *   `Line⇒lineId`）在该类型里找。求解器那一路口径不变（仍然只认业务键）。
+     *
+     * ⚠ 兜底**限定在声明的那个类型内**，不做全库模糊匹配：跨类型撞名会把冲击
+     * 打到一个 `viaLinkKey` 匹配不上的对象上，表现与「链断了」一模一样。
+     */
+    const resolveLanding = async (
+      rawId: string,
+      declaredType: string,
+      keyProp: string,
+    ): Promise<{ id: string; label: string } | null> => {
+      const direct = await repos.objects.get(c.tenantId, rawId);
+      if (direct && direct.type === declaredType) {
+        const p = direct.props as Record<string, unknown>;
+        const nm = p.name ?? p[keyProp];
+        return { id: direct.id, label: typeof nm === "string" && nm.length > 0 ? nm : direct.id };
+      }
+      // 按业务键在**声明的那个类型内**找（不跨类型）
+      for (const o of await repos.objects.listByType(c.tenantId, declaredType)) {
+        if (o.mergedInto) continue;
+        const p = o.props as Record<string, unknown>;
+        if (p[keyProp] !== rawId) continue;
+        const nm = p.name ?? p[keyProp];
+        return { id: o.id, label: typeof nm === "string" && nm.length > 0 ? nm : o.id };
+      }
+      return null;
+    };
+
     for (const [i, ev] of body.events.entries()) {
-      const eff = drillStateEffectFor(ev);
-      if (eff === null) continue; // 这类事件本来就不动世界态（10/11 类如此），不是缺口
-      const actualType = (await repos.objects.get(c.tenantId, ev.targetObjectId))?.type ?? null;
-      if (actualType !== eff.declaredObjectType) {
+      const outcome = drillStateEffectFor(ev);
+      // 本事件压根没声明落点 ⇒ 不是缺口，不记账（今天 11/11 都声明了，这一支留着是为了加新事件时不塌）
+      if (outcome.status === "NO_LANDING") continue;
+      /**
+       * ⚠ 声明了落点却解释不出来（幅度没填 / 落点键没填）⇒ **一等的「未能评估」**。
+       * 旧版这里与上一支共用一个 `null`，两件事在回包里长得一模一样 ——
+       * 「这类事件本来就不动世界态」与「本该动却没动」混成一句就是静默错答。
+       */
+      if (outcome.status === "UNRESOLVED") {
+        stateEffectMisses.push({ kind: ev.kind, targetObjectId: ev.targetObjectId, reason: outcome.reason });
+        continue;
+      }
+      const eff = outcome.effect;
+      /**
+       * **幅度按「该变量在本世界的实测全距」换算 —— 现算，不写死任何一个数。**
+       *
+       * ── 今天的行为是 X，应该是 Y（起真 datacore 4821 · seed 42 实测，本单最硬的一跤）──
+       * · **X**：幅度当绝对增量施加。而这个世界跑到 `curTick=3` 时读数早已不在 0–100 上
+       *   （实测 `Order.shortageRisk` = **4,334,834**、
+       *   `MaintenanceOrder.repairBacklog` = **350,416,350**；
+       *   42 条边全部「没有上界、不衰减」，压力逐拍累加 —— 屏上那句诚实位早就写着）。
+       *   ⇒ 一次 `+100` 打在 3.5 亿的底数上是 0.00003%，传下去每一格还在原来的分位里，
+       *   **屏上一个数都不会动**。这正是 COO 那个 `+15 → +100` 对照实验看到的东西。
+       * · **Y**：幅度相对**该变量的实测全距**。「100 = 抬高一个全距」与种子扰动自己那句
+       *   「把「短缺风险」抬高一个全距（+100）」是同一个口径。
+       *
+       * ⚠ **反证**（这条不是推理出来的，是跑出来的）：`lossPct` 拉到 1,000,000 时
+       * 读数变了 **46 格**，拉到 50 时变了 **0 格** ⇒ 不是「链断了」，是量纲差四五个数量级。
+       * 判据落在「变了几格」上，不在「链在不在」上 —— 两者是不同的命题。
+       */
+      const svRange = ((): number => {
+        let lo = Number.POSITIVE_INFINITY;
+        let hi = Number.NEGATIVE_INFINITY;
+        for (const objectId of Object.keys(baseState)) {
+          const v = baseState[objectId]?.[eff.targetStateVar];
+          if (typeof v !== "number" || !Number.isFinite(v)) continue;
+          if (v < lo) lo = v;
+          if (v > hi) hi = v;
+        }
+        return Number.isFinite(lo) && Number.isFinite(hi) ? hi - lo : 0;
+      })();
+      const absMagnitude = drillStateEffectAbsolute(eff.rangePct, svRange);
+      /**
+       * 全距为 0（这个变量全世界只有一个取值，或压根没有读数）⇒ **记「未能评估」不硬打**。
+       * 硬拿 1 当全距 = 施加一个与这个世界无关的数：屏上会显示「打上了」而实际什么都没说。
+       */
+      if (absMagnitude === null) {
         stateEffectMisses.push({
           kind: ev.kind,
-          targetObjectId: ev.targetObjectId,
+          targetObjectId: eff.targetObjectId,
           reason:
-            actualType === null
-              ? `对象 ${ev.targetObjectId} 在本租户不存在 —— ${ev.kind} 的落点必须是 ${eff.declaredObjectType} 对象`
-              : `对象 ${ev.targetObjectId} 是 ${actualType}，而 ${ev.kind} 的落点声明为 ${eff.declaredObjectType}；` +
+            `本世界里「${eff.declaredObjectType}.${eff.targetStateVar}」这个变量的实测全距是 0` +
+            `（所有对象上取值相同，或压根没有读数）⇒ 换算不出可施加的幅度。` +
+            `硬按一个假全距施加会让屏上显示「打上了」而其实与这个世界无关，故据实报缺。`,
+        });
+        continue;
+      }
+      const landed = await resolveLanding(eff.targetObjectId, eff.declaredObjectType, eff.keyProp);
+      if (landed === null) {
+        const probed = (await repos.objects.get(c.tenantId, eff.targetObjectId)) ?? null;
+        stateEffectMisses.push({
+          kind: ev.kind,
+          targetObjectId: eff.targetObjectId,
+          reason:
+            probed === null
+              ? `在本租户找不到 ${eff.targetObjectId} 这个 ${eff.declaredObjectType}（按对象 id 与按业务键 ${eff.keyProp} 都找过了）` +
+                ` —— ${ev.kind} 的世界态落点必须是一个真实存在的 ${eff.declaredObjectType} 对象`
+              : `对象 ${eff.targetObjectId} 是 ${probed.type}，而 ${ev.kind} 的落点声明为 ${eff.declaredObjectType}；` +
                 `打错类型 ⇒ 传导边匹配不上 ⇒ 首跳恒不触发（表现与「链断了」一模一样）`,
         });
         continue;
@@ -2963,16 +3072,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         tenantId: c.tenantId,
         sessionId: s.id,
         kind: eff.kind,
-        targetObjectId: eff.targetObjectId,
+        // ⚠ 用**解析后**的对象 id，不是用户传的那个串 —— 用户可能传的是业务键（SO-3391）
+        targetObjectId: landed.id,
         targetStateVar: eff.targetStateVar,
         startTick,
         durationTicks: null,
-        magnitude: eff.magnitude,
+        magnitude: absMagnitude,
         mode: eff.mode,
-        label: `演习临时扰动 · ${ev.kind} ${eff.magnitude > 0 ? "+" : ""}${eff.magnitude}（不入库）`,
+        label: `演习临时扰动 · ${ev.kind} ${eff.rangePct > 0 ? "+" : ""}${eff.rangePct}% 全距 = ${absMagnitude > 0 ? "+" : ""}${absMagnitude}（不入库）`,
         createdAt: s.createdAt, // 借会话的建单时刻：本对象不落盘，且 R6 禁止在此读时钟
       });
       effectEventKind.set(`simpert_drill_${s.id}_${i}`, ev.kind);
+      effectReceipt.set(`simpert_drill_${s.id}_${i}`, {
+        rawMagnitude: eff.rawMagnitude,
+        magnitudeBasis: eff.basis,
+        targetLabel: landed.label,
+        rangePct: eff.rangePct,
+        observedRange: svRange,
+      });
+      landingType.set(`simpert_drill_${s.id}_${i}`, eff.declaredObjectType);
     }
 
     // ── ② 传导引擎：推 ceil(horizonDays / tickDays) 拍（**不落盘**）──────────
@@ -3030,6 +3148,28 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         magnitude: p.magnitude,
         startTick: p.startTick,
         applied: advanced.perturbationWrites.includes(p.id),
+        rawMagnitude: effectReceipt.get(p.id)?.rawMagnitude ?? 0,
+        magnitudeBasis: effectReceipt.get(p.id)?.magnitudeBasis ?? "",
+        targetLabel: effectReceipt.get(p.id)?.targetLabel ?? p.targetObjectId,
+        rangePct: effectReceipt.get(p.id)?.rangePct ?? 0,
+        observedRange: effectReceipt.get(p.id)?.observedRange ?? 0,
+        /**
+         * **「这一格有出边」的回执** —— 现读本次生效的规则表，不是抄一份静态清单。
+         * 派单原话：「落点选错比不落更糟 —— 落在一个没有出边的状态量上，
+         * 等于"看起来改了实际还是不动"」。所以每条冲击都要能自证第一跳去哪；
+         * 数组为空 = 这一格是叶子，屏上必须看得见（而不是安静地什么都不显示）。
+         */
+        /**
+         * ⚠ 必须**同时**比对源类型与源状态变量。只比状态变量名会串台：
+         * `costPressure` 在 `Model` 和 `Order` 上各有一格，只比名字会把
+         * `Model.costPressure → Order.costPressure` 这条边算成 `Order.costPressure` 的出边
+         * —— 于是一个真正的叶子会显示成「有 2 条出边」。本单开发中实测踩到过一次，
+         * 差点据此判「ORDER_REPRICE 的落点通得下去」。
+         */
+        downstream: activeRules
+          .filter((r) => r.sourceStateVar === p.targetStateVar && r.sourceTypeKey === landingType.get(p.id))
+          .map((r) => `${r.targetTypeKey}.${r.targetStateVar} ×${r.coefficient}`)
+          .sort(),
       })),
       // 规模闸：**不传也有闸**（编排器落契约默认，绝不回全量）。
       // 实测依据：1,567 对象 × 36 变量的世界一次演习产出 5,593 条 / 4.66MB，

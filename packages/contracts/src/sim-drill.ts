@@ -209,10 +209,23 @@ export const DrillStateEffectSchema = z.object({
    */
   keyProp: z.string().min(1),
   /**
-   * **业务单位 → 状态变量点数**的换算（状态变量是 0–100 的「全距」刻度，
-   * 见种子日志原文：「把「短缺风险」抬高一个全距（+100）」）。
+   * **业务单位 → 「该状态变量全距的百分之几」** 的换算。
    *
-   * ⛔ 这个数**不许拍脑袋**（派单原话：「不许为了让数字动而随便放大系数」）。
+   * ── 为什么单位是「全距的百分比」而不是绝对点数（实测逼出来的，不是设计偏好）──────
+   * 起真 datacore 4821 · seed 42 实测：种子世界跑到 `curTick=3` 时，
+   * 状态变量的读数**根本不在 0–100 上** —— `Order.shortageRisk` 实测 **4,334,834**、
+   * `MaintenanceOrder.repairBacklog` 实测 **350,416,350**（42 条传导边全部
+   * 「没有上界、不衰减」，压力逐拍累加，本仓自己的诚实位早就把这句写在屏上了）。
+   * ⇒ 若幅度按绝对点数给，一次 `+100` 打在 3.5 亿的底数上是 **0.00003%**，
+   * 传下去每一格都还在原来的分位里 —— 屏上一个数都不会动。
+   * **实测反证**：把 `lossPct` 拉到 1,000,000 时读数变了 **46 格**，
+   * 拉到 50 时变了 **0 格** ⇒ 不是「链断了」，是**量纲差了四五个数量级**。
+   *
+   * ⇒ 故幅度一律相对**该变量在本世界的实测全距**（`max − min`，跑的时候现算，
+   * 不写死任何一个数）。`100` = 抬高一个全距 —— 与种子扰动自己那句
+   * 「把「短缺风险」抬高一个全距（+100）」是同一个口径。
+   *
+   * ⛔ 这个系数**不许拍脑袋**（派单原话：「不许为了让数字动而随便放大系数」）。
    * 只有三种合法来源，每条都必须在 `magnitudeBasis` 里写出出处：
    *  ① 幅度键本身就是百分比 ⇒ `1`（零换算，绝大多数事件走这条）；
    *  ② 幅度键是「天」⇒ `100/30`（本平台推演窗口就是 30 天 ⇒ 30 天 = 一个全距）；
@@ -698,7 +711,6 @@ export function drillRoutesFor(kind: DrillEventKind): DrillRoute[] {
 export interface DrillStateEffectResolved {
   targetObjectId: string;
   targetStateVar: string;
-  magnitude: number;
   mode: "set" | "delta" | "scale";
   kind: DrillStateEffect["perturbationKind"];
   declaredObjectType: string;
@@ -706,8 +718,27 @@ export interface DrillStateEffectResolved {
   keyProp: string;
   /** 用户填的原始数（换算前）。回执要同时给原始数与换算后的点数，否则屏上对不上账。 */
   rawMagnitude: number;
+  /**
+   * ⚠ `magnitude` 是**「该变量全距的百分之几」**，不是绝对增量 ——
+   * 调用方必须再乘上它在本世界实测的全距才是可施加的幅度（见 `drillStateEffectAbsolute`）。
+   * 单独拿它当 `Perturbation.magnitude` 用，就是本单一开始栽的那一跤：
+   * 打一个 +100 在 3.5 亿的底数上，屏上一个数都不动。
+   */
+  rangePct: number;
   /** 换算依据原文（`magnitudeBasis`），随回执上屏。 */
   basis: string;
+}
+
+/**
+ * 把「全距百分比」换成**这个世界里可施加的绝对幅度** ——**全平台唯一实现**。
+ *
+ * `observedRange` = 该状态变量在本世界所有对象上的 `max − min`（调用方现算，别写死）。
+ * ⛔ 全距为 0（这个变量全世界只有一个取值）⇒ 返回 `null`，由调用方记「未能评估」：
+ * 硬拿 1 当全距会让幅度变成一个与世界无关的数，那就是「看起来施加了、其实什么都没说」。
+ */
+export function drillStateEffectAbsolute(rangePct: number, observedRange: number): number | null {
+  if (!Number.isFinite(observedRange) || observedRange <= 0) return null;
+  return (rangePct / 100) * observedRange;
 }
 
 /**
@@ -761,12 +792,12 @@ export function drillStateEffectFor(ev: DrillEvent): DrillStateEffectOutcome {
     effect: {
       targetObjectId: targetRaw,
       targetStateVar: eff.stateVar,
-      magnitude: raw * eff.magnitudePerUnit,
       mode: eff.mode,
       kind: eff.perturbationKind,
       declaredObjectType: eff.objectType,
       keyProp: eff.keyProp,
       rawMagnitude: raw,
+      rangePct: raw * eff.magnitudePerUnit,
       basis: eff.magnitudeBasis,
     },
   };
@@ -980,6 +1011,15 @@ export const DrillReportSchema = z.object({
          */
         rawMagnitude: z.number().default(0),
         magnitudeBasis: z.string().default(""),
+        /**
+         * 幅度的两段账，**必须都回**，否则屏上那个 `magnitude` 是个来路不明的数：
+         * 用户填「停机 30 天」⇒ `rangePct: 100`（一个全距）⇒ 乘上本世界该变量的
+         * 实测全距 `observedRange` ⇒ 才是真正施加的 `magnitude`。
+         * ⚠ `observedRange` 每个世界都不一样（本世界实测 `repairBacklog` 量级到 3.5 亿），
+         * 所以它必须**随每次演习回**，不能当常数印在文档里。
+         */
+        rangePct: z.number().default(0),
+        observedRange: z.number().default(0),
         /** 落点对象的中文名（取不到就回 id）—— 屏上不该只出现 `obj_line_LINE-WS-...`。 */
         targetLabel: z.string().default(""),
         /** 这一格顺着传导图的**第一跳去哪** —— 「有出边」这件事的回执，屏上据此说人话。 */
