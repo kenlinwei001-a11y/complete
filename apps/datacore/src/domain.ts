@@ -377,6 +377,21 @@ export interface DerivedPropertyDef {
   propKey: string;
   /** e.g. "SUM(Order.qty BY model)" | "COUNT(Order.so BY bases)" | "qty * unitPrice" */
   formula: string;
+  /**
+   * WO-UNIT-KWH · 量纲单位（**必填**，与 {@link PropertyDef} 同一套词表）。
+   *
+   * ⚠ 为什么派生属性也必须报量纲：派生值**恰恰是最容易出量纲事故的那一类** —— 它的单位由公式
+   * 决定，而公式里两个因子的单位常常不同（`Order.value = qty(件) × unitPrice(元)` ⇒ 元；
+   * `revenueWan = 需求(万套) × priceWan(万元/套)` ⇒ **万元**）。改前 `DerivedPropertyDef` 只有
+   * `propKey` 与 `formula`，**结构上就没有地方声明单位**，于是这三个金额字段的口径只活在行尾注释里：
+   *   `revenueWan` 注释「收入(万)」· `marginWan` 注释「毛利额(万)」· `Order.value` 注释在别处。
+   * 本仓真实为此吃过亏：`gap_attribution` 曾标 `drillField:"value"`（`Order.value` 单位=元）
+   * 却回万元口径的归因权重，**差 1e4**（见 `solvers/chain-loss.ts` 的病史注释）。
+   * 注释救不了机器 —— 补上声明位，让派生值的单位和普通属性一样可被读取与校验。
+   */
+  unit: PropertyUnit;
+  /** WO-UNIT-KWH · 量纲刻度（**必填**）。绝对量 / 比例量，判据同 {@link PropertyScale}。 */
+  scale: PropertyScale;
 }
 
 /** 治理增量 §2.2 弃用元数据（type/link/prop 复用同结构）。 */

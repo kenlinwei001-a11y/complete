@@ -1433,7 +1433,7 @@ export class SyntheticService {
             scale: "absolute" as const,
             refToTypeKey: p.refToTypeKey ?? null,
           })),
-          derivedProperties: td.derivedProperties ?? [],
+          derivedProperties: (td.derivedProperties ?? []).map((d) => ({ ...d, unit: "dimensionless" as const, scale: "absolute" as const })),
           sourceBindings: [],
         });
       }

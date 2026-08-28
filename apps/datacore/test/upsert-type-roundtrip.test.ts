@@ -55,7 +55,7 @@ function fullTypeInput(key = "D6Probe"): Omit<ObjectTypeDef, "id" | "tenantId" |
       },
       { propKey: "risk", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
     ],
-    derivedProperties: [{ propKey: "risk", formula: "probeId" }],
+    derivedProperties: [{ propKey: "risk", formula: "probeId", unit: "dimensionless", scale: "absolute" as const }],
     sourceBindings: [{ connId: "conn_probe", dataset: "ds_probe", fieldMappings: { probeId: "PROBE_ID" } }],
     // —— 以下 7 个即 WO-D6 的被吞字段（OntoFlow 扩展 / 本体七要素残片）——
     storageMode: "ONTOLOGY",

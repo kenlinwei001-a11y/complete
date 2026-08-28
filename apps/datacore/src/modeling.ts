@@ -457,7 +457,8 @@ export class ModelingService {
             searchable: p.isPrimaryKey || p.propKey === "name" || p.propKey === "displayName" || undefined,
           })),
           // 轨L 增量2：携带草案派生属性（半自动建模人工 PATCH 填入的 R14 KPI 派生图叶子）。
-          derivedProperties: (t.derivedProperties ?? []).map((d) => ({ propKey: d.propKey, formula: d.formula })),
+          // 量纲：建模链上游无单位元数据（同上游属性），显式声明「已知无量纲」而非省略。
+          derivedProperties: (t.derivedProperties ?? []).map((d) => ({ propKey: d.propKey, formula: d.formula, unit: "dimensionless" as const, scale: "absolute" as const })),
           sourceBindings: binding,
         });
       }

@@ -949,10 +949,10 @@ const baseProps: PropertyDef[] = [
   { propKey: "serveCost", dataType: "number", isPrimaryKey: false, unit: "万元", scale: "absolute", description: "单位需求点年均干线履约成本（万元/需求点·年）= 产能加权全网平均干线距离 × 每公里费率；facility_location 的 assign_cost 系数源。" },
 ];
 const baseDerived: DerivedPropertyDef[] = [
-  { propKey: "orderCount", formula: "COUNT(Order.so BY bases)" },
-  { propKey: "committedQty", formula: "SUM(Order.qty BY bases)" },
+  { propKey: "orderCount", formula: "COUNT(Order.so BY bases)", unit: "单", scale: "absolute" },
+  { propKey: "committedQty", formula: "SUM(Order.qty BY bases)", unit: "件", scale: "absolute" },
   // A8/T3: snapshot property (Equipment.oee_current) is a legal leaf of the derivation graph.
-  { propKey: "oeeIndex", formula: "AVG(Equipment.oee_current BY baseId)" },
+  { propKey: "oeeIndex", formula: "AVG(Equipment.oee_current BY baseId)", unit: "dimensionless", scale: "ratio" },
 ];
 
 const modelProps: PropertyDef[] = [
@@ -977,8 +977,8 @@ const modelProps: PropertyDef[] = [
   { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 量产 | 试产 | 研发中 | 退役
 ];
 const modelDerived: DerivedPropertyDef[] = [
-  { propKey: "totalDemand", formula: "SUM(Order.qty BY model)" },
-  { propKey: "orderCount", formula: "COUNT(Order.so BY model)" },
+  { propKey: "totalDemand", formula: "SUM(Order.qty BY model)", unit: "件", scale: "absolute" },
+  { propKey: "orderCount", formula: "COUNT(Order.so BY model)", unit: "单", scale: "absolute" },
 ];
 
 // Phase 2 Wave 1：产品域基础对象（ProductPlatform / ProductSeries / ProductVersion）
@@ -1206,7 +1206,7 @@ const orderProps: PropertyDef[] = [
   { propKey: "early", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 是否需提前交付（乘用车部分客户）
   { propKey: "earlyDue", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 提前交期（early 时·= due − 提前天数）
 ];
-const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * unitPrice" }];
+const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * unitPrice", unit: "元", scale: "absolute" }];
 
 const lineProps: PropertyDef[] = [
   { propKey: "lineId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
@@ -1341,8 +1341,19 @@ const demandSegmentProps: PropertyDef[] = [
   { propKey: "businessType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // WO-W5·业务类型（passenger|commercial|storage·= 细分名映射）
 ];
 const demandSegmentDerived: DerivedPropertyDef[] = [
-  { propKey: "revenueWan", formula: "demandWanPerYearP50 * priceWan" }, // 收入(万) = 需求×单价
-  { propKey: "marginWan", formula: "demandWanPerYearP50 * priceWan * marginPct / 100" }, // 毛利额(万)
+  // ⚠⚠ 这两个字段的**名字和原注释都是错的，差 1e4**（WO-UNIT-KWH 实测订正）。
+  // 名字里的 `Wan` 和原注释「收入(万)/毛利额(万)」都指向「万元」，**实际单位是「亿元」**。
+  // 逐位实证（本文件需求层锚，见 SOP_SEG 那段注释「合计 375 万套/年 … totalRev=700.0亿」）：
+  //   量纲推演：`万套/年` × `万元/套` = (1e4 套) × (1e4 元/套) = **1e8 元 = 亿元**
+  //   数值对拍：201.7×2.2 + 139.2×1.4 + 34.1×1.8 = **700.00**，而 `scaleAnchorRevenue.S = 700`
+  //            的单位注释自述是「**亿**」⇒ ΣrevenueWan 就是 700 亿元，不是 700 万元。
+  //   交叉验证：Σ marginWan / Σ revenueWan = 118.85/700.00 = **17.0%**，与本文件注释自述的
+  //            「gmRate≈17.0%」逐位吻合 ⇒ 两个字段同族同量纲，一起是亿元。
+  // ⇒ 这也是「按字段名机械抄单位」这条捷径的反例：`Wan` 后缀在这里**不度量它的单位**。
+  //   名字暂不改（`revenueWan` 是求解器/前端/金值的接线名，改名要连断言一起改，属另一张单）；
+  //   但机器可读的 `unit` 必须说真话 —— 从今天起以本声明为准，不以名字为准。
+  { propKey: "revenueWan", formula: "demandWanPerYearP50 * priceWan", unit: "亿元", scale: "absolute" },
+  { propKey: "marginWan", formula: "demandWanPerYearP50 * priceWan * marginPct / 100", unit: "亿元", scale: "absolute" },
 ];
 const financePlanProps: PropertyDef[] = [
   { propKey: "finId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
@@ -1403,7 +1414,7 @@ const materialBalanceProps: PropertyDef[] = [
  * 等哪天补了现货这条路，公式会**静默给出错的数**。故取定义式（缺口口径），不取巧合式。
  */
 const materialBalanceDerived: DerivedPropertyDef[] = [
-  { propKey: "coverage", formula: "(netDemandTon - gapTon) / netDemandTon" },
+  { propKey: "coverage", formula: "(netDemandTon - gapTon) / netDemandTon", unit: "dimensionless", scale: "ratio" },
 ];
 
 // cockpit P2 + SPINE 绿地：规划决策推演 + 根因 DAG + 经营目标-指标-责任骨架。
@@ -1430,8 +1441,8 @@ const metricProps: PropertyDef[] = [
   { propKey: "businessType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // passenger | commercial | storage（仅 seg 指标有·非 seg 指标缺省）
 ];
 const metricDerived: DerivedPropertyDef[] = [
-  { propKey: "delta", formula: "actual - target" }, // 差异（带符号）
-  { propKey: "gapPct", formula: "(actual - target) / target * 100" }, // 缺口%（带符号，越线为负）
+  { propKey: "delta", formula: "actual - target", unit: "dimensionless", scale: "absolute" }, // 差异（带符号）
+  { propKey: "gapPct", formula: "(actual - target) / target * 100", unit: "%", scale: "ratio" }, // 缺口%（带符号，越线为负）
 ];
 const ksfProps: PropertyDef[] = [
   { propKey: "ksfId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
@@ -1462,7 +1473,7 @@ const sopVersionRowProps: PropertyDef[] = [
   { propKey: "isFinal", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 const sopVersionRowDerived: DerivedPropertyDef[] = [
-  { propKey: "gap", formula: "demand - supply" }, // 产销缺口（派生）
+  { propKey: "gap", formula: "demand - supply", unit: "万套/年", scale: "absolute" }, // 产销缺口（派生）
 ];
 /**
  * WO-ADOPT-MITIGATION · 已采纳处置方案台账（`adopt_mitigation` Action 审批通过后的**唯一落点**）。
@@ -1536,7 +1547,7 @@ const interBaseTransferProps: PropertyDef[] = [
   { propKey: "reason", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 // etaDate(到货) = dispatch + transitDays：数值派生管线只支持数值算术，故派生落在 etaDay（天偏移·确定性·无时钟）。
-const interBaseTransferDerived: DerivedPropertyDef[] = [{ propKey: "etaDay", formula: "dispatchDay + transitDays" }];
+const interBaseTransferDerived: DerivedPropertyDef[] = [{ propKey: "etaDay", formula: "dispatchDay + transitDays", unit: "天", scale: "absolute" }];
 
 const dataHealthProps: PropertyDef[] = [
   { propKey: "sourceId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
@@ -1556,7 +1567,7 @@ const finishedGoodsInvProps: PropertyDef[] = [
   { propKey: "asOf", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 // 可用量派生（qtyAvailable = qtyOnHand − qtyReserved）：派生投影非新真值（R13），走 derivedProperties。
-const finishedGoodsInvDerived: DerivedPropertyDef[] = [{ propKey: "qtyAvailable", formula: "qtyOnHand - qtyReserved" }];
+const finishedGoodsInvDerived: DerivedPropertyDef[] = [{ propKey: "qtyAvailable", formula: "qtyOnHand - qtyReserved", unit: "件", scale: "absolute" }];
 
 // WO-ATP-PROMISE · 订单承诺台账（一订单一承诺行·ATP/CTP「能不能接、何时交」）。
 const orderPromiseProps: PropertyDef[] = [

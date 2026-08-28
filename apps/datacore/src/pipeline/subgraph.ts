@@ -45,7 +45,7 @@ export function buildTypeDefs(wf: OntologyWorkflow): TypeInput[] {
       props.set(sv.propKey, { propKey: sv.propKey, dataType: dt(sv.dataType), isPrimaryKey: false, unit: "dimensionless", scale: "absolute" });
     }
     const derived: DerivedPropertyDef[] = (m.derived ?? [])
-      .map((d) => ({ propKey: String((d as { propKey?: unknown }).propKey ?? ""), formula: String((d as { formula?: unknown }).formula ?? "") }))
+      .map((d) => ({ propKey: String((d as { propKey?: unknown }).propKey ?? ""), formula: String((d as { formula?: unknown }).formula ?? ""), unit: "dimensionless" as const, scale: "absolute" as const }))
       .filter((d) => d.propKey && d.formula);
     out.push({
       key: m.typeKey,

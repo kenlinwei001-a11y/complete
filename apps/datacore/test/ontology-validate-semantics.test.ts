@@ -37,7 +37,7 @@ const metricType = (opts: { actualUnit: PropertyUnit; gapFormula: string }): Omi
     prop("target", { description: "目标值", unit: "%" }),
     prop("gap", { description: "缺口" }),
   ],
-  derivedProperties: [{ propKey: "gap", formula: opts.gapFormula }],
+  derivedProperties: [{ propKey: "gap", formula: opts.gapFormula, unit: "%", scale: "ratio" as const }],
   sourceBindings: [],
 });
 

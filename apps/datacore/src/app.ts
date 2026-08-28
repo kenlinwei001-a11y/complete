@@ -3775,7 +3775,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             description: z.string().optional(),
           }),
         ),
-        derivedProperties: z.array(z.object({ propKey: z.string(), formula: z.string() })).default([]),
+        // WO-UNIT-KWH · 派生属性同样可声明量纲（缺省在下方边界补成显式 dimensionless）。
+        derivedProperties: z.array(z.object({ propKey: z.string(), formula: z.string(), unit: z.string().optional(), scale: z.enum(["absolute", "ratio"]).optional() })).default([]),
         sourceBindings: z
           .array(
             z.object({
@@ -3837,7 +3838,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       unit: (p.unit ?? "dimensionless") as PropertyUnit,
       scale: (p.scale ?? "absolute") as PropertyScale,
     }));
-    return reply.status(201).send(await ontology.upsertType(c, { ...body, properties }));
+    const derivedProperties = body.derivedProperties.map((d) => ({
+      ...d,
+      unit: (d.unit ?? "dimensionless") as PropertyUnit,
+      scale: (d.scale ?? "absolute") as PropertyScale,
+    }));
+    return reply.status(201).send(await ontology.upsertType(c, { ...body, properties, derivedProperties }));
   });
 
   // ---- WO-69 P3 · 对象接口（多态抽象）--------------------------------------

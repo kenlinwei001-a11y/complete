@@ -34,7 +34,7 @@ async function seedSemanticOntology(t: TestApp, ctx = ADMIN_CTX): Promise<void> 
         prop("target", { description: "目标值", unit: "%" }),
         prop("gap", { description: "缺口" }),
       ],
-      derivedProperties: [{ propKey: "gap", formula: "actual - target" }],
+      derivedProperties: [{ propKey: "gap", formula: "actual - target", unit: "%", scale: "ratio" as const }],
       sourceBindings: [],
     },
     {
@@ -119,7 +119,7 @@ describe("WO-QOS-ONTOLOGY-CONTEXT · GET /a/v1/ontology/type-semantics（口径�
         prop("target", { description: "目标值", unit: "%" }),
         prop("gap", { description: "缺口" }),
       ],
-      derivedProperties: [{ propKey: "gap", formula: "actual - target" }],
+      derivedProperties: [{ propKey: "gap", formula: "actual - target", unit: "%", scale: "ratio" as const }],
       sourceBindings: [],
     });
     await t.services.ontology.publishVersion(ADMIN_CTX);
