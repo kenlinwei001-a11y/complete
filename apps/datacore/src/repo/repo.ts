@@ -422,6 +422,22 @@ export interface SimRepo {
   listCheckpoints(tenantId: string, sessionId: string): Promise<SimCheckpoint[]>;
   putPropagationRule(r: PropagationRule): Promise<void>;
   listPropagationRules(tenantId: string, publishedOnly?: boolean): Promise<PropagationRule[]>;
+  /**
+   * 按 id 读一条传导边（**跨租户一律 `null`**·R2）。WO-ONTOLOGY-EDGE-EDIT 新增。
+   *
+   * 为什么改/删路由非要先有这一条：`putPropagationRule` 是**按 id 幂等覆盖**、不看 tenantId
+   * （`repo/memory.ts` 就一句 `this.rules.set(r.id, …)`；pg 侧是 `ON CONFLICT (id) DO UPDATE`）。
+   * 于是 `PUT /:id` 若直接把 body 写下去，**A 租户能覆盖 B 租户的边** —— 参数里的 id 是客户端给的。
+   * 租户闸必须落在**写之前的一次读**上：读不到（或不是本租户的）⇒ 404，连写都不发生。
+   * 这与同文件 `getPerturbation` 的写法同构，不是本单发明的新纪律。
+   */
+  getPropagationRule(tenantId: string, id: string): Promise<PropagationRule | null>;
+  /**
+   * 删一条传导边。返回**是否真的删掉了**（`false` = 不存在或不属本租户 ⇒ 调用方转 404）。
+   * 与 `deletePerturbation` 同一形状：布尔回执而不是 void —— void 会让「删了」与
+   * 「压根没这条」在调用点长得一模一样，于是跨租户删除会静默回 200。
+   */
+  deletePropagationRule(tenantId: string, id: string): Promise<boolean>;
   // ── 扰动一等公民（WO-P0 · migrations/028_perturbations.sql · PRD-UPGRADE-decision-sandbox-v2 §3.1）──
   // R9 三处同改：本接口 + memory.ts MemSimRepo + pg.ts PgSimRepo，语义须无漂移。
   /** 建一条扰动（幂等 upsert：同 id 覆盖，便于 pg/memory 语义一致）。 */
