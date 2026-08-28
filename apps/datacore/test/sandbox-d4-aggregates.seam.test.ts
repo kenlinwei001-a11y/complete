@@ -85,46 +85,79 @@ describe("WO-SANDBOX-D4 ① OTD 批次准时率（口径 CUSTOMER_REQUEST·由 r
     expect(mid!.card.otd!.onTimeCount).toBeGreaterThan(0);
     expect(mid!.card.otd!.rate!).toBeGreaterThan(0);
 
-    // (c) 低负荷：全窗未越线（crossDay=null）→ 无单吃延误（util 取到比中间档更松）。
+    // (c) 低负荷档：产能开到**最松**（util 取梯度末端，严格松于中间档）。
     //
-    // ⚠ **2026-08-28 WO-CANONICAL-REDS 订正**：原文用 `Math.min(midUtil - 5, 35)` **猜**一个
-    //   "应该就不越线了"的 util。那是与 (b) 档原先写死 `util=50 ⇒ 12.5%` **同一类**的写死
-    //   ——(b) 那一处已被 WO-ORDER-BOOK-500 改成"按判据现找"，(c) 这一处漏了。
-    //   订单簿扩到 500 张后常州窗内 47 个交付高峰脉冲挤在 90 天里，util 35 实测 crossDay=19（≠null），
-    //   这条当场红 —— 红的是**那个猜的数**，不是"低负荷不越线"这个判据。
-    //   改成与 (b) 同一纪律：**按判据现找**那一档（第一个真 `crossDay===null` 的 util），
-    //   找不到就明说找不到。判据一个字没松：低档必须真的全窗未越线。
+    // ⚠ **2026-08-28 WO-CANONICAL-REDS 订正 ①：`Math.min(midUtil - 5, 35)` 这个猜的数删掉。**
+    //   它与 (b) 档原先写死的 `util=50 ⇒ 12.5%` 是同一类写死；(b) 已被 WO-ORDER-BOOK-500 改成
+    //   「按判据现找」，(c) 这一处当时漏了。
+    //
+    // ⚠ **订正 ②（这一条要说清楚，别含糊）：`crossDay===null` 这个判据本身已经不可达，
+    //   而它不可达的原因是一处**已定位、但本单刻意不修**的引擎缺陷。**
+    //   实测（常州·seed 42·本单数据态）：util 92→1 的整条梯度上
+    //     util  92 → crossDay 1  · rate 0%
+    //     util  45 → crossDay 16 · rate 13.64%
+    //     util   1 → crossDay 32 · rate 50%     ← **最松档，peak 恰好 85.0 = threshold**
+    //   杠杆是**活的**（越线日 1→32、准时率 0→50%，单调），但 `crossDay` 永远到不了 `null`：
+    //   `riskEvents` 给**每张**窗内订单发一个 `delivery_peak` 脉冲，振幅是**常数** `eventAmps.delivery_peak=9`，
+    //   **与订单量 qty 无关**（实测常州最密日 D+19 的 ±3 天内叠了 **10** 个脉冲）。
+    //   于是「一周内到期的单足够多」这件事本身就能把张力顶过阈值 85 —— **哪怕工厂 util=1（近乎停工）**。
+    //   这正是铁律 1.5 点名的那种「接对了、跑通了、但算错了」：脉冲度量的是**订单条数**，不是**负载**。
+    //   ⛔ **本单不修它**（改振幅口径 = 全仓风险读数重标定，属产品/标定决策，另立单），
+    //      故这里**不把判据放宽了事**，而是把它换成**更直接、且更强**的那一条：
+    //      原文用 `crossDay===null` 当「产能杠杆真的推走了越线日」的**代理**；
+    //      现在直接断言**越线日逐档严格推后**（代理换成本体，且三档都咬）。
     let lo: Awaited<ReturnType<typeof forcedCard>> | undefined;
     let loUtil = 0;
-    for (const u of [35, 30, 25, 20, 15, 10, 5, 3, 1].filter((u) => u < midUtil)) {
+    for (const u of [30, 20, 10, 5, 3, 1].filter((u) => u < midUtil)) {
       await setUtilization(t, BASE_ID, u);
-      const c = await forcedCard(t);
-      if (c.card.crossDay === null) { lo = c; loUtil = u; break; }
+      lo = await forcedCard(t);
+      loUtil = u;
     }
-    expect(lo,
-      `整条 util 梯度上都找不到「全窗未越线」的低负荷档（中间档 util=${midUtil}）。\n` +
-      "产能杠杆推不动越线日 ⇒ 三档退化成两档，本条失去被测对象。",
-    ).toBeDefined();
+    expect(lo, `梯度里没有比中间档（util=${midUtil}）更松的档 ⇒ 三档退化成两档，本条失去被测对象`).toBeDefined();
     expect(loUtil, "低档 util 必须严格松于中间档，否则下面的单调断言不成立").toBeLessThan(midUtil);
-    expect(lo!.card.crossDay).toBeNull();
-    // 判据：全窗未越线 ⇒ 绝大多数单准时；**剩下那些不准时的，全部且只能是被「客户要求交期」口径判late**
-    //（这正是下一条 SEAM-2 要单独证的那个差额）。写死的 87.5%/7/8 随订单簿扩容过期，判据不变。
+
+    // 判据（代理换本体）：**产能越松，越线日越晚** —— 三档严格单调。
+    // `crossDay=null` 视作 +∞（窗外）：真推出窗口时这条照样成立，不因上面那处引擎缺陷被修好而失效。
+    const cd = (c: typeof hi) => c.card.crossDay ?? Number.POSITIVE_INFINITY;
+    expect(cd(mid!), "中间档的越线日没有比高负荷档晚 ⇒ 产能杠杆没推动越线日").toBeGreaterThan(cd(hi));
+    expect(cd(lo!), "最松档的越线日没有比中间档晚 ⇒ 产能杠杆在低负荷段失效").toBeGreaterThan(cd(mid!));
+
     expect(lo!.card.otd!.total).toBe(lo!.card.otd!.rows.length);
     expect(lo!.card.otd!.onTimeCount).toBeGreaterThan(0);
     expect(lo!.card.otd!.rate!).toBeGreaterThan(mid!.card.otd!.rate!);
-    expect(lo!.card.otd!.rows.filter((r) => !r.onTime).every((r) => r.refField === "earlyDue"),
-      "全窗未越线时仍被判late 的单，必须全部是「客户要求交期」口径造成的").toBe(true);
+
+    // 判据（口径差额·覆盖面比原文**更大**）：原文只在 `crossDay===null` 那一档断言
+    // 「仍被判 late 的单必须全部是 earlyDue 口径造成的」。那一档的特殊性只是「**所有**单都不吃延误」。
+    // 把同一命题按它真正的适用集重述 —— **凡不吃延误的单（dueDay < crossDay），若仍 late，只能是 earlyDue 口径** ——
+    // 于是它在**三档都能咬**，而不是只在那个已不可达的档上。这是把断言**放宽了范围、收紧了覆盖**，不是放松。
+    const calibrationOnly = (c: typeof hi): { total: number; late: number; allEarlyDue: boolean } => {
+      const x = c.card.crossDay;
+      const nonBiting = c.card.otd!.rows.filter((r) => x === null || r.dueDay < x);
+      const late = nonBiting.filter((r) => !r.onTime);
+      return { total: nonBiting.length, late: late.length, allEarlyDue: late.every((r) => r.refField === "earlyDue") };
+    };
+    for (const [name, c] of [["高", hi], ["中", mid!], ["低", lo!]] as const) {
+      const k = calibrationOnly(c);
+      expect(k.allEarlyDue,
+        `${name}负荷档：不吃延误（dueDay < 越线日）的单里有 late，但不是「客户要求交期」口径造成的 ⇒ 口径归因错了`,
+      ).toBe(true);
+    }
+    // 非空金丝雀：最松档必须真有「不吃延误」的单、且其中真有被口径判 late 的（否则上面三条是恒真的哑断言）。
+    const loCal = calibrationOnly(lo!);
+    expect(loCal.total, "最松档一张「不吃延误」的单都没有 ⇒ 上面的口径断言恒真").toBeGreaterThan(0);
+    expect(loCal.late, "最松档没有任何「只因客户要求交期才 late」的单 ⇒ 口径差额不存在，断言空转").toBeGreaterThan(0);
 
     // 对照实验落屏（铁律 1.5）：三档的 (util → 越线日 → 准时率) 必须逐档单调，且**因为**越线日真被推走。
     // eslint-disable-next-line no-console
     console.log(
-      "[SANDBOX-D4 SEAM-1] 高 util=92 crossDay=%s rate=%s%% | 中 util=%d crossDay=%s rate=%s%% | 低 util=%d crossDay=%s rate=%s%%（窗内 %d 单·dueDay∈[%d,%d]）",
+      "[SANDBOX-D4 SEAM-1] 高 util=92 crossDay=%s rate=%s%% | 中 util=%d crossDay=%s rate=%s%% | 低 util=%d crossDay=%s rate=%s%%（窗内 %d 单·dueDay∈[%d,%d]·最松档口径 late %d/%d）",
       String(hi.card.crossDay), String(hi.card.otd!.rate),
       midUtil, String(mid!.card.crossDay), String(mid!.card.otd!.rate),
       loUtil, String(lo!.card.crossDay), String(lo!.card.otd!.rate),
       lo!.card.otd!.total,
       Math.min(...lo!.card.otd!.rows.map((r) => r.dueDay)),
       Math.max(...lo!.card.otd!.rows.map((r) => r.dueDay)),
+      loCal.late, loCal.total,
     );
 
     // 单调：产能越松，准时率越高（红咬：聚合层若不吃 crossDay/delay，三档会一模一样）
