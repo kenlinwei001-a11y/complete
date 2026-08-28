@@ -93,14 +93,21 @@
 }
 
 /* ── 区① 事件模板 ────────────────────────────────────────────────────── */
+/* 整行就是那一颗按钮（一行一个焦点位，见 tsx 里的说明）。 */
 .tplRow {
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 8px;
   padding: 7px 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel2);
+  color: var(--txt);
+  text-align: left;
+}
+.tplRow:hover {
+  border-color: var(--accent);
 }
 .tplRow + .tplRow {
   margin-top: 6px;
@@ -113,23 +120,20 @@
   font-size: 13px;
   color: var(--txt);
   text-align: left;
-  background: transparent;
-  border: 0;
-  padding: 0;
 }
+/* 纯装饰（aria-hidden），不是控件 —— 行本身才是那颗按钮。 */
 .tplAdd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 24px;
   height: 24px;
+  flex: none;
   border-radius: 6px;
   border: 1px solid var(--line2);
-  background: transparent;
   color: var(--accent-txt);
   font-size: 14px;
   line-height: 1;
-  cursor: pointer;
-}
-.tplAdd:hover {
-  border-color: var(--accent);
 }
 .tplOpen {
   border: 1px solid var(--accent);

@@ -199,7 +199,15 @@ export function impedimentSentence(x: RawImpediment): string {
   return x.locus.label;
 }
 
-export function splitImpediments(raw: unknown): { actionable: ImpedimentRow[]; watchOnly: ImpedimentRow[]; total: number } {
+/**
+ * @param typeName 本体类型键 → 中文业务名（`GET /a/v1/ontology/object-types` 的 `displayName`，
+ *   **后端单源**，前端不内联映射表）。没有它 ⇒ 屏上只剩 `pos_lfp_b2` 这种机器键，
+ *   用户读不出「这是一批料」还是「一条线」。
+ */
+export function splitImpediments(
+  raw: unknown,
+  typeName?: Map<string, string>,
+): { actionable: ImpedimentRow[]; watchOnly: ImpedimentRow[]; total: number } {
   const list = ((raw as { impediments?: RawImpediment[] } | null)?.impediments ?? []) as RawImpediment[];
   const rows: ImpedimentRow[] = list.map((x) => ({
     impedimentId: x.impedimentId,
@@ -208,7 +216,7 @@ export function splitImpediments(raw: unknown): { actionable: ImpedimentRow[]; w
     objectType: x.locus.objectType,
     objectId: x.locus.objectId,
     label: x.locus.label,
-    sentence: impedimentSentence(x),
+    sentence: `${typeName?.get(x.locus.objectType) ?? ""}${typeName?.get(x.locus.objectType) ? " " : ""}${impedimentSentence(x)}`,
     candidateCount: (x.candidates ?? []).length,
     noCandidateReason: x.noCandidateReason ?? null,
     dataMode: x.dataMode,

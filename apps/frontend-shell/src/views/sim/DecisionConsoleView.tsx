@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   aggregateObjects,
   fetchDrillCatalog,
+  fetchObjectTypes,
   fetchSimSessions,
   invokeSolver,
   searchObjects,
@@ -124,6 +125,8 @@ interface RunResult {
   impediments: SolverData | null;
   finance: SolverData | null;
   customers: { props: Record<string, unknown> }[];
+  /** 本体类型键 → 中文业务名（后端单源 `displayName`；前端不内联映射表）。 */
+  typeName: Map<string, string>;
   custAgg: { group: Record<string, string | null>; metrics: Record<string, number | null> }[];
   statusAgg: { group: Record<string, string | null>; metrics: Record<string, number | null> }[];
   bookValue: number;
@@ -197,7 +200,7 @@ export default function DecisionConsoleView() {
         effectiveDay: e.effectiveDay,
       }));
       // 一颗按钮把五件事全做完 —— 用户不该去找第二颗。
-      const [report, risk, impediments, finance, customers, custAgg, statusAgg] = await Promise.all([
+      const [report, risk, impediments, finance, customers, custAgg, statusAgg, types] = await Promise.all([
         simDrill(sessionId, { events, horizonDays: HORIZON_DAYS, limitPerKind: 50 }),
         invokeSolver("risk_timeline", {}).then((r) => r.data as SolverData).catch(() => null),
         invokeSolver("chain_impediments", { scope: {} }).then((r) => r.data as SolverData).catch(() => null),
@@ -209,9 +212,11 @@ export default function DecisionConsoleView() {
         aggregateObjects({ typeKey: "Order", groupBy: ["status"], metrics: [{ fn: "count", prop: "so" }, { fn: "sum", prop: "value" }] })
           .then((r) => r.rows)
           .catch(() => []),
+        fetchObjectTypes().catch(() => []),
       ]);
       const bookValue = statusAgg.reduce((a, r) => a + (r.metrics.sum_value ?? 0), 0);
-      return { report, risk, impediments, finance, customers, custAgg, statusAgg, bookValue, inputFingerprint: fingerprintOf(added) };
+      const typeName = new Map(types.map((t) => [t.key, t.displayName]));
+      return { report, risk, impediments, finance, customers, custAgg, statusAgg, bookValue, typeName, inputFingerprint: fingerprintOf(added) };
     },
     onSuccess: (r) => {
       setResult(r);
@@ -240,7 +245,7 @@ export default function DecisionConsoleView() {
   // ── 派生 ────────────────────────────────────────────────────────────────
   const cards = useMemo(() => cardsOf(result?.risk ?? null), [result]);
   const totals = useMemo(() => exposureTotals(cards), [cards]);
-  const imp = useMemo(() => splitImpediments(result?.impediments ?? null), [result]);
+  const imp = useMemo(() => splitImpediments(result?.impediments ?? null, result?.typeName), [result]);
   const otdRows = useMemo(() => {
     const b = (result?.risk as { otdBatch?: { rows?: unknown[] } } | null)?.otdBatch;
     return (b?.rows ?? []) as { so: string; dueDay: number; delayDays: number; onTime: boolean }[];
@@ -708,12 +713,23 @@ export default function DecisionConsoleView() {
                   <span>系统不给推荐</span>
                 </div>
 
+                {/*
+                 * 成色说明**一屏只出现一次**。上一版把它印在每张卡上 ——
+                 * 那正是 §3.0 点名的病（同一段话一屏重复 5 遍，卡上数字 3 行、这段话 12 行）。
+                 * 内容一个字不删，只换位置。
+                 */}
                 {planCategory === null ? (
                   <p className={styles.greyLine}>
                     这个地方今天对不上任何一类现成打法（打法库是按「这里最紧的是什么」分类的），
                     所以这里只摆「什么都不做」那一栏。
                   </p>
-                ) : null}
+                ) : (
+                  <p className={styles.greyLine}>
+                    下面三条的「多久见效 / 代价 / 风险」是「{planCategory}」这一类的通用档位
+                    <Est />，不是这一次的试算 —— 这次真试算出来的那几条改法身上，代价 / 见效天 / 风险
+                    <span className={styles.absent}>一个都没有</span>。
+                  </p>
+                )}
 
                 <div className={styles.plans} data-testid="dc-plans">
                   {plans.map((m) => (
@@ -745,10 +761,6 @@ export default function DecisionConsoleView() {
                           <span className={styles.planDimK}>这次能保住哪几张单</span>
                           <span className={styles.absent}>———</span>
                         </div>
-                      </div>
-                      <div className={styles.planList}>
-                        这三个数是「{planCategory}」这一类的通用档位，不是这一次的试算 ——
-                        这次真试算出来的那几条改法身上，代价 / 见效天 / 风险<span className={styles.absent}>一个都没有</span>。
                       </div>
                       <div className={styles.planFoot}>
                         <button
@@ -898,14 +910,23 @@ function TemplateRow({
 
   return (
     <>
-      <div className={styles.tplRow}>
-        <button type="button" className={styles.tplName} onClick={onToggle} aria-expanded={open}>
-          {spec.label}
-        </button>
-        <button type="button" className={styles.tplAdd} aria-label={`加一件「${spec.label}」`} onClick={onToggle}>
+      {/*
+       * 一行 = **一个**可聚焦控件。上一版把行名与 ＋ 做成两颗按钮、动作完全相同 ——
+       * 键盘用户要按两次 Tab 才走完一行，11 行就白吃 11 次（实测 Tab 到〔算一下〕
+       * 从 28 次降到 17 次就是砍掉这一半）。＋ 现在是纯装饰（`aria-hidden`）。
+       */}
+      <button
+        type="button"
+        className={styles.tplRow}
+        aria-label={`加一件「${spec.label}」`}
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <span className={styles.tplName}>{spec.label}</span>
+        <span className={styles.tplAdd} aria-hidden="true">
           ＋
-        </button>
-      </div>
+        </span>
+      </button>
 
       {open ? (
         <div className={styles.tplOpen}>
