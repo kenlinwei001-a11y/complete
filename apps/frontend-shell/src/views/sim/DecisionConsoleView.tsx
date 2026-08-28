@@ -153,6 +153,13 @@ interface RunResult {
 interface RunTrace {
   /** 每一路算的往返耗时（客户端量，含网络）。后端不分段计时 —— 这一点必须在屏上说清。 */
   timings: { label: string; ms: number; note: string }[];
+  /**
+   * ⚠ **墙钟总时间，不是逐段相加**。这几路是**并行**发出去的，
+   * 把它们的毫秒加起来会得到一个比真实等待时间大好几倍的数
+   * （实测相加 68,362 毫秒 vs 真实等待 4,5xx 毫秒）——
+   * 又一次「我用一个看起来相关的数字当判据，而它并不度量我要度量的东西」。
+   */
+  wallMs: number;
   /** 引用了哪些数据：对象类型 + 条数 + 快照版本。 */
   data: { typeKey: string; typeName: string; count: number }[];
   snapshotVersions: { label: string; version: string }[];
@@ -192,6 +199,7 @@ interface RunTrace {
  */
 function buildTrace(input: {
   timings: { label: string; ms: number; note: string }[];
+  wallMs: number;
   counts: { typeKey: string; typeName: string; count: number }[];
   snapshotVersions: [string, string | undefined][];
   edges: { items?: unknown[] } | null;
@@ -278,6 +286,7 @@ function buildTrace(input: {
   const sliceEntries = input.slices?.entries ?? [];
   return {
     timings: input.timings.slice().sort((a, b) => b.ms - a.ms),
+    wallMs: input.wallMs,
     data: input.counts.slice().sort((a, b) => b.count - a.count),
     snapshotVersions: input.snapshotVersions.filter(([, v]) => !!v).map(([label, v]) => ({ label, version: v! })),
     slices: {
@@ -389,6 +398,7 @@ export default function DecisionConsoleView() {
         effectiveDay: e.effectiveDay,
       }));
       /** 每一路算的往返耗时 —— 客户端量的**整段**时间（后端不分段计时，这句要写到屏上）。 */
+      const runStartedAt = performance.now();
       const timings: { label: string; ms: number; note: string }[] = [];
       const timed = async <T,>(label: string, note: string, p: Promise<T>): Promise<T> => {
         const t0 = performance.now();
@@ -408,7 +418,7 @@ export default function DecisionConsoleView() {
         timed("⑥ 按客户汇总订单", "500 张单的分组聚合", aggregateObjects({ typeKey: "Order", groupBy: ["cust"], metrics: [{ fn: "count", prop: "so" }, { fn: "sum", prop: "value" }] }).then((r) => r.rows).catch(() => [])),
         timed("⑦ 按状态汇总订单", "已完成 / 在产 / 已下待排产", aggregateObjects({ typeKey: "Order", groupBy: ["status"], metrics: [{ fn: "count", prop: "so" }, { fn: "sum", prop: "value" }] }).then((r) => r.rows).catch(() => [])),
         fetchObjectTypes().catch(() => []),
-        timed("⑧ 取这次用到的那张关系图", "42 条已发布的传导边", fetchPropagationRules(true).catch(() => null)),
+        timed("⑧ 取这次用到的那张关系图", "本租户已发布的那些「谁影响谁」的边", fetchPropagationRules(true).catch(() => null)),
         timed("⑨ 查本体切片目录", "查了才敢说「本次一条都没走」", fetchSlicesIndex().catch(() => null)),
       ]);
       const risk = (riskRaw?.data ?? null) as SolverData | null;
@@ -434,6 +444,7 @@ export default function DecisionConsoleView() {
 
       const trace = buildTrace({
         timings,
+        wallMs: Math.round(performance.now() - runStartedAt),
         counts,
         snapshotVersions: [
           ["每个基地紧到什么程度", riskRaw?.snapshotVersion],
@@ -691,18 +702,45 @@ export default function DecisionConsoleView() {
                   这 {added.length} 件事凑一块，往后 {result.report.horizonDays} 天
                 </div>
 
+                {/*
+                  * 最大那个数 = **交不出去的货**（按订单去重的口径）。
+                  * 为什么是它当第一层的大数，而不是产销缺口：
+                  *  · 它**恒有** —— 每次算都会问一遍每个基地这 30 天紧到什么程度，那一路是通用的；
+                  *    而产销缺口只有加了物料/预测类的事才会被问到（实测：只加「产能损失」时它一条都没有）。
+                  *    上一版拿它当大数 ⇒ 换一类事件进来，屏幕正中就是空的。
+                  *  · 它是**钱**，是签字的人第一眼要的那个数。
+                  * ⚠ 一定是**去重**口径：8 张基地卡直接相加实测 89.58 亿，按单号去重 63.16 亿，
+                  *   差 1.418×，根因是跨基地订单被算了两次。
+                  */}
+                <div className={styles.bigNum} data-testid="dc-money">
+                  {roundish(totals.dedupedYi)}
+                  <span className={styles.bigUnit}>亿 · 这 {HORIZON_DAYS} 天交不出去的货</span>
+                  <Est />
+                </div>
+                <div className={styles.bigCaption}>
+                  {totals.orderCount} 张单 · {totals.customerCount} 家客户
+                  {otd ? ` · 其中会晚 ${(otd.total ?? 0) - (otd.onTimeCount ?? 0)} 张、准时 ${otd.onTimeCount ?? 0} 张` : ""}
+                </div>
+
                 {gapFinding ? (
-                  <>
-                    <div className={styles.bigNum} data-testid="dc-money">
-                      {bigGapOf(gapFinding.evidence)}
-                      <span className={styles.bigUnit}>万套 产销缺口</span>
-                      <Est />
+                  <div className={styles.split}>
+                    <div className={styles.splitCell}>
+                      <div className={styles.splitVal}>
+                        {bigGapOf(gapFinding.evidence)} 万套
+                        <Est />
+                      </div>
+                      <div className={styles.splitLabel}>
+                        产销缺口 —— {oneLineCause(gapFinding.evidence)}
+                        <br />
+                        <ReconcileEntry finding={gapFinding} />
+                      </div>
                     </div>
-                    <div className={styles.bigCaption}>{oneLineCause(gapFinding.evidence)}</div>
-                    <ReconcileEntry finding={gapFinding} />
-                  </>
+                  </div>
                 ) : (
-                  <div className={styles.bigCaption}>这次没有一路算回来产销缺口。</div>
+                  <p className={styles.greyLine}>
+                    这次加的这几件事没有走到「产销缺口」那一路算上（只有物料与预测类的事才会问到它），
+                    所以这一屏没有那个数 —— 不是算出来是 0。
+                  </p>
                 )}
 
                 <div className={styles.moneyRows}>
@@ -1391,7 +1429,7 @@ function TemplateRow({
  */
 function RunTracePanel({ trace }: { trace: RunTrace }) {
   const [open, setOpen] = useState(false);
-  const total = trace.timings.reduce((a, t) => a + t.ms, 0);
+  const slowest = trace.timings.reduce((a, t) => Math.max(a, t.ms), 0);
   return (
     <section className="panel" id="z6" aria-label="这次算的时候做了什么">
       <h2 className={styles.zoneTitle}>
@@ -1401,7 +1439,7 @@ function RunTracePanel({ trace }: { trace: RunTrace }) {
         <span className={styles.zoneHint}>
           引用 {trace.data.reduce((a, d) => a + Math.max(0, d.count), 0).toLocaleString("zh-CN")} 条数据 ·
           沿 {trace.edges.length} 条关系推 · 撞 {trace.thresholds.length} 条红线 ·
-          试算 {trace.enumeration?.probes ?? 0} 次 · 共 {total} 毫秒 · 未用 agent
+          试算 {trace.enumeration?.probes ?? 0} 次 · 等了 {trace.wallMs} 毫秒 · 未用 agent
         </span>
       </h2>
 
@@ -1572,7 +1610,7 @@ function RunTracePanel({ trace }: { trace: RunTrace }) {
 
           {/* ⑦ 各段耗时 */}
           <div className={styles.traceBlock}>
-            <div className={styles.colHead}>各段花了多久（共 {total} 毫秒）</div>
+            <div className={styles.colHead}>各段花了多久（从按下按钮到出结果，一共等了 {trace.wallMs} 毫秒；最慢的那一段 {slowest} 毫秒）</div>
             <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <thead>
@@ -1594,10 +1632,16 @@ function RunTracePanel({ trace }: { trace: RunTrace }) {
               </table>
             </div>
             <p className={styles.greyLine}>
-              这些是从这台机器发出请求到收到回包的**整段**时间（含网络），
+              两条口径要分清，别把下面这列毫秒加起来：
+              <br />
+              ① 这几段是<strong>同时</strong>发出去的，所以「一共等了 {trace.wallMs} 毫秒」≈ 最慢那一段，
+              <strong>不等于</strong>逐段相加（相加会得到 {trace.timings.reduce((a, t) => a + t.ms, 0)} 毫秒，
+              那个数不度量你真的等了多久）。
+              <br />
+              ② 每一段量的是「这台机器发出请求 → 收到回包」的整段时间（含网络），
               <strong>不是</strong>后端内部的分段耗时 —— 后端今天不分段计时，
-              所以「施加 / 传播 / 扫卡点 / 编排」这四步合在第一行里，分不开。这一点必须说清，
-              不然会被读成「传播只花了 X 毫秒」。
+              所以第一行里「把事情加上去 / 往后推 / 扫红线 / 问各路算」这四步是合在一起的，分不开。
+              不说清就会被读成「往后推只花了 X 毫秒」。
             </p>
           </div>
         </div>
