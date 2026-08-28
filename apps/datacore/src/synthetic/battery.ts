@@ -395,91 +395,6 @@ export const HTML_ORDERS: { so: string; cust: string; model: string; qty: number
 export const ORDER_BOOK_SIZE = 500;
 
 /**
- * WO-SCALE-COHERENCE 需求层锚（375 万套/年 · 700 亿）—— **量结构的单一来源**。
- *
- * 原先内联在 `generateBattery` 里（`SEG_DEMAND`）。提到模块层不是搬家癖，是因为
- * **订单簿的业态量结构必须与它对齐**（见下方 `alignOrderBookToDemandMix`），
- * 而订单在函数里比它先生成 —— 内联的 `const` 处在 TDZ 里，取不到。
- *
- * ⚠ 数值一个字节没动：`tgt / demandWanPerYearP50 / demandWanPerYearP90 / act` 与原内联逐字相同
- * （`spine.test:58` 硬钉 `revenue.actual===700`，锚不许动）。
- */
-export const SEG_DEMAND_ANCHOR = [
-  { segment: "乘用车", tgt: 201.7, demandWanPerYearP50: 201.7, demandWanPerYearP90: 199.6, act: 200.6 },
-  { segment: "储能", tgt: 139.2, demandWanPerYearP50: 139.2, demandWanPerYearP90: 108.4, act: 100.5 },
-  { segment: "商用车", tgt: 34.1, demandWanPerYearP50: 34.1, demandWanPerYearP90: 34.0, act: 39.5 },
-];
-
-/**
- * WO-ORDER-500-REDS · **订单簿业态量结构 ← 需求册**（补足段归一 · 治 G-SCALE-COHERENCE 订单层脱锚）。
- *
- * ── 治的病（实测，不是假想）────────────────────────────────────────────────────
- * `WO-ORDER-BOOK-500` 把簿子从 24 张补到 500 张，补足段的客户由 `pickCustomerWeighted`
- * 按 `CUSTOMER_REGISTRY.weight` 抽 —— 而那张权重表的出处是**乘用车装机集中度**
- * （表头注释自己写着「真实装机表只覆盖**乘用车**」），三家储能客户合计只占 74/1000 = 7.4%。
- * 于是：
- *
- * | 业态量结构 | 乘用车 | 商用车 | 储能 | 量加权均价 |
- * |---|---|---|---|---|
- * | 需求册（锚） | 53.8% | 9.1% | **37.1%** | 18,667 元/套 |
- * | 扩容前 24 张锚点 | 49.4% | 6.0% | **44.6%** | 18,471 元/套 |
- * | 扩容后 500 张 | 83.7% | 3.5% | **12.9%** | **20,951 元/套** |
- *
- * **24 张锚点本来是与需求册同结构的，是补足段把它冲散的** ⇒ 这不是标定过期，是扩容引入的真回归：
- * 订单层与需求层从此各自造，`R_order` 比 `R_aop` 高 23.4%，`scale-coherence` 四方互核当场红。
- *
- * ── 修法 ────────────────────────────────────────────────────────────────────
- * 按业态算一个缩放因子，令**全簿**量结构 ≡ 需求册量结构；**簿子总量不变**
- * （故 `windowWeeks` 不因本修法位移）。
- *
- * 实测因子（seed 42 · scale S）：乘用车 ×0.643 · 储能 ×2.883 · 商用车 ×2.621。
- * 单均量随之变成 乘用车 3,029 套(0.50 GWh) · 商用车 12,232 套(2.03 GWh) · 储能 17,284 套(2.87 GWh)
- * —— 与「一张储能单是一个电站/框架项目、一张乘用车单是一个车型的月度提货批」的真实量级同向
- * （储能按 166 kWh/套 折 2.87 GWh，属央企年度框架量级；乘用车 0.50 GWh 按 60 kWh/车 折约 8,300 台/批）。
- *
- * ── 为什么**连锚点 24 张一起缩**，而不是只缩补足段 ────────────────────────────
- * 第一版只缩补足段、锚点字节不动。实测被 `global-sim-business-type-seam` 当场抓出来：
- * 那条门量的是 **OPEN 单**的 `orderQtyCv`（`portfolio.ts` 的 `businessTypeSummary`），
- * 而 **24 张锚点全是 OPEN**、OPEN 总共才 50 张 ⇒ 「24 张没缩 + 26 张缩过」在那个子集里
- * 恰好把分布压成**双峰**，储能 cv 0.4028→0.7846 越过商用车 0.7833（差 0.17%）而翻车。
- * 形态：**「我用『锚点字节不动』当作『不影响分布』的证据，而前者并不度量后者」** ——
- * 冻住一部分样本再缩另一部分，动的正是分布本身。
- * 整段等比缩放则 **cv 严格不变**（变异系数对正比例缩放不变），只改业态之间的量占比 ——
- * 那才是本修法想改的唯一一件事。
- * ⚠ 锚点被冻住的是 `so/cust/model/due/pri` 这些**坐标**（全仓测试/文档按它们定位），
- *   `qty` 本来就不在其列：WO-ORDER-BOOK-500 自己就把 24 张的 qty 整体重标过一次
- *   （见 `HTML_ORDERS` 上方「统一调整为 500~2,700 套区间」），且 `shapeBusinessTypeQty`
- *   一直在按业态改锚点 qty。本函数是同一类重标，不碰任何坐标列。
- *
- * R6：纯函数（只读已生成的订单 + 常量锚），不碰 rng 流，同 seed 字节一致。
- * ⚠ 必须在 `deriveOrderLines` **之前**调用 —— 否则行级 Σ 与头级 qty 对不上账。
- */
-function alignOrderBookToDemandMix(orders: Record<string, unknown>[]): void {
-  const totalDemand = SEG_DEMAND_ANCHOR.reduce((s, d) => s + d.demandWanPerYearP50, 0);
-  const share = new Map<BusinessType, number>();
-  for (const d of SEG_DEMAND_ANCHOR) {
-    share.set(businessTypeOfSegment(d.segment), d.demandWanPerYearP50 / totalDemand);
-  }
-  const totalQty = orders.reduce((s, o) => s + Number(o.qty), 0);
-  const segQty = new Map<BusinessType, number>();
-  for (const o of orders) {
-    const bt = o.businessType as BusinessType;
-    segQty.set(bt, (segQty.get(bt) ?? 0) + Number(o.qty));
-  }
-  const factor = new Map<BusinessType, number>();
-  for (const [bt, sh] of share) {
-    const have = segQty.get(bt) ?? 0;
-    if (have <= 0) continue; // 该业态一张单都没有 ⇒ 无处落差额，诚实跳过（不凭空造单）
-    factor.set(bt, (totalQty * sh) / have);
-  }
-  for (const o of orders) {
-    const f = factor.get(o.businessType as BusinessType);
-    if (f === undefined) continue;
-    o.qty = Math.max(1, Math.round(Number(o.qty) * f));
-  }
-}
-
-/**
  * 订单簿三态的**确定性**分配（补足段专用）。
  *
  * 输入 `sos` = 补足段订单号（按生成序），`targets` = 该段各态还差多少张。
@@ -4070,24 +3985,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     // Order.unitPrice=model.unitPrice 自动继承（Model 侧与 Order 侧同一口径，不打架 R14）。
     void randInt(rng, 380, 980); // R6：保持 rng 流步长不变（下游订单/拓扑字节一致）
     const sc = BATTERY_SOLVER_PARAMS.scaleCoherence as { modelPriceVarPpk: number };
-    // WO-ORDER-500-REDS · 计价所属细分改读**型号自报的 applicationDomain**，不再用 `pos === "储能"` 严格相等。
-    //
-    // 病（同一份种子里两处自报用途打架，实测）：`4680-LFP` 的 `MODEL_SPEC_MAP.applicationDomain === "储能"`，
-    // 而 `pos === "动力+储能"` ≠ `"储能"` ⇒ 旧式把它归到**乘用车价 2.2 万**（实测 21,912 元/套），
-    // 比它自报用途的储能价 1.4 万（13,944）高 **57%**。24 张锚点时它只占 1 张、盖得住；
-    // 扩到 500 张后它扛着全簿 **22.0%** 的量，把订单层量加权均价抬到 20,951 元/套（需求锚 18,667），
-    // `scale-coherence` 的 `|R_order,R_aop|` 因此 23.4% > 15%。
-    //
-    // ⚠ `pos` 与 `applicationDomain` **不是两份真相源，是两个问题**，故都保留、各管各的：
-    //   · `pos`（动力 / 储能 / 动力+储能）= **可售市场** → `modelsForBusinessType` 的可下单型号池；
-    //   · `applicationDomain`（乘用车 / 储能 / 商用车）= **计价所属细分** → SEG_REGISTRY 单价。
-    //   双用型号在两个池子里都能被下单，但只有一个计价归属 —— 这正是它俩不同的地方。
-    // 换算全部走既有单一出处（`businessTypeOfSegment` / `segKeyOfBusinessType`），不另立词表。
-    // 缺 `applicationDomain` 的型号（本表外新增）诚实回落旧 `pos` 判据，不静默按乘用车计价。
-    const segKey = typeof spec?.applicationDomain === "string" && spec.applicationDomain !== ""
-      ? segKeyOfBusinessType(businessTypeOfSegment(spec.applicationDomain))
-      : (m.pos === "储能" ? "ess" : "pas");
-    const seg = SEG_REGISTRY.find((s) => s.key === segKey)!;
+    const seg = SEG_REGISTRY.find((s) => s.key === (m.pos === "储能" ? "ess" : "pas"))!;
     const priceVar = ((hashString(`${m.modelId}:unitprice`) % (2 * sc.modelPriceVarPpk + 1)) - sc.modelPriceVarPpk) / 1000; // ±modelPriceVarPpk‰
     const unitPrice = Math.round(seg.priceWan * 1e4 * (1 + priceVar));
     return {
@@ -4406,9 +4304,6 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
 
   // WO-ORDERLINE：订单拆行（SO→型号明细行·一单多型号多行）。独立哈希子流·**不插既有 order rng 流**→
   // 24 单头级字节基线不移（R6）；additive 只加 OrderLine 行、Order 头级对象数不变。
-  // WO-ORDER-500-REDS：全簿 qty 按业态等比归一到需求册量结构（**必须在拆行之前**，否则 Σ行 ≠ 头级 qty）。
-  alignOrderBookToDemandMix(orders);
-
   const orderLines = deriveOrderLines(orders, models);
 
   const rngTopo = mulberry32(seed ^ hashString("topology"));
@@ -4774,9 +4669,11 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   // WO-SCALE-COHERENCE 锚：此需求层(375万套/700亿)= scaleAnchorRevenue.S 锚（ΣdemandWanPerYearP50×priceWan===scaleAnchorRevenue.S），
   // 是被金值锁死的事实锚（spine.test:58 硬钉 revenue.actual===700）——本单不动锚，把物理/产能/财务/订单四层往此对齐。
   // 派生结果==既有锚值：V*=R*/P̄=700/1.8667=375万套（=ΣdemandWanPerYearP50），tgt/demandWanPerYearP50/demandWanPerYearP90/act 数值字节一致（下方内联即锚值本体）。
-  // WO-ORDER-500-REDS：本表已提到模块层 `SEG_DEMAND_ANCHOR`（订单簿量结构要在订单生成时读它，
-  // 而订单比这里先生成）。数值一个字节没动，只是出处从「函数内联」变成「模块常量」。
-  const SEG_DEMAND = SEG_DEMAND_ANCHOR;
+  const SEG_DEMAND = [
+    { segment: "乘用车", tgt: 201.7, demandWanPerYearP50: 201.7, demandWanPerYearP90: 199.6, act: 200.6 },
+    { segment: "储能", tgt: 139.2, demandWanPerYearP50: 139.2, demandWanPerYearP90: 108.4, act: 100.5 },
+    { segment: "商用车", tgt: 34.1, demandWanPerYearP50: 34.1, demandWanPerYearP90: 34.0, act: 39.5 },
+  ];
   const SEGMENTS = SEG_DEMAND.map((d) => {
     const s = SEG_REGISTRY.find((x) => x.seg === d.segment)!;
     return { ...d, price: s.priceWan, margin: s.marginPct, floor: s.floorPct };

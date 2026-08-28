@@ -306,31 +306,13 @@ describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
     //   （那道封顶挡的是浏览器 OOM）。改走端点**已有**的 `objectIds` 白名单入口 ——
     //   即本文件 ⑤e-桥② 早就在用的那条路：筛完只剩这些对象的格子、整份装得进硬上限，
     //   `truncated:false` 就是"这一份是完整的"那句话的诚实闸。HTTP 仍在链路里，判据不再靠运气。
-    //
-    // ⚠ **2026-08-28 WO-ORDER-500-REDS 再订正：白名单只筛一个轴，筛不住了。**
-    //   `objectIds` 是**对象**白名单 —— 筛完回来的是「这些对象的**全部**状态变量」，
-    //   包含一堆压根没动的格。订单簿 24 → 500 张之后物化对象变多，动过的对象数跟着涨，
-    //   `动过的对象 × 它们的全部状态变量` 这个叉积**超过了 500 这道硬上限** ⇒ `truncated:true` ⇒ 本条红。
-    //   形态还是老那句：**「我用『把对象筛窄了』当作『这一份装得进上限』的证据，而前者并不度量后者。」**
-    //   —— 一个轴筛窄了，另一个轴（状态变量）根本没筛。
-    //
-    //   修法**仍然不是**把 limit 调大、也**仍然不是**给端点开"全量"口子（那道封顶挡的是浏览器 OOM），
-    //   而是把上一次的修法**在同一条路上走完**：端点的白名单本来就有**两个**轴
-    //   （`SimMetricSeriesQuerySchema` 的 `objectIds` 与 `stateVars`，见契约里那句
-    //   「两者都不给 ⇒ 全目录参与排序」），这次把第二个轴也用上。
-    //   `动过的对象 × 动过的状态变量` 仍是「动了的格」的**超集**（每一格的对象与变量都在名单里），
-    //   故 ⑤e-桥② 那条 `httpMoved === census.moved` 的逐条相等一个字都不用放宽；
-    //   同时它仍留着没动过的格（⑤d 的反向金丝雀 `still.length > 0` 照旧有对照）。
     const census = await censusWorldLines(t, DEMO_SIM_WORLD_SESSION_ID);
     const movedObjectIds = [...new Set(census.moved.map((k) => census.readings.get(k)!.objectId))].sort();
-    const movedStateVars = [...new Set(census.moved.map((k) => census.readings.get(k)!.stateVar))].sort();
     expect(movedObjectIds.length, "普查里一个对象都没动 ⇒ 扰动压根没进传导核").toBeGreaterThan(0);
-    expect(movedStateVars.length, "普查里一个状态变量都没动 ⇒ 下面这条白名单会筛成空集").toBeGreaterThan(0);
     const ms = await t.app.inject({
       method: "GET",
       url: `/a/v1/sim/sessions/${DEMO_SIM_WORLD_SESSION_ID}/metric-series`
-        + `?limit=${SIM_METRIC_SERIES_MAX_LIMIT}&order=key&objectIds=${encodeURIComponent(movedObjectIds.join(","))}`
-        + `&stateVars=${encodeURIComponent(movedStateVars.join(","))}`,
+        + `?limit=${SIM_METRIC_SERIES_MAX_LIMIT}&order=key&objectIds=${encodeURIComponent(movedObjectIds.join(","))}`,
       headers: ADMIN,
     });
     expect(ms.statusCode).toBe(200);
@@ -357,20 +339,10 @@ describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
     // 已知必中：随便挑一条动了的，它至少有一格真的不等（不是 JSON 序列化的假象）。
     const sample = moved[0]!;
     expect(sample.baseline.some((v, i) => v !== sample.actual[i]), "金丝雀：比较器认得出真差值").toBe(true);
-    // 反向金丝雀：**世界里**必须存在「没被带动」的对照，且这一页里凡判成「没动」的，逐格必须真相等。
-    //
-    // ⚠ **2026-08-28 WO-ORDER-500-REDS 订正：「有没有对照组」是*世界*的属性，不是*这一页*的属性。**
-    //   原文数的是 `series.metrics` 里没动的条数。上面把白名单从「动过的对象（连它们没动的变量一起回来）」
-    //   收窄成「动过的对象 × 动过的变量」之后，这一页按构造就基本只剩动了的格 ⇒ 原文当场报
-    //   「全世界都动了」——**而全世界并没有都动**（普查目录 `census.catalog` 里没动的格仍在）。
-    //   形态与本文件 ⑤b 那次订正一模一样，只是主语换了：
-    //     **「我用『这一页里没动的有几格』当作『这个世界里没动的有几格』的证据，而前者并不度量后者。」**
-    //   ⇒ 存在性判据取自**普查**（世界的全量真相），逐值相等仍咬**回包**（HTTP 留在链路里）。
-    const censusStill = census.catalog - census.moved.length;
-    expect(censusStill, "全世界每一格都动了 ⇒ 这个世界里没有「没被带动」的对照，⑤b 就不成其为证据").toBeGreaterThan(0);
-    // 这一页里凡判成「没动」的，逐格必须真相等（比原文只查 `still[0]` 覆盖面更大）。
+    // 反向金丝雀：没动的那些，逐格必须真相等。
     const still = series.metrics.filter((m) => JSON.stringify(m.baseline) === JSON.stringify(m.actual));
-    for (const s of still) expect(s.baseline, `${s.key}：判成「没动」却逐值不等 ⇒ 比较器坏了`).toEqual(s.actual);
+    expect(still.length, "全世界都动了 ⇒ 这个世界里没有「没被带动」的对照，⑤b 就不成其为证据").toBeGreaterThan(0);
+    expect(still[0]!.baseline).toEqual(still[0]!.actual);
 
     // ── ⑤e 可达面口径不是装饰：结构估的下游格数 == 真跑动了的下游格数 ────────────────
     // 这一条是给排序键做的"金丝雀"：`reachCells` 若与真跑对不上，那它就不度量它声称度量的东西
