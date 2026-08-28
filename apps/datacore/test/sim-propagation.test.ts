@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PropagationRuleSchema, type DelayedContribution, type PropagationRule, type TickState } from "@platform/contracts";
-import { propagateTick, type PropagationGraph, type RuleParamLookup } from "../src/sim/propagation.js";
+import { pairWeightKey, propagateTick, type PropagationGraph, type RuleParamLookup } from "../src/sim/propagation.js";
 
 /**
  * 传导核 propagateTick 单测（SPEC §1 · 增量 3）。
@@ -146,5 +146,87 @@ describe("传导核 propagateTick（SPEC §1 · 行业无关 R14）", () => {
     const { next } = propagateTick(GRAPH, BASE, [r], [], 0);
     // factor = 1 − 1/2 = 0.5 → 0.5 × 10 = 5。
     expect(next.b!.risk).toBe(5);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // § 逐实例分摊权重（WO-COEF-FROM-BOM）—— 引擎侧四条判据
+  //
+  // 病灶（本组用例存在的理由）：修前一条规则解析出**一个**标量系数，对该源的**每一个**目标
+  // 落同一个额 —— 公式里没有任何用量项。于是"占 BOM 成本 17.8% 的正极"与"占 0.9% 的铝箔"
+  // 各涨 15%，给出逐字节相同的下游压力。本组咬住修完之后**三种输入各自该有的行为**，
+  // 其中第 ③ 条（拿不到表 ⇒ 不传导而非退回 1）是最容易被写错的那一条：
+  // 退回 1 会把修前的错行为原样保留，却挂上"已按用量分摊"的名义 —— 比修前更难发现。
+  // ══════════════════════════════════════════════════════════════════════════
+  describe("逐实例分摊权重 pairWeights", () => {
+    /** 一源两目标：a --FEEDS--> b1 / b2。分摊要能让两个目标拿到**不同**的额。 */
+    const FAN: PropagationGraph = {
+      objects: [
+        { id: "a", typeKey: "TypeA" },
+        { id: "b1", typeKey: "TypeB" },
+        { id: "b2", typeKey: "TypeB" },
+      ],
+      links: [
+        { fromId: "a", toId: "b1", linkKey: "FEEDS" },
+        { fromId: "a", toId: "b2", linkKey: "FEEDS" },
+      ],
+    };
+    const FAN_BASE: TickState = { a: { risk: 10 }, b1: { risk: 0 }, b2: { risk: 0 } };
+
+    it("① 修前形态复现：无 weightRef ⇒ 两个目标拿到**逐字节相同**的额（这就是病）", () => {
+      const r = rule({ coefficient: 0.5 });
+      const { next, unresolvedWeights } = propagateTick(FAN, FAN_BASE, [r], [], 0);
+      expect(next.b1!.risk).toBe(5);
+      expect(next.b2!.risk).toBe(5);
+      expect(next.b1!.risk).toBe(next.b2!.risk); // ← 用量在这里一次都没被读过
+      expect(unresolvedWeights).toEqual([]); // 没声明口径 ⇒ 不该报缺
+    });
+
+    it("② 声明 weightRef + 给表 ⇒ 逐对分摊，两个目标按份额拉开（amount = 强度 × 份额 × 源态）", () => {
+      const r = rule({ coefficient: 0.5, weightRef: { basis: "bom_cost_share" } });
+      const { next, trace } = propagateTick(FAN, FAN_BASE, [r], [], 0, {}, {}, [], {
+        [r.key]: { [pairWeightKey("a", "b1")]: 0.8, [pairWeightKey("a", "b2")]: 0.2 },
+      });
+      // 0.5 × 0.8 × 10 = 4 / 0.5 × 0.2 × 10 = 1；两份之和 = 5 = 未分摊时**单个**目标的额。
+      expect(next.b1!.risk).toBe(4);
+      expect(next.b2!.risk).toBe(1);
+      // trace 里落的也必须是**分摊后**的额 —— 否则屏上的溯源与世界态对不上（第二套真相源）。
+      expect(trace.map((t) => [t.toObjectId, t.amount])).toEqual([["b1", 4], ["b2", 1]]);
+    });
+
+    it("③ 🔴 声明了口径却**整张表都拿不到** ⇒ 该规则不传导 + 显式报缺，**绝不退回 1**", () => {
+      const r = rule({ coefficient: 0.5, weightRef: { basis: "bom_cost_share" } });
+      // 权重表里没有这条规则（= 该口径所需的本体数据缺失）。
+      const { next, trace, unresolvedWeights } = propagateTick(FAN, FAN_BASE, [r], [], 0, {}, {}, [], {});
+      // 变异反证：若实现悄悄退回 1，这里会是 5 / 5（正是 ① 那个错行为）——
+      // 断言写成"必须是 0 且必须报缺"，两条一起才咬得住。
+      expect(next.b1!.risk).toBe(0);
+      expect(next.b2!.risk).toBe(0);
+      expect(trace).toEqual([]);
+      expect(unresolvedWeights).toHaveLength(1);
+      expect(unresolvedWeights[0]!.ruleKey).toBe(r.key);
+      expect(unresolvedWeights[0]!.basis).toBe("bom_cost_share");
+      expect(unresolvedWeights[0]!.reason).toBe("NO_WEIGHTS");
+      expect(unresolvedWeights[0]!.detail).toContain("不传导");
+    });
+
+    it("④ 表在、但**某一对**查不到 ⇒ 该对份额 0（算得出来的真值），其余对照常传", () => {
+      const r = rule({ coefficient: 0.5, weightRef: { basis: "bom_cost_share" } });
+      const { next, trace, unresolvedWeights } = propagateTick(FAN, FAN_BASE, [r], [], 0, {}, {}, [], {
+        [r.key]: { [pairWeightKey("a", "b1")]: 1 }, // b2 那一对根本不在表里
+      });
+      expect(next.b1!.risk).toBe(5);
+      expect(next.b2!.risk).toBe(0);
+      // 份额 0 的对**不落 trace**（等价于这条边今天不通），且这不是"报缺"——它算得出来。
+      expect(trace.map((t) => t.toObjectId)).toEqual(["b1"]);
+      expect(unresolvedWeights).toEqual([]);
+    });
+
+    it("⑤ R6 确定性：同输入两跑逐字节一致（分摊不引入新的不确定来源）", () => {
+      const r = rule({ coefficient: 0.5, weightRef: { basis: "bom_cost_share" } });
+      const w = { [r.key]: { [pairWeightKey("a", "b1")]: 1 / 3, [pairWeightKey("a", "b2")]: 2 / 3 } };
+      const one = propagateTick(FAN, FAN_BASE, [r], [], 0, {}, {}, [], w);
+      const two = propagateTick(FAN, FAN_BASE, [r], [], 0, {}, {}, [], w);
+      expect(JSON.stringify(one)).toBe(JSON.stringify(two));
+    });
   });
 });
