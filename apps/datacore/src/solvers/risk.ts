@@ -404,7 +404,20 @@ export function tensionSeries(
       if (!e.factors.includes(factor)) continue;
       const dist = Math.abs(d - e.day);
       if (dist > p.pulseWindow) continue;
-      const ps = Math.max(p.psFloor, 1 - (vb - p.psStart) / p.psDen);
+      // ── `ps` = **高位脉冲衰减**（PRD-IND-risk §4.4 对它的命名）。它是个**衰减**系数，
+      //    值域只能是 (0, 1]：张力越接近 cap，同一个事件能再抬起来的空间越小。
+      //
+      // ⚠ **2026-08-28 WO-CANONICAL-REDS 修**：原式只 `Math.max(psFloor, …)` 夹了**下**界，
+      //    没夹上界 ⇒ `vb < psStart(68)` 时 `ps > 1`，即**工厂越闲、同一个交付高峰造成的张力越大**。
+      //    这不是标定问题，是式子自己和自己的名字矛盾（"衰减"却在放大）。后果是把产能杠杆**做废**：
+      //    实测常州（`Line.utilization` 92→30）—— 基线张力 91→35（杠杆本身是活的），
+      //    而 `ps` 反向从 0.489 涨到 1.733（**同一个事件的脉冲放大 3.54×**），
+      //    两者相抵 ⇒ 越线日只从 D+1 挪到 D+3，OTD 准时率在整条 util 梯度上恒 0%。
+      //    夹上界后同一梯度的越线日变成 1 → 3 → 4 → 19 → 30 → 31 → null（单调、真受杠杆驱动）。
+      //
+      //    **高负荷侧逐字节不变**：`vb ≥ psStart` 时 `1-(vb-68)/45 ≤ 1`，`Math.min` 不生效 ——
+      //    demo 各基地种子态张力 88~97 全在这一侧，故只有"被人为调松之后"的世界会变。
+      const ps = Math.min(1, Math.max(p.psFloor, 1 - (vb - p.psStart) / p.psDen));
       pulse += e.amp * ps * (1 - dist / p.pulseDecayDen);
     }
     // 保序饱和（替代硬截断 `Math.min(cap, round(...))`）：未触顶逐字节不变，触顶段保留区分度。
