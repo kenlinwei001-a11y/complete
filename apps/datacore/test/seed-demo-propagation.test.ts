@@ -247,7 +247,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
   });
 
   // 每条边真触发（REQ143 的验收面 + 档 1 扩面）：一次扰动若干源头，逐组核 trace。
-  it("🔴 逐条真触发：42 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4）", async () => {
+  it("🔴 逐条真触发：46 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     await seedDemoPropagationRules(t.repos);
@@ -347,10 +347,21 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_order_churn_to_line_split", "demo_order_churn_to_model_demand_load",
         "demo_equipment_failure_to_process_queue",
       ],
+      // WO-SLICE-DOMAINS：设备侧的**出口**四条。本组同样不额外造源 —— 由上面 baseSnapshot 里
+      // 已有的 `equipmentFailure` 那一格沿新链带下来：
+      //   Equipment.equipmentFailure → Process.queuePressure → Line.blockedPressure
+      //   → WorkOrder.releasePressure →(delay1) Model.supplyRisk / Model.costPressure
+      //   → （既有链）Order.shortageRisk / Order.costPressure → OrderPromise.promiseRisk / Customer.receivablePressure
+      // 补这四条之前，从 Equipment 出发的类型级可达集只有 {Equipment, MaintenanceOrder, Process}
+      // ⇒ 设备故障对订单与毛利的贡献**恒为 0**（真跑 8 拍实测：Order/Customer 全程 0 格）。
+      设备侧出口: [
+        "demo_process_queue_to_line_blocked", "demo_line_blocked_to_wo_release",
+        "demo_wo_release_to_model_supply_risk", "demo_wo_release_to_model_cost",
+      ],
     };
     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys.filter((k) => !fired.has(k)).map((k) => `${dir}/${k}`));
     expect(missing).toEqual([]);
-    // 十组合计 39 条 = 全部种子规则（没有哪条规则游离在分组之外）。
+    // 十一组合计 46 条 = 全部种子规则（没有哪条规则游离在分组之外）。
     expect(Object.values(DIRS).flat().sort()).toEqual(
       (await t.repos.sim.listPropagationRules("demo", true)).map((r) => r.key).sort(),
     );
