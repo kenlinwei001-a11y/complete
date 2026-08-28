@@ -168,7 +168,14 @@ export function extractOntologyProps(): { props: OntologyProps; unresolved: stri
     add(keyM[1]!, keys);
   }
 
-  // ── ② battery-extended.ts：`def("K", 名, 域, [ p("x") | pd("x", 口径) | { propKey: "x" } ])`
+  // ── ② battery-extended.ts：
+  //    `def("K", 名, 域, [ p("x",类型) | n("x",单位) | pd("x",口径) | nd("x",口径,单位) | rd("x",引用) | { propKey: "x" } ])`
+  //
+  // ⚠ **工厂名是本抽取器的耦合面**（WO-UNIT-KWH 实测：改前这里只认 `p(` / `pd(`，
+  //    而量纲必填后属性工厂按「数值 / 非数值」拆成了两支 —— 数值属性改走 `n()` / `nd()`。
+  //    于是 `Supplier.leadTime` 这类数值属性**整批抽不到**，金丝雀 B 当场报红。
+  //    这正是金丝雀该干的活：它报的是「**工具坏了**」，不是「清单干净」。）
+  //    battery-extended.ts 里新增或改名属性工厂时，**必须同步改下面这条正则**。
   const ext = stripComments(readFileSync(join(REPO_ROOT, ONTOLOGY_SOURCES[1]), "utf8"));
   const extIdx = ext.indexOf("export function extendedObjectTypes()");
   const extArr = extIdx < 0 ? null : balanced(ext, ext.indexOf("[", ext.indexOf("return [", extIdx)), "[", "]");
@@ -176,7 +183,7 @@ export function extractOntologyProps(): { props: OntologyProps; unresolved: stri
   for (const entry of extArr ? splitTopLevel(extArr) : []) {
     const keyM = entry.match(/def\(\s*"([A-Za-z_]\w*)"/);
     if (!keyM) { unresolved.push(`ext 注册项解析失败：${entry.slice(0, 60)}`); continue; }
-    add(keyM[1]!, [...[...entry.matchAll(/\bpd?\(\s*"([^"]+)"/g)].map((m) => m[1]!), ...propKeysIn(entry)]);
+    add(keyM[1]!, [...[...entry.matchAll(/\b(?:pd?|nd?|rd)\(\s*"([^"]+)"/g)].map((m) => m[1]!), ...propKeysIn(entry)]);
   }
 
   return { props, unresolved };
