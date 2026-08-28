@@ -65,9 +65,16 @@ const SIGNOFF_EXPIRE_DAYS = 7;
  *
  * 量纲收口后单位的**唯一出处**是类型 `PropertyUnit`，字典由它派生 ⇒ 两条路同一套词表，
  * 上面那处不对称自然消失，且以后往类型里加一个单位，字典自动跟上（不会再漂）。
- * `dimensionless` 不进字典：它是「明确无量纲」的声明，不是一个可显示的单位。
+ *
+ * ⚠ **`dimensionless` 必须在册**（本轮实测踩过：把它滤掉 ⇒ 三个测试文件、7 条用例齐红
+ * 「expected 400 to be 201」）。原因是这里管的是「**这个单位声明合不合法**」，
+ * 而不是「**这个单位该不该显示在屏上**」—— 两件事不同：
+ *   · 合法性（本字典）：`dimensionless` 是量纲必填后**最常见的合法声明**，滤掉它等于把
+ *     绝大多数属性判成「未知单位」，REST 建类型整条路当场 400。
+ *   · 可显示性（`domain.ts` 的 `displayUnit()`）：`dimensionless` 不上屏、不进 Agent 地图。
+ * 把这两件事混在一个列表里，正是本仓反复犯的那个形态：拿 A 的判据去管 B。
  */
-export const UNIT_DICTIONARY: string[] = (PROPERTY_UNITS as readonly string[]).filter((u) => u !== "dimensionless");
+export const UNIT_DICTIONARY: string[] = [...(PROPERTY_UNITS as readonly string[])];
 
 function displayProp(type: ObjectTypeDef | undefined): string {
   if (!type) return "name";

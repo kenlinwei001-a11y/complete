@@ -115,7 +115,9 @@ describe("WO-QOS-ONTOLOGY-CONTEXT · GET /a/v1/ontology/type-semantics（口径�
       displayName: "经营指标",
       properties: [
         prop("metricKey", { dataType: "string", isPrimaryKey: true, description: "指标键" }),
-        prop("actual", { description: "当期实际达成", unit: "%", scale: "ratio" }),
+        // MUTATE：unit 从初次播种的 "%" 改成 "元"（原用例改的是 "%"→"pct"，而 "pct" 不是合法单位；
+        // 换成同样构成**真实变化**的合法单位，保住「改真值即改判定」这条断言的被测对象）。
+        prop("actual", { description: "当期实际达成", unit: "元", scale: "absolute" }),
         prop("target", { description: "目标值", unit: "%" }),
         prop("gap", { description: "缺口" }),
       ],
@@ -131,7 +133,7 @@ describe("WO-QOS-ONTOLOGY-CONTEXT · GET /a/v1/ontology/type-semantics（口径�
     expect(c03[0]!.severity!).toBe("WARN");
     const actual = after.types.find((x) => x.typeKey === "Metric")!.props.find((p) => p.propKey === "actual")!;
     expect(actual.description).toBe("当期实际达成");
-    expect(actual.unit).toBe("pct");
+    expect(actual.unit).toBe("元");
   });
 
   it("R2 租户隔离：他租户看不到 demo 的类型语义", async () => {
