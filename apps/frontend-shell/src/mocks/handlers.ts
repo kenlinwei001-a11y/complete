@@ -839,7 +839,9 @@ const MOCK_PLAY_CANDIDATES = [
     rungSource: "同侪 Material.leadTime 真实极值（最小） 10（全类型·6 个不同取值·当前 26）",
     dims: [
       { key: "breach", label: "超阈幅度（MaterialBalance.gapTon）", value: 492, baseline: 492, unit: "吨" },
-      { key: "capacityP50", label: "产能 p50 合计（全域）", value: 34523133.8622, baseline: 30258169.2393, unit: "套/天" },
+      // WO-DIM-LABEL-3 ①：量纲随真后端订正为「电芯/日」（原写「套/天」，差 packCellCount=96 倍）。
+      // 值 = Σ byProcessModel.cellsPerDayP50，契约 `ByProcessModelRowSchema.unit` 是 z.literal("电芯/日")。
+      { key: "capacityP50", label: "产能 p50 合计（全域）", value: 34523133.8622, baseline: 30258169.2393, unit: "电芯/日" },
     ],
     // 判据读数没变 ⇒ 引擎拒绝折算，给 null + 理由（**不给 0**）。
     gapClose: {

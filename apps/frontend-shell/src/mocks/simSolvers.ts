@@ -1816,7 +1816,10 @@ function mkCandidate(a: {
         label: `产能 cellsPerDayP50 合计（电芯/日）${a.capacity.baseId ? `（基地 ${a.capacity.baseId}）` : "（全域）"}`,
         value: a.capacity.value,
         baseline: a.capacity.baseline,
-        unit: "套/天",
+        // WO-DIM-LABEL-3 ①：本 mock 与真后端逐字同形，故同样带着「label 写电芯/日、unit 写套/天」
+        // 这条自相矛盾（差 packCellCount=96 倍）。真后端已改，mock 跟着改 ——
+        // 否则 mock 模式会继续教一个错量纲，而两种模式屏上不一致本身就是下一个 bug 的温床。
+        unit: "电芯/日",
         betterWhen: "higher",
         dataMode: a.capacity.value !== null && a.capacity.baseline !== null ? "SYNTHETIC" : "EMPTY",
         ...(a.capacity.value !== null && a.capacity.baseline !== null
