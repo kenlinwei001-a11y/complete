@@ -2935,6 +2935,13 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "base_dispatches_transfer", fromTypeKey: "Base", toTypeKey: "InterBaseTransfer", cardinality: "1:N" }, // capacity（影响向·`transfer_from_base` 之逆）
     // D09 设备与维护：Process → Equipment → MaintenanceOrder
     { key: "process_uses_equipment", fromTypeKey: "Process", toTypeKey: "Equipment", cardinality: "N:N" }, // equip（影响向·`equip_used_in` 之逆）
+    // WO-SLICE-DOMAINS：Process → Line（影响向·`line_has_process` 之逆·`Process.lineId` 反投影）。
+    // 🔴 **这条边是设备侧唯一的出口**：本单实测 103 条 linkType 里，从 `Equipment` 出发的正向闭包
+    // 恰好是 {Equipment, Process, MaintenanceOrder} —— 四条边全在这三类之间打转
+    // （equip_used_in / equipment_has_maintenance_order / process_uses_equipment / maint_for_equip）。
+    // 于是 `propagateTick`（navOut 只沿 fromId→toId）无论加多少条规则都走不出去，
+    // 设备故障对订单与毛利的贡献**恒为 0**。补这一条之后制造侧才接得回产能主链。
+    { key: "process_belongs_to_line", fromTypeKey: "Process", toTypeKey: "Line", cardinality: "N:1" }, // capacity（影响向·`line_has_process` 之逆）
     { key: "equipment_has_maintenance_order", fromTypeKey: "Equipment", toTypeKey: "MaintenanceOrder", cardinality: "1:N" }, // equip（影响向·`maint_for_equip` 之逆）
     // D10 基地与仓储交付：Model → FinishedGoodsInventory
     { key: "model_stocked_as_finished_goods", fromTypeKey: "Model", toTypeKey: "FinishedGoodsInventory", cardinality: "1:N" }, // supply（影响向·`fg_of_model` 之逆）
