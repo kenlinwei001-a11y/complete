@@ -34,8 +34,8 @@ function pc(focus: NonNullable<PageContext["focus"]>, view = "dashboard"): PageC
 function pcEntities(view = "dashboard"): PageContext {
   return {
     view,
-    entities: [{ type: "Customer", id: "cust_g", label: "商用车集团G" }],
-    selection: ["cust_g"],
+    entities: [{ type: "Customer", id: "cust_16", label: "宇通客车" }],
+    selection: ["cust_16"],
     drillPath: [],
     actions: [],
   };
@@ -45,7 +45,7 @@ export const QOS_20Q_GOLDSET: GoldQuestion[] = [
   // ───────────── ① 有对口单一确定性 solver → 应 path-A ─────────────
   { no: 1, query: "储能份额为什么没达成目标", cls: "path-A", expectPathA: true, expectSolver: "gap_attribution", pageContext: pc({ metric: "seg_attain_ess" }) },
   { no: 2, query: "常州毛利率为什么下滑", cls: "path-A", expectPathA: true, expectSolver: "finance_pnl", pageContext: pc({ metric: "margin_changzhou" }) },
-  { no: 3, query: "商用车集团G的信用敞口还有多少额度", cls: "path-A", expectPathA: true, expectSolver: "credit_exposure", pageContext: pcEntities() },
+  { no: 3, query: "宇通客车的信用敞口还有多少额度", cls: "path-A", expectPathA: true, expectSolver: "credit_exposure", pageContext: pcEntities() },
   { no: 4, query: "SO-12345 何时能交", cls: "path-A", expectPathA: true, expectSolver: "atp_check", pageContext: pc({ order: "SO-12345" }) },
   // Q5（WO SEAM 头号例）：储能份额逐层拆根因 → gap_attribution（含"逐层"下钻词但仍是单 solver·不因该词被误判开放）。
   { no: 5, query: "储能份额逐层拆根因", cls: "path-A", expectPathA: true, expectSolver: "gap_attribution", pageContext: pc({ metric: "seg_attain_ess", factorId: "cf-cathode-shortage" }) },
@@ -56,7 +56,7 @@ export const QOS_20Q_GOLDSET: GoldQuestion[] = [
   { no: 10, query: "肇庆基地利用率为什么这么低", cls: "path-A", expectPathA: true, expectSolver: "gap_attribution", pageContext: pc({ metric: "util_zhaoqing" }) },
 
   // ───────────── ② 需多 solver 编排 → 应 path-B ─────────────
-  { no: 11, query: "综合信用、毛利、供需三个维度评估商用车集团G能不能继续接单", cls: "path-B-orchestration", expectPathA: false, pageContext: pcEntities() },
+  { no: 11, query: "综合信用、毛利、供需三个维度评估宇通客车能不能继续接单", cls: "path-B-orchestration", expectPathA: false, pageContext: pcEntities() },
   { no: 12, query: "把供需缺口和交期风险串起来看整体影响", cls: "path-B-orchestration", expectPathA: false, pageContext: pc({ metric: "seg_attain_ess" }) },
   { no: 13, query: "权衡自产加班和外协两个方案的综合成本收益", cls: "path-B-orchestration", expectPathA: false, pageContext: pc({ metric: "aop_attain" }) },
   { no: 14, query: "产能、财务、信用之间相互怎么传导", cls: "path-B-orchestration", expectPathA: false, pageContext: pcEntities() },

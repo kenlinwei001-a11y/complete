@@ -94,18 +94,31 @@ export const SCENARIO_CATALOG: ScenarioCard[] = [
   card("S12", "良率波动诊断", "risk", "yield_diag", "涂布良率为什么掉了？", "yield_diagnosis", ["C30"], "COMPUTE", "解读良率波动诊断", [B("changzhou", "常州")], { processKey: "涂布", base: "" }),
   card("S13", "检修窗口错峰", "risk", "maint_stagger", "检修计划和交付高峰撞了怎么调？", "maintenance_stagger", ["C11"], "COMPUTE", "解读检修错峰建议", [], {}),
   card("S14", "外协决策", "generate", "outsourcing_q", "缺口 8 万套自产加班还是外协？", "outsourcing_split", ["C08", "C31"], "COMPUTE", "解读外协分配方案", [], { gap: 80000, weeks: 6 }),
-  // ★ WO-DERIVED-INTENT-SLOT-DEAF §3.4 裁决（S15·① 合理默认·保留）：`custName:"电网公司F"` 正是本卡
-  //   问句的主语（「**电网公司 F** 这单毛利过线吗？」），作为**本卡**的默认作用域合理；病不在这个值，
-  //   在于它此前**独占** args（用户问别的客户也顶不掉）——那一半由本单的槽位+merge 治。
-  //   ⚠ 如实更正工单 §2.1 的措辞：`quote_margin` **根本不读 custName**（`extended.ts:303-319` 只读
-  //   price/bom/mfgRate/logistics/segmentFloor），所以「问别的客户毛利 → 拿到电网公司F 的毛利」不成立；
-  //   真实形态是**任何客户都拿到同一份 BOM 口径毛利**（假个性化）——引擎半缺客户维，见工单 §6 遗留缺口 ③。
-  card("S15", "接单毛利评审", "dash", "quote_margin_q", "电网公司 F 这单毛利过线吗？", "quote_margin", ["C15", "C24"], "COMPUTE", "解读接单毛利评审", [], { custName: "电网公司F" }),
-  // ★ WO-DERIVED-INTENT-SLOT-DEAF §3.4 裁决（S16·① 合理默认·保留）：`custName:"商用车集团G"` 是本卡
-  //   问句的主语（「**商用车集团 G** 还能接新单吗？」）。这是 16 张里**唯一**一个求解器真按该实参过滤的
-  //   实体维（`credit_exposure`：匹配不到抛 `AMBIGUOUS_SCOPE`、未指定则 `scope:ALL` 全域合计，
-  //   `extended.ts:498-527`），故也是本单差分门**输出层**断言的落点。
-  card("S16", "客户信用风险", "dash", "credit_check", "商用车集团 G 还能接新单吗？", "credit_exposure", ["C13", "C32"], "COMPUTE", "解读客户信用判定", [], { custName: "商用车集团G" }),
+  // ★ WO-DERIVED-INTENT-SLOT-DEAF §3.4 裁决（S15·① 合理默认·保留）：`custName` 正是本卡问句的主语，
+  //   作为**本卡**的默认作用域合理；病不在这个值，在于它此前**独占** args（用户问别的客户也顶不掉）
+  //   ——那一半由该单的槽位+merge 治。
+  //   ⚠ **上一版这条注释已过期，本单实测订正**：原文写「`quote_margin` **根本不读 custName**」——
+  //   那是 `WO-QUOTE-MARGIN-CUSTOMER`（欠账 #118）**之前**的形态。今天它**读**：客户解析走
+  //   「精确 custName → 下单品牌名 → 双向子串」阶梯，匹配不到直接抛 `AMBIGUOUS_SCOPE` **400**
+  //   （`datacore/src/solvers/extended.ts` quote_margin 分支），再沿 `order_of_customer` 边取该客户
+  //   订单 → 真 BOM + 该客户该型号 `Order.unitPrice` 加权均价。**这正是本单必须换名字的原因**。
+  // ★ WO-CUST-SLOT-REGEX：`电网公司F` 是 `WO-ORDER-BOOK-500` **退役掉的匿名代号**，客户库里已不存在
+  //   ⇒ 这张卡对真 DataCore 是 400。换成 `小鹏汽车`（实测：客户库在册 cust_1·90 张在手单·其中
+  //   **14 张是 4680-NCM**，与本卡写死的 `modelId` 对得上 ⇒ `modelMatched:true`·`dataMode:"OK"`）。
+  //   ⚠ 选它而不是订单更多的 `广汽埃安`（223 单）有两个实测理由：① 埃安**无机构后缀**，
+  //   `matchCustomerInQuery` 抽不出来 ⇒ 卡片默认值与自然语言问句两条路会给出不同作用域；
+  //   ② 名册里 4680-NCM 在手单最多的**有后缀**客户就是它。**不许**换成 `国家电网`：实测
+  //   `modelMatched:false`·`orders:[]`·`qty:0`（储能客户不下 NCM 动力单）—— 那是把 400 换成空页。
+  card("S15", "接单毛利评审", "dash", "quote_margin_q", "小鹏汽车这单毛利过线吗？", "quote_margin", ["C15", "C24"], "COMPUTE", "解读接单毛利评审", [], { custName: "小鹏汽车" }),
+  // ★ WO-DERIVED-INTENT-SLOT-DEAF §3.4 裁决（S16·① 合理默认·保留）：`custName` 是本卡问句的主语。
+  //   这是 16 张里**唯一**一个求解器真按该实参过滤的实体维（`credit_exposure`：匹配不到抛
+  //   `AMBIGUOUS_SCOPE`、未指定则 `scope:ALL` 全域合计），故也是该单差分门**输出层**断言的落点。
+  // ★ WO-CUST-SLOT-REGEX：`商用车集团G` 同属退役匿名代号 ⇒ 对真 DataCore 400。换成 `宇通客车` ——
+  //   它是名册 20 家里**唯一**的商用车客户（`CUSTOMER_REGISTRY businessType:"commercial"`），
+  //   故这次替换**保住了本卡原本的业务语义**（商用车授信），不是随手挑一家。
+  //   实测有数（seed 42）：cust_16·**18 张在手单**·`credit_exposure` 回 exposure 6554 / available 6269 /
+  //   **1 张逾期发票** ⇒「还能接新单吗」是道有额度、也有风险信号的真题，不是空页。
+  card("S16", "客户信用风险", "dash", "credit_check", "宇通客车还能接新单吗？", "credit_exposure", ["C13", "C32"], "COMPUTE", "解读客户信用判定", [], { custName: "宇通客车" }),
   // ★ WO-DERIVED-INTENT-SLOT-DEAF（本单顺手清一个同族死键·被 `scenario-slot-keys:check` 当场照出来）：
   //   原 `slotPresets: { scenario: "基准" }` 是**三重死键**——① `capex_scenario` 真读的是 `args.scenarioKey`
   //   （`apps/datacore/src/solvers/capex.ts:272`），没有 `scenario` 这个入参；② 本卡的求解器入参走

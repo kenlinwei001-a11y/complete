@@ -205,7 +205,7 @@ describe("S2/S3 · DRIL 检索接线（navigation-slice 确定性投影·真绿�
       }),
     );
     const credit = navigationSliceSolverKeys(
-      projectNavigationSlice("商用车集团G信用敞口还有多少额度", undefined, {
+      projectNavigationSlice("宇通客车信用敞口还有多少额度", undefined, {
         objectTypes: ["Customer", "Order"],
         toolNames: ["query_objects", "invoke_solver"],
       }),

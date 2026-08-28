@@ -129,7 +129,7 @@ describe("WO-QOS-2 · SEAM ② R6：NavigationSlice 同问句同 scope 字节一
       objectTypes: ["Process", "Equipment", "QualityStandard"],
       toolNames: ["query_objects", "invoke_solver"],
     });
-    const credit = projectNavigationSlice("商用车集团G信用敞口还有多少额度", undefined, {
+    const credit = projectNavigationSlice("宇通客车信用敞口还有多少额度", undefined, {
       objectTypes: ["Customer", "Order"],
       toolNames: ["query_objects", "invoke_solver"],
     });
@@ -175,7 +175,7 @@ describe("WO-QOS-2 · SEAM ③ 隔离语义：按 scopeDeclaration 投影·越�
   });
 
   it("通用 path-B（无 objectTypes 声明）→ 按问句 domain 投影·不收窄对象域", () => {
-    const slice = projectNavigationSlice("商用车集团G信用敞口还有多少额度", undefined, { toolNames: ["query_objects", "invoke_solver"] });
+    const slice = projectNavigationSlice("宇通客车信用敞口还有多少额度", undefined, { toolNames: ["query_objects", "invoke_solver"] });
     expect(navigationSliceSolverKeys(slice)).toContain("credit_exposure");
   });
 });

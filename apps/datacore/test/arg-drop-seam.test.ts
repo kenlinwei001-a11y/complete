@@ -51,25 +51,36 @@ describe("SEAM-ARG-DROP · router×plan×solver 接缝驱动（真实 AgentCore 
     await t.app.close();
   });
 
-  it("① CONFIRMED credit_exposure：带客户名深问 → custName 穿透接缝 → 答案只含该客户（非首客户整车厂A）", async () => {
-    const seam = await driveSeam("电网公司F 的信用敞口有多大？", undefined, ctx);
+  // WO-CUST-SLOT-REGEX：本用例原先钉的三个名字（「电网公司F」「电网公司」「整车厂A」）全部是
+  //   `WO-ORDER-BOOK-500` **退役掉的匿名代号** —— 客户库换成真品牌名后它们一个都不存在，
+  //   于是 `credit_exposure` 照章抛 `AMBIGUOUS_SCOPE` 400，本条转红。这是**旧名以数据键形态
+  //   写在断言字符串里**的典型：类型系统一个都看不见，`typecheck`/`build` 全绿（铁律 0.6 第 4 条）。
+  //   改法只动名字、不动结构：查询客户 `国家电网`（cust_9·实测 22 张在手单），
+  //   对照客户改成**今天真正的首客户** `广汽埃安`（cust_0 —— 静默兜底若复发就会落到它头上）。
+  it("① CONFIRMED credit_exposure：带客户名深问 → custName 穿透接缝 → 答案只含该客户（非首客户广汽埃安）", async () => {
+    const seam = await driveSeam("国家电网的信用敞口有多大？", undefined, ctx);
     // 数据半：路由解析的 custName 真进 slot（修前 slotNames:[] → fillSlots 丢）→ plan {{slots.custName}} 真达 solverArgs。
     expect(seam.route.route).toBe("credit_exposure");
     expect(seam.intentKey).toBe("ceo_credit_exposure");
-    expect(seam.slots.custName).toBe("电网公司"); // creditArgsFrom 截尾拉丁「电网公司F」→「电网公司」
-    expect(seam.solverArgs.custName).toBe("电网公司"); // 无丢：模板 {{slots.custName}} 解析出真值
+    expect(seam.slots.custName).toBe("国家电网"); // matchCustomerInQuery 机构后缀锚（…电网）→ 名册原名，无截尾
+    expect(seam.solverArgs.custName).toBe("国家电网"); // 无丢：模板 {{slots.custName}} 解析出真值
 
-    // 引擎半：真 DataCore 求解器 → 稳健匹配「电网公司」→ 真实「电网公司F」，scope 显式标 CUSTOMER（非首客户）。
+    // 引擎半：真 DataCore 求解器 → scope 显式标 CUSTOMER（非首客户）。
     const payload = await dc.solver.invoke(ctx, seam.solverKey, seam.solverArgs);
     const data = payload.data as { scope: { mode: string; custName?: string }; exposure: number };
     expect(data.scope.mode).toBe("CUSTOMER");
-    expect(data.scope.custName).toBe("电网公司F"); // 答案只含该实体（数据种绑定 × 引擎路由·接缝驱动）
+    expect(data.scope.custName).toBe("国家电网"); // 答案只含该实体（数据种绑定 × 引擎路由·接缝驱动）
 
-    // 对照：首客户「整车厂A」敞口是另一个数（证修前的 customers[0] 静默默认会答非所问）。
-    const cust0 = await dc.solver.invoke(ctx, "credit_exposure", { custName: "整车厂A" });
+    // 对照：首客户「广汽埃安」敞口是另一个数（证修前的 customers[0] 静默默认会答非所问）。
+    const cust0 = await dc.solver.invoke(ctx, "credit_exposure", { custName: "广汽埃安" });
     const d0 = cust0.data as { scope: { custName?: string }; exposure: number };
-    expect(d0.scope.custName).toBe("整车厂A");
-    expect(data.scope.custName).not.toBe(d0.scope.custName); // 电网公司F ≠ 整车厂A（不是同一个静默默认答案）
+    expect(d0.scope.custName).toBe("广汽埃安");
+    expect(data.scope.custName).not.toBe(d0.scope.custName); // 国家电网 ≠ 广汽埃安（不是同一个静默默认答案）
+
+    // 上面改名后路由给的已是名册原名（精确命中），引擎半的**双向子串阶梯**就没人验了 ——
+    // 补一条直投断言把那段覆盖接回来（部分名「宇通」→ 真实「宇通客车」）。
+    const partial = await dc.solver.invoke(ctx, "credit_exposure", { custName: "宇通" });
+    expect((partial.data as { scope: { custName?: string } }).scope.custName).toBe("宇通客车");
   });
 
   it("① 引擎半诚实化：未指定客户 → scope:ALL 全域合计（不静默冒充首个客户）", async () => {

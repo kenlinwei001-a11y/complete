@@ -237,8 +237,8 @@ describe("WO-DERIVED-INTENT-SLOT-DEAF §C · 差分门（实参层）：换实�
     {
       name: "S16 credit_check · 客户维（本仓唯一一个求解器真按它过滤的实体维）",
       intentKey: "credit_check", solverKey: "credit_exposure", view: "dash", slot: "custName",
-      a: { q: "电网公司F 还能接新单吗？", v: "电网公司F" },
-      b: { q: "商用车集团G 还能接新单吗？", v: "商用车集团G" },
+      a: { q: "国家电网 还能接新单吗？", v: "国家电网" },
+      b: { q: "宇通客车 还能接新单吗？", v: "宇通客车" },
     },
     {
       name: "S12 yield_diag · 基地维（写死的「常州」不该再顶掉用户说的另一个基地）",
@@ -306,13 +306,13 @@ describe("WO-DERIVED-INTENT-SLOT-DEAF §D · 差分门（输出层）：答案�
    * `apps/datacore/src/solvers/extended.ts:498-527`），故两半口径最接近。
    */
   it("S16 credit_check：换客户 → 渲染出的答案文本不同（改前两问答案逐字节相同）", async () => {
-    const A = await runQuery({ intentKey: "credit_check", solverKey: "credit_exposure", view: "dash", query: "电网公司F 还能接新单吗？", extractedSlots: { custName: "电网公司F" } });
-    const B = await runQuery({ intentKey: "credit_check", solverKey: "credit_exposure", view: "dash", query: "商用车集团G 还能接新单吗？", extractedSlots: { custName: "商用车集团G" } });
+    const A = await runQuery({ intentKey: "credit_check", solverKey: "credit_exposure", view: "dash", query: "国家电网 还能接新单吗？", extractedSlots: { custName: "国家电网" } });
+    const B = await runQuery({ intentKey: "credit_check", solverKey: "credit_exposure", view: "dash", query: "宇通客车 还能接新单吗？", extractedSlots: { custName: "宇通客车" } });
     expect(A.status).toBe("COMPLETED");
     expect(B.status).toBe("COMPLETED");
     expect(A.answerText).not.toBe(B.answerText);
-    expect(A.answerText).toContain("电网公司F");
-    expect(B.answerText).toContain("商用车集团G");
+    expect(A.answerText).toContain("国家电网");
+    expect(B.answerText).toContain("宇通客车");
   }, 40000);
 });
 

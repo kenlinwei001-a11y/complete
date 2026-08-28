@@ -619,7 +619,10 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
   const ARG_OVERRIDE: Record<string, Record<string, unknown>> = {
     plan_audit: { dem: 100, seg_pas: 50, seg_ess: 32, seg_com: 18, sup: 98, ltaCov: 60, kitGap: 100, gmTarget: 14, cashCushion: 45, capex: 8 },
     capex_scenario: { demand: [50, 48, 49, 51], s0: [45, 45, 45, 45], projects: [{ id: "P", name: "P", q0: 1, cap: 4, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 }] },
-    quote_margin: { custName: "电网公司F", modelId: "4680-NCM", qty: 500 },
+    // WO-CUST-SLOT-REGEX：`电网公司F` 是 WO-ORDER-BOOK-500 退役掉的匿名代号（客户库已无此人 ⇒ 400
+    // AMBIGUOUS_SCOPE）。换 `小鹏汽车` —— 与 S15 卡的 slotPreset 同一个值（这里是它的 ARG_OVERRIDE，
+    // 两处必须一致，否则卡片默认与计划默认各说各话）；实测该客户名下 14 张 4680-NCM 在手单，modelMatched:true。
+    quote_margin: { custName: "小鹏汽车", modelId: "4680-NCM", qty: 500 },
   };
   for (const card of SCENARIO_CATALOG) {
     if (seededKeys.has(card.intentKey)) continue; // 已有的 4 个跳过
@@ -679,11 +682,16 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
     { key: "ceo_decision", name: "CEO 决策推演", solver: "decision_play", examples: ["这个根因怎么补", "有哪些方案", "怎么应对"], slotNames: ["metricKey", "factorId"] },
     { key: "ceo_metric", name: "CEO 达标查询", solver: "metric_rollup", examples: ["各指标差多少", "哪些指标越线", "达成情况"], slotNames: ["metricKey"] },
     // WO-TIER2-B：B/C 域高频意图确定性直绑 solver（resolveCeoRoute 路由 → 对应 intent/plan → invoke_solver）
-    // WO-SEAM-ARG-DROP（CONFIRMED 锚点·两半一并）：ceo_credit_exposure 补 custName 槽 → 问句解析的客户名（creditArgsFrom
-    //   /XX客户|XX公司/）真达 credit_exposure（此前 slotNames:[] → solverArgs 丢 custName → extended.ts deriveExtendedArgs
+    // WO-SEAM-ARG-DROP（CONFIRMED 锚点·两半一并）：ceo_credit_exposure 补 custName 槽 → 问句解析的客户名
+    //   （`matchCustomerInQuery`·WO-CUST-SLOT-REGEX 起改为机构后缀册+引号锚，此前是照匿名代号写的 /XX客户|XX公司/）
+    //   真达 credit_exposure（此前 slotNames:[] → solverArgs 丢 custName → extended.ts deriveExtendedArgs
     //   `?? customers[0]` 静默落**首个客户**·敞口错算成整车厂A→答非所问）。引擎半同步诚实化（无匹配报 AMBIGUOUS_SCOPE·
     //   未指定标 scope:ALL 合计·不静默落首客户），见 solvers/extended.ts credit_exposure 分支。
-    { key: "ceo_credit_exposure", name: "CEO 信用敞口", solver: "credit_exposure", examples: ["蔚云汽车客户信用逾期多少", "电网公司信用敞口多大"], slotNames: ["custName"] },
+    // WO-CUST-SLOT-REGEX：例句原写「蔚云汽车客户…」「电网公司…」—— 两个都**不是客户库里的人**
+    //   （前者是编的，后者是退役匿名代号的词根）。例句是给分类器看的锚，写不存在的客户等于拿假坐标教它。
+    //   换成名册实测在册的两家：`小鹏汽车`（cust_1·90 单）与 `国家电网`（cust_9·22 单），
+    //   两个都能被 `matchCustomerInQuery` 的机构后缀锚（汽车 / 电网）抽出来。
+    { key: "ceo_credit_exposure", name: "CEO 信用敞口", solver: "credit_exposure", examples: ["小鹏汽车信用逾期多少", "国家电网信用敞口多大"], slotNames: ["custName"] },
     { key: "ceo_finance_pnl", name: "CEO 量价本利", solver: "finance_pnl", examples: ["毛利为什么下滑", "量价本利情况"], slotNames: [] },
     { key: "ceo_supply_demand_gap", name: "CEO 供需失衡归因", solver: "supply_demand_gap_attribution", examples: ["供需为什么对不上", "产销缺口归因"], slotNames: ["metricKey"] },
     { key: "ceo_atp_check", name: "CEO 订单承诺", solver: "atp_check", examples: ["这单能不能接", "能接多少何时能交"], slotNames: ["orderRef"] },
@@ -762,7 +770,7 @@ export function seedIntentsAndPlans(tenantId = SEED_TENANT, now = new Date().toI
                 //   `baseCapacityOutlook` 入口早已 `normalizeBaseRef(args.baseId)`（认对象 ref）→ 两边闭合。
                 n === "baseId"
                   ? ({ name: n, type: "objectRef" as const, required: false, refType: "Base", description: "基地（Base 对象引用·问句/PageContext.focus.base 注入·base_capacity_outlook 必填）" })
-                  : ({ name: n, type: "string" as const, required: false, description: n === "metricKey" ? "目标指标 key（PageContext.focus.metric 注入）" : n === "orderRef" ? "订单号（问句 SO-号/PageContext.focus.order 注入）" : n === "custName" ? "客户名（问句 XX客户/XX公司 解析·creditArgsFrom 注入·credit_exposure 客户维过滤·WO-SEAM-ARG-DROP）" : "根因因素 id（PageContext.focus.factorId/selection 注入）" }),
+                  : ({ name: n, type: "string" as const, required: false, description: n === "metricKey" ? "目标指标 key（PageContext.focus.metric 注入）" : n === "orderRef" ? "订单号（问句 SO-号/PageContext.focus.order 注入）" : n === "custName" ? "客户名（问句里出现的客户/企业名，如 小鹏汽车 / 国家电网 / 宇通客车；matchCustomerInQuery 确定性抽取·credit_exposure 客户维过滤·WO-SEAM-ARG-DROP/WO-CUST-SLOT-REGEX）" : "根因因素 id（PageContext.focus.factorId/selection 注入）" }),
               );
     intents.push({
       id: `int_${cap.key}_v1${sfx}`, packageId: pkgId, key: cap.key, version: 1, status: "PUBLISHED",

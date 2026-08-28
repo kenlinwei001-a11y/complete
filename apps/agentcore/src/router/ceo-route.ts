@@ -1,5 +1,6 @@
 import type { CeoQueryRoute, PageContext, CeoAgentRole } from "@platform/contracts";
 import { BASE_REGISTRY } from "@platform/contracts"; // WO-QOS-ROUTE-COVER：基地册单一来源（问句/focus.base → 规范 baseId·喂 bottleneck_matrix/base_capacity_outlook）。
+import { extractRelativeDateToken } from "./slots.js"; // WO-CUST-SLOT-REGEX：相对时间词表单一来源（客户名否定护栏③·不另抄一份）。
 
 /**
  * WO-CEO-6 · CEO 深问确定性路由（闭 G-3·纯函数·R6 无 LLM/时钟/随机）。
@@ -67,11 +68,104 @@ function atpArgsFrom(q: string, focus: PageContext["focus"]): Record<string, unk
   return args;
 }
 
-/** 从问句派生信用敞口 args（custName 优先取问句中「XX客户/XX公司」；无则空·求解器走默认）。 */
+// ─────────────────────────────────────────────────────────────────────────────
+// WO-CUST-SLOT-REGEX · 问句 → 客户名（`credit_exposure.custName` 槽）
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * ## 病根（真回归·非假想）
+ * 旧实现一行：`q.match(/([一-龥]{2,10}(?:客户|公司))/)` —— 只认「…客户 / …公司」**结尾**。
+ * 它是**照着已退役的匿名代号**（「电网公司F」「商用车集团G」「海外车企E」）写的，那批名字恰好都以
+ * 这两个词收尾，所以一直好用。`WO-ORDER-BOOK-500` 把客户换成真品牌名之后，**20 家一个都不以这两个词结尾**
+ * ⇒ `custName` 槽恒空 ⇒ CEO 信用敞口问句全部退化成 `scope:ALL` 全域合计（问谁都是同一个数）。
+ *
+ * ## 为什么不是「放宽成任意 2–10 汉字」
+ * 求解器对**匹不到的客户**是 `AMBIGUOUS_SCOPE` **400**（`datacore/src/solvers/extended.ts`
+ * credit_exposure 分支，故意不静默落首客户）。所以放宽的代价不是"多抓几个"，是把「本月毛利」
+ * 「常州基地」这类词喂进去 ⇒ 用户拿到的从"全域合计"（诚实答案）变成一个**报错**。
+ * **误匹配比漏匹配贵**，故本实现取「高精度 + 诚实漏」：抽不到就不抽，让求解器答 scope:ALL。
+ *
+ * ## 为什么不是「去问真名册」（本来应该是这个·已追一层核实，不是假设）
+ * 名册是 `CUSTOMER_REGISTRY`（`apps/datacore/src/synthetic/battery.ts`）。**这一层拿不到**：
+ *  ① **静态不可达**：agentcore 全仓**零个** datacore src import（contracts-only-shared），
+ *     而 `@platform/contracts` 里**没有**客户册（只有 `solver-args.ts` 的 `custName` 字段名）。
+ *  ② **运行期这一层也不可达**：`resolveCeoRoute` 是**同步纯函数**（R6·见本文件头注），
+ *     没有 `ToolAuthCtx`、没有 DataCore 客户端。名册确实经 `OntologyClient.queryObjects /
+ *     resolveObjectRef` 可达，但那在**下一层** `fillSlots`；且 `custName` 是 **string 槽** ——
+ *     接缝测试明确断言 string/json 槽**不许**触 ontology，而改成 objectRef 会把名字换成
+ *     `{objectType,objectId,label}`，被求解器的 `str(args.custName)` 静默清空成 `""`
+ *     （`mocks/seed.ts` 文件头已就这条路警告过）。
+ *  ⇒ 正解是把客户册提到 `@platform/contracts`，与 `BASE_REGISTRY` 同构 —— 本文件的
+ *     `parseBaseFromQuery` 就是现成样板（12 个基地零映射表·R14）。那属本单**禁区**，
+ *     故**不**在 agentcore 侧另抄一份名册（那就是欠账 #99「D1/E1 各造一套词表」复发），
+ *     缺口如实登记：**4 家无后缀的客户（广汽埃安 / 上汽通用五菱 / 大众 / 现代）本实现只能靠引号锚命中**。
+ *     其中「大众」「现代」是**普通汉语词**，任何正则要命中它们就必然同时命中普通行文 ——
+ *     这是"正则做不到、只有名册做得到"的硬证据，不是本实现偷懒。
+ */
+/**
+ * 机构后缀册 —— **取自真实客户名册里实际出现的构词后缀**，不是「任意汉字」。
+ * 实测 20 家（`POST /a/v1/objects/query {objectType:"Customer"}`·seed 42）：
+ * 汽车×10（小鹏/零跑/长安/深蓝/合创/蔚来/吉利/小米/智己/东风）· 电网×2 · 电投×1 · 客车×1（宇通）·
+ * 集团×1（广汽）· 新能源×1（广汽）⇒ **16/20 带后缀**。
+ *
+ * ⚠ 「新能源」必须排在「汽车」之前的更长匹配位：`广汽新能源` 的词干只有 2 字（广汽），
+ *   若先试短后缀会切成「广汽新」+ 未收的「能源」而漏掉。
+ * ⚠ 刻意**不**收「能源 / 科技 / 股份 / 实业」这类册里根本没有的后缀 —— 每多一个后缀就多一片
+ *   误匹配面，而召回换不来任何一个真实客户。
+ * ⚠ 刻意**删掉**旧实现里的「客户」后缀：名册里没有任何一家叫「…客户」，它在汉语里是**角色词**，
+ *   几乎只跟在限定词后面（「这个客户」「该客户」「大客户」），是旧正则误匹配的主要来源。
+ *   保留「公司」是因为它真能构成企业名，且种子例句有不指名道姓的问法。
+ */
+const CUST_ORG_SUFFIX = "新能源|汽车|客车|电网|电投|集团|公司";
+/** 词干（2–8 汉字·惰性取最短）+ 机构后缀。`g` 标志：逐个候选试，被否定册挡掉的继续往后找。 */
+const RE_CUST_ORG = new RegExp(`([一-龥]{2,8}?)(${CUST_ORG_SUFFIX})`, "g");
+/** 引号锚：用户显式框出的实体（「广汽埃安」/「大众」）—— 后缀册覆盖不到的 4 家只有这一条路。 */
+const RE_QUOTED_ENTITY = /[「『“‘"']([^」』”’"'\s，。？！,.?!]{2,12})[」』”’"']/g;
+
+// ── 否定护栏（三条复用既有单一来源，一条是新增的构词规则）─────────────────────────
+/** ① 限定词/指代词打头 ⇒ 不是专名（「这个公司」「该公司」「全部客户」「新能源汽车」）。
+ *  实测 20 家真实客户**无一**以这些词打头，故零误伤。 */
+const RE_DETERMINER_LEAD = /^(?:这|那|该|本|其|此|每|各|全|所有|另|同|上述|前述|某|哪|几|多|单一|首个|头部|重点|核心|关键|主要|大型|中小|新增|新|老)/;
+/** ② 词干里出现结构助词/连词 ⇒ 是切错了词，不是专名（「我们的公司」「毛利和公司」）。
+ *  实测 20 家真实客户的词干（广汽/小鹏/零跑/长安/深蓝/合创/蔚来/吉利/国家/南方/小米/宇通/东风/智己…）无一含这些字。 */
+const RE_FUNCTION_WORD = /[的了是在和与及或把被给对从向为]/;
+
+/**
+ * 候选词是否**像**一个客户名（四条否定护栏全过才算）。
+ * ③ 相对时间词复用 `slots.ts` 的词表单源（`extractRelativeDateToken`），不另抄一份；
+ * ④ 基地名复用 `BASE_REGISTRY`（「常州公司」= 基地不是客户）。
+ */
+function isPlausibleCustomerName(token: string, stem: string): boolean {
+  if (token.length < 2 || stem.length < 2) return false;
+  if (RE_DETERMINER_LEAD.test(token)) return false;
+  if (RE_FUNCTION_WORD.test(stem)) return false;
+  if (extractRelativeDateToken(stem) !== undefined) return false; // 本月/下周/今天…
+  if (BASE_REGISTRY.some((b) => b.name === stem || b.baseId === stem || b.name === token)) return false;
+  return true;
+}
+
+/**
+ * 从问句抽客户名候选：**引号锚优先**（用户显式框出 = 比构词形态更强的意图信号），其次机构后缀锚。
+ * 两条都逐个候选过否定护栏，第一个过关的即采用；一个都不过 ⇒ `undefined`（诚实缺席·求解器答 scope:ALL）。
+ */
+export function matchCustomerInQuery(q: string): string | undefined {
+  const s = q ?? "";
+  for (const m of s.matchAll(RE_QUOTED_ENTITY)) {
+    const tok = (m[1] ?? "").trim();
+    if (isPlausibleCustomerName(tok, tok)) return tok;
+  }
+  for (const m of s.matchAll(RE_CUST_ORG)) {
+    const stem = m[1] ?? "";
+    const tok = m[0];
+    if (isPlausibleCustomerName(tok, stem)) return tok;
+  }
+  return undefined;
+}
+
+/** 从问句派生信用敞口 args（custName 见 `matchCustomerInQuery`；无则空·求解器答 scope:ALL 全域合计）。 */
 function creditArgsFrom(q: string): Record<string, unknown> {
   const args: Record<string, unknown> = {};
-  const m = q.match(/([一-龥]{2,10}(?:客户|公司))/);
-  if (m) args.custName = m[1];
+  const cust = matchCustomerInQuery(q);
+  if (cust) args.custName = cust;
   return args;
 }
 
