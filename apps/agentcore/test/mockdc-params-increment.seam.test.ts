@@ -134,10 +134,13 @@ function locateFactorySource(): string {
     throw new Error(`定位器扫描面只有 ${scanned.length} 个 .ts —— 工具坏了（不是「工厂不存在」），先修遍历再谈结论`);
   }
   const hits = scanned.filter((f) => FACTORY_DECL.test(readFileSync(f, "utf8")));
-  if (hits.length !== 1) {
+  // `noUncheckedIndexedAccess` 下 `hits[0]` 是 `string | undefined`，而 `hits.length !== 1`
+  // 这个守卫**不会**让 TS 收窄下标访问 —— 故显式取出再判，别写 `hits[0]!` 把检查糊过去。
+  const [only] = hits;
+  if (hits.length !== 1 || only === undefined) {
     throw new Error(`声明 createMockDataCore 的源文件应恰好 1 个，实得 ${hits.length}：${hits.join(", ")}`);
   }
-  return hits[0];
+  return only;
 }
 
 const MOCK_PATH = locateFactorySource();
