@@ -1100,7 +1100,7 @@ const qualityStandardProps: PropertyDef[] = [
   { propKey: "toleranceLower", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   { propKey: "unit", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   { propKey: "testMethod", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
-  { propKey: "samplingRate", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "samplingRate", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" }, // 真起后端实测 [5,100] ⇒ 0–100 表示法（不是 0–1）
   { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
@@ -1111,7 +1111,7 @@ const inspectionCharacteristicProps: PropertyDef[] = [
   { propKey: "charCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   { propKey: "inspectionType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   { propKey: "inspectionMethod", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
-  { propKey: "samplingRate", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "samplingRate", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" }, // 真起后端实测 [5,100] ⇒ 0–100 表示法（不是 0–1）
   { propKey: "frequency", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   { propKey: "controlMethod", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
@@ -1213,7 +1213,15 @@ const lineProps: PropertyDef[] = [
   { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
   { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   // 运营指标（利用率 + 时序聚合物化：日实际产出 / 排程达成率）——全建模对齐（R12）。
-  { propKey: "utilization", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  // ⚠⚠ `Line.utilization` 是 **0–100 百分数**，与 `Process.utilization` 的 **0–1 小数**同名不同量纲。
+  //   别照本文件里那个 `utilization: round(0.88 + …, 3)` 的种子值下判断 —— **那一行写的是 Process**，
+  //   而 Line 的值由时序物化**覆盖**：`util:line` 序列 `base:{mean:92}` → 经 `line_util_daily`
+  //   （本文件 tsMaterializations）写进 `Line.utilization`。真起后端实测（SEED_DEMO=1）：
+  //     Line.utilization    = 92.55 / 92.85 / 90.47   ⇒ 0–100 ⇒ `%` + ratio（本行）
+  //     Process.utilization = 0.903 / 0.951 / 0.957   ⇒ 0–1   ⇒ `dimensionless` + ratio
+  //   同一份序列表里 `attainment:line`(mean 0.914) 与 `yield:process`(mean 0.952) 却是 0–1 ——
+  //   **三条序列两种刻度**，这正是裁决书说的「产能利用率同名两套量纲」，现在两侧都能机读区分。
+  { propKey: "utilization", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" },
   { propKey: "actual_output_daily", dataType: "number", isPrimaryKey: false, unit: "套/日", scale: "absolute" },
   { propKey: "schedule_attainment", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
   // SA-5：产线台账字段（R12 全建模对齐）

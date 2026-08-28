@@ -115,8 +115,12 @@ const rd = (propKey: string, refToTypeKey: string, description: string): Propert
 export function extendedObjectTypes(): TypeDef[] {
   return [
     // Phase 2 Wave 2：扩展 Material 属性 + 新增 Supplier（供应链支撑）
+    // ⚠ `devPct` 的名字在骗人：后缀 `Pct` 读作百分数，**真起后端实测值是 [0.02, 0.08]**（0–1 小数）。
+    //   照名字标成 `%` 会让屏上把 0.02 读成 0.02%（真值 2%），差 100×。故按实测标 dimensionless+ratio。
+    //   这是本单第 4 个「名字里的单位与实际值对不上」的字段（另三个：revenueWan/marginWan 的 Wan 实为亿元、
+    //   下面 samplingRate 反向）—— **名字不是量纲的证据，实测值才是**。
     def("Material", "物料", "supply", [
-      p("matId", "string", true), p("name", "string"), n("unitPrice", "元", "absolute"), n("leadTime", "天", "absolute"), n("carbonFactor", "kgCO2e", "absolute"), n("bomUnit", "dimensionless", "absolute"), n("dailyUse", "吨", "absolute"), n("onHand", "吨", "absolute"), n("inTransit", "吨", "absolute"), n("devPct", "%", "ratio"), n("outsourceYield", "dimensionless", "ratio"),
+      p("matId", "string", true), p("name", "string"), n("unitPrice", "元", "absolute"), n("leadTime", "天", "absolute"), n("carbonFactor", "kgCO2e", "absolute"), n("bomUnit", "dimensionless", "absolute"), n("dailyUse", "吨", "absolute"), n("onHand", "吨", "absolute"), n("inTransit", "吨", "absolute"), n("devPct", "dimensionless", "ratio"), n("outsourceYield", "dimensionless", "ratio"),
       p("materialCode", "string"), p("category", "enum"), p("spec", "string"), p("unit", "string"),
       { propKey: "supplierId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Supplier", unit: "dimensionless", scale: "absolute" },
       n("shelfLife", "天", "absolute"), p("isKeyMaterial", "boolean"), p("status", "enum"),
