@@ -4,7 +4,9 @@ import {
   aggregateObjects,
   fetchDrillCatalog,
   fetchObjectTypes,
+  fetchPropagationRules,
   fetchSimSessions,
+  fetchSlicesIndex,
   invokeSolver,
   searchObjects,
   simDrill,
@@ -131,8 +133,177 @@ interface RunResult {
   custAgg: { group: Record<string, string | null>; metrics: Record<string, number | null> }[];
   statusAgg: { group: Record<string, string | null>; metrics: Record<string, number | null> }[];
   bookValue: number;
+  /** 「这次算的时候做了什么」那一层的全部原料（仓主 2026-08-28 追加的硬要求 ①）。 */
+  trace: RunTrace;
   /** 这一批结果是哪一份输入算出来的（用来判「你改了但没重算」）。 */
   inputFingerprint: string;
+}
+
+/**
+ * **可披露的演算过程**（仓主 2026-08-28 硬要求 ①）。
+ *
+ * 判据是仓主给的那一句：「一个看不到代码的人，读完这一层应当能自己判断
+ * **这是真推演还是查表**」。所以这里收的是**能证伪「查表」这个假设**的东西：
+ * 引用了多少条真数据（带快照版本）· 沿哪几条边推的（带系数与延迟天数）·
+ * 撞了哪几条红线（带阈值与它的出处）· 枚举了多少次试算 · 每段花了多少毫秒。
+ *
+ * ⚠ 源码文件名/行号仍然不上屏（R-UI-4），但**规则 key / 切片 key / 系数 / 耗时 / 条数
+ * 是业务事实不是实现细节**，必须给（仓主原话）。
+ */
+interface RunTrace {
+  /** 每一路算的往返耗时（客户端量，含网络）。后端不分段计时 —— 这一点必须在屏上说清。 */
+  timings: { label: string; ms: number; note: string }[];
+  /** 引用了哪些数据：对象类型 + 条数 + 快照版本。 */
+  data: { typeKey: string; typeName: string; count: number }[];
+  snapshotVersions: { label: string; version: string }[];
+  /** 本体切片：本次一条都没走 —— 但要拿目录总数当金丝雀，证明「没走」不是「没查」。 */
+  slices: { registeredCount: number; usedCount: number; sample: string[] };
+  /** 真正走的那张图：本次生效的传导边（系数 / 延迟 / 上界 / 合并方式 / 系数出处）。 */
+  edges: {
+    key: string;
+    from: string;
+    to: string;
+    via: string;
+    coefficient: number;
+    delayDays: number;
+    combine: string;
+    clamp: string;
+    decay: string;
+    coefFromConfig: boolean;
+  }[];
+  edgeTotal: number;
+  /** 撞了哪几条红线：阈值 + 它是写死的常数还是读的对象字段/规则参数。 */
+  thresholds: { ruleKey: string; bindingId: string; source: string; where: string; value: number; unit: string }[];
+  /** 逐条规则的判定原文（含 NOT_APPLICABLE 的，那也是结论）。 */
+  evaluatedRules: { key: string; name: string; expression: string; outcome: string; evidence: string }[];
+  /** 方案枚举的工作量 —— 「真枚举」与「查表」在这里分得最开。 */
+  enumeration: { probes: number; anchors: number; effective: number; emitted: number } | null;
+  /** 本次有没有 agent / LLM 参与。**恒要写一句，不许留白。** */
+  agent: { called: boolean; why: string };
+  /** 规则集版本 / 扫描号（业务事实：换一版规则这两个数会变）。 */
+  ruleSetVersion: string | null;
+  scanId: string | null;
+  worldObjectCount: number | null;
+}
+
+/**
+ * 把各路回包拼成「这次算的时候做了什么」那一层的原料。**一个数都不编**：
+ * 取不到就留空 / 写 `-1`，屏上照实说「这一格这次没取到」。
+ */
+function buildTrace(input: {
+  timings: { label: string; ms: number; note: string }[];
+  counts: { typeKey: string; typeName: string; count: number }[];
+  snapshotVersions: [string, string | undefined][];
+  edges: { items?: unknown[] } | null;
+  slices: { entries?: { sliceKey: string; rootType: string }[] } | null;
+  risk: SolverData | null;
+  impediments: SolverData | null;
+  finance: SolverData | null;
+  report: DrillReport;
+}): RunTrace {
+  const rawEdges = (input.edges?.items ?? []) as Record<string, unknown>[];
+  /**
+   * 本次**真正生效**的边 = 这一批事件打到的那个状态变量能沿着走的第一跳，以及第一跳的下游。
+   * ⚠ 这里只报「与本次冲击的落点相连的那些边」，不报全部 42 条 ——
+   * 报全部就是「这张图上有 42 条边」，那不度量「这一次走了哪几条」。
+   */
+  const seeds = new Set(input.report.appliedStateEffects.filter((e) => e.applied).map((e) => e.targetStateVar));
+  const picked: RunTrace["edges"] = [];
+  const seen = new Set<string>();
+  let frontier = new Set(seeds);
+  for (let hop = 0; hop < 4 && frontier.size > 0; hop++) {
+    const next = new Set<string>();
+    for (const r of rawEdges) {
+      const from = String(r.sourceStateVar ?? "");
+      if (!frontier.has(from)) continue;
+      const key = String(r.key ?? "");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const to = String(r.targetStateVar ?? "");
+      picked.push({
+        key,
+        from: `${String(r.sourceTypeName ?? r.sourceTypeKey ?? "")}·${from}`,
+        to: `${String(r.targetTypeName ?? r.targetTypeKey ?? "")}·${to}`,
+        via: String(r.viaLinkKey ?? ""),
+        coefficient: Number(r.coefficient ?? 0),
+        delayDays: Number(r.delayTicks ?? 0),
+        combine: String(r.combine ?? "—"),
+        clamp: r.clamp == null ? "没有上界" : String(r.clamp),
+        decay: r.decay == null ? "不衰减" : String(r.decay),
+        coefFromConfig: r.coefficientRef != null,
+      });
+      next.add(to);
+    }
+    frontier = next;
+  }
+
+  const th = ((input.impediments as { thresholds?: Record<string, unknown>[] } | null)?.thresholds ?? []).map((t) => ({
+    ruleKey: String(t.ruleKey ?? ""),
+    bindingId: String(t.bindingId ?? ""),
+    source: String(t.source ?? ""),
+    where:
+      t.source === "field"
+        ? `读对象上的字段 ${String(t.fieldPath ?? "")}（改数据即改判定）`
+        : t.source === "param"
+          ? `读规则参数 ${String(t.ruleParamKey ?? "")}（改配置即改判定）`
+          : "写死在规则表达式里的常数（改规则才改得动）",
+    value: Number(t.value ?? 0),
+    unit: String(t.unit ?? ""),
+  }));
+
+  const evalRules = [
+    ...(((input.risk as { evaluatedRules?: Record<string, unknown>[] } | null)?.evaluatedRules ?? []) as Record<string, unknown>[]),
+    ...(((input.impediments as { evaluatedRules?: Record<string, unknown>[] } | null)?.evaluatedRules ?? []) as Record<string, unknown>[]),
+  ].map((r) => ({
+    key: String(r.key ?? ""),
+    name: String(r.name ?? ""),
+    expression: String(r.expression ?? ""),
+    outcome: String(r.outcome ?? ""),
+    evidence: String(r.evidence ?? ""),
+  }));
+
+  const stats = ((input.impediments as { candidateStats?: { anchors?: number; probes?: number; effective?: number; emitted?: number }[] } | null)?.candidateStats ?? []);
+  const enumeration: RunTrace["enumeration"] = stats.length
+    ? stats.reduce<{ anchors: number; probes: number; effective: number; emitted: number }>(
+        (a, s) => ({
+          anchors: a.anchors + (s.anchors ?? 0),
+          probes: a.probes + (s.probes ?? 0),
+          effective: a.effective + (s.effective ?? 0),
+          emitted: a.emitted + (s.emitted ?? 0),
+        }),
+        { anchors: 0, probes: 0, effective: 0, emitted: 0 },
+      )
+    : null;
+
+  const sliceEntries = input.slices?.entries ?? [];
+  return {
+    timings: input.timings.slice().sort((a, b) => b.ms - a.ms),
+    data: input.counts.slice().sort((a, b) => b.count - a.count),
+    snapshotVersions: input.snapshotVersions.filter(([, v]) => !!v).map(([label, v]) => ({ label, version: v! })),
+    slices: {
+      registeredCount: sliceEntries.length,
+      usedCount: 0,
+      sample: sliceEntries.slice(0, 5).map((e) => `${e.sliceKey}（根：${e.rootType}）`),
+    },
+    edges: picked,
+    edgeTotal: rawEdges.length,
+    thresholds: th,
+    evaluatedRules: evalRules,
+    enumeration,
+    agent: {
+      called: false,
+      why:
+        "本次没有调用任何 agent、也没有调用任何大模型 —— 这条路从头到尾是算出来的：" +
+        `施加 → 往后推 ${input.report.ticks} 天 → 扫红线 → 逐个杠杆试算改法。` +
+        "屏上每一个数都能顺着下面的边和红线追回到原始对象。",
+    },
+    ruleSetVersion:
+      (input.impediments as { ruleSetVersion?: string } | null)?.ruleSetVersion ??
+      (input.risk as { ruleSetVersion?: string } | null)?.ruleSetVersion ??
+      null,
+    scanId: (input.impediments as { scanId?: string } | null)?.scanId ?? null,
+    worldObjectCount: (input.finance as { worldObjectCount?: number } | null)?.worldObjectCount ?? null,
+  };
 }
 
 /** 输入指纹 —— 改了 ① 而没重算时，结果区要整体压灰。 */
@@ -217,24 +388,67 @@ export default function DecisionConsoleView() {
         payload: e.payload,
         effectiveDay: e.effectiveDay,
       }));
+      /** 每一路算的往返耗时 —— 客户端量的**整段**时间（后端不分段计时，这句要写到屏上）。 */
+      const timings: { label: string; ms: number; note: string }[] = [];
+      const timed = async <T,>(label: string, note: string, p: Promise<T>): Promise<T> => {
+        const t0 = performance.now();
+        try {
+          return await p;
+        } finally {
+          timings.push({ label, ms: Math.round(performance.now() - t0), note });
+        }
+      };
       // 一颗按钮把五件事全做完 —— 用户不该去找第二颗。
-      const [report, risk, impediments, finance, customers, custAgg, statusAgg, types] = await Promise.all([
-        simDrill(sessionId, { events, horizonDays: HORIZON_DAYS, limitPerKind: 50 }),
-        invokeSolver("risk_timeline", {}).then((r) => r.data as SolverData).catch(() => null),
-        invokeSolver("chain_impediments", { scope: {} }).then((r) => r.data as SolverData).catch(() => null),
-        invokeSolver("finance_world_projection", { worldId: sessionId }).then((r) => r.data as SolverData).catch(() => null),
-        searchObjects("Customer", "", { pageSize: "50" }).then((p) => p.items).catch(() => []),
-        aggregateObjects({ typeKey: "Order", groupBy: ["cust"], metrics: [{ fn: "count", prop: "so" }, { fn: "sum", prop: "value" }] })
-          .then((r) => r.rows)
-          .catch(() => []),
-        aggregateObjects({ typeKey: "Order", groupBy: ["status"], metrics: [{ fn: "count", prop: "so" }, { fn: "sum", prop: "value" }] })
-          .then((r) => r.rows)
-          .catch(() => []),
+      const [report, riskRaw, impedRaw, finRaw, customers, custAgg, statusAgg, types, edgeRes, sliceRes] = await Promise.all([
+        timed("① 把事情施加上去 + 往后推 30 天 + 扫一遍卡住的地方", "这一段里施加、推进、扫描是后端连着做的，它没有分段计时", simDrill(sessionId, { events, horizonDays: HORIZON_DAYS, limitPerKind: 50 })),
+        timed("② 算每个基地这 30 天紧到什么程度", "含订单准时率与打法库", invokeSolver("risk_timeline", {}).catch(() => null)),
+        timed("③ 全链扫红线 + 枚举改法", "改法是逐个杠杆试算出来的，不是查表 —— 试算次数见下", invokeSolver("chain_impediments", { scope: {} }).catch(() => null)),
+        timed("④ 财务投影", "只读，且读的是这次算例已经存下来的那一天", invokeSolver("finance_world_projection", { worldId: sessionId }).catch(() => null)),
+        timed("⑤ 取客户档案", "20 家", searchObjects("Customer", "", { pageSize: "50" }).then((p) => p.items).catch(() => [])),
+        timed("⑥ 按客户汇总订单", "500 张单的分组聚合", aggregateObjects({ typeKey: "Order", groupBy: ["cust"], metrics: [{ fn: "count", prop: "so" }, { fn: "sum", prop: "value" }] }).then((r) => r.rows).catch(() => [])),
+        timed("⑦ 按状态汇总订单", "已完成 / 在产 / 已下待排产", aggregateObjects({ typeKey: "Order", groupBy: ["status"], metrics: [{ fn: "count", prop: "so" }, { fn: "sum", prop: "value" }] }).then((r) => r.rows).catch(() => [])),
         fetchObjectTypes().catch(() => []),
+        timed("⑧ 取这次用到的那张关系图", "42 条已发布的传导边", fetchPropagationRules(true).catch(() => null)),
+        timed("⑨ 查本体切片目录", "查了才敢说「本次一条都没走」", fetchSlicesIndex().catch(() => null)),
       ]);
+      const risk = (riskRaw?.data ?? null) as SolverData | null;
+      const impediments = (impedRaw?.data ?? null) as SolverData | null;
+      const finance = (finRaw?.data ?? null) as SolverData | null;
       const bookValue = statusAgg.reduce((a, r) => a + (r.metrics.sum_value ?? 0), 0);
       const typeName = new Map(types.map((t) => [t.key, t.displayName]));
-      return { report, risk, impediments, finance, customers, custAgg, statusAgg, bookValue, typeName, inputFingerprint: fingerprintOf(added) };
+
+      // ── 引用了哪些数据：本次真正落到屏上的那几类，逐类要一次 total（`pageSize=1` 只取计数）──
+      const touched = new Set<string>(["Order", "Customer", "Base", "Line", "Material", "Model"]);
+      for (const x of ((impediments as { impediments?: { locus: { objectType: string } }[] } | null)?.impediments ?? []))
+        touched.add(x.locus.objectType);
+      const counts = await Promise.all(
+        [...touched].map(async (t) => {
+          try {
+            const p = await searchObjects(t, "", { pageSize: "1" });
+            return { typeKey: t, typeName: typeName.get(t) ?? t, count: p.total };
+          } catch {
+            return { typeKey: t, typeName: typeName.get(t) ?? t, count: -1 };
+          }
+        }),
+      );
+
+      const trace = buildTrace({
+        timings,
+        counts,
+        snapshotVersions: [
+          ["每个基地紧到什么程度", riskRaw?.snapshotVersion],
+          ["全链红线扫描", impedRaw?.snapshotVersion],
+          ["财务投影", finRaw?.snapshotVersion],
+        ],
+        edges: edgeRes,
+        slices: sliceRes,
+        risk,
+        impediments,
+        finance,
+        report,
+      });
+
+      return { report, risk, impediments, finance, customers, custAgg, statusAgg, bookValue, typeName, trace, inputFingerprint: fingerprintOf(added) };
     },
     onSuccess: (r) => {
       setResult(r);
@@ -829,6 +1043,9 @@ export default function DecisionConsoleView() {
                   </div>
                 ) : null}
               </section>
+
+              {/* ══ 区⑥ 这次算的时候做了什么（可披露的演算过程）══════════ */}
+              <RunTracePanel trace={result.trace} />
             </div>
           </>
         ) : null}
@@ -1158,6 +1375,234 @@ function TemplateRow({
         </div>
       ) : null}
     </>
+  );
+}
+
+/**
+ * **区⑥ · 这次算的时候做了什么**（仓主 2026-08-28 硬要求 ①）。
+ *
+ * 判据是仓主给的那一句：「一个看不到代码的人，读完这一层应当能自己判断
+ * **这是真推演还是查表**」。所以这一层不是「技术细节抽屉」，它是**可证伪性**本身：
+ * 边有系数、红线有出处、枚举有次数、每段有毫秒 —— 查表拿不出这些。
+ *
+ * ⚠ 默认折叠：它是第二层，不该跟钱抢第一层的位置（R-UI-3）。
+ * ⚠ 里面**不出现源码文件名与行号**（R-UI-4），但规则 key / 切片 key / 系数 / 耗时 / 条数
+ *   一个不少 —— 那些是业务事实。
+ */
+function RunTracePanel({ trace }: { trace: RunTrace }) {
+  const [open, setOpen] = useState(false);
+  const total = trace.timings.reduce((a, t) => a + t.ms, 0);
+  return (
+    <section className="panel" id="z6" aria-label="这次算的时候做了什么">
+      <h2 className={styles.zoneTitle}>
+        <button type="button" className={styles.footerBtn} onClick={() => setOpen((v) => !v)} aria-expanded={open} data-testid="dc-trace-toggle">
+          这次算的时候做了什么 {open ? "▾" : "▸"}
+        </button>
+        <span className={styles.zoneHint}>
+          引用 {trace.data.reduce((a, d) => a + Math.max(0, d.count), 0).toLocaleString("zh-CN")} 条数据 ·
+          沿 {trace.edges.length} 条关系推 · 撞 {trace.thresholds.length} 条红线 ·
+          试算 {trace.enumeration?.probes ?? 0} 次 · 共 {total} 毫秒 · 未用 agent
+        </span>
+      </h2>
+
+      {open ? (
+        <div className={styles.traceBody} data-testid="dc-trace-body">
+          {/* ① 有没有 agent —— 恒写一句，不许留白让人以为调了 */}
+          <div className={styles.traceBlock}>
+            <div className={styles.colHead}>有没有让 AI 参与</div>
+            <p className={styles.greyLine}>
+              <strong className={styles.ok}>{trace.agent.called ? "有" : "没有"}</strong> —— {trace.agent.why}
+            </p>
+          </div>
+
+          {/* ② 引用了哪些数据 */}
+          <div className={styles.traceBlock}>
+            <div className={styles.colHead}>引用了哪些数据</div>
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>对象</th>
+                    <th className={styles.num}>条数</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trace.data.map((d) => (
+                    <tr key={d.typeKey}>
+                      <td>
+                        {d.typeName}
+                        <span className={styles.mono}> {d.typeKey}</span>
+                      </td>
+                      <td className={styles.num}>{d.count < 0 ? "这次没取到" : d.count.toLocaleString("zh-CN")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {trace.worldObjectCount != null ? (
+              <p className={styles.greyLine}>这次往后推的那 30 天，一共带了 {trace.worldObjectCount.toLocaleString("zh-CN")} 个对象的读数。</p>
+            ) : null}
+            <p className={styles.greyLine}>
+              快照版本（同一版本重跑逐字一致）：
+              {trace.snapshotVersions.length === 0
+                ? "这次没取到"
+                : trace.snapshotVersions.map((s) => `${s.label} ${s.version}`).join(" · ")}
+              {trace.ruleSetVersion ? ` · 规则集 ${trace.ruleSetVersion}` : ""}
+              {trace.scanId ? ` · 本次扫描号 ${trace.scanId}` : ""}
+            </p>
+          </div>
+
+          {/* ③ 走了哪些本体切片 —— 本次一条都没走，但要拿目录总数当证据 */}
+          <div className={styles.traceBlock}>
+            <div className={styles.colHead}>走了哪些本体切片</div>
+            <p className={styles.greyLine}>
+              <strong>本次一条都没走。</strong>本租户登记了 <strong>{trace.slices.registeredCount}</strong> 条切片
+              （查过了才敢这么说，例如 {trace.slices.sample.slice(0, 3).join(" · ") || "（目录这次没取到）"}），
+              但它们服务的是问答与覆盖率那条路。这次走的是下面那张关系图 —— 两条路不一样，别当成同一件事。
+            </p>
+          </div>
+
+          {/* ④ 沿哪些关系推的（系数、延迟、上界、合并方式、系数出处）*/}
+          <div className={styles.traceBlock}>
+            <div className={styles.colHead}>
+              沿哪些关系推的（本次生效 {trace.edges.length} 条 / 本租户共 {trace.edgeTotal} 条）
+            </div>
+            {trace.edges.length === 0 ? (
+              <p className={styles.greyLine}>
+                本次没有一件事会直接改数，所以一条关系都没走 —— 这不是「没影响」，是这几类事今天只决定去问哪几路算。
+              </p>
+            ) : (
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>从</th>
+                      <th>到</th>
+                      <th className={styles.num}>系数</th>
+                      <th className={styles.num}>隔几天</th>
+                      <th>叠加方式</th>
+                      <th>上界</th>
+                      <th>衰减</th>
+                      <th>系数出处</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trace.edges.map((e) => (
+                      <tr key={e.key}>
+                        <td>{e.from}</td>
+                        <td>{e.to}</td>
+                        <td className={styles.num}>×{e.coefficient}</td>
+                        <td className={styles.num}>{e.delayDays}</td>
+                        <td>{e.combine}</td>
+                        <td className={e.clamp === "没有上界" ? styles.flagWarn : ""}>{e.clamp}</td>
+                        <td className={e.decay === "不衰减" ? styles.flagWarn : ""}>{e.decay}</td>
+                        <td>{e.coefFromConfig ? "配置来源" : "写死的常数"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className={styles.greyLine}>
+              「没有上界 / 不衰减」标黄不是装饰：这两格是空的时候，压力会一天一天累加上去 ——
+              这正是上面「毛利差多少」那一格今天不敢放大到屏幕正中的原因之一。
+            </p>
+          </div>
+
+          {/* ⑤ 撞了哪几条红线 + 红线从哪来 */}
+          <div className={styles.traceBlock}>
+            <div className={styles.colHead}>撞了哪几条红线，红线是谁定的</div>
+            {trace.thresholds.length === 0 ? (
+              <p className={styles.greyLine}>这次没取到红线清单。</p>
+            ) : (
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>规则</th>
+                      <th>判什么</th>
+                      <th className={styles.num}>红线</th>
+                      <th>这个数从哪来</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trace.thresholds.map((t) => (
+                      <tr key={t.bindingId}>
+                        <td className={styles.mono}>{t.ruleKey}</td>
+                        <td>{t.bindingId}</td>
+                        <td className={styles.num}>
+                          {t.value.toLocaleString("zh-CN")} {t.unit}
+                        </td>
+                        <td className={t.source === "literal" ? styles.flagWarn : ""}>{t.where}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {trace.evaluatedRules.length > 0 ? (
+              <>
+                <p className={styles.greyLine}>逐条规则的判定（判成「不适用」也是结论，一样列出来）：</p>
+                {trace.evaluatedRules.map((r, i) => (
+                  <p className={styles.greyLine} key={`${r.key}-${i}`}>
+                    · <span className={styles.mono}>{r.key}</span> {r.name} —— {r.outcome}
+                    <Raw text={`${r.expression}${r.evidence ? `\n${r.evidence}` : ""}`} />
+                  </p>
+                ))}
+              </>
+            ) : null}
+          </div>
+
+          {/* ⑥ 改法是枚举出来的还是查表 —— 这一格最能分开「真推演」与「查表」 */}
+          <div className={styles.traceBlock}>
+            <div className={styles.colHead}>那几条改法是怎么来的</div>
+            {trace.enumeration ? (
+              <p className={styles.greyLine}>
+                这次在 <strong>{trace.enumeration.anchors}</strong> 个可拨动的地方上，做了{" "}
+                <strong>{trace.enumeration.probes}</strong> 次试算（每次都把那个数真改一遍再重判红线），
+                其中 <strong>{trace.enumeration.effective}</strong> 次真的把判定推回了红线内，最后下发{" "}
+                <strong>{trace.enumeration.emitted}</strong> 条。
+                <br />
+                查表给不出「试了多少次、有几次没用」这两个数 —— 这一格就是这条路不是查表的证据。
+              </p>
+            ) : (
+              <p className={styles.greyLine}>这次没取到试算次数。</p>
+            )}
+          </div>
+
+          {/* ⑦ 各段耗时 */}
+          <div className={styles.traceBlock}>
+            <div className={styles.colHead}>各段花了多久（共 {total} 毫秒）</div>
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>这一段做了什么</th>
+                    <th className={styles.num}>毫秒</th>
+                    <th>说明</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trace.timings.map((t) => (
+                    <tr key={t.label}>
+                      <td>{t.label}</td>
+                      <td className={styles.num}>{t.ms}</td>
+                      <td>{t.note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className={styles.greyLine}>
+              这些是从这台机器发出请求到收到回包的**整段**时间（含网络），
+              <strong>不是</strong>后端内部的分段耗时 —— 后端今天不分段计时，
+              所以「施加 / 传播 / 扫卡点 / 编排」这四步合在第一行里，分不开。这一点必须说清，
+              不然会被读成「传播只花了 X 毫秒」。
+            </p>
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

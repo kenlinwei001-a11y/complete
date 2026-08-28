@@ -833,6 +833,16 @@ export const patchSimSessionStatus = (sessionId: string, status: SimSessionStatu
 export const fetchPropagationRules = (published: boolean) =>
   api.a<PropagationRulesResponse>(`/a/v1/sim/propagation-rules?published=${published ? "true" : "false"}`);
 /**
+ * WO-DECISION-CONSOLE · 本租户已登记的**本体切片**目录（`GET /a/v1/slices/index`）。
+ *
+ * 决策台的「这次算的时候做了什么」那一层要回答「走了哪些切片」。今天这条演算路
+ * **一个切片都不走**（它走的是传导规则图 + 规则红线扫描）—— 但「没走」这句话要能
+ * **拿证据说**，不能靠留白：本跳取回目录总数与根类型，屏上据此写「本租户登记了 N 条切片，
+ * 本次一条都没用到，用到的是下面这些传导边」。**报否定结论要带金丝雀**，这就是那只金丝雀。
+ */
+export const fetchSlicesIndex = () =>
+  api.a<{ entries: { sliceKey: string; rootType: string; spannedTypes: string[] }[] }>("/a/v1/slices/index");
+/**
  * ══ WO-SIM-SESSION-WIRE · 变更传播预览（**按下去之前**看到波及面）══════════════
  *
  * **今天的行为是 X（开工实测）**：后端 `POST /a/v1/sim/change-impact-preview`
