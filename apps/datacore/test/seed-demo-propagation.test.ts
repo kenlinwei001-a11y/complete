@@ -31,7 +31,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const cfg = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: ADMIN })).json()) as {
       nodeTypes: string[]; stateVars: string[]; propagationCount: number;
     };
-    expect(cfg.propagationCount).toBe(42); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35 → WO-SIM-ROOT-TRIAD +4 = 39
+    expect(cfg.propagationCount).toBe(46); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35 → WO-SIM-ROOT-TRIAD +4 = 39 → 补 3 条 = 42 → WO-SLICE-DOMAINS 设备侧出口 +4 = 46
     expect(cfg.stateVars.length).toBeGreaterThan(0);
     // stateVars 派生自规则 source/target stateVar。WO-P1 后覆盖六个方向的量纲：
     // 需求(demandPressure/demandLoad/loadIndex/utilPressure) · 产能(queuePressure) ·
@@ -44,15 +44,21 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     // 在此之前 Supplier 只当 source ⇒ P28 屏上标着「随节拍变」而读数恒定（见 seed.ts 档 3 段头）。
     // WO-SIM-ROOT-TRIAD 再补 3 个**根源**量纲（入度 0 = 只能被外部打进来）：
     // `forecastBias`（销售预测偏差·带方向）· `orderChurn`（订单变更压力）· `equipmentFailure`（设备故障率）。
+    // WO-SLICE-DOMAINS 再补 1 个量纲 `blockedPressure`（产线**被设备堵住**的受阻压力）——
+    // 它是设备侧接回产能主链的落点：此前从 Equipment 出发的可达集只有
+    // {Equipment, MaintenanceOrder, Process}，设备故障对订单/毛利的贡献恒为 0。
+    // 之所以另起量纲而不复用 `utilPressure`：既有 `demo_line_util_to_process_queue` 已写
+    // `Line.utilPressure → Process.queuePressure`，反着写回去就闭成自我放大的二环。
     expect(cfg.stateVars).toEqual([
-      "changeoverPressure", "clearanceQueueDays", "collectionPressure", "costPressure", "defectPressure",
-      "deliveryDelay", "deliveryHoldRisk", "demandLoad", "demandPressure", "drawdownPressure",
-      "equipmentFailure", "expeditePressure", "feedPressure", "forecastBias", "gapPressure",
-      "handlingBacklog", "inboundExpeditePressure", "inspectBacklog", "loadIndex", "loadPressure",
-      "orderChurn", "overduePressure", "priceShock", "procurementDelay", "promiseRisk",
-      "qualificationQueue", "queueDays", "queuePressure", "receivablePressure", "releasePressure",
-      "repairBacklog", "reviewPressure", "shortageRisk", "splitPressure", "supplyRisk",
-      "switchPressure", "transferPressure", "turnoverPressure", "utilPressure", "windowSqueeze",
+      "blockedPressure", "changeoverPressure", "clearanceQueueDays", "collectionPressure", "costPressure",
+      "defectPressure", "deliveryDelay", "deliveryHoldRisk", "demandLoad", "demandPressure",
+      "drawdownPressure", "equipmentFailure", "expeditePressure", "feedPressure", "forecastBias",
+      "gapPressure", "handlingBacklog", "inboundExpeditePressure", "inspectBacklog", "loadIndex",
+      "loadPressure", "orderChurn", "overduePressure", "priceShock", "procurementDelay",
+      "promiseRisk", "qualificationQueue", "queueDays", "queuePressure", "receivablePressure",
+      "releasePressure", "repairBacklog", "reviewPressure", "shortageRisk", "splitPressure",
+      "supplyRisk", "switchPressure", "transferPressure", "turnoverPressure", "utilPressure",
+      "windowSqueeze",
     ]);
     // 节点类型派生自本体（含 demo 真类型）。
     expect(cfg.nodeTypes).toContain("Order");
@@ -67,22 +73,28 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const items = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json()).items as Array<{
       key: string; status: string; viaLinkKey: string; sourceTypeKey: string; targetTypeKey: string;
     }>;
-    expect(items.length).toBe(42);
+    expect(items.length).toBe(46); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条
     expect(items.every((r) => r.status === "PUBLISHED")).toBe(true);
     const viaKeys = items.map((r) => r.viaLinkKey).sort();
     // WO-SIM-ROOT-TRIAD 新增 4 条根源边全部挂**已物化**的既有链路（零新 linkType、零新物化）：
     // `model_demanded_by_order` 第 3 条（预测偏差→订单需求压力）· `order_has_line` 第 2 条 +
     // `order_for_model` 第 2 条（订单变更→拆行 / →型号需求负载）· `equip_used_in` 首条（设备故障→工序排队）。
+    // WO-SLICE-DOMAINS 再补 4 条（设备侧出口）：`process_belongs_to_line` 首条（**本单新声明+新物化**，
+    // 它是 Equipment/Process 走出 {Equipment, MaintenanceOrder, Process} 闭包的唯一出口）·
+    // `line_runs_work_order` 第 2 条（产线受阻→工单下达受阻）·
+    // `wo_for_model` 两条（**本单新物化**：该 linkType 早已声明却从未落过一条实例，
+    // 是制造侧回到产品/订单侧的唯一一跳；两条分别走供给面 supplyRisk 与成本面 costPressure）。
     expect(viaKeys).toEqual([
       "base_dispatches_transfer", "base_has_shipment", "base_maint_plan", "batch_replenishes_material", "customer_has_invoice",
       "customer_has_location", "customer_has_overdue_record", "defect_raises_exception", "equip_used_in", "equipment_has_maintenance_order",
-      "line_belongs_to_base", "line_has_process", "line_runs_work_order", "material_has_alternative", "material_has_balance",
-      "material_has_batch", "material_supplied_by_po", "material_used_by_model", "material_used_by_model", "model_changeover",
-      "model_demanded_by_order", "model_demanded_by_order", "model_demanded_by_order", "model_has_cert", "model_producible_at",
-      "model_stocked_as_finished_goods", "order_for_model", "order_for_model", "order_has_line", "order_has_line",
-      "order_has_promise", "order_of_customer", "po_customs_cleared_by", "po_from_supplier", "po_inspected_by",
-      "po_replenishes_material", "process_uses_equipment", "supplier_supplies_material", "supplier_supplies_material", "wip_lot_found_defect",
-      "work_order_sampled_by_quality_lot", "work_order_yields_wip_lot",
+      "line_belongs_to_base", "line_has_process", "line_runs_work_order", "line_runs_work_order", "material_has_alternative",
+      "material_has_balance", "material_has_batch", "material_supplied_by_po", "material_used_by_model", "material_used_by_model",
+      "model_changeover", "model_demanded_by_order", "model_demanded_by_order", "model_demanded_by_order", "model_has_cert",
+      "model_producible_at", "model_stocked_as_finished_goods", "order_for_model", "order_for_model", "order_has_line",
+      "order_has_line", "order_has_promise", "order_of_customer", "po_customs_cleared_by", "po_from_supplier",
+      "po_inspected_by", "po_replenishes_material", "process_belongs_to_line", "process_uses_equipment", "supplier_supplies_material",
+      "supplier_supplies_material", "wip_lot_found_defect", "wo_for_model", "wo_for_model", "work_order_sampled_by_quality_lot",
+      "work_order_yields_wip_lot",
     ]);
   });
 
@@ -112,7 +124,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(canary.length).toBeGreaterThan(0);
 
     const rules = await t.repos.sim.listPropagationRules("demo", true);
-    expect(rules.length).toBe(42);
+    expect(rules.length).toBe(46); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条
     const dead: string[] = [];
     for (const r of rules) {
       const ok = links.some(
@@ -157,7 +169,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     await seedDemoPropagationRules(t.repos);
     await seedDemoPropagationRules(t.repos);
     const items = await t.repos.sim.listPropagationRules("demo", true);
-    expect(items.length).toBe(42);
+    expect(items.length).toBe(46); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条
   });
 
   it("live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导", async () => {
