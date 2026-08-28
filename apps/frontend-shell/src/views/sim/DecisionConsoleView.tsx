@@ -19,6 +19,7 @@ import {
   exposureTotals,
   nothingMovedText,
   orderedEvents,
+  parseEmphasis,
   planCategoryOf,
   roundish,
   scrubSourceRefs,
@@ -343,12 +344,19 @@ function Est() {
  * 一处收口的理由：原文里可能带源码文件名/行号，而 R-UI-4 明令禁止把它们打在用户屏上；
  * 但诚实位又「绝不允许删除」。所以这里**只**隐去源码坐标、其余一字不改，
  * 并且**替换发生时在屏上说一句** —— 静默替换等于篡改原文，比不替换更糟。
+ *
+ * ⚠ WO-CONSOLE-BLOCKERS · **B2**：引擎原文是 **markdown**（它自己写了 `**…**` 强调），
+ * 而这里以前按**纯文本**直出 ⇒ 星号原样打在屏上（UX 第 7 轮实测 4 处）。
+ * 现在把成对的 `**…**` 渲染成 `<strong>` —— **一个字都没删**，只是把作者的强调
+ * 从"源码标记"变回"强调"。落单的星号不动（不猜作者意图）。成因与判据见
+ * `decisionConsoleModel.parseEmphasis` 的注释。
  */
 function Raw({ text }: { text: string }) {
   const scrubbed = scrubSourceRefs(text);
+  const segs = parseEmphasis(scrubbed);
   return (
     <span className={styles.raw}>
-      {scrubbed}
+      {segs.map((s, i) => (s.strong ? <strong key={i}>{s.text}</strong> : <span key={i}>{s.text}</span>))}
       {scrubbed !== text ? "\n（上面这段是引擎原话，只隐去了源码文件名与行号，其余一字未改。）" : ""}
     </span>
   );
@@ -1672,6 +1680,10 @@ function WatchOnly({ rows }: { rows: ReturnType<typeof splitImpediments>["watchO
           {rows.map((r) => (
             <div className={styles.drawerItem} key={r.impedimentId}>
               · {r.sentence}
+              {/* WO-CONSOLE-BLOCKERS · B1 的另一半：机器编号从第一层**降到这里**，不是删掉
+                  （诚实位纪律：允许降层、绝不允许删除）。第一层现在是业务名，要对号入座的人
+                  在这一层拿得到那个键。 */}
+              <span className={styles.rawKey}>（编号 {r.objectId}）</span>
               {r.noCandidateReason ? <Raw text={r.noCandidateReason} /> : null}
             </div>
           ))}

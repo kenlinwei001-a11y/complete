@@ -410,10 +410,64 @@ export function sortMitigations(list: Mitigation[], key: SortKey): Mitigation[] 
  * 「…与 FinancePlan 收入行之间今天**没有任何传导规则**（`seed.ts` 13 条里六方向全查过）…」
  */
 export const SOURCE_REF_MASK = "（源码出处已按界面规范隐去）";
+/** 同一句遮蔽词的**无括号**形态 —— 落点本来就在一对括号里时用它，否则会长出 `（（`。 */
+export const SOURCE_REF_MASK_BARE = "源码出处已按界面规范隐去";
+const SOURCE_REF_RE = /`?[A-Za-z0-9_./-]+\.(ts|tsx|mjs|js|json)(:\d+(-\d+)?)?`?/g;
+
+/**
+ * ⚠ WO-CONSOLE-BLOCKERS · **B2 后半：`（（` 双层括号**（UX 第 7 轮实测，屏上原文抄下来是
+ * 「…今天**没有任何传导规则**（（源码出处已按界面规范隐去） 13 条里六方向全查过」）。
+ *
+ * 今天的行为：遮蔽词**自带一对全角括号**，而被遮的源码坐标本来就写在一对括号里
+ * （引擎原文 `…（\`seed.ts\` 13 条里六方向全查过）`）⇒ 括号叠括号。
+ * 应该是：**标点由上下文定**——落点前一个字符已经是开括号时，用不带括号的那一支。
+ *
+ * 修的是**成因**（遮蔽词自带标点、不看上下文），不是把那一句原文替换掉：
+ * 换一句引擎原文来、同样在括号里带文件名，这里照样不会再长出 `（（`。
+ */
 export function scrubSourceRefs(raw: string): string {
   return raw
-    .replace(/`?[A-Za-z0-9_./-]+\.(ts|tsx|mjs|js|json)(:\d+(-\d+)?)?`?/g, SOURCE_REF_MASK)
-    .replace(new RegExp(`(${SOURCE_REF_MASK})+`, "g"), SOURCE_REF_MASK);
+    .replace(SOURCE_REF_RE, (m, ...rest) => {
+      const offset = rest[rest.length - 2] as number;
+      const prev = raw[offset - 1];
+      return prev === "（" || prev === "(" ? SOURCE_REF_MASK_BARE : SOURCE_REF_MASK;
+    })
+    .replace(new RegExp(`(${SOURCE_REF_MASK})+`, "g"), SOURCE_REF_MASK)
+    .replace(new RegExp(`(${SOURCE_REF_MASK_BARE})+`, "g"), SOURCE_REF_MASK_BARE);
+}
+
+/**
+ * ⚠ WO-CONSOLE-BLOCKERS · **B2 前半：4 处 markdown 星号原样上屏**。
+ *
+ * 成因（实测追到出处，不是猜的）：**引擎自己在 note/caveat 里用了 markdown 强调**——
+ *   · `solvers/finance-world.ts` 的 `notes[]` / `narrative`：`**推演投影**` /
+ *     `**故意不动**` / `**没有任何传导规则**` / `**推演投影，非实测**`
+ *   · `solvers/chain-impediment.ts` 的 `caveats[].note`：`**未校验持续天数**`
+ * 而前端把这些原文当**纯文本**直出（只过 `scrubSourceRefs`）⇒ 星号原样打在屏上。
+ * **不是模板拼接错**，也不是这一页写的字。
+ *
+ * 今天的行为是 X：屏上出现 `**…**` 这种源码标记，一眼看穿是内部工具。
+ * 应该是 Y：把作者**本来就想表达的强调**渲染成强调，星号本身不上屏。
+ *
+ * 为什么不在后端把星号删掉：那是**改引擎原文**，而诚实位纪律是「允许降层、绝不允许删除」，
+ * 且同一份 note 还喂给别的消费方（Agent / 报告导出），删了它们也一起丢强调。
+ * 为什么不逐处替换字符串：引擎明天多写一句带 `**` 的 note，逐处替换法当场再漏一处 ——
+ * 这一层收的是**成因**（原文是 markdown，渲染方却按纯文本处理）。
+ *
+ * 只认**成对**的 `**…**`（非贪婪、不跨 `*`）：落单的星号原样留着，不猜作者意图。
+ */
+export interface RawSeg { text: string; strong: boolean }
+export function parseEmphasis(raw: string): RawSeg[] {
+  const out: RawSeg[] = [];
+  const re = /\*\*([^*]+)\*\*/g;
+  let last = 0;
+  for (let m = re.exec(raw); m !== null; m = re.exec(raw)) {
+    if (m.index > last) out.push({ text: raw.slice(last, m.index), strong: false });
+    out.push({ text: m[1], strong: true });
+    last = m.index + m[0].length;
+  }
+  if (last < raw.length) out.push({ text: raw.slice(last), strong: false });
+  return out.length > 0 ? out : [{ text: raw, strong: false }];
 }
 
 export interface HonestyNote {

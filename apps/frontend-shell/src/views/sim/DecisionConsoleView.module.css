@@ -700,6 +700,14 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* WO-CONSOLE-BLOCKERS · B1：从第一层降下来的机器编号。**第二层可以有机器话**（R-UI-4 只禁第一层），
+   但它是次要信息 ⇒ 走等宽 + 三级文本，别和上面那句业务话抢。字号仍 12px（判据 B 的硬底）。 */
+.rawKey {
+  margin-left: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted2);
+}
 .err {
   color: var(--danger-txt);
   font-size: 13px;
