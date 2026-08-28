@@ -639,10 +639,15 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
   {
     kind: "FORECAST_BIAS",
     label: "预测偏差",
-    payloadKeys: [
-      { key: "biasPct", type: "number", required: true, hint: "偏差百分比：+20 = 预测比实际高两成" },
-      { key: "modelId", type: "string", required: false, hint: "型号（产能测算必需；不填这一路回「未能评估」）" },
-    ],
+    /**
+     * ⚠ **删掉了 `modelId` 这个 payload 键 —— 它是屏上一格多余的手填框**。
+     * 这件事的主体选择器给的就是**型号**（实测 6 个，直接铺），用户已经选了一次；
+     * 旧版还要他把型号 id 再敲一遍，不敲就必掉一条「capacity_forecast 缺必填入参 modelId
+     * ⇒ 未能评估」（本单实测复现过）。改成从 `eventTarget` 取 ⇒ 选一次就够。
+     * 能这么改是因为本单让落点解析**两种 id 形态都认**：`eventTarget` 现在传业务键
+     * `4680-NCM`（`capacity_forecast` 要的就是它），而世界态落点按 `keyProp: modelId` 也找得到。
+     */
+    payloadKeys: [{ key: "biasPct", type: "number", required: true, hint: "偏差百分比：+20 = 预测比实际高两成" }],
     /**
      * ⚠ 这一条落在**全图唯一的负系数边**上：
      * `Model.forecastBias --model_demanded_by_order--> Order.demandPressure ×**−0.6**`。
@@ -665,7 +670,8 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
       {
         solverKey: "capacity_forecast",
         role: "PRIMARY",
-        args: [{ arg: "modelId", from: "payloadKey", key: "modelId", required: true }],
+        // 型号取自用户选的那个主体（业务键 `4680-NCM`），不再要他手填第二遍
+        args: [{ arg: "modelId", from: "eventTarget", key: null, required: true }],
       },
       { solverKey: "supply_demand_gap_attribution", role: "AUXILIARY", args: [] },
     ],

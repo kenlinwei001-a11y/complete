@@ -138,18 +138,31 @@ describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
   });
 
   it("① 入参解释是声明式的：required 缺值 ⇒ 报 missing（而不是硬调一次拿 400）", () => {
-    const spec = DRILL_EVENT_SPECS.find((s) => s.kind === "FORECAST_BIAS")!;
+    /**
+     * ⚠ 样本从 `FORECAST_BIAS` 换成 `ORDER_INSERT`（WO-EVENTS-WRITE-STATE）：
+     * 预测偏差的 `modelId` 已改成从 `eventTarget` 取（用户在下拉里选了型号就够，
+     * 不必再手填一遍），故它上面已经没有「payloadKey 取不到」这一态可测。
+     * 临时插单的型号是**另一件事**（给哪个客户插哪个型号），仍走 payloadKey 且必填 ——
+     * 这条断言要咬的「声明式取参 + required 缺值报 missing」在它身上一字不差地成立。
+     */
+    const spec = DRILL_EVENT_SPECS.find((s) => s.kind === "ORDER_INSERT")!;
     const route = spec.routes.find((r) => r.solverKey === "capacity_forecast")!;
     // `capacity_forecast` 实测**必须**带 modelId（不带 → 400 "modelId required"）
-    const without = resolveDrillArgs(route, { kind: "FORECAST_BIAS", targetObjectId: "X", payload: {}, effectiveDay: 0 }, 30);
+    const without = resolveDrillArgs(route, { kind: "ORDER_INSERT", targetObjectId: "X", payload: {}, effectiveDay: 0 }, 30);
     expect(without?.missing).toContain("modelId");
     const withIt = resolveDrillArgs(
       route,
-      { kind: "FORECAST_BIAS", targetObjectId: "X", payload: { modelId: "2170-NCM" }, effectiveDay: 0 },
+      { kind: "ORDER_INSERT", targetObjectId: "X", payload: { modelId: "2170-NCM" }, effectiveDay: 0 },
       30,
     );
     expect(withIt?.missing).toEqual([]);
     expect(withIt?.args).toEqual({ modelId: "2170-NCM" });
+
+    // 预测偏差这一路改从 eventTarget 取 ⇒ 选了型号就不缺参（这是本单去掉的那格多余手填框）
+    const fbRoute = DRILL_EVENT_SPECS.find((s) => s.kind === "FORECAST_BIAS")!.routes.find((r) => r.solverKey === "capacity_forecast")!;
+    const fb = resolveDrillArgs(fbRoute, { kind: "FORECAST_BIAS", targetObjectId: "2170-NCM", payload: { biasPct: 20 }, effectiveDay: 0 }, 30);
+    expect(fb?.missing).toEqual([]);
+    expect(fb?.args).toEqual({ modelId: "2170-NCM" });
   });
 
   // ══════════════════════════════════════════════════════════════════════
