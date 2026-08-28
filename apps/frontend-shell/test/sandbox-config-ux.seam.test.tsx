@@ -52,7 +52,7 @@ const RULE_DEFAULTS = {
   combine: "sum" as const,
   decay: null,
   clamp: null,
-  coefficientRef: null,
+  coefficientRef: null, weightRef: null,
   cadenceNodeId: null,
   status: "PUBLISHED" as const,
   sourceTypeName: null,

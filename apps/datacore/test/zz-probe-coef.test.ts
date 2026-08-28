@@ -83,7 +83,8 @@ describe("PROBE · 传导系数是否按 BOM 用量分摊", () => {
     expect(target, "找不到同时挂正极与铝箔的型号 ⇒ 对照实验做不了").toBeTruthy();
     const [modelObjId, matIds] = target!;
     const modelKey = String(modelById.get(modelObjId)!.props.modelId);
-    const cathodeMatId = matIds.includes("pos_ncm") ? "pos_ncm" : "pos_lfp";
+    // 该型号是 LFP ⇒ 它的 BOM 里**没有** pos_ncm 行（NCM 正极被跳过），选 pos_lfp 才是「都在 BOM 里」的对照。
+    const cathodeMatId = matIds.includes("pos_lfp") ? "pos_lfp" : "pos_ncm";
     console.log(`[对照型号] ${modelKey} (objId=${modelObjId}) 正极=${cathodeMatId} 铝箔=al_foil`);
 
     // 该型号 BOM 的成本占比（这是「应该是 Y」的目标权重）
