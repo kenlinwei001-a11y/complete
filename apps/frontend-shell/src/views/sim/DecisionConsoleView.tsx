@@ -1794,15 +1794,17 @@ function SegmentBar({ rows }: { rows: { group: Record<string, string | null>; me
   if (total === 0) return null;
   return (
     <>
-      <div className={styles.segBar}>
+      {/*
+        * ⚠ 条子里**不写字**。上一版把张数印在色块里，暗色皮实测只有 **4.58:1**
+        * （12px 需 6.0）—— 半透蓝叠在面上，无论压白字还是压主文字色都在两皮之间顾此失彼。
+        * 而这三个数**下面那行已经逐个写清楚了**，条子只负责比例 ⇒ 去掉字，零信息损失、零对比度风险。
+        * 这比「把颜色调到刚好及格」诚实：不可读的根因是「字压在半透色块上」，不是色号差一点。
+        */}
+      <div className={styles.segBar} role="img" aria-label={rows.map((r) => `${label[r.group.status ?? ""] ?? r.group.status} ${r.metrics.count_so ?? 0} 张`).join("，")}>
         {rows.map((r) => {
           const k = r.group.status ?? "";
           const n = r.metrics.count_so ?? 0;
-          return (
-            <div key={k} className={`${styles.segPiece} ${cls[k] ?? ""}`} style={{ width: `${(n / total) * 100}%` }}>
-              {n}
-            </div>
-          );
+          return <div key={k} className={`${styles.segPiece} ${cls[k] ?? ""}`} style={{ width: `${(n / total) * 100}%` }} />;
         })}
       </div>
       <p className={styles.greyLine}>
