@@ -115,7 +115,12 @@ describe("WO-BEFE-A ① 因果边 → 推演口径（接缝：POST /a/v1/sim/pro
 
     // 列表里也真出现了（用户看得见自己刚建的东西）
     expect(await screen.findByTestId("orel-rule-seam_on")).toBeTruthy();
-    expect((await screen.findByTestId("orel-rule-status-seam_on")).textContent).toBe("启用");
+    // WO-ONTOLOGY-EDGE-EDIT：启停位由**文本**改成了**勾选框**（那一列现在可写，不只是可读），
+    // 故判据从 `textContent === "启用"` 改成勾选框的 `checked`。
+    // ⚠ 两个都断：`data-status` 咬「后端真值是什么」，`checked` 咬「屏上画成什么」——
+    //   只断后者的话，一个恒 `checked` 的实现照样绿。
+    expect((await screen.findByTestId("orel-rule-status-seam_on")).getAttribute("data-status")).toBe("PUBLISHED");
+    expect((await screen.findByTestId<HTMLInputElement>("orel-rule-toggle-seam_on")).checked).toBe(true);
   });
 
   it("建一条【停用】的因果边 ⇒ 在册可见，但 propagationCount / stateVars 一个字都不变", async () => {
@@ -125,9 +130,10 @@ describe("WO-BEFE-A ① 因果边 → 推演口径（接缝：POST /a/v1/sim/pro
 
     await createCausalEdge(user, { key: "seam_off", srcVar: "ghostVarA", tgtVar: "ghostVarB", status: "DRAFT" });
 
-    // 在册：列表里有，状态是「停用」
+    // 在册：列表里有，状态是「停用」（同上：启停位现在是勾选框，判据落在 data-status + checked）
     expect(await screen.findByTestId("orel-rule-seam_off")).toBeTruthy();
-    expect((await screen.findByTestId("orel-rule-status-seam_off")).textContent).toBe("停用");
+    expect((await screen.findByTestId("orel-rule-status-seam_off")).getAttribute("data-status")).toBe("DRAFT");
+    expect((await screen.findByTestId<HTMLInputElement>("orel-rule-toggle-seam_off")).checked).toBe(false);
 
     // 不生效：推演口径一动不动。
     // ⚠ 这条断言是**方向相反**的那一半 —— 只测「建了就变」而不测「停用的不变」，
