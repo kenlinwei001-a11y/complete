@@ -340,7 +340,16 @@ describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
 
   it("⑤ 调通但没登记归一规则 ⇒ 同样记「未能评估」，不静默丢结果", async () => {
     const rep = await orchestrateDrill({
-      events: [{ kind: "ORDER_RELOCATE", targetObjectId: "SO-1", payload: {}, effectiveDay: 0 }],
+      /**
+       * ⚠ `payload` 从 `{}` 补成 `{ movedPct: 100 }`（WO-EVENTS-WRITE-STATE）：
+       * 本单给「改交付地点」补了世界态落点，幅度键 `movedPct` 随之变成**必填**
+       * （不必填就会出现「声明了落点、用户没填幅度 ⇒ 静默没有冲击」那一态）。
+       * 空 payload 现在会先被 `validateDrillEvent` 拦下记一条「事件校验未通过」，
+       * 于是 `solverRuns` 里多一条 `ok:false` —— 这条断言就红在那里。
+       * 而本用例要咬的是**另一件事**：「求解器调通了、但回包形状没登记归一规则 ⇒
+       * 0 条结论但不算失败」。补齐必填项才测得到它，不是把断言放松。
+       */
+      events: [{ kind: "ORDER_RELOCATE", targetObjectId: "SO-1", payload: { movedPct: 100 }, effectiveDay: 0 }],
       horizonDays: 30, tickDays: 1, worldId: "w1", forkedFromStateId: null,
       // portfolio 有 normalizer；这里让它回一个**空**壳，risk_timeline 也回空 ⇒ 0 条结论但不是失败
       invokeSolver: async () => ({ someUnknownShape: true }),
