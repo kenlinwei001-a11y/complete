@@ -107,17 +107,8 @@
   border-radius: 2px;
   margin-left: 8px;
 }
-.mb {
-  display: flex;
-  gap: 20px;
-  padding: 5px 14px 6px;
-  font-size: 11.5px;
-  color: var(--muted);
-  border-bottom: 1px solid var(--line);
-}
-.mb span {
-  cursor: default;
-}
+/* WO-CONSOLE-BLOCKERS：`.mb`（假英文菜单 File Edit View Window Tools Help）已随控件一起删。
+   规则留着就是死样式：下一个人会以为这一条还在用，照着它改。 */
 
 /* ══ 主体 ══ */
 .body {

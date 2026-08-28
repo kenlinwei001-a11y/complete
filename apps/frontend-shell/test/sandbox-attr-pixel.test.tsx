@@ -278,7 +278,9 @@ describe("WO-SIM-FE-ATTR · 规格 1:1（期望值全部现从 sandbox-attr.html
 
     // 抽查三个元素，三种承载方式各一个（CSS 类 / CSS 类 + 状态 / 组合类）。
     const samples: { el: HTMLElement | null; prop: "color"; token: string; specVar: string }[] = [
-      { el: bySel(`.${cls("mb")}`), prop: "color", token: "--muted", specVar: "--dim" },
+      // WO-CONSOLE-BLOCKERS：原抽查点 `.mb`（假英文菜单 `File Edit View…`）已删（假控件）。
+      // 改挂 `.rbtn`（左轨按钮，同样 `color: var(--muted)` 且真渲染）；换错了金丝雀当场红。
+      { el: bySel(`.${cls("rbtn")}`), prop: "color", token: "--muted", specVar: "--dim" },
       { el: bySel(`.${cls("tn")}.${cls("hot")}`), prop: "color", token: "--danger", specVar: "--red" },
       { el: bySel(`.${cls("gcell")}.${cls("dn")}`), prop: "color", token: "--ok", specVar: "--grn" },
     ];

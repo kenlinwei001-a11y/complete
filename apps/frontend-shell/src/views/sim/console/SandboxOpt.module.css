@@ -159,14 +159,8 @@
   padding: 1px 8px;
   white-space: nowrap;
 }
-.mb {
-  display: flex;
-  gap: 20px;
-  padding: 5px 14px 6px;
-  font-size: 12px;
-  color: var(--muted);
-  border-bottom: 1px solid var(--line);
-}
+/* WO-CONSOLE-BLOCKERS：`.mb`（假英文菜单 File Edit View Window Tools Help）已随控件一起删。
+   规则留着就是死样式：下一个人会以为这一条还在用，照着它改。 */
 
 /* WO-CONSOLE-BLOCKERS：执行对比无行时的诚实空态（替掉那张只有表头的空表）。
    12px = 判据 B 硬底；这是**诚实声明**，印成看不清的小字等于没印。 */

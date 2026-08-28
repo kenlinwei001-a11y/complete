@@ -351,7 +351,15 @@ describe("WO-SIM-FE-OPT · 规格 1:1 + 散点几何（版面期望值全部现�
 
     // 抽查三处，三种承载方式各一个（CSS 类 / CSS 类 + 状态 / SVG inline style）。
     const samples: { el: HTMLElement | null; prop: "color" | "fill" | "stroke"; token: string; specVar: string }[] = [
-      { el: bySel(`.${cls("mb")}`), prop: "color", token: "--muted", specVar: "--dim" },
+      /*
+       * ⚠ WO-CONSOLE-BLOCKERS：`--muted` 的抽查点原来是 `.mb`（那条假英文菜单
+       * `File Edit View Window Tools Help`）。**那条菜单已删** —— 它是个假控件，
+       * 不可点也从来没打算可点，UX 评审把它判为"拿给同行看像不像产品"的阻塞项。
+       * 抽查点因此改挂 `.rbtn`（左轨按钮，同样 `color: var(--muted)` 且真渲染）。
+       * ⚠ 这条断言原来**恰好**靠一个该删的元素活着 —— 换点不是放宽，是换一个仍然承载
+       * 同一个令牌的真元素；金丝雀（`expect(el).not.toBeNull()`）保证换错了当场红。
+       */
+      { el: bySel(`.${cls("rbtn")}`), prop: "color", token: "--muted", specVar: "--dim" },
       { el: bySel(`.${cls("gcell")}.${cls("dn")}`), prop: "color", token: "--ok", specVar: "--grn" },
       { el: screen.getByTestId("sandbox-opt-frontier-line"), prop: "stroke", token: "--c-capacity", specVar: "--cy" },
     ];
