@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DRILL_EVENT_SPECS, type DrillEventSpec, type DrillFinding, type DrillReport } from "@platform/contracts";
+import { DRILL_EVENT_SPECS, drillStateEffectAbsolute, type DrillEventSpec, type DrillFinding, type DrillReport } from "@platform/contracts";
 import {
   collectHonesty,
   exposureTotals,
+  humanizeApiError,
   impedimentSentence,
+  landingNoteFor,
   nothingMovedText,
   orderedEvents,
   planCategoryOf,
@@ -144,14 +146,75 @@ describe("① 事件主体：范围、id 形态、进不进算式", () => {
   });
 
   it("「你选的主体进不进算式」由 catalog 现算（进不了就必须在屏上说一句）", () => {
-    // 有落点 ⇒ 进
+    // 落点取自主体 ⇒ 进
     expect(subjectIsRead(specOf("MATERIAL_REPRICE"))).toBe(true);
     // 有 eventTarget 入参 ⇒ 进
     expect(subjectIsRead(specOf("ORDER_RESCHEDULE"))).toBe(true);
-    // 路由入参全空、无落点 ⇒ 不进（实测：portfolio / bottleneck_matrix 都是 args: []）
-    expect(subjectIsRead(specOf("ORDER_CANCEL"))).toBe(false);
-    expect(subjectIsRead(specOf("CAPACITY_LOSS"))).toBe(false);
-    expect(subjectIsRead(specOf("EQUIPMENT_FAILURE"))).toBe(false);
+    /**
+     * ⚠ **这三条的期望值被 WO-EVENTS-WRITE-STATE 改了，不是测试写松了**：
+     * 旧版断言 `ORDER_CANCEL / CAPACITY_LOSS / EQUIPMENT_FAILURE` 恒 `false`，
+     * 那记录的是「这 10 类事件一格世界态都不写」那个**待修的状态**。
+     * 本单给它们补了落点（`Order.demandPressure` / `Base.loadIndex` / `Line.utilPressure`，
+     * 三个都是 `targetFrom: eventTarget`）⇒ 主体现在真的进算式了。
+     */
+    expect(subjectIsRead(specOf("ORDER_CANCEL"))).toBe(true);
+    expect(subjectIsRead(specOf("CAPACITY_LOSS"))).toBe(true);
+    expect(subjectIsRead(specOf("EQUIPMENT_FAILURE"))).toBe(true);
+    /**
+     * 唯一仍然 `false` 的那一类：临时插单的落点取自 `payload.modelId`，
+     * 你选的**客户**确实不进算式（本世界 `Customer` 在关系图上只有应收侧的出边）。
+     * 把它算成 true 就是让屏上说一句假话 —— COO 卡点 ⑤ 骂的正是这件事。
+     */
+    expect(subjectIsRead(specOf("ORDER_INSERT"))).toBe(false);
+    expect(landingNoteFor(specOf("ORDER_INSERT"))).toContain("不是你选的那个主体");
+  });
+
+  it("11 类事件**全部**声明了世界态落点，且落点状态变量各不相同地指到真格子上", () => {
+    // 金丝雀：先确认表读得到（读到 0 是「契约没加载」，不是「一个落点都没有」）
+    expect(DRILL_EVENT_SPECS.length).toBe(11);
+    const withLanding = DRILL_EVENT_SPECS.filter((s) => s.stateEffect !== null);
+    expect(withLanding.length, "有事件没有世界态落点 ⇒ 它加了也不会改变任何数").toBe(11);
+    for (const s of withLanding) {
+      expect(s.stateEffect!.objectType.length, `${s.kind} 落点类型为空`).toBeGreaterThan(0);
+      expect(s.stateEffect!.keyProp.length, `${s.kind} 没声明业务键属性 ⇒ 传业务键时解析不出落点`).toBeGreaterThan(0);
+      expect(s.stateEffect!.magnitudeBasis.length, `${s.kind} 的换算系数没有出处 ⇒ 屏后魔数`).toBeGreaterThan(0);
+      // 幅度键必须真的在 payloadKeys 里，且必填 —— 否则用户不填就静默无冲击
+      const pk = s.payloadKeys.find((k) => k.key === s.stateEffect!.magnitudeFrom);
+      expect(pk, `${s.kind} 的幅度键 ${s.stateEffect!.magnitudeFrom} 不在 payloadKeys 里`).toBeTruthy();
+      expect(pk!.required, `${s.kind} 的幅度键不是必填 ⇒ 不填就静默没有冲击`).toBe(true);
+      // 落点取自 payload 时，那个键也必须真的在表里且必填
+      if (s.stateEffect!.targetFrom === "payloadKey") {
+        const tk = s.payloadKeys.find((k) => k.key === s.stateEffect!.targetKey);
+        expect(tk, `${s.kind} 的落点键不在 payloadKeys 里`).toBeTruthy();
+        expect(tk!.required).toBe(true);
+      }
+    }
+  });
+
+  it("幅度是「全距的百分之几」，换算要现算 —— 全距为 0 时返回 null 而不是硬拿 1 顶上", () => {
+    // 100% 全距 × 实测全距 350,416,350 ⇒ 施加 350,416,350（不是 100）
+    expect(drillStateEffectAbsolute(100, 350416350)).toBe(350416350);
+    expect(drillStateEffectAbsolute(50, 200)).toBe(100);
+    // 负方向（订单取消）照样成立
+    expect(drillStateEffectAbsolute(-100, 200)).toBe(-200);
+    /**
+     * ⛔ 全距为 0 / 负 / 非有限 ⇒ `null`（调用方记「未能评估」）。
+     * 硬拿 1 当全距会让幅度变成一个与这个世界无关的数：屏上显示「打上了」而其实什么都没说。
+     */
+    expect(drillStateEffectAbsolute(100, 0)).toBeNull();
+    expect(drillStateEffectAbsolute(100, Number.NaN)).toBeNull();
+  });
+
+  it("报错要说人话，但认不出的形态必须原样透出（不许编一句「请重试」把路堵死）", () => {
+    const zod = humanizeApiError("ApiClientError: events.2.targetObjectId: Too small: expected string to have >=1 characters");
+    expect(zod.recognized).toBe(true);
+    expect(zod.text).toContain("第 3 件事"); // 0-based → 1-based
+    expect(zod.text).not.toContain("Too small");
+    expect(zod.text).toContain("第二级"); // 两级选择器那句提示
+    // 金丝雀：认得出的形态确实被认出来了（上面那条），认不出的必须说「认不出」
+    const unknown = humanizeApiError("ApiClientError: 某个从没见过的错 QQQ-9999");
+    expect(unknown.recognized).toBe(false);
+    expect(unknown.text).toContain("还没有对应的人话说明");
   });
 });
 
@@ -327,10 +390,16 @@ describe("⑦ 诚实位：三态分得开", () => {
         totalByKind: { 卡点: 383, 堵点: 24, 脆弱点: 368 },
         summary: { allFailed: false, trustworthy: false, dataMode: "PARTIAL", text: "本次演习扫出 775 条结论" },
         appliedStateEffects: [
-          { eventKind: "MATERIAL_REPRICE", targetObjectId: "obj_base_changzhou", targetStateVar: "priceShock", mode: "delta", magnitude: 15, startTick: 4, applied: false },
+          { eventKind: "MATERIAL_REPRICE", targetObjectId: "obj_base_changzhou", targetStateVar: "priceShock", mode: "delta", magnitude: 15, startTick: 4, applied: false, rawMagnitude: 15, magnitudeBasis: "幅度键本身即百分点，1:1 不换算", targetLabel: "常州", rangePct: 15, observedRange: 100, downstream: ["Model.costPressure ×0.65"] },
         ],
         solverRuns: [{ solverKey: "order_fullchain", eventKind: "MATERIAL_DELAY", ok: false, dataMode: "UNDECLARED", error: "order obj_material_pos_lfp not found", findingCount: 1 }],
-        events: [{ kind: "CAPACITY_LOSS", targetObjectId: "obj_base_changzhou", payload: {}, effectiveDay: 0 }],
+        /**
+         * ⚠ 事件从 `CAPACITY_LOSS` 换成 `ORDER_INSERT`（WO-EVENTS-WRITE-STATE）：
+         * 本单给产能损失补了 `Base.loadIndex` 落点（`targetFrom: eventTarget`）⇒ 它现在**读主体**了，
+         * 拿它当「不读主体」的样本已经名不副实。今天唯一仍然不读主体的是「临时插单」——
+         * 它的落点取自 `payload.modelId`（型号），客户确实不进算式（本世界 `Customer` 没有需求侧出边）。
+         */
+        events: [{ kind: "ORDER_INSERT", targetObjectId: "obj_customer_cust_16", payload: { qtyDelta: 20000, modelId: "4680-NCM" }, effectiveDay: 0 }],
       }),
       specsByKind: new Map(DRILL_EVENT_SPECS.map((s) => [s.kind as string, s])),
       impedimentsRaw: null,
@@ -367,7 +436,7 @@ describe("⑦ 诚实位：三态分得开", () => {
     const notes = collectHonesty({
       report: baseReport({
         appliedStateEffects: [
-          { eventKind: "MATERIAL_REPRICE", targetObjectId: "obj_material_pos_lfp", targetStateVar: "priceShock", mode: "delta", magnitude: 15, startTick: 4, applied: true },
+          { eventKind: "MATERIAL_REPRICE", targetObjectId: "obj_material_pos_lfp", targetStateVar: "priceShock", mode: "delta", magnitude: 15, startTick: 4, applied: true, rawMagnitude: 15, magnitudeBasis: "幅度键本身即百分点，1:1 不换算", targetLabel: "磷酸铁锂正极", rangePct: 15, observedRange: 100, downstream: ["Model.costPressure ×0.65"] },
         ],
         events: [{ kind: "MATERIAL_REPRICE", targetObjectId: "obj_material_pos_lfp", payload: { pctChange: 15 }, effectiveDay: 0 }],
       }),

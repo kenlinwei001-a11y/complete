@@ -115,16 +115,46 @@ export function subjectScopeFor(kind: string): SubjectScope | null {
  * 判据只有一条：有没有 `stateEffect`。有 ⇒ 路由要拿它去 `repos.objects.get`。
  */
 export function subjectIdFormFor(spec: DrillEventSpec): "OBJECT_ID" | "BUSINESS_KEY" {
-  return spec.stateEffect ? "OBJECT_ID" : "BUSINESS_KEY";
+  /**
+   * ⚠ **判据换了一条**（WO-EVENTS-WRITE-STATE）。旧版是「有 `stateEffect` ⇒ 对象 id」，
+   * 而本单给 11 类事件全补了落点 ⇒ 照旧版会**全部**变成对象 id，
+   * 于是 `sop_reschedule.targetOrderId` 收到 `obj_order_SO-3391`，
+   * 实测当场回 `Order obj_order_SO-3391 not found`（本单真跑过，不是推理）。
+   *
+   * 新判据：**求解器那一路更严，它赢** —— 只要有任何一条路由拿 `eventTarget` 当入参，
+   * 就传业务键；剩下的才传对象 id。世界态落点那一路**两种都认**
+   * （后端 `resolveLanding`：先按对象 id 查，查不到再按 `keyProp` 在该类型内找），
+   * 所以让严的那一边定形态是安全的。
+   */
+  const solverReadsTarget = spec.routes.some((r) => r.args.some((a) => a.from === "eventTarget"));
+  return solverReadsTarget ? "BUSINESS_KEY" : "OBJECT_ID";
 }
 
 /**
  * 你选的这个主体，今天**进不进算式**（catalog 现算，不是猜的）。
  * `false` ⇒ 屏上必须说一句，否则用户会以为「我选了常州所以算的是常州」。
+ *
+ * ⚠ **落点取自 payload 的不算「读主体」**：`ORDER_INSERT` 屏上选的是客户，
+ * 而落点是 `payload.modelId` 指的那个**型号** —— 客户确实没进算式（本世界的
+ * `Customer` 只有应收侧的出边，需求侧一条都没有）。把它算成 `true` 就是
+ * 让屏上说一句假话，正是 COO 卡点 ⑤ 骂的那件事。
  */
 export function subjectIsRead(spec: DrillEventSpec): boolean {
-  if (spec.stateEffect) return true;
+  if (spec.stateEffect && spec.stateEffect.targetFrom === "eventTarget") return true;
   return spec.routes.some((r) => r.args.some((a) => a.from === "eventTarget"));
+}
+
+/**
+ * 这件事**真正落到哪个东西上**的一句人话（`null` = 它今天不动世界态）。
+ * 屏上要用它把「你选的主体」与「真正被算的东西」分开说 —— 两者不一定是同一个。
+ */
+export function landingNoteFor(spec: DrillEventSpec): string | null {
+  const eff = spec.stateEffect;
+  if (!eff) return null;
+  if (eff.targetFrom === "payloadKey") {
+    return `这件事真正压到的是你填的那个「${eff.targetKey}」，不是你选的那个主体 —— 本世界里主体那一类对象在关系图上没有对应方向的边。`;
+  }
+  return "这件事会真的改到数上，所以它要求主体是一个真实存在的对象。";
 }
 
 /** 屏上给这条事件用的 id（对象 id 或业务键），由上面两条判据决定。 */
@@ -138,6 +168,39 @@ export function targetIdOf(spec: DrillEventSpec, picked: { id: string; props: Re
 // § 2 · 卡点：能动的 N 处 / 只能盯着的 M 处（**必须分栏**）
 // ══════════════════════════════════════════════════════════════════════════
 
+/**
+ * 一条**改法**（`chain_impediments` 的 `candidates[]` 归一）。
+ *
+ * ── 为什么要把它抬到这一层（COO 实测点名的第三条硬伤）─────────────────────────
+ * 旧版 `splitImpediments` 只留了 `candidates.length` 这个**计数**，原始候选整个丢掉 ⇒
+ * 屏上那 4 颗「有 N 种改法 ▸」按下去**无处可展开**，只能滚到第 ⑤ 区看基地的通用打法库
+ * —— 而那一区讲的是「常州·瓶颈工序」，跟被点的那 4 个卡点（物料批次 / 物料平衡 /
+ * 金华分切线 / 自贡分容线）**不是同一个主语**。COO 原话：
+ * 「点前点后整块 `<main>` 文本 diff 为空」「跟我点的那 4 个卡点不是一回事」。
+ *
+ * ⚠ 这些数**全部来自引擎回包，一个都不编**：`label` / `fromValue` / `toValue` /
+ * `dims[]`（含 `baseline`，所以「改完变成多少」是可核的）/ `rungSource`（这一档是
+ * 怎么定出来的）/ `provenance.formula`（怎么算的）。查表给不出 `fromValue→toValue`
+ * 与逐维 baseline 对照 —— 这正是「这不是查表」的证据。
+ */
+export interface ImpedimentCandidate {
+  candidateId: string;
+  /** 人话标题：`产线·利用率 ↓ 89.9153（瓶颈工序·LINE-WS-jinhua-slitting）`。 */
+  label: string;
+  /** 拨哪一格：对象类型 / 对象 / 属性 / 因子中文名。 */
+  leverText: string;
+  fromValue: number | null;
+  toValue: number | null;
+  unit: string;
+  /** 这一档是怎么定出来的（同侪极值 / 紧邻下一档…），引擎原文。 */
+  rungSource: string;
+  /** 逐维效果：改完 vs 不改（`value` vs `baseline`），带单位与「越小越好还是越大越好」。 */
+  dims: { label: string; value: number; baseline: number; unit: string; betterWhenLower: boolean; dataMode: string }[];
+  /** 引擎自陈的算法（含 patch 语义与判据规则号）。 */
+  formula: string;
+  dataMode: string;
+}
+
 export interface ImpedimentRow {
   impedimentId: string;
   kind: string;
@@ -148,6 +211,8 @@ export interface ImpedimentRow {
   /** 一句人话：`常州 的产能 3,694 套/日，红线 1,760 套/日（超 110%）`。 */
   sentence: string;
   candidateCount: number;
+  /** **这条卡点自己的**那几条改法（不是基地的通用打法库）。 */
+  candidates: ImpedimentCandidate[];
   /** 引擎自陈的「为什么一条方案都给不出」原文，一字不改。 */
   noCandidateReason: string | null;
   dataMode: string;
@@ -204,6 +269,44 @@ export function impedimentSentence(x: RawImpediment): string {
  *   **后端单源**，前端不内联映射表）。没有它 ⇒ 屏上只剩 `pos_lfp_b2` 这种机器键，
  *   用户读不出「这是一批料」还是「一条线」。
  */
+/**
+ * 把引擎的 `candidates[]` 归一成屏上要的形状。**一个数都不编**：
+ * 取不到的一律留 `null` / 空串，屏上照实少显示一格，绝不填 0 或「低」——
+ * 那正是本文件 `sortMitigations` 头注里点名的那种犯法（把不认识的折成最好的一档）。
+ */
+function normalizeCandidates(raw: unknown, typeName?: Map<string, string>): ImpedimentCandidate[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((c) => {
+    const x = c as Record<string, unknown>;
+    const lever = (x.lever ?? {}) as Record<string, unknown>;
+    const typeKey = String(lever.objectType ?? "");
+    const cn = typeName?.get(typeKey) ?? typeKey;
+    const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    return {
+      candidateId: String(x.candidateId ?? ""),
+      label: String(x.label ?? ""),
+      leverText: `${cn} ${String(lever.objectId ?? "")} 的「${String(lever.factorName ?? lever.prop ?? "")}」`,
+      fromValue: num(x.fromValue),
+      toValue: num(x.toValue),
+      unit: String(lever.unit ?? ""),
+      rungSource: String(x.rungSource ?? ""),
+      dims: (Array.isArray(x.dims) ? x.dims : []).map((d) => {
+        const y = d as Record<string, unknown>;
+        return {
+          label: String(y.label ?? ""),
+          value: Number(y.value ?? 0),
+          baseline: Number(y.baseline ?? 0),
+          unit: String(y.unit ?? ""),
+          betterWhenLower: y.betterWhen === "lower",
+          dataMode: String(y.dataMode ?? "UNDECLARED"),
+        };
+      }),
+      formula: String((x.provenance as Record<string, unknown> | undefined)?.formula ?? ""),
+      dataMode: String(x.dataMode ?? "UNDECLARED"),
+    };
+  });
+}
+
 export function splitImpediments(
   raw: unknown,
   typeName?: Map<string, string>,
@@ -218,6 +321,7 @@ export function splitImpediments(
     label: x.locus.label,
     sentence: `${typeName?.get(x.locus.objectType) ?? ""}${typeName?.get(x.locus.objectType) ? " " : ""}${impedimentSentence(x)}`,
     candidateCount: (x.candidates ?? []).length,
+    candidates: normalizeCandidates(x.candidates, typeName),
     noCandidateReason: x.noCandidateReason ?? null,
     dataMode: x.dataMode,
     ruleKey: x.evidence?.ruleKey ?? null,
@@ -483,6 +587,53 @@ export function collectHonesty(input: {
     });
   }
   return out;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// § 7 · 报错要说人话（COO 实测点名的第二条硬伤）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 把接口报错翻成一句**经营者读得懂的话**，并保留原文供第二层查看。
+ *
+ * ── 今天的行为是 X，应该是 Y（COO 实测原文照录）─────────────────────────────
+ * · **X**：屏上直接打 `ApiClientError: events.2.targetObjectId: Too small: expected
+ *   string to have >=1 characters`。COO 原话：「报错原文是给工程师看的，不是给我看的
+ *   —— 我不知道该找谁、也不知道我做错了什么」。
+ * · **Y**：第一层说人话 + 说清**我该做什么**；原文降到第二层（`Raw`），
+ *   一个字都不删（`CONVENTION-ui-information-layering §1`：诚实位允许降层、不允许删除）。
+ *
+ * ⚠ **只翻译认得出的形态，认不出的一律原样透出**。硬编一句「出错了，请重试」
+ * 会把一条本来能自救的错误变成一堵墙 —— 那是把「我不知道」写成「你别问了」，
+ * 与本仓那条「缺 dataMode 一律 UNDECLARED、绝不默认 LIVE」是同一条纪律。
+ */
+export function humanizeApiError(raw: string): { text: string; recognized: boolean } {
+  // zod 的 `events.N.<字段>: Too small` —— 少填了主体
+  const tooSmall = /events\.(\d+)\.targetObjectId:\s*Too small/i.exec(raw);
+  if (tooSmall) {
+    return {
+      text: `第 ${Number(tooSmall[1]) + 1} 件事没有指定主体（那一格空着就提交了）。回左边把它删掉重加一次，两级选择器要选到**第二级**才算选完。`,
+      recognized: true,
+    };
+  }
+  const tooSmallAny = /events\.(\d+)\.(\w+):\s*Too small/i.exec(raw);
+  if (tooSmallAny) {
+    return { text: `第 ${Number(tooSmallAny[1]) + 1} 件事有一格必填的没填（${tooSmallAny[2]}）。回左边把它删掉重加一次。`, recognized: true };
+  }
+  if (/VALIDATION_ERROR/i.test(raw)) {
+    return { text: "你加的事里有一格填得不对，后台没收。左边逐条看一下必填项，删掉重加一次。", recognized: true };
+  }
+  if (/\b(404|FEATURE_NOT_FOUND)\b/.test(raw)) {
+    return { text: "这个租户没开推演这项功能 —— 这不是你填错了，是权限/开关的事，找管理员开。", recognized: true };
+  }
+  if (/\b(401|403|FORBIDDEN|UNAUTHORIZED)\b/i.test(raw)) {
+    return { text: "登录态过期或者你这个角色没有推演权限。重新登录一次；还是不行就是角色的事。", recognized: true };
+  }
+  if (/Failed to fetch|NetworkError|ECONNREFUSED|fetch failed/i.test(raw)) {
+    return { text: "连不上后台 —— 这不是你填错了。等一下再按一次〔算一下〕；一直这样就是服务没起来。", recognized: true };
+  }
+  // ⛔ 认不出来就照实说「认不出」，并把原文原样给出，不编一句安慰话
+  return { text: "这次没算成，而这条报错这里还没有对应的人话说明 —— 原文如下，请连同它一起找工程。", recognized: false };
 }
 
 /** 「算完了但一项都没动」和「没算」是两个状态 —— 这条判据决定屏上说哪一句。 */

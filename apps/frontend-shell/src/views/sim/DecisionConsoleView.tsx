@@ -17,6 +17,8 @@ import styles from "./DecisionConsoleView.module.css";
 import {
   collectHonesty,
   exposureTotals,
+  humanizeApiError,
+  landingNoteFor,
   nothingMovedText,
   orderedEvents,
   planCategoryOf,
@@ -387,6 +389,8 @@ export default function DecisionConsoleView() {
   const [result, setResult] = useState<RunResult | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [selectedBaseId, setSelectedBaseId] = useState<string | null>(null);
+  /** 第 ④ 区展开的是哪一条卡点的改法（`null` = 都收着）。 */
+  const [openImpediment, setOpenImpediment] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("tn");
   const [footerOpen, setFooterOpen] = useState(false);
   const [confirmText, setConfirmText] = useState<string | null>(null);
@@ -557,7 +561,11 @@ export default function DecisionConsoleView() {
             </h2>
             {catalog.isLoading ? <p className={styles.greyLine}>正在取事情清单…</p> : null}
             {catalog.isError ? (
-              <p className={styles.err}>事情清单取不回来，这一格今天用不了。{String(catalog.error)}</p>
+              <p className={styles.err}>
+                事情清单取不回来，这一格今天用不了 —— {humanizeApiError(String(catalog.error)).text}
+                <br />
+                <Raw text={String(catalog.error)} />
+              </p>
             ) : null}
             {specs.map((spec) => (
               <TemplateRow
@@ -683,7 +691,10 @@ export default function DecisionConsoleView() {
         {run.isError && !run.isPending ? (
           <section className="panel" aria-label="没算成">
             <p className={styles.err}>
-              这次没算成，你刚才加的 {added.length} 件事还在，再按一次〔算一下〕。
+              {/* 第一层说人话；原文降到第二层（`Raw`）一个字不删 —— 诚实位允许降层不允许删除 */}
+              {humanizeApiError(String(run.error)).text}
+              <br />
+              你刚才加的 {added.length} 件事还在，改完再按一次〔算一下〕。
               <br />
               <Raw text={String(run.error)} />
             </p>
@@ -894,22 +905,81 @@ export default function DecisionConsoleView() {
                         {imp.total} 处卡住的地方，今天一处对策也给不出 —— 这本身是结论。
                       </p>
                     ) : (
+                      /*
+                       * 🔴 **COO 实测「4 个按钮点了什么都不发生」的修法**（诉求 #9「长得像按钮的
+                       * 东西必须能按」/ #10「点下去落到它自己那句话的答案上」）。
+                       *
+                       * ── 今天的行为是 X，应该是 Y ──────────────────────────────────
+                       * · **X**：`onClick` 只做两件事 —— `setSelectedBaseId(第 ⑤ 区的基地)` +
+                       *   滚到 `#z5`。而 ① 这 4 个卡点里有 2 个（物料批次 / 物料平衡）**根本不属于
+                       *   任何基地**，`baseOfImpediment` 回 `null` ⇒ 一个 state 都没变；
+                       *   ② 另外 2 个（金华/自贡产线）就算切了基地，第 ⑤ 区展开的也是**那个基地的
+                       *   通用打法库**，不是这条卡点自己的改法 —— COO 原话「跟我点的那 4 个卡点
+                       *   不是一回事」。⇒ 屏幕 diff 为空是**真的**，不是他看漏了。
+                       * · **Y**：就地展开**这条卡点自己的** `candidates[]`（引擎已经回了，
+                       *   旧代码在 `splitImpediments` 里把它整个丢掉只留了个计数）。
+                       *
+                       * ⚠ 保留「顺带切到对应基地」这个副作用：它对 2 个产线卡点是有意义的，
+                       *   对另外 2 个是 no-op —— 但**主效果不再依赖它**。
+                       */
                       imp.actionable.map((r) => (
-                        <button
-                          type="button"
-                          key={r.impedimentId}
-                          className={styles.impRow}
-                          aria-pressed={false}
-                          onClick={() => {
-                            const base = baseOfImpediment(r.objectType, r.objectId, cards, result.risk);
-                            if (base) setSelectedBaseId(base);
-                            document.getElementById("z5")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                          }}
-                        >
-                          {r.sentence}
-                          <br />
-                          <span className={styles.impWays}>有 {r.candidateCount} 种改法 ▸</span>
-                        </button>
+                        <div key={r.impedimentId}>
+                          <button
+                            type="button"
+                            className={styles.impRow}
+                            aria-expanded={openImpediment === r.impedimentId}
+                            aria-controls={`ways-${r.impedimentId}`}
+                            onClick={() => {
+                              setOpenImpediment((prev) => (prev === r.impedimentId ? null : r.impedimentId));
+                              const base = baseOfImpediment(r.objectType, r.objectId, cards, result.risk);
+                              if (base) setSelectedBaseId(base);
+                            }}
+                          >
+                            {r.sentence}
+                            <br />
+                            <span className={styles.impWays}>
+                              有 {r.candidateCount} 种改法 {openImpediment === r.impedimentId ? "▾" : "▸"}
+                            </span>
+                          </button>
+                          {openImpediment === r.impedimentId ? (
+                            <div id={`ways-${r.impedimentId}`} className={styles.waysPanel}>
+                              {r.candidates.length === 0 ? (
+                                <p className={styles.greyLine}>
+                                  这条卡点报了 {r.candidateCount} 种改法，但回包里一条明细都没有 —— 这是数据的缺口，不是「没有改法」。
+                                </p>
+                              ) : (
+                                r.candidates.map((cd) => (
+                                  <div className={styles.wayCard} key={cd.candidateId}>
+                                    <div className={styles.wayTitle}>{cd.label}</div>
+                                    <div className={styles.wayLine}>
+                                      拨的是 {cd.leverText}
+                                      {cd.fromValue !== null && cd.toValue !== null ? (
+                                        <>
+                                          ：{roundish(cd.fromValue)}
+                                          {cd.unit} → <b>{roundish(cd.toValue)}{cd.unit}</b>
+                                        </>
+                                      ) : null}
+                                    </div>
+                                    {/* 逐维「改完 vs 不改」—— 有 baseline 才叫可核，没有 baseline 只是一个数 */}
+                                    {cd.dims.map((d) => {
+                                      const better = d.betterWhenLower ? d.value < d.baseline : d.value > d.baseline;
+                                      const same = d.value === d.baseline;
+                                      return (
+                                        <div className={styles.wayLine} key={d.label}>
+                                          {d.label}：不改 {roundish(d.baseline)}{d.unit} → 改完{" "}
+                                          <b>{roundish(d.value)}{d.unit}</b>{" "}
+                                          {same ? "（这一项没动）" : better ? "（好转）" : "（更差）"}
+                                          {d.dataMode !== "LIVE" ? <Est /> : null}
+                                        </div>
+                                      );
+                                    })}
+                                    <Raw text={`这一档怎么定的：${cd.rungSource}\n怎么算的：${cd.formula}`} />
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
                       ))
                     )}
                   </div>
@@ -1183,8 +1253,27 @@ function TemplateRow({
     setPickedLabel(typeof n === "string" ? n : item.id);
   };
 
+  /**
+   * 🔴 **COO 实测「设备故障必炸」的成因就在这一行**（`ApiClientError: events.N.targetObjectId: Too small`）。
+   *
+   * ── 今天的行为是 X，应该是 Y ──────────────────────────────────────────────
+   * · **X**：旧判据是 `!subjectRead || pickedId.length > 0` —— 「这类事不看主体」的事件
+   *   **不要求**选主体。而「设备故障」是**两级**选择器（基地 → 产线），选完基地那一步
+   *   会**故意把 `pickedId` 清空**（等你选产线）。两件事撞在一起：
+   *   `subjectRead=false` ⇒ 不要求 → 用户选完基地就能按〔加进去〕→ `targetObjectId: ""`
+   *   → 后端 `z.string().min(1)` 打回一句**英文 zod 报错**。
+   *   而「产能损失」用的是**同一个 13 基地下拉**、但**没有第二级**，选完基地 `pickedId` 就有值
+   *   ⇒ 它是好的。COO 那句「同一个下拉在产能损失上是好的 ⇒ 这是一处漏」判得完全对。
+   * · **Y**：判据必须落在「**这个选择器最终要不要产出一个 id**」上，
+   *   而不是「这个事件读不读主体」—— 只要屏上摆了选择器，就必须选到叶子那一层。
+   *
+   * ⚠ 本单给 11 类事件都补了世界态落点 ⇒ `subjectRead` 现在几乎恒为 true，
+   * 旧写法**恰好也不会再炸**。但那是**巧合不是修复**：下一个「不读主体」的新事件
+   * 只要配了两级选择器，同一个坑立刻复发。故判据照上面重写，不靠巧合。
+   */
+  const needsLeafPick = scope !== null && (scope.child ? true : subjectRead);
   const canAdd =
-    (scope === null || !subjectRead || pickedId.length > 0) &&
+    (!needsLeafPick || pickedId.length > 0) &&
     spec.payloadKeys.filter((k) => k.required).every((k) => payload[k.key] !== undefined && payload[k.key] !== "");
 
   return (
@@ -1408,14 +1497,20 @@ function TemplateRow({
           </button>
           {!canAdd ? (
             <span className={styles.fieldHint}>
-              {subjectRead && pickedId.length === 0 ? "先选一个对象；" : ""}
+              {needsLeafPick && pickedId.length === 0
+                ? scope?.child
+                  ? `先把「${scope.child.label}」也选上 —— 只选了${scope.label}还不够，${scope.child.label}才是这件事真正落到的地方；`
+                  : "先选一个对象；"
+                : ""}
               {spec.payloadKeys.filter((k) => k.required && (payload[k.key] === undefined || payload[k.key] === "")).map((k) => `「${k.hint || k.key}」要填；`)}
               填齐了才能加 —— 缺一个必填的，后台会回「未能评估」而不是算成 0。
             </span>
           ) : null}
-          {idForm === "OBJECT_ID" ? (
-            <span className={styles.fieldHint}>这件事会真的改到数上，所以它要求主体是一个真实存在的对象。</span>
-          ) : null}
+          {/*
+            「这件事落到哪」由 catalog 现算：落点取自主体 ⇒ 说「要求是真实对象」；
+            落点取自 payload（临时插单落在型号上）⇒ 必须明说客户不进算式，不许含糊。
+          */}
+          {landingNoteFor(spec) ? <span className={styles.fieldHint}>{landingNoteFor(spec)}</span> : null}
         </div>
       ) : null}
     </>
