@@ -146,6 +146,15 @@ const consolidatedKeys = parseConsolidatedKeys(shellSrc);
 /** 沙盘**开着**时侧栏真出现的 route 文案（`consolidatedWhen` 命中的那批不出现）。 */
 const visibleRouteLabels = routeItems.filter((r) => !consolidatedKeys.has(r.key)).map((r) => r.label);
 
+/**
+ * §D 变异反证（D1）的**碰撞目标** = 旧沙盘那条 route 的**当下**文案，从源码现取、不写死：
+ * 写死 `"推演沙盘"` 是位置锚的近亲 —— 那条 route 一改名，变异就再也造不出重名，
+ * D1 会**假红**（探测器没坏，是探针指空了）。抽不到时给一个永不可能与真文案相等的哨兵串，
+ * 让 D1 的金丝雀②当场报「工具坏了」，而不是静悄悄绿过去。
+ */
+const DUP_PROBE_LABEL =
+  routeItems.find((r) => r.key === "sim-sandbox")?.label ?? "<抽取器坏了·sim-sandbox 的 label 没抽到>";
+
 /** 重名探测（唯一实现 —— 变异反证与真断言共用它，抄第二份就是装饰品）。 */
 function duplicateLabels(labels: string[]): string[] {
   const seen = new Map<string, number>();
@@ -368,8 +377,12 @@ describe("WO-SIM-BE-VIEWKEY · §C 角色口径（照抄沙盘家族既有那条
  * 文案的两个出处分处两包：view 项的 label 在**后端** ViewConfig，route 项的 label 在**前端**
  * `NAV_GROUPS` 内联。任一包单独测都测不出重名 —— 各自都合法。本段把两侧合起来算一次，
  * 正是 SEAM-GATE 要的「驱动接缝」。
- * ⚠ 断言前先跑**变异反证**：把 `sim-console` 的标题换回「推演沙盘」，探测器必须当场报重名。
+ * ⚠ 断言前先跑**变异反证**：把一条屏上真可见的条目标题换成另一条已有文案，探测器必须当场报重名。
  *   不做这一步的话，探测器恒返回空数组也是绿的（哑门）。
+ *   ⚠⚠ 变异对象**不许钉死具体键**（2026-08-28 实测，canonical 上红）：原写法钉 `sim-console`，
+ *   而 `WO-SIM-NAV-UNIFIED` 把该键收编进统一推演控制台（`CONSOLIDATED_INTO_SANDBOX`）⇒
+ *   D1 的过滤器先一步把它删掉、变异成了空操作、`mutated` 与 D2 的 `visible` 逐字相同 ⇒ 红。
+ *   那次红咬的**既不是探测器坏了、也不是屏上有重名**，而是本条失去了被变异的对象 —— 假红。
  * ══════════════════════════════════════════════════════════════════════════════ */
 
 describe("WO-SIM-NAV-GROUP · §D 导航文案不重名（后端 label × 前端 route label 的接缝）", () => {
@@ -390,20 +403,51 @@ describe("WO-SIM-NAV-GROUP · §D 导航文案不重名（后端 label × 前端
     expect(consolidatedKeys.has("chain-line-map"), "收编表金丝雀键缺席 ⇒ 抽取器坏了").toBe(true);
   });
 
-  it("D1 · 变异反证：把 sim-console 的标题换回「推演沙盘」，重名探测器必须当场报出来", async () => {
+  it("D1 · 变异反证：把一条**屏上真可见**的后端条目标题换成 route 侧的「推演沙盘」，重名探测器必须当场报出来", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const ws = await workspace(t, ADMIN);
+    const visibleNav = ws.navigation.filter(
+      (n) => n.group === "business" && !consolidatedKeys.has(n.viewKey ?? n.key),
+    );
+    // ── 金丝雀①：变异必须真的落到某条条目上 ────────────────────────────────────────
+    // 原写法把变异钉死在 `sim-console` 上，而 `WO-SIM-NAV-UNIFIED` 把该键收编进了统一推演
+    // 控制台（`CONSOLIDATED_INTO_SANDBOX["sim-console"]`）⇒ 上面这个过滤器**先一步**把它删掉，
+    // 于是"变异"变成空操作、`mutated` 与 D2 的 `visible` 逐字相同、探测器如实报 `[]` —— 红。
+    // 那次红咬到的**不是探测器坏了，也不是屏上有重名**，而是**本条自己失去了被变异的对象**。
+    // 形态（铁律 0.6）：「我用『改了 sim-console 这一条』当作『变异生效了』的证据，
+    // 而前者并不度量后者 —— 那一条早已不在被检集合里。」
+    // 改法：不钉具体键，取**当下真可见**的第一条来变异，并断言它确实存在。
+    expect(visibleNav.length, "屏上可见的后端条目为空 ⇒ 变异无处可施，本条恒真（哑门）").toBeGreaterThan(0);
+    // ── 金丝雀②：碰撞目标必须真在 route 侧可见 ──────────────────────────────────────
+    // D0 只证了「`sim-sandbox`/「推演沙盘」在 NAV_GROUPS 里」；它**没证**这条没被收编掉。
+    // 两件事不同：被收编 ⇒ 不进 `visibleRouteLabels` ⇒ 变异造不出重名，本条又会空转。
+    expect(
+      visibleRouteLabels,
+      "碰撞目标「推演沙盘」不在可见 route 文案里 ⇒ 变异造不出重名，本条恒真（哑门）",
+    ).toContain(DUP_PROBE_LABEL);
+
+    const victim = visibleNav[0]!;
+    expect(victim.label, "被变异条目原本就叫「推演沙盘」⇒ 屏上本来就重名，D2 应当先红").not.toBe(
+      DUP_PROBE_LABEL,
+    );
+    const unmutated = [...visibleNav.map((n) => n.label), ...visibleRouteLabels];
     const mutated = [
-      ...ws.navigation
-        .filter((n) => n.group === "business" && !consolidatedKeys.has(n.viewKey ?? n.key))
-        .map((n) => ((n.viewKey ?? n.key) === "sim-console" ? "推演沙盘" : n.label)),
+      ...visibleNav.map((n) => (n === victim ? DUP_PROBE_LABEL : n.label)),
       ...visibleRouteLabels,
     ];
+    // ── 对照实验（两极都咬）：同一个探测器、同一份输入，只差被变异的那一格 ──────────────
+    // 变异前不报 / 变异后必报 —— 缺任一极，「探测器是活的」就不成立
+    //（恒返回 `[]` 的哑函数过第二极不了；恒返回全集的哑函数过第一极不了）。
+    expect(
+      duplicateLabels(unmutated),
+      "未变异的那一份就已含「推演沙盘」重名 ⇒ 本条的「变异后报出来」不构成证据",
+    ).not.toContain(DUP_PROBE_LABEL);
     expect(
       duplicateLabels(mutated),
-      "把标题换回旧值后探测器仍报「无重名」⇒ 探测器是哑的，D2 的绿不构成证据",
-    ).toContain("推演沙盘");
+      `把可见条目「${victim.label}」的标题换成 route 侧已有的「${DUP_PROBE_LABEL}」后，` +
+        "探测器仍报「无重名」⇒ 探测器是哑的，D2 的绿不构成证据",
+    ).toContain(DUP_PROBE_LABEL);
   });
 
   it("D2 · 真断言：沙盘开着（默认）时侧栏可见的条目文案**两两不重名**", async () => {
