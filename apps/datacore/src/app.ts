@@ -2291,6 +2291,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req); await requireSim(c, "sim.propagation");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
     const n = Math.max(1, Math.floor(Number((req.body as { n?: number })?.n ?? 1)));
+    // 逐对权重出处要不要下发（见下方 `pairWeighting` 段的实测理由）。query 与 body 都认：
+    // 前端按 query 发最省事，而脚本/审计侧常常只在 body 里带参数。
+    const wantExplain =
+      String((req.query as Record<string, unknown> | undefined)?.explain ?? "") === "1" ||
+      (req.body as { explain?: unknown } | undefined)?.explain === true;
     const r = await tickSimSessionWorld(c, s, n);
     // `cadence` 段是**诚实缺席的出口**（E4）：哪些节点有闸门、哪些节点查得到但用不了、
     // 哪些规则声明了闸门却拿不到 —— 全部亮出来，前端才可能显示"这条流因节拍未知未参与推演"，
@@ -2309,8 +2314,30 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         : {}),
       // 逐实例分摊回执（WO-COEF-FROM-BOM）——与 `cadence` 逐条同款纪律。
       // **只在真有规则声明 `weightRef` 时下发**：没人声明的租户响应形状逐字节同旧（additive·可回退 RL9）。
+      //
+      // ⚠ **逐对出处 `explain` 默认不下发，要用 `?explain=1` 显式要** —— 这不是把可披露打折，
+      // 是实测逼出来的：demo 租户三条已分摊的边共 **1024 对**，`explain` 一段就 **504,837 字节**，
+      // 占整个 tick 回包的 **99.75%**（`state` 才 2 字节）。把它设成默认 = 每拍多传半兆，
+      // 那会让"可披露"这件事本身变成一个性能事故，然后被人一刀关掉——反而更不可披露。
+      // 默认下发的 `report.pairs`（逐规则：铺了多少对/多少对权重 0/强度与来源/本跳耗时）
+      // 与 `unresolved`（算不出权重的规则）都很小，**足够回答"这个数是算的还是拍的"**；
+      // 要追到某一对的分子分母/用哪张 BOM/哪几个字段，`?explain=1` 一次拿全，不做截断
+      // （截断会让审计以为自己看到了全量 —— 那比不给更糟）。
       ...(r.pairWeighting.report.pairs.length > 0 || r.pairWeighting.report.unresolved.length > 0 || r.pairWeighting.unresolved.length > 0
-        ? { pairWeighting: r.pairWeighting }
+        ? {
+            pairWeighting: wantExplain
+              ? r.pairWeighting
+              : {
+                  ...r.pairWeighting,
+                  report: {
+                    ...r.pairWeighting.report,
+                    explain: [],
+                    // 诚实位：省略了多少条，以及怎么拿全 —— 空数组不冒充"没有出处"。
+                    explainOmitted: r.pairWeighting.report.explain.length,
+                    explainHint: "逐对出处默认不下发（会占回包 99% 以上）。加 ?explain=1 取全量，不截断。",
+                  },
+                },
+          }
         : {}),
       // 溯源（WO-P2）：这一格世界态是哪几次扰动仍在起作用的结果。只在这个世界真有扰动时下发，
       // 无扰动的租户响应形状逐字节同旧（可回退）。

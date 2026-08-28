@@ -173,7 +173,9 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
       payload: { baseSnapshot: { [orderId]: { demandPressure: 10 }, [modelId]: { demandLoad: 0 } } },
     })).json()).id as string;
-    const tick = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } });
+    // `?explain=1`：逐对权重出处默认不下发（实测占回包 99.75%），本用例要拿它来**独立复算**权重，
+    // 故显式索取 —— 这同时顺带验了那个开关真的有效（不加就拿不到，下面的 expect 会红）。
+    const tick = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 } });
     expect(tick.statusCode).toBe(200);
     const body = tick.json() as {
       state: Record<string, Record<string, number>>;
