@@ -96,8 +96,20 @@ describe("WO-SCALE-COHERENCE · 五层尺度自洽四方互核（SEAM）", () =>
     // ── C < B（或 C≈B 略低）：产能不得 >> 需求，否则 supply_demand_gap 无缺口可归因（最隐蔽接缝风险）──
     expect(C, "C产能 必须 < B需求（留缺口）").toBeLessThan(B);
 
-    // 订单窗口 sanity（覆盖窗口应为合理快照 2~6 周·catches 订单 qty 尺度错）
-    expect(windowWeeks).toBeGreaterThan(2);
-    expect(windowWeeks).toBeLessThan(6);
+    // 订单窗口 sanity（catches 订单 qty 尺度错）——**判据一个字没改，改的是它标定在哪份簿子上**。
+    //
+    // 旧值 `2~6 周` 编码的假设是「订单簿 = 24 张全 OPEN 的在手快照 ≈ 一个月」（实测扩容前 3.511 周）。
+    // WO-ORDER-BOOK-500 之后簿子是 500 张 × 三态，交期跨度由 `battery.ts dueDayForStatus` 定死：
+    //   COMPLETED −180…−1 · IN_PRODUCTION −14…+45 · OPEN +10…+180  ⇒ 跨度 361 天 = 51.57 周。
+    // 「一个月的快照」这个前提已经不成立了，所以过期的是这两个常量，不是这条判据。
+    //
+    // 新带宽从**簿子自己的交期跨度**派生（不是围着实测值画个圈）：
+    //   · 上界 = 跨度本身 —— 覆盖窗口超过自己那段交期跨度 ⇒ 同一段时间被重复计量，是真错；
+    //   · 下界 = 跨度/4    —— 再低就退回「一个月快照」那档，说明 qty 被写小了一个量级。
+    // 抓错能力不减：qty 错 10× 给出 335.7 周（越上界）、错 1/10 给出 3.36 周（越下界）。
+    // 实测（seed 42 · scale S）：扩容前 3.511 → 扩容后 33.574 周，落在 (12.89, 51.57) 内。
+    const ORDER_DUE_SPAN_WEEKS = 361 / 7;
+    expect(windowWeeks).toBeGreaterThan(ORDER_DUE_SPAN_WEEKS / 4);
+    expect(windowWeeks).toBeLessThan(ORDER_DUE_SPAN_WEEKS);
   });
 });
