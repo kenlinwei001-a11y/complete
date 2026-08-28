@@ -63,9 +63,36 @@ const G = PARETO_GEOM;
 const LABEL_FS = 10;
 const AXIS_TITLE_FS = 11;
 
-/** 刻度文案。纵轴按整数千分位（规格 `(2400-i*400).toLocaleString()`），横轴一位小数 + 单位。 */
+/**
+ * 刻度文案。纵轴按整数千分位（规格 `(2400-i*400).toLocaleString()`）。
+ *
+ * ══ WO-CONSOLE-BLOCKERS · 横轴刻度 ══════════════════════════════════════════
+ *
+ * ⚠ **派单给的前提在这一条上已过期，照实记账**（派单原文：「帕累托横轴在 74 万的数上画
+ * 1 个单位」）。那是**原稿**的说法，`docs/LOOP7-ux-review.md` §10 第 2 行自己已经把它判为
+ * 「原稿前提仍过期；LOOP5 的更正复现」—— 今天横轴真实是 `9187992.0 → 6855112.0`、
+ * 跨度 2,332,880、递减、**8 个刻度全是 7 位数带一个 `.0`**。
+ *
+ * 所以今天真正的毛病不是「跨度画错了」，是**刻度文案**：
+ *  · 今天的行为是 X：`v.toFixed(1)` 无条件给一位小数 ⇒ 屏上是 `9187992.0` 这种
+ *    9 个字符的数。横轴 8 个刻度、每刻度间距只有 70 个 SVG 单位，10px 等宽字下
+ *    一个标签就要 ~60 单位 —— **它们几乎贴在一起**；而那个 `.0` 还是**假精度**
+ *    （跨度 233 万的轴上，小数位一个信息都不携带）。
+ *  · 应该是 Y：按量级折算成中文读法（`918.8万`），**位数就是精度承诺** ——
+ *    小数位只在它真的携带信息时才出现。
+ *
+ * ⛔ 只改**呈现**：轴的取值、方向、单位全部仍来自端点回显的 `objectives[]`，
+ * 这里一个业务数都不碰（禁令 2：本单不动数据源）。
+ */
 const fmtYTick = (v: number): string => Math.round(v).toLocaleString();
-const fmtXTick = (v: number, unit: string): string => `${v.toFixed(1)}${unit}`;
+export const fmtXTick = (v: number, unit: string): string => {
+  const a = Math.abs(v);
+  if (a >= 1e8) return `${(v / 1e8).toFixed(1)}亿${unit}`;
+  if (a >= 1e4) return `${(v / 1e4).toFixed(1)}万${unit}`;
+  // 100 以上小数位已无信息（这条轴的跨度远大于 1）⇒ 取整 + 千分位。
+  if (a >= 100) return `${Math.round(v).toLocaleString()}${unit}`;
+  return `${v.toFixed(1)}${unit}`;
+};
 
 export interface ParetoChartProps {
   axes: readonly [OptAxis, OptAxis];

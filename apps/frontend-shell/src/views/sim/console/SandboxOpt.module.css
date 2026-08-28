@@ -133,7 +133,7 @@
 }
 .tt i {
   font-style: normal;
-  font-size: 8px;
+  font-size: 12px;
   letter-spacing: 0.34em;
   color: var(--muted2);
 }
@@ -163,9 +163,20 @@
   display: flex;
   gap: 20px;
   padding: 5px 14px 6px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
   border-bottom: 1px solid var(--line);
+}
+
+/* WO-CONSOLE-BLOCKERS：执行对比无行时的诚实空态（替掉那张只有表头的空表）。
+   12px = 判据 B 硬底；这是**诚实声明**，印成看不清的小字等于没印。 */
+.gempty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 14px 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
 }
 
 /* ══ 主体 ══ */
@@ -216,7 +227,7 @@
 .cw u {
   text-decoration: none;
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .cw i {
@@ -226,7 +237,7 @@
   border: 1px solid var(--line2);
   display: grid;
   place-items: center;
-  font-size: 9px;
+  font-size: 12px;
   color: var(--muted);
   font-style: normal;
 }
@@ -296,10 +307,10 @@
 .ph i {
   font-style: normal;
   color: var(--c-capacity-txt);
-  font-size: 9px;
+  font-size: 12px;
 }
 .ph b {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
   color: var(--txt);
@@ -307,7 +318,7 @@
 .ph .rt {
   margin-left: auto;
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.2em;
 }
 .pb {
@@ -335,7 +346,7 @@
   border: 1px solid var(--line2);
   color: var(--txt);
   padding: 5px 8px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-family: inherit;
   appearance: none;
   border-radius: 2px;
@@ -374,7 +385,7 @@
   letter-spacing: inherit;
   text-align: left;
   font-weight: 400;
-  font-size: 11px;
+  font-size: 12px;
   padding: 4px 7px;
   color: var(--muted2);
   white-space: nowrap;
@@ -402,7 +413,7 @@
   padding: 0 4px;
   border: 1px solid var(--line);
   /* WO-SIM-OPT-READABLE：10 → 11。翻页箭头是控件字形，不是角标。 */
-  font-size: 11px;
+  font-size: 12px;
   cursor: default;
 }
 .plist {
@@ -444,14 +455,14 @@
   padding-left: 30px;
 }
 .pc .r1 b {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--txt);
   font-weight: 600;
 }
 .pc .r1 em {
   font-style: normal;
   /* WO-SIM-OPT-READABLE：9.5 → 11（次要说明档）。排名标签是内容不是角标。 */
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted2);
   margin-left: auto;
   font-family: var(--font-mono);
@@ -469,7 +480,7 @@
   font-family: var(--font-mono);
   /* WO-SIM-OPT-READABLE：9.5 → 11。这一层是四个**小标题**（非增值/外协/准时/稼动），
      数值在 `.r2 u i` 里单独提到 12px —— 标题与数值分两档，不是一刀切。 */
-  font-size: 11px;
+  font-size: 12px;
 }
 .pc .r2 u {
   text-decoration: none;
@@ -496,7 +507,7 @@
   top: -1px;
   /* WO-SIM-OPT-READABLE：8.5 → 11（次要说明档）。「前沿」是**判据**不是装饰 ——
      它就是"这一手值不值得看"的答案，8.5px 等于把结论藏起来。 */
-  font-size: 11px;
+  font-size: 12px;
   color: var(--txt);
   background: var(--ok);
   padding: 0 4px;
@@ -622,7 +633,7 @@
 .cst .bd {
   /* WO-SIM-OPT-READABLE：9 → 11（次要说明档）。「紧 / 松」是**裕度的结论**，
      9px 的单字中文在本调色板内无解（见 tokens.css 的 required(S)=max(3,72/S) 推导）。 */
-  font-size: 11px;
+  font-size: 12px;
   padding: 0 3px;
   border: 1px solid currentColor;
   justify-self: start;
@@ -668,7 +679,7 @@
    `title` 只有鼠标悬停才读得到，而这条恰恰是键盘/读屏用户最需要的一句。 */
 .abtnWhy {
   margin: 0 9px 7px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
   color: var(--muted2);
 }
@@ -702,7 +713,7 @@
   letter-spacing: inherit;
   text-align: left;
   font-weight: 400;
-  font-size: 11px;
+  font-size: 12px;
   padding: 5px 9px;
   color: var(--muted2);
   white-space: nowrap;
@@ -730,7 +741,7 @@
   padding: 0 4px;
   border: 1px solid var(--line);
   /* WO-SIM-OPT-READABLE：10 → 11。 */
-  font-size: 11px;
+  font-size: 12px;
   cursor: default;
 }
 .grid {
@@ -774,7 +785,7 @@
   /* WO-SIM-OPT-READABLE：10 → 11.5。这一列（基线/方案的天数）宽 56px、
      左右内边距各 7px ⇒ 可用 42px。`4.54 D` 六字符等宽在 12px 下约 43.2px **会溢出**，
      11.5px 下约 41.4px 刚好装得下 —— 这一档是**量出来的**，不是拍的（见交单报告的溢出实测）。 */
-  font-size: 11.5px;
+  font-size: 12px;
   justify-content: flex-end;
   color: var(--txt);
 }
@@ -788,7 +799,7 @@
   flex: none;
   /* WO-SIM-OPT-READABLE：9.5 → 11。竖排组名（逐字换行，列宽只有 22px），
      11px 是这一列在不动列宽（`.grid` 的 22px 由像素测钉死）前提下的上限。 */
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   letter-spacing: 0;
   text-align: center;
@@ -816,7 +827,7 @@
   /* WO-SIM-OPT-READABLE：8.5 → 11。甘特的**时间刻度** —— 没有它，下面那条泳道
      就只是一堆彩色方块，读不出"这件事发生在几点"。`line-height:1` + `top:3px`
      ⇒ 11px 的行盒落在 18px 的 `.lh` 里仍有余量（3+11=14 < 18）。 */
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted2);
   border-left: 1px solid var(--line2);
   padding-left: 3px;
@@ -839,7 +850,7 @@
   /* WO-SIM-OPT-READABLE：9 → 11。段片上的字（请购 / 上炉 / 分拣…）是甘特**唯一**的语义，
      只剩颜色就成了色块图。`.sg` 的 height:12px 由像素测钉死 ⇒ 必须同时把行高压成 1，
      否则 11×1.35=14.85px 的行盒会把 12px 的片子撑破（默认继承 `.app` 的 1.35）。 */
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
   white-space: nowrap;
 }
@@ -906,7 +917,7 @@
   border-top: 0;
   color: var(--txt);
   font-family: var(--font-sans);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 .dockSum {
   height: 26px;

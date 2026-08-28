@@ -58,8 +58,6 @@ import {
 } from "./useParetoFrontier";
 import styles from "./SandboxOpt.module.css";
 
-const MENUBAR = ["File", "Edit", "View", "Window", "Tools", "Help"] as const;
-
 const RAIL_CREW = [
   { no: "01", face: "◔", bar: "var(--warn)" },
   { no: "02", face: "◑", bar: "var(--c-capacity)" },
@@ -198,15 +196,16 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
         ) : null}
         <span className={styles.hole} />
       </div>
-      {/* 假英文菜单栏：规格里的桌面外壳。**它不可点也从来没打算可点** ——
-          标成 `aria-hidden` 免得读屏用户听见六个点不动的"菜单"，
-          并挂一句 `title` 让鼠标用户也读得到同一件事。 */}
-      <div className={styles.mb} title={CHROME_WHY} aria-hidden>
-        {MENUBAR.map((m) => (
-          <span key={m}>{m}</span>
-        ))}
-      </div>
-
+      {/*
+        WO-CONSOLE-BLOCKERS · **假英文菜单已删**（原为 `File Edit View Window Tools Help`）。
+        今天的行为是 X：一条六项的英文菜单条印在中文经营页顶上，**不可点、也从来没打算可点**；
+          上一版的处置是给它挂 `aria-hidden` + 一句 title 说「这是装饰」。
+        应该是 Y：**装饰性的假控件不该在屏上**。给假菜单加无障碍标注，解决的是
+          「读屏用户会不会被它骗」，**不解决**「拿给同行看像不像产品」——
+          而后者正是这一条被判阻塞的理由（演示时从决策台点两下走过来，前面攒的信任当场清零）。
+          形态照 CLAUDE.md 铁律 0.6：「我用『标了 aria-hidden』当作『它不再是假控件』的证据。」
+        真正的桌面外壳质感由左轨/标题栏承担，那些**不冒充可点的菜单**，故保留。
+      */}
       <div className={styles.body}>
         {/* ══ 左轨 ══ 同上：外壳，不是功能。 */}
         <div className={styles.rail} title={CHROME_WHY} aria-hidden>
@@ -457,6 +456,21 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
               // 那套墙钟时刻不是按天的轴，编一个口径出来就是拿假数冒充实测。
               data-tick-days={exec.tickDays === undefined ? "" : String(exec.tickDays)}
             >
+              {/*
+                WO-CONSOLE-BLOCKERS · **只有表头的空表**。
+                今天的行为是 X：`exec.rows` 为空时，四列表头（环节 / 基线 / 方案 / 轨道）照样画，
+                  底下一行都没有 —— 屏上是一张**只有抬头的表**。一张空表和「这次没数据」
+                  长得不一样：前者读起来像"数据没加载完"，让人干等。
+                应该是 Y：没有行就不画表头，改成一句说清楚**为什么**没有。
+                （与决策台那条同源纪律：⛔ 不填 0、不写"无变化"、不留空白。）
+              */}
+              {exec.rows.length === 0 ? (
+                <p className={styles.gempty} data-testid="sandbox-opt-grid-empty">
+                  这次没有可对比的执行读数 —— 是「这条算例还没跑出按格子的读数」，不是「基线和方案一样」。
+                  选一个别的方案，或等这条算例推进几格再回来看。
+                </p>
+              ) : (
+                <>
               {/* 竖排组名 */}
               <div className={styles.gcol}>
                 <div className={styles.gcap} />
@@ -525,6 +539,8 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
                 ))}
                 <div className={styles.play} style={{ left: `${exec.playheadPct}%` }} />
               </div>
+                </>
+              )}
             </div>
           </section>
         </div>
