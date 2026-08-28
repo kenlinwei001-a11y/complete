@@ -1368,7 +1368,11 @@ const materialBalanceProps: PropertyDef[] = [
     propKey: "coverage",
     dataType: "number",
     isPrimaryKey: false,
-    unit: "%",
+    // ⚠ 改前这里写的是 `unit: "%"`，与**同一个字面量下一行的 description**（「0–1 比率存储，显示时 ×100」）
+    //   直接打架 —— 单看 `unit` 会把 0.79 读成 0.79%（真值是 79%）。按 description 的实测口径订正：
+    //   0–1 表示法 = `dimensionless` + `ratio`；`unit:"%"` 在本册专指 0–100 表示法。
+    unit: "dimensionless",
+    scale: "ratio",
     description: "齐套覆盖率（净需求中已被覆盖的比例）。**0–1 比率存储**，显示时 ×100 —— 与 LEVER_PROP_META['MaterialBalance.coverage'].kind='ratio' 同口径。派生属性：值由 (netDemandTon − gapTon) / netDemandTon 算出，不是独立录入的真值。",
   },
 ];
@@ -2631,26 +2635,25 @@ export function withPropDisplayNames(typeKey: string, props: PropertyDef[]): Pro
   });
 }
 
-/** 治理增量 §3/§4：名称类字段 searchable=true（A3 建议同语义）+ 单位补充。 */
+/**
+ * 治理增量 §3：名称类字段 searchable=true（A3 建议同语义）。
+ *
+ * ── WO-UNIT-KWH：这里原本还挂着一张**运行时单位回填表** ──────────────────────────
+ * 改前它给 8 个属性补 `unit`（`Base.{gwh,util,openCost,serveCost}` / `Model.unitPrice` /
+ * `Order.{qty,unitPrice}` / `Shipment.qtyTons`），而这些属性的字面量里**并没有**单位。
+ * 于是同一个事实有两个出处，且只有跑到这里才成立 —— 「源码里 grep 不到单位，
+ * 运行时却读得回来」正是量纲普查里最难对齐的那一段（普查按 REST 读回 5 个货币字段，
+ * 而源码字面量里当时只找得到 1 个）。
+ *
+ * 量纲改必填之后，单位在**构造点**就已声明且类型系统兜底，这张表的 8 条已被逐条搬进字面量
+ * （取值逐字不变），故整表退役：**单一出处 > 并存**。
+ */
 function withGovernance(key: string, props: PropertyDef[]): PropertyDef[] {
-  const units: Record<string, Record<string, string>> = {
-    // WO-OPT-WHATIF-DATA：openCost/serveCost 显式标口径（R18）——「万元」是 facility_location 目标值的单位，
-    // 不标则 Δ目标值在答案里是个没量纲的裸数（同 WO-UNITPRICE-SCALE 的病）。
-    Base: { gwh: "GWh", util: "%", openCost: "万元", serveCost: "万元" },
-    Model: { unitPrice: "元" },
-    // WO-UNITPRICE-SCALE（R18 口径显式标注）：Order.unitPrice 此前**未声明单位**，而同源的
-    // Model.unitPrice / OrderLine.unitPrice 都已标 "元" —— 缺声明正是「两处单价看着冲突」的温床。
-    // 补齐后 Order.unitPrice 的元/套口径在 propDef 层可自证（消费侧另见 solvers/service.ts orderVal）。
-    Order: { qty: "件", unitPrice: "元" },
-    Shipment: { qtyTons: "吨" },
-  };
   return withPropDisplayNames(key, props).map((p) => {
     const out = { ...p };
     if (p.propKey === "name" || p.propKey === "displayName" || (p.isPrimaryKey && p.dataType === "string")) {
       out.searchable = true;
     }
-    const u = units[key]?.[p.propKey];
-    if (u) out.unit = u;
     return out;
   });
 }

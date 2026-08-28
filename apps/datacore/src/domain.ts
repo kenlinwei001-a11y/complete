@@ -286,6 +286,7 @@ export type PropertyUnit =
   | "分钟"
   | "h"
   | "天"
+  | "周"
   | "月"
   | "年"
   // ── 速率 / 流量（分母是时间或窗口）─────────────────────────────────────────────
@@ -302,9 +303,18 @@ export type PropertyUnit =
   | "点"
   | "级";
 
+/** `PropertyDef.dataType` 的取值域。 */
+export type PropertyDataType = "string" | "number" | "boolean" | "date" | "enum" | "ref" | "json";
+/**
+ * 非数值型数据类型 —— **结构上不可能承载量纲**（名称/枚举/日期/引用/布尔/JSON 没有单位）。
+ * 属性工厂用它把「这类属性必然 dimensionless」升级成**类型级事实**，
+ * 从而只对真正能出量纲事故的 `number` 强制作者报量纲。
+ */
+export type NonNumericDataType = Exclude<PropertyDataType, "number">;
+
 export interface PropertyDef {
   propKey: string;
-  dataType: "string" | "number" | "boolean" | "date" | "enum" | "ref" | "json";
+  dataType: PropertyDataType;
   isPrimaryKey: boolean;
   /**
    * WO-UNIT-KWH · 量纲单位（**必填**）。无量纲写 `"dimensionless"`，不许省略、不许空串。
