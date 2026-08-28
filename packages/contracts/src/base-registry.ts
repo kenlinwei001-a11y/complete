@@ -54,15 +54,35 @@ export const SEG_REGISTRY: CanonicalSeg[] = [
  * 病根（G-SCALE-COHERENCE）：物理(Base.gwh)/需求(DemandSegment)/产能(weeklyWan)/财务(AnnualScenario)/订单
  * 五层各自独立造、gwh 与"套(pack)"之间无任何换算常数把它们焊在一起 → 差 25~300× 不 round-trip。
  * 本册立唯一桥常数：
- *  - `packEnergyKwh`：能量/套(kWh) —— gwh↔套 的唯一换算常数（scale 无关物理常数）。
- *    名牌套 = Σ(Base.gwh)×1e6/packEnergyKwh；有效套/年 = 名牌套×util。取值令有效产能≈需求锚 375 万套（略低留缺口→供需缺口可归因）。
+ *  - `packEnergyKwhAnchor`：能量/套(kWh) —— gwh↔套 的唯一换算系数。**这是标定锚，不是物理常数。**
+ *    名牌套 = Σ(Base.gwh)×1e6/本值；有效套/年 = 名牌套×util。
+ *
+ *    ⚠ **改名与订正的来历（WO-UNIT-KWH · `docs/DECISION-unit-of-account.md` §1.2）**：
+ *    本行原名 `packEnergyKwh`，原注释自称「**scale 无关物理常数**」——**那句话是错的，
+ *    而且被同一段注释的下一句当场推翻**（下一句写「取值令有效产能≈需求锚 375 万套」）。
+ *    一个「为了命中需求锚而反解出来的数」按定义就是标定旋钮，不是物理量。亲手复核（逐位吻合）：
+ *      Σgwh 758.20 GWh × 1e6 ÷ 166 = 名牌 456.7 万套；× util 78.31%(13 基地算术均值) = **有效 357.7 万套**
+ *      （注释说的「略低留缺口」正是指它低于 375 万套的需求锚 —— 缺口留出来才好归因）。
+ *      反解：要正好命中 375 万套，本值须为 **158.33–161.62**（随 util 取算术均值/产能加权而异），**不是 166**。
+ *    ⇒ 166 是**为命中锚而选的取值**，改需求锚它就得跟着动。写「物理常数」会让下一个人
+ *      拿它当不可动的常量去对齐别处 —— 而它恰好写在最容易被信的地方，故连名字一起改掉。
+ *
+ *    ⚠ **它与系统自己的电芯数据对不上**（同上 §1.3）：`Model.energy × packCellCount(96)` 六个型号
+ *    逐个算出来是 17.3–106.6 kWh，与 166 差 **1.56×–9.61×**，没有一个对得上。
+ *    用真实市场价交叉验证（同上 §1.4）：`SO-3391` 单价 21626 元/套，按 166 kWh 读是 0.130 元/Wh，
+ *    **比全球最低电芯价（BNEF 36 USD/kWh ≈ 0.252 元/Wh）还便宜 48%**；按 53.3 kWh 读是 0.406 元/Wh，
+ *    落在动力 LFP 0.35 与三元 0.48 之间。⇒ 若将来仍要显示「套」，取值应落在 **45–62 kWh**（建议 53.3）。
+ *
+ *    ⚠ **本轮不动取值**：裁决已把钱与产能收口到 kWh（产能直接用 `Base.gwh`，钱用 元/kWh），
+ *    本值**不再承重**，降级为纯展示用换算；改它会动 `scale-coherence` 的全部 round-trip 金值，
+ *    属另一张单。这里只订正**名字与说法**，不动数。
  *  - `operatingDaysPerYear`：年运营日 —— capacityDaily/max_capacity_day 年化口径（与 battery ×300/1e4 一致）。
  *  - `scaleAnchorRevenue`：各 scale 档目标年营收锚（亿）。S=700（= 既有 DemandSegment/CEO-Metric 锚，不动）；
  *    M/L/XL 按订单规模系数(20/300/825/10000)同比给锚（数据量档位；物理/需求册跨档不变，故 S 档为业务锚）。
  * 三常数随 BASE/SEG/PLAN 进 boundaryVersion() 指纹（改锚→digest 变，可审计/跨服务缓存失效）。
  * R6：纯常数，同 seed 字节一致。消费端 datacore/synthetic/battery.ts 派生产能/单价（禁内联魔数）。
  */
-export const packEnergyKwh = 166;
+export const packEnergyKwhAnchor = 166;
 export const operatingDaysPerYear = 300;
 export type ScaleTier = "S" | "M" | "L" | "XL";
 export const scaleAnchorRevenue: Record<ScaleTier, number> = {
@@ -481,8 +501,11 @@ export function boundaryVersion(): BoundaryVersion {
     { registry: "PLAN_GOAL_TARGETS", members: Object.keys(PLAN_GOAL_TARGETS).length, digest: djb2Hex(JSON.stringify(PLAN_GOAL_TARGETS)) },
   ];
   // WO-SCALE-COHERENCE：尺度锚常数进全册合并指纹（registries 仍为三册，守 boundary-version.test 结构；
-  // 改 packEnergyKwh/operatingDaysPerYear/scaleAnchorRevenue → 合并 digest 变 → 可审计/跨服务缓存失效）。
-  const anchorDigest = djb2Hex(JSON.stringify({ packEnergyKwh, operatingDaysPerYear, scaleAnchorRevenue }));
+  // 改 packEnergyKwhAnchor/operatingDaysPerYear/scaleAnchorRevenue → 合并 digest 变 → 可审计/跨服务缓存失效）。
+  // ⚠ JSON 的键**显式写死为旧名 `packEnergyKwh`**，不用属性简写：简写会让键随变量名一起改，
+  //   于是「只改了个名字」却把 boundaryVersion 的指纹也改了（R6 字节复现当场断，且断得毫无道理）。
+  //   指纹要跟着**取值**变，不该跟着**标识符**变 —— 这里的常量取值一个都没动，故指纹必须逐字节不变。
+  const anchorDigest = djb2Hex(JSON.stringify({ packEnergyKwh: packEnergyKwhAnchor, operatingDaysPerYear, scaleAnchorRevenue }));
   return {
     semver: BOUNDARY_SEMVER,
     digest: djb2Hex(registries.map((r) => `${r.registry}:${r.digest}`).join("|") + `|ANCHORS:${anchorDigest}`),

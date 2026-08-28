@@ -1,5 +1,5 @@
 import type { IndustryTemplate, BusinessType } from "@platform/contracts";
-import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SCALE_FACTOR, packEnergyKwh, operatingDaysPerYear, scaleAnchorRevenue, WORKSHOP_REGISTRY, EQUIPMENT_TYPE_BY_PROCESS } from "@platform/contracts";
+import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SCALE_FACTOR, packEnergyKwhAnchor, operatingDaysPerYear, scaleAnchorRevenue, WORKSHOP_REGISTRY, EQUIPMENT_TYPE_BY_PROCESS } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：规则表达式 / what-if 上限 / 合成越线样本三处**全部派生**，禁内联裸阈值（R14·R-一致）。
 import { OUTSOURCE_REDLINE, OUTSOURCE_SAMPLE, outsourceRedlinePct, outsourceRedlineViolationExpr } from "@platform/contracts";
 // WO-RULE-EXPR-PARAMS：规则 DSL 的命名阈值引用（`params.<名>`）——阈值只存 rule.params 一处，禁在 expression 里复写。
@@ -602,7 +602,7 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   forecastStart: "2026-06-10",
   packCellCount: 96,
   // WO-SCALE-COHERENCE（R14/R18）：gwh↔套 桥常数 + 尺度锚，值来自 @platform/contracts 单一来源（禁内联）。
-  packEnergyKwh, // 能量/套(kWh)：Base.gwh×1e6/packEnergyKwh = 名牌套
+  packEnergyKwhAnchor, // 能量/套(kWh)：Base.gwh×1e6/packEnergyKwhAnchor = 名牌套
   operatingDaysPerYear, // 年运营日：capacityDaily/max_capacity_day 年化口径
   scaleAnchorRevenue, // 各 scale 档目标年营收锚（亿）
   // 产能微观参数按 gwhᵢ 派生的确定性系数（令 capacity_rollup 的 min 绑定 gwh 夹点·不改求解器）。
@@ -4324,9 +4324,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   const nLinesPerBase = WORKSHOP_DEFS.length;
   for (const b of bases) {
     // WO-SCALE-COHERENCE 断裂点B：产能微观参数按 gwhᵢ 派生（令 computeRollup 的 min 绑定 gwh 夹点·不改求解器）。
-    // 物理→套：名牌套/年 = gwhᵢ×1e6/packEnergyKwh；有效套/年 = 名牌套×util（util 为百分数，÷100）。
+    // 物理→套：名牌套/年 = gwhᵢ×1e6/packEnergyKwhAnchor；有效套/年 = 名牌套×util（util 为百分数，÷100）。
     const utilFrac = b.util / 100; // BASE_REGISTRY.util 为百分口径（88/85…），÷100 取分数
-    const annualEffectivePacks = (b.gwh * 1e6) / packEnergyKwh * utilFrac; // 有效套/年（名牌×利用率）
+    const annualEffectivePacks = (b.gwh * 1e6) / packEnergyKwhAnchor * utilFrac; // 有效套/年（名牌×利用率）
     // 化成/老化 基地共享夹点（电芯/日）——周产能口径：weeklyWan=dailyCells×7/packCellCount/1e4 → ×52 年化=52×7=364 日历日。
     const baseDailyCellsWeekly = Math.round((annualEffectivePacks * (BATTERY_SOLVER_PARAMS.packCellCount as number)) / (52 * 7));
     // 每线套/日（供 supply_demand ×operatingDaysPerYear/1e4 年化）——13 基地×10 线 Σ×300/1e4 = Σ有效套/1e4 = 名牌×util 尺度。

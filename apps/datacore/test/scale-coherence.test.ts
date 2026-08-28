@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, invokeSolver, type TestApp } from "./helpers.js";
-import { packEnergyKwh, operatingDaysPerYear } from "@platform/contracts";
+import { packEnergyKwhAnchor, operatingDaysPerYear } from "@platform/contracts";
 
 /**
  * WO-SCALE-COHERENCE · SEAM 四方互核（round-trip 尺度自洽·R18 的门）。
@@ -35,8 +35,8 @@ describe("WO-SCALE-COHERENCE · 五层尺度自洽四方互核（SEAM）", () =>
 
     const num = (v: unknown) => (typeof v === "number" ? v : Number(v) || 0);
 
-    // A(物理→量·万套) = Σ Base.gwh×1e6/packEnergyKwh × util/100
-    const A = bases.reduce((s, b) => s + (num(b.props.gwh) * 1e6) / packEnergyKwh * (num(b.props.util) / 100), 0) / 1e4;
+    // A(物理→量·万套) = Σ Base.gwh×1e6/packEnergyKwhAnchor × util/100
+    const A = bases.reduce((s, b) => s + (num(b.props.gwh) * 1e6) / packEnergyKwhAnchor * (num(b.props.util) / 100), 0) / 1e4;
 
     // B(需求量·万套/年) = Σ DemandSegment.demandWanPerYearP50 ; P̄ = Σ(demandWanPerYearP50×priceWan)/ΣdemandWanPerYearP50
     const B = segs.reduce((s, d) => s + num(d.props.demandWanPerYearP50), 0);
@@ -51,7 +51,7 @@ describe("WO-SCALE-COHERENCE · 五层尺度自洽四方互核（SEAM）", () =>
     const fc = (await invokeSolver(t, "capacity_forecast", { modelId: "4680-NCM" })).json() as { data: { perBaseRows: { base: string; baseId: string; weeklyCap: number }[] } };
     const czRow = fc.data.perBaseRows.find((r) => r.baseId === "changzhou")!;
     const czBase = bases.find((b) => b.props.baseId === "changzhou")!;
-    const czImpliedWeekly = (num(czBase.props.gwh) * 1e6 / packEnergyKwh * (num(czBase.props.util) / 100)) / 1e4 / 52; // 万套/周
+    const czImpliedWeekly = (num(czBase.props.gwh) * 1e6 / packEnergyKwhAnchor * (num(czBase.props.util) / 100)) / 1e4 / 52; // 万套/周
 
     // D(财务量·万套) = AnnualScenario(baseline).revenue / P̄
     const baseline = scns.find((s) => s.props.key === "baseline")!;
@@ -67,7 +67,7 @@ describe("WO-SCALE-COHERENCE · 五层尺度自洽四方互核（SEAM）", () =>
 
     // ── 诊断输出（亲手真跑·绿测试≠能用）──
     // eslint-disable-next-line no-console
-    console.log("[SCALE-COHERENCE] packEnergyKwh=%d opDays=%d P̄=%s万元/套 窗口=%s周", packEnergyKwh, operatingDaysPerYear, Pbar.toFixed(4), windowWeeks.toFixed(3));
+    console.log("[SCALE-COHERENCE] packEnergyKwhAnchor=%d opDays=%d P̄=%s万元/套 窗口=%s周", packEnergyKwhAnchor, operatingDaysPerYear, Pbar.toFixed(4), windowWeeks.toFixed(3));
     // eslint-disable-next-line no-console
     console.log("[SCALE-COHERENCE] 量纲(万套) A物理=%s B需求=%s C产能=%s D财务=%s E订单=%s", A.toFixed(1), B.toFixed(1), C.toFixed(1), D.toFixed(1), E.toFixed(1));
     // eslint-disable-next-line no-console
