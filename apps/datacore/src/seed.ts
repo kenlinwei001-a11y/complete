@@ -232,6 +232,20 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
   Omit<PropagationRule, "tenantId" | "domainKey" | "domainName" | "sourceTypeName" | "targetTypeName">
 > = [
   // ① 订单需求压力 → 沿"订单属型号"边推到型号需求负载（即时，强相关）。
+  //
+  // ⚠ **订单量加权落在这条边上，不是落在 `demo_model_cost_to_order_cost` 上**（WO-COEF-FROM-BOM）。
+  // 派单原话是「`Model→Order` 那跳不按订单数量加权，7,259 套的单和 14,518 套的单拿到同一个系数」。
+  // 抱怨属实，但**加权的正确落点是反向这条边**，理由两条，实测可查：
+  //  ① **量纲**：`Order.costPressure` 是**强度**（成本压力百分点 —— `finance-world.ts` 拿它当
+  //     `基线 ×(1 + 压力 ÷ divisor)` 的率用）。一个型号扇出到 23 张单时，每张单承受的
+  //     **涨价百分比本来就相同**，大单只是绝对金额更大。在 `Model→Order` 乘一个和为 1 的份额，
+  //     等于把一个「率」切成 23 份，量纲不成立，且总量凭空缩小 23 倍。
+  //  ② **重复计账**：订单体量**已经**在下游被计过一次 —— `finance-world.ts:219`
+  //     `orderValue = qty × unitPrice` 就是聚合权重（catalog 原文「压力按承载对象的真金额加权聚合」）。
+  //     在传导侧再乘一次份额 = 同一个体量因子记两遍账。
+  // 而**本条**是「多张订单汇成一个型号的负荷」（500 单 → 6 型号，入边），`demandLoad` 由多源求和而来，
+  // 大单与小单按同一系数计入才是真正的病。故订单量份额加在这里：`Model.demandLoad` 变成
+  // **按订单量加权的平均需求压力**，7,259 与 14,518 那两张单从此权重不同 —— 正是派单要的那件事。
   {
     id: "simpr_demo_order_demand",
     key: "demo_order_demand_pressure",
@@ -246,6 +260,8 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    // 逐订单按 `Order.qty` 在该型号全部在手单总量中的占比分摊（入边归一 ⇒ Σ = 1）。
+    weightRef: { basis: "source_qty_share" },
     // 节拍闸门未绑定（WO-SANDBOX-E4）。**这是诚实缺席，不是忘了填**：
     // demo 世界里「这条需求流要过哪个节拍闸门」是一个**建模判断**，不是能从种子推出来的事实——
     // 绑上 `demand.consensus` 等于替租户断言「需求压力必须等 S&OP 共识会才下传」。
@@ -269,6 +285,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null, // 同上：未绑定 = 这条流不过节拍闸门（缺省即旧行为，逐字节不变）
     status: "PUBLISHED",
   },
@@ -312,6 +329,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null, // 同上
     status: "PUBLISHED",
   },
@@ -344,6 +362,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -361,6 +380,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -378,6 +398,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -398,6 +419,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -421,6 +443,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -438,6 +461,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -445,6 +469,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
   // ── 成本（消耗）：物料涨价 → 型号成本压力 → 订单成本压力 ──
   // 与"供应"两条共用同一对逆边、但走**不同 stateVar**：缺料与涨价是两件事，
   // 同一条链路上并行传导两种压力（PRD §3.1.4「成本」行 Material.price → Order.cost）。
+  //
+  // ⚠ **本条是全表第一条按用量分摊的边**（WO-COEF-FROM-BOM）。修前的实测行为：
+  // 磷酸铁锂正极（占 方形-LFP 的 BOM 成本 17.815%）与铝箔（0.920%）各涨 15%，
+  // 给出**逐字节相同**的 `Model.costPressure = 29.25` —— 决定成本传导的第一因素「用量」
+  // 在引擎里一次都没被读过。`0.65` 保留为**整条边的传导强度**，占比只负责分摊，两件事两个字段。
   {
     id: "simpr_demo_material_price_to_model_cost",
     key: "demo_material_price_to_model_cost",
@@ -459,6 +488,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    // 逐物料按**该物料在该型号生效 BOM 中的成本占比**分摊（BOMHeader/BOMDetail 真数据，
+    // 与 `quote_margin` 共用 `bom.ts` 那一支选取口径 —— 不另起第二套 BOM 解析）。
+    // 入边归一 ⇒ 同一型号全部物料权重之和 = 1（就该型号整份 BOM 而言），量纲自洽：
+    // `priceShock` 是涨价百分点，按成本占比加权求和得到的仍是**百分点**。
+    weightRef: { basis: "bom_cost_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -476,6 +510,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -496,6 +531,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -513,6 +549,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -553,6 +590,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -573,6 +611,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -595,6 +634,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -615,6 +655,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -635,6 +676,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -662,6 +704,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -699,6 +742,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -716,6 +760,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -733,6 +778,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -750,6 +796,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -767,6 +814,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -786,6 +834,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -803,6 +852,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -820,6 +870,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -837,6 +888,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -856,6 +908,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -873,6 +926,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -892,6 +946,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -913,6 +968,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -930,6 +986,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -949,6 +1006,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -998,6 +1056,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1059,6 +1118,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1077,6 +1137,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1095,6 +1156,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1150,6 +1212,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1171,6 +1234,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1205,6 +1269,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1243,6 +1308,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },

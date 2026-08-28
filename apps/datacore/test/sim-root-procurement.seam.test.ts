@@ -75,8 +75,8 @@ async function seededApp(): Promise<TestApp> {
 }
 
 /** 引擎真吃的那张图/那批参数 —— 走**唯一装配处**，绝不在测试里另拼一张（第二套真相源的老坑）。 */
-const engineInputs = (t: TestApp) =>
-  buildPropagationInputs(t.repos, t.adminCtx, resolveSimScope({}));
+const engineInputs = async (t: TestApp) =>
+  buildPropagationInputs(t.repos, t.adminCtx, resolveSimScope({}), await t.repos.sim.listPropagationRules("demo", true));
 
 describe("WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SEAM）", () => {
   // ══════════════════════════════════════════════════════════════════════════

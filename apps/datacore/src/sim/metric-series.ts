@@ -17,6 +17,7 @@ import { stateVarDisplayName } from "../synthetic/battery.js";
 import {
   propagateTick,
   type CadenceGateLookup,
+  type PairWeightLookup,
   type PerturbationInTick,
   type PropagationGraph,
   type RuleParamLookup,
@@ -48,6 +49,12 @@ export interface MetricSeriesEngine {
   graph: PropagationGraph;
   ruleParams: RuleParamLookup;
   cadenceGates: CadenceGateLookup;
+  /**
+   * 逐实例分摊权重表（WO-COEF-FROM-BOM）。**必须与 `POST …/tick` 那一跑同源**：
+   * 曲线是"同一个世界的另一种画法"，少喂一样输入，屏上的曲线就与真 tick 的数对不上
+   * （本仓治过的「两处输入不同源 = 第二套真相源」）。无规则声明 `weightRef` ⇒ `{}`，逐字节同旧。
+   */
+  pairWeights: PairWeightLookup;
 }
 
 /** 一条回放出来的世界线。`states[i]` = tick `i` 的世界态；`traces[i]` = **产出**那一格时的轨迹。 */
@@ -123,6 +130,7 @@ export function replayWorldLine(args: {
       const out = propagateTick(
         engine.graph, state, rules, pending, tick, engine.ruleParams, engine.cadenceGates,
         perturbationsForTick(tick + 1, states),
+        engine.pairWeights,
       );
       state = out.next;
       pending = out.pending;
