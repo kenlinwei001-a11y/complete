@@ -2537,7 +2537,57 @@ export const createPropagationRule = (body: {
   coefficient: number;
   delayTicks: number;
   status: "DRAFT" | "PUBLISHED";
+  /** 影响说明（人话，可空）。WO-ONTOLOGY-EDGE-EDIT 起契约有此字段。 */
+  description?: string | null;
 }) => api.a<PropagationRule>("/a/v1/sim/propagation-rules", { method: "POST", body });
+
+/**
+ * ══ WO-ONTOLOGY-EDGE-EDIT · 改 / 删 / 启停一条既有因果边 ═════════════════════
+ *
+ * **今天的行为是 X**（本单开工前）：本层只有 `createPropagationRule`，且上方 WO-BEFE-A 的
+ *   实测订正 ② 白纸黑字写着「真·启停（改既有规则的 status）**需要后端补 PUT/PATCH**」——
+ *   因为 `POST` 把 `id: newId("simpr")` 写在 body 展开之后，传什么 id 都会被盖掉，
+ *   「改一条」的实际后果是「多一条同 key 的边」，把生效条数数成两条。
+ * **应该是 Y**：后端补上了 `PUT /:id`、`DELETE /:id`、`PATCH /:id/status` 三条
+ *   （`apps/datacore/src/app.ts` 该路由组），本层照接。
+ *   ⇒ 上面那条实测订正 ② 与 `OntologyRelationsPage` 的「只能新建」诚实位**同批作废**，
+ *   `test/ontology-relations.seam.test.tsx` §④ 里那条「后端没有更新口」的断言已随之反转
+ *   （它原本就是为这一天写的：「后端补了更新口 ⇒ 那句诚实位已成谎话，该撤」）。
+ *
+ * ⚠ 三条都靠**服务端**做租户闸（写之前先按 tenantId 读一次，读不到即 404）——
+ *   前端不做也做不了这件事，这里只是如实转发。跨租户实测三条全 404（不是 403：
+ *   403 会泄露「有这条但不给你」）。
+ */
+export const updatePropagationRule = (
+  id: string,
+  body: {
+    key: string;
+    sourceTypeKey: string;
+    sourceStateVar: string;
+    viaLinkKey: string;
+    targetTypeKey: string;
+    targetStateVar: string;
+    coefficient: number;
+    delayTicks: number;
+    status: "DRAFT" | "PUBLISHED" | "RETIRED";
+    description?: string | null;
+  },
+) => api.a<PropagationRule>(`/a/v1/sim/propagation-rules/${encodeURIComponent(id)}`, { method: "PUT", body });
+
+/** 硬删一条因果边（不可逆）。与「停用」是两件事：停用留在册、可拨回，删除不在册。 */
+export const deletePropagationRule = (id: string) =>
+  api.a<{ deleted: true }>(`/a/v1/sim/propagation-rules/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+/**
+ * 只改启停位。**刻意不用 `PUT`**：`PUT` 是整条覆盖，勾选框得把手上那份完整的边回传一遍，
+ * 而列表是缓存来的 —— 于是「点一下勾选框」会顺手把别人刚改过的系数回退到旧值，且屏上无迹象。
+ * 本条只送 `status` 一个字段，服务端与**当前**那条边合并。
+ */
+export const setPropagationRuleStatus = (id: string, status: "DRAFT" | "PUBLISHED") =>
+  api.a<PropagationRule>(`/a/v1/sim/propagation-rules/${encodeURIComponent(id)}/status`, {
+    method: "PATCH",
+    body: { status },
+  });
 
 // ── 发布会签（R4：本体真值变更经审批链，前端不直发）────────────────────────
 export interface PublishRequestVM {
