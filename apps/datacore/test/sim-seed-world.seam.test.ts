@@ -309,16 +309,39 @@ describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
     const census = await censusWorldLines(t, DEMO_SIM_WORLD_SESSION_ID);
     const movedObjectIds = [...new Set(census.moved.map((k) => census.readings.get(k)!.objectId))].sort();
     expect(movedObjectIds.length, "普查里一个对象都没动 ⇒ 扰动压根没进传导核").toBeGreaterThan(0);
-    const ms = await t.app.inject({
-      method: "GET",
-      url: `/a/v1/sim/sessions/${DEMO_SIM_WORLD_SESSION_ID}/metric-series`
-        + `?limit=${SIM_METRIC_SERIES_MAX_LIMIT}&order=key&objectIds=${encodeURIComponent(movedObjectIds.join(","))}`,
-      headers: ADMIN,
-    });
-    expect(ms.statusCode).toBe(200);
-    const series = ms.json() as SimMetricSeriesResponse;
-    expect(series.truncated, "白名单筛完仍被硬上限截断 ⇒ 这一份不完整，下面的计数不许信").toBe(false);
-    const moved = series.metrics.filter((m) => JSON.stringify(m.baseline) !== JSON.stringify(m.actual));
+    //
+    // ⚠ **2026-08-28 WO-SLICE-DOMAINS 订正：白名单一次发不完了，改**分批**发，判据不变。**
+    //   原文把 `movedObjectIds` 一次性塞进 `objectIds=`，赌"筛完这些对象的格子装得进 500 的硬上限"。
+    //   本单补了 `Line.blockedPressure` 这个新量纲之后，动过的 Line **每个都多一格**
+    //   ⇒ 白名单里的 metric 总数越过 500，`truncated` 转真，这条断言当场红。
+    //   **红得对**：它咬的正是"这一份完不完整"，而那一份确实不完整了。
+    //   修法不是把上限调大（那道封顶挡的是浏览器 OOM，为一条断言好数就给生产开口子，
+    //   等于拿生产的病换测试的方便 —— 本文件 ⑤e 头注已经把这条路堵死了），
+    //   也不是把断言放宽成"允许截断"（那等于让链断了也照样绿）。
+    //   改成**分批取、逐批断言完整、再合并** —— 每一批仍然是"完整的一份"，
+    //   合起来才是全集；判据从"一页装得下"变成"每一页都没被截断"，不再靠运气。
+    //   批大小按上限现算（每对象最多按 4 个量纲留余量），量纲再长也不会重演这次的红。
+    const BATCH = Math.max(1, Math.floor(SIM_METRIC_SERIES_MAX_LIMIT / 4));
+    const allMetrics: SimMetricSeriesResponse["metrics"] = [];
+    let series!: SimMetricSeriesResponse;
+    for (let i = 0; i < movedObjectIds.length; i += BATCH) {
+      const chunk = movedObjectIds.slice(i, i + BATCH);
+      const ms = await t.app.inject({
+        method: "GET",
+        url: `/a/v1/sim/sessions/${DEMO_SIM_WORLD_SESSION_ID}/metric-series`
+          + `?limit=${SIM_METRIC_SERIES_MAX_LIMIT}&order=key&objectIds=${encodeURIComponent(chunk.join(","))}`,
+        headers: ADMIN,
+      });
+      expect(ms.statusCode).toBe(200);
+      const page = ms.json() as SimMetricSeriesResponse;
+      expect(page.truncated, `第 ${i / BATCH + 1} 批筛完仍被硬上限截断 ⇒ 这一份不完整，下面的计数不许信`).toBe(false);
+      if (i === 0) series = page; // ticks 轴各批一致，取首批作代表（⑤d 的 t0 断言用它）
+      allMetrics.push(...page.metrics);
+    }
+    // 🐤 金丝雀：分批本身不许丢数据 —— 合并后覆盖到的对象数必须等于白名单长度，
+    //    否则"某一批被静默丢了"与"这些对象真没 metric"在屏上一模一样。
+    expect(new Set(allMetrics.map((m) => m.objectId)).size).toBe(movedObjectIds.length);
+    const moved = allMetrics.filter((m) => JSON.stringify(m.baseline) !== JSON.stringify(m.actual));
     expect(moved.length, "两条线逐值全等 = 扰动没进传导核（本单要消灭的那个 X）").toBeGreaterThan(0);
 
     // ── ⑤c **下游真的被带动**（判据 2 的后半 · 本门最要害的一条）───────────────────
