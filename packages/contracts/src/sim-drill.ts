@@ -75,10 +75,10 @@ export const DrillEventKindSchema = z.enum([
   "ORDER_CANCEL", // 订单取消
   "ORDER_INSERT", // 临时插单
   "ORDER_RELOCATE", // 改交付地点
-  "ORDER_REPRICE", // 改价格
+  "ORDER_REPRICE", // 改**卖价**（Order.unitPrice 侧）——与下面的 MATERIAL_REPRICE 是两件事，别混
   "MATERIAL_DELAY", // 物料到货延迟
   "MATERIAL_SHORTAGE", // 物料短缺
-  "SUPPLIER_SWITCH", // 换供应商
+  "MATERIAL_REPRICE", // 物料**买价**变动（WO-MATERIAL-REPRICE：「碳酸锂涨 15%，我毛利掉多少」）
   "EQUIPMENT_FAILURE", // 设备故障
   "CAPACITY_LOSS", // 产能损失
   "FORECAST_BIAS", // 预测偏差
@@ -151,12 +151,55 @@ export const DrillPayloadKeySchema = z.object({
 });
 export type DrillPayloadKey = z.infer<typeof DrillPayloadKeySchema>;
 
+/**
+ * **系统固定的世界态落点**（WO-MATERIAL-REPRICE · 加在这里而不是让用户选，理由在下面）。
+ *
+ * ── 今天的行为是 X，应该是 Y（起真 datacore 4091 · seed 42 · demo 租户实测）────────────
+ * **X（今天）**：事件只会被路由到求解器（`routes`），**一格世界态都不动**。
+ *   `POST /a/v1/sim/sessions/:id/drill` 推 `ceil(horizonDays/tickDays)` 拍时，
+ *   `simAdvanceTicks` 取的是 `repos.sim.listPerturbations` —— **会话里已落盘的那些**，
+ *   与本次演习的 `events` 毫无关系。于是「碳酸锂涨 15%」这句话进得来、**打不到任何一格上**。
+ * **Y（应该）**：一类事件若在世界态里有**唯一正确的落点**，那个落点应当由**规格表声明**，
+ *   由编排/路由层解释成一条**临时扰动**（不落盘、不改世界线），而不是让用户在
+ *   实测 **4,814 个对象 × 40 个状态变量** 里自己挑一格 —— 那正是这条路今天走不通的原因。
+ *
+ * ── 为什么是声明而不是 if ────────────────────────────────────────────────────────
+ * 与 `routes` 同一条纪律：写成 `if (kind === "MATERIAL_REPRICE") applyTo("priceShock")`
+ * ⇒ 加一个有落点的事件就要改引擎。声明成数据 ⇒ 加事件仍然**只改 `DRILL_EVENT_SPECS` 一处**。
+ *
+ * ⚠ `objectType` 是**校验用的**，不是选择器：事件的 `targetObjectId` 必须真的是这一类对象，
+ * 否则扰动会打到一个 `viaLinkKey` 匹配不上的对象上 —— 表现是「链断了」，实际是「打错地方了」。
+ * 这个误判本单开单时真实发生过一次（原判「costPressure 格数=0 ⇒ 首跳没触发」，
+ * 复核实测 **506 格**、首跳照走）。
+ */
+export const DrillStateEffectSchema = z.object({
+  /** 落点必须是这类对象（`Material`）。校验用 —— 打错类型 = 打到匹配不上 `viaLinkKey` 的对象。 */
+  objectType: z.string().min(1),
+  /** 固定落到哪个状态变量（`priceShock`）。**不让用户选** —— 40 个变量里挑一格是今天走不通的原因。 */
+  stateVar: z.string().min(1),
+  /** 施加方式，口径同 `PerturbationSchema.mode`（`delta` = 加减、`scale` = 乘、`set` = 设为）。 */
+  mode: z.enum(["set", "delta", "scale"]),
+  /** 幅度取哪个 payload 键（如 `pctChange`）—— 也就是用户唯一要填的那个数。 */
+  magnitudeFrom: z.string().min(1),
+  /** 扰动分类，口径同 `PerturbationKindSchema`（料价 ⇒ `cost_shock`）。 */
+  perturbationKind: z.enum(["demand_shift", "supply_disruption", "capacity_loss", "cost_shock", "quality_event"]),
+});
+export type DrillStateEffect = z.infer<typeof DrillStateEffectSchema>;
+
 export const DrillEventSpecSchema = z.object({
   kind: DrillEventKindSchema,
   /** 人话名。**后端单源** —— 前端从 catalog 端点取，不许硬编码（同 `stateVarNames` 的纪律）。 */
   label: z.string(),
   payloadKeys: z.array(DrillPayloadKeySchema),
   routes: z.array(DrillRouteSchema),
+  /**
+   * 这类事件在世界态里的固定落点；`null` = 本事件不动世界态（只问求解器）。
+   *
+   * ⚠ **`null` 是绝大多数事件的真实情况，不是"还没填"**：只有当一类事件在
+   * 传导图上有**唯一正确的一格**时才该声明落点。乱填一个落点比不填更坏 ——
+   * 屏上会多出一批与事件无关的卡点，而它们看起来完全像真的。
+   */
+  stateEffect: DrillStateEffectSchema.nullable().default(null),
 });
 export type DrillEventSpec = z.infer<typeof DrillEventSpecSchema>;
 
@@ -200,6 +243,7 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
       { key: "advanceDays", type: "number", required: false, hint: "提前天数（正数 = 提前）" },
       { key: "newDueDate", type: "string", required: false, hint: "新交期 ISO 日期；给了则优先于提前天数" },
     ],
+    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
     routes: [
       {
         solverKey: "sop_reschedule",
@@ -217,6 +261,7 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
     kind: "ORDER_CANCEL",
     label: "订单取消",
     payloadKeys: [],
+    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
     routes: [{ solverKey: "portfolio", role: "PRIMARY", args: [] }],
   },
   {
@@ -226,6 +271,7 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
       { key: "qtyDelta", type: "number", required: false, hint: "插单数量" },
       { key: "modelId", type: "string", required: false, hint: "型号（产能测算必需）" },
     ],
+    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
     routes: [
       { solverKey: "portfolio", role: "PRIMARY", args: [] },
       {
@@ -242,12 +288,14 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
     kind: "ORDER_RELOCATE",
     label: "改交付地点",
     payloadKeys: [{ key: "newLocationId", type: "string", required: false, hint: "新交付地点对象 id" }],
+    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
     routes: [{ solverKey: "portfolio", role: "PRIMARY", args: [] }],
   },
   {
     kind: "ORDER_REPRICE",
     label: "订单改价",
     payloadKeys: [{ key: "priceDelta", type: "number", required: false, hint: "单价变动" }],
+    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
     routes: [
       {
         solverKey: "order_fullchain",
@@ -260,6 +308,7 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
     kind: "MATERIAL_DELAY",
     label: "物料到货延迟",
     payloadKeys: [{ key: "delayDays", type: "number", required: false, hint: "延迟天数" }],
+    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
     routes: [
       { solverKey: "supply_demand_gap_attribution", role: "PRIMARY", args: [] },
       {
@@ -273,24 +322,63 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
     kind: "MATERIAL_SHORTAGE",
     label: "物料短缺",
     payloadKeys: [{ key: "qtyDelta", type: "number", required: false, hint: "短缺量" }],
+    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
     routes: [{ solverKey: "supply_demand_gap_attribution", role: "PRIMARY", args: [] }],
   },
+  /**
+   * WO-MATERIAL-REPRICE · 料价变动 —— COO 那句「碳酸锂涨 15%，我毛利掉多少」的入口。
+   *
+   * ⚠ **与 `ORDER_REPRICE` 是两件事**：那条改的是 `Order.unitPrice`（**卖**价），
+   * 这条改的是 `Material` 的**买**价。放在一起是因为屏上只差一个字，最容易被选错。
+   *
+   * ── 用户只填一个数（`pctChange`），落点由 `stateEffect` 固定 ────────────────────
+   * 落 `Material.priceShock` 之后，传导链是**已经在跑的真规则**（起真 datacore 4091 实测，
+   * `GET /a/v1/sim/propagation-rules` 四条全 `PUBLISHED`）：
+   *   `Material.priceShock --×0.65(material_used_by_model)--> Model.costPressure`
+   *   `Model.costPressure  --×0.9 (model_demanded_by_order)--> Order.costPressure`
+   * 而毛利投影读的正是 `Order.costPressure`（`solvers/finance-world.ts` 的 `costFactor`）。
+   *
+   * ⚠ `targetObjectId` 必须是 **`Material` 对象**（实测 8 个，`obj_material_pos_lfp` 等）。
+   * 打到别的类型上 ⇒ `viaLinkKey: material_used_by_model` 匹配不上 ⇒ 首跳不触发，
+   * 屏上的表现与「链断了」一模一样。这个误判本单开单时真实发生过一次。
+   *
+   * ── 路由为什么是这两个 ──────────────────────────────────────────────────────
+   * · `quote_margin` = **接单毛利的真 BOM 口径**（`BOMHeader → BOMDetail × Material.unitPrice`，
+   *   实测 `bomRows: 7` / `bomId: BOM-4680-NCM-V1.0`）—— 它回答「这个型号的毛利今天是多少」。
+   *   ⚠ 它**读本体真值、不读世界态**，故它给的是**基线**不是冲击后的数；
+   *   归一时必须把这条诚实位写进 `why`，不许当成「涨价后的毛利」。
+   * · `supply_demand_gap_attribution` = 料价变动的供需侧归因（与另两条 `MATERIAL_*` 同一个答者）。
+   */
   {
-    kind: "SUPPLIER_SWITCH",
-    label: "更换供应商",
-    payloadKeys: [{ key: "newSupplierId", type: "string", required: false, hint: "新供应商对象 id" }],
-    routes: [{ solverKey: "supply_demand_gap_attribution", role: "PRIMARY", args: [] }],
+    kind: "MATERIAL_REPRICE",
+    label: "物料价格变动",
+    payloadKeys: [
+      { key: "pctChange", type: "number", required: true, hint: "涨跌百分比：+15 = 涨 15%，-8 = 跌 8%" },
+    ],
+    stateEffect: {
+      objectType: "Material",
+      stateVar: "priceShock",
+      mode: "delta",
+      magnitudeFrom: "pctChange",
+      perturbationKind: "cost_shock",
+    },
+    routes: [
+      { solverKey: "quote_margin", role: "PRIMARY", args: [] },
+      { solverKey: "supply_demand_gap_attribution", role: "AUXILIARY", args: [] },
+    ],
   },
   {
     kind: "EQUIPMENT_FAILURE",
     label: "设备故障",
     payloadKeys: [{ key: "downDays", type: "number", required: false, hint: "停机天数" }],
+    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
     routes: [{ solverKey: "bottleneck_matrix", role: "PRIMARY", args: [] }],
   },
   {
     kind: "CAPACITY_LOSS",
     label: "产能损失",
     payloadKeys: [{ key: "lossPct", type: "number", required: false, hint: "损失百分比" }],
+    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
     routes: [{ solverKey: "bottleneck_matrix", role: "PRIMARY", args: [] }],
   },
   {
@@ -300,6 +388,7 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
       { key: "biasPct", type: "number", required: false, hint: "偏差百分比" },
       { key: "modelId", type: "string", required: false, hint: "型号（产能测算必需）" },
     ],
+    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
     routes: [
       {
         solverKey: "capacity_forecast",
@@ -333,6 +422,40 @@ export function drillRoutesFor(kind: DrillEventKind): DrillRoute[] {
     out.push(r);
   }
   return out;
+}
+
+/**
+ * 把一条事件解释成**一格世界态冲击**（`null` = 这类事件不动世界态）——**全平台唯一实现**。
+ *
+ * 返回的形状刻意与 `PerturbationSchema` 的**语义字段**逐字段对齐（`targetObjectId` /
+ * `targetStateVar` / `magnitude` / `mode` / `kind`），调用方补齐 `id`/`tenantId`/`sessionId`/
+ * `startTick`/`durationTicks`/`label`/`createdAt` 即可直接喂给传导引擎 ——
+ * **不在这里造 id、不在这里读时钟**（R6：契约层必须是纯函数，一个 `Date.now` 都不许有）。
+ *
+ * ⛔ **幅度取不到 ⇒ 返回 `null`，绝不落 0**：`magnitude: 0` 的 `delta` 是一条**什么都没干**的扰动，
+ * 而屏上与「真的施加了、只是影响很小」长得一模一样。取不到就该由调用方记一条「未能评估」。
+ * 这是 `payloadKeys` 里 `pctChange` 标 `required: true` 的另一半 —— 校验拦在前，这里兜在后。
+ */
+export function drillStateEffectFor(ev: DrillEvent): {
+  targetObjectId: string;
+  targetStateVar: string;
+  magnitude: number;
+  mode: "set" | "delta" | "scale";
+  kind: DrillStateEffect["perturbationKind"];
+  declaredObjectType: string;
+} | null {
+  const eff = drillEventSpec(ev.kind)?.stateEffect ?? null;
+  if (eff === null) return null;
+  const raw = ev.payload[eff.magnitudeFrom];
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return null;
+  return {
+    targetObjectId: ev.targetObjectId,
+    targetStateVar: eff.stateVar,
+    magnitude: raw,
+    mode: eff.mode,
+    kind: eff.perturbationKind,
+    declaredObjectType: eff.objectType,
+  };
 }
 
 /**
