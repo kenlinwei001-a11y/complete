@@ -181,6 +181,11 @@ interface RunTrace {
     coefFromConfig: boolean;
   }[];
   edgeTotal: number;
+  /**
+   * 状态变量键 → 中文名字典（**后端单源**，随规则清单一起回来）。
+   * 前端**不许**自己写第二份 —— 字典里没有的键照实显裸键，不编一个中文名。
+   */
+  stateVarNames: Record<string, string>;
   /** 撞了哪几条红线：阈值 + 它是写死的常数还是读的对象字段/规则参数。 */
   thresholds: { ruleKey: string; bindingId: string; source: string; where: string; value: number; unit: string }[];
   /** 逐条规则的判定原文（含 NOT_APPLICABLE 的，那也是结论）。 */
@@ -304,6 +309,7 @@ function buildTrace(input: {
     },
     edges: picked,
     edgeTotal: rawEdges.length,
+    stateVarNames: input.edges?.stateVarNames ?? {},
     thresholds: th,
     evaluatedRules: evalRules,
     enumeration,
@@ -806,9 +812,26 @@ export default function DecisionConsoleView() {
                           {e.applied ? "已生效" : "没打上"}
                         </div>
                         <div className={styles.splitLabel}>
-                          {specsByKind.get(e.eventKind)?.label ?? e.eventKind} · {e.magnitude > 0 ? "+" : ""}
-                          {e.magnitude}
+                          {specsByKind.get(e.eventKind)?.label ?? e.eventKind} · 你填的 {e.rawMagnitude}
+                          {" ⇒ "}打到「{e.targetLabel}」的
+                          {/* 中文名由后端字典下发；没有就照实显裸键，不在前端编一个 */}
+                          {result.trace.stateVarNames[e.targetStateVar] ?? e.targetStateVar}上
                           {e.applied ? "，第 " + Math.max(1, e.startTick - (result.report.ticks - result.report.horizonDays)) + " 天开始起作用" : "，所以下面的结论里不含这件事"}
+                          <br />
+                          {/*
+                            幅度的两段账都要给：用户填的那个数 ⇒ 占全距百分之几 ⇒ 乘上本世界实测全距。
+                            少一段那个 `magnitude` 就是个来路不明的数（本单最早就是这么埋的坑）。
+                          */}
+                          <Raw
+                            text={
+                              `幅度怎么换算的：${e.rawMagnitude} ⇒ 该变量全距的 ${e.rangePct.toFixed(1)}%` +
+                              ` × 本世界实测全距 ${e.observedRange.toFixed(1)} = ${e.magnitude.toFixed(1)}\n` +
+                              `换算依据：${e.magnitudeBasis}\n` +
+                              (e.downstream.length > 0
+                                ? `这一格的出边（顺着往下推的第一跳）：${e.downstream.join("、")}`
+                                : `⚠ 这一格在本租户的关系图上**没有出边** —— 打上去也传不下去，屏上其余的数不会因它而动。`)
+                            }
+                          />
                         </div>
                       </div>
                     ))
@@ -824,6 +847,37 @@ export default function DecisionConsoleView() {
                         : "全部跑通"}
                     </div>
                   </div>
+                  {/*
+                    🔴 **COO 那个「+15 改 +100 一个数都没动」要的就是这一格**。
+                    它是**实测**：后端把这一批事件拿掉再推一遍同样的 30 天，逐格比出来的。
+                    ⚠ 与上面「已生效」是两个不同的命题：那个说「冲击写进去了」，
+                    这个说「它传下去动了多少格」。本仓真实存在「写进去了、出边也有、
+                    但动的格子全在警戒线以下 ⇒ 卡点清单一条不动」这一态 ——
+                    不给这个数，它在屏上就与「压根没打上」长得一模一样。
+                  */}
+                  {result.report.appliedStateEffects.length > 0 ? (
+                    <div className={styles.splitCell}>
+                      <div
+                        className={styles.splitVal}
+                        style={{ color: result.report.worldCellsMoved === 0 ? "var(--danger-txt)" : undefined }}
+                      >
+                        {result.report.worldCellsMoved.toLocaleString("zh-CN")}
+                      </div>
+                      <div className={styles.splitLabel}>
+                        {result.report.worldCellsMoved === 0
+                          ? `你加的这几件事一格都没改动 —— 冲击写进去了、出边也在，但推完 ${HORIZON_DAYS} 天之后与「不加这几件事」逐格相同。这是结论，不是故障。`
+                          : `格数据因为你加的这几件事而变了（全世界一共 ${result.report.worldCellsTotal.toLocaleString("zh-CN")} 格）。`}
+                        <br />
+                        <Raw
+                          text={
+                            `这个数是实测出来的：后端把这一批事件拿掉、用同样的参数再推了一遍 ${HORIZON_DAYS} 天，逐格比对。\n` +
+                            `⚠ 它是这 ${result.report.appliedStateEffects.length} 件事**合起来**的数，不是其中某一件的功劳 —— 逐件归因要多推 ${result.report.appliedStateEffects.length} 遍，代价与收益不成比例，所以这里不做，也不假装做了。\n` +
+                            `⚠ 「动了 N 格」不等于「屏上的卡点清单会变」：卡点是按每个变量在全世界的分位数判的，动的格子若都在警戒线以下，清单就不会变。`
+                          }
+                        />
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 {nothingMoved ? <p className={styles.greyLine}>{nothingMoved}</p> : null}

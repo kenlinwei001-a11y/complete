@@ -1044,6 +1044,20 @@ export const DrillReportSchema = z.object({
    * ⚠ **`allFailed` 与「无卡点」是两个不同的屏上状态** —— 前端据此分叉渲染，
    * 绝不把 `allFailed: true` 画成「没有风险」。
    */
+  /**
+   * **这一批事件实测改动了世界态多少格**（WO-EVENTS-WRITE-STATE）。
+   *
+   * 由路由层跑一次「不带这批冲击」的同参数对照推进，逐格比出来 —— **实测，不是声明**。
+   * ⚠ 与 `appliedStateEffects[].applied` 是两个不同的命题：
+   * 那个只说「冲击写进去了」，这个说「它传下去动了多少格」。
+   * 本仓实测存在「冲击打上了、出边也真的有、但改动的格子全在 P90 以下 ⇒ 卡点清单一条不动」
+   * 这一态；不给这个数，它在屏上就与「压根没打上」长得一模一样。
+   * ⚠ 这是**整批合起来**的数，不是某一件事的 —— 逐事件归因要 N+1 次推进，代价不成比例。
+   *   屏上必须照实说清楚，不许暗示成单件的功劳。
+   */
+  worldCellsMoved: z.number().int().min(0).default(0),
+  /** 分母：本次推进后世界态一共多少格（报「动了 N 格」必须同时给分母，否则那个 N 读不出轻重）。 */
+  worldCellsTotal: z.number().int().min(0).default(0),
   summary: z.object({
     allFailed: z.boolean(),
     trustworthy: z.boolean(), // 全部结论都 LIVE 才为 true

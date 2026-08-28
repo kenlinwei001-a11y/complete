@@ -2994,17 +2994,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
        * ⚠ **反证**（这条不是推理出来的，是跑出来的）：`lossPct` 拉到 1,000,000 时
        * 读数变了 **46 格**，拉到 50 时变了 **0 格** ⇒ 不是「链断了」，是量纲差四五个数量级。
        * 判据落在「变了几格」上，不在「链在不在」上 —— 两者是不同的命题。
+       *
+       * ── 全距取 `max(|v|)` 而不是 `max − min`（第二次实测订正）────────────────
+       * 先写的是 `max − min`，**实测仍有 3 类事件一格都不动**。追下去发现：
+       * `Order.costPressure` 这一族变量在本世界里**挤在一个很高的地板上**
+       * （实测 `Order.shortageRisk` 值域约 4,334,834 ± 807 ⇒ `max − min` 只有 **807**），
+       * 而事件打到的那个对象上**这一格往往还不存在**（`cur = 0`）。
+       * 于是「加一个 max−min」= 从 0 加到 807，离那 434 万的地板还差三个数量级 ⇒ 排名纹丝不动。
+       * ⇒ 全距的正确读法是**「本世界这个变量最高能到多少」**：把一格从 0 抬到全场最高，
+       * 才是「抬高一个全距」这句话的意思（与种子扰动 `varMax:100 / varMin:0 / +100` 同一读法）。
+       * `min` 仍随回执回，供人核账。
        */
       const svRange = ((): number => {
-        let lo = Number.POSITIVE_INFINITY;
-        let hi = Number.NEGATIVE_INFINITY;
+        let hi = 0;
         for (const objectId of Object.keys(baseState)) {
           const v = baseState[objectId]?.[eff.targetStateVar];
           if (typeof v !== "number" || !Number.isFinite(v)) continue;
-          if (v < lo) lo = v;
-          if (v > hi) hi = v;
+          if (Math.abs(v) > hi) hi = Math.abs(v);
         }
-        return Number.isFinite(lo) && Number.isFinite(hi) ? hi - lo : 0;
+        return hi;
       })();
       const absMagnitude = drillStateEffectAbsolute(eff.rangePct, svRange);
       /**
@@ -3097,6 +3105,38 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const activeRules = (await sessionPropRules(c, s)).active;
     const advanced = await simAdvanceTicks(c, s, { rules: activeRules, n: ticks, persist: false, ephemeralPerturbations });
 
+    /**
+     * **「你加的这几件事，到底改动了世界上多少格」—— 实测，不是声明**（WO-EVENTS-WRITE-STATE）。
+     *
+     * ── 为什么必须有这一格 ────────────────────────────────────────────────────
+     * `appliedStateEffects[].applied` 只说「这条冲击写进去了」，**不说它传下去有没有用**。
+     * 本单实测到三类事件（订单改价 / 设备故障 / 产能损失）：冲击确实打上了、出边也真的存在，
+     * 但改动的格子**全部落在 P90 以下** ⇒ 屏上那份卡点清单一条都不动。
+     * 反证：把幅度拉到 1,000,000 时它们分别改动 4 / 8 / 46 格 ⇒ **链是通的，是效应太小**。
+     * 「链断了」与「链通但没越线」是两个完全不同的命题，**混成一句就是静默错答** ——
+     * 而旧版屏上把两者显示成同一个样子（什么都没变）。
+     *
+     * ⇒ 跑一次**不带这批冲击**的同参数推进当对照，逐格比 ⇒ 得到一个**可披露的实测数**。
+     * ⚠ 这是**整批**的数，不做逐事件归因：逐事件归因要 N+1 次推进（本世界一次约 1.7 秒），
+     * 代价与收益不成比例。屏上必须照实说「这是这一批事件合起来的数」，不许暗示是某一件的。
+     */
+    let worldCellsMoved = 0;
+    let worldCellsTotal = 0;
+    if (ephemeralPerturbations.length > 0) {
+      const control = await simAdvanceTicks(c, s, { rules: activeRules, n: ticks, persist: false, ephemeralPerturbations: [] });
+      const ids = new Set([...Object.keys(advanced.state), ...Object.keys(control.state)]);
+      for (const oid of ids) {
+        const a = advanced.state[oid] ?? {};
+        const b = control.state[oid] ?? {};
+        for (const sv of new Set([...Object.keys(a), ...Object.keys(b)])) {
+          worldCellsTotal++;
+          if (a[sv] !== b[sv]) worldCellsMoved++;
+        }
+      }
+    } else {
+      for (const oid of Object.keys(advanced.state)) worldCellsTotal += Object.keys(advanced.state[oid] ?? {}).length;
+    }
+
     // ── ③ 卡点扫描（G-DRILL-2）──────────────────────────────────────────────
     const typeOf = new Map<string, string>();
     for (const t of await repos.ontologyTypes.list(c.tenantId)) {
@@ -3171,6 +3211,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           .map((r) => `${r.targetTypeKey}.${r.targetStateVar} ×${r.coefficient}`)
           .sort(),
       })),
+      worldCellsMoved,
+      worldCellsTotal,
       // 规模闸：**不传也有闸**（编排器落契约默认，绝不回全量）。
       // 实测依据：1,567 对象 × 36 变量的世界一次演习产出 5,593 条 / 4.66MB，
       // 与本仓 metric-series 栽过的那个 O(N×世界规模) 是同一个形状。
