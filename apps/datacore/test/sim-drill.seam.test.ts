@@ -85,6 +85,48 @@ describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
     }
   });
 
+  /**
+   * ══ WO-EVENTS-WRITE-STATE 的接缝断言 ══════════════════════════════════════
+   *
+   * **今天的行为是 X，应该是 Y**（COO 2026-08-28 真后端实测复现，本单开工第一步）：
+   * · **X**：11 类事件里只有 `MATERIAL_REPRICE` 声明了世界态落点，其余 10 类
+   *   `stateEffect: null` ⇒ 只被路由到求解器，**一格世界态都不写**。
+   * · **Y**：每一类事件都落在一个**在传导图上真有出边**的状态变量上。
+   *
+   * ⚠ **为什么这条必须是接缝测试而不是纯契约单测**：「有没有出边」这件事，
+   * 契约层**根本答不出来** —— 出边表是运行期数据（`PropagationRule`，各租户自己维护）。
+   * 只在契约里断言「11 类都有 stateEffect」会得到一个漂亮的绿灯，
+   * 而落点完全可能指向一个本租户压根没有出边的格子 ⇒ 冲击打上去一步都传不下去，
+   * 屏上表现为「看起来改了实际还是不动」，**比压根不落点更难发现**（派单原话）。
+   * 故必须拿**真 seed 出来的已发布规则**去比。
+   */
+  it("① 11 类事件**全部**有世界态落点，且每个落点在真规则表上**真有出边**（落在叶子上比不落更糟）", async () => {
+    const t = await seededApp();
+    const rules = await t.repos.sim.listPropagationRules("demo", true);
+    // 金丝雀：先证明规则表真读出来了。读到 0 是「seed 没跑/查错了」，不是「没有出边」——
+    // 少了这一句，下面每条断言都会以「所有落点都没出边」的形态整齐地红，把人指向错误的方向。
+    expect(rules.length, "已发布传导规则读到 0 条 ⇒ 是规则表没读出来，不是落点没有出边").toBeGreaterThan(0);
+
+    const outEdges = new Map<string, string[]>();
+    for (const r of rules) {
+      const k = `${r.sourceTypeKey}.${r.sourceStateVar}`;
+      outEdges.set(k, [...(outEdges.get(k) ?? []), `${r.targetTypeKey}.${r.targetStateVar}`]);
+    }
+    // 金丝雀②：拿一个**已知必中**的格子验证这张出边表是对的（本来就在跑的那条料价链）
+    expect(outEdges.get("Material.priceShock"), "金丝雀不中 ⇒ 出边表建错了，不是落点有问题").toContain("Model.costPressure");
+
+    for (const s of DRILL_EVENT_SPECS) {
+      expect(s.stateEffect, `${s.kind}（${s.label}）没有世界态落点 ⇒ 用户加了它也不会改变任何数`).not.toBeNull();
+      const eff = s.stateEffect!;
+      const outs = outEdges.get(`${eff.objectType}.${eff.stateVar}`) ?? [];
+      expect(
+        outs.length,
+        `${s.kind} 的落点 ${eff.objectType}.${eff.stateVar} 在真规则表上零出边 ⇒ 打上去一步都传不下去`,
+      ).toBeGreaterThan(0);
+    }
+    await t.app.close();
+  });
+
   it("① 加一个新事件只需改**一处**：路由与校验规则全部由 DRILL_EVENT_SPECS 派生", () => {
     // 判据：编排器拿到的路由**完全**来自规格表 —— 表里有几条，`drillRoutesFor` 就给几条
     // （加上通用路由，且按 solverKey 去重）。这条断言使「引擎里另写一条 if 分支」变得可见：
