@@ -118,7 +118,7 @@ export function extendedObjectTypes(): TypeDef[] {
     def("Material", "物料", "supply", [
       p("matId", "string", true), p("name", "string"), n("unitPrice", "元", "absolute"), n("leadTime", "天", "absolute"), n("carbonFactor", "kgCO2e", "absolute"), n("bomUnit", "dimensionless", "absolute"), n("dailyUse", "吨", "absolute"), n("onHand", "吨", "absolute"), n("inTransit", "吨", "absolute"), n("devPct", "%", "ratio"), n("outsourceYield", "dimensionless", "ratio"),
       p("materialCode", "string"), p("category", "enum"), p("spec", "string"), p("unit", "string"),
-      { propKey: "supplierId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Supplier" },
+      { propKey: "supplierId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Supplier", unit: "dimensionless", scale: "absolute" },
       n("shelfLife", "天", "absolute"), p("isKeyMaterial", "boolean"), p("status", "enum"),
     ]),
     def("Supplier", "供应商", "supply", [
@@ -221,6 +221,8 @@ export function extendedObjectTypes(): TypeDef[] {
         propKey: "orderCustNames",
         dataType: "json",
         isPrimaryKey: false,
+        unit: "dimensionless",
+        scale: "absolute",
         description:
           "本客户在订单上使用的下单品牌名集合（`Order.cust` 口径）——客户主数据的匿名化名册与订单侧品牌名之间的唯一桥。" +
           "由归属册 `ORDER_CUST_TO_CUSTOMER` 反查派生（排序确定性 R6）；`order_of_customer` 边据此绑定，" +
@@ -235,7 +237,7 @@ export function extendedObjectTypes(): TypeDef[] {
     // WO-WAREHOUSE-CUSTLOC：客户交付地点（交付/物流/在途/跨基地调拨的地理基础）。省市/经纬度 R14 确定性配置表派生。
     def("CustomerLocation", "客户地点", "commercial", [
       p("locId", "string", true),
-      { propKey: "customerRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Customer" },
+      { propKey: "customerRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Customer", unit: "dimensionless", scale: "absolute" },
       p("province", "string"), p("city", "string"), p("address", "string"),
       p("isDeliveryDefault", "boolean"), n("lon", "°", "absolute"), n("lat", "°", "absolute"),
     ]),

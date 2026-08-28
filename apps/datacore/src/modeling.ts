@@ -423,6 +423,12 @@ export class ModelingService {
               propKey: p.propKey,
               dataType: p.dataType,
               isPrimaryKey: false,
+              // WO-UNIT-KWH · 建模链产出的属性**上游没有量纲元数据**（A3 从数据集列名/类型推断，
+              // 推不出单位）。故显式声明 dimensionless —— 这是「已知它没带量纲」，
+              // 不是「忘了填」。⚠ 这是一处真实缺口：用户建模出来的数值属性今天无法表达量纲，
+              // 要补得先让建模链本身能采集单位，不能在这里凭字段名猜。
+              unit: "dimensionless",
+              scale: "absolute",
               refToTypeKey: p.refToTypeKey,
             });
           }
@@ -443,6 +449,9 @@ export class ModelingService {
             propKey: p.propKey,
             dataType: p.dataType,
             isPrimaryKey: p.isPrimaryKey,
+            // 同上：建模链上游无量纲元数据，显式声明「已知无量纲」而非静默省略。
+            unit: "dimensionless" as const,
+            scale: "absolute" as const,
             refToTypeKey: p.refToTypeKey,
             // 治理增量 §3：A3 对名称类/主键字段建议 searchable。
             searchable: p.isPrimaryKey || p.propKey === "name" || p.propKey === "displayName" || undefined,
