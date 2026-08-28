@@ -338,8 +338,8 @@ describe("WO-BEFE-A ④ 事实锁：mock 的派生口径必须钉在**后端源�
     ).toContain("apps/datacore/src/app.ts");
   });
 
-  it("诚实位有据：`POST …/propagation-rules` 的 id 确实恒被覆盖（⇒ 只能新建、改不了）", () => {
-    // 页面上写着「因果边只能新建改不了」。这句话必须有源码证据，否则就是拿注释当结论。
+  it("`POST …/propagation-rules` 的 id 仍恒被覆盖（⇒ POST 只能新建，改既有边得走 PUT）", () => {
+    // 这条事实**没变**：POST 依然 mint 新 id。变的是「改不了」那半边 —— 见下一条用例。
     const tree = dc();
     /**
      * ⚠ 这条探针**曾经把校验器的写法一起钉死**，于是长期红在一次与本事实无关的重构上：
@@ -357,20 +357,64 @@ describe("WO-BEFE-A ④ 事实锁：mock 的派生口径必须钉在**后端源�
       "id 覆盖已不复存在 ⇒ 客户端传的 id 可能被采信，页面上那条诚实位该撤了",
     ).toContain("apps/datacore/src/app.ts");
 
-    /**
-     * 「改不了」那半边也要有据：这条路径上**只有** GET / POST 两个动词。
-     * 否定结论建立在同一棵树的四条金丝雀之上（`checkedTree` 已跑），再加一条**正向对照**：
-     * 同样的路径串用 `app.post(` 必须命中 —— 命不中就是这条路径的写法变了，
-     * 那时该报「探针失准」，而不是报「后端没有更新口」。
-     */
     expect(
       factHits(tree, 'app.post("/a/v1/sim/propagation-rules"'),
-      "正向对照落空 ⇒ 路由写法变了，下面那条否定结论作废",
+      "正向对照落空 ⇒ 路由写法变了，本条结论作废",
+    ).toContain("apps/datacore/src/app.ts");
+  });
+
+  /**
+   * ══ WO-ONTOLOGY-EDGE-EDIT · 这条断言**是反过来的那一半**（原文已作废，照实反转）══
+   *
+   * 原文断言的是 `factHits(tree, /app\.(put|patch)\(\s*"\/a\/v1\/sim\/propagation-rules"/)`
+   * **等于空数组**，注释写着「后端补了更新口 ⇒『只能新建、改不了』这句诚实位已成谎话，该撤」。
+   * 后端现在补上了，诚实位也撤了 —— 故该断言按它自己写好的剧本反转。
+   *
+   * ⚠ **顺带修掉那条探针自己的一个洞**（不修就是留一个永远不会红的哨兵）：
+   *   原正则要求 `propagation-rules` 后面紧跟**闭合引号**，而更新口的路径是
+   *   `"/a/v1/sim/propagation-rules/:id"` —— 后面跟的是 `/`。实测（本单开工时亲手跑过）：
+   *   `/app\.(put|patch)\(\s*"\/a\/v1\/sim\/propagation-rules"/.test('app.put("/a/v1/sim/propagation-rules/:id", …)')`
+   *   → **false**。即：后端就算补了更新口，那条 `toEqual([])` **照样绿**。
+   * 形态（铁律 0.6 句式）：**「我用『集合路径上没有 put/patch』当作『没有更新口』的证据，
+   *   而前者并不度量后者 —— 更新口天生挂在 `/:id` 上，不在集合路径上。」**
+   *   故新探针一律匹配到 `propagation-rules/` 那个斜杠为止，item 路径才咬得住。
+   */
+  it("后端**已有**改/删/启停三个更新口（诚实位「只能新建」因此撤得有据）", () => {
+    const tree = dc();
+    // 正向对照：金丝雀已在本 describe 顶部跑过；这里再加一条同族的必中串，
+    // 命不中就是路径写法变了 ⇒ 报「探针失准」，不许报「后端把更新口删了」。
+    expect(
+      factHits(tree, 'app.post("/a/v1/sim/propagation-rules"'),
+      "正向对照落空 ⇒ 这条路径的写法变了，下面三条结论作废",
+    ).toContain("apps/datacore/src/app.ts");
+
+    expect(
+      factHits(tree, /app\.put\(\s*"\/a\/v1\/sim\/propagation-rules\/:id"/),
+      "改口没了 ⇒ 页面上那张可编辑的表会 404，诚实位该改回「只能新建」",
     ).toContain("apps/datacore/src/app.ts");
     expect(
-      factHits(tree, /app\.(put|patch)\(\s*"\/a\/v1\/sim\/propagation-rules"/),
-      "后端补了更新口 ⇒ 「只能新建、改不了」这句诚实位已成谎话，该撤",
-    ).toEqual([]);
+      factHits(tree, /app\.delete\(\s*"\/a\/v1\/sim\/propagation-rules\/:id"/),
+      "删口没了 ⇒ 表里那个 ✕ 会 404",
+    ).toContain("apps/datacore/src/app.ts");
+    expect(
+      factHits(tree, /app\.patch\(\s*"\/a\/v1\/sim\/propagation-rules\/:id\/status"/),
+      "启停口没了 ⇒ 表里那个勾选框会 404",
+    ).toContain("apps/datacore/src/app.ts");
+
+    /**
+     * **租户闸必须落在「写之前的一次读」上**，这条不是洁癖：`putPropagationRule` 按 id 幂等覆盖、
+     * 不看 tenantId（memory 侧 `this.rules.set(r.id, …)`；pg 侧 `ON CONFLICT (id) DO UPDATE`），
+     * 而 `:id` 是客户端给的 ⇒ 少了这次读，A 租户就能覆盖 B 租户的边。
+     * 删掉那两行 `getPropagationRule(...)` 时**没有任何类型错误**，只有这条会红。
+     */
+    expect(
+      factHits(tree, /getPropagationRule\(c\.tenantId,\s*id\)/),
+      "改/启停口不再先按 tenantId 读一次 ⇒ 跨租户可覆盖（R2 破了，且类型系统看不见）",
+    ).toContain("apps/datacore/src/app.ts");
+    expect(
+      factHits(tree, /deletePropagationRule\(c\.tenantId,/),
+      "删口不再带 tenantId ⇒ 跨租户可删",
+    ).toContain("apps/datacore/src/app.ts");
   });
 
   it("mock 的两份结构边种子逐 key 一致（`mapping/registries` 字面量 vs `MOCK_LINK_SEED` store）", async () => {

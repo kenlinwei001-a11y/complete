@@ -42,7 +42,7 @@ const RULE_DEFAULTS = {
   decay: null,
   clamp: null,
   coefficientRef: null,
-  cadenceNodeId: null,
+  cadenceNodeId: null, description: null,
   status: "PUBLISHED" as const,
   sourceTypeName: null,
   targetTypeName: null,
