@@ -126,15 +126,49 @@ async function worldWithFuturePerturbation(): Promise<Fixture> {
  * 而不是让这些用例在一个子集上**悄悄全绿**。「我没找到」和「它不存在」是两个命题。
  */
 const series = async (t: TestApp, sid: string, qs = "from=0&to=6"): Promise<SimMetricSeriesResponse> => {
-  const url = `/a/v1/sim/sessions/${sid}/metric-series?${qs}&order=key&limit=${SIM_METRIC_SERIES_MAX_LIMIT}`;
-  const r = await t.app.inject({ method: "GET", url, headers: ADMIN });
-  expect(r.statusCode).toBe(200);
-  const out = r.json() as SimMetricSeriesResponse;
-  expect(
-    out.metrics.length,
-    "本世界的指标数已超过硬上限 ⇒ 本文件那几条「全目录」判据正在一个子集上空转，先把尺子修好再读结论",
-  ).toBe(out.totalMetrics);
-  return out;
+  const fetchPage = async (extra: string): Promise<SimMetricSeriesResponse> => {
+    const url = `/a/v1/sim/sessions/${sid}/metric-series?${qs}&order=key&limit=${SIM_METRIC_SERIES_MAX_LIMIT}${extra}`;
+    const r = await t.app.inject({ method: "GET", url, headers: ADMIN });
+    expect(r.statusCode).toBe(200);
+    return r.json() as SimMetricSeriesResponse;
+  };
+  const first = await fetchPage("");
+  // 一页装得下 ⇒ 走老路径，行为逐字节不变（小世界的用例不受下面这段影响）。
+  if (first.metrics.length === first.totalMetrics) return first;
+
+  // ⚠ **2026-08-28 WO-SLICE-DOMAINS：这个世界长过硬上限了，按本注释原文「先把尺子修好」。**
+  //   本单给 `Line` 补了 `blockedPressure`（设备侧接回产能主链的落点），并让设备故障
+  //   真的传到订单/客户 ⇒ 会动的格子变多，本世界目录实测 **724 条 > 500 硬上限**。
+  //   原来那句 `toBe(out.totalMetrics)` 金丝雀**正确地报了红** —— 它守的就是
+  //   「别在一个子集上悄悄全绿」，而那时它确实只拿到 500 条里的一段。
+  //
+  //   修法**不是**调大 `SIM_METRIC_SERIES_MAX_LIMIT`（那道封顶挡的是浏览器 OOM，
+  //   为让一条断言好数就给生产开口子 = 拿生产的病换测试的方便），
+  //   也**不是**把断言放宽成「取到多少算多少」（那等于让目录缺一半也照样绿）。
+  //   端点只有 `objectIds`/`stateVars` 两个白名单、**没有 offset/cursor**
+  //   （契约 `SimMetricSeriesQuerySchema`），故按 **stateVars 分页**取全目录再合并：
+  //   每页各自断言「这一页是完整的」，合并后再断言「合起来等于全目录」。
+  const world = await t.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/world`, headers: ADMIN });
+  expect(world.statusCode).toBe(200);
+  const state = (world.json() as { state?: Record<string, Record<string, number>> }).state ?? {};
+  const vars = [...new Set(Object.values(state).flatMap((v) => Object.keys(v)))].sort();
+  // 🐤 金丝雀：分页依据必须真的非空，否则下面的 for 一圈不转、merged 恒空，
+  //    「合并后对不上」会以另一个理由报红，把病因指错地方。
+  expect(vars.length, "世界态里一个状态量都没有 ⇒ 分页依据是空的，先修世界再读结论").toBeGreaterThan(0);
+
+  const merged: SimMetricSeriesResponse["metrics"] = [];
+  for (const sv of vars) {
+    const page = await fetchPage(`&stateVars=${encodeURIComponent(sv)}`);
+    // 单个状态量的那一页仍超上限 ⇒ 说明得再切细（按对象），此时宁可报红也不许悄悄截断。
+    expect(page.metrics.length, `状态量 ${sv} 单独一页仍超硬上限 ⇒ 分页粒度不够，先把尺子修好再读结论`)
+      .toBe(page.totalMetrics);
+    merged.push(...page.metrics);
+  }
+  // `order=key` 是本文件几条判据依赖的稳定序；分页是按变量切的（变量优先序），合并后要还原成全局 key 序。
+  merged.sort((a, b) => a.key.localeCompare(b.key));
+  expect(merged.length, "分页合并后条数对不上全目录 ⇒ 某一页被静默丢了")
+    .toBe(first.totalMetrics);
+  return { ...first, metrics: merged };
 };
 
 const metricOf = (out: SimMetricSeriesResponse, key: string) => {
