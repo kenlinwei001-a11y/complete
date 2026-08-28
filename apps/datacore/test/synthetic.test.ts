@@ -271,16 +271,16 @@ describe("A7 synthetic data", () => {
           {
             key: "Farm",
             displayName: "农场",
-            properties: [{ propKey: "farmId", dataType: "string", isPrimaryKey: true }],
+            properties: [{ propKey: "farmId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }],
             derivedProperties: [{ propKey: "batchCount", formula: "COUNT(Batch.batchId BY farm)" }],
           },
           {
             key: "Batch",
             displayName: "批次",
             properties: [
-              { propKey: "batchId", dataType: "string", isPrimaryKey: true },
-              { propKey: "farm", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Farm" },
-              { propKey: "yieldKg", dataType: "number", isPrimaryKey: false },
+              { propKey: "batchId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+              { propKey: "farm", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Farm" },
+              { propKey: "yieldKg", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
             ],
             derivedProperties: [],
           },

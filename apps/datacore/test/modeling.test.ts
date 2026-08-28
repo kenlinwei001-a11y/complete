@@ -135,7 +135,7 @@ describe("A3 modeling", () => {
           {
             op: "addProperty",
             typeKey: "Order",
-            property: { propKey: "due", sourceField: "due", dataType: "date", isPrimaryKey: false, refToTypeKey: null },
+            property: { propKey: "due", sourceField: "due", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: null },
           },
         ],
       },
@@ -411,7 +411,7 @@ describe("A3 modeling", () => {
           displayName: "破",
           sourceDataset: "orders",
           properties: [
-            { propKey: "x", sourceField: "so", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Nope" },
+            { propKey: "x", sourceField: "so", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Nope" },
           ],
           confidence: 0.5,
         },

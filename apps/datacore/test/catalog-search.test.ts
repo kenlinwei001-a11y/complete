@@ -28,11 +28,11 @@ describe("DF.5 · 语义目录（catalog search）", () => {
   it("searchCatalog 纯函数：按字段名/业务描述/单位语义匹配，确定性排序（R6）", () => {
     const types: ObjectTypeDef[] = [
       TYPE("FinancePlan", [
-        { propKey: "marginPct", dataType: "number", isPrimaryKey: false, unit: "%", description: "毛利率" },
-        { propKey: "priceWan", dataType: "number", isPrimaryKey: false, unit: "万", description: "单价" },
-        { propKey: "planId", dataType: "string", isPrimaryKey: true },
+        { propKey: "marginPct", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio", description: "毛利率" },
+        { propKey: "priceWan", dataType: "number", isPrimaryKey: false, unit: "万元", scale: "absolute", description: "单价" },
+        { propKey: "planId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
       ]),
-      TYPE("Retired", [{ propKey: "x", dataType: "number", isPrimaryKey: false, description: "毛利率" }]),
+      TYPE("Retired", [{ propKey: "x", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "毛利率" }]),
     ];
     // status=ACTIVE 才入目录；命中"毛利率"描述
     const hits = searchCatalog(types, "毛利率");
@@ -45,7 +45,7 @@ describe("DF.5 · 语义目录（catalog search）", () => {
   });
 
   it("RETIRED 类型不入目录（R2/治理）", () => {
-    const retired = TYPE("Old", [{ propKey: "marginPct", dataType: "number", isPrimaryKey: false, description: "毛利率" }]);
+    const retired = TYPE("Old", [{ propKey: "marginPct", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "毛利率" }]);
     retired.status = "RETIRED";
     expect(searchCatalog([retired], "毛利率")).toEqual([]);
   });
@@ -54,8 +54,8 @@ describe("DF.5 · 语义目录（catalog search）", () => {
     const t: TestApp = await makeApp();
     await t.repos.ontologyTypes.put(
       TYPE("FinancePlan", [
-        { propKey: "marginPct", dataType: "number", isPrimaryKey: false, unit: "%", description: "毛利率" },
-        { propKey: "planId", dataType: "string", isPrimaryKey: true },
+        { propKey: "marginPct", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio", description: "毛利率" },
+        { propKey: "planId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
       ]),
     );
     const miss = await t.app.inject({ method: "GET", url: "/a/v1/catalog/search", headers: ADMIN });

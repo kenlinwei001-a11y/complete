@@ -21,7 +21,7 @@ describe("PRD-fde §8 Q3 · margin_attribution 求解器（毛利倒挂根因归
   async function seedMargins(t: TestApp, ctx: AuthCtx) {
     await t.repos.ontologyTypes.put({
       id: "ot_ord", tenantId: ctx.tenantId, key: "Order", displayName: "订单", domain: "sales", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [],
-      properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true }, { propKey: "revenue", dataType: "number", isPrimaryKey: false }, { propKey: "rawCost", dataType: "number", isPrimaryKey: false }, { propKey: "yieldLoss", dataType: "number", isPrimaryKey: false }, { propKey: "fxCost", dataType: "number", isPrimaryKey: false }],
+      properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, { propKey: "revenue", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, { propKey: "rawCost", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, { propKey: "yieldLoss", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, { propKey: "fxCost", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }],
     });
     // 星辰：售 100,成本 85 → 毛利率 15% 不倒挂
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_xc", tenantId: ctx.tenantId, type: "Order", props: { so: "星辰", revenue: 100, rawCost: 60, yieldLoss: 20, fxCost: 5 } });

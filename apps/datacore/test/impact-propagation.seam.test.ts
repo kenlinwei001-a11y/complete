@@ -37,6 +37,9 @@ const prop = (propKey: string, opts: Partial<PropertyDef> = {}): PropertyDef => 
   propKey,
   dataType: "number",
   isPrimaryKey: false,
+  // WO-UNIT-KWH：夹具默认显式无量纲；带量纲的用例经 opts 覆盖。
+  unit: "dimensionless",
+  scale: "absolute",
   ...opts,
 });
 

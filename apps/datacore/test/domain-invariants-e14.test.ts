@@ -19,7 +19,7 @@ function orphanProcessPlan(): BuildPlan {
     id: "bpl_e14", tenantId: "demo", builderKey: "t", scriptHash: "h", seed: 1, script: "",
     dataSources: [], rules: [], kbDocs: [], solverNeeds: [], createdAt: "2026-01-01",
     objectTypes: [
-      { typeKey: "Process", displayName: "工序", domain: "process", properties: [{ propKey: "procId", dataType: "string", isPrimaryKey: true }, { propKey: "capacity", dataType: "number" }] },
+      { typeKey: "Process", displayName: "工序", domain: "process", properties: [{ propKey: "procId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, { propKey: "capacity", dataType: "number" }] },
     ],
   });
 }

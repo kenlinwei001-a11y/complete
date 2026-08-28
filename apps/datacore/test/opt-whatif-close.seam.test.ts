@@ -195,16 +195,16 @@ describe("WO-OPT-WHATIF-CLOSE · 问句 → optimize_whatif 真结论（SEAM）"
     t.services.solvers.setOptimizer(mock);
     const tid = "a1iso";
     await t.repos.ontologyTypes.put(typeDef(tid, "Site", [
-      { propKey: "siteId", dataType: "string", isPrimaryKey: true },
-      { propKey: "setupCost", dataType: "number", isPrimaryKey: false },
+      { propKey: "siteId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+      { propKey: "setupCost", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
     ]));
     // 排位更高（fanOut=2 > 0）但**一行都没有**的候选；排位低但有实例的候选在后。
     await t.repos.ontologyTypes.put(typeDef(tid, "GhostOrder", [
-      { propKey: "goId", dataType: "string", isPrimaryKey: true },
-      { propKey: "aRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Site2" },
-      { propKey: "bRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Site3" },
+      { propKey: "goId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+      { propKey: "aRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Site2" },
+      { propKey: "bRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Site3" },
     ]));
-    await t.repos.ontologyTypes.put(typeDef(tid, "Customer", [{ propKey: "custId", dataType: "string", isPrimaryKey: true }]));
+    await t.repos.ontologyTypes.put(typeDef(tid, "Customer", [{ propKey: "custId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }]));
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "s1", tenantId: tid, type: "Site", props: { siteId: "s1", setupCost: 10 } });
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "s2", tenantId: tid, type: "Site", props: { siteId: "s2", setupCost: 20 } });
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "c1", tenantId: tid, type: "Customer", props: { custId: "c1" } });
@@ -227,11 +227,11 @@ describe("WO-OPT-WHATIF-CLOSE · 问句 → optimize_whatif 真结论（SEAM）"
     t.services.solvers.setOptimizer(new MockFL());
     const tid = "a1empty";
     await t.repos.ontologyTypes.put(typeDef(tid, "Site", [
-      { propKey: "siteId", dataType: "string", isPrimaryKey: true },
-      { propKey: "setupCost", dataType: "number", isPrimaryKey: false },
+      { propKey: "siteId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+      { propKey: "setupCost", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
     ]));
-    await t.repos.ontologyTypes.put(typeDef(tid, "Customer", [{ propKey: "custId", dataType: "string", isPrimaryKey: true }]));
-    await t.repos.ontologyTypes.put(typeDef(tid, "GhostOrder", [{ propKey: "goId", dataType: "string", isPrimaryKey: true }]));
+    await t.repos.ontologyTypes.put(typeDef(tid, "Customer", [{ propKey: "custId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }]));
+    await t.repos.ontologyTypes.put(typeDef(tid, "GhostOrder", [{ propKey: "goId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }]));
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "s1", tenantId: tid, type: "Site", props: { siteId: "s1", setupCost: 10 } });
 
     const out = await t.services.solvers.invoke(ctxOf(tid), "optimize_whatif", {
@@ -253,16 +253,16 @@ describe("WO-OPT-WHATIF-CLOSE · 问句 → optimize_whatif 真结论（SEAM）"
     t.services.solvers.setOptimizer(mock);
     const tid = "a2iso";
     await t.repos.ontologyTypes.put(typeDef(tid, "Site", [
-      { propKey: "siteId", dataType: "string", isPrimaryKey: true },
-      { propKey: "setupCost", dataType: "number", isPrimaryKey: false },
+      { propKey: "siteId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+      { propKey: "setupCost", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
     ]));
     // 从属候选：fanOut=2（排位更高）+ 有实例，但带 ref 指向决策承载类型 Site（= 已绑死在某设施上）。
     await t.repos.ontologyTypes.put(typeDef(tid, "InternalOrder", [
-      { propKey: "ioId", dataType: "string", isPrimaryKey: true },
-      { propKey: "siteRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Site" },
-      { propKey: "other", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Site" },
+      { propKey: "ioId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+      { propKey: "siteRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Site" },
+      { propKey: "other", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Site" },
     ]));
-    await t.repos.ontologyTypes.put(typeDef(tid, "Customer", [{ propKey: "custId", dataType: "string", isPrimaryKey: true }]));
+    await t.repos.ontologyTypes.put(typeDef(tid, "Customer", [{ propKey: "custId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }]));
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "s1", tenantId: tid, type: "Site", props: { siteId: "s1", setupCost: 10 } });
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "s2", tenantId: tid, type: "Site", props: { siteId: "s2", setupCost: 20 } });
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "io1", tenantId: tid, type: "InternalOrder", props: { ioId: "io1", siteRef: "s1", other: "s2" } });
@@ -308,14 +308,14 @@ describe("WO-OPT-WHATIF-CLOSE · 问句 → optimize_whatif 真结论（SEAM）"
     t.services.solvers.setOptimizer(new MockFL());
     const tid = "mcfiso";
     await t.repos.ontologyTypes.put(typeDef(tid, "Node", [
-      { propKey: "nodeId", dataType: "string", isPrimaryKey: true },
-      { propKey: "demandQty", dataType: "number", isPrimaryKey: false },
+      { propKey: "nodeId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+      { propKey: "demandQty", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
     ]));
     await t.repos.ontologyTypes.put(typeDef(tid, "GhostArc", [
-      { propKey: "arcId", dataType: "string", isPrimaryKey: true },
-      { propKey: "from", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Node" },
-      { propKey: "to", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Node" },
-      { propKey: "shipCost", dataType: "number", isPrimaryKey: false },
+      { propKey: "arcId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+      { propKey: "from", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Node" },
+      { propKey: "to", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Node" },
+      { propKey: "shipCost", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
     ]));
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "n1", tenantId: tid, type: "Node", props: { nodeId: "n1", demandQty: 5 } });
 
@@ -336,10 +336,10 @@ describe("WO-OPT-WHATIF-CLOSE · 问句 → optimize_whatif 真结论（SEAM）"
     t.services.solvers.setOptimizer(new MockFL());
     const tid = "facempty";
     await t.repos.ontologyTypes.put(typeDef(tid, "Site", [
-      { propKey: "siteId", dataType: "string", isPrimaryKey: true },
-      { propKey: "setupCost", dataType: "number", isPrimaryKey: false },
+      { propKey: "siteId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+      { propKey: "setupCost", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
     ]));
-    await t.repos.ontologyTypes.put(typeDef(tid, "Customer", [{ propKey: "custId", dataType: "string", isPrimaryKey: true }]));
+    await t.repos.ontologyTypes.put(typeDef(tid, "Customer", [{ propKey: "custId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }]));
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "c1", tenantId: tid, type: "Customer", props: { custId: "c1" } });
     // Site 类型已发布但**零实例**（选中的 s1 根本不存在）。
     const out = await t.services.solvers.invoke(ctxOf(tid), "optimize_whatif", {

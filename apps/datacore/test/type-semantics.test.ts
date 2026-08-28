@@ -16,6 +16,9 @@ const prop = (propKey: string, opts: Partial<PropertyDef> = {}): PropertyDef => 
   propKey,
   dataType: "number",
   isPrimaryKey: false,
+  // WO-UNIT-KWH：夹具默认显式无量纲；带量纲的用例经 opts 覆盖。
+  unit: "dimensionless",
+  scale: "absolute",
   ...opts,
 });
 
@@ -112,7 +115,7 @@ describe("WO-QOS-ONTOLOGY-CONTEXT · GET /a/v1/ontology/type-semantics（口径�
       displayName: "经营指标",
       properties: [
         prop("metricKey", { dataType: "string", isPrimaryKey: true, description: "指标键" }),
-        prop("actual", { description: "当期实际达成", unit: "pct" }),
+        prop("actual", { description: "当期实际达成", unit: "%", scale: "ratio" }),
         prop("target", { description: "目标值", unit: "%" }),
         prop("gap", { description: "缺口" }),
       ],

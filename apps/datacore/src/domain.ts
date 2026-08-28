@@ -261,6 +261,7 @@ export const PROPERTY_UNITS = [
   "电芯",
   "件",
   "个",
+  "台",
   "条",
   "批",
   "单",
