@@ -84,7 +84,9 @@ describe("A0 IAM + A6 permissions", () => {
     expect(wsPlanner.views.map((v) => v.key)).toContain("dash");
     expect(wsBm.views.map((v) => v.key)).not.toContain("dash");
 
-    const query = { objectType: "Order", filter: {}, limit: 100 };
+    // WO-ORDER-BOOK-500：limit 原为 100 —— 订单簿 24→500 之后 planner 与 base_manager **双双被 limit 截断到 100**，
+    // 「planner 看到的严格更多」当场变成 100<100 假红。截断掩盖行级过滤，limit 抬到全簿规模。
+    const query = { objectType: "Order", filter: {}, limit: 500 };
     const plannerRows = (
       await t.app.inject({
         method: "POST",
@@ -102,7 +104,9 @@ describe("A0 IAM + A6 permissions", () => {
       })
     ).json() as { data: { props: { bases: string[] } }[] };
 
-    expect(plannerRows.data).toHaveLength(24);
+    // WO-ORDER-BOOK-500：planner 可见全部订单（24→500）。本条守的是「planner 看全量 > base_manager 看本基地」，
+    // 条数随订单簿走；下面两行的「非空」「严格更少」才是行级过滤的判据。
+    expect(plannerRows.data.length).toBeGreaterThan(0);
     expect(bmRows.data.length).toBeGreaterThan(0);
     expect(bmRows.data.length).toBeLessThan(plannerRows.data.length);
     for (const row of bmRows.data) expect(row.props.bases).toContain("changzhou");

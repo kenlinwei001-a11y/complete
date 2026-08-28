@@ -53,28 +53,53 @@ describe("WO-SANDBOX-D4 ① OTD 批次准时率（口径 CUSTOMER_REQUEST·由 r
     expect(hi.card.crossDay).toBe(1);
     expect(hi.card.otd!.basis).toBe(OTD_BASIS);
     expect(hi.card.otd!.dataMode).toBe("OK");
-    expect(hi.card.otd!.total).toBe(8);
+    // WO-ORDER-BOOK-500：窗口内订单数原为写死的 8（24 张订单时代），扩容后实测 47。
+    // 本档的判据不是「恰好 8 张」，是「**全部**被判延误 ⇒ 0%」—— 改成与条数无关的形式，
+    // 并保留非空金丝雀（total=0 时 0% 是空转出来的，不是算出来的）。
+    expect(hi.card.otd!.total, "窗口内 0 张单 ⇒ 0% 是空转").toBeGreaterThan(0);
+    expect(hi.card.otd!.total).toBe(hi.card.otd!.rows.length);
     expect(hi.card.otd!.onTimeCount).toBe(0);
     expect(hi.card.otd!.rate).toBe(0);
 
-    // (b) 中负荷：越线日推到 D+23 → 交期在越线日之前的单不再吃这次风险的延误 → 12.5%
-    await setUtilization(t, BASE_ID, 50);
-    const mid = await forcedCard(t);
-    expect(mid.card.crossDay).toBe(23);
-    expect(mid.card.otd!.rate).toBe(12.5);
-    expect(mid.card.otd!.onTimeCount).toBe(1);
+    // (b) 中负荷：越线日往后推 → 交期早于越线日的单不再吃这次风险的延误 → 准时率落在两端之间。
+    // WO-ORDER-BOOK-500：原文写死 util=50 ⇒ 越线日 D+23 ⇒ 12.5%。那三个数是 24 张订单那份负载的产物；
+    // 订单簿扩到 500 张后同样的 util=50 只把越线日推到 D+2，中间档退化成和高负荷一样的 0%。
+    // 判据（「存在一个中间产能档，准时率严格介于两端之间」）没变，改为**按判据现找**那一档：
+    // 在一串确定的 util 里取第一个真出现中间态的，找不到就明说找不到（不许把三档悄悄降成两档）。
+    let mid: Awaited<ReturnType<typeof forcedCard>> | undefined;
+    let midUtil = 0;
+    for (const u of [50, 45, 42, 40, 38, 35, 30, 25, 20, 15, 10]) {
+      await setUtilization(t, BASE_ID, u);
+      const c = await forcedCard(t);
+      const otd = c.card.otd!;
+      if (otd.onTimeCount > 0 && otd.onTimeCount < otd.total) { mid = c; midUtil = u; break; }
+    }
+    expect(mid,
+      "整条 util 梯度上都找不到「部分准时」的中间档。\n" +
+      "【WO-ORDER-BOOK-500 实测诊断·交付报告已点名】常州 90 天窗口内订单从 ~5 张涨到 47 张后，\n" +
+      "需求侧压倒产能侧：util 从 92 调到 10，越线日只从 D+1 推到 D+3（原先能推到 D+23 直至窗外 null），\n" +
+      "准时率**恒 0%**。即产能杠杆在当前订单密度下已经推不动越线日。\n" +
+      "这不是断言写窄了，是**数据标定问题**：订单簿放大了 ~20×，而基地产能没有同步放大。\n" +
+      "修法在数据侧（调订单密度或基地产能锚），不在这条断言里 —— 放宽它只会把这个信号盖掉。",
+    ).toBeDefined();
+    expect(mid!.card.otd!.onTimeCount).toBeGreaterThan(0);
+    expect(mid!.card.otd!.rate!).toBeGreaterThan(0);
 
-    // (c) 低负荷：全窗未越线（crossDay=null）→ 无单吃延误 → 87.5%
-    await setUtilization(t, BASE_ID, 40);
+    // (c) 低负荷：全窗未越线（crossDay=null）→ 无单吃延误（util 取到比中间档更松）。
+    await setUtilization(t, BASE_ID, Math.max(1, Math.min(midUtil - 5, 35)));
     const lo = await forcedCard(t);
     expect(lo.card.crossDay).toBeNull();
-    expect(lo.card.otd!.rate).toBe(87.5);
-    expect(lo.card.otd!.onTimeCount).toBe(7);
-    expect(lo.card.otd!.total).toBe(8);
+    // 判据：全窗未越线 ⇒ 绝大多数单准时；**剩下那些不准时的，全部且只能是被「客户要求交期」口径判late**
+    //（这正是下一条 SEAM-2 要单独证的那个差额）。写死的 87.5%/7/8 随订单簿扩容过期，判据不变。
+    expect(lo.card.otd!.total).toBe(lo.card.otd!.rows.length);
+    expect(lo.card.otd!.onTimeCount).toBeGreaterThan(0);
+    expect(lo.card.otd!.rate!).toBeGreaterThan(mid!.card.otd!.rate!);
+    expect(lo.card.otd!.rows.filter((r) => !r.onTime).every((r) => r.refField === "earlyDue"),
+      "全窗未越线时仍被判late 的单，必须全部是「客户要求交期」口径造成的").toBe(true);
 
     // 单调：产能越松，准时率越高（红咬：聚合层若不吃 crossDay/delay，三档会一模一样）
-    expect(hi.card.otd!.rate!).toBeLessThan(mid.card.otd!.rate!);
-    expect(mid.card.otd!.rate!).toBeLessThan(lo.card.otd!.rate!);
+    expect(hi.card.otd!.rate!).toBeLessThan(mid!.card.otd!.rate!);
+    expect(mid!.card.otd!.rate!).toBeLessThan(lo.card.otd!.rate!);
   }, 300000);
 
   it("SEAM-2 口径就是那个差额：87.5% 里唯一迟到的单，迟到只因按「客户要求交期」判（earlyDue D+11 ≠ 合同交期 D+25）", async () => {
@@ -84,24 +109,45 @@ describe("WO-SANDBOX-D4 ① OTD 批次准时率（口径 CUSTOMER_REQUEST·由 r
     const { card } = await forcedCard(t);
     const otd = card.otd!;
 
+    // WO-ORDER-BOOK-500：原文钉死「唯一迟到的单是 SO-3445，dueDay=25 / refDay=11」。
+    // 订单簿扩容后窗口内不止一张这样的单，但**本条要证的那件事一个字没变**：
+    // 「这些单之所以被判 late，纯粹是因为按**客户要求交期**（earlyDue）判，而不是按合同交期（due）判」。
+    // 改成对**每一张** late 单逐条证这件事 —— 覆盖面比原来的 1 张更大，且不再随数据量过期。
     const late = otd.rows.filter((r) => !r.onTime);
-    expect(late.length).toBe(1);
-    const l = late[0]!;
-    expect(l.so).toBe("SO-3445");
-    // 判定基准日取的是 Order.earlyDue（客户要求提前交付），不是 Order.due
-    expect(l.refField).toBe("earlyDue");
-    expect(l.dueDay).toBe(25); // 合同交期 D+25
-    expect(l.refDay).toBe(11); // 客户要求交期 D+11
-    expect(l.slackDays).toBe(l.refDay - l.predictedDay);
-    expect(l.slackDays).toBeLessThan(0);
+    expect(late.length, "一张 late 单都没有 ⇒ 本条（口径造成的那个差额）空转").toBeGreaterThan(0);
+    // 「口径差额单」= 按**客户要求交期**判 late、但按**合同交期**判却准时的那些单。
+    // 这一类的存在正是本条要证的东西：87.5% 与 100% 之间那个差额，纯粹来自口径而非产能。
+    const byCaliber = late.filter((l) => l.refField === "earlyDue" && l.predictedDay <= l.dueDay);
+    expect(byCaliber.length,
+      "没有任何一单是「按客户要求交期才 late」⇒ 口径差额不存在，本条失去被测对象。\n" +
+      "【同上诊断】常州窗内 47 张单在任何 util 下都被判延误（predictedDay > dueDay），\n" +
+      "于是没有『按合同交期算准时、只按客户要求交期才 late』的那一类单可测。同源于订单密度 vs 产能标定。",
+    ).toBeGreaterThan(0);
+    for (const l of byCaliber) {
+      // 判定基准日取的是 Order.earlyDue（客户要求提前交付），不是 Order.due
+      expect(l.refField, `${l.so} 的判定基准`).toBe("earlyDue");
+      expect(l.refDay, `${l.so}: 客户要求交期应早于合同交期，否则这单 late 与口径无关`).toBeLessThan(l.dueDay);
+      expect(l.slackDays).toBe(l.refDay - l.predictedDay);
+      expect(l.slackDays).toBeLessThan(0);
+      // 命门：换成合同交期判，这一单就变准时 —— 证明它的 late **只**由口径造成，不是真做不出来。
+      expect(l.predictedDay, `${l.so} 按合同交期判仍 late ⇒ 不是口径差额`).toBeLessThanOrEqual(l.dueDay);
+    }
+    // 换口径的代价当场可算：按合同交期判，准时率必须**严格更高**（差额 = 上面那批口径单）。
+    const rateByDue = (otd.rows.filter((r) => r.predictedDay <= r.dueDay).length / otd.total) * 100;
+    expect(rateByDue, "换成合同交期判准时率没变高 ⇒ 两种口径没有差额，本条空转").toBeGreaterThan(otd.rate!);
 
-    // 换口径的代价当场可算：若按合同交期判，这一单就变准时 → 8 单里多 1 单 → 100% 而非 87.5%（差 12.5 个点）。
-    const rateIfJudgedByDue = (otd.rows.filter((r) => r.predictedDay <= r.dueDay).length / otd.total) * 100;
-    expect(rateIfJudgedByDue).toBe(100);
-    expect(rateIfJudgedByDue - otd.rate!).toBe(12.5);
+    // 差额的大小（原文 100% − 87.5% = 12.5 个点）随窗口内单数走，不再钉死；
+    // 上一行已断言「换口径准时率严格更高」，差额存在这件事仍被咬住。
 
-    // 其余单一律走 due（无提前交付标）—— 口径逐单可溯（R13）
-    for (const r of otd.rows.filter((x) => x.so !== "SO-3445")) expect(r.refField).toBe("due");
+    // 口径逐单可溯（R13）：**只有**带提前交付标的单才走 earlyDue，其余一律走 due。
+    // 原文写死「除 SO-3445 外都走 due」——那是 24 张订单时代唯一那张 early 单；
+    // 改为按 `early` 标位逐单核对，覆盖面更大且不随数据量过期。
+    const orders = await t.repos.objects.listByType("demo", "Order");
+    const earlyBySo = new Map(orders.map((o) => [String(o.props.so), o.props.early === true && typeof o.props.earlyDue === "string"]));
+    for (const r of otd.rows) {
+      expect(r.refField, `${r.so}: early=${String(earlyBySo.get(r.so))} 却走了 ${r.refField}`)
+        .toBe(earlyBySo.get(r.so) ? "earlyDue" : "due");
+    }
   }, 300000);
 
   it("SEAM-3 独立复算（oracle 镜像）：拿求解器真输出的 affectedOrders + Order 对象自己重算一遍，与 otd 逐字段相等", async () => {
@@ -134,7 +180,18 @@ describe("WO-SANDBOX-D4 ① OTD 批次准时率（口径 CUSTOMER_REQUEST·由 r
   it("EMPTY 诚实：窗口内无订单的基地 → dataMode=EMPTY 且 rate=null（不回落 0%）；顶层 otdBatch 按 so 去重不重复计数", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    // 江门在 30 天窗口内无订单（实测）→ 该卡必须 EMPTY，绝不能报 0%
+    // WO-ORDER-BOOK-500：原文靠「江门在 30 天窗口内**恰好**无订单」这个**数据巧合**来制造 EMPTY。
+    // 订单簿扩到 500 张后 13 个基地全都有窗口内订单（实测江门 2 张），巧合没了，本条当场红 ——
+    // 而 EMPTY 这条判据本身一点没坏。形态是老病：
+    // 「我用『江门这个基地名』当作『该作用域窗口内无订单』的证据，而前者并不度量后者。」
+    // 改为**把条件造出来**（比靠巧合更强、也不会再随数据量过期）：把江门可产的订单交期全部推出窗口外，
+    // 于是「窗口内无订单」是被构造出来的确定事实，而不是碰巧。
+    const jm = await t.repos.objects.listByType("demo", "Order");
+    const jmOrders = jm.filter((o) => (o.props.bases as string[] | undefined)?.includes("jiangmen"));
+    expect(jmOrders.length, "江门一张可产订单都没有 ⇒ 下面造不出「窗口内无订单」这个态").toBeGreaterThan(0);
+    for (const o of jmOrders) {
+      await t.repos.objects.put({ ...o, props: { ...o.props, due: "2099-01-01", leadDays: 99999 } });
+    }
     const res = await invokeSolver(t, "risk_timeline", { base: "江门", factor: "物料齐套", horizon: 30 }, ADMIN);
     expect(res.statusCode, res.body).toBe(200);
     const d = (res.json() as { data: { cards: Card[]; otdBatch: Otd } }).data;

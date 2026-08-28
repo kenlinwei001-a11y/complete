@@ -5,6 +5,7 @@ import type { SyntheticService } from "./synthetic/service.js";
 import type { OntologyService } from "./ontology.js";
 import { newId } from "./ids.js";
 import { referenceCapacityForecast } from "./vle-oracle.js";
+import { ORDER_BOOK_SIZE, MODELS } from "./synthetic/battery.js";
 
 /**
  * 被测求解器调用器（V5 双算注入点）：app.ts 在构造时注入 `solvers.invoke` 的轻量包装，
@@ -61,7 +62,11 @@ export class VleService {
   /** GenSpec 已知真值：battery-manufacturing / scale=S 的核心类型行数（接入→对象化守恒下界）。
    * Base 数量从 DF.1 单一来源 BASE_REGISTRY 派生，避免基地册扩缩后 VLE 真值漂移（G-5/R14）。
    */
-  private static readonly GENSPEC_S_COUNTS: Record<string, number> = { Base: BASE_REGISTRY.length, Model: 6, Order: 24 };
+  // WO-ORDER-BOOK-500：`Order` 由写死的 24 改为**从生成器的单一来源取**（`ORDER_BOOK_SIZE`）。
+  // 写死数字正是本条断言反复过期的原因 —— 订单簿一扩，「行数守恒」这条构造预言机
+  // 就会把「数据按设计变多了」误报成「接入丢行/串行」，而它本该度量的是后者。
+  // Base/Model 同理已各自取自注册表/型号表，此处补齐最后一个写死值。
+  private static readonly GENSPEC_S_COUNTS: Record<string, number> = { Base: BASE_REGISTRY.length, Model: MODELS.length, Order: ORDER_BOOK_SIZE };
 
   async run(
     callerCtx: AuthCtx,

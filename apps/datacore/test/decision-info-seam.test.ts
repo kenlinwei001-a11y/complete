@@ -153,18 +153,26 @@ describe("WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方�
   it("① 影响面真接：风险卡点名到订单/客户/金额；改 Order.qty 真颗粒 → 敞口金额与订单量**真变**", async () => {
     const before = await risk(t);
     const cz = cardOf(before, "changzhou").exposure;
-    // 真值（seed 42·scale S·horizon 30）：常州窗内 5 张单 / 2 个客户。
+    // WO-ORDER-BOOK-500：原为写死真值「常州窗内 5 张单 / 2 个客户」+ 5 个单号（24 张订单时代）。
+    // 订单簿扩到 500 张后实测 26 张，写死值全部过期。本条要证的是**影响面真接**
+    //（点名到订单/客户/金额，且改 Order.qty 会真变），与具体条数无关 ⇒ 改成结构判据 + 非空金丝雀。
     expect(cz.status).toBe("OK");
     expect(cz.hasExposure).toBe(true);
-    expect(cz.orderCount).toBe(5);
-    expect(cz.customerCount).toBe(2);
-    expect(cz.orders.map((o) => o.so)).toEqual(["SO-3402", "SO-3512", "SO-3445", "SO-3490", "SO-3420"]);
-    expect(cz.earliest?.so).toBe("SO-3402");
+    expect(cz.orderCount, "常州窗内 0 张单 ⇒ 下面「改 qty 敞口真变」是空转").toBeGreaterThan(0);
+    expect(cz.orderCount).toBe(cz.orders.length);
+    expect(cz.customerCount).toBeGreaterThan(0);
+    expect(cz.customerCount).toBe(new Set(cz.orders.map((o) => o.cust)).size);
+    expect(cz.earliest?.so, "最早那张单必须真在影响面清单里").toBeTruthy();
+    expect(cz.orders.map((o) => o.so)).toContain(cz.earliest!.so);
     // 每张单自解释：带优先级（Order.pri 真值）+ 金额 + 交期偏移。
     expect(cz.orders.every((o) => ["高", "中", "低"].includes(o.pri))).toBe(true);
     expect(cz.orders.every((o) => o.revenueYi > 0)).toBe(true);
-    // 客户按金额降序聚合（"落在谁身上"）。
-    expect(cz.customers.map((c) => c.cust)).toEqual(["长安汽车", "东风汽车"]);
+    // 客户按金额降序聚合（"落在谁身上"）。WO-ORDER-BOOK-500：原文写死那两家（24 张订单时代常州窗内只有 2 家），
+    // 订单簿扩容后是 9 家。判据本来就是「**按金额降序**聚合、且这些客户真来自这批订单」，不是「恰好是那两家」。
+    expect(cz.customers.length, "客户聚合为空 ⇒ 「落在谁身上」没答出来").toBeGreaterThan(0);
+    const czRev = cz.customers.map((c) => c.revenueYi);
+    expect([...czRev].sort((a, b) => b - a), "客户未按金额降序聚合").toEqual(czRev);
+    expect(new Set(cz.customers.map((c) => c.cust))).toEqual(new Set(cz.orders.map((o) => o.cust)));
     expect(cz.revenueYi).toBeCloseTo(cz.customers.reduce((a, c) => a + c.revenueYi, 0), 3);
 
     // ── SEAM：改一张真订单的 qty → 敞口金额/量真变（喂 fixture 的实现在这里必红）──
@@ -175,14 +183,25 @@ describe("WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方�
     const cz2 = cardOf(after, "changzhou").exposure;
     expect(cz2.totalQty, "改 Order.qty 后敞口套数必须真变").toBeGreaterThan(cz.totalQty);
     expect(cz2.revenueYi, "改 Order.qty 后敞口金额必须真变").toBeGreaterThan(cz.revenueYi);
-    const cust0 = cz2.customers.find((c) => c.cust === "长安汽车")!;
-    expect(cust0.qty, "该客户的敞口量必须真变").toBeGreaterThan(cz.customers.find((c) => c.cust === "长安汽车")!.qty);
+    // 被改的是 SO-3402（长安汽车的单）⇒ 该客户的敞口量必须真变（不写死别的客户名·SO-3402 是锚点单，客户恒定）。
+    const changedCust = cz.orders.find((o) => o.so === "SO-3402")!.cust;
+    const cust0 = cz2.customers.find((c) => c.cust === changedCust)!;
+    expect(cust0.qty, `${changedCust} 的敞口量必须真变`).toBeGreaterThan(cz.customers.find((c) => c.cust === changedCust)!.qty);
     console.log(`① 影响面：常州 ${cz.orderCount}单/${cz.customerCount}客户/${cz.revenueYi}亿 → 改 SO-3402.qty ×3 后 ${cz2.totalQty}套/${cz2.revenueYi}亿`);
   }, 300000);
 
   it("② 零敞口是**显式态**且排序降级；把窗外订单挪进窗 → 翻 OK 且 rank 真的往前跳", async () => {
-    const out = await risk(t);
-    // 实测：江门/邯郸/自贡 三张卡窗内各 0 张单，却因「越线日↑→当前张力↓」排在数组最前。
+    // WO-ORDER-BOOK-500：原文靠「江门窗内**恰好** 0 张单」这个数据巧合来制造零敞口态。
+    // 订单簿扩到 500 张后每个基地窗内都有单，巧合没了，本条当场红 —— 而「零敞口必须是显式态」这条判据完好。
+    // 形态与 sandbox-d4 的 EMPTY 用例同源：「我用『江门这个基地名』当作『它窗内无单』的证据」。
+    // 改为**把条件造出来**：用一份独立的 app，把江门窗内的单交期推远（**保留 SO-3458 原样**，
+    // 它是窗外最近那张、也是下面 SEAM 段要挪进窗的那张），于是零敞口是被构造的确定事实。
+    const t0 = await makeApp();
+    await seedBattery(t0);
+    const jmAll = (await t0.repos.objects.listByType("demo", "Order"))
+      .filter((o) => (o.props.bases as string[] | undefined)?.includes("jiangmen") && String(o.props.so) !== "SO-3458");
+    for (const o of jmAll) await t0.repos.objects.put({ ...o, props: { ...o.props, due: "2099-01-01", leadDays: 99999 } });
+    const out = await risk(t0);
     const jm = cardOf(out, "jiangmen").exposure;
     expect(jm.status, "江门窗内 0 张 → 必须是显式 EMPTY，不是留空让前端猜").toBe("EMPTY");
     expect(jm.hasExposure).toBe(false);
@@ -206,12 +225,18 @@ describe("WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方�
     expect(out.exposureOrder.slice(-without.length).sort()).toEqual(
       out.cards.filter((c) => !c.exposure.hasExposure).map((c) => c.baseId).sort(),
     );
-    // 影响面最大的基地就该是榜首（常州 5 单 13.66 亿）。
-    expect(top.baseId).toBe("changzhou");
+    // 影响面最大的基地就该是榜首（原文写死常州 —— 随订单簿分布走，改为现算）。
+    const richest = out.cards.filter((c) => c.exposure.hasExposure)
+      .sort((a, b) => b.exposure.revenueYi - a.exposure.revenueYi)[0]!;
+    expect(top.baseId, "榜首不是敞口金额最大的基地 ⇒ 排序主序键没生效").toBe(richest.baseId);
 
     // ── SEAM：把江门那张窗外单的交期挪进窗 → 显式态翻 OK 且排名真的往前跳 ──
     const app2 = await makeApp();
     await seedBattery(app2);
+    // 与上面同样的构造（江门窗内清空），再把窗外最近那张 SO-3458 挪进窗 —— 两边起点一致，rank 才可比。
+    const jmAll2 = (await app2.repos.objects.listByType("demo", "Order"))
+      .filter((o) => (o.props.bases as string[] | undefined)?.includes("jiangmen") && String(o.props.so) !== "SO-3458");
+    for (const o of jmAll2) await app2.repos.objects.put({ ...o, props: { ...o.props, due: "2099-01-01", leadDays: 99999 } });
     await patchObject(app2, "Order", "SO-3458", "so", { due: "2026-06-25" }); // D+32 → D+15（进窗）
     const out2 = await risk(app2);
     const jm2 = cardOf(out2, "jiangmen").exposure;
@@ -274,7 +299,8 @@ describe("WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方�
     // 逐单延误必须**如实标估算**（affected_orders 的 delay 是哈希抖动派生，不是实测交付延误）。
     const dl = dn.delay as { status: string; worstDays: number; orders: { so: string; delayDays: number; basis: string }[] };
     expect(dl.status).toBe("OK");
-    expect(dl.orders.length).toBe(5);
+    // 条数随订单簿走（原写死 5）；判据是「逐单都标 ESTIMATED + worstDays 取最大」，见下两行。
+    expect(dl.orders.length, "逐单延误清单为空 ⇒ 下面两条空转").toBeGreaterThan(0);
     expect(dl.orders.every((o) => o.basis === "ESTIMATED"), "延误天数不是实测，必须标 ESTIMATED").toBe(true);
     expect(dl.worstDays).toBe(Math.max(...dl.orders.map((o) => o.delayDays)));
 
@@ -290,10 +316,25 @@ describe("WO-DECISION-INFO · 决策三块（影响面 / 不作为后果 / 方�
     // 唯一带罚金的字段必须被点名排除（拒绝死映射）。
     expect(pen.reason).toContain("LongTermAgreement.breachPenaltyWan");
 
-    // 受影响客户：名单真给，但连不到 Customer 对象就诚实说连不到（不拿轮转边冒充账期）。
-    expect(dn.atRiskCustomers.map((c) => c.cust).sort()).toEqual(["东风汽车", "长安汽车"]);
+    // 受影响客户：名单真给，且现在**连得到** Customer 对象。
+    // 同上：写死客户名单随订单簿过期。判据 = 「风险客户集 == 影响面订单的客户集」（不多不少·不凭空冒出客户）。
+    expect(dn.atRiskCustomers.length, "风险客户集为空 ⇒ 本条空转").toBeGreaterThan(0);
+    expect(new Set(dn.atRiskCustomers.map((c) => c.cust))).toEqual(new Set(cardOf(out, "changzhou").exposure.orders.map((o) => o.cust)));
     expect(dn.revenueAtRiskYi).toBeCloseTo(cardOf(out, "changzhou").exposure.revenueYi, 6);
-    expect(dn.atRiskCustomers.every((c) => c.customerObject.status === "EMPTY")).toBe(true);
+    // ⚠ WO-ORDER-BOOK-500：这条从 EMPTY **翻成 OK**，是本单要达成的效果本身，不是把断言放宽了。
+    // 原状态：`Order.cust` 写真品牌名「东风汽车」，`Customer.custName` 写匿名代号「海外车企E」，
+    // 两套名字对不上号 ⇒ `customerObject` 只能诚实报 EMPTY（"连不到，拒绝拿别人的账期冒充"）。
+    // 本单把名册收敛成一套（订单名 ≡ 档案名 + `Order.customerId` 外键）⇒ 这一跳真的通了，
+    // 于是「不作为后果」第一次能带出该客户的 termDays/creditLimit 而不是一句"算不出"。
+    // 判据同步加强：不只是 OK，还要求它带回**可用的** custId/账期/额度（空壳 OK 照样红）。
+    expect(dn.atRiskCustomers.every((c) => c.customerObject.status === "OK"),
+      "客户对象仍连不上 ⇒ 名册对齐没生效（回到了两套名字各存一份的老状态）").toBe(true);
+    for (const c of dn.atRiskCustomers) {
+      const co = c.customerObject as { status: string; custId?: string; termDays?: number; creditLimit?: number };
+      expect(co.custId, `${c.cust} 的 customerObject 没带回 custId`).toBeTruthy();
+      expect(co.termDays, `${c.cust} 的账期`).toBeGreaterThan(0);
+      expect(co.creditLimit, `${c.cust} 的信用额度`).toBeGreaterThan(0);
+    }
 
     // ── SEAM：改 Order.qty → 缺口变 → catchUp 天数真变 ──
     const app2 = await makeApp();

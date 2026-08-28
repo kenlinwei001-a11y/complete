@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, type TestApp } from "./helpers.js";
-import { deriveOrderLines, generateBattery } from "../src/synthetic/battery.js";
+import { deriveOrderLines, generateBattery, ORDER_BOOK_SIZE } from "../src/synthetic/battery.js";
 
 /**
  * WO-ORDERLINE · 订单拆行（SO→型号明细行·一单多型号多行·Phase3）SEAM 组合测（头号判据）。
@@ -93,7 +93,7 @@ describe("WO-ORDERLINE · 端到端接缝（seed 落库 × 链路 × 24 单头�
     await seedBattery(t);
     const orders = await t.repos.objects.listByType("demo", "Order");
     const orderLines = await t.repos.objects.listByType("demo", "OrderLine");
-    expect(orders.length).toBe(24); // 24 单头级基线未移（additive 只加行）
+    expect(orders.length).toBe(ORDER_BOOK_SIZE); // 订单簿 500 单（24 张锚点 + 476 补足·WO-ORDER-BOOK-500）
     expect(orderLines.length).toBeGreaterThan(orders.length); // 部分单拆多行 → 行数 > 单数
 
     // 勾稽（端到端·从仓储对象读）：每订单 Σ 行 qty === 订单 qty。
@@ -135,8 +135,8 @@ describe("WO-ORDERLINE · 端到端接缝（seed 落库 × 链路 × 24 单头�
   it("R6 双跑：同 seed 两次 generateBattery → orderLines lineId 集 + qty 字节一致·24 单头级对象数不变", () => {
     const a = generateBattery(42, "S");
     const b = generateBattery(42, "S");
-    expect(a.orders.length).toBe(24); // 头级基线
-    expect(b.orders.length).toBe(24);
+    expect(a.orders.length).toBe(ORDER_BOOK_SIZE); // 头级基线（500 = 24 锚点 + 476 补足）
+    expect(b.orders.length).toBe(ORDER_BOOK_SIZE);
     expect(JSON.stringify(a.orders)).toBe(JSON.stringify(b.orders)); // 24 单头级字节一致（R6·未被拆行子流扰动）
     expect(JSON.stringify(a.orderLines)).toBe(JSON.stringify(b.orderLines)); // 拆行字节一致
     // 勾稽（生成态）：每订单 Σ 行 === 订单 qty。

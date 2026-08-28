@@ -190,10 +190,12 @@ describe("差分门 B · risk_timeline 单给 base：不得静默扩到全网", 
     const scoped = await okData(t, "risk_timeline", { base: "zaozhuang" });
     const all = await okData(t, "risk_timeline", {});
     expect(JSON.stringify(scoped)).not.toBe(JSON.stringify(all));
-    // 修前的原样：全网路返回 8 张卡且**枣庄不在里面** —— 这条同时锚住「加性未被破」。
+    // WO-ORDER-BOOK-500：原文写死全网 8 个基地是哪几个 + 枣庄不在里面 —— 那是风险排名在
+    // 24 张订单那份数据上的结果，订单簿扩容后排名换人，写死值过期而判据（点名≠不点名）完好。
+    // 保留「加性未被破」的形状锚：仍是 8 张卡 / 8 个互不相同的基地。
     const allBases = (all.cards as { baseId: string }[]).map((x) => x.baseId);
-    expect(allBases).toEqual(["jiangmen", "handan", "zigong", "xinyang", "changzhou", "chengdu", "jinhua", "hefei"]);
-    expect(allBases).not.toContain("zaozhuang");
+    expect(allBases.length).toBe(8);
+    expect(new Set(allBases).size).toBe(8);
   });
 
   it("base + factor 双键路径不回归（原本就真重算的那条）", async () => {

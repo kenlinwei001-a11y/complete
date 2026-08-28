@@ -1,7 +1,7 @@
 import type { ObjectTypeDef, PropertyDef } from "../domain.js";
 import { WAVE1_SCALE_FACTOR } from "@platform/contracts";
 import { mulberry32, round, hashString } from "../prng.js";
-import { withPropDisplayNames, ORDER_CUST_TO_CUSTOMER } from "./battery.js";
+import { withPropDisplayNames, ORDER_CUST_TO_CUSTOMER, CUSTOMER_REGISTRY } from "./battery.js";
 
 /**
  * 20 场景目录 §7 GenSpec 扩展（成熟度 E6b）：为 13 个新求解器确定性生成所需对象数据，
@@ -776,8 +776,12 @@ export function generateExtended(
     }
   }
 
-  // Customer：PRD-IND-order-aggregate HTML 8 客户（与订单 cust 对齐，order_of_customer 可连）+ extraCustomers 工业级补充。
-  const custNames = ["整车厂A", "整车厂B", "整车厂C", "海外车企E", "商用车集团G", "储能集成商D", "储能集成商H", "电网公司F"];
+  // Customer：客户主数据 = `CUSTOMER_REGISTRY` 名册（20 家·与订单 cust **逐字同名**）+ extraCustomers 工业级补充。
+  // WO-ORDER-BOOK-500：此前这里是一排**匿名代号**字面量（整车厂A / 海外车企E / 商用车集团G…），
+  // 与订单上写的真品牌名是**两套名字**。后果不是难看，是功能坏掉：按名字/主键对号的工具全部落空
+  // （集中度求解器问「哪个客户最集中」实测回 0 个，而问型号回 5 个 —— 工具好的，数据对不上号）。
+  // 现在名字只有名册这一处出处；这里**不再自己写一份**，直接取。
+  const custNames = CUSTOMER_REGISTRY.map((c) => c.name);
   // WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）：把「本客户在订单上用哪些品牌名下单」**物化成客户主数据的一列**
   // （`orderCustNames`，由 ORDER_CUST_TO_CUSTOMER 反查·排序后确定性）。此前这层关系**根本不存在**，
   // `order_of_customer` 只能靠轮转瞎绑；有了这一列，边=归属、求解器=可溯源，三处读同一份册（R14）。
@@ -795,7 +799,9 @@ export function generateExtended(
       termDays: 60,
       receivables: round(rng() * 3000 * WAVE1_SCALE_FACTOR, 0),
       wipUnbilled: round(rng() * 2000 * WAVE1_SCALE_FACTOR, 0),
-      maxOverdueDays: name === "商用车集团G" ? 38 : Math.floor(rng() * 25),
+      // 逾期最长的那家客户（38 天·被 genspec-extended 当锚点断言）。原先钉在匿名代号「商用车集团G」上，
+      // 该代号随匿名名册一并退役 ⇒ 改钉到它所代表的商用车主品牌「宇通客车」，值不变。
+      maxOverdueDays: name === "宇通客车" ? 38 : Math.floor(rng() * 25),
     })),
     ...Array.from({ length: extraCustomers }, (_, k) => ({
       custId: `cust_x${k}`,
@@ -839,7 +845,10 @@ export function generateExtended(
         invoiceId,
         custName: c.custName,
         amount: round((200 + rng() * 1500) * WAVE1_SCALE_FACTOR, 0),
-        overdueDays: c.custName === "商用车集团G" && i === 0 ? 38 : Math.floor(rng() * 20),
+        // 戏剧点：某客户首张发票逾期 38 天（>30 ⇒ C32 信用冻结）。原钉在匿名代号「商用车集团G」上，
+        // 该代号随匿名名册退役 ⇒ 改钉它代表的真品牌「宇通客车」，与 Customer.maxOverdueDays=38 及
+        // OverdueRecord od-cg 三处同源（少改一处，这个戏剧点就悄悄消失、credit_exposure 从「冻结」变「可接」）。
+        overdueDays: c.custName === "宇通客车" && i === 0 ? 38 : Math.floor(rng() * 20),
         ...approvalFields(invoiceId), // WO-69 P3 · Approvable 契约字段
       });
     }
@@ -1048,15 +1057,21 @@ export function generateExtended(
   ];
   const arAgings = [
     { agingId: "ar-total", customerRef: "ALL", bucket: "0-30", amount: 120000, period: "2026-Q2" },
-    { agingId: "ar-90plus", customerRef: "商用车集团G", bucket: "90+", amount: 38000, period: "2026-Q2" },
+    // 同上：匿名代号退役 ⇒ 90+ 账龄桶改钉真品牌「宇通客车」（与 ARInvoice/OverdueRecord/maxOverdueDays 同一家）。
+    { agingId: "ar-90plus", customerRef: "宇通客车", bucket: "90+", amount: 38000, period: "2026-Q2" },
   ];
   const dsos = [
     { dsoId: "dso-ess", segment: "储能", days: 78, period: "2026-Q2" },
     { dsoId: "dso-com", segment: "商用车", days: 95, period: "2026-Q2" },
   ];
+  // WO-ORDER-BOOK-500：`customerRef` 原写死匿名代号「商用车集团G」/「储能集成商D」。
+  // 那两个名字随匿名名册退役后**指向了不存在的客户** —— 边悬空，`OverdueRecord` 的读数
+  // 在真 tick 之后恒 0（`process-tick-coverage` §C 当场把它抓出来了：stillZero=['OverdueRecord']）。
+  // 改钉到它们各自代表的真品牌：商用车集团G→宇通客车（正是 maxOverdueDays=38 那家，两处同源），
+  // 储能集成商D→国家电投。overdueDays/amount 一律不动。
   const overdueRecords = [
-    { overdueId: "od-cg", invoiceRef: "INV-CG-001", overdueDays: 38, customerRef: "商用车集团G", amount: 12600, ...approvalFields("od-cg") },
-    { overdueId: "od-sd", invoiceRef: "INV-SD-001", overdueDays: 12, customerRef: "储能集成商D", amount: 8400, ...approvalFields("od-sd") },
+    { overdueId: "od-cg", invoiceRef: "INV-CG-001", overdueDays: 38, customerRef: "宇通客车", amount: 12600, ...approvalFields("od-cg") },
+    { overdueId: "od-sd", invoiceRef: "INV-SD-001", overdueDays: 12, customerRef: "国家电投", amount: 8400, ...approvalFields("od-sd") },
   ];
 
   // ── WO-DYNAMIC-DRILL-RESOLVE · `DYNAMIC-*` 占位**原样落库**（解析搬到查询期）───────────────

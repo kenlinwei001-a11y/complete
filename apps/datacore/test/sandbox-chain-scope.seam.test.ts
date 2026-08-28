@@ -22,8 +22,13 @@ import { makeApp, seedBattery, invokeSolver, ADMIN, type TestApp } from "./helpe
  *   24 张 OPEN 订单 = 乘用车 12 ⊕ 储能 9 ⊕ 商用车 3。
  */
 
-const ALL = 24;
-const STORAGE_SOS = ["SO-3452", "SO-3458", "SO-3464", "SO-3470", "SO-3476", "SO-3495", "SO-3501", "SO-3518", "SO-3529"];
+// WO-ORDER-BOOK-500：原本这里写死 `ALL = 24` 与 9 个储能单号。订单簿扩到 500 张后两者全部过期
+// （`affected_orders` 还带 [day−7, day+14] 交期窗，全集实测 127 张而不是 500）。
+// 判据本身没变 ——「筛出来的**不多不少**正好是全集里属于该业务线的那些单」——
+// 只是期望值改为**从同一次全集结果里现算**：漏筛会少、过筛会多，两边照样当场红，
+// 而且再也不会因为换了一批种子数据就整片变红。
+const segSos = (all: AggOut, truth: Map<string, string>, seg: string): string[] =>
+  all.rows.filter((r) => truth.get(r.so) === seg).map((r) => r.so).sort();
 
 interface AggOut {
   summary: { orderCount: number; totalQty: number; custCount: number; revenue: number };
@@ -65,9 +70,18 @@ describe("WO-SANDBOX-E2 · SEAM 命门：选储能推演 → 结果只含储能�
 
     // 基线（未限定）：全细分同框 —— 这就是"用户以为筛了、其实没筛"时会看到的东西。
     const all = await agg(t, {});
-    expect(all.summary.orderCount).toBe(ALL);
+    const ALL = all.summary.orderCount;
+    // 金丝雀：全集非空且行数与 summary 对得上，否则下面所有「收窄了」的比较都是 0 与 0 比。
+    expect(ALL, "全集 0 张 ⇒ 种子没种进来，不是筛得准").toBeGreaterThan(0);
+    expect(all.rows.length).toBe(ALL);
     expect([...new Set(all.rows.map((r) => truth.get(r.so)))].sort()).toEqual(["commercial", "passenger", "storage"]);
     expect(all.scope, "未限定 → 不回带 scope 字段（避免'未指定'被读成'限定了个空的'）").toBeUndefined();
+
+    // 三业务线在全集里各自的真单号（下面「不多不少」的期望值出处）。
+    const essSos = segSos(all, truth, "storage");
+    const pasSos = segSos(all, truth, "passenger");
+    expect(essSos.length, "全集里一张储能单都没有 ⇒ 下面的『筛准了』是空转").toBeGreaterThan(0);
+    expect(pasSos.length, "全集里一张乘用车单都没有 ⇒ 反向对称那段是空转").toBeGreaterThan(0);
 
     // 选储能推演。
     const ess = await agg(t, { businessTypes: ["storage"] });
@@ -76,9 +90,10 @@ describe("WO-SANDBOX-E2 · SEAM 命门：选储能推演 → 结果只含储能�
     const leaked = ess.rows.filter((r) => truth.get(r.so) !== "storage");
     expect(leaked.map((r) => `${r.so}/${r.cust}/${truth.get(r.so)}`), "选储能推演却混入了其他细分的订单（跨细分泄漏）").toEqual([]);
 
-    // ★ 命门②：真收窄（9 ≠ 24）且**不多不少正好是种子里那 9 张储能单**（漏筛红、过筛也红）。
-    expect(ess.summary.orderCount).toBe(9);
-    expect(sos(ess)).toEqual(STORAGE_SOS);
+    // ★ 命门②：真收窄（储能 ≠ 全集）且**不多不少正好是全集里的那些储能单**（漏筛红、过筛也红）。
+    expect(ess.summary.orderCount).toBeLessThan(ALL);
+    expect(ess.summary.orderCount).toBe(essSos.length);
+    expect(sos(ess)).toEqual(essSos);
 
     // ★ 命门③：下游聚合数字跟着真变（不是只在行集上过滤、汇总仍用全集算）。
     expect(ess.summary.revenue).toBeLessThan(all.summary.revenue);
@@ -90,11 +105,11 @@ describe("WO-SANDBOX-E2 · SEAM 命门：选储能推演 → 结果只含储能�
     expect(chainOrderIds.length, "储能作用域下 problems 根因链应非空（空树会让本断言变成空转）").toBeGreaterThan(0);
     expect(chainOrderIds.filter((id) => truth.get(id) !== "storage"), "problems 根因链混入非储能订单").toEqual([]);
 
-    // 反向对称：选乘用车 → 12 张全乘用车，且与储能集**零交集**（两次推演互不串味）。
+    // 反向对称：选乘用车 → 全是乘用车，且与储能集**零交集**（两次推演互不串味）。
     const pas = await agg(t, { businessTypes: ["passenger"] });
-    expect(pas.summary.orderCount).toBe(12);
+    expect(pas.summary.orderCount).toBe(pasSos.length);
     expect(pas.rows.filter((r) => truth.get(r.so) !== "passenger")).toEqual([]);
-    expect(sos(pas).filter((s) => STORAGE_SOS.includes(s))).toEqual([]);
+    expect(sos(pas).filter((s) => essSos.includes(s))).toEqual([]);
   });
 
   it("逐单类求解器（order_fullchain / atp_check）：缺省选单也在作用域内挑，不再恒落全集首单", async () => {
@@ -132,10 +147,14 @@ describe("WO-SANDBOX-E2 · 三维可组合（业务线 ⊕ 基地 ⊕ 型号 三
     const byBt = await agg(t, { businessTypes: ["passenger"] });
     const byBase = await agg(t, { baseIds: ["changzhou"] });
     const byModel = await agg(t, { modelIds: ["4680-NCM"] });
-    expect(byBt.summary.orderCount).toBe(12);
-    expect(byBase.summary.orderCount).toBe(8);
-    expect([...new Set(byBase.rows.map((r) => truth.get(r.so)))].sort(), "常州须是混业态基地，否则本用例证不出三维正交").toEqual(["passenger", "storage"]);
-    expect(byModel.summary.orderCount).toBe(8);
+    // WO-ORDER-BOOK-500：三个单维条数原为写死的 12/8/8，随订单簿扩容全部过期。
+    // 本用例真正要证的是**三维正交、交集严格更小**，与单维具体条数无关 ⇒ 只钉「各维非空」这个前提
+    // （任一维为空，下面「交集严格小于它」就退化成 0<0 的空转）。
+    expect(byBt.summary.orderCount, "乘用车维为空 ⇒ 下面的交集比较空转").toBeGreaterThan(0);
+    expect(byBase.summary.orderCount, "常州基地维为空 ⇒ 下面的交集比较空转").toBeGreaterThan(0);
+    expect(byModel.summary.orderCount, "4680-NCM 型号维为空 ⇒ 下面的交集比较空转").toBeGreaterThan(0);
+    // 常州必须是**混业态**基地，否则「基地维不蕴含业务线维」证不出来（这条是判据，不是计数，保留）。
+    expect(new Set(byBase.rows.map((r) => truth.get(r.so))).size, "常州须是混业态基地，否则本用例证不出三维正交").toBeGreaterThan(1);
 
     // 三维同给。
     const combo = await agg(t, { businessTypes: ["passenger"], baseIds: ["changzhou"], modelIds: ["4680-NCM"] });
@@ -143,7 +162,8 @@ describe("WO-SANDBOX-E2 · 三维可组合（业务线 ⊕ 基地 ⊕ 型号 三
     // ★ 命门：结果 == 三个单维集合的**交集**（逐单号对拍·不是"数量对上了"）。
     const inter = sos(byBt).filter((s) => sos(byBase).includes(s) && sos(byModel).includes(s));
     expect(sos(combo)).toEqual(inter);
-    expect(sos(combo)).toEqual(["SO-3402", "SO-3415", "SO-3420", "SO-3490"]);
+    // 交集非空 —— 否则「== 三维交集」在空集上恒成立，命门空转。
+    expect(inter.length, "三维交集为空 ⇒ 本用例证不出「三维都生效」").toBeGreaterThan(0);
 
     // ★ 命门：严格小于每一个单维 —— 只要有任一维被丢掉（SEAM-ARG-DROP），结果必等于其中某个单维集合，这里立刻红。
     for (const [name, single] of [["businessTypes", byBt], ["baseIds", byBase], ["modelIds", byModel]] as const) {
@@ -162,7 +182,9 @@ describe("WO-SANDBOX-E2 · 三维可组合（业务线 ⊕ 基地 ⊕ 型号 三
     for (const form of ["zaozhuang", "枣庄", "obj_base_枣庄"]) {
       out.push(await agg(t, { businessTypes: ["storage"], baseIds: [form] }));
     }
-    expect(sos(out[0]!)).toEqual(["SO-3452", "SO-3464", "SO-3495", "SO-3518"]);
+    // 本用例的判据是**三种写法归一到同一结果**（没另造一套归一），不是「恰好是这 4 张单」。
+    // 写死单号随订单簿扩容过期；改钉「非空 + 三形态全等」。
+    expect(sos(out[0]!).length, "枣庄储能作用域为空 ⇒ 三形态全等退化成空集相等，证不出归一").toBeGreaterThan(0);
     expect(sos(out[1]!)).toEqual(sos(out[0]!));
     expect(sos(out[2]!)).toEqual(sos(out[0]!)); // obj_base_ 前缀被 normalizeBaseRef strip（症② 同族）
   });
@@ -181,7 +203,7 @@ describe("WO-SANDBOX-E2 · 诚实缺席（静默返回全集是最危险的一�
       for (const legal of ["passenger", "commercial", "storage"]) expect(err.message).toContain(legal);
     }
     // ★ 命门：错的那次绝不能悄悄给出全集 —— 上面已断 400；这里再确认全集只在**未限定**时才出现。
-    expect((await agg(t, {})).summary.orderCount).toBe(ALL);
+    expect((await agg(t, {})).summary.orderCount, "未限定时应给全集").toBeGreaterThan(0);
   });
 
   it("合法但作用域内无订单 → 诚实空（0 行），不是静默全集", async () => {
@@ -192,7 +214,7 @@ describe("WO-SANDBOX-E2 · 诚实缺席（静默返回全集是最危险的一�
     expect(empty.summary.orderCount).toBe(0);
     expect(empty.rows).toEqual([]);
     expect(empty.summary.revenue).toBe(0);
-    expect(empty.summary.orderCount, "空作用域返回了全集 = 静默兜底").not.toBe(ALL);
+    expect(empty.summary.orderCount, "空作用域返回了全集 = 静默兜底").not.toBe((await agg(t, {})).summary.orderCount);
     // 回带 scope，让"我确实按这三维筛过、真的没有"可被看见（空 ≠ 没筛）。
     expect(empty.scope).toEqual({ businessTypes: ["commercial"], baseIds: ["handan"] });
   });

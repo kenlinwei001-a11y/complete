@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN } from "./helpers.js";
 import type { SyntheticJob } from "../src/domain.js";
+import { ORDER_BOOK_SIZE } from "../src/synthetic/battery.js";
 
 async function runJob(t: Awaited<ReturnType<typeof makeApp>>, seed = 42): Promise<SyntheticJob> {
   const res = await t.app.inject({
@@ -19,7 +20,7 @@ describe("A7 synthetic data", () => {
     const job1 = await runJob(t);
     expect(job1.status).toBe("SUCCEEDED");
     const report = job1.report!;
-    expect(report.rowCounts).toMatchObject({ Base: 13, Model: 6, Order: 24 });
+    expect(report.rowCounts).toMatchObject({ Base: 13, Model: 6, Order: ORDER_BOOK_SIZE }); // WO-ORDER-BOOK-500：订单簿 24→500
     for (const check of report.fkChecks) expect(check, check.check).toMatchObject({ passed: true });
     for (const spot of report.derivationSpotChecks) expect(spot.ok, `${spot.typeKey}.${spot.propKey}`).toBe(true);
     // global-sim 升为核心内置视图（seed:true·view-manifest.BUILTIN_VIEWS·WO-MEMORY-VIEW-RESILIENCE）→ 进 scenarioSeed.views
@@ -217,11 +218,11 @@ describe("A7 synthetic data", () => {
     const byName = new Map(datasets.map((d) => [d.name, d]));
     for (const ds of ["mes_base_master", "plm_models", "erp_sales_orders"]) expect(byName.get(ds), `RawDataset ${ds} 存在`).toBeTruthy();
     const orderDs = byName.get("erp_sales_orders")!;
-    expect(orderDs.rowCount).toBe(24);
+    expect(orderDs.rowCount).toBe(ORDER_BOOK_SIZE); // 订单原始表行数 = 订单簿规模
     expect(orderDs.sourceConnId).toBe(erp!.id); // 订单原始表归 ERP 源系统连接（mock→real）
 
     const rowsRes = (await t.app.inject({ method: "GET", url: `/a/v1/raw-datasets/${orderDs.id}/rows`, headers: ADMIN })).json() as { rows: Record<string, unknown>[] };
-    expect(rowsRes.rows.length).toBe(24); // 原始行可在数据源页查看
+    expect(rowsRes.rows.length).toBe(ORDER_BOOK_SIZE); // 原始行可在数据源页查看
 
     // ③ 对象 origin 可溯回原始表：rawDatasetId 指真实数据集 + 行序 + 源系统连接（origin.type 仍为 SYNTHETIC，透明可溯）
     const orders = await t.repos.objects.listByType("demo", "Order");

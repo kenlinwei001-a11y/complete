@@ -4,6 +4,9 @@ import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SC
 import { OUTSOURCE_REDLINE, OUTSOURCE_SAMPLE, outsourceRedlinePct, outsourceRedlineViolationExpr } from "@platform/contracts";
 // WO-RULE-EXPR-PARAMS：规则 DSL 的命名阈值引用（`params.<名>`）——阈值只存 rule.params 一处，禁在 expression 里复写。
 import { ruleParamRef, parityRuleExpression, parityRuleParams } from "@platform/contracts";
+// WO-ORDER-BOOK-500：订单**头级**三态 + 70:20:10 构成，比例与取值只存契约一处（生成器与断言同读，防双份真相）。
+import { ORDER_STATUSES, orderStatusTargets } from "@platform/contracts";
+import type { OrderStatus } from "@platform/contracts";
 import type { ExcSeverity, ExcStatus } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
 import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
@@ -143,23 +146,125 @@ export function baseServeCostWan(baseId: string): number {
   return round(baseNetworkMeanDistanceKm(baseId) * c.servePerKmWan, 2);
 }
 
-// PRD-IND-order-aggregate：HTML 8 客户（应用细分按客户名判定：含「商用车」→商用车 · 含「储能/电网」→储能 · 否则乘用车）。
-const CUSTOMERS = [
-  // 乘用车
-  "广汽集团", "长安汽车", "吉利汽车", "东风汽车", "小鹏汽车",
-  // 商用车
-  "宇通客车", "金龙客车", "奇瑞", "瑞驰新能源", "Ashok Leyland",
-  // 储能
-  "国家电网", "国家电投", "南方电网", "龙源电力",
+/**
+ * WO-ORDER-BOOK-500 · **客户名册（单一注册表）** —— 20 家，订单侧与客户主数据侧**同一套名字**。
+ *
+ * ## 这张表解决的病（实测复现过，不是假想）
+ *
+ * 修前是**两套名字各存一份**：订单上写真品牌名（`Order.cust = "东风汽车"`），
+ * 客户主数据里却是匿名代号（`Customer.custName = "海外车企E"`），中间靠 `ORDER_CUST_TO_CUSTOMER`
+ * 一张 14→8 的映射表勉强搭桥。后果是「隐性集中度」求解器问**「哪个客户最集中」回 0 个**：
+ * 该求解器按**主键值**建索引（`solvers/service.ts` `concentrationRisk`：
+ * `idxByType.get(toType).get(refVal)`，索引键 = `Customer` 的主键 `custId` = `cust_0`），
+ * 而订单上拿得出的只有 `"东风汽车"` 这个显示名 ⇒ 每一跳都解析不到 ⇒ 全部断链 ⇒ 集中点 0 个。
+ * 金丝雀同时成立：同一个求解器问**「哪个型号最集中」回 5 个** —— 因为 `Order.model` 存的
+ * 恰好就是 `Model` 的主键值 `"4680-NCM"`。**工具是好的，是数据对不上号。**
+ *
+ * ## 修法（两件，缺一件都不成）
+ *  1. **退役匿名名册**：`Customer.custName` 直接就是本表的 `name`（真品牌名），
+ *     与 `Order.cust` **逐字相同** ⇒ 全仓只剩一套客户名字，不再有「第二份注册表」。
+ *  2. **补真外键**：`Order.customerId` 存 `Customer` 的主键 `custId`，并在 `orderProps` 里
+ *     **声明成 `ref → Customer`** ⇒ 集中度求解器的自动寻路（`databuilder/solver-args.ts`
+ *     `deriveConcentrationRisk` 只走**声明过的** `refToTypeKey`）从此走得通 Order→Customer。
+ *     ⚠ 名字（`cust`）与外键（`customerId`）并存**不是**两份注册表：一个是显示名、一个是主键，
+ *     两者都由本表派生，改名只改这里一处。
+ *
+ * ## 名字从哪来（**没有一个是编的**）
+ * 主体企业 = 中创新航（CALB）。本表 20 家全部来自两个出处，二选一，无第三类：
+ *  1. **24 张锚点订单上原本就写着的 8 家**（`广汽集团` `长安汽车` `吉利汽车` `东风汽车`
+ *     `宇通客车` `国家电网` `南方电网` `国家电投`）—— 全仓测试与文档的坐标，**一个字都不许改**；
+ *  2. **主体企业公开报道的真实客户名单**（2023–2025），与上面 8 家去重后取 12 家：
+ *     广汽埃安 · 小鹏汽车 · 零跑汽车 · 广汽新能源 · 深蓝汽车 · 合创汽车 · 蔚来汽车 ·
+ *     上汽通用五菱 · 小米汽车 · 智己汽车 · 大众 · 现代。
+ *
+ * 名单里的 `丰田` 本轮未纳入（8+12 已满 20，取满即止），需要时从这里补。
+ *
+ * ## `weight` = 订单分配权重（**取自真实装机集中度，不是我编的形状**）
+ * 平均分给 20 家 ⇒「客户集中度」恒等于 5%×20，这个分析就等于做死了。
+ * 本表照主体企业 2023 年 1–10 月国内新能源乘用车装机结构给权重：
+ * **广汽埃安 46.7%（9.3 GWh）· 小鹏 17.3%（3.4 GWh）· 两家合计 ≈64%**，其余摊给十几家。
+ *
+ * 口径说明：权重按**订单数**分配（不是金额）——订单数是生成器直接控制得住的量，
+ * 金额还要叠加型号单价与 qty 波动，对不准反而说不清；实测金额口径的占比与订单数口径
+ * 相差 1 个百分点以内（见交付报告实测表）。权重和 = 1000，仅作相对比例用；
+ * 24 张锚点单的客户是**固定**的，会叠加在加权结果之上，故实测占比与名义权重略有出入。
+ */
+export const CUSTOMER_REGISTRY: { name: string; businessType: BusinessType; weight: number }[] = [
+  // ── 龙头两家：权重直接取真实装机占比（2023 年 1–10 月国内新能源乘用车装机结构）──
+  //    广汽埃安 46.7%（9.3 GWh）· 小鹏 17.3%（3.4 GWh）· 两家合计 ≈64%。
+  //    ⚠ **TOP1 接近一半**不是造数造歪了，这正是主体企业真实的收入结构；
+  //    也正因为如此，「丢掉最大客户会怎样 / 我的收入结构安全吗」才是一道生死题而不是纸面练习。
+  { name: "广汽埃安", businessType: "passenger", weight: 467 },
+  { name: "小鹏汽车", businessType: "passenger", weight: 173 },
+  // ── 真实客户名单第 3–10 名（零跑 / 广汽新能源 / 长安 / 深蓝 / 合创 / 蔚来 / 吉利）──
+  { name: "零跑汽车", businessType: "passenger", weight: 42 },
+  { name: "广汽新能源", businessType: "passenger", weight: 36 },
+  { name: "长安汽车", businessType: "passenger", weight: 33 }, // 锚点
+  { name: "深蓝汽车", businessType: "passenger", weight: 23 },
+  { name: "合创汽车", businessType: "passenger", weight: 19 },
+  { name: "蔚来汽车", businessType: "passenger", weight: 17 },
+  { name: "吉利汽车", businessType: "passenger", weight: 18 }, // 锚点
+  // ── 储能业务线（主体企业动力+储能双线经营）──
+  //    这三家是**锚点里本来就有的真实电网/发电集团**，不是编的：实测 24 张锚点订单里
+  //    有 9 张（37.5%）是储能单，全部落在这三家名下。车企名单里没有储能客户，
+  //    所以此处**一家新的都不加**（宁可少，不许编），只保留这三家真实存在的。
+  { name: "国家电网", businessType: "storage", weight: 34 }, // 锚点
+  { name: "南方电网", businessType: "storage", weight: 25 }, // 锚点
+  { name: "国家电投", businessType: "storage", weight: 15 }, // 锚点
+  // ── 真实客户名单尾部 + 已进入供应链的海外/合资车企（大众 / 现代）──
+  { name: "上汽通用五菱", businessType: "passenger", weight: 12 },
+  { name: "小米汽车", businessType: "passenger", weight: 9 },
+  { name: "广汽集团", businessType: "passenger", weight: 7 }, // 锚点（埃安/新能源的母集团，三者并列是真实的集团—子品牌结构）
+  { name: "智己汽车", businessType: "passenger", weight: 10 },
+  // 锚点·唯一商用车客户。权重 40 是**实测逼出来的**，不是拍的：按纯乘用车装机比例摊，
+  // 商用车只剩 5 单，且 `IN_PRODUCTION × commercial` 这一格**恰好为 0** ——
+  // 三业务线（乘/商/储）是系统建模的一等维度（WO-W5 三重张力），一格空掉这维就废了。
+  // 真实装机表只覆盖**乘用车**，对商用车份额一个字都没说，所以这个权重不与任何公开数字冲突；
+  // 补的量全部从中部乘用车客户里出，**TOP1/TOP2 这两个有出处的数一分未动**。
+  { name: "宇通客车", businessType: "commercial", weight: 40 },
+  { name: "大众", businessType: "passenger", weight: 9 },
+  { name: "东风汽车", businessType: "passenger", weight: 2 }, // 锚点
+  { name: "现代", businessType: "passenger", weight: 9 },
 ];
+
+/** 客户名池（订单 `cust` 取值域）—— 由名册派生，不再另写一份。 */
+const CUSTOMERS = CUSTOMER_REGISTRY.map((c) => c.name);
+
+/**
+ * 客户主键 `custId`：**ascii**（`cust_0`…），刻意不用中文名当主键 —— 中文经 id sanitize 后会碰撞。
+ * 序号 = 名册下标，故锚点 8 家恒为 `cust_0`…`cust_7`（`battery-extended.ts` 的
+ * `cf-customer-concentration` 因果因子钉的就是 `cust_0`，序号漂了它会指向别人）。
+ */
+export const CUSTOMER_IDS: Record<string, string> = Object.fromEntries(
+  CUSTOMER_REGISTRY.map((c, i) => [c.name, `cust_${i}`]),
+);
+
+/** 客户名 → `Customer` 主键；名册外返回 undefined（诚实缺席·调用方据此不建边）。 */
+export function custIdOfCustomer(name: string): string | undefined {
+  return CUSTOMER_IDS[name];
+}
+
+/**
+ * 长尾加权抽客户：`r ∈ [0,1)` 取自主 rng 的**一次**抽样 —— 与被它替换掉的 `pick(rng, CUSTOMERS)`
+ * 消耗的 rng 次数**完全相同（1 次）**，故补足段的 rng 流步长不位移（R6）。
+ */
+function pickCustomerWeighted(r: number): string {
+  const total = CUSTOMER_REGISTRY.reduce((a, c) => a + c.weight, 0);
+  let acc = r * total;
+  for (const c of CUSTOMER_REGISTRY) {
+    acc -= c.weight;
+    if (acc < 0) return c.name;
+  }
+  return CUSTOMER_REGISTRY[CUSTOMER_REGISTRY.length - 1]!.name;
+}
 
 // WO-W5·业务类型（乘/商/储）单一来源客户册：客户名 → 业务类型（passenger|commercial|storage）。
 // 显式映射（不靠 regex·防「国家电投」不含「电网」被误判乘用车 / 奇瑞·瑞驰不含「客车」被误判乘用车的旧坑）。
-export const CUSTOMER_BUSINESS_TYPE: Record<string, BusinessType> = {
-  广汽集团: "passenger", 长安汽车: "passenger", 吉利汽车: "passenger", 东风汽车: "passenger", 小鹏汽车: "passenger",
-  宇通客车: "commercial", 金龙客车: "commercial", 奇瑞: "commercial", 瑞驰新能源: "commercial", "Ashok Leyland": "commercial",
-  国家电网: "storage", 国家电投: "storage", 南方电网: "storage", 龙源电力: "storage",
-};
+// WO-ORDER-BOOK-500：改由 `CUSTOMER_REGISTRY` 派生 —— 此前是**另抄一份**的字面量表，
+// 加一家客户要记得改两处，漏一处就是「名册里有、业务类型判不出」的静默错分。
+export const CUSTOMER_BUSINESS_TYPE: Record<string, BusinessType> = Object.fromEntries(
+  CUSTOMER_REGISTRY.map((c) => [c.name, c.businessType]),
+) as Record<string, BusinessType>;
 /** 客户 → 业务类型（册命中优先·未知客户按名兜底 regex·仍无 → 乘用车 default）。 */
 export function businessTypeOfCustomer(cust: string): BusinessType {
   const hit = CUSTOMER_BUSINESS_TYPE[cust];
@@ -172,10 +277,10 @@ export function businessTypeOfCustomer(cust: string): BusinessType {
 // WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）· **客户归属册**（单一来源 R14）
 // ─────────────────────────────────────────────────────────────────────────────
 /**
- * `Order.cust`（订单侧品牌名）→ `Customer.custName`（客户主数据侧**匿名化名册**）的**声明式**归属。
+ * `Order.cust`（订单侧品牌名）→ `Customer.custName`（客户主数据侧名字）的**声明式**归属。
  * `order_of_customer` 边由本册派生 —— 这是「客户维」在数据层的唯一真相。
  *
- * **修前的病（实测·seed 42·scale S）**：`synthetic/service.ts` 用 `custIds[oi % custIds.length]`
+ * **修前的病 ①（实测·seed 42·scale S）**：`synthetic/service.ts` 用 `custIds[oi % custIds.length]`
  * **按订单序轮转**绑边，与订单上写的客户名毫无关系：
  * ```
  * cust_4 商用车集团G: SO-3431(广汽集团/2170-NCM), SO-3481(广汽集团/4680-NCM), SO-3523(广汽集团/4680-NCM)
@@ -184,41 +289,37 @@ export function businessTypeOfCustomer(cust: string): BusinessType {
  * 「商用车集团」名下三张全是乘用车整车厂的单，「电网公司」名下挂着客车厂的单 ——
  * 任何沿这条边做客户维的求解（S15 `quote_margin`）拿到的都是**张冠李戴**的订单集。
  *
- * **修后的可校验不变量（R-CUST-ATTRIB）**：每条 `order_of_customer` 边两端业态必须一致 ——
+ * **修前的病 ②（WO-ORDER-BOOK-500 修掉的就是它）**：上面那一版把病 ① 修成了「14 个品牌名 →
+ * 8 个**匿名代号**」的映射。边是连对了，但**名字仍然是两套**：订单上写「东风汽车」，
+ * 客户档案上写「海外车企E」。凡是**按名字对号**的工具全部落空 —— 集中度求解器问「哪个客户最集中」
+ * 回 **0 个**（它按 `Customer` 主键建索引，订单侧根本拿不出主键）。
+ * ⇒ 本册现已**退役匿名名册**，收敛成**恒等映射**（`Order.cust` ≡ `Customer.custName`，
+ * 均取自 `CUSTOMER_REGISTRY` 这一处），全仓只剩一套客户名字。
+ *
+ * **可校验不变量（R-CUST-ATTRIB）**：每条 `order_of_customer` 边两端业态必须一致 ——
  * `businessTypeOfCustomer(Order.cust)` ≡ `customerSegKeyOf(Customer.custName)`
  * （passenger↔pas / commercial↔com / storage↔ess）。轮转绑定必然违反此式，因此它同时是**变异反证门**。
- *
- * 名册侧的字母后缀（A/B/C/E/G/D/H/F）是**匿名化标签**，不承载业务含义；本册把它们钉到订单侧的品牌名上。
- * 1:N（一个客户集团对应多个下单品牌）是刻意的：客户主数据 8 行 vs 订单品牌 14 个，1:1 不可能且不必要。
+ * 收敛成恒等映射后此式**由构造成立**（两边同名同册），门从「可能红」变成「不可能红」——
+ * 这不是把门拆了，是把它守的那个缺口从数据层焊死了。
  */
-export const ORDER_CUST_TO_CUSTOMER: Record<string, string> = {
-  // 乘用车（pas）——「整车厂A/B/C」+「海外车企E」（E ← 东风：合资/海外品牌体系归口）
-  广汽集团: "整车厂A",
-  长安汽车: "整车厂B",
-  吉利汽车: "整车厂C",
-  小鹏汽车: "整车厂C",
-  东风汽车: "海外车企E",
-  // 商用车（com）——统一归「商用车集团G」（含唯一境外品牌 Ashok Leyland）
-  宇通客车: "商用车集团G",
-  金龙客车: "商用车集团G",
-  奇瑞: "商用车集团G",
-  瑞驰新能源: "商用车集团G",
-  "Ashok Leyland": "商用车集团G",
-  // 储能（ess）——发电集团归「储能集成商D」、南网系归「储能集成商H」、国网系归「电网公司F」
-  国家电投: "储能集成商D",
-  龙源电力: "储能集成商D",
-  南方电网: "储能集成商H",
-  国家电网: "电网公司F",
-};
+export const ORDER_CUST_TO_CUSTOMER: Record<string, string> = Object.fromEntries(
+  CUSTOMER_REGISTRY.map((c) => [c.name, c.name]),
+);
 
 /**
- * `Customer.custName`（匿名化名册）→ 细分键（pas|com|ess）。
- * 与 `synthetic/ceo-dataset.ts segOfCust` **同口径**（那里已按同样的名字前缀判细分，是既有单一来源）；
- * 此处显式化以便当作**不变量断言**用，不再靠散落的 `includes` 各判各的。
+ * `Customer.custName` → 细分键（pas|com|ess）。
+ *
+ * WO-ORDER-BOOK-500：改由**名册**判定。此前是按名字里的关键词猜（`includes("商用车")` /
+ * `includes("电网")`），那套只在匿名代号（「商用车集团G」「电网公司F」）上成立 ——
+ * 名字换成真品牌之后它会把「宇通客车」判成 pas（不含「商用车」三个字）、
+ * 把「国家电投」判成 pas（不含「电网」）。同一个坑 `CUSTOMER_BUSINESS_TYPE` 的注释里
+ * 早就点名警告过，只是当时没人把这个函数一起改。
  */
 export function customerSegKeyOf(custName: string): "pas" | "com" | "ess" {
-  if (custName.includes("商用车")) return "com";
-  if (custName.includes("储能") || custName.includes("电网")) return "ess";
+  const bt = CUSTOMER_BUSINESS_TYPE[custName];
+  if (bt) return segKeyOfBusinessType(bt);
+  if (custName.includes("商用车") || custName.includes("客车")) return "com";
+  if (custName.includes("储能") || custName.includes("电网") || custName.includes("电投") || custName.includes("电力")) return "ess";
   return "pas";
 }
 
@@ -284,6 +385,76 @@ export const HTML_ORDERS: { so: string; cust: string; model: string; qty: number
   { so: "SO-3534", cust: "东风汽车", model: "4680-NCM", qty: 14518, due: "2026-07-27", pri: "高" },
   { so: "SO-3540", cust: "宇通客车", model: "2170-NCM", qty: 4033, due: "2026-07-17", pri: "低" },
 ];
+
+/**
+ * WO-ORDER-BOOK-500 · 订单簿规模（demo/scale S 的订单条数）—— **条数的单一来源**。
+ *
+ * 上面 24 张是 PRD-IND-order-aggregate 的手写语义锚点（`SO-3391`… 是全仓测试/文档引用的坐标），
+ * **原样保留、字节不动**；`generateBattery` 把簿子补足到本数。
+ */
+export const ORDER_BOOK_SIZE = 500;
+
+/**
+ * 订单簿三态的**确定性**分配（补足段专用）。
+ *
+ * 输入 `sos` = 补足段订单号（按生成序），`targets` = 该段各态还差多少张。
+ * 做法：先按目标条数摊出**恰好**那么多个状态标签，再用 `mulberry32(seed ^ hash("order-status"))`
+ * 做 Fisher–Yates 洗牌打散 —— 于是
+ *  ① **条数精确**（不是概率抽样，不会「大约 70%」）；
+ *  ② 状态与 `so` 的自然序**不相关**（否则会长成「前 350 张全已完成」这种一眼假的块状分布）；
+ *  ③ **不碰主 `rng` 流**（独立种子子流·仿 `deriveOrderLines` 的既有做法）⇒
+ *     L/XL 补足段的 model/qty/due 字节基线不位移（R6）。
+ */
+function assignOrderStatuses(sos: string[], targets: Record<OrderStatus, number>, seed: number): Map<string, OrderStatus> {
+  const labels: OrderStatus[] = [];
+  for (const s of ORDER_STATUSES) for (let k = 0; k < (targets[s] ?? 0); k++) labels.push(s);
+  // 目标与实际条数不等时按实际截断/补 OPEN（诚实兜底：宁可少一态，不许静默改总数）。
+  while (labels.length < sos.length) labels.push("OPEN");
+  labels.length = sos.length;
+  const rngStatus = mulberry32(seed ^ hashString("order-status"));
+  for (let i = labels.length - 1; i > 0; i--) {
+    const j = Math.floor(rngStatus() * (i + 1));
+    [labels[i], labels[j]] = [labels[j] as OrderStatus, labels[i] as OrderStatus];
+  }
+  return new Map(sos.map((so, i) => [so, labels[i] as OrderStatus]));
+}
+
+/**
+ * WO-ORDER-BOOK-500 · 客户业态 → 可下单型号池（**化学体系必须与用途自洽**）。
+ *
+ * 判据不是我拍的，是从 24 张锚点订单实测反推出来的：
+ *  · `passenger` / `commercial` → 只出现 NCM 动力型号（2170-NCM / 4680-NCM / 方形-NCM）
+ *  · `storage`                  → 只出现 LFP 储能型号（4680-LFP / 圆柱-LFP / 方形-LFP）
+ *
+ * 实现读的是 `MODELS` 早就有的 `pos` 列（动力 / 储能 / 动力+储能）—— **不另立一份型号分类**。
+ * 「动力+储能」（4680-LFP）两个池子都进，这正是那个值的含义，不是漏筛。
+ *
+ * 不做这层筛选会开出「国家电网订 2170-NCM」这种单：储能客户买三元动力电芯，
+ * 数据一被追问就穿帮，而且会让「按化学体系看客户结构」这类分析给出反的结论。
+ */
+function modelsForBusinessType<T extends { pos?: string }>(models: T[], businessType: BusinessType): T[] {
+  const want = businessType === "storage" ? "储能" : "动力";
+  const pool = models.filter((m) => String(m.pos ?? "").includes(want));
+  return pool.length > 0 ? pool : models; // 型号表里没有该用途时不静默空池（诚实兜底回全池）
+}
+
+/**
+ * 状态 → 交期相对 `forecastStart` 的天偏移（**交期必须与状态自洽**，否则数据一追问就穿帮：
+ * 「已完成」的单交期却在未来 = 还没到期就完工了，「已下待排产」的单交期在过去 = 一下单就已逾期）。
+ *
+ * `spread` 传入补足段原有的 `randInt(rng, 0, 180)` 抽样值 —— **复用同一次抽样**（不新增 rng 调用）
+ * 只改落点区间，故补足段的 rng 流步长与改前完全一致（R6）。
+ *
+ *  - `COMPLETED`     → 过去 1–180 天（已交付关闭）
+ *  - `IN_PRODUCTION` → 近端 −14…+45 天（在制；留少量已逾期在制单 —— 真实且正是要被看见的问题单）
+ *  - `OPEN`          → 未来 10–180 天（待排产；与 24 张锚点单的 +14…+48 区间同向重叠）
+ */
+function dueDayForStatus(status: OrderStatus, spread: number): number {
+  const s = Math.abs(Math.trunc(spread));
+  if (status === "COMPLETED") return -(1 + (s % 180));
+  if (status === "IN_PRODUCTION") return (s % 60) - 14;
+  return 10 + (s % 171);
+}
 
 // ---------------------------------------------------------------------------
 // §S1 scenario-pack solver parameters (battery defaults — NEVER hardcoded in solver code)
@@ -1007,13 +1178,23 @@ const materialAlternativeProps: PropertyDef[] = [
 
 const orderProps: PropertyDef[] = [
   { propKey: "so", dataType: "string", isPrimaryKey: true },
-  { propKey: "cust", dataType: "string", isPrimaryKey: false },
+  { propKey: "cust", dataType: "string", isPrimaryKey: false }, // 客户**显示名**（= Customer.custName 逐字相同·同一名册）
+  // WO-ORDER-BOOK-500 · 客户**外键**（值 = `Customer` 主键 `custId`）。
+  // 为什么非加不可：`Order.cust` 存的是显示名，而所有沿 ref 走图的通用求解器
+  // （`concentration_risk` 等）都按**主键值**建索引 —— 拿显示名去查主键索引恒零命中，
+  // 于是「哪个客户最集中」恒回 0 个，而同一工具问型号回 5 个（`Order.model` 恰好存的就是 Model 主键）。
+  // 声明成 ref 还有第二个作用：`deriveConcentrationRisk` 只沿**声明过的** `refToTypeKey` 自动寻路，
+  // 不声明就等于这条边对自动寻路不存在。
+  { propKey: "customerId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Customer" },
   { propKey: "model", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
   { propKey: "qty", dataType: "number", isPrimaryKey: false },
   { propKey: "due", dataType: "date", isPrimaryKey: false },
   { propKey: "pri", dataType: "enum", isPrimaryKey: false }, // PRD-IND-order 优先级（高/中/低）
   { propKey: "bases", dataType: "json", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+  // WO-ORDER-BOOK-500：**声明 enumValues**（此前 dataType:"enum" 但取值未声明 ⇒ `ontology-validate.ts`
+  // 的 `allowed.length > 0` 短路，订单状态从来没有被任何机器校验过 —— 注释里写着的枚举不算数）。
+  // 声明之后：写进一个不在三态里的值，本体校验当场报 DOMAIN 违规，而不是等人肉眼发现。
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, enumValues: [...ORDER_STATUSES] },
   // 约束扫描所需字段（C03/C08/C13/C29）—— 确定性派生，植入少量越线行让规则真触发。
   { propKey: "demandDelta", dataType: "number", isPrimaryKey: false },
   { propKey: "outsourceRatio", dataType: "number", isPrimaryKey: false },
@@ -3595,11 +3776,31 @@ export function deriveOrderPromises(
  *  - `unitPrice` 按行 model 反范式化（`Model.unitPrice` 单一来源·守 R14·勿写死）。
  * 纯派生：无 rng（不插 rng 流）、无时钟（due 继承订单头）。lineId=`<so>-L<lineNo>`。
  */
+/**
+ * WO-ORDER-BOOK-500 · 行级履约态必须与**订单头级**生命周期态自洽。
+ *
+ * 头级三态（`Order.status`）与行级四态（`OrderLine.lineStatus`）是**两个正交维度**，
+ * 但不是任意组合都讲得通：一张「已完成」的订单挂着一行 `OPEN`（未处理）的明细，
+ * 等于说「整单已交付、但其中一行还没开始处理」—— 数据一被追问就穿帮。
+ *
+ *  - 头 `COMPLETED`     → 行恒 `SHIPPED`（整单交付完 = 每一行都发运了）
+ *  - 头 `IN_PRODUCTION` → 行在 `COMMITTED`/`PARTIAL` 间取（已承诺 / 部分满足，正在做）
+ *  - 头 `OPEN`          → **保持原四态轮转**（`STATUSES[(h+i)%4]`）
+ *
+ * 最后一支是刻意原样保留的：24 张锚点单**全部**是 `OPEN`，因此它们的 38 行
+ * `lineStatus` 逐字节不变（R6 基线不移），新增的自洽规则只作用在补足段。
+ */
+function lineStatusFor(orderStatus: string, h: number, i: number): "OPEN" | "COMMITTED" | "PARTIAL" | "SHIPPED" {
+  if (orderStatus === "COMPLETED") return "SHIPPED";
+  if (orderStatus === "IN_PRODUCTION") return ((h + i) % 2 === 0 ? "COMMITTED" : "PARTIAL");
+  const STATUSES = ["OPEN", "COMMITTED", "PARTIAL", "SHIPPED"] as const;
+  return STATUSES[(h + i) % 4] as "OPEN" | "COMMITTED" | "PARTIAL" | "SHIPPED";
+}
+
 export function deriveOrderLines(
   orders: Record<string, unknown>[],
   models: Record<string, unknown>[],
 ): Record<string, unknown>[] {
-  const STATUSES = ["OPEN", "COMMITTED", "PARTIAL", "SHIPPED"] as const;
   const modelIds = models.map((m) => String(m.modelId));
   const priceOf = new Map(models.map((m) => [String(m.modelId), Number(m.unitPrice ?? 0)]));
   const out: Record<string, unknown>[] = [];
@@ -3637,7 +3838,7 @@ export function deriveOrderLines(
         model: lm,
         qty,
         due: o.due,
-        lineStatus: STATUSES[(h + i) % 4],
+        lineStatus: lineStatusFor(String(o.status ?? "OPEN"), h, i),
         unitPrice: priceOf.get(lm) ?? Number(o.unitPrice ?? 0),
       });
     }
@@ -3676,8 +3877,11 @@ function meanOfDaily(rows: { avail: number; perf: number; qual: number; oee: num
  */
 export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): GeneratedBattery {
   const rng = mulberry32(seed);
-  // HTML 24 单为语义基底 → 订单数下限 24（小规模即 24 单；M/L/XL 用 rng 补足到目标）。
-  const orderCount = Math.max(24, scale === "S" ? 20 : scale === "M" ? 300 : scale === "XL" ? 10000 : 825);
+  // HTML 24 单为语义基底 → 订单数下限 = 订单簿规模（小规模即 ORDER_BOOK_SIZE 单；L/XL 用 rng 补足到更大目标）。
+  // WO-ORDER-BOOK-500：下限从 24 抬到 500 —— 24 张手写单只够表达「有订单」，撑不起
+  // 「70% 已完成 / 20% 进行中 / 10% 已下待排产」这种**构成**结论（24 张切三态后最小桶只有 2 张，
+  // 任何分组统计都是个位数噪声）。24 张锚点单原样保留在簿首，其余由确定性生成器补足。
+  const orderCount = Math.max(ORDER_BOOK_SIZE, scale === "S" ? 20 : scale === "M" ? 300 : scale === "XL" ? 10000 : 825);
   const t0 = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
 
   const bases = BASES.map((b) => {
@@ -4013,6 +4217,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     return {
       so: o.so,
       cust: o.cust,
+      // WO-ORDER-BOOK-500（additive·不改既有列的值）：客户外键，令 Order→Customer 这条边对
+      // 「按主键走图」的通用求解器真的存在。锚点 8 家客户恒落 cust_0…cust_7（名册下标固定）。
+      customerId: custIdOfCustomer(o.cust) ?? "",
       model: o.model,
       qty,
       due: o.due,
@@ -4032,31 +4239,65 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     };
   });
 
-  // 规模测试（M/L/XL）：HTML 24 单为语义基底，超出部分用 rng 生成补足到 orderCount（性能基线 XL=10000）。
+  // WO-ORDER-BOOK-500 · 补足段三态目标（24 张锚点之外的订单）。
+  // 三态目标按**全簿** orderCount 算（70:20:10 出自契约 `orderStatusTargets` 单一来源），再扣掉锚点占的名额：
+  // 24 张锚点单**全部记为 OPEN（= 已下待排产）**，理由不是「懒得改」而是实测出来的 ——
+  //  ① 它们的交期实测全部落在 forecastStart(2026-06-10) 之后 14–48 天，即**全在未来**，不可能是「已完成」；
+  //  ② 今天的生产代码本来就把 status==="OPEN" 当「待排产决策集」用（portfolio 决策集 / 只给 OPEN 单算 ATP 承诺）；
+  //  ③ 于是这 24 行的 status 字面量一个字节都不用改，R6 字节基线在该字段上零位移。
+  const padSos: string[] = [];
+  for (let i = orders.length; i < orderCount; i++) padSos.push(`SO-9${String(i).padStart(5, "0")}`);
+  const bookTargets = orderStatusTargets(orderCount);
+  const anchorOpen = orders.length; // 锚点段全 OPEN，吃掉 OPEN 桶的前 anchorOpen 个名额
+  const padStatus = assignOrderStatuses(padSos, {
+    COMPLETED: bookTargets.COMPLETED,
+    IN_PRODUCTION: bookTargets.IN_PRODUCTION,
+    OPEN: Math.max(0, bookTargets.OPEN - anchorOpen),
+  }, seed);
+
+  // 规模补足：HTML 24 单为语义基底，超出部分用 rng 生成补足到 orderCount（性能基线 XL=10000）。
   for (let i = orders.length; i < orderCount; i++) {
-    const model = models[Math.floor(rng() * models.length)] as (typeof models)[number];
+    // WO-ORDER-BOOK-500：**先抽客户、再按客户业态抽型号**（此前是先均匀抽型号、再均匀抽客户，
+    // 两者互不相干 ⇒ 会开出「国家电网订 2170-NCM（三元动力电芯）」这种储能客户买动力电芯的单）。
+    // 判据取自锚点 24 张的实测：passenger/commercial 只出现 NCM 动力型号，storage 只出现 LFP 储能型号
+    // （见 MODELS 的 `pos` 列：动力 / 储能 / 动力+储能 —— 双用型号两边都合法，这正是该列的含义）。
+    const cust = pickCustomerWeighted(rng());
+    const businessType = businessTypeOfCustomer(cust);
+    const eligibleModels = modelsForBusinessType(models, businessType);
+    const model = eligibleModels[Math.floor(rng() * eligibleModels.length)] as (typeof models)[number];
     const producible = model.bases;
     const nBases = randInt(rng, 1, Math.min(2, Math.max(1, producible.length)));
     const start = producible.length > 0 ? Math.floor(rng() * producible.length) : 0;
     const orderBases = producible.length > 0
       ? Array.from({ length: nBases }, (_, k) => producible[(start + k) % producible.length] as string).sort()
       : [];
-    const dueDay = randInt(rng, 0, 180);
-    const due = new Date(t0ms + dueDay * 86400000).toISOString().slice(0, 10);
+    // ⚠ 这次 rng 抽样**保留在原位、步长不变**（R6：补足段 rng 流不位移），只是它的落点区间改由状态决定：
+    // 已完成→过去 / 在制→近端 / 待排产→未来（见 dueDayForStatus）。
+    const dueSpread = randInt(rng, 0, 180);
     const so = `SO-9${String(i).padStart(5, "0")}`;
-    const cust = pick(rng, CUSTOMERS);
-    const businessType = businessTypeOfCustomer(cust);
+    const status = padStatus.get(so) ?? "OPEN";
+    const dueDay = dueDayForStatus(status, dueSpread);
+    const due = new Date(t0ms + dueDay * 86400000).toISOString().slice(0, 10);
     const btReg = (BATTERY_SOLVER_PARAMS.businessTypeRegime as Record<string, { earlyDeliveryLeadDays?: number; earlyDeliveryMod?: number }>)[businessType] ?? {};
-    const early = businessType === "passenger" && (hashString(so) % (btReg.earlyDeliveryMod ?? 3) === 0);
-    const earlyDue = early ? new Date(t0ms + Math.max(0, dueDay - (btReg.earlyDeliveryLeadDays ?? 14)) * 86400000).toISOString().slice(0, 10) : undefined;
+    // 「需提前交付」只对**未完成**的单成立：已交付关闭的单再谈提前交期是自相矛盾的数据。
+    const early = status !== "COMPLETED" && businessType === "passenger" && (hashString(so) % (btReg.earlyDeliveryMod ?? 3) === 0);
+    const earlyDue = early ? new Date(t0ms + (dueDay - (btReg.earlyDeliveryLeadDays ?? 14)) * 86400000).toISOString().slice(0, 10) : undefined;
+    // 约束越线注入（C03 产能上限 / C08 外协红线 / C13 信用额度）**只打在未完成的单上**：
+    // 这三条都是前瞻性约束，对已交付关闭的单报违规是纯噪声 —— 350 张已完成单若照打，
+    // 会把真正需要决策的在手订单淹掉（违规列表 7 成是「已经完成了的单产能超限」这种废话）。
+    const scannable = status !== "COMPLETED";
     orders.push({
-      so, cust, model: model.modelId, qty: shapeBusinessTypeQty(businessType, randInt(rng, 1420, 7668), so), due,
-      pri: ["高", "中", "低"][i % 3], bases: orderBases, status: "OPEN", unitPrice: model.unitPrice,
+      so, cust, customerId: custIdOfCustomer(cust) ?? "",
+      model: model.modelId, qty: shapeBusinessTypeQty(businessType, randInt(rng, 1420, 7668), so), due,
+      pri: ["高", "中", "低"][i % 3], bases: orderBases, status, unitPrice: model.unitPrice,
       businessType, early, ...(earlyDue ? { earlyDue } : {}),
-      demandDelta: i % 25 === 0 ? 0.6 : round((hashString(so) % 50) / 100, 2),
-      outsourceRatio: i % 17 === 0 ? OUTSOURCE_SAMPLE.violationRatio : round((hashString(`${so}o`) % OUTSOURCE_SAMPLE.normalBucketMod) / 100, 2), // DF.13 同上（规模补足段）
+      demandDelta: scannable && i % 25 === 0 ? 0.6 : round((hashString(so) % 50) / 100, 2),
+      outsourceRatio: scannable && i % 17 === 0 ? OUTSOURCE_SAMPLE.violationRatio : round((hashString(`${so}o`) % OUTSOURCE_SAMPLE.normalBucketMod) / 100, 2), // DF.13 同上（规模补足段）
 
-      creditUsedRatio: i % 13 === 0 ? 1.15 : round(0.4 + (hashString(`${so}c`) % 50) / 100, 2),
+      creditUsedRatio: scannable && i % 13 === 0 ? 1.15 : round(0.4 + (hashString(`${so}c`) % 50) / 100, 2),
+      // 交期相对 forecastStart 的天数；已完成单为负（= 交期已过去 N 天），不再 clamp 到 0 ——
+      // clamp 会让 350 张已完成单的这一列**恒等于 0**，那是个一眼假的退化列。
+      // （锚点段的 Math.max(0,…) 保留原样：实测其 leadDays 最小 14，clamp 从未触发，故两段口径实际一致。）
       leadDays: dueDay,
     });
   }

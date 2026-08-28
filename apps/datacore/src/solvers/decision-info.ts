@@ -310,10 +310,10 @@ export function buildDoNothing(
   const custLinkEvidence = (cust: string): MissingEvidence => ({
     status: "EMPTY",
     reason:
-      `订单客户「${cust}」连不到 Customer 对象：order_of_customer 边由 synthetic 按订单序**轮转**绑定` +
-      `（custIds[i % n]），与 Order.cust 名称无对应关系（Customer.custName 是 整车厂A/电网公司F 一类占位名）` +
-      `——拒绝拿这条边回答账期/信用额度（张冠李戴的数比没有更危险）。`,
-    missingFields: ["Customer.custName ↔ Order.cust 的真实对应（或 Order.custId 外键）"],
+      `订单客户「${cust}」连不到 Customer 对象：该名字不在客户名册（CUSTOMER_REGISTRY）里，` +
+      `因而没有对应的 Customer 主数据、也建不出 order_of_customer 边` +
+      `——拒绝拿别人的边回答账期/信用额度（张冠李戴的数比没有更危险）。`,
+    missingFields: ["Customer.custName ≡ Order.cust（同一名册）与 Order.customerId 外键"],
     checked: ["link:order_of_customer", "Customer.custName", "Customer.termDays", "Customer.creditLimit"],
   });
   const worstByCust = new Map<string, number>();

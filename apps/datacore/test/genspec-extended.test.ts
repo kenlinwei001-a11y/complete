@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ADMIN, invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
+import { CUSTOMER_REGISTRY } from "../src/synthetic/battery.js";
 
 const query = (t: TestApp, objectType: string) =>
   t.app
@@ -12,16 +13,16 @@ describe("E6b · GenSpec 扩展：13 求解器所需对象数据（确定性 + �
     await seedBattery(t);
     expect((await query(t, "Material")).length).toBe(8);
     expect((await query(t, "Certification")).length).toBe(18);
-    expect((await query(t, "Customer")).length).toBe(8);
+    expect((await query(t, "Customer")).length).toBe(CUSTOMER_REGISTRY.length); // WO-ORDER-BOOK-500：客户名册 8→20
     expect((await query(t, "CapexProject")).length).toBe(3);
     expect((await query(t, "PurchaseOrder")).length).toBe(30);
     expect((await query(t, "MaterialBatch")).length).toBe(24);
   });
 
-  it("戏剧点植入：商用车集团G 逾期 38 天 / ≥6 批呆滞>90日 / 2 单 PO 延迟", async () => {
+  it("戏剧点植入：宇通客车 逾期 38 天 / ≥6 批呆滞>90日 / 2 单 PO 延迟", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    const g = (await query(t, "Customer")).find((c) => c.props.custName === "商用车集团G");
+    const g = (await query(t, "Customer")).find((c) => c.props.custName === "宇通客车");
     expect(g!.props.maxOverdueDays).toBe(38);
     const dormant = (await query(t, "MaterialBatch")).filter((b) => Number(b.props.idleDays) > 90);
     expect(dormant.length).toBeGreaterThanOrEqual(6);
@@ -41,10 +42,10 @@ describe("E6b · GenSpec 扩展：13 求解器所需对象数据（确定性 + �
 });
 
 describe("E6b · 求解器从对象数据自动出结果（presetContext 槽位即可，无需手传 args）", () => {
-  it("credit_exposure {custName:商用车集团G} → 从 Customer/ARInvoice 推导 → 逾期冻结", async () => {
+  it("credit_exposure {custName:宇通客车} → 从 Customer/ARInvoice 推导 → 逾期冻结", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    const r = (await invokeSolver(t, "credit_exposure", { custName: "商用车集团G" })).json().data as { newOrderVerdict: string; exposure: number };
+    const r = (await invokeSolver(t, "credit_exposure", { custName: "宇通客车" })).json().data as { newOrderVerdict: string; exposure: number };
     expect(r.newOrderVerdict).toContain("冻结"); // C32 逾期>30 优先
     expect(typeof r.exposure).toBe("number");
   });

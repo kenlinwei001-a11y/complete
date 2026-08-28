@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { makeApp, seedBattery, invokeSolver, ADMIN, type TestApp } from "./helpers.js";
 import { SOLVER_CATALOG } from "../src/catalog.js";
 import { knownArgKeys, normalizeSolverArgs, SOLVER_ARG_ALIASES } from "../src/solvers/arg-aliases.js";
+import { ORDER_BOOK_SIZE } from "../src/synthetic/battery.js";
 
 /**
  * ★ WO-SILENT-WRONG-ANSWER-3 · 三条**静默错答**的接缝门（`G-SOLVER-ARG-KEY-DRIFT` / `G-SOLVER-SCOPE-DEAF`）。
@@ -155,7 +156,11 @@ describe("WO-SILENT-WRONG-ANSWER-3 §② · risk_timeline 照目录传参也必�
     //   枣庄**一张都不在里面**，且与 `{}` 逐字节相同。
     expect(basesOf(zz)).toEqual(["zaozhuang"]);
     expect(basesOf(all).length).toBeGreaterThan(1);
-    expect(basesOf(all)).not.toContain("zaozhuang"); // 病历原文：全网路里枣庄本就不出卡 → 更显"问了等于没问"
+    // 命门是「点名基地 ⇒ 真收窄到该基地」，上一行已经咬死。
+    // 原文这里还加了一句「全网路里枣庄本就不出卡」当佐证 —— 那是 24 张订单时代**恰好**的数据形态，
+    // 订单簿扩到 500 张后风险前 8 名换人、枣庄进了全网卡，佐证失效而命门完好。
+    // 换成与数据无关的差分判据：点名的结果必须**真的不同于**全网结果（否则就是「问了等于没问」）。
+    expect(basesOf(zz)).not.toEqual(basesOf(all));
   });
 
   it("★ 命门差分：换个基地，卡真的换（不是回显换了、数字没换）", async () => {
@@ -194,7 +199,11 @@ describe("WO-SILENT-WRONG-ANSWER-3 §② · risk_timeline 照目录传参也必�
     const all = data(await invokeSolver(t, "risk_timeline", {}, ADMIN));
     expect(all.horizon).toBe(30);
     expect((all.cards as unknown[]).length).toBe(8);
-    expect(basesOf(all)).toEqual(["jiangmen", "handan", "zigong", "xinyang", "changzhou", "chengdu", "jinhua", "hefei"]);
+    // 原文写死了那 8 个基地是哪几个 —— 那是风险排名的结果，随订单簿分布变（本单实测已换人）。
+    // 「加性/同解」要守的是**形状**：横盘 30 天、8 张卡、8 个互不相同的真基地，不是具体是哪 8 个。
+    expect(basesOf(all).length).toBe(8);
+    expect(new Set(basesOf(all)).size).toBe(8); // 8 张卡对应 8 个不同基地（不是同一基地出 8 次）
+    expect(basesOf(all).every((b) => typeof b === "string" && b.length > 0)).toBe(true);
   });
 
   it("诚实缺席：认不出的基地 → 400，不静默退回全网 8 张卡", async () => {
@@ -242,7 +251,7 @@ describe("WO-SILENT-WRONG-ANSWER-3 §③ · 派生意图的用户实体到达之
     const all = data(await invokeSolver(t, "kit_readiness", {}, ADMIN));
     const sc = all.scope as Record<string, unknown>;
     expect(sc.mode).toBe("ALL");
-    expect(sc.orderPoolTotal).toBe(24);
+    expect(sc.orderPoolTotal).toBe(ORDER_BOOK_SIZE); // 全网订单池 = 订单簿规模（采样上限仍是 8，见下一行）
     expect(sc.sampled).toBe(8);
     // shortageCount=8 此前会被读成"该口径下共 8 张缺料单"，实际只是"抽样的 8 张里 8 张缺料"。
     expect(String(sc.samplingNote)).toContain("不是该口径下的全部");
@@ -263,8 +272,8 @@ describe("WO-SILENT-WRONG-ANSWER-3 §③ · 派生意图的用户实体到达之
 
   // S15 `quote_margin` —— 同属「16 个派生意图对用户实体失聪」，但**两维定性不同，不许合成一句**
   it("★ 命门差分（S15·型号维·真接线）：换型号 → BOM 成本与毛利真变（修前两个型号逐字节相同）", async () => {
-    const ncm = data(await invokeSolver(t, "quote_margin", { custName: "电网公司F", modelId: "4680-NCM", qty: 500 }, ADMIN));
-    const lfp = data(await invokeSolver(t, "quote_margin", { custName: "电网公司F", modelId: "方形-LFP", qty: 500 }, ADMIN));
+    const ncm = data(await invokeSolver(t, "quote_margin", { custName: "国家电网", modelId: "4680-NCM", qty: 500 }, ADMIN));
+    const lfp = data(await invokeSolver(t, "quote_margin", { custName: "国家电网", modelId: "方形-LFP", qty: 500 }, ADMIN));
     // ← 修前这一条是红的：`bom` 恒取 `mats.slice(0,4)`（与型号无关的全局前 4 行）。
     expect((ncm.breakdown as Record<string, number>).bomCost).not.toEqual((lfp.breakdown as Record<string, number>).bomCost);
     expect(ncm.margin).not.toEqual(lfp.margin);
@@ -279,7 +288,7 @@ describe("WO-SILENT-WRONG-ANSWER-3 §③ · 派生意图的用户实体到达之
     expect(ns.bomId, "型号维真生效 = 说得出用的哪张 BOM").toBeTruthy();
     expect(ns.bomId).not.toEqual(ls.bomId);
     // ⚠ 不断言 `modelMatched: true` —— 该键回答的是**另一个**问题：「这位客户下过这个型号吗」。
-    //   电网公司F 名下无 4680-NCM 在手单 ⇒ 它如实为 false，并附 modelNote 说明单价回落。
+    //   储能客户（国家电网）名下无 4680-NCM 在手单（NCM 是动力体系）⇒ 它如实为 false，并附 modelNote 说明单价回落。
     //   那是诚实位正常工作，不是型号维失效（两者混为一谈会把一条好断言写成假红）。
     expect(ns.modelMatched === false ? ns.modelNote : "ok", "modelMatched:false 必须解释单价怎么来的").toBeTruthy();
   });
@@ -291,10 +300,10 @@ describe("WO-SILENT-WRONG-ANSWER-3 §③ · 派生意图的用户实体到达之
   // `custDimension`/`custNote`/`missingInputs` 三个键一并退役 —— 退役的理由是**缺口被填上了**，
   // 不是断言碍事。故本例改为断言「这一维现在真的生效」：口径可溯到该客户自己的订单。
   it("★ 客户维（S15）：并线后真生效 —— 回包必须说得出这是**谁**的单（不再是 NOT_APPLIED 诚实位）", async () => {
-    const b = data(await invokeSolver(t, "quote_margin", { custName: "商用车集团G", modelId: "4680-NCM" }, ADMIN));
+    const b = data(await invokeSolver(t, "quote_margin", { custName: "宇通客车", modelId: "4680-NCM" }, ADMIN));
     const sc = b.scope as Record<string, unknown>;
     expect(sc.mode, "点了名的客户必须走 CUSTOMER 口径，不是全域冒充").toBe("CUSTOMER");
-    expect(sc.custName).toBe("商用车集团G"); // 回显用户真说的那个，不是目录里写死的那个
+    expect(sc.custName).toBe("宇通客车"); // 回显用户真说的那个，不是目录里写死的那个
     expect(sc.custId, "算的是谁要可溯到主数据 id").toBeTruthy();
     // 假个性化的反面判据：答案必须挂得到**该客户自己的**订单/BOM，而不是一份全局常数。
     expect(sc.priceSource, "价从哪来必须写明（真单价 or 回落 Model.unitPrice）").toBeTruthy();
@@ -310,12 +319,22 @@ describe("WO-SILENT-WRONG-ANSWER-3 §③ · 派生意图的用户实体到达之
   // ⚠ 金值已更（并线 WO-QUOTE-MARGIN-CUSTOMER）——**这是一次有意的行为变更，不是金值将就代码**：
   // 原值 313.7452 = `Material` 按 id 排序前 4 行（铝箔/壳体/铜箔/电解液，**不含正极**）的成本，
   // 与任何真实型号的配方都无关；原断言把它锁成「不给型号时的加性保证」。
-  // 并线后不给型号 → 取**全部在手单的主力型号**的真 BOM（方形-LFP → 540.2012），
+  // 并线后不给型号 → 取**全部在手单的主力型号**的真 BOM，
   // 即「不知道问的是谁」时给的是一份**真配方**而不是一份没有主语的常数。
-  // 直传 bom 的那条路（rules-p3 / solvers-extended）仍逐字节加性，见下一例与 quote-margin-customer 的 EXPLICIT 用例。
-  it("不给型号 → 取主力型号真 BOM（金值 540.2012·方形-LFP）· scope.mode=ALL", async () => {
+  // WO-ORDER-BOOK-500：全域主力型号随订单簿的型号构成走（原 方形-LFP/540.2012 → 现 4680-NCM/632.835）。
+  // 判据不是「恰好是这个数」，是「这个数必须等于 scope.bomId 那张 BOM 的真配方成本」——
+  // 写死常数正是本条当年要消灭的病（313.7452 那个没有主语的数）。下面改为**回仓储独立复算**对拍。
+  it("不给型号 → 取主力型号真 BOM（= scope.bomId 的真配方成本·非无主语常数）· scope.mode=ALL", async () => {
     const out = data(await invokeSolver(t, "quote_margin", {}, ADMIN));
-    expect((out.breakdown as Record<string, number>).bomCost).toBe(540.2012);
+    const bomId = String((out.scope as Record<string, unknown>).bomId);
+    const details = await t.repos.objects.listByType("demo", "BOMDetail");
+    const materials = await t.repos.objects.listByType("demo", "Material");
+    const priceOf = new Map(materials.map((m) => [String(m.props.matId), Number(m.props.unitPrice)]));
+    const truth = Math.round(details.filter((d) => String(d.props.bomId) === bomId)
+      .reduce((acc, d) => acc + Number(d.props.quantity) * (priceOf.get(String(d.props.materialId)) ?? 0) * (1 + Number(d.props.lossRate)), 0) * 1e4) / 1e4;
+    expect(truth, "复算出 0 ⇒ 这张 BOM 没有明细行，下面的相等是空转").toBeGreaterThan(0);
+    expect((out.breakdown as Record<string, number>).bomCost).toBeCloseTo(truth, 3);
+    expect((out.breakdown as Record<string, number>).bomCost).not.toBe(313.7452); // 老病灶：Material 前 4 行的无主语常数
     const sc = out.scope as Record<string, unknown>;
     expect(sc.mode).toBe("ALL");
     expect(sc.bomId, "全域口径也必须说得出用的是哪张 BOM").toBeTruthy();

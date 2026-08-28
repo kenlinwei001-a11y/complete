@@ -283,12 +283,18 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
     const { ruleSetVersion, ...numeric } = data as Record<string, unknown>;
     const stripped = stripAdditive(JSON.parse(JSON.stringify(numeric))) as Record<string, unknown>;
     const numericJson = JSON.stringify(stripped);
-    expect(numericJson.length, "剥掉已登记的加性新键后长度仍变 —— 说明动的是老字段，不是加字段").toBe(26680);
+    // WO-ORDER-BOOK-500：订单簿 24→500 ⇒ 风险卡里的订单明细变多，这个长度金值随之从 26680 变成 53487。
+    // **只改数字，判据一字未动**：本门断的仍是「无采纳记录时，采纳功能没动过任何老字段」——
+    // 长度是那件事的字节级指纹，数据量变了指纹自然重取，但它照样会在「老字段被动」时当场红。
+    expect(numericJson.length, "剥掉已登记的加性新键后长度仍变 —— 说明动的是老字段，不是加字段").toBe(53487);
     expect(
       createHash("sha256").update(numericJson).digest("hex"),
       "无采纳记录时 risk_timeline 的**推演数值**与上线前不再逐字节一致（R6 向后兼容被破）——" +
         "先按上面的归属取证定位是哪一笔改动，确认是有意的口径变更后再更新金值，不要直接改数",
-    ).toBe("eb3de36e2980600a2ed4f443583f0d4dd2ca5d611ad4b1f364f3980ca012e7c7");
+    // WO-ORDER-BOOK-500：与上面的长度金值同源、同一笔改动 —— 订单簿 24→500 让风险卡里的订单明细变多。
+    // 按本条自己的纪律先做了归属取证：改动是**有意的口径变更**（订单簿扩容），
+    // 不是 adopt_mitigation 动了老字段（本单一行都没碰 adopt_mitigation 的代码路径）。
+    ).toBe("17f25c24efc0979e8c3a3d1ed835041c1b42314ef2ce265d3ccd9384324a5587");
     // 加性键必须**真的在**（否则本条会退化成"剥了个不存在的键"，白白放行未来的真回归）。
     expect(Object.keys(numeric), "D4 的 otdBatch 必须在顶层出现，否则 ADDITIVE_KEYS 已过期").toContain("otdBatch");
     expect(Object.keys(numeric), "WO-DECISION-INFO 的 exposureOrder 必须在顶层出现，否则 ADDITIVE_KEYS 已过期").toContain("exposureOrder");

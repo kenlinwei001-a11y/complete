@@ -6,6 +6,7 @@ import { CHAIN_NODE_REGISTRY, ChainNodeSchema, LossAttributionSchema, isKnownCha
 import { daysFromDrill, MINUTES_PER_DAY, type ChainLossEmpty, type ChainLossEvidence, type ChainLossResult } from "../src/solvers/chain-loss.js";
 import { SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "../src/solvers/service.js";
 import { ALL_SOLVER_CATALOG } from "../src/catalog.js";
+import { CUSTOMER_IDS } from "../src/synthetic/battery.js";
 
 /**
  * WO-SANDBOX-E1 · 环节级损失归因 `chain_loss_attribution` 的门。
@@ -171,7 +172,9 @@ describe("WO-SANDBOX-E1 · 环节级损失归因（chain_loss_attribution）", (
     // 逐条抽查（写死真值·换 seed/换数据即红）：本单亲手跑出来的锚点链。
     const byStep = new Map(r.evidence.map((e) => [e.stepId, e]));
     expect(r.anchor.so).toBe("SO-3391");
-    expect(byStep.get("order.settlement_terms")).toMatchObject({ drillType: "Customer", drillId: "cust_0", drillField: "termDays", drillValue: 60, days: 60 });
+    // WO-ORDER-BOOK-500：`cust_0` 是**名册下标**派生的主键，名册一改就漂（广汽集团实测 cust_0→cust_14）。
+    // 锚点单 SO-3391 的客户仍是广汽集团，只是它的 custId 变了 ⇒ 从名册现取，不写死序号。
+    expect(byStep.get("order.settlement_terms")).toMatchObject({ drillType: "Customer", drillId: CUSTOMER_IDS["广汽集团"], drillField: "termDays", drillValue: 60, days: 60 });
     expect(byStep.get("capacity.op.OP-002#work")).toMatchObject({ drillType: "Operation", drillId: "RT-4680-NCM-V1.0-OP-002", drillField: "standardTime", drillValue: 120 });
     expect(byStep.get("capacity.op.OP-002#work")!.days).toBe(120 / MINUTES_PER_DAY);
     expect(byStep.get("material.supplier_leadtime")).toMatchObject({ drillType: "Supplier", drillId: "SUP-001", drillField: "leadTime", drillValue: 5, days: 5 });

@@ -32,11 +32,23 @@ describe("WO-SOP-RESCHEDULE · sop_reschedule 产销重排推演", () => {
     expect(g.feasible).toBe(true);
     expect(g.targetOrder.newDueDay).toBeLessThan(g.targetOrder.origDueDay); // 真提前
 
-    // ② 被挤单含 SO-3415（同型号·中优先级·最该让位）——引擎按 (优先级低,交期远) 真排。
-    const dispIds = g.displaced.map((d) => d.orderId);
-    expect(dispIds).toContain("SO-3415");
-    expect(g.displaced[0]!.orderId).toBe("SO-3415"); // 排第一位（最该让）
-    expect(g.displaced[0]!.priority).toBe("中");
+    // ② 被挤单排序真按 (优先级低, 交期远) 排 —— 引擎真排，不是取头几张。
+    // WO-ORDER-BOOK-500：原文写死「被挤第一位必须是 SO-3415」。那是 24 张订单时代的唯一候选；
+    // 订单簿扩到 500 张后同型号可让位的单多了几十张，让位顺序自然换人，而**排序规则一行没改**。
+    // 形态：「我用『被挤的恰好是 SO-3415』当作『引擎按优先级排了』的证据。」
+    // 改为直接验那条排序规则本身，覆盖面从 1 张变成全部被挤单。
+    expect(g.displaced.length, "一张单都没被挤 ⇒ 下面的排序判据空转").toBeGreaterThan(0);
+    const PRI_RANK: Record<string, number> = { 低: 0, 中: 1, 高: 2 };
+    // 高优先级的单不该被优先挤：被挤序列的优先级必须**非递减**（先让低优、再让中优…）。
+    for (let i = 1; i < g.displaced.length; i++) {
+      const prev = PRI_RANK[g.displaced[i - 1]!.priority] ?? 99;
+      const cur = PRI_RANK[g.displaced[i]!.priority] ?? 99;
+      expect(prev, `被挤序列第 ${i} 位(${g.displaced[i]!.orderId}/${g.displaced[i]!.priority}) 排在了更该让位的单前面`).toBeLessThanOrEqual(cur);
+    }
+    // 头一个让位的绝不能是高优先级单（有低/中优可让时先让它们）。
+    if (g.displaced.some((d) => d.priority !== "高")) {
+      expect(g.displaced[0]!.priority, "还有低/中优单可让，却先挤了高优单").not.toBe("高");
+    }
     expect(g.displaced.every((d) => d.delayDays >= 1)).toBe(true); // 被挤单真延期
 
     // ③ 分配跨 ≥2 基地（跨基地拆产·非单点）。
@@ -67,7 +79,8 @@ describe("WO-SOP-RESCHEDULE · sop_reschedule 产销重排推演", () => {
     }
     // summary 落到基地×订单×日真数（含订单号/新交期天/被挤单/代价·非套话）。
     expect(g.summary).toContain("SO-3402");
-    expect(g.summary).toContain("SO-3415");
+    // summary 必须点名**被挤的那张单**（不是写死 SO-3415 —— 让位顺序随订单簿走，见上文 ② 的说明）。
+    expect(g.summary, "summary 没点名任何被挤单 ⇒ 又变回套话").toContain(g.displaced[0]!.orderId);
   });
 
   it("颗粒铁律：改 Line.capacityDaily（产能砍半）→ 被挤单/残余缺口真变（非写死）", async () => {
