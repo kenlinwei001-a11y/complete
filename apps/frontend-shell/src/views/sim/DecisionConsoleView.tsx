@@ -202,7 +202,7 @@ function buildTrace(input: {
   wallMs: number;
   counts: { typeKey: string; typeName: string; count: number }[];
   snapshotVersions: [string, string | undefined][];
-  edges: { items?: unknown[] } | null;
+  edges: { items?: unknown[]; stateVarNames?: Record<string, string> } | null;
   slices: { entries?: { sliceKey: string; rootType: string }[] } | null;
   risk: SolverData | null;
   impediments: SolverData | null;
@@ -210,6 +210,12 @@ function buildTrace(input: {
   report: DrillReport;
 }): RunTrace {
   const rawEdges = (input.edges?.items ?? []) as Record<string, unknown>[];
+  /**
+   * 状态变量的中文名 —— **后端单源下发**（`stateVarNames` 字典，随规则清单一起回来）。
+   * 前端**不许**自己写一份：本仓那条纪律的原文是「前端再算一份，度数口径一漂两边就各说各话」。
+   * 字典里没有的键**照实显裸键**，不编一个中文名。
+   */
+  const svName = (k: string): string => input.edges?.stateVarNames?.[k] ?? k;
   /**
    * 本次**真正生效**的边 = 这一批事件打到的那个状态变量能沿着走的第一跳，以及第一跳的下游。
    * ⚠ 这里只报「与本次冲击的落点相连的那些边」，不报全部 42 条 ——
@@ -230,8 +236,8 @@ function buildTrace(input: {
       const to = String(r.targetStateVar ?? "");
       picked.push({
         key,
-        from: `${String(r.sourceTypeName ?? r.sourceTypeKey ?? "")}·${from}`,
-        to: `${String(r.targetTypeName ?? r.targetTypeKey ?? "")}·${to}`,
+        from: `${String(r.sourceTypeName ?? r.sourceTypeKey ?? "")}·${svName(from)}`,
+        to: `${String(r.targetTypeName ?? r.targetTypeKey ?? "")}·${svName(to)}`,
         via: String(r.viaLinkKey ?? ""),
         coefficient: Number(r.coefficient ?? 0),
         delayDays: Number(r.delayTicks ?? 0),
