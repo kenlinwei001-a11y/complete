@@ -308,6 +308,19 @@ export const PROPERTY_UNITS = [
 /** 见 {@link PROPERTY_UNITS}。类型与运行时字典同一份数据派生 —— 不许各抄一份。 */
 export type PropertyUnit = (typeof PROPERTY_UNITS)[number];
 
+/**
+ * 取**可显示**的单位：`"dimensionless"` ⇒ `undefined`（屏上不显示单位），其余原样返回。
+ *
+ * ⚠ 为什么必须有这个函数：量纲改必填后 `unit` **恒非空**，而下游一路都是
+ * `p.unit ? \`单位 ${p.unit}\` : null` 这类**真值判断** —— 直接放行会让每个名称/枚举/日期字段
+ * 在屏上和喂给 Agent 的地图里都长出一句「单位 dimensionless」。
+ * 「明确声明无量纲」是**给机器看的**，不是给人看的；两者的区别就落在这一个函数里。
+ * 所有展示/投影侧一律经它取值，不许再直接读 `p.unit` 做真值判断。
+ */
+export function displayUnit(unit: PropertyUnit | undefined): string | undefined {
+  return unit && unit !== "dimensionless" ? unit : undefined;
+}
+
 /** `PropertyDef.dataType` 的取值域。 */
 export type PropertyDataType = "string" | "number" | "boolean" | "date" | "enum" | "ref" | "json";
 /**

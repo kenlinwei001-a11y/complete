@@ -10,6 +10,7 @@ import type {
 } from "@platform/contracts";
 import { PROCESS_OWNER_FUNCTIONS } from "@platform/contracts";
 import type { LinkTypeDef, ObjectTypeDef, SliceSpecRecord } from "../domain.js";
+import { displayUnit } from "../domain.js";
 
 /**
  * WO-V4-INSPECT · 业务流程节点检视投影（PRD-sandbox-v4-backward-derivation §4.1 + §4.2）。
@@ -173,7 +174,7 @@ export function projectProcessInspect(input: ProcessInspectInput): ProcessInspec
               propKey: p.propKey,
               displayName: orNull(p.displayName),
               dataType: p.dataType,
-              unit: orNull(p.unit),
+              unit: orNull(displayUnit(p.unit)),
               isPrimaryKey: p.isPrimaryKey === true,
               description: orNull(p.description),
               enumValues: p.enumValues && p.enumValues.length > 0 ? [...p.enumValues] : null,

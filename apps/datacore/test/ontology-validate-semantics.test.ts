@@ -9,7 +9,7 @@ import type { FieldSemanticAnnotation, ScopeRuleViolation, ValidateOutputResult 
  * 证明：A 侧输出校验消费者（POST /a/v1/ontology/validate-output）真正**用上**了 type-semantics 口径单一真值——
  *   (a) 逐字段附 unit/formula 口径注解（此前 unit/口径 只喂 B 的 LLM prompt，A 自身输出从不用）；
  *   (b) 值越过 scope 规则口径线（表达式为真=命中违规）→ 标记 ruleViolations。
- * 且这是**接线到本体单一真值**、非快照：MUTATE 口径真值（本体 upsertType unit %→dimensionless/改派生 formula + 规则 C03 >0.5→>0.8 + publish）
+ * 且这是**接线到本体单一真值**、非快照：MUTATE 口径真值（本体 upsertType unit %→元/改派生 formula + 规则 C03 >0.5→>0.8 + publish）
  * 后再跑 **同一** 调用，注解与规则判定随之变——A-side 版的 apps/agentcore/test/ontology-context.test.ts（B-半接缝）。
  *
  * 关键红线（守 agentcore 执行器契约）：scope 规则命中**不改 ok/violations**——ok 仍只由 REJECT 级结构违规决定，
@@ -94,8 +94,8 @@ describe("WO-ONTOLOGY-CONTEXT-A · SEAM：validate-output 消费者据 type-sema
     expect(c03Before!.ruleName).toBe("产能上限约束");
     expect(c03Before!.fields).toContain("actual");
 
-    // ── (2) MUTATE 口径单一真值：unit %→dimensionless、改派生 formula；规则 C03 >0.5→>0.8；publish ──
-    await t.services.ontology.upsertType(ADMIN_CTX, metricType({ actualUnit: "dimensionless", gapFormula: "target - actual" }));
+    // ── (2) MUTATE 口径单一真值：unit %→元、改派生 formula；规则 C03 >0.5→>0.8；publish ──
+    await t.services.ontology.upsertType(ADMIN_CTX, metricType({ actualUnit: "元", gapFormula: "target - actual" }));
     await t.services.rules.create(ADMIN_CTX, {
       key: "C03",
       name: "产能上限约束",
@@ -109,8 +109,8 @@ describe("WO-ONTOLOGY-CONTEXT-A · SEAM：validate-output 消费者据 type-sema
     // ── (3) 重跑同一调用：注解/判定必须变（证接线到单一真值·非快照）─────────────────
     const after = await validate(t);
     expect(after.ok).toBe(true); // 结构仍干净
-    // (a) unit 变：% → dimensionless（0–100 表示法改成 0–1）；formula 变：actual-target → target-actual
-    expect(fs(after, "actual")?.unit).toBe("dimensionless");
+    // (a) unit 变：% → 元；formula 变：actual-target → target-actual
+    expect(fs(after, "actual")?.unit).toBe("元");
     expect(fs(after, "gap")?.formula).toBe("target - actual");
     // (b) C03 口径线上移到 0.8，值 0.6 不再越线 → 不再被标记
     expect(c03Of(after)).toBeUndefined();

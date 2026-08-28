@@ -7,6 +7,7 @@ import type {
 } from "@platform/contracts";
 import { SLICE_LAYER_IDS } from "@platform/contracts";
 import type { LinkTypeDef, ObjectTypeDef, Rule, SliceSpecRecord, TsSeriesRecord } from "../domain.js";
+import { displayUnit } from "../domain.js";
 
 /**
  * WO-SLICE-16-LAYERS · 把一条本体切片投影成「十六层结构」。
@@ -254,7 +255,7 @@ export function projectSliceLayers(input: SliceLayerInput): SliceLayersResponse 
             key: `${t.key}.${p.propKey}`,
             label: propLabel(t.key, p),
             group: t.key,
-            detail: [p.dataType, p.unit ? `单位 ${p.unit}` : null, p.isPrimaryKey ? "主键" : null]
+            detail: [p.dataType, displayUnit(p.unit) ? `单位 ${displayUnit(p.unit)}` : null, p.isPrimaryKey ? "主键" : null]
               .filter(Boolean)
               .join(" · "),
           })),
@@ -354,12 +355,12 @@ export function projectSliceLayers(input: SliceLayerInput): SliceLayersResponse 
         ),
         ...sliceTypes.flatMap((t) =>
           t.properties
-            .filter((p) => p.unit)
+            .filter((p) => displayUnit(p.unit))
             .map((p) => ({
               key: `u:${t.key}.${p.propKey}`,
               label: propLabel(t.key, p),
               group: "带量纲度量",
-              detail: `单位 ${p.unit}`,
+              detail: `单位 ${displayUnit(p.unit)}`,
             })),
         ),
       ].sort((a, b) => by(a.key, b.key)),
