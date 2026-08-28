@@ -244,8 +244,14 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
   //     `orderValue = qty × unitPrice` 就是聚合权重（catalog 原文「压力按承载对象的真金额加权聚合」）。
   //     在传导侧再乘一次份额 = 同一个体量因子记两遍账。
   // 而**本条**是「多张订单汇成一个型号的负荷」（500 单 → 6 型号，入边），`demandLoad` 由多源求和而来，
-  // 大单与小单按同一系数计入才是真正的病。故订单量份额加在这里：`Model.demandLoad` 变成
-  // **按订单量加权的平均需求压力**，7,259 与 14,518 那两张单从此权重不同 —— 正是派单要的那件事。
+  // 大单与小单按同一系数计入才是真正的病。故订单量权重加在这里：7,259 与 14,518 那两张单
+  // 从此权重不同 —— 正是派单要的那件事，只是落在了量纲成立的那一跳上。
+  //
+  // ⚠ **用 `source_qty_relative`（均值=1）而不是份额（Σ=1）—— 这一条是实测改过来的**：
+  // `demandLoad` 的中文名就是「需求负载」，是**广延量**（单越多、负荷越大）。
+  // 第一版按 Σ=1 做，实测把 `Model.demandLoad` 从 8 打到 **0.0989**（≈1/83，该型号 83 张单的均值），
+  // 三处金丝雀同时报红。那不是"按用量加权"，那是**把负载重新定义成了平均值**。
+  // 均值=1 的倍率保住总量、同时让大单权重更高，两个目的都达到。判据表见契约 `PairWeightNormalize`。
   {
     id: "simpr_demo_order_demand",
     key: "demo_order_demand_pressure",
@@ -260,8 +266,8 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
-    // 逐订单按 `Order.qty` 在该型号全部在手单总量中的占比分摊（入边归一 ⇒ Σ = 1）。
-    weightRef: { basis: "source_qty_share" },
+    // 逐订单按 `Order.qty` **相对于该型号在手单均值**的倍率（均值=1、Σ=条数 ⇒ 保总量）。
+    weightRef: { basis: "source_qty_relative" },
     // 节拍闸门未绑定（WO-SANDBOX-E4）。**这是诚实缺席，不是忘了填**：
     // demo 世界里「这条需求流要过哪个节拍闸门」是一个**建模判断**，不是能从种子推出来的事实——
     // 绑上 `demand.consensus` 等于替租户断言「需求压力必须等 S&OP 共识会才下传」。
@@ -1274,7 +1280,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     // 只是源变量不同。只给其中一条加分摊，`Model.demandLoad` 就变成
     // 「一半是按订单量加权的平均、另一半是不加权的求和」—— 两种量纲加在同一个数上，
     // 比两条都不加权更糟（错得没规律，且没有任何东西会报错）。同格同口径，这条不是可选项。
-    weightRef: { basis: "source_qty_share" },
+    weightRef: { basis: "source_qty_relative" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },

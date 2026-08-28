@@ -167,11 +167,26 @@ describe("WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发
     // 🐤 金丝雀先说话：观测方法本身是好的 —— 未被反转的那条边照常触发。
     // 若这一行也红，结论是「观测坏了」，**不许**读作「规则不触发」（铁律 0.6）。
     expect(allKeys.has("demo_order_demand_pressure")).toBe(true);
-    // 10 × 0.8 = 8 每 tick 一次。扰动是 `set` 且 `durationTicks:null` ⇒ 源端每 tick 都是 10，
-    // `combine:"sum"` 在上一格的值上继续累加 ⇒ 8 → 16。两格都钉住，金丝雀才既证"会触发"
-    // 又证"数是对的"（只钉一格的话，把系数改坏也可能碰巧还在)。
-    expect(t1.state[orderLink.toId]!.demandLoad).toBe(8);
-    expect(t2.state[orderLink.toId]!.demandLoad).toBe(16);
+    // 每 tick 一次 `10 × 0.8 × 该单的订单量相对倍率`。扰动是 `set` 且 `durationTicks:null` ⇒
+    // 源端每 tick 都是 10，`combine:"sum"` 在上一格的值上继续累加 ⇒ 第二格恰是第一格的 **2 倍**。
+    //
+    // ⚠ **金值从写死的 8 / 16 改成「非 0 且第二格恰为两倍」**（WO-COEF-FROM-BOM）。
+    // 原因不是"跑一遍把期望值贴上去"：`demo_order_demand_pressure` 现在按
+    // `source_qty_relative`（订单量 ÷ 该型号在手单均值）分摊，那个倍率由**种子里这张单的 qty**
+    // 决定，写死它等于赌"这张单恰好是均值单"——而本用例根本不挑单（取 `[0]`）。
+    // 本金丝雀要证的两件事是「**会触发**」和「**累加口径没坏**」，两者都不需要那个绝对值：
+    // 倍率若被改坏（比如退回逐目标同额），第一行仍非 0，但**第二格 ÷ 第一格 = 2** 这条
+    // 与系数无关的恒等式仍成立 —— 所以再加一条与倍率**正交**的钉子：trace 里这条规则的 amount
+    // 必须逐 tick 相同（源态每 tick 恒为 10 ⇒ 每 tick 贡献额必须一样）。
+    const load1 = t1.state[orderLink.toId]!.demandLoad!;
+    const load2 = t2.state[orderLink.toId]!.demandLoad!;
+    expect(load1, "金丝雀边一点都没推动 ⇒ 观测坏了").toBeGreaterThan(0);
+    expect(load2 / load1).toBeCloseTo(2, 9); // combine:"sum" 逐格累加，源态恒定 ⇒ 恰好两倍
+    const amounts = [...(t1.trace ?? []), ...(t2.trace ?? [])]
+      .filter((x) => x.ruleKey === "demo_order_demand_pressure" && x.toObjectId === orderLink.toId)
+      .map((x) => x.amount);
+    expect(amounts.length, "两格里这条规则各该落一条 trace").toBe(2);
+    expect(amounts[0]).toBe(amounts[1]); // 源态恒定 ⇒ 逐 tick 贡献额恒定（口径没漂）
 
     // 🔴 判据：方向反了 ⇒ 这条规则一次都不触发，下游一个字节都不动。
     expect(allKeys.has("demo_base_load_to_line_util")).toBe(false);

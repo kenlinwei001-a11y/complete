@@ -2206,7 +2206,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // 逐实例分摊权重（WO-COEF-FROM-BOM）。无规则声明 `weightRef` ⇒ 恒 `{}`，逐字节同旧（RL9）。
     let pairWeights: PairWeightLookup = {};
     let unresolvedWeights: UnresolvedPairWeight[] = [];
-    let pairWeightReport: PairWeightReport = { pairs: [], unresolved: [] };
+    let pairWeightReport: PairWeightReport = { pairs: [], unresolved: [], explain: [] };
     /** 本次 tick 的范围回执（诚实回带：这一格是在什么范围下算出来的·R-ARG-FIDELITY）。 */
     let scopeReport: ScopeReport | null = null;
     let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, curTick))?.pending ?? []) : [];

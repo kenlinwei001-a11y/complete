@@ -61,13 +61,27 @@ export const PAIR_WEIGHT_BASIS_REGISTRY = [
       "按现有入边重新归一会让「加一条链路」悄悄改掉其它每一条的权重。",
   },
   {
-    key: "source_qty_share",
-    normalize: "IN_EDGES",
+    key: "source_qty_relative",
+    normalize: "IN_EDGES_MEAN",
     measure:
-      "源实例的数量在「汇入同一目标的全部源」总量中的占比 = 源.qty ÷ Σ(该目标全部入边源的 qty)。" +
-      "用于「多张订单汇成一个型号的负荷」这类多源汇一：大单与小单不该按同一个系数计入。",
+      "源实例的数量**相对于同组均值**的倍率 = 源.qty ÷ mean(该目标全部入边源的 qty)。" +
+      "均值为 1、总和为 N（源的条数）—— 与 `bom_cost_share` 的「Σ=1」是两种不同的归一，别混用。",
   },
 ] as const;
+
+/**
+ * ⛔ **两种归一各配什么目标，判据是目标量纲，不是"看着差不多"**（WO-COEF-FROM-BOM 实测立此账）。
+ *
+ * | 目标量纲 | 例 | 该用哪种 | 用错会怎样 |
+ * |---|---|---|---|
+ * | **强度**（率/指数：`costPressure` 是成本压力百分点） | `Material→Model` 成本 | `IN_EDGES`（Σ=1 · 加权**平均**） | 用 MEAN 会让"物料种类越多、压力越大"，而涨价幅度根本没变 |
+ * | **广延**（总量/负荷：`demandLoad` 是"需求负载"） | `Order→Model` 需求 | `IN_EDGES_MEAN`（均值=1 · 保总量） | 用 Σ=1 会把 83 张订单**塌缩成一张的平均**，"单越多负荷越大"这个信号直接消失 |
+ *
+ * 本单第一版把 `Order→Model` 也做成了 Σ=1，实测把 `Model.demandLoad` 从 8 打到 0.0989
+ * （≈ 1/83）—— 那不是"按用量加权"，那是把负载重新定义成了平均值。
+ * **判据一句话：目标格子回答的是「多快/多高」还是「多少」？**「多快」用 Σ=1，「多少」用均值=1。
+ */
+export type PairWeightNormalize = (typeof PAIR_WEIGHT_BASIS_REGISTRY)[number]["normalize"];
 
 export type PairWeightBasisKey = (typeof PAIR_WEIGHT_BASIS_REGISTRY)[number]["key"];
 
@@ -79,7 +93,7 @@ export function isKnownPairWeightBasis(key: string): boolean {
 }
 
 /** 在册口径的归一方向（拿不到 ⇒ `null`，调用方据实处理，不补默认）。 */
-export function pairWeightNormalizeOf(key: string): "IN_EDGES" | null {
+export function pairWeightNormalizeOf(key: string): PairWeightNormalize | null {
   return PAIR_WEIGHT_BASIS_REGISTRY.find((b) => b.key === key)?.normalize ?? null;
 }
 
@@ -134,6 +148,9 @@ export const PropagationRuleSchema = z.object({
    * 分摊它反而是把一个率切成几块，量纲不成立 —— 且订单大小**已经**在下游被计过一次
    * （`finance-world.ts:219` `orderValue = qty × unitPrice` 做金额加权聚合），
    * 再在传导侧乘一次份额就是**同一个体量因子记两遍账**。故出边一律不加权、原样透传。
+   *
+   * ⚠ **入边归一有两种，选哪种看目标量纲**（Σ=1 还是均值=1）—— 见
+   * `PairWeightNormalize` 上方那张表。选错的后果是实测出来的，不是理论担心。
    *
    * `null`（缺省）= 这条边不分摊、逐目标同额 ⇒ 与本字段引入前**逐字节相同**（additive·可回退 RL9）。
    *

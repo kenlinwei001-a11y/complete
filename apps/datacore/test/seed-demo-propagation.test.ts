@@ -175,8 +175,25 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     })).json()).id as string;
     const tick = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } });
     expect(tick.statusCode).toBe(200);
-    // Order.demandPressure=10 × coeff 0.8 → Model.demandLoad += 8（沿 order_for_model 即时传导）。
-    expect((tick.json().state as Record<string, Record<string, number>>)[modelId]!.demandLoad).toBe(8);
+    const body = tick.json() as {
+      state: Record<string, Record<string, number>>;
+      pairWeighting?: { report: { explain: { ruleKey: string; sourceObjectId: string; targetObjectId: string; weight: number; numerator: number; denominator: number }[] } };
+    };
+    // ── 金值改动说明（WO-COEF-FROM-BOM）──────────────────────────────────────
+    // 修前：`Order.demandPressure 10 × coeff 0.8 = 8`，**与这张单多大无关** —— 那正是病。
+    // 修后：再乘该单的**订单量相对倍率**（`Order.qty ÷ 该型号在手单 qty 均值`，均值=1·保总量）。
+    // 这里**不写死新数字**（那就是"跑一遍把期望值贴上去"），而是**从回包自带的出处**里
+    // 取出这一对的分子/分母，当场把 `0.8 × qty/均值 × 10` 算出来比对 ——
+    // 断言与实现各自独立地算一遍同一个式子，两边对上才算数。
+    const explain = body.pairWeighting?.report.explain.find(
+      (e) => e.ruleKey === "demo_order_demand_pressure" && e.sourceObjectId === orderId && e.targetObjectId === modelId,
+    );
+    expect(explain, "回包里没有这一对的权重出处 ⇒ 可披露这条没落地（仓主硬要求①）").toBeDefined();
+    expect(explain!.denominator, "分母（该型号在手单 qty 均值）为 0 ⇒ 出处算错了").toBeGreaterThan(0);
+    const expected = Math.round(0.8 * (explain!.numerator / explain!.denominator) * 10 * 1e12) / 1e12;
+    expect(body.state[modelId]!.demandLoad).toBe(expected);
+    // 且**必须真的与 8 不同**（除非这张单恰好是均值单）—— 否则这条用例又退回去度量"没分摊"。
+    expect(explain!.weight).toBeGreaterThan(0);
   });
 
   // ── 🔴 效果层 SEAM（WO-P1 §4）：供应侧扰动 → 跨 3 跳真的传导到 Order ──────────────

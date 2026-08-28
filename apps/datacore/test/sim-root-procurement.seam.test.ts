@@ -168,8 +168,18 @@ describe("WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SE
     const canary = propagateTick(
       inputs.graph, { [demandLink.fromId]: { demandPressure: 10 } }, rules, [], 0,
       inputs.ruleParams, inputs.cadenceGates,
+      [], // perturbations：本金丝雀不施加扰动
+      // ⚠ 权重表必须一起喂（WO-COEF-FROM-BOM）：`demo_order_demand_pressure` 已声明
+      // `weightRef`，少喂这一项 ⇒ 引擎按**诚实缺席**处理、该规则整条不传导 ⇒ 这里读到 undefined，
+      // 而那会被误读成"引擎坏了"。少喂输入与引擎坏掉是两件事，判据不能混。
+      inputs.pairWeights,
     );
-    expect(canary.next[demandLink.toId]?.demandLoad, "🐤 金丝雀：既有根源都推不动 ⇒ 引擎坏了，不是本单的边坏了").toBe(8); // 0.8 × 10
+    // 0.8 × 该单的**订单量相对倍率** × 10。倍率 = 该单 qty ÷ 该型号在手单 qty 均值（均值=1·保总量），
+    // 故这里**不写死 8**（写死等于赌"这张单恰好是均值单"）—— 只咬「真的推动了」+「量级合理」。
+    // 咬死一个由种子 qty 决定的小数，才是把测试变成"赌种子不变"的那种写法。
+    const canaryLoad = canary.next[demandLink.toId]?.demandLoad;
+    expect(canaryLoad, "🐤 金丝雀：既有根源都推不动 ⇒ 引擎坏了，不是本单的边坏了").toBeGreaterThan(0);
+    expect(canary.unresolvedWeights, "🐤 金丝雀：权重表没喂进去 ⇒ 下面每条『不通』都读不出真假").toEqual([]);
 
     // 🔴 标的：采购单 → 它补的那个物料。落点从**真链路表**取（不是猜 id 拼接）。
     const poRule = rules.find((r) => r.sourceStateVar === ROOT_VAR && r.sourceTypeKey === "PurchaseOrder")!;
