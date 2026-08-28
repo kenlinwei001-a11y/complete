@@ -429,46 +429,53 @@ export const SEG_DEMAND_ANCHOR = [
  * 订单层与需求层从此各自造，`R_order` 比 `R_aop` 高 23.4%，`scale-coherence` 四方互核当场红。
  *
  * ── 修法 ────────────────────────────────────────────────────────────────────
- * 锚点 24 张**字节不动**（全仓坐标），把差额全部落到补足段：按业态算一个缩放因子，
- * 令**全簿**量结构 ≡ 需求册量结构。**簿子总量不变**（故 `windowWeeks` 不因本修法位移）。
+ * 按业态算一个缩放因子，令**全簿**量结构 ≡ 需求册量结构；**簿子总量不变**
+ * （故 `windowWeeks` 不因本修法位移）。
  *
- * 实测因子（seed 42 · scale S）：乘用车 ×0.619 · 储能 ×3.952 · 商用车 ×2.980。
+ * 实测因子（seed 42 · scale S）：乘用车 ×0.643 · 储能 ×2.883 · 商用车 ×2.621。
  * 单均量随之变成 乘用车 3,029 套(0.50 GWh) · 商用车 12,232 套(2.03 GWh) · 储能 17,284 套(2.87 GWh)
  * —— 与「一张储能单是一个电站/框架项目、一张乘用车单是一个车型的月度提货批」的真实量级同向
  * （储能按 166 kWh/套 折 2.87 GWh，属央企年度框架量级；乘用车 0.50 GWh 按 60 kWh/车 折约 8,300 台/批）。
  *
+ * ── 为什么**连锚点 24 张一起缩**，而不是只缩补足段 ────────────────────────────
+ * 第一版只缩补足段、锚点字节不动。实测被 `global-sim-business-type-seam` 当场抓出来：
+ * 那条门量的是 **OPEN 单**的 `orderQtyCv`（`portfolio.ts` 的 `businessTypeSummary`），
+ * 而 **24 张锚点全是 OPEN**、OPEN 总共才 50 张 ⇒ 「24 张没缩 + 26 张缩过」在那个子集里
+ * 恰好把分布压成**双峰**，储能 cv 0.4028→0.7846 越过商用车 0.7833（差 0.17%）而翻车。
+ * 形态：**「我用『锚点字节不动』当作『不影响分布』的证据，而前者并不度量后者」** ——
+ * 冻住一部分样本再缩另一部分，动的正是分布本身。
+ * 整段等比缩放则 **cv 严格不变**（变异系数对正比例缩放不变），只改业态之间的量占比 ——
+ * 那才是本修法想改的唯一一件事。
+ * ⚠ 锚点被冻住的是 `so/cust/model/due/pri` 这些**坐标**（全仓测试/文档按它们定位），
+ *   `qty` 本来就不在其列：WO-ORDER-BOOK-500 自己就把 24 张的 qty 整体重标过一次
+ *   （见 `HTML_ORDERS` 上方「统一调整为 500~2,700 套区间」），且 `shapeBusinessTypeQty`
+ *   一直在按业态改锚点 qty。本函数是同一类重标，不碰任何坐标列。
+ *
  * R6：纯函数（只读已生成的订单 + 常量锚），不碰 rng 流，同 seed 字节一致。
  * ⚠ 必须在 `deriveOrderLines` **之前**调用 —— 否则行级 Σ 与头级 qty 对不上账。
  */
-function alignOrderBookToDemandMix(
-  orders: Record<string, unknown>[],
-  anchorCount: number,
-): void {
+function alignOrderBookToDemandMix(orders: Record<string, unknown>[]): void {
   const totalDemand = SEG_DEMAND_ANCHOR.reduce((s, d) => s + d.demandWanPerYearP50, 0);
   const share = new Map<BusinessType, number>();
   for (const d of SEG_DEMAND_ANCHOR) {
     share.set(businessTypeOfSegment(d.segment), d.demandWanPerYearP50 / totalDemand);
   }
   const totalQty = orders.reduce((s, o) => s + Number(o.qty), 0);
-  const anchorQty = new Map<BusinessType, number>();
-  const padQty = new Map<BusinessType, number>();
-  orders.forEach((o, i) => {
+  const segQty = new Map<BusinessType, number>();
+  for (const o of orders) {
     const bt = o.businessType as BusinessType;
-    const bin = i < anchorCount ? anchorQty : padQty;
-    bin.set(bt, (bin.get(bt) ?? 0) + Number(o.qty));
-  });
+    segQty.set(bt, (segQty.get(bt) ?? 0) + Number(o.qty));
+  }
   const factor = new Map<BusinessType, number>();
   for (const [bt, sh] of share) {
-    const pad = padQty.get(bt) ?? 0;
-    if (pad <= 0) continue; // 该业态补足段一张都没有 ⇒ 无处落差额，诚实跳过（不去动锚点）
-    const want = totalQty * sh - (anchorQty.get(bt) ?? 0);
-    if (!(want > 0)) continue; // 锚点已超目标 ⇒ 不倒扣（不许把补足段 qty 压成 0/负）
-    factor.set(bt, want / pad);
+    const have = segQty.get(bt) ?? 0;
+    if (have <= 0) continue; // 该业态一张单都没有 ⇒ 无处落差额，诚实跳过（不凭空造单）
+    factor.set(bt, (totalQty * sh) / have);
   }
-  for (let i = anchorCount; i < orders.length; i++) {
-    const f = factor.get(orders[i]!.businessType as BusinessType);
+  for (const o of orders) {
+    const f = factor.get(o.businessType as BusinessType);
     if (f === undefined) continue;
-    orders[i]!.qty = Math.max(1, Math.round(Number(orders[i]!.qty) * f));
+    o.qty = Math.max(1, Math.round(Number(o.qty) * f));
   }
 }
 
@@ -4399,9 +4406,8 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
 
   // WO-ORDERLINE：订单拆行（SO→型号明细行·一单多型号多行）。独立哈希子流·**不插既有 order rng 流**→
   // 24 单头级字节基线不移（R6）；additive 只加 OrderLine 行、Order 头级对象数不变。
-  // WO-ORDER-500-REDS：补足段 qty 归一到需求册量结构（**必须在拆行之前**，否则 Σ行 ≠ 头级 qty）。
-  // 锚点 24 张 = orders 的前 HTML_ORDERS.length 条（上面 map 出来的那一段），字节不动。
-  alignOrderBookToDemandMix(orders, HTML_ORDERS.length);
+  // WO-ORDER-500-REDS：全簿 qty 按业态等比归一到需求册量结构（**必须在拆行之前**，否则 Σ行 ≠ 头级 qty）。
+  alignOrderBookToDemandMix(orders);
 
   const orderLines = deriveOrderLines(orders, models);
 

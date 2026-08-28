@@ -284,9 +284,13 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
     const stripped = stripAdditive(JSON.parse(JSON.stringify(numeric))) as Record<string, unknown>;
     const numericJson = JSON.stringify(stripped);
     // WO-ORDER-BOOK-500：订单簿 24→500 ⇒ 风险卡里的订单明细变多，这个长度金值随之从 26680 变成 53487。
-    // **只改数字，判据一字未动**：本门断的仍是「无采纳记录时，采纳功能没动过任何老字段」——
-    // 长度是那件事的字节级指纹，数据量变了指纹自然重取，但它照样会在「老字段被动」时当场红。
-    expect(numericJson.length, "剥掉已登记的加性新键后长度仍变 —— 说明动的是老字段，不是加字段").toBe(53487);
+    // WO-ORDER-500-REDS：订单簿业态量结构对齐需求册（储能 12.9%→37.1%·总量不变）+ `4680-LFP` 计价
+    //   归位到它自报的 `applicationDomain`（21912→13944 元/套）⇒ 风险卡里 `affectedOrders` 的
+    //   `qty`/`unitPrice` **十进制位数**变了（储能单 ×3.95 多进一位、乘用车单 ×0.62 少一位），
+    //   长度金值随之 53487 → 55532。
+    // **两次都只改数字，判据一字未动**：本门断的仍是「无采纳记录时，采纳功能没动过任何老字段」——
+    // 长度是那件事的字节级指纹，数据量/位数变了指纹自然重取，但它照样会在「老字段被动」时当场红。
+    expect(numericJson.length, "剥掉已登记的加性新键后长度仍变 —— 说明动的是老字段，不是加字段").toBe(55532);
     expect(
       createHash("sha256").update(numericJson).digest("hex"),
       "无采纳记录时 risk_timeline 的**推演数值**与上线前不再逐字节一致（R6 向后兼容被破）——" +
