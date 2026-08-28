@@ -1269,7 +1269,12 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
-    weightRef: null,
+    // ⚠ **必须与 `demo_order_demand_pressure` 用同一个口径**（WO-COEF-FROM-BOM）：
+    // 那条与本条**同一条链路（`order_for_model`）、同一个目标格子（`Model.demandLoad`）**，
+    // 只是源变量不同。只给其中一条加分摊，`Model.demandLoad` 就变成
+    // 「一半是按订单量加权的平均、另一半是不加权的求和」—— 两种量纲加在同一个数上，
+    // 比两条都不加权更糟（错得没规律，且没有任何东西会报错）。同格同口径，这条不是可选项。
+    weightRef: { basis: "source_qty_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
