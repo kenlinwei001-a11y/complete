@@ -430,6 +430,79 @@ const NORMALIZERS: Record<string, DrillNormalizer> = {
     }));
   },
 
+  /**
+   * `quote_margin` —— **WO-MATERIAL-REPRICE 的主答者**：接单毛利的真 BOM 口径。
+   *
+   * 实测回包顶层键（4091 · `{"args":{}}`）：
+   *   `margin,floor,diff,verdict,breakdown{bomCost,mfg,logistics,price},scope,ruleRefs,evaluatedRules,ruleSetVersion`
+   * ⚠ **没有 `dataMode`** ⇒ 诚实位恒 `UNDECLARED`（同 `sop_reschedule`）。
+   *
+   * ── 三条不许省的诚实位（省掉任何一条，屏上那个数就会被读成它不是的东西）────────────
+   * ① **它读本体真值、不读世界态** —— 故它给的是**基线毛利**，不是「涨价之后的毛利」。
+   *    料价冲击走的是另一条路（`stateEffect` → `Material.priceShock` → 传导 → `Order.costPressure`），
+   *    两条路今天在**不同的量纲上**（毛利率 vs 压力指数），**不许在这里把它们相减**。
+   * ② **`scope.dataMode`** 是求解器自己的取数诚实位（`OK` = 真 BOM · `EMPTY` = 回落通用物料），
+   *    `EMPTY` 时这条结论不该被当成该型号的成本。
+   * ③ **`scope.unitBasis.coherent === false`** 是已登记的量纲欠账 `G-QUOTE-BOM-PRICE-UNIT-SCALE`
+   *    （价按套 / BOM 按台，缺换算常数 ⇒ margin 绝对值偏高）。把它原样带进 `why`，
+   *    而不是替它造一个常数把数压到「看着合理」—— 那是把金值改成想要的值。
+   *
+   * 结论分档：低于底线 ⇒ 卡点（severity 100）；触线 ⇒ 脆弱点；过线 ⇒ 脆弱点但严重度按余量算。
+   */
+  quote_margin: (out, ctx) => {
+    const dataMode = readDataMode(out);
+    const margin = num(out.margin);
+    const floor = num(out.floor);
+    if (margin === null || floor === null) return [];
+    const bd = rec(out.breakdown);
+    const scope = rec(out.scope);
+    const unitBasis = rec(scope.unitBasis);
+    const modelId = str(scope.modelId) || "（未定位型号）";
+    const verdict = str(out.verdict);
+    const belowFloor = margin < floor;
+    // 余量 = margin − floor。**用余量占底线的比例定严重度**（无量纲），不拿毛利率直接当 0–100：
+    // 毛利率 0.87 与 tightness 87 长得一样，混排就是拿两个不同口径的数比大小。
+    const headroomPct = floor === 0 ? 0 : ((margin - floor) / floor) * 100;
+    const severity = belowFloor ? 100 : clamp100(100 - headroomPct);
+    const honesty =
+      (str(scope.dataMode) === "OK" ? "" : `⚠ 取数 ${str(scope.dataMode) || "未声明"}：${str(scope.reason) || "未拿到该型号真 BOM"}；`) +
+      (unitBasis.coherent === false ? `⚠ 量纲欠账 ${str(unitBasis.gap)}：${str(unitBasis.note)}；` : "");
+    return [
+      {
+        key: `quote_margin::margin::${modelId}`,
+        kind: belowFloor ? "卡点" : "脆弱点",
+        severity: round6(severity),
+        where: { objectType: "Model", objectId: modelId, label: `${modelId}·接单毛利` },
+        when: null,
+        why:
+          `${modelId} 接单毛利率 ${margin}（底线 ${floor}，${verdict || (belowFloor ? "低于底线" : "过线")}）；` +
+          `BOM 成本 ${num(bd.bomCost) ?? "?"} / 售价 ${num(bd.price) ?? "?"}（真 BOM ${num(scope.bomRows) ?? 0} 行·${str(scope.bomId) || "无 BOM 号"}）。` +
+          `${honesty}` +
+          `⚠ 本数取**本体真值**，是料价变动前的**基线**——冲击后的成本压力见 Order.costPressure 那批结论，两者量纲不同不可相减。`,
+        source: {
+          solverKey: ctx.solverKey,
+          dataMode,
+          provenance: prov(ctx, {
+            margin,
+            floor,
+            diff: num(out.diff),
+            bomCost: num(bd.bomCost),
+            price: num(bd.price),
+            bomId: str(scope.bomId),
+            bomRows: num(scope.bomRows),
+            scopeMode: str(scope.mode),
+            scopeDataMode: str(scope.dataMode),
+            unitCoherent: unitBasis.coherent === true,
+            unitGap: str(unitBasis.gap),
+            basis: "本体真值（Material.unitPrice × BOMDetail.quantity），**不读世界态**",
+          }),
+        },
+        reconciled: null,
+        evidence: { margin, floor, breakdown: bd, scope },
+      },
+    ];
+  },
+
   /** `affected_orders` —— 受影响订单清单。实测含 `rows`/`problems`，无 `dataMode`。 */
   affected_orders: (out, ctx) => {
     const dataMode = readDataMode(out);
