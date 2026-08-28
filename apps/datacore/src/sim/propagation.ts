@@ -292,6 +292,37 @@ export function buildCadenceGates(
  * coefficientRef 路径仍只读数值。 */
 export type RuleParamLookup = Record<string, Record<string, unknown>>;
 
+// ══════════════════════════════════════════════════════════════════════════
+// § 逐实例分摊权重（WO-COEF-FROM-BOM）—— 「按用量分」，不是「一条边一个常数」
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 一对 (源实例, 目标实例) 的键。用 `\u0000` 分隔 —— 与本文件 `navKey` 同一条理由：
+ * 对象 id 里可能含任何可打印字符，用可打印分隔符会撞车（`a|b`+`c` 与 `a`+`b|c` 同键）。
+ */
+export function pairWeightKey(sourceId: string, targetId: string): string {
+  return `${sourceId}\u0000${targetId}`;
+}
+
+/**
+ * 逐实例权重表：`ruleKey` → `pairWeightKey(sourceId,targetId)` → 权重。
+ *
+ * **本引擎对权重从哪来一无所知**（R14 零业务常数）：BOM 遍历、订单数量归集这些行业知识
+ * 全在 DataCore 侧的装配处算完（`sim/pair-weights.ts`），引擎只拿到一张纯数值表。
+ * 这正是 `CadenceGateLookup` 立下的同一条分工 —— 引擎认结构，不认行业。
+ */
+export type PairWeightLookup = Record<string, Record<string, number>>;
+
+/** 一条声明了分摊口径却拿不到**整张**权重表的规则（诚实缺席出口，照 `UnresolvedCadenceGate` 范式）。 */
+export interface UnresolvedPairWeight {
+  ruleKey: string;
+  basis: string;
+  /** 机器可读原因：权重表里根本没有这条规则。 */
+  reason: "NO_WEIGHTS";
+  /** 说人话：为什么这条流本 tick 不传导。 */
+  detail: string;
+}
+
 /** 浮点固定精度（避免遍历序导致的尾差，R6 字节一致）。 */
 const PRECISION = 1e12;
 function round12(n: number): number {
@@ -435,8 +466,16 @@ function applyContribution(
  *                 **顺序即语义**：`delta`/`scale` 不可交换（`(10+2)×1.5=18 ≠ 10×1.5+2=17`，
  *                 `repo.ts:368`），本函数**绝不重排**。多传无关的扰动是 no-op（见下 enter/exit 判据），
  *                 少传「本 tick 到期的那条」则回退不会发生 —— 故调用方须把**刚到期**的也一并传入。
+ * @param pairWeights 可选**逐实例分摊权重表**（WO-COEF-FROM-BOM）。规则声明了 `weightRef` 时，
+ *                 这一对 (源实例, 目标实例) 的贡献额外乘上 `pairWeights[ruleKey][pairWeightKey(s,t)]`
+ *                 （「按用量分」而不是「一条边一个常数」）。表里**整条规则**都查不到 ⇒ 该规则不传导
+ *                 并进 `unresolvedWeights`（**不退回 1** —— 退回 1 就是把本单要治的错行为
+ *                 挂上「已按用量分摊」的名义继续跑）；表在而**某一对**查不到 ⇒ 该对权重 **0**
+ *                 （算得出来的真值：不在 BOM 里就是占 0%），不报缺。
+ *                 权重从哪来本引擎一概不知（R14）——见 `PairWeightLookup`。
  * @returns next（t+1 态）/ pending（去掉已结算、含新延迟）/ trace（本 tick 即时贡献轨迹 + 扰动落地/回退行）
  *          / unresolvedGates（声明了闸门却拿不到闸门的流）
+ *          / unresolvedWeights（声明了分摊口径却拿不到整张权重表的规则）
  *          / appliedPerturbations（本 tick **处于生效期**的扰动 id，输入序 —— 溯源：这个结果是哪几次扰动造成的）
  */
 export function propagateTick(
@@ -448,11 +487,13 @@ export function propagateTick(
   ruleParams: RuleParamLookup = {},
   gates: CadenceGateLookup = {},
   perturbations: readonly PerturbationInTick[] = [],
+  pairWeights: PairWeightLookup = {},
 ): {
   next: TickState;
   pending: DelayedContribution[];
   trace: PropagationTrace[];
   unresolvedGates: UnresolvedCadenceGate[];
+  unresolvedWeights: UnresolvedPairWeight[];
   appliedPerturbations: string[];
 } {
   // ── 0') 扰动相位（WO-P2）：先把本 tick 的「到期回退 / 首次落地」作用到世界，再传导 ──
@@ -517,6 +558,7 @@ export function propagateTick(
   const trace: PropagationTrace[] = [];
   const nextPending: DelayedContribution[] = [];
   const unresolvedGates: UnresolvedCadenceGate[] = [];
+  const unresolvedWeights: UnresolvedPairWeight[] = [];
 
   // ── 0) 对象类型索引 + 链路导航索引（复用 recompute 的 "linkKey|id" 思路） ──
   const typeOf = new Map<string, string>();
@@ -586,6 +628,28 @@ export function propagateTick(
       gate = g;
     }
     const coeff = effectiveCoefficient(rule, ruleParams);
+    // ── 逐实例分摊闸（WO-COEF-FROM-BOM）：声明了就必须拿得到整张表，拿不到诚实报缺 ──
+    // 与上面节拍闸门**同一条纪律**：`weightRef` 非空却查不到本规则的权重表，
+    // 说明这个口径所需的本体数据缺失/未物化。此时**绝不退回 1** ——
+    // 退回 1 得到的正是本单要治的那个错行为（逐目标同额），却还挂着「已按用量分摊」的名义，
+    // 是比修前更难发现的假绿。故：该规则本 tick 不传导，缺口显式亮在 `unresolvedWeights`。
+    let weights: Record<string, number> | null = null;
+    if (rule.weightRef) {
+      const w = pairWeights[rule.key];
+      if (w === undefined) {
+        unresolvedWeights.push({
+          ruleKey: rule.key,
+          basis: rule.weightRef.basis,
+          reason: "NO_WEIGHTS",
+          detail:
+            `规则 ${rule.key} 声明按「${rule.weightRef.basis}」逐实例分摊，但本租户算不出这张权重表` +
+            `（该口径所需的本体数据缺失或未物化）。本条流本 tick 不传导——既不退回「逐目标同额」` +
+            `（那正是本口径要治的错行为，退回去还会挂着"已按用量分摊"的名义），也不替它编一份权重。`,
+        });
+        continue;
+      }
+      weights = w;
+    }
     for (const sourceId of idsByType.get(rule.sourceTypeKey) ?? []) {
       const targets = targetsOf(rule, sourceId);
       if (targets.length === 0) continue;
@@ -601,13 +665,25 @@ export function propagateTick(
         if (dist > rule.decay.window) continue; // 超窗 -> 无贡献
         factor = 1 - dist / rule.decay.den;
       }
-      const amount = round12(coeff * sourceVal * factor);
-      if (amount === 0) continue;
+      // 「整条边」的量：强度 × 源态 × 衰减。**无分摊口径时它就是最终额**（逐字节同旧·RL9）。
+      const baseAmount = round12(coeff * sourceVal * factor);
+      // 早退判据仍落在 baseAmount 上：任何权重 × 0 恒为 0，故这一步的行为与有无分摊无关。
+      if (baseAmount === 0) continue;
       // 放行时刻：无闸门 = 本 tick 即放行（旧行为逐字节不变）；有闸门 = 等到下一次开闸。
       // 再叠加规则自身的行程延迟 delayTicks（两者是两件事：闸门是"何时准出发"，delay 是"路上走多久"）。
+      // 与金额无关，故留在目标循环之外（分摊只改「分多少」，不改「什么时候到」）。
       const releaseTick = gate === null ? tick : nextGateTick(tick, gate);
       const arriveTick = releaseTick + rule.delayTicks;
       for (const targetId of targets) {
+        // ★ 本单的落点 ★ 逐对分摊就发生在这一行：
+        //   · 无 `weightRef` ⇒ 直接用 `baseAmount` **同一个变量、同一次 round12**，
+        //     不写成 `round12(baseAmount * 1)` —— 那样虽然数值相等，却多一次浮点往返，
+        //     而本仓的可回退判据是**逐字节**，不是「约等于」。40 条未改造的边靠这一支保持原样。
+        //   · 有 `weightRef` ⇒ 乘该对的份额；查不到该对 ⇒ **0**（算得出来的真值：
+        //     该源不在该目标的计量口径里 ⇒ 占 0%），不是「缺省 1」。
+        const amount =
+          weights === null ? baseAmount : round12(baseAmount * (weights[pairWeightKey(sourceId, targetId)] ?? 0));
+        if (amount === 0) continue; // 份额为 0 的对不落贡献、不落 trace（等价于这条边今天不通）
         if (arriveTick === tick) {
           // 即时：当 tick 累加进 next，落即时 trace。
           // （无闸门 ⇒ 等价于旧的 `delayTicks === 0` 分支；有闸门且本 tick 正好开闸且零行程 ⇒ 同样即时。）
@@ -680,5 +756,5 @@ export function propagateTick(
   // 诚实清单也稳定排序（R6：同输入同字节，含"缺什么"这份清单）。
   unresolvedGates.sort((a, b) => a.ruleKey.localeCompare(b.ruleKey) || a.cadenceNodeId.localeCompare(b.cadenceNodeId));
 
-  return { next, pending: outPending, trace, unresolvedGates, appliedPerturbations };
+  return { next, pending: outPending, trace, unresolvedGates, unresolvedWeights, appliedPerturbations };
 }
