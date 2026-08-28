@@ -195,10 +195,20 @@ describe("WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发
     // `propagation.ts:596` 的 `if (sourceVal === 0) continue` 会以完全相同的外观跳过这条规则）。
     // t1 恰好 20：扰动真的落进去了，且这一格还没有别的东西写它。
     expect(t1.state[BASE_ID]!.loadIndex).toBe(20);
-    // t2 = 24.8：金丝雀自己的链会绕回来喂 Base —— Order(10)×0.8 = Model.demandLoad 8 @t1，
-    // 再 ×0.6 = 4.8 沿 model_producible_at 落到 Base.loadIndex @t2 ⇒ 20 + 4.8。
-    // 这个数刻意钉死而不写 `>0`：它同时证明"源非 0"和"这一格的世界确实在演化"。
-    expect(t2.state[BASE_ID]!.loadIndex).toBe(24.8);
+    // t2：金丝雀自己的链会绕回来喂 Base —— `Model.demandLoad @t1` 再 ×0.6 沿
+    // `model_producible_at` 落到 `Base.loadIndex @t2` ⇒ `20 + demandLoad@t1 × 0.6`。
+    //
+    // ⚠ **原来这里钉死 24.8（= 20 + 8×0.6），本单改成从 t1 现算**（WO-COEF-FROM-BOM）。
+    // 理由与上面那处相同、且这一处更隐蔽：`demo_order_demand_pressure` 现在按
+    // `source_qty_relative` 分摊，`demandLoad@t1` 不再恒等于 8（实测这张单的倍率≈1.496
+    // ⇒ 该格变成 27.179858379229）。把新数贴上去就是"跑一遍把期望值贴上去"；
+    // 写成**恒等式**才仍然在证原来那两件事：源非 0 + 这一格的世界确实在演化，
+    // 且额外多咬住一条：**跨规则的乘子链没漂**（0.6 这一跳照旧）。
+    const demandLoadT1 = t1.state[orderLink.toId]!.demandLoad!;
+    expect(demandLoadT1, "金丝雀链在 t1 没喂到 Model ⇒ 下面这条恒等式无从谈起").toBeGreaterThan(0);
+    expect(t2.state[BASE_ID]!.loadIndex).toBe(Math.round((20 + demandLoadT1 * 0.6) * 1e12) / 1e12);
+    // 反向钉死：它**必须**已经不是 20（世界真的在演化，不是一格没动）。
+    expect(t2.state[BASE_ID]!.loadIndex).toBeGreaterThan(20);
   });
 
   // ── ③ 种子的方向必须与本体单源一致（把 #158 的成因钉在种子这一层）────────────────────
