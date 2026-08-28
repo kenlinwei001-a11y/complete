@@ -183,6 +183,45 @@ export const DrillStateEffectSchema = z.object({
   magnitudeFrom: z.string().min(1),
   /** 扰动分类，口径同 `PerturbationKindSchema`（料价 ⇒ `cost_shock`）。 */
   perturbationKind: z.enum(["demand_shift", "supply_disruption", "capacity_loss", "cost_shock", "quality_event"]),
+
+  // ── WO-EVENTS-WRITE-STATE 新增的三组字段 ────────────────────────────────
+  /**
+   * 落点对象**从哪里取**：`eventTarget` = 用户选的那个主体；`payloadKey` = 从 payload 里取。
+   *
+   * ⚠ 为什么需要第二种：`ORDER_INSERT`（临时插单）屏上选的是**客户**，而本世界的
+   * `Customer` 只有一条应收侧的出边（`receivablePressure → 应收/逾期/收货地点`），
+   * **需求侧一条边都没有**（实测 42 条 PUBLISHED 规则，`Customer` 作源只出现 3 次，全是应收）。
+   * 插单真正压到的是「哪个型号的需求负荷」（`Model.demandLoad`，4 条出边直通基地负荷），
+   * 而型号在 `payload.modelId` 里。⇒ 落点必须能从 payload 取，否则只能二选一：
+   * 要么把插单打到一个语义不对的格子上，要么它继续一格都不打。
+   */
+  targetFrom: z.enum(["eventTarget", "payloadKey"]).default("eventTarget"),
+  /** `targetFrom === "payloadKey"` 时读哪个键；其余恒 `null`。 */
+  targetKey: z.string().nullable().default(null),
+  /**
+   * 这类对象的**业务键属性名**（`Order` ⇒ `so`、`Material` ⇒ `matId`）。
+   *
+   * ⚠ 这是「同一个 `targetObjectId` 字段被两种消费方按两种口径读」这条接缝的补丁：
+   * 求解器入参要**业务键**（`sop_reschedule.targetOrderId = SO-3391`，传 `obj_order_SO-3391`
+   * 实测回 `Order obj_order_SO-3391 not found`），而世界态落点要**对象 id**。
+   * 有了它，路由层可以两种都认：先按对象 id 查，查不到再按 `props[keyProp]` 找。
+   * ⇒ 一个事件同时有求解器路由和世界态落点时，两边不再打架。
+   */
+  keyProp: z.string().min(1),
+  /**
+   * **业务单位 → 状态变量点数**的换算（状态变量是 0–100 的「全距」刻度，
+   * 见种子日志原文：「把「短缺风险」抬高一个全距（+100）」）。
+   *
+   * ⛔ 这个数**不许拍脑袋**（派单原话：「不许为了让数字动而随便放大系数」）。
+   * 只有三种合法来源，每条都必须在 `magnitudeBasis` 里写出出处：
+   *  ① 幅度键本身就是百分比 ⇒ `1`（零换算，绝大多数事件走这条）；
+   *  ② 幅度键是「天」⇒ `100/30`（本平台推演窗口就是 30 天 ⇒ 30 天 = 一个全距）；
+   *  ③ 幅度键是业务量 ⇒ 拿**实测中位数**当全距（如插单量 ÷ 基地日产能中位数）。
+   * 负号只用于**方向相反**的事件（订单取消 = 需求反向），不用于放大。
+   */
+  magnitudePerUnit: z.number().default(1),
+  /** 上面那个系数**是怎么定出来的** —— 随回执下发到屏上，不许是屏后的魔数。 */
+  magnitudeBasis: z.string().default("幅度键本身即百分点，1:1 不换算"),
 });
 export type DrillStateEffect = z.infer<typeof DrillStateEffectSchema>;
 
@@ -235,15 +274,73 @@ export const DRILL_UNIVERSAL_ROUTES: readonly DrillRoute[] = [
  *  · `capacity_forecast` 实测**必须**带 `modelId`，否则 400「modelId required」——
  *    故它的 `modelId` 标 `required: true`，取不到就记「未能评估」而不是硬调一次拿 400。
  */
+/**
+ * ══ WO-EVENTS-WRITE-STATE · 11 类事件的世界态落点，逐条实测定出来的 ══════════════
+ *
+ * **今天的行为是 X，应该是 Y**（起真 datacore 4821 · seed 42 · demo 租户，原文照录）：
+ * · **X**：11 类事件里只有 `MATERIAL_REPRICE` 声明了落点，其余 10 类 `stateEffect: null`
+ *   ⇒ 事件只被路由到求解器，**一格世界态都不写**。实测复现 COO 的对照实验：
+ *   同一种料把 `pctChange` 从 **15 改到 100**（6.7 倍），
+ *   `totalByKind` 只从 `{卡点370,脆弱点364,堵点24}` 动到 `{卡点372,脆弱点362,堵点24}`；
+ *   而换成 `MATERIAL_SHORTAGE`（无落点）时 `appliedStateEffects` 直接是 `[]`、
+ *   屏上「沿 N 条关系推」当场掉到 **0** —— 那就是「事件没打到世界上」的样子。
+ * · **Y**：每一类事件都该有一个**在传导图上真有出边**的落点，由本表声明，
+ *   由路由层解释成临时扰动喂进传导核。
+ *
+ * ── 落点是怎么选的：判据只有一条「这一格有没有出边」───────────────────────────
+ * 真相源 = `GET /a/v1/sim/propagation-rules`（实测 **42 条全 PUBLISHED**）。
+ * 派单原话：「**落点选错比不落更糟** —— 落在一个没有出边的状态量上，
+ * 等于"看起来改了实际还是不动"，而且更难发现」。故下表每一行都标了**出边数与去向**，
+ * 全部是从那 42 条里逐条查出来的，不是照 PRD 抄的：
+ *
+ * | 事件 | 落点 | 出边数 | 第一跳去哪 |
+ * |---|---|---|---|
+ * | `ORDER_RESCHEDULE`  | `Order.shortageRisk`    | 1 | `OrderPromise.promiseRisk ×0.8`（**交期承诺**，正是这件事该动的那一格） |
+ * | `ORDER_CANCEL`      | `Order.demandPressure`  | 2 | `Model.demandLoad ×0.8` / `OrderLine.splitPressure ×0.9`（**取消 = 需求反向**，故系数 −1） |
+ * | `ORDER_INSERT`      | `Model.demandLoad`      | 4 | `Base.loadIndex ×0.6` / 认证 / 换型 / 成品库（**「插单挤谁」就是顺着基地负荷往下**） |
+ * | `ORDER_RELOCATE`    | `Order.orderChurn`      | 2 | `OrderLine.splitPressure ×0.7` / `Model.demandLoad ×0.5`（改地点 ⇒ 拆行 + 换基地重排） |
+ * | `ORDER_REPRICE`     | `Order.costPressure`    | 1 | `Customer.receivablePressure ×0.5`（改卖价 ⇒ 客户欠款敞口变大） |
+ * | `MATERIAL_DELAY`    | `Material.shortageRisk` | 5 | 替代料 / 物料平衡 / 批次 / 型号供应风险 / 采购催货（**全图扇出最大的一格**） |
+ * | `MATERIAL_SHORTAGE` | `Material.shortageRisk` | 5 | 同上 |
+ * | `MATERIAL_REPRICE`  | `Material.priceShock`   | 1 | `Model.costPressure ×0.65`（**本来就有，本单不动它**） |
+ * | `EQUIPMENT_FAILURE` | `Line.utilPressure`     | 2 | `Process.queuePressure ×0.7` / `WorkOrder.releasePressure ×0.6` |
+ * | `CAPACITY_LOSS`     | `Base.loadIndex`        | 4 | 发运 / `Line.utilPressure ×0.5` / 检修窗 / 跨基地调拨 |
+ * | `FORECAST_BIAS`     | `Model.forecastBias`    | 1 | `Order.demandPressure ×**−0.6**`（**全图唯一的负系数边**，预测偏高 ⇒ 实际需求压力下调） |
+ *
+ * ⚠ **一个都没落在叶子上**：`CustomerLocation.deliveryHoldRisk` / `OrderPromise.promiseRisk` /
+ * `MaterialBalance.gapPressure` 这些只作 target、零出边的格子，看着"业务上最贴切"，
+ * 打上去却一步都传不下去 —— 正是派单点名要避的那一类。
+ *
+ * ⚠ **`Customer` 上没有需求侧的边**（42 条里 `Customer` 作源 3 次，全是应收/逾期/收货地点）
+ * ⇒ 「临时插单」选的那个客户**今天仍然不进算式**，进算式的是它同时要填的**型号**。
+ * 这一条不许在屏上含糊过去，`subjectIsRead()` 会把它算成 `false` 并逼出那句诚实位。
+ */
 export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
   {
     kind: "ORDER_RESCHEDULE",
     label: "订单改交期",
     payloadKeys: [
-      { key: "advanceDays", type: "number", required: false, hint: "提前天数（正数 = 提前）" },
+      { key: "advanceDays", type: "number", required: true, hint: "提前天数（正数 = 提前）" },
       { key: "newDueDate", type: "string", required: false, hint: "新交期 ISO 日期；给了则优先于提前天数" },
     ],
-    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
+    /**
+     * 提前交期 = 吃掉交付缓冲 ⇒ 这张单的**短缺风险**上升，顺 `order_has_promise` 打到交期承诺。
+     * ⚠ `advanceDays` 从 `required:false` 改成 `true`：它既是 `sop_reschedule` 的入参、
+     * 又是本落点的幅度来源，不填就只剩 `newDueDate` 那条路 —— 而那条路今天给不出幅度，
+     * 会静默变成「声明了落点却没打上」。宁可在表单上拦住，不许静默。
+     */
+    stateEffect: {
+      objectType: "Order",
+      keyProp: "so",
+      stateVar: "shortageRisk",
+      mode: "delta",
+      magnitudeFrom: "advanceDays",
+      targetFrom: "eventTarget",
+      targetKey: null,
+      perturbationKind: "demand_shift",
+      magnitudePerUnit: 100 / 30,
+      magnitudeBasis: "「天」类幅度统一口径：本平台推演窗口 = 30 天 ⇒ 30 天 = 一个全距（100 点）⇒ 每天 3.33 点",
+    },
     routes: [
       {
         solverKey: "sop_reschedule",
@@ -260,18 +357,58 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
   {
     kind: "ORDER_CANCEL",
     label: "订单取消",
-    payloadKeys: [],
-    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
+    payloadKeys: [
+      { key: "cancelPct", type: "number", required: true, hint: "取消掉这张单的百分之多少：100 = 整单取消，30 = 砍掉三成" },
+    ],
+    /**
+     * **全表唯一的负系数**：取消 = 需求**反向**。`magnitudePerUnit: -1` ⇒ 用户填 100（整单取消）
+     * 就是 `demandPressure −100`，顺 `order_for_model` 把型号需求负荷往**下**压。
+     * ⛔ 负号在这里是**方向**不是放大：绝对值仍是 1:1（填 30 就是 30 点），
+     * 与「为了让数字动而放大系数」是两件事。
+     */
+    stateEffect: {
+      objectType: "Order",
+      keyProp: "so",
+      stateVar: "demandPressure",
+      mode: "delta",
+      magnitudeFrom: "cancelPct",
+      targetFrom: "eventTarget",
+      targetKey: null,
+      perturbationKind: "demand_shift",
+      magnitudePerUnit: -1,
+      magnitudeBasis: "百分点 1:1，取负号 —— 取消是需求的反方向（填 100 = 整单取消 = 需求压力 −100 点）",
+    },
     routes: [{ solverKey: "portfolio", role: "PRIMARY", args: [] }],
   },
   {
     kind: "ORDER_INSERT",
     label: "临时插单",
     payloadKeys: [
-      { key: "qtyDelta", type: "number", required: false, hint: "插单数量" },
-      { key: "modelId", type: "string", required: false, hint: "型号（产能测算必需）" },
+      { key: "qtyDelta", type: "number", required: true, hint: "插单数量（套）" },
+      { key: "modelId", type: "string", required: true, hint: "插哪个型号 —— 这一格决定算出来的数，必填" },
     ],
-    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
+    /**
+     * 落点在**型号**上，不在用户选的那个客户上 —— 理由在本表头注：
+     * `Customer` 在 42 条边里作源 3 次、全是应收侧，需求侧一条都没有；
+     * 而「插单挤谁」这道题的答案顺着 `Model.demandLoad → Base.loadIndex ×0.6 →
+     * Line.utilPressure ×0.5 → Process.queuePressure ×0.7` 才走得出来。
+     * ⇒ `targetFrom: "payloadKey"`，落点取 `payload.modelId`。
+     * ⚠ 因此 `modelId` 从选填改成**必填**：它同时是 `capacity_forecast` 的必填入参
+     * （不填实测回「capacity_forecast 缺必填入参 modelId ⇒ 未能评估」，COO 看到的
+     * 「问了 3 路算，有 1 路没跑通」就是它），现在两边口径对齐。
+     */
+    stateEffect: {
+      objectType: "Model",
+      keyProp: "modelId",
+      stateVar: "demandLoad",
+      mode: "delta",
+      magnitudeFrom: "qtyDelta",
+      targetFrom: "payloadKey",
+      targetKey: "modelId",
+      perturbationKind: "demand_shift",
+      magnitudePerUnit: 100 / 70389,
+      magnitudeBasis: "实测 13 个基地 Base.formationCapDaily 中位数 = 70,389 套/日 ⇒ 插满一个基地一天 = 一个全距（100 点）",
+    },
     routes: [
       { solverKey: "portfolio", role: "PRIMARY", args: [] },
       {
@@ -287,15 +424,57 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
   {
     kind: "ORDER_RELOCATE",
     label: "改交付地点",
-    payloadKeys: [{ key: "newLocationId", type: "string", required: false, hint: "新交付地点对象 id" }],
-    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
+    payloadKeys: [
+      { key: "newLocationId", type: "string", required: false, hint: "新交付地点对象 id" },
+      { key: "movedPct", type: "number", required: true, hint: "这张单有多少比例改地点：100 = 整单改" },
+    ],
+    /**
+     * ⚠ **这一条是本表里最该被质疑的一条，所以把理由写全**：
+     * 「改交付地点」在业务上最贴切的格子是 `CustomerLocation.deliveryHoldRisk` ——
+     * 而它在 42 条边里**只作 target、零出边**，打上去一步都传不下去，
+     * 正是派单点名的「看起来改了实际还是不动，而且更难发现」。
+     * 退一步取**语义上真实存在的那条**：改地点 ⇒ 这张单要重拆行、要换基地重排，
+     * 这在本世界里就是「订单变更压力」`Order.orderChurn`（2 条出边：
+     * `order_has_line → OrderLine.splitPressure ×0.7` = 拆行，
+     * `order_for_model → Model.demandLoad ×0.5` = 换基地重排）。
+     */
+    stateEffect: {
+      objectType: "Order",
+      keyProp: "so",
+      stateVar: "orderChurn",
+      mode: "delta",
+      magnitudeFrom: "movedPct",
+      targetFrom: "eventTarget",
+      targetKey: null,
+      perturbationKind: "demand_shift",
+      magnitudePerUnit: 1,
+      magnitudeBasis: "幅度键本身即百分点，1:1 不换算",
+    },
     routes: [{ solverKey: "portfolio", role: "PRIMARY", args: [] }],
   },
   {
     kind: "ORDER_REPRICE",
     label: "订单改价",
-    payloadKeys: [{ key: "priceDelta", type: "number", required: false, hint: "单价变动" }],
-    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
+    /**
+     * ⚠ `priceDelta`（元）→ `pctChange`（%）：**没有任何路由消费这个键**
+     * （`order_fullchain` 只吃 `so`），所以改单位零破坏；而改成百分比之后
+     * 幅度换算是 1:1，不必发明「多少元 = 多少点」这种系数。
+     * 顺带让它与 `MATERIAL_REPRICE` 的输入长得一样 —— COO 原话是这两件事
+     * 「屏上只差一个字，最容易被选错」，输入格式统一至少少一层歧义。
+     */
+    payloadKeys: [{ key: "pctChange", type: "number", required: true, hint: "卖价涨跌百分比：+8 = 提价 8%，-5 = 降价 5%" }],
+    stateEffect: {
+      objectType: "Order",
+      keyProp: "so",
+      stateVar: "costPressure",
+      mode: "delta",
+      magnitudeFrom: "pctChange",
+      targetFrom: "eventTarget",
+      targetKey: null,
+      perturbationKind: "cost_shock",
+      magnitudePerUnit: 1,
+      magnitudeBasis: "幅度键本身即百分点，1:1 不换算",
+    },
     routes: [
       {
         solverKey: "order_fullchain",
@@ -307,22 +486,50 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
   {
     kind: "MATERIAL_DELAY",
     label: "物料到货延迟",
-    payloadKeys: [{ key: "delayDays", type: "number", required: false, hint: "延迟天数" }],
-    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
-    routes: [
-      { solverKey: "supply_demand_gap_attribution", role: "PRIMARY", args: [] },
-      {
-        solverKey: "order_fullchain",
-        role: "AUXILIARY",
-        args: [{ arg: "so", from: "eventTarget", key: null, required: true }],
-      },
-    ],
+    payloadKeys: [{ key: "delayDays", type: "number", required: true, hint: "延迟天数" }],
+    stateEffect: {
+      objectType: "Material",
+      keyProp: "matId",
+      stateVar: "shortageRisk",
+      mode: "delta",
+      magnitudeFrom: "delayDays",
+      targetFrom: "eventTarget",
+      targetKey: null,
+      perturbationKind: "supply_disruption",
+      magnitudePerUnit: 100 / 30,
+      magnitudeBasis: "「天」类幅度统一口径：本平台推演窗口 = 30 天 ⇒ 30 天 = 一个全距（100 点）⇒ 每天 3.33 点",
+    },
+    /**
+     * ⛔ **删掉了 `order_fullchain` 这条路由 —— 它结构上永远调不通**。
+     * 实测（4821 · demo · seed 42）：本事件的主体是 `Material`，而该路由把 `eventTarget`
+     * 当 `so`（订单号）传下去 ⇒ 回包原文 `order pos_lfp not found`，`solverRuns` 恒红一条。
+     * 这不是"偶尔失败"，是**主体类型与入参类型对不上**，选任何一种料都必红。
+     * 留着它只会让屏上永远挂一句「有 1 路没跑通」，把真的失败淹在噪声里
+     * ——「报『没算出来』和报『没事』必须分得开」，而一条恒红的路由两边都不是。
+     */
+    routes: [{ solverKey: "supply_demand_gap_attribution", role: "PRIMARY", args: [] }],
   },
   {
     kind: "MATERIAL_SHORTAGE",
     label: "物料短缺",
-    payloadKeys: [{ key: "qtyDelta", type: "number", required: false, hint: "短缺量" }],
-    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
+    /**
+     * ⚠ `qtyDelta`（量）→ `shortagePct`（%）：同 `ORDER_REPRICE` 的理由 ——
+     * 没有任何路由消费这个键（`supply_demand_gap_attribution` 是 `args: []`），
+     * 改成百分比之后换算 1:1，不必发明「短缺多少吨 = 多少点」这种系数。
+     */
+    payloadKeys: [{ key: "shortagePct", type: "number", required: true, hint: "短缺占在手库存的百分之多少：100 = 库存全断" }],
+    stateEffect: {
+      objectType: "Material",
+      keyProp: "matId",
+      stateVar: "shortageRisk",
+      mode: "delta",
+      magnitudeFrom: "shortagePct",
+      targetFrom: "eventTarget",
+      targetKey: null,
+      perturbationKind: "supply_disruption",
+      magnitudePerUnit: 1,
+      magnitudeBasis: "幅度键本身即百分点，1:1 不换算",
+    },
     routes: [{ solverKey: "supply_demand_gap_attribution", role: "PRIMARY", args: [] }],
   },
   /**
@@ -357,10 +564,15 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
     ],
     stateEffect: {
       objectType: "Material",
+      keyProp: "matId",
       stateVar: "priceShock",
       mode: "delta",
       magnitudeFrom: "pctChange",
+      targetFrom: "eventTarget",
+      targetKey: null,
       perturbationKind: "cost_shock",
+      magnitudePerUnit: 1,
+      magnitudeBasis: "幅度键本身即百分点，1:1 不换算",
     },
     routes: [
       { solverKey: "quote_margin", role: "PRIMARY", args: [] },
@@ -370,25 +582,72 @@ export const DRILL_EVENT_SPECS: readonly DrillEventSpec[] = [
   {
     kind: "EQUIPMENT_FAILURE",
     label: "设备故障",
-    payloadKeys: [{ key: "downDays", type: "number", required: false, hint: "停机天数" }],
-    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
+    payloadKeys: [{ key: "downDays", type: "number", required: true, hint: "停机天数" }],
+    /**
+     * 落点是**产线**不是设备：屏上这件事的选择器就是两级「基地 → 产线」，叶子是 `Line`
+     * （`Equipment` 实测 780 个，铺不下也选不动）。`Line.utilPressure` 有 2 条出边
+     * （`line_has_process → Process.queuePressure ×0.7`、
+     *   `line_runs_work_order → WorkOrder.releasePressure ×0.6`），
+     * 与 `Equipment.equipmentFailure` 汇到的是同一个下游（`Process.queuePressure`）。
+     * ⇒ 选用户真的选得动的那一层，下游一步不少。
+     */
+    stateEffect: {
+      objectType: "Line",
+      keyProp: "lineId",
+      stateVar: "utilPressure",
+      mode: "delta",
+      magnitudeFrom: "downDays",
+      targetFrom: "eventTarget",
+      targetKey: null,
+      perturbationKind: "capacity_loss",
+      magnitudePerUnit: 100 / 30,
+      magnitudeBasis: "「天」类幅度统一口径：本平台推演窗口 = 30 天 ⇒ 30 天 = 一个全距（100 点）⇒ 每天 3.33 点",
+    },
     routes: [{ solverKey: "bottleneck_matrix", role: "PRIMARY", args: [] }],
   },
   {
     kind: "CAPACITY_LOSS",
     label: "产能损失",
-    payloadKeys: [{ key: "lossPct", type: "number", required: false, hint: "损失百分比" }],
-    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
+    payloadKeys: [{ key: "lossPct", type: "number", required: true, hint: "损失百分比" }],
+    stateEffect: {
+      objectType: "Base",
+      keyProp: "baseId",
+      stateVar: "loadIndex",
+      mode: "delta",
+      magnitudeFrom: "lossPct",
+      targetFrom: "eventTarget",
+      targetKey: null,
+      perturbationKind: "capacity_loss",
+      magnitudePerUnit: 1,
+      magnitudeBasis: "幅度键本身即百分点，1:1 不换算",
+    },
     routes: [{ solverKey: "bottleneck_matrix", role: "PRIMARY", args: [] }],
   },
   {
     kind: "FORECAST_BIAS",
     label: "预测偏差",
     payloadKeys: [
-      { key: "biasPct", type: "number", required: false, hint: "偏差百分比" },
-      { key: "modelId", type: "string", required: false, hint: "型号（产能测算必需）" },
+      { key: "biasPct", type: "number", required: true, hint: "偏差百分比：+20 = 预测比实际高两成" },
+      { key: "modelId", type: "string", required: false, hint: "型号（产能测算必需；不填这一路回「未能评估」）" },
     ],
-    stateEffect: null, // 不动世界态：这类事件在传导图上没有唯一正确的落点
+    /**
+     * ⚠ 这一条落在**全图唯一的负系数边**上：
+     * `Model.forecastBias --model_demanded_by_order--> Order.demandPressure ×**−0.6**`。
+     * 也就是说填正数（预测偏高）会把订单侧的需求压力往**下**推 —— 方向是规则表定的，
+     * 不是这里取的负号。屏上解释这件事时要照这条边的原文说，别自己再翻一次符号。
+     */
+    stateEffect: {
+      objectType: "Model",
+      keyProp: "modelId",
+      stateVar: "forecastBias",
+      mode: "delta",
+      magnitudeFrom: "biasPct",
+      targetFrom: "eventTarget",
+      targetKey: null,
+      perturbationKind: "demand_shift",
+      magnitudePerUnit: 1,
+      magnitudeBasis: "幅度键本身即百分点，1:1 不换算（方向由传导边 ×−0.6 决定，这里不再翻符号）",
+    },
     routes: [
       {
         solverKey: "capacity_forecast",
@@ -436,26 +695,102 @@ export function drillRoutesFor(kind: DrillEventKind): DrillRoute[] {
  * 而屏上与「真的施加了、只是影响很小」长得一模一样。取不到就该由调用方记一条「未能评估」。
  * 这是 `payloadKeys` 里 `pctChange` 标 `required: true` 的另一半 —— 校验拦在前，这里兜在后。
  */
-export function drillStateEffectFor(ev: DrillEvent): {
+export interface DrillStateEffectResolved {
   targetObjectId: string;
   targetStateVar: string;
   magnitude: number;
   mode: "set" | "delta" | "scale";
   kind: DrillStateEffect["perturbationKind"];
   declaredObjectType: string;
-} | null {
-  const eff = drillEventSpec(ev.kind)?.stateEffect ?? null;
-  if (eff === null) return null;
+  /** 落点对象的业务键属性名 —— 调用方按对象 id 查不到时用它兜底。 */
+  keyProp: string;
+  /** 用户填的原始数（换算前）。回执要同时给原始数与换算后的点数，否则屏上对不上账。 */
+  rawMagnitude: number;
+  /** 换算依据原文（`magnitudeBasis`），随回执上屏。 */
+  basis: string;
+}
+
+/**
+ * 把一条事件解释成**一格世界态冲击** ——**全平台唯一实现**。
+ *
+ * ⚠ **三个返回态，不是两个**（WO-EVENTS-WRITE-STATE 改）。旧版把后两态都返回 `null`，
+ * 调用方一个 `continue` 就跳过 ⇒ 「这类事件本来就不动世界态」与「声明了落点、
+ * 但用户没填幅度所以没打上」在回包里**一模一样**。那正是本仓点名的那种合并：
+ * 拿一个笼统的 `null` 盖住两个不同事实，其中一个是缺口、另一个不是。
+ *
+ *  · `{ status: "NO_LANDING" }`  = 本事件没声明落点（今天 11/11 都声明了，留着是为了加新事件时不塌）
+ *  · `{ status: "UNRESOLVED" }`  = 声明了落点但幅度/落点取不到 ⇒ 调用方**必须**记一条「未能评估」
+ *  · `{ status: "OK", effect }`  = 可以施加
+ *
+ * ⛔ **幅度取不到绝不落 0**：`magnitude: 0` 的 `delta` 是一条**什么都没干**的扰动，
+ * 而屏上与「真的施加了、只是影响很小」长得一模一样。
+ */
+export type DrillStateEffectOutcome =
+  | { status: "NO_LANDING" }
+  | { status: "UNRESOLVED"; reason: string }
+  | { status: "OK"; effect: DrillStateEffectResolved };
+
+export function drillStateEffectFor(ev: DrillEvent): DrillStateEffectOutcome {
+  const spec = drillEventSpec(ev.kind);
+  const eff = spec?.stateEffect ?? null;
+  if (eff === null) return { status: "NO_LANDING" };
+
+  // ① 落点对象：`eventTarget`（用户选的主体）或 `payloadKey`（如插单的 modelId）
+  const targetRaw = eff.targetFrom === "payloadKey" ? (eff.targetKey === null ? undefined : ev.payload[eff.targetKey]) : ev.targetObjectId;
+  if (typeof targetRaw !== "string" || targetRaw.length === 0) {
+    return {
+      status: "UNRESOLVED",
+      reason:
+        eff.targetFrom === "payloadKey"
+          ? `落点取自「${eff.targetKey}」这一格，而本次没填 —— ${spec?.label ?? ev.kind}的世界态落点是 ${eff.objectType}.${eff.stateVar}，没有它就不知道该打到哪个对象上`
+          : `没有指定主体（targetObjectId 为空）—— ${spec?.label ?? ev.kind}的世界态落点是 ${eff.objectType}.${eff.stateVar}，必须先选一个 ${eff.objectType} 对象`,
+    };
+  }
+
+  // ② 幅度：必须是有限数；换算系数与依据都来自规格表，这里只做乘法不做判断
   const raw = ev.payload[eff.magnitudeFrom];
-  if (typeof raw !== "number" || !Number.isFinite(raw)) return null;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return {
+      status: "UNRESOLVED",
+      reason: `幅度取自「${eff.magnitudeFrom}」这一格，而本次没填（或不是一个数）—— 没有幅度就没有冲击，绝不按 0 施加（0 的冲击与「打上了但影响很小」在屏上长得一模一样）`,
+    };
+  }
+
   return {
-    targetObjectId: ev.targetObjectId,
-    targetStateVar: eff.stateVar,
-    magnitude: raw,
-    mode: eff.mode,
-    kind: eff.perturbationKind,
-    declaredObjectType: eff.objectType,
+    status: "OK",
+    effect: {
+      targetObjectId: targetRaw,
+      targetStateVar: eff.stateVar,
+      magnitude: raw * eff.magnitudePerUnit,
+      mode: eff.mode,
+      kind: eff.perturbationKind,
+      declaredObjectType: eff.objectType,
+      keyProp: eff.keyProp,
+      rawMagnitude: raw,
+      basis: eff.magnitudeBasis,
+    },
   };
+}
+
+/**
+ * **每一个声明的落点，其状态变量必须在传导图上真有出边** —— 否则冲击打上去一步都传不下去，
+ * 屏上表现为「看起来改了实际还是不动」，而且比「压根没落点」更难发现（派单原话）。
+ *
+ * ⚠ 出边表是**运行期数据**（`PropagationRule`，租户各自维护），契约层拿不到 ⇒
+ * 这个断言由调用方把已发布规则的「源状态变量集合」喂进来，在**启动/接缝测试**时跑。
+ * 返回人话缺口数组，空 = 全部落点都通得下去。
+ */
+export function drillStateEffectLandingGaps(sourceStateVars: ReadonlySet<string>): string[] {
+  const gaps: string[] = [];
+  for (const s of DRILL_EVENT_SPECS) {
+    if (s.stateEffect === null) continue;
+    if (!sourceStateVars.has(s.stateEffect.stateVar)) {
+      gaps.push(
+        `${s.label}(${s.kind}) 的落点 ${s.stateEffect.objectType}.${s.stateEffect.stateVar} 在本租户的传导图上**没有任何出边** ⇒ 打上去一步都传不下去`,
+      );
+    }
+  }
+  return gaps;
 }
 
 /**
@@ -639,6 +974,16 @@ export const DrillReportSchema = z.object({
         startTick: z.number().int().min(0),
         /** ⚠ 取自传导引擎回报的 `appliedPerturbations`，**不是**「路由构造了这条对象」。 */
         applied: z.boolean(),
+        /**
+         * 用户填的**原始数**与它的**换算依据** —— 两个都必须回，否则屏上对不上账：
+         * 用户填「停机 30 天」，回执写 `magnitude: 100` ⇒ 不给依据就是一个来路不明的数。
+         */
+        rawMagnitude: z.number().default(0),
+        magnitudeBasis: z.string().default(""),
+        /** 落点对象的中文名（取不到就回 id）—— 屏上不该只出现 `obj_line_LINE-WS-...`。 */
+        targetLabel: z.string().default(""),
+        /** 这一格顺着传导图的**第一跳去哪** —— 「有出边」这件事的回执，屏上据此说人话。 */
+        downstream: z.array(z.string()).default([]),
       }),
     )
     .default([]),
