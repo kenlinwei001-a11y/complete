@@ -684,15 +684,17 @@ export default function OntologyRelationsPage() {
           <div className="muted" style={{ fontSize: 12, margin: "6px 0 3px" }}>
             域：{domainName.get(dk) ?? dk}（{rows.length}）
           </div>
-          <table className="cmp" style={{ width: "100%" }}>
+          {/* 列宽写死成百分比：auto-layout 会把「影响说明」挤成一条缝（实测截图里只看得到 6 个字），
+              而那一列正是本单要让人读的东西 —— 它必须比三个 key 下拉更宽。 */}
+          <table className="cmp" style={{ width: "100%", tableLayout: "fixed" }}>
             <thead>
               <tr>
-                <th style={{ minWidth: 150 }}>来源</th>
-                <th style={{ minWidth: 150 }}>去向</th>
-                <th style={{ minWidth: 120 }}>关系</th>
-                <th>影响说明</th>
-                <th style={{ width: 48, textAlign: "center" }}>启</th>
-                <th style={{ width: 92 }} />
+                <th style={{ width: "19%" }}>来源</th>
+                <th style={{ width: "19%" }}>去向</th>
+                <th style={{ width: "16%" }}>关系</th>
+                <th style={{ width: "34%" }}>影响说明</th>
+                <th style={{ width: 44, textAlign: "center" }}>启</th>
+                <th style={{ width: 96 }} />
               </tr>
             </thead>
             <tbody>
