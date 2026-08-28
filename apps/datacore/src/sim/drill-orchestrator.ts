@@ -61,6 +61,12 @@ export interface DrillOrchestrateInput {
   scanFindings?: readonly DrillFinding[];
   /** 每类结论上限（规模闸）。不传落契约默认 —— **绝不回全量**。 */
   limitPerKind?: number;
+  /**
+   * 世界态冲击回执（WO-MATERIAL-REPRICE）——**由调用方从传导引擎的 `appliedPerturbations` 现取**，
+   * 编排器只原样透传。放在调用方是因为只有它拿得到引擎回执；
+   * 编排器自己"根据事件推断打上了没有"就是第二套真相源，而那正是本单栽过的那一跤。
+   */
+  appliedStateEffects?: DrillReport["appliedStateEffects"];
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -699,6 +705,7 @@ export async function orchestrateDrill(input: DrillOrchestrateInput): Promise<Dr
     truncated,
     appliedLimitPerKind: limitPerKind,
     degraded,
+    appliedStateEffects: [...(input.appliedStateEffects ?? [])],
     solverRuns,
     summary: {
       allFailed,

@@ -616,6 +616,32 @@ export const DrillReportSchema = z.object({
   appliedLimitPerKind: z.number().int().min(1).default(DRILL_FINDINGS_PER_KIND_DEFAULT),
   /** 降级区：守恒未通过的结论（PRD §4.6）——**不删掉**，但不混进主清单。 */
   degraded: z.array(DrillFindingSchema),
+  /**
+   * **世界态冲击回执**（WO-MATERIAL-REPRICE）—— 与 `solverRuns` 是同一条纪律的另一半。
+   *
+   * `solverRuns` 让前端能证明「求解器真被调用」；没有本字段时，「这次冲击真被打上了」
+   * **一个字都证明不了** —— 而这正是本单开发中真实栽的那一跤：
+   * `pctChange` 取 **0.0001 / 15 / 100000** 三个量级，748 条结论的严重度指纹**逐字节相同**
+   * （相位差一位 ⇒ `entersAt` 恒 false ⇒ 一格都没打上），而屏上完全看不出来。
+   * ⇒ 回执必须来自**传导引擎自己**回报的 `appliedPerturbations`，不是路由这边「我建了对象所以算打上了」。
+   *
+   * `applied: false` 的行**留在清单里**（同「未能评估」的纪律）：从清单消失 = 把「没打上」读成「没影响」。
+   */
+  appliedStateEffects: z
+    .array(
+      z.object({
+        eventKind: DrillEventKindSchema,
+        targetObjectId: z.string(),
+        targetStateVar: z.string(),
+        mode: z.enum(["set", "delta", "scale"]),
+        magnitude: z.number(),
+        /** 这条冲击在第几拍落地（= `entersAt` 的那一拍）。 */
+        startTick: z.number().int().min(0),
+        /** ⚠ 取自传导引擎回报的 `appliedPerturbations`，**不是**「路由构造了这条对象」。 */
+        applied: z.boolean(),
+      }),
+    )
+    .default([]),
   /** 每个被调求解器的回执（真调过 / 报了什么错），前端据此证明「求解器真被调用」。 */
   solverRuns: z.array(
     z.object({
