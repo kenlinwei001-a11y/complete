@@ -245,14 +245,114 @@ export function custIdOfCustomer(name: string): string | undefined {
 }
 
 /**
+ * 需求层的**分段年量锚**（万套/年）—— `demandSegments` 与客户册业态配比的**共同单一来源**。
+ *
+ * 原先这张表内联在 `generateBattery` 体内，只有需求层读得到；WO-CANONICAL-REDS 把它提到模块级，
+ * 因为**订单层的业态配比必须跟它同锚**（见下 `SEG_VOLUME_SHARE_BY_BUSINESS_TYPE`）。数值一字未动。
+ * 合计 375 万套/年 × `SEG_REGISTRY` 单价 = 700 亿 = `scaleAnchorRevenue.S`（被金值锁死的事实锚）。
+ */
+export const SEG_DEMAND = [
+  { segment: "乘用车", tgt: 201.7, demandWanPerYearP50: 201.7, demandWanPerYearP90: 199.6, act: 200.6 },
+  { segment: "储能", tgt: 139.2, demandWanPerYearP50: 139.2, demandWanPerYearP90: 108.4, act: 100.5 },
+  { segment: "商用车", tgt: 34.1, demandWanPerYearP50: 34.1, demandWanPerYearP90: 34.0, act: 39.5 },
+];
+
+/**
+ * 需求锚的**业态量份额**（passenger / storage / commercial），由 `SEG_DEMAND` 现算。
+ * 实测：乘用车 53.79% · 储能 37.12% · 商用车 9.09%。
+ */
+function segVolumeShareByBusinessType(): Record<string, number> {
+  const total = SEG_DEMAND.reduce((a, d) => a + d.demandWanPerYearP50, 0);
+  const out: Record<string, number> = {};
+  for (const d of SEG_DEMAND) {
+    const bt = businessTypeOfSegment(d.segment);
+    out[bt] = (out[bt] ?? 0) + d.demandWanPerYearP50 / total;
+  }
+  return out;
+}
+
+/**
+ * 客户册权重的**业态级重标定系数**（`CUSTOMER_REGISTRY` 的册内相对权重一字不动，只调三档的总量）。
+ *
+ * ══ 今天的行为是 X，应该是 Y（2026-08-28 WO-CANONICAL-REDS 实测）══════════════════════
+ * **X**：`SEG_DEMAND`（需求层）与 `CUSTOMER_REGISTRY`（订单层）**各自声明同一组 businessType 的配比**，
+ *       两张表从不对账，实测差 5 倍：
+ *         | businessType | 需求锚量份额 | 客户册权重份额 |
+ *         | passenger    | 53.79%       | **88.60%**     |
+ *         | storage      | **37.12%**   | **7.40%**      |
+ *         | commercial   | 9.09%        | 4.00%          |
+ *       病根在册子的来历：那批权重取自**一张只覆盖乘用车的装机排名**（见 `CUSTOMER_REGISTRY` 头注），
+ *       三家储能客户是后补进去的、权重却按同一把尺子给 ⇒ 储能线被压到真实份额的 1/5。
+ *       册子自己的注释就记着反证：「实测 24 张锚点订单里有 9 张（**37.5%**）是储能单」——
+ *       **锚点簿是 37.5%，而它生成的补足段只有 7.4%**，两个数就写在同一段注释里，从没人对过。
+ *       后果不是「储能单少几张」，是**整个订单簿的价盘被抬高 12.24%**（储能 LFP 单价 1.39
+ *       万元/套 vs 动力 NCM ≈2.18）⇒ 订单层年化营收 785.65 亿 vs 需求锚 700 亿 vs AOP 601.5 亿，
+ *       `scale-coherence` 的 `rel(R_order,R_aop)=23.4% > 15%` 当场红。**门是对的，红的是数据。**
+ * **Y**：订单层的业态配比**从需求锚派生**（`SEG_DEMAND` 是唯一来源，与 `Model.unitPrice` 走
+ *       `SEG_REGISTRY` 派生同一条纪律），册内相对权重（真实装机排名）保持不动。
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ⚠ 只重标定**业态总量**、不碰册内相对序：`cust_N` 下标、客户名、册内大小关系全部不变
+ *   （`cf-customer-concentration` 钉的 `cust_0` 仍是广汽埃安）。
+ */
+function customerTypeRescale(): Record<string, number> {
+  const target = segVolumeShareByBusinessType();
+  const total = CUSTOMER_REGISTRY.reduce((a, c) => a + c.weight, 0);
+  const cur: Record<string, number> = {};
+  for (const c of CUSTOMER_REGISTRY) cur[c.businessType] = (cur[c.businessType] ?? 0) + c.weight / total;
+  const out: Record<string, number> = {};
+  for (const [bt, share] of Object.entries(cur)) out[bt] = share > 0 ? (target[bt] ?? share) / share : 1;
+  return out;
+}
+/** 纯常数派生，算一次即可（R6：无随机/无时钟）。 */
+const CUSTOMER_TYPE_RESCALE: Record<string, number> = customerTypeRescale();
+
+/** 客户的**有效**抽样权重 = 册内相对权重 × 业态重标定系数（业态总量对齐需求锚）。 */
+function effectiveCustomerWeight(c: { businessType: BusinessType; weight: number }): number {
+  return c.weight * (CUSTOMER_TYPE_RESCALE[c.businessType] ?? 1);
+}
+
+/**
+ * `Order.unitPrice`（元/套）—— **按这张单服务的细分定价**，单一来源 `SEG_REGISTRY.priceWan`。
+ *
+ * ══ 今天的行为是 X，应该是 Y（2026-08-28 WO-CANONICAL-REDS 实测）══════════════════════
+ * **X**：订单单价直接继承 `Model.unitPrice`，而 `Model.unitPrice` 是按型号的**用途位** `pos` 归段的：
+ *       `SEG_REGISTRY.find(s => s.key === (m.pos === "储能" ? "ess" : "pas"))` —— **严格等于**「储能」。
+ *       两个后果，实测都在数上：
+ *         ① `4680-LFP` 的 `pos` 是「**动力+储能**」⇒ 不等于「储能」⇒ 落 `pas` 价 2.1912 万元/套。
+ *            而 `modelsForBusinessType` 判储能用的是 `pos.includes("储能")` ⇒ 储能客户**买得到它**，
+ *            按乘用车价付钱 ⇒ 储能线的簿面均价 **1.5783** 而不是声明的 **1.4**（+12.7%）。
+ *            同一个 `pos` 字段，定价用 `===`、选型用 `includes`，两处口径不一致 —— 双用型号正好卡在缝里。
+ *         ② 型号表里**根本没有商用车型号**（`pos` 只有 动力 / 储能 / 动力+储能），
+ *            于是 `SEG_REGISTRY.com` 声明的 1.8 万元/套**零个承载者**：商用车客户买动力 NCM，
+ *            簿面均价 **2.1847**（+21.4%）。三分法定性 = 「接了线没数据」。
+ *       合起来把订单簿的价盘抬高，`scale-coherence` 的 `rel(R_order,R_aop)` 越过 15% 报红。
+ * **Y**：`SEG_REGISTRY` 声明的是**按细分**的价，不是按型号用途的价。一张单服务哪个细分，
+ *       由**买方业态**唯一确定（`Order.businessType` 建单时就有）。故订单单价按业态取段价 ——
+ *       双用型号不再需要"猜"它算哪一段（买方说了算），`com` 段价也第一次有了承载者。
+ *       这与 `ORDER_CUST_TO_CUSTOMER` 收敛成恒等映射是同一手法：**把门守的那个缺口从数据层焊死**，
+ *       而不是把门放宽。`Model.unitPrice` 保持不动（那是产品主数据的挂牌价，另一件事）。
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ±`modelPriceVarPpk‰` 的确定性微差沿用既有机制，只把哈希锚从 `modelId` 换成 `so`
+ * （逐单稳定、同 seed 字节一致 R6；锚在型号上会让同型号所有单一个价，掩盖单间价差）。
+ */
+export function orderUnitPriceOf(businessType: BusinessType, so: string): number {
+  const sc = BATTERY_SOLVER_PARAMS.scaleCoherence as { modelPriceVarPpk: number };
+  const seg = SEG_REGISTRY.find((s) => s.key === segKeyOfBusinessType(businessType))!;
+  const priceVar = ((hashString(`${so}:unitprice`) % (2 * sc.modelPriceVarPpk + 1)) - sc.modelPriceVarPpk) / 1000;
+  return Math.round(seg.priceWan * 1e4 * (1 + priceVar));
+}
+
+/**
  * 长尾加权抽客户：`r ∈ [0,1)` 取自主 rng 的**一次**抽样 —— 与被它替换掉的 `pick(rng, CUSTOMERS)`
  * 消耗的 rng 次数**完全相同（1 次）**，故补足段的 rng 流步长不位移（R6）。
  */
 function pickCustomerWeighted(r: number): string {
-  const total = CUSTOMER_REGISTRY.reduce((a, c) => a + c.weight, 0);
+  const total = CUSTOMER_REGISTRY.reduce((a, c) => a + effectiveCustomerWeight(c), 0);
   let acc = r * total;
   for (const c of CUSTOMER_REGISTRY) {
-    acc -= c.weight;
+    acc -= effectiveCustomerWeight(c);
     if (acc < 0) return c.name;
   }
   return CUSTOMER_REGISTRY[CUSTOMER_REGISTRY.length - 1]!.name;
@@ -4226,7 +4326,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       pri: o.pri,
       bases: orderBases,
       status: "OPEN",
-      unitPrice: model?.unitPrice ?? 600,
+      unitPrice: orderUnitPriceOf(businessType, o.so),
       businessType,
       early,
       ...(earlyDue ? { earlyDue } : {}),
@@ -4289,7 +4389,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     orders.push({
       so, cust, customerId: custIdOfCustomer(cust) ?? "",
       model: model.modelId, qty: shapeBusinessTypeQty(businessType, randInt(rng, 1420, 7668), so), due,
-      pri: ["高", "中", "低"][i % 3], bases: orderBases, status, unitPrice: model.unitPrice,
+      pri: ["高", "中", "低"][i % 3], bases: orderBases, status, unitPrice: orderUnitPriceOf(businessType, so),
       businessType, early, ...(earlyDue ? { earlyDue } : {}),
       demandDelta: scannable && i % 25 === 0 ? 0.6 : round((hashString(so) % 50) / 100, 2),
       outsourceRatio: scannable && i % 17 === 0 ? OUTSOURCE_SAMPLE.violationRatio : round((hashString(`${so}o`) % OUTSOURCE_SAMPLE.normalBucketMod) / 100, 2), // DF.13 同上（规模补足段）
@@ -4669,11 +4769,6 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   // WO-SCALE-COHERENCE 锚：此需求层(375万套/700亿)= scaleAnchorRevenue.S 锚（ΣdemandWanPerYearP50×priceWan===scaleAnchorRevenue.S），
   // 是被金值锁死的事实锚（spine.test:58 硬钉 revenue.actual===700）——本单不动锚，把物理/产能/财务/订单四层往此对齐。
   // 派生结果==既有锚值：V*=R*/P̄=700/1.8667=375万套（=ΣdemandWanPerYearP50），tgt/demandWanPerYearP50/demandWanPerYearP90/act 数值字节一致（下方内联即锚值本体）。
-  const SEG_DEMAND = [
-    { segment: "乘用车", tgt: 201.7, demandWanPerYearP50: 201.7, demandWanPerYearP90: 199.6, act: 200.6 },
-    { segment: "储能", tgt: 139.2, demandWanPerYearP50: 139.2, demandWanPerYearP90: 108.4, act: 100.5 },
-    { segment: "商用车", tgt: 34.1, demandWanPerYearP50: 34.1, demandWanPerYearP90: 34.0, act: 39.5 },
-  ];
   const SEGMENTS = SEG_DEMAND.map((d) => {
     const s = SEG_REGISTRY.find((x) => x.seg === d.segment)!;
     return { ...d, price: s.priceWan, margin: s.marginPct, floor: s.floorPct };
