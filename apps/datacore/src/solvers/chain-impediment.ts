@@ -605,7 +605,21 @@ export interface ChainScanThresholdRow {
   fieldPath?: string;
   /** `source==="field"` 时阈值逐对象不同，这里给的是**首个被判对象**上的取值（示例值）。 */
   value: number;
+  /**
+   * 本判据的量纲。`unitPath` 缺省时这就是**全部**真相（该判据下每条阻滞点都是这个单位）。
+   * `unitPath` 给出时，本字段退化为**回落值**，真相逐行走 —— 见下。
+   */
   unit: string;
+  /**
+   * WO-DIM-LABEL-3 ② · 量纲逐行时的**承载属性路径**（= binding 的 `unitPath` 原样申报）。
+   *
+   * 为什么必须申报出来：`chain-scan-honesty` 的 SCAN-1 咬「屏上每个数都能在 thresholds[] 里
+   * 找到申报条目，**且量纲一致**」。C06 的 9 行里 3 行不是吨 ⇒ 一条静态申报无论填哪个单位，
+   * 都必然与另一部分行对不上。把「单位不是常量、而是读这个属性」**申报出来**，
+   * 才既保住「一 binding 一条申报」，又不必谎称所有行同一个单位。
+   * 缺省 = 该判据量纲确为常量（其余 6 条判据都是这样）。
+   */
+  unitPath?: string;
 }
 
 /** `scope.businessTypes` 在某条判据上的作用面账（逐 binding 一行）。 */
@@ -919,11 +933,13 @@ function judgeOne(
         source: th.source,
         ...(th.ruleParamKey === undefined ? {} : { ruleParamKey: th.ruleParamKey }),
         ...(th.fieldPath === undefined ? {} : { fieldPath: th.fieldPath }),
-        value: th.value,
         // 这里刻意**不用** `rowUnit`：本行是「本判据从规则读回了哪个阈值」的**每判据一条**的汇总，
         // 而 `rowUnit` 是逐行的。判据混单位时拿"碰巧第一个违规行"的单位来标这条汇总是任意的，
-        // 故用 binding 自己声明的静态 `unit`。（逐行量纲走 `evidence.unit`，见下。）
+        // 故 `unit` 用 binding 声明的静态回落值，同时把 `unitPath` **一并申报**，
+        // 让消费方知道「这条判据的量纲不是常量，去这个属性上按行读」。
+        value: th.value,
         unit: b.unit,
+        ...(b.unitPath === undefined ? {} : { unitPath: b.unitPath }),
       };
     }
 
