@@ -221,6 +221,26 @@ describe("传导核 propagateTick（SPEC §1 · 行业无关 R14）", () => {
       expect(unresolvedWeights).toEqual([]);
     });
 
+    // ⚠ 本单**两次**把字面 NUL 字节写进了源文件（`propagation.ts` 一次、`pair-weights.ts` 一次）：
+    // 想写分隔符 ` ` 的**转义序列**，落盘的却是那个字节本身。后果不是编译错误 ——
+    // TS 照样编译、测试照样绿，只是 `git diff --stat` 把该文件显示成 `Bin`、`grep` 报
+    // 「binary file matches」⇒ 以后任何 grep/审计都会**静默跳过这个文件**。
+    // 照铁律 0.6「第二次必须建机制」：这里立一道**机器先说话**的检查，不靠人记得看 diff。
+    it("⑥ 源文件不许含字面 NUL 字节（本单犯过两次·grep 会静默跳过二进制文件）", async () => {
+      const { readFile } = await import("node:fs/promises");
+      const files = ["../src/sim/propagation.ts", "../src/sim/pair-weights.ts"];
+      const offenders: string[] = [];
+      let scanned = 0;
+      for (const f of files) {
+        const buf = await readFile(new URL(f, import.meta.url));
+        scanned += buf.length;
+        if (buf.includes(0)) offenders.push(f);
+      }
+      // 🐤 金丝雀：真读到内容了（读空文件时"没有 NUL"是句空话）。
+      expect(scanned, "两个源文件都读成 0 字节 ⇒ 读取坏了，不是『很干净』").toBeGreaterThan(10000);
+      expect(offenders, "这些文件里有字面 NUL 字节；要的是转义序列 \\u0000，不是那个字节本身").toEqual([]);
+    });
+
     it("⑤ R6 确定性：同输入两跑逐字节一致（分摊不引入新的不确定来源）", () => {
       const r = rule({ coefficient: 0.5, weightRef: { basis: "bom_cost_share" } });
       const w = { [r.key]: { [pairWeightKey("a", "b1")]: 1 / 3, [pairWeightKey("a", "b2")]: 2 / 3 } };
