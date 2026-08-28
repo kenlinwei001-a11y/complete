@@ -281,6 +281,18 @@ export default function DecisionConsoleView() {
   // ── 渲染 ────────────────────────────────────────────────────────────────
   return (
     <div className={styles.page} data-testid="decision-console">
+      {/*
+       * 键盘跳转链接（WAI-ARIA 标准做法，**不是**把 DOM 顺序拧成与视觉不一致）。
+       * 实测：左栏 11 条模板 × 2 个可聚焦控件 + 壳导航 ⇒ 从页顶按到〔算一下〕要 **107 次**。
+       * 有这一条：进本页后第一次 Tab 就能拿到它。
+       */}
+      <button
+        type="button"
+        className={styles.skip}
+        onClick={() => document.querySelector<HTMLButtonElement>('[data-testid="dc-go"]')?.focus()}
+      >
+        跳到〔算一下〕
+      </button>
       {/* ══ 左栏 · 区① 加几件事 + 唯一的那颗按钮 ══════════════════════════ */}
       <div className={styles.left}>
         <div className={styles.leftScroll}>
@@ -1307,17 +1319,26 @@ function bigGapOf(evidence: unknown): string {
   return typeof g === "number" ? roundish(g) : "—";
 }
 
-/** 一句人话归因：贡献最大的两条叶子，**取自回包，不编**。 */
+/**
+ * 一句人话归因：贡献最大的两条叶子，**取自回包，不编**。
+ * ⚠ 回包里的因子名自带公式（`设备 OEE 损失（1−OEE 均值×产能）`），公式属第二层（R-UI-4），
+ * 第一层只留括号前那半句；完整原文在勾稽抽屉里一字不改地给。
+ */
 function oneLineCause(evidence: unknown): string {
   const ev = evidence as
-    | { demandSide?: { drivers?: { factor: string; contribution: number }[] }; supplySide?: { drivers?: { factor: string; contribution: number }[] } }
+    | { demandSide?: { drivers?: { factor: string; contribution: number; unit?: string }[] }; supplySide?: { drivers?: { factor: string; contribution: number; unit?: string }[] } }
     | undefined;
   const all = [...(ev?.demandSide?.drivers ?? []), ...(ev?.supplySide?.drivers ?? [])].sort(
     (a, b) => b.contribution - a.contribution,
   );
   if (all.length === 0) return "这次没给出是谁造成的。";
-  const top = all.slice(0, 2).map((d) => `${d.factor}（${roundish(d.contribution)}）`);
+  const top = all.slice(0, 2).map((d) => `${plainFactor(d.factor)} ${roundish(d.contribution)} ${d.unit ?? ""}`.trim());
   return `主要是${top.join(" 和 ")}`;
+}
+
+/** 剥掉因子名里的公式括号（全角/半角都剥）—— 只在第一层用，抽屉里仍给原文。 */
+function plainFactor(name: string): string {
+  return name.replace(/[（(][^）)]*[）)]/g, "").trim() || name;
 }
 
 function financeMargin(finance: SolverData | null): string | null {

@@ -19,9 +19,30 @@
   font-family: var(--font-sans);
   font-size: 13px;
   color: var(--txt);
-  padding: 16px;
   min-height: 100%;
-  background: var(--bg);
+}
+/* 跳到主动作 —— 平时不占一个像素，Tab 到才现形。
+   本页左栏有 11 条事件模板 × 2 个可聚焦控件，不给这条路，键盘用户要按 100+ 次才够得到
+   〔算一下〕（实测 107 次）。这是 WAI-ARIA 的标准跳转链接，不是把 DOM 顺序拧成和视觉不一致。 */
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.skip:focus {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--accent-solid);
+  color: var(--on-accent);
+  font-size: 13px;
+  border: 0;
+  grid-column: 1 / -1;
 }
 @media (max-width: 1100px) {
   .page {
@@ -30,13 +51,15 @@
 }
 
 /* ── 左栏 ─────────────────────────────────────────────────────────────── */
+/* ⚠ 高度上限要减掉三样：顶栏（≈57px）· 壳内容区的 padding-bottom（80px，给底部对话坞让位）
+   · 本列自己的 top 偏移。不减 ⇒〔算一下〕会被对话坞盖住（实测过一次，截图里按钮只露半截）。 */
 .left {
   position: sticky;
   top: 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: calc(100vh - 32px);
+  max-height: calc(100vh - 190px);
 }
 .leftScroll {
   overflow-y: auto;
@@ -82,11 +105,17 @@
 .tplRow + .tplRow {
   margin-top: 6px;
 }
+/* ⚠ 必须显式清掉浏览器默认按钮面：global.css 的 `button` 只重置了 font/color/cursor，
+   **没有**清 background/border ⇒ 默认浅灰按钮面上压 --txt（近白字）= 一个字都看不见。
+   这个坑本单实测踩到过一次（首版截图里 11 行模板全是空白灰条）。 */
 .tplName {
   flex: 1;
   font-size: 13px;
   color: var(--txt);
   text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 0;
 }
 .tplAdd {
   width: 24px;

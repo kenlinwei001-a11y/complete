@@ -175,14 +175,25 @@ export function roundish(n: number): string {
   return n.toFixed(2);
 }
 
-/** 把一条卡点写成一句人话（**不出现规则码 / 字段名 / 机器号**，那些进第二层）。 */
+/**
+ * 把一条卡点写成一句人话（**不出现规则码 / 字段名 / 机器号**，那些进第二层）。
+ *
+ * ⚠ 一条实测踩到的坑：`自贡分容线` 是 `95.358 vs 95`，四舍五入后屏上写成
+ * 「现在 95%，红线 95%（超红线 0%）」—— **读起来像「没问题」，而它是一条真越线**。
+ * 故：两个数舍到同一位时补一位小数；超幅不足 1% 时保留一位小数、且绝不写成 0。
+ * 这是「位数就是精度承诺」的另一面 —— 精度不足会把「刚越线」说成「没越线」。
+ */
 export function impedimentSentence(x: RawImpediment): string {
   const e = x.evidence ?? {};
   const unit = e.unit ?? "";
   if (typeof e.metricValue === "number" && typeof e.threshold === "number" && e.threshold !== 0) {
-    const overPct = Math.round(((e.metricValue - e.threshold) / Math.abs(e.threshold)) * 100);
-    const dir = overPct >= 0 ? "超红线" : "低于红线";
-    return `${x.locus.label} 现在 ${roundish(e.metricValue)}${unit}，红线 ${roundish(e.threshold)}${unit}（${dir} ${Math.abs(overPct)}%）`;
+    const collide = roundish(e.metricValue) === roundish(e.threshold);
+    const m = collide ? e.metricValue.toFixed(2) : roundish(e.metricValue);
+    const t = collide ? e.threshold.toFixed(2) : roundish(e.threshold);
+    const overRaw = ((e.metricValue - e.threshold) / Math.abs(e.threshold)) * 100;
+    const dir = overRaw >= 0 ? "超红线" : "低于红线";
+    const over = Math.abs(overRaw) < 1 ? Math.abs(overRaw).toFixed(1) : String(Math.round(Math.abs(overRaw)));
+    return `${x.locus.label} 现在 ${m}${unit}，红线 ${t}${unit}（${dir} ${over}%）`;
   }
   if (typeof e.metricValue === "number") return `${x.locus.label} 现在 ${roundish(e.metricValue)}${unit}`;
   return x.locus.label;
