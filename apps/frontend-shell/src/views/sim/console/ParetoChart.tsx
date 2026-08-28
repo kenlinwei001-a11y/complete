@@ -46,6 +46,23 @@ import {
 
 const G = PARETO_GEOM;
 
+/* ══ WO-SIM-OPT-READABLE · 图上字号 ═══════════════════════════════════════════
+ * ⚠ **这里的数不是 CSS 像素，是用户单位** —— `<svg viewBox="0 0 640 280">` 拉伸铺满
+ * `.pf`，所以屏上真尺寸 = 这个数 × 缩放比。2026-08-28 实测（1600×950 · DPR1）：
+ * `.pf` 实测 770×317.5 ⇒ 缩放 min(770/640, 317.5/280) = **1.134**。
+ * 于是改前的 `fontSize={8}` 在屏上是 **9.07px**，`8.5` 是 9.64px、`9` 是 10.2px
+ * —— 三档都在本仓 11px 的可读地板之下。
+ *
+ * ⚠ 顺带记一笔：`getComputedStyle(text).fontSize` 对 SVG 报的是**声明值 8px**，
+ * 不是渲染值 9.07px。拿它当"屏上多大"的证据，就是本仓反复摔的那一跤 ——
+ * 「我用 X 当作 Y 的证据，而 X 并不度量 Y」。量图里的字必须先乘缩放比。
+ *
+ * 取 10 / 11：×1.134 ⇒ 屏上 11.3px / 12.5px，跨过地板且不动任何几何常量。
+ * （缩放比随容器宽度浮动，这两个数是按上面实测的那一档定的。）
+ */
+const LABEL_FS = 10;
+const AXIS_TITLE_FS = 11;
+
 /** 刻度文案。纵轴按整数千分位（规格 `(2400-i*400).toLocaleString()`），横轴一位小数 + 单位。 */
 const fmtYTick = (v: number): string => Math.round(v).toLocaleString();
 const fmtXTick = (v: number, unit: string): string => `${v.toFixed(1)}${unit}`;
@@ -98,7 +115,7 @@ export function ParetoChart({ axes, frontier, dominated, selectedId, onSelect }:
             x={G.X0 - 6}
             y={y + 3}
             textAnchor="end"
-            fontSize={8}
+            fontSize={LABEL_FS}
             fontFamily="var(--font-mono)"
             style={{ fill: "var(--muted2)" }}
           >
@@ -114,7 +131,7 @@ export function ParetoChart({ axes, frontier, dominated, selectedId, onSelect }:
             x={x}
             y={G.Y1 + 13}
             textAnchor="middle"
-            fontSize={8}
+            fontSize={LABEL_FS}
             fontFamily="var(--font-mono)"
             style={{ fill: "var(--muted2)" }}
           >
@@ -181,7 +198,7 @@ export function ParetoChart({ axes, frontier, dominated, selectedId, onSelect }:
             <text
               x={e.p.x + 9}
               y={e.p.y - 7}
-              fontSize={8.5}
+              fontSize={LABEL_FS}
               fontFamily="var(--font-mono)"
               style={{ fill: sel ? "var(--warn-txt)" : "var(--muted)" }}
             >
@@ -192,10 +209,10 @@ export function ParetoChart({ axes, frontier, dominated, selectedId, onSelect }:
       })}
 
       {/* ── 两条轴题（左上 = 纵轴 · 右上 = 横轴）── */}
-      <text x={G.X0} y={15} fontSize={9} style={{ fill: "var(--muted2)" }}>
+      <text x={G.X0} y={15} fontSize={AXIS_TITLE_FS} style={{ fill: "var(--muted2)" }}>
         {`${ay.label} ${ay.unit}`.trim()}
       </text>
-      <text x={G.X1} y={15} textAnchor="end" fontSize={9} style={{ fill: "var(--muted2)" }}>
+      <text x={G.X1} y={15} textAnchor="end" fontSize={AXIS_TITLE_FS} style={{ fill: "var(--muted2)" }}>
         {`${ax.label} ${ax.unit}`.trim()}
       </text>
     </svg>
