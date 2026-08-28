@@ -35,6 +35,54 @@ export const PropagationTraceSchema = z.object({
 });
 export type PropagationTrace = z.infer<typeof PropagationTraceSchema>;
 
+// ── 逐实例分摊口径登记册（WO-COEF-FROM-BOM · `PropagationRule.weightRef.basis` 的取值域） ──
+/**
+ * **在册的分摊口径**。`weightRef.basis` 只能取这里的 `key`（禁自由串）——
+ * 沿用 `cadenceNodeId` × `CHAIN_NODE_REGISTRY` 那条纪律：本仓出过「两个 dev 各发明一套
+ * nodeId、交集为 0」的事故，口径名自由串迟早重演。
+ *
+ * 每条登记项声明三件事，缺一不可：
+ *  · `key`        —— 契约两侧共用的稳定串；
+ *  · `normalize`  —— 归一方向。**当前全部是 `IN_EDGES`**（Σ over 同一 target 的全部源 = 1）。
+ *                    出边归一**故意不提供**，理由见 `weightRef` 字段注释的「口径」段（量纲 + 重复计账）。
+ *  · `measure`    —— 这个口径拿什么当「计量值」，写成人话，供屏上与审计对照。
+ *
+ * ⚠ 口径的**实现**（怎么从本体里把计量值算出来）在 DataCore 侧
+ * （`apps/datacore/src/sim/pair-weights.ts`），不在契约里：契约只定名字与语义，
+ * 免得把 BOM 遍历这种行业知识塞进 `packages/contracts`（跨 app 共享层）。
+ */
+export const PAIR_WEIGHT_BASIS_REGISTRY = [
+  {
+    key: "bom_cost_share",
+    normalize: "IN_EDGES",
+    measure:
+      "该 (源, 目标) 对在目标的**生效 BOM** 中的成本占比 = 单台用量 × 源单价 × (1+损耗率) ÷ 该 BOM 全部行之和。" +
+      "分母取**整份 BOM**（不是图里现有入边之和）：占比必须是可审计的绝对量，" +
+      "按现有入边重新归一会让「加一条链路」悄悄改掉其它每一条的权重。",
+  },
+  {
+    key: "source_qty_share",
+    normalize: "IN_EDGES",
+    measure:
+      "源实例的数量在「汇入同一目标的全部源」总量中的占比 = 源.qty ÷ Σ(该目标全部入边源的 qty)。" +
+      "用于「多张订单汇成一个型号的负荷」这类多源汇一：大单与小单不该按同一个系数计入。",
+  },
+] as const;
+
+export type PairWeightBasisKey = (typeof PAIR_WEIGHT_BASIS_REGISTRY)[number]["key"];
+
+const PAIR_WEIGHT_BASIS_KEYS: ReadonlySet<string> = new Set(PAIR_WEIGHT_BASIS_REGISTRY.map((b) => b.key));
+
+/** `weightRef.basis` 是否在册。**唯一判据**——两侧共用这一支，不许各抄一份集合。 */
+export function isKnownPairWeightBasis(key: string): boolean {
+  return PAIR_WEIGHT_BASIS_KEYS.has(key);
+}
+
+/** 在册口径的归一方向（拿不到 ⇒ `null`，调用方据实处理，不补默认）。 */
+export function pairWeightNormalizeOf(key: string): "IN_EDGES" | null {
+  return PAIR_WEIGHT_BASIS_REGISTRY.find((b) => b.key === key)?.normalize ?? null;
+}
+
 // ── PropagationRule —— 一等类型（§1.1 · 系数/延迟优先引用 rule.params，G-10 P1） ──
 export const PropagationRuleSchema = z.object({
   id: z.string(),
@@ -52,6 +100,55 @@ export const PropagationRuleSchema = z.object({
   clamp: z.object({ min: z.number(), max: z.number() }).nullable().default(null),
   // 系数引用一条可编辑规则的 rule.params[paramKey]（G-10 P1 已落，"改规则即改推演"）；空=用内联 coefficient。
   coefficientRef: z.object({ ruleKey: z.string(), paramKey: z.string() }).nullable().default(null),
+  /**
+   * **逐实例分摊口径（WO-COEF-FROM-BOM）**：这条边的强度在**每一对 (源实例, 目标实例)** 上按什么口径分摊。
+   *
+   * ── 病灶（本字段引入前的真实行为，实测·不是推测）──────────────────────────────
+   * `propagation.ts` 把 `effectiveCoefficient(rule, ruleParams)` 解析成**整条规则一个标量**，
+   * 在 `for (const sourceId …)` 之前算完，然后对 `targetsOf(rule, sourceId)` 返回的**每一个**目标
+   * 落**同一个** `amount`。公式 `coeff × sourceVal × factor` 里**没有任何用量项**。
+   * 实测后果（demo 租户 · seed 42 · 方形-LFP）：
+   * 磷酸铁锂正极占该型号 BOM 成本 **17.815%**、铝箔占 **0.920%**（差 19.4 倍），
+   * 各涨 15% 却给出**逐字节相同**的 `Model.costPressure = 29.25`、逐单 `Order.costPressure = 26.325`。
+   * 「用量」这个决定成本传导的第一因素，在引擎里一次都没被读过。
+   *
+   * ── ⛔ 为什么不复用 `coefficientRef`（两个字段是**相乘**关系，不是二选一）────────
+   * `coefficientRef` 回答的是「**这条边的强度是多少、从哪条可编辑规则的哪个参数取**」——
+   * 它的解析器 `effectiveCoefficient(): number` 返回**一个数**、在**源循环之外**求值，
+   * 且它读的是 `rule.params`（G-10 P1「改规则即改推演」的**用户可编辑配置**）。
+   * 本字段回答的是「**这一份强度在两个实例之间怎么分摊**」——按 (源实例,目标实例) 逐对求值，
+   * 且它读的是**本体数据**（BOM 明细 / 订单数量），不是任何人手填的参数。
+   * 把逐对权重塞进 `RuleParamLookup`（`Record<ruleKey, Record<paramKey, unknown>>`）意味着
+   * 拿**对象 id 对**当 paramKey —— 那是把数据当配置，且会让「改规则即改推演」这条纪律
+   * 指向一批没人编辑得了的键。故**新增字段**，与 `coefficient`/`coefficientRef` 相乘：
+   *   `amount = 强度(coefficient|coefficientRef) × 分摊(weightRef) × sourceVal × decay`
+   * 原来的 `0.65` 保留为**整条边的传导强度**，占比只负责分摊 —— 两件事，两个位置。
+   *
+   * ── 口径：**入边归一**（Σ over 同一 target 的全部源 = 1），不提供出边归一 ────────
+   * 取值域见 `PAIR_WEIGHT_BASIS_REGISTRY`（本文件 §下，单源·禁自由串——照 `cadenceNodeId`
+   * × `CHAIN_NODE_REGISTRY` 立下的同一条纪律）。两个在册口径都是入边归一，理由是**量纲**：
+   * 本链上的 stateVar 全是**强度**（`priceShock`=涨价百分点、`costPressure`=成本压力 pp，
+   * `finance_world_projection` 拿它当 `基线 ×(1 + 压力 ÷ divisor)` 的**率**用）。
+   * 多源汇一目标时，按份额加权求和 = **加权平均率**，量纲自洽；
+   * 而一源分多目标时（如 `Model --model_demanded_by_order--> Order`）目标拿到的是**同一个率**，
+   * 分摊它反而是把一个率切成几块，量纲不成立 —— 且订单大小**已经**在下游被计过一次
+   * （`finance-world.ts:219` `orderValue = qty × unitPrice` 做金额加权聚合），
+   * 再在传导侧乘一次份额就是**同一个体量因子记两遍账**。故出边一律不加权、原样透传。
+   *
+   * `null`（缺省）= 这条边不分摊、逐目标同额 ⇒ 与本字段引入前**逐字节相同**（additive·可回退 RL9）。
+   *
+   * ⚠ 声明了却**整张权重表都拿不到**（该口径所需的本体数据缺失/未物化）时，引擎
+   * **既不退回 1、也不当作 0**：该规则本 tick 不传导，并进
+   * `propagateTick(...).unresolvedWeights[]` 显式报缺 —— 照 `cadenceNodeId` 那条
+   * 「读不回来一律 unresolved + 原因，没有『给个默认值』的分支」。
+   * 退回 1 尤其危险：那正是**本字段要治的那个错行为**，却还挂着「已按用量分摊」的名义。
+   * 反之，表在、而**某一对**查不到计量值 ⇒ 权重 **0**（这是算得出来的真值：
+   * 「该物料不在该型号的 BOM 里 ⇒ 它占该型号 BOM 成本 0%」），并计入装配回执的 `zeroPairs`。
+   */
+  weightRef: z
+    .object({ basis: z.string().refine(isKnownPairWeightBasis, { message: "weightRef.basis 必须是 PAIR_WEIGHT_BASIS_REGISTRY 在册口径（禁自由串）" }) })
+    .nullable()
+    .default(null),
   /**
    * **节拍闸门绑定（WO-SANDBOX-E4）**：这条流要过哪个全链节点的节拍闸门（`Cadence.nodeId`）。
    *
