@@ -505,6 +505,30 @@ git fetch origin && git merge-base --is-ancestor HEAD $CANON \
 2. 仓主回填后，**五张阶段① 单一次性并行派出**（各自 worktree、各自 handoff 分支）。
    ⛔ 串行派会让后派的角色被先派的结论污染，**等于毁掉这个机制唯一的价值**。
 3. 阶段②③④ **主持方自己合成，一个 agent 都不派**（模板明写「角色不再发言」）。
+
+**📌 五个角色必须钉在同一个 commit 上（2026-08-29 LOOP10 实测踩坑后加）**
+
+派单里**写死 PIN**，并要求**报告头回显三样**：`base commit` · 取证时刻 · 一个树龄探针
+（如 `wc -l apps/datacore/src/synthetic/battery.ts`）。开工前先自证不落后：
+```bash
+git merge-base --is-ancestor HEAD origin/claude/inspiring-gates-aqczjg \
+  && { echo "落后，必须重开"; git checkout -B <wo-branch> origin/claude/inspiring-gates-aqczjg; } \
+  || echo "不落后，可开工"
+git rev-parse --short HEAD   # 写进报告头
+```
+**主持方在阶段② 的第一件事：核对五份报告的 base 是否相同。不同就先解释差异，再画矛盾地图。**
+
+⚠ **代价是真的**：LOOP10 五个角色里有一个钉在 `778cc589`（06-15 的树，`battery.ts` **1249 行**），
+其余四个在 `3408572c`（**5357 行**）。旧树上订单数走 `scale==="S" ? 20`，新树上是
+`Math.max(ORDER_BOOK_SIZE=500, …)` ⇒ **同一个问题得到「20 单」与「500 单」两个都正确的答案**，
+差 25 倍。中间还岔出一个同值的干扰项（`Customer` 真值也是 20），
+**三份报告摆在一起才看出来，机制一次都没说话。**
+
+**形态**（铁律 0.6 句式）：
+> **「我用『五个角色都是从 canonical 切的』当作『他们量的是同一棵树』的证据，而前者并不度量后者
+> —— canonical 在他们取证期间还在被收编方推进。」**
+
+⚠ 推论：**LOOP 取证期间，收编方不许往 canonical 推**；非推不可就通知全体角色重钉。
 4. 阶段⑤ 行动清单每条必须过 `node scripts/wo-value-check.mjs`，答不上三问的条目**不许进清单**。
 5. 五个角色回来做**第 2 次也是最后一次发言**，然后定稿。**每角色 2 次，硬约束。**
 
