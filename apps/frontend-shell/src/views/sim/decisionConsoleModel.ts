@@ -207,6 +207,9 @@ export function targetIdOf(spec: DrillEventSpec, picked: { id: string; props: Re
  * `dims[]`（含 `baseline`，所以「改完变成多少」是可核的）/ `rungSource`（这一档是
  * 怎么定出来的）/ `provenance.formula`（怎么算的）。查表给不出 `fromValue→toValue`
  * 与逐维 baseline 对照 —— 这正是「这不是查表」的证据。
+ *
+ * 2026-08-29 真后端实测：`POST /a/v1/solvers/chain_impediments/invoke {"args":{"scope":{}}}`
+ * 回 18 条卡点，其中带 `candidates[]` 的 4 条就是屏上那 4 颗按钮（各 2 / 2 / 4 / 4 种改法）。
  */
 export interface ImpedimentCandidate {
   candidateId: string;
@@ -668,7 +671,11 @@ export function humanizeApiError(raw: string): { text: string; recognized: boole
 /**
  * 🔴 **COO 那句「一个数都没动」的真正答案，也是本单最后一处「装作会算」**。
  *
- * ── 今天的行为是 X，应该是 Y（起真 datacore 4901 · seed 42 · demo 实测，原文照录）──
+ * ── 今天的行为是 X，应该是 Y（2026-08-29 起真 datacore · seed 42 · demo 实测，原文照录）──
+ * 复验（三条命令，任何人可重跑）：
+ *   ① `POST /a/v1/sim/sessions/:id/drill`，同一算例把 `pctChange` 取 15 与 100000 各一次
+ *   ② `POST /a/v1/solvers/risk_timeline/invoke {"args":{}}` 各一次 —— 比 8 张卡的指纹
+ *   ③ `POST /a/v1/solvers/chain_impediments/invoke {"args":{"scope":{}}}` 各一次 —— 比 18 条 id
  * · **X**：第一层最大的那个数上面白纸黑字写着「**这 N 件事凑一块，往后 30 天**」，
  *   而那个数（63.16 亿 / 53 张单 / 会晚 26 张）来自 `risk_timeline`，
  *   前端给它的实参实测是 **`{}`** —— **一个 event 都没传进去**。
@@ -767,9 +774,14 @@ export function invariantNumbersNote(report: DrillReport | null): {
       frozen
         .map((p) => `· ${p.label}\n  由「${p.route}」那一路算；本次传给它的实参里**没有**你加的事件 ⇒ 结构上不会变。\n  它其实在回答：${p.answers}`)
         .join("\n") +
-      `\n\n实测（真后端 seed 42）：同一个「物料价格变动」把幅度从 15 拉到 100000 ——\n` +
+      // ⚠ 日期前必须留一个非词字符：写成 `\n\n2026-08-29` 时，源码里 `\` `n` 紧挨着 `2`，
+      //   `stale-claims` 的日期正则 `\b20\d{2}-...` 卡在词边界上匹配不到 —— 本单实测踩过一次。
+      `\n\n 实测于 2026-08-29（真后端 seed 42 · 复验端点 POST /a/v1/sim/sessions/:id/drill）：\n` +
+      `同一个「物料价格变动」把幅度从 15 拉到 100000 ——\n` +
       `· 每个基地紧到什么程度：8 张卡逐字节相同\n· 全链卡点：18 条 id 逐字节相同\n· 产销缺口：81 → 81\n` +
-      `· 而演习那一路「顺着关系推出来的结论」：0 条改变 → 104 条改变。`,
+      `· 而演习那一路「顺着关系推出来的结论」：0 条改变 → 104 条改变。\n` +
+      `你自己就能复验，不用看代码：把上面那件事的幅度改一个大得离谱的数，再按一次〔算一下〕——\n` +
+      `这几个数会一动不动，而「N 条结论因此改变」会变。`,
     movingLabels: moving.map((m) => m.label),
     frozenLabels: frozen.map((f) => f.label),
   };
