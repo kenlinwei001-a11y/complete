@@ -4100,6 +4100,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   // 前端 PRD §6.4 / §7.3：对象查询（objectRef 槽位选择器 + 台账分页 + 列筛选 f_*）。
   // 响应 { items, total }（台账/选择器消费）；同时保留 { data, snapshotVersion } 兼容旧调用。
+  //
+  // ⚠ `total` 的语义是「**符合条件的总行数**」，不是「本次能取回多少」——
+  //   它必须独立于 page / pageSize / 任何内部读上限。曾经这里读的是
+  //   `queryObjects(ctx, type, {}, 1000)`，于是 `total = rows.length` 被那个 ≤1000 硬顶夹住：
+  //   `type=EquipmentOEE` 自报 `total=1000` 而真值 5460（seed 42），且第 1000 行之后
+  //   **任何 page 都翻不到**。调用方无从察觉，因为 `total` 正是唯一的检测手段，而它自己被截断。
+  //   改走 `listVisiblePage`（全量可见读，语义与 queryObjects 非 asOfEpoch 路一致）后两者都解决。
+  //   仍留 200k 安全上限；真撞上时 `total` 是已知下界，靠 `totalIsLowerBound:true` **显式说出来**。
+  //
+  // 本端点认得的查询参数（其余一律回 `warnings`，不再静默吞掉）：
+  const KNOWN_OBJECT_QUERY_PARAMS = new Set(["type", "q", "page", "pageSize", "base"]);
   app.get("/a/v1/objects", async (req) => {
     const q = req.query as Record<string, string | undefined>;
     const type = q["type"] ?? "";
@@ -4107,8 +4118,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const needle = (q["q"] ?? "").toLowerCase();
     const page = Math.max(1, Number(q["page"] ?? "1") || 1);
     const pageSize = Math.min(500, Math.max(1, Number(q["pageSize"] ?? "50") || 50));
-    const result = await ontology.queryObjects(ctx(req), type, {}, 1000);
-    let rows = result.data as { id: string; type: string; props: Record<string, unknown> }[];
+
+    // 无法识别的参数 → 回 warnings。**不 400**：实测本仓无任何生产调用方传 `limit`，但
+    // 三个 datacore 接缝测试与一段文档 curl 都在传（它们以为它生效），400 会把它们全打红；
+    // 且本端点的 URL 常由 agent 现拼，硬拒会把一个拼写问题升级成一次故障。
+    const warnings: string[] = [];
+    for (const k of Object.keys(q)) {
+      if (KNOWN_OBJECT_QUERY_PARAMS.has(k) || k.startsWith("f_")) continue;
+      warnings.push(
+        k === "limit"
+          ? `查询参数 "limit" 在本端点无效且已被忽略（本次实际用 pageSize=${pageSize}）；分页请用 page + pageSize。`
+          : `查询参数 "${k}" 无法识别，已被忽略。本端点认得：type / q / page / pageSize / base / f_<属性名>。`,
+      );
+    }
+
+    const result = await ontology.listVisiblePage(ctx(req), type, {});
+    let rows = result.data;
     if (needle) {
       rows = rows.filter((o) => JSON.stringify({ id: o.id, ...o.props }).toLowerCase().includes(needle));
     }
@@ -4127,9 +4152,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         return (Array.isArray(pv) ? pv.join(",") : String(pv ?? "")).includes(q["base"] as string);
       });
     }
+    // 撞到 200k 安全上限时 `total` 只是已知下界 —— 说出来，别让调用方以为它是真值。
+    if (result.truncated) {
+      warnings.push(
+        `匹配行数超过服务端安全上限（${result.data.length} 行），total 为**已知下界**而非真值；请用 f_<属性名> 收窄或走 POST /a/v1/objects/aggregate 取精确计数。`,
+      );
+    }
     const total = rows.length;
     const items = rows.slice((page - 1) * pageSize, page * pageSize).map((r) => ({ id: r.id, type, props: r.props }));
-    return { items, total, data: items, snapshotVersion: result.snapshotVersion };
+    return {
+      items,
+      total,
+      ...(result.truncated ? { totalIsLowerBound: true } : {}),
+      ...(warnings.length ? { warnings } : {}),
+      data: items,
+      snapshotVersion: result.snapshotVersion,
+    };
   });
   // 外部域（EXT_SIG）：环境信号清单（一等对象 ExternalSignal；行级过滤 + tenantId 由 queryObjects 保证）。
   app.get("/a/v1/external-signals", async (req) => {
