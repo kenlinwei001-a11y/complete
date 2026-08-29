@@ -87,10 +87,16 @@ POST /a/v1/ontology/publish-requests -> 201
 实测原文：先修 `material`（`POST /a/v1/ontology/domains {"domainKey":"material","ownerUserId":"usr_demo_admin"}` → 201），
 再发一次会签 → `preq_demo_1787997457584_16`，**无 owner 的域：`dealer`**（只剩我从屏上建的那一个）。
 
-**顺带挖出一个出厂缺陷**：对象类型 `MaterialBalance` 的 `domain` 是 `"material"`，
-而 `material` **从来没在域注册表里**（`/admin/domains` 屏上 15 个域里没有它）。
-所以**出厂租户在我动手之前就已经发不出 v2 了** —— 屏上「已发布版本：**v1**」，
-会签名单里挂着一个屏幕上根本看不见、也没有 owner 的幽灵域。
+**顺带挖出一个出厂缺陷（已在重启后的干净种子上复核，与我做过的任何事无关）**：
+
+```
+GET /a/v1/ontology/domains          → 15 个域，有 material 吗: false，无 owner 的只有 unassigned
+GET /a/v1/ontology/publish-requests → 会签名单 15 个域，无 owner 的是: material
+```
+对象类型 `MaterialBalance` 的 `domain` 写的是 `"material"`，而 `material` **从来没在域注册表里**
+（`/admin/domains` 屏上 15 个域没有它，注册表里叫 `supply`）。会签名单是按类型上的 `domain` 值拼的，
+于是名单里凭空多出一个**屏幕上看不见、也没有 owner 的幽灵域**。
+⇒ **出厂租户在任何人动手之前就已经发不出 v2 了** —— 屏上「已发布版本：**v1**」。
 
 > 这条同时解释了另一个现象：`/admin/ontology-relations` 上的「建边 / 停用 / 下线」写的是**工作集**，
 > 而工作集要靠会签才能变成已发布真值。会签既然永远过不去，**这一整页的治理动作就都落不了地**。
@@ -371,9 +377,10 @@ POST /sim/propagation-rules -> 201
 
 | 时刻 | 横幅 |
 |---|---|
-| 出厂（LOOP2 文档独立记录的同一条横幅） | `95/**98**` |
+| 出厂（**我在重启后的干净种子上亲手复核**，且与 `docs/LOOP2-ux-mainline.md:192` 独立记录的一致） | `图查询覆盖 95/**98** 对象，切片 99 < minQueries 1` |
 | 我加了 `Excavator` 之后 | `95/**99**` |
 | 我又加了 `Dealer` + `Attachment` 之后 | `95/**101**` |
+| 我给 `Excavator` 注册了一条切片之后（见「改口一」） | `**96**/101` |
 
 **分母跟着类型数走，分子默认不动。** 分子 95 的出处我找到了 ——
 `/admin/slices` 上那行「99 条已注册切片 · 多跳业务切片 4 条 · **单类型覆盖切片 95 条**」。
