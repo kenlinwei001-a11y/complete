@@ -63,10 +63,17 @@ function leverBound(l: DiscoveredLever, c08Ratio: number): { min: number; max: n
 }
 
 /** WO-LEVER-UNIT · 杠杆值配单位（治本单源·后端 `valueKind`/`unit` 下发·前端只格式化不内联业务单位·R14）：
- *  ratio=比率（0–1 存储自动×100 显示 %，让"0.9"读作"90%"）；days/count/hours/minutes/qty=整数+单位后缀（如 26天/2班）。
- *  缺后端元数据（`valueKind` undefined）→ 诚实回退旧显示：pct 边界显 %（外协）、其余 3 位小数（不臆造单位）。 */
+ *  ratio=比率（存 0–1，×100 显示 %，让"0.9"读作"90%"）；percent=百分点（存 0–100，原样显示）；
+ *  days/count/hours/minutes/qty=整数+单位后缀（如 26天/2班）。
+ *  缺后端元数据（`valueKind` undefined）→ 诚实回退旧显示：pct 边界显 %（外协）、其余 3 位小数（不臆造单位）。
+ *
+ *  ⚠ WO-DIM-LABEL-3 ③：本函数与 `chainImpediment.formatLeverValue` **口径必须逐字相同**，
+ *  两处原先都写 `v <= 1 ? v*100 : v`（按取值范围猜该不该 ×100）。猜法已在两处**同时删除** ——
+ *  量纲改由下发方声明（`Line.utilization`→percent / `Process.*`→ratio）。
+ *  病因与取证见 `chainImpediment.formatLeverValue` 的注释；同族事故见 `ab50ccff`。 */
 function fmtLeverValue(v: number, valueKind?: string, unit?: string, pct?: boolean): string {
-  if (valueKind === "ratio") return `${Math.round(v <= 1 ? v * 100 : v)}%`;
+  if (valueKind === "ratio") return `${Math.round(v * 100)}%`;
+  if (valueKind === "percent") return `${Math.round(v)}%`;
   if (valueKind) {
     const n = Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10);
     return `${n}${unit ?? ""}`;

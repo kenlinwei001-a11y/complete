@@ -715,7 +715,16 @@ export function enumerateImpedimentOptions(
             label: `产能 cellsPerDayP50 合计（电芯/日）${locusBase ? `（基地 ${locusBase}）` : "（全域）"}`,
             value: afterCap,
             baseline: baseCap,
-            unit: "套/天",
+            // WO-DIM-LABEL-3 ①：本维原先 label 写「电芯/日」而 unit 写「套/天」—— 同一个数被两种量纲
+            // 同时标注，差 `packCellCount`=96 倍（`battery.ts:603`）。实测 12/12 候选全部如此。
+            // 判据不是「哪个好听」，是追到计算式：本值 = Σ `computeByProcessModel().cellsPerDayP50`
+            // （见下方 provenance.formula），而 `capacity.ts:265` 的式子是
+            // `processCap × certFactor × yieldRebase × matFactor`，其 provenance 原文即写
+            // 「= N 电芯/日」；再上溯 `battery.ts:4325 baseDailyCellsWeekly =
+            // annualEffectivePacks × packCellCount / (52×7)` —— **乘过 packCellCount 之后量纲就是电芯**。
+            // 故错的那一半是 `unit` 不是 label。契约侧单一真值同为电芯/日：
+            // `contracts/src/solvers.ts` `ByProcessModelRowSchema.unit = z.literal("电芯/日")`。
+            unit: "电芯/日",
             betterWhen: "higher",
             dataMode: afterCap !== null && baseCap !== null ? "SYNTHETIC" : ("EMPTY" as DerivedDataMode),
             ...(afterCap !== null && baseCap !== null ? {} : { reason: truncated ? "探针预算耗尽（结果已标 truncated）" : "该作用域无逐工序格 ⇒ 产能维诚实缺席，不返回 0" }),
