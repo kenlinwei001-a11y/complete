@@ -524,7 +524,9 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   cross_object_occupancy: ["status", "optimal", "values", "objectiveValues", "occupancy", "displaced", "method", "orderCount", "lineCount", "contractCount", "servedCount", "summary"],
   // 轨B·增量3 optimize_whatif 输出形状（= OptWhatifResult 顶层 key + summary + 决策比对方案结构透传）。
   optimize_whatif: ["baselineObjective", "perturbedObjective", "deltaObjective", "deltaByObjective", "feasible", "conflictConstraints", "explanation", "baselineSolution", "perturbedSolution", "summary"],
-  affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary"],
+  // WO-DASH-ONHAND ②：+ window（聚合分支回带交期窗口 {fromDay,toDay,forecastStart}——
+  //   台账「全部 127」与驾驶舱卡片「在手 150」是两个口径，屏上那句话的天数取自此处，前端不写死 R14）。
+  affected_orders: ["baseId", "affected", "total", "count", "columns", "rows", "fallback", "problems", "summary", "window"],
   // WO-SANDBOX-D4 ③：+ chainCashflow（聚合层·全链经营现金流恒 EMPTY + 不可相加登记）。
   // WO-ENGINE-SCOPE-FIX2：+ scope（情景维·SCENARIO 真选情景 / EXPLICIT 调用方直传项目集 —— 只在给了 scenarioKey 时出现）。
   capex_scenario: ["scenarioKey", "scope", "quarters", "demand", "s0", "S", "G", "windows", "projects", "c23", "chainCashflow"],

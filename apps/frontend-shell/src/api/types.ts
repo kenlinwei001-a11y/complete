@@ -120,6 +120,15 @@ export interface DashboardWidgetDef {
    * 下发方显式声明，不许前端猜。
    */
   ratio?: boolean;
+  /**
+   * WO-DASH-ONHAND · 卡片**口径副标题**（下发方声明，前端零写死 R14）。
+   *
+   * 存在的理由是实测出来的病：修前同屏「AOP 基准营收 601.50 亿」与全簿订单额 507.26 亿
+   * 差 15.7%，而屏上**没有一个字**说明它们不是一个账（一个是年度计划口径、一个是订单簿口径）；
+   * 「在手订单」与下方台账「全部」同样是两个口径顶着同一个词。
+   * 数字本身没错的时候，缺的就是这一行 —— 所以它是 widget 的**一等字段**，不是样式。
+   */
+  caption?: string;
   chartKind?: "line" | "bar" | "trideviation";
   /** 三线偏差复合图（trideviation）的系列声明：data 各项的数值字段 → 线名/色。 */
   chartSeries?: { key: string; name: string; color?: string }[];
@@ -287,6 +296,11 @@ export interface AffectedOrdersOutputVM {
   summary: { orderCount: number; totalQty: number; custCount: number; revenue: number };
   rows: AffectedOrderRowVM[];
   problems: OrderProblemGroup[];
+  /**
+   * WO-DASH-ONHAND ②：聚合分支（无 baseId）回带的**交期窗口**——「本表在列什么」的天数取自此处。
+   * 单基地分支不回带 ⇒ optional；缺省时前端只说口径不报天数（**不许编一个数**）。
+   */
+  window?: { fromDay: number; toDay: number; forecastStart: string };
 }
 
 // ---- 任务事件（SSE 帧形态，QOS-PRD §8.2） ----

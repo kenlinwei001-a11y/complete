@@ -319,7 +319,9 @@ export const zh = {
     feedbackTitle: "回采校准 · 逐级反馈链（实际 → 月度 → 季度 → 年度）",
     modulesTitle: "模块直达（点击进入）",
     problemDrill: "点击查看该问题的订单全链与逐单根因",
-    ledgerAll: "全部",
+    // WO-DASH-ONHAND ②：这个 chip 筛的是**细分**，不是「全部订单」。原文「全部」与同屏
+    // 卡片「在手订单」的全簿含义撞词，读者会把台账 127 当成订单总数（真值 500 / 在手 150）。
+    ledgerAll: "全部细分",
     ledgerGm: "综合毛利率",
     ledgerDrill: "点击下钻该单的订单全链与逐单根因 DAG",
     // 假5 修：综合毛利率为估算口径（SEG_REGISTRY 参考单价/毛利率派生·非 metric_rollup 财务实测）。
