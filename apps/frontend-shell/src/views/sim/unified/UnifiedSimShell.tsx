@@ -126,7 +126,7 @@ const SESSION_REASON_TEXT: Record<ConsoleSessionReason, string> = {
   auto: "自动选中最近一条 RUNNING 会话",
   loading: "会话列表还在路上",
   "no-running-session": "本租户没有 RUNNING 会话 —— 没有世界可推演（不是算不出来）",
-  unavailable: "会话列表这一跳失败 —— **不知道**有没有会话（不是没有）",
+  unavailable: "会话列表这一跳失败 —— 不知道有没有会话（不是没有）",
 };
 
 /**

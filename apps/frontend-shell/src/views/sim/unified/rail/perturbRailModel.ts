@@ -479,7 +479,7 @@ export function defaultStartTick(curTick: number): number {
 
 /** 起始拍落在过去时的那句人话（屏上原样渲染；具体第几拍由组件在旁边显式打出来）。 */
 export const START_TICK_PAST_TEXT =
-  "起始拍落在**已经推过的拍**上 —— 这一档不许提交。" +
+  "起始拍落在已经推过的拍上 —— 这一档不许提交。" +
   "填 0 的话它在卡墙口径里永远不落地（指标时序是从第 0 拍回放的，第一格产出的是第 1 拍，" +
   "「首次生效」判据在第 0 拍上永远不成立）；填一个更早但非 0 的拍，" +
   "指标时序会按「它从那一拍就在」重算，而已经落盘的那几拍里根本没有它 —— 屏上会同时有两个互相矛盾的读数。";
@@ -505,12 +505,12 @@ export const BLOCK_REASON_TEXT: Record<BlockReason, string> = {
     "这个量今天扰不动：它不在这个世界的状态变量清单里（view-config.stateVars），" +
     "而传导引擎 propagateTick 只读世界态 —— 发出去会「请求成功、下游一动不动」。",
   STATE_VARS_UNKNOWN:
-    "**不知道**这个量在不在世界态里 —— view-config 这一跳还没回来或失败了。" +
+    "不知道这个量在不在世界态里 —— view-config 这一跳还没回来或失败了。" +
     "这不是「它扰不动」，是「现在判断不了」，所以先不发（不猜、不兜底）。",
   // 与 `STATE_VARS_UNKNOWN` 同一条纪律：不知道就说不知道，**绝不拿 `0` 当兜底** ——
   // `0` 恰恰是那个「POST 201、屏上一个数不动」的静默坑（见本文件头注 WO-SIM-TICK-GATE）。
   CUR_TICK_UNKNOWN:
-    "还**不知道**这个世界现在在第几拍 —— 会话清单这一跳没回来或失败了。" +
+    "还不知道这个世界现在在第几拍 —— 会话清单这一跳没回来或失败了。" +
     "起始拍要拿它当基准，所以现在先不发（猜一个 0 就是那个「请求成功、屏上不动」的坑）。",
   BAD_MAGNITUDE: "幅度必须是一个有限的数",
   // 契约 `PerturbationSchema.startTick` 是 `int().min(0)` —— 这里按契约拦，
@@ -701,7 +701,7 @@ export function buildApplyReceipt(args: {
   if (!reached) {
     const left = body.startTick - tickAfter;
     notes.push(
-      `它不是没生效，是**还没到时候**：再点 ${left} 次「施加并推演」就会推到第 ${body.startTick} 拍、它就落地了。` +
+      `它不是没生效，是还没到时候：再点 ${left} 次「施加并推演」就会推到第 ${body.startTick} 拍、它就落地了。` +
         `要它立刻生效，把起始拍改成 ${tickBefore + 1}。`,
     );
   } else if (moved === false) {
@@ -722,18 +722,18 @@ export function buildApplyReceipt(args: {
     if (before !== null && before !== 0 && Math.abs(body.magnitude) < Math.abs(before) / 100) {
       notes.push(
         `幅度 ${body.magnitude} 相对这一格今天的读数 ${before} 偏小，变化落在看不见的小数位上 —— ` +
-          `**把幅度调大再算一次**：本平台确有一批量要更大的幅度才推得动，调大是有效的。`,
+          `把幅度调大再算一次：本平台确有一批量要更大的幅度才推得动，调大是有效的。`,
       );
     }
     if (hasOutEdge === false) {
       notes.push(
-        `「${targetText}」在已发布的传导规则里**没有出边** ⇒ 扰它只改自己那一格，下游不会跟着动。` +
+        `「${targetText}」在已发布的传导规则里没有出边 ⇒ 扰它只改自己那一格，下游不会跟着动。` +
           `想看连锁反应，改扰一个有出边的量（下拉里「根源」那一组都有出边）。`,
       );
     }
     if (notes.length === 0) {
       notes.push(
-        `这一格从 ${cellNum(before)} 到 ${cellNum(after)} 没有变化，而已知的几条原因**一条都没命中** —— ` +
+        `这一格从 ${cellNum(before)} 到 ${cellNum(after)} 没有变化，而已知的几条原因一条都没命中 —— ` +
           `这是一个说不出原因的「没动」，请把这条扰动的落点与幅度报给平台方，不要当成"正常"。`,
       );
     }
@@ -755,6 +755,6 @@ export function receiptCellText(r: ApplyReceipt): string {
 
 /** 回执里「全世界变了几个格」那一行（`null` = 没法比，不许写成 0）。 */
 export function receiptCellsText(r: ApplyReceipt): string {
-  if (r.changedCells === null) return "变了几个格：**没法比** —— 施加前那一份世界态没拿到（不是 0 个）";
+  if (r.changedCells === null) return "变了几个格：没法比 —— 施加前那一份世界态没拿到（不是 0 个）";
   return `推到第 ${r.tickAfter} 拍后，世界里共 ${r.changedCells} 个格子的读数变了（含世界自身的演化，不只是这一条扰动）`;
 }
