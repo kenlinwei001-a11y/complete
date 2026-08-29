@@ -1721,9 +1721,30 @@ export class SyntheticService {
           provenance: { toolName: "query_timeseries_agg", outputPath: "$.points", label: "oee:equip 日粒度均值" },
         },
         {
-          key: "orders-table", type: "table", title: "在手订单（前 8）", span: 2,
-          query: { kind: "objects", objectType: "Order", columns: ["so", "cust", "model", "qty", "due", "status"], limit: 8, ...(opts?.livedIn ? { filter: { status: "OPEN" } } : {}) },
-          provenance: { toolName: "query_objects", outputPath: "$.items", label: "订单对象查询" },
+          /**
+           * WO-DASH-ONHAND · **同族第二处**（与上面 `orders` 卡片一模一样的过期 `livedIn` 开关）。
+           *
+           * ⚠ 诚实结论，别读成"又修了一个错数"：**这张表今天列出来的行是对的** ——
+           * 实测（真后端 `SEED_DEMO=1`）前 8 行 `SO-3391…SO-3452` **8/8 全是 `OPEN`**，
+           * COMPLETED 0 行。但它对得**不是因为过滤了**，而是因为 24 张锚点订单的单号恰好排在
+           * id 序最前面 —— **靠运气对的**。id 编号一变（或锚点退役），一张标题写着「在手订单」
+           * 的表就会开始列已交付单，而没有任何东西会报红。
+           *
+           * ── 为什么不给它套上和卡片一样的在手 filter ──────────────────────────
+           * 这个 widget 是 `kind:"objects"`，前端走 `queryObjectsPaged` → `GET /a/v1/objects?f_status=…`，
+           * 而该端点的 `f_*` 是**子串匹配**（`hay.includes(v)`），不是集合匹配：
+           * 传数组会被 `Array.isArray(v) ? v.join(",")` 拼成 `"OPEN,IN_PRODUCTION"`，
+           * 再拿去 `includes` ⇒ **一行都匹配不到**。（前端已按 CSV 序列化数组、后端却当字面量 ——
+           * 两半是照着对方造的却从没接上，属「接了线接错地方」。已另开单，不在本单动共享过滤语义。）
+           *
+           * ⇒ 本单只做**零风险的那一半：把假标题改掉**。行集一行不动（省得拿"修好了"
+           * 掩盖一个没修的机制），并把 status 列留在表里、口径写进 caption，
+           * 「在手」的权威数字指回上方那张卡。
+           */
+          key: "orders-table", type: "table", title: "订单明细（前 8 · 按订单号）", span: 2,
+          query: { kind: "objects", objectType: "Order", columns: ["so", "cust", "model", "qty", "due", "status"], limit: 8 },
+          caption: "全簿口径（含已交付关闭单）· 每行状态见 status 列；「在手」总数以上方「在手订单」卡片为准",
+          provenance: { toolName: "query_objects", outputPath: "$.items", label: "Order 对象查询 · 全簿按订单号取前 8（非在手口径）" },
         },
         // 运营态增量 §4.1：12 个月产出趋势（检修月下凹）/ 准交率 / 年度已执行工单 / 已交付台账。
         // 数据源 = GET /a/v1/history/bundle（kind=history 声明式 widget，仅 livedIn 时注入）。
