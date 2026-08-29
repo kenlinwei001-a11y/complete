@@ -1,6 +1,9 @@
 # LOOP10 · 研究者（向外看：这一行认为什么是必须的）
 
-> 实测 2026-08-29 13:00 · `HEAD d05c803e`（= canonical `3408572c` + 空提交，src 与 canonical 一致）· 真后端 `datacore:4351 / agentcore:4352 / vite:5351` · `SEED_DEMO=1` · **非** `VITE_MOCK` · 真浏览器登录 demo/admin
+> **base commit** `3408572c`（`git merge-base HEAD origin/claude/inspiring-gates-aqczjg`）· **取证时刻** 2026-08-29 13:00–13:05 UTC · **`wc -l apps/datacore/src/synthetic/battery.ts` = 5357**（今天的树；非 06-15 那棵 1249 行的旧树）
+>
+> 真后端 `datacore:4351 / agentcore:4352 / vite:5351` · `SEED_DEMO=1` · **非** `VITE_MOCK` · 真浏览器登录 demo/admin。
+> 树龄佐证：本树 `/a/v1/objects?type=Order&page=1&pageSize=500` 实测 **total=500**（与其余四人一致）；另 `type=Customer` **total=20** —— 「20」这个数在本树上是**客户数**，不是订单数，两者别混。
 
 **核心立场**：这一行按 **EBIT / 服务 / 现金周期** 三个 Δ 给高管排方案[^1][^4]；本仓三块决策屏零金额零日期，**排不出敞口** —— 缺的不是功能，是计价单位。
 
