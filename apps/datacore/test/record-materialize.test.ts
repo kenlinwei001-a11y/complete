@@ -12,10 +12,10 @@ import type { PropertyDef } from "../src/domain.js";
  */
 
 const FINANCE_PROPS: PropertyDef[] = [
-  { propKey: "finId", dataType: "string", isPrimaryKey: true },
-  { propKey: "line", dataType: "string", isPrimaryKey: false },
-  { propKey: "budget", dataType: "number", isPrimaryKey: false },
-  { propKey: "rolling", dataType: "number", isPrimaryKey: false },
+  { propKey: "finId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "line", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "budget", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "rolling", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const FINANCE_CSV = `finId,line,budget,rolling

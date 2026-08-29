@@ -67,12 +67,12 @@ async function seedSchedule(t: TestApp, opType = "SchedOp", durOverride?: Record
     derivedProperties: [],
     sourceBindings: [],
     properties: [
-      { propKey: "opId", dataType: "string", isPrimaryKey: true },
-      { propKey: "jobId", dataType: "string", isPrimaryKey: false },
-      { propKey: "machine", dataType: "string", isPrimaryKey: false },
-      { propKey: "duration", dataType: "number", isPrimaryKey: false },
-      { propKey: "order", dataType: "number", isPrimaryKey: false },
-      { propKey: "group", dataType: "string", isPrimaryKey: false },
+      { propKey: "opId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+      { propKey: "jobId", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+      { propKey: "machine", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+      { propKey: "duration", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+      { propKey: "order", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+      { propKey: "group", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
     ],
   });
   for (const j of JOBS) {
@@ -194,7 +194,7 @@ describe.skipIf(!SIDECAR)("WO-JOBSHOP · 真 CP-SAT sidecar 端到端（OPTIMIZE
     await t.repos.ontologyTypes.put({
       id: "ot_SchedCo", tenantId: "demo", key: "SchedCo", displayName: "换型矩阵", domain: "process", version: 1, status: "ACTIVE",
       derivedProperties: [], sourceBindings: [],
-      properties: [{ propKey: "pairId", dataType: "string", isPrimaryKey: true }, { propKey: "fromModel", dataType: "string", isPrimaryKey: false }, { propKey: "toModel", dataType: "string", isPrimaryKey: false }, { propKey: "minutes", dataType: "number", isPrimaryKey: false }],
+      properties: [{ propKey: "pairId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, { propKey: "fromModel", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, { propKey: "toModel", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, { propKey: "minutes", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }],
     });
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "co_ab", tenantId: "demo", type: "SchedCo", props: { pairId: "AB", fromModel: "A", toModel: "B", minutes: 200 } });
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "co_ba", tenantId: "demo", type: "SchedCo", props: { pairId: "BA", fromModel: "B", toModel: "A", minutes: 200 } });

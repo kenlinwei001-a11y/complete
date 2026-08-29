@@ -34,8 +34,8 @@ class MockFL implements OptimizerClient {
 }
 
 async function seedIndustry(t: Awaited<ReturnType<typeof makeApp>>, tenant: string, facType: string, cliType: string, facPk: string, cliPk: string, openF: string, assignF: string, facs: Record<string, unknown>[], clis: Record<string, unknown>[]) {
-  await t.repos.ontologyTypes.put({ id: `ot_${facType}`, tenantId: tenant, key: facType, displayName: facType, domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: facPk, dataType: "string", isPrimaryKey: true }, { propKey: openF, dataType: "number", isPrimaryKey: false }, { propKey: assignF, dataType: "number", isPrimaryKey: false }] });
-  await t.repos.ontologyTypes.put({ id: `ot_${cliType}`, tenantId: tenant, key: cliType, displayName: cliType, domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: cliPk, dataType: "string", isPrimaryKey: true }] });
+  await t.repos.ontologyTypes.put({ id: `ot_${facType}`, tenantId: tenant, key: facType, displayName: facType, domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: facPk, dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, { propKey: openF, dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, { propKey: assignF, dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }] });
+  await t.repos.ontologyTypes.put({ id: `ot_${cliType}`, tenantId: tenant, key: cliType, displayName: cliType, domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: cliPk, dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }] });
   let i = 0;
   for (const f of facs) await t.repos.objects.put({ origin: { type: "MANUAL" }, id: `f${tenant}${i++}`, tenantId: tenant, type: facType, props: f });
   i = 0;

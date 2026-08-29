@@ -1440,9 +1440,12 @@ export class SyntheticService {
             propKey: p.propKey,
             dataType: (p.dataType ?? "string") as "string" | "number" | "boolean" | "date" | "enum" | "ref" | "json",
             isPrimaryKey: p.isPrimaryKey ?? false,
+            // WO-UNIT-KWH · 场景包 typeDef 上游无量纲元数据 ⇒ 显式「已知无量纲」，不静默省略。
+            unit: "dimensionless" as const,
+            scale: "absolute" as const,
             refToTypeKey: p.refToTypeKey ?? null,
           })),
-          derivedProperties: td.derivedProperties ?? [],
+          derivedProperties: (td.derivedProperties ?? []).map((d) => ({ ...d, unit: "dimensionless" as const, scale: "absolute" as const })),
           sourceBindings: [],
         });
       }

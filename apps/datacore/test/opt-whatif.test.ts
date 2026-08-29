@@ -123,8 +123,8 @@ describe("轨B·增量3 · optimize_whatif 经 service.invoke（接 5 核心 sid
  */
 async function seedSites(t: Awaited<ReturnType<typeof makeApp>>) {
   // **决策承载类型故意命名 "Site"（非 "Base"）**——证 assembleBaselineFromSelection 不硬编 Base→facility（选中什么类型即绑什么）。
-  await t.repos.ontologyTypes.put({ id: "ot_site", tenantId: "acme", key: "Site", displayName: "站点", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "siteId", dataType: "string", isPrimaryKey: true }, { propKey: "setupCost", dataType: "number", isPrimaryKey: false }] });
-  await t.repos.ontologyTypes.put({ id: "ot_cust", tenantId: "acme", key: "Customer", displayName: "客户", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true }] });
+  await t.repos.ontologyTypes.put({ id: "ot_site", tenantId: "acme", key: "Site", displayName: "站点", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "siteId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, { propKey: "setupCost", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }] });
+  await t.repos.ontologyTypes.put({ id: "ot_cust", tenantId: "acme", key: "Customer", displayName: "客户", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }] });
   await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "f1", tenantId: "acme", type: "Site", props: { siteId: "f1", setupCost: 10 } });
   await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "f2", tenantId: "acme", type: "Site", props: { siteId: "f2", setupCost: 20 } });
   await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "f3", tenantId: "acme", type: "Site", props: { siteId: "f3", setupCost: 30 } });
@@ -185,7 +185,7 @@ describe("WO-OPTWHATIF-NL-WIRING · 装配器 SEAM（selection+autoBind·数据�
     t.services.solvers.setOptimizer(new MockFL());
     const ctx: AuthCtx = { tenantId: "acme2", userId: "u", roles: ["admin"], attributes: {} };
     // 只种 Site（有成本字段）·**不种任何客户/订单类型** → client role 无从接地。
-    await t.repos.ontologyTypes.put({ id: "ot_site2", tenantId: "acme2", key: "Site", displayName: "站点", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "siteId", dataType: "string", isPrimaryKey: true }, { propKey: "setupCost", dataType: "number", isPrimaryKey: false }] });
+    await t.repos.ontologyTypes.put({ id: "ot_site2", tenantId: "acme2", key: "Site", displayName: "站点", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "siteId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, { propKey: "setupCost", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }] });
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "f1", tenantId: "acme2", type: "Site", props: { siteId: "f1", setupCost: 10 } });
     const out = await t.services.solvers.invoke(ctx, "optimize_whatif", { family: "facility_location", autoBind: true, selection: [{ objectType: "Site", objectId: "f1" }], perturbations: [{ kind: "data_override", target: "facilities.f1.openCost", value: 150 }] });
     expect((out as { applicable?: boolean }).applicable).toBe(false);
@@ -196,8 +196,8 @@ describe("WO-OPTWHATIF-NL-WIRING · 装配器 SEAM（selection+autoBind·数据�
     const t = await makeApp();
     t.services.solvers.setOptimizer(new MockFL());
     const ctx: AuthCtx = { tenantId: "acme3", userId: "u", roles: ["admin"], attributes: {} };
-    await t.repos.ontologyTypes.put({ id: "ot_site3", tenantId: "acme3", key: "Site", displayName: "站点", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "siteId", dataType: "string", isPrimaryKey: true }, { propKey: "area", dataType: "number", isPrimaryKey: false }] });
-    await t.repos.ontologyTypes.put({ id: "ot_cust3", tenantId: "acme3", key: "Customer", displayName: "客户", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true }] });
+    await t.repos.ontologyTypes.put({ id: "ot_site3", tenantId: "acme3", key: "Site", displayName: "站点", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "siteId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, { propKey: "area", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }] });
+    await t.repos.ontologyTypes.put({ id: "ot_cust3", tenantId: "acme3", key: "Customer", displayName: "客户", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }] });
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "f1", tenantId: "acme3", type: "Site", props: { siteId: "f1", area: 10 } });
     const out = await t.services.solvers.invoke(ctx, "optimize_whatif", { family: "facility_location", autoBind: true, selection: [{ objectType: "Site", objectId: "f1" }], perturbations: [{ kind: "data_override", target: "facilities.f1.openCost", value: 150 }] });
     expect((out as { applicable?: boolean }).applicable).toBe(false);

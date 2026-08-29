@@ -82,7 +82,7 @@ describe("A6 · 通用合成路端到端（真服务：拟真值落区间 + auto
       id: "tmpl_a6", tenantId: "demo", industryKey: "a6-phone", source: "LLM", createdAt: new Date().toISOString(),
       template: {
         industryKey: "a6-phone",
-        ontology: { objectTypes: [{ key: "Order", displayName: "订单", properties: [{ propKey: "orderId", dataType: "string", isPrimaryKey: true }, { propKey: "util", dataType: "number" }] }] },
+        ontology: { objectTypes: [{ key: "Order", displayName: "订单", properties: [{ propKey: "orderId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, { propKey: "util", dataType: "number" }] }] },
         generation: [{
           typeKey: "Order", count: { S: 12, M: 12, L: 12 },
           propGenerators: { orderId: { kind: "pattern", pattern: "O-{seq:3}" }, util: { kind: "valueDomain", domainKey: "util", shape: "normal" } },

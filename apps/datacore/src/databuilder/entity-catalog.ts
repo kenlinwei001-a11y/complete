@@ -1,5 +1,6 @@
 import type { AuthCtx } from "../domain.js";
 import type { ObjectTypeDef } from "../domain.js";
+import { displayUnit } from "../domain.js";
 import type { OntologyService } from "../ontology.js";
 
 /**
@@ -53,7 +54,7 @@ export function buildFieldCatalog(types: ObjectTypeDef[]): FieldCatalogEntry[] {
         dataType: p.dataType,
         isPrimaryKey: p.isPrimaryKey,
         temporal: p.temporal ?? false,
-        ...(p.unit ? { unit: p.unit } : {}),
+        ...(displayUnit(p.unit) ? { unit: displayUnit(p.unit)! } : {}),
         ...(p.description ? { description: p.description } : {}),
         refToTypeKey: p.refToTypeKey ?? null,
       })),
@@ -88,7 +89,7 @@ export function searchCatalog(
     if (t.status !== "ACTIVE") continue;
     if (opts.type && t.key !== opts.type) continue;
     for (const p of t.properties) {
-      const cands = [p.propKey, p.description ?? "", p.unit ?? ""].filter(Boolean);
+      const cands = [p.propKey, p.description ?? "", displayUnit(p.unit) ?? ""].filter(Boolean);
       let best = 0;
       for (const c of cands) best = Math.max(best, entitySimilarity(q, c));
       if (best >= minScore) {
@@ -98,7 +99,7 @@ export function searchCatalog(
           ...(t.domain ? { domain: t.domain } : {}),
           propKey: p.propKey,
           dataType: p.dataType,
-          ...(p.unit ? { unit: p.unit } : {}),
+          ...(displayUnit(p.unit) ? { unit: displayUnit(p.unit)! } : {}),
           ...(p.description ? { description: p.description } : {}),
           score: Number(best.toFixed(3)),
         });

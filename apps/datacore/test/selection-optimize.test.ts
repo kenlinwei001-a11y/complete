@@ -23,7 +23,7 @@ class MockOptimizer implements OptimizerClient {
 }
 
 async function seedItems(t: TestApp, ctx: AuthCtx) {
-  await t.repos.ontologyTypes.put({ id: "ot_item", tenantId: ctx.tenantId, key: "Item", displayName: "候选项", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "itemId", dataType: "string", isPrimaryKey: true }, { propKey: "value", dataType: "number", isPrimaryKey: false }, { propKey: "weight", dataType: "number", isPrimaryKey: false }] });
+  await t.repos.ontologyTypes.put({ id: "ot_item", tenantId: ctx.tenantId, key: "Item", displayName: "候选项", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "itemId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, { propKey: "value", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, { propKey: "weight", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }] });
   await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "i_a", tenantId: ctx.tenantId, type: "Item", props: { itemId: "A", value: 60, weight: 6 } });
   await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "i_b", tenantId: ctx.tenantId, type: "Item", props: { itemId: "B", value: 50, weight: 5 } });
   await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "i_c", tenantId: ctx.tenantId, type: "Item", props: { itemId: "C", value: 50, weight: 5 } });
@@ -58,7 +58,7 @@ describe("PRD-fde §8d · selection_optimize（CP-SAT sidecar 代理）接线", 
   it("maxCount/minValue/自定义字段名透传到引擎请求", async () => {
     const t = await makeApp();
     const ctx: AuthCtx = { tenantId: "demo", userId: "u", roles: ["admin"], attributes: {} };
-    await t.repos.ontologyTypes.put({ id: "ot_m", tenantId: "demo", key: "Measure", displayName: "措施", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "mid", dataType: "string", isPrimaryKey: true }, { propKey: "gain", dataType: "number", isPrimaryKey: false }, { propKey: "cost", dataType: "number", isPrimaryKey: false }] });
+    await t.repos.ontologyTypes.put({ id: "ot_m", tenantId: "demo", key: "Measure", displayName: "措施", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "mid", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, { propKey: "gain", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, { propKey: "cost", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }] });
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "m1", tenantId: "demo", type: "Measure", props: { mid: "降本", gain: 9, cost: 3 } });
     const mock = new MockOptimizer({ status: "OPTIMAL", optimal: true, selected: ["降本"], totalValue: 9, totalWeight: 3 });
     t.services.solvers.setOptimizer(mock);
@@ -74,7 +74,7 @@ describe("PRD-fde §8d · selection_optimize（CP-SAT sidecar 代理）接线", 
     const ctx: AuthCtx = { tenantId: "demo", userId: "u", roles: ["admin"], attributes: {} };
     await seedItems(t, ctx);
     // 他租户也建同名类型 + 一项,不应进入 demo 的求解请求
-    await t.repos.ontologyTypes.put({ id: "ot_item2", tenantId: "other", key: "Item", displayName: "候选项", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "itemId", dataType: "string", isPrimaryKey: true }, { propKey: "value", dataType: "number", isPrimaryKey: false }, { propKey: "weight", dataType: "number", isPrimaryKey: false }] });
+    await t.repos.ontologyTypes.put({ id: "ot_item2", tenantId: "other", key: "Item", displayName: "候选项", domain: "x", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "itemId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, { propKey: "value", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, { propKey: "weight", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }] });
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "i_x", tenantId: "other", type: "Item", props: { itemId: "X", value: 999, weight: 1 } });
     const mock = new MockOptimizer({ status: "OPTIMAL", optimal: true, selected: [], totalValue: 0, totalWeight: 0 });
     t.services.solvers.setOptimizer(mock);

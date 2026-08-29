@@ -21,6 +21,7 @@ import type {
   Rule,
   SliceSpecRecord,
 } from "./domain.js";
+import { PROPERTY_UNITS } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { OntologyService, primaryKeyProp as PkFn } from "./ontology.js";
 import type { OntologyCoreService } from "./ontology-core.js";
@@ -51,8 +52,29 @@ const GRACE_DAYS = 90;
 const SIGNOFF_BEHALF_HOURS = 72;
 const SIGNOFF_EXPIRE_DAYS = 7;
 
-/** 治理增量 §1 单位字典（场景包级；电池模板内置）。 */
-export const UNIT_DICTIONARY = ["万套", "GWh", "%", "吨", "天", "元", "万元", "件", "秒"];
+/**
+ * 治理增量 §1 单位字典（场景包级；电池模板内置）。
+ *
+ * ── WO-UNIT-KWH：改为**从 `PropertyUnit` 派生**，不再手抄一份 ────────────────────
+ * 改前这里是一份写死的 9 项清单（`["万套","GWh","%","吨","天","元","万元","件","秒"]`），
+ * 与种子实际用的单位**对不上**：种子里 `AdoptedMitigation.eff` 用 `'点'`、
+ * `Equipment.mtbf` 用 `'h'`、`DemandSegment` 用 `'万套/年'`，一个都不在这 9 项里。
+ * 后果是一处真实的**路由不对称**：同一份属性，走 `POST /a/v1/ontology/object-types`
+ * 会被本字典判 400「未知单位 '点'」，走仓储直写却照单全收
+ * （`interface-actiontype-deepval.seam.test.ts` 为此专门在重 upsert 时把 `unit` 剥掉才过得去）。
+ *
+ * 量纲收口后单位的**唯一出处**是类型 `PropertyUnit`，字典由它派生 ⇒ 两条路同一套词表，
+ * 上面那处不对称自然消失，且以后往类型里加一个单位，字典自动跟上（不会再漂）。
+ *
+ * ⚠ **`dimensionless` 必须在册**（本轮实测踩过：把它滤掉 ⇒ 三个测试文件、7 条用例齐红
+ * 「expected 400 to be 201」）。原因是这里管的是「**这个单位声明合不合法**」，
+ * 而不是「**这个单位该不该显示在屏上**」—— 两件事不同：
+ *   · 合法性（本字典）：`dimensionless` 是量纲必填后**最常见的合法声明**，滤掉它等于把
+ *     绝大多数属性判成「未知单位」，REST 建类型整条路当场 400。
+ *   · 可显示性（`domain.ts` 的 `displayUnit()`）：`dimensionless` 不上屏、不进 Agent 地图。
+ * 把这两件事混在一个列表里，正是本仓反复犯的那个形态：拿 A 的判据去管 B。
+ */
+export const UNIT_DICTIONARY: string[] = [...(PROPERTY_UNITS as readonly string[])];
 
 function displayProp(type: ObjectTypeDef | undefined): string {
   if (!type) return "name";

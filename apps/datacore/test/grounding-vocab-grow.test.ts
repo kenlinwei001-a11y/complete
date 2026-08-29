@@ -15,8 +15,8 @@ const factoryType: ObjectTypeDef = {
   displayName: "工厂",
   domain: "ops",
   properties: [
-    { propKey: "fid", dataType: "string", isPrimaryKey: true },
-    { propKey: "name", dataType: "string", isPrimaryKey: false, searchable: true }, // A3 名称类字段
+    { propKey: "fid", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+    { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true }, // A3 名称类字段
   ],
   derivedProperties: [],
   sourceBindings: [],

@@ -1188,7 +1188,7 @@ const PORT_CROSS_CHG_H = PORT_CROSS_BASE_CHG / 60; // 换型全链小时（60min
 const portDayFrom = (a: string, b: string) => Math.round((Date.parse(`${b.slice(0, 10)}T00:00:00Z`) - Date.parse(`${a.slice(0, 10)}T00:00:00Z`)) / 86400000);
 const portBaseIdByName = new Map(BASE_REGISTRY.map((b) => [b.name, b.baseId]));
 const portBaseNameById = new Map(BASE_REGISTRY.map((b) => [b.baseId, b.name]));
-// 基地有效日产能（套/日）= gwh 名牌 × util ÷ packEnergyKwh ÷ 运营日（与 datacore capacityDaily 同口径·近似）。
+// 基地有效日产能（套/日）= gwh 名牌 × util ÷ packEnergyKwhAnchor ÷ 运营日（与 datacore capacityDaily 同口径·近似）。
 const portBaseDaily = (bid: string): number => {
   const b = BASE_REGISTRY.find((x) => x.baseId === bid);
   return b ? Math.max(1, Math.round((b.gwh * 1e6) / 166 * (b.util / 100) / 300)) : 500;

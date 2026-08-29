@@ -7,10 +7,10 @@ import { makeApp, ADMIN, debugUser } from "./helpers.js";
 const CUSTOMER: ObjectTypeDef = {
   key: "Customer", tenantId: "demo", displayName: "客户", domain: "people",
   properties: [
-    { propKey: "custId", dataType: "string", isPrimaryKey: true },
-    { propKey: "name", dataType: "string", isPrimaryKey: false },
-    { propKey: "creditLimit", dataType: "number", isPrimaryKey: false },
-    { propKey: "rating", dataType: "enum", isPrimaryKey: false, enumValues: ["A", "B", "C"] },
+    { propKey: "custId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+    { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+    { propKey: "creditLimit", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+    { propKey: "rating", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", enumValues: ["A", "B", "C"] },
   ],
   derivedProperties: [],
 } as unknown as ObjectTypeDef;
