@@ -119,6 +119,43 @@
   opacity: 0.85;
 }
 
+/* ── WO-SIM-TICK-GATE · 当前拍 + 施加回执 ────────────────────────
+   ⚠ 字号 12px、`opacity` ≥ 0.8 —— 沿用本文件头注那条实测结论（0.7/0.75 三主题里有不过的），
+   本单不引入任何低于该门槛的新样式，也不新造调色板（全部走既有变量）。 */
+.tick {
+  margin: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel2);
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.9;
+}
+.receipt {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel2);
+}
+.receiptHead {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 600;
+}
+.receiptNotes {
+  margin: 2px 0 0;
+  padding-left: 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
 /* ── 今天扰不动的量 ─────────────────────────────────────────────── */
 .blocked {
   border: 1px dashed var(--line);
