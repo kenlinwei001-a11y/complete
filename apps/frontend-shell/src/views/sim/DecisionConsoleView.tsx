@@ -1257,8 +1257,32 @@ function TemplateRow({
     setPickedLabel(typeof n === "string" ? n : item.id);
   };
 
+  /**
+   * WO-CONSOLE-BLOCKERS · **加得进去、算不出来**（真服务真浏览器实测复现，非转述）。
+   *
+   * **今天的行为 X**：这一支原写作 `scope === null || !subjectRead || pickedId.length > 0` ——
+   *   `!subjectRead` 一旦成立就**短路放行**，于是主体一个没选也能按〔加进去〕。
+   *   而 `DrillEventSchema.targetObjectId` 是 `z.string().min(1)`（`packages/contracts/src/sim-drill.ts`），
+   *   **对所有 kind 一律必填**。⇒ 按〔算一下〕当场 400，屏上原样摆出一行
+   *   `ApiClientError: events.0.targetObjectId: Too small: expected string to have >=1 characters`。
+   *   实测（drill-catalog 现读）：11 个 kind 里有 **8 个** `routes[].args` 不含 `eventTarget`
+   *   ⇒ `subjectIsRead` 为假 ⇒ **8/11 条路都能走到这个报错**（ORDER_CANCEL / ORDER_INSERT /
+   *   ORDER_RELOCATE / MATERIAL_SHORTAGE / MATERIAL_REPRICE / EQUIPMENT_FAILURE /
+   *   CAPACITY_LOSS / FORECAST_BIAS）。
+   * **应该是 Y**：选主体是**加事件的前置**，不是「某个求解器要不要读它」的函数。
+   *
+   * ⚠ **`subjectIsRead` 本身没有错，错在拿它当这里的判据** —— 它答的是
+   *   「这次算会不会**把主体喂给求解器**」，不是「这条事件记录**需不需要**主体」。
+   *   照 CLAUDE.md 铁律 0.6 的句式：
+   *   > 「我用『没有求解器读这个主体』当作『这条事件不需要主体』的证据，而前者并不度量后者。」
+   *   所以旁边那句「这类事今天不看你选的是谁，它只决定去问哪几路算」**保留** ——
+   *   它说的是「选谁不改变算法结果」，那是真的；但**总得说清这件事发生在谁身上**。
+   *
+   * 这是**既有缺陷**（`canAdd` 在本单基线 `handoff-wo-decision-console` 上逐字相同，非本轮引入），
+   * 只是决策台此前没有从登录页走得到，一直没被真的点到。
+   */
   const canAdd =
-    (scope === null || !subjectRead || pickedId.length > 0) &&
+    pickedId.length > 0 &&
     spec.payloadKeys.filter((k) => k.required).every((k) => payload[k.key] !== undefined && payload[k.key] !== "");
 
   return (
@@ -1482,7 +1506,9 @@ function TemplateRow({
           </button>
           {!canAdd ? (
             <span className={styles.fieldHint}>
-              {subjectRead && pickedId.length === 0 ? "先选一个对象；" : ""}
+              {/* 判据与 canAdd 同源：缺主体就说缺主体，不再按 subjectRead 分叉 ——
+                  分叉过的那一版，8/11 条路上「加进去」是灰的而这句话一个字都不提原因。 */}
+              {pickedId.length === 0 ? `先选${scope?.label ?? SUBJECT_FALLBACK.label}；` : ""}
               {spec.payloadKeys.filter((k) => k.required && (payload[k.key] === undefined || payload[k.key] === "")).map((k) => `「${k.hint || k.key}」要填；`)}
               填齐了才能加 —— 缺一个必填的，后台会回「未能评估」而不是算成 0。
             </span>
