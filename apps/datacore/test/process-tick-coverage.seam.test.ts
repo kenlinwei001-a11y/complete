@@ -357,7 +357,7 @@ describe("WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（
     // 规则条数**没变** —— 这正是"条数不度量链路通不通"的当场证据。
     // （38 = 本档 35 + WO-SIM-ROOT-PROCUREMENT 的 3 条根源边；这里要的是"删边前后同一个数"，
     //   不是"这个数是 35"——数字随种子长，判据不随。）
-    expect((await t.repos.sim.listPropagationRules("demo", true)).length).toBe(42);
+    expect((await t.repos.sim.listPropagationRules("demo", true)).length).toBe(46);
 
     const baseSnapshot: Record<string, Record<string, number>> = {};
     for (const id of idsOf("Order")) baseSnapshot[id] = { demandPressure: 10 };
