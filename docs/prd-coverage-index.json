@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-26",
+  "generatedAt": "2026-08-29",
   "heuristic": "测试引用≠完整实现；零引用=未测/很可能未实现的强信号",
   "prds": {
     "PRD-A15-cli-universal-operation-shell.md": {
@@ -292,6 +292,40 @@
         "D1",
         "D3",
         "D6"
+      ],
+      "uncovered": [],
+      "coverage": 1
+    },
+    "PRD-decision-mainline.md": {
+      "acceptanceIds": [
+        "A1",
+        "A2",
+        "A3",
+        "B1",
+        "B2",
+        "D1",
+        "D2",
+        "D3",
+        "D4",
+        "E1",
+        "E2",
+        "E3",
+        "E4"
+      ],
+      "covered": [
+        "A1",
+        "A2",
+        "A3",
+        "B1",
+        "B2",
+        "D1",
+        "D2",
+        "D3",
+        "D4",
+        "E1",
+        "E2",
+        "E3",
+        "E4"
       ],
       "uncovered": [],
       "coverage": 1

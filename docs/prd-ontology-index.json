@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-26",
+  "generatedAt": "2026-08-29",
   "ontology": {
     "invariants": [
       "R1",
@@ -913,6 +913,31 @@
       "artifacts": [
         "packages/contracts/src/workspace.ts"
       ],
+      "brokenArtifacts": []
+    },
+    "PRD-decision-mainline.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R1",
+        "R10",
+        "R12",
+        "R13",
+        "R14",
+        "R18",
+        "R2",
+        "R3",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [
+        "G-10",
+        "G-11",
+        "G-12",
+        "G-5",
+        "G-8",
+        "G-9"
+      ],
+      "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-decision-resource-intelligence-layer.md": {
@@ -2901,6 +2926,7 @@
       "PRD-build-workflow-runtime.md",
       "PRD-catalog-battery-20-scenarios.md",
       "PRD-data-closure-spec.md",
+      "PRD-decision-mainline.md",
       "PRD-demand-pulled-growth-engine.md",
       "PRD-dogfooding-self-ontology.md",
       "PRD-fde-fullstack-build-workflow.md",
@@ -2927,6 +2953,7 @@
     ],
     "G-10": [
       "PRD-A3-multihop-slice-completion.md",
+      "PRD-decision-mainline.md",
       "PRD-rules-as-references.md",
       "PRD-simulation-sandbox.md",
       "PRD-skill-compiler-registry.md",
@@ -3006,6 +3033,7 @@
       "PRD-cockpit-capacity-1to1-parity.md",
       "PRD-data-closure-spec.md",
       "PRD-de-battery-multitenant-config.md",
+      "PRD-decision-mainline.md",
       "PRD-fde-fullstack-build-workflow.md",
       "PRD-fullstack-story-build-g8.md",
       "PRD-generation-boundary-grounding.md",
@@ -3033,6 +3061,7 @@
       "PRD-agent-execution-governance-loop-control.md",
       "PRD-agent-navigation-slice-latency.md",
       "PRD-data-gap-self-healing-loop.md",
+      "PRD-decision-mainline.md",
       "PRD-scenario-ontogenesis.md",
       "PRD-simulation-sandbox.md",
       "PRD-skill-contract-dsl.md",
@@ -3042,11 +3071,13 @@
       "PRD-v2-agent.md"
     ],
     "G-11": [
+      "PRD-decision-mainline.md",
       "PRD-harness-ux-adoption.md",
       "PRD-sandbox-ontogenesis-buildplan.md",
       "PRD-simulation-sandbox.md"
     ],
     "G-12": [
+      "PRD-decision-mainline.md",
       "PRD-opt-whatif-data.md",
       "PRD-optimize-whatif-conversational-wiring.md",
       "PRD-sandbox-redesign.md",
