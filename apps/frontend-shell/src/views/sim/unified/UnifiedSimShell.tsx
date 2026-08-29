@@ -102,7 +102,7 @@ import {
   type SimSessionStatusTarget,
 } from "@/api/endpoints";
 import { getRenderer } from "@/views/registry";
-import { UNIFIED_MODES, UNIFIED_MODE_SPEC, type UnifiedMode } from "./unifiedModes";
+import { UNIFIED_MODES, UNIFIED_MODE_SPEC, type UnifiedMode, type UnifiedModeCounts } from "./unifiedModes";
 import { stateVarLabel } from "../stateVarLabel";
 import { useConsoleSession, type ConsoleSessionReason } from "../console/useConsoleSession";
 import { metricSeriesPath } from "../console/useParetoFrontier";
@@ -613,6 +613,29 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
 
   const modeView = modeViews[mode];
 
+  /**
+   * 页签问句里那两个计数 —— **现算，不写死**（WO-SIM-TICK-GATE）。
+   *
+   * 改前两个数都是写死在 `unifiedModes.ts` 里的常量串，而且**两个今天都是错的**：
+   * 「38 条因果边」（实测 42，且同屏右栏 `EdgeActivePanel` 就写着 42 —— 同一屏两个数打架）、
+   * 「37 个状态变量」（实测 40 = 卡墙真实卡片数）。判据与实测证据写在 `unifiedModes.ts`
+   * 的 `UnifiedModeCounts` 头注里（判据住在判据自己家）。
+   *
+   * ⚠ 两个数都取自 `cfgQ` 这**一份**回包：`propagationCount` 与 `stateVars` 是后端在
+   * 同一个 handler 里由同一批规则派生的（`app.ts` 的 `/a/v1/sim/view-config`），
+   * 与 `EdgeActivePanel` 的 `fetchPropagationRules(true)` 是同一个仓储调用同一个实参 ⇒
+   * **两处不是各查一次碰巧相等，是同一份真相的两次投影**。
+   * ⚠ `undefined`（还没回来）一律映射成 `null` 而不是 `0` —— 「还不知道」与「一条都没有」
+   * 是两个命题，印 `0` 就是拿兜底值冒充事实（本壳其余各处同一条纪律）。
+   */
+  const modeCounts: UnifiedModeCounts = useMemo(
+    () => ({
+      propagationRules: cfg?.propagationCount ?? null,
+      stateVars: cfg?.stateVars.length ?? null,
+    }),
+    [cfg?.propagationCount, cfg?.stateVars],
+  );
+
   return (
     <div className={styles.shell} data-testid="usim-shell">
       {/* ── 区① 顶部模式页签（顺序与分组 = `unifiedModes.ts`，本处不另排一套）──
@@ -623,6 +646,8 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
           const spec = UNIFIED_MODE_SPEC[m];
           const on = m === mode;
           const disabled = spec.pending !== null;
+          // 问句里的计数**现算**（见 `modeCounts`）——「38 条因果边」那种写死的数已删。
+          const question = spec.question(modeCounts);
           return (
             <span key={m} className={styles.tabSlot}>
               {spec.group === null ? null : (
@@ -637,7 +662,7 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
                 data-testid={`usim-tab-${m}`}
                 data-active={on ? "1" : "0"}
                 disabled={disabled}
-                title={disabled ? `${spec.question} —— ${spec.pending}` : spec.question}
+                title={disabled ? `${question} —— ${spec.pending}` : question}
                 aria-selected={on}
                 onClick={() => {
                   setMode(m);

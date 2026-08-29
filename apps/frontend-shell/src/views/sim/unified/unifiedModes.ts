@@ -46,11 +46,51 @@ export const UNIFIED_MODES = [
 ] as const;
 export type UnifiedMode = (typeof UNIFIED_MODES)[number];
 
+/**
+ * ══ WO-SIM-TICK-GATE（2026-08-29）· 问句里的**计数一律现算**，不许写死 ══════════
+ *
+ * ── 今天的行为是 X ────────────────────────────────────────────────────────────
+ * 两句问句里各写死了一个数，**两个今天都是错的**（2026-08-29 真后端 `SEED_DEMO=1` 实测）：
+ *  · `edges` 写「**38** 条因果边」，而同一屏右栏 `EdgeActivePanel` 写「**42** 条边」——
+ *    **同一屏两个数打架**，且 42 是对的。
+ *  · `now` 写「**37** 个状态变量」，而卡墙的卡片数 = `view-config.stateVars.length` = **40**。
+ *
+ * 实测证据（`GET /a/v1/sim/view-config`，demo 租户）：`propagationCount = 42` · `stateVars = 40`；
+ * 逐域现算 `D03:8 D04:4 D05:7 D06:2 D07:3 D08:3 D09:2 D10:4 D11:2 未归域:7` **合计 42**，
+ * 且 `GET /a/v1/sim/propagation-rules` 回的 42 条**全部 PUBLISHED**。
+ * 「38」的出处追到 `apps/datacore/src/seed.ts` 头注那句「共 **38 条**」—— 那是**加边之前**的旧数，
+ * 边加到 42 之后没人回来改这句话（本仓治过多次的「手抄的数不会自己失效」）。
+ *
+ * ── 应该是 Y ─────────────────────────────────────────────────────────────────
+ * `question` 从**常量串**改成**吃现算计数的函数**，计数由壳从 `view-config` 那一份回包取。
+ * 于是新增一条边、改一次本体，屏上两处**同时**跟着变，**没有人需要记得回来改这里**。
+ *
+ * ⚠ 判据落在「**两处读同一个来源**」上：本表的 `propagationRules` 取
+ * `view-config.propagationCount`，后端那一行是 `propagationCount: rules.length`，
+ * 其中 `rules = repos.sim.listPropagationRules(tenantId, true)` ——
+ * 与 `EdgeActivePanel` 的 `fetchPropagationRules(true).items.length` **是同一个仓储调用、同一个实参**。
+ * 两处不是"各查一次碰巧相等"，是同一份真相的两次投影。
+ */
+export interface UnifiedModeCounts {
+  /**
+   * 传导规则（因果边）条数 = `view-config.propagationCount`。
+   * `null` = view-config 这一跳还没回来 ⇒ **「还不知道」，不是 0**（不许拿 0 兜底印在屏上）。
+   */
+  readonly propagationRules: number | null;
+  /** 状态变量个数 = `view-config.stateVars.length` —— 卡墙的卡片数就是它。`null` 同上。 */
+  readonly stateVars: number | null;
+}
+
 export interface UnifiedModeSpec {
   /** 按钮文案（第一层只放「它是什么的一个名字」，口径与说明降到 `title`）。 */
   readonly label: string;
-  /** 这一档回答哪一问（按钮 `title` 用，措辞只有这一处）。 */
-  readonly question: string;
+  /**
+   * 这一档回答哪一问（按钮 `title` 用，措辞只有这一处）。
+   *
+   * **是函数不是常量串**：问句里凡出现计数，一律由 `counts` 现算填进去（判据见本节头注）。
+   * 计数没到手时（`null`）必须**换一种说法**，不许印 `0` 也不许印 `—— 条`。
+   */
+  readonly question: (counts: UnifiedModeCounts) => string;
   /**
    * 组标签 = 规格里那几个 `.grp` 分隔符（`扰动后` / `图` / `底账`）。
    * `null` = 不另起一组（跟在上一组里）。第一档 `now` 无组标签。
@@ -58,7 +98,8 @@ export interface UnifiedModeSpec {
   readonly group: string | null;
   /**
    * 这一档挂哪个 renderer（`views/registry.ts` 的 key）。
-   * `null` = **本壳自带**（`now` 的 37 张指标卡墙 + 右栏检视，第 ① 单交付）。
+   * `null` = **本壳自带**（`now` 的指标卡墙 + 右栏检视，第 ① 单交付）。
+   * 卡墙有几张卡由 `view-config.stateVars` 现算 —— 此处**不写死一个张数**（写死的那版是 37，实测 40）。
    */
   readonly renderer: string | null;
   /**
@@ -71,56 +112,62 @@ export interface UnifiedModeSpec {
 export const UNIFIED_MODE_SPEC: Record<UnifiedMode, UnifiedModeSpec> = {
   now: {
     label: "指标态势",
-    question: "这次扰动之后，37 个状态变量各自动了没有、动了多少",
+    question: (c) =>
+      c.stateVars === null
+        ? "这次扰动之后，每个状态变量各自动了没有、动了多少（状态变量个数还没取到）"
+        : `这次扰动之后，${c.stateVars} 个状态变量各自动了没有、动了多少`,
     group: null,
     renderer: null,
     pending: null,
   },
   conduction: {
     label: "传导识别",
-    question: "扰动沿哪条链传下去、每一跳被谁挡住",
+    question: () => "扰动沿哪条链传下去、每一跳被谁挡住",
     group: "扰动后",
     renderer: "sim-conduction",
     pending: null,
   },
   attribution: {
     label: "损失归因",
-    question: "一张单全链走完，每个环节吃掉了多少",
+    question: () => "一张单全链走完，每个环节吃掉了多少",
     group: null,
     renderer: "sim-attribution",
     pending: null,
   },
   optimize: {
     label: "方案寻优",
-    question: "针对这次扰动给对策，按目标做帕累托排序",
+    question: () => "针对这次扰动给对策，按目标做帕累托排序",
     group: null,
     renderer: "sim-optimize",
     pending: null,
   },
   verdict: {
     label: "演习结论",
-    question: "这次推演的结论是什么、凭哪几条证据",
+    question: () => "这次推演的结论是什么、凭哪几条证据",
     group: null,
     renderer: null,
     pending: "演习三端点已并线，但这一档的版面还没接（后续工单）",
   },
   linemap: {
     label: "产销线路图",
-    question: "站 = 环节，站圈 = 该环节吃掉的全链损失占比",
+    question: () => "站 = 环节，站圈 = 该环节吃掉的全链损失占比",
     group: "图",
     renderer: "chain-line-map",
     pending: null,
   },
   edges: {
     label: "传导边册",
-    question: "38 条因果边按域分组，关掉一条看结论怎么变",
+    question: (c) =>
+      c.propagationRules === null
+        ? "因果边按域分组，关掉一条看结论怎么变（边数还没取到）"
+        : `${c.propagationRules} 条因果边按域分组，关掉一条看结论怎么变`,
     group: "底账",
     renderer: null,
     pending: "整册版面还没接；今天要关边，在传导识别/损失归因/方案寻优三档底部的折叠抽屉里",
   },
   readiness: {
     label: "本体与就绪",
-    question: "这个推演世界凭什么可信（就绪认证 + 真实性标注）",
+    question: () => "这个推演世界凭什么可信（就绪认证 + 真实性标注）",
     group: null,
     renderer: null,
     pending: "就绪认证与真实性标注两张表的版面还没接（后续工单）",
