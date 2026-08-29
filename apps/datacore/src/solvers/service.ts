@@ -1322,7 +1322,10 @@ export class SolverService {
       deltas,
       // WO-P50-RENAME：本路径 delta 恒为 ProcessModel.cellsPerDayP50 = **工序日产能** → 与 capacity.ts
       // byProcessModel 同口径「电芯/日」（同一语义·跨接缝不漂移·量纲实测订正见 capacity.ts）。
-      rows: deltas.map((d) => ({ objectId: d.objId, type: d.type, prop: d.prop, before: d.before, after: d.after, unit: "套/天" })),
+      // WO-DIM-LABEL-3 ①：上面这两行注释写着「电芯/日」，而下面那行代码原先写 `unit: "套/天"` ——
+      // **注释与它所注释的代码当场自相矛盾**，且矛盾就摆在相邻两行（差 packCellCount=96 倍）。
+      // 这是 WO-P50-RENAME 改口径时漏掉的第 4 处：注释改了、契约改了、capacity.ts 改了，唯独这行没改。
+      rows: deltas.map((d) => ({ objectId: d.objId, type: d.type, prop: d.prop, before: d.before, after: d.after, unit: "电芯/日" })),
       affectedObjects: deltas.length,
       count: deltas.length,
       rootTypes,

@@ -384,22 +384,28 @@ export type CandidateAbsenceKind = keyof typeof CANDIDATE_ABSENCE_LABEL;
  * 杠杆值的格式化 —— **口径与 `DynamicLeverPanel.fmtLeverValue` 逐字相同**（WO-LEVER-UNIT 单源）。
  *
  * 后端 `LEVER_PROP_META` 下发 `unit` + `kind`，前端只按 kind 格式化、**不自己判断单位**：
- *  · `ratio` 比率 —— 存储口径 0–1 与 0–100 两种都真实存在。
- *    ⚠ 两个出处各证一半，**不许混引**（2026-08-11 逐条核过；本层没跑任何测量）：
- *      ① 两者 `kind` 同为 `ratio` —— `apps/datacore/src/solvers/lever-meta.ts:20-22` 两行并排写着，
- *         复验 `grep -n 'Line.utilization\|Process.attendance' apps/datacore/src/solvers/lever-meta.ts`；
- *      ② **存储范围**一个 0–100 一个 0–1 —— 这条**不在**那张表里（表只声明 kind 与 unit），
- *         出处是契约 `packages/contracts/src/chain-sim.ts:750` 的原文，
- *         复验 `grep -n '存 0–100' packages/contracts/src/chain-sim.ts`。
- *    （初稿把②也挂到 lever-meta 名下 —— 那张表根本证不了范围，属「拿 X 当 Y 的证据」，已改。）
- *    即 `Process.attendance` 存 0–1、
- *    `Line.utilization` 存 0–100，而两者 `kind` 同为 ratio）。故 `v <= 1` 才 ×100，
- *    否则原样 —— 谁在这里无条件 ×100，谁就会把利用率画成 9589%。
+ *  · `ratio`   比率 —— 存 0–1，×100 显示（0.92 → 92%）。
+ *  · `percent` 百分点 —— 存 0–100，**原样**显示（95.89 → 96%）。
  *  · 其余 kind —— 整数 + 单位后缀（26天 / 2班 / 8小时）。
  *  · **没有 `valueKind`** ⇒ 后端没给元数据 ⇒ 原样回显数值、**不臆造单位**（不补一个"看着像"的 %）。
+ *
+ * ── WO-DIM-LABEL-3 ③ · 这里原先按取值范围猜，现已删除 ────────────────────────
+ * 原实现是 `Math.round(v <= 1 ? v * 100 : v)`：两种存储口径（`Line.utilization` 存 0–100、
+ * `Process.attendance` 存 0–1）在下发的元数据里**同为 `ratio`**，于是「该不该 ×100」
+ * 在数据里没有答案，只能拿值域反推。
+ *
+ * 它今天之所以没出错，**唯一原因是两套值域恰好不重叠**——这不是不变量：
+ * 停机/调试线的利用率真的可以掉到 1 以下，那个 `0.8` 会被读成比率画成 `80%`，
+ * 而它其实是 `0.8%`（差 100 倍，且不报错）。同一种猜法在驾驶舱那条路上已经真实出过事
+ * （`ab50ccff`：`Base.util` 百分点与 `Line.schedule_attainment` 比率同声明 `unit:"%"`，
+ * 屏上把 91.1% 画成「0.91%」），修法是**由下发方显式声明**、删掉猜。这里照同一套做。
+ *
+ * 现在 `Line.utilization` 下发 `kind:"percent"`、`Process.*` 下发 `kind:"ratio"`，
+ * 本函数**只读声明、不看数值大小**。
  */
 export function formatLeverValue(v: number, valueKind?: string, unit?: string): string {
-  if (valueKind === "ratio") return `${Math.round(v <= 1 ? v * 100 : v)}%`;
+  if (valueKind === "ratio") return `${Math.round(v * 100)}%`;
+  if (valueKind === "percent") return `${Math.round(v)}%`;
   if (valueKind !== undefined) {
     const n = Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10);
     return `${n}${unit ?? ""}`;

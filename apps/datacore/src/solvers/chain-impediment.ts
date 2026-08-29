@@ -91,7 +91,11 @@ export interface ImpedimentRuleBinding {
   metricPath: string;
   /** locus 的对象类型（落到真对象上·R13）。 */
   locusObjectType: string;
-  /** metricValue / threshold 的共用单位（两者不同单位 = 量纲错，R18 教训）。 */
+  /**
+   * metricValue / threshold 的共用单位（两者不同单位 = 量纲错，R18 教训）。
+   * ⚠ 本字段是**每条判据一个**的静态量纲。判据下的各行 locus **单位不同**时，
+   * 它就不够用了 —— 那种情况必须另外声明 `unitPath`（见下）。本字段仍是回落值。
+   */
   unit: string;
   /**
    * 阈值为 0 时的**超阈幅度分母**（severity 归一化用）。
@@ -99,6 +103,26 @@ export interface ImpedimentRuleBinding {
    * 缺它且阈值为 0 → severity 算不出来 → 该判据整条进 `unresolved`（不拍一个 severity）。
    */
   magnitudePath?: string;
+  /**
+   * WO-DIM-LABEL-3 ② · **逐行量纲的承载属性路径**（与上面 `magnitudePath` 完全同构：
+   * 都是「本判据的某个量不能写死、得去 locus 对象上按行读」的显式声明）。
+   *
+   * ── 病灶 ────────────────────────────────────────────────────────────────
+   * `unit` 是每条判据一个的常量，而 C06 的 locus `MaterialBalance` **9 行里有 3 行不是吨**
+   * （实测：隔膜 万㎡ · 电芯壳体 万个 · 包材 万套，种子见 `battery.ts` 的 `MAT` 表）。
+   * 于是屏上「卡点列表」把「电芯壳体 360 **万个**」渲染成「电芯壳体 360 **吨**」——
+   * 数字没错、量纲错了，而字段名 `gapTon` 里那个 "Ton" 正是这个错的来源。
+   *
+   * ── 为什么是「读属性」而不是「改字段名」──────────────────────────────────
+   * 改名解决不了：单位是**逐行不同**的，任何单一字段名都表达不了它；换成 `gapQty`
+   * 只是把错的单位从名字里删掉，没把对的单位补上。而**对的单位今天就在数据里**：
+   * `MaterialBalance.unit` 早已是登记在册的 PropertyDef、种子按行填对、API 取得回。
+   * 缺的从来只是「生产者没去读它」这一跳。
+   *
+   * 语义：`Type.prop`，读不回来（属性不存在 / 不是非空字符串）⇒ 静默回落静态 `unit`，
+   * **不臆造**、也不让整条判据失败（量纲降级 ≠ 判定失败）。
+   */
+  unitPath?: string;
   /** 人读：这条判据在业务上是什么意思（进不了代码逻辑，只进文档与交付说明）。 */
   semantics: string;
 }
@@ -179,9 +203,14 @@ export const IMPEDIMENT_RULE_BINDINGS: readonly ImpedimentRuleBinding[] = [
     ruleKey: "C06",
     metricPath: "MaterialBalance.gapTon",
     locusObjectType: "MaterialBalance",
+    // 回落值：`MaterialBalance.unit` 读不回来时才用。9 行里 6 行确实是吨，故回落成吨最接近；
+    // 但**判据是 `unitPath` 那条真属性**，不是这个常量。
     unit: "吨",
     // C06 阈值是 0 → 超阈幅度必须换个分母，用同一对象的净需求（真属性）。
     magnitudePath: "MaterialBalance.netDemandTon",
+    // WO-DIM-LABEL-3 ②：量纲逐行走 —— 三元正极/石墨负极/电解液/铜箔/铝箔 是吨，
+    // 隔膜是万㎡、电芯壳体是万个、包材是万套。字段名里的 "Ton" 只对 9 行中的 6 行成立。
+    unitPath: "MaterialBalance.unit",
     semantics: "物料现货缺口 > 阈值 ⇒ 下游拿不到输入 = 断点（物理断）",
   },
   {
@@ -576,7 +605,21 @@ export interface ChainScanThresholdRow {
   fieldPath?: string;
   /** `source==="field"` 时阈值逐对象不同，这里给的是**首个被判对象**上的取值（示例值）。 */
   value: number;
+  /**
+   * 本判据的量纲。`unitPath` 缺省时这就是**全部**真相（该判据下每条阻滞点都是这个单位）。
+   * `unitPath` 给出时，本字段退化为**回落值**，真相逐行走 —— 见下。
+   */
   unit: string;
+  /**
+   * WO-DIM-LABEL-3 ② · 量纲逐行时的**承载属性路径**（= binding 的 `unitPath` 原样申报）。
+   *
+   * 为什么必须申报出来：`chain-scan-honesty` 的 SCAN-1 咬「屏上每个数都能在 thresholds[] 里
+   * 找到申报条目，**且量纲一致**」。C06 的 9 行里 3 行不是吨 ⇒ 一条静态申报无论填哪个单位，
+   * 都必然与另一部分行对不上。把「单位不是常量、而是读这个属性」**申报出来**，
+   * 才既保住「一 binding 一条申报」，又不必谎称所有行同一个单位。
+   * 缺省 = 该判据量纲确为常量（其余 6 条判据都是这样）。
+   */
+  unitPath?: string;
 }
 
 /** `scope.businessTypes` 在某条判据上的作用面账（逐 binding 一行）。 */
@@ -904,6 +947,11 @@ function judgeOne(
     if (typeof metricRaw !== "number" || !Number.isFinite(metricRaw)) continue; // 该对象上无此指标 → 不是"违规"，是没这个量
     sawMetric = true;
     const metric = metricRaw;
+    // WO-DIM-LABEL-3 ②：**逐行量纲**。binding 声明了 `unitPath` ⇒ 去这一行的 locus 对象上真读，
+    // 读不回来（属性不存在 / 空串 / 非字符串）才回落静态 `b.unit`。
+    // 这样「电芯壳体 360」在屏上是「万个」而不是被字段名 `gapTon` 里的 "Ton" 带成「吨」。
+    const unitRaw = b.unitPath ? resolveField(payload, b.unitPath.split(".")) : undefined;
+    const rowUnit = typeof unitRaw === "string" && unitRaw.length > 0 ? unitRaw : b.unit;
 
     const th = readRuleThreshold(rule, b.metricPath, payload);
     if (th.status === "UNKNOWN") {
@@ -917,8 +965,13 @@ function judgeOne(
         source: th.source,
         ...(th.ruleParamKey === undefined ? {} : { ruleParamKey: th.ruleParamKey }),
         ...(th.fieldPath === undefined ? {} : { fieldPath: th.fieldPath }),
+        // 这里刻意**不用** `rowUnit`：本行是「本判据从规则读回了哪个阈值」的**每判据一条**的汇总，
+        // 而 `rowUnit` 是逐行的。判据混单位时拿"碰巧第一个违规行"的单位来标这条汇总是任意的，
+        // 故 `unit` 用 binding 声明的静态回落值，同时把 `unitPath` **一并申报**，
+        // 让消费方知道「这条判据的量纲不是常量，去这个属性上按行读」。
         value: th.value,
         unit: b.unit,
+        ...(b.unitPath === undefined ? {} : { unitPath: b.unitPath }),
       };
     }
 
@@ -940,7 +993,7 @@ function judgeOne(
         ruleKey: b.ruleKey,
         note:
           `规则 ${b.ruleKey} 含 SUSTAIN（持续判定），而 SolverContext 无时序访问 —— ` +
-          `本次只比对快照与规则红线 ${th.value}${b.unit}，**未校验持续天数**；结论 dataMode 标 PARTIAL`,
+          `本次只比对快照与规则红线 ${th.value}${rowUnit}，**未校验持续天数**；结论 dataMode 标 PARTIAL`,
       };
     } else {
       try {
@@ -1004,7 +1057,9 @@ function judgeOne(
         ...(th.fieldPath === undefined ? {} : { derivationEdge: th.fieldPath }),
         metricValue: round(metric, 6),
         threshold: round(th.value, 6),
-        unit: b.unit,
+        // WO-DIM-LABEL-3 ②：逐行量纲。`metricValue` 与 `threshold` 同属**这一行**，
+        // 故共用这一行的单位（接口注释那条「两者不同单位 = 量纲错」仍然成立，只是"这一行"的单位）。
+        unit: rowUnit,
       },
       dataMode,
       ...(contention === null ? {} : { contention }),

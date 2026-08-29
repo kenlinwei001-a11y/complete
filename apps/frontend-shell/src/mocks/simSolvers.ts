@@ -1816,7 +1816,10 @@ function mkCandidate(a: {
         label: `产能 cellsPerDayP50 合计（电芯/日）${a.capacity.baseId ? `（基地 ${a.capacity.baseId}）` : "（全域）"}`,
         value: a.capacity.value,
         baseline: a.capacity.baseline,
-        unit: "套/天",
+        // WO-DIM-LABEL-3 ①：本 mock 与真后端逐字同形，故同样带着「label 写电芯/日、unit 写套/天」
+        // 这条自相矛盾（差 packCellCount=96 倍）。真后端已改，mock 跟着改 ——
+        // 否则 mock 模式会继续教一个错量纲，而两种模式屏上不一致本身就是下一个 bug 的温床。
+        unit: "电芯/日",
         betterWhen: "higher",
         dataMode: a.capacity.value !== null && a.capacity.baseline !== null ? "SYNTHETIC" : "EMPTY",
         ...(a.capacity.value !== null && a.capacity.baseline !== null
@@ -1935,7 +1938,11 @@ export function mockChainImpediments(args: Record<string, unknown>): Record<stri
       prop: "utilization",
       metaLabel: "产线·利用率", // LEVER_PROP_META["Line.utilization"].label
       unit: "%",
-      valueKind: "ratio",
+      // WO-DIM-LABEL-3 ③：本 mock 的 fromValue 是 97.2 / 96.4（**0–100 百分点**，与真后端
+      // 实测 95.8912 同口径），此前却声明 `valueKind:"ratio"` —— 而 ratio 的契约含义是
+      // 「存 0–1、显示 ×100」。即 mock 自己就是「声明与存储不符」的那条错。
+      // 前端删掉按值域猜之后，这条错会直接显形（97.2 → 9720%），故一并改正为 percent。
+      valueKind: "percent",
       fromValue: cur,
       join: {
         kind: "LOCUS_PROP" as const,
