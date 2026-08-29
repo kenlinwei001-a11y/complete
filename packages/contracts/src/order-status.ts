@@ -65,3 +65,43 @@ export function orderStatusTargets(total: number): Record<OrderStatus, number> {
   const inProduction = Math.round(total * 0.2);
   return { COMPLETED: completed, IN_PRODUCTION: inProduction, OPEN: total - completed - inProduction };
 }
+
+/**
+ * WO-DASH-ONHAND · 「**在手订单**」= 未完成态（`OPEN` 已下待排产 + `IN_PRODUCTION` 进行中）——
+ * **口径的单一出处**。驾驶舱卡片、订单经营台账、接缝测试一律读本常量，不许各写各的字面量。
+ *
+ * ## 为什么必须有这一处（这不是"给枚举起个别名"）
+ *
+ * 修前实测（真后端 `SEED_DEMO=1` · 500 单订单簿）：**同一个业务概念，一屏三个数**——
+ *  · 驾驶舱「在手订单」卡片 = **500**（`objects-aggregate` 压根没带 filter ⇒ 把 **350 张
+ *    `COMPLETED`** 也数进去了 ⇒ 按此判在手量**虚报 3.3 倍**）；
+ *  · 订单经营台账「全部」 = **127**；
+ *  · 真正的未完成态 = **150**（= `OPEN` 50 + `IN_PRODUCTION` 100）。
+ * 三个数没有任何一处写着它们是三种不同的东西 —— 这正是「一个词一屏三个值」的老病。
+ *
+ * ## 为什么是「非 COMPLETED」而不是「只有 OPEN」
+ *
+ * `COMPLETED` 的语义（见上）是「已交付关闭，不再占用产能、不再需要承诺」⇒ 已经**不在手**了。
+ * `IN_PRODUCTION` 是「已排产、在制」—— 货还没交出去，钱还没结清，**在手**。
+ * 所以在手 = 全簿 − 已完成，而**不是**只数 `OPEN`（那是另一个口径，见下）。
+ *
+ * ## ⚠ 与 `portfolio.ts` / `chain-impediment.ts` 的 `status === "OPEN"` 不是同一个口径，别去"统一"
+ *
+ * 那两处数的是「**产能分配决策集**」——已排产的在制单不该再进决策集抢一次产能，
+ * 所以它们排除 `IN_PRODUCTION` 是**对的**。两个口径回答的是两个问题：
+ *  · 「还有多少货没交出去？」  ⇒ 在手 = 本常量（含在制）
+ *  · 「还有多少单要排产？」    ⇒ 决策集 = 仅 `OPEN`
+ * 把它们合成一个常量，就会重演 `OrderLineStatus` 那次「把两个正交维度压成一个字段」的病。
+ */
+export const ON_HAND_ORDER_STATUSES: readonly OrderStatus[] = ["OPEN", "IN_PRODUCTION"];
+
+/** 「在手」谓词（单一出处 —— 逐处 `!== "COMPLETED"` 的字面量比较一律换成本函数）。 */
+export function isOnHandOrderStatus(status: unknown): boolean {
+  return typeof status === "string" && (ON_HAND_ORDER_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * 在手口径的**屏上措辞**（单一出处）。卡片副标题与台账脚注同读此串 ——
+ * 修了口径却忘了改屏上那句话，等于换了个花样继续骗人。
+ */
+export const ON_HAND_ORDER_CAPTION = "订单簿口径 · 未完成态（已下待排产 + 进行中），不含已交付关闭单";
