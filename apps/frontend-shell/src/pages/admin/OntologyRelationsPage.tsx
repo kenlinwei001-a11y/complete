@@ -250,7 +250,9 @@ export default function OntologyRelationsPage() {
   // ══════════════════════════════════════════════════════════════════════════
   // WO-ONTOLOGY-EDGE-EDIT · 因果边：改 / 启停 / 删（此前本页**只读**）
   //
-  // **今天的行为是 X**（本单开工前实测）：这张表只有 5 个 `<td>` 纯文本，没有任何写回；
+  // **今天的行为是 X**（本单开工前实测 · 2026-08-28；复验：真后端 SEED_DEMO=1 起服务后
+  //   开 `/v/admin/ontology-relations`，或直接打 `/a/v1/propagation-rules` 看有无写回路由）：
+  //   这张表只有 5 个 `<td>` 纯文本，没有任何写回；
   //   页面底下挂着一条诚实位「⚠ 因果边今天只能新建」，理由是 `POST` 恒 mint 新 id。
   // **应该是 Y**：三列可改（来源 / 去向 / 关系）+ 影响说明可写 + 勾选框启停 + ✕ 删除，
   //   写回走后端新补的 `PUT /:id`、`PATCH /:id/status`、`DELETE /:id`。
@@ -684,7 +686,9 @@ export default function OntologyRelationsPage() {
           <div className="muted" style={{ fontSize: 12, margin: "6px 0 3px" }}>
             域：{domainName.get(dk) ?? dk}（{rows.length}）
           </div>
-          {/* 列宽写死成百分比：auto-layout 会把「影响说明」挤成一条缝（实测截图里只看得到 6 个字），
+          {/* 列宽写死成百分比：auto-layout 会把「影响说明」挤成一条缝（2026-08-28 实测截图里
+              只看得到 6 个字；复验：本页 `OntologyRelationsPage.tsx` 去掉 tableLayout:"fixed"
+              后开 /v/admin/ontology-relations 看该列），
               而那一列正是本单要让人读的东西 —— 它必须比三个 key 下拉更宽。 */}
           <table className="cmp" style={{ width: "100%", tableLayout: "fixed" }}>
             <thead>

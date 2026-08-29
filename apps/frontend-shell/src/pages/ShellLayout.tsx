@@ -289,7 +289,7 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
        * WO-CONSOLE-BLOCKERS · 事件影响与对策（`/v/decision-console`）——**顶层常驻第 2 项**
        * （UX 定案 `docs/LOOP7-ux-review.md` §12.1／§12.6①；仓主已批准本页占导航位）。
        *
-       * **X（改之前的屏上行为·真服务真浏览器实测）**：这一页在**三处入口全无** ——
+       * **X（改之前的屏上行为·真服务真浏览器实测 · 2026-08-29）**：这一页在**三处入口全无** ——
        *   左导航 `GET /a/v1/me/workspace` 下发的条目里 0 条、场景卡 20 张里 0 张、
        *   ⌘K 命令面板（索引即场景卡）自然也 0；而它登记在本文件 `ROUTE_NO_NAV` 里，
        *   理由写的是「没拿到动导航的批准」。⇒ **COO 只能手打 URL 才进得来自己的决策台。**
