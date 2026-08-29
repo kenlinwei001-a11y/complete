@@ -35,3 +35,15 @@
 - **应收量级失真**：20 客户应收合计 8.4 万，与 507.26 亿订单簿差 **60 万倍**；`Material` 年支出 9,491 万仅占订单簿 0.19%（电池厂 BOM 应占六七成）。金额类场景的底账彼此不在一个量纲上。
 - **传导边只能加、不能改删**：`PUT/PATCH/DELETE /a/v1/sim/propagation-rules/:id` 全 404（金丝雀：同路径 POST 201）；同一 `key` 连 POST 两次得到系数 0.5 与 9.9 两条并存，而引擎 `combine:"sum"` 两条都算。
 - **「链路已声明」≠「链路有实例」**：114 个 LinkType 抽样 249 个对象后 34 个零实例；用它建的边照样 201+PUBLISHED，推演结果一动不动且屏上无提示。现役 42 条边里有 3 条落在零实例链路上。
+- **`/a/v1/objects` 的 `limit` 被静默忽略**（`app.ts:4105-4109` 只认 `type`/`page`/`pageSize`，缺省页长 50）：`?type=Order&limit=1000` 回 **50 条**，而 `page/pageSize=500` 分页回 **500 条**。用 `limit` 取数会把「库里就这么多」读成一个恰好等于默认页长的数。
+- **`pageSize` 之外还有一道 1000 行硬顶**（`app.ts:4110` `queryObjects(..., 1000)`）：`EquipmentOEE` 正确分页只取到 **1000**，而真实体量 **5,460**——参数用对了仍会静默少报。
+
+### 取数口径复核（回应派单前提更正）
+
+本报告全部数字取自 `page`/`pageSize=500` 分页，**从未用过 `limit`**，故不受该 bug 影响；且每个类型都与 `sim/view-config` 的 `nodeObjectIds`（`repos.objects.listByType`，另一条不分页的代码路径）对账一致：
+
+`Order 500/500` · `Customer 20/20` · `Material 8/8` · `OrderPromise 50/50` · `DefectRecord 85/85` · `ChangeoverMatrix 30/30` · `FinishedGoodsInventory 57/57` · `EquipmentDowntime 166/166`（分页/独立口径，全部 `一致=true`）。
+
+**金丝雀**（确定不止 20 条的类型，两口径均一致）：`OrderLine 873` · `Equipment 780` · `Process 650` · `WorkOrder 260` ⇒ 查询工具可信。据此，**`Customer = 20` 是真值，不是分页假象**。
+
+⚠ 派单里的「营收 601.50 亿」我**没有引用也未能复现**：我报的 **507.26 亿是订单簿**（Σ `Order.value`，500 单），口径是在手订单额、不是营收，两者不可混用。
