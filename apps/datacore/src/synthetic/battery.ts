@@ -1,5 +1,5 @@
 import type { IndustryTemplate, BusinessType } from "@platform/contracts";
-import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SCALE_FACTOR, packEnergyKwh, operatingDaysPerYear, scaleAnchorRevenue, WORKSHOP_REGISTRY, EQUIPMENT_TYPE_BY_PROCESS } from "@platform/contracts";
+import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SCALE_FACTOR, packEnergyKwhAnchor, operatingDaysPerYear, scaleAnchorRevenue, WORKSHOP_REGISTRY, EQUIPMENT_TYPE_BY_PROCESS } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：规则表达式 / what-if 上限 / 合成越线样本三处**全部派生**，禁内联裸阈值（R14·R-一致）。
 import { OUTSOURCE_REDLINE, OUTSOURCE_SAMPLE, outsourceRedlinePct, outsourceRedlineViolationExpr } from "@platform/contracts";
 // WO-RULE-EXPR-PARAMS：规则 DSL 的命名阈值引用（`params.<名>`）——阈值只存 rule.params 一处，禁在 expression 里复写。
@@ -602,7 +602,7 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   forecastStart: "2026-06-10",
   packCellCount: 96,
   // WO-SCALE-COHERENCE（R14/R18）：gwh↔套 桥常数 + 尺度锚，值来自 @platform/contracts 单一来源（禁内联）。
-  packEnergyKwh, // 能量/套(kWh)：Base.gwh×1e6/packEnergyKwh = 名牌套
+  packEnergyKwhAnchor, // 能量/套(kWh)：Base.gwh×1e6/packEnergyKwhAnchor = 名牌套
   operatingDaysPerYear, // 年运营日：capacityDaily/max_capacity_day 年化口径
   scaleAnchorRevenue, // 各 scale 档目标年营收锚（亿）
   // 产能微观参数按 gwhᵢ 派生的确定性系数（令 capacity_rollup 的 min 绑定 gwh 夹点·不改求解器）。
@@ -921,327 +921,338 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
 // ---------------------------------------------------------------------------
 
 const baseProps: PropertyDef[] = [
-  { propKey: "baseId", dataType: "string", isPrimaryKey: true },
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
-  { propKey: "kind", dataType: "enum", isPrimaryKey: false },
-  { propKey: "util", dataType: "number", isPrimaryKey: false },
-  { propKey: "bottleneck", dataType: "enum", isPrimaryKey: false },
-  { propKey: "gwh", dataType: "number", isPrimaryKey: false },
-  { propKey: "formationCapDaily", dataType: "number", isPrimaryKey: false },
-  { propKey: "agingCapDaily", dataType: "number", isPrimaryKey: false },
+  { propKey: "baseId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "kind", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "util", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" },
+  { propKey: "bottleneck", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "gwh", dataType: "number", isPrimaryKey: false, unit: "GWh", scale: "absolute" },
+  { propKey: "formationCapDaily", dataType: "number", isPrimaryKey: false, unit: "电芯/天", scale: "absolute" },
+  { propKey: "agingCapDaily", dataType: "number", isPrimaryKey: false, unit: "电芯/天", scale: "absolute" },
   // 地理坐标（GeoMap 着色/选址）+ 业态（动力/储能）——全建模，合成数据与字段对齐（R12）。
-  { propKey: "lon", dataType: "number", isPrimaryKey: false },
-  { propKey: "lat", dataType: "number", isPrimaryKey: false },
-  { propKey: "position", dataType: "enum", isPrimaryKey: false },
+  { propKey: "lon", dataType: "number", isPrimaryKey: false, unit: "°", scale: "absolute" },
+  { propKey: "lat", dataType: "number", isPrimaryKey: false, unit: "°", scale: "absolute" },
+  { propKey: "position", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   // SA-4：factory 台账字段（R12 全建模对齐）
-  { propKey: "factory_code", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "province", dataType: "string", isPrimaryKey: false },
-  { propKey: "city", dataType: "string", isPrimaryKey: false },
-  { propKey: "factory_type", dataType: "enum", isPrimaryKey: false }, // CELL | PACK | CELL+PACK
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 运营中 | 在建 | 停产
-  { propKey: "start_date", dataType: "date", isPrimaryKey: false },
+  { propKey: "factory_code", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "province", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "city", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "factory_type", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // CELL | PACK | CELL+PACK
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 运营中 | 在建 | 停产
+  { propKey: "start_date", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   // WO-OPT-WHATIF-DATA · 选址决策成本（**末位追加·不动前序序**·守 R6）。
   // 这两个字段是 optimize_whatif/facility_location 自动装配唯一缺的那半：`assembleBaselineFromSelection`
   // 按 ROLE_LEXICON.cost 词库在决策承载类型上找数值字段绑 open_cost / assign_cost，Base 此前一个都没有
   // ⇒ 装配恒报缺 ⇒ 会话真命中也只能降级 path-B。声明序即角色序：**第一个**命中成本词库的数值字段绑
   // open_cost（openCost），**第二个**绑 assign_cost（serveCost）——故两者不可换位。
-  { propKey: "openCost", dataType: "number", isPrimaryKey: false, description: "基地年固定开办成本（万元/年）= 铭牌年产能 × 单位产能固定成本 + 产线数 × 单线固定成本；facility_location 的 open_cost 系数源。" },
-  { propKey: "serveCost", dataType: "number", isPrimaryKey: false, description: "单位需求点年均干线履约成本（万元/需求点·年）= 产能加权全网平均干线距离 × 每公里费率；facility_location 的 assign_cost 系数源。" },
+  { propKey: "openCost", dataType: "number", isPrimaryKey: false, unit: "万元", scale: "absolute", description: "基地年固定开办成本（万元/年）= 铭牌年产能 × 单位产能固定成本 + 产线数 × 单线固定成本；facility_location 的 open_cost 系数源。" },
+  { propKey: "serveCost", dataType: "number", isPrimaryKey: false, unit: "万元", scale: "absolute", description: "单位需求点年均干线履约成本（万元/需求点·年）= 产能加权全网平均干线距离 × 每公里费率；facility_location 的 assign_cost 系数源。" },
 ];
 const baseDerived: DerivedPropertyDef[] = [
-  { propKey: "orderCount", formula: "COUNT(Order.so BY bases)" },
-  { propKey: "committedQty", formula: "SUM(Order.qty BY bases)" },
+  { propKey: "orderCount", formula: "COUNT(Order.so BY bases)", unit: "单", scale: "absolute" },
+  { propKey: "committedQty", formula: "SUM(Order.qty BY bases)", unit: "件", scale: "absolute" },
   // A8/T3: snapshot property (Equipment.oee_current) is a legal leaf of the derivation graph.
-  { propKey: "oeeIndex", formula: "AVG(Equipment.oee_current BY baseId)" },
+  { propKey: "oeeIndex", formula: "AVG(Equipment.oee_current BY baseId)", unit: "dimensionless", scale: "ratio" },
 ];
 
 const modelProps: PropertyDef[] = [
-  { propKey: "modelId", dataType: "string", isPrimaryKey: true },
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
+  { propKey: "modelId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   // PRD-IND-model 缺口③：化学体系 + 业态（step1/DAG 元信息，求解器 nonProducible 判定依据）。
-  { propKey: "chem", dataType: "enum", isPrimaryKey: false },
-  { propKey: "pos", dataType: "enum", isPrimaryKey: false },
-  { propKey: "bases", dataType: "json", isPrimaryKey: false },
-  { propKey: "unitPrice", dataType: "number", isPrimaryKey: false },
+  { propKey: "chem", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "pos", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "bases", dataType: "json", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" },
   // C33 碳护照前置（NCM 体系碳足迹偏高 → 越线）。
-  { propKey: "carbonFootprint", dataType: "number", isPrimaryKey: false },
+  { propKey: "carbonFootprint", dataType: "number", isPrimaryKey: false, unit: "kgCO2e", scale: "absolute" },
   // Phase 2：产品工程域扩展属性（R12 全建模对齐）
-  { propKey: "seriesId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductSeries" },
-  { propKey: "productCode", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "capacity", dataType: "number", isPrimaryKey: false }, // Ah
-  { propKey: "voltage", dataType: "number", isPrimaryKey: false }, // V
-  { propKey: "energy", dataType: "number", isPrimaryKey: false }, // Wh
-  { propKey: "dimension", dataType: "string", isPrimaryKey: false }, // 长×宽×高 mm
-  { propKey: "weight", dataType: "number", isPrimaryKey: false }, // g
-  { propKey: "applicationDomain", dataType: "enum", isPrimaryKey: false }, // 储能 | 乘用车 | 商用车 | 消费电子
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 量产 | 试产 | 研发中 | 退役
+  { propKey: "seriesId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductSeries" },
+  { propKey: "productCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "capacity", dataType: "number", isPrimaryKey: false, unit: "Ah", scale: "absolute" }, // Ah
+  { propKey: "voltage", dataType: "number", isPrimaryKey: false, unit: "V", scale: "absolute" }, // V
+  { propKey: "energy", dataType: "number", isPrimaryKey: false, unit: "Wh", scale: "absolute" }, // Wh
+  { propKey: "dimension", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 长×宽×高 mm
+  { propKey: "weight", dataType: "number", isPrimaryKey: false, unit: "g", scale: "absolute" }, // g
+  { propKey: "applicationDomain", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 储能 | 乘用车 | 商用车 | 消费电子
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 量产 | 试产 | 研发中 | 退役
 ];
 const modelDerived: DerivedPropertyDef[] = [
-  { propKey: "totalDemand", formula: "SUM(Order.qty BY model)" },
-  { propKey: "orderCount", formula: "COUNT(Order.so BY model)" },
+  { propKey: "totalDemand", formula: "SUM(Order.qty BY model)", unit: "件", scale: "absolute" },
+  { propKey: "orderCount", formula: "COUNT(Order.so BY model)", unit: "单", scale: "absolute" },
 ];
 
 // Phase 2 Wave 1：产品域基础对象（ProductPlatform / ProductSeries / ProductVersion）
 const productPlatformProps: PropertyDef[] = [
-  { propKey: "platformId", dataType: "string", isPrimaryKey: true },
-  { propKey: "platformCode", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "name", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "category", dataType: "enum", isPrimaryKey: false }, // LFP | 三元 | 固态
-  { propKey: "description", dataType: "string", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 活跃 | 退役 | 规划中
+  { propKey: "platformId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "platformCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "category", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // LFP | 三元 | 固态
+  { propKey: "description", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 活跃 | 退役 | 规划中
 ];
 
 const productSeriesProps: PropertyDef[] = [
-  { propKey: "seriesId", dataType: "string", isPrimaryKey: true },
-  { propKey: "seriesCode", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "platformId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductPlatform" },
-  { propKey: "name", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "category", dataType: "enum", isPrimaryKey: false }, // 280Ah储能 | 314Ah储能 | 4680动力 | 2170动力 | 刀片动力
-  { propKey: "voltageRange", dataType: "string", isPrimaryKey: false },
-  { propKey: "capacityRange", dataType: "string", isPrimaryKey: false },
-  { propKey: "targetMarket", dataType: "enum", isPrimaryKey: false }, // 储能 | 乘用车 | 商用车 | 消费电子
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 活跃 | 退役 | 开发中
+  { propKey: "seriesId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "seriesCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "platformId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductPlatform" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "category", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 280Ah储能 | 314Ah储能 | 4680动力 | 2170动力 | 刀片动力
+  { propKey: "voltageRange", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "capacityRange", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "targetMarket", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 储能 | 乘用车 | 商用车 | 消费电子
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 活跃 | 退役 | 开发中
 ];
 
 const productVersionProps: PropertyDef[] = [
-  { propKey: "versionId", dataType: "string", isPrimaryKey: true },
-  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
-  { propKey: "versionCode", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "versionName", dataType: "string", isPrimaryKey: false },
-  { propKey: "ecnNumber", dataType: "string", isPrimaryKey: false },
-  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false },
-  { propKey: "expireDate", dataType: "date", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 量产 | 试产 | 研发中 | 退役
-  { propKey: "changeReason", dataType: "string", isPrimaryKey: false },
+  { propKey: "versionId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "versionCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "versionName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "ecnNumber", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "expireDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 量产 | 试产 | 研发中 | 退役
+  { propKey: "changeReason", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 // Phase 2 Wave 3：BOM + 工艺路线 + 工序 + 工艺能力边界
 const bomHeaderProps: PropertyDef[] = [
-  { propKey: "bomId", dataType: "string", isPrimaryKey: true },
-  { propKey: "bomCode", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductVersion" },
-  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
-  { propKey: "bomName", dataType: "string", isPrimaryKey: false },
-  { propKey: "bomLevel", dataType: "number", isPrimaryKey: false },
-  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false },
-  { propKey: "expireDate", dataType: "date", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+  { propKey: "bomId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "bomCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductVersion" },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "bomName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "bomLevel", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "expireDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const bomDetailProps: PropertyDef[] = [
-  { propKey: "bomDetailId", dataType: "string", isPrimaryKey: true },
-  { propKey: "bomId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "BOMHeader" },
-  { propKey: "materialId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Material" },
-  { propKey: "sequence", dataType: "number", isPrimaryKey: false },
-  { propKey: "quantity", dataType: "number", isPrimaryKey: false },
-  { propKey: "lossRate", dataType: "number", isPrimaryKey: false },
-  { propKey: "unit", dataType: "string", isPrimaryKey: false },
-  { propKey: "level", dataType: "number", isPrimaryKey: false },
-  { propKey: "parentItemId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Material" },
-  { propKey: "isKeyComponent", dataType: "boolean", isPrimaryKey: false },
-  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false },
-  { propKey: "expireDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "bomDetailId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "bomId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "BOMHeader" },
+  { propKey: "materialId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Material" },
+  { propKey: "sequence", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "quantity", dataType: "number", isPrimaryKey: false, unit: "个", scale: "absolute" },
+  { propKey: "lossRate", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "unit", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "level", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "parentItemId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Material" },
+  { propKey: "isKeyComponent", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "expireDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const routingProps: PropertyDef[] = [
-  { propKey: "routingId", dataType: "string", isPrimaryKey: true },
-  { propKey: "routingCode", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
-  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductVersion" },
-  { propKey: "routingName", dataType: "string", isPrimaryKey: false },
-  { propKey: "operationCount", dataType: "number", isPrimaryKey: false },
-  { propKey: "totalStandardTime", dataType: "number", isPrimaryKey: false },
-  { propKey: "totalYield", dataType: "number", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false },
-  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "routingId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "routingCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductVersion" },
+  { propKey: "routingName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operationCount", dataType: "number", isPrimaryKey: false, unit: "个", scale: "absolute" },
+  { propKey: "totalStandardTime", dataType: "number", isPrimaryKey: false, unit: "秒", scale: "absolute" },
+  { propKey: "totalYield", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const operationProps: PropertyDef[] = [
-  { propKey: "operationId", dataType: "string", isPrimaryKey: true },
-  { propKey: "operationCode", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "routingId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Routing" },
-  { propKey: "operationSeq", dataType: "number", isPrimaryKey: false },
-  { propKey: "operationName", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "description", dataType: "string", isPrimaryKey: false },
-  { propKey: "operationType", dataType: "enum", isPrimaryKey: false },
-  { propKey: "standardTime", dataType: "number", isPrimaryKey: false },
-  { propKey: "setupTime", dataType: "number", isPrimaryKey: false },
-  { propKey: "yield", dataType: "number", isPrimaryKey: false },
-  { propKey: "isCritical", dataType: "boolean", isPrimaryKey: false },
-  { propKey: "workCenterType", dataType: "enum", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+  { propKey: "operationId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operationCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "routingId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Routing" },
+  { propKey: "operationSeq", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operationName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "description", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operationType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "standardTime", dataType: "number", isPrimaryKey: false, unit: "秒", scale: "absolute" },
+  { propKey: "setupTime", dataType: "number", isPrimaryKey: false, unit: "分钟", scale: "absolute" },
+  { propKey: "yield", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "isCritical", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "workCenterType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const processCapabilityProps: PropertyDef[] = [
-  { propKey: "capabilityId", dataType: "string", isPrimaryKey: true },
-  { propKey: "operationId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Operation" },
-  { propKey: "parameterName", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "paramCode", dataType: "string", isPrimaryKey: false },
-  { propKey: "unit", dataType: "string", isPrimaryKey: false },
-  { propKey: "minValue", dataType: "number", isPrimaryKey: false },
-  { propKey: "maxValue", dataType: "number", isPrimaryKey: false },
-  { propKey: "targetValue", dataType: "number", isPrimaryKey: false },
-  { propKey: "tolerance", dataType: "number", isPrimaryKey: false },
-  { propKey: "ucl", dataType: "number", isPrimaryKey: false },
-  { propKey: "lcl", dataType: "number", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+  { propKey: "capabilityId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operationId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Operation" },
+  { propKey: "parameterName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "paramCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "unit", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "minValue", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "maxValue", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "targetValue", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "tolerance", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "ucl", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lcl", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 // Phase 2 Wave 4：质量标准 + 检验特性 + 制造能力
 const qualityStandardProps: PropertyDef[] = [
-  { propKey: "standardId", dataType: "string", isPrimaryKey: true },
-  { propKey: "standardCode", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
-  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductVersion" },
-  { propKey: "itemName", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "itemCode", dataType: "string", isPrimaryKey: false },
-  { propKey: "targetValue", dataType: "number", isPrimaryKey: false },
-  { propKey: "toleranceUpper", dataType: "number", isPrimaryKey: false },
-  { propKey: "toleranceLower", dataType: "number", isPrimaryKey: false },
-  { propKey: "unit", dataType: "string", isPrimaryKey: false },
-  { propKey: "testMethod", dataType: "string", isPrimaryKey: false },
-  { propKey: "samplingRate", dataType: "number", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+  { propKey: "standardId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "standardCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductVersion" },
+  { propKey: "itemName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "itemCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "targetValue", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "toleranceUpper", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "toleranceLower", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "unit", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "testMethod", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "samplingRate", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" }, // 真起后端实测 [5,100] ⇒ 0–100 表示法（不是 0–1）
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const inspectionCharacteristicProps: PropertyDef[] = [
-  { propKey: "charId", dataType: "string", isPrimaryKey: true },
-  { propKey: "standardId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "QualityStandard" },
-  { propKey: "charName", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "charCode", dataType: "string", isPrimaryKey: false },
-  { propKey: "inspectionType", dataType: "enum", isPrimaryKey: false },
-  { propKey: "inspectionMethod", dataType: "string", isPrimaryKey: false },
-  { propKey: "samplingRate", dataType: "number", isPrimaryKey: false },
-  { propKey: "frequency", dataType: "string", isPrimaryKey: false },
-  { propKey: "controlMethod", dataType: "enum", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+  { propKey: "charId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "standardId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "QualityStandard" },
+  { propKey: "charName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "charCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "inspectionType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "inspectionMethod", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "samplingRate", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" }, // 真起后端实测 [5,100] ⇒ 0–100 表示法（不是 0–1）
+  { propKey: "frequency", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "controlMethod", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const productLineCapabilityProps: PropertyDef[] = [
-  { propKey: "capId", dataType: "string", isPrimaryKey: true },
-  { propKey: "productId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
-  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductVersion" },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
-  { propKey: "capability", dataType: "enum", isPrimaryKey: false },
-  { propKey: "maxCapacity", dataType: "number", isPrimaryKey: false },
-  { propKey: "cycleTime", dataType: "number", isPrimaryKey: false },
-  { propKey: "yield", dataType: "number", isPrimaryKey: false },
-  { propKey: "priority", dataType: "number", isPrimaryKey: false },
-  { propKey: "changeoverTime", dataType: "number", isPrimaryKey: false },
-  { propKey: "constraints", dataType: "string", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+  { propKey: "capId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "productId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductVersion" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "capability", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "maxCapacity", dataType: "number", isPrimaryKey: false, unit: "套/天", scale: "absolute" },
+  { propKey: "cycleTime", dataType: "number", isPrimaryKey: false, unit: "秒", scale: "absolute" },
+  { propKey: "yield", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "priority", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "changeoverTime", dataType: "number", isPrimaryKey: false, unit: "分钟", scale: "absolute" },
+  { propKey: "constraints", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const productEquipmentCapabilityProps: PropertyDef[] = [
-  { propKey: "equipCapId", dataType: "string", isPrimaryKey: true },
-  { propKey: "productId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
-  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductVersion" },
-  { propKey: "equipmentId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Equipment" },
-  { propKey: "capability", dataType: "enum", isPrimaryKey: false },
-  { propKey: "maxSpeed", dataType: "number", isPrimaryKey: false },
-  { propKey: "minSpeed", dataType: "number", isPrimaryKey: false },
-  { propKey: "setupTime", dataType: "number", isPrimaryKey: false },
-  { propKey: "qualifiedOperators", dataType: "number", isPrimaryKey: false },
-  { propKey: "certificationRequired", dataType: "boolean", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+  { propKey: "equipCapId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "productId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductVersion" },
+  { propKey: "equipmentId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Equipment" },
+  { propKey: "capability", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "maxSpeed", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "minSpeed", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "setupTime", dataType: "number", isPrimaryKey: false, unit: "分钟", scale: "absolute" },
+  { propKey: "qualifiedOperators", dataType: "number", isPrimaryKey: false, unit: "人", scale: "absolute" },
+  { propKey: "certificationRequired", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 // Phase 2 Wave 5：工程变更历史
 const engineeringChangeProps: PropertyDef[] = [
-  { propKey: "changeId", dataType: "string", isPrimaryKey: true },
-  { propKey: "changeNumber", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "changeType", dataType: "enum", isPrimaryKey: false },
-  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
-  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "ProductVersion" },
-  { propKey: "changeReason", dataType: "string", isPrimaryKey: false },
-  { propKey: "description", dataType: "string", isPrimaryKey: false },
-  { propKey: "affectedObjects", dataType: "json", isPrimaryKey: false },
-  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false },
-  { propKey: "approvedBy", dataType: "string", isPrimaryKey: false },
-  { propKey: "approvedDate", dataType: "date", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+  { propKey: "changeId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "changeNumber", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "changeType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductVersion" },
+  { propKey: "changeReason", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "description", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "affectedObjects", dataType: "json", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "approvedBy", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "approvedDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 // Phase 2 Wave 2：物料替代关系
 const materialAlternativeProps: PropertyDef[] = [
-  { propKey: "altId", dataType: "string", isPrimaryKey: true },
-  { propKey: "primaryMaterialId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Material" },
-  { propKey: "alternativeMaterialId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Material" },
-  { propKey: "priority", dataType: "number", isPrimaryKey: false },
-  { propKey: "approvalStatus", dataType: "enum", isPrimaryKey: false },
-  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false },
-  { propKey: "expireDate", dataType: "date", isPrimaryKey: false },
-  { propKey: "changeReason", dataType: "string", isPrimaryKey: false },
-  { propKey: "verifiedBy", dataType: "string", isPrimaryKey: false },
-  { propKey: "verifiedDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "altId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "primaryMaterialId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Material" },
+  { propKey: "alternativeMaterialId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Material" },
+  { propKey: "priority", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "approvalStatus", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "expireDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "changeReason", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "verifiedBy", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "verifiedDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const orderProps: PropertyDef[] = [
-  { propKey: "so", dataType: "string", isPrimaryKey: true },
-  { propKey: "cust", dataType: "string", isPrimaryKey: false }, // 客户**显示名**（= Customer.custName 逐字相同·同一名册）
+  { propKey: "so", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "cust", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 客户**显示名**（= Customer.custName 逐字相同·同一名册）
   // WO-ORDER-BOOK-500 · 客户**外键**（值 = `Customer` 主键 `custId`）。
   // 为什么非加不可：`Order.cust` 存的是显示名，而所有沿 ref 走图的通用求解器
   // （`concentration_risk` 等）都按**主键值**建索引 —— 拿显示名去查主键索引恒零命中，
   // 于是「哪个客户最集中」恒回 0 个，而同一工具问型号回 5 个（`Order.model` 恰好存的就是 Model 主键）。
   // 声明成 ref 还有第二个作用：`deriveConcentrationRisk` 只沿**声明过的** `refToTypeKey` 自动寻路，
   // 不声明就等于这条边对自动寻路不存在。
-  { propKey: "customerId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Customer" },
-  { propKey: "model", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
-  { propKey: "qty", dataType: "number", isPrimaryKey: false },
-  { propKey: "due", dataType: "date", isPrimaryKey: false },
-  { propKey: "pri", dataType: "enum", isPrimaryKey: false }, // PRD-IND-order 优先级（高/中/低）
-  { propKey: "bases", dataType: "json", isPrimaryKey: false },
+  { propKey: "customerId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Customer" },
+  { propKey: "model", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "due", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "pri", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // PRD-IND-order 优先级（高/中/低）
+  { propKey: "bases", dataType: "json", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   // WO-ORDER-BOOK-500：**声明 enumValues**（此前 dataType:"enum" 但取值未声明 ⇒ `ontology-validate.ts`
   // 的 `allowed.length > 0` 短路，订单状态从来没有被任何机器校验过 —— 注释里写着的枚举不算数）。
   // 声明之后：写进一个不在三态里的值，本体校验当场报 DOMAIN 违规，而不是等人肉眼发现。
-  { propKey: "status", dataType: "enum", isPrimaryKey: false, enumValues: [...ORDER_STATUSES] },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", enumValues: [...ORDER_STATUSES] },
   // 约束扫描所需字段（C03/C08/C13/C29）—— 确定性派生，植入少量越线行让规则真触发。
-  { propKey: "demandDelta", dataType: "number", isPrimaryKey: false },
-  { propKey: "outsourceRatio", dataType: "number", isPrimaryKey: false },
-  { propKey: "creditUsedRatio", dataType: "number", isPrimaryKey: false },
-  { propKey: "leadDays", dataType: "number", isPrimaryKey: false },
-  { propKey: "unitPrice", dataType: "number", isPrimaryKey: false }, // 按型号反范式化的单价（value 派生依赖）
+  { propKey: "demandDelta", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "outsourceRatio", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "creditUsedRatio", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "leadDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" },
+  { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" }, // 按型号反范式化的单价（value 派生依赖）
   // WO-W5·业务类型维度（乘/商/储·全局推演勾选筛选 + 分口径聚合）。early/earlyDue = 乘用车部分客户提前交付（三重张力之一）。
-  { propKey: "businessType", dataType: "enum", isPrimaryKey: false }, // passenger | commercial | storage
-  { propKey: "early", dataType: "boolean", isPrimaryKey: false }, // 是否需提前交付（乘用车部分客户）
-  { propKey: "earlyDue", dataType: "date", isPrimaryKey: false }, // 提前交期（early 时·= due − 提前天数）
+  { propKey: "businessType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // passenger | commercial | storage
+  { propKey: "early", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 是否需提前交付（乘用车部分客户）
+  { propKey: "earlyDue", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 提前交期（early 时·= due − 提前天数）
 ];
-const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * unitPrice" }];
+const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * unitPrice", unit: "元", scale: "absolute" }];
 
 const lineProps: PropertyDef[] = [
-  { propKey: "lineId", dataType: "string", isPrimaryKey: true },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
+  { propKey: "lineId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   // 运营指标（利用率 + 时序聚合物化：日实际产出 / 排程达成率）——全建模对齐（R12）。
-  { propKey: "utilization", dataType: "number", isPrimaryKey: false },
-  { propKey: "actual_output_daily", dataType: "number", isPrimaryKey: false },
-  { propKey: "schedule_attainment", dataType: "number", isPrimaryKey: false },
+  // ⚠⚠ `Line.utilization` 是 **0–100 百分数**，与 `Process.utilization` 的 **0–1 小数**同名不同量纲。
+  //   别照本文件里那个 `utilization: round(0.88 + …, 3)` 的种子值下判断 —— **那一行写的是 Process**，
+  //   而 Line 的值由时序物化**覆盖**：`util:line` 序列 `base:{mean:92}` → 经 `line_util_daily`
+  //   （本文件 tsMaterializations）写进 `Line.utilization`。真起后端实测（SEED_DEMO=1）：
+  //     Line.utilization    = 92.55 / 92.85 / 90.47   ⇒ 0–100 ⇒ `%` + ratio（本行）
+  //     Process.utilization = 0.903 / 0.951 / 0.957   ⇒ 0–1   ⇒ `dimensionless` + ratio
+  //   同一份序列表里 `attainment:line`(mean 0.914) 与 `yield:process`(mean 0.952) 却是 0–1 ——
+  //   **三条序列两种刻度**，这正是裁决书说的「产能利用率同名两套量纲」，现在两侧都能机读区分。
+  { propKey: "utilization", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" },
+  { propKey: "actual_output_daily", dataType: "number", isPrimaryKey: false, unit: "套/日", scale: "absolute" },
+  { propKey: "schedule_attainment", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
   // SA-5：产线台账字段（R12 全建模对齐）
-  { propKey: "line_code", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "max_capacity_day", dataType: "number", isPrimaryKey: false }, // 件/日
+  { propKey: "line_code", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "max_capacity_day", dataType: "number", isPrimaryKey: false, unit: "件/日", scale: "absolute" }, // 件/日
   // 线级运营日产能（**套/日**·与需求同口径；supply_demand_gap_attribution 读它 ×300/1e4→万套年化产能）。
   // 单位口径钉死：demand/gap 皆万套(套=pack)，故此字段=套/日 而非 max_capacity_day 的件/日(cell)，避免单位炸。
-  { propKey: "capacityDaily", dataType: "number", isPrimaryKey: false }, // 套/日
-  { propKey: "target_yield", dataType: "number", isPrimaryKey: false }, // %
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 运行中 | 停机 | 调试
+  { propKey: "capacityDaily", dataType: "number", isPrimaryKey: false, unit: "套/日", scale: "absolute" }, // 套/日
+  // ⚠ 行尾原注释写的是「%」，与实际不符：生成式 `round(0.95 + …, 3)`（本文件 target_yield 生成处）
+  // 产出 0.95–0.99 的**0–1 小数**，不是 95–99 的百分数。注释错在最容易被信的地方，故按实测订正为
+  // `dimensionless + ratio`（0–1 表示法）；要显示成百分数由展示层 ×100，不改存储口径。
+  { propKey: "target_yield", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 运行中 | 停机 | 调试
 ];
 
 const processProps: PropertyDef[] = [
-  { propKey: "processId", dataType: "string", isPrimaryKey: true },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
-  { propKey: "kind", dataType: "enum", isPrimaryKey: false }, // serial | formation | aging
-  { propKey: "yield", dataType: "number", isPrimaryKey: false },
-  { propKey: "yield_baseline", dataType: "number", isPrimaryKey: false }, // 良率基线（时序 EMA 物化）——全建模对齐（R12）
-  { propKey: "shiftHours", dataType: "number", isPrimaryKey: false },
-  { propKey: "shifts", dataType: "number", isPrimaryKey: false },
-  { propKey: "attendance", dataType: "number", isPrimaryKey: false },
-  { propKey: "utilization", dataType: "number", isPrimaryKey: false },
-  { propKey: "channels", dataType: "number", isPrimaryKey: false },
-  { propKey: "channelOutputDaily", dataType: "number", isPrimaryKey: false },
-  { propKey: "agingSlots", dataType: "number", isPrimaryKey: false },
-  { propKey: "agingDays", dataType: "number", isPrimaryKey: false },
+  { propKey: "processId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "kind", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // serial | formation | aging
+  { propKey: "yield", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "yield_baseline", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" }, // 良率基线（时序 EMA 物化）——全建模对齐（R12）
+  { propKey: "shiftHours", dataType: "number", isPrimaryKey: false, unit: "h", scale: "absolute" },
+  { propKey: "shifts", dataType: "number", isPrimaryKey: false, unit: "班", scale: "absolute" },
+  { propKey: "attendance", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "utilization", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "channels", dataType: "number", isPrimaryKey: false, unit: "个", scale: "absolute" },
+  { propKey: "channelOutputDaily", dataType: "number", isPrimaryKey: false, unit: "电芯/天", scale: "absolute" },
+  { propKey: "agingSlots", dataType: "number", isPrimaryKey: false, unit: "个", scale: "absolute" },
+  { propKey: "agingDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" },
   // WO-SANDBOX-D3 · 硬容量约束的两个新承载物（只落在**真有**硬容量单元的工序上；串行工序**不带此二属性**，
   // 消费方据此诚实标 EMPTY，绝不给默认柜位数）。
   //   capacityUnitKind  —— 硬容量单元语义标签（化成柜位 / 老化库位…），是引擎通用发现硬容量的入口；
@@ -1252,53 +1263,53 @@ const processProps: PropertyDef[] = [
   //                        没有它就无法判「柜位够不够」，只能取 min 而说不出谁夹定、差多少。
   //                        规则 C02 `Process.parallelThroughput < Process.requiredThroughput` 早已按名引用
   //                        该量，但此前 Process 上无此属性（故 C02 恒不可评估）。
-  { propKey: "capacityUnitKind", dataType: "enum", isPrimaryKey: false, description: "硬容量单元类型（化成柜位 | 老化库位）；无此属性 = 该工序不承载硬容量单元" },
-  { propKey: "requiredThroughput", dataType: "number", isPrimaryKey: false, unit: "电芯/天", description: "上游串行段要求该并行段承接的日吞吐（判「柜位够不够」的比较基准）" },
+  { propKey: "capacityUnitKind", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "硬容量单元类型（化成柜位 | 老化库位）；无此属性 = 该工序不承载硬容量单元" },
+  { propKey: "requiredThroughput", dataType: "number", isPrimaryKey: false, unit: "电芯/天", scale: "absolute", description: "上游串行段要求该并行段承接的日吞吐（判「柜位够不够」的比较基准）" },
 ];
 
 const equipmentProps: PropertyDef[] = [
-  { propKey: "equipId", dataType: "string", isPrimaryKey: true },
-  { propKey: "processId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Process" },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "ctSeconds", dataType: "number", isPrimaryKey: false },
-  { propKey: "availFactor", dataType: "number", isPrimaryKey: false },
-  { propKey: "oeeA", dataType: "number", isPrimaryKey: false },
-  { propKey: "oeeP", dataType: "number", isPrimaryKey: false },
-  { propKey: "oeeQ", dataType: "number", isPrimaryKey: false },
-  { propKey: "oee_current", dataType: "number", isPrimaryKey: false }, // OEE 当前快照（= EquipmentOEE 事实行 7 日均值·equipmentOeeAtomsDaily 同源派生，baseDerived.oeeIndex 依赖）——全建模对齐（R12）
+  { propKey: "equipId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "processId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Process" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "ctSeconds", dataType: "number", isPrimaryKey: false, unit: "秒", scale: "absolute" },
+  { propKey: "availFactor", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "oeeA", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "oeeP", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "oeeQ", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "oee_current", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" }, // OEE 当前快照（= EquipmentOEE 事实行 7 日均值·equipmentOeeAtomsDaily 同源派生，baseDerived.oeeIndex 依赖）——全建模对齐（R12）
   // SA-6：设备台账字段（R12 全建模对齐）
-  { propKey: "equipment_code", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "equipment_type", dataType: "enum", isPrimaryKey: false }, // 涂布机 | 辊压机 | 分切机 | 卷绕机 | 装配线 | 注液机 | 化成柜 | 老化库 | PACK线
-  { propKey: "manufacturer", dataType: "string", isPrimaryKey: false },
-  { propKey: "install_date", dataType: "date", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 正常 | 维修中 | 待报废
+  { propKey: "equipment_code", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "equipment_type", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 涂布机 | 辊压机 | 分切机 | 卷绕机 | 装配线 | 注液机 | 化成柜 | 老化库 | PACK线
+  { propKey: "manufacturer", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "install_date", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 正常 | 维修中 | 待报废
   // WO-SA-2：设备可靠性工程字段（故障推演真信号·诚实合成非实测·R12 全建模对齐）
-  { propKey: "mtbf", dataType: "number", isPrimaryKey: false, unit: "h", description: "平均无故障时间（小时·越高越可靠）" },
-  { propKey: "mttr", dataType: "number", isPrimaryKey: false, unit: "h", description: "平均修复时间（小时·越低越好）" },
-  { propKey: "health_score", dataType: "number", isPrimaryKey: false, unit: "%", description: "设备健康度（0-100·越高越健康）" },
+  { propKey: "mtbf", dataType: "number", isPrimaryKey: false, unit: "h", scale: "absolute", description: "平均无故障时间（小时·越高越可靠）" },
+  { propKey: "mttr", dataType: "number", isPrimaryKey: false, unit: "h", scale: "absolute", description: "平均修复时间（小时·越低越好）" },
+  { propKey: "health_score", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio", description: "设备健康度（0-100·越高越健康）" },
 ];
 
 // SA-3：车间对象属性（Base↔Workshop↔Line 四层结构）
 const workshopProps: PropertyDef[] = [
-  { propKey: "workshopId", dataType: "string", isPrimaryKey: true },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "name", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "processType", dataType: "enum", isPrimaryKey: false }, // 制浆 | 涂布 | 辊压 | 分切 | 卷绕 | 装配 | 注液 | 化成 | 分容 | PACK
+  { propKey: "workshopId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "processType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 制浆 | 涂布 | 辊压 | 分切 | 卷绕 | 装配 | 注液 | 化成 | 分容 | PACK
 ];
 
 const maintPlanProps: PropertyDef[] = [
-  { propKey: "planId", dataType: "string", isPrimaryKey: true },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "week", dataType: "number", isPrimaryKey: false }, // forecast week (1-based, from forecastStart)
-  { propKey: "lastMaintStart", dataType: "date", isPrimaryKey: false }, // aligned dip in the 90d history
+  { propKey: "planId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "week", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // forecast week (1-based, from forecastStart)
+  { propKey: "lastMaintStart", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // aligned dip in the 90d history
 ];
 
 const segmentProps: PropertyDef[] = [
-  { propKey: "segKey", dataType: "string", isPrimaryKey: true },
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
-  { propKey: "gmRate", dataType: "number", isPrimaryKey: false }, // percent
-  { propKey: "baselineShare", dataType: "number", isPrimaryKey: false },
+  { propKey: "segKey", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "gmRate", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" }, // percent
+  { propKey: "baselineShare", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
 ];
 
 // cockpit P1 绿地：经营驾驶舱富 KPI 数据闭环（数字从本体关系算出，前后端零写死 R14）。
@@ -1311,50 +1322,61 @@ const segmentProps: PropertyDef[] = [
  * 否则「本仓没有这个节拍」与「本仓压根没登记这个环节」在下游长得一模一样。
  */
 const cadenceProps: PropertyDef[] = [
-  { propKey: "nodeId", dataType: "string", isPrimaryKey: true, description: "全链节点 id（取值受契约 CHAIN_NODE_REGISTRY 约束，不是自由串）" },
-  { propKey: "label", dataType: "string", isPrimaryKey: false, description: "节点人读名（由注册表派生，不在本表另存一份）" },
-  { propKey: "stage", dataType: "enum", isPrimaryKey: false, description: "所属链路阶段：DEMAND 需求 | ORDER 订单 | CAPACITY 产能 | MATERIAL 物料" },
-  { propKey: "dataMode", dataType: "enum", isPrimaryKey: false, description: "诚实位：SYNTHETIC=从种子发生序列真推出了周期 | EMPTY=推不出（此时不给默认值，见 emptyReason）" },
-  { propKey: "everyDays", dataType: "number", isPrimaryKey: false, unit: "天", description: "节拍周期长度：这个环节多久处理一次。EMPTY 行不带此属性（缺席即缺席，不补 0）" },
-  { propKey: "offsetDays", dataType: "number", isPrimaryKey: false, unit: "天", description: "周期内相位（第几天开闸），∈[0, everyDays)。⚠ 不进等待期望公式——相位移动的是每一次具体等待，不改变期望" },
-  { propKey: "cadenceKind", dataType: "enum", isPrimaryKey: false, description: "节拍性质：meeting 会议 | batch 攒批 | settlement 结算 | shipping 发运" },
-  { propKey: "flowGate", dataType: "boolean", isPrimaryKey: false, description: "是否产品流要等的闸门。false=周期性停机（如检修窗）——是真周期但产品不是在等它开始，故不摊进全链前置期，否则会凭空多出一段假等待" },
-  { propKey: "intervalCount", dataType: "number", isPrimaryKey: false, unit: "个", description: "证据强度：推导该周期时采到的间隔样本数（前端可据此标『证据薄』）" },
-  { propKey: "emptyReason", dataType: "string", isPrimaryKey: false, description: "推不出周期的机器可读原因：NO_CARRIER 连可查的集合都没有（要加字段）| NO_INTERVAL 发生次数不足两次 | NON_UNIFORM 间隔不等长（那是一串事件，不是一个节拍）。前者要加字段、后两者要补数据，修法不同不可混标" },
-  { propKey: "note", dataType: "string", isPrimaryKey: false, description: "口径说明与取证记录（该节拍从哪个集合的哪个时刻字段推出，或为什么查不到）" },
+  { propKey: "nodeId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", description: "全链节点 id（取值受契约 CHAIN_NODE_REGISTRY 约束，不是自由串）" },
+  { propKey: "label", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "节点人读名（由注册表派生，不在本表另存一份）" },
+  { propKey: "stage", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "所属链路阶段：DEMAND 需求 | ORDER 订单 | CAPACITY 产能 | MATERIAL 物料" },
+  { propKey: "dataMode", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "诚实位：SYNTHETIC=从种子发生序列真推出了周期 | EMPTY=推不出（此时不给默认值，见 emptyReason）" },
+  { propKey: "everyDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute", description: "节拍周期长度：这个环节多久处理一次。EMPTY 行不带此属性（缺席即缺席，不补 0）" },
+  { propKey: "offsetDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute", description: "周期内相位（第几天开闸），∈[0, everyDays)。⚠ 不进等待期望公式——相位移动的是每一次具体等待，不改变期望" },
+  { propKey: "cadenceKind", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "节拍性质：meeting 会议 | batch 攒批 | settlement 结算 | shipping 发运" },
+  { propKey: "flowGate", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "是否产品流要等的闸门。false=周期性停机（如检修窗）——是真周期但产品不是在等它开始，故不摊进全链前置期，否则会凭空多出一段假等待" },
+  { propKey: "intervalCount", dataType: "number", isPrimaryKey: false, unit: "个", scale: "absolute", description: "证据强度：推导该周期时采到的间隔样本数（前端可据此标『证据薄』）" },
+  { propKey: "emptyReason", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "推不出周期的机器可读原因：NO_CARRIER 连可查的集合都没有（要加字段）| NO_INTERVAL 发生次数不足两次 | NON_UNIFORM 间隔不等长（那是一串事件，不是一个节拍）。前者要加字段、后两者要补数据，修法不同不可混标" },
+  { propKey: "note", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "口径说明与取证记录（该节拍从哪个集合的哪个时刻字段推出，或为什么查不到）" },
 ];
 const demandSegmentProps: PropertyDef[] = [
-  { propKey: "segId", dataType: "string", isPrimaryKey: true },
-  { propKey: "segment", dataType: "string", isPrimaryKey: false }, // 乘用车/储能/商用车
-  { propKey: "tgt", dataType: "number", isPrimaryKey: false }, // 目标(万)
+  { propKey: "segId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "segment", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 乘用车/储能/商用车
+  { propKey: "tgt", dataType: "number", isPrimaryKey: false, unit: "万套", scale: "absolute" }, // 目标(万)
   // WO-P50-REMAINING-3：名字自带口径 —— 分母是**年**（Σ=375 万套/年），与 `CapacityForecastOutput.capWanP50`
   // 的「万套/**窗口**」是两个量。只写「万套」正是让用户在屏上分不出的那半个信息。
-  { propKey: "demandWanPerYearP50", dataType: "number", isPrimaryKey: false, unit: "万套/年", description: "需求预测中位口径 P50（万套/年）" },
-  { propKey: "demandWanPerYearP90", dataType: "number", isPrimaryKey: false, unit: "万套/年", description: "需求预测保守下分位 P90（万套/年·≤ P50）" },
-  { propKey: "act", dataType: "number", isPrimaryKey: false }, // 实际(万)
-  { propKey: "priceWan", dataType: "number", isPrimaryKey: false }, // 单价(万/万件)
-  { propKey: "marginPct", dataType: "number", isPrimaryKey: false }, // 毛利率(%)
-  { propKey: "floorPct", dataType: "number", isPrimaryKey: false }, // 毛利底线(%)
-  { propKey: "businessType", dataType: "enum", isPrimaryKey: false }, // WO-W5·业务类型（passenger|commercial|storage·= 细分名映射）
+  { propKey: "demandWanPerYearP50", dataType: "number", isPrimaryKey: false, unit: "万套/年", scale: "absolute", description: "需求预测中位口径 P50（万套/年）" },
+  { propKey: "demandWanPerYearP90", dataType: "number", isPrimaryKey: false, unit: "万套/年", scale: "absolute", description: "需求预测保守下分位 P90（万套/年·≤ P50）" },
+  { propKey: "act", dataType: "number", isPrimaryKey: false, unit: "万套", scale: "absolute" }, // 实际(万)
+  { propKey: "priceWan", dataType: "number", isPrimaryKey: false, unit: "万元", scale: "absolute" }, // 单价(万/万件)
+  { propKey: "marginPct", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" }, // 毛利率(%)
+  { propKey: "floorPct", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" }, // 毛利底线(%)
+  { propKey: "businessType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // WO-W5·业务类型（passenger|commercial|storage·= 细分名映射）
 ];
 const demandSegmentDerived: DerivedPropertyDef[] = [
-  { propKey: "revenueWan", formula: "demandWanPerYearP50 * priceWan" }, // 收入(万) = 需求×单价
-  { propKey: "marginWan", formula: "demandWanPerYearP50 * priceWan * marginPct / 100" }, // 毛利额(万)
+  // ⚠⚠ 这两个字段的**名字和原注释都是错的，差 1e4**（WO-UNIT-KWH 实测订正）。
+  // 名字里的 `Wan` 和原注释「收入(万)/毛利额(万)」都指向「万元」，**实际单位是「亿元」**。
+  // 逐位实证（本文件需求层锚，见 SOP_SEG 那段注释「合计 375 万套/年 … totalRev=700.0亿」）：
+  //   量纲推演：`万套/年` × `万元/套` = (1e4 套) × (1e4 元/套) = **1e8 元 = 亿元**
+  //   数值对拍：201.7×2.2 + 139.2×1.4 + 34.1×1.8 = **700.00**，而 `scaleAnchorRevenue.S = 700`
+  //            的单位注释自述是「**亿**」⇒ ΣrevenueWan 就是 700 亿元，不是 700 万元。
+  //   交叉验证：Σ marginWan / Σ revenueWan = 118.85/700.00 = **17.0%**，与本文件注释自述的
+  //            「gmRate≈17.0%」逐位吻合 ⇒ 两个字段同族同量纲，一起是亿元。
+  // ⇒ 这也是「按字段名机械抄单位」这条捷径的反例：`Wan` 后缀在这里**不度量它的单位**。
+  //   名字暂不改（`revenueWan` 是求解器/前端/金值的接线名，改名要连断言一起改，属另一张单）；
+  //   但机器可读的 `unit` 必须说真话 —— 从今天起以本声明为准，不以名字为准。
+  { propKey: "revenueWan", formula: "demandWanPerYearP50 * priceWan", unit: "亿元", scale: "absolute" },
+  { propKey: "marginWan", formula: "demandWanPerYearP50 * priceWan * marginPct / 100", unit: "亿元", scale: "absolute" },
 ];
 const financePlanProps: PropertyDef[] = [
-  { propKey: "finId", dataType: "string", isPrimaryKey: true },
-  { propKey: "line", dataType: "string", isPrimaryKey: false }, // 收入/销售成本/毛利
-  { propKey: "budget", dataType: "number", isPrimaryKey: false }, // 预算(万)
-  { propKey: "rolling", dataType: "number", isPrimaryKey: false }, // 滚动预测(万)
+  { propKey: "finId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "line", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 收入/销售成本/毛利
+  { propKey: "budget", dataType: "number", isPrimaryKey: false, unit: "万元", scale: "absolute" }, // 预算(万)
+  { propKey: "rolling", dataType: "number", isPrimaryKey: false, unit: "万元", scale: "absolute" }, // 滚动预测(万)
 ];
 const materialBalanceProps: PropertyDef[] = [
-  { propKey: "matBalId", dataType: "string", isPrimaryKey: true },
-  { propKey: "material", dataType: "string", isPrimaryKey: false }, // 三元正极/隔膜/电解液
-  { propKey: "unit", dataType: "string", isPrimaryKey: false }, // 吨/万㎡（MRP 表单位，PRD-IND-sop §4.4）
-  { propKey: "netDemandTon", dataType: "number", isPrimaryKey: false },
-  { propKey: "ltaPct", dataType: "number", isPrimaryKey: false }, // 长协覆盖(%)
-  { propKey: "gapTon", dataType: "number", isPrimaryKey: false }, // 现货缺口(吨)
-  { propKey: "etaDate", dataType: "string", isPrimaryKey: false },
+  { propKey: "matBalId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "material", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 三元正极/隔膜/电解液
+  { propKey: "unit", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 吨/万㎡（MRP 表单位，PRD-IND-sop §4.4）
+  { propKey: "netDemandTon", dataType: "number", isPrimaryKey: false, unit: "吨", scale: "absolute" },
+  { propKey: "ltaPct", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" }, // 长协覆盖(%)
+  { propKey: "gapTon", dataType: "number", isPrimaryKey: false, unit: "吨", scale: "absolute" }, // 现货缺口(吨)
+  { propKey: "etaDate", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   // WO-V4-INSPECT · 齐套覆盖率（**派生非独立真值**，值由下面 materialBalanceDerived 的公式算出）。
   // 这里之所以**同时**登记为 PropertyDef，是照 `interBaseTransfer.etaDay` 的既有先例：
   // DerivedPropertyDef 只有 {propKey, formula} 两个字段，没有 displayName/unit/description 的位置，
@@ -1365,7 +1387,11 @@ const materialBalanceProps: PropertyDef[] = [
     propKey: "coverage",
     dataType: "number",
     isPrimaryKey: false,
-    unit: "%",
+    // ⚠ 改前这里写的是 `unit: "%"`，与**同一个字面量下一行的 description**（「0–1 比率存储，显示时 ×100」）
+    //   直接打架 —— 单看 `unit` 会把 0.79 读成 0.79%（真值是 79%）。按 description 的实测口径订正：
+    //   0–1 表示法 = `dimensionless` + `ratio`；`unit:"%"` 在本册专指 0–100 表示法。
+    unit: "dimensionless",
+    scale: "ratio",
     description: "齐套覆盖率（净需求中已被覆盖的比例）。**0–1 比率存储**，显示时 ×100 —— 与 LEVER_PROP_META['MaterialBalance.coverage'].kind='ratio' 同口径。派生属性：值由 (netDemandTon − gapTon) / netDemandTon 算出，不是独立录入的真值。",
   },
 ];
@@ -1396,7 +1422,7 @@ const materialBalanceProps: PropertyDef[] = [
  * 等哪天补了现货这条路，公式会**静默给出错的数**。故取定义式（缺口口径），不取巧合式。
  */
 const materialBalanceDerived: DerivedPropertyDef[] = [
-  { propKey: "coverage", formula: "(netDemandTon - gapTon) / netDemandTon" },
+  { propKey: "coverage", formula: "(netDemandTon - gapTon) / netDemandTon", unit: "dimensionless", scale: "ratio" },
 ];
 
 // cockpit P2 + SPINE 绿地：规划决策推演 + 根因 DAG + 经营目标-指标-责任骨架。
@@ -1404,39 +1430,39 @@ const materialBalanceDerived: DerivedPropertyDef[] = [
 // KSF = 关键成功要素（五要素）；Principal = 责任主体；RootCauseChain = 因子→指标的「归因模板」
 // （配成对象 → 求解器据此沿 driverType 取活数据算贡献，「结构=算、模板=配成对象」）。
 const metricProps: PropertyDef[] = [
-  { propKey: "metricId", dataType: "string", isPrimaryKey: true },
-  { propKey: "key", dataType: "string", isPrimaryKey: false },
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
-  { propKey: "level", dataType: "enum", isPrimaryKey: false }, // op/month/quarter/year
-  { propKey: "category", dataType: "enum", isPrimaryKey: false }, // profit/scale/material
-  { propKey: "target", dataType: "number", isPrimaryKey: false },
-  { propKey: "actual", dataType: "number", isPrimaryKey: false },
-  { propKey: "floorVal", dataType: "number", isPrimaryKey: false }, // 底线（actual<floor → 越线）
-  { propKey: "unit", dataType: "string", isPrimaryKey: false },
-  { propKey: "weight", dataType: "number", isPrimaryKey: false }, // KSF 权重
-  { propKey: "ksfRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "KSF" }, // 归属 KSF
-  { propKey: "ownerRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Principal" }, // 责任人
-  { propKey: "chainKey", dataType: "string", isPrimaryKey: false }, // 越线根因装配 key
+  { propKey: "metricId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "key", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "level", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // op/month/quarter/year
+  { propKey: "category", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // profit/scale/material
+  { propKey: "target", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "actual", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "floorVal", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 底线（actual<floor → 越线）
+  { propKey: "unit", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "weight", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // KSF 权重
+  { propKey: "ksfRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "KSF" }, // 归属 KSF
+  { propKey: "ownerRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Principal" }, // 责任人
+  { propKey: "chainKey", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 越线根因装配 key
   // WO-SEG-ATTR-SCOPE：细分达成率指标（seg_attain_ess/pas/com）携业态（storage|passenger|commercial·经
   // businessTypeOfSegment 派生，与 Order.businessType 同源同口径 R-一致），供 gap_attribution 按业态裁订单。
   // 声明于类型以对齐合成字段（否则 seg Metric 实例的 businessType 成孤儿字段·synthetic-field-alignment 红）。
-  { propKey: "businessType", dataType: "enum", isPrimaryKey: false }, // passenger | commercial | storage（仅 seg 指标有·非 seg 指标缺省）
+  { propKey: "businessType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // passenger | commercial | storage（仅 seg 指标有·非 seg 指标缺省）
 ];
 const metricDerived: DerivedPropertyDef[] = [
-  { propKey: "delta", formula: "actual - target" }, // 差异（带符号）
-  { propKey: "gapPct", formula: "(actual - target) / target * 100" }, // 缺口%（带符号，越线为负）
+  { propKey: "delta", formula: "actual - target", unit: "dimensionless", scale: "absolute" }, // 差异（带符号）
+  { propKey: "gapPct", formula: "(actual - target) / target * 100", unit: "%", scale: "ratio" }, // 缺口%（带符号，越线为负）
 ];
 const ksfProps: PropertyDef[] = [
-  { propKey: "ksfId", dataType: "string", isPrimaryKey: true },
-  { propKey: "key", dataType: "enum", isPrimaryKey: false }, // k_dem/k_bal/k_kit/k_cash/k_cost
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
-  { propKey: "sub", dataType: "string", isPrimaryKey: false },
+  { propKey: "ksfId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "key", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // k_dem/k_bal/k_kit/k_cash/k_cost
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "sub", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 const principalProps: PropertyDef[] = [
-  { propKey: "principalId", dataType: "string", isPrimaryKey: true },
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
-  { propKey: "kind", dataType: "enum", isPrimaryKey: false }, // org/role/person
-  { propKey: "parentRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Principal" },
+  { propKey: "principalId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "kind", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // org/role/person
+  { propKey: "parentRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Principal" },
 ];
 // cockpit P5 / sop 绿地：S&OP 版本演进（V1→V7 需求/供给/缺口/备注），驱动 V5/V7 版本切换 + 版本对比表。
 //
@@ -1446,16 +1472,16 @@ const principalProps: PropertyDef[] = [
 // 两者相差 12 倍、同屏并列、原先**三列一个单位都没写** —— 正是「屏上分不出」的那半个信息。
 // 故此处把量纲写进属性定义（屏上表头由前端 `VersionCompare` 一并写清）。
 const sopVersionRowProps: PropertyDef[] = [
-  { propKey: "verId", dataType: "string", isPrimaryKey: true },
-  { propKey: "ver", dataType: "string", isPrimaryKey: false }, // V1..V7
-  { propKey: "date", dataType: "string", isPrimaryKey: false },
-  { propKey: "demand", dataType: "number", isPrimaryKey: false, unit: "万套/年", description: "该版本的年度需求口径（Σ DemandSegment.tgt 派生·万套/年，非 S&OP 月度台账口径）" },
-  { propKey: "supply", dataType: "number", isPrimaryKey: false, unit: "万套/年", description: "该版本的年度可供给口径（万套/年·与 demand 同分母）" },
-  { propKey: "note", dataType: "string", isPrimaryKey: false },
-  { propKey: "isFinal", dataType: "boolean", isPrimaryKey: false },
+  { propKey: "verId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "ver", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // V1..V7
+  { propKey: "date", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "demand", dataType: "number", isPrimaryKey: false, unit: "万套/年", scale: "absolute", description: "该版本的年度需求口径（Σ DemandSegment.tgt 派生·万套/年，非 S&OP 月度台账口径）" },
+  { propKey: "supply", dataType: "number", isPrimaryKey: false, unit: "万套/年", scale: "absolute", description: "该版本的年度可供给口径（万套/年·与 demand 同分母）" },
+  { propKey: "note", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "isFinal", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 const sopVersionRowDerived: DerivedPropertyDef[] = [
-  { propKey: "gap", formula: "demand - supply" }, // 产销缺口（派生）
+  { propKey: "gap", formula: "demand - supply", unit: "万套/年", scale: "absolute" }, // 产销缺口（派生）
 ];
 /**
  * WO-ADOPT-MITIGATION · 已采纳处置方案台账（`adopt_mitigation` Action 审批通过后的**唯一落点**）。
@@ -1469,270 +1495,270 @@ const sopVersionRowDerived: DerivedPropertyDef[] = [
  * 不变量：同一 (baseId,factor) 至多一条 ACTIVE（执行器写前先把旧的置 REVOKED·② 单源 > 并存）。
  */
 const adoptedMitigationProps: PropertyDef[] = [
-  { propKey: "adoptionId", dataType: "string", isPrimaryKey: true, description: "采纳记录唯一标识（一次审批通过写一条）" },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base", description: "方案生效的生产基地（经 resolveBaseId 严格解析·解不出即拒写）" },
-  { propKey: "factor", dataType: "string", isPrimaryKey: false, description: "被处置的瓶颈因素（params.bottleneck.factors 之一，如 瓶颈工序/设备OEE/物流时长）" },
-  { propKey: "planKey", dataType: "string", isPrimaryKey: false, description: "方案库中的方案键（params.risk.mitigations[factor][].key）" },
-  { propKey: "planName", dataType: "string", isPrimaryKey: false, description: "方案中文名（审计可读·随 planKey 自方案库解出，非自由填写）" },
-  { propKey: "eff", dataType: "number", isPrimaryKey: false, unit: "点", description: "张力削减量：生效后风险张力逐日下调的幅度（自方案库解出·拒绝臆造）" },
-  { propKey: "tn", dataType: "number", isPrimaryKey: false, unit: "天", description: "生效天 T+n：自该日起风险曲线开始扣减 eff，之前逐日不变" },
-  { propKey: "adoptedAt", dataType: "string", isPrimaryKey: false, description: "采纳时间（ISO 时间戳·审批通过写入时刻）" },
-  { propKey: "actionDraftId", dataType: "string", isPrimaryKey: false, description: "来源 Action 草稿 id（R13 溯回完整审批链：谁提、谁批、何时执行）" },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false, description: "采纳状态 ACTIVE｜REVOKED；同一 (baseId,factor) 至多一条 ACTIVE，改采新方案时旧条置 REVOKED" },
+  { propKey: "adoptionId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", description: "采纳记录唯一标识（一次审批通过写一条）" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base", description: "方案生效的生产基地（经 resolveBaseId 严格解析·解不出即拒写）" },
+  { propKey: "factor", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "被处置的瓶颈因素（params.bottleneck.factors 之一，如 瓶颈工序/设备OEE/物流时长）" },
+  { propKey: "planKey", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "方案库中的方案键（params.risk.mitigations[factor][].key）" },
+  { propKey: "planName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "方案中文名（审计可读·随 planKey 自方案库解出，非自由填写）" },
+  { propKey: "eff", dataType: "number", isPrimaryKey: false, unit: "点", scale: "absolute", description: "张力削减量：生效后风险张力逐日下调的幅度（自方案库解出·拒绝臆造）" },
+  { propKey: "tn", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute", description: "生效天 T+n：自该日起风险曲线开始扣减 eff，之前逐日不变" },
+  { propKey: "adoptedAt", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "采纳时间（ISO 时间戳·审批通过写入时刻）" },
+  { propKey: "actionDraftId", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "来源 Action 草稿 id（R13 溯回完整审批链：谁提、谁批、何时执行）" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "采纳状态 ACTIVE｜REVOKED；同一 (baseId,factor) 至多一条 ACTIVE，改采新方案时旧条置 REVOKED" },
 ];
 
 const rootCauseChainProps: PropertyDef[] = [
-  { propKey: "chainId", dataType: "string", isPrimaryKey: true },
-  { propKey: "kpiCategory", dataType: "enum", isPrimaryKey: false }, // 关联 Metric.category
-  { propKey: "factor", dataType: "string", isPrimaryKey: false }, // 根因因子名
-  { propKey: "driverType", dataType: "string", isPrimaryKey: false }, // 取证对象类型（DemandSegment/MaterialBalance…）
-  { propKey: "evidenceField", dataType: "string", isPrimaryKey: false }, // 量化字段（marginWan/gapTon/act…）
-  { propKey: "selectField", dataType: "string", isPrimaryKey: false }, // 叶节点标签字段（segment/material）
-  { propKey: "baseWeight", dataType: "number", isPrimaryKey: false }, // 配置基准权重
+  { propKey: "chainId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "kpiCategory", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 关联 Metric.category
+  { propKey: "factor", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 根因因子名
+  { propKey: "driverType", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 取证对象类型（DemandSegment/MaterialBalance…）
+  { propKey: "evidenceField", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 量化字段（marginWan/gapTon/act…）
+  { propKey: "selectField", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 叶节点标签字段（segment/material）
+  { propKey: "baseWeight", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 配置基准权重
 ];
 
 const shipmentProps: PropertyDef[] = [
-  { propKey: "shipId", dataType: "string", isPrimaryKey: true },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "etaDay", dataType: "number", isPrimaryKey: false }, // relative to forecastStart
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // IN_TRANSIT | ARRIVED | DELAYED
-  { propKey: "qtyTons", dataType: "number", isPrimaryKey: false },
-  { propKey: "coverageDays", dataType: "number", isPrimaryKey: false }, // C16 齐套覆盖天数（常州在途偏紧 → 越线）
+  { propKey: "shipId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "etaDay", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" }, // relative to forecastStart
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // IN_TRANSIT | ARRIVED | DELAYED
+  { propKey: "qtyTons", dataType: "number", isPrimaryKey: false, unit: "吨", scale: "absolute" },
+  { propKey: "coverageDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" }, // C16 齐套覆盖天数（常州在途偏紧 → 越线）
 ];
 
 // WO-WAREHOUSE-CUSTLOC：仓库（每基地 N 仓·库存仓位落点·成品仓 FINISHED 必有供 WO-INVENTORY FG 挂位）。
 const warehouseProps: PropertyDef[] = [
-  { propKey: "warehouseId", dataType: "string", isPrimaryKey: true },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "name", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "whType", dataType: "enum", isPrimaryKey: false }, // RAW | FINISHED | TRANSIT
-  { propKey: "capacityUnits", dataType: "number", isPrimaryKey: false },
-  { propKey: "province", dataType: "string", isPrimaryKey: false },
-  { propKey: "city", dataType: "string", isPrimaryKey: false },
+  { propKey: "warehouseId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "whType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // RAW | FINISHED | TRANSIT
+  { propKey: "capacityUnits", dataType: "number", isPrimaryKey: false, unit: "套", scale: "absolute" },
+  { propKey: "province", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "city", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 // WO-INTERBASE-TRANSFER：跨基地调拨台账（从字符串杠杆升一等·R13 可溯真对象）。
 // fromBase/toBase→Base(baseId)·model→Model(modelId) 用 ref；status 用 enum；
 // etaDay 走 derivedProperties（数值管线 dispatchDay+transitDays），etaDate/dispatchDate 为 ISO 展示。
 const interBaseTransferProps: PropertyDef[] = [
-  { propKey: "transferId", dataType: "string", isPrimaryKey: true },
-  { propKey: "fromBase", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "toBase", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "model", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
-  { propKey: "qty", dataType: "number", isPrimaryKey: false }, // 套
-  { propKey: "transitDays", dataType: "number", isPrimaryKey: false }, // 距离派生 = ceil(baseDistanceKm / dailyTruckKm)（WO-GSIM-1-DATA）
-  { propKey: "freightCost", dataType: "number", isPrimaryKey: false }, // 运费 = baseDistanceKm × tonKmRate × (qty × qtyToTon)（WO-GSIM-1-DATA）
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // PLANNED | IN_TRANSIT | DELIVERED | CANCELLED
-  { propKey: "dispatchDate", dataType: "date", isPrimaryKey: false },
-  { propKey: "dispatchDay", dataType: "number", isPrimaryKey: false }, // 相对 forecastStart 的天偏移（etaDay 派生输入）
-  { propKey: "etaDay", dataType: "number", isPrimaryKey: false }, // 派生 = dispatchDay + transitDays（derivedProperties 管线算）
-  { propKey: "etaDate", dataType: "date", isPrimaryKey: false }, // = forecastStart + etaDay 的 ISO 展示
-  { propKey: "reason", dataType: "string", isPrimaryKey: false },
+  { propKey: "transferId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "fromBase", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "toBase", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "model", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "套", scale: "absolute" }, // 套
+  { propKey: "transitDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" }, // 距离派生 = ceil(baseDistanceKm / dailyTruckKm)（WO-GSIM-1-DATA）
+  { propKey: "freightCost", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" }, // 运费 = baseDistanceKm × tonKmRate × (qty × qtyToTon)（WO-GSIM-1-DATA）
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // PLANNED | IN_TRANSIT | DELIVERED | CANCELLED
+  { propKey: "dispatchDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "dispatchDay", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" }, // 相对 forecastStart 的天偏移（etaDay 派生输入）
+  { propKey: "etaDay", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" }, // 派生 = dispatchDay + transitDays（derivedProperties 管线算）
+  { propKey: "etaDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // = forecastStart + etaDay 的 ISO 展示
+  { propKey: "reason", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 // etaDate(到货) = dispatch + transitDays：数值派生管线只支持数值算术，故派生落在 etaDay（天偏移·确定性·无时钟）。
-const interBaseTransferDerived: DerivedPropertyDef[] = [{ propKey: "etaDay", formula: "dispatchDay + transitDays" }];
+const interBaseTransferDerived: DerivedPropertyDef[] = [{ propKey: "etaDay", formula: "dispatchDay + transitDays", unit: "天", scale: "absolute" }];
 
 const dataHealthProps: PropertyDef[] = [
-  { propKey: "sourceId", dataType: "string", isPrimaryKey: true },
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
-  { propKey: "critical", dataType: "boolean", isPrimaryKey: false },
-  { propKey: "lagHours", dataType: "number", isPrimaryKey: false },
+  { propKey: "sourceId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "critical", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lagHours", dataType: "number", isPrimaryKey: false, unit: "h", scale: "absolute" },
 ];
 
 // WO-INVENTORY-3TIER：成品库存（按 model×warehouse 一行）+ 统一库存流水（收/发/移/退）。
 // 三层闭环 WIP(WIPLot)→完工入库事务(InventoryTxn RECEIPT)→成品库存(FinishedGoodsInventory)。
 const finishedGoodsInvProps: PropertyDef[] = [
-  { propKey: "fgId", dataType: "string", isPrimaryKey: true },
-  { propKey: "model", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
-  { propKey: "warehouseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Warehouse" }, // 成品仓（WO-WAREHOUSE 已落）
-  { propKey: "qtyOnHand", dataType: "number", isPrimaryKey: false }, // = Σ RECEIPT − Σ ISSUE（勾稽）
-  { propKey: "qtyReserved", dataType: "number", isPrimaryKey: false },
-  { propKey: "asOf", dataType: "date", isPrimaryKey: false },
+  { propKey: "fgId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "model", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "warehouseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Warehouse" }, // 成品仓（WO-WAREHOUSE 已落）
+  { propKey: "qtyOnHand", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" }, // = Σ RECEIPT − Σ ISSUE（勾稽）
+  { propKey: "qtyReserved", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "asOf", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 // 可用量派生（qtyAvailable = qtyOnHand − qtyReserved）：派生投影非新真值（R13），走 derivedProperties。
-const finishedGoodsInvDerived: DerivedPropertyDef[] = [{ propKey: "qtyAvailable", formula: "qtyOnHand - qtyReserved" }];
+const finishedGoodsInvDerived: DerivedPropertyDef[] = [{ propKey: "qtyAvailable", formula: "qtyOnHand - qtyReserved", unit: "件", scale: "absolute" }];
 
 // WO-ATP-PROMISE · 订单承诺台账（一订单一承诺行·ATP/CTP「能不能接、何时交」）。
 const orderPromiseProps: PropertyDef[] = [
-  { propKey: "promiseId", dataType: "string", isPrimaryKey: true },
-  { propKey: "orderRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Order" },
-  { propKey: "model", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
-  { propKey: "requestedQty", dataType: "number", isPrimaryKey: false }, // 订单需求量
-  { propKey: "committableQty", dataType: "number", isPrimaryKey: false }, // 可承接量 = min(需求, 现货+在制未交+交期前可排产能)
-  { propKey: "promiseDate", dataType: "date", isPrimaryKey: false }, // 满足全量最早日
-  { propKey: "atpStatus", dataType: "enum", isPrimaryKey: false }, // CONFIRMED | PARTIAL | UNMET
-  { propKey: "shortfallQty", dataType: "number", isPrimaryKey: false }, // 缺口 = requestedQty − committableQty
-  { propKey: "bottleneck", dataType: "enum", isPrimaryKey: false }, // 产能 | 库存 | 物料 | 齐套（无缺口 → null）
-  { propKey: "asOf", dataType: "date", isPrimaryKey: false }, // 承诺基准日（固定 T0·R6）
+  { propKey: "promiseId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "orderRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Order" },
+  { propKey: "model", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "requestedQty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" }, // 订单需求量
+  { propKey: "committableQty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" }, // 可承接量 = min(需求, 现货+在制未交+交期前可排产能)
+  { propKey: "promiseDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 满足全量最早日
+  { propKey: "atpStatus", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // CONFIRMED | PARTIAL | UNMET
+  { propKey: "shortfallQty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" }, // 缺口 = requestedQty − committableQty
+  { propKey: "bottleneck", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 产能 | 库存 | 物料 | 齐套（无缺口 → null）
+  { propKey: "asOf", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 承诺基准日（固定 T0·R6）
 ];
 
 // WO-ORDERLINE · 订单明细行（SO→型号行·一单多型号多行·勾稽 Σ行===头·行级独立态）。
 const orderLineProps: PropertyDef[] = [
-  { propKey: "lineId", dataType: "string", isPrimaryKey: true }, // SO-3391-L1
-  { propKey: "orderRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Order" }, // 该行属于哪张订单
-  { propKey: "lineNo", dataType: "number", isPrimaryKey: false }, // 行号（1 起·首行保原单 model）
-  { propKey: "model", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" }, // 该行型号
-  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件" }, // Σ BY orderRef === Order.qty（勾稽）
-  { propKey: "due", dataType: "date", isPrimaryKey: false }, // 交期（继承订单头）
-  { propKey: "lineStatus", dataType: "enum", isPrimaryKey: false }, // OPEN | COMMITTED | PARTIAL | SHIPPED
-  { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元" }, // 按行 model 反范式化（Model.unitPrice 单一来源·R14）
+  { propKey: "lineId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, // SO-3391-L1
+  { propKey: "orderRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Order" }, // 该行属于哪张订单
+  { propKey: "lineNo", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 行号（1 起·首行保原单 model）
+  { propKey: "model", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" }, // 该行型号
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" }, // Σ BY orderRef === Order.qty（勾稽）
+  { propKey: "due", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 交期（继承订单头）
+  { propKey: "lineStatus", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // OPEN | COMMITTED | PARTIAL | SHIPPED
+  { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" }, // 按行 model 反范式化（Model.unitPrice 单一来源·R14）
 ];
 
 const inventoryTxnProps: PropertyDef[] = [
-  { propKey: "txnId", dataType: "string", isPrimaryKey: true },
-  { propKey: "txnType", dataType: "enum", isPrimaryKey: false }, // RECEIPT | ISSUE | TRANSFER | RETURN
-  { propKey: "fgRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "FinishedGoodsInventory" },
-  { propKey: "woRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "WorkOrder" }, // 收货来源工单
-  { propKey: "qty", dataType: "number", isPrimaryKey: false }, // 带正负
-  { propKey: "fromWarehouse", dataType: "string", isPrimaryKey: false },
-  { propKey: "toWarehouse", dataType: "string", isPrimaryKey: false },
-  { propKey: "refDoc", dataType: "string", isPrimaryKey: false },
-  { propKey: "occurredAt", dataType: "date", isPrimaryKey: false },
+  { propKey: "txnId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "txnType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // RECEIPT | ISSUE | TRANSFER | RETURN
+  { propKey: "fgRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "FinishedGoodsInventory" },
+  { propKey: "woRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "WorkOrder" }, // 收货来源工单
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" }, // 带正负
+  { propKey: "fromWarehouse", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "toWarehouse", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "refDoc", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "occurredAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 // Phase 3 MES Domain: Production Planning
 const workOrderProps: PropertyDef[] = [
-  { propKey: "woId", dataType: "string", isPrimaryKey: true },
-  { propKey: "moNo", dataType: "string", isPrimaryKey: false },
-  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "qtyPlanned", dataType: "number", isPrimaryKey: false },
-  { propKey: "qtyActual", dataType: "number", isPrimaryKey: false },
-  { propKey: "startDate", dataType: "date", isPrimaryKey: false },
-  { propKey: "endDate", dataType: "date", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 已排产 | 生产中 | 已完成 | 已关闭
+  { propKey: "woId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "moNo", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "qtyPlanned", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "qtyActual", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "startDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "endDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 已排产 | 生产中 | 已完成 | 已关闭
 ];
 
 const productionScheduleProps: PropertyDef[] = [
-  { propKey: "schedId", dataType: "string", isPrimaryKey: true },
-  { propKey: "woId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "WorkOrder" },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
-  { propKey: "shift", dataType: "enum", isPrimaryKey: false }, // 白班 | 夜班
-  { propKey: "scheduledDate", dataType: "date", isPrimaryKey: false },
-  { propKey: "qty", dataType: "number", isPrimaryKey: false },
-  { propKey: "priority", dataType: "number", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 已确认 | 已执行 | 已取消
+  { propKey: "schedId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "woId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "WorkOrder" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "shift", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 白班 | 夜班
+  { propKey: "scheduledDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "priority", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 已确认 | 已执行 | 已取消
 ];
 
 const shiftPlanProps: PropertyDef[] = [
-  { propKey: "shiftId", dataType: "string", isPrimaryKey: true },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "shiftName", dataType: "string", isPrimaryKey: false },
-  { propKey: "plannedHeadcount", dataType: "number", isPrimaryKey: false },
-  { propKey: "actualHeadcount", dataType: "number", isPrimaryKey: false },
-  { propKey: "date", dataType: "date", isPrimaryKey: false },
-  { propKey: "hours", dataType: "number", isPrimaryKey: false },
+  { propKey: "shiftId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "shiftName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "plannedHeadcount", dataType: "number", isPrimaryKey: false, unit: "人", scale: "absolute" },
+  { propKey: "actualHeadcount", dataType: "number", isPrimaryKey: false, unit: "人", scale: "absolute" },
+  { propKey: "date", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "hours", dataType: "number", isPrimaryKey: false, unit: "h", scale: "absolute" },
 ];
 
 // Phase 3 MES Domain: WIP Tracking
 const wipLotProps: PropertyDef[] = [
-  { propKey: "lotId", dataType: "string", isPrimaryKey: true },
-  { propKey: "woId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "WorkOrder" },
-  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
-  { propKey: "currentProcess", dataType: "string", isPrimaryKey: false },
-  { propKey: "qty", dataType: "number", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 在制 | 待检 | 合格 | 报废
-  { propKey: "startTime", dataType: "date", isPrimaryKey: false },
-  { propKey: "lastMoveTime", dataType: "date", isPrimaryKey: false },
+  { propKey: "lotId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "woId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "WorkOrder" },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "currentProcess", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 在制 | 待检 | 合格 | 报废
+  { propKey: "startTime", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lastMoveTime", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const wipMoveProps: PropertyDef[] = [
-  { propKey: "moveId", dataType: "string", isPrimaryKey: true },
-  { propKey: "lotId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "WIPLot" },
-  { propKey: "fromProcess", dataType: "string", isPrimaryKey: false },
-  { propKey: "toProcess", dataType: "string", isPrimaryKey: false },
-  { propKey: "qty", dataType: "number", isPrimaryKey: false },
-  { propKey: "moveTime", dataType: "date", isPrimaryKey: false },
-  { propKey: "operatorId", dataType: "string", isPrimaryKey: false },
+  { propKey: "moveId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lotId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "WIPLot" },
+  { propKey: "fromProcess", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "toProcess", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "moveTime", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operatorId", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const wipQualityCheckpointProps: PropertyDef[] = [
-  { propKey: "checkpointId", dataType: "string", isPrimaryKey: true },
-  { propKey: "lotId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "WIPLot" },
-  { propKey: "processName", dataType: "string", isPrimaryKey: false },
-  { propKey: "checkType", dataType: "enum", isPrimaryKey: false }, // 首检 | 巡检 | 末检
-  { propKey: "result", dataType: "enum", isPrimaryKey: false }, // 通过 | 不通过 | 待定
-  { propKey: "checkTime", dataType: "date", isPrimaryKey: false },
-  { propKey: "inspectorId", dataType: "string", isPrimaryKey: false },
+  { propKey: "checkpointId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lotId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "WIPLot" },
+  { propKey: "processName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "checkType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 首检 | 巡检 | 末检
+  { propKey: "result", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 通过 | 不通过 | 待定
+  { propKey: "checkTime", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "inspectorId", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 // Phase 3 MES Domain: Quality Execution
 const qualityLotProps: PropertyDef[] = [
-  { propKey: "qlotId", dataType: "string", isPrimaryKey: true },
-  { propKey: "woId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "WorkOrder" },
-  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
-  { propKey: "batchSize", dataType: "number", isPrimaryKey: false },
-  { propKey: "sampleSize", dataType: "number", isPrimaryKey: false },
-  { propKey: "passQty", dataType: "number", isPrimaryKey: false },
-  { propKey: "failQty", dataType: "number", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 待检 | 合格 | 不合格 | 特采
-  { propKey: "inspectDate", dataType: "date", isPrimaryKey: false },
+  { propKey: "qlotId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "woId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "WorkOrder" },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "batchSize", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "sampleSize", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "passQty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "failQty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 待检 | 合格 | 不合格 | 特采
+  { propKey: "inspectDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const inspectionResultProps: PropertyDef[] = [
-  { propKey: "resultId", dataType: "string", isPrimaryKey: true },
-  { propKey: "qlotId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "QualityLot" },
-  { propKey: "charId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "InspectionCharacteristic" },
-  { propKey: "measuredValue", dataType: "number", isPrimaryKey: false },
-  { propKey: "targetValue", dataType: "number", isPrimaryKey: false },
-  { propKey: "upperLimit", dataType: "number", isPrimaryKey: false },
-  { propKey: "lowerLimit", dataType: "number", isPrimaryKey: false },
-  { propKey: "result", dataType: "enum", isPrimaryKey: false }, // 合格 | 不合格
-  { propKey: "inspectTime", dataType: "date", isPrimaryKey: false },
+  { propKey: "resultId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "qlotId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "QualityLot" },
+  { propKey: "charId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "InspectionCharacteristic" },
+  { propKey: "measuredValue", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "targetValue", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "upperLimit", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lowerLimit", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "result", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 合格 | 不合格
+  { propKey: "inspectTime", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const defectRecordProps: PropertyDef[] = [
-  { propKey: "defectId", dataType: "string", isPrimaryKey: true },
-  { propKey: "qlotId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "QualityLot" },
-  { propKey: "lotId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "WIPLot" },
-  { propKey: "defectType", dataType: "enum", isPrimaryKey: false }, // 外观 | 尺寸 | 性能 | 安全
-  { propKey: "severity", dataType: "enum", isPrimaryKey: false }, // 轻微 | 一般 | 严重
-  { propKey: "qty", dataType: "number", isPrimaryKey: false },
-  { propKey: "description", dataType: "string", isPrimaryKey: false },
-  { propKey: "foundAt", dataType: "date", isPrimaryKey: false },
-  { propKey: "processName", dataType: "string", isPrimaryKey: false },
+  { propKey: "defectId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "qlotId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "QualityLot" },
+  { propKey: "lotId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "WIPLot" },
+  { propKey: "defectType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 外观 | 尺寸 | 性能 | 安全
+  { propKey: "severity", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 轻微 | 一般 | 严重
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "description", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "foundAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "processName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 // Phase 3 MES Domain: Equipment Execution
 const equipmentOEEProps: PropertyDef[] = [
-  { propKey: "oeeId", dataType: "string", isPrimaryKey: true },
-  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Equipment" },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "date", dataType: "date", isPrimaryKey: false },
-  { propKey: "availability", dataType: "number", isPrimaryKey: false },
-  { propKey: "performance", dataType: "number", isPrimaryKey: false },
-  { propKey: "quality", dataType: "number", isPrimaryKey: false },
-  { propKey: "oee", dataType: "number", isPrimaryKey: false },
-  { propKey: "plannedProductionTime", dataType: "number", isPrimaryKey: false },
-  { propKey: "actualProductionTime", dataType: "number", isPrimaryKey: false },
+  { propKey: "oeeId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Equipment" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "date", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "availability", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "performance", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "quality", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "oee", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "plannedProductionTime", dataType: "number", isPrimaryKey: false, unit: "分钟", scale: "absolute" },
+  { propKey: "actualProductionTime", dataType: "number", isPrimaryKey: false, unit: "分钟", scale: "absolute" },
 ];
 
 const equipmentDowntimeProps: PropertyDef[] = [
-  { propKey: "dtId", dataType: "string", isPrimaryKey: true },
-  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Equipment" },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "startTime", dataType: "date", isPrimaryKey: false },
-  { propKey: "endTime", dataType: "date", isPrimaryKey: false },
-  { propKey: "durationMin", dataType: "number", isPrimaryKey: false },
-  { propKey: "reason", dataType: "enum", isPrimaryKey: false }, // 故障 | 换型 | 待料 | 计划停机 | 其他
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 进行中 | 已恢复
+  { propKey: "dtId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Equipment" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "startTime", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "endTime", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "durationMin", dataType: "number", isPrimaryKey: false, unit: "分钟", scale: "absolute" },
+  { propKey: "reason", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 故障 | 换型 | 待料 | 计划停机 | 其他
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 进行中 | 已恢复
 ];
 
 const equipmentAlarmProps: PropertyDef[] = [
-  { propKey: "alarmId", dataType: "string", isPrimaryKey: true },
-  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Equipment" },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
-  { propKey: "alarmCode", dataType: "string", isPrimaryKey: false },
-  { propKey: "alarmLevel", dataType: "enum", isPrimaryKey: false }, // 提示 | 警告 | 紧急
-  { propKey: "message", dataType: "string", isPrimaryKey: false },
-  { propKey: "triggeredAt", dataType: "date", isPrimaryKey: false },
-  { propKey: "clearedAt", dataType: "date", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 活跃 | 已确认 | 已清除
+  { propKey: "alarmId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Equipment" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "alarmCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "alarmLevel", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 提示 | 警告 | 紧急
+  { propKey: "message", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "triggeredAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "clearedAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 活跃 | 已确认 | 已清除
 ];
 
 // ---------------------------------------------------------------------------
@@ -1743,15 +1769,15 @@ const equipmentAlarmProps: PropertyDef[] = [
 // R13：refType/refId 保留下钻回源对象。R14：严重度阈值集中配置表（不散落魔数）。
 // ---------------------------------------------------------------------------
 const exceptionEventProps: PropertyDef[] = [
-  { propKey: "excId", dataType: "string", isPrimaryKey: true, searchable: true },
-  { propKey: "excType", dataType: "enum", isPrimaryKey: false }, // MATERIAL_SHORTAGE | EQUIPMENT | QUALITY | CUSTOMER
-  { propKey: "source", dataType: "enum", isPrimaryKey: false }, // downtime | alarm | defect | trigger | material_balance
-  { propKey: "severity", dataType: "enum", isPrimaryKey: false }, // LOW | MEDIUM | HIGH | CRITICAL
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // OPEN | ACK | RESOLVED
-  { propKey: "refType", dataType: "string", isPrimaryKey: false }, // 源对象类型键（R13 下钻）
-  { propKey: "refId", dataType: "string", isPrimaryKey: false }, // 源对象业务主键
-  { propKey: "summary", dataType: "string", isPrimaryKey: false, searchable: true },
-  { propKey: "occurredAt", dataType: "date", isPrimaryKey: false }, // 源时间戳或 T0 派生
+  { propKey: "excId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "excType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // MATERIAL_SHORTAGE | EQUIPMENT | QUALITY | CUSTOMER
+  { propKey: "source", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // downtime | alarm | defect | trigger | material_balance
+  { propKey: "severity", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // LOW | MEDIUM | HIGH | CRITICAL
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // OPEN | ACK | RESOLVED
+  { propKey: "refType", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 源对象类型键（R13 下钻）
+  { propKey: "refId", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 源对象业务主键
+  { propKey: "summary", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "occurredAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 源时间戳或 T0 派生
 ];
 
 /** R14：严重度阈值配置表（集中·可审计·非散落魔数）。 */
@@ -1895,90 +1921,90 @@ export function projectExceptionEvents(src: ExceptionSourceBundle, t0: number): 
 
 // Phase 3 MES Domain: Maintenance Execution
 const maintenanceOrderProps: PropertyDef[] = [
-  { propKey: "moId", dataType: "string", isPrimaryKey: true },
-  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Equipment" },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "maintType", dataType: "enum", isPrimaryKey: false }, // 预防性 | 预测性 |  corrective
-  { propKey: "priority", dataType: "enum", isPrimaryKey: false }, // 低 | 中 | 高 | 紧急
-  { propKey: "plannedStart", dataType: "date", isPrimaryKey: false },
-  { propKey: "plannedEnd", dataType: "date", isPrimaryKey: false },
-  { propKey: "actualStart", dataType: "date", isPrimaryKey: false },
-  { propKey: "actualEnd", dataType: "date", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 待执行 | 执行中 | 已完成 | 已取消
+  { propKey: "moId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Equipment" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "maintType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 预防性 | 预测性 |  corrective
+  { propKey: "priority", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 低 | 中 | 高 | 紧急
+  { propKey: "plannedStart", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "plannedEnd", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "actualStart", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "actualEnd", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 待执行 | 执行中 | 已完成 | 已取消
 ];
 
 const sparePartConsumptionProps: PropertyDef[] = [
-  { propKey: "consumptionId", dataType: "string", isPrimaryKey: true },
-  { propKey: "moId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "MaintenanceOrder" },
-  { propKey: "partCode", dataType: "string", isPrimaryKey: false },
-  { propKey: "partName", dataType: "string", isPrimaryKey: false },
-  { propKey: "qtyUsed", dataType: "number", isPrimaryKey: false },
-  { propKey: "unit", dataType: "string", isPrimaryKey: false },
-  { propKey: "consumedAt", dataType: "date", isPrimaryKey: false },
+  { propKey: "consumptionId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "moId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "MaintenanceOrder" },
+  { propKey: "partCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "partName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "qtyUsed", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "unit", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "consumedAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 // Phase 3 MES Domain: Labor Tracking
 const operatorAttendanceProps: PropertyDef[] = [
-  { propKey: "attId", dataType: "string", isPrimaryKey: true },
-  { propKey: "operatorId", dataType: "string", isPrimaryKey: false },
-  { propKey: "operatorName", dataType: "string", isPrimaryKey: false },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "date", dataType: "date", isPrimaryKey: false },
-  { propKey: "shift", dataType: "enum", isPrimaryKey: false }, // 白班 | 夜班
-  { propKey: "checkIn", dataType: "date", isPrimaryKey: false },
-  { propKey: "checkOut", dataType: "date", isPrimaryKey: false },
-  { propKey: "hoursWorked", dataType: "number", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 正常 | 迟到 | 早退 | 缺勤
+  { propKey: "attId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operatorId", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operatorName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "date", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "shift", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 白班 | 夜班
+  { propKey: "checkIn", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "checkOut", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "hoursWorked", dataType: "number", isPrimaryKey: false, unit: "h", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 正常 | 迟到 | 早退 | 缺勤
 ];
 
 const operatorSkillCertProps: PropertyDef[] = [
-  { propKey: "certId", dataType: "string", isPrimaryKey: true },
-  { propKey: "operatorId", dataType: "string", isPrimaryKey: false },
-  { propKey: "skillName", dataType: "string", isPrimaryKey: false },
-  { propKey: "skillLevel", dataType: "enum", isPrimaryKey: false }, // 初级 | 中级 | 高级 | 技师
-  { propKey: "certifiedBy", dataType: "string", isPrimaryKey: false },
-  { propKey: "certifiedDate", dataType: "date", isPrimaryKey: false },
-  { propKey: "expireDate", dataType: "date", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // 有效 | 过期 | 吊销
+  { propKey: "certId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operatorId", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "skillName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "skillLevel", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 初级 | 中级 | 高级 | 技师
+  { propKey: "certifiedBy", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "certifiedDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "expireDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 有效 | 过期 | 吊销
 ];
 
 // §7.14 计划域对象（年度情景 / 触发条件 / 目标分解 —— S&OP 目标线同源对象）
 const annualScenarioProps: PropertyDef[] = [
-  { propKey: "scnId", dataType: "string", isPrimaryKey: true },
-  { propKey: "key", dataType: "enum", isPrimaryKey: false }, // conservative | baseline | aggressive
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
-  { propKey: "year", dataType: "number", isPrimaryKey: false },
-  { propKey: "demand", dataType: "number", isPrimaryKey: false },
-  { propKey: "note", dataType: "string", isPrimaryKey: false },
-  { propKey: "capacityDecision", dataType: "string", isPrimaryKey: false },
-  { propKey: "ltaLock", dataType: "string", isPrimaryKey: false },
-  { propKey: "revenue", dataType: "number", isPrimaryKey: false },
-  { propKey: "capex", dataType: "number", isPrimaryKey: false },
-  { propKey: "irr", dataType: "number", isPrimaryKey: false },
-  { propKey: "cashCushion", dataType: "number", isPrimaryKey: false },
-  { propKey: "finalized", dataType: "boolean", isPrimaryKey: false },
-  { propKey: "finalizedAt", dataType: "date", isPrimaryKey: false },
+  { propKey: "scnId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "key", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // conservative | baseline | aggressive
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "year", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "demand", dataType: "number", isPrimaryKey: false, unit: "万套", scale: "absolute" },
+  { propKey: "note", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "capacityDecision", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "ltaLock", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "revenue", dataType: "number", isPrimaryKey: false, unit: "亿元", scale: "absolute" },
+  { propKey: "capex", dataType: "number", isPrimaryKey: false, unit: "亿元", scale: "absolute" },
+  { propKey: "irr", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" },
+  { propKey: "cashCushion", dataType: "number", isPrimaryKey: false, unit: "亿元", scale: "absolute" },
+  { propKey: "finalized", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "finalizedAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const scenarioTriggerProps: PropertyDef[] = [
-  { propKey: "trigId", dataType: "string", isPrimaryKey: true },
-  { propKey: "condition", dataType: "string", isPrimaryKey: false },
-  { propKey: "expr", dataType: "string", isPrimaryKey: false }, // 后端规则扫描表达式（metrics payload）
-  { propKey: "action", dataType: "string", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // MONITORING | TRIGGERED
-  { propKey: "triggeredAt", dataType: "date", isPrimaryKey: false },
-  { propKey: "notifiedTo", dataType: "json", isPrimaryKey: false },
+  { propKey: "trigId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "condition", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "expr", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 后端规则扫描表达式（metrics payload）
+  { propKey: "action", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // MONITORING | TRIGGERED
+  { propKey: "triggeredAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "notifiedTo", dataType: "json", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const planTargetProps: PropertyDef[] = [
-  { propKey: "tgtId", dataType: "string", isPrimaryKey: true },
-  { propKey: "period", dataType: "string", isPrimaryKey: false }, // "2026" | "2026-Q1" | "2026-01"
-  { propKey: "level", dataType: "enum", isPrimaryKey: false }, // year | quarter | month
-  { propKey: "value", dataType: "number", isPrimaryKey: false },
-  { propKey: "year", dataType: "number", isPrimaryKey: false },
-  { propKey: "scenarioKey", dataType: "string", isPrimaryKey: false },
+  { propKey: "tgtId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "period", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // "2026" | "2026-Q1" | "2026-01"
+  { propKey: "level", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // year | quarter | month
+  { propKey: "value", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "year", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "scenarioKey", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 /** §7.20 血缘：源系统绑定（连接器·数据集·字段映射），mapping 表与图谱 source 视角共用 */
@@ -2628,26 +2654,25 @@ export function withPropDisplayNames(typeKey: string, props: PropertyDef[]): Pro
   });
 }
 
-/** 治理增量 §3/§4：名称类字段 searchable=true（A3 建议同语义）+ 单位补充。 */
+/**
+ * 治理增量 §3：名称类字段 searchable=true（A3 建议同语义）。
+ *
+ * ── WO-UNIT-KWH：这里原本还挂着一张**运行时单位回填表** ──────────────────────────
+ * 改前它给 8 个属性补 `unit`（`Base.{gwh,util,openCost,serveCost}` / `Model.unitPrice` /
+ * `Order.{qty,unitPrice}` / `Shipment.qtyTons`），而这些属性的字面量里**并没有**单位。
+ * 于是同一个事实有两个出处，且只有跑到这里才成立 —— 「源码里 grep 不到单位，
+ * 运行时却读得回来」正是量纲普查里最难对齐的那一段（普查按 REST 读回 5 个货币字段，
+ * 而源码字面量里当时只找得到 1 个）。
+ *
+ * 量纲改必填之后，单位在**构造点**就已声明且类型系统兜底，这张表的 8 条已被逐条搬进字面量
+ * （取值逐字不变），故整表退役：**单一出处 > 并存**。
+ */
 function withGovernance(key: string, props: PropertyDef[]): PropertyDef[] {
-  const units: Record<string, Record<string, string>> = {
-    // WO-OPT-WHATIF-DATA：openCost/serveCost 显式标口径（R18）——「万元」是 facility_location 目标值的单位，
-    // 不标则 Δ目标值在答案里是个没量纲的裸数（同 WO-UNITPRICE-SCALE 的病）。
-    Base: { gwh: "GWh", util: "%", openCost: "万元", serveCost: "万元" },
-    Model: { unitPrice: "元" },
-    // WO-UNITPRICE-SCALE（R18 口径显式标注）：Order.unitPrice 此前**未声明单位**，而同源的
-    // Model.unitPrice / OrderLine.unitPrice 都已标 "元" —— 缺声明正是「两处单价看着冲突」的温床。
-    // 补齐后 Order.unitPrice 的元/套口径在 propDef 层可自证（消费侧另见 solvers/service.ts orderVal）。
-    Order: { qty: "件", unitPrice: "元" },
-    Shipment: { qtyTons: "吨" },
-  };
   return withPropDisplayNames(key, props).map((p) => {
     const out = { ...p };
     if (p.propKey === "name" || p.propKey === "displayName" || (p.isPrimaryKey && p.dataType === "string")) {
       out.searchable = true;
     }
-    const u = units[key]?.[p.propKey];
-    if (u) out.unit = u;
     return out;
   });
 }
@@ -4318,9 +4343,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   const nLinesPerBase = WORKSHOP_DEFS.length;
   for (const b of bases) {
     // WO-SCALE-COHERENCE 断裂点B：产能微观参数按 gwhᵢ 派生（令 computeRollup 的 min 绑定 gwh 夹点·不改求解器）。
-    // 物理→套：名牌套/年 = gwhᵢ×1e6/packEnergyKwh；有效套/年 = 名牌套×util（util 为百分数，÷100）。
+    // 物理→套：名牌套/年 = gwhᵢ×1e6/packEnergyKwhAnchor；有效套/年 = 名牌套×util（util 为百分数，÷100）。
     const utilFrac = b.util / 100; // BASE_REGISTRY.util 为百分口径（88/85…），÷100 取分数
-    const annualEffectivePacks = (b.gwh * 1e6) / packEnergyKwh * utilFrac; // 有效套/年（名牌×利用率）
+    const annualEffectivePacks = (b.gwh * 1e6) / packEnergyKwhAnchor * utilFrac; // 有效套/年（名牌×利用率）
     // 化成/老化 基地共享夹点（电芯/日）——周产能口径：weeklyWan=dailyCells×7/packCellCount/1e4 → ×52 年化=52×7=364 日历日。
     const baseDailyCellsWeekly = Math.round((annualEffectivePacks * (BATTERY_SOLVER_PARAMS.packCellCount as number)) / (52 * 7));
     // 每线套/日（供 supply_demand ×operatingDaysPerYear/1e4 年化）——13 基地×10 线 Σ×300/1e4 = Σ有效套/1e4 = 名牌×util 尺度。

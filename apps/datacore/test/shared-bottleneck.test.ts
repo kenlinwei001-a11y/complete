@@ -12,8 +12,8 @@ import type { AuthCtx } from "../src/domain.js";
 describe("PRD-fde §8d/Q4 · shared_bottleneck 求解器（谁挤占谁/哪单降级）", () => {
   async function seedContention(t: TestApp, ctx: AuthCtx) {
     // 本体类型 Proc(procId pk, capacity) / Ord(so pk, procRef→Proc, qty, prio)
-    await t.repos.ontologyTypes.put({ id: "ot_proc", tenantId: ctx.tenantId, key: "Proc", displayName: "工序", domain: "process", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "procId", dataType: "string", isPrimaryKey: true }, { propKey: "capacity", dataType: "number", isPrimaryKey: false }] });
-    await t.repos.ontologyTypes.put({ id: "ot_ord", tenantId: ctx.tenantId, key: "Ord", displayName: "订单", domain: "sales", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true }, { propKey: "procRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Proc" }, { propKey: "qty", dataType: "number", isPrimaryKey: false }, { propKey: "prio", dataType: "number", isPrimaryKey: false }] });
+    await t.repos.ontologyTypes.put({ id: "ot_proc", tenantId: ctx.tenantId, key: "Proc", displayName: "工序", domain: "process", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "procId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, { propKey: "capacity", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }] });
+    await t.repos.ontologyTypes.put({ id: "ot_ord", tenantId: ctx.tenantId, key: "Ord", displayName: "订单", domain: "sales", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, { propKey: "procRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Proc" }, { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, { propKey: "prio", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }] });
     // 化成工序产能 10；另一道宽松工序产能 100
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_p1", tenantId: ctx.tenantId, type: "Proc", props: { procId: "化成", capacity: 10 } });
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_p2", tenantId: ctx.tenantId, type: "Proc", props: { procId: "卷绕", capacity: 100 } });
@@ -49,7 +49,7 @@ describe("PRD-fde §8d/Q4 · shared_bottleneck 求解器（谁挤占谁/哪单�
   it("无争用(各走各的) → 零瓶颈;缺参数 → 报错", async () => {
     const t = await makeApp();
     const ctx: AuthCtx = { tenantId: "demo", userId: "u", roles: ["admin"], attributes: {} };
-    await t.repos.ontologyTypes.put({ id: "ot_proc", tenantId: ctx.tenantId, key: "Proc", displayName: "工序", domain: "process", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "procId", dataType: "string", isPrimaryKey: true }, { propKey: "capacity", dataType: "number", isPrimaryKey: false }] });
+    await t.repos.ontologyTypes.put({ id: "ot_proc", tenantId: ctx.tenantId, key: "Proc", displayName: "工序", domain: "process", version: 1, status: "ACTIVE", derivedProperties: [], sourceBindings: [], properties: [{ propKey: "procId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, { propKey: "capacity", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }] });
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "o_p1", tenantId: ctx.tenantId, type: "Proc", props: { procId: "化成", capacity: 100 } });
     const out = await t.services.solvers.invoke(ctx, "shared_bottleneck", { resourceType: "Proc", sharedByType: "Ord", viaField: "procRef" });
     expect((out.bottlenecks as unknown[]).length).toBe(0);

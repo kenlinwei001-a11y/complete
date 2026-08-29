@@ -210,10 +210,140 @@ export interface Rule {
 // A4 ontology + objects
 // ---------------------------------------------------------------------------
 
+/**
+ * WO-UNIT-KWH · 量纲刻度：这个数是**绝对量**还是**比例量**。
+ *
+ * - `"absolute"` 绝对量 —— 可直接相加求和（GWh / 元 / 吨 / 天 / 个 / 计数 / 标识）。
+ * - `"ratio"`    比例量 —— **不可直接相加**，合并必须按底数加权（利用率 / 良率 / 达成率 / 毛利率）。
+ *
+ * 为什么与 `unit` 分开声明：`unit` 只说「单位是什么」，说不了「这个数能不能相加」。
+ * 本仓 `Line.schedule_attainment` 的 100× 显示错、以及「产能利用率同名两套量纲」，
+ * 根子都是**比例量被当绝对量搬运**。两个字段合起来才能把这类错在编译期区分开：
+ *   `unit:"%"            scale:"ratio"`  ⇒ 0–100 表示法（91.1 读作 91.1%）
+ *   `unit:"dimensionless" scale:"ratio"` ⇒ 0–1 表示法（0.911 读作 91.1%）
+ * 单看 `unit` 这两者长得一模一样 —— 那正是 100× 那个 bug 的藏身处。
+ */
+export type PropertyScale = "absolute" | "ratio";
+
+/**
+ * WO-UNIT-KWH · 量纲单位。**必填**，无量纲必须显式写 `"dimensionless"`。
+ *
+ * 为什么必填而不是可选：改之前 `unit?: string`，873 个属性里只有 24 个声明了单位，
+ * 其余 849 个**沉默**；而下游一律用真值判断（`p.unit ? … : …`）把沉默读成「没单位」。
+ * 于是「**还没人看过这个字段**」与「**看过了，确实无量纲**」在类型和运行时都长得一模一样。
+ * 今天所有量纲事故的根都是这一条：**沉默被默认读成没单位**。必填把沉默变成明确声明。
+ *
+ * ⚠ 闭合联合（不是 `string`）是有意的：新增一个单位从此是**故意动作**而非顺手打字 ——
+ * 写一个不在册的单位当场编译失败，逼作者回到这里加一条并说明它属于哪一族。
+ * 这也让 `UNIT_DICTIONARY`（运行时字典门）能从本类型派生，消掉「种子直写绕过字典门」
+ * 那处不对称（既有实测：`unit:'点'` 走 REST upsert 报 400，走仓储直写却放行）。
+ *
+ * ⛔ **R-UNIT**（`docs/DECISION-unit-of-account.md` §1 裁决）：
+ * 钱与产能一律以 kWh 记账；**「套 / 电芯」只作物理计数，不得充当金额或产能的分母**。
+ * 故本册**没有** `"元/套"` 这类单位 —— 它在改前真实存在过一处，是本裁决要收掉的东西。
+ */
+export const PROPERTY_UNITS = [
+  // ── 明确无量纲（计数无单位 / 标识 / 名称 / 枚举 / 日期 / 引用 / 0–1 比值）───────────
+  "dimensionless",
+  // ── 钱（R-UNIT：绝对额锚到「元」；单价一律以 kWh 或物料自身单位作分母，禁用「套」）──
+  "元",
+  "万元",
+  "亿元",
+  "元/kWh",
+  "元/吨",
+  // ── 能量 / 产能（kWh 同族 —— 裁决后产能直接用本族，不再换算成「套」）──────────────
+  "kWh",
+  "MWh",
+  "GWh",
+  // ── 物理计数（可作物理量，**不可作金额/产能分母**）──────────────────────────────
+  "套",
+  "万套",
+  "电芯",
+  "件",
+  "个",
+  "台",
+  "条",
+  "批",
+  "单",
+  "项",
+  "次",
+  // ── 质量 / 体积 / 面积 ─────────────────────────────────────────────────────────
+  "吨",
+  "kg",
+  "g",
+  "㎡",
+  "L",
+  // ── 电气 / 物理规格（电芯铭牌：energy = capacity × voltage 三者同族）──────────────
+  "Ah",
+  "V",
+  "Wh",
+  "kgCO2e",
+  "°",
+  // ── 人 / 班 ───────────────────────────────────────────────────────────────────
+  "人",
+  "班",
+  // ── 时间 ──────────────────────────────────────────────────────────────────────
+  "秒",
+  "分钟",
+  "h",
+  "天",
+  "周",
+  "月",
+  "年",
+  // ── 速率 / 流量（分母是时间或窗口）─────────────────────────────────────────────
+  "万套/年",
+  "万套/月",
+  "万套/窗口",
+  "套/天",
+  "套/日",
+  "件/日",
+  "电芯/天",
+  "GWh/年",
+  // ── 比例 / 评分 ───────────────────────────────────────────────────────────────
+  "%",
+  "点",
+  "级",
+] as const;
+
+/** 见 {@link PROPERTY_UNITS}。类型与运行时字典同一份数据派生 —— 不许各抄一份。 */
+export type PropertyUnit = (typeof PROPERTY_UNITS)[number];
+
+/**
+ * 取**可显示**的单位：`"dimensionless"` ⇒ `undefined`（屏上不显示单位），其余原样返回。
+ *
+ * ⚠ 为什么必须有这个函数：量纲改必填后 `unit` **恒非空**，而下游一路都是
+ * `p.unit ? \`单位 ${p.unit}\` : null` 这类**真值判断** —— 直接放行会让每个名称/枚举/日期字段
+ * 在屏上和喂给 Agent 的地图里都长出一句「单位 dimensionless」。
+ * 「明确声明无量纲」是**给机器看的**，不是给人看的；两者的区别就落在这一个函数里。
+ * 所有展示/投影侧一律经它取值，不许再直接读 `p.unit` 做真值判断。
+ */
+export function displayUnit(unit: PropertyUnit | undefined): string | undefined {
+  return unit && unit !== "dimensionless" ? unit : undefined;
+}
+
+/** `PropertyDef.dataType` 的取值域。 */
+export type PropertyDataType = "string" | "number" | "boolean" | "date" | "enum" | "ref" | "json";
+/**
+ * 非数值型数据类型 —— **结构上不可能承载量纲**（名称/枚举/日期/引用/布尔/JSON 没有单位）。
+ * 属性工厂用它把「这类属性必然 dimensionless」升级成**类型级事实**，
+ * 从而只对真正能出量纲事故的 `number` 强制作者报量纲。
+ */
+export type NonNumericDataType = Exclude<PropertyDataType, "number">;
+
 export interface PropertyDef {
   propKey: string;
-  dataType: "string" | "number" | "boolean" | "date" | "enum" | "ref" | "json";
+  dataType: PropertyDataType;
   isPrimaryKey: boolean;
+  /**
+   * WO-UNIT-KWH · 量纲单位（**必填**）。无量纲写 `"dimensionless"`，不许省略、不许空串。
+   * 详见 {@link PropertyUnit}。
+   */
+  unit: PropertyUnit;
+  /**
+   * WO-UNIT-KWH · 量纲刻度（**必填**）。绝对量 `"absolute"` / 比例量 `"ratio"`。
+   * 详见 {@link PropertyScale}。
+   */
+  scale: PropertyScale;
   refToTypeKey?: string | null;
   /** 本体原子规格 §1：枚举取值（dataType=enum）。 */
   enumValues?: string[];
@@ -223,8 +353,7 @@ export interface PropertyDef {
   temporal?: boolean;
   /** 治理增量 §3：关键词搜索命中范围（A3 建议对名称类字段置 true）。 */
   searchable?: boolean;
-  /** 治理增量 §4：单位（场景包单位字典约束）+ 展示格式（如 "0.0"）。 */
-  unit?: string;
+  /** 治理增量 §4：展示格式（如 "0.0"）。单位已上移为必填的 `unit`（见 {@link PropertyUnit}）。 */
   displayFormat?: string;
   /**
    * WO-SCHEMA-ZH · 属性中文业务名（"leadTime" → "到货周期"）——与 unit 并列的**展示层单一真值**。
@@ -248,6 +377,21 @@ export interface DerivedPropertyDef {
   propKey: string;
   /** e.g. "SUM(Order.qty BY model)" | "COUNT(Order.so BY bases)" | "qty * unitPrice" */
   formula: string;
+  /**
+   * WO-UNIT-KWH · 量纲单位（**必填**，与 {@link PropertyDef} 同一套词表）。
+   *
+   * ⚠ 为什么派生属性也必须报量纲：派生值**恰恰是最容易出量纲事故的那一类** —— 它的单位由公式
+   * 决定，而公式里两个因子的单位常常不同（`Order.value = qty(件) × unitPrice(元)` ⇒ 元；
+   * `revenueWan = 需求(万套) × priceWan(万元/套)` ⇒ **万元**）。改前 `DerivedPropertyDef` 只有
+   * `propKey` 与 `formula`，**结构上就没有地方声明单位**，于是这三个金额字段的口径只活在行尾注释里：
+   *   `revenueWan` 注释「收入(万)」· `marginWan` 注释「毛利额(万)」· `Order.value` 注释在别处。
+   * 本仓真实为此吃过亏：`gap_attribution` 曾标 `drillField:"value"`（`Order.value` 单位=元）
+   * 却回万元口径的归因权重，**差 1e4**（见 `solvers/chain-loss.ts` 的病史注释）。
+   * 注释救不了机器 —— 补上声明位，让派生值的单位和普通属性一样可被读取与校验。
+   */
+  unit: PropertyUnit;
+  /** WO-UNIT-KWH · 量纲刻度（**必填**）。绝对量 / 比例量，判据同 {@link PropertyScale}。 */
+  scale: PropertyScale;
 }
 
 /** 治理增量 §2.2 弃用元数据（type/link/prop 复用同结构）。 */

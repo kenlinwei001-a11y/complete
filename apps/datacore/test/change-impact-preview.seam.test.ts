@@ -436,7 +436,7 @@ describe("WO-CHANGE-IMPACT-PREVIEW · 对抗审查 REAL-BUG 复发闸", () => {
     await t.repos.ontologyTypes.put({
       id: "ot_ghost", tenantId: "demo", key: "Ghost", displayName: "已下线类型", domain: "x",
       version: 1, status: "RETIRED", derivedProperties: [], sourceBindings: [],
-      properties: [{ propKey: "g", dataType: "number", isPrimaryKey: true }],
+      properties: [{ propKey: "g", dataType: "number", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }],
     });
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "g1", tenantId: "demo", type: "Ghost", props: { g: 1 } });
     const world = await buildChangeImpactWorld(t.repos, "demo");

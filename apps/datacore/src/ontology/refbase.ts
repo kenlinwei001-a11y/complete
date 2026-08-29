@@ -130,12 +130,13 @@ const CROSS_DOMAIN_SEAMS: [string, string][] = [
   ["decision", "people"],
 ];
 
+// 标识与名称都是 string 属性 —— 结构上不承载量纲，故显式 dimensionless（不是省略）。
 function pkProp(key: string): PropertyDef {
-  return { propKey: `${key.charAt(0).toLowerCase() + key.slice(1)}Id`, dataType: "string", isPrimaryKey: true };
+  return { propKey: `${key.charAt(0).toLowerCase() + key.slice(1)}Id`, dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" };
 }
 
 function nameProp(): PropertyDef {
-  return { propKey: "name", dataType: "string", isPrimaryKey: false, searchable: true };
+  return { propKey: "name", dataType: "string", isPrimaryKey: false, searchable: true, unit: "dimensionless", scale: "absolute" };
 }
 
 export interface RefbaseOntology {

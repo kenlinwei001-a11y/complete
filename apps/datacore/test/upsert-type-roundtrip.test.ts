@@ -33,12 +33,18 @@ function fullTypeInput(key = "D6Probe"): Omit<ObjectTypeDef, "id" | "tenantId" |
     displayName: "D6 探针类型",
     domain: "product",
     properties: [
+      // ⚠ 键序必须与 app.ts 的 zod properties schema **逐键同序**：`fieldDiff` 比的是
+      //   `JSON.stringify`，而 zod 解析后按 **schema 顺序**重排键（实测：输入 unit/scale 放
+      //   isPrimaryKey 之后，解析出来却落在 searchable 之后）⇒ 顺序不一致会让本门报「properties 被吞」，
+      //   而其实一个字段都没少。故 unit/scale 放在 searchable 与 displayFormat 之间。
       {
         propKey: "probeId",
         dataType: "string",
         isPrimaryKey: true,
         required: true,
         searchable: true,
+        unit: "dimensionless",
+        scale: "absolute",
         displayName: "探针主键",
         description: "属性级中文名/描述也走同一条窄门",
       },
@@ -46,12 +52,14 @@ function fullTypeInput(key = "D6Probe"): Omit<ObjectTypeDef, "id" | "tenantId" |
         propKey: "secret",
         dataType: "string",
         isPrimaryKey: false,
+        unit: "dimensionless",
+        scale: "absolute",
         displayName: "机密字段",
         description: "供 security 脱敏规则指向",
       },
-      { propKey: "risk", dataType: "number", isPrimaryKey: false },
+      { propKey: "risk", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
     ],
-    derivedProperties: [{ propKey: "risk", formula: "probeId" }],
+    derivedProperties: [{ propKey: "risk", formula: "probeId", unit: "dimensionless", scale: "absolute" as const }],
     sourceBindings: [{ connId: "conn_probe", dataset: "ds_probe", fieldMappings: { probeId: "PROBE_ID" } }],
     // —— 以下 7 个即 WO-D6 的被吞字段（OntoFlow 扩展 / 本体七要素残片）——
     storageMode: "ONTOLOGY",

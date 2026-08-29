@@ -1,4 +1,4 @@
-import type { ObjectTypeDef, PropertyDef } from "../domain.js";
+import type { ObjectTypeDef, PropertyDef, PropertyUnit, PropertyScale, NonNumericDataType } from "../domain.js";
 import { WAVE1_SCALE_FACTOR } from "@platform/contracts";
 import { mulberry32, round, hashString } from "../prng.js";
 import { withPropDisplayNames, ORDER_CUST_TO_CUSTOMER, CUSTOMER_REGISTRY } from "./battery.js";
@@ -14,15 +14,40 @@ import { withPropDisplayNames, ORDER_CUST_TO_CUSTOMER, CUSTOMER_REGISTRY } from 
 // `description` 是**能力语义**不是可选装饰（`ontology-descriptions:check` 的原话），
 // 故 p() 必须能带它 —— 此前签名里根本没有这个位置，于是本文件新加的属性一律无法带描述，
 // 只能进棘轮基线挂账。给了位置，新属性才有「补描述」这条路可走。
+// WO-UNIT-KWH · 量纲必填后，属性工厂拆成**非数值**与**数值**两支：
+//   · `p()`  非数值（string/enum/date/ref/boolean/json）—— 结构上不可能有量纲，
+//            工厂代填 `dimensionless`。这不是「沉默」，是**类型级事实**：
+//            `dataType` 被收窄成 `NonNumericDataType`，想拿它建一个 number 属性根本编译不过。
+//   · `n()`  数值 —— **必须报 unit**，没有默认值。真正会出量纲事故的只有数值属性，
+//            把强制点压在这里，既不放过一个，也不给 700 个名称字段刷无意义的 `dimensionless`。
+// ⚠ 改前 `p()` 的 `dataType` 默认是 `"number"`，於是 `p("unitPrice")` 这种写法**默默造出一个数值属性**；
+//    这正是「沉默被读成没单位」的温床，故默认值一并去掉。
 const p = (
   propKey: string,
-  dataType: PropertyDef["dataType"] = "number",
+  dataType: NonNumericDataType,
   isPrimaryKey = false,
   description?: string,
 ): PropertyDef => ({
   propKey,
   dataType,
   isPrimaryKey,
+  unit: "dimensionless",
+  scale: "absolute",
+  ...(description ? { description } : {}),
+});
+
+/** 数值属性：`unit` 必填；`scale` 默认绝对量，比例量（0–1 或 0–100）必须显式写 `"ratio"`。 */
+const n = (
+  propKey: string,
+  unit: PropertyUnit,
+  scale: PropertyScale = "absolute",
+  description?: string,
+): PropertyDef => ({
+  propKey,
+  dataType: "number",
+  isPrimaryKey: false,
+  unit,
+  scale,
   ...(description ? { description } : {}),
 });
 
@@ -59,35 +84,52 @@ const def = (key: string, displayName: string, domain: string, props: PropertyDe
  * WO-SANDBOX-D2 · 带 description 的属性（`ontology-descriptions:check` 棘轮门要求新增属性必须有描述 ——
  * 描述是能力语义，Agent 拿到的地图腐化 = 判断腐化）。`p()` 保持原签名不动（存量属性不受影响）。
  */
-const pd = (propKey: string, description: string, dataType: PropertyDef["dataType"] = "number", isPrimaryKey = false): PropertyDef => ({
+const pd = (propKey: string, description: string, dataType: NonNumericDataType, isPrimaryKey = false): PropertyDef => ({
   propKey,
   dataType,
   isPrimaryKey,
+  unit: "dimensionless",
+  scale: "absolute",
   description,
 });
-/** 同上，ref 型属性带描述。 */
+/** 同 `n()`，数值属性带描述（`unit` 必填）。 */
+const nd = (propKey: string, description: string, unit: PropertyUnit, scale: PropertyScale = "absolute"): PropertyDef => ({
+  propKey,
+  dataType: "number",
+  isPrimaryKey: false,
+  unit,
+  scale,
+  description,
+});
+/** 同上，ref 型属性带描述（引用无量纲）。 */
 const rd = (propKey: string, refToTypeKey: string, description: string): PropertyDef => ({
   propKey,
   dataType: "ref",
   isPrimaryKey: false,
   refToTypeKey,
+  unit: "dimensionless",
+  scale: "absolute",
   description,
 });
 
 export function extendedObjectTypes(): TypeDef[] {
   return [
     // Phase 2 Wave 2：扩展 Material 属性 + 新增 Supplier（供应链支撑）
+    // ⚠ `devPct` 的名字在骗人：后缀 `Pct` 读作百分数，**真起后端实测值是 [0.02, 0.08]**（0–1 小数）。
+    //   照名字标成 `%` 会让屏上把 0.02 读成 0.02%（真值 2%），差 100×。故按实测标 dimensionless+ratio。
+    //   这是本单第 4 个「名字里的单位与实际值对不上」的字段（另三个：revenueWan/marginWan 的 Wan 实为亿元、
+    //   下面 samplingRate 反向）—— **名字不是量纲的证据，实测值才是**。
     def("Material", "物料", "supply", [
-      p("matId", "string", true), p("name", "string"), p("unitPrice"), p("leadTime"), p("carbonFactor"), p("bomUnit"), p("dailyUse"), p("onHand"), p("inTransit"), p("devPct"), p("outsourceYield"),
+      p("matId", "string", true), p("name", "string"), n("unitPrice", "元", "absolute"), n("leadTime", "天", "absolute"), n("carbonFactor", "kgCO2e", "absolute"), n("bomUnit", "dimensionless", "absolute"), n("dailyUse", "吨", "absolute"), n("onHand", "吨", "absolute"), n("inTransit", "吨", "absolute"), n("devPct", "dimensionless", "ratio"), n("outsourceYield", "dimensionless", "ratio"),
       p("materialCode", "string"), p("category", "enum"), p("spec", "string"), p("unit", "string"),
-      { propKey: "supplierId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Supplier" },
-      p("shelfLife"), p("isKeyMaterial", "boolean"), p("status", "enum"),
+      { propKey: "supplierId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Supplier", unit: "dimensionless", scale: "absolute" },
+      n("shelfLife", "天", "absolute"), p("isKeyMaterial", "boolean"), p("status", "enum"),
     ]),
     def("Supplier", "供应商", "supply", [
       p("supplierId", "string", true), p("supplierCode", "string"), p("name", "string"), p("category", "enum"),
-      p("materialType", "enum"), p("rating", "enum"), p("region", "string"), p("leadTime"), p("minOrderQty"), p("onTimeRate"), p("status", "enum"),
+      p("materialType", "enum"), p("rating", "enum"), p("region", "string"), n("leadTime", "天", "absolute"), n("minOrderQty", "吨", "absolute"), n("onTimeRate", "dimensionless", "ratio"), p("status", "enum"),
       // WO-CEO-2：供货量字段（actual<contracted = 上游减供·因果链一环·gap_attribution 叶级真值）
-      p("contractedSupplyTon"), p("actualSupplyTon"),
+      n("contractedSupplyTon", "吨", "absolute"), n("actualSupplyTon", "吨", "absolute"),
       // WO-CEO-DATA-2 §2b：真源字段（最近一批 PO 交期/单号，接 ERP/SRM）。
       p("deliveryDate", "string"), p("poNumber", "string"),
       // WO-SANDBOX-D2 采购段按责任方可分解：
@@ -95,26 +137,26 @@ export function extendedObjectTypes(): TypeDef[] {
       //  · transitDays/carrierName  —— 在途段的真值与**责任方**（承运商）。此前全仓无任何"在途耗时归谁"的承载。
       pd("sourceMode", "供货模式：境内直供 / 进口。采购段清关环节**是否存在**的唯一判据（进口才有清关段）。", "enum"),
       pd("originCountry", "原产国。进口供应商据此确定报关口岸与清关行。", "string"),
-      pd("transitDays", "在途运输前置期（天）：从供应商发运到基地的干线运输时长，不含清关与到货检验。采购段「在途」腿的真值。"),
+      nd("transitDays", "在途运输前置期（天）：从供应商发运到基地的干线运输时长，不含清关与到货检验。采购段「在途」腿的真值。", "天", "absolute"),
       pd("carrierName", "承运方。采购段「在途」腿的责任方——在途超期该找谁。", "string"),
     ]),
     // WO-CEO-2 供应链/地缘/决策域（gap_attribution 深度反向归因·因果链实体·§0 案例落成真对象）：
     def("LongTermAgreement", "长期协议", "supply", [
       p("ltaId", "string", true), p("supplierId", "string"), p("materialType", "enum"),
-      p("contractedQtyTon"), p("actualDeliveredTon"), p("priceLinked", "boolean"), p("breachPenaltyWan"),
+      n("contractedQtyTon", "吨", "absolute"), n("actualDeliveredTon", "吨", "absolute"), p("priceLinked", "boolean"), n("breachPenaltyWan", "万元", "absolute"),
       // WO-CEO-DATA-2 §2b 真源字段：价格联动公式 + 生效/失效日期（接真 ERP/合同履约）。
       p("priceFormula", "string"), p("effectiveDate", "string"), p("expiryDate", "string"),
     ]),
     def("BackupSupplierPool", "备份供应池", "supply", [
-      p("poolId", "string", true), p("materialType", "enum"), p("memberCount"), p("certWeeks"), p("procureFreqPerYear"),
+      p("poolId", "string", true), p("materialType", "enum"), n("memberCount", "个", "absolute"), n("certWeeks", "周", "absolute"), n("procureFreqPerYear", "次", "absolute"),
     ]),
     def("CommodityPriceTrend", "矿产价格趋势", "external", [
-      p("trendId", "string", true), p("commodity", "string"), p("weekOf", "string"), p("pricePerTon"), p("pctChange"),
+      p("trendId", "string", true), p("commodity", "string"), p("weekOf", "string"), n("pricePerTon", "元/吨", "absolute"), n("pctChange", "%", "ratio"),
       // WO-CEO-DATA-2 §2b 真源字段：数据来源 + 规格 + 币种（接真行情 SMM/Wind/百川）。
       p("source", "string"), p("spec", "string"), p("currency", "string"),
     ]),
     def("DecisionGap", "决策缺陷", "decision", [
-      p("gapId", "string", true), p("kind", "enum"), p("description", "string"), p("severity"), p("ownerRef", "string"),
+      p("gapId", "string", true), p("kind", "enum"), p("description", "string"), n("severity", "dimensionless", "absolute"), p("ownerRef", "string"),
       // WO-CEO-DATA-2 §2b 真源字段：评审日期 + 证据（非实测·评审录入·接真前标灰）。
       p("reviewDate", "string"), p("evidence", "string"),
     ]),
@@ -134,46 +176,46 @@ export function extendedObjectTypes(): TypeDef[] {
     ]),
     // WO-CEO-DATA-2 每指标多假设因果域 drill 真对象（market_share / revenue / cash / demand_attain）
     def("CompetitorShare", "竞品份额", "commercial", [
-      p("shareId", "string", true), p("competitor", "string"), p("segment", "string"), p("sharePct"), p("period", "string"),
+      p("shareId", "string", true), p("competitor", "string"), p("segment", "string"), n("sharePct", "%", "ratio"), p("period", "string"),
     ]),
     def("BidRecord", "竞标记录", "commercial", [
-      p("bidId", "string", true), p("segment", "string"), p("win", "boolean"), p("lossReason", "string"), p("amount"), p("competitorRef", "string"),
+      p("bidId", "string", true), p("segment", "string"), p("win", "boolean"), p("lossReason", "string"), n("amount", "万元", "absolute"), p("competitorRef", "string"),
     ]),
     def("CompetitorPrice", "竞品价格", "commercial", [
-      p("priceId", "string", true), p("competitor", "string"), p("model", "string"), p("pricePerKwh"), p("period", "string"),
+      p("priceId", "string", true), p("competitor", "string"), p("model", "string"), n("pricePerKwh", "元/kWh", "absolute"), p("period", "string"),
     ]),
     def("PipelineOpportunity", "营收漏斗", "commercial", [
-      p("oppId", "string", true), p("segment", "string"), p("stage", "string"), p("amount"), p("winProb"),
+      p("oppId", "string", true), p("segment", "string"), p("stage", "string"), n("amount", "万元", "absolute"), n("winProb", "dimensionless", "ratio"),
     ]),
     def("WinLossRecord", "赢单丢单记录", "commercial", [
-      p("recordId", "string", true), p("oppId", "string"), p("result", "enum"), p("reason", "string"), p("amount"),
+      p("recordId", "string", true), p("oppId", "string"), p("result", "enum"), p("reason", "string"), n("amount", "万元", "absolute"),
     ]),
     def("PriceRealization", "价格实现", "commercial", [
-      p("priceId", "string", true), p("model", "string"), p("listPrice"), p("realizedPrice"), p("period", "string"),
+      p("priceId", "string", true), p("model", "string"), n("listPrice", "元/kWh", "absolute"), n("realizedPrice", "元/kWh", "absolute"), p("period", "string"),
     ]),
     def("ARAging", "应收账款账龄", "finance", [
-      p("agingId", "string", true), p("customerRef", "string"), p("bucket", "enum"), p("amount"), p("period", "string"),
+      p("agingId", "string", true), p("customerRef", "string"), p("bucket", "enum"), n("amount", "万元", "absolute"), p("period", "string"),
     ]),
     def("DSO", "应收账款周转天数", "finance", [
-      p("dsoId", "string", true), p("segment", "string"), p("days"), p("period", "string"),
+      p("dsoId", "string", true), p("segment", "string"), n("days", "天", "absolute"), p("period", "string"),
     ]),
     // WO-69 P3 · Approvable 实现者②（逾期核销审批）：approver/approvedAt 为接口 `Approvable` 要求的字段，
     // amount 本就有（逾期金额）。接口约束的是**类型声明**，实例值可为空（未审批 = 尚无审批人）。
     def("OverdueRecord", "逾期记录", "finance", [
-      p("overdueId", "string", true), p("invoiceRef", "string"), p("overdueDays"), p("customerRef", "string"), p("amount"),
+      p("overdueId", "string", true), p("invoiceRef", "string"), n("overdueDays", "天", "absolute"), p("customerRef", "string"), n("amount", "万元", "absolute"),
       p("approver", "string", false, "审批人（用户标识）——WO-69 P3 `Approvable` 接口要求字段"),
       p("approvedAt", "date", false, "审批通过时间（合成值，随对象 origin=SYNTHETIC 走诚实灰标注，不冒充真实审批留痕）"),
     ]),
     // WO-TIER3 毛利桥（gross_profit 专属反向归因域 drill 真对象·impactYi 由 DemandSegment×MaterialBalance 确定性派生）
     def("GrossMarginBridge", "毛利桥", "finance", [
-      p("bridgeId", "string", true), p("lever", "enum"), p("segment", "string"), p("impactYi"), p("driver", "string"), p("period", "string"),
+      p("bridgeId", "string", true), p("lever", "enum"), p("segment", "string"), n("impactYi", "亿元", "absolute"), p("driver", "string"), p("period", "string"),
     ]),
     // WO-CEO-3 触发规则（信号阈值→行动·一等可编辑·阈值可被 RuleEntry.params 覆盖·decision_play 引擎评估）
     def("TriggerRule", "触发规则", "decision", [
-      p("triggerId", "string", true), p("signalRef", "string"), p("op", "enum"), p("threshold"),
+      p("triggerId", "string", true), p("signalRef", "string"), p("op", "enum"), n("threshold", "dimensionless", "absolute"),
       p("action", "string"), p("actionDetail", "string"), p("cfgRuleKey", "string"),
     ]),
-    def("MaterialBatch", "物料批次", "supply", [p("batchId", "string", true), p("matId", "string"), p("qty"), p("ageDays"), p("idleDays")]),
+    def("MaterialBatch", "物料批次", "supply", [p("batchId", "string", true), p("matId", "string"), n("qty", "吨", "absolute"), n("ageDays", "天", "absolute"), n("idleDays", "天", "absolute")]),
     // WO-QUOTE-MARGIN-CUSTOMER：+`orderCustNames`（本客户在订单上使用的下单品牌名集合·`Order.cust` 口径）——
     // 客户主数据与订单两套命名之间的**唯一桥**。缺这一列时 `order_of_customer` 只能轮转瞎绑（欠账 #118）。
     def("Customer", "客户", "commercial", [
@@ -183,46 +225,48 @@ export function extendedObjectTypes(): TypeDef[] {
         propKey: "orderCustNames",
         dataType: "json",
         isPrimaryKey: false,
+        unit: "dimensionless",
+        scale: "absolute",
         description:
           "本客户在订单上使用的下单品牌名集合（`Order.cust` 口径）——客户主数据的匿名化名册与订单侧品牌名之间的唯一桥。" +
           "由归属册 `ORDER_CUST_TO_CUSTOMER` 反查派生（排序确定性 R6）；`order_of_customer` 边据此绑定，" +
           "空集 = 该客户不在归属册内（不认领任何订单，诚实缺席，不参与轮转）。",
       },
-      p("creditLimit"),
-      p("termDays"),
-      p("receivables"),
-      p("wipUnbilled"),
-      p("maxOverdueDays"),
+      n("creditLimit", "万元", "absolute"),
+      n("termDays", "天", "absolute"),
+      n("receivables", "万元", "absolute"),
+      n("wipUnbilled", "万元", "absolute"),
+      n("maxOverdueDays", "天", "absolute"),
     ]),
     // WO-WAREHOUSE-CUSTLOC：客户交付地点（交付/物流/在途/跨基地调拨的地理基础）。省市/经纬度 R14 确定性配置表派生。
     def("CustomerLocation", "客户地点", "commercial", [
       p("locId", "string", true),
-      { propKey: "customerRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Customer" },
+      { propKey: "customerRef", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Customer", unit: "dimensionless", scale: "absolute" },
       p("province", "string"), p("city", "string"), p("address", "string"),
-      p("isDeliveryDefault", "boolean"), p("lon"), p("lat"),
+      p("isDeliveryDefault", "boolean"), n("lon", "°", "absolute"), n("lat", "°", "absolute"),
     ]),
     // WO-69 P3 · Approvable 实现者①（应收核销审批）。credit_exposure 的 P2 本体签名声明会读
     // ARInvoice.{amount,custName,invoiceId,overdueDays} → 接口 functions 的"可兑现性"在此类型上真被校验。
     def("ARInvoice", "应收发票", "commercial", [
-      p("invoiceId", "string", true), p("custName", "string"), p("amount"), p("overdueDays"),
+      p("invoiceId", "string", true), p("custName", "string"), n("amount", "万元", "absolute"), n("overdueDays", "天", "absolute"),
       p("approver", "string", false, "审批人（用户标识）——WO-69 P3 `Approvable` 接口要求字段"),
       p("approvedAt", "date", false, "审批通过时间（合成值，随对象 origin=SYNTHETIC 走诚实灰标注，不冒充真实审批留痕）"),
     ]),
-    def("Certification", "认证", "factory", [p("certId", "string", true), p("modelId", "string"), p("lineId", "string"), p("status", "string"), p("certHours"), p("gapContribution")]),
-    def("EnergyMeter", "能耗计量", "factory", [p("meterId", "string", true), p("baseId", "string"), p("processKey", "string"), p("energyPerUnit"), p("gridFactor")]),
-    def("ChangeoverMatrix", "换型矩阵", "factory", [p("pairId", "string", true), p("fromModel", "string"), p("toModel", "string"), p("minutes"), p("hours"), p("lineId", "string")]),
-    def("CapexProject", "产能投资项目", "plan", [p("projectId", "string", true), p("name", "string"), p("irr"), p("util24"), p("c23pass", "boolean")]),
+    def("Certification", "认证", "factory", [p("certId", "string", true), p("modelId", "string"), p("lineId", "string"), p("status", "string"), n("certHours", "h", "absolute"), n("gapContribution", "dimensionless", "absolute")]),
+    def("EnergyMeter", "能耗计量", "factory", [p("meterId", "string", true), p("baseId", "string"), p("processKey", "string"), n("energyPerUnit", "kWh", "absolute"), n("gridFactor", "kgCO2e", "absolute")]),
+    def("ChangeoverMatrix", "换型矩阵", "factory", [p("pairId", "string", true), p("fromModel", "string"), p("toModel", "string"), n("minutes", "分钟", "absolute"), n("hours", "h", "absolute"), p("lineId", "string")]),
+    def("CapexProject", "产能投资项目", "plan", [p("projectId", "string", true), p("name", "string"), n("irr", "dimensionless", "ratio"), n("util24", "dimensionless", "ratio"), p("c23pass", "boolean")]),
     // WO-SANDBOX-D2：PurchaseOrder 追加**责任方 + 四段日戳**。此前只有 `etaDay` 一个合成标量，
     // 所以缺料时只能说"晚了"、说不出"晚在哪一段/该找谁"。日戳一律**由 etaDay 倒推**（见 generateExtended），
     // 故既有 etaDay/delayed 逐字节不动（R6 基线不破），新增的是**可分解性**而非新数字。
     def("PurchaseOrder", "采购订单", "supply", [
-      p("poId", "string", true), p("matId", "string"), p("qty"), p("etaDay"), p("delayed", "boolean"),
+      p("poId", "string", true), p("matId", "string"), n("qty", "吨", "absolute"), n("etaDay", "天", "absolute"), p("delayed", "boolean"),
       rd("supplierId", "Supplier", "承接本单的供应商。采购段「供应商生产」腿的责任方——多供物料下不能再靠物料主供去猜。"),
       pd("sourceMode", "本单供货模式：境内直供 / 进口（随供应商）。决定本单是否有清关环节。", "enum"),
       // 四段日戳（相对天，可为负 = 窗口起点之前就下的单；**不夹到 0**，夹了就是编数）
-      pd("orderDay", "下单天（相对天，可为负 = 分析窗起点之前就已下单）。到 shipDay 之间即「供应商生产」腿。"),
-      pd("shipDay", "供应商发货天（相对天）。到 arriveDay 之间即「在途」腿。"),
-      pd("arriveDay", "货物抵达（到港/到厂）天（相对天）。之后进入清关（仅进口）与到货检验，直到 etaDay 才可投产。"),
+      nd("orderDay", "下单天（相对天，可为负 = 分析窗起点之前就已下单）。到 shipDay 之间即「供应商生产」腿。", "天", "absolute"),
+      nd("shipDay", "供应商发货天（相对天）。到 arriveDay 之间即「在途」腿。", "天", "absolute"),
+      nd("arriveDay", "货物抵达（到港/到厂）天（相对天）。之后进入清关（仅进口）与到货检验，直到 etaDay 才可投产。", "天", "absolute"),
     ]),
     // WO-SANDBOX-D2 · 清关记录（此前全仓 `grep -rni "customs|清关" apps/*/src packages/*/src` = 0 条，实测确认无任何承载）。
     // 只有**进口**供应商的采购单才有此记录 —— 境内直供压根没有这个环节（引擎据"有无记录 + Supplier.sourceMode"
@@ -233,9 +277,9 @@ export function extendedObjectTypes(): TypeDef[] {
       rd("supplierId", "Supplier", "货物来源供应商（只有进口供应商的单才有清关记录）。"),
       pd("portName", "报关口岸。", "string"),
       pd("brokerName", "清关行。采购段「清关」腿的责任方——卡关该找谁。", "string"),
-      pd("declaredDay", "申报天（相对天）。到 clearedDay 之间即「清关」腿的实测耗时。"),
-      pd("clearedDay", "海关放行天（相对天）。放行后才进入到货检验。"),
-      pd("holdDays", "查验滞留天数：清关总耗时超出基准申报周期的部分，>0 即被查验压住。"),
+      nd("declaredDay", "申报天（相对天）。到 clearedDay 之间即「清关」腿的实测耗时。", "天", "absolute"),
+      nd("clearedDay", "海关放行天（相对天）。放行后才进入到货检验。", "天", "absolute"),
+      nd("holdDays", "查验滞留天数：清关总耗时超出基准申报周期的部分，>0 即被查验压住。", "天", "absolute"),
       pd("status", "清关状态。", "enum"),
     ], "进口采购单的清关凭证。承载采购段「清关」这一腿的实测耗时（clearedDay − declaredDay）与责任方（清关行）。只有进口供应商的采购单才有此记录——境内直供**结构上没有这个环节**，因此判定为 NOT_APPLICABLE（真值 0 天）而非 EMPTY（未知）。"),
     // WO-SANDBOX-D2 · 到货检验（IQC）记录（此前全仓 `grep -rn "IQC|到货检验|来料检"` = 0 条）。
@@ -245,10 +289,10 @@ export function extendedObjectTypes(): TypeDef[] {
       rd("poId", "PurchaseOrder", "对应的采购订单。"),
       rd("matId", "Material", "受检物料。检验耗时按物料聚合（检验项集是物料的属性）。"),
       pd("inspectorTeam", "检验班组。采购段「到货检验」腿的责任方——货到了却压在待检区，这段是自家的锅。", "string"),
-      pd("arrivedDay", "到货待检天（相对天）：货已进厂但未放行。到 releasedDay 之间即「到货检验」腿。"),
-      pd("releasedDay", "检验放行天（相对天）：此刻物料才真正可投产（到厂 ≠ 可投产）。"),
-      pd("sampleQty", "抽检数量。"),
-      pd("defectQty", "不合格数量。"),
+      nd("arrivedDay", "到货待检天（相对天）：货已进厂但未放行。到 releasedDay 之间即「到货检验」腿。", "天", "absolute"),
+      nd("releasedDay", "检验放行天（相对天）：此刻物料才真正可投产（到厂 ≠ 可投产）。", "天", "absolute"),
+      nd("sampleQty", "抽检数量。", "件", "absolute"),
+      nd("defectQty", "不合格数量。", "件", "absolute"),
       pd("result", "检验结论（合格 / 让步接收 / 拒收）。", "enum"),
     ], "来料/到货检验（IQC）凭证。承载采购段「到货检验」这一腿的实测耗时（releasedDay − arrivedDay）与责任方（质量部检验班组）。每张到货的采购单都有此记录——「到厂」与「可投产」之间的这段等待此前全仓无任何承载，导致缺料只能答「晚了」、答不出「压在待检区」。"),
     // WO-RULE-SCOPE-TRIAD · 外协加工批次（闭 §8 G-RULE-SCOPE-NO-CARRIER-C31）。
@@ -260,16 +304,16 @@ export function extendedObjectTypes(): TypeDef[] {
       pd("outsourceId", "外协批次号（主键）。", "string", true),
       rd("matId", "Material", "外协加工的物料。"),
       rd("supplierId", "Supplier", "承接外协加工的供应商——良率不达标该找谁（责任方）。"),
-      pd("qty", "本批外协加工数量。"),
-      pd("yieldRate", "本批实测良率（0–1）。真值源 = Material.outsourceYield（同一物理量单一来源）。"),
-      pd("minYieldRate", "合同约定的最低可接受良率（0–1）。yieldRate 低于它即触发 C31 外协质量门（BLOCK）。"),
+      nd("qty", "本批外协加工数量。", "件", "absolute"),
+      nd("yieldRate", "本批实测良率（0–1）。真值源 = Material.outsourceYield（同一物理量单一来源）。", "dimensionless", "ratio"),
+      nd("minYieldRate", "合同约定的最低可接受良率（0–1）。yieldRate 低于它即触发 C31 外协质量门（BLOCK）。", "dimensionless", "ratio"),
     ], "外协加工批次台账：「这票料交给谁加工、实测良率多少、合同底线多少」。此前全仓只有 Material 上一个孤字段 outsourceYield，没有「一票外协加工」这个一等事实——C31 外协质量门因此零承载（NO_CARRIER），永不参与评估。"),
-    def("CarbonFactor", "碳因子", "supply", [p("factorId", "string", true), p("kind", "string"), p("key", "string"), p("factor")]),
+    def("CarbonFactor", "碳因子", "supply", [p("factorId", "string", true), p("kind", "string"), p("key", "string"), n("factor", "kgCO2e", "absolute")]),
     // Phase5A 财务域：基地现金账户 + 情景级财务指标（让 finance 进切片，凑满 9 域）。
-    def("FinanceAccount", "基地财务账户", "finance", [p("accId", "string", true), p("baseId", "string"), p("cashOnHand"), p("receivable"), p("payable"), p("workingCapital")]),
-    def("FinanceMetric", "情景财务指标", "finance", [p("metricId", "string", true), p("scenarioKey", "string"), p("cashCushion"), p("irr"), p("capexSpent"), p("netMargin")]),
+    def("FinanceAccount", "基地财务账户", "finance", [p("accId", "string", true), p("baseId", "string"), n("cashOnHand", "亿元", "absolute"), n("receivable", "亿元", "absolute"), n("payable", "亿元", "absolute"), n("workingCapital", "亿元", "absolute")]),
+    def("FinanceMetric", "情景财务指标", "finance", [p("metricId", "string", true), p("scenarioKey", "string"), n("cashCushion", "亿元", "absolute"), n("irr", "%", "ratio"), n("capexSpent", "亿元", "absolute"), n("netMargin", "%", "ratio")]),
     // 外部域（EXT_SIG）：环境/市场信号一等对象（domain=external；规划敏感性输入 P2）。
-    def("ExternalSignal", "外部信号", "external", [p("signalKey", "string", true), p("name", "string"), p("category", "string"), p("value"), p("unit", "string"), p("asOf", "string"), p("source", "string"), p("trend", "string"), p("impact", "string"), p("elasticity"),
+    def("ExternalSignal", "外部信号", "external", [p("signalKey", "string", true), p("name", "string"), p("category", "string"), n("value", "dimensionless", "absolute"), p("unit", "string"), p("asOf", "string"), p("source", "string"), p("trend", "string"), p("impact", "string"), n("elasticity", "dimensionless", "absolute"),
       // WO-CEO-DATA-2 §2b：外部事件引用（事件编号/报告日期，接真外部信号系统）。
       p("eventRef", "string"),
     ]),

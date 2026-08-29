@@ -26,9 +26,9 @@ describe("PRD-fde §3.2 · 实体与字段目录索引（消歧 + 字段目录�
     const types: ObjectTypeDef[] = [{
       id: "ot1", tenantId: "demo", key: "Order", displayName: "订单", domain: "sales",
       properties: [
-        { propKey: "so", dataType: "string", isPrimaryKey: true },
-        { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件" },
-        { propKey: "utilization", dataType: "number", isPrimaryKey: false, temporal: true },
+        { propKey: "so", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+        { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+        { propKey: "utilization", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", temporal: true },
       ],
       derivedProperties: [], sourceBindings: [], version: 1, status: "ACTIVE",
     }];

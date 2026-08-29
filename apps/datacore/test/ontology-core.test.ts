@@ -26,6 +26,8 @@ async function seedPyramid(t: TestApp, ctx = ADMIN_CTX): Promise<void> {
     propKey,
     dataType: "number",
     isPrimaryKey: false,
+    unit: "dimensionless",
+    scale: "absolute",
     ...opts,
   });
   const types: Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status">[] = [

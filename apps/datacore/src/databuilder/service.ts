@@ -1501,6 +1501,9 @@ export class DataBuilderService {
             propKey: p.propKey,
             dataType: p.dataType,
             isPrimaryKey: p.isPrimaryKey,
+            // WO-UNIT-KWH · databuilder 从数据集推断类型，上游无单位元数据 ⇒ 显式「已知无量纲」。
+            unit: "dimensionless" as const,
+            scale: "absolute" as const,
             refToTypeKey: p.refToTypeKey ?? null,
           })),
           derivedProperties: [],

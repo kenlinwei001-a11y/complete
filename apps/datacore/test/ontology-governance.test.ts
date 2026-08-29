@@ -23,7 +23,7 @@ describe("治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系", (
       key: "Widget",
       displayName: "部件",
       domain: "nope",
-      properties: [{ propKey: "id", dataType: "string", isPrimaryKey: true }],
+      properties: [{ propKey: "id", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }],
     });
     expect(bad.statusCode).toBe(400);
     // 注册域内 → 201
@@ -31,7 +31,7 @@ describe("治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系", (
       key: "Widget",
       displayName: "部件",
       domain: "product",
-      properties: [{ propKey: "id", dataType: "string", isPrimaryKey: true }],
+      properties: [{ propKey: "id", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }],
     });
     expect(okr.statusCode).toBe(201);
     expect(J<{ domain: string }>(okr).domain).toBe("product");
@@ -48,7 +48,7 @@ describe("治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系", (
           displayName: "Foo",
           domain: "unassigned",
           sourceDataset: "ds",
-          properties: [{ propKey: "id", sourceField: "id", dataType: "string" as const, isPrimaryKey: true, refToTypeKey: null }],
+          properties: [{ propKey: "id", sourceField: "id", dataType: "string" as const, isPrimaryKey: true, unit: "dimensionless", scale: "absolute", refToTypeKey: null }],
           confidence: 0.9,
         },
       ],
@@ -91,8 +91,8 @@ describe("治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系", (
       displayName: "发票",
       domain: "finance",
       properties: [
-        { propKey: "invId", dataType: "string", isPrimaryKey: true, searchable: true },
-        { propKey: "amount", dataType: "number", isPrimaryKey: false },
+        { propKey: "invId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", searchable: true },
+        { propKey: "amount", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
       ],
     });
     await t.repos.objects.put({ id: "obj_invoice_INV1", tenantId: "demo", type: "Invoice", props: { invId: "INV1", amount: 100 }, origin: { type: "MANUAL" } });
@@ -122,7 +122,7 @@ describe("治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系", (
       key: "Base",
       displayName: "生产基地（改名展示）",
       domain: "factory",
-      properties: [{ propKey: "baseId", dataType: "string", isPrimaryKey: true }],
+      properties: [{ propKey: "baseId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }],
     });
     expect(same.statusCode).toBe(201);
     // assertRenameAllowed 直接验证：PUBLISHED key → 新 key 被拒
@@ -320,7 +320,7 @@ describe("治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系", (
       displayName: "储罐",
       domain: "factory",
       properties: [
-        { propKey: "tankId", dataType: "string", isPrimaryKey: true },
+        { propKey: "tankId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
         { propKey: "cap", dataType: "number", isPrimaryKey: false, unit: "吨" },
       ],
     });

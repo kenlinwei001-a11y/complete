@@ -191,7 +191,7 @@ import { OpsReplayService } from "./opsteam/replay.js";
 import { poolSnapshot } from "./opsteam/pools.js";
 import { OpsScheduleSchema } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
-import type { AuthCtx, ObjectInstance, SliceSpecRecord } from "./domain.js";
+import type { AuthCtx, ObjectInstance, SliceSpecRecord, PropertyUnit, PropertyScale } from "./domain.js";
 import { mulberry32, hashString, randInt } from "./prng.js";
 import { DeriveDecisionFieldsRequestSchema, RecordMaterializeRequestSchema, CeoDatasetGenerateRequestSchema } from "@platform/contracts"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生 · WO-CEO-DATA-supply · 真源记录颗粒级物化 · WO-CEO-DATA-2
 import { AdvanceProcessInstanceRequestSchema, CreateProcessInstanceRequestSchema } from "@platform/contracts"; // WO-PROCESS-INSTANCE · 流程运行时（建实例/推进；body 只收**外部事实**，不收 status —— 状态机不交给调用方）
@@ -3764,6 +3764,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             temporal: z.boolean().optional(),
             searchable: z.boolean().optional(),
             unit: z.string().optional(),
+            // WO-UNIT-KWH · 量纲刻度（绝对量/比例量）。此前**只有 `unit` 没有 `scale`** ⇒
+            // 客户端说得出「单位是 %」，说不出「这个数是 0–1 还是 0–100」——
+            // 而本仓的 100× 显示错正出在这一格。补上声明位，缺省仍按 absolute 兜底（向后兼容）。
+            scale: z.enum(["absolute", "ratio"]).optional(),
             displayFormat: z.string().optional(),
             // WO-D6：属性级中文业务名/语义描述 —— 契约里早有（PropertyDef），
             // 此处漏声明 ⇒ zod strip 掉 ⇒ getTypeSemantics 下发给 B 的口径恒缺 displayName/description。
@@ -3771,7 +3775,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             description: z.string().optional(),
           }),
         ),
-        derivedProperties: z.array(z.object({ propKey: z.string(), formula: z.string() })).default([]),
+        // WO-UNIT-KWH · 派生属性同样可声明量纲（缺省在下方边界补成显式 dimensionless）。
+        derivedProperties: z.array(z.object({ propKey: z.string(), formula: z.string(), unit: z.string().optional(), scale: z.enum(["absolute", "ratio"]).optional() })).default([]),
         sourceBindings: z
           .array(
             z.object({
@@ -3820,12 +3825,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         throw validationError(`未知域 '${body.domain}'（需先在 /a/v1/ontology/domains 注册）`);
       }
     }
-    // §4 单位字典约束
+    // §4 单位字典约束（字典现由 domain.ts 的 PROPERTY_UNITS 派生 —— 与类型同一份出处）
     const dict = new Set(UNIT_DICTIONARY);
     for (const p of body.properties) {
       if (p.unit && !dict.has(p.unit)) throw validationError(`未知单位 '${p.unit}'（单位字典：${UNIT_DICTIONARY.join("/")}）`);
     }
-    return reply.status(201).send(await ontology.upsertType(c, body));
+    // WO-UNIT-KWH · REST 建的是**用户自定义类型**，请求体里可以不带量纲（契约保持向后兼容，
+    // 不为此改 API 形状）。缺省时在边界上补成**显式** `dimensionless`，而不是让它带着
+    // undefined 进内部模型 —— 内部一律「有声明」，「没声明」这一态不再存在。
+    const properties = body.properties.map((p) => ({
+      ...p,
+      unit: (p.unit ?? "dimensionless") as PropertyUnit,
+      scale: (p.scale ?? "absolute") as PropertyScale,
+    }));
+    const derivedProperties = body.derivedProperties.map((d) => ({
+      ...d,
+      unit: (d.unit ?? "dimensionless") as PropertyUnit,
+      scale: (d.scale ?? "absolute") as PropertyScale,
+    }));
+    return reply.status(201).send(await ontology.upsertType(c, { ...body, properties, derivedProperties }));
   });
 
   // ---- WO-69 P3 · 对象接口（多态抽象）--------------------------------------

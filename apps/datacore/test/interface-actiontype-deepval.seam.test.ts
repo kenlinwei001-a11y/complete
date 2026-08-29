@@ -77,7 +77,7 @@ describe("WO-INTERFACE-ACTIONTYPE-DEEPVAL · 接口 ActionType 绑定深校验�
       payload: {
         key: "__GhostType",
         displayName: "幽灵类型",
-        properties: [{ propKey: "ghostId", dataType: "string", isPrimaryKey: true }],
+        properties: [{ propKey: "ghostId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }],
         implements: [{ interfaceKey: "__Ghost", version: "latest" }],
         actions: [{ actionTypeKey: "未注册的行动XYZ" }],
       },
@@ -99,7 +99,7 @@ describe("WO-INTERFACE-ACTIONTYPE-DEEPVAL · 接口 ActionType 绑定深校验�
       payload: {
         key: "__GhostType",
         displayName: "幽灵类型",
-        properties: [{ propKey: "ghostId", dataType: "string", isPrimaryKey: true }],
+        properties: [{ propKey: "ghostId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }],
         implements: [],
         actions: [],
       },
@@ -150,7 +150,7 @@ describe("WO-INTERFACE-ACTIONTYPE-DEEPVAL · 接口 ActionType 绑定深校验�
       payload: {
         key: "__FakeMitigationTarget",
         displayName: "假处置目标",
-        properties: [{ propKey: "fmId", dataType: "string", isPrimaryKey: true }],
+        properties: [{ propKey: "fmId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }],
         implements: [{ interfaceKey: "__Mitigatable", version: "latest" }],
         actions: [{ actionTypeKey: "adopt_mitigation" }],
       },
@@ -173,7 +173,7 @@ describe("WO-INTERFACE-ACTIONTYPE-DEEPVAL · 接口 ActionType 绑定深校验�
       payload: {
         key: "__FakeMitigationTarget",
         displayName: "假处置目标",
-        properties: [{ propKey: "fmId", dataType: "string", isPrimaryKey: true }],
+        properties: [{ propKey: "fmId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }],
         implements: [],
         actions: [],
       },
