@@ -1886,7 +1886,7 @@ function main() {
     if (live["truth.widgetKeysMultiSource"] < 5) {
       blind.push(`⑧ widget 槽位里被 ≥2 真相源登记的只有 ${live["truth.widgetKeysMultiSource"]} 个（<5）—— 只剩单边就查不出分叉，这条槽位等于没开`);
     }
-    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==35
+    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==37
     //    ⇒ 这个数不再是传说，它由本门每次现算并对账）。抽到 0 条 ⇒ 报「工具坏了」，
     //    **不许**报「全仓记号都通过」—— 那正是本门自己在治的那种「我没找到 ≠ 它不存在」。
     if (markSweep.files < 100) blind.push(`⑥b 记号扫描只走到 ${markSweep.files} 个源文件（<100）—— srcRoots 是不是没读到？`);
@@ -2137,8 +2137,12 @@ try {
  *        `frontend-shell/locales/zh.ts` ×2 · `frontend-shell/views/sim/sandboxConsoleModel.ts` ×6）。
  *        WO-STALE-TEXT-SWEEP 当天就补上了生产实例，而这句自述留在原地 ——
  *        **它把「已经在用」写成了「还没在用」，方向正好相反**。
- *        赌注：@stale-self marks.production ==35
- *      · 原文写「`runBaselineFactChecks` 那条今天有 6 条真数据，挂在两条 CONFIRMED-STALE 上」。
+ *        赌注：@stale-self marks.production ==37
+ *        ⚠ **2026-08-29 由 35 改到 37**（WO-CONSOLE-BLOCKERS）：决策台那句「代价 / 见效天 /
+ *          风险**一个都没有**」按 ⑤ 补挂了 2 条记号（赌 `SolutionCandidateSchema` 这个
+ *          `z.strictObject` 里没有 cost/risk/leadTime 键）⇒ 生产实例 35 → 37。
+ *          **这不是放宽，是口径真的变了**：数字往上走 = 有人真的多写了两条赌注。
+ *      · 原文（**2026-08-16 实测推翻**）写「`runBaselineFactChecks` 那条今天有 6 条真数据，挂在两条 CONFIRMED-STALE 上」。
  *        **实为 0 条赌注、0 条 CONFIRMED-STALE**（存量已被后续单改完，基线只剩
  *        7 条 UNMARKED + 4 条 FALSE-POSITIVE）。
  *        赌注：@stale-self baseline.factChecks ==0
@@ -2160,7 +2164,7 @@ try {
  *      `expectedSlipDays = 供应商段天数 ×(1−onTimeRate)`，经 `kitReadiness` 挂在
  *      已注册求解器 `kit_readiness` 上）。给一句已知是假的话挂赌注 = 把假话钉死在门里，
  *      故留给裁决：**改文案还是把那个 `effect: inert` 一并解除**，属行为判断，不由记号单决定。
- *      @stale-self marks.production ==35）、
+ *      @stale-self marks.production ==37 —— 2026-08-29 由 35 改到 37，见上面那条的说明）、
  *      **基线赌注路径今天 0 条数据**（@stale-self baseline.factChecks ==0；属「接了线没数据」，
  *      不是「没接线」——`runBaselineFactChecks` 仍被主流程无条件调用）。
  *    ⇒ 复验命令：`node scripts/check-stale-claims.mjs`（末行直接打印这三个现算值）。

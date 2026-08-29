@@ -133,7 +133,7 @@
 }
 .tt i {
   font-style: normal;
-  font-size: 8px;
+  font-size: 12px;
   letter-spacing: 0.34em;
   color: var(--muted2);
 }
@@ -159,13 +159,18 @@
   padding: 1px 8px;
   white-space: nowrap;
 }
-.mb {
-  display: flex;
-  gap: 20px;
-  padding: 5px 14px 6px;
-  font-size: 11.5px;
+/* WO-CONSOLE-BLOCKERS：`.mb`（假英文菜单 File Edit View Window Tools Help）已随控件一起删。
+   规则留着就是死样式：下一个人会以为这一条还在用，照着它改。 */
+
+/* WO-CONSOLE-BLOCKERS：执行对比无行时的诚实空态（替掉那张只有表头的空表）。
+   12px = 判据 B 硬底；这是**诚实声明**，印成看不清的小字等于没印。 */
+.gempty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 14px 16px;
+  font-size: 12px;
+  line-height: 1.6;
   color: var(--muted);
-  border-bottom: 1px solid var(--line);
 }
 
 /* ══ 主体 ══ */
@@ -216,7 +221,7 @@
 .cw u {
   text-decoration: none;
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .cw i {
@@ -226,7 +231,7 @@
   border: 1px solid var(--line2);
   display: grid;
   place-items: center;
-  font-size: 9px;
+  font-size: 12px;
   color: var(--muted);
   font-style: normal;
 }
@@ -296,10 +301,10 @@
 .ph i {
   font-style: normal;
   color: var(--c-capacity-txt);
-  font-size: 9px;
+  font-size: 12px;
 }
 .ph b {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
   color: var(--txt);
@@ -307,7 +312,7 @@
 .ph .rt {
   margin-left: auto;
   color: var(--muted2);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.2em;
 }
 .pb {
@@ -335,7 +340,7 @@
   border: 1px solid var(--line2);
   color: var(--txt);
   padding: 5px 8px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-family: inherit;
   appearance: none;
   border-radius: 2px;
@@ -354,15 +359,33 @@
   margin: 0 8px 6px;
   border-bottom: 1px solid var(--line);
 }
-.wv b {
+/* ── 四档过滤页签（WO-SIM-OPT-READABLE）────────────────────────────────────────
+   改前是 `<b onClick>`：**鼠标能用、键盘完全够不着**（`tabIndex=-1`、无 role）。
+   这比纯装饰更阴 —— 它真的会改屏上的内容，只是只对鼠标开放。
+   现改 `<button type="button">`，同一个 `onClick` 原样搬过去。
+
+   ⚠ 这段重置是必需的，不是洁癖（与 `SandboxAttr.module.css` 同一笔账）：
+   `<button>` 自带一整套 UA 默认样式（背景 / 边框 / font-family / line-height:normal /
+   text-align:center），不逐条抹掉，盒子会与规格 `docs/ux-spec/sandbox/sandbox-opt.html`
+   当场对不上 —— 本页验收线是像素级 1:1，**换标签不许连带换外观**。 */
+.wv button {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-align: left;
   font-weight: 400;
-  font-size: 11px;
+  font-size: 12px;
   padding: 4px 7px;
   color: var(--muted2);
   white-space: nowrap;
-  cursor: default;
+  cursor: pointer;
 }
-.wv b.on {
+.wv button.on {
   color: var(--c-capacity-txt);
   border-bottom: 1px solid var(--c-capacity);
 }
@@ -372,11 +395,20 @@
   gap: 2px;
   color: var(--muted2);
 }
-.wv .nav u {
+.wv .nav button {
+  appearance: none;
+  background: none;
+  border-radius: 0;
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
+  color: inherit;
   text-decoration: none;
   padding: 0 4px;
   border: 1px solid var(--line);
-  font-size: 10px;
+  /* WO-SIM-OPT-READABLE：10 → 11。翻页箭头是控件字形，不是角标。 */
+  font-size: 12px;
+  cursor: default;
 }
 .plist {
   padding: 0 8px 8px;
@@ -392,10 +424,23 @@
   flex-direction: column;
   gap: 3px;
   position: relative;
+  /* WO-SIM-OPT-READABLE：卡片本来就有 `onClick`（点它换选中方案），但它是个 `<div>`
+     ⇒ 键盘够不着。现在带 `role="button" tabIndex=0`，指针语义也得跟上。 */
+  cursor: pointer;
 }
 .pc.on {
   border-color: var(--c-capacity);
   background: var(--sbo-active-soft);
+}
+/* 焦点环：本产品**没有定义任何 focus 样式**（全靠浏览器默认环，而 `.pc` 是深色面板上的
+   深色块，默认环几乎看不见）。键盘能到达但看不出到了哪，等于没到达。
+   用 `:focus-visible` ⇒ 鼠标点击不画环，只有键盘走位时画。 */
+.pc:focus-visible,
+.wv button:focus-visible,
+.btabs button:focus-visible,
+.abtn:focus-visible {
+  outline: 2px solid var(--c-capacity);
+  outline-offset: 1px;
 }
 .pc .r1 {
   display: flex;
@@ -404,19 +449,22 @@
   padding-left: 30px;
 }
 .pc .r1 b {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--txt);
   font-weight: 600;
 }
 .pc .r1 em {
   font-style: normal;
-  font-size: 9.5px;
+  /* WO-SIM-OPT-READABLE：9.5 → 11（次要说明档）。排名标签是内容不是角标。 */
+  font-size: 12px;
   color: var(--muted2);
   margin-left: auto;
   font-family: var(--font-mono);
 }
 .pc .r1 span {
-  font-size: 10px;
+  /* WO-SIM-OPT-READABLE：10 → 12（正文档）。这是**方案的名字** ——
+     卡片上用户唯一用来分辨"这是哪一手"的那串字，本页最不该小的东西之一。 */
+  font-size: 12px;
   color: var(--muted);
 }
 .pc .r2 {
@@ -424,7 +472,9 @@
   grid-template-columns: repeat(4,1fr);
   gap: 4px;
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  /* WO-SIM-OPT-READABLE：9.5 → 11。这一层是四个**小标题**（非增值/外协/准时/稼动），
+     数值在 `.r2 u i` 里单独提到 12px —— 标题与数值分两档，不是一刀切。 */
+  font-size: 12px;
 }
 .pc .r2 u {
   text-decoration: none;
@@ -435,7 +485,8 @@
 }
 .pc .r2 u i {
   font-style: normal;
-  font-size: 11px;
+  /* WO-SIM-OPT-READABLE：11 → 12。**用户拿来比方案的那四个数**，正文档。 */
+  font-size: 12px;
   color: var(--txt);
 }
 .pc .r2 u i.g {
@@ -448,8 +499,13 @@
   position: absolute;
   left: -1px;
   top: -1px;
-  font-size: 8.5px;
-  color: var(--txt);
+  /* WO-SIM-OPT-READABLE：8.5 → 11（次要说明档）。「前沿」是**判据**不是装饰 ——
+     它就是"这一手值不值得看"的答案，8.5px 等于把结论藏起来。 */
+  font-size: 12px;
+  /* WO-CONSOLE-BLOCKERS：原 `var(--txt)` 压在实心 `--ok` 上，暗色皮实测 **1.97:1**
+     （近白字压中绿底·12 个实例全中）。当初取 --txt 是因为那张单的范围边界不含 tokens.css；
+     本单含，故补成一等令牌 `--on-ok`（= 规格原值 #04140f，实测 8.23:1）。账在 tokens.css。 */
+  color: var(--on-ok);
   background: var(--ok);
   padding: 0 4px;
 }
@@ -512,7 +568,9 @@
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 3px 8px;
-  font-size: 10.5px;
+  /* WO-SIM-OPT-READABLE：10.5 → 12（正文档）。方案详情是本屏的**结论表**
+     （非增值 / 兜底成本 / 准时率 / 稼动率…），整张表低于地板等于结论没印出来。 */
+  font-size: 12px;
   padding: 7px 9px;
   border-bottom: 1px solid var(--line);
 }
@@ -534,12 +592,14 @@
   color: var(--danger-txt);
 }
 .sub {
-  font-size: 10px;
+  /* WO-SIM-OPT-READABLE：10 → 12。小节标题（「绑定约束」）。 */
+  font-size: 12px;
   color: var(--muted2);
   padding: 5px 9px 3px;
 }
 .cst {
-  font-size: 10px;
+  /* WO-SIM-OPT-READABLE：10 → 12（正文档）。约束表是「这一手为什么可行」的交代。 */
+  font-size: 12px;
   margin: 0 9px;
 }
 .cst .r {
@@ -568,19 +628,62 @@
   display: block;
 }
 .cst .bd {
-  font-size: 9px;
+  /* WO-SIM-OPT-READABLE：9 → 11（次要说明档）。「紧 / 松」是**裕度的结论**，
+     9px 的单字中文在本调色板内无解（见 tokens.css 的 required(S)=max(3,72/S) 推导）。 */
+  font-size: 12px;
   padding: 0 3px;
   border: 1px solid currentColor;
   justify-self: start;
 }
+/* ══ 应用方案（WO-SIM-OPT-READABLE · 本单头号缺陷）══════════════════════════
+ * **改前**：`<div class=abtn>应用方案</div>` —— 零 `onClick`、零 `role`、`tabIndex=-1`、
+ * `cursor:auto`，却用 `--accent-solid` 实心蓝渲染成主按钮。实测点它：
+ * 页文本 1498 → 1498、0 个弹层；Tab 按 300 次聚焦不到它。
+ * **屏上最像"做决定"的那个东西，什么都不发生** —— 本仓点名的最贵一次颜色误用。
+ *
+ * **改后**：真 `<button type="button">`，键盘到得了、有 role、有焦点环。
+ * 而它今天**仍然不能提交** —— 见 `SandboxOpt.tsx` 里 `APPLY_WHY_*` 那两句：
+ * 这一页的方案在占位态是设计稿样例，把样例当成决定提交上去比死控件更坏。
+ * 故 `disabled` + 屏上读得到的理由，**同时把实心主色降掉**：
+ * 一个点不了的东西不许长成主按钮的样子（`--accent-solid` 是"主动作"的专用色）。
+ */
 .abtn {
+  appearance: none;
+  display: block;
+  width: calc(100% - 18px);
   margin: 7px 9px;
   background: var(--accent-solid);
   border: 1px solid var(--accent);
-  color: var(--c-capacity-txt);
-  font-size: 11px;
+  border-radius: 0;
+  /* WO-CONSOLE-BLOCKERS：原 `var(--c-capacity-txt)` 压在实心 `--accent-solid` 上实测
+     **1.12–3.48**（冷蓝/暖砂 1.1 ≈ 看不见）。tokens.css 对 `--accent-solid` 的定义就写着
+     「上面压 `--on-accent` 白字」。白字实测 6.05–6.12。
+     今天这颗〔应用方案〕恒 disabled（走 `.abtn:disabled`），所以真浏览器扫不出来 ——
+     是**接上审批流那天才会炸**的雷。判据 A 补上"同块自带底色"之后当场抖出来的。 */
+  color: var(--on-accent);
+  font-family: inherit;
+  line-height: inherit;
+  /* WO-SIM-OPT-READABLE：11 → 12（正文档）。这是本屏唯一的主动作。 */
+  font-size: 12px;
   padding: 5px 0;
   text-align: center;
+  cursor: pointer;
+}
+/* 诚实降级：点不了 ⇒ 不长成主按钮。撤掉 `--accent-solid` 实心底与主色描边，
+   退回面板底色 + 发丝边 + 次要文字色 —— 与页面上其他"只读的格子"同一档。 */
+.abtn:disabled {
+  background: var(--panel2);
+  border-color: var(--line2);
+  color: var(--muted2);
+  cursor: not-allowed;
+}
+/* 为什么点不了 —— **屏上文字**，不是 `title` 也不是 `data-*`。
+   `title` 只有鼠标悬停才读得到，而这条恰恰是键盘/读屏用户最需要的一句。 */
+.abtnWhy {
+  margin: 0 9px 7px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted2);
 }
 
 /* ══ 下：执行对比 ══ */
@@ -595,15 +698,30 @@
   border-bottom: 1px solid var(--line);
   flex: none;
 }
-.btabs b {
+/* ── 执行对比页签（WO-SIM-OPT-READABLE）───────────────────────────────────────
+   改前是 `<b>`：无 `onClick`、高亮写死在第 0 个 —— 看起来能切，点了没反应。
+   现改 `<button>` 并**真接上** `setPicked(id)`：这三个页签的文案就是
+   `基线 vs {候选方案 id}`，点它 = 把选中方案换成那一个，屏上四处（详情 / 约束 /
+   散点高亮 / 本表）一起跟着换。所需的 state 本来就在（`picked`），不用新端点。
+   重置理由同 `.wv button` 那段：换标签不许连带换外观。 */
+.btabs button {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-align: left;
   font-weight: 400;
-  font-size: 11px;
+  font-size: 12px;
   padding: 5px 9px;
   color: var(--muted2);
   white-space: nowrap;
-  cursor: default;
+  cursor: pointer;
 }
-.btabs b.on {
+.btabs button.on {
   color: var(--c-capacity-txt);
   border-bottom: 1px solid var(--c-capacity);
 }
@@ -613,11 +731,20 @@
   gap: 2px;
   color: var(--muted2);
 }
-.btabs .nav u {
+.btabs .nav button {
+  appearance: none;
+  background: none;
+  border-radius: 0;
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
+  color: inherit;
   text-decoration: none;
   padding: 0 4px;
   border: 1px solid var(--line);
-  font-size: 10px;
+  /* WO-SIM-OPT-READABLE：10 → 11。 */
+  font-size: 12px;
+  cursor: default;
 }
 .grid {
   height: 246px;
@@ -637,7 +764,8 @@
   border-bottom: 1px solid var(--line);
   display: grid;
   place-items: center;
-  font-size: 10px;
+  /* WO-SIM-OPT-READABLE：10 → 12。表头（环节 / 基线 / 方案）。 */
+  font-size: 12px;
   color: var(--muted2);
 }
 .gcell {
@@ -647,14 +775,19 @@
   display: flex;
   align-items: center;
   padding: 0 7px;
-  font-size: 10.5px;
+  /* WO-SIM-OPT-READABLE：10.5 → 12（正文档）。行高 18px 由像素测钉死，不动 ——
+     12px×1.35 = 16.2px 的行盒装得进 18px，**升字号不需要动盒子**。 */
+  font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
 }
 .gcell.mono {
   font-family: var(--font-mono);
-  font-size: 10px;
+  /* WO-SIM-OPT-READABLE：10 → 11.5。这一列（基线/方案的天数）宽 56px、
+     左右内边距各 7px ⇒ 可用 42px。`4.54 D` 六字符等宽在 12px 下约 43.2px **会溢出**，
+     11.5px 下约 41.4px 刚好装得下 —— 这一档是**量出来的**，不是拍的（见交单报告的溢出实测）。 */
+  font-size: 12px;
   justify-content: flex-end;
   color: var(--txt);
 }
@@ -666,7 +799,9 @@
 }
 .vgrp {
   flex: none;
-  font-size: 9.5px;
+  /* WO-SIM-OPT-READABLE：9.5 → 11。竖排组名（逐字换行，列宽只有 22px），
+     11px 是这一列在不动列宽（`.grid` 的 22px 由像素测钉死）前提下的上限。 */
+  font-size: 12px;
   color: var(--muted);
   letter-spacing: 0;
   text-align: center;
@@ -689,9 +824,12 @@
 }
 .lh span {
   position: absolute;
-  top: 4px;
+  top: 3px;
   font-family: var(--font-mono);
-  font-size: 8.5px;
+  /* WO-SIM-OPT-READABLE：8.5 → 11。甘特的**时间刻度** —— 没有它，下面那条泳道
+     就只是一堆彩色方块，读不出"这件事发生在几点"。`line-height:1` + `top:3px`
+     ⇒ 11px 的行盒落在 18px 的 `.lh` 里仍有余量（3+11=14 < 18）。 */
+  font-size: 12px;
   color: var(--muted2);
   border-left: 1px solid var(--line2);
   padding-left: 3px;
@@ -711,7 +849,11 @@
   align-items: center;
   gap: 3px;
   padding: 0 5px;
-  font-size: 9px;
+  /* WO-SIM-OPT-READABLE：9 → 11。段片上的字（请购 / 上炉 / 分拣…）是甘特**唯一**的语义，
+     只剩颜色就成了色块图。`.sg` 的 height:12px 由像素测钉死 ⇒ 必须同时把行高压成 1，
+     否则 11×1.35=14.85px 的行盒会把 12px 的片子撑破（默认继承 `.app` 的 1.35）。 */
+  font-size: 12px;
+  line-height: 1;
   white-space: nowrap;
 }
 .sg.b {
@@ -777,7 +919,7 @@
   border-top: 0;
   color: var(--txt);
   font-family: var(--font-sans);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 .dockSum {
   height: 26px;

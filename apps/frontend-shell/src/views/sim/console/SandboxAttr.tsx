@@ -39,8 +39,6 @@ import {
 } from "./useLossAttribution";
 import styles from "./SandboxAttr.module.css";
 
-const MENUBAR = ["File", "Edit", "View", "Window", "Tools", "Help"] as const;
-
 const RAIL_CREW = [
   { no: "01", face: "◔", bar: "var(--warn)" },
   { no: "02", face: "◑", bar: "var(--c-capacity)" },
@@ -164,14 +162,7 @@ export function SandboxAttr({ sessionId, so }: SandboxAttrProps = {}): JSX.Eleme
         </span>
         <span className={styles.hole} aria-hidden />
       </div>
-      <div className={styles.mb} title={CHROME_WHY}>
-        {MENUBAR.map((m) => (
-          <span key={m} aria-hidden>
-            {m}
-          </span>
-        ))}
-      </div>
-
+      {/* WO-CONSOLE-BLOCKERS：假英文菜单 `File Edit View Window Tools Help` 已删（三屏同款·见 SandboxOpt 的账）。 */}
       <div className={styles.body}>
         {/* ══ 左轨 ══ */}
         <div className={styles.rail} title={CHROME_WHY}>

@@ -269,13 +269,57 @@ export const ROUTE_NO_NAV: Record<string, string> = {
   // 与驾驶舱入口（`DashboardView`）继续走 `/v/decision-play` 深链 —— route 保留，`imp*` query 契约一个键没动。
   "decision-play":
     "仓主裁决（WO-IA-E2E5E6）：决策推演不该占导航位，已嵌入各决策点（订单链/链阻滞/壳布局三处共用 DecisionPlayPanel）；route 保留 = 深链 query 契约（fromImpediment/imp* 一族）不变",
-  // ⚠ WO-SIM-NAV-UNIFIED（本轮）：`sim-unified` 的豁免条目**已删**，不是漏了。
+  // ⚠ WO-CONSOLE-BLOCKERS（本轮）：`decision-console` 的豁免条目**已删**，不是漏了。
+  //   上一版这里写着「本单只拿到『这一页』的逐案批准，没拿到动导航的批准；…入口另议」——
+  //   **那句话的前提今天已经不成立**：入口已获批，条目落在 `NAV_GROUPS` 顶层无标题组第 2 项
+  //   （UX 定案 `docs/LOOP7-ux-review.md` §12.1，理由见那条旁的长注）。
+  //   留着就是**陈旧豁免**：判据④ 会红出「这个 route 明明在导航里，却还挂着『刻意不占导航位』」。
+  //   （与下面 `sim-unified` 那条同形态、同理由 —— 这已经是第二次执行同一条纪律。）
+  // ⚠ WO-SIM-NAV-UNIFIED：`sim-unified` 的豁免条目**已删**，不是漏了。
   //   上一版这里写着「导航信息架构改动未获批 ⇒ route 先通、暂不单列，入口随后续两单一并裁决」——
   //   仓主已裁决（原话见 NAV_GROUPS「推演」组之首的长注），统一推演控制台就是本组的主入口。
   //   条目留着就是**陈旧豁免**：门判据④ 会红出「这个 route 明明在导航里，却还挂着『刻意不占导航位』」。
 };
 export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
-  { title: null, items: [{ kind: "view", key: "dash" }] },
+  {
+    title: null,
+    items: [
+      { kind: "view", key: "dash" },
+      /**
+       * WO-CONSOLE-BLOCKERS · 事件影响与对策（`/v/decision-console`）——**顶层常驻第 2 项**
+       * （UX 定案 `docs/LOOP7-ux-review.md` §12.1／§12.6①；仓主已批准本页占导航位）。
+       *
+       * **X（改之前的屏上行为·真服务真浏览器实测）**：这一页在**三处入口全无** ——
+       *   左导航 `GET /a/v1/me/workspace` 下发的条目里 0 条、场景卡 20 张里 0 张、
+       *   ⌘K 命令面板（索引即场景卡）自然也 0；而它登记在本文件 `ROUTE_NO_NAV` 里，
+       *   理由写的是「没拿到动导航的批准」。⇒ **COO 只能手打 URL 才进得来自己的决策台。**
+       *   金丝雀（证明这个查法是活的）：同一次请求里 `dash` 在导航中 4 处、
+       *   在场景卡的 `view` 字段中 5 张 —— 尺子没坏，是这一页真的不在。
+       * **Y**：顶层无标题组第 2 项，紧跟「经营驾驶舱」。
+       *
+       * **为什么不进「推演」组**（UX 在真浏览器里跑出来的，不是读代码推的）：
+       *   分组折叠态按用户持久化在 `localStorage`（`nav.collapse.推演`）——
+       *   实测点一下「▾推演」再刷新，可见链接 63 → **57**，统一推演控制台当场消失且**刷新不回来**。
+       *   把「COO 打不开决策台」这个病修进一个**手滑一次就会复发**的位置，方向是反的。
+       *   顶层组 `title: null` 不渲染 `NavGroup`、没有折叠钮 ⇒ 折不掉。
+       *   `sim-unified` 一行不动（仓主已裁决它是「推演」组主入口）。
+       *
+       * ⚠ **必须 `kind:"route"` + 内联 label**：后端 `workspace.navigation` 不下发这个键
+       *   （实测 51 条里 0 条，datacore/agentcore src 同样 0 命中）。`kind:"view"` 会查下发集合，
+       *   查不到就成**幽灵条目**：表里写着、屏幕上永远没有 —— 那正是 `decision-play` 栽过的账。
+       * ⚠ **不给 `feature`**：`feature` 的语义是「暗发页，页面侧本就有 Guard」。
+       *   `DecisionConsoleView.tsx` 实测 `grep -c "feature\|Guard"` = **0**（金丝雀 `import|export` = 8）
+       *   ⇒ 零 entitlement Guard，填上就成了「导航里藏起来、URL 照样进得去」= 把暗发做成假的。
+       * ⚠ **不登记 `GROUP_CONSOLIDATION_EXEMPT`**：判据⑨ 只在组内**有** `consolidatedWhen` 成员时触发，
+       *   本组零个 ⇒ 登记的键永远不会被记作「已用」，会按**陈旧豁免报红**。加了反而红。
+       *
+       * 名字取「事件影响与对策」而**不是**「决策台/决策推演」：`decision-play`（「决策推演」）
+       *   今天还活着（三处嵌入 + 深链契约）—— 两条名字只差一个字却指两个不同页面，
+       *   用户不知道点哪个，这是本仓已记过一次的账。
+       */
+      { kind: "route" as const, key: "decision-console", label: "事件影响与对策" },
+    ],
+  },
   { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate", "review"].map((key) => ({ kind: "view" as const, key })) },
   // WO-NAV-SANDBOX-GROUP：沙盘一家五口此前**一个都没登记**——
   //   · `sim-sandbox` / `sim-init` 落「裸挂」（排在全部 13 个分组之后，屏幕最底）；
@@ -807,6 +851,14 @@ export default function ShellLayout() {
 
   return (
     <div className={styles.shell}>
+      {/* WO-CONSOLE-BLOCKERS · 壳级 skip-link：**必须是文档第 1 个可聚焦元素**，
+          所以它写在 `<header>` 之前而不是里面（DOM 顺序就是 Tab 顺序）。
+          落点 `<main id="main-content" tabIndex={-1}>` —— `tabIndex={-1}` 不进 Tab 序列，
+          只是让 `<main>` 能**被程序性聚焦**；少了它，跳转后焦点会退回 body，
+          下一次 Tab 又从顶栏第一站开始，等于没跳。样式见 `.skipToMain`。 */}
+      <a className={styles.skipToMain} href="#main-content" data-testid="skip-to-main">
+        跳到主内容
+      </a>
       <header className={styles.topbar}>
         <div className={styles.brand}>
           <span className={styles.logo} />
@@ -861,7 +913,7 @@ export default function ShellLayout() {
         </nav>
       </aside>
 
-      <main className={styles.content}>
+      <main className={styles.content} id="main-content" tabIndex={-1}>
         <ErrorBoundary>
           <Outlet />
         </ErrorBoundary>

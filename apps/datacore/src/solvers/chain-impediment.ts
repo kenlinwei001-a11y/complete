@@ -694,10 +694,16 @@ interface LocusRow {
 /** 该 binding 要扫的对象集合（+ 每个对象的**派生补充字段**，如 D3 硬容量算出的 parallelThroughput）。 */
 function loci(input: ChainScanInput, b: ImpedimentRuleBinding): LocusRow[] {
   const { c } = input;
+  /**
+   * `labelProp` 允许传**函数**（WO-CONSOLE-BLOCKERS）——因为有的落点类型身上**没有**一个
+   * 现成的业务名属性，业务名要跨一跳去取（`MaterialBatch.matId → Material.name`）。
+   * 原来这里只能收一个属性名，于是那一类只好拿主键当名字，机器键直接上了第一层屏。
+   * 取不到 ⇒ 仍旧回落业务 id（**不编名字**：宁可露一个 id，不许造一个不存在的业务名）。
+   */
   const mk = (
     objs: readonly ObjectInstance[],
     idProp: string,
-    labelProp: string,
+    labelProp: string | ((o: ObjectInstance) => string | undefined),
     extraOf?: (o: ObjectInstance) => Record<string, unknown> | null,
     btOf?: (o: ObjectInstance, extra: Record<string, unknown>) => BusinessType[] | undefined,
   ): LocusRow[] =>
@@ -705,7 +711,7 @@ function loci(input: ChainScanInput, b: ImpedimentRuleBinding): LocusRow[] {
       const extra = extraOf ? extraOf(o) : {};
       if (extra === null) return [];
       const objectId = str(o.props[idProp], o.id);
-      const label = str(o.props[labelProp], objectId);
+      const label = typeof labelProp === "function" ? (labelProp(o) ?? objectId) : str(o.props[labelProp], objectId);
       const baseId = typeof o.props.baseId === "string" ? o.props.baseId : undefined;
       const bts = btOf ? btOf(o, extra) : undefined;
       return [
@@ -734,8 +740,34 @@ function loci(input: ChainScanInput, b: ImpedimentRuleBinding): LocusRow[] {
       // `Order` 是全本体唯一同时承载业务线维与基地维的对象 —— 业务线判定走 `businessTypeOfOrder`
       // 这一个既有出处（与 `scope.ts` / portfolio 挂载点逐字同口径，避免"同一张单两处判出两种业务线"）。
       return mk(c.orders, "so", "so", undefined, (o) => [businessTypeOfOrder(o.props)]);
-    case "MaterialBatch":
-      return mk(c.materialBatches ?? [], "batchId", "batchId");
+    case "MaterialBatch": {
+      /**
+       * WO-CONSOLE-BLOCKERS · **B1：第一层不许出现机器编号**（决策台 `.tsx` 文件头 R-UI-4）。
+       *
+       * 今天的行为（实测 `POST /a/v1/solvers/chain_impediments/invoke`，seed 42）：
+       *   `label` = `batchId` = `pos_lfp_b2` —— 主键当名字，屏上第一条就是
+       *   「物料批次 pos_lfp_b2 现在 109天，红线 90天（超红线 21%）」。
+       *   全 18 条落点里**这一类 6 条全中**（elyte_b2 / cu_foil_b2 / pos_lfp_b2 /
+       *   pos_ncm_b2 / neg_graphite_b2 / sep_film_b2），另外三类（Line/MaterialBalance/Base）
+       *   都已是人话 ⇒ **是漏的不是选的**。
+       * 应该是：`label` = 这批料的**业务名**（`Material.name`，如 `磷酸铁锂正极`），
+       *   机器键仍在 `locus.objectId` 上原样保留 ⇒ 降层，不删除（诚实位纪律）。
+       *
+       * 名字**跨一跳取自 `Material` 自己**（`batch.matId` → `Material.matId` → `name`），
+       * 不在这里内联一张 id→中文名的表 —— 那就是第二套名字真相源，本仓栽过（订单上写真品牌名、
+       * 客户主数据写匿名代号，按名字对号的工具全部落空）。
+       * 取不到 ⇒ 回落 `batchId`（**不编**），此时屏上仍是机器键，但那是"数据缺名字"这个真事实。
+       */
+      const matName = new Map<string, string>();
+      for (const m of c.materials ?? []) {
+        const id = m.props.matId, nm = m.props.name;
+        if (typeof id === "string" && typeof nm === "string" && nm.length > 0) matName.set(id, nm);
+      }
+      return mk(c.materialBatches ?? [], "batchId", (o) => {
+        const mid = o.props.matId;
+        return typeof mid === "string" ? matName.get(mid) : undefined;
+      });
+    }
     case "MaterialBalance":
       return mk(input.materialBalances ?? [], "matBalId", "material");
     case "DataSourceHealth":

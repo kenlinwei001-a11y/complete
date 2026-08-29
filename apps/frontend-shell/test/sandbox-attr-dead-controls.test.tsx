@@ -342,15 +342,39 @@ describe("WO-ATTR-DEAD-CONTROLS §3 · 全页普查（不许再长出第四个�
     await waitFor(() => expect(second.className).toContain("on"));
   });
 
-  it("③ 纯装饰（顶栏菜单 / 左轨 / 面板头记号）对读屏隐藏，不冒充控件", async () => {
+  /*
+   * ⚠ WO-CONSOLE-BLOCKERS · **本条断言整条换过，换成更强的那一句**。
+   *
+   * 原来断言的是「假英文菜单 `File Edit View Window Tools Help` 挂了 `aria-hidden` + `title`」——
+   * 也就是**承认它是假控件，然后要求它别骗读屏用户**。UX 第 7 轮把它判为阻塞项，理由不是无障碍：
+   * 「给假菜单加无障碍标注，解决的是『读屏用户会不会被它骗』，**不解决**『拿给同行看像不像产品』」。
+   * 形态照 CLAUDE.md 铁律 0.6：**「我用『标了 aria-hidden』当作『它不再是假控件』的证据。」**
+   *
+   * 那条菜单现已**从三个屏一起删掉**。所以这条用例现在咬的是更强的命题：
+   * **屏上根本不该出现那六个英文词**。原命题（装饰件不冒充控件）由下面左轨/面板头那两段继续守。
+   */
+  it("③ 假英文菜单已不存在；其余纯装饰（左轨 / 面板头记号）对读屏隐藏，不冒充控件", async () => {
     renderWithClient(<SandboxAttr />);
     await heatReady();
-    const menubar = canvas().querySelector('[class*="mb"]') as HTMLElement | null;
-    expect(menubar, "顶栏菜单找不到 ⇒ 探针坏了").not.toBeNull();
-    const items = [...(menubar as HTMLElement).querySelectorAll("span")];
-    expect(items.length, "顶栏菜单一项都没有 ⇒ 这条在空转").toBeGreaterThan(0);
-    for (const s of items) expect(s.getAttribute("aria-hidden"), "顶栏菜单项还在冒充可点").toBe("true");
-    // 且它整条挂着一句「这是外壳」的说明，鼠标悬停读得到。
-    expect(((menubar as HTMLElement).getAttribute("title") ?? "").length).toBeGreaterThan(0);
+    const text = canvas().textContent ?? "";
+    // 金丝雀：同一个判据对一段**已知含有**那串菜单的文本必须命中 —— 否则下面的否定结论是白拿的。
+    const FAKE_MENU = /\bFile\b[\s\S]{0,60}\bEdit\b[\s\S]{0,60}\bView\b/;
+    expect(FAKE_MENU.test("File Edit View Window Tools Help"), "判据对已知样本都不命中 ⇒ 尺子坏了").toBe(true);
+    expect(FAKE_MENU.test(text), "假英文菜单又回来了").toBe(false);
+    expect(canvas().querySelector('[class*="mb"]'), "假菜单容器还在").toBeNull();
+
+    // 左轨与面板头那些真装饰件仍须对读屏隐藏（原命题的其余部分，一个都不放）。
+    // ⚠ 判据是「**在不在** aria-hidden 的子树里」，不是「自己身上有没有那个属性」：
+    //   `aria-hidden` 是**整棵子树**生效的，容器上标一次即可（本页 `.crew` 就是这么标的）。
+    //   拿"自己身上有没有"当判据会把一个**已经正确隐藏**的装饰件报成"在冒充可点"——
+    //   形态照铁律 0.6：「我用『元素自身有该属性』当作『它对读屏可见』的证据。」
+    const rail = canvas().querySelector('[class*="rail"]') as HTMLElement | null;
+    expect(rail, "左轨找不到 ⇒ 探针坏了").not.toBeNull();
+    const railItems = [...(rail as HTMLElement).querySelectorAll("span")];
+    expect(railItems.length, "左轨一项都没有 ⇒ 这条在空转").toBeGreaterThan(0);
+    for (const s of railItems) {
+      expect(s.closest('[aria-hidden="true"]'), `左轨装饰件「${s.textContent?.trim()}」还在冒充可点`).not.toBeNull();
+      expect(s.tagName, "左轨装饰件成了真控件").not.toBe("BUTTON");
+    }
   });
 });

@@ -58,8 +58,6 @@ import {
 } from "./useParetoFrontier";
 import styles from "./SandboxOpt.module.css";
 
-const MENUBAR = ["File", "Edit", "View", "Window", "Tools", "Help"] as const;
-
 const RAIL_CREW = [
   { no: "01", face: "◔", bar: "var(--warn)" },
   { no: "02", face: "◑", bar: "var(--c-capacity)" },
@@ -91,6 +89,34 @@ const TICK_COUNT_DIVISOR = 14;
  * 屏上这些数是设计稿里的样例。两件事混成一句，用户仍然不知道发生了什么。
  */
 const OPT_PLACEHOLDER_NOTE = "示例数据 · 不是本次推演算出来的";
+
+/* ══ WO-SIM-OPT-READABLE · 死控件那一半 ═══════════════════════════════════════
+ * 判据照本目录 `SandboxAttr.tsx` 已经立过的那一套（`WO-ATTR-DEAD-CONTROLS`），
+ * 三类各有各的写法，**不许混**：
+ *  ① 真能用 ⇒ `<button>` + 真 handler（四档过滤页签 / 执行对比页签 / 候选卡）
+ *  ② 今天没有承载物 ⇒ `<button disabled>` + **用户读得到**的理由（翻页箭头 / 应用方案）
+ *  ③ 纯装饰 ⇒ `aria-hidden` + `title` 说明它就是外壳（顶栏菜单 / 左轨 / 面板头记号）
+ * ⛔ 明令不做的那一种：点了弹个「已应用」而实际什么都没变 —— 假动作比死控件更坏。
+ */
+
+/** 顶栏菜单、左轨按钮、面板头右上角那两个记号 —— 规格里的桌面外壳，不是可点的功能。 */
+const CHROME_WHY = "界面外壳的装饰，不是可点的功能";
+
+/** 两条页签栏右侧的 `‹ ›`：四档/三档页签本身就一屏放得下，没有第二页可翻。 */
+const PAGER_WHY = "没有更多页签可翻";
+
+/**
+ * 〔应用方案〕为什么点不了 —— **两种态两句话，不许拿一句盖住两件事**。
+ *
+ * · 占位态：屏上这些方案是设计稿里的样例（顶栏那条横幅说的就是这件事）。
+ *   拿样例去生成一张待审批的排产变更 = 把编的数送进审批流，比死控件坏得多。
+ * · 真数据态：方案是真算出来的，但「应用」这个**写动作**本页今天还没接
+ *   （本仓的采纳链路是 `plan_change` ActionDraft → S2 审批，见 `views/sim/shared.tsx`
+ *   的 `useActionDraft`；接哪一条属产品决策，不在本单的版面口径里）。
+ *   照实说「还没接」，而不是画一个按得响的按钮。
+ */
+const APPLY_WHY_PLACEHOLDER = "这一页的方案是示例数据，不能应用。要等这次推演真算出方案，这里才能提交。";
+const APPLY_WHY_UNWIRED = "「应用方案」要走变更审批，本页还没接上这条流程，所以现在按不了。";
 
 /** 竖排组名：**逐字换行**，不用 `writing-mode`（规格 README §已知取舍 —— 中文竖排会叠成黑块）。 */
 function VerticalGroupName({ text }: { text: string }): JSX.Element {
@@ -170,15 +196,19 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
         ) : null}
         <span className={styles.hole} />
       </div>
-      <div className={styles.mb}>
-        {MENUBAR.map((m) => (
-          <span key={m}>{m}</span>
-        ))}
-      </div>
-
+      {/*
+        WO-CONSOLE-BLOCKERS · **假英文菜单已删**（原为 `File Edit View Window Tools Help`）。
+        今天的行为是 X：一条六项的英文菜单条印在中文经营页顶上，**不可点、也从来没打算可点**；
+          上一版的处置是给它挂 `aria-hidden` + 一句 title 说「这是装饰」。
+        应该是 Y：**装饰性的假控件不该在屏上**。给假菜单加无障碍标注，解决的是
+          「读屏用户会不会被它骗」，**不解决**「拿给同行看像不像产品」——
+          而后者正是这一条被判阻塞的理由（演示时从决策台点两下走过来，前面攒的信任当场清零）。
+          形态照 CLAUDE.md 铁律 0.6：「我用『标了 aria-hidden』当作『它不再是假控件』的证据。」
+        真正的桌面外壳质感由左轨/标题栏承担，那些**不冒充可点的菜单**，故保留。
+      */}
       <div className={styles.body}>
-        {/* ══ 左轨 ══ */}
-        <div className={styles.rail}>
+        {/* ══ 左轨 ══ 同上：外壳，不是功能。 */}
+        <div className={styles.rail} title={CHROME_WHY} aria-hidden>
           <span className={styles.rbtn}>◉</span>
           <span className={`${styles.rbtn} ${styles.on}`}>⌗</span>
           <div className={styles.crew}>
@@ -197,9 +227,11 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
             {/* ══ 左：候选方案 ══ */}
             <section className={`${styles.pan} ${styles.left}`} data-testid="sandbox-opt-left">
               <div className={styles.ph}>
-                <i>▤</i>
+                <i aria-hidden>▤</i>
                 <b>候选方案</b>
-                <span className={styles.rt}>▤ ⤢</span>
+                <span className={styles.rt} title={CHROME_WHY} aria-hidden>
+                  ▤ ⤢
+                </span>
               </div>
               <div className={`${styles.pb} ${styles.pbScroll}`}>
                 <div className={styles.sel}>
@@ -212,30 +244,58 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
                     ))}
                   </select>
                 </div>
+                {/* 四档过滤页签：`onClick` 本来就在（实测点「全部」候选卡 5 → 21），
+                    但挂在 `<b>` 上 ⇒ `tabIndex=-1`、无 role，**键盘一次都够不着**。
+                    换成 `<button>`，handler 一个字没改。 */}
                 <div className={styles.wv}>
                   {VIEW_TABS.map((t) => (
-                    <b
+                    <button
                       key={t.key}
+                      type="button"
                       className={t.key === tab ? styles.on : undefined}
                       data-testid={`sandbox-opt-tab-${t.key}`}
+                      {...(t.key === tab ? { "aria-current": "true" as const } : {})}
                       onClick={() => setTab(t.key)}
                     >
                       {t.text}
-                    </b>
+                    </button>
                   ))}
                   <span className={styles.nav}>
-                    <u>‹</u>
-                    <u>›</u>
+                    <button type="button" disabled title={PAGER_WHY} aria-label="上一页">
+                      ‹
+                    </button>
+                    <button type="button" disabled title={PAGER_WHY} aria-label="下一页">
+                      ›
+                    </button>
                   </span>
                 </div>
                 <div className={styles.plist} data-testid="sandbox-opt-plist">
                   {listed.map((c) => (
+                    /* 候选卡本来就能点（换选中方案），但也是 `<div>` ⇒ 键盘够不着。
+                       不用 `<button>` 而用 `role="button" + tabIndex`：卡里有
+                       `<b>/<em>/<u>` 等语义标签与 12 格条，塞进 `<button>` 属嵌套违规。
+                       这一写法与 `SandboxAttr.tsx` 的归因明细行是同一套。 */
                     <div
                       key={c.id}
                       className={c.id === selectedId ? `${styles.pc} ${styles.on}` : styles.pc}
                       data-testid={`sandbox-opt-card-${c.id}`}
                       data-frontier={c.onFrontier ? "1" : "0"}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={c.id === selectedId}
+                      /* R-UI-3：口径不许挂在原生 `title=` 上（那是浏览器 tooltip，不是浮层）。
+                         这句话是**这颗控件的可及名**，故落 `aria-label` —— 屏幕阅读器读得到，
+                         而它不再是一颗悬停才出现、触屏永远摸不到的提示。
+                         （上一版写作 `title=`，被 provenance-popover-legibility 的 title 棘轮
+                         当场逼出来：88 > 基线 79，其中本单新增的正是这一处与下面那一处。） */
+                      aria-label={`${c.label} · 点它把右侧详情与下方执行对比切到这一手`}
                       onClick={() => setPicked(c.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setPicked(c.id);
+                        }
+                      }}
                     >
                       {c.onFrontier && <span className={styles.tag}>前沿</span>}
                       <div className={styles.r1}>
@@ -265,9 +325,11 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
             {/* ══ 中：帕累托前沿 + 目标权衡雷达 ══ */}
             <section className={`${styles.pan} ${styles.mid}`} data-testid="sandbox-opt-mid">
               <div className={styles.ph}>
-                <i>▤</i>
+                <i aria-hidden>▤</i>
                 <b>帕累托前沿</b>
-                <span className={styles.rt}>▤ ⤢</span>
+                <span className={styles.rt} title={CHROME_WHY} aria-hidden>
+                  ▤ ⤢
+                </span>
               </div>
               <div className={styles.pb}>
                 <div className={styles.mt}>
@@ -290,9 +352,11 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
             {/* ══ 右：方案详情 ══ */}
             <section className={`${styles.pan} ${styles.right}`} data-testid="sandbox-opt-right">
               <div className={styles.ph}>
-                <i>▤</i>
+                <i aria-hidden>▤</i>
                 <b>方案详情</b>
-                <span className={styles.rt}>▤ ⤢</span>
+                <span className={styles.rt} title={CHROME_WHY} aria-hidden>
+                  ▤ ⤢
+                </span>
               </div>
               <div className={styles.pb}>
                 {/* `.kv` 是 `grid-template-columns: auto 1fr` 的两列网格 —— `<em>` 与 `<b>`
@@ -328,7 +392,26 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
                     </div>
                   ))}
                 </div>
-                <div className={styles.abtn}>应用方案</div>
+                {/* 本单头号缺陷（见文件上方 `APPLY_WHY_*`）：真按钮 + 诚实降级。
+                    ⛔ 这里**故意不接** `useActionDraft` —— 占位态提交等于把设计稿样例
+                       送进审批流；真数据态该接哪条采纳链路属产品决策，不在本单口径里。
+                       宁可写着"按不了"，也不做一个按得响却什么都没变的按钮。 */}
+                <button
+                  type="button"
+                  className={styles.abtn}
+                  data-testid="sandbox-opt-apply"
+                  disabled
+                  /* R-UI-3：这里**不挂** `title=`。理由不是"少一个属性"，是它**一个字的新信息都不带** ——
+                     同一句话已经① 以可见文字印在下面那个 <p> 上、② 由 `aria-describedby` 正式关联给
+                     辅助技术。再加一层悬停才出现、触屏永远摸不到的浏览器 tooltip，只会让
+                     "按不了的理由"看起来像是藏起来的。（上一版挂了，被 title 棘轮当场逼出来。） */
+                  aria-describedby="sandbox-opt-apply-why"
+                >
+                  应用方案
+                </button>
+                <p className={styles.abtnWhy} id="sandbox-opt-apply-why" data-testid="sandbox-opt-apply-why">
+                  {model.source === "placeholder" ? APPLY_WHY_PLACEHOLDER : APPLY_WHY_UNWIRED}
+                </p>
               </div>
             </section>
           </div>
@@ -336,19 +419,39 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
           {/* ══ 下：执行对比 ══ */}
           <section className={`${styles.pan} ${styles.bot}`} data-testid="sandbox-opt-bot">
             <div className={styles.ph}>
-              <i>▤</i>
+              <i aria-hidden>▤</i>
               <b>执行对比</b>
-              <span className={styles.rt}>▤ ⤢</span>
+              <span className={styles.rt} title={CHROME_WHY} aria-hidden>
+                  ▤ ⤢
+                </span>
             </div>
+            {/* 执行对比页签：改前是 `<b>`，零 handler、高亮写死第 0 个 —— 看起来能切，点了没反应。
+                现在**真接上了**，而且没用一个新端点：页签文案就是 `基线 vs {候选方案 id}`，
+                所以「点第 i 个」= `setPicked(那个 id)`，与左栏点卡片是同一个动作、同一份 state。
+                `execTabIds[0]` 恒为当前选中项（见 `useParetoFrontier` 的组装），
+                故高亮判据从"写死第 0 个"换成"这个 id 是不是选中项"—— 两者今天等价，
+                但后者在选中项变化时**自己会跟**，前者不会。 */}
             <div className={styles.btabs}>
-              {model.execTabIds.map((id, i) => (
-                <b key={id} className={i === 0 ? styles.on : undefined} data-testid={`sandbox-opt-exectab-${id}`}>
+              {model.execTabIds.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={id === selectedId ? styles.on : undefined}
+                  data-testid={`sandbox-opt-exectab-${id}`}
+                  {...(id === selectedId ? { "aria-current": "true" as const } : {})}
+                  title={`把执行对比切到 ${id}`}
+                  onClick={() => setPicked(id)}
+                >
                   {`基线 vs ${id}`}
-                </b>
+                </button>
               ))}
               <span className={styles.nav}>
-                <u>‹</u>
-                <u>›</u>
+                <button type="button" disabled title={PAGER_WHY} aria-label="上一页">
+                  ‹
+                </button>
+                <button type="button" disabled title={PAGER_WHY} aria-label="下一页">
+                  ›
+                </button>
               </span>
             </div>
 
@@ -361,6 +464,21 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
               // 那套墙钟时刻不是按天的轴，编一个口径出来就是拿假数冒充实测。
               data-tick-days={exec.tickDays === undefined ? "" : String(exec.tickDays)}
             >
+              {/*
+                WO-CONSOLE-BLOCKERS · **只有表头的空表**。
+                今天的行为是 X：`exec.rows` 为空时，四列表头（环节 / 基线 / 方案 / 轨道）照样画，
+                  底下一行都没有 —— 屏上是一张**只有抬头的表**。一张空表和「这次没数据」
+                  长得不一样：前者读起来像"数据没加载完"，让人干等。
+                应该是 Y：没有行就不画表头，改成一句说清楚**为什么**没有。
+                （与决策台那条同源纪律：⛔ 不填 0、不写"无变化"、不留空白。）
+              */}
+              {exec.rows.length === 0 ? (
+                <p className={styles.gempty} data-testid="sandbox-opt-grid-empty">
+                  这次没有可对比的执行读数 —— 是「这条算例还没跑出按格子的读数」，不是「基线和方案一样」。
+                  选一个别的方案，或等这条算例推进几格再回来看。
+                </p>
+              ) : (
+                <>
               {/* 竖排组名 */}
               <div className={styles.gcol}>
                 <div className={styles.gcap} />
@@ -429,6 +547,8 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
                 ))}
                 <div className={styles.play} style={{ left: `${exec.playheadPct}%` }} />
               </div>
+                </>
+              )}
             </div>
           </section>
         </div>

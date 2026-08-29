@@ -329,6 +329,32 @@ const TEXT_TOKENS = [
 const SPECIAL_PAIRS = [
   { fg: "--on-accent", bg: "--accent-solid", why: "实心 accent 底上的白字（主按钮 / 分段控件选中态）" },
   { fg: "--nav-active-txt", bg: "--nav-active-bg", over: "--panel2", why: "活动导航项文字" },
+  /**
+   * WO-CONSOLE-BLOCKERS（2026-08-28）· **本条是补漏，不是加严**。
+   *
+   * 判据 C 原来只把文字令牌配到 `SURFACE_TOKENS`（页面表面）上，而 `--primary-soft`
+   * 是**本设计系统自己规定的「选中项底纹」**——它就是拿来配 `--accent-txt` 的那块底
+   * （`DecisionConsoleView .sortBtn[aria-pressed=true]` / `.searchItem[aria-pressed=true]` /
+   * `.impWays`、`console/SandboxDetail` 的选中徽标）。它不在表面表里，于是这一对
+   * **三套皮全部低于 6.0 而门全绿**：暗 4.96 · 冷蓝 5.10 · 暖砂 5.30。
+   *
+   * 形态（CLAUDE.md 铁律 0.6）：「我用『在页面表面上达标』当作『在所有会配它的底上达标』的证据。」
+   * 这是同一个病的**第二次**——第一次就是上一行的 `--nav-active-txt`（tokens.css 里那句
+   * 「与 --accent-txt 取齐**不够** …压在蓝染活动底上只剩 5.10」）。第一次是**人**发现的、
+   * 只补了那一个特例对；这一次照三级处置**把判据补上**，让机器先说话。
+   *
+   * `over: "*"` = 逐面合成取最差。写死一个面会让这条对**比现实宽**：实测 `--primary-soft`
+   * 叠 `--panel2` 在暗色下得 7.98，而叠玻璃卡面（屏上那颗筛选钮真正待的地方）只有 6.06。
+   */
+  { fg: "--accent-txt", bg: "--primary-soft", over: "*", why: "选中项染色底上的 accent 文字（筛选钮 / 搜索结果选中态 / 选中徽标）" },
+  /**
+   * WO-CONSOLE-BLOCKERS · 实心 `--ok` 底上的文字（`SandboxOpt .pc .tag` 那枚「前沿」徽标）。
+   * 补这一对的理由与上一条同形：**语义色当填充时，压在它上面的字不在任何"页面表面"上**，
+   * 于是判据 C 看不见它 —— 而真浏览器实测那里是 **1.97:1**（近白压中绿）。
+   * `--ok` 是 theme-invariant 的，故这一对无需 `over`。
+   */
+  { fg: "--on-ok", bg: "--ok", why: "实心 --ok 底上的文字（前沿徽标等语义实心片）" },
+  { fg: "--on-danger", bg: "--danger", why: "实心 --danger 底上的文字（告警徽标）" },
 ];
 
 /** 从可能是渐变的值里取出所有色停，逐个叠在 over 上，返回 [name, color] 数组。 */
@@ -439,11 +465,34 @@ export function scanCss(file, raw) {
     }
     const fsRaw = grab("font-size");
     const colorRaw = grab("color") || grab("fill");
+    /*
+     * ⚠ **同块里自带的底色要吃**（WO-CONSOLE-BLOCKERS 2026-08-28）。
+     *
+     * 本门「三条测不准」的第 ① 条写着：底色靠"最差面"代替真实层叠，因为「一个 color 落在哪个
+     * 背景上，是渲染期的事实，源码里不存在」。**这句话对了一半**：跨元素继承来的底确实不存在，
+     * 但**同一个声明块里同时写了 `color` 与 `background` 时，那个配对就白纸黑字写在源码里**。
+     * 拿最差面去代替它，方向还是反的 —— 会把「白字压绿底」判绿，把「近黑字压绿底」判红。
+     *
+     * 真事故（本单实测）：`SandboxOpt.module.css .pc .tag { color: var(--txt); background: var(--ok) }`
+     * 真浏览器暗色皮量出 **1.97:1**（近白压中绿·12 个实例），而本门当时**全绿**；
+     * 上一位作者的注释里甚至写明了理由 ——「判据 A 看不见元素自带的底色…换 --txt 两边都成立」，
+     * 也就是**为了让门变绿而选了一个屏上读不了的颜色**。
+     * 形态照 CLAUDE.md 铁律 0.6：**「我用『判据 A 绿』当作『屏上读得了』的证据，而前者并不度量后者。」**
+     *
+     * ⇒ 声明块自带不透明底 ⇒ 用**它**判；没有 ⇒ 仍走最差面（行为逐字不变）。
+     * 半透底不吃（`rgba(...,<1)` / 含 var 的染色）：那要合成，合成又要知道下层是谁 —— 回到测不准，
+     * 那类仍走最差面，宁可保守。
+     */
+    const bgRaw = grab("background-color") ?? (() => {
+      const b = grab("background");
+      // `background:` 简写里只认**纯色值**（`#rgb` / `rgba()` / `var(--x)`），带图片/渐变/多值的不认。
+      return b && /^(#[0-9a-fA-F]{3,8}|var\(--[A-Za-z0-9_-]+\)|rgba?\([^)]*\))$/.test(b.trim()) ? b.trim() : null;
+    })();
     const line = src.slice(0, m.index).split("\n").length;
     const size = fsRaw ? PX(fsRaw) : shSize;
     const weight = WEIGHT(grab("font-weight") ?? shWeight);
     if (size != null && size > 0) sizes.push({ file, line, sel, size });
-    if (size != null && size > 0 && colorRaw) units.push({ file, line, sel, size, color: colorRaw, weight });
+    if (size != null && size > 0 && colorRaw) units.push({ file, line, sel, size, color: colorRaw, weight, ...(bgRaw ? { ownBg: bgRaw } : {}) });
     else if ((size != null && size > 0) || colorRaw) unjudged++;
   }
   return { units, sizes, unjudged };
@@ -510,8 +559,13 @@ export function judgeMatrix(themes) {
     for (const sp of SPECIAL_PAIRS) {
       const fgv = vars.get(sp.fg), bgv = vars.get(sp.bg);
       if (fgv == null || bgv == null) { fails.push(`【C 令牌矩阵】${theme}：特例对 ${sp.fg} on ${sp.bg} 缺令牌定义`); continue; }
-      const overColor = sp.over ? resolveColor(vars.get(sp.over), vars) : null;
-      const bgs = surfacesFromValue(sp.bg, bgv, vars, overColor);
+      // `over: "*"` = 该染色底会叠在**任何**表面上 ⇒ 逐面合成、取最差（judgeUnit 自己挑最差）。
+      // 写死一个 `over` 会让这条特例对比现实**宽**：`--primary-soft` 在暗色下叠 `--panel2`
+      // 得 7.98，叠玻璃卡面只有 6.06 —— 而屏上那颗筛选钮长在玻璃卡里。
+      // 「取一个面」不度量「所有会出现的面」，那正是这条特例对当初被漏掉的同一个形态。
+      const bgs = sp.over === "*"
+        ? surfacesOf(vars).flatMap(([, s]) => surfacesFromValue(sp.bg, bgv, vars, s))
+        : surfacesFromValue(sp.bg, bgv, vars, sp.over ? resolveColor(vars.get(sp.over), vars) : null);
       const r = judgeUnit({ color: resolveColor(fgv, vars), backgrounds: bgs, sizePx: FLOOR_PX });
       if (!r) { fails.push(`【C 令牌矩阵】${theme}：特例对 ${sp.fg} on ${sp.bg} 解析不出`); continue; }
       rows.push({ theme, token: `${sp.fg} on ${sp.bg}`, ...r });
@@ -595,7 +649,10 @@ export function analyzeAll(themes, extraSources = []) {
       for (const [theme, vars] of Object.entries(themes)) {
         const c = resolveColor(u.color, vars);
         if (!c) continue;
-        const r = judgeUnit({ color: c, backgrounds: surfacesOf(vars), sizePx: judgeSizeFor(u.size), weight: u.weight });
+        // 同块自带**不透明**底 ⇒ 用它（源码里就写着的真实配对）；否则回落最差面（见 scanCss 的账）。
+        const own = u.ownBg ? resolveColor(u.ownBg, vars) : null;
+        const backgrounds = own && (own.a ?? 1) >= 1 ? [[u.ownBg, { ...own, a: 1 }]] : surfacesOf(vars);
+        const r = judgeUnit({ color: c, backgrounds, sizePx: judgeSizeFor(u.size), weight: u.weight });
         if (r?.red) bad.push(`${theme} ${r.got}<${r.need}@${r.worst}`);
       }
       if (bad.length) bump(f, "site", `L${u.line} ${u.sel.slice(0, 44)} ${u.size}px/${u.weight} ${u.color.slice(0, 26)} → ${bad.join(" · ")}`);

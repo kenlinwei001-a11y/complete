@@ -129,7 +129,10 @@ html,body{margin:0;background:var(--ink);color:var(--txt);font-family:var(--fs);
    把共享件抄进四份规格 = 造出四份会各自漂移的第二真相源。
    色值移植对照：--panel2→var(--panel2) · --hair→var(--line) · --txt→var(--txt) · --dim→var(--muted) */
 .dock{width:1440px;background:var(--panel2);border:1px solid var(--hair);border-top:0;
-  color:var(--txt);font-family:var(--fs);font-size:11.5px}
+  color:var(--txt);font-family:var(--fs);font-size:12px}
+/* WO-CONSOLE-BLOCKERS（2026-08-28）：11.5px → 12px。规格随产品判据走（2026-08-21 裁决：
+   产品 token 是真值，规格随它）—— 12px 是 `scripts/check-text-legibility.mjs` 判据 B 的字号硬底，
+   本页整屏抬档到该硬底，`.dock` 是 `sandbox-opt-pixel.test.tsx` ⑥ 逐值对齐的那一条，故同步改。 */
 .dockSum{height:26px;display:flex;align-items:center;gap:6px;padding:0 12px;cursor:pointer;
   color:var(--dim);letter-spacing:0.06em;list-style:none}
 .dockSum::-webkit-details-marker{display:none}

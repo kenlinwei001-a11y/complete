@@ -46,9 +46,61 @@ import {
 
 const G = PARETO_GEOM;
 
-/** 刻度文案。纵轴按整数千分位（规格 `(2400-i*400).toLocaleString()`），横轴一位小数 + 单位。 */
+/* ══ WO-SIM-OPT-READABLE · 图上字号 ═══════════════════════════════════════════
+ * ⚠ **这里的数不是 CSS 像素，是用户单位** —— `<svg viewBox="0 0 640 280">` 拉伸铺满
+ * `.pf`，所以屏上真尺寸 = 这个数 × 缩放比。2026-08-28 实测（1600×950 · DPR1）：
+ * `.pf` 实测 770×317.5 ⇒ 缩放 min(770/640, 317.5/280) = **1.134**。
+ * 于是改前的 `fontSize={8}` 在屏上是 **9.07px**，`8.5` 是 9.64px、`9` 是 10.2px
+ * —— 三档都在本仓 11px 的可读地板之下。
+ *
+ * ⚠ 顺带记一笔：`getComputedStyle(text).fontSize` 对 SVG 报的是**声明值 8px**，
+ * 不是渲染值 9.07px。拿它当"屏上多大"的证据，就是本仓反复摔的那一跤 ——
+ * 「我用 X 当作 Y 的证据，而 X 并不度量 Y」。量图里的字必须先乘缩放比。
+ *
+ * ⚠ **WO-CONSOLE-BLOCKERS 再订正一档**：上一版取 10 / 11，理由是「×1.134 ⇒ 屏上 11.3 / 12.5，
+ * 跨过 **11px** 地板」。两处不对，实测都验过：
+ *  ① 本仓的地板是 **12px** 不是 11px（`scripts/check-text-legibility.mjs` 判据 B，`FLOOR_PX=12`）。
+ *     10 用户单位 ×1.134 = 11.3px，**仍在地板之下**；今日真浏览器扫描实测该屏
+ *     `<12px` 还有 **27 个**，全部是这两个常量画出来的图上文字。
+ *  ② **缩放比 1.134 是那一档容器宽度下的实测值，不是常量** —— 容器窄一点它就 <1，
+ *     那时 10 单位连 10px 都不到。拿一个会浮动的系数去论证「跨过了地板」，
+ *     正是本文件上一段自己警告的那个形态：**「我用 X 当作 Y 的证据，而 X 并不度量 Y」**。
+ * ⇒ 取 **12 / 13**：即使缩放比退化到 1.0 也仍在地板之上（当前实测档位下屏上是 13.6 / 14.7px）。
+ *   不动任何几何常量；刻度文案已按量级折算（见下 `fmtXTick`），12 单位下 8 个刻度仍排得开。
+ */
+const LABEL_FS = 12;
+const AXIS_TITLE_FS = 13;
+
+/**
+ * 刻度文案。纵轴按整数千分位（规格 `(2400-i*400).toLocaleString()`）。
+ *
+ * ══ WO-CONSOLE-BLOCKERS · 横轴刻度 ══════════════════════════════════════════
+ *
+ * ⚠ **派单给的前提在这一条上已过期，照实记账**（派单原文：「帕累托横轴在 74 万的数上画
+ * 1 个单位」）。那是**原稿**的说法，`docs/LOOP7-ux-review.md` §10 第 2 行自己已经把它判为
+ * 「原稿前提仍过期；LOOP5 的更正复现」—— 今天横轴真实是 `9187992.0 → 6855112.0`、
+ * 跨度 2,332,880、递减、**8 个刻度全是 7 位数带一个 `.0`**。
+ *
+ * 所以今天真正的毛病不是「跨度画错了」，是**刻度文案**：
+ *  · 今天的行为是 X：`v.toFixed(1)` 无条件给一位小数 ⇒ 屏上是 `9187992.0` 这种
+ *    9 个字符的数。横轴 8 个刻度、每刻度间距只有 70 个 SVG 单位，10px 等宽字下
+ *    一个标签就要 ~60 单位 —— **它们几乎贴在一起**；而那个 `.0` 还是**假精度**
+ *    （跨度 233 万的轴上，小数位一个信息都不携带）。
+ *  · 应该是 Y：按量级折算成中文读法（`918.8万`），**位数就是精度承诺** ——
+ *    小数位只在它真的携带信息时才出现。
+ *
+ * ⛔ 只改**呈现**：轴的取值、方向、单位全部仍来自端点回显的 `objectives[]`，
+ * 这里一个业务数都不碰（禁令 2：本单不动数据源）。
+ */
 const fmtYTick = (v: number): string => Math.round(v).toLocaleString();
-const fmtXTick = (v: number, unit: string): string => `${v.toFixed(1)}${unit}`;
+export const fmtXTick = (v: number, unit: string): string => {
+  const a = Math.abs(v);
+  if (a >= 1e8) return `${(v / 1e8).toFixed(1)}亿${unit}`;
+  if (a >= 1e4) return `${(v / 1e4).toFixed(1)}万${unit}`;
+  // 100 以上小数位已无信息（这条轴的跨度远大于 1）⇒ 取整 + 千分位。
+  if (a >= 100) return `${Math.round(v).toLocaleString()}${unit}`;
+  return `${v.toFixed(1)}${unit}`;
+};
 
 export interface ParetoChartProps {
   axes: readonly [OptAxis, OptAxis];
@@ -98,7 +150,7 @@ export function ParetoChart({ axes, frontier, dominated, selectedId, onSelect }:
             x={G.X0 - 6}
             y={y + 3}
             textAnchor="end"
-            fontSize={8}
+            fontSize={LABEL_FS}
             fontFamily="var(--font-mono)"
             style={{ fill: "var(--muted2)" }}
           >
@@ -114,7 +166,7 @@ export function ParetoChart({ axes, frontier, dominated, selectedId, onSelect }:
             x={x}
             y={G.Y1 + 13}
             textAnchor="middle"
-            fontSize={8}
+            fontSize={LABEL_FS}
             fontFamily="var(--font-mono)"
             style={{ fill: "var(--muted2)" }}
           >
@@ -181,7 +233,7 @@ export function ParetoChart({ axes, frontier, dominated, selectedId, onSelect }:
             <text
               x={e.p.x + 9}
               y={e.p.y - 7}
-              fontSize={8.5}
+              fontSize={LABEL_FS}
               fontFamily="var(--font-mono)"
               style={{ fill: sel ? "var(--warn-txt)" : "var(--muted)" }}
             >
@@ -192,10 +244,10 @@ export function ParetoChart({ axes, frontier, dominated, selectedId, onSelect }:
       })}
 
       {/* ── 两条轴题（左上 = 纵轴 · 右上 = 横轴）── */}
-      <text x={G.X0} y={15} fontSize={9} style={{ fill: "var(--muted2)" }}>
+      <text x={G.X0} y={15} fontSize={AXIS_TITLE_FS} style={{ fill: "var(--muted2)" }}>
         {`${ay.label} ${ay.unit}`.trim()}
       </text>
-      <text x={G.X1} y={15} textAnchor="end" fontSize={9} style={{ fill: "var(--muted2)" }}>
+      <text x={G.X1} y={15} textAnchor="end" fontSize={AXIS_TITLE_FS} style={{ fill: "var(--muted2)" }}>
         {`${ax.label} ${ax.unit}`.trim()}
       </text>
     </svg>

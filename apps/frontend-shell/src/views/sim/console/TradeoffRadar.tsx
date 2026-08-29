@@ -32,6 +32,21 @@ const LEGEND_Y = [34, 50] as const;
 
 const R = RADAR_GEOM;
 
+/* ══ WO-SIM-OPT-READABLE · 图上字号 ═══════════════════════════════════════════
+ * 与 `ParetoChart.tsx` 同一笔账，但**缩放比不同，所以数也不同** —— 别照抄那边的 10。
+ * 2026-08-28 实测（1600×950 · DPR1）：本图 `viewBox="0 0 640 172"`、`.rad` 实测 770×171
+ * ⇒ 缩放 min(770/640, 171/172) = **0.994**（那边是 1.134，因为那个容器更高）。
+ * 于是改前 `8.5` 在屏上是 **8.45px**、`9` 是 8.95px，比帕累托图那边还小。
+ * ⚠ **WO-CONSOLE-BLOCKERS 订正**：上一版取 11（×0.994 ⇒ 屏上 **10.9px**），并写着
+ * 「≈ 地板」。**那不是地板** —— 本仓判据 B 的硬底是 **12px**（`FLOOR_PX`），10.9 在它之下。
+ * 上一版给的不加码理由是「再往上六根轴的中文标签会互相压住」，这条**当时没有量过**，
+ * 只是判断。本单**真量了**：把它抬到 12（屏上 11.9px）后，在 1600×900 视口下逐对算
+ * 标签外接盒，重叠对数 = 0（量法见 scratchpad 的 `measure.mjs` radarOverlap 一节）。
+ * ⇒ 取 **12**。若日后容器变窄真压住了，正确的修法是**减轴或换布局**，
+ * 不是把字缩回读不清 —— 「读不清」和「读不出」都是不可用，前者还多一层"看起来能用"的欺骗。
+ */
+const LABEL_FS = 12;
+
 /** 第 i 根轴（共 n 根）在半径比 k 处的坐标。规格：`-π/2 + i·2π/n`。 */
 export function radarPoint(i: number, n: number, k: number): { x: number; y: number } {
   const a = -Math.PI / 2 + (i * Math.PI * 2) / n;
@@ -62,7 +77,7 @@ export function TradeoffRadar({ radar }: { radar: OptRadar }): JSX.Element {
               x={lab.x}
               y={lab.y + 3}
               textAnchor="middle"
-              fontSize={8.5}
+              fontSize={LABEL_FS}
               style={{ fill: "var(--muted)" }}
               data-testid={`sandbox-opt-radar-axis-${name}`}
             >
@@ -92,7 +107,7 @@ export function TradeoffRadar({ radar }: { radar: OptRadar }): JSX.Element {
       ].map((l) => (
         <g key={l.text}>
           <rect x={20} y={l.y - 7} width={16} height={3} style={{ fill: l.color }} />
-          <text x={42} y={l.y - 2} fontSize={9} style={{ fill: "var(--muted)" }}>
+          <text x={42} y={l.y - 2} fontSize={LABEL_FS} style={{ fill: "var(--muted)" }}>
             {l.text}
           </text>
         </g>

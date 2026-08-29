@@ -40,8 +40,6 @@ const RAIL_CREW = [
   { no: "03", face: "◕", bar: "var(--muted2)" },
 ] as const;
 
-const MENUBAR = ["File", "Edit", "View", "Window", "Tools", "Help"] as const;
-
 export interface SandboxHomeProps {
   /** 沙盘世界 id（不给 ⇒ 左栏不发请求，受击态回落规格占位）。 */
   sessionId?: string;
@@ -61,12 +59,7 @@ export function SandboxHome({ sessionId, targetObjectId }: SandboxHomeProps = {}
         </span>
         <span className={styles.hole} />
       </div>
-      <div className={styles.mb}>
-        {MENUBAR.map((m) => (
-          <span key={m}>{m}</span>
-        ))}
-      </div>
-
+      {/* WO-CONSOLE-BLOCKERS：假英文菜单 `File Edit View Window Tools Help` 已删（三屏同款·见 SandboxOpt 的账）。 */}
       <div className={styles.body}>
         {/* ══ 左轨 ══ */}
         <div className={styles.rail}>

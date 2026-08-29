@@ -259,7 +259,11 @@ describe("WO-SIM-FE-HOME · 规格 1:1（期望值全部现从 sandbox-home.html
 
     // 抽查三个元素，三种承载方式各一个（CSS 类 / CSS 类 + 状态 / TSX inline style）。
     const samples: { el: HTMLElement | null; prop: "color" | "fill"; token: string; specVar: string }[] = [
-      { el: bySel(`.${cls("mb")}`), prop: "color", token: "--muted", specVar: "--dim" },
+      // WO-CONSOLE-BLOCKERS：原抽查点 `.mb`（假英文菜单 `File Edit View…`）已删（假控件）。
+      // 改挂 `.rbtn`，且**必须排除 `.on`** —— 本页第一颗左轨按钮就是选中态，
+      // 它的 color 被 `.rbtn.on` 覆盖成 `--warn-txt`，直接 querySelector 会抓到那一颗
+      // 然后报「用了非同族 token」。这不是产品的问题，是抽查点选错了元素。
+      { el: bySel(`.${cls("rbtn")}:not(.${cls("on")})`), prop: "color", token: "--muted", specVar: "--dim" },
       { el: bySel(`.${cls("it")}.${cls("hot")}`), prop: "color", token: "--danger", specVar: "--red" },
       { el: screen.getByTestId("sandbox-home-lane-label-CAPACITY"), prop: "fill", token: "--c-capacity", specVar: "--cy" },
     ];
