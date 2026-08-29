@@ -116,6 +116,7 @@ export const MOCK_ONTOLOGY_LINKS: MockOntologyLink[] = [
   { linkKey: "alt_for_material", fromTypeKey: "MaterialAlternative", toTypeKey: "Material" },
   { linkKey: "material_supplied_by", fromTypeKey: "Material", toTypeKey: "Supplier" },
   { linkKey: "line_has_process", fromTypeKey: "Line", toTypeKey: "Process" },
+  { linkKey: "process_belongs_to_line", fromTypeKey: "Process", toTypeKey: "Line" },
   { linkKey: "equip_used_in", fromTypeKey: "Equipment", toTypeKey: "Process" },
   { linkKey: "model_uses_material", fromTypeKey: "Model", toTypeKey: "Material" },
   { linkKey: "supplier_supplies_material", fromTypeKey: "Supplier", toTypeKey: "Material" },

@@ -232,7 +232,18 @@ describe("WO-MOCK-ENGINE-PARITY · mock 与真引擎同口径现算集合相等"
     // 按本注释的要求**两侧独立复算过**，没有照抄报错里的 received：拿 battery.ts 与
     // ontology-graph.ts 各跑一遍同一条 `fromTypeKey:` 正则求差集 ⇒ battery 103 · mock 101 ·
     // missing 正是这两条 · extra 0；再 `git log -S` 追到 d2542195 确认是**有意新增**不是回归。
-    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 103）").toBe(103);
+    // 103→104 于 2026-08-29（收编批次 `handoff-integ-batch-2`）：A 侧 63a2ea5e（`WO-SLICE-DOMAINS`）
+    // 加 `process_belongs_to_line`(Process→Line)，把设备侧接回订单与钱那条链的第一跳。
+    // 照本注释的要求**两侧独立复算过，没有照抄报错里的 received**：另写一份脚本、不 import 本文件的
+    // 抽取器，对 battery.ts `batteryLinkTypes()` 与 ontology-graph.ts `MOCK_ONTOLOGY_LINKS`
+    // 各跑一遍同一条 `fromTypeKey:` 正则求差集 ⇒ battery **104** · mock **103** ·
+    // missing 恰为 `process_belongs_to_line|Process|Line` 一条 · extra **0**；
+    // 金丝雀两条同时验过（`model_producible_at|Model|Base` 必中 = true ∧ 合成键必不中 = false）。
+    // 再 `git log -S process_belongs_to_line -- apps/datacore/src/synthetic/battery.ts` 追到
+    // 唯一提交 63a2ea5e，确认是**有意新增**（该单要消灭「设备故障对毛利贡献恒为 0」）不是回归。
+    // ⚠ 同单还物化了 `wo_for_model`，但那条 linkType **早已声明**、只是从没落过实例 ⇒ 不进本计数，
+    //   所以是 +1 不是 +2 —— 「声明」与「物化」在这条口径里不是一回事。
+    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 104）").toBe(104);
   });
 
   it("§2 mock 镜像图 == battery.ts 现算图（集合相等·缺谁多谁点名）", () => {
