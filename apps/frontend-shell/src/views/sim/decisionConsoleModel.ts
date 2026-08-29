@@ -69,8 +69,21 @@ export interface SubjectScope {
  * 每条的候选数都是 2026-08-28 实测的（`POST /a/v1/objects/aggregate` count）：
  * Customer 20 · Model 6 · Material 8 · Base 13 · Line 130（每基地 10）·
  * DemandSegment 3 · Order **500**（⇒ 只能搜，不能铺）。
+ *
+ * ── 为什么本表挂 `hardcoded-data-allow`（探测器 B）——逐个数字点名，可复算 ──────────
+ * 探测器 B 的判据是形状：顶层 ≥3 行 且 块内数值字面量 ≥6。本表被判 10 个数值，
+ * 而这 10 个**没有一个是业务数据**（复验：`node scripts/check-debattery.mjs`）：
+ *   · 6 个在 `//` 注释里 —— B 数的是**未剥注释**的块原文（`block.match(/\d+/g)`），
+ *     即「500 张单 / 11337 行 / 8 种料 / 13 → 每个 10 / 20 行以内」这些**说明文字**；
+ *   · 4 个是同一个占位示例 `SO-3391`，写在 `searchHint` 这句**给用户看的提示语**里。
+ * 本表的值只有 typeKey / label / nameProp / mode / searchHint —— 全是**呈现路由**，
+ * 事件真相仍来自 `GET /a/v1/sim/drill/catalog`（见上），后端加事件走 `SUBJECT_FALLBACK`。
+ * ⚠ 本记号**只关掉探测器 B 对本 const 的形状判定**（`headLine.includes(DATA_ALLOW)`），
+ *   探测器 A（行业专属字符串·另用 `debattery-allow`）对本文件照常全扫，未被豁免。
+ * ⚠ **没有抬任何基线**：`scripts/frontend-data-baseline.json` 仍是 34，本改动只是让
+ *   现算命中从 35 回到 34（canonical 上本门是绿的，本批多出来的就是这一条）。
  */
-const SUBJECT_SCOPE: Record<string, SubjectScope> = {
+const SUBJECT_SCOPE: Record<string, SubjectScope> = { // hardcoded-data-allow
   // ── 订单口的三件事：500 张单，只能搜（铺出来就是今天那个 11337 行的病）───────
   ORDER_RESCHEDULE: { typeKey: "Order", label: "哪一张单", nameProp: "so", mode: "SEARCH", searchHint: "输单号（SO-3391）或客户名（广汽）" },
   ORDER_CANCEL: { typeKey: "Order", label: "哪一张单", nameProp: "so", mode: "SEARCH", searchHint: "输单号（SO-3391）或客户名（广汽）" },
