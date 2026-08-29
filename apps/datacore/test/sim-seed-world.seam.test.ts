@@ -309,16 +309,66 @@ describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
     const census = await censusWorldLines(t, DEMO_SIM_WORLD_SESSION_ID);
     const movedObjectIds = [...new Set(census.moved.map((k) => census.readings.get(k)!.objectId))].sort();
     expect(movedObjectIds.length, "普查里一个对象都没动 ⇒ 扰动压根没进传导核").toBeGreaterThan(0);
-    const ms = await t.app.inject({
-      method: "GET",
-      url: `/a/v1/sim/sessions/${DEMO_SIM_WORLD_SESSION_ID}/metric-series`
-        + `?limit=${SIM_METRIC_SERIES_MAX_LIMIT}&order=key&objectIds=${encodeURIComponent(movedObjectIds.join(","))}`,
-      headers: ADMIN,
-    });
-    expect(ms.statusCode).toBe(200);
-    const series = ms.json() as SimMetricSeriesResponse;
-    expect(series.truncated, "白名单筛完仍被硬上限截断 ⇒ 这一份不完整，下面的计数不许信").toBe(false);
-    const moved = series.metrics.filter((m) => JSON.stringify(m.baseline) !== JSON.stringify(m.actual));
+    //
+    // ⚠ **2026-08-28 订正：白名单一次发不完了，改**分批**发，判据不变。**
+    //   原文把 `movedObjectIds` 一次性塞进 `objectIds=`，赌"筛完这些对象的格子装得进 500 的硬上限"。
+    //   这个赌注被**两件互不相干的事**各自压爆过一次，故此处记两笔病因（都不是"传导核坏了"）：
+    //     · `WO-SLICE-DOMAINS`：补了 `Line.blockedPressure` 这个新量纲 ⇒ 动过的 Line 每个多一格；
+    //     · `WO-ORDER-BOOK-500`：订单簿从 ~24 张扩到 500 张 ⇒ **动过的对象数**本身涨了一个量级。
+    //   两者一个把"每对象的格数"顶上去、一个把"对象数"顶上去，乘积越过 500 ⇒ `truncated` 转真。
+    //   **红得对**：它咬的正是"这一份完不完整"，而那一份确实不完整了。
+    //   修法不是把上限调大（那道封顶挡的是浏览器 OOM，为一条断言好数就给生产开口子，
+    //   等于拿生产的病换测试的方便 —— 本文件 ⑤e 头注已经把这条路堵死了），
+    //   也不是把断言放宽成"允许截断"（那等于让链断了也照样绿）。
+    //   改成**分批取、逐批断言完整、再合并** —— 每一批仍然是"完整的一份"，
+    //   合起来才是全集；判据从"一页装得下"变成"每一页都没被截断"，不再靠运气。
+    //
+    //   ⚠ 批大小**按本世界实测的"每对象最多几格"现算**，不写死一个猜的余量：
+    //   写死 `MAX/4` 是在赌"没有对象超过 4 个量纲"，那是同一个赌注换了个赌注额而已 ——
+    //   量纲再长一档就又重演这次的红。`censusWorldLines` 手里就有全目录，直接问它要真值。
+    const cellsPerObject = new Map<string, number>();
+    for (const [, r] of census.readings) cellsPerObject.set(r.objectId, (cellsPerObject.get(r.objectId) ?? 0) + 1);
+    const maxCellsPerObject = Math.max(1, ...movedObjectIds.map((id) => cellsPerObject.get(id) ?? 1));
+    const BATCH = Math.max(1, Math.floor(SIM_METRIC_SERIES_MAX_LIMIT / maxCellsPerObject));
+    // eslint-disable-next-line no-console
+    console.log(
+      "[SIM-SEED-WORLD ⑤b] 白名单对象=%d 每对象最多%d格 ⇒ 批大小=%d 批数=%d（上限=%d）",
+      movedObjectIds.length, maxCellsPerObject, BATCH, Math.ceil(movedObjectIds.length / BATCH),
+      SIM_METRIC_SERIES_MAX_LIMIT,
+    );
+    const allMetrics: SimMetricSeriesResponse["metrics"] = [];
+    let series!: SimMetricSeriesResponse;
+    for (let i = 0; i < movedObjectIds.length; i += BATCH) {
+      const chunk = movedObjectIds.slice(i, i + BATCH);
+      const ms = await t.app.inject({
+        method: "GET",
+        url: `/a/v1/sim/sessions/${DEMO_SIM_WORLD_SESSION_ID}/metric-series`
+          + `?limit=${SIM_METRIC_SERIES_MAX_LIMIT}&order=key&objectIds=${encodeURIComponent(chunk.join(","))}`,
+        headers: ADMIN,
+      });
+      expect(ms.statusCode).toBe(200);
+      const page = ms.json() as SimMetricSeriesResponse;
+      expect(page.truncated, `第 ${i / BATCH + 1} 批筛完仍被硬上限截断 ⇒ 这一份不完整，下面的计数不许信`).toBe(false);
+      if (i === 0) series = page; // ticks 轴各批一致，取首批作代表（⑤d 的 t0 断言用它）
+      allMetrics.push(...page.metrics);
+    }
+    // 🐤 金丝雀：分批本身不许丢数据。两句都要，各堵一头：
+    //    · 覆盖到的**对象**数 == 白名单长度 ⇒ 没有整批被静默丢掉；
+    //    · 合并后的**格子**数 == 普查给的全目录格数 ⇒ 也没有单格被丢
+    //      （只查对象数的话，某批少回几格照样绿 —— 那正是「我用 X 当作 Y 的证据」的老形态）。
+    expect(new Set(allMetrics.map((m) => m.objectId)).size).toBe(movedObjectIds.length);
+    const censusCellsOfWhitelist = [...census.readings.values()].filter((r) =>
+      movedObjectIds.includes(r.objectId),
+    ).length;
+    expect(allMetrics.length, "分批合并后格数对不上普查全目录 ⇒ 某一批少回了几格").toBe(censusCellsOfWhitelist);
+    // eslint-disable-next-line no-console
+    console.log(
+      "[SIM-SEED-WORLD ⑤b] 合并后 %d 格（一次发完会是 %d>%d ⇒ truncated:true，这就是本条曾经的红）",
+      allMetrics.length, censusCellsOfWhitelist, SIM_METRIC_SERIES_MAX_LIMIT,
+    );
+    // `order=key` 是下游判据依赖的稳定序；分批是按对象切的，合并后还原成全局 key 序。
+    allMetrics.sort((a, b) => a.key.localeCompare(b.key));
+    const moved = allMetrics.filter((m) => JSON.stringify(m.baseline) !== JSON.stringify(m.actual));
     expect(moved.length, "两条线逐值全等 = 扰动没进传导核（本单要消灭的那个 X）").toBeGreaterThan(0);
 
     // ── ⑤c **下游真的被带动**（判据 2 的后半 · 本门最要害的一条）───────────────────
@@ -340,7 +390,9 @@ describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
     const sample = moved[0]!;
     expect(sample.baseline.some((v, i) => v !== sample.actual[i]), "金丝雀：比较器认得出真差值").toBe(true);
     // 反向金丝雀：没动的那些，逐格必须真相等。
-    const still = series.metrics.filter((m) => JSON.stringify(m.baseline) === JSON.stringify(m.actual));
+    // ⚠ 取 `allMetrics` 而不是 `series.metrics`（= 首批那一页）：后者只是全集的一个分片，
+    //   「首批里恰好有没动的格子」是运气不是判据 —— 分批改法一落地就得连这条一起改口径。
+    const still = allMetrics.filter((m) => JSON.stringify(m.baseline) === JSON.stringify(m.actual));
     expect(still.length, "全世界都动了 ⇒ 这个世界里没有「没被带动」的对照，⑤b 就不成其为证据").toBeGreaterThan(0);
     expect(still[0]!.baseline).toEqual(still[0]!.actual);
 

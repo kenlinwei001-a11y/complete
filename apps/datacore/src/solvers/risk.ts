@@ -404,7 +404,24 @@ export function tensionSeries(
       if (!e.factors.includes(factor)) continue;
       const dist = Math.abs(d - e.day);
       if (dist > p.pulseWindow) continue;
-      const ps = Math.max(p.psFloor, 1 - (vb - p.psStart) / p.psDen);
+      // ── `ps` = **高位脉冲衰减**（PRD-IND-risk §4.4 对它的命名）。它是个**衰减**系数，
+      //    值域只能是 (0, 1]：张力越接近 cap，同一个事件能再抬起来的空间越小。
+      //
+      // ⚠ **2026-08-28 WO-CANONICAL-REDS 修**：原式只 `Math.max(psFloor, …)` 夹了**下**界，
+      //    没夹上界 ⇒ `vb < psStart(68)` 时 `ps > 1`，即**工厂越闲、同一个交付高峰造成的张力越大**。
+      //    这不是标定问题，是式子自己和自己的名字矛盾（"衰减"却在放大）。后果是把产能杠杆**做废**：
+      //    实测常州（`Line.utilization` 92→30）—— 基线张力 91→35（杠杆本身是活的），
+      //    而 `ps` 反向从 0.489 涨到 1.733（**同一个事件的脉冲放大 3.54×**），
+      //    两者相抵 ⇒ 越线日只从 D+1 挪到 D+3，OTD 准时率在整条 util 梯度上恒 0%。
+      //    夹上界后同一梯度的越线日变成 1 → 3 → 4 → 19 → 30 → 31 → null（单调、真受杠杆驱动）。
+      //
+      //    **影响面（实测，不是"应该只影响…"）**：`vb ≥ psStart(68)` 时 `1-(vb-68)/45 ≤ 1`，
+      //    `Math.min` 不生效 ⇒ 该侧**逐字节不变**。哪些落在该侧、哪些会变，`mockTightness` 说了算：
+      //      · **主瓶颈因素**（`params.bottleneck.primary` 那一张表）`min(97, 88+seed%9)` = 88…96 ⇒ **全在不变侧**；
+      //      · **次要因素** `min(83, 55+seed+…)` = 55…83 ⇒ **有一部分在 68 以下，脉冲会变小**（变小=修正方向）；
+      //      · LIVE 锚（OEE/利用率/良率读真值）随数据走，被人为调松的世界落在变化侧 —— 那正是本修要救的杠杆。
+      //    即：**不是"只有被调松的世界才变"**，次要因素的低张力段也在变化侧，别照这句去缩小复验范围。
+      const ps = Math.min(1, Math.max(p.psFloor, 1 - (vb - p.psStart) / p.psDen));
       pulse += e.amp * ps * (1 - dist / p.pulseDecayDen);
     }
     // 保序饱和（替代硬截断 `Math.min(cap, round(...))`）：未触顶逐字节不变，触顶段保留区分度。

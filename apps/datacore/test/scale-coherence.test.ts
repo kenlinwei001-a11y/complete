@@ -96,8 +96,19 @@ describe("WO-SCALE-COHERENCE · 五层尺度自洽四方互核（SEAM）", () =>
     // ── C < B（或 C≈B 略低）：产能不得 >> 需求，否则 supply_demand_gap 无缺口可归因（最隐蔽接缝风险）──
     expect(C, "C产能 必须 < B需求（留缺口）").toBeLessThan(B);
 
-    // 订单窗口 sanity（覆盖窗口应为合理快照 2~6 周·catches 订单 qty 尺度错）
-    expect(windowWeeks).toBeGreaterThan(2);
-    expect(windowWeeks).toBeLessThan(6);
+    // 订单窗口 sanity（catches 订单 qty 尺度错）。
+    //
+    // ⚠ **2026-08-28 WO-CANONICAL-REDS 订正：`2~6 周` 是过期常量，不是数据坏了。**
+    //   原文假设「订单簿 = 2–6 周的快照」—— 那是 24 张手写单的时代（交期全挤在
+    //   2026-06-24…07-28 的 34 天里）。`WO-ORDER-BOOK-500` **刻意**把它扩成 12 个月的簿，
+    //   依据是 `docs/LOOP4-ceo-decisions.md` §五 仓主原话：
+    //     「我的在手订单只有 34 天，占年营收 6.7%。**真实的电池厂，在手订单通常盖住未来 6–12 个月**。」
+    //   实测 33.574 周 = 7.73 个月 ∈ [6,12] ⇒ **方向对，是这条断言的常量没跟着改**。
+    //   新界按仓主那句话的口径定死（6–12 个月 = 26–52 周），不是按实测值贴上去：
+    //   簿子若退回几周的快照（旧病复发）或超过一年（越界排产）**照样红**，这条仍是活的尺子。
+    const WINDOW_WEEKS_MIN = 26; // 6 个月
+    const WINDOW_WEEKS_MAX = 52; // 12 个月
+    expect(windowWeeks, "订单簿覆盖不到 6 个月 ⇒ 退回「几周快照」的旧形态").toBeGreaterThanOrEqual(WINDOW_WEEKS_MIN);
+    expect(windowWeeks, "订单簿覆盖超过 12 个月 ⇒ 在手订单口径失真").toBeLessThanOrEqual(WINDOW_WEEKS_MAX);
   });
 });

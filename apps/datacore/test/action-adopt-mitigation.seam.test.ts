@@ -253,6 +253,32 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
     //      deepdiff-report.txt 记 274 叶差**全部**为 OEE 派生数值/因子排序/阈值过滤，
     //      无 leadTime/transitDays/供应商字段改动；risk.ts/decision-info.ts 在引入区间 byte-identical
     //      （git diff --quiet 实证，2cf8a1e2a..fe34e452c）。
+    // ── 登记 #5（WO-CANONICAL-REDS·2026-08-28）────────────────────────────────────────────
+    //   本次**没有新增加性键**，变的是**老字段的值**：53487 → **52991**（−496 字节）·
+    //   17f25c24… → **588c226c…**。两笔**有意的口径变更**，各自单独取证（不是推断）：
+    //
+    //   ✅ 金丝雀（先自证工具·铁律 0.6）：把两个 src 文件都 checkout 回 canonical 后用**同一个剥离器**
+    //      重跑 dump —— 实测 len=**53487** · sha=**17f25c24…**，与本条**原有**金值逐字节相同
+    //      ⇒ 剥离器没被改松，下面两组差异是真的。
+    //
+    //   ① `solvers/risk.ts` —— `ps`「高位脉冲衰减」补上界夹 1（衰减系数不许 >1）。
+    //      **单独跑**（battery.ts 保持 canonical）：变化叶子 **10 个**，
+    //      **全部**落在 `cards[].factorSeries.人力工时` —— 与该修改注释里写的影响面完全吻合：
+    //      只有基线张力 < `psStart(68)` 的**次要**因素会变，主瓶颈因素（mockTightness 88…96）逐字节不动。
+    //      不是回归：原式 `ps>1` 时把脉冲**放大**，与它自己的名字（"衰减"）矛盾，且把产能杠杆做废。
+    //
+    //   ② `synthetic/battery.ts` —— 订单簿业态配比与单价改从需求锚 / `SEG_REGISTRY` 派生。
+    //      **单独跑**（risk.ts 保持 canonical）：变化叶子 **2074 个**，
+    //      顶层归属 `cards` 1793 · `planRows` 281；按末级键名全部可解释为「订单簿被重抽了」：
+    //      订单明细 `so/qty/cust/due/dueDay/model`、事件 `day/desc/factors/obj/amp/tag/src/type`、
+    //      张力 `series/peak/crossDay`、处置行 `rationale/impact/triggerValue/action/…`。
+    //      **没有出现任何与 adopt_mitigation 相关的键**。
+    //
+    //   ③ 两者合并后变化叶子仍是 **2074**（① 的 10 个落在 ② 也会动的同一批格子里），
+    //      值不同（sha 4a9b7baf… → 588c226c…）但**集合相同** ⇒ 没有第三笔改动混进来。
+    //
+    //   📌 本条真正要守的那件事**没被动**：本单一行都没碰 adopt_mitigation 的代码路径，
+    //      且下方「无采纳时不许出现 `adoptedMitigation`」那条断言照旧绿。
     const ADDITIVE_KEYS = [
       "otdBatch", // WO-SANDBOX-D4（顶层）
       "otd", // WO-SANDBOX-D4（逐卡）
@@ -286,7 +312,7 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
     // WO-ORDER-BOOK-500：订单簿 24→500 ⇒ 风险卡里的订单明细变多，这个长度金值随之从 26680 变成 53487。
     // **只改数字，判据一字未动**：本门断的仍是「无采纳记录时，采纳功能没动过任何老字段」——
     // 长度是那件事的字节级指纹，数据量变了指纹自然重取，但它照样会在「老字段被动」时当场红。
-    expect(numericJson.length, "剥掉已登记的加性新键后长度仍变 —— 说明动的是老字段，不是加字段").toBe(53487);
+    expect(numericJson.length, "剥掉已登记的加性新键后长度仍变 —— 说明动的是老字段，不是加字段").toBe(52991);
     expect(
       createHash("sha256").update(numericJson).digest("hex"),
       "无采纳记录时 risk_timeline 的**推演数值**与上线前不再逐字节一致（R6 向后兼容被破）——" +
@@ -294,7 +320,7 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
     // WO-ORDER-BOOK-500：与上面的长度金值同源、同一笔改动 —— 订单簿 24→500 让风险卡里的订单明细变多。
     // 按本条自己的纪律先做了归属取证：改动是**有意的口径变更**（订单簿扩容），
     // 不是 adopt_mitigation 动了老字段（本单一行都没碰 adopt_mitigation 的代码路径）。
-    ).toBe("17f25c24efc0979e8c3a3d1ed835041c1b42314ef2ce265d3ccd9384324a5587");
+    ).toBe("588c226c51bd06037816b57280121139ddde36f64c0b17d6e946231f509b2a9b");
     // 加性键必须**真的在**（否则本条会退化成"剥了个不存在的键"，白白放行未来的真回归）。
     expect(Object.keys(numeric), "D4 的 otdBatch 必须在顶层出现，否则 ADDITIVE_KEYS 已过期").toContain("otdBatch");
     expect(Object.keys(numeric), "WO-DECISION-INFO 的 exposureOrder 必须在顶层出现，否则 ADDITIVE_KEYS 已过期").toContain("exposureOrder");
