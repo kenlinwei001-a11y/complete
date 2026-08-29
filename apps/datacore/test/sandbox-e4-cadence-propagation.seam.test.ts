@@ -390,6 +390,15 @@ describe("WO-SANDBOX-E4 · 节拍进推演（D1 Cadence × propagateTick 接缝�
     expect(body.state.dst?.received ?? 0).toBe(15);
     // 且**绝不**出现在 unresolved 里 —— 它从来没声明过闸门，报它缺闸门是污蔑。
     expect(body.cadence.unresolved.map((u) => u.ruleKey)).not.toContain("e4_legacy");
+    // ⚠ **同一条判据对 `weightRef` 同样成立**（WO-COEF-FROM-BOM 补）：
+    // 上面那条 `legacy` 字面量里连 `weightRef` 这个键都没有。本行不是重复断言 ——
+    // 它咬的是「新加的 additive 字段有没有重犯 `!== null` 那个错」：
+    // 本单第一版 `pair-weights.ts` 正是写了 `r.weightRef !== null`，于是 `undefined !== null`
+    // 为真、老规则被判成"声明了分摊口径"、`weightRef!.basis` 当场 TypeError ⇒ 整个 tick 端点 500，
+    // 而这道门是**唯一**报红的地方（上面的 `toBe(15)` 变成了读 undefined.dst）。
+    // 判据落在**响应体形状**上而不是只看数值：500 与"数算错了"必须能分开。
+    expect(body.state, "tick 端点没有返回 state ⇒ 端点整个失败了，不是数算错了").toBeDefined();
+    expect("pairWeighting" in body, "没有任何规则声明 weightRef ⇒ 回包不该多出这一段（形状逐字节同旧·RL9）").toBe(false);
   });
 
   it("E4-7 不可整 tick 表示的周期诚实拒绝（D1 SEAM-4 留给 E4 的那条边界，不偷偷取整）", () => {

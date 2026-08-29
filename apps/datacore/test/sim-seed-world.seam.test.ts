@@ -131,8 +131,9 @@ async function censusWorldLines(t: TestApp, sessionId: string): Promise<{
   const published = await t.repos.sim.listPropagationRules("demo", true);
   const { active } = partitionPropagationRules(published, s.disabledRuleKeys);
   const perturbations = await t.repos.sim.listPerturbations("demo", s.id);
-  const inputs = await buildPropagationInputs(t.repos, t.adminCtx, resolveSimScope(s.scope));
-  const engine = { graph: inputs.graph, ruleParams: inputs.ruleParams, cadenceGates: inputs.cadenceGates };
+  // 逐实例分摊权重与图/参数/闸门同一处装配（WO-COEF-FROM-BOM）——路由那一份也是这么喂的。
+  const inputs = await buildPropagationInputs(t.repos, t.adminCtx, resolveSimScope(s.scope), active);
+  const engine = { graph: inputs.graph, ruleParams: inputs.ruleParams, cadenceGates: inputs.cadenceGates, pairWeights: inputs.pairWeights };
   const actualLine = replayWorldLine({ seed, engine, rules: active, perturbations, toTick: s.curTick });
   const baselineLine = replayWorldLine({ seed, engine, rules: active, perturbations: [], toTick: s.curTick });
 

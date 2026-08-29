@@ -1,11 +1,13 @@
-import type { ResolvedSimScope } from "@platform/contracts";
+import type { PropagationRule, ResolvedSimScope } from "@platform/contracts";
 import type { AuthCtx } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import { cadenceFromProps } from "../synthetic/cadence.js";
+import { buildPairWeights, type PairWeightReport } from "./pair-weights.js";
 import {
   buildCadenceGates,
   scopePropagationGraph,
   type CadenceGateLookup,
+  type PairWeightLookup,
   type PropagationGraph,
   type RuleParamLookup,
   type ScopeReport,
@@ -55,17 +57,36 @@ export interface PropagationInputs {
   cadenceGates: CadenceGateLookup;
   /** 无法换算成整 tick 闸门而被跳过的节点（诚实报缺，不补默认）。 */
   gateSkipped: { nodeId: string; reason: string }[];
+  /**
+   * 逐实例分摊权重表（WO-COEF-FROM-BOM）：改 BOM 用量/单价即改推演——同样每次现读。
+   * 无规则声明 `weightRef` ⇒ 恒为 `{}` 且**一次对象读都不发**（旧行为逐字节不变·RL9）。
+   */
+  pairWeights: PairWeightLookup;
+  /** 权重装配回执：铺了多少对、多少对份额为 0、哪些口径算不出（诚实报缺，不退回「逐目标同额」）。 */
+  pairWeightReport: PairWeightReport;
 }
 
 /**
  * 从库里现读并装配传导相的全部入参。
  *
  * @param scope **已解析**的范围（调用方走契约唯一实现 `resolveSimScope`，不在这里再写一套 if）。
+ * @param rules 本次要跑的规则（WO-COEF-FROM-BOM 新增，**必填**）。
+ *
+ *   ⚠ 上面头注写着本函数「刻意不含 `propRules`」—— 那条理由（规则表是"要不要走引擎"的判据、
+ *   由调用方先查）**依然成立且未被推翻**：本参数不是让本函数**去查**规则，而是让调用方
+ *   **把它已经查到的那份传进来**。逐实例权重必须知道「哪几条规则声明了 `weightRef`、口径是什么」，
+ *   否则只能把全部对象类型都读一遍去猜，那才真的会打破「无传导规则的租户零本体读」。
+ *
+ *   为什么**必填**而不是给个 `= []` 缺省：缺省会让任何忘了传的调用方**静默**拿到空权重表，
+ *   于是声明了 `weightRef` 的规则整条停摆（引擎按诚实缺席处理，不传导）——
+ *   屏上看到的是"这条边今天没动"，而不是"有人漏传了一个参数"。必填 ⇒ **typecheck 当场报红**，
+ *   机器先说话。（同源教训：本仓有过「Trial Tick 另抄一份装配」导致两处输入不同源的账。）
  */
 export async function buildPropagationInputs(
   repos: Repos,
   c: AuthCtx,
   scope: ResolvedSimScope,
+  rules: readonly PropagationRule[],
 ): Promise<PropagationInputs> {
   // 物化图（走正门 R16/R4：从本体库读已物化对象 + 链路，任意行业；零硬编码）。
   const objects: PropagationGraph["objects"] = [];
@@ -90,11 +111,17 @@ export async function buildPropagationInputs(
       .filter((o) => !o.mergedInto)
       .map((o) => ({ nodeId: String(o.props.nodeId ?? o.id), cadence: cadenceFromProps(o.props) })),
   );
+  // 逐实例分摊权重（WO-COEF-FROM-BOM）：改 BOM 用量/单价即改推演——同闸门一样每次现读、不缓存。
+  // 吃的是**已裁剪的图**（`scoped.graph`）：权重只铺范围内的对，否则局部推演会拿到一张
+  // 按全域算出来的表 —— 那就是范围裁剪白做了（#129 原样病样的另一种长法）。
+  const pw = await buildPairWeights(repos, c.tenantId, rules, scoped.graph);
   return {
     graph: scoped.graph,
     scopeReport: scoped.report,
     ruleParams,
     cadenceGates: built.gates,
     gateSkipped: built.skipped,
+    pairWeights: pw.weights,
+    pairWeightReport: pw.report,
   };
 }

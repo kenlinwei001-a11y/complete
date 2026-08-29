@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ADMIN, invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
+import { bomRowCost, selectEffectiveBom } from "../src/bom.js";
 import { installReadRecorder, observedReadSurface } from "./ontology-signature.recorder.js";
 import { SOLVER_ONTOLOGY_SIGNATURES } from "../src/solvers/ontology-signature.js";
 import { FinanceWorldProjectionOutputSchema, type FinanceWorldProjectionOutput } from "@platform/contracts";
@@ -476,5 +477,99 @@ describe("WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影", () 
     // 只咬前者 = 证明了旧口径没坏；只咬后者 = 证明了新口径能动；**两者同时**才证明它们答的是两个问题。
     const projected = await project(t, sid);
     expect(lineOf(projected, "COST").delta).toBeGreaterThan(0);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WO-COEF-FROM-BOM · 🔴 头号判据：**贵料与边角料涨同样的价，结果必须不一样**
+  //
+  // ── 这道门跨的两半（SEAM-GATE：各半绿不算）──────────────────────────────
+  //  ① **数据半**：`BOMHeader`/`BOMDetail`/`Material.unitPrice` 真数据 →
+  //     `sim/pair-weights.ts` 的 `bom_cost_share` 算出逐 (物料,型号) 成本占比
+  //  ② **引擎半**：`propagateTick` 在目标循环里乘上那个占比
+  //  任一半漏都必须红：权重没铺 ⇒ 引擎报缺、压力恒 0；引擎没乘 ⇒ 两个数又相等。
+  //
+  // ── 修前实测（这就是病，不是推测）────────────────────────────────────────
+  //  同一型号 方形-LFP 上，磷酸铁锂正极（占该型号 BOM 成本 17.815%）与铝箔（0.920%）
+  //  各涨 15% 推 3 拍，`Model.costPressure` **都是 29.25**、逐单 `Order.costPressure`
+  //  **都是 26.325** —— 决定成本传导的第一因素「用量」在引擎里一次都没被读过。
+  //
+  // ── 判据写成**比值 ≈ BOM 占比之比**，不写死数字 ──────────────────────────
+  //  写死 5.2109 / 0.2691 等于赌种子不变；种子一改这条测试就在测别的东西。
+  //  咬「两个压力之比 == 两个物料在同一份 BOM 里的成本之比」才是咬住那条**因果**。
+  // ══════════════════════════════════════════════════════════════════════════
+  it("🔴 SEAM：贵料 vs 边角料涨同样的价 —— 下游压力之比 == 两者在该型号 BOM 里的成本之比", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoPropagationRules(t.repos);
+    await enableSim(t);
+
+    // 🐤 金丝雀（工具自证）：BOM 三件套非空 —— 空表会让下面每个"占比"恒 0，
+    //    而"占比恒 0"与"引擎没乘权重"在屏上长得一模一样。
+    const materials = await t.repos.objects.listByType("demo", "Material");
+    const bomHeaders = await t.repos.objects.listByType("demo", "BOMHeader");
+    const bomDetails = await t.repos.objects.listByType("demo", "BOMDetail");
+    expect(bomHeaders.length, "BOMHeader 为空 ⇒ 取数坏了，不是『这个租户没 BOM』").toBeGreaterThan(0);
+    expect(bomDetails.length, "BOMDetail 为空 ⇒ 同上").toBeGreaterThan(0);
+
+    // 找一个型号：它同时挂了两种物料，且**两种都在它的生效 BOM 里**（否则比的是 0 : 0）。
+    const links = await t.repos.links.list("demo");
+    const models = await t.repos.objects.listByType("demo", "Model");
+    const matKeyOf = new Map(materials.map((m) => [m.id, String(m.props.matId)]));
+    const priceOf = new Map(materials.map((m) => [String(m.props.matId), Number(m.props.unitPrice)]));
+    const hdrProps = bomHeaders.map((h) => h.props);
+    const dtlProps = bomDetails.map((d) => d.props);
+
+    let picked: { modelId: string; hi: string; lo: string; hiCost: number; loCost: number } | null = null;
+    for (const model of [...models].sort((a, b) => a.id.localeCompare(b.id))) {
+      // 该型号的生效 BOM 走**生产同一支** `selectEffectiveBom`（测试里另写一套选取 = 第二套真相源）。
+      const { rows } = selectEffectiveBom(hdrProps, dtlProps, String(model.props.modelId));
+      if (rows.length === 0) continue;
+      const costByMat = new Map<string, number>();
+      for (const r of rows) costByMat.set(String(r.materialId), bomRowCost(r, (mk) => priceOf.get(mk) ?? 0));
+      // 该型号图上真挂着的物料（`material_used_by_model`），且在 BOM 里有成本 > 0 的那些。
+      const linked = links
+        .filter((l) => l.type === "material_used_by_model" && l.toId === model.id)
+        .map((l) => matKeyOf.get(l.fromId) ?? "")
+        .filter((mk) => (costByMat.get(mk) ?? 0) > 0)
+        .sort((a, b) => (costByMat.get(b)! - costByMat.get(a)!) || a.localeCompare(b));
+      if (linked.length < 2) continue;
+      const hi = linked[0]!;
+      const lo = linked[linked.length - 1]!;
+      if (costByMat.get(hi)! / costByMat.get(lo)! < 2) continue; // 差不开就演示不出问题
+      picked = { modelId: model.id, hi, lo, hiCost: costByMat.get(hi)!, loCost: costByMat.get(lo)! };
+      break;
+    }
+    expect(picked, "找不到「同一型号 · 两种物料都在 BOM 里 · 成本差 2 倍以上」的对照 ⇒ 用例前提不成立").not.toBeNull();
+    const { modelId, hi, lo, hiCost, loCost } = picked!;
+
+    const objIdOf = (matKey: string) => materials.find((m) => String(m.props.matId) === matKey)!.id;
+    /** 对某物料施加 +15%（走**真扰动路由**，不直写 baseSnapshot），推 3 拍，读该型号的成本压力。 */
+    const shock = async (matKey: string): Promise<number> => {
+      const matObjId = objIdOf(matKey);
+      const sid = await createWorld(t, { [matObjId]: { priceShock: 0 } });
+      const created = await t.app.inject({
+        method: "POST", url: `/a/v1/sim/sessions/${sid}/perturbations`, headers: ADMIN,
+        payload: { kind: "cost_shock", targetObjectId: matObjId, targetStateVar: "priceShock", magnitude: 15, mode: "set", label: `${matKey} +15%` },
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      expect((await tick(t, sid, 3)).statusCode).toBe(200);
+      return (await t.repos.sim.getTickState("demo", sid, 3))?.state?.[modelId]?.costPressure ?? 0;
+    };
+
+    const hiPressure = await shock(hi);
+    const loPressure = await shock(lo);
+
+    // ① 两个都真的动了（都为 0 时"比值"无意义 —— 那是引擎没跑，不是分摊生效）
+    expect(hiPressure, `贵料 ${hi} 的压力为 0 ⇒ 链没通，比值无从谈起`).toBeGreaterThan(0);
+    expect(loPressure, `边角料 ${lo} 的压力为 0 ⇒ 同上`).toBeGreaterThan(0);
+    // ② 🔴 头号判据：**不再相等**（修前这两个数逐字节相同 —— 那正是本单要治的病）
+    expect(hiPressure).not.toBe(loPressure);
+    expect(hiPressure).toBeGreaterThan(loPressure);
+    // ③ 而且差得**恰好是 BOM 成本之比** —— 咬因果，不是咬"有差别就行"。
+    //    只咬 ② 会被任何一个随手编的权重蒙混过去；③ 才把权重钉死在 BOM 真数据上。
+    expect(hiPressure / loPressure).toBeCloseTo(hiCost / loCost, 6);
+    // ④ 反向判据：份额是**份额**不是放大器 —— 单料压力必须小于"整条边强度 × 涨幅 × 拍数"
+    //    （0.65 × 15 × 3 = 29.25，即修前那个"人人都拿满额"的数）。
+    expect(hiPressure).toBeLessThan(29.25);
   });
 });

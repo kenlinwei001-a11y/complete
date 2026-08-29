@@ -69,7 +69,8 @@ import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-S
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
-import { firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type UnresolvedCadenceGate } from "./sim/propagation.js";
+import { firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PairWeightLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
+import type { PairWeightReport } from "./sim/pair-weights.js";
 // 传导相入参（图/范围/规则参数/节拍闸门）的**唯一装配处**——本文件不许再装配第二遍。
 // `buildCadenceGates` / `scopePropagationGraph` 刻意**不在本文件 import**：它们只该出现在装配处里。
 import { buildPropagationInputs } from "./sim/propagation-inputs.js";
@@ -2102,14 +2103,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // 与 tick 路同一条性能判据（`propagation-inputs.ts` 头注）：没规则也没扰动 ⇒ 整段装配都省掉，
     // 保住"无传导规则的租户零本体读"这条既有特征。此时两条线恒等（世界不动），回包照常成立。
     const engine = published.length > 0 || perturbations.length > 0
-      ? await buildPropagationInputs(repos, c, resolveSimScope(s.scope))
-      : { graph: { objects: [], links: [] }, ruleParams: {}, cadenceGates: {} };
+      ? await buildPropagationInputs(repos, c, resolveSimScope(s.scope), active)
+      : { graph: { objects: [], links: [] }, ruleParams: {}, cadenceGates: {}, pairWeights: {} };
     return buildMetricSeries({
       sessionId: s.id,
       // 🔴 基线种子 = **本会话自己的 tick0 行**（`/act` 直写过的世界里它与 baseSnapshot 不同，
       //    那个差额属于这个世界、两条线都该带着它）。缺行才退回 baseSnapshot。
       seed: (await repos.sim.getTickState(c.tenantId, s.id, 0))?.state ?? simState(s.baseSnapshot),
-      engine: { graph: engine.graph, ruleParams: engine.ruleParams, cadenceGates: engine.cadenceGates },
+      // 逐实例权重与图/参数/闸门**同一处装配**（WO-COEF-FROM-BOM）：曲线与真 tick 少喂一样输入
+      // 就会各画各的 —— 那正是「唯一装配处」这条纪律要防的事。
+      engine: { graph: engine.graph, ruleParams: engine.ruleParams, cadenceGates: engine.cadenceGates, pairWeights: engine.pairWeights },
       publishedRules: published,
       activeRules: active,
       perturbations,
@@ -2200,6 +2203,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     let cadenceGates: CadenceGateLookup = {};
     let gateSkipped: { nodeId: string; reason: string }[] = [];
     let unresolvedGates: UnresolvedCadenceGate[] = [];
+    // 逐实例分摊权重（WO-COEF-FROM-BOM）。无规则声明 `weightRef` ⇒ 恒 `{}`，逐字节同旧（RL9）。
+    let pairWeights: PairWeightLookup = {};
+    let unresolvedWeights: UnresolvedPairWeight[] = [];
+    let pairWeightReport: PairWeightReport = { pairs: [], unresolved: [], explain: [] };
     /** 本次 tick 的范围回执（诚实回带：这一格是在什么范围下算出来的·R-ARG-FIDELITY）。 */
     let scopeReport: ScopeReport | null = null;
     let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, curTick))?.pending ?? []) : [];
@@ -2214,11 +2221,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       // 图 / 范围 / 规则参数 / 节拍闸门全部走**唯一装配处**（WO-SIM-ACT-CLOSE · #152，
       // 与 Trial Tick 同源，见 `buildPropagationInputs`）—— 另抄一份就会出现
       // 「认证说能跑、真 tick 不是这个数」。
-      const inp = await buildPropagationInputs(repos, c, resolveSimScope(s.scope));
+      const inp = await buildPropagationInputs(repos, c, resolveSimScope(s.scope), propRules);
       graph = inp.graph;
       scopeReport = inp.scopeReport;
       Object.assign(ruleParams, inp.ruleParams);
       cadenceGates = inp.cadenceGates; gateSkipped = inp.gateSkipped;
+      pairWeights = inp.pairWeights; pairWeightReport = inp.pairWeightReport;
     }
     let trace: PropagationTrace[] | null = null;
     let appliedPerturbations: string[] = [];
@@ -2230,8 +2238,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         const out = propagateTick(
           graph, state, propRules, pending, beforeTick, ruleParams, cadenceGates,
           await perturbationsForTick(beforeTick + 1), // 引擎产出的是 tick+1 那一格
+          pairWeights,
         );
         state = out.next; pending = out.pending; unresolvedGates = out.unresolvedGates;
+        unresolvedWeights = out.unresolvedWeights;
         appliedPerturbations = out.appliedPerturbations;
         for (const k of firedPropagationRuleKeys(out.trace, out.pending)) firedKeys.add(k);
         // 无传导规则的世界：本 tick 若没有任何扰动动作，trace 保持 `null`（与本单引入前逐字节相同·可回退）。
@@ -2248,6 +2258,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return {
       curTick, state, trace, pending, propagate, scopeReport,
       cadence: { gates: cadenceGates, skipped: gateSkipped, unresolved: unresolvedGates },
+      // 逐实例分摊的诚实回执（WO-COEF-FROM-BOM）：声明了口径却算不出权重的规则**本 tick 没传导**，
+      // 必须让调用方看见 —— 安静地少一条边，正是本仓「静默错答」要根治的形态。
+      pairWeighting: { report: pairWeightReport, unresolved: unresolvedWeights },
       appliedPerturbations, sessionPerturbationCount: sessionPerturbations.length,
       firedRuleKeys: [...firedKeys].sort(),
     };
@@ -2278,6 +2291,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req); await requireSim(c, "sim.propagation");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
     const n = Math.max(1, Math.floor(Number((req.body as { n?: number })?.n ?? 1)));
+    // 逐对权重出处要不要下发（见下方 `pairWeighting` 段的实测理由）。query 与 body 都认：
+    // 前端按 query 发最省事，而脚本/审计侧常常只在 body 里带参数。
+    const wantExplain =
+      String((req.query as Record<string, unknown> | undefined)?.explain ?? "") === "1" ||
+      (req.body as { explain?: unknown } | undefined)?.explain === true;
     const r = await tickSimSessionWorld(c, s, n);
     // `cadence` 段是**诚实缺席的出口**（E4）：哪些节点有闸门、哪些节点查得到但用不了、
     // 哪些规则声明了闸门却拿不到 —— 全部亮出来，前端才可能显示"这条流因节拍未知未参与推演"，
@@ -2292,6 +2310,33 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             // 范围回执（WO-SIM-SCOPE-TRIAL）：算了几个对象、几条边、丢了多少、范围是不是根本拿不到。
             // 与 `cadence` 同一条纪律 —— 让"筛选没生效"看得见，而不是从一个安静的数字里去猜。
             scope: r.scopeReport,
+          }
+        : {}),
+      // 逐实例分摊回执（WO-COEF-FROM-BOM）——与 `cadence` 逐条同款纪律。
+      // **只在真有规则声明 `weightRef` 时下发**：没人声明的租户响应形状逐字节同旧（additive·可回退 RL9）。
+      //
+      // ⚠ **逐对出处 `explain` 默认不下发，要用 `?explain=1` 显式要** —— 这不是把可披露打折，
+      // 是实测逼出来的：demo 租户三条已分摊的边共 **1024 对**，`explain` 一段就 **504,837 字节**，
+      // 占整个 tick 回包的 **99.75%**（`state` 才 2 字节）。把它设成默认 = 每拍多传半兆，
+      // 那会让"可披露"这件事本身变成一个性能事故，然后被人一刀关掉——反而更不可披露。
+      // 默认下发的 `report.pairs`（逐规则：铺了多少对/多少对权重 0/强度与来源/本跳耗时）
+      // 与 `unresolved`（算不出权重的规则）都很小，**足够回答"这个数是算的还是拍的"**；
+      // 要追到某一对的分子分母/用哪张 BOM/哪几个字段，`?explain=1` 一次拿全，不做截断
+      // （截断会让审计以为自己看到了全量 —— 那比不给更糟）。
+      ...(r.pairWeighting.report.pairs.length > 0 || r.pairWeighting.report.unresolved.length > 0 || r.pairWeighting.unresolved.length > 0
+        ? {
+            pairWeighting: wantExplain
+              ? r.pairWeighting
+              : {
+                  ...r.pairWeighting,
+                  report: {
+                    ...r.pairWeighting.report,
+                    explain: [],
+                    // 诚实位：省略了多少条，以及怎么拿全 —— 空数组不冒充"没有出处"。
+                    explainOmitted: r.pairWeighting.report.explain.length,
+                    explainHint: "逐对出处默认不下发（会占回包 99% 以上）。加 ?explain=1 取全量，不截断。",
+                  },
+                },
           }
         : {}),
       // 溯源（WO-P2）：这一格世界态是哪几次扰动仍在起作用的结果。只在这个世界真有扰动时下发，
@@ -3021,12 +3066,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   ): Promise<{ fired: number; declared: number }> => {
     const propRules = await listPublishedPropRules(c);
     if (propRules.length === 0) return { fired: 0, declared: 0 };
-    const inp = await buildPropagationInputs(repos, c, scope);
+    const inp = await buildPropagationInputs(repos, c, scope, propRules);
     const out = propagateTick(
       inp.graph, simState(await simCurrent(c, s)), propRules,
       [], // pending：探针不续跑在途队列（见上）
       s.curTick, inp.ruleParams, inp.cadenceGates,
       [], // perturbations：探针不重放扰动（见上）
+      inp.pairWeights, // 与真 tick 同一份权重表（同装配处）——少喂它，认证就会说"这条边不通"而真 tick 通
     );
     // 只数**本租户已发布规则**产出的那些（`firedPropagationRuleKeys` 已剔掉扰动行与延迟到达行；
     // 这一层交集是第二道保险，也让"fired ≤ declared"在类型之外有实据）。

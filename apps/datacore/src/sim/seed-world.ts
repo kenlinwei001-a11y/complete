@@ -628,9 +628,12 @@ export async function seedDemoSimWorld(repos: Repos, sim: SimWorldOps, ctx: Auth
     label: "demo 种子世界",
     baseSnapshotOrigin: origin,
   };
-  const inputs = await buildPropagationInputs(repos, ctx, resolveSimScope(seedScope));
   // 新会话的 `disabledRuleKeys` 恒为空（`createSimSessionWorld` 写死），故"引擎将吃的规则"= 全部 PUBLISHED。
+  // ⚠ 这一行**必须排在装配之前**：`buildPropagationInputs` 要拿这份规则表算逐实例分摊权重
+  // （WO-COEF-FROM-BOM）。少喂它，选点时看到的世界就与引擎真跑的世界又不是同一个了 ——
+  // 正是本段注释开头点名的那个「第二套真相源」老形态。
   const rules = await repos.sim.listPropagationRules(ctx.tenantId, true);
+  const inputs = await buildPropagationInputs(repos, ctx, resolveSimScope(seedScope), rules);
   const choice = pickSeedPerturbation({
     state,
     graph: inputs.graph,

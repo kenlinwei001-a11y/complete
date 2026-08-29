@@ -167,11 +167,26 @@ describe("WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发
     // 🐤 金丝雀先说话：观测方法本身是好的 —— 未被反转的那条边照常触发。
     // 若这一行也红，结论是「观测坏了」，**不许**读作「规则不触发」（铁律 0.6）。
     expect(allKeys.has("demo_order_demand_pressure")).toBe(true);
-    // 10 × 0.8 = 8 每 tick 一次。扰动是 `set` 且 `durationTicks:null` ⇒ 源端每 tick 都是 10，
-    // `combine:"sum"` 在上一格的值上继续累加 ⇒ 8 → 16。两格都钉住，金丝雀才既证"会触发"
-    // 又证"数是对的"（只钉一格的话，把系数改坏也可能碰巧还在)。
-    expect(t1.state[orderLink.toId]!.demandLoad).toBe(8);
-    expect(t2.state[orderLink.toId]!.demandLoad).toBe(16);
+    // 每 tick 一次 `10 × 0.8 × 该单的订单量相对倍率`。扰动是 `set` 且 `durationTicks:null` ⇒
+    // 源端每 tick 都是 10，`combine:"sum"` 在上一格的值上继续累加 ⇒ 第二格恰是第一格的 **2 倍**。
+    //
+    // ⚠ **金值从写死的 8 / 16 改成「非 0 且第二格恰为两倍」**（WO-COEF-FROM-BOM）。
+    // 原因不是"跑一遍把期望值贴上去"：`demo_order_demand_pressure` 现在按
+    // `source_qty_relative`（订单量 ÷ 该型号在手单均值）分摊，那个倍率由**种子里这张单的 qty**
+    // 决定，写死它等于赌"这张单恰好是均值单"——而本用例根本不挑单（取 `[0]`）。
+    // 本金丝雀要证的两件事是「**会触发**」和「**累加口径没坏**」，两者都不需要那个绝对值：
+    // 倍率若被改坏（比如退回逐目标同额），第一行仍非 0，但**第二格 ÷ 第一格 = 2** 这条
+    // 与系数无关的恒等式仍成立 —— 所以再加一条与倍率**正交**的钉子：trace 里这条规则的 amount
+    // 必须逐 tick 相同（源态每 tick 恒为 10 ⇒ 每 tick 贡献额必须一样）。
+    const load1 = t1.state[orderLink.toId]!.demandLoad!;
+    const load2 = t2.state[orderLink.toId]!.demandLoad!;
+    expect(load1, "金丝雀边一点都没推动 ⇒ 观测坏了").toBeGreaterThan(0);
+    expect(load2 / load1).toBeCloseTo(2, 9); // combine:"sum" 逐格累加，源态恒定 ⇒ 恰好两倍
+    const amounts = [...(t1.trace ?? []), ...(t2.trace ?? [])]
+      .filter((x) => x.ruleKey === "demo_order_demand_pressure" && x.toObjectId === orderLink.toId)
+      .map((x) => x.amount);
+    expect(amounts.length, "两格里这条规则各该落一条 trace").toBe(2);
+    expect(amounts[0]).toBe(amounts[1]); // 源态恒定 ⇒ 逐 tick 贡献额恒定（口径没漂）
 
     // 🔴 判据：方向反了 ⇒ 这条规则一次都不触发，下游一个字节都不动。
     expect(allKeys.has("demo_base_load_to_line_util")).toBe(false);
@@ -180,10 +195,20 @@ describe("WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发
     // `propagation.ts:596` 的 `if (sourceVal === 0) continue` 会以完全相同的外观跳过这条规则）。
     // t1 恰好 20：扰动真的落进去了，且这一格还没有别的东西写它。
     expect(t1.state[BASE_ID]!.loadIndex).toBe(20);
-    // t2 = 24.8：金丝雀自己的链会绕回来喂 Base —— Order(10)×0.8 = Model.demandLoad 8 @t1，
-    // 再 ×0.6 = 4.8 沿 model_producible_at 落到 Base.loadIndex @t2 ⇒ 20 + 4.8。
-    // 这个数刻意钉死而不写 `>0`：它同时证明"源非 0"和"这一格的世界确实在演化"。
-    expect(t2.state[BASE_ID]!.loadIndex).toBe(24.8);
+    // t2：金丝雀自己的链会绕回来喂 Base —— `Model.demandLoad @t1` 再 ×0.6 沿
+    // `model_producible_at` 落到 `Base.loadIndex @t2` ⇒ `20 + demandLoad@t1 × 0.6`。
+    //
+    // ⚠ **原来这里钉死 24.8（= 20 + 8×0.6），本单改成从 t1 现算**（WO-COEF-FROM-BOM）。
+    // 理由与上面那处相同、且这一处更隐蔽：`demo_order_demand_pressure` 现在按
+    // `source_qty_relative` 分摊，`demandLoad@t1` 不再恒等于 8（实测这张单的倍率≈1.496
+    // ⇒ 该格变成 27.179858379229）。把新数贴上去就是"跑一遍把期望值贴上去"；
+    // 写成**恒等式**才仍然在证原来那两件事：源非 0 + 这一格的世界确实在演化，
+    // 且额外多咬住一条：**跨规则的乘子链没漂**（0.6 这一跳照旧）。
+    const demandLoadT1 = t1.state[orderLink.toId]!.demandLoad!;
+    expect(demandLoadT1, "金丝雀链在 t1 没喂到 Model ⇒ 下面这条恒等式无从谈起").toBeGreaterThan(0);
+    expect(t2.state[BASE_ID]!.loadIndex).toBe(Math.round((20 + demandLoadT1 * 0.6) * 1e12) / 1e12);
+    // 反向钉死：它**必须**已经不是 20（世界真的在演化，不是一格没动）。
+    expect(t2.state[BASE_ID]!.loadIndex).toBeGreaterThan(20);
   });
 
   // ── ③ 种子的方向必须与本体单源一致（把 #158 的成因钉在种子这一层）────────────────────
