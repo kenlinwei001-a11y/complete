@@ -283,7 +283,12 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
                       role="button"
                       tabIndex={0}
                       aria-pressed={c.id === selectedId}
-                      title={`${c.label} · 点它把右侧详情与下方执行对比切到这一手`}
+                      /* R-UI-3：口径不许挂在原生 `title=` 上（那是浏览器 tooltip，不是浮层）。
+                         这句话是**这颗控件的可及名**，故落 `aria-label` —— 屏幕阅读器读得到，
+                         而它不再是一颗悬停才出现、触屏永远摸不到的提示。
+                         （上一版写作 `title=`，被 provenance-popover-legibility 的 title 棘轮
+                         当场逼出来：88 > 基线 79，其中本单新增的正是这一处与下面那一处。） */
+                      aria-label={`${c.label} · 点它把右侧详情与下方执行对比切到这一手`}
                       onClick={() => setPicked(c.id)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
@@ -396,8 +401,11 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
                   className={styles.abtn}
                   data-testid="sandbox-opt-apply"
                   disabled
+                  /* R-UI-3：这里**不挂** `title=`。理由不是"少一个属性"，是它**一个字的新信息都不带** ——
+                     同一句话已经① 以可见文字印在下面那个 <p> 上、② 由 `aria-describedby` 正式关联给
+                     辅助技术。再加一层悬停才出现、触屏永远摸不到的浏览器 tooltip，只会让
+                     "按不了的理由"看起来像是藏起来的。（上一版挂了，被 title 棘轮当场逼出来。） */
                   aria-describedby="sandbox-opt-apply-why"
-                  title={model.source === "placeholder" ? APPLY_WHY_PLACEHOLDER : APPLY_WHY_UNWIRED}
                 >
                   应用方案
                 </button>

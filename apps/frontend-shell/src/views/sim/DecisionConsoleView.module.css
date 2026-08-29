@@ -483,14 +483,32 @@
 .segPiece {
   height: 100%;
 }
+/**
+ * WO-CONSOLE-BLOCKERS · 三段色**改走语义令牌**（原为写死 rgba，theme-blind）。
+ *
+ * 今天的行为 X：这三条原写作 `rgba(76,144,240,.55)` / `rgba(232,181,74,.55)` /
+ *   `rgba(98,190,119,.55)` —— 三套皮下**逐字节相同**，换皮即错色。
+ *   `provenance-popover-legibility` 的「写死的近不透明背景（theme-blind）」判据当场报红。
+ * 应该是 Y：跟着主题走。
+ *
+ * ⚠ 这三个值**恰好就是暗色皮下 `--accent` / `--warn` / `--ok` 的字面量**
+ *   （`tokens.css` 实测 `#4c90f0` / `#e8b54a` / `#62be77`）⇒ 换成令牌后
+ *   **暗色皮下渲染结果逐像素不变**，只是冷蓝/暖砂两套皮从"照抄暗色"变成各自的语义色。
+ *   即：这不是改设计，是把一份早就该引用的值从抄写改成引用。
+ *
+ * 55% 这个透明度保留（条子上不写字，见上面那段注：字压在半透色块上暗色皮实测 4.58:1，
+ * 所以三个数是写在条子**下面**那行的）⇒ 这里只承担"哪段多长"的几何职责，不承担可读性。
+ * 用 `color-mix` 而非 `opacity`：`opacity` 会把整个元素连边框一起压淡，本仓既有 8 个 CSS
+ * 都走 `color-mix(in srgb, var(--x) N%, transparent)` 这一式（如 `SandboxConsole.module.css`）。
+ */
 .segDone {
-  background: rgba(76, 144, 240, 0.55);
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .segWip {
-  background: rgba(232, 181, 74, 0.55);
+  background: color-mix(in srgb, var(--warn) 55%, transparent);
 }
 .segOpen {
-  background: rgba(98, 190, 119, 0.55);
+  background: color-mix(in srgb, var(--ok) 55%, transparent);
 }
 
 /* ── 区④ 卡点 ────────────────────────────────────────────────────────── */
