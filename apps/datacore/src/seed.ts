@@ -1361,6 +1361,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1412,10 +1413,12 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "blockedPressure",
     coefficient: 0.55, // 与相邻边同量级（周围 0.5–0.65）：一道工序堵住，产线并非等比例停摆
     delayTicks: 0,
+    description: "工序排队 ⇒ 该产线受阻。落在 blockedPressure 这个新量纲上，是为了不回喂 utilPressure 成正反馈环",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1432,10 +1435,12 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "releasePressure",
     coefficient: 0.6,
     delayTicks: 0,
+    description: "产线受阻 ⇒ 工单下达受阻。与「产线本来就满」是两个成因、同一个后果，故与既有那条 sum 累加",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1454,10 +1459,12 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "supplyRisk",
     coefficient: 0.5,
     delayTicks: 1, // 工单排不下去要过一拍才反映成型号级的供给缺口
+    description: "工单下达受阻 ⇒ 该型号供给风险上升。接上这一跳，设备故障就自动继承既有的「型号→订单→交付承诺」两跳",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
+    weightRef: null, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1476,6 +1483,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "costPressure",
     coefficient: 0.5,
     delayTicks: 1,
+    description: "工单下达受阻 ⇒ 该型号成本压力上升。赶工/加班/返工推高单位成本，再由既有那条边带动客户应收",
     combine: "sum",
     decay: null,
     clamp: null,
