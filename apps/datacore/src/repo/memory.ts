@@ -103,6 +103,17 @@ class MemSimRepo implements SimRepo {
     return [...this.checkpoints.values()].filter((c) => c.tenantId === tenantId && c.sessionId === sessionId).map(clone);
   }
   async putPropagationRule(r: PropagationRule) { this.rules.set(r.id, clone(r)); }
+  // ⚠ 上一行**不看 tenantId**（按 id 覆盖）—— 故改/删路由的租户闸只能靠下面这次读，不能靠写。
+  async getPropagationRule(tenantId: string, id: string) {
+    const r = this.rules.get(id);
+    return r && r.tenantId === tenantId ? clone(r) : null;
+  }
+  async deletePropagationRule(tenantId: string, id: string) {
+    const r = this.rules.get(id);
+    if (!r || r.tenantId !== tenantId) return false; // 跨租户 = 当作不存在（R2：不泄露"有这条但不给你"）
+    this.rules.delete(id);
+    return true;
+  }
   async listPropagationRules(tenantId: string, publishedOnly = true) {
     return [...this.rules.values()]
       .filter((r) => r.tenantId === tenantId && (!publishedOnly || r.status === "PUBLISHED"))

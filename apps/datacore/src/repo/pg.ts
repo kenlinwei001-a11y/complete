@@ -205,6 +205,16 @@ export class PgSimRepo implements SimRepo {
     await this.pool.query(`INSERT INTO sim_propagation_rule (id, tenant_id, doc) VALUES ($1,$2,$3) ON CONFLICT (id) DO UPDATE SET doc=$3, updated_at=now()`,
       [rule.id, rule.tenantId, JSON.stringify(rule)]);
   }
+  // ⚠ 上面的 upsert **按 id 冲突、不看 tenant_id** —— 故改/删的租户闸落在下面这两条的
+  //    `WHERE tenant_id=$1 AND id=$2` 上（与 memory 侧语义逐条对齐：跨租户 = 当作不存在）。
+  async getPropagationRule(tenantId: string, id: string) {
+    const r = await this.pool.query(`SELECT doc FROM sim_propagation_rule WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+    return r.rows[0] ? (r.rows[0].doc as PropagationRule) : null;
+  }
+  async deletePropagationRule(tenantId: string, id: string) {
+    const r = await this.pool.query(`DELETE FROM sim_propagation_rule WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+    return (r.rowCount ?? 0) > 0; // 回执取真实删除行数，不是"这条语句没报错"
+  }
   async listPropagationRules(tenantId: string, publishedOnly = true) {
     const r = await this.pool.query(`SELECT doc FROM sim_propagation_rule WHERE tenant_id=$1 ORDER BY doc->>'key'`, [tenantId]);
     const all = r.rows.map((row) => row.doc as PropagationRule);

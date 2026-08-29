@@ -1,10 +1,11 @@
 import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { OntologyInvariantOverride } from "@platform/contracts";
+import type { ChangeImpactPreview, OntologyInvariantOverride, PropagationRule } from "@platform/contracts";
 import {
   createLinkType,
   createPropagationRule,
   createPublishRequest,
+  deletePropagationRule,
   deprecateOntologyElement,
   evaluateOntologyInvariants,
   fetchDomains,
@@ -16,8 +17,11 @@ import {
   fetchPropagationRules,
   fetchPublishRequests,
   fetchSimViewConfig,
+  previewChangeImpact,
   retireOntologyElement,
+  setPropagationRuleStatus,
   signoffPublishRequest,
+  updatePropagationRule,
   type DeprecationMetaVM,
   type ElementReferenceVM,
 } from "@/api/endpoints";
@@ -216,6 +220,7 @@ export default function OntologyRelationsPage() {
     coefficient: "0.8",
     delayTicks: "0",
     status: "PUBLISHED" as "DRAFT" | "PUBLISHED",
+    description: "",
   });
   const createRule = useMutation({
     mutationFn: () =>
@@ -229,16 +234,115 @@ export default function OntologyRelationsPage() {
         coefficient: Number(pr.coefficient),
         delayTicks: Number(pr.delayTicks),
         status: pr.status,
+        // 空串 → `null`：「没写说明」与「写了个空字符串」是两件事，落库要落成前者。
+        description: pr.description.trim() === "" ? null : pr.description.trim(),
       }),
     onSuccess: (r) => {
       toast(`因果边 ${r.key} 已建（${r.status === "PUBLISHED" ? "启用" : "停用"}）`, "success");
-      setPr((p) => ({ ...p, key: "", sourceStateVar: "", targetStateVar: "" }));
+      setPr((p) => ({ ...p, key: "", sourceStateVar: "", targetStateVar: "", description: "" }));
       void qc.invalidateQueries({ queryKey: ["a", "sim-propagation-rules"] });
       // 这一跳就是接缝：因果边一变，沙盘视图配置（stateVars / propagationCount）必须重取。
       void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
     },
     onError: toastError,
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WO-ONTOLOGY-EDGE-EDIT · 因果边：改 / 启停 / 删（此前本页**只读**）
+  //
+  // **今天的行为是 X**（本单开工前实测）：这张表只有 5 个 `<td>` 纯文本，没有任何写回；
+  //   页面底下挂着一条诚实位「⚠ 因果边今天只能新建」，理由是 `POST` 恒 mint 新 id。
+  // **应该是 Y**：三列可改（来源 / 去向 / 关系）+ 影响说明可写 + 勾选框启停 + ✕ 删除，
+  //   写回走后端新补的 `PUT /:id`、`PATCH /:id/status`、`DELETE /:id`。
+  //
+  // ── 改法为什么是「草稿 + 显式保存」，不是逐键自动保存 ──────────────────────
+  // 这三列是**本体真值**（全租户可见、进推演）。逐键 PUT 意味着用户把 `Model` 改成 `Mode`
+  // 的中途就落一次库，屏上还看不出发生过 —— 本仓对"静默写真值"一贯是拒绝的。
+  // 故改动先进 `edits` 草稿，行尾出现「保存 / 放弃」，按下才写。
+  //
+  // ⛔ **下拉选项一律后端现取**，前端不自带任何枚举：
+  //   来源/去向类型 ← `fetchObjectTypes`；关系 ← `fetchMappingRegistries().linkTypes`；
+  //   状态变量 ← `fetchSimViewConfig().stateVars`（后端从传导规则 source/target 派生）。
+  //   前端手抄一份的后果本页文件头已写过：新增一个类型忘了加进去，它就从选项里消失，
+  //   而没有任何机器会报错 —— 永远绿、永远漏。
+  // ══════════════════════════════════════════════════════════════════════════
+  type RuleEdit = Partial<Pick<PropagationRule, "sourceTypeKey" | "sourceStateVar" | "viaLinkKey" | "targetTypeKey" | "targetStateVar" | "description">>;
+  const [edits, setEdits] = useState<Record<string, RuleEdit>>({});
+  /** 「按下去之前看波及面」的确认闸：`null` = 没有待确认的动作。 */
+  const [pending, setPending] = useState<
+    { rule: PropagationRule; act: "disable" | "delete"; preview: ChangeImpactPreview | null; loading: boolean } | null
+  >(null);
+
+  /** 状态变量选项 = 后端 view-config 派生的那一份（前端不另立清单）。 */
+  const stateVarOptions = viewCfg.data?.stateVars ?? [];
+  /** 裸键 → 人话名（后端单源表，查不到就显裸键，不编名字）。 */
+  const stateVarNames = rules.data?.stateVarNames ?? {};
+  const svLabel = (k: string) => (stateVarNames[k] ? `${stateVarNames[k]}（${k}）` : k);
+
+  /** 草稿叠加在真值上 —— 屏上显示的永远是「这一行按下保存后会变成什么」。 */
+  const merged = (r: PropagationRule): PropagationRule => ({ ...r, ...(edits[r.id] ?? {}) });
+  const isDirty = (id: string) => Object.keys(edits[id] ?? {}).length > 0;
+  const patchEdit = (id: string, p: RuleEdit) => setEdits((s) => ({ ...s, [id]: { ...(s[id] ?? {}), ...p } }));
+  const dropEdit = (id: string) => setEdits((s) => { const n = { ...s }; delete n[id]; return n; });
+
+  /** 因果边一变，沙盘视图配置（stateVars / propagationCount）必须重取 —— 这一跳就是接缝。 */
+  const invalidateRules = () => {
+    void qc.invalidateQueries({ queryKey: ["a", "sim-propagation-rules"] });
+    void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
+  };
+
+  const saveRule = useMutation({
+    mutationFn: (r: PropagationRule) => {
+      const m = merged(r);
+      return updatePropagationRule(r.id, {
+        key: m.key,
+        sourceTypeKey: m.sourceTypeKey,
+        sourceStateVar: m.sourceStateVar,
+        viaLinkKey: m.viaLinkKey,
+        targetTypeKey: m.targetTypeKey,
+        targetStateVar: m.targetStateVar,
+        coefficient: m.coefficient,
+        delayTicks: m.delayTicks,
+        status: m.status,
+        description: m.description,
+      });
+    },
+    onSuccess: (r) => { dropEdit(r.id); toast(`因果边 ${r.key} 已改`, "success"); invalidateRules(); },
+    onError: toastError,
+  });
+
+  const toggleRule = useMutation({
+    mutationFn: (v: { id: string; status: "DRAFT" | "PUBLISHED" }) => setPropagationRuleStatus(v.id, v.status),
+    onSuccess: (r) => {
+      setPending(null);
+      toast(`因果边 ${r.key} 已${r.status === "PUBLISHED" ? "启用（进推演）" : "停用（在册不生效）"}`, "success");
+      invalidateRules();
+    },
+    onError: toastError,
+  });
+
+  const removeRule = useMutation({
+    mutationFn: (r: PropagationRule) => deletePropagationRule(r.id),
+    onSuccess: () => { setPending(null); toast("因果边已删除", "success"); invalidateRules(); },
+    onError: toastError,
+  });
+
+  /**
+   * 关一条边 / 删一条边**按下去之前**先问后端要波及面。
+   * ⛔ **不重造**：走既有的 `POST /a/v1/sim/change-impact-preview`（四桶 + 逐跳 + unresolved 诚实位）。
+   * 只读、且**只在用户点了才发** —— 挂在悬停上每划过一行就发一次，是把只读语义做成副作用节奏。
+   */
+  const askImpact = async (rule: PropagationRule, act: "disable" | "delete") => {
+    setPending({ rule, act, preview: null, loading: true });
+    try {
+      const p = await previewChangeImpact({ kind: "propagationRule", ruleKey: rule.key });
+      setPending((s) => (s && s.rule.id === rule.id ? { ...s, preview: p, loading: false } : s));
+    } catch (e) {
+      // 预览失败**不等于「没有波及」**：把闸留着、把原因说出来，让用户自己决定要不要硬来。
+      setPending((s) => (s && s.rule.id === rule.id ? { ...s, preview: null, loading: false } : s));
+      toastError(e);
+    }
+  };
 
   // ── 发布会签（R4）────────────────────────────────────────────────────────
   const openPublish = useMutation({
@@ -548,6 +652,14 @@ export default function OntologyRelationsPage() {
             <option value="DRAFT">停用（在册不生效）</option>
           </select>
         </label>
+        <input
+          data-testid="orel-rule-desc"
+          aria-label="新增因果边的影响说明"
+          placeholder="影响说明（这条边在业务上是什么意思）"
+          value={pr.description}
+          onChange={(e) => setPr({ ...pr, description: e.target.value })}
+          style={{ width: 260 }}
+        />
         <button
           className="btn primary sm"
           data-testid="orel-rule-create"
@@ -572,56 +684,272 @@ export default function OntologyRelationsPage() {
           <div className="muted" style={{ fontSize: 12, margin: "6px 0 3px" }}>
             域：{domainName.get(dk) ?? dk}（{rows.length}）
           </div>
-          <table className="cmp" style={{ width: "100%" }}>
+          {/* 列宽写死成百分比：auto-layout 会把「影响说明」挤成一条缝（实测截图里只看得到 6 个字），
+              而那一列正是本单要让人读的东西 —— 它必须比三个 key 下拉更宽。 */}
+          <table className="cmp" style={{ width: "100%", tableLayout: "fixed" }}>
             <thead>
               <tr>
-                <th>规则</th>
-                <th>影响（来源量 → 去向量）</th>
-                <th>系数</th>
-                <th>延迟</th>
-                <th>启停</th>
+                <th style={{ width: "19%" }}>来源</th>
+                <th style={{ width: "19%" }}>去向</th>
+                <th style={{ width: "16%" }}>关系</th>
+                <th style={{ width: "34%" }}>影响说明</th>
+                <th style={{ width: 44, textAlign: "center" }}>启</th>
+                <th style={{ width: 96 }} />
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} data-testid={`orel-rule-${r.key}`}>
-                  <td className="mono">{r.key}</td>
-                  <td className="mono">
-                    {r.sourceTypeKey}.{r.sourceStateVar} --{r.viaLinkKey}--&gt; {r.targetTypeKey}.{r.targetStateVar}
-                  </td>
-                  <td>{r.coefficient}</td>
-                  <td>{r.delayTicks}</td>
-                  <td data-testid={`orel-rule-status-${r.key}`}>{r.status === "PUBLISHED" ? "启用" : r.status === "DRAFT" ? "停用" : "已下线"}</td>
-                </tr>
-              ))}
+              {rows.map((r0) => {
+                const r = merged(r0);
+                const dirty = isDirty(r0.id);
+                const on = r.status === "PUBLISHED";
+                return (
+                  <tr key={r0.id} data-testid={`orel-rule-${r0.key}`} data-dirty={dirty ? "true" : "false"}>
+                    {/* 来源 = 对象类型 + 状态变量，两个都是**后端现取**的下拉 */}
+                    <td>
+                      <select
+                        data-testid={`orel-rule-srctype-${r0.key}`}
+                        aria-label={`因果边 ${r0.key} 的来源对象类型`}
+                        value={r.sourceTypeKey}
+                        onChange={(e) => patchEdit(r0.id, { sourceTypeKey: e.target.value })}
+                        style={{ width: "100%", marginBottom: 2 }}
+                      >
+                        {/* 现值若已不在本体里（类型被删/改名），仍列出来并标注 —— 悄悄换成别的值就是替用户改了本体 */}
+                        {!typeOptions.includes(r.sourceTypeKey) && <option value={r.sourceTypeKey}>{r.sourceTypeKey}（本体中已不存在）</option>}
+                        {typeOptions.map((k) => <option key={k} value={k}>{k}</option>)}
+                      </select>
+                      <select
+                        data-testid={`orel-rule-srcvar-${r0.key}`}
+                        aria-label={`因果边 ${r0.key} 的来源状态变量`}
+                        value={r.sourceStateVar}
+                        onChange={(e) => patchEdit(r0.id, { sourceStateVar: e.target.value })}
+                        style={{ width: "100%" }}
+                      >
+                        {!stateVarOptions.includes(r.sourceStateVar) && <option value={r.sourceStateVar}>{svLabel(r.sourceStateVar)}</option>}
+                        {stateVarOptions.map((k) => <option key={k} value={k}>{svLabel(k)}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        data-testid={`orel-rule-tgttype-${r0.key}`}
+                        aria-label={`因果边 ${r0.key} 的去向对象类型`}
+                        value={r.targetTypeKey}
+                        onChange={(e) => patchEdit(r0.id, { targetTypeKey: e.target.value })}
+                        style={{ width: "100%", marginBottom: 2 }}
+                      >
+                        {!typeOptions.includes(r.targetTypeKey) && <option value={r.targetTypeKey}>{r.targetTypeKey}（本体中已不存在）</option>}
+                        {typeOptions.map((k) => <option key={k} value={k}>{k}</option>)}
+                      </select>
+                      <select
+                        data-testid={`orel-rule-tgtvar-${r0.key}`}
+                        aria-label={`因果边 ${r0.key} 的去向状态变量`}
+                        value={r.targetStateVar}
+                        onChange={(e) => patchEdit(r0.id, { targetStateVar: e.target.value })}
+                        style={{ width: "100%" }}
+                      >
+                        {!stateVarOptions.includes(r.targetStateVar) && <option value={r.targetStateVar}>{svLabel(r.targetStateVar)}</option>}
+                        {stateVarOptions.map((k) => <option key={k} value={k}>{svLabel(k)}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        data-testid={`orel-rule-link-${r0.key}`}
+                        aria-label={`因果边 ${r0.key} 经由的结构边`}
+                        value={r.viaLinkKey}
+                        onChange={(e) => patchEdit(r0.id, { viaLinkKey: e.target.value })}
+                        style={{ width: "100%" }}
+                      >
+                        {!linkRows.some((l) => l.key === r.viaLinkKey) && <option value={r.viaLinkKey}>{r.viaLinkKey}（不在结构边表里）</option>}
+                        {linkRows.map((l) => <option key={l.key} value={l.key}>{l.key}</option>)}
+                      </select>
+                      <div className="muted mono" style={{ fontSize: 11, marginTop: 2 }}>
+                        ×{r.coefficient}
+                        {r.delayTicks > 0 ? ` · 延迟${r.delayTicks}` : ""}
+                      </div>
+                    </td>
+                    <td>
+                      <input
+                        data-testid={`orel-rule-desc-${r0.key}`}
+                        aria-label={`因果边 ${r0.key} 的影响说明`}
+                        // `null` = 作者没写说明 ⇒ 空输入框 + 占位提示，**不拿 key 顶替**（顶替就是编一句他没写过的解释）
+                        value={r.description ?? ""}
+                        placeholder="这条边在业务上是什么意思"
+                        onChange={(e) => patchEdit(r0.id, { description: e.target.value === "" ? null : e.target.value })}
+                        style={{ width: "100%" }}
+                      />
+                    </td>
+                    <td style={{ textAlign: "center" }} data-testid={`orel-rule-status-${r0.key}`} data-status={r.status}>
+                      <input
+                        type="checkbox"
+                        data-testid={`orel-rule-toggle-${r0.key}`}
+                        aria-label={`因果边 ${r0.key} 是否启用（进推演）`}
+                        checked={on}
+                        disabled={toggleRule.isPending}
+                        onChange={() => {
+                          // 关掉是**减少**能力：先给波及面再落。开回来只是恢复，直接落。
+                          if (on) void askImpact(r0, "disable");
+                          else toggleRule.mutate({ id: r0.id, status: "PUBLISHED" });
+                        }}
+                      />
+                    </td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      {dirty ? (
+                        <>
+                          <button
+                            className="btn primary sm"
+                            data-testid={`orel-rule-save-${r0.key}`}
+                            disabled={saveRule.isPending}
+                            onClick={() => saveRule.mutate(r0)}
+                          >
+                            保存
+                          </button>
+                          <button className="btn sm" data-testid={`orel-rule-cancel-${r0.key}`} onClick={() => dropEdit(r0.id)} style={{ marginLeft: 4 }}>
+                            放弃
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="btn sm"
+                          data-testid={`orel-rule-delete-${r0.key}`}
+                          aria-label={`删除因果边 ${r0.key}`}
+                          onClick={() => void askImpact(r0, "delete")}
+                          style={{ color: "var(--danger, #c62828)" }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       ))}
 
-      {/* ── 出处（工程师层，不上屏；屏上只留业务结论）────────────────────────────────
-       *  机制：POST /a/v1/sim/propagation-rules 把 `id: newId("simpr")` 写在请求体展开**之后**
-       *  （apps/datacore/src/app.ts 内该路由处），传进去的 id 恒被覆盖 ⇒ 每次 POST 都是一条新规则。
-       *  故本页不提供「停用已有边」开关：提供了只会 POST 出一条同 key 的重复规则，把生效条数数成两条。
-       *  真·启停需后端补 PUT/PATCH /a/v1/sim/propagation-rules/:id（后端单）。
-       *  复验探针：grep -n 'id: newId("simpr")' apps/datacore/src/app.ts
+      {/* ── WO-ONTOLOGY-EDGE-EDIT · 那条「只能新建」的诚实位**已撤**（撤得有据，不是删掉了事）──
+       *  它原文写的是：「`POST …/propagation-rules` 把 `id: newId("simpr")` 写在请求体展开之后 ⇒
+       *  传进去的 id 恒被覆盖 ⇒ 只能新建；真·启停需后端补 PUT/PATCH …/:id（后端单）。」
+       *  **那张后端单已经做了**：`app.ts` 该路由组现有 `PUT /:id`、`PATCH /:id/status`、`DELETE /:id`，
+       *  三条都先按 tenantId 读一次再写（跨租户实测 404）。诚实位的前提没了，留着它就成了谎话
+       *  —— 本仓的纪律是诚实位随事实走，事实变了就撤，不是"留着更谨慎"。
+       *  `test/ontology-relations.seam.test.tsx` §④ 那条断言同批反转（它本来就是为这一天写的）。
        */}
-      {/* 分层规范 §1 + §3：诚实位**记号**（一句结论）留第一层，整段「为什么」进浮层。
-          原文一字未删，只是从常驻第一层挪进 `?` —— 降层不是删除。 */}
       <div className="muted" data-testid="orel-rule-honesty" style={{ fontSize: 12, marginBottom: 18, display: "flex", alignItems: "center", gap: 6 }}>
         <span data-testid="orel-rule-honesty-mark">
-          ⚠ 因果边今天<b>只能新建</b>
+          关闭某条边会<b>切断该传播路径</b>
         </span>
-        <InfoPopover topic="为什么改不了、也停不掉" testId="orel-rule-honesty-popover">
+        <InfoPopover topic="「启」这一列到底改了什么" testId="orel-rule-honesty-popover">
           <div style={{ lineHeight: 1.7 }}>
-            因果边今天<b>只能新建，改不了、也停不掉</b>：每次保存都会被当成一条全新的边收下，覆盖不掉已有的那条。
-            所以这里<b>不提供</b>「停用已有边」的开关 —— 真提供了，也只会多出一条一模一样的边，
-            把「生效因果边」的条数数成两条，反而更难看清哪条在起作用。
+            取消勾选 = 把这条边置为<b>停用（在册不生效）</b>：它仍然留在这张表里、随时可以拨回来，
+            但推演不再走它 —— 沿这条路径下游的那些量<b>不会再被这条边推动</b>。
             <br />
-            要真正修改或停用一条已有因果边，需要先补上系统侧的修改能力；在那之前，这一页只能新建。
+            ✕ 是<b>删除</b>，不可逆：删掉之后这条边不在册，拨不回来。要"先关掉看看"请用勾选框，不要用 ✕。
+            <br />
+            两者按下去之前都会先算一次<b>波及面</b>给你看 —— 那是后端现算的，不是这里编的清单。
           </div>
         </InfoPopover>
       </div>
+
+      {/* ══ 波及面确认闸（改之前先看见「切断这条会影响什么」）══════════════════════════
+          ⛔ 四桶 + 逐跳计数 + `unresolved` 诚实位**原样上屏**：契约原文写死了
+          「空集不许冒充『没有波及』」—— items 空 **且** unresolved 空 = 焦点确为叶子；
+          unresolved 非空 = 有算不出来的部分。两者屏上必须分开说，合成一句就是本仓最恨的那种谎。 */}
+      {pending && (
+        <div className="panel" data-testid="orel-impact-gate" style={{ marginBottom: 18, borderColor: "var(--danger, #c62828)" }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>
+            {pending.act === "delete" ? "删除" : "停用"}因果边 <span className="mono">{pending.rule.key}</span>：先看波及面
+          </div>
+          <div className="muted mono" style={{ fontSize: 12, marginBottom: 8 }}>
+            {pending.rule.sourceTypeKey}.{pending.rule.sourceStateVar} --{pending.rule.viaLinkKey}--&gt; {pending.rule.targetTypeKey}.{pending.rule.targetStateVar}
+          </div>
+
+          {pending.loading && <div className="muted" data-testid="orel-impact-loading" style={{ fontSize: 12 }}>{zh.common.loading}</div>}
+
+          {!pending.loading && pending.preview === null && (
+            <div data-testid="orel-impact-failed" style={{ fontSize: 12, color: "var(--danger-txt, #c62828)", lineHeight: 1.7 }}>
+              <b>这次没算出波及面</b>（预览请求失败）。这与「没有波及」<b>不是一回事</b> ——
+              下面的按钮仍然可用，但你是在没有波及面的情况下按的。
+            </div>
+          )}
+
+          {!pending.loading && pending.preview && (() => {
+            const p = pending.preview;
+            const LABEL: Record<string, string> = {
+              recompute: "传导重算", rederive: "派生重算", rejudge: "规则重判", rewire: "结构改写",
+            };
+            const buckets = ["recompute", "rederive", "rejudge", "rewire"] as const;
+            return (
+              <div style={{ fontSize: 12, lineHeight: 1.8 }}>
+                <div data-testid="orel-impact-buckets" style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 6 }}>
+                  {buckets.map((b) => {
+                    const inB = p.items.filter((i) => i.bucket === b);
+                    const hops = [...new Set(inB.map((i) => i.hops))].sort((x, y) => x - y);
+                    return (
+                      <span key={b} data-testid={`orel-impact-bucket-${b}`}>
+                        {LABEL[b]} <b>{inB.length}</b>
+                        {inB.length > 0 && <span className="muted">（{hops.map((h) => `${h}跳×${inB.filter((i) => i.hops === h).length}`).join(" ")}）</span>}
+                      </span>
+                    );
+                  })}
+                </div>
+
+                {/* 「一条都没算到」与「算到了 0 条」在屏上必须长得不一样 */}
+                {p.items.length === 0 && p.unresolved.length === 0 && (
+                  <div data-testid="orel-impact-leaf" style={{ color: "var(--ok, #2e7d32)" }}>
+                    这条边确为<b>叶子</b>：四类波及一条都没有，且没有算不出来的部分 —— 关掉它不会带动别的东西。
+                  </div>
+                )}
+                {p.unresolved.length > 0 && (
+                  <div data-testid="orel-impact-unresolved" style={{ color: "var(--warn, #b26a00)" }}>
+                    <b>这次没算全</b>（{p.unresolved.length} 处追不到）——{p.items.length === 0 ? "所以上面那排 0 不等于「没有波及」，" : ""}
+                    下面逐条写明什么追不到、缺什么：
+                    <ul style={{ margin: "2px 0 0 16px" }}>
+                      {p.unresolved.map((u, i) => (
+                        <li key={i} className="mono" style={{ fontSize: 11 }}>{u.what} —— {u.missing}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {p.truncated && (
+                  <div data-testid="orel-impact-truncated" style={{ color: "var(--warn, #b26a00)" }}>
+                    已到 {p.maxHops} 跳保险丝，更远的没有继续追 —— 波及面<b>至少</b>这么大，不是恰好这么大。
+                  </div>
+                )}
+                {p.items.length > 0 && (
+                  <details data-testid="orel-impact-items" style={{ marginTop: 4 }}>
+                    <summary style={{ cursor: "pointer" }}>逐条看被波及的目标（{p.items.length}）▸</summary>
+                    <div className="mono" style={{ fontSize: 11, maxHeight: 180, overflowY: "auto", marginTop: 4 }}>
+                      {p.items.slice(0, 200).map((i, n) => (
+                        <div key={n}>{LABEL[i.bucket]} · {i.target} · {i.hops}跳 · 经 {i.via}</div>
+                      ))}
+                      {p.items.length > 200 && <div className="muted">…另有 {p.items.length - 200} 条未列出（只是没画，不是没有）</div>}
+                    </div>
+                  </details>
+                )}
+              </div>
+            );
+          })()}
+
+          <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+            <button
+              className="btn sm"
+              data-testid="orel-impact-confirm"
+              disabled={pending.loading || toggleRule.isPending || removeRule.isPending}
+              style={{ color: "var(--danger, #c62828)" }}
+              onClick={() =>
+                pending.act === "delete"
+                  ? removeRule.mutate(pending.rule)
+                  : toggleRule.mutate({ id: pending.rule.id, status: "DRAFT" })
+              }
+            >
+              {pending.act === "delete" ? "确认删除（不可逆）" : "确认停用"}
+            </button>
+            <button className="btn sm" data-testid="orel-impact-cancel" onClick={() => setPending(null)}>
+              取消
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ═══════════ 不变式（第三类边）═══════════
         WO-ONTOLOGY-EDGE-TRICLASS · 前两类边**一个字都没动**（见文件头「两种边，别混」）。

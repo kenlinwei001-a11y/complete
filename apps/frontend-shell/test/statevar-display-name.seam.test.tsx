@@ -183,7 +183,7 @@ describe("WO-STATEVAR-DISPLAYNAME · 状态变量中文名真上屏（SEAM）", 
       id: "id_x", tenantId: "demo", key: "k", sourceTypeKey: "Base", sourceStateVar,
       viaLinkKey: "line_belongs_to_base", targetTypeKey: "Line", targetStateVar,
       coefficient: 1, delayTicks: 0, combine: "sum" as const, decay: null, clamp: null,
-      coefficientRef: null, weightRef: null, cadenceNodeId: null, status: "PUBLISHED" as const,
+      coefficientRef: null, weightRef: null, cadenceNodeId: null, description: null, status: "PUBLISHED" as const,
       domainKey: null, domainName: null,
       sourceTypeName: null as string | null, targetTypeName: null as string | null,
     });
