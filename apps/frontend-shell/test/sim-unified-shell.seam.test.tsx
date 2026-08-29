@@ -698,9 +698,12 @@ describe("WO-SIM-TICK-GATE · 页签计数现算 / 假旋钮下屏", () => {
     // 期望值**现算**，不写死：边数取回包字段，变量数取回包数组长度。
     expect(edgesTab.getAttribute("title")).toContain(`${propagationCount} 条因果边`);
     expect(nowTab.getAttribute("title")).toContain(`${STATE_VARS.length} 个状态变量`);
-    // 顺带钉死那两个真实病灶：回包既然不是 38/37，屏上就不许再出现它们
+    // 改前那个写死的 38 已经不在了（本 fixture 的回包是 42，两者不等 ⇒ 这一句有意义）。
+    // ⚠ **刻意不写** `not.toContain("37 个状态变量")`：本 fixture 的 `STATE_VARS.length`
+    //    **恰好就是 37**，那句话会把**正确**的现算结果判成错的 —— 我第一版就是这么红的。
+    //    形态正是本门自己在警告的那一个：「我用『屏上出现了 37』当作『它是写死的』的证据，
+    //    而前者并不度量后者。」判据只能落在**改回包屏上跟不跟着变**上，见下半段。
     expect(edgesTab.getAttribute("title")).not.toContain("38 条因果边");
-    expect(nowTab.getAttribute("title")).not.toContain("37 个状态变量");
 
     // ── 改**回包** ⇒ 两处跟着走（写死常数的话这两句当场红）────────────────────
     cleanup();
@@ -710,8 +713,13 @@ describe("WO-SIM-TICK-GATE · 页签计数现算 / 假旋钮下屏", () => {
     series = seriesFor(fewer);
     mount();
     await ready(fewer.length);
-    expect(screen.getByTestId("usim-tab-edges").getAttribute("title")).toContain("99 条因果边");
-    expect(screen.getByTestId("usim-tab-now").getAttribute("title")).toContain("5 个状态变量");
+    const edgesTab2 = screen.getByTestId("usim-tab-edges");
+    const nowTab2 = screen.getByTestId("usim-tab-now");
+    expect(edgesTab2.getAttribute("title")).toContain("99 条因果边");
+    expect(nowTab2.getAttribute("title")).toContain("5 个状态变量");
+    // 现在**旧值必须消失** —— 这一对否定断言此刻才有意义（回包已经不是那两个数了）
+    expect(edgesTab2.getAttribute("title")).not.toContain("42 条因果边");
+    expect(nowTab2.getAttribute("title")).not.toContain("37 个状态变量");
   });
 
   it("⑨' 计数没到手时说「还没取到」，**不许**印成 0 条（「不知道」≠「一条都没有」）", async () => {

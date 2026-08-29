@@ -146,7 +146,9 @@ export const UNIFIED_MODE_SPEC: Record<UnifiedMode, UnifiedModeSpec> = {
     question: () => "这次推演的结论是什么、凭哪几条证据",
     group: null,
     renderer: null,
-    pending: "演习三端点已并线，但这一档的版面还没接（后续工单）",
+    // ⛔ 措辞里不许出现「工单 / 本单」这类**排期语汇**：那是开发内部的说法，用户读不懂
+    //    （与本轮「动作 pin:xxx（本单不落写操作）」同一条病，接缝门 ⑩ 臂扫全屏可见文本）。
+    pending: "这次推演的结论页还没有做好，所以现在点不动 —— 三个后端接口已经好了，缺的是这一档的版面",
   },
   linemap: {
     label: "产销线路图",
@@ -163,14 +165,14 @@ export const UNIFIED_MODE_SPEC: Record<UnifiedMode, UnifiedModeSpec> = {
         : `${c.propagationRules} 条因果边按域分组，关掉一条看结论怎么变`,
     group: "底账",
     renderer: null,
-    pending: "整册版面还没接；今天要关边，在传导识别/损失归因/方案寻优三档底部的折叠抽屉里",
+    pending: "整册的版面还没有做好；今天要关掉某条边，在传导识别 / 损失归因 / 方案寻优三档底部的折叠抽屉里",
   },
   readiness: {
     label: "本体与就绪",
     question: () => "这个推演世界凭什么可信（就绪认证 + 真实性标注）",
     group: null,
     renderer: null,
-    pending: "就绪认证与真实性标注两张表的版面还没接（后续工单）",
+    pending: "就绪认证与真实性标注这两张表还没有做好，所以现在点不动",
   },
 };
 
