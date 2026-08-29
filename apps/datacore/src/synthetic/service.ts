@@ -1694,7 +1694,11 @@ export class SyntheticService {
            */
           key: "order-ledger", type: "order-ledger", title: "订单经营台账 · 逐单根因下钻", span: 2,
           query: { kind: "solver", solverKey: "affected_orders", args: {} },
-          caption: "台账口径 ≠ 卡片「在手订单」口径：本表只列交期落在下方窗口内的未完成单，交期已过的在制单不在表内",
+          // ⚠ 措辞**不许带方向指代**（「下方/上方窗口」）——真浏览器实测两处都会指空：
+          //  ① `caption` 由 `Widget` 渲染在**内容之下**（`marginTop:8`），说「下方」时它自己已经在最下面；
+          //  ② 天数那句写在**表格之上**的对账行里，而那行只在 `offWindow > 0` 时才渲染
+          //     ⇒ 差额为 0 时连「上方」也没有。故本句写成**自洽**的：不依赖同屏任何一块还在不在。
+          caption: "台账口径 ≠ 卡片「在手订单」口径：本表只列交期落在交期窗口内的未完成单；交期已过的在制单不在表内",
           provenance: { toolName: "invoke_solver", outputPath: "$.rows", label: "affected_orders：交期窗口内未完成订单逐单 + problems 归并 + 综合毛利率（SEG 单价×毛利率派生）" },
         },
         // PRD-cockpit §2.1 规划决策推演（月/季/年 KPI 条 + 根因链 DAG + 一键去建议/体检）：metric_rollup 按 level + plan_rootcause 根因。
